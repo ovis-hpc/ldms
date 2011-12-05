@@ -93,6 +93,7 @@ static int init(const char *path)
 	 */
 	metric_count = 0;
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+	metric_count++;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -126,7 +127,7 @@ static int init(const char *path)
 	/*
 	 * Process the file again to define all the metrics.
 	 */
-	int metric_no = 0;
+	int metric_no = 1; //0th is the component_id
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -164,7 +165,7 @@ static int sample(void)
 	char junk[128];
 	union ldms_value v;
 
-	metric_no = 0;
+	metric_no = 1; //0th is component_id
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
