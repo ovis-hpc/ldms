@@ -1,0 +1,49 @@
+
+%define RELEASE 1.0.0
+%define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
+
+Summary: LDMS User Mode Commands and Libraries
+Name: ldms-utils
+Version: @VERSION@
+Release: %rel%{?dist}
+License: GPLv2 or BSD
+Group: System Environment/Libraries
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: http://www.ogc.us/downloads/ldms-utils/%{name}-%{version}.tar.gz
+Url: http://ogc.us/
+
+%description
+This package provides the user-mode commands and libraries
+of LDMS.
+
+%prep
+%setup -q
+
+%build
+%configure
+make
+
+%install
+rm -rf $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} install
+# remove unpackaged files from the buildroot
+rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+%{_sbindir}/muxr_un
+%{_sbindir}/ldms_ls
+%{_sbindir}/vmstat_un
+%{_sbindir}/meminfo_un
+%{_sbindir}/interrupts_un
+%{_libdir}/*.a
+%{_libdir}/*.so*
+%{_includedir}/ldms/*.h
+%doc README COPYING ChangeLog
+
+%changelog
+* Tue Aug 24 2008 Tom Tucker <tom@ogc.us> - 1.0.0
+- First launch.

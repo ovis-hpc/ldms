@@ -1,0 +1,5 @@
+LIBLDMSRDMA_1.0 {
+	global:
+		xprt_get;
+	local: *;
+};

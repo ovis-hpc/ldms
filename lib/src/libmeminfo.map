@@ -1,0 +1,5 @@
+LIBMEMINFO_1.0 {
+	global:
+		get_plugin;
+	local: *;
+};
