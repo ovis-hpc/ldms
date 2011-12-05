@@ -92,6 +92,7 @@ static int init(const char *path)
 	 */
 	metric_count = 0;
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+	metric_count++;
 	fseek(mf, 0, SEEK_SET);
 	do {
 	        s = fgets(lbuf, sizeof(lbuf), mf);
