@@ -1,3 +1,6 @@
+project( ldms )
+cmake_minimum_required(VERSION 2.8)
+
 if ( NOT LINUX_KERNEL_VERSION )
   execute_process(
     COMMAND uname -r
@@ -80,23 +83,3 @@ add_executable( ldmsd
   src/ldmsd_cfg.c
 )
 target_link_libraries( ldmsd ldms )
-
-add_executable( vmstat_un
-  src/vmstat_un.c
-)
-target_link_libraries( vmstat_un ldms un )
-
-add_executable( interrupts_un
-  src/interrupts_un.c
-)
-target_link_libraries( interrupts_un ldms un )
-
-add_executable( meminfo_un
-  src/meminfo_un.c
-)
-target_link_libraries( meminfo_un ldms un )
-
-add_executable( schedstat_un
-  src/schedstat_un.c
-)
-target_link_libraries( schedstat_un ldms un )
