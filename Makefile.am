@@ -40,6 +40,11 @@ src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map
 src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 PROCINTERRUPTS_la = src/libprocinterrupts.la
 
+src_libprocstatutil_la_SOURCES = src/procstatutil.c
+src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map
+src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+PROCSTATUTIL_la = src/libprocstatutil.la
+
 src_libvmstat_la_SOURCES = src/vmstat.c
 src_libvmstat_la_DEPENDENCIES = $(srcdir)/src/libvmstat.map
 src_libvmstat_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
