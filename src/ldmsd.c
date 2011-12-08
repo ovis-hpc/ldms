@@ -58,7 +58,7 @@
 #include <ctype.h>
 #include <netdb.h>
 #include <dlfcn.h>
-#include <event.h>
+#include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
