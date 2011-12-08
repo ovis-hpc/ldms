@@ -1,5 +1,8 @@
 project( ldms )
 cmake_minimum_required(VERSION 2.8)
+set( CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}" )
+
+find_package( LibEvent REQUIRED )
 
 if ( NOT LINUX_KERNEL_VERSION )
   execute_process(
@@ -71,7 +74,7 @@ add_library( ldms
   src/ldms_xprt.c
   src/ogc_rbt.c
 )
-target_link_libraries( ldms dl pthread )
+target_link_libraries( ldms "${EVENT_LIBRARY}" dl pthread )
 
 add_executable( ldms_ls
   src/ldms_ls.c
