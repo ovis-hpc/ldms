@@ -3,9 +3,9 @@
 #
 # Once done, this will define:
 #
-# Event_FOUND - system has Event
-# Event_INCLUDE_DIRS - the Event include directories
-# Event_LIBRARIES - link these to use Event
+# EVENT_FOUND - system has Event
+# EVENT_INCLUDE_DIRS - the Event include directories
+# EVENT_LIBRARIES - link these to use Event
 #
 
 if ( EVENT_INCLUDE_DIR AND EVENT_LIBRARY )
