@@ -2,7 +2,14 @@ project( ldms )
 cmake_minimum_required(VERSION 2.8)
 set( CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}" )
 
-find_package( LibEvent REQUIRED )
+find_package( LibEvent )
+if ( EVENT_FOUND )
+  option( ldms_USE_SYSTEM_LIBEVENT ON "Use system's libevent library?" )
+else ( EVENT_FOUND )
+  option( ldms_USE_SYSTEM_LIBEVENT OFF "Use system's libevent library?" )
+endif ( EVENT_FOUND )
+
+add_subdirectory( util )
 
 option( ldms_MMAP "Support metric transmission via mmap?" OFF )
 option( ldms_RDMA "Support metric transmission via RDMA?" OFF )
@@ -28,6 +35,7 @@ set( LINUX_KERNEL_CONFIG_DIR
 include_directories(
   ${LINUX_KERNEL_CONFIG_DIR}
   ${LINUX_KERNEL_CONFIG_DIR}/infiniband
+  ${EVENT_INCLUDE_DIRS}
 )
 
 set( ldms_HEADERS

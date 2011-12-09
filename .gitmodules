@@ -1,0 +1,3 @@
+[submodule "util/libevent"]
+	path = util/libevent
+	url = git-ovis@hekili.ca.sandia.gov:levent.git
