@@ -4,6 +4,10 @@ set( CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}" )
 
 find_package( LibEvent REQUIRED )
 
+option( ldms_MMAP "Support metric transmission via mmap?" OFF )
+option( ldms_RDMA "Support metric transmission via RDMA?" OFF )
+option( ldms_SOCK "Support metric transmission via sockets?" ON )
+
 if ( NOT LINUX_KERNEL_VERSION )
   execute_process(
     COMMAND uname -r
