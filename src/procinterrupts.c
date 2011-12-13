@@ -61,10 +61,29 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 int num_numlines;
+ldms_metric_t compid_metric_handle;
 
 static int config(char *str)
 {
-	return EINVAL;
+  if (!set || !compid_metric_handle ){
+    msglog("meminfo: plugin not initialized\n");
+    return EINVAL;
+  }
+  //expects "component_id value"                                                                                  
+  if (0 == strncmp(str,"component_id",12)){
+    char junk[128];
+    int rc;
+    union ldms_value v;
+
+    rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
+    if (rc < 1){
+      return EINVAL;
+    }
+    ldms_set_metric(compid_metric_handle, &v);
+  }
+
+  return 1;
+
 }
 
 static ldms_set_t get_set()
@@ -95,9 +114,9 @@ static int init(const char *path)
 	/*
 	 * Process the file once first to determine the metric set size.
 	 */
-	metric_count = 0;
+
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
-	metric_count++;
+	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
 	//first line is the cpu list
 	s = fgets(lbuf, sizeof(lbuf), mf);
@@ -166,15 +185,13 @@ static int init(const char *path)
 	/*
 	 * Process the file again to define all the metrics.
 	 */
-	int metric_no = 0;
-	//FIXME:  how is the component_id going to get set???
-	metric_table[metric_no] = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!metric_table[metric_no]) {
+	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
+	if (!compid_metric_handle) {
 	  rc = ENOMEM;
 	  goto err;
-	}
-	metric_no++;
+	} //compid set in config
 
+	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	//first line is the cpu list
 	s = fgets(lbuf, sizeof(lbuf), mf);
@@ -232,17 +249,8 @@ static int init(const char *path)
 	    metric_no++;
 	  }
 	} //while
-	return 0;
 
-	/* FIXME: how will we set the comp id???
-	{//fill in the comp id
-	  uint64_t gn;
-	  metric_no = 0;
-	  gn = un_set_u64(set_no, metric_no, (unsigned long long) ovis_compid);
-	  if ((int64_t)gn == -1L)
-	    no_server();
-	}
-	*/
+	return 0;
 
  err:
 	ldms_set_release(set);
@@ -260,7 +268,7 @@ static int sample(void)
   union ldms_value v;
   int count = 0;
 
-  metric_no = 1; // 0 is the component_id FIXME: is this still true?
+  metric_no = 0; 
   fseek(mf, 0, SEEK_SET);
   //first line is the cpu list
   s = fgets(lbuf, sizeof(lbuf), mf);

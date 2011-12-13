@@ -57,7 +57,7 @@ PERF_EVENT_la = src/libperf_event.la
 
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS)
 
-lib_LTLIBRARIES = src/libldms.la $(SOCK_la) $(RDMA_la) $(MEMINFO_la) $(PROCINTERRUPTS_la) $(VMSTAT_la) $(PERF_EVENT_la)
+lib_LTLIBRARIES = src/libldms.la $(SOCK_la) $(RDMA_la) $(MEMINFO_la) $(PROCINTERRUPTS_la) $(VMSTAT_la) $(PROCSTATUTIL_la) $(PERF_EVENT_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c

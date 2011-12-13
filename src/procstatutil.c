@@ -70,10 +70,29 @@ ldmsd_msg_log_f msglog;
 struct raw* prev;
 int numcpu_plusone = 0; // including one for the node
 int maxcpu_plusone = 5; // will increase
+ldms_metric_t *compid_metric_handle;
 
 static int config(char *str)
 {
-  return EINVAL;
+  if (!set || !compid_metric_handle ){
+    msglog("meminfo: plugin not initialized\n");
+    return EINVAL;
+  }
+  //expects "component_id value"                                                                                  
+  if (0 == strncmp(str,"component_id",12)){
+    char junk[128];
+    int rc;
+    union ldms_value v;
+
+    rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
+    if (rc < 1){
+      return EINVAL;
+    }
+    ldms_set_metric(compid_metric_handle, &v);
+  }
+
+  return 1;
+
 }
 
 static ldms_set_t get_set()
@@ -104,9 +123,8 @@ static int init(const char *path)
   /* Process the file once first to determine the metric set size
    * and store the info since this does a diff calculation. (Decide If we want to keep the diff).
    */
-  metric_count = 0;
   rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
-  metric_count++;
+  metric_count = 0; //only for the data metrics
 
   fseek(mf, 0, SEEK_SET);
   do {
@@ -132,42 +150,53 @@ static int init(const char *path)
       rc = ldms_get_metric_size("cpu_user", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
+      metric_count++;
+
       rc = ldms_get_metric_size("cpu_sys",  LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_idle",  LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_nonidle",  LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_user_raw", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_nice_raw", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_sys_raw",  LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_idle_raw", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_iowait_raw",  LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_irq_raw", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
       rc = ldms_get_metric_size("cpu_softirq_raw", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
@@ -182,51 +211,61 @@ static int init(const char *path)
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_sys", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_idle", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_nonidle", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_user_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_nice_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_sys_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_idle_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_iowait_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_irq_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
 	snprintf(metric_name, 127,"cpu%d_softirq_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz +=meta_sz;
@@ -275,8 +314,14 @@ static int init(const char *path)
   /*
    * Define all the metrics given the numcpu
    */
+  compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
+  if (!compid_metric_handle) {
+    rc = ENOMEM;
+    goto err;
+  }
+  //compid's value will be set in config
 
-  int metric_no = 1; //0th is the component_id  
+  int metric_no = 0;
   metric_table[metric_no] = ldms_add_metric(set, "cpu_user", LDMS_V_U64);
   if (!metric_table[metric_no]) {
     rc = ENOMEM;
@@ -449,7 +494,7 @@ static int sample(void)
   char *s;
   char lbuf[256];
 
-  metric_no = 1; //0th is component_id
+  metric_no = 0;
   fseek(mf, 0, SEEK_SET);
   do {
     s = fgets(lbuf, sizeof(lbuf), mf);
@@ -485,7 +530,7 @@ static int sample(void)
     }
 		
     if ( icpu > maxcpu_plusone ){
-      printf("Can only handle 16 cpu.\n");
+      printf("Exceeded max cpu\n");
       return EINVAL;
     }
     

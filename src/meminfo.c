@@ -61,9 +61,28 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
+ldms_metric_t compid_metric_handle;
 static int config(char *str)
 {
-	return EINVAL;
+  if (!set || !compid_metric_handle ){
+    msglog("meminfo: plugin not initialized\n");
+    return EINVAL;
+  }
+  //expects "component_id value"
+  if (0 == strncmp(str,"component_id",12)){
+    char junk[128];
+    int rc;
+    union ldms_value v;
+
+    rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
+    if (rc < 1){
+      return EINVAL;
+    }
+    ldms_set_metric(compid_metric_handle, &v);
+  } 
+  
+  return 1;
+
 }
 
 static ldms_set_t get_set()
@@ -91,9 +110,9 @@ static int init(const char *path)
 	/*
 	 * Process the file once first to determine the metric set size.
 	 */
-	metric_count = 0;
+
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
-	metric_count++;
+	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -127,7 +146,13 @@ static int init(const char *path)
 	/*
 	 * Process the file again to define all the metrics.
 	 */
-	int metric_no = 1; //0th is the component_id
+	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
+	if (!compid_metric_handle) {
+	  rc = ENOMEM;
+	  goto err;
+	} //compid set in config
+
+	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -165,7 +190,7 @@ static int sample(void)
 	char junk[128];
 	union ldms_value v;
 
-	metric_no = 1; //0th is component_id
+	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
