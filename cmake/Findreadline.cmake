@@ -32,6 +32,10 @@ find_package_handle_standard_args( readline
   readline_LIBRARIES
 )
 
+if ( readline_INCLUDE_DIR AND readline_LIBRARIES )
+  set( readline_FOUND 1 )
+endif ( readline_INCLUDE_DIR AND readline_LIBRARIES )
+
 mark_as_advanced(
   readline_INCLUDE_DIR
   readline_LIBRARY
