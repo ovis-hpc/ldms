@@ -53,6 +53,7 @@ endforeach ()
 add_library( un
   src/libun.c
 )
+add_dependencies( un ${CMAKE_CURRENT_SOURCE_DIR}/src/libun.map )
 
 if ( ldms_RDMA )
   add_library( ldmsrdma
@@ -62,6 +63,7 @@ if ( ldms_RDMA )
     verbs
     rdmacm
   )
+  add_dependencies( ldmsrdma ${CMAKE_CURRENT_SOURCE_DIR}/src/libldmsrdma.map )
   set( ldms_SUBLIBRARIES "${ldms_SUBLIBRARIES};ldmsrdma" )
 else ( ldms_RDMA )
   set( ldms_FLAGS "${ldms_FLAGS};DISABLE_RDMA" )
@@ -75,6 +77,7 @@ if ( ldms_SOCK )
   add_library( ldmssock
     src/ldms_sock.c
   )
+  add_dependencies( ldmssock ${CMAKE_CURRENT_SOURCE_DIR}/src/libldmssock.map )
   set( ldms_SUBLIBRARIES "${ldms_SUBLIBRARIES};ldmssock" )
 else ( ldms_SOCK )
   set( ldms_FLAGS "${ldms_FLAGS};DISABLE_SOCK" )
@@ -86,15 +89,46 @@ add_library( ldms
   src/ldms_xprt.c
   src/ogc_rbt.c
 )
-target_link_libraries( ldms "${EVENT_LIBRARY}" dl pthread )
+add_dependencies( ldms ${CMAKE_CURRENT_SOURCE_DIR}/src/libldms.map )
+target_link_libraries( ldms "${EVENT_LIBRARIES}" dl pthread )
 
 add_executable( ldms_ls
   src/ldms_ls.c
 )
 target_link_libraries( ldms_ls ldms )
 
+find_package( readline )
+if ( readline_FOUND )
+  add_executable( ldmsctl
+    src/ldmsctl.c
+  )
+  target_link_libraries( ldmsctl ldms un ${readline_LIBRARIES} )
+endif ( readline_FOUND )
+
 add_executable( ldmsd
   src/ldmsd.c
   src/ldmsd_cfg.c
 )
 target_link_libraries( ldmsd ldms )
+
+set( ldms_plugins
+  meminfo
+  procinterrupts
+  procstatutil
+  vmstat
+)
+
+# Only build the perf_event module when papi exists.
+find_package( papi )
+if ( papi_FOUND )
+  set( ldms_plugins ${ldms_plugins} perf_event )
+  set( perf_event_LIBRARIES ${papi_LIBRARIES} )
+endif()
+
+foreach( plugin ${ldms_plugins} )
+  add_library( ${plugin} MODULE src/${plugin}.c )
+  add_dependencies( ${plugin} src/${plugin}.map )
+  if ( ${${plugin}_LIBRARIES} )
+    target_link_libraries( ${plugin} ${${plugin}_LIBRARIES} )
+  endif()
+endforeach()
