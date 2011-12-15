@@ -1,0 +1,76 @@
+# Introduction
+
+The Lightweight Distributed Metric Service (LDMS) is a low-overhead, low-latency framework for collecting
+metric data on a large distributed computer system.
+The framework includes
+
++ a public API with a reference implementation,
++ tools for collecting, aggregating, and transporting metric values,
++ collectors for several common types of metrics.
+
+The API provides a way for vendors to expose system information in a uniform manner without
+being required to provide source code for accessing the information (although we advise it be included)
+which might reveal proprietary methods or information.
+
+Metric information can be updated by a kernel module which runs only when applications yield the processor
+and transported using RDMA, resulting in minimal jitter during collection.
+LDMS has been run on 10,000 cores collecting over 100,000 metric values per second with less than 0.2% overhead.
+
+# Obtaining and building LDMS
+
+You may clone LDMS source (and its submodules) from the official [Git](http://git-scm.com/) repository:
+
+    git clone git://hekili.ca.sandia.gov/git-ovis/repositories/LDMS.git
+    cd LDMS
+    git submodule update --init --recursive
+
+In order to build LDMS from source, you must have
+
++ a working C compiler,
++ either automake/autoconf/libtool or [CMake](http://www.cmake.org),
++ [readline](http://www.gnu.org/s/readline) if you wish to build `ldmsctl` (which you probably do), and
++ [papi](http://icl.cs.utk.edu/papi/) if you wish to collect performance counter metrics.
+
+LDMS comes with its own version of [libevent](http://libevent.org), but will use the one supplied with your system if it is found.
+Otherwise, it will build libevent from source.
+
+You may configure LDMS using either
+
+    ./autogen.sh
+    ./configure
+
+if you prefer using autotools or
+
+    ccmake .
+
+if you prefer using CMake.
+Once configured,
+
+    make
+    make install
+
+will build and install the binaries and header files.
+
+## Configuration settings
+
+As part of the configuration step, you may elect to compile support for different transports into LDMS:
+
++ **ldms_SOCK** socket transport (local and/or remote),
++ **ldms_RDMA** remote direct memory access transport (local and/or remote),
++ **ldms_MMAP** memory map (local, inter-process only)
+
+# Using LDMS
+
+    ./bin/ldmsd
+    ./bin/ldmsctl
+      load meminfo
+      init meminfo
+      start meminfo 500000
+      ^D
+    ./bin/ldms_ls
+
+# Supported hardware
+
++ Linux boxen.
++ Mac OS X boxen.
++ Your neighborhood Cray XE6.
