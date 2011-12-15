@@ -497,7 +497,6 @@ static int sample(void)
     unsigned long long softirq;
     unsigned long long steal;
     unsigned long long guest;
-    uint64_t metric_value;
     union ldms_value v;
     int icpu;
 
