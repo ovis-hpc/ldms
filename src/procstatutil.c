@@ -270,34 +270,6 @@ static int init(const char *path)
   //compid's value will be set in config
 
   int metric_no = 0;
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_user", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_sys", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_idle", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_nonidle", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
   metric_table[metric_no] = ldms_add_metric(set, "cpu_user_raw", LDMS_V_U64);
   if (!metric_table[metric_no]) {
     rc = ENOMEM;
@@ -362,38 +334,6 @@ static int init(const char *path)
   metric_no++;
 
   for (i = 0; i < (numcpu_plusone-1); i++){
-    snprintf(metric_name, 127,"cpu%d_%s",i,"user");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"sys");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"idle");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"nonidle");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
     snprintf(metric_name, 127,"cpu%d_%s",i,"user_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
     if (!metric_table[metric_no]) {
