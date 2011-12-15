@@ -113,6 +113,7 @@ target_link_libraries( ldmsd ldms )
 
 set( ldms_plugins
   meminfo
+  geminfo
   procinterrupts
   procstatutil
   vmstat

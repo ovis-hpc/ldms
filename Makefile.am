@@ -35,6 +35,11 @@ src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 MEMINFO_la = src/libmeminfo.la
 
+src_libgeminfo_la_SOURCES = src/geminfo.c
+src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
+src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+GEMINFO_la = src/libgeminfo.la
+
 src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
 src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map
 src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
@@ -57,7 +62,7 @@ PERF_EVENT_la = src/libperf_event.la
 
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS)
 
-lib_LTLIBRARIES = src/libldms.la $(SOCK_la) $(RDMA_la) $(MEMINFO_la) $(PROCINTERRUPTS_la) $(VMSTAT_la) $(PROCSTATUTIL_la) $(PERF_EVENT_la)
+lib_LTLIBRARIES = src/libldms.la $(SOCK_la) $(RDMA_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(VMSTAT_la) $(PROCSTATUTIL_la) $(PERF_EVENT_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
