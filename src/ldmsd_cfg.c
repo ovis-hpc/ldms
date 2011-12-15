@@ -52,6 +52,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/queue.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
 #include <netinet/in.h>
@@ -61,15 +62,14 @@
 #include <netdb.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
-#include "list.h"
 #include "ldmsd.h"
 /*
  * The '#' char indicates a comment line. Empty lines are ignored.
  * The keywords are relay, passive, and bridge as follows:
- * 
+ *
  * active - Connect to the specified host and collect its metrics at the
  *         specified interval
- *          
+ *
  * passive - Listen for incoming connect requests from the specified host
  *           and when connected collect it's metrics at the specified
  *	     interval.
@@ -90,7 +90,7 @@
  */
 
 
-LIST_HEAD(host_list_s, struct hostspec) host_list;
+LIST_HEAD(host_list_s, hostspec) host_list;
 struct hostspec *host_first()
 {
 	return LIST_FIRST(&host_list);

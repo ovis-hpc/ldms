@@ -43,6 +43,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/queue.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -52,7 +53,6 @@
 #include <limits.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
-#include "list.h"
 #include "ldms_private.h"
 
 pthread_spinlock_t xprt_list_lock;
@@ -87,7 +87,7 @@ ldms_t ldms_xprt_get(ldms_t _x)
 	return x;
 }
 
-LIST_HEAD(xprt_list, struct ldms_xprt) xprt_list;
+LIST_HEAD(xprt_list, ldms_xprt) xprt_list;
 ldms_t ldms_xprt_first()
 {
 	struct ldms_xprt *x;
@@ -791,7 +791,7 @@ struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set
 	if (LIST_EMPTY(&x->rbd_list))
 		return NULL;
 
-	list_for_each(r, &x->rbd_list, xprt_link) {
+	LIST_FOREACH(r, &x->rbd_list, xprt_link) {
 		if (r->set == set)
 			return r;
 	}

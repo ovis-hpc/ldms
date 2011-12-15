@@ -42,7 +42,7 @@
 #ifndef __LDMS_XPRT_SOCK_H__
 #define __LDMS_XPRT_SOCK_H__
 #include <semaphore.h>
-#include "list.h"
+#include <sys/queue.h>
 
 /*
  * This structure is provided to the client in lookup and returned by
@@ -110,7 +110,7 @@ struct ldms_sock_xprt {
 
 	int sock;
 
-	LIST_ENTRY(struct ldms_sock_xprt) client_link;
+	LIST_ENTRY(ldms_sock_xprt) client_link;
 };
 
 extern int sock_register(struct sockaddr *s, struct ldms_sock_xprt *x);

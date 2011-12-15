@@ -42,7 +42,6 @@ set( ldms_HEADERS
   src/ldms.h
   src/ldms_sock_xprt.h
   src/ldms_xprt.h
-  src/list.h
   src/ogc_rbt.h
 )
 file( MAKE_DIRECTORY ${ldms_BINARY_DIR}/include/ldms )

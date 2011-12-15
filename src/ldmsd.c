@@ -48,6 +48,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
@@ -62,7 +63,6 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
-#include "list.h"
 #include "un.h"
 
 #define LDMSD_SOCKNAME "/var/run/ldmsd/metric_socket"
@@ -413,14 +413,14 @@ struct plugin {
 	struct ldms_plugin *plugin;
 	struct timeval timeout;
 	struct event event;
-	LIST_ENTRY(struct plugin) entry;
+	LIST_ENTRY(plugin) entry;
 };
-LIST_HEAD(plugin_list, struct plugin) plugin_list;
+LIST_HEAD(plugin_list, plugin) plugin_list;
 
 struct plugin *get_plugin(char *name)
 {
 	struct plugin *p;
-	list_for_each(p, &plugin_list, entry) {
+	LIST_FOREACH(p, &plugin_list, entry) {
 		if (0 == strcmp(p->name, name))
 			return p;
 	}

@@ -42,7 +42,7 @@
 #ifndef __LDMS_XPRT_H__
 #define __LDMS_XPRT_H__
 #include <semaphore.h>
-#include "list.h"
+#include <sys/queue.h>
 
 enum ldms_rbuf_type {
 	LDMS_RBUF_LOCAL,	/* This is a buffer being served to remote peers */
@@ -55,8 +55,8 @@ struct ldms_rbuf_desc {
 	enum ldms_rbuf_type type;
 	uint32_t flags;
 	uint64_t xid;
-	LIST_ENTRY(struct ldms_rbuf_desc) set_link; /* list of RBD for a set */
-	LIST_ENTRY(struct ldms_rbuf_desc) xprt_link; /* list of RBD for a transport */
+	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
+	LIST_ENTRY(ldms_rbuf_desc) xprt_link; /* list of RBD for a transport */
 	uint32_t xprt_data_len;	/* The length of the transport private data in bytes */
 	void *xprt_data;	/* The transport private data section */
 	void *lcl_data;		/* Pointer to the local buffer. */
@@ -175,8 +175,8 @@ struct ldms_xprt {
 	int io_wait;
 	struct ldms_context io_ctxt;
 
-	LIST_HEAD(xprt_rbd_list, struct ldms_rbuf_desc) rbd_list;
-	LIST_ENTRY(struct ldms_xprt) xprt_link;
+	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
+	LIST_ENTRY(ldms_xprt) xprt_link;
 
 	/** Request a connection with a server */
 	int (*connect)(struct ldms_xprt *, struct sockaddr *sa, socklen_t sa_len);

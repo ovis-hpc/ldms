@@ -44,9 +44,9 @@
 #include <limits.h>
 #include <inttypes.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 #include <netinet/in.h>
 #include "ogc_rbt.h"
-#include "list.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -348,7 +348,7 @@ struct ldms_set {
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data;
 	struct ogc_rbn rb_node;
-	LIST_HEAD(rbd_list, struct ldms_rbuf_desc) rbd_list;
+	LIST_HEAD(rbd_list, ldms_rbuf_desc) rbd_list;
 	/** User callback invoked when ldms_lookup completes */
 	ldms_lookup_cb_t lookup_cb;
 	void *lookup_cb_arg;

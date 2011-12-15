@@ -69,7 +69,7 @@ static int config(char *str)
     msglog("meminfo: plugin not initialized\n");
     return EINVAL;
   }
-  //expects "component_id value"                                                                                  
+  //expects "component_id value"
   if (0 == strncmp(str,"component_id",12)){
     char junk[128];
     int rc;
