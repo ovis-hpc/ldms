@@ -63,7 +63,6 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 
 int numcpu_plusone = 0; // including one for the node
-int maxcpu_plusone = 5; // will increase
 ldms_metric_t *compid_metric_handle;
 
 static int config(char *str)
@@ -452,11 +451,6 @@ static int sample(void)
       } else {
         continue;
       }
-    }
-
-    if ( icpu > maxcpu_plusone ){
-      printf("Exceeded max cpu\n");
-      return EINVAL;
     }
 
     v.v_u64 = user;
