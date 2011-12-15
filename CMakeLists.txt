@@ -2,6 +2,8 @@ project( ldms )
 cmake_minimum_required(VERSION 2.8)
 set( CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}" )
 
+set( CMAKE_THREAD_PREFER_PTHREAD 1 )
+find_package( Threads REQUIRED )
 find_package( LibEvent )
 if ( EVENT_FOUND )
   option( ldms_USE_SYSTEM_LIBEVENT ON "Use system's libevent library?" )
@@ -32,8 +34,10 @@ set( LINUX_KERNEL_CONFIG_DIR
   "/usr/src/kernels/${LINUX_KERNEL_VERSION}/include/config"
   CACHE PATH "Path to kernel configuration header files." )
 
-include( CheckSymbolExists )
-check_symbol_exists( pthread_spinlock_t "pthread.h" ldms_HAVE_SPINLOCK_T )
+include( CheckFunctionExists )
+set( CMAKE_REQUIRED_INCLUDES "pthread.h" )
+set( CMAKE_REQUIRED_LIBRARIES ${CMAKE_THREAD_LIBS_INIT} )
+check_function_exists( pthread_spin_lock ldms_HAVE_SPINLOCK_T )
 
 include_directories(
   ${LINUX_KERNEL_CONFIG_DIR}
