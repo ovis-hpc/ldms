@@ -62,7 +62,7 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 
-int numcpu_plusone = 0; // including one for the node
+int numcpu_plusone;
 ldms_metric_t *compid_metric_handle;
 
 static int config(char *str)
@@ -111,6 +111,7 @@ static int init(const char *path)
    * and store the info since this does a diff calculation. (Decide If we want to keep the diff).
    */
   rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+  numcpu_plusone = 0;
   metric_count = 0; //only for the data metrics
 
   fseek(mf, 0, SEEK_SET);
@@ -387,6 +388,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"steal_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -442,12 +444,10 @@ static int sample(void)
     if (!strncmp( lbuf, "cpu ", 4) ){
       sscanf(lbuf + 5, "%llu %llu %llu %llu %llu %llu %llu %llu %llu",
              &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-      icpu = 0;
     } else {
       if (!strncmp( lbuf, "cpu", 3) ){
         sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
                &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-        icpu++;
       } else {
         continue;
       }
