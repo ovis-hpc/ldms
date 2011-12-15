@@ -32,10 +32,14 @@ set( LINUX_KERNEL_CONFIG_DIR
   "/usr/src/kernels/${LINUX_KERNEL_VERSION}/include/config"
   CACHE PATH "Path to kernel configuration header files." )
 
+include( CheckSymbolExists )
+check_symbol_exists( pthread_spinlock_t "pthread.h" ldms_HAVE_SPINLOCK_T )
+
 include_directories(
   ${LINUX_KERNEL_CONFIG_DIR}
   ${LINUX_KERNEL_CONFIG_DIR}/infiniband
   ${EVENT_INCLUDE_DIRS}
+  ${ldms_BINARY_DIR}/include/ldms
 )
 
 set( ldms_HEADERS
@@ -48,6 +52,10 @@ file( MAKE_DIRECTORY ${ldms_BINARY_DIR}/include/ldms )
 foreach ( file ${ldms_HEADERS} )
   configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/${file} ${ldms_BINARY_DIR}/include/ldms COPY_ONLY )
 endforeach ()
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/ldms_config.h.cmake
+  ${ldms_BINARY_DIR}/include/ldms/ldms_config.h
+  @ONLY )
 
 add_library( un
   src/libun.c
