@@ -39,7 +39,7 @@
  *
  */
 /*
- * This is the /proc/interrupts data provider. 
+ * This is the /proc/interrupts data provider.
  * NOTE: Assumes 16 processors (FIXME)
  */
 #include <inttypes.h>
@@ -69,7 +69,7 @@ static int config(char *str)
     msglog("meminfo: plugin not initialized\n");
     return EINVAL;
   }
-  //expects "component_id value"                                                                                  
+  //expects "component_id value"
   if (0 == strncmp(str,"component_id",12)){
     char junk[128];
     int rc;
@@ -137,7 +137,7 @@ static int init(const char *path)
 	      if (i && pch[i-1] == ':')
 		pch[i-1] = '\0';
 	      strcpy(beg_name, pch);
-		    
+		
 	      char *endptr;
 	      l1 = strtol (pch, &endptr,10);
 	      if (endptr == pch){
@@ -211,7 +211,7 @@ static int init(const char *path)
 	      if (i && pch[i-1] == ':')
 		pch[i-1] = '\0';
 	      strcpy(beg_name, pch);
-		    
+		
 	      char *endptr;
 	      l1 = strtol (pch, &endptr,10);
 	      if (endptr == pch){
@@ -268,7 +268,7 @@ static int sample(void)
   union ldms_value v;
   int count = 0;
 
-  metric_no = 0; 
+  metric_no = 0;
   fseek(mf, 0, SEEK_SET);
   //first line is the cpu list
   s = fgets(lbuf, sizeof(lbuf), mf);
@@ -278,13 +278,13 @@ static int sample(void)
     s = fgets(lbuf, sizeof(lbuf), mf);
     if (!s)
       break;
-    
+
     if (count < num_numlines){
       //then we only need the first col
       rc = sscanf(lbuf, "%s %"PRIu64 " %s\n", metric_name, &v.v_u64, junk);
       if (rc != 3)
 	return EINVAL;
-      
+
       ldms_set_metric(metric_table[metric_no], &v);
       metric_no++;
       count++;

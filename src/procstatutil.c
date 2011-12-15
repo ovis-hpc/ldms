@@ -72,7 +72,7 @@ static int config(char *str)
     msglog("meminfo: plugin not initialized\n");
     return EINVAL;
   }
-  //expects "component_id value"                                                                                  
+  //expects "component_id value"
   if (0 == strncmp(str,"component_id",12)){
     char junk[128];
     int rc;
@@ -134,8 +134,8 @@ static int init(const char *path)
     if (!strncmp( lbuf, "cpu ", 4) ){
       /* FIXME: should test for 10 cols */
       sscanf(lbuf + 5, "%llu %llu %llu %llu %llu %llu %llu %llu %llu",
-	     &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-    
+             &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
+
       rc = ldms_get_metric_size("cpu_user_raw", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
@@ -184,70 +184,70 @@ static int init(const char *path)
       numcpu_plusone++;
     } else {
       if (!strncmp( lbuf, "cpu", 3) ){
-	sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
-	       &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
+        sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
+               &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
 
-	snprintf(metric_name, 127,"cpu%d_user_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_user_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_nice_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_nice_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_sys_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_sys_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_idle_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_idle_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_iowait_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_iowait_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_irq_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_irq_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_softirq_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_softirq_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_steal_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_steal_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	snprintf(metric_name, 127,"cpu%d_guest_raw", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
+        snprintf(metric_name, 127,"cpu%d_guest_raw", icpu);
+        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz +=meta_sz;
+        tot_data_sz +=data_sz;
+        metric_count++;
 
-	numcpu_plusone++;
+        numcpu_plusone++;
       } else {
-	continue;
+        continue;
       }
     }
   } while (s);
-  
+
   /* Create a metric set of the required size */
   rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
   if (rc){
@@ -502,27 +502,27 @@ static int sample(void)
 
     if (!strncmp( lbuf, "cpu ", 4) ){
       sscanf(lbuf + 5, "%llu %llu %llu %llu %llu %llu %llu %llu %llu",
-	     &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
+             &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
       icpu = 0;
     } else {
       if (!strncmp( lbuf, "cpu", 3) ){
-	sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
-	       &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-	icpu++;
+        sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
+               &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
+        icpu++;
       } else {
-	continue;
+        continue;
       }
     }
-		
+
     if ( icpu > maxcpu_plusone ){
       printf("Exceeded max cpu\n");
       return EINVAL;
     }
-    
+
     v.v_u64 = user;
     ldms_set_metric(metric_table[metric_no], &v);
     metric_no++;
-    
+
     v.v_u64 = nice;
     ldms_set_metric(metric_table[metric_no], &v);
     metric_no++;

@@ -79,10 +79,9 @@ static int config(char *str)
       return EINVAL;
     }
     ldms_set_metric(compid_metric_handle, &v);
-  } 
-  
-  return 0;
+  }
 
+  return 0;
 }
 
 static ldms_set_t get_set()
@@ -129,7 +128,7 @@ static int init(const char *path)
 		rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 		if (rc)
 			return rc;
-		
+
 		tot_meta_sz += meta_sz;
 		tot_data_sz += data_sz;
 		metric_count++;

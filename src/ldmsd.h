@@ -41,8 +41,11 @@
  */
 #ifndef __LDMSD_H__
 #define __LDMSD_H__
-#include "list.h"
-struct hostspec {
+
+#include <sys/queue.h>
+
+struct hostspec
+{
 	struct sockaddr_in sin;	/* host address */
 	char *hostname;		/* host name */
 	char *xprt_name;	/* transport name */
@@ -54,7 +57,7 @@ struct hostspec {
 	ldms_dir_t dir;		/* directory on peer */
 	int set_count;		/* count of sets looked-up */
 	ldms_set_t *sets;	/* array of metric sets */
-	LIST_ENTRY(struct hostspec) link;
+	LIST_ENTRY(hostspec) link;
 };
 extern char *skip_space(char *s);
 extern int parse_cfg(const char *config_file);

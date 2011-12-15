@@ -53,7 +53,7 @@
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
 
-LIST_HEAD(sock_list, struct ldms_sock_xprt) sock_list;
+LIST_HEAD(sock_list, ldms_sock_xprt) sock_list;
 
 static int io_event_fd;
 static int cm_event_fd;
