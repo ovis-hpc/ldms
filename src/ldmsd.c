@@ -933,11 +933,11 @@ int do_connect(struct hostspec *hs)
 
 void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
 {
-	struct hostspec *hs = arg;
+	ldms_set_t *sp = arg;
 	if (status)
-		return;
-	hs->sets[hs->set_count] = s;
-	hs->set_count++;
+		*sp = NULL;
+	else
+		*sp = s;
 }
 
 void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
@@ -969,7 +969,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 	}
 	for (i = 0; i < hs->set_count; i++) {
 		int ret = ldms_lookup(hs->x, hs->dir->set_names[i],
-				      lookup_cb, hs, 0);
+				      lookup_cb, &hs->sets[i], 0);
 		if (ret) {
 			printf("Synchronous error %d looking up set '%s' "
 			       "on host '%s'.\n", ret, hs->dir->set_names[i],
