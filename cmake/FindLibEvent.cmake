@@ -34,4 +34,8 @@ find_package_handle_standard_args( EVENT
   EVENT_LIBRARIES
 )
 
+if ( EVENT_INCLUDE_DIR AND EVENT_LIBRARIES )
+  set( EVENT_FOUND 1 )
+endif ( EVENT_INCLUDE_DIR AND EVENT_LIBRARIES )
+
 mark_as_advanced( EVENT_INCLUDE_DIR EVENT_LIBRARY )
