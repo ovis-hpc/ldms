@@ -90,7 +90,7 @@ static ldms_set_t get_set()
 	return set;
 }
 
-static int init(const char *path, const uint64_t compid)
+static int init(const char *path)
 {
         size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
