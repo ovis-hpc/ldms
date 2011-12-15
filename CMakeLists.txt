@@ -151,11 +151,19 @@ endforeach()
 install(
   TARGETS ldms un ${ldms_plugins} ldmsd ldmsctl ldms_ls
   EXPORT ldms
-  LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
 )
 # Rule to install auto-generated configuration information for projects that wish to link to or run LDMS targets:
 install(
   EXPORT ldms
   DESTINATION lib/ldms
 )
+# Rule for headers
+install(
+  DIRECTORY ${ldms_BINARY_DIR}/include/ldms
+  DESTINATION include
+  COMPONENT devel
+  FILES_MATCHING PATTERN "*.h"
+  PATTERN "CMakeFiles" EXCLUDE )
