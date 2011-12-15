@@ -47,6 +47,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+
 #include <string.h>
 #include <sys/types.h>
 #include "ldms.h"
@@ -56,18 +57,11 @@
 
 static char *procfile = PROC_FILE;
 
-struct raw{
-  unsigned long long user;
-  unsigned long long sys;
-  unsigned long long idle;
-  unsigned long long uptime;
-};
-
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-struct raw* prev;
+
 int numcpu_plusone = 0; // including one for the node
 int maxcpu_plusone = 5; // will increase
 ldms_metric_t *compid_metric_handle;
@@ -91,8 +85,7 @@ static int config(char *str)
     ldms_set_metric(compid_metric_handle, &v);
   }
 
-  return 1;
-
+  return 0;
 }
 
 static ldms_set_t get_set()
@@ -114,11 +107,6 @@ static int init(const char *path)
     msglog("Could not open the procstatutil file '%s'...exiting\n", procfile);
     return ENOENT;
   }
-
-  prev = (struct raw*) malloc (maxcpu_plusone * sizeof (struct raw));
-  if (!prev) {
-    return ENOMEM;
-  };
 
   /* Process the file once first to determine the metric set size
    * and store the info since this does a diff calculation. (Decide If we want to keep the diff).
@@ -147,26 +135,7 @@ static int init(const char *path)
       /* FIXME: should test for 10 cols */
       sscanf(lbuf + 5, "%llu %llu %llu %llu %llu %llu %llu %llu %llu",
 	     &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-      rc = ldms_get_metric_size("cpu_user", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
-      rc = ldms_get_metric_size("cpu_sys",  LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
-      rc = ldms_get_metric_size("cpu_idle",  LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
-      rc = ldms_get_metric_size("cpu_nonidle",  LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
+    
       rc = ldms_get_metric_size("cpu_user_raw", LDMS_V_U64, &meta_sz, &data_sz);
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
@@ -201,34 +170,22 @@ static int init(const char *path)
       tot_meta_sz +=meta_sz;
       tot_data_sz +=data_sz;
       metric_count++;
+
+      rc = ldms_get_metric_size("cpu_steal_raw", LDMS_V_U64, &meta_sz, &data_sz);
+      tot_meta_sz +=meta_sz;
+      tot_data_sz +=data_sz;
+      metric_count++;
+
+      rc = ldms_get_metric_size("cpu_guest_raw", LDMS_V_U64, &meta_sz, &data_sz);
+      tot_meta_sz +=meta_sz;
+      tot_data_sz +=data_sz;
+      metric_count++;
+
       numcpu_plusone++;
     } else {
       if (!strncmp( lbuf, "cpu", 3) ){
 	sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
 	       &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-	snprintf(metric_name, 127,"cpu%d_user", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
-
-	snprintf(metric_name, 127,"cpu%d_sys", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
-
-	snprintf(metric_name, 127,"cpu%d_idle", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
-
-	snprintf(metric_name, 127,"cpu%d_nonidle", icpu);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz +=meta_sz;
-	tot_data_sz +=data_sz;
-	metric_count++;
 
 	snprintf(metric_name, 127,"cpu%d_user_raw", icpu);
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
@@ -271,38 +228,29 @@ static int init(const char *path)
 	tot_meta_sz +=meta_sz;
 	tot_data_sz +=data_sz;
 	metric_count++;
+
+	snprintf(metric_name, 127,"cpu%d_steal_raw", icpu);
+	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz +=meta_sz;
+	tot_data_sz +=data_sz;
+	metric_count++;
+
+	snprintf(metric_name, 127,"cpu%d_guest_raw", icpu);
+	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz +=meta_sz;
+	tot_data_sz +=data_sz;
+	metric_count++;
+
 	numcpu_plusone++;
       } else {
 	continue;
       }
     }
-		
-    if (numcpu_plusone >= maxcpu_plusone){
-      maxcpu_plusone*=2;
-      prev = realloc(prev, maxcpu_plusone*sizeof(struct raw));
-      if (!prev){
-	return ENOMEM;
-      }
-    }
-
-    prev[numcpu_plusone-1].user = user;
-    prev[numcpu_plusone-1].sys = sys;
-    prev[numcpu_plusone-1].idle = idle;
-    //no guest
-    prev[numcpu_plusone-1].uptime = user + nice + sys + idle + iowait + hardirq + steal + softirq; 
-		
   } while (s);
   
-  //shrink the array back
-  prev = realloc(prev, numcpu_plusone*sizeof(struct raw));
-  if (!prev){
-    return ENOMEM;
-  }
-
   /* Create a metric set of the required size */
   rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
   if (rc){
-    free(prev);
     return rc;
   }
 
@@ -399,6 +347,20 @@ static int init(const char *path)
   }
   metric_no++;
 
+  metric_table[metric_no] = ldms_add_metric(set, "cpu_steal_raw", LDMS_V_U64);
+  if (!metric_table[metric_no]) {
+    rc = ENOMEM;
+    goto err;
+  }
+  metric_no++;
+
+  metric_table[metric_no] = ldms_add_metric(set, "cpu_guest_raw", LDMS_V_U64);
+  if (!metric_table[metric_no]) {
+    rc = ENOMEM;
+    goto err;
+  }
+  metric_no++;
+
   for (i = 0; i < (numcpu_plusone-1); i++){
     snprintf(metric_name, 127,"cpu%d_%s",i,"user");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -406,6 +368,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"sys");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -413,6 +376,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"idle");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -420,6 +384,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"nonidle");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -427,6 +392,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"user_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -434,6 +400,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"nice_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -441,6 +408,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"sys_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -448,6 +416,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"idle_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -455,6 +424,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"iowait_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -462,6 +432,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"irq_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -469,6 +440,7 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+    metric_no++;
 
     snprintf(metric_name, 127,"cpu%d_%s",i,"softirq_raw");
     metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
@@ -476,12 +448,27 @@ static int init(const char *path)
       rc = ENOMEM;
       goto err;
     }
+
+    snprintf(metric_name, 127,"cpu%d_%s",i,"steal_raw");
+    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
+    if (!metric_table[metric_no]) {
+      rc = ENOMEM;
+      goto err;
+    }
+    metric_no++;
+
+    snprintf(metric_name, 127,"cpu%d_%s",i,"guest_raw");
+    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
+    if (!metric_table[metric_no]) {
+      rc = ENOMEM;
+      goto err;
+    }
+    metric_no++;
   } //for
 
   return 0;
 
  err:
-  free(prev);
   ldms_set_release(set);
 
   return rc ;
@@ -510,7 +497,6 @@ static int sample(void)
     unsigned long long softirq;
     unsigned long long steal;
     unsigned long long guest;
-    unsigned long long uptime;
     uint64_t metric_value;
     union ldms_value v;
     int icpu;
@@ -534,60 +520,42 @@ static int sample(void)
       return EINVAL;
     }
     
-    uptime = user + nice + sys + idle + iowait + hardirq + steal + softirq; 
-    unsigned long long duptime = uptime - prev[icpu].uptime;
-    if (duptime > 0){
-      v.v_u64 = 100*(user - prev[icpu].user)/duptime;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = user;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
+    
+    v.v_u64 = nice;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      v.v_u64 = 100*(sys - prev[icpu].sys)/duptime;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = sys;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      v.v_u64 = 100*(idle - prev[icpu].idle)/duptime;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = idle;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      metric_value = v.v_u64;
-      v.v_u64 = 100-metric_value;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = iowait;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      v.v_u64 = user;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = hardirq;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      v.v_u64 = nice;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = softirq;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      v.v_u64 = sys;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = steal;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      v.v_u64 = idle;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
+    v.v_u64 = guest;
+    ldms_set_metric(metric_table[metric_no], &v);
+    metric_no++;
 
-      v.v_u64 = iowait;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
-
-      v.v_u64 = hardirq;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
-
-      v.v_u64 = softirq;
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
-    }
-
-    prev[icpu].user = user;
-    prev[icpu].sys = sys;
-    prev[icpu].idle = idle;
-    prev[icpu].uptime = uptime;
-			
   } while (s);
   return 0;
 }

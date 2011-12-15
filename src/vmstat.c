@@ -82,7 +82,7 @@ static int config(char *str)
     ldms_set_metric(compid_metric_handle, &v);
   }
 
-  return 1;
+  return 0;
 }
 
 static ldms_set_t get_set()
