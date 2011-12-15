@@ -141,3 +141,17 @@ foreach( plugin ${ldms_plugins} )
   endif()
   target_link_libraries( ${plugin} ldms )
 endforeach()
+
+# Install rules
+# Rules for targets
+install(
+  TARGETS ldms un ${ldms_plugins} ldmsd ldmsctl ldms_ls
+  EXPORT ldms
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+# Rule to install auto-generated configuration information for projects that wish to link to or run LDMS targets:
+install(
+  EXPORT ldms
+  DESTINATION lib/ldms
+)
