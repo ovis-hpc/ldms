@@ -41,8 +41,17 @@
  */
 #ifndef __LDMS_XPRT_H__
 #define __LDMS_XPRT_H__
+
 #include <semaphore.h>
 #include <sys/queue.h>
+
+#include "ldms_config.h"
+
+#ifndef ldms_HAVE_SPINLOCK_T
+#  define pthread_spinlock_t pthread_mutex_t
+#  define pthread_spin_lock pthread_mutex_lock
+#  define pthread_spin_unlock pthread_mutex_unlock
+#endif // ldms_HAVE_SPINLOCK_T
 
 enum ldms_rbuf_type {
 	LDMS_RBUF_LOCAL,	/* This is a buffer being served to remote peers */
