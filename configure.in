@@ -4,7 +4,7 @@ AC_PREREQ(2.57)
 AC_INIT(ldms-utils, 1.0.0, tom@ogc.us)
 AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
-AM_CONFIG_HEADER(config.h)
+AM_CONFIG_HEADER(ldms_config.h)
 AM_INIT_AUTOMAKE(ldms-utils, 1.0.0)
 AM_PROG_LIBTOOL
 
@@ -35,6 +35,10 @@ AC_CHECK_SIZEOF(long)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
+
+dnl Check for pthread mutex/spinlock support
+AC_CHECK_LIB(pthread,pthread_spin_init, [], [])
+AM_CONDITIONAL([HAVE_SPINLOCK_T],[test "$ac_cv_lib_pthread_pthread_spin_init" != "no"])
 
 dnl Checks for libraries
 if test "$disable_rdma" != "yes"

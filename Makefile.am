@@ -9,6 +9,10 @@ noinst_LIBRARIES = libun.a
 libun_a_SOURCES = src/libun.c
 libun_a_DEPENDENCIES = src/un.h
 
+if HAVE_SPINLOCK_T
+SPINLOCK_FLAGS = -DHAVE_SPINLOCK_T
+endif
+
 if ENABLE_RDMA
 src_libldmsrdma_la_SOURCES = src/ldms_rdma.c
 src_libldmsrdma_la_LIBADD = -libverbs -lrdmacm
@@ -60,7 +64,7 @@ src_libperf_event_la_DEPENDENCIES = $(srcdir)/src/libperf_event.map
 src_libperf_event_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lpapi
 PERF_EVENT_la = src/libperf_event.la
 
-AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS)
+AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) $(RDMA_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(VMSTAT_la) $(PROCSTATUTIL_la) $(PERF_EVENT_la)
 
@@ -71,7 +75,7 @@ src_libldms_la_DEPENDENCIES = $(srcdir)/src/libldms.map
 
 libldmsincludedir = $(includedir)/ldms
 libldmsinclude_HEADERS = src/ldms.h src/ldms_sock_xprt.h \
-                         src/ldms_xprt.h src/list.h \
+                         src/ldms_xprt.h \
                          src/ogc_rbt.h 
 
 src_ldms_ls_SOURCES = src/ldms_ls.c
@@ -86,7 +90,7 @@ src_ldmsctl_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lre
 EXTRA_DIST = include ldms-utils.spec.in ldms-utils.spec \
 	autogen.sh \
 	src/libldms.map \
-	src/ldms.h src/ldms_rdma_xprt.h src/ldms_xprt.h src/list.h src/ogc_rbt.h \
+	src/ldms.h src/ldms_rdma_xprt.h src/ldms_xprt.h src/ogc_rbt.h \
 	src/un.h
 
 dist-hook: ldms-utils.spec

@@ -33,7 +33,7 @@ set( LINUX_KERNEL_CONFIG_DIR
   CACHE PATH "Path to kernel configuration header files." )
 
 include( CheckSymbolExists )
-check_symbol_exists( pthread_spinlock_t "pthread.h" ldms_HAVE_SPINLOCK_T )
+check_symbol_exists( pthread_spinlock_t "pthread.h" HAVE_SPINLOCK_T )
 
 include_directories(
   ${LINUX_KERNEL_CONFIG_DIR}
