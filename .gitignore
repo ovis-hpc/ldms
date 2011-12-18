@@ -4,3 +4,6 @@
 *.lo
 cscope*
 *.la
+autom4te.cache*
+src/.libs/*
+config/*
