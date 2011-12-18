@@ -124,8 +124,8 @@ static int config(char *config_str)
 		action = STOP;
 	else if (0 == strncmp(config_str, "reset", 5))
 		action = RESET;
-        else if (0 == strncomp(config_str, "component_id", 12))
-	  action = COMPONENT_ID;
+        else if (0 == strncmp(config_str, "component_id", 12))
+		action = COMPONENT_ID;
 	else {
 		msglog("perf_event: Invalid configuration string '%s'\n",
 		       config_str);
@@ -179,8 +179,7 @@ static int config(char *config_str)
 		rc = PAPI_reset(papi_event_set);
 		break;
         case COMPONENT_ID:
-	  //sets component id -- not a papi_event
-	  if (!sampled_event_set || !compid_metric_handle){
+	  if (!sampled_event_set || !compid_metric_handle) {
 	    msglog("meminfo: plugin not initialized\n");
 	    return EINVAL;
 	  } else {
@@ -256,10 +255,10 @@ ldms_set_t create_event_set(const char *set_name)
 	}
 	compid_metric_handle = ldms_add_metric(new_set, "component_id", LDMS_V_U64);
         if (!compid_metric_handle) {
-	  msglog("perf_event: Could not create metric for component_id\n");
-	  ldms_set_release(new_set);
-	  return NULL;
-	} //compid set in config  
+		msglog("perf_event: Could not create metric for component_id\n");
+		ldms_set_release(new_set);
+		return NULL;
+	}
 
 	/* Add a metric for each available counter */
 	for ( i = 0; i < PAPI_MAX_PRESET_EVENTS; i++ ) {
@@ -276,7 +275,7 @@ ldms_set_t create_event_set(const char *set_name)
 	return new_set;
 }
 
-static int init(const char *path, const uint64_t compid)
+static int init(const char *path)
 {
 	/* Destroy any previously created set */
 	if (sampled_event_set)
