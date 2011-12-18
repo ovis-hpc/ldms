@@ -319,12 +319,7 @@ struct ldms_data_hdr {
 /**
  * \brief Prototype for the function called when lookup completes.
  *
- * This function is called when the lookup completes. If ldms_lookup
- * was called with the LDMS_LOOKUP_COHERENT flag, this function will
- * be invoked whenever the meta data changes on the metric set.
- *
- * See the \c ldms_lookup_cancel function for cancelling meta data
- * update indications.
+ * This function is called when the lookup completes.
  *
  * \param t	 The transport endpoint.
  * \param status 0 if the lookup was successful, ENOENT if the
@@ -538,7 +533,7 @@ extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
  * \returns	 0 if the query was submitted successfully.
  */
 extern int ldms_lookup(ldms_t x, const char *name,
-		       ldms_lookup_cb_t cb, void *cb_arg, uint32_t flags);
+		       ldms_lookup_cb_t cb, void *cb_arg);
 
 /** \} */
 

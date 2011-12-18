@@ -868,6 +868,24 @@ int process_record(int fd,
 	return -1;
 }
 
+/*
+ * Host Type Descriptions:
+ *
+ * 'active' -
+ *    - ldms_connect to a specified peer
+ *    - ldms_dir and ldms_lookup the peer's metric sets
+ *    - periodically performs an ldms_update of the peer's metric data
+ *
+ * 'bridging' - Designed to 'hop over' fire walls by initiating the connection
+ *    - ldms_connect to a specified peer
+ *
+ * 'passive' - Designed as target side of 'bridging' host
+ *    - searches list of incoming connections (connections it
+ *      ldms_accepted) to find the matching peer (the bridging host
+ *      that connected to it)
+ *    - ldms_dir and ldms_lookup of the peer's metric data
+ *    - periodically performs an ldms_update of the peer's metric data
+ */
 void do_reset_host_(struct hostspec *hs)
 {
 	int i;
@@ -925,9 +943,6 @@ int do_connect(struct hostspec *hs)
 		       hs->hostname, ntohs(hs->sin.sin_port));
 		return -1;
 	}
-	if (hs->type == ACTIVE)
-		/* Reset any bridging hosts so they will see the new active host */
-		do_reset_bridges();
 	return 0;
 }
 
@@ -969,7 +984,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 	}
 	for (i = 0; i < hs->set_count; i++) {
 		int ret = ldms_lookup(hs->x, hs->dir->set_names[i],
-				      lookup_cb, &hs->sets[i], 0);
+				      lookup_cb, &hs->sets[i]);
 		if (ret) {
 			printf("Synchronous error %d looking up set '%s' "
 			       "on host '%s'.\n", ret, hs->dir->set_names[i],
@@ -986,7 +1001,7 @@ int update_meta_data(struct hostspec *hs)
 		ldms_dir_release(hs->x, hs->dir);
 		hs->dir = NULL;
 	}
-	ret = ldms_dir(hs->x, dir_cb, hs, 0);
+	ret = ldms_dir(hs->x, dir_cb, hs, 1);
 	if (ret) {
 		printf("Synchronous error %d from ldms_dir(%s) in %s\n",
 		       ret, hs->hostname, __FUNCTION__);

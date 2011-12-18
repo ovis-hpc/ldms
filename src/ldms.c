@@ -371,7 +371,7 @@ void ldms_destroy_set(ldms_set_t s)
 }
 
 int ldms_lookup(ldms_t _x, const char *path,
-		ldms_lookup_cb_t cb, void *cb_arg, uint32_t lu_flags)
+		ldms_lookup_cb_t cb, void *cb_arg)
 {
 	struct ldms_xprt *x = (struct ldms_xprt *)_x;
         struct ldms_set *set;
@@ -387,7 +387,7 @@ int ldms_lookup(ldms_t _x, const char *path,
 		return EINVAL;
 
 	if (strcmp(x->name, "local"))
-                return ldms_remote_lookup(_x, path, cb, cb_arg, lu_flags);
+                return ldms_remote_lookup(_x, path, cb, cb_arg);
 
         /* See if it's in my process */
         set = ldms_find_local_set(path);
@@ -512,6 +512,11 @@ int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
         return ldms_remote_dir(x, cb, cb_arg, flags);
 }
 
+void ldms_dir_cancel(ldms_t x)
+{
+	ldms_remote_dir_cancel(x);
+}
+
 char *_create_path(const char *set_name)
 {
         char *dirc = strdup(set_name);
@@ -552,11 +557,11 @@ char *_create_path(const char *set_name)
 }
 
 #ifdef ENABLE_MMAP
-int _ldms_create_set(const char *set_name, size_t sz, ldms_set_t *s, int flags)
+int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
+		     ldms_set_t *s, int flags)
 {
 	struct ldms_data_hdr *data;
 	struct ldms_set_hdr *meta;
-	size_t meta_size, data_size;
 	struct ldms_value_desc *vd;
 	char *path;
 	int rc;
@@ -565,58 +570,60 @@ int _ldms_create_set(const char *set_name, size_t sz, ldms_set_t *s, int flags)
 	if (!path)
 		return ENOENT;
 
-	meta_size = sz;
-	meta = _open_and_map_file(set_name, META_FILE, 1, &meta_size);
+	data_sz += sizeof(struct ldms_data_hdr);
+	meta_sz += sizeof(struct ldms_set_hdr);
+
+	meta = _open_and_map_file(set_name, META_FILE, 1, &meta_sz);
 	if (!meta) {
 		rc = ENOMEM;
 		goto out_0;
 	}
-	meta->meta_size = sz;
+	meta->meta_size = meta_sz;
 
-	data_size = sz;
-	data = _open_and_map_file(set_name, DATA_FILE, 1, &data_size);
+	data = _open_and_map_file(set_name, DATA_FILE, 1, &data_sz);
 	if (!data) {
 		rc =ENOMEM;
 		goto out_1;
 	}
-	meta->data_size = sz;
-	data->size = sz;
+	meta->data_size = data_sz;
+	data->size = data_sz;
 
 	/* Initialize the metric set header */
-        if (!meta->head_off) {
-		/* This could be the local storage for a remote metric
-		 * set. In this case, these initial values will be
-		 * overwriten after the first ldms_update.
-		 */
-                meta->meta_gn = 1;
-                meta->card = 0;
-                meta->head_off = sizeof(*meta);
-                meta->tail_off = sizeof(*meta);
-		meta->flags = LDMS_SETH_F_LCLBYTEORDER;
-                strncpy(meta->name, set_name, LDMS_SET_NAME_MAX-1);
-                meta->name[LDMS_SET_NAME_MAX-1] = '\0';
+	if (flags & LDMS_SET_F_LOCAL)
+		meta->meta_gn = 1;
+	else
+		/* This tells ldms_update that we've never received
+		 * the remote meta data */
+		meta->meta_gn = 0;
+	meta->card = 0;
+	meta->head_off = sizeof(*meta);
+	meta->tail_off = sizeof(*meta);
+	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
+	strncpy(meta->name, set_name, LDMS_SET_NAME_MAX-1);
+	meta->name[LDMS_SET_NAME_MAX-1] = '\0';
 
-		data->gn = data->meta_gn = meta->meta_gn;
-                data->head_off = sizeof(*data);
-                data->tail_off = sizeof(*data);
+	data->gn = data->meta_gn = meta->meta_gn;
+	data->head_off = sizeof(*data);
+	data->tail_off = sizeof(*data);
 
-                /* Initialize the first value descriptor so that tail->next_offset
-                 * is the head. This normalizes the allocation logic in
-                 * ldms_add_metric. */
-                vd = ldms_ptr_(struct ldms_value_desc, meta, meta->head_off);
-                vd->next_offset = meta->head_off;
-                vd->type = LDMS_V_NONE;
-                vd->name_len = sizeof("<empty>");
-                strcpy(vd->name, "<empty>");
-        }
-        rc = __record_set(set_name, s, meta, data, LDMS_SET_F_FILEMAP | flags);
+	/* Initialize the first value descriptor so that tail->next_offset
+	 * is the head. This normalizes the allocation logic in
+	 * ldms_add_metric. */
+	vd = ldms_ptr_(struct ldms_value_desc, meta, meta->head_off);
+	vd->next_offset = meta->head_off;
+	vd->type = LDMS_V_NONE;
+	vd->name_len = sizeof("<empty>");
+	strcpy(vd->name, "<empty>");
+
+        rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
-		goto out_2;
+		goto out_1;
+	ldms_update_dir();
 	return 0;
  out_2:
-	munmap(data, data_size);
+	munmap(data, data_sz);
  out_1:
-	munmap(meta, meta_size);
+	munmap(meta, meta_sz);
  out_0:
 	return rc;
 }

@@ -47,7 +47,7 @@
 
 #include "ldms_config.h"
 
-#ifndef ldms_HAVE_SPINLOCK_T
+#ifndef HAVE_SPINLOCK_T
 #  define pthread_spinlock_t pthread_mutex_t
 #  define pthread_spin_lock pthread_mutex_lock
 #  define pthread_spin_unlock pthread_mutex_unlock
@@ -58,6 +58,7 @@ enum ldms_rbuf_type {
 	LDMS_RBUF_REMOTE,	/* This buffer is a data sink for a remote buffer */
 };
 
+#pragma pack(4)
 struct ldms_rbuf_desc {
 	struct ldms_xprt *xprt;
 	struct ldms_set *set;
@@ -73,6 +74,7 @@ struct ldms_rbuf_desc {
 
 enum ldms_request_cmd {
 	LDMS_CMD_DIR = 0,
+	LDMS_CMD_DIR_CANCEL,
 	LDMS_CMD_LOOKUP,
 	LDMS_CMD_UPDATE,
 	LDMS_CMD_REPLY,
@@ -90,7 +92,6 @@ struct ldms_hello_cmd_param {
 struct ldms_lookup_cmd_param {
 	uint32_t path_len;
 	char path[LDMS_LOOKUP_PATH_MAX+1];
-	uint32_t flags;
 };
 
 struct ldms_update_cmd_param {
@@ -98,7 +99,6 @@ struct ldms_update_cmd_param {
 };
 
 struct ldms_dir_cmd_param {
-	uint32_t max_len;
 	uint32_t flags;
 };
 
@@ -142,6 +142,7 @@ struct ldms_reply {
 		struct ldms_dir_reply dir;
 	};
 };
+#pragma pack()
 
 struct ldms_context {
 	sem_t sem;
@@ -160,7 +161,6 @@ struct ldms_context {
 			ldms_lookup_cb_t cb;
 			void *cb_arg;
 			struct ldms_set *set;
-			uint32_t flags;
 		} lookup;
 		struct {
 			ldms_set_t s;
@@ -179,7 +179,8 @@ struct ldms_xprt {
 	socklen_t ss_len;
 	int connected;
 	int closed;
-	uint64_t dir_xid;
+	uint64_t local_dir_xid;
+	uint64_t remote_dir_xid;
 	pthread_spinlock_t io_lock;
 	int io_wait;
 	struct ldms_context io_ctxt;

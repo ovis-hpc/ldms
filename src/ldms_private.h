@@ -43,8 +43,9 @@
 #define _LDMS_PRIVATE_H
 
 extern int ldms_remote_lookup(ldms_t _x, const char *path,
-			      ldms_lookup_cb_t cb, void *cb_arg, uint32_t flags);
+			      ldms_lookup_cb_t cb, void *cb_arg);
 extern int ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
+extern void ldms_remote_dir_cancel(ldms_t x);
 extern int _ldms_create_set(const char *set_name,
 			    size_t meta_sz, size_t data_sz,
 			    ldms_set_t *s, uint32_t flags);

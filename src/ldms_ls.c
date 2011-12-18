@@ -183,7 +183,7 @@ void dir_cb2(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	pthread_spin_unlock(&dir_lock);
 	for (i = 0; i < dir->set_count; i++)
 		ldms_lookup(t, dir->set_names[i], lookup_cb2,
-			    (void *)(unsigned long)i, 1);
+			    (void *)(unsigned long)i);
 }
 
 void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *cb_arg)

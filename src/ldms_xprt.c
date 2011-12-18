@@ -131,14 +131,13 @@ ldms_t ldms_xprt_find(struct sockaddr_in *sin)
 	return 0;
 }
 
-static void send_dir_reply(struct ldms_xprt *x)
+static void send_dir_update(struct ldms_xprt *x)
 {
 	size_t len;
 	int set_count;
 	int set_list_sz;
 	int rc;
-	struct ldms_reply reply_;
-	struct ldms_reply *reply = &reply_;
+	struct ldms_reply *reply;
 
 	ldms_get_local_set_list_sz(&set_count, &set_list_sz);
 	reply = malloc(set_list_sz
@@ -155,7 +154,7 @@ static void send_dir_reply(struct ldms_xprt *x)
 		+ sizeof(struct ldms_dir_reply)
 		+ set_list_sz;
 
-	reply->hdr.xid = x->dir_xid;
+	reply->hdr.xid = x->remote_dir_xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->hdr.rc = htonl(rc);
 	reply->dir.set_count = htonl(set_count);
@@ -163,8 +162,7 @@ static void send_dir_reply(struct ldms_xprt *x)
 	reply->hdr.len = htonl(len);
 
 	x->send(x, reply, len);
-	if (reply != &reply_)
-		free(reply);
+	free(reply);
 	return;
 }
 
@@ -173,8 +171,8 @@ void ldms_update_dir(void)
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
 	     x = (struct ldms_xprt *)ldms_xprt_next(x)) {
-		if (x->dir_xid)
-			send_dir_reply(x);
+		if (x->remote_dir_xid)
+			send_dir_update(x);
 	}
 }
 
@@ -258,7 +256,6 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		len = sizeof(struct ldms_reply_hdr);
 		goto err_out;
 	}
-
 	rc = ldms_get_local_set_list(reply->dir.set_list,
 				     set_list_sz,
 				     &set_count, &set_list_sz);
@@ -268,8 +265,10 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 
 	if (req->dir.flags)
 		/* Register for directory updates */
-		x->dir_xid = req->hdr.xid;
-
+		x->remote_dir_xid = req->hdr.xid;
+	else
+		/* Cancel any previous dir update */
+		x->remote_dir_xid = 0;
  err_out:
 	reply->hdr.xid = req->hdr.xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
@@ -281,6 +280,12 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	x->send(x, reply, len);
 	if (reply != &reply_)
 		free(reply);
+	return;
+}
+
+static void process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
+{
+	x->remote_dir_xid = 0;
 	return;
 }
 
@@ -300,7 +305,6 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 
 	if (!rbd) {
 		rbd = ldms_alloc_rbd(x, set, LDMS_RBUF_LOCAL, NULL, 0);
-		rbd->flags = ntohl(req->lookup.flags);
 		rbd->xid = req->hdr.xid;
 		if (!rbd) {
 			hdr.rc = htonl(ENOMEM);
@@ -452,6 +456,9 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	case LDMS_CMD_DIR:
 		process_dir_request(x, req);
 		break;
+	case LDMS_CMD_DIR_CANCEL:
+		process_dir_cancel_request(x, req);
+		break;
 	case LDMS_CMD_UPDATE:
 		break;
 	default:
@@ -480,7 +487,6 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				      ntohl(reply->lookup.meta_len),
 				      ntohl(reply->lookup.data_len),
 				      &set_t,
-				      ctxt->lookup.flags |
 				      LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY);
 		if (rc)
 			goto out;
@@ -513,12 +519,8 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
  out:
 	if (ctxt->lookup.cb)
 		ctxt->lookup.cb(x, rc, (ldms_set_t)sd, ctxt->lookup.cb_arg);
-	if (!ctxt->lookup.flags) {
-		free(ctxt->lookup.path);
-		free(ctxt);
-	} else {
-		/* TODO save off the context off for update on meta-data change */
-	}
+	free(ctxt->lookup.path);
+	free(ctxt);
 }
 
 void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
@@ -552,6 +554,8 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
  out:
 	if (ctxt->dir.cb)
 		ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
+	if (!x->local_dir_xid)
+		free(ctxt);
 }
 
 void ldms_dir_release(ldms_t t, ldms_dir_t d)
@@ -648,7 +652,6 @@ ldms_t ldms_create_xprt(const char *name)
 		goto err;
 	}
 	x = get(recv_cb, read_complete_cb);
-
 	if (!x) {
 		/* The transport library refused the request */
 		ret = ENOSYS;
@@ -657,6 +660,7 @@ ldms_t ldms_create_xprt(const char *name)
 	strcpy(x->name, name);
 	x->connected = 0;
 	x->ref_count = 1;
+	x->remote_dir_xid = x->local_dir_xid = 0;
 	sem_init(&x->io_ctxt.sem, 0, 0);
 	pthread_spin_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
@@ -670,12 +674,11 @@ ldms_t ldms_create_xprt(const char *name)
 }
 
 size_t format_lookup_req(struct ldms_request *req, const char *path,
-			 uint64_t xid, uint32_t flags)
+			 uint64_t xid)
 {
 	size_t len = strlen(path) + 1;
 	strcpy(req->lookup.path, path);
 	req->lookup.path_len = htonl(len);
-	req->lookup.flags = htonl(flags);
 	req->hdr.xid = xid;
 	req->hdr.cmd = htonl(LDMS_CMD_LOOKUP);
 	len += sizeof(uint32_t) + sizeof(struct ldms_request_hdr);
@@ -696,37 +699,92 @@ size_t format_dir_req(struct ldms_request *req, uint64_t xid,
 	return len;
 }
 
-unsigned char buf[sizeof(struct ldms_request)];
+size_t format_dir_cancel_req(struct ldms_request *req)
+{
+	size_t len;
+	req->hdr.xid = 0;
+	req->hdr.cmd = htonl(LDMS_CMD_DIR_CANCEL);
+	len = sizeof(struct ldms_request_hdr);
+	req->hdr.len = htonl(len);
+	return len;
+}
+
+/*
+ * This is the generic allocator for both the request buffer and the
+ * context buffer. A single buffer is allocated that is big enough to
+ * contain one structure. When the context is freed, the associated
+ * request buffer is freed as well.
+ */
+static int alloc_req_ctxt(struct ldms_request **req, struct ldms_context **ctxt)
+{
+	struct ldms_context *ctxt_;
+	void *buf = malloc(sizeof(struct ldms_request) + sizeof(struct ldms_context));
+	if (!buf)
+		return 1;
+	*ctxt = ctxt_ = buf;
+	*req = (struct ldms_request *)(ctxt_+1);
+	return 0;
+}
+
 int ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
 	struct ldms_xprt *x = _x;
-	struct ldms_request *req = (struct ldms_request *)buf;
-	struct ldms_context *ctxt = malloc(sizeof *ctxt);
+ 	struct ldms_request *req;
+	struct ldms_context *ctxt;
 	size_t len;
 
-	if (!ctxt)
+	/* If a dir has previously been done and updates were asked
+	 * for, free that cached context */
+	if (x->local_dir_xid) {
+		free((void *)(unsigned long)x->local_dir_xid);
+		x->local_dir_xid = 0;
+	}
+	if (alloc_req_ctxt(&req, &ctxt))
 		return ENOMEM;
+
 	len = format_dir_req(req, (uint64_t)(unsigned long)ctxt, flags);
 	ctxt->dir.cb = cb;
 	ctxt->dir.cb_arg = cb_arg;
+	if (flags)
+		x->local_dir_xid = (uint64_t)ctxt;
 	return x->send(x, req, len);
 }
 
-int ldms_remote_lookup(ldms_t _x, const char *path,
-		       ldms_lookup_cb_t cb, void *arg, uint32_t flags)
+/* This request has no reply */
+void ldms_remote_dir_cancel(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
-	struct ldms_request *req = (struct ldms_request *)buf;
-	struct ldms_context *ctxt = malloc(sizeof *ctxt);
+ 	struct ldms_request *req;
+	struct ldms_context *ctxt;
+	size_t len;
+
+	if (x->local_dir_xid)
+		free((void *)(unsigned long)x->local_dir_xid);
+	x->local_dir_xid = 0;
+	if (alloc_req_ctxt(&req, &ctxt))
+		return;
+
+	len = format_dir_cancel_req(req);
+	x->send(x, req, len);
+	free(ctxt);
+}
+
+int ldms_remote_lookup(ldms_t _x, const char *path,
+		       ldms_lookup_cb_t cb, void *arg)
+{
+	struct ldms_xprt *x = _x;
+	struct ldms_request *req;
+	struct ldms_context *ctxt;
 	size_t len;
 	int rc;
 
-	len = format_lookup_req(req, path, (uint64_t)(unsigned long)ctxt,
-				flags);
+	if (alloc_req_ctxt(&req, &ctxt))
+		return ENOMEM;
+
+	len = format_lookup_req(req, path, (uint64_t)(unsigned long)ctxt);
 	ctxt->lookup.set = ldms_find_local_set(path);
 	ctxt->lookup.cb = cb;
 	ctxt->lookup.cb_arg = arg;
-	ctxt->lookup.flags = flags;
 	ctxt->lookup.path = strdup(path);
 	rc = x->send(x, req, len);
 	if (rc)

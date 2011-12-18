@@ -48,6 +48,7 @@
  * This structure is provided to the client in lookup and returned by
  * the client in the update request.
  */
+#pragma pack(4)
 struct sock_buf_remote_data {
 	uint64_t rbuf;
 	uint64_t lbuf;
@@ -78,6 +79,7 @@ struct sock_read_rsp {
 	struct sock_buf_remote_data buf_info;
 	uint32_t status;
 };
+#pragma pack()
 
 enum sock_conn_status {
 	CONN_ERROR = -1,
