@@ -49,6 +49,7 @@
 
 #ifndef HAVE_SPINLOCK_T
 #  define pthread_spinlock_t pthread_mutex_t
+#  define pthread_spin_init pthread_mutex_init
 #  define pthread_spin_lock pthread_mutex_lock
 #  define pthread_spin_unlock pthread_mutex_unlock
 #endif // HAVE_SPINLOCK_T
