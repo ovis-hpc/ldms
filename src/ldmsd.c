@@ -72,7 +72,7 @@
 #define MAXMETRICS 2048
 #define MAXMETRICNAME 128
 
-#define FMT "H:i:C:l:S:s:x:z:T:M:t:vFk"
+#define FMT "H:i:C:l:S:s:x:T:M:t:vFk"
 char myhostname[80];
 int setno;
 int foreground;
@@ -165,7 +165,6 @@ void usage(char *argv[])
 	printf("    -v             Verbose mode, i.e. print requests as they are processed.\n"
 	       "                   [false].\n");
 	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
-	printf("    -z set_list_sz Set the size of the set list query buffer.\n");
 	printf("    -T set_name    Create a test set with the specified name.\n");
 	printf("    -t set_count   Create set_count instances of set_name.\n");
 	cleanup(1);
@@ -886,66 +885,8 @@ int process_record(int fd,
  *    - ldms_dir and ldms_lookup of the peer's metric data
  *    - periodically performs an ldms_update of the peer's metric data
  */
-void do_reset_host_(struct hostspec *hs)
-{
-	int i;
-	printf("Resetting host %s\n", hs->hostname); 
-	ldms_xprt_close(hs->x);
-	ldms_release_xprt(hs->x);
-	hs->x = 0;
-	for (i = 0; i < hs->set_count; i++)
-		ldms_destroy_set(hs->sets[i]);
-	if (hs->sets)
-		free(hs->sets);
-	hs->sets = NULL;
-	hs->set_count = 0;
-}
-
-void do_reset_bridges(void)
-{
-	struct hostspec *hs;
-	for (hs = host_first(); hs; hs = host_next(hs)) {
-		if (hs->type == BRIDGING &&
-		    hs->x && ldms_xprt_connected(hs->x))
-			do_reset_host_(hs);
-	}
-}
-
-void do_reset_host(struct hostspec *hs)
-{
-	do_reset_host_(hs);
-	do_reset_bridges();
-}
 
 int sample_interval = 2000000;
-size_t set_list_sz = 0;
-char *set_list = NULL;
-
-int do_connect(struct hostspec *hs)
-{
-	int ret;
-
-	if (!hs->x) {
-		hs->x = ldms_create_xprt(hs->xprt_name);
-		if (hs->x)
-			/* Take a reference since we've caching the handle */
-			ldms_xprt_get(hs->x);
-	}
-	if (!hs->x) {
-		printf("Error creating transport '%s'.\n", hs->xprt_name);
-		return -1;
-	}
-	printf("Connecting to host %s\n", hs->hostname);
-	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
-			    sizeof(hs->sin));
-	if (ret) {
-		printf("Could not connect to host %s:%d\n",
-		       hs->hostname, ntohs(hs->sin.sin_port));
-		return -1;
-	}
-	return 0;
-}
-
 void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
 {
 	ldms_set_t *sp = arg;
@@ -960,13 +901,15 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 	int i;
 	struct hostspec *hs = arg;
 	if (status) {
-		printf("Error %d in lookup on host %s.\n",
+		ldms_log("Error %d in lookup on host %s.\n",
 		       status, hs->hostname);
 		return;
 	}
+
 	hs->dir = dir;
 	if (!hs->dir || !hs->dir->set_count)
 		return;
+
 	if (hs->set_count) {
 		int i;
 		for (i = 0; i < hs->set_count; i++)
@@ -977,42 +920,46 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 	hs->set_count = dir->set_count;
 	hs->sets = calloc(hs->dir->set_count, sizeof(ldms_set_t));
 	if (!hs->sets) {
-		printf("Memory allocation failure updating "
-		       "meta data for host '%s'.\n",
-		       hs->hostname);
+		ldms_log("Memory allocation failure updating "
+			 "meta data for host '%s'.\n",
+			 hs->hostname);
 		return;
 	}
+
 	for (i = 0; i < hs->set_count; i++) {
 		int ret = ldms_lookup(hs->x, hs->dir->set_names[i],
 				      lookup_cb, &hs->sets[i]);
 		if (ret) {
-			printf("Synchronous error %d looking up set '%s' "
-			       "on host '%s'.\n", ret, hs->dir->set_names[i],
-			       hs->hostname);
+			ldms_log("Synchronous error %d looking up set '%s' "
+				 "on host '%s'.\n", ret, hs->dir->set_names[i],
+				 hs->hostname);
 		}
 	}
 }
 
-int update_meta_data(struct hostspec *hs)
+int do_connect(struct hostspec *hs, int do_dir)
 {
 	int ret;
 
-	if (hs->dir) {
-		ldms_dir_release(hs->x, hs->dir);
-		hs->dir = NULL;
+	if (!hs->x) {
+		hs->x = ldms_create_xprt(hs->xprt_name);
+		if (hs->x)
+			/* Take a reference since we're caching the handle */
+			ldms_xprt_get(hs->x);
 	}
-	ret = ldms_dir(hs->x, dir_cb, hs, 1);
-	if (ret) {
-		printf("Synchronous error %d from ldms_dir(%s) in %s\n",
-		       ret, hs->hostname, __FUNCTION__);
+	if (!hs->x) {
+		ldms_log("Error creating transport '%s'.\n", hs->xprt_name);
 		return -1;
 	}
-	return 0;
-}
+	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
+			    sizeof(hs->sin));
+	if (ret)
+		return -1;
 
-void update_data_done(ldms_t t, ldms_set_t s, int rc, void *arg)
-{
-	printf("Update to %p complete.\n", s);
+	ldms_log("Connected to host '%s'\n", hs->hostname);
+	if (do_dir)
+		return ldms_dir(hs->x, dir_cb, hs, 1);
+	return 0;
 }
 
 int update_data(struct hostspec *hs)
@@ -1023,13 +970,12 @@ int update_data(struct hostspec *hs)
 		return 0;
 
 	for (i = 0; i < hs->set_count; i++) {
-		if (!hs->sets[i]) {
-			printf("Metric set for host %s not found.\n", hs->hostname);
+		if (!hs->sets[i])
 			continue;
-		}
-		ret = ldms_update(hs->sets[i], update_data_done, NULL);
+
+		ret = ldms_update(hs->sets[i], NULL, NULL);
 		if (ret) {
-			printf("Error %d updating metric set "
+			ldms_log("Error %d updating metric set "
 			       "on host '%s'.\n", ret, hs->hostname);
 			return -1;
 		}
@@ -1039,16 +985,16 @@ int update_data(struct hostspec *hs)
 
 void do_active(struct hostspec *hs)
 {
-	if (!hs->x && do_connect(hs))
+	if (!hs->x && do_connect(hs, 1))
 		return;
 
-	if (!ldms_xprt_connected(hs->x))
-		if (do_connect(hs))
+	if (!ldms_xprt_connected(hs->x)) {
+		if (do_connect(hs, 1))
 			return;
-	if (!hs->set_count)
-		update_meta_data(hs);
-
-	update_data(hs);
+	} else
+		/* Don't update immediately after connecting to
+		 * provide time for dir/lookups to complete */
+		update_data(hs);
 }
 
 int do_passive_connect(struct hostspec *hs)
@@ -1057,27 +1003,37 @@ int do_passive_connect(struct hostspec *hs)
 	if (!l)
 		return -1;
 
+	/*
+	 * ldms_xprt_find takes a reference on the transport so we can
+	 * cache it here.
+	 */
 	hs->x = l;
-	return 0;
+
+	return ldms_dir(hs->x, dir_cb, hs, 1);
 }
 
 void do_passive(struct hostspec *hs)
 {
-	if (!hs->x && do_passive_connect(hs))
+	if (!hs->x) {
+		do_passive_connect(hs);
 		return;
-	if (!ldms_xprt_connected(hs->x))
+	}
+	if (!ldms_xprt_connected(hs->x)) {
+		/* Transport closed by our bridge peer, release our
+		 * reference and wait for reconnect */
+		ldms_release_xprt(hs->x);
+		hs->x = 0;
 		return;
-	if (!hs->set_count)
-		update_meta_data(hs);
+	}
 	update_data(hs);
 }
 
 void do_bridging(struct hostspec *hs)
 {
 	if (!hs->x)
-		do_connect(hs);
+		do_connect(hs, 0);
 	if (!ldms_xprt_connected(hs->x))
-		do_connect(hs);
+		do_connect(hs, 0);
 }
 
 int process_message(int sock, struct msghdr *msg, ssize_t msglen)
@@ -1167,6 +1123,7 @@ int main(int argc, char *argv[])
 {
 	int do_kernel = 0;
 	int ret;
+	char *listen_arg = NULL;
 	int op;
 	ldms_set_t test_set;
 	struct sockaddr_un sun;
@@ -1191,7 +1148,7 @@ int main(int argc, char *argv[])
 			do_kernel = 1;
 			break;
 		case 'x':
-			listen_on_transport(optarg);
+			listen_arg = strdup(optarg);
 			break;
 		case 'S':
 			/* Set the SOCKNAME to listen on */
@@ -1221,13 +1178,18 @@ int main(int argc, char *argv[])
 		case 'M':
 			test_metric_count = atoi(optarg);
 			break;
-		case 'z':
-			set_list_sz = atoi(optarg);
-			break;
 		default:
 			usage(argv);
 		}
 	}
+	if (!foreground) {
+		if (daemon(1, 1)) {
+			perror("ldmsd: ");
+			exit(1);
+		}
+	}
+	if (listen_arg)
+		listen_on_transport(listen_arg);
 	struct event_base *eb = event_init();
 	evtimer_set(&keepalive, keepalive_cb, NULL);
 	keepalive_to.tv_sec = 10;
@@ -1247,12 +1209,6 @@ int main(int argc, char *argv[])
 		}
 		stdout = log_fp;
 	}
-	set_list = malloc(set_list_sz);
-	if (!set_list) {
-		ldms_log("Memory allocation failure creating "
-			 "%d byte set query list.\n", set_list_sz);
-		exit(1);
-	}
 	ret = parse_cfg(cfg_file);
 	if (ret) {
 		ldms_log("Configuration file error %d\n", ret);
@@ -1265,13 +1221,12 @@ int main(int argc, char *argv[])
 			myhostname[0] = '\0';
 	}
 
-	if (!foreground) {
-		if (daemon(1, 1)) {
-			perror("ldmsd: ");
-			exit(1);
-		}
+	ldms_metric_t *test_metrics = calloc(test_set_count, sizeof(ldms_metric_t));
+	if (!test_metrics) {
+		ldms_log("Could not create test_metrics table to contain %d items\n",
+			 test_set_count);
+		exit(1);
 	}
-
 	if (test_set_name) {
 		int set_no;
 		char test_set_name_no[1024];
@@ -1285,6 +1240,7 @@ int main(int argc, char *argv[])
 				m = ldms_add_metric(test_set, "component_id",
 						    LDMS_V_U64);
 				ldms_set_u64(m, (uint64_t)1);
+				test_metrics[set_no-1] = m;
 			}
 			for (j = 1; j <= test_metric_count; j++) {
 				sprintf(metric_name, "metric_no_%d", j);
@@ -1293,7 +1249,8 @@ int main(int argc, char *argv[])
 				ldms_set_u64(m, (uint64_t)(set_no * j));
 			}
 		}
-	}
+	} else
+		test_set_count = 0;
 
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
@@ -1329,12 +1286,11 @@ int main(int argc, char *argv[])
 			cleanup(6);
 		}
 	}
+	uint64_t count = 1;
 	do {
+		int set_no;
 		struct hostspec *hs;
 		for (hs = host_first(); hs; hs = host_next(hs)) {
-			if (hs->x && ldms_xprt_closed(hs->x)) {
-				do_reset_host(hs);
-			}
 			switch (hs->type) {
 			case ACTIVE:
 				do_active(hs);
@@ -1347,6 +1303,9 @@ int main(int argc, char *argv[])
 				break;
 			}
 		}
+		for (set_no = 0; set_no < test_set_count; set_no++)
+			ldms_set_u64(test_metrics[set_no], count);
+		count++;
 		usleep(sample_interval);
 	} while (1);
 

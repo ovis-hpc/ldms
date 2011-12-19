@@ -171,6 +171,8 @@ void ldms_update_dir(void)
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
 	     x = (struct ldms_xprt *)ldms_xprt_next(x)) {
+		if (ldms_xprt_closed(x))
+			continue;
 		if (x->remote_dir_xid)
 			send_dir_update(x);
 	}
@@ -194,6 +196,8 @@ void ldms_xprt_close(ldms_t _x)
 		x->connected = 0;
 		x->closed = 1;
 	}
+	/* Cancel any dir updates */ 
+	x->remote_dir_xid = x->local_dir_xid = 0;
 	pthread_spin_unlock(&xprt_list_lock);
 
 	if (close) {
@@ -244,7 +248,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	int set_list_sz;
 	int rc;
 	struct ldms_reply reply_;
-	struct ldms_reply *reply = &reply_;
+	struct ldms_reply *reply;
 
 	ldms_get_local_set_list_sz(&set_count, &set_list_sz);
 	reply = malloc(set_list_sz
@@ -278,8 +282,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.len = htonl(len);
 
 	x->send(x, reply, len);
-	if (reply != &reply_)
-		free(reply);
+	free(reply);
 	return;
 }
 
@@ -554,8 +557,10 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
  out:
 	if (ctxt->dir.cb)
 		ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
+	pthread_spin_lock(&x->lock);
 	if (!x->local_dir_xid)
 		free(ctxt);
+	pthread_spin_unlock(&x->lock);
 }
 
 void ldms_dir_release(ldms_t t, ldms_dir_t d)
@@ -662,6 +667,7 @@ ldms_t ldms_create_xprt(const char *name)
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
 	sem_init(&x->io_ctxt.sem, 0, 0);
+	pthread_spin_init(&x->lock, 0);
 	pthread_spin_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
 	pthread_spin_unlock(&xprt_list_lock);
@@ -733,20 +739,23 @@ int ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	struct ldms_context *ctxt;
 	size_t len;
 
+	if (alloc_req_ctxt(&req, &ctxt))
+		return ENOMEM;
+
+	pthread_spin_lock(&x->lock);
 	/* If a dir has previously been done and updates were asked
 	 * for, free that cached context */
 	if (x->local_dir_xid) {
 		free((void *)(unsigned long)x->local_dir_xid);
 		x->local_dir_xid = 0;
 	}
-	if (alloc_req_ctxt(&req, &ctxt))
-		return ENOMEM;
-
 	len = format_dir_req(req, (uint64_t)(unsigned long)ctxt, flags);
 	ctxt->dir.cb = cb;
 	ctxt->dir.cb_arg = cb_arg;
 	if (flags)
 		x->local_dir_xid = (uint64_t)ctxt;
+	pthread_spin_unlock(&x->lock);
+
 	return x->send(x, req, len);
 }
 
@@ -758,11 +767,14 @@ void ldms_remote_dir_cancel(ldms_t _x)
 	struct ldms_context *ctxt;
 	size_t len;
 
+	if (alloc_req_ctxt(&req, &ctxt))
+		return;
+
+	pthread_spin_lock(&x->lock);
 	if (x->local_dir_xid)
 		free((void *)(unsigned long)x->local_dir_xid);
 	x->local_dir_xid = 0;
-	if (alloc_req_ctxt(&req, &ctxt))
-		return;
+	pthread_spin_unlock(&x->lock);
 
 	len = format_dir_cancel_req(req);
 	x->send(x, req, len);
@@ -794,13 +806,22 @@ int ldms_remote_lookup(ldms_t _x, const char *path,
 
 int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 {
-	int rc;
+	int rc = -1;
 	struct ldms_xprt *x = _x;
+
+	pthread_spin_lock(&x->lock);
+	if (x->connected) {
+		errno = EBUSY;
+		goto out;
+	}
 	memcpy(&x->ss, sa, sa_len);
 	x->ss_len = sa_len;
 	rc = x->connect(x, sa, sa_len);
 	if (!rc)
 		x->connected = 1;
+
+ out:
+	pthread_spin_unlock(&x->lock);
 	return rc;
 }
 

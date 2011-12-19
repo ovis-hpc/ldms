@@ -177,11 +177,11 @@ struct ldms_xprt {
 	int ref_count;
 	struct sockaddr_storage ss;
 	socklen_t ss_len;
+	pthread_spinlock_t lock;
 	int connected;
 	int closed;
 	uint64_t local_dir_xid;
 	uint64_t remote_dir_xid;
-	pthread_spinlock_t io_lock;
 	int io_wait;
 	struct ldms_context io_ctxt;
 
