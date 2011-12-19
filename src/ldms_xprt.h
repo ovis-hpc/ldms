@@ -51,7 +51,7 @@
 #  define pthread_spinlock_t pthread_mutex_t
 #  define pthread_spin_lock pthread_mutex_lock
 #  define pthread_spin_unlock pthread_mutex_unlock
-#endif // ldms_HAVE_SPINLOCK_T
+#endif // HAVE_SPINLOCK_T
 
 enum ldms_rbuf_type {
 	LDMS_RBUF_LOCAL,	/* This is a buffer being served to remote peers */
