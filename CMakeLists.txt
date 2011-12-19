@@ -85,7 +85,7 @@ if ( ldms_MMAP )
 endif ( ldms_MMAP )
 
 if ( ldms_SOCK )
-  add_library( ldmssock
+  add_library( ldmssock MODULE
     src/ldms_sock.c
   )
   add_dependencies( ldmssock ${CMAKE_CURRENT_SOURCE_DIR}/src/libldmssock.map )
