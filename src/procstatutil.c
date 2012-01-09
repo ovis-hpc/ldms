@@ -268,6 +268,7 @@ static int init(const char *path)
     goto err;
   }
   //compid's value will be set in config
+  //
 
   int metric_no = 0;
   metric_table[metric_no] = ldms_add_metric(set, "cpu_user_raw", LDMS_V_U64);
