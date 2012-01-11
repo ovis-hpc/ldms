@@ -101,7 +101,8 @@ static void sock_xprt_term(struct ldms_sock_xprt *r)
 	free(r);
 }
 
-static int sock_xprt_connect(struct ldms_xprt *x, struct sockaddr *sa, socklen_t sa_len)
+static int sock_xprt_connect(struct ldms_xprt *x,
+			     struct sockaddr *sa, socklen_t sa_len)
 {
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
 	int rc;
