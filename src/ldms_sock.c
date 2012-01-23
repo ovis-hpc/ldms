@@ -53,9 +53,9 @@
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
 
-static char bufA[80];
+// static char bufA[80];
 static struct event_base *io_event_loop;
-static char bufB[80];
+// static char bufB[80];
 static pthread_t io_thread;
 
 LIST_HEAD(sock_list, ldms_sock_xprt) sock_list;
