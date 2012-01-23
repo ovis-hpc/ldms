@@ -443,6 +443,16 @@ extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  * The application should call \c ldms_dir_release when it is finished
  * processing the directory to free the associated resources.
  *
+ * There are three different types of directory updates:
+ * LDMS_DIR_LIST, LDMS_DIR_ADD, and LDMS_DIR_REPLY. An LDMS_DIR_LIST
+ * contains a list of all sets published by the server.LDMS_DIR_ADD
+ * contains a list of newly added sets since the callback was last
+ * called, and LDMS_DIR_REM contains a list of those sets removed. The
+ * user can expect a LDMS_DIR_LIST directory when the callback is
+ * first called, followed by any number of LDMS_DIR_ADD and
+ * LDMS_DIR_REM directory types. See the ldms_dir_s structure for more
+ * information.
+ *
  * \param x	 The transport handle
  * \param cb_arg The callback argument specified in the call to \c ldms_dir
  * \param status If zero, the query was successful, ENOMEM indicates
@@ -452,8 +462,13 @@ extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  *		 otherwise.
  *
  */
+enum ldms_dir_type {
+	LDMS_DIR_LIST,
+	LDMS_DIR_DEL,
+	LDMS_DIR_ADD
+};
 typedef struct ldms_dir_s {
-	int type;
+	enum ldms_dir_type type;
 	int set_count;
 	char *set_names[0];
 } *ldms_dir_t;
