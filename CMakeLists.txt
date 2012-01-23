@@ -46,6 +46,7 @@ include_directories(
   ${ldms_BINARY_DIR}/include/ldms
 )
 
+set( ldms_INSTALL_TARGETS "" )
 set( ldms_HEADERS
   src/ldms.h
   src/ldms_sock_xprt.h
@@ -65,6 +66,7 @@ add_library( un
   src/libun.c
 )
 add_dependencies( un ${CMAKE_CURRENT_SOURCE_DIR}/src/libun.map )
+set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};un" )
 
 if ( ldms_RDMA )
   add_library( ldmsrdma
@@ -102,11 +104,13 @@ add_library( ldms
 )
 add_dependencies( ldms ${CMAKE_CURRENT_SOURCE_DIR}/src/libldms.map )
 target_link_libraries( ldms "${EVENT_LIBRARIES}" dl pthread )
+set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};ldms;${ldms_SUBLIBRARIES}" )
 
 add_executable( ldms_ls
   src/ldms_ls.c
 )
 target_link_libraries( ldms_ls ldms )
+set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};ldms_ls" )
 
 find_package( readline )
 if ( readline_FOUND )
@@ -114,6 +118,7 @@ if ( readline_FOUND )
     src/ldmsctl.c
   )
   target_link_libraries( ldmsctl ldms un ${readline_LIBRARIES} )
+  set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};ldmsctl" )
 endif ( readline_FOUND )
 
 add_executable( ldmsd
@@ -121,6 +126,7 @@ add_executable( ldmsd
   src/ldmsd_cfg.c
 )
 target_link_libraries( ldmsd ldms )
+set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};ldmsd" )
 
 set( ldms_plugins
   meminfo
@@ -148,8 +154,9 @@ endforeach()
 
 # Install rules
 # Rules for targets
+set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};${ldms_plugins}" )
 install(
-  TARGETS ldms un ${ldms_plugins} ldmsd ldmsctl ldms_ls
+  TARGETS ${ldms_INSTALL_TARGETS}
   EXPORT ldms
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
