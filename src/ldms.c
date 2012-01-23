@@ -348,6 +348,8 @@ void ldms_destroy_set(ldms_set_t s)
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
 
+	ldms_dir_del_set(set->meta->name);
+
 	while (!LIST_EMPTY(&set->rbd_list)) {
 		rbd = LIST_FIRST(&set->rbd_list);
 		ldms_free_rbd(rbd);
@@ -618,7 +620,7 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
         rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	ldms_update_dir();
+	ldms_dir_add_set(set_name);
 	return 0;
  out_2:
 	munmap(data, data_sz);
@@ -683,7 +685,7 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
         rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	ldms_update_dir();
+	ldms_dir_add_set(set_name);
 	return 0;
 
  out_1:
@@ -897,7 +899,7 @@ ldms_metric_t ldms_get_metric(ldms_set_t _set, const char *name)
         return NULL;
 }
 
-void ldms_release_metric(ldms_metric_t m)
+void ldms_metric_release(ldms_metric_t m)
 {
 	free(m);
 }

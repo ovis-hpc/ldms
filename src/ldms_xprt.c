@@ -132,7 +132,9 @@ ldms_t ldms_xprt_find(struct sockaddr_in *sin)
 	return 0;
 }
 
-static void send_dir_update(struct ldms_xprt *x)
+static void send_dir_update(struct ldms_xprt *x,
+			    enum ldms_dir_type t,
+			    const char *set_name)
 {
 	size_t len;
 	int set_count;
@@ -140,24 +142,46 @@ static void send_dir_update(struct ldms_xprt *x)
 	int rc;
 	struct ldms_reply *reply;
 
-	ldms_get_local_set_list_sz(&set_count, &set_list_sz);
-	reply = malloc(set_list_sz
-		       + sizeof(struct ldms_reply_hdr)
-		       + sizeof(struct ldms_dir_reply));
-	if (!reply) {
-		printf("Memory allocation failure in dir update of peer.\n");
-		return;
+	switch (t) {
+	case LDMS_DIR_LIST:
+		ldms_get_local_set_list_sz(&set_count, &set_list_sz);
+		break;
+	case LDMS_DIR_DEL:
+	case LDMS_DIR_ADD:
+		set_count = 1;
+		set_list_sz = strlen(set_name) + 1;
+		break;
 	}
-	rc = ldms_get_local_set_list(reply->dir.set_list,
-				     set_list_sz,
-				     &set_count, &set_list_sz);
+
 	len = sizeof(struct ldms_reply_hdr)
 		+ sizeof(struct ldms_dir_reply)
 		+ set_list_sz;
 
+	reply = malloc(strlen(set_name) + 1
+		       + sizeof(struct ldms_reply_hdr)
+		       + sizeof(struct ldms_dir_reply));
+	if (!reply) {
+		printf("Memory allocation failure "
+		       "in dir update of peer.\n");
+		return;
+	}
+
+	switch (t) {
+	case LDMS_DIR_LIST:
+		rc = ldms_get_local_set_list(reply->dir.set_list,
+					     set_list_sz,
+					     &set_count, &set_list_sz);
+		break;
+	case LDMS_DIR_DEL:
+	case LDMS_DIR_ADD:
+		strcpy(reply->dir.set_list, set_name);
+		break;
+	}
+
 	reply->hdr.xid = x->remote_dir_xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->hdr.rc = htonl(rc);
+	reply->dir.type = t;
 	reply->dir.set_count = htonl(set_count);
 	reply->dir.set_list_len = htonl(set_list_sz);
 	reply->hdr.len = htonl(len);
@@ -167,7 +191,7 @@ static void send_dir_update(struct ldms_xprt *x)
 	return;
 }
 
-void ldms_update_dir(void)
+static void _dir_update(const char *set_name, enum ldms_dir_type t)
 {
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
@@ -175,8 +199,18 @@ void ldms_update_dir(void)
 		if (ldms_xprt_closed(x))
 			continue;
 		if (x->remote_dir_xid)
-			send_dir_update(x);
+			send_dir_update(x, t, set_name);
 	}
+}
+
+void ldms_dir_add_set(const char *set_name)
+{
+	_dir_update(set_name, LDMS_DIR_ADD);
+}
+
+void ldms_dir_del_set(const char *set_name)
+{
+	_dir_update(set_name, LDMS_DIR_DEL);
 }
 
 int ldms_xprt_connected(ldms_t _x)
@@ -278,6 +312,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.xid = req->hdr.xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->hdr.rc = htonl(rc);
+	reply->dir.type = htonl(LDMS_DIR_LIST);
 	reply->dir.set_count = htonl(set_count);
 	reply->dir.set_list_len = htonl(set_list_sz);
 	reply->hdr.len = htonl(len);
@@ -532,6 +567,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 {
 	int i;
 	char *src, *dst;
+	enum ldms_dir_type type = ntohl(reply->dir.type);
 	int rc = ntohl(reply->hdr.rc);
 	size_t len = ntohl(reply->dir.set_list_len);
 	unsigned count = ntohl(reply->dir.set_count);
@@ -545,6 +581,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (!dir)
 		goto out;
 	rc = 0;
+	dir->type = type;
 	dir->set_count = count;
 	src = reply->dir.set_list;
 	dst = (char *)&dir->set_names[count];

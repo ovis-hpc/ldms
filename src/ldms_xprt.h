@@ -85,6 +85,12 @@ enum ldms_request_cmd {
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
 };
 
+enum ldms_dir_type {
+	LDMS_DIR_LIST,
+	LDMS_DIR_DEL,
+	LDMS_DIR_ADD
+};
+
 struct ldms_hello_cmd_param {
 	uint32_t msg_len;
 	char msg[0];
@@ -125,6 +131,7 @@ struct ldms_lookup_reply {
 };
 
 struct ldms_dir_reply {
+	uint32_t type;
 	uint32_t set_count;
 	uint32_t set_list_len;
 	char set_list[0];

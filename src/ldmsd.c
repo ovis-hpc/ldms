@@ -112,7 +112,7 @@ void __release_set_ref(struct set_ref *ref)
 
 	/* Release all the metric references */
 	for (m_no = 0; m_no < ref->metric_count; m_no++)
-		ldms_release_metric(ref->metrics[m_no]);
+		ldms_metric_release(ref->metrics[m_no]);
 
 	/* Destroy the metric set */
 	ldms_destroy_set(ref->set);

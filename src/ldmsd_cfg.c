@@ -158,7 +158,7 @@ struct hostspec *_add_host(char *s, int type)
 	hs->xprt_name = strdup(xprt_str);
 	hs->interval = interval;
 	hs->type = type;
-	pthread_spin_init(&hs->lock, 0);
+	pthread_mutex_init(&hs->lock, 0);
 	LIST_INSERT_HEAD(&host_list, hs, link);
 	return hs;
 }

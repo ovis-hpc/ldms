@@ -52,6 +52,7 @@ extern int _ldms_create_set(const char *set_name,
 extern void ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int ldms_get_local_set_list(char *set_list, size_t set_list_len,
 				   int *set_count, int *set_list_size);
-void ldms_update_dir(void);
+void ldms_dir_add_set(const char *set_name);
+void ldms_dir_del_set(const char *set_name);
 
 #endif

@@ -453,6 +453,7 @@ extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  *
  */
 typedef struct ldms_dir_s {
+	int type;
 	int set_count;
 	char *set_names[0];
 } *ldms_dir_t;
@@ -614,7 +615,9 @@ extern int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s);
 /**
  * \brief Destroy a Metric set
  *
- * Destroy a metric set.
+ * Called to destroy a local metric set created with
+ * ldms_create_set. This also invalidates any handles that remote
+ * users may have to this metric set.
  *
  * \param s		The ldms_set_t handle to destroy.
  */
@@ -744,7 +747,7 @@ extern ldms_metric_t ldms_get_metric(ldms_set_t s, const char *name);
  *
  * \param m	The metric set handle
  */
-extern void ldms_release_metric(ldms_metric_t m);
+extern void ldms_metric_release(ldms_metric_t m);
 
 /**
  * \brief Returns the name of a metric.
