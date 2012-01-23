@@ -43,6 +43,7 @@
 #define __LDMS_XPRT_SOCK_H__
 #include <semaphore.h>
 #include <sys/queue.h>
+#include <event.h>
 
 /*
  * This structure is provided to the client in lookup and returned by
@@ -95,22 +96,12 @@ enum sock_conn_status {
  */
 struct ldms_sock_xprt {
 	struct ldms_xprt *xprt;
-	int server;			/* 0 iff client */
 	enum sock_conn_status conn_status;
-	pthread_t cq_thread;
-
-	sem_t sem;
-
-	int verbose;			/* verbose logging */
-	int count;			/* ping count */
-	int size;			/* ping data size */
-	int validate;			/* validate ping data */
-
-	/* CM stuff */
-	pthread_t server_thread;
-	pthread_t cm_thread;
 
 	int sock;
+	struct event_base *evloop;
+	struct bufferevent *buf_event;
+	size_t needed;
 
 	LIST_ENTRY(ldms_sock_xprt) client_link;
 };

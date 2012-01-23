@@ -50,11 +50,11 @@
 #include <sys/socket.h>
 #include <signal.h>
 #include <netdb.h>
-#include <byteswap.h>
 #include <semaphore.h>
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <inttypes.h>
+#include <fcntl.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 
@@ -139,7 +139,7 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 }
 
 struct io_status {
-	sem_t sem;
+	sem_t *sem_p;
 	int rc;
 	union {
 		ldms_dir_t dir;
@@ -150,7 +150,7 @@ struct io_status {
 pthread_spinlock_t dir_lock;
 ldms_dir_t dir;
 ldms_set_t *sets;
-sem_t cb2_sem;
+sem_t *cb2_sem_p;
 
 void lookup_cb2(ldms_t t, int status, ldms_set_t s, void *arg)
 {
@@ -162,7 +162,7 @@ void lookup_cb2(ldms_t t, int status, ldms_set_t s, void *arg)
  out:
 	pthread_spin_unlock(&dir_lock);
 	if (set_no == dir->set_count - 1)
-		sem_post(&cb2_sem);
+		sem_post(cb2_sem_p);
 }
 void dir_cb2(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 {
@@ -191,7 +191,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *cb_arg)
 	struct io_status *ios = cb_arg;
 	ios->rc = status;
 	ios->dir = dir;
-	sem_post(&ios->sem);
+	sem_post(ios->sem_p);
 }
 
 void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
@@ -199,7 +199,7 @@ void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
 	struct io_status *ios = arg;
 	ios->rc = status;
 	ios->s = s;
-	sem_post(&ios->sem);
+	sem_post(ios->sem_p);
 }
 
 int main(int argc, char *argv[])
@@ -277,7 +277,19 @@ int main(int argc, char *argv[])
 		perror("ldms_ls");
 		exit(1);
 	}
-	sem_init(&io_status.sem, 0, 0);
+	memset(&io_status, 0, sizeof(io_status));
+	char tmp[32];
+	strcpy(tmp, "/ldms_ls.XXXXXX");
+	io_status.sem_p = sem_open(mktemp(tmp), O_CREAT, 0700, 0);
+	if (!io_status.sem_p) {
+		perror("could not create semaphore");
+		exit(1);
+	}
+	sem_init(io_status.sem_p, 0, 0);
+	if (io_status.sem_p == SEM_FAILED) {
+		printf("Internal[%d] error %d\n", __LINE__, errno);
+		exit(1);
+	}
 	if (optind == argc) {
 		ret = ldms_dir(ldms, dir_cb, &io_status, 0);
 		if (ret) {
@@ -286,9 +298,10 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 
-		sem_wait(&io_status.sem);
-		if (io_status.dir == NULL || io_status.dir->set_count == 0)
+		ret = sem_wait(io_status.sem_p);
+		if (ret || io_status.dir == NULL || io_status.dir->set_count == 0) {
 			exit(0);
+		}
 		dir = io_status.dir;
 	} else {
 		/* Set list specified on the command line */
@@ -317,11 +330,12 @@ int main(int argc, char *argv[])
 	ldms_dir_release(ldms, dir);
 	dir = NULL;
 	/* Do another dir and ask for a coherent directory */
-	sem_init(&cb2_sem, 0, 0);
+	strcpy(tmp, "/ldms_ls.XXXXXX");
+	cb2_sem_p = sem_open(mktemp(tmp), O_CREAT, 0700, 0);
 	ldms_dir(ldms, dir_cb2, NULL, 1);
 
 	/* Wait until we have at least one update */
-	sem_wait(&cb2_sem);
+	sem_wait(cb2_sem_p);
 	do {
 		pthread_spin_lock(&dir_lock);
 		for (i = 0; sets && dir && i < dir->set_count; i++) {
@@ -336,5 +350,7 @@ int main(int argc, char *argv[])
 		usleep(0);
 
  out:
+	sem_close(io_status.sem_p);
+	sem_close(cb2_sem_p);
 	exit(0);
 }

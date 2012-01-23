@@ -2,11 +2,19 @@ dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
 AC_INIT(ldms-utils, 1.0.0, tom@ogc.us)
+AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
-AM_CONFIG_HEADER(ldms_config.h)
+AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE(ldms-utils, 1.0.0)
 AM_PROG_LIBTOOL
+
+AC_ARG_ENABLE(papi, [  --disable-papi     Disable the PAPI plugin],
+        [       if test x$enableval = xno ; then
+                        disable_papi=yes
+			echo PAPI plugin is disabled
+                fi
+        ])
 
 AC_ARG_ENABLE(rdma, [  --disable-rdma     Disable the RDMA transport],
         [       if test x$enableval = xno ; then
@@ -36,9 +44,16 @@ AC_CHECK_SIZEOF(long)
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
+dnl Check for libevent
+AC_CHECK_LIB(event, event_base_new, [], 
+    AC_MSG_ERROR([event_base_new() not found.  ldms-utils requires libevent.]))
+
+dnl Check for pthread support
+AC_CHECK_LIB(pthread, pthread_mutex_init, [],
+    AC_MSG_ERROR([pthread library not found.  ldms-utils requires libpthread.]))
+
 dnl Check for pthread mutex/spinlock support
-AC_CHECK_LIB(pthread,pthread_spin_init, [], [])
-AM_CONDITIONAL([HAVE_SPINLOCK_T],[test "$ac_cv_lib_pthread_pthread_spin_init" != "no"])
+AC_CHECK_LIB(pthread, pthread_spin_init, [], [])
 
 dnl Checks for libraries
 if test "$disable_rdma" != "yes"
@@ -75,10 +90,12 @@ AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
         ac_cv_version_script=no
     fi)
 
+AM_CONDITIONAL([ENABLE_PAPI], [test "$disable_papi" != "yes"])
 AM_CONDITIONAL([ENABLE_RDMA], [test "$disable_rdma" != "yes"])
 AM_CONDITIONAL([ENABLE_SOCK], [test "$disable_sock" != "yes"])
 AM_CONDITIONAL([ENABLE_MMAP], [test "$disable_mmap" != "yes"])
-AM_CONDITIONAL(HAVE_LD_VERSION_SCRIPT, test "$ac_cv_version_script" = "yes")
+AM_CONDITIONAL([HAVE_SPINLOCK_T],[test "$ac_cv_lib_pthread_pthread_spin_init" = "yes"])
+AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
 AC_CONFIG_FILES([Makefile ldms-utils.spec])
 AC_OUTPUT
 

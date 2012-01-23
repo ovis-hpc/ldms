@@ -45,29 +45,32 @@
 #include <string.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <fcntl.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
 
+static char bufA[80];
+static struct event_base *io_event_loop;
+static char bufB[80];
+static pthread_t io_thread;
+
 LIST_HEAD(sock_list, ldms_sock_xprt) sock_list;
 
-static int io_event_fd;
-static int cm_event_fd;
-static pthread_t io_thread;
-static pthread_t cm_thread;
-#define IO_POLL_HINT 512
-#define CM_POLL_HINT 16
-
 static void *io_thread_proc(void *arg);
-static void *cm_thread_proc(void *arg);
 
-static void *cm_thread_proc(void *arg);
-static void *server_proc(void *arg);
+static void sock_event(struct bufferevent *buf_event, short error, void *arg);
+static void sock_read(struct bufferevent *buf_event, void *arg);
+static void sock_write(struct bufferevent *buf_event, void *arg);
 
+static void timeout_cb(int fd , short events, void *arg);
+static void setup_connection(int sockfd,
+			     struct sockaddr*remote_addr, socklen_t sa_len);
+static void _setup_connection(struct ldms_sock_xprt *r,
+			      struct sockaddr *remote_addr, socklen_t sa_len);
 
 static struct ldms_sock_xprt *sock_from_xprt(ldms_t d)
 {
@@ -78,20 +81,19 @@ void sock_xprt_cleanup(void)
 {
 	void *dontcare;
 
+	if (io_event_loop)
+		event_base_loopbreak(io_event_loop);
 	if (io_thread) {
 		pthread_cancel(io_thread);
 		pthread_join(io_thread, &dontcare);
 	}
-	if (cm_thread) {
-		pthread_cancel(cm_thread);
-		pthread_join(cm_thread, &dontcare);
-	}
+	if (io_event_loop)
+		event_base_free(io_event_loop);
 }
 
 static void sock_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
-	epoll_ctl(io_event_fd, EPOLL_CTL_DEL, s->sock, NULL);
 	close(s->sock);
 }
 
@@ -101,280 +103,258 @@ static void sock_xprt_term(struct ldms_sock_xprt *r)
 	free(r);
 }
 
+static int set_nonblock(int fd)
+{
+	int flags;
+
+	flags = fcntl(fd, F_GETFL);
+	if(flags == -1) {
+		printf("Error getting flags on fd %d", fd);
+		return -1;
+	}
+	flags |= O_NONBLOCK;
+	if(fcntl(fd, F_SETFL, flags)) {
+		printf("Error setting non-blocking I/O on fd %d", fd);
+		return -1;
+	}
+	return 0;
+}
+
 static int sock_xprt_connect(struct ldms_xprt *x,
 			     struct sockaddr *sa, socklen_t sa_len)
 {
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
-	int rc;
+	struct sockaddr_storage ss;
 
-	r->sock = socket(PF_INET, SOCK_STREAM, 0);
+	r->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (r->sock < 0)
-		return errno;
+		return -1;
+	int rc = connect(r->sock, sa, sa_len);
+	if (rc)
+		goto err;
+	sa_len = sizeof(ss);
+	rc = getsockname(r->sock, (struct sockaddr *)&ss, &sa_len);
+	if (rc)
+		goto err;
+	_setup_connection(r, (struct sockaddr *)&ss, sa_len);
+	return 0;
 
-	rc = connect(r->sock, sa, sa_len);
-	if (rc) {
-		close(r->sock);
-		r->sock = 0;
-		return errno;
-	}
-
-	r->conn_status = CONN_CONNECTED;
-	x->connected = 1;
-
-	/* Create the receive processing thread */
-	rc = pthread_create(&r->cq_thread, NULL, server_proc, r);
-	if (rc) {
-		close(r->sock);
-		r->conn_status = CONN_CLOSED;
-		rc = ENOMEM;
-	}
-	return rc;
+err:
+	r->sock = 0;
+	return -1;
 }
 
-int process_sock_read_rsp(struct ldms_sock_xprt *x, struct ldms_request_hdr *hdr)
+int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 {
-	struct sock_read_rsp rsp;
 	size_t len;
-	int ret;
-
-	/* Read remainder of request */
-	ret = recv(x->sock, &(((char *)&rsp)[sizeof *hdr]), sizeof(rsp) - sizeof(*hdr), MSG_WAITALL);
-	if (ret < sizeof(rsp) - sizeof(*hdr)) { 
-		printf("Short read %d receiving remainder of SOCK_READ_RSP_CMD.\n", ret);
-		return EBADF;
-	}
 
 	/* Check the response status */
-	if (rsp.status)
-		return rsp.status;
+	if (rsp->status)
+		return ntohl(rsp->status);
 
-	/* Read the set data into the local buffer */
-	len = ntohl(rsp.buf_info.size);
-	ret = recv(x->sock, (void *)(unsigned long)rsp.buf_info.lbuf, len, MSG_WAITALL);
-	if (ret < len) {
-		printf("Error %d receiving SOCK_READ_RSP_CMD data.\n", ret);
-		return EBADF;
-	}
+	/* Move the set data into the local buffer */
+	len = ntohl(rsp->buf_info.size);
+	memcpy((void *)(unsigned long)rsp->buf_info.lbuf, (char *)(rsp+1), len);
 
 	if (x->xprt && x->xprt->read_complete_cb)
-		x->xprt->read_complete_cb(x->xprt, (void *)(unsigned long)hdr->xid);
+		x->xprt->read_complete_cb(x->xprt, (void *)(unsigned long)rsp->hdr.xid);
 	return 0;
 }
 
-int process_sock_read_req(struct ldms_sock_xprt *x, struct ldms_request_hdr *rq_hdr)
+int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 {
-	struct sock_buf_remote_data buf_info;
 	struct sock_read_rsp rsp;
 	size_t len;
 	int ret;
 
-	/* Read remainder of request */
-	ret = recv(x->sock, &buf_info, sizeof(buf_info), MSG_WAITALL);
-	if (ret < sizeof(buf_info))
-		return ENOTCONN;
-
-	len = ntohl(buf_info.size);
+	len = ntohl(req->buf_info.size);
 
 	/* Prepare and send read response header */
-	rsp.hdr.xid = rq_hdr->xid;
+	rsp.hdr.xid = req->hdr.xid;
 	rsp.hdr.cmd = htonl(SOCK_READ_RSP_CMD);
 	rsp.hdr.len = htonl(sizeof(rsp) + len);
 	rsp.status = 0;
-	rsp.buf_info = buf_info;
+	memcpy(&rsp.buf_info, &req->buf_info, sizeof req->buf_info);
 
-	ret = send(x->sock, &rsp, sizeof(rsp), 0);
-	if (ret < sizeof(rsp))
+	ret = bufferevent_write(x->buf_event, &rsp, sizeof(rsp));
+	if (ret < 0)
 		return ENOTCONN;
 
 	/* Write the requested local buffer back to the socket */
-	ret = send(x->sock, (void *)(unsigned long)buf_info.rbuf, len, 0);
-	if (ret < len)
-		return ENOTCONN;
-
-	return 0;
+	return bufferevent_write(x->buf_event,
+				 (void *)(unsigned long)req->buf_info.rbuf, len);
 }
 
-int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request_hdr *req)
+int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request *req)
 {
-	switch (ntohl(req->cmd)) {
+	switch (ntohl(req->hdr.cmd)) {
 	case SOCK_READ_REQ_CMD:
-		return process_sock_read_req(x, req);
+		return process_sock_read_req(x, (struct sock_read_req *)req);
 	case SOCK_READ_RSP_CMD:
-		return process_sock_read_rsp(x, req);
+		return process_sock_read_rsp(x, (struct sock_read_rsp *)req);
 	default:
-		printf("Invalid request on socket transport %d\n", req->cmd);
+		printf("Invalid request on socket transport %d\n", ntohl(req->hdr.cmd));
 	}
 	return EINVAL;
 }
 
-static int process_xprt_io(struct ldms_sock_xprt *s)
+static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
 {
-	struct ldms_request hdr;
-	char *req_buf = (char *)&hdr;
-	int ret;
-	int reqlen;
 	int cmd;
 
-	/* Read the request header */
-	ret = recv(s->sock, req_buf, sizeof(struct ldms_request_hdr), MSG_WAITALL);
-	if (ret <= 0)
-		goto close_out;
-
-	cmd = ntohl(hdr.hdr.cmd);
+	cmd = ntohl(req->hdr.cmd);
 
 	/* The sockets transport must handle solicited read */
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
-		int ret = process_sock_req(s, (struct ldms_request_hdr *)req_buf);
+		int ret = process_sock_req(s, req);
 		if (ret) {
 			printf("Error %d processing transport request.\n", ret);
 			goto close_out;
 		}
-	} else if (s->xprt && s->xprt->recv_cb) {
-		/* Read the remainder of the request */
-		reqlen = ntohl(hdr.hdr.len);
-		if (ret < reqlen) {
-			if (reqlen > sizeof(hdr)) {
-				req_buf = malloc(reqlen);
-				memcpy(req_buf, &hdr, ret);
-			}
-			ret = recv(s->sock, &req_buf[ret],
-				   reqlen - ret, MSG_WAITALL);
-			if (ret <= 0)
-				goto close_out;
-		}
-		s->xprt->recv_cb(s->xprt, req_buf);
-	}
-	if (req_buf != (char *)&hdr)
-		free(req_buf);
+	} else
+		s->xprt->recv_cb(s->xprt, req);
 	return 0;
-
  close_out:
-	if (req_buf != (char *)&hdr)
-		free(req_buf);
-	if (s->xprt) {
-		ldms_xprt_close(s->xprt);
-		ldms_release_xprt(s->xprt);
-	}
+	ldms_xprt_close(s->xprt);
+	ldms_release_xprt(s->xprt);
 	return -1;
+}
+
+static void sock_write(struct bufferevent *buf_event, void *arg)
+{
+}
+
+#define min_t(t, x, y) (t)((t)x < (t)y?(t)x:(t)y)
+static void sock_read(struct bufferevent *buf_event, void *arg)
+{
+
+	struct ldms_sock_xprt *r = (struct ldms_sock_xprt *)arg;
+	struct evbuffer *evb = EVBUFFER_INPUT(buf_event);
+	struct ldms_request_hdr *hdr;
+	struct ldms_request *req;
+	size_t reqlen;
+	size_t buflen;
+
+	do {
+		buflen = EVBUFFER_LENGTH(evb);
+		// len = evbuffer_copyout(evb, &hdr, sizeof hdr);
+		hdr = (struct ldms_request_hdr *)EVBUFFER_DATA(evb);
+		if (buflen < sizeof(hdr))
+			break;
+		reqlen = ntohl(hdr->len);
+		if (buflen < reqlen)
+			break;
+		req = malloc(reqlen);
+		if (!req) {
+			printf("%s Memory allocation failure reqlen %zu\n",
+				__FUNCTION__, reqlen);
+			ldms_xprt_close(r->xprt);
+			ldms_release_xprt(r->xprt);
+			break;
+		}
+		evbuffer_remove(evb, req, reqlen);
+		process_xprt_io(r, req);
+		free(req);
+	} while (1);
 }
 
 static void *io_thread_proc(void *arg)
 {
-	struct epoll_event events[16];
-	int nfds, fd;
-
-	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
-	do {
-		nfds = epoll_wait(io_event_fd, events, 16, -1);
-		if (nfds < 0) {
-			if (errno != EINTR)
-				break;
-			else
-				continue;
-		}
-		for (fd = 0; fd < nfds; fd++)
-			process_xprt_io(events[fd].data.ptr);
-	} while (1);
-	close(io_event_fd);
+	event_base_dispatch(io_event_loop);
 	return NULL;
 }
 
-static void *server_proc(void *arg)
+static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 {
-	struct ldms_sock_xprt *s = arg;
-	int ret;
-
-	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
-	do {
-		ret = process_xprt_io(s);
-	} while (ret == 0);
-	printf("Exiting %s.\n", __func__);
-	return NULL;
 }
 
-static int sock_accept_request(struct ldms_sock_xprt *server,
-			       int new_sock,
-			       struct sockaddr_storage *ss,
-			       socklen_t ss_len)
+static void _setup_connection(struct ldms_sock_xprt *r,
+			     struct sockaddr *remote_addr, socklen_t sa_len)
 {
-	struct epoll_event event;
+	r->conn_status = CONN_CONNECTED;
+	r->needed = sizeof(struct ldms_request_hdr);
+	memcpy((char *)&r->xprt->ss, (char *)remote_addr, sa_len);
+	r->xprt->ss_len = sa_len;
+	r->xprt->connected = 1;
+
+	if(set_nonblock(r->sock))
+		fprintf(stdout, "Warning: error setting non-blocking I/O on an incoming connection.\n");
+
+	/* Initialize send and recv I/O events */
+	r->buf_event = bufferevent_new(r->sock, sock_read, sock_write, sock_event, r);
+	if(!r->buf_event) {
+		fprintf(stdout, "Error initializing buffered I/O event for fd %d.\n", r->sock);
+		goto err_0;
+	}
+	if (bufferevent_base_set(io_event_loop, r->buf_event))
+		goto err_0;
+
+	/* bufferevent_setwatermark(r->buf_event, EV_WRITE, 0, 0); */
+	bufferevent_setwatermark(r->buf_event, EV_READ, sizeof(struct ldms_request_hdr), 0);
+	bufferevent_setcb(r->buf_event, sock_read, sock_write, sock_event, r);
+
+	/* bufferevent_settimeout(r->buf_event, 60, 0); */
+	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
+		fprintf(stdout, "Error enabling buffered I/O event for fd %d.\n", r->sock);
+
+	return;
+ err_0:
+	if (r->buf_event)
+		bufferevent_free(r->buf_event);
+	ldms_xprt_close(r->xprt);
+	ldms_release_xprt(r->xprt);
+}
+
+static void setup_connection(int sockfd,
+			     struct sockaddr *remote_addr, socklen_t sa_len)
+{
 	struct ldms_sock_xprt *r;
-	struct ldms_xprt *x;
 	ldms_t _x;
-	int ret;
 
 	/* Create a transport instance for this new connection */
 	_x = ldms_create_xprt("sock");
 	if (!_x) {
 		fprintf(stdout, "Could not create a new transport.\n");
-		close(new_sock);
-		return EINVAL;
+		close(sockfd);
+		return;
 	}
 
 	r = sock_from_xprt(_x);
-	r->sock = new_sock;
-	r->conn_status = CONN_CONNECTED;
-	x = (struct ldms_xprt *)_x;
-	x->ss = *ss;
-	x->ss_len = ss_len;
-	x->connected = 1;
-
-	event.events = EPOLLIN;
-	event.data.ptr = r;
-	ret = epoll_ctl(io_event_fd, EPOLL_CTL_ADD, r->sock, &event);
-	if (ret) {
-		ldms_xprt_close(r->xprt);
-		ldms_release_xprt(r->xprt);
-	}
-
-	return ret;
+	r->sock = sockfd;
+	_setup_connection(r, remote_addr, sa_len);
 }
 
-static void *cm_thread_proc(void *arg)
+static void sock_connect(int listenfd, short evtype, void *arg)
 {
-	struct epoll_event events[16];
-	int nfds, fd;
-	struct ldms_sock_xprt *r;
-	int ret;
+	struct sockaddr_storage ss;
+	socklen_t addrlen = sizeof(ss);
+	int sockfd;
+	int i;
 
-	do {
-		pthread_testcancel();
-		nfds = epoll_wait(cm_event_fd, events, 16, -1);
-		if (nfds < 0) {
-			if (errno != EINTR)
-				break;
-			else
-				continue;
-		}
+	if(!(evtype & EV_READ)) {
+		printf("Unknown event type in connect callback: 0x%hx\n", evtype);
+		return;
+	}
 
-		for (fd = 0; fd < nfds; fd++) {
-			struct sockaddr_storage ss;
-			socklen_t ss_len = sizeof(ss);
-			r = events[fd].data.ptr;
-			r->xprt->ss_len = sizeof(r->xprt->ss);
-			ret = accept(r->sock, (struct sockaddr *)&ss, &ss_len);
-			if (ret < 0) {
-				printf("Error accepting new connection.\n");
-			} else {
-				ret = sock_accept_request(r, ret, &ss, ss_len);
-				if (ret) {
-					printf("Transport error processing accept request.\n");
-				}
+	/* Accept and configure up to 10 incoming connections at a time */
+	for(i = 0; i < 10; i++) {
+		sockfd = accept(listenfd, (struct sockaddr *)&ss, &addrlen);
+		if(sockfd < 0) {
+			if(errno != EWOULDBLOCK && errno != EAGAIN) {
+				printf("Error accepting an incoming connection");
 			}
+			break;
 		}
-	} while (1);
-	printf("Exiting %s.\n", __func__);
-	return NULL;
+		setup_connection(sockfd, (struct sockaddr *)&ss, addrlen);
+	}
 }
 
 static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t sa_len)
 {
 	int rc;
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
+	struct event *event;
 	int optval = 1;
-
-	/* This is a server */
-	r->server = 1;
 
 	r->sock = socket(PF_INET, SOCK_STREAM, 0);
 	if (r->sock < 0) {
@@ -393,14 +373,24 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	if (rc)
 		goto err_0;
 
-	struct epoll_event event;
-	event.events = EPOLLIN;
-	event.data.ptr = r;
-	rc = epoll_ctl(cm_event_fd, EPOLL_CTL_ADD, r->sock, &event);
-	if (rc)
+	if (set_nonblock(r->sock))
+		printf("Warning: Could not set listening socket to non-blocking\n");
+
+	rc = ENOMEM;
+	event = malloc(sizeof *event);
+	if (!event)
 		goto err_0;
+	event_set(event, r->sock, EV_READ | EV_PERSIST, sock_connect, r);
+	if (event_base_set(io_event_loop, event))
+		goto err_1;
+	rc = event_add(event, NULL);
+	if (rc)
+		goto err_1;
+
 	return rc;
 
+ err_1:
+	free(event);
  err_0:
 	ldms_xprt_close(r->xprt);
 	ldms_release_xprt(r->xprt);
@@ -416,15 +406,12 @@ static void sock_xprt_destroy(struct ldms_xprt *x)
 static int sock_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
-	int rc;
 
 	if (r->conn_status != CONN_CONNECTED)
 		return -ENOTCONN;
 
-	rc = send(r->sock, buf, len, 0);
-	if (rc == len)
-		return 0;
-	return -1;
+	int rc = bufferevent_write(r->buf_event, buf, len);
+	return rc;
 }
 
 /** Allocate a remote buffer. If we are the producer, the xprt_data
@@ -486,7 +473,6 @@ static int sock_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	struct ldms_set_desc *sd = s;
 	struct sock_buf_xprt_data* xd = sd->rbd->xprt_data;
 	struct sock_read_req read_req;
-	int rc;
 
 	read_req.hdr.xid = (uint64_t)(unsigned long)context;
 	read_req.hdr.cmd = htonl(SOCK_READ_REQ_CMD);
@@ -496,10 +482,7 @@ static int sock_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	if (len)
 		read_req.buf_info.size = htonl(len);
 
-	rc = send(r->sock, &read_req, sizeof(read_req), 0);
-	if (rc == sizeof(read_req))
-		return 0;
-	return -1;
+	return bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
 }
 
 static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, void *context)
@@ -508,7 +491,6 @@ static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	struct ldms_set_desc *sd = s;
 	struct sock_buf_xprt_data* xd = sd->rbd->xprt_data;
 	struct sock_read_req read_req;
-	int rc;
 
 	read_req.hdr.xid = (uint64_t)(unsigned long)context;
 	read_req.hdr.cmd = htonl(SOCK_READ_REQ_CMD);
@@ -518,40 +500,46 @@ static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	if (len)
 		read_req.buf_info.size = htonl(len);
 
-	rc = send(r->sock, &read_req, sizeof(read_req), 0);
-	if (rc == sizeof(read_req))
-		return 0;
-	return -1;
+	return bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
+}
+
+static struct timeval to;
+static struct event *keepalive;
+static void timeout_cb(int s, short events, void *arg)
+{
+	to.tv_sec = 10;
+	to.tv_usec = 0;
+	evtimer_add(keepalive, &to);
 }
 
 static int once = 0;
 static int init_once()
 {
-	int rc;
-	io_event_fd = epoll_create(IO_POLL_HINT);
-	if (io_event_fd < 0)
-		return -errno;
+	int rc = ENOMEM;
 
-	cm_event_fd = epoll_create(CM_POLL_HINT);
-	rc = -errno;
-	if (cm_event_fd < 0)
-		goto err_0;
+	io_event_loop = event_base_new();
+	if (!io_event_loop)
+		return errno;
+
+	keepalive = malloc(sizeof *keepalive);
+	if (!keepalive)
+		goto err_1;
+
+	evtimer_set(keepalive, timeout_cb, NULL);
+	event_base_set(io_event_loop, keepalive);
+	to.tv_sec = 1;
+	to.tv_usec = 0;
+	evtimer_add(keepalive, &to);
 
 	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
 	if (rc)
 		goto err_1;
-	rc = pthread_create(&cm_thread, NULL, cm_thread_proc, 0);
-	if (rc)
-		goto err_2;
 
 	atexit(sock_xprt_cleanup);
 	return 0;
- err_2:
-	pthread_cancel(io_thread);
+
  err_1:
-	close(cm_event_fd);
- err_0:
-	close(io_event_fd);
+	event_base_free(io_event_loop);
 	return rc;
 }
 
@@ -591,7 +579,6 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	x->private = r;
 	r->xprt = x;
 
-	sem_init(&r->sem, 0, 0);
 	return x;
  err_1:
 	free(x);

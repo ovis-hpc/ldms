@@ -51,6 +51,7 @@
 #include <assert.h>
 #include <time.h>
 #include <limits.h>
+#include <fcntl.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_private.h"
@@ -61,7 +62,7 @@ int do_wait(struct ldms_context *ctxt)
 {
 	int rc;
 	do {
-		rc = sem_wait(&ctxt->sem);
+		rc = sem_wait(ctxt->sem_p);
 	} while (rc && errno == EINTR);
 	if (!rc)
 		rc = ctxt->rc;
@@ -70,7 +71,7 @@ int do_wait(struct ldms_context *ctxt)
 
 void do_wakeup(struct ldms_context *ctxt)
 {
-	sem_post(&ctxt->sem);
+	sem_post(ctxt->sem_p);
 }
 
 static inline struct ldms_xprt *ldms_xprt_get_(struct ldms_xprt *x)
@@ -236,8 +237,8 @@ void ldms_release_xprt(ldms_t _x)
 		rb = LIST_FIRST(&x->rbd_list);
 		ldms_free_rbd(rb);
 	}
-	sem_destroy(&x->io_ctxt.sem);
 	x->destroy(x);
+	sem_close(x->io_ctxt.sem_p);
 	free(x);
 }
 
@@ -613,6 +614,13 @@ struct ldms_xprt local_transport = {
 	.destroy = local_xprt_destroy,
 };
 
+#if defined(__MACH__)
+#define _SO_EXT ".dylib"
+#undef LDMS_XPRT_LIBPATH_DEFAULT
+#define LDMS_XPRT_LIBPATH_DEFAULT "/home/tom/macos/lib"
+#else
+#define _SO_EXT ".so"
+#endif
 static char _libdir[PATH_MAX];
 ldms_t ldms_create_xprt(const char *name)
 {
@@ -638,7 +646,7 @@ ldms_t ldms_create_xprt(const char *name)
 		
 	strcat(_libdir, "libldms");
 	strcat(_libdir, name);
-	strcat(_libdir, ".so");
+	strcat(_libdir, _SO_EXT);
 	void *d = dlopen(_libdir, RTLD_NOW);
 	if (!d) {
 		printf("dlopen: %s\n", dlerror());
@@ -666,7 +674,12 @@ ldms_t ldms_create_xprt(const char *name)
 	x->connected = 0;
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
-	sem_init(&x->io_ctxt.sem, 0, 0);
+	char tmp[32] = "io_ctxt.XXXXXX";
+	x->io_ctxt.sem_p = sem_open(mktemp(tmp), O_CREAT, 0666, 0);
+	if (!x->io_ctxt.sem_p) {
+		perror("Could not create semaphore");
+		exit(1);
+	}
 	pthread_spin_init(&x->lock, 0);
 	pthread_spin_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);

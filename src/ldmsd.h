@@ -57,7 +57,7 @@ struct hostspec
 	ldms_dir_t dir;		/* directory on peer */
 	int set_count;		/* count of sets looked-up */
 	ldms_set_t *sets;	/* array of metric sets */
-	pthread_spinlock_t lock;
+	pthread_mutex_t lock;
 	LIST_ENTRY(hostspec) link;
 };
 extern char *skip_space(char *s);

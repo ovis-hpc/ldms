@@ -1,4 +1,6 @@
 
+ACLOCAL_AMFLAGS = -I m4
+
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
 	-I$(includedir)/infiniband
 
@@ -59,10 +61,12 @@ src_libvmstat_la_DEPENDENCIES = $(srcdir)/src/libvmstat.map
 src_libvmstat_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 VMSTAT_la = src/libvmstat.la
 
+if ENABLE_PAPI
 src_libperf_event_la_SOURCES = src/perf_event.c
 src_libperf_event_la_DEPENDENCIES = $(srcdir)/src/libperf_event.map
 src_libperf_event_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lpapi
 PERF_EVENT_la = src/libperf_event.la
+endif
 
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 
