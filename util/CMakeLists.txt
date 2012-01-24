@@ -1,4 +1,5 @@
 if ( NOT ldms_USE_SYSTEM_LIBEVENT )
+  set( EVENT_EXPORT_NAME ${ldms_EXPORT_NAME} )
   add_subdirectory( libevent )
   #set( EVENT_LIBRARIES "event" CACHE INTERNAL "Project-local build of libevent" FORCE )
   #set( EVENT_INCLUDE_DIRS

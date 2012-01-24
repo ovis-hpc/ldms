@@ -11,6 +11,12 @@ else ( EVENT_FOUND )
   option( ldms_USE_SYSTEM_LIBEVENT OFF "Use system's libevent library?" )
 endif ( EVENT_FOUND )
 
+if ( NOT ldms_EXPORT_NAME )
+  # Fallback name for the package containing export file (assuming parent package hasn't set it)
+  # NB. Must stay above add_subdirectory( util ).
+  set( ldms_EXPORT_NAME "ldms" )
+endif ( NOT ldms_EXPORT_NAME )
+
 add_subdirectory( util )
 
 option( ldms_MMAP "Support metric transmission via mmap?" OFF )
