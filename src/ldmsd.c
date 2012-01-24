@@ -889,52 +889,106 @@ int process_record(int fd,
 int sample_interval = 2000000;
 void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
 {
-	ldms_set_t *sp = arg;
+	struct hostset *hset = arg;
 	if (status)
-		*sp = NULL;
+		hset->set = NULL;
 	else
-		*sp = s;
+		hset->set = s;
+
+	pthread_mutex_lock(&hset->host->lock);
+	LIST_INSERT_HEAD(&hset->host->set_list, hset, entry);
+	pthread_mutex_unlock(&hset->host->lock);
+}
+
+void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
+{
+	struct hostset *hset;
+	int rc;
+
+	hset = calloc(1, sizeof *hset);
+	if (!hset) {
+		ldms_log("Memory allocation failure in %s for set_name %s\n",
+			 __FUNCTION__, set_name);
+		return;
+	}
+	hset->host = hs;
+	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
+	if (rc)
+		ldms_log("Synchronous error %d from ldms_lookup\n", rc);
+}
+
+void dir_cb_list(ldms_t t, ldms_dir_t dir, void *arg)
+{
+	struct hostspec *hs = arg;
+	struct hostset *hset;
+	int i;
+
+	/* scrup the existing list */
+	pthread_mutex_lock(&hs->lock);
+	while (!LIST_EMPTY(&hs->set_list)) {
+		hset = LIST_FIRST(&hs->set_list);
+		ldms_set_release(hset->set);
+		LIST_REMOVE(hset, entry);
+		free(hset);
+	}
+	pthread_mutex_unlock(&hs->lock);
+
+	for (i = 0; i < dir->set_count; i++)
+		_add_cb(t, hs, dir->set_names[i]);
+}
+
+void dir_cb_add(ldms_t t, ldms_dir_t dir, void *arg)
+{
+	struct hostspec *hs = arg;
+	int i;
+	for (i = 0; i < dir->set_count; i++)
+		_add_cb(t, hs, dir->set_names[i]);
+}
+
+void _dir_cb_del(ldms_t t, struct hostspec *hs, const char *set_name)
+{
+	struct hostset *hset;
+	LIST_FOREACH(hset, &hs->set_list, entry) {
+		if (0 == strcmp(set_name, ldms_get_set_name(hset->set))) {
+			ldms_set_release(hset->set);
+			LIST_REMOVE(hset, entry);
+			free(hset);
+			return;
+		}
+	}
+}
+
+void dir_cb_del(ldms_t t, ldms_dir_t dir, void *arg)
+{
+	struct hostspec *hs = arg;
+	int i;
+
+	pthread_mutex_lock(&hs->lock);
+	for (i = 0; i < dir->set_count; i++)
+		_dir_cb_del(t, hs, dir->set_names[i]);
+	pthread_mutex_unlock(&hs->lock);
 }
 
 void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 {
-	int i;
 	struct hostspec *hs = arg;
 	if (status) {
 		ldms_log("Error %d in lookup on host %s.\n",
 		       status, hs->hostname);
 		return;
 	}
-
-	hs->dir = dir;
-	if (!hs->dir || !hs->dir->set_count)
-		return;
-
-	if (hs->set_count) {
-		int i;
-		for (i = 0; i < hs->set_count; i++)
-			if (hs->sets[i])
-				ldms_set_release(hs->sets[i]);
-		free(hs->sets);
+	switch (dir->type) {
+	case LDMS_DIR_LIST:
+		dir_cb_list(t, dir, hs);
+		break;
+	case LDMS_DIR_ADD:
+		dir_cb_add(t, dir, hs);
+		break;
+	case LDMS_DIR_DEL:
+		dir_cb_del(t, dir, hs);
+		break;
 	}
-	hs->set_count = dir->set_count;
-	hs->sets = calloc(hs->dir->set_count, sizeof(ldms_set_t));
-	if (!hs->sets) {
-		ldms_log("Memory allocation failure updating "
-			 "meta data for host '%s'.\n",
-			 hs->hostname);
-		return;
-	}
-
-	for (i = 0; i < hs->set_count; i++) {
-		int ret = ldms_lookup(hs->x, hs->dir->set_names[i],
-				      lookup_cb, &hs->sets[i]);
-		if (ret) {
-			ldms_log("Synchronous error %d looking up set '%s' "
-				 "on host '%s'.\n", ret, hs->dir->set_names[i],
-				 hs->hostname);
-		}
-	}
+	ldms_dir_release(t, dir);
 }
 
 int do_connect(struct hostspec *hs, int do_dir)
@@ -962,25 +1016,22 @@ int do_connect(struct hostspec *hs, int do_dir)
 	return 0;
 }
 
-int update_data(struct hostspec *hs)
+void update_data(struct hostspec *hs)
 {
-	int i, ret;
+	int ret;
+	struct hostset *hset;
 
-	if (!hs->x || !hs->set_count)
-		return 0;
+	if (!hs->x)
+		return;
 
-	for (i = 0; i < hs->set_count; i++) {
-		if (!hs->sets[i])
-			continue;
-
-		ret = ldms_update(hs->sets[i], NULL, NULL);
-		if (ret) {
+	pthread_mutex_lock(&hs->lock);
+	LIST_FOREACH(hset, &hs->set_list, entry) {
+		ret = ldms_update(hset->set, NULL, NULL);
+		if (ret)
 			ldms_log("Error %d updating metric set "
-			       "on host '%s'.\n", ret, hs->hostname);
-			return -1;
-		}
+				 "on host '%s'.\n", ret, hs->hostname);
 	}
-	return 0;
+	pthread_mutex_unlock(&hs->lock);
 }
 
 void do_active(struct hostspec *hs)

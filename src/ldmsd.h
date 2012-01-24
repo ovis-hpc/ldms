@@ -44,6 +44,14 @@
 
 #include <sys/queue.h>
 
+struct hostspec;
+struct hostset
+{
+	struct hostspec *host;
+	ldms_set_t set;
+	LIST_ENTRY(hostset) entry;
+};
+
 struct hostspec
 {
 	struct sockaddr_in sin;	/* host address */
@@ -54,12 +62,11 @@ struct hostspec
 		ACTIVE, PASSIVE, BRIDGING
 	} type;
 	ldms_t x;		/* !0 when valid and connected */
-	ldms_dir_t dir;		/* directory on peer */
-	int set_count;		/* count of sets looked-up */
-	ldms_set_t *sets;	/* array of metric sets */
 	pthread_mutex_t lock;
+	LIST_HEAD(set_list, hostset) set_list;
 	LIST_ENTRY(hostspec) link;
 };
+
 extern char *skip_space(char *s);
 extern int parse_cfg(const char *config_file);
 extern struct hostspec *host_first(void);
