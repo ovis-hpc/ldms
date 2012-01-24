@@ -75,12 +75,14 @@ add_dependencies( un ${CMAKE_CURRENT_SOURCE_DIR}/src/libun.map )
 set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};un" )
 
 if ( ldms_RDMA )
-  add_library( ldmsrdma
+  add_library( ldmsrdma MODULE
     src/ldms_rdma.c
   )
   target_link_libraries( ldmsrdma
     verbs
     rdmacm
+    ${EVENT_LIBRARIES}
+    ldms
   )
   add_dependencies( ldmsrdma ${CMAKE_CURRENT_SOURCE_DIR}/src/libldmsrdma.map )
   set( ldms_SUBLIBRARIES "${ldms_SUBLIBRARIES};ldmsrdma" )
@@ -95,6 +97,10 @@ endif ( ldms_MMAP )
 if ( ldms_SOCK )
   add_library( ldmssock MODULE
     src/ldms_sock.c
+  )
+  target_link_libraries( ldmssock
+    ${EVENT_LIBRARIES}
+    ldms
   )
   add_dependencies( ldmssock ${CMAKE_CURRENT_SOURCE_DIR}/src/libldmssock.map )
   set( ldms_SUBLIBRARIES "${ldms_SUBLIBRARIES};ldmssock" )
