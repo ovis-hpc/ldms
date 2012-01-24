@@ -164,6 +164,22 @@ foreach( plugin ${ldms_plugins} )
   target_link_libraries( ${plugin} ldms )
 endforeach()
 
+# Doxygen documentation
+find_package( Doxygen )
+if ( DOXYGEN_FOUND )
+  configure_file(
+    ${ldms_SOURCE_DIR}/Doxyfile.in
+    ${ldms_BINARY_DIR}/Doxyfile
+    @ONLY
+  )
+  add_custom_target( docs-ldms
+    COMMAND ${DOXYGEN_EXECUTABLE} ${ldms_BINARY_DIR}/Doxyfile
+    DEPENDS ${ldms_BINARY_DIR}/Doxyfile
+    WORKING_DIRECTORY ${ldms_BINARY_DIR}
+    COMMENT "Generating developer documentation"
+  )
+endif ( DOXYGEN_FOUND )
+
 # Install rules
 # Rules for targets
 set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};${ldms_plugins}" )
@@ -186,3 +202,14 @@ install(
   COMPONENT devel
   FILES_MATCHING PATTERN "*.h"
   PATTERN "CMakeFiles" EXCLUDE )
+
+# Rule for Doxygen docs
+# FIXME: No way to make docs-ldms a dependency of install target.
+if ( DOXYGEN_FOUND )
+  install(
+    DIRECTORY ${ldms_BINARY_DIR}/doc/html
+    DESTINATION share/doc/ldms/developer
+    COMPONENT devel
+    PATTERN "*"
+  )
+endif ( DOXYGEN_FOUND )
