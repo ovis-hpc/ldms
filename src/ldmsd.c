@@ -1010,7 +1010,7 @@ void _dir_cb_del(ldms_t t, struct hostspec *hs, const char *set_name)
 	ldms_log("%s removing set '%s'\n", __FUNCTION__, set_name);
 	LIST_FOREACH(hset, &hs->set_list, entry) {
 		if (0 == strcmp(set_name, ldms_get_set_name(hset->set))) {
-			ldms_set_release(hset->set);
+			ldms_destroy_set(hset->set);
 			LIST_REMOVE(hset, entry);
 			free(hset);
 			return;
