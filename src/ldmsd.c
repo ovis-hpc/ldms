@@ -570,6 +570,56 @@ int process_init_plugin(int fd,
 }
 
 /*
+ * Destroy the set associated with teh plugin
+ *
+ * PT <plugin_name> <set_name>
+ */
+int process_term_plugin(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+	char plugin_name[LDMS_MAX_PLUGIN_NAME_LEN];
+	char set_name[MAX_SET_NAME_SIZE+1];
+	char hset_name[MAX_SET_NAME_SIZE+1];
+	char *err_str = "";
+	int rc = 0;
+	struct plugin *pi;
+
+	rc = sscanf(command, "%s\n", plugin_name);
+	if (rc != 1) {
+		err_str = "Invalid request syntax";
+		rc = EINVAL;
+		goto out;
+	}
+
+	pi = get_plugin(plugin_name);
+	if (!pi) {
+		rc = ENOENT;
+		err_str = "Plugin not found.";
+		goto out;
+	}
+	switch (pi->state) {
+	case PLUGIN_INIT:
+		break;
+	default:
+		rc = EBUSY;
+		err_str = "Plugin must be initialized.";
+		goto out;
+	}
+	pi->state = PLUGIN_IDLE;
+	if (set_name[0] == '/')
+		sprintf(hset_name, "%s%s", myhostname, set_name);
+	else
+		sprintf(hset_name, "%s/%s", myhostname, set_name);
+	pi->plugin->term();
+	rc = 0;
+ out:
+	sprintf(replybuf, "PR %d %s", rc, err_str);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+/*
  * Configure a plugin
  *
  * PC <plugin_name> <config_string>
@@ -844,6 +894,11 @@ int process_record(int fd,
 	if (0 == strncasecmp(s, "PI", 2)) {
 		s += 2;
 		return process_init_plugin(fd, sa, sa_len, s);
+	}
+	/* Handle Term Plugin command */
+	if (0 == strncasecmp(s, "PT", 2)) {
+		s += 2;
+		return process_term_plugin(fd, sa, sa_len, s);
 	}
 	/* Handle Start Plugin command */
 	if (0 == strncasecmp(s, "PS", 2)) {
@@ -1187,10 +1242,18 @@ int main(int argc, char *argv[])
 	char *setfile = NULL;
 	log_fp = stdout;
 	char *cfg_file = NULL;
+        struct sigaction sa;
 
 	signal(SIGHUP, cleanup);
 	signal(SIGINT, cleanup);
 	signal(SIGTERM, cleanup);
+
+        memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = SIG_IGN;
+        if (sigemptyset(&sa.sa_mask) < 0 || sigaction(SIGPIPE, &sa, 0) < 0) {
+                perror("Could not ignore the SIGPIPE signal");
+                exit(EXIT_FAILURE);
+        }
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {

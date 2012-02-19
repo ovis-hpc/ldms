@@ -147,8 +147,8 @@ static int init(const char *path)
 	 */
 	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
 	if (!compid_metric_handle) {
-	  rc = ENOMEM;
-	  goto err;
+		rc = ENOMEM;
+		goto err;
 	} //compid set in config
 
 	int metric_no = 0;
@@ -207,7 +207,7 @@ static int sample(void)
 
 static void term(void)
 {
-	ldms_set_release(set);
+	ldms_destroy_set(set);
 }
 
 

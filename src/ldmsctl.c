@@ -84,12 +84,16 @@ void usage(char *argv[])
 
 void help()
 {
-	printf("load <plugin_name>\n"
+	printf("help\n"
+	       "   - Print this menu.\n"
+	       "load <plugin_name>\n"
 	       "   - Loads the specified plugin. The library that implements\n"
 	       "     the plugin should be in the directory specified by the\n"
 	       "     LDMS_PLUGIN_LIBPATH environment variable.\n"
 	       "init <plugin_name> <set_name>\n"
 	       "   - Specifies the name of the metric set for the plugin\n"
+	       "term <plugin_name>\n"
+	       "   - Destroys the set associated with the plugin\n"
 	       "start <plugin_name> <sample_interval>\n"
 	       "   - Begins calling the plugin's 'sample' method at the\n"
 	       "     sample interval.\n"
@@ -136,7 +140,7 @@ int main(int argc, char *argv[])
 			continue;
 		if (rc < 1)
 			goto syntax_error;
-		if (kw[0] == '?') {
+		if (kw[0] == '?' || 0 == strcmp(kw, "help")) {
 			help();
 			continue;
 		}
@@ -155,6 +159,10 @@ int main(int argc, char *argv[])
 				continue;
 			}
 			un_init_plugin(arg1, arg2, err_str);
+			goto finit;
+		}
+		if (0 == strcmp(kw, "term")) {
+			un_term_plugin(arg, err_str);
 			goto finit;
 		}
 		if (0 == strcmp(kw, "start")) {

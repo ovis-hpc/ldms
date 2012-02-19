@@ -361,6 +361,31 @@ int un_init_plugin(char *plugin, char *set_name, char *err_str)
 	return -1;
 }
 
+int un_term_plugin(char *plugin_name, char *err_str)
+{
+	int rc;
+	int status;
+	char junk[128];
+
+	sprintf(msg_buf, "PT %s\n", plugin_name);
+	rc = un_send_req(un_muxr_s, (struct sockaddr *)&un_sun, sizeof(un_sun),
+			 msg_buf, strlen(msg_buf)+1);
+	if (rc < 0) {
+		un_say("Error %d sending request.\n", rc);
+		goto out;
+	}
+	rc = un_recv_rsp(un_muxr_s, NULL, 0, msg_buf, sizeof(msg_buf));
+	if (rc <= 0) {
+		un_say("Error %d receiving reply.\n", rc);
+		goto out;
+	}
+	rc = sscanf(msg_buf, "%s %d %[^\n]", junk, &status, err_str);
+	if (rc >= 2)
+		return status;
+ out:
+	return -1;
+}
+
 int un_start_plugin(char *plugin, unsigned long period, char *err_str)
 {
 	int rc;

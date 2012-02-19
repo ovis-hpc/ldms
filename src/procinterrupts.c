@@ -307,7 +307,7 @@ static int sample(void)
 
 static void term(void)
 {
-	ldms_set_release(set);
+	ldms_destroy_set(set);
 }
 
 
