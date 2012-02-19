@@ -139,7 +139,7 @@ static void send_dir_update(struct ldms_xprt *x,
 	size_t len;
 	int set_count;
 	int set_list_sz;
-	int rc;
+	int rc = 0;
 	struct ldms_reply *reply;
 
 	switch (t) {
@@ -157,9 +157,7 @@ static void send_dir_update(struct ldms_xprt *x,
 		+ sizeof(struct ldms_dir_reply)
 		+ set_list_sz;
 
-	reply = malloc(strlen(set_name) + 1
-		       + sizeof(struct ldms_reply_hdr)
-		       + sizeof(struct ldms_dir_reply));
+	reply = malloc(len);
 	if (!reply) {
 		printf("Memory allocation failure "
 		       "in dir update of peer.\n");
@@ -181,7 +179,7 @@ static void send_dir_update(struct ldms_xprt *x,
 	reply->hdr.xid = x->remote_dir_xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->hdr.rc = htonl(rc);
-	reply->dir.type = t;
+	reply->dir.type = htonl(t);
 	reply->dir.set_count = htonl(set_count);
 	reply->dir.set_list_len = htonl(set_list_sz);
 	reply->hdr.len = htonl(len);

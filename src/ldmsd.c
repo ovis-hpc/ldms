@@ -905,6 +905,7 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 	struct hostset *hset;
 	int rc;
 
+	ldms_log("%s adding set '%s'\n", __FUNCTION__, set_name);
 	hset = calloc(1, sizeof *hset);
 	if (!hset) {
 		ldms_log("Memory allocation failure in %s for set_name %s\n",
@@ -923,7 +924,7 @@ void dir_cb_list(ldms_t t, ldms_dir_t dir, void *arg)
 	struct hostset *hset;
 	int i;
 
-	/* scrup the existing list */
+	/* Scrub the existing list */
 	pthread_mutex_lock(&hs->lock);
 	while (!LIST_EMPTY(&hs->set_list)) {
 		hset = LIST_FIRST(&hs->set_list);
@@ -941,13 +942,17 @@ void dir_cb_add(ldms_t t, ldms_dir_t dir, void *arg)
 {
 	struct hostspec *hs = arg;
 	int i;
+	ldms_log("%s set_count %d\n", __FUNCTION__, dir->set_count);
+	pthread_mutex_lock(&hs->lock);
 	for (i = 0; i < dir->set_count; i++)
 		_add_cb(t, hs, dir->set_names[i]);
+	pthread_mutex_unlock(&hs->lock);
 }
 
 void _dir_cb_del(ldms_t t, struct hostspec *hs, const char *set_name)
 {
 	struct hostset *hset;
+	ldms_log("%s removing set '%s'\n", __FUNCTION__, set_name);
 	LIST_FOREACH(hset, &hs->set_list, entry) {
 		if (0 == strcmp(set_name, ldms_get_set_name(hset->set))) {
 			ldms_set_release(hset->set);
@@ -963,6 +968,7 @@ void dir_cb_del(ldms_t t, ldms_dir_t dir, void *arg)
 	struct hostspec *hs = arg;
 	int i;
 
+	ldms_log("%s set_count %d\n", __FUNCTION__, dir->set_count);
 	pthread_mutex_lock(&hs->lock);
 	for (i = 0; i < dir->set_count; i++)
 		_dir_cb_del(t, hs, dir->set_names[i]);

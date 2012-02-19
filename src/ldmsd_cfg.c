@@ -84,7 +84,7 @@
  * An example configuration file,
  *
  * # this is the comment
- * active nid00016 50000 sock1000000
+ * active nid00016 50000 sock 1000000
  * active mzlogin01-priv 50000 sock 1000000
  * passive mzlogin01e 50000 sock 1000000
  * bridge ovis-shepherd.sandia.gov 8192 sock 1000000
