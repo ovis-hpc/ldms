@@ -45,7 +45,8 @@
 #include <semaphore.h>
 #include <sys/queue.h>
 
-#include "ldms_config.h"
+//#include "ldms_config.h"
+#include "config.h"
 
 #ifndef HAVE_SPINLOCK_T
 #  define pthread_spinlock_t pthread_mutex_t
