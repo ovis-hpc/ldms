@@ -601,6 +601,15 @@ int process_term_plugin(int fd,
 	switch (pi->state) {
 	case PLUGIN_INIT:
 		break;
+	case PLUGIN_IDLE:
+		rc = ENOENT;
+		err_str = "The plugin has no metric set configured.";
+		goto out;
+	case PLUGIN_STARTED:
+		rc = ENOENT;
+		err_str = "The plugin is running, use "
+			"the 'stop' command to stop it first.";
+		goto out;
 	default:
 		rc = EBUSY;
 		err_str = "Plugin must be initialized.";
