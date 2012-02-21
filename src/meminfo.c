@@ -196,7 +196,7 @@ static int sample(void)
 		if (!s)
 			break;
 		rc = sscanf(lbuf, "%s %"PRIu64 " %s\n", metric_name, &v.v_u64, junk);
-		if (rc != 3)
+		if (rc != 2 && rc != 3)
 			return EINVAL;
 
 		ldms_set_metric(metric_table[metric_no], &v);
