@@ -439,8 +439,6 @@ int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	    set->meta->meta_gn != set->data->meta_gn) {
 		//	retry:
 		while (retry_max--) {
-			if (retry_max < 23)
-				printf("Meta data read fail...retrying.\n");
 			/* Update the metadata */
 			rc = do_read_meta(t, s, 0);
 			if (rc)

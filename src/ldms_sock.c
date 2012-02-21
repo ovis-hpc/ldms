@@ -93,6 +93,7 @@ static void sock_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
 	close(s->sock);
+	s->sock = 0;
 }
 
 static void sock_xprt_term(struct ldms_sock_xprt *r)
@@ -138,6 +139,7 @@ static int sock_xprt_connect(struct ldms_xprt *x,
 	return 0;
 
 err:
+	close(r->sock);
 	r->sock = 0;
 	return -1;
 }
@@ -264,10 +266,21 @@ static void *io_thread_proc(void *arg)
 
 static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 {
+	struct ldms_sock_xprt *r = arg;
+
+	if (events & EVBUFFER_EOF) {
+		/* Client disconnected */
+		r->xprt->connected = 0;
+		ldms_xprt_close(r->xprt);
+		ldms_release_xprt(r->xprt);
+		if (r->buf_event)
+			bufferevent_free(r->buf_event);
+	} else
+		  printf("Socket error %x\n", events);
 }
 
 static void _setup_connection(struct ldms_sock_xprt *r,
-			     struct sockaddr *remote_addr, socklen_t sa_len)
+			      struct sockaddr *remote_addr, socklen_t sa_len)
 {
 	r->conn_status = CONN_CONNECTED;
 	r->needed = sizeof(struct ldms_request_hdr);

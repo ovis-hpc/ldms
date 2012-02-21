@@ -973,6 +973,21 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 		ldms_log("Synchronous error %d from ldms_lookup\n", rc);
 }
 
+/* Remove all existing sets for the host */
+void reset_host(struct hostspec *hs)
+{
+	struct hostset *hset;
+
+	pthread_mutex_lock(&hs->lock);
+	while (!LIST_EMPTY(&hs->set_list)) {
+		hset = LIST_FIRST(&hs->set_list);
+		ldms_destroy_set(hset->set);
+		LIST_REMOVE(hset, entry);
+		free(hset);
+	}
+	pthread_mutex_unlock(&hs->lock);
+}
+
 void dir_cb_list(ldms_t t, ldms_dir_t dir, void *arg)
 {
 	struct hostspec *hs = arg;
@@ -980,14 +995,7 @@ void dir_cb_list(ldms_t t, ldms_dir_t dir, void *arg)
 	int i;
 
 	/* Scrub the existing list */
-	pthread_mutex_lock(&hs->lock);
-	while (!LIST_EMPTY(&hs->set_list)) {
-		hset = LIST_FIRST(&hs->set_list);
-		ldms_set_release(hset->set);
-		LIST_REMOVE(hset, entry);
-		free(hset);
-	}
-	pthread_mutex_unlock(&hs->lock);
+	reset_host(hs);
 
 	for (i = 0; i < dir->set_count; i++)
 		_add_cb(t, hs, dir->set_names[i]);
@@ -1087,6 +1095,8 @@ void update_data(struct hostspec *hs)
 
 	pthread_mutex_lock(&hs->lock);
 	LIST_FOREACH(hset, &hs->set_list, entry) {
+		if (!hset->set)
+			continue;
 		ret = ldms_update(hset->set, NULL, NULL);
 		if (ret)
 			ldms_log("Error %d updating metric set "
@@ -1101,8 +1111,15 @@ void do_active(struct hostspec *hs)
 		return;
 
 	if (!ldms_xprt_connected(hs->x)) {
-		if (do_connect(hs, 1))
-			return;
+		if (do_connect(hs, 1)) {
+			/*
+			 * This path is the compute node goes away, we
+			 * try to reconnect and can't so we know it's
+			 * down.  Remove all existing sets from the
+			 * host so we no longer serve them.
+			 */
+			reset_host(hs);
+		}
 	} else
 		/* Don't update immediately after connecting to
 		 * provide time for dir/lookups to complete */
@@ -1349,12 +1366,13 @@ int main(int argc, char *argv[])
 	}
 	if (test_set_name) {
 		int set_no;
-		char test_set_name_no[1024];
+		static char test_set_name_no[1024];
 		for (set_no = 1; set_no <= test_set_count; set_no++) {
 			int j;
 			ldms_metric_t m;
 			char metric_name[32];
-			sprintf(test_set_name_no, "%s_%d", test_set_name, set_no);
+			sprintf(test_set_name_no, "%s/%s_%d",
+				myhostname, test_set_name, set_no);
 			ldms_create_set(test_set_name_no, 2048, 2048, &test_set);
 			if (test_metric_count > 0){
 				m = ldms_add_metric(test_set, "component_id",
