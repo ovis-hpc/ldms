@@ -111,6 +111,7 @@ static char kw[60];
 static char arg[60];
 static char arg1[60];
 static char arg2[60];
+static char linebuf[256];
 int main(int argc, char *argv[])
 {
 	int op;
@@ -132,7 +133,10 @@ int main(int argc, char *argv[])
 	}
 	char *s;
 	do {
-		s = readline("ldmsctl> ");
+		if (isatty(0))
+			s = readline("ldmsctl> ");
+		else
+			s = fgets(linebuf, sizeof linebuf, stdin);
 		if (!s)
 			break;
 		int rc = sscanf(s, "%60s %[^\n]", kw, arg);
