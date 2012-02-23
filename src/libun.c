@@ -123,6 +123,11 @@ int un_recv_rsp(int sock, struct sockaddr *sa, ssize_t sa_len,
 
 static struct sockaddr_un un_sun;
 
+void un_close(void)
+{
+	close(un_muxr_s);
+}
+
 int un_connect(char *my_name, char *sockname)
 {
 	int rc;

@@ -49,6 +49,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <fcntl.h>
+#include <assert.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
@@ -143,11 +144,9 @@ err:
 	r->sock = 0;
 	return -1;
 }
-
 int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 {
 	size_t len;
-
 	/* Check the response status */
 	if (rsp->status)
 		return ntohl(rsp->status);
@@ -232,15 +231,14 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 	struct evbuffer *evb = EVBUFFER_INPUT(buf_event);
 	struct ldms_request_hdr *hdr;
 	struct ldms_request *req;
+	size_t len;
 	size_t reqlen;
 	size_t buflen;
-
 	do {
 		buflen = EVBUFFER_LENGTH(evb);
-		// len = evbuffer_copyout(evb, &hdr, sizeof hdr);
-		hdr = (struct ldms_request_hdr *)EVBUFFER_DATA(evb);
-		if (buflen < sizeof(hdr))
+		if (buflen < sizeof(*hdr))
 			break;
+		hdr = EVBUFFER_DATA(evb);
 		reqlen = ntohl(hdr->len);
 		if (buflen < reqlen)
 			break;
@@ -252,7 +250,8 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 			ldms_release_xprt(r->xprt);
 			break;
 		}
-		evbuffer_remove(evb, req, reqlen);
+		len = evbuffer_remove(evb, req, reqlen);
+		assert(len == reqlen);
 		process_xprt_io(r, req);
 		free(req);
 	} while (1);

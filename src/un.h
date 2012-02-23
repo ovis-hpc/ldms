@@ -70,5 +70,5 @@ extern int un_start_plugin(char *plugin, unsigned long period, char *err_str);
 extern int un_stop_plugin(char *plugin, char *err_str);
 extern int un_stop_plugin(char *plugin, char *err_str);
 extern int un_config_plugin(char *plugin, char *str, char *err_str);
-
+extern void un_close(void);
 #endif

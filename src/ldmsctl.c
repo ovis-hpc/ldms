@@ -196,5 +196,6 @@ int main(int argc, char *argv[])
 			printf("%s\n", err_str);
 		continue;
 	} while (s);
+	un_close();
  	return(0);
 }

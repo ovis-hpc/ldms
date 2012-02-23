@@ -66,7 +66,7 @@ int do_wait(struct ldms_context *ctxt)
 	} while (rc && errno == EINTR);
 	if (!rc)
 		rc = ctxt->rc;
-	return rc;	
+	return rc;
 }
 
 void do_wakeup(struct ldms_context *ctxt)
@@ -229,7 +229,7 @@ void ldms_xprt_close(ldms_t _x)
 		x->connected = 0;
 		x->closed = 1;
 	}
-	/* Cancel any dir updates */ 
+	/* Cancel any dir updates */
 	x->remote_dir_xid = x->local_dir_xid = 0;
 	pthread_spin_unlock(&xprt_list_lock);
 
@@ -357,7 +357,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	if (!reply) {
 		hdr.rc = htonl(ENOMEM);
 		goto err_out;
-	}		
+	}
 	reply->hdr.xid = req->hdr.xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_LOOKUP_REPLY);
 	reply->hdr.len = htonl(len);
@@ -424,7 +424,7 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
  * then the data is fetched. The meta data GN from the data is checked
  * against the GN returned in the data. If it matches, we're done. If
  * they don't match, then the meta data is fetched and then the data
- * is fetched again. 
+ * is fetched again.
  */
 int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
@@ -498,6 +498,7 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 		break;
 	default:
 		printf("Unrecognized request %d\n", cmd);
+		assert(0);
 	}
 	return 0;
 }
@@ -509,7 +510,7 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	struct ldms_set_desc *sd = NULL;
 	struct ldms_rbuf_desc *rbd;
 	int rc;
-	
+
 	rc = ntohl(reply->hdr.rc);
 	if (rc)
 		goto out;
@@ -664,7 +665,7 @@ ldms_t ldms_create_xprt(const char *name)
 	int len;
 
 	if (0 == strcmp(name, "local"))
-                return &local_transport;
+		return &local_transport;
 
 	libdir = getenv("LDMS_XPRT_LIBPATH");
 	if (!libdir || libdir[0] == '\0')
@@ -676,7 +677,7 @@ ldms_t ldms_create_xprt(const char *name)
 	len = strlen(_libdir);
 	if (_libdir[len-1] != '/')
 		strcat(_libdir, "/");
-		
+
 	strcat(_libdir, "libldms");
 	strcat(_libdir, name);
 	strcat(_libdir, _SO_EXT);
