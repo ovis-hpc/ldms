@@ -248,7 +248,7 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 		buflen = EVBUFFER_LENGTH(evb);
 		if (buflen < sizeof(*hdr))
 			break;
-		hdr = EVBUFFER_DATA(evb);
+		hdr = (struct ldms_request_hdr *)EVBUFFER_DATA(evb);
 		reqlen = ntohl(hdr->len);
 		if (buflen < reqlen)
 			break;
@@ -284,8 +284,11 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 		r->xprt->connected = 0;
 		ldms_xprt_close(r->xprt);
 		ldms_release_xprt(r->xprt);
+		pthread_mutex_lock(&event_lock);
 		if (r->buf_event)
 			bufferevent_free(r->buf_event);
+		r->buf_event = NULL;
+		pthread_mutex_unlock(&event_lock);
 	} else
 		  printf("Socket error %x\n", events);
 }
@@ -303,6 +306,7 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 		fprintf(stdout, "Warning: error setting non-blocking I/O on an incoming connection.\n");
 
 	/* Initialize send and recv I/O events */
+	pthread_mutex_lock(&event_lock);
 	r->buf_event = bufferevent_new(r->sock, sock_read, sock_write, sock_event, r);
 	if(!r->buf_event) {
 		fprintf(stdout, "Error initializing buffered I/O event for fd %d.\n", r->sock);
@@ -318,11 +322,13 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 	/* bufferevent_settimeout(r->buf_event, 60, 0); */
 	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
 		fprintf(stdout, "Error enabling buffered I/O event for fd %d.\n", r->sock);
-
+	pthread_mutex_unlock(&event_lock);
 	return;
  err_0:
 	if (r->buf_event)
 		bufferevent_free(r->buf_event);
+	r->buf_event = NULL;
+	pthread_mutex_unlock(&event_lock);
 	ldms_xprt_close(r->xprt);
 	ldms_release_xprt(r->xprt);
 }
@@ -402,6 +408,7 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	event = malloc(sizeof *event);
 	if (!event)
 		goto err_0;
+	pthread_mutex_lock(&event_lock);
 	event_set(event, r->sock, EV_READ | EV_PERSIST, sock_connect, r);
 	if (event_base_set(io_event_loop, event))
 		goto err_1;
@@ -409,11 +416,13 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	if (rc)
 		goto err_1;
 
+	pthread_mutex_unlock(&event_lock);
 	return rc;
 
  err_1:
 	free(event);
  err_0:
+	pthread_mutex_unlock(&event_lock);
 	ldms_xprt_close(r->xprt);
 	ldms_release_xprt(r->xprt);
 	return rc;
@@ -428,11 +437,14 @@ static void sock_xprt_destroy(struct ldms_xprt *x)
 static int sock_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
+	int rc;
 
 	if (r->conn_status != CONN_CONNECTED)
 		return -ENOTCONN;
 
-	int rc = bufferevent_write(r->buf_event, buf, len);
+	pthread_mutex_lock(&event_lock);
+	rc = bufferevent_write(r->buf_event, buf, len);
+	pthread_mutex_unlock(&event_lock);
 	return rc;
 }
 
