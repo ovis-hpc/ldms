@@ -56,6 +56,12 @@
 #include "ldms_xprt.h"
 #include "ldms_private.h"
 
+#if 0
+#define TF() printf("%s:%d\n", __FUNCTION__, __LINE__)
+#else
+#define TF()
+#endif
+
 pthread_spinlock_t xprt_list_lock;
 
 int do_wait(struct ldms_context *ctxt)
@@ -366,6 +372,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	memcpy(reply->lookup.xprt_data, rbd->xprt_data, rbd->xprt_data_len);
 	reply->lookup.meta_len = htonl(set->meta->meta_size);
 	reply->lookup.data_len = htonl(set->meta->data_size);
+
 	x->send(x, reply, len);
 	free(reply);
 	return;
@@ -377,37 +384,40 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	x->send(x, &hdr, sizeof(hdr));
 }
 
-void sync_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
+void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	struct ldms_xprt *x = t;
-	do_wakeup(&x->io_ctxt);
+	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
+	struct ldms_context *data_ctxt = arg;
+
+	x->read_data_start(x, s, set->meta->data_size, data_ctxt);
 }
 
-static int do_read_meta(ldms_t t, ldms_set_t s, size_t len)
+static int do_read_meta(ldms_t t, ldms_set_t s, size_t len,
+			ldms_update_cb_t cb, void *arg)
 {
 	struct ldms_xprt *x = t;
-	int rc;
+	struct ldms_context *meta_ctxt = malloc(sizeof *meta_ctxt);
+	struct ldms_context *data_ctxt = malloc(sizeof *data_ctxt);
+	TF();
+	data_ctxt->rc = 0;
+	data_ctxt->update.s = s;
+	data_ctxt->update.cb = cb;
+	data_ctxt->update.arg = arg;
 
-	x->io_ctxt.update.s = s;
-	x->io_ctxt.update.cb = sync_read_cb;
-	x->io_ctxt.rc = 0;
-	rc = x->read_meta_start(x, s, len, &x->io_ctxt);
-	if (rc)
-		goto out_0;
+	meta_ctxt->rc = 0;
+	meta_ctxt->update.s = s;
+	meta_ctxt->update.cb = meta_read_cb;
+	meta_ctxt->update.arg = data_ctxt;
 
-	rc = do_wait(&x->io_ctxt);
-	if (rc)
-		goto out_0;
-
- out_0:
-	return rc;
+	return x->read_meta_start(x, s, len, meta_ctxt);
 }
 
 static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb, void*arg)
 {
 	struct ldms_xprt *x = t;
 	struct ldms_context *ctxt = malloc(sizeof *ctxt);
-
+	TF();
 	ctxt->rc = 0;
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
@@ -429,44 +439,15 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
-	size_t len;
-	int retry_max = 24;
 	int rc;
 
-	len = set->data->tail_off;
-	if (set->flags & LDMS_SET_F_DIRTY ||
-	    set->meta->meta_gn == 0 ||
+	if (set->flags & LDMS_SET_F_DIRTY || set->meta->meta_gn == 0 ||
 	    set->meta->meta_gn != set->data->meta_gn) {
-		//	retry:
-		while (retry_max--) {
-			/* Update the metadata */
-			rc = do_read_meta(t, s, 0);
-			if (rc)
-				goto out_0;
-			if (set->meta->meta_gn) {
-				set->flags &= ~LDMS_SET_F_DIRTY;
-				break;
-			}
-		}
-		len = 0;
-	}
-	while (retry_max) {
-		rc = do_read_data(t, s, len, cb, arg);
-		if (rc)
-			goto out_0;
-#if 0
-		if (set->meta->meta_gn == set->data->meta_gn)
-			break;
+		/* Update the metadata */
+		rc = do_read_meta(t, s, 0, cb, arg);
+	} else
+		rc = do_read_data(t, s, set->data->tail_off, cb, arg);
 
-		goto retry;
-#endif
-		break;
-	}
-	if (!retry_max)
-		rc = ENOENT;
- out_0:
-	if (rc)
-		ldms_xprt_close(t);
 	return rc;
 }
 

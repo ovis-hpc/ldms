@@ -1000,7 +1000,6 @@ void reset_host(struct hostspec *hs)
 void dir_cb_list(ldms_t t, ldms_dir_t dir, void *arg)
 {
 	struct hostspec *hs = arg;
-	struct hostset *hset;
 	int i;
 
 	/* Scrub the existing list */
@@ -1268,7 +1267,6 @@ int main(int argc, char *argv[])
 	char *setfile = NULL;
 	log_fp = stdout;
 	char *cfg_file = NULL;
-        struct sigaction sa;
 
 	signal(SIGHUP, cleanup);
 	signal(SIGINT, cleanup);

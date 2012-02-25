@@ -163,6 +163,7 @@ int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 	return 0;
 }
 
+uint64_t last_sock_read_req;
 int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 {
 	struct sock_read_rsp rsp;
@@ -172,22 +173,21 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 	len = ntohl(req->buf_info.size);
 
 	/* Prepare and send read response header */
-	rsp.hdr.xid = req->hdr.xid;
+	last_sock_read_req = rsp.hdr.xid = req->hdr.xid;
 	rsp.hdr.cmd = htonl(SOCK_READ_RSP_CMD);
 	rsp.hdr.len = htonl(sizeof(rsp) + len);
 	rsp.status = 0;
 	memcpy(&rsp.buf_info, &req->buf_info, sizeof req->buf_info);
 
 	pthread_mutex_lock(&event_lock);
-	ret = bufferevent_write(x->buf_event, &rsp, sizeof(rsp));
-	pthread_mutex_unlock(&event_lock);
+	ret = evbuffer_add(x->buf_event->output, &rsp, sizeof(rsp));
 	if (ret < 0)
-		return ENOTCONN;
+		goto err;
 
 	/* Write the requested local buffer back to the socket */
-	pthread_mutex_lock(&event_lock);
 	ret =  bufferevent_write(x->buf_event,
 				 (void *)(unsigned long)req->buf_info.rbuf, len);
+ err:
 	pthread_mutex_unlock(&event_lock);
 	return ret;
 }
@@ -243,7 +243,7 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 	size_t reqlen;
 	size_t buflen;
 	do {
-		pthread_mutex_lock(&event_lock);
+		assert(!pthread_mutex_lock(&event_lock));
 		evb = EVBUFFER_INPUT(buf_event);
 		buflen = EVBUFFER_LENGTH(evb);
 		if (buflen < sizeof(*hdr))
@@ -315,11 +315,6 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 	if (bufferevent_base_set(io_event_loop, r->buf_event))
 		goto err_0;
 
-	/* bufferevent_setwatermark(r->buf_event, EV_WRITE, 0, 0); */
-	bufferevent_setwatermark(r->buf_event, EV_READ, sizeof(struct ldms_request_hdr), 0);
-	bufferevent_setcb(r->buf_event, sock_read, sock_write, sock_event, r);
-
-	/* bufferevent_settimeout(r->buf_event, 60, 0); */
 	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
 		fprintf(stdout, "Error enabling buffered I/O event for fd %d.\n", r->sock);
 	pthread_mutex_unlock(&event_lock);
