@@ -1274,13 +1274,6 @@ int main(int argc, char *argv[])
 	signal(SIGINT, cleanup);
 	signal(SIGTERM, cleanup);
 
-        memset(&sa, 0, sizeof(sa));
-        sa.sa_handler = SIG_IGN;
-        if (sigemptyset(&sa.sa_mask) < 0 || sigaction(SIGPIPE, &sa, 0) < 0) {
-                perror("Could not ignore the SIGPIPE signal");
-                exit(EXIT_FAILURE);
-        }
-
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {

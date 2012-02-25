@@ -54,6 +54,7 @@
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
 
+static pthread_mutex_t event_lock;
 static struct event_base *io_event_loop;
 static pthread_t io_thread;
 
@@ -80,8 +81,10 @@ void sock_xprt_cleanup(void)
 {
 	void *dontcare;
 
+	pthread_mutex_lock(&event_lock);
 	if (io_event_loop)
 		event_base_loopbreak(io_event_loop);
+	pthread_mutex_unlock(&event_lock);
 	if (io_thread) {
 		pthread_cancel(io_thread);
 		pthread_join(io_thread, &dontcare);
@@ -175,13 +178,18 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 	rsp.status = 0;
 	memcpy(&rsp.buf_info, &req->buf_info, sizeof req->buf_info);
 
+	pthread_mutex_lock(&event_lock);
 	ret = bufferevent_write(x->buf_event, &rsp, sizeof(rsp));
+	pthread_mutex_unlock(&event_lock);
 	if (ret < 0)
 		return ENOTCONN;
 
 	/* Write the requested local buffer back to the socket */
-	return bufferevent_write(x->buf_event,
+	pthread_mutex_lock(&event_lock);
+	ret =  bufferevent_write(x->buf_event,
 				 (void *)(unsigned long)req->buf_info.rbuf, len);
+	pthread_mutex_unlock(&event_lock);
+	return ret;
 }
 
 int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request *req)
@@ -228,13 +236,15 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 {
 
 	struct ldms_sock_xprt *r = (struct ldms_sock_xprt *)arg;
-	struct evbuffer *evb = EVBUFFER_INPUT(buf_event);
+	struct evbuffer *evb;
 	struct ldms_request_hdr *hdr;
 	struct ldms_request *req;
 	size_t len;
 	size_t reqlen;
 	size_t buflen;
 	do {
+		pthread_mutex_lock(&event_lock);
+		evb = EVBUFFER_INPUT(buf_event);
 		buflen = EVBUFFER_LENGTH(evb);
 		if (buflen < sizeof(*hdr))
 			break;
@@ -252,9 +262,11 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 		}
 		len = evbuffer_remove(evb, req, reqlen);
 		assert(len == reqlen);
+		pthread_mutex_unlock(&event_lock);
 		process_xprt_io(r, req);
 		free(req);
 	} while (1);
+	pthread_mutex_unlock(&event_lock);
 }
 
 static void *io_thread_proc(void *arg)
@@ -483,6 +495,7 @@ static int sock_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	struct ldms_set_desc *sd = s;
 	struct sock_buf_xprt_data* xd = sd->rbd->xprt_data;
 	struct sock_read_req read_req;
+	int rc;
 
 	read_req.hdr.xid = (uint64_t)(unsigned long)context;
 	read_req.hdr.cmd = htonl(SOCK_READ_REQ_CMD);
@@ -492,7 +505,10 @@ static int sock_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	if (len)
 		read_req.buf_info.size = htonl(len);
 
-	return bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
+	pthread_mutex_lock(&event_lock);
+	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
+	pthread_mutex_unlock(&event_lock);
+	return rc;
 }
 
 static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, void *context)
@@ -501,6 +517,7 @@ static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	struct ldms_set_desc *sd = s;
 	struct sock_buf_xprt_data* xd = sd->rbd->xprt_data;
 	struct sock_read_req read_req;
+	int rc;
 
 	read_req.hdr.xid = (uint64_t)(unsigned long)context;
 	read_req.hdr.cmd = htonl(SOCK_READ_REQ_CMD);
@@ -510,7 +527,10 @@ static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	if (len)
 		read_req.buf_info.size = htonl(len);
 
-	return bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
+	pthread_mutex_lock(&event_lock);
+	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
+	pthread_mutex_unlock(&event_lock);
+	return rc;
 }
 
 static struct timeval to;
@@ -545,6 +565,7 @@ static int init_once()
 	if (rc)
 		goto err_1;
 
+	pthread_mutex_init(&event_lock, NULL);
 	atexit(sock_xprt_cleanup);
 	return 0;
 
