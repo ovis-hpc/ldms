@@ -178,7 +178,8 @@ struct ldms_context {
 struct ldms_xprt {
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
 	int ref_count;
-	struct sockaddr_storage ss;
+	struct sockaddr_storage local_ss;
+	struct sockaddr_storage remote_ss;
 	socklen_t ss_len;
 	pthread_spinlock_t lock;
 	int connected;
@@ -221,6 +222,9 @@ struct ldms_xprt {
 					void *xprt_data, size_t xprt_data_len);
 	/** Free a remote buffer */
 	void (*free)(struct ldms_xprt *, struct ldms_rbuf_desc *);
+
+	/** Transport message logging callback */
+	void (*log)(const char *fmt, ...);
 
 	/** Pointer to the transport's private data */
 	void *private;

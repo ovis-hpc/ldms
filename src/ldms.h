@@ -375,10 +375,11 @@ struct ldms_metric {
  * transport handle is required to communicate on the network.
  *
  * \param t	The name of the transport type to create.
+ * \param log	An optional callback function to call to log transport messages
  * \returns	A transport handle on success.
  * \returns	0 if the handle could not be created.
  */
-extern ldms_t ldms_create_xprt(const char *name);
+extern ldms_t ldms_create_xprt(const char *name, void (*log)(const char *fmt, ...));
 
 /**
  * \brief Release a reference on a transport handle

@@ -48,6 +48,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
 #include "ldms.h"
@@ -67,8 +68,10 @@ static void sock_read(struct bufferevent *buf_event, void *arg);
 static void sock_write(struct bufferevent *buf_event, void *arg);
 
 static void timeout_cb(int fd , short events, void *arg);
-static void setup_connection(int sockfd,
-			     struct sockaddr*remote_addr, socklen_t sa_len);
+static struct ldms_sock_xprt * setup_connection(struct ldms_sock_xprt *x,
+						int sockfd,
+						struct sockaddr*remote_addr,
+						socklen_t sa_len);
 static void _setup_connection(struct ldms_sock_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len);
 
@@ -96,6 +99,20 @@ void sock_xprt_cleanup(void)
 static void sock_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
+
+	if (s->listen_ev)
+		event_del(s->listen_ev);
+
+	struct sockaddr_in *lsin = (struct sockaddr_in *)&x->local_ss;
+	struct sockaddr_in *rsin = (struct sockaddr_in *)&x->remote_ss;
+	char la[32];
+	char ra[32];
+	strcpy(la, inet_ntoa(lsin->sin_addr));
+	strcpy(ra, inet_ntoa(rsin->sin_addr));
+	x->log("Closed   local %s:%d remote %s:%d\n",
+	       la, ntohs(lsin->sin_port),
+	       ra, ntohs(rsin->sin_port));
+
 	close(s->sock);
 	s->sock = 0;
 }
@@ -103,21 +120,23 @@ static void sock_xprt_close(struct ldms_xprt *x)
 static void sock_xprt_term(struct ldms_sock_xprt *r)
 {
 	LIST_REMOVE(r, client_link);
+	if (r->listen_ev)
+		free(r->listen_ev);
 	free(r);
 }
 
-static int set_nonblock(int fd)
+static int set_nonblock(struct ldms_xprt *x, int fd)
 {
 	int flags;
 
 	flags = fcntl(fd, F_GETFL);
 	if(flags == -1) {
-		printf("Error getting flags on fd %d", fd);
+		x->log("Error getting flags on fd %d", fd);
 		return -1;
 	}
 	flags |= O_NONBLOCK;
 	if(fcntl(fd, F_SETFL, flags)) {
-		printf("Error setting non-blocking I/O on fd %d", fd);
+		x->log("Error setting non-blocking I/O on fd %d", fd);
 		return -1;
 	}
 	return 0;
@@ -200,7 +219,8 @@ int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request *req)
 	case SOCK_READ_RSP_CMD:
 		return process_sock_read_rsp(x, (struct sock_read_rsp *)req);
 	default:
-		printf("Invalid request on socket transport %d\n", ntohl(req->hdr.cmd));
+		x->xprt->log("Invalid request on socket transport %d\n",
+			     ntohl(req->hdr.cmd));
 	}
 	return EINVAL;
 }
@@ -215,7 +235,8 @@ static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
 		int ret = process_sock_req(s, req);
 		if (ret) {
-			printf("Error %d processing transport request.\n", ret);
+			s->xprt->log("Error %d processing transport request.\n",
+				     ret);
 			goto close_out;
 		}
 	} else
@@ -254,8 +275,8 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 			break;
 		req = malloc(reqlen);
 		if (!req) {
-			printf("%s Memory allocation failure reqlen %zu\n",
-				__FUNCTION__, reqlen);
+			r->xprt->log("%s Memory allocation failure reqlen %zu\n",
+				     __FUNCTION__, reqlen);
 			ldms_xprt_close(r->xprt);
 			ldms_release_xprt(r->xprt);
 			break;
@@ -280,7 +301,7 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 	struct ldms_sock_xprt *r = arg;
 
 	if (events & EVBUFFER_EOF) {
-		/* Client disconnected */
+		/* Peer disconnect */
 		r->xprt->connected = 0;
 		ldms_xprt_close(r->xprt);
 		ldms_release_xprt(r->xprt);
@@ -290,33 +311,35 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 		r->buf_event = NULL;
 		pthread_mutex_unlock(&event_lock);
 	} else
-		  printf("Socket error %x\n", events);
+		r->xprt->log("Socket error %x\n", events);
 }
 
 static void _setup_connection(struct ldms_sock_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len)
 {
 	r->conn_status = CONN_CONNECTED;
-	r->needed = sizeof(struct ldms_request_hdr);
-	memcpy((char *)&r->xprt->ss, (char *)remote_addr, sa_len);
+	memcpy((char *)&r->xprt->remote_ss, (char *)remote_addr, sa_len);
 	r->xprt->ss_len = sa_len;
 	r->xprt->connected = 1;
 
-	if(set_nonblock(r->sock))
-		fprintf(stdout, "Warning: error setting non-blocking I/O on an incoming connection.\n");
+	if(set_nonblock(r->xprt, r->sock))
+		r->xprt->log("Warning: error setting non-blocking I/O on an "
+			     "incoming connection.\n");
 
 	/* Initialize send and recv I/O events */
 	pthread_mutex_lock(&event_lock);
 	r->buf_event = bufferevent_new(r->sock, sock_read, sock_write, sock_event, r);
 	if(!r->buf_event) {
-		fprintf(stdout, "Error initializing buffered I/O event for fd %d.\n", r->sock);
+		r->xprt->log("Error initializing buffered I/O event for "
+			     "fd %d.\n", r->sock);
 		goto err_0;
 	}
 	if (bufferevent_base_set(io_event_loop, r->buf_event))
 		goto err_0;
 
 	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
-		fprintf(stdout, "Error enabling buffered I/O event for fd %d.\n", r->sock);
+		r->xprt->log("Error enabling buffered I/O event for fd %d.\n",
+			     r->sock);
 	pthread_mutex_unlock(&event_lock);
 	return;
  err_0:
@@ -328,47 +351,84 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 	ldms_release_xprt(r->xprt);
 }
 
-static void setup_connection(int sockfd,
-			     struct sockaddr *remote_addr, socklen_t sa_len)
+static struct ldms_sock_xprt *
+setup_connection(struct ldms_sock_xprt *p, int sockfd,
+		 struct sockaddr *remote_addr, socklen_t sa_len)
 {
 	struct ldms_sock_xprt *r;
 	ldms_t _x;
 
 	/* Create a transport instance for this new connection */
-	_x = ldms_create_xprt("sock");
+	_x = ldms_create_xprt("sock", p->xprt->log);
 	if (!_x) {
-		fprintf(stdout, "Could not create a new transport.\n");
+		p->xprt->log("Could not create a new transport.\n");
 		close(sockfd);
-		return;
+		return NULL;
 	}
 
 	r = sock_from_xprt(_x);
 	r->sock = sockfd;
+	r->xprt->local_ss = p->xprt->local_ss;
 	_setup_connection(r, remote_addr, sa_len);
+	return r;
 }
+
+struct timeval listen_tv;
+struct timeval report_tv;
 
 static void sock_connect(int listenfd, short evtype, void *arg)
 {
+	struct ldms_sock_xprt *r = arg;
+	struct ldms_sock_xprt *new_r;
 	struct sockaddr_storage ss;
 	socklen_t addrlen = sizeof(ss);
+	static int conns;
 	int sockfd;
 	int i;
-
-	if(!(evtype & EV_READ)) {
-		printf("Unknown event type in connect callback: 0x%hx\n", evtype);
-		return;
-	}
-
+	
 	/* Accept and configure up to 10 incoming connections at a time */
 	for(i = 0; i < 10; i++) {
 		sockfd = accept(listenfd, (struct sockaddr *)&ss, &addrlen);
 		if(sockfd < 0) {
 			if(errno != EWOULDBLOCK && errno != EAGAIN) {
-				printf("Error accepting an incoming connection");
+				r->xprt->log("Error accepting an incoming connection");
 			}
 			break;
 		}
-		setup_connection(sockfd, (struct sockaddr *)&ss, addrlen);
+		new_r = setup_connection(r, sockfd, (struct sockaddr *)&ss, addrlen);
+		if (new_r) {
+			conns ++;
+
+			struct sockaddr_in *lsin = (struct sockaddr_in *)&new_r->xprt->local_ss;
+			struct sockaddr_in *rsin = (struct sockaddr_in *)&new_r->xprt->remote_ss;
+			char la[32];
+			char ra[32];
+			strcpy(la, inet_ntoa(lsin->sin_addr));
+			strcpy(ra, inet_ntoa(rsin->sin_addr));
+			r->xprt->log("Accepted local %s:%d remote %s:%d\n",
+				     la, ntohs(lsin->sin_port),
+				     ra, ntohs(rsin->sin_port));
+		}
+		if (0 == (evtype & EV_READ)) {
+			/* We got a new connection, but EV_READ was
+			 * not set. This is the stall condition */
+			r->xprt->log("Listener has stalled\n");
+		}
+	}
+	struct timeval tv;
+	tv.tv_sec = 10;
+	tv.tv_usec = 0;
+	i = event_add(r->listen_ev, &tv);
+
+	struct timeval connect_tv;
+	gettimeofday(&connect_tv, NULL);
+
+	if ((connect_tv.tv_sec - report_tv.tv_sec) >= 10) {
+		double rate;
+		rate = (double)conns / (double)(connect_tv.tv_sec - report_tv.tv_sec);
+		r->xprt->log("Connection rate is %.2f connectios/second\n", rate);
+		report_tv = connect_tv;
+		conns = 0;
 	}
 }
 
@@ -376,8 +436,11 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 {
 	int rc;
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
-	struct event *event;
+	struct timeval tv;
 	int optval = 1;
+
+	gettimeofday(&listen_tv, NULL);
+	report_tv = listen_tv;
 
 	r->sock = socket(PF_INET, SOCK_STREAM, 0);
 	if (r->sock < 0) {
@@ -396,18 +459,20 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	if (rc)
 		goto err_0;
 
-	if (set_nonblock(r->sock))
-		printf("Warning: Could not set listening socket to non-blocking\n");
+	if (set_nonblock(x, r->sock))
+		x->log("Warning: Could not set listening socket to non-blocking\n");
 
 	rc = ENOMEM;
-	event = malloc(sizeof *event);
-	if (!event)
+	r->listen_ev = malloc(sizeof(struct event));
+	if (!r->listen_ev)
 		goto err_0;
 	pthread_mutex_lock(&event_lock);
-	event_set(event, r->sock, EV_READ | EV_PERSIST, sock_connect, r);
-	if (event_base_set(io_event_loop, event))
+	event_set(r->listen_ev, r->sock, EV_READ, sock_connect, r);
+	if (event_base_set(io_event_loop, r->listen_ev))
 		goto err_1;
-	rc = event_add(event, NULL);
+	tv.tv_sec = 10;
+	tv.tv_usec = 0;
+	rc = event_add(r->listen_ev, &tv);
 	if (rc)
 		goto err_1;
 
@@ -415,7 +480,7 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	return rc;
 
  err_1:
-	free(event);
+	free(r->listen_ev);
  err_0:
 	pthread_mutex_unlock(&event_lock);
 	ldms_xprt_close(r->xprt);

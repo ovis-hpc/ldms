@@ -43,6 +43,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -56,8 +57,17 @@
 #include "ldms_xprt.h"
 #include "ldms_private.h"
 
+void default_log(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	fflush(stdout);
+}
+
 #if 0
-#define TF() printf("%s:%d\n", __FUNCTION__, __LINE__)
+#define TF() default_log("%s:%d\n", __FUNCTION__, __LINE__)
 #else
 #define TF()
 #endif
@@ -130,7 +140,7 @@ ldms_t ldms_xprt_find(struct sockaddr_in *sin)
 	ldms_t l;
 	for (l = ldms_xprt_first(); l; l = ldms_xprt_next(l)) {
 		struct ldms_xprt *x = (struct ldms_xprt *)l;
-		struct sockaddr_in *s = (struct sockaddr_in *)&x->ss;
+		struct sockaddr_in *s = (struct sockaddr_in *)&x->remote_ss;
 		if (s->sin_addr.s_addr == sin->sin_addr.s_addr)
 			return l;
 		ldms_release_xprt(l);
@@ -165,7 +175,7 @@ static void send_dir_update(struct ldms_xprt *x,
 
 	reply = malloc(len);
 	if (!reply) {
-		printf("Memory allocation failure "
+		x->log("Memory allocation failure "
 		       "in dir update of peer.\n");
 		return;
 	}
@@ -478,7 +488,7 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	case LDMS_CMD_UPDATE:
 		break;
 	default:
-		printf("Unrecognized request %d\n", cmd);
+		x->log("Unrecognized request %d\n", cmd);
 		assert(0);
 	}
 	return 0;
@@ -598,7 +608,7 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 		process_dir_reply(x, reply, ctxt);
 		break;
 	default:
-		printf("Unrecognized reply %d\n", cmd);
+		x->log("Unrecognized reply %d\n", cmd);
 	}
 	return 0;
 }
@@ -637,7 +647,7 @@ struct ldms_xprt local_transport = {
 #define _SO_EXT ".so"
 #endif
 static char _libdir[PATH_MAX];
-ldms_t ldms_create_xprt(const char *name)
+ldms_t ldms_create_xprt(const char *name, void (*log)(const char *fmt, ...))
 {
 	int ret = 0;
 	char *libdir;
@@ -645,6 +655,8 @@ ldms_t ldms_create_xprt(const char *name)
 	char *errstr;
 	int len;
 
+	if (!log)
+		log = default_log;
 	if (0 == strcmp(name, "local"))
 		return &local_transport;
 
@@ -664,8 +676,8 @@ ldms_t ldms_create_xprt(const char *name)
 	strcat(_libdir, _SO_EXT);
 	void *d = dlopen(_libdir, RTLD_NOW);
 	if (!d) {
-		printf("dlopen: %s\n", dlerror());
 		/* The library doesn't exist */
+		log("dlopen: %s\n", dlerror());
 		ret = ENOENT;
 		goto err;
 	}
@@ -673,7 +685,7 @@ ldms_t ldms_create_xprt(const char *name)
 	ldms_xprt_get_t get = dlsym(d, "xprt_get");
 	errstr = dlerror();
 	if (errstr || !get) {
-		printf("dlsym: %s\n", errstr);
+		log("dlsym: %s\n", errstr);
 		/* The library exists but doesn't export the correct
 		 * symbol and is therefore likely the wrong library type */
 		ret = EINVAL;
@@ -692,9 +704,10 @@ ldms_t ldms_create_xprt(const char *name)
 	char tmp[32] = "io_ctxt.XXXXXX";
 	x->io_ctxt.sem_p = sem_open(mktemp(tmp), O_CREAT, 0666, 0);
 	if (!x->io_ctxt.sem_p) {
-		perror("Could not create semaphore");
+		log("Could not create semaphore");
 		exit(1);
 	}
+	x->log = log;
 	pthread_spin_init(&x->lock, 0);
 	pthread_spin_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
@@ -842,7 +855,7 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 		errno = EBUSY;
 		goto out;
 	}
-	memcpy(&x->ss, sa, sa_len);
+	memcpy(&x->remote_ss, sa, sa_len);
 	x->ss_len = sa_len;
 	rc = x->connect(x, sa, sa_len);
 	if (!rc)
@@ -856,7 +869,7 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 int ldms_listen(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 {
 	struct ldms_xprt *x = _x;
-	memcpy(&x->ss, sa, sa_len);
+	memcpy(&x->local_ss, sa, sa_len);
 	x->ss_len = sa_len;
 	return x->listen(x, sa, sa_len);
 }

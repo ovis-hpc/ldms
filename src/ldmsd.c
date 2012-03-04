@@ -100,7 +100,14 @@ int quiet = 1;
 void ldms_log(const char *fmt, ...)
 {
 	va_list ap;
+	time_t t;
+	struct tm *tm;
+	char dtsz[200];
 
+	t = time(NULL);
+	tm = localtime(&t);
+	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+		fprintf(log_fp, "%s: ", dtsz);
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
@@ -1073,7 +1080,7 @@ int do_connect(struct hostspec *hs, int do_dir)
 	int ret;
 
 	if (!hs->x) {
-		hs->x = ldms_create_xprt(hs->xprt_name);
+		hs->x = ldms_create_xprt(hs->xprt_name, ldms_log);
 		if (hs->x)
 			/* Take a reference since we're caching the handle */
 			ldms_xprt_get(hs->x);
@@ -1240,7 +1247,7 @@ void listen_on_transport(char *transport_str)
 	else
 		port_no = atoi(port_s);
 
-	l = ldms_create_xprt(name);
+	l = ldms_create_xprt(name, ldms_log);
 	if (!l) {
 		ldms_log("The transport specified, '%s', is invalid.\n", name);
 		cleanup(6);

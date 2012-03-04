@@ -81,7 +81,7 @@ LIST_HEAD(set_list, ls_set) set_list;
 #define FMT "h:p:i:x:lv"
 void usage(char *argv[])
 {
-	printf("%s:\n"
+	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
 	       "    -h <hostname>    The name of the host to query. Default is localhost.\n"
 	       "    -p <port_num>    The port number. The default is 50000.\n"
 	       "    -l               Show the values of the metrics in each metric set.\n"
@@ -158,8 +158,7 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 
 	pthread_mutex_lock(&upd_lock);
 	upd_count++;
-	if (upd_count >= lu_needed)
-		pthread_cond_signal(&upd_cv);
+	pthread_cond_signal(&upd_cv);
 	pthread_mutex_unlock(&upd_lock);
 }
 
@@ -311,7 +310,7 @@ int main(int argc, char *argv[])
 		usage(argv);
 	oc = (u_char *)h->h_addr_list[0];
 
-	ldms = ldms_create_xprt(xprt);
+	ldms = ldms_create_xprt(xprt, NULL);
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);
@@ -353,8 +352,13 @@ int main(int argc, char *argv[])
 			usage(argv);
 
 		/* Set list specified on the command line */
-		for (i = optind; i < argc; i++)
-			ldms_lookup(ldms, argv[i], lookup_cb, NULL);
+		for (i = optind; i < argc; i++) {
+			ret = ldms_lookup(ldms, argv[i], lookup_cb, NULL);
+			if (ret) {
+				printf("ldms_lookup returned %d\n", ret);
+				exit(1);
+			}
+		}
 	}
 
 	pthread_mutex_lock(&dir_lock);
@@ -369,12 +373,16 @@ int main(int argc, char *argv[])
 			pthread_cond_wait(&lu_cv, &lu_lock);
 		pthread_mutex_unlock(&lu_lock);
 	}
-		
+
 	do {
 		struct ls_set *lss;
 		pthread_mutex_lock(&dir_lock);
 		LIST_FOREACH(lss, &set_list, entry) {
 			ret = ldms_update(lss->set, print_cb, NULL);
+			if (ret) {
+				printf("ldms_update returned %d\n", ret);
+				exit(1);
+			}
 		}
 		pthread_mutex_unlock(&dir_lock);
 		if (sample_interval > 0)

@@ -99,9 +99,8 @@ struct ldms_sock_xprt {
 	enum sock_conn_status conn_status;
 
 	int sock;
-	struct event_base *evloop;
 	struct bufferevent *buf_event;
-	size_t needed;
+	struct event *listen_ev;
 
 	LIST_ENTRY(ldms_sock_xprt) client_link;
 };
