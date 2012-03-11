@@ -102,7 +102,7 @@ static void sock_xprt_close(struct ldms_xprt *x)
 
 	if (s->listen_ev)
 		event_del(s->listen_ev);
-
+#if 0
 	struct sockaddr_in *lsin = (struct sockaddr_in *)&x->local_ss;
 	struct sockaddr_in *rsin = (struct sockaddr_in *)&x->remote_ss;
 	char la[32];
@@ -112,7 +112,7 @@ static void sock_xprt_close(struct ldms_xprt *x)
 	x->log("Closed   local %s:%d remote %s:%d\n",
 	       la, ntohs(lsin->sin_port),
 	       ra, ntohs(rsin->sin_port));
-
+#endif
 	close(s->sock);
 	s->sock = 0;
 }
@@ -322,7 +322,7 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 	r->xprt->ss_len = sa_len;
 	r->xprt->connected = 1;
 
-	if(set_nonblock(r->xprt, r->sock))
+	if (set_nonblock(r->xprt, r->sock))
 		r->xprt->log("Warning: error setting non-blocking I/O on an "
 			     "incoming connection.\n");
 
@@ -375,11 +375,15 @@ setup_connection(struct ldms_sock_xprt *p, int sockfd,
 
 struct timeval listen_tv;
 struct timeval report_tv;
+#define CRAY_BUG
+#ifdef CRAY_BUG
+struct timeval last_tv;
+#endif
 
 static void sock_connect(int listenfd, short evtype, void *arg)
 {
 	struct ldms_sock_xprt *r = arg;
-	struct ldms_sock_xprt *new_r;
+	struct ldms_sock_xprt *new_r = NULL;
 	struct sockaddr_storage ss;
 	socklen_t addrlen = sizeof(ss);
 	static int conns;
@@ -398,7 +402,10 @@ static void sock_connect(int listenfd, short evtype, void *arg)
 		new_r = setup_connection(r, sockfd, (struct sockaddr *)&ss, addrlen);
 		if (new_r) {
 			conns ++;
-
+#ifdef CRAY_BUG
+			gettimeofday(&last_tv, NULL);
+#endif
+#if 0
 			struct sockaddr_in *lsin = (struct sockaddr_in *)&new_r->xprt->local_ss;
 			struct sockaddr_in *rsin = (struct sockaddr_in *)&new_r->xprt->remote_ss;
 			char la[32];
@@ -408,6 +415,7 @@ static void sock_connect(int listenfd, short evtype, void *arg)
 			r->xprt->log("Accepted local %s:%d remote %s:%d\n",
 				     la, ntohs(lsin->sin_port),
 				     ra, ntohs(rsin->sin_port));
+#endif
 		}
 		if (0 == (evtype & EV_READ)) {
 			/* We got a new connection, but EV_READ was
@@ -418,7 +426,55 @@ static void sock_connect(int listenfd, short evtype, void *arg)
 	struct timeval tv;
 	tv.tv_sec = 10;
 	tv.tv_usec = 0;
+
+	pthread_mutex_lock(&event_lock);
+#ifdef CRAY_BUG
+	if (!new_r) {
+		int optval = 1;
+		int rc;
+
+		r->xprt->log("Resetting the listening socket\n");
+
+		/* Close the original socket */
+		close(r->sock);
+
+		r->sock = socket(PF_INET, SOCK_STREAM, 0);
+		if (r->sock < 0) {
+			r->xprt->log("Error %d, could not allocate replacement socket.\n", errno);
+			goto out;
+		}
+
+		setsockopt(r->sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+
+		/* Bind to the provided address */
+		rc = bind(r->sock, (struct sockaddr *)&r->xprt->local_ss, r->xprt->ss_len);
+		if (rc) {
+			r->xprt->log("Error %d, could not bind replacement socket.\n", errno);
+			goto out;
+		}
+
+		rc = listen(r->sock, 1024);
+		if (rc) {
+			r->xprt->log("Error %d, could not listen on replacement socket.\n", errno);
+			goto out;
+		}
+
+		if (set_nonblock(r->xprt, r->sock))
+			r->xprt->log("Warning: Could not set listening socket to non-blocking\n");
+
+		event_set(r->listen_ev, r->sock, EV_READ, sock_connect, r);
+		if (event_base_set(io_event_loop, r->listen_ev)) {
+			r->xprt->log("Error %d, could not set event base.\n");
+			goto out;
+		}
+	}
+ out:
+#endif
 	i = event_add(r->listen_ev, &tv);
+	if (i) {
+		r->xprt->log("Error %d adding event for socket.\n", i);
+	}
+	pthread_mutex_unlock(&event_lock);
 
 	struct timeval connect_tv;
 	gettimeofday(&connect_tv, NULL);
@@ -455,7 +511,7 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	if (rc)
 		goto err_0;
 
-	rc = listen(r->sock, 10);
+	rc = listen(r->sock, 1024);
 	if (rc)
 		goto err_0;
 
