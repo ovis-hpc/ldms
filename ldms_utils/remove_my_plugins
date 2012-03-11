@@ -1,0 +1,16 @@
+#!/bin/bash
+
+cd base
+/projects/ldms/ldms_utils/base/control_plugins \
+/projects/ldms/ldms_utils/configs/my_hosts \
+/projects/ldms/ldms_utils/configs/my_stop_plugins \
+2 \
+sock
+
+/projects/ldms/ldms_utils/base/control_plugins \
+/projects/ldms/ldms_utils/configs/my_hosts \
+/projects/ldms/ldms_utils/configs/my_remove_plugins \
+2 \
+sock
+
+

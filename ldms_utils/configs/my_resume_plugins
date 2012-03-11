@@ -1,0 +1,7 @@
+# ldms entity (meminfo, vmstat, geminfo, procinterrupts, procpidstatic, procstatutil, ldmsmon), action (start, stop, resume, remove), collection period
+meminfo resume 1000000
+vmstat resume 1000000
+procinterrupts resume 1000000
+procstatutil resume 1000000
+# perf_event resume 1000000
+

@@ -1,0 +1,6 @@
+#!/bin/bash
+# Args are: hostfile, stream number (must match a stream in ldms_base_config, transport (sock or rdma)
+
+cd /projects/ldms/ldms_utils/base/
+./start_ldmsd /projects/ldms/ldms_utils/configs/my_hosts 1 sock
+
