@@ -181,6 +181,14 @@ int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 		x->xprt->read_complete_cb(x->xprt, (void *)(unsigned long)rsp->hdr.xid);
 	return 0;
 }
+static int bev_write(struct bufferevent *bev, void *data, size_t len)
+{
+	if (EVBUFFER_LENGTH(bev->output))
+		/* queue the data the end of the currently active buffer event */
+		return evbuffer_add(bev->output, data, len);
+		
+	return bufferevent_write(bev, data, len);
+}
 
 uint64_t last_sock_read_req;
 int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
@@ -204,8 +212,8 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 		goto err;
 
 	/* Write the requested local buffer back to the socket */
-	ret =  bufferevent_write(x->buf_event,
-				 (void *)(unsigned long)req->buf_info.rbuf, len);
+	ret =  bev_write(x->buf_event,
+			 (void *)(unsigned long)req->buf_info.rbuf, len);
  err:
 	pthread_mutex_unlock(&event_lock);
 	return ret;
@@ -559,7 +567,7 @@ static int sock_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 		return -ENOTCONN;
 
 	pthread_mutex_lock(&event_lock);
-	rc = bufferevent_write(r->buf_event, buf, len);
+	rc = bev_write(r->buf_event, buf, len);
 	pthread_mutex_unlock(&event_lock);
 	return rc;
 }
@@ -634,7 +642,7 @@ static int sock_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 		read_req.buf_info.size = htonl(len);
 
 	pthread_mutex_lock(&event_lock);
-	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
+	rc = bev_write(r->buf_event, &read_req, sizeof(read_req));
 	pthread_mutex_unlock(&event_lock);
 	return rc;
 }
@@ -656,7 +664,7 @@ static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 		read_req.buf_info.size = htonl(len);
 
 	pthread_mutex_lock(&event_lock);
-	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
+	rc = bev_write(r->buf_event, &read_req, sizeof(read_req));
 	pthread_mutex_unlock(&event_lock);
 	return rc;
 }
