@@ -74,7 +74,7 @@ lib_LTLIBRARIES = src/libldms.la $(SOCK_la) $(RDMA_la) $(MEMINFO_la) $(GEMINFO_l
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
-src_libldms_la_LIBADD = -ldl -lpthread
+src_libldms_la_LIBADD = -ldl -lpthread -levent -levent_pthreads
 src_libldms_la_DEPENDENCIES = $(srcdir)/src/libldms.map
 
 libldmsincludedir = $(includedir)/ldms
@@ -87,9 +87,11 @@ src_ldms_ls_LDADD = $(top_builddir)/src/libldms.la
 
 src_ldmsd_SOURCES = src/ldmsd.c src/ldmsd_cfg.c
 src_ldmsd_LDADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -levent
+src_ldmsd_DEPENDENCIES = $(top_builddir)/libun.a
 
 src_ldmsctl_SOURCES = src/ldmsctl.c
 src_ldmsctl_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
+src_ldmsctl_DEPENDENCIES = $(top_builddir)/libun.a
 
 EXTRA_DIST = include ldms-utils.spec.in ldms-utils.spec \
 	autogen.sh \

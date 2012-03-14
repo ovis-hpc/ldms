@@ -43,7 +43,11 @@
 #define __LDMS_XPRT_SOCK_H__
 #include <semaphore.h>
 #include <sys/queue.h>
-#include <event.h>
+#include <event2/event.h>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
+#include <event2/listener.h>
+#include <event2/thread.h>
 
 /*
  * This structure is provided to the client in lookup and returned by
@@ -100,7 +104,7 @@ struct ldms_sock_xprt {
 
 	int sock;
 	struct bufferevent *buf_event;
-	struct event *listen_ev;
+	struct evconnlistener *listen_ev;
 
 	LIST_ENTRY(ldms_sock_xprt) client_link;
 };

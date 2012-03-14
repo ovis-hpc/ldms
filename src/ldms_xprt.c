@@ -264,10 +264,23 @@ int ldms_xprt_closed(ldms_t _x)
 	return 1;
 }
 
-void ldms_release_xprt(ldms_t _x)
+void __release_xprt(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	struct ldms_rbuf_desc *rb;
+
+	while (!LIST_EMPTY(&x->rbd_list)) {
+		rb = LIST_FIRST(&x->rbd_list);
+		ldms_free_rbd(rb);
+	}
+	x->destroy(x);
+	sem_close(x->io_ctxt.sem_p);
+	free(x);
+}
+
+void ldms_release_xprt(ldms_t _x)
+{
+	struct ldms_xprt *x = _x;
 	int destroy = 0;
 
 	pthread_spin_lock(&xprt_list_lock);
@@ -278,16 +291,8 @@ void ldms_release_xprt(ldms_t _x)
 		LIST_REMOVE(x, xprt_link);
 	}
 	pthread_spin_unlock(&xprt_list_lock);
-	if (!destroy)
-		return;
-
-	while (!LIST_EMPTY(&x->rbd_list)) {
-		rb = LIST_FIRST(&x->rbd_list);
-		ldms_free_rbd(rb);
-	}
-	x->destroy(x);
-	sem_close(x->io_ctxt.sem_p);
-	free(x);
+	if (destroy)
+		__release_xprt(x);
 }
 
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
@@ -704,9 +709,10 @@ ldms_t ldms_create_xprt(const char *name, void (*log)(const char *fmt, ...))
 	char tmp[32] = "io_ctxt.XXXXXX";
 	x->io_ctxt.sem_p = sem_open(mktemp(tmp), O_CREAT, 0666, 0);
 	if (!x->io_ctxt.sem_p) {
-		log("Could not create semaphore");
+		log("Could not create semaphore, errno %d", errno);
 		exit(1);
 	}
+	sem_unlink(tmp);
 	x->log = log;
 	pthread_spin_init(&x->lock, 0);
 	pthread_spin_lock(&xprt_list_lock);
@@ -922,4 +928,14 @@ struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set
 void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_spin_init(&xprt_list_lock, 0);
+}
+
+void __attribute__ ((destructor)) cs_term(void)
+{
+	struct ldms_xprt *x;
+	while (!LIST_EMPTY(&xprt_list)) {
+		       x = LIST_FIRST(&xprt_list);
+		       LIST_REMOVE(x, xprt_link);
+		       __release_xprt(x);
+	}
 }

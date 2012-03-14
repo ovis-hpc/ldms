@@ -125,6 +125,13 @@ static struct sockaddr_un un_sun;
 
 void un_close(void)
 {
+	struct sockaddr_un sun;
+	socklen_t salen = sizeof(sun);
+	if (!getsockname(un_muxr_s, (struct sockaddr *)&sun, &salen)) {
+		if (unlink(sun.sun_path))
+			perror("unlink: ");
+	} else
+		perror("getsockname: ");
 	close(un_muxr_s);
 }
 
@@ -142,7 +149,7 @@ int un_connect(char *my_name, char *sockname)
 	/* Create muxr socket */
 	un_muxr_s = socket(AF_UNIX, SOCK_DGRAM, 0);
 	if (un_muxr_s < 0) {
-	  perror("socket: ");
+		perror("socket: ");
 		return un_muxr_s;
 	}
 
@@ -159,11 +166,10 @@ int un_connect(char *my_name, char *sockname)
 	/* Bind to our public name */
 	rc = bind(un_muxr_s, (struct sockaddr *)&my_un, sizeof(struct sockaddr_un));
 	if (rc < 0) {
-	  perror("bind: ");
+		printf("Error creating '%s'\n", my_un.sun_path);
 		close(un_muxr_s);
 		return -1;
 	}
-
 	return un_muxr_s;
 }
 

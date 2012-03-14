@@ -55,7 +55,6 @@
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
 
-static pthread_mutex_t event_lock;
 static struct event_base *io_event_loop;
 static pthread_t io_thread;
 
@@ -84,10 +83,8 @@ void sock_xprt_cleanup(void)
 {
 	void *dontcare;
 
-	pthread_mutex_lock(&event_lock);
 	if (io_event_loop)
 		event_base_loopbreak(io_event_loop);
-	pthread_mutex_unlock(&event_lock);
 	if (io_thread) {
 		pthread_cancel(io_thread);
 		pthread_join(io_thread, &dontcare);
@@ -100,8 +97,10 @@ static void sock_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
 
-	if (s->listen_ev)
-		event_del(s->listen_ev);
+	if (s->listen_ev) {
+		evconnlistener_free(s->listen_ev);
+		s->listen_ev = NULL;
+	}
 #if 0
 	struct sockaddr_in *lsin = (struct sockaddr_in *)&x->local_ss;
 	struct sockaddr_in *rsin = (struct sockaddr_in *)&x->remote_ss;
@@ -181,14 +180,6 @@ int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 		x->xprt->read_complete_cb(x->xprt, (void *)(unsigned long)rsp->hdr.xid);
 	return 0;
 }
-static int bev_write(struct bufferevent *bev, void *data, size_t len)
-{
-	if (EVBUFFER_LENGTH(bev->output))
-		/* queue the data the end of the currently active buffer event */
-		return evbuffer_add(bev->output, data, len);
-		
-	return bufferevent_write(bev, data, len);
-}
 
 uint64_t last_sock_read_req;
 int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
@@ -206,16 +197,14 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 	rsp.status = 0;
 	memcpy(&rsp.buf_info, &req->buf_info, sizeof req->buf_info);
 
-	pthread_mutex_lock(&event_lock);
-	ret = evbuffer_add(x->buf_event->output, &rsp, sizeof(rsp));
+	ret = bufferevent_write(x->buf_event, &rsp, sizeof(rsp));
 	if (ret < 0)
 		goto err;
 
 	/* Write the requested local buffer back to the socket */
-	ret =  bev_write(x->buf_event,
+	ret =  bufferevent_write(x->buf_event,
 			 (void *)(unsigned long)req->buf_info.rbuf, len);
  err:
-	pthread_mutex_unlock(&event_lock);
 	return ret;
 }
 
@@ -266,19 +255,18 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 
 	struct ldms_sock_xprt *r = (struct ldms_sock_xprt *)arg;
 	struct evbuffer *evb;
-	struct ldms_request_hdr *hdr;
+	struct ldms_request_hdr hdr;
 	struct ldms_request *req;
 	size_t len;
 	size_t reqlen;
 	size_t buflen;
 	do {
-		assert(!pthread_mutex_lock(&event_lock));
-		evb = EVBUFFER_INPUT(buf_event);
-		buflen = EVBUFFER_LENGTH(evb);
-		if (buflen < sizeof(*hdr))
+		evb = bufferevent_get_input(buf_event);
+		buflen = evbuffer_get_length(evb);
+		if (buflen < sizeof(hdr))
 			break;
-		hdr = (struct ldms_request_hdr *)EVBUFFER_DATA(evb);
-		reqlen = ntohl(hdr->len);
+		evbuffer_copyout(evb, &hdr, sizeof(hdr));
+		reqlen = ntohl(hdr.len);
 		if (buflen < reqlen)
 			break;
 		req = malloc(reqlen);
@@ -291,11 +279,9 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 		}
 		len = evbuffer_remove(evb, req, reqlen);
 		assert(len == reqlen);
-		pthread_mutex_unlock(&event_lock);
 		process_xprt_io(r, req);
 		free(req);
 	} while (1);
-	pthread_mutex_unlock(&event_lock);
 }
 
 static void *io_thread_proc(void *arg)
@@ -308,16 +294,14 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 {
 	struct ldms_sock_xprt *r = arg;
 
-	if (events & EVBUFFER_EOF) {
+	if (events & BEV_EVENT_EOF) {
 		/* Peer disconnect */
 		r->xprt->connected = 0;
 		ldms_xprt_close(r->xprt);
 		ldms_release_xprt(r->xprt);
-		pthread_mutex_lock(&event_lock);
 		if (r->buf_event)
 			bufferevent_free(r->buf_event);
 		r->buf_event = NULL;
-		pthread_mutex_unlock(&event_lock);
 	} else
 		r->xprt->log("Socket error %x\n", events);
 }
@@ -335,26 +319,21 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 			     "incoming connection.\n");
 
 	/* Initialize send and recv I/O events */
-	pthread_mutex_lock(&event_lock);
-	r->buf_event = bufferevent_new(r->sock, sock_read, sock_write, sock_event, r);
+	r->buf_event = bufferevent_socket_new(io_event_loop, r->sock, BEV_OPT_THREADSAFE);
 	if(!r->buf_event) {
 		r->xprt->log("Error initializing buffered I/O event for "
 			     "fd %d.\n", r->sock);
 		goto err_0;
 	}
-	if (bufferevent_base_set(io_event_loop, r->buf_event))
-		goto err_0;
-
+	bufferevent_setcb(r->buf_event, sock_read, sock_write, sock_event, r);
 	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
 		r->xprt->log("Error enabling buffered I/O event for fd %d.\n",
 			     r->sock);
-	pthread_mutex_unlock(&event_lock);
 	return;
  err_0:
 	if (r->buf_event)
 		bufferevent_free(r->buf_event);
 	r->buf_event = NULL;
-	pthread_mutex_unlock(&event_lock);
 	ldms_xprt_close(r->xprt);
 	ldms_release_xprt(r->xprt);
 }
@@ -383,106 +362,23 @@ setup_connection(struct ldms_sock_xprt *p, int sockfd,
 
 struct timeval listen_tv;
 struct timeval report_tv;
-#define CRAY_BUG
+// #define CRAY_BUG
 #ifdef CRAY_BUG
 struct timeval last_tv;
 #endif
 
-static void sock_connect(int listenfd, short evtype, void *arg)
+static void sock_connect(struct evconnlistener *listener,
+			 evutil_socket_t sockfd,
+			 struct sockaddr *address, int socklen, void *arg)
 {
 	struct ldms_sock_xprt *r = arg;
 	struct ldms_sock_xprt *new_r = NULL;
-	struct sockaddr_storage ss;
-	socklen_t addrlen = sizeof(ss);
 	static int conns;
-	int sockfd;
-	int i;
 	
 	/* Accept and configure up to 10 incoming connections at a time */
-	for(i = 0; i < 10; i++) {
-		sockfd = accept(listenfd, (struct sockaddr *)&ss, &addrlen);
-		if(sockfd < 0) {
-			if(errno != EWOULDBLOCK && errno != EAGAIN) {
-				r->xprt->log("Error accepting an incoming connection");
-			}
-			break;
-		}
-		new_r = setup_connection(r, sockfd, (struct sockaddr *)&ss, addrlen);
-		if (new_r) {
-			conns ++;
-#ifdef CRAY_BUG
-			gettimeofday(&last_tv, NULL);
-#endif
-#if 0
-			struct sockaddr_in *lsin = (struct sockaddr_in *)&new_r->xprt->local_ss;
-			struct sockaddr_in *rsin = (struct sockaddr_in *)&new_r->xprt->remote_ss;
-			char la[32];
-			char ra[32];
-			strcpy(la, inet_ntoa(lsin->sin_addr));
-			strcpy(ra, inet_ntoa(rsin->sin_addr));
-			r->xprt->log("Accepted local %s:%d remote %s:%d\n",
-				     la, ntohs(lsin->sin_port),
-				     ra, ntohs(rsin->sin_port));
-#endif
-		}
-		if (0 == (evtype & EV_READ)) {
-			/* We got a new connection, but EV_READ was
-			 * not set. This is the stall condition */
-			r->xprt->log("Listener has stalled\n");
-		}
-	}
-	struct timeval tv;
-	tv.tv_sec = 10;
-	tv.tv_usec = 0;
-
-	pthread_mutex_lock(&event_lock);
-#ifdef CRAY_BUG
-	if (!new_r) {
-		int optval = 1;
-		int rc;
-
-		r->xprt->log("Resetting the listening socket\n");
-
-		/* Close the original socket */
-		close(r->sock);
-
-		r->sock = socket(PF_INET, SOCK_STREAM, 0);
-		if (r->sock < 0) {
-			r->xprt->log("Error %d, could not allocate replacement socket.\n", errno);
-			goto out;
-		}
-
-		setsockopt(r->sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
-
-		/* Bind to the provided address */
-		rc = bind(r->sock, (struct sockaddr *)&r->xprt->local_ss, r->xprt->ss_len);
-		if (rc) {
-			r->xprt->log("Error %d, could not bind replacement socket.\n", errno);
-			goto out;
-		}
-
-		rc = listen(r->sock, 1024);
-		if (rc) {
-			r->xprt->log("Error %d, could not listen on replacement socket.\n", errno);
-			goto out;
-		}
-
-		if (set_nonblock(r->xprt, r->sock))
-			r->xprt->log("Warning: Could not set listening socket to non-blocking\n");
-
-		event_set(r->listen_ev, r->sock, EV_READ, sock_connect, r);
-		if (event_base_set(io_event_loop, r->listen_ev)) {
-			r->xprt->log("Error %d, could not set event base.\n");
-			goto out;
-		}
-	}
- out:
-#endif
-	i = event_add(r->listen_ev, &tv);
-	if (i) {
-		r->xprt->log("Error %d adding event for socket.\n", i);
-	}
-	pthread_mutex_unlock(&event_lock);
+	new_r = setup_connection(r, sockfd, (struct sockaddr *)&address, socklen);
+	if (new_r)
+		conns ++;
 
 	struct timeval connect_tv;
 	gettimeofday(&connect_tv, NULL);
@@ -500,7 +396,6 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 {
 	int rc;
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
-	struct timeval tv;
 	int optval = 1;
 
 	gettimeofday(&listen_tv, NULL);
@@ -514,39 +409,19 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 
 	setsockopt(r->sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 
-	/* Bind to the provided address */
-	rc = bind(r->sock, sa, sa_len);
-	if (rc)
-		goto err_0;
-
-	rc = listen(r->sock, 1024);
-	if (rc)
-		goto err_0;
-
 	if (set_nonblock(x, r->sock))
 		x->log("Warning: Could not set listening socket to non-blocking\n");
 
 	rc = ENOMEM;
-	r->listen_ev = malloc(sizeof(struct event));
+	r->listen_ev = evconnlistener_new_bind(io_event_loop, sock_connect, r,
+					       LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
+					       1024, sa, sa_len);
 	if (!r->listen_ev)
 		goto err_0;
-	pthread_mutex_lock(&event_lock);
-	event_set(r->listen_ev, r->sock, EV_READ, sock_connect, r);
-	if (event_base_set(io_event_loop, r->listen_ev))
-		goto err_1;
-	tv.tv_sec = 10;
-	tv.tv_usec = 0;
-	rc = event_add(r->listen_ev, &tv);
-	if (rc)
-		goto err_1;
 
-	pthread_mutex_unlock(&event_lock);
-	return rc;
-
- err_1:
-	free(r->listen_ev);
+	r->sock = evconnlistener_get_fd(r->listen_ev);
+	return 0;
  err_0:
-	pthread_mutex_unlock(&event_lock);
 	ldms_xprt_close(r->xprt);
 	ldms_release_xprt(r->xprt);
 	return rc;
@@ -566,9 +441,7 @@ static int sock_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 	if (r->conn_status != CONN_CONNECTED)
 		return -ENOTCONN;
 
-	pthread_mutex_lock(&event_lock);
-	rc = bev_write(r->buf_event, buf, len);
-	pthread_mutex_unlock(&event_lock);
+	rc = bufferevent_write(r->buf_event, buf, len);
 	return rc;
 }
 
@@ -641,9 +514,7 @@ static int sock_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	if (len)
 		read_req.buf_info.size = htonl(len);
 
-	pthread_mutex_lock(&event_lock);
-	rc = bev_write(r->buf_event, &read_req, sizeof(read_req));
-	pthread_mutex_unlock(&event_lock);
+	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
 	return rc;
 }
 
@@ -663,9 +534,7 @@ static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 	if (len)
 		read_req.buf_info.size = htonl(len);
 
-	pthread_mutex_lock(&event_lock);
-	rc = bev_write(r->buf_event, &read_req, sizeof(read_req));
-	pthread_mutex_unlock(&event_lock);
+	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
 	return rc;
 }
 
@@ -683,16 +552,15 @@ static int init_once()
 {
 	int rc = ENOMEM;
 
+	evthread_use_pthreads();
 	io_event_loop = event_base_new();
 	if (!io_event_loop)
 		return errno;
 
-	keepalive = malloc(sizeof *keepalive);
+	keepalive = evtimer_new(io_event_loop, timeout_cb, NULL);
 	if (!keepalive)
 		goto err_1;
 
-	evtimer_set(keepalive, timeout_cb, NULL);
-	event_base_set(io_event_loop, keepalive);
 	to.tv_sec = 1;
 	to.tv_usec = 0;
 	evtimer_add(keepalive, &to);
@@ -701,7 +569,6 @@ static int init_once()
 	if (rc)
 		goto err_1;
 
-	pthread_mutex_init(&event_lock, NULL);
 	atexit(sock_xprt_cleanup);
 	return 0;
 

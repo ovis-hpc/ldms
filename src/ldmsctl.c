@@ -149,9 +149,9 @@ int main(int argc, char *argv[])
 			continue;
 		}
 		err_str[0] = '\0';
-		if (0 == strcmp(kw, "quit")) {
-			exit(0);
-		}
+		if (0 == strcmp(kw, "quit"))
+			goto quit;
+
 		if (0 == strcmp(kw, "load")) {
 			un_load_plugin(arg, err_str);
 			goto finit;
@@ -200,6 +200,7 @@ int main(int argc, char *argv[])
 			printf("%s\n", err_str);
 		continue;
 	} while (s);
+ quit:
 	un_close();
  	return(0);
 }
