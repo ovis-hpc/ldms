@@ -55,6 +55,8 @@
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
 
+pthread_mutex_t sock_lock;
+
 static struct event_base *io_event_loop;
 static pthread_t io_thread;
 
@@ -290,6 +292,16 @@ static void *io_thread_proc(void *arg)
 	return NULL;
 }
 
+static void release_buf_event(struct ldms_sock_xprt *r)
+{
+	pthread_mutex_lock(&sock_lock);
+	if (r->buf_event) {
+		bufferevent_free(r->buf_event);
+		r->buf_event = NULL;
+	}
+	pthread_mutex_unlock(&sock_lock);
+}
+
 static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 {
 	struct ldms_sock_xprt *r = arg;
@@ -299,9 +311,7 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 		r->xprt->connected = 0;
 		ldms_xprt_close(r->xprt);
 		ldms_release_xprt(r->xprt);
-		if (r->buf_event)
-			bufferevent_free(r->buf_event);
-		r->buf_event = NULL;
+		release_buf_event(r);
 	} else
 		r->xprt->log("Socket error %x\n", events);
 }
@@ -331,9 +341,6 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 			     r->sock);
 	return;
  err_0:
-	if (r->buf_event)
-		bufferevent_free(r->buf_event);
-	r->buf_event = NULL;
 	ldms_xprt_close(r->xprt);
 	ldms_release_xprt(r->xprt);
 }
@@ -553,6 +560,7 @@ static int init_once()
 	int rc = ENOMEM;
 
 	evthread_use_pthreads();
+	pthread_mutex_init(&sock_lock, 0);
 	io_event_loop = event_base_new();
 	if (!io_event_loop)
 		return errno;
