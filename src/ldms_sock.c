@@ -76,6 +76,8 @@ static struct ldms_sock_xprt * setup_connection(struct ldms_sock_xprt *x,
 static void _setup_connection(struct ldms_sock_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len);
 
+static void release_buf_event(struct ldms_sock_xprt *r);
+
 static struct ldms_sock_xprt *sock_from_xprt(ldms_t d)
 {
 	return ((struct ldms_xprt *)d)->private;
@@ -99,10 +101,7 @@ static void sock_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
 
-	if (s->listen_ev) {
-		evconnlistener_free(s->listen_ev);
-		s->listen_ev = NULL;
-	}
+	release_buf_event(s);
 #if 0
 	struct sockaddr_in *lsin = (struct sockaddr_in *)&x->local_ss;
 	struct sockaddr_in *rsin = (struct sockaddr_in *)&x->remote_ss;
@@ -295,6 +294,10 @@ static void *io_thread_proc(void *arg)
 static void release_buf_event(struct ldms_sock_xprt *r)
 {
 	pthread_mutex_lock(&sock_lock);
+	if (r->listen_ev) {
+		evconnlistener_free(r->listen_ev);
+		r->listen_ev = NULL;
+	}
 	if (r->buf_event) {
 		bufferevent_free(r->buf_event);
 		r->buf_event = NULL;
@@ -311,7 +314,6 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 		r->xprt->connected = 0;
 		ldms_xprt_close(r->xprt);
 		ldms_release_xprt(r->xprt);
-		release_buf_event(r);
 	} else
 		r->xprt->log("Socket error %x\n", events);
 }
@@ -382,7 +384,6 @@ static void sock_connect(struct evconnlistener *listener,
 	struct ldms_sock_xprt *new_r = NULL;
 	static int conns;
 	
-	/* Accept and configure up to 10 incoming connections at a time */
 	new_r = setup_connection(r, sockfd, (struct sockaddr *)&address, socklen);
 	if (new_r)
 		conns ++;
