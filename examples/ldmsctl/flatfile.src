@@ -1,0 +1,7 @@
+load flatfile
+init flatfile ignored
+config flatfile add=nfssrv1.ogc.int/meminfo&/tmp/meminfo.dat
+config flatfile add_metric=nfssrv1.ogc.int/meminfo&MemFree&1234
+config flatfile add=nfssrv1.ogc.int/vmstat&/tmp/vmstat.dat
+config flatfile add_metric=nfssrv1.ogc.int/vmstat&nr_free_pages&4321
+start flatfile 1000000
