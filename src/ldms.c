@@ -53,6 +53,20 @@ struct ldms_set *ldms_find_local_set(const char *set_name)
 	return s;
 }
 
+extern ldms_set_t ldms_get_set(const char *set_name)
+{
+	struct ldms_set_desc *sd = NULL;
+	struct ldms_set *set = ldms_find_local_set(set_name);
+	if (!set)
+		goto out;
+
+	sd = calloc(1, sizeof *sd);
+	sd->set = set;
+
+ out:
+	return sd;
+}
+
 uint64_t ldms_get_meta_gn(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = _set;

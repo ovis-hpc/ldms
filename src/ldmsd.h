@@ -81,6 +81,7 @@ struct ldms_plugin {
 	int (*init)(const char *path);
 	int (*sample)(void);
 	void (*term)(void);
+	const char *(*usage)(void);
 };
 typedef void (*ldmsd_msg_log_f)(const char *fmt, ...);
 typedef struct ldms_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);

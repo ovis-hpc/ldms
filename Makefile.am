@@ -36,6 +36,11 @@ else
 SOCK_FLAGS = -DDISABLE_SOCK
 endif
 
+src_libflatfile_la_SOURCES = src/flatfile.c
+src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map
+src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+FLATFILE_la = src/libflatfile.la
+
 src_libmeminfo_la_SOURCES = src/meminfo.c
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
@@ -70,7 +75,9 @@ endif
 
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 
-lib_LTLIBRARIES = src/libldms.la $(SOCK_la) $(RDMA_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(VMSTAT_la) $(PROCSTATUTIL_la) $(PERF_EVENT_la)
+lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
+	$(RDMA_la) $(FLATFILE_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
+	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERF_EVENT_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c

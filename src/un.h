@@ -63,6 +63,7 @@ extern uint64_t un_set_s32(int set_no, int metric_no, int32_t s32);
 extern uint64_t un_set_u64(int set_no, int metric_no, uint64_t u64);
 extern uint64_t un_set_s64(int set_no, int metric_no, int32_t s64);
 
+extern int un_ls_plugins(char *, size_t);
 extern int un_load_plugin(char *plugin, char *err_str);
 extern int un_init_plugin(char *plugin, char *set_name, char *err_str);
 extern int un_term_plugin(char *plugin, char *err_str);

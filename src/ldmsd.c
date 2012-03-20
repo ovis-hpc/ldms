@@ -646,13 +646,14 @@ int process_config_plugin(int fd,
 			  char *command)
 {
 	char plugin_name[LDMS_MAX_PLUGIN_NAME_LEN];
-	char *err_str = "";
+	static char err_str[64];
 	int rc = 0;
 	struct plugin *pi;
 
+	err_str[0] = '\0';
 	rc = sscanf(command, "%s %[^\n]", plugin_name, config_str);
 	if (rc != 2) {
-		err_str = "Invalid request syntax";
+		sprintf(err_str, "Invalid request syntax %d", rc);
 		rc = EINVAL;
 		goto out;
 	}
@@ -660,12 +661,12 @@ int process_config_plugin(int fd,
 	pi = get_plugin(plugin_name);
 	if (!pi) {
 		rc = ENOENT;
-		err_str = "Plugin not found.";
+		sprintf(err_str, "Plugin '%s' not found.", plugin_name);
 		goto out;
 	}
 	rc = pi->plugin->config(config_str);
 	if (rc) {
-		err_str = "Plugin configuration error";
+		sprintf(err_str, "Plugin configuration error %d", rc);
 		goto out;
 	}
 
@@ -766,6 +767,22 @@ int process_stop_plugin(int fd,
 	pi->state = PLUGIN_INIT;
  out:
 	sprintf(replybuf, "PR %d %s", rc, err_str);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+int process_ls_plugins(int fd,
+		       struct sockaddr *sa, ssize_t sa_len,
+		       char *command)
+{
+	struct plugin *p;
+	replybuf[0] = '\0';
+	LIST_FOREACH(p, &plugin_list, entry) {
+		strcat(replybuf, p->name);
+		strcat(replybuf, "\n");
+		if (p->plugin->usage)
+			strcat(replybuf, p->plugin->usage());
+	}
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
@@ -931,6 +948,12 @@ int process_record(int fd,
 		s += 2;
 		return process_config_plugin(fd, sa, sa_len, s);
 	}
+	/* Handle ls Plugin command */
+	if (0 == strncasecmp(s, "LS", 2)) {
+		s += 2;
+		return process_ls_plugins(fd, sa, sa_len, s);
+	}
+
 	ldms_log("Unrecognized request '%s'\n", command);
 	s[2] = '\0';
 	sprintf(replybuf, "%s -1\n", s);

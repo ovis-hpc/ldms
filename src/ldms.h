@@ -344,9 +344,6 @@ struct ldms_set {
 	struct ldms_data_hdr *data;
 	struct ogc_rbn rb_node;
 	LIST_HEAD(rbd_list, ldms_rbuf_desc) rbd_list;
-	/** User callback invoked when ldms_lookup completes */
-	ldms_lookup_cb_t lookup_cb;
-	void *lookup_cb_arg;
 };
 
 struct ldms_set_desc {
@@ -648,6 +645,16 @@ extern void ldms_destroy_set(ldms_set_t s);
  * \returns	The metric set name as a character string.
  */
 extern const char *ldms_get_set_name(ldms_set_t *s);
+
+/**
+ * \brief Get a set by name.
+ *
+ * Find a local metric set by name.
+ *
+ * \param set_name	The set name.
+ * \returns		The ldms_set_t handle or 0 if not found.
+ */
+extern ldms_set_t ldms_get_set(const char *set_name);
 
 /**
  * \brief Get the metric schema generation number.

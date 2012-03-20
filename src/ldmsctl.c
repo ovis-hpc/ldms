@@ -90,6 +90,8 @@ void help()
 	       "   - Loads the specified plugin. The library that implements\n"
 	       "     the plugin should be in the directory specified by the\n"
 	       "     LDMS_PLUGIN_LIBPATH environment variable.\n"
+	       "ls\n"
+	       "   - Show plugin information.\n"
 	       "init <plugin_name> <set_name>\n"
 	       "   - Specifies the name of the metric set for the plugin\n"
 	       "term <plugin_name>\n"
@@ -112,6 +114,7 @@ static char arg[60];
 static char arg1[60];
 static char arg2[60];
 static char linebuf[256];
+static char ls_buf[2048];
 int main(int argc, char *argv[])
 {
 	int op;
@@ -154,6 +157,12 @@ int main(int argc, char *argv[])
 
 		if (0 == strcmp(kw, "load")) {
 			un_load_plugin(arg, err_str);
+			goto finit;
+		}
+		if (0 == strcmp(kw, "ls")) {
+			err_str[0] = '\0';
+			un_ls_plugins(ls_buf, sizeof ls_buf);
+			printf(ls_buf);
 			goto finit;
 		}
 		if (0 == strcmp(kw, "init")) {

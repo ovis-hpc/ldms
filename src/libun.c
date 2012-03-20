@@ -59,6 +59,7 @@
 
 static int un_muxr_s = -1;
 static int un_quiet = 0;
+static char msg_buf[4096];
 
 void un_set_quiet(int q)
 {
@@ -172,8 +173,6 @@ int un_connect(char *my_name, char *sockname)
 	}
 	return un_muxr_s;
 }
-
-static char msg_buf[1024];
 
 int un_def_set(char *set_name, ssize_t set_size)
 {
@@ -321,7 +320,6 @@ uint64_t un_set_s64(int set_no, int metric_no, int64_t s64)
 	return _un_set();
 }
 
-static char msg_buf[1024];
 int un_load_plugin(char *plugin, char *err_str)
 {
 	int rc;
@@ -343,6 +341,28 @@ int un_load_plugin(char *plugin, char *err_str)
 	rc = sscanf(msg_buf, "%s %d %[^\n]", junk, &status, err_str);
 	if (rc >= 2)
 		return status;
+ out:
+	return -1;
+}
+
+int un_ls_plugins(char *buf, size_t buf_sz)
+{
+	int rc;
+
+	sprintf(msg_buf, "LS\n");
+	rc = un_send_req(un_muxr_s, (struct sockaddr *)&un_sun, sizeof(un_sun),
+			 msg_buf, strlen(msg_buf)+1);
+	if (rc < 0) {
+		un_say("Error %d sending request.\n", rc);
+		goto out;
+	}
+	rc = un_recv_rsp(un_muxr_s, NULL, 0, msg_buf, sizeof(msg_buf));
+	if (rc <= 0) {
+		un_say("Error %d receiving reply.\n", rc);
+		goto out;
+	}
+	strncpy(buf, msg_buf, buf_sz);
+	return 0;
  out:
 	return -1;
 }
