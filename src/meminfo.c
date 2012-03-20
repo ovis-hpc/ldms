@@ -64,24 +64,24 @@ ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 static int config(char *str)
 {
-  if (!set || !compid_metric_handle ){
-    msglog("meminfo: plugin not initialized\n");
-    return EINVAL;
-  }
-  //expects "component_id value"
-  if (0 == strncmp(str,"component_id",12)){
-    char junk[128];
-    int rc;
-    union ldms_value v;
+	if (!set || !compid_metric_handle ){
+		msglog("meminfo: plugin not initialized\n");
+		return EINVAL;
+	}
+	//expects "component_id value"
+	if (0 == strncmp(str,"component_id",12)){
+		char junk[128];
+		int rc;
+		union ldms_value v;
 
-    rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
-    if (rc < 1){
-      return EINVAL;
-    }
-    ldms_set_metric(compid_metric_handle, &v);
-  }
+		rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
+		if (rc < 1){
+			return EINVAL;
+		}
+		ldms_set_metric(compid_metric_handle, &v);
+	}
 
-  return 0;
+	return 0;
 }
 
 static ldms_set_t get_set()
