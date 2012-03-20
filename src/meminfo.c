@@ -62,22 +62,24 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
+
 static int config(char *str)
 {
-	if (!set || !compid_metric_handle ){
+	if (!set || !compid_metric_handle ) {
 		msglog("meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
+
 	//expects "component_id value"
-	if (0 == strncmp(str,"component_id",12)){
+	if (0 == strncmp(str, "component_id", 12)) {
 		char junk[128];
 		int rc;
 		union ldms_value v;
 
-		rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
-		if (rc < 1){
+		rc = sscanf(str, "component_id %" PRIu64 "%s\n", &v.v_u64, junk);
+		if (rc < 1)
 			return EINVAL;
-		}
+
 		ldms_set_metric(compid_metric_handle, &v);
 	}
 
@@ -210,6 +212,12 @@ static void term(void)
 	ldms_destroy_set(set);
 }
 
+static const char *usage(void)
+{
+	return  "    config meminfo component_id <comp_id>\n"
+		"        - Set the component_id value in the metric set.\n"
+		"        comp_id     The component id value\n";
+}
 
 static struct ldms_plugin meminfo_plugin = {
 	.name = "meminfo",
@@ -218,6 +226,7 @@ static struct ldms_plugin meminfo_plugin = {
 	.config = config,
 	.get_set = get_set,
 	.sample = sample,
+	.usage = usage,
 };
 
 struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
