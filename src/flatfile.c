@@ -248,17 +248,21 @@ static int sample(void)
 	struct fmetric *met;
 	int rc;
 	LIST_FOREACH(set, &set_list, entry) {
+	  //check here for the generation number and see if it changes if you want. there is a function to get it.
+	  //ldms_get_data_gn. metadata number changes when a new metric gets added or removed. data number
+	  //with any change
 		LIST_FOREACH(met, &set->metric_list, entry) {
 			/* timestamp metric_name metric_value */
 			sprintf(data_str, 
 				"%"PRIu64" %"PRIu64" %"PRIu64"\n",
 				(uint64_t)time(NULL), met->key,
-				ldms_get_u64(met->md));
-			msglog(data_str);
+			ldms_get_u64(met->md));
+			// msglog(data_str); //this logs the sample to the log file 
 			rc = fprintf(set->file, data_str);
 			if (rc <= 0)
 				msglog("Error %d writing '%s' to '%s'\n", rc, data_str, set->file_path);
-			fflush(set->file);
+			//			fflush(set->file); tail the flat file if you want to see it
+			//for mySQL: will need to put the level
 		}
 	}
 	return 0;
