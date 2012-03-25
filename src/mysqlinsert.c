@@ -57,18 +57,18 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-//FIXME: how to get these values into the plugin?
-#define DEFAULT_DB_SOCKET "/var/lib/mysql/mysql.sock"
+//DB_SOCKET is currently not used
+//#define DEFAULT_DB_SOCKET "/var/lib/mysql/mysql.sock" 
 #define DEFAULT_USER "ovis"
 #define DEFAULT_PASS ""
-#define DEFAULT_DB "junk2"
+#define DEFAULT_DB "mysqlinserttest"
 #define DEFAULT_DBHOST "localhost"
 
-#define LOGFILE "/var/log/flat_file.log"
+#define LOGFILE "/var/log/mysqlinsert.log"
 
 struct fmetric {
 	ldms_metric_t md;
-	uint64_t key;		/* component id or whatever else you like */
+  uint64_t key;		/* component id or whatever else you like. if you change this, change how to get compId below */ //FIXME: check if this has to be unique in the metric set
 	LIST_ENTRY(fmetric) entry;
 };
 
@@ -89,8 +89,12 @@ ldms_metric_t compid_metric_handle;
 char file_path[LDMS_MAX_CONFIG_STR_LEN];
 char set_name[LDMS_MAX_CONFIG_STR_LEN];
 char metric_name[LDMS_MAX_CONFIG_STR_LEN];
+char db_schema[LDMS_MAX_CONFIG_STR_LEN];
+char db_host[LDMS_MAX_CONFIG_STR_LEN];
+char username[LDMS_MAX_CONFIG_STR_LEN];
+char password[LDMS_MAX_CONFIG_STR_LEN];
 
-MYSQL *conn;
+MYSQL *conn = NULL;
 
 static struct fset *get_fset(char *set_name)
 {
@@ -191,6 +195,18 @@ static int remove_metric(char *set_name, char *metric_name)
 	return 0;
 }
 
+static int set_dbconfigs()
+{
+  if (strlen(db_schema) == 0)
+    snprintf(db_schema,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_DB);
+  if (strlen(db_host) == 0)
+    snprintf(db_host,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_DBHOST);
+  if (strlen(username) == 0)
+    snprintf(username,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_USER);
+  if (strlen(password) == 0)
+    snprintf(password,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_PASS);
+}
+
 static int config(char *config_str)
 {
 	enum {
@@ -198,21 +214,23 @@ static int config(char *config_str)
 		ADD_METRIC,
 		REMOVE_SET,
 		REMOVE_METRIC,
-                COMPONENT_ID,
+		DATABASE_INFO,
 	} action;
 	int rc;
 	uint64_t key;
 
 	if (0 == strncmp(config_str, "add_metric", 10))
 		action = ADD_METRIC;
-	else if (0 == strncmp(config_str, "remove_metric", 32))
+	else if (0 == strncmp(config_str, "remove_metric", 13))
 		action = REMOVE_METRIC;
 	else if (0 == strncmp(config_str, "add", 3))
 		action = ADD_SET;
 	else if (0 == strncmp(config_str, "remove", 6))
 		action = REMOVE_SET;
+	else if (0 == strncmp(config_str, "database_info", 13))
+                action = DATABASE_INFO;
 	else {
-		msglog("flatfile: Invalid configuration string '%s'\n",
+		msglog("mysqlinsert: Invalid configuration string '%s'\n",
 		       config_str);
 		return EINVAL;
 	}
@@ -233,6 +251,11 @@ static int config(char *config_str)
 		sscanf(config_str, "remove_metric=%[^&]&%s", set_name, metric_name);
 		rc = remove_metric(set_name, metric_name);
 		break;
+	case DATABASE_INFO:
+	        //FIXME: will this work?
+	        sscanf(config_str, "database_info=%[^&]&%[^&]&%[^&]&%s", db_schema, db_host, username, password);
+                rc = set_dbconfigs();
+		break;
 	default:
 		msglog("Invalid config statement '%s'.\n", config_str);
 		return EINVAL;
@@ -248,18 +271,25 @@ static ldms_set_t get_set()
 
 static int init(const char *path)
 {
-  //FIXME: how to get the values in?
   //FIXME: will we want the conn live all the time?
-  conn = mysql_init(NULL);
-  if (conn == NULL){
-    printf ("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-    exit(1);
+
+  if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) 
+      || (strlen(username) == 0) || (strlen(password) == 0)){
+    msglog("Invalid parameters for database");
+    return EINVAL;
   }
 
-  if (!mysql_real_connect(conn, DEFAULT_DBHOST, DEFAULT_USER,
-			  DEFAULT_PASS, DEFAULT_DB, 0, NULL, 0)){
-    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-    exit(1);
+  //FIXME: what return options do we have?
+  conn = mysql_init(NULL);
+  if (conn == NULL){
+    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+    return EPERM;
+  }
+
+  if (!mysql_real_connect(conn, db_host, username,
+			  password, db_schema, 0, NULL, 0)){
+    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+    return EPERM;
   }
 	return 0;
 }
@@ -269,51 +299,47 @@ static int sample(void)
 {
 	struct fset *set;
 	struct fmetric *met;
-	//	int rc;
 	LIST_FOREACH(set, &set_list, entry) {
-	  //check here for the generation number and see if it changes if you want. there is a function to get it.
+	  //FIXME: check here for the generation number and see if it changes if you want. there is a function to get it.
 	  //ldms_get_data_gn. metadata number changes when a new metric gets added or removed. data number
 	  //with any change
 		LIST_FOREACH(met, &set->metric_list, entry) {
-			/* timestamp metric_name metric_value */
-			sprintf(data_str, 
-				"%"PRIu64" %"PRIu64" %"PRIu64"\n",
-				(uint64_t)time(NULL), met->key,
-			ldms_get_u64(met->md));
-			// msglog(data_str); //this logs the sample to the log file 
-			//			rc = fprintf(set->file, data_str);
-			//			if (rc <= 0)
-			//				msglog("Error %d writing '%s' to '%s'\n", rc, data_str, set->file_path);
-			//			fflush(set->file); tail the flat file if you want to see it
-			//FIXME: will need to do remote assoc
-			//FIXME: will need to put in supporting tables (e.g., MetricValueTableIndex)
-			//FIXME: will want to support diffs
-			
-			//FIXME: will need to get these values
-			char tableName[100];
-			int compId = 1;
-			char compType[10] = "Node";
-			char metricName[40] = "WHAT_IS_THE_NAME"; //is the key the id?
-			snprintf(tableName,100,"Metric%s%sValues",compType,metricName);
+		  //FIXME: will need to do remote assoc
+		  //FIXME: will need to put in supporting tables (e.g., MetricValueTableIndex)
+		  //FIXME: will want to support diffs
+		  
+		  char tableName[100];
+		  int compId = met->key; // i think right now the key is the component id
+		  char compType[10] = "Node"; //FIXME: will need to get this somehow
+		  snprintf(tableName,100,"Metric%s%sValues",compType, ldms_get_metric_name(met->md));
 
-			//FIXME: avoid doing this each time
-			char createDefinition[4096];
-			snprintf(createDefinition, 4095,"%s%s%s","CREATE TABLE IF NOT EXISTS ", tableName, "(`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value`  INT(32) NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), INDEX MetricCoreCpu_RSSValues_Time (`Time` ), INDEX MetricNodeJunkValues_Level (`CompId` ,`Level` ,`Time` ))");
+		  //FIXME: avoid doing this each time
+		  char createDefinition[4096];
+		  snprintf(createDefinition, 4095,"%s%s%s%s%s%s%s",
+			   "CREATE TABLE IF NOT EXISTS ",
+			   tableName,
+			   "(`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value`  INT(32) NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), INDEX ",
+			   tableName,
+			   "_Time (`Time` ), INDEX ",
+			   tableName,
+			   "_Level (`CompId` ,`Level` ,`Time` ))");
 
-			if (!mysql_query(conn, createDefinition )){
-			  //FIXME: why do these print when the mysql statement works?
-			  //    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-			  //    exit(1);
-			}
+		  if (conn == NULL)
+		    return EPERM;
 
-			int val = ldms_get_u64(met->md);
-			int level = 1; //FIXME: make this rand
-			char insertStatement[1024];
-			snprintf(insertStatement,1023,"INSERT INTO %s VALUES(NULL, %d, %d, NULL, %d)", tableName, compId, val, level);
-			if (!mysql_query(conn, insertStatement )){
-			  //    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-			  //    exit(1);
-			}
+		  if (!mysql_query(conn, createDefinition)){
+		    //FIXME: why do these print when the mysql statement works?
+		    //    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+		    //    exit(1);
+		  }
+
+		  int val = ldms_get_u64(met->md);
+		  char insertStatement[1024];
+		  snprintf(insertStatement,1023,"INSERT INTO %s VALUES(NULL, %d, %d, NULL, %d)", tableName, compId, val, lround( -log2( drand48() ) ));
+		  if (!mysql_query(conn, insertStatement)){
+		    //    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+		    //    exit(1);
+		  }
 
 		}
 	}
@@ -322,34 +348,40 @@ static int sample(void)
 
 static void term(void)
 {
-  // FIXME: is this correct?
+  // FIXME: is this correct to be in term?
   mysql_close(conn);
 }
 
 static const char *usage(void)
 {
-	return  "    config flatfile add=<set_name>&<path>\n"
+	return  "    config mysqlinsert add=<set_name>&<path>\n"
 		"        - Adds a metric set and associated file to contain sampled values.\n"
 		"        set_name    The name of the metric set\n"
 		"        path        Path to a file that will contain the sampled metrics.\n"
 		"                    The file will be created if it does not already exist\n"
 		"                    and appeneded to if it does.\n"
-		"    config flatfile remove=<set_name>\n"
+		"    config mysqlinsert remove=<set_name>\n"
 		"        - Removes a metric set. The file is closed, but not destroyed\n"
 		"        set_name    The name of the metric set\n"
-		"    config flatfile add_metric=<set_name>&<metric_name>&key\n"
+		"    config mysqlinsert add_metric=<set_name>&<metric_name>&key\n"
 		"        - Add the specified metric to the set of values stored from the set\n"
 		"        set_name    The name of the metric set.\n"
 		"        metric_name The name of the metric.\n"
 		"        key         An unique Id for the Metric. Typically the component_id.\n"
-		"    config flatfile remove_metric=<set_name>&<metric_name>\n"
+		"    config mysqlinsert remove_metric=<set_name>&<metric_name>\n"
 		"        - Stop storing values for the specified metric\n"
 		"        set_name    The name of the metric set.\n"
-		"        metric_name The name of the metric.\n";
+		"        metric_name The name of the metric.\n"
+	        "    config mysqlinsert database_info=<db_schema>&<db_host>&<username>&<password>\n"
+                "        - Database information\n"
+                "        db_schema   The database name (default: mysqlinserttest).\n"
+                "        db_host     The database hostname (default: localhost).\n"
+                "        username   The database username (default: ovis).\n"
+	        "        password   The database user's password (default: <none>).\n";
 }
 
-static struct ldms_plugin flat_file_plugin = {
-	.name = "flat_file",
+static struct ldms_plugin mysqlinsert_plugin = {
+	.name = "mysqlinsert",
 	.init = init,
 	.term = term,
 	.config = config,
@@ -361,6 +393,6 @@ static struct ldms_plugin flat_file_plugin = {
 struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	msglog("flat_file: plugin loaded\n");
-	return &flat_file_plugin;
+	msglog("mysqlinsert: plugin loaded\n");
+	return &mysqlinsert_plugin;
 }
