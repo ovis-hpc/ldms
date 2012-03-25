@@ -2,7 +2,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
-	-I$(includedir)/infiniband
+	-I$(includedir)/infiniband -I/usr/include/mysql
 
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl
 
@@ -41,6 +41,11 @@ src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map
 src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 FLATFILE_la = src/libflatfile.la
 
+src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
+src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
+src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient
+MYSQLINSERT_la = src/libmysqlinsert.la
+
 src_libmeminfo_la_SOURCES = src/meminfo.c
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
@@ -76,7 +81,7 @@ endif
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
-	$(RDMA_la) $(FLATFILE_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
+	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERF_EVENT_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
