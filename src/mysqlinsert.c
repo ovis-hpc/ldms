@@ -198,13 +198,14 @@ static int remove_metric(char *set_name, char *metric_name)
 static int set_dbconfigs()
 {
   if (strlen(db_schema) == 0)
-    snprintf(db_schema,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_DB);
+    snprintf(db_schema,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_DB);
   if (strlen(db_host) == 0)
-    snprintf(db_host,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_DBHOST);
+    snprintf(db_host,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_DBHOST);
   if (strlen(username) == 0)
-    snprintf(username,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_USER);
+    snprintf(username,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_USER);
   if (strlen(password) == 0)
-    snprintf(password,LDMS_MAX_CONFIG_STR_LEN-1,DEFAULT_PASS);
+    snprintf(password,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_PASS);
+  return 1;
 }
 
 static int config(char *config_str)
@@ -294,7 +295,80 @@ static int init(const char *path)
 	return 0;
 }
 
-static char data_str[2048];
+/*
+static int lookupCompNameFromId( int compId, char* compName ){
+  char selectStatement[1024];
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+
+  snprintf(selectStatement,1023,"SELECT CompName From ComponentTable WHERE CompId = %d", compId);
+  if (!mysql_query(conn, selectStatement)){
+    result = mysql_store_result(conn);
+    int num_fields = mysql_num_fields(result);
+    if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
+      mysql_free_result(result);
+      snprintf(compName,1023,"%s","");
+      return -1;
+    }
+    while((row = mysql_fetch_row(result))){
+      snprintf(compName, 1023,"%s",row[0]); //FIXME: get a const for these sizes
+      mysql_free_result(result);
+      return 1;
+    }
+  }
+  snprintf(compName,1023,"%s","");
+  return -1;
+}
+*/
+
+static int lookupCompTypeShortNameFromCompId( int compId, char* shortName){
+  char selectStatement[1024];
+  MYSQL_RES *result;
+  MYSQL_ROW row;
+
+  snprintf(selectStatement,1023,"SELECT CompType From ComponentTable WHERE CompId = %d", compId);
+  if (mysql_query(conn, selectStatement)){
+    //failed
+    snprintf(shortName,1023,"%s","");
+    return -1;
+  }
+  result = mysql_store_result(conn);
+  int num_fields = mysql_num_fields(result);
+  if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
+    mysql_free_result(result);
+    snprintf(shortName,1023,"%s","");
+    return -1;
+  }
+  int comptype = -1;
+  while((row = mysql_fetch_row(result))){
+    comptype = atoi(row[0]); 
+    break;
+  }
+  mysql_free_result(result);
+
+  snprintf(selectStatement,1023,"SELECT ShortName From ComponentTypes WHERE CompType = %d", comptype);
+  if (mysql_query(conn, selectStatement)){
+    //failed
+    snprintf(shortName,1023,"%s","");
+    return -1;
+  }
+  result = mysql_store_result(conn);
+  num_fields = mysql_num_fields(result);
+  if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
+    mysql_free_result(result);    
+    snprintf(shortName,1023,"%s","");
+    return -1;
+  }
+  while((row = mysql_fetch_row(result))){
+    snprintf(shortName, 1023,"%s",row[0]);
+    mysql_free_result(result);    
+    return 1;
+  }
+
+  snprintf(shortName,1023,"%s","");
+  return -1;
+}
+
 static int sample(void)
 {
 	struct fset *set;
@@ -310,7 +384,11 @@ static int sample(void)
 		  
 		  char tableName[100];
 		  int compId = met->key; // i think right now the key is the component id
-		  char compType[10] = "Node"; //FIXME: will need to get this somehow
+		  char compType[1024];
+		  int ret = lookupCompTypeShortNameFromCompId(compId, compType); //FIXME: avoid doing this each time
+		  if (ret < 0){
+		    return EINVAL;
+		  }
 		  snprintf(tableName,100,"Metric%s%sValues",compType, ldms_get_metric_name(met->md));
 
 		  //FIXME: avoid doing this each time
@@ -327,18 +405,19 @@ static int sample(void)
 		  if (conn == NULL)
 		    return EPERM;
 
-		  if (!mysql_query(conn, createDefinition)){
-		    //FIXME: why do these print when the mysql statement works?
-		    //    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-		    //    exit(1);
+		  if (mysql_query(conn, createDefinition) != 0){
+		    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+		    exit(1);
 		  }
 
 		  int val = ldms_get_u64(met->md);
 		  char insertStatement[1024];
-		  snprintf(insertStatement,1023,"INSERT INTO %s VALUES(NULL, %d, %d, NULL, %d)", tableName, compId, val, lround( -log2( drand48() ) ));
-		  if (!mysql_query(conn, insertStatement)){
-		    //    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-		    //    exit(1);
+		  long int level = lround( -log2( drand48()));
+		  snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %d, NULL, %ld )",
+			   tableName, compId, val, level);
+		  if (mysql_query(conn, insertStatement) != 0){
+		    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+		    exit(1);
 		  }
 
 		}
