@@ -370,7 +370,7 @@ static int lookupCompTypeShortNameFromCompId( int compId, char* shortName){
 }
 
 
-static int createTable(char *tableName){
+static int createTable(char* metricName, char *tableName){
   //will create a table and the supporting tables, if necessary
 
   if (conn == NULL)
@@ -386,25 +386,20 @@ static int createTable(char *tableName){
 	   "_Time (`Time` ), INDEX ",
 	   tableName,
 	   "_Level (`CompId` ,`Level` ,`Time` ))");
-  //FIXME: check this statement. there is a different create in ovSEDCStaticSampler.pl
+  //FIXME: check this statement. there is a different create in ovSEDCStaticSampler.pl re INDEX vs KEY
   
   if (mysql_query(conn, query1) != 0){
     printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
     exit(1);
   }
 
-  /* STILL NEED TO CHECK THIS 
+  /*
   //create the MetricValueType
-  snprintf(query1, 4095, "",
-	   "SELECT * from MetricValueTypes WHERE Name='",
+  snprintf(query1, 4095, "%s%s%s",
+	   "SELECT ValueType from MetricValueTypes WHERE Name='",
 	   metricName,
-	   "' AND Units='",
-	   units,
-	   "' AND Constant=",
-	   consttype,
-	   " AND Storage='",
-	   valuetype,
-	   "'");
+	   "' AND Units='1' AND Constant=0 AND Storage='int'");
+  //NOTE that storage will be int and not int(32)
   if (mysql_query(conn, query1)){
     //failed
     return -1;
@@ -424,30 +419,19 @@ static int createTable(char *tableName){
     char query2[4096];
     mysql_free_result(result);
 
-    snprintf(query1, 4095, "",
+    snprintf(query1, 4095, "%s%s%s",
 	     "INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('",
 	     metricName,
-	     "', '",
-	     units,
-	     "', '",
-	     valuetype,
-	     "', ",
-	     consttype,
-	     ")");
+	     "', '1', 'int', 0)";
+	     //FIXME: check this int and not int(32)
     if (mysql_query(conn, query2)){
       //failed
       return -1;
     }
-    snprintf(query1, 4095, "",
-	     "SELECT * from MetricValueTypes WHERE Name='",
+    snprintf(query1, 4095, "%s%s%s",
+	     "SELECT ValueType from MetricValueTypes WHERE Name='",
 	     metricName,
-	     "' AND Units='",
-	     units,
-	     "' AND Constant=",
-	     consttype,
-	     " AND Storage='",
-	     valuetype,
-	     "'");
+	     "' AND Units='1' AND Constant=0 AND Storage='int')";
     if (mysql_query(conn, query1)){
       //failed
       return -1;
@@ -467,8 +451,8 @@ static int createTable(char *tableName){
   }
 
   //create the TableId if necessary
-  snprintf(query1, 4095, "",
-	   "SELECT * from MetricValueTableIndex WHERE TableName='",
+  snprintf(query1, 4095, "%s%s%d%s%s%s",
+	   "SELECT TableId from MetricValueTableIndex WHERE TableName='",
 	   tableName,
 	   "' AND CompType='",
 	   ctype,
@@ -483,7 +467,7 @@ static int createTable(char *tableName){
   int num_fields = mysql_num_fields(result);
   if ((num_fields != 1) && (mysql_num_rows(result) != 1)){
     mysql_free_result(result);
-    snprintf(query1, 4095, "",
+    snprintf(query1, 4095, "%s%s%d%s%s%s",
 	     "INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType ) VALUES ( ",
 	     tableName,
 	     "', ",
@@ -491,9 +475,11 @@ static int createTable(char *tableName){
 	     ", ",
 	     metrictype,
 	     ")");
-  if (mysql_query(conn, query1)){
-    //failed                                                                                              
-    return -1;
+    if (mysql_query(conn, query1)){
+      //failed                                                                                                    return -1;
+    }
+  } else {
+    mysql_free_result(result);
   }
   */
 
@@ -511,7 +497,6 @@ static int sample(void)
 	  //with any change
 		LIST_FOREACH(met, &set->metric_list, entry) {
 		  //FIXME: will need to do remote assoc
-		  //FIXME: will need to put in supporting tables (e.g., MetricValueTableIndex)
 		  //FIXME: will want to support diffs
 		  
 		  char tableName[100];
