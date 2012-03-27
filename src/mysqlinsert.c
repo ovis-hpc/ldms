@@ -362,12 +362,144 @@ static int lookupCompTypeShortNameFromCompId( int compId, char* shortName){
   while((row = mysql_fetch_row(result))){
     snprintf(shortName, 1023,"%s",row[0]);
     mysql_free_result(result);    
-    return 1;
+    return 0;
   }
 
   snprintf(shortName,1023,"%s","");
   return -1;
 }
+
+
+static int createTable(char *tableName){
+  //will create a table and the supporting tables, if necessary
+
+  if (conn == NULL)
+    return EPERM;
+
+  //create table if required
+  char query1[4096];
+  snprintf(query1, 4095,"%s%s%s%s%s%s%s",
+	   "CREATE TABLE IF NOT EXISTS ",
+	   tableName,
+	   "(`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value`  INT(32) NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), INDEX ",
+	   tableName,
+	   "_Time (`Time` ), INDEX ",
+	   tableName,
+	   "_Level (`CompId` ,`Level` ,`Time` ))");
+  //FIXME: check this statement. there is a different create in ovSEDCStaticSampler.pl
+  
+  if (mysql_query(conn, query1) != 0){
+    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+    exit(1);
+  }
+
+  /* STILL NEED TO CHECK THIS 
+  //create the MetricValueType
+  snprintf(query1, 4095, "",
+	   "SELECT * from MetricValueTypes WHERE Name='",
+	   metricName,
+	   "' AND Units='",
+	   units,
+	   "' AND Constant=",
+	   consttype,
+	   " AND Storage='",
+	   valuetype,
+	   "'");
+  if (mysql_query(conn, query1)){
+    //failed
+    return -1;
+  }
+
+  int metrictype = -1;
+  result = mysql_store_result(conn);
+  int num_fields = mysql_num_fields(result);
+  if ((num_fields == 1) && (mysql_num_rows(result) != 1)){
+    //it could be in there already (more than 1 sampler can provide the same data)
+    while((row = mysql_fetch_row(result))){
+      metrictype = atoi(row[0]); 
+      mysql_free_result(result);
+      break;
+    }
+  } else {
+    char query2[4096];
+    mysql_free_result(result);
+
+    snprintf(query1, 4095, "",
+	     "INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('",
+	     metricName,
+	     "', '",
+	     units,
+	     "', '",
+	     valuetype,
+	     "', ",
+	     consttype,
+	     ")");
+    if (mysql_query(conn, query2)){
+      //failed
+      return -1;
+    }
+    snprintf(query1, 4095, "",
+	     "SELECT * from MetricValueTypes WHERE Name='",
+	     metricName,
+	     "' AND Units='",
+	     units,
+	     "' AND Constant=",
+	     consttype,
+	     " AND Storage='",
+	     valuetype,
+	     "'");
+    if (mysql_query(conn, query1)){
+      //failed
+      return -1;
+    }
+    result = mysql_store_result(conn);
+    int num_fields = mysql_num_fields(result);
+    if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
+      //failed
+      mysql_free_result(result);
+      return -1;
+    }
+    while((row = mysql_fetch_row(result))){
+      metrictype = atoi(row[0]); 
+      mysql_free_result(result);
+      break;
+    }
+  }
+
+  //create the TableId if necessary
+  snprintf(query1, 4095, "",
+	   "SELECT * from MetricValueTableIndex WHERE TableName='",
+	   tableName,
+	   "' AND CompType='",
+	   ctype,
+	   "' AND ValueType=",
+	   metrictype,
+	   "'");
+  if (mysql_query(conn, query1)){
+    //failed                                                                                              
+    return -1;
+  }
+  result = mysql_store_result(conn);
+  int num_fields = mysql_num_fields(result);
+  if ((num_fields != 1) && (mysql_num_rows(result) != 1)){
+    mysql_free_result(result);
+    snprintf(query1, 4095, "",
+	     "INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType ) VALUES ( ",
+	     tableName,
+	     "', ",
+	     ctype,
+	     ", ",
+	     metrictype,
+	     ")");
+  if (mysql_query(conn, query1)){
+    //failed                                                                                              
+    return -1;
+  }
+  */
+
+  return 0;
+}
+
 
 static int sample(void)
 {
@@ -386,28 +518,14 @@ static int sample(void)
 		  int compId = met->key; // i think right now the key is the component id
 		  char compType[1024];
 		  int ret = lookupCompTypeShortNameFromCompId(compId, compType); //FIXME: avoid doing this each time
-		  if (ret < 0){
+		  if (ret != 0){
 		    return EINVAL;
 		  }
 		  snprintf(tableName,100,"Metric%s%sValues",compType, ldms_get_metric_name(met->md));
 
-		  //FIXME: avoid doing this each time
-		  char createDefinition[4096];
-		  snprintf(createDefinition, 4095,"%s%s%s%s%s%s%s",
-			   "CREATE TABLE IF NOT EXISTS ",
-			   tableName,
-			   "(`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value`  INT(32) NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), INDEX ",
-			   tableName,
-			   "_Time (`Time` ), INDEX ",
-			   tableName,
-			   "_Level (`CompId` ,`Level` ,`Time` ))");
-
-		  if (conn == NULL)
-		    return EPERM;
-
-		  if (mysql_query(conn, createDefinition) != 0){
-		    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-		    exit(1);
+		  ret = createTable(tableName);		  //FIXME: avoid doing this each time
+		  if (ret != 0){
+		    return ret;
 		  }
 
 		  int val = ldms_get_u64(met->md);
