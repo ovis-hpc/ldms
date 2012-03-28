@@ -1,0 +1,453 @@
+/*
+ * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012 Sandia Corporation. All rights reserved.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the BSD-type
+ * license below:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *      Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *      Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *      Neither the name of the Network Appliance, Inc. nor the names of
+ *      its contributors may be used to endorse or promote products
+ *      derived from this software without specific prior written
+ *      permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Author: Tom Tucker <tom@opengridcomputing.com>
+ */
+/*
+ * This is the perfevent data provider
+ */
+#include <inttypes.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <sys/errno.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <sys/types.h>
+#include <linux/perf_event.h>
+#include <math.h>
+#include "ldms.h"
+#include "ldmsd.h"
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
+#endif
+
+#if defined(__i386__)
+#include "/usr/include/asm/unistd_32.h"
+#endif
+
+#if defined(__x86_64__)
+#include "/usr/include/asm/unistd_64.h"
+#endif
+
+struct pe_sample {
+	uint64_t value;
+	uint64_t time_running;
+};
+
+struct pevent {
+	struct perf_event_attr attr;
+	char *name;		/* name given by the user for this event */
+	int pid;
+	int cpu;
+	int fd;
+	uint64_t val;
+	uint64_t tstamp;
+	ldms_metric_t metric_value;
+	ldms_metric_t metric_mean;
+	ldms_metric_t metric_variance;
+	ldms_metric_t metric_stddev;
+	double mean;
+	double variance;
+	double card;		/* samples taken */
+	int warmup;
+	struct pe_sample sample;
+	uint64_t last_time_running;
+	uint64_t last_value;
+	LIST_ENTRY(pevent) entry;
+};
+LIST_HEAD(pevent_list, pevent) pevent_list;
+
+struct kw {
+	char *token;
+	int (*action)(char *s, void *arg);
+};
+
+static int kw_comparator(const void *a, const void *b)
+{
+	struct kw *_a = (struct kw *)a;
+	struct kw *_b = (struct kw *)b;
+	return strcmp(_a->token, _b->token);
+}
+
+static inline int
+pe_open(struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd,
+	unsigned long flags)
+{
+        attr->size = sizeof(*attr);
+        return syscall(__NR_perf_event_open, attr, pid, cpu,
+                       group_fd, flags);
+}
+
+ldms_set_t set;
+ldmsd_msg_log_f msglog;
+ldms_metric_t compid_metric_handle;
+
+char set_name[LDMS_MAX_CONFIG_STR_LEN];
+char metric_name[LDMS_MAX_CONFIG_STR_LEN];
+char event_type[LDMS_MAX_CONFIG_STR_LEN];
+char event_id[LDMS_MAX_CONFIG_STR_LEN];
+
+static const char *usage(void)
+{
+	return  "    config perfevent add_event(name=<name>,\n"
+		"                               pid=<pid>,\n"
+		"                               cpu=<cpu>,\n"
+		"                               type=<event_type>,\n"
+		"                               id=<event_id>)\n"
+		"            name   - A descriptive name for the event\n"
+		"            pid    - The PID for the process being monitored\n"
+		"                     The counter will follow the process to\n"
+		"                     whichever CPU/core is in use. Note that\n"
+		"                     'pid' and 'cpu' are mutually exclusive.\n"
+		"            cpu    - Count this event on the specified CPU.\n"
+		"                     This will accumulate events across all PID\n"
+		"                     that land on the specified CPU/core. Note\n"
+		"                     that 'pid' and 'cpu' are mutually\n"
+		"                     exclusive.\n"
+		"            type   - The event type.\n"
+		"            id     - The event id.\n"
+		"    config perfevent ls\n"
+		"            - List the currently configured events.\n"
+		;
+}
+
+/**
+ * Specify the textual name that will appear for this event in the metric set.
+ * Format: name=%s
+ */
+static int add_event_name(char *str, void *arg)
+{
+	struct pevent *pe = arg;
+	pe->name = strdup(str);
+	return 0;
+}
+
+/**
+ * Specify the event type
+ */
+static int add_event_type(char *str, void *arg)
+{
+	struct pevent *pe = arg;
+	pe->attr.type = strtol(str, NULL, 0);
+	return 0;
+}
+
+/**
+ * Specify the pid
+ */
+static int add_event_pid(char *str, void *arg)
+{
+	struct pevent *pe = arg;
+	pe->pid = strtol(str, NULL, 0);
+	pe->cpu = -1;
+	return 0;
+}
+
+/**
+ * Specify the event id
+ */
+static int add_event_id(char *str, void *arg)
+{
+	struct pevent *pe = arg;
+	pe->attr.config = strtol(str, NULL, 0);
+	return 0;
+}
+
+/**
+ * Specify the cpuc core
+ */
+static int add_event_cpu(char *str, void *arg)
+{
+	struct pevent *pe = arg;
+	pe->cpu = strtol(str, NULL, 0);
+	pe->pid = -1;
+	return 0;
+}
+
+struct kw add_token_tbl[] = {
+	{ "cpu", add_event_cpu },
+	{ "id", add_event_id },
+	{ "name", add_event_name },
+	{ "pid", add_event_pid },
+	{ "type", add_event_type },
+};
+
+char token[256];
+char value[256];
+
+static struct pevent *find_event(char *name)
+{
+	struct pevent *pe;
+	LIST_FOREACH(pe, &pevent_list, entry) {
+		if (strcmp(pe->name, name) == 0)
+			return pe;
+	}
+	return NULL;
+}
+
+static int add_event(char *cfg_str, void *arg)
+{
+	char *s;
+	int rc;
+	struct pevent *pe;
+
+	pe = calloc(1, sizeof *pe);
+	if (!pe)
+		goto err;
+
+	pe->warmup = 2;
+	pe->attr.size = sizeof(pe);
+	pe->attr.read_format = PERF_FORMAT_TOTAL_TIME_RUNNING;
+	pe->attr.inherit = 1;
+
+	for (s = strtok(cfg_str, ",");
+	     s;
+	     s = strtok(NULL, " ")) {
+		struct kw key;
+		struct kw *kw;
+		sscanf(s, "%[^=]=%s", token, value);
+		key.token = token;
+		kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl),
+			     sizeof(*kw), kw_comparator);
+		if (!kw) {
+			msglog("Uncrecognized keyword '%s' in "
+			       "configuration string.\n", token);
+			return -1;
+		}
+		rc = kw->action(value, pe);
+		if (rc)
+			return rc;
+	}
+	if (!pe->name) {
+		msglog("An event name must be specifed.\n");
+		goto err;
+	}
+	pe->fd = pe_open(&pe->attr, pe->pid, pe->cpu, -1, 0);
+	if (pe->fd < 0) {
+		msglog("Error adding event '%s', errno %d\n", pe->name, pe->fd);
+		goto err;
+	}
+	sprintf(metric_name, "%s/%s", pe->name, "value");
+	pe->metric_value = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	if (!pe->metric_value) {
+		msglog("Could not create the metric for event '%s'\n",
+		       metric_name);
+		goto err;
+	}
+	sprintf(metric_name, "%s/%s", pe->name, "mean");
+	pe->metric_mean = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	if (!pe->metric_mean) {
+		msglog("Could not create the metric for event '%s'\n",
+		       metric_name);
+		goto err;
+	}
+	sprintf(metric_name, "%s/%s", pe->name, "variance");
+	pe->metric_variance = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	if (!pe->metric_variance) {
+		msglog("Could not create the metric for event '%s'\n",
+		       metric_name);
+		goto err;
+	}
+	sprintf(metric_name, "%s/%s", pe->name, "stddev");
+	pe->metric_stddev = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	if (!pe->metric_stddev) {
+		msglog("Could not create the metric for event '%s'\n",
+		       metric_name);
+		goto err;
+	}
+	LIST_INSERT_HEAD(&pevent_list, pe, entry);
+	return 0;
+ err:
+	if (pe->name)
+		free(pe->name);
+	if (pe->metric_value)
+		ldms_metric_release(pe->metric_value);
+	if (pe->metric_mean)
+		ldms_metric_release(pe->metric_mean);
+	if (pe->metric_variance)
+		ldms_metric_release(pe->metric_variance);
+	if (pe->metric_stddev)
+		ldms_metric_release(pe->metric_stddev);
+	free(pe);
+	return -1;
+}
+
+static int del_event(char *cfg_str, void *arg)
+{
+	struct pevent *pe = find_event(cfg_str);
+	if (pe) {
+		LIST_REMOVE(pe, entry);
+		close(pe->fd);
+		free(pe->name);
+		free(pe);
+	}
+	return 0;
+}
+
+static char list_buf[8192];
+static int list(char *cfg_str, void *arg)
+{
+	struct pevent *pe;
+	int c;
+	char *s = list_buf;
+	c = sprintf(s, "%-24s %8s %8s %8s %8s %16s\n",
+		    "Name", "Pid", "Cpu", "Fd", "Type", "Event");
+	s += c;
+	c = sprintf(s, "%-24s %8s %8s %8s %8s %16s\n",
+		    "------------------------",
+		    "--------", "--------", "--------",
+		    "--------", "----------------");
+	s += c;
+	msglog("Name Fd Type Config\n");
+	LIST_FOREACH(pe, &pevent_list, entry) {
+		c = sprintf(s, "%-24s %8d %8d %8d %8d %16llx\n",
+			    pe->name, pe->pid, pe->cpu, 
+			    pe->fd, pe->attr.type, pe->attr.config);
+		s += c;
+	}
+	msglog(list_buf);
+	return 0;
+}
+
+struct kw kw_tbl[] = {
+	{ "add_event", add_event },
+	{ "del_event", del_event },
+	{ "ls", list },
+};
+
+static char action[1024];
+static char parameters[1024];
+static int config(char *cfg_str)
+{
+	struct kw *kw;
+	struct kw key;
+
+	int rc = sscanf(cfg_str, "%[^(](%[^)])", action, parameters);
+	if (rc < 1)
+		goto err0;
+
+	key.token = action;
+	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
+		     sizeof(*kw), kw_comparator);
+	if (!kw)
+		goto err1;
+
+	rc = kw->action(parameters, NULL);
+	if (rc)
+		goto err2;
+	return 0;
+ err0:
+	msglog(usage());
+	goto err2;
+ err1:
+	msglog("Invalid configuration keyword '%s'\n", action);
+ err2:
+	return 0;
+}
+
+static ldms_set_t get_set()
+{
+	return set;
+}
+
+static int init(const char *path)
+{
+	/* Create the metric set */
+	int rc = ldms_create_set(path, 8192, 4096, &set);
+	return rc;
+}
+
+static int sample(void)
+{
+	int rc;
+	struct pevent *pe;
+	LIST_FOREACH(pe, &pevent_list, entry) {
+		pe->last_value = pe->sample.value;
+		rc = read(pe->fd, &pe->sample, sizeof(pe->sample));
+		if (rc != sizeof(pe->sample)) {
+			msglog("Error %d sampling event '%s'\n",
+			       errno, pe->name);
+			continue;
+		}
+		if (pe->warmup) {
+			/* We need to be sure we have a 'last_value'
+			   that was sampled from a complete
+			   interval */
+			pe->warmup--;
+			continue;
+		}
+		double value, diff;
+		value = pe->sample.value - pe->last_value;
+		pe->mean = ((pe->mean * pe->card) + value) / (pe->card + 1.0);
+		diff = value - pe->mean;
+		pe->variance = ((pe->variance * (pe->card * pe->card)) + (diff * diff));
+		pe->card =  pe->card + 1.0;
+		pe->variance = pe->variance / (pe->card * pe->card);
+
+		ldms_set_u64(pe->metric_value, value);
+		ldms_set_u64(pe->metric_mean, pe->mean);
+		ldms_set_u64(pe->metric_variance, pe->variance);
+		ldms_set_u64(pe->metric_stddev, sqrt(pe->variance));
+	}
+ 	return 0;
+}
+
+static void term(void)
+{
+	ldms_destroy_set(set);
+}
+
+static struct ldms_plugin pe_plugin = {
+	.name = "perfevent",
+	.init = init,
+	.term = term,
+	.config = config,
+	.get_set = get_set,
+	.sample = sample,
+	.usage = usage,
+};
+
+struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+{
+	msglog = pf;
+	return &pe_plugin;
+}
