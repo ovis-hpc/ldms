@@ -40,7 +40,7 @@
  */
 /*
  * This is the /proc/interrupts data provider.
- * NOTE: Assumes 16 processors (FIXME)
+ * FIXME: there were some formats and associations in here assumed for the Cray case which may not generally be true.
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -62,6 +62,7 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 int num_numlines;
 ldms_metric_t compid_metric_handle;
+int nprocs;
 
 static int config(char *str)
 {
@@ -91,6 +92,23 @@ static ldms_set_t get_set()
 	return set;
 }
 
+static int getNProcs(char buf[]){
+  int nproc = 0;
+  char* pch;
+  pch = strtok(buf, " ");
+  while (pch != NULL){
+    if (pch[0] == '\n'){
+      break;
+    }
+    if (pch[0] != ' '){
+      nproc++;
+    }
+    pch = strtok(NULL," ");
+  }
+  
+  return nproc;
+}
+
 
 static int init(const char *path)
 {
@@ -118,8 +136,16 @@ static int init(const char *path)
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
 	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
+
 	//first line is the cpu list
 	s = fgets(lbuf, sizeof(lbuf), mf);
+	nprocs = getNProcs(lbuf);
+	if (nprocs <= 0){
+	  msglog("Bad number of CPU. Exiting\n");
+	  return EINVAL;
+	}
+
+	//the rest are data lines
 	while(s) {
 	  s = fgets(lbuf, sizeof(lbuf), mf);
 	  if (!s)
@@ -141,8 +167,8 @@ static int init(const char *path)
 	      char *endptr;
 	      l1 = strtol (pch, &endptr,10);
 	      if (endptr == pch){
-		//if the metric name is not a number, the metric name will be CpuX_name (there will be 16)
-		for (i = 0; i < 16; i++){
+		//if the metric name is not a number, the metric name will be CpuX_name (there will be nprocs)
+		for (i = 0; i < nprocs; i++){
 		  snprintf(metric_name,128,"Cpu%d_%s",i,beg_name);
 		  rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 		  tot_meta_sz += meta_sz;
@@ -215,8 +241,8 @@ static int init(const char *path)
 	      char *endptr;
 	      l1 = strtol (pch, &endptr,10);
 	      if (endptr == pch){
-		//if the metric name is not a number, the metric name will be CpuX_name (there will be 16)
-		for (i = 0; i < 16; i++){
+		//if the metric name is not a number, the metric name will be CpuX_name (there will be nprocs)
+		for (i = 0; i < nprocs; i++){
 		  snprintf(metric_name,128,"Cpu%d_%s",i,beg_name);
 		  metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
 		  if (!metric_table[metric_no]){
@@ -289,14 +315,29 @@ static int sample(void)
       metric_no++;
       count++;
     } else {
-      //we need 16 vals
-      union ldms_value mv[16];
-      int i;
-
-      rc = sscanf(lbuf, "%s %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %"PRIu64 " %s\n", metric_name, &mv[0].v_u64, &mv[1].v_u64, &mv[2].v_u64, &mv[3].v_u64, &mv[4].v_u64, &mv[5].v_u64, &mv[6].v_u64, &mv[7].v_u64, &mv[8].v_u64, &mv[9].v_u64, &mv[10].v_u64, &mv[11].v_u64, &mv[12].v_u64, &mv[13].v_u64, &mv[14].v_u64, &mv[15].v_u64, junk);
-      for (i = 0; i < 16; i++){
-	ldms_set_metric(metric_table[metric_no], &v);
-	metric_no++;
+      int currcol = 0;
+      char* pch = strtok(lbuf, " ");
+      while (pch != NULL && currcol <= nprocs){
+	if (pch[0] == '\n'){
+	  break;
+	}
+	if (pch[0] != ' '){
+	  if (currcol != 0){
+	    char* endptr;
+	    unsigned long long int l1;
+	    l1 = strtoull(pch,&endptr,10);
+	    if (endptr != pch){
+	      v.v_u64 = l1;
+	      ldms_set_metric(metric_table[metric_no], &v);
+	      metric_no++;
+	    } else {
+	      msglog("bad val <%s>\n",pch);
+	      return EINVAL;
+	    }
+	  }
+	  currcol++;
+	}
+	pch = strtok(NULL," ");
       }
       count++;
     }
