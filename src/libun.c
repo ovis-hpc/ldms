@@ -483,7 +483,7 @@ int un_config_plugin(char *plugin, char *config_str, char *err_str)
 		un_say("Error %d receiving reply.\n", rc);
 		goto out;
 	}
-	rc = sscanf(msg_buf, "%s %d %[^\n]", junk, &status, err_str);
+	rc = sscanf(msg_buf, "%s %d \"%[^\"]\"", junk, &status, err_str);
 	if (rc >= 2)
 		return status;
  out:

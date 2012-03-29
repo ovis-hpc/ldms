@@ -664,14 +664,16 @@ int process_config_plugin(int fd,
 		sprintf(err_str, "Plugin '%s' not found.", plugin_name);
 		goto out;
 	}
+	msg_buf[0] = '\0';
 	rc = pi->plugin->config(config_str);
 	if (rc) {
-		sprintf(err_str, "Plugin configuration error %d", rc);
+		sprintf(err_str, "Plugin configuration error %d\n%s",
+			rc, msg_buf);
 		goto out;
 	}
 
  out:
-	sprintf(replybuf, "PR %d %s", rc, err_str);
+	sprintf(replybuf, "PR %d \"%s\"", rc, msg_buf);
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }

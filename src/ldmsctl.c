@@ -108,12 +108,12 @@ void help()
 	       "   - Exit.\n");
 }
 
-static char err_str[160];
-static char kw[60];
-static char arg[60];
-static char arg1[60];
-static char arg2[60];
-static char linebuf[256];
+static char err_str[1024];
+static char kw[1024];
+static char arg[1024];
+static char arg1[1024];
+static char arg2[1024];
+static char linebuf[1024];
 static char ls_buf[2048];
 int main(int argc, char *argv[])
 {
