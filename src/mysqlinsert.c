@@ -54,7 +54,6 @@
 #include <sys/queue.h>
 #include <mysql/my_global.h>
 #include <mysql/mysql.h>
-#include <glib.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -69,12 +68,14 @@
 
 struct fmetric {
   ldms_metric_t md;
-  uint64_t key;		/* component id or whatever else you like. if you change this, change how to get compId below */ //FIXME: check if this has to be unique in the metric set
+  uint64_t key;		/* component id or whatever else you like. if you change this, change how to get compId below */   //FIXME: check if this has to be unique in the metric set.  //FIXME: perhaps make this into the compid that this val should be inserted on behalf of. then could do the remote assoc without having to track the remote assoc here.
+  char *tableName; //FIXME: should this be set by the "addmetric" or by this code?
   LIST_ENTRY(fmetric) entry;
 };
 
 struct fset {
   ldms_set_t sd;
+  uint64_t lastDataGnInsert; //data generation number of the last insert
   char *file_path;
   FILE *file;
   LIST_HEAD(fmetric_list,  fmetric) metric_list;
@@ -90,14 +91,13 @@ ldms_metric_t compid_metric_handle;
 char file_path[LDMS_MAX_CONFIG_STR_LEN];
 char set_name[LDMS_MAX_CONFIG_STR_LEN];
 char metric_name[LDMS_MAX_CONFIG_STR_LEN];
+char table_name[LDMS_MAX_CONFIG_STR_LEN];
 char db_schema[LDMS_MAX_CONFIG_STR_LEN];
 char db_host[LDMS_MAX_CONFIG_STR_LEN];
 char username[LDMS_MAX_CONFIG_STR_LEN];
 char password[LDMS_MAX_CONFIG_STR_LEN];
 
 MYSQL *conn = NULL;
-GHashTable *metricNameToTableName;
-
 
 static struct fset *get_fset(char *set_name)
 {
@@ -141,6 +141,7 @@ static int add_set(char *set_name, char *file_path)
 		return ENOMEM;
 	}
 	set->sd = sd;
+	set->lastDataGnInsert = -1;
 	set->file = file;
 	set->file_path = strdup(file_path);
 	LIST_INSERT_HEAD(&set_list, set, entry);
@@ -153,12 +154,13 @@ static int remove_set(char *set_name)
 	if (!set)
 		return ENOENT;
 	LIST_REMOVE(set, entry);
+	set->lastDataGnInsert = -1;
 	free(set->file_path);
 	fclose(set->file);
 	return 0;
 }
 
-static int add_metric(char *set_name, char *metric_name, uint64_t key)
+static int add_metric(char *set_name, char *metric_name, uint64_t key, char* table_name)
 {
 	ldms_metric_t *md;
 	struct fmetric *metric;
@@ -180,6 +182,7 @@ static int add_metric(char *set_name, char *metric_name, uint64_t key)
 
 	metric->md = md;
 	metric->key = key;
+	metric->tableName = strdup(table_name);	
 	LIST_INSERT_HEAD(&set->metric_list, metric, entry);
 	return 0;
 }
@@ -195,6 +198,7 @@ static int remove_metric(char *set_name, char *metric_name)
 	if (!met)
 		return ENOENT;
 	LIST_REMOVE(met, entry);
+	free(met->tableName);
 	return 0;
 }
 
@@ -209,95 +213,6 @@ static int set_dbconfigs()
   if (strlen(password) == 0)
     snprintf(password,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_PASS);
   return 1;
-}
-
-static int config(char *config_str)
-{
-	enum {
-		ADD_SET,
-		ADD_METRIC,
-		REMOVE_SET,
-		REMOVE_METRIC,
-		DATABASE_INFO,
-	} action;
-	int rc;
-	uint64_t key;
-
-	if (0 == strncmp(config_str, "add_metric", 10))
-		action = ADD_METRIC;
-	else if (0 == strncmp(config_str, "remove_metric", 13))
-		action = REMOVE_METRIC;
-	else if (0 == strncmp(config_str, "add", 3))
-		action = ADD_SET;
-	else if (0 == strncmp(config_str, "remove", 6))
-		action = REMOVE_SET;
-	else if (0 == strncmp(config_str, "database_info", 13))
-                action = DATABASE_INFO;
-	else {
-		msglog("mysqlinsert: Invalid configuration string '%s'\n",
-		       config_str);
-		return EINVAL;
-	}
-	switch (action) {
-	case ADD_SET:
-		sscanf(config_str, "add=%[^&]&%s", set_name, file_path);
-		rc = add_set(set_name, file_path);
-		break;
-	case REMOVE_SET:
-		sscanf(config_str, "remove=%s", set_name);
-		rc = remove_set(set_name);
-		break;
-	case ADD_METRIC:
-		sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64, set_name, metric_name, &key);
-		rc = add_metric(set_name, metric_name, key);
-		break;
-	case REMOVE_METRIC:
-		sscanf(config_str, "remove_metric=%[^&]&%s", set_name, metric_name);
-		rc = remove_metric(set_name, metric_name);
-		break;
-	case DATABASE_INFO:
-	        //FIXME: will this work?
-	        sscanf(config_str, "database_info=%[^&]&%[^&]&%[^&]&%s", db_schema, db_host, username, password);
-                rc = set_dbconfigs();
-		break;
-	default:
-		msglog("Invalid config statement '%s'.\n", config_str);
-		return EINVAL;
-	}
-
-	return rc;
-}
-
-static ldms_set_t get_set()
-{
-	return NULL;
-}
-
-static int init(const char *path)
-{
-  //FIXME: will we want the conn live all the time?
-
-  if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) 
-      || (strlen(username) == 0) || (strlen(password) == 0)){
-    msglog("Invalid parameters for database");
-    return EINVAL;
-  }
-
-  conn = mysql_init(NULL);
-  if (conn == NULL){
-    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-    return EPERM;
-  }
-
-  if (!mysql_real_connect(conn, db_host, username,
-			  password, db_schema, 0, NULL, 0)){
-    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-    return EPERM;
-  }
-
-  metricNameToTableName = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-
-  return 0;
 }
 
 /*
@@ -325,14 +240,6 @@ static int lookupCompNameFromId( int compId, char* compName ){
   return -1;
 }
 */
-
-static void printonehash(gpointer key, gpointer value, gpointer user_data){
-  printf("<%s><%s>\n", (char*)key, (char*)value);
-}
-
-static void printallhash(){
-  g_hash_table_foreach(metricNameToTableName, printonehash, NULL);
-}
 
 static int lookupCompTypeFromCompId( int compId, int* ctype, char* shortName){
   char selectStatement[1024];
@@ -385,14 +292,18 @@ static int lookupCompTypeFromCompId( int compId, int* ctype, char* shortName){
   return -1;
 }
 
-
-static int createTable(char* metricName, int ctype, char *tableName){
+static int createTableGuts(char* metricName, char *tableName){
   //will create a table and the supporting tables, if necessary
   MYSQL_RES *result;
   MYSQL_ROW row;
 
   if (conn == NULL)
     return EPERM;
+
+  int ctype = -1; //FIXME: temporary
+  //FIXME: from the tableName and the metricName extract the comptype shortname.
+  //lookup the ctype from the shortname
+
 
   //create table if required
   char query1[4096];
@@ -467,6 +378,7 @@ static int createTable(char* metricName, int ctype, char *tableName){
     }
   }
 
+
   //create the TableId if necessary
   snprintf(query1, 4095, "%s%s%s%d%s%d%s",
 	   "SELECT TableId from MetricValueTableIndex WHERE TableName='",
@@ -493,7 +405,8 @@ static int createTable(char* metricName, int ctype, char *tableName){
 	     metrictype,
 	     ")");
     if (mysql_query(conn, query1)){
-      //failed                                                                                                    return -1;
+      //failed                                                  
+      return -1;
     }
   } else {
     mysql_free_result(result);
@@ -502,62 +415,153 @@ static int createTable(char* metricName, int ctype, char *tableName){
   return 0;
 }
 
+static int createTable(char* metricName, char* tableName){
+  //will only call the createTableGuts if the table does not already exist
+
+  if (conn == NULL)
+    return EPERM;
+  
+  //FIXME: some statement here to check if table exists first to minimize the number of calls
+  return createTableGuts(metricName, tableName);
+}
+
+static int config(char *config_str)
+{
+	enum {
+		ADD_SET,
+		ADD_METRIC,
+		REMOVE_SET,
+		REMOVE_METRIC,
+		DATABASE_INFO,
+	} action;
+	int rc;
+	uint64_t key;
+
+	if (0 == strncmp(config_str, "add_metric", 10))
+		action = ADD_METRIC;
+	else if (0 == strncmp(config_str, "remove_metric", 13))
+		action = REMOVE_METRIC;
+	else if (0 == strncmp(config_str, "add", 3))
+		action = ADD_SET;
+	else if (0 == strncmp(config_str, "remove", 6))
+		action = REMOVE_SET;
+	else if (0 == strncmp(config_str, "database_info", 13))
+                action = DATABASE_INFO;
+	else {
+		msglog("mysqlinsert: Invalid configuration string '%s'\n",
+		       config_str);
+		return EINVAL;
+	}
+	switch (action) {
+	case ADD_SET:
+		sscanf(config_str, "add=%[^&]&%s", set_name, file_path);
+		rc = add_set(set_name, file_path);
+		break;
+	case REMOVE_SET:
+		sscanf(config_str, "remove=%s", set_name);
+		rc = remove_set(set_name);
+		break;
+	case ADD_METRIC:
+	        //FIXME: will this work?
+	        sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"%s", set_name, metric_name, &key, table_name);
+                rc = add_metric(set_name, metric_name, key, table_name);
+		rc = createTable(metric_name, table_name); 
+		if (rc != 0){
+		  msglog("Cannot create table '%s'.\n",table_name);
+		  return rc;
+		}
+		break;
+	case REMOVE_METRIC:
+		sscanf(config_str, "remove_metric=%[^&]&%s", set_name, metric_name);
+		rc = remove_metric(set_name, metric_name);
+		break;
+	case DATABASE_INFO:
+	        //FIXME: will this work?
+	        sscanf(config_str, "database_info=%[^&]&%[^&]&%[^&]&%s", db_schema, db_host, username, password);
+                rc = set_dbconfigs();
+		break;
+	default:
+		msglog("Invalid config statement '%s'.\n", config_str);
+		return EINVAL;
+	}
+
+	return rc;
+}
+
+static ldms_set_t get_set()
+{
+	return NULL;
+}
+
+static int init(const char *path)
+{
+  //FIXME: will we want the conn live all the time?
+
+  if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) 
+      || (strlen(username) == 0) || (strlen(password) == 0)){
+    msglog("Invalid parameters for database");
+    return EINVAL;
+  }
+
+  conn = mysql_init(NULL);
+  if (conn == NULL){
+    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+    return EPERM;
+  }
+
+  if (!mysql_real_connect(conn, db_host, username,
+			  password, db_schema, 0, NULL, 0)){
+    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+    return EPERM;
+  }
+
+  return 0;
+}
 
 static int sample(void)
 {
-	struct fset *set;
-	struct fmetric *met;
-	LIST_FOREACH(set, &set_list, entry) {
-	  //FIXME: check here for the generation number and see if it changes if you want. there is a function to get it.
-	  //ldms_get_data_gn. metadata number changes when a new metric gets added or removed. data number
-	  //with any change
-		LIST_FOREACH(met, &set->metric_list, entry) {
-		  //FIXME: will need to do remote assoc
-		  //FIXME: will want to support diffs
+  struct fset *set;
+  struct fmetric *met;
+  LIST_FOREACH(set, &set_list, entry) {
+    //two generation numbers -- meta data: for when a metric gets added or removed, data: for when *any* value gets updated.
+    //only insert vals again if the data generation number has been incremented, however this does not guarentee that all the
+    //data values are new.
+    uint64_t datagn = ldms_get_data_gn(&set);
+    if (datagn == set->lastDataGnInsert){ //does rollover exist? not doing less than just in case...
+      continue;
+    }
+    set->lastDataGnInsert = datagn; //updating before the insert, in case we want to know what gn caused the problem. could move till after...
 
-		  int compId = met->key; // i think right now the key is the component id
-		  char metricName[100];
-		  snprintf(metricName,99,ldms_get_metric_name(met->md));		  
-		  int val = ldms_get_u64(met->md);
+    LIST_FOREACH(met, &set->metric_list, entry) {
+      //FIXME: will need to do remote assoc
+      //FIXME: will want to support diffs
+      
+      int compId = met->key; // FIXME: i think right now the key is the component id.  
+      if (met->tableName == NULL){
+	msglog("Error: no table for metric '%s'", ldms_get_metric_name(met->md));		  
+	return EINVAL;
+      }
 
-		  char* tableName = g_hash_table_lookup(metricNameToTableName,metricName);
-		  if (tableName == NULL){
-		    char compType[1024];
-		    int ctype = -1;
-		    int ret = lookupCompTypeFromCompId(compId, &ctype, compType); //FIXME: avoid doing this each time
-		    if (ret != 0){
-		      return EINVAL;
-		    }
+      uint64_t val = ldms_get_u64(met->md);
 
-		    tableName = (char*) g_malloc(100*sizeof(char));
-		    snprintf(tableName,99,"Metric%s%sValues",compType, metricName);
-		    ret = createTable(metricName, ctype, tableName);		  //FIXME: avoid doing this each time
-		    if (ret != 0){
-		      g_free(tableName);
-		      return ret;
-		    }
-		    g_hash_table_replace(metricNameToTableName, (gpointer)metricName, (gpointer)tableName);
-		  }
-
-		  char insertStatement[1024];
-		  long int level = lround( -log2( drand48()));
-		  snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %d, NULL, %ld )",
-			   tableName, compId, val, level);
-		  if (mysql_query(conn, insertStatement) != 0){
-		    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-		    exit(1);
-		  }
-
-		}
-	}
-	return 0;
+      char insertStatement[1024];
+      long int level = lround( -log2( drand48()));
+      snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %d, NULL, %ld )",
+	       met->tableName, compId, (int)val, level); //FIXME: cast insert type?
+      if (mysql_query(conn, insertStatement) != 0){
+	printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+	exit(1);
+      }
+      
+    }
+  }
+  return 0;
 }
 
 static void term(void)
 {
   // FIXME: is this correct to be in term?
   mysql_close(conn);
-  g_hash_table_destroy(metricNameToTableName);
 }
 
 static const char *usage(void)
@@ -576,6 +580,8 @@ static const char *usage(void)
 		"        set_name    The name of the metric set.\n"
 		"        metric_name The name of the metric.\n"
 		"        key         An unique Id for the Metric. Typically the component_id.\n"
+		"        table_name  The table this metric should be inserted into.\n"
+                "                    The table will be created if it does not already exist.\n"
 		"    config mysqlinsert remove_metric=<set_name>&<metric_name>\n"
 		"        - Stop storing values for the specified metric\n"
 		"        set_name    The name of the metric set.\n"
