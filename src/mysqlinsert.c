@@ -68,7 +68,10 @@
 
 struct fmetric {
   ldms_metric_t md;
-  uint64_t key;		/* component id or whatever else you like. if you change this, change how to get compId below */   //FIXME: check if this has to be unique in the metric set.  //FIXME: perhaps make this into the compid that this val should be inserted on behalf of. then could do the remote assoc without having to track the remote assoc here.
+  uint64_t key;		/* component id or whatever else you like. if you change this, change how to get compId below */   //FIXME: check if this has to be unique in the metric set.  
+  int diffMetric;
+  int lastValSet;
+  uint64_t lastVal;
   char *tableName; //FIXME: should this be set by the "addmetric" or by this code?
   LIST_ENTRY(fmetric) entry;
 };
@@ -88,14 +91,17 @@ static ldmsd_msg_log_f msglog;
 
 ldms_metric_t compid_metric_handle;
 
+//NOTE that some of these variables will stop this from being able to be multithreaded.
 char file_path[LDMS_MAX_CONFIG_STR_LEN];
 char set_name[LDMS_MAX_CONFIG_STR_LEN];
 char metric_name[LDMS_MAX_CONFIG_STR_LEN];
 char table_name[LDMS_MAX_CONFIG_STR_LEN];
+char comp_assoc[LDMS_MAX_CONFIG_STR_LEN];
 char db_schema[LDMS_MAX_CONFIG_STR_LEN];
 char db_host[LDMS_MAX_CONFIG_STR_LEN];
 char username[LDMS_MAX_CONFIG_STR_LEN];
 char password[LDMS_MAX_CONFIG_STR_LEN];
+
 
 MYSQL *conn = NULL;
 
@@ -160,7 +166,7 @@ static int remove_set(char *set_name)
 	return 0;
 }
 
-static int add_metric(char *set_name, char *metric_name, uint64_t key, char* table_name)
+static int add_metric(char *set_name, char *metric_name, uint64_t key, int diff_metric, char* table_name)
 {
 	ldms_metric_t *md;
 	struct fmetric *metric;
@@ -180,12 +186,20 @@ static int add_metric(char *set_name, char *metric_name, uint64_t key, char* tab
 	if (!metric)
 		return ENOMEM;
 
+	if (diff_metric != 0 && diff_metric != 1){
+	  return EINVAL;
+	}
+
 	metric->md = md;
 	metric->key = key;
+	metric->diffMetric = diff_metric;
+	metric->lastValSet = 0;
+	metric->lastVal = 0;
 	metric->tableName = strdup(table_name);	
 	LIST_INSERT_HEAD(&set->metric_list, metric, entry);
 	return 0;
 }
+
 
 static int remove_metric(char *set_name, char *metric_name)
 {
@@ -202,6 +216,7 @@ static int remove_metric(char *set_name, char *metric_name)
 	return 0;
 }
 
+
 static int set_dbconfigs()
 {
   if (strlen(db_schema) == 0)
@@ -215,84 +230,8 @@ static int set_dbconfigs()
   return 1;
 }
 
-/*
-static int lookupCompNameFromId( int compId, char* compName ){
-  char selectStatement[1024];
-  MYSQL_RES *result;
-  MYSQL_ROW row;
 
-  snprintf(selectStatement,1023,"SELECT CompName From ComponentTable WHERE CompId = %d", compId);
-  if (!mysql_query(conn, selectStatement)){
-    result = mysql_store_result(conn);
-    int num_fields = mysql_num_fields(result);
-    if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
-      mysql_free_result(result);
-      snprintf(compName,1023,"%s","");
-      return -1;
-    }
-    while((row = mysql_fetch_row(result))){
-      snprintf(compName, 1023,"%s",row[0]); //FIXME: get a const for these sizes
-      mysql_free_result(result);
-      return 1;
-    }
-  }
-  snprintf(compName,1023,"%s","");
-  return -1;
-}
-*/
-
-static int lookupCompTypeFromCompId( int compId, int* ctype, char* shortName){
-  char selectStatement[1024];
-  MYSQL_RES *result;
-  MYSQL_ROW row;
-
-  snprintf(selectStatement,1023,"SELECT CompType From ComponentTable WHERE CompId = %d", compId);
-  if (mysql_query(conn, selectStatement)){
-    //failed
-    snprintf(shortName,1023,"%s","");
-    return -1;
-  }
-  result = mysql_store_result(conn);
-  int num_fields = mysql_num_fields(result);
-  if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
-    mysql_free_result(result);
-    snprintf(shortName,1023,"%s","");
-    return -1;
-  }
-  int comptype = -1;
-  while((row = mysql_fetch_row(result))){
-    *ctype = atoi(row[0]); 
-    break;
-  }
-  mysql_free_result(result);
-
-  snprintf(selectStatement,1023,"SELECT ShortName From ComponentTypes WHERE CompType = %d", comptype);
-  if (mysql_query(conn, selectStatement)){
-    //failed
-    snprintf(shortName,1023,"%s","");
-    *ctype = -1;
-    return -1;
-  }
-  result = mysql_store_result(conn);
-  num_fields = mysql_num_fields(result);
-  if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
-    mysql_free_result(result);    
-    snprintf(shortName,1023,"%s","");
-    *ctype = -1;
-    return -1;
-  }
-  while((row = mysql_fetch_row(result))){
-    snprintf(shortName, 1023,"%s",row[0]);
-    mysql_free_result(result);    
-    return 0;
-  }
-
-  snprintf(shortName,1023,"%s","");
-  *ctype = -1;
-  return -1;
-}
-
-static int createTableGuts(char* metricName, char *tableName){
+static int createTable(char* metricName, char* compAssoc, char *tableName){
   //will create a table and the supporting tables, if necessary
   MYSQL_RES *result;
   MYSQL_ROW row;
@@ -300,13 +239,30 @@ static int createTableGuts(char* metricName, char *tableName){
   if (conn == NULL)
     return EPERM;
 
-  int ctype = -1; //FIXME: temporary
-  //FIXME: from the tableName and the metricName extract the comptype shortname.
-  //lookup the ctype from the shortname
+  //get the comptype
+  int ctype = -1;
+  char query1[4096];
+  snprintf(query1,4095,"SELECT CompType From ComponentTypes WHERE ShortName = %s", compAssoc);
+  if (mysql_query(conn, query1)){
+    msglog("Cannot query for Component type '%s'\n", compAssoc);
+    return -1;
+  }
+  result = mysql_store_result(conn);
+  int num_fields = mysql_num_fields(result);
+  if ((num_fields == 1) && (mysql_num_rows(result) != 1)){
+    while((row = mysql_fetch_row(result))){
+      ctype = atoi(row[0]); 
+      mysql_free_result(result);
+      break;
+    }
+  } else {
+    //dont have this comp assoc
+    msglog("Component type '%s' unknown\n", compAssoc);
+    return -1;
+  }
 
 
   //create table if required
-  char query1[4096];
   snprintf(query1, 4095,"%s%s%s%s%s%s%s",
 	   "CREATE TABLE IF NOT EXISTS ",
 	   tableName,
@@ -317,8 +273,8 @@ static int createTableGuts(char* metricName, char *tableName){
 	   "_Level (`CompId` ,`Level` ,`Time` ))");
   
   if (mysql_query(conn, query1) != 0){
-    printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-    exit(1);
+    msglog("Cannot query to create table '%s'\n", compAssoc);
+    return -1;
   }
 
   //create the MetricValueType
@@ -328,13 +284,13 @@ static int createTableGuts(char* metricName, char *tableName){
 	   "' AND Units='1' AND Constant=0 AND Storage='int'");
   //NOTE that storage will be int and not int(32)
   if (mysql_query(conn, query1)){
-    //failed
+    msglog("Cannot query for MetricValueType for '%s'\n", metricName);
     return -1;
   }
 
   int metrictype = -1;
   result = mysql_store_result(conn);
-  int num_fields = mysql_num_fields(result);
+  num_fields = mysql_num_fields(result);
   if ((num_fields == 1) && (mysql_num_rows(result) != 1)){
     //it could be in there already (more than 1 sampler can provide the same data)
     while((row = mysql_fetch_row(result))){
@@ -353,7 +309,7 @@ static int createTableGuts(char* metricName, char *tableName){
 	     metricName,
 	     "', '1', 'int', 0)");
     if (mysql_query(conn, query2)){
-      //failed
+      msglog("Cannot insert MetricValueType for '%s'\n", metricName);
       return -1;
     }
     snprintf(query1, 4095, "%s%s%s",
@@ -361,13 +317,13 @@ static int createTableGuts(char* metricName, char *tableName){
 	     metricName,
 	     "' AND Units='1' AND Constant=0 AND Storage='int')");
     if (mysql_query(conn, query1)){
-      //failed
+      msglog("Cannot query for MetricValueType for '%s'\n", metricName);
       return -1;
     }
     result = mysql_store_result(conn);
     int num_fields = mysql_num_fields(result);
     if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
-      //failed
+      msglog("No MetricValueType for '%s'\n", metricName);
       mysql_free_result(result);
       return -1;
     }
@@ -389,7 +345,7 @@ static int createTableGuts(char* metricName, char *tableName){
 	   metrictype,
 	   "'");
   if (mysql_query(conn, query1)){
-    //failed                                                                                              
+    msglog("Cannot query for table id for '%s'\n", tableName);
     return -1;
   }
   result = mysql_store_result(conn);
@@ -405,7 +361,7 @@ static int createTableGuts(char* metricName, char *tableName){
 	     metrictype,
 	     ")");
     if (mysql_query(conn, query1)){
-      //failed                                                  
+      msglog("Cannot insert into MetricValueTableIndex for tableName '%s'\n", tableName);
       return -1;
     }
   } else {
@@ -415,15 +371,6 @@ static int createTableGuts(char* metricName, char *tableName){
   return 0;
 }
 
-static int createTable(char* metricName, char* tableName){
-  //will only call the createTableGuts if the table does not already exist
-
-  if (conn == NULL)
-    return EPERM;
-  
-  //FIXME: some statement here to check if table exists first to minimize the number of calls
-  return createTableGuts(metricName, tableName);
-}
 
 static int config(char *config_str)
 {
@@ -436,6 +383,7 @@ static int config(char *config_str)
 	} action;
 	int rc;
 	uint64_t key;
+	uint64_t diff_metric;
 
 	if (0 == strncmp(config_str, "add_metric", 10))
 		action = ADD_METRIC;
@@ -463,9 +411,10 @@ static int config(char *config_str)
 		break;
 	case ADD_METRIC:
 	        //FIXME: will this work?
-	        sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"%s", set_name, metric_name, &key, table_name);
-                rc = add_metric(set_name, metric_name, key, table_name);
-		rc = createTable(metric_name, table_name); 
+	        sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"%d%[^&]&%s", set_name, metric_name,
+		       &key, &diff_metric, comp_assoc, table_name);
+                rc = add_metric(set_name, metric_name, key, diff_metric, table_name);
+		rc = createTable(metric_name, comp_assoc, table_name); 
 		if (rc != 0){
 		  msglog("Cannot create table '%s'.\n",table_name);
 		  return rc;
@@ -522,6 +471,12 @@ static int sample(void)
 {
   struct fset *set;
   struct fmetric *met;
+
+  if (conn == NULL){
+    msglog("Error: no mysql connection\n");
+    return EPERM;
+  }
+
   LIST_FOREACH(set, &set_list, entry) {
     //two generation numbers -- meta data: for when a metric gets added or removed, data: for when *any* value gets updated.
     //only insert vals again if the data generation number has been incremented, however this does not guarentee that all the
@@ -534,7 +489,6 @@ static int sample(void)
 
     LIST_FOREACH(met, &set->metric_list, entry) {
       //FIXME: will need to do remote assoc
-      //FIXME: will want to support diffs
       
       int compId = met->key; // FIXME: i think right now the key is the component id.  
       if (met->tableName == NULL){
@@ -543,6 +497,18 @@ static int sample(void)
       }
 
       uint64_t val = ldms_get_u64(met->md);
+      if (met->diffMetric){
+	if (met->lastValSet){
+	  uint64_t temp = val;
+	  val -= met->lastVal; //FIXME: what about rollover?
+	  met->lastVal = temp;
+	} else {
+	  //dont record it
+	  met->lastVal = val;
+	  met->lastValSet = TRUE;
+	  continue; 
+	}
+      }
 
       char insertStatement[1024];
       long int level = lround( -log2( drand48()));
