@@ -2,7 +2,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
-	-I$(includedir)/infiniband -I/usr/include/mysql
+	-I$(includedir)/infiniband 
 
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl
 
@@ -41,9 +41,10 @@ src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map
 src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 FLATFILE_la = src/libflatfile.la
 
+src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql -I/usr/include/glib-2.0 -I/usr/lib64/glib-2.0/include
 src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
 src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
-src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient
+src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient -L/usr/lib64/glib-2.0/lib -lglib-2.0
 MYSQLINSERT_la = src/libmysqlinsert.la
 
 src_libmeminfo_la_SOURCES = src/meminfo.c
