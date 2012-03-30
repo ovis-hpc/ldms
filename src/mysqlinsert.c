@@ -54,6 +54,7 @@
 #include <sys/queue.h>
 #include <mysql/my_global.h>
 #include <mysql/mysql.h>
+#include <glib.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -67,17 +68,17 @@
 #define LOGFILE "/var/log/mysqlinsert.log"
 
 struct fmetric {
-	ldms_metric_t md;
+  ldms_metric_t md;
   uint64_t key;		/* component id or whatever else you like. if you change this, change how to get compId below */ //FIXME: check if this has to be unique in the metric set
-	LIST_ENTRY(fmetric) entry;
+  LIST_ENTRY(fmetric) entry;
 };
 
 struct fset {
-	ldms_set_t sd;
-	char *file_path;
-	FILE *file;
-	LIST_HEAD(fmetric_list,  fmetric) metric_list;
-	LIST_ENTRY(fset) entry;
+  ldms_set_t sd;
+  char *file_path;
+  FILE *file;
+  LIST_HEAD(fmetric_list,  fmetric) metric_list;
+  LIST_ENTRY(fset) entry;
 };
 
 LIST_HEAD(fset_list, fset) set_list;
@@ -95,6 +96,8 @@ char username[LDMS_MAX_CONFIG_STR_LEN];
 char password[LDMS_MAX_CONFIG_STR_LEN];
 
 MYSQL *conn = NULL;
+GHashTable *metricNameToTableName;
+
 
 static struct fset *get_fset(char *set_name)
 {
@@ -291,7 +294,10 @@ static int init(const char *path)
     msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
     return EPERM;
   }
-	return 0;
+
+  metricNameToTableName = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+
+  return 0;
 }
 
 /*
@@ -319,6 +325,14 @@ static int lookupCompNameFromId( int compId, char* compName ){
   return -1;
 }
 */
+
+static void printonehash(gpointer key, gpointer value, gpointer user_data){
+  printf("<%s><%s>\n", (char*)key, (char*)value);
+}
+
+static void printallhash(){
+  g_hash_table_foreach(metricNameToTableName, printonehash, NULL);
+}
 
 static int lookupCompTypeFromCompId( int compId, int* ctype, char* shortName){
   char selectStatement[1024];
@@ -500,24 +514,31 @@ static int sample(void)
 		LIST_FOREACH(met, &set->metric_list, entry) {
 		  //FIXME: will need to do remote assoc
 		  //FIXME: will want to support diffs
-		  
-		  char tableName[100];
+
 		  int compId = met->key; // i think right now the key is the component id
-		  char compType[1024];
-		  int ctype = -1;
-		  int ret = lookupCompTypeFromCompId(compId, &ctype, compType); //FIXME: avoid doing this each time
-		  if (ret != 0){
-		    return EINVAL;
-		  }
 		  char metricName[100];
-		  snprintf(metricName,99,ldms_get_metric_name(met->md));
-		  snprintf(tableName,100,"Metric%s%sValues",compType, metricName);
-		  ret = createTable(metricName, ctype, tableName);		  //FIXME: avoid doing this each time
-		  if (ret != 0){
-		    return ret;
+		  snprintf(metricName,99,ldms_get_metric_name(met->md));		  
+		  int val = ldms_get_u64(met->md);
+
+		  char* tableName = g_hash_table_lookup(metricNameToTableName,metricName);
+		  if (tableName == NULL){
+		    char compType[1024];
+		    int ctype = -1;
+		    int ret = lookupCompTypeFromCompId(compId, &ctype, compType); //FIXME: avoid doing this each time
+		    if (ret != 0){
+		      return EINVAL;
+		    }
+
+		    tableName = (char*) g_malloc(100*sizeof(char));
+		    snprintf(tableName,99,"Metric%s%sValues",compType, metricName);
+		    ret = createTable(metricName, ctype, tableName);		  //FIXME: avoid doing this each time
+		    if (ret != 0){
+		      g_free(tableName);
+		      return ret;
+		    }
+		    g_hash_table_replace(metricNameToTableName, (gpointer)metricName, (gpointer)tableName);
 		  }
 
-		  int val = ldms_get_u64(met->md);
 		  char insertStatement[1024];
 		  long int level = lround( -log2( drand48()));
 		  snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %d, NULL, %ld )",
@@ -536,6 +557,7 @@ static void term(void)
 {
   // FIXME: is this correct to be in term?
   mysql_close(conn);
+  g_hash_table_destroy(metricNameToTableName);
 }
 
 static const char *usage(void)
