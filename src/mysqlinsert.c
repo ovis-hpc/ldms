@@ -410,9 +410,17 @@ static int config(char *config_str)
 		rc = remove_set(set_name);
 		break;
 	case ADD_METRIC:
-	        //FIXME: will this work?
-	        sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"%d%[^&]&%s", set_name, metric_name,
-		       &key, &diff_metric, comp_assoc, table_name);
+	  //FIXME: prob change this to ovis_metric_name and then use ovis naming convention
+	  //to build the table name (since we are passing in the comp type). Also have that
+	  //be optional and default to the metric name
+	  //NOTE: not making this generic since the insert also has a format
+                rc = sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"&%d&%[^&]&%s",
+			    set_name, metric_name, &key,
+			    &diff_metric, comp_assoc, table_name);
+		if (rc != 6){
+		  msglog("Problems parsing add_metric\n");
+		  return EINVAL;
+		}
                 rc = add_metric(set_name, metric_name, key, diff_metric, table_name);
 		rc = createTable(metric_name, comp_assoc, table_name); 
 		if (rc != 0){
@@ -425,8 +433,12 @@ static int config(char *config_str)
 		rc = remove_metric(set_name, metric_name);
 		break;
 	case DATABASE_INFO:
-	        //FIXME: will this work?
-	        sscanf(config_str, "database_info=%[^&]&%[^&]&%[^&]&%s", db_schema, db_host, username, password);
+	        rc = sscanf(config_str, "database_info=%[^&]&%[^&]&%[^&]&%s",
+			    db_schema, db_host, username, password);
+		if (rc != 4){
+		  msglog("Problems parsing database_info\n");
+		  return EINVAL;
+		}
                 rc = set_dbconfigs();
 		break;
 	default:
@@ -488,9 +500,7 @@ static int sample(void)
     set->lastDataGnInsert = datagn; //updating before the insert, in case we want to know what gn caused the problem. could move till after...
 
     LIST_FOREACH(met, &set->metric_list, entry) {
-      //FIXME: will need to do remote assoc
-      
-      int compId = met->key; // FIXME: i think right now the key is the component id.  
+      int compId = met->key; // FIXME: i think right now the key is the component id.
       if (met->tableName == NULL){
 	msglog("Error: no table for metric '%s'", ldms_get_metric_name(met->md));		  
 	return EINVAL;
