@@ -254,15 +254,15 @@ static int sample(void)
 		LIST_FOREACH(met, &set->metric_list, entry) {
 			/* timestamp metric_name metric_value */
 			sprintf(data_str, 
-				"%"PRIu64" %"PRIu64" %"PRIu64"\n",
-				(uint64_t)time(NULL), met->key,
-			ldms_get_u64(met->md));
+				"%"PRIu64" %30s %"PRIu64" %"PRIu64"\n",
+				(uint64_t)time(NULL), ldms_get_metric_name(met->md), 
+				met->key, ldms_get_u64(met->md));
 			// msglog(data_str); //this logs the sample to the log file 
 			rc = fprintf(set->file, data_str);
 			if (rc <= 0)
 				msglog("Error %d writing '%s' to '%s'\n", rc, data_str, set->file_path);
-			//			fflush(set->file); tail the flat file if you want to see it
-			//for mySQL: will need to put the level
+			//FIXME: possibly put in something to force timely regular flushes
+			fflush(set->file); //tail the flat file if you want to see it
 		}
 	}
 	return 0;
