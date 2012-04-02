@@ -42,6 +42,7 @@
  * This is the mysqlinsert sampler. It saves a local metric set's data to
  * a mysql database in the ovis table format.
  */
+#include <ctype.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -79,8 +80,6 @@ struct fmetric {
 struct fset {
   ldms_set_t sd;
   uint64_t lastDataGnInsert; //data generation number of the last insert
-  char *file_path;
-  FILE *file;
   LIST_HEAD(fmetric_list,  fmetric) metric_list;
   LIST_ENTRY(fset) entry;
 };
@@ -92,10 +91,9 @@ static ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 
 //NOTE that some of these variables will stop this from being able to be multithreaded.
-char file_path[LDMS_MAX_CONFIG_STR_LEN];
 char set_name[LDMS_MAX_CONFIG_STR_LEN];
 char metric_name[LDMS_MAX_CONFIG_STR_LEN];
-char table_name[LDMS_MAX_CONFIG_STR_LEN];
+char ovis_metric_name[LDMS_MAX_CONFIG_STR_LEN];
 char comp_assoc[LDMS_MAX_CONFIG_STR_LEN];
 char db_schema[LDMS_MAX_CONFIG_STR_LEN];
 char db_host[LDMS_MAX_CONFIG_STR_LEN];
@@ -125,9 +123,8 @@ static struct fmetric *get_metric(struct fset *set, char *metric_name)
 	return NULL;
 }
 
-static int add_set(char *set_name, char *file_path)
+static int add_set(char *set_name)
 {
-	FILE *file;
 	ldms_set_t sd;
 	struct fset *set = get_fset(set_name);
 	if (set)
@@ -137,19 +134,12 @@ static int add_set(char *set_name, char *file_path)
 	if (!sd)
 		return ENOENT;
 
-	file = fopen(file_path, "a");
-	if (!file)
-		return errno;
-
 	set = calloc(1, sizeof *set);
 	if (!set) {
-		fclose(file);
 		return ENOMEM;
 	}
 	set->sd = sd;
 	set->lastDataGnInsert = -1;
-	set->file = file;
-	set->file_path = strdup(file_path);
 	LIST_INSERT_HEAD(&set_list, set, entry);
 	return 0;
 }
@@ -161,8 +151,6 @@ static int remove_set(char *set_name)
 		return ENOENT;
 	LIST_REMOVE(set, entry);
 	set->lastDataGnInsert = -1;
-	free(set->file_path);
-	fclose(set->file);
 	return 0;
 }
 
@@ -195,7 +183,7 @@ static int add_metric(char *set_name, char *metric_name, uint64_t key, int diff_
 	metric->diffMetric = diff_metric;
 	metric->lastValSet = 0;
 	metric->lastVal = 0;
-	metric->tableName = strdup(table_name);	
+	metric->tableName = strdup(table_name);
 	LIST_INSERT_HEAD(&set->metric_list, metric, entry);
 	return 0;
 }
@@ -227,11 +215,11 @@ static int set_dbconfigs()
     snprintf(username,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_USER);
   if (strlen(password) == 0)
     snprintf(password,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_PASS);
-  return 1;
+  return 0;
 }
 
 
-static int createTable(char* metricName, char* compAssoc, char *tableName){
+static int createTable(char* ovisMetricName, char* compAssoc, char *tableName){
   //will create a table and the supporting tables, if necessary
   MYSQL_RES *result;
   MYSQL_ROW row;
@@ -242,14 +230,14 @@ static int createTable(char* metricName, char* compAssoc, char *tableName){
   //get the comptype
   int ctype = -1;
   char query1[4096];
-  snprintf(query1,4095,"SELECT CompType From ComponentTypes WHERE ShortName = %s", compAssoc);
+  snprintf(query1,4095,"SELECT CompType From ComponentTypes WHERE ShortName ='%s'", compAssoc); //FIXME: check for cap
   if (mysql_query(conn, query1)){
     msglog("Cannot query for Component type '%s'\n", compAssoc);
     return -1;
   }
   result = mysql_store_result(conn);
   int num_fields = mysql_num_fields(result);
-  if ((num_fields == 1) && (mysql_num_rows(result) != 1)){
+  if ((num_fields == 1) && (mysql_num_rows(result) == 1)){
     while((row = mysql_fetch_row(result))){
       ctype = atoi(row[0]); 
       mysql_free_result(result);
@@ -278,20 +266,19 @@ static int createTable(char* metricName, char* compAssoc, char *tableName){
   }
 
   //create the MetricValueType
+  int metrictype = -1;
   snprintf(query1, 4095, "%s%s%s",
 	   "SELECT ValueType from MetricValueTypes WHERE Name='",
-	   metricName,
+	   ovisMetricName,
 	   "' AND Units='1' AND Constant=0 AND Storage='int'");
   //NOTE that storage will be int and not int(32)
-  if (mysql_query(conn, query1)){
-    msglog("Cannot query for MetricValueType for '%s'\n", metricName);
+  if (mysql_query(conn, query1) != 0){
+    msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
     return -1;
   }
-
-  int metrictype = -1;
   result = mysql_store_result(conn);
   num_fields = mysql_num_fields(result);
-  if ((num_fields == 1) && (mysql_num_rows(result) != 1)){
+  if ((num_fields == 1) && (mysql_num_rows(result) == 1)){
     //it could be in there already (more than 1 sampler can provide the same data)
     while((row = mysql_fetch_row(result))){
       metrictype = atoi(row[0]); 
@@ -304,26 +291,26 @@ static int createTable(char* metricName, char* compAssoc, char *tableName){
 
     //FIXME: currently we make all ldms metrics long int. can we support long int in the db and processing?
     // can we have other types for ldms and have them easily discovered?
-    snprintf(query1, 4095, "%s%s%s",
+    snprintf(query2, 4095, "%s%s%s",
 	     "INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('",
-	     metricName,
+	     ovisMetricName,
 	     "', '1', 'int', 0)");
-    if (mysql_query(conn, query2)){
-      msglog("Cannot insert MetricValueType for '%s'\n", metricName);
+    if (mysql_query(conn, query2) !=0){
+      msglog("Cannot insert MetricValueType for '%s'\n", ovisMetricName);
       return -1;
     }
     snprintf(query1, 4095, "%s%s%s",
 	     "SELECT ValueType from MetricValueTypes WHERE Name='",
-	     metricName,
-	     "' AND Units='1' AND Constant=0 AND Storage='int')");
-    if (mysql_query(conn, query1)){
-      msglog("Cannot query for MetricValueType for '%s'\n", metricName);
+	     ovisMetricName,
+	     "' AND Units='1' AND Constant=0 AND Storage='int'");
+    if (mysql_query(conn, query1) != 0){
+      msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
       return -1;
     }
     result = mysql_store_result(conn);
     int num_fields = mysql_num_fields(result);
     if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
-      msglog("No MetricValueType for '%s'\n", metricName);
+      msglog("No MetricValueType for '%s'\n", ovisMetricName);
       mysql_free_result(result);
       return -1;
     }
@@ -336,31 +323,30 @@ static int createTable(char* metricName, char* compAssoc, char *tableName){
 
 
   //create the TableId if necessary
-  snprintf(query1, 4095, "%s%s%s%d%s%d%s",
+  snprintf(query1, 4095, "%s%s%s%d%s%d",
 	   "SELECT TableId from MetricValueTableIndex WHERE TableName='",
 	   tableName,
-	   "' AND CompType='",
+	   "' AND CompType=",
 	   ctype,
-	   "' AND ValueType=",
-	   metrictype,
-	   "'");
-  if (mysql_query(conn, query1)){
+	   " AND ValueType=",
+	   metrictype);
+  if (mysql_query(conn, query1) != 0){
     msglog("Cannot query for table id for '%s'\n", tableName);
     return -1;
   }
   result = mysql_store_result(conn);
   num_fields = mysql_num_fields(result);
-  if ((num_fields != 1) && (mysql_num_rows(result) != 1)){
+  if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
     mysql_free_result(result);
     snprintf(query1, 4095, "%s%s%s%d%s%d%s",
-	     "INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType ) VALUES ( ",
+	     "INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType ) VALUES ('",
 	     tableName,
 	     "', ",
 	     ctype,
 	     ", ",
 	     metrictype,
 	     ")");
-    if (mysql_query(conn, query1)){
+    if (mysql_query(conn, query1) != 0){
       msglog("Cannot insert into MetricValueTableIndex for tableName '%s'\n", tableName);
       return -1;
     }
@@ -383,7 +369,7 @@ static int config(char *config_str)
 	} action;
 	int rc;
 	uint64_t key;
-	uint64_t diff_metric;
+	int diff_metric;
 
 	if (0 == strncmp(config_str, "add_metric", 10))
 		action = ADD_METRIC;
@@ -402,31 +388,42 @@ static int config(char *config_str)
 	}
 	switch (action) {
 	case ADD_SET:
-		sscanf(config_str, "add=%[^&]&%s", set_name, file_path);
-		rc = add_set(set_name, file_path);
+                sscanf(config_str, "add=%s", set_name);
+		rc = add_set(set_name);
 		break;
 	case REMOVE_SET:
 		sscanf(config_str, "remove=%s", set_name);
 		rc = remove_set(set_name);
 		break;
 	case ADD_METRIC:
-	  //FIXME: prob change this to ovis_metric_name and then use ovis naming convention
-	  //to build the table name (since we are passing in the comp type). Also have that
-	  //be optional and default to the metric name
-	  //NOTE: not making this generic since the insert also has a format
-                rc = sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"&%d&%[^&]&%s",
-			    set_name, metric_name, &key,
-			    &diff_metric, comp_assoc, table_name);
-		if (rc != 6){
-		  msglog("Problems parsing add_metric\n");
-		  return EINVAL;
-		}
-                rc = add_metric(set_name, metric_name, key, diff_metric, table_name);
-		rc = createTable(metric_name, comp_assoc, table_name); 
-		if (rc != 0){
-		  msglog("Cannot create table '%s'.\n",table_name);
-		  return rc;
-		}
+	  {
+
+	    //NOTE: not making this generic since the insert also has a format
+	    rc = sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"&%d&%[^&]&%s",
+			set_name, metric_name, &key, &diff_metric, comp_assoc, ovis_metric_name); 	
+	    if (rc != 6){
+	      msglog("Problems parsing add_metric\n");
+	      return EINVAL;
+	    }
+
+	    //table naming convention:  
+	    char table_name[LDMS_MAX_CONFIG_STR_LEN];
+	    char cap_comp_assoc[LDMS_MAX_CONFIG_STR_LEN];
+	    char cap_ovis_metric_name[LDMS_MAX_CONFIG_STR_LEN];
+	    snprintf(cap_comp_assoc, (LDMS_MAX_CONFIG_STR_LEN-1), "%s", comp_assoc);
+	    snprintf(cap_ovis_metric_name, (LDMS_MAX_CONFIG_STR_LEN-1), "%s", ovis_metric_name);
+	    cap_comp_assoc[0] = toupper(comp_assoc[0]);
+	    cap_ovis_metric_name[0] = toupper(cap_ovis_metric_name[0]);
+
+	    snprintf(table_name,LDMS_MAX_CONFIG_STR_LEN-1, "Metric%s%sValues", cap_comp_assoc, cap_ovis_metric_name);
+
+	    rc = add_metric(set_name, metric_name, key, diff_metric, table_name);
+	    rc = createTable(ovis_metric_name, comp_assoc, table_name); 
+	    if (rc != 0){
+	      msglog("Cannot create table '%s'.\n",table_name);
+	      return rc;
+	    }
+	  }
 		break;
 	case REMOVE_METRIC:
 		sscanf(config_str, "remove_metric=%[^&]&%s", set_name, metric_name);
@@ -435,8 +432,8 @@ static int config(char *config_str)
 	case DATABASE_INFO:
 	        rc = sscanf(config_str, "database_info=%[^&]&%[^&]&%[^&]&%s",
 			    db_schema, db_host, username, password);
-		if (rc != 4){
-		  msglog("Problems parsing database_info\n");
+		if (rc != 3 && rc != 4){
+		  msglog("Problems parsing database_info (%d)\n", rc);
 		  return EINVAL;
 		}
                 rc = set_dbconfigs();
@@ -459,7 +456,7 @@ static int init(const char *path)
   //FIXME: will we want the conn live all the time?
 
   if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) 
-      || (strlen(username) == 0) || (strlen(password) == 0)){
+      || (strlen(username) == 0)){
     msglog("Invalid parameters for database");
     return EINVAL;
   }
@@ -542,21 +539,21 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config mysqlinsert add=<set_name>&<path>\n"
-		"        - Adds a metric set and associated file to contain sampled values.\n"
-		"        set_name    The name of the metric set\n"
-		"        path        Path to a file that will contain the sampled metrics.\n"
-		"                    The file will be created if it does not already exist\n"
-		"                    and appeneded to if it does.\n"
+	return  "    config mysqlinsert add=<set_name>\n"
+		"        - Adds a metric set\n"
+		"        set_name    The name of the metric set.\n"
 		"    config mysqlinsert remove=<set_name>\n"
-		"        - Removes a metric set. The file is closed, but not destroyed\n"
+		"        - Removes a metric set. \n"
 		"        set_name    The name of the metric set\n"
-		"    config mysqlinsert add_metric=<set_name>&<metric_name>&key\n"
+		"    config mysqlinsert add_metric=<set_name>&<metric_name>&key&diff_metric&<comp_assoc>&<ovis_metric_name>\n"
 		"        - Add the specified metric to the set of values stored from the set\n"
 		"        set_name    The name of the metric set.\n"
 		"        metric_name The name of the metric.\n"
 		"        key         An unique Id for the Metric. Typically the component_id.\n"
-		"        table_name  The table this metric should be inserted into.\n"
+		"        diff_metric 1 for diff; 0 for not.\n"
+		"        comp_assoc  ovis comp type short name (case matters).\n"
+		"        ovis_metric_name  The ovis name for this metric. Table will be created\n"
+                "                    using the ovis naming convention.\n"
                 "                    The table will be created if it does not already exist.\n"
 		"    config mysqlinsert remove_metric=<set_name>&<metric_name>\n"
 		"        - Stop storing values for the specified metric\n"
