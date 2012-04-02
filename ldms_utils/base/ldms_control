@@ -17,32 +17,40 @@ LDMS_EXE_PATH=$7
 LDMS_LOG_PATH=$8
 LDMS_TRANSPORT=$9
 
+echo "export LDMS_ENTITY=$LDMS_ENTITY"
+echo "export SOCKET=$SOCKET"
+echo "export PERIOD=$PERIOD"
+echo "export COMP_ID=$COMP_ID"
+echo "export LDMS_TRANSPORT=$LDMS_TRANSPORT"
+echo "export LDMS_EXE_PATH=$LDMS_EXE_PATH"
 #PAPI_LIBS=/home/brandt/ldms-async/papi-4.2_build/lib/
+echo "export LD_LIBRARY_PATH=$LDMS_LIB_PATH:/home/brandt/ldms-async/papi-4.2_build/lib/"
 export LD_LIBRARY_PATH=$LDMS_LIB_PATH:/home/brandt/ldms-async/papi-4.2_build/lib/
 #export LD_LIBRARY_PATH=$LDMS_LIB_PATH:$PAPI_LIBS
+echo "export LDMS_XPRT_LIBPATH=$LDMS_LIB_PATH"
 export LDMS_XPRT_LIBPATH=$LDMS_LIB_PATH
+echo "export LDMS_PLUGIN_LIBPATH=$LDMS_LIB_PATH"
 export LDMS_PLUGIN_LIBPATH=$LDMS_LIB_PATH
 echo "LD_LIBRARY_PATH = $LD_LIBRARY_PATH"
 METRIC_SOCKET=metric_socket_$COMP_ID
 
 if [[ $LDMS_ENTITY = "ldmsd" ]]; then
    if [[ $ACTION = "start" ]]; then
-      killall ldmsctl
+#      killall ldmsctl
       mkdir -p /var/run/ldmsd
       mkdir -p /var/run/ldmsctl
-      rm /var/run/ldmsd/*
-      rm /var/run/ldmsctl/*
+#      rm /var/run/ldmsd/*
+#      rm /var/run/ldmsctl/*
       if [[ $LDMS_TRANSPORT = "sock" ]]; then
-#	echo "$LDMS_EXE_PATH/ldmsd -F -x $LDMS_TRANSPORT:$SOCKET -i $PERIOD -S /var/run/ldmsd/metric_socket_$COMP_ID -l $LDMS_LOG_PATH/ldms.log > /dev/null 2>&1 &"
-#	$LDMS_EXE_PATH/ldmsd -F -x $LDMS_TRANSPORT:$SOCKET -i $PERIOD -S /var/run/ldmsd/metric_socket_$COMP_ID -l $LDMS_LOG_PATH/ldms.log
-	$LDMS_EXE_PATH/ldmsd -F -x $LDMS_TRANSPORT:$SOCKET -i $PERIOD -S /var/run/ldmsd/metric_socket_$COMP_ID -l $LDMS_LOG_PATH/ldms.log > /dev/null 2>&1 &
+	echo "$LDMS_EXE_PATH/ldmsd -x $LDMS_TRANSPORT:$SOCKET -i $PERIOD -H ${HOSTNAME}_${COMP_ID} -S /var/run/ldmsd/metric_socket_$COMP_ID -l $LDMS_LOG_PATH/ldms.log > /dev/null 2>&1"
+	$LDMS_EXE_PATH/ldmsd -x $LDMS_TRANSPORT:$SOCKET -i $PERIOD -H ${HOSTNAME}_${COMP_ID} -S /var/run/ldmsd/metric_socket_$COMP_ID -l $LDMS_LOG_PATH/ldms.log > /dev/null 2>&1 
       elif [[ $LDMS_TRANSPORT = "rdma" ]]; then
-	$LDMS_EXE_PATH/ldmsd -F -x $LDMS_TRANSPORT:$SOCKET -i $PERIOD -S /var/run/ldmsd/metric_socket_$COMP_ID -l $LDMS_LOG_PATH/ldms.log > /dev/null 2>&1 &
+	$LDMS_EXE_PATH/ldmsd -x $LDMS_TRANSPORT:$SOCKET -i $PERIOD -H ${HOSTNAME}_${COMP_ID} -S /var/run/ldmsd/metric_socket_$COMP_ID -l $LDMS_LOG_PATH/ldms.log > /dev/null 2>&1 &
       fi
    elif [[ $ACTION = "stop" ]]; then
 	killall ldmsctl
 	killall ldmsd
-	rm /var/run/ldmsctl/*
+#	rm /var/run/ldmsctl/*
    else
 	continue
    fi
