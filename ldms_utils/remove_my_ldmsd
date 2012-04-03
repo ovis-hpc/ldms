@@ -1,9 +1,9 @@
 #!/bin/bash
 
 cd base
-/projects/ldms/ldms_utils/base/control_plugins \
-/projects/ldms/ldms_utils/configs/my_hosts \
-/projects/ldms/ldms_utils/configs/remove_ldmsd \
+/home/brandt/ldms-async/ldms_utils/base/control_plugins \
+/home/brandt/ldms-async/ldms_utils/configs/my_hosts \
+/home/brandt/ldms-async/ldms_utils/configs/remove_ldmsd \
 2 \
 sock
 

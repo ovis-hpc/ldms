@@ -3,8 +3,8 @@
 cd /projects/ldms/LDMS/
 make clean
 export CFLAGS=-g
-export LDFLAGS=-L/projects/ldms/libs/shuttle/libevent-1.4_build/lib
-export CPPFLAGS=-I/projects/ldms/libs/shuttle/libevent-1.4_build/include
+export LDFLAGS=-L/projects/ldms/libs/shuttle/libevent-2.0_build/lib
+export CPPFLAGS=-I/projects/ldms/libs/shuttle/libevent-2.0_build/include
 
 ./autogen.sh
 mkdir -p m4

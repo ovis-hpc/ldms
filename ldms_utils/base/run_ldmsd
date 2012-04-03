@@ -38,5 +38,5 @@ SHARED_PATH_TO_LDMS_LOGS="$(cat ldms_base_config | grep "SHARED" | cut -d , -f7 
 EXEPREFIX="$(cat ldms_base_config | grep "EXEPREFIX" | cut -d , -f2 | sed 's/^[ \t]*//')"
 #SHARED_PATH_TO_PAPI="$(cat ldms_base_config | grep "SHARED" | cut -d , -f9 | sed 's/^[ \t]*//')"
 
-#	echo "ssh $HOST \"$EXEPREFIX $SHARED_PATH_TO_SCRIPTS/ldms_control ldmsd start $SOCKET $LDMSD_PERIOD $COMP_ID $SHARED_PATH_TO_LDMS_LIBS $SHARED_PATH_TO_LDMS_EXE $SHARED_PATH_TO_LDMS_LOGS $LDMS_TRANSPORT > /dev/null 2>&1 &\""
+	echo "ssh $HOST \"$EXEPREFIX $SHARED_PATH_TO_SCRIPTS/ldms_control ldmsd start $SOCKET $LDMSD_PERIOD $COMP_ID $SHARED_PATH_TO_LDMS_LIBS $SHARED_PATH_TO_LDMS_EXE $SHARED_PATH_TO_LDMS_LOGS $LDMS_TRANSPORT > /dev/null 2>&1 &\""
 	ssh $HOST "$EXEPREFIX $SHARED_PATH_TO_SCRIPTS/ldms_control ldmsd start $SOCKET $LDMSD_PERIOD $COMP_ID $SHARED_PATH_TO_LDMS_LIBS $SHARED_PATH_TO_LDMS_EXE $SHARED_PATH_TO_LDMS_LOGS $LDMS_TRANSPORT > /dev/null 2>&1 &"

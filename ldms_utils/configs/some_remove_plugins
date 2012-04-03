@@ -1,4 +1,0 @@
-# ldms entity (meminfo, vmstat, geminfo, procinterrupts, procpidstatic, procstatutil, ldmsmon), action (start, stop, resume, remove), collection period
-procinterrupts remove 1000000
-procstatutil remove 1000000
-

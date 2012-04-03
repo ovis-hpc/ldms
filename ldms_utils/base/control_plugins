@@ -47,7 +47,8 @@ exec 9<$MYHOSTS
 while read -u9 line
    do
 	host=$(echo $line | cut -d ' ' -f1 | sed 's/^[ \t]*//')
-	comp_id=$(echo $line | cut -d ' ' -f2 | sed 's/^[ \t]*//')
+	base_comp_id=$(echo $line | cut -d ' ' -f2 | sed 's/^[ \t]*//')
+	comp_id=$(( $base_comp_id + $STREAM_NUM -1 ))
 	period=$(echo $line | cut -d ' ' -f3 | sed 's/^[ \t]*//')
 	if [[ -z $host && -z $comp_id && -z $period ]]; then
 		continue
