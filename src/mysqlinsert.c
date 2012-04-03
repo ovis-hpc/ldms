@@ -139,7 +139,7 @@ static int add_set(char *set_name)
 		return ENOMEM;
 	}
 	set->sd = sd;
-	set->lastDataGnInsert = -1;
+	set->lastDataGnInsert = 0;
 	LIST_INSERT_HEAD(&set_list, set, entry);
 	return 0;
 }
@@ -150,7 +150,7 @@ static int remove_set(char *set_name)
 	if (!set)
 		return ENOENT;
 	LIST_REMOVE(set, entry);
-	set->lastDataGnInsert = -1;
+	set->lastDataGnInsert = 0;
 	return 0;
 }
 
@@ -418,6 +418,10 @@ static int config(char *config_str)
 	    snprintf(table_name,LDMS_MAX_CONFIG_STR_LEN-1, "Metric%s%sValues", cap_comp_assoc, cap_ovis_metric_name);
 
 	    rc = add_metric(set_name, metric_name, key, diff_metric, table_name);
+	    if (rc != 0){
+	      msglog("Cannot add metric '%s' '%s'.\n",set_name, metric_name);
+	      return rc;
+	    }
 	    rc = createTable(ovis_metric_name, comp_assoc, table_name); 
 	    if (rc != 0){
 	      msglog("Cannot create table '%s'.\n",table_name);
@@ -487,14 +491,16 @@ static int sample(void)
   }
 
   LIST_FOREACH(set, &set_list, entry) {
-    //two generation numbers -- meta data: for when a metric gets added or removed, data: for when *any* value gets updated.
-    //only insert vals again if the data generation number has been incremented, however this does not guarentee that all the
-    //data values are new.
-    uint64_t datagn = ldms_get_data_gn(&set);
-    if (datagn == set->lastDataGnInsert){ //does rollover exist? not doing less than just in case...
-      continue;
+    if (0){ //FIXME: this is causing it to die
+      //two generation numbers -- meta data: for when a metric gets added or removed, data: for when *any* value gets updated.
+      //only insert vals again if the data generation number has been incremented, however this does not guarentee that all the
+      //data values are new.
+      uint64_t datagn = ldms_get_data_gn(&set);
+      if (datagn == set->lastDataGnInsert){ //does rollover exist? not doing less than just in case...
+	continue;
+      }
+      set->lastDataGnInsert = datagn; //updating before the insert, in case we want to know what gn caused the problem. could move till after...
     }
-    set->lastDataGnInsert = datagn; //updating before the insert, in case we want to know what gn caused the problem. could move till after...
 
     LIST_FOREACH(met, &set->metric_list, entry) {
       int compId = met->key; // FIXME: i think right now the key is the component id.
@@ -521,13 +527,15 @@ static int sample(void)
       long int level = lround( -log2( drand48()));
       snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %d, NULL, %ld )",
 	       met->tableName, compId, (int)val, level); //FIXME: cast insert type?
+
       if (mysql_query(conn, insertStatement) != 0){
 	printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
-	exit(1);
+      	exit(1);
       }
       
     }
   }
+
   return 0;
 }
 
