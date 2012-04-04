@@ -165,12 +165,17 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
 {
 	struct ls_set *lss;
-	if (status)
-		return;
+	if (status) {
+		printf("ldms_ls: lookup failed with status %d for set '%s'\n",
+		       status, arg);
+		exit(3);
+	}
 
 	lss = calloc(1, sizeof(struct ls_set));
-	if (!lss)
-		return;
+	if (!lss) {
+		perror("ldms_ls: ");
+		exit(3);
+	}
 
 	pthread_mutex_lock(&dir_lock);
 	lss->set = s;
@@ -198,7 +203,8 @@ void add_set_list(ldms_t t, ldms_dir_t _dir)
 		if (!verbose && !long_format)
 			printf("%s\n", _dir->set_names[i]);
 		else
-			ldms_lookup(t, _dir->set_names[i], lookup_cb, 0);
+			ldms_lookup(t, _dir->set_names[i], lookup_cb,
+				    _dir->set_names[i]);
 }
 
 static void _del_set(ldms_t t, const char *set_name)
@@ -339,8 +345,8 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&upd_lock, 0);
 	pthread_cond_init(&upd_cv, NULL);
 
+	dir_needed = 1;
 	if (optind == argc) {
-		dir_needed = 1;
 		ret = ldms_dir(ldms, dir_cb, NULL, 1);
 		if (ret) {
 			printf("ldms_dir returned synchronous error %d\n",
@@ -350,15 +356,21 @@ int main(int argc, char *argv[])
 	} else {
 		if (!verbose && !long_format)
 			usage(argv);
-
-		/* Set list specified on the command line */
-		for (i = optind; i < argc; i++) {
-			ret = ldms_lookup(ldms, argv[i], lookup_cb, NULL);
-			if (ret) {
-				printf("ldms_lookup returned %d\n", ret);
-				exit(1);
-			}
+		/*
+		 * Set list specified on the command line. Dummy up a
+		 * directory and call our ldms_dir callback
+		 * function
+		 */
+		struct ldms_dir_s *dir = calloc(1, sizeof(*dir) + ((argc - optind) * sizeof (char *)));
+		if (!dir) {
+			perror("ldms: ");
+			exit(2);
 		}
+		dir->set_count = argc - optind;
+		dir->type = LDMS_DIR_LIST;
+		for (i = optind; i < argc; i++)
+			dir->set_names[i - optind] = strdup(argv[i]);
+		dir_cb(ldms, 0, dir, NULL);
 	}
 
 	pthread_mutex_lock(&dir_lock);
