@@ -2,7 +2,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
-	-I$(includedir)/infiniband -I/home/gentile/Work/utils/libevent-2.0.15/include
+	-I$(includedir)/infiniband 
 
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms
 
