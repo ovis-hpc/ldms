@@ -74,7 +74,6 @@ each sedc file.
 #define SEDC_DATAFILE "/opt/cray/sedc/sedcfile"
 #define OVIS_COMPIDMAP "/opt/cray/sedc/ovismap"
 #define LOGFILE "/var/log/sedc.log"
-#define SAMPLE_INTERVAL 1000000
 
 static char *sockname = METRIC_SOCKET;
 static char *logfile = LOGFILE;
@@ -85,9 +84,6 @@ static char *setshortname = "";
 static FILE *log_fp;
 static int foreground;
 static int verbose;
-static std::vector<int> set_nos;
-static int ldmsout = 1;
-static int sample_interval = SAMPLE_INTERVAL;
 
 //we have multiple sets - one for each distinct compid
 static std::map<std::string,int> compidmap; //compname to id
@@ -205,7 +201,6 @@ int createMetricSet(std::string hostname, int compid, std::string shortname){
   snprintf(setnamechar,1024,"%s",setname.c_str());
 
   fset currfset;
-  int set_no = -1;
   /* Create a metric set of the required size */
   int rc = ldms_create_set(setnamechar, tot_meta_sz, tot_data_sz, &(currfset.sd));
   if (rc != 0){
@@ -464,11 +459,10 @@ int main(int argc, char *argv[])
   }
   // will now have the headers
 
-  //FIXME: what is this about basename?
-  //  if (un_connect(basename(argv[0]), sockname) < 0) {
-  //    printf("Error setting up connection with ldmsd.\n");
-  //    exit(1);
-  //  }
+  if (un_connect(basename(argv[0]), sockname) < 0) {
+    printf("Error setting up connection with ldmsd.\n");
+    exit(1);
+  }
 
   if (!foreground) {
     log_fp = fopen(logfile, "a");

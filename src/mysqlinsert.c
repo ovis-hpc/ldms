@@ -60,6 +60,7 @@
 #include <mysql/mysql.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "un.h"
 
 //DB_SOCKET is currently not used
 //#define DEFAULT_DB_SOCKET "/var/lib/mysql/mysql.sock" 

@@ -42,6 +42,14 @@
 #ifndef _UN_H
 #define _UH_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+#if 0
+}
+#endif
+
+
 /* These are helper functions for writing LDMS metric data providers */
 
 extern void un_set_quiet(int q);
@@ -72,4 +80,9 @@ extern int un_stop_plugin(char *plugin, char *err_str);
 extern int un_stop_plugin(char *plugin, char *err_str);
 extern int un_config_plugin(char *plugin, char *str, char *err_str);
 extern void un_close(void);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif
