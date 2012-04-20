@@ -40,7 +40,6 @@
  */
 /*
  * This is the /proc/interrupts data provider.
- * FIXME: there were some formats and associations in here assumed for the Cray case which may not generally be true.
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -60,7 +59,6 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-int num_numlines;
 ldms_metric_t compid_metric_handle;
 int nprocs;
 
@@ -126,8 +124,6 @@ static int init(const char *path)
 	}
 
 	char beg_name[128];
-	char end_name[128];
-	num_numlines = 0; //first num_numlines (after the header) are all cpu0 only metrics
 
 	/*
 	 * Process the file once first to determine the metric set size.
@@ -150,54 +146,30 @@ static int init(const char *path)
 	  s = fgets(lbuf, sizeof(lbuf), mf);
 	  if (!s)
 	    break;
-	  char* pch;
-	  int firsttime = 1;
-	  int foundmetric = 0;
-	  long int l1 = 0;
-	  pch = strtok (lbuf," ");
-	  while (pch != NULL){
-	    //	    printf("<%s>\n",pch);
-	    if (firsttime){
+	  int currcol = 0;
+	  char* pch = strtok (lbuf," ");
+	  while (pch != NULL && currcol <= nprocs){
+	    if (pch[0] == '\n'){
+	      break;
+	    }
+	    if (currcol == 0){
 	      /* Strip the colon from metric name if present */
 	      i = strlen(pch);
 	      if (i && pch[i-1] == ':')
 		pch[i-1] = '\0';
 	      strcpy(beg_name, pch);
-		
-	      char *endptr;
-	      l1 = strtol (pch, &endptr,10);
-	      if (endptr == pch){
-		//if the metric name is not a number, the metric name will be CpuX_name (there will be nprocs)
-		for (i = 0; i < nprocs; i++){
-		  snprintf(metric_name,128,"Cpu%d_%s",i,beg_name);
-		  rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-		  tot_meta_sz += meta_sz;
-		  tot_data_sz += data_sz;
-		  metric_count++;
-		}
-		foundmetric = 1;
-		break;
-	      }
-	      firsttime = 0;
 	    } else {
-	      //if the metric name is a number, the metric name will be Cpu0_lastcol_num (there will be only Cpu0)
-	      strcpy(end_name, pch);
+	      //the metric name will be CpuX_name (there may 1 or nprocs of them)
+	      snprintf(metric_name,128,"Cpu%d_%s",(currcol-1),beg_name); //FIXME: prob get the actual col name
+	      rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+	      tot_meta_sz += meta_sz;
+	      tot_data_sz += data_sz;
+	      metric_count++;
 	    }
-	    pch = strtok(NULL, " ");
+	    currcol++;
+	    pch = strtok(NULL," ");
 	  } // while (strtok)
-	  if (!foundmetric){
-	    //chomp
-	    i = strlen(end_name);
-	    if (i && end_name[i-1] == '\n')
-		end_name[i-1] = '\0';
-	    snprintf(metric_name,128,"Cpu0_%s_%ld",end_name,l1);
-	    rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	    tot_meta_sz += meta_sz;
-	    tot_data_sz += data_sz;
-	    metric_count++;
-	    num_numlines++;
-	  }
-	} //while
+	} //while(s)
 
 	/* Create a metric set of the required size */
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
@@ -225,57 +197,32 @@ static int init(const char *path)
 	  s = fgets(lbuf, sizeof(lbuf), mf);
 	  if (!s)
 	    break;
-	  char* pch;
-	  int firsttime = 1;
-	  int foundmetric = 0;
-	  long int l1 = 0;
-	  pch = strtok (lbuf," ");
-	  while (pch != NULL){
-	    if (firsttime){
+	  int currcol = 0;
+	  char* pch = strtok (lbuf," ");
+	  while (pch != NULL && currcol <= nprocs){
+	    if (pch[0] == '\n'){
+	      break;
+	    }
+	    if (currcol == 0){
 	      /* Strip the colon from metric name if present */
 	      i = strlen(pch);
 	      if (i && pch[i-1] == ':')
 		pch[i-1] = '\0';
 	      strcpy(beg_name, pch);
-		
-	      char *endptr;
-	      l1 = strtol (pch, &endptr,10);
-	      if (endptr == pch){
-		//if the metric name is not a number, the metric name will be CpuX_name (there will be nprocs)
-		for (i = 0; i < nprocs; i++){
-		  snprintf(metric_name,128,"Cpu%d_%s",i,beg_name);
-		  metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
-		  if (!metric_table[metric_no]){
-		    rc = ENOMEM;
-		    goto err;
-		  }
-		  metric_no++;
-		}
-		foundmetric = 1;
-		break;
-	      }
-	      firsttime = 0;
 	    } else {
-	      //if the metric name is a number, the metric name will be Cpu0_lastcol_num (there will be only Cpu0)
-	      strcpy(end_name, pch);
+	      //the metric name will be CpuX_name (there may 1 or nprocs of them)
+	      snprintf(metric_name,128,"Cpu%d_%s",(currcol-1),beg_name);  //FIXME: prob get the actual col name
+	      metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	      if (!metric_table[metric_no]){
+		rc = ENOMEM;
+		goto err;
+	      }
+	      metric_no++;
 	    }
-	    pch = strtok(NULL, " ");
-	  } //while (strtok)
-	  if (!foundmetric){
-	    //chomp
-	    i = strlen(end_name);
-	    if (i && end_name[i-1] == '\n')
-		end_name[i-1] = '\0';
-	    snprintf(metric_name,128,"Cpu0_%s_%ld",end_name,l1);
-	    metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
-	    if (!metric_table[metric_no]){
-	      rc = ENOMEM;
-	      goto err;
-	    }
-	    metric_no++;
-	  }
-	} //while
-
+	    currcol++;
+	    pch = strtok(NULL," ");
+	  } // while (strtok)
+	} //while(s)
 	return 0;
 
  err:
@@ -285,14 +232,10 @@ static int init(const char *path)
 
 static int sample(void)
 {
-  int rc;
   int metric_no;
   char *s;
   char lbuf[256];
-  char metric_name[128];
-  char junk[128];
   union ldms_value v;
-  int count = 0;
 
   metric_no = 0;
   fseek(mf, 0, SEEK_SET);
@@ -305,42 +248,30 @@ static int sample(void)
     if (!s)
       break;
 
-    if (count < num_numlines){
-      //then we only need the first col
-      rc = sscanf(lbuf, "%s %"PRIu64 " %s\n", metric_name, &v.v_u64, junk);
-      if (rc != 3)
-	return EINVAL;
-
-      ldms_set_metric(metric_table[metric_no], &v);
-      metric_no++;
-      count++;
-    } else {
-      int currcol = 0;
-      char* pch = strtok(lbuf, " ");
-      while (pch != NULL && currcol <= nprocs){
-	if (pch[0] == '\n'){
-	  break;
-	}
-	if (pch[0] != ' '){
-	  if (currcol != 0){
-	    char* endptr;
-	    unsigned long long int l1;
-	    l1 = strtoull(pch,&endptr,10);
-	    if (endptr != pch){
-	      v.v_u64 = l1;
-	      ldms_set_metric(metric_table[metric_no], &v);
-	      metric_no++;
-	    } else {
-	      msglog("bad val <%s>\n",pch);
-	      return EINVAL;
-	    }
-	  }
-	  currcol++;
-	}
-	pch = strtok(NULL," ");
+    int currcol = 0;
+    char* pch = strtok(lbuf, " ");
+    while (pch != NULL && currcol <= nprocs){
+      if (pch[0] == '\n'){
+	break;
       }
-      count++;
-    }
+      if (pch[0] != ' '){
+	if (currcol != 0){
+	  char* endptr;
+	  unsigned long long int l1;
+	  l1 = strtoull(pch,&endptr,10);
+	  if (endptr != pch){
+	    v.v_u64 = l1;
+	    ldms_set_metric(metric_table[metric_no], &v);
+	    metric_no++;
+	  } else {
+	    msglog("bad val <%s>\n",pch);
+	    return EINVAL;
+	  }
+	}
+	currcol++;
+      }
+      pch = strtok(NULL," ");
+    } //strtok
   } while (s);
   return 0;
 }
