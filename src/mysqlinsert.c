@@ -41,6 +41,9 @@
 /*
  * This is the mysqlinsert sampler. It saves a local metric set's data to
  * a mysql database in the ovis table format.
+ *
+ * FIXME: is is possible diff metrics could be negative? will have to change metric type
+ * FIXME: examine possibilities for long int metric tables and xref with metric type
  */
 #include <ctype.h>
 #include <inttypes.h>
@@ -57,6 +60,7 @@
 #include <mysql/mysql.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "un.h"
 
 //DB_SOCKET is currently not used
 //#define DEFAULT_DB_SOCKET "/var/lib/mysql/mysql.sock" 

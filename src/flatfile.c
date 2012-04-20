@@ -51,13 +51,15 @@
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/queue.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define LOGFILE "/var/log/flat_file.log"
+static pthread_mutex_t cfg_lock;
 
+#define LOGFILE "/var/log/flat_file.log"
 struct fmetric {
 	ldms_metric_t md;
 	uint64_t key;		/* component id or whatever else you like */
@@ -193,6 +195,7 @@ static int config(char *config_str)
 	int rc;
 	uint64_t key;
 
+	pthread_mutex_lock(&cfg_lock);
 	if (0 == strncmp(config_str, "add_metric", 10))
 		action = ADD_METRIC;
 	else if (0 == strncmp(config_str, "remove_metric", 32))
@@ -204,7 +207,8 @@ static int config(char *config_str)
 	else {
 		msglog("flatfile: Invalid configuration string '%s'\n",
 		       config_str);
-		return EINVAL;
+		rc = EINVAL;
+		goto out;
 	}
 	switch (action) {
 	case ADD_SET:
@@ -225,9 +229,10 @@ static int config(char *config_str)
 		break;
 	default:
 		msglog("Invalid config statement '%s'.\n", config_str);
-		return EINVAL;
+		rc = EINVAL;
 	}
-
+ out:
+	pthread_mutex_unlock(&cfg_lock);
 	return rc;
 }
 
@@ -238,6 +243,7 @@ static ldms_set_t get_set()
 
 static int init(const char *path)
 {
+	pthread_mutex_init(&cfg_lock, NULL);
 	return 0;
 }
 
@@ -247,6 +253,7 @@ static int sample(void)
 	struct fset *set;
 	struct fmetric *met;
 	int rc;
+	pthread_mutex_lock(&cfg_lock);
 	LIST_FOREACH(set, &set_list, entry) {
 	  //check here for the generation number and see if it changes if you want. there is a function to get it.
 	  //ldms_get_data_gn. metadata number changes when a new metric gets added or removed. data number
@@ -265,11 +272,13 @@ static int sample(void)
 			fflush(set->file); //tail the flat file if you want to see it
 		}
 	}
+	pthread_mutex_unlock(&cfg_lock);
 	return 0;
 }
 
 static void term(void)
 {
+	pthread_mutex_destroy(&cfg_lock);
 }
 
 static const char *usage(void)
