@@ -4,7 +4,7 @@ ACLOCAL_AMFLAGS = -I m4
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
 	-I$(includedir)/infiniband 
 
-sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms src/hwloc_metric_mapper
+sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms 
 
 noinst_LIBRARIES = libun.a
 
@@ -107,10 +107,6 @@ src_ldmsctl_DEPENDENCIES = $(top_builddir)/libun.a
 src_sedc_to_ldms_SOURCES = src/sedc_to_ldms.cxx
 src_sedc_to_ldms_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
 src_sedc_to_ldms_DEPENDENCIES = $(top_builddir)/libun.a
-
-src_hwloc_metric_mapper_SOURCES = src/hwloc_metric_mapper.c
-src_hwloc_metric_mapper_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
-src_hwloc_metric_mapper_DEPENDENCIES = $(top_builddir)/libun.a
 
 EXTRA_DIST = include ldms-utils.spec.in ldms-utils.spec \
 	autogen.sh \
