@@ -7,7 +7,6 @@
 #include <sys/types.h>
 
 
-//FIXME: INPUT METRIC FILE FORMAT
 //FIXME: want to turn this into a library and then the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
 //FIXME: for the library, can we build it with the metric file, rather than this re-reading of the config files and rebuilding the map
 //NOTE: assuming the machine is homogeneous so can use 1 hwloc for all. only difference is the hostname (Machine) translation 
@@ -66,6 +65,9 @@ int numsets = 0;
 //temporary for parsing
 struct Linfo tree[MAXHWLOCLEVELS];
 int treesize = 0;
+
+int numhwlocfiles = 0;
+int nummetricfiles = 0;
 
 
 //enum if want specific line parses based upon these names
@@ -146,90 +148,96 @@ int getInstanceLDMSName(char* orig, char* Lval, char* newname){
 
 
 int parseMetricData(char* inputfile){
-  //user metric data is in a file. 
-  //each line of the file is a space delimited list of: hwlocassoc localsetname {any number of ldmsmetricname} 
+  //user metric data is in a file.
+  //first line of the file is the hwloc component type
+  //all subsequent lines are ldms setname/metricname
+
   //if a line starts with # it will be skipped
-  //blank lines will be skipped
-  //FIXME: repeats of hwlocassoc and setnames are allowed, but there is no check for repeat metric names
-
-  //FIXME: should the format of this file change (1 metric per line? 1 file per component?)?
-
   char buf[MAXBUFSIZE];
-  char assoc[MAXSHORTNAME];
+  char assoc[MAXSHORTNAME]; 
+  int haveassoc = 0;
   char setname[MAXLONGNAME];
+  char metricname[MAXSHORTNAME];
+  int comptypenum = -1;
+
   int numVals = 0;
-  int index = -1;
-  int count;  
   int i;
   int setnum = -1;
-  int comptypenum = -1;
 
   FILE *fp = fopen(inputfile, "r");
   if (fp == NULL){
     printf("Error: Can't open metric data file. exiting.\n");
     exit (-1);
   }
+
   while (fgets(buf, (MAXBUFSIZE-1), fp) != NULL){
-    count = 0;
-    index = -1;
-    char* pch;
-    pch = strtok(buf, " \n");
-    while (pch != NULL){
-      if (count == 0){
-	if (pch[0] == '#'){ //its a comment
+    //    printf("read <%s>\n", buf);
+    if (buf[0] == '#'){ //its a comment
+      continue;
+    }
+    if (strlen(buf) < 1){
+      continue;
+    }
+    buf[strlen(buf)-1] = '\0'; //remove the new line
+    if (haveassoc == 0){
+      //      printf("checking component <%s>\n", buf);
+      sscanf(buf, "%s", assoc);
+      if (strlen(assoc) == 0){
+	continue;
+      } 
+      comptypenum = -1;
+      for (i = 0; i < numlevels; i++){
+	if (!strcmp(hwloc[i].assoc, assoc)){
+	  comptypenum = i;
 	  break;
 	}
-	strncpy(assoc, pch, MAXSHORTNAME);
+      }
+      if (comptypenum == -1){
+	printf("Error: dont know assoc <%s>\n");
+	exit (-1);
+      }
+      haveassoc = 1 ;
+    } else {
+      if (buf[0] == '#'){ //its a comment
+	continue;
+      }
+      char *p  = strstr(buf,"/"); //FIXME: assume this is setname/metricname
+      if (p == NULL){
+	continue;
+      }
+      strncpy(metricname, p+1, strlen(p));
+      metricname[strlen(p)] = '\0';
+      strncpy(setname, buf, strlen(buf)-strlen(p));
+      setname[strlen(buf)-strlen(p)] = '\0';
+      //      printf("<%s><%s>\n",setname, metricname);
 
-	comptypenum = -1;
-	for (i = 0; i < numlevels; i++){
-	  if (!strcmp(hwloc[i].assoc, assoc)){
-	    comptypenum = i;
-	    break;
-	  }
-	}
-	if (comptypenum == -1){
-	  printf("Error: dont know assoc <%s>\n");
-	  exit (-1);
-	}
-
-	count++;
-      } else if (count == 1){
-      	strncpy(setname, pch, MAXLONGNAME);
-
-	setnum = -1;
-	for (i = 0; i < numsets; i++){
-	  if (!strcmp(sets[i].setname,setname)){
-	    setnum = i;
-	  }
-	}
-
-	if (setnum == -1){
-	  strncpy(sets[numsets].setname,setname,MAXLONGNAME);
-	  sets[numsets].nummetrics = 0;
-	  setnum = numsets;
-	  numsets++;
-	}
-	
-	count++;
-      } else {
-	//its a metric
-
-	//	printf("there are %d %s\n",hwloc[comptypenum].numinstances, hwloc[comptypenum].assoc);
-	for (i = 0; i < hwloc[comptypenum].numinstances; i++){
-	  int metricnum = sets[setnum].nummetrics;
-	  char newname[MAXSHORTNAME];
-	  int rc = getInstanceLDMSName(pch, hwloc[comptypenum].instances[i]->Lval, newname);
-	  if (rc != 0){
-	    printf("Error: Cannot parse the metric regex. Exiting\n");
-	    exit (-1);
-	  }
-	  strncpy(sets[setnum].metrics[metricnum].ldmsname, newname, MAXSHORTNAME);
-	  sets[setnum].metrics[metricnum].instance = hwloc[comptypenum].instances[i];
-	  sets[setnum].nummetrics++;
+      setnum = -1;
+      for (i = 0; i < numsets; i++){
+	if (!strcmp(sets[i].setname,setname)){
+	  setnum = i;
 	}
       }
-      pch = strtok( NULL, " \n");
+
+      if (setnum == -1){
+	strncpy(sets[numsets].setname,setname,MAXLONGNAME);
+	sets[numsets].nummetrics = 0;
+	setnum = numsets;
+	numsets++;
+      }
+
+      for (i = 0; i < hwloc[comptypenum].numinstances; i++){
+	int metricnum = sets[setnum].nummetrics;
+	char newname[MAXSHORTNAME];
+	int rc = getInstanceLDMSName(metricname, hwloc[comptypenum].instances[i]->Lval, newname);
+	if (rc != 0){
+	  printf("Error: Cannot parse the metric regex. Exiting\n");
+	  exit (-1);
+	}
+	strncpy(sets[setnum].metrics[metricnum].ldmsname, newname, MAXSHORTNAME);
+	sets[setnum].metrics[metricnum].instance = hwloc[comptypenum].instances[i];
+	sets[setnum].nummetrics++;
+	numVals++;
+      }
     }
   } //while
   fclose(fp);
@@ -538,55 +546,78 @@ printMetrics(){
   printf("\n");
 }
 
-int main(int argc, char* argv[])
-{
+int setHwlocfile(char* file){
    FILE *fd;
-   char lbuf[MAXLONGNAME];
    char *s;
+   char lbuf[MAXLONGNAME];
    char hwlocAssocStr[MAXSHORTNAME];
    char keys[MAXATTR][MAXSHORTNAME];
    int attrib[MAXATTR];
    int numAttrib;
    int Lval, Pval;
-   
-   if (argc != 4){
-     printf("Usage: hwloc_metric_mapper metricdata_file hwloc_file ldmscmd\n");
-     exit (-1);
+
+   if (numhwlocfiles > 0){
+     printf("Error: cannot set another hwlocfile\n");
+     return -1;
    }
 
-   //NOTE: assuming the machine is homogeneous so can use 1 hwloc for all.
-   //only difference is the hostname (Machine) translation 
-   //FIXME: still have to handle the hostname translation
-
-   fd = fopen(argv[2], "r");
+   fd = fopen(file, "r");
    if (!fd) {
      printf("Could not open the file hwloc.out...exiting\n");
      return ENOENT;
    }
    fseek(fd, 0, SEEK_SET);
    do {
-      s = fgets(lbuf, sizeof(lbuf), fd);
-      if (!s)
-         break;
-      //      printf("fgets: <%s>\n", lbuf);
-      if (parse_line(lbuf, hwlocAssocStr, &Lval, &Pval, keys, attrib, &numAttrib) > 0){
-	//ignore the attributes for now
-	addComponent(hwlocAssocStr, Lval, Pval);
-      }
+     s = fgets(lbuf, sizeof(lbuf), fd);
+     if (!s)
+       break;
+     //      printf("fgets: <%s>\n", lbuf);
+     if (parse_line(lbuf, hwlocAssocStr, &Lval, &Pval, keys, attrib, &numAttrib) > 0){
+       //ignore the attributes for now
+       addComponent(hwlocAssocStr, Lval, Pval);
+     }
    } while (s);
    fclose (fd);
-   printComponents();
-
-   parseMetricData(argv[1]);
-   printMetrics();
-
-
-   //FIXME: want to turn this into a library and then the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
-   parseLDMSOutput(argv[3]);
+   
+   return 0;
+}
 
 
-   //FIXME: for the library, can we build it with the metric file, rather than this re-reading of the config files and
-   //rebuilding the map
+int main(int argc, char* argv[])
+{
+  int i = 0;
+  
+  if (argc < 4){
+    printf("Usage: hwloc_metric_mapper hwloc_file [metricdata_files] ldmscmd\n"); 
+    exit (-1);
+  }
+
+  //NOTE: assuming the machine is homogeneous so can use 1 hwloc for all.
+  //only difference is the hostname (Machine) translation 
+  //FIXME: still have to handle the hostname translation
+
+  int rc = setHwlocfile(argv[1]);
+  if (rc != 0){
+    exit(-1);
+  }
+  printComponents();  
+
+  printf("%d %s %s %s <%s>\n", argc, argv[0], argv[1], argv[2], argv[3]);
+
+  for (i = 2; i <= (argc-2); i++){
+    parseMetricData(argv[i]);
+    printMetrics();
+  }
+
+
+  if (0){
+  //FIXME: want to turn this into a library and then the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
+  parseLDMSOutput(argv[argc-1]);
+
+
+  //FIXME: for the library, can we build it with the metric file, rather than this re-reading of the config files and
+  //rebuilding the map
+  }
 
    cleanup();
    return 1;
