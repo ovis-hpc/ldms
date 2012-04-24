@@ -33,12 +33,10 @@ int main(int argc, char* argv[])
   }
 
 
-  //FIXME: want to turn this into a library and then the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
+  //FIXME: the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
+
   parseLDMSOutput(argv[argc-1]);
 
-
-  //FIXME: for the library, can we build it with the metric file, rather than this re-reading of the config files and
-  //rebuilding the map
 
    cleanup();
    return 1;
