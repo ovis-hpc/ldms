@@ -4,7 +4,7 @@ ACLOCAL_AMFLAGS = -I m4
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
 	-I$(includedir)/infiniband 
 
-sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms src/metricmap
+sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms src/hwlocldms_ls
 
 noinst_LIBRARIES = libun.a
 
@@ -79,7 +79,7 @@ PERFEVENT_la = src/libperfevent.la
 
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 
-lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
+lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
 	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la)
 
@@ -87,6 +87,10 @@ src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
 src_libldms_la_LIBADD = -ldl -lpthread -levent -levent_pthreads
 src_libldms_la_DEPENDENCIES = $(srcdir)/src/libldms.map
+
+src_libmetricmap_la_SOURCES = src/metricmap.c src/metricmap.h
+src_libmetricmap_la_LIBADD = -ldl -lpthread -levent -levent_pthreads
+src_libmetricmap_la_DEPENDENCIES = $(srcdir)/src/libmetricmap.map
 
 libldmsincludedir = $(includedir)/ldms
 libldmsinclude_HEADERS = src/ldms.h src/ldms_sock_xprt.h \
@@ -108,9 +112,8 @@ src_sedc_to_ldms_SOURCES = src/sedc_to_ldms.cxx
 src_sedc_to_ldms_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
 src_sedc_to_ldms_DEPENDENCIES = $(top_builddir)/libun.a
 
-src_metricmap_SOURCES = src/metricmap.c src/metricmap.h
-src_metricmap_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
-src_metricmap_DEPENDENCIES = $(top_builddir)/libun.a
+src_hwlocldms_ls_SOURCES = src/hwlocldms_ls.c
+src_hwlocldms_ls_LDADD = $(top_builddir)/src/libldms.la $(top_builddir)/src/libmetricmap.la
 
 EXTRA_DIST = include ldms-utils.spec.in ldms-utils.spec \
 	autogen.sh \

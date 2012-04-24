@@ -1,3 +1,7 @@
+#ifndef __METRICMAP_H__
+#define __METRICMAP_H__
+
+
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -44,7 +48,6 @@ struct CompTypeInfo{
 };
 
 struct CompTypeInfo hwloc[MAXHWLOCLEVELS];
-int numlevels = 0;
 
 
 //ldms
@@ -60,14 +63,9 @@ struct SetInfo{
 };
 
 struct SetInfo sets[MAXSETS];
-int numsets = 0;
 
 //temporary for parsing
 struct Linfo tree[MAXHWLOCLEVELS];
-int treesize = 0;
-
-int numhwlocfiles = 0;
-int nummetricfiles = 0;
 
 
 //enum if want specific line parses based upon these names
@@ -93,3 +91,5 @@ int parseLDMSOutput(char* cmd);
 void printComponents();
 void printMetrics();
 int setHwlocfile(char* file);
+
+#endif
