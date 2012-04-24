@@ -7,6 +7,13 @@
 #include <sys/types.h>
 
 
+//FIXME: INPUT METRIC FILE FORMAT
+//FIXME: want to turn this into a library and then the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
+//FIXME: for the library, can we build it with the metric file, rather than this re-reading of the config files and rebuilding the map
+//NOTE: assuming the machine is homogeneous so can use 1 hwloc for all. only difference is the hostname (Machine) translation 
+//FIXME: still have to handle the hostname translation
+
+
 #define MAXSHORTNAME 32
 #define MAXLONGNAME 1024
 #define MAXBUFSIZE 8192
@@ -48,7 +55,7 @@ struct MetricInfo{
 };
 
 struct SetInfo{
-  char setname[MAXSHORTNAME];
+  char setname[MAXLONGNAME];
   struct MetricInfo metrics[MAXMETRICSPERSET];
   int nummetrics;
 };
@@ -145,6 +152,8 @@ int parseMetricData(char* inputfile){
   //blank lines will be skipped
   //FIXME: repeats of hwlocassoc and setnames are allowed, but there is no check for repeat metric names
 
+  //FIXME: should the format of this file change (1 metric per line? 1 file per component?)?
+
   char buf[MAXBUFSIZE];
   char assoc[MAXSHORTNAME];
   char setname[MAXLONGNAME];
@@ -186,7 +195,7 @@ int parseMetricData(char* inputfile){
 
 	count++;
       } else if (count == 1){
-      	strncpy(setname, pch, MAXSHORTNAME);
+      	strncpy(setname, pch, MAXLONGNAME);
 
 	setnum = -1;
 	for (i = 0; i < numsets; i++){
@@ -196,7 +205,7 @@ int parseMetricData(char* inputfile){
 	}
 
 	if (setnum == -1){
-	  strncpy(sets[numsets].setname,setname,MAXSHORTNAME);
+	  strncpy(sets[numsets].setname,setname,MAXLONGNAME);
 	  sets[numsets].nummetrics = 0;
 	  setnum = numsets;
 	  numsets++;
@@ -413,6 +422,97 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   hwloc[found].instances[hwloc[found].numinstances++] = li;
 }
 
+
+int parseLDMSOutput(char* cmd){
+   //will need to parse the ldms_ls results to extract machinename, setname, metricname
+   //format:
+   //shuttlers_1/meminfo
+   // U64 1                component_id
+   // U64 8194816          MemTotal
+   // U64 4830748          MemFree
+   // U64 224248           Buffers
+   // U64 2129480          Cached
+   //
+   //shuttlers_1/junk
+   // U64 3                Cpu0_ERR
+   // U64 0                Cpu0_MIS
+
+
+  FILE* fpipe;
+  char buf[MAXBUFSIZE];
+  printf("trying to execute <%s>\n", cmd);
+  if (!(fpipe = (FILE*)popen(cmd, "r"))){
+    perror("Cant exec ldms command");
+    exit (-1);
+  }
+
+  char metricset[MAXLONGNAME];
+  char metricshortset[MAXLONGNAME];
+  int setnum;
+  char A[3][MAXLONGNAME];
+
+  while (fgets(buf, sizeof buf, fpipe)){
+    //if there is 1 item on the line, its a setname, if there are 3, its data
+    //    printf("read <%s>\n",buf);
+    int i;
+
+    char* pch;
+    pch = strtok(buf, " \t\n");
+    int idx = -1;
+    while (pch != NULL){
+      idx++;
+      if (idx == 3){
+	break;
+      }
+      strncpy(A[idx],pch,strlen(pch));
+      A[idx][strlen(pch)] = '\0';
+      //      printf("assigned <%s>\n", A[idx]);
+      pch = strtok(NULL, " \t\n");
+    }
+    if (idx == 0){
+      strncpy(metricset,A[0],strlen(A[0]));
+      metricset[strlen(A[0])] = '\0';
+      char *p  = strstr(metricset,"/"); //FIXME: assume this is hostname/metricsetname
+      strncpy(metricshortset, p+1, strlen(p));
+      metricshortset[strlen(p)] = '\0';
+      setnum = -1;
+      for (i = 0; i < numsets; i++){
+	if (!strcmp(sets[i].setname,metricshortset)){
+	  setnum = i;
+	  break;
+	}
+      }
+      if (setnum == -1){
+	printf("Error: dont know set: <%s>. Printing defaults\n", metricshortset);
+      }
+      printf("%s\n",A[0]);
+    } else if (idx == 2){
+      //process this metric
+      int metricnum = -1;
+      if (setnum != -1){
+	for (i = 0; i < sets[setnum].nummetrics; i++){
+	  if (!(strcmp(sets[setnum].metrics[i].ldmsname,A[2]))){
+	    metricnum = i;
+	    break;
+	  }
+	}
+      }
+      if (metricnum > -1){
+	printf("%s %40s %40s %s%s\n",A[0],A[1],A[2],sets[setnum].metrics[i].instance->prefix,sets[setnum].metrics[i].ldmsname);
+      } else {
+	printf("%s %40s %40s\n",A[0],A[1],A[2]);
+      }
+    } else {
+      printf("\n");
+    }
+  }
+
+  pclose(fpipe);
+
+  return 0;
+}
+
+
 printComponents(){
   int i,j;
   printf("Components:\n");
@@ -449,12 +549,15 @@ int main(int argc, char* argv[])
    int numAttrib;
    int Lval, Pval;
    
-   if (argc != 3){
-     printf("Usage: hwloc_metric_mapper metricdata_file hwloc_file\n");
+   if (argc != 4){
+     printf("Usage: hwloc_metric_mapper metricdata_file hwloc_file ldmscmd\n");
      exit (-1);
    }
 
-// Args are machine name e.g. nid00001 and hwloc filename representing that nodes hardware
+   //NOTE: assuming the machine is homogeneous so can use 1 hwloc for all.
+   //only difference is the hostname (Machine) translation 
+   //FIXME: still have to handle the hostname translation
+
    fd = fopen(argv[2], "r");
    if (!fd) {
      printf("Could not open the file hwloc.out...exiting\n");
@@ -476,6 +579,14 @@ int main(int argc, char* argv[])
 
    parseMetricData(argv[1]);
    printMetrics();
+
+
+   //FIXME: want to turn this into a library and then the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
+   parseLDMSOutput(argv[3]);
+
+
+   //FIXME: for the library, can we build it with the metric file, rather than this re-reading of the config files and
+   //rebuilding the map
 
    cleanup();
    return 1;
