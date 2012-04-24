@@ -602,22 +602,18 @@ int main(int argc, char* argv[])
   }
   printComponents();  
 
-  printf("%d %s %s %s <%s>\n", argc, argv[0], argv[1], argv[2], argv[3]);
-
   for (i = 2; i <= (argc-2); i++){
     parseMetricData(argv[i]);
     printMetrics();
   }
 
 
-  if (0){
   //FIXME: want to turn this into a library and then the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
   parseLDMSOutput(argv[argc-1]);
 
 
   //FIXME: for the library, can we build it with the metric file, rather than this re-reading of the config files and
   //rebuilding the map
-  }
 
    cleanup();
    return 1;
