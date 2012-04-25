@@ -10,10 +10,6 @@
 #include <string.h>
 #include <sys/types.h>
 
-
-//FIXME: still have to handle the hostname translation
-
-
 #define MAXSHORTNAME 32
 #define MAXLONGNAME 1024
 #define MAXBUFSIZE 8192

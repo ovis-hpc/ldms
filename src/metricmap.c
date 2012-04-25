@@ -15,7 +15,8 @@ int numhwlocfiles = 0;
 int nummetricfiles = 0;
 
 
-//FIXME: still have to handle the hostname translation
+//NOTE: that Machine0 will be everyhosts base host
+//FIXME: what should be done with the hwloc attributes?
 
 int getHwlocAssoc( char *assoc ){
   if (!strncmp(assoc, "PU", MAXSHORTNAME)){
