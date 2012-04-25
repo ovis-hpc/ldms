@@ -18,6 +18,7 @@ int nummetricfiles = 0;
 //NOTE: that Machine0 will be everyhosts base host
 //FIXME: what should be done with the hwloc attributes?
 //FIXME: assumes hostname/setname/metricname
+//FIXME: is it a correct assumption that the order the assocs are reached (and therefore assigned in the sets) is the depth? I think so.
 
 int getHwlocAssoc( char *assoc ){
   if (!strncmp(assoc, "PU", MAXSHORTNAME)){
@@ -367,6 +368,7 @@ int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXA
 void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   //  static int treesize;
   char prefix[1024];
+  char dottedprefix[1024];
   int found = 0;
   int i;
    
@@ -392,10 +394,13 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   }
 
   strcpy(prefix,"");
+  strcpy(dottedprefix,"");
   for (i=0; i<treesize; i++) { 
     strcat(prefix,tree[i].assoc);
     strcat(prefix,tree[i].Lval); //do we want the Pval?
     strcat(prefix,".");
+    strcat(dottedprefix,tree[i].Lval); 
+    strcat(dottedprefix,".");
   }
 
   //retain the component
@@ -404,6 +409,7 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   snprintf(li->Lval,5,"%d",Lval);
   snprintf(li->Pval,5,"%d",Pval);
   strncpy(li->prefix,prefix,MAXLONGNAME);
+  strncpy(li->dottedprefix,dottedprefix,MAXLONGNAME);
 
   found = -1;
   for (i = 0; i < numlevels; i++){
@@ -430,7 +436,7 @@ void printComponents(){
   for (i = 0; i < numlevels; i++){
     printf("%s:\n", hwloc[i].assoc);
     for (j = 0; j < hwloc[i].numinstances; j++){
-      printf("\t%s\n",hwloc[i].instances[j]->prefix);
+      printf("\t%s %s\n",hwloc[i].instances[j]->prefix, hwloc[i].instances[j]->dottedprefix);
     }
   }
   printf("\n");

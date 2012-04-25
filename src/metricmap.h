@@ -32,6 +32,7 @@ struct Linfo {
   char Lval[5];
   char Pval[5];
   char prefix[MAXLONGNAME];
+  char dottedprefix[MAXLONGNAME];
 };
 
 struct CompTypeInfo{
