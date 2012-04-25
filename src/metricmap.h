@@ -14,6 +14,8 @@
 #define MAXLONGNAME 1024
 #define MAXBUFSIZE 8192
 #define MAXATTR 10
+#define MIBMETRICCATAGORYUID 1000
+#define MIBMETRICCATAGORYNAME "Metrics1000"
 
 #define LVALPLACEHOLDER "(LVAL)"
 
@@ -31,14 +33,18 @@ struct Linfo {
   char assoc[MAXSHORTNAME];
   char Lval[5];
   char Pval[5];
-  char prefix[MAXLONGNAME];
-  char dottedprefix[MAXLONGNAME];
+  char prefix[MAXLONGNAME]; //hwloc english prefix
+  char dottedprefix[MAXLONGNAME]; //howloc dotted prefix
+  struct MetricInfo* metrics[MAXMETRICSPERSET];  //the order of these will determine the value of the MIBmetricUID
+  int nummetrics;
 };
 
 struct CompTypeInfo{
   char assoc[MAXSHORTNAME];
   struct Linfo* instances[MAXCOMPONENTSPERLEVEL];
   int numinstances;
+  struct MetricInfo* metrics[MAXMETRICSPERSET]; //the order of these will determine the value of the MIBmetricUID
+  int nummetrics;
 };
 
 struct CompTypeInfo hwloc[MAXHWLOCLEVELS];
@@ -46,13 +52,16 @@ struct CompTypeInfo hwloc[MAXHWLOCLEVELS];
 
 //ldms
 struct MetricInfo{
+  //for now these are the same
   char ldmsname[MAXSHORTNAME];
-  struct Linfo* instance;
+  char MIBmetricname[MAXSHORTNAME];
+  int MIBmetricUID; //this is a per assoc UID
+  struct Linfo* instance; //in the current setup GUARENTEED that a metric belongs to a single component only
 };
 
 struct SetInfo{
   char setname[MAXLONGNAME];
-  struct MetricInfo metrics[MAXMETRICSPERSET];
+  struct MetricInfo* metrics[MAXMETRICSPERSET];
   int nummetrics;
 };
 
@@ -84,7 +93,7 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval);
 void printComponents();
 void printMetrics();
 int setHwlocfile(char* file);
-int getHwlocName(char* setname, char* metricname, char* hwlocname);
-int getHwlocNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname);
+int getHwlocMetricName(char* setname, char* metricname, char* hwlocname);
+int getHwlocMetricNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname);
 
 #endif

@@ -47,9 +47,15 @@ int getHwlocAssoc( char *assoc ){
 
 
 int cleanup(){
-  int i, j;
-  for (i = 0; i < numlevels; i++){
+  int i, j, k;
+  for (i = numlevels-1; i > numlevels; i--){
+    for (j = 0; j < hwloc[i].nummetrics; j++){
+      free(hwloc[i].metrics[j]);
+    }
     for (j = 0; j < hwloc[i].numinstances; j++){
+      for (k = 0; k < hwloc[i].instances[j]->nummetrics; k++){
+	free(hwloc[i].instances[j]->metrics[k]);
+      }
       free(hwloc[i].instances[j]);
     }
   }
@@ -58,7 +64,7 @@ int cleanup(){
 }
 
 //FIXME: make one where you dont have to parse thru the sets each time?
-int getHwlocName(char* setname, char* metricname, char* hwlocname){
+int getHwlocMetricName(char* setname, char* metricname, char* hwlocname){
 
   hwlocname[0] = '\0';
   //given setname metricname get the hwlocname
@@ -78,8 +84,9 @@ int getHwlocName(char* setname, char* metricname, char* hwlocname){
 
   //process this metric
   for (i = 0; i < sets[setnum].nummetrics; i++){
-    if (!(strcmp(sets[setnum].metrics[i].ldmsname,metricname))){
-      snprintf(hwlocname,MAXBUFSIZE,"%s%s",sets[setnum].metrics[i].instance->prefix,sets[setnum].metrics[i].ldmsname);
+    if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
+      snprintf(hwlocname,MAXBUFSIZE,"%s%s.%s",
+	       sets[setnum].metrics[i]->instance->prefix,MIBMETRICCATAGORYNAME, sets[setnum].metrics[i]->MIBmetricname);
       return 0;
     }
   }
@@ -89,12 +96,12 @@ int getHwlocName(char* setname, char* metricname, char* hwlocname){
 };
 
 
-int getHwlocNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname){
+int getHwlocMetricNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname){
 
   char buf[MAXBUFSIZE];
   hwlocname[0] = '\0';
 
-  int rc = getHwlocName(setname, metricname, buf);
+  int rc = getHwlocMetricName(setname, metricname, buf);
   if (rc < 0){
     return rc;
   }
@@ -109,31 +116,41 @@ int getHwlocNameWHost(char* hostname, char* setname, char* metricname, char* hwl
 };
 
 
-int getInstanceLDMSName(char* orig, char* Lval, char* newname){
-  //the metric name must have an LVAL to replace, expect for where there is only 1 instance of that component involved
-  //eg the metricname might be CPU(LVAL)_cpu_user_idle -> CPU3_cpu_user_idle
+int getInstanceMetricNames(char* orig, char* Lval, char* ldmsname, char* hwlocname){
+  //the metric name MUST have an LVAL to replace, expect for where there is only 1 instance of that component involved
+  //eg the metricname might be CPU(LVAL)_user_raw -> ldmsname of CPU3_user_raw and hwlocname of CPU_user_raw
   //dont currently have a good way to do functions of that
 
   //FIXME: this has not yet been tested for multiple replacements
 
-  strncpy(newname, orig, MAXSHORTNAME);
+  snprintf(ldmsname, MAXSHORTNAME, "%s", orig);
+  snprintf(hwlocname, MAXSHORTNAME, "%s", orig);
   char *p;
   char buf[MAXSHORTNAME];
 
   //  printf("considering <%s>\n", orig);
-
-  p = strstr(newname, LVALPLACEHOLDER);
+  p = strstr(ldmsname, LVALPLACEHOLDER);
   while ( p != NULL){
-    strncpy(buf, newname, p-newname);
-    buf[p-newname] = '\0';
-    sprintf(buf+(p-newname), "%s%s", Lval, p+strlen(LVALPLACEHOLDER));
+    strncpy(buf, ldmsname, p-ldmsname);
+    buf[p-ldmsname] = '\0';
+    sprintf(buf+(p-ldmsname), "%s%s", Lval, p+strlen(LVALPLACEHOLDER));
 
-    strncpy(newname, buf, strlen(buf));
-    newname[strlen(buf)] = '\0';
-    p = strstr(newname, LVALPLACEHOLDER);
+    strncpy(ldmsname, buf, strlen(buf));
+    ldmsname[strlen(buf)] = '\0';
+    p = strstr(ldmsname, LVALPLACEHOLDER);
   }
-  
-  //  printf("returning <%s>\n", newname);
+
+  //  printf("considering <%s>\n", orig);
+  p = strstr(hwlocname, LVALPLACEHOLDER);
+  while ( p != NULL){
+    strncpy(buf, hwlocname, p-hwlocname);
+    buf[p-hwlocname] = '\0';
+    sprintf(buf+(p-hwlocname), "%s", p+strlen(LVALPLACEHOLDER));
+
+    strncpy(hwlocname, buf, strlen(buf));
+    hwlocname[strlen(buf)] = '\0';
+    p = strstr(hwlocname, LVALPLACEHOLDER);
+  }
 
   return 0;
 }
@@ -143,6 +160,8 @@ int parseMetricData(char* inputfile){
   //user metric data is in a file.
   //first line of the file is the hwloc component type
   //all subsequent lines are ldms setname/metricname
+
+  //FIXME: check for repeats
 
   //if a line starts with # it will be skipped
   char buf[MAXBUFSIZE];
@@ -164,8 +183,8 @@ int parseMetricData(char* inputfile){
   }
 
   while (fgets(tempbuf, (MAXBUFSIZE-1), fp) != NULL){
-    sscanf(tempbuf,"%s",buf); //remove whitespace
-    if (strlen(buf) == 0){
+    int n =  sscanf(tempbuf,"%s",buf); //remove whitespace
+    if (n!= 1){
       continue;
     }
     if (buf[0] == '#'){ //its a comment
@@ -218,16 +237,30 @@ int parseMetricData(char* inputfile){
       }
 
       for (i = 0; i < hwloc[comptypenum].numinstances; i++){
-	int metricnum = sets[setnum].nummetrics;
-	char newname[MAXSHORTNAME];
-	int rc = getInstanceLDMSName(metricname, hwloc[comptypenum].instances[i]->Lval, newname);
+	char ldmsname[MAXSHORTNAME];
+	char hwlocname[MAXSHORTNAME];
+	int rc = getInstanceMetricNames(metricname, hwloc[comptypenum].instances[i]->Lval, ldmsname, hwlocname);
 	if (rc != 0){
 	  printf("Error: Cannot parse the metric regex. Exiting\n");
 	  exit (-1);
 	}
-	strncpy(sets[setnum].metrics[metricnum].ldmsname, newname, MAXSHORTNAME);
-	sets[setnum].metrics[metricnum].instance = hwloc[comptypenum].instances[i];
-	sets[setnum].nummetrics++;
+	//with the current constraints, GUARENTEED that each InstanceLDMSName will be unique and result in a new metric
+	//that is, for example, cpu_util on the node is one metric, assoc with the node while
+	//cpu_util for each core is each a different metric, assoc with the node
+	//a metric can only be associated with a single instance.
+	struct MetricInfo* mi = (struct MetricInfo*)malloc(sizeof(struct MetricInfo));
+	snprintf(mi->ldmsname,MAXSHORTNAME,"%s",ldmsname);
+	//FIXME: name change
+	snprintf(mi->MIBmetricname,MAXSHORTNAME,"%s",hwlocname);
+
+	//update the hw structs
+	hwloc[comptypenum].instances[i]->metrics[hwloc[comptypenum].instances[i]->nummetrics] = mi;
+	mi->MIBmetricUID = hwloc[comptypenum].instances[i]->nummetrics++;
+	mi->instance = hwloc[comptypenum].instances[i];
+
+	//update the ldms structs
+	sets[setnum].metrics[sets[setnum].nummetrics++] = mi;
+
 	numVals++;
       }
     }
@@ -399,6 +432,14 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
     strcat(prefix,tree[i].assoc);
     strcat(prefix,tree[i].Lval); //do we want the Pval?
     strcat(prefix,".");
+    //NOTE: when use the LVAL for the naming convention, it is easier to read but then there
+    //are some missing components -- for example
+    //NUMANode:
+    //  Machine0.Socket0.NUMANode0. 0.0.0.
+    //	Machine0.Socket0.NUMANode1. 0.0.1.
+    //	Machine0.Socket1.NUMANode2. 0.1.2.
+    //	Machine0.Socket1.NUMANode3. 0.1.3.
+    // there is NO 0.1.0 NOR 0.1.1
     strcat(dottedprefix,tree[i].Lval); 
     strcat(dottedprefix,".");
   }
@@ -410,6 +451,7 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   snprintf(li->Pval,5,"%d",Pval);
   strncpy(li->prefix,prefix,MAXLONGNAME);
   strncpy(li->dottedprefix,dottedprefix,MAXLONGNAME);
+  li->nummetrics = 0;
 
   found = -1;
   for (i = 0; i < numlevels; i++){
@@ -421,6 +463,7 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   if (found == -1){
     strncpy(hwloc[numlevels].assoc,strdup(li->assoc),MAXSHORTNAME);
     hwloc[numlevels].numinstances = 0;
+    hwloc[numlevels].nummetrics = 0;
     found = numlevels;
     numlevels++;
   }
@@ -449,7 +492,10 @@ void printMetrics(){
   for (i = 0; i < numsets; i++){
     printf("%s:\n", sets[i].setname);
     for (j = 0; j < sets[i].nummetrics; j++){
-      printf("\t%s%s\n", sets[i].metrics[j].instance->prefix, sets[i].metrics[j].ldmsname);
+      printf("\t%s%s.%s %s%d.%d\n",
+	     sets[i].metrics[j]->instance->prefix, MIBMETRICCATAGORYNAME, sets[i].metrics[j]->MIBmetricname,
+	     sets[i].metrics[j]->instance->dottedprefix, MIBMETRICCATAGORYUID, sets[i].metrics[j]->MIBmetricUID
+	     );
     }
   }
   printf("\n");

@@ -67,7 +67,7 @@ int parseLDMSOutput(char* cmd){
       printf("%s\n",A[0]);
     } else if (idx == 2){
       char hwlocname[MAXBUFSIZE];
-      i = getHwlocNameWHost(hostname,metricshortset,A[2],hwlocname);
+      i = getHwlocMetricNameWHost(hostname,metricshortset,A[2],hwlocname);
       //      i = getHwlocName(metricshortset,A[2],hwlocname);
       printf("%s %40s %40s <%s>\n",A[0],A[1],A[2],hwlocname);
     } else {
@@ -101,8 +101,8 @@ int main(int argc, char* argv[])
 
   for (i = 2; i <= (argc-2); i++){
     parseMetricData(argv[i]);
-    printMetrics();
   }
+  printMetrics();
 
   parseLDMSOutput(argv[argc-1]);
 
