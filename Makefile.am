@@ -41,6 +41,11 @@ src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map
 src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 FLATFILE_la = src/libflatfile.la
 
+#src_libhwlocflatfile_la_SOURCES = src/hwlocflatfile.c
+#src_libhwlocflatfile_la_DEPENDENCIES = $(srcdir)/src/libhwlocflatfile.map
+#src_libhwlocflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) $(top_builddir)/src/libmetricmap.la
+#HWLOCFLATFILE_la = src/libhwlocflatfile.la
+
 src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql 
 src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
 src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
@@ -82,6 +87,8 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
 	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la)
+#$(HWLOCFLATFILE_la) 
+
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
