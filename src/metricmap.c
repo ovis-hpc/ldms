@@ -54,6 +54,38 @@ int cleanup(){
   return 0;
 }
 
+//FIXME: make one where you dont have to parse thru the sets each time?
+int getHwlocName(char* setname, char* metricname, char* hwlocname){
+  hwlocname[0] = '\0';
+  //given setname metricname get the hwlocname
+  int i;
+
+  int setnum = -1;
+  for (i = 0; i < numsets; i++){
+    if (!strcmp(sets[i].setname,setname)){
+      setnum = i;
+      break;
+    }
+  }
+  if (setnum == -1){
+    //    printf("Error: dont have set <%s>\n",setname);
+    return -1;
+  }
+
+  //process this metric
+  for (i = 0; i < sets[setnum].nummetrics; i++){
+    if (!(strcmp(sets[setnum].metrics[i].ldmsname,metricname))){
+      snprintf(hwlocname,MAXBUFSIZE,"%s%s",sets[setnum].metrics[i].instance->prefix,sets[setnum].metrics[i].ldmsname);
+      return 0;
+    }
+  }
+
+  //  printf("Error: dont have metric <%s>\n",metricname);
+  return -1;
+};
+
+
+
 
 int getInstanceLDMSName(char* orig, char* Lval, char* newname){
   //the metric name must have an LVAL to replace, expect for where there is only 1 instance of that component involved
@@ -369,96 +401,6 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
 }
 
 
-int parseLDMSOutput(char* cmd){
-   //will need to parse the ldms_ls results to extract machinename, setname, metricname
-   //format:
-   //shuttlers_1/meminfo
-   // U64 1                component_id
-   // U64 8194816          MemTotal
-   // U64 4830748          MemFree
-   // U64 224248           Buffers
-   // U64 2129480          Cached
-   //
-   //shuttlers_1/junk
-   // U64 3                Cpu0_ERR
-   // U64 0                Cpu0_MIS
-
-
-  FILE* fpipe;
-  char buf[MAXBUFSIZE];
-  printf("trying to execute <%s>\n", cmd);
-  if (!(fpipe = (FILE*)popen(cmd, "r"))){
-    perror("Cant exec ldms command");
-    exit (-1);
-  }
-
-  char metricset[MAXLONGNAME];
-  char metricshortset[MAXLONGNAME];
-  int setnum = -1;
-  char A[3][MAXLONGNAME];
-
-  while (fgets(buf, sizeof buf, fpipe)){
-    //if there is 1 item on the line, its a setname, if there are 3, its data
-    //    printf("read <%s>\n",buf);
-    int i;
-
-    char* pch;
-    pch = strtok(buf, " \t\n");
-    int idx = -1;
-    while (pch != NULL){
-      idx++;
-      if (idx == 3){
-	break;
-      }
-      strncpy(A[idx],pch,strlen(pch));
-      A[idx][strlen(pch)] = '\0';
-      //      printf("assigned <%s>\n", A[idx]);
-      pch = strtok(NULL, " \t\n");
-    }
-
-    if (idx == 0){
-      strncpy(metricset,A[0],strlen(A[0]));
-      metricset[strlen(A[0])] = '\0';
-      char *p  = strstr(metricset,"/"); //FIXME: assume this is hostname/metricsetname
-      strncpy(metricshortset, p+1, strlen(p));
-      metricshortset[strlen(p)] = '\0';
-      setnum = -1;
-      for (i = 0; i < numsets; i++){
-	if (!strcmp(sets[i].setname,metricshortset)){
-	  setnum = i;
-	  break;
-	}
-      }
-      //      if (setnum == -1){
-      //	printf("Error: dont know set: <%s>. Printing defaults\n", metricshortset);
-      //      }
-      printf("%s\n",A[0]);
-    } else if (idx == 2){
-      //process this metric
-      int metricnum = -1;
-      if (setnum != -1){
-	for (i = 0; i < sets[setnum].nummetrics; i++){
-	  if (!(strcmp(sets[setnum].metrics[i].ldmsname,A[2]))){
-	    metricnum = i;
-	    break;
-	  }
-	}
-      }
-
-      if (metricnum > -1){
-	printf("%s %40s %40s <%s%s>\n",A[0],A[1],A[2],sets[setnum].metrics[i].instance->prefix,sets[setnum].metrics[i].ldmsname);
-      } else {
-	printf("%s %40s %40s\n",A[0],A[1],A[2]);
-      }
-    } else {
-      printf("\n");
-    }
-  }
-
-  pclose(fpipe);
-
-  return 0;
-}
 
 
 void printComponents(){

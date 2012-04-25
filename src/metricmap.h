@@ -84,9 +84,9 @@ int getInstanceLDMSName(char* orig, char* Lval, char* newname);
 int parseMetricData(char* inputfile);
 int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int* numAttr);
 void  addComponent(char* hwlocAssocStr, int Lval, int Pval);
-int parseLDMSOutput(char* cmd);
 void printComponents();
 void printMetrics();
 int setHwlocfile(char* file);
+int getHwlocName(char* setname, char* metricname, char* hwlocname);
 
 #endif
