@@ -33,11 +33,13 @@ struct Linfo {
   char assoc[MAXSHORTNAME];
   char Lval[5];
   char Pval[5];
+
   struct Linfo* parent; //component parent
-  struct Linfo* children[MAXCOMPONENTSPERLEVEL]; //component children
-  int numchildren;
   char prefix[MAXLONGNAME]; //hwloc english prefix
   char dottedprefix[MAXLONGNAME]; //howloc dotted prefix
+  struct Linfo* children[MAXCOMPONENTSPERLEVEL]; //component children
+  int numchildren;
+
   char metricprefix[MAXLONGNAME]; //hwloc english prefix
   char metricdottedprefix[MAXLONGNAME]; //howloc dotted prefix
   struct MetricInfo* metrics[MAXMETRICSPERSET];  //the order of these will determine the value of the MIBmetricUID

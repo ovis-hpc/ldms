@@ -520,7 +520,7 @@ void printComponents(int printMetrics){
 
 void printLDMSMetrics(){
   int i, j;
-  printf("Metrics:\n");
+  printf("LDMS Metrics:\n");
   for (i = 0; i < numsets; i++){
     printf("%s:\n", sets[i].setname);
     for (j = 0; j < sets[i].nummetrics; j++){
@@ -535,14 +535,19 @@ void printLDMSMetrics(){
 
 void printTree(struct Linfo* tr){
   int i;
-    if (tr == NULL){
-      tr = hwloc[0].instances[0];
-      printf("Tree:\n");
-    }
-    for (i = 0; i < tr->numchildren; i++){
-      printTree(tr->children[i]);
-    }
-    printf("\t%s (%d direct children)\n", tr->prefix, tr->numchildren);
+  if (tr == NULL){
+    tr = hwloc[0].instances[0];
+    printf("Tree:\n");
+  }
+
+  printf("\t%-120s %-20s (%d direct children) (%d metrics)\n", tr->prefix, tr->dottedprefix, tr->numchildren, tr->nummetrics);
+  for (i = 0; i < tr->nummetrics; i++){
+    printf("\t%s%s %20s%-2d\n", tr->metricprefix, tr->metrics[i]->MIBmetricname, tr->metricdottedprefix, tr->metrics[i]->MIBmetricUID);
+  }
+
+  for (i = 0; i < tr->numchildren; i++){
+    printTree(tr->children[i]);
+  }
 }
 
 int parseHwlocfile(char* file){
