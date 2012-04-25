@@ -16,7 +16,7 @@
 #define MAXATTR 10
 #define MIBMETRICCATAGORYUID 1000
 #define MIBMETRICCATAGORYNAME "Metrics1000"
-
+#define HWLOCSTATICMETRICPREFIX "HWLOCSTATIC_"
 #define LVALPLACEHOLDER "(LVAL)"
 
 //ldms
@@ -33,6 +33,9 @@ struct Linfo {
   char assoc[MAXSHORTNAME];
   char Lval[5];
   char Pval[5];
+  struct Linfo* parent;
+  struct Linfo* children[MAXCOMPONENTSPERLEVEL];
+  int numchildren;
   char prefix[MAXLONGNAME]; //hwloc english prefix
   char dottedprefix[MAXLONGNAME]; //howloc dotted prefix
   struct MetricInfo* metrics[MAXMETRICSPERSET];  //the order of these will determine the value of the MIBmetricUID
@@ -43,11 +46,9 @@ struct CompTypeInfo{
   char assoc[MAXSHORTNAME];
   struct Linfo* instances[MAXCOMPONENTSPERLEVEL];
   int numinstances;
-  struct MetricInfo* metrics[MAXMETRICSPERSET]; //the order of these will determine the value of the MIBmetricUID
-  int nummetrics;
 };
 
-struct CompTypeInfo hwloc[MAXHWLOCLEVELS];
+struct CompTypeInfo hwloc[MAXHWLOCLEVELS]; //hwloc[0] is also the root of a tree
 
 
 //ldms
@@ -55,7 +56,7 @@ struct MetricInfo{
   //for now these are the same
   char ldmsname[MAXSHORTNAME];
   char MIBmetricname[MAXSHORTNAME];
-  int MIBmetricUID; //this is a per assoc UID
+  int MIBmetricUID; //There is no way for a user to assign a MIBmetricUID
   struct Linfo* instance; //in the current setup GUARENTEED that a metric belongs to a single component only
 };
 
@@ -66,10 +67,7 @@ struct SetInfo{
 };
 
 struct SetInfo sets[MAXSETS];
-
-//temporary for parsing
-struct Linfo tree[MAXHWLOCLEVELS];
-
+struct Linfo* tree[MAXHWLOCLEVELS]; //temporary for parsing hwlocfile
 
 //enum if want specific line parses based upon these names
 //let 0 be unknown/default, let negative be something you want to skip, let positive be something handled specifically
@@ -89,10 +87,11 @@ int cleanup();
 int getInstanceLDMSName(char* orig, char* Lval, char* newname);
 int parseMetricData(char* inputfile);
 int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int* numAttr);
-void  addComponent(char* hwlocAssocStr, int Lval, int Pval);
-void printComponents();
-void printMetrics();
-int setHwlocfile(char* file);
+void addComponent(char* hwlocAssocStr, int Lval, int Pval,  char keys[MAXATTR][MAXSHORTNAME], int* attr, int numAttr);
+int parseHwlocfile(char* file);
+void printComponents(int printMetrics);
+void printLDMSMetrics();
+void printTree(struct Linfo*);
 int getHwlocMetricName(char* setname, char* metricname, char* hwlocname);
 int getHwlocMetricNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname);
 

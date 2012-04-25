@@ -93,16 +93,18 @@ int main(int argc, char* argv[])
   //only difference is the hostname (Machine) translation 
   //FIXME: still have to handle the hostname translation
 
-  int rc = setHwlocfile(argv[1]);
+  int rc = parseHwlocfile(argv[1]);
   if (rc != 0){
     exit(-1);
   }
-  printComponents();  
+  printComponents(0);   
+  printTree(NULL);
 
   for (i = 2; i <= (argc-2); i++){
     parseMetricData(argv[i]);
   }
-  printMetrics();
+  printLDMSMetrics(); //ldmsmetrics only
+  printComponents(1);   
 
   parseLDMSOutput(argv[argc-1]);
 

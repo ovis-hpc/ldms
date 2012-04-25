@@ -11,14 +11,11 @@ int numlevels = 0;
 int numsets = 0;
 int treesize = 0;
 
-int numhwlocfiles = 0;
-int nummetricfiles = 0;
-
 
 //NOTE: that Machine0 will be everyhosts base host
-//FIXME: what should be done with the hwloc attributes?
 //FIXME: assumes hostname/setname/metricname
 //FIXME: is it a correct assumption that the order the assocs are reached (and therefore assigned in the sets) is the depth? I think so.
+
 
 int getHwlocAssoc( char *assoc ){
   if (!strncmp(assoc, "PU", MAXSHORTNAME)){
@@ -47,11 +44,9 @@ int getHwlocAssoc( char *assoc ){
 
 
 int cleanup(){
+  //free the metrics thru hwloc because there are metrics via hwloc that are not ldms metrics
   int i, j, k;
   for (i = numlevels-1; i > numlevels; i--){
-    for (j = 0; j < hwloc[i].nummetrics; j++){
-      free(hwloc[i].metrics[j]);
-    }
     for (j = 0; j < hwloc[i].numinstances; j++){
       for (k = 0; k < hwloc[i].instances[j]->nummetrics; k++){
 	free(hwloc[i].instances[j]->metrics[k]);
@@ -62,6 +57,17 @@ int cleanup(){
   
   return 0;
 }
+
+int instanceEquals(struct Linfo* a, struct Linfo *b){
+  int ret = strcmp(a->assoc, b->assoc);
+  if (ret == 0){
+    if (a < b) return -1;
+    if (a > b) return +1;
+    if (a == b) return 0;
+  }
+  return ret;
+}
+
 
 //FIXME: make one where you dont have to parse thru the sets each time?
 int getHwlocMetricName(char* setname, char* metricname, char* hwlocname){
@@ -250,7 +256,6 @@ int parseMetricData(char* inputfile){
 	//a metric can only be associated with a single instance.
 	struct MetricInfo* mi = (struct MetricInfo*)malloc(sizeof(struct MetricInfo));
 	snprintf(mi->ldmsname,MAXSHORTNAME,"%s",ldmsname);
-	//FIXME: name change
 	snprintf(mi->MIBmetricname,MAXSHORTNAME,"%s",hwlocname);
 
 	//update the hw structs
@@ -398,28 +403,30 @@ int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXA
   return 1;
 }
 
-void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
-  //  static int treesize;
+void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int numAttr){
   char prefix[1024];
   char dottedprefix[1024];
   int found = 0;
   int i;
-   
+
+  struct Linfo* li = (struct Linfo*)malloc(sizeof(struct Linfo));
+  strncpy(li->assoc, hwlocAssocStr, MAXSHORTNAME);
+  snprintf(li->Lval,5,"%d",Lval);
+  snprintf(li->Pval,5,"%d",Pval);
+  li->nummetrics = 0;
+  li->numchildren = 0;
+
   // tree is really the current branch, used to build the prefix
   for (i=0; i<treesize; i++) {
-    if ( !strncmp(tree[i].assoc, hwlocAssocStr, MAXSHORTNAME) ) {
-      snprintf(tree[i].Lval,5,"%d",Lval);
-      snprintf(tree[i].Pval,5,"%d",Pval);
+    if ( !strncmp(tree[i]->assoc, hwlocAssocStr, MAXSHORTNAME) ) {
+      tree[i] = li;
       treesize = i + 1;
       found = 1;
       break;
     }
   } 
   if (!found) {
-    strcpy(tree[treesize].assoc, hwlocAssocStr);
-    snprintf(tree[treesize].Lval,5,"%d",Lval);
-    snprintf(tree[treesize].Pval,5,"%d",Pval);
-    treesize++;
+    tree[treesize++] = li;
   }
   if (treesize > (MAXHWLOCLEVELS - 1)) {
     printf ("treesize exceeds limits\n");
@@ -429,8 +436,8 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   strcpy(prefix,"");
   strcpy(dottedprefix,"");
   for (i=0; i<treesize; i++) { 
-    strcat(prefix,tree[i].assoc);
-    strcat(prefix,tree[i].Lval); //do we want the Pval?
+    strcat(prefix,tree[i]->assoc);
+    strcat(prefix,tree[i]->Lval); //do we want the Pval?
     strcat(prefix,".");
     //NOTE: when use the LVAL for the naming convention, it is easier to read but then there
     //are some missing components -- for example
@@ -440,19 +447,18 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
     //	Machine0.Socket1.NUMANode2. 0.1.2.
     //	Machine0.Socket1.NUMANode3. 0.1.3.
     // there is NO 0.1.0 NOR 0.1.1
-    strcat(dottedprefix,tree[i].Lval); 
+    strcat(dottedprefix,tree[i]->Lval); 
     strcat(dottedprefix,".");
   }
-
-  //retain the component
-  struct Linfo* li = (struct Linfo*)malloc(sizeof(struct Linfo));
-  strncpy(li->assoc, hwlocAssocStr, MAXSHORTNAME);
-  snprintf(li->Lval,5,"%d",Lval);
-  snprintf(li->Pval,5,"%d",Pval);
   strncpy(li->prefix,prefix,MAXLONGNAME);
   strncpy(li->dottedprefix,dottedprefix,MAXLONGNAME);
-  li->nummetrics = 0;
 
+  li->parent = (treesize == 1 ? NULL: tree[treesize-2]);
+  if (li->parent != NULL){
+    li->parent->children[li->parent->numchildren++] = li;
+  }
+
+  //update the level interface as well 
   found = -1;
   for (i = 0; i < numlevels; i++){
     if (!strcmp(li->assoc,hwloc[i].assoc)){
@@ -463,30 +469,54 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval){
   if (found == -1){
     strncpy(hwloc[numlevels].assoc,strdup(li->assoc),MAXSHORTNAME);
     hwloc[numlevels].numinstances = 0;
-    hwloc[numlevels].nummetrics = 0;
     found = numlevels;
-    numlevels++;
+    numlevels++; //this should be the same as the tree size
   }
+
+  //add the attrs, if any as metrics
+  for (i = 0; i < numAttr; i++){
+    struct MetricInfo* mi = (struct MetricInfo*)malloc(sizeof(struct MetricInfo));
+    snprintf(mi->ldmsname,MAXSHORTNAME,"%s","NONE");
+    snprintf(mi->MIBmetricname,MAXSHORTNAME,"%s%s",HWLOCSTATICMETRICPREFIX,keys[i]); //note this is *not* an LDMS metric
+
+    //update the hw structs
+    li->metrics[li->nummetrics] = mi;
+    mi->MIBmetricUID = li->nummetrics++;
+    mi->instance = li;
+
+    //NOTE: do NOT update the ldms structs
+  }
+  
+  //add the component
   hwloc[found].instances[hwloc[found].numinstances++] = li;
+
 }
 
 
-
-
-void printComponents(){
-  int i,j;
+void printComponents(int printMetrics){
+  int i,j,k;
   printf("Components:\n");
   for (i = 0; i < numlevels; i++){
     printf("%s:\n", hwloc[i].assoc);
     for (j = 0; j < hwloc[i].numinstances; j++){
       printf("\t%s %s\n",hwloc[i].instances[j]->prefix, hwloc[i].instances[j]->dottedprefix);
+      if (printMetrics){
+	printf("\tMetrics:\n");
+	for (k = 0; k < hwloc[i].instances[j]->nummetrics; k++){
+	  printf("\t\t%s %s%d.%d\n",
+		 hwloc[i].instances[j]->metrics[k]->MIBmetricname,
+		 hwloc[i].instances[j]->dottedprefix, 
+		 MIBMETRICCATAGORYUID, hwloc[i].instances[i]->metrics[k]->MIBmetricUID);
+	  //there may be some that arent LDMS metrics
+	}
+      }
     }
   }
   printf("\n");
 }
 
 
-void printMetrics(){
+void printLDMSMetrics(){
   int i, j;
   printf("Metrics:\n");
   for (i = 0; i < numsets; i++){
@@ -501,7 +531,19 @@ void printMetrics(){
   printf("\n");
 }
 
-int setHwlocfile(char* file){
+void printTree(struct Linfo* tr){
+  int i;
+    if (tr == NULL){
+      tr = hwloc[0].instances[0];
+      printf("Tree:\n");
+    }
+    for (i = 0; i < tr->numchildren; i++){
+      printTree(tr->children[i]);
+    }
+    printf("\t%s (%d direct children)\n", tr->prefix, tr->numchildren);
+}
+
+int parseHwlocfile(char* file){
    FILE *fd;
    char *s;
    char lbuf[MAXLONGNAME];
@@ -511,7 +553,7 @@ int setHwlocfile(char* file){
    int numAttrib;
    int Lval, Pval;
 
-   if (numhwlocfiles > 0){
+   if (tree[0] != NULL){
      printf("Error: cannot set another hwlocfile\n");
      return -1;
    }
@@ -529,7 +571,7 @@ int setHwlocfile(char* file){
      //      printf("fgets: <%s>\n", lbuf);
      if (parse_line(lbuf, hwlocAssocStr, &Lval, &Pval, keys, attrib, &numAttrib) > 0){
        //ignore the attributes for now
-       addComponent(hwlocAssocStr, Lval, Pval);
+       addComponent(hwlocAssocStr, Lval, Pval, keys, attrib, numAttrib);
      }
    } while (s);
    fclose (fd);

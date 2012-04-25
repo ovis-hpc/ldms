@@ -230,6 +230,7 @@ void del_set(ldms_t t, ldms_dir_t _dir)
 
 void add_set(ldms_t t, ldms_dir_t _dir)
 {
+
 	int i;
 	for (i = 0; i < _dir->set_count; i++) {
 
