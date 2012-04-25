@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include "metricmap.h"
 
+//FIXME: assumes hostname/setname/metricname
+
 int parseLDMSOutput(char* cmd){
    //will need to parse the ldms_ls results to extract machinename, setname, metricname
    //format:
@@ -32,6 +34,7 @@ int parseLDMSOutput(char* cmd){
     exit (-1);
   }
 
+  char hostname[MAXLONGNAME];
   char metricset[MAXLONGNAME];
   char metricshortset[MAXLONGNAME];
   char A[3][MAXLONGNAME];
@@ -59,12 +62,13 @@ int parseLDMSOutput(char* cmd){
       strncpy(metricset,A[0],strlen(A[0]));
       metricset[strlen(A[0])] = '\0';
       char *p  = strstr(metricset,"/"); //FIXME: assume this is hostname/metricsetname
-      strncpy(metricshortset, p+1, strlen(p));
-      metricshortset[strlen(p)] = '\0';
+      snprintf(metricshortset, strlen(p), "%s", p+1);
+      snprintf(hostname, strlen(metricset)-strlen(p)+1,"%s", metricset);
       printf("%s\n",A[0]);
     } else if (idx == 2){
       char hwlocname[MAXBUFSIZE];
-      i = getHwlocName(metricshortset,A[2],hwlocname);
+      i = getHwlocNameWHost(hostname,metricshortset,A[2],hwlocname);
+      //      i = getHwlocName(metricshortset,A[2],hwlocname);
       printf("%s %40s %40s <%s>\n",A[0],A[1],A[2],hwlocname);
     } else {
       printf("\n");

@@ -17,6 +17,7 @@ int nummetricfiles = 0;
 
 //NOTE: that Machine0 will be everyhosts base host
 //FIXME: what should be done with the hwloc attributes?
+//FIXME: assumes hostname/setname/metricname
 
 int getHwlocAssoc( char *assoc ){
   if (!strncmp(assoc, "PU", MAXSHORTNAME)){
@@ -57,6 +58,7 @@ int cleanup(){
 
 //FIXME: make one where you dont have to parse thru the sets each time?
 int getHwlocName(char* setname, char* metricname, char* hwlocname){
+
   hwlocname[0] = '\0';
   //given setname metricname get the hwlocname
   int i;
@@ -86,6 +88,24 @@ int getHwlocName(char* setname, char* metricname, char* hwlocname){
 };
 
 
+int getHwlocNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname){
+
+  char buf[MAXBUFSIZE];
+  hwlocname[0] = '\0';
+
+  int rc = getHwlocName(setname, metricname, buf);
+  if (rc < 0){
+    return rc;
+  }
+
+  //FIXME: else replace the Machine0 with the hostname
+  char* p = strstr(buf,".");
+  if (p == NULL)
+    return -1;
+
+  snprintf(hwlocname,MAXBUFSIZE,"%s.%s",hostname,p+1);
+  return 1;
+};
 
 
 int getInstanceLDMSName(char* orig, char* Lval, char* newname){

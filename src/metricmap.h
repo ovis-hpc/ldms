@@ -84,5 +84,6 @@ void printComponents();
 void printMetrics();
 int setHwlocfile(char* file);
 int getHwlocName(char* setname, char* metricname, char* hwlocname);
+int getHwlocNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname);
 
 #endif
