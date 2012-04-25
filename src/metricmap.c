@@ -91,8 +91,8 @@ int getHwlocMetricName(char* setname, char* metricname, char* hwlocname){
   //process this metric
   for (i = 0; i < sets[setnum].nummetrics; i++){
     if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
-      snprintf(hwlocname,MAXBUFSIZE,"%s%s.%s",
-	       sets[setnum].metrics[i]->instance->prefix,MIBMETRICCATAGORYNAME, sets[setnum].metrics[i]->MIBmetricname);
+      snprintf(hwlocname,MAXBUFSIZE,"%s%s",
+	       sets[setnum].metrics[i]->instance->prefix, sets[setnum].metrics[i]->MIBmetricname);
       return 0;
     }
   }
@@ -452,6 +452,8 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][M
   }
   strncpy(li->prefix,prefix,MAXLONGNAME);
   strncpy(li->dottedprefix,dottedprefix,MAXLONGNAME);
+  snprintf(li->metricprefix, MAXLONGNAME, "%s%s.", li->prefix,MIBMETRICCATAGORYNAME);
+  snprintf(li->metricdottedprefix, MAXLONGNAME, "%s%d.", li->dottedprefix,MIBMETRICCATAGORYUID);
 
   li->parent = (treesize == 1 ? NULL: tree[treesize-2]);
   if (li->parent != NULL){
@@ -499,14 +501,14 @@ void printComponents(int printMetrics){
   for (i = 0; i < numlevels; i++){
     printf("%s:\n", hwloc[i].assoc);
     for (j = 0; j < hwloc[i].numinstances; j++){
-      printf("\t%s %s\n",hwloc[i].instances[j]->prefix, hwloc[i].instances[j]->dottedprefix);
+      printf("\t%-80s %-30s\n",hwloc[i].instances[j]->prefix, hwloc[i].instances[j]->dottedprefix);
       if (printMetrics){
 	printf("\tMetrics:\n");
 	for (k = 0; k < hwloc[i].instances[j]->nummetrics; k++){
-	  printf("\t\t%s %s%d.%d\n",
+	  printf("\t\t%-20s %30s%d\n",
 		 hwloc[i].instances[j]->metrics[k]->MIBmetricname,
-		 hwloc[i].instances[j]->dottedprefix, 
-		 MIBMETRICCATAGORYUID, hwloc[i].instances[i]->metrics[k]->MIBmetricUID);
+		 hwloc[i].instances[j]->metricdottedprefix, 
+		 hwloc[i].instances[i]->metrics[k]->MIBmetricUID);
 	  //there may be some that arent LDMS metrics
 	}
       }
@@ -522,9 +524,9 @@ void printLDMSMetrics(){
   for (i = 0; i < numsets; i++){
     printf("%s:\n", sets[i].setname);
     for (j = 0; j < sets[i].nummetrics; j++){
-      printf("\t%s%s.%s %s%d.%d\n",
-	     sets[i].metrics[j]->instance->prefix, MIBMETRICCATAGORYNAME, sets[i].metrics[j]->MIBmetricname,
-	     sets[i].metrics[j]->instance->dottedprefix, MIBMETRICCATAGORYUID, sets[i].metrics[j]->MIBmetricUID
+      printf("\t%s%-20s %30s%d\n",
+	     sets[i].metrics[j]->instance->metricprefix, sets[i].metrics[j]->MIBmetricname,
+	     sets[i].metrics[j]->instance->metricdottedprefix, sets[i].metrics[j]->MIBmetricUID
 	     );
     }
   }
