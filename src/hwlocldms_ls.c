@@ -24,7 +24,9 @@ int parseLDMSOutput(char* cmd){
 
   FILE* fpipe;
   char buf[MAXBUFSIZE];
-  printf("trying to execute <%s>\n", cmd);
+
+  //  printf("trying to execute <%s>\n", cmd);
+  printf("\n\n===========================================================\n\n");
   if (!(fpipe = (FILE*)popen(cmd, "r"))){
     perror("Cant exec ldms command");
     exit (-1);
@@ -59,6 +61,7 @@ int parseLDMSOutput(char* cmd){
       char *p  = strstr(metricset,"/"); //FIXME: assume this is hostname/metricsetname
       strncpy(metricshortset, p+1, strlen(p));
       metricshortset[strlen(p)] = '\0';
+      printf("%s\n",A[0]);
     } else if (idx == 2){
       char hwlocname[MAXBUFSIZE];
       i = getHwlocName(metricshortset,A[2],hwlocname);
@@ -78,7 +81,7 @@ int main(int argc, char* argv[])
   int i = 0;
   
   if (argc < 4){
-    printf("Usage: hwloc_metric_mapper hwloc_file [metricdata_files] ldmscmd\n"); 
+    printf("Usage: hwloc_metric_mapper hwloc_file [metricdata_files] ldms_ls_flags\n"); 
     exit (-1);
   }
 
@@ -97,11 +100,7 @@ int main(int argc, char* argv[])
     printMetrics();
   }
 
-
-  //FIXME: the ldms_ls wrapper will call ldms_ls and then use this to do the translation.
-
   parseLDMSOutput(argv[argc-1]);
-
 
    cleanup();
    return 1;
