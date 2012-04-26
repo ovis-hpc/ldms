@@ -68,9 +68,119 @@ int instanceEquals(struct Linfo* a, struct Linfo *b){
   return ret;
 }
 
+int HwlocToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring){
+  setname[0] = '\0';
+  metricname[0] = '\0';
+
+  struct Linfo* tr = NULL;
+
+  char* pch;
+  int i;
+  pch = strtok(hwlocname, ".");
+
+  while (pch != NULL){
+    //first one is the treeroot
+    if (tr == NULL){
+      if (numlevels < 1){
+	printf("Error: no hwloc info\n");
+	return -1;
+      }
+      for (i = 0; i < hwloc[0].numinstances; i++){
+	if (dottedstring){
+	  if (!strcmp(hwloc[0].instances[i]->Lval, pch)){
+	    tr = hwloc[0].instances[i];
+	    break;
+	  }
+	} else {
+	  char assoc[MAXSHORTNAME]; 
+	  snprintf(assoc, MAXSHORTNAME, "%s%s", hwloc[0].assoc, hwloc[0].instances[i]->Lval);
+	  if (!strcmp(assoc, pch)){
+	    tr = hwloc[0].instances[i];
+	    break;
+	  }
+	}
+      }
+      if (tr == NULL){
+	printf("Error: cant find tree root for <%s>\n", hwlocname);
+	return -1;
+      }
+
+      pch = strtok(NULL, ".");
+      continue;
+    }
+
+    //these walk the tree
+    int found = 0;
+    for (i = 0; i < tr->numchildren; i++){
+      if (dottedstring){
+	if (!strcmp(tr->children[i]->Lval, pch)){
+	  tr = tr->children[i];
+	  found = 1;
+	  break;
+	}
+      } else {
+	char assoc[MAXSHORTNAME]; 
+	snprintf(assoc, MAXSHORTNAME, "%s%s", tr->assoc, tr->children[i]->Lval);
+	if (!strcmp(assoc, pch)){
+	  tr = tr->children[i];
+	  break;
+	}
+      }
+    }
+    if (found){
+      pch = strtok(NULL, ".");
+    } else {
+      //is it a metric?
+      int val = (dottedstring == 1? (atoi(pch) == MIBMETRICCATAGORYUID) : strcmp(pch, MIBMETRICCATAGORYNAME));
+      if (!val){
+	pch = strtok(NULL, ".");
+	if (pch == NULL){
+	  printf("Error: bad hwloc string <%s>\n", hwlocname);
+	  return -1;
+	}
+	struct MetricInfo* mi = NULL;
+	if (dottedstring){
+	  //NOTE: the metric uid is also the metric index
+	  int val = atoi(pch);
+	  if (val < 0 || val > tr->nummetrics){
+	    printf("Error: bad hwloc string <%s>\n", hwlocname);
+	    return -1;
+	  }
+	  mi = tr->metrics[val];
+	} else {
+	  for (i = 0; i < tr->nummetrics; i++){
+	    if (!strcmp(tr->metrics[i]->MIBmetricname,pch)){
+	      mi = tr->metrics[i];
+	      break;
+	    }
+	  }
+	}
+	if (mi == NULL){
+	  printf("Error: bad hwloc string <%s>\n", hwlocname);
+	  return -1;
+	}
+	if (mi->ldmsparent == NULL){
+	  printf("WARNING: Not an ldms metric\n");
+	  return -1;
+	}
+	snprintf(metricname, strlen(mi->ldmsname), "%s", mi->ldmsname);
+	snprintf(setname, strlen(mi->ldmsparent->setname), "%s", mi->ldmsparent->setname);
+	return 0;
+      }
+
+      //dont know what this is
+      printf("Error: bad hwloc string <%s>\n", hwlocname);
+      return -1;
+    }
+  }
+  
+  printf("Error: bad hwloc string <%s>\n", hwlocname);
+  return -1;
+}
+
 
 //FIXME: make one where you dont have to parse thru the sets each time?
-int getHwlocMetricName(char* setname, char* metricname, char* hwlocname){
+int LDMSToHwloc(char* setname, char* metricname, char* hwlocname, int dottedstring){
 
   hwlocname[0] = '\0';
   //given setname metricname get the hwlocname
@@ -89,11 +199,21 @@ int getHwlocMetricName(char* setname, char* metricname, char* hwlocname){
   }
 
   //process this metric
-  for (i = 0; i < sets[setnum].nummetrics; i++){
-    if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
-      snprintf(hwlocname,MAXBUFSIZE,"%s%s",
-	       sets[setnum].metrics[i]->instance->prefix, sets[setnum].metrics[i]->MIBmetricname);
-      return 0;
+  if (dottedstring){
+    for (i = 0; i < sets[setnum].nummetrics; i++){
+      if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
+	snprintf(hwlocname,MAXBUFSIZE,"%s%d",
+		 sets[setnum].metrics[i]->instance->metricdottedprefix, sets[setnum].metrics[i]->MIBmetricUID);
+	return 0;
+      }
+    }
+  } else {
+    for (i = 0; i < sets[setnum].nummetrics; i++){
+      if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
+	snprintf(hwlocname,MAXBUFSIZE,"%s%s",
+		 sets[setnum].metrics[i]->instance->metricprefix, sets[setnum].metrics[i]->MIBmetricname);
+	return 0;
+      }
     }
   }
 
@@ -101,13 +221,11 @@ int getHwlocMetricName(char* setname, char* metricname, char* hwlocname){
   return -1;
 };
 
-
-int getHwlocMetricNameWHost(char* hostname, char* setname, char* metricname, char* hwlocname){
-
+int LDMSToHwlocWHost(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring){
   char buf[MAXBUFSIZE];
   hwlocname[0] = '\0';
 
-  int rc = getHwlocMetricName(setname, metricname, buf);
+  int rc = LDMSToHwloc(setname, metricname, buf, dottedstring);
   if (rc < 0){
     return rc;
   }
@@ -265,6 +383,7 @@ int parseMetricData(char* inputfile){
 
 	//update the ldms structs
 	sets[setnum].metrics[sets[setnum].nummetrics++] = mi;
+	mi->ldmsparent = &sets[setnum];
 
 	numVals++;
       }
@@ -480,6 +599,7 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][M
     struct MetricInfo* mi = (struct MetricInfo*)malloc(sizeof(struct MetricInfo));
     snprintf(mi->ldmsname,MAXSHORTNAME,"%s","NONE");
     snprintf(mi->MIBmetricname,MAXSHORTNAME,"%s%s",HWLOCSTATICMETRICPREFIX,keys[i]); //note this is *not* an LDMS metric
+    mi->ldmsparent = NULL;
 
     //update the hw structs
     li->metrics[li->nummetrics] = mi;
@@ -518,7 +638,7 @@ void printComponents(int printMetrics){
 }
 
 
-void printLDMSMetrics(){
+void printLDMSMetricsAsHwloc(){
   int i, j;
   printf("LDMS Metrics:\n");
   for (i = 0; i < numsets; i++){
