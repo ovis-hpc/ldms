@@ -35,13 +35,11 @@ struct Linfo {
   char Pval[5];
 
   struct Linfo* parent; //component parent
-  char prefix[MAXLONGNAME]; //hwloc english prefix (includes my L number)
-  char dottedprefix[MAXLONGNAME]; //howloc dotted prefix
+  char OIDString[MAXLONGNAME]; 
+  char OID[MAXLONGNAME]; 
   struct Linfo* children[MAXCOMPONENTSPERLEVEL]; //component children
   int numchildren;
 
-  char metricprefix[MAXLONGNAME]; //hwloc english prefix (includes my L number and the Metric catagory prefix)
-  char metricdottedprefix[MAXLONGNAME]; //howloc dotted prefix
   struct MetricInfo* metrics[MAXMETRICSPERSET];  //the order of these will determine the value of the MIBmetricUID
   int nummetrics;
 };
@@ -60,8 +58,11 @@ struct MetricInfo{
   struct SetInfo *ldmsparent; //ldmsset parent
   char ldmsname[MAXSHORTNAME];
   char MIBmetricname[MAXSHORTNAME];
-  int MIBmetricUID; //There is no way for a user to assign a MIBmetricUID
+  int MIBmetricUID; //There is no way for a user to assign a MIBmetricUID. This is the last component of the OID
   struct Linfo* instance; //in the current setup GUARENTEED that a metric belongs to a single component only
+
+  char OIDString[MAXLONGNAME]; 
+  char OID[MAXLONGNAME]; 
 };
 
 struct SetInfo{
@@ -71,6 +72,7 @@ struct SetInfo{
 };
 
 struct SetInfo sets[MAXSETS];
+
 struct Linfo* tree[MAXHWLOCLEVELS]; //temporary for parsing hwlocfile
 
 //enum if want specific line parses based upon these names
@@ -88,18 +90,22 @@ enum hwlocAssoc{
 
 int getHwlocAssoc( char *assoc );
 int cleanup();
-int instanceEquals(struct Linfo* a, struct Linfo* b);
+int componentInstanceEquals(struct Linfo* a, struct Linfo* b);
+int componentInstanceMatchesOID(struct Linfo* a, char* oid);
 int getInstanceLDMSName(char* orig, char* Lval, char* newname);
 int parseMetricData(char* inputfile);
 int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int* numAttr);
 void addComponent(char* hwlocAssocStr, int Lval, int Pval,  char keys[MAXATTR][MAXSHORTNAME], int* attr, int numAttr);
 int parseHwlocfile(char* file);
+
 void printComponents(int printMetrics);
-void printLDMSMetricsAsHwloc();
+void printLDMSMetricsAsOID();
 void printTree(struct Linfo*);
-int HwlocToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring);
-int LDMSToHwloc(char* setname, char* metricname, char* hwlocname, int dottedstring);
-int LDMSToHwlocWHost(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring);
+
+//int HwlocToLDMS_walk(char* hwlocname, char* setname, char* metricname, int dottedstring);
+int OIDToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring);
+int LDMSToOID(char* setname, char* metricname, char* hwlocname, int dottedstring);
+int LDMSToOIDWHost(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring);
 
 #endif
 

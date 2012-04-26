@@ -58,17 +58,30 @@ int cleanup(){
   return 0;
 }
 
-int instanceEquals(struct Linfo* a, struct Linfo *b){
-  int ret = strcmp(a->assoc, b->assoc);
-  if (ret == 0){
-    if (a < b) return -1;
-    if (a > b) return +1;
-    if (a == b) return 0;
+//assuming that things are properly built, the equals/matches function are simple checks
+int componentInstanceEquals(struct Linfo* a, struct Linfo *b){
+  if ((a == NULL) || (b == NULL) || (strlen(a->OID) == 0) || (strlen(b->OID) == 0)){
+    return -1;
   }
-  return ret;
+  return strcmp(a->OID, b->OID);
 }
 
-int HwlocToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring){
+int componentInstanceMatchesOID(struct Linfo* a, char* OID){
+  if ((a == NULL) || (strlen(a->OID) == 0) || (strlen(OID) == 0)){
+    return -1;
+  }
+  return strcmp(a->OID, OID);
+}
+
+int metricInstanceEquals(struct MetricInfo* a, struct MetricInfo* b){
+  if ((a == NULL) || (b == NULL) || (strlen(a->OID) == 0) || (strlen(b->OID) == 0)){
+    return -1;
+  }
+  return strcmp(a->OID,b->OID);
+};
+
+
+int OIDToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring){
   setname[0] = '\0';
   metricname[0] = '\0';
 
@@ -178,9 +191,49 @@ int HwlocToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstri
   return -1;
 }
 
+/*
+//dont walk the string, but use the hwloc prefix depth to compare. 
+int OIDToLDMS(char* oid, char* setname, char* metricname, int dottedstring){
+  //oid needs to have the form ComponentOID/ComponentOIDString.METRICCATAGORYUID/METRICCATAGORYNAME.MIBmetricUID/MIBmetricname
+  setname[0] = '\0';
+  metricname[0] = '\0';
+
+  int i;
+  int count;
+  char* heads[MAXHWLOCLEVELS+5];
+  char *newp = index(oid, ".");
+  while(newp != NULL){
+    *(heads[count++]) = *newp;
+    char* p = newp;
+    p = index(newp,".");
+  }
+
+      
+      
+
+  
+  char *pch;
+  int count = 0;
+  pch = strtok(oid, ".");
+  while(pch != NULL){
+    heads[count++
+    offset[count++] = strlen(pch);
+  }
+  if (count < 2){
+    printf("Error: bad oid <%s>\n", oid);
+    return -1;
+  }
+  int level = count-2;
+  for (i = 0; i <
+
+
+}
+*/
+
+
 
 //FIXME: make one where you dont have to parse thru the sets each time?
-int LDMSToHwloc(char* setname, char* metricname, char* hwlocname, int dottedstring){
+int LDMSToOID(char* setname, char* metricname, char* hwlocname, int dottedstring){
 
   hwlocname[0] = '\0';
   //given setname metricname get the hwlocname
@@ -199,21 +252,10 @@ int LDMSToHwloc(char* setname, char* metricname, char* hwlocname, int dottedstri
   }
 
   //process this metric
-  if (dottedstring){
-    for (i = 0; i < sets[setnum].nummetrics; i++){
-      if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
-	snprintf(hwlocname,MAXBUFSIZE,"%s%d",
-		 sets[setnum].metrics[i]->instance->metricdottedprefix, sets[setnum].metrics[i]->MIBmetricUID);
-	return 0;
-      }
-    }
-  } else {
-    for (i = 0; i < sets[setnum].nummetrics; i++){
-      if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
-	snprintf(hwlocname,MAXBUFSIZE,"%s%s",
-		 sets[setnum].metrics[i]->instance->metricprefix, sets[setnum].metrics[i]->MIBmetricname);
-	return 0;
-      }
+  for (i = 0; i < sets[setnum].nummetrics; i++){
+    if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
+      snprintf(hwlocname,MAXBUFSIZE,"%s", (dottedstring ? sets[setnum].metrics[i]->OID: sets[setnum].metrics[i]->OIDString));
+      return 0;
     }
   }
 
@@ -221,16 +263,16 @@ int LDMSToHwloc(char* setname, char* metricname, char* hwlocname, int dottedstri
   return -1;
 };
 
-int LDMSToHwlocWHost(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring){
+int LDMSToOIDWHost(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring){
+  //replace the hwloc Machine0 with the actual hostname
   char buf[MAXBUFSIZE];
   hwlocname[0] = '\0';
 
-  int rc = LDMSToHwloc(setname, metricname, buf, dottedstring);
+  int rc = LDMSToOID(setname, metricname, buf, dottedstring);
   if (rc < 0){
     return rc;
   }
 
-  //FIXME: else replace the Machine0 with the hostname
   char* p = strstr(buf,".");
   if (p == NULL)
     return -1;
@@ -377,9 +419,12 @@ int parseMetricData(char* inputfile){
 	snprintf(mi->MIBmetricname,MAXSHORTNAME,"%s",hwlocname);
 
 	//update the hw structs
-	hwloc[comptypenum].instances[i]->metrics[hwloc[comptypenum].instances[i]->nummetrics] = mi;
-	mi->MIBmetricUID = hwloc[comptypenum].instances[i]->nummetrics++;
-	mi->instance = hwloc[comptypenum].instances[i];
+	struct Linfo* li = hwloc[comptypenum].instances[i]; 
+	li->metrics[li->nummetrics] = mi;
+	mi->MIBmetricUID = li->nummetrics++;
+	snprintf(mi->OIDString, MAXLONGNAME, "%s.%s.%s", li->OIDString,MIBMETRICCATAGORYNAME, mi->MIBmetricname);
+	snprintf(mi->OID, MAXLONGNAME, "%s.%d.%d", li->OID,MIBMETRICCATAGORYUID, mi->MIBmetricUID);
+	mi->instance = li;
 
 	//update the ldms structs
 	sets[setnum].metrics[sets[setnum].nummetrics++] = mi;
@@ -523,8 +568,8 @@ int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXA
 }
 
 void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int numAttr){
-  char prefix[1024];
-  char dottedprefix[1024];
+  char prefix[MAXBUFSIZE] = "";
+  char dottedprefix[MAXBUFSIZE] = "";
   int found = 0;
   int i;
 
@@ -552,27 +597,27 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][M
     exit(0);
   }
 
-  strcpy(prefix,"");
-  strcpy(dottedprefix,"");
-  for (i=0; i<treesize; i++) { 
-    strcat(prefix,tree[i]->assoc);
-    strcat(prefix,tree[i]->Lval); //do we want the Pval?
+  if (treesize > 1){
+    snprintf(prefix,MAXBUFSIZE,"%s",tree[treesize-2]->OIDString);
+    snprintf(dottedprefix,MAXBUFSIZE,"%s",tree[treesize-2]->OID);
     strcat(prefix,".");
-    //NOTE: when use the LVAL for the naming convention, it is easier to read but then there
-    //are some missing components -- for example
-    //NUMANode:
-    //  Machine0.Socket0.NUMANode0. 0.0.0.
-    //	Machine0.Socket0.NUMANode1. 0.0.1.
-    //	Machine0.Socket1.NUMANode2. 0.1.2.
-    //	Machine0.Socket1.NUMANode3. 0.1.3.
-    // there is NO 0.1.0 NOR 0.1.1
-    strcat(dottedprefix,tree[i]->Lval); 
     strcat(dottedprefix,".");
   }
-  strncpy(li->prefix,prefix,MAXLONGNAME);
-  strncpy(li->dottedprefix,dottedprefix,MAXLONGNAME);
-  snprintf(li->metricprefix, MAXLONGNAME, "%s%s.", li->prefix,MIBMETRICCATAGORYNAME);
-  snprintf(li->metricdottedprefix, MAXLONGNAME, "%s%d.", li->dottedprefix,MIBMETRICCATAGORYUID);
+  strcat(prefix,tree[treesize-1]->assoc);
+  strcat(prefix,tree[treesize-1]->Lval); //do we want the Pval?
+  strcat(dottedprefix,tree[treesize-1]->Lval); 
+  strcat(prefix, "\0");
+  strcat(dottedprefix, "\0");
+  //NOTE: when use the LVAL for the naming convention, it is easier to read but then there
+  //are some missing components -- for example
+  //NUMANode:
+  //  Machine0.Socket0.NUMANode0. 0.0.0.
+  //	Machine0.Socket0.NUMANode1. 0.0.1.
+  //	Machine0.Socket1.NUMANode2. 0.1.2.
+  //	Machine0.Socket1.NUMANode3. 0.1.3.
+  // there is NO 0.1.0 NOR 0.1.1
+  snprintf(li->OIDString,sizeof(prefix),"%s",prefix);
+  snprintf(li->OID,sizeof(dottedprefix),"%s",dottedprefix);
 
   li->parent = (treesize == 1 ? NULL: tree[treesize-2]);
   if (li->parent != NULL){
@@ -604,6 +649,8 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][M
     //update the hw structs
     li->metrics[li->nummetrics] = mi;
     mi->MIBmetricUID = li->nummetrics++;
+    snprintf(mi->OIDString, MAXLONGNAME, "%s.%s.%s", li->OIDString,MIBMETRICCATAGORYNAME, mi->MIBmetricname);
+    snprintf(mi->OID, MAXLONGNAME, "%s.%d.%d", li->OID,MIBMETRICCATAGORYUID, mi->MIBmetricUID);
     mi->instance = li;
 
     //NOTE: do NOT update the ldms structs
@@ -621,14 +668,13 @@ void printComponents(int printMetrics){
   for (i = 0; i < numlevels; i++){
     printf("%s:\n", hwloc[i].assoc);
     for (j = 0; j < hwloc[i].numinstances; j++){
-      printf("\t%-80s %-30s\n",hwloc[i].instances[j]->prefix, hwloc[i].instances[j]->dottedprefix);
+      printf("\t%-120s %-30s\n",hwloc[i].instances[j]->OIDString, hwloc[i].instances[j]->OID);
       if (printMetrics){
 	printf("\tMetrics:\n");
 	for (k = 0; k < hwloc[i].instances[j]->nummetrics; k++){
-	  printf("\t\t%-20s %30s%d\n",
-		 hwloc[i].instances[j]->metrics[k]->MIBmetricname,
-		 hwloc[i].instances[j]->metricdottedprefix, 
-		 hwloc[i].instances[i]->metrics[k]->MIBmetricUID);
+	  printf("\t\t%-120s %-30s\n",
+		 hwloc[i].instances[j]->metrics[k]->OIDString,
+		 hwloc[i].instances[i]->metrics[k]->OID);
 	  //there may be some that arent LDMS metrics
 	}
       }
@@ -638,16 +684,13 @@ void printComponents(int printMetrics){
 }
 
 
-void printLDMSMetricsAsHwloc(){
+void printLDMSMetricsAsOID(){
   int i, j;
   printf("LDMS Metrics:\n");
   for (i = 0; i < numsets; i++){
     printf("%s:\n", sets[i].setname);
     for (j = 0; j < sets[i].nummetrics; j++){
-      printf("\t%s%-20s %30s%d\n",
-	     sets[i].metrics[j]->instance->metricprefix, sets[i].metrics[j]->MIBmetricname,
-	     sets[i].metrics[j]->instance->metricdottedprefix, sets[i].metrics[j]->MIBmetricUID
-	     );
+      printf("\t%-120s %-30s\n", sets[i].metrics[j]->OIDString, sets[i].metrics[j]->OID);
     }
   }
   printf("\n");
@@ -660,9 +703,9 @@ void printTree(struct Linfo* tr){
     printf("Tree:\n");
   }
 
-  printf("\t%-120s %-20s (%d direct children) (%d metrics)\n", tr->prefix, tr->dottedprefix, tr->numchildren, tr->nummetrics);
+  printf("\t%-120s %-30s (%d direct children) (%d metrics)\n", tr->OIDString, tr->OID, tr->numchildren, tr->nummetrics);
   for (i = 0; i < tr->nummetrics; i++){
-    printf("\t%s%s %20s%-2d\n", tr->metricprefix, tr->metrics[i]->MIBmetricname, tr->metricdottedprefix, tr->metrics[i]->MIBmetricUID);
+    printf("\t%-120s %-30s\n", tr->metrics[i]->OIDString, tr->metrics[i]->OID);
   }
 
   for (i = 0; i < tr->numchildren; i++){
