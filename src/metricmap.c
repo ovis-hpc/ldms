@@ -14,7 +14,7 @@ int treesize = 0;
 
 //NOTE: that Machine0 will be everyhosts base host
 //FIXME: assumes hostname/setname/metricname
-//FIXME: is it a correct assumption that the order the assocs are reached (and therefore assigned in the sets) is the depth? I think so.
+//NOTE:using that the order the assocs are reached (and therefore assigned in the sets) is the depth.
 
 
 int getHwlocAssoc( char *assoc ){
@@ -205,13 +205,19 @@ int OIDToLDMS(char* oid, char* setname, char* metricname, int dottedstring){
   setname[0] = '\0';
   metricname[0] = '\0';
 
+  printf("considering <%s>\n",oid);
+
   int i;
   int count = 0;
   char* seg[MAXHWLOCLEVELS+5];
   char *p = index(oid, '.');
   while (p!= NULL){
-    *(seg[count]) = *p;
+    seg[count] = p;
+    for (i = 0; i < count; i++){
+      printf("seg %d <%s>\n",i, seg[i]); //FIXME: start here
+    }
     p = index(seg[count++], '.');
+    if (count ==2 ) exit(-1);
   }
   if (count < 2){
     printf("Error: bad oid <%s>\n", oid);
@@ -220,6 +226,7 @@ int OIDToLDMS(char* oid, char* setname, char* metricname, int dottedstring){
 
   int levelassoc = count-2;
   struct Linfo* li = NULL;
+  printf("level is %d\n", (count-2));
   if (dottedstring){
     for (i = 0; i < hwloc[levelassoc].numinstances; i++){
       if (!strncmp(hwloc[levelassoc].instances[i]->OID, oid, strlen(oid)-strlen(seg[count-2]))){
@@ -274,6 +281,7 @@ int OIDToLDMS(char* oid, char* setname, char* metricname, int dottedstring){
 
 }
 */
+
 
 //FIXME: make one where you dont have to parse thru the sets each time?
 int LDMSToOID(char* setname, char* metricname, char* hwlocname, int dottedstring){
