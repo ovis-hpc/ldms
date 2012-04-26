@@ -1,0 +1,11 @@
+Core
+procinterrupts/Cpu(LVAL)_0
+procstatutil/cpu(LVAL)_user_raw
+procstatutil/cpu(LVAL)_sys_raw
+procstatutil/cpu(LVAL)_idle_raw
+procinterrupts/Cpu(LVAL)_MCE
+
+
+
+
+

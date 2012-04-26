@@ -1,0 +1,8 @@
+Machine
+meminfo/MemTotal 
+meminfo/MemFree 
+procstatutil/cpu_user_raw
+procstatutil/cpu_sys_raw
+procstatutil/cpu_idle_raw
+
+
