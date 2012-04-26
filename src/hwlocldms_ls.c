@@ -98,7 +98,6 @@ int main(int argc, char* argv[])
     exit(-1);
   }
   printComponents(0);   
-  //  printTree(NULL);
 
   for (i = 2; i <= (argc-2); i++){
     parseMetricData(argv[i]);

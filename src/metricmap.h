@@ -93,6 +93,7 @@ int cleanup();
 int componentInstanceEquals(struct Linfo* a, struct Linfo* b);
 int componentInstanceMatchesOID(struct Linfo* a, char* oid);
 int getInstanceLDMSName(char* orig, char* Lval, char* newname);
+int getLDMSName(struct MetricInfo *mi);
 int parseMetricData(char* inputfile);
 int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int* numAttr);
 void addComponent(char* hwlocAssocStr, int Lval, int Pval,  char keys[MAXATTR][MAXSHORTNAME], int* attr, int numAttr);
@@ -101,6 +102,7 @@ int parseHwlocfile(char* file);
 void printComponents(int printMetrics);
 void printLDMSMetricsAsOID();
 void printTree(struct Linfo*);
+void printMetric(struct MetricInfo*m, int fullprint);
 
 //int HwlocToLDMS_walk(char* hwlocname, char* setname, char* metricname, int dottedstring);
 int OIDToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring);
