@@ -1,0 +1,4 @@
+./src/hwlocldms_ls /home/gentile/Work/LDMS/hwlocutils/hwloc.out /home/gentile/Work/LDMS/hwlocutils/MachineList /home/gentile/Work/LDMS/hwlocutils/Machine.in /home/gentile/Work/LDMS/hwlocutils/Core.in "NNE" | more
+
+
+replace with real ldms command
