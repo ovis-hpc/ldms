@@ -9,6 +9,9 @@
 
 //FIXME: assumes hostname/setname/metricname
 
+#define MAXMETRICDATAFILES 10
+
+/*
 int parseLDMSOutput(char* cmd){
    //will need to parse the ldms_ls results to extract machinename, setname, metricname
    //format:
@@ -79,34 +82,43 @@ int parseLDMSOutput(char* cmd){
 
   return 0;
 }
+*/
 
 int main(int argc, char* argv[])
 {
   int i = 0;
+  int numdatafiles = 0;
+
+  char metricdatafiles[MAXHWLOCLEVELS][MAXBUFSIZE];
   
   if (argc < 4){
-    printf("Usage: hwloc_metric_mapper hwloc_file [metricdata_files] ldms_ls_flags\n"); 
+    printf("Usage: hwloc_metric_mapper hwloc_file machine_file [metricdata_files] ldms_ls_flags\n"); 
     exit (-1);
   }
 
   //NOTE: assuming the machine is homogeneous so can use 1 hwloc for all.
   //only difference is the hostname (Machine) translation 
-  //FIXME: still have to handle the hostname translation
 
-  int rc = parseHwlocfile(argv[1]);
-  if (rc != 0){
-    exit(-1);
+  for (i = 3; i < argc-1; i++){
+    if (numdatafiles >= MAXHWLOCLEVELS){
+      printf("Error: Too many metricdata files\n");
+      exit (-1);
+    }
+    snprintf( metricdatafiles[numdatafiles++], MAXBUFSIZE, "%s", argv[i]);
   }
-  printComponents(0);   
-
-  for (i = 2; i <= (argc-2); i++){
-    parseMetricData(argv[i]);
+  printf("there are %d datafiles\n", numdatafiles);
+  for (i = 0;i < numdatafiles; i++){
+    printf("datfile: <%s>\n", metricdatafiles[i]);
   }
-  printLDMSMetricsAsOID(); //ldmsmetrics only
 
-  printTree(NULL);
+  parseData(argv[2], argv[1], metricdatafiles, numdatafiles);
 
-  parseLDMSOutput(argv[argc-1]);
+
+  //  printLDMSMetricsAsOID(); //ldmsmetrics only
+
+  //  printTree(1);
+
+  //  parseLDMSOutput(argv[argc-1]);
 
    cleanup();
    return 1;

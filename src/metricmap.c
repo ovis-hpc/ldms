@@ -660,6 +660,8 @@ int parseLDMSData(char* inputfile){
   int i;
   int setnum = -1;
 
+  printf("Parsing ldmsdata file <%s>\n", inputfile);
+
   FILE *fp = fopen(inputfile, "r");
   if (fp == NULL){
     printf("Error: Can't open metric data file. exiting.\n");
@@ -741,6 +743,7 @@ int parseLDMSData(char* inputfile){
 	li->metrics[li->nummetrics] = mi;
 	mi->MIBmetricUID = li->nummetrics++;
 	mi->instance = li;
+	//no values yet
 
 	//update the ldms structs
 	sets[setnum].metrics[sets[setnum].nummetrics++] = mi;
@@ -973,7 +976,7 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][M
 }
 
 
-int parseData(char* machineFile, char *hwlocFile, char* LDMSData[MAXHWLOCLEVELS], int numLDMSData){
+int parseData(char* machineFile, char *hwlocFile, char LDMSData[MAXHWLOCLEVELS][MAXBUFSIZE], int numLDMSData){
   int i;
   int rc;
   
@@ -984,7 +987,6 @@ int parseData(char* machineFile, char *hwlocFile, char* LDMSData[MAXHWLOCLEVELS]
     return rc;
   }
 
-  //  printComponents(1);
 
   rc = parseMachineData(machineFile);
   if (rc != 0){
@@ -996,9 +998,10 @@ int parseData(char* machineFile, char *hwlocFile, char* LDMSData[MAXHWLOCLEVELS]
   //FIXME: is there some reason we cant have repeats???
   if (numLDMSData > 0  && (LDMSData != NULL)){
     for (i = 0; i < numLDMSData; i++){
+      printf("should be parsing LDMS data <%s>\n", LDMSData[i]);
       rc =  parseLDMSData(LDMSData[i]);
-      if (rc != 0){
-	printf("Error parsing hwloc data\n");
+      if (rc < 0){
+	printf("Error parsing ldms data\n");
 	cleanup();
 	return rc;
       }

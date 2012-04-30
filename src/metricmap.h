@@ -110,7 +110,7 @@ void addComponent(char* hwlocAssocStr, int Lval, int Pval,  char keys[MAXATTR][M
 int parseHwlocData(char* file);
 int parseMachineData(char* file);
 int parseLDMSData(char* inputfile);
-int parseData();
+int parseData(char* machineFile, char *hwlocFile, char LDMSData[MAXHWLOCLEVELS][MAXBUFSIZE], int numLDMSData);
 
 void printComponent(struct Linfo*, int printMetrics, char*);
 void printComponents(int printMetrics);
