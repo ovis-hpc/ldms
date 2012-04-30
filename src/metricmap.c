@@ -18,6 +18,8 @@ int treesize = 0;
 //NOTE:using that the order the assocs are reached (and therefore assigned in the sets) is the depth.
 
 
+//FIXME: this is not the final data structure. perhaps also want a hash on the oid strings
+
 int getHwlocAssoc( char *assoc ){
   if (!strncmp(assoc, "PU", MAXSHORTNAME)){
     return PU;
@@ -95,6 +97,141 @@ int getLDMSName(struct MetricInfo* mi, int hostoid, char* hostname, char* setnam
   snprintf(metricname, MAXLONGNAME, "%s", mi->ldmsname);
 
   return 0;
+}
+
+int getMetricInfo(struct MetricInfo* mi, int* idx, char* oid_orig, int dottedstring){
+  //return the metric info and the index
+  //oid needs to have the form ComponentOID/ComponentOIDString.METRICCATAGORYUID/METRICCATAGORYNAME.MIBmetricUID/MIBmetricname
+
+  char oid[MAXBUFSIZE];
+  snprintf(oid,MAXBUFSIZE,"%s",oid_orig);
+
+  if (mi != NULL){
+    printf("Error: sending non null arg\n");
+    return -1;
+  }
+
+  //  printf("considering <%s>\n",oid);
+
+  int i;
+  int count = 0;
+  int found = -1;
+  int val;
+  int hostidx = -1;
+
+  char seg[MAXHWLOCLEVELS+5][MAXLONGNAME];
+  char *p = strtok(oid, ".\n");
+  while (p!= NULL){
+    snprintf(seg[count++],MAXLONGNAME, "%s",p);
+    p = strtok(NULL, ".\n");
+  }
+  if (count < 2){
+    printf("Error: bad oid <%s> num segs\n", oid);
+    return -1;  
+  }
+
+  if (!dottedstring){
+    //string will start with MachineNum
+    char assoc[MAXLONGNAME];
+    int rc = sscanf(seg[0],"%s%d",assoc,&val);
+    if (rc != 2 || !strcmp(assoc,"Machine")){
+      printf("Error: bad oid string\n");
+      return -1;
+    }
+   snprintf(seg[0],MAXLONGNAME, "%d",val);
+  } 
+
+  for (i = 0; i < numhosts;i++){
+    if (!strcmp(hosts[i].Lval,seg[0])){
+      hostidx = i;
+      break;
+    }
+  }
+  if (hostidx == -1){
+    printf("Error: bad host oid <%s>\n",seg[0]);
+    return -1;
+  }
+
+  *idx = hostidx;
+  
+  int levelnum = count-2-1;
+  int level = 0;
+
+  //  printf("<%s> count %d levelnum %d\n", oid_orig, count, levelnum);
+  struct Linfo *li = hwloc[0].instances[0];
+  while (li != NULL && level != levelnum){
+    found = -1;
+    if (dottedstring){
+      for (i = 0; i < li->numchildren; i++){
+	if (!strcmp(li->children[i]->Lval, seg[level+1])){
+	  found = 1;
+	  li =  li->children[i];
+	  break;
+	}
+      }
+      if (found == -1){
+	li = NULL;
+      }
+    } else {
+      found = -1;
+      for (i = 0; i < li-> numchildren; i++){
+	char assoc[MAXLONGNAME];
+	int rc = sscanf(seg[level+1],"%s%d",assoc,&val);
+	if (rc != 2){
+	  break;
+	}
+	if (!strcmp(li->assoc,assoc) && (atoi(li->Lval) == val)){
+	  found = 1;
+	  li = li->children[i];
+	  break;
+	}
+      }
+      if (found == -1){
+	li = NULL;
+      }
+    }
+    level++;
+  }
+  if (li == NULL){
+    printf("Error: bad oid <%s> no component (level = %d)\n", oid, levelnum);
+    return -1;
+  }
+
+  if (dottedstring){
+    if (atoi(seg[count-2]) != MIBMETRICCATAGORYUID){
+      printf("Error: bad oid <%s> catagory num\n", oid);
+      return -1;
+    }
+  } else {
+    if (!strcmp(seg[count-2], MIBMETRICCATAGORYNAME)){
+      printf("Error: bad oid <%s> catagory name\n", oid);
+      return -1;
+    }
+  }
+
+  if (dottedstring){
+    for (i = 0; i < li->nummetrics; i++){
+      if (li->metrics[i]->MIBmetricUID == atoi(seg[count-1])){
+	mi = li->metrics[i];
+	break;
+      }
+    }
+  } else {
+    for (i = 0; i < li->nummetrics; i++){
+      if (!strcmp(li->metrics[i]->MIBmetricname, seg[count-1])){
+	mi = li->metrics[i];
+	break;
+      }
+    }
+  }
+  
+  if (mi == NULL){
+    printf("Error: bad oid <%s> (no metric) \n", oid);
+    return -1;
+  }
+
+  return 0;
+
 }
 
 int OIDToLDMS(char* oid_orig, char* hostname, char* setname, char* metricname, int dottedstring){
@@ -280,6 +417,35 @@ int LDMSToOID(char *hostname, char* setname, char* metricname, char* hwlocname, 
 
   //  printf("Error: dont have metric <%s>\n",metricname);
   return -1;
+};
+
+
+int setMetricValue(char* oid, unsigned long val, int dottedstring){
+  struct MetricInfo *mi = NULL;  int idx = -1;
+
+  int rc = getMetricInfo(mi, &idx, oid, dottedstring);
+  if (rc != 0){
+    printf("Error: no metric for oid <%s>\n", oid);
+    return -1;
+  }
+
+  mi->values[idx] = val;
+  return 1;
+};
+
+int getMetricValue(char* oid, unsigned long *val, int dottedstring){
+  struct MetricInfo *mi = NULL;
+  int idx = -1;
+
+  int rc = getMetricInfo(mi, &idx, oid, dottedstring);
+  if (rc != 0){
+    printf("Error: no metric for oid <%s>\n", oid);
+    return -1;
+  }
+
+  *val = mi->values[idx];
+  return 1;
+
 };
 
 

@@ -5,6 +5,9 @@ LIBMEMINFO_1.0 {
 		getLDMSName;
 		getComponentOID;
 		getMetricOID;
+                getMetricInfo;
+                getMetricValue;
+                setMetricValue;
 		getInstanceMetricNames;
 		parse_line;
 		addComponent;

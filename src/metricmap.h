@@ -103,6 +103,9 @@ int cleanup();
 int getLDMSName(struct MetricInfo *mi, int hostoid, char* hostname, char* setname, char* metricname);
 int getComponentOID(struct Linfo* linfo, unsigned int num, char* str, int dottedstring);
 int getMetricOID(struct MetricInfo* minfo, unsigned int num, char* str, int dottedstring);
+int getMetricInfo(struct MetricInfo* minfo, int* idx, char* oid, int dottedstring);
+int setMetricValue(char* oid, unsigned long val, int dottedstring);
+int getMetricValue(char* oid, unsigned long* val, int dottedstring);
 
 int getInstanceMetricNames(char* orig, char* Lval, char* ldmsname, char* hwlocname);
 int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int* numAttr);
