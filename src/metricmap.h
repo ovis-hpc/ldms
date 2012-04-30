@@ -100,7 +100,7 @@ enum hwlocAssoc{
 int getHwlocAssoc( char *assoc );
 int cleanup();
 
-//int getLDMSName(struct MetricInfo *mi);
+int getLDMSName(struct MetricInfo *mi, int hostoid, char* hostname, char* setname, char* metricname);
 int getComponentOID(struct Linfo* linfo, unsigned int num, char* str, int dottedstring);
 int getMetricOID(struct MetricInfo* minfo, unsigned int num, char* str, int dottedstring);
 
@@ -119,10 +119,8 @@ void printTreeGuts(struct Linfo*, int);
 void printTree(int);
 void printMetric(struct MetricInfo*m, int, char*);
 
-//int HwlocToLDMS_walk(char* hwlocname, char* setname, char* metricname, int dottedstring);
-//int OIDToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring);
-//int LDMSToOID(char* setname, char* metricname, char* hwlocname, int dottedstring);
-//int LDMSToOIDWHost(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring);
+int OIDToLDMS(char* hwlocname, char* hostname, char* setname, char* metricname, int dottedstring);
+int LDMSToOID(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring);
 
 #endif
 

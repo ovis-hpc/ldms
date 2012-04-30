@@ -2,6 +2,7 @@ LIBMEMINFO_1.0 {
 	global:
 		getHwlocAssoc;
 		cleanup;
+		getLDMSName;
 		getComponentOID;
 		getMetricOID;
 		getInstanceMetricNames;
@@ -18,5 +19,7 @@ LIBMEMINFO_1.0 {
 		printTreeGuts;
 		printTree;
 		printMetric;
+		OIDToLDMS;
+		LDMSToOID;
 	local: *;
 };

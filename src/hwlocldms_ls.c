@@ -106,17 +106,11 @@ int main(int argc, char* argv[])
     }
     snprintf( metricdatafiles[numdatafiles++], MAXBUFSIZE, "%s", argv[i]);
   }
-  printf("there are %d datafiles\n", numdatafiles);
-  for (i = 0;i < numdatafiles; i++){
-    printf("datfile: <%s>\n", metricdatafiles[i]);
-  }
 
   parseData(argv[2], argv[1], metricdatafiles, numdatafiles);
 
-
-  //  printLDMSMetricsAsOID(); //ldmsmetrics only
-
-  //  printTree(1);
+  printComponents(1);
+  printTree(-1);
 
   //  parseLDMSOutput(argv[argc-1]);
 

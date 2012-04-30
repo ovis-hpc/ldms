@@ -61,185 +61,158 @@ int cleanup(){
   return 0;
 }
 
-/*
-//keeping this because it walks the tree
-int OIDToLDMS(char* hwlocname, char* setname, char* metricname, int dottedstring){
+
+int getLDMSName(struct MetricInfo* mi, int hostoid, char* hostname, char* setname, char* metricname){
+  int i;
+  int found = -1;
+
+  if (mi == NULL){
+    printf("Error: NULL input metric\n");
+    return -1;
+  }
+
+  hostname[0] = '\0';
   setname[0] = '\0';
   metricname[0] = '\0';
 
-  char buf[MAXBUFSIZE];
-  snprintf(buf,MAXBUFSIZE,"%s",hwlocname);
-
-  struct Linfo* tr = NULL;
-
-  char* pch;
-  int i;
-  pch = strtok(buf, ".");
-
-  while (pch != NULL){
-    //first one is the treeroot
-    if (tr == NULL){
-      if (numlevels < 1){
-	printf("Error: no hwloc info\n");
-	return -1;
-      }
-      for (i = 0; i < hwloc[0].numinstances; i++){
-	if (dottedstring){
-	  if (!strcmp(hwloc[0].instances[i]->Lval, pch)){
-	    tr = hwloc[0].instances[i];
-	    break;
-	  }
-	} else {
-	  char assoc[MAXSHORTNAME]; 
-	  snprintf(assoc, MAXSHORTNAME, "%s%s", hwloc[0].assoc, hwloc[0].instances[i]->Lval);
-	  if (!strcmp(assoc, pch)){
-	    tr = hwloc[0].instances[i];
-	    break;
-	  }
-	}
-      }
-      if (tr == NULL){
-	printf("Error: cant find tree root for <%s>\n", hwlocname);
-	return -1;
-      }
-
-      pch = strtok(NULL, ".");
-      continue;
-    }
-
-    //these walk the tree
-    int found = 0;
-    for (i = 0; i < tr->numchildren; i++){
-      if (dottedstring){
-	if (!strcmp(tr->children[i]->Lval, pch)){
-	  tr = tr->children[i];
-	  found = 1;
-	  break;
-	}
-      } else {
-	char assoc[MAXSHORTNAME]; 
-	snprintf(assoc, MAXSHORTNAME, "%s%s", tr->children[i]->assoc, tr->children[i]->Lval);
-	if (!strcmp(assoc, pch)){
-	  tr = tr->children[i];
-	  found = 1;
-	  break;
-	}
-      }
-    }
-    if (found){
-      pch = strtok(NULL, ".");
-    } else {
-      //is it a metric?
-      int val = (dottedstring == 1? (atoi(pch) == MIBMETRICCATAGORYUID) : strcmp(pch, MIBMETRICCATAGORYNAME));
-      if (!val){
-	pch = strtok(NULL, ".");
-	if (pch == NULL){
-	  printf("Error: bad hwloc string <%s>\n", hwlocname);
-	  return -1;
-	}
-	struct MetricInfo* mi = NULL;
-	if (dottedstring){
-	  //NOTE: the metric uid is also the metric index
-	  int val = atoi(pch);
-	  if (val < 0 || val > tr->nummetrics){
-	    printf("Error: bad hwloc string <%s> - bad metric uid\n", hwlocname);
-	    return -1;
-	  }
-	  mi = tr->metrics[val];
-	} else {
-	  for (i = 0; i < tr->nummetrics; i++){
-	    if (!strcmp(tr->metrics[i]->MIBmetricname,pch)){
-	      mi = tr->metrics[i];
-	      break;
-	    }
-	  }
-	}
-	if (mi == NULL){
-	  printf("Error: bad hwloc string <%s> - metric does not exist \n", hwlocname);
-	  return -1;
-	}
-	if (mi->ldmsparent == NULL){
-	  //	  printf("WARNING: <%s> Not an ldms metric\n", hwlocname);
-	  return -1;
-	}
-	snprintf(setname, strlen(mi->ldmsparent->setname)+1, "%s", mi->ldmsparent->setname);
-	snprintf(metricname, strlen(mi->ldmsname)+1, "%s", mi->ldmsname);
-	return 0;
-      } //if(!val)
-
-      //dont know what this is
-      printf("Error: bad hwloc string <%s> -- <%s> not a metric\n", hwlocname, pch);
-      return -1;
+  for (i = 0; i < numhosts; i++){
+    if (atoi(hosts[i].Lval) == hostoid){
+      found = i;
+      snprintf(hostname, MAXLONGNAME, "%s", hosts[i].hostname);
     }
   }
-  
-  printf("Error: bad hwloc string <%s> -- default \n", hwlocname);
-  return -1;
-}
-*/
+  if (found == -1){
+    printf("Error: no host <%d>\n", hostoid);
+    return -1;
+  }
 
-/*
-//FIXME: how to handle the hostname???
-//dont walk the string, but use the hwloc prefix depth to compare. 
-int OIDToLDMS(char* oid, char* setname, char* metricname, int dottedstring){
+  if (mi->ldmsparent == NULL){
+    //may not be an ldms metric
+    //    printf("Error: bad parent for metric <%s>\n", mi->ldmsname);
+    return -1;
+  }
+  snprintf(setname, MAXLONGNAME, "%s", mi->ldmsparent->setname);
+  snprintf(metricname, MAXLONGNAME, "%s", mi->ldmsname);
+
+  return 0;
+}
+
+int OIDToLDMS(char* oid_orig, char* hostname, char* setname, char* metricname, int dottedstring){
   //oid needs to have the form ComponentOID/ComponentOIDString.METRICCATAGORYUID/METRICCATAGORYNAME.MIBmetricUID/MIBmetricname
+
+  char oid[MAXBUFSIZE];
+  snprintf(oid,MAXBUFSIZE,"%s",oid_orig);
+  hostname[0] = '\0';
   setname[0] = '\0';
   metricname[0] = '\0';
 
-  printf("considering <%s>\n",oid);
+  //  printf("considering <%s>\n",oid);
 
   int i;
   int count = 0;
-  char* seg[MAXHWLOCLEVELS+5];
-  char *p = index(oid, '.');
+  int found = -1;
+  int val;
+
+  char seg[MAXHWLOCLEVELS+5][MAXLONGNAME];
+  char *p = strtok(oid, ".\n");
   while (p!= NULL){
-    seg[count] = p;
-    for (i = 0; i < count; i++){
-      printf("seg %d <%s>\n",i, seg[i]); //FIXME: start here
-    }
-    p = index(seg[count++], '.');
-    if (count ==2 ) exit(-1);
+    snprintf(seg[count++],MAXLONGNAME, "%s",p);
+    p = strtok(NULL, ".\n");
   }
   if (count < 2){
-    printf("Error: bad oid <%s>\n", oid);
+    printf("Error: bad oid <%s> num segs\n", oid);
     return -1;  
   }
 
-  int levelassoc = count-2;
-  struct Linfo* li = NULL;
-  printf("level is %d\n", (count-2));
-  if (dottedstring){
-    for (i = 0; i < hwloc[levelassoc].numinstances; i++){
-      if (!strncmp(hwloc[levelassoc].instances[i]->OID, oid, strlen(oid)-strlen(seg[count-2]))){
-	li =  hwloc[levelassoc].instances[i];
-	break;
-      }
+  if (!dottedstring){
+    //string will start with MachineNum
+    char assoc[MAXLONGNAME];
+    int rc = sscanf(seg[0],"%s%d",assoc,&val);
+    if (rc != 2 || !strcmp(assoc,"Machine")){
+      printf("Error: bad oid string\n");
+      return -1;
     }
-  } else {
-    for (i = 0; i < hwloc[levelassoc].numinstances; i++){
-      if (!strncmp(hwloc[levelassoc].instances[i]->OIDString, oid, strlen(oid)-strlen(seg[count-2]))){
-	li =  hwloc[levelassoc].instances[i];
-	break;
-      }
+   snprintf(seg[0],MAXLONGNAME, "%d",val);
+  } 
+
+  for (i = 0; i < numhosts;i++){
+    if (!strcmp(hosts[i].Lval,seg[0])){
+      snprintf(hostname,MAXLONGNAME,"%s",hosts[i].hostname);
+      break;
     }
   }
-
-  if (li == NULL){
-    printf("Error: bad oid <%s>\n", oid);
+  if (strlen(hostname) == 0){
+    printf("Error: bad host oid <%s>\n",seg[0]);
     return -1;
+  }
+
+  
+  int levelnum = count-2-1;
+  int level = 0;
+
+  //  printf("<%s> count %d levelnum %d\n", oid_orig, count, levelnum);
+  struct Linfo *li = hwloc[0].instances[0];
+  while (li != NULL && level != levelnum){
+    found = -1;
+    if (dottedstring){
+      for (i = 0; i < li->numchildren; i++){
+	if (!strcmp(li->children[i]->Lval, seg[level+1])){
+	  found = 1;
+	  li =  li->children[i];
+	  break;
+	}
+      }
+      if (found == -1){
+	li = NULL;
+      }
+    } else {
+      found = -1;
+      for (i = 0; i < li-> numchildren; i++){
+	char assoc[MAXLONGNAME];
+	int rc = sscanf(seg[level+1],"%s%d",assoc,&val);
+	if (rc != 2){
+	  break;
+	}
+	if (!strcmp(li->assoc,assoc) && (atoi(li->Lval) == val)){
+	  found = 1;
+	  li = li->children[i];
+	  break;
+	}
+      }
+      if (found == -1){
+	li = NULL;
+      }
+    }
+    level++;
+  }
+  if (li == NULL){
+    printf("Error: bad oid <%s> no component (level = %d)\n", oid, levelnum);
+    return -1;
+  }
+
+  if (dottedstring){
+    if (atoi(seg[count-2]) != MIBMETRICCATAGORYUID){
+      printf("Error: bad oid <%s> catagory num\n", oid);
+      return -1;
+    }
+  } else {
+    if (!strcmp(seg[count-2], MIBMETRICCATAGORYNAME)){
+      printf("Error: bad oid <%s> catagory name\n", oid);
+      return -1;
+    }
   }
 
   struct MetricInfo* mi = NULL;
   if (dottedstring){
     for (i = 0; i < li->nummetrics; i++){
-      if (!strcmp(li->metrics[i]->OID, oid)){
+      if (li->metrics[i]->MIBmetricUID == atoi(seg[count-1])){
 	mi = li->metrics[i];
 	break;
       }
     }
   } else {
     for (i = 0; i < li->nummetrics; i++){
-      if (!strcmp(li->metrics[i]->OIDString, oid)){
+      if (!strcmp(li->metrics[i]->MIBmetricname, seg[count-1])){
 	mi = li->metrics[i];
 	break;
       }
@@ -252,24 +225,39 @@ int OIDToLDMS(char* oid, char* setname, char* metricname, int dottedstring){
   }
 
   if ((mi->ldmsparent == NULL) || strlen(mi->ldmsname) == 0){
-    printf("Warning: not an LDMS metric\n");
+    //    printf("Warning: not an LDMS metric\n");
     return -1;
   }
 
-  snprintf(setname, strlen(mi->ldmsparent->setname), "%s", mi->ldmsparent->setname);
-  snprintf(metricname, strlen(mi->ldmsname), "%s", mi->ldmsname);
+  snprintf(setname, strlen(mi->ldmsparent->setname)+1, "%s", mi->ldmsparent->setname);
+  snprintf(metricname, strlen(mi->ldmsname)+1, "%s", mi->ldmsname);
   return 0;
 
 }
-*/
 
-/*
-//FIXME: make one where you dont have to parse thru the sets each time?
-int LDMSToOID(char* setname, char* metricname, char* hwlocname, int dottedstring){
+
+int LDMSToOID(char *hostname, char* setname, char* metricname, char* hwlocname, int dottedstring){
 
   hwlocname[0] = '\0';
+  if ((strlen(hostname) == 0) || (strlen(setname) == 0) || (strlen(metricname) == 0)){
+    return -1;
+  }
+
   //given setname metricname get the hwlocname
   int i;
+
+  int hostoid = -1;
+  for (i = 0; i < numhosts; i++){
+    if (!strcmp(hostname, hosts[i].hostname)){
+      hostoid = atoi(hosts[i].Lval);
+      break;
+    }
+  }
+
+  if (hostoid < 0){
+    printf("Error: no hostx <%s>\n", hostname);
+    return -1;
+  }
 
   int setnum = -1;
   for (i = 0; i < numsets; i++){
@@ -286,33 +274,13 @@ int LDMSToOID(char* setname, char* metricname, char* hwlocname, int dottedstring
   //process this metric
   for (i = 0; i < sets[setnum].nummetrics; i++){
     if (!(strcmp(sets[setnum].metrics[i]->ldmsname,metricname))){
-      snprintf(hwlocname,MAXBUFSIZE,"%s", (dottedstring ? sets[setnum].metrics[i]->OID: sets[setnum].metrics[i]->OIDString));
-      return 0;
+      return getMetricOID(sets[setnum].metrics[i], hostoid, hwlocname, dottedstring);
     }
   }
 
   //  printf("Error: dont have metric <%s>\n",metricname);
   return -1;
 };
-
-int LDMSToOIDWHost(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring){
-  //replace the hwloc Machine0 with the actual hostname
-  char buf[MAXBUFSIZE];
-  hwlocname[0] = '\0';
-
-  int rc = LDMSToOID(setname, metricname, buf, dottedstring);
-  if (rc < 0){
-    return rc;
-  }
-
-  char* p = strstr(buf,".");
-  if (p == NULL)
-    return -1;
-
-  snprintf(hwlocname,MAXBUFSIZE,"%s.%s",hostname,p+1);
-  return 1;
-};
-*/
 
 
 void printMetric(struct MetricInfo* mi, int hostoid, char* prefix){
@@ -335,12 +303,25 @@ void printMetric(struct MetricInfo* mi, int hostoid, char* prefix){
     exit (-1);
   }
 
-  for (i = 0; i < numhosts; i++){
-    if (atoi(hosts[i].Lval) == hostoid){
-      printf("%s %-120s %-30s (ldmsname: %s) (value %lu) \n", prefix, oidString, oid, mi->ldmsname, mi->values[i]);
-      return;
-    }
+  char hostname[MAXLONGNAME];
+  char setname[MAXLONGNAME];
+  char metricname[MAXLONGNAME];
+  char longldmsname[MAXLONGNAME];
+
+
+  //  if (OIDToLDMS(oid, hostname, setname, metricname, 1) == 0){
+  if (getLDMSName(mi, hostoid, hostname, setname, metricname) == 0){
+    snprintf(longldmsname,MAXLONGNAME, "%s/%s/%s",hostname,setname,metricname);
+  } else {
+    snprintf(longldmsname, MAXLONGNAME, "%s", mi->ldmsname); //should be NONE
   }
+
+  for (i = 0; i < numhosts; i++){
+     if (atoi(hosts[i].Lval) == hostoid){
+       printf("%s %-120s %-30s (ldmsname: %s) (value %lu) \n", prefix, oidString, oid, longldmsname, mi->values[i]);
+       return;
+     }
+   }
 
   printf("Error: cant get value for this metric\n");
 
@@ -421,23 +402,6 @@ void printComponents(int printMetrics){
   printf("\n");
 }
 
-/*
-//change this to print one or many trees. will have to figure out how to handle the ldmssets per hostname
-void printLDMSMetricsAsOID(){
-  int i, j;
-  printf("LDMS Metrics:\n");
-  for (i = 0; i < numsets; i++){
-    printf("%s:\n", sets[i].setname);
-    for (j = 0; j < sets[i].nummetrics; j++){
-      char setname[MAXLONGNAME], metricname[MAXLONGNAME];
-      int rc = OIDToLDMS(sets[i].metrics[j]->OIDString, setname, metricname, 0);
-      printf("\t%-120s %-30s (LDMS<%s/%s>)\n", sets[i].metrics[j]->OIDString, sets[i].metrics[j]->OID,
-	     (rc == 0? setname: "NONE"), (rc == 0? metricname: "NONE"));
-    }
-  }
-  printf("\n");
-}
-*/
 
 void printTreeGuts(struct Linfo* tr, int hostoid){
   int i;
@@ -660,7 +624,7 @@ int parseLDMSData(char* inputfile){
   int i;
   int setnum = -1;
 
-  printf("Parsing ldmsdata file <%s>\n", inputfile);
+  //  printf("Parsing ldmsdata file <%s>\n", inputfile);
 
   FILE *fp = fopen(inputfile, "r");
   if (fp == NULL){
@@ -998,7 +962,6 @@ int parseData(char* machineFile, char *hwlocFile, char LDMSData[MAXHWLOCLEVELS][
   //FIXME: is there some reason we cant have repeats???
   if (numLDMSData > 0  && (LDMSData != NULL)){
     for (i = 0; i < numLDMSData; i++){
-      printf("should be parsing LDMS data <%s>\n", LDMSData[i]);
       rc =  parseLDMSData(LDMSData[i]);
       if (rc < 0){
 	printf("Error parsing ldms data\n");
@@ -1007,10 +970,6 @@ int parseData(char* machineFile, char *hwlocFile, char LDMSData[MAXHWLOCLEVELS][
       }
     }
   }
-
-  printComponents(1);
-  
-  printTree(-1);
 
   return rc;
   
