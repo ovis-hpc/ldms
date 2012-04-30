@@ -2,16 +2,20 @@ LIBMEMINFO_1.0 {
 	global:
 		getHwlocAssoc;
 		cleanup;
-		componentInstanceEquals;
-		componentInstanceMatchesOID;
-		getInstanceLDMSName;
-		getLDMSName;
-		parseMetricData;
+		getComponentOID;
+		getMetricOID;
+		getInstanceMetricNames;
 		parse_line;
 		addComponent;
-		parseHwlocfile;
+		parseHwlocData;
+		parseMachineData;
+		parseLDMSData;
+		parseData();
+		printComponent;
 		printComponents;
-		printLDMSMetricsAsOID;
+		getLDMSName;
+		parseMetricData;
+		printTreeGuts;
 		printTree;
 		printMetric;
 	local: *;
