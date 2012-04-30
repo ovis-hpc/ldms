@@ -11,7 +11,6 @@
 
 #define MAXMETRICDATAFILES 10
 
-/*
 int parseLDMSOutput(char* cmd){
    //will need to parse the ldms_ls results to extract machinename, setname, metricname
    //format:
@@ -70,7 +69,7 @@ int parseLDMSOutput(char* cmd){
       printf("%s\n",A[0]);
     } else if (idx == 2){
       char hwlocname[MAXBUFSIZE];
-      i = LDMSToOIDWHost(hostname,metricshortset,A[2],hwlocname,0);
+      i = LDMSToOID(hostname,metricshortset,A[2],hwlocname,0);
       //      i = getHwlocName(metricshortset,A[2],hwlocname);
       printf("%s %40s %40s <%s>\n",A[0],A[1],A[2],hwlocname);
     } else {
@@ -82,7 +81,7 @@ int parseLDMSOutput(char* cmd){
 
   return 0;
 }
-*/
+
 
 int main(int argc, char* argv[])
 {
@@ -112,7 +111,7 @@ int main(int argc, char* argv[])
   printComponents(1);
   printTree(-1);
 
-  //  parseLDMSOutput(argv[argc-1]);
+  parseLDMSOutput(argv[argc-1]);
 
    cleanup();
    return 1;
