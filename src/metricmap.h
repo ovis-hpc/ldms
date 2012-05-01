@@ -30,6 +30,15 @@
 #define MAXCOMPONENTSPERLEVEL 20
 
 
+/**************************************************
+ * see notes in metricmap.c. 
+ ****************************************************/
+
+//NOTE: the fixed size arrays are temporary to get something working.  in an actual
+//implementation these would be replaced by something else. while some of the searches
+//could be more effectively replaced by taking advantage of the L-ordering of the 
+//components, it is not clear that the tree structure will be retained anyway (e.g., oid hash)
+
 //hwloc
 struct Linfo {
   char assoc[MAXSHORTNAME];

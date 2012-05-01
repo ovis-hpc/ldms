@@ -7,18 +7,39 @@
 #include <sys/types.h>
 #include "metricmap.h"
 
+/*****************************************************************************
+ * This is a demonstration library with the ability to take the hwloc heirarchical
+ * node and below level information and the ldms data information and build an
+ * SNMP-inspired naming convention for component and variable data for the combination
+ * of the two. This library also provides calls for ldms <-> SNMP naming convention
+ * conversion. This library also currently supports instantaneous storage and retrieval
+ * of the data values. It NOT intended to be the final structure, but to serve as
+ * an initial workable test code upon which we can determine requirements that
+ * we want in our eventual goal. This does NOT support upper level connectivity
+ * amongst the machines.
+ ****************************************************************************/
+
+//NOTE: that Machine0 will be everyhosts base host, with the actual machines in a separate array.
+
+//FIXME: assumes hostname/setname/metricname. will want to support multiply slashed metricnames
+
+//TODO: this is not the final data structure. will want a hash on the oid strings. Consider if it is
+//necessary to retain the tree after a hash table is in place.
+//TODO: currently this is set up for one architecture in common to many machines. Extend this to
+//support multiple architectures that will be in common for sets of machines.
+//TODO: change the "dottedstring" variable name -- i have been using that to mean the number dot
+//oid notation, rather than the long string form, but the name is probably confusing
+
+//NOTE: Currently the metric UIDS are assigned in the order in which they appear in the
+//metric data files as they are processed, thus they may change from run to run. Only the
+//machines support user-defined Lvals (which can then be fixed from run-to-run). This
+//is a deliberate choice as machine Lvals can then be nids and then low, contiguous numerical
+//values will be used for metrics when only a few data vals are being collected
+
 int numlevels = 0;
 int numsets = 0;
 int numhosts = 0;
 int treesize = 0;
-
-
-//NOTE: that Machine0 will be everyhosts base host
-//FIXME: assumes hostname/setname/metricname
-//NOTE:using that the order the assocs are reached (and therefore assigned in the sets) is the depth.
-
-
-//FIXME: this is not the final data structure. perhaps also want a hash on the oid strings
 
 int getHwlocAssoc( char *assoc ){
   if (!strncmp(assoc, "PU", MAXSHORTNAME)){
@@ -420,6 +441,7 @@ int LDMSToOID(char *hostname, char* setname, char* metricname, char* hwlocname, 
 };
 
 
+//TODO: still untested
 int setMetricValue(char* oid, unsigned long val, int dottedstring){
   struct MetricInfo *mi = NULL;  int idx = -1;
 
@@ -433,6 +455,8 @@ int setMetricValue(char* oid, unsigned long val, int dottedstring){
   return 1;
 };
 
+
+//TODO: still untested
 int getMetricValue(char* oid, unsigned long *val, int dottedstring){
   struct MetricInfo *mi = NULL;
   int idx = -1;
