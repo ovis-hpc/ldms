@@ -799,6 +799,9 @@ int parseLDMSData(char* inputfile){
   //first line of the file is the hwloc component type
   //all subsequent lines are ldms setname/metricname (no hostname, these will be common to all hosts)
 
+  //FIXME: need a way for this to add all the metrics of a set without having to put them in the file
+  //or have it invoke ldms_ls to get them...
+
   //FIXME: check for repeats
 
   //if a line starts with # it will be skipped
@@ -896,11 +899,22 @@ int parseLDMSData(char* inputfile){
 	struct Linfo* li = hwloc[comptypenum].instances[i]; 
 	li->metrics[li->nummetrics] = mi;
 	mi->MIBmetricUID = li->nummetrics++;
+	if (li->nummetrics >= MAXMETRICSPERCOMPONENT){
+	  printf("Error: too many metrics  with <%s>\n", hwlocname);
+	  exit(-1);
+	}
 	mi->instance = li;
 	//no values yet
 
 	//update the ldms structs
 	sets[setnum].metrics[sets[setnum].nummetrics++] = mi;
+	if (sets[setnum].nummetrics >= MAXMETRICSPERSET){
+	  printf("Error: too many metrics for <%s> (%d)\n", sets[setnum].setname,sets[setnum].nummetrics);
+	  for (i = 0; i < sets[setnum].nummetrics-1; i++){
+	    printf("\t<%s>\n", sets[setnum].metrics[i]->ldmsname);
+	  }
+	  exit(-1);
+	}
 	mi->ldmsparent = &sets[setnum];
 
 	//	printf("adding LDMS metric\n");
@@ -1054,6 +1068,7 @@ void  addComponent(char* hwlocAssocStr, int Lval, int Pval, char keys[MAXATTR][M
   snprintf(li->Pval,5,"%d",Pval);
   li->nummetrics = 0;
   li->numchildren = 0;
+  li->parent = NULL;
 
   // tree is really the current branch, used to build the prefix
   for (i=0; i<treesize; i++) {
