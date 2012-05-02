@@ -28,6 +28,9 @@
 #define MAXHOSTS 20
 #define MAXHWLOCLEVELS 10
 #define MAXCOMPONENTSPERLEVEL 20
+//NUMHWLOCLEVELS + 2 for the metrics
+//#define DOTTEDSTRINGFORMAT "%s.%s.%s.%s.%s.%s.%s.%s.%s.%s.%s.%s";
+//#define DOTTEDNUMBERFORMAT "%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d.%d";
 
 
 /**************************************************
@@ -105,14 +108,13 @@ enum hwlocAssoc{
   NUMANode = 6,
 };
 
-
 int getHwlocAssoc( char *assoc );
 int cleanup();
 
 int getLDMSName(struct MetricInfo *mi, int hostoid, char* hostname, char* setname, char* metricname);
 int getComponentOID(struct Linfo* linfo, unsigned int num, char* str, int dottedstring);
 int getMetricOID(struct MetricInfo* minfo, unsigned int num, char* str, int dottedstring);
-int getMetricInfo(struct MetricInfo* minfo, int* idx, char* oid, int dottedstring);
+int getMetricInfo(struct MetricInfo** minfo, int* idx, char* oid, int dottedstring);
 int setMetricValue(char* oid, unsigned long val, int dottedstring);
 int getMetricValue(char* oid, unsigned long* val, int dottedstring);
 

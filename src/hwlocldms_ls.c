@@ -11,7 +11,7 @@
 
 #define MAXMETRICDATAFILES 10
 
-int parseLDMSOutput(char* cmd){
+int setLDMSValues(char* cmd){
    //will need to parse the ldms_ls results to extract machinename, setname, metricname
    //format:
    //shuttlers_1/meminfo
@@ -38,50 +38,49 @@ int parseLDMSOutput(char* cmd){
 
   char hostname[MAXLONGNAME];
   char metricset[MAXLONGNAME];
+  char metricname[MAXLONGNAME];
   char metricshortset[MAXLONGNAME];
-  char A[3][MAXLONGNAME];
+  unsigned long val;
 
   while (fgets(buf, sizeof buf, fpipe)){
     //if there is 1 item on the line, its a setname, if there are 3, its data
-    //    printf("read <%s>\n",buf);
-    int i;
-
-    char* pch;
-    pch = strtok(buf, " \t\n");
-    int idx = -1;
-    while (pch != NULL){
-      idx++;
-      if (idx == 3){
-	break;
+    //       printf("read <%s>\n",buf);
+    int rc = sscanf(buf,"%s\t%lu %s", metricset, &val, metricname);
+    switch (rc){
+    case 1:
+      {
+	//      printf("<rc = 1> <%s>\n",metricset);
+	char *p  = strstr(metricset,"/"); //FIXME: assume this is hostname/metricsetname
+	snprintf(metricshortset, strlen(p), "%s", p+1);
+	snprintf(hostname, strlen(metricset)-strlen(p)+1,"%s", metricset);
       }
-      strncpy(A[idx],pch,strlen(pch));
-      A[idx][strlen(pch)] = '\0';
-      //      printf("assigned <%s>\n", A[idx]);
-      pch = strtok(NULL, " \t\n");
-    }
-
-    if (idx == 0){
-      strncpy(metricset,A[0],strlen(A[0]));
-      metricset[strlen(A[0])] = '\0';
-      char *p  = strstr(metricset,"/"); //FIXME: assume this is hostname/metricsetname
-      snprintf(metricshortset, strlen(p), "%s", p+1);
-      snprintf(hostname, strlen(metricset)-strlen(p)+1,"%s", metricset);
-      printf("%s\n",A[0]);
-    } else if (idx == 2){
-      char hwlocname[MAXBUFSIZE];
-      i = LDMSToOID(hostname,metricshortset,A[2],hwlocname,0);
-      //      i = getHwlocName(metricshortset,A[2],hwlocname);
-      printf("%s %40s %40s <%s>\n",A[0],A[1],A[2],hwlocname);
-    } else {
-      printf("\n");
+      break;
+    case 3:
+      {
+	//      printf("<rc = 3> metricset=<%s> val=<%lu> metricname=<%s>\n",metricset,val,metricname);
+	//testing -- go to the the oid and back
+	char hwlocname[MAXBUFSIZE];
+	//	printf("looking for metric for <%s><%s><%s>\n",hostname, metricshortset,metricname);
+	int i = LDMSToOID(hostname,metricshortset,metricname,hwlocname,0);
+	if (i == 0){
+	  //	  printf("oid for dottedstring == 0 <%s>\n",hwlocname);
+	  setMetricValue(hwlocname,val,0);
+	} else {
+	  printf("WARNING: No metric for oid <%s>\n", hwlocname);
+	}
+      }
+      break;
+    default:
+      //      printf("<rc = %d>\n",rc);
+      //do nothing
+      break;
     }
   }
 
-  pclose(fpipe);
+  if (fpipe) fclose(fpipe);
 
-  return 0;
+  return 1;
 }
-
 
 int main(int argc, char* argv[])
 {
@@ -108,10 +107,12 @@ int main(int argc, char* argv[])
 
   parseData(argv[2], argv[1], metricdatafiles, numdatafiles);
 
-  printComponents(1);
-  printTree(-1);
+  //  printComponents(1);
+  //  printTree(-1);
 
-  parseLDMSOutput(argv[argc-1]);
+  setLDMSValues(argv[argc-1]);
+  printf("before print tree\n");
+  printTree(9);
 
    cleanup();
    return 1;
