@@ -2,6 +2,7 @@
 #define __METRICMAP_H__
 
 
+#include <glib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -92,7 +93,8 @@ struct HostInfo {
 };
 
 struct HostInfo hosts[MAXHOSTS]; 
-
+GHashTable *hostnameToHostOID;
+GHashTable *hostOIDToHostIndex;
 
 struct Linfo* tree[MAXHWLOCLEVELS]; //temporary for parsing hwlocfile
 
@@ -143,6 +145,10 @@ void printComponents(int printMetrics);
 void printTreeGuts(struct Linfo*, int);
 void printTree(int);
 void printMetric(struct MetricInfo*m, int, char*);
+
+//these OIDS are the numeric oids
+void printHostnameToHostOIDHash();
+void printHostOIDToHostIndexHash();
 
 #endif
 
