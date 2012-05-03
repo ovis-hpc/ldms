@@ -49,7 +49,6 @@ int setLDMSValues(char* cmd){
     switch (rc){
     case 1:
       {
-	//      printf("<rc = 1> <%s>\n",metricset);
 	char *p  = strstr(metricset,"/"); //FIXME: assume this is hostname/metricsetname
 	snprintf(metricshortset, strlen(p), "%s", p+1);
 	snprintf(hostname, strlen(metricset)-strlen(p)+1,"%s", metricset);
@@ -57,16 +56,9 @@ int setLDMSValues(char* cmd){
       break;
     case 3:
       {
-	//      printf("<rc = 3> metricset=<%s> val=<%lu> metricname=<%s>\n",metricset,val,metricname);
-	//testing -- go to the the oid and back
-	char hwlocname[MAXBUFSIZE];
-	//	printf("looking for metric for <%s><%s><%s>\n",hostname, metricshortset,metricname);
-	int i = LDMSToOID(hostname,metricshortset,metricname,hwlocname,0);
-	if (i == 0){
-	  //	  printf("oid for dottedstring == 0 <%s>\n",hwlocname);
-	  setMetricValue(hwlocname,val,0);
-	} else {
-	  printf("WARNING: No metric for oid <%s>\n", hwlocname);
+	int i = setMetricValueFromLDMS(hostname,metricshortset,metricname, val);
+	if (i != 0){
+	  printf("WARNING: No metric for oid <%s><%s><%s>\n", hostname, metricshortset, metricname);
 	}
       }
       break;
@@ -107,12 +99,12 @@ int main(int argc, char* argv[])
 
   parseData(argv[2], argv[1], metricdatafiles, numdatafiles);
 
-  //  printComponents(1);
-  //  printTree(-1);
+  printComponents(1);
+  printTree(-1);
 
   setLDMSValues(argv[argc-1]);
   printf("before print tree\n");
-  printTree(9);
+  printTree(2);
 
    cleanup();
    return 1;
