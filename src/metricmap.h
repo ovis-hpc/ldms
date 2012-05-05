@@ -42,12 +42,18 @@
 //implementation these would be replaced by something else. while some of the searches
 //could be more effectively replaced by taking advantage of the L-ordering of the 
 //components, it is not clear that the tree structure will be retained anyway (e.g., oid hash)
+//unless it is needed for sibling info.....
 
 //hwloc
 struct Linfo {
   char assoc[MAXSHORTNAME];
-  char Lval[5]; //for a host assign the Lval (this is the val used in the oid for all components) //TODO: should this become an int?
+  char Lval[5]; 
   char Pval[5]; 
+
+  char genericOIDString[MAXLONGNAME];
+  char genericOIDNum[MAXSHORTNAME];
+  char localOIDString[MAXSHORTNAME];
+  int localOIDNum;
 
   struct Linfo* parent;
 
@@ -70,9 +76,12 @@ struct CompTypeInfo hwloc[MAXHWLOCLEVELS]; //can access a level's instances by i
 struct MetricInfo{
   struct SetInfo *ldmsparent; //ldmsset parent
   char ldmsname[MAXSHORTNAME];
-
   char MIBmetricname[MAXSHORTNAME];
-  int MIBmetricUID; //There is no way for a user to assign a MIBmetricUID. This is the last component of the OID
+  int MIBmetricUID; //There is no way for a user to assign a UID. This is the last component of the OID. This will be unique across all metrics for the parent
+
+  char genericOIDString[MAXLONGNAME];
+  char genericOIDNum[MAXSHORTNAME];
+
   struct Linfo* instance; //in the current setup GUARENTEED that a metric belongs to a single component only
 
   unsigned long values[MAXHOSTS];
@@ -84,17 +93,22 @@ struct SetInfo{
   int nummetrics;
 };
 
-struct SetInfo sets[MAXSETS]; 
+struct SetInfo sets[MAXSETS]; //these are the sets, independent of the hosts
 
 struct HostInfo {
+  char localOIDString[MAXSHORTNAME];
+  int localOIDNum;
+
   char hostname[MAXLONGNAME];
-  char Lval[5]; //TODO: should this become an int?
-  int index;
+  int index; //index in the array
 };
 
 struct HostInfo hosts[MAXHOSTS]; 
-GHashTable *hostnameToHostOID;
-GHashTable *hostOIDToHostIndex;
+
+GHashTable *hostnameToHostInfo;
+GHashTable *hostOIDToHostInfo;
+GHashTable *genericOIDToLinfo; //note the machines arent in this
+GHashTable *genericOIDToMetricInfo; //note the machines arent in this
 
 struct Linfo* tree[MAXHWLOCLEVELS]; //temporary for parsing hwlocfile
 
@@ -110,45 +124,41 @@ enum hwlocAssoc{
   NUMANode = 6,
 };
 
-char knownassoc[MAXHWLOCLEVELS][MAXSHORTNAME]; //will build these as the hwloc info is read in. used for extracting info from dottedstrings
 
 int getHwlocAssoc( char *assoc );
 int cleanup();
 
 //accessors
 int getLDMSName(struct MetricInfo *mi, int hostoid, char* hostname, char* setname, char* metricname);
-int getComponentOID(struct Linfo* linfo, unsigned int num, char* str, int dottedstring);
-int getMetricOID(struct MetricInfo* minfo, unsigned int num, char* str, int dottedstring);
-//int getComponentInfo(char* oid, struct LInfo** linfo, int* idx, int dottedstring); 
-int getMetricInfo(char* oid, struct MetricInfo** minfo, int* idx, int dottedstring); 
 int setMetricValueFromLDMS(char* hostname, char* setname, char* metricname, unsigned long val);
-int setMetricValueFromOID(char* oid, unsigned long val, int dottedstring);
-int getMetricValueFromOID(char* oid, unsigned long* val, int dottedstring);
+int setMetricValueFromOID(char* genericoid, int hostoid, unsigned long val);
+int getMetricValueFromOID(char* genericoid, int hostoid, unsigned long* val);
 
 //translations
-int OIDToLDMS(char* hwlocname, char* hostname, char* setname, char* metricname, int dottedstring);
-int LDMSToOID(char* hostname, char* setname, char* metricname, char* hwlocname, int dottedstring);
+int OIDToLDMS(char* genericoid, int hostoid, char* hostname, char* setname, char* metricname);
+int LDMSToOID(char* hostname, char* setname, char* metricname, char* genericoid, int* hostoid);
 
 //building the structure
 int getInstanceMetricNames(char* orig, char* Lval, char* ldmsname, char* hwlocname);
 int parse_line(char* lbuf, char* comp_name, int* Lval, int* Pval, char keys[MAXATTR][MAXSHORTNAME], int* attr, int* numAttr);
-void addComponent(char* hwlocAssocStr, int Lval, int Pval,  char keys[MAXATTR][MAXSHORTNAME], int* attr, int numAttr);
+struct MetricInfo* addLDMSMetric(struct Linfo* li, struct SetInfo* si, char* ldmsname, char* MIBmetricname); 
+struct MetricInfo* addStaticMetric(struct Linfo* li, char* MIBmetricname);
+struct Linfo* addComponent(char* hwlocAssocStr, int Lval, int Pval);
+
 int parseHwlocData(char* file);
 int parseMachineData(char* file);
 int parseLDMSData(char* inputfile);
 int parseData(char* machineFile, char *hwlocFile, char LDMSData[MAXHWLOCLEVELS][MAXBUFSIZE], int numLDMSData);
 
 //diagnostic prints
+
+
 void printComponent(struct Linfo*, int printMetrics, char*);
 void printComponents(int printMetrics);
 //void printLDMSMetricsAsOID();
 void printTreeGuts(struct Linfo*, int);
 void printTree(int);
-void printMetric(struct MetricInfo*m, int, char*);
-
-//these OIDS are the numeric oids
-void printHostnameToHostOIDHash();
-void printHostOIDToHostIndexHash();
+void printMetric(struct MetricInfo *m, int, char*);
 
 #endif
 
