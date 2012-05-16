@@ -42,6 +42,7 @@
  * This is the sedc data provider. Runs as a separate executable reading from an SEDC stream
 corresponding to a single SEDC data file. writes to ldms or text files. will run multiples of these - 1 for
 each sedc file.
+FIXME: handle rollover for dated filename change. make it c. make it a plugin?
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -69,10 +70,11 @@ each sedc file.
 #include <string>
 #include <vector>
 
-#define FMT "S:M:H:N:O:l:Fv"
+#define FMT "S:M:H:N:O:l:f:v"
 #define METRIC_SOCKET "/var/run/ldmsd/metric_socket"
 #define SEDC_DATAFILE "/opt/cray/sedc/sedcfile"
 #define OVIS_COMPIDMAP "/opt/cray/sedc/ovismap"
+#define FILETYPE "sedc"
 #define LOGFILE "/var/log/sedc.log"
 
 static char *sockname = METRIC_SOCKET;
@@ -80,7 +82,8 @@ static char *logfile = LOGFILE;
 static char *sedc_datafile = SEDC_DATAFILE;
 static char *sedc_headerfile = "";
 static char *ovismap = OVIS_COMPIDMAP;
-static char *setshortname = "";
+static char *inputfiletype = FILETYPE;
+static char setshortname[256];
 static FILE *log_fp;
 static int foreground;
 static int verbose;
@@ -113,31 +116,38 @@ static void msglog(int err, const char *fmt, ...)
 void usage(char *argv[])
 {
   printf("%s: [%s]\n"
-	 "    -S <socket>      The UNIX socket that the ldms daemon is listening on.\n"
-	 "                     [" METRIC_SOCKET "].\n"
-	 "    -M <datafile>    The name of the sedc file to tail [" SEDC_DATAFILE "].\n"
-	 "    -H <headerfile>  The name of the sedc header list file (if none, will look for it in the datafile).\n"
+	 "    -S <socket>           The UNIX socket that the ldms daemon is listening on.\n"
+	 "                          [" METRIC_SOCKET "].\n"
+	 "    -M <datafile>         The name of the sedc file to tail [" SEDC_DATAFILE "].\n"
+	 "    -H <headerfile>       The name of the sedc header list file (if none, will look for it in the datafile).\n"
          "    -N <setshortname>     The metricset shortname (e.g., \"L0_VOLTS\" => host_cname/LO_VOLTS)\n"
-	 "    -O <ovismap>     The name of the file that contains crayname to ovis compid pairs [" OVIS_COMPIDMAP "].\n"
-	 "    -l log_file       The path to the log file for status messages.\n"
-	 "                      [" LOGFILE "]\n"
-	 "    -v                Verbose mode, i.e. print requests as they are processed.\n"
-	 "                      [false].\n",
+	 "    -O <ovismap>          The name of the file that contains crayname to ovis compid pairs [" OVIS_COMPIDMAP "].\n"
+	 "    -f <ovismap>          Input file type (sedc|rsyslog) [" FILETYPE "]. \n"
+	 "    -l log_file           The path to the log file for status messages.\n"
+	 "                          [" LOGFILE "]\n"
+	 "    -v                    Verbose mode, i.e. print requests as they are processed.\n"
+	 "                          [false].\n",
 	 argv[0], FMT);
-  printf("Example: ./lib/sedc_to_ldms -O /home/gentile/Work/opt/cray/sedc/ovismap -M /home/gentile/Work/opt/cray/sedc/sedcdatafile -N LO_G34_TEMPS  -l /home/gentile/Work/opt/cray/txtout/sedc.log\n");
+  printf("Example: ./sbin/sedc_to_ldms -O /home/gentile/Work/opt/cray/sedc/ovismap -M /home/gentile/Work/opt/cray/sedc/sedcdatafile -N LO_G34_TEMPS  -f sedc -l /home/gentile/Work/opt/cray/txtout/sedc.log\n");
   exit(1);
 }
 
 void cleanup(int x)
 {
+  if (0){
   if (log_fp){
     msglog(1, "sedc daemon exiting...status %d\n", x);
     fclose(log_fp);
   }
+  }
+
   std::map<int, fset>::iterator iter;
   for (iter == setmap.begin(); iter != setmap.end(); iter++){
     fset currset = iter->second;
-    free(currset.metrichandles);
+    currset.metrichandles->clear();
+    delete currset.metrichandles;
+    currset.metrichandles = NULL;
+    //FIXME: any ldms deletes here???
   }
   setmap.clear();
   sedcheaders.clear();
@@ -185,7 +195,7 @@ int processCompIdMap(std::string fname){
 
 };
 
-int createMetricSet(std::string hostname, int compid, std::string shortname){
+int createMetricSet(std::string hostname, int compid, char* shortname){
   //create the metricset for a new compid
   char lbuf[256];
   char metric_name[128];
@@ -197,8 +207,10 @@ int createMetricSet(std::string hostname, int compid, std::string shortname){
   //can we get nid if we want that?
   std::string setname = hostname;
   setname.append("/");
-  setname.append(shortname);
+  //  setname.append(shortname);
+  setname.append(setshortname);
   snprintf(setnamechar,1024,"%s",setname.c_str());
+  printf("in create metricset for <%s>\n", setnamechar);
 
   fset currfset;
   /* Create a metric set of the required size */
@@ -206,13 +218,18 @@ int createMetricSet(std::string hostname, int compid, std::string shortname){
   if (rc != 0){
     printf("Error %d creating metric set '%s'.\n", rc, setnamechar);
     exit(1);
+  } else {
+    printf("Created set <%s>\n", setnamechar);
   }
-
+	   
   ldms_metric_t currmetric =  ldms_add_metric(currfset.sd, "component_id", LDMS_V_U64);
   if (currmetric == 0){
     printf("Error creating the metric %s.\n", "component_id");
     exit(1);
+  } else {
+    printf("Created metric component_id\n");
   }	
+  currfset.metrichandles = new std::vector<ldms_metric_t>;
   currfset.metrichandles->push_back(currmetric);
 
   for (int i = minheaderidx; i < sedcheaders.size(); i++){
@@ -222,16 +239,23 @@ int createMetricSet(std::string hostname, int compid, std::string shortname){
     if (currmetric == 0){
       printf("Error creating the metric %s.\n", headerchar);
       exit(1);
+    } else {
+      printf("Created metric <%s>\n", headerchar);
     }
     currfset.metrichandles->push_back(currmetric);
+    printf("added a metric handle to the vector\n");
+
   }
 
   //fill in the comp id for ldms (for file it is filled in elsewhere)
+  printf("fill in the compid value\n");
   union ldms_value v;
   v.v_u64 = compid;
   ldms_set_metric((*(currfset.metrichandles))[0], &v);
   
   setmap[compid]  = currfset;
+
+  printf("returing from create metric set\n");
 
   return 0;
 };
@@ -286,12 +310,15 @@ int calcMetricSetSize(){
     tot_data_sz += data_sz;
   }
 
+  printf("metric set size <%d> <%d>\n",tot_meta_sz,tot_data_sz);
+
   return 0;
 };
 
 int processSEDCData(char* line){
   //split the line into tokens based on comma sep
   std::cout << "In ProcessSEDCData <" << line << ">\n";
+
   std::stringstream ss;
   ss << line;
 
@@ -352,6 +379,7 @@ int processSEDCData(char* line){
 	  llval = strtoll(val.c_str(),&pEnd,10);
 	  union ldms_value v;
 	  v.v_u64 = llval;
+	  //	  printf("should be processing the data <%llu>\n", llval);
 	  ldms_set_metric((*(currfset->metrichandles))[count-minheaderidx+1], &v);
 	}
 	break;
@@ -359,6 +387,29 @@ int processSEDCData(char* line){
     }
     count++;
   } //while
+};
+
+char* stripRsyslogHeaders(char* bufin){
+ // Example output:
+  //  "<"<syslog priority>">1" <timestamp> <hostname> <application> <pid> <bootsessionid> "["<msg_type>"@34]" <message>
+  //the msg type will be FILESOURCE  (not FILESOURCE::METRICNAME). message vals will be the csv
+  //the timestamp will not be used
+
+  int imessage = 7;
+  char* bufptr;
+  int count = 0;
+
+  char* p = strchr(bufin, ' ');
+  while (p != NULL){
+    if (count == imessage){
+      return p;
+    }
+    bufptr = p+1;
+    p = strchr(bufptr, ' ');
+    count++;
+  }
+
+  return NULL;
 };
   
 int main(int argc, char *argv[])
@@ -382,7 +433,7 @@ int main(int argc, char *argv[])
       sedc_datafile = strdup(optarg);
       break;
     case 'N':
-      setshortname = strdup(optarg);
+      strncpy(setshortname, optarg, 255);
       break;
     case 'H':
       sedc_headerfile = strdup(optarg);
@@ -393,9 +444,8 @@ int main(int argc, char *argv[])
     case 'l':
       logfile = strdup(optarg);
       break;
-    case 'F':
-      foreground = 1;
-      log_fp = stdout;
+    case 'f':
+      inputfiletype = strdup(optarg);
       break;
     case 'v':
       verbose = 1;
@@ -410,6 +460,12 @@ int main(int argc, char *argv[])
     exit(1);
   };
 
+  if ((strcmp(inputfiletype, "sedc") != 0) &&
+      (strcmp(inputfiletype, "rsyslog") != 0)){
+    printf("Error: Invalid input file type\n");
+    exit(1);
+  }
+
   //FIXME: will this be written, will this be a function???
   if (processCompIdMap(ovismap) < 0){
     printf("Error processing ovis compid map.\n");
@@ -420,7 +476,10 @@ int main(int argc, char *argv[])
   //either read a separate header or read the file, throwing away data till we reach the header
   FILE *mf = NULL;
   char lbuf[10240]; //FIXME: how big does this have to be? (L0_XT5_VOLTS_log on cds has 4K char)
+
+  //FIXME: what is this going to be? is this a pipe/socket???
   std::string command = "tail -F ";
+  //  std::string command = "cat ";
   command.append(sedc_datafile);
 
   if (strlen(sedc_headerfile) > 0 ){ 
@@ -443,11 +502,21 @@ int main(int argc, char *argv[])
   } else { 
     //get the headers from the data file, throwing away data
     std::cout << "getting the headers from datafile\n";
-    //FIXME: what is this going to be? is this a pipe/socket???
+
     if (mf = (FILE*)popen(command.c_str(), "r")){
       while (fgets( lbuf, sizeof(lbuf), mf)){
-	if (processSEDCHeader(lbuf) > 0){
-	  break;
+	char* p = NULL;
+	if (strcmp(inputfiletype, "rsyslog") == 0){
+	  p = stripRsyslogHeaders(lbuf);
+	  if (p == NULL){
+	    printf("Error stripping syslog headers\n");
+	    cleanup (1);
+	  }
+	} else {
+	  p = lbuf;
+	}
+	if (processSEDCHeader(p) > 0){
+	    break;
 	}
       }
     } else {
@@ -457,13 +526,17 @@ int main(int argc, char *argv[])
       cleanup(1);
     }
   }
-  // will now have the headers
 
+  // will now have the headers
+  printf("Calling un_connect with <%s> <%s>\n", basename(argv[0]), sockname);
   if (un_connect(basename(argv[0]), sockname) < 0) {
     printf("Error setting up connection with ldmsd.\n");
     exit(1);
   }
 
+  printf("should be connected to ldmsd\n");
+
+  if (0){
   if (!foreground) {
     log_fp = fopen(logfile, "a");
     if (!log_fp) {
@@ -475,7 +548,9 @@ int main(int argc, char *argv[])
     log_fp = stdout;
     msglog(1, "sedcinfo service started...\n");
   }
+  }
   
+  printf("about to calc metric set size\n");
   calcMetricSetSize(); //need an ldms connection to do this
 
   if (!mf){ //if we haven't already read it for the header
@@ -483,16 +558,28 @@ int main(int argc, char *argv[])
     //FIXME: what is this going to be? is this a pipe/socket???
     mf = (FILE*)popen(command.c_str(), "r");
   }
-  if (mf){
+  if (mf){ 
     //every component will have its own metric set. create each metric set as needed.
     //FIXME: see later about farming off the line processing to separate threads 
-    while( fgets( lbuf, sizeof(lbuf), mf) ){
-      processSEDCData(lbuf);
+    while( fgets( lbuf, sizeof(lbuf), mf) != NULL){
+      char* p = NULL;
+      if (strcmp(inputfiletype, "rsyslog") == 0){
+	p = stripRsyslogHeaders(lbuf);
+	if (p == NULL){
+	  printf("Error stripping syslog headers\n");
+	  cleanup(1);
+	}
+      } else {
+	p = lbuf;
+      }
+      processSEDCData(p);
     }
   } else {
     std::cout << "Could not open the sedc file for data <" << sedc_datafile << ">\n";
     msglog(1, "Could not open the sedc file '%s' for data ...exiting\n", sedc_datafile);
     cleanup(1);
   }
+
+  //  cleanup(1);
 };
 
