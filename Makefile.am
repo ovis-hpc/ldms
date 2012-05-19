@@ -125,10 +125,6 @@ src_sedc_to_ldms_SOURCES = src/sedc_to_ldms.cxx
 src_sedc_to_ldms_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
 src_sedc_to_ldms_DEPENDENCIES = $(top_builddir)/libun.a
 
-src_junk_SOURCES = src/junk.c
-src_junk_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
-src_junk_DEPENDENCIES = $(top_builddir)/libun.a
-
 src_hwlocldms_ls_SOURCES = src/hwlocldms_ls.c
 src_hwlocldms_ls_LDADD = $(top_builddir)/src/libldms.la $(top_builddir)/src/libmetricmap.la -L/usr/lib64/glib-2.0/lib -lglib-2.0
 
