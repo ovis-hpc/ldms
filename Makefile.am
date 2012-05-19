@@ -2,10 +2,10 @@
 ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
-	-I$(includedir)/infiniband -I/usr/lib64/glib-2.0/include -I/usr/include/glib-2.0
+	-I$(includedir)/infiniband -I/usr/lib64/glib-2.0/include -I/usr/include/glib-2.0 
 
 
-sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms src/hwlocldms_ls
+sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms src/hwlocldms_ls 
 
 noinst_LIBRARIES = libun.a
 
@@ -58,6 +58,11 @@ src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 MEMINFO_la = src/libmeminfo.la
 
+src_libjunk_la_SOURCES = src/junk.c
+src_libjunk_la_DEPENDENCIES = $(srcdir)/src/libjunk.map
+src_libjunk_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+JUNK_la = src/libjunk.la
+
 src_libgeminfo_la_SOURCES = src/geminfo.c
 src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
 src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
@@ -87,7 +92,7 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
 	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
-	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la)
+	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(JUNK_la)
 #$(HWLOCFLATFILE_la) 
 
 
@@ -119,6 +124,10 @@ src_ldmsctl_DEPENDENCIES = $(top_builddir)/libun.a
 src_sedc_to_ldms_SOURCES = src/sedc_to_ldms.cxx
 src_sedc_to_ldms_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
 src_sedc_to_ldms_DEPENDENCIES = $(top_builddir)/libun.a
+
+src_junk_SOURCES = src/junk.c
+src_junk_LDFLAGS = $(top_builddir)/src/libldms.la -L$(top_builddir) -lun -lreadline -ltermcap
+src_junk_DEPENDENCIES = $(top_builddir)/libun.a
 
 src_hwlocldms_ls_SOURCES = src/hwlocldms_ls.c
 src_hwlocldms_ls_LDADD = $(top_builddir)/src/libldms.la $(top_builddir)/src/libmetricmap.la -L/usr/lib64/glib-2.0/lib -lglib-2.0
