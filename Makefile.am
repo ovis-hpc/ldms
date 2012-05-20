@@ -2,7 +2,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
-	-I$(includedir)/infiniband -I/usr/lib64/glib-2.0/include -I/usr/include/glib-2.0 
+	-I$(includedir)/infiniband -I/usr/lib64/glib-2.0/include -I/usr/include/glib-2.0  
 
 
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms src/hwlocldms_ls 
@@ -60,8 +60,8 @@ MEMINFO_la = src/libmeminfo.la
 
 src_libjunk_la_SOURCES = src/junk.c
 src_libjunk_la_DEPENDENCIES = $(srcdir)/src/libjunk.map
-src_libjunk_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
-JUNK_la = src/libjunk.la
+src_libjunk_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/glib-2.0/lib -lglib-2.0
+JUNK_la = src/libjunk.la 
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
 src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
