@@ -58,10 +58,10 @@ src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 MEMINFO_la = src/libmeminfo.la
 
-src_libjunk_la_SOURCES = src/junk.c
-src_libjunk_la_DEPENDENCIES = $(srcdir)/src/libjunk.map
-src_libjunk_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/glib-2.0/lib -lglib-2.0
-JUNK_la = src/libjunk.la 
+src_libsedc_la_SOURCES = src/sedc.c
+src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map
+src_libsedc_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/glib-2.0/lib -lglib-2.0
+SEDC_la = src/libsedc.la 
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
 src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
@@ -92,7 +92,7 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
 	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
-	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(JUNK_la)
+	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la)
 #$(HWLOCFLATFILE_la) 
 
 

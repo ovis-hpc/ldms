@@ -1,5 +1,5 @@
 /*
- * This is the junk data provider
+ * This is the sedc data provider
  */
 #include <glib.h>
 #include <inttypes.h>
@@ -63,7 +63,7 @@ static int processCompIdMap(char * fname){
 
   FILE *cid = fopen(fname, "r");
   if (!cid) {
-    msglog("Could not open the junk file '%s'...exiting\n", fname);
+    msglog("Could not open the sedc file '%s'...exiting\n", fname);
     return ENOENT;
   }
 
@@ -176,7 +176,7 @@ static int config(char *str)
 	fclose(outfile);
     action = COMPIDMAP;
   } else {
-    msglog("junk: Invalid configuration string '%s'\n", str);
+    msglog("sedc: Invalid configuration string '%s'\n", str);
     rc = EINVAL;
     return rc;
   }
@@ -201,7 +201,7 @@ static int config(char *str)
       sscanf(str, "headerfile=%s", junk);
       mf = fopen(junk, "r");
       if (!mf) {
-	msglog("Could not open the junk file '%s'...exiting\n", junk);
+	msglog("Could not open the sedc file '%s'...exiting\n", junk);
 	return ENOENT;
       }
 
@@ -279,7 +279,7 @@ int createMetricSet(char* hostname, int compid, char* shortname){
 
   FILE *outfile;
   outfile = fopen("/home/brandt/ldms/outfile", "a");
-  //FIXME: setname is coming out c0-0c0s0/shuttlers.ran.sandia.gov_1/junk -- should the shuttlers be stripped out?
+  //FIXME: setname is coming out c0-0c0s0/shuttlers.ran.sandia.gov_1/sedc -- should the shuttlers be stripped out?
   fprintf(outfile, "should be creating metric set for <%s> <%s> <%d>\n", hostname, setshortname, compid);
   fflush(outfile);
   fclose(outfile);
@@ -439,7 +439,7 @@ static int sample(void)
 
   int rc = 0;
   if (strlen(datafile) == 0){
-    msglog("junk: No data file\n");
+    msglog("sedc: No data file\n");
     return ENOENT;
   }
 
@@ -501,18 +501,18 @@ static void term(void)
 
 static const char *usage(void)
 {
-  return  "    config junk component_id <comp_id>\n"
+  return  "    config sedc component_id <comp_id>\n"
           "        - Set the component_id value in the metric set.\n"
           "        comp_id     The component id value\n"
-          "    config junk datafile <datafile> <filetype>\n"
+          "    config sedc datafile <datafile> <filetype>\n"
           "        - Set the datafile and datafile type\n"
           "        datafile    Path of the datafile\n"
           "        filetype    sedc or rsyslog\n"
           "    note: the setname is part of the init\n";
 }
 
-static struct ldms_plugin junk_plugin = {
-	.name = "junk",
+static struct ldms_plugin sedc_plugin = {
+	.name = "sedc",
 	.init = init,
 	.term = term,
 	.config = config,
@@ -524,5 +524,5 @@ static struct ldms_plugin junk_plugin = {
 struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &junk_plugin;
+	return &sedc_plugin;
 }
