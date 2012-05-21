@@ -30,6 +30,7 @@ char datafile[LDMS_MAX_CONFIG_STR_LEN];
 char setshortname[LDMS_MAX_CONFIG_STR_LEN];
 char filetype[LDMS_MAX_CONFIG_STR_LEN];
 
+FILE* ppf;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
@@ -138,8 +139,7 @@ static int processSEDCHeader(char* lbuf){
 	
       tot_meta_sz += meta_sz;
       tot_data_sz += data_sz;
-      snprintf(sedcheaders[metric_count],LDMS_MAX_CONFIG_STR_LEN, "%s", pch);
-      metric_count++;
+      snprintf(sedcheaders[metric_count++],LDMS_MAX_CONFIG_STR_LEN, "%s", pch);
     } else {
       outfile = fopen("/home/brandt/ldms/outfile", "a");
       fprintf(outfile, "NOT counting metric <%s>\n", pch);
@@ -170,7 +170,7 @@ static int config(char *str)
     action = HEADERFILE;
   } else if (0 == strncmp(str, "compidmap", 9)){
     FILE *outfile;
-	outfile = fopen("/home/brandt/ldms/outfile", "w");
+	outfile = fopen("/home/brandt/ldms/outfile", "a");
 	fprintf(outfile, "action should be compidmap\n");
 	fflush(outfile);
 	fclose(outfile);
@@ -210,13 +210,24 @@ static int config(char *str)
 	rc = processSEDCHeader(lbuf);
       }
       if (mf) fclose(mf);
+      if (rc != 0){
+	return rc;
+      }
 
+      int i;
+      for (i = 0; i < metric_count; i++){
+	FILE *outfile;
+	outfile = fopen("/home/brandt/ldms/outfile", "a");
+	fprintf(outfile, "header <%d> <%s>\n",i, sedcheaders[i]);
+	fflush(outfile);
+	fclose(outfile);
+      }
       break;
     }
   case COMPIDMAP:
     {
     FILE *outfile;
-	outfile = fopen("/home/brandt/ldms/outfile", "w");
+	outfile = fopen("/home/brandt/ldms/outfile", "a");
 	fprintf(outfile, "action should be compidmap (2)\n");
 	fflush(outfile);
 	fclose(outfile);
@@ -224,7 +235,7 @@ static int config(char *str)
       char junk[LDMS_MAX_CONFIG_STR_LEN];
       sscanf(str, "compidmap=%s", junk);
 
-	outfile = fopen("/home/brandt/ldms/outfile", "w");
+	outfile = fopen("/home/brandt/ldms/outfile", "a");
 	fprintf(outfile, "calling compid map\n");
 	fflush(outfile);
 	fclose(outfile);
@@ -251,12 +262,6 @@ static ldms_set_t get_set()
 
 static int init(const char *path)
 {
-  //  FILE *outfile;
-  //	outfile = fopen("/home/brandt/ldms/outfile", "w");
-  //	fprintf(outfile, "entered init (junk)\n");
-  //	fflush(outfile);
-  //	fclose(outfile);
-
   snprintf(setshortname, LDMS_MAX_CONFIG_STR_LEN, "%s", path);
   setmap = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
@@ -271,6 +276,13 @@ int createMetricSet(char* hostname, int compid, char* shortname){
   //FIXME: setname will be <hostname>/<setshortname>
   //can we get nid if we want that?
   snprintf(setnamechar,1024,"%s/%s",hostname,setshortname);
+
+  FILE *outfile;
+  outfile = fopen("/home/brandt/ldms/outfile", "a");
+  //FIXME: setname is coming out c0-0c0s0/shuttlers.ran.sandia.gov_1/junk -- should the shuttlers be stripped out?
+  fprintf(outfile, "should be creating metric set for <%s> <%s> <%d>\n", hostname, setshortname, compid);
+  fflush(outfile);
+  fclose(outfile);
 
   struct fset *currfset = (struct fset*)g_malloc(sizeof(struct fset));
 
@@ -288,7 +300,10 @@ int createMetricSet(char* hostname, int compid, char* shortname){
     printf("Error creating the metric %s.\n", "component_id");
     exit(1);
   } else {
-    printf("Created metric component_id\n");
+    outfile = fopen("/home/brandt/ldms/outfile", "a");
+    fprintf(outfile, "Created metric component_id\n");
+    fflush(outfile);
+    fclose(outfile);
   }	
   currfset->metrichandles[0] = currmetric;
 
@@ -298,20 +313,22 @@ int createMetricSet(char* hostname, int compid, char* shortname){
       printf("Error creating the metric %s.\n", sedcheaders[i]);
       exit(1);
     } else {
-      printf("Created metric <%s>\n",sedcheaders[i]);
+      outfile = fopen("/home/brandt/ldms/outfile", "a");
+      fprintf(outfile, "Created metric <%s>\n",sedcheaders[i]);
+      fflush(outfile);
+      fclose(outfile);
     }
     currfset->metrichandles[i+1] = currmetric;
-    printf("added a metric handle to the vector\n");
+    //    printf("added a metric handle to the vector\n");
   }
 
-  //fill in the comp id for ldms (for file it is filled in elsewhere)
-  printf("fill in the compid value\n");
+  //fill in the comp id
   union ldms_value v;
   v.v_u64 = compid;
   ldms_set_metric(currfset->metrichandles[0], &v);
-  g_hash_table_replace(setmap, (gpointer)compid, (gpointer)currfset);
-
-  printf("returing from create metric set\n");
+  int* cid = (int*)g_malloc(sizeof(int));
+  *cid = compid;
+  g_hash_table_replace(setmap, (gpointer)cid, (gpointer)currfset);
 
   return 0;
 };
@@ -340,77 +357,46 @@ static char* stripRsyslogHeaders(char* bufin){
   return NULL;
 };
 
-/*
+
 int processSEDCData(char* line){
-  COMPONENT_ID:
-    {
-      char junk[128];
-      int rc;
-      union ldms_value v;
-      rc = sscanf(str, "component_id %" PRIu64 "%s\n", &v.v_u64, junk);
-      if (rc < 1) {
-	pthread_mutex_unlock(&cfg_lock);
-	return EINVAL;    
-      }
-      ldms_set_metric(compid_metric_handle, &v);  
+  //split the line into tokens based on comma sep
+
+  int* compid = NULL;
+  struct fset* currfset = NULL;
+  int valid = 0;
+
+  int count = 0;
+  char *pch = strsep(&line, ",\n");
+  while (pch != NULL){
+    if (strcmp(pch,"service id") == 0){ //skip if its a header
       break;
     }
-}
-
-
-====================================
-
-
-  //split the line into tokens based on comma sep
-  std::cout << "In ProcessSEDCData <" << line << ">\n";
-
-  std::stringstream ss;
-  ss << line;
-
-  int compid = -1;
-  fset* currfset;
-  int valid = 0;
-  int count = 0;
-  int countprev = minheaderidx-1;
-  std::string val;
-  std::string hostname;
-
-  std::ofstream outfile;
-
-  while (getline(ss,val,',')){
-    if ((val.size() > 0) && (count < (int) sedcheaders.size())){
-      //check for blank line
-      if (val == "\n"){
-	break;
-      }
-      //skip if its a header
-      if (val == "service id"){
-	break;
-      }
-      valid = 1;
-      switch (count){
-      case 0: //compname
-	{
-	  std::string hostname = val;
-	  std::map<std::string,int>::iterator it = compidmap.find(val); 
-	  if (it == compidmap.end()){
-	    printf("Error: cannot find compname to id assoc %s\n", val.c_str());
-	    cleanup(1);
-	    //	  return -1;
+    valid = 1;
+    switch (count){
+    case 0: //compname
+      {
+	compid = (int*)g_hash_table_lookup(compidmap, pch);
+	if (compid == NULL){
+	  msglog("Error: cannot find compname to id assoc %s\n", pch);
+	  return -1;
+	}
+	currfset = (struct fset*)g_hash_table_lookup(setmap, compid);
+	if (currfset == NULL){
+	  int rc = createMetricSet(pch,*compid,setshortname);
+	  if (rc != 0 ){
+	    printf("Error: cannot create a metricset\n");
+	    return -1;
 	  }
-	  compid = it->second;
-
-	  std::map<int, fset>::iterator iter;
-	  iter = setmap.find(compid);
-	  if (iter == setmap.end()){
-	    int rc = createMetricSet(hostname,compid,setshortname);
-	    if (rc != 0 ){
-	      printf("Error: cannot create a metricset\n");
-	      cleanup(1);
-	    }
-	    iter = setmap.find(compid);
+	  currfset = (struct fset*)g_hash_table_lookup(setmap, compid);
+	  if (currfset == NULL){
+	    printf("Error: did not create metricset for <%s> \n", pch);
+	    return -1;
 	  }
-	  currfset = &(iter->second);
+	} else {
+	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	  fprintf(outfile, "will be using metric set for <%s>\n", pch);
+	  fflush(outfile);
+	  fclose(outfile);
 	}
 	break;
       case 1: //time
@@ -418,49 +404,30 @@ int processSEDCData(char* line){
 	break;
       default: //its data
 	{
+	  if (strlen(pch) == 0){
+	    break;
+	  }
+
 	  //FIXME: revisit this now that we know that empty values mean repeat of past value (would not have to put in new val but would want to bump datagn)
 	  char *pEnd;
 	  unsigned long long llval;
-	  llval = strtoll(val.c_str(),&pEnd,10);
+	  llval = strtoll(pch,&pEnd,10);
 	  union ldms_value v;
 	  v.v_u64 = llval;
-	  //	  printf("should be processing the data <%llu>\n", llval);
-	  ldms_set_metric((*(currfset->metrichandles))[count-minheaderidx+1], &v);
+
+	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	  fprintf(outfile, "should be processing the data handle <%d> <%llu>\n", (count-minindex+1),llval);
+	  fflush(outfile);
+	  fclose(outfile);
+	  ldms_set_metric(currfset->metrichandles[count-minindex+1], &v);
 	}
 	break;
       }
     }
     count++;
+    pch = strsep(&line, ",\n");
   } //while
 
-
-
-==================================================================
-  
-  int rc;
-  int metric_no;
-  char *s;
-  char lbuf[256];
-  char metric_name[128];
-  char junk[128];
-  union ldms_value v;
-
-	metric_no = 0;
-	fseek(mf, 0, SEEK_SET);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-		rc = sscanf(lbuf, "%s %"PRIu64 " %s\n", metric_name, &v.v_u64, junk);
-		if (rc != 2 && rc != 3)
-			return EINVAL;
-
-		ldms_set_metric(metric_table[metric_no], &v);
-		metric_no++;
-	} while (s);
- 	return 0;
-
-  pthread_mutex_unlock(&cfg_lock);
   return 0;
 
 };
@@ -470,6 +437,7 @@ static int sample(void)
   //NOTE: Sample should be set to some long time. This has the loop.
   //Currently: get the headers from the file.
 
+  int rc = 0;
   if (strlen(datafile) == 0){
     msglog("junk: No data file\n");
     return ENOENT;
@@ -479,34 +447,42 @@ static int sample(void)
   char command[LDMS_MAX_CONFIG_STR_LEN];
   snprintf(command,LDMS_MAX_CONFIG_STR_LEN-1,"tail -F %s", datafile);
 
-  if (mf = (FILE*)popen(command, "r")){
-    while (fgets( lbuf sizeof(lbuf), mf)){
+  if ((ppf = (FILE*)popen(command, "r")) != NULL){
+    while (fgets( lbuf, sizeof(lbuf), ppf)){
+      FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+      fprintf(outfile, "read <%s>\n", lbuf);
+      fflush(outfile);
+      fclose(outfile);
+
       char* p = NULL;
-      if (filetype == RSYSLOG){
+      if (strcmp(filetype, "rsyslog") == 0){
 	p = stripRsyslogHeaders(lbuf);
 	if (p == NULL){
 	  printf("Error stripping syslog headers\n");
-	  cleanup(1);
+	  exit(-1);
 	}
       } else {
 	p = lbuf;
       }
-      processSEDCData(p);
+      rc = processSEDCData(p);
+      if (rc != 0){
+	break;
+      }
     }
   } else {
-    msglog(1, "Could not open the sedc file '%s' for data ...exiting\n", datafile);
+    msglog("Could not open the sedc file '%s' for data ...exiting\n", datafile);
   }
+  if (ppf) pclose(ppf);
+
+  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+  fprintf(outfile, "about to exit sample\n");
+  fflush(outfile);
+  fclose(outfile);
 
   pthread_mutex_lock(&cfg_lock);
-  return 0;
-
-
+  return rc;
 }
-*/
 
-static int sample(void){
-  return 0;
-}
 
 static void cleanupset(gpointer key, gpointer value, gpointer user_data){
   struct fset *fs = (struct fset*) value;
@@ -516,9 +492,11 @@ static void cleanupset(gpointer key, gpointer value, gpointer user_data){
 
 static void term(void)
 {
-	g_hash_table_destroy(compidmap);
-	g_hash_table_foreach(setmap, cleanupset, NULL);
-	g_hash_table_destroy(setmap);
+  if (mf) fclose(mf);
+  if (ppf) pclose(ppf);
+  g_hash_table_destroy(compidmap);
+  g_hash_table_foreach(setmap, cleanupset, NULL);
+  g_hash_table_destroy(setmap);
 }
 
 static const char *usage(void)
