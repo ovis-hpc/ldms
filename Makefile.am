@@ -2,7 +2,7 @@
 ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
-	-I$(includedir)/infiniband 
+	-I$(includedir)/infiniband -I/usr/lib64/glib-2.0/include -I/usr/include/glib-2.0
 
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/sedc_to_ldms src/hwlocldms_ls
 
@@ -46,16 +46,21 @@ FLATFILE_la = src/libflatfile.la
 #src_libhwlocflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) $(top_builddir)/src/libmetricmap.la
 #HWLOCFLATFILE_la = src/libhwlocflatfile.la
 
-src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql 
-src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
-src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
-src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient 
-MYSQLINSERT_la = src/libmysqlinsert.la
+#src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql 
+#src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
+#src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
+#src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient 
+#MYSQLINSERT_la = src/libmysqlinsert.la
 
 src_libmeminfo_la_SOURCES = src/meminfo.c
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 MEMINFO_la = src/libmeminfo.la
+
+src_libsedc_la_SOURCES = src/sedc.c
+src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map
+src_libsedc_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/glib-2.0/lib -lglib-2.0
+SEDC_la = src/libsedc.la 
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
 src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
@@ -86,7 +91,7 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
 	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
-	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la)
+	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la)
 #$(HWLOCFLATFILE_la) 
 
 
