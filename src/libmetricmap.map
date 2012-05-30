@@ -3,13 +3,15 @@ LIBMEMINFO_1.0 {
 		getHwlocAssoc;
 		cleanup;
 		getLDMSName;
-		getComponentOID;
-		getMetricOID;
-                getMetricInfo;
-                getMetricValue;
-                setMetricValue;
+		setMetricValueFromLDMS;
+		setMetricValueFromOID;
+		getMetricValueFromOID;
+		OIDToLDMS;
+		LDMSToOID;
 		getInstanceMetricNames;
-		parse_line;
+		parse_line
+		addLDMSMetric;
+		addStaticMetric;
 		addComponent;
 		parseHwlocData;
 		parseMachineData;
@@ -17,12 +19,9 @@ LIBMEMINFO_1.0 {
 		parseData();
 		printComponent;
 		printComponents;
-		getLDMSName;
-		parseMetricData;
 		printTreeGuts;
 		printTree;
 		printMetric;
-		OIDToLDMS;
-		LDMSToOID;
+
 	local: *;
 };

@@ -25,3 +25,12 @@ procinterrupts/Cpu(LVAL)_MCE
 procinterrupts/Cpu(LVAL)_MCP
 procinterrupts/Cpu(LVAL)_ERR
 procinterrupts/Cpu(LVAL)_MIS
+procstatutil/cpu(LVAL)_user_raw
+procstatutil/cpu(LVAL)_nice_raw
+procstatutil/cpu(LVAL)_sys_raw
+procstatutil/cpu(LVAL)_idle_raw
+procstatutil/cpu(LVAL)_iowait_raw
+procstatutil/cpu(LVAL)_irq_raw
+procstatutil/cpu(LVAL)_softirq_raw
+procstatutil/cpu(LVAL)_steal_raw
+procstatutil/cpu(LVAL)_guest_raw

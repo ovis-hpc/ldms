@@ -34,6 +34,7 @@ char filetype[LDMS_MAX_CONFIG_STR_LEN];
 
 FILE* sedcf = NULL; //sedcfile
 FILE *mf = NULL; //header
+
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 int minindex = 2; //the min index in the header file
@@ -176,6 +177,11 @@ static int config(char *str)
   } else if (0 == strncmp(str, "headerfile", 10)){
     action = HEADERFILE;
   } else if (0 == strncmp(str, "compidmap", 9)){
+    FILE *outfile;
+    outfile = fopen("/home/brandt/ldms/outfile", "a");
+    fprintf(outfile, "action should be compidmap\n");
+    fflush(outfile);
+    fclose(outfile);
     action = COMPIDMAP;
   } else {
     msglog("sedc: Invalid configuration string '%s'\n", str);
@@ -187,15 +193,8 @@ static int config(char *str)
   switch (action) {
   case DATAFILE:
     {
-      char junk[LDMS_MAX_CONFIG_STR_LEN];
-
       FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
       fprintf(outfile, "should be trying to read datafile params <%s>\n", str);
-      fflush(outfile);
-      fclose(outfile);
-
-      outfile = fopen("/home/brandt/ldms/outfile", "a");
-      fprintf(outfile, "now really going to do the sscan\n", str);
       fflush(outfile);
       fclose(outfile);
 
@@ -217,6 +216,7 @@ static int config(char *str)
 	fprintf(outfile, "dirnamex <%s> filebasename <%s> filetype<%s>\n",dirnamex, filebasename,filetype);
 	fflush(outfile);
 	fclose(outfile);
+
 	if ((strcmp(filetype, "sedc") != 0) && (strcmp(filetype, "rsyslog"))){
 	  rc = EINVAL;    
 	}
@@ -463,6 +463,7 @@ int processSEDCData(char* line){
 
 };
 
+
 static int processSEDCFile(){
 
   if (sedcf != NULL){
@@ -600,7 +601,7 @@ static void cleanupset(gpointer key, gpointer value, gpointer user_data){
 
 static void term(void)
 {
-  if (mf) fclose(mf);
+  if (mf) pclose(mf);
   if (sedcf) pclose(sedcf);
   g_hash_table_destroy(compidmap);
   g_hash_table_foreach(setmap, cleanupset, NULL);
