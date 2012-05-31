@@ -18,10 +18,10 @@
 
 struct fset {
   ldms_set_t sd;
-  ldms_metric_t metrichandles[MAXMETRICSPERSET]; //FIXME: make this not fixed 
+  ldms_metric_t metrichandles[MAXMETRICSPERSET]; //FIXME: make this not fixed NOTE: includes component id as a metric
 };
-static char sedcheaders[MAXMETRICSPERSET][LDMS_MAX_CONFIG_STR_LEN]; //FIMXE: make this not fixed
-static int metric_count = 0; 
+static char sedcheaders[MAXMETRICSPERSET][LDMS_MAX_CONFIG_STR_LEN]; //FIMXE: make this not fixed NOTE: starts at zero, does not include component_id
+static int metric_count = 0;  //NOTE: is the count of sedc metrics (number of headers)
 static int numhosts = 0;
 GHashTable* compidmap;
 GHashTable* setmap;
@@ -321,6 +321,12 @@ int createMetricSet(char* hostname, int compid, char* shortname){
   int rc = ldms_create_set(setnamechar, tot_meta_sz, tot_data_sz, &(currfset->sd));
   if (rc != 0){
     printf("Error %d creating metric set '%s'.\n", rc, setnamechar);
+    FILE *outfile;
+    outfile = fopen("/home/brandt/ldms/outfile", "a");
+    fprintf(outfile, "Error %d creating metric set <%s>\n",
+	    rc, setnamechar);
+    fflush(outfile);
+    fclose(outfile);
     exit(1);
   } else {
     printf("Created set <%s>\n", setnamechar);
@@ -392,6 +398,11 @@ static char* stripRsyslogHeaders(char* bufin){
 int processSEDCData(char* line){
   //split the line into tokens based on comma sep
 
+  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+  fprintf(outfile, "Entered process data <%s>\n", line);
+  fflush(outfile);
+  fclose(outfile);
+
   int* compid = NULL;
   struct fset* currfset = NULL;
   int valid = 0;
@@ -429,35 +440,67 @@ int processSEDCData(char* line){
 	  fflush(outfile);
 	  fclose(outfile);
 	}
-	break;
-      case 1: //time
-	//      NOTE: we do *not* use the time and thus cannot do historical data.
-	break;
-      default: //its data
-	{
-	  if (strlen(pch) == 0){
-	    break;
-	  }
-
-	  //FIXME: revisit this now that we know that empty values mean repeat of past value (would not have to put in new val but would want to bump datagn)
-	  char *pEnd;
-	  unsigned long long llval;
-	  llval = strtoll(pch,&pEnd,10);
-	  union ldms_value v;
-	  v.v_u64 = llval;
-
+      }
+      break;
+    case 1: //time
+      //      NOTE: we do *not* use the time and thus cannot do historical data.
+      break;
+    default: //its data
+      {
+	if (strlen(pch) == 0){
+	  //NOTE: it is expected that there will be one too many because of the newline
 	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-	  fprintf(outfile, "should be processing the data handle <%d> <%llu>\n", (count-minindex+1),llval);
+	  fprintf(outfile, "No data for metric <%d> not publishing value\n", (count-minindex+1));
 	  fflush(outfile);
 	  fclose(outfile);
-	  ldms_set_metric(currfset->metrichandles[count-minindex+1], &v);
+	  break;
 	}
-	break;
-      }
-    }
+
+	//FIXME: revisit this now that we know that empty values mean repeat of past value (would not have to put in new val but would want to bump datagn)
+	char *pEnd;
+	unsigned long long llval;
+	llval = strtoll(pch,&pEnd,10);
+	union ldms_value v;
+	v.v_u64 = llval;
+
+	FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	fprintf(outfile, "should be processing the data handle <%d> <%llu>\n", (count-minindex+1),llval);
+	fflush(outfile);
+	fclose(outfile);
+	if ((count-minindex+1) == 0){
+	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	  fprintf(outfile, "Error: should NOT be setting handle 0, which is the compid\n");
+	  fflush(outfile);
+	  fclose(outfile);
+	  return -1;
+	}
+	if ((count-minindex+1) > metric_count){
+	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	  fprintf(outfile, "Error: should NOT be setting handle <%d>, which is greater than the number of handles\n", (count-minindex+1));
+	  fflush(outfile);
+	  fclose(outfile);
+	}
+	ldms_set_metric(currfset->metrichandles[count-minindex+1], &v);
+      } //default
+      break;
+    } //switch
     count++;
     pch = strsep(&line, ",\n");
   } //while
+
+  //because the last one counted was the new line
+  if ((count-minindex) <= metric_count){
+    FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+    fprintf(outfile, "Error: Did not get enough metrics to process -- last possible handle was <%d>\n", (count-minindex)); //NOTE: subtracted extra 1
+    fflush(outfile);
+    fclose(outfile);
+  } else {
+    FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+    fprintf(outfile, "Returning after checking <%d> values out of <%d>\n", (count-minindex), metric_count); //NOTE: subtracted extra 1
+    fflush(outfile);
+    fclose(outfile);
+  }
+    
 
   return 0;
 
@@ -484,7 +527,6 @@ static int processSEDCFile(){
 	break;
       } else {
 	//note: this will have the newline
-
 	FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
 	fprintf(outfile, "read <%s> <length=%zu>\n", line, read);
 	fflush(outfile);
