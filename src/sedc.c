@@ -168,20 +168,10 @@ static int config(char *str)
 
   pthread_mutex_lock(&cfg_lock);
   if (0 == strncmp(str, "datafile", 8)){
-    FILE *outfile;
-    outfile = fopen("/home/brandt/ldms/outfile", "a");
-    fprintf(outfile, "action should be datafile\n");
-    fflush(outfile);
-    fclose(outfile);
     action = DATAFILE;
   } else if (0 == strncmp(str, "headerfile", 10)){
     action = HEADERFILE;
   } else if (0 == strncmp(str, "compidmap", 9)){
-    FILE *outfile;
-    outfile = fopen("/home/brandt/ldms/outfile", "a");
-    fprintf(outfile, "action should be compidmap\n");
-    fflush(outfile);
-    fclose(outfile);
     action = COMPIDMAP;
   } else {
     msglog("sedc: Invalid configuration string '%s'\n", str);
@@ -193,17 +183,7 @@ static int config(char *str)
   switch (action) {
   case DATAFILE:
     {
-      FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-      fprintf(outfile, "should be trying to read datafile params <%s>\n", str);
-      fflush(outfile);
-      fclose(outfile);
-
       rc = sscanf(str, "datafile=%[^&]&%[^&]&%s", dirnamex, filebasename, filetype);
-      outfile = fopen("/home/brandt/ldms/outfile", "a");
-      fprintf(outfile, "after sscanf\n");
-      fflush(outfile);
-      fclose(outfile);
-
      if (rc != 3){
 	FILE *outfile;
 	outfile = fopen("/home/brandt/ldms/outfile", "a");
@@ -212,7 +192,7 @@ static int config(char *str)
 	fclose(outfile);
 	rc = EINVAL;
       } else {
-	outfile = fopen("/home/brandt/ldms/outfile", "a");
+        FILE *outfile = fopen("/home/brandt/ldms/outfile", "a");
 	fprintf(outfile, "dirnamex <%s> filebasename <%s> filetype<%s>\n",dirnamex, filebasename,filetype);
 	fflush(outfile);
 	fclose(outfile);
@@ -257,20 +237,8 @@ static int config(char *str)
     }
   case COMPIDMAP:
     {
-    FILE *outfile;
-	outfile = fopen("/home/brandt/ldms/outfile", "a");
-	fprintf(outfile, "action should be compidmap (2)\n");
-	fflush(outfile);
-	fclose(outfile);
-
       char junk[LDMS_MAX_CONFIG_STR_LEN];
       sscanf(str, "compidmap=%s", junk);
-
-	outfile = fopen("/home/brandt/ldms/outfile", "a");
-	fprintf(outfile, "calling compid map\n");
-	fflush(outfile);
-	fclose(outfile);
-
       processCompIdMap(junk);
       break;
     }
