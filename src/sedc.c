@@ -127,16 +127,16 @@ static int processSEDCHeader(char* lbuf){
   int count = 0;
   
   char *pch = strtok(lbuf, ",\n");
-  //	  outfile = fopen("/home/brandt/ldms/outfile", "a");
-  //	  fprintf(outfile, "read <%s>\n", lbuf);
-  //	  fflush(outfile);
-  //	  fclose(outfile);
+  //  outfile = fopen("/home/brandt/ldms/outfile", "a");
+  //  fprintf(outfile, "read <%s>\n", lbuf);
+  //  fflush(outfile);
+  //  fclose(outfile);
   while (pch != NULL){
     if (count >= minindex){
-      outfile = fopen("/home/brandt/ldms/outfile", "a");
-      fprintf(outfile, "counting metric <%s>\n", pch);
-      fflush(outfile);
-      fclose(outfile);
+      //      outfile = fopen("/home/brandt/ldms/outfile", "a");
+      //      fprintf(outfile, "counting metric <%s>\n", pch);
+      //      fflush(outfile);
+      //      fclose(outfile);
 	
       rc = ldms_get_metric_size(pch, LDMS_V_U64, &meta_sz, &data_sz);
       if (rc)
@@ -144,12 +144,12 @@ static int processSEDCHeader(char* lbuf){
 	
       tot_meta_sz += meta_sz;
       tot_data_sz += data_sz;
-      snprintf(sedcheaders[metric_count++],LDMS_MAX_CONFIG_STR_LEN, "%s", pch);
+      sscanf(pch, "%s", sedcheaders[metric_count++]);       //strip leading spaces
     } else {
-      outfile = fopen("/home/brandt/ldms/outfile", "a");
-      fprintf(outfile, "NOT counting metric <%s>\n", pch);
-      fflush(outfile);
-      fclose(outfile);
+      //      outfile = fopen("/home/brandt/ldms/outfile", "a");
+      //      fprintf(outfile, "NOT counting metric <%s>\n", pch);
+      //      fflush(outfile);
+      //      fclose(outfile);
     }
     count++;
     pch = strtok(NULL,",\n");
