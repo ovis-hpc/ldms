@@ -263,7 +263,20 @@ static ldms_set_t get_set()
 
 static int init(const char *path)
 {
-  snprintf(setshortname, LDMS_MAX_CONFIG_STR_LEN, "%s", path);
+  //NOTE: the path that comes in is <localhost>/<user_specified_set_name_in_init>
+  //because the metric sets are really the vals of the remote components and not
+  //the local component, strip of the localhostname and use only the 
+  //user_specified_set_name.
+  //FIXME: this will need to be standardize -- can we get passed 2 parameters to
+  //obviate this?
+
+  sscanf(path,"%*[^/]/%s",setshortname);
+  //  FILE *outfile;
+  //  outfile = fopen("/home/brandt/ldms/outfile", "a");
+  //  fprintf(outfile, "shortname will be <%s>\n", setshortname);
+  //  fflush(outfile);
+  //  fclose(outfile);
+
   setmap = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
   return 0;
@@ -280,7 +293,6 @@ int createMetricSet(char* hostname, int compid, char* shortname){
 
   FILE *outfile;
   outfile = fopen("/home/brandt/ldms/outfile", "a");
-  //FIXME: setname is coming out c0-0c0s0/shuttlers.ran.sandia.gov_1/sedc -- should the shuttlers be stripped out?
   fprintf(outfile, "should be creating metric set for <%s> <%s> <%d>\n", hostname, setshortname, compid);
   fflush(outfile);
   fclose(outfile);
