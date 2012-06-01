@@ -359,14 +359,16 @@ static char* stripRsyslogHeaders(char* bufin){
   //the msg type will be FILESOURCE  (not FILESOURCE::METRICNAME). message vals will be the csv
   //the timestamp will not be used
 
-  int imessage = 7;
+  //  int imessage = 7;
+  int imessage = 6;
   char* bufptr;
   int count = 0;
 
   char* p = strchr(bufin, ' ');
   while (p != NULL){
     if (count == imessage){
-      return p;
+      //      return p;
+      return p+1;
     }
     bufptr = p+1;
     p = strchr(bufptr, ' ');
