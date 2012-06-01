@@ -26,12 +26,14 @@ static int numhosts = 0;
 GHashTable* compidmap;
 GHashTable* setmap;
 
-char dirnamex[LDMS_MAX_CONFIG_STR_LEN];
-char filebasename[LDMS_MAX_CONFIG_STR_LEN];
-char currdate[20];
-char setshortname[LDMS_MAX_CONFIG_STR_LEN];
-char filetype[LDMS_MAX_CONFIG_STR_LEN];
+char dirnamex[LDMS_MAX_CONFIG_STR_LEN] = "";
+char filebasename[LDMS_MAX_CONFIG_STR_LEN] = "";
+char currdate[20] = "";
+char setshortname[LDMS_MAX_CONFIG_STR_LEN] = "";
+char filetype[LDMS_MAX_CONFIG_STR_LEN] = "";
+int lastpos = 0;
 
+char sedcfname[LDMS_MAX_CONFIG_STR_LEN] = "";
 FILE* sedcf = NULL; //sedcfile
 FILE *mf = NULL; //header
 
@@ -403,10 +405,10 @@ int processSEDCData(char* line){
 	    return -1;
 	  }
 	} else {
-	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-	  fprintf(outfile, "will be using metric set for <%s>\n", pch);
-	  fflush(outfile);
-	  fclose(outfile);
+	  //	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	  //	  fprintf(outfile, "will be using metric set for <%s>\n", pch);
+	  //	  fflush(outfile);
+	  //	  fclose(outfile);
 	}
       }
       break;
@@ -417,10 +419,10 @@ int processSEDCData(char* line){
       {
 	if (strlen(pch) == 0){
 	  //NOTE: it is expected that there will be one too many because of the newline
-	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-	  fprintf(outfile, "No data for metric <%d> not publishing value\n", (count-minindex+1));
-	  fflush(outfile);
-	  fclose(outfile);
+	  //	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	  //	  fprintf(outfile, "No data for metric <%d> not publishing value\n", (count-minindex+1));
+	  //	  fflush(outfile);
+	  //	  fclose(outfile);
 	  break;
 	}
 
@@ -431,10 +433,10 @@ int processSEDCData(char* line){
 	union ldms_value v;
 	v.v_u64 = llval;
 
-	FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-	fprintf(outfile, "should be processing the data handle <%d> <%llu>\n", (count-minindex+1),llval);
-	fflush(outfile);
-	fclose(outfile);
+	//	FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	//	fprintf(outfile, "should be processing the data handle <%d> <%llu>\n", (count-minindex+1),llval);
+	//	fflush(outfile);
+	//	fclose(outfile);
 	if ((count-minindex+1) == 0){
 	  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
 	  fprintf(outfile, "Error: should NOT be setting handle 0, which is the compid\n");
@@ -463,10 +465,10 @@ int processSEDCData(char* line){
     fflush(outfile);
     fclose(outfile);
   } else {
-    FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-    fprintf(outfile, "Returning after checking <%d> values out of <%d>\n", (count-minindex), metric_count); //NOTE: subtracted extra 1
-    fflush(outfile);
-    fclose(outfile);
+    //    FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+    //    fprintf(outfile, "Returning after checking <%d> values out of <%d>\n", (count-minindex), metric_count); //NOTE: subtracted extra 1
+    //    fflush(outfile);
+    //    fclose(outfile);
   }
     
 
@@ -477,28 +479,34 @@ int processSEDCData(char* line){
 
 static int processSEDCFile(){
 
+  //  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+  //  fprintf(outfile, "Trying opening <%s> for reading\n", sedcfname);
+  //  fflush(outfile);
+  //  fclose(outfile);
+
+  sedcf = fopen(sedcfname,"r");
   if (sedcf != NULL){
     char* line;
     size_t len = 0;
     ssize_t read;
+    fseek(sedcf, lastpos, SEEK_CUR);
 
     while ( (read = getline(&line, &len, sedcf)) != -1){
       if (line[read-1] != '\n'){
-	long offset = 0 - read;
-	fseek(sedcf,offset,SEEK_CUR);
-
 	FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-	fprintf(outfile, "rewinding %zu\n", read);
+	fprintf(outfile, "not a complete line. Closing <%s>\n", sedcfname);
 	fflush(outfile);
 	fclose(outfile);
+	fclose(sedcf);
 
 	break;
       } else {
 	//note: this will have the newline
-	FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-	fprintf(outfile, "read <%s> <length=%zu>\n", line, read);
-	fflush(outfile);
-	fclose(outfile);
+	//	FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+	//	fprintf(outfile, "read <%s> <length=%zu>\n", line, read);
+	//	fflush(outfile);
+	//	fclose(outfile);
+	lastpos += read;
 	
 	char* p = NULL;
 	if (strcmp(filetype, "rsyslog") == 0){
@@ -517,6 +525,11 @@ static int processSEDCFile(){
     }
     free(line);
     return 0;
+  } else {
+    FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+    fprintf(outfile, "Can't open sedc file <%s> for reading\n",sedcfname);
+    fflush(outfile);
+    fclose(outfile);
   }
 
   return -1;
@@ -527,15 +540,13 @@ static int processSEDCFile(){
 static int sample(void)
 {
   //Currently: get the headers from the file.
-  //Currently: sampling periodically. FIXME: have this use fstat so it doesnt keep the handle open all the time
 
   pthread_mutex_lock(&cfg_lock);
 
-
-  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-  fprintf(outfile, "Entered sample\n");
-  fflush(outfile);
-  fclose(outfile);
+  //  FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
+  //  fprintf(outfile, "Entered sample\n");
+  //  fflush(outfile);
+  //  fclose(outfile);
 
   if (strlen(dirnamex) == 0 || strlen(filebasename) == 0){
     msglog("sedc: No data file info\n");
@@ -546,7 +557,9 @@ static int sample(void)
   char localdate[20];
   char command[20] = "date +%Y%m%d";
 
-  processSEDCFile();
+  if (strlen(sedcfname) != 0){
+    processSEDCFile();
+  }
 
   FILE *fpipe;
   if (!(fpipe = (FILE*)popen(command,"r"))){
@@ -570,32 +583,33 @@ static int sample(void)
   }
   localdate[strlen(localdate)-1] = '\0';
   
-  outfile = fopen("/home/brandt/ldms/outfile", "a");
-  fprintf(outfile, "Currdate <%s> localdate <%s> \n", currdate, localdate);
-  fflush(outfile);
-  fclose(outfile);
+  //  outfile = fopen("/home/brandt/ldms/outfile", "a");
+  //  fprintf(outfile, "Currdate <%s> localdate <%s> \n", currdate, localdate);
+  //  fflush(outfile);
+  //  fclose(outfile);
 
   if (strcmp(localdate,currdate) != 0){
-    if (sedcf != NULL){
-      FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-      fprintf(outfile, "Closing file\n");
-      fflush(outfile);
-      fclose(outfile);
-      fclose(sedcf);
-      sedcf = NULL;
-    }
+    //    outfile = fopen("/home/brandt/ldms/outfile", "a");
+    //    fprintf(outfile, "New date. determining new file\n");
+    //    fflush(outfile);
+    //    fclose(outfile);
 
-    char fname[1024];
-    snprintf(fname,1024,"%s/%s-%s",dirnamex,filebasename,localdate);
+    snprintf(sedcfname,LDMS_MAX_CONFIG_STR_LEN-1,
+	     "%s/%s-%s",dirnamex,filebasename,localdate);
+    lastpos = 0;
+    snprintf(currdate,9,localdate);
+
     FILE* outfile = fopen("/home/brandt/ldms/outfile", "a");
-    fprintf(outfile, "Opening <%s>\n", fname);
+    fprintf(outfile, "New sedc file <%s>\n", sedcfname);
     fflush(outfile);
     fclose(outfile);
-    sedcf = fopen(fname, "r");
-    if (sedcf != NULL){
-      snprintf(currdate,9,localdate);
-      processSEDCFile();
-    } //otherwise try to open it nexttime
+
+    processSEDCFile();
+  } else {
+    //    outfile = fopen("/home/brandt/ldms/outfile", "a");
+    //    fprintf(outfile, "same date, no file change <%s>\n", sedcfname);
+    //    fflush(outfile);
+    //    fclose(outfile);
   }
 
   pthread_mutex_unlock(&cfg_lock);
