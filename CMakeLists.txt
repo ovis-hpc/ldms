@@ -65,7 +65,7 @@ foreach ( file ${ldms_HEADERS} )
 endforeach ()
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/include/ldms_config.h.cmake
-  ${ldms_BINARY_DIR}/include/ldms/ldms_config.h
+  ${ldms_BINARY_DIR}/include/ldms/config.h
   @ONLY )
 
 add_library( un
