@@ -626,7 +626,7 @@ static int processSEDCFile(){
 	    fclose(outfile);
 	  }
 	}
-	fclose(sedcf);
+	//	fclose(sedcf);
 
 	break;
       } else {
@@ -655,8 +655,9 @@ static int processSEDCFile(){
 	  break;
 	}
       }
-    }
+    } //while
     free(line);
+    fclose(sedcf);
     return 0;
   } else {
     if (strlen(logfiletemp) > 0){
