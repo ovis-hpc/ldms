@@ -657,7 +657,7 @@ static int processSEDCFile(){
       }
     } //while
     free(line);
-    fclose(sedcf);
+    if (sedcf) fclose(sedcf);
     return 0;
   } else {
     if (strlen(logfiletemp) > 0){
