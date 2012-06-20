@@ -70,7 +70,7 @@ typedef void *ldms_metric_t;
  * publishes metric sets to remote peers. The remote peers update
  * their local copies of these metrics whenever they choose, i.e. the
  * metric set published does not push the data, it is pulled by the
- * reader. Only the metric set publisher should change the contents of
+ * client. Only the metric set publisher can change the contents of
  * the metric set. Although the client can change its local copy, the
  * data will be overwritten the next time the set is updated.
  *
@@ -371,12 +371,12 @@ struct ldms_metric {
  * Metric sets are exported on the network through a transport. A
  * transport handle is required to communicate on the network.
  *
- * \param t	The name of the transport type to create.
- * \param log	An optional callback function to call to log transport messages
+ * \param name	The name of the transport type to create.
+ * \param log_fn An optional function to call when logging transport messages
  * \returns	A transport handle on success.
- * \returns	0 if the handle could not be created.
+ * \returns	0 If the transport could not be created.
  */
-extern ldms_t ldms_create_xprt(const char *name, void (*log)(const char *fmt, ...));
+extern ldms_t ldms_create_xprt(const char *name, void (*log_fn)(const char *fmt, ...));
 
 /**
  * \brief Release a reference on a transport handle
@@ -460,16 +460,38 @@ extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  *		 otherwise.
  *
  */
+
+/**
+ * \brief The directory update type
+ */
 enum ldms_dir_type {
-	LDMS_DIR_LIST,
-	LDMS_DIR_DEL,
-	LDMS_DIR_ADD
+	LDMS_DIR_LIST,		/*! A complete list of available metric sets */
+	LDMS_DIR_DEL,		/*! The listed metric sets have been deleted */
+	LDMS_DIR_ADD		/*! The listed metric sets have been added */
 };
+
+/**
+ * \brief The format of the directory data returned by
+ * \c ldms_dir request.
+ */
 typedef struct ldms_dir_s {
 	enum ldms_dir_type type;
 	int set_count;
 	char *set_names[0];
 } *ldms_dir_t;
+
+/**
+ * \brief The \c ldms_dir callback function
+ *
+ * This function is called when the directory request has been
+ * returned by the queried host.
+ *
+ * \param t		The transport handle
+ * \param status	The status of the request
+ * \param dir		Pointer to the returned directory data
+ * \param cb_arg	The callback argument specified to the ldms_dir
+ *			function.
+ */
 typedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg);
 
 /**
@@ -478,7 +500,7 @@ typedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg
  * This function is called by the application to release the resources
  * used by an ldms_dir_t.
  *
- * \param x	 The transport handle
+ * \param t	 The transport handle
  * \param dir	 Pointer to an ldms_dir_s structure to be released.
  */
 void ldms_dir_release(ldms_t t, ldms_dir_t dir);
@@ -489,7 +511,7 @@ void ldms_dir_release(ldms_t t, ldms_dir_t dir);
  * This function cancels updates to the LDMS directory initiated by a
  * call to ldms_dir.
  *
- * \param x	 The transport handle
+ * \param t	 The transport handle
  */
 void ldms_dir_cancel(ldms_t t);
 
@@ -541,12 +563,9 @@ extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
  *		 completed.
  * \param cb_arg A user context that will be provided as a parameter
  *		 to the \c cb function.
- * \param flags	 If set to LDMS_LOOKUP_COHERENT, the specified callback
- *		 function will be invoked whenever the metric set meta
- *		 data changes on the peer.
  * \returns	 0 if the query was submitted successfully.
  */
-extern int ldms_lookup(ldms_t x, const char *name,
+extern int ldms_lookup(ldms_t t, const char *name,
 		       ldms_lookup_cb_t cb, void *cb_arg);
 
 /** \} */
@@ -588,9 +607,12 @@ typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int status, void *arg);
  * Updates the local copy of the metric set.
  *
  * \param s	The metric set handle to update.
+ * \param update_cb The function to call when the update has completed
+ *		    and the metric data has been updated.
+ * \param cb_arg A user defined context value to provide to the update_cb function.
  * \returns	0 on success or a non-zero value to indicate an error.
  */
-extern int ldms_update(ldms_set_t s, ldms_update_cb_t doneCb, void *arg);
+extern int ldms_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg);
 
 /**
  * \brief Create a Metric set
@@ -603,7 +625,7 @@ extern int ldms_update(ldms_set_t s, ldms_update_cb_t doneCb, void *arg);
  *
  * \param set_name	The name of the metric set.
  * \param meta_sz	The maximum meta data size.
- * \param sz		The maximum data size.
+ * \param data_sz	The maximum data size.
  * \param s		Pointer to ldms_set_t handle that will be set to the new handle.
  * \returns		0 on success
  */
@@ -663,9 +685,9 @@ extern ldms_set_t ldms_get_set(const char *set_name);
  * are added or removed from the metric set.
  *
  * \param s	The ldms_set_t handle.
- * \returns	The 64bit generation number.
+ * \returns	The 64bit meta data generation number.
  */
-uint64_t ldms_get_meta_gn(ldms_set_t _set);
+uint64_t ldms_get_meta_gn(ldms_set_t s);
 
 /**
  * \brief Get the metric data generation number.
@@ -674,9 +696,9 @@ uint64_t ldms_get_meta_gn(ldms_set_t _set);
  * values are modified. 
  *
  * \param s	The ldms_set_t handle.
- * \returns	The 64bit generation number.
+ * \returns	The 64bit data generation number.
  */
-uint64_t ldms_get_data_gn(ldms_set_t _set);
+uint64_t ldms_get_data_gn(ldms_set_t s);
 
 /**
  * \brief Return the maxmimum size of the metric set
