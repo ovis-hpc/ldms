@@ -1,6 +1,7 @@
 project( ldms )
 cmake_minimum_required(VERSION 2.8)
 set( CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake;${CMAKE_MODULE_PATH}" )
+include(FindPkgConfig)
 
 set( CMAKE_THREAD_PREFER_PTHREAD 1 )
 find_package( Threads REQUIRED )
@@ -10,6 +11,7 @@ if ( EVENT_FOUND )
 else ( EVENT_FOUND )
   option( ldms_USE_SYSTEM_LIBEVENT OFF "Use system's libevent library?" )
 endif ( EVENT_FOUND )
+pkg_check_modules( glib2  glib-2.0 )
 
 if ( NOT ldms_EXPORT_NAME )
   # Fallback name for the package containing export file (assuming parent package hasn't set it)
@@ -50,6 +52,7 @@ include_directories(
   ${LINUX_KERNEL_CONFIG_DIR}/infiniband
   ${EVENT_INCLUDE_DIRS}
   ${ldms_BINARY_DIR}/include/ldms
+  ${glib2_INCLUDE_DIRS}
 )
 
 set( ldms_INSTALL_TARGETS "" )
@@ -155,6 +158,12 @@ if ( papi_FOUND )
   set( perf_event_LIBRARIES ${papi_LIBRARIES} )
 endif()
 
+# Only build the sedc module when glib2 is present.
+if ( glib2_FOUND )
+  set( ldms_plugins ${ldms_plugins} sedc )
+  set( sedc_LIBRARIES ${glib2_LIBRARIES} )
+endif()
+
 foreach( plugin ${ldms_plugins} )
   add_library( ${plugin} MODULE src/${plugin}.c )
   add_dependencies( ${plugin} src/${plugin}.map )
@@ -163,6 +172,21 @@ foreach( plugin ${ldms_plugins} )
   endif()
   target_link_libraries( ${plugin} ldms )
 endforeach()
+
+if ( glib2_FOUND )
+  add_library( metricmap src/metricmap.c )
+  target_link_libraries( metricmap
+    ${glib2_LIBRARIES}
+    ${EVENT_LIBRARIES}
+    ${CMAKE_THREAD_LIBS_INIT}
+  )
+  add_executable( hwlocldms_ls src/hwlocldms_ls.c )
+  target_link_libraries( hwlocldms_ls
+    metricmap
+    ${glib2_LIBRARIES}
+  )
+  set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};metricmap;hwlocldms_ls" )
+endif()
 
 # Doxygen documentation
 find_package( Doxygen )
