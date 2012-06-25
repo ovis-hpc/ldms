@@ -38,12 +38,17 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-/*
- * This is the mysqlinsert sampler. It saves a local metric set's data to
- * a mysql database in the ovis table format.
+/**
+ * \file mysqlinsert.c
+ * \brief mysqlinsert sampler. It saves a local metric set's data to a mysql database in the ovis table format.
  *
- * FIXME: examine possibilities for long int metric tables and xref with metric type
+ * Notes:
+ * - This does single inserts like the old komonodor (does not buffer like the shepherd)
+ * - When the add (set/metric is called ldms_get_XXX functions are called to get the handles. This means if the set/metric is not yet published the plugin will fail. 
  */
+
+// FIXME: examine possibilities for long int metric tables and xref with metric type
+
 #include <ctype.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -361,6 +366,40 @@ static int createTable(char* ovisMetricName, char* compAssoc, char *tableName){
 }
 
 
+/**
+ * \brief Configuration 
+ *
+ * Usage:
+ * - config mysqlinsert add=<set_name>
+ * <ul><li>Adds a metric set
+ * <ul><li>set_name:   The name of the metric set.
+ * </ul></ul>
+ * - config mysqlinsert remove=<set_name>
+ * <ul><li>Removes a metric set.
+ * <ul><li>set_name:   The name of the metric set
+ * </ul></ul>
+ * - config mysqlinsert add_metric=<set_name>&<metric_name>&key&diff_metric&<comp_assoc>&<ovis_metric_name>
+ * <ul><li>Add the specified metric to the set of values stored from the set
+ * <ul><li>set_name:   The name of the metric set.
+ * <li>metric_name:The name of the metric.
+ * <li>key:        An unique Id for the Metric. Typically the component_id.
+ * <li>diff_metric: 1 for diff; 0 for not.
+ * <li>comp_assoc:  ovis comp type short name (case matters).
+ * <li>ovis_metric_name:  The ovis name for this metric. Table will be created using the ovis naming convention. The table will be created if it does not already exist.
+ * </ul></ul>
+ * - config mysqlinsert remove_metric=<set_name>&<metric_name>
+ * <ul><li>Stop storing values for the specified metric
+ * <ul><li>set_name:    The name of the metric set.
+ * <li>metric_name: The name of the metric.
+ * </ul></ul>
+ * - config mysqlinsert database_info=<db_schema>&<db_host>&<username>&<password>
+ * <ul><li>Database information
+ * <ul><li>db_schema: The database name (default: mysqlinserttest).
+ * <li>db_host:     The database hostname (default: localhost).
+ * <li>username:   The database username (default: ovis).
+ * <li>password:   The database user's password (default: <none>).
+ * </ul></ul>
+ */
 static int config(char *config_str)
 {
 	enum {

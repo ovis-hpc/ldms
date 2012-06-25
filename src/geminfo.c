@@ -39,8 +39,9 @@
  *
  * Author: Tom Tucker <tom@opengridcomputing.com>
  */
-/*
- * This is the /proc/geminfo data provider
+/**
+ * \file geminfo.c
+ * \brief /proc/geminfo data provider
  */
 #include <inttypes.h>
 #include <unistd.h>

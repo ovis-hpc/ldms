@@ -38,8 +38,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-/*
- * This is the /proc/interrupts data provider.
+
+/**
+ * \file procinterrupts.c
+ * \brief /proc/interrupts data provider
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -62,6 +64,12 @@ ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 int nprocs;
 
+/**
+ * \brief Configuration
+ *
+ * Usage:
+ * - config procinterrupts component_id <value>
+ */
 static int config(char *str)
 {
   if (!set || !compid_metric_handle ){

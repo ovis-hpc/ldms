@@ -39,9 +39,13 @@
  *
  * Author: Tom Tucker <tom@opengridcomputing.com>
  */
-/*
- * This is the perfevent data provider
+/**
+ * \file perfevent.c
+ * \brief perfevent data provider
+ *
+ * Reads perf counters. 
  */
+//FIXME: needs documentation
 #include <inttypes.h>
 #include <unistd.h>
 #include <stdlib.h>

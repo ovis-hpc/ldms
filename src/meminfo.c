@@ -39,8 +39,9 @@
  *
  * Author: Tom Tucker <tom@opengridcomputing.com>
  */
-/*
- * This is the /proc/meminfo data provider
+/**
+ * \file meminfo.c
+ * \brief /proc/meminfo data provider
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -63,6 +64,12 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 
+/** 
+ * \brief Configuration
+ * 
+ * Usage: 
+ * - config meminfo component_id <value>
+ */
 static int config(char *str)
 {
 	if (!set || !compid_metric_handle ) {
@@ -101,6 +108,13 @@ static int init(const char *path)
 	char lbuf[256];
 	char metric_name[128];
 	char junk[128];
+
+	FILE *outfile;
+	outfile = fopen("/home/brandt/ldms/outfile", "w");
+	fprintf(outfile, "%s", "meminfo init\n");
+	fflush(outfile);
+	fclose(outfile);
+
 
 	mf = fopen(procfile, "r");
 	if (!mf) {

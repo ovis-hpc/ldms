@@ -1,6 +1,54 @@
 /*
- * This is the sedc data provider
+ * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012 Sandia Corporation. All rights reserved.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the BSD-type
+ * license below:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *      Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *      Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *      Neither the name of the Network Appliance, Inc. nor the names of
+ *      its contributors may be used to endorse or promote products
+ *      derived from this software without specific prior written
+ *      permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
  */
+/**
+ * \file sedc.c
+ * \brief sedc data provider.
+ *
+ * Reads the sedc data from a file (to be gotten via rsyslog) and writes to ldms metric sets. Notes:
+ * - Currently reads the headers from a separate file
+ * - Currently reads the compids from a separate file (when these items are inserted via the mysql insert, we will want a nice way to do remote assoc)
+ * - Metric sets are currently added with all metric names, whether or not there is data for them.
+ * - Metric sets are only added when they need to be (that is when a new component appears in the file) -- this is going to be a problem for the mysql inserter
+* - Still have debugging statements, fixed size arrays. 
+*/
 #include <glib.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -195,6 +243,31 @@ static int processSEDCHeader(char* lbuf){
   return 0;
 };
 
+
+/**
+ * \brief Configuration
+ *
+ * Usage:
+ * - config sedc datafile <datafiledir> <datafilebasename> <filetype>
+ * <ul><li> Set the datafile info.
+ * <ul><li> datafiledir:         Directory of the datafile
+ * <li> datafilebasename:    Basename of the datafile. (e.g., L0_FSIO_TEMPS. will be followed by the current date)
+ * <li> filetype:            sedc or rsyslog
+ * </ul></ul>
+ * - config sedc logfile <logfilename>
+ * <ul><li> Set the logfile (optional)
+ * <ul><li> logfilename:         Logfile
+ * </ul></ul>
+ * - config sedc compidmap=<compidmapname>
+ * <ul><li> Set the compidmap file
+ * <ul><li> compidmapname:        CompIdMapName
+ * </ul></ul>
+ * - config sedc headerfile=<headerfilename>
+ * <ul><li> Set the headerfile
+ * <ul><li> headerfilename:    Headerfile
+ * </ul></ul>
+ */
+}
 static int config(char *str)
 {
   enum {
@@ -798,19 +871,20 @@ static void term(void)
 
 static const char *usage(void)
 {
-  return  "    config sedc component_id <comp_id>\n"
-          "        - Set the component_id value in the metric set.\n"
-          "        comp_id             The component id value\n"
-          "    config sedc datafile <datafiledir> <datafilebasename> <filetype>\n"
-          "        - Set the datafile info.\n"
+  return  "    config sedc datafile=<datafiledir>&<datafilebasename>&<filetype>\n"
+          "        - Set the datafile info\n"
           "        datafiledir         Directory of the datafile\n"
           "        datafilebasename    Basename of the datafile\n"
           "                            (e.g., L0_FSIO_TEMPS. will be followed by the current date_\n"
           "        filetype            sedc or rsyslog\n"
-          "    config sedc logfile <logfilename>\n"
+          "    config sedc logfile=<logfilename>\n"
           "        - Set the logfile (optional)\n"
           "        logfilename         Logfile\n"
-          "    note: the setname is part of the init\n";
+          "    config sedc compidmap=<compidmapname>\n"
+          "        - Set the compidmap file\n"
+          "        compidmapname         CompIdMap\n"
+          "    config sedc headerfile=<headerfilename>\n"
+          "        - Set the headerfile\n";
 }
 
 static struct ldms_plugin sedc_plugin = {

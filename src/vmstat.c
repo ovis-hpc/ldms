@@ -39,8 +39,10 @@
  *
  * Author: Tom Tucker <tom@opengridcomputing.com>
  */
-/*
- * This is the /proc/vmstat data provider
+
+/**
+ * \file vmstat.c
+ * \brief /proc/vmstat data provider
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -63,6 +65,12 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 
+/** 
+ * \brief Configuration
+ * 
+ * Usage: 
+ * - config vmstat component_id <value>
+ */
 static int config(char *str)
 {
   if (!set || !compid_metric_handle ){
