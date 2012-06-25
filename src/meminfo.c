@@ -109,11 +109,11 @@ static int init(const char *path)
 	char metric_name[128];
 	char junk[128];
 
-	FILE *outfile;
-	outfile = fopen("/home/brandt/ldms/outfile", "w");
-	fprintf(outfile, "%s", "meminfo init\n");
-	fflush(outfile);
-	fclose(outfile);
+	//	FILE *outfile;
+	//	outfile = fopen("/home/brandt/ldms/outfile", "w");
+	//	fprintf(outfile, "%s", "meminfo init\n");
+	//	fflush(outfile);
+	//	fclose(outfile);
 
 
 	mf = fopen(procfile, "r");
