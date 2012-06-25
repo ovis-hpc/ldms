@@ -267,7 +267,6 @@ static int processSEDCHeader(char* lbuf){
  * <ul><li> headerfilename:    Headerfile
  * </ul></ul>
  */
-}
 static int config(char *str)
 {
   enum {
