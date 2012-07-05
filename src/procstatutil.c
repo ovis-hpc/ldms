@@ -38,8 +38,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-/*
- * This is the /proc/stat/util data provider
+
+/**
+ * \file procstatutil.c
+ * \brief /proc/stat/util data provider 
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -65,6 +67,12 @@ ldmsd_msg_log_f msglog;
 int numcpu_plusone;
 ldms_metric_t *compid_metric_handle;
 
+/** 
+ * \brief Configuration
+ * 
+ * Usage: 
+ * - config procstatutil component_id <value>
+ */
 static int config(char *str)
 {
   if (!set || !compid_metric_handle ){
@@ -415,7 +423,6 @@ static int init(const char *path)
 
   return rc ;
 }
-
 
 static int sample(void)
 {
