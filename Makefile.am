@@ -83,10 +83,12 @@ src_libvmstat_la_DEPENDENCIES = $(srcdir)/src/libvmstat.map
 src_libvmstat_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 VMSTAT_la = src/libvmstat.la
 
+if ENABLE_PERF
 src_libperfevent_la_SOURCES = src/perfevent.c
 src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map
 src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)  -lm
 PERFEVENT_la = src/libperfevent.la
+endif
 
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 

@@ -37,6 +37,13 @@ AC_ARG_ENABLE(mmap, [  --disable-mmap     Disable peristent local data sets (i.e
                 fi
         ])
 
+AC_ARG_ENABLE(perf, [  --disable-perf     Disable perf events.],
+        [       if test x$enableval = xno ; then
+                        disable_perf=yes
+                        echo The perf events sampler has been disabled.
+                fi
+        ])
+
 dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
@@ -48,6 +55,10 @@ AC_C_CONST
 dnl Check for libevent
 AC_CHECK_LIB(event, event_base_new, [], 
     AC_MSG_ERROR([event_base_new() not found.  ldms-utils requires libevent.]))
+
+dnl Check for glib
+AC_CHECK_LIB(glib, g_list_alloc, [], 
+    AC_MSG_ERROR([g_list_alloc() not found.  ldms-utils glib.]))
 
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
@@ -95,6 +106,7 @@ AM_CONDITIONAL([ENABLE_PAPI], [test "$disable_papi" != "yes"])
 AM_CONDITIONAL([ENABLE_RDMA], [test "$disable_rdma" != "yes"])
 AM_CONDITIONAL([ENABLE_SOCK], [test "$disable_sock" != "yes"])
 AM_CONDITIONAL([ENABLE_MMAP], [test "$disable_mmap" != "yes"])
+AM_CONDITIONAL([ENABLE_PERF], [test "$disable_perf" != "yes"])
 AM_CONDITIONAL([HAVE_SPINLOCK_T],[test "$ac_cv_lib_pthread_pthread_spin_init" = "yes"])
 AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
 AC_CONFIG_FILES([Makefile ldms-utils.spec])

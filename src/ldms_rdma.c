@@ -49,6 +49,8 @@
 #include "ldms_xprt.h"
 #include "ldms_rdma_xprt.h"
 
+LIST_HEAD(rdma_list, ldms_rdma_xprt) rdma_list;;
+
 struct rdma_context {
 	void *usr_context;	/* user context if any */
 	enum ibv_wc_opcode op;	/* work-request op (can't be trusted
@@ -77,8 +79,7 @@ static struct rdma_context *rdma_get_context(struct ibv_wc *wc)
 static void rdma_xprt_term(struct ldms_rdma_xprt *r)
 {
 	/* Remove myself from the client list */
-	if (!r->server && !LIST_EMPTY(&r->client_list))
-		LIST_REMOVE(r, client_link);
+	LIST_REMOVE(r, client_link);
 
 	if (r->cm_id && r->conn_status == CONN_CONNECTED)
 		rdma_disconnect(r->cm_id);
@@ -217,7 +218,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 
 	/* Bind the provided address to the CM Id */
 	r->conn_status = CONN_CONNECTING;
-	rc = rdma_resolve_addr(r->cm_id, NULL, (struct sockaddr *) &x->ss, 2000);
+	rc = rdma_resolve_addr(r->cm_id, NULL, (struct sockaddr *) &x->remote_ss, 2000);
 	if (rc) {
 		rc = EHOSTUNREACH;
 		goto err_0;
@@ -314,7 +315,7 @@ static void cleanup_proc(void *arg)
 {
 	struct ldms_rdma_xprt *r = arg;
 
-	ldms_destroy_xprt(r->xprt);
+	ldms_release_xprt(r->xprt);
 }
 
 static void server_cq_handler(struct ldms_rdma_xprt *x)
@@ -363,7 +364,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	int ret;
 
 	/* Create a transport instance for this new connection */
-	_x = ldms_create_xprt("rdma");
+	_x = ldms_create_xprt("rdma", server->xprt->log);
 	if (!_x) {
 		fprintf(stderr, "Could not create a new transport.\n");
 		return;
@@ -373,7 +374,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	r = rdma_from_xprt(_x);
 	r->cm_id = cma_id;
 	r->cm_id->context = r;
-	_x->connected = 1;
+	r->xprt->connected = 1;
 
 	/* Allocate PD */
 	r->pd = ibv_alloc_pd(r->cm_id->verbs);
@@ -431,8 +432,6 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	if (ret)
 		goto out_0;
 
-	LIST_INSERT_HEAD(&server->client_list, r, client_link);
-
 	/* Create the CQ event thread that will wait for events on the
 	 * CQ channel */
 	ret = pthread_create(&r->cq_thread, NULL, server_proc, r);
@@ -447,7 +446,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 
  out_0:
 	rdma_xprt_term(r);
-	ldms_destroy_xprt(_x);
+	ldms_release_xprt(_x);
 }
 
 static int cq_event_handler(struct ibv_cq *cq)
@@ -702,7 +701,7 @@ static int rdma_xprt_listen(struct ldms_xprt *x, struct sockaddr *s, socklen_t s
 		goto err_0;
 
 	/* Bind the provided address to the CM Id */
-	rc = rdma_bind_addr(r->cm_id, (struct sockaddr *)&x->ss);
+	rc = rdma_bind_addr(r->cm_id, (struct sockaddr *)&x->local_ss);
 	if (rc)
 		goto err_0;
 
@@ -939,6 +938,9 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	x->private = r;
 	r->xprt = x;
 	sem_init(&r->sem, 0, 0);
+
+	LIST_INSERT_HEAD(&rdma_list, r, client_link);
+
 	return x;
 
  err_1:

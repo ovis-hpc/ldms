@@ -41,11 +41,11 @@
  */
 #ifndef __LDMS_XPRT_RDMA_H__
 #define __LDMS_XPRT_RDMA_H__
+#include <sys/queue.h>
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 #include <semaphore.h>
 #include "ldms_xprt.h"
-#include "list.h"
 
 #define SQ_DEPTH 4
 #define RQ_DEPTH 4
@@ -114,8 +114,7 @@ struct ldms_rdma_xprt {
 	struct rdma_cm_id *cm_id;	/* connection on client side,
 					 * listener on service side. */
 
-	LIST_HEAD(client_list, struct ldms_rdma_xprt) client_list;
-	LIST_ENTRY(struct ldms_rdma_xprt) client_link;
+	LIST_ENTRY(ldms_rdma_xprt) client_link;
 };
 
 extern int rdma_register(struct sockaddr *s, struct ldms_rdma_xprt *x);

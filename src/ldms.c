@@ -438,7 +438,7 @@ int ldms_lookup(ldms_t _x, const char *path,
         if (rc)
                 goto err_2;
  out:
-	cb(_x, s, 0, cb_arg);
+	cb(_x, 0, s, cb_arg);
         return 0;
  err_2:
 #ifdef ENABLE_MMAP
@@ -520,8 +520,8 @@ static int local_dir(int *set_count, char *set_list, size_t *set_list_sz)
 int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
 #ifdef ENABLE_MMAP
-	struct ldms_xprt *x = (struct ldms_xprt *)t;
-        if (0 == strcmp(x->name, "local"))
+	struct ldms_xprt *_x = (struct ldms_xprt *)x;
+        if (0 == strcmp(_x->name, "local"))
 		return local_dir(set_count, set_list, set_list_sz);
 #endif
 

@@ -408,6 +408,16 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	x->read_data_start(x, s, set->meta->data_size, data_ctxt);
 }
 
+static int read_complete_cb(struct ldms_xprt *x, void *context)
+{
+	struct ldms_context *ctxt = context;
+	if (ctxt->update.cb)
+		ctxt->update.cb((ldms_t)x, ctxt->update.s, 0, ctxt->update.arg);
+	if (context != &x->io_ctxt)
+		free(ctxt);
+	return 0;
+}
+
 static int do_read_meta(ldms_t t, ldms_set_t s, size_t len,
 			ldms_update_cb_t cb, void *arg)
 {
@@ -464,16 +474,6 @@ int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		rc = do_read_data(t, s, set->data->tail_off, cb, arg);
 
 	return rc;
-}
-
-static int read_complete_cb(struct ldms_xprt *x, void *context)
-{
-	struct ldms_context *ctxt = context;
-	if (ctxt->update.cb)
-		ctxt->update.cb((ldms_t)x, ctxt->update.s, 0, ctxt->update.arg);
-	if (context != &x->io_ctxt)
-		free(ctxt);
-	return 0;
 }
 
 static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)

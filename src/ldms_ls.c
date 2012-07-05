@@ -78,20 +78,30 @@ struct ls_set {
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:i:x:lv"
+#define FMT "h:p:i:x:w:lv"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
-	       "    -h <hostname>    The name of the host to query. Default is localhost.\n"
-	       "    -p <port_num>    The port number. The default is 50000.\n"
-	       "    -l               Show the values of the metrics in each metric set.\n"
-	       "    -i <interval>    When used with the -l option, the metric values will \n"
+	       "\n    -h <hostname>    The name of the host to query. Default is localhost.\n"
+	       "\n    -p <port_num>    The port number. The default is 50000.\n"
+	       "\n    -l               Show the values of the metrics in each metric set.\n"
+	       "\n    -i <interval>    When used with the -l option, the metric values will \n"
 	       "                     be queried and displayed every <interval> microseconds.\n"
-	       "    -x <name>        The transport name: sock, rdma, or local. Default is\n"
+	       "\n    -x <name>        The transport name: sock, rdma, or local. Default is\n"
 	       "                     localhost unless -h is specified in which case it is sock.\n"
-	       "    -v               Show detail information about the metric set. Specifying\n"
+	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
+	       "                     The default is 10 seconds.\n"
+	       "\n    -v               Show detail information about the metric set. Specifying\n"
 	       "                     this option multiple times increases the verbosity.\n",
 	       argv[0]);
+	exit(1);
+}
+
+void server_timeout(void)
+{
+	printf("A timeout occurred waiting for a response from the server.\n"
+	       "Use the -w option to specify the amount of time to wait "
+	       "for the server\n");
 	exit(1);
 }
 
@@ -166,8 +176,9 @@ void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
 {
 	struct ls_set *lss;
 	if (status) {
-		printf("ldms_ls: lookup failed with status %d for set '%s'\n",
-		       status, arg);
+		errno = status;
+		perror("ldms_ls");
+		printf("ldms_ls: lookup failed for set '%s'\n", (char *)arg);
 		exit(3);
 	}
 
@@ -275,12 +286,16 @@ int main(int argc, char *argv[])
 	int i;
 	long sample_interval = -1;
 	char *xprt = "local";
+	int waitsecs = 10;
+	struct timespec ts;
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'h':
 			hostname = strdup(optarg);
+			if (strcmp(xprt, "local")==0)
+				xprt = "sock";
 			break;
 		case 'p':
 			port_no = atoi(optarg);
@@ -296,6 +311,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'x':
 			xprt = strdup(optarg);
+			break;
+		case 'w':
+			waitsecs = atoi(optarg);
 			break;
 		default:
 			usage(argv);
@@ -374,17 +392,24 @@ int main(int argc, char *argv[])
 		dir_cb(ldms, 0, dir, NULL);
 	}
 
+	clock_gettime(CLOCK_REALTIME, &ts);
+	ts.tv_sec += waitsecs;
 	pthread_mutex_lock(&dir_lock);
 	while (dir_needed != dir_count)
-		pthread_cond_wait(&dir_cv, &dir_lock);
+		ret = pthread_cond_timedwait(&dir_cv, &dir_lock, &ts);
 	pthread_mutex_unlock(&dir_lock);
-
+	if (ret) 
+		server_timeout();
 	/* If we're not monitoring the peer, wait for all lookups to complete */
 	if ((verbose || long_format) && sample_interval < 0) {
+		clock_gettime(CLOCK_REALTIME, &ts);
+		ts.tv_sec += waitsecs;
 		pthread_mutex_lock(&lu_lock);
 		while (lu_needed != lu_count)
-			pthread_cond_wait(&lu_cv, &lu_lock);
+			ret = pthread_cond_timedwait(&lu_cv, &lu_lock, &ts);
 		pthread_mutex_unlock(&lu_lock);
+		if (ret)
+			server_timeout();
 	}
 
 	do {
