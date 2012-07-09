@@ -47,11 +47,15 @@ FLATFILE_la = src/libflatfile.la
 #src_libhwlocflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) $(top_builddir)/src/libmetricmap.la
 #HWLOCFLATFILE_la = src/libhwlocflatfile.la
 
-#src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql 
-#src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
-#src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
-#src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient 
-#MYSQLINSERT_la = src/libmysqlinsert.la
+if ENABLE_MYSQL
+src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql 
+src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
+src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
+src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient 
+MYSQLINSERT_la = src/libmysqlinsert.la
+else
+MYSQL_FLAGS = -DDISABLE_MYSQL
+endif
 
 src_libmeminfo_la_SOURCES = src/meminfo.c
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
@@ -90,7 +94,7 @@ src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)  -
 PERFEVENT_la = src/libperfevent.la
 endif
 
-AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
+AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(MYSQL_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
 	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \

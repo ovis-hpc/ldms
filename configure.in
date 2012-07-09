@@ -44,6 +44,13 @@ AC_ARG_ENABLE(perf, [  --disable-perf     Disable perf events.],
                 fi
         ])
 
+AC_ARG_ENABLE(mysql, [  --disable-mysql     Disable mysql inserts.],
+        [       if test x$enableval = xno ; then
+                        disable_mysql=yes
+                        echo The mysqlinsert sampler has been disabled.
+                fi
+        ])
+
 dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
@@ -107,6 +114,7 @@ AM_CONDITIONAL([ENABLE_RDMA], [test "$disable_rdma" != "yes"])
 AM_CONDITIONAL([ENABLE_SOCK], [test "$disable_sock" != "yes"])
 AM_CONDITIONAL([ENABLE_MMAP], [test "$disable_mmap" != "yes"])
 AM_CONDITIONAL([ENABLE_PERF], [test "$disable_perf" != "yes"])
+AM_CONDITIONAL([ENABLE_MYSQL], [test "$disable_mysql" != "yes"])
 AM_CONDITIONAL([HAVE_SPINLOCK_T],[test "$ac_cv_lib_pthread_pthread_spin_init" = "yes"])
 AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
 AC_CONFIG_FILES([Makefile ldms-utils.spec])
