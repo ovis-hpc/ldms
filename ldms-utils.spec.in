@@ -1,8 +1,8 @@
 
-%define RELEASE 1.0.0
+%define RELEASE 2.0.0
 %define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
 
-Summary: LDMS User Mode Commands and Libraries
+Summary: LDMS Commands and Libraries
 Name: ldms-utils
 Version: @VERSION@
 Release: %rel%{?dist}
@@ -13,8 +13,7 @@ Source: http://www.ogc.us/downloads/ldms-utils/%{name}-%{version}.tar.gz
 Url: http://ogc.us/
 
 %description
-This package provides the user-mode commands and libraries
-of LDMS.
+This package provides the LDMS commands and libraries.
 
 %prep
 %setup -q
@@ -45,5 +44,6 @@ rm -rf $RPM_BUILD_ROOT
 %doc README COPYING ChangeLog
 
 %changelog
+* Fri Jul  6 2012 Tom Tucker <tom@ogc.us> - 2.0.0
 * Tue Aug 24 2008 Tom Tucker <tom@ogc.us> - 1.0.0
 - First launch.

@@ -1,4 +1,4 @@
-LIBLDMS_1.0 {
+LIBLDMS_2.0 {
 	global:
 		ldms_create_set;
 		ldms_mmap_set;

@@ -1,4 +1,4 @@
-LIBLDMSRDMA_1.0 {
+LIBLDMSRDMA_2.0 {
 	global:
 		xprt_get;
 	local: *;
