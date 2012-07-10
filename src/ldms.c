@@ -522,7 +522,7 @@ int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 #ifdef ENABLE_MMAP
 	struct ldms_xprt *_x = (struct ldms_xprt *)x;
         if (0 == strcmp(_x->name, "local"))
-		return local_dir(set_count, set_list, set_list_sz);
+		return local_dir(x, cb, cb_arg, flags);
 #endif
 
         return ldms_remote_dir(x, cb, cb_arg, flags);
