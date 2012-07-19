@@ -104,6 +104,7 @@ typedef void *ldms_metric_t;
  * \li \b ldms_listen() Create a listening endpoint and respond to
  * queries from peers.
  * \li \b ldms_connect() Request a connection with a remote peer.
+ * \li \b ldms_close() Close a connection with a remote peer.
  *
  * \section metric_sets Creating Metric Sets
  *
@@ -316,19 +317,26 @@ struct ldms_data_hdr {
 	uint32_t tail_off;	/* Offset of last value */
 };
 
+enum ldms_lookup_status {
+	LDMS_LOOKUP_ERROR = 1,
+	LDMS_LOOKUP_OK = 0,
+	LDMS_LOOKUP_NOTIFY = 1,
+};
+
 /**
  * \brief Prototype for the function called when lookup completes.
  *
  * This function is called when the lookup completes.
  *
  * \param t	 The transport endpoint.
- * \param status 0 if the lookup was successful, ENOENT if the
+ * \param status LDMS_LOOKUP_0 if the lookup was successful, ENOENT if the
  *		 specified set does not exist, ENOMEM if there is insufficient
  *		 memory to instantiate the set locally.
  * \param s	 The metric set handle.
  * \param cb_arg The callback argument specified in the call to \c ldms_lookup.
  */
-typedef void (*ldms_lookup_cb_t)(ldms_t t, int status, ldms_set_t s, void *arg);
+typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
+				 ldms_set_t s, void *arg);
 
 #define LDMS_SET_F_MEMMAP	0x0001
 #define LDMS_SET_F_FILEMAP	0x0002
@@ -421,6 +429,15 @@ extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  * \returns	An error indicating why the listen failed.
  */
 extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
+/**
+ * \brief Close a connection to an LDMS host.
+ *
+ * \param x	The transport handle
+ * \returns	0 if the connection was closed.
+ * \returns	!0 if the transport handle is not valid or not connected.
+ */
+extern int ldms_close(ldms_t x);
+
 /** \} */
 
 /**
@@ -521,7 +538,7 @@ void ldms_dir_cancel(ldms_t t);
  * This function queries the peer for the set of published metric sets.
  * The caller specifies the callback function to invoke when the
  * directory has been returned by the peer. If the caller specifies
- * the \c LDMS_DIR_COHERENT flag, the callback function will be
+ * the \c LDMS_DIR_F_NOTIFY flag, the callback function will be
  * invoked whenever the peer updates its set of published metrics.
  *
  * See the ldms_dir_cancel function to cancel directory updates.
@@ -531,11 +548,12 @@ void ldms_dir_cancel(ldms_t t);
  *		 returned by the peer.
  * \param cb_arg A user context that will be provided as a parameter
  *		 to the \c cb function.
- * \param flags	 If set to LDMS_DIR_COHERENT, the specified callback
+ * \param flags	 If set to LDMS_DIR_F_NOTIFY, the specified callback
  *		 function will be invoked whenever the directory changes on the
  *		 peer. 
  * \returns	0 if the query was submitted successfully
  */
+#define LDMS_DIR_F_NOTIFY	1
 extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
 #define LDMS_XPRT_LIBPATH_DEFAULT "/lib64/"
@@ -930,6 +948,18 @@ static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
 	}
 	m->set->data->gn++;
 }
+
+/**
+ * \brief Set the value of a metric and notify
+ *
+ * This function is identical to \c ldms_set_metric, except that in
+ * addition to setting the value of the metric, it notifies registered
+ * listeners by calling the ldms_dir callback function.
+ *
+ * \param m	The metric handle.
+ * \param v	An ldms_value union specifying the value.
+ */
+void ldms_set_metric_notify(ldms_metric_t m, union ldms_value *v);
 
 /**
  * \brief Set the value of a metric.

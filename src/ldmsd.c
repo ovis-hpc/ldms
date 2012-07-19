@@ -64,6 +64,7 @@
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "un.h"
+#include "../config.h"
 
 #define LDMSD_SOCKNAME "/var/run/ldmsd/metric_socket"
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
@@ -1428,7 +1429,7 @@ int main(int argc, char *argv[])
 	if (!logfile)
 		logfile = LDMSD_LOGFILE;
 
-	ldms_log("Started LDMS Daemon version 1.0\n");
+	ldms_log("Started LDMS Daemon version " VERSION "\n");
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 	if (sockname) {
@@ -1445,14 +1446,16 @@ int main(int argc, char *argv[])
 		/* Bind to our public name */
 		ret = bind(muxr_s, (struct sockaddr *)&sun, sizeof(struct sockaddr_un));
 		if (ret < 0) {
-			ldms_log("Error %d binding to socket named '%s'.\n", ret, sockname);
+			ldms_log("Error %d binding to socket named '%s'.\n",
+				 ret, sockname);
 			cleanup(5);
 		}
 		bind_succeeded = 1;
 
 		ret = pthread_create(&un_thread, NULL, un_thread_proc, 0);
 		if (ret) {
-			ldms_log("Error %d creating the socket named '%s'.\n", ret, sockname);
+			ldms_log("Error %d creating the socket named '%s'.\n",
+				 ret, sockname);
 			cleanup(6);
 		}
 	}

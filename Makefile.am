@@ -12,10 +12,6 @@ noinst_LIBRARIES = libun.a
 libun_a_SOURCES = src/libun.c
 libun_a_DEPENDENCIES = src/un.h
 
-if HAVE_SPINLOCK_T
-SPINLOCK_FLAGS = -DHAVE_SPINLOCK_T
-endif
-
 if ENABLE_RDMA
 src_libldmsrdma_la_SOURCES = src/ldms_rdma.c
 src_libldmsrdma_la_LIBADD = -libverbs -lrdmacm

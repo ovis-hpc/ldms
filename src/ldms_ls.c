@@ -268,6 +268,8 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	case LDMS_DIR_ADD:
 		add_set(t, _dir);
 		break;
+	default:
+		printf("Bad directory type %d\n", _dir->type);
 	}
 	pthread_mutex_unlock(&dir_lock);
 	ldms_dir_release(t, _dir);
@@ -323,7 +325,7 @@ int main(int argc, char *argv[])
 		usage(argv);
 
 	/* If they specify a host name change the default transport to socket */
-	if (0 != strcmp(hostname, "localhost") && strcmp(xprt, "local"))
+	if (0 != strcmp(hostname, "localhost") && 0 == strcmp(xprt, "local"))
 		xprt = "sock";
 	h = gethostbyname(hostname);
 	if (!h) {
@@ -380,7 +382,9 @@ int main(int argc, char *argv[])
 		 * directory and call our ldms_dir callback
 		 * function
 		 */
-		struct ldms_dir_s *dir = calloc(1, sizeof(*dir) + ((argc - optind) * sizeof (char *)));
+		struct ldms_dir_s *dir =
+			calloc(1, sizeof(*dir) +
+			       ((argc - optind) * sizeof (char *)));
 		if (!dir) {
 			perror("ldms: ");
 			exit(2);
@@ -433,6 +437,6 @@ int main(int argc, char *argv[])
 			pthread_cond_wait(&upd_cv, &upd_lock);
 		pthread_mutex_unlock(&upd_lock);
 	}
-
+	ldms_close(ldms);
 	exit(0);
 }

@@ -72,7 +72,7 @@ void default_log(const char *fmt, ...)
 #define TF()
 #endif
 
-pthread_spinlock_t xprt_list_lock;
+pthread_mutex_t xprt_list_lock;
 
 int do_wait(struct ldms_context *ctxt)
 {
@@ -98,9 +98,9 @@ static inline struct ldms_xprt *ldms_xprt_get_(struct ldms_xprt *x)
 ldms_t ldms_xprt_get(ldms_t _x)
 {
 	struct ldms_xprt *x;
-	pthread_spin_lock(&xprt_list_lock);
+	pthread_mutex_lock(&xprt_list_lock);
 	x = (ldms_t)ldms_xprt_get_((struct ldms_xprt *)_x);
-	pthread_spin_unlock(&xprt_list_lock);
+	pthread_mutex_unlock(&xprt_list_lock);
 	return x;
 }
 
@@ -109,13 +109,13 @@ ldms_t ldms_xprt_first()
 {
 	struct ldms_xprt *x;
 	ldms_t x_ = NULL;
-	pthread_spin_lock(&xprt_list_lock);
+	pthread_mutex_lock(&xprt_list_lock);
 	x = LIST_FIRST(&xprt_list);
 	if (!x)
 		goto out;
 	x_ = (ldms_t)ldms_xprt_get_(x);
  out:
-	pthread_spin_unlock(&xprt_list_lock);
+	pthread_mutex_unlock(&xprt_list_lock);
 	return x_;
 }
 
@@ -123,7 +123,7 @@ ldms_t ldms_xprt_next(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	_x = NULL;
-	pthread_spin_lock(&xprt_list_lock);
+	pthread_mutex_lock(&xprt_list_lock);
 	if (x->xprt_link.le_next == xprt_list.lh_first)
 		goto out;
 	x = x->xprt_link.le_next;
@@ -131,7 +131,7 @@ ldms_t ldms_xprt_next(ldms_t _x)
 		goto out;
 	_x = (ldms_t)ldms_xprt_get_(x);
  out:
-	pthread_spin_unlock(&xprt_list_lock);
+	pthread_mutex_unlock(&xprt_list_lock);
 	return _x;
 }
 
@@ -239,7 +239,7 @@ void ldms_xprt_close(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	int close = 0;
-	pthread_spin_lock(&xprt_list_lock);
+	pthread_mutex_lock(&xprt_list_lock);
 	if (!x->closed) {
 		close = 1;
 		x->connected = 0;
@@ -247,7 +247,7 @@ void ldms_xprt_close(ldms_t _x)
 	}
 	/* Cancel any dir updates */
 	x->remote_dir_xid = x->local_dir_xid = 0;
-	pthread_spin_unlock(&xprt_list_lock);
+	pthread_mutex_unlock(&xprt_list_lock);
 
 	if (close) {
 		if (x->close)
@@ -283,14 +283,14 @@ void ldms_release_xprt(ldms_t _x)
 	struct ldms_xprt *x = _x;
 	int destroy = 0;
 
-	pthread_spin_lock(&xprt_list_lock);
+	pthread_mutex_lock(&xprt_list_lock);
 	assert(x->ref_count);
 	x->ref_count--;
 	if (!x->ref_count) {
 		destroy = 1;
 		LIST_REMOVE(x, xprt_link);
 	}
-	pthread_spin_unlock(&xprt_list_lock);
+	pthread_mutex_unlock(&xprt_list_lock);
 	if (destroy)
 		__release_xprt(x);
 }
@@ -588,10 +588,10 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
  out:
 	if (ctxt->dir.cb)
 		ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
-	pthread_spin_lock(&x->lock);
+	pthread_mutex_lock(&x->lock);
 	if (!x->local_dir_xid)
 		free(ctxt);
-	pthread_spin_unlock(&x->lock);
+	pthread_mutex_unlock(&x->lock);
 }
 
 void ldms_dir_release(ldms_t t, ldms_dir_t d)
@@ -708,16 +708,17 @@ ldms_t ldms_create_xprt(const char *name, void (*log)(const char *fmt, ...))
 	x->remote_dir_xid = x->local_dir_xid = 0;
 	char tmp[32] = "io_ctxt.XXXXXX";
 	x->io_ctxt.sem_p = sem_open(mktemp(tmp), O_CREAT, 0666, 0);
+	sem_unlink(tmp);
 	if (!x->io_ctxt.sem_p) {
 		log("Could not create semaphore, errno %d", errno);
-		exit(1);
+		ret = ENOMEM;
+		goto err;
 	}
-	sem_unlink(tmp);
 	x->log = log;
-	pthread_spin_init(&x->lock, 0);
-	pthread_spin_lock(&xprt_list_lock);
+	pthread_mutex_init(&x->lock, 0);
+	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
-	pthread_spin_unlock(&xprt_list_lock);
+	pthread_mutex_unlock(&xprt_list_lock);
 	return x;
  err:
 	if (x)
@@ -789,7 +790,7 @@ int ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	if (alloc_req_ctxt(&req, &ctxt))
 		return ENOMEM;
 
-	pthread_spin_lock(&x->lock);
+	pthread_mutex_lock(&x->lock);
 	/* If a dir has previously been done and updates were asked
 	 * for, free that cached context */
 	if (x->local_dir_xid) {
@@ -801,7 +802,7 @@ int ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	ctxt->dir.cb_arg = cb_arg;
 	if (flags)
 		x->local_dir_xid = (uint64_t)ctxt;
-	pthread_spin_unlock(&x->lock);
+	pthread_mutex_unlock(&x->lock);
 
 	return x->send(x, req, len);
 }
@@ -817,11 +818,11 @@ void ldms_remote_dir_cancel(ldms_t _x)
 	if (alloc_req_ctxt(&req, &ctxt))
 		return;
 
-	pthread_spin_lock(&x->lock);
+	pthread_mutex_lock(&x->lock);
 	if (x->local_dir_xid)
 		free((void *)(unsigned long)x->local_dir_xid);
 	x->local_dir_xid = 0;
-	pthread_spin_unlock(&x->lock);
+	pthread_mutex_unlock(&x->lock);
 
 	len = format_dir_cancel_req(req);
 	x->send(x, req, len);
@@ -856,7 +857,7 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 	int rc = -1;
 	struct ldms_xprt *x = _x;
 
-	pthread_spin_lock(&x->lock);
+	pthread_mutex_lock(&x->lock);
 	if (x->connected) {
 		errno = EBUSY;
 		goto out;
@@ -868,7 +869,24 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 		x->connected = 1;
 
  out:
-	pthread_spin_unlock(&x->lock);
+	pthread_mutex_unlock(&x->lock);
+	return rc;
+}
+
+int ldms_close(ldms_t _x)
+{
+	int rc = -1;
+	struct ldms_xprt *x = _x;
+
+	pthread_mutex_lock(&x->lock);
+	if (!x->connected) {
+		errno = ENOTCONN;
+		goto out;
+	}
+	x->close(x);
+	rc = 0;
+ out:
+	pthread_mutex_unlock(&x->lock);
 	return rc;
 }
 
@@ -927,15 +945,9 @@ struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set
 
 void __attribute__ ((constructor)) cs_init(void)
 {
-	pthread_spin_init(&xprt_list_lock, 0);
+	pthread_mutex_init(&xprt_list_lock, 0);
 }
 
 void __attribute__ ((destructor)) cs_term(void)
 {
-	struct ldms_xprt *x;
-	while (!LIST_EMPTY(&xprt_list)) {
-		       x = LIST_FIRST(&xprt_list);
-		       LIST_REMOVE(x, xprt_link);
-		       __release_xprt(x);
-	}
 }

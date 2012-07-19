@@ -102,17 +102,6 @@ static void sock_xprt_close(struct ldms_xprt *x)
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
 
 	release_buf_event(s);
-#if 0
-	struct sockaddr_in *lsin = (struct sockaddr_in *)&x->local_ss;
-	struct sockaddr_in *rsin = (struct sockaddr_in *)&x->remote_ss;
-	char la[32];
-	char ra[32];
-	strcpy(la, inet_ntoa(lsin->sin_addr));
-	strcpy(ra, inet_ntoa(rsin->sin_addr));
-	x->log("Closed   local %s:%d remote %s:%d\n",
-	       la, ntohs(lsin->sin_port),
-	       ra, ntohs(rsin->sin_port));
-#endif
 	close(s->sock);
 	s->sock = 0;
 }

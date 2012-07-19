@@ -1,12 +1,12 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT(ldms-utils, 1.0.0, tom@ogc.us)
+AC_INIT(ldms-utils, 2.0.0, tom@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(ldms-utils, 1.0.0)
+AM_INIT_AUTOMAKE(ldms-utils, 2.0.0)
 AM_PROG_LIBTOOL
 
 AC_ARG_ENABLE(papi, [  --disable-papi     Disable the PAPI plugin],
@@ -71,9 +71,6 @@ dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  ldms-utils requires libpthread.]))
 
-dnl Check for pthread mutex/spinlock support
-AC_CHECK_LIB(pthread, pthread_spin_init, [], [])
-
 dnl Checks for libraries
 if test "$disable_rdma" != "yes"
 then
@@ -115,7 +112,6 @@ AM_CONDITIONAL([ENABLE_SOCK], [test "$disable_sock" != "yes"])
 AM_CONDITIONAL([ENABLE_MMAP], [test "$disable_mmap" != "yes"])
 AM_CONDITIONAL([ENABLE_PERF], [test "$disable_perf" != "yes"])
 AM_CONDITIONAL([ENABLE_MYSQL], [test "$disable_mysql" != "yes"])
-AM_CONDITIONAL([HAVE_SPINLOCK_T],[test "$ac_cv_lib_pthread_pthread_spin_init" = "yes"])
 AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
 AC_CONFIG_FILES([Makefile ldms-utils.spec])
 AC_OUTPUT

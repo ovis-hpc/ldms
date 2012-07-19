@@ -83,7 +83,6 @@ enum rdma_conn_status {
 	CONN_IDLE = 0,
 	CONN_CONNECTING,
 	CONN_CONNECTED,
-	CONN_CLOSING,
 	CONN_CLOSED
 };
 
@@ -94,7 +93,6 @@ struct ldms_rdma_xprt {
 	struct ldms_xprt *xprt;
 	int server;			/* 0 iff client */
 	enum rdma_conn_status conn_status;
-	pthread_t cq_thread;
 	struct ibv_comp_channel *cq_channel;
 	struct ibv_cq *cq;
 	struct ibv_pd *pd;
@@ -109,11 +107,11 @@ struct ldms_rdma_xprt {
 
 	/* CM stuff */
 	pthread_t server_thread;
-	pthread_t cm_thread;
 	struct rdma_event_channel *cm_channel;
 	struct rdma_cm_id *cm_id;	/* connection on client side,
 					 * listener on service side. */
 
+	pthread_mutex_t lock;
 	LIST_ENTRY(ldms_rdma_xprt) client_link;
 };
 

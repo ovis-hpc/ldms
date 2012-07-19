@@ -48,13 +48,6 @@
 //#include "ldms_config.h"
 #include "config.h"
 
-#ifndef HAVE_SPINLOCK_T
-#  define pthread_spinlock_t pthread_mutex_t
-#  define pthread_spin_init pthread_mutex_init
-#  define pthread_spin_lock pthread_mutex_lock
-#  define pthread_spin_unlock pthread_mutex_unlock
-#endif // HAVE_SPINLOCK_T
-
 enum ldms_rbuf_type {
 	LDMS_RBUF_LOCAL,	/* This is a buffer being served to remote peers */
 	LDMS_RBUF_REMOTE,	/* This buffer is a data sink for a remote buffer */
@@ -181,7 +174,7 @@ struct ldms_xprt {
 	struct sockaddr_storage local_ss;
 	struct sockaddr_storage remote_ss;
 	socklen_t ss_len;
-	pthread_spinlock_t lock;
+	pthread_mutex_t lock;
 	int connected;
 	int closed;
 	uint64_t local_dir_xid;
