@@ -142,6 +142,21 @@ typedef void *ldms_metric_t;
  * \li \b ldms_set_metric() Set the value of a metric.
  * \li \b ldms_get_XXX() Get the value of a metric where the XXX
  * specifies the data type
+ *
+ * \section notification Push Notifications
+ *
+ * Nominally, LDMS is a pull oriented transport, i.e. the Metric Set
+ * consumer calls a function to pull the data from the provider and
+ * update it's local copy of the data. There is, however, a way for
+ * the producer to initiate communication using Notifications.
+ *
+ * \li \b ldms_register_notify_cb() Register a callback function to be
+ * called when Notification Events are received for a particular
+ * Metric Set.
+ * \li \b ldms_cancel_notify() Stop receiving notification events for
+ * a metric set.
+ * \li \b ldms_notify() Send a notification event to all consumers
+ * registered to receive events on a metric set.
  */
 
 /**
@@ -338,6 +353,9 @@ enum ldms_lookup_status {
 typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 				 ldms_set_t s, void *arg);
 
+/*
+ * Values for the flags field in the ldms_set structure below.
+ */
 #define LDMS_SET_F_MEMMAP	0x0001
 #define LDMS_SET_F_FILEMAP	0x0002
 #define LDMS_SET_F_LOCAL	0x0004
@@ -471,7 +489,7 @@ extern int ldms_close(ldms_t x);
  * \param x	 The transport handle
  * \param cb_arg The callback argument specified in the call to \c ldms_dir
  * \param status If zero, the query was successful, ENOMEM indicates
- *		 that there was insufficient memory available to build the 
+ *		 that there was insufficient memory available to build the
  *		 directory.
  * \param dir	 Pointer to an ldms_dir_s structure on success, NULL
  *		 otherwise.
@@ -550,7 +568,7 @@ void ldms_dir_cancel(ldms_t t);
  *		 to the \c cb function.
  * \param flags	 If set to LDMS_DIR_F_NOTIFY, the specified callback
  *		 function will be invoked whenever the directory changes on the
- *		 peer. 
+ *		 peer.
  * \returns	0 if the query was submitted successfully
  */
 #define LDMS_DIR_F_NOTIFY	1
@@ -711,7 +729,7 @@ uint64_t ldms_get_meta_gn(ldms_set_t s);
  * \brief Get the metric data generation number.
  *
  * A metric set has a \c generation number that chnages when metric
- * values are modified. 
+ * values are modified.
  *
  * \param s	The ldms_set_t handle.
  * \returns	The 64bit data generation number.
@@ -949,17 +967,6 @@ static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
 	m->set->data->gn++;
 }
 
-/**
- * \brief Set the value of a metric and notify
- *
- * This function is identical to \c ldms_set_metric, except that in
- * addition to setting the value of the metric, it notifies registered
- * listeners by calling the ldms_dir callback function.
- *
- * \param m	The metric handle.
- * \param v	An ldms_value union specifying the value.
- */
-void ldms_set_metric_notify(ldms_metric_t m, union ldms_value *v);
 
 /**
  * \brief Set the value of a metric.
@@ -1176,9 +1183,146 @@ static inline int32_t ldms_get_s32(ldms_metric_t _m) {
 static inline int64_t ldms_get_s64(ldms_metric_t _m) {
 	return ((struct ldms_metric *)_m)->value->v_s64;
 }
+extern void ldms_print_set_metrics(ldms_set_t _set);
 /** \} */
 
-extern void ldms_print_set_metrics(ldms_set_t _set);
+/**
+ * \addtogroup notify LDMS Notifications
+ *
+ * These functions are used register for and deliver Notification
+ * Events.
+ * \{
+ */
+
+/**
+ * \brief Notification event type
+ *
+ * The ldms_notify_event_t should be initialized using one of the
+ * following functions:
+ *
+ * * ldms_init_notify_modified
+ * * ldms_init_notify_user_data
+ *
+ */
+typedef struct ldms_notify_event_s {
+	enum ldms_notify_event_type {
+		LDMS_SET_MODIFIED = 1,
+		LDMS_USER_DATA = 2,
+	} type;			/*! Specifies the type of event  */
+	size_t len;		/*! The size of the event in bytes */
+	union {
+		unsigned char u_data[0];/*! User-data for the LDMS_USER_DATA
+					  type */
+	};
+} *ldms_notify_event_t;
+
+/**
+ * \brief Initialize a SET_MODIFIED notification
+ *
+ * \param e	Pointer to the event
+ */
+static inline void
+ldms_init_notify_modified(ldms_notify_event_t e) {
+	e->type = LDMS_SET_MODIFIED;
+	e->len = sizeof(struct ldms_notify_event_s);
+}
+
+/**
+ * \brief Initialize a USER_DATA notification
+ *
+ * \param s	The set handle
+ * \param e	Pointer to the event
+ * \param u_data Pointer to the user-data
+ * \param sz	Length of the user-data in bytes
+ */
+static inline void
+ldms_init_notify_user_data(ldms_notify_event_t e,
+			   unsigned char *u_data, size_t sz)
+{
+	e->type = LDMS_USER_DATA;
+	e->len = sizeof(struct ldms_notify_event_s) + sz;
+	memcpy(e->u_data, u_data, sz);
+}
+
+/**
+ * \brief Nofication callback handler function
+ *
+ * This is the function protototype for registered notification
+ * handlers.
+ *
+ * \param x The transport endpoint.
+ * \param s The metric set handle
+ * \param e The notification event
+ * \param arg The user-supplied argument provided when the callback
+ *	      was registered.
+ */
+typedef void (*ldms_notify_cb_t)(ldms_t x, ldms_set_t s,
+				 ldms_notify_event_t e, void *arg);
+
+/**
+ * \brief Register callback handler to receive update notifications
+ *
+ * If the metric set producer supports update notifications, the
+ * registered callback handler is invoked when the producer calls the
+ * \c ldms_notify service.
+ *
+ * \param x	The transport endpoint.
+ * \param s	The metric set handle
+ * \param flags	The events of interest. 0 means all events.
+ * \param cb_fn	Pointer to the function to call to receive
+ *		notifications
+ * \param cb_arg User-supplied argument to the cb_fn function.
+ *
+ * \returns 0 on success
+ * \returns !0 on failure. Refer to \c errno for error details
+ */
+int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
+			    ldms_notify_cb_t cb_fn, void *cb_arg);
+
+/**
+ * \brief Release the resources consumed by an event
+ *
+ * This function is called by the application to release the resources
+ * used by an ldms_notify_event_t.
+ *
+ * \param t	 The transport handle
+ * \param dir	 Pointer to an ldms_notify_event_t structure to be released.
+ */
+void ldms_event_release(ldms_t x, ldms_notify_event_t e);
+
+/**
+ * \brief Cancel notifications
+ *
+ * Cancel notifications for a metric set
+ *
+ * \param x	The transport endpoint.
+ * \param s	The metric set handle
+ * \returns 0	Success
+ * \returns !0	An error was encountered. See errno for details.
+ */
+int ldms_cancel_notify(ldms_t x, ldms_set_t s);
+
+/**
+ * \brief Notify registered clients
+ *
+ * Notify clients that have registered callback handlers that the
+ * metric set has been modified. Note that this will unconditionally
+ * notify the clients whether or not a change has been made to the
+ * metric set. The expected usage is:
+ *
+ *    ldms_set_metric(m0, ...);
+ *    ldms_set_metric(m1, ...);
+ *    ldms_set_metric(m2, ...);
+ *    ...
+ *    ldms_notify(s);
+ *
+ * \param s	The metric set handle.
+ * \param e	The event
+ */
+void ldms_notify(ldms_set_t s, ldms_notify_event_t e);
+/**
+ * \}
+ */
 
 #ifdef __cplusplus
 }

@@ -73,7 +73,7 @@
 #define MAXMETRICS 2048
 #define MAXMETRICNAME 128
 
-#define FMT "H:i:C:l:S:s:x:T:M:t:vFk"
+#define FMT "H:i:C:l:S:s:x:T:M:t:vFkN"
 char myhostname[80];
 int setno;
 int foreground;
@@ -84,6 +84,7 @@ pthread_t relay_thread = (pthread_t)-1;
 char *test_set_name;
 int test_set_count=1;
 int test_metric_count=1;
+int notify=0;
 int muxr_s = -1;
 char *logfile;
 char *sockname = NULL;
@@ -173,7 +174,9 @@ void usage(char *argv[])
 	printf("    -v             Verbose mode, i.e. print requests as they are processed.\n"
 	       "                   [false].\n");
 	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
-	printf("    -T set_name    Create a test set with the specified name.\n");
+	printf("    -t count       Number of test sets to create.\n");
+	printf("    -T set_name    Test set prefix.\n");
+	printf("    -N             Notify registered monitors of the test metric sets\n");
 	printf("    -t set_count   Create set_count instances of set_name.\n");
 	cleanup(1);
 }
@@ -984,7 +987,7 @@ int process_record(int fd,
  */
 
 int sample_interval = 2000000;
-void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
+void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s, void *arg)
 {
 	struct hostset *hset = arg;
 	if (status)
@@ -1345,6 +1348,9 @@ int main(int argc, char *argv[])
 		case 't':
 			test_set_count = atoi(optarg);
 			break;
+		case 'N':
+			notify = 1;
+			break;
 		case 'M':
 			test_metric_count = atoi(optarg);
 			break;
@@ -1391,6 +1397,7 @@ int main(int argc, char *argv[])
 			myhostname[0] = '\0';
 	}
 
+	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
 	ldms_metric_t *test_metrics = calloc(test_set_count, sizeof(ldms_metric_t));
 	if (!test_metrics) {
 		ldms_log("Could not create test_metrics table to contain %d items\n",
@@ -1407,6 +1414,7 @@ int main(int argc, char *argv[])
 			sprintf(test_set_name_no, "%s/%s_%d",
 				myhostname, test_set_name, set_no);
 			ldms_create_set(test_set_name_no, 2048, 2048, &test_set);
+			test_sets[set_no-1] = test_set;
 			if (test_metric_count > 0){
 				m = ldms_add_metric(test_set, "component_id",
 						    LDMS_V_U64);
@@ -1476,8 +1484,14 @@ int main(int argc, char *argv[])
 				break;
 			}
 		}
-		for (set_no = 0; set_no < test_set_count; set_no++)
+		for (set_no = 0; set_no < test_set_count; set_no++) {
 			ldms_set_u64(test_metrics[set_no], count);
+			if (notify) {
+				struct ldms_notify_event_s event;
+				ldms_init_notify_modified(&event);
+				ldms_notify(test_sets[set_no], &event);
+			}
+		}
 		count++;
 		usleep(sample_interval);
 	} while (1);

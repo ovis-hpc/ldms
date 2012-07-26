@@ -205,6 +205,36 @@ static void send_dir_update(struct ldms_xprt *x,
 	return;
 }
 
+static void send_req_notify_reply(struct ldms_xprt *x,
+				  struct ldms_set *set,
+				  uint64_t xid,
+				  ldms_notify_event_t e)
+{
+	size_t len;
+	int rc = 0;
+	struct ldms_reply *reply;
+
+	len = sizeof(struct ldms_reply_hdr) + e->len;
+	reply = malloc(len);
+	if (!reply) {
+		x->log("Memory allocation failure "
+		       "in notify of peer.\n");
+		return;
+	}
+
+	reply->hdr.xid = xid;
+	reply->hdr.cmd = htonl(LDMS_CMD_REQ_NOTIFY_REPLY);
+	reply->hdr.rc = htonl(rc);
+	reply->hdr.len = htonl(len);
+	if (e->len > sizeof(struct ldms_notify_event_s))
+		memcpy(reply->req_notify.event.u_data, e,
+		       e->len - sizeof(struct ldms_notify_event_s));
+
+	x->send(x, reply, len);
+	free(reply);
+	return;
+}
+
 static void _dir_update(const char *set_name, enum ldms_dir_type t)
 {
 	struct ldms_xprt *x;
@@ -312,7 +342,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		rc = ENOMEM;
 		reply = &reply_;
 		len = sizeof(struct ldms_reply_hdr);
-		goto err_out;
+		goto out;
 	}
 	rc = ldms_get_local_set_list(reply->dir.set_list,
 				     set_list_sz,
@@ -327,7 +357,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	else
 		/* Cancel any previous dir update */
 		x->remote_dir_xid = 0;
- err_out:
+ out:
 	reply->hdr.xid = req->hdr.xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->hdr.rc = htonl(rc);
@@ -341,10 +371,28 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	return;
 }
 
-static void process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
+static void
+process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	x->remote_dir_xid = 0;
-	return;
+}
+
+static void
+process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
+{
+
+	struct ldms_rbuf_desc *r = (struct ldms_rbuf_desc *)req->req_notify.set_id;
+
+	r->remote_notify_xid = req->hdr.xid;
+	r->notify_flags = ntohl(req->req_notify.flags);
+}
+
+static void
+process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
+{
+	struct ldms_rbuf_desc *r =
+		(struct ldms_rbuf_desc *)req->cancel_notify.set_id;
+	r->remote_notify_xid = 0;
 }
 
 static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req)
@@ -385,6 +433,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	reply->hdr.rc = 0;
 	reply->lookup.xprt_data_len = htonl(rbd->xprt_data_len);
 	memcpy(reply->lookup.xprt_data, rbd->xprt_data, rbd->xprt_data_len);
+	reply->lookup.set_id = (uint64_t)(unsigned long)rbd;
 	reply->lookup.meta_len = htonl(set->meta->meta_size);
 	reply->lookup.data_len = htonl(set->meta->data_size);
 
@@ -490,6 +539,12 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	case LDMS_CMD_DIR_CANCEL:
 		process_dir_cancel_request(x, req);
 		break;
+	case LDMS_CMD_REQ_NOTIFY:
+		process_req_notify_request(x, req);
+		break;
+	case LDMS_CMD_CANCEL_NOTIFY:
+		process_cancel_notify_request(x, req);
+		break;
 	case LDMS_CMD_UPDATE:
 		break;
 	default:
@@ -541,6 +596,7 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		goto out_1;
 
 	sd->rbd = rbd;
+	rbd->remote_set_id = reply->lookup.set_id;
 	rc = 0;
 	goto out;
 
@@ -568,8 +624,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (rc)
 		goto out;
 	dir = malloc(sizeof (*dir) +
-		     (count * sizeof(char *)) +
-		     len);
+		     (count * sizeof(char *)) + len);
 	rc = ENOMEM;
 	if (!dir)
 		goto out;
@@ -594,9 +649,37 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	pthread_mutex_unlock(&x->lock);
 }
 
+void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+			      struct ldms_context *ctxt)
+{
+	ldms_notify_event_t event;
+	size_t len = ntohl(reply->req_notify.event.len);
+	event = malloc(len);
+	if (!event)
+		return;
+
+	event->type = ntohl(reply->req_notify.event.type);
+	event->len = ntohl(reply->req_notify.event.len);
+
+	if (len > sizeof(struct ldms_notify_event_s))
+		memcpy(event->u_data,
+		       &reply->req_notify.event.u_data,
+		       len - sizeof(struct ldms_notify_event_s));
+
+	if (ctxt->req_notify.cb)
+		ctxt->req_notify.cb((ldms_t)x,
+				    ctxt->req_notify.s,
+				    event, ctxt->dir.cb_arg);
+}
+
 void ldms_dir_release(ldms_t t, ldms_dir_t d)
 {
 	free(d);
+}
+
+void ldms_event_release(ldms_t t, ldms_notify_event_t e)
+{
+	free(e);
 }
 
 static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
@@ -611,6 +694,9 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 		break;
 	case LDMS_CMD_DIR_REPLY:
 		process_dir_reply(x, reply, ctxt);
+		break;
+	case LDMS_CMD_REQ_NOTIFY_REPLY:
+		process_req_notify_reply(x, reply, ctxt);
 		break;
 	default:
 		x->log("Unrecognized reply %d\n", cmd);
@@ -763,6 +849,31 @@ size_t format_dir_cancel_req(struct ldms_request *req)
 	return len;
 }
 
+size_t format_req_notify_req(struct ldms_request *req,
+			     uint64_t xid,
+			     uint64_t set_id,
+			     uint64_t flags)
+{
+	size_t len = sizeof(struct ldms_request_hdr)
+		+ sizeof(struct ldms_req_notify_cmd_param);
+	req->hdr.xid = xid;
+	req->hdr.cmd = htonl(LDMS_CMD_REQ_NOTIFY);
+	req->hdr.len = htonl(len);
+	req->req_notify.set_id = set_id;
+	req->req_notify.flags = flags;
+	return len;
+}
+
+size_t format_cancel_notify_req(struct ldms_request *req, uint64_t xid)
+{
+	size_t len = sizeof(struct ldms_request_hdr)
+		+ sizeof(struct ldms_cancel_notify_cmd_param);
+	req->hdr.xid = xid;
+	req->hdr.cmd = htonl(LDMS_CMD_CANCEL_NOTIFY);
+	req->hdr.len = htonl(len);
+	return len;
+}
+
 /*
  * This is the generic allocator for both the request buffer and the
  * context buffer. A single buffer is allocated that is big enough to
@@ -850,6 +961,95 @@ int ldms_remote_lookup(ldms_t _x, const char *path,
 	if (rc)
 		ldms_xprt_close(x);
 	return rc;
+}
+
+static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
+			   ldms_notify_cb_t cb_fn, void *cb_arg)
+{
+	struct ldms_rbuf_desc *r =
+		(struct ldms_rbuf_desc *)
+		((struct ldms_set_desc *)s)->rbd;
+	struct ldms_xprt *x = _x;
+	struct ldms_request *req;
+	struct ldms_context *ctxt;
+	size_t len;
+
+	if (alloc_req_ctxt(&req, &ctxt))
+		return ENOMEM;
+
+	if (r->local_notify_xid) {
+		free((void *)(unsigned long)r->local_notify_xid);
+		r->local_notify_xid = 0;
+	}
+	len = format_req_notify_req(req, (uint64_t)(unsigned long)ctxt,
+				    r->remote_set_id, flags);
+	ctxt->req_notify.cb = cb_fn;
+	ctxt->req_notify.arg = cb_arg;
+	ctxt->req_notify.s = s;
+	r->local_notify_xid = (uint64_t)ctxt;
+
+	return x->send(x, req, len);
+}
+
+int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
+			    ldms_notify_cb_t cb_fn, void *cb_arg)
+{
+	if (!cb_fn)
+		goto err;
+	return send_req_notify(x, s, (uint32_t)flags, cb_fn, cb_arg);
+ err:
+	errno = EINVAL;
+	return -1;
+}
+
+static int send_cancel_notify(ldms_t _x, ldms_set_t s)
+{
+	struct ldms_rbuf_desc *r =
+		(struct ldms_rbuf_desc *)
+		((struct ldms_set_desc *)s)->rbd;
+	struct ldms_xprt *x = _x;
+ 	struct ldms_request *req;
+	size_t len;
+
+	len = format_cancel_notify_req
+		(req, (uint64_t)(unsigned long)r->local_notify_xid);
+	r->local_notify_xid = 0;
+
+	return x->send(x, req, len);
+}
+
+int ldms_cancel_notify(ldms_t t, ldms_set_t s)
+{
+	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
+	if (!set)
+		goto err;
+	return send_cancel_notify(t, s);
+ err:
+	errno = EINVAL;
+	return -1;
+}
+
+void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
+{
+	struct ldms_set *set;
+	struct ldms_rbuf_desc *r;
+	if (!s)
+		return;
+	set = ((struct ldms_set_desc *)s)->set;
+	if (!set)
+		return;
+
+	if (LIST_EMPTY(&set->rbd_list))
+		return;
+
+	LIST_FOREACH(r, &set->rbd_list, set_link) {
+		if (ldms_xprt_closed(r->xprt))
+			continue;
+		if (r->remote_notify_xid)
+			send_req_notify_reply(r->xprt,
+					      set, r->remote_notify_xid,
+					      e);
+	}
 }
 
 int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)

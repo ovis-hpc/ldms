@@ -57,6 +57,10 @@ enum ldms_rbuf_type {
 struct ldms_rbuf_desc {
 	struct ldms_xprt *xprt;
 	struct ldms_set *set;
+	uint64_t remote_set_id;	    /* Remote set id returned by lookup */
+	uint64_t local_notify_xid;  /* Value sent in reg_notify */
+	uint64_t remote_notify_xid; /* Value received in req_notify */
+	uint32_t notify_flags;	    /* What events are notified  */
 	enum ldms_rbuf_type type;
 	uint32_t flags;
 	uint64_t xid;
@@ -72,9 +76,12 @@ enum ldms_request_cmd {
 	LDMS_CMD_DIR_CANCEL,
 	LDMS_CMD_LOOKUP,
 	LDMS_CMD_UPDATE,
+	LDMS_CMD_REQ_NOTIFY,
+	LDMS_CMD_CANCEL_NOTIFY,
 	LDMS_CMD_REPLY,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_LOOKUP_REPLY,
+	LDMS_CMD_REQ_NOTIFY_REPLY,
 	/* Transport private requests set bit 32 */
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
 };
@@ -89,29 +96,37 @@ struct ldms_lookup_cmd_param {
 	char path[LDMS_LOOKUP_PATH_MAX+1];
 };
 
-struct ldms_update_cmd_param {
-	uint64_t set_id;
+struct ldms_dir_cmd_param {
+	uint32_t flags;		/*! Directory update flags */
 };
 
-struct ldms_dir_cmd_param {
-	uint32_t flags;
+struct ldms_req_notify_cmd_param {
+	uint64_t set_id;	/*! The set we want notifications for  */
+	uint32_t flags;		/*! Events we want  */
+};
+
+struct ldms_cancel_notify_cmd_param {
+	uint64_t set_id;	/*! The set we want to cancel notifications for  */
 };
 
 struct ldms_request_hdr {
-	uint64_t xid;
-	uint32_t cmd;
-	uint32_t len;
+	uint64_t xid;		/*! Transaction id returned in reply */
+	uint32_t cmd;		/*! The operation being requested  */
+	uint32_t len;		/*! The length of the request  */
 };
+
 struct ldms_request {
 	struct ldms_request_hdr hdr;
 	union {
 		struct ldms_dir_cmd_param dir;
 		struct ldms_lookup_cmd_param lookup;
-		struct ldms_update_cmd_param update;
+		struct ldms_req_notify_cmd_param req_notify;
+		struct ldms_cancel_notify_cmd_param cancel_notify;
 	};
 };
 
 struct ldms_lookup_reply {
+	uint64_t set_id;	/*! server handle for set */
 	uint32_t meta_len;
 	uint32_t data_len;
 	uint32_t xprt_data_len;
@@ -125,6 +140,10 @@ struct ldms_dir_reply {
 	char set_list[0];
 };
 
+struct ldms_req_notify_reply {
+	struct ldms_notify_event_s event;
+};
+
 struct ldms_reply_hdr {
 	uint64_t xid;
 	uint32_t cmd;
@@ -136,6 +155,7 @@ struct ldms_reply {
 	union {
 		struct ldms_lookup_reply lookup;
 		struct ldms_dir_reply dir;
+		struct ldms_req_notify_reply req_notify;
 	};
 };
 #pragma pack()
@@ -163,6 +183,11 @@ struct ldms_context {
 			ldms_update_cb_t cb;
 			void *arg;
 		} update;
+		struct {
+			ldms_set_t s;
+			ldms_notify_cb_t cb;
+			void *arg;
+		} req_notify;
 	};
 };
 

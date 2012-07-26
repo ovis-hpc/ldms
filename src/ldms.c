@@ -1,4 +1,44 @@
-/* -*- c-basic-offset: 8 -*- */
+/* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the BSD-type
+ * license below:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *      Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *      Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *      Neither the name of the Network Appliance, Inc. nor the names of
+ *      its contributors may be used to endorse or promote products
+ *      derived from this software without specific prior written
+ *      permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * Author: Tom Tucker <tom@opengridcomputing.com>
+ */
 #include <inttypes.h>
 #include <sys/errno.h>
 #include <stdio.h>
@@ -226,7 +266,7 @@ void ldms_get_local_set_list_sz(int *set_count, int *set_list_size)
 	*set_list_size = arg.set_list_len;
 }
 static int __record_set(const char *set_name, ldms_set_t *s,
-                        struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
+			struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
 {
 	struct ldms_set *set;
 	struct ldms_set_desc *sd;
@@ -266,26 +306,26 @@ static int __record_set(const char *set_name, ldms_set_t *s,
 
 int __open_set_file(const char *name, int type, int creat)
 {
-        int fd;
-        int flags = O_RDWR | (creat?O_CREAT:0);
+	int fd;
+	int flags = O_RDWR | (creat?O_CREAT:0);
 
 	if (type == META_FILE)
 		snprintf(__set_path, sizeof(__set_path), "%s/%s.META", __set_dir, name);
 	else
 		snprintf(__set_path, sizeof(__set_path), "%s/%s", __set_dir, name);
-        fd = open(__set_path, flags, 0644);
-        return fd;
+	fd = open(__set_path, flags, 0644);
+	return fd;
 }
 
 void *_open_and_map_file(const char *path, int type, int create, size_t *size)
 {
 	int fd, rc;
-        struct stat stat;
+	struct stat stat;
 	int data = 0;
 	void *p = NULL;
 
-        fd = __open_set_file(path, type, create);
-        if (fd < 0) {
+	fd = __open_set_file(path, type, create);
+	if (fd < 0) {
 		errno = ENOENT;
 		goto err_0;
 	}
@@ -304,7 +344,7 @@ void *_open_and_map_file(const char *path, int type, int create, size_t *size)
 		}
 		*size = stat.st_size;
 	}
-        p = mmap(NULL, *size, PROT_WRITE | PROT_READ,
+	p = mmap(NULL, *size, PROT_WRITE | PROT_READ,
 		 MAP_FILE | MAP_SHARED, fd, 0);
 	if (p == MAP_FAILED) {
 		rc = errno;
@@ -321,18 +361,18 @@ void *_open_and_map_file(const char *path, int type, int create, size_t *size)
 
 static ldms_t __get_xprt(ldms_set_t s)
 {
-        struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
 	return (ldms_t)(sd->rbd?sd->rbd->xprt:0);
 }
 
 int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
 int ldms_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
-        struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
-        if (set->flags & LDMS_SET_F_REMOTE)
-                return ldms_remote_update(__get_xprt(s), s, cb, arg);
+	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
+	if (set->flags & LDMS_SET_F_REMOTE)
+		return ldms_remote_update(__get_xprt(s), s, cb, arg);
 	cb(__get_xprt(s), s, 0, arg);
-        return 0;
+	return 0;
 }
 
 void _release_set(struct ldms_set *set)
@@ -390,12 +430,12 @@ int ldms_lookup(ldms_t _x, const char *path,
 		ldms_lookup_cb_t cb, void *cb_arg)
 {
 	struct ldms_xprt *x = (struct ldms_xprt *)_x;
-        struct ldms_set *set;
+	struct ldms_set *set;
 	ldms_set_t s;
 #ifdef ENABLE_MMAP
-        int rc = ENOMEM;
-        struct ldms_set_hdr *meta;
-        struct ldms_data_hdr *data;
+	int rc = ENOMEM;
+	struct ldms_set_hdr *meta;
+	struct ldms_data_hdr *data;
 	size_t meta_size, data_size;
 	int flags;
 #endif
@@ -403,29 +443,29 @@ int ldms_lookup(ldms_t _x, const char *path,
 		return EINVAL;
 
 	if (strcmp(x->name, "local"))
-                return ldms_remote_lookup(_x, path, cb, cb_arg);
+		return ldms_remote_lookup(_x, path, cb, cb_arg);
 
-        /* See if it's in my process */
-        set = ldms_find_local_set(path);
+	/* See if it's in my process */
+	set = ldms_find_local_set(path);
 #ifndef ENABLE_MMAP
-        if (set) {
-                struct ldms_set_desc *sd = malloc(sizeof *sd);
-                if (!sd)
+	if (set) {
+		struct ldms_set_desc *sd = malloc(sizeof *sd);
+		if (!sd)
 			return ENOMEM;
-                sd->set = set;
-                s = sd;
+		sd->set = set;
+		s = sd;
 		return 0;
 	}
 	return ENODEV;
 #else
-        if (set) {
-                struct ldms_set_desc *sd = malloc(sizeof *sd);
+	if (set) {
+		struct ldms_set_desc *sd = malloc(sizeof *sd);
 		if (!sd)
-                        goto err_0;
-                sd->set = set;
-                s = sd;
-                goto out;
-        }
+			goto err_0;
+		sd->set = set;
+		s = sd;
+		goto out;
+	}
 	meta = _open_and_map_file(path, META_FILE, 0, &meta_size);
 	if (!meta)
 		goto err_0;
@@ -434,12 +474,12 @@ int ldms_lookup(ldms_t _x, const char *path,
 		goto err_1;
 
 	flags = LDMS_SET_F_LOCAL | LDMS_SET_F_FILEMAP;
-        rc = __record_set(path, &s, meta, data, flags);
-        if (rc)
-                goto err_2;
+	rc = __record_set(path, &s, meta, data, flags);
+	if (rc)
+		goto err_2;
  out:
 	cb(_x, 0, s, cb_arg);
-        return 0;
+	return 0;
  err_2:
 #ifdef ENABLE_MMAP
 	munmap(data, data_size);
@@ -453,7 +493,7 @@ int ldms_lookup(ldms_t _x, const char *path,
 	free(data);
 #endif
  err_0:
-        return rc;
+	return rc;
 #endif
 }
 
@@ -521,11 +561,11 @@ int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
 #ifdef ENABLE_MMAP
 	struct ldms_xprt *_x = (struct ldms_xprt *)x;
-        if (0 == strcmp(_x->name, "local"))
+	if (0 == strcmp(_x->name, "local"))
 		return local_dir(x, cb, cb_arg, flags);
 #endif
 
-        return ldms_remote_dir(x, cb, cb_arg, flags);
+	return ldms_remote_dir(x, cb, cb_arg, flags);
 }
 
 void ldms_dir_cancel(ldms_t x)
@@ -535,10 +575,10 @@ void ldms_dir_cancel(ldms_t x)
 
 char *_create_path(const char *set_name)
 {
-        char *dirc = strdup(set_name);
-        char *basec = strdup(set_name);
-        char *dname = dirname(dirc);
-        char *bname = basename(basec);
+	char *dirc = strdup(set_name);
+	char *basec = strdup(set_name);
+	char *dname = dirname(dirc);
+	char *bname = basename(basec);
 	char *p;
 	int tail, rc = 0;
 
@@ -631,7 +671,7 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	vd->name_len = sizeof("<empty>");
 	strcpy(vd->name, "<empty>");
 
-        rc = __record_set(set_name, s, meta, data, flags);
+	rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
 	ldms_dir_add_set(set_name);
@@ -696,7 +736,7 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	vd->name_len = sizeof("<empty>");
 	strcpy(vd->name, "<empty>");
 
-        rc = __record_set(set_name, s, meta, data, flags);
+	rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
 	ldms_dir_add_set(set_name);
@@ -732,8 +772,8 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s)
 	int flags;
 
 	flags = LDMS_SET_F_MEMMAP | LDMS_SET_F_LOCAL;
-        int rc = __record_set(sh->name, s, sh, dh, flags);
-        return rc;
+	int rc = __record_set(sh->name, s, sh, dh, flags);
+	return rc;
 }
 
 static int value_size[] = {
@@ -791,7 +831,7 @@ int ldms_get_metric_size(const char *name, enum ldms_value_type t,
 }
 
 static uint32_t __get_value(struct ldms_set *s, uint32_t off,
-                            struct ldms_value_desc **pvd, union ldms_value **pv)
+			    struct ldms_value_desc **pvd, union ldms_value **pv)
 {
 	*pvd = ldms_ptr_(struct ldms_value_desc, s->meta, off);
 	*pv = ldms_ptr_(union ldms_value, s->data, (*pvd)->data_offset);
@@ -896,21 +936,21 @@ enum ldms_value_type ldms_get_metric_type(ldms_metric_t _m)
 
 ldms_metric_t ldms_get_metric(ldms_set_t _set, const char *name)
 {
-        struct ldms_value_desc *vd;
-        struct ldms_iterator i;
+	struct ldms_value_desc *vd;
+	struct ldms_iterator i;
 
-        for (vd = ldms_first(&i, _set); vd; vd = ldms_next(&i)) {
-                if (0 == strcmp(vd->name, name)) {
-                        struct ldms_metric *m = malloc(sizeof *m);
-                        if (!m)
-                                return NULL;
-                        m->desc = ldms_iter_desc(&i);
-                        m->value = ldms_iter_value(&i);
-                        m->set = ((struct ldms_set_desc *)_set)->set;
-                        return (ldms_metric_t)m;
-                }
+	for (vd = ldms_first(&i, _set); vd; vd = ldms_next(&i)) {
+		if (0 == strcmp(vd->name, name)) {
+			struct ldms_metric *m = malloc(sizeof *m);
+			if (!m)
+				return NULL;
+			m->desc = ldms_iter_desc(&i);
+			m->value = ldms_iter_value(&i);
+			m->set = ((struct ldms_set_desc *)_set)->set;
+			return (ldms_metric_t)m;
+		}
 	}
-        return NULL;
+	return NULL;
 }
 
 void ldms_metric_release(ldms_metric_t m)
@@ -1013,7 +1053,7 @@ ldms_metric_t ldms_add_metric(ldms_set_t _set, const char *name,
 	 * We implement an opportunistic locking scheme as follows:
 	 * - Set the meta_gn to zero. a client who fetches the meta
 	 *   data will recognize that it needs an update and fetch
-	 *   again. 
+	 *   again.
 	 * - A client who fetches the metric data will compare the
 	 *   meta_ga in the data to the cached meta_gn and recognize
 	 *   it needs an update.

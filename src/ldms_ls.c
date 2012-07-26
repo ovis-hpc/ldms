@@ -78,7 +78,7 @@ struct ls_set {
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:i:x:w:lv"
+#define FMT "h:p:i:x:w:lvm"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
@@ -91,6 +91,7 @@ void usage(char *argv[])
 	       "                     localhost unless -h is specified in which case it is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
 	       "                     The default is 10 seconds.\n"
+	       "\n    -m               Receive and print notifications.\n"
 	       "\n    -v               Show detail information about the metric set. Specifying\n"
 	       "                     this option multiple times increases the verbosity.\n",
 	       argv[0]);
@@ -154,8 +155,9 @@ void print_detail(ldms_set_t s)
 	printf("  -----------------\n");
 }
 
-int verbose = 0;
-int long_format = 0;
+static int verbose = 0;
+static int long_format = 0;
+static int monitor = 0;
 
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
@@ -172,7 +174,29 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	pthread_mutex_unlock(&upd_lock);
 }
 
-void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
+void notify_cb(ldms_t t, ldms_set_t s, ldms_notify_event_t event, void *arg)
+{
+	struct ls_set *lss;
+	int ret;
+
+	printf("%s: type %d len %zu set %s\n",
+	       __func__,
+	       event->type, event->len, ldms_get_set_name(s));
+
+	pthread_mutex_lock(&dir_lock);
+	LIST_FOREACH(lss, &set_list, entry) {
+		ret = ldms_update(lss->set, print_cb, NULL);
+		if (ret) {
+			printf("ldms_update returned %d\n",
+			       ret);
+			exit(1);
+		}
+	}
+	pthread_mutex_unlock(&dir_lock);
+}
+
+void lookup_cb(ldms_t t, enum ldms_lookup_status status,
+	       ldms_set_t s, void *arg)
 {
 	struct ls_set *lss;
 	if (status) {
@@ -192,6 +216,9 @@ void lookup_cb(ldms_t t, int status, ldms_set_t s, void *arg)
 	lss->set = s;
 	LIST_INSERT_HEAD(&set_list, lss, entry);
 	pthread_mutex_unlock(&dir_lock);
+
+	if (monitor)
+		ldms_register_notify_cb(t, s, 0, notify_cb, s);
 
 	pthread_mutex_lock(&lu_lock);
 	lu_count++;
@@ -317,6 +344,10 @@ int main(int argc, char *argv[])
 		case 'w':
 			waitsecs = atoi(optarg);
 			break;
+		case 'm':
+			monitor = 1;
+			long_format = 1;
+			break;
 		default:
 			usage(argv);
 		}
@@ -402,7 +433,7 @@ int main(int argc, char *argv[])
 	while (dir_needed != dir_count)
 		ret = pthread_cond_timedwait(&dir_cv, &dir_lock, &ts);
 	pthread_mutex_unlock(&dir_lock);
-	if (ret) 
+	if (ret)
 		server_timeout();
 	/* If we're not monitoring the peer, wait for all lookups to complete */
 	if ((verbose || long_format) && sample_interval < 0) {
@@ -416,20 +447,25 @@ int main(int argc, char *argv[])
 			server_timeout();
 	}
 
-	do {
-		struct ls_set *lss;
-		pthread_mutex_lock(&dir_lock);
-		LIST_FOREACH(lss, &set_list, entry) {
-			ret = ldms_update(lss->set, print_cb, NULL);
-			if (ret) {
-				printf("ldms_update returned %d\n", ret);
-				exit(1);
+	if (monitor) {
+		while(!sleep(1000000));
+	} else {
+		do {
+			struct ls_set *lss;
+			pthread_mutex_lock(&dir_lock);
+			LIST_FOREACH(lss, &set_list, entry) {
+				ret = ldms_update(lss->set, print_cb, NULL);
+				if (ret) {
+					printf("ldms_update returned %d\n",
+					       ret);
+					exit(1);
+				}
 			}
-		}
-		pthread_mutex_unlock(&dir_lock);
-		if (sample_interval > 0)
-			usleep(sample_interval);
-	} while (sample_interval >= 0);
+			pthread_mutex_unlock(&dir_lock);
+			if (sample_interval > 0)
+				usleep(sample_interval);
+		} while (sample_interval >= 0);
+	}
 
 	if ((verbose || long_format) && sample_interval < 0) {
 		pthread_mutex_lock(&upd_lock);
