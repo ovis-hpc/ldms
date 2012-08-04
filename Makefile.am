@@ -3,9 +3,13 @@ ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
 	-I$(includedir)/infiniband 
+#-I/home/brandt/Ann/util/libevent-2.0Build/include
 
-
+if ENABLE_GLIB
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/hwlocldms_ls 
+else
+sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl 
+endif
 
 noinst_LIBRARIES = libun.a
 
