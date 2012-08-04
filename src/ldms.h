@@ -607,7 +607,7 @@ extern int ldms_lookup(ldms_t t, const char *name,
 /** \} */
 
 /**
- * \addtogroup ldms_set LDMS Metric Set Manaegment
+ * \addtogroup ldms_set LDMS Metric Set Management
  *
  * These functions are used to create and destroy local metric sets
  * and to update the contents of remote metric sets.
