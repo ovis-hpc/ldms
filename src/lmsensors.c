@@ -65,7 +65,7 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
-//ldms_metric_t casted_metric_handle;
+ldms_metric_t cast_metric_handle;
 
 static pthread_mutex_t cfg_lock;
 
@@ -79,8 +79,7 @@ static int config(char *str)
 {
   pthread_mutex_lock(&cfg_lock);
 
-  //  if (!set || !compid_metric_handle || !casted_metric_handle) {
-  if (!set || !compid_metric_handle ){
+  if (!set || !compid_metric_handle || !cast_metric_handle) {
     msglog("lmsensors: plugin not initialized\n");
     pthread_mutex_unlock(&cfg_lock);
     return EINVAL;
@@ -101,11 +100,11 @@ static int config(char *str)
   }
 
   //add the val that indicates that it has been cast
-  //  union ldms_value ucastval;
-  //  double dcastval = 1.0;
-  //  uint64_t* upcastval = (uint64_t*) &dcastval;
-  //  ucastval.v_u64 = *upcastval;
-  //  ldms_set_metric(casted_metric_handle, &ucastval);
+  union ldms_value ucastval;
+  double dcastval = 1.0;
+  uint64_t* upcastval = (uint64_t*) &dcastval;
+  ucastval.v_u64 = *upcastval;
+  ldms_set_metric(cast_metric_handle, &ucastval);
 
   pthread_mutex_unlock(&cfg_lock);
   return 0;
@@ -129,9 +128,9 @@ static int init(const char *path)
   pthread_mutex_lock(&cfg_lock);
 
   rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
-  //  rc = ldms_get_metric_size("cast_from_native", LDMS_V_U64, &meta_sz, &data_sz);
-  //  tot_meta_sz += meta_sz;
-  //  tot_data_sz += data_sz;
+  rc = ldms_get_metric_size("cast_from_native", LDMS_V_U64, &meta_sz, &data_sz);
+  tot_meta_sz += meta_sz;
+  tot_data_sz += data_sz;
 
   metric_count = 0;
 
@@ -197,11 +196,11 @@ static int init(const char *path)
     rc = ENOMEM;
     goto err;
   } //compid set in config
-  //  casted_metric_handle = ldms_add_metric(set, "cast_from_native", LDMS_V_U64);
-  //  if (!casted_metric_handle) {
-  //    rc = ENOMEM;
-  //    goto err;
-  //  } //cast_from_native set in config
+  cast_metric_handle = ldms_add_metric(set, "cast_from_native", LDMS_V_U64);
+  if (!cast_metric_handle) {
+    rc = ENOMEM;
+    goto err;
+  } //cast_from_native set in config
 
   int metric_no = 0;
   if (!(fpipe = (FILE*)popen(command,"r"))){
