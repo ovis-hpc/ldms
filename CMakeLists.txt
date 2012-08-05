@@ -145,6 +145,7 @@ set( ldms_INSTALL_TARGETS "${ldms_INSTALL_TARGETS};ldmsd" )
 
 set( ldms_plugins
   meminfo
+  lmsensors
   geminfo
   procinterrupts
   procstatutil

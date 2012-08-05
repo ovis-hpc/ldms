@@ -3,7 +3,6 @@ ACLOCAL_AMFLAGS = -I m4
 
 INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
 	-I$(includedir)/infiniband 
-#-I/home/brandt/Ann/util/libevent-2.0Build/include
 
 if ENABLE_GLIB
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/hwlocldms_ls 
@@ -57,11 +56,6 @@ else
 MYSQL_FLAGS = -DDISABLE_MYSQL
 endif
 
-src_libmeminfo_la_SOURCES = src/meminfo.c
-src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
-src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
-MEMINFO_la = src/libmeminfo.la
-
 if ENABLE_GLIB
 src_libsedc_la_SOURCES = src/sedc.c
 src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map
@@ -83,6 +77,16 @@ src_libgeminfo_la_SOURCES = src/geminfo.c
 src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
 src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 GEMINFO_la = src/libgeminfo.la
+
+src_liblmsensors_la_SOURCES = src/lmsensors.c
+src_liblmsensors_la_DEPENDENCIES = $(srcdir)/src/liblmsensors.map
+src_liblmsensors_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+LMSENSORS_la = src/liblmsensors.la
+
+src_libmeminfo_la_SOURCES = src/meminfo.c
+src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map
+src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+MEMINFO_la = src/libmeminfo.la
 
 src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
 src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map
@@ -109,7 +113,7 @@ endif
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) $(MYSQL_FLAGS) $(GLIB_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
-	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
+	$(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(LMSENSORS_la) $(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la)
 #$(HWLOCFLATFILE_la) 
 
