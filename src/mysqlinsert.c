@@ -75,9 +75,17 @@
 
 #define LOGFILE "/var/log/mysqlinsert.log"
 
+//same as ovis storage types
+enum ovStorageType
+  {
+    ovFLOAT = 0,
+    ovINT = 3
+  };
+
 struct fmetric {
   ldms_metric_t md;
   uint64_t key;		/* component id or whatever else you like. if you change this, change how to get compId below */   //FIXME: check if this has to be unique in the metric set.  
+  enum ovStorageType storageType; /* will have to check this each time to see if have to cast */
   int diffMetric;
   int lastValSet;
   uint64_t lastVal;
@@ -162,7 +170,7 @@ static int remove_set(char *set_name)
 	return 0;
 }
 
-static int add_metric(char *set_name, char *metric_name, uint64_t key, int diff_metric, char* table_name)
+static int add_metric(char *set_name, char *metric_name, uint64_t key, enum ovStorageType st, int diff_metric, char* table_name)
 {
 	ldms_metric_t *md;
 	struct fmetric *metric;
@@ -188,6 +196,7 @@ static int add_metric(char *set_name, char *metric_name, uint64_t key, int diff_
 
 	metric->md = md;
 	metric->key = key;
+	metric->storageType = st;
 	metric->diffMetric = diff_metric;
 	metric->lastValSet = 0;
 	metric->lastVal = 0;
@@ -227,7 +236,7 @@ static int set_dbconfigs()
 }
 
 
-static int createTable(char* ovisMetricName, char* compAssoc, char *tableName){
+static int createTable(char* ovisMetricName, enum ovStorageType st, char* compAssoc, char *tableName){
   //will create a table and the supporting tables, if necessary
   MYSQL_RES *result;
   MYSQL_ROW row;
@@ -257,17 +266,27 @@ static int createTable(char* ovisMetricName, char* compAssoc, char *tableName){
     return -1;
   }
 
+  char storagestring[20];
+  switch (st){
+  case ovFLOAT:
+    sprintf(storagestring,"float");
+    break;
+  default:
+    sprintf(storagestring,"int");
+    break;
+  }
 
   //create table if required
-  snprintf(query1, 4095,"%s%s%s%s%s%s%s",
+  snprintf(query1, 4095,"%s%s%s%s%s%s%s%s%s",
 	   "CREATE TABLE IF NOT EXISTS ",
 	   tableName,
-	   "(`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value`  INT(32) NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), KEY ",
+	   "(`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value` ",
+	   storagestring,
+	   " NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), KEY ",
 	   tableName,
 	   "_Time (`Time` ), KEY ",
 	   tableName,
 	   "_Level (`CompId` ,`Level` ,`Time` ))");
-  
   if (mysql_query(conn, query1) != 0){
     msglog("Cannot query to create table '%s'\n", compAssoc);
     return -1;
@@ -275,11 +294,14 @@ static int createTable(char* ovisMetricName, char* compAssoc, char *tableName){
 
   //create the MetricValueType
   int metrictype = -1;
-  snprintf(query1, 4095, "%s%s%s",
+  snprintf(query1, 4095, "%s%s%s%s%s",
 	   "SELECT ValueType from MetricValueTypes WHERE Name='",
 	   ovisMetricName,
-	   "' AND Units='1' AND Constant=0 AND Storage='int'");
-  //NOTE that storage will be int and not int(32)
+	   "' AND Units='1' AND Constant=0 AND Storage='",
+	   storagestring,
+	   "'");
+  //NOTE that for int, storage will be int and not int(32).  can we support long int in the db and processing?
+
   if (mysql_query(conn, query1) != 0){
     msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
     return -1;
@@ -290,27 +312,30 @@ static int createTable(char* ovisMetricName, char* compAssoc, char *tableName){
     //it could be in there already (more than 1 sampler can provide the same data)
     while((row = mysql_fetch_row(result))){
       metrictype = atoi(row[0]); 
+      //FIXME: check that if it is already in there that it is not in with the wrong type....
       mysql_free_result(result);
       break;
     }
   } else {
     char query2[4096];
     mysql_free_result(result);
-
-    //FIXME: currently we make all ldms metrics long int. can we support long int in the db and processing?
-    // can we have other types for ldms and have them easily discovered?
-    snprintf(query2, 4095, "%s%s%s",
+    snprintf(query2, 4095, "%s%s%s%s%s",
 	     "INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('",
 	     ovisMetricName,
-	     "', '1', 'int', 0)");
+	     "', '1', '",
+	     storagestring,
+	     "', 0)");
     if (mysql_query(conn, query2) !=0){
       msglog("Cannot insert MetricValueType for '%s'\n", ovisMetricName);
       return -1;
     }
-    snprintf(query1, 4095, "%s%s%s",
+
+    snprintf(query1, 4095, "%s%s%s%s%s",
 	     "SELECT ValueType from MetricValueTypes WHERE Name='",
 	     ovisMetricName,
-	     "' AND Units='1' AND Constant=0 AND Storage='int'");
+	     "' AND Units='1' AND Constant=0 AND Storage='",
+	     storagestring,
+	     "'");
     if (mysql_query(conn, query1) != 0){
       msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
       return -1;
@@ -383,6 +408,7 @@ static int createTable(char* ovisMetricName, char* compAssoc, char *tableName){
  * <ul><li>set_name:   The name of the metric set.
  * <li>metric_name:The name of the metric.
  * <li>key:        An unique Id for the Metric. Typically the component_id.
+ * <li>ovStorageType: Eventual type for the metric. Currently 0=float; 3=int.
  * <li>diff_metric: 1 for diff; 0 for not.
  * <li>comp_assoc:  ovis comp type short name (case matters).
  * <li>ovis_metric_name:  The ovis name for this metric. Table will be created using the ovis naming convention. The table will be created if it does not already exist.
@@ -411,6 +437,7 @@ static int config(char *config_str)
 	} action;
 	int rc;
 	uint64_t key;
+	int storage_type;
 	int diff_metric;
 
 	if (0 == strncmp(config_str, "add_metric", 10))
@@ -441,10 +468,24 @@ static int config(char *config_str)
 	  {
 
 	    //NOTE: not making this generic since the insert also has a format
-	    rc = sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"&%d&%[^&]&%s",
-			set_name, metric_name, &key, &diff_metric, comp_assoc, ovis_metric_name); 	
-	    if (rc != 6){
+	    rc = sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64"&%d&%d&%[^&]&%s",
+			set_name, metric_name, &key, &storage_type,
+			&diff_metric, comp_assoc, ovis_metric_name); 	
+	    if (rc != 7){
 	      msglog("Problems parsing add_metric\n");
+	      return EINVAL;
+	    }
+
+	    enum ovStorageType st;
+	    switch(storage_type){
+	    case ovFLOAT:
+	      st = ovFLOAT;
+	      break;
+	    case ovINT:
+	      st = ovINT;
+	      break;
+	    default:
+	      msglog("Bad val for storage type\n");
 	      return EINVAL;
 	    }
 
@@ -459,12 +500,12 @@ static int config(char *config_str)
 
 	    snprintf(table_name,LDMS_MAX_CONFIG_STR_LEN-1, "Metric%s%sValues", cap_comp_assoc, cap_ovis_metric_name);
 
-	    rc = add_metric(set_name, metric_name, key, diff_metric, table_name);
+	    rc = add_metric(set_name, metric_name, key, st, diff_metric, table_name);
 	    if (rc != 0){
 	      msglog("Cannot add metric '%s' '%s'.\n",set_name, metric_name);
 	      return rc;
 	    }
-	    rc = createTable(ovis_metric_name, comp_assoc, table_name); 
+	    rc = createTable(ovis_metric_name, st, comp_assoc, table_name); 
 	    if (rc != 0){
 	      msglog("Cannot create table '%s'.\n",table_name);
 	      return rc;
@@ -552,31 +593,67 @@ static int sample(void)
       }
 
       uint64_t val = ldms_get_u64(met->md);
+      float fval = 0;
       if (met->diffMetric){
 	if (met->lastValSet){
 	  uint64_t temp = val;
-	  val -= met->lastVal; //FIXME: what about rollover?
-	  met->lastVal = temp;
+	  switch(met->storageType){
+	  case ovFLOAT:
+	    {
+	      //get the double form here and subtract the double form of the last val and make it all into a float
+	      double* dval = (double*)&val;
+	      double* lastdval= (double*)(&(met->lastVal));
+	      double diffdval = (*dval-*lastdval);
+	      fval = (float)diffdval;
+	      met->lastVal = temp;
+	    }
+	    break;
+	  default:
+	    //work in the uint64_t and cast to int later
+	    val -= met->lastVal; //FIXME: what about rollover?
+	    met->lastVal = temp;
+	  }
 	} else {
 	  //dont record it
 	  met->lastVal = val;
 	  met->lastValSet = TRUE;
 	  continue; 
 	}
+      } else { //not a diff metric
+	switch(met->storageType){
+	case ovFLOAT:
+	  {
+	    double* dval = (double*)&val;
+	    fval = (float)*dval;
+	  }
+	  break;
+	default:
+	  {
+	    //val is already uint64_t
+	  }
+	}
       }
 
       char insertStatement[1024];
       long int level = lround( -log2( drand48()));
-      snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %d, NULL, %ld )",
-	       met->tableName, compId, (int)val, level); //FIXME: cast insert type?
+
+      switch (met->storageType){
+      case ovFLOAT:
+	snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %g, NULL, %ld )",
+		 met->tableName, compId, fval, level); 
+	break;
+      default:
+	snprintf(insertStatement,1023,"INSERT INTO %s VALUES( NULL, %d, %d, NULL, %ld )",
+		 met->tableName, compId, (int)val, level); 
+      }
 
       if (mysql_query(conn, insertStatement) != 0){
 	printf("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
       	exit(1);
       }
       
-    }
-  }
+    } //for each metric
+  } //for each set
 
   return 0;
 }
