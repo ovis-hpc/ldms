@@ -136,6 +136,15 @@ void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
 	case LDMS_V_S64:
 		sprintf(value_str, "%" PRId64, v->v_s64);
 		break;
+	case LDMS_V_F:
+		sprintf(value_str, "%f", v->v_d);
+		break;
+	case LDMS_V_D:
+		sprintf(value_str, "%f", v->v_d);
+		break;
+	case LDMS_V_LD:
+		sprintf(value_str, "%Lf", v->v_ld);
+		break;
 	}
 	printf("%-16s %s\n", value_str, vd->name);
 }
