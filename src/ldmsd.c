@@ -454,7 +454,7 @@ struct plugin *new_plugin(char *plugin_name, char *err_str)
 	struct plugin *pi = NULL;
 	char *path = getenv("LDMS_PLUGIN_LIBPATH");
 	if (!path)
-		path = "/usr/lib64";
+		path = LDMS_PLUGIN_LIBPATH_DEFAULT;
 
 	sprintf(library_name, "%s/lib%s.so", path, plugin_name);
 	void *d = dlopen(library_name, RTLD_NOW);

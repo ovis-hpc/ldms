@@ -141,7 +141,9 @@ int un_connect(char *my_name, char *sockname)
 	int rc;
 	struct sockaddr_un my_un;
 	char *mn = strdup(my_name);
-
+	char *sockpath = getenv("LDMS_SOCKPATH");
+	if (!sockpath)
+		sockpath = "/var/run";
 	memset(&un_sun, 0, sizeof(un_sun));
 	un_sun.sun_family = AF_UNIX;
 	strncpy(un_sun.sun_path, sockname,
@@ -158,10 +160,10 @@ int un_connect(char *my_name, char *sockname)
 	my_un.sun_family = AF_UNIX;
 
 	mn = basename(mn);
-	sprintf(my_un.sun_path, "/var/run/%s", mn);
+	sprintf(my_un.sun_path, "%s/%s", sockpath, mn);
 	free(mn);
-	/* Do not create so can run as non-root, but the dir must be there with +x permissions */
-	// mkdir(my_un.sun_path, 0755);
+
+	mkdir(my_un.sun_path, 0755);
 	sprintf(my_un.sun_path, "%s/%d", my_un.sun_path, pid);
 
 	/* Bind to our public name */
