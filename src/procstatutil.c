@@ -498,6 +498,7 @@ static int sample(void)
     metric_no++;
 
   } while (s);
+
   return 0;
 }
 

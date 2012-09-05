@@ -281,6 +281,7 @@ static int sample(void)
       pch = strtok(NULL," ");
     } //strtok
   } while (s);
+
   return 0;
 }
 
