@@ -1,8 +1,7 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) \
-	-I$(includedir)/infiniband 
+INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir)
 
 if ENABLE_GLIB
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/hwlocldms_ls 
@@ -20,6 +19,7 @@ src_libldmsrdma_la_SOURCES = src/ldms_rdma.c
 src_libldmsrdma_la_LIBADD = -libverbs -lrdmacm
 src_libldmsrdma_la_DEPENDENCIES = $(srcdir)/src/libldmsrdma.map
 RDMA_la = src/libldmsrdma.la
+INCLUDES += -Iinfiniband 
 else
 RDMA_FLAGS = -DDISABLE_RDMA
 endif
@@ -57,6 +57,7 @@ MYSQL_FLAGS = -DDISABLE_MYSQL
 endif
 
 if ENABLE_GLIB
+INCLUDES += -I/usr/include/glib-2.0
 src_libsedc_la_SOURCES = src/sedc.c
 src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map
 src_libsedc_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/glib-2.0/lib -lglib-2.0

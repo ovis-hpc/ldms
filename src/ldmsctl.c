@@ -70,14 +70,14 @@
  */
 #define FMT "S:"
 
-#define METRIC_SOCKET "/var/run/ldmsd/metric_socket"
-static char *sockname = METRIC_SOCKET;
+#define CONTROL_SOCKET "/var/run/ldmsd/control"
+static char *sockname = CONTROL_SOCKET;
 
 void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
                "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
-               "                    [" METRIC_SOCKET "].\n",
+               "                    [" CONTROL_SOCKET "].\n",
                argv[0], FMT);
 	exit(1);
 }

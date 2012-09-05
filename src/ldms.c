@@ -1041,6 +1041,15 @@ ldms_metric_t ldms_add_metric(ldms_set_t _set, const char *name,
 	case LDMS_V_S64:
 		v->v_u64 = 0;
 		break;
+	case LDMS_V_F:
+		v->v_f = 0.0;
+		break;
+	case LDMS_V_D:
+		v->v_d = 0.0;
+		break;
+	case LDMS_V_LD:
+		v->v_ld = 0.0;
+		break;
 	case LDMS_V_NONE:
 		break;
 	}

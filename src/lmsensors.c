@@ -175,6 +175,7 @@ static int init(const char *path)
 	} else {
 	  rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 	  if (rc){
+	    if (fpipe) pclose(fpipe);
 	    pthread_mutex_unlock(&cfg_lock);
 	    return rc;
 	  }

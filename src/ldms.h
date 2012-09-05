@@ -187,6 +187,9 @@ union ldms_value {
 	int32_t v_s32;
 	uint64_t v_u64;
 	int64_t v_s64;
+	float v_f;
+	double v_d;
+	long double v_ld;
 };
 
 /**
@@ -202,6 +205,9 @@ enum ldms_value_type {
 	LDMS_V_S32,
 	LDMS_V_U64,
 	LDMS_V_S64,
+	LDMS_V_F,
+	LDMS_V_D,
+	LDMS_V_LD,
 };
 
 /**
@@ -574,7 +580,8 @@ void ldms_dir_cancel(ldms_t t);
 #define LDMS_DIR_F_NOTIFY	1
 extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
-#define LDMS_XPRT_LIBPATH_DEFAULT "/lib64/"
+#define LDMS_XPRT_LIBPATH_DEFAULT "/usr/local/lib/"
+#define LDMS_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"
 #define LDMS_DEFAULT_PORT	50000
 #define LDMS_LOOKUP_PATH_MAX	511
 
@@ -961,6 +968,15 @@ static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
 	case LDMS_V_S64:
 		m->value->v_u64 = v->v_u64;
 		break;
+	case LDMS_V_F:
+		m->value->v_f = v->v_f;
+		break;
+	case LDMS_V_D:
+		m->value->v_d = v->v_d;
+		break;
+	case LDMS_V_LD:
+		m->value->v_ld = v->v_ld;
+		break;
 	default:
 		return;
 	}
@@ -1089,6 +1105,51 @@ static inline void ldms_set_s64(ldms_metric_t _m, int64_t v) {
 }
 
 /**
+ * \brief Set the value of a metric.
+ *
+ * Set the specified metric \c m to the single precision floating
+ * point value specified by \c v.
+ *
+ * \param _m	The metric handle.
+ * \param v	The value.
+ */
+static inline void ldms_set_float(ldms_metric_t _m, float v) {
+	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_f = v;
+	m->set->data->gn++;
+}
+
+/**
+ * \brief Set the value of a metric.
+ *
+ * Set the specified metric \c m to the double precision floating
+ * point value specified by \c v.
+ *
+ * \param _m	The metric handle.
+ * \param v	The value.
+ */
+static inline void ldms_set_double(ldms_metric_t _m, double v) {
+	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_d = v;
+	m->set->data->gn++;
+}
+
+/**
+ * \brief Set the value of a metric.
+ *
+ * Set the specified metric \c m to the long double precision floating
+ * point value specified by \c v.
+ *
+ * \param _m	The metric handle.
+ * \param v	The value.
+ */
+static inline void ldms_set_long_double(ldms_metric_t _m, long double v) {
+	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_ld = v;
+	m->set->data->gn++;
+}
+
+/**
  * \brief Get the value of a metric.
  *
  * Get the specified metric \c m as an unsigned byte.
@@ -1182,6 +1243,41 @@ static inline int32_t ldms_get_s32(ldms_metric_t _m) {
  */
 static inline int64_t ldms_get_s64(ldms_metric_t _m) {
 	return ((struct ldms_metric *)_m)->value->v_s64;
+}
+/**
+ * \brief Get the value of a metric.
+ *
+ * Get the specified metric \c m as a single precision floating point value.
+ *
+ * \param _m	The metric handle.
+ * \returns	Float value from the metric.
+ */
+static inline float ldms_get_float(ldms_metric_t _m) {
+	return ((struct ldms_metric *)_m)->value->v_f;
+}
+/**
+ * \brief Get the value of a metric.
+ *
+ * Get the specified metric \c m as double precision floating point
+ * value.
+ *
+ * \param _m	The metric handle.
+ * \returns	Double value from the metric.
+ */
+static inline double ldms_get_double(ldms_metric_t _m) {
+	return ((struct ldms_metric *)_m)->value->v_d;
+}
+/**
+ * \brief Get the value of a metric.
+ *
+ * Get the specified metric \c m as long double precision floating
+ * point value.
+ *
+ * \param _m	The metric handle.
+ * \returns	Double value from the metric.
+ */
+static inline double ldms_get_long_double(ldms_metric_t _m) {
+	return ((struct ldms_metric *)_m)->value->v_ld;
 }
 extern void ldms_print_set_metrics(ldms_set_t _set);
 /** \} */

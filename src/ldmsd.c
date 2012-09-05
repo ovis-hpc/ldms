@@ -66,7 +66,7 @@
 #include "un.h"
 #include "../config.h"
 
-#define LDMSD_SOCKNAME "/var/run/ldmsd/metric_socket"
+#define LDMSD_SOCKNAME "/var/run/ldmsd/control"
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define MAXSETS 512
@@ -163,7 +163,8 @@ void usage(char *argv[])
 	printf("    -k             Publish publish kernel metrics.\n");
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
 	       "                   [" LDMSD_SETFILE "]\n");
-	printf("    -S sockname    Specifies the name of a local metric publishing socket.\n");
+	printf("    -S sockname    Specifies the unix domain socket name to\n"
+	       "                   use for ldmsctl access.\n");
 	printf("    -C cfg_file    Specifies the name of the ldms config file.\n");
 	printf("    -x xprt:port   Specifies the transport type to listen on. May be specified\n"
 	       "                   more than once for multiple transports. The transport string\n"
@@ -453,7 +454,7 @@ struct plugin *new_plugin(char *plugin_name, char *err_str)
 	struct plugin *pi = NULL;
 	char *path = getenv("LDMS_PLUGIN_LIBPATH");
 	if (!path)
-		path = "/usr/lib64";
+		path = LDMS_PLUGIN_LIBPATH_DEFAULT;
 
 	sprintf(library_name, "%s/lib%s.so", path, plugin_name);
 	void *d = dlopen(library_name, RTLD_NOW);
