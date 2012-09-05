@@ -59,6 +59,7 @@
 #include "ldmsd.h"
 
 static char command[10] = "sensors";
+static uint64_t counter;
 
 ldms_set_t set;
 FILE *mf;
@@ -66,6 +67,7 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 ldms_metric_t cast_metric_handle;
+ldms_metric_t counter_metric_handle;
 
 static pthread_mutex_t cfg_lock;
 
@@ -79,7 +81,7 @@ static int config(char *str)
 {
   pthread_mutex_lock(&cfg_lock);
 
-  if (!set || !compid_metric_handle || !cast_metric_handle) {
+  if (!set || !compid_metric_handle || !cast_metric_handle || !counter_metric_handle) {
     msglog("lmsensors: plugin not initialized\n");
     pthread_mutex_unlock(&cfg_lock);
     return EINVAL;
@@ -101,10 +103,17 @@ static int config(char *str)
 
   //add the val that indicates that it has been cast
   union ldms_value ucastval;
-  double dcastval = 1.0;
-  uint64_t* upcastval = (uint64_t*) &dcastval;
-  ucastval.v_u64 = *upcastval;
+  //  double dcastval = 1.0;
+  //  uint64_t* upcastval = (uint64_t*) &dcastval;
+  //  ucastval.v_u64 = *upcastval;
+  ucastval.v_u64 = 1;
   ldms_set_metric(cast_metric_handle, &ucastval);
+
+  //add the counter
+  counter = 0;
+  union ldms_value v;
+  v.v_u64 = counter;
+  ldms_set_metric(counter_metric_handle, &v);
 
   pthread_mutex_unlock(&cfg_lock);
   return 0;
@@ -129,6 +138,9 @@ static int init(const char *path)
 
   rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
   rc = ldms_get_metric_size("cast_from_native", LDMS_V_U64, &meta_sz, &data_sz);
+  tot_meta_sz += meta_sz;
+  tot_data_sz += data_sz;
+  rc = ldms_get_metric_size("lmsensors_counter", LDMS_V_U64, &meta_sz, &data_sz);
   tot_meta_sz += meta_sz;
   tot_data_sz += data_sz;
 
@@ -202,6 +214,12 @@ static int init(const char *path)
     goto err;
   } //cast_from_native set in config
 
+  counter_metric_handle = ldms_add_metric(set, "lmsensors_counter", LDMS_V_U64);
+  if (!counter_metric_handle) {
+    rc = ENOMEM;
+    goto err;
+  } //counter set in config
+
   int metric_no = 0;
   if (!(fpipe = (FILE*)popen(command,"r"))){
     perror("Problems with pipe");
@@ -246,13 +264,12 @@ static int init(const char *path)
   if (fpipe) pclose(fpipe);
   pthread_mutex_unlock(&cfg_lock);
   return rc;
-}
 
+}
 
 static int sample(void)
 {
   int metric_no;
-  char metric_name[128];
   char buf[1024];
 
   FILE* fpipe;
@@ -265,7 +282,13 @@ static int sample(void)
     return -1;
   }
 
+  //09-04-2012 change counter to update with each setmetric
+  //  union ldms_value v;
+  //  v.v_u64 = ++counter;
+  //  ldms_set_metric(counter_metric_handle, &v);
+
   metric_no = 0;
+  if (1){
   while(fgets(buf, sizeof buf, fpipe)){
     //examples: 
     //FAN7/CPU4:   0 RPM  (min =  712 RPM)                   ALARM
@@ -277,7 +300,6 @@ static int sample(void)
       if ((pch-buf+1) != strlen(buf)){
 	char *endptr;
 	double val;
-	snprintf(metric_name,(pch-buf+1),"%s",buf);
 	errno = 0;
 	val = strtod((pch+1),&endptr);
 	if ((errno == ERANGE) || endptr == (pch+1)){
@@ -286,13 +308,28 @@ static int sample(void)
 	  uint64_t *temp = (uint64_t*) &val;
 	  union ldms_value v;
 	  v.v_u64 = *temp;
+
+//          uint64_t temp = (uint64_t)val;
+//	  union ldms_value v;
+//	  v.v_u64 = temp;
+
 	  ldms_set_metric(metric_table[metric_no], &v);
+
+	  //09-04-2012 moved to increment with each setmetric
+	  union ldms_value vc;
+	  vc.v_u64 = ++counter;
+	  ldms_set_metric(counter_metric_handle, &vc);
+
 	  metric_no++;
 	}
       }
     }
   }
+  }
+
+
   if (fpipe) pclose(fpipe);
+  pthread_mutex_unlock(&cfg_lock);
 
   return 0;
 }
