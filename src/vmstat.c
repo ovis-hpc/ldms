@@ -44,6 +44,7 @@
  * \file vmstat.c
  * \brief /proc/vmstat data provider
  */
+#define _GNU_SOURCE
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -54,6 +55,7 @@
 #include <sys/types.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include <asm-x86_64/unistd.h>
 
 #define PROC_FILE "/proc/vmstat"
 
@@ -64,6 +66,12 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
+ldms_metric_t counter_metric_handle;
+ldms_metric_t pid_metric_handle;
+ldms_metric_t tid_metric_handle;
+static uint64_t counter;
+static uint64_t mypid;
+static uint64_t mytid;
 
 /**
  * \brief Configuration
@@ -73,7 +81,7 @@ ldms_metric_t compid_metric_handle;
  */
 static int config(char *str)
 {
-	if (!set || !compid_metric_handle ) {
+	if (!set || !compid_metric_handle  || !counter_metric_handle || !pid_metric_handle || !tid_metric_handle) {
 		msglog("meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
@@ -89,6 +97,29 @@ static int config(char *str)
 
 		ldms_set_metric(compid_metric_handle, &v);
 	}
+
+	//counter
+	counter = 0;
+	union ldms_value v;
+	v.v_u64 = counter;
+	ldms_set_metric(counter_metric_handle, &v);
+
+        //also set the pid
+        {
+          mypid=getpid();
+          union ldms_value v;
+          v.v_u64 = mypid;
+          ldms_set_metric(pid_metric_handle, &v);
+        }
+
+        //also set the tid
+        {
+          mytid = syscall(__NR_gettid);
+          union ldms_value v;
+          v.v_u64 = mytid;
+          ldms_set_metric(tid_metric_handle, &v);
+        }
+
 
 	return 0;
 }
@@ -119,6 +150,25 @@ static int init(const char *path)
 	 */
 
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+
+	//counter
+	rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
+	if (rc)
+	  return rc;
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
+        //and add the pid
+        rc = ldms_get_metric_size("pid", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
+        //and add the tid
+        rc = ldms_get_metric_size("tid", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
+
 	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -138,6 +188,7 @@ static int init(const char *path)
 		metric_count++;
 	} while (s);
 
+
 	/* Create the metric set */
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
@@ -155,6 +206,29 @@ static int init(const char *path)
 		rc = ENOMEM;
 		goto err;
 	} //compid set in config
+
+
+        //and add the counter
+	counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
+	if (!counter_metric_handle) {
+		rc = ENOMEM;
+		goto err;
+	} //counter set in config
+
+        //and add the pid
+        pid_metric_handle = ldms_add_metric(set, "pid", LDMS_V_U64);
+        if (!pid_metric_handle) {
+                rc = ENOMEM;
+                goto err;
+        }
+
+        //and add the tid
+        tid_metric_handle = ldms_add_metric(set, "tid", LDMS_V_U64);
+        if (!tid_metric_handle) {
+                rc = ENOMEM;
+                goto err;
+        }
+
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -194,7 +268,13 @@ static int sample(void)
 	char lbuf[256];
 	char metric_name[128];
 	union ldms_value v;
+        v.v_u64=getpid();
+        ldms_set_metric(pid_metric_handle, &v);
 
+        v.v_u64 = syscall(__NR_gettid);
+        ldms_set_metric(tid_metric_handle, &v);
+	v.v_u64 = ++counter;
+	ldms_set_metric(counter_metric_handle, &v);
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
