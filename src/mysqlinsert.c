@@ -403,12 +403,12 @@ static int createTable(char* ovisMetricName, enum ovStorageType st, char* compAs
  * <ul><li>Removes a metric set.
  * <ul><li>set_name:   The name of the metric set
  * </ul></ul>
- * - config mysqlinsert add_metric=<set_name>&<metric_name>&key&diff_metric&<comp_assoc>&<ovis_metric_name>
+ * - config mysqlinsert add_metric=<set_name>&<metric_name>&key&storagetype&diff_metric&<comp_assoc>&<ovis_metric_name>
  * <ul><li>Add the specified metric to the set of values stored from the set
  * <ul><li>set_name:   The name of the metric set.
  * <li>metric_name:The name of the metric.
  * <li>key:        An unique Id for the Metric. Typically the component_id.
- * <li>ovStorageType: Eventual type for the metric. Currently 0=float; 3=int.
+ * <li>storagetype: Eventual type for the metric. Currently 0=float; 3=int.
  * <li>diff_metric: 1 for diff; 0 for not.
  * <li>comp_assoc:  ovis comp type short name (case matters).
  * <li>ovis_metric_name:  The ovis name for this metric. Table will be created using the ovis naming convention. The table will be created if it does not already exist.
@@ -475,6 +475,14 @@ static int config(char *config_str)
 	      msglog("Problems parsing add_metric\n");
 	      return EINVAL;
 	    }
+
+	    //	    FILE* outfile = fopen("/home/brandt/mysqlinsert.txt", "a");
+	    //	    if (outfile != NULL){
+	    //	      fprintf(outfile, "set_name = <%s> metric_name = <%s> key = <%d> storage_type = <%d> diff_metric = <%d> comp_assoc = <%s> ovis_metric_name = <%s>\n", set_name, metric_name, key, storage_type, diff_metric, comp_assoc, ovis_metric_name); 
+	    //	      fflush(outfile);
+	    //	      fclose(outfile);
+	    //	    }
+
 
 	    enum ovStorageType st;
 	    switch(storage_type){
@@ -672,11 +680,12 @@ static const char *usage(void)
 		"    config mysqlinsert remove=<set_name>\n"
 		"        - Removes a metric set. \n"
 		"        set_name    The name of the metric set\n"
-		"    config mysqlinsert add_metric=<set_name>&<metric_name>&key&diff_metric&<comp_assoc>&<ovis_metric_name>\n"
+		"    config mysqlinsert add_metric=<set_name>&<metric_name>&key&storagetype&diff_metric&<comp_assoc>&<ovis_metric_name>\n"
 		"        - Add the specified metric to the set of values stored from the set\n"
 		"        set_name    The name of the metric set.\n"
 		"        metric_name The name of the metric.\n"
 		"        key         An unique Id for the Metric. Typically the component_id.\n"
+                "        storage type Storage type for the table. Uses ovis enum - 0=float, 3=int\n"
 		"        diff_metric 1 for diff; 0 for not.\n"
 		"        comp_assoc  ovis comp type short name (case matters).\n"
 		"        ovis_metric_name  The ovis name for this metric. Table will be created\n"
