@@ -1844,13 +1844,9 @@ int main(int argc, char *argv[])
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 
-#if 0
 	if (setup_control(sockname))
 		cleanup(4);
-#else
-	if (setup_inet_control())
-		cleanup(4);
-#endif
+
 	if (ldmsd_store_init()) {
 		ldms_log("Could not initialize the storage subsystem.\n");
 		cleanup(7);
