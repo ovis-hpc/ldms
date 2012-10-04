@@ -115,7 +115,7 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=sos path=<root>\n"
+	return  "    config name=store_sos path=<path>\n"
 		"        - Set the root path for the storage of SOS files.\n"
 		"        path      The path to the root of the SOS directory\n";
 }
