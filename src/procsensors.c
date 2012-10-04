@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012 Sandia Corporation. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -37,12 +37,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * Author: Tom Tucker <tom@opengridcomputing.com>
  */
-
 /**
- * \file vmstat.c
- * \brief /proc/vmstat data provider
+ * \file procsensors.c
+ * \brief reads from proc the data that populates lm sensors (in*_input, fan*_input, temp*_input)
+ * 
+ * filename will be the variable name. mysql inserter will have to convert names and downselect which ones
+ * to record.
+ *
+ * FIXME: decideif multipliers should go here....
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -53,88 +56,54 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include <asm-x86_64/unistd.h>
 
-#define PROC_FILE "/proc/vmstat"
-
-static char *procfile = PROC_FILE;
+//FIXME: make this a parameter later..
+static char* procsensorsfiledir = "/sys/devices/pci0000:00/0000:00:01.1/i2c-1/1-002f/";
+const static int vartypes = 3;
+const static char* varnames[] = {"in", "fan", "temp"};
+const static int varbounds[] = {0,9,1,9,1,6};
+static uint64_t counter;
 
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
-union ldms_value comp_id;
 ldms_metric_t counter_metric_handle;
-ldms_metric_t pid_metric_handle;
-ldms_metric_t tid_metric_handle;
-static uint64_t counter;
-static uint64_t mypid;
-static uint64_t mytid;
-
-static ldms_set_t get_set()
-{
-	return set;
-}
+union ldms_value comp_id;
 
 static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
-	int rc, metric_count;
-	uint64_t metric_value;
-	char *s;
-	char lbuf[256];
+	int rc, i, j, metric_count;
 	char metric_name[128];
-
-	mf = fopen(procfile, "r");
-	if (!mf) {
-		msglog("Could not open the vmstat file '%s'...exiting\n", procfile);
-		return ENOENT;
-	}
 
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
 				  &tot_meta_sz, &tot_data_sz);
 
-	//counter
+	//and add the counter
 	rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
 
-        //and add the pid
-        rc = ldms_get_metric_size("pid", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
 
-        //and add the tid
-        rc = ldms_get_metric_size("tid", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-
-	/*
-	 * Process the file once first to determine the metric set size.
-	 */
 	metric_count = 0;
-	fseek(mf, 0, SEEK_SET);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &metric_value);
-		if (rc < 2)
-			break;
+	for (i = 0; i < vartypes; i++){
+	  for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
+	    snprintf(metric_name, 127, "%s%d_input",varnames[i],j);
+	    rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+	    if (rc)
+	      return rc;
 
-		rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-		if (rc)
-			return rc;
-
-		tot_meta_sz += meta_sz;
-		tot_data_sz += data_sz;
-		metric_count++;
-	} while (s);
-
+	    tot_meta_sz += meta_sz;
+	    tot_data_sz += data_sz;
+	    metric_count++;
+	  }
+	}
 
 	/* Create the metric set */
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
@@ -144,9 +113,8 @@ static int create_metric_set(const char *path)
 	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
-
 	/*
-	 * Process the file again to define all the metrics.
+	 * Process again to define all the metrics.
 	 */
 	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
 	if (!compid_metric_handle) {
@@ -154,66 +122,34 @@ static int create_metric_set(const char *path)
 		goto err;
 	} //compid set in config
 
-
-        //and add the counter
+	//and add the counter
 	counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
 	if (!counter_metric_handle) {
 		rc = ENOMEM;
 		goto err;
 	} //counter set in config
 
-        //and add the pid
-        pid_metric_handle = ldms_add_metric(set, "pid", LDMS_V_U64);
-        if (!pid_metric_handle) {
-                rc = ENOMEM;
-                goto err;
-        }
-
-        //and add the tid
-        tid_metric_handle = ldms_add_metric(set, "tid", LDMS_V_U64);
-        if (!tid_metric_handle) {
-                rc = ENOMEM;
-                goto err;
-        }
-
-	//counter
+	//also set the counter...
 	counter = 0;
 	union ldms_value v;
 	v.v_u64 = counter;
 	ldms_set_metric(counter_metric_handle, &v);
 
-        //also set the pid
-	mypid=getpid();
-	v.v_u64 = mypid;
-	ldms_set_metric(pid_metric_handle, &v);
-
-        //also set the tid
-	mytid = syscall(__NR_gettid);
-	v.v_u64 = mytid;
-	ldms_set_metric(tid_metric_handle, &v);
 
 	int metric_no = 0;
-	fseek(mf, 0, SEEK_SET);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &metric_value);
-		if (rc < 2)
-			break;
-
-		rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-		if (rc)
-			return rc;
-
-		metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
-
-		if (!metric_table[metric_no]){
-			rc = ENOMEM;
-			goto err;
+	for (i = 0; i < vartypes; i++){
+		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
+			snprintf(metric_name, 127,
+				 "%s%d_input",varnames[i],j);
+			metric_table[metric_no] =
+				ldms_add_metric(set, metric_name, LDMS_V_U64);
+			if (!metric_table[metric_no]) {
+				rc = ENOMEM;
+				goto err;
+			}
+			metric_no++;
 		}
-		metric_no++;
-	} while (s);
+	}
 
 	return 0;
 
@@ -222,6 +158,14 @@ static int create_metric_set(const char *path)
 	return rc;
 }
 
+/** 
+ * \brief Configuration
+ * 
+ * Usage: 
+ * config name=procsensors component_id=<comp_id> set=<setname>
+ *     comp_id     The component id value.
+ *     setname     The set name.
+ */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -237,57 +181,71 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
+static ldms_set_t get_set()
+{
+	return set;
+}
+
 static int sample(void)
 {
 	int rc;
 	int metric_no;
 	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	char procfile[256];
+	char lbuf[20];
 	union ldms_value v;
-        v.v_u64=getpid();
-        ldms_set_metric(pid_metric_handle, &v);
+	int i, j;
 
-	if (!set) {
-		msglog("vmstat: plugin not initialized\n");
-		return EINVAL;
-	}
 
-	ldms_set_metric(compid_metric_handle, &comp_id);
-
-        v.v_u64 = syscall(__NR_gettid);
-        ldms_set_metric(tid_metric_handle, &v);
+	//set the counter
 	v.v_u64 = ++counter;
 	ldms_set_metric(counter_metric_handle, &v);
-	metric_no = 0;
-	fseek(mf, 0, SEEK_SET);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
-		if (rc != 2)
-			return EINVAL;
 
-		ldms_set_metric(metric_table[metric_no], &v);
-		metric_no++;
-	} while (s);
+	metric_no = 0;
+	for (i = 0; i < vartypes; i++){
+	  for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
+	    snprintf(procfile, 255, "%s/%s%d_input",procsensorsfiledir,varnames[i],j);
+
+	    //FIXME: do we really want to open and close each one?
+	    mf = fopen(procfile, "r");
+	    if (!mf) {
+	      msglog("Could not open the procsensors file '%s'...exiting\n", procfile);
+	      return ENOENT;
+	    }
+	    s = fgets(lbuf, sizeof(lbuf), mf);
+	    if (!s)
+	      break;
+	    rc = sscanf(lbuf, "%"PRIu64 "\n", &v.v_u64);
+	    if (rc != 1){
+	      return EINVAL;
+	    }
+	    ldms_set_metric(metric_table[metric_no], &v);
+
+	    metric_no++;
+	    if (mf) fclose(mf);
+	  }
+	}
 	return 0;
 }
 
 static void term(void)
 {
-	if (set)
-		ldms_destroy_set(set);
-	set = NULL;
+	ldms_destroy_set(set);
 }
 
+static const char *usage(void)
+{
+	return  "config name=procsensors component_id=<comp_id> set=<set>\n"
+		"    comp_id    The component id.\n"
+		"    set        The set name.\n";
+}
 
-static struct ldmsd_sampler vmstat_plugin = {
+static struct ldmsd_sampler procsensors_plugin = {
 	.base = {
-		.name = "vmstat",
+		.name = "procsensors",
 		.term = term,
 		.config = config,
+		.usage = usage,
 	},
 	.get_set = get_set,
 	.sample = sample,
@@ -296,5 +254,5 @@ static struct ldmsd_sampler vmstat_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &vmstat_plugin.base;
+	return &procsensors_plugin.base;
 }

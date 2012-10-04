@@ -67,7 +67,6 @@ int nprocs;
 /**
  * \brief Configuration
  *
- * Usage:
  * - config procinterrupts component_id <value>
  */
 static int config(char *str)

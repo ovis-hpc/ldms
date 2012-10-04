@@ -92,7 +92,7 @@ static int create_metric_set(const char *path)
 	size_t data_sz, total_data_sz;
 	int rc;
 	int metric_count;
-	int column_count;
+	int column_count = 0;
 	int cpu_count;
 	char *s;
 	char lbuf[256];
@@ -249,9 +249,9 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=procstatutil component_id=<comp_id> set=<setname>\n"
-		"        comp_id     The component id value\n"
-		"        setname     The set name\n";
+	return  "config name=procstatutil component_id=<comp_id> set=<setname>\n"
+		"    comp_id     The component id value\n"
+		"    setname     The set name\n";
 }
 
 static struct ldmsd_sampler procstatutil_plugin = {

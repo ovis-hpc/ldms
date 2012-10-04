@@ -43,6 +43,7 @@
  * \file meminfo.c
  * \brief /proc/meminfo data provider
  */
+#define _GNU_SOURCE
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -51,19 +52,26 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include <asm-x86_64/unistd.h>
 
 #define PROC_FILE "/proc/meminfo"
 
 static char *procfile = PROC_FILE;
-
-static ldms_set_t set;
-static FILE *mf;
-static ldms_metric_t *metric_table;
-static ldmsd_msg_log_f msglog;
-static ldms_metric_t compid_metric_handle;
+static uint64_t counter;
+ldms_set_t set;
+FILE *mf;
+ldms_metric_t *metric_table;
+ldmsd_msg_log_f msglog;
 union ldms_value comp_id;
+ldms_metric_t compid_metric_handle;
+ldms_metric_t counter_metric_handle;
+ldms_metric_t pid_metric_handle;
+ldms_metric_t tid_metric_handle;
+static uint64_t mypid;
+static uint64_t mytid;
 
 static int create_metric_set(const char *path)
 {
@@ -71,6 +79,7 @@ static int create_metric_set(const char *path)
 	size_t data_sz, tot_data_sz;
 	int rc, i, metric_count;
 	uint64_t metric_value;
+	union ldms_value v;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
@@ -88,6 +97,22 @@ static int create_metric_set(const char *path)
 
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
 				  &tot_meta_sz, &tot_data_sz);
+
+	//and add the counter
+	rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
+	//and add the pid
+	rc = ldms_get_metric_size("pid", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
+	//and add the tid
+	rc = ldms_get_metric_size("tid", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
 	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -114,6 +139,7 @@ static int create_metric_set(const char *path)
 	} while (s);
 
 	/* Create the metric set */
+	rc = ENOMEM;
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		return rc;
@@ -125,18 +151,47 @@ static int create_metric_set(const char *path)
 	 * Process the file again to define all the metrics.
 	 */
 	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) {
-		rc = ENOMEM;
+	if (!compid_metric_handle)
 		goto err;
-	} //compid set in config
 
+	//and add the counter
+	counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
+	if (!counter_metric_handle)
+		goto err;
+
+	//and add the pid
+	pid_metric_handle = ldms_add_metric(set, "pid", LDMS_V_U64);
+	if (!pid_metric_handle)
+		goto err;
+
+	//and add the tid
+	tid_metric_handle = ldms_add_metric(set, "tid", LDMS_V_U64);
+	if (!tid_metric_handle)
+		goto err;
+
+	//also set the counter...
+	counter = 0;
+	v.v_u64 = counter;
+	ldms_set_metric(counter_metric_handle, &v);
+
+	//also set the pid
+	mypid=getpid();
+	v.v_u64 = mypid;
+	ldms_set_metric(pid_metric_handle, &v);
+
+	//also set the tid
+	mytid = syscall(__NR_gettid);
+	v.v_u64 = mytid;
+	ldms_set_metric(tid_metric_handle, &v);
+	
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &metric_value, junk);
+		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n",
+			    metric_name, &metric_value, junk);
 		if (rc < 2)
 			break;
 		/* Strip the colon from metric name if present */
@@ -160,6 +215,10 @@ static int create_metric_set(const char *path)
 
 /** 
  * \brief Configuration
+ *
+ * config name=meminfo component_id=<comp_id> set=<setname>
+ *     comp_id     The component id value.
+ *     setname     The set name.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -191,13 +250,30 @@ static int sample(void)
 	char junk[128];
 	union ldms_value v;
 
-	if (!set || !compid_metric_handle ) {
+	if (!set) {
 		msglog("meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
-
 	ldms_set_metric(compid_metric_handle, &comp_id);
 
+        v.v_u64=getpid();
+        ldms_set_metric(pid_metric_handle, &v);
+
+        v.v_u64 = syscall(__NR_gettid);
+        ldms_set_metric(tid_metric_handle, &v);
+
+	//set the counter
+	v.v_u64 = ++counter;
+	ldms_set_metric(counter_metric_handle, &v);
+/*      for (dial=0; dial<=1000000; dial++){
+        srand(time(NULL));
+        vala=1+(int) (1.0*rand()/(RAND_MAX+1.0));
+        valb=1+(int) (1.0*rand()/(RAND_MAX+1.0));
+        counter += vala/valb;
+        }
+        v.v_u64 = counter * 100;
+	ldms_set_metric(counter_metric_handle, &v);
+*/
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -223,9 +299,9 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config meminfo component_id=<comp_id> set=<setname>\n"
-		"        comp_id     The component id value\n"
-		"        setname     The set name\n";
+	return  "config name=meminfo component_id=<comp_id> set=<setname>\n"
+		"    comp_id     The component id value.\n"
+		"    setname     The set name.\n";
 }
 
 static struct ldmsd_sampler meminfo_plugin = {

@@ -97,16 +97,20 @@ src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
 src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 GEMINFO_la = src/libgeminfo.la
 
-src_liblmsensors_la_SOURCES = src/lmsensors.c
-src_liblmsensors_la_DEPENDENCIES = $(srcdir)/src/liblmsensors.map
-src_liblmsensors_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
-LMSENSORS_la = src/liblmsensors.la
-
 src_libmeminfo_la_SOURCES = src/meminfo.c
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map $(top_builddir)/libplugin.a
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 
 MEMINFO_la = src/libmeminfo.la
+
+if ENABLE_SENSORS
+src_libprocsensors_la_SOURCES = src/procsensors.c
+src_libprocsensors_la_DEPENDENCIES = $(srcdir)/src/libprocsensors.map
+src_libprocsensors_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+PROCSENSORS_la = src/libprocsensors.la
+else
+SENSORS_FLAGS = -DISABLE_SENSORS
+endif
 
 src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
 src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map
@@ -131,15 +135,15 @@ PERFEVENT_la = src/libperfevent.la
 endif
 
 AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) \
-	$(MYSQL_FLAGS) $(GLIB_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS}
+	$(MYSQL_FLAGS) $(GLIB_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS} \
+	$(SENSORS_FLAGS)
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
-	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(LMSENSORS_la) \
+	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(PROCSENSORS_la) \
 	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la) \
 	$(STORE_SOS_la)
 #$(HWLOCFLATFILE_la)
-
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c

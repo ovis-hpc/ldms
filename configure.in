@@ -65,6 +65,13 @@ AC_ARG_ENABLE(mysql, [  --disable-mysql     Disable mysql inserts.],
                 fi
         ])
 
+AC_ARG_ENABLE(sensors, [  --disable-sensors     Disable sensors.],
+        [       if test x$enableval = xno ; then
+                        disable_sensors=yes
+                        echo The procsensors sampler has been disabled.
+                fi
+        ])
+
 AC_ARG_ENABLE(glib, [  --disable-glib     Disable plugins/utilities using glib.],
         [       if test x$enableval = xno ; then
                         disable_glib=yes
@@ -134,6 +141,7 @@ AM_CONDITIONAL([ENABLE_SOCK], [test "$disable_sock" != "yes"])
 AM_CONDITIONAL([ENABLE_MMAP], [test "$disable_mmap" != "yes"])
 AM_CONDITIONAL([ENABLE_PERF], [test "$disable_perf" != "yes"])
 AM_CONDITIONAL([ENABLE_MYSQL], [test "$disable_mysql" != "yes"])
+AM_CONDITIONAL([ENABLE_SENSORS], [test "$disable_sensors" != "yes"])
 AM_CONDITIONAL([ENABLE_GLIB], [test "$disable_glib" != "yes"])
 AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
 AC_CONFIG_FILES([Makefile ldms-utils.spec])
