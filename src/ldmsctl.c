@@ -129,6 +129,7 @@ int handle_help(char *kw, char *err_str)
 	       "store name=<store> hosts=<hosts> set=<set> metric=<metric>\n"
 	       "   - Saves a set from one or more hosts to a persistent object store.\n"
 	       "     <store>      The name of the storage plugin.\n"
+	       "     <comp_type>  The component type.\n"
 	       "     <set>        The set whose data will be saved. Data is saved\n"
 	       "                  when update completes if the generation number has\n"
 	       "                  changed.\n"
