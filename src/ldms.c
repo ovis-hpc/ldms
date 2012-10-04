@@ -953,6 +953,19 @@ ldms_metric_t ldms_get_metric(ldms_set_t _set, const char *name)
 	return NULL;
 }
 
+ldms_metric_t ldms_make_metric(ldms_set_t _set, struct ldms_value_desc *vd)
+{
+	struct ldms_data_hdr *dh;
+	struct ldms_metric *m = malloc(sizeof *m);
+	if (!m)
+		return NULL;
+	m->desc = vd;
+	m->set = ((struct ldms_set_desc *)_set)->set;
+	dh = m->set->data;
+	m->value = ldms_ptr_(union ldms_value, dh, vd->data_offset);
+	return m;
+}
+
 void ldms_metric_release(ldms_metric_t m)
 {
 	free(m);

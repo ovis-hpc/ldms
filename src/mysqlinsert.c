@@ -64,7 +64,6 @@
 #include <mysql/mysql.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "un.h"
 
 //DB_SOCKET is currently not used
 //#define DEFAULT_DB_SOCKET "/var/lib/mysql/mysql.sock" 
@@ -107,14 +106,14 @@ static ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 
 //NOTE that some of these variables will stop this from being able to be multithreaded.
-char set_name[LDMS_MAX_CONFIG_STR_LEN];
-char metric_name[LDMS_MAX_CONFIG_STR_LEN];
-char ovis_metric_name[LDMS_MAX_CONFIG_STR_LEN];
-char comp_assoc[LDMS_MAX_CONFIG_STR_LEN];
-char db_schema[LDMS_MAX_CONFIG_STR_LEN];
-char db_host[LDMS_MAX_CONFIG_STR_LEN];
-char username[LDMS_MAX_CONFIG_STR_LEN];
-char password[LDMS_MAX_CONFIG_STR_LEN];
+char set_name[LDMSD_MAX_CONFIG_STR_LEN];
+char metric_name[LDMSD_MAX_CONFIG_STR_LEN];
+char ovis_metric_name[LDMSD_MAX_CONFIG_STR_LEN];
+char comp_assoc[LDMSD_MAX_CONFIG_STR_LEN];
+char db_schema[LDMSD_MAX_CONFIG_STR_LEN];
+char db_host[LDMSD_MAX_CONFIG_STR_LEN];
+char username[LDMSD_MAX_CONFIG_STR_LEN];
+char password[LDMSD_MAX_CONFIG_STR_LEN];
 
 
 MYSQL *conn = NULL;
@@ -225,13 +224,13 @@ static int remove_metric(char *set_name, char *metric_name)
 static int set_dbconfigs()
 {
   if (strlen(db_schema) == 0)
-    snprintf(db_schema,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_DB);
+    snprintf(db_schema,LDMSD_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_DB);
   if (strlen(db_host) == 0)
-    snprintf(db_host,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_DBHOST);
+    snprintf(db_host,LDMSD_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_DBHOST);
   if (strlen(username) == 0)
-    snprintf(username,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_USER);
+    snprintf(username,LDMSD_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_USER);
   if (strlen(password) == 0)
-    snprintf(password,LDMS_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_PASS);
+    snprintf(password,LDMSD_MAX_CONFIG_STR_LEN-1,"%s",DEFAULT_PASS);
   return 0;
 }
 
@@ -490,15 +489,15 @@ static int config(char *config_str)
 	    }
 
 	    //table naming convention:  
-	    char table_name[LDMS_MAX_CONFIG_STR_LEN];
-	    char cap_comp_assoc[LDMS_MAX_CONFIG_STR_LEN];
-	    char cap_ovis_metric_name[LDMS_MAX_CONFIG_STR_LEN];
-	    snprintf(cap_comp_assoc, (LDMS_MAX_CONFIG_STR_LEN-1), "%s", comp_assoc);
-	    snprintf(cap_ovis_metric_name, (LDMS_MAX_CONFIG_STR_LEN-1), "%s", ovis_metric_name);
+	    char table_name[LDMSD_MAX_CONFIG_STR_LEN];
+	    char cap_comp_assoc[LDMSD_MAX_CONFIG_STR_LEN];
+	    char cap_ovis_metric_name[LDMSD_MAX_CONFIG_STR_LEN];
+	    snprintf(cap_comp_assoc, (LDMSD_MAX_CONFIG_STR_LEN-1), "%s", comp_assoc);
+	    snprintf(cap_ovis_metric_name, (LDMSD_MAX_CONFIG_STR_LEN-1), "%s", ovis_metric_name);
 	    cap_comp_assoc[0] = toupper(comp_assoc[0]);
 	    cap_ovis_metric_name[0] = toupper(cap_ovis_metric_name[0]);
 
-	    snprintf(table_name,LDMS_MAX_CONFIG_STR_LEN-1, "Metric%s%sValues", cap_comp_assoc, cap_ovis_metric_name);
+	    snprintf(table_name,LDMSD_MAX_CONFIG_STR_LEN-1, "Metric%s%sValues", cap_comp_assoc, cap_ovis_metric_name);
 
 	    rc = add_metric(set_name, metric_name, key, st, diff_metric, table_name);
 	    if (rc != 0){
@@ -694,19 +693,20 @@ static const char *usage(void)
 	        "        password   The database user's password (default: <none>).\n";
 }
 
-static struct ldms_plugin mysqlinsert_plugin = {
-	.name = "mysqlinsert",
-	.init = init,
-	.term = term,
-	.config = config,
+static struct ldmsd_sampler mysqlinsert_plugin = {
+	.base = {
+		.name = "mysqlinsert",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
 	.get_set = get_set,
 	.sample = sample,
-	.usage = usage,
 };
 
-struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	msglog("mysqlinsert: plugin loaded\n");
-	return &mysqlinsert_plugin;
+	return &mysqlinsert_plugin.base;
 }

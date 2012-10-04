@@ -581,7 +581,6 @@ void ldms_dir_cancel(ldms_t t);
 extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
 #define LDMS_XPRT_LIBPATH_DEFAULT "/usr/local/lib/"
-#define LDMS_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"
 #define LDMS_DEFAULT_PORT	50000
 #define LDMS_LOOKUP_PATH_MAX	511
 
@@ -829,6 +828,19 @@ extern int ldms_get_metric_size(const char *name, enum ldms_value_type t,
  * \returns	The metric set handle or 0 if there is none was found.
  */
 extern ldms_metric_t ldms_get_metric(ldms_set_t s, const char *name);
+
+/**
+ * \brief Create a metric handle from a value descriptor.
+ *
+ * Returns the metric handle for the metric with the specified
+ * name. This handle can then be used with the ldms_get_XXX functions
+ * to return the value of the metric.
+ *
+ * \param s	The metric set handle
+ * \param vd	The value descriptor.
+ * \returns	A new metric handle or NULL if memory was not available.
+ */
+extern ldms_metric_t ldms_make_metric(ldms_set_t s, struct ldms_value_desc *vd);
 
 /**
  * \brief Release a reference on the metric.
@@ -1147,6 +1159,18 @@ static inline void ldms_set_long_double(ldms_metric_t _m, long double v) {
 	struct ldms_metric *m = (struct ldms_metric *)_m;
 	m->value->v_ld = v;
 	m->set->data->gn++;
+}
+
+/**
+ * \brief Get the value of a metric.
+ *
+ * Get the specified metric \c m as a void pointer to the value
+ *
+ * \param _m	The metric handle.
+ * \returns	Unsigned byte value from the metric.
+ */
+static inline void *ldms_get_value_ptr(ldms_metric_t _m) {
+	return ((struct ldms_metric *)_m)->value;
 }
 
 /**

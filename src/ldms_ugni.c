@@ -51,39 +51,54 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <gni_pub.h>
+#include <pmi.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
-#include "ldms_sock_xprt.h"
+#include "ldms_ugni.h"
 
-pthread_mutex_t sock_lock;
+/* Gemini Transport Variables */
+int first;
+int job_size;
+uint8_t ptag;
+int cookie;
+int modes = 0;
+int device_id = 0;
+int cq_entries = 128;
+gni_cdm_handle_t cdm_handle;
+gni_nic_handle_t nic_handle;
+uint32_t local_address;
 
 static struct event_base *io_event_loop;
 static pthread_t io_thread;
 
-LIST_HEAD(sock_list, ldms_sock_xprt) sock_list;
+pthread_mutex_t ugni_list_lock;
+LIST_HEAD(ugni_list, ldms_ugni_xprt) ugni_list;
+pthread_mutex_t desc_list_lock;
+LIST_HEAD(desc_list, ugni_desc) desc_list;
 
 static void *io_thread_proc(void *arg);
 
-static void sock_event(struct bufferevent *buf_event, short error, void *arg);
-static void sock_read(struct bufferevent *buf_event, void *arg);
-static void sock_write(struct bufferevent *buf_event, void *arg);
+static void ugni_event(struct bufferevent *buf_event, short error, void *arg);
+static void ugni_read(struct bufferevent *buf_event, void *arg);
+static void ugni_write(struct bufferevent *buf_event, void *arg);
 
 static void timeout_cb(int fd , short events, void *arg);
-static struct ldms_sock_xprt * setup_connection(struct ldms_sock_xprt *x,
+static struct ldms_ugni_xprt * setup_connection(struct ldms_ugni_xprt *x,
 						int sockfd,
 						struct sockaddr*remote_addr,
 						socklen_t sa_len);
-static void _setup_connection(struct ldms_sock_xprt *r,
+static void _setup_connection(struct ldms_ugni_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len);
 
-static void release_buf_event(struct ldms_sock_xprt *r);
+static void release_buf_event(struct ldms_ugni_xprt *r);
 
-static struct ldms_sock_xprt *sock_from_xprt(ldms_t d)
+static struct ldms_ugni_xprt *ugni_from_xprt(ldms_t d)
 {
 	return ((struct ldms_xprt *)d)->private;
 }
 
-void sock_xprt_cleanup(void)
+void ugni_xprt_cleanup(void)
 {
 	void *dontcare;
 
@@ -97,16 +112,16 @@ void sock_xprt_cleanup(void)
 		event_base_free(io_event_loop);
 }
 
-static void sock_xprt_close(struct ldms_xprt *x)
+static void ugni_xprt_close(struct ldms_xprt *x)
 {
-	struct ldms_sock_xprt *s = sock_from_xprt(x);
+	struct ldms_ugni_xprt *s = ugni_from_xprt(x);
 
 	release_buf_event(s);
 	close(s->sock);
 	s->sock = 0;
 }
 
-static void sock_xprt_term(struct ldms_sock_xprt *r)
+static void ugni_xprt_term(struct ldms_ugni_xprt *r)
 {
 	LIST_REMOVE(r, client_link);
 	if (r->listen_ev)
@@ -131,10 +146,10 @@ static int set_nonblock(struct ldms_xprt *x, int fd)
 	return 0;
 }
 
-static int sock_xprt_connect(struct ldms_xprt *x,
+static int ugni_xprt_connect(struct ldms_xprt *x,
 			     struct sockaddr *sa, socklen_t sa_len)
 {
-	struct ldms_sock_xprt *r = sock_from_xprt(x);
+	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
 	struct sockaddr_storage ss;
 
 	r->sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -155,64 +170,30 @@ err:
 	r->sock = 0;
 	return -1;
 }
-int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
+
+int process_ugni_hello_req(struct ldms_ugni_xprt *x, struct ugni_hello_req *req)
 {
-	size_t len;
-	/* Check the response status */
-	if (rsp->status)
-		return ntohl(rsp->status);
-
-	/* Move the set data into the local buffer */
-	len = ntohl(rsp->buf_info.size);
-	memcpy((void *)(unsigned long)rsp->buf_info.lbuf, (char *)(rsp+1), len);
-
-	if (x->xprt && x->xprt->read_complete_cb)
-		x->xprt->read_complete_cb(x->xprt, (void *)(unsigned long)rsp->hdr.xid);
-	return 0;
+	int rc;
+	x->ugni_remote_address = ntohl(req->address);
+	rc = GNI_EpBind(x->ugni_ep, x->ugni_remote_address, local_address);
+	if (rc = GNI_RC_SUCCESS)
+		x->xprt->connected = 1;
+	return rc;
 }
 
-uint64_t last_sock_read_req;
-int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
-{
-	struct sock_read_rsp rsp;
-	size_t len;
-	int ret;
-
-	len = ntohl(req->buf_info.size);
-
-	/* Prepare and send read response header */
-	last_sock_read_req = rsp.hdr.xid = req->hdr.xid;
-	rsp.hdr.cmd = htonl(SOCK_READ_RSP_CMD);
-	rsp.hdr.len = htonl(sizeof(rsp) + len);
-	rsp.status = 0;
-	memcpy(&rsp.buf_info, &req->buf_info, sizeof req->buf_info);
-
-	ret = bufferevent_write(x->buf_event, &rsp, sizeof(rsp));
-	if (ret < 0)
-		goto err;
-
-	/* Write the requested local buffer back to the socket */
-	ret =  bufferevent_write(x->buf_event,
-			 (void *)(unsigned long)req->buf_info.rbuf, len);
- err:
-	return ret;
-}
-
-int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request *req)
+int process_ugni_msg(struct ldms_ugni_xprt *x, struct ldms_request *req)
 {
 	switch (ntohl(req->hdr.cmd)) {
-	case SOCK_READ_REQ_CMD:
-		return process_sock_read_req(x, (struct sock_read_req *)req);
-	case SOCK_READ_RSP_CMD:
-		return process_sock_read_rsp(x, (struct sock_read_rsp *)req);
+	case UGNI_HELLO_REQ_CMD:
+		return process_ugni_hello_req(x, (struct ugni_hello_req *)req);
 	default:
-		x->xprt->log("Invalid request on socket transport %d\n",
+		x->xprt->log("Invalid request on uGNI transport %d\n",
 			     ntohl(req->hdr.cmd));
 	}
 	return EINVAL;
 }
 
-static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
+static int process_xprt_io(struct ldms_ugni_xprt *s, struct ldms_request *req)
 {
 	int cmd;
 
@@ -220,7 +201,7 @@ static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
 
 	/* The sockets transport must handle solicited read */
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
-		int ret = process_sock_req(s, req);
+		int ret = process_ugni_msg(s, req);
 		if (ret) {
 			s->xprt->log("Error %d processing transport request.\n",
 				     ret);
@@ -235,15 +216,15 @@ static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
 	return -1;
 }
 
-static void sock_write(struct bufferevent *buf_event, void *arg)
+static void ugni_write(struct bufferevent *buf_event, void *arg)
 {
 }
 
 #define min_t(t, x, y) (t)((t)x < (t)y?(t)x:(t)y)
-static void sock_read(struct bufferevent *buf_event, void *arg)
+static void ugni_read(struct bufferevent *buf_event, void *arg)
 {
 
-	struct ldms_sock_xprt *r = (struct ldms_sock_xprt *)arg;
+	struct ldms_ugni_xprt *r = (struct ldms_ugni_xprt *)arg;
 	struct evbuffer *evb;
 	struct ldms_request_hdr hdr;
 	struct ldms_request *req;
@@ -280,9 +261,9 @@ static void *io_thread_proc(void *arg)
 	return NULL;
 }
 
-static void release_buf_event(struct ldms_sock_xprt *r)
+static void release_buf_event(struct ldms_ugni_xprt *r)
 {
-	pthread_mutex_lock(&sock_lock);
+	pthread_mutex_lock(&ugni_list_lock);
 	if (r->listen_ev) {
 		evconnlistener_free(r->listen_ev);
 		r->listen_ev = NULL;
@@ -291,12 +272,12 @@ static void release_buf_event(struct ldms_sock_xprt *r)
 		bufferevent_free(r->buf_event);
 		r->buf_event = NULL;
 	}
-	pthread_mutex_unlock(&sock_lock);
+	pthread_mutex_unlock(&ugni_list_lock);
 }
 
-static void sock_event(struct bufferevent *buf_event, short events, void *arg)
+static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 {
-	struct ldms_sock_xprt *r = arg;
+	struct ldms_ugni_xprt *r = arg;
 
 	if (events & ~BEV_EVENT_CONNECTED) {
 		/* Peer disconnect or other error */
@@ -309,13 +290,50 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 		r->xprt->log("Peer connect complete %x\n", events);
 }
 
-static void _setup_connection(struct ldms_sock_xprt *r,
+struct ugni_desc *alloc_desc()
+{
+	struct ugni_desc *desc = NULL;
+	pthread_mutex_lock(&ugni_list_lock);
+	if (!LIST_EMPTY(&desc_list)) {
+		desc = LIST_FIRST(&desc_list);
+		LIST_REMOVE(desc, link);
+	}
+	pthread_mutex_lock(&ugni_list_lock);
+	return (desc ? desc : calloc(1, sizeof *desc));
+}
+
+void free_desc(struct ugni_desc *desc)
+{
+	pthread_mutex_lock(&ugni_list_lock);
+	LIST_INSERT_HEAD(&desc_list, desc, link);
+	pthread_mutex_unlock(&ugni_list_lock);
+}
+
+void cq_complete(gni_cq_entry_t *_cqe, void *_r)
+{
+	struct ldms_ugni_xprt *r = _r;
+	gni_cq_entry_t cqe;
+	struct ugni_desc *desc;
+	gni_post_descriptor_t *post;
+
+	int rc = GNI_CqGetEvent(r->ugni_cq, &cqe);
+	r->xprt->log("GNI_CqGetEvent returns %d\n", rc);
+	rc = GNI_GetCompleted(r->ugni_cq, cqe, &post);
+	desc = (struct ugni_desc *)post;
+	if (r->xprt && r->xprt->read_complete_cb)
+		r->xprt->read_complete_cb(r->xprt, desc->context);
+	free_desc(desc);
+}
+
+static void _setup_connection(struct ldms_ugni_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len)
 {
+	struct ugni_hello_req req;
+	int rc;
+
 	r->conn_status = CONN_CONNECTED;
 	memcpy((char *)&r->xprt->remote_ss, (char *)remote_addr, sa_len);
 	r->xprt->ss_len = sa_len;
-	r->xprt->connected = 1;
 
 	if (set_nonblock(r->xprt, r->sock))
 		r->xprt->log("Warning: error setting non-blocking I/O on an "
@@ -328,32 +346,47 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 			     "fd %d.\n", r->sock);
 		goto err_0;
 	}
-	bufferevent_setcb(r->buf_event, sock_read, sock_write, sock_event, r);
+	bufferevent_setcb(r->buf_event, ugni_read, ugni_write, ugni_event, r);
 	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
 		r->xprt->log("Error enabling buffered I/O event for fd %d.\n",
 			     r->sock);
+	rc = GNI_CqCreate(nic_handle, 16, 0, GNI_CQ_NOBLOCK,
+			  cq_complete, r, &r->ugni_cq);
+	if (rc != GNI_RC_SUCCESS)
+		goto err_0;
+	rc = GNI_EpCreate(nic_handle, r->ugni_cq, &r->ugni_ep);
+	if (rc != GNI_RC_SUCCESS)
+		goto err_0;
+
+	/* When we receive the peer's hello, we move the endpoint to connected */
+	req.hdr.cmd = htonl(UGNI_HELLO_REQ_CMD);
+	req.hdr.len = htonl(sizeof(req));
+	req.hdr.xid = (uint64_t)(unsigned long)0; /* no response to hello */
+	req.address = local_address;
+	(void)bufferevent_write(r->buf_event, &req, sizeof(req));
 	return;
+
  err_0:
 	ldms_xprt_close(r->xprt);
 	ldms_release_xprt(r->xprt);
 }
 
-static struct ldms_sock_xprt *
-setup_connection(struct ldms_sock_xprt *p, int sockfd,
+static struct ldms_ugni_xprt *
+setup_connection(struct ldms_ugni_xprt *p, int sockfd,
 		 struct sockaddr *remote_addr, socklen_t sa_len)
 {
-	struct ldms_sock_xprt *r;
+	struct ldms_ugni_xprt *r;
 	ldms_t _x;
 
 	/* Create a transport instance for this new connection */
-	_x = ldms_create_xprt("sock", p->xprt->log);
+	_x = ldms_create_xprt("ugni", p->xprt->log);
 	if (!_x) {
 		p->xprt->log("Could not create a new transport.\n");
 		close(sockfd);
 		return NULL;
 	}
 
-	r = sock_from_xprt(_x);
+	r = ugni_from_xprt(_x);
 	r->sock = sockfd;
 	r->xprt->local_ss = p->xprt->local_ss;
 	_setup_connection(r, remote_addr, sa_len);
@@ -367,12 +400,12 @@ struct timeval report_tv;
 struct timeval last_tv;
 #endif
 
-static void sock_connect(struct evconnlistener *listener,
+static void ugni_connect(struct evconnlistener *listener,
 			 evutil_socket_t sockfd,
 			 struct sockaddr *address, int socklen, void *arg)
 {
-	struct ldms_sock_xprt *r = arg;
-	struct ldms_sock_xprt *new_r = NULL;
+	struct ldms_ugni_xprt *r = arg;
+	struct ldms_ugni_xprt *new_r = NULL;
 	static int conns;
 	
 	new_r = setup_connection(r, sockfd, (struct sockaddr *)&address, socklen);
@@ -391,10 +424,10 @@ static void sock_connect(struct evconnlistener *listener,
 	}
 }
 
-static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t sa_len)
+static int ugni_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t sa_len)
 {
 	int rc;
-	struct ldms_sock_xprt *r = sock_from_xprt(x);
+	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
 	int optval = 1;
 
 	gettimeofday(&listen_tv, NULL);
@@ -412,7 +445,7 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 		x->log("Warning: Could not set listening socket to non-blocking\n");
 
 	rc = ENOMEM;
-	r->listen_ev = evconnlistener_new_bind(io_event_loop, sock_connect, r,
+	r->listen_ev = evconnlistener_new_bind(io_event_loop, ugni_connect, r,
 					       LEV_OPT_THREADSAFE | LEV_OPT_REUSEABLE,
 					       1024, sa, sa_len);
 	if (!r->listen_ev)
@@ -426,15 +459,15 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	return rc;
 }
 
-static void sock_xprt_destroy(struct ldms_xprt *x)
+static void ugni_xprt_destroy(struct ldms_xprt *x)
 {
-	struct ldms_sock_xprt *r = sock_from_xprt(x);
-	sock_xprt_term(r);
+	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
+	ugni_xprt_term(r);
 }
 
-static int sock_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
+static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
-	struct ldms_sock_xprt *r = sock_from_xprt(x);
+	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
 	int rc;
 
 	if (r->conn_status != CONN_CONNECTED)
@@ -444,97 +477,147 @@ static int sock_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 	return rc;
 }
 
-/** Allocate a remote buffer. If we are the producer, the xprt_data
- *  will be NULL. In this case, we fill in the local side
+/*
+ * Allocate a remote buffer. If we are the producer, the xprt_data
+ * will be NULL. In this case, we fill in the local side
  * information.
  */
-struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
+struct ldms_rbuf_desc *ugni_rbuf_alloc(struct ldms_xprt *x,
 				       struct ldms_set *set,
 				       enum ldms_rbuf_type type,
 				       void *xprt_data,
 				       size_t xprt_data_len)
 {
-	struct sock_buf_xprt_data *xd;
+	int rc;
+	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
+	struct ugni_buf_local_data *lcl_data;
 	struct ldms_rbuf_desc *desc = calloc(1, sizeof(struct ldms_rbuf_desc));
 	if (!desc)
 		return NULL;
-	xd = calloc(1, sizeof *xd);
-	if (!xd)
+
+	lcl_data = calloc(1, sizeof *lcl_data);
+	if (!lcl_data)
 		goto err_0;
 
+	desc->type  = type;
+
+	lcl_data->meta = set->meta;
+	lcl_data->meta_size = set->meta->meta_size;
+	rc = GNI_MemRegister(nic_handle,
+			     (uint64_t)(unsigned long)lcl_data->meta,
+			     lcl_data->meta_size,
+			     r->ugni_cq, GNI_MEM_READWRITE,
+			     -1, &lcl_data->meta_mh);
+	if (rc != GNI_RC_SUCCESS)
+		goto err_1;
+
+	lcl_data->data = set->data;
+	lcl_data->data_size = set->meta->data_size;
+	rc = GNI_MemRegister(nic_handle,
+			     (uint64_t)(unsigned long)lcl_data->data,
+			     lcl_data->data_size,
+			     r->ugni_cq, GNI_MEM_READWRITE,
+			     -1, &lcl_data->data_mh);
+	if (rc != GNI_RC_SUCCESS)
+		goto err_2;
+
+	desc->lcl_data = lcl_data;
+
 	if (xprt_data) {
-		/* The peer has provided us with the remote buffer
-		 * information. We need to fill in our local buffer
-		 * information so we can fulfill a read response
-		 * without looking anything up.
-		 */
 		desc->xprt_data_len = xprt_data_len;
-		desc->xprt_data = xd;
-		// ASSERT(xprt_data_len == sizeof(*xd));
-		memcpy(xd, xprt_data, sizeof(*xd));
-		xd->meta.lbuf = (uint64_t)(unsigned long)set->meta;
-		xd->data.lbuf = (uint64_t)(unsigned long)set->data;
+		desc->xprt_data = calloc(1, xprt_data_len);
+		if (!desc->xprt_data)
+			goto err_3;
+		memcpy(desc->xprt_data, xprt_data, xprt_data_len);
 	} else {
-		xd->meta.rbuf = (uint64_t)(unsigned long)set->meta;
-		xd->data.rbuf = (uint64_t)(unsigned long)set->data;
-		xd->meta.size = htonl(set->meta->meta_size);
-		xd->data.size = htonl(set->meta->data_size);
-		desc->xprt_data = xd;
-		desc->xprt_data_len = sizeof(*xd);
+		struct ugni_buf_remote_data *rem_data = calloc(1, sizeof *rem_data);
+		if (!rem_data)
+			goto err_3;
+		rem_data->meta_buf = (uint64_t)(unsigned long)lcl_data->meta;
+		rem_data->meta_size = htonl(lcl_data->meta_size);
+		rem_data->meta_mh = lcl_data->meta_mh;
+		rem_data->data_buf = (uint64_t)(unsigned long)lcl_data->data;
+		rem_data->data_size = htonl(lcl_data->data_size);
+		rem_data->data_mh = lcl_data->data_mh;
+		desc->xprt_data = rem_data;
+		desc->xprt_data_len = sizeof(*rem_data);
 	}
 	return desc;
-
+ err_3:
+	(void)GNI_MemDeRegister(nic_handle, &lcl_data->data_mh);
+ err_2:
+	(void)GNI_MemDeRegister(nic_handle, &lcl_data->meta_mh);
+ err_1:
+	free(lcl_data);
  err_0:
 	free(desc);
 	return NULL;
 }
 
-void sock_rbuf_free(struct ldms_xprt *x, struct ldms_rbuf_desc *desc)
+void ugni_rbuf_free(struct ldms_xprt *x, struct ldms_rbuf_desc *desc)
 {
-	struct sock_buf_remote_data *rbuf = desc->xprt_data;
+	struct ugni_buf_remote_data *rbuf = desc->xprt_data;
 	if (rbuf)
 		free(rbuf);
 	free(desc);
 }
 
-static int sock_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, void *context)
+static int ugni_read_start(struct ldms_ugni_xprt *r,
+			   uint64_t laddr, gni_mem_handle_t local_mh,
+			   uint64_t raddr, gni_mem_handle_t remote_mh,
+			   uint32_t len, void *context)
 {
-	struct ldms_sock_xprt *r = sock_from_xprt(x);
-	struct ldms_set_desc *sd = s;
-	struct sock_buf_xprt_data* xd = sd->rbd->xprt_data;
-	struct sock_read_req read_req;
 	int rc;
+	struct ugni_desc *desc = alloc_desc();
+	if (!desc)
+		return ENOMEM;
 
-	read_req.hdr.xid = (uint64_t)(unsigned long)context;
-	read_req.hdr.cmd = htonl(SOCK_READ_REQ_CMD);
-	read_req.hdr.len = htonl(sizeof(read_req));
-
-	memcpy(&read_req.buf_info, &xd->meta, sizeof read_req.buf_info);
-	if (len)
-		read_req.buf_info.size = htonl(len);
-
-	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
-	return rc;
+	memset(&desc, 0, sizeof(*desc));
+	desc->fma.type = GNI_POST_FMA_GET;
+	desc->fma.cq_mode = GNI_CQMODE_GLOBAL_EVENT;
+	desc->fma.dlvr_mode = GNI_DLVMODE_PERFORMANCE;
+	desc->fma.local_addr = laddr;
+	desc->fma.local_mem_hndl = local_mh;
+	desc->fma.remote_addr = raddr;
+	desc->fma.remote_mem_hndl = remote_mh;
+	desc->fma.length = len;
+	desc->context = context;
+	rc = GNI_PostFma(r->ugni_ep, &desc->fma);
+	if (rc != GNI_RC_SUCCESS)
+		return -1;
+	return 0; 
 }
 
-static int sock_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, void *context)
+static int ugni_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, void *context)
 {
-	struct ldms_sock_xprt *r = sock_from_xprt(x);
+	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
 	struct ldms_set_desc *sd = s;
-	struct sock_buf_xprt_data* xd = sd->rbd->xprt_data;
-	struct sock_read_req read_req;
-	int rc;
+	struct ugni_buf_remote_data* rbuf = sd->rbd->xprt_data;
+	struct ugni_buf_local_data* lbuf = sd->rbd->lcl_data;
 
-	read_req.hdr.xid = (uint64_t)(unsigned long)context;
-	read_req.hdr.cmd = htonl(SOCK_READ_REQ_CMD);
-	read_req.hdr.len = htonl(sizeof(read_req));
+	return ugni_read_start(r,
+			       (uint64_t)(unsigned long)lbuf->meta,
+			       lbuf->meta_mh,
+			       rbuf->meta_buf,
+			       rbuf->meta_mh,
+			       (len?len:ntohl(rbuf->meta_size)),
+			       context);
+}
 
-	memcpy(&read_req.buf_info, &xd->data, sizeof read_req.buf_info);
-	if (len)
-		read_req.buf_info.size = htonl(len);
+static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, void *context)
+{
+	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
+	struct ldms_set_desc *sd = s;
+	struct ugni_buf_remote_data* rbuf = sd->rbd->xprt_data;
+	struct ugni_buf_local_data* lbuf = sd->rbd->lcl_data;
 
-	rc = bufferevent_write(r->buf_event, &read_req, sizeof(read_req));
-	return rc;
+	return ugni_read_start(r,
+			       (uint64_t)(unsigned long)lbuf->data,
+			       lbuf->data_mh,
+			       rbuf->meta_buf,
+			       rbuf->meta_mh,
+			       (len?len:ntohl(rbuf->meta_size)),
+			       context);
 }
 
 static struct timeval to;
@@ -552,7 +635,8 @@ static int init_once()
 	int rc = ENOMEM;
 
 	evthread_use_pthreads();
-	pthread_mutex_init(&sock_lock, 0);
+	pthread_mutex_init(&ugni_list_lock, 0);
+	pthread_mutex_init(&desc_list_lock, 0);
 	io_event_loop = event_base_new();
 	if (!io_event_loop)
 		return errno;
@@ -569,9 +653,39 @@ static int init_once()
 	if (rc)
 		goto err_1;
 
-	atexit(sock_xprt_cleanup);
-	return 0;
+	atexit(ugni_xprt_cleanup);
 
+	rc = PMI_Init(&first);
+	if (rc != PMI_SUCCESS)
+		goto err_2;
+	
+	rc = PMI_Get_size(&job_size);
+	if (rc != PMI_SUCCESS)
+		goto err_3;
+
+	int rank_id;
+	rc = PMI_Get_rank(&rank_id);
+	if (rc != PMI_SUCCESS)
+		goto err_3;
+
+	ptag = get_ptag();
+	cookie = get_cookie();
+
+	rc = GNI_CdmCreate(rank_id, ptag, cookie, modes, &cdm_handle);
+	if (rc != GNI_RC_SUCCESS)
+		goto err_3;
+
+	rc = GNI_CdmAttach(cdm_handle, device_id, &local_address, &nic_handle);
+	if (rc != GNI_RC_SUCCESS)
+		goto err_4;
+
+	return 0;
+ err_4:
+	(void)GNI_CdmDestroy(cdm_handle);
+ err_3:
+	PMI_Finalize();
+ err_2:
+	pthread_cancel(io_thread);
  err_1:
 	event_base_free(io_event_loop);
 	return rc;
@@ -581,7 +695,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 			   int (*read_complete_cb)(struct ldms_xprt *, void *))
 {
 	struct ldms_xprt *x;
-	struct ldms_sock_xprt *r;
+	struct ldms_ugni_xprt *r;
 	x = calloc(1, sizeof (*x));
 	if (!x) {
 		errno = ENOMEM;
@@ -596,20 +710,20 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 		once = 1;
 	}
 
-	r = calloc(1, sizeof(struct ldms_sock_xprt));
-	LIST_INSERT_HEAD(&sock_list, r, client_link);
+	r = calloc(1, sizeof(struct ldms_ugni_xprt));
+	LIST_INSERT_HEAD(&ugni_list, r, client_link);
 
-	x->connect = sock_xprt_connect;
-	x->listen = sock_xprt_listen;
-	x->destroy = sock_xprt_destroy;
-	x->close = sock_xprt_close;
-	x->send = sock_xprt_send;
-	x->read_meta_start = sock_read_meta_start;
-	x->read_data_start = sock_read_data_start;
+	x->connect = ugni_xprt_connect;
+	x->listen = ugni_xprt_listen;
+	x->destroy = ugni_xprt_destroy;
+	x->close = ugni_xprt_close;
+	x->send = ugni_xprt_send;
+	x->read_meta_start = ugni_read_meta_start;
+	x->read_data_start = ugni_read_data_start;
 	x->read_complete_cb = read_complete_cb;
 	x->recv_cb = recv_cb;
-	x->alloc = sock_rbuf_alloc;
-	x->free = sock_rbuf_free;
+	x->alloc = ugni_rbuf_alloc;
+	x->free = ugni_rbuf_free;
 	x->private = r;
 	r->xprt = x;
 
@@ -618,4 +732,18 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	free(x);
  err_0:
 	return NULL;
+}
+
+static void __attribute__ ((constructor)) ugni_init();
+static void ugni_init()
+{
+}
+
+static void __attribute__ ((destructor)) ugni_fini(void);
+static void ugni_fini()
+{
+	if (once) {
+		(void)GNI_CdmDestroy(cdm_handle);
+		PMI_Finalize();
+	}
 }

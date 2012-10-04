@@ -1,4 +1,4 @@
-LIBSEDC_1.0 {
+LIBSEDC_2.0 {
 	global:
 		get_plugin;
 	local: *;

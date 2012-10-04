@@ -102,7 +102,7 @@ LIST_HEAD(pevent_list, pevent) pevent_list;
 
 struct kw {
 	char *token;
-	int (*action)(char *s, void *arg);
+	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
 };
 
 static int kw_comparator(const void *a, const void *b)
@@ -125,11 +125,6 @@ ldms_set_t set;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 
-char set_name[LDMS_MAX_CONFIG_STR_LEN];
-char metric_name[LDMS_MAX_CONFIG_STR_LEN];
-char event_type[LDMS_MAX_CONFIG_STR_LEN];
-char event_id[LDMS_MAX_CONFIG_STR_LEN];
-
 static const char *usage(void)
 {
 	return  "    config perfevent add_event(name=<name>,\n"
@@ -137,7 +132,7 @@ static const char *usage(void)
 		"                               cpu=<cpu>,\n"
 		"                               type=<event_type>,\n"
 		"                               id=<event_id>)\n"
-		"            name   - A descriptive name for the event\n"
+		"            name   - The metric name for the event\n"
 		"            pid    - The PID for the process being monitored\n"
 		"                     The counter will follow the process to\n"
 		"                     whichever CPU/core is in use. Note that\n"
@@ -158,30 +153,30 @@ static const char *usage(void)
  * Specify the textual name that will appear for this event in the metric set.
  * Format: name=%s
  */
-static int add_event_name(char *str, void *arg)
+static int add_event_name(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->name = strdup(str);
+	pe->name = strdup(av_value(avl, "name"));
 	return 0;
 }
 
 /**
  * Specify the event type
  */
-static int add_event_type(char *str, void *arg)
+static int add_event_type(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->attr.type = strtol(str, NULL, 0);
+	pe->attr.type = strtol(av_value(avl, "type"), NULL, 0);
 	return 0;
 }
 
 /**
  * Specify the pid
  */
-static int add_event_pid(char *str, void *arg)
+static int add_event_pid(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->pid = strtol(str, NULL, 0);
+	pe->pid = strtol(av_value(avl, "pid"), NULL, 0);
 	pe->cpu = -1;
 	return 0;
 }
@@ -189,20 +184,20 @@ static int add_event_pid(char *str, void *arg)
 /**
  * Specify the event id
  */
-static int add_event_id(char *str, void *arg)
+static int add_event_id(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->attr.config = strtol(str, NULL, 0);
+	pe->attr.config = strtol(av_value(avl, "id"), NULL, 0);
 	return 0;
 }
 
 /**
  * Specify the cpuc core
  */
-static int add_event_cpu(char *str, void *arg)
+static int add_event_cpu(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->cpu = strtol(str, NULL, 0);
+	pe->cpu = strtol(av_value(avl, "cpu"), NULL, 0);
 	pe->pid = -1;
 	return 0;
 }
@@ -215,9 +210,6 @@ struct kw add_token_tbl[] = {
 	{ "type", add_event_type },
 };
 
-char token[256];
-char value[256];
-
 static struct pevent *find_event(char *name)
 {
 	struct pevent *pe;
@@ -228,11 +220,12 @@ static struct pevent *find_event(char *name)
 	return NULL;
 }
 
-static int add_event(char *cfg_str, void *arg)
+static char metric_name[128];
+ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	char *s;
 	int rc;
 	struct pevent *pe;
+	int i;
 
 	pe = calloc(1, sizeof *pe);
 	if (!pe)
@@ -243,12 +236,15 @@ static int add_event(char *cfg_str, void *arg)
 	pe->attr.read_format = PERF_FORMAT_TOTAL_TIME_RUNNING;
 	pe->attr.inherit = 1;
 
-	for (s = strtok(cfg_str, ",");
-	     s;
-	     s = strtok(NULL, " ")) {
+	for (i = 0; i < avl->count; i++) {
 		struct kw key;
 		struct kw *kw;
-		sscanf(s, "%[^=]=%s", token, value);
+		char *token;
+		char *value;
+
+		token = av_name(avl, i);
+		value = av_value_at_idx(avl, i);
+
 		key.token = token;
 		kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl),
 			     sizeof(*kw), kw_comparator);
@@ -257,7 +253,7 @@ static int add_event(char *cfg_str, void *arg)
 			       "configuration string.\n", token);
 			return -1;
 		}
-		rc = kw->action(value, pe);
+		rc = kw->action(kwl, avl, pe);
 		if (rc)
 			return rc;
 	}
@@ -315,58 +311,69 @@ static int add_event(char *cfg_str, void *arg)
 	return -1;
 }
 
-static int del_event(char *cfg_str, void *arg)
+static int del_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	struct pevent *pe = find_event(cfg_str);
+	char *name = av_value(avl, "name");
+	struct pevent *pe = find_event(name);
 	if (pe) {
 		LIST_REMOVE(pe, entry);
 		close(pe->fd);
 		free(pe->name);
+		if (pe->metric_value)
+			ldms_metric_release(pe->metric_value);
+		if (pe->metric_mean)
+			ldms_metric_release(pe->metric_mean);
+		if (pe->metric_variance)
+			ldms_metric_release(pe->metric_variance);
+		if (pe->metric_stddev)
+			ldms_metric_release(pe->metric_stddev);
 		free(pe);
 	}
 	return 0;
 }
 
-static char list_buf[8192];
-static int list(char *cfg_str, void *arg)
+static int list(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe;
-	int c;
-	char *s = list_buf;
-	c = sprintf(s, "%-24s %8s %8s %8s %8s %16s\n",
-		    "Name", "Pid", "Cpu", "Fd", "Type", "Event");
-	s += c;
-	c = sprintf(s, "%-24s %8s %8s %8s %8s %16s\n",
-		    "------------------------",
-		    "--------", "--------", "--------",
-		    "--------", "----------------");
-	s += c;
+	msglog("%-24s %8s %8s %8s %8s %16s\n",
+	       "Name", "Pid", "Cpu", "Fd", "Type", "Event");
+	msglog("%-24s %8s %8s %8s %8s %16s\n",
+	       "------------------------",
+	       "--------", "--------", "--------",
+	       "--------", "----------------");
 	msglog("Name Fd Type Config\n");
 	LIST_FOREACH(pe, &pevent_list, entry) {
-		c = sprintf(s, "%-24s %8d %8d %8d %8d %16llx\n",
-			    pe->name, pe->pid, pe->cpu, 
-			    pe->fd, pe->attr.type, pe->attr.config);
-		s += c;
+		msglog("%-24s %8d %8d %8d %8d %16llx\n",
+		       pe->name, pe->pid, pe->cpu, 
+		       pe->fd, pe->attr.type, pe->attr.config);
 	}
-	msglog(list_buf);
 	return 0;
 }
 
+static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+	/* Create the metric set */
+	char *setname = av_value(avl, "set");
+	if (!setname)
+		return EINVAL;
+	return ldms_create_set(setname, 8192, 4096, &set);
+}
+
 struct kw kw_tbl[] = {
-	{ "add_event", add_event },
-	{ "del_event", del_event },
+	{ "add", add_event },
+	{ "del", del_event },
+	{ "init", init },
 	{ "ls", list },
 };
 
-static char action[1024];
-static char parameters[1024];
-static int config(char *cfg_str)
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct kw *kw;
 	struct kw key;
-
-	int rc = sscanf(cfg_str, "%[^(](%[^)])", action, parameters);
-	if (rc < 1)
+	int rc;
+	char *action = av_value(avl, "action");
+	
+	if (!action)
 		goto err0;
 
 	key.token = action;
@@ -375,7 +382,7 @@ static int config(char *cfg_str)
 	if (!kw)
 		goto err1;
 
-	rc = kw->action(parameters, NULL);
+	rc = kw->action(kwl, avl, NULL);
 	if (rc)
 		goto err2;
 	return 0;
@@ -391,13 +398,6 @@ static int config(char *cfg_str)
 static ldms_set_t get_set()
 {
 	return set;
-}
-
-static int init(const char *path)
-{
-	/* Create the metric set */
-	int rc = ldms_create_set(path, 8192, 4096, &set);
-	return rc;
 }
 
 static int sample(void)
@@ -440,18 +440,19 @@ static void term(void)
 	ldms_destroy_set(set);
 }
 
-static struct ldms_plugin pe_plugin = {
-	.name = "perfevent",
-	.init = init,
-	.term = term,
-	.config = config,
+static struct ldmsd_sampler pe_plugin = {
+	.base = {
+		.name = "perfevent",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
 	.get_set = get_set,
 	.sample = sample,
-	.usage = usage,
 };
 
-struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &pe_plugin;
+	return &pe_plugin.base;
 }

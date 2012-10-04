@@ -41,7 +41,7 @@
 
 /**
  * \file procstatutil.c
- * \brief /proc/stat/util data provider 
+ * \brief /proc/stat/util data provider
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -55,10 +55,6 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define PROC_FILE "/proc/stat"
-
-static char *procfile = PROC_FILE;
-
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
@@ -66,459 +62,211 @@ ldmsd_msg_log_f msglog;
 
 int numcpu_plusone;
 ldms_metric_t *compid_metric_handle;
-
-/** 
- * \brief Configuration
- * 
- * Usage: 
- * - config procstatutil component_id <value>
- */
-static int config(char *str)
-{
-  if (!set || !compid_metric_handle ){
-    msglog("meminfo: plugin not initialized\n");
-    return EINVAL;
-  }
-  //expects "component_id value"
-  if (0 == strncmp(str,"component_id",12)){
-    char junk[128];
-    int rc;
-    union ldms_value v;
-
-    rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
-    if (rc < 1){
-      return EINVAL;
-    }
-    ldms_set_metric(compid_metric_handle, &v);
-  }
-
-  return 0;
-}
+union ldms_value comp_id;
 
 static ldms_set_t get_set()
 {
-  return set;
+	return set;
 }
 
-static int init(const char *path)
+/*
+ * Depending on the kernel version, not all of the rows will
+ * necessarily be used. Since new columns are added at the end of the
+ * line, this should work across all kernels up to 3.5.
+ */
+static char *metric_name_fmt[] = {
+	"%d:user",
+	"%d:nice",
+	"%d:sys",
+	"%d:idle",
+	"%d:iowait",
+	"%d:irq",
+	"%d:softirq",
+	"%d:steal",
+	"%d:guest",
+	"%d:guest_nice",
+};
+static int create_metric_set(const char *path)
 {
-  size_t meta_sz, tot_meta_sz;
-  size_t data_sz, tot_data_sz;
-  int rc, i, metric_count;
-  char *s;
-  char lbuf[256];
-  char metric_name[128];
+	size_t meta_sz, total_meta_sz;
+	size_t data_sz, total_data_sz;
+	int rc;
+	int metric_count;
+	int column_count;
+	int cpu_count;
+	char *s;
+	char lbuf[256];
+	char metric_name[128];
 
-  mf = fopen(procfile, "r");
-  if (!mf) {
-    msglog("Could not open the procstatutil file '%s'...exiting\n", procfile);
-    return ENOENT;
-  }
+	mf = fopen("/proc/stat", "r");
+	if (!mf) {
+		msglog("Could not open the /proc/stat file.\n");
+		return ENOENT;
+	}
 
-  /* Process the file once first to determine the metric set size
-   * and store the info since this does a diff calculation. (Decide If we want to keep the diff).
-   */
-  rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
-  numcpu_plusone = 0;
-  metric_count = 0; //only for the data metrics
+	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
+				  &total_meta_sz, &total_data_sz);
+	fseek(mf, 0, SEEK_SET);
 
-  fseek(mf, 0, SEEK_SET);
-  do {
-    unsigned long long user;
-    unsigned long long nice;
-    unsigned long long sys;
-    unsigned long long idle;
-    unsigned long long iowait;
-    unsigned long long hardirq;
-    unsigned long long softirq;
-    unsigned long long steal;
-    unsigned long long guest;
-    int icpu;
+	/* Skip first line that is sum of remaining CPUs numbers */
+	s = fgets(lbuf, sizeof(lbuf), mf);
 
-    s = fgets(lbuf, sizeof(lbuf), mf);
-    if (!s)
-      break;
+	metric_count = 0;
+	cpu_count = 0;
+	do {
+		int column;
+		char *token;
+		s = fgets(lbuf, sizeof(lbuf), mf);
+		if (!s)
+			break;
+		
+		/* Throw away first column which is the CPU 'name' */
+		token = strtok(lbuf, " \t\n");
+		if (0 != strncmp(token, "cpu", 3))
+			break;
 
-    if (!strncmp( lbuf, "cpu ", 4) ){
-      /* FIXME: should test for 10 cols */
-      sscanf(lbuf + 5, "%llu %llu %llu %llu %llu %llu %llu %llu %llu",
-             &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
+		column = 0;
+		for (token = strtok(NULL, " \t\n"); token;
+		     token = strtok(NULL, " \t\n")) {
 
-      rc = ldms_get_metric_size("cpu_user_raw", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
+			sprintf(metric_name, metric_name_fmt[column++], cpu_count);
+			rc = ldms_get_metric_size(metric_name,
+						  LDMS_V_U64, &meta_sz,
+						  &data_sz);
+			if (rc)
+				return rc;
 
-      rc = ldms_get_metric_size("cpu_nice_raw", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
+			total_meta_sz += meta_sz;
+			total_data_sz += data_sz;
+			metric_count++;
+		}
+		column_count = column;
+		cpu_count++;
+	} while (1);
 
-      rc = ldms_get_metric_size("cpu_sys_raw",  LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
+	/* Create a metric set of the required size */
+	rc = ldms_create_set(path, total_meta_sz, total_data_sz, &set);
+	if (rc)
+		return rc;
 
-      rc = ldms_get_metric_size("cpu_idle_raw", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
+	rc = ENOMEM;
+	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
+	if (!compid_metric_handle)
+		goto err;
 
-      rc = ldms_get_metric_size("cpu_iowait_raw",  LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
+	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
+	if (!metric_table)
+		goto err;
 
-      rc = ldms_get_metric_size("cpu_irq_raw", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
-      rc = ldms_get_metric_size("cpu_softirq_raw", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
-      rc = ldms_get_metric_size("cpu_steal_raw", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
-      rc = ldms_get_metric_size("cpu_guest_raw", LDMS_V_U64, &meta_sz, &data_sz);
-      tot_meta_sz +=meta_sz;
-      tot_data_sz +=data_sz;
-      metric_count++;
-
-      numcpu_plusone++;
-    } else {
-      if (!strncmp( lbuf, "cpu", 3) ){
-        sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
-               &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-
-        snprintf(metric_name, 127,"cpu%d_user_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_nice_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_sys_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_idle_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_iowait_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_irq_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_softirq_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_steal_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        snprintf(metric_name, 127,"cpu%d_guest_raw", icpu);
-        rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz +=meta_sz;
-        tot_data_sz +=data_sz;
-        metric_count++;
-
-        numcpu_plusone++;
-      } else {
-        continue;
-      }
-    }
-  } while (s);
-
-  /* Create a metric set of the required size */
-  rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-  if (rc){
-    return rc;
-  }
-
-  metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-  if (!metric_table)
-    goto err;
-
-
-  /*
-   * Define all the metrics given the numcpu
-   */
-  compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-  if (!compid_metric_handle) {
-    rc = ENOMEM;
-    goto err;
-  }
-  //compid's value will be set in config
-  //
-
-  int metric_no = 0;
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_user_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_nice_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_sys_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_idle_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_iowait_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_irq_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_softirq_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_steal_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  metric_table[metric_no] = ldms_add_metric(set, "cpu_guest_raw", LDMS_V_U64);
-  if (!metric_table[metric_no]) {
-    rc = ENOMEM;
-    goto err;
-  }
-  metric_no++;
-
-  for (i = 0; i < (numcpu_plusone-1); i++){
-    snprintf(metric_name, 127,"cpu%d_%s",i,"user_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"nice_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"sys_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"idle_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"iowait_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"irq_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"softirq_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"steal_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-
-    snprintf(metric_name, 127,"cpu%d_%s",i,"guest_raw");
-    metric_table[metric_no] = ldms_add_metric(set, metric_name,  LDMS_V_U64);
-    if (!metric_table[metric_no]) {
-      rc = ENOMEM;
-      goto err;
-    }
-    metric_no++;
-  } //for
-
-  return 0;
-
+	int cpu_no;
+	ldms_metric_t m;
+	int metric_no = 0;
+	for (cpu_no = 0; cpu_no < cpu_count; cpu_no++) {
+		int column;
+		for (column = 0; column < column_count; column++) {
+			sprintf(metric_name, metric_name_fmt[column], cpu_no);
+			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
+			if (!m)
+				goto err;
+			metric_table[metric_no++] = m;
+		}
+	}
+	return 0;
  err:
-  ldms_set_release(set);
+	ldms_set_release(set);
+	return rc ;
+}
 
-  return rc ;
+/**
+ * \brief Configuration
+ *
+ * Usage:
+ * - config name=procstatutil component_id=<value> set=<value>
+ */
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+	char *value;
+	int rc = EINVAL;
+
+	value = av_value(avl, "component_id");
+	if (!value)
+		goto out;
+	comp_id.v_u64 = strtol(value, NULL, 0);
+		
+	value = av_value(avl, "set");
+	if (!value)
+		goto out;
+	rc = create_metric_set(value);
+ out:
+	return rc;
 }
 
 static int sample(void)
 {
-  int metric_no;
-  char *s;
-  char lbuf[256];
+	int metric_no;
+	char *s;
+	char lbuf[256];
 
-  metric_no = 0;
-  fseek(mf, 0, SEEK_SET);
-  do {
-    s = fgets(lbuf, sizeof(lbuf), mf);
-    if (!s)
-      break;
+	if (!set || !compid_metric_handle ){
+		msglog("meminfo: plugin not initialized\n");
+		return EINVAL;
+	}
 
-    unsigned long long user;
-    unsigned long long nice;
-    unsigned long long sys;
-    unsigned long long idle;
-    unsigned long long iowait;
-    unsigned long long hardirq;
-    unsigned long long softirq;
-    unsigned long long steal;
-    unsigned long long guest;
-    union ldms_value v;
-    int icpu;
+	ldms_set_metric(compid_metric_handle, &comp_id);
 
-    if (!strncmp( lbuf, "cpu ", 4) ){
-      sscanf(lbuf + 5, "%llu %llu %llu %llu %llu %llu %llu %llu %llu",
-             &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-    } else {
-      if (!strncmp( lbuf, "cpu", 3) ){
-        sscanf(lbuf + 3, "%d %llu %llu %llu %llu %llu %llu %llu %llu %llu",
-               &icpu, &user, &nice, &sys, &idle, &iowait, &hardirq, &softirq, &steal, &guest);
-      } else {
-        continue;
-      }
-    }
+	fseek(mf, 0, SEEK_SET);
 
-    v.v_u64 = user;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
+	/* Discard the first line that is a sum of the other cpu's values */
+	s = fgets(lbuf, sizeof(lbuf), mf);
 
-    v.v_u64 = nice;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
+	metric_no = 0;
+	do {
+		char *token;
+		s = fgets(lbuf, sizeof(lbuf), mf);
+		if (!s)
+			break;
+		
+		token = strtok(lbuf, " \t\n");
+		if (0 != strncmp(token, "cpu", 3))
+			break;
 
-    v.v_u64 = sys;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
-
-    v.v_u64 = idle;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
-
-    v.v_u64 = iowait;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
-
-    v.v_u64 = hardirq;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
-
-    v.v_u64 = softirq;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
-
-    v.v_u64 = steal;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
-
-    v.v_u64 = guest;
-    ldms_set_metric(metric_table[metric_no], &v);
-    metric_no++;
-
-  } while (s);
-  return 0;
+		for (token = strtok(NULL, " \t\n"); token;
+		     token = strtok(NULL, " \t\n")) {
+			uint64_t v = strtoul(token, NULL, 0);
+			ldms_set_u64(metric_table[metric_no++], v);
+		}
+	} while (1);
+	return 0;
 }
 
 static void term(void)
 {
-  ldms_destroy_set(set);
+	if (set)
+		ldms_destroy_set(set);
+	set = NULL;
 }
 
 
-static struct ldms_plugin procstatutil_plugin = {
-  .name = "procstatutil",
-  .init = init,
-  .term = term,
-  .config = config,
-  .get_set = get_set,
-  .sample = sample,
+static const char *usage(void)
+{
+	return  "    config name=procstatutil component_id=<comp_id> set=<setname>\n"
+		"        comp_id     The component id value\n"
+		"        setname     The set name\n";
+}
+
+static struct ldmsd_sampler procstatutil_plugin = {
+	.base = {
+		.name = "procstatutil",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
+	.get_set = get_set,
+	.sample = sample,
 };
 
-struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
-  msglog = pf;
-  return &procstatutil_plugin;
+	msglog = pf;
+	return &procstatutil_plugin.base;
 }
-

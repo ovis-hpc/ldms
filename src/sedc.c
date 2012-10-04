@@ -68,24 +68,24 @@ struct fset {
   ldms_set_t sd;
   ldms_metric_t metrichandles[MAXMETRICSPERSET]; //FIXME: make this not fixed NOTE: includes component id as a metric
 };
-static char sedcheaders[MAXMETRICSPERSET][LDMS_MAX_CONFIG_STR_LEN]; //FIMXE: make this not fixed NOTE: starts at zero, does not include component_id
+static char sedcheaders[MAXMETRICSPERSET][LDMSD_MAX_CONFIG_STR_LEN]; //FIMXE: make this not fixed NOTE: starts at zero, does not include component_id
 static int metric_count = 0;  //NOTE: is the count of sedc metrics (number of headers)
 static int numhosts = 0;
 GHashTable* compidmap;
 GHashTable* setmap;
 
-char dirnamex[LDMS_MAX_CONFIG_STR_LEN] = "";
-char filebasename[LDMS_MAX_CONFIG_STR_LEN] = "";
+char dirnamex[LDMSD_MAX_CONFIG_STR_LEN] = "";
+char filebasename[LDMSD_MAX_CONFIG_STR_LEN] = "";
 char currdate[20] = "";
-char setshortname[LDMS_MAX_CONFIG_STR_LEN] = "";
-char filetype[LDMS_MAX_CONFIG_STR_LEN] = "";
+char setshortname[LDMSD_MAX_CONFIG_STR_LEN] = "";
+char filetype[LDMSD_MAX_CONFIG_STR_LEN] = "";
 int lastpos = 0;
 
-char sedcfname[LDMS_MAX_CONFIG_STR_LEN] = "";
+char sedcfname[LDMSD_MAX_CONFIG_STR_LEN] = "";
 FILE* sedcf = NULL; //sedcfile
 FILE *mf = NULL; //header
 
-char logfiletemp[LDMS_MAX_CONFIG_STR_LEN] = "";
+char logfiletemp[LDMSD_MAX_CONFIG_STR_LEN] = "";
 
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
@@ -327,7 +327,7 @@ static int config(char *str)
     }
   case HEADERFILE:
     {
-      char junk[LDMS_MAX_CONFIG_STR_LEN];
+      char junk[LDMSD_MAX_CONFIG_STR_LEN];
       char lbuf[10240]; //how big does this have to be? 
       sscanf(str, "headerfile=%s", junk);
       mf = fopen(junk, "r");
@@ -363,7 +363,7 @@ static int config(char *str)
     }
   case COMPIDMAP:
     {
-      char junk[LDMS_MAX_CONFIG_STR_LEN];
+      char junk[LDMSD_MAX_CONFIG_STR_LEN];
       sscanf(str, "compidmap=%s", junk);
       processCompIdMap(junk);
       break;
@@ -824,7 +824,7 @@ static int sample(void)
     //}
     //}
 
-    snprintf(sedcfname,LDMS_MAX_CONFIG_STR_LEN-1,
+    snprintf(sedcfname,LDMSD_MAX_CONFIG_STR_LEN-1,
 	     "%s/%s-%s",dirnamex,filebasename,localdate);
     lastpos = 0;
     snprintf(currdate,9,localdate);
@@ -886,18 +886,19 @@ static const char *usage(void)
           "        - Set the headerfile\n";
 }
 
-static struct ldms_plugin sedc_plugin = {
-	.name = "sedc",
-	.init = init,
-	.term = term,
-	.config = config,
+static struct ldmsd_sampler sedc_plugin = {
+	.base = {
+		.name = "sedc",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
 	.get_set = get_set,
 	.sample = sample,
-	.usage = usage,
 };
 
-struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &sedc_plugin;
+	return &sedc_plugin.base;
 }

@@ -1008,14 +1008,14 @@ static int send_cancel_notify(ldms_t _x, ldms_set_t s)
 		(struct ldms_rbuf_desc *)
 		((struct ldms_set_desc *)s)->rbd;
 	struct ldms_xprt *x = _x;
- 	struct ldms_request *req;
+ 	struct ldms_request req;
 	size_t len;
 
 	len = format_cancel_notify_req
-		(req, (uint64_t)(unsigned long)r->local_notify_xid);
+		(&req, (uint64_t)(unsigned long)r->local_notify_xid);
 	r->local_notify_xid = 0;
 
-	return x->send(x, req, len);
+	return x->send(x, &req, len);
 }
 
 int ldms_cancel_notify(ldms_t t, ldms_set_t s)

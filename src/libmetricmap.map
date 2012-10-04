@@ -1,4 +1,4 @@
-LIBMEMINFO_1.0 {
+LIBMETRICMAP_2.0 {
 	global:
 		getHwlocAssoc;
 		cleanup;

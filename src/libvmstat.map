@@ -1,4 +1,4 @@
-LIBVMSTAT_1.0 {
+LIBVMSTAT_2.0 {
 	global:
 		get_plugin;
 	local: *;

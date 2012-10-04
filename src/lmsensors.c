@@ -311,18 +311,19 @@ static const char *usage(void)
 		"        comp_id     The component id value\n";
 }
 
-static struct ldms_plugin lmsensors_plugin = {
-	.name = "lmsensors",
-	.init = init,
-	.term = term,
-	.config = config,
+static struct ldmsd_sampler lmsensors_plugin = {
+	.base = {
+		.name = "lmsensors",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
 	.get_set = get_set,
 	.sample = sample,
-	.usage = usage,
 };
 
-struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &lmsensors_plugin;
+	return &lmsensors_plugin.base;
 }

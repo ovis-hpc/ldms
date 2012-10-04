@@ -1,4 +1,4 @@
-LIBLMSENSORS_1.0 {
+LIBLMSENSORS_2.0 {
 	global:
 		get_plugin;
 	local: *;

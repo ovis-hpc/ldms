@@ -1,4 +1,4 @@
-LIBPERF_EVENT_1.0 {
+LIBPERF_EVENT_2.0 {
 	global:
 		get_plugin;
 	local: *;

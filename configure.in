@@ -1,18 +1,32 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT(ldms-utils, 2.0.0, tom@ogc.us)
+AC_INIT(ldms-utils, 2.0.1, tom@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(ldms-utils, 2.0.0)
+AM_INIT_AUTOMAKE(ldms-utils, 2.0.1)
 AM_PROG_LIBTOOL
+
+AC_ARG_ENABLE(sos, [  --disable-sos     Disable the SOS plugin],
+        [       if test x$enableval = xno ; then
+                        disable_sos=yes
+			echo SOS plugin is disabled
+                fi
+        ])
 
 AC_ARG_ENABLE(papi, [  --disable-papi     Disable the PAPI plugin],
         [       if test x$enableval = xno ; then
                         disable_papi=yes
 			echo PAPI plugin is disabled
+                fi
+        ])
+
+AC_ARG_ENABLE(ugni, [  --disable-ugni     Disable the uGNI transport],
+        [       if test x$enableval = xno ; then
+                        disable_ugni=yes
+			echo uGNI transport is disabled
                 fi
         ])
 
@@ -88,6 +102,9 @@ AC_HEADER_STDC
 dnl Checks for library functions
 AC_CHECK_FUNCS(ibv_read_sysfs_file)
 
+dnl Check for glib
+PKG_CHECK_MODULES([GLIB20], [glib-2.0 >= 2.0.0])
+
 dnl Now check if for libibverbs device library extension
 dummy=if$$
 cat <<IBV_VERSION > $dummy.c
@@ -109,7 +126,9 @@ AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
         ac_cv_version_script=no
     fi)
 
+AM_CONDITIONAL([ENABLE_SOS], [test "$disable_sos" != "yes"])
 AM_CONDITIONAL([ENABLE_PAPI], [test "$disable_papi" != "yes"])
+AM_CONDITIONAL([ENABLE_UGNI], [test "$disable_ugni" != "yes"])
 AM_CONDITIONAL([ENABLE_RDMA], [test "$disable_rdma" != "yes"])
 AM_CONDITIONAL([ENABLE_SOCK], [test "$disable_sock" != "yes"])
 AM_CONDITIONAL([ENABLE_MMAP], [test "$disable_mmap" != "yes"])

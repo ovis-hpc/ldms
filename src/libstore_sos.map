@@ -1,4 +1,4 @@
-LIBMEMINFO_2.0 {
+LIBSTORE_SOS_2.0 {
 	global:
 		get_plugin;
 	local: *;

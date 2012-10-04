@@ -54,10 +54,11 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/queue.h>
+#include <sys/un.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
-static pthread_mutex_t cfg_lock;
+static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define LOGFILE "/var/log/flat_file.log"
 struct fmetric {
@@ -80,9 +81,9 @@ static ldmsd_msg_log_f msglog;
 
 ldms_metric_t compid_metric_handle;
 
-char file_path[LDMS_MAX_CONFIG_STR_LEN];
-char set_name[LDMS_MAX_CONFIG_STR_LEN];
-char metric_name[LDMS_MAX_CONFIG_STR_LEN];
+char file_path[LDMSD_MAX_CONFIG_STR_LEN];
+char set_name[LDMSD_MAX_CONFIG_STR_LEN];
+char metric_name[LDMSD_MAX_CONFIG_STR_LEN];
 
 static struct fset *get_fset(char *set_name)
 {
@@ -183,7 +184,7 @@ static int remove_metric(char *set_name, char *metric_name)
 	return 0;
 }
 
-static int config(char *config_str)
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	enum {
 		ADD_SET,
@@ -192,43 +193,55 @@ static int config(char *config_str)
 		REMOVE_METRIC,
                 COMPONENT_ID,
 	} action;
-	int rc;
+	char *cmd, *set, *path, *metric, *key_s;
+	int rc = EINVAL;
 	uint64_t key;
 
-	pthread_mutex_lock(&cfg_lock);
-	if (0 == strncmp(config_str, "add_metric", 10))
+	cmd = av_name(kwl, 1);
+	if (0 == strcmp(cmd, "add_metric"))
 		action = ADD_METRIC;
-	else if (0 == strncmp(config_str, "remove_metric", 32))
+	else if (0 == strcmp(cmd, "remove_metric"))
 		action = REMOVE_METRIC;
-	else if (0 == strncmp(config_str, "add", 3))
+	else if (0 == strcmp(cmd, "add"))
 		action = ADD_SET;
-	else if (0 == strncmp(config_str, "remove", 6))
+	else if (0 == strcmp(cmd, "remove"))
 		action = REMOVE_SET;
 	else {
 		msglog("flatfile: Invalid configuration string '%s'\n",
-		       config_str);
+		       cmd);
 		rc = EINVAL;
 		goto out;
 	}
+	pthread_mutex_lock(&cfg_lock);
 	switch (action) {
 	case ADD_SET:
-		sscanf(config_str, "add=%[^&]&%s", set_name, file_path);
-		rc = add_set(set_name, file_path);
+		set = av_value(avl, "set");
+		path = av_value(avl, "path");
+		if (set && path)
+			rc = add_set(set, path);
 		break;
 	case REMOVE_SET:
-		sscanf(config_str, "remove=%s", set_name);
-		rc = remove_set(set_name);
+		set = av_value(avl, "set");
+		if (set)
+			rc = remove_set(set);
 		break;
 	case ADD_METRIC:
-		sscanf(config_str, "add_metric=%[^&]&%[^&]&%"PRIu64, set_name, metric_name, &key);
-		rc = add_metric(set_name, metric_name, key);
+		set = av_value(avl, "set");
+		metric = av_value(avl, "metric");
+		key_s = av_value(avl, "key");
+		if (set && metric && key_s) {
+			key = strtoul(key_s, NULL, 0);
+			rc = add_metric(set, metric, key);
+		}
 		break;
 	case REMOVE_METRIC:
-		sscanf(config_str, "remove_metric=%[^&]&%s", set_name, metric_name);
-		rc = remove_metric(set_name, metric_name);
+		set = av_value(avl, "set");
+		metric = av_value(avl, "metric");
+		if (set && metric && key_s)
+			rc = remove_metric(set, metric);
 		break;
 	default:
-		msglog("Invalid config statement '%s'.\n", config_str);
+		msglog("Invalid config statement.\n");
 		rc = EINVAL;
 	}
  out:
@@ -239,12 +252,6 @@ static int config(char *config_str)
 static ldms_set_t get_set()
 {
 	return NULL;
-}
-
-static int init(const char *path)
-{
-	pthread_mutex_init(&cfg_lock, NULL);
-	return 0;
 }
 
 static char data_str[2048];
@@ -278,7 +285,6 @@ static int sample(void)
 
 static void term(void)
 {
-	pthread_mutex_destroy(&cfg_lock);
 }
 
 static const char *usage(void)
@@ -303,19 +309,20 @@ static const char *usage(void)
 		"        metric_name The name of the metric.\n";
 }
 
-static struct ldms_plugin flat_file_plugin = {
-	.name = "flat_file",
-	.init = init,
-	.term = term,
-	.config = config,
+static struct ldmsd_sampler flat_file_plugin = {
+	.base = {
+		.name = "flat_file",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
 	.get_set = get_set,
 	.sample = sample,
-	.usage = usage,
 };
 
-struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	msglog("flat_file: plugin loaded\n");
-	return &flat_file_plugin;
+	return &flat_file_plugin.base;
 }

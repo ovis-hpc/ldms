@@ -58,47 +58,14 @@
 
 static char *procfile = PROC_FILE;
 
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
-ldms_metric_t compid_metric_handle;
+static ldms_set_t set;
+static FILE *mf;
+static ldms_metric_t *metric_table;
+static ldmsd_msg_log_f msglog;
+static ldms_metric_t compid_metric_handle;
+union ldms_value comp_id;
 
-/** 
- * \brief Configuration
- * 
- * Usage: 
- * - config meminfo component_id <value>
- */
-static int config(char *str)
-{
-	if (!set || !compid_metric_handle ) {
-		msglog("meminfo: plugin not initialized\n");
-		return EINVAL;
-	}
-
-	//expects "component_id value"
-	if (0 == strncmp(str, "component_id", 12)) {
-		char junk[128];
-		int rc;
-		union ldms_value v;
-
-		rc = sscanf(str, "component_id %" PRIu64 "%s\n", &v.v_u64, junk);
-		if (rc < 1)
-			return EINVAL;
-
-		ldms_set_metric(compid_metric_handle, &v);
-	}
-
-	return 0;
-}
-
-static ldms_set_t get_set()
-{
-	return set;
-}
-
-static int init(const char *path)
+static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
@@ -108,13 +75,6 @@ static int init(const char *path)
 	char lbuf[256];
 	char metric_name[128];
 	char junk[128];
-
-	//	FILE *outfile;
-	//	outfile = fopen("/home/brandt/ldms/outfile", "w");
-	//	fprintf(outfile, "%s", "meminfo init\n");
-	//	fflush(outfile);
-	//	fclose(outfile);
-
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
@@ -126,14 +86,16 @@ static int init(const char *path)
 	 * Process the file once first to determine the metric set size.
 	 */
 
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
+				  &tot_meta_sz, &tot_data_sz);
 	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &metric_value, junk);
+		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
+			    &metric_value, junk);
 		if (rc < 2)
 			break;
 		/* Strip the colon from metric name if present */
@@ -141,7 +103,8 @@ static int init(const char *path)
 		if (i && metric_name[i-1] == ':')
 			metric_name[i-1] = '\0';
 
-		rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+		rc = ldms_get_metric_size(metric_name, LDMS_V_U64,
+					  &meta_sz, &data_sz);
 		if (rc)
 			return rc;
 
@@ -195,6 +158,29 @@ static int init(const char *path)
 	return rc;
 }
 
+/** 
+ * \brief Configuration
+ */
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+	char *value;
+
+	value = av_value(avl, "component_id");
+	if (value)
+		comp_id.v_u64 = strtol(value, NULL, 0);
+	
+	value = av_value(avl, "set");
+	if (value)
+		create_metric_set(value);
+
+	return 0;
+}
+
+static ldms_set_t get_set()
+{
+	return set;
+}
+
 static int sample(void)
 {
 	int rc;
@@ -204,6 +190,13 @@ static int sample(void)
 	char metric_name[128];
 	char junk[128];
 	union ldms_value v;
+
+	if (!set || !compid_metric_handle ) {
+		msglog("meminfo: plugin not initialized\n");
+		return EINVAL;
+	}
+
+	ldms_set_metric(compid_metric_handle, &comp_id);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -223,28 +216,31 @@ static int sample(void)
 
 static void term(void)
 {
-	ldms_destroy_set(set);
+	if (set)
+		ldms_destroy_set(set);
+	set = NULL;
 }
 
 static const char *usage(void)
 {
-	return  "    config meminfo component_id <comp_id>\n"
-		"        - Set the component_id value in the metric set.\n"
-		"        comp_id     The component id value\n";
+	return  "    config meminfo component_id=<comp_id> set=<setname>\n"
+		"        comp_id     The component id value\n"
+		"        setname     The set name\n";
 }
 
-static struct ldms_plugin meminfo_plugin = {
-	.name = "meminfo",
-	.init = init,
-	.term = term,
-	.config = config,
+static struct ldmsd_sampler meminfo_plugin = {
+	.base = {
+		.name = "meminfo",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
 	.get_set = get_set,
 	.sample = sample,
-	.usage = usage,
 };
 
-struct ldms_plugin *get_plugin(ldmsd_msg_log_f pf)
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &meminfo_plugin;
+	return &meminfo_plugin.base;
 }

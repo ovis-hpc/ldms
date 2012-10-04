@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012 Sandia Corporation. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -39,50 +39,80 @@
  *
  * Author: Tom Tucker <tom@opengridcomputing.com>
  */
-#ifndef _UN_H
-#define _UH_H
+#ifndef __LDMS_XPRT_UGNI_H__
+#define __LDMS_XPRT_UGNI_H__
+#include <semaphore.h>
+#include <sys/queue.h>
+#include <event2/event.h>
+#include <event2/buffer.h>
+#include <event2/bufferevent.h>
+#include <event2/listener.h>
+#include <event2/thread.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-#if 0
-}
-#endif
+/*
+ * This structure is provided to the client in lookup and returned by
+ * the client in the update request.
+ */
+#pragma pack(4)
 
+struct ugni_buf_remote_data {
+	uint64_t meta_buf;
+	gni_mem_handle_t meta_mh;
+	uint32_t meta_size;
+	uint64_t data_buf;
+	gni_mem_handle_t data_mh;
+	uint32_t data_size;
+};
 
-/* These are helper functions for writing LDMS metric data providers */
+struct ugni_buf_local_data {
+	void *meta;
+	size_t meta_size;
+	gni_mem_handle_t meta_mh;
+	void *data;
+	size_t data_size;
+	gni_mem_handle_t data_mh;
+};
 
-extern void un_set_quiet(int q);
-extern void un_say(const char *fmt, ...);
-extern int un_send_req(int sock, struct sockaddr *sa, ssize_t sa_len,
-		       char *data, ssize_t data_len);
-extern int un_recv_rsp(int sock, struct sockaddr *sa, ssize_t sa_len,
-		       char *data, ssize_t data_len);
-extern int un_connect(char *my_name, char *sockname);
-extern int un_def_set(char *set_name, ssize_t set_size);
-extern int un_rem_set(int set_no);
-extern int un_def_metric(int set_no, char *metric_name, char *metric_type);
-extern uint64_t un_set_u8(int set_no, int metric_no, uint8_t u8);
-extern uint64_t un_set_s8(int set_no, int metric_no, int8_t s8);
-extern uint64_t un_set_u16(int set_no, int metric_no, uint16_t u16);
-extern uint64_t un_set_s16(int set_no, int metric_no, int16_t s16);
-extern uint64_t un_set_u32(int set_no, int metric_no, uint32_t u32);
-extern uint64_t un_set_s32(int set_no, int metric_no, int32_t s32);
-extern uint64_t un_set_u64(int set_no, int metric_no, uint64_t u64);
-extern uint64_t un_set_s64(int set_no, int metric_no, int32_t s64);
+struct ugni_desc {
+	gni_post_descriptor_t fma;
+	void *context;
+	LIST_ENTRY(ugni_desc) link;
+};
 
-extern int un_ls_plugins(char *, size_t);
-extern int un_load_plugin(char *plugin, char *err_str);
-extern int un_init_plugin(char *plugin, char *set_name, char *err_str);
-extern int un_term_plugin(char *plugin, char *err_str);
-extern int un_start_plugin(char *plugin, unsigned long period, char *err_str);
-extern int un_stop_plugin(char *plugin, char *err_str);
-extern int un_stop_plugin(char *plugin, char *err_str);
-extern int un_config_plugin(char *plugin, char *str, char *err_str);
-extern void un_close(void);
+#define UGNI_CTRL_REQ_CMD	(LDMS_CMD_XPRT_PRIVATE | 0x1)
+#define UGNI_HELLO_REQ_CMD	(LDMS_CMD_XPRT_PRIVATE | 0x3)
+struct ugni_hello_req {
+	struct ldms_request_hdr hdr;
+	uint32_t address;
+};
+#pragma pack()
 
-#ifdef __cplusplus
-}
-#endif
+enum ugni_conn_status {
+	CONN_ERROR = -1,
+	CONN_IDLE = 0,
+	CONN_CONNECTING,
+	CONN_CONNECTED,
+	CONN_CLOSING,
+	CONN_CLOSED
+};
+
+/**
+ * uGNI Transport private data
+ */
+struct ldms_ugni_xprt {
+	struct ldms_xprt *xprt;
+	enum ugni_conn_status conn_status;
+
+	int sock;
+	gni_cq_handle_t ugni_cq;
+	gni_ep_handle_t ugni_ep;
+	uint32_t ugni_remote_address;
+	struct bufferevent *buf_event;
+	struct evconnlistener *listen_ev;
+
+	LIST_ENTRY(ldms_ugni_xprt) client_link;
+};
+
+extern int ugni_register(struct sockaddr *s, struct ldms_ugni_xprt *x);
 
 #endif

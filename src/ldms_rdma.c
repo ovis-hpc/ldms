@@ -341,7 +341,6 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	r = rdma_from_xprt(_x);
 	r->cm_id = cma_id;
 	r->cm_id->context = r;
-	r->xprt->connected = 1;
 	r->conn_status = CONN_CONNECTING;
 
 	/* Allocate PD */
@@ -626,6 +625,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 
 	case RDMA_CM_EVENT_ESTABLISHED:
 		x->conn_status = CONN_CONNECTED;
+		r->xprt->connected = 1;
 		sem_post(&x->sem);
 		break;
 
@@ -635,12 +635,14 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_REJECTED:
 		x->conn_status = CONN_ERROR;
+		x->xprt->connected = 0;
 		ret = -1;
 		sem_post(&x->sem);
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		x->conn_status = CONN_CLOSED;
+		x->xprt->connected = 0;
 		sem_post(&x->sem);
 		ldms_release_xprt(x->xprt);
 		if (x->cm_channel) {
@@ -665,6 +667,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		x->conn_status = CONN_ERROR;
+		x->xprt->connected = 0;
 		sem_post(&x->sem);
 		break;
 
