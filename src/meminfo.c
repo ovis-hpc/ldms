@@ -81,8 +81,8 @@ ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
 ldms_metric_t pid_metric_handle;
 ldms_metric_t tid_metric_handle;
-static uint64_t mypid;
-static uint64_t mytid;
+//static uint64_t mypid;
+//static uint64_t mytid;
 
 static int create_metric_set(const char *path)
 {
@@ -90,7 +90,7 @@ static int create_metric_set(const char *path)
 	size_t data_sz, tot_data_sz;
 	int rc, i, metric_count;
 	uint64_t metric_value;
-	union ldms_value v;
+	//	union ldms_value v;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
