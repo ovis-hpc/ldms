@@ -141,8 +141,8 @@ static int create_metric_set(const char *path)
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo (NOTE: xref with meminfo, because that may shift the numbering)
-				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name); //FIXME: prob get the actual col name
+				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo 
+				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name); 
 				rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
@@ -192,7 +192,7 @@ static int create_metric_set(const char *path)
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo (NOTE: xref with meminfo, because that may shift the numbering)
+				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo 
 				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name); 
 				metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
 				if (!metric_table[metric_no]){
