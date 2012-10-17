@@ -170,19 +170,19 @@ static int create_metric_set(const char *path)
 		goto err;
 
 	//also set the counter...
-	counter = 0;
-	v.v_u64 = counter;
-	ldms_set_metric(counter_metric_handle, &v);
+	//	counter = 0;
+	//	v.v_u64 = counter;
+	//	ldms_set_metric(counter_metric_handle, &v);
 
 	//also set the pid
-	mypid=getpid();
-	v.v_u64 = mypid;
-	ldms_set_metric(pid_metric_handle, &v);
+	//	mypid=getpid();
+	//	v.v_u64 = mypid;
+	//	ldms_set_metric(pid_metric_handle, &v);
 
 	//also set the tid
-	mytid = syscall(__NR_gettid);
-	v.v_u64 = mytid;
-	ldms_set_metric(tid_metric_handle, &v);
+	//	mytid = syscall(__NR_gettid);
+	//	v.v_u64 = mytid;
+	//	ldms_set_metric(tid_metric_handle, &v);
 	
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
