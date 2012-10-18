@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir)
+INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) 
 
 if ENABLE_GLIB
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/hwlocldms_ls
@@ -90,6 +90,15 @@ src_libstore_sos_la_SOURCES = src/store_sos.c
 src_libstore_sos_la_DEPENDENCIES = $(srcdir)/src/libstore_sos.map
 src_libstore_sos_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lsos -lplugin
 STORE_SOS_la = src/libstore_sos.la
+
+#libstore_mysql uses the idx.h in sos
+if ENABLE_MYSQL
+src_libstore_mysql_la_CPPFLAGS = -I/usr/include/mysql
+src_libstore_mysql_la_SOURCES = src/store_mysql.c
+src_libstore_mysql_la_DEPENDENCIES = $(srcdir)/src/libstore_mysql.map
+src_libstore_mysql_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient
+STORE_MYSQL_la = src/libstore_mysql.la
+endif
 endif
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
@@ -142,7 +151,7 @@ lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
 	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(PROCSENSORS_la) \
 	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la) \
-	$(STORE_SOS_la)
+	$(STORE_SOS_la) $(STORE_MYSQL_la)
 #$(HWLOCFLATFILE_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
