@@ -74,18 +74,19 @@ static int numhosts = 0;
 GHashTable* compidmap;
 GHashTable* setmap;
 
-char dirnamex[LDMSD_MAX_CONFIG_STR_LEN] = "";
-char filebasename[LDMSD_MAX_CONFIG_STR_LEN] = "";
+char* dirnamex = NULL;
+char* filebasename = NULL;
 char currdate[20] = "";
-char setshortname[LDMSD_MAX_CONFIG_STR_LEN] = "";
-char filetype[LDMSD_MAX_CONFIG_STR_LEN] = "";
+char* setshortname = NULL;
+char* filetype = NULL;
+char* logfile = NULL;
 int lastpos = 0;
 
 char sedcfname[LDMSD_MAX_CONFIG_STR_LEN] = "";
 FILE* sedcf = NULL; //sedcfile
 FILE *mf = NULL; //header
 
-char logfiletemp[LDMSD_MAX_CONFIG_STR_LEN] = "";
+
 
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
@@ -97,8 +98,8 @@ static size_t tot_data_sz = 0;
 
 
 static void printCompIdMap(gpointer key, gpointer value, gpointer user_data){
-  if (strlen(logfiletemp) > 0){
-    FILE* outfile = fopen(logfiletemp, "a");
+  if (strlen(logfile) > 0){
+    FILE* outfile = fopen(logfile, "a");
     if (outfile != NULL){
       fprintf(outfile, "<%s> <%d>", (char*)key, *(int*)value);
       fflush(outfile);
@@ -112,8 +113,8 @@ static int processCompIdMap(char * fname){
   //set of options since remote assoc will be handled at insert)? can this be a type and
   //offset or something??
 
-  if (strlen(logfiletemp) > 0){
-    FILE* outfile = fopen(logfiletemp, "a");
+  if (strlen(logfile) > 0){
+    FILE* outfile = fopen(logfile, "a");
     if (outfile != NULL){
       fprintf(outfile, "entered process compid map <%s>", fname);
       fflush(outfile);
@@ -129,8 +130,8 @@ static int processCompIdMap(char * fname){
     return ENOENT;
   }
 
-  if (strlen(logfiletemp) > 0){
-    FILE* outfile = fopen(logfiletemp, "a");
+  if (strlen(logfile) > 0){
+    FILE* outfile = fopen(logfile, "a");
     if (outfile != NULL){
       fprintf(outfile, "should be looking at file <%s>", fname);
       fflush(outfile);
@@ -146,8 +147,8 @@ static int processCompIdMap(char * fname){
     int rc = sscanf(lbuf,"%s %d\n",compname,val);
     if (rc == 2){
       g_hash_table_replace(compidmap, (gpointer)compname, (gpointer)val);
-      if (strlen(logfiletemp) > 0){
-	FILE* outfile = fopen(logfiletemp, "a");
+      if (strlen(logfile) > 0){
+	FILE* outfile = fopen(logfile, "a");
 	if (outfile != NULL){
 	  fprintf(outfile, "<%s> <%d>", compname, *val);
 	  fflush(outfile);
@@ -156,8 +157,8 @@ static int processCompIdMap(char * fname){
       }
       numhosts++;
     } else {
-      if (strlen(logfiletemp) > 0){
-	FILE* outfile = fopen(logfiletemp, "a");
+      if (strlen(logfile) > 0){
+	FILE* outfile = fopen(logfile, "a");
 	if (outfile != NULL){
 	  fprintf(outfile, "cant add <%s>\n", lbuf);
 	  fflush(outfile);
@@ -181,8 +182,8 @@ static int processSEDCHeader(char* lbuf){
    * Process the header file to determine the metric set size.
    */
 
-  if (strlen(logfiletemp) > 0){
-    FILE* outfile = fopen(logfiletemp, "a");
+  if (strlen(logfile) > 0){
+    FILE* outfile = fopen(logfile, "a");
     if (outfile != NULL){
       fprintf(outfile, "%s", "determining the metric set size\n");
       fflush(outfile);
@@ -200,8 +201,8 @@ static int processSEDCHeader(char* lbuf){
   int count = 0;
   
   char *pch = strtok(lbuf, ",\n");
-  //  if (strlen(logfiletemp) > 0){
-  //  outfile = fopen(logfiletemp, "a");
+  //  if (strlen(logfile) > 0){
+  //  outfile = fopen(logfile, "a");
   // if (outfile != NULL){
   //  fprintf(outfile, "read <%s>\n", lbuf);
   //  fflush(outfile);
@@ -210,8 +211,8 @@ static int processSEDCHeader(char* lbuf){
   //}
   while (pch != NULL){
     if (count >= minindex){
-      // if (strlen(logfiletemp) > 0){
-      //      outfile = fopen(logfiletemp, "a");
+      // if (strlen(logfile) > 0){
+      //      outfile = fopen(logfile, "a");
       // if (outfile != NULL){
       //      fprintf(outfile, "counting metric <%s>\n", pch);
       //      fflush(outfile);
@@ -227,8 +228,8 @@ static int processSEDCHeader(char* lbuf){
       tot_data_sz += data_sz;
       sscanf(pch, "%s", sedcheaders[metric_count++]);       //strip leading spaces
     } else {
-      // if (strlen(logfiletemp) > 0){
-      //      outfile = fopen(logfiletemp, "a");
+      // if (strlen(logfile) > 0){
+      //      outfile = fopen(logfile, "a");
       // if (outfile != NULL){
       //      fprintf(outfile, "NOT counting metric <%s>\n", pch);
       //      fflush(outfile);
@@ -243,142 +244,178 @@ static int processSEDCHeader(char* lbuf){
   return 0;
 };
 
+static int setdatafile(struct attr_value_list *kwl, struct attr_value_list *avl){
+
+  dirnamex = strdup(av_value(avl,"datafiledir"));
+  if (dirnamex == NULL){
+    msglog("sedc: no datafiledir\n");
+    return EINVAL;
+  }
+
+ filebasename = strdup(av_value(avl,"datafilebasename"));
+  if (filebasename == NULL){
+    free(dirnamex);
+    msglog("sedc: no datafilebasename\n");
+    return EINVAL;
+  }
+
+ filetype = strdup(av_value(avl,"datafiletype"));
+  if (filetype == NULL){
+    free(dirnamex);
+    free(filebasename);
+    msglog("sedc: no datafiletype\n");
+    return EINVAL;
+  }
+
+  if (strlen(logfile) > 0){
+    FILE *outfile = fopen(logfile, "a");
+    if (outfile != NULL){
+      fprintf(outfile, "dirnamex <%s> filebasename <%s> filetype<%s>\n",dirnamex, filebasename, filetype);
+      fflush(outfile);
+      fclose(outfile);
+    }
+  }
+
+
+  if ((strcmp(filetype, "sedc") != 0) && (strcmp(filetype, "rsyslog"))){
+    msglog("sedc: bad datafiletype\n");
+    return EINVAL;
+  }
+
+  return 0;
+}
+
+
+static int setconfigfiles(struct attr_value_list *kwl, struct attr_value_list *avl){
+
+  logfile = strdup(av_value(avl, "logfile")); //optional
+
+  char* junk= strdup(av_value(avl,"headerfile"));
+  if (junk == NULL){
+    msglog("sedc: no headerfile\n");
+    return EINVAL;
+  }
+
+  char lbuf[10240]; //how big does this have to be? 
+  mf = fopen(junk, "r");
+  if (!mf) {
+    msglog("Could not open the sedc file '%s'...exiting\n", junk);
+    free(junk);
+    return ENOENT;
+  }
+
+  free(junk);
+
+  int rc = 0;
+  fseek(mf, 0, SEEK_SET);
+  if (fgets(lbuf, sizeof(lbuf), mf) != NULL){
+    rc = processSEDCHeader(lbuf);
+  }
+  if (mf) fclose(mf);
+  if (rc != 0){
+    return rc;
+  }
+
+  int i;
+  for (i = 0; i < metric_count; i++){
+    if (strlen(logfile) > 0){
+      FILE *outfile;
+      outfile = fopen(logfile, "a");
+      if (outfile != NULL){ 
+	fprintf(outfile, "header <%d> <%s>\n",i, sedcheaders[i]);
+	fflush(outfile);
+	fclose(outfile);
+      }
+    }
+  }
+
+  //compidmap
+  junk = strdup(av_value(avl,"compidmap"));
+  if (junk == NULL){
+    msglog("sedc: no compidmap\n");
+    return EINVAL;
+  }
+
+  rc = processCompIdMap(junk);
+  free(junk);
+
+  return rc;
+}
+
+static int setMSshortname(struct attr_value_list *kwl, struct attr_value_list *avl){
+  setshortname = strdup(av_value(avl,"shortname"));
+  if (setshortname == NULL){
+    msglog("sedc: no metricset shortname\n");
+    return EINVAL;
+  }
+
+  return 0;
+}
+
+
+static const char *usage(void)
+{
+  return  "    config action=setdatafile datafiledir=XXX datafilebasename=YYY datafiletype=ZZZ\n"
+          "        - Set the datafile info\n"
+          "        datafiledir         Directory of the datafile\n"
+          "        datafilebasename    Basename of the datafile\n"
+          "                            (e.g., L0_FSIO_TEMPS. will be followed by the current date_\n"
+          "        filetype            sedc or rsyslog\n"
+          "    config action=setconfigfiles logfile=XXX compidmap=YYY headerfile=ZZZ\n"
+          "        - Set some config files\n"
+          "        logfile             Logfile(optional)\n"
+          "        compidmap           CompIdMap\n"
+          "        headerfile          Headerfile\n"
+          "    config action=setshortname shortname=XXX\n"
+          "        - Set some metricset shortname\n"
+          "        shortname           Shortname (no hostname)\n";
+}
+
 
 /**
  * \brief Configuration
  *
  * Usage:
- * - config sedc datafile <datafiledir> <datafilebasename> <filetype>
+ * - config action=setdatafile datafiledir=XXX datafilebasename=YYY datafiletype=ZZZ
  * <ul><li> Set the datafile info.
  * <ul><li> datafiledir:         Directory of the datafile
- * <li> datafilebasename:    Basename of the datafile. (e.g., L0_FSIO_TEMPS. will be followed by the current date)
- * <li> filetype:            sedc or rsyslog
+ * <li> datafilebasename:        Basename of the datafile. (e.g., L0_FSIO_TEMPS. will be followed by the current date)
+ * <li> datafiletype:            sedc or rsyslog
  * </ul></ul>
- * - config sedc logfile <logfilename>
- * <ul><li> Set the logfile (optional)
- * <ul><li> logfilename:         Logfile
+ * - config action=setconfigfiles headerfile=XXX compidmap=YYY logfile=ZZZ
+ * <ul><li> Set some config files
+ * <ul><li> headerfile:    Headerfile
+ * <ul><li> compidmap:     CompIdMap
+ * <ul><li> logfile:       Logfile (optional)
  * </ul></ul>
- * - config sedc compidmap=<compidmapname>
- * <ul><li> Set the compidmap file
- * <ul><li> compidmapname:        CompIdMapName
- * </ul></ul>
- * - config sedc headerfile=<headerfilename>
- * <ul><li> Set the headerfile
- * <ul><li> headerfilename:    Headerfile
+ * - config action=setshortname shortname=XXX
+ * <ul><li> Set metricset shortname
+ * <ul><li> shortname:     Shortname.
  * </ul></ul>
  */
-static int config(char *str)
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-  enum {
-    HEADERFILE,
-    COMPIDMAP,
-    DATAFILE,
-    LOGFILE,
-  } action;
 
-  int rc = 0;
+  char* action = av_value(avl, "action");
+  if (!action){
+    msglog("sedc: no action\n");
+    return EINVAL;
+  }
 
+  int rc = 0;  
   pthread_mutex_lock(&cfg_lock);
-  if (0 == strncmp(str, "datafile", 8)){
-    action = DATAFILE;
-  } else if (0 == strncmp(str, "headerfile", 10)){
-    action = HEADERFILE;
-  } else if (0 == strncmp(str, "compidmap", 9)){
-    action = COMPIDMAP;
-  } else if (0 == strncmp(str, "logfile", 7)){
-    action = LOGFILE;
+  if (0 == strcmp(action, "setdatafile")){
+    rc = setdatafile(kwl, avl);
+  } else if (0 == strcmp(action, "setconfigfiles")){
+    rc = setconfigfiles(kwl, avl);
+  } else if (0 == strcmp(action, "setshortname")){
+    rc = setMSshortname(kwl, avl);
   } else {
-    msglog("sedc: Invalid configuration string '%s'\n", str);
-    rc = EINVAL;
-    pthread_mutex_unlock(&cfg_lock);
-    return rc;
-  }
-
-  switch (action) {
-  case DATAFILE:
-    {
-      rc = sscanf(str, "datafile=%[^&]&%[^&]&%s", dirnamex, filebasename, filetype);
-     if (rc != 3){
-	FILE *outfile;
-	if (strlen(logfiletemp) > 0){
-	  outfile = fopen(logfiletemp, "a");
-	  if (outfile != NULL){
-	    fprintf(outfile, "bad format for datafile command rc <%d>\n", rc);
-	    fflush(outfile);
-	    fclose(outfile);
-	  }
-	}
-	rc = EINVAL;
-      } else {
-       if (strlen(logfiletemp) > 0){
-	 FILE *outfile = fopen(logfiletemp, "a");
-	 if (outfile != NULL){
-	   fprintf(outfile, "dirnamex <%s> filebasename <%s> filetype<%s>\n",dirnamex, filebasename,filetype);
-	   fflush(outfile);
-	   fclose(outfile);
-	 }
-       }
-
-	if ((strcmp(filetype, "sedc") != 0) && (strcmp(filetype, "rsyslog"))){
-	  rc = EINVAL;    
-	}
-      }
-      break;
-    }
-  case HEADERFILE:
-    {
-      char junk[LDMSD_MAX_CONFIG_STR_LEN];
-      char lbuf[10240]; //how big does this have to be? 
-      sscanf(str, "headerfile=%s", junk);
-      mf = fopen(junk, "r");
-      if (!mf) {
-	msglog("Could not open the sedc file '%s'...exiting\n", junk);
-	pthread_mutex_unlock(&cfg_lock);
-	return ENOENT;
-      }
-
-      fseek(mf, 0, SEEK_SET);
-      if (fgets(lbuf, sizeof(lbuf), mf) != NULL){
-	rc = processSEDCHeader(lbuf);
-      }
-      if (mf) fclose(mf);
-      if (rc != 0){
-	pthread_mutex_unlock(&cfg_lock);
-	return rc;
-      }
-
-      int i;
-      for (i = 0; i < metric_count; i++){
-	if (strlen(logfiletemp) > 0){
-	  FILE *outfile;
-	  outfile = fopen(logfiletemp, "a");
-	  if (outfile != NULL){ 
-	    fprintf(outfile, "header <%d> <%s>\n",i, sedcheaders[i]);
-	    fflush(outfile);
-	    fclose(outfile);
-	  }
-	}
-      }
-      break;
-    }
-  case COMPIDMAP:
-    {
-      char junk[LDMSD_MAX_CONFIG_STR_LEN];
-      sscanf(str, "compidmap=%s", junk);
-      processCompIdMap(junk);
-      break;
-    }
-  case LOGFILE:
-    {
-      sscanf(str, "logfile=%s", logfiletemp);
-      break;
-    }
-  default:
-    msglog("Invalid config statement '%s'\n", str);
+    msglog("sedc: Invalid configuration string '%s'\n", action);
     rc = EINVAL;
   }
-
   pthread_mutex_unlock(&cfg_lock);
+  
   return rc;
 
 }
@@ -400,9 +437,9 @@ static int init(const char *path)
   //obviate this?
 
   sscanf(path,"%*[^/]/%s",setshortname);
-  // if (strlen(logfiletemp) > 0){
+  // if (strlen(logfile) > 0){
   //  FILE *outfile;
-  //  outfile = fopen(logfiletemp, "a");
+  //  outfile = fopen(logfile, "a");
   // if (outfile != NULL){
   //  fprintf(outfile, "shortname will be <%s>\n", setshortname);
   //  fflush(outfile);
@@ -424,9 +461,9 @@ int createMetricSet(char* hostname, int compid, char* shortname){
   //can we get nid if we want that?
   snprintf(setnamechar,1024,"%s/%s",hostname,setshortname);
 
-  if (strlen(logfiletemp) > 0){
+  if (strlen(logfile) > 0){
     FILE *outfile;
-    outfile = fopen(logfiletemp, "a");
+    outfile = fopen(logfile, "a");
     if (outfile != NULL){
       fprintf(outfile, "should be creating metric set for <%s> <%s> <%d>\n", hostname, setshortname, compid);
       fflush(outfile);
@@ -440,9 +477,9 @@ int createMetricSet(char* hostname, int compid, char* shortname){
   int rc = ldms_create_set(setnamechar, tot_meta_sz, tot_data_sz, &(currfset->sd));
   if (rc != 0){
     printf("Error %d creating metric set '%s'.\n", rc, setnamechar);
-    if (strlen(logfiletemp) > 0){
+    if (strlen(logfile) > 0){
       FILE *outfile;
-      outfile = fopen(logfiletemp, "a");
+      outfile = fopen(logfile, "a");
       if (outfile != NULL){
 	fprintf(outfile, "Error %d creating metric set <%s>\n",
 		rc, setnamechar);
@@ -460,8 +497,8 @@ int createMetricSet(char* hostname, int compid, char* shortname){
     printf("Error creating the metric %s.\n", "component_id");
     exit(1);
   } else {
-    if (strlen(logfiletemp) > 0){
-      FILE* outfile = fopen(logfiletemp, "a");
+    if (strlen(logfile) > 0){
+      FILE* outfile = fopen(logfile, "a");
       if (outfile != NULL){
 	fprintf(outfile, "Created metric component_id\n");
 	fflush(outfile);
@@ -477,8 +514,8 @@ int createMetricSet(char* hostname, int compid, char* shortname){
       printf("Error creating the metric %s.\n", sedcheaders[i]);
       exit(1);
     } else {
-      if (strlen(logfiletemp) > 0){
-	FILE* outfile = fopen(logfiletemp, "a");
+      if (strlen(logfile) > 0){
+	FILE* outfile = fopen(logfile, "a");
 	fprintf(outfile, "Created metric <%s>\n",sedcheaders[i]);
 	fflush(outfile);
 	fclose(outfile);
@@ -529,8 +566,8 @@ static char* stripRsyslogHeaders(char* bufin){
 int processSEDCData(char* line){
   //split the line into tokens based on comma sep
 
-  if (strlen(logfiletemp) > 0){
-    FILE* outfile = fopen(logfiletemp, "a");
+  if (strlen(logfile) > 0){
+    FILE* outfile = fopen(logfile, "a");
     if (outfile != NULL){
       fprintf(outfile, "Entered process data <%s>\n", line);
       fflush(outfile);
@@ -570,8 +607,8 @@ int processSEDCData(char* line){
 	    return -1;
 	  }
 	} else {
-	  // if(strlen(logfiletemp) > 0){
-	  //	  FILE* outfile = fopen(logfiletemp, "a");
+	  // if(strlen(logfile) > 0){
+	  //	  FILE* outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
 	  //	  fprintf(outfile, "will be using metric set for <%s>\n", pch);
 	  //	  fflush(outfile);
@@ -588,8 +625,8 @@ int processSEDCData(char* line){
       {
 	if (strlen(pch) == 0){
 	  //NOTE: it is expected that there will be one too many because of the newline
-	  // if (strlen(logfiletemp) > 0){
-	  //	  FILE* outfile = fopen(logfiletemp, "a");
+	  // if (strlen(logfile) > 0){
+	  //	  FILE* outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
 	  //	  fprintf(outfile, "No data for metric <%d> not publishing value\n", (count-minindex+1));
 	  //	  fflush(outfile);
@@ -606,8 +643,8 @@ int processSEDCData(char* line){
 	union ldms_value v;
 	v.v_u64 = llval;
 
-	// if (strlen(logfiletemp) > 0){
-	//	FILE* outfile = fopen(logfiletemp, "a");
+	// if (strlen(logfile) > 0){
+	//	FILE* outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
 	//	fprintf(outfile, "should be processing the data handle <%d> <%llu>\n", (count-minindex+1),llval);
 	//	fflush(outfile);
@@ -615,8 +652,8 @@ int processSEDCData(char* line){
 	//}
 	//}
 	if ((count-minindex+1) == 0){
-	  if (strlen(logfiletemp) > 0){
-	    FILE* outfile = fopen(logfiletemp, "a");
+	  if (strlen(logfile) > 0){
+	    FILE* outfile = fopen(logfile, "a");
 	    if (outfile != NULL){
 	      fprintf(outfile, "Error: should NOT be setting handle 0, which is the compid\n");
 	      fflush(outfile);
@@ -626,8 +663,8 @@ int processSEDCData(char* line){
 	  return -1;
 	}
 	if ((count-minindex+1) > metric_count){
-	  if (strlen(logfiletemp) > 0){
-	    FILE* outfile = fopen(logfiletemp, "a");
+	  if (strlen(logfile) > 0){
+	    FILE* outfile = fopen(logfile, "a");
 	    if (outfile != NULL){
 	      fprintf(outfile, "Error: should NOT be setting handle <%d>, which is greater than the number of handles\n", (count-minindex+1));
 	      fflush(outfile);
@@ -645,8 +682,8 @@ int processSEDCData(char* line){
 
   //because the last one counted was the new line
   if ((count-minindex) <= metric_count){
-    if (strlen(logfiletemp) > 0){
-      FILE* outfile = fopen(logfiletemp, "a");
+    if (strlen(logfile) > 0){
+      FILE* outfile = fopen(logfile, "a");
       if (outfile != NULL){
 	fprintf(outfile, "Error: Did not get enough metrics to process -- last possible handle was <%d>\n", (count-minindex)); //NOTE: subtracted extra 1
 	fflush(outfile);
@@ -654,8 +691,8 @@ int processSEDCData(char* line){
       }
     }
   } else {
-    // if (strlen(logfiletemp) > 0){
-    //    FILE* outfile = fopen(logfiletemp, "a");
+    // if (strlen(logfile) > 0){
+    //    FILE* outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
     //    fprintf(outfile, "Returning after checking <%d> values out of <%d>\n", (count-minindex), metric_count); //NOTE: subtracted extra 1
     //    fflush(outfile);
@@ -672,8 +709,8 @@ int processSEDCData(char* line){
 
 static int processSEDCFile(){
 
-  // if (strlen(logfiletemp) > 0){
-  //  FILE* outfile = fopen(logfiletemp, "a");
+  // if (strlen(logfile) > 0){
+  //  FILE* outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
   //  fprintf(outfile, "Trying opening <%s> for reading\n", sedcfname);
   //  fflush(outfile);
@@ -690,8 +727,8 @@ static int processSEDCFile(){
 
     while ( (read = getline(&line, &len, sedcf)) != -1){
       if (line[read-1] != '\n'){
-	if (strlen(logfiletemp) > 0){
-	  FILE* outfile = fopen(logfiletemp, "a");
+	if (strlen(logfile) > 0){
+	  FILE* outfile = fopen(logfile, "a");
 	  if (outfile != NULL){
 	    fprintf(outfile, "not a complete line. Closing <%s>\n", sedcfname);
 	    fflush(outfile);
@@ -703,8 +740,8 @@ static int processSEDCFile(){
 	break;
       } else {
 	//note: this will have the newline
-	// if (strlen(logfiletemp) > 0){
-	//	FILE* outfile = fopen(logfiletemp, "a");
+	// if (strlen(logfile) > 0){
+	//	FILE* outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
 	//	fprintf(outfile, "read <%s> <length=%zu>\n", line, read);
 	//	fflush(outfile);
@@ -732,8 +769,8 @@ static int processSEDCFile(){
     if (sedcf) fclose(sedcf);
     return 0;
   } else {
-    if (strlen(logfiletemp) > 0){
-      FILE* outfile = fopen(logfiletemp, "a");
+    if (strlen(logfile) > 0){
+      FILE* outfile = fopen(logfile, "a");
       if (outfile != NULL){
 	fprintf(outfile, "Can't open sedc file <%s> for reading\n",sedcfname);
 	fflush(outfile);
@@ -753,8 +790,8 @@ static int sample(void)
 
   pthread_mutex_lock(&cfg_lock);
 
-  // if (strlen(logfiletemp) > 0){
-  //  FILE* outfile = fopen(logfiletemp, "a");
+  // if (strlen(logfile) > 0){
+  //  FILE* outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
   //  fprintf(outfile, "Entered sample\n");
   //  fflush(outfile);
@@ -762,8 +799,14 @@ static int sample(void)
   // }
   //}
 
-  if (strlen(dirnamex) == 0 || strlen(filebasename) == 0){
+  if (dirnamex == NULL || filebasename == NULL){
     msglog("sedc: No data file info\n");
+    pthread_mutex_unlock(&cfg_lock);
+    return ENOENT;
+  }
+
+  if (setshortname == NULL){
+    msglog("sedc: No set shortname\n");
     pthread_mutex_unlock(&cfg_lock);
     return ENOENT;
   }
@@ -778,8 +821,8 @@ static int sample(void)
   FILE *fpipe;
   if (!(fpipe = (FILE*)popen(command,"r"))){
     perror("Problems with pipe");
-    if (strlen(logfiletemp) > 0){
-      FILE* outfile = fopen(logfiletemp, "a");
+    if (strlen(logfile) > 0){
+      FILE* outfile = fopen(logfile, "a");
       if (outfile != NULL){
 	fprintf(outfile, "Cant get date\n");
 	fflush(outfile);
@@ -792,8 +835,8 @@ static int sample(void)
 
   if (!fgets( localdate, sizeof localdate, fpipe)){
     perror("Problems with reading date");
-    if (strlen(logfiletemp) > 0){
-      FILE* outfile = fopen(logfiletemp, "a");
+    if (strlen(logfile) > 0){
+      FILE* outfile = fopen(logfile, "a");
       if (outfile != NULL){
 	fprintf(outfile, "Problems with reading date\n");
 	fflush(outfile);
@@ -805,8 +848,8 @@ static int sample(void)
   }
   localdate[strlen(localdate)-1] = '\0';
   
-  // if (strlen(logfiletemp) > 0){
-  //  outfile = fopen(logfiletemp, "a");
+  // if (strlen(logfile) > 0){
+  //  outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
   //  fprintf(outfile, "Currdate <%s> localdate <%s> \n", currdate, localdate);
   //  fflush(outfile);
@@ -815,9 +858,9 @@ static int sample(void)
   //}
 
   if (strcmp(localdate,currdate) != 0){
-    //if (strlen(logfiletemp) > 0){
+    //if (strlen(logfile) > 0){
 	  // if (outfile != NULL){
-    //    outfile = fopen(logfiletemp, "a");
+    //    outfile = fopen(logfile, "a");
     //    fprintf(outfile, "New date. determining new file\n");
     //    fflush(outfile);
     //    fclose(outfile);
@@ -829,7 +872,7 @@ static int sample(void)
     lastpos = 0;
     snprintf(currdate,9,localdate);
 
-    FILE* outfile = fopen(logfiletemp, "a");
+    FILE* outfile = fopen(logfile, "a");
     if (outfile != NULL){
       fprintf(outfile, "New sedc file <%s>\n", sedcfname);
       fflush(outfile);
@@ -838,8 +881,8 @@ static int sample(void)
 
     processSEDCFile();
   } else {
-    // if (strlen(logfiletemp) > 0){
-    //    outfile = fopen(logfiletemp, "a");
+    // if (strlen(logfile) > 0){
+    //    outfile = fopen(logfile, "a");
 	  // if (outfile != NULL){
     //    fprintf(outfile, "same date, no file change <%s>\n", sedcfname);
     //    fflush(outfile);
@@ -861,6 +904,13 @@ static void cleanupset(gpointer key, gpointer value, gpointer user_data){
 
 static void term(void)
 {
+  if (dirnamex) free(dirnamex);
+  if (filebasename) free(filebasename);
+  if (filetype) free(filetype);
+  if (logfile) free(logfile);
+  if (setshortname) free(setshortname);
+
+
   if (mf) pclose(mf);
   if (sedcf) pclose(sedcf);
   g_hash_table_destroy(compidmap);
@@ -868,23 +918,6 @@ static void term(void)
   g_hash_table_destroy(setmap);
 }
 
-static const char *usage(void)
-{
-  return  "    config sedc datafile=<datafiledir>&<datafilebasename>&<filetype>\n"
-          "        - Set the datafile info\n"
-          "        datafiledir         Directory of the datafile\n"
-          "        datafilebasename    Basename of the datafile\n"
-          "                            (e.g., L0_FSIO_TEMPS. will be followed by the current date_\n"
-          "        filetype            sedc or rsyslog\n"
-          "    config sedc logfile=<logfilename>\n"
-          "        - Set the logfile (optional)\n"
-          "        logfilename         Logfile\n"
-          "    config sedc compidmap=<compidmapname>\n"
-          "        - Set the compidmap file\n"
-          "        compidmapname         CompIdMap\n"
-          "    config sedc headerfile=<headerfilename>\n"
-          "        - Set the headerfile\n";
-}
 
 static struct ldmsd_sampler sedc_plugin = {
 	.base = {
