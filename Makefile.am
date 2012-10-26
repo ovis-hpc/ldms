@@ -1,12 +1,8 @@
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) 
+INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS)
 
-if ENABLE_GLIB
-sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/hwlocldms_ls
-else
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl
-endif
 
 if ENABLE_RDMA
 src_libldmsrdma_la_SOURCES = src/ldms_rdma.c
@@ -47,13 +43,9 @@ src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map
 src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 FLATFILE_la = src/libflatfile.la
 
-#src_libhwlocflatfile_la_SOURCES = src/hwlocflatfile.c
-#src_libhwlocflatfile_la_DEPENDENCIES = $(srcdir)/src/libhwlocflatfile.map
-#src_libhwlocflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) $(top_builddir)/src/libmetricmap.la
-#HWLOCFLATFILE_la = src/libhwlocflatfile.la
-
 if ENABLE_MYSQL
-src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql
+#src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql
+src_libmysqlinsert_la_CFLAGS = $(MYSQL_CFLAGS)
 src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
 src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
 src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient
@@ -70,17 +62,6 @@ src_libsedc_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) \
 src_libsedc_la_CFLAGS = $(GLIB20_CFLAGS)
 SEDC_la = src/libsedc.la
 
-src_libmetricmap_la_SOURCES = src/metricmap.c src/metricmap.h
-src_libmetricmap_la_LIBADD = -ldl -lpthread -levent -levent_pthreads $(GLIB20_LIBS)
-src_libmetricmap_la_DEPENDENCIES = $(srcdir)/src/libmetricmap.map
-src_libmetricmap_la_CFLAGS = $(GLIB20_CFLAGS)
-
-src_hwlocldms_ls_SOURCES = src/hwlocldms_ls.c
-src_hwlocldms_ls_LDADD = $(top_builddir)/src/libldms.la \
-	$(top_builddir)/src/libmetricmap.la \
-	$(GLIB20_LIBS)
-src_hwlocldms_ls_CFLAGS = $(GLIB20_CFLAGS)
-
 else
 GLIB_FLAGS = -DISABLE_GLIB
 endif
@@ -93,7 +74,8 @@ STORE_SOS_la = src/libstore_sos.la
 
 #libstore_mysql uses the idx.h in sos
 if ENABLE_MYSQL
-src_libstore_mysql_la_CPPFLAGS = -I/usr/include/mysql
+#src_libstore_mysql_la_CPPFLAGS = -I/usr/include/mysql
+src_libstore_mysql_la_CFLAGS = $(MYSQL_CFLAGS)
 src_libstore_mysql_la_SOURCES = src/store_mysql.c
 src_libstore_mysql_la_DEPENDENCIES = $(srcdir)/src/libstore_mysql.map
 src_libstore_mysql_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient
@@ -147,12 +129,11 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) \
 	$(MYSQL_FLAGS) $(GLIB_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS} \
 	$(SENSORS_FLAGS)
 
-lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
+lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
 	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(PROCSENSORS_la) \
 	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la) \
 	$(STORE_SOS_la) $(STORE_MYSQL_la)
-#$(HWLOCFLATFILE_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
