@@ -18,22 +18,6 @@
 #include "sos/sos.h"
 #include "mds.h"
 
-char *root_path;
-char tmp_path[PATH_MAX];
-
-#define FMT "c:p:m:M:"
-int unique;
-void usage(int argc, char *argv[])
-{
-	printf("usage: %s [OPTION]... {COMP_TYPE:METRIC}...\n"
-	       "        -p <path>      - Path to files\n"
-	       "        -c nodelist    - Specify nodelist (csv, no spaces)\n"
-	       "        -m <mintime>   - Specify mintime\n"
-	       "        -M <maxtime>   - Specify maxtime\n",
-	       argv[0]);
-	exit(1);
-}
-
 struct analysis_data {
   uint64_t sum;
   uint64_t sumsq;
@@ -44,11 +28,31 @@ struct analysis_data {
   sos_obj_t minobj;
 };
 
-#define MAXCOMPS 10
+#define MAXCOMPS 400
 struct analysis_data adata[MAXCOMPS];
 struct analysis_data groupdata;
 int compidlist[MAXCOMPS];
 int numcompids;
+char outputbase[256];
+FILE** outputfp;
+
+char *root_path;
+char tmp_path[PATH_MAX];
+
+#define FMT "c:p:m:M:o:"
+
+void usage(int argc, char *argv[])
+{
+  printf("usage: %s [OPTION]... {COMP_TYPE:METRIC}...\n"
+	 "        -p <path>      - Path to files\n"
+	 "        -c nodelist    - Specify nodelist (csv, no spaces)\n"
+	 "        -m <mintime>   - Specify mintime\n"
+	 "        -M <maxtime>   - Specify maxtime\n"
+	 "        -o <outputbase(fullpath)> - Output gnuplot-able files\n",
+	 argv[0]);
+  exit(1);
+}
+
 
 int lookup_compid(uint32_t x){
   int i;
@@ -76,14 +80,14 @@ void parse_compidlist(char* str){
 	int i;
 	for (i = currval; i <= atoi(res); i++){
 	  compidlist[numcompids++] = i;
-	  if (numcompids == 9){
+	  if (numcompids == (MAXCOMPS-1)){
 	    printf("Too many nodes");
 	    exit(-1);
 	  }
 	}
       } else {
 	compidlist[numcompids++] = atoi(res);
-	if (numcompids == 9){
+	if (numcompids == (MAXCOMPS-1)){
 	  printf("Too many nodes");
 	  exit(-1);
 	}
@@ -157,6 +161,35 @@ void zerodata(){
 
 }
 
+
+void print_gnuplot_header(FILE *fp){
+  fprintf(fp, "# m/d/Y H:M:S component_id value\n");
+}
+
+
+void create_outputfiles(char* comptype, char *metricname){
+  if (outputbase != '\0'){
+    outputfp = (FILE**)malloc(numcompids * sizeof(FILE*));
+    if (!outputfp){
+      printf("Error: cannot alloc for output files\n");
+      exit(-1);
+    }
+    
+    int j;
+    for (j = 0; j < numcompids; j++){
+      char fname[255];
+      snprintf(fname, 127, "%s_%s_%s_%d", outputbase, comptype,
+	       metricname, compidlist[j]);
+      outputfp[j] = fopen(fname,"w");
+      if (!outputfp[j]){
+	printf("Error: cannot open output file <%s> for writing\n", fname);
+	exit(-1);
+      }
+      print_gnuplot_header(outputfp[j]);
+    }
+  }
+}
+
 void update_statstruct(struct analysis_data *data, uint64_t value){
   //FIXME -- change this to pass in the obj and retain a ptr to it
   //so we can have all info on the min/max
@@ -170,174 +203,210 @@ void update_statstruct(struct analysis_data *data, uint64_t value){
     data->max = value;
 }
 
-
-void print_record(FILE *fp, sos_t sos, sos_obj_t obj)
+void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int useusec)
 {
-	uint32_t tv_sec;
-	uint32_t tv_usec;
-	char t_s[128];
-	char tv_s[128];
-	struct tm *tm_p;
-	time_t t;
-	uint32_t comp_id;
-	uint64_t value;
+  uint32_t tv_sec;
+  uint32_t tv_usec;
+  char t_s[128];
+  char tv_s[128];
+  struct tm *tm_p;
+  time_t t;
+  uint32_t comp_id;
+  uint64_t value;
 
-	SOS_OBJ_ATTR_GET(tv_sec, sos, MDS_TV_SEC, obj);
-	SOS_OBJ_ATTR_GET(tv_usec, sos, MDS_TV_USEC, obj);
+  SOS_OBJ_ATTR_GET(tv_sec, sos, MDS_TV_SEC, obj);
+  SOS_OBJ_ATTR_GET(tv_usec, sos, MDS_TV_USEC, obj);
 
-	/* Format the time as a string */
-	t = tv_sec;
-	tm_p = localtime(&t);
-	strftime(t_s, sizeof(t_s), "%D %T", tm_p);
-	sprintf(tv_s, "%s.%d", t_s, tv_usec);
+  /* Format the time as a string */
+  t = tv_sec;
+  tm_p = localtime(&t);
+  strftime(t_s, sizeof(t_s), "%D %T", tm_p);
+  if (useusec){
+    sprintf(tv_s, "%s.%d", t_s, tv_usec);
+  } else {
+    sprintf(tv_s, "%s", t_s);
+  }
 
-	SOS_OBJ_ATTR_GET(comp_id, sos, MDS_COMP_ID, obj);
-	SOS_OBJ_ATTR_GET(value, sos, MDS_VALUE, obj);
-	fprintf(fp, "%-24s %12d %16ld\n", tv_s, comp_id, value);
+  SOS_OBJ_ATTR_GET(comp_id, sos, MDS_COMP_ID, obj);
+  SOS_OBJ_ATTR_GET(value, sos, MDS_VALUE, obj);
+  fprintf(fp, "%-24s %12d %16ld\n", tv_s, comp_id, value);
 }
+
+
+void print_stats(){
+  int i;
+
+  for (i = 0; i < numcompids; i++){
+    if (adata[i].numrecords == 0){
+      printf("Compid: %3d - no data\n", compidlist[i]);
+    } else {
+      double lavg = (double)(adata[i].sum)/adata[i].numrecords;
+      double lstd = sqrt((double)(adata[i].sumsq)/adata[i].numrecords - ((double)(adata[i].sum)/adata[i].numrecords)*((double)(adata[i].sum)/adata[i].numrecords));
+      printf("Compid: %3d  ave: %6.4g  std: %6.4g  min: %16ld  max: %16ld \n", compidlist[i], lavg, lstd, adata[i].min, adata[i].max );
+    }
+  }
+		  
+  if (groupdata.numrecords == 0){
+    printf("Group: -- no data\n");
+  } else {
+    double lavg = (double)(groupdata.sum)/groupdata.numrecords;
+    double lstd = sqrt((double)(groupdata.sumsq)/groupdata.numrecords - ((double)(groupdata.sum)/groupdata.numrecords)*((double)(groupdata.sum)/groupdata.numrecords));
+    printf("------------------------ ------------ ----------------\n");
+    printf("Group:       ave: %6.4g  std: %6.4g  min: %16ld  max: %16ld \n", 
+	   lavg, lstd, groupdata.min, groupdata.max );
+  }
+};
 
 
 int main(int argc, char *argv[])
 {
-	char comp_type[128];
-	char metric_name[128];
-	int cnt;
-	int op;
-	uint32_t tv_minsec = -1;
-	uint32_t tv_maxsec = -1;
-	extern int optind;
-	extern char *optarg;
-	struct sos_key_s tv_minkey;
-	struct sos_key_s tv_maxkey;
-	//	struct sos_key_s comp_key;
+  char comp_type[128];
+  char metric_name[128];
+  int cnt;
+  int op;
+  uint32_t tv_minsec = -1;
+  uint32_t tv_maxsec = -1;
+  extern int optind;
+  extern char *optarg;
+  struct sos_key_s tv_minkey;
+  struct sos_key_s tv_maxkey;
+  
+  outputbase[0] = '\0';
+  opterr = 0;
+  while ((op = getopt(argc, argv, FMT)) != -1) {
+    switch (op) {
+    case 'p':
+      root_path = strdup(optarg);
+      break;
+    case 'c':
+      parse_compidlist(optarg); //sets numcompids
+      break;
+    case 'm':
+      {
+	//we would like to take these in more readable formats
+	//			tv_minsec = strtol(optarg, NULL, 0);
+	uint32_t junk;
+	parse_time(optarg, &tv_minsec, &junk);
+      }
+      break;
+    case 'M':
+      {
+	//we would like to take these in more readable formats
+	//			tv_maxsec = strtol(optarg, NULL, 0);
+	uint32_t junk;
+	parse_time(optarg, &tv_maxsec, &junk);
+      }
+      break;
+    case 'o':
+      {
+	snprintf(outputbase,127,"%s", optarg);
+      }
+      break;
+    case '?':
+    default:
+      usage(argc, argv);
+    }
+  }
+  if (optind >= argc)
+    usage(argc, argv);
 
-	opterr = 0;
-	while ((op = getopt(argc, argv, FMT)) != -1) {
-		switch (op) {
-		case 'p':
-			root_path = strdup(optarg);
-			break;
-		case 'c':
-		  parse_compidlist(optarg);
-		  break;
-		case 'm':
-		  {
-		    //we would like to take these in more readable formats
-		    //			tv_minsec = strtol(optarg, NULL, 0);
-		    uint32_t junk;
-		    parse_time(optarg, &tv_minsec, &junk);
-		  }
-		  break;
-		case 'M':
-		  {
-		  //we would like to take these in more readable formats
-		  //			tv_maxsec = strtol(optarg, NULL, 0);
-		    uint32_t junk;
-		    parse_time(optarg, &tv_maxsec, &junk);
-		  }
-		  break;
-		case '?':
-		default:
-			usage(argc, argv);
-		}
-	}
-	if (optind >= argc)
-		usage(argc, argv);
+  if (tv_minsec == -1 || tv_maxsec == -1 || numcompids == 0){
+    usage(argc, argv);
+  }
 
-	if (tv_minsec == -1 || tv_maxsec == -1 || numcompids == 0){
-	  usage(argc, argv);
-	}
+  //FIXME: MAKE THIS WORK FOR MULTIPLE OUTPUT DATA METRICS
 	
-	for (op = optind; op < argc; op++) {
-		sos_t sos;
-		sos_iter_t iter;
-		sos_iter_t tv_iter;
-		//		sos_iter_t comp_iter;
+  for (op = optind; op < argc; op++) {
+    sos_t sos;
+    sos_iter_t iter;
+    sos_iter_t tv_iter;
+    zerodata();
+    
+    cnt = sscanf(argv[op], "%128[^:]:%128s", comp_type, metric_name);
+    if (cnt != 2)
+      usage(argc, argv);
 
-		zerodata();
+    printf("COMP_TYPE: %s METRIC_NAME: %s\n\n",
+	   comp_type, metric_name);
+    printf("%-24s %-12s %-16s\n", "Timestamp", "Component", "Value");
+    printf("------------------------ ------------ ----------------\n");
+    if (root_path)
+      sprintf(tmp_path, "%s/%s/%s", root_path, comp_type, metric_name);
+    else
+      sprintf(tmp_path, "%s/%s", comp_type, metric_name);
+    
+    sos = sos_open(tmp_path, O_RDWR);
+    if (!sos) {
+      printf("Could not open SOS '%s'\n", tmp_path);
+      exit (-1);
+    }
 
-		cnt = sscanf(argv[op], "%128[^:]:%128s",
-			     comp_type, metric_name);
-		if (cnt != 2)
-			usage(argc, argv);
+    sos_obj_attr_key_set(sos, MDS_TV_SEC, &tv_minsec, &tv_minkey);
+    sos_obj_attr_key_set(sos, MDS_TV_SEC, &tv_maxsec, &tv_maxkey);
 
-		printf("COMP_TYPE: %s METRIC_NAME: %s\n\n",
-		       comp_type, metric_name);
-		printf("%-24s %-12s %-16s\n", "Timestamp", "Component", "Value");
-		printf("------------------------ ------------ ----------------\n");
-		if (root_path)
-			sprintf(tmp_path, "%s/%s/%s", root_path, comp_type, metric_name);
-		else
-			sprintf(tmp_path, "%s/%s", comp_type, metric_name);
+    tv_iter = sos_iter_new(sos, MDS_TV_SEC);
+    
+    
+    if (!sos_iter_seek(tv_iter, &tv_minkey)){
+      break;
+    }
 
-		sos = sos_open(tmp_path, O_RDWR);
-		if (!sos) {
-			printf("Could not open SOS '%s'\n", tmp_path);
-			continue;
-		}
+    iter = tv_iter;
+    
+    sos_obj_t obj;
+    
+    if (outputbase != '\0'){
+      create_outputfiles(comp_type, metric_name);
+    }
 
-		sos_obj_attr_key_set(sos, MDS_TV_SEC, &tv_minsec, &tv_minkey);
-		sos_obj_attr_key_set(sos, MDS_TV_SEC, &tv_maxsec, &tv_maxkey);
+    //ASSUMING we have tons of times and not so many nodes so best to start the iterator at the time
+    for (obj = sos_iter_next(iter); obj; obj = sos_iter_next(iter)) {
+      /*
+       * If the user specified a key on the index
+       * we need to stop when the iterator passes the key.
+       */
+      if (sos_obj_attr_key_cmp(sos, MDS_TV_SEC, obj, &tv_maxkey) > 0) {
+	//		    printf("found maxkey -- breaking\n");
+	break;
+      }
 
-		tv_iter = sos_iter_new(sos, MDS_TV_SEC);
-		
-		
-		if (!sos_iter_seek(tv_iter, &tv_minkey))
-		  goto out;
-		iter = tv_iter;
+      //is it a compid we are interested in?
+      uint32_t comp_id;
+      SOS_OBJ_ATTR_GET(comp_id, sos, MDS_COMP_ID, obj);
+      int index = lookup_compid(comp_id);
+      if (index != -1){
+	uint64_t value;
+	SOS_OBJ_ATTR_GET(value, sos, MDS_VALUE, obj);
+	update_statstruct(&adata[index], value);
+	update_statstruct(&groupdata, value);
+	if (outputbase != '\0'){
+	  print_record(outputfp[index], sos, obj, 0);
+	}
+	print_record(stdout, sos, obj, 1);
+      } //if index
+    } //for iter ...
 
-		sos_obj_t obj;
-		//ASSUMING we have tons of times and not so many nodes so best to start the iterator at the time
-		for (obj = sos_iter_next(iter); obj; obj = sos_iter_next(iter)) {
-		  /*
-		   * If the user specified a key on the index
-		   * we need to stop when the iterator passes the key.
-		   */
-		  if (sos_obj_attr_key_cmp(sos, MDS_TV_SEC, obj, &tv_maxkey) > 0) {
-		    //		    printf("found maxkey -- breaking\n");
-		    break;
-		  }
+    sos_iter_free(tv_iter);
+    //    sos_close(sos);
 
-		  //is it a compid we are interested in?
-		  uint32_t comp_id;
-		  SOS_OBJ_ATTR_GET(comp_id, sos, MDS_COMP_ID, obj);
-		  int index = lookup_compid(comp_id);
-		  if (index != -1){
-		    uint64_t value;
-		    SOS_OBJ_ATTR_GET(value, sos, MDS_VALUE, obj);
-		    update_statstruct(&adata[index], value);
-		    update_statstruct(&groupdata, value);
-
-		    print_record(stdout, sos, obj);
-		  } //if index
-		} //for iter ...
-	out:
-		printf("------------------------ ------------ ----------------\n");
-		printf("------------------------ ------------ ----------------\n");
-
-		int i;
-		for (i = 0; i < numcompids; i++){
-		  if (adata[i].numrecords == 0){
-		    printf("Compid: %3d - no data\n", compidlist[i]);
-		  } else {
-		    double lavg = (double)(adata[i].sum)/adata[i].numrecords;
-		    double lstd = sqrt((double)(adata[i].sumsq)/adata[i].numrecords - ((double)(adata[i].sum)/adata[i].numrecords)*((double)(adata[i].sum)/adata[i].numrecords));
-		    printf("Compid: %3d  ave: %6.4g  std: %6.4g  min: %16ld  max: %16ld \n", compidlist[i], lavg, lstd, adata[i].min, adata[i].max );
-		  }
-		}
-		  
-		if (groupdata.numrecords == 0){
-		  printf("Group: -- no data\n");
-		} else {
-		  double lavg = (double)(groupdata.sum)/groupdata.numrecords;
-		  double lstd = sqrt((double)(groupdata.sumsq)/groupdata.numrecords - ((double)(groupdata.sum)/groupdata.numrecords)*((double)(groupdata.sum)/groupdata.numrecords));
-		  printf("------------------------ ------------ ----------------\n");
-		  printf("Group:       ave: %6.4g  std: %6.4g  min: %16ld  max: %16ld \n", 
-			 lavg, lstd, groupdata.min, groupdata.max );
-		}
-	} //for
+    int j;
+    if (outputbase != '\0'){
+      for (j = 0; j < numcompids; j++){
+	if (outputfp[j]) fclose(outputfp[j]);
+	//		    free(outputfp[j]);
+	//		    outputfp[j] = 0;
+      }
+      free(outputfp);
+      outputfp = 0;
+    } 
 
 
-	return 0;
-}
+    printf("------------------------ ------------ ----------------\n");
+    printf("------------------------ ------------ ----------------\n");
 
+    print_stats();
+    
+  } //for opt
+
+  return 0;
+} //main
