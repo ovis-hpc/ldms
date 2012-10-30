@@ -28,6 +28,7 @@ struct analysis_data {
   sos_obj_t minobj;
 };
 
+//FIXME: dont make this fixed
 #define MAXCOMPS 400
 struct analysis_data adata[MAXCOMPS];
 struct analysis_data groupdata;
@@ -313,8 +314,6 @@ int main(int argc, char *argv[])
   if (tv_minsec == -1 || tv_maxsec == -1 || numcompids == 0){
     usage(argc, argv);
   }
-
-  //FIXME: MAKE THIS WORK FOR MULTIPLE OUTPUT DATA METRICS
 	
   for (op = optind; op < argc; op++) {
     sos_t sos;
@@ -387,14 +386,12 @@ int main(int argc, char *argv[])
     } //for iter ...
 
     sos_iter_free(tv_iter);
-    //    sos_close(sos);
+    //    sos_close(sos); FIXME: valgrind doesnt like this
 
     int j;
     if (outputbase != '\0'){
       for (j = 0; j < numcompids; j++){
 	if (outputfp[j]) fclose(outputfp[j]);
-	//		    free(outputfp[j]);
-	//		    outputfp[j] = 0;
       }
       free(outputfp);
       outputfp = 0;
