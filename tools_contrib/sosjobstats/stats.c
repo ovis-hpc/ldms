@@ -169,7 +169,8 @@ void print_gnuplot_header(FILE *fp){
 
 
 void create_outputfiles(char* comptype, char *metricname){
-  if (outputbase != '\0'){
+
+  if (strlen(outputbase)){
     outputfp = (FILE**)malloc(numcompids * sizeof(FILE*));
     if (!outputfp){
       printf("Error: cannot alloc for output files\n");
@@ -189,6 +190,7 @@ void create_outputfiles(char* comptype, char *metricname){
       print_gnuplot_header(outputfp[j]);
     }
   }
+
 }
 
 void update_statstruct(struct analysis_data *data, uint64_t value){
@@ -206,6 +208,11 @@ void update_statstruct(struct analysis_data *data, uint64_t value){
 
 void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int useusec)
 {
+
+  if (fp == NULL){
+    return;
+  }
+
   uint32_t tv_sec;
   uint32_t tv_usec;
   char t_s[128];
@@ -325,6 +332,7 @@ int main(int argc, char *argv[])
     if (cnt != 2)
       usage(argc, argv);
 
+    printf("======================================================\n");
     printf("COMP_TYPE: %s METRIC_NAME: %s\n\n",
 	   comp_type, metric_name);
     printf("%-24s %-12s %-16s\n", "Timestamp", "Component", "Value");
@@ -354,7 +362,7 @@ int main(int argc, char *argv[])
     
     sos_obj_t obj;
     
-    if (outputbase != '\0'){
+    if (strlen(outputbase)){
       create_outputfiles(comp_type, metric_name);
     }
 
@@ -378,7 +386,7 @@ int main(int argc, char *argv[])
 	SOS_OBJ_ATTR_GET(value, sos, MDS_VALUE, obj);
 	update_statstruct(&adata[index], value);
 	update_statstruct(&groupdata, value);
-	if (outputbase != '\0'){
+	if (strlen(outputbase)){
 	  print_record(outputfp[index], sos, obj, 0);
 	}
 	print_record(stdout, sos, obj, 1);
@@ -389,7 +397,7 @@ int main(int argc, char *argv[])
     //    sos_close(sos); FIXME: valgrind doesnt like this
 
     int j;
-    if (outputbase != '\0'){
+    if (strlen(outputbase)){
       for (j = 0; j < numcompids; j++){
 	if (outputfp[j]) fclose(outputfp[j]);
       }

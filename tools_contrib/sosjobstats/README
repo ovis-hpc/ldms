@@ -11,3 +11,5 @@ we can add a key later.
 
 5) running:
 ./stats -p /home/brandt/Ann/sos/src/junk -m "12/31/69 16:00:01" -M "12/31/69 17:00:50" -c 1-5 node:active 
+
+./stats -p /home/brandt/Ann/sos/src/junk -m "12/31/69 16:00:00" -M "12/31/69 17:00:50" -c 1-4  -o /home/brandt/Ann/LDMS/tools_contrib/sosjobstats/junk/testout node:inactive node:active
