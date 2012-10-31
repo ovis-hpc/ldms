@@ -56,6 +56,7 @@ void usage(int argc, char *argv[])
 
 
 int lookup_compid(uint32_t x){
+  //FIXME: make btree if we get a lot of components
   int i;
   for (i = 0; i < numcompids; i++){
     if (compidlist[i] == x){
@@ -168,6 +169,34 @@ void print_gnuplot_header(FILE *fp){
 }
 
 
+void write_gnuplotdat(char* comp_type, char* metric_name){
+  //write the gnuplotter file
+  FILE *gnufp;
+  char gnufname[256];
+  snprintf(gnufname, 255, "%s_gnuplot_%s_%s.dat", outputbase, comp_type,
+	   metric_name);
+  gnufp = fopen(gnufname,"w");
+  if (!gnufp){
+    printf("Error: cannot open output file <%s> for writing\n", gnufname);
+  } else {
+    fprintf(gnufp,"# in gnuplot, load this file\n");
+    fprintf(gnufp,"set timefmt '%%m/%%d/%%y %%H:%%M:%%S\n");
+    //perhaps will want day....
+    fprintf(gnufp, "set format x \"%%H:%%M:%%S\"\n");
+    fprintf(gnufp, "set xdata time\n");
+    int j;
+    for (j = 0; j < numcompids; j++){
+      char fname[256];
+      snprintf(fname, 255, "%s_%s_%s_%d", outputbase, comp_type,
+	       metric_name, compidlist[j]);
+      fprintf(gnufp, "%s", (j == 0? "plot": "replot"));
+      fprintf(gnufp, " \"%s\" using 1:4 with linespoints\n", fname);
+      //add some labels...
+    }
+    fclose(gnufp);
+  }
+}
+
 void create_outputfiles(char* comptype, char *metricname){
 
   if (strlen(outputbase)){
@@ -179,8 +208,8 @@ void create_outputfiles(char* comptype, char *metricname){
     
     int j;
     for (j = 0; j < numcompids; j++){
-      char fname[255];
-      snprintf(fname, 127, "%s_%s_%s_%d", outputbase, comptype,
+      char fname[256];
+      snprintf(fname, 255, "%s_%s_%s_%d", outputbase, comptype,
 	       metricname, compidlist[j]);
       outputfp[j] = fopen(fname,"w");
       if (!outputfp[j]){
@@ -396,21 +425,23 @@ int main(int argc, char *argv[])
     sos_iter_free(tv_iter);
     //    sos_close(sos); FIXME: valgrind doesnt like this
 
-    int j;
-    if (strlen(outputbase)){
-      for (j = 0; j < numcompids; j++){
-	if (outputfp[j]) fclose(outputfp[j]);
-      }
-      free(outputfp);
-      outputfp = 0;
-    } 
-
-
     printf("------------------------ ------------ ----------------\n");
     printf("------------------------ ------------ ----------------\n");
 
     print_stats();
     
+
+    int j;
+    if (strlen(outputbase)){
+      write_gnuplotdat(comp_type, metric_name);
+      for (j = 0; j < numcompids; j++){
+	if (outputfp[j]) fclose(outputfp[j]);
+	outputfp[j] = 0;
+      }
+      free(outputfp);
+      outputfp = 0;
+    }
+
   } //for opt
 
   return 0;
