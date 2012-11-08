@@ -21,6 +21,7 @@
 
 
 #undef STATSTHREAD
+//#define STATSTHREAD
 
 struct analysis_data {
   uint64_t sum;
@@ -89,8 +90,10 @@ void usage(int argc, char *argv[])
 int lookup_compid(uint32_t x){
   //FIXME: make btree if we get a lot of components
   int i;
+  int xx = (int) x;
+
   for (i = 0; i < numcompids; i++){
-    if (compidlist[i] == x){
+    if (compidlist[i] == xx){
       return i;
     }
   }
@@ -359,10 +362,10 @@ void *do_one(void *t){
   comp_type = td->comp_type;
   metric_name = td->metric_name;
 
-  printf("Starting thread %d\n",istore);
-
   char tmp_path[PATH_MAX];
   sprintf(tmp_path, "%s/%s/%s", root_path[istore], comp_type, metric_name);
+
+  printf("Starting thread/loop %d on store <%s>\n",istore, tmp_path);
 
   sos = sos_open(tmp_path, O_RDWR);
   if (!sos) {
@@ -392,6 +395,8 @@ void *do_one(void *t){
     
 
   //ASSUMING we have tons of times and not so many nodes so best to start the iterator at the time
+
+  //  int counter = 0;
   for (obj = sos_iter_next(iter); obj; obj = sos_iter_next(iter)) {
     /*
      * If the user specified a key on the index
@@ -400,6 +405,8 @@ void *do_one(void *t){
     if (sos_obj_attr_key_cmp(sos, MDS_TV_SEC, obj, &tv_maxkey) > 0) {
       break;
     }
+
+    //    printf("TEST thread %d iter %d\n", istore,counter++);
 
     //is it a compid we are interested in?
     uint32_t comp_id;
@@ -429,6 +436,7 @@ void *do_one(void *t){
 	pthread_mutex_unlock(&outputlock[index]);
 #endif
       }
+
 	
 #ifdef STATSTHREAD
       pthread_mutex_lock(&stdoutlock);
