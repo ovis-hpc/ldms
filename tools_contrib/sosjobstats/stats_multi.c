@@ -13,10 +13,14 @@
 #include <unistd.h>
 #include <time.h>
 #include <endian.h>
+#include <pthread.h>
 #include <math.h>
 
 #include "sos/sos.h"
 #include "mds.h"
+
+
+#undef STATSTHREAD
 
 struct analysis_data {
   uint64_t sum;
@@ -28,17 +32,29 @@ struct analysis_data {
   sos_obj_t minobj;
 };
 
+struct thread_data{
+  int index; //thread index = store index
+  char* comp_type;
+  char* metric_name;
+};
+
 //FIXME: dont make this fixed
 #define MAXCOMPS 400
 struct analysis_data adata[MAXCOMPS];
+#ifdef STATSTHREAD
+static pthread_mutex_t adatalock[MAXCOMPS];
+#endif
 struct analysis_data groupdata;
+
 int compidlist[MAXCOMPS];
 int numcompids;
 
 //FIXME: dont make this fixed
 #define MAXSTORES 5
+struct thread_data tdata[MAXSTORES];
 char root_path[MAXSTORES][128];
 int numstores;
+
 
 //global params
 uint32_t tv_minsec = -1;
@@ -46,7 +62,14 @@ uint32_t tv_maxsec = -1;
 
 //gnuplot
 char outputbase[256];
+#ifdef STATSTHREAD
+static pthread_mutex_t outputlock[MAXCOMPS];
+#endif
 FILE** outputfp;
+
+#ifdef STATSTHREAD
+static pthread_mutex_t stdoutlock;
+#endif
 
 #define FMT "c:p:m:M:o:"
 
@@ -160,7 +183,9 @@ void zerodata(){
     adata[j].minobj = NULL;
     adata[j].maxobj = NULL;
   }
+}
 
+void zerogroupdata(){
   groupdata.sum = 0;
   groupdata.sumsq = 0;
   groupdata.numrecords = 0;
@@ -168,7 +193,6 @@ void zerodata(){
   groupdata.max = 0;
   groupdata.minobj =  NULL;
   groupdata.maxobj = NULL;
-
 }
 
 
@@ -233,7 +257,6 @@ void create_outputfiles(char* comptype, char *metricname){
 void update_statstruct(struct analysis_data *data, uint64_t value){
   //FIXME -- change this to pass in the obj and retain a ptr to it
   //so we can have all info on the min/max
-
   data->numrecords++;
   data->sum += value;
   data->sumsq += value*value;
@@ -241,6 +264,7 @@ void update_statstruct(struct analysis_data *data, uint64_t value){
     data->min = value;
   if (value > data->max)
     data->max = value;
+
 }
 
 void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int useusec)
@@ -283,6 +307,8 @@ void calc_stats(){
 
   //at this point all the adata is populated from all the stores
 
+  zerogroupdata();
+
   for (i = 0; i < numcompids; i++){
     if (adata[i].numrecords == 0){
       printf("Compid: %3d - no data\n", compidlist[i]);
@@ -290,8 +316,20 @@ void calc_stats(){
       double lavg = (double)(adata[i].sum)/adata[i].numrecords;
       double lstd = sqrt((double)(adata[i].sumsq)/adata[i].numrecords - ((double)(adata[i].sum)/adata[i].numrecords)*((double)(adata[i].sum)/adata[i].numrecords));
       printf("Compid: %3d  ave: %6.4g  std: %6.4g  min: %16ld  max: %16ld \n", compidlist[i], lavg, lstd, adata[i].min, adata[i].max );
+
+      //populate groupdata with this component's data
+      groupdata.numrecords+= adata[i].numrecords;
+      groupdata.sum += adata[i].sum;
+      groupdata.sumsq += adata[i].sumsq;
+      if (groupdata.min > adata[i].min){
+	groupdata.min = adata[i].min;
+      }
+      if (groupdata.max < adata[i].max){
+	groupdata.max = adata[i].max;
+      }
     }
   }
+
 		  
   if (groupdata.numrecords == 0){
     printf("Group: -- no data\n");
@@ -305,12 +343,23 @@ void calc_stats(){
 };
 
 
-int do_one(int istore, char* comp_type, char* metric_name){
+void *do_one(void *t){
   sos_t sos;
   sos_iter_t iter;
   sos_iter_t tv_iter;
   struct sos_key_s tv_minkey;
   struct sos_key_s tv_maxkey;
+
+  char* comp_type;
+  char* metric_name;
+  int istore;
+
+  struct thread_data* td = (struct thread_data*) t;
+  istore = td->index;
+  comp_type = td->comp_type;
+  metric_name = td->metric_name;
+
+  printf("Starting thread %d\n",istore);
 
   char tmp_path[PATH_MAX];
   sprintf(tmp_path, "%s/%s/%s", root_path[istore], comp_type, metric_name);
@@ -318,7 +367,11 @@ int do_one(int istore, char* comp_type, char* metric_name){
   sos = sos_open(tmp_path, O_RDWR);
   if (!sos) {
     printf("Could not open SOS '%s'\n", tmp_path);
-    return -1;
+#ifdef STATSTHREAD
+    pthread_exit((void*) t);
+#else
+    return NULL;
+#endif
   }
 
   uint32_t tv_startsec = tv_minsec;
@@ -356,31 +409,47 @@ int do_one(int istore, char* comp_type, char* metric_name){
       uint64_t value;
       SOS_OBJ_ATTR_GET(value, sos, MDS_VALUE, obj);
 
-      //FIXME: lock here
+      //      printf("thread %d read data for comp %d\n", istore, comp_id);
+
+#ifdef STATSTHREAD
+      pthread_mutex_lock(&adatalock[index]);
+#endif
       update_statstruct(&adata[index], value);
-      //FIXME: unlock here
+#ifdef STATSTHREAD
+      pthread_mutex_unlock(&adatalock[index]);
+#endif
 
-      //FIXME: lock here
-      update_statstruct(&groupdata, value);
-      //FIXME: unlock here
 
-      //FIXME: lock here
       if (strlen(outputbase)){
+#ifdef STATSTHREAD
+	pthread_mutex_lock(&outputlock[index]);
+#endif
 	print_record(outputfp[index], sos, obj, 0);
+#ifdef STATSTHREAD
+	pthread_mutex_unlock(&outputlock[index]);
+#endif
       }
-      //FIXME: unlock here
 	
-      //FIXME: lock here
+#ifdef STATSTHREAD
+      pthread_mutex_lock(&stdoutlock);
+#endif
       print_record(stdout, sos, obj, 1);
-      //FIXME: unlock here
+#ifdef STATSTHREAD
+      pthread_mutex_unlock(&stdoutlock);
+#endif
 	
     } //if index
   } //for iter ...
 
   sos_iter_free(tv_iter);
-  //    sos_close(sos); FIXME: valgrind doesnt like this
+  //  sos_close(sos); //FIXME: valgrind doesnt like this
     
-  return 0;
+#ifdef STATSTHREAD
+  pthread_exit((void*) t);
+#else
+  return NULL;
+#endif
+
 }
 
 
@@ -390,8 +459,15 @@ int main(int argc, char *argv[])
   char metric_name[128];
   int cnt;
   int op;
+#ifdef STATSTHREAD
+  pthread_t thread[MAXSTORES];
+  pthread_attr_t attr;
+  void* status;
+#endif
+
   extern int optind;
   extern char *optarg;
+  
   
   outputbase[0] = '\0';
   opterr = 0;
@@ -449,6 +525,11 @@ int main(int argc, char *argv[])
   if (tv_minsec == -1 || tv_maxsec == -1 || numcompids == 0){
     usage(argc, argv);
   }
+
+#ifdef STATSTHREAD
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+#endif
 	
   for (op = optind; op < argc; op++) {
     zerodata();
@@ -457,9 +538,10 @@ int main(int argc, char *argv[])
     if (cnt != 2)
       usage(argc, argv);
 
-    printf("======================================================\n");
-    printf("COMP_TYPE: %s METRIC_NAME: %s\n\n",
+    printf("\n\n======================================================\n");
+    printf("COMP_TYPE: %s METRIC_NAME: %s\n",
 	   comp_type, metric_name);
+    printf("======================================================\n");
     printf("%-24s %-12s %-16s\n", "Timestamp", "Component", "Value");
     printf("------------------------ ------------ ----------------\n");
 
@@ -469,10 +551,38 @@ int main(int argc, char *argv[])
       create_outputfiles(comp_type, metric_name);
     }
 
-    //make this threads later
     int i;
     for (i = 0; i < numstores; i++){
-      do_one(i, comp_type, metric_name);
+      tdata[i].index = i;
+      tdata[i].comp_type = strdup(comp_type);
+      tdata[i].metric_name = strdup(metric_name);
+#ifdef STATSTHREAD
+      int rc = pthread_create(&thread[i], &attr, do_one, (void *)&tdata[i]); 
+      if (rc) {
+	printf("ERROR; return code from pthread_create() is %d\n", rc);
+	exit(-1);
+      }
+#else
+      do_one((void *)&tdata[i]);
+#endif
+    }
+
+#ifdef STATSTHREAD
+    /* Free attribute and wait for the other threads */
+    pthread_attr_destroy(&attr);
+    for(i=0; i<numstores; i++) {
+      int rc = pthread_join(thread[i], &status);
+      if (rc) {
+	printf("ERROR; return code from pthread_join() is %d\n", rc);
+	exit(-1);
+      }
+      printf("Main: completed join with thread %ld having a status of %ld\n",i,(long)status);
+    }
+#endif
+
+    for (i = 0; i < numstores; i++){
+      free(tdata[i].comp_type);
+      free(tdata[i].metric_name);
     }
 
     printf("------------------------ ------------ ----------------\n");
@@ -492,6 +602,10 @@ int main(int argc, char *argv[])
     }
 
   } //for opt
+
+#ifdef STATSTHREAD
+  pthread_exit(NULL);
+#endif
 
   return 0;
 } //main
