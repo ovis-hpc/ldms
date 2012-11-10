@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS)
+INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql -I/home/brandt/Ann/sos.usr/include
 
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl
 
@@ -108,6 +108,11 @@ src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map
 src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
 PROCINTERRUPTS_la = src/libprocinterrupts.la
 
+src_libprocnetdev_la_SOURCES = src/procnetdev.c
+src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map
+src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+PROCNETDEV_la = src/libprocnetdev.la
+
 src_libprocstatutil_la_SOURCES = src/procstatutil.c $(top_builddir)/libplugin.a
 src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map
 src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
@@ -131,7 +136,7 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) \
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
 	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(PROCSENSORS_la) \
-	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
+	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(PROCNETDEV_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la) \
 	$(STORE_SOS_la) $(STORE_MYSQL_la)
 
