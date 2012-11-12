@@ -54,14 +54,22 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
+#endif
+
 #define PROC_FILE "/proc/net/dev"
 static char *procfile = PROC_FILE;
-int ninterfaces;
-#define VARSPERINTERFACE 16;
 static char varname[][30] = 
   {"rx_bytes", "rx_packets", "rx_errs", "rx_drop", "rx_fifo", "rx_frame",
    "rx_compressed", "rx_multicast", "tx_bytes", "tx_packets", "tx_errs",
    "tx_drop", "tx_fifo", "tx_colls", "tx_carrier", "tx_compressed"};
+
+int niface = 0;
+//max number of interfaces we can include. FIXME: alloc as added
+#define MAXIFACE 5
+static char iface[MAXIFACE][20];
 
 ldms_set_t set;
 FILE *mf;
@@ -69,6 +77,19 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 union ldms_value comp_id;
+
+
+struct kw {
+  char *token;
+  int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
+};
+
+static int kw_comparator(const void *a, const void *b)
+{
+  struct kw *_a = (struct kw *)a;
+  struct kw *_b = (struct kw *)b;
+  return strcmp(_a->token, _b->token);
+}
 
 
 static ldms_set_t get_set()
@@ -98,16 +119,22 @@ static int create_metric_set(const char *path)
 	 */
 
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+
 	metric_count = 0;
+	int usedifaces = 0;
 	fseek(mf, 0, SEEK_SET);
 
-	//first line is header
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	//second line is header
+	//first and second lines are header
 	//we are currently assuming we know the header names....
 	s = fgets(lbuf, sizeof(lbuf), mf);
+	s = fgets(lbuf, sizeof(lbuf), mf);
+
 	//rest is data
 	while(s) {
+	  if (usedifaces == niface){
+	    break;
+	  }
+
 	  s = fgets(lbuf, sizeof(lbuf), mf);
 	  if (!s)
 	    break;
@@ -123,6 +150,19 @@ static int create_metric_set(const char *path)
 	      if (i && pch[i-1] == ':')
 		pch[i-1] = '\0';
 	      strcpy(ifname, pch);
+	      //only include this iface if its in the list
+	      int j;
+	      int useiface = 0;
+	      for (j = 0; j < niface; j++){
+		if (strcmp(ifname,iface[j]) == 0){
+		  useiface = 1;
+		  usedifaces++;
+		  break;
+		}
+	      }
+	      if (!useiface){
+		break;
+	      }
 	    } else {
 	      //the metric name will be ifname:name  
 	      snprintf(metric_name,128,"%s:%s",ifname,varname[currcol-1]);
@@ -133,7 +173,7 @@ static int create_metric_set(const char *path)
 	    }
 	    currcol++;
 	    pch = strtok(NULL," ");
-	  } // while (strtok)
+	  }
 	} //while(s)
 
 	/* Create a metric set of the required size */
@@ -155,15 +195,16 @@ static int create_metric_set(const char *path)
 	} //compid set in sample
 
 	int metric_no = 0;
+	usedifaces = 0;
 	fseek(mf, 0, SEEK_SET);
 
-	//first line is header
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	//second line is header
-	//we are currently assuming we know the header names....
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	//rest is data
 	while(s) {
+	  if (usedifaces == niface){
+	    break;
+	  }
+
 	  s = fgets(lbuf, sizeof(lbuf), mf);
 	  if (!s)
 	    break;
@@ -179,6 +220,19 @@ static int create_metric_set(const char *path)
 	      if (i && pch[i-1] == ':')
 		pch[i-1] = '\0';
 	      strcpy(ifname, pch);
+	      //only include this iface if its in the list
+	      int j;
+	      int useiface = 0;
+	      for (j = 0; j < niface; j++){
+		if (strcmp(ifname,iface[j]) == 0){
+		  useiface = 1;
+		  usedifaces++;
+		  break;
+		}
+	      }
+	      if (!useiface){
+		break;
+	      }
 	    } else {
 	      //the metric name will be ifname:name  
 	      snprintf(metric_name,128,"%s:%s",ifname,varname[currcol-1]);
@@ -200,13 +254,25 @@ static int create_metric_set(const char *path)
 	return rc;
 }
 
-/**
- * \brief Configuration
- *
- * - config procnetdev component_id <value>
- */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
-{
+static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
+  if (niface == (MAXIFACE-1)){
+    msglog("Procnetdev too many ifaces -- increase array size\n");
+    return EINVAL;
+  }
+
+  char *value;
+  
+  value = av_value(avl, "iface");
+  if (value)
+    snprintf(iface[niface++], 20, "%s", value);
+
+  return 0;
+  
+}
+
+
+static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
+  /* Set the compid and create the metric set */
 
   char *value;
   
@@ -215,9 +281,65 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
     comp_id.v_u64 = strtol(value, NULL, 0);
   
   value = av_value(avl, "set");
-  if (value)
-    create_metric_set(value);
+  if (!value)
+    return EINVAL;
+
+  return create_metric_set(value);
+}
+
+struct kw kw_tbl[] = {
+  { "add", add_iface },
+  { "init", init },
+};
+
+static const char *usage(void)
+{
+  return
+    "config name=procnetdev action=add iface=<iface>\n"
+    "    iface       Interface name (e.g., eth0)\n"
+    "config name=procnetdev action=config component_id=<comp_id> set=<setname>\n"
+    "    comp_id     The component id value.\n"
+    "    setname     The set name.\n";
+
+}
+
+
+/**
+ * \brief Configuration
+ *
+ * - config procnetdev action=add iface=eth0
+ *  (repeat this for each iface)
+ * - config procnetdev action=init component_id=<value> set=<setname>
+ *  (init must be after all the ifaces are added since it adds the metric set)
+ *  
+ */
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+
+  struct kw *kw;
+  struct kw key;
+  int rc;
+  char *action = av_value(avl, "action");
   
+  if (!action)
+    goto err0;
+
+  key.token = action;
+  kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
+	       sizeof(*kw), kw_comparator);
+  if (!kw)
+    goto err1;
+
+  rc = kw->action(kwl, avl, NULL);
+  if (rc)
+    goto err2;
+  return 0;
+ err0:
+  msglog(usage());
+  goto err2;
+ err1:
+  msglog("Invalid configuration keyword '%s'\n", action);
+ err2:
   return 0;
 }
 
@@ -238,13 +360,14 @@ static int sample(void)
 	fseek(mf, 0, SEEK_SET);
 
 
-	//first line is header
+	int usedifaces = 0;
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	//second line is header
-	//we are currently assuming we know the header names....
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	//rest is data
 	while(s) {
+	  if (usedifaces == niface){
+	    break;
+	  }
+
 	  s = fgets(lbuf, sizeof(lbuf), mf);
 	  if (!s)
 	    break;
@@ -255,7 +378,27 @@ static int sample(void)
 	      break;
 	    }
 	    if (currcol == 0){
-	      //skip
+	      //note: ifaces will be in the same order each time
+	      //so we can just include/skip
+	      //w/o have to keep track of which on we are on
+	      char ifname[128];
+
+	      int i = strlen(pch);
+	      if (i && pch[i-1] == ':')
+		pch[i-1] = '\0';
+	      strcpy(ifname, pch);
+	      int j;
+	      int useiface = 0;
+	      for (j = 0; j < niface; j++){
+		if (strcmp(ifname,iface[j]) == 0){
+		  useiface = 1;
+		  usedifaces++;
+		  break;
+		}
+	      }
+	      if (!useiface){
+		break;
+	      }
 	    } else {
 	      char* endptr;
 	      unsigned long long int l1;
@@ -280,19 +423,14 @@ static int sample(void)
 
 static void term(void)
 {
+  if (mf)
+    fclose(mf);
+  mf = 0;
+
   if (set)
 	ldms_destroy_set(set);
   set = NULL;
 }
-
-
-static const char *usage(void)
-{
-	return  "config name=procnetdev component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
-}
-
 
 
 static struct ldmsd_sampler procnetdev_plugin = {
