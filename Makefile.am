@@ -39,16 +39,16 @@ UGNI_la = src/libldmsugni.la
 endif
 
 src_libflatfile_la_SOURCES = src/flatfile.c
-src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map
-src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map  $(top_builddir)/libplugin.a
+src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 FLATFILE_la = src/libflatfile.la
 
 if ENABLE_MYSQL
 #src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql
 src_libmysqlinsert_la_CFLAGS = $(MYSQL_CFLAGS)
 src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
-src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
-src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient
+src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map $(top_builddir)/libplugin.a
+src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient -lplugin
 MYSQLINSERT_la = src/libmysqlinsert.la
 else
 MYSQL_FLAGS = -DDISABLE_MYSQL
@@ -84,8 +84,8 @@ endif
 endif
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
-src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
-src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map  $(top_builddir)/libplugin.a
+src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 GEMINFO_la = src/libgeminfo.la
 
 src_libmeminfo_la_SOURCES = src/meminfo.c
@@ -104,14 +104,14 @@ SENSORS_FLAGS = -DISABLE_SENSORS
 endif
 
 src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
-src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map
-src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map  $(top_builddir)/libplugin.a
+src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 PROCINTERRUPTS_la = src/libprocinterrupts.la
 
 src_libprocnetdev_la_SOURCES = src/procnetdev.c
-src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map
-src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
-PROCNETDEV_la = src/libprocnetdev.la
+src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map $(top_builddir)/libplugin.a
+src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+PROCNETDEV_la = src/libprocnetdev.la 
 
 src_libprocstatutil_la_SOURCES = src/procstatutil.c $(top_builddir)/libplugin.a
 src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map
@@ -125,8 +125,8 @@ VMSTAT_la = src/libvmstat.la
 
 if ENABLE_PERF
 src_libperfevent_la_SOURCES = src/perfevent.c
-src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map
-src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)  -lm
+src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map  $(top_builddir)/libplugin.a
+src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)  -lm -lplugin
 PERFEVENT_la = src/libperfevent.la
 endif
 

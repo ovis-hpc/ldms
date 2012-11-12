@@ -203,7 +203,7 @@ static int create_metric_set(const char *path)
 /**
  * \brief Configuration
  *
- * - config procinterrupts component_id <value>
+ * - config procnetdev component_id <value>
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
