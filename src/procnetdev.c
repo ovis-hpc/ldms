@@ -76,6 +76,8 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
+ldms_metric_t counter_metric_handle;
+static uint64_t counter;
 union ldms_value comp_id;
 
 
@@ -99,159 +101,170 @@ static ldms_set_t get_set()
 
 static int create_metric_set(const char *path)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, i, metric_count;
-	char *s;
-	char lbuf[256];
-	char metric_name[128];
+  size_t meta_sz, tot_meta_sz;
+  size_t data_sz, tot_data_sz;
+  int rc, metric_count;
+  char *s;
+  char lbuf[256];
+  char metric_name[128];
 
-	mf = fopen(procfile, "r");
-	if (!mf) {
-		msglog("Could not open /proc/net/dev file '%s'...exiting\n", procfile);
-		return ENOENT;
+
+  mf = fopen(procfile, "r");
+  if (!mf) {
+    msglog("Could not open /proc/net/dev file '%s'...exiting\n", procfile);
+    return ENOENT;
+  }
+
+  /*
+   * Process the file once first to determine the metric set size.
+   */
+
+  rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+
+  rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
+  tot_meta_sz += meta_sz;
+  tot_data_sz += data_sz;
+
+  metric_count = 0;
+  int usedifaces = 0;
+  fseek(mf, 0, SEEK_SET);
+
+  //first and second lines are header
+  //we are currently assuming we know the header names....
+  s = fgets(lbuf, sizeof(lbuf), mf);
+  if (!s){
+    msglog("procnetdev: not reading header line 1\n");
+    return ENOENT;
+  }
+  s = fgets(lbuf, sizeof(lbuf), mf);
+  if (!s){
+    msglog("procnetdev: not reading header line 2\n");
+    return ENOENT;
+  }
+
+  //rest is data
+  while(s) {
+    if (usedifaces == niface){
+      break;
+    }
+
+    s = fgets(lbuf, sizeof(lbuf), mf);
+    if (!s)
+      break;
+
+    int curriface = -1;
+    int currcol = 0;
+    char* pch = strtok (lbuf," :\t|");
+    while (pch != NULL){
+      if (pch[0] == '\n'){
+	break;
+      }
+      if (currcol == 0){
+	//only include this iface if its in the list
+	//FIXME: change this so it will keep track of the line
+	//number to keep -- then wont have to search subsquently
+	int j;
+	for (j = 0; j < niface; j++){
+	  if (strcmp(pch,iface[j]) == 0){
+	    usedifaces++;
+	    curriface = j;
+	    break;
+	  }
 	}
+	if (curriface == -1){
+	  break;
+	}
+      } else {
+	//the metric name will be ifname:name  
+	snprintf(metric_name,128,"%s:%s",iface[curriface],varname[currcol-1]);
+	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+	metric_count++;
+      }
+      currcol++;
+      pch = strtok(NULL," :");
+    }
+  } //while(s)
 
-	char ifname[128];
+  /* Create a metric set of the required size */
+  rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
+  if (rc)
+    return rc;
+  
+  metric_table = calloc(metric_count, sizeof(ldms_metric_t));
+  if (!metric_table)
+    goto err;
+  
+  /*
+   * Process the file again to define all the metrics.
+   */
+  compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
+  if (!compid_metric_handle) {
+    rc = ENOMEM;
+    goto err;
+  } //compid set in sample
 
-	/*
-	 * Process the file once first to determine the metric set size.
-	 */
+  counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
+  if (!counter_metric_handle){
+    rc = ENOMEM;
+    goto err;
+  }
 
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+  int metric_no = 0;
+  usedifaces = 0;
+  fseek(mf, 0, SEEK_SET);
+  
+  s = fgets(lbuf, sizeof(lbuf), mf);
+  s = fgets(lbuf, sizeof(lbuf), mf);
+  while(s) {
+    if (usedifaces == niface){
+      break;
+    }
 
-	metric_count = 0;
-	int usedifaces = 0;
-	fseek(mf, 0, SEEK_SET);
+    s = fgets(lbuf, sizeof(lbuf), mf);
+    if (!s)
+      break;
 
-	//first and second lines are header
-	//we are currently assuming we know the header names....
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	s = fgets(lbuf, sizeof(lbuf), mf);
-
-	//rest is data
-	while(s) {
-	  if (usedifaces == niface){
+    int curriface = -1;
+    int currcol = 0;
+    char* pch = strtok (lbuf," :\t|");
+    while (pch != NULL){
+      if (pch[0] == '\n'){
+	break;
+      }
+      if (currcol == 0){
+	//only include this iface if its in the list
+	int j;
+	for (j = 0; j < niface; j++){
+	  if (strcmp(pch,iface[j]) == 0){
+	    curriface = j;
+	    usedifaces++;
 	    break;
 	  }
-
-	  s = fgets(lbuf, sizeof(lbuf), mf);
-	  if (!s)
-	    break;
-	  int currcol = 0;
-	  char* pch = strtok (lbuf," \t|");
-	  while (pch != NULL){
-	    if (pch[0] == '\n'){
-	      break;
-	    }
-	    if (currcol == 0){
-	      /* Strip the colon from interface name if present */
-	      i = strlen(pch);
-	      if (i && pch[i-1] == ':')
-		pch[i-1] = '\0';
-	      strcpy(ifname, pch);
-	      //only include this iface if its in the list
-	      int j;
-	      int useiface = 0;
-	      for (j = 0; j < niface; j++){
-		if (strcmp(ifname,iface[j]) == 0){
-		  useiface = 1;
-		  usedifaces++;
-		  break;
-		}
-	      }
-	      if (!useiface){
-		break;
-	      }
-	    } else {
-	      //the metric name will be ifname:name  
-	      snprintf(metric_name,128,"%s:%s",ifname,varname[currcol-1]);
-	      rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	      tot_meta_sz += meta_sz;
-	      tot_data_sz += data_sz;
-	      metric_count++;
-	    }
-	    currcol++;
-	    pch = strtok(NULL," ");
-	  }
-	} //while(s)
-
-	/* Create a metric set of the required size */
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-	  return rc;
-
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!metric_table)
-	  goto err;
-
-	/*
-	 * Process the file again to define all the metrics.
-	 */
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) {
+	}
+	if (curriface == -1){
+	  break;
+	} 
+      } else {
+	//the metric name will be ifname:name  
+	snprintf(metric_name,128,"%s:%s",iface[curriface],varname[currcol-1]);
+	metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	if (!metric_table[metric_no]){
 	  rc = ENOMEM;
 	  goto err;
-	} //compid set in sample
-
-	int metric_no = 0;
-	usedifaces = 0;
-	fseek(mf, 0, SEEK_SET);
-
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	while(s) {
-	  if (usedifaces == niface){
-	    break;
-	  }
-
-	  s = fgets(lbuf, sizeof(lbuf), mf);
-	  if (!s)
-	    break;
-	  int currcol = 0;
-	  char* pch = strtok (lbuf," \t|");
-	  while (pch != NULL){
-	    if (pch[0] == '\n'){
-	      break;
-	    }
-	    if (currcol == 0){
-	      /* Strip the colon from interface name if present */
-	      i = strlen(pch);
-	      if (i && pch[i-1] == ':')
-		pch[i-1] = '\0';
-	      strcpy(ifname, pch);
-	      //only include this iface if its in the list
-	      int j;
-	      int useiface = 0;
-	      for (j = 0; j < niface; j++){
-		if (strcmp(ifname,iface[j]) == 0){
-		  useiface = 1;
-		  usedifaces++;
-		  break;
-		}
-	      }
-	      if (!useiface){
-		break;
-	      }
-	    } else {
-	      //the metric name will be ifname:name  
-	      snprintf(metric_name,128,"%s:%s",ifname,varname[currcol-1]);
-	      metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
-	      if (!metric_table[metric_no]){
-		rc = ENOMEM;
-		goto err;
-	      }
-	      metric_no++;
-	    }
-	    currcol++;
-	    pch = strtok(NULL," ");
-	  } // while (strtok)
-	} //while(s)
-	return 0;
+	}
+	metric_no++;
+      }
+      currcol++;
+      pch = strtok(NULL," :");
+    } // while (strtok)
+  } //while(s)
+  return 0;
 
  err:
-	ldms_set_release(set);
-	return rc;
+  ldms_set_release(set);
+  return rc;
 }
 
 static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
@@ -263,8 +276,10 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl, v
   char *value;
   
   value = av_value(avl, "iface");
-  if (value)
-    snprintf(iface[niface++], 20, "%s", value);
+  if (value){
+    snprintf(iface[niface], 20, "%s", value);
+    niface++;
+  }
 
   return 0;
   
@@ -345,79 +360,89 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static int sample(void)
 {
-	int metric_no;
-	char *s;
-	char lbuf[256];
-	union ldms_value v;
+  int metric_no;
+  char *s;
+  char lbuf[256];
+  union ldms_value v;
 
-	if (!set){
-	  msglog("procnetdev: plugin not initialized\n");
-	  return EINVAL;
-	}
-	ldms_set_metric(compid_metric_handle, &comp_id);
+  msglog("Procnetdev entering sample\n");
 
-	metric_no = 0;
-	fseek(mf, 0, SEEK_SET);
+  if (!set){
+    msglog("procnetdev: plugin not initialized\n");
+    return EINVAL;
+  }
+  ldms_set_metric(compid_metric_handle, &comp_id);
 
+  v.v_u64 = ++counter;
+  ldms_set_metric(counter_metric_handle, &v);
 
-	int usedifaces = 0;
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	while(s) {
-	  if (usedifaces == niface){
+  metric_no = 0;
+  //  fseek(mf, 0, SEEK_SET); NOTE: if dont explicitly open
+  //and close data isnt changing in the metric set
+
+  if (mf) fclose(mf);
+  mf = fopen(procfile, "r");
+  if (!mf) {
+    msglog("Could not open /proc/net/dev file '%s'...exiting\n", procfile);
+    return ENOENT;
+  }
+
+  int usedifaces = 0;
+  s = fgets(lbuf, sizeof(lbuf), mf);
+  s = fgets(lbuf, sizeof(lbuf), mf);
+  while(s) {
+    if (usedifaces == niface){
+      break;
+    }
+
+    s = fgets(lbuf, sizeof(lbuf), mf);
+    if (!s)
+      break;
+    int currcol = 0;
+    char* pch = strtok (lbuf," :\t|");
+    while (pch != NULL){
+      if (pch[0] == '\n'){
+	break;
+      }
+      if (currcol == 0){
+	//note: ifaces will be in the same order each time
+	//so we can just include/skip
+	//w/o have to keep track of which on we are on
+	int j;
+	int useiface = 0;
+	for (j = 0; j < niface; j++){
+	  if (strcmp(pch,iface[j]) == 0){
+	    useiface = 1;
+	    usedifaces++;
 	    break;
 	  }
+	}
+	if (!useiface){
+	  break;
+	}
+	//	msglog("Procnetdev adding data for iface %s\n", pch);
+      } else {
+	char* endptr;
+	unsigned long long int l1;
+	l1 = strtoull(pch,&endptr,10);
+	if (endptr != pch){
+	  v.v_u64 = l1;
+	  ldms_set_metric(metric_table[metric_no], &v);
+	  metric_no++;
+	} else {
+	  msglog("bad val <%s>\n",pch);
+	  return EINVAL;
+	}
+      }
+      currcol++;
+      pch = strtok(NULL," :");
+    } // while (strtok)
+  } //while(s)
 
-	  s = fgets(lbuf, sizeof(lbuf), mf);
-	  if (!s)
-	    break;
-	  int currcol = 0;
-	  char* pch = strtok (lbuf," \t|");
-	  while (pch != NULL){
-	    if (pch[0] == '\n'){
-	      break;
-	    }
-	    if (currcol == 0){
-	      //note: ifaces will be in the same order each time
-	      //so we can just include/skip
-	      //w/o have to keep track of which on we are on
-	      char ifname[128];
-
-	      int i = strlen(pch);
-	      if (i && pch[i-1] == ':')
-		pch[i-1] = '\0';
-	      strcpy(ifname, pch);
-	      int j;
-	      int useiface = 0;
-	      for (j = 0; j < niface; j++){
-		if (strcmp(ifname,iface[j]) == 0){
-		  useiface = 1;
-		  usedifaces++;
-		  break;
-		}
-	      }
-	      if (!useiface){
-		break;
-	      }
-	    } else {
-	      char* endptr;
-	      unsigned long long int l1;
-	      l1 = strtoull(pch,&endptr,10);
-	      if (endptr != pch){
-		v.v_u64 = l1;
-		ldms_set_metric(metric_table[metric_no], &v);
-		metric_no++;
-	      } else {
-		msglog("bad val <%s>\n",pch);
-		return EINVAL;
-	      }
-	    }
-	    currcol++;
-	    pch = strtok(NULL," ");
-	  } // while (strtok)
-	} //while(s)
-
-	return 0;
+  if (mf) fclose(mf);
+  mf = 0;
+  
+  return 0;
 }
 
 
