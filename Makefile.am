@@ -113,6 +113,11 @@ src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map $(top_buildd
 src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 PROCNETDEV_la = src/libprocnetdev.la 
 
+src_libprocnfs_la_SOURCES = src/procnfs.c
+src_libprocnfs_la_DEPENDENCIES = $(srcdir)/src/libprocnfs.map $(top_builddir)/libplugin.a
+src_libprocnfs_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+PROCNFS_la = src/libprocnfs.la 
+
 src_libprocstatutil_la_SOURCES = src/procstatutil.c $(top_builddir)/libplugin.a
 src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map
 src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
@@ -142,7 +147,7 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) \
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
 	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(PROCSENSORS_la) \
 	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(PROCNETDEV_la) \
-	$(SYSCLASSIB_la) \
+	$(PROCNFS_la) $(SYSCLASSIB_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la) \
 	$(STORE_SOS_la) $(STORE_MYSQL_la)
 
