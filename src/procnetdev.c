@@ -146,12 +146,12 @@ static int create_metric_set(const char *path)
   int usedifaces = 0;
   metric_count = 0;
   do {
-    if (usedifaces == niface)
-      break;
-
     s = fgets(lbuf, sizeof(lbuf), mf);
     if (!s)
       break;
+
+    if (usedifaces == niface)
+      continue; //must get to EOF for seek to work
 
     char *pch = strchr(lbuf, ':');
     if (pch != NULL){
@@ -209,12 +209,13 @@ static int create_metric_set(const char *path)
   usedifaces = 0;
   metric_no = 0;
   do {
-    if (usedifaces == niface)
-      break;
 
     s = fgets(lbuf, sizeof(lbuf), mf);
     if (!s)
       break;
+
+    if (usedifaces == niface)
+      continue; //must get to EOF for seek to work
 
     char *pch = strchr(lbuf, ':');
     if (pch != NULL){
@@ -360,8 +361,7 @@ static int sample(void)
   ldms_set_metric(counter_metric_handle, &vtemp);
 
   metric_no = 0;
-  //  fseek(mf, 0, SEEK_SET); NOTE: if dont explicitly open
-  //and close data isnt changing in the metric set
+  fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
 
   if (mf) fclose(mf);
   mf = fopen(procfile, "r");
@@ -376,12 +376,12 @@ static int sample(void)
   //data
   metric_no = 0;
   do {
-    if (usedifaces == niface)
-      break;
-
     s = fgets(lbuf, sizeof(lbuf), mf);
     if (!s)
       break;
+
+    if (usedifaces == niface)
+      continue; //must get to EOF for seek to work
 
     char *pch = strchr(lbuf, ':');
     if (pch != NULL){
@@ -407,9 +407,6 @@ static int sample(void)
     } //for
   } while (s);
 
-  if (mf) fclose(mf);
-  mf = 0;
-  
   return 0;
 }
 

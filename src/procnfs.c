@@ -259,16 +259,8 @@ static int sample(void)
 
   metric_no = 0;
 
-  //FIXME: try this w/o having to open and close. others did not work...
-  if (mf) fclose(mf);
-  mf = fopen(procfile, "r");
-  if (!mf) {
-    msglog("Could not open /proc/net/rpc/nfs file '%s'...exiting\n", procfile);
-    return ENOENT;
-  }
-
+  fseek(mf, 0, SEEK_SET);
   //format of the file is well known -- we want lines 1 and 3 (starting with 0)
-
   int currlinenum = 0;
   do {
     s = fgets(lbuf, sizeof(lbuf), mf);
@@ -302,12 +294,11 @@ static int sample(void)
 	}
       }
       break;
-    }
+    default:
+      break;
+    } //switch 
     currlinenum++;
-  } while (s);
-
-  if (mf) fclose(mf);
-  mf = 0;
+  } while (s); //must get to EOF for the switch to work
   
   return 0;
 }
