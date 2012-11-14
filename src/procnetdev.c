@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012 Sandia Corporation. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -61,6 +61,7 @@
 
 #define PROC_FILE "/proc/net/dev"
 static char *procfile = PROC_FILE;
+#define NVARS 16
 static char varname[][30] = 
   {"rx_bytes", "rx_packets", "rx_errs", "rx_drop", "rx_fifo", "rx_frame",
    "rx_compressed", "rx_multicast", "tx_bytes", "tx_packets", "tx_errs",
@@ -103,10 +104,13 @@ static int create_metric_set(const char *path)
 {
   size_t meta_sz, tot_meta_sz;
   size_t data_sz, tot_data_sz;
-  int rc, metric_count;
+  union ldms_value v[NVARS];
+  int rc, metric_count, metric_no;
   char *s;
   char lbuf[256];
   char metric_name[128];
+  char curriface[20];
+  int i,j;
 
 
   mf = fopen(procfile, "r");
@@ -125,8 +129,6 @@ static int create_metric_set(const char *path)
   tot_meta_sz += meta_sz;
   tot_data_sz += data_sz;
 
-  metric_count = 0;
-  int usedifaces = 0;
   fseek(mf, 0, SEEK_SET);
 
   //first and second lines are header
@@ -141,51 +143,41 @@ static int create_metric_set(const char *path)
     msglog("procnetdev: not reading header line 2\n");
     return ENOENT;
   }
-
-  //rest is data
-  while(s) {
-    if (usedifaces == niface){
+  int usedifaces = 0;
+  metric_count = 0;
+  do {
+    if (usedifaces == niface)
       break;
-    }
 
     s = fgets(lbuf, sizeof(lbuf), mf);
     if (!s)
       break;
 
-    int curriface = -1;
-    int currcol = 0;
-    char* pch = strtok (lbuf," :\t|");
-    while (pch != NULL){
-      if (pch[0] == '\n'){
+    char *pch = strchr(lbuf, ':');
+    if (pch != NULL){
+      *pch = ' ';
+    }
+
+    int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface,&v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64); 
+    if (rc != 17){
+      msglog("Procnetdev: wrong number of fields in sscanf\n");
+      continue;
+    }
+    for (j = 0; j < niface; j++){
+      if (strcmp(iface[j],curriface) == 0){
+	for (i = 0; i < NVARS; i++){
+	  snprintf(metric_name,128,"%s:%s",curriface,varname[i]);
+	  rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+	  tot_meta_sz += meta_sz;
+	  tot_data_sz += data_sz;
+	  metric_count++;
+	}
+	usedifaces++;
 	break;
       }
-      if (currcol == 0){
-	//only include this iface if its in the list
-	//FIXME: change this so it will keep track of the line
-	//number to keep -- then wont have to search subsquently
-	int j;
-	for (j = 0; j < niface; j++){
-	  if (strcmp(pch,iface[j]) == 0){
-	    usedifaces++;
-	    curriface = j;
-	    break;
-	  }
-	}
-	if (curriface == -1){
-	  break;
-	}
-      } else {
-	//the metric name will be ifname:name  
-	snprintf(metric_name,128,"%s:%s",iface[curriface],varname[currcol-1]);
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	metric_count++;
-      }
-      currcol++;
-      pch = strtok(NULL," :");
-    }
-  } //while(s)
+    } //for
+  } while (s);
+
 
   /* Create a metric set of the required size */
   rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
@@ -211,55 +203,46 @@ static int create_metric_set(const char *path)
     goto err;
   }
 
-  int metric_no = 0;
-  usedifaces = 0;
   fseek(mf, 0, SEEK_SET);
-  
   s = fgets(lbuf, sizeof(lbuf), mf);
   s = fgets(lbuf, sizeof(lbuf), mf);
-  while(s) {
-    if (usedifaces == niface){
+  usedifaces = 0;
+  metric_no = 0;
+  do {
+    if (usedifaces == niface)
       break;
-    }
 
     s = fgets(lbuf, sizeof(lbuf), mf);
     if (!s)
       break;
 
-    int curriface = -1;
-    int currcol = 0;
-    char* pch = strtok (lbuf," :\t|");
-    while (pch != NULL){
-      if (pch[0] == '\n'){
-	break;
-      }
-      if (currcol == 0){
-	//only include this iface if its in the list
-	int j;
-	for (j = 0; j < niface; j++){
-	  if (strcmp(pch,iface[j]) == 0){
-	    curriface = j;
-	    usedifaces++;
-	    break;
+    char *pch = strchr(lbuf, ':');
+    if (pch != NULL){
+      *pch = ' ';
+    }
+
+    int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface, &v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64); 
+    if (rc != 17){
+      msglog("Procnetdev: wrong number of fields in sscanf\n");
+      continue;
+    }
+    for (j = 0; j < niface; j++){
+      if (strcmp(iface[j],curriface) == 0){
+	for (i = 0; i < NVARS; i++){
+	  snprintf(metric_name,128,"%s:%s",curriface,varname[i]);
+	  metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	  if (!metric_table[metric_no]){
+	    rc = ENOMEM;
+	    goto err;
 	  }
+	  metric_no++;
 	}
-	if (curriface == -1){
-	  break;
-	} 
-      } else {
-	//the metric name will be ifname:name  
-	snprintf(metric_name,128,"%s:%s",iface[curriface],varname[currcol-1]);
-	metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
-	if (!metric_table[metric_no]){
-	  rc = ENOMEM;
-	  goto err;
-	}
-	metric_no++;
-      }
-      currcol++;
-      pch = strtok(NULL," :");
-    } // while (strtok)
-  } //while(s)
+	usedifaces++;
+	break;
+      } //if
+    } //for
+  } while (s);
+
   return 0;
 
  err:
@@ -360,12 +343,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static int sample(void)
 {
-  int metric_no;
   char *s;
   char lbuf[256];
-  union ldms_value v;
+  char curriface[20];
+  union ldms_value vtemp, v[NVARS];
+  int i, j, metric_no;
 
-  msglog("Procnetdev entering sample\n");
 
   if (!set){
     msglog("procnetdev: plugin not initialized\n");
@@ -373,8 +356,8 @@ static int sample(void)
   }
   ldms_set_metric(compid_metric_handle, &comp_id);
 
-  v.v_u64 = ++counter;
-  ldms_set_metric(counter_metric_handle, &v);
+  vtemp.v_u64 = ++counter;
+  ldms_set_metric(counter_metric_handle, &vtemp);
 
   metric_no = 0;
   //  fseek(mf, 0, SEEK_SET); NOTE: if dont explicitly open
@@ -390,54 +373,39 @@ static int sample(void)
   int usedifaces = 0;
   s = fgets(lbuf, sizeof(lbuf), mf);
   s = fgets(lbuf, sizeof(lbuf), mf);
-  while(s) {
-    if (usedifaces == niface){
+  //data
+  metric_no = 0;
+  do {
+    if (usedifaces == niface)
       break;
-    }
 
     s = fgets(lbuf, sizeof(lbuf), mf);
     if (!s)
       break;
-    int currcol = 0;
-    char* pch = strtok (lbuf," :\t|");
-    while (pch != NULL){
-      if (pch[0] == '\n'){
+
+    char *pch = strchr(lbuf, ':');
+    if (pch != NULL){
+      *pch = ' ';
+    }
+
+    int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface, &v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64); 
+    if (rc != 17){
+      msglog("Procnetdev: wrong number of fields in sscanf\n");
+      continue;
+    }
+    
+    //note: ifaces will be in the same order each time
+    //so we can just include/skip w/o have to keep track of which on we are on
+    for (j = 0; j < niface; j++){
+      if (strcmp(curriface,iface[j]) == 0){ //NOTE: small number so no conflicts (eg., eth1 and eth10)
+	for (i = 0; i < NVARS; i++){
+	  ldms_set_metric(metric_table[metric_no++], &v[i]);
+	}
+	usedifaces++;
 	break;
-      }
-      if (currcol == 0){
-	//note: ifaces will be in the same order each time
-	//so we can just include/skip
-	//w/o have to keep track of which on we are on
-	int j;
-	int useiface = 0;
-	for (j = 0; j < niface; j++){
-	  if (strcmp(pch,iface[j]) == 0){
-	    useiface = 1;
-	    usedifaces++;
-	    break;
-	  }
-	}
-	if (!useiface){
-	  break;
-	}
-	//	msglog("Procnetdev adding data for iface %s\n", pch);
-      } else {
-	char* endptr;
-	unsigned long long int l1;
-	l1 = strtoull(pch,&endptr,10);
-	if (endptr != pch){
-	  v.v_u64 = l1;
-	  ldms_set_metric(metric_table[metric_no], &v);
-	  metric_no++;
-	} else {
-	  msglog("bad val <%s>\n",pch);
-	  return EINVAL;
-	}
-      }
-      currcol++;
-      pch = strtok(NULL," :");
-    } // while (strtok)
-  } //while(s)
+      } //if
+    } //for
+  } while (s);
 
   if (mf) fclose(mf);
   mf = 0;
