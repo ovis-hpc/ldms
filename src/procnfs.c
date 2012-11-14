@@ -188,7 +188,7 @@ static int create_metric_set(const char *path)
   for (i = 0; i < MAXOPTS; i++){
     for (j = 0; j < numvars[i]; j++){
       snprintf(metric_name,127,"%s", varnames[i][j]);
-      msglog("procnfs adding metric <%s>\n", metric_name);
+      //      msglog("procnfs adding metric <%s>\n", metric_name);
       metric_table[metric_count] = ldms_add_metric(set, metric_name, LDMS_V_U64);
       if (!metric_table[metric_count]){
 	rc = ENOMEM;
@@ -225,7 +225,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
   char *value;
 
-  msglog("procnfs in config\n");
+  //  msglog("procnfs in config\n");
 
   value = av_value(avl, "component_id");
   if (value)
@@ -246,7 +246,7 @@ static int sample(void)
   char lbuf[256];
   union ldms_value v[23],vtemp;
 
-  msglog("Procnfs entering sample\n");
+  //  msglog("Procnfs entering sample\n");
 
   if (!set){
     msglog("procnfs: plugin not initialized\n");
