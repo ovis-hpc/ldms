@@ -41,11 +41,14 @@
 /**
  * \file sysclassib.c
  * \brief reads from 
- * 1) all files in: /sys/class/infiniband/mlx4_0/ports/{1/2}/counters
+ * 1) all files in: /sys/class/infiniband/mlx4_{0/1}/ports/{1/2}/counters
  *    which have well-known names
- * 2) /sys/class/infiniband/mlx4_0/ports/{1,2}/rate
+ * 2) /sys/class/infiniband/mlx4_{0/1}/ports/{1,2}/rate
  *
- * in config, you can specify ib0 (port1), ib1 (port2) or both.
+ * in config, you can specify ib0 --> mlx4_0 and port1 
+ *                            ib1 --> mlx4_0 and port2
+ *                            ib2 --> mlx4_1 and port1 
+ *                            ib3 --> mlx4_1 and port2 
  *
  * this leaves all filehandles open all the time.
  * FIXME: verify that if you unload & load sampler that filehandles
@@ -65,7 +68,7 @@
 #include "ldmsd.h"
 
 //FIXME: make this a parameter later..
-static char* ibbasedir = "/sys/class/infiniband/mlx4_0/ports/";
+static char* ibbasedir = "/sys/class/infiniband/mlx4_";
 const static char* countervarnames[] = {"excessive_buffer_overrun_errors",
 					"link_downed", 
 					"link_error_recovery",
@@ -86,10 +89,10 @@ const static char* countervarnames[] = {"excessive_buffer_overrun_errors",
 const static int numcountervar = 17;
 //NOTE: known that the other file is "rate" and the variable will be "rate"
 //max number of interfaces we can include. FIXME: alloc as added
-#define MAXIFACE 2
+#define MAXIFACE 4
 static int useiface[MAXIFACE];
-static FILE* fd[2][18];
-static char filename[2][18][256]; //filenames for the filehandles. now need to store these since have to close and open filehandles all the time...
+static FILE* fd[4][18];
+static char filename[4][18][256]; //filenames for the filehandles. now need to store these since have to close and open filehandles all the time...
 
 static uint64_t counter;
 
@@ -199,7 +202,7 @@ static int create_metric_set(const char *path)
 	      rc = ENOMEM;
 	      goto err;
 	    }
-	    snprintf(metric_name, 255, "%s/%d/%s/%s", ibbasedir, (j+1), "counters",
+	    snprintf(metric_name, 255, "%s%d/ports/%d/%s/%s", ibbasedir, ((j == 0 || j == 1)? 0:1), ((j == 0 || j == 2) ? 1:2), "counters",
 		     countervarnames[metric_no]);
 	    fd[j][i] = fopen(metric_name, "r");
 	    if (!fd[j][i]){
@@ -218,7 +221,7 @@ static int create_metric_set(const char *path)
 	    rc = ENOMEM;
 	    goto err;
 	  }
-	  snprintf(metric_name, 255, "%s/%d/rate", ibbasedir,(j+1));
+	  snprintf(metric_name, 255, "%s%d/ports/%d/rate", ibbasedir, ((j == 0 || j == 1)? 0:1), ((j == 0 || j == 2) ? 1:2));
 	  //last one is the rate
 	  fd[j][numcountervar] = fopen(metric_name, "r");
 	  if (!fd[j][numcountervar]){
@@ -256,6 +259,10 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl,
       useiface[0] = 1;
     } else if (strcmp(value, "ib1") == 0){
       useiface[1] = 1;
+    } else if (strcmp(value, "ib2") == 0){
+      useiface[2] = 1;
+    } else if (strcmp(value, "ib3") == 0){
+      useiface[3] = 1;
     } else {
       msglog("Invalid interface %s\n", value);
       return EINVAL;
