@@ -143,7 +143,7 @@ static int create_metric_set(const char *path)
 	  }
 	  for (i = 0; i < numcountervar; i++){
 	    //the metric name will be iface:name
-	    snprintf(metric_name, 127, "ib%d:%s",j,countervarnames[i]);
+	    snprintf(metric_name, 127, "ib%d_%s",j,countervarnames[i]);
 	    rc = ldms_get_metric_size(metric_name,
 				      LDMS_V_U64, &meta_sz, &data_sz);
 	    if (rc)
@@ -153,7 +153,7 @@ static int create_metric_set(const char *path)
 	    tot_data_sz += data_sz;
 	    metric_count++;
 	  }
-	  snprintf(metric_name, 127, "ib%d:rate",j);
+	  snprintf(metric_name, 127, "ib%d_rate",j);
 	  rc = ldms_get_metric_size(metric_name,
 				    LDMS_V_U64, &meta_sz, &data_sz);
 	  if (rc)
@@ -195,7 +195,7 @@ static int create_metric_set(const char *path)
 	    continue;
 	  }
 	  for (i = 0; i < numcountervar; i++){
-	    snprintf(metric_name, 127, "ib%d:%s",j,countervarnames[i]);
+	    snprintf(metric_name, 127, "ib%d_%s",j,countervarnames[i]);
 	    metric_table[metric_no] =
 	      ldms_add_metric(set, metric_name, LDMS_V_U64);
 	    if (!metric_table[metric_no]) {
@@ -214,7 +214,7 @@ static int create_metric_set(const char *path)
 	    metric_no++;
 	  }
 
-	  snprintf(metric_name, 127, "ib%d:rate",j);
+	  snprintf(metric_name, 127, "ib%d_rate",j);
 	  metric_table[metric_no] =
 	    ldms_add_metric(set, metric_name, LDMS_V_U64);
 	  if (!metric_table[metric_no]) {
