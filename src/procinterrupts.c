@@ -63,39 +63,14 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 int nprocs;
+union ldms_value comp_id;
 
-/**
- * \brief Configuration
- *
- * - config procinterrupts component_id <value>
- */
-static int config(char *str)
-{
-	if (!set || !compid_metric_handle ){
-		msglog("meminfo: plugin not initialized\n");
-		return EINVAL;
-	}
-	//expects "component_id value"
-	if (0 == strncmp(str,"component_id",12)){
-		char junk[128];
-		int rc;
-		union ldms_value v;
-
-		rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
-		if (rc < 1){
-			return EINVAL;
-		}
-		ldms_set_metric(compid_metric_handle, &v);
-	}
-
-	return 0;
-
-}
 
 static ldms_set_t get_set()
 {
 	return set;
 }
+
 
 static int getNProcs(char buf[]){
 	int nproc = 0;
@@ -115,7 +90,7 @@ static int getNProcs(char buf[]){
 }
 
 
-static int init(const char *path)
+static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
@@ -166,8 +141,8 @@ static int init(const char *path)
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				//the metric name will be CpuX_name (there may 1 or nprocs of them)
-				snprintf(metric_name,128,"Cpu%d_%s",(currcol-1),beg_name); //FIXME: prob get the actual col name
+				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo 
+				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name); 
 				rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
@@ -194,7 +169,7 @@ static int init(const char *path)
 	if (!compid_metric_handle) {
 		rc = ENOMEM;
 		goto err;
-	} //compid set in config
+	} //compid set in sample
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -217,8 +192,8 @@ static int init(const char *path)
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				//the metric name will be CpuX_name (there may 1 or nprocs of them)
-				snprintf(metric_name,128,"Cpu%d_%s",(currcol-1),beg_name);  //FIXME: prob get the actual col name
+				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo 
+				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name); 
 				metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
 				if (!metric_table[metric_no]){
 					rc = ENOMEM;
@@ -237,12 +212,39 @@ static int init(const char *path)
 	return rc;
 }
 
+/**
+ * \brief Configuration
+ *
+ * - config procinterrupts component_id <value>
+ */
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+
+  char *value;
+  
+  value = av_value(avl, "component_id");
+  if (value)
+    comp_id.v_u64 = strtol(value, NULL, 0);
+  
+  value = av_value(avl, "set");
+  if (value)
+    create_metric_set(value);
+  
+  return 0;
+}
+
 static int sample(void)
 {
 	int metric_no;
 	char *s;
 	char lbuf[256];
 	union ldms_value v;
+
+	if (!set){
+	  msglog("procinterrupts: plugin not initialized\n");
+	  return EINVAL;
+	}
+	ldms_set_metric(compid_metric_handle, &comp_id);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -286,8 +288,19 @@ static int sample(void)
 
 static void term(void)
 {
+  if (set)
 	ldms_destroy_set(set);
+  set = NULL;
 }
+
+
+static const char *usage(void)
+{
+	return  "config name=procinterrupts component_id=<comp_id> set=<setname>\n"
+		"    comp_id     The component id value.\n"
+		"    setname     The set name.\n";
+}
+
 
 
 static struct ldmsd_sampler procinterrupts_plugin = {
@@ -295,6 +308,7 @@ static struct ldmsd_sampler procinterrupts_plugin = {
 		.name = "procinterrupts",
 		.term = term,
 		.config = config,
+		.usage = usage,
 	},
 	.get_set = get_set,
 	.sample = sample,

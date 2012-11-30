@@ -64,29 +64,7 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
-
-static int config(char *str)
-{
-	if (!set || !compid_metric_handle ){
-		msglog("geminfo: plugin not initialized\n");
-		return EINVAL;
-	}
-	//expects "component_id value"
-	if (0 == strncmp(str,"component_id",12)){
-		char junk[128];
-		int rc;
-		union ldms_value v;
-
-		rc = sscanf(str,"component_id %" PRIu64 "%s\n",&v.v_u64,junk);
-		if (rc < 1){
-			return EINVAL;
-		}
-		ldms_set_metric(compid_metric_handle, &v);
-	}
-
-	return 0;
-
-}
+union ldms_value comp_id;
 
 static ldms_set_t get_set()
 {
@@ -108,7 +86,7 @@ char *replace_space(char *s)
 	return s;
 }
 
-static int init(const char *path)
+static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
@@ -208,12 +186,33 @@ static int init(const char *path)
 	return rc;
 }
 
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+	char *value;
+
+	value = av_value(avl, "component_id");
+	if (value)
+		comp_id.v_u64 = strtol(value, NULL, 0);
+	
+	value = av_value(avl, "set");
+	if (value)
+		create_metric_set(value);
+
+	return 0;
+}
+
 static int sample(void)
 {
 	int metric_no;
 	char *s;
 	char lbuf[256];
 	union ldms_value v;
+
+	if (!set){
+	  msglog("geminfo: plugin not initialized\n");
+	  return EINVAL;
+	}
+	ldms_set_metric(compid_metric_handle, &comp_id);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -242,7 +241,16 @@ static int sample(void)
 
 static void term(void)
 {
+  if (set)
 	ldms_set_release(set);
+  set = NULL;
+}
+
+static const char *usage(void)
+{
+	return  "config name=geminfo component_id=<comp_id> set=<setname>\n"
+		"    comp_id     The component id value.\n"
+		"    setname     The set name.\n";
 }
 
 
@@ -251,6 +259,7 @@ static struct ldmsd_sampler geminfo_plugin = {
 		.name = "geminfo",
 		.term = term,
 		.config = config,
+		.usage = usage,
 	},
 	.get_set = get_set,
 	.sample = sample,

@@ -120,14 +120,14 @@ static int create_metric_set(const char *path)
 	if (!compid_metric_handle) {
 		rc = ENOMEM;
 		goto err;
-	} //compid set in config
+	} //compid set in sample
 
 	//and add the counter
 	counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
 	if (!counter_metric_handle) {
 		rc = ENOMEM;
 		goto err;
-	} //counter set in config
+	} //counter updated in config
 
 	//also set the counter...
 	counter = 0;
@@ -201,6 +201,9 @@ static int sample(void)
 	v.v_u64 = ++counter;
 	ldms_set_metric(counter_metric_handle, &v);
 
+	//set the compid
+	ldms_set_metric(compid_metric_handle, &comp_id);
+
 	metric_no = 0;
 	for (i = 0; i < vartypes; i++){
 	  for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
@@ -213,10 +216,13 @@ static int sample(void)
 	      return ENOENT;
 	    }
 	    s = fgets(lbuf, sizeof(lbuf), mf);
-	    if (!s)
+	    if (!s){
+	      if (mf) fclose(mf);
 	      break;
+	    }
 	    rc = sscanf(lbuf, "%"PRIu64 "\n", &v.v_u64);
 	    if (rc != 1){
+	      if (mf) fclose(mf);
 	      return EINVAL;
 	    }
 	    ldms_set_metric(metric_table[metric_no], &v);

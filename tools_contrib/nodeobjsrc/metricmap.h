@@ -1,6 +1,7 @@
 #ifndef __METRICMAP_H__
 #define __METRICMAP_H__
 
+/** MetricMap takes in hwloc info and LDMS data and stores the data. See notes in metricmap.c */
 
 #include <glib.h>
 #include <stdio.h>

@@ -1,4 +1,4 @@
-LIBHWLOCFLATFILE_1.0 {
+LIBPROCNFS_2.0 {
 	global:
 		get_plugin;
 	local: *;

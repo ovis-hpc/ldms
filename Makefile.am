@@ -1,12 +1,8 @@
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir)
+INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql -I/home/brandt/Ann/sos.usr/include
 
-if ENABLE_GLIB
-sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl src/hwlocldms_ls
-else
 sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl
-endif
 
 if ENABLE_RDMA
 src_libldmsrdma_la_SOURCES = src/ldms_rdma.c
@@ -43,20 +39,16 @@ UGNI_la = src/libldmsugni.la
 endif
 
 src_libflatfile_la_SOURCES = src/flatfile.c
-src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map
-src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map  $(top_builddir)/libplugin.a
+src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 FLATFILE_la = src/libflatfile.la
 
-#src_libhwlocflatfile_la_SOURCES = src/hwlocflatfile.c
-#src_libhwlocflatfile_la_DEPENDENCIES = $(srcdir)/src/libhwlocflatfile.map
-#src_libhwlocflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) $(top_builddir)/src/libmetricmap.la
-#HWLOCFLATFILE_la = src/libhwlocflatfile.la
-
 if ENABLE_MYSQL
-src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql
+#src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql
+src_libmysqlinsert_la_CFLAGS = $(MYSQL_CFLAGS)
 src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
-src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map
-src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient
+src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map $(top_builddir)/libplugin.a
+src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient -lplugin
 MYSQLINSERT_la = src/libmysqlinsert.la
 else
 MYSQL_FLAGS = -DDISABLE_MYSQL
@@ -70,17 +62,6 @@ src_libsedc_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) \
 src_libsedc_la_CFLAGS = $(GLIB20_CFLAGS)
 SEDC_la = src/libsedc.la
 
-src_libmetricmap_la_SOURCES = src/metricmap.c src/metricmap.h
-src_libmetricmap_la_LIBADD = -ldl -lpthread -levent -levent_pthreads $(GLIB20_LIBS)
-src_libmetricmap_la_DEPENDENCIES = $(srcdir)/src/libmetricmap.map
-src_libmetricmap_la_CFLAGS = $(GLIB20_CFLAGS)
-
-src_hwlocldms_ls_SOURCES = src/hwlocldms_ls.c
-src_hwlocldms_ls_LDADD = $(top_builddir)/src/libldms.la \
-	$(top_builddir)/src/libmetricmap.la \
-	$(GLIB20_LIBS)
-src_hwlocldms_ls_CFLAGS = $(GLIB20_CFLAGS)
-
 else
 GLIB_FLAGS = -DISABLE_GLIB
 endif
@@ -90,11 +71,21 @@ src_libstore_sos_la_SOURCES = src/store_sos.c
 src_libstore_sos_la_DEPENDENCIES = $(srcdir)/src/libstore_sos.map
 src_libstore_sos_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lsos -lplugin
 STORE_SOS_la = src/libstore_sos.la
+
+#libstore_mysql uses the idx.h in sos
+if ENABLE_MYSQL
+#src_libstore_mysql_la_CPPFLAGS = -I/usr/include/mysql
+src_libstore_mysql_la_CFLAGS = $(MYSQL_CFLAGS)
+src_libstore_mysql_la_SOURCES = src/store_mysql.c
+src_libstore_mysql_la_DEPENDENCIES = $(srcdir)/src/libstore_mysql.map
+src_libstore_mysql_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient
+STORE_MYSQL_la = src/libstore_mysql.la
+endif
 endif
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
-src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map
-src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map  $(top_builddir)/libplugin.a
+src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 GEMINFO_la = src/libgeminfo.la
 
 src_libmeminfo_la_SOURCES = src/meminfo.c
@@ -113,14 +104,29 @@ SENSORS_FLAGS = -DISABLE_SENSORS
 endif
 
 src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
-src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map
-src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)
+src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map  $(top_builddir)/libplugin.a
+src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 PROCINTERRUPTS_la = src/libprocinterrupts.la
+
+src_libprocnetdev_la_SOURCES = src/procnetdev.c
+src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map $(top_builddir)/libplugin.a
+src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+PROCNETDEV_la = src/libprocnetdev.la 
+
+src_libprocnfs_la_SOURCES = src/procnfs.c
+src_libprocnfs_la_DEPENDENCIES = $(srcdir)/src/libprocnfs.map $(top_builddir)/libplugin.a
+src_libprocnfs_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+PROCNFS_la = src/libprocnfs.la 
 
 src_libprocstatutil_la_SOURCES = src/procstatutil.c $(top_builddir)/libplugin.a
 src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map
 src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 PROCSTATUTIL_la = src/libprocstatutil.la
+
+src_libsysclassib_la_SOURCES = src/sysclassib.c
+src_libsysclassib_la_DEPENDENCIES = $(srcdir)/src/libsysclassib.map $(top_builddir)/libplugin.a
+src_libsysclassib_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+SYSCLASSIB_la = src/libsysclassib.la 
 
 src_libvmstat_la_SOURCES = src/vmstat.c
 src_libvmstat_la_DEPENDENCIES = $(srcdir)/src/libvmstat.map $(top_builddir)/libplugin.a
@@ -129,8 +135,8 @@ VMSTAT_la = src/libvmstat.la
 
 if ENABLE_PERF
 src_libperfevent_la_SOURCES = src/perfevent.c
-src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map
-src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)  -lm
+src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map  $(top_builddir)/libplugin.a
+src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)  -lm -lplugin
 PERFEVENT_la = src/libperfevent.la
 endif
 
@@ -138,12 +144,12 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) \
 	$(MYSQL_FLAGS) $(GLIB_FLAGS) $(LOCAL_FLAGS) ${SPINLOCK_FLAGS} \
 	$(SENSORS_FLAGS)
 
-lib_LTLIBRARIES = src/libldms.la $(SOCK_la) src/libmetricmap.la \
+lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
 	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(PROCSENSORS_la) \
-	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) \
+	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(PROCNETDEV_la) \
+	$(PROCNFS_la) $(SYSCLASSIB_la) \
 	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la) \
-	$(STORE_SOS_la)
-#$(HWLOCFLATFILE_la)
+	$(STORE_SOS_la) $(STORE_MYSQL_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c

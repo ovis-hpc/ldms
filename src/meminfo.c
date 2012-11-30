@@ -55,7 +55,18 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include <asm-x86_64/unistd.h>
+//#include <asm-x86_64/unistd.h>
+
+//FIXME - remove the asm-x86_64/unistd.h and replace with:
+#if defined(__i386__)
+#include "/usr/include/asm/unistd_32.h"
+#endif
+
+#if defined(__x86_64__)
+#include "/usr/include/asm/unistd_64.h"
+#endif
+
+
 
 #define PROC_FILE "/proc/meminfo"
 
@@ -70,8 +81,8 @@ ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
 ldms_metric_t pid_metric_handle;
 ldms_metric_t tid_metric_handle;
-static uint64_t mypid;
-static uint64_t mytid;
+//static uint64_t mypid;
+//static uint64_t mytid;
 
 static int create_metric_set(const char *path)
 {
@@ -79,7 +90,7 @@ static int create_metric_set(const char *path)
 	size_t data_sz, tot_data_sz;
 	int rc, i, metric_count;
 	uint64_t metric_value;
-	union ldms_value v;
+	//	union ldms_value v;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
@@ -170,19 +181,19 @@ static int create_metric_set(const char *path)
 		goto err;
 
 	//also set the counter...
-	counter = 0;
-	v.v_u64 = counter;
-	ldms_set_metric(counter_metric_handle, &v);
+	//	counter = 0;
+	//	v.v_u64 = counter;
+	//	ldms_set_metric(counter_metric_handle, &v);
 
 	//also set the pid
-	mypid=getpid();
-	v.v_u64 = mypid;
-	ldms_set_metric(pid_metric_handle, &v);
+	//	mypid=getpid();
+	//	v.v_u64 = mypid;
+	//	ldms_set_metric(pid_metric_handle, &v);
 
 	//also set the tid
-	mytid = syscall(__NR_gettid);
-	v.v_u64 = mytid;
-	ldms_set_metric(tid_metric_handle, &v);
+	//	mytid = syscall(__NR_gettid);
+	//	v.v_u64 = mytid;
+	//	ldms_set_metric(tid_metric_handle, &v);
 	
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);

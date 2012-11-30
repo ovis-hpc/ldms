@@ -55,7 +55,14 @@
 #include <sys/types.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include <asm-x86_64/unistd.h>
+
+#if defined(__i386__)
+#include "/usr/include/asm/unistd_32.h"
+#endif
+
+#if defined(__x86_64__)
+#include "/usr/include/asm/unistd_64.h"
+#endif
 
 #define PROC_FILE "/proc/vmstat"
 
