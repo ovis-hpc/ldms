@@ -63,10 +63,10 @@
 #define GROUP_COL	2
 #define VALUE_COL	3
 
-static char* db_host;
-static char* db_schema;
-static char* db_user;
-static char* db_passwd;
+static char* db_host = NULL;
+static char* db_schema = NULL;
+static char* db_user = NULL;
+static char* db_passwd = NULL;
 //FIXME - Will db connection be at this level or in the metric store? 
 MYSQL *conn = NULL; 
 
@@ -89,7 +89,7 @@ pthread_mutex_t cfg_lock;
 
 
 static int initConn(){
-  if ((strlen(db_host) == 0) || strlen(db_schema) ||
+  if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) ||
       (strlen(db_user) == 0)){ 
     msglog("Invalid parameters for database");
     return EINVAL;
@@ -101,8 +101,11 @@ static int initConn(){
     return EPERM;
   }
 
+  //FIXME: want to support optional passwd
+  //  if (!mysql_real_connect(conn, db_host, db_user,
+  //			  db_passwd, db_schema, 0, NULL, 0)){
   if (!mysql_real_connect(conn, db_host, db_user,
-			  db_passwd, db_schema, 0, NULL, 0)){
+			  NULL, db_schema, 0, NULL, 0)){
     msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
     return EPERM;
   }
@@ -156,6 +159,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (!db_user)
 		return ENOMEM;
 
+	//FIXME: want to support optional password
+	/*
 	value = av_value(avl, "dbpasswd");
 	if (!value)
 		goto err;
@@ -167,6 +172,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	pthread_mutex_unlock(&cfg_lock);
 	if (!db_passwd)
 		return ENOMEM;
+	*/
 
 	//NOTE: do we want 1 global conn, or per metric?
 	//NOTE: keep it open all the time or close? 
@@ -186,12 +192,12 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_mysql dbschema=<db_schema> dbuser=<dbuser> dbpasswd=<dbpasswd> dbhost=<dbhost>\n"
+	return  "    config name=store_mysql dbschema=<db_schema> dbuser=<dbuser> dbhost=<dbhost>\n"
 		"        - Set the dbinfo for the mysql storage for data.\n"
 		"        dbhost    The host of the database (check format)"
 		"        dbschema  The name of the database \n"
         	"        dbuser      The username of the database \n"
-		"        dbpasswd    The passwd for the user of the database (find an alternate method later)\n";
+		"        dbpasswd    The passwd for the user of the database (find an alternate method later). TEMPORARILY DISABLED\n";
 }
 
 static ldmsd_metric_store_t
@@ -231,7 +237,7 @@ static int createTable(char* tablename){
   snprintf(query1, 4095,"%s%s%s%s%s%s%s%s%s",
 	   "CREATE TABLE IF NOT EXISTS ",
 	   tablename,
-	   "(`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value` ",
+	   " (`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value` ",
 	   storagestring,
 	   " NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), KEY ",
 	   tablename,
@@ -278,7 +284,7 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
 	    goto err1;
 	  int i;
 	  for (i = 0; i < strlen(cleansedmetricname); i++){
-	    if (!isalnum(cleansedmetricname[i]) || cleansedmetricname[i] != '_'){
+	    if (!isalnum(cleansedmetricname[i]) && cleansedmetricname[i] != '_'){
 	      cleansedmetricname[i] = '_'; // replace mysql non-allowed chars with _
 	    }
 	  }
@@ -295,20 +301,20 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
 	    goto err1A;
 	  }
 	  for (i = 0; i < strlen(cleansedcompname); i++){
-	    if (!isalnum(cleansedcompname[i]) || cleansedcompname[i] != '_'){
+	    if (!isalnum(cleansedcompname[i]) && cleansedcompname[i] != '_'){
 	      cleansedcompname[i] = '_'; // replace mysql non-allowed chars with _
 	    }
 	  }
 	  cleansedcompname[0] = toupper(cleansedcompname[0]);
 
 	  int sz = strlen(tempmetricname)+ strlen(cleansedcompname)+strlen("MetricValues");
-	  char* tablename = (char*)malloc(sz*sizeof(char));
+	  char* tablename = (char*)malloc((sz+5)*sizeof(char));
 	  if (!tablename){
 	    free(tempmetricname);
 	    free(cleansedcompname);
 	    goto err1A;
 	  }
-	  snprintf(tablename, sz,"Metric%s%sValues",tempmetricname,cleansedcompname);
+	  snprintf(tablename, (sz+5),"Metric%s%sValues",cleansedcompname,tempmetricname);
 	  ms->tablename = tablename;
 	  free(tempmetricname);	 
 	  free(cleansedcompname);
@@ -317,10 +323,10 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
 	  if (!ms->metric_key)
 	    goto err2;
 
-	  int tablecreated = createTable(ms->tablename);
-	  if (tablecreated)
+	  int rc = createTable(ms->tablename);
+	  if (!rc)
 	    idx_add(metric_idx, metric_key, strlen(metric_key), ms);
-	  else
+	  else 
 	    goto err3;
 	}
 	goto out;
@@ -367,7 +373,7 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
   char insertStatement[1024];
   snprintf(insertStatement,1023,
 	   "INSERT INTO %s VALUES( %d, %d, %d, NULL, %ld )",
-	   ms->tablename, sec, comp_id, (int)(val), level); 
+	   ms->tablename, sec, (int)comp_id, (int)(val), level); 
 
   if (mysql_query(conn, insertStatement) != 0)
     return -1;
@@ -408,9 +414,9 @@ static void destroy_store(ldmsd_metric_store_t _ms)
 {
 }
 
-static struct ldmsd_store store_sos = {
+static struct ldmsd_store store_mysql = {
 	.base = {
-		.name = "sos",
+		.name = "mysql",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -427,7 +433,7 @@ static struct ldmsd_store store_sos = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &store_sos.base;
+	return &store_mysql.base;
 }
 
 static void __attribute__ ((constructor)) store_mysql_init();
