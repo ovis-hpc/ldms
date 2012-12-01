@@ -288,7 +288,11 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 		sockpath = "/var/run";
 
 	sock->rem_sun.sun_family = AF_UNIX;
-	sprintf(my_un.sun_path, "%s/%s", sockpath, sockname);
+	if (sockname[0] == '/')
+		strcpy(my_un.sun_path, sockname);
+	else
+		sprintf(my_un.sun_path, "%s/%s", sockpath, sockname);
+
 	strncpy(sock->rem_sun.sun_path, my_un.sun_path,
 		sizeof(struct sockaddr_un) - sizeof(short));
 

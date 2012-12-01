@@ -153,6 +153,12 @@ char linebuf[8192];
 char *sockname = LDMSD_CONTROL_SOCKNAME;
 struct ctrlsock *ctrl_sock;
 
+void cleanup()
+{
+	if (ctrl_sock)
+		ctrl_close(ctrl_sock);
+}
+
 int handle_usage(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_LIST_PLUGINS, av_list, err_str);
@@ -273,6 +279,7 @@ int main(int argc, char *argv[])
 		printf("Error setting up connection with ldmsd.\n");
 		exit(1);
 	}
+	atexit(cleanup);
 	do {
 		if (isatty(0))
 			s = readline("ldmsctl> ");

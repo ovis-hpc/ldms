@@ -51,6 +51,9 @@
 #include "ldms_xprt.h"
 #include "ldms_rdma_xprt.h"
 
+#define LOG__(x, ...) { if (x && x->log) x->log(__VA_ARGS__); }
+#define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }
+
 LIST_HEAD(rdma_list, ldms_rdma_xprt) rdma_list;;
 
 struct rdma_context {
@@ -132,7 +135,7 @@ static struct rdma_buffer *rdma_buffer_alloc(struct ldms_rdma_xprt *x,
 	rbuf->mr = ibv_reg_mr(x->pd, rbuf->data, len, f);
 	if (!rbuf->mr) {
 		free(rbuf);
-		x->xprt->log("RDMA: recv_buf reg_mr failed\n");
+		LOG_(x, "RDMA: recv_buf reg_mr failed\n");
 		return NULL;
 	}
 	return rbuf;
@@ -197,6 +200,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 {
 	struct ldms_rdma_xprt *r = rdma_from_xprt(x);
 	struct epoll_event cm_event;
+	struct epoll_event cq_event;
 	int rc;
 
 	/* Create the event CM event channel */
@@ -221,6 +225,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 		goto err_2;
 
 	/* Bind the provided address to the CM Id */
+	sem_init(&r->sem, 0, 0);
 	r->conn_status = CONN_CONNECTING;
 	rc = rdma_resolve_addr(r->cm_id, NULL, (struct sockaddr *) &x->remote_ss, 2000);
 	if (rc) {
@@ -236,11 +241,22 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 		rc = EHOSTDOWN;
 		goto err_3;
 	}
+
+	cq_event.data.ptr = r;
+	cq_event.events = EPOLLIN | EPOLLOUT;
+	ldms_xprt_get(r->xprt);
+	rc = epoll_ctl(cq_fd, EPOLL_CTL_ADD, r->cq_channel->fd, &cq_event);
+	if (rc) {
+		LOG_(r, "RDMA: Error adding CQ fd to event queue.\n");
+		rdma_disconnect(r->cm_id);
+		goto err_3;
+	}
+
 	errno = rc;
 	return rc;
  err_3:
-	rc = epoll_ctl(cm_fd, EPOLL_CTL_DEL,
-			r->cm_channel->fd, NULL);
+	epoll_ctl(cm_fd, EPOLL_CTL_DEL,
+		  r->cm_channel->fd, NULL);
 	ldms_release_xprt(r->xprt);
  err_2:
 	rdma_destroy_id(r->cm_id);
@@ -294,7 +310,7 @@ static void process_recv_wc(struct ldms_rdma_xprt *r, struct ibv_wc *wc, struct 
 
 	ret = rdma_post_recv(r, rb);
 	if (ret) {
-		r->xprt->log("RDMA: ibv_post_recv failed: %d\n", ret);
+		LOG_(r, "RDMA: ibv_post_recv failed: %d\n", ret);
 		rdma_buffer_free(rb);
 	}
 }
@@ -333,7 +349,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	 */
 	_x = ldms_create_xprt("rdma", server->xprt->log);
 	if (!_x) {
-		server->xprt->log("RDMA: Could not create a new transport.\n");
+		LOG_(server, "RDMA: Could not create a new transport.\n");
 		return;
 	}
 
@@ -346,13 +362,13 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	/* Allocate PD */
 	r->pd = ibv_alloc_pd(r->cm_id->verbs);
 	if (!r->pd) {
-		server->xprt->log("RDMA: ibv_alloc_pd failed\n");
+		LOG_(server, "RDMA: ibv_alloc_pd failed\n");
 		goto out_0;
 	}
 
 	r->cq_channel = ibv_create_comp_channel(r->cm_id->verbs);
 	if (!r->cq_channel) {
-		server->xprt->log("RDMA: ibv_create_comp_channel failed\n");
+		LOG_(server, "RDMA: ibv_create_comp_channel failed\n");
 		goto out_0;
 	}
 
@@ -360,13 +376,13 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	r->cq = ibv_create_cq(r->cm_id->verbs, SQ_DEPTH + RQ_DEPTH,
 			      r, r->cq_channel, 0);
 	if (!r->cq) {
-		server->xprt->log("RDMA: ibv_create_cq failed\n");
+		LOG_(server, "RDMA: ibv_create_cq failed\n");
 		goto out_0;
 	}
 
 	ret = ibv_req_notify_cq(r->cq, 0);
 	if (ret) {
-		server->xprt->log("RDMA: ibv_create_cq failed\n");
+		LOG_(server, "RDMA: ibv_create_cq failed\n");
 		goto out_0;
 	}
 
@@ -382,7 +398,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	ret = rdma_create_qp(r->cm_id, r->pd, &qp_attr);
 	r->qp = r->cm_id->qp;
 	if (ret) {
-		server->xprt->log("RDMA: rdma_create_qp failed\n");
+		LOG_(server, "RDMA: rdma_create_qp failed\n");
 		goto out_0;
 	}
 
@@ -395,7 +411,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	ldms_xprt_get(r->xprt);
 	ret = epoll_ctl(cq_fd, EPOLL_CTL_ADD, r->cq_channel->fd, &cq_event);
 	if (ret) {
-		server->xprt->log("RDMA: Could not add passive side CQ fd "
+		LOG_(server, "RDMA: Could not add passive side CQ fd "
 				  "to event queue.\n");
 		goto out_1;
 	}
@@ -403,7 +419,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	/* Accept the connection */
 	memset(&conn_param, 0, sizeof conn_param);
 	conn_param.responder_resources = 4;
-	conn_param.initiator_depth = 1;
+	conn_param.initiator_depth = 4;
 	ret = rdma_accept(r->cm_id, &conn_param);
 	if (ret)
 		goto out_1;
@@ -481,16 +497,17 @@ static void *cq_thread_proc(void *arg)
 	struct ibv_cq *ev_cq;
 	void *ev_ctx;
 	int ret;
+	int fd_count;
 
 	pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
 	while (1) {
-		ret = epoll_wait(cq_fd, cq_events, 16, -1);
-		if (ret < 0) {
+		int fd_count = epoll_wait(cq_fd, cq_events, 16, -1);
+		if (fd_count < 0) {
 			if (errno == EINTR)
 				continue;
 			break;
 		}
-		for (i = 0; i < ret; i++) {
+		for (i = 0; i < fd_count; i++) {
 			r = cq_events[i].data.ptr;
 
 			/* Get the next event ... this will block */
@@ -528,31 +545,30 @@ int rdma_setup_conn(struct ldms_rdma_xprt *x)
 {
 	struct rdma_conn_param conn_param;
 	struct ibv_qp_init_attr qp_attr;
-	struct epoll_event cq_event;
 	int ret = -ENOMEM;
 
 	x->pd = ibv_alloc_pd(x->cm_id->verbs);
 	if (!x->pd) {
-		x->xprt->log("RDMA: ibv_alloc_pd failed\n");
+		LOG_(x, "RDMA: ibv_alloc_pd failed\n");
 		goto err_0;
 	}
 
 	x->cq_channel = ibv_create_comp_channel(x->cm_id->verbs);
 	if (!x->cq_channel) {
-		x->xprt->log("RDMA: ibv_create_comp_channel failed\n");
+		LOG_(x, "RDMA: ibv_create_comp_channel failed\n");
 		goto err_0;
 	}
 
 	x->cq = ibv_create_cq(x->cm_id->verbs, SQ_DEPTH + RQ_DEPTH,
 			      x, x->cq_channel, 0);
 	if (!x->cq) {
-		x->xprt->log("RDMA: ibv_create_cq failed\n");
+		LOG_(x, "RDMA: ibv_create_cq failed\n");
 		goto err_0;
 	}
 
 	ret = ibv_req_notify_cq(x->cq, 0);
 	if (ret) {
-		x->xprt->log("RMDA: ibv_create_cq failed\n");
+		LOG_(x, "RMDA: ibv_create_cq failed\n");
 		goto err_0;
 	}
 
@@ -567,7 +583,7 @@ int rdma_setup_conn(struct ldms_rdma_xprt *x)
 	ret = rdma_create_qp(x->cm_id, x->pd, &qp_attr);
 	x->qp = x->cm_id->qp;
 	if (ret) {
-		x->xprt->log("RDMA: rdma_create_qp failed\n");
+		LOG_(x, "RDMA: rdma_create_qp failed\n");
 		goto err_0;
 	}
 
@@ -579,14 +595,6 @@ int rdma_setup_conn(struct ldms_rdma_xprt *x)
 	conn_param.responder_resources = 1;
 	conn_param.initiator_depth = 4;
 	conn_param.retry_count = 10;
-	cq_event.data.ptr = x;
-	cq_event.events = EPOLLIN | EPOLLOUT;
-	ldms_xprt_get(x->xprt);
-	ret = epoll_ctl(cq_fd, EPOLL_CTL_ADD, x->cq_channel->fd, &cq_event);
-	if (ret) {
-		x->xprt->log("RDMA: Error adding CQ fd to event queue.\n");
-		goto err_0;
-	}
 	/*
 	 * Take a transport reference, it will get dropped by cm_thread_proc
 	 * when it gets the DISCONNECTED event.
@@ -612,18 +620,22 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 
 	switch (event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
+		LOG_(x, "RDMA: Event=Addr Resolved.\n");
 		ret = rdma_resolve_route(cma_id, 2000);
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
+		LOG_(x, "RDMA: Event=Route Resolved.\n");
 		ret = rdma_setup_conn(x);
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
+		LOG_(x, "RDMA: Event=Connect Request.\n");
 		rdma_accept_request(r, cma_id);
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
+		LOG_(x, "RDMA: Event=Established.\n");
 		x->conn_status = CONN_CONNECTED;
 		r->xprt->connected = 1;
 		sem_post(&x->sem);
@@ -634,6 +646,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_REJECTED:
+		LOG_(x, "RDMA: Event=ERROR %d\n", event);
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
 		ret = -1;
@@ -641,15 +654,14 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
+		LOG_(x, "RDMA: Event=Disconnected\n");
 		x->conn_status = CONN_CLOSED;
 		x->xprt->connected = 0;
-		sem_post(&x->sem);
-		ldms_release_xprt(x->xprt);
 		if (x->cm_channel) {
 			ret = epoll_ctl(cm_fd, EPOLL_CTL_DEL,
 					x->cm_channel->fd, NULL);
 			if (ret)
-				x->xprt->log("RDMA: Error %d removing "
+				LOG_(x, "RDMA: Error %d removing "
 					     "transport from the "
 					     "CM event queue.\n", ret);
 			ldms_release_xprt(x->xprt);
@@ -658,27 +670,26 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 			ret = epoll_ctl(cq_fd, EPOLL_CTL_DEL,
 					x->cq_channel->fd, NULL);
 			if (ret)
-				x->xprt->log("RDMA: Error %d removing "
+				LOG_(x, "RDMA: Error %d removing "
 					     "CQ fd from "
 					     "event queue.\n", ret);
 			ldms_release_xprt(x->xprt);
 		}
+		ldms_release_xprt(x->xprt);
+		sem_post(&x->sem);
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
+		LOG_(x, "RDMA: Event=DeviceRemoval\n");
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
 		sem_post(&x->sem);
 		break;
 
 	default:
-		x->xprt->log("RDMA: Unhandled event %s, ignoring\n",
+		LOG_(x, "RDMA: Unhandled event %s, ignoring\n",
 			     rdma_event_str(event));
 		break;
-	}
-	if (ret) {
-		x->conn_status = CONN_ERROR;
-		sem_post(&x->sem);
 	}
 	return ret;
 }
@@ -719,8 +730,9 @@ static void *cm_thread_proc(void *arg)
 			rdma_ack_cm_event(event);
 			ret = cma_event_handler(r, cm_id, ev);
 			if (ret)
-				r->xprt->log("RDMA: Error %d returned by event "
-					     "handler.\n", ret);
+				LOG_(r,
+				     "RDMA: Error %d returned by "
+				     "event handler.\n", ret);
 		}
 	}
 	return NULL;
@@ -793,7 +805,7 @@ static int rdma_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 
 	if (r->conn_status != CONN_CONNECTED &&
 	    r->conn_status != CONN_CONNECTING) {
-		x->log("RDMA: Oh my goodness -- send before conn.\n");
+		LOG__(x, "RDMA: Oh my goodness -- send before conn.\n");
 		rc = ENOTCONN;
 		goto out;
 	}

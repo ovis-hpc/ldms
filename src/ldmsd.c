@@ -822,14 +822,15 @@ int process_add_host(int fd,
 	hs->sin = sin;
 	hs->xprt_name = xprt;
 	hs->sample_interval = interval;
-	hs->connect_interval = 2000000;
+	hs->connect_interval = 20000000; /* twenty seconds */
 	pthread_mutex_init(&hs->set_list_lock, 0);
 
 	hs->thread_id = find_least_busy_thread();
 	hs->event = evtimer_new(get_ev_base(hs->thread_id),
 				host_sampler_cb, hs);
-	hs->timeout.tv_sec = hs->connect_interval / 1000000;
-	hs->timeout.tv_usec = hs->connect_interval % 1000000;
+	/* First connection attempt happens 'right away' */
+	hs->timeout.tv_sec = 0; // hs->connect_interval / 1000000;
+	hs->timeout.tv_usec = 500000; // hs->connect_interval % 1000000;
 	evtimer_add(hs->event, &hs->timeout);
 
 	pthread_mutex_lock(&host_list_lock);
@@ -1383,6 +1384,11 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		goto out;
 	hset->gn = gn;
 	LIST_FOREACH(hsm, &hset->metric_list, entry) {
+		if (!hsm->metric) {
+			hsm->metric = ldms_get_metric(hset->set, hsm->name);
+			if (!hsm->metric)
+				continue;
+		}
 		tuple.value = hsm->metric;
 		tuple.comp_id  = hsm->comp_id;
 		ldmsd_store_tuple_add(hsm->metric_store, &tuple);
@@ -1416,19 +1422,9 @@ void update_data(struct hostspec *hs)
 
 void do_active_host(struct hostspec *hs)
 {
-	if (!hs->x && do_connect(hs, 1))
-		return;
-
-	if (!ldms_xprt_connected(hs->x)) {
-		if (do_connect(hs, 1)) {
-			/*
-			 * This path is the compute node goes away, we
-			 * try to reconnect and can't so we know it's
-			 * down.  Remove all existing sets from the
-			 * host so we no longer serve them.
-			 */
-			reset_host(hs);
-		}
+	if (!hs->x || !ldms_xprt_connected(hs->x)) {
+		reset_host(hs);
+		do_connect(hs, 1);
 	} else
 		/* Don't update immediately after connecting to
 		 * provide time for dir/lookups to complete */
@@ -1502,6 +1498,7 @@ void *event_proc(void *v)
 	evtimer_assign(keepalive, sampler_base, keepalive_cb, keepalive);
 	evtimer_add(keepalive, &keepalive_to);
 	event_base_loop(sampler_base, 0);
+	ldms_log("Exiting the sampler thread.\n");
 	return NULL;
 }
 
@@ -1743,6 +1740,22 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	if (!foreground) {
+		if (daemon(1, 1)) {
+			perror("ldmsd: ");
+			cleanup(8);
+		}
+	}
+	if (logfile) {
+		log_fp = fopen(logfile, "a");
+		if (!log_fp) {
+			log_fp = stdout;
+			ldms_log("Could not open the log file named '%s'\n", logfile);
+			cleanup(9);
+		}
+		stdout = log_fp;
+	}
+
 	evthread_use_pthreads();
 	event_set_log_callback(ev_log_cb);
 
@@ -1774,21 +1787,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (!foreground) {
-		if (daemon(1, 1)) {
-			perror("ldmsd: ");
-			cleanup(8);
-		}
-	}
-	if (logfile) {
-		log_fp = fopen(logfile, "a");
-		if (!log_fp) {
-			log_fp = stdout;
-			ldms_log("Could not open the log file named '%s'\n", logfile);
-			cleanup(9);
-		}
-		stdout = log_fp;
-	}
 	if (myhostname[0] == '\0') {
 		ret = gethostname(myhostname, sizeof(myhostname));
 		if (ret)
