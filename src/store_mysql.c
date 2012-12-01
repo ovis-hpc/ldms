@@ -58,12 +58,12 @@
 #define GROUP_COL    2
 #define VALUE_COL    3
 
+//one database for all
+//NOTE: there is a separate mysql connection per table. Increment your max_connections in your /etc/my.cnf accordingly
 static char* db_host = NULL;
 static char* db_schema = NULL;
 static char* db_user = NULL;
 static char* db_passwd = NULL;
-//FIXME - Will db connection be at this level or in the metric store? 
-MYSQL *conn = NULL; 
 
 static idx_t metric_idx;
 static ldmsd_msg_log_f msglog;
@@ -75,6 +75,7 @@ struct mysql_metric_store {
   struct ldmsd_store *store;
   char* tablename;
   char* cleansedmetricname;
+  MYSQL *conn;
   char *metric_key;
   void *ucontext; 
   pthread_mutex_t lock;
@@ -83,25 +84,25 @@ struct mysql_metric_store {
 pthread_mutex_t cfg_lock;
 
 
-static int initConn(){
+static int initConn(MYSQL **conn){
+  *conn = NULL; //default
+
   if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) ||
       (strlen(db_user) == 0)){ 
     msglog("Invalid parameters for database");
     return EINVAL;
   }
 
-  conn = mysql_init(NULL);
-  if (conn == NULL){
-    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+  *conn = mysql_init(NULL);
+  if (*conn == NULL){
+    msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
     return EPERM;
   }
 
-  //FIXME: want to support optional passwd
-  //  if (!mysql_real_connect(conn, db_host, db_user,
-  //              db_passwd, db_schema, 0, NULL, 0)){
-  if (!mysql_real_connect(conn, db_host, db_user,
-			  NULL, db_schema, 0, NULL, 0)){
-    msglog("Error %u: %s\n", mysql_errno(conn), mysql_error(conn));
+  //passwd can be null....
+  if (!mysql_real_connect(*conn, db_host, db_user,
+			  db_passwd, db_schema, 0, NULL, 0)){
+    msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
     return EPERM;
   }
 
@@ -154,26 +155,20 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
   if (!db_user)
     return ENOMEM;
 
-  //FIXME: want to support optional password
-  /*
-    value = av_value(avl, "dbpasswd");
-    if (!value)
-        goto err;
-
+  //optional passwd
+  value = av_value(avl, "dbpasswd");
+  if (value){
     pthread_mutex_lock(&cfg_lock);
     if (db_passwd)
       free(db_passwd);
     db_passwd = strdup(value);
     pthread_mutex_unlock(&cfg_lock);
-    if (!db_passwd)
-        return ENOMEM;
-  */
+    if (!db_passwd){
+      return ENOMEM;
+    }
+  }
 
-  //NOTE: do we want 1 global conn, or per metric?
-  //NOTE: keep it open all the time or close? 
-  int rc = initConn();
-  if (rc != 0)
-    return rc;
+  //will init the conn when each table is created
 
   return 0;
  err:
@@ -182,7 +177,20 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static void term(void)
 {
-  if (conn) mysql_close(conn);
+
+  pthread_mutex_lock(&cfg_lock);
+
+  if (db_host) free (dbhost);
+  dh_host = NULL;
+  if (db_schema) free (dbschema);
+  dh_schema = NULL;
+  if (db_passwd) free (dbpasswd);
+  dh_passwd = NULL;
+  if (db_user) free (dbuser);
+  dh_user = NULL;
+
+  pthread_mutex_unlock(&cfg_lock);
+
 }
 
 static const char *usage(void)
@@ -191,17 +199,18 @@ static const char *usage(void)
         "        - Set the dbinfo for the mysql storage for data.\n"
         "        dbhost    The host of the database (check format)"
         "        dbschema  The name of the database \n"
-            "        dbuser      The username of the database \n"
-      "        dbpasswd    The passwd for the user of the database (find an alternate method later). TEMPORARILY DISABLED\n";
+        "        dbuser      The username of the database \n"
+        "        dbpasswd    The passwd for the user of the database (find an alternate method later) (optional)\n";
 }
 
 static ldmsd_metric_store_t
 get_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name)
 {
+  pthread_mutex_lock(&cfg_lock);
+
   char metric_key[128];
   ldmsd_metric_store_t ms;
 
-  pthread_mutex_lock(&cfg_lock);
   /* comment in sos says:  Add a component type directory if one does not
    * already exist
    * but it does not look like this function actually does an add...
@@ -218,8 +227,9 @@ static void *get_ucontext(ldmsd_metric_store_t _ms)
   return ms->ucontext;
 }
 
-static int createTable(char* tablename){
+static int createTable(MYSQL* conn, char* tablename){
   //will create a table (but not supporting OVIS tables)
+  //NOTE: this is locked from the surrounding function
 
   if (conn == NULL)
     return EPERM;
@@ -240,8 +250,10 @@ static int createTable(char* tablename){
 	   "_Time (`Time` ), KEY ",
 	   tablename,
 	   "_Level (`CompId` ,`Level` ,`Time` ))");
-  if (mysql_query(conn, query1) != 0){
-    msglog("Cannot query to create table '%s'\n", tablename);
+  
+  int mysqlerrx = mysql_query(conn, query1);
+  if (mysqlerrx != 0){
+    msglog("Cannot query to create table '%s'. Error: %d\n", tablename, mysqlerrx);
     return -1;
   }
 
@@ -254,12 +266,13 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
 	  void *ucontext)
 {
 
+  pthread_mutex_lock(&cfg_lock);
+
   //FIXME: is there someway I can get the type of the metric from here???
 
   char metric_key[128];
   struct mysql_metric_store *ms;
 
-  pthread_mutex_lock(&cfg_lock);
   /*
    * Create a table for this comptype and metric name if one does not
    * already exist
@@ -280,7 +293,8 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
       goto err1;
     int i;
     for (i = 0; i < strlen(cleansedmetricname); i++){
-      if (!isalnum(cleansedmetricname[i]) && cleansedmetricname[i] != '_'){
+      //      if (!isalnum(cleansedmetricname[i]) && cleansedmetricname[i] != '_'){
+      if (!isalnum(cleansedmetricname[i])){
 	cleansedmetricname[i] = '_'; // replace mysql non-allowed chars with _
       }
     }
@@ -297,7 +311,8 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
       goto err1A;
     }
     for (i = 0; i < strlen(cleansedcompname); i++){
-      if (!isalnum(cleansedcompname[i]) && cleansedcompname[i] != '_'){
+      //if (!isalnum(cleansedcompname[i]) && cleansedcompname[i] != '_')
+      if (!isalnum(cleansedcompname[i])){
 	cleansedcompname[i] = '_'; // replace mysql non-allowed chars with _
       }
     }
@@ -319,7 +334,11 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
     if (!ms->metric_key)
       goto err2;
 
-    int rc = createTable(ms->tablename);
+    int rc = initConn(&(ms->conn));
+    if (rc != 0)
+      goto err3;
+
+    rc = createTable(ms->conn, ms->tablename);
     if (!rc)
       idx_add(metric_idx, metric_key, strlen(metric_key), ms);
     else 
@@ -344,16 +363,21 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
       struct timeval tv, ldms_metric_t m)
 {
   //NOTE: later change this so data is queued up here and later bulk insert in the flush
+  
+  //NOTE: ldmsd_store invokes the lock on this ms, so we dont have to do it here
 
   struct mysql_metric_store *ms;
 
-  if (!_ms)
+  if (!_ms){
     return EINVAL;
+  }
 
   ms = _ms;
 
-  if (conn == NULL)
+  if (ms->conn == NULL){
+    msglog("Cannot insert value for <%s>: Connection to mysql is closed\n", ms->tablename);
     return EPERM;
+  }
     
   //FIXME -- need some checks here on the type (mysql table create is before the new_store)
   // ldms_value_type valtype = ldms_get_metric_type(m);
@@ -371,8 +395,11 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
 	   "INSERT INTO %s VALUES( NULL, %d, %" PRIu64 ", FROM_UNIXTIME(%d), %ld )",
 	   ms->tablename, (int)comp_id, val, sec, level); 
 
-  if (mysql_query(conn, insertStatement) != 0)
+  int mysqlerrx = mysql_query(ms->conn, insertStatement);
+  if (mysqlerrx != 0){
+    msglog("Failed to perform query <%s>. Error: %d\n", mysqlerrx);
     return -1;
+  }
 
   return 0;
 }
@@ -392,18 +419,21 @@ static int flush_store(ldmsd_metric_store_t _ms)
 
 static void close_store(ldmsd_metric_store_t _ms)
 {
+  pthread_mutex_lock(&cfg_lock);
+
   struct mysql_metric_store *ms = _ms;
   if (!_ms)
     return;
-  // mysql has no equivalent for the table close (this is *not* the connection close,
-  // if it is at the global and not ms level)
 
-  //    if (ms->sos)
-  //        sos_close(ms->sos);
+  msglog("Closing store for %s which is a free of the idx and close conn\n", ms->tablename);
   idx_delete(metric_idx, ms->metric_key, strlen(ms->metric_key));
+  if (ms->conn) mysql_close(ms->conn);
+  ms->conn = NULL; 
   free(ms->tablename);
   free(ms->metric_key);
   free(ms);
+
+  pthread_mutex_unlock(&cfg_lock);
 }
 
 static void destroy_store(ldmsd_metric_store_t _ms)
