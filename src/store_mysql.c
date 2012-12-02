@@ -239,7 +239,7 @@ static void *get_ucontext(ldmsd_metric_store_t _ms)
 }
 
 static int createTable(MYSQL* conn, char* tablename){
-  //will create a table
+  //will create a table (but not supporting OVIS tables)
   //NOTE: this is locked from the surrounding function
 
   if (conn == NULL)

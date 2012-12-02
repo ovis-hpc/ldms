@@ -100,6 +100,8 @@ ldms_t ldms_xprt_get(ldms_t _x)
 	struct ldms_xprt *x;
 	pthread_mutex_lock(&xprt_list_lock);
 	x = (ldms_t)ldms_xprt_get_((struct ldms_xprt *)_x);
+	if (x->ref_count > 10)
+		printf("wtf\n");
 	pthread_mutex_unlock(&xprt_list_lock);
 	return x;
 }
@@ -240,10 +242,13 @@ static void _dir_update(const char *set_name, enum ldms_dir_type t)
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
 	     x = (struct ldms_xprt *)ldms_xprt_next(x)) {
-		if (ldms_xprt_closed(x))
+		if (ldms_xprt_closed(x)) {
+			ldms_release_xprt(x);
 			continue;
+		}
 		if (x->remote_dir_xid)
 			send_dir_update(x, t, set_name);
+		ldms_release_xprt(x);
 	}
 }
 
