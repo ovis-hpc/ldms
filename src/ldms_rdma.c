@@ -249,11 +249,13 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 	if (rc) {
 		LOG_(r, "RDMA: Error adding CQ fd to event queue.\n");
 		rdma_disconnect(r->cm_id);
-		goto err_3;
+		goto err_4;
 	}
 
 	errno = rc;
 	return rc;
+ err_4:
+	ldms_releas_xprt(r->xprt);
  err_3:
 	epoll_ctl(cm_fd, EPOLL_CTL_DEL,
 		  r->cm_channel->fd, NULL);
