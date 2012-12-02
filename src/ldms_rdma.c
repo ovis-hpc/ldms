@@ -47,6 +47,9 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_rdma_xprt.h"
@@ -85,21 +88,11 @@ static int cq_fd;
 static int cm_fd;
 #define CQ_EVENT_LEN 16
 
-static void rdma_xprt_destroy(struct ldms_xprt *x)
+
+static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 {
-	struct ldms_rdma_xprt *r = rdma_from_xprt(x);
-
-	/* Remove myself from the client list */
-	LIST_REMOVE(r, client_link);
-
 	if (r->cm_id && r->conn_status == CONN_CONNECTED)
 		rdma_disconnect(r->cm_id);
-
-	if (r->cm_channel)
-		rdma_destroy_event_channel(r->cm_channel);
-
-	if (r->cq_channel)
-		ibv_destroy_comp_channel(r->cq_channel);
 
 	/* Destroy the QP */
 	if (!r->server && r->qp)
@@ -117,6 +110,27 @@ static void rdma_xprt_destroy(struct ldms_xprt *x)
 	if (r->cm_id)
 		rdma_destroy_id(r->cm_id);
 
+	if (r->cm_channel)
+		rdma_destroy_event_channel(r->cm_channel);
+
+	if (r->cq_channel)
+		ibv_destroy_comp_channel(r->cq_channel);
+
+	r->cm_id = NULL;
+	r->pd = NULL;
+	r->cq = NULL;
+	r->qp = NULL;
+	r->cq_channel = NULL;
+	r->cm_channel = NULL;
+}
+
+static void rdma_xprt_destroy(struct ldms_xprt *x)
+{
+	struct ldms_rdma_xprt *r = rdma_from_xprt(x);
+
+	/* Remove myself from the client list */
+	LIST_REMOVE(r, client_link);
+	rdma_teardown_conn(r);
 	free(r);
 }
 
@@ -214,7 +228,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 	rc = rdma_create_id(r->cm_channel, &r->cm_id, r, RDMA_PS_TCP);
 	if (rc) {
 		rc = EHOSTUNREACH;
-		goto err_1;
+		goto err_0;
 	}
 
 	cm_event.events = EPOLLIN | EPOLLOUT;
@@ -222,7 +236,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 	ldms_xprt_get(r->xprt);
 	rc = epoll_ctl(cm_fd, EPOLL_CTL_ADD, r->cm_channel->fd, &cm_event);
 	if (rc)
-		goto err_2;
+		goto err_0;
 
 	/* Bind the provided address to the CM Id */
 	sem_init(&r->sem, 0, 0);
@@ -230,7 +244,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 	rc = rdma_resolve_addr(r->cm_id, NULL, (struct sockaddr *) &x->remote_ss, 2000);
 	if (rc) {
 		rc = EHOSTUNREACH;
-		goto err_3;
+		goto err_0;
 	}
 
 	do {
@@ -239,7 +253,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 
 	if (r->conn_status < 0) {
 		rc = EHOSTDOWN;
-		goto err_3;
+		goto err_1;
 	}
 
 	cq_event.data.ptr = r;
@@ -249,25 +263,19 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 	if (rc) {
 		LOG_(r, "RDMA: Error adding CQ fd to event queue.\n");
 		rdma_disconnect(r->cm_id);
-		goto err_4;
+		goto err_2;
 	}
 
 	errno = rc;
 	return rc;
- err_4:
-	ldms_releas_xprt(r->xprt);
- err_3:
-	epoll_ctl(cm_fd, EPOLL_CTL_DEL,
-		  r->cm_channel->fd, NULL);
-	ldms_release_xprt(r->xprt);
+
  err_2:
-	rdma_destroy_id(r->cm_id);
-	r->cm_id = NULL;
+	ldms_release_xprt(r->xprt);
  err_1:
-	rdma_destroy_event_channel(r->cm_channel);
-	r->cm_channel = NULL;
+	epoll_ctl(cm_fd, EPOLL_CTL_DEL, r->cm_channel->fd, NULL);
+	ldms_release_xprt(r->xprt);
  err_0:
-	errno = rc;
+	rdma_teardown_conn(r);
 	return rc;
 }
 
@@ -619,16 +627,38 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 {
 	int ret = 0;
 	struct ldms_rdma_xprt *x = cma_id->context;
+	char buf[32];
+	char *s;
+
+	if (r != x)
+		printf("Yikes!!\n");
 
 	switch (event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		LOG_(x, "RDMA: Event=Addr Resolved.\n");
 		ret = rdma_resolve_route(cma_id, 2000);
+		if (ret) {
+			LOG_(x, "RDMA: host %s has crashed.\n",
+			     inet_ntop(AF_INET, &((struct sockaddr_in *)&r->xprt->remote_ss)->sin_addr,
+			                buf, sizeof(buf)));
+			x->conn_status = CONN_ERROR;
+			x->xprt->connected = 0;
+			sem_post(&x->sem);
+		}
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		LOG_(x, "RDMA: Event=Route Resolved.\n");
 		ret = rdma_setup_conn(x);
+		if (ret) {
+			LOG_(x, "RDMA: host %s has crashed.\n",
+			     inet_ntop(AF_INET, &((struct sockaddr_in *)&r->xprt->remote_ss)->sin_addr,
+				       buf, sizeof(buf)));
+			x->conn_status = CONN_ERROR;
+			x->xprt->connected = 0;
+			rdma_teardown_conn(x);
+			sem_post(&x->sem);
+		}
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
@@ -643,12 +673,16 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		sem_post(&x->sem);
 		break;
 
+	case RDMA_CM_EVENT_REJECTED:
+	case RDMA_CM_EVENT_CONNECT_ERROR:
+		/* Drop the rdma_connect reference and fall through to error case */
+		ldms_release_xprt(x->xprt);
+
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_ROUTE_ERROR:
-	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-	case RDMA_CM_EVENT_REJECTED:
-		LOG_(x, "RDMA: Event=ERROR %d\n", event);
+		s = inet_ntop(AF_INET, &((struct sockaddr_in *)&r->xprt->remote_ss)->sin_addr, buf, sizeof(buf));
+		LOG_(x, "RDMA: IP_Addr %s Event=ERROR %d\n", (s?s:"bad_addr"), event);
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
 		ret = -1;
