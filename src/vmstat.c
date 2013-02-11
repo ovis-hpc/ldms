@@ -1,6 +1,10 @@
 /*
  * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+ * license for use of this work by or on behalf of the U.S. Government.
+ * Export of this program may require a license from the United States
+ * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -20,10 +24,17 @@
  *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
- *      Neither the name of the Network Appliance, Inc. nor the names of
- *      its contributors may be used to endorse or promote products
- *      derived from this software without specific prior written
- *      permission.
+ *      Neither the name of Sandia nor the names of any contributors may
+ *      be used to endorse or promote products derived from this software
+ *      without specific prior written permission. 
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission. 
+ *
+ *      Modified source versions must be plainly marked as such, and
+ *      must not be misrepresented as being the original software.    
+ *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,7 +47,9 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ */
+
+/*
  * Author: Tom Tucker <tom@opengridcomputing.com>
  */
 
@@ -56,14 +69,6 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#if defined(__i386__)
-#include "/usr/include/asm/unistd_32.h"
-#endif
-
-#if defined(__x86_64__)
-#include "/usr/include/asm/unistd_64.h"
-#endif
-
 #define PROC_FILE "/proc/vmstat"
 
 static char *procfile = PROC_FILE;
@@ -75,11 +80,7 @@ ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 union ldms_value comp_id;
 ldms_metric_t counter_metric_handle;
-ldms_metric_t pid_metric_handle;
-ldms_metric_t tid_metric_handle;
 static uint64_t counter;
-static uint64_t mypid;
-static uint64_t mytid;
 
 static ldms_set_t get_set()
 {
@@ -109,16 +110,6 @@ static int create_metric_set(const char *path)
 	rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
-
-        //and add the pid
-        rc = ldms_get_metric_size("pid", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-
-        //and add the tid
-        rc = ldms_get_metric_size("tid", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
 
 	/*
 	 * Process the file once first to determine the metric set size.
@@ -169,35 +160,11 @@ static int create_metric_set(const char *path)
 		goto err;
 	} //counter set in config
 
-        //and add the pid
-        pid_metric_handle = ldms_add_metric(set, "pid", LDMS_V_U64);
-        if (!pid_metric_handle) {
-                rc = ENOMEM;
-                goto err;
-        }
-
-        //and add the tid
-        tid_metric_handle = ldms_add_metric(set, "tid", LDMS_V_U64);
-        if (!tid_metric_handle) {
-                rc = ENOMEM;
-                goto err;
-        }
-
 	//counter
 	counter = 0;
 	union ldms_value v;
 	v.v_u64 = counter;
 	ldms_set_metric(counter_metric_handle, &v);
-
-        //also set the pid
-	mypid=getpid();
-	v.v_u64 = mypid;
-	ldms_set_metric(pid_metric_handle, &v);
-
-        //also set the tid
-	mytid = syscall(__NR_gettid);
-	v.v_u64 = mytid;
-	ldms_set_metric(tid_metric_handle, &v);
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -252,8 +219,6 @@ static int sample(void)
 	char lbuf[256];
 	char metric_name[128];
 	union ldms_value v;
-        v.v_u64=getpid();
-        ldms_set_metric(pid_metric_handle, &v);
 
 	if (!set) {
 		msglog("vmstat: plugin not initialized\n");
@@ -262,8 +227,6 @@ static int sample(void)
 
 	ldms_set_metric(compid_metric_handle, &comp_id);
 
-        v.v_u64 = syscall(__NR_gettid);
-        ldms_set_metric(tid_metric_handle, &v);
 	v.v_u64 = ++counter;
 	ldms_set_metric(counter_metric_handle, &v);
 	metric_no = 0;

@@ -459,6 +459,7 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	struct ldms_context *data_ctxt = arg;
 
+        set->flags &= ~LDMS_SET_F_DIRTY; 
 	x->read_data_start(x, s, set->meta->data_size, data_ctxt);
 }
 

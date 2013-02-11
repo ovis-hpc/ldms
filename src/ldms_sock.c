@@ -375,7 +375,7 @@ static void sock_connect(struct evconnlistener *listener,
 	struct ldms_sock_xprt *new_r = NULL;
 	static int conns;
 	
-	new_r = setup_connection(r, sockfd, (struct sockaddr *)&address, socklen);
+	new_r = setup_connection(r, sockfd, (struct sockaddr *)address, socklen);
 	if (new_r)
 		conns ++;
 

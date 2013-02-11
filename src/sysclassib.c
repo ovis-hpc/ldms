@@ -50,7 +50,9 @@
  *                            ib2 --> mlx4_1 and port1 
  *                            ib3 --> mlx4_1 and port2 
  *
- * this leaves all filehandles open all the time.
+ * for older kernels, the filehandles have to be opened and closed each time;
+ * for newer kernels (>= 2.6.35) they do not.
+ *
  * FIXME: verify that if you unload & load sampler that filehandles
  * close and reopen properly
  */
@@ -103,6 +105,12 @@ ldmsd_msg_log_f msglog;
 ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
 union ldms_value comp_id;
+
+#define V1 2
+#define V2 6
+#define V3 34
+
+int newerkernel;
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -278,7 +286,7 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 
 static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
-  /* Set the compid and create the metric set */
+  /* Set the compid and create the metric set. check kernel version */
 
   char *value;
   
@@ -289,6 +297,23 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
   value = av_value(avl, "set");
   if (!value)
     return EINVAL;
+
+  FILE* fp;
+  char line[256];
+  newerkernel = 0;
+  if ((fp = (FILE*)popen("uname -r","r"))){
+    if (fgets(line, sizeof line, fp)){
+      int version[3];
+      char junk[128];
+      sscanf(line,"%d.%d.%d-%s",
+	     &version[0], &version[1], &version[2],
+	     junk);
+      if ((version[0] >= V1) && (version[1] >= V2) && (version[2] > V3)){
+	newerkernel = 1;
+      }
+    }
+  }
+  if (fp) pclose(fp);
 
   return create_metric_set(value);
 }
@@ -379,15 +404,16 @@ static int sample(void)
       continue;
     }
     for (i = 0; i <= numcountervar; i++){ //get the rate as well
-      //      fseek(fd[j][i],0,SEEK_SET); //NOTE: this doesnt work. vals dont change
-      //instead open and close each time....
-
-      if (fd[j][i]) fclose(fd[j][i]);
-      fd[j][i] = fopen(filename[j][i], "r");
-      if (!fd[j][i]){
-	msglog("Could not open the sysclassib file '%s' ...exiting\n",
-	       filename[j][i]);
-	return ENOENT;
+      if (newerkernel){
+	fseek(fd[j][i],0,SEEK_SET);
+      } else {
+	if (fd[j][i]) fclose(fd[j][i]);
+	fd[j][i] = fopen(filename[j][i], "r");
+	if (!fd[j][i]){
+	  msglog("Could not open the sysclassib file '%s' ...exiting\n",
+		 filename[j][i]);
+	  return ENOENT;
+	}
       }
       
       s = fgets(lbuf, sizeof(lbuf), fd[j][i]);
@@ -400,8 +426,10 @@ static int sample(void)
       }
       ldms_set_metric(metric_table[metricno++], &v);
 
-      if (fd[j][i]) fclose(fd[j][i]);
-      fd[j][i] = 0;
+      if (!newerkernel){
+	if (fd[j][i]) fclose(fd[j][i]);
+	fd[j][i] = 0;
+      }
     }
   }
 

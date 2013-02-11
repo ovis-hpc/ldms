@@ -47,8 +47,8 @@
 #include <semaphore.h>
 #include "ldms_xprt.h"
 
-#define SQ_DEPTH 4
-#define RQ_DEPTH 4
+#define SQ_DEPTH 8
+#define RQ_DEPTH 8
 #define RQ_BUF_SZ 2048
 #define SQ_SGE 1
 #define RQ_SGE 1

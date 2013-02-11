@@ -383,7 +383,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	}
 
 	/* Create a new CQ. Our parent's CQ channel will get notifications */
-	r->cq = ibv_create_cq(r->cm_id->verbs, SQ_DEPTH + RQ_DEPTH,
+	r->cq = ibv_create_cq(r->cm_id->verbs, SQ_DEPTH + RQ_DEPTH + 1,
 			      r, r->cq_channel, 0);
 	if (!r->cq) {
 		LOG_(server, "RDMA: ibv_create_cq failed\n");
@@ -569,7 +569,7 @@ int rdma_setup_conn(struct ldms_rdma_xprt *x)
 		goto err_0;
 	}
 
-	x->cq = ibv_create_cq(x->cm_id->verbs, SQ_DEPTH + RQ_DEPTH,
+	x->cq = ibv_create_cq(x->cm_id->verbs, SQ_DEPTH + RQ_DEPTH + 1,
 			      x, x->cq_channel, 0);
 	if (!x->cq) {
 		LOG_(x, "RDMA: ibv_create_cq failed\n");

@@ -1,8 +1,9 @@
 ACLOCAL_AMFLAGS = -I m4
 
-INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql -I/home/brandt/Ann/sos.usr/include
+#INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql -I/projects/ldms/Build_glory/sos_new.usr/include
+#INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql 
 
-sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl
+sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl 
 
 if ENABLE_RDMA
 src_libldmsrdma_la_SOURCES = src/ldms_rdma.c
@@ -39,26 +40,15 @@ UGNI_la = src/libldmsugni.la
 endif
 
 src_libflatfile_la_SOURCES = src/flatfile.c
-src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map  $(top_builddir)/libplugin.a
+src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map $(top_builddir)/libplugin.a
 src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 FLATFILE_la = src/libflatfile.la
 
-if ENABLE_MYSQL
-#src_libmysqlinsert_la_CPPFLAGS = -I/usr/include/mysql
-src_libmysqlinsert_la_CFLAGS = $(MYSQL_CFLAGS)
-src_libmysqlinsert_la_SOURCES = src/mysqlinsert.c
-src_libmysqlinsert_la_DEPENDENCIES = $(srcdir)/src/libmysqlinsert.map $(top_builddir)/libplugin.a
-src_libmysqlinsert_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -L/usr/lib64/mysql -lmysqlclient -lplugin
-MYSQLINSERT_la = src/libmysqlinsert.la
-else
-MYSQL_FLAGS = -DDISABLE_MYSQL
-endif
-
 if ENABLE_GLIB
 src_libsedc_la_SOURCES = src/sedc.c
-src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map
+src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map $(top_builddir)/libplugin.a
 src_libsedc_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) \
-	$(GLIB20_LIBS)
+	$(GLIB20_LIBS) -lplugin
 src_libsedc_la_CFLAGS = $(GLIB20_CFLAGS)
 SEDC_la = src/libsedc.la
 
@@ -68,23 +58,39 @@ endif
 
 if ENABLE_SOS
 src_libstore_sos_la_SOURCES = src/store_sos.c
-src_libstore_sos_la_DEPENDENCIES = $(srcdir)/src/libstore_sos.map
-src_libstore_sos_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lsos -lplugin
+src_libstore_sos_la_DEPENDENCIES = $(srcdir)/src/libstore_sos.map $(top_builddir)/libplugin.a
+src_libstore_sos_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lsos -lplugin 
 STORE_SOS_la = src/libstore_sos.la
+
+#libstore_flatfile uses the idx.h in sos
+src_libstore_flatfile_la_SOURCES = src/store_flatfile.c
+src_libstore_flatfile_la_DEPENDENCIES = $(srcdir)/src/libstore_flatfile.map $(top_builddir)/libplugin.a
+src_libstore_flatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lidx
+STORE_FLATFILE_la = src/libstore_flatfile.la
 
 #libstore_mysql uses the idx.h in sos
 if ENABLE_MYSQL
-#src_libstore_mysql_la_CPPFLAGS = -I/usr/include/mysql
-src_libstore_mysql_la_CFLAGS = $(MYSQL_CFLAGS)
+src_libstore_mysql_la_CFLAGS = -I/usr/include/mysql
+#src_libstore_mysql_la_CFLAGS = $(MYSQL_CFLAGS)
 src_libstore_mysql_la_SOURCES = src/store_mysql.c
-src_libstore_mysql_la_DEPENDENCIES = $(srcdir)/src/libstore_mysql.map
-src_libstore_mysql_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient
+src_libstore_mysql_la_DEPENDENCIES = $(srcdir)/src/libstore_mysql.map $(top_builddir)/libplugin.a
+src_libstore_mysql_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient -lidx
 STORE_MYSQL_la = src/libstore_mysql.la
+
+src_libstore_mysqlbulk_la_CFLAGS = -I/usr/include/mysql
+#src_libstore_mysqlbulk_la_CFLAGS = $(MYSQL_CFLAGS)
+src_libstore_mysqlbulk_la_SOURCES = src/store_mysqlbulk.c
+src_libstore_mysqlbulk_la_DEPENDENCIES = $(srcdir)/src/libstore_mysqlbulk.map $(top_builddir)/libplugin.a
+src_libstore_mysqlbulk_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient -lidx
+STORE_MYSQLBULK_la = src/libstore_mysqlbulk.la
+else
+MYSQL_FLAGS = -DDISABLE_MYSQL
 endif
+
 endif
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
-src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map  $(top_builddir)/libplugin.a
+src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map $(top_builddir)/libplugin.a
 src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 GEMINFO_la = src/libgeminfo.la
 
@@ -96,7 +102,7 @@ MEMINFO_la = src/libmeminfo.la
 
 if ENABLE_SENSORS
 src_libprocsensors_la_SOURCES = src/procsensors.c
-src_libprocsensors_la_DEPENDENCIES = $(srcdir)/src/libprocsensors.map
+src_libprocsensors_la_DEPENDENCIES = $(srcdir)/src/libprocsensors.map $(top_builddir)/libplugin.a
 src_libprocsensors_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 PROCSENSORS_la = src/libprocsensors.la
 else
@@ -104,29 +110,29 @@ SENSORS_FLAGS = -DISABLE_SENSORS
 endif
 
 src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
-src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map  $(top_builddir)/libplugin.a
+src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map $(top_builddir)/libplugin.a
 src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 PROCINTERRUPTS_la = src/libprocinterrupts.la
 
 src_libprocnetdev_la_SOURCES = src/procnetdev.c
 src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map $(top_builddir)/libplugin.a
 src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
-PROCNETDEV_la = src/libprocnetdev.la 
+PROCNETDEV_la = src/libprocnetdev.la
 
 src_libprocnfs_la_SOURCES = src/procnfs.c
 src_libprocnfs_la_DEPENDENCIES = $(srcdir)/src/libprocnfs.map $(top_builddir)/libplugin.a
 src_libprocnfs_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
-PROCNFS_la = src/libprocnfs.la 
+PROCNFS_la = src/libprocnfs.la
 
-src_libprocstatutil_la_SOURCES = src/procstatutil.c $(top_builddir)/libplugin.a
-src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map
+src_libprocstatutil_la_SOURCES = src/procstatutil.c 
+src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map $(top_builddir)/libplugin.a
 src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
 PROCSTATUTIL_la = src/libprocstatutil.la
 
-src_libsysclassib_la_SOURCES = src/sysclassib.c
+src_libsysclassib_la_SOURCES = src/sysclassib.c 
 src_libsysclassib_la_DEPENDENCIES = $(srcdir)/src/libsysclassib.map $(top_builddir)/libplugin.a
 src_libsysclassib_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
-SYSCLASSIB_la = src/libsysclassib.la 
+SYSCLASSIB_la = src/libsysclassib.la
 
 src_libvmstat_la_SOURCES = src/vmstat.c
 src_libvmstat_la_DEPENDENCIES = $(srcdir)/src/libvmstat.map $(top_builddir)/libplugin.a
@@ -135,8 +141,8 @@ VMSTAT_la = src/libvmstat.la
 
 if ENABLE_PERF
 src_libperfevent_la_SOURCES = src/perfevent.c
-src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map  $(top_builddir)/libplugin.a
-src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir)  -lm -lplugin
+src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map $(top_builddir)/libplugin.a
+src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lm
 PERFEVENT_la = src/libperfevent.la
 endif
 
@@ -145,11 +151,11 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) \
 	$(SENSORS_FLAGS)
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
-	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(MYSQLINSERT_la) $(PROCSENSORS_la) \
+	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(PROCSENSORS_la) \
 	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(PROCNETDEV_la) \
-	$(PROCNFS_la) $(SYSCLASSIB_la) \
-	$(VMSTAT_la) $(PROCSTATUTIL_la) $(PERFEVENT_la) $(SEDC_la) \
-	$(STORE_SOS_la) $(STORE_MYSQL_la)
+	$(PROCNFS_la) $(PROCSTATUTIL_la) $(SYSCLASSIB_la) $(VMSTAT_la) \
+	$(PERFEVENT_la) $(SEDC_la) \
+	$(STORE_SOS_la) $(STORE_MYSQL_la) $(STORE_MYSQLBULK_la) $(STORE_FLATFILE_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
@@ -192,4 +198,4 @@ install-data-hook:
 #	cp $(top_builddir)/scripts/ldmsd /etc/init.d/ldmsd
 #	cp $(top_builddir)/scripts/schedstatd /etc/init.d/schedstatd
 #	cp $(top_builddir)/scripts/meminfod /etc/init.d/meminfod
-#	cp $(top_builddir)/scripts/procstatutild /etc/init.d/procstatutild
+#	cp $(top_builddir)/scripts/sysclassibd /etc/init.d/procstatutil
