@@ -216,7 +216,7 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
   //	  comp_id, ldms_get_u64(m));
   // msglog(data_str); //this logs the sample to the log file 
   //  int rc = fprintf(ms->file, data_str);
-  int rc = fprintf(ms->file, "%"PRIu64".%"PRIu64" %"PRIu32" %"PRIu64"\n",
+  int rc = fprintf(ms->file, "%"PRIu64".%06"PRIu64" %"PRIu32" %"PRIu64"\n",
 	  (uint64_t)(tv.tv_sec), (uint64_t)(tv.tv_usec),
 	  comp_id, ldms_get_u64(m));
   if (rc <= 0)
