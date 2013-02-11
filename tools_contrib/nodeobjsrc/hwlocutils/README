@@ -1,6 +1,0 @@
-./src/hwlocldms_ls /home/gentile/Work/LDMS/hwlocutils/hwloc.out /home/gentile/Work/LDMS/hwlocutils/MachineList /home/gentile/Work/LDMS/hwlocutils/Machine.in /home/gentile/Work/LDMS/hwlocutils/Core.in "NNE" | more
-
-/home/gentile/Work/LDMS/src/hwlocldms_ls /home/gentile/Work/LDMS/hwlocutils/hwloc.out /home/gentile/Work/LDMS/hwlocutils/MachineList /home/gentile/Work/LDMS/hwlocutils/Machine.in /home/gentile/Work/LDMS/hwlocutils/Core.in "/home/brandt/ldms/newscripts/utils/localhost/localhost_ldms_ls -l"
-
-
-replace with real ldms command
