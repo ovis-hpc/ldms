@@ -1,6 +1,10 @@
 /*
  * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+ * license for use of this work by or on behalf of the U.S. Government.
+ * Export of this program may require a license from the United States
+ * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -20,10 +24,17 @@
  *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
- *      Neither the name of the Network Appliance, Inc. nor the names of
- *      its contributors may be used to endorse or promote products
- *      derived from this software without specific prior written
- *      permission.
+ *      Neither the name of Sandia nor the names of any contributors may
+ *      be used to endorse or promote products derived from this software
+ *      without specific prior written permission.
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission.
+ *
+ *      Modified source versions must be plainly marked as such, and
+ *      must not be misrepresented as being the original software.
+ *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,7 +47,9 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
+ */
+
+/*
  * Author: Tom Tucker <tom@opengridcomputing.com>
  */
 #include <sys/errno.h>
@@ -91,30 +104,51 @@ static int cm_fd;
 
 static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 {
-	if (r->cm_id && r->conn_status == CONN_CONNECTED)
-		rdma_disconnect(r->cm_id);
+	int ret = 0;
+
+	if (r->cm_id && r->conn_status == CONN_CONNECTED) {
+		ret = rdma_disconnect(r->cm_id);
+		if (ret)
+                        LOG_(r, "RDMA: Error %d : rdma_disconnect failed\n", errno);
+	}
 
 	/* Destroy the QP */
-	if (!r->server && r->qp)
+	if (!r->server && r->qp) {
 		rdma_destroy_qp(r->cm_id);
+	}
 
 	/* Destroy the CQ */
-	if (r->cq)
-		ibv_destroy_cq(r->cq);
+	if (r->cq) {
+		ret = ibv_destroy_cq(r->cq);
+		if (ret) {
+			LOG_(r, "RDMA: Error %d : ibv_destroy_cq failed\n", errno);
+		}
+	}
 
 	/* Destroy the PD */
-	if (r->pd)
-		ibv_dealloc_pd(r->pd);
+	if (r->pd){
+		ret = ibv_dealloc_pd(r->pd);
+		if (ret) {
+			LOG_(r, "RDMA: Error %d : ibv_dealloc_pd failed\n", errno);
+		}
+	}
 
 	/* Destroy the CM id */
-	if (r->cm_id)
-		rdma_destroy_id(r->cm_id);
+	if (r->cm_id) {
+		ret = rdma_destroy_id(r->cm_id);
+		if (ret)
+			LOG_(r, "RDMA: Error %d : rdma_destroy_id failed\n", errno);
+	}
 
-	if (r->cm_channel)
+	if (r->cm_channel) {
 		rdma_destroy_event_channel(r->cm_channel);
+	}
 
-	if (r->cq_channel)
-		ibv_destroy_comp_channel(r->cq_channel);
+	if (r->cq_channel) {
+		ret = ibv_destroy_comp_channel(r->cq_channel);
+		if (ret)
+			LOG_(r, "RDMA: Error %d : ibv_destroy_comp__channel failed\n", errno);
+	}
 
 	r->cm_id = NULL;
 	r->pd = NULL;
@@ -453,10 +487,16 @@ static int cq_event_handler(struct ibv_cq *cq)
 
 		ret = 0;
 		if (wc.status) {
-			if (wc.status != IBV_WC_WR_FLUSH_ERR)
+			if (wc.status != IBV_WC_WR_FLUSH_ERR) {
 				r->xprt->log("RDMA: cq completion "
 					     "failed status %d\n",
 					     wc.status);
+				ret = rdma_disconnect(r->cm_id);
+				if(ret) {
+					r->xprt->log("RDMA: rdma_disconnect failed status %d\n",
+						errno);
+				}
+			}
 			if (ctxt) {
 				if (ctxt->rb)
 					rdma_buffer_free(ctxt->rb);
@@ -639,7 +679,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		ret = rdma_resolve_route(cma_id, 2000);
 		if (ret) {
 			LOG_(x, "RDMA: host %s has crashed.\n",
-			     inet_ntop(AF_INET, &((struct sockaddr_in *)&r->xprt->remote_ss)->sin_addr,
+			     inet_ntop(AF_INET, &((struct sockaddr_in *)&x->xprt->remote_ss)->sin_addr,
 			                buf, sizeof(buf)));
 			x->conn_status = CONN_ERROR;
 			x->xprt->connected = 0;
@@ -652,7 +692,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		ret = rdma_setup_conn(x);
 		if (ret) {
 			LOG_(x, "RDMA: host %s has crashed.\n",
-			     inet_ntop(AF_INET, &((struct sockaddr_in *)&r->xprt->remote_ss)->sin_addr,
+			     inet_ntop(AF_INET, &((struct sockaddr_in *)&x->xprt->remote_ss)->sin_addr,
 				       buf, sizeof(buf)));
 			x->conn_status = CONN_ERROR;
 			x->xprt->connected = 0;
@@ -663,13 +703,13 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
 		LOG_(x, "RDMA: Event=Connect Request.\n");
-		rdma_accept_request(r, cma_id);
+		rdma_accept_request(x, cma_id); //Monn: changed r to x
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
 		LOG_(x, "RDMA: Event=Established.\n");
 		x->conn_status = CONN_CONNECTED;
-		r->xprt->connected = 1;
+		x->xprt->connected = 1; // Monn: fixed r->xprt to x->xprt
 		sem_post(&x->sem);
 		break;
 
@@ -681,7 +721,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-		s = inet_ntop(AF_INET, &((struct sockaddr_in *)&r->xprt->remote_ss)->sin_addr, buf, sizeof(buf));
+		s = inet_ntop(AF_INET, &((struct sockaddr_in *)&x->xprt->remote_ss)->sin_addr, buf, sizeof(buf));
 		LOG_(x, "RDMA: IP_Addr %s Event=ERROR %d\n", (s?s:"bad_addr"), event);
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
@@ -696,21 +736,24 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		if (x->cm_channel) {
 			ret = epoll_ctl(cm_fd, EPOLL_CTL_DEL,
 					x->cm_channel->fd, NULL);
-			if (ret)
+			if (ret) {
 				LOG_(x, "RDMA: Error %d removing "
 					     "transport from the "
 					     "CM event queue.\n", ret);
+			}
 			ldms_release_xprt(x->xprt);
 		}
 		if (x->cq_channel) {
 			ret = epoll_ctl(cq_fd, EPOLL_CTL_DEL,
 					x->cq_channel->fd, NULL);
-			if (ret)
+			if (ret) {
 				LOG_(x, "RDMA: Error %d removing "
 					     "CQ fd from "
 					     "event queue.\n", ret);
+			}
 			ldms_release_xprt(x->xprt);
 		}
+		rdma_teardown_conn(x);
 		ldms_release_xprt(x->xprt);
 		sem_post(&x->sem);
 		break;
@@ -1099,6 +1142,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	x->private = r;
 	pthread_mutex_init(&r->lock, NULL);
 	r->xprt = x;
+
 	sem_init(&r->sem, 0, 0);
 
 	LIST_INSERT_HEAD(&rdma_list, r, client_link);
