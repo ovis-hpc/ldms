@@ -56,6 +56,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
@@ -71,9 +72,11 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
+union ldms_value comp_id;
 ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
-union ldms_value comp_id;
+ldms_metric_t tv_sec_metric_handle;
+ldms_metric_t tv_nsec_metric_handle;
 
 static int create_metric_set(const char *path)
 {
@@ -85,10 +88,17 @@ static int create_metric_set(const char *path)
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
 				  &tot_meta_sz, &tot_data_sz);
 
-	//and add the counter
-	rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
+	rc = ldms_get_metric_size("procsensors_counter", LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
+
+        rc = ldms_get_metric_size("procsensors_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
+	rc = ldms_get_metric_size("procsensors_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
 
 
 	metric_count = 0;
@@ -122,18 +132,23 @@ static int create_metric_set(const char *path)
 		goto err;
 	} //compid set in sample
 
-	//and add the counter
-	counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
+	counter_metric_handle = ldms_add_metric(set, "procsensors_counter", LDMS_V_U64);
 	if (!counter_metric_handle) {
 		rc = ENOMEM;
 		goto err;
 	} //counter updated in config
 
-	//also set the counter...
-	counter = 0;
-	union ldms_value v;
-	v.v_u64 = counter;
-	ldms_set_metric(counter_metric_handle, &v);
+        tv_sec_metric_handle = ldms_add_metric(set, "procsensors_tv_sec", LDMS_V_U64);
+        if (!tv_sec_metric_handle){
+	  rc = ENOMEM;
+	  goto err;
+	}
+
+	tv_nsec_metric_handle = ldms_add_metric(set, "procsensors_tv_nsec", LDMS_V_U64);
+        if (!tv_nsec_metric_handle){
+	  rc = ENOMEM;
+	  goto err;
+	}
 
 
 	int metric_no = 0;
@@ -194,15 +209,22 @@ static int sample(void)
 	char procfile[256];
 	char lbuf[20];
 	union ldms_value v;
+	struct timespec time1;
 	int i, j;
 
+
+	//set the compid
+	ldms_set_metric(compid_metric_handle, &comp_id);
 
 	//set the counter
 	v.v_u64 = ++counter;
 	ldms_set_metric(counter_metric_handle, &v);
 
-	//set the compid
-	ldms_set_metric(compid_metric_handle, &comp_id);
+	clock_gettime(CLOCK_REALTIME, &time1);
+        v.v_u64 = time1.tv_sec;
+        ldms_set_metric(tv_sec_metric_handle, &v);
+        v.v_u64 = time1.tv_nsec;
+        ldms_set_metric(tv_nsec_metric_handle, &v);
 
 	metric_no = 0;
 	for (i = 0; i < vartypes; i++){

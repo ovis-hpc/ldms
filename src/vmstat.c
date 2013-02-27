@@ -66,6 +66,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -77,10 +78,13 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-ldms_metric_t compid_metric_handle;
 union ldms_value comp_id;
-ldms_metric_t counter_metric_handle;
 static uint64_t counter;
+ldms_metric_t compid_metric_handle;
+ldms_metric_t counter_metric_handle;
+ldms_metric_t tv_sec_metric_handle;
+ldms_metric_t tv_nsec_metric_handle;
+
 
 static ldms_set_t get_set()
 {
@@ -107,9 +111,18 @@ static int create_metric_set(const char *path)
 				  &tot_meta_sz, &tot_data_sz);
 
 	//counter
-	rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
+	rc = ldms_get_metric_size("vmstat_counter", LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
+
+	rc = ldms_get_metric_size("vmstat_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
+        rc = ldms_get_metric_size("vmstat_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
 
 	/*
 	 * Process the file once first to determine the metric set size.
@@ -146,25 +159,23 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process the file again to define all the metrics.
 	 */
+	rc = ENOMEM;
 	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) {
-		rc = ENOMEM;
+	if (!compid_metric_handle) 
 		goto err;
-	} //compid set in config
 
-
-        //and add the counter
-	counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
-	if (!counter_metric_handle) {
-		rc = ENOMEM;
+	counter_metric_handle = ldms_add_metric(set, "vmstat_counter", LDMS_V_U64);
+	if (!counter_metric_handle) 
 		goto err;
-	} //counter set in config
 
-	//counter
-	counter = 0;
-	union ldms_value v;
-	v.v_u64 = counter;
-	ldms_set_metric(counter_metric_handle, &v);
+	tv_sec_metric_handle = ldms_add_metric(set, "vmstat_tv_sec", LDMS_V_U64);
+        if (!tv_sec_metric_handle)
+	  goto err;
+
+        tv_nsec_metric_handle = ldms_add_metric(set, "vmstat_tv_nsec", LDMS_V_U64);
+        if (!tv_nsec_metric_handle)
+	  goto err;
+
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -219,6 +230,7 @@ static int sample(void)
 	char lbuf[256];
 	char metric_name[128];
 	union ldms_value v;
+	struct timespec time1;
 
 	if (!set) {
 		msglog("vmstat: plugin not initialized\n");
@@ -230,6 +242,13 @@ static int sample(void)
 	v.v_u64 = ++counter;
 	ldms_set_metric(counter_metric_handle, &v);
 	metric_no = 0;
+
+	clock_gettime(CLOCK_REALTIME, &time1);
+        v.v_u64 = time1.tv_sec;
+	ldms_set_metric(tv_sec_metric_handle, &v);
+        v.v_u64 = time1.tv_nsec;
+	ldms_set_metric(tv_nsec_metric_handle, &v);
+
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);

@@ -51,6 +51,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -61,9 +62,13 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-ldms_metric_t compid_metric_handle;
 int nprocs;
 union ldms_value comp_id;
+static uint64_t counter;
+ldms_metric_t compid_metric_handle;
+ldms_metric_t counter_metric_handle;
+ldms_metric_t tv_sec_metric_handle;
+ldms_metric_t tv_nsec_metric_handle;
 
 
 static ldms_set_t get_set()
@@ -112,6 +117,19 @@ static int create_metric_set(const char *path)
 	 */
 
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
+
+	rc = ldms_get_metric_size("procinterrupts_counter", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
+        rc = ldms_get_metric_size("procinterrupts_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
+        rc = ldms_get_metric_size("procinterrupts_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
 	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
 
@@ -170,6 +188,25 @@ static int create_metric_set(const char *path)
 		rc = ENOMEM;
 		goto err;
 	} //compid set in sample
+
+	counter_metric_handle = ldms_add_metric(set, "procinterrupts_counter", LDMS_V_U64);
+        if (!counter_metric_handle) {
+	  rc = ENOMEM;
+	  goto err;
+	}
+
+        tv_sec_metric_handle = ldms_add_metric(set, "procinterrupts_tv_sec", LDMS_V_U64);
+        if (!tv_sec_metric_handle){
+	  rc = ENOMEM;
+	  goto err;
+	}
+
+        tv_nsec_metric_handle = ldms_add_metric(set, "procinterrupts_tv_nsec", LDMS_V_U64);
+        if (!tv_nsec_metric_handle){
+	  rc = ENOMEM;
+	  goto err;
+	}
+
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -239,6 +276,7 @@ static int sample(void)
 	char *s;
 	char lbuf[256];
 	union ldms_value v;
+	struct timespec time1;
 
 	if (!set){
 	  msglog("procinterrupts: plugin not initialized\n");
@@ -246,12 +284,22 @@ static int sample(void)
 	}
 	ldms_set_metric(compid_metric_handle, &comp_id);
 
+	//set the counter                                                          
+        v.v_u64 = ++counter;
+        ldms_set_metric(counter_metric_handle, &v);
+
+        clock_gettime(CLOCK_REALTIME, &time1);
+        v.v_u64 = time1.tv_sec;
+        ldms_set_metric(tv_sec_metric_handle, &v);
+        v.v_u64 = time1.tv_nsec;
+        ldms_set_metric(tv_nsec_metric_handle, &v);
+
+
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	//first line is the cpu list
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	if (!s)
-		return 0;
+
 	while(s){
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)

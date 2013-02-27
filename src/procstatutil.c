@@ -49,20 +49,24 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
-
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
+static uint64_t counter;
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 
 int numcpu_plusone;
-ldms_metric_t *compid_metric_handle;
 union ldms_value comp_id;
+ldms_metric_t compid_metric_handle;
+ldms_metric_t counter_metric_handle;
+ldms_metric_t tv_sec_metric_handle;
+ldms_metric_t tv_nsec_metric_handle;
 
 static ldms_set_t get_set()
 {
@@ -106,6 +110,20 @@ static int create_metric_set(const char *path)
 
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
 				  &total_meta_sz, &total_data_sz);
+
+	rc = ldms_get_metric_size("procstatutil_counter", LDMS_V_U64, &meta_sz, &data_sz);
+	total_meta_sz += meta_sz;
+	total_data_sz += data_sz;
+
+	rc = ldms_get_metric_size("procstatutil_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
+        total_meta_sz += meta_sz;
+        total_data_sz += data_sz;
+
+	rc = ldms_get_metric_size("procstatutil_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
+        total_meta_sz += meta_sz;
+        total_data_sz += data_sz;
+
+
 	fseek(mf, 0, SEEK_SET);
 
 	/* Skip first line that is sum of remaining CPUs numbers */
@@ -153,6 +171,19 @@ static int create_metric_set(const char *path)
 	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
 	if (!compid_metric_handle)
 		goto err;
+
+	counter_metric_handle = ldms_add_metric(set, "procstatutil_counter", LDMS_V_U64);
+	if (!counter_metric_handle)
+		goto err;
+
+	tv_sec_metric_handle = ldms_add_metric(set, "procstatutil_tv_sec", LDMS_V_U64);
+        if (!tv_sec_metric_handle)
+	  goto err;
+
+        tv_nsec_metric_handle = ldms_add_metric(set, "procstatutil_tv_nsec", LDMS_V_U64);
+        if (!tv_nsec_metric_handle)
+	  goto err;
+
 
 	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
@@ -206,35 +237,53 @@ static int sample(void)
 	int metric_no;
 	char *s;
 	char lbuf[256];
+	union ldms_value vv;
+	struct timespec time1;
+	
 
-	if (!set || !compid_metric_handle ){
-		msglog("meminfo: plugin not initialized\n");
+	//	if (!set || !compid_metric_handle ){
+	if (!set ){
+		msglog("procstatutil: plugin not initialized\n");
 		return EINVAL;
 	}
 
 	ldms_set_metric(compid_metric_handle, &comp_id);
 
+	//set the counter
+	vv.v_u64 = ++counter;
+	ldms_set_metric(counter_metric_handle, &vv);
+
+	clock_gettime(CLOCK_REALTIME, &time1);
+        vv.v_u64 = time1.tv_sec;
+	ldms_set_metric(tv_sec_metric_handle, &vv);
+        vv.v_u64 = time1.tv_nsec;
+	ldms_set_metric(tv_nsec_metric_handle, &vv);
+
+
 	fseek(mf, 0, SEEK_SET);
 
 	/* Discard the first line that is a sum of the other cpu's values */
 	s = fgets(lbuf, sizeof(lbuf), mf);
+	if (!s)
+	  return 0;
 
 	metric_no = 0;
 	do {
-		char *token;
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-		
-		token = strtok(lbuf, " \t\n");
-		if (0 != strncmp(token, "cpu", 3))
-			break;
+	  s = fgets(lbuf, sizeof(lbuf), mf);
 
-		for (token = strtok(NULL, " \t\n"); token;
-		     token = strtok(NULL, " \t\n")) {
-			uint64_t v = strtoul(token, NULL, 0);
-			ldms_set_u64(metric_table[metric_no++], v);
-		}
+	  char *token;
+	  if (!s)
+	    break;
+		
+	  token = strtok(lbuf, " \t\n");
+	  if (0 != strncmp(token, "cpu", 3))
+	    continue; //get to EOF for seek to work
+
+	  for (token = strtok(NULL, " \t\n"); token;
+	       token = strtok(NULL, " \t\n")) {
+	    uint64_t v = strtoul(token, NULL, 0);
+	    ldms_set_u64(metric_table[metric_no++], v);
+	  }
 	} while (1);
 	return 0;
 }

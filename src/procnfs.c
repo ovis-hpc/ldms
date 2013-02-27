@@ -51,6 +51,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -114,10 +115,12 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
 static uint64_t counter;
 union ldms_value comp_id;
+ldms_metric_t compid_metric_handle;
+ldms_metric_t counter_metric_handle;
+ldms_metric_t tv_sec_metric_handle;
+ldms_metric_t tv_nsec_metric_handle;
 
 static ldms_set_t get_set()
 {
@@ -145,9 +148,18 @@ static int create_metric_set(const char *path)
 
   rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
 
-  rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
+  rc = ldms_get_metric_size("procnfs_counter", LDMS_V_U64, &meta_sz, &data_sz);
   tot_meta_sz += meta_sz;
   tot_data_sz += data_sz;
+
+  rc = ldms_get_metric_size("procnfs_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
+  tot_meta_sz += meta_sz;
+  tot_data_sz += data_sz;
+
+  rc = ldms_get_metric_size("procnfs_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
+  tot_meta_sz += meta_sz;
+  tot_data_sz += data_sz;
+
 
   //dont need to look at the file since we have all the name info
   //NOTE: make sure these are added in the order they will appear in the file
@@ -177,11 +189,24 @@ static int create_metric_set(const char *path)
     goto err;
   } //compid set in sample
 
-  counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
+  counter_metric_handle = ldms_add_metric(set, "procnfs_counter", LDMS_V_U64);
   if (!counter_metric_handle){
     rc = ENOMEM;
     goto err;
   }
+
+  tv_sec_metric_handle = ldms_add_metric(set, "procnfs_tv_sec", LDMS_V_U64);
+  if (!tv_sec_metric_handle){
+    rc = ENOMEM;
+    goto err;
+  }
+
+  tv_nsec_metric_handle = ldms_add_metric(set, "procnfs_tv_nsec", LDMS_V_U64);
+  if (!tv_nsec_metric_handle){
+    rc = ENOMEM;
+    goto err;
+  }
+
 
   //NOTE: make sure these are added in the order they will appear in the file
   metric_count = 0;
@@ -245,6 +270,7 @@ static int sample(void)
   char *s;
   char lbuf[256];
   union ldms_value v[23],vtemp;
+  struct timespec time1;
 
   //  msglog("Procnfs entering sample\n");
 
@@ -256,6 +282,12 @@ static int sample(void)
 
   vtemp.v_u64 = ++counter;
   ldms_set_metric(counter_metric_handle, &vtemp);
+
+  clock_gettime(CLOCK_REALTIME, &time1);
+  vtemp.v_u64 = time1.tv_sec;
+  ldms_set_metric(tv_sec_metric_handle, &vtemp);
+  vtemp.v_u64 = time1.tv_nsec;
+  ldms_set_metric(tv_nsec_metric_handle, &vtemp);
 
   metric_no = 0;
 

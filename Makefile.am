@@ -39,11 +39,6 @@ src_libldmsugni_la_DEPENDENCIES = $(srcdir)/src/libldmsugni.map
 UGNI_la = src/libldmsugni.la
 endif
 
-src_libflatfile_la_SOURCES = src/flatfile.c
-src_libflatfile_la_DEPENDENCIES = $(srcdir)/src/libflatfile.map $(top_builddir)/libplugin.a
-src_libflatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
-FLATFILE_la = src/libflatfile.la
-
 if ENABLE_GLIB
 src_libsedc_la_SOURCES = src/sedc.c
 src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map $(top_builddir)/libplugin.a
@@ -91,19 +86,19 @@ endif
 
 src_libgeminfo_la_SOURCES = src/geminfo.c
 src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map $(top_builddir)/libplugin.a
-src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 GEMINFO_la = src/libgeminfo.la
 
 src_libmeminfo_la_SOURCES = src/meminfo.c
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map $(top_builddir)/libplugin.a
-src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 
 MEMINFO_la = src/libmeminfo.la
 
 if ENABLE_SENSORS
 src_libprocsensors_la_SOURCES = src/procsensors.c
 src_libprocsensors_la_DEPENDENCIES = $(srcdir)/src/libprocsensors.map $(top_builddir)/libplugin.a
-src_libprocsensors_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libprocsensors_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCSENSORS_la = src/libprocsensors.la
 else
 SENSORS_FLAGS = -DISABLE_SENSORS
@@ -111,32 +106,32 @@ endif
 
 src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
 src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map $(top_builddir)/libplugin.a
-src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCINTERRUPTS_la = src/libprocinterrupts.la
 
 src_libprocnetdev_la_SOURCES = src/procnetdev.c
 src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map $(top_builddir)/libplugin.a
-src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCNETDEV_la = src/libprocnetdev.la
 
 src_libprocnfs_la_SOURCES = src/procnfs.c
 src_libprocnfs_la_DEPENDENCIES = $(srcdir)/src/libprocnfs.map $(top_builddir)/libplugin.a
-src_libprocnfs_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libprocnfs_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCNFS_la = src/libprocnfs.la
 
 src_libprocstatutil_la_SOURCES = src/procstatutil.c 
 src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map $(top_builddir)/libplugin.a
-src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCSTATUTIL_la = src/libprocstatutil.la
 
 src_libsysclassib_la_SOURCES = src/sysclassib.c 
 src_libsysclassib_la_DEPENDENCIES = $(srcdir)/src/libsysclassib.map $(top_builddir)/libplugin.a
-src_libsysclassib_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libsysclassib_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 SYSCLASSIB_la = src/libsysclassib.la
 
 src_libvmstat_la_SOURCES = src/vmstat.c
 src_libvmstat_la_DEPENDENCIES = $(srcdir)/src/libvmstat.map $(top_builddir)/libplugin.a
-src_libvmstat_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin
+src_libvmstat_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 VMSTAT_la = src/libvmstat.la
 
 if ENABLE_PERF
@@ -151,7 +146,7 @@ AM_CFLAGS = -Wall $(DBGFLAGS) $(SOCK_FLAGS) $(RDMA_FLAGS) $(MMAP_FLAGS) \
 	$(SENSORS_FLAGS)
 
 lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
-	$(UGNI_la) $(RDMA_la) $(FLATFILE_la) $(PROCSENSORS_la) \
+	$(UGNI_la) $(RDMA_la) $(PROCSENSORS_la) \
 	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(PROCNETDEV_la) \
 	$(PROCNFS_la) $(PROCSTATUTIL_la) $(SYSCLASSIB_la) $(VMSTAT_la) \
 	$(PERFEVENT_la) $(SEDC_la) \
