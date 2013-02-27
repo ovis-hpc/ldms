@@ -57,7 +57,8 @@ struct rdma_buffer {
 	void *data;
 	size_t data_len;
 	struct ibv_mr *mr;
-	struct rdma_buffer *next;
+	int is_recv;
+	LIST_ENTRY(rdma_buffer) link; /* linked list entry */
 };
 
 struct rdma_buf_remote_data {
@@ -89,6 +90,16 @@ enum rdma_conn_status {
 /**
  * RDMA Transport private data
  */
+
+struct rdma_context {
+	void *usr_context;      /* user context if any */
+	enum ibv_wc_opcode op;  /* work-request op (can't be trusted
+				in wc on error */
+	struct rdma_buffer *rb; /* RDMA buffer if any */
+};
+
+LIST_HEAD(rdma_buffer_list, rdma_buffer);
+
 struct ldms_rdma_xprt {
 	struct ldms_xprt *xprt;
 	int server;			/* 0 iff client */
@@ -97,6 +108,10 @@ struct ldms_rdma_xprt {
 	struct ibv_cq *cq;
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
+
+	// Narate: Context list only for rdma_setup_conn so that we can destroy
+	//   this later in rdma_teardown_conn
+	struct rdma_buffer_list conn_buffer_head;
 
 	sem_t sem;
 
