@@ -77,6 +77,8 @@ ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
 ldms_metric_t tv_sec_metric_handle;
 ldms_metric_t tv_nsec_metric_handle;
+ldms_metric_t tv_sec_metric_handle2;
+ldms_metric_t tv_nsec_metric_handle2;
 
 static int create_metric_set(const char *path)
 {
@@ -114,6 +116,15 @@ static int create_metric_set(const char *path)
 	    metric_count++;
 	  }
 	}
+
+
+        rc = ldms_get_metric_size("procsensors_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
+
+	rc = ldms_get_metric_size("procsensors_tv_nsec2", LDMS_V_U64, &meta_sz, &data_sz);
+        tot_meta_sz += meta_sz;
+        tot_data_sz += data_sz;
 
 	/* Create the metric set */
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
@@ -164,6 +175,18 @@ static int create_metric_set(const char *path)
 			}
 			metric_no++;
 		}
+	}
+
+        tv_sec_metric_handle2 = ldms_add_metric(set, "procsensors_tv_sec2", LDMS_V_U64);
+        if (!tv_sec_metric_handle2){
+	  rc = ENOMEM;
+	  goto err;
+	}
+
+	tv_nsec_metric_handle2 = ldms_add_metric(set, "procsensors_tv_nsec2", LDMS_V_U64);
+        if (!tv_nsec_metric_handle2){
+	  rc = ENOMEM;
+	  goto err;
 	}
 
 	return 0;
@@ -253,6 +276,13 @@ static int sample(void)
 	    if (mf) fclose(mf);
 	  }
 	}
+
+	clock_gettime(CLOCK_REALTIME, &time1);
+        v.v_u64 = time1.tv_sec;
+        ldms_set_metric(tv_sec_metric_handle2, &v);
+        v.v_u64 = time1.tv_nsec;
+        ldms_set_metric(tv_nsec_metric_handle2, &v);
+
 	return 0;
 }
 
