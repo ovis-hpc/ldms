@@ -193,10 +193,11 @@ static struct rdma_buffer *rdma_buffer_alloc(struct ldms_rdma_xprt *x,
 		return NULL;
 	rbuf->data = rbuf+1;
 	rbuf->data_len = len;
+	LOG_(x, "rdma_buffer_alloc: len = %d\n", len);
 	rbuf->mr = ibv_reg_mr(x->pd, rbuf->data, len, f);
 	if (!rbuf->mr) {
 		free(rbuf);
-		LOG_(x, "RDMA: recv_buf reg_mr failed\n");
+		LOG_(x, "RDMA: recv_buf reg_mr failed: error %d\n", errno);
 		return NULL;
 	}
 	return rbuf;
