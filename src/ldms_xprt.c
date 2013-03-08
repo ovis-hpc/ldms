@@ -799,8 +799,12 @@ ldms_t ldms_create_xprt(const char *name, void (*log)(const char *fmt, ...))
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
 	char tmp[32] = "io_ctxt.XXXXXX";
-	x->io_ctxt.sem_p = sem_open(mktemp(tmp), O_CREAT, 0666, 0);
-	sem_unlink(tmp);
+
+	sem_init(&(x->io_ctxt.sem), 0, 0);
+	x->io_ctxt.sem_p = &(x->io_ctxt.sem);
+
+	//x->io_ctxt.sem_p = sem_open(mktemp(tmp), O_CREAT, 0666, 0);
+	//sem_unlink(tmp);
 	if (!x->io_ctxt.sem_p) {
 		log("Could not create semaphore, errno %d", errno);
 		ret = ENOMEM;

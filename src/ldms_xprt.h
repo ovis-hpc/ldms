@@ -161,6 +161,7 @@ struct ldms_reply {
 #pragma pack()
 
 struct ldms_context {
+	sem_t sem;
 	sem_t *sem_p;
 	int rc;
 	union {
