@@ -96,7 +96,7 @@ static char *procfile = PROC_FILE;
 
 #define MAXOPTS 2
 
-static char* prefix[MAXOPTS] = { "rpc", "proc3" };
+//static char* prefix[MAXOPTS] = { "rpc", "proc3" }; unused
 
 static char* varnames[MAXOPTS][21] = { 
   { "numcalls", "retransmitts"},
