@@ -71,8 +71,6 @@
 #define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }
 
 LIST_HEAD(rdma_list, ldms_rdma_xprt) rdma_list;
-// Monn: Debugging for pd
-static int pd_counter = 0;
 
 static int rdma_fill_rq(struct ldms_rdma_xprt *x, int store_buff_flag);
 static void *cm_thread_proc(void *arg);
@@ -141,9 +139,6 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 		ret = ibv_dealloc_pd(r->pd);
 		if (ret) {
 			LOG_(r, "RDMA: Error %d : ibv_dealloc_pd failed\n", errno);
-		} else {
-			pd_counter--;
-			LOG_(r, "RDMA: (teardown) number of pd = %d\n", pd_counter);
 		}
 	}
 
@@ -193,7 +188,6 @@ static struct rdma_buffer *rdma_buffer_alloc(struct ldms_rdma_xprt *x,
 		return NULL;
 	rbuf->data = rbuf+1;
 	rbuf->data_len = len;
-	LOG_(x, "rdma_buffer_alloc: len = %d\n", len);
 	rbuf->mr = ibv_reg_mr(x->pd, rbuf->data, len, f);
 	if (!rbuf->mr) {
 		free(rbuf);
@@ -206,7 +200,7 @@ static struct rdma_buffer *rdma_buffer_alloc(struct ldms_rdma_xprt *x,
 static void rdma_buffer_free(struct rdma_buffer *rbuf)
 {
 	int rc = ibv_dereg_mr(rbuf->mr);
-// Should check rc? Jim
+// FIXME: error handling
 	free(rbuf);
 }
 
@@ -265,39 +259,6 @@ static int rdma_xprt_connect(struct ldms_xprt *x, struct sockaddr *sin, socklen_
 	struct epoll_event cm_event;
 	struct epoll_event cq_event;
 	int rc;
-
-	//Monn: Debugging
-	//LOG_(r, "RDMA: Debugging for pd\n");
-	static int have_all_max_pd = 0;
-	if (!have_all_max_pd) {
-		int num_devices;
-		struct ibv_device **device_list;
-		device_list = ibv_get_device_list(&num_devices);
-		LOG_(r, "RDMA: num devices = %d\n", num_devices);
-		int i, n;
-		n = 0;
-		struct ibv_device *device;
-		for (i = 0; i < num_devices; i++) {
-			device = *(device_list);
-			struct ibv_context *ibv_context;
-			ibv_context = ibv_open_device(device);
-			struct ibv_device_attr device_attr;
-			rc = ibv_query_device(ibv_context, &device_attr);
-			if (rc) {
-				LOG_(r, "RDMA: device name '%s' -- ibv_query_device failed error %d\n", ibv_get_device_name(device), errno);
-			} else {
-				n++;
-				LOG_(r, "RDMA: device name '%s' -- max pd = %d\n", ibv_get_device_name(device), device_attr.max_pd);
-			}
-			ibv_close_device(ibv_context);
-			device_list++;
-		}
-		if (n == num_devices) {
-			have_all_max_pd = 1;
-		}
-	}
-	LOG_(r, "RDMA: End Debugging for pd\n");
-	//Monn: End Debugging
 
 	/* Create the event CM event channel */
 	r->cm_channel = rdma_create_event_channel();
@@ -462,8 +423,6 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 		LOG_(server, "RDMA: ibv_alloc_pd failed\n");
 		goto out_0;
 	}
-	pd_counter++;
-	LOG_(server, "RDMA: (accept_request) number of pd = %d\n", pd_counter);
 
 	r->cq_channel = ibv_create_comp_channel(r->cm_id->verbs);
 	if (!r->cq_channel) {
@@ -657,8 +616,6 @@ int rdma_setup_conn(struct ldms_rdma_xprt *x)
 		LOG_(x, "RDMA: ibv_alloc_pd failed\n");
 		goto err_0;
 	}
-	pd_counter++;   //Monn: debug
-	LOG_(x, "RDMA: (setup_conn) number of pd = %d\n", pd_counter);
 
 	x->cq_channel = ibv_create_comp_channel(x->cm_id->verbs);
 	if (!x->cq_channel) {
@@ -751,13 +708,12 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 
 	if ((0 <= event) && (event <= 15)) {
                 LOG_(x, "RDMA: Event: %s\n", cma_event_str[event]);
-		} else {
+	} else {
 		LOG_(x, "RDMA: ERROR: Unknown event: %d\n", event);
 	}
 
 	switch (event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
-		LOG_(x, "RDMA: Event=Addr Resolved.\n");
 		ret = rdma_resolve_route(cma_id, 2000);
 		if (ret) {
 			LOG_(x, "RDMA: host %s has crashed.\n",
@@ -770,7 +726,6 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
-		LOG_(x, "RDMA: Event=Route Resolved.\n");
 		ret = rdma_setup_conn(x);
 		if (ret) {
 			LOG_(x, "RDMA: host %s has crashed.\n",
@@ -784,14 +739,12 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
-		LOG_(x, "RDMA: Event=Connect Request.\n");
-		rdma_accept_request(x, cma_id); //Monn: changed r to x
+		rdma_accept_request(x, cma_id);
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
-		LOG_(x, "RDMA: Event=Established.\n");
 		x->conn_status = CONN_CONNECTED;
-		x->xprt->connected = 1; // Monn: fixed r->xprt to x->xprt
+		x->xprt->connected = 1;
 		sem_post(&x->sem);
 		break;
 
@@ -812,7 +765,6 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
-		LOG_(x, "RDMA: Event=Disconnected\n");
 		x->conn_status = CONN_CLOSED;
 		x->xprt->connected = 0;
 		if (x->cm_channel) {
@@ -841,7 +793,6 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		LOG_(x, "RDMA: Event=DeviceRemoval\n");
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
 		sem_post(&x->sem);
