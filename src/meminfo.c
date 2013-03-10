@@ -84,6 +84,14 @@ ldms_metric_t counter_metric_handle;
 ldms_metric_t tv_sec_metric_handle;
 ldms_metric_t tv_nsec_metric_handle;
 
+#undef CHECK_MEMINFO_TIMING
+#ifdef CHECK_MEMINFO_TIMING
+//Some temporary for testing
+ldms_metric_t tv_sec_metric_handle2;
+ldms_metric_t tv_nsec_metric_handle2;
+ldms_metric_t tv_dnsec_metric_handle;
+#endif
+
 
 static int create_metric_set(const char *path)
 {
@@ -147,6 +155,20 @@ static int create_metric_set(const char *path)
 		tot_data_sz += data_sz;
 		metric_count++;
 	} while (s);
+	
+
+	rc = ldms_get_metric_size("meminfo_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
+	rc = ldms_get_metric_size("meminfo_tv_nsec2", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
+	rc = ldms_get_metric_size("meminfo_tv_dnsec", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
 
 	/* Create the metric set */
 	rc = ENOMEM;
@@ -198,6 +220,23 @@ static int create_metric_set(const char *path)
 		}
 		metric_no++;
 	} while (s);
+
+
+#ifdef CHECK_MEMINFO_TIMING
+	tv_sec_metric_handle2 = ldms_add_metric(set, "meminfo_tv_sec2", LDMS_V_U64);
+	if (!tv_sec_metric_handle)
+		goto err;
+
+	tv_nsec_metric_handle2 = ldms_add_metric(set, "meminfo_tv_nsec2", LDMS_V_U64);
+	if (!tv_nsec_metric_handle)
+		goto err;
+
+	tv_dnsec_metric_handle = ldms_add_metric(set, "meminfo_tv_dnsec", LDMS_V_U64);
+	if (!tv_dnsec_metric_handle)
+		goto err;
+#endif
+
+
 	return 0;
 
  err:
@@ -243,6 +282,10 @@ static int sample(void)
 	union ldms_value v;
 	struct timespec time1;
 
+#ifdef CHECK_MEMINFO_TIMING
+	uint64_t beg_nsec; //testing
+#endif
+
 	if (!set) {
 		msglog("meminfo: plugin not initialized\n");
 		return EINVAL;
@@ -256,6 +299,9 @@ static int sample(void)
 	clock_gettime(CLOCK_REALTIME, &time1);
 	v.v_u64 = time1.tv_sec;
 	ldms_set_metric(tv_sec_metric_handle, &v);
+#ifdef CHECK_MEMINFO_TIMING
+	beg_nsec = time1.tv_nsec;
+#endif
 	v.v_u64 = time1.tv_nsec;
 	ldms_set_metric(tv_nsec_metric_handle, &v);
 	
@@ -273,6 +319,17 @@ static int sample(void)
 		ldms_set_metric(metric_table[metric_no], &v);
 		metric_no++;
 	} while (s);
+
+#ifdef CHECK_MEMINFO_TIMING
+	clock_gettime(CLOCK_REALTIME, &time1);
+	v.v_u64 = time1.tv_sec;
+	ldms_set_metric(tv_sec_metric_handle2, &v);
+	v.v_u64 = time1.tv_nsec;
+	ldms_set_metric(tv_nsec_metric_handle2, &v);
+	v.v_u64 = time1.tv_nsec - beg_nsec;
+	ldms_set_metric(tv_dnsec_metric_handle, &v);
+#endif
+
  	return 0;
 }
 

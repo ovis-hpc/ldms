@@ -68,6 +68,15 @@ ldms_metric_t counter_metric_handle;
 ldms_metric_t tv_sec_metric_handle;
 ldms_metric_t tv_nsec_metric_handle;
 
+#undef CHECK_PROCSTATUTIL_TIMING
+#ifdef CHECK_PROCSTATUTIL_TIMING
+//Some temporary for testing
+ldms_metric_t tv_sec_metric_handle2;
+ldms_metric_t tv_nsec_metric_handle2;
+ldms_metric_t tv_dnsec_metric_handle;
+#endif
+
+
 static ldms_set_t get_set()
 {
 	return set;
@@ -162,6 +171,19 @@ static int create_metric_set(const char *path)
 		cpu_count++;
 	} while (1);
 
+	rc = ldms_get_metric_size("procstatutil_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
+        total_meta_sz += meta_sz;
+        total_data_sz += data_sz;
+
+        rc = ldms_get_metric_size("procstatutil_tv_nsec2", LDMS_V_U64, &meta_sz, &data_sz);
+        total_meta_sz += meta_sz;
+        total_data_sz += data_sz;
+
+        rc = ldms_get_metric_size("procstatutil_tv_dnsec", LDMS_V_U64, &meta_sz, &data_sz);
+        total_meta_sz += meta_sz;
+        total_data_sz += data_sz;
+
+
 	/* Create a metric set of the required size */
 	rc = ldms_create_set(path, total_meta_sz, total_data_sz, &set);
 	if (rc)
@@ -202,6 +224,21 @@ static int create_metric_set(const char *path)
 			metric_table[metric_no++] = m;
 		}
 	}
+
+#ifdef CHECK_PROCSTATUTIL_TIMING
+	tv_sec_metric_handle2 = ldms_add_metric(set, "procstatutil_tv_sec2", LDMS_V_U64);
+        if (!tv_sec_metric_handle2)
+	  goto err;
+
+        tv_nsec_metric_handle2 = ldms_add_metric(set, "procstatutil_tv_nsec2", LDMS_V_U64);
+        if (!tv_nsec_metric_handle2)
+	  goto err;
+
+        tv_dnsec_metric_handle = ldms_add_metric(set, "procstatutil_tv_dnsec", LDMS_V_U64);
+        if (!tv_nsec_metric_handle2)
+	  goto err;
+#endif
+
 	return 0;
  err:
 	ldms_set_release(set);
@@ -239,7 +276,10 @@ static int sample(void)
 	char lbuf[256];
 	union ldms_value vv;
 	struct timespec time1;
-	
+
+#ifdef CHECK_PROCSTATUTIL_TIMING
+	uint64_t beg_nsec; //testing
+#endif
 
 	//	if (!set || !compid_metric_handle ){
 	if (!set ){
@@ -256,6 +296,9 @@ static int sample(void)
 	clock_gettime(CLOCK_REALTIME, &time1);
         vv.v_u64 = time1.tv_sec;
 	ldms_set_metric(tv_sec_metric_handle, &vv);
+#ifdef CHECK_PROCSTATUTIL_TIMING
+        beg_nsec = time1.tv_nsec;
+#endif
         vv.v_u64 = time1.tv_nsec;
 	ldms_set_metric(tv_nsec_metric_handle, &vv);
 
@@ -285,6 +328,17 @@ static int sample(void)
 	    ldms_set_u64(metric_table[metric_no++], v);
 	  }
 	} while (1);
+
+#ifdef CHECK_PROCSTATUTIL_TIMING
+	clock_gettime(CLOCK_REALTIME, &time1);
+        vv.v_u64 = time1.tv_sec;
+	ldms_set_metric(tv_sec_metric_handle2, &vv);
+        vv.v_u64 = time1.tv_nsec;
+	ldms_set_metric(tv_nsec_metric_handle2, &vv);
+        vv.v_u64 = time1.tv_nsec - beg_nsec;
+	ldms_set_metric(tv_dnsec_metric_handle, &vv);
+#endif
+
 	return 0;
 }
 
