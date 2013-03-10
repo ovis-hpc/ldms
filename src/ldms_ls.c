@@ -311,6 +311,11 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	ldms_dir_release(t, _dir);
 }
 
+void null_log(const char *fmt, ...)
+{
+	// print nothing at all!!!!
+}
+
 int main(int argc, char *argv[])
 {
 	struct sockaddr_in sin;
@@ -377,7 +382,7 @@ int main(int argc, char *argv[])
 		usage(argv);
 	oc = (u_char *)h->h_addr_list[0];
 
-	ldms = ldms_create_xprt(xprt, NULL);
+	ldms = ldms_create_xprt(xprt, null_log);
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);
