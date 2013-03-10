@@ -1377,25 +1377,80 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 			 (s ? ldms_get_set_name(s) : "UNKNOWN"));
 		return;
 	}
-	gettimeofday(&tuple.tv, NULL);
+	//	gettimeofday(&tuple.tv, NULL); //moved below AG
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn)
 		goto out;
 	hset->gn = gn;
+
+
+	int gottime = 0;
+	//well known: metric names will be setname_tv_sec, setname_tv_usec, setname_tv_nsec
+	//FIXME: If we really want the time values used, then can we put them in the hostset or similar and not the metric list?
+	char* ptr = strrchr(hset->name, '/');
+	char* tv_sec_metricname = NULL;
+	char* tv_usec_metricname = NULL;
+	char* tv_nsec_metricname = NULL;
+	if (ptr && (strlen(ptr) > 1)){
+		ptr++;
+		tv_sec_metricname = (char*) malloc((strlen(ptr)+10)*sizeof(char));
+		tv_usec_metricname = (char*) malloc((strlen(ptr)+10)*sizeof(char));
+		tv_nsec_metricname = (char*) malloc((strlen(ptr)+10)*sizeof(char));
+		if (!tv_sec_metricname || !tv_usec_metricname || !tv_nsec_metricname){
+			errno = ENOMEM;
+			return; 
+		}
+		snprintf(tv_sec_metricname, (strlen(ptr)+10),"%s_tv_sec", ptr);
+		struct ldms_metric *tv_metric = ldms_get_metric(hset->set, tv_sec_metricname);
+		if ((tv_metric != NULL) && (tv_metric->value != NULL)) {
+			tuple.tv.tv_sec = tv_metric->value->v_u64;
+
+			snprintf(tv_usec_metricname, (strlen(ptr)+10),"%s_tv_usec", ptr);
+			tv_metric = ldms_get_metric(hset->set, tv_usec_metricname);
+			if ((tv_metric != NULL) && (tv_metric->value != NULL)) {
+				tuple.tv.tv_usec = tv_metric->value->v_u64;
+			} else {
+				snprintf(tv_nsec_metricname, (strlen(ptr)+10),"%s_tv_nsec", ptr);
+				tv_metric = ldms_get_metric(hset->set, tv_nsec_metricname);
+				if ((tv_metric != NULL) && (tv_metric->value != NULL)) {
+					tuple.tv.tv_usec = (tv_metric->value->v_u64) / 1000;
+				} else {
+					tuple.tv.tv_usec = 0;
+				}
+			}
+			gottime = 1;
+                }
+        }
+        if (!gottime){
+                gettimeofday(&tuple.tv, NULL);
+        }
+
 	LIST_FOREACH(hsm, &hset->metric_list, entry) {
 		if (!hsm->metric) {
 			hsm->metric = ldms_get_metric(hset->set, hsm->name);
 			if (!hsm->metric)
 				continue;
 		}
+		//FIXME: dont want to store the time vals which we wont if they arent in the metriclist or if we dont include them in the store for the set
+		//		if ((tv_sec_metricname && !strcmp(hsm->name, tv_sec_metricname)) ||
+		//		    (tv_usec_metricname && !strcmp(hsm->name, tv_usec_metricname)) ||
+		//		    (tv_nsec_metricname && !strcmp(hsm->name, tv_nsec_metricname))) {
+		//			continue;
+		//		}
 		tuple.value = hsm->metric;
 		tuple.comp_id  = hsm->comp_id;
 		ldmsd_store_tuple_add(hsm->metric_store, &tuple);
 	} 
+
+	if (tv_sec_metricname) free(tv_sec_metricname);
+	if (tv_usec_metricname) free(tv_usec_metricname);
+	if (tv_nsec_metricname) free(tv_nsec_metricname);
+
  out:
 	/* Put the reference taken at the call to ldms_update() */
 	hset_ref_put(hset);
+
 }
 
 void update_data(struct hostspec *hs)
