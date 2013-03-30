@@ -74,22 +74,6 @@ void default_log(const char *fmt, ...)
 
 pthread_mutex_t xprt_list_lock;
 
-int do_wait(struct ldms_context *ctxt)
-{
-	int rc;
-	do {
-		rc = sem_wait(ctxt->sem_p);
-	} while (rc && errno == EINTR);
-	if (!rc)
-		rc = ctxt->rc;
-	return rc;
-}
-
-void do_wakeup(struct ldms_context *ctxt)
-{
-	sem_post(ctxt->sem_p);
-}
-
 static inline struct ldms_xprt *ldms_xprt_get_(struct ldms_xprt *x)
 {
 	x->ref_count++;
@@ -100,8 +84,6 @@ ldms_t ldms_xprt_get(ldms_t _x)
 	struct ldms_xprt *x;
 	pthread_mutex_lock(&xprt_list_lock);
 	x = (ldms_t)ldms_xprt_get_((struct ldms_xprt *)_x);
-	if (x->ref_count > 10)
-		printf("wtf\n");
 	pthread_mutex_unlock(&xprt_list_lock);
 	return x;
 }
@@ -150,6 +132,11 @@ ldms_t ldms_xprt_find(struct sockaddr_in *sin)
 	return 0;
 }
 
+size_t __ldms_xprt_max_msg(struct ldms_xprt *x)
+{
+	return x->max_msg;
+}
+
 static void send_dir_update(struct ldms_xprt *x,
 			    enum ldms_dir_type t,
 			    const char *set_name)
@@ -162,7 +149,7 @@ static void send_dir_update(struct ldms_xprt *x,
 
 	switch (t) {
 	case LDMS_DIR_LIST:
-		ldms_get_local_set_list_sz(&set_count, &set_list_sz);
+		__ldms_get_local_set_list_sz(&set_count, &set_list_sz);
 		break;
 	case LDMS_DIR_DEL:
 	case LDMS_DIR_ADD:
@@ -184,9 +171,9 @@ static void send_dir_update(struct ldms_xprt *x,
 
 	switch (t) {
 	case LDMS_DIR_LIST:
-		rc = ldms_get_local_set_list(reply->dir.set_list,
-					     set_list_sz,
-					     &set_count, &set_list_sz);
+		rc = __ldms_get_local_set_list(reply->dir.set_list,
+					       set_list_sz,
+					       &set_count, &set_list_sz);
 		break;
 	case LDMS_DIR_DEL:
 	case LDMS_DIR_ADD:
@@ -223,7 +210,6 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 		       "in notify of peer.\n");
 		return;
 	}
-
 	reply->hdr.xid = xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_REQ_NOTIFY_REPLY);
 	reply->hdr.rc = htonl(rc);
@@ -237,7 +223,7 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	return;
 }
 
-static void _dir_update(const char *set_name, enum ldms_dir_type t)
+static void dir_update(const char *set_name, enum ldms_dir_type t)
 {
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
@@ -252,14 +238,14 @@ static void _dir_update(const char *set_name, enum ldms_dir_type t)
 	}
 }
 
-void ldms_dir_add_set(const char *set_name)
+void __ldms_dir_add_set(const char *set_name)
 {
-	_dir_update(set_name, LDMS_DIR_ADD);
+	dir_update(set_name, LDMS_DIR_ADD);
 }
 
-void ldms_dir_del_set(const char *set_name)
+void __ldms_dir_del_set(const char *set_name)
 {
-	_dir_update(set_name, LDMS_DIR_DEL);
+	dir_update(set_name, LDMS_DIR_DEL);
 }
 
 int ldms_xprt_connected(ldms_t _x)
@@ -287,7 +273,6 @@ void ldms_xprt_close(ldms_t _x)
 	if (close) {
 		if (x->close)
 			x->close(x);
-		do_wakeup(&x->io_ctxt);
 	}
 }
 
@@ -309,7 +294,6 @@ void __release_xprt(ldms_t _x)
 		ldms_free_rbd(rb);
 	}
 	x->destroy(x);
-	sem_close(x->io_ctxt.sem_p);
 	free(x);
 }
 
@@ -330,31 +314,95 @@ void ldms_release_xprt(ldms_t _x)
 		__release_xprt(x);
 }
 
+struct make_dir_arg {
+	int reply_size;		/* size of reply in total */
+	struct ldms_reply *reply;
+	struct ldms_xprt *x;
+	int reply_count;	/* sets in this reply */
+	int set_count;		/* total sets we have */
+	char *set_list;		/* buffer for set names */
+	ssize_t set_list_len;	/* current length of this buffer */
+};
+
+static int send_dir_reply_cb(struct ldms_set *set, void *arg)
+{
+	struct make_dir_arg *mda = arg;
+	int len;
+
+	len = strlen(set->meta->name) + 1;
+	if (mda->reply_size + len < __ldms_xprt_max_msg(mda->x)) {
+		mda->reply_size += len;
+		strcpy(mda->set_list, set->meta->name);
+		mda->set_list += len;
+		mda->set_list_len += len;
+		mda->reply_count ++;
+		if (mda->reply_count < mda->set_count) 
+			return 0;
+	}
+
+	/* Update remaining set count */
+	mda->set_count -= mda->reply_count;
+
+	mda->reply->dir.more = htonl(mda->set_count != 0);
+	mda->reply->dir.set_count = htonl(mda->reply_count);
+	mda->reply->dir.set_list_len = htonl(mda->set_list_len);
+	mda->reply->hdr.len = htonl(mda->reply_size);
+
+	mda->x->send(mda->x, mda->reply, mda->reply_size);
+
+	/* Change the dir type to ADD for the subsequent sends */
+	mda->reply->dir.type = htonl(LDMS_DIR_ADD);
+
+	/* Initialize arg for remainder of walk */
+	mda->reply_size = sizeof(struct ldms_reply_hdr) +
+		sizeof(struct ldms_dir_reply) +
+		len;
+	strcpy(mda->reply->dir.set_list, set->meta->name);
+	mda->set_list = mda->reply->dir.set_list + len;
+	mda->set_list_len = len;
+	mda->reply_count = 1;
+	return 0;
+}
+
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	struct make_dir_arg arg;
 	size_t len;
 	int set_count;
 	int set_list_sz;
 	int rc;
 	struct ldms_reply reply_;
-	struct ldms_reply *reply;
+	struct ldms_reply *reply = &reply_;
 
-	ldms_get_local_set_list_sz(&set_count, &set_list_sz);
-	reply = malloc(set_list_sz
-		       + sizeof(struct ldms_reply_hdr)
-		       + sizeof(struct ldms_dir_reply));
+	__ldms_get_local_set_list_sz(&set_count, &set_list_sz);
+	if (!set_count) {
+		rc = 0;
+		goto out;
+	}
+
+	len = sizeof(struct ldms_reply_hdr)
+		+ sizeof(struct ldms_dir_reply)
+		+ set_list_sz;
+	if (len > __ldms_xprt_max_msg(x))
+		len = __ldms_xprt_max_msg(x);
+	reply = malloc(len);
 	if (!reply) {
 		rc = ENOMEM;
 		reply = &reply_;
 		len = sizeof(struct ldms_reply_hdr);
 		goto out;
 	}
-	rc = ldms_get_local_set_list(reply->dir.set_list,
-				     set_list_sz,
-				     &set_count, &set_list_sz);
-	len = sizeof(struct ldms_reply_hdr)
-		+ sizeof(struct ldms_dir_reply)
-		+ set_list_sz;
+
+	/* Initialize the set_list walking callback argument */
+	arg.reply_size = sizeof(struct ldms_reply_hdr) +
+		sizeof(struct ldms_dir_reply);
+	arg.reply = reply;
+	memset(reply, 0, arg.reply_size);
+	arg.x = x;
+	arg.reply_count = 0;
+	arg.set_list = reply->dir.set_list;
+	arg.set_list_len = 0;
+	arg.set_count = set_count;
 
 	if (req->dir.flags)
 		/* Register for directory updates */
@@ -362,17 +410,26 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	else
 		/* Cancel any previous dir update */
 		x->remote_dir_xid = 0;
+
+	/* Initialize the reply header */
+	reply->hdr.xid = req->hdr.xid;
+	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
+	reply->dir.type = htonl(LDMS_DIR_LIST);
+	(void)__ldms_for_all_sets(send_dir_reply_cb, &arg);
+	return;
  out:
+	len = sizeof(struct ldms_reply_hdr)
+		+ sizeof(struct ldms_dir_reply);
 	reply->hdr.xid = req->hdr.xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->hdr.rc = htonl(rc);
+	reply->dir.more = 0;
 	reply->dir.type = htonl(LDMS_DIR_LIST);
-	reply->dir.set_count = htonl(set_count);
-	reply->dir.set_list_len = htonl(set_list_sz);
+	reply->dir.set_count = 0;
+	reply->dir.set_list_len = 0;
 	reply->hdr.len = htonl(len);
 
 	x->send(x, reply, len);
-	free(reply);
 	return;
 }
 
@@ -386,7 +443,8 @@ static void
 process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 
-	struct ldms_rbuf_desc *r = (struct ldms_rbuf_desc *)req->req_notify.set_id;
+	struct ldms_rbuf_desc *r =
+		(struct ldms_rbuf_desc *)req->req_notify.set_id;
 
 	r->remote_notify_xid = req->hdr.xid;
 	r->notify_flags = ntohl(req->req_notify.flags);
@@ -468,8 +526,7 @@ static int read_complete_cb(struct ldms_xprt *x, void *context)
 	struct ldms_context *ctxt = context;
 	if (ctxt->update.cb)
 		ctxt->update.cb((ldms_t)x, ctxt->update.s, 0, ctxt->update.arg);
-	if (context != &x->io_ctxt)
-		free(ctxt);
+	free(ctxt);
 	return 0;
 }
 
@@ -576,11 +633,11 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (!set) {
 		ldms_set_t set_t;
 		/* Create a local instance of this remote metric set */
-		rc = _ldms_create_set(ctxt->lookup.path,
-				      ntohl(reply->lookup.meta_len),
-				      ntohl(reply->lookup.data_len),
-				      &set_t,
-				      LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY);
+		rc = __ldms_create_set(ctxt->lookup.path,
+				       ntohl(reply->lookup.meta_len),
+				       ntohl(reply->lookup.data_len),
+				       &set_t,
+				       LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY);
 		if (rc)
 			goto out;
 		sd = (struct ldms_set_desc *)set_t;
@@ -624,6 +681,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	char *src, *dst;
 	enum ldms_dir_type type = ntohl(reply->dir.type);
 	int rc = ntohl(reply->hdr.rc);
+	int more = ntohl(reply->dir.more);
 	size_t len = ntohl(reply->dir.set_list_len);
 	unsigned count = ntohl(reply->dir.set_count);
 	ldms_dir_t dir = NULL;
@@ -636,6 +694,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		goto out;
 	rc = 0;
 	dir->type = type;
+	dir->more = more;
 	dir->set_count = count;
 	src = reply->dir.set_list;
 	dst = (char *)&dir->set_names[count];
@@ -650,7 +709,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (ctxt->dir.cb)
 		ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
 	pthread_mutex_lock(&x->lock);
-	if (!x->local_dir_xid)
+	if (!x->local_dir_xid && !dir->more)
 		free(ctxt);
 	pthread_mutex_unlock(&x->lock);
 }
@@ -798,18 +857,7 @@ ldms_t ldms_create_xprt(const char *name, void (*log)(const char *fmt, ...))
 	x->connected = 0;
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
-	char tmp[32] = "io_ctxt.XXXXXX";
 
-	sem_init(&(x->io_ctxt.sem), 0, 0);
-	x->io_ctxt.sem_p = &(x->io_ctxt.sem);
-
-	//x->io_ctxt.sem_p = sem_open(mktemp(tmp), O_CREAT, 0666, 0);
-	//sem_unlink(tmp);
-	if (!x->io_ctxt.sem_p) {
-		log("Could not create semaphore, errno %d", errno);
-		ret = ENOMEM;
-		goto err;
-	}
 	x->log = log;
 	pthread_mutex_init(&x->lock, 0);
 	pthread_mutex_lock(&xprt_list_lock);
@@ -901,7 +949,7 @@ static int alloc_req_ctxt(struct ldms_request **req, struct ldms_context **ctxt)
 	return 0;
 }
 
-int ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
+int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
 	struct ldms_xprt *x = _x;
  	struct ldms_request *req;
@@ -929,7 +977,7 @@ int ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 }
 
 /* This request has no reply */
-void ldms_remote_dir_cancel(ldms_t _x)
+void __ldms_remote_dir_cancel(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
  	struct ldms_request *req;
@@ -950,8 +998,8 @@ void ldms_remote_dir_cancel(ldms_t _x)
 	free(ctxt);
 }
 
-int ldms_remote_lookup(ldms_t _x, const char *path,
-		       ldms_lookup_cb_t cb, void *arg)
+int __ldms_remote_lookup(ldms_t _x, const char *path,
+			 ldms_lookup_cb_t cb, void *arg)
 {
 	struct ldms_xprt *x = _x;
 	struct ldms_request *req;
@@ -1097,6 +1145,7 @@ int ldms_close(ldms_t _x)
 	rc = 0;
  out:
 	pthread_mutex_unlock(&x->lock);
+	ldms_release_xprt(x);
 	return rc;
 }
 

@@ -42,6 +42,7 @@
 #include <getopt.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
@@ -60,38 +61,30 @@
 
 static pthread_mutex_t dir_lock;
 static pthread_cond_t dir_cv;
-static int dir_count;
-static int dir_needed;
+static int dir_done;
+static int dir_status;
 
-static pthread_mutex_t lu_lock;
-static pthread_cond_t lu_cv;
-static int lu_count;
-static int lu_needed;
-
-static pthread_mutex_t upd_lock;
-static pthread_cond_t upd_cv;
-static int upd_count;
+static pthread_mutex_t done_lock;
+static pthread_cond_t done_cv;
+static int done;
 
 struct ls_set {
-	ldms_set_t set;
+	char *name;
 	LIST_ENTRY(ls_set) entry;
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:i:x:w:lvm"
+#define FMT "h:p:x:w:lv"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
 	       "\n    -h <hostname>    The name of the host to query. Default is localhost.\n"
 	       "\n    -p <port_num>    The port number. The default is 50000.\n"
 	       "\n    -l               Show the values of the metrics in each metric set.\n"
-	       "\n    -i <interval>    When used with the -l option, the metric values will \n"
-	       "                     be queried and displayed every <interval> microseconds.\n"
 	       "\n    -x <name>        The transport name: sock, rdma, or local. Default is\n"
-	       "                     localhost unless -h is specified in which case it is sock.\n"
+	       "                       localhost unless -h is specified in which case it is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
-	       "                     The default is 10 seconds.\n"
-	       "\n    -m               Receive and print notifications.\n"
+	       "                       The default is 10 seconds.\n"
 	       "\n    -v               Show detail information about the metric set. Specifying\n"
 	       "                     this option multiple times increases the verbosity.\n",
 	       argv[0]);
@@ -166,153 +159,95 @@ void print_detail(ldms_set_t s)
 
 static int verbose = 0;
 static int long_format = 0;
-static int monitor = 0;
 
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
+	unsigned long last = (unsigned long)arg;
 	printf("%s\n", ldms_get_set_name(s));
+	if (rc) {
+		printf("    Error %d updating metric set.\n", rc);
+		goto out;
+	}
 	if (verbose)
 		print_detail(s);
 	if (long_format)
 		ldms_visit_metrics(s, metric_printer, NULL);
+
+	ldms_destroy_set(s);
+ out:
 	printf("\n");
-
-	pthread_mutex_lock(&upd_lock);
-	upd_count++;
-	pthread_cond_signal(&upd_cv);
-	pthread_mutex_unlock(&upd_lock);
-}
-
-void notify_cb(ldms_t t, ldms_set_t s, ldms_notify_event_t event, void *arg)
-{
-	struct ls_set *lss;
-	int ret;
-
-	printf("%s: type %d len %zu set %s\n",
-	       __func__,
-	       event->type, event->len, ldms_get_set_name(s));
-
-	pthread_mutex_lock(&dir_lock);
-	LIST_FOREACH(lss, &set_list, entry) {
-		ret = ldms_update(lss->set, print_cb, NULL);
-		if (ret) {
-			printf("ldms_update returned %d\n",
-			       ret);
-			exit(1);
-		}
+	if (last) {
+		done = 1;
+		pthread_cond_signal(&done_cv);
 	}
-	pthread_mutex_unlock(&dir_lock);
 }
 
 void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	       ldms_set_t s, void *arg)
 {
-	struct ls_set *lss;
-	if (status) {
-		errno = status;
-		perror("ldms_ls");
-		printf("ldms_ls: lookup failed for set '%s'\n", (char *)arg);
-		exit(3);
+	unsigned long last = (unsigned long)arg;
+	if (status)
+		goto err;
+
+	ldms_update(s, print_cb, (void *)last);
+	return;
+ err:
+	printf("ldms_ls: Error %d looking up metric set.\n", status);
+	if (last) {
+		pthread_cond_signal(&done_cv);
+		done = 1;
+		done = status;
 	}
+}
+
+static void add_set(char *name)
+{
+	struct ls_set *lss;
 
 	lss = calloc(1, sizeof(struct ls_set));
 	if (!lss) {
-		perror("ldms_ls: ");
-		exit(3);
+		dir_status = ENOMEM;
+		return;
 	}
-
-	pthread_mutex_lock(&dir_lock);
-	lss->set = s;
+	lss->name = strdup(name);
 	LIST_INSERT_HEAD(&set_list, lss, entry);
-	pthread_mutex_unlock(&dir_lock);
-
-	if (monitor)
-		ldms_register_notify_cb(t, s, 0, notify_cb, s);
-
-	pthread_mutex_lock(&lu_lock);
-	lu_count++;
-	if (lu_count == lu_needed)
-		pthread_cond_signal(&lu_cv);
-	pthread_mutex_unlock(&lu_lock);
 }
 
 void add_set_list(ldms_t t, ldms_dir_t _dir)
 {
 	int i;
-	pthread_mutex_lock(&lu_lock);
-	lu_count = 0;
-	lu_needed = _dir->set_count;
-	pthread_mutex_unlock(&lu_lock);
-
-	dir_count = 1;
-	pthread_cond_signal(&dir_cv);
 	for (i = 0; i < _dir->set_count; i++)
-		if (!verbose && !long_format)
-			printf("%s\n", _dir->set_names[i]);
-		else
-			ldms_lookup(t, _dir->set_names[i], lookup_cb,
-				    _dir->set_names[i]);
-}
-
-static void _del_set(ldms_t t, const char *set_name)
-{
-	struct ls_set *lss;
-	LIST_FOREACH(lss, &set_list, entry) {
-		if (0 == strcmp(set_name, ldms_get_set_name(lss->set))) {
-			ldms_set_release(lss->set);
-			LIST_REMOVE(lss, entry);
-			free(lss);
-			break;
-		}
-	}
-}
-
-void del_set(ldms_t t, ldms_dir_t _dir)
-{
-	int i;
-	for (i = 0; i < _dir->set_count; i++) {
-		_del_set(t, _dir->set_names[i]);
-	}
-}
-
-void add_set(ldms_t t, ldms_dir_t _dir)
-{
-
-	int i;
-	for (i = 0; i < _dir->set_count; i++) {
-
-		/* In case we already have it, delete it first */
-		_del_set(t, _dir->set_names[i]);
-
-		ldms_lookup(t, _dir->set_names[i], lookup_cb, 0);
-	}
+		add_set(_dir->set_names[i]);
 }
 
 void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 {
-	if (status)
+	int more;
+	if (status) {
+		dir_status = status;
+		goto wakeup;
+	}
+	more = _dir->more;
+	add_set_list(t, _dir);
+	ldms_dir_release(t, _dir);
+	if (more)
 		return;
 
-	pthread_mutex_lock(&dir_lock);
-	switch (_dir->type) {
-	case LDMS_DIR_LIST:
-		add_set_list(t, _dir);
-		break;
-	case LDMS_DIR_DEL:
-		del_set(t, _dir);
-		break;
-	case LDMS_DIR_ADD:
-		add_set(t, _dir);
-		break;
-	default:
-		printf("Bad directory type %d\n", _dir->type);
-	}
-	pthread_mutex_unlock(&dir_lock);
-	ldms_dir_release(t, _dir);
+ wakeup:
+	if (!verbose && !long_format)
+		done = 1;
+	dir_done = 1;
+	pthread_cond_signal(&dir_cv);
 }
 
 void null_log(const char *fmt, ...)
 {
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	fflush(stdout);
+
 	// print nothing at all!!!!
 }
 
@@ -327,7 +262,6 @@ int main(int argc, char *argv[])
 	short port_no = LDMS_DEFAULT_PORT;
 	int op;
 	int i;
-	long sample_interval = -1;
 	char *xprt = "local";
 	int waitsecs = 10;
 	struct timespec ts;
@@ -346,9 +280,6 @@ int main(int argc, char *argv[])
 		case 'l':
 			long_format = 1;
 			break;
-		case 'i':
-			sample_interval = strtol(optarg, NULL, 0);
-			break;
 		case 'v':
 			verbose++;
 			break;
@@ -358,17 +289,10 @@ int main(int argc, char *argv[])
 		case 'w':
 			waitsecs = atoi(optarg);
 			break;
-		case 'm':
-			monitor = 1;
-			long_format = 1;
-			break;
 		default:
 			usage(argv);
 		}
 	}
-	if ((sample_interval >= 0) && !(verbose || long_format))
-		usage(argv);
-
 	/* If they specify a host name change the default transport to socket */
 	if (0 != strcmp(hostname, "localhost") && 0 == strcmp(xprt, "local"))
 		xprt = "sock";
@@ -401,19 +325,16 @@ int main(int argc, char *argv[])
 	ret  = ldms_connect(ldms, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret) {
 		perror("ldms_ls");
-		exit(1);
+		exit(2);
 	}
 
 	pthread_mutex_init(&dir_lock, 0);
 	pthread_cond_init(&dir_cv, NULL);
-	pthread_mutex_init(&lu_lock, 0);
-	pthread_cond_init(&lu_cv, NULL);
-	pthread_mutex_init(&upd_lock, 0);
-	pthread_cond_init(&upd_cv, NULL);
+	pthread_mutex_init(&done_lock, 0);
+	pthread_cond_init(&done_cv, NULL);
 
-	dir_needed = 1;
 	if (optind == argc) {
-		ret = ldms_dir(ldms, dir_cb, NULL, 1);
+		ret = ldms_dir(ldms, dir_cb, NULL, 0);
 		if (ret) {
 			printf("ldms_dir returned synchronous error %d\n",
 			      ret);
@@ -438,55 +359,48 @@ int main(int argc, char *argv[])
 		dir->type = LDMS_DIR_LIST;
 		for (i = optind; i < argc; i++)
 			dir->set_names[i - optind] = strdup(argv[i]);
-		dir_cb(ldms, 0, dir, NULL);
+		add_set_list(ldms, dir);
+		dir_done = 1;	/* no need to wait */
+		dir_status = 0;
 	}
 
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += waitsecs;
 	pthread_mutex_lock(&dir_lock);
-	while (dir_needed != dir_count)
+	while (!dir_done)
 		ret = pthread_cond_timedwait(&dir_cv, &dir_lock, &ts);
 	pthread_mutex_unlock(&dir_lock);
 	if (ret)
 		server_timeout();
-	/* If we're not monitoring the peer, wait for all lookups to complete */
-	if ((verbose || long_format) && sample_interval < 0) {
-		clock_gettime(CLOCK_REALTIME, &ts);
-		ts.tv_sec += waitsecs;
-		pthread_mutex_lock(&lu_lock);
-		while (lu_needed != lu_count)
-			ret = pthread_cond_timedwait(&lu_cv, &lu_lock, &ts);
-		pthread_mutex_unlock(&lu_lock);
-		if (ret)
-			server_timeout();
+	
+	if (dir_status) {
+		printf("Error %d looking up the metric set directory.\n",
+		       dir_status);
+		exit(3);
 	}
 
-	if (monitor) {
-		while(!sleep(1000000));
-	} else {
-		do {
-			struct ls_set *lss;
-			pthread_mutex_lock(&dir_lock);
-			LIST_FOREACH(lss, &set_list, entry) {
-				ret = ldms_update(lss->set, print_cb, NULL);
-				if (ret) {
-					printf("ldms_update returned %d\n",
-					       ret);
-					exit(1);
-				}
+	struct ls_set *lss;
+	while (!LIST_EMPTY(&set_list)) {
+
+		lss = LIST_FIRST(&set_list);
+		LIST_REMOVE(lss, entry);
+
+		if (verbose || long_format) {
+			ret = ldms_lookup(ldms, lss->name, lookup_cb,
+					  (void *)(unsigned long)
+					  LIST_EMPTY(&set_list));
+			if (ret) {
+				printf("ldms_lookup returned %d for set '%s'\n",
+				       ret, lss->name);
 			}
-			pthread_mutex_unlock(&dir_lock);
-			if (sample_interval > 0)
-				usleep(sample_interval);
-		} while (sample_interval >= 0);
+		} else
+			printf("%s\n", lss->name);
 	}
+	pthread_mutex_lock(&done_lock);
+	while (!done)
+		pthread_cond_wait(&done_cv, &done_lock);
+	pthread_mutex_unlock(&done_lock);
 
-	if ((verbose || long_format) && sample_interval < 0) {
-		pthread_mutex_lock(&upd_lock);
-		while (upd_count < lu_needed)
-			pthread_cond_wait(&upd_cv, &upd_lock);
-		pthread_mutex_unlock(&upd_lock);
-	}
 	ldms_close(ldms);
 	exit(0);
 }

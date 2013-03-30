@@ -135,6 +135,7 @@ struct ldms_lookup_reply {
 
 struct ldms_dir_reply {
 	uint32_t type;
+	uint32_t more;
 	uint32_t set_count;
 	uint32_t set_list_len;
 	char set_list[0];
@@ -203,10 +204,9 @@ struct ldms_xprt {
 	pthread_mutex_t lock;
 	int connected;
 	int closed;
+	int max_msg;		/* max send message size */
 	uint64_t local_dir_xid;
 	uint64_t remote_dir_xid;
-	int io_wait;
-	struct ldms_context io_ctxt;
 
 	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
 	LIST_ENTRY(ldms_xprt) xprt_link;

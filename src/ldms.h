@@ -165,6 +165,7 @@ typedef void *ldms_metric_t;
  * This structure describes a metric value in the metric set. Metrics
  * are self describing.
  */
+#pragma pack(4)
 struct ldms_value_desc {
 	uint32_t next_offset;	/*! Offset of next descriptor */
 	uint32_t data_offset;	/*! Offset of the value in ldms_data_hdr */
@@ -172,6 +173,7 @@ struct ldms_value_desc {
 	uint8_t name_len;	/*! The length of the metric name in bytes*/
 	char name[0];		/*! The metric name */
 };
+#pragma pack()
 
 /**
  * \brief Metric value union
@@ -516,8 +518,16 @@ enum ldms_dir_type {
  * \c ldms_dir request.
  */
 typedef struct ldms_dir_s {
+	/** the type of update */
 	enum ldms_dir_type type;
+
+	/** !0 if this is the first of multiple updates */
+	int more;
+
+	/** count of sets in teh set_name array */
 	int set_count;
+
+	/** each string is null terminated. */
 	char *set_names[0];
 } *ldms_dir_t;
 

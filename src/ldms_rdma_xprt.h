@@ -47,17 +47,28 @@
 #include <semaphore.h>
 #include "ldms_xprt.h"
 
-#define SQ_DEPTH 8
-#define RQ_DEPTH 8
+#define SQ_DEPTH 4
+#define RQ_DEPTH 4
 #define RQ_BUF_SZ 2048
 #define SQ_SGE 1
 #define RQ_SGE 1
 
+#pragma pack(4)
+struct rdma_request_hdr {
+	uint32_t credits;
+};
+
+#define RDMA_CREDIT_UPDATE_CMD (LDMS_CMD_XPRT_PRIVATE | 0x1)
+struct rdma_credit_update_req {
+	struct rdma_request_hdr rdma_hdr;
+	struct ldms_request_hdr hdr;
+};
+#pragma pack()
+
 struct rdma_buffer {
-	void *data;
+	char *data;
 	size_t data_len;
 	struct ibv_mr *mr;
-	int is_recv;
 	LIST_ENTRY(rdma_buffer) link; /* linked list entry */
 };
 
@@ -80,22 +91,30 @@ struct rdma_buf_local_data {
 };
 
 enum rdma_conn_status {
-	CONN_ERROR = -1,
 	CONN_IDLE = 0,
 	CONN_CONNECTING,
 	CONN_CONNECTED,
-	CONN_CLOSED
+	CONN_CLOSED,
+	CONN_ERROR
 };
 
 /**
  * RDMA Transport private data
  */
 
+struct ldms_rdma_xprt;
 struct rdma_context {
 	void *usr_context;      /* user context if any */
+
+	struct ldms_rdma_xprt *x;
+	struct ibv_send_wr wr;
+	struct ibv_sge sge;
+
 	enum ibv_wc_opcode op;  /* work-request op (can't be trusted
 				in wc on error */
 	struct rdma_buffer *rb; /* RDMA buffer if any */
+	
+	TAILQ_ENTRY(rdma_context) pending_link; /* pending i/o */
 };
 
 LIST_HEAD(rdma_buffer_list, rdma_buffer);
@@ -105,31 +124,26 @@ struct ldms_rdma_xprt {
 	int server;			/* 0 iff client */
 	enum rdma_conn_status conn_status;
 	struct ibv_comp_channel *cq_channel;
-	struct ibv_cq *cq;
+	struct ibv_cq *rq_cq;
+	struct ibv_cq *sq_cq;
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
 
-	// Narate: Context list only for rdma_setup_conn so that we can destroy
-	//   this later in rdma_teardown_conn
-	struct rdma_buffer_list conn_buffer_head;
-
-	sem_t sem;
-
-	int verbose;			/* verbose logging */
-	int count;			/* ping count */
-	int size;			/* ping data size */
-	int validate;			/* validate ping data */
-
 	/* CM stuff */
+	sem_t sem;
 	pthread_t server_thread;
 	struct rdma_event_channel *cm_channel;
-	struct rdma_cm_id *cm_id;	/* connection on client side,
-					 * listener on service side. */
+	struct rdma_cm_id *cm_id; /* connection on client side,
+				   * listener on service side. */
 
-	pthread_mutex_t lock;
+	int rem_rq_credits;	/* peer's RQ available credits */
+	int lcl_rq_credits;	/* local RQ available credits */
+	int sq_credits;		/* local SQ credits */
+
+	pthread_mutex_t credit_lock;
+	TAILQ_HEAD(xprt_credit_list, rdma_context) io_q;
+
 	LIST_ENTRY(ldms_rdma_xprt) client_link;
 };
-
-extern int rdma_register(struct sockaddr *s, struct ldms_rdma_xprt *x);
 
 #endif

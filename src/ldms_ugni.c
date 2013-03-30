@@ -713,6 +713,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	r = calloc(1, sizeof(struct ldms_ugni_xprt));
 	LIST_INSERT_HEAD(&ugni_list, r, client_link);
 
+	x->max_msg = (256 * 1024);
 	x->connect = ugni_xprt_connect;
 	x->listen = ugni_xprt_listen;
 	x->destroy = ugni_xprt_destroy;

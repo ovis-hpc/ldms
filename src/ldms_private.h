@@ -42,17 +42,19 @@
 #ifndef _LDMS_PRIVATE_H
 #define _LDMS_PRIVATE_H
 
-extern int ldms_remote_lookup(ldms_t _x, const char *path,
-			      ldms_lookup_cb_t cb, void *cb_arg);
-extern int ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
-extern void ldms_remote_dir_cancel(ldms_t x);
-extern int _ldms_create_set(const char *set_name,
-			    size_t meta_sz, size_t data_sz,
-			    ldms_set_t *s, uint32_t flags);
-extern void ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
-extern int ldms_get_local_set_list(char *set_list, size_t set_list_len,
-				   int *set_count, int *set_list_size);
-void ldms_dir_add_set(const char *set_name);
-void ldms_dir_del_set(const char *set_name);
+extern int __ldms_remote_lookup(ldms_t _x, const char *path,
+				ldms_lookup_cb_t cb, void *cb_arg);
+extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
+extern void __ldms_remote_dir_cancel(ldms_t x);
+extern int __ldms_create_set(const char *set_name,
+			     size_t meta_sz, size_t data_sz,
+			     ldms_set_t *s, uint32_t flags);
+extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
+extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
+				     int *set_count, int *set_list_size);
+void __ldms_dir_add_set(const char *set_name);
+void __ldms_dir_del_set(const char *set_name);
+int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
+size_t __ldms_xprt_max_msg(struct ldms_xprt *x);
 
 #endif

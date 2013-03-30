@@ -599,6 +599,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	r = calloc(1, sizeof(struct ldms_sock_xprt));
 	LIST_INSERT_HEAD(&sock_list, r, client_link);
 
+	x->max_msg = (256 * 1024);
 	x->connect = sock_xprt_connect;
 	x->listen = sock_xprt_listen;
 	x->destroy = sock_xprt_destroy;

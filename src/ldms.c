@@ -194,7 +194,7 @@ static int visit_subtree(struct ogc_rbn *n,
 	return rc;
 }
 
-static int for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
+int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 {
 	if (set_tree.root)
 		return visit_subtree(set_tree.root, cb, arg);
@@ -224,8 +224,8 @@ int set_list_cb(struct ldms_set *set, void *arg)
 	return 0;
 }
 
-int ldms_get_local_set_list(char *set_list, size_t set_list_len,
-			    int *set_count, int *set_list_size)
+int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
+			      int *set_count, int *set_list_size)
 {
 	struct set_list_arg arg;
 	int rc;
@@ -233,7 +233,7 @@ int ldms_get_local_set_list(char *set_list, size_t set_list_len,
 	arg.set_list = set_list;
 	arg.set_list_len = set_list_len;
 	arg.count = 0;
-	rc = for_all_sets(set_list_cb, &arg);
+	rc = __ldms_for_all_sets(set_list_cb, &arg);
 	if (!rc) {
 		*set_count = arg.count;
 		/* Original len - remainder */
@@ -254,14 +254,14 @@ int set_list_sz_cb(struct ldms_set *set, void *arg)
 	return 0;
 }
 
-void ldms_get_local_set_list_sz(int *set_count, int *set_list_size)
+void __ldms_get_local_set_list_sz(int *set_count, int *set_list_size)
 {
 	struct set_list_arg arg;
 	int rc;
 
 	arg.count = 0;
 	arg.set_list_len = 0;
-	rc = for_all_sets(set_list_sz_cb, &arg);
+	rc = __ldms_for_all_sets(set_list_sz_cb, &arg);
 	*set_count = arg.count;
 	*set_list_size = arg.set_list_len;
 }
@@ -402,7 +402,7 @@ void ldms_destroy_set(ldms_set_t s)
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
 
-	ldms_dir_del_set(set->meta->name);
+	__ldms_dir_del_set(set->meta->name);
 
 	while (!LIST_EMPTY(&set->rbd_list)) {
 		rbd = LIST_FIRST(&set->rbd_list);
@@ -443,7 +443,7 @@ int ldms_lookup(ldms_t _x, const char *path,
 		return EINVAL;
 
 	if (strcmp(x->name, "local"))
-		return ldms_remote_lookup(_x, path, cb, cb_arg);
+		return __ldms_remote_lookup(_x, path, cb, cb_arg);
 
 	/* See if it's in my process */
 	set = ldms_find_local_set(path);
@@ -535,13 +535,13 @@ static int local_dir(int *set_count, char *set_list, size_t *set_list_sz)
 	int rc;
 	int set_list_size;
 
-	ldms_get_local_set_list_sz(set_count, &set_list_size);
+	__ldms_get_local_set_list_sz(set_count, &set_list_size);
 	if (set_list_size > *set_list_sz) {
 		*set_list_sz = set_list_size;
 		return E2BIG;
 	}
-	rc = ldms_get_local_set_list(set_list, *set_list_sz,
-				     set_count, &set_list_size);
+	rc = __ldms_get_local_set_list(set_list, *set_list_sz,
+				       set_count, &set_list_size);
 
 	local_dir_context.set_list = &set_list[set_list_size];
 	local_dir_context.set_count = *set_count;
@@ -565,12 +565,12 @@ int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 		return local_dir(x, cb, cb_arg, flags);
 #endif
 
-	return ldms_remote_dir(x, cb, cb_arg, flags);
+	return __ldms_remote_dir(x, cb, cb_arg, flags);
 }
 
 void ldms_dir_cancel(ldms_t x)
 {
-	ldms_remote_dir_cancel(x);
+	__ldms_remote_dir_cancel(x);
 }
 
 char *_create_path(const char *set_name)
@@ -674,7 +674,7 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	ldms_dir_add_set(set_name);
+	__ldms_dir_add_set(set_name);
 	return 0;
  out_2:
 	munmap(data, data_sz);
@@ -684,8 +684,8 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	return rc;
 }
 #else
-int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
-		     ldms_set_t *s, uint32_t flags)
+int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
+		      ldms_set_t *s, uint32_t flags)
 {
 	struct ldms_data_hdr *data;
 	struct ldms_set_hdr *meta;
@@ -739,7 +739,7 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	ldms_dir_add_set(set_name);
+	__ldms_dir_add_set(set_name);
 	return 0;
 
  out_1:
@@ -752,8 +752,8 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 int ldms_create_set(const char *set_name,
 		    size_t meta_sz, size_t data_sz, ldms_set_t *s)
 {
-	return _ldms_create_set(set_name, meta_sz, data_sz,
-				s, LDMS_SET_F_LOCAL);
+	return __ldms_create_set(set_name, meta_sz, data_sz,
+				 s, LDMS_SET_F_LOCAL);
 }
 
 /** \brief Return the name of the set

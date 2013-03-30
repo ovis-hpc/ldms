@@ -66,6 +66,7 @@
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "../config.h"
+#include "event2/thread.h"
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
@@ -1171,13 +1172,15 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s, void *arg
 	}
 	hset->set = s;
 	/*
-	 * Run the list of stored metrics and refresh the metric
-	 * handle.
+	 * Run the list of stored metrics and release the metric
+	 * handle. This will cause it to be refreshed when the update
+	 * completes.
 	 */
 	LIST_FOREACH(hsm, &hset->metric_list, entry) {
-		if (hsm->metric)
+		if (hsm->metric) {
 			ldms_metric_release(hsm->metric);
-		hsm->metric = ldms_get_metric(hset->set, hsm->name);
+			hsm->metric = NULL;
+		}
 	}
 	hset_ref_put(hset);
 }
@@ -1222,7 +1225,8 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 
 		/* Take a lookup reference. Find takes one for us. */
 		hset_ref_get(hset);
-	}
+	} else
+		ldms_log("Metric set '%s' is already present.\n", set_name);
 
 	/* Refresh the set with a lookup */
 	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
@@ -1295,7 +1299,6 @@ void dir_cb_add(ldms_t t, ldms_dir_t dir, void *arg)
 {
 	struct hostspec *hs = arg;
 	int i;
-	ldms_log("%s set_count %d\n", __FUNCTION__, dir->set_count);
 	for (i = 0; i < dir->set_count; i++)
 		_add_cb(t, hs, dir->set_names[i]);
 }
@@ -1309,7 +1312,6 @@ void dir_cb_del(ldms_t t, ldms_dir_t dir, void *arg)
 	struct hostspec *hs = arg;
 	int i;
 
-	ldms_log("%s set_count %d\n", __FUNCTION__, dir->set_count);
 	for (i = 0; i < dir->set_count; i++)
 		_dir_cb_del(t, hs, dir->set_names[i]);
 }
@@ -1470,7 +1472,8 @@ void update_data(struct hostspec *hs)
 		ret = ldms_update(hset->set, update_complete_cb, hset);
 		if (ret)
 			ldms_log("Error %d updating metric set "
-				 "on host '%s'.\n", ret, hs->hostname);
+				 "on host %s:%d[%s].\n", ret, hs->hostname,
+				 ntohs(hs->sin.sin_port), hs->xprt_name);
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
