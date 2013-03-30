@@ -1915,7 +1915,9 @@ int main(int argc, char *argv[])
 	do {
 		int set_no;
 		for (set_no = 0; set_no < test_set_count; set_no++) {
+			ldms_begin_transaction(test_sets[set_no]);
 			ldms_set_u64(test_metrics[set_no], count);
+			ldms_end_transaction(test_sets[set_no]);
 			if (notify) {
 				struct ldms_notify_event_s event;
 				ldms_init_notify_modified(&event);

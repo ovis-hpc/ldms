@@ -144,6 +144,13 @@ void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
 void print_detail(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
+	struct ldms_timestamp const *ts = ldms_get_timestamp(s);
+	int consistent = ldms_is_set_consistent(s);
+	struct tm *tm;
+	char dtsz[200];
+	time_t t = ts->sec;
+	tm = localtime(&t);
+	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
 
 	printf("  METADATA --------\n");
 	printf("             Size : %" PRIu32 "\n", sd->set->meta->meta_size);
@@ -151,6 +158,8 @@ void print_detail(ldms_set_t s)
 	printf("     Metric Count : %" PRIu32 "\n", sd->set->meta->card);
 	printf("               GN : %" PRIu64 "\n", sd->set->meta->meta_gn);
 	printf("  DATA ------------\n");
+	printf("        Timestamp : %s [%dus]\n", dtsz, ts->usec);
+	printf("       Consistent : %s\n", (consistent?"TRUE":"FALSE"));
 	printf("             Size : %" PRIu32 "\n", sd->set->meta->data_size);
 	printf("            Inuse : %" PRIu32 "\n", sd->set->data->tail_off);
 	printf("               GN : %" PRIu64 "\n", sd->set->data->gn);

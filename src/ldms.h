@@ -332,7 +332,25 @@ struct ldms_set_hdr {
 	char name[LDMS_SET_NAME_MAX];
 };
 
+enum ldms_transaction_flags {
+	LDMS_TRANSACTION_NONE = 0,
+	LDMS_TRANSACTION_BEGIN = 1,
+	LDMS_TRANSACTION_END = 2
+};
+
+struct ldms_timestamp  {
+	uint32_t sec;
+	uint32_t usec;
+};
+
+struct ldms_transaction {
+	struct ldms_timestamp ts;
+	uint32_t flags;
+};
+
 struct ldms_data_hdr {
+	struct ldms_transaction trans;
+	uint32_t pad;
 	uint64_t gn;		/* Metric-value generation number */
 	uint64_t size;		/* Max size of data */
 	uint64_t meta_gn;	/* Meta-data generation number */
@@ -794,6 +812,74 @@ extern uint32_t ldms_get_cardinality(ldms_set_t s);
  * and to get and set the value of a metric.
  * \{
  */
+
+/**
+ * \brief Start an LDMS transaction
+ *
+ * Metric sets are updated one metric at a time. A metric set provider
+ * may provide information to the peer that the metric set is
+ * consistent by updating metrics inside a transaction. In this way,
+ * the peer can determine if the metric set updated was in the middle
+ * of a transaction and therefore contains potentially inconsistent
+ * data.
+ *
+ * \param s     The ldms_set_t handle.
+ * \returns 0   If the transaction was started.
+ * \returns !0  If the specified metric set is invalid.
+ */
+extern int ldms_start_transaction(ldms_set_t s);
+
+/**
+ * \brief Begin an LDMS transaction
+ *
+ * A metric set provider may provide information to the peer that the
+ * metric set is consistent by updating metrics inside a
+ * transaction. In this way, the peer can determine if the metric set
+ * updated was in the middle of a transaction and therefore contains
+ * potentially inconsistent data.
+ *
+ * \param s     The ldms_set_t handle.
+ * \returns 0   If the transaction was started.
+ * \returns !0  If the specified metric set is invalid.
+ */
+extern int ldms_begin_transaction(ldms_set_t s);
+
+/**
+ * \brief End an LDMS transaction
+ *
+ * Marks the metric set as consistent and time-stamps the data.
+ *
+ * \param s     The ldms_set_t handle.
+ * \returns 0   If the transaction was started.
+ * \returns !0  If the specified metric set is invalid.
+ */
+extern int ldms_end_transaction(ldms_set_t s);
+
+/**
+ * \brief Get the time the set was last modified.
+ *
+ * Returns an ldms_timestamp structure that specifies when
+ * ldms_end_transaction was last called by the metric set provider. If
+ * the metric set provider does not update it's metric sets inside
+ * transactions, then this value is invalid. This value is undefined
+ * if the metric set is not consistent, see \c ldms_is_set_consistent.
+ *
+ * \param s     The metric set handle
+ * \returns ts  A pointer to a timestamp structure.
+ */
+extern struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s);
+
+/**
+ * \brief Returns TRUE if the metric set is consistent.
+ *
+ * A metric set is consistent if it is not in the middle of being
+ * updated. This is indicated by the metric set provider if they are
+ * using transaction boundaries on metric set updates: see \c
+ * ldms_begin_transaction and \c ldms_end_transaction. Using
+ * transactions to update metric sets is computatationaly inexpensive,
+ * but optional.
+ */
+extern int ldms_is_set_consistent(ldms_set_t s);
 
 /**
  * \brief Add a metric to the set

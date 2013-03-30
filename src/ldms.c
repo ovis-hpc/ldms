@@ -52,6 +52,7 @@
 #include <sys/mman.h>
 #include <sys/user.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -1138,4 +1139,38 @@ const char *ldms_type_to_str(enum ldms_value_type t)
 	if (t > LDMS_V_U64)
 		t = LDMS_V_NONE;
 	return type_names[t];
+}
+
+int ldms_begin_transaction(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = s;
+	struct ldms_data_hdr *dh = sd->set->data;
+	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
+	return 0;
+}
+
+int ldms_end_transaction(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = s;
+	struct ldms_data_hdr *dh = sd->set->data;
+	struct timeval tv;
+	(void)gettimeofday(&tv, NULL);
+	dh->trans.ts.sec = tv.tv_sec;
+	dh->trans.ts.usec = tv.tv_usec;
+	dh->trans.flags = LDMS_TRANSACTION_END;
+	return 0; 
+}
+
+struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = s;
+	struct ldms_data_hdr *dh = sd->set->data;
+	return &dh->trans.ts;
+}
+
+int ldms_is_set_consistent(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = s;
+	struct ldms_data_hdr *dh = sd->set->data;
+	return (dh->trans.flags == LDMS_TRANSACTION_END);
 }
