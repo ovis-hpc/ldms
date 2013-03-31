@@ -172,7 +172,17 @@ static int long_format = 0;
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
-	printf("%s\n", ldms_get_set_name(s));
+	struct ldms_timestamp const *ts = ldms_get_timestamp(s);
+	int consistent = ldms_is_set_consistent(s);
+	struct tm *tm;
+	char dtsz[200];
+	time_t ti = ts->sec;
+	tm = localtime(&ti);
+	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
+
+	printf("%s: %s, last update: %s [%dus]\n",
+	       ldms_get_set_name(s),
+	       (consistent?"consistent":"inconsistent"), dtsz, ts->usec);
 	if (rc) {
 		printf("    Error %d updating metric set.\n", rc);
 		goto out;
