@@ -109,8 +109,7 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 	
 	(void)inet_ntop(AF_INET, &lcl->sin_addr, lcl_buf, sizeof(lcl_buf));
 	(void)inet_ntop(AF_INET, &rem->sin_addr, rem_buf, sizeof(rem_buf));
-	LOG_(r, "Tearing down %s connection %s:%hu <--> %s:%hu.\n",
-	     r->xprt->name,
+	LOG_(r, "RDMA: Tearing down %s:%hu <--> %s:%hu.\n",
 	     lcl_buf, ntohs(lcl->sin_port),
 	     rem_buf, ntohs(rem->sin_port));
 
@@ -542,7 +541,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x,
 
  err_3:
 	/* These are all syncrhonous clean-ups. IB does not support
-	 * reconnecting on the same cm_id, so blow everythign away
+	 * reconnecting on the same cm_id, so blow everything away
 	 * and start over next time
 	 */
 	(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL, r->cm_channel->fd, NULL);
@@ -1031,6 +1030,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 			     struct rdma_cm_id *cma_id,
 			     enum rdma_cm_event_type event)
 {
+	struct sockaddr_in *sin;
 	int ret = 0;
 	struct ldms_rdma_xprt *x = cma_id->context;
 	char buf[32];
@@ -1040,11 +1040,11 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		ret = rdma_resolve_route(cma_id, 2000);
 		if (ret) {
-			LOG_(x, "RDMA: host %s has crashed.\n",
-			     inet_ntop(AF_INET,
-				       &((struct sockaddr_in *)
-					 &x->xprt->remote_ss)->sin_addr,
-				       buf, sizeof(buf)));
+			sin = (struct sockaddr_in *)&x->xprt->remote_ss;
+			LOG_(x, "RDMA: resolve route failed for %s:%hu.\n",
+			     inet_ntop(AF_INET, &sin->sin_addr,
+				       buf, sizeof(buf)),
+			     ntohs(sin->sin_port));
 			x->conn_status = CONN_ERROR;
 			x->xprt->connected = 0;
 			(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL,
@@ -1056,11 +1056,11 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		ret = rdma_setup_conn(x);
 		if (ret) {
-			LOG_(x, "RDMA: host %s has crashed.\n",
-			     inet_ntop(AF_INET,
-				       &((struct sockaddr_in *)
-					 &x->xprt->remote_ss)->sin_addr,
-				       buf, sizeof(buf)));
+			sin = (struct sockaddr_in *)&x->xprt->remote_ss;
+			LOG_(x, "RDMA: setup connection failed for %s:%hu.\n",
+			     inet_ntop(AF_INET, &sin->sin_addr,
+				       buf, sizeof(buf)),
+			     ntohs(sin->sin_port));
 			x->conn_status = CONN_ERROR;
 			x->xprt->connected = 0;
 			sem_post(&x->sem);
@@ -1084,11 +1084,12 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-		s = (char *)inet_ntop(AF_INET,
-				      &((struct sockaddr_in *)
-					&x->xprt->remote_ss)->sin_addr,
+		sin = (struct sockaddr_in *)&x->xprt->remote_ss;
+		s = (char *)inet_ntop(AF_INET, &sin->sin_addr,
 				      buf, sizeof(buf));
-		LOG_(x, "Connection error for %s.\n", s);
+		LOG_(x, "RDMA: %s for %s:%hu.\n",
+		     cma_event_str[event],
+		     s, ntohs(sin->sin_port));
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
 		x->xprt->connected = 0;
@@ -1164,6 +1165,8 @@ static void *cm_thread_proc(void *arg)
 
 		for (i = 0; i < ret; i++) {
 			r = cm_events[i].data.ptr;
+			if (!r || !r->cm_channel)
+				continue;
 			if (rdma_get_cm_event(r->cm_channel, &event))
 				continue;
 
