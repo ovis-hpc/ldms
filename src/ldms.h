@@ -167,6 +167,7 @@ typedef void *ldms_metric_t;
  */
 #pragma pack(4)
 struct ldms_value_desc {
+	uint64_t user_data;	/*! User defined meta-data */
 	uint32_t next_offset;	/*! Offset of next descriptor */
 	uint32_t data_offset;	/*! Offset of the value in ldms_data_hdr */
 	uint32_t type;		/*! The type of the value, enum ldms_value_type */
@@ -1045,6 +1046,35 @@ extern struct ldms_value_desc *ldms_first(struct ldms_iterator *i, ldms_set_t se
 extern struct ldms_value_desc *ldms_next(struct ldms_iterator *i);
 
 /**
+ * \brief Set the user-data associated with a metric
+ *
+ * Sets the user-defined meta data associated with a metric.
+ *
+ * \param m     The metric handle.
+ * \param u     An 8B user-data value.
+ */
+static inline void ldms_set_user_data(ldms_metric_t m, uint64_t u)
+{
+	struct ldms_metric *_m = (struct ldms_metric *)m;
+	_m->desc->user_data = u;
+}
+
+/**
+ * \brief Get the user-data associated with a metric
+ *
+ * Returns the user-defined metric meta-data set with
+ * \c ldms_set_user_data.
+ *
+ * \param m     The metric handle.
+ * \returns u   The user-defined metric meta data value.
+ */
+static inline uint64_t ldms_get_user_data(ldms_metric_t m)
+{
+	struct ldms_metric *_m = (struct ldms_metric *)m;
+	return _m->desc->user_data;
+}
+
+/**
  * \brief Set the value of a metric.
  *
  * Set the specified metric \c m to the value contained in the union
@@ -1090,7 +1120,6 @@ static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
 	}
 	m->set->data->gn++;
 }
-
 
 /**
  * \brief Set the value of a metric.

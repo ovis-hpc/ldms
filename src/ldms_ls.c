@@ -74,13 +74,14 @@ struct ls_set {
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:x:w:lv"
+#define FMT "h:p:x:w:lvu"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
 	       "\n    -h <hostname>    The name of the host to query. Default is localhost.\n"
 	       "\n    -p <port_num>    The port number. The default is 50000.\n"
 	       "\n    -l               Show the values of the metrics in each metric set.\n"
+	       "\n    -u               Show the user-defined metric meta data value.\n"
 	       "\n    -x <name>        The transport name: sock, rdma, or local. Default is\n"
 	       "                       localhost unless -h is specified in which case it is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
@@ -99,9 +100,11 @@ void server_timeout(void)
 	exit(1);
 }
 
+static int user_data = 0;
 void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
 {
 	char value_str[64];
+	char name_str[256];
 	printf("%4s ", ldms_type_to_str(vd->type));
 
 	switch (vd->type) {
@@ -139,7 +142,11 @@ void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
 		sprintf(value_str, "%Lf", v->v_ld);
 		break;
 	}
-	printf("%-16s %s\n", value_str, vd->name);
+	if (user_data)
+		sprintf(name_str, "%-42s 0x%" PRIx64, vd->name, vd->user_data);
+	else
+		strcpy(name_str, vd->name);
+	printf("%-16s %s\n", value_str, name_str);
 }
 void print_detail(ldms_set_t s)
 {
@@ -298,6 +305,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'l':
 			long_format = 1;
+			break;
+		case 'u':
+			user_data = 1;
 			break;
 		case 'v':
 			verbose++;
