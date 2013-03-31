@@ -1,5 +1,5 @@
 
-%define RELEASE 2.0.1
+%define RELEASE 2.1.0
 %define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
 
 Summary: LDMS Commands and Libraries
@@ -44,6 +44,7 @@ rm -rf $RPM_BUILD_ROOT
 %doc README COPYING ChangeLog
 
 %changelog
+* Sun Mar 31 2013 Tom Tucker <tom@ogc.us> - 2.1.0
 * Tue Sep  5 2012 Tom Tucker <tom@ogc.us> - 2.0.1
 * Fri Jul  6 2012 Tom Tucker <tom@ogc.us> - 2.0.0
 * Tue Aug 24 2008 Tom Tucker <tom@ogc.us> - 1.0.0

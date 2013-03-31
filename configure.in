@@ -1,12 +1,12 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT(ldms-utils, 2.0.1, tom@ogc.us)
+AC_INIT(ldms-utils, 2.1.0, tom@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(ldms-utils, 2.0.1)
+AM_INIT_AUTOMAKE(ldms-utils, 2.1.0)
 AM_PROG_LIBTOOL
 
 AC_ARG_ENABLE(sos, [  --disable-sos     Disable the SOS plugin],

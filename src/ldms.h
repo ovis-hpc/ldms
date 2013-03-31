@@ -319,6 +319,7 @@ static inline struct ldms_value_desc *ldms_iter_desc(struct ldms_iterator *i)
 #define LDMS_SETH_F_LCLBYTEORDER	LDMS_SETH_F_LE
 #endif
 
+#define LDMS_VERSION 0x02020000	/* 2.2.1.0 */
 #define LDMS_SET_NAME_MAX 256
 struct ldms_set_hdr {
 	uint64_t meta_gn;	/* Meta-data generation number */

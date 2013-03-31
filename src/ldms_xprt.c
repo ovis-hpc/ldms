@@ -518,7 +518,11 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	struct ldms_context *data_ctxt = arg;
 
         set->flags &= ~LDMS_SET_F_DIRTY; 
-	x->read_data_start(x, s, set->meta->data_size, data_ctxt);
+	if (set->meta->version == LDMS_VERSION)
+		x->read_data_start(x, s, set->meta->data_size, data_ctxt);
+	else
+		data_ctxt->update.cb(t, data_ctxt->update.s,
+				     EINVAL, data_ctxt->update.arg);
 }
 
 static int read_complete_cb(struct ldms_xprt *x, void *context)

@@ -701,6 +701,7 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 		rc = ENOMEM;
 		goto out_0;
 	}
+	meta->version = LDMS_VERSION;
 	meta->meta_size = meta_sz;
 	data = calloc(1, data_sz);
 	if (!data) {
