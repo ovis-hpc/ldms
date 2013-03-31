@@ -286,7 +286,7 @@ static int sample(void)
 		msglog("procstatutil: plugin not initialized\n");
 		return EINVAL;
 	}
-
+	ldms_begin_transaction(set);
 	ldms_set_metric(compid_metric_handle, &comp_id);
 
 	//set the counter
@@ -338,7 +338,7 @@ static int sample(void)
         vv.v_u64 = time1.tv_nsec - beg_nsec;
 	ldms_set_metric(tv_dnsec_metric_handle, &vv);
 #endif
-
+	ldms_end_transaction(set);
 	return 0;
 }
 

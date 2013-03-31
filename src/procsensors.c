@@ -320,7 +320,7 @@ static int sample(void)
 	clock_gettime(CLOCK_REALTIME, &time1);
         metric_times[metric_time_no++] = time1.tv_sec;
         metric_times[metric_time_no++] = time1.tv_nsec;
-
+	ldms_begin_transaction(set);
 	metric_no = 0;
 	for (i = 0; i < vartypes; i++){
 	  for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
@@ -330,7 +330,8 @@ static int sample(void)
 	    mf = fopen(procfile, "r");
 	    if (!mf) {
 	      msglog("Could not open the procsensors file '%s'...exiting\n", procfile);
-	      return ENOENT;
+	      rc = ENOENT;
+	      goto out;
 	    }
 	    s = fgets(lbuf, sizeof(lbuf), mf);
 	    if (!s){
@@ -340,7 +341,8 @@ static int sample(void)
 	    rc = sscanf(lbuf, "%"PRIu64 "\n", &metric_values[metric_no]);
 	    if (rc != 1){
 	      if (mf) fclose(mf);
-	      return EINVAL;
+	      rc = EINVAL;
+	      goto out;
 	    }
 
 	    metric_no++;
@@ -394,8 +396,10 @@ static int sample(void)
 	v.v_u64 = time1.tv_nsec-metric_times[3];  //sub start of writeout nsec
         ldms_set_metric(tv_dnwrite_metric_handle, &v);
 #endif
-
-	return 0;
+	rc = 0;
+ out:
+	ldms_end_transaction(set);
+	return rc;
 }
 
 static void term(void)

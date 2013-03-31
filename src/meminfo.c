@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -81,17 +81,6 @@ ldmsd_msg_log_f msglog;
 union ldms_value comp_id;
 ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
-ldms_metric_t tv_sec_metric_handle;
-ldms_metric_t tv_nsec_metric_handle;
-
-#undef CHECK_MEMINFO_TIMING
-#ifdef CHECK_MEMINFO_TIMING
-//Some temporary for testing
-ldms_metric_t tv_sec_metric_handle2;
-ldms_metric_t tv_nsec_metric_handle2;
-ldms_metric_t tv_dnsec_metric_handle;
-#endif
-
 
 static int create_metric_set(const char *path)
 {
@@ -99,7 +88,6 @@ static int create_metric_set(const char *path)
 	size_t data_sz, tot_data_sz;
 	int rc, i, metric_count;
 	uint64_t metric_value;
-	//	union ldms_value v;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
@@ -114,20 +102,11 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process the file once first to determine the metric set size.
 	 */
-
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
 				  &tot_meta_sz, &tot_data_sz);
 
 
 	rc = ldms_get_metric_size("meminfo_counter", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("meminfo_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("meminfo_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
 
@@ -155,20 +134,6 @@ static int create_metric_set(const char *path)
 		tot_data_sz += data_sz;
 		metric_count++;
 	} while (s);
-	
-
-	rc = ldms_get_metric_size("meminfo_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("meminfo_tv_nsec2", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("meminfo_tv_dnsec", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
 
 	/* Create the metric set */
 	rc = ENOMEM;
@@ -190,14 +155,6 @@ static int create_metric_set(const char *path)
 	if (!counter_metric_handle)
 		goto err;
 
-	tv_sec_metric_handle = ldms_add_metric(set, "meminfo_tv_sec", LDMS_V_U64);
-	if (!tv_sec_metric_handle)
-		goto err;
-
-	tv_nsec_metric_handle = ldms_add_metric(set, "meminfo_tv_nsec", LDMS_V_U64);
-	if (!tv_nsec_metric_handle)
-		goto err;
-
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -213,30 +170,14 @@ static int create_metric_set(const char *path)
 		if (i && metric_name[i-1] == ':')
 			metric_name[i-1] = '\0';
 
-		metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
+		metric_table[metric_no] =
+			ldms_add_metric(set, metric_name, LDMS_V_U64);
 		if (!metric_table[metric_no]) {
 			rc = ENOMEM;
 			goto err;
 		}
 		metric_no++;
 	} while (s);
-
-
-#ifdef CHECK_MEMINFO_TIMING
-	tv_sec_metric_handle2 = ldms_add_metric(set, "meminfo_tv_sec2", LDMS_V_U64);
-	if (!tv_sec_metric_handle)
-		goto err;
-
-	tv_nsec_metric_handle2 = ldms_add_metric(set, "meminfo_tv_nsec2", LDMS_V_U64);
-	if (!tv_nsec_metric_handle)
-		goto err;
-
-	tv_dnsec_metric_handle = ldms_add_metric(set, "meminfo_tv_dnsec", LDMS_V_U64);
-	if (!tv_dnsec_metric_handle)
-		goto err;
-#endif
-
-
 	return 0;
 
  err:
@@ -244,7 +185,7 @@ static int create_metric_set(const char *path)
 	return rc;
 }
 
-/** 
+/**
  * \brief Configuration
  *
  * config name=meminfo component_id=<comp_id> set=<setname>
@@ -258,7 +199,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id.v_u64 = strtol(value, NULL, 0);
-	
+
 	value = av_value(avl, "set");
 	if (value)
 		create_metric_set(value);
@@ -280,31 +221,17 @@ static int sample(void)
 	char metric_name[128];
 	char junk[128];
 	union ldms_value v;
-	struct timespec time1;
-
-#ifdef CHECK_MEMINFO_TIMING
-	uint64_t beg_nsec; //testing
-#endif
 
 	if (!set) {
 		msglog("meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
+	ldms_begin_transaction(set);
 	ldms_set_metric(compid_metric_handle, &comp_id);
 
-	//set the counter
+	/* Set the counter */
 	v.v_u64 = ++counter;
 	ldms_set_metric(counter_metric_handle, &v);
-
-	clock_gettime(CLOCK_REALTIME, &time1);
-	v.v_u64 = time1.tv_sec;
-	ldms_set_metric(tv_sec_metric_handle, &v);
-#ifdef CHECK_MEMINFO_TIMING
-	beg_nsec = time1.tv_nsec;
-#endif
-	v.v_u64 = time1.tv_nsec;
-	ldms_set_metric(tv_nsec_metric_handle, &v);
-	
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -313,24 +240,17 @@ static int sample(void)
 		if (!s)
 			break;
 		rc = sscanf(lbuf, "%s %"PRIu64 " %s\n", metric_name, &v.v_u64, junk);
-		if (rc != 2 && rc != 3)
-			return EINVAL;
+		if (rc != 2 && rc != 3) {
+			rc = EINVAL;
+			goto out;
+		}
 
 		ldms_set_metric(metric_table[metric_no], &v);
 		metric_no++;
 	} while (s);
-
-#ifdef CHECK_MEMINFO_TIMING
-	clock_gettime(CLOCK_REALTIME, &time1);
-	v.v_u64 = time1.tv_sec;
-	ldms_set_metric(tv_sec_metric_handle2, &v);
-	v.v_u64 = time1.tv_nsec;
-	ldms_set_metric(tv_nsec_metric_handle2, &v);
-	v.v_u64 = time1.tv_nsec - beg_nsec;
-	ldms_set_metric(tv_dnsec_metric_handle, &v);
-#endif
-
- 	return 0;
+ out:
+	ldms_end_transaction(set);
+	return 0;
 }
 
 static void term(void)

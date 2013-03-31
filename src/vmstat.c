@@ -82,8 +82,6 @@ union ldms_value comp_id;
 static uint64_t counter;
 ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
-ldms_metric_t tv_sec_metric_handle;
-ldms_metric_t tv_nsec_metric_handle;
 
 
 static ldms_set_t get_set()
@@ -114,15 +112,6 @@ static int create_metric_set(const char *path)
 	rc = ldms_get_metric_size("vmstat_counter", LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("vmstat_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-
-        rc = ldms_get_metric_size("vmstat_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
 
 	/*
 	 * Process the file once first to determine the metric set size.
@@ -167,15 +156,6 @@ static int create_metric_set(const char *path)
 	counter_metric_handle = ldms_add_metric(set, "vmstat_counter", LDMS_V_U64);
 	if (!counter_metric_handle) 
 		goto err;
-
-	tv_sec_metric_handle = ldms_add_metric(set, "vmstat_tv_sec", LDMS_V_U64);
-        if (!tv_sec_metric_handle)
-	  goto err;
-
-        tv_nsec_metric_handle = ldms_add_metric(set, "vmstat_tv_nsec", LDMS_V_U64);
-        if (!tv_nsec_metric_handle)
-	  goto err;
-
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -230,24 +210,17 @@ static int sample(void)
 	char lbuf[256];
 	char metric_name[128];
 	union ldms_value v;
-	struct timespec time1;
 
 	if (!set) {
 		msglog("vmstat: plugin not initialized\n");
 		return EINVAL;
 	}
-
+	ldms_begin_transaction(set);
 	ldms_set_metric(compid_metric_handle, &comp_id);
 
 	v.v_u64 = ++counter;
 	ldms_set_metric(counter_metric_handle, &v);
 	metric_no = 0;
-
-	clock_gettime(CLOCK_REALTIME, &time1);
-        v.v_u64 = time1.tv_sec;
-	ldms_set_metric(tv_sec_metric_handle, &v);
-        v.v_u64 = time1.tv_nsec;
-	ldms_set_metric(tv_nsec_metric_handle, &v);
 
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -255,13 +228,17 @@ static int sample(void)
 		if (!s)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
-		if (rc != 2)
-			return EINVAL;
-
+		if (rc != 2) {
+			rc = EINVAL;
+			goto out;
+		}
 		ldms_set_metric(metric_table[metric_no], &v);
 		metric_no++;
 	} while (s);
-	return 0;
+	rc = 0;
+ out:
+	ldms_end_transaction(set);
+	return rc;
 }
 
 static void term(void)
