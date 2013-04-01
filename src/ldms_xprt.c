@@ -710,10 +710,11 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		src += len;
 	}
  out:
+	/* Don't touch dir after callback because the dir.cb may have freed it. */
 	if (ctxt->dir.cb)
 		ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
 	pthread_mutex_lock(&x->lock);
-	if (!x->local_dir_xid && !dir->more)
+	if (!x->local_dir_xid && !more)
 		free(ctxt);
 	pthread_mutex_unlock(&x->lock);
 }
