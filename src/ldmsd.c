@@ -1,6 +1,10 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+ * license for use of this work by or on behalf of the U.S. Government.
+ * Export of this program may require a license from the United States
+ * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -20,10 +24,17 @@
  *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
- *      Neither the name of the Network Appliance, Inc. nor the names of
- *      its contributors may be used to endorse or promote products
- *      derived from this software without specific prior written
- *      permission.
+ *      Neither the name of Sandia nor the names of any contributors may
+ *      be used to endorse or promote products derived from this software
+ *      without specific prior written permission. 
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission. 
+ *
+ *      Modified source versions must be plainly marked as such, and
+ *      must not be misrepresented as being the original software.    
+ *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,9 +47,8 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Author: Tom Tucker <tom@opengridcomputing.com>
  */
+
 #include <unistd.h>
 #include <inttypes.h>
 #include <stdarg.h>
@@ -66,7 +76,7 @@
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "../config.h"
-#include "event2/thread.h"
+#include <event2/thread.h>
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
@@ -1172,15 +1182,13 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s, void *arg
 	}
 	hset->set = s;
 	/*
-	 * Run the list of stored metrics and release the metric
-	 * handle. This will cause it to be refreshed when the update
-	 * completes.
+	 * Run the list of stored metrics and refresh the metric
+	 * handle.
 	 */
 	LIST_FOREACH(hsm, &hset->metric_list, entry) {
-		if (hsm->metric) {
+		if (hsm->metric)
 			ldms_metric_release(hsm->metric);
-			hsm->metric = NULL;
-		}
+		hsm->metric = ldms_get_metric(hset->set, hsm->name);
 	}
 	hset_ref_put(hset);
 }
@@ -1225,8 +1233,7 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 
 		/* Take a lookup reference. Find takes one for us. */
 		hset_ref_get(hset);
-	} else
-		ldms_log("Metric set '%s' is already present.\n", set_name);
+	}
 
 	/* Refresh the set with a lookup */
 	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
@@ -1407,7 +1414,6 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
  out:
 	/* Put the reference taken at the call to ldms_update() */
 	hset_ref_put(hset);
-
 }
 
 void update_data(struct hostspec *hs)
@@ -1768,7 +1774,6 @@ int main(int argc, char *argv[])
 		}
 		stdout = log_fp;
 	}
-
 	evthread_use_pthreads();
 	event_set_log_callback(ev_log_cb);
 

@@ -1,4 +1,4 @@
-/*
+/* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2011 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2011 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission.
+ *      without specific prior written permission. 
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission.
+ *      from this software without specific prior written permission. 
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.
+ *      must not be misrepresented as being the original software.    
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -47,10 +47,6 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- */
-
-/*
- * Author: Tom Tucker <tom@opengridcomputing.com>
  */
 /**
  * \file meminfo.c

@@ -1,6 +1,10 @@
-/*
+/* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2012 Sandia Corporation. All rights reserved.
+ * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+ * license for use of this work by or on behalf of the U.S. Government.
+ * Export of this program may require a license from the United States
+ * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -20,10 +24,17 @@
  *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
  *
- *      Neither the name of the Network Appliance, Inc. nor the names of
- *      its contributors may be used to endorse or promote products
- *      derived from this software without specific prior written
- *      permission.
+ *      Neither the name of Sandia nor the names of any contributors may
+ *      be used to endorse or promote products derived from this software
+ *      without specific prior written permission. 
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission. 
+ *
+ *      Modified source versions must be plainly marked as such, and
+ *      must not be misrepresented as being the original software.    
+ *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -36,8 +47,8 @@
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
  */
+
 /**
  * \file sysclassib.c
  * \brief reads from 
@@ -65,7 +76,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
-#include <time.h>
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
@@ -103,11 +113,9 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-union ldms_value comp_id;
 ldms_metric_t compid_metric_handle;
 ldms_metric_t counter_metric_handle;
-ldms_metric_t tv_sec_metric_handle;
-ldms_metric_t tv_nsec_metric_handle;
+union ldms_value comp_id;
 
 #define V1 2
 #define V2 6
@@ -141,16 +149,9 @@ static int create_metric_set(const char *path)
 	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
 				  &tot_meta_sz, &tot_data_sz);
 
-	rc = ldms_get_metric_size("sysclassib_counter", LDMS_V_U64, &meta_sz, &data_sz);
+	//and add the counter
+	rc = ldms_get_metric_size("counter", LDMS_V_U64, &meta_sz, &data_sz);
 	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("sysclassib_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-
-        rc = ldms_get_metric_size("sysclassib_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
 
 
@@ -193,23 +194,18 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process again to define all the metrics.
 	 */
-	rc = ENOMEM;
 	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) 
+	if (!compid_metric_handle) {
+	  rc = ENOMEM;
 	  goto err;
+	} //compid set in sample
 
-	counter_metric_handle = ldms_add_metric(set, "sysclassib_counter", LDMS_V_U64);
-	if (!counter_metric_handle)
+	  //and add the counter
+	counter_metric_handle = ldms_add_metric(set, "counter", LDMS_V_U64);
+	if (!counter_metric_handle) {
+	  rc = ENOMEM;
 	  goto err;
-
-	tv_sec_metric_handle = ldms_add_metric(set, "sysclassib_tv_sec", LDMS_V_U64);
-        if (!tv_sec_metric_handle)
-	  goto err;
-
-        tv_nsec_metric_handle = ldms_add_metric(set, "sysclassib_tv_nsec", LDMS_V_U64);
-        if (!tv_nsec_metric_handle)
-	  goto err;
-
+	} //counter updated in sample
 
 	//add the metrics and open all the filehandles
 	int metric_no = 0;
@@ -399,7 +395,6 @@ static int sample(void)
   char *s;
   char lbuf[20];
   union ldms_value v;
-  struct timespec time1;
   int i,j;
 
   if (!set){
@@ -407,20 +402,12 @@ static int sample(void)
     return EINVAL;
   }
 
-
-  //set the compid
-  ldms_set_metric(compid_metric_handle, &comp_id);
-
   //set the counter
   v.v_u64 = ++counter;
   ldms_set_metric(counter_metric_handle, &v);
-
-  clock_gettime(CLOCK_REALTIME, &time1);
-  v.v_u64 = time1.tv_sec;
-  ldms_set_metric(tv_sec_metric_handle, &v);
-  v.v_u64 = time1.tv_nsec;
-  ldms_set_metric(tv_nsec_metric_handle, &v);
   
+  //set the compid
+  ldms_set_metric(compid_metric_handle, &comp_id);
   
   int metricno = 0;
   for (j = 0; j < MAXIFACE; j++){
