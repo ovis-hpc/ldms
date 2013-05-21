@@ -1,4 +1,4 @@
-/*
+/* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2012 Sandia Corporation. All rights reserved.
  *
@@ -74,16 +74,32 @@ struct ugni_buf_local_data {
 };
 
 struct ugni_desc {
-	gni_post_descriptor_t fma;
+	gni_post_descriptor_t post;
+	struct ldms_ugni_xprt *gxp;
 	void *context;
 	LIST_ENTRY(ugni_desc) link;
 };
 
+struct ugni_mh {
+	unsigned long start;
+	unsigned long end;
+	gni_mem_handle_t mh;
+	int ref_count;
+	LIST_ENTRY(ugni_mh) link;
+};
+
 #define UGNI_CTRL_REQ_CMD	(LDMS_CMD_XPRT_PRIVATE | 0x1)
-#define UGNI_HELLO_REQ_CMD	(LDMS_CMD_XPRT_PRIVATE | 0x3)
+#define UGNI_HELLO_REQ_CMD	(LDMS_CMD_XPRT_PRIVATE | 0x2)
+#define UGNI_HELLO_RPL_CMD	(LDMS_CMD_XPRT_PRIVATE | 0x3)
 struct ugni_hello_req {
 	struct ldms_request_hdr hdr;
-	uint32_t address;
+	uint32_t pe_addr;
+	uint32_t inst_id;
+};
+struct ugni_hello_rpl {
+	struct ldms_request_hdr hdr;
+	uint32_t pe_addr;
+	uint32_t inst_id;
 };
 #pragma pack()
 
@@ -99,14 +115,29 @@ enum ugni_conn_status {
 /**
  * uGNI Transport private data
  */
+typedef struct {
+	uint8_t  ptag;
+	uint32_t cookie;
+	uint32_t pe_addr;
+	uint32_t inst_id;
+} gni_dom_info_t;
+
+typedef struct {
+        gni_dom_info_t   info;
+        gni_cdm_handle_t cdm;
+        gni_nic_handle_t nic;
+        gni_cq_handle_t  src_cq;
+} gni_dom_t;
+
 struct ldms_ugni_xprt {
 	struct ldms_xprt *xprt;
 	enum ugni_conn_status conn_status;
 
 	int sock;
-	gni_cq_handle_t ugni_cq;
+	gni_dom_t dom;
 	gni_ep_handle_t ugni_ep;
-	uint32_t ugni_remote_address;
+	uint32_t rem_pe_addr;
+	uint32_t rem_inst_id;
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;
 
