@@ -1088,7 +1088,6 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		     s, ntohs(sin->sin_port));
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
-		x->xprt->connected = 0;
 		(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL,
 				x->cm_channel->fd, NULL);
 		ret = -1;
