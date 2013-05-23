@@ -482,7 +482,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	}
 
 	if (!rbd) {
-		rbd = ldms_alloc_rbd(x, set, LDMS_RBUF_LOCAL, NULL, 0);
+		rbd = ldms_alloc_rbd(x, set, NULL, 0);
 		rbd->xid = req->hdr.xid;
 		if (!rbd) {
 			hdr.rc = htonl(ENOMEM);
@@ -665,7 +665,7 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 
 	/* Bind this set to an RBD */
-	rbd = ldms_alloc_rbd(x, set, LDMS_RBUF_REMOTE,
+	rbd = ldms_alloc_rbd(x, set,
 			     reply->lookup.xprt_data,
 			     ntohl(reply->lookup.xprt_data_len));
 	if (!rbd)
@@ -1173,10 +1173,9 @@ int ldms_listen(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 
 struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *x,
 				      struct ldms_set *s,
-				      enum ldms_rbuf_type type,
 				      void *xprt_data, size_t xprt_data_len)
 {
-	struct ldms_rbuf_desc *rbd = x->alloc(x, s, type, xprt_data, xprt_data_len);
+	struct ldms_rbuf_desc *rbd = x->alloc(x, s, xprt_data, xprt_data_len);
 	if (!rbd)
 		goto out_0;
 

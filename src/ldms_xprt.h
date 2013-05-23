@@ -58,11 +58,6 @@
 //#include "ldms_config.h"
 #include "config.h"
 
-enum ldms_rbuf_type {
-	LDMS_RBUF_LOCAL,	/* This is a buffer being served to remote peers */
-	LDMS_RBUF_REMOTE,	/* This buffer is a data sink for a remote buffer */
-};
-
 #pragma pack(4)
 struct ldms_rbuf_desc {
 	struct ldms_xprt *xprt;
@@ -71,7 +66,6 @@ struct ldms_rbuf_desc {
 	uint64_t local_notify_xid;  /* Value sent in reg_notify */
 	uint64_t remote_notify_xid; /* Value received in req_notify */
 	uint32_t notify_flags;	    /* What events are notified  */
-	enum ldms_rbuf_type type;
 	uint32_t flags;
 	uint64_t xid;
 	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
@@ -247,7 +241,6 @@ struct ldms_xprt {
 	/** Allocate a remote buffer */
 	struct ldms_rbuf_desc *(*alloc)(struct ldms_xprt *,
 					struct ldms_set *s,
-					enum ldms_rbuf_type type,
 					void *xprt_data, size_t xprt_data_len);
 	/** Free a remote buffer */
 	void (*free)(struct ldms_xprt *, struct ldms_rbuf_desc *);
@@ -269,7 +262,6 @@ typedef struct ldms_xprt *(*ldms_xprt_get_t)
 
 extern struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *,
 					     struct ldms_set *s,
-					     enum ldms_rbuf_type type,
 					     void *xprt_data, size_t xprt_data_len);
 
 extern void ldms_free_rbd(struct ldms_rbuf_desc *);

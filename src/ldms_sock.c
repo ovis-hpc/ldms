@@ -463,7 +463,6 @@ static int sock_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
  */
 struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 				       struct ldms_set *set,
-				       enum ldms_rbuf_type type,
 				       void *xprt_data,
 				       size_t xprt_data_len)
 {

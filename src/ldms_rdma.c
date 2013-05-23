@@ -1334,7 +1334,6 @@ static int rdma_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 /** Allocate a remote buffer */
 struct ldms_rbuf_desc *rdma_rbuf_alloc(struct ldms_xprt *x,
 				       struct ldms_set *set,
-				       enum ldms_rbuf_type type,
 				       void *xprt_data,
 				       size_t xprt_data_len)
 {
@@ -1347,8 +1346,6 @@ struct ldms_rbuf_desc *rdma_rbuf_alloc(struct ldms_xprt *x,
 	lbuf = calloc(1, sizeof *lbuf);
 	if (!lbuf)
 		goto err_0;
-
-	desc->type = type;
 
 	lbuf->meta = set->meta;
 	lbuf->meta_size = set->meta->meta_size;
