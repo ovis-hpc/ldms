@@ -815,7 +815,7 @@ gni_return_t ugni_get_mh(struct ldms_ugni_xprt *gxp,
 	gni_return_t grc = GNI_RC_SUCCESS;
 	struct ugni_mh *umh;
 	int need_mh = 0;
-	unsigned long start, end;
+	unsigned long start, end = sbrk(0);
 
 	pthread_mutex_lock(&ugni_mh_lock);
  	umh = LIST_FIRST(&mh_list);
@@ -823,10 +823,8 @@ gni_return_t ugni_get_mh(struct ldms_ugni_xprt *gxp,
 		need_mh = 1;
 		start = (unsigned long)addr;
 	}
-	if (!umh || ((unsigned long)addr  > umh->end)) {
+	if (!umh || (((unsigned long)addr + size) > umh->end))
 		need_mh = 1;
-		end = (unsigned long)addr;
-	}
 	if (!need_mh)
 		goto out;
 
@@ -835,7 +833,7 @@ gni_return_t ugni_get_mh(struct ldms_ugni_xprt *gxp,
 	umh->end = end;
 	umh->ref_count = 0;
 
-	grc = GNI_MemRegister(gxp->dom.nic, umh->start, start - end,
+	grc = GNI_MemRegister(gxp->dom.nic, umh->start, end - start,
 			      NULL,
 			      GNI_MEM_READWRITE | GNI_MEM_RELAXED_PI_ORDERING,
 			      -1, &umh->mh);
@@ -843,6 +841,7 @@ gni_return_t ugni_get_mh(struct ldms_ugni_xprt *gxp,
 		free(umh);
 		goto out;
 	}
+	LIST_INSERT_HEAD(&mh_list, umh, link);
 	reg_count++;
 out:
 	*mh = umh->mh;
