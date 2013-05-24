@@ -79,6 +79,19 @@ AC_ARG_ENABLE(glib, [  --disable-glib     Disable plugins/utilities using glib.]
                 fi
         ])
 
+AC_ARG_WITH(
+	sos,
+	AS_HELP_STRING(
+		[--with-sos@<:@=path@:>@],
+		[Specify sos path @<:@default=/usr/local@:>@]
+	),
+	[WITH_SOS=$withval],
+	[WITH_SOS=/usr/local]
+)
+
+SOS_LIBDIR="$WITH_SOS/lib"
+SOS_INCDIR="$WITH_SOS/include"
+
 dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
@@ -88,7 +101,7 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
 dnl Check for libevent
-AC_CHECK_LIB(event, event_base_new, [], 
+AC_CHECK_LIB(event, event_base_new, [],
     AC_MSG_ERROR([event_base_new() not found.  ldms-utils requires libevent.]))
 
 dnl Check for pthread support
@@ -126,6 +139,28 @@ fi
 AC_SUBST(IBV_DEVICE_LIBRARY_EXTENSION)
 fi
 
+if test "$disable_sos" != "yes"
+then
+
+AC_CHECK_LIB( sos, sos_open,
+	[
+		AC_CHECK_HEADERS($SOS_INCDIR/sos/sos.h,
+		[
+			AC_SUBST([SOS_LIBDIR], [$SOS_LIBDIR] )
+			AC_SUBST([SOS_INCDIR], [$SOS_INCDIR])
+		],
+		[
+			AC_MSG_FAILURE([sos/sos.h not found])
+		],
+		)
+	],
+	[
+		AC_MSG_FAILURE(libsos not found)
+	],
+	-lpthread -lods -loidx -lidx -L$SOS_LIBDIR
+)
+
+fi
 AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
     if test -n "`$LD --help < /dev/null 2>/dev/null | grep version-script`"; then
         ac_cv_version_script=yes

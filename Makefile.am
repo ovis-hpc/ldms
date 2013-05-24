@@ -1,9 +1,9 @@
 ACLOCAL_AMFLAGS = -I m4
 
 #INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql -I/projects/ldms/Build_glory/sos_new.usr/include
-#INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql 
+#INCLUDES = -I$(top_builddir)/include/ -I$(srcdir)/include -I$(includedir) $(GLIB20_CFLAGS) -I/usr/include/mysql
 
-sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl 
+sbin_PROGRAMS = src/ldmsd src/ldms_ls src/ldmsctl
 
 if ENABLE_RDMA
 src_libldmsrdma_la_SOURCES = src/ldms_rdma.c
@@ -54,29 +54,42 @@ endif
 if ENABLE_SOS
 src_libstore_sos_la_SOURCES = src/store_sos.c
 src_libstore_sos_la_DEPENDENCIES = $(srcdir)/src/libstore_sos.map $(top_builddir)/libplugin.a
-src_libstore_sos_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lsos -lplugin 
+src_libstore_sos_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) \
+			     -L$(SOS_LIBDIR) -lsos -lplugin
+src_libstore_sos_la_CFLAGS = -I$(SOS_INCDIR)
 STORE_SOS_la = src/libstore_sos.la
 
 #libstore_flatfile uses the idx.h in sos
 src_libstore_flatfile_la_SOURCES = src/store_flatfile.c
 src_libstore_flatfile_la_DEPENDENCIES = $(srcdir)/src/libstore_flatfile.map $(top_builddir)/libplugin.a
-src_libstore_flatfile_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lidx
+src_libstore_flatfile_la_LIBADD = $(top_builddir)/src/libldms.la \
+				  -L$(SOS_LIBDIR) \
+				  -L$(top_builddir) -lplugin -lidx
+src_libstore_flatfile_la_CFLAGS = -I$(SOS_INCDIR)
 STORE_FLATFILE_la = src/libstore_flatfile.la
 
 #libstore_mysql uses the idx.h in sos
 if ENABLE_MYSQL
-src_libstore_mysql_la_CFLAGS = -I/usr/include/mysql
+src_libstore_mysql_la_CFLAGS = -I/usr/include/mysql \
+			       -I$(SOS_INCDIR)
 #src_libstore_mysql_la_CFLAGS = $(MYSQL_CFLAGS)
 src_libstore_mysql_la_SOURCES = src/store_mysql.c
 src_libstore_mysql_la_DEPENDENCIES = $(srcdir)/src/libstore_mysql.map $(top_builddir)/libplugin.a
-src_libstore_mysql_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient -lidx
+src_libstore_mysql_la_LIBADD = $(top_builddir)/src/libldms.la \
+			       -L$(SOS_LIBDIR) \
+			       -L$(top_builddir) \
+			       -lplugin -L/usr/lib64/mysql -lmysqlclient -lidx
 STORE_MYSQL_la = src/libstore_mysql.la
 
-src_libstore_mysqlbulk_la_CFLAGS = -I/usr/include/mysql
+src_libstore_mysqlbulk_la_CFLAGS = -I/usr/include/mysql \
+				   -I$(SOS_INCDIR)
 #src_libstore_mysqlbulk_la_CFLAGS = $(MYSQL_CFLAGS)
 src_libstore_mysqlbulk_la_SOURCES = src/store_mysqlbulk.c
 src_libstore_mysqlbulk_la_DEPENDENCIES = $(srcdir)/src/libstore_mysqlbulk.map $(top_builddir)/libplugin.a
-src_libstore_mysqlbulk_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -L/usr/lib64/mysql -lmysqlclient -lidx
+src_libstore_mysqlbulk_la_LIBADD = $(top_builddir)/src/libldms.la \
+				   -L$(SOS_LIBDIR) \
+				   -L$(top_builddir) \
+				   -lplugin -L/usr/lib64/mysql -lmysqlclient -lidx
 STORE_MYSQLBULK_la = src/libstore_mysqlbulk.la
 else
 MYSQL_FLAGS = -DDISABLE_MYSQL
@@ -119,12 +132,12 @@ src_libprocnfs_la_DEPENDENCIES = $(srcdir)/src/libprocnfs.map $(top_builddir)/li
 src_libprocnfs_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCNFS_la = src/libprocnfs.la
 
-src_libprocstatutil_la_SOURCES = src/procstatutil.c 
+src_libprocstatutil_la_SOURCES = src/procstatutil.c
 src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map $(top_builddir)/libplugin.a
 src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCSTATUTIL_la = src/libprocstatutil.la
 
-src_libsysclassib_la_SOURCES = src/sysclassib.c 
+src_libsysclassib_la_SOURCES = src/sysclassib.c
 src_libsysclassib_la_DEPENDENCIES = $(srcdir)/src/libsysclassib.map $(top_builddir)/libplugin.a
 src_libsysclassib_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 SYSCLASSIB_la = src/libsysclassib.la
