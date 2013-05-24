@@ -92,6 +92,13 @@ AC_ARG_WITH(
 SOS_LIBDIR="$WITH_SOS/lib"
 SOS_INCDIR="$WITH_SOS/include"
 
+AC_ARG_ENABLE(yaml, [  --disable-yaml     Disable yaml support.],
+        [       if test x$enableval = xno ; then
+                        disable_yaml=yes
+			echo yaml configuration file support has been disabled.
+                fi
+        ])
+
 dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
@@ -161,6 +168,12 @@ AC_CHECK_LIB( sos, sos_open,
 )
 
 fi
+if test "$disable_yaml" != "yes"
+then
+AC_CHECK_LIB(yaml, yaml_parser_load, [],
+	AC_MSG_ERROR([libyaml not found. please add --disable-yaml to disable yaml support.]))
+fi
+
 AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
     if test -n "`$LD --help < /dev/null 2>/dev/null | grep version-script`"; then
         ac_cv_version_script=yes
@@ -178,6 +191,7 @@ AM_CONDITIONAL([ENABLE_PERF], [test "$disable_perf" != "yes"])
 AM_CONDITIONAL([ENABLE_MYSQL], [test "$disable_mysql" != "yes"])
 AM_CONDITIONAL([ENABLE_SENSORS], [test "$disable_sensors" != "yes"])
 AM_CONDITIONAL([ENABLE_GLIB], [test "$disable_glib" != "yes"])
+AM_CONDITIONAL([ENABLE_YAML], [test "$disable_yaml" != "yes"])
 AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
 AC_CONFIG_FILES([Makefile ldms-utils.spec])
 AC_OUTPUT

@@ -186,6 +186,10 @@ src_ldms_ls_LDADD = $(top_builddir)/src/libldms.la
 src_ldmsd_SOURCES = src/ldmsd.c src/ldmsd_store.c
 src_ldmsd_LDADD = $(top_builddir)/src/libldms.la -L$(top_builddir) \
 	-levent -lplugin
+if ENABLE_YAML
+src_ldmsd_LDADD += -lyaml
+src_ldmsd_CFLAGS = -DENABLE_YAML
+endif
 src_ldmsd_DEPENDENCIES = $(top_builddir)/libplugin.a
 
 src_ldmsctl_SOURCES = src/ldmsctl.c

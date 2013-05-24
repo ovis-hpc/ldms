@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -78,11 +78,43 @@
 #include "../config.h"
 #include <event2/thread.h>
 
+#ifdef ENABLE_YAML
+#include <yaml.h>
+#endif
+
+/**
+ * \brief Convenient error report and exit macro.
+ * \param fmt The format (as in printf format).
+ * \param args The arguments of fmt (same as printf).
+ */
+#define LDMSD_ERROR_EXIT(fmt, args...) \
+	{ \
+		fprintf(stderr, fmt "\n", ##args); \
+		exit(-1); \
+	}
+
+/**
+ * \brief Convenient assert macro for LDMS.
+ * \param X The assert expression.
+ */
+#define LDMS_ASSERT(X) \
+	if (!(X)) { \
+		fprintf(stderr, "Assert %s failed at %s:%d(%s)\n", \
+		#X, __FILE__, __LINE__, __func__); \
+		exit(-1); \
+	}
+
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:vFkN"
+#define FMT "H:i:l:S:s:x:T:M:t:P:vFkNC:"
+
+/* YAML needs instance number to differentiate configuration for an instnace
+ * from other instances' configuration in the same configuration file
+ */
+int instance_number = 1;
 
 char myhostname[80];
+char ldmstype[20];
 int foreground;
 int bind_succeeded;
 pthread_t ctrl_thread = (pthread_t)-1;
@@ -99,6 +131,15 @@ ldms_t ldms;
 FILE *log_fp;
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
+
+/* YAML configuration needs these variables to be global */
+int do_kernel = 0;
+char *setfile = NULL;
+char *listen_arg = NULL;
+
+#ifdef ENABLE_YAML
+yaml_parser_t yaml_parser;
+#endif
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(host_list_s, hostspec) host_list;
@@ -143,6 +184,7 @@ void cleanup(int x)
 void usage(char *argv[])
 {
 	printf("%s: [%s]\n", argv[0], FMT);
+	printf("    -C config_file    The path to the configuration file. \n");
 	printf("    -P thr_count   Count of event threads to start.\n");
 	printf("    -i             Test metric set sample interval.\n");
 	printf("    -k             Publish publish kernel metrics.\n");
@@ -937,7 +979,7 @@ int store_host_set_metrics(struct hostspec *hs,
 	LIST_FOREACH(hset, &hs->set_list, entry) {
 		char *tmp;
 		char *hset_name;
-		
+
 		tmp = strdup(ldms_get_set_name(hset->set));
 		hset_name = basename(tmp);
 		if (0 != strcmp(set_name, hset_name)) {
@@ -1410,7 +1452,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		tuple.tv.tv_sec = ts->sec;
 		tuple.tv.tv_usec = ts->usec;
 		ldmsd_store_tuple_add(hsm->metric_store, &tuple);
-	} 
+	}
  out:
 	/* Put the reference taken at the call to ldms_update() */
 	hset_ref_put(hset);
@@ -1690,14 +1732,638 @@ int setup_inet_control(void)
 	return 0;
 }
 
+typedef enum {
+	LDMS_HOSTNAME=0,
+	LDMS_HOSTTYPE,
+	LDMS_THREAD_COUNT,
+	LDMS_INTERVAL,
+	LDMS_KERNEL_METRIC,
+	LDMS_KERNEL_METRIC_SET,
+	LDMS_TEST_SET_COUNT,
+	LDMS_TEST_SET_PREFIX,
+	LDMS_TEST_METRIC_COUNT,
+	LDMS_NOTIFY,
+	LDMS_TRANSPORT,
+	LDMS_SOCKNAME,
+	LDMS_LOGFILE,
+	LDMS_VERBOSE,
+	LDMS_FOREGROUND,
+	LDMS_CONFIG,
+	LDMS_INSTANCE,
+	LDMS_N_OPTIONS
+} LDMS_OPTION;
+
+char *YAML_TYPE_STR[] = {
+	"NONE",
+	"SCALAR",
+	"SEQUENCE",
+	"MAPPING"
+};
+
+/*
+ * has_arg will be used to indicate if the command-line argument has been
+ * set or not. The command-line arguments override those in configuration
+ * file.
+ */
+int has_arg[LDMS_N_OPTIONS] = {[0] = 0}; // According to gcc doc (v. 4.4.7
+                                         // section 5.23 Designated
+					 // Initializersi) initialize array
+					 // by some indices
+					 // will zero-out the other elements
+					 // not specified by the indices.
+
+#ifdef ENABLE_YAML
+
+/**
+ * Get attribute value node from a given mapping node.
+ *
+ * return NULL if there is no such attribute, otherwise return the pointer
+ *        to the value node.
+ */
+yaml_node_t* yaml_node_get_attr_value_node(yaml_document_t *yaml_document,
+		yaml_node_t *node, char *attr)
+{
+	if (node->type != YAML_MAPPING_NODE)
+		return NULL;
+
+	yaml_node_t *key_node, *value_node;
+	yaml_node_pair_t *itr;
+
+	for (itr = node->data.mapping.pairs.start;
+			itr < node->data.mapping.pairs.top;
+		 	itr++) {
+		key_node = yaml_document_get_node(yaml_document, itr->key);
+		value_node = yaml_document_get_node(yaml_document, itr->value);
+		if (key_node->type == YAML_SCALAR_NODE &&
+				strcmp(key_node->data.scalar.value, attr) == 0) {
+			// found it
+			return value_node;
+		}
+	}
+
+	return NULL;
+}
+
+
+
+/**
+ * Get attribute value from a mapping node, identified by 'attr' key.
+ *
+ * return NULL if no such attribute or the value of the attribute is non-scalar
+ *        otherwise, return the string value.
+ */
+char* yaml_node_get_attr_value_str(yaml_document_t *yaml_document,
+		yaml_node_t *node, char *attr)
+{
+	yaml_node_t *value_node
+		= yaml_node_get_attr_value_node(yaml_document, node, attr);
+	if (value_node && value_node->type == YAML_SCALAR_NODE)
+		return value_node->data.scalar.value;
+	return NULL;
+}
+
+int yaml_node_get_attr_value_int(yaml_document_t *yaml_document,
+		yaml_node_t *node, char *attr)
+{
+	yaml_node_t *value_node
+		= yaml_node_get_attr_value_node(yaml_document, node, attr);
+	if (value_node && value_node->type == YAML_SCALAR_NODE)
+		return atoi(value_node->data.scalar.value);
+	return 0;
+}
+
+/**
+ * Parse the interval string (e.g. "60 m").
+ *
+ * return The number of microseconds
+ */
+int parse_interval(char *str)
+{
+	char unit[32];
+	int number;
+
+	sscanf(str, "%d %s", &number, unit);
+
+	if (strcmp(unit, "hr") == 0) {
+		number = number * 3600 * 1000000;
+	} else if (strcmp(unit, "m") == 0) {
+		number = number * 60 * 1000000;
+	} else if (strcmp(unit, "s") == 0) {
+		number = number * 1000000;
+	} else if (strcmp(unit, "ms") == 0) {
+		number = number * 1000;
+	} else if (strcmp(unit, "us") == 0) {
+		/* already microseconds: do nothing */
+	} else {
+		LDMSD_ERROR_EXIT("Unknown interval unit: %s\n", unit);
+	}
+
+	return number;
+}
+
+/**
+ * parse_config_file parses the given configuration file (\a cfg_file)
+ * into \a yaml_document structure.
+ *
+ * \param cfg_file A path of a confguration file
+ *
+ * return A pointer to the parsed yaml_document.
+ */
+yaml_document_t* parse_config_file(char *cfg_file)
+{
+	FILE *fcfg = fopen(cfg_file, "rt");
+	if (!fcfg) {
+		fprintf(stderr, "Cannot open file: %s", cfg_file);
+		return NULL;
+	}
+
+	if (!yaml_parser_initialize(&yaml_parser))
+		LDMSD_ERROR_EXIT("yaml initialization error");
+
+	yaml_parser_set_input_file(&yaml_parser, fcfg);
+
+	yaml_document_t *yaml_document = calloc(1, sizeof(yaml_document_t));
+
+	if (!yaml_parser_load(&yaml_parser, yaml_document))
+		LDMSD_ERROR_EXIT("yaml load error");
+
+	return yaml_document;
+}
+
+void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
+	yaml_node_t *value_node)
+{
+	char *key_str = key_node->data.scalar.value;
+	// Abusively set the value_str for shorter code.
+	// Each case will also check the type first anyway.
+	char *value_str = value_node->data.scalar.value;
+	yaml_node_type_t node_type = value_node->type;
+
+	if (strcmp(key_str, "ldmstype") == 0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_HOSTTYPE])
+			strcpy(ldmstype, value_str);
+	} else 	if (strcmp(key_str, "hostname")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_HOSTNAME])
+			strcpy(myhostname, value_str);
+	} else if (strcmp(key_str, "thread_count")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_THREAD_COUNT])
+			ev_thread_count = atoi(value_str);
+	} else if (strcmp(key_str, "interval")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_INTERVAL])
+			sample_interval = parse_interval(value_str);
+	} else if (strcmp(key_str, "kernel_metric")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_KERNEL_METRIC])
+			if (strcasecmp("true", value_str) == 0
+					|| atoi(value_str))
+				do_kernel = 1;
+	} else if (strcmp(key_str, "kernel_metric_set")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_KERNEL_METRIC_SET])
+			setfile = strdup(value_str);
+	} else if (strcmp(key_str, "test_set_count")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_TEST_SET_COUNT])
+			test_set_count = atoi(value_str);
+	} else if (strcmp(key_str, "test_set_prefix")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_TEST_SET_PREFIX])
+			test_set_name = strdup(value_str);
+	} else if (strcmp(key_str, "test_metric_count")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_TEST_METRIC_COUNT])
+			test_metric_count = atoi(value_str);
+	} else if (strcmp(key_str, "notify")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_NOTIFY])
+			notify = 1;
+	} else if (strcmp(key_str, "transport")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_TRANSPORT])
+			listen_arg = strdup(value_str);
+	} else if (strcmp(key_str, "sockname")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_SOCKNAME])
+			sockname = strdup(value_str);
+	} else if (strcmp(key_str, "logfile")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_LOGFILE])
+			logfile = strdup(value_str);
+	} else if (strcmp(key_str, "verbose")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_VERBOSE])
+			if (strcasecmp("true", value_str) == 0 ||
+					atoi(value_str))
+				quiet = 0;
+	} else if (strcmp(key_str, "foreground")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_FOREGROUND])
+			if (strcasecmp("true", value_str) == 0 ||
+					atoi(value_str))
+				foreground = 1;
+	}
+}
+
+/**
+ * A routine for initializing ldmsd with options specified in
+ * \a yaml_document. Note that those plugin loading/configuration will
+ * be handled later in config_file_routine(yaml_document_t*).
+ *
+ * \param yaml_document The (pointer to) yaml document structure.
+ *
+ */
+void initial_config_file_routine(yaml_document_t *yaml_document)
+{
+
+	yaml_node_t *root = yaml_document_get_root_node(yaml_document);
+
+	/*
+	 * For empty document, just return with a warning
+	 */
+	if (!root) {
+		fprintf(stderr, "WARNING: yaml document is empty\n");
+		return;
+	}
+
+	LDMS_ASSERT(root->type == YAML_SEQUENCE_NODE);
+
+    yaml_node_item_t *itr = root->data.sequence.items.start;
+	char hostname[256];
+
+	if (gethostname(hostname, 256))
+		LDMSD_ERROR_EXIT("Cannot get hostname, err(%d): %s\n",
+			errno, sys_errlist[errno]);
+
+    for (itr = root->data.sequence.items.start;
+			itr < root->data.sequence.items.top;
+			itr++) {
+        yaml_node_t *node = yaml_document_get_node(yaml_document, *itr);
+		// Now, each item should be a mapping
+		if (node->type != YAML_MAPPING_NODE)
+			continue;
+
+		// Check if this is a ldmsd configuration for this host
+		char *yaml_hostname
+			= yaml_node_get_attr_value_str(yaml_document, node, "hostname");
+		int inst
+			= yaml_node_get_attr_value_int(yaml_document, node, "instance");
+		if (!inst)
+			inst = 1;
+
+		if (!yaml_hostname
+				|| strcmp(hostname, yaml_hostname) != 0
+				|| inst != instance_number )
+			continue; // skip if this is not for this host
+
+        yaml_node_pair_t *itr2 = node->data.mapping.pairs.start;
+        for (itr2 = node->data.mapping.pairs.start;
+				itr2 < node->data.mapping.pairs.top;
+				itr2++) {
+            yaml_node_t *key_node = yaml_document_get_node(yaml_document,
+                itr2->key);
+            yaml_node_t *value_node = yaml_document_get_node(yaml_document,
+                itr2->value);
+			LDMS_ASSERT(key_node->type == YAML_SCALAR_NODE);
+			ldms_yaml_cmdline_option_handling(key_node, value_node);
+        }
+
+		// After the configuration for this host is found, no need to
+		// continue looking anymore .. hence break it
+		break;
+
+    } // end for itr1
+}
+
+/**
+ * similar to sprintf, but specificly for printing key=value
+ * pair (or key=value1,value2,... in case of sequence) into
+ * the input \a buff.
+ *
+ * \param buff The character buffer to print into
+ * \param yaml_document The pointer to the working yaml document.
+ * \param key_node The pointer to the key node.
+ * \param value_node The pointer to the value node.
+ * \return The number of bytes printed to \a buff.
+ */
+int sprint_attribute(char *buff, yaml_document_t *yaml_document,
+		yaml_node_t *key_node, yaml_node_t *value_node)
+{
+	int bytes = 0;
+	yaml_node_item_t *itr;
+	yaml_node_t *node;
+	int not_first = 0;
+	LDMS_ASSERT(key_node->type == YAML_SCALAR_NODE);
+	bytes += sprintf(buff+bytes, "%s=", key_node->data.scalar.value);
+	switch (value_node->type) {
+	case YAML_SCALAR_NODE:
+		bytes += sprintf(buff+bytes, "%s", value_node->data.scalar.value);
+		break;
+	case YAML_SEQUENCE_NODE:
+		for (itr = value_node->data.sequence.items.start;
+				itr < value_node->data.sequence.items.top;
+				itr++) {
+			node = yaml_document_get_node(yaml_document, *itr);
+			LDMS_ASSERT(node->type == YAML_SCALAR_NODE);
+			if (not_first)
+				bytes += sprintf(buff+bytes, ",");
+			else
+				not_first = 1;
+			bytes += sprintf(buff+bytes, "%s", node->data.scalar.value);
+		}
+		break;
+	default:
+		LDMSD_ERROR_EXIT("Unexpexted node type %s",
+				YAML_TYPE_STR[value_node->type]);
+	}
+
+	return bytes;
+}
+
+/**
+ * Handling the host list from the configuration file.
+ *
+ * \param hlist_node The yaml node to the host list (sequence).
+ */
+void ldms_yaml_host_list_handling(yaml_document_t *yaml_document,
+		yaml_node_t *hlist_node)
+{
+	LDMS_ASSERT(hlist_node->type == YAML_SEQUENCE_NODE);
+	char *host;
+	char *port;
+	char *type;
+	char *interval;
+	int interval_int;
+	char *xport;
+	char *h_inst;
+
+	char add_host_cmd[1024];
+
+	yaml_node_item_t *itr;
+	for (itr = hlist_node->data.sequence.items.start;
+			itr < hlist_node->data.sequence.items.top;
+			itr++) {
+		yaml_node_t *node = yaml_document_get_node(yaml_document, *itr);
+		LDMS_ASSERT(node->type == YAML_MAPPING_NODE);
+		host = yaml_node_get_attr_value_str(yaml_document, node, "host");
+		port = yaml_node_get_attr_value_str(yaml_document, node, "port");
+		type = yaml_node_get_attr_value_str(yaml_document, node, "type");
+		h_inst = yaml_node_get_attr_value_str(yaml_document, node, "instance");
+		interval = yaml_node_get_attr_value_str(yaml_document,
+				node, "interval");
+		interval_int = (interval)?parse_interval(interval):0;
+		xport = yaml_node_get_attr_value_str(yaml_document, node, "xprt");
+		char *cmd = add_host_cmd;
+		cmd[0] = 0;
+		cmd += sprintf(cmd, "%d", LDMSCTL_ADD_HOST);
+
+		if (host)
+			cmd += sprintf(cmd, " host=%s", host);
+		else
+			LDMSD_ERROR_EXIT("host is needed in each item in the hostlist");
+
+		if (port)
+			cmd += sprintf(cmd, " port=%s", port);
+
+		if (h_inst)
+			cmd += sprintf(cmd, " instance=%s", h_inst);
+
+		if (type)
+			cmd += sprintf(cmd, " type=%s", type);
+		else
+			LDMSD_ERROR_EXIT("type is needed in each item in the hostlist");
+
+		if (interval_int)
+			cmd += sprintf(cmd, " interval=%d", interval_int);
+
+		if (xport)
+			cmd += sprintf(cmd, " xprt=%s", xport);
+
+		if (process_record(0, 0, 0, add_host_cmd, 0) != 0)
+			fprintf(stderr, "WARNING: Some error in list\n");
+	} // end for (host list)
+}
+
+int is_scalar_seq(yaml_document_t *yaml_document, yaml_node_t *node)
+{
+	if (node->type != YAML_SEQUENCE_NODE)
+		return 0;
+	yaml_node_item_t *itr;
+	yaml_node_t *child;
+	for (itr = node->data.sequence.items.start;
+			itr < node->data.sequence.items.top;
+			itr++) {
+		child = yaml_document_get_node(yaml_document, *itr);
+		if (child->type != YAML_SCALAR_NODE)
+			return 0;
+	}
+	return 1;
+}
+
+void ldms_yaml_plugin_single_handling(yaml_document_t *yaml_document,
+		yaml_node_t *node)
+{
+	char buff[1024];
+
+	// First: load the plugin (if not existed)
+	char *name = yaml_node_get_attr_value_str(yaml_document, node, "name");
+	if (!name)
+		LDMSD_ERROR_EXIT("Attribute name is needed for each plugin");
+	char *type = yaml_node_get_attr_value_str(yaml_document, node, "type");
+	if (!type)
+		LDMSD_ERROR_EXIT("Attribute type is needed for each plugin");
+
+	if (!get_plugin(name))
+		if (!new_plugin(name, buff))
+			LDMSD_ERROR_EXIT("Cannot load plugin %s, error: %s", name, buff);
+
+	// Second: configure
+	//  -> need to construct the command string
+	char *cmd = buff;
+	cmd += sprintf(cmd, "%d", LDMSCTL_CFG_PLUGIN);
+	yaml_node_pair_t *itr2;
+	for (itr2 = node->data.mapping.pairs.start;
+			itr2 < node->data.mapping.pairs.top;
+			itr2++) {
+		yaml_node_t *key_node
+			= yaml_document_get_node(yaml_document, itr2->key);
+		yaml_node_t *value_node
+			= yaml_document_get_node(yaml_document, itr2->value);
+		// The value can be only scalar or sequence of scalar
+
+		if (value_node->type == YAML_SCALAR_NODE
+			|| is_scalar_seq(yaml_document, value_node)) {
+			cmd += sprintf(cmd, " ");
+			cmd += sprint_attribute(cmd, yaml_document, key_node, value_node);
+		}
+	}
+
+	process_record(0, 0, 0, buff, 0); // Now, issue the config command
+
+/* The following codes has been disabled due to the lack of 'on_update' support
+ * in LDMS. This on_update hook has been introduced into LDMS on build2, but not
+ * on hekili (or it has been added and taken out).
+ *
+ * Narate: I decide to keep the code to enable it later, after we add the
+ * on_update feature back in.
+ */
+#if 0
+	// Third: the update command
+	yaml_node_t *update_node = yaml_node_get_attr_value_node(yaml_document,
+			node, "on_update");
+
+	if (update_node) {
+		if (update_node->type != YAML_SEQUENCE_NODE)
+			LDMSD_ERROR_EXIT("on_update attribute need to be a sequence"
+					", but got %s", YAML_TYPE_STR[update_node->type]);
+
+		yaml_node_item_t *seq_itr;
+		yaml_node_pair_t *map_itr;
+		yaml_node_t *map_node;
+		for (seq_itr = update_node->data.sequence.items.start;
+				seq_itr < update_node->data.sequence.items.top;
+				seq_itr++) {
+			cmd = buff;
+			cmd += sprintf(cmd, "%d %s=%s", LDMSCTL_UPDATE, type, name);
+			map_node = yaml_document_get_node(yaml_document, *seq_itr);
+			for (map_itr = map_node->data.mapping.pairs.start;
+					map_itr < map_node->data.mapping.pairs.top;
+					map_itr++) {
+				cmd += sprintf(cmd, " ");
+				yaml_node_t *key_node = yaml_document_get_node(yaml_document,
+						map_itr->key);
+				yaml_node_t *value_node = yaml_document_get_node(yaml_document,
+						map_itr->value);
+				cmd += sprint_attribute(cmd,
+						yaml_document, key_node, value_node);
+			}
+			// Then, issue the update command
+			process_record(0, 0, 0, buff, 0);
+		} // for (update)
+	}
+#endif
+	// (Another) Third: start command for metric plugins
+	if (strcmp(type, "metric") == 0) {
+		char *intv_str = yaml_node_get_attr_value_str(yaml_document, node, "interval");
+		int intv = (intv_str)?parse_interval(intv_str):0;
+		cmd = buff;
+		cmd += sprintf(cmd, "%d name=%s",
+				LDMSCTL_START_SAMPLER, name);
+		if (intv)
+			cmd += sprintf(cmd, " interval=%d", intv);
+		process_record(0, 0, 0, buff, 0);
+	}
+
+}
+
+/**
+ * Processing the list of plugins
+ */
+void ldms_yaml_plugin_list_handling(yaml_document_t *yaml_document,
+		yaml_node_t *plist_node)
+{
+	LDMS_ASSERT(plist_node->type == YAML_SEQUENCE_NODE);
+	// For each plugin, do the loading first (if it does not exists)
+	// then config and udpate commands.
+
+
+	yaml_node_item_t *itr;
+	for (itr = plist_node->data.sequence.items.start;
+			itr < plist_node->data.sequence.items.top;
+			itr++) {
+		// EXPECTING A MAPPING
+		yaml_node_t *node = yaml_document_get_node(yaml_document, *itr);
+		LDMS_ASSERT(node->type == YAML_MAPPING_NODE);
+
+		ldms_yaml_plugin_single_handling(yaml_document, node);
+
+	} // for (plugin)
+}
+
+/**
+ * Configure the ldmsd's non-commandline options, e.g. adding hosts and
+ * plugins.
+ *
+ * \param yaml_document The (pointer to) yaml document structure.
+ */
+void config_file_routine(yaml_document_t *yaml_document)
+{
+	yaml_node_t *root = yaml_document_get_root_node(yaml_document);
+
+	/*
+	 * For empty document, just return with a warning
+	 */
+	if (!root) {
+		ldms_log("WARNING: yaml document is empty\n");
+		return;
+	}
+
+	LDMS_ASSERT(root->type == YAML_SEQUENCE_NODE);
+
+    yaml_node_item_t *itr = root->data.sequence.items.start;
+	char hostname[256];
+
+	if (gethostname(hostname, 256))
+		LDMSD_ERROR_EXIT("Cannot get hostname, err(%d): %s\n",
+				errno, sys_errlist[errno]);
+
+    for (itr = root->data.sequence.items.start;
+			itr < root->data.sequence.items.top;
+			itr++) {
+		yaml_node_t *node = yaml_document_get_node(yaml_document, *itr);
+		// Now, each item should be a mapping
+		if (node->type != YAML_MAPPING_NODE)
+			continue;
+
+		// Check if this is a ldmsd configuration for this host
+		char *yaml_hostname
+			= yaml_node_get_attr_value_str(yaml_document, node, "hostname");
+		int inst
+			= yaml_node_get_attr_value_int(yaml_document, node, "instance");
+		if (!inst)
+			inst = 1;
+
+		if (!yaml_hostname
+				|| strcmp(hostname, yaml_hostname) != 0
+				|| inst != instance_number )
+			continue; // skip if this is not for this host / instance
+
+		// Now, looking for hosts and plugins configurations
+
+		// For add host commands:
+		yaml_node_t *host_list_node =
+			yaml_node_get_attr_value_node(yaml_document, node, "host_list");
+
+		if (host_list_node) {
+			ldms_yaml_host_list_handling(yaml_document, host_list_node);
+			sleep(10);
+		}
+
+		// For plugin commands:
+		yaml_node_t *plugin_list_node =
+			yaml_node_get_attr_value_node(yaml_document, node, "plugin_list");
+
+		if (plugin_list_node)
+			ldms_yaml_plugin_list_handling(yaml_document, plugin_list_node);
+
+		ldms_log("Done plugin_list_handling\n");
+
+		// After the configuration for this host is found, no need to
+		// continue looking anymore .. hence break it
+		break;
+
+    } // end for itr1
+}
+#endif /* ENABLE_YAML */
+
 int main(int argc, char *argv[])
 {
-	int do_kernel = 0;
 	int ret;
-	char *listen_arg = NULL;
 	int op;
 	ldms_set_t test_set;
-	char *setfile = NULL;
 	log_fp = stdout;
 	char *cfg_file = NULL;
 
@@ -1708,57 +2374,92 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
+		case 'I':
+			// Assigned instance number
+			instance_number = atoi(optarg);
+			if (!instance_number)
+				instance_number = 1;
+			has_arg[LDMS_INSTANCE] = 1;
+			break;
 		case 'H':
 			strcpy(myhostname, optarg);
+			has_arg[LDMS_HOSTNAME] = 1;
 			break;
 		case 'i':
 			sample_interval = atoi(optarg);
+			has_arg[LDMS_INTERVAL] = 1;
 			break;
 		case 'k':
 			do_kernel = 1;
+			has_arg[LDMS_KERNEL_METRIC] = 1;
 			break;
 		case 'x':
 			listen_arg = strdup(optarg);
+			has_arg[LDMS_TRANSPORT] = 1;
 			break;
 		case 'S':
 			/* Set the SOCKNAME to listen on */
 			sockname = strdup(optarg);
+			has_arg[LDMS_SOCKNAME] = 1;
 			break;
 		case 'l':
 			logfile = strdup(optarg);
+			has_arg[LDMS_LOGFILE] = 1;
 			break;
 		case 's':
 			setfile = strdup(optarg);
+			has_arg[LDMS_KERNEL_METRIC_SET] = 1;
 			break;
 		case 'v':
 			quiet = 0;
+			has_arg[LDMS_VERBOSE] = 1;
 			break;
 		case 'C':
+		#ifdef ENABLE_YAML
 			cfg_file = strdup(optarg);
+			has_arg[LDMS_CONFIG] = 1;
+		#else
+			fprintf(stderr, "ERROR: ldmsd was compiled without"
+					" yaml support\n");
+			return -1;
+		#endif
 			break;
 		case 'F':
 			foreground = 1;
+			has_arg[LDMS_FOREGROUND] = 1;
 			break;
 		case 'T':
 			test_set_name = strdup(optarg);
+			has_arg[LDMS_TEST_SET_PREFIX] = 1;
 			break;
 		case 't':
 			test_set_count = atoi(optarg);
+			has_arg[LDMS_TEST_SET_COUNT] = 1;
 			break;
 		case 'P':
 			ev_thread_count = atoi(optarg);
+			has_arg[LDMS_THREAD_COUNT] = 1;
 			break;
 		case 'N':
 			notify = 1;
+			has_arg[LDMS_NOTIFY] = 1;
 			break;
 		case 'M':
 			test_metric_count = atoi(optarg);
+			has_arg[LDMS_TEST_METRIC_COUNT] = 1;
 			break;
 		default:
 			usage(argv);
 		}
 	}
-
+#ifdef ENABLE_YAML
+	if (!cfg_file) {
+		cfg_file = "/etc/ldmsd/ldmsd.yaml";
+	}
+	yaml_document_t *yaml_document = parse_config_file(cfg_file);
+	if (yaml_document)
+		initial_config_file_routine(yaml_document);
+#endif
 	if (!foreground) {
 		if (daemon(1, 1)) {
 			perror("ldmsd: ");
@@ -1834,7 +2535,7 @@ int main(int argc, char *argv[])
 				myhostname, test_set_name, set_no);
 			ldms_create_set(test_set_name_no, 2048, 2048, &test_set);
 			test_sets[set_no-1] = test_set;
-			if (test_metric_count > 0){
+			if (test_metric_count > 0) {
 				m = ldms_add_metric(test_set, "component_id",
 						    LDMS_V_U64);
 				ldms_set_u64(m, (uint64_t)1);
@@ -1870,6 +2571,13 @@ int main(int argc, char *argv[])
 
 	if (listen_arg)
 		listen_on_transport(listen_arg);
+
+#ifdef ENABLE_YAML
+	// Now handle the other configuration
+
+	if (yaml_document)
+		config_file_routine(yaml_document);
+#endif
 
 	uint64_t count = 1;
 	do {
