@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -60,7 +60,6 @@
 #include <limits.h>
 #include <pthread.h>
 #include <errno.h>
-#include <sos/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -205,8 +204,6 @@ int ldmsd_store_init()
 	return 0;
 }
 
-idx_t ct_idx;
-idx_t c_idx;
 struct timeval tv0, tv1, tvres, tvsum;
 
 int add_obj(struct metric_store *ms, ldmsd_store_tuple_t t)
@@ -376,6 +373,9 @@ ldmsd_metric_store_get(struct ldmsd_store *store,
 	return ms;
 }
 #if 0
+#include <sos/idx.h>
+idx_t ct_idx;
+idx_t c_idx;
 int main(int argc, char *argv[])
 {
 	char *s;
@@ -432,7 +432,7 @@ int main(int argc, char *argv[])
 			} else {
 				if (errno != EMFILE)
 					exit(1);
-				
+
 				/*
 				 * Close the LRU mds to recoup its
 				 * handles for our use
