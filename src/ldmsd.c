@@ -75,7 +75,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
-#include "../config.h"
+#include "config.h"
 #include <event2/thread.h>
 
 #ifdef ENABLE_YAML
