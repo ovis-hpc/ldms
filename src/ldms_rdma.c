@@ -102,7 +102,7 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 	char rem_buf[32];
 	struct sockaddr_in *lcl = (struct sockaddr_in *)&r->xprt->local_ss;
 	struct sockaddr_in *rem = (struct sockaddr_in *)&r->xprt->remote_ss;
-	
+
 	(void)inet_ntop(AF_INET, &lcl->sin_addr, lcl_buf, sizeof(lcl_buf));
 	(void)inet_ntop(AF_INET, &rem->sin_addr, rem_buf, sizeof(rem_buf));
 	LOG_(r, "RDMA: Tearing down %s:%hu <--> %s:%hu.\n",
@@ -270,7 +270,7 @@ static int post_send(struct ldms_rdma_xprt *x,
 	rc = ibv_post_send(x->qp, &ctxt->wr, bad_wr);
 	if (rc) {
 		LOG_(x, "%s: error %d posting send is_rdma %d sq_credits %d "
-		     "lcl_rq_credits %d rem_rq_credits %d.\n", __func__, 
+		     "lcl_rq_credits %d rem_rq_credits %d.\n", __func__,
 		     rc, is_rdma, x->sq_credits, x->lcl_rq_credits, x->rem_rq_credits);
 		ldms_release_xprt(x->xprt);
 	}
@@ -652,7 +652,6 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 {
 	struct epoll_event cq_event;
 	struct ldms_rdma_xprt *r;
-	struct rdma_conn_param conn_param;
 	struct ibv_qp_init_attr qp_attr;
 	ldms_t _x;
 	int ret;
@@ -749,10 +748,7 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	}
 
 	/* Accept the connection */
-	memset(&conn_param, 0, sizeof conn_param);
-	conn_param.responder_resources = 4;
-	conn_param.initiator_depth = 4;
-	ret = rdma_accept(r->cm_id, &conn_param);
+	ret = rdma_accept(r->cm_id, NULL);
 	if (ret)
 		goto out_1;
 
@@ -984,7 +980,7 @@ int rdma_setup_conn(struct ldms_rdma_xprt *x)
 	memset(&conn_param, 0, sizeof conn_param);
 	conn_param.responder_resources = 1;
 	conn_param.initiator_depth = 4;
-	conn_param.retry_count = 10;
+	conn_param.retry_count = 7;
 	/*
 	 * Take a transport reference, it will get dropped by cm_thread_proc
 	 * when it gets the DISCONNECTED event.
