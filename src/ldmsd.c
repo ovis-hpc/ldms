@@ -2453,12 +2453,12 @@ int main(int argc, char *argv[])
 		}
 	}
 #ifdef ENABLE_YAML
-	if (!cfg_file) {
-		cfg_file = "/etc/ldmsd/ldmsd.yaml";
+	yaml_document_t *yaml_document = NULL;
+	if (cfg_file) {
+		yaml_document = parse_config_file(cfg_file);
+		if (yaml_document)
+			initial_config_file_routine(yaml_document);
 	}
-	yaml_document_t *yaml_document = parse_config_file(cfg_file);
-	if (yaml_document)
-		initial_config_file_routine(yaml_document);
 #endif
 	if (!foreground) {
 		if (daemon(1, 1)) {
