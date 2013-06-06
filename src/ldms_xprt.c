@@ -483,11 +483,11 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 
 	if (!rbd) {
 		rbd = ldms_alloc_rbd(x, set, NULL, 0);
-		rbd->xid = req->hdr.xid;
 		if (!rbd) {
 			hdr.rc = htonl(ENOMEM);
 			goto err_out;
 		}
+		rbd->xid = req->hdr.xid;
 	}
 
 	len = sizeof(struct ldms_reply_hdr)
