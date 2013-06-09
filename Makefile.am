@@ -105,8 +105,51 @@ GEMINFO_la = src/libgeminfo.la
 src_libmeminfo_la_SOURCES = src/meminfo.c
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map $(top_builddir)/libplugin.a
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
-
 MEMINFO_la = src/libmeminfo.la
+
+src_liblustre_dummy_la_SOURCES = src/sampler/lustre/lustre_dummy.c
+src_liblustre_dummy_la_CFLAGS = -I$(srcdir)/src/
+src_liblustre_dummy_la_DEPENDENCIES = $(top_builddir)/libplugin.a
+src_liblustre_dummy_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
+LUSTRE_DUMMY_la = src/liblustre_dummy.la
+
+src_libstr_map_la_SOURCES = src/sampler/lustre/str_map.c
+STR_MAP_la = src/libstr_map.la
+
+src_liblustre_sampler_la_SOURCES = src/sampler/lustre/lustre_sampler.c
+src_liblustre_sampler_la_CFLAGS = -I$(srcdir)/src/
+src_liblustre_sampler_la_DEPENDENCIES = $(top_builddir)/libplugin.a
+src_liblustre_sampler_la_LIBADD = $(top_builddir)/src/libldms.la \
+				  $(top_builddir)/src/libstr_map.la \
+				  -L$(top_builddir) -lplugin -lrt
+LUSTRE_SAMPLER_la = src/liblustre_sampler.la
+
+src_liblustre_mds_la_SOURCES = src/sampler/lustre/lustre_mds.c
+src_liblustre_mds_la_CFLAGS = -I$(srcdir)/src/
+src_liblustre_mds_la_DEPENDENCIES = $(top_builddir)/libplugin.a
+src_liblustre_mds_la_LIBADD = $(top_builddir)/src/libldms.la \
+			      $(top_builddir)/src/libstr_map.la \
+			      $(top_builddir)/src/liblustre_sampler.la \
+			      -L$(top_builddir) -lplugin -lrt
+LUSTRE_MDS_la = src/liblustre_mds.la
+
+src_liblustre_oss_la_SOURCES = src/sampler/lustre/lustre_oss.c
+src_liblustre_oss_la_CFLAGS = -I$(srcdir)/src/
+src_liblustre_oss_la_DEPENDENCIES = $(top_builddir)/libplugin.a
+src_liblustre_oss_la_LIBADD = $(top_builddir)/src/libldms.la \
+			      $(top_builddir)/src/libstr_map.la \
+			      $(top_builddir)/src/liblustre_sampler.la \
+			      -L$(top_builddir) -lplugin -lrt
+LUSTRE_OSS_la = src/liblustre_oss.la
+
+src_liblustre_client_la_SOURCES = src/sampler/lustre/lustre_client.c
+src_liblustre_client_la_CFLAGS = -I$(srcdir)/src/
+src_liblustre_client_la_DEPENDENCIES = $(top_builddir)/libplugin.a
+src_liblustre_client_la_LIBADD = $(top_builddir)/src/libldms.la \
+			      $(top_builddir)/src/libstr_map.la \
+			      $(top_builddir)/src/liblustre_sampler.la \
+			      -L$(top_builddir) -lplugin -lrt
+LUSTRE_CLIENT_la = src/liblustre_client.la
 
 if ENABLE_SENSORS
 src_libprocsensors_la_SOURCES = src/procsensors.c
@@ -163,7 +206,10 @@ lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
 	$(MEMINFO_la) $(GEMINFO_la) $(PROCINTERRUPTS_la) $(PROCNETDEV_la) \
 	$(PROCNFS_la) $(PROCSTATUTIL_la) $(SYSCLASSIB_la) $(VMSTAT_la) \
 	$(PERFEVENT_la) $(SEDC_la) \
-	$(STORE_SOS_la) $(STORE_MYSQL_la) $(STORE_MYSQLBULK_la) $(STORE_FLATFILE_la)
+	$(STORE_SOS_la) $(STORE_MYSQL_la) $(STORE_MYSQLBULK_la) \
+	$(STR_MAP_la) $(STORE_FLATFILE_la) \
+	$(LUSTRE_SAMPLER_la) $(LUSTRE_MDS_la) $(LUSTRE_DUMMY_la) \
+	$(LUSTRE_OSS_la) $(LUSTRE_CLIENT_la)
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
