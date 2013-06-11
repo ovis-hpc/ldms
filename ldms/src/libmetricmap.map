@@ -1,0 +1,27 @@
+LIBMETRICMAP_2.0 {
+	global:
+		getHwlocAssoc;
+		cleanup;
+		getLDMSName;
+		setMetricValueFromLDMS;
+		setMetricValueFromOID;
+		getMetricValueFromOID;
+		OIDToLDMS;
+		LDMSToOID;
+		getInstanceMetricNames;
+		parse_line
+		addLDMSMetric;
+		addStaticMetric;
+		addComponent;
+		parseHwlocData;
+		parseMachineData;
+		parseLDMSData;
+		parseData();
+		printComponent;
+		printComponents;
+		printTreeGuts;
+		printTree;
+		printMetric;
+
+	local: *;
+};

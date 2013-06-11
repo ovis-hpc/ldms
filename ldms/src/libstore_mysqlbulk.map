@@ -1,0 +1,5 @@
+LIBSTORE_MYSQLBULK_2.0 {
+	global:
+		get_plugin;
+	local: *;
+};

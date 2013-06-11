@@ -1,0 +1,51 @@
+
+%define RELEASE 2.1.0
+%define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
+
+Summary: LDMS Commands and Libraries
+Name: ldms-utils
+Version: @VERSION@
+Release: %rel%{?dist}
+License: GPLv2 or BSD
+Group: System Environment/Libraries
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: http://www.ogc.us/downloads/ldms-utils/%{name}-%{version}.tar.gz
+Url: http://ogc.us/
+
+%description
+This package provides the LDMS commands and libraries.
+
+%prep
+%setup -q
+
+%build
+%configure
+make
+
+%install
+rm -rf $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} install
+# remove unpackaged files from the buildroot
+rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+%{_sbindir}/muxr_un
+%{_sbindir}/ldms_ls
+%{_sbindir}/vmstat_un
+%{_sbindir}/meminfo_un
+%{_sbindir}/interrupts_un
+%{_libdir}/*.a
+%{_libdir}/*.so*
+%{_includedir}/ldms/*.h
+%doc README COPYING ChangeLog
+
+%changelog
+* Sun Mar 31 2013 Tom Tucker <tom@ogc.us> - 2.1.0
+* Tue Sep  5 2012 Tom Tucker <tom@ogc.us> - 2.0.1
+* Fri Jul  6 2012 Tom Tucker <tom@ogc.us> - 2.0.0
+* Tue Aug 24 2008 Tom Tucker <tom@ogc.us> - 1.0.0
+- First launch.

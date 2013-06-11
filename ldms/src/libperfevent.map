@@ -1,0 +1,5 @@
+LIBPERF_EVENT_2.0 {
+	global:
+		get_plugin;
+	local: *;
+};
