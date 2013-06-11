@@ -40,11 +40,11 @@ UGNI_la = src/libldmsugni.la
 endif
 
 if ENABLE_GLIB
-src_libsedc_la_SOURCES = src/sedc.c
+src_libsedc_la_SOURCES = src/sampler/sedc.c
+src_libsedc_la_CFLAGS = $(GLIB20_CFLAGS) -I$(srcdir)/src/
 src_libsedc_la_DEPENDENCIES = $(srcdir)/src/libsedc.map $(top_builddir)/libplugin.a
 src_libsedc_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) \
 	$(GLIB20_LIBS) -lplugin
-src_libsedc_la_CFLAGS = $(GLIB20_CFLAGS)
 SEDC_la = src/libsedc.la
 
 else
@@ -97,12 +97,14 @@ endif
 
 endif
 
-src_libgeminfo_la_SOURCES = src/geminfo.c
+src_libgeminfo_la_SOURCES = src/sampler/geminfo.c
+src_libgeminfo_la_CFLAGS = -I$(srcdir)/src/
 src_libgeminfo_la_DEPENDENCIES = $(srcdir)/src/libgeminfo.map $(top_builddir)/libplugin.a
 src_libgeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 GEMINFO_la = src/libgeminfo.la
 
-src_libmeminfo_la_SOURCES = src/meminfo.c
+src_libmeminfo_la_SOURCES = src/sampler/meminfo.c
+src_libmeminfo_la_CFLAGS = -I$(srcdir)/src/
 src_libmeminfo_la_DEPENDENCIES = $(srcdir)/src/libmeminfo.map $(top_builddir)/libplugin.a
 src_libmeminfo_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 MEMINFO_la = src/libmeminfo.la
@@ -152,7 +154,8 @@ src_liblustre_client_la_LIBADD = $(top_builddir)/src/libldms.la \
 LUSTRE_CLIENT_la = src/liblustre_client.la
 
 if ENABLE_SENSORS
-src_libprocsensors_la_SOURCES = src/procsensors.c
+src_libprocsensors_la_SOURCES = src/sampler/procsensors.c
+src_libprocsensors_la_CFLAGS = -I$(srcdir)/src/
 src_libprocsensors_la_DEPENDENCIES = $(srcdir)/src/libprocsensors.map $(top_builddir)/libplugin.a
 src_libprocsensors_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCSENSORS_la = src/libprocsensors.la
@@ -160,22 +163,26 @@ else
 SENSORS_FLAGS = -DISABLE_SENSORS
 endif
 
-src_libprocinterrupts_la_SOURCES = src/procinterrupts.c
+src_libprocinterrupts_la_SOURCES = src/sampler/procinterrupts.c
+src_libprocinterrupts_la_CFLAGS = -I$(srcdir)/src/
 src_libprocinterrupts_la_DEPENDENCIES = $(srcdir)/src/libprocinterrupts.map $(top_builddir)/libplugin.a
 src_libprocinterrupts_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCINTERRUPTS_la = src/libprocinterrupts.la
 
-src_libprocnetdev_la_SOURCES = src/procnetdev.c
+src_libprocnetdev_la_SOURCES = src/sampler/procnetdev.c
+src_libprocnetdev_la_CFLAGS = -I$(srcdir)/src/
 src_libprocnetdev_la_DEPENDENCIES = $(srcdir)/src/libprocnetdev.map $(top_builddir)/libplugin.a
 src_libprocnetdev_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCNETDEV_la = src/libprocnetdev.la
 
-src_libprocnfs_la_SOURCES = src/procnfs.c
+src_libprocnfs_la_SOURCES = src/sampler/procnfs.c
+src_libprocnfs_la_CFLAGS = -I$(srcdir)/src/
 src_libprocnfs_la_DEPENDENCIES = $(srcdir)/src/libprocnfs.map $(top_builddir)/libplugin.a
 src_libprocnfs_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCNFS_la = src/libprocnfs.la
 
-src_libprocstatutil_la_SOURCES = src/procstatutil.c
+src_libprocstatutil_la_SOURCES = src/sampler/procstatutil.c
+src_libprocstatutil_la_CFLAGS = -I$(srcdir)/src/
 src_libprocstatutil_la_DEPENDENCIES = $(srcdir)/src/libprocstatutil.map $(top_builddir)/libplugin.a
 src_libprocstatutil_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 PROCSTATUTIL_la = src/libprocstatutil.la
@@ -185,13 +192,15 @@ src_libsysclassib_la_DEPENDENCIES = $(srcdir)/src/libsysclassib.map $(top_buildd
 src_libsysclassib_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 SYSCLASSIB_la = src/libsysclassib.la
 
-src_libvmstat_la_SOURCES = src/vmstat.c
+src_libvmstat_la_SOURCES = src/sampler/vmstat.c
+src_libvmstat_la_CFLAGS = -I$(srcdir)/src/
 src_libvmstat_la_DEPENDENCIES = $(srcdir)/src/libvmstat.map $(top_builddir)/libplugin.a
 src_libvmstat_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lrt
 VMSTAT_la = src/libvmstat.la
 
 if ENABLE_PERF
-src_libperfevent_la_SOURCES = src/perfevent.c
+src_libperfevent_la_SOURCES = src/sampler/perfevent.c
+src_libperfevent_la_CFLAGS = $(GLIB20_CFLAGS) -I$(srcdir)/src/
 src_libperfevent_la_DEPENDENCIES = $(srcdir)/src/libperfevent.map $(top_builddir)/libplugin.a
 src_libperfevent_la_LIBADD = $(top_builddir)/src/libldms.la -L$(top_builddir) -lplugin -lm
 PERFEVENT_la = src/libperfevent.la
@@ -231,7 +240,7 @@ src_ldms_ls_LDADD = $(top_builddir)/src/libldms.la
 
 src_ldmsd_SOURCES = src/ldmsd.c src/ldmsd_store.c
 src_ldmsd_LDADD = $(top_builddir)/src/libldms.la -L$(top_builddir) \
-	-levent -lplugin
+	-levent -lplugin -levent_pthreads
 if ENABLE_YAML
 src_ldmsd_LDADD += -lyaml
 src_ldmsd_CFLAGS = -DENABLE_YAML
