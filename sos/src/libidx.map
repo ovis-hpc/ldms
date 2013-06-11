@@ -1,0 +1,9 @@
+LIBIDX_1.0 {
+	global:
+		idx_create;
+		idx_destroy;
+		idx_find;
+		idx_delete;
+		idx_add;
+	local: *;
+};
