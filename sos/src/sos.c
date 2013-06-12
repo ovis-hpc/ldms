@@ -989,12 +989,6 @@ inline sos_t sos_destroy(sos_t sos)
 	return NULL;
 }
 
-inline
-void sos_iter_reset(sos_iter_t iter)
-{
-	fprintf(stderr, "%s not implemented!!!\n", __FUNCTION__);
-}
-
 void print_obj(sos_t sos, sos_obj_t obj, int attr_id)
 {
 	uint32_t t;

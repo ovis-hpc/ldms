@@ -635,12 +635,6 @@ uint64_t sos_iter_seek_inf(sos_iter_t i, sos_key_t key);
 uint64_t sos_iter_seek_sup(sos_iter_t i, sos_key_t key);
 
 /**
- * \brief Reposition an iterator at the start of the sequence
- * XXX NO IMPLEMENTATION, COMMENT OUT FOR NOW
- */
-void sos_iter_reset(sos_iter_t iter);
-
-/**
  * \brief Retrieve the next tuple from the iterator
  *
  * \param i	Iterator handle
