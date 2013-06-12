@@ -1,4 +1,4 @@
-#INCLUDES = -I$(includedir)
+INCLUDES = -I$(top_srcdir)/../lib/src
 
 sbin_PROGRAMS = \
 	sos \
@@ -16,12 +16,11 @@ lib_LTLIBRARIES = \
 	liboidx.la \
 	libsos.la
 
-AM_CFLAGS = -Wall
+AM_CFLAGS = -Wall $(INCLUDES)
 
 #
 # libsos
 #
-libsos_la_CFLAGS = -g
 libsos_la_SOURCES = \
 	sos.c \
 	sos.h \
@@ -84,7 +83,7 @@ libidxincludedir = $(includedir)/sos
 libidxinclude_HEADERS = idx.h
 
 sos_SOURCES = sos.c
-sos_CFLAGS = -DSOS_MAIN -g
+sos_CFLAGS = -DSOS_MAIN $(INCLUDES)
 sos_LDADD = \
 	libsos.la \
 	liboidx.la \
@@ -92,7 +91,6 @@ sos_LDADD = \
 	libidx.la
 
 sos_rate_SOURCES = sos_rate.c
-sos_rate_CFLAGS = -g
 sos_rate_LDADD = \
 	libsos.la \
 	liboidx.la \
@@ -100,7 +98,6 @@ sos_rate_LDADD = \
 	libidx.la
 
 sos_stat_SOURCES = sos_stat.c
-sos_stat_CFLAGS = -g
 sos_stat_LDADD = \
 	libsos.la \
 	liboidx.la \
@@ -108,7 +105,7 @@ sos_stat_LDADD = \
 	libidx.la
 
 oidx_SOURCES = oidx.c
-oidx_CFLAGS = -DOIDX_MAIN -g
+oidx_CFLAGS = -DOIDX_MAIN $(INCLUDES)
 oidx_LDADD = \
 	libods.la \
 	libidx.la
