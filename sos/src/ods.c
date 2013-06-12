@@ -583,6 +583,7 @@ void ods_dump(ods_t ods, FILE *fp)
 
 	fprintf(fp, "--------------------------- Allocated Pages ----------------------------\n");
 	uint64_t i;
+	uint64_t count = 0;
 	for(i = 0; i < ods->pg_table->count; i++) {
 		uint64_t start;
 		if (!(ods->pg_table->pages[i] & ODS_F_ALLOCATED))
@@ -593,8 +594,11 @@ void ods_dump(ods_t ods, FILE *fp)
 			fprintf(fp, "%ld\n", start);
 		else
 			fprintf(fp, "%ld..%ld\n", start, i);
+		count += (i - start + 1);
 	}
+	fprintf(fp, "Total Allocated Pages: %ld\n", count);
 	fprintf(fp, "------------------------------ Free Pages ------------------------------\n");
+	count = 0;
 	for (pg = ods_obj_offset_to_ptr(ods, ods->obj->pg_free);
 	     pg;
 	     pg = ods_obj_offset_to_ptr(ods, pg->next)) {
@@ -602,13 +606,16 @@ void ods_dump(ods_t ods, FILE *fp)
 			ods_obj_ptr_to_offset(ods, pg));
 		fprintf(fp, "%-32s : %zu\n", "Page Count",
 			pg->count);
+		count += pg->count;
 	}
+	fprintf(fp, "Total Free Pages: %ld\n", count);
 	fprintf(fp, "------------------------------ Free Blocks -----------------------------\n");
 	int bkt;
 	ods_blk_t blk;
 	for (bkt = 0; bkt < (ODS_PAGE_SHIFT - ODS_GRAIN_SHIFT); bkt++) {
 		if (!ods->obj->blk_free[bkt])
 			continue;
+		count = 0;
 		fprintf(fp, "%-32s : %zu\n", "Block Size",
 			ods_bkt_to_size(ods, bkt));
 		for (blk = ods_obj_offset_to_ptr(ods, ods->obj->blk_free[bkt]);
@@ -617,7 +624,10 @@ void ods_dump(ods_t ods, FILE *fp)
 
 			fprintf(fp, "    %-32s : 0x%016lx\n", "Block Offset",
 				ods_obj_ptr_to_offset(ods, blk));
+			count++;
 		}
+		fprintf(fp, "Total Free %zu blocks: %ld\n",
+					ods_bkt_to_size(ods,bkt), count);
 	}
 	fprintf(fp, "==============================- ODS End =================================\n");
 }
