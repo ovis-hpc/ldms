@@ -87,7 +87,7 @@ struct oidx_s {
  */
 struct oidx_entry_s {
 	uint64_t obj;	/**< an object has this key, usually this points to
-			    ::oidx_objref_list_s. */
+			    ::oidx_objref_head_s. */
 	uint64_t next;	/**< this key is a prefix for a longer key also
 			    in the db */
 };
@@ -111,6 +111,84 @@ typedef struct oidx_objref_entry_s {
 	uint64_t objref; /**< Object reference (in SOS ODS). */
 	uint64_t next; /**< next entry. 0 if this is the last entry. */
 } *oidx_objref_entry_t;
+
+/**
+ * Similar LIST_FOREACH, but for oidx_objref list.
+ * \param oidx The pointer to the working ::oidx_s.
+ * \param head_ptr The pointer (not offset reference) to ::oidx_objref_head_s.
+ * \param entry_ptr The pointer (not offset reference) to ::oidx_objref_entry_s.
+ * 		    This is the variable used to iterate through the list.
+ */
+#define OIDX_LIST_FOREACH(oidx, head_ptr, entry_ptr) \
+	for (entry_ptr = ods_obj_offset_to_ptr(oidx->ods, head_ptr->begin); \
+		entry_ptr; \
+		entry_ptr = ods_obj_offset_to_ptr(oidx->ods, entry_ptr->next))
+
+/**
+ * Similar to LIST_FIRST.
+ * \param oidx The pointer to the working ::oidx_s.
+ * \param head_ptr The pointer to ::oidx_objref_head_s.
+ */
+#define OIDX_LIST_FIRST(oidx, head_ptr) \
+	ods_obj_offset_to_ptr(oidx->ods, head_ptr->begin)
+
+/**
+ * Similar to LIST_INSERT_HEAD.
+ * \param oidx The pointer to the working ::oidx_s.
+ * \param head_ptr The pointer to ::oidx_objref_head_s.
+ * \param entry_ptr The pointer to ::oidx_objref_entry_s, the entry to insert
+ * 		    into the list.
+ */
+#define OIDX_LIST_INSERT_HEAD(oidx, head_ptr, entry_ptr) do { \
+	entry_ptr->next = head_ptr->begin; \
+	entry_ptr->prev = 0; \
+	oidx_objref_entry_t e = ods_obj_offset_to_ptr(oidx->ods, \
+							head_ptr->begin); \
+	head_ptr->begin = ods_obj_ptr_to_offset(oidx->ods, entry_ptr); \
+	if (e) \
+		e->prev = head_ptr->begin; \
+} while(0)
+
+/**
+ * Similar to TAILQ_INSERT_TAIL.
+ * \param oidx The pointer to the working ::oidx_s.
+ * \param head_ptr The pointer to ::oidx_objref_head_s.
+ * \param entry_ptr The pointer to ::oidx_objref_entry_s, the entry to insert
+ * 		    into the list.
+ */
+#define OIDX_LIST_INSERT_TAIL(oidx, head_ptr, entry_ptr) do { \
+	entry_ptr->prev = head_ptr->end; \
+	entry_ptr->next = 0; \
+	oidx_objref_entry_t e = ods_obj_offset_to_ptr(oidx->ods, \
+							head_ptr->end); \
+	head_ptr->end = ods_obj_ptr_to_offset(oidx->ods, entry_ptr); \
+	if (e) \
+		e->next = head_ptr->end; \
+} while(0)
+
+/**
+ * \brief This is similar to LIST_REMOVE.
+ *
+ * This macro remove (but not delete) entry from the list.
+ *
+ * \param oidx The pointer to the working ::oidx_s.
+ * \param head_ptr The pointer to ::oidx_objref_head_s.
+ * \param entry_ptr The pointer to ::oidx_objref_entry_s, the entry to remove
+ * 		    from the list.
+ */
+#define OIDX_LIST_REMOVE(oidx, head_ptr, entry_ptr) do { \
+	oidx_objref_entry_t n,p; \
+	n = ods_obj_offset_to_ptr(oidx->ods, entry_ptr->next); \
+	p = ods_obj_offset_to_ptr(oidx->ods, entry_ptr->prev); \
+	if (n) \
+		n->prev = entry_ptr->prev; \
+	else \
+		head_ptr->end = entry_ptr->prev;\
+	if (p) \
+		p->next = entry_ptr->next; \
+	else \
+		head_ptr->begin = entry_ptr->next; \
+} while(0)
 
 /**
  * Prefix tree layer.
