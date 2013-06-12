@@ -58,6 +58,7 @@
 #include <errno.h>
 #include <sys/fcntl.h>
 
+#include "test.h"
 #include "oidx.h"
 #include "oidx_priv.h"
 
@@ -281,7 +282,6 @@ loop:
 uint64_t oidx_find_approx_sup(oidx_t t, oidx_key_t key,
 	oidx_key_t okey, size_t keylen)
 {
-	/* XXX Need to revisit this due to new structure. */
 	unsigned char *pkey = key;
 	unsigned char *pokey = okey;
 	struct oidx_layer_s *pl, *tmp_pl;
@@ -308,10 +308,10 @@ uint64_t oidx_find_approx_sup(oidx_t t, oidx_key_t key,
 	keylen++;
 
 	if (!tmp_pl) {
-		// cannot find exact key .. look for the supremum
+		/* cannot find exact key .. look for the supremum */
 
-		// for first continued layer ...
-		// look to the right ...
+		/* for first continued layer ...
+		 * look to the right ... */
 		tmp_k = (*pkey);
 		do {
 			tmp_k++;
@@ -583,7 +583,6 @@ static int _delete_from_layer(struct oidx_s *oidx, oidx_layer_t pl,
 			count = _delete_from_layer(oidx, nl,
 						   key, keylen, key_idx + 1,
 						   p_obj);
-#if defined(OIDX_CLEANUP_EMPTY_LAYERS)
 			/*
 			 * Doing this will invalidate/corrupt
 			 * outstanding iterators
@@ -597,9 +596,6 @@ static int _delete_from_layer(struct oidx_s *oidx, oidx_layer_t pl,
 				pl->entries[idx].next = 0;
 				pl->count--; /* remove layer reference */
 			}
-#else
-			count = count; /* to suppress compiler's warning */
-#endif
 		}
 	} else if (key_idx == keylen - 1) {
 		*p_obj = pl->entries[idx].obj;
@@ -614,9 +610,12 @@ static int _delete_from_layer(struct oidx_s *oidx, oidx_layer_t pl,
 
 /**
  * Delete the object list from the prefix tree (by \a key).
+ * \note The object list and objects in the list are not deleted. The caller is
+ * responsible for clearing the object reference list.
  * \param t The oidx handle.
  * \param key The pointer to the key.
  * \param keylen The length of the key.
+ * \returns The reference of object list.
  */
 uint64_t oidx_delete(oidx_t t, oidx_key_t key, size_t keylen)
 {
@@ -1102,6 +1101,8 @@ uint64_t oidx_iter_seek_inf(oidx_iter_t iter, oidx_key_t key, size_t keylen)
 
 #ifdef OIDX_MAIN
 #include <stdio.h>
+#include "oidx_priv.h"
+
 struct walk_s {
 	FILE *fp;
 };
@@ -1124,7 +1125,6 @@ int obj_id_as_str(oidx_t oidx,
 	return 0;
 }
 
-oidx_t oidx;
 int main(int argc, char *argv[]) {
 	char buf[256];
 	char *s;
@@ -1166,10 +1166,8 @@ int main(int argc, char *argv[]) {
 	/* seek test */
 	printf("Seek to %08x and continue from there.\n", ntohl(comp_id));
 	obj_off = oidx_iter_seek(iter, &comp_id, 4);
-	if (!obj_off) {
-		printf("Seek to known object failed!\n");
-		exit(1);
-	}
+
+	TEST_ASSERT(obj_off, "Seek to known object.\n");
 	while (obj_off = oidx_iter_next_obj(iter)) {
 		char *c_id = (char *)&obj_off;
 		fprintf(stdout, "%02hhx:%02hhx:%02hhx:%02hhx\n",
@@ -1195,33 +1193,44 @@ int main(int argc, char *argv[]) {
 
 	/* Dump ODS before delete */
 	printf("=== ODS BEFORE DELETE ===\n");
-	ods_dump(oidx, stdout);
+	ods_dump(oidx->ods, stdout);
 	printf("=== END ODS BEFORE DELETE ===\n");
 
 	/* Delete test  */
 	oidx_iter_seek_start(iter);
 	printf("Delete everything.\n");
-	while (obj_off = oidx_iter_prev_obj(iter)) {
+	while (obj_off = oidx_iter_next_obj(iter)) {
 		char *c_id = (char *)&obj_off;
 		comp_id = htonl(obj_off);
 		fprintf(stdout, "%02hhx:%02hhx:%02hhx:%02hhx\n",
 			c_id[3], c_id[2], c_id[1], c_id[0]);
-		oidx_delete(oidx, &comp_id, 4);
+		uint64_t l = oidx_delete(oidx, &comp_id, 4);
+		/* now delete the list */
+		oidx_objref_head_t h = ods_obj_offset_to_ptr(oidx->ods, l);
+		oidx_objref_entry_t e;
+		while (e = OIDX_LIST_FIRST(oidx, h)) {
+			OIDX_LIST_REMOVE(oidx, h, e);
+			ods_free(oidx->ods, e);
+		}
+		ods_free(oidx->ods, h);
 		/* after deleting an object, the iterator becomes invalid */
 		oidx_iter_seek_start(iter);
 	}
 
 	printf("=== ODS AFTER DELTE ===\n");
-	ods_dump(oidx, stdout);
+	ods_dump(oidx->ods, stdout);
 	printf("=== END ODS AFTER DELETE ===\n");
 	/* reset start test ... there should be nothing left */
 	oidx_iter_seek_start(iter);
 	printf("Reset the iterator at the start make sure there's nothing left.\n");
+	int c = 0;
 	while (obj_off = oidx_iter_next_obj(iter)) {
 		char *c_id = (char *)&obj_off;
 		fprintf(stdout, "FAIL! %02hhx:%02hhx:%02hhx:%02hhx still in index\n",
 			c_id[3], c_id[2], c_id[1], c_id[0]);
+		c++;
 	}
+	TEST_ASSERT(c == 0, "number of object == 0\n");
 
 	return 0;
 }
