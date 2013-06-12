@@ -310,9 +310,8 @@ sos_t sos_open(const char *path, int o_flags, ...);
  * Removes all files associated with the object store. The sos_t
  * handle must be provided (requiring an open) because it is necessary
  * to know the associated indexes in order to be able to know the
- * names of the associated files.
- *
- * XXX NOT IMPLEMENTED
+ * names of the associated files. sos_destroy will also close \c sos, as the
+ * files should be closed before removed.
  *
  * \param sos_t 	The handle for the SOS
  */
@@ -406,7 +405,6 @@ int sos_obj_remove(sos_t s, sos_obj_t obj);
  *
  * Returns the sos_attr_t handle for the attribute with the specified
  * name.
- * XXX UNIMPLEMENTED
  * \param sos	Handle for the SOS
  * \param name	Pointer to the attribute name
  * \returns Pointer to the sos_attr_t handle

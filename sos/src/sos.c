@@ -623,6 +623,17 @@ uint64_t get_idx_entry(sos_attr_t attr, sos_key_t key)
 
 void sos_obj_delete(sos_t sos, sos_obj_t obj)
 {
+	/* free the blobs first, otherwise they will be dangling blobs */
+	int i;
+	for (i = 0; i < sos->classp->count; i++) {
+		sos_attr_t attr = sos_obj_attr_by_id(sos, i);
+		if (attr->type != SOS_TYPE_BLOB)
+			continue;
+		/* blob ods_free routine */
+		sos_obj_t blob = sos_obj_attr_get(sos, i, obj);
+		ods_free(attr->blob_ods, blob);
+
+	}
 	ods_free(sos->ods, obj);
 }
 
@@ -979,14 +990,77 @@ void *sos_attr_get(sos_attr_t attr, sos_obj_t obj)
 inline
 sos_attr_t sos_obj_attr_by_name(sos_t sos, const char *name)
 {
-	fprintf(stderr, "%s not implemented!!!\n", __FUNCTION__);
+	sos_attr_t attr;
+	int n = sos->classp->count;
+	int i;
+	for (i = 0; i < n; i++) {
+		attr = sos->classp->attrs + i;
+		if (strcmp(attr->name, name)==0)
+			return attr;
+	}
 	return NULL;
 }
 
-inline sos_t sos_destroy(sos_t sos)
+LIST_HEAD(__str_lst_head, __str_lst);
+struct __str_lst {
+	char *str;
+	LIST_ENTRY(__str_lst) link;
+};
+
+void __str_lst_add(struct __str_lst_head *head, const char *str)
 {
-	fprintf(stderr, "%s not implemented!!!\n", __FUNCTION__);
-	return NULL;
+	struct __str_lst *sl = malloc(sizeof(*sl));
+	sl->str = strdup(str);
+	if (!sl->str)
+		goto err0;
+	LIST_INSERT_HEAD(head, sl, link);
+	return;
+err0:
+	free(sl);
+}
+
+sos_t sos_destroy(sos_t sos)
+{
+	char *str = malloc(PATH_MAX+16);
+	struct __str_lst_head head = {0};
+	if (!str)
+		return NULL; /* errno = ENOMEM should be set already */
+	int i;
+	/* object files */
+	sprintf(str, "%s_sos.OBJ", sos->path);
+	__str_lst_add(&head, str);
+	sprintf(str, "%s_sos.PG", sos->path);
+	__str_lst_add(&head, str);
+	/* index files */
+	for (i = 0; i < sos->meta->attr_cnt; i++) {
+		sos_attr_t attr = sos->classp->attrs + i;
+		if (attr->has_idx) {
+			sprintf(str, "%s_%s.OBJ", sos->path, attr->name);
+			__str_lst_add(&head, str);
+			sprintf(str, "%s_%s.PG", sos->path, attr->name);
+			__str_lst_add(&head, str);
+		}
+		if (attr->type == SOS_TYPE_BLOB) {
+			/* It is a blob, remove the blob file. */
+			sprintf(str, "%s_%s_blob.OBJ", sos->path, attr->name);
+			__str_lst_add(&head, str);
+			sprintf(str, "%s_%s_blob.PG", sos->path, attr->name);
+			__str_lst_add(&head, str);
+		}
+	}
+	free(str);
+	sos_close(sos);
+	struct __str_lst *sl;
+	int rc;
+	while (sl = LIST_FIRST(&head)) {
+		LIST_REMOVE(sl, link);
+		rc = unlink(sl->str);
+		if (rc)
+			perror("unlink");
+		free(sl->str);
+		free(sl);
+	}
+	return sos;
 }
 
 void print_obj(sos_t sos, sos_obj_t obj, int attr_id)
