@@ -106,7 +106,7 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:vFkNC:"
+#define FMT "H:i:l:S:s:x:T:M:t:P:I:vFkNC:"
 
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -205,6 +205,7 @@ void usage(char *argv[])
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N             Notify registered monitors of the test metric sets\n");
 	printf("    -t set_count   Create set_count instances of set_name.\n");
+	printf("    -I instance    The instance number");
 	cleanup(1);
 }
 
