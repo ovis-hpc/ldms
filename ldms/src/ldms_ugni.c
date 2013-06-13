@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -202,95 +202,6 @@ static void free_desc(struct ugni_desc *desc)
 	pthread_mutex_unlock(&desc_list_lock);
 }
 
-#if 0
-/*
- * Add all cq in the add_cq_table to the table of CQ monitored by the
- * cq_thread_proc. This function must be called with the cq_table_lock held.
- */
-static int process_add_cq()
-{
-	int i;
-	int old_use_count = cq_use_count;
-	gni_cq_handle_t *add_q = &add_cq_table[0];
-	cq_use_count += add_cq_used;
-	if (cq_table_count < cq_use_count) {
-		ssize_t sz = (cq_table_count * sizeof(gni_cq_handle_t)) +
-			(CQ_BUMP_COUNT * sizeof(gni_cq_handle_t));
-		cq_table = realloc(cq_table, sz);
-		if (!cq_table)
-			return -1;
-		cq_table_count += CQ_BUMP_COUNT;
-	}
-	for (i = old_use_count; i < cq_use_count; i++) {
-		cq_table[i] = *add_q;
-		add_q++;
-	}
-	add_cq_used = 0;
-	return 0;
-}
-
-/*
- * Add a CQ to be added to the cq_table when possible. This is to avoid
- * modifying the cq_table while the cq_thread_proc is blocked in
- * GNI_CqMonitor.
- */
-static void add_cq(gni_cq_handle_t cq)
-{
-	pthread_mutex_lock(&cq_table_lock);
-	add_cq_table[add_cq_used++] = cq;
-	pthread_mutex_unlock(&cq_table_lock);
-
-	pthread_mutex_lock(&cq_empty_lock);
-	pthread_cond_signal(&cq_empty_cv);
-	pthread_mutex_unlock(&cq_empty_lock);
-}
-
-/*
- * Remove all CQ in the rem_cq_table from cq_table. Must be called with the
- * cq_table_lock held.
- */
-static int rem_this_cq(gni_cq_handle_t cq)
-{
-	int i;
-	gni_return_t grc;
-	for (i = 0; i < cq_use_count; i++) {
-		if (cq == cq_table[i]) {
-			int j;
-			grc = GNI_CqDestroy(cq);
-			if (grc != GNI_RC_SUCCESS)
-				gxp->xprt->log("Error %d; CQ %p could not be destroyed.\n", grc, cq);
-			for (j = i; j < cq_use_count; j++)
-				cq_table[i] = cq_table[i+1];
-			goto found;
-		}
-	}
-	return -1;
- found:
-	cq_use_count--;
-	return 0;
-}
-static int process_rem_cq()
-{
-	int i;
-	for (i = 0; i < rem_cq_used; i++)
-		rem_this_cq(rem_cq_table[i]);
-	rem_cq_used = 0;
-	return 0;
-}
-
-/*
- * Remove a CQ from cq_table when possible. This is to avoid
- * modifying the cq_table while the cq_thread_proc is blocked in
- * GNI_CqMonitor.
- */
-static void rem_cq(gni_cq_handle_t cq)
-{
-	pthread_mutex_lock(&cq_table_lock);
-	rem_cq_table[rem_cq_used++] = cq;
-	pthread_mutex_unlock(&cq_table_lock);
-}
-#endif
-
 static gni_return_t ugni_dom_init(uint8_t ptag, uint32_t cookie, uint32_t inst_id,
 				  struct ldms_ugni_xprt *gxp)
 {
@@ -300,7 +211,8 @@ static gni_return_t ugni_dom_init(uint8_t ptag, uint32_t cookie, uint32_t inst_i
 		return GNI_RC_INVALID_PARAM;
 
 	pthread_mutex_lock(&ugni_lock);
-	grc = GNI_CdmCreate(inst_id, ptag, cookie, 0, &gxp->dom.cdm);
+	grc = GNI_CdmCreate(inst_id, ptag, cookie, GNI_CDM_MODE_FMA_SHARED,
+			    &gxp->dom.cdm);
 	if (grc)
 		goto err;
 
@@ -533,6 +445,8 @@ static void ugni_read(struct bufferevent *buf_event, void *arg)
 
 static void *io_thread_proc(void *arg)
 {
+	int oldtype;
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldtype);
 	event_base_dispatch(io_event_loop);
 	return NULL;
 }
@@ -585,21 +499,6 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 
 	return GNI_RC_SUCCESS;
 }
-
-#if 0
-/*
- * Check for any CQ being added or removed. Process removes
- * first so that space freed by removes is available for the
- * adds.
- */
-static void add_del_cq()
-{
-	pthread_mutex_lock(&cq_table_lock);
-	process_rem_cq();
-	process_add_cq();
-	pthread_mutex_unlock(&cq_table_lock);
-}
-#endif
 
 #define WAIT_20SECS 20000
 static void *cq_thread_proc(void *arg)
@@ -818,7 +717,7 @@ gni_return_t ugni_get_mh(struct ldms_ugni_xprt *gxp,
 	unsigned long start, end = sbrk(0);
 
 	pthread_mutex_lock(&ugni_mh_lock);
- 	umh = LIST_FIRST(&mh_list);
+	umh = LIST_FIRST(&mh_list);
 	if (!umh || ((unsigned long)addr < umh->start)) {
 		need_mh = 1;
 		start = (unsigned long)addr;
