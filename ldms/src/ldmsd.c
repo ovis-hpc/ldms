@@ -106,8 +106,8 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:I:vFkNC:"
-
+#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:vFkNC:"
+#define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
  */
@@ -127,6 +127,7 @@ int notify=0;
 int muxr_s = -1;
 char *logfile;
 char *sockname = NULL;
+size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 ldms_t ldms;
 FILE *log_fp;
 struct attr_value_list *av_list;
@@ -206,6 +207,9 @@ void usage(char *argv[])
 	printf("    -N             Notify registered monitors of the test metric sets\n");
 	printf("    -t set_count   Create set_count instances of set_name.\n");
 	printf("    -I instance    The instance number");
+	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
+            "                     The given size must be less than 1 Petabytes.\n"
+            "                     For example, 20M or 20mb are 20 megabytes.\n");
 	cleanup(1);
 }
 
@@ -2360,6 +2364,34 @@ void config_file_routine(yaml_document_t *yaml_document)
 }
 #endif /* ENABLE_YAML */
 
+size_t __get_mem_size(const char *s)
+{
+    char unit;
+    char tmp[256];
+    sprintf(tmp, "%s%s", s, "B");
+    size_t size;
+    sscanf(tmp, "%lu %c", &size, &unit);
+    switch (unit) {
+    case 'b':
+    case 'B':
+            return size;
+    case 'k':
+    case 'K':
+            return size * 1024L;
+    case 'm':
+    case 'M':
+            return size * 1024L * 1024L;
+    case 'g':
+    case 'G':
+            return size * 1024L * 1024L * 1024L;
+    case 't':
+    case 'T':
+            return size * 1024L * 1024L * 1024L;
+    default:
+            return 0;
+    }
+}
+
 int main(int argc, char *argv[])
 {
 	int ret;
@@ -2449,6 +2481,12 @@ int main(int argc, char *argv[])
 			test_metric_count = atoi(optarg);
 			has_arg[LDMS_TEST_METRIC_COUNT] = 1;
 			break;
+		case 'm':
+			if ((max_mem_size = __get_mem_size(optarg)) == 0) {
+				printf("Invalid memory size '%s'\n", optarg);
+				usage(argv);
+			}
+			break;
 		default:
 			usage(argv);
 		}
@@ -2476,6 +2514,14 @@ int main(int argc, char *argv[])
 		}
 		stdout = log_fp;
 	}
+
+	/* Initialize LDMS */
+	if (ldms_init(max_mem_size)) {
+		ldms_log("LDMS could not pre-allocate the memory of size %lu.\n",
+								max_mem_size);
+		exit(1);
+	}
+
 	evthread_use_pthreads();
 	event_set_log_callback(ev_log_cb);
 

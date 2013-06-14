@@ -286,6 +286,8 @@ void null_log(const char *fmt, ...)
 	// print nothing at all!!!!
 }
 
+#define LDMS_LS_MAX_MEM_SIZE 512L * 1024L
+
 int main(int argc, char *argv[])
 {
 	struct sockaddr_in sin;
@@ -343,6 +345,14 @@ int main(int argc, char *argv[])
 	if (h->h_addrtype != AF_INET)
 		usage(argv);
 	oc = (u_char *)h->h_addr_list[0];
+
+	/* Initialize LDMS */
+	size_t max_mem = LDMS_LS_MAX_MEM_SIZE;
+	if (ldms_init(max_mem)) {
+		printf("LDMS could not pre-allocate the memory of size %lu.\n",
+															max_mem);
+		exit(1);
+	}
 
 	ldms = ldms_create_xprt(xprt, null_log);
 	if (!ldms) {

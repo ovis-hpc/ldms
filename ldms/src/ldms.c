@@ -69,6 +69,7 @@
 #ifdef ENABLE_MMAP
 #include <ftw.h>
 #endif
+#include <coll/mmalloc.h>
 #include "ldms_private.h"
 
 #define SET_DIR_PATH "/var/run/ldms"
@@ -427,8 +428,7 @@ void ldms_destroy_set(ldms_set_t s)
 	munmap(set->data, set->meta->data_size);
 	munmap(set->meta, set->meta->meta_size);
 #else
-	free(set->data);
-	free(set->meta);
+	mm_free(set->meta);
 #endif
 	rem_local_set(set);
 	free(set);
@@ -701,21 +701,19 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	struct ldms_value_desc *vd;
 	int rc;
 
+	meta_sz = (meta_sz + 7) & ~7;
 	data_sz += sizeof(struct ldms_data_hdr);
 	meta_sz += sizeof(struct ldms_set_hdr);
 
-	meta = calloc(1, meta_sz);
+	meta = mm_alloc(meta_sz + data_sz);
 	if (!meta) {
 		rc = ENOMEM;
 		goto out_0;
 	}
 	meta->version = LDMS_VERSION;
 	meta->meta_size = meta_sz;
-	data = calloc(1, data_sz);
-	if (!data) {
-		rc =ENOMEM;
-		goto out_1;
-	}
+
+	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_sz);
 	meta->data_size = data_sz;
 	data->size = data_sz;
 
@@ -753,11 +751,21 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	return 0;
 
  out_1:
-	free(meta);
+	mm_free(meta);
  out_0:
 	return rc;
 }
 #endif
+
+#define LDMS_GRAIN_MMALLOC 1024
+
+int ldms_init(size_t max_size)
+{
+	size_t grain = LDMS_GRAIN_MMALLOC;
+	if (mm_init(max_size, grain))
+		return -1;
+	return 0;
+}
 
 int ldms_create_set(const char *set_name,
 		    size_t meta_sz, size_t data_sz, ldms_set_t *s)

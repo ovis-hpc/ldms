@@ -233,6 +233,15 @@ struct ldms_iterator {
 };
 
 /**
+ * \brief Initialize LDMS
+ *
+ *  Pre-allocate a memory region for metric sets
+ *  \param max_size The maximum size of the pre-allocated memory
+ *  \return 0 on success
+ */
+int ldms_init(size_t max_size);
+
+/**
  * \brief Take a reference on a transport
  *
  * \param x 	The transport handle

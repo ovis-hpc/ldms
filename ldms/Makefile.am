@@ -222,7 +222,7 @@ lib_LTLIBRARIES = src/libldms.la $(SOCK_la) \
 
 src_libldms_la_SOURCES = src/ldms.c src/ldms_sock.c src/ldms_xprt.c \
 		src/ogc_rbt.c
-src_libldms_la_LIBADD = -ldl -lpthread -levent -levent_pthreads
+src_libldms_la_LIBADD = -ldl -lpthread -levent -levent_pthreads -lmmalloc
 src_libldms_la_DEPENDENCIES = $(srcdir)/src/libldms.map
 
 libldmsincludedir = $(includedir)/ldms
