@@ -1,5 +1,0 @@
-LIBLDMSSOCK_2.0 {
-	global:
-		xprt_get;
-	local: *;
-};
