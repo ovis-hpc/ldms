@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -64,7 +64,7 @@
 #include <errno.h>
 #include <mysql/my_global.h>
 #include <mysql/mysql.h>
-#include <sos/idx.h>
+#include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -94,7 +94,7 @@ struct mysql_metric_store {
   char* cleansedmetricname;
   MYSQL *conn;
   char *metric_key;
-  void *ucontext; 
+  void *ucontext;
   pthread_mutex_t lock;
 };
 
@@ -105,7 +105,7 @@ static int initConn(MYSQL **conn){
   *conn = NULL; //default
 
   if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) ||
-      (strlen(db_user) == 0)){ 
+      (strlen(db_user) == 0)){
     msglog("Invalid parameters for database");
     return EINVAL;
   }
@@ -129,7 +129,7 @@ static int initConn(MYSQL **conn){
 
 
 
-/** 
+/**
  * \brief Configuration
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -185,7 +185,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
     }
   }
 
-  //optional 
+  //optional
   value = av_value(avl, "createovistables");
   if (value){
     pthread_mutex_lock(&cfg_lock);
@@ -276,7 +276,7 @@ static int createTable(MYSQL* conn, char* tablename){
 	   "_Time (`Time` ), KEY ",
 	   tablename,
 	   "_Level (`CompId` ,`Level` ,`Time` ))");
-  
+
   int mysqlerrx = mysql_query(conn, query1);
   if (mysqlerrx != 0){
     msglog("Cannot query to create table '%s'. Error: %d\n", tablename, mysqlerrx);
@@ -305,10 +305,10 @@ static int createOVISSupportingTables(MYSQL* conn, char *tableName, char* compAs
   MYSQL_RES *result;
   MYSQL_ROW row;
 
-  //get the comptype              
+  //get the comptype
   int ctype = -1;
   char query1[4096];
-  snprintf(query1,4095,"SELECT CompType From ComponentTypes WHERE ShortName ='%s'", compAssoc); //FIXME: check for cap       
+  snprintf(query1,4095,"SELECT CompType From ComponentTypes WHERE ShortName ='%s'", compAssoc); //FIXME: check for cap
   if (mysql_query(conn, query1) == 0){
     result = mysql_store_result(conn);
     int num_fields = mysql_num_fields(result);
@@ -465,7 +465,7 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
 	cleansedcompname[i] = '_'; // replace mysql non-allowed chars with _
       }
     }
-    cleansedcompname[0] = toupper(cleansedcompname[0]); 
+    cleansedcompname[0] = toupper(cleansedcompname[0]);
 
     int sz = strlen(tempmetricname)+ strlen(cleansedcompname)+strlen("MetricValues");
     char* tablename = (char*)malloc((sz+5)*sizeof(char));
@@ -480,33 +480,33 @@ new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
 
     ms->metric_key = strdup(metric_key);
     if (!ms->metric_key){
-      free(tempmetricname);     
+      free(tempmetricname);
       free(cleansedcompname);
       goto err2;
     }
 
     int rc = initConn(&(ms->conn));
     if (rc != 0){
-      free(tempmetricname);     
+      free(tempmetricname);
       free(cleansedcompname);
       goto err3;
     }
 
     rc = createTable(ms->conn, ms->tablename);
     if (rc != 0){
-      free(tempmetricname);     
+      free(tempmetricname);
       free(cleansedcompname);
       goto err3;
     }
     if (createovistables){
       rc = createOVISSupportingTables(ms->conn, ms->tablename, cleansedcompname, tempmetricname);
       if (rc != 0){
-	free(tempmetricname);     
+	free(tempmetricname);
 	free(cleansedcompname);
 	goto err3;
       }
     }
-    free(tempmetricname);     
+    free(tempmetricname);
     free(cleansedcompname);
 
     idx_add(metric_idx, metric_key, strlen(metric_key), ms);
@@ -531,7 +531,7 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
       struct timeval tv, ldms_metric_t m)
 {
   //NOTE: later change this so data is queued up here and later bulk insert in the flush
-  
+
   //NOTE: ldmsd_store invokes the lock on this ms, so we dont have to do it here
 
   struct mysql_metric_store *ms;
@@ -546,7 +546,7 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
     msglog("Cannot insert value for <%s>: Connection to mysql is closed\n", ms->tablename);
     return EPERM;
   }
-    
+
   //FIXME -- need some checks here on the type (mysql table create is before the new_store)
   // ldms_value_type valtype = ldms_get_metric_type(m);
   uint64_t val = ldms_get_u64(m);
@@ -561,7 +561,7 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
   char insertStatement[1024];
   snprintf(insertStatement,1023,
 	   "INSERT INTO %s VALUES( NULL, %d, %" PRIu64 ", FROM_UNIXTIME(%d), %ld )",
-	   ms->tablename, (int)comp_id, val, sec, level); 
+	   ms->tablename, (int)comp_id, val, sec, level);
 
   int mysqlerrx = mysql_query(ms->conn, insertStatement);
   if (mysqlerrx != 0){
@@ -574,9 +574,9 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
 
 static int flush_store(ldmsd_metric_store_t _ms)
 {
-  //NOTE - later change this so that data is queued up in store and so that flush 
+  //NOTE - later change this so that data is queued up in store and so that flush
   //does the bulk insert (note that that is on a per metric (thus ms) basis).
-  
+
   //  struct mysql_metric_store *ms = _ms;
   //  if (!_ms)
   //    return EINVAL;
@@ -596,7 +596,7 @@ static void close_store(ldmsd_metric_store_t _ms)
   msglog("Closing store for %s which is a free of the idx and close conn\n", ms->tablename);
   idx_delete(metric_idx, ms->metric_key, strlen(ms->metric_key));
   if (ms->conn) mysql_close(ms->conn);
-  ms->conn = NULL; 
+  ms->conn = NULL;
   free(ms->tablename);
   free(ms->metric_key);
   free(ms);

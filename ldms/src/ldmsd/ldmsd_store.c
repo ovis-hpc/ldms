@@ -373,7 +373,7 @@ ldmsd_metric_store_get(struct ldmsd_store *store,
 	return ms;
 }
 #if 0
-#include <sos/idx.h>
+#include <coll/idx.h>
 idx_t ct_idx;
 idx_t c_idx;
 int main(int argc, char *argv[])

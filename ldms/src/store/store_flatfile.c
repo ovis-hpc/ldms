@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -62,7 +62,7 @@
 #include <linux/limits.h>
 #include <pthread.h>
 #include <errno.h>
-#include <sos/idx.h>
+#include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -87,13 +87,13 @@ struct flatfile_metric_store {
   FILE *file;
   char* path;
   char *metric_key;
-  void *ucontext; 
+  void *ucontext;
   pthread_mutex_t lock;
 };
 
 pthread_mutex_t cfg_lock;
 
-/** 
+/**
  * \brief Configuration
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -226,11 +226,11 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
   }
 
   //  char data_str[64];
-  //  sprintf(data_str, 
+  //  sprintf(data_str,
   //	  "%"PRIu64".%"PRIu64" %"PRIu32" %"PRIu64"\n",
   //	  (uint64_t)(tv.tv_sec), (uint64_t)(tv.tv_usec),
   //	  comp_id, ldms_get_u64(m));
-  // msglog(data_str); //this logs the sample to the log file 
+  // msglog(data_str); //this logs the sample to the log file
   //  int rc = fprintf(ms->file, data_str);
   int rc = fprintf(ms->file, "%"PRIu64".%"PRIu64" %"PRIu32" %"PRIu64"\n",
 	  (uint64_t)(tv.tv_sec), (uint64_t)(tv.tv_usec),
@@ -245,9 +245,9 @@ store(ldmsd_metric_store_t _ms, uint32_t comp_id,
 
 static int flush_store(ldmsd_metric_store_t _ms)
 {
-  //NOTE - later change this so that data is queued up in store and so that flush 
+  //NOTE - later change this so that data is queued up in store and so that flush
   //does a bulk insert.
-  
+
   return 0;
 }
 

@@ -65,6 +65,7 @@
 #include <inttypes.h>
 #include <fcntl.h>
 #include <sys/queue.h>
+#include <time.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 

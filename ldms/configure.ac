@@ -1,122 +1,82 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT(ldms-utils, 2.1.0, tom@ogc.us)
+AC_INIT(ldms, 2.1.0, tom@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_SRCDIR([src/ldms.h])
+dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(ldms-utils, 2.1.0)
+AM_INIT_AUTOMAKE([-Wno-portability])
 AM_PROG_LIBTOOL
 
-AC_ARG_ENABLE(sos, [  --disable-sos     Disable the SOS plugin],
-        [       if test x$enableval = xno ; then
-                        disable_sos=yes
-			echo SOS plugin is disabled
-                fi
-        ])
+OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
+OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])
+OPTION_DEFAULT_ENABLE([mmap], [ENABLE_MMAP])
+OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
+OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
+OPTION_DEFAULT_ENABLE([glib], [ENABLE_GLIB])
+OPTION_DEFAULT_ENABLE([yaml], [ENABLE_YAML])
 
-AC_ARG_ENABLE(papi, [  --disable-papi     Disable the PAPI plugin],
-        [       if test x$enableval = xno ; then
-                        disable_papi=yes
-			echo PAPI plugin is disabled
-                fi
-        ])
+dnl Options for transport
+OPTION_DEFAULT_ENABLE([xprt], [ENABLE_XPRT])
+OPTION_DEFAULT_ENABLE([ugni], [ENABLE_UGNI])
+OPTION_DEFAULT_ENABLE([rdma], [ENABLE_RDMA])
+OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 
-AC_ARG_ENABLE(ugni, [  --disable-ugni     Disable the uGNI transport],
-        [       if test x$enableval = xno ; then
-                        disable_ugni=yes
-			echo uGNI transport is disabled
-                fi
-        ])
+dnl Options for store
+OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
+OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
+OPTION_DEFAULT_ENABLE([mysql], [ENABLE_MYSQL])
+OPTION_DEFAULT_ENABLE([mysqlbulk], [ENABLE_MYSQLBULK])
+OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 
-AC_ARG_ENABLE(rdma, [  --disable-rdma     Disable the RDMA transport],
-        [       if test x$enableval = xno ; then
-                        disable_rdma=yes
-			echo RDMA transport is disabled
-                fi
-        ])
+dnl Options for sampler
+OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
+OPTION_DEFAULT_ENABLE([geminfo], [ENABLE_GEMINFO])
+OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
+OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
+OPTION_DEFAULT_ENABLE([perfevent], [ENABLE_PERFEVENT])
+OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
+OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
+OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
+OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
+OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
+OPTION_DEFAULT_ENABLE([sedc], [ENABLE_SEDC])
+OPTION_DEFAULT_ENABLE([sysclassib], [ENABLE_SYSCLASSIB])
+OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 
-AC_ARG_ENABLE(sock, [  --disable-sock     Disable the sockets transport],
-        [       if test x$enableval = xno ; then
-                        disable_sock=yes
-			echo Socket transport is disabled
-                fi
-        ])
+OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
-AC_ARG_ENABLE(mmap, [  --disable-mmap     Disable peristent local data sets (i.e. mmap).],
-        [       if test x$enableval = xno ; then
-                        disable_mmap=yes
-			echo The mmap API is not supported on this system.
-                fi
-        ])
-
-AC_ARG_ENABLE(perf, [  --disable-perf     Disable perf events.],
-        [       if test x$enableval = xno ; then
-                        disable_perf=yes
-                        echo The perf events sampler has been disabled.
-                fi
-        ])
-
-AC_ARG_ENABLE(mysql, [  --disable-mysql     Disable mysql inserts.],
-        [       if test x$enableval = xno ; then
-                        disable_mysql=yes
-                        echo The mysqlinsert sampler has been disabled.
-                fi
-        ])
-
-AC_ARG_ENABLE(sensors, [  --disable-sensors     Disable sensors.],
-        [       if test x$enableval = xno ; then
-                        disable_sensors=yes
-                        echo The procsensors sampler has been disabled.
-                fi
-        ])
-
-AC_ARG_ENABLE(glib, [  --disable-glib     Disable plugins/utilities using glib.],
-        [       if test x$enableval = xno ; then
-                        disable_glib=yes
-                        echo The sedc sampler and hwloc utilities have been disabled.
-                fi
-        ])
-
-AC_ARG_WITH(
-	sos,
-	AS_HELP_STRING(
-		[--with-sos@<:@=path@:>@],
-		[Specify sos path @<:@default=/usr/local@:>@]
-	),
-	[WITH_SOS=$withval],
-	[WITH_SOS=/usr/local]
-)
-
-SOS_LIBDIR="$WITH_SOS/lib"
-SOS_INCDIR="$WITH_SOS/include"
-
-AC_ARG_ENABLE(yaml, [  --disable-yaml     Disable yaml support.],
-        [       if test x$enableval = xno ; then
-                        disable_yaml=yes
-			echo yaml configuration file support has been disabled.
-                fi
-        ])
+OPTION_WITH([sos], [SOS])
+OPTION_WITH([ovis-lib], [OVIS_LIB])
+if test -z "$ENABLE_MYSQL_TRUE"
+then
+OPTION_WITH_MYSQL dnl MYSQL is special.
+fi
+if test-z "$ENABLE_GLIB_TRUE"
+then
+PKG_CHECK_MODULES([GLIB20], [glib-2.0])
+fi
 
 dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
+dnl AM_PROG_CC_C_O
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
 dnl Check for libevent
 AC_CHECK_LIB(event, event_base_new, [],
-    AC_MSG_ERROR([event_base_new() not found.  ldms-utils requires libevent.]))
+    AC_MSG_ERROR([event_base_new() not found. ldms requires libevent.]))
 
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
-    AC_MSG_ERROR([pthread library not found.  ldms-utils requires libpthread.]))
+    AC_MSG_ERROR([pthread library not found.  ldms requires libpthread.]))
 
 dnl Checks for libraries
-if test "$disable_rdma" != "yes"
+if test -z "$ENABLE_RDMA_TRUE"
 then
 AC_CHECK_LIB(ibverbs, ibv_get_device_list, [],
     AC_MSG_ERROR([ibv_get_device_list() not found.  ldms-utils requires libibverbs.]))
@@ -130,6 +90,7 @@ dnl Checks for library functions
 AC_CHECK_FUNCS(ibv_read_sysfs_file)
 
 dnl Check for glib
+PKG_CONFIG=`which pkg-config`
 PKG_CHECK_MODULES([GLIB20], [glib-2.0 >= 2.0.0])
 
 dnl Now check if for libibverbs device library extension
@@ -146,16 +107,12 @@ fi
 AC_SUBST(IBV_DEVICE_LIBRARY_EXTENSION)
 fi
 
-if test "$disable_sos" != "yes"
+if test -z "$ENABLE_SOS_TRUE"
 then
-
 AC_CHECK_LIB( sos, sos_open,
 	[
 		AC_CHECK_HEADERS($SOS_INCDIR/sos/sos.h,
-		[
-			AC_SUBST([SOS_LIBDIR], [$SOS_LIBDIR] )
-			AC_SUBST([SOS_INCDIR], [$SOS_INCDIR])
-		],
+		[],
 		[
 			AC_MSG_FAILURE([sos/sos.h not found])
 		],
@@ -166,33 +123,32 @@ AC_CHECK_LIB( sos, sos_open,
 	],
 	-lpthread -lods -loidx -lidx -L$SOS_LIBDIR
 )
-
 fi
-if test "$disable_yaml" != "yes"
+
+if test -z "$ENABLE_YAML_TRUE"
 then
 AC_CHECK_LIB(yaml, yaml_parser_load, [],
 	AC_MSG_ERROR([libyaml not found. please add --disable-yaml to disable yaml support.]))
 fi
 
-AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
-    if test -n "`$LD --help < /dev/null 2>/dev/null | grep version-script`"; then
-        ac_cv_version_script=yes
-    else
-        ac_cv_version_script=no
-    fi)
+dnl Check for mmalloc
+AC_CHECK_LIB(mmalloc, mm_init, [],
+	     AC_MSG_ERROR([mmalloc library not found. ldms requires mmalloc.
+			   Please install mmalloc from OVIS/lib. ]),
+	     -L$OVIS_LIB_LIBDIR -L$SOS_LIBDIR )
 
-AM_CONDITIONAL([ENABLE_SOS], [test "$disable_sos" != "yes"])
-AM_CONDITIONAL([ENABLE_PAPI], [test "$disable_papi" != "yes"])
-AM_CONDITIONAL([ENABLE_UGNI], [test "$disable_ugni" != "yes"])
-AM_CONDITIONAL([ENABLE_RDMA], [test "$disable_rdma" != "yes"])
-AM_CONDITIONAL([ENABLE_SOCK], [test "$disable_sock" != "yes"])
-AM_CONDITIONAL([ENABLE_MMAP], [test "$disable_mmap" != "yes"])
-AM_CONDITIONAL([ENABLE_PERF], [test "$disable_perf" != "yes"])
-AM_CONDITIONAL([ENABLE_MYSQL], [test "$disable_mysql" != "yes"])
-AM_CONDITIONAL([ENABLE_SENSORS], [test "$disable_sensors" != "yes"])
-AM_CONDITIONAL([ENABLE_GLIB], [test "$disable_glib" != "yes"])
-AM_CONDITIONAL([ENABLE_YAML], [test "$disable_yaml" != "yes"])
-AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
-AC_CONFIG_FILES([Makefile ldms-utils.spec])
+AC_CHECK_LIB(coll, idx_create, [],
+	     AC_MSG_ERROR([libcoll not found. Please install libcoll from
+			   OVIS/lib.]),
+	     -L$OVIS_LIB_LIBDIR -L$SOS_LIBDIR )
+
+dnl Reset LIBS variable.
+LIBS=""
+
+AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
+		 src/store/Makefile src/sampler/Makefile
+		 src/sampler/lustre/Makefile
+		 src/ldmsd/Makefile
+		 ldms-utils.spec])
 AC_OUTPUT
 
