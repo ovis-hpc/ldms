@@ -149,6 +149,6 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
 		 src/ldmsd/Makefile
-		 ldms-utils.spec])
+		 ldms.spec])
 AC_OUTPUT
 
