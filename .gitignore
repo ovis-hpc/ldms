@@ -7,3 +7,9 @@ cscope*
 autom4te.cache*
 src/.libs/*
 config/*
+Makefile.in
+config
+configure
+build*
+config.h.in
+*.m4
