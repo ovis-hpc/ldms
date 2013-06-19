@@ -81,12 +81,12 @@ typedef struct mm_region {
 	struct rbt addr_tree;
 } *mm_region_t;
 
-int compare_count(void *node_key, void *val_key)
+static int compare_count(void *node_key, void *val_key)
 {
 	return (int)(*(uint64_t *)node_key) - (*(uint64_t *)val_key);
 }
 
-int compare_addr(void *node_key, void *val_key)
+static int compare_addr(void *node_key, void *val_key)
 {
 	return (int)(*(char **)node_key - *(char **)val_key);
 }

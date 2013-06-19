@@ -48,7 +48,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#ifndef __MMALLOC_H__
+#define __MMALLOC_H__
 struct mm_info {
 	size_t grain;		/*! The minimum allocation size as 2^x  */
 	size_t grain_bits;	/*! x in 2^x*/
@@ -93,3 +94,5 @@ void *mm_alloc(size_t size);
  * \param ptr	Pointer to the buffer to free.
  */
 void mm_free(void *ptr);
+#endif
+
