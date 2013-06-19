@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -122,7 +122,7 @@ struct rdma_context {
 	enum ibv_wc_opcode op;  /* work-request op (can't be trusted
 				in wc on error */
 	struct rdma_buffer *rb; /* RDMA buffer if any */
-	
+
 	TAILQ_ENTRY(rdma_context) pending_link; /* pending i/o */
 };
 
