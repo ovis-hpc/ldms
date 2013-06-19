@@ -3,11 +3,11 @@ lib_LTLIBRARIES =
 CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE)
 # libstr_map
-libstr_map_la_SOURCES = str_map.c
+libstr_map_la_SOURCES = str_map.c str_map.h fnv_hash.h
 lib_LTLIBRARIES += libstr_map.la
 
 #liblustre_sampler
-liblustre_sampler_la_SOURCES = lustre_sampler.c
+liblustre_sampler_la_SOURCES = lustre_sampler.c lustre_sampler.h
 liblustre_sampler_la_LIBADD = $(CORE)/libldms.la $(CORE)/libldmsplugin.la \
 				  libstr_map.la -lrt
 lib_LTLIBRARIES += liblustre_sampler.la

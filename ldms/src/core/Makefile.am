@@ -9,7 +9,7 @@ AM_CFLAGS = -Wall $(DBGFLAGS)
 ldmscoreincludedir = $(includedir)/ldms
 ldmscoreinclude_HEADERS = ldms.h ldmsd.h ldms_xprt.h ogc_rbt.h
 
-libldms_la_SOURCES = ldms.c ldms_xprt.c ogc_rbt.c
+libldms_la_SOURCES = ldms.c ldms_xprt.c ogc_rbt.c ldms_private.h
 libldms_la_CFLAGS = -I$(OVIS_LIB_INCDIR)
 libldms_la_LIBADD = -ldl -lpthread -L$(OVIS_LIB_LIBDIR) -lmmalloc
 lib_LTLIBRARIES += libldms.la
