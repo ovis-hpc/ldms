@@ -1,15 +1,20 @@
 
-%define RELEASE 2.1.0
-%define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
+# Set topdir to be builddir/rpm
+%define _topdir %(echo $PWD)/rpm
+#%define _unpackaged_files_terminate_build 0
+%define _missing_doc_files_terminate_build 0
 
+%define ldms_grp System Environment/Libraries
+
+# Main package
 Summary: LDMS Commands and Libraries
-Name: ldms-utils
+Name: ldms
 Version: @VERSION@
-Release: %rel%{?dist}
+Release: 1%{?dist}
 License: GPLv2 or BSD
-Group: System Environment/Libraries
+Group: %{ldms_grp}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-Source: http://www.ogc.us/downloads/ldms-utils/%{name}-%{version}.tar.gz
+Source: %{name}-%{version}.tar.gz
 Url: http://ogc.us/
 
 %description
@@ -19,7 +24,7 @@ This package provides the LDMS commands and libraries.
 %setup -q
 
 %build
-%configure
+%configure @ac_configure_args@
 make
 
 %install
@@ -31,17 +36,309 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 %clean
 rm -rf $RPM_BUILD_ROOT
 
-%files
+# ldms-core package
+%package core
+Summary: LDMS Core package.
+Group: %{ldms_grp}
+%description core
+This is a core package of Lightweight Distributed Metric System (LDMS).
+
+%files core
 %defattr(-,root,root)
-%{_sbindir}/muxr_un
-%{_sbindir}/ldms_ls
-%{_sbindir}/vmstat_un
-%{_sbindir}/meminfo_un
-%{_sbindir}/interrupts_un
-%{_libdir}/*.a
-%{_libdir}/*.so*
+%{_libdir}/libldms.*
+%{_libdir}/libldmsplugin.*
+%doc README COPYING ChangeLog
+#end core
+
+# devel
+%package devel
+Summary: LDMS Core package.
+Group: %{ldms_grp}
+Requires: ldms-core = @VERSION@
+%description devel
+This is a development package of Lightweight Distributed Metric System (LDMS).
+Users who want to implement their own sampler or store must install this
+package.
+
+%files devel
+%defattr(-,root,root)
 %{_includedir}/ldms/*.h
 %doc README COPYING ChangeLog
+#end devel
+
+%if "@ENABLE_XPRT_TRUE@x" == "x"
+
+%if "@ENABLE_SOCK_TRUE@x" == "x"
+%package xprt-sock
+Summary: LDMS Socket Transport plugin package.
+Group: %{ldms_grp}
+Provides: ldms-xprt
+%description xprt-sock
+LDMS Socket Transport plugin allows LDMS communication over Unix socket.
+
+%files xprt-sock
+%defattr(-,root,root)
+%{_libdir}/libldmssock.*
+%doc README COPYING ChangeLog
+%endif # SOCK
+
+%if "@ENABLE_RDMA_TRUE@x" == "x"
+%package xprt-rdma
+Summary: LDMS RDMA Transport plugin package.
+Group: %{ldms_grp}
+Provides: ldms-xprt
+Requires: libibverbs
+%description xprt-rdma
+LDMS Socket Transport plugin allows LDMS communication over Infiniband RDMA.
+
+%files xprt-rdma
+%defattr(-,root,root)
+%{_libdir}/libldmsrdma.*
+%doc README COPYING ChangeLog
+%endif # RDMA
+
+%if "@ENABLE_UGNI_TRUE@x" == "x"
+# ldms-xprt-ugni package
+%package xprt-ugni
+Summary: LDMS UGNI Transport plugin package.
+Group: %{ldms_grp}
+Provides: ldms-xprt
+%description xprt-ugni
+This is a UGNI transport plugin package for LDMS.
+
+%files xprt-ugni
+%defattr(-,root,root)
+%{_libdir}/libldmsugni.*
+%doc README COPYING ChangeLog
+%endif # UGNI
+
+%endif # XPRT
+
+%if "@ENABLE_STORE_TRUE@x" == "x"
+
+%if "@ENABLE_SOS_TRUE@x" == "x"
+%package store-sos
+Summary: LDMS Store SOS plugin.
+Group: %{ldms_grp}
+Provides: ldms-store
+Requires: sos
+%description store-sos
+Store SOS plugin for LDMSD allows LDMSD to store data in SOS.
+
+%files store-sos
+%{_libdir}/libstore_sos.*
+%doc README COPYING ChangeLog
+%endif # SOS
+
+%if "@ENABLE_FLATFILE_TRUE@x" == "x"
+%package store-flatfile
+Summary: LDMS Store Flat-file plugin.
+Group: %{ldms_grp}
+Provides: ldms-store
+%description store-flatfile
+Store Flat-file plugin for LDMSD allows LDMSD to store data in plain flat file.
+
+%files store-flatfile
+%{_libdir}/libstore_flatfile.*
+%doc README COPYING ChangeLog
+%endif # FLATFILE
+
+%if "@ENABLE_MYSQL_TRUE@x" == "x"
+%package store-mysql
+Summary: LDMS Store MySQL plugin.
+Group: %{ldms_grp}
+Provides: ldms-store
+Requires: mysql-libs
+%description store-mysql
+Store MySQL plugin for LDMSD allows LDMSD to store data in MySQL database.
+
+%files store-mysql
+%{_libdir}/libstore_mysql.*
+%doc README COPYING ChangeLog
+%endif # MYSQL
+
+%if "@ENABLE_MYSQLBULK_TRUE@x" == "x"
+%package store-mysqlbulk
+Summary: LDMS Store MySQL plugin.
+Group: %{ldms_grp}
+Provides: ldms-store
+Requires: mysql-libs
+%description store-mysqlbulk
+Store MySQL plugin for LDMSD allows LDMSD to store data in bulk in MySQL
+database.
+
+%files store-mysqlbulk
+%{_libdir}/libstore_mysqlbulk.*
+%doc README COPYING ChangeLog
+%endif # MYSQLBULK
+
+%endif # STORE
+
+%if "@ENABLE_SAMPLER_TRUE@x" == "x"
+
+%if "@ENABLE_GEMINFO_TRUE@x" == "x"
+%package sampler-geminfo
+Summary: LDMS Sampler geminfo plugin.
+Group: %{ldms_grp}
+%description sampler-geminfo
+Sampler geminfo plugin.
+
+%files sampler-geminfo
+%{_libdir}/libgeminfo.*
+%doc README COPYING ChangeLog
+%endif # GEMINFO
+
+%if "@ENABLE_MEMINFO_TRUE@x" == "x"
+%package sampler-meminfo
+Summary: LDMS Sampler meminfo plugin.
+Group: %{ldms_grp}
+%description sampler-meminfo
+Sampler meminfo plugin.
+
+%files sampler-meminfo
+%{_libdir}/libmeminfo.*
+%doc README COPYING ChangeLog
+%endif # MEMINFO
+
+%if "@ENABLE_PERFEVENT_TRUE@x" == "x"
+%package sampler-perfevent
+Summary: LDMS Sampler perfevent plugin.
+Group: %{ldms_grp}
+%description sampler-perfevent
+Sampler perfevent plugin.
+
+%files sampler-perfevent
+%{_libdir}/libperfevent.*
+%doc README COPYING ChangeLog
+%endif # PERFEVENT
+
+%if "@ENABLE_PROCINTERRUPTS_TRUE@x" == "x"
+%package sampler-procinterrupts
+Summary: LDMS Sampler procinterrupts plugin.
+Group: %{ldms_grp}
+%description sampler-procinterrupts
+Sampler procinterrupts plugin.
+
+%files sampler-procinterrupts
+%{_libdir}/libprocinterrupts.*
+%doc README COPYING ChangeLog
+%endif # PROCINTERRUPTS
+
+%if "@ENABLE_PROCNETDEV_TRUE@x" == "x"
+%package sampler-procnetdev
+Summary: LDMS Sampler procnetdev plugin.
+Group: %{ldms_grp}
+%description sampler-procnetdev
+Sampler procnetdev plugin.
+
+%files sampler-procnetdev
+%{_libdir}/libprocnetdev.*
+%doc README COPYING ChangeLog
+%endif # PROCNETDEV
+
+%if "@ENABLE_PROCNFS_TRUE@x" == "x"
+%package sampler-procnfs
+Summary: LDMS Sampler procnfs plugin.
+Group: %{ldms_grp}
+%description sampler-procnfs
+Sampler procnfs plugin.
+
+%files sampler-procnfs
+%{_libdir}/libprocnfs.*
+%doc README COPYING ChangeLog
+%endif # PROCNFS
+
+%if "@ENABLE_PROCSENSORS_TRUE@x" == "x"
+%package sampler-procsensors
+Summary: LDMS Sampler procsensors plugin.
+Group: %{ldms_grp}
+%description sampler-procsensors
+Sampler procsensors plugin.
+
+%files sampler-procsensors
+%{_libdir}/libprocsensors.*
+%doc README COPYING ChangeLog
+%endif # PROCSENSORS
+
+%if "@ENABLE_PROCSTATUTIL_TRUE@x" == "x"
+%package sampler-procstatutil
+Summary: LDMS Sampler procstatutil plugin.
+Group: %{ldms_grp}
+%description sampler-procstatutil
+Sampler procstatutil plugin.
+
+%files sampler-procstatutil
+%{_libdir}/libprocstatutil.*
+%doc README COPYING ChangeLog
+%endif # PROCSTATUTIL
+
+%if "@ENABLE_GLIB_TRUE@x" == "x"
+%if "@ENABLE_SEDC_TRUE@x" == "x"
+%package sampler-sedc
+Summary: LDMS Sampler sedc plugin.
+Group: %{ldms_grp}
+%description sampler-sedc
+Sampler sedc plugin.
+
+%files sampler-sedc
+%{_libdir}/libsedc.*
+%doc README COPYING ChangeLog
+%endif # SEDC
+%endif # GLIB
+
+%if "@ENABLE_SYSCLASSIB_TRUE@x" == "x"
+%package sampler-sysclassib
+Summary: LDMS Sampler sysclassib plugin.
+Group: %{ldms_grp}
+%description sampler-sysclassib
+Sampler sysclassib plugin.
+
+%files sampler-sysclassib
+%{_libdir}/libsysclassib.*
+%doc README COPYING ChangeLog
+%endif # SYSCLASSIB
+
+%if "@ENABLE_VMSTAT_TRUE@x" == "x"
+%package sampler-vmstat
+Summary: LDMS Sampler vmstat plugin.
+Group: %{ldms_grp}
+%description sampler-vmstat
+Sampler vmstat plugin.
+
+%files sampler-vmstat
+%{_libdir}/libvmstat.*
+%doc README COPYING ChangeLog
+%endif # VMSTAT
+
+%if "@ENABLE_LUSTRE_TRUE@x" == "x"
+%package sampler-lustre
+Summary: LDMS Sampler lustre plugin.
+Group: %{ldms_grp}
+%description sampler-lustre
+Sampler lustre plugin.
+
+%files sampler-lustre
+%{_libdir}/liblustre_*
+%doc README COPYING ChangeLog
+%endif # LUSTRE
+
+%endif # SAMPLER
+
+%if "@ENABLE_LDMSD_TRUE@x" == "x"
+%package ldmsd
+Summary: LDMSD package.
+Group: %{ldms_grp}
+%description ldmsd
+This package contains:
+* ldmsd: the LDMS daemon, which can run as sampler or aggregator (or both).
+* ldms_ls: the tool to list metric information of an ldmsd.
+* ldmsctl: the tool to control an ldmsd.
+
+%files ldmsd
+%{_sbindir}/ldmsd
+%{_sbindir}/ldms_ls
+%{_sbindir}/ldmsctl
+%endif # LDMSD
 
 %changelog
 * Sun Mar 31 2013 Tom Tucker <tom@ogc.us> - 2.1.0

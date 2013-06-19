@@ -145,6 +145,8 @@ AC_CHECK_LIB(coll, idx_create, [],
 dnl Reset LIBS variable.
 LIBS=""
 
+AC_SUBST(ac_configure_args)
+
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
