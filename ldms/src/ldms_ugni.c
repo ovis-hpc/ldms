@@ -69,6 +69,7 @@
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_ugni.h"
+#include "coll/mmalloc.h"
 
 /* Convenience macro for logging errors */
 #define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }
@@ -714,16 +715,18 @@ gni_return_t ugni_get_mh(struct ldms_ugni_xprt *gxp,
 	gni_return_t grc = GNI_RC_SUCCESS;
 	struct ugni_mh *umh;
 	int need_mh = 0;
-	unsigned long start, end = sbrk(0);
+	unsigned long start;
+	unsigned long end;
 
 	pthread_mutex_lock(&ugni_mh_lock);
-	umh = LIST_FIRST(&mh_list);
-	if (!umh || ((unsigned long)addr < umh->start)) {
+ 	umh = LIST_FIRST(&mh_list);
+	if (!umh) {
+		struct mm_info mmi;
+		mm_get_info(&mmi);
+		start = (unsigned long)mmi.start;
+		end = start + mmi.size;
 		need_mh = 1;
-		start = (unsigned long)addr;
 	}
-	if (!umh || (((unsigned long)addr + size) > umh->end))
-		need_mh = 1;
 	if (!need_mh)
 		goto out;
 
@@ -756,7 +759,6 @@ out:
  */
 struct ldms_rbuf_desc *ugni_rbuf_alloc(struct ldms_xprt *x,
 				       struct ldms_set *set,
-				       enum ldms_rbuf_type type,
 				       void *xprt_data,
 				       size_t xprt_data_len)
 {
@@ -973,6 +975,8 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	*gxp = ugni_gxp;
 	LIST_INSERT_HEAD(&ugni_list, gxp, client_link);
 
+	x->max_msg = (1024*1024);
+	x->log = log_fn;
 	x->connect = ugni_xprt_connect;
 	x->listen = ugni_xprt_listen;
 	x->destroy = ugni_xprt_destroy;
