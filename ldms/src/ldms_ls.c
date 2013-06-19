@@ -73,6 +73,10 @@ static pthread_cond_t dir_cv;
 static int dir_done;
 static int dir_status;
 
+static pthread_mutex_t print_lock;
+static pthread_cond_t print_cv;
+static int print_done;
+
 static pthread_mutex_t done_lock;
 static pthread_cond_t done_cv;
 static int done;
@@ -211,6 +215,10 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	ldms_destroy_set(s);
  out:
 	printf("\n");
+	pthread_mutex_lock(&print_lock);
+	print_done = 1;
+	pthread_cond_signal(&print_cv);
+	pthread_mutex_unlock(&print_lock);
 	if (last) {
 		done = 1;
 		pthread_cond_signal(&done_cv);
@@ -229,9 +237,10 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
  err:
 	printf("ldms_ls: Error %d looking up metric set.\n", status);
 	if (last) {
-		pthread_cond_signal(&done_cv);
+		pthread_mutex_lock(&done_lock);
 		done = 1;
-		done = status;
+		pthread_cond_signal(&done_cv);
+		pthread_mutex_unlock(&done_lock);
 	}
 }
 
@@ -350,7 +359,7 @@ int main(int argc, char *argv[])
 	size_t max_mem = LDMS_LS_MAX_MEM_SIZE;
 	if (ldms_init(max_mem)) {
 		printf("LDMS could not pre-allocate the memory of size %lu.\n",
-															max_mem);
+		       max_mem);
 		exit(1);
 	}
 
@@ -380,6 +389,8 @@ int main(int argc, char *argv[])
 	pthread_cond_init(&dir_cv, NULL);
 	pthread_mutex_init(&done_lock, 0);
 	pthread_cond_init(&done_cv, NULL);
+	pthread_mutex_init(&print_lock, 0);
+	pthread_cond_init(&print_cv, NULL);
 
 	if (optind == argc) {
 		ret = ldms_dir(ldms, dir_cb, NULL, 0);
@@ -434,6 +445,9 @@ int main(int argc, char *argv[])
 		LIST_REMOVE(lss, entry);
 
 		if (verbose || long_format) {
+			pthread_mutex_lock(&print_lock);
+			print_done = 0;
+			pthread_mutex_unlock(&print_lock);
 			ret = ldms_lookup(ldms, lss->name, lookup_cb,
 					  (void *)(unsigned long)
 					  LIST_EMPTY(&set_list));
@@ -441,6 +455,10 @@ int main(int argc, char *argv[])
 				printf("ldms_lookup returned %d for set '%s'\n",
 				       ret, lss->name);
 			}
+			pthread_mutex_lock(&print_lock);
+			while (!print_done)
+				pthread_cond_wait(&print_cv, &print_lock);
+			pthread_mutex_unlock(&print_lock);
 		} else
 			printf("%s\n", lss->name);
 	}
