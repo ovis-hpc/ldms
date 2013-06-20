@@ -563,7 +563,7 @@ typedef struct ldms_dir_s {
 	/** !0 if this is the first of multiple updates */
 	int more;
 
-	/** count of sets in teh set_name array */
+	/** count of sets in the set_name array */
 	int set_count;
 
 	/** each string is null terminated. */

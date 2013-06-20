@@ -206,10 +206,10 @@ void usage(char *argv[])
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N             Notify registered monitors of the test metric sets\n");
 	printf("    -t set_count   Create set_count instances of set_name.\n");
-	printf("    -I instance    The instance number");
+	printf("    -I instance    The instance number\n");
 	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
-            "                     The given size must be less than 1 Petabytes.\n"
-            "                     For example, 20M or 20mb are 20 megabytes.\n");
+               "                     The given size must be less than 1 petabytes.\n"
+               "                     For example, 20M or 20mb are 20 megabytes.\n");
 	cleanup(1);
 }
 
@@ -805,6 +805,9 @@ void host_sampler_cb(int fd, short sig, void *arg)
 	evtimer_add(hs->event, &hs->timeout);
 }
 
+struct hostset *hset_new();
+struct hostset *find_host_set(struct hostspec *hs, const char *set_name);
+
 int process_add_host(int fd,
 		     struct sockaddr *sa, ssize_t sa_len,
 		     char *command)
@@ -816,6 +819,7 @@ int process_add_host(int fd,
 	char *type;
 	char *host;
 	char *xprt;
+	char *sets;
 	int host_type;
 	long interval = LDMSD_DEFAULT_GATHER_INTERVAL;
 	long port_no = LDMS_DEFAULT_PORT;
@@ -841,13 +845,41 @@ int process_add_host(int fd,
 		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 		return EINVAL;
 	}
+
+	attr = "sets";
+	sets = av_value(av_list, attr);
+	if (!sets)
+		goto einval;
+
 	hs = calloc(1, sizeof(*hs));
 	if (!hs)
 		goto enomem;
-
 	hs->hostname = strdup(host);
 	if (!hs->hostname)
 		goto enomem;
+
+	char *set_name = strtok(sets, ",");
+	struct hostset *hset;
+	while (set_name) {
+		ldms_log("Adding the metric set '%s' and wait for a lookup.\n",
+				set_name);
+
+		/* Check to see if it's already there */
+		hset = find_host_set(hs, set_name);
+		if (!hset) {
+			hset = hset_new();
+			if (!hset)
+				goto enomem;
+
+			hset->name = strdup(set_name);
+			hset->host = hs;
+
+			pthread_mutex_lock(&hs->set_list_lock);
+			LIST_INSERT_HEAD(&hs->set_list, hset, entry);
+			pthread_mutex_unlock(&hs->set_list_lock);
+		}
+		set_name = strtok(NULL, ",");
+	}
 
 	rc = resolve(hs->hostname, &sin);
 	if (rc) {
@@ -1140,8 +1172,10 @@ struct hostset *hset_new()
 	if (!hset)
 		return NULL;
 
+	hset->state = LDMSD_SET_CONFIGURED;
 	hset->refcount = 1;
 	pthread_mutex_init(&hset->refcount_lock, NULL);
+	pthread_mutex_init(&hset->state_lock, NULL);
 	return hset;
 }
 
@@ -1216,13 +1250,17 @@ void hset_ref_put(struct hostset *hset)
  */
 
 int sample_interval = 2000000;
-void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s, void *arg)
+void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
+		void *arg)
 {
 	struct hset_metric *hsm;
 	struct hostset *hset = arg;
 	if (status != LDMS_LOOKUP_OK){
-		ldms_log("Error doing lookup for set\n",
-			 ldms_get_set_name(s));
+		pthread_mutex_lock(&hset->state_lock);
+		hset->state = LDMSD_SET_CONFIGURED;
+		pthread_mutex_unlock(&hset->state_lock);
+		ldms_log("Error doing lookup for set '%s'\n",
+				hset->name);
 		hset->set = NULL;
 		hset_ref_put(hset);
 		return;
@@ -1237,6 +1275,10 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s, void *arg
 			ldms_metric_release(hsm->metric);
 		hsm->metric = ldms_get_metric(hset->set, hsm->name);
 	}
+	pthread_mutex_lock(&hset->state_lock);
+	hset->state = LDMSD_SET_READY;
+	pthread_mutex_unlock(&hset->state_lock);
+	ldms_log("The set '%s' is ready.\n", hset->name);
 	hset_ref_put(hset);
 }
 
@@ -1286,6 +1328,7 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
 	if (rc)
 		ldms_log("Synchronous error %d from ldms_lookup\n", rc);
+
 }
 
 /*
@@ -1396,7 +1439,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 	ldms_dir_release(t, dir);
 }
 
-int do_connect(struct hostspec *hs, int do_dir)
+int do_connect(struct hostspec *hs)
 {
 	int ret;
 
@@ -1417,8 +1460,6 @@ int do_connect(struct hostspec *hs, int do_dir)
 
 	ldms_log("Connected to host '%s:%hu'\n", hs->hostname,
 		 ntohs(hs->sin.sin_port));
-	if (do_dir)
-		return ldms_dir(hs->x, dir_cb, hs, 1);
 	return 0;
 }
 
@@ -1474,14 +1515,47 @@ void update_data(struct hostspec *hs)
 	/* Take the host lock to protect the set_list */
 	pthread_mutex_lock(&hs->set_list_lock);
 	LIST_FOREACH(hset, &hs->set_list, entry) {
-		if (!hset->set)
-			continue;
-		hset_ref_get(hset);
-		ret = ldms_update(hset->set, update_complete_cb, hset);
-		if (ret)
-			ldms_log("Error %d updating metric set "
-				 "on host %s:%d[%s].\n", ret, hs->hostname,
-				 ntohs(hs->sin.sin_port), hs->xprt_name);
+		pthread_mutex_lock(&hset->state_lock);
+		switch (hset->state) {
+		case LDMSD_SET_CONFIGURED:
+			/* Get a lookup reference */
+			hset_ref_get(hset);
+			hset->state = LDMSD_SET_LOOKUP;
+			pthread_mutex_unlock(&hset->state_lock);
+			ret = ldms_lookup(hs->x, hset->name, lookup_cb, hset);
+			if (ret) {
+				pthread_mutex_lock(&hset->state_lock);
+				hset->state = LDMSD_SET_CONFIGURED;
+				pthread_mutex_unlock(&hset->state_lock);
+				ldms_log("Synchronous error %d "
+					"from ldms_lookup\n", ret);
+				hset_ref_put(hset);
+			}
+
+			break;
+		case LDMSD_SET_READY:
+			hset_ref_get(hset);
+			pthread_mutex_unlock(&hset->state_lock);
+			ret = ldms_update(hset->set, update_complete_cb, hset);
+			if (ret) {
+				ldms_log("Error %d updating metric set "
+					"on host %s:%d[%s].\n", ret,
+					hs->hostname, ntohs(hs->sin.sin_port),
+					hs->xprt_name);
+				hset_ref_put(hset);
+			}
+
+			break;
+		case LDMSD_SET_LOOKUP:
+			pthread_mutex_unlock(&hset->state_lock);
+			/* do nothing */
+			break;
+		default:
+			ldms_log("Invalid hostset state '%d'\n", hset->state);
+			pthread_mutex_unlock(&hset->state_lock);
+			assert(0);
+			break;
+		}
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
@@ -1490,7 +1564,7 @@ void do_active_host(struct hostspec *hs)
 {
 	if (!hs->x || !ldms_xprt_connected(hs->x)) {
 		reset_host(hs);
-		do_connect(hs, 1);
+		do_connect(hs);
 	} else
 		/* Don't update immediately after connecting to
 		 * provide time for dir/lookups to complete */
@@ -1508,8 +1582,8 @@ int do_passive_connect(struct hostspec *hs)
 	 * cache it here.
 	 */
 	hs->x = l;
+	return 0;
 
-	return ldms_dir(hs->x, dir_cb, hs, 1);
 }
 
 void do_passive_host(struct hostspec *hs)
@@ -1531,9 +1605,9 @@ void do_passive_host(struct hostspec *hs)
 void do_bridging_host(struct hostspec *hs)
 {
 	if (!hs->x)
-		do_connect(hs, 0);
+		do_connect(hs);
 	if (!ldms_xprt_connected(hs->x))
-		do_connect(hs, 0);
+		do_connect(hs);
 }
 
 int process_message(int sock, struct msghdr *msg, ssize_t msglen)

@@ -69,6 +69,12 @@ struct hostset
 {
 	struct hostspec *host;
 	char *name;
+	enum {
+		LDMSD_SET_CONFIGURED,
+		LDMSD_SET_LOOKUP,
+		LDMSD_SET_READY
+	} state;
+	pthread_mutex_t state_lock;
 	ldms_set_t set;
 	struct ldmsd_store *store;
 	uint64_t gn;
