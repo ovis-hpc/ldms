@@ -1246,7 +1246,7 @@ static int send_credit_update(struct ldms_rdma_xprt *r)
 
 	if (r->conn_status != CONN_CONNECTED) {
 		errno = ENOTCONN;
-		return;
+		return ENOTCONN;
 	}
 
 	rbuf = rdma_buffer_alloc(r, RQ_BUF_SZ, IBV_ACCESS_LOCAL_WRITE);

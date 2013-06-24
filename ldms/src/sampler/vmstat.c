@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -74,11 +74,8 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-union ldms_value comp_id;
+uint64_t comp_id;
 static uint64_t counter;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
-
 
 static ldms_set_t get_set()
 {
@@ -101,13 +98,8 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
-				  &tot_meta_sz, &tot_data_sz);
-
-	//counter
-	rc = ldms_get_metric_size("vmstat_counter", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
+	tot_data_sz = 0;
+	tot_meta_sz = 0;
 
 	/*
 	 * Process the file once first to determine the metric set size.
@@ -145,13 +137,6 @@ static int create_metric_set(const char *path)
 	 * Process the file again to define all the metrics.
 	 */
 	rc = ENOMEM;
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) 
-		goto err;
-
-	counter_metric_handle = ldms_add_metric(set, "vmstat_counter", LDMS_V_U64);
-	if (!counter_metric_handle) 
-		goto err;
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -173,6 +158,7 @@ static int create_metric_set(const char *path)
 			rc = ENOMEM;
 			goto err;
 		}
+		ldms_set_user_data(metric_table[metric_no], comp_id);
 		metric_no++;
 	} while (s);
 
@@ -189,8 +175,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "component_id");
 	if (value)
-		comp_id.v_u64 = strtol(value, NULL, 0);
-	
+		comp_id = strtol(value, NULL, 0);
+
 	value = av_value(avl, "set");
 	if (value)
 		create_metric_set(value);
@@ -212,10 +198,7 @@ static int sample(void)
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
-	ldms_set_metric(compid_metric_handle, &comp_id);
 
-	v.v_u64 = ++counter;
-	ldms_set_metric(counter_metric_handle, &v);
 	metric_no = 0;
 
 	fseek(mf, 0, SEEK_SET);

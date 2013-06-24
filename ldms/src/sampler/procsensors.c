@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -54,9 +54,9 @@
  *
  * NOTE: data files have to be opened and closed on each file in sys for the data vaules to change.
  * The actual functionality of the data gathering by the system takes time on systems.
- * Sample stores the data locally and then writes it out so that the collection will not occur during 
+ * Sample stores the data locally and then writes it out so that the collection will not occur during
  * partial set. There is therefore some slop in the actaul time for the data point.
- * 
+ *
  * filename will be the variable name. mysql inserter will have to convert names and downselect which ones
  * to record.
  *
@@ -90,11 +90,7 @@ uint64_t* metric_values;
 uint64_t* metric_times;
 int num_metric_times;
 ldmsd_msg_log_f msglog;
-union ldms_value comp_id;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
-ldms_metric_t tv_sec_metric_handle;
-ldms_metric_t tv_nsec_metric_handle;
+uint64_t comp_id;
 
 #undef CHECK_SENSORS_TIMING
 #ifdef CHECK_SENSORS_TIMING
@@ -114,67 +110,52 @@ static int create_metric_set(const char *path)
 	int rc, i, j;
 	char metric_name[128];
 
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
-				  &tot_meta_sz, &tot_data_sz);
-
-	rc = ldms_get_metric_size("procsensors_counter", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
-	num_metric_times = 0;
-        rc = ldms_get_metric_size("procsensors_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-	num_metric_times++;
-
-	rc = ldms_get_metric_size("procsensors_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-	num_metric_times++;
+	tot_meta_sz = 0;
+	tot_data_sz = 0;
 
 	metric_count = 0;
 	for (i = 0; i < vartypes; i++){
-	  for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
-	    snprintf(metric_name, 127, "%s%d_input",varnames[i],j);
-	    rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-	    if (rc)
-	      return rc;
+		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
+			snprintf(metric_name, 127, "%s%d_input",varnames[i],j);
+			rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+			if (rc)
+				return rc;
 
-	    tot_meta_sz += meta_sz;
-	    tot_data_sz += data_sz;
-	    metric_count++;
-	  }
+			tot_meta_sz += meta_sz;
+			tot_data_sz += data_sz;
+			metric_count++;
+		}
 	}
 
 #ifdef CHECK_SENSORS_TIMING
-        rc = ldms_get_metric_size("procsensors_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
+	rc = ldms_get_metric_size("procsensors_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
 	num_metric_times++;
 
 	rc = ldms_get_metric_size("procsensors_tv_nsec2", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
 	num_metric_times++;
 
 	rc = ldms_get_metric_size("procsensors_tv_dnsec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
 	//no increment for deltas
 
-        rc = ldms_get_metric_size("procsensors_tv_sec3", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
+	rc = ldms_get_metric_size("procsensors_tv_sec3", LDMS_V_U64, &meta_sz, &data_sz);
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
 	num_metric_times++;
 
 	rc = ldms_get_metric_size("procsensors_tv_nsec3", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
 	num_metric_times++;
 
 	rc = ldms_get_metric_size("procsensors_tv_dnwrite", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
 	//no increment for deltas
 #endif
 
@@ -190,102 +171,80 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process again to define all the metrics.
 	 */
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) {
-		rc = ENOMEM;
-		goto err;
-	} //compid set in sample
-
-	counter_metric_handle = ldms_add_metric(set, "procsensors_counter", LDMS_V_U64);
-	if (!counter_metric_handle) {
-		rc = ENOMEM;
-		goto err;
-	} //counter updated in config
-
-        tv_sec_metric_handle = ldms_add_metric(set, "procsensors_tv_sec", LDMS_V_U64);
-        if (!tv_sec_metric_handle){
-	  rc = ENOMEM;
-	  goto err;
-	}
-
-	tv_nsec_metric_handle = ldms_add_metric(set, "procsensors_tv_nsec", LDMS_V_U64);
-        if (!tv_nsec_metric_handle){
-	  rc = ENOMEM;
-	  goto err;
-	}
 
 	int metric_no = 0;
 	for (i = 0; i < vartypes; i++){
 		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
 			snprintf(metric_name, 127,
-				 "%s%d_input",varnames[i],j);
+					"%s%d_input",varnames[i],j);
 			metric_table[metric_no] =
 				ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!metric_table[metric_no]) {
 				rc = ENOMEM;
 				goto err;
 			}
+			ldms_set_user_data(metric_table[metric_no], comp_id);
 			metric_no++;
 		}
 	}
 
 #ifdef CHECK_SENSORS_TIMING
-        tv_sec_metric_handle2 = ldms_add_metric(set, "procsensors_tv_sec2", LDMS_V_U64);
-        if (!tv_sec_metric_handle2){
-	  rc = ENOMEM;
-	  goto err;
+	tv_sec_metric_handle2 = ldms_add_metric(set, "procsensors_tv_sec2", LDMS_V_U64);
+	if (!tv_sec_metric_handle2){
+		rc = ENOMEM;
+		goto err;
 	}
 
 	tv_nsec_metric_handle2 = ldms_add_metric(set, "procsensors_tv_nsec2", LDMS_V_U64);
-        if (!tv_nsec_metric_handle2){
-	  rc = ENOMEM;
-	  goto err;
+	if (!tv_nsec_metric_handle2){
+		rc = ENOMEM;
+		goto err;
 	}
 
 	tv_dnsec_metric_handle = ldms_add_metric(set, "procsensors_tv_dnsec", LDMS_V_U64);
-        if (!tv_dnsec_metric_handle){
-	  rc = ENOMEM;
-	  goto err;
+	if (!tv_dnsec_metric_handle){
+		rc = ENOMEM;
+		goto err;
 	}
 
-        tv_sec_metric_handle3 = ldms_add_metric(set, "procsensors_tv_sec3", LDMS_V_U64);
-        if (!tv_sec_metric_handle3){
-	  rc = ENOMEM;
-	  goto err;
+	tv_sec_metric_handle3 = ldms_add_metric(set, "procsensors_tv_sec3", LDMS_V_U64);
+	if (!tv_sec_metric_handle3){
+		rc = ENOMEM;
+		goto err;
 	}
 
 	tv_nsec_metric_handle3 = ldms_add_metric(set, "procsensors_tv_nsec3", LDMS_V_U64);
-        if (!tv_nsec_metric_handle3){
-	  rc = ENOMEM;
-	  goto err;
+	if (!tv_nsec_metric_handle3){
+		rc = ENOMEM;
+		goto err;
 	}
 
 	tv_dnwrite_metric_handle = ldms_add_metric(set, "procsensors_tv_dnwrite", LDMS_V_U64);
-        if (!tv_dnwrite_metric_handle){
-	  rc = ENOMEM;
-	  goto err;
+	if (!tv_dnwrite_metric_handle){
+		rc = ENOMEM;
+		goto err;
 	}
 #endif
 
 	metric_values = calloc(metric_count, sizeof(uint64_t));
 	if (!metric_values)
-	  goto err;
+		goto err;
 
 	metric_times = calloc(num_metric_times, sizeof(uint64_t));
 	if (!metric_values)
-	  goto err;
+		goto err;
 
 	return 0;
 
- err:
+err:
 	ldms_set_release(set);
 	return rc;
 }
 
-/** 
+/**
  * \brief Configuration
- * 
- * Usage: 
+ *
+ * Usage:
  * config name=procsensors component_id=<comp_id> set=<setname>
  *     comp_id     The component id value.
  *     setname     The set name.
@@ -296,8 +255,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "component_id");
 	if (value)
-		comp_id.v_u64 = strtol(value, NULL, 0);
-	
+		comp_id = strtol(value, NULL, 0);
+
 	value = av_value(avl, "set");
 	if (value)
 		create_metric_set(value);
@@ -321,93 +280,78 @@ static int sample(void)
 	struct timespec time1;
 	int i, j;
 
-
-
 	//set the counter
 	uint64_t counterval = ++counter;
 
 	int metric_time_no = 0;
 	clock_gettime(CLOCK_REALTIME, &time1);
-        metric_times[metric_time_no++] = time1.tv_sec;
-        metric_times[metric_time_no++] = time1.tv_nsec;
+	metric_times[metric_time_no++] = time1.tv_sec;
+	metric_times[metric_time_no++] = time1.tv_nsec;
 	ldms_begin_transaction(set);
 	metric_no = 0;
 	for (i = 0; i < vartypes; i++){
-	  for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
-	    snprintf(procfile, 255, "%s/%s%d_input",procsensorsfiledir,varnames[i],j);
+		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
+			snprintf(procfile, 255, "%s/%s%d_input",procsensorsfiledir,varnames[i],j);
 
-	    //FIXME: do we really want to open and close each one?
-	    mf = fopen(procfile, "r");
-	    if (!mf) {
-	      msglog("Could not open the procsensors file '%s'...exiting\n", procfile);
-	      rc = ENOENT;
-	      goto out;
-	    }
-	    s = fgets(lbuf, sizeof(lbuf), mf);
-	    if (!s){
-	      if (mf) fclose(mf);
-	      break;
-	    }
-	    rc = sscanf(lbuf, "%"PRIu64 "\n", &metric_values[metric_no]);
-	    if (rc != 1){
-	      if (mf) fclose(mf);
-	      rc = EINVAL;
-	      goto out;
-	    }
+			//FIXME: do we really want to open and close each one?
+			mf = fopen(procfile, "r");
+			if (!mf) {
+				msglog("Could not open the procsensors file '%s'...exiting\n", procfile);
+				rc = ENOENT;
+				goto out;
+			}
+			s = fgets(lbuf, sizeof(lbuf), mf);
+			if (!s){
+				if (mf) fclose(mf);
+				break;
+			}
+			rc = sscanf(lbuf, "%"PRIu64 "\n", &metric_values[metric_no]);
+			if (rc != 1){
+				if (mf) fclose(mf);
+				rc = EINVAL;
+				goto out;
+			}
 
-	    metric_no++;
-	    if (mf) fclose(mf);
-	  }
+			metric_no++;
+			if (mf) fclose(mf);
+		}
 	}
 
 #ifdef CHECK_SENSORS_TIMING
 	clock_gettime(CLOCK_REALTIME, &time1);
-        metric_times[metric_time_no++] = time1.tv_sec;
-        metric_times[metric_time_no++] = time1.tv_nsec;
+	metric_times[metric_time_no++] = time1.tv_sec;
+	metric_times[metric_time_no++] = time1.tv_nsec;
 #endif
 
 	//now do the writeout
 
-	//set the compid
-	ldms_set_metric(compid_metric_handle, &comp_id);
-
-	//set the counter
-	v.v_u64 = counterval;
-	ldms_set_metric(counter_metric_handle, &v);
-
-	//first set of times
-	v.v_u64 = metric_times[0];
-        ldms_set_metric(tv_sec_metric_handle, &v);
-	v.v_u64 = metric_times[1];
-        ldms_set_metric(tv_nsec_metric_handle, &v);
-
 	//metrics
 	metric_no = 0;
 	for (i = 0; i < metric_count; i++){
-	  v.v_u64 = metric_values[i];
-	  ldms_set_metric(metric_table[i], &v);
+		v.v_u64 = metric_values[i];
+		ldms_set_metric(metric_table[i], &v);
 	}
 
 #ifdef CHECK_SENSORS_TIMING
 	//second set of times
 	v.v_u64 = metric_times[2];
-        ldms_set_metric(tv_sec_metric_handle2, &v);
+	ldms_set_metric(tv_sec_metric_handle2, &v);
 	v.v_u64 = metric_times[3];
-        ldms_set_metric(tv_nsec_metric_handle2, &v);
+	ldms_set_metric(tv_nsec_metric_handle2, &v);
 	v.v_u64 = metric_times[3]-metric_times[1];  //sub start of writeout nsec
-        ldms_set_metric(tv_dnsec_metric_handle, &v);
+	ldms_set_metric(tv_dnsec_metric_handle, &v);
 
 	//and get the last write times. array storage for these is unused
 	clock_gettime(CLOCK_REALTIME, &time1);
-        v.v_u64 = time1.tv_sec;
-        ldms_set_metric(tv_sec_metric_handle3, &v);
-        v.v_u64 = time1.tv_nsec;
-        ldms_set_metric(tv_nsec_metric_handle3, &v);
+	v.v_u64 = time1.tv_sec;
+	ldms_set_metric(tv_sec_metric_handle3, &v);
+	v.v_u64 = time1.tv_nsec;
+	ldms_set_metric(tv_nsec_metric_handle3, &v);
 	v.v_u64 = time1.tv_nsec-metric_times[3];  //sub start of writeout nsec
-        ldms_set_metric(tv_dnwrite_metric_handle, &v);
+	ldms_set_metric(tv_dnwrite_metric_handle, &v);
 #endif
 	rc = 0;
- out:
+out:
 	ldms_end_transaction(set);
 	return rc;
 }

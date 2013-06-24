@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -52,7 +52,7 @@
  * \file perfevent.c
  * \brief perfevent data provider
  *
- * Reads perf counters. 
+ * Reads perf counters.
  */
 //FIXME: needs documentation
 #include <inttypes.h>
@@ -132,7 +132,6 @@ pe_open(struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd,
 
 ldms_set_t set;
 ldmsd_msg_log_f msglog;
-ldms_metric_t compid_metric_handle;
 
 static const char *usage(void)
 {
@@ -353,7 +352,7 @@ static int list(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	msglog("Name Fd Type Config\n");
 	LIST_FOREACH(pe, &pevent_list, entry) {
 		msglog("%-24s %8d %8d %8d %8d %16llx\n",
-		       pe->name, pe->pid, pe->cpu, 
+		       pe->name, pe->pid, pe->cpu,
 		       pe->fd, pe->attr.type, pe->attr.config);
 	}
 	return 0;
@@ -381,7 +380,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	struct kw key;
 	int rc;
 	char *action = av_value(avl, "action");
-	
+
 	if (!action)
 		goto err0;
 
@@ -413,6 +412,7 @@ static int sample(void)
 {
 	int rc;
 	struct pevent *pe;
+	ldms_begin_transaction(set);
 	LIST_FOREACH(pe, &pevent_list, entry) {
 		pe->last_value = pe->sample.value;
 		rc = read(pe->fd, &pe->sample, sizeof(pe->sample));
@@ -441,6 +441,7 @@ static int sample(void)
 		ldms_set_u64(pe->metric_variance, pe->variance);
 		ldms_set_u64(pe->metric_stddev, sqrt(pe->variance));
 	}
+	ldms_end_transaction(set);
  	return 0;
 }
 

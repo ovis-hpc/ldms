@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
@@ -776,11 +776,17 @@ int ldms_create_set(const char *set_name,
 
 /** \brief Return the name of the set
  */
-const char *ldms_get_set_name(ldms_set_t *_set)
+const char *ldms_get_set_name(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
 	struct ldms_set_hdr *sh = sd->set->meta;
 	return sh->name;
+}
+
+uint32_t ldms_get_set_card(ldms_set_t _set)
+{
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
+	return sd->set->meta->card;
 }
 
 int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s)
@@ -1175,7 +1181,7 @@ int ldms_end_transaction(ldms_set_t s)
 	dh->trans.ts.sec = tv.tv_sec;
 	dh->trans.ts.usec = tv.tv_usec;
 	dh->trans.flags = LDMS_TRANSACTION_END;
-	return 0; 
+	return 0;
 }
 
 struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s)
@@ -1191,3 +1197,19 @@ int ldms_is_set_consistent(ldms_set_t s)
 	struct ldms_data_hdr *dh = sd->set->data;
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
 }
+
+ldms_mvec_t ldms_mvec_create(int count)
+{
+	ldms_mvec_t mvec = malloc(sizeof(*mvec) + count *
+				  sizeof(ldms_metric_t));
+	if (!mvec)
+		return NULL;
+	mvec->count = count;
+	return mvec;
+}
+
+void ldms_mvec_destroy(ldms_mvec_t mvec)
+{
+	free(mvec);
+}
+

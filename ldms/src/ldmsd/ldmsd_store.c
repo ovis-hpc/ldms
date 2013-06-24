@@ -74,29 +74,29 @@ int max_q_depth;
 /*
  * LRU list for mds.
  */
-TAILQ_HEAD(lru_list, metric_store) lru_list;
+TAILQ_HEAD(lru_list, store_instance) lru_list;
 pthread_mutex_t lru_list_lock;
 int open_count;
 
 pthread_t io_thread;
 pthread_mutex_t io_mutex;
 pthread_cond_t io_cv;
-LIST_HEAD(io_work_q, metric_store) io_work_q;
+LIST_HEAD(io_work_q, store_instance) io_work_q;
 static int io_work_q_depth;
 pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
-int queue_work(struct metric_store *m, io_work_fn fn)
+int queue_work(struct store_instance *si, io_work_fn fn)
 {
 	int wake_up = 0;
 	int queue = 1;
-	pthread_mutex_lock(&m->lock);
-	if (m->work_pending)
+	pthread_mutex_lock(&si->lock);
+	if (si->work_pending)
 		queue = 0;
 	else {
-		m->work_pending = 1;
-		m->work_fn = fn;
+		si->work_pending = 1;
+		si->work_fn = fn;
 	}
-	pthread_mutex_unlock(&m->lock);
+	pthread_mutex_unlock(&si->lock);
 
 	if (!queue)
 		return io_work_q_depth;
@@ -105,7 +105,7 @@ int queue_work(struct metric_store *m, io_work_fn fn)
 	io_work_q_depth++;
 	// if (LIST_EMPTY(&io_work_q))
 		wake_up = 1;
-	LIST_INSERT_HEAD(&io_work_q, m, work_entry);
+	LIST_INSERT_HEAD(&io_work_q, si, work_entry);
 	if (io_work_q_depth > max_q_depth)
 		max_q_depth = io_work_q_depth;
 	if (wake_up)
@@ -114,19 +114,20 @@ int queue_work(struct metric_store *m, io_work_fn fn)
 	return io_work_q_depth;
 }
 
-void flush_metric_store(struct metric_store *m)
+void flush_store_instance(struct store_instance *si)
 {
 	flush_count++;
-	ldmsd_store_flush(m->store, m->lms);
-	m->dirty_count = 0;
+	ldmsd_store_flush(si->store_engine, si->store_handle);
+	si->dirty_count = 0;
 }
 
-void ldmsd_close_metric_store(struct metric_store *m)
+/* XXX FIXME: check close vs destroy */
+void ldmsd_close_store_instance(struct store_instance *si)
 {
-	ldmsd_store_close(m->store, m->lms);
-	m->lms = NULL;
-	m->state = MDS_STATE_CLOSED;
-	m->dirty_count = 0;
+	ldmsd_store_close(si->store_engine, si->store_handle);
+	si->store_handle = NULL;
+	si->state = STORE_STATE_CLOSED;
+	si->dirty_count = 0;
 	pthread_mutex_lock(&lru_list_lock);
 	open_count -= 1;
 	pthread_mutex_unlock(&lru_list_lock);
@@ -140,20 +141,20 @@ void *io_proc(void *arg)
 	struct timeval tv1;
 	struct timeval tvres;
 	struct timeval tvsum = { 0, 0 };
-	struct metric_store *m;
+	struct store_instance *si;
 	do {
  		pthread_mutex_lock(&io_mutex);
 		gettimeofday(&tv0, NULL);
 		while (!LIST_EMPTY(&io_work_q)) {
-			m = LIST_FIRST(&io_work_q);
-			LIST_REMOVE(m, work_entry);
+			si = LIST_FIRST(&io_work_q);
+			LIST_REMOVE(si, work_entry);
 			io_work_q_depth--;
 			pthread_mutex_unlock(&io_mutex);
 
-			pthread_mutex_lock(&m->lock);
-			m->work_fn(m);
-			m->work_pending = 0;
-			pthread_mutex_unlock(&m->lock);
+			pthread_mutex_lock(&si->lock);
+			si->work_fn(si);
+			si->work_pending = 0;
+			pthread_mutex_unlock(&si->lock);
 
 			pthread_mutex_lock(&io_mutex);
 		}
@@ -168,16 +169,18 @@ void *io_proc(void *arg)
 	return NULL;
 }
 
+#if 0
+/* Need to check why no one calls this function. */
 int mds_term()
 {
-	struct metric_store *m;
+	struct store_instance *si;
 
 	pthread_mutex_lock(&lru_list_lock);
 	while (!TAILQ_EMPTY(&lru_list)) {
-		m = TAILQ_FIRST(&lru_list);
-		TAILQ_REMOVE(&lru_list, m, lru_entry);
+		si = TAILQ_FIRST(&lru_list);
+		TAILQ_REMOVE(&lru_list, si, lru_entry);
 		pthread_mutex_unlock(&lru_list_lock);
-		ldmsd_store_close(m->store, m->lms);
+		ldmsd_store_close(si->store_engine, si->store_handle);
 		pthread_mutex_lock(&lru_list_lock);
 	}
 	io_exit = 1;
@@ -188,6 +191,7 @@ int mds_term()
 	pthread_join(io_thread, NULL);
 	return 0;
 }
+#endif
 
 int ldmsd_store_init()
 {
@@ -206,15 +210,11 @@ int ldmsd_store_init()
 
 struct timeval tv0, tv1, tvres, tvsum;
 
-int add_obj(struct metric_store *ms, ldmsd_store_tuple_t t)
-{
-	return ldmsd_store_metric(ms->store, ms->lms,
-				  t->comp_id, t->tv, t->value);
-}
-
-int ldmsd_store_tuple_add(struct metric_store *ms, ldmsd_store_tuple_t t)
+int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
+			ldms_set_t set, struct ldms_mvec *mvec)
 {
 	int rc;
+	struct store_instance *si = lsp->si;
 	int flush = 0;
 	records++;
 	double bytespersec = 0.0;
@@ -231,33 +231,37 @@ int ldmsd_store_tuple_add(struct metric_store *ms, ldmsd_store_tuple_t t)
 		printf("records %d flush %d open %d Mbytes/sec %g\n",
 		       records, flush_count, open_count, bytespersec / 1000000.0);
 	}
-	pthread_mutex_lock(&ms->lock);
-	switch (ms->state) {
-	case MDS_STATE_OPEN:
-		ms->dirty_count += sizeof *t;
-		rc = add_obj(ms, t);
+	pthread_mutex_lock(&si->lock);
+	switch (si->state) {
+	case STORE_STATE_OPEN:
+		/* XXX Fix this */
+		si->dirty_count += mvec->count * sizeof(uint64_t);
+		rc = si->store_engine->store(si->store_handle, set, mvec);
 		break;
 
-	case MDS_STATE_INIT:
+	case STORE_STATE_INIT:
 		errno = EINVAL;
 		rc = -1;
 		break;
 
-	case MDS_STATE_CLOSED:
-		ms->lms = ldmsd_store_new(ms->store,
-					  ms->comp_type, ms->metric_name,
-					  ms);
-		if (ms->lms) {
-			ms->state = MDS_STATE_OPEN;
-			rc = add_obj(ms, t);
+	case STORE_STATE_CLOSED:
+		/* XXX Fix this */
+		/* Waiting for 'new' and 'get' interface. */
+		si->store_handle = ldmsd_store_new(si->store_engine,
+					  lsp->comp_type, lsp->container,
+					  &lsp->metric_list, si);
+		if (si->store_handle) {
+			si->state = STORE_STATE_OPEN;
+			rc = si->store_engine->store(si->store_handle,
+							set, mvec);
 		} else {
-			ms->state = MDS_STATE_ERROR;
+			si->state = STORE_STATE_ERROR;
 			errno = EIO;
 			rc = -1;
 		}
 		break;
 
-	case MDS_STATE_ERROR:
+	case STORE_STATE_ERROR:
 		errno = EIO;
 		rc = -1;
 		break;
@@ -265,72 +269,67 @@ int ldmsd_store_tuple_add(struct metric_store *ms, ldmsd_store_tuple_t t)
 		errno = EINVAL;
 		rc = -1;
 	}
-	if (ms->dirty_count >= DIRTY_THRESHOLD)
+	if (si->dirty_count >= DIRTY_THRESHOLD)
 		flush = 1;
-	pthread_mutex_unlock(&ms->lock);
+	pthread_mutex_unlock(&si->lock);
 	if (!rc) {
 		pthread_mutex_lock(&lru_list_lock);
 		/* Move this set to the tail of the LRU queue */
-		TAILQ_REMOVE(&lru_list, ms, lru_entry);
-		TAILQ_INSERT_TAIL(&lru_list, ms, lru_entry);
+		TAILQ_REMOVE(&lru_list, si, lru_entry);
+		TAILQ_INSERT_TAIL(&lru_list, si, lru_entry);
 		pthread_mutex_unlock(&lru_list_lock);
 
 		if (flush)
-			queue_work(ms, flush_metric_store);
+			queue_work(si, flush_store_instance);
 	}
 	return rc;
 }
 
 void close_lru()
 {
-	struct metric_store *mx;
+	struct store_instance *si;
 	/*
 	 * close the least recently used metric store
 	 */
 	pthread_mutex_lock(&lru_list_lock);
 	do {
 		if (TAILQ_EMPTY(&lru_list)) {
-			mx = NULL;
+			si = NULL;
 			break;
 		}
-		mx = TAILQ_FIRST(&lru_list);
-		TAILQ_REMOVE(&lru_list, mx, lru_entry);
-		if (!mx->lms)
-			printf("WARNING: Removed metric store "
-			       "with null MDS from LRU list.\n");
-	} while (!mx->lms);
+		si = TAILQ_FIRST(&lru_list);
+		TAILQ_REMOVE(&lru_list, si, lru_entry);
+		if (!si->store_handle)
+			printf("WARNING: Removed store "
+			       "with null store_handle from LRU list.\n");
+	} while (!si->store_handle);
 	pthread_mutex_unlock(&lru_list_lock);
 
-	if (mx)
-		ldmsd_close_metric_store(mx);
+	if (si)
+		ldmsd_close_store_instance(si);
 	else
-		printf("WARNING: Could not find an MDS to close.\n");
+		printf("WARNING: Could not find a store_instance to close.\n");
 }
 
-struct metric_store *
-new_metric_store(struct ldmsd_store *store,
-		 char *comp_type, char *metric_name)
+struct store_instance *
+new_store_instance(struct ldmsd_store *store, struct ldmsd_store_policy *sp)
 {
 	int retry_count = 10;
-	struct metric_store *m;
-	m = calloc(1, sizeof *m);
-	if (!m)
+	struct store_instance *s_inst;
+	s_inst = calloc(1, sizeof *s_inst);
+	if (!s_inst)
 		goto out;
-	pthread_mutex_init(&m->lock, 0);
-	m->comp_type = strdup(comp_type);
-	if (!m->comp_type)
-		goto fail;
-	m->metric_name = strdup(metric_name);
-	if (!m->metric_name)
-		goto fail;
- retry:
-	m->store = store;
-	m->lms = ldmsd_store_new(store, m->comp_type, m->metric_name, m);
-	if (m->lms)
-		m->state = MDS_STATE_OPEN;
+	pthread_mutex_init(&s_inst->lock, 0);
+retry:
+	s_inst->store_engine = store;
+	s_inst->store_handle = ldmsd_store_new(store, sp->comp_type,
+					sp->container, &sp->metric_list,
+					s_inst);
+	if (s_inst->store_handle)
+		s_inst->state = STORE_STATE_OPEN;
 	else {
-		ldms_log("Could not create new metric_store. "
-			 "Closing LRU and retrying.");
+		ldms_log("Could not create new store_handle. "
+			 "Closing LRU and retrying.\n");
 		/*
 		 * Close the LRU mds to recoup its
 		 * handles for our use.
@@ -343,34 +342,29 @@ new_metric_store(struct ldmsd_store *store,
 	}
 	pthread_mutex_lock(&lru_list_lock);
 	open_count +=1;
-	TAILQ_INSERT_TAIL(&lru_list, m, lru_entry);
+	TAILQ_INSERT_TAIL(&lru_list, s_inst, lru_entry);
 	pthread_mutex_unlock(&lru_list_lock);
-
- out:
-	return m;
- fail:
-	if (m->comp_type)
-		free(m->comp_type);
-	if (m->metric_name)
-		free(m->metric_name);
-	free(m);
+out:
+	return s_inst;
+fail:
+	free(s_inst);
 	return NULL;
 }
 
-struct metric_store *
-ldmsd_metric_store_get(struct ldmsd_store *store,
-		       char *comp_type, char *metric_name)
+struct store_instance *
+ldmsd_store_instance_get(struct ldmsd_store *store,
+			struct ldmsd_store_policy *sp)
 {
-	ldmsd_metric_store_t lms;
-	struct metric_store *ms;
+	ldmsd_store_handle_t sh;
+	struct store_instance *s_inst;
 	pthread_mutex_lock(&cfg_lock);
-	lms = ldmsd_store_get(store, comp_type, metric_name);
-	if (!lms)
-		ms = new_metric_store(store, comp_type, metric_name);
+	sh = ldmsd_store_get(store, sp->container);
+	if (!sh)
+		s_inst = new_store_instance(store, sp);
 	else
-		ms = ldmsd_store_get_context(store, lms);
+		s_inst = ldmsd_store_get_context(store, sh);
 	pthread_mutex_unlock(&cfg_lock);
-	return ms;
+	return s_inst;
 }
 #if 0
 #include <coll/idx.h>

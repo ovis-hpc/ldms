@@ -77,21 +77,38 @@ SOS_OBJ_END(4);
 #define GROUP_COL	2
 #define VALUE_COL	3
 
-static idx_t metric_idx;
+/*
+ * NOTE:
+ *   (sos::path) = (root_path)/(comp_type)/(metric)
+ */
+
+static idx_t store_idx;
 static char tmp_path[PATH_MAX];
-static char *root_path;
+static char *root_path; /**< store root path */
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
+/**
+ * \brief Store for individual metric.
+ */
 struct sos_metric_store {
+	sos_t sos; /**< sos handle */
+	pthread_mutex_t lock; /**< lock at metric store level */
+	char *path; /**< path of the sos store */
+	LIST_ENTRY(sos_metric_store) entry;
+};
+
+struct sos_store_instance {
 	struct ldmsd_store *store;
-	sos_t sos;
-	char *path;
-	char *metric_key;
+	char *path; /**< (root_path)/(comp_type) */
+	char *container;
 	void *ucontext;
-	pthread_mutex_t lock;
+	idx_t ms_idx;
+	LIST_HEAD(ms_list, sos_metric_store) ms_list;
+	int metric_count;
+	struct sos_metric_store *ms[0];
 };
 
 pthread_mutex_t cfg_lock;
@@ -129,132 +146,221 @@ static const char *usage(void)
 		"        path      The path to the root of the SOS directory\n";
 }
 
-static ldmsd_metric_store_t
-get_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name)
+static ldmsd_store_handle_t
+get_store(const char *container)
 {
-	char metric_key[128];
-	ldmsd_metric_store_t ms;
+	ldmsd_store_handle_t sh;
 
 	pthread_mutex_lock(&cfg_lock);
 	/*
 	 * Add a component type directory if one does not
 	 * already exist
 	 */
-	sprintf(metric_key, "%s:%s", comp_name, metric_name);
-	ms = idx_find(metric_idx, metric_key, strlen(metric_key));
+	sh = idx_find(store_idx, (void *)container, strlen(container));
 	pthread_mutex_unlock(&cfg_lock);
-	return ms;
+	return sh;
 }
 
-static void *get_ucontext(ldmsd_metric_store_t _ms)
+static void *get_ucontext(ldmsd_store_handle_t _sh)
 {
-	struct sos_metric_store *ms = _ms;
-	return ms->ucontext;
+	struct sos_store_instance *si = _sh;
+	return si->ucontext;
 }
 
-static ldmsd_metric_store_t
-new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
-	  void *ucontext)
+static ldmsd_store_handle_t
+new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
+	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
 {
-	char metric_key[128];
+	struct sos_store_instance *si;
 	struct sos_metric_store *ms;
+	int i;
 
 	pthread_mutex_lock(&cfg_lock);
 	/*
 	 * Add a component type directory if one does not
 	 * already exist
 	 */
-	sprintf(metric_key, "%s:%s", comp_name, metric_name);
-	ms = idx_find(metric_idx, metric_key, strlen(metric_key));
-	if (!ms) {
-		sprintf(tmp_path, "%s/%s", root_path, comp_name);
+	si = idx_find(store_idx, (void *)container, strlen(container));
+	if (!si) {
+		/*
+		 * First, count the metric.
+		 */
+		int metric_count = 0;
+		struct ldmsd_store_metric_index *x;
+		LIST_FOREACH(x, metric_list, entry) {
+			metric_count++;
+		}
+		sprintf(tmp_path, "%s/%s", root_path, comp_type);
 		mkdir(tmp_path, 0777);
 
 		/*
 		 * Open a new store for this component-type and
 		 * metric combination
 		 */
-		ms = calloc(1, sizeof *ms);
-		if (!ms)
+		si = calloc(1, sizeof(*si) +
+			    metric_count * sizeof(struct sos_metric_store *));
+		if (!si)
 			goto out;
-		ms->ucontext = ucontext;
-		ms->store = s;
-		pthread_mutex_init(&ms->lock, NULL);
-		sprintf(tmp_path, "%s/%s/%s", root_path, comp_name, metric_name);
-		ms->path = strdup(tmp_path);
-		if (!ms->path)
+		si->metric_count = metric_count;
+		si->ms_idx = idx_create();
+		if (!si->ms_idx)
 			goto err1;
-		ms->metric_key = strdup(metric_key);
-		if (!ms->metric_key)
+		si->ucontext = ucontext;
+		si->store = s;
+		si->path = strdup(tmp_path);
+		if (!si->path)
 			goto err2;
-		ms->sos = sos_open(ms->path, O_CREAT | O_RDWR, 0660,
-				  &ovis_metric_class);
-		if (ms->sos)
-			idx_add(metric_idx, metric_key, strlen(metric_key), ms);
-		else
+		si->container = strdup(container);
+		if (!si->container)
 			goto err3;
+		i = 0;
+		char buff[128];
+		char *name;
+		LIST_FOREACH(x, metric_list, entry) {
+			name = strchr(x->name, '#');
+			if (name) {
+				int len = name - x->name;
+				name = strncpy(buff, x->name, len);
+				name[len] = 0;
+			} else {
+				name = x->name;
+			}
+			ms = idx_find(si->ms_idx, name, strlen(name));
+			if (ms) {
+				si->ms[i++] = ms;
+				continue;
+			}
+			/* Create ms if not exist */
+			ms = calloc(1, sizeof(*ms));
+			if (!ms)
+				goto err4;
+			sprintf(tmp_path, "%s/%s", si->path, name);
+			ms->path = strdup(tmp_path);
+			if (!ms->path)
+				goto err4;
+			ms->sos = sos_open(tmp_path, O_RDWR|O_CREAT,
+						0660, &ovis_metric_class);
+			if (!ms->sos)
+				goto err4;
+			pthread_mutex_init(&ms->lock, NULL);
+			idx_add(si->ms_idx, name, strlen(name), ms);
+			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
+			si->ms[i++] = ms;
+		}
+		idx_add(store_idx, (void *)container, strlen(container), si);
 	}
 	goto out;
- err3:
-	free(ms->metric_key);
- err2:
-	free(ms->path);
- err1:
-	free(ms);
- out:
+err4:
+	while (ms = LIST_FIRST(&si->ms_list)) {
+		LIST_REMOVE(ms, entry);
+		if (ms->path)
+			free(ms->path);
+		if (ms->sos)
+			sos_close(ms->sos);
+		free(ms);
+	}
+
+	free(si->container);
+err3:
+	free(si->path);
+err2:
+	idx_destroy(si->ms_idx);
+err1:
+	free(si);
+out:
 	pthread_mutex_unlock(&cfg_lock);
-	return ms;
+	return si;
 }
 
 static int
-store(ldmsd_metric_store_t _ms, uint32_t comp_id,
-      struct timeval tv, ldms_metric_t m)
+store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 {
-	struct sos_metric_store *ms;
+	struct sos_store_instance *si;
 	sos_obj_t obj;
+	int i;
+	int rc = 0;
+	int last_rc = 0;
+	int last_errno = 0;
 
-	if (!_ms)
+	if (!_sh)
 		return EINVAL;
 
-	ms = _ms;
-	obj = sos_obj_new(ms->sos);
-	if (!obj) {
-		errno = ENOMEM;
-		return -1;
+	si = _sh;
+
+	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+
+	for (i=0; i<mvec->count; i++) {
+		pthread_mutex_lock(&si->ms[i]->lock);
+		obj = sos_obj_new(si->ms[i]->sos);
+		if (!obj) {
+			msglog("Error %d: %s at %s:%d\n", errno,
+					strerror(errno), __FILE__, __LINE__);
+			errno = ENOMEM;
+			return -1;
+		}
+		uint64_t comp_id = ldms_get_user_data(mvec->v[i]);
+		sos_obj_attr_set(si->ms[i]->sos, 0, obj, (void*)&ts->sec);
+		sos_obj_attr_set(si->ms[i]->sos, 1, obj, (void*)&ts->usec);
+		sos_obj_attr_set(si->ms[i]->sos, 2, obj, &comp_id);
+		sos_obj_attr_set(si->ms[i]->sos, 3, obj,
+				 ldms_get_value_ptr(mvec->v[i]));
+		rc = sos_obj_add(si->ms[i]->sos, obj);
+		pthread_mutex_unlock(&si->ms[i]->lock);
+		if (rc) {
+			last_errno = errno;
+			last_rc = rc;
+			msglog("Error %d: %s at %s:%d\n", errno,
+					strerror(errno), __FILE__, __LINE__);
+		}
 	}
-	sos_obj_attr_set(ms->sos, 0, obj, &tv.tv_sec);
-	sos_obj_attr_set(ms->sos, 1, obj, &tv.tv_usec);
-	sos_obj_attr_set(ms->sos, 2, obj, &comp_id);
-	sos_obj_attr_set(ms->sos, 3, obj, ldms_get_value_ptr(m));
-	if (sos_obj_add(ms->sos, obj))
-		return -1;
-	return 0;
+
+	if (last_errno)
+		errno = last_errno;
+	return last_rc;
 }
 
-static int flush_store(ldmsd_metric_store_t _ms)
+static int flush_store(ldmsd_store_handle_t _sh)
 {
-	struct sos_metric_store *ms = _ms;
-	if (!_ms)
+	struct sos_store_instance *si = _sh;
+	struct sos_metric_store *ms;
+	if (!_sh)
 		return EINVAL;
-	sos_flush(ms->sos);
+	int i;
+	LIST_FOREACH(ms, &si->ms_list, entry) {
+		pthread_mutex_lock(&ms->lock);
+		sos_flush(ms->sos);
+		pthread_mutex_lock(&ms->lock);
+	}
 	return 0;
 }
 
-static void close_store(ldmsd_metric_store_t _ms)
+static void close_store(ldmsd_store_handle_t _sh)
 {
-	struct sos_metric_store *ms = _ms;
-	if (!_ms)
+	/*
+	 * NOTE: This close function looks like destroy to me.
+	 */
+	struct sos_store_instance *si = _sh;
+	struct sos_metric_store *ms;
+	if (!_sh)
 		return;
-	if (ms->sos)
-		sos_close(ms->sos);
-	idx_delete(metric_idx, ms->metric_key, strlen(ms->metric_key));
-	free(ms->path);
-	free(ms->metric_key);
-	free(ms);
+	int i;
+	while (ms = LIST_FIRST(&si->ms_list)) {
+		if (ms->sos)
+			sos_close(ms->sos);
+		if (ms->path)
+			free(ms->path);
+		free(ms);
+	}
+	idx_delete(store_idx, (void *)(si->container), strlen(si->container));
+	free(si->path);
+	free(si->container);
+	idx_destroy(si->ms_idx);
+	free(si);
 }
 
-static void destroy_store(ldmsd_metric_store_t _ms)
+static void destroy_store(ldmsd_store_handle_t _sh)
 {
+	close_store(_sh);
 }
 
 static struct ldmsd_store store_sos = {
@@ -282,7 +388,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 static void __attribute__ ((constructor)) store_sos_init();
 static void store_sos_init()
 {
-	metric_idx = idx_create();
+	store_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 }
 
@@ -290,5 +396,5 @@ static void __attribute__ ((destructor)) store_sos_fini(void);
 static void store_sos_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
-	idx_destroy(metric_idx);
+	idx_destroy(store_idx);
 }

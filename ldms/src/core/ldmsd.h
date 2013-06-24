@@ -52,39 +52,48 @@
 #define __LDMSD_H__
 
 #include <sys/queue.h>
+#include "ldms.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"
 
-struct hset_metric {
-	char *name;
-	ldms_metric_t metric;
-	uint64_t comp_id;
-	struct metric_store *metric_store;
-	LIST_ENTRY(hset_metric) entry;
+struct hostspec;
+struct ldmsd_store_policy;
+struct ldmsd_store_policy_ref {
+	struct ldmsd_store_policy *lsp;
+	LIST_ENTRY(ldmsd_store_policy_ref) entry;
 };
 
-struct hostspec;
-struct ldmsd_store;
+LIST_HEAD(ldmsd_store_policy_ref_list, ldmsd_store_policy_ref);
 struct hostset
 {
 	struct hostspec *host;
 	char *name;
+	struct ldmsd_store_policy_ref_list lsp_list; /**< Store policy list that
+						       is related to this
+						       hostset. */
 	enum {
 		LDMSD_SET_CONFIGURED,
 		LDMSD_SET_LOOKUP,
+		LDMSD_SET_BUSY, /* updating & storing */
 		LDMSD_SET_READY
 	} state;
 	pthread_mutex_t state_lock;
 	ldms_set_t set;
-	struct ldmsd_store *store;
 	uint64_t gn;
 	int refcount;
 	pthread_mutex_t refcount_lock;
 	LIST_ENTRY(hostset) entry;
-	LIST_HEAD(metric_list, hset_metric) metric_list;
+	struct ldms_mvec *mvec; /**< Metric vector */
 };
 
-typedef void *ldmsd_metric_store_t;
+struct hostset_ref {
+	char *hostname; /**< The hostname is here as a part of the
+			     configuration. */
+	struct hostset *hset;
+	LIST_ENTRY(hostset_ref) entry;
+};
+LIST_HEAD(hostset_ref_list, hostset_ref);
+
 struct hostspec
 {
 	struct sockaddr_in sin;	/* host address */
@@ -92,6 +101,12 @@ struct hostspec
 	char *xprt_name;	/* transport name */
 	int connect_interval;	/* connect interval */
 	int sample_interval;	/* sample interval */
+	enum {
+		HOST_DISCONNECTED=0,
+		HOST_CONNECTING,
+		HOST_CONNECTED
+	} conn_state;
+	pthread_mutex_t conn_state_lock;
 	enum {
 		ACTIVE, PASSIVE, BRIDGING
 	} type;
@@ -109,27 +124,6 @@ typedef struct ldmsd_store_tuple_s {
 	uint32_t comp_id;
 	ldms_metric_t value;
 } *ldmsd_store_tuple_t;
-
-struct metric_store;
-typedef void (*io_work_fn)(struct metric_store *);
-struct metric_store {
-	struct ldmsd_store *store;
-	ldmsd_metric_store_t lms;
-	char *metric_name;
-	char *comp_type;
-	enum {
-		MDS_STATE_INIT=0,
-		MDS_STATE_OPEN,
-		MDS_STATE_CLOSED,
-		MDS_STATE_ERROR
-	} state;
-	size_t dirty_count;
-	pthread_mutex_t lock;
-	TAILQ_ENTRY(metric_store) lru_entry;
-	LIST_ENTRY(metric_store) work_entry;
-	io_work_fn work_fn;
-	int work_pending;
-};
 
 extern char *skip_space(char *s);
 extern int parse_cfg(const char *config_file);
@@ -157,6 +151,9 @@ struct ldmsd_sampler {
 	int (*sample)(void);
 };
 
+typedef void *ldmsd_store_handle_t;
+
+struct ldmsd_store_metric_index_list;
 /**
  * \brief ldms_store
  *
@@ -166,7 +163,7 @@ struct ldmsd_sampler {
  * initializing, configuring and storing metric set data to the
  * persistent storage used by the strategy. When a metric set is
  * sampled, if metrics in the set are associated with a storage
- * strategy, the sample is saved automatcially by \c ldmsd.
+ * strategy, the sample is saved automatically by \c ldmsd.
  *
  * An \c ldms_store manages Metric Series. A Metric Series is a named,
  * grouped, and time ordered series of metric samples. A Metric Series
@@ -176,76 +173,117 @@ struct ldmsd_sampler {
 struct ldmsd_store {
 	struct ldmsd_plugin base;
 	void *ucontext;
-	ldmsd_metric_store_t (*get)(struct ldmsd_store *s,
-				    const char *comp_name,
-				    const char *metric_name);
-	ldmsd_metric_store_t (*new)(struct ldmsd_store *s,
-				    const char *comp_name,
-				    const char *metric_name,
-				    void *context);
-	void (*destroy)(ldmsd_metric_store_t);
-	int (*flush)(ldmsd_metric_store_t);
-	void (*close)(ldmsd_metric_store_t);
-	void *(*get_context)(ldmsd_metric_store_t);
-	int (*store)(ldmsd_metric_store_t ms,
-		     uint32_t comp_id, struct timeval tv, ldms_metric_t m);
+	ldmsd_store_handle_t (*get)(const char *container);
+	ldmsd_store_handle_t (*new)(struct ldmsd_store *s, const char
+			*comp_type, const char *container, struct
+			ldmsd_store_metric_index_list *metric_list, void *ucontext);
+	void (*destroy)(ldmsd_store_handle_t sh);
+	int (*flush)(ldmsd_store_handle_t sh);
+	void (*close)(ldmsd_store_handle_t sh);
+	void *(*get_context)(ldmsd_store_handle_t sh);
+	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set,
+		     ldms_mvec_t mvec);
+};
+
+struct store_instance;
+typedef void (*io_work_fn)(struct store_instance *);
+struct store_instance {
+	struct ldmsd_store *store_engine; /**< The store plugin. */
+	ldmsd_store_handle_t store_handle; /**< The store handle from store->new
+					     	or store->get */
+	enum {
+		STORE_STATE_INIT=0,
+		STORE_STATE_OPEN,
+		STORE_STATE_CLOSED,
+		STORE_STATE_ERROR
+	} state;
+	size_t dirty_count;
+	pthread_mutex_t lock;
+	TAILQ_ENTRY(store_instance) lru_entry;
+	LIST_ENTRY(store_instance) work_entry;
+	io_work_fn work_fn;
+	int work_pending;
+};
+
+struct ldmsd_store_metric_index {
+	char *name; /**< For configuration */
+	int index; /**< The index */
+	LIST_ENTRY(ldmsd_store_metric_index) entry;
+};
+
+LIST_HEAD(ldmsd_store_metric_index_list, ldmsd_store_metric_index);
+
+struct ldmsd_store_policy {
+	struct hostset_ref_list hset_ref_list;
+	char *container; /**< This is store policy ID. */
+	char *setname; /**< It is here for configuration. */
+	int metric_count; /**< The number of metrics. */
+	struct ldmsd_store_metric_index_list metric_list; /**< List of the indices. */
+	char *comp_type;
+	struct store_instance *si; /**< Store instance. */
+	enum {
+		STORE_POLICY_CONFIGURING=0, /* Need metric index list */
+		STORE_POLICY_READY,
+		STORE_POLICY_WRONG_CONFIG
+	} state;
+	pthread_mutex_t idx_create_lock;
+	LIST_ENTRY(ldmsd_store_policy) link;
 };
 
 void ldms_log(const char *fmt, ...);
 
 int ldmsd_store_init(void);
-int ldmsd_store_tuple_add(struct metric_store *ms, ldmsd_store_tuple_t t);
+int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
+		ldms_set_t set, struct ldms_mvec *mvec);
 
-struct metric_store *
-ldmsd_metric_store_get(struct ldmsd_store *store,
-		       char *comp_type, char *metric_name);
+struct store_instance *
+ldmsd_store_instance_get(struct ldmsd_store *store,
+			struct ldmsd_store_policy *sp);
 
-void ldmsd_close_metric_store(struct metric_store *m);
-
-static inline ldmsd_metric_store_t
+static inline ldmsd_store_handle_t
 ldmsd_store_new(struct ldmsd_store *store,
-		const char *comp_name, const char *metric_name,
+		const char *comp_type, const char *container,
+		struct ldmsd_store_metric_index_list *metric_list,
 		void *ucontext)
 {
-	return store->new(store, comp_name, metric_name, ucontext);
+	return store->new(store, comp_type, container, metric_list, ucontext);
 }
 
 static inline void *ldmsd_store_get_context(struct ldmsd_store *store,
-					    ldmsd_metric_store_t lms)
+					    ldmsd_store_handle_t sh)
 {
-	return store->get_context(lms);
+	return store->get_context(sh);
 }
 
-static inline ldmsd_metric_store_t
-ldmsd_store_get(struct ldmsd_store *store,
-		const char *comp_name, const char *metric_name)
+static inline ldmsd_store_handle_t
+ldmsd_store_get(struct ldmsd_store *store, const char *container)
 {
-	return store->get(store, comp_name, metric_name);
+	return store->get(container);
 }
 
 static inline void
-ldmsd_store_destroy(struct ldmsd_store *store, ldmsd_metric_store_t ms)
+ldmsd_store_destroy(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 {
-	store->destroy(ms);
+	store->destroy(sh);
 }
 
 static inline int
-ldmsd_store_metric(struct ldmsd_store *store, ldmsd_metric_store_t ms,
-		   uint32_t comp_id, struct timeval tv, ldms_metric_t m)
+ldmsd_store_store(struct ldmsd_store *store, ldmsd_store_handle_t sh,
+		   ldms_set_t set, struct ldms_mvec *mvec)
 {
-	return store->store(ms, comp_id, tv, m);
+	return store->store(sh, set, mvec);
 }
 
 static inline void
-ldmsd_store_flush(struct ldmsd_store *store, ldmsd_metric_store_t ms)
+ldmsd_store_flush(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 {
-	store->flush(ms);
+	store->flush(sh);
 }
 
 static inline void
-ldmsd_store_close(struct ldmsd_store *store, ldmsd_metric_store_t ms)
+ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 {
-	store->close(ms);
+	store->close(sh);
 }
 
 typedef void (*ldmsd_msg_log_f)(const char *fmt, ...);

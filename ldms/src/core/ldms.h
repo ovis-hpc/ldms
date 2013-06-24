@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -429,6 +429,47 @@ struct ldms_metric {
 	union ldms_value *value;
 };
 
+struct ldms_mvec {
+	int count;
+	ldms_metric_t v[];
+};
+
+typedef struct ldms_mvec *ldms_mvec_t;
+
+/**
+ * \brief Create ::ldms_mvec.
+ * \param count The number of metrics in the vector.
+ * \return NULL on error.
+ * \return A pointer to ::ldms_mvec on success.
+ */
+ldms_mvec_t ldms_mvec_create(int count);
+
+/**
+ * \brief Equivalent to \c free(mvec).
+ * \param mvec The pointer to the ::ldms_mvec.
+ */
+void ldms_mvec_destroy(ldms_mvec_t mvec);
+
+/**
+ * \brief Get the number of metrics in \c mvec
+ * \param mvec The pointer to the ::ldms_mvec_t.
+ * \return The number of metrics in mvec
+ */
+static inline int ldms_mvec_get_count(ldms_mvec_t mvec)
+{
+	return mvec->count;
+}
+
+/**
+ * \brief Get the array of the metrics in \c mvec
+ * \param mvec The pointer to the ::ldms_mvec_t.
+ * \return The array of the metrics in \c mvec.
+ */
+static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
+{
+	return mvec->v;
+}
+
 /**
  * \addtogroup ldms_conn_mgmt LDMS Connection Management
  *
@@ -757,7 +798,14 @@ extern void ldms_destroy_set(ldms_set_t s);
  * \param s	The ldms_set_t handle.
  * \returns	The metric set name as a character string.
  */
-extern const char *ldms_get_set_name(ldms_set_t *s);
+extern const char *ldms_get_set_name(ldms_set_t s);
+
+/**
+ * \brief Get the number of metrics in the metric set.
+ * \param s	The ldms_set_t handle.
+ * \return The number of metrics in the metric set. -1 otherwise.
+ */
+extern uint32_t ldms_get_set_card(ldms_set_t s);
 
 /**
  * \brief Get a set by name.

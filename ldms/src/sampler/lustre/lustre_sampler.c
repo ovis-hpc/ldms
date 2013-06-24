@@ -101,9 +101,9 @@ void lustre_svc_stats_list_free(struct lustre_svc_stats_head *h)
  * \returns 0 on success.
  * \returns Error code on error.
  */
-int __add_metric_routine(ldms_set_t set, const char *metric_name,
-		       struct str_map *id_map, const char *key,
-		       struct lustre_svc_stats *lss)
+int __add_metric_routine(ldms_set_t set, uint64_t udata,
+			 const char *metric_name, struct str_map *id_map,
+			 const char *key, struct lustre_svc_stats *lss)
 {
 	uint64_t id = str_map_get(id_map, key);
 	if (!id) {
@@ -113,10 +113,12 @@ int __add_metric_routine(ldms_set_t set, const char *metric_name,
 	/* metric is valid, add it */
 	ldms_metric_t metric = ldms_add_metric(set, metric_name, LDMS_V_U64);
 	lss->metrics[id] = metric;
+	ldms_set_user_data(metric, udata);
 	return 0;
 }
 
 int stats_construct_routine(ldms_set_t set,
+			    uint64_t comp_id,
 			    const char *stats_path,
 			    const char *metric_name_base,
 			    struct lustre_svc_stats_head *stats_head,
@@ -141,7 +143,7 @@ int stats_construct_routine(ldms_set_t set,
 	int j;
 	for (j=0; j<nkeys; j++) {
 		sprintf(metric_name, "%s.%s", metric_name_base, keys[j]);
-		rc = __add_metric_routine(set, metric_name,
+		rc = __add_metric_routine(set, comp_id, metric_name,
 				key_id_map, keys[j],
 				lss);
 		if (rc)

@@ -226,7 +226,7 @@ void lustre_svc_stats_list_free(struct lustre_svc_stats_head *h);
  * \returns 0 on success.
  * \returns Error code on error.
  */
-int stats_construct_routine(ldms_set_t set,
+int stats_construct_routine(ldms_set_t set, uint64_t comp_id,
 			    const char *stats_path,
 			    const char *metric_name_base,
 			    struct lustre_svc_stats_head *stats_head,

@@ -36,3 +36,10 @@ libstore_mysqlbulk_la_LIBADD = $(STORE_LIBADD) -lmysqlclient \
 lib_LTLIBRARIES += libstore_mysqlbulk.la
 endif
 
+if ENABLE_CSV
+libstore_csv_la_SOURCES = store_csv.c
+libstore_csv_la_CFLAGS = $(AM_CFLAGS) -I$(OVIS_LIB_INCDIR)
+libstore_csv_la_LIBADD = $(STORE_LIBADD) -L$(OVIS_LIB_LIBDIR) \
+				-lcoll
+lib_LTLIBRARIES += libstore_csv.la
+endif

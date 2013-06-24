@@ -48,7 +48,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include <ctype.h>
 #include <sys/queue.h>
 #include <sys/types.h>
@@ -66,245 +65,328 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
+/*
+ * NOTE:
+ *   (flatfile::path) = (root_path)/(comp_type)/(metric)
+ */
 
-#define TV_SEC_COL    0
-#define TV_USEC_COL    1
-#define GROUP_COL    2
-#define VALUE_COL    3
-
-static idx_t metric_idx;
+static idx_t store_idx;
 static char tmp_path[PATH_MAX];
-static char *root_path;
+static char *root_path; /**< store root path */
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
-#define LOGFILE "/var/log/store_flatfile.log"
-
+/**
+ * \brief Store for individual metric.
+ */
 struct flatfile_metric_store {
-  struct ldmsd_store *store;
-  FILE *file;
-  char* path;
-  char *metric_key;
-  void *ucontext;
-  pthread_mutex_t lock;
+	FILE *file; /**< File handle */
+	pthread_mutex_t lock; /**< lock at metric store level */
+	char *path; /**< path of the flatfile store */
+	LIST_ENTRY(flatfile_metric_store) entry; /**< Entry for free list. */
 };
 
-pthread_mutex_t cfg_lock;
+struct flatfile_store_instance {
+	struct ldmsd_store *store;
+	char *path; /**< (root_path)/(comp_type) */
+	char *container;
+	void *ucontext;
+	idx_t ms_idx;
+	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
+	int metric_count;
+	struct flatfile_metric_store *ms[0];
+};
+
+static pthread_mutex_t cfg_lock;
 
 /**
  * \brief Configuration
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	char *value;
+	value = av_value(avl, "path");
+	if (!value)
+		goto err;
 
-  char *value;
-  value = av_value(avl, "path");
-  if (!value)
-    goto err;
-
-  pthread_mutex_lock(&cfg_lock);
-  if (root_path)
-    free(root_path);
-  root_path = strdup(value);
-  pthread_mutex_unlock(&cfg_lock);
-  if (!root_path)
-    return ENOMEM;
-  return 0;
-
+	pthread_mutex_lock(&cfg_lock);
+	if (root_path)
+		free(root_path);
+	root_path = strdup(value);
+	pthread_mutex_unlock(&cfg_lock);
+	if (!root_path)
+		return ENOMEM;
+	return 0;
  err:
-  return EINVAL;
-
+	return EINVAL;
 }
 
 static void term(void)
 {
-  //should this close the filehandles as well?
+	//should this close the filehandles as well?
 }
 
 static const char *usage(void)
 {
-  return  "    config name=store_flatfile path=<path>\n"
-    "              - Set the root path for the storage of flatfiles.\n"
-    "              path      The path to the root of the flatfile directory\n";
+	return
+"    config name=store_flatfile path=<path>\n"
+"              - Set the root path for the storage of flatfiles.\n"
+"              path      The path to the root of the flatfile directory\n";
 }
 
-
-static ldmsd_metric_store_t
-get_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name)
+static ldmsd_store_handle_t
+get_store(const char *container)
 {
-  pthread_mutex_lock(&cfg_lock);
+	ldmsd_store_handle_t sh;
 
-  char metric_key[128];
-  ldmsd_metric_store_t ms;
-
-  /* comment in sos says:  Add a component type directory if one does not
-   * already exist
-   * but it does not look like this function actually does an add...
-   */
-  sprintf(metric_key, "%s:%s", comp_name, metric_name);
-  ms = idx_find(metric_idx, metric_key, strlen(metric_key));
-  pthread_mutex_unlock(&cfg_lock);
-  return ms;
+	pthread_mutex_lock(&cfg_lock);
+	/*
+	 * Add a component type directory if one does not
+	 * already exist
+	 */
+	sh = idx_find(store_idx, (void *)container, strlen(container));
+	pthread_mutex_unlock(&cfg_lock);
+	return sh;
 }
 
-static void *get_ucontext(ldmsd_metric_store_t _ms)
+static void *get_ucontext(ldmsd_store_handle_t _sh)
 {
-  struct flatfile_metric_store *ms = _ms;
-  return ms->ucontext;
+	struct flatfile_store_instance *si = _sh;
+	return si->ucontext;
 }
 
-static ldmsd_metric_store_t
-new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
-	  void *ucontext)
+static ldmsd_store_handle_t
+new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
+	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
 {
+	struct flatfile_store_instance *si;
+	struct flatfile_metric_store *ms;
+	int i;
 
-  pthread_mutex_lock(&cfg_lock);
+	pthread_mutex_lock(&cfg_lock);
+	/*
+	 * Add a component type directory if one does not
+	 * already exist
+	 */
+	si = idx_find(store_idx, (void *)container, strlen(container));
+	if (!si) {
+		/*
+		 * First, count the metric.
+		 */
+		int metric_count = 0;
+		struct ldmsd_store_metric_index *x;
+		LIST_FOREACH(x, metric_list, entry) {
+			metric_count++;
+		}
+		sprintf(tmp_path, "%s/%s", root_path, comp_type);
+		mkdir(tmp_path, 0777);
 
-  char metric_key[128];
-  struct flatfile_metric_store *ms;
+		/*
+		 * Open a new store for this component-type and
+		 * metric combination
+		 */
+		si = calloc(1, sizeof(*si) +
+				metric_count *
+				sizeof(struct flatfile_metric_store *));
+		if (!si)
+			goto out;
+		si->metric_count = metric_count;
+		si->ms_idx = idx_create();
+		if (!si->ms_idx)
+			goto err1;
+		si->ucontext = ucontext;
+		si->store = s;
+		si->path = strdup(tmp_path);
+		if (!si->path)
+			goto err2;
+		si->container = strdup(container);
+		if (!si->container)
+			goto err3;
+		i = 0;
+		char mname[128];
+		char *name;
+		LIST_FOREACH(x, metric_list, entry) {
+			name = strchr(x->name, '#');
+			if (name) {
+				int len = name - x->name;
+				name = strncpy(mname, x->name, len);
+				name[len] = 0;
+			} else {
+				name = x->name;
+			}
+			ms = idx_find(si->ms_idx, name, strlen(name));
+			if (ms) {
+				si->ms[i++] = ms;
+				continue;
+			}
+			/* Create new metric store if not exist. */
+			ms = calloc(1, sizeof(*ms));
+			sprintf(tmp_path, "%s/%s", si->path, name);
+			ms->path = strdup(tmp_path);
+			if (!ms->path)
+				goto err4;
+			ms->file = fopen(ms->path, "a+");
+			if (!ms->file)
+				goto err4;
+			pthread_mutex_init(&ms->lock, NULL);
+			idx_add(si->ms_idx, name, strlen(name), ms);
+			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
+			si->ms[i++] = ms;
+		}
+		idx_add(store_idx, (void *)container, strlen(container), si);
+	}
+	goto out;
+err4:
+	while (ms = LIST_FIRST(&si->ms_list)) {
+		LIST_REMOVE(ms, entry);
+		if (ms->path)
+			free(ms->path);
+		if (ms->file)
+			fclose(ms->file);
+		free(ms);
+	}
 
-  sprintf(metric_key, "%s:%s", comp_name, metric_name);
-  ms = idx_find(metric_idx, metric_key, strlen(metric_key));
-  if (!ms) {
-    //append or create
-    sprintf(tmp_path, "%s/%s", root_path, comp_name);
-    mkdir(tmp_path, 0777);
-
-    ms = calloc(1, sizeof *ms);
-    if (!ms)
-      goto out;
-    ms->ucontext = ucontext;
-    ms->store = s;
-    pthread_mutex_init(&ms->lock, NULL);
-
-    sprintf(tmp_path, "%s/%s/%s", root_path, comp_name, metric_name);
-    ms->path = strdup(tmp_path);
-    if (!ms->path)
-      goto err1;
-    ms->metric_key = strdup(metric_key);
-    if (!ms->metric_key)
-      goto err2;
-
-    ms->file = fopen(ms->path, "a+");
-    if (ms->file)
-      idx_add(metric_idx, metric_key, strlen(metric_key), ms);
-    else
-      goto err3;
-  }
-  goto out;
-
- err3:
-	free(ms->metric_key);
- err2:
-	free(ms->path);
- err1:
-	free(ms);
- out:
-  pthread_mutex_unlock(&cfg_lock);
-  return ms;
+	free(si->container);
+err3:
+	free(si->path);
+err2:
+	idx_destroy(si->ms_idx);
+err1:
+	free(si);
+out:
+	pthread_mutex_unlock(&cfg_lock);
+	return si;
 }
 
 static int
-store(ldmsd_metric_store_t _ms, uint32_t comp_id,
-      struct timeval tv, ldms_metric_t m)
+store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 {
-  //NOTE: later change this so data is queued up here and later bulk insert in the flush
-  //NOTE: ldmsd_store invokes the lock on this ms, so we dont have to do it here
+	struct flatfile_store_instance *si;
+	int i;
+	int rc = 0;
+	int last_rc = 0;
+	int last_errno = 0;
 
-  struct flatfile_metric_store *ms;
+	if (!_sh)
+		return EINVAL;
 
-  if (!_ms){
-    return EINVAL;
-  }
+	si = _sh;
+	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	uint64_t comp_id;
 
-  ms = _ms;
-  if (ms->file == NULL){
-    msglog("Cannot insert value for <%s>: file is closed\n", ms->path);
-    return EPERM;
-  }
+	for (i=0; i<mvec->count; i++) {
+		pthread_mutex_lock(&si->ms[i]->lock);
+		comp_id = ldms_get_user_data(mvec->v[i]);
+		rc = fprintf(si->ms[i]->file, "%"PRIu32".%"PRIu32" %"PRIu64
+				" %"PRIu64"\n", ts->sec,
+				ts->usec, comp_id,
+				ldms_get_u64(mvec->v[i]));
+		if (rc < 0) {
+			last_errno = errno;
+			last_rc = rc;
+			msglog("Error %d: %s at %s:%d\n", last_errno,
+					strerror(last_errno), __FILE__,
+					__LINE__);
+		}
+		pthread_mutex_unlock(&si->ms[i]->lock);
+	}
 
-  //  char data_str[64];
-  //  sprintf(data_str,
-  //	  "%"PRIu64".%"PRIu64" %"PRIu32" %"PRIu64"\n",
-  //	  (uint64_t)(tv.tv_sec), (uint64_t)(tv.tv_usec),
-  //	  comp_id, ldms_get_u64(m));
-  // msglog(data_str); //this logs the sample to the log file
-  //  int rc = fprintf(ms->file, data_str);
-  int rc = fprintf(ms->file, "%"PRIu64".%"PRIu64" %"PRIu32" %"PRIu64"\n",
-	  (uint64_t)(tv.tv_sec), (uint64_t)(tv.tv_usec),
-	  comp_id, ldms_get_u64(m));
-  if (rc <= 0)
-    msglog("Error %d writing to '%s'\n", rc, ms->path);
-  //FIXME: possibly put in something to force timely regular flushes
-  //  fflush(ms->file); //tail the flat file if you want to see it
-
-  return 0;
+	if (last_errno)
+		errno = last_errno;
+	return last_rc;
 }
 
-static int flush_store(ldmsd_metric_store_t _ms)
+static int flush_store(ldmsd_store_handle_t _sh)
 {
-  //NOTE - later change this so that data is queued up in store and so that flush
-  //does a bulk insert.
-
-  return 0;
+	struct flatfile_store_instance *si = _sh;
+	if (!_sh)
+		return EINVAL;
+	int i;
+	int lrc, rc = 0;
+	int eno = 0;
+	struct flatfile_metric_store *ms;
+	LIST_FOREACH(ms, &si->ms_list, entry) {
+		pthread_mutex_lock(&ms->lock);
+		lrc = fflush(ms->file);
+		if (lrc) {
+			rc = lrc;
+			eno = errno;
+			msglog("Errro %d: %s at %s:%d\n", eno, strerror(eno),
+					__FILE__, __LINE__);
+		}
+		pthread_mutex_unlock(&ms->lock);
+	}
+	if (eno)
+		errno = eno;
+	return rc;
 }
 
-static void close_store(ldmsd_metric_store_t _ms)
+static void close_store(ldmsd_store_handle_t _sh)
 {
-  pthread_mutex_lock(&cfg_lock);
-
-  struct flatfile_metric_store *ms = _ms;
-  if (!_ms)
-    return;
-
-  idx_delete(metric_idx, ms->metric_key, strlen(ms->metric_key));
-  if (ms->file) fclose(ms->file);
-  ms->file = 0;
-  free(ms->path);
-  free(ms->metric_key);
-  free(ms);
-
-  pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_lock(&cfg_lock);
+	/*
+	 * NOTE: This close function looks like destroy to me.
+	 */
+	struct flatfile_store_instance *si = _sh;
+	if (!_sh)
+		return;
+	int i;
+	struct flatfile_metric_store *ms;
+	while (ms = LIST_FIRST(&si->ms_list)) {
+		LIST_REMOVE(ms, entry);
+		if (ms->file)
+			fclose(ms->file);
+		if (ms->path)
+			free(ms->path);
+		free(ms);
+	}
+	idx_delete(store_idx, (void *)(si->container), strlen(si->container));
+	free(si->path);
+	free(si->container);
+	idx_destroy(si->ms_idx);
+	free(si);
+	pthread_mutex_unlock(&cfg_lock);
 }
 
-static void destroy_store(ldmsd_metric_store_t _ms)
+static void destroy_store(ldmsd_store_handle_t _sh)
 {
+	close_store(_sh);
 }
 
 static struct ldmsd_store store_flatfile = {
-  .base = {
-    .name = "flatfile",
-    .term = term,
-    .config = config,
-    .usage = usage,
-  },
-  .get = get_store,
-  .new = new_store,
-  .destroy = destroy_store,
-  .get_context = get_ucontext,
-  .store = store,
-  .flush = flush_store,
-  .close = close_store,
+	.base = {
+		.name = "flatfile",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
+	.get = get_store,
+	.new = new_store,
+	.destroy = destroy_store,
+	.get_context = get_ucontext,
+	.store = store,
+	.flush = flush_store,
+	.close = close_store,
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
-  msglog = pf;
-  return &store_flatfile.base;
+	msglog = pf;
+	return &store_flatfile.base;
 }
 
 static void __attribute__ ((constructor)) store_flatfile_init();
 static void store_flatfile_init()
 {
-  metric_idx = idx_create();
-  pthread_mutex_init(&cfg_lock, NULL);
+	store_idx = idx_create();
+	pthread_mutex_init(&cfg_lock, NULL);
 }
 
 static void __attribute__ ((destructor)) store_flatfile_fini(void);
 static void store_flatfile_fini()
 {
-  pthread_mutex_destroy(&cfg_lock);
-  idx_destroy(metric_idx);
+	pthread_mutex_destroy(&cfg_lock);
+	idx_destroy(store_idx);
 }

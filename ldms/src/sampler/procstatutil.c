@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -71,11 +71,7 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 
 int numcpu_plusone;
-union ldms_value comp_id;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
-ldms_metric_t tv_sec_metric_handle;
-ldms_metric_t tv_nsec_metric_handle;
+uint64_t comp_id;
 
 #undef CHECK_PROCSTATUTIL_TIMING
 #ifdef CHECK_PROCSTATUTIL_TIMING
@@ -97,16 +93,16 @@ static ldms_set_t get_set()
  * line, this should work across all kernels up to 3.5.
  */
 static char *metric_name_fmt[] = {
-	"%d:user",
-	"%d:nice",
-	"%d:sys",
-	"%d:idle",
-	"%d:iowait",
-	"%d:irq",
-	"%d:softirq",
-	"%d:steal",
-	"%d:guest",
-	"%d:guest_nice",
+	"user#%d",
+	"nice#%d",
+	"sys#%d",
+	"idle#%d",
+	"iowait#%d",
+	"irq#%d",
+	"softirq#%d",
+	"steal#%d",
+	"guest#%d",
+	"guest_nice#%d",
 };
 static int create_metric_set(const char *path)
 {
@@ -126,21 +122,8 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
-				  &total_meta_sz, &total_data_sz);
-
-	rc = ldms_get_metric_size("procstatutil_counter", LDMS_V_U64, &meta_sz, &data_sz);
-	total_meta_sz += meta_sz;
-	total_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("procstatutil_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
-        total_meta_sz += meta_sz;
-        total_data_sz += data_sz;
-
-	rc = ldms_get_metric_size("procstatutil_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
-        total_meta_sz += meta_sz;
-        total_data_sz += data_sz;
-
+	total_meta_sz = 0;
+	total_data_sz = 0;
 
 	fseek(mf, 0, SEEK_SET);
 
@@ -155,7 +138,7 @@ static int create_metric_set(const char *path)
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		
+
 		/* Throw away first column which is the CPU 'name' */
 		token = strtok(lbuf, " \t\n");
 		if (0 != strncmp(token, "cpu", 3))
@@ -180,6 +163,7 @@ static int create_metric_set(const char *path)
 		cpu_count++;
 	} while (1);
 
+#ifdef CHECK_PROCSTATUTIL_TIMING
 	rc = ldms_get_metric_size("procstatutil_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
         total_meta_sz += meta_sz;
         total_data_sz += data_sz;
@@ -191,7 +175,7 @@ static int create_metric_set(const char *path)
         rc = ldms_get_metric_size("procstatutil_tv_dnsec", LDMS_V_U64, &meta_sz, &data_sz);
         total_meta_sz += meta_sz;
         total_data_sz += data_sz;
-
+#endif
 
 	/* Create a metric set of the required size */
 	rc = ldms_create_set(path, total_meta_sz, total_data_sz, &set);
@@ -199,22 +183,6 @@ static int create_metric_set(const char *path)
 		return rc;
 
 	rc = ENOMEM;
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle)
-		goto err;
-
-	counter_metric_handle = ldms_add_metric(set, "procstatutil_counter", LDMS_V_U64);
-	if (!counter_metric_handle)
-		goto err;
-
-	tv_sec_metric_handle = ldms_add_metric(set, "procstatutil_tv_sec", LDMS_V_U64);
-        if (!tv_sec_metric_handle)
-	  goto err;
-
-        tv_nsec_metric_handle = ldms_add_metric(set, "procstatutil_tv_nsec", LDMS_V_U64);
-        if (!tv_nsec_metric_handle)
-	  goto err;
-
 
 	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
@@ -223,6 +191,7 @@ static int create_metric_set(const char *path)
 	int cpu_no;
 	ldms_metric_t m;
 	int metric_no = 0;
+	uint64_t cpu_comp_id = comp_id;
 	for (cpu_no = 0; cpu_no < cpu_count; cpu_no++) {
 		int column;
 		for (column = 0; column < column_count; column++) {
@@ -230,8 +199,10 @@ static int create_metric_set(const char *path)
 			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!m)
 				goto err;
+			ldms_set_user_data(m, cpu_comp_id);
 			metric_table[metric_no++] = m;
 		}
+		cpu_comp_id++;
 	}
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
@@ -268,8 +239,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "component_id");
 	if (!value)
 		goto out;
-	comp_id.v_u64 = strtol(value, NULL, 0);
-		
+	comp_id = strtol(value, NULL, 0);
+
 	value = av_value(avl, "set");
 	if (!value)
 		goto out;
@@ -296,20 +267,11 @@ static int sample(void)
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
-	ldms_set_metric(compid_metric_handle, &comp_id);
-
-	//set the counter
-	vv.v_u64 = ++counter;
-	ldms_set_metric(counter_metric_handle, &vv);
 
 	clock_gettime(CLOCK_REALTIME, &time1);
-        vv.v_u64 = time1.tv_sec;
-	ldms_set_metric(tv_sec_metric_handle, &vv);
 #ifdef CHECK_PROCSTATUTIL_TIMING
         beg_nsec = time1.tv_nsec;
 #endif
-        vv.v_u64 = time1.tv_nsec;
-	ldms_set_metric(tv_nsec_metric_handle, &vv);
 
 
 	fseek(mf, 0, SEEK_SET);
@@ -317,25 +279,25 @@ static int sample(void)
 	/* Discard the first line that is a sum of the other cpu's values */
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	if (!s)
-	  return 0;
+		return 0;
 
 	metric_no = 0;
 	do {
-	  s = fgets(lbuf, sizeof(lbuf), mf);
+		s = fgets(lbuf, sizeof(lbuf), mf);
 
-	  char *token;
-	  if (!s)
-	    break;
-		
-	  token = strtok(lbuf, " \t\n");
-	  if (0 != strncmp(token, "cpu", 3))
-	    continue; //get to EOF for seek to work
+		char *token;
+		if (!s)
+			break;
 
-	  for (token = strtok(NULL, " \t\n"); token;
-	       token = strtok(NULL, " \t\n")) {
-	    uint64_t v = strtoul(token, NULL, 0);
-	    ldms_set_u64(metric_table[metric_no++], v);
-	  }
+		token = strtok(lbuf, " \t\n");
+		if (0 != strncmp(token, "cpu", 3))
+			continue; //get to EOF for seek to work
+
+		for (token = strtok(NULL, " \t\n"); token;
+				token = strtok(NULL, " \t\n")) {
+			uint64_t v = strtoul(token, NULL, 0);
+			ldms_set_u64(metric_table[metric_no++], v);
+		}
 	} while (1);
 
 #ifdef CHECK_PROCSTATUTIL_TIMING

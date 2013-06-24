@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -72,10 +72,8 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 int nprocs;
-union ldms_value comp_id;
+uint64_t comp_id;
 static uint64_t counter;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
 
 static ldms_set_t get_set()
 {
@@ -112,7 +110,8 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the interrupts file '%s'...exiting\n", procfile);
+		msglog("Could not open the interrupts file '%s'...exiting\n",
+				procfile);
 		return ENOENT;
 	}
 
@@ -122,19 +121,8 @@ static int create_metric_set(const char *path)
 	 * Process the file once first to determine the metric set size.
 	 */
 
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64, &tot_meta_sz, &tot_data_sz);
-
-	rc = ldms_get_metric_size("procinterrupts_counter", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-
-        rc = ldms_get_metric_size("procinterrupts_tv_sec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
-
-        rc = ldms_get_metric_size("procinterrupts_tv_nsec", LDMS_V_U64, &meta_sz, &data_sz);
-        tot_meta_sz += meta_sz;
-        tot_data_sz += data_sz;
+	tot_meta_sz = 0;
+	tot_data_sz = 0;
 
 	metric_count = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -165,8 +153,8 @@ static int create_metric_set(const char *path)
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo 
-				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name); 
+				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo
+				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name);
 				rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
@@ -189,18 +177,6 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process the file again to define all the metrics.
 	 */
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) {
-		rc = ENOMEM;
-		goto err;
-	} //compid set in sample
-
-	counter_metric_handle = ldms_add_metric(set, "procinterrupts_counter", LDMS_V_U64);
-        if (!counter_metric_handle) {
-	  rc = ENOMEM;
-	  goto err;
-	}
-
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	//first line is the cpu list
@@ -216,19 +192,26 @@ static int create_metric_set(const char *path)
 				break;
 			}
 			if (currcol == 0){
-				/* Strip the colon from metric name if present */
+				/* Strip the colon from metric name if present
+				 * */
 				i = strlen(pch);
 				if (i && pch[i-1] == ':')
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo 
-				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name); 
-				metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
+				/* the metric name will be %d:name (there may 1
+				 * or nprocs of them) to look like meminfo */
+				snprintf(metric_name, 128,"%d:%s", (currcol-1),
+						beg_name);
+				metric_table[metric_no] =
+					ldms_add_metric(set, metric_name,
+							LDMS_V_U64);
 				if (!metric_table[metric_no]){
 					rc = ENOMEM;
 					goto err;
 				}
+				ldms_set_user_data(metric_table[metric_no],
+						comp_id);
 				metric_no++;
 			}
 			currcol++;
@@ -237,7 +220,7 @@ static int create_metric_set(const char *path)
 	} //while(s)
 	return 0;
 
- err:
+err:
 	ldms_set_release(set);
 	return rc;
 }
@@ -250,17 +233,17 @@ static int create_metric_set(const char *path)
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
-  char *value;
-  
-  value = av_value(avl, "component_id");
-  if (value)
-    comp_id.v_u64 = strtol(value, NULL, 0);
-  
-  value = av_value(avl, "set");
-  if (value)
-    create_metric_set(value);
-  
-  return 0;
+	char *value;
+
+	value = av_value(avl, "component_id");
+	if (value)
+		comp_id = strtol(value, NULL, 0);
+
+	value = av_value(avl, "set");
+	if (value)
+		create_metric_set(value);
+
+	return 0;
 }
 
 static int sample(void)
@@ -272,15 +255,10 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set){
-	  msglog("procinterrupts: plugin not initialized\n");
-	  return EINVAL;
+		msglog("procinterrupts: plugin not initialized\n");
+		return EINVAL;
 	}
 	ldms_begin_transaction(set);
-	ldms_set_metric(compid_metric_handle, &comp_id);
-
-	//set the counter                                                          
-        v.v_u64 = ++counter;
-        ldms_set_metric(counter_metric_handle, &v);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -305,7 +283,9 @@ static int sample(void)
 					l1 = strtoull(pch,&endptr,10);
 					if (endptr != pch){
 						v.v_u64 = l1;
-						ldms_set_metric(metric_table[metric_no], &v);
+						ldms_set_metric(
+							metric_table[metric_no],
+							&v);
 						metric_no++;
 					} else {
 						msglog("bad val <%s>\n",pch);
@@ -319,7 +299,7 @@ static int sample(void)
 		} //strtok
 	} while (s);
 	rc = 0;
- out:
+out:
 	ldms_end_transaction(set);
 	return rc;
 }
@@ -327,9 +307,9 @@ static int sample(void)
 
 static void term(void)
 {
-  if (set)
-	ldms_destroy_set(set);
-  set = NULL;
+	if (set)
+		ldms_destroy_set(set);
+	set = NULL;
 }
 
 

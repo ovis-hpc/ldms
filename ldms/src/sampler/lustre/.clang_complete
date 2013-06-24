@@ -1,1 +1,1 @@
--I ../../
+-I ../../core -I/opt/sos/include -I/opt/ovis-lib/include

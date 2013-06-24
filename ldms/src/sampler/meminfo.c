@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -74,9 +74,7 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-union ldms_value comp_id;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
+uint64_t comp_id;
 
 static int create_metric_set(const char *path)
 {
@@ -87,7 +85,6 @@ static int create_metric_set(const char *path)
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
-	char junk[128];
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
@@ -95,25 +92,18 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	/*
-	 * Process the file once first to determine the metric set size.
-	 */
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
-				  &tot_meta_sz, &tot_data_sz);
-
-
-	rc = ldms_get_metric_size("meminfo_counter", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
 	metric_count = 0;
+	tot_meta_sz = 0;
+	tot_data_sz = 0;
+
+	/* First iteration for set size calculation. */
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
-			    &metric_value, junk);
+		rc = sscanf(lbuf, "%s %" PRIu64, metric_name,
+			    &metric_value);
 		if (rc < 2)
 			break;
 		/* Strip the colon from metric name if present */
@@ -143,13 +133,6 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process the file again to define all the metrics.
 	 */
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle)
-		goto err;
-
-	counter_metric_handle = ldms_add_metric(set, "meminfo_counter", LDMS_V_U64);
-	if (!counter_metric_handle)
-		goto err;
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -157,8 +140,8 @@ static int create_metric_set(const char *path)
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n",
-			    metric_name, &metric_value, junk);
+		rc = sscanf(lbuf, "%s %" PRIu64,
+			    metric_name, &metric_value);
 		if (rc < 2)
 			break;
 		/* Strip the colon from metric name if present */
@@ -172,6 +155,7 @@ static int create_metric_set(const char *path)
 			rc = ENOMEM;
 			goto err;
 		}
+		ldms_set_user_data(metric_table[metric_no], comp_id);
 		metric_no++;
 	} while (s);
 	return 0;
@@ -194,7 +178,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "component_id");
 	if (value)
-		comp_id.v_u64 = strtol(value, NULL, 0);
+		comp_id = strtoull(value, NULL, 0);
 
 	value = av_value(avl, "set");
 	if (value)
@@ -215,7 +199,6 @@ static int sample(void)
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
-	char junk[128];
 	union ldms_value v;
 
 	if (!set) {
@@ -223,11 +206,6 @@ static int sample(void)
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
-	ldms_set_metric(compid_metric_handle, &comp_id);
-
-	/* Set the counter */
-	v.v_u64 = ++counter;
-	ldms_set_metric(counter_metric_handle, &v);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -235,7 +213,7 @@ static int sample(void)
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%s %"PRIu64 " %s\n", metric_name, &v.v_u64, junk);
+		rc = sscanf(lbuf, "%s %"PRIu64, metric_name, &v.v_u64);
 		if (rc != 2 && rc != 3) {
 			rc = EINVAL;
 			goto out;

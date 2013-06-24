@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -107,11 +107,11 @@ static char *procfile = PROC_FILE;
 static char* varnames[MAXOPTS][21] = {
 	{ "numcalls", "retransmitts"},
 	{ "getattr", "setattr", "lookup", "access",
-	  "readlink", "read", "write", "create",
-	  "mkdir", "symlink", "mknod", "remove",
-	  "rmdir", "rename", "link", "readdir",
-	  "readdirplus", "fsstat", "fsinfo", "pathconf",
-	  "commit" }
+		"readlink", "read", "write", "create",
+		"mkdir", "symlink", "mknod", "remove",
+		"rmdir", "rename", "link", "readdir",
+		"readdirplus", "fsstat", "fsinfo", "pathconf",
+		"commit" }
 };
 
 static int numvars[MAXOPTS] = { 2, 21 };
@@ -121,11 +121,7 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 static uint64_t counter;
-union ldms_value comp_id;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
-ldms_metric_t tv_sec_metric_handle;
-ldms_metric_t tv_nsec_metric_handle;
+uint64_t comp_id;
 
 static ldms_set_t get_set()
 {
@@ -143,19 +139,15 @@ static int create_metric_set(const char *path)
 	mf = fopen(procfile, "r");
 	if (!mf) {
 		msglog("Could not open /proc/net/rpc/nfs file '%s'...exiting\n",
-		       procfile);
+				procfile);
 		return ENOENT;
 	}
 
 	/*
 	 * Determine the metric set size.
 	 */
-	rc = ldms_get_metric_size("component_id", LDMS_V_U64,
-				  &tot_meta_sz, &tot_data_sz);
-
-	rc = ldms_get_metric_size("procnfs_counter", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
+	tot_meta_sz = 0;
+	tot_data_sz = 0;
 
 	/* Don't need to look at the file since we have all the name info
 	 * NOTE: make sure these are added in the order they will appear in the file
@@ -165,7 +157,7 @@ static int create_metric_set(const char *path)
 		for (j = 0; j < numvars[i]; j++) {
 			snprintf(metric_name,127,"%s",varnames[i][j]);
 			rc = ldms_get_metric_size(metric_name, LDMS_V_U64,
-						  &meta_sz, &data_sz);
+					&meta_sz, &data_sz);
 			tot_meta_sz += meta_sz;
 			tot_data_sz += data_sz;
 			metric_count++;
@@ -181,18 +173,6 @@ static int create_metric_set(const char *path)
 	if (!metric_table)
 		goto err;
 
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	counter_metric_handle = ldms_add_metric(set, "procnfs_counter", LDMS_V_U64);
-	if (!counter_metric_handle) {
-		rc = ENOMEM;
-		goto err;
-	}
-
 	/* Make sure these are added in the order they will appear in the file */
 	metric_count = 0;
 	for (i = 0; i < MAXOPTS; i++) {
@@ -204,13 +184,14 @@ static int create_metric_set(const char *path)
 				rc = ENOMEM;
 				goto err;
 			}
+			ldms_set_user_data(metric_table[metric_count], comp_id);
 			metric_count++;
 		}
 	}
 
 	return 0;
 
- err:
+err:
 	ldms_set_release(set);
 	return rc;
 }
@@ -236,7 +217,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "component_id");
 	if (value)
-		comp_id.v_u64 = strtol(value, NULL, 0);
+		comp_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "set");
 	if (value)
@@ -247,8 +228,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 }
 #define LINE_FMT "%s %s %s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 	PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
-	PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
-	PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
+PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
+PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 	PRIu64 " %" PRIu64 " %" PRIu64 " %s\n"
 static int sample(void)
 {
@@ -263,10 +244,6 @@ static int sample(void)
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
-	ldms_set_metric(compid_metric_handle, &comp_id);
-
-	vtemp.v_u64 = ++counter;
-	ldms_set_metric(counter_metric_handle, &vtemp);
 
 	metric_no = 0;
 
@@ -283,40 +260,40 @@ static int sample(void)
 
 		char junk[5][100];
 		switch (currlinenum) {
-		case 1:
-			rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 "%s\n",
-				    junk[0], &v[0].v_u64, &v[1].v_u64, junk[1]);
-			if (rc != 4) {
-				rc = EINVAL;
-				goto out;
-			}
-			ldms_set_metric(metric_table[0], &v[0]);
-			ldms_set_metric(metric_table[1], &v[1]);
-			break;
-		case 3:
-			rc = sscanf(lbuf, LINE_FMT,
-				    junk[0], junk[1], junk[2], &v[2].v_u64,
-				    &v[3].v_u64, &v[4].v_u64, &v[5].v_u64,
-				    &v[6].v_u64, &v[7].v_u64, &v[8].v_u64,
-				    &v[9].v_u64, &v[10].v_u64, &v[11].v_u64,
-				    &v[12].v_u64, &v[13].v_u64,	&v[14].v_u64,
-				    &v[15].v_u64, &v[16].v_u64, &v[17].v_u64,
-				    &v[18].v_u64, &v[19].v_u64, &v[20].v_u64,
-				    &v[21].v_u64, &v[22].v_u64, junk[3]);
-			if (rc < 24) {
-				rc = EINVAL;
-				goto out;
-			}
-			for (i = 2; i < 23; i++)
-				ldms_set_metric(metric_table[i], &v[i]);
-			break;
-		default:
-			break;
+			case 1:
+				rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 "%s\n",
+						junk[0], &v[0].v_u64, &v[1].v_u64, junk[1]);
+				if (rc != 4) {
+					rc = EINVAL;
+					goto out;
+				}
+				ldms_set_metric(metric_table[0], &v[0]);
+				ldms_set_metric(metric_table[1], &v[1]);
+				break;
+			case 3:
+				rc = sscanf(lbuf, LINE_FMT,
+						junk[0], junk[1], junk[2], &v[2].v_u64,
+						&v[3].v_u64, &v[4].v_u64, &v[5].v_u64,
+						&v[6].v_u64, &v[7].v_u64, &v[8].v_u64,
+						&v[9].v_u64, &v[10].v_u64, &v[11].v_u64,
+						&v[12].v_u64, &v[13].v_u64,	&v[14].v_u64,
+						&v[15].v_u64, &v[16].v_u64, &v[17].v_u64,
+						&v[18].v_u64, &v[19].v_u64, &v[20].v_u64,
+						&v[21].v_u64, &v[22].v_u64, junk[3]);
+				if (rc < 24) {
+					rc = EINVAL;
+					goto out;
+				}
+				for (i = 2; i < 23; i++)
+					ldms_set_metric(metric_table[i], &v[i]);
+				break;
+			default:
+				break;
 		}
 		currlinenum++;
 	} while (s); /* must get to EOF for the switch to work */
 	rc = 0;
- out:
+out:
 	ldms_end_transaction(set);
 	return rc;
 }

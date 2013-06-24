@@ -1,4 +1,4 @@
-/* -*- c-basic-offset: 8 -*-
+/*
  * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2012 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -48,7 +48,6 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #include <ctype.h>
 #include <sys/queue.h>
 #include <sys/types.h>
@@ -74,63 +73,84 @@
 #define GROUP_COL    2
 #define VALUE_COL    3
 
-#define NUM_BULK_INSERT 1000
+#define NUM_BULK_INSERT 10
 
-//one database for all
-//NOTE: there is a separate mysql connection per table. Increment your max_connections in your /etc/my.cnf accordingly
+/**
+ * NOTE: One database for all. There is a separate mysql connection per table.
+ * Increment your max_connections in your /etc/my.cnf accordingly.
+ */
+
 static char* db_host = NULL;
 static char* db_schema = NULL;
 static char* db_user = NULL;
 static char* db_passwd = NULL;
 static int createovistables = 0;
 
-static idx_t metric_idx;
+static idx_t store_idx;
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
+/* for each metric */
 struct mysqlbulk_metric_store {
-  struct ldmsd_store *store;
-  char* tablename;
-  char* cleansedmetricname;
-  MYSQL *conn;
-  char* insertvalues[NUM_BULK_INSERT];
-  int insertcount;
-  char *metric_key;
-  void *ucontext;
-  pthread_mutex_t lock;
+	MYSQL *conn;
+	char* tablename;
+	char* cleansedmetricname;
+	char* insertvalues[NUM_BULK_INSERT];
+	int insertcount;
+	pthread_mutex_t lock;
+	LIST_ENTRY(mysqlbulk_metric_store) entry;
+};
+
+struct mysqlbulk_store_instance {
+	struct ldmsd_store *store;
+	char *container;
+	char *comp_type;
+	void *ucontext;
+	idx_t ms_idx;
+	LIST_HEAD(ms_list, mysqlbulk_metric_store) ms_list;
+	int metric_count;
+	struct mysqlbulk_metric_store *ms[0];
 };
 
 pthread_mutex_t cfg_lock;
 
-
-static int initConn(MYSQL **conn){
-  *conn = NULL; //default
-
-  if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) ||
-      (strlen(db_user) == 0)){
-    msglog("Invalid parameters for database");
-    return EINVAL;
-  }
-
-  *conn = mysql_init(NULL);
-  if (*conn == NULL){
-    msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
-    return EPERM;
-  }
-
-  //passwd can be null....
-  if (!mysql_real_connect(*conn, db_host, db_user,
-			  db_passwd, db_schema, 0, NULL, 0)){
-    msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
-    return EPERM;
-  }
-
-  return 0;
+void cleanse_string(char *s)
+{
+	char *c;
+	for (c = s; *c; c++) {
+		if (!isalnum(*c)) {
+			/* replace mysql non-allowed chars with _ */
+			*c = '_';
+		}
+	}
 }
 
+static int init_conn(MYSQL **conn){
+	*conn = NULL;
 
+	if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) ||
+			(strlen(db_user) == 0)){
+		msglog("Invalid parameters for database");
+		return EINVAL;
+	}
+
+	*conn = mysql_init(NULL);
+	if (*conn == NULL){
+		msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
+		return EPERM;
+	}
+
+	/* passwd can be null.... */
+	if (!mysql_real_connect(*conn, db_host, db_user,
+				db_passwd, db_schema, 0, NULL, 0)){
+		msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
+		return EPERM;
+	}
+
+	return 0;
+}
 
 
 /**
@@ -138,531 +158,716 @@ static int initConn(MYSQL **conn){
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-  char *value;
-  value = av_value(avl, "dbhost");
-  if (!value)
-    goto err;
 
-  pthread_mutex_lock(&cfg_lock);
-  if (db_host)
-    free(db_host);
-  db_host = strdup(value);
-  pthread_mutex_unlock(&cfg_lock);
-  if (!db_host)
-    return ENOMEM;
+	char *value;
+	value = av_value(avl, "dbhost");
+	if (!value)
+		goto err;
+
+	pthread_mutex_lock(&cfg_lock);
+	if (db_host)
+		free(db_host);
+	db_host = strdup(value);
+	pthread_mutex_unlock(&cfg_lock);
+	if (!db_host)
+		return ENOMEM;
 
 
-  value = av_value(avl, "dbschema");
-  if (!value)
-    goto err;
+	value = av_value(avl, "dbschema");
+	if (!value)
+		goto err;
 
-  pthread_mutex_lock(&cfg_lock);
-  if (db_schema)
-    free(db_schema);
-  db_schema = strdup(value);
-  pthread_mutex_unlock(&cfg_lock);
-  if (!db_schema)
-    return ENOMEM;
+	pthread_mutex_lock(&cfg_lock);
+	if (db_schema)
+		free(db_schema);
+	db_schema = strdup(value);
+	pthread_mutex_unlock(&cfg_lock);
+	if (!db_schema)
+		return ENOMEM;
 
-  value = av_value(avl, "dbuser");
-  if (!value)
-    goto err;
+	value = av_value(avl, "dbuser");
+	if (!value)
+		goto err;
 
-  pthread_mutex_lock(&cfg_lock);
-  if (db_user)
-    free(db_user);
-  db_user = strdup(value);
-  pthread_mutex_unlock(&cfg_lock);
-  if (!db_user)
-    return ENOMEM;
+	pthread_mutex_lock(&cfg_lock);
+	if (db_user)
+		free(db_user);
+	db_user = strdup(value);
+	pthread_mutex_unlock(&cfg_lock);
+	if (!db_user)
+		return ENOMEM;
 
-  //optional passwd
-  value = av_value(avl, "dbpasswd");
-  if (value){
-    pthread_mutex_lock(&cfg_lock);
-    if (db_passwd)
-      free(db_passwd);
-    db_passwd = strdup(value);
-    pthread_mutex_unlock(&cfg_lock);
-    if (!db_passwd){
-      return ENOMEM;
-    }
-  }
+	//optional passwd
+	value = av_value(avl, "dbpasswd");
+	if (value){
+		pthread_mutex_lock(&cfg_lock);
+		if (db_passwd)
+			free(db_passwd);
+		db_passwd = strdup(value);
+		pthread_mutex_unlock(&cfg_lock);
+		if (!db_passwd){
+			return ENOMEM;
+		}
+	}
 
-  //optional
-  value = av_value(avl, "createovistables");
-  if (value){
-    pthread_mutex_lock(&cfg_lock);
-    createovistables = atoi(value);
-    pthread_mutex_unlock(&cfg_lock);
-  }
+	//optional
+	value = av_value(avl, "createovistables");
+	if (value){
+		pthread_mutex_lock(&cfg_lock);
+		createovistables = atoi(value);
+		pthread_mutex_unlock(&cfg_lock);
+	}
 
-  //will init the conn when each table is created
+	/* will init the conn when each table is created */
 
-  return 0;
- err:
-  return EINVAL;
+	return 0;
+err:
+	return EINVAL;
 }
 
 static void term(void)
 {
 
-  pthread_mutex_lock(&cfg_lock);
+	pthread_mutex_lock(&cfg_lock);
 
-  if (db_host) free (db_host);
-  db_host = NULL;
-  if (db_schema) free (db_schema);
-  db_schema = NULL;
-  if (db_passwd) free (db_passwd);
-  db_passwd = NULL;
-  if (db_user) free (db_user);
-  db_user = NULL;
+	if (db_host) free (db_host);
+	db_host = NULL;
+	if (db_schema) free (db_schema);
+	db_schema = NULL;
+	if (db_passwd) free (db_passwd);
+	db_passwd = NULL;
+	if (db_user) free (db_user);
+	db_user = NULL;
 
-  pthread_mutex_unlock(&cfg_lock);
+	pthread_mutex_unlock(&cfg_lock);
 
 }
 
 static const char *usage(void)
 {
-    return  "    config name=store_mysqlbulk dbschema=<db_schema> dbuser=<dbuser> dbhost=<dbhost>\n"
-      "        - Set the dbinfo for the mysql storage for data.\n"
-      "        dbhost           The host of the database (check format)"
-      "        dbschema         The name of the database \n"
-      "        dbuser           The username of the database \n"
-      "        dbpasswd         The passwd for the user of the database (optional)\n"
-      "        ovistables       Create and populate supporting tables for use with OVIS (0/1) (optional. 0 default)"
-      ;
+	return
+"  config name=store_mysqlbulk dbschema=<db_schema> dbuser=<dbuser> dbhost=<dbhost>\n"
+"    - Set the dbinfo for the mysql storage for data.\n"
+"	dbhost		The host of the database (check format)"
+"	dbschema	The name of the database \n"
+"	dbuser		The username of the database \n"
+"	dbpasswd	The passwd for the user of the database (optional)\n"
+"	ovistables	Create and populate supporting tables for use with\n"
+"			OVIS (0/1) (optional. 0 default)\n"
+		;
 }
 
-static ldmsd_metric_store_t
-get_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name)
+static ldmsd_store_handle_t
+get_store(const char *container)
 {
-  pthread_mutex_lock(&cfg_lock);
+	pthread_mutex_lock(&cfg_lock);
 
-  char metric_key[128];
-  ldmsd_metric_store_t ms;
+	ldmsd_store_handle_t si;
 
-  /* comment in sos says:  Add a component type directory if one does not
-   * already exist
-   * but it does not look like this function actually does an add...
-   */
-  sprintf(metric_key, "%s:%s", comp_name, metric_name);
-  ms = idx_find(metric_idx, metric_key, strlen(metric_key));
-  pthread_mutex_unlock(&cfg_lock);
-  return ms;
+	si = idx_find(store_idx, (void*)container, strlen(container));
+	pthread_mutex_unlock(&cfg_lock);
+	return si;
 }
 
-static void *get_ucontext(ldmsd_metric_store_t _ms)
+static void *get_ucontext(ldmsd_store_handle_t sh)
 {
-  struct mysqlbulk_metric_store *ms = _ms;
-  return ms->ucontext;
+	struct mysqlbulk_store_instance *si = sh;
+	return si->ucontext;
 }
 
-static int createTable(MYSQL* conn, char* tablename){
-  //will create a table (but not supporting OVIS tables)
-  //NOTE: this is locked from the surrounding function
-
-  if (conn == NULL)
-    return EPERM;
-
-  //FIXME: we have no way of knowing the data storage type. for now store everything as uint64_t
-  char* mysqlstoragestring = "BIGINT UNSIGNED";
-
-  char query1[4096];
-  //create table if required
-  snprintf(query1, 4095,"%s%s%s%s%s%s%s%s%s",
-	   "CREATE TABLE IF NOT EXISTS ",
-	   tablename,
-	   " (`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value` ",
-	   mysqlstoragestring,
-	   " NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), KEY ",
-	   tablename,
-	   "_Time (`Time` ), KEY ",
-	   tablename,
-	   "_Level (`CompId` ,`Level` ,`Time` ))");
-
-  int mysqlerrx = mysql_query(conn, query1);
-  if (mysqlerrx != 0){
-    msglog("Cannot query to create table '%s'. Error: %d\n", tablename, mysqlerrx);
-    return -1;
-  }
-
-
-  return 0;
-
-}
-
-static int createOVISSupportingTables(MYSQL* conn, char *tableName, char* compAssoc, char* ovisMetricName){
-  //1) will create MetricValueTypes and MetricValueTableIndex if necessary
-  //2) will populate those *fully* if ComponentTypes exists and is populated
-  //or *incompletely* if ComponentTypes does not exist -- that is, will just put -1
-  //for all component types. In this latter case, the user will have to
-  //correct the CompType col upon putting these tables into an ovdb output.
-
-  //NOTE: this is still locked from the surrounding function. Want this to occur directly after the above if
-  //necessary. Not combining them for clarity/schema_change later.
-
-  //FIXME: later should get these from the created table type
-  //  char* mysqlstoragestring = "BIGINT UNSIGNED";
-  char* ovisstoragestring = "uint64_t";
-
-  MYSQL_RES *result;
-  MYSQL_ROW row;
-
-  //get the comptype
-  int ctype = -1;
-  char query1[4096];
-  snprintf(query1,4095,"SELECT CompType From ComponentTypes WHERE ShortName ='%s'", compAssoc); //FIXME: check for cap
-  if (mysql_query(conn, query1) == 0){
-    result = mysql_store_result(conn);
-    int num_fields = mysql_num_fields(result);
-    if ((num_fields == 1) && (mysql_num_rows(result) == 1)){
-      while((row = mysql_fetch_row(result))){
-	ctype = atoi(row[0]);
-	break;
-      }
-    }
-    if (result) mysql_free_result(result);
-  }
-  //if we dont have the table or the component type, use default value (-1)
-
-  //create the MetricValueType Table if necessary
-  char* query2 =  "CREATE TABLE IF NOT EXISTS `MetricValueTypes` (`ValueType` int(11) NOT NULL AUTO_INCREMENT,  `Name` tinytext NOT NULL,  `Units` tinytext NOT NULL,  `Storage` tinytext NOT NULL,  `Constant` int(32) NOT NULL DEFAULT '0',  PRIMARY KEY (`ValueType`))";
-  if (mysql_query(conn,query2) != 0){
-    msglog("Err: Cannot check for the MetricValueTypeTable\n");
-    return -1;
-  }
-
-  //create and retain the MetricValueType
-  int metrictype = -1;
-  snprintf(query1, 4095,
-	   "SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
-	   ovisMetricName, ovisstoragestring);
-  if (mysql_query(conn, query1) != 0){
-    msglog("Err: Cannot query for MetricValueType for '%s'\n", ovisMetricName);
-    return -1;
-  }
-  result = mysql_store_result(conn);
-  int num_fields = mysql_num_fields(result);
-  if ((num_fields == 1) && (mysql_num_rows(result) == 1)){
-    while((row = mysql_fetch_row(result))){
-      metrictype = atoi(row[0]);
-      //FIXME: check that if it is already in there that it is not in with the wrong type....
-      mysql_free_result(result);
-      break;
-    }
-  } else {
-    mysql_free_result(result);
-    snprintf(query1, 4095, "INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('%s', '1', '%s', 0)",
-	     ovisMetricName,ovisstoragestring);
-    if (mysql_query(conn, query1) !=0){
-      msglog("Cannot insert MetricValueType for '%s'\n", ovisMetricName);
-      return -1;
-    }
-
-    snprintf(query1, 4095,
-	     "SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
-             ovisMetricName, ovisstoragestring );
-    if (mysql_query(conn, query1) != 0){
-      msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
-      return -1;
-    }
-    result = mysql_store_result(conn);
-    int num_fields = mysql_num_fields(result);
-    if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
-      msglog("No MetricValueType for '%s'\n", ovisMetricName);
-      mysql_free_result(result);
-      return -1;
-    }
-    while((row = mysql_fetch_row(result))){
-      metrictype = atoi(row[0]);
-      mysql_free_result(result);
-    }
-  }
-
-  //create the MetricValueTableIndex if necessary
-  query2 =  "CREATE TABLE IF NOT EXISTS `MetricValueTableIndex` (`TableId` int(11) NOT NULL AUTO_INCREMENT,  `TableName` tinytext NOT NULL,  `CompType` int(32) NOT NULL,  `ValueType` int(32) NOT NULL,  `MinDeltaTime` float NOT NULL DEFAULT '1',  PRIMARY KEY (`TableId`))";
-  if (mysql_query(conn,query2) != 0){
-    msglog("Err: Cannot check for the MetricValueTableIndex\n");
-    return -1;
-  }
-
-  //create the TableId if necessary
-  snprintf(query1, 4095,
-	   "SELECT TableId from MetricValueTableIndex WHERE TableName='%s' AND CompType=%d AND ValueType=%d",
-	   tableName, ctype, metrictype);
-  if (mysql_query(conn, query1) != 0){
-    msglog("Cannot query for table id for '%s'\n", tableName);
-    return -1;
-  }
-  result = mysql_store_result(conn);
-  num_fields = mysql_num_fields(result);
-  if ((num_fields != 1) || (mysql_num_rows(result) != 1)){ //FIXME: better check
-    mysql_free_result(result);
-    snprintf(query1, 4095,
-	     "INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType, MinDeltaTime ) VALUES ('%s', %d, %d, 0)",
-	     tableName, ctype, metrictype);
-    if (mysql_query(conn, query1) != 0){
-      msglog("Cannot insert into MetricValueTableIndex for tableName '%s'\n", tableName);
-      return -1;
-    }
-  } else {
-    mysql_free_result(result);
-  }
-
-
-  return 0;
-}
-
-static ldmsd_metric_store_t
-new_store(struct ldmsd_store *s, const char *comp_name, const char *metric_name,
-	  void *ucontext)
+static int createTable(MYSQL* conn, char* tablename)
 {
+	/* will create a table (but not supporting OVIS tables)
+NOTE: this is locked from the surrounding function */
 
-  pthread_mutex_lock(&cfg_lock);
+	int mysqlerrx;
+	char query1[4096];
+	if (conn == NULL)
+		return EPERM;
 
-  //FIXME: is there someway I can get the type of the metric from here???
+	/* FIXME: we have no way of knowing the data storage type.
+	   for now store everything as uint64_t */
+	char* mysqlstoragestring = "BIGINT UNSIGNED";
 
-  char metric_key[128];
-  struct mysqlbulk_metric_store *ms;
 
-  /*
-   * Create a table for this comptype and metric name if one does not
-   * already exist
-   */
-  sprintf(metric_key, "%s:%s", comp_name, metric_name);
-  ms = idx_find(metric_idx, metric_key, strlen(metric_key));
-  if (!ms) {
-    ms = calloc(1, sizeof *ms);
-    if (!ms)
-      goto out;
-    ms->ucontext = ucontext;
-    ms->store = s;
-    ms->insertcount = 0;
-    pthread_mutex_init(&ms->lock, NULL);
+	/* create table if required */
+	snprintf(query1, 4095,"%s%s%s%s%s%s%s%s%s",
+			"CREATE TABLE IF NOT EXISTS ",
+			tablename,
+			" (`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value` ",
+			mysqlstoragestring,
+			" NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), KEY ",
+			tablename,
+			"_Time (`Time` ), KEY ",
+			tablename,
+			"_Level (`CompId` ,`Level` ,`Time` ))");
 
-    //TABLENAME - Assuming OVIS form for tablename, columns
-    char* cleansedmetricname = strdup(metric_name);
-    if (!cleansedmetricname)
-      goto err1;
-    int i;
-    for (i = 0; i < strlen(cleansedmetricname); i++){
-      //      if (!isalnum(cleansedmetricname[i]) && cleansedmetricname[i] != '_'){
-      if (!isalnum(cleansedmetricname[i])){
-	cleansedmetricname[i] = '_'; // replace mysql non-allowed chars with _
-      }
-    }
-    ms->cleansedmetricname = cleansedmetricname;
-    char* tempmetricname = strdup(cleansedmetricname);
-    if (!tempmetricname){
-      goto err1A;
-    }
-    tempmetricname[0] = toupper(tempmetricname[0]);
+	mysqlerrx = mysql_query(conn, query1);
+	if (mysqlerrx != 0){
+		msglog("Cannot query to create table '%s'. Error: %d\n",
+				tablename, mysqlerrx);
+		return mysqlerrx;
+	}
 
-    char* cleansedcompname = strdup(comp_name);
-    if (!tempmetricname){
-      free(tempmetricname);
-      goto err1A;
-    }
-    for (i = 0; i < strlen(cleansedcompname); i++){
-      //if (!isalnum(cleansedcompname[i]) && cleansedcompname[i] != '_')
-      if (!isalnum(cleansedcompname[i])){
-	cleansedcompname[i] = '_'; // replace mysql non-allowed chars with _
-      }
-    }
-    cleansedcompname[0] = toupper(cleansedcompname[0]);
 
-    int sz = strlen(tempmetricname)+ strlen(cleansedcompname)+strlen("MetricValues");
-    char* tablename = (char*)malloc((sz+5)*sizeof(char));
-    if (!tablename){
-      free(tempmetricname);
-      free(cleansedcompname);
-      goto err1A;
-    }
-    snprintf(tablename, (sz+5),"Metric%s%sValues",cleansedcompname,tempmetricname);
-    ms->tablename = tablename;
-    //will need to retain the compname and metricname temporarily if need to build the OVIS supporting tables
+	return 0;
+}
 
-    ms->metric_key = strdup(metric_key);
-    if (!ms->metric_key){
-      free(tempmetricname);
-      free(cleansedcompname);
-      goto err2;
-    }
+static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
+		char* compAssoc, char* ovisMetricName)
+{
+	/**
+	 * 1) will create MetricValueTypes and MetricValueTableIndex if necessary
+	 * 2) will populate those *fully* if ComponentTypes exists and is populated
+	 * or *incompletely* if ComponentTypes does not exist -- that is, will just put -1
+	 * for all component types. In this latter case, the user will have to
+	 * correct the CompType col upon putting these tables into an ovdb output.
+	 **/
 
-    int rc = initConn(&(ms->conn));
-    if (rc != 0){
-      free(tempmetricname);
-      free(cleansedcompname);
-      goto err3;
-    }
+	/**
+	 * NOTE: this is still locked from the surrounding function. Want this to
+	 * occur directly after the above if /necessary. Not combining them for
+	 * clarity/schema_change later.
+	 **/
 
-    rc = createTable(ms->conn, ms->tablename);
-    if (rc != 0){
-      free(tempmetricname);
-      free(cleansedcompname);
-      goto err3;
-    }
-    if (createovistables){
-      rc = createOVISSupportingTables(ms->conn, ms->tablename, cleansedcompname, tempmetricname);
-      if (rc != 0){
-	free(tempmetricname);
+	/* FIXME: later should get these from the created table type */
+	char* ovisstoragestring = "uint64_t";
+	MYSQL_RES *result;
+	MYSQL_ROW row;
+	int ctype = -1;
+	int metrictype = -1;
+	int num_fields;
+	char query1[4096];
+
+	snprintf(query1, 4095,
+			"SELECT CompType From ComponentTypes WHERE ShortName ='%s'",
+			compAssoc); /* FIXME: check for cap */
+	if (mysql_query(conn, query1) == 0){
+		result = mysql_store_result(conn);
+		num_fields = mysql_num_fields(result);
+		if ((num_fields == 1) && (mysql_num_rows(result) == 1)){
+			while((row = mysql_fetch_row(result))){
+				ctype = atoi(row[0]);
+				break;
+			}
+		}
+		if (result) mysql_free_result(result);
+	}
+
+	/* if we dont have the table or the component type, use default value (-1) */
+
+	/* create the MetricValueType Table if necessary */
+	char* query2 =
+		"CREATE TABLE IF NOT EXISTS `MetricValueTypes` (`ValueType` int(11) NOT NULL AUTO_INCREMENT,  `Name` tinytext NOT NULL,  `Units` tinytext NOT NULL,  `Storage` tinytext NOT NULL,  `Constant` int(32) NOT NULL DEFAULT '0',  PRIMARY KEY (`ValueType`))";
+	if (mysql_query(conn, query2) != 0){
+		msglog("Err: Cannot check for the MetricValueTypeTable\n");
+		return -1;
+	}
+
+	/* create and retain the MetricValueType */
+	snprintf(query1, 4095,
+			"SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
+			ovisMetricName, ovisstoragestring);
+	if (mysql_query(conn, query1) != 0){
+		msglog("Err: Cannot query for MetricValueType for '%s'\n",
+				ovisMetricName);
+		return -1;
+	}
+	result = mysql_store_result(conn);
+
+	num_fields = mysql_num_fields(result);
+	if ((num_fields == 1) && (mysql_num_rows(result) == 1)){
+		while((row = mysql_fetch_row(result))){
+			metrictype = atoi(row[0]);
+			/* FIXME: check that if it is already in there
+			   that it is not in with the wrong type.... */
+			mysql_free_result(result);
+			break;
+		}
+	} else {
+		mysql_free_result(result);
+		snprintf(query1, 4095,
+				"INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('%s', '1', '%s', 0)",
+				ovisMetricName, ovisstoragestring);
+		if (mysql_query(conn, query1) !=0){
+			msglog("Cannot insert MetricValueType for '%s'\n",
+					ovisMetricName);
+			return -1;
+		}
+
+		snprintf(query1, 4095,
+				"SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
+				ovisMetricName, ovisstoragestring );
+		if (mysql_query(conn, query1) != 0){
+			msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
+			return -1;
+		}
+		result = mysql_store_result(conn);
+		num_fields = mysql_num_fields(result);
+		if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
+			msglog("No MetricValueType for '%s'\n",
+					ovisMetricName);
+			mysql_free_result(result);
+			return -1;
+		}
+		while((row = mysql_fetch_row(result))){
+			metrictype = atoi(row[0]);
+			mysql_free_result(result);
+		}
+	}
+
+	/* create the MetricValueTableIndex if necessary */
+	query2 =  "CREATE TABLE IF NOT EXISTS `MetricValueTableIndex` (`TableId` int(11) NOT NULL AUTO_INCREMENT,  `TableName` tinytext NOT NULL,  `CompType` int(32) NOT NULL,  `ValueType` int(32) NOT NULL,  `MinDeltaTime` float NOT NULL DEFAULT '1',  PRIMARY KEY (`TableId`))";
+	if (mysql_query(conn,query2) != 0){
+		msglog("Err: Cannot check for the MetricValueTableIndex\n");
+		return -1;
+	}
+
+	/* create the TableId if necessary */
+	snprintf(query1, 4095,
+			"SELECT TableId from MetricValueTableIndex WHERE TableName='%s' AND CompType=%d AND ValueType=%d",
+			tableName, ctype, metrictype);
+	if (mysql_query(conn, query1) != 0){
+		msglog("Cannot query for table id for '%s'\n", tableName);
+		return -1;
+	}
+	result = mysql_store_result(conn);
+	num_fields = mysql_num_fields(result);
+	if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
+		mysql_free_result(result);
+		snprintf(query1, 4095,
+				"INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType, MinDeltaTime ) VALUES ('%s', %d, %d, 0)",
+				tableName, ctype, metrictype);
+		if (mysql_query(conn, query1) != 0){
+			msglog("Cannot insert into MetricValueTableIndex for tableName '%s'\n",
+					tableName);
+			return -1;
+		}
+	} else {
+		mysql_free_result(result);
+	}
+
+	return 0;
+}
+
+int
+new_metric_store(struct mysqlbulk_metric_store *msm, const char *comp_type,
+		 const char *metric_name)
+{
+	char* cleansedmetricname;
+	char* tempmetricname;
+	char* cleansedcompname;
+	int rc;
+
+	/* Create a table for this comptype and metric name
+	   if one does not already exist */
+	int sz;
+	int i;
+
+	pthread_mutex_init(&msm->lock, NULL);
+
+	/* TABLENAME - Assuming OVIS form for tablename, columns */
+	cleansedmetricname = strdup(metric_name);
+	if (!cleansedmetricname)
+		goto err1;
+
+	cleanse_string(cleansedmetricname);
+	msm->cleansedmetricname = cleansedmetricname;
+
+	tempmetricname = strdup(cleansedmetricname);
+	if (!tempmetricname){
+		goto err2;
+	}
+
+	tempmetricname[0] = toupper(tempmetricname[0]);
+	cleansedcompname = strdup(comp_type);
+	if (!cleansedcompname){
+		goto err3;
+	}
+
+	cleanse_string(cleansedcompname);
+	cleansedcompname[0] = toupper(cleansedcompname[0]);
+
+	sz = strlen(tempmetricname) +
+		strlen(cleansedcompname) +
+		strlen("MetricValues");
+
+	msm->tablename = (char*)malloc((sz+5)*sizeof(char));
+	if (!msm->tablename){
+		goto err4;
+	}
+	snprintf(msm->tablename, (sz+5),"Metric%s%sValues",
+			cleansedcompname,
+			tempmetricname);
+	/* will need to retain the compname and metricname temporarily
+	   if need to build the OVIS supporting tables */
+
+	rc = init_conn(&(msm->conn));
+	if (rc != 0){
+		goto err5;
+	}
+
+	rc = createTable(msm->conn, msm->tablename);
+	if (rc != 0){
+		goto err6;
+	}
+
+	if (createovistables){
+		rc = create_OVIS_supporting_tables(msm->conn,
+				msm->tablename,
+				cleansedcompname,
+				tempmetricname);
+		if (rc != 0){
+			goto err6;
+		}
+	}
+
+	if (tempmetricname)
+		free(tempmetricname);
+
+	if (cleansedcompname)
+		free(cleansedcompname);
+
+	return 0;
+err6:
+	mysql_close(msm->conn);
+err5:
+	free(msm->tablename);
+err4:
 	free(cleansedcompname);
-	goto err3;
-      }
-    }
-    free(tempmetricname);
-    free(cleansedcompname);
-
-    idx_add(metric_idx, metric_key, strlen(metric_key), ms);
-  }
-  goto out;
-
- err3:
-  free(ms->metric_key);
- err2:
-  free(ms->tablename);
- err1A:
-  free(ms->cleansedmetricname);
- err1:
-  free(ms);
- out:
-  pthread_mutex_unlock(&cfg_lock);
-  return ms;
+err3:
+	free(tempmetricname);
+err2:
+	free(msm->cleansedmetricname);
+err1:
+	return -1;
 }
 
-static int flush_store(ldmsd_metric_store_t _ms)
+static ldmsd_store_handle_t
+new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
+	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
 {
 
-  struct mysqlbulk_metric_store *ms = _ms;
-  if (!_ms)
-    return EINVAL;
+	msglog("New store mysqlbulk\n");
+	pthread_mutex_lock(&cfg_lock);
 
-  if (ms->conn == NULL){
-    msglog("Cannot insert value for <%s>: Connection to mysql is closed\n", ms->tablename);
-    return EPERM;
-  }
+	struct mysqlbulk_store_instance *si;
+	struct mysqlbulk_metric_store *ms;
+	struct ldmsd_store_metric_index *x;
+	int metric_count;
+	int rc = 0;
 
-  char* insertStatement;
-  insertStatement = (char*) malloc(ms->insertcount*128*sizeof(char));
-  if (!insertStatement){
-    return ENOMEM;
-  }
-  sprintf(insertStatement,"INSERT INTO %s VALUES ", ms->tablename);
+	si = idx_find(store_idx, (void*)container, strlen(container));
+	if (si)
+		goto out;
 
-  int i;
-  for (i = 0; i < ms->insertcount; i++){
-    strcat(insertStatement,(ms->insertvalues[i]));
-    strcat(insertStatement,",");
-    free(ms->insertvalues[i]);
-  }
-  ms->insertcount = 0;
-  insertStatement[strlen(insertStatement)-1] = '\0';
+	metric_count = 0;
+	LIST_FOREACH(x, metric_list, entry) {
+		metric_count++;
+	}
 
-  int mysqlerrx = mysql_query(ms->conn, insertStatement);
-  if (mysqlerrx != 0){
-    msglog("Failed to perform query <%s>. Error: %d\n", mysqlerrx);
-    return -1;
-  }
+	si = calloc(1, sizeof(*si) +
+		    metric_count*sizeof(struct mysqlbulk_metric_store));
+	if (!si)
+		goto out;
+	si->ucontext = ucontext;
+	si->store = s;
+	si->metric_count = metric_count;
 
-  return 0;
+	si->ms_idx = idx_create();
+	if (!si->ms_idx)
+		goto err1;
+
+	si->container = strdup(container);
+	if (!si->container)
+		goto err2;
+	si->comp_type = strdup(comp_type);
+	if (!si->comp_type)
+		goto err3;
+
+	/* for each metric, do msm initialization */
+	int i = 0;
+	char buff[128];
+	char *name;
+	LIST_FOREACH(x, metric_list, entry) {
+		name = strchr(x->name, '#');
+		if (name) {
+			int len = name - x->name;
+			name = strncpy(buff, x->name, len);
+			name[len] = 0;
+		} else {
+			name = x->name;
+		}
+		ms = idx_find(si->ms_idx, name, strlen(name));
+		if (ms) {
+			si->ms[i++] = ms;
+			continue;
+		}
+		/* Create ms if not exist */
+		ms = calloc(1, sizeof(*ms));
+		if (!ms)
+			goto err4;
+		rc = new_metric_store(ms, si->comp_type, name);
+		if (rc)
+			goto err4;
+		idx_add(si->ms_idx, name, strlen(name), ms);
+		LIST_INSERT_HEAD(&si->ms_list, ms, entry);
+		si->ms[i++] = ms;
+	}
+
+	idx_add(store_idx, (void*)container, strlen(container), si);
+	msglog("New store mysqlbulk successful\n");
+
+	goto out;
+
+err4:
+	while(ms = LIST_FIRST(&si->ms_list)) {
+		LIST_REMOVE(ms, entry);
+		if (ms->conn) {
+			mysql_close(ms->conn);
+			free(ms->tablename);
+			free(ms->cleansedmetricname);
+		}
+		free(ms);
+	}
+err3:
+	free(si->container);
+err2:
+	idx_destroy(si->ms_idx);
+err1:
+	free(si);
+	si = NULL;
+out:
+	pthread_mutex_unlock(&cfg_lock);
+	return si;
+}
+
+static int flush_metricstore(struct mysqlbulk_metric_store *msm)
+{
+	char* insertStatement;
+	int i;
+
+	if (!msm)
+		return 0;
+
+	if (msm->conn == NULL){
+		msglog("Cannot insert value for <%s>: Connection to mysql is closed\n",
+				msm->tablename);
+		return EPERM;
+	}
+
+	insertStatement = (char*) malloc(msm->insertcount*128*sizeof(char));
+	if (!insertStatement){
+		return ENOMEM;
+	}
+	sprintf(insertStatement,"INSERT INTO %s VALUES ", msm->tablename);
+
+	for (i = 0; i < msm->insertcount; i++){
+		strcat(insertStatement,(msm->insertvalues[i]));
+		strcat(insertStatement,",");
+		free(msm->insertvalues[i]);
+	}
+	insertStatement[strlen(insertStatement)-1] = '\0';
+	msm->insertcount = 0;
+
+
+	int mysqlerrx = mysql_query(msm->conn, insertStatement);
+	if (mysqlerrx != 0){
+		msglog("Failed to perform query <%s>. Error: %d\n", mysqlerrx);
+		free(insertStatement);
+		return EPERM;
+	}
+	free(insertStatement);
+
+	return 0;
 }
 
 static int
-store(ldmsd_metric_store_t _ms, uint32_t comp_id,
-      struct timeval tv, ldms_metric_t m)
+store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec)
 {
-  //NOTE: ldmsd_store invokes the lock on this ms, so we dont have to do it here
-  struct mysqlbulk_metric_store *ms;
+	/* NOTE: ldmsd_store invokes the lock on the whole si */
 
-  if (!_ms){
-    return EINVAL;
-  }
+	struct mysqlbulk_store_instance *si;
+	int i;
 
-  ms = _ms;
+	si = sh;
+	if (!sh)
+		return EINVAL;
 
-  if (ms->insertcount == NUM_BULK_INSERT){
-    int rc = flush_store(ms);
-    if (rc != 0){
-      msglog("Can't flush store for %s. Not accepting new data\n",ms->tablename);
-      return rc;
-    }
-  }
+	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
 
-  //FIXME -- need some checks here on the type (mysql table create is before the new_store)
-  // ldms_value_type valtype = ldms_get_metric_type(m);
-  uint64_t val = ldms_get_u64(m);
+	for (i=0; i<si->metric_count; i++) {
+		struct mysqlbulk_metric_store *msm = &si->ms[i];
+		uint64_t comp_id = ldms_get_user_data(mvec->v[i]);
+		uint64_t val = ldms_get_u64(mvec->v[i]);
+		long int level = lround( -log2( drand48()));
+		char insertStatement[1024];
+		int mysqlerrx;
 
-  //NOTE -- dropping the subsecond part of the time to be consistent with OVIS tables.
-  //unlike prev inserters which used the time of the insert, here we will use the timeval.
-  //FIXME: do we need this in a YYYY-MM-DD HH-mm-SS type-format?
-  int sec = (int)(tv.tv_sec);
+		if (msm->conn == NULL){
+			msglog("Cannot insert value for <%s>: Connection to"
+					" mysql is closed\n", msm->tablename);
+			return EPERM;
+		}
 
-  long int level = lround( -log2( drand48())); //residual OVIS-ism
+		pthread_mutex_lock(&msm->lock);
+		if (msm->insertcount == NUM_BULK_INSERT){
+			int rc = flush_metricstore(msm);
+			if (rc != 0){
+				msglog("Can't flush store for %s. Not"
+						" accepting new data\n",
+						msm->tablename);
+				continue;
+			}
 
-  char data[128];
-  snprintf(data,127,"(NULL, %d, %" PRIu64 ", FROM_UNIXTIME(%d), %ld )",
-	   (int)comp_id, val, sec, level);
-  ms->insertvalues[ms->insertcount++] = strdup(data);
+		}
 
-  return 0;
+		char data[128];
+		snprintf(data,127,"(NULL, %"PRIu64", %"PRIu64
+				", FROM_UNIXTIME(%d), %ld )",
+				comp_id, val, ts->sec, level);
+		msm->insertvalues[msm->insertcount++] = strdup(data);
+		pthread_mutex_unlock(&msm->lock);
+	}
+
+	return 0;
 }
 
-static void close_store(ldmsd_metric_store_t _ms)
+
+static int flush_store(ldmsd_store_handle_t sh)
 {
-  pthread_mutex_lock(&cfg_lock);
+	struct mysqlbulk_store_instance *si = sh;
+	struct mysqlbulk_metric_store *msm;
 
-  struct mysqlbulk_metric_store *ms = _ms;
-  if (!_ms)
-    return;
+	if (!si)
+		return 0;
+	int i;
 
-  msglog("Closing store for %s which is a free of the idx and close conn\n", ms->tablename);
-  idx_delete(metric_idx, ms->metric_key, strlen(ms->metric_key));
-  if (ms->conn) mysql_close(ms->conn);
-  ms->conn = NULL;
-  free(ms->tablename);
-  free(ms->metric_key);
-  free(ms);
+	LIST_FOREACH(msm, &si->ms_list, entry) {
+		pthread_mutex_lock(&msm->lock);
+		flush_metricstore(msm);
+		pthread_mutex_unlock(&msm->lock);
+	}
 
-  pthread_mutex_unlock(&cfg_lock);
+	return 0;
 }
 
-static void destroy_store(ldmsd_metric_store_t _ms)
+
+/**
+ * If we have closed the store, which closes the conns, reopen them.
+ */
+static int refresh_store(ldmsd_store_handle_t sh)
 {
+
+	struct mysqlbulk_store_instance *si;
+	struct mysqlbulk_metric_store *msm;
+	int i;
+
+	si = sh;
+	if (!si)
+		return EINVAL;
+
+	LIST_FOREACH(msm, &si->ms_list, entry) {
+		int rc;
+		pthread_mutex_lock(&msm->lock);
+		if (msm->conn){
+			mysql_close(msm->conn);
+			msm->conn = NULL;
+		}
+
+		rc = init_conn(&(msm->conn));
+		pthread_mutex_unlock(&msm->lock);
+		if (rc != 0){
+			return EPERM;
+		}
+	}
+
+	return 0;
+}
+
+static void destroy_store(ldmsd_store_handle_t sh)
+{
+	pthread_mutex_lock(&cfg_lock);
+
+	int i;
+	struct mysqlbulk_store_instance *si = sh;
+	if (!si)
+		return;
+
+	msglog("Destroying store_mysql for <%s>\n", si->container);
+
+	flush_store(si);
+
+	struct mysqlbulk_metric_store *msm;
+	while (msm = LIST_FIRST(&si->ms_list)) {
+		pthread_mutex_lock(&msm->lock);
+		LIST_REMOVE(msm, entry);
+		if (msm->conn)
+			mysql_close(msm->conn);
+		if (msm->tablename)
+			free(msm->tablename);
+		if (msm->cleansedmetricname)
+			free(msm->cleansedmetricname);
+		pthread_mutex_unlock(&msm->lock);
+		pthread_mutex_destroy(&msm->lock);
+		free(msm);
+	}
+
+	if (si->comp_type)
+		free(si->comp_type);
+	idx_delete(store_idx, (void*)si->container, strlen(si->container));
+	if (si->container)
+		free(si->container);
+
+	idx_destroy(si->ms_idx);
+	free(si);
+
+	pthread_mutex_unlock(&cfg_lock);
+}
+
+/**
+ * Closing the store, closes the mysql conns, but does not destroy the store.
+ * This is because the filehandles are kept in the params of the metrics, so they
+ * could not be reestablished if destroyed without calling add_metric again.
+ */
+static void close_store(ldmsd_store_handle_t sh)
+{
+	/* Currently close is close and destroy */
+	destroy_store(sh);
 }
 
 static struct ldmsd_store store_mysqlbulk = {
-  .base = {
-    .name = "mysqlbulk",
-    .term = term,
-    .config = config,
-    .usage = usage,
-  },
-  .get = get_store,
-  .new = new_store,
-  .destroy = destroy_store,
-  .get_context = get_ucontext,
-  .store = store,
-  .flush = flush_store,
-  .close = close_store,
+	.base = {
+		.name = "mysqlbulk",
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
+	.get = get_store,
+	.new = new_store,
+	.destroy = destroy_store,
+	.get_context = get_ucontext,
+	.store = store,
+	.flush = flush_store,
+	.close = close_store,
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
-  msglog = pf;
-  return &store_mysqlbulk.base;
+	msglog = pf;
+	return &store_mysqlbulk.base;
 }
 
 static void __attribute__ ((constructor)) store_mysqlbulk_init();
 static void store_mysqlbulk_init()
 {
-  metric_idx = idx_create();
-  pthread_mutex_init(&cfg_lock, NULL);
+	store_idx = idx_create();
+	pthread_mutex_init(&cfg_lock, NULL);
 }
 
 static void __attribute__ ((destructor)) store_mysqlbulk_fini(void);
 static void store_mysqlbulk_fini()
 {
-  pthread_mutex_destroy(&cfg_lock);
-  idx_destroy(metric_idx);
+	pthread_mutex_destroy(&cfg_lock);
+	idx_destroy(store_idx);
 }

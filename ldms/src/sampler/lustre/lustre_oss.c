@@ -111,9 +111,7 @@ static uint64_t counter;
 static ldms_set_t set;
 FILE *mf;
 ldmsd_msg_log_f msglog;
-union ldms_value comp_id;
-ldms_metric_t compid_metric_handle;
-ldms_metric_t counter_metric_handle;
+uint64_t comp_id;
 
 char tmp_path[PATH_MAX];
 
@@ -159,15 +157,6 @@ static int create_metric_set(const char *path, const char *osts)
 	/* First calculate the set size */
 	metric_count = 0;
 	tot_meta_sz = tot_data_sz = 0;
-	/* for comp_id and count */
-	ldms_get_metric_size("component_id", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	metric_count++;
-	ldms_get_metric_size("oss_counter", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	metric_count++;
 	/* Calculate size for OSS */
 	for (i=0; i<OSS_SERVICES_LEN; i++) {
 		for (j=0; j<STATS_KEY_LEN; j++) {
@@ -203,18 +192,12 @@ static int create_metric_set(const char *path, const char *osts)
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		goto err1;
-	compid_metric_handle = ldms_add_metric(set, "component_id", LDMS_V_U64);
-	if (!compid_metric_handle)
-		goto err2;
-	counter_metric_handle = ldms_add_metric(set, "oss_counter", LDMS_V_U64);
-	if (!counter_metric_handle)
-		goto err2;
 	char name_base[128];
 	for (i=0; i<OSS_SERVICES_LEN; i++) {
 		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
 				oss_services[i]);
 		sprintf(name_base, "oss.%s.stats", oss_services[i]);
-		rc = stats_construct_routine(set, tmp_path, name_base,
+		rc = stats_construct_routine(set, comp_id, tmp_path, name_base,
 					     &svc_stats, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
@@ -224,7 +207,7 @@ static int create_metric_set(const char *path, const char *osts)
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
 		sprintf(name_base, "ost.%s.stats", sl->str);
-		rc = stats_construct_routine(set, tmp_path, name_base,
+		rc = stats_construct_routine(set, comp_id, tmp_path, name_base,
 					     &svc_stats, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
@@ -272,7 +255,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "component_id");
 	if (value)
-		comp_id.v_u64 = strtol(value, NULL, 0);
+		comp_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "set");
 	osts = av_value(avl, "osts");
@@ -284,9 +267,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static const char *usage(void)
 {
-	return  "config name=meminfo component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
+	return
+"config name=meminfo component_id=<comp_id> set=<setname>\n"
+"	component_id	The component id value.\n"
+"	set		The set name.\n"
+"	osts		The list of OSTs.\n"
+"For mdts: if not specified, all of the\n"
+"currently available MDTs will be added.\n"
+			;
 }
 
 static ldms_set_t get_set()
@@ -299,13 +287,6 @@ static int sample(void)
 	if (!set)
 		return EINVAL;
 	ldms_begin_transaction(set);
-
-	/* Set the counter */
-	union ldms_value v = {.v_u64 = ++counter};
-	ldms_set_metric(counter_metric_handle, &v);
-
-	/* Set metric id */
-	ldms_set_metric(compid_metric_handle, &comp_id);
 
 	struct lustre_svc_stats *lss;
 
