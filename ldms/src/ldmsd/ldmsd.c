@@ -846,10 +846,24 @@ int process_add_host(int fd,
 		return EINVAL;
 	}
 
+	/*
+	 * If the connection type is either active or passive,
+	 * need a set list to create hostsets.
+	 */
 	attr = "sets";
 	sets = av_value(av_list, attr);
-	if (!sets)
-		goto einval;
+	if (host_type != BRIDGING && !set) {
+		if (!sets)
+			goto einval;
+	} else {
+		if (sets) {
+			sprintf(replybuf, "%d Aborted!. Use type=ACTIVE to "
+					"collect the sets.", -EPERM);
+			send_reply(fd, sa, sa_len, replybuf,
+					strlen(replybuf) + 1);
+			return EPERM;
+		}
+	}
 
 	hs = calloc(1, sizeof(*hs));
 	if (!hs)
@@ -857,29 +871,6 @@ int process_add_host(int fd,
 	hs->hostname = strdup(host);
 	if (!hs->hostname)
 		goto enomem;
-
-	char *set_name = strtok(sets, ",");
-	struct hostset *hset;
-	while (set_name) {
-		ldms_log("Adding the metric set '%s' and wait for a lookup.\n",
-				set_name);
-
-		/* Check to see if it's already there */
-		hset = find_host_set(hs, set_name);
-		if (!hset) {
-			hset = hset_new();
-			if (!hset)
-				goto enomem;
-
-			hset->name = strdup(set_name);
-			hset->host = hs;
-
-			pthread_mutex_lock(&hs->set_list_lock);
-			LIST_INSERT_HEAD(&hs->set_list, hset, entry);
-			pthread_mutex_unlock(&hs->set_list_lock);
-		}
-		set_name = strtok(NULL, ",");
-	}
 
 	rc = resolve(hs->hostname, &sin);
 	if (rc) {
@@ -921,6 +912,35 @@ int process_add_host(int fd,
 	/* First connection attempt happens 'right away' */
 	hs->timeout.tv_sec = 0; // hs->connect_interval / 1000000;
 	hs->timeout.tv_usec = 500000; // hs->connect_interval % 1000000;
+
+	/* No hostsets will be created if the connection type is bridging. */
+	if (host_type == BRIDGING)
+		goto add_timeout;
+
+	char *set_name = strtok(sets, ",");
+	struct hostset *hset;
+	while (set_name) {
+		/* Check to see if it's already there */
+		hset = find_host_set(hs, set_name);
+		if (!hset) {
+			hset = hset_new();
+			if (!hset)
+				goto clean_set_list;
+
+			hset->name = strdup(set_name);
+			if (!hset->name) {
+				free(hset);
+				goto clean_set_list;
+			}
+
+			hset->host = hs;
+
+			LIST_INSERT_HEAD(&hs->set_list, hset, entry);
+		}
+		set_name = strtok(NULL, ",");
+	}
+
+add_timeout:
 	evtimer_add(hs->event, &hs->timeout);
 
 	pthread_mutex_lock(&host_list_lock);
@@ -930,11 +950,17 @@ int process_add_host(int fd,
 	sprintf(replybuf, "0");
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
- enomem:
+clean_set_list:
+	while (hset = LIST_FIRST(&hs->set_list)) {
+		LIST_REMOVE(hset, entry);
+		free(hset->name);
+		free(hset);
+	}
+enomem:
 	rc = ENOMEM;
 	sprintf(replybuf, "%dMemory allocation failure.", -ENOMEM);
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
- err:
+err:
 	if (hs->hostname)
 		free(hs->hostname);
 	if (hs->xprt_name)
@@ -1373,6 +1399,7 @@ void reset_host(struct hostspec *hs)
 {
 	struct hostset *hset;
 	LIST_FOREACH(hset, &hs->set_list, entry) {
+		hset->state = LDMSD_SET_CONFIGURED;
 		reset_set_metrics(hset);
 	}
 }
@@ -1458,6 +1485,7 @@ int do_connect(struct hostspec *hs)
 	if (ret)
 		return -1;
 
+	reset_host(hs);
 	ldms_log("Connected to host '%s:%hu'\n", hs->hostname,
 		 ntohs(hs->sin.sin_port));
 	return 0;
@@ -1562,10 +1590,9 @@ void update_data(struct hostspec *hs)
 
 void do_active_host(struct hostspec *hs)
 {
-	if (!hs->x || !ldms_xprt_connected(hs->x)) {
-		reset_host(hs);
+	if (!hs->x || !ldms_xprt_connected(hs->x))
 		do_connect(hs);
-	} else
+	else
 		/* Don't update immediately after connecting to
 		 * provide time for dir/lookups to complete */
 		update_data(hs);
@@ -1582,6 +1609,8 @@ int do_passive_connect(struct hostspec *hs)
 	 * cache it here.
 	 */
 	hs->x = l;
+
+	reset_host(hs);
 	return 0;
 
 }
