@@ -58,7 +58,7 @@
 #include <errno.h>
 #include <sys/fcntl.h>
 
-#include "test.h"
+#include "ovis-test/test.h"
 #include "oidx.h"
 #include "oidx_priv.h"
 

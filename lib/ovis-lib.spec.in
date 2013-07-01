@@ -35,6 +35,18 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 %clean
 rm -rf $RPM_BUILD_ROOT
 
+%package test-dev
+Summary: OVIS test header file.
+Group: %{ovis_lib_grp}
+%description test-dev
+Test header file for OVIS development.
+
+%files test-dev
+%defattr(-,root,root)
+%{_includedir}/ovis-test/test.h
+%doc README COPYING ChangeLog
+#end test-dev
+
 %if "@ENABLE_COLL_TRUE@x" == "x"
 # ovis-lib-coll package
 %package coll

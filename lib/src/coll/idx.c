@@ -288,7 +288,7 @@ void *idx_delete(idx_t t, idx_key_t key, size_t keylen)
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "test.h"
+#include "ovis-test/test.h"
 idx_t idx;
 int main(int argc, char *argv[])
 {

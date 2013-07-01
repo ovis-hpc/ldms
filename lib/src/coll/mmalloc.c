@@ -63,7 +63,7 @@
 #include <errno.h>
 #include "mmalloc.h"
 #include "rbt.h"
-#include "test.h"
+#include "ovis-test/test.h"
 
 struct mm_prefix {
 	struct rbn addr_node;

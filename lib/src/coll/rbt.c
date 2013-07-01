@@ -549,7 +549,7 @@ int rbt_is_leaf(struct rbn *n)
 #ifdef RBT_TEST
 #include <stdio.h>
 #include <time.h>
-#include "test.h"
+#include "ovis-test/test.h"
 struct test_key {
 	struct rbn n;
 	int key;

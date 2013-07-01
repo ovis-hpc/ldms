@@ -1,9 +1,8 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -Wall
+AM_CFLAGS = -I$(srcdir)/../
 
 if ENABLE_COLL
-libcoll_la_CFLAGS = -g
 libcoll_la_SOURCES = rbt.c rbt.h idx.c idx.h idx_priv.h
 libcollinclude_HEADERS = rbt.h idx.h
 libcollincludedir = $(includedir)/coll
@@ -12,8 +11,7 @@ lib_LTLIBRARIES += libcoll.la
 endif
 
 if ENABLE_MMALLOC
-libmmalloc_la_CFLAGS = -g
-libmmalloc_la_SOURCES = mmalloc.c mmalloc.h test.h
+libmmalloc_la_SOURCES = mmalloc.c mmalloc.h
 libmmalloc_la_LIBADD = libcoll.la
 libmmallocinclude_HEADERS =  mmalloc.h
 libmmallocincludedir = $(includedir)/coll
