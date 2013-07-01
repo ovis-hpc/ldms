@@ -280,7 +280,7 @@ int main(int argc, char *argv[])
 		     && (b[4] < b[5])),
 		    "The six allocations are in address-wise "
 		    "increasing order.\n");
-		    
+
 	/*
 	 * +---++---++---++---++---++---++--~~--+
 	 * | 1 || 2 || 3 || 4 || 5 || 6 || Heap |
@@ -324,7 +324,7 @@ int main(int argc, char *argv[])
 		    "after a contiguous free coelesces a block.\n");
 	/*
 	 * Then free 6, and 5H, 6 and the remainder of the
-	 * heap should get coelesced. 
+	 * heap should get coelesced.
 	 */
 	mm_free(b[5]);
 	/*

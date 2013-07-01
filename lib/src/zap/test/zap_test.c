@@ -71,7 +71,7 @@
 #include <dlfcn.h>
 #include <assert.h>
 #include <libgen.h>
-#include <zap/zap.h>
+#include "zap.h"
 
 static int done = 0;
 pthread_mutex_t done_lock = PTHREAD_MUTEX_INITIALIZER;

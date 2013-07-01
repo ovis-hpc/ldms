@@ -1,14 +1,12 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT(libcoll, 1.0.0, tom@ogc.us)
+AC_INIT([ovis-lib], 1.0.0, tom@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
-AC_CONFIG_SRCDIR([src/rbt.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE(libcoll, 1.0.0)
-AM_INIT_AUTOMAKE(libmmalloc, 1.0.0)
-AC_PROG_LIBTOOL
+AM_INIT_AUTOMAKE
+AM_PROG_LIBTOOL
 
 dnl Checks for programs
 AC_PROG_CC
@@ -21,13 +19,19 @@ AM_PROG_CC_C_O
 
 AC_C_CONST
 
-AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
-    if test -n "`$LD --help < /dev/null 2>/dev/null | grep version-script`"; then
-        ac_cv_version_script=yes
-    else
-        ac_cv_version_script=no
-    fi)
+OPTION_DEFAULT_ENABLE([coll], [ENABLE_COLL])
+OPTION_DEFAULT_ENABLE([mmalloc], [ENABLE_MMALLOC])
+OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
+OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
+OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
+OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
+OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
 
-AM_CONDITIONAL([HAVE_LD_VERSION_SCRIPT], [test "$ac_cv_version_script" = "yes"])
-dnl AC_CONFIG_FILES([Makefile libcoll.spec])
-AC_OUTPUT(Makefile src/Makefile)
+AC_SUBST(ac_configure_args)
+
+AC_OUTPUT(Makefile
+	  ovis-lib.spec
+	  src/Makefile src/coll/Makefile
+	  src/zap/Makefile
+	  src/zap/rdma/Makefile
+	  src/zap/test/Makefile)
