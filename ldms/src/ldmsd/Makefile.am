@@ -3,11 +3,11 @@ CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE)
 
 ldms_ls_SOURCES = ldms_ls.c
-ldms_ls_LDADD = $(CORE)/libldms.la -lrt
+ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util
 
 ldmsd_SOURCES = ldmsd.c ldmsd_store.c
 ldmsd_LDADD = $(CORE)/libldms.la $(CORE)/libldmsplugin.la
-ldmsd_LDFLAGS = -levent -lpthread -levent_pthreads
+ldmsd_LDFLAGS = -levent -lpthread -levent_pthreads -lovis_util
 ldmsd_CFLAGS = $(AM_CFLAGS)
 if ENABLE_YAML
 ldmsd_LDFLAGS += -lyaml

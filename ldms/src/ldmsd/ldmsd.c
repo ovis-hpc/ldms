@@ -77,6 +77,7 @@
 #include "ldms_xprt.h"
 #include "config.h"
 #include <event2/thread.h>
+#include <ovis_util/util.h>
 
 #ifdef ENABLE_YAML
 #include <yaml.h>
@@ -2943,34 +2944,6 @@ void config_file_routine(yaml_document_t *yaml_document)
 }
 #endif /* ENABLE_YAML */
 
-size_t __get_mem_size(const char *s)
-{
-    char unit;
-    char tmp[256];
-    sprintf(tmp, "%s%s", s, "B");
-    size_t size;
-    sscanf(tmp, "%lu %c", &size, &unit);
-    switch (unit) {
-    case 'b':
-    case 'B':
-            return size;
-    case 'k':
-    case 'K':
-            return size * 1024L;
-    case 'm':
-    case 'M':
-            return size * 1024L * 1024L;
-    case 'g':
-    case 'G':
-            return size * 1024L * 1024L * 1024L;
-    case 't':
-    case 'T':
-            return size * 1024L * 1024L * 1024L;
-    default:
-            return 0;
-    }
-}
-
 int main(int argc, char *argv[])
 {
 	int ret;
@@ -3061,7 +3034,7 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_TEST_METRIC_COUNT] = 1;
 			break;
 		case 'm':
-			if ((max_mem_size = __get_mem_size(optarg)) == 0) {
+			if ((max_mem_size = ovis_get_mem_size(optarg)) == 0) {
 				printf("Invalid memory size '%s'\n", optarg);
 				usage(argv);
 			}

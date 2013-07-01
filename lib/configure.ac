@@ -22,6 +22,7 @@ AC_C_CONST
 OPTION_DEFAULT_ENABLE([coll], [ENABLE_COLL])
 OPTION_DEFAULT_ENABLE([mmalloc], [ENABLE_MMALLOC])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
+OPTION_DEFAULT_ENABLE([ovis_util], [ENABLE_OVIS_UTIL])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
@@ -32,6 +33,7 @@ AC_SUBST(ac_configure_args)
 AC_OUTPUT(Makefile
 	  ovis-lib.spec
 	  src/Makefile src/coll/Makefile
+	  src/ovis_util/Makefile
 	  src/zap/Makefile
 	  src/zap/rdma/Makefile
 	  src/zap/test/Makefile)

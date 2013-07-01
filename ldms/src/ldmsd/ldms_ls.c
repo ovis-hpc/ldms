@@ -66,6 +66,7 @@
 #include <fcntl.h>
 #include <sys/queue.h>
 #include <time.h>
+#include <ovis_util/util.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 
@@ -88,7 +89,7 @@ struct ls_set {
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:x:w:lvu"
+#define FMT "h:p:x:w:m:lvu"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
@@ -101,7 +102,10 @@ void usage(char *argv[])
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
 	       "                       The default is 10 seconds.\n"
 	       "\n    -v               Show detail information about the metric set. Specifying\n"
-	       "                     this option multiple times increases the verbosity.\n",
+	       "                     this option multiple times increases the verbosity.\n"
+	       "\n    -m <memory size>   Maximum size of pre-allocated memory for metric sets.\n"
+	       "                         The given size must be less than 1 petabytes.\n"
+	       "                         For example, 20M or 20mb are 20 megabytes.\n",
 	       argv[0]);
 	exit(1);
 }
@@ -297,6 +301,7 @@ void null_log(const char *fmt, ...)
 }
 
 #define LDMS_LS_MAX_MEM_SIZE 512L * 1024L
+size_t max_mem_size = LDMS_LS_MAX_MEM_SIZE;
 
 int main(int argc, char *argv[])
 {
@@ -338,6 +343,12 @@ int main(int argc, char *argv[])
 			break;
 		case 'w':
 			waitsecs = atoi(optarg);
+			break;
+		case 'm':
+			if ((max_mem_size = ovis_get_mem_size(optarg)) == 0) {
+				printf("Invalid memory size '%s'\n", optarg);
+				usage(argv);
+			}
 			break;
 		default:
 			usage(argv);
@@ -440,6 +451,10 @@ int main(int argc, char *argv[])
 	}
 
 	struct ls_set *lss;
+	if (LIST_EMPTY(&set_list)) {
+		done = 1;
+		goto done;
+	}
 	while (!LIST_EMPTY(&set_list)) {
 
 		lss = LIST_FIRST(&set_list);
@@ -463,6 +478,7 @@ int main(int argc, char *argv[])
 		} else
 			printf("%s\n", lss->name);
 	}
+done:
 	pthread_mutex_lock(&done_lock);
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);
