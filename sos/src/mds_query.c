@@ -112,11 +112,11 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 	/* Format the time as a string */
 	t = tv_sec;
 	if (ts_convert_disable) {
-		sprintf(tv_s, "%lu.%u", t, tv_usec);
+		sprintf(tv_s, "%lu.%06u", t, tv_usec);
 	} else {
 		tm_p = localtime(&t);
 		strftime(t_s, sizeof(t_s), "%D %T", tm_p);
-		sprintf(tv_s, "%s.%d", t_s, tv_usec);
+		sprintf(tv_s, "%s.%06u", t_s, tv_usec);
 	}
 
 	SOS_OBJ_ATTR_GET(comp_id, sos, MDS_COMP_ID, obj);
