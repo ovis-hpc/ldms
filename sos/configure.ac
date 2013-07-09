@@ -19,9 +19,13 @@ AC_PROG_CC_C_O
 AM_PROG_CC_C_O
 
 dnl Swig stuffs
+OPTION_DEFAULT_ENABLE([swig], [ENABLE_SWIG])
+if test -z "$ENABLE_SWIG_TRUE"
+then
 AM_PATH_PYTHON(2.6)
 AC_PROG_SWIG
 SWIG_PYTHON
+fi
 
 dnl Check host byte order
 AC_C_BIGENDIAN(
@@ -32,6 +36,7 @@ AC_C_BIGENDIAN(
 )
 
 AC_C_CONST
+
 
 AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
     if test -n "`$LD --help < /dev/null 2>/dev/null | grep version-script`"; then
