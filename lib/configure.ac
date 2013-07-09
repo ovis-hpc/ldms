@@ -33,6 +33,7 @@ AC_SUBST(ac_configure_args)
 AC_OUTPUT(Makefile
 	  ovis-lib.spec
 	  src/Makefile src/coll/Makefile
+	  src/mmalloc/Makefile
 	  src/ovis_util/Makefile
 	  src/zap/Makefile
 	  src/zap/rdma/Makefile

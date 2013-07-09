@@ -69,7 +69,7 @@
 #ifdef ENABLE_MMAP
 #include <ftw.h>
 #endif
-#include <coll/mmalloc.h>
+#include <mmalloc/mmalloc.h>
 #include "ldms_private.h"
 
 #define SET_DIR_PATH "/var/run/ldms"

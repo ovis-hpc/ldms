@@ -6,6 +6,10 @@ if ENABLE_COLL
 SUBDIRS += coll
 endif
 
+if ENABLE_MMALLOC
+SUBDIRS += mmalloc
+endif
+
 if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util
 endif

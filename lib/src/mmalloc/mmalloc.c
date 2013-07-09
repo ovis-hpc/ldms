@@ -62,7 +62,7 @@
 #include <time.h>
 #include <errno.h>
 #include "mmalloc.h"
-#include "rbt.h"
+#include "../coll/rbt.h"
 #include "ovis-test/test.h"
 
 struct mm_prefix {
