@@ -14,9 +14,6 @@ libldms_la_CFLAGS = -I$(OVIS_LIB_INCDIR)
 libldms_la_LIBADD = -ldl -lpthread -L$(OVIS_LIB_LIBDIR) -lmmalloc
 lib_LTLIBRARIES += libldms.la
 
-libldmsplugin_la_SOURCES = ldmsd_ctrl.c
-lib_LTLIBRARIES += libldmsplugin.la
-
 install-data-hook:
 #	cp $(top_builddir)/scripts/ldmsd /etc/init.d/ldmsd
 #	cp $(top_builddir)/scripts/schedstatd /etc/init.d/schedstatd

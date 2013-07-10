@@ -48,8 +48,81 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#include <sys/errno.h>
+#include <string.h>
+#include <malloc.h>
 #include "util.h"
+
+char *av_name(struct attr_value_list *av_list, int idx)
+{
+	if (idx < av_list->count)
+		return av_list->list[idx].name;
+	return NULL;
+}
+
+char *av_value(struct attr_value_list *av_list, char *name)
+{
+	int i;
+	for (i = 0; i < av_list->count; i++)
+		if (0 == strcmp(name, av_list->list[i].name))
+			return av_list->list[i].value;
+	return NULL;
+}
+
+char *av_value_at_idx(struct attr_value_list *av_list, int i)
+{
+	if (i < av_list->count)
+		return av_list->list[i].value;
+	return NULL;
+}
+
+int tokenize(char *cmd,
+	     struct attr_value_list *kw_list,
+	     struct attr_value_list *av_list)
+{
+	char *token, *next_token;
+	struct attr_value *av;
+	int next_av, next_kw;
+	next_av = next_kw = 0;
+	for (token = strtok(cmd, " \t\n"); token;) {
+		char *value = strstr(token, "=");
+		next_token = strtok(NULL, " \t\n");
+		if (value) {
+			if (next_av >= av_list->size)
+				goto err;
+			av = &(av_list->list[next_av++]);
+			av->name = token;
+			*value = '\0';
+			value++;
+			av->value = value;
+		} else {
+			if (next_kw >= kw_list->size)
+				goto err;
+			kw_list->list[next_kw].name = token;
+			kw_list->list[next_kw].value = NULL;
+			next_kw++;
+		}
+		token = next_token;
+	}
+	kw_list->count = next_kw;
+	av_list->count = next_av;
+	return 0;
+err:
+	return ENOMEM;
+}
+
+struct attr_value_list *av_new(size_t size)
+{
+	size_t bytes = sizeof(struct attr_value_list) +
+		       (sizeof(struct attr_value) * size);
+	struct attr_value_list *avl = malloc(bytes);
+
+	if (avl) {
+		memset(avl, 0, bytes);
+		avl->size = size;
+	}
+	return avl;
+}
 
 size_t ovis_get_mem_size(const char *s)
 {

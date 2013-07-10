@@ -67,6 +67,8 @@
 #include <readline/history.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include <ovis_ctrl/ctrl.h>
+#include <ovis_util/util.h>
 
 #define FMT "S:"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
@@ -322,7 +324,7 @@ int main(int argc, char *argv[])
 		if (kw)
 			(void)kw->action(key.token, err_str);
 		else
-			printf("Uncrecognized keyword '%s'.\n", key.token);
+			printf("Unrecognized keyword '%s'.\n", key.token);
 		if (err_str[0] != '\0')
 			printf("%s\n", err_str);
 	} while (s);

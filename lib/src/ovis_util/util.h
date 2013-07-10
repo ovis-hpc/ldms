@@ -54,6 +54,49 @@
 
 #include <stdio.h>
 
+struct attr_value {
+	char *name;
+	char *value;
+};
+
+struct attr_value_list {
+	int size;
+	int count;
+	struct attr_value list[0];
+};
+
+/**
+ * \brief Get the value of attribute \c name
+ */
+char *av_value(struct attr_value_list *av_list, char *name);
+
+/**
+ * \brief Get the attribute name in the \c av_list
+ * at the index \c idx
+ */
+char *av_name(struct attr_value_list *av_list, int idx);
+
+/**
+ * \brief Get the value at the index \c idx
+ */
+char *av_value_at_idx(struct attr_value_list *av_list, int idx);
+
+/**
+ * \brief Tokenize the string \c cmd into the keyword list \c kwl
+ * and the attribute list \c avl
+ */
+int tokenize(char *cmd, struct attr_value_list *kwl,
+	     struct attr_value_list *avl);
+
+/**
+ * \brief Allocate memory for a new attribute list of size \c size
+ */
+struct attr_value_list *av_new(size_t size);
+
+/**
+ * \brief Parse the memory size
+ * \return size of memory in bytes
+ */
 size_t ovis_get_mem_size(const char *s);
 
 #endif /* OVIS_UTIL_H_ */

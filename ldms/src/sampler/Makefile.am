@@ -4,7 +4,7 @@ lib_LTLIBRARIES =
 CORE = ../core
 
 AM_CFLAGS = -I$(srcdir)/$(CORE)
-COMMON_LIBADD = $(CORE)/libldms.la $(CORE)/libldmsplugin.la -lrt
+COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 
 if ENABLE_GEMINFO
 libgeminfo_la_SOURCES = geminfo.c

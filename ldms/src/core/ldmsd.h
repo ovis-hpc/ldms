@@ -52,6 +52,7 @@
 #define __LDMSD_H__
 
 #include <sys/queue.h>
+#include <ovis_util/util.h>
 #include "ldms.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"
@@ -307,41 +308,6 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_EXIT_DAEMON	10   /* Shut down ldmsd */
 #define LDMSCTL_LAST_COMMAND	10
 
-struct attr_value {
-	char *name;
-	char *value;
-};
-
-struct attr_value_list {
-	int size;
-	int count;
-	struct attr_value list[0];
-};
-
-#include <netinet/in.h>
-#include <sys/un.h>
-
-struct ctrlsock {
-	int sock;
-	struct sockaddr *sa;
-	size_t sa_len;
-	struct sockaddr_in sin;
-	struct sockaddr_un rem_sun;
-	struct sockaddr_un lcl_sun;
-};
-
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
-struct ctrlsock *ctrl_connect(char *my_name, char *sock_name);
-struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin);
-int ctrl_request(struct ctrlsock *sock, int cmd_id,
-		 struct attr_value_list *avl, char *err_str);
-void ctrl_close(struct ctrlsock *sock);
-
-char *av_value(struct attr_value_list *av_list, char *name);
-char *av_name(struct attr_value_list *kw_list, int idx);
-char *av_value_at_idx(struct attr_value_list *kw_list, int idx);
-int tokenize(char *cmd, struct attr_value_list *kwl,
-	     struct attr_value_list *avl);
-struct attr_value_list *av_new(size_t size);
 
 #endif

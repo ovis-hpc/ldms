@@ -71,13 +71,12 @@
 #include <dlfcn.h>
 #include <assert.h>
 #include <libgen.h>
+#include <event2/thread.h>
 #include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "config.h"
-#include <event2/thread.h>
-#include <ovis_util/util.h>
 
 #ifdef ENABLE_YAML
 #include <yaml.h>

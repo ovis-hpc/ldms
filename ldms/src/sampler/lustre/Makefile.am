@@ -8,13 +8,13 @@ lib_LTLIBRARIES += libstr_map.la
 
 #liblustre_sampler
 liblustre_sampler_la_SOURCES = lustre_sampler.c lustre_sampler.h
-liblustre_sampler_la_LIBADD = $(CORE)/libldms.la $(CORE)/libldmsplugin.la \
+liblustre_sampler_la_LIBADD = $(CORE)/libldms.la -lovis_util \
 				  libstr_map.la -lrt
 lib_LTLIBRARIES += liblustre_sampler.la
 
 # common libadd for all subclass of lustre_sampler
-COMMON_LIBADD = $(CORE)/libldms.la $(CORE)/libldmsplugin.la libstr_map.la \
-		  liblustre_sampler.la -lrt
+COMMON_LIBADD = $(CORE)/libldms.la  libstr_map.la liblustre_sampler.la \
+		-lrt -lovis_util
 
 #liblustre_mds
 liblustre_mds_la_SOURCES = lustre_mds.c
