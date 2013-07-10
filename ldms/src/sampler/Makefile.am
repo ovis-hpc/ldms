@@ -28,6 +28,12 @@ libperfevent_la_LIBADD = $(COMMON_LIBADD)
 lib_LTLIBRARIES += libperfevent.la
 endif
 
+if ENABLE_PROCDISKSTATS
+libprocdiskstats_la_SOURCES = procdiskstats.c
+libprocdiskstats_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += libprocdiskstats.la
+endif
+
 if ENABLE_PROCINTERRUPTS
 libprocinterrupts_la_SOURCES = procinterrupts.c
 libprocinterrupts_la_LIBADD = $(COMMON_LIBADD)
