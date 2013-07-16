@@ -146,6 +146,21 @@ typedef struct zap_mem_info {
 } *zap_mem_info_t;
 typedef zap_mem_info_t (*zap_mem_info_fn_t)(void);
 
+/**
+ * \brief Get the context in the endpoint
+ *
+ * \param ep The handle to the endpoint which contains the ucontext
+ */
+void *zap_get_ucontext(zap_ep_t ep);
+
+/**
+ * \brief Set the context in the endpoint
+ *
+ * \param ep The handle to the endpoint in which the ucontext will be set.
+ * \param context The user context
+ */
+void zap_set_ucontext(zap_ep_t ep, void *context);
+
 /** \brief Get a handle to a transport.
  *
  * Get a transport handle to a transport.

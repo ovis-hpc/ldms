@@ -9,7 +9,7 @@ SUBDIRS += test
 endif
 
 libzap_la_SOURCES = zap.c zap_priv.h
-
+libzap_la_LDFLAGS = -ldl
 libzapincludedir = $(includedir)/zap
 libzapinclude_HEADERS = zap.h
 

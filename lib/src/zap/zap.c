@@ -88,6 +88,16 @@ pthread_mutex_t zap_list_lock;
 #define _SO_EXT ".so"
 static char _libdir[PATH_MAX];
 
+void *zap_get_ucontext(zap_ep_t ep)
+{
+	return ep->ucontext;
+}
+
+void zap_set_ucontext(zap_ep_t ep, void *context)
+{
+	ep->ucontext = context;
+}
+
 zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
 		  zap_mem_info_fn_t mem_info_fn)
 {

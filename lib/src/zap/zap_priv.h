@@ -71,6 +71,7 @@ struct zap_ep {
 	int ref_count;
 	pthread_mutex_t lock;
 	zap_ep_state_t state;
+	void *ucontext;
 
 	LIST_HEAD(zap_map_list, zap_map) map_list;
 
