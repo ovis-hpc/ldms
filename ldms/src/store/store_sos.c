@@ -267,6 +267,7 @@ err2:
 	idx_destroy(si->ms_idx);
 err1:
 	free(si);
+	si = NULL;
 out:
 	pthread_mutex_unlock(&cfg_lock);
 	return si;

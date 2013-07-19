@@ -25,9 +25,9 @@ OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
-OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
-OPTION_DEFAULT_ENABLE([mysql], [ENABLE_MYSQL])
-OPTION_DEFAULT_ENABLE([mysqlbulk], [ENABLE_MYSQLBULK])
+OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
+OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
+OPTION_DEFAULT_DISABLE([mysqlbulk], [ENABLE_MYSQLBULK])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 
@@ -46,16 +46,27 @@ OPTION_DEFAULT_ENABLE([sedc], [ENABLE_SEDC])
 OPTION_DEFAULT_ENABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
+OPTION_DEFAULT_DISABLE([gem_link_perf], [ENABLE_GEM_LINK_PERF])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
+dnl Other libraries
+
+OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD])
+OPTION_WITH([gpcd], [GPCD])
+
 OPTION_WITH([sos], [SOS])
 OPTION_WITH([ovis-lib], [OVIS_LIB])
+
+dnl This got defined here for LIBEVENT_ENABLE
+OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
+OPTION_WITH([libevent], [LIBEVENT])
+
 if test -z "$ENABLE_MYSQL_TRUE"
 then
 OPTION_WITH_MYSQL dnl MYSQL is special.
 fi
-if test-z "$ENABLE_GLIB_TRUE"
+if test -z "$ENABLE_GLIB_TRUE"
 then
 PKG_CHECK_MODULES([GLIB20], [glib-2.0])
 fi
@@ -76,6 +87,10 @@ AC_CHECK_LIB(event, event_base_new, [],
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  ldms requires libpthread.]))
+
+dnl Check for libreadline
+AC_CHECK_LIB(readline, readline, [],
+    AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]))
 
 dnl Checks for libraries
 if test -z "$ENABLE_RDMA_TRUE"

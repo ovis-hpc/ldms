@@ -3,7 +3,8 @@ SUBDIRS = .
 lib_LTLIBRARIES =
 CORE = ../core
 
-AM_CFLAGS = -I$(srcdir)/$(CORE)
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I@OVIS_LIB_INCDIR@
+AM_LDFLAGS = -L@OVIS_LIB_LIBDIR@
 COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 
 if ENABLE_GEMINFO
@@ -85,3 +86,12 @@ libvmstat_la_LIBADD = $(COMMON_LIBADD)
 lib_LTLIBRARIES += libvmstat.la
 endif
 
+if ENABLE_GPCD
+if ENABLE_GEM_LINK_PERF
+libgem_link_perf_la_SOURCES = gem_link_perf.c
+libgem_link_perf_la_CFLAGS = $(AM_CFLAGS) -I@GPCD_INCDIR@ -I@RCA_INCDIR@
+libgem_link_perf_la_LDFLAGS = $(AM_LDFLAGS) -L@GPCD_LIBDIR@ -L@RCA_LIBDIR@ -lgpcd
+libgem_link_perf_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += libgem_link_perf.la
+endif
+endif
