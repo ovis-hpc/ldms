@@ -1,7 +1,9 @@
 lib_LTLIBRARIES =
 
 CORE = ../../core
-AM_CFLAGS = -I$(srcdir)/$(CORE)
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I@OVIS_LIB_INCDIR@
+AM_LDFLAGS = -L@OVIS_LIB_LIBDIR@
+
 # libstr_map
 libstr_map_la_SOURCES = str_map.c str_map.h fnv_hash.h
 lib_LTLIBRARIES += libstr_map.la

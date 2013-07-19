@@ -69,7 +69,7 @@
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_ugni.h"
-#include "coll/mmalloc.h"
+#include "mmalloc/mmalloc.h"
 
 /* Convenience macro for logging errors */
 #define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }

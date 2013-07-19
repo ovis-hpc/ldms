@@ -278,7 +278,7 @@ ods_t ods_open(const char *path, int o_flag, ...)
 	ods->obj = mmap(NULL, ods->obj_sz, PROT_READ | PROT_WRITE,
 			MAP_FILE | MAP_SHARED,
 			ods->obj_fd, 0);
-	if (!ods->obj) {
+	if (ods->obj == MAP_FAILED) {
 		PERROR();
 		goto err;
 	}
