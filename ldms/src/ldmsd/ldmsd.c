@@ -1300,8 +1300,6 @@ int process_store(int fd,
 			rc = sp_create_hset_ref_list(hs, sp, hs->hostname,
 							metrics);
 			if (rc) {
-				send_reply(fd, sa, sa_len, replybuf,
-						strlen(replybuf)+1);
 				pthread_mutex_unlock(&host_list_lock);
 				goto destroy_store_policy;
 			}
@@ -1322,8 +1320,6 @@ int process_store(int fd,
 				rc = sp_create_hset_ref_list(hs, sp, hostname,
 								metrics);
 				if (rc) {
-					send_reply(fd, sa, sa_len, replybuf,
-							strlen(replybuf)+1);
 					pthread_mutex_unlock(&host_list_lock);
 					goto destroy_store_policy;
 				}
@@ -1368,12 +1364,20 @@ int process_store(int fd,
 		struct ldmsd_store_metric_index *smi;
 		while (metric) {
 			smi = malloc(sizeof(*smi));
-			if (!smi)
+			if (!smi) {
+				sprintf(replybuf,
+					"%d Memory allocation failed.\n",
+					-ENOMEM);
 				goto destroy_store_policy;
+			}
+
 
 			smi->name = strdup(metric);
 			if (!smi->name) {
 				free(smi);
+				sprintf(replybuf,
+					"%d Memory allocation failed.\n",
+					-ENOMEM);
 				goto destroy_store_policy;
 			}
 			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
@@ -1385,6 +1389,7 @@ int process_store(int fd,
 	struct store_instance *si;
 	si = ldmsd_store_instance_get(store->store, sp);
 	if (!si) {
+		sprintf(replybuf, "%d Memory allocation failed.\n", -ENOMEM);
 		destroy_store_policy(sp);
 		goto enomem;
 	}
