@@ -192,6 +192,8 @@ struct store_instance {
 	struct ldmsd_store *store_engine; /**< The store plugin. */
 	ldmsd_store_handle_t store_handle; /**< The store handle from store->new
 					     	or store->get */
+	struct flush_thread *ft; /**< The pointer to the assigned
+				      flush_thread */
 	enum {
 		STORE_STATE_INIT=0,
 		STORE_STATE_OPEN,
@@ -201,7 +203,7 @@ struct store_instance {
 	size_t dirty_count;
 	pthread_mutex_t lock;
 	TAILQ_ENTRY(store_instance) lru_entry;
-	LIST_ENTRY(store_instance) work_entry;
+	LIST_ENTRY(store_instance) flush_entry;
 	io_work_fn work_fn;
 	int work_pending;
 };
@@ -233,7 +235,14 @@ struct ldmsd_store_policy {
 
 void ldms_log(const char *fmt, ...);
 
-int ldmsd_store_init(void);
+/**
+ * Initialize the ldmsd_store.
+ *
+ * \param __flush_N The number of flush threads.
+ * \returns 0 on success.
+ * \returns Error code on failure.
+ */
+int ldmsd_store_init(int __flush_N);
 int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
 		ldms_set_t set, struct ldms_mvec *mvec);
 

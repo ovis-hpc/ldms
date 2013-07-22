@@ -63,7 +63,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define DIRTY_THRESHOLD		(1024 * 1024 * 1)
+#define DIRTY_THRESHOLD		(16)
 
 static int records;
 static int flush_count;
@@ -78,40 +78,86 @@ TAILQ_HEAD(lru_list, store_instance) lru_list;
 pthread_mutex_t lru_list_lock;
 int open_count;
 
-pthread_t io_thread;
-pthread_mutex_t io_mutex;
-pthread_cond_t io_cv;
-LIST_HEAD(io_work_q, store_instance) io_work_q;
-static int io_work_q_depth;
 pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
-int queue_work(struct store_instance *si, io_work_fn fn)
+struct flush_thread {
+	pthread_t thread; /**< the thread */
+	pthread_cond_t cv; /**< conditional variable */
+	pthread_mutex_t mutex; /**< cv + thread mutex */
+	int store_count; /**< number of store assigned to this flush_thread */
+	int dirty_count; /**< dirty count */
+	pthread_mutex_t dmutex; /**< mutex for dirty count */
+	LIST_HEAD(store_list, store_instance) store_list; /**< List of stores */
+
+	struct timeval tvsum; /**< Time spent in flushing for this thread */
+};
+
+static int flush_N; /**< Number of flush threads. */
+struct flush_thread *flush_thread; /**< An array of ::flush_thread's */
+pthread_mutex_t flush_smutex = PTHREAD_MUTEX_INITIALIZER; /**< Mutex for
+							   flush_store_count. */
+
+void *flush_proc(void *arg);
+
+int flush_thread_init(struct flush_thread *ft)
 {
-	int wake_up = 0;
-	int queue = 1;
-	pthread_mutex_lock(&si->lock);
-	if (si->work_pending)
-		queue = 0;
-	else {
-		si->work_pending = 1;
-		si->work_fn = fn;
+	int rc = 0;
+	if ((rc = pthread_mutex_init(&ft->mutex, 0)))
+		goto err;
+	if ((rc = pthread_cond_init(&ft->cv, NULL)))
+		goto err;
+	if ((rc = pthread_mutex_init(&ft->dmutex, 0)))
+		goto err;
+	if ((rc = pthread_create(&ft->thread, NULL, flush_proc, ft)))
+		goto err;
+err:
+	return rc;
+}
+
+int ldmsd_store_init(int __flush_N)
+{
+	flush_N = __flush_N;
+	int i;
+	int rc = 0;
+	flush_thread = calloc(flush_N, sizeof(flush_thread[0]));
+	if (!flush_thread) {
+		rc = errno;
+		goto err0;
 	}
-	pthread_mutex_unlock(&si->lock);
 
-	if (!queue)
-		return io_work_q_depth;
+	for (i=0; i<flush_N; i++) {
+		if ((rc = flush_thread_init(&flush_thread[i])))
+			goto err1;
+	}
 
-	pthread_mutex_lock(&io_mutex);
-	io_work_q_depth++;
-	// if (LIST_EMPTY(&io_work_q))
-		wake_up = 1;
-	LIST_INSERT_HEAD(&io_work_q, si, work_entry);
-	if (io_work_q_depth > max_q_depth)
-		max_q_depth = io_work_q_depth;
-	if (wake_up)
-		pthread_cond_signal(&io_cv);
-	pthread_mutex_unlock(&io_mutex);
-	return io_work_q_depth;
+	if ((rc = pthread_mutex_init(&lru_list_lock, 0)))
+		goto err1;
+
+	TAILQ_INIT(&lru_list);
+
+	return 0;
+
+err1:
+	for (i=0; i<flush_N; i++) {
+		if (!flush_thread[i].thread)
+			pthread_cancel(flush_thread[i].thread);
+		pthread_mutex_destroy(&flush_thread[i].mutex);
+		pthread_mutex_destroy(&flush_thread[i].dmutex);
+		pthread_cond_destroy(&flush_thread[i].cv);
+	}
+	free(flush_thread);
+err0:
+	return rc;
+}
+
+int flush_check(struct flush_thread *ft)
+{
+	pthread_mutex_lock(&ft->dmutex);
+	if (ft->dirty_count > DIRTY_THRESHOLD) {
+		ft->dirty_count = 0;
+		pthread_cond_signal(&ft->cv);
+	}
+	pthread_mutex_unlock(&ft->dmutex);
 }
 
 void flush_store_instance(struct store_instance *si)
@@ -135,76 +181,100 @@ void ldmsd_close_store_instance(struct store_instance *si)
 
 static int io_exit;
 
-void *io_proc(void *arg)
+/**
+ * Procedure for a ::flush_thread.
+ *
+ * \param arg The pointer to ::flush_thread structure.
+ * \return always NULL.
+ */
+void *flush_proc(void *arg)
 {
+	struct flush_thread *ft = arg;
 	struct timeval tv0;
 	struct timeval tv1;
 	struct timeval tvres;
-	struct timeval tvsum = { 0, 0 };
 	struct store_instance *si;
+	pthread_mutex_lock(&ft->mutex);
 	do {
- 		pthread_mutex_lock(&io_mutex);
+		pthread_cond_wait(&ft->cv, &ft->mutex);
 		gettimeofday(&tv0, NULL);
-		while (!LIST_EMPTY(&io_work_q)) {
-			si = LIST_FIRST(&io_work_q);
-			LIST_REMOVE(si, work_entry);
-			io_work_q_depth--;
-			pthread_mutex_unlock(&io_mutex);
-
-			pthread_mutex_lock(&si->lock);
-			si->work_fn(si);
-			si->work_pending = 0;
-			pthread_mutex_unlock(&si->lock);
-
-			pthread_mutex_lock(&io_mutex);
+		LIST_FOREACH(si, &ft->store_list, flush_entry) {
+			flush_store_instance(si);
 		}
 		gettimeofday(&tv1, NULL);
 		timersub(&tv1, &tv0, &tvres);
-		timeradd(&tvsum, &tvres, &tvsum);
-		if (!io_exit)
-			pthread_cond_wait(&io_cv, &io_mutex);
-		pthread_mutex_unlock(&io_mutex);
-	} while (!io_exit || !LIST_EMPTY(&io_work_q));
-	printf("io_seconds %ld %ld\n", tvsum.tv_sec, tvsum.tv_usec);
+		timeradd(&ft->tvsum, &tvres, &ft->tvsum);
+	} while (!io_exit);
 	return NULL;
 }
 
-#if 0
-/* Need to check why no one calls this function. */
-int mds_term()
+/**
+ * Print ::flush_thread information to the log.
+ */
+void process_info_flush_thread(void)
 {
-	struct store_instance *si;
-
-	pthread_mutex_lock(&lru_list_lock);
-	while (!TAILQ_EMPTY(&lru_list)) {
-		si = TAILQ_FIRST(&lru_list);
-		TAILQ_REMOVE(&lru_list, si, lru_entry);
-		pthread_mutex_unlock(&lru_list_lock);
-		ldmsd_store_close(si->store_engine, si->store_handle);
-		pthread_mutex_lock(&lru_list_lock);
+	int i;
+	ldms_log("Flush Thread Info:\n");
+	ldms_log("%-16s %-16s %-16s\n", "----------------", "----------------",
+					"----------------");
+	ldms_log("%-16s %-16s %-16s\n", "Thread", "Store Count",
+					"Flush Time (sec.)");
+	ldms_log("%-16s %-16s %-16s\n", "----------------", "----------------",
+					"----------------");
+	for (i = 0; i < flush_N; i++) {
+		ldms_log("%-16p %-16d % 10d.%06d\n", flush_thread[i].thread,
+				flush_thread[i].store_count,
+				flush_thread[i].tvsum.tv_sec,
+				flush_thread[i].tvsum.tv_usec);
 	}
-	io_exit = 1;
-	if (LIST_EMPTY(&io_work_q))
-		pthread_cond_signal(&io_cv);
-
-	pthread_mutex_unlock(&io_mutex);
-	pthread_join(io_thread, NULL);
-	return 0;
 }
-#endif
 
-int ldmsd_store_init()
+int assign_flush_thread(struct store_instance *si)
 {
-	if (pthread_mutex_init(&io_mutex, 0))
-		return 1;
-	if (pthread_cond_init(&io_cv, NULL))
-		return 1;
-	if (pthread_create(&io_thread, NULL, io_proc, NULL))
-		return 1;
-	if (pthread_mutex_init(&lru_list_lock, 0))
-		return 1;
-	TAILQ_INIT(&lru_list);
-
+	int i;
+	int fidx;
+	int min;
+	int rc = 0;
+	rc = pthread_mutex_lock(&flush_smutex);
+	if (rc) {
+		ldms_log("assign_flush_thread::"
+				"pthread_mutex_lock(&flush_smutex)"
+				" error %d: %s\n", rc, strerror(rc));
+		return rc;
+	}
+	fidx = 0;
+	min = flush_thread[0].store_count;
+	for (i = 1; i < flush_N; i++) {
+		if (flush_thread[i].store_count < min) {
+			min = flush_thread[i].store_count;
+			fidx = i;
+		}
+	}
+	flush_thread[fidx].store_count++;
+	struct flush_thread *ft = &flush_thread[fidx];
+	si->ft = ft;
+	rc = pthread_mutex_lock(&ft->mutex);
+	if (rc) {
+		ldms_log("assign_flush_thread::"
+				"pthread_mutex_lock(&ft->mutex)"
+				" error %d: %s\n", rc, strerror(rc));
+		return rc;
+	}
+	LIST_INSERT_HEAD(&ft->store_list, si, flush_entry);
+	rc = pthread_mutex_unlock(&ft->mutex);
+	if (rc) {
+		ldms_log("assign_flush_thread::"
+				"pthread_mutex_unlock(&ft->mutex)"
+				" error %d: %s\n", rc, strerror(rc));
+		return rc;
+	}
+	rc = pthread_mutex_unlock(&flush_smutex);
+	if (rc) {
+		ldms_log("assign_flush_thread::"
+				"pthread_mutex_lock(&flush_smutex)"
+				" error %d: %s\n", rc, strerror(rc));
+		return rc;
+	}
 	return 0;
 }
 
@@ -218,59 +288,53 @@ int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
 	int flush = 0;
 	records++;
 	double bytespersec = 0.0;
-	if (!(records % 1000000)) {
-		gettimeofday(&tv1, NULL);
-		if (tv0.tv_sec != 0) {
-			double dur;
-			timersub(&tv1, &tv0, &tvres);
-			dur = (double)tvres.tv_sec +
-				((double)tvres.tv_usec / 1000000.0);
-			bytespersec = (1000000.0 * 128.0) / dur;
-		}
-		gettimeofday(&tv0, NULL);
-		printf("records %d flush %d open %d Mbytes/sec %g\n",
-		       records, flush_count, open_count, bytespersec / 1000000.0);
-	}
+	int i;
+
 	pthread_mutex_lock(&si->lock);
 	switch (si->state) {
-	case STORE_STATE_OPEN:
-		/* XXX Fix this */
-		si->dirty_count += mvec->count * sizeof(uint64_t);
-		rc = si->store_engine->store(si->store_handle, set, mvec);
-		break;
-
 	case STORE_STATE_INIT:
 		errno = EINVAL;
 		rc = -1;
 		break;
 
 	case STORE_STATE_CLOSED:
-		/* XXX Fix this */
-		/* Waiting for 'new' and 'get' interface. */
 		si->store_handle = ldmsd_store_new(si->store_engine,
 					  lsp->comp_type, lsp->container,
 					  &lsp->metric_list, si);
-		if (si->store_handle) {
-			si->state = STORE_STATE_OPEN;
-			rc = si->store_engine->store(si->store_handle,
-							set, mvec);
-		} else {
+		if (!si->store_handle) {
 			si->state = STORE_STATE_ERROR;
 			errno = EIO;
 			rc = -1;
+			break;
 		}
+
+		si->state = STORE_STATE_OPEN;
+
+		rc = assign_flush_thread(si);
+		if (rc)
+			break;
+		/* If no error, treat it as STORE_STATE_OPEN case */
+		/* Intentionally NO break here */
+	case STORE_STATE_OPEN:
+		rc = si->store_engine->store(si->store_handle, set, mvec);
+		/* If error, don't do dirty counting and flush checking */
+		if (rc)
+			break;
+		pthread_mutex_lock(&si->ft->dmutex);
+		si->ft->dirty_count += mvec->count;
+		pthread_mutex_unlock(&si->ft->dmutex);
+		flush_check(si->ft);
 		break;
 
 	case STORE_STATE_ERROR:
 		errno = EIO;
 		rc = -1;
 		break;
+
 	default:
 		errno = EINVAL;
 		rc = -1;
 	}
-	if (si->dirty_count >= DIRTY_THRESHOLD)
-		flush = 1;
 	pthread_mutex_unlock(&si->lock);
 	if (!rc) {
 		pthread_mutex_lock(&lru_list_lock);
@@ -278,9 +342,6 @@ int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
 		TAILQ_REMOVE(&lru_list, si, lru_entry);
 		TAILQ_INSERT_TAIL(&lru_list, si, lru_entry);
 		pthread_mutex_unlock(&lru_list_lock);
-
-		if (flush)
-			queue_work(si, flush_store_instance);
 	}
 	return rc;
 }
@@ -325,8 +386,14 @@ retry:
 	s_inst->store_handle = ldmsd_store_new(store, sp->comp_type,
 					sp->container, &sp->metric_list,
 					s_inst);
-	if (s_inst->store_handle)
+	if (s_inst->store_handle) {
 		s_inst->state = STORE_STATE_OPEN;
+		int rc = assign_flush_thread(s_inst);
+		if (rc) {
+			ldmsd_store_close(store, s_inst->store_handle);
+			goto fail;
+		}
+	}
 	else {
 		ldms_log("Could not create new store_handle. "
 			 "Closing LRU and retrying.\n");
@@ -341,7 +408,7 @@ retry:
 			goto fail;
 	}
 	pthread_mutex_lock(&lru_list_lock);
-	open_count +=1;
+	open_count += 1;
 	TAILQ_INSERT_TAIL(&lru_list, s_inst, lru_entry);
 	pthread_mutex_unlock(&lru_list_lock);
 out:

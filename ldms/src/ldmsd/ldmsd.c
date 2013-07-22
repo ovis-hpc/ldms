@@ -106,13 +106,14 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:vFkNC:"
+#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:vFkNC:f:"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
  */
 int instance_number = 1;
 
+char flush_N = 2; /**< The number of flush threads */
 char myhostname[80];
 char ldmstype[20];
 int foreground;
@@ -212,6 +213,7 @@ void usage(char *argv[])
 	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
                "                     The given size must be less than 1 petabytes.\n"
                "                     For example, 20M or 20mb are 20 megabytes.\n");
+	printf("    -f count       The number of flush threads.\n");
 	cleanup(1);
 }
 
@@ -458,7 +460,11 @@ void destroy_plugin(struct plugin *p)
 	free(p);
 }
 
-/*
+/* NOTE: The implementation of this function is in ldmsd_store.c as all of the
+ * flush_thread information are in ldmsd_store.c. */
+extern void process_info_flush_thread(void);
+
+/**
  * Return information about the state of the daemon
  */
 int process_info(int fd,
@@ -467,12 +473,21 @@ int process_info(int fd,
 {
 	int i;
 	struct hostspec *hs;
+	ldms_log("Event Thread Info:\n");
+	ldms_log("%-16s %s\n", "----------------", "------------");
 	ldms_log("%-16s %s\n", "Thread", "Task Count");
 	ldms_log("%-16s %s\n", "----------------", "------------");
 	for (i = 0; i < ev_thread_count; i++) {
 		ldms_log("%-16p %d\n",
 			 (void *)ev_thread[i], ev_count[i]);
 	}
+	/* For flush_thread information */
+	process_info_flush_thread();
+
+	ldms_log("Host List Info:\n");
+	ldms_log("%-12s %-12s %-12s %-12s %-12s %-12s\n",
+		 "------------", "------------", "------------", "------------",
+		 "------------", "------------", "------------");
 	ldms_log("%-12s %-12s %-12s %-12s %-12s %-12s\n",
 		 "Hostname", "Transport", "Set", "Metric",
 		 "Store", "CompType", "CompId");
@@ -3043,6 +3058,9 @@ int main(int argc, char *argv[])
 				usage(argv);
 			}
 			break;
+		case 'f':
+			flush_N = atoi(optarg);
+			break;
 		default:
 			usage(argv);
 		}
@@ -3167,7 +3185,7 @@ int main(int argc, char *argv[])
 	if (setup_control(sockname))
 		cleanup(4);
 
-	if (ldmsd_store_init()) {
+	if (ldmsd_store_init(flush_N)) {
 		ldms_log("Could not initialize the storage subsystem.\n");
 		cleanup(7);
 	}

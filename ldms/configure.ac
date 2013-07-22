@@ -56,6 +56,8 @@ OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD])
 OPTION_WITH([gpcd], [GPCD])
 
 OPTION_WITH([sos], [SOS])
+
+OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 OPTION_WITH([ovis-lib], [OVIS_LIB])
 
 dnl This got defined here for LIBEVENT_ENABLE
