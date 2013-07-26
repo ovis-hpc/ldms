@@ -55,24 +55,21 @@ AC_ARG_WITH(
 	),
 	[	dnl $withval is given.
 		WITH_MYSQL=$withval
-		MYSQL_LIBDIR=$WITH_MYSQL/lib
-		MYSQL_INCDIR=$WITH_MYSQL/include
+		mysql_config=$WITH_MYSQL/bin/mysql_config
 	],
 	[	dnl $withval is not given.
 		mysql_config=`which mysql_config`
-		if test $mysql_config
-		then
-			MYSQL_LIBDIR=`mysql_config --libs |
-				sed 's/ /\n/g' | grep -- '-L' | sed 's/-L//'`
-			MYSQL_INCDIR=`mysql_config --cflags |
-				sed 's/ /\n/g' | grep -- '-I' | sed 's/-I//'`
-		else
-			AC_MSG_ERROR([Cannot find mysql, please specify
-					--with-mysql option.])
-		fi
 	]
 )
 
-AC_SUBST([MYSQL_LIBDIR])
-AC_SUBST([MYSQL_INCDIR])
+if test $mysql_config
+then
+	MYSQL_LIBS=`$mysql_config --libs`
+	MYSQL_INCLUDE=`$mysql_config --include`
+else
+	AC_MSG_ERROR([Cannot find mysql_config, please specify
+			--with-mysql option.])
+fi
+AC_SUBST([MYSQL_LIBS])
+AC_SUBST([MYSQL_INCLUDE])
 ])

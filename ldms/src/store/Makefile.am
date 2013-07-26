@@ -20,19 +20,19 @@ endif
 
 if ENABLE_MYSQL
 libstore_mysql_la_SOURCES = store_mysql.c
-libstore_mysql_la_CFLAGS = $(AM_CFLAGS) -I$(MYSQL_INCDIR) -I$(OVIS_LIB_INCDIR)
-libstore_mysql_la_LIBADD = $(STORE_LIBADD) -lmysqlclient -L$(MYSQL_LIBDIR) \
+libstore_mysql_la_CFLAGS = $(AM_CFLAGS) @MYSQL_INCLUDE@ -I$(OVIS_LIB_INCDIR)
+libstore_mysql_la_LIBADD = $(STORE_LIBADD) -lmysqlclient @MYSQL_LIBS@ \
 			   -L$(OVIS_LIB_LIBDIR)
 lib_LTLIBRARIES += libstore_mysql.la
 endif
 
 if ENABLE_MYSQLBULK
 libstore_mysqlbulk_la_SOURCES = store_mysqlbulk.c
-libstore_mysqlbulk_la_CFLAGS = $(AM_CFLAGS) -I$(MYSQL_INCDIR) \
+libstore_mysqlbulk_la_CFLAGS = $(AM_CFLAGS) @MYSQL_INCLUDE@ \
 			       -I$(OVIS_LIB_INCDIR)
 libstore_mysqlbulk_la_LIBADD = $(STORE_LIBADD) -lmysqlclient \
 			       -L$(OVIS_LIB_LIBDIR) \
-			       -L$(MYSQL_LIBDIR)
+			       @MYSQL_LIBS@
 lib_LTLIBRARIES += libstore_mysqlbulk.la
 endif
 
