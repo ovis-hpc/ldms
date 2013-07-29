@@ -241,7 +241,7 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=meminfo component_id=<comp_id> set=<setname> osts=<OST1>,...
+ * config name=lustre_oss component_id=<comp_id> set=<setname> osts=<OST1>,...
  *     comp_id     The component id value.
  *     setname     The set name.
  *     osts        The comma-separated list of the OSTs to sample from.
@@ -268,7 +268,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 static const char *usage(void)
 {
 	return
-"config name=meminfo component_id=<comp_id> set=<setname>\n"
+"config name=lustre_oss component_id=<comp_id> set=<setname>\n"
 "	component_id	The component id value.\n"
 "	set		The set name.\n"
 "	osts		The list of OSTs.\n"
@@ -300,7 +300,7 @@ static int sample(void)
 	return 0;
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
+static struct ldmsd_sampler lustre_oss_plugin = {
 	.base = {
 		.name = "lustre_oss",
 		.term = term,
@@ -322,7 +322,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	}
 	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
 
-	return &meminfo_plugin.base;
+	return &lustre_oss_plugin.base;
 err_nomem:
 	errno = ENOMEM;
 	return NULL;

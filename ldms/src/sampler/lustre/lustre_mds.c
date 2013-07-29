@@ -289,10 +289,10 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=meminfo component_id=<comp_id> set=<setname> mdts=<MDT1>,...
- *     comp_id     The component id value.
- *     setname     The set name.
- *     mdts        The comma-separated list of the MDTs to sample from.
+ * config name=lustre_mds component_id=<comp_id> set=<setname> mdts=<MDT1>,...
+ *     component_id   The component id value.
+ *     set            The set name.
+ *     mdts           The comma-separated list of the MDTs to sample from.
  * </code>
  * If mdts is not given, the plugin will create ldms_set according to the
  * available MDTs at the time.
@@ -316,7 +316,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 static const char *usage(void)
 {
 	return
-"config name=meminfo component_id=<comp_id> set=<setname>\n"
+"config name=lustre_mds component_id=<comp_id> set=<setname>\n"
 "	component_id	The component id value.\n"
 "	set		The set name.\n"
 "	mdts		The list of MDTs.\n"
@@ -349,7 +349,7 @@ static int sample(void)
 	return 0;
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
+static struct ldmsd_sampler lustre_mds_plugin = {
 	.base = {
 		.name = "lustre_mds",
 		.term = term,
@@ -377,7 +377,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	}
 	str_map_id_init(md_stats_key_id, md_stats_key, MD_STATS_KEY_LEN, 1);
 
-	return &meminfo_plugin.base;
+	return &lustre_mds_plugin.base;
 err_nomem:
 	errno = ENOMEM;
 	return NULL;
