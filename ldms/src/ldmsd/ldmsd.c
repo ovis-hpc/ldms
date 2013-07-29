@@ -106,7 +106,7 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:vFkNC:f:"
+#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:vFkNC:f:D:"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -133,6 +133,11 @@ ldms_t ldms;
 FILE *log_fp;
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
+
+/* dirty_threshold defined in ldmsd_store.c */
+extern int dirty_threshold;
+extern size_t calculate_total_dirty_threshold(size_t mem_total,
+					      size_t dirty_ratio);
 
 /* YAML configuration needs these variables to be global */
 int do_kernel = 0;
@@ -214,6 +219,7 @@ void usage(char *argv[])
                "                     The given size must be less than 1 petabytes.\n"
                "                     For example, 20M or 20mb are 20 megabytes.\n");
 	printf("    -f count       The number of flush threads.\n");
+	printf("    -D num         The dirty threshold.\n");
 	cleanup(1);
 }
 
@@ -3061,10 +3067,22 @@ int main(int argc, char *argv[])
 		case 'f':
 			flush_N = atoi(optarg);
 			break;
+		case 'D':
+			dirty_threshold = atoi(optarg);
+			break;
 		default:
 			usage(argv);
 		}
 	}
+
+	if (!dirty_threshold)
+		/* default total dirty threshold is calculated based on popular
+		 * 4 GB RAM setting with Linux's default 10% dirty_ratio */
+		dirty_threshold = calculate_total_dirty_threshold(1ULL<<32, 10);
+
+	/* Make dirty_threshold to be per thread */
+	dirty_threshold /= flush_N;
+
 #ifdef ENABLE_YAML
 	yaml_document_t *yaml_document = NULL;
 	if (cfg_file) {

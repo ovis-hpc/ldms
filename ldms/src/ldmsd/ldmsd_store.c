@@ -63,7 +63,26 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define DIRTY_THRESHOLD		(16)
+#define BYTES_PER_RECORD 64
+
+/**
+ * Calculation of dirty threshold.
+ * \param mem_total The total memory size (in bytes).
+ * \param dirty_ratio The threshold of dirty page ratio before flushing (as in
+ * 	/proc/sys/vm/dirty_ratio)
+ * \return Dirty threshold based on given \c mem_total.
+ */
+size_t calculate_total_dirty_threshold(size_t mem_total, size_t dirty_ratio)
+{
+	return mem_total * dirty_ratio / 100 / BYTES_PER_RECORD;
+}
+
+/**
+ * \brief Dirty Threshold (per flush thread).
+ *
+ * The value of dirty_threshold is set in ldmsd.c
+ */
+size_t dirty_threshold = 0;
 
 static int records;
 static int flush_count;
@@ -153,7 +172,7 @@ err0:
 int flush_check(struct flush_thread *ft)
 {
 	pthread_mutex_lock(&ft->dmutex);
-	if (ft->dirty_count > DIRTY_THRESHOLD) {
+	if (ft->dirty_count > dirty_threshold) {
 		ft->dirty_count = 0;
 		pthread_cond_signal(&ft->cv);
 	}
