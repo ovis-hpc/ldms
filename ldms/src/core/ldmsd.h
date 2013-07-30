@@ -85,6 +85,8 @@ struct hostset
 	pthread_mutex_t refcount_lock;
 	LIST_ENTRY(hostset) entry;
 	struct ldms_mvec *mvec; /**< Metric vector */
+	uint64_t curr_busy_count; /**< The count of current busy access */
+	uint64_t total_busy_count; /**< The count of total busy access */
 };
 
 struct hostset_ref {

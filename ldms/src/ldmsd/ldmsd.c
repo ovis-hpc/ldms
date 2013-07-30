@@ -139,6 +139,14 @@ extern int dirty_threshold;
 extern size_t calculate_total_dirty_threshold(size_t mem_total,
 					      size_t dirty_ratio);
 
+/**
+ * Some statistics for ldmsd.
+ */
+struct ldmsd_stat {
+	size_t curr_busy_count; /* current busy count */
+	size_t total_busy_count; /* total busy count */
+} ldmsd_stat;
+
 /* YAML configuration needs these variables to be global */
 int do_kernel = 0;
 char *setfile = NULL;
@@ -479,6 +487,12 @@ int process_info(int fd,
 {
 	int i;
 	struct hostspec *hs;
+	int verbose = 0;
+	char *vb = av_value(av_list, "verbose");
+	if (vb && (strcasecmp(vb, "true") == 0 ||
+			strcasecmp(vb, "t") == 0))
+		verbose = 1;
+
 	ldms_log("Event Thread Info:\n");
 	ldms_log("%-16s %s\n", "----------------", "------------");
 	ldms_log("%-16s %s\n", "Thread", "Task Count");
@@ -491,29 +505,42 @@ int process_info(int fd,
 	process_info_flush_thread();
 
 	ldms_log("Host List Info:\n");
-	ldms_log("%-12s %-12s %-12s %-12s %-12s %-12s\n",
-		 "------------", "------------", "------------", "------------",
-		 "------------", "------------", "------------");
-	ldms_log("%-12s %-12s %-12s %-12s %-12s %-12s\n",
-		 "Hostname", "Transport", "Set", "Metric",
-		 "Store", "CompType", "CompId");
-	ldms_log("%-12s %-12s %-12s %-12s %-12s %-12s\n",
-		 "------------", "------------", "------------", "------------",
-		 "------------", "------------", "------------");
+	ldms_log("%-12s %-12s %-12s %-12s\n",
+		 "------------", "------------", "------------",
+		 "------------");
+	ldms_log("%-12s %-12s %-12s %-12s\n",
+			"Hostname", "Transport", "Set", "Stat");
+	ldms_log("%-12s %-12s %-12s %-12s\n",
+		 "------------", "------------", "------------",
+		 "------------");
 	char *metric_name;
 	char *container;
 	pthread_mutex_lock(&host_list_lock);
+	uint64_t total_curr_busy = 0;
+	uint64_t grand_total_busy = 0;
 	LIST_FOREACH(hs, &host_list, link) {
 		struct hostset *hset;
 		ldms_log("%-12s %-12s\n", hs->hostname, hs->xprt_name);
 		LIST_FOREACH(hset, &hs->set_list, entry) {
 			ldms_log("%-12s %-12s %-12s\n",
 				 "", "", hset->name);
-/*
- * TODO: finish this
- */
+			if (verbose) {
+				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
+						"", "", "", "curr_busy_count",
+						hset->curr_busy_count);
+				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
+						"", "", "", "total_busy_count",
+						hset->total_busy_count);
+			}
+			total_curr_busy += hset->curr_busy_count;
+			grand_total_busy += hset->total_busy_count;
 		}
 	}
+	ldms_log("%-12s %-12s %-12s %-12s\n",
+		 "------------", "------------", "------------",
+		 "------------");
+	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
+	ldms_log("Grand Total Busy Count: %Lu\n", grand_total_busy);
 	pthread_mutex_unlock(&host_list_lock);
 	sprintf(replybuf, "0");
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
@@ -1648,7 +1675,6 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 	pthread_mutex_lock(&hset->state_lock);
 	hset->state = LDMSD_SET_READY;
 	pthread_mutex_unlock(&hset->state_lock);
-	ldms_log("The set '%s' is ready.\n", hset->name);
 	hset_ref_put(hset);
 }
 
@@ -2003,6 +2029,10 @@ void update_data(struct hostspec *hs)
 			break;
 		case LDMSD_SET_READY:
 			hset->state = LDMSD_SET_BUSY;
+			if (hset->curr_busy_count) {
+				hset->total_busy_count += hset->curr_busy_count;
+				hset->curr_busy_count = 0;
+			}
 			pthread_mutex_unlock(&hset->state_lock);
 			/* Get reference for update */
 			hset_ref_get(hset);
@@ -2021,9 +2051,8 @@ void update_data(struct hostspec *hs)
 			/* do nothing */
 			break;
 		case LDMSD_SET_BUSY:
+			hset->curr_busy_count++;
 			pthread_mutex_unlock(&hset->state_lock);
-			ldms_log("Warning: set '%s'is busy: Stores are probably "
-					"backing up.\n", hset->name);
 			break;
 		default:
 			ldms_log("Invalid hostset state '%d'\n", hset->state);
