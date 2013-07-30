@@ -106,7 +106,7 @@
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:vFkNC:f:D:"
+#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -162,9 +162,11 @@ LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int passive = 0;
-int quiet = 1;
+int quiet = 0; /* by default ldmsd should not be quiet */
 void ldms_log(const char *fmt, ...)
 {
+	if (quiet) /* Don't say a word when quiet */
+		return;
 	va_list ap;
 	time_t t;
 	struct tm *tm;
@@ -2385,7 +2387,7 @@ typedef enum {
 	LDMS_TRANSPORT,
 	LDMS_SOCKNAME,
 	LDMS_LOGFILE,
-	LDMS_VERBOSE,
+	LDMS_QUIET,
 	LDMS_FOREGROUND,
 	LDMS_CONFIG,
 	LDMS_INSTANCE,
@@ -2592,12 +2594,12 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_LOGFILE])
 			logfile = strdup(value_str);
-	} else if (strcmp(key_str, "verbose")==0) {
+	} else if (strcmp(key_str, "quiet")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
-		if (!has_arg[LDMS_VERBOSE])
+		if (!has_arg[LDMS_QUIET])
 			if (strcasecmp("true", value_str) == 0 ||
 					atoi(value_str))
-				quiet = 0;
+				quiet = 1;
 	} else if (strcmp(key_str, "foreground")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_FOREGROUND])
@@ -3049,9 +3051,9 @@ int main(int argc, char *argv[])
 			setfile = strdup(optarg);
 			has_arg[LDMS_KERNEL_METRIC_SET] = 1;
 			break;
-		case 'v':
-			quiet = 0;
-			has_arg[LDMS_VERBOSE] = 1;
+		case 'q':
+			quiet = 1;
+			has_arg[LDMS_QUIET] = 1;
 			break;
 		case 'C':
 		#ifdef ENABLE_YAML
