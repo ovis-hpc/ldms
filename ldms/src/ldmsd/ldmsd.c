@@ -217,7 +217,7 @@ void usage(char *argv[])
 	       "                   is optionally specified following a ':', e.g. rdma:50000.\n");
 	printf("    -l log_file    The path to the log file for status messages.\n"
 	       "                   [" LDMSD_LOGFILE "]\n");
-	printf("    -v             Verbose mode, i.e. print requests as they are processed.\n"
+	printf("    -q             Quiet mode. All the logging messages will be suppressed.\n"
 	       "                   [false].\n");
 	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
 	printf("    -t count       Number of test sets to create.\n");
