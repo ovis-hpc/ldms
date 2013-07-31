@@ -305,6 +305,8 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 {
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	struct sockaddr_storage ss;
+	int cq_depth;
+	char *cq_depth_s;
 	int rc;
 	gni_return_t grc;
 
@@ -321,8 +323,17 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	_setup_connection(gxp, (struct sockaddr *)&ss, sa_len);
 
 	if (!gxp->dom.src_cq) {
+		cq_depth_s = getenv("LDMS_UGNI_CQ_DEPTH");
+		if (!cq_depth_s) {
+			cq_depth = UGNI_CQ_DEPTH;
+		} else {
+			cq_depth = atoi(cq_depth_s);
+			if (cq_depth == 0)
+				cq_depth = UGNI_CQ_DEPTH;
+		}
+
 		pthread_mutex_lock(&ugni_lock);
-		grc = GNI_CqCreate(gxp->dom.nic, UGNI_CQ_DEPTH, 0,
+		grc = GNI_CqCreate(gxp->dom.nic, cq_depth, 0,
 				   GNI_CQ_BLOCKING, NULL, NULL, &ugni_gxp.dom.src_cq);
 		pthread_mutex_unlock(&ugni_lock);
 		if (grc != GNI_RC_SUCCESS) {
