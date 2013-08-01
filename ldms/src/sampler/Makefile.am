@@ -86,6 +86,12 @@ libvmstat_la_LIBADD = $(COMMON_LIBADD)
 lib_LTLIBRARIES += libvmstat.la
 endif
 
+if ENABLE_ATASMART
+libsampler_atasmart_la_SOURCES = sampler_atasmart.c
+libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
+lib_LTLIBRARIES += libsampler_atasmart.la
+endif
+
 if ENABLE_GPCD
 if ENABLE_GEM_LINK_PERF
 libgem_link_perf_la_SOURCES = gem_link_perf.c

@@ -47,6 +47,7 @@ OPTION_DEFAULT_ENABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([gem_link_perf], [ENABLE_GEM_LINK_PERF])
+OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
@@ -153,6 +154,13 @@ AC_CHECK_LIB( sos, sos_open,
 dnl Reset LIBS variable.
 LIBS=""
 fi
+
+if test -z "$ENABLE_ATASMART_TRUE"
+then
+AC_CHECK_LIB(atasmart, sk_disk_smart_read_data, [],
+	AC_MSG_ERROR([libatasmart not found. sampler_atasmart requires libatasmart and libatasmart-devel.]))
+fi
+
 
 if test -z "$ENABLE_YAML_TRUE"
 then
