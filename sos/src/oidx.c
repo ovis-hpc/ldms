@@ -842,6 +842,8 @@ uint64_t oidx_iter_next_list(oidx_iter_t iter)
 
 	icl = iter->cur_layer; /* always synchronized with iter->cur_layer
        				* --> no need to re-initialize */
+	if (icl < 0)
+		goto obj_not_found;
 
 layer_work:
 	l = iter->layer[icl];
@@ -892,6 +894,8 @@ uint64_t oidx_iter_prev_list(oidx_iter_t iter)
 
 	icl = iter->cur_layer; /* always synchronized with iter->cur_layer
        				* --> no need to re-initialize */
+	if (icl < 0)
+		goto obj_not_found;
 
 layer_work:
 	l = iter->layer[icl];
