@@ -85,20 +85,28 @@ AC_C_CONST
 dnl Check for libevent
 AC_CHECK_LIB(event, event_base_new, [],
     AC_MSG_ERROR([event_base_new() not found. ldms requires libevent.]))
+dnl Reset LIBS variable.
+LIBS=""
 
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  ldms requires libpthread.]))
+dnl Reset LIBS variable.
+LIBS=""
 
 dnl Check for libreadline
 AC_CHECK_LIB(readline, readline, [],
     AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]))
+dnl Reset LIBS variable.
+LIBS=""
 
 dnl Checks for libraries
 if test -z "$ENABLE_RDMA_TRUE"
 then
 AC_CHECK_LIB(ibverbs, ibv_get_device_list, [],
     AC_MSG_ERROR([ibv_get_device_list() not found.  ldms-utils requires libibverbs.]))
+dnl Reset LIBS variable.
+LIBS=""
 
 dnl Checks for header files.
 AC_CHECK_HEADER(infiniband/driver.h, [],
@@ -142,12 +150,16 @@ AC_CHECK_LIB( sos, sos_open,
 	],
 	-lpthread -lods -loidx -lidx -L$SOS_LIBDIR
 )
+dnl Reset LIBS variable.
+LIBS=""
 fi
 
 if test -z "$ENABLE_YAML_TRUE"
 then
 AC_CHECK_LIB(yaml, yaml_parser_load, [],
 	AC_MSG_ERROR([libyaml not found. please add --disable-yaml to disable yaml support.]))
+dnl Reset LIBS variable.
+LIBS=""
 fi
 
 dnl Check for mmalloc
@@ -155,12 +167,13 @@ AC_CHECK_LIB(mmalloc, mm_init, [],
 	     AC_MSG_ERROR([mmalloc library not found. ldms requires mmalloc.
 			   Please install mmalloc from OVIS/lib. ]),
 	     -L$OVIS_LIB_LIBDIR -L$SOS_LIBDIR )
+dnl Reset LIBS variable.
+LIBS=""
 
 AC_CHECK_LIB(coll, idx_create, [],
 	     AC_MSG_ERROR([libcoll not found. Please install libcoll from
 			   OVIS/lib.]),
 	     -L$OVIS_LIB_LIBDIR -L$SOS_LIBDIR )
-
 dnl Reset LIBS variable.
 LIBS=""
 
