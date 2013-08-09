@@ -315,9 +315,11 @@ uint64_t oidx_find_approx_sup(oidx_t t, oidx_key_t key,
 		tmp_k = (*pkey);
 		do {
 			tmp_k++;
+			if (tmp_k > 255)
+				break;
 			tmp_pl = ods_obj_offset_to_ptr(t->ods,
 					pl->entries[tmp_k].next);
-		} while (!tmp_pl && tmp_k < 256);
+		} while (!tmp_pl);
 
 		if (tmp_pl) {
 			pl = tmp_pl;
@@ -411,9 +413,11 @@ uint64_t oidx_find_approx_inf(oidx_t t, oidx_key_t key,
 		tmp_k = (*pkey);
 		do {
 			tmp_k--;
+			if (tmp_k < 0)
+				break;
 			tmp_pl = ods_obj_offset_to_ptr(t->ods,
 						pl->entries[tmp_k].next);
-		} while (!tmp_pl && tmp_k > 0);
+		} while (!tmp_pl);
 		if (tmp_pl) {
 			pl = tmp_pl;
 			*pokey = tmp_k;
