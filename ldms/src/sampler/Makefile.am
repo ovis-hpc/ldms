@@ -93,12 +93,12 @@ lib_LTLIBRARIES += libsampler_atasmart.la
 endif
 
 if ENABLE_RCA
-if ENABLE_KCRA
+if ENABLE_KRCA
 if ENABLE_GPCD
 if ENABLE_GEM_LINK_PERF
 libgem_link_perf_la_SOURCES = gem_link_perf.c
 libgem_link_perf_la_CFLAGS = $(AM_CFLAGS) -I@GPCD_INCDIR@ -I@RCA_INCDIR@ \
-			     -I@KCRA_INCDIR@
+			     -I@KRCA_INCDIR@
 libgem_link_perf_la_LDFLAGS = $(AM_LDFLAGS) -L@GPCD_LIB64DIR@ -L@RCA_LIB64DIR@ \
 			      -L@GPCD_LIBDIR@ -L@RCA_LIBDIR@ \
 			      -lgpcd -lrca
