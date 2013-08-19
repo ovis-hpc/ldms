@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = .
+SUBDIRS =
 lib_LTLIBRARIES =
 CORE = ../core
 
@@ -86,26 +86,60 @@ libvmstat_la_LIBADD = $(COMMON_LIBADD)
 lib_LTLIBRARIES += libvmstat.la
 endif
 
+if ENABLE_NCSA_UNIFIED
+if ENABLE_RCA
+if ENABLE_KRCA
+if ENABLE_GPCD
+if ENABLE_CRAY_HSS_DEVEL
+if ENABLE_LUSTRE
+# NCSA_UNIFIED requires LUSTRE AND GPCD-related
+
+CRAY_CFLAGS_ = $(AM_CFLAGS) -I@GPCD_INCDIR@ -I@RCA_INCDIR@ \
+			     -I@KRCA_INCDIR@ -I@CRAY_HSS_DEVEL_INCDIR@ \
+                             -I@CRAY_HSS_DEVEL_INCDIR@/rsms
+
+CRAY_LDFLAGS_ = $(AM_LDFLAGS) -L@GPCD_LIB64DIR@ -L@RCA_LIB64DIR@ \
+			      -L@GPCD_LIBDIR@ -L@RCA_LIBDIR@ \
+			      -lgpcd -lrca
+
+libgem_link_perf_util_la_SOURCES = gem_link_perf_util.c gem_link_perf_util.h
+libgem_link_perf_util_la_CFLAGS = $(CRAY_CFLAGS_)
+libgem_link_perf_util_la_LDFLAGS = $(CRAY_LDFLAGS_)
+lib_LTLIBRARIES += libgem_link_perf_util.la
+
+
+libncsa_unified_la_SOURCES = ncsa_unified.c 
+libncsa_unified_la_CFLAGS = $(CRAY_CFLAGS_) 
+libncsa_unified_la_LDFLAGS = $(CRAY_LDFLAGS_) 
+libncsa_unified_la_LIBADD = $(COMMON_LIBADD) \
+			    ./lustre/libstr_map.la \
+			    ./lustre/liblustre_sampler.la \
+			    ./libgem_link_perf_util.la
+lib_LTLIBRARIES += libncsa_unified.la
+endif
+endif
+endif
+endif
+endif
+endif
+
 if ENABLE_ATASMART
 libsampler_atasmart_la_SOURCES = sampler_atasmart.c
 libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
 lib_LTLIBRARIES += libsampler_atasmart.la
 endif
 
-if ENABLE_RCA
-if ENABLE_KRCA
-if ENABLE_GPCD
-if ENABLE_GEM_LINK_PERF
-libgem_link_perf_la_SOURCES = gem_link_perf.c
-libgem_link_perf_la_CFLAGS = $(AM_CFLAGS) -I@GPCD_INCDIR@ -I@RCA_INCDIR@ \
-			     -I@KRCA_INCDIR@
-libgem_link_perf_la_LDFLAGS = $(AM_LDFLAGS) -L@GPCD_LIB64DIR@ -L@RCA_LIB64DIR@ \
-			      -L@GPCD_LIBDIR@ -L@RCA_LIBDIR@ \
-			      -lgpcd -lrca
-libgem_link_perf_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libgem_link_perf.la
-endif
-endif
-endif
-endif
+#if ENABLE_GEM_LINK_PERF
+#libgem_link_perf_la_SOURCES = gem_link_perf.c
+#libgem_link_perf_la_CFLAGS = $(AM_CFLAGS) -I@GPCD_INCDIR@ -I@RCA_INCDIR@ \
+#			     -I@KRCA_INCDIR@
+#libgem_link_perf_la_LDFLAGS = $(AM_LDFLAGS) -L@GPCD_LIB64DIR@ -L@RCA_LIB64DIR@ \
+#			      -L@GPCD_LIBDIR@ -L@RCA_LIBDIR@ \
+#			      -lgpcd -lrca
+#libgem_link_perf_la_LIBADD = $(COMMON_LIBADD)
+#lib_LTLIBRARIES += libgem_link_perf.la
+#endif
+
+
+
 

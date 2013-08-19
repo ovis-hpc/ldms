@@ -96,5 +96,8 @@ int str_map_id_init(struct str_map *map, char **keys, int nkeys,
 		rc = str_map_insert(map, keys[i], id);
 		if (rc==0)
 			id++;
+		else
+			return rc;
 	}
+	return 0;
 }

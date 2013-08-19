@@ -25,7 +25,6 @@ OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
-OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
 OPTION_DEFAULT_DISABLE([mysqlbulk], [ENABLE_MYSQLBULK])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
@@ -42,11 +41,11 @@ OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
-OPTION_DEFAULT_ENABLE([sedc], [ENABLE_SEDC])
+OPTION_DEFAULT_DISABLE([sedc], [ENABLE_SEDC])
 OPTION_DEFAULT_ENABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
-OPTION_DEFAULT_DISABLE([gem_link_perf], [ENABLE_GEM_LINK_PERF])
+OPTION_DEFAULT_DISABLE([ncsa_unified], [ENABLE_NCSA_UNIFIED])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
@@ -59,7 +58,10 @@ OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
 OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
 OPTION_WITH([krca], [KRCA])
+OPTION_DEFAULT_DISABLE([cray-hss-devel], [ENABLE_CRAY_HSS_DEVEL])
+OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL])
 
+OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH([sos], [SOS])
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
@@ -88,8 +90,20 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
 dnl Check for libevent
+AC_ARG_WITH(libevent,
+[  --with-libevent=DIR      use libevent in DIR],
+[ case "$withval" in
+  yes|no)
+    AC_MSG_RESULT(no)
+    ;;
+  *)
+   CPPFLAGS="-I$withval/include"
+   LIBS="-L$withval/lib -L$withval/lib64"
+    ;;
+  esac ])
 AC_CHECK_LIB(event, event_base_new, [],
     AC_MSG_ERROR([event_base_new() not found. ldms requires libevent.]))
+
 dnl Reset LIBS variable.
 LIBS=""
 
@@ -197,4 +211,3 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/ldmsd/Makefile
 		 ldms.spec])
 AC_OUTPUT
-

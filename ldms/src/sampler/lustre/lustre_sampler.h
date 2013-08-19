@@ -197,6 +197,7 @@ LIST_HEAD(lustre_svc_stats_head, lustre_svc_stats);
 struct lustre_svc_stats {
 	LIST_ENTRY(lustre_svc_stats) link;
 	char *path;
+	char *name;
 	FILE *f;
 	struct str_map *key_id_map;
 	void *metrics[0];
@@ -244,6 +245,20 @@ void lustre_sampler_set_msglog(ldmsd_msg_log_f f);
  * \param lss The ::lustre_svc_stats structure.
  */
 int lss_sample(struct lustre_svc_stats *lss);
+
+/**
+ * Open the file (which can be a pattern) in lss.
+ * \return 0 on success.
+ * \return EEXIST if \c lss->f has already been opened.
+ * \return EINVAL if \c lss->path matches more than one file.
+ * \return Error code on other error.
+ */
+int lss_open_file(struct lustre_svc_stats *lss);
+
+/**
+ * Close the file opened by \c lss.
+ */
+int lss_close_file(struct lustre_svc_stats *lss);
 
 /**
  * Construct ::str_list out of comma-separated \c strlist.

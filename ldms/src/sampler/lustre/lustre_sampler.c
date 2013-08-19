@@ -56,6 +56,7 @@
 
 #include <stdlib.h>
 #include <dirent.h>
+#include <wordexp.h>
 #include "lustre_sampler.h"
 
 static ldmsd_msg_log_f msglog = NULL;
@@ -84,6 +85,7 @@ err0:
 
 void lustre_svc_stats_free(struct lustre_svc_stats *lss)
 {
+	free(lss->name);
 	free(lss->path);
 	free(lss);
 }
@@ -117,6 +119,38 @@ int __add_metric_routine(ldms_set_t set, uint64_t udata,
 	return 0;
 }
 
+int lss_open_file(struct lustre_svc_stats *lss)
+{
+	if (lss->f)
+		return EEXIST;
+	wordexp_t p = {0};
+	int rc;
+	rc = wordexp(lss->path, &p, 0);
+	if (rc) {
+		if (rc == WRDE_NOSPACE)
+			rc = ENOMEM;
+		else
+			rc = ENOENT;
+		goto out;
+	}
+	if (p.we_wordc > 1) {
+		rc = EINVAL;
+		goto out;
+	}
+	lss->f = fopen(p.we_wordv[0], "rt");
+	if (!lss->f)
+		rc = errno;
+out:
+	wordfree(&p);
+	return rc;
+}
+
+int lss_close_file(struct lustre_svc_stats *lss)
+{
+	fclose(lss->f);
+	lss->f = NULL;
+}
+
 int stats_construct_routine(ldms_set_t set,
 			    uint64_t comp_id,
 			    const char *stats_path,
@@ -131,13 +165,6 @@ int stats_construct_routine(ldms_set_t set,
 		lustre_svc_stats_alloc(stats_path, nkeys + 1);
 	if (!lss)
 		return ENOMEM;
-	lss->f = fopen(stats_path, "r");
-	if (!lss->f) {
-		int rc = errno;
-		msglog("ERROR: Cannot open lustre stats: %s\n", stats_path);
-		lustre_svc_stats_free(lss);
-		return rc;
-	}
 	lss->key_id_map = key_id_map;
 	LIST_INSERT_HEAD(stats_head, lss, link);
 	int j;
@@ -155,6 +182,12 @@ int stats_construct_routine(ldms_set_t set,
 #define __LBUF_SIZ 256
 int lss_sample(struct lustre_svc_stats *lss)
 {
+	int rc = 0;
+	if (!lss->f) {
+		rc = lss_open_file(lss);
+		if (rc)
+			goto out;
+	}
 	fseek(lss->f, 0, SEEK_SET);
 	char lbuf[__LBUF_SIZ];
 	char name[64];
@@ -173,7 +206,7 @@ int lss_sample(struct lustre_svc_stats *lss)
 
 		if (!id)
 			continue;
-		if (strcmp("[reqs]", unit) == 0)
+		if (strcmp("[regs]", unit) == 0)
 			/* We track the count for reqs */
 			value.v_u64 = count;
 		else
@@ -181,7 +214,8 @@ int lss_sample(struct lustre_svc_stats *lss)
 			value.v_u64 = sum;
 		ldms_set_metric(lss->metrics[id], &value);
 	}
-	return 0;
+out:
+	return rc;
 }
 
 void free_str_list(struct str_list_head *h)
