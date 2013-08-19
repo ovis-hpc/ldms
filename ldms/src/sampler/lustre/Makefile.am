@@ -18,17 +18,17 @@ lib_LTLIBRARIES += liblustre_sampler.la
 COMMON_LIBADD = $(CORE)/libldms.la  libstr_map.la liblustre_sampler.la \
 		-lrt -lovis_util
 
-#liblustre_mds
-liblustre_mds_la_SOURCES = lustre_mds.c
-liblustre_mds_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += liblustre_mds.la
+#liblustre2_mds
+liblustre2_mds_la_SOURCES = lustre2_mds.c
+liblustre2_mds_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += liblustre2_mds.la
 
-#liblustre_oss
-liblustre_oss_la_SOURCES = lustre_oss.c
-liblustre_oss_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += liblustre_oss.la
+#liblustre2_oss
+liblustre2_oss_la_SOURCES = lustre2_oss.c
+liblustre2_oss_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += liblustre2_oss.la
 
-#liblustre_client
-liblustre_client_la_SOURCES = lustre_client.c
-liblustre_client_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += liblustre_client.la
+#liblustre2_client
+liblustre2_client_la_SOURCES = lustre2_client.c
+liblustre2_client_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += liblustre2_client.la

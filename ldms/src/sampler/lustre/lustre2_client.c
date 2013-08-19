@@ -87,7 +87,12 @@
 /**
  * This will holds IDs for stats_key.
  */
-struct str_map *stats_key_id;
+struct str_map *stats_key_id = NULL;
+
+/**
+ * ID map for llite metrics.
+ */
+struct str_map *llite_key_id = NULL;
 
 struct lustre_svc_stats_head svc_stats = {0};
 
@@ -99,6 +104,47 @@ uint64_t comp_id;
 
 char tmp_path[PATH_MAX];
 
+char *llite_key[] = {
+	"dirty_pages_hits",
+	"dirty_pages_misses",
+	"read_bytes",
+	"write_bytes",
+	"brw_read",
+	"brw_write",
+	"osc_read",
+	"osc_write",
+	"ioctl",
+	"open",
+	"close",
+	"mmap",
+	"seek",
+	"fsync",
+	"readdir",
+		/* inode operation */
+	"setattr",
+	"truncate",
+	"flock",
+	"getattr",
+		/* dir inode operation */
+	"create",
+	"link",
+	"unlink",
+	"symlink",
+	"mkdir",
+	"rmdir",
+	"mknod",
+	"rename",
+		/* special inode operation */
+	"statfs",
+	"alloc_inode",
+	"setxattr",
+	"getxattr",
+	"listxattr",
+	"removexattr",
+	"inode_permission",
+};
+
+#define LLITE_KEY_LEN sizeof(llite_key)/sizeof(llite_key[0])
 
 /**
  * \brief Construct client string list.
@@ -149,6 +195,9 @@ static int create_metric_set(const char *path, const char *oscs,
 	/* Calculate size for Clients */
 	struct str_list_head *lh_osc, *lh_mdc, *lh_llite;
 	struct str_list_head *heads[] = {lh_osc, lh_mdc, lh_llite};
+	char **keys[] = {stats_key, stats_key, llite_key};
+	int keylen[] = {STATS_KEY_LEN, STATS_KEY_LEN, LLITE_KEY_LEN};
+	struct str_map *maps[] = {stats_key_id, stats_key_id, llite_key_id};
 	lh_osc = lh_mdc = lh_llite = 0;
 
 	lh_osc = construct_client_list(oscs, "/proc/fs/lustre/osc");
@@ -168,12 +217,13 @@ static int create_metric_set(const char *path, const char *oscs,
 
 	char *namebase[] = {"osc", "mdc", "llite"};
 	struct str_list *sl;
-	for (i=0; i<sizeof(heads)/sizeof(*heads); i++) {
+	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
-			for (j=0; j<STATS_KEY_LEN; j++) {
-				sprintf(metric_name, "%s.%s.%s", namebase[i],
-						sl->str, stats_key[j]);
+			for (j = 0; j < keylen[i]; j++) {
+				sprintf(metric_name, "%s.%s.stats.%s",
+						namebase[i], sl->str,
+						keys[i][j]);
 				ldms_get_metric_size(metric_name, LDMS_V_U64,
 						&meta_sz, &data_sz);
 				tot_meta_sz += meta_sz;
@@ -188,15 +238,15 @@ static int create_metric_set(const char *path, const char *oscs,
 	if (rc)
 		goto err0;
 	char name_base[128];
-	for (i=0; i<sizeof(heads)/sizeof(*heads); i++) {
+	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
 			sprintf(tmp_path, "/proc/fs/lustre/%s/%s/stats",
 					namebase[i], sl->str);
 			sprintf(name_base, "%s.%s.stats", namebase[i], sl->str);
 			rc = stats_construct_routine(set, comp_id, tmp_path,
-					name_base, &svc_stats, stats_key,
-					STATS_KEY_LEN, stats_key_id);
+					name_base, &svc_stats, keys[i],
+					keylen[i], maps[i]);
 			if (rc)
 				goto err1;
 		}
@@ -210,7 +260,7 @@ err1:
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err0:
-	for (i=0; i<sizeof(heads)/sizeof(*heads); i++) {
+	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
 		if (heads[i])
 			free_str_list(heads[i]);
 	}
@@ -258,17 +308,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static const char *usage(void)
 {
-	return
-"config name=lustre_client component_id=<comp_id> set=<setname>\n"
-"	component_id	The component id value.\n"
-"	set		The set name.\n"
-"	oscs		The list of OCSs.\n"
-"	mdcs		The list of MDCs.\n"
-"	llites		The list of llites.\n"
-"For oscs,mdcs and llites: if not specified, all of the\n"
-"currently available oscs/mdcs/llites will be added.\n"
-""
-;
+	return "config name=lustre_client component_id=<comp_id> set=<setname>\n"
+		"	component_id	The component id value.\n"
+		"	set		The set name.\n"
+		"	oscs		The list of OCSs.\n"
+		"	mdcs		The list of MDCs.\n"
+		"	llites		The list of llites.\n"
+		"For oscs,mdcs and llites: if not specified, all of the\n"
+		"currently available oscs/mdcs/llites will be added.\n";
 }
 
 static ldms_set_t get_set()
@@ -307,6 +354,9 @@ static struct ldmsd_sampler lustre_client_plugin = {
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
+	static int init_complete = 0;
+	if (init_complete)
+		goto out;
 	msglog = pf;
 	lustre_sampler_set_msglog(pf);
 	stats_key_id = str_map_create(STR_MAP_SIZE);
@@ -316,6 +366,15 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	}
 	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
 
+	llite_key_id = str_map_create(STR_MAP_SIZE);
+	if (!llite_key_id) {
+		msglog("llite_key_id map create error!\n");
+		goto err_nomem;
+	}
+	str_map_id_init(llite_key_id, llite_key, LLITE_KEY_LEN, 1);
+
+	init_complete = 1;
+out:
 	return &lustre_client_plugin.base;
 err_nomem:
 	errno = ENOMEM;

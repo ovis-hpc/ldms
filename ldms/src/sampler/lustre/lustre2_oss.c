@@ -105,6 +105,102 @@ char *oss_services[] = {
  */
 struct str_map *stats_key_id;
 
+/**
+ * IDs for obdfilter keys.
+ */
+struct str_map *obdf_key_id;
+
+char *obdf_key[] = {
+	"iocontrol",
+	"get_info",
+	"set_info_async",
+	"attach",
+	"detach",
+	"setup",
+	"precleanup",
+	"cleanup",
+	"process_config",
+	"postrecov",
+	"add_conn",
+	"del_conn",
+	"connect",
+	"reconnect",
+	"disconnect",
+	"fid_init",
+	"fid_fini",
+	"statfs",
+	"statfs_async",
+	"packmd",
+	"unpackmd",
+	"checkmd",
+	"preallocate",
+	"precreate",
+	"create",
+	"create_async",
+	"destroy",
+	"setattr",
+	"setattr_async",
+	"getattr",
+	"getattr_async",
+	"brw",
+	"brw_async",
+	"prep_async_page",
+	"get_lock",
+	"queue_async_io",
+	"queue_group_io",
+	"trigger_group_io",
+	"set_async_flags",
+	"teardown_async_page",
+	"merge_lvb",
+	"update_lvb",
+	"adjust_kms",
+	"punch",
+	"sync",
+	"migrate",
+	"copy",
+	"iterate",
+	"preprw",
+	"commitrw",
+	"enqueue",
+	"match",
+	"change_cbdata",
+	"find_cbdata",
+	"cancel",
+	"cancel_unused",
+	"join_lru",
+	"init_export",
+	"destroy_export",
+	"extent_calc",
+	"llog_init",
+	"llog_connect",
+	"llog_finish",
+	"pin",
+	"unpin",
+	"import_event",
+	"notify",
+	"health_check",
+	"quotacheck",
+	"quotactl",
+	"quota_adjust_qunit",
+	"ping",
+	"register_page_removal_cb",
+	"LPROCFS_OBD_OP_INIT(num_private_stats,stats,unregister_page_removal_cb",
+	"register_lock_cancel_cb",
+	"stats,unregister_lock_cancel_cb",
+	"pool_new",
+	"pool_rem",
+	"pool_add",
+	"pool_del",
+	"getref",
+	"putref",
+
+	/* private to obdfilter */
+	"read_bytes",
+	"write_bytes",
+};
+
+#define OBDF_KEY_LEN __ALEN(obdf_key)
+
 struct lustre_svc_stats_head svc_stats = {0};
 
 static uint64_t counter;
@@ -158,9 +254,9 @@ static int create_metric_set(const char *path, const char *osts)
 	metric_count = 0;
 	tot_meta_sz = tot_data_sz = 0;
 	/* Calculate size for OSS */
-	for (i=0; i<OSS_SERVICES_LEN; i++) {
-		for (j=0; j<STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "oss.%s.%s", oss_services[i],
+	for (i = 0; i < OSS_SERVICES_LEN; i++) {
+		for (j = 0; j < STATS_KEY_LEN; j++) {
+			sprintf(metric_name, "oss.%s.stats.%s", oss_services[i],
 					stats_key[j]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -177,9 +273,9 @@ static int create_metric_set(const char *path, const char *osts)
 	struct str_list *sl;
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
-		for (j=0; j<STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "ost.%s.%s", sl->str,
-					stats_key[j]);
+		for (j = 0; j < OBDF_KEY_LEN; j++) {
+			sprintf(metric_name, "ost.%s.stats.%s", sl->str,
+					obdf_key[j]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
 			tot_meta_sz += meta_sz;
@@ -193,7 +289,7 @@ static int create_metric_set(const char *path, const char *osts)
 	if (rc)
 		goto err1;
 	char name_base[128];
-	for (i=0; i<OSS_SERVICES_LEN; i++) {
+	for (i = 0; i < OSS_SERVICES_LEN; i++) {
 		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
 				oss_services[i]);
 		sprintf(name_base, "oss.%s.stats", oss_services[i]);
@@ -208,8 +304,8 @@ static int create_metric_set(const char *path, const char *osts)
 		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
 		sprintf(name_base, "ost.%s.stats", sl->str);
 		rc = stats_construct_routine(set, comp_id, tmp_path, name_base,
-					     &svc_stats, stats_key,
-					     STATS_KEY_LEN, stats_key_id);
+					     &svc_stats, obdf_key,
+					     OBDF_KEY_LEN, obdf_key_id);
 		if (rc)
 			goto err2;
 	}
@@ -267,14 +363,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static const char *usage(void)
 {
-	return
-"config name=lustre_oss component_id=<comp_id> set=<setname>\n"
-"	component_id	The component id value.\n"
-"	set		The set name.\n"
-"	osts		The list of OSTs.\n"
-"For mdts: if not specified, all of the\n"
-"currently available MDTs will be added.\n"
-			;
+	return "config name=lustre_oss component_id=<comp_id> set=<setname>\n"
+		"	component_id	The component id value.\n"
+		"	set		The set name.\n"
+		"	osts		The list of OSTs.\n"
+		"For mdts: if not specified, all of the\n"
+		"currently available MDTs will be added.\n";
 }
 
 static ldms_set_t get_set()
@@ -295,7 +389,7 @@ static int sample(void)
 		lss_sample(lss);
 	}
 
- out:
+out:
 	ldms_end_transaction(set);
 	return 0;
 }
@@ -313,6 +407,9 @@ static struct ldmsd_sampler lustre_oss_plugin = {
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
+	int init_complete = 0;
+	if (init_complete)
+		goto out;
 	msglog = pf;
 	lustre_sampler_set_msglog(pf);
 	stats_key_id = str_map_create(STR_MAP_SIZE);
@@ -322,7 +419,17 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	}
 	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
 
+	obdf_key_id = str_map_create(STR_MAP_SIZE);
+	if (!obdf_key_id) {
+		msglog("obdf_key_id map create error!\n");
+		goto err_nomem;
+	}
+	str_map_id_init(obdf_key_id, obdf_key, OBDF_KEY_LEN, 1);
+
+	init_complete = 1;
+out:
 	return &lustre_oss_plugin.base;
+
 err_nomem:
 	errno = ENOMEM;
 	return NULL;
