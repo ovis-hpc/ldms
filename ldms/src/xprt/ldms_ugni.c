@@ -271,7 +271,6 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 				       grc, gxp->ugni_ep);
 		gxp->ugni_ep = NULL;
 	}
-	gxp->dom.src_cq = NULL;
 }
 
 static void ugni_xprt_term(struct ldms_ugni_xprt *r)
@@ -313,16 +312,8 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (gxp->sock < 0)
 		return -1;
-	rc = connect(gxp->sock, sa, sa_len);
-	if (rc)
-		goto err;
-	sa_len = sizeof(ss);
-	rc = getsockname(gxp->sock, (struct sockaddr *)&ss, &sa_len);
-	if (rc)
-		goto err;
-	_setup_connection(gxp, (struct sockaddr *)&ss, sa_len);
 
-	if (!gxp->dom.src_cq) {
+	if (!ugni_gxp.dom.src_cq) {
 		cq_depth_s = getenv("LDMS_UGNI_CQ_DEPTH");
 		if (!cq_depth_s) {
 			cq_depth = UGNI_CQ_DEPTH;
@@ -353,12 +344,29 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	if (grc != GNI_RC_SUCCESS)
 		goto err;
 
+	rc = connect(gxp->sock, sa, sa_len);
+	if (rc)
+		goto err1;
+	sa_len = sizeof(ss);
+	rc = getsockname(gxp->sock, (struct sockaddr *)&ss, &sa_len);
+	if (rc)
+		goto err1;
+	_setup_connection(gxp, (struct sockaddr *)&ss, sa_len);
+
 	/*
 	 * When we receive the peer's hello request, we will bind the endpoint
 	 * to his PE and move to connected.
 	 */
 	return 0;
 
+err1:
+	pthread_mutex_lock(&ugni_lock);
+	grc = GNI_EpDestroy(gxp->ugni_ep);
+	pthread_mutex_unlock(&ugni_lock);
+	if (grc != GNI_RC_SUCCESS)
+		gxp->xprt->log("Error %d destroying Ep %p.\n",
+				grc, gxp->ugni_ep);
+	gxp->ugni_ep = NULL;
 err:
 	close(gxp->sock);
 	gxp->sock = 0;
