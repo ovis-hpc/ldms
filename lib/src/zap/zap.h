@@ -75,6 +75,10 @@
 #include <sys/queue.h>
 
 #define ZAP_MAX_TRANSPORT_NAME_LEN 16
+
+#define ZAP_ENUM_WRAP(X) X
+#define ZAP_STR_WRAP(X) #X
+
 typedef struct zap_ep *zap_ep_t;
 typedef struct zap *zap_t;
 typedef void (*zap_log_fn_t)(const char *fmt, ...);
@@ -101,31 +105,54 @@ typedef enum zap_event_type {
 	ZAP_EVENT_RENDEZVOUS,
 } zap_event_type_t;
 
+#define ZAP_ERR_LIST(ZAP_WRAP)                \
+	ZAP_WRAP(ZAP_ERR_OK),                 \
+	ZAP_WRAP(ZAP_ERR_PARAMETER),          \
+	ZAP_WRAP(ZAP_ERR_TRANSPORT),          \
+	ZAP_WRAP(ZAP_ERR_ENDPOINT),           \
+	ZAP_WRAP(ZAP_ERR_ADDRESS),            \
+	ZAP_WRAP(ZAP_ERR_ROUTE),              \
+	ZAP_WRAP(ZAP_ERR_MAPPING),            \
+	ZAP_WRAP(ZAP_ERR_RESOURCE),           \
+	ZAP_WRAP(ZAP_ERR_BUSY),               \
+	ZAP_WRAP(ZAP_ERR_NO_SPACE),           \
+	ZAP_WRAP(ZAP_ERR_INVALID_MAP_TYPE),   \
+	ZAP_WRAP(ZAP_ERR_CONNECT),            \
+	ZAP_WRAP(ZAP_ERR_NOT_CONNECTED),      \
+	ZAP_WRAP(ZAP_ERR_HOST_UNREACHABLE),   \
+	ZAP_WRAP(ZAP_ERR_LOCAL_LEN),          \
+	ZAP_WRAP(ZAP_ERR_LOCAL_OPERATION),    \
+	ZAP_WRAP(ZAP_ERR_LOCAL_PERMISSION),   \
+	ZAP_WRAP(ZAP_ERR_REMOTE_LEN),         \
+	ZAP_WRAP(ZAP_ERR_REMOTE_OPERATION),   \
+	ZAP_WRAP(ZAP_ERR_REMOTE_PERMISSION),  \
+	ZAP_WRAP(ZAP_ERR_RETRY_EXCEEDED),     \
+	ZAP_WRAP(ZAP_ERR_TIMEOUT),            \
+	ZAP_WRAP(ZAP_ERR_FLUSH),              \
+	ZAP_WRAP(ZAP_ERR_LAST)
+
 typedef enum zap_err_e {
-	ZAP_ERR_OK = 0,
-	ZAP_ERR_PARAMETER = 1,
-	ZAP_ERR_TRANSPORT,
-	ZAP_ERR_ENDPOINT,
-	ZAP_ERR_ADDRESS,
-	ZAP_ERR_ROUTE,
-	ZAP_ERR_MAPPING,
-	ZAP_ERR_RESOURCE,
-	ZAP_ERR_BUSY,
-	ZAP_ERR_NO_SPACE,
-	ZAP_ERR_INVALID_MAP_TYPE,
-	ZAP_ERR_CONNECT,
-	ZAP_ERR_NOT_CONNECTED,
-	ZAP_ERR_HOST_UNREACHABLE,
-	ZAP_ERR_LOCAL_LEN,
-	ZAP_ERR_LOCAL_OPERATION,
-	ZAP_ERR_LOCAL_PERMISSION,
-	ZAP_ERR_REMOTE_LEN,
-	ZAP_ERR_REMOTE_OPERATION,
-	ZAP_ERR_REMOTE_PERMISSION,
-	ZAP_ERR_RETRY_EXCEEDED,
-	ZAP_ERR_TIMEOUT,
-	ZAP_ERR_FLUSH
+	ZAP_ERR_LIST(ZAP_ENUM_WRAP)
 } zap_err_t;
+
+static char *__zap_err_str[] = {
+	ZAP_ERR_LIST(ZAP_STR_WRAP)
+};
+
+static inline
+const char* zap_err_str(enum zap_err_e e)
+{
+	if (e < 0 || e > ZAP_ERR_LAST)
+		return "ZAP_ERR_UNKNOWN";
+	return __zap_err_str[e];
+}
+
+/**
+ * Convert a given errno \c e into ::zap_err_e.
+ * \param e The errno.
+ * \returns ::zap_err_e.
+ */
+enum zap_err_e errno2zaperr(int e);
 
 typedef struct zap_event {
 	zap_event_type_t type;

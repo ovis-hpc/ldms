@@ -4,6 +4,10 @@ if ENABLE_RDMA
 SUBDIRS += rdma
 endif
 
+if ENABLE_SOCK
+SUBDIRS += sock
+endif
+
 if ENABLE_ZAPTEST
 SUBDIRS += test
 endif

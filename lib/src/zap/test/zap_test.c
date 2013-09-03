@@ -77,6 +77,7 @@ static int done = 0;
 pthread_mutex_t done_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t done_cv = PTHREAD_COND_INITIALIZER;
 
+
 char *ev_str[] = {
 	[ZAP_EVENT_CONNECT_REQUEST] = "CONNECT_REQUEST",
 	[ZAP_EVENT_CONNECT_ERROR] = "CONNECT_ERROR",
@@ -105,8 +106,15 @@ void do_send(zap_ep_t ep, char *message)
 
 void handle_recv(zap_ep_t ep, zap_event_t ev)
 {
+	int len = strlen((char*)ev->data) + 1;
 	printf("%s: len %zu '%s'.\n", __func__,
 	       ev->data_len, (char *)ev->data);
+	if (len != ev->data_len) {
+		printf("%s: wrong length!!! expecting %d but got %d\n",
+				__func__, len, ev->data_len);
+	}
+	assert(len == ev->data_len);
+
 	do_send(ep, ev->data);
 }
 
@@ -169,12 +177,18 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 
 void server_cb(zap_ep_t ep, zap_event_t ev)
 {
+	static int reject = 1;
 	zap_err_t err;
 
 	printf("%s: event %s\n", __func__, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		err = zap_accept(ep, server_cb);
+		if (reject)
+			err = zap_reject(ep);
+		else
+			err = zap_accept(ep, server_cb);
+		/* alternating between reject and accept */
+		reject = !reject;
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
 		break;
@@ -273,6 +287,8 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 
 void client_cb(zap_ep_t ep, zap_event_t ev)
 {
+	struct sockaddr_in *sin;
+	zap_err_t err;
 	printf("%s: event %s\n", __func__, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
@@ -284,6 +300,13 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		do_send(ep, "Hello there!");
 		break;
 	case ZAP_EVENT_REJECTED:
+		printf("REJECTED! try again ...\n");
+		sin = zap_get_ucontext(ep);
+		err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin));
+		if (err) {
+			printf("zap_connect failed.\n");
+			return;
+		}
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		done = 1;
@@ -349,7 +372,7 @@ void do_client(zap_t zap, struct sockaddr_in *sin)
 		printf("Could not create the zap endpoing.\n");
 		return;
 	}
-
+	zap_set_ucontext(ep, sin);
 	err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin));
 	if (err) {
 		printf("zap_connect failed.\n");
