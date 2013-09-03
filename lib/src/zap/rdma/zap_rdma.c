@@ -1471,8 +1471,8 @@ z_rdma_map(zap_ep_t ep, zap_map_t *pm,
 	if (!map)
 		goto err_0;
 
-	acc_flags = (ZAP_ACCESS_WRITE ? IBV_ACCESS_REMOTE_WRITE : 0);
-	acc_flags |= (ZAP_ACCESS_READ ? IBV_ACCESS_REMOTE_READ : 0);
+	acc_flags = (ZAP_ACCESS_WRITE & acc ? IBV_ACCESS_REMOTE_WRITE : 0);
+	acc_flags |= (ZAP_ACCESS_READ & acc ? IBV_ACCESS_REMOTE_READ : 0);
 	acc_flags |= IBV_ACCESS_LOCAL_WRITE;
 
 	if (mem_info)
