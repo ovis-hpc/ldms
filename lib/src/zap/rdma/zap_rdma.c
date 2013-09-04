@@ -566,7 +566,7 @@ static void handle_recv(struct z_rdma_ep *rep,
 	zev.type = ZAP_EVENT_RECV_COMPLETE;
 	zev.status = ZAP_ERR_OK;
 	zev.data = msg + 1;
-	zev.data_len = len;
+	zev.data_len = len - sizeof(*msg);
 	rep->ep.cb(&rep->ep, &zev);
 }
 
