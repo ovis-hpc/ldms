@@ -19,13 +19,11 @@ lib_LTLIBRARIES += libldmsrdma.la
 endif
 
 if ENABLE_UGNI
-PMI_CFLAGS = $(shell pkg-config --cflags cray-pmi)
-PMI_LIBS = $(shell pkg-config --libs cray-pmi)
 UGNI_CFLAGS = $(shell pkg-config --cflags cray-ugni)
 UGNI_LIBS = $(shell pkg-config --libs cray-ugni)
-libldmsugni_la_CFLAGS = $(AM_CFLGAS) $(PMI_CFLAGS) $(UGNI_CFLAGS) \
+libldmsugni_la_CFLAGS = $(AM_CFLAGS) $(UGNI_CFLAGS) \
 			-I@LIBEVENT_INCDIR@
-libldmsugni_la_LDFLAGS = $(PMI_LIBS) $(UGNI_LIBS) -L@OVIS_LIB_LIB64DIR@ \
+libldmsugni_la_LDFLAGS = $(UGNI_LIBS) -L@OVIS_LIB_LIB64DIR@ \
 			 -L@LIBEVENT_LIB64DIR@ \
 			 -L@OVIS_LIB_LIBDIR@ -L@LIBEVENT_LIBDIR@
 libldmsugni_la_SOURCES = ldms_ugni.c ldms_ugni.h

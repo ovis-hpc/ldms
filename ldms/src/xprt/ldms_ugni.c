@@ -65,7 +65,6 @@
 #include <fcntl.h>
 #include <assert.h>
 #include "gni_pub.h"
-#include "pmi.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_ugni.h"
