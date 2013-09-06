@@ -291,6 +291,26 @@ zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
 	return err;
 }
 
+enum zap_err_e errno2zaperr(int e)
+{
+	switch (e) {
+	case ENOTCONN:
+		return ZAP_ERR_NOT_CONNECTED;
+	case ENOMEM:
+	case ENOBUFS:
+		return ZAP_ERR_RESOURCE;
+	case ECONNREFUSED:
+		return ZAP_ERR_CONNECT;
+	case EISCONN:
+		return ZAP_ERR_BUSY;
+	case EFAULT:
+	case EINVAL:
+		return ZAP_ERR_PARAMETER;
+	default:
+		return ZAP_ERR_ENDPOINT;
+	}
+}
+
 zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
 {
 	pthread_mutex_lock(&ep->lock);
@@ -303,6 +323,11 @@ zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
 zap_err_t zap_share(zap_ep_t ep, zap_map_t map, uint64_t ctxt)
 {
 	return ep->z->share(ep, map, ctxt);
+}
+
+zap_err_t zap_reject(zap_ep_t ep)
+{
+	return ep->z->reject(ep);
 }
 
 void __attribute__ ((constructor)) cs_init(void)
