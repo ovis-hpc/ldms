@@ -748,7 +748,11 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	}
 
 	/* Accept the connection */
-	ret = rdma_accept(r->cm_id, NULL);
+	struct rdma_conn_param conn_param = {0};
+	conn_param.responder_resources = 1;
+	conn_param.initiator_depth = 4;
+	conn_param.retry_count = 7;
+	ret = rdma_accept(r->cm_id, &conn_param);
 	if (ret)
 		goto out_1;
 
