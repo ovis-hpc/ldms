@@ -188,9 +188,9 @@ static int create_metric_set(const char *path, const char *mdts)
 	metric_count = 0;
 	tot_meta_sz = tot_data_sz = 0;
 	/* Calculate size for MDS */
-	for (i=0; i<MDS_SERVICES_LEN; i++) {
-		for (j=0; j<STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "mds.%s.%s", mds_services[i],
+	for (i = 0; i < MDS_SERVICES_LEN; i++) {
+		for (j = 0; j < STATS_KEY_LEN; j++) {
+			sprintf(metric_name, "mds.%s.stats.%s", mds_services[i],
 					stats_key[j]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -207,8 +207,8 @@ static int create_metric_set(const char *path, const char *mdts)
 	struct str_list *sl;
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
-		for (j=0; j<STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "mdt.%s.%s", sl->str,
+		for (j = 0; j < STATS_KEY_LEN; j++) {
+			sprintf(metric_name, "mdt.%s.stats.%s", sl->str,
 					stats_key[j]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
@@ -217,8 +217,8 @@ static int create_metric_set(const char *path, const char *mdts)
 			metric_count++;
 		}
 		/* For md_stats */
-		for (j=0; j<MD_STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "mdt.%s.%s", sl->str,
+		for (j = 0; j < MD_STATS_KEY_LEN; j++) {
+			sprintf(metric_name, "mdt.%s.stats.%s", sl->str,
 					md_stats_key[j]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
@@ -233,7 +233,7 @@ static int create_metric_set(const char *path, const char *mdts)
 	if (rc)
 		goto err1;
 	char name_base[128];
-	for (i=0; i<MDS_SERVICES_LEN; i++) {
+	for (i = 0; i < MDS_SERVICES_LEN; i++) {
 		sprintf(tmp_path, "/proc/fs/lustre/mds/MDS/%s/stats",
 				mds_services[i]);
 		sprintf(name_base, "mds.%s.stats", mds_services[i]);
@@ -315,15 +315,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static const char *usage(void)
 {
-	return
-"config name=lustre_mds component_id=<comp_id> set=<setname>\n"
-"	component_id	The component id value.\n"
-"	set		The set name.\n"
-"	mdts		The list of MDTs.\n"
-"For mdts: if not specified, all of the\n"
-"currently available MDTs will be added.\n"
-	;
-
+	return "config name=lustre_mds component_id=<comp_id> set=<setname>\n"
+		"	component_id	The component id value.\n"
+		"	set		The set name.\n"
+		"	mdts		The list of MDTs.\n"
+		"For mdts: if not specified, all of the\n"
+		"currently available MDTs will be added.\n";
 }
 
 static ldms_set_t get_set()
