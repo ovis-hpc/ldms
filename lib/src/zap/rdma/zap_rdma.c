@@ -442,7 +442,7 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 
  err_3:
 	/*
-	 * These are all syncrhonous clean-ups. IB does not support
+	 * These are all synchronous clean-ups. IB does not support
 	 * re-connecting on the same cm_id, so blow everything away
 	 * and start over next time.
 	 */
@@ -1605,7 +1605,7 @@ static int init_once()
 		goto err_0;
 
 	cm_fd = epoll_create(512);
-	if (!cq_fd)
+	if (!cm_fd)
 		goto err_1;
 
 	/*
@@ -1615,7 +1615,7 @@ static int init_once()
 	rc = pthread_create(&cq_thread, NULL, cq_thread_proc,
 			    (void *)(unsigned long)cq_fd);
 	if (rc)
-		goto err_3;
+		goto err_2;
 
 	/*
 	 * Create the CM event thread that will wait for events on
@@ -1624,14 +1624,14 @@ static int init_once()
 	rc = pthread_create(&cm_thread, NULL, cm_thread_proc,
 			    (void *)(unsigned long)cm_fd);
 	if (rc)
-		goto err_2;
+		goto err_3;
 
 	init_complete = 1;
 	atexit(z_rdma_cleanup);
 	return 0;
 
  err_3:
-	pthread_cancel(cm_thread);
+	pthread_cancel(cq_thread);
  err_2:
 	close(cm_fd);
  err_1:
