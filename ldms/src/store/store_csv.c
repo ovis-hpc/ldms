@@ -73,6 +73,7 @@
 
 static idx_t store_idx;
 static char *root_path;
+static int altheader;
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
@@ -98,15 +99,25 @@ pthread_mutex_t cfg_lock;
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	char *altvalue;
+
 	value = av_value(avl, "path");
 	if (!value)
 		return EINVAL;
+
+	altvalue = av_value(avl, "altheader");
 
 	pthread_mutex_lock(&cfg_lock);
 	if (root_path)
 		free(root_path);
 
 	root_path = strdup(value);
+
+	if (altvalue)
+		altheader = atoi(altvalue);
+	else
+		altheader = 0;
+
 	pthread_mutex_unlock(&cfg_lock);
 	if (!root_path)
 		return ENOMEM;
@@ -119,9 +130,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_csv path=<path>\n"
-		 "         - Set the root path for the storage of csvs.\n"
-		 "           path      The path to the root of the csv directory\n";
+	return  "    config name=store_csv path=<path> altheader=<0/1>\n"
+		"         - Set the root path for the storage of csvs.\n"
+		"           path      The path to the root of the csv directory\n"
+		"         - altheader Header in a separate file (optional, default 0)\n";
 }
 
 /*
@@ -144,14 +156,33 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 }
 
 static int print_header(struct csv_store_handle *s_handle,
-		struct ldmsd_store_metric_index_list *metric_list)
+			struct ldmsd_store_metric_index_list *metric_list)
 {
 	struct ldmsd_store_metric_index *smi;
-	fprintf(s_handle->file, "%s", "#Time");
+	FILE* fp = s_handle->file;
+	FILE* headerfile = NULL;
+	char tmp_headerpath[PATH_MAX];
+
+	if (altheader) {
+		sprintf(tmp_headerpath, "%s.HEADER", s_handle->path);
+		/* truncate a separate headerfile if exists */
+		headerfile = fopen(tmp_headerpath, "w");
+		if (!headerfile)
+			return EINVAL;
+		fp = headerfile;
+	}
+
+	fprintf(fp, "%s", "#Time");
 	LIST_FOREACH(smi, metric_list, entry)
-		fprintf(s_handle->file, ", %s.CompId, %s.value",
+		fprintf(fp, ", %s.CompId, %s.value",
 				smi->name, smi->name);
-	fprintf(s_handle->file, "\n");
+	fprintf(fp, "\n");
+	fflush(fp);
+
+	if (headerfile != NULL)
+		fclose(headerfile);
+	fp = 0;
+
 	return 0;
 }
 
@@ -194,9 +225,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		idx_add(store_idx, (void *)container, strlen(container), s_handle);
 		if (print_header(s_handle, list))
 			goto err4;
+
 		goto out;
 	}
 	goto out;
+
 err4:
 	fclose(s_handle->file);
 err3:
