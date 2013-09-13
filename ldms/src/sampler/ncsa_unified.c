@@ -1008,7 +1008,7 @@ static int sample_metrics_vmstat(int curr_metric_no, int* mc)
 	int j, rc;
 
 	if (!v_f)
-		return ENOENT;
+		return 0;
 
 	found_metrics = 0;
 
@@ -1111,9 +1111,8 @@ static int sample_metrics_current_freemem(int curr_metric_no, int* mc)
 	int j, rc;
 
 
-	if (!cf_f){
-		return ENOENT;
-	}
+	if (!cf_f)
+		return 0;
 
 	found_metrics = 0;
 	fseek(cf_f, 0, SEEK_SET);
@@ -1153,9 +1152,8 @@ static int sample_metrics_loadavg(int curr_metric_no, int* mc)
 	int vi[3];
 	int i, j, rc;
 
-	if (!l_f){
-		return ENOENT;
-	}
+	if (!l_f)
+		return 0;
 
 	found_metrics = 0;
 	fseek(l_f, 0, SEEK_SET);
