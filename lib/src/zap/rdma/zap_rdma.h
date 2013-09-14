@@ -153,6 +153,19 @@ struct z_rdma_ep {
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
 
+	/**
+	 * An endpoint has a parent endpoint when it is created from
+	 * ::handle_connect_request(). The idea is that the parent endpoint
+	 * should be destroyed after the child endpoint. When a child endpoint
+	 * is created, rhe refcount in \c parent_ep will be increased by 1. When
+	 * a child endpoint is destroyed, \c parent_ep refcount will be
+	 * decreased by 1.
+	 *
+	 * If an endpoint is not an endpoint created from
+	 * ::handle_connect_request(), parent_ep is NULL.
+	 */
+	zap_ep_t parent_ep;
+
 	/* CM stuff */
 	sem_t sem;
 	pthread_t server_thread;

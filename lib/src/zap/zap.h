@@ -84,26 +84,43 @@ typedef struct zap *zap_t;
 typedef void (*zap_log_fn_t)(const char *fmt, ...);
 typedef struct zap_map *zap_map_t;
 
+#define ZAP_EVENT_LIST(ZAP_WRAP) \
+	/*! An incoming connect request is ready to be accepted or rejected.  */\
+	ZAP_WRAP(ZAP_EVENT_CONNECT_REQUEST), \
+	/*! A connect request failed due to a network error. */ \
+	ZAP_WRAP(ZAP_EVENT_CONNECT_ERROR), \
+	/*! An active request initiated with \c zap_connect was accepted.  */ \
+	ZAP_WRAP(ZAP_EVENT_CONNECTED), \
+	/*! A connect request was rejected by the peer.  */ \
+	ZAP_WRAP(ZAP_EVENT_REJECTED), \
+	/*! A connection endpoint has been disconnected. */ \
+	ZAP_WRAP(ZAP_EVENT_DISCONNECTED), \
+	/*! Data has been received. */ \
+	ZAP_WRAP(ZAP_EVENT_RECV_COMPLETE), \
+	/*! An \c zap_read_start request has completed. */ \
+	ZAP_WRAP(ZAP_EVENT_READ_COMPLETE), \
+	/*! An \c zap_write_start request has completed. */ \
+	ZAP_WRAP(ZAP_EVENT_WRITE_COMPLETE), \
+	/*! An \c The peer has shared a buffer with \c zap_share. */ \
+	ZAP_WRAP(ZAP_EVENT_RENDEZVOUS), \
+	/*! Last event (dummy) */ \
+	ZAP_WRAP(ZAP_EVENT_LAST)
+
 typedef enum zap_event_type {
-	/*! An incoming connect request is ready to be accepted or rejected.  */
-	ZAP_EVENT_CONNECT_REQUEST,
-	/*! A connect request failed due to a network error. */
-	ZAP_EVENT_CONNECT_ERROR,
-	/*! An active request initiated with \c zap_connect was accepted.  */
-	ZAP_EVENT_CONNECTED,
-	/*! A connect request was rejected by the peer.  */
-	ZAP_EVENT_REJECTED,
-	/*! A connection endpoint has been disconnected. */
-	ZAP_EVENT_DISCONNECTED,
-	/*! Data has been received. */
-	ZAP_EVENT_RECV_COMPLETE,
-	/*! An \c zap_read_start request has completed. */
-	ZAP_EVENT_READ_COMPLETE,
-	/*! An \c zap_write_start request has completed. */
-	ZAP_EVENT_WRITE_COMPLETE,
-	/*! An \c The peer has shared a buffer with \c zap_share. */
-	ZAP_EVENT_RENDEZVOUS,
+	ZAP_EVENT_LIST(ZAP_ENUM_WRAP)
 } zap_event_type_t;
+
+static char *__zap_event_str[] = {
+	ZAP_EVENT_LIST(ZAP_STR_WRAP)
+};
+
+static inline
+const char* zap_event_str(enum zap_event_type e)
+{
+	if (e < 0 || e > ZAP_EVENT_LAST)
+		return "ZAP_EVENT_UNKNOWN";
+	return __zap_event_str[e];
+}
 
 #define ZAP_ERR_LIST(ZAP_WRAP)                \
 	ZAP_WRAP(ZAP_ERR_OK),                 \

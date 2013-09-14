@@ -61,8 +61,8 @@ typedef enum zap_ep_state {
 	ZAP_EP_LISTENING,
 	ZAP_EP_CONNECTING,
 	ZAP_EP_CONNECTED,
-	ZAP_EP_DISCONNECTING,
-	ZAP_EP_DISCONNECTED,
+	ZAP_EP_PEER_CLOSE,
+	ZAP_EP_CLOSE,
 	ZAP_EP_ERROR
 } zap_ep_state_t;
 
@@ -145,6 +145,23 @@ struct zap {
 	/** Pointer to the transport's private data */
 	void *private;
 };
+
+static inline zap_err_t
+zap_ep_change_state(struct zap_ep *ep,
+		    zap_ep_state_t from_state,
+		    zap_ep_state_t to_state)
+{
+	zap_err_t err = ZAP_ERR_OK;
+	pthread_mutex_lock(&ep->lock);
+	if (ep->state != from_state){
+		err = ZAP_ERR_BUSY;
+		goto out;
+	}
+	ep->state = to_state;
+ out:
+	pthread_mutex_unlock(&ep->lock);
+	return err;
+}
 
 struct zap_map {
 	LIST_ENTRY(zap_map) link; /*! List of maps for an endpoint. */
