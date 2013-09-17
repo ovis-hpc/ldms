@@ -159,12 +159,17 @@ char *llite_key[] = {
 struct str_list_head* construct_client_list(const char *clients,
 					    const char *alt_dir_path)
 {
-	if (clients)
-		/* OSTs is given */
-		return construct_str_list(clients);
-	else
-		/* OSTs is not given, get current ones from proc fs */
-		return construct_dir_list(alt_dir_path);
+	if (clients) {
+		if (strcmp(clients, "*") == 0)
+			/* OSTs is not given, get current ones from proc fs */
+			return construct_dir_list(alt_dir_path);
+		else
+			/* OSTs is given */
+			return construct_str_list(clients);
+	}
+
+	static struct str_list_head empty = {0};
+	return &empty;
 }
 
 /**
@@ -241,7 +246,7 @@ static int create_metric_set(const char *path, const char *oscs,
 	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
-			sprintf(tmp_path, "/proc/fs/lustre/%s/%s/stats",
+			sprintf(tmp_path, "/proc/fs/lustre/%s/%s*/stats",
 					namebase[i], sl->str);
 			sprintf(name_base, "%s.%s.stats", namebase[i], sl->str);
 			rc = stats_construct_routine(set, comp_id, tmp_path,
@@ -297,9 +302,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		comp_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "set");
-	oscs = av_value(avl, "oscs");
-	mdcs = av_value(avl, "mdcs");
-	llites = av_value(avl, "llites");
+	oscs = av_value(avl, "osc");
+	mdcs = av_value(avl, "mdc");
+	llites = av_value(avl, "llite");
 	if (value)
 		create_metric_set(value, oscs, mdcs, llites);
 
@@ -308,14 +313,23 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static const char *usage(void)
 {
-	return "config name=lustre_client component_id=<comp_id> set=<setname>\n"
-		"	component_id	The component id value.\n"
-		"	set		The set name.\n"
-		"	oscs		The list of OCSs.\n"
-		"	mdcs		The list of MDCs.\n"
-		"	llites		The list of llites.\n"
-		"For oscs,mdcs and llites: if not specified, all of the\n"
-		"currently available oscs/mdcs/llites will be added.\n";
+	return
+"config name=lustre2_client [OPTIONS]\n"
+"    OPTIONS:\n"
+"	component_id=NUMBER	The component id value.\n"
+"	set=STRING		The set name.\n"
+"	osc=STR,STR,...	The list of OCSs.\n"
+"	mdc=STR,STR,...	The list of MDCs.\n"
+"	llite=STR,STR,...	The list of llites.\n"
+"For oscs,mdcs and llites: if not specified, NONE of the\n"
+"oscs/mdcs/llites will be added. If {oscs,mdcs,llites} is set to *, all\n"
+"of the available {oscs,mdcs,llites} at the time will be added.\n"
+"\n"
+"NOTE: The names that make up the list of oscs, mdcs and llites do not have\n"
+"to include the uid part. For example, 'lustre-ffff8803245d4000' is the\n"
+"actual file in /proc/fs/lustre/llite/, but you can just say llites=lustre to\n"
+"include this component into the set.\n"
+;
 }
 
 static ldms_set_t get_set()
