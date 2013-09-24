@@ -86,6 +86,8 @@ struct csv_store_handle {
 	struct ldmsd_store *store;
 	char *path;
 	FILE *file;
+	FILE *headerfile;
+	int printheader;
 	char *store_key;
 	pthread_mutex_t lock;
 	void *ucontext;
@@ -156,32 +158,34 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 }
 
 static int print_header(struct csv_store_handle *s_handle,
-			struct ldmsd_store_metric_index_list *metric_list)
+			ldms_mvec_t mvec)
 {
-	struct ldmsd_store_metric_index *smi;
-	FILE* fp = s_handle->file;
-	FILE* headerfile = NULL;
-	char tmp_headerpath[PATH_MAX];
 
-	if (altheader) {
-		sprintf(tmp_headerpath, "%s.HEADER", s_handle->path);
-		/* truncate a separate headerfile if exists */
-		headerfile = fopen(tmp_headerpath, "w");
-		if (!headerfile)
-			return EINVAL;
-		fp = headerfile;
+	/* Only called from Store which already has the lock */
+	FILE* fp = s_handle->headerfile;
+
+	s_handle->printheader = 0;
+	if (!fp){
+		msglog("Cannot print header for store_csv. No headerfile\n");
+		return EINVAL;
 	}
 
 	fprintf(fp, "%s", "#Time");
-	LIST_FOREACH(smi, metric_list, entry)
+
+	int num_metrics = ldms_mvec_get_count(mvec);
+	int i, rc;
+	for (i = 0; i < num_metrics; i++) {
+		char* name = ldms_get_metric_name(mvec->v[i]);
 		fprintf(fp, ", %s.CompId, %s.value",
-				smi->name, smi->name);
+				name, name);
+	}
+
 	fprintf(fp, "\n");
+	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
 
-	if (headerfile != NULL)
-		fclose(headerfile);
-	fp = 0;
+	fclose(s_handle->headerfile);
+	s_handle->headerfile = 0;
 
 	return 0;
 }
@@ -191,6 +195,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		struct ldmsd_store_metric_index_list *list, void *ucontext)
 {
 	struct csv_store_handle *s_handle;
+	int add_handle = 0;
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
@@ -208,6 +213,8 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			goto out;
 		s_handle->ucontext = ucontext;
 		s_handle->store = s;
+		add_handle = 1;
+
 		pthread_mutex_init(&s_handle->lock, NULL);
 
 		s_handle->path = strdup(tmp_path);
@@ -218,25 +225,51 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		if (!s_handle->store_key)
 			goto err2;
 
-		s_handle->file = fopen(s_handle->path, "a+");
-		if (!s_handle->file)
-			goto err3;
-
-		idx_add(store_idx, (void *)container, strlen(container), s_handle);
-		if (print_header(s_handle, list))
-			goto err4;
-
-		goto out;
+		s_handle->printheader = 1;
 	}
+
+	/* Take the lock in case its a store that has been closed */
+	pthread_mutex_lock(&s_handle->lock);
+
+	/* For both actual new store and reopened store, open the data file */
+	if (!s_handle->file)
+		s_handle->file = fopen(s_handle->path, "a+");
+	if (!s_handle->file)
+		goto err3;
+
+	/* Only bother to open the headerfile if we have to print the header */
+	if (s_handle->printheader && !s_handle->headerfile){
+		char tmp_headerpath[PATH_MAX];
+
+		if (altheader) {
+			sprintf(tmp_headerpath, "%s.HEADER", s_handle->path);
+			/* truncate a separate headerfile if exists */
+			s_handle->headerfile = fopen(tmp_headerpath, "w");
+		} else {
+			s_handle->headerfile = fopen(s_handle->path, "a+");
+		}
+
+		if (!s_handle->headerfile)
+			goto err4;
+	}
+
+	if (add_handle)
+		idx_add(store_idx, (void *)container,
+			strlen(container), s_handle);
+
+	pthread_mutex_unlock(&s_handle->lock);
 	goto out;
 
 err4:
 	fclose(s_handle->file);
+	s_handle->file = NULL;
 err3:
 	free(s_handle->store_key);
 err2:
 	free(s_handle->path);
 err1:
+	pthread_mutex_unlock(&s_handle->lock);
+	pthread_mutex_destroy(&s_handle->lock);
 	free(s_handle);
 	s_handle = NULL;
 out:
@@ -260,6 +293,11 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		return EPERM;
 	}
 
+	pthread_mutex_lock(&s_handle->lock);
+
+	if (s_handle->printheader)
+		print_header(s_handle, mvec);
+
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32, ts->sec, ts->usec);
 
 	int num_metrics = ldms_mvec_get_count(mvec);
@@ -273,6 +311,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 					rc, s_handle->path);
 	}
 	fprintf(s_handle->file,"\n");
+
+	pthread_mutex_unlock(&s_handle->lock);
+
 	return 0;
 }
 
@@ -299,15 +340,21 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->file)
 		fclose(s_handle->file);
 	s_handle->file = NULL;
+	if (s_handle->headerfile)
+		fclose(s_handle->headerfile);
+	s_handle->headerfile = NULL;
 	pthread_mutex_unlock(&s_handle->lock);
 }
 
 static void destroy_store(ldmsd_store_handle_t _s_handle)
 {
+
 	pthread_mutex_lock(&cfg_lock);
 	struct csv_store_handle *s_handle = _s_handle;
-	if (!s_handle)
+	if (!s_handle) {
+		pthread_mutex_unlock(&cfg_lock);
 		return;
+	}
 
 	pthread_mutex_lock(&s_handle->lock);
 	msglog("Destroying store_csv with path <%s>\n", s_handle->path);
@@ -322,14 +369,17 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->file)
 		fclose(s_handle->file);
 	s_handle->file = NULL;
+	if (s_handle->headerfile)
+		fclose(s_handle->headerfile);
+	s_handle->headerfile = NULL;
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 	if (s_handle->store_key)
 		free(s_handle->store_key);
 	pthread_mutex_unlock(&s_handle->lock);
 	pthread_mutex_destroy(&s_handle->lock);
-	free(s_handle);
 	pthread_mutex_unlock(&cfg_lock);
+	free(s_handle);
 }
 
 static struct ldmsd_store store_csv = {
