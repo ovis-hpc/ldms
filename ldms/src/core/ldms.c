@@ -810,6 +810,8 @@ static int value_size[] = {
 	[LDMS_V_S32] = sizeof(uint32_t),
 	[LDMS_V_U64] = sizeof(uint64_t),
 	[LDMS_V_S64] = sizeof(uint64_t),
+	[LDMS_V_F] = sizeof(float),
+	[LDMS_V_D] = sizeof(double),
 };
 static char *type_names[] = {
 	[LDMS_V_NONE] = "NONE",
@@ -821,6 +823,8 @@ static char *type_names[] = {
 	[LDMS_V_S32] = "S32",
 	[LDMS_V_U64] = "U64",
 	[LDMS_V_S64] = "S64",
+	[LDMS_V_F] = "F",
+	[LDMS_V_D] = "D",
 };
 
 #define ROUNDUP(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
@@ -906,6 +910,12 @@ void ldms_print_set_metrics(ldms_set_t _set)
 			break;
 		case LDMS_V_S64:
 			printf("%" PRId64 "\n", v->v_s64);
+			break;
+		case LDMS_V_F:
+			printf("%.2f", v->v_f);
+			break;
+		case LDMS_V_D:
+			printf("%.2f", v->v_d);
 			break;
 		}
 	}
@@ -1018,7 +1028,7 @@ ldms_metric_t ldms_add_metric(ldms_set_t _set, const char *name,
 	int mysize;	/* the size of the desc + pad + value */
 
 	/* Validate type */
-	if (type <= LDMS_V_NONE || type > LDMS_V_S64)
+	if (type <= LDMS_V_NONE || type > LDMS_V_D)
 		return NULL;
 
 	/* Compute my space */
@@ -1125,6 +1135,8 @@ static struct _ldms_type_name_map {
 	const char *name;
 	enum ldms_value_type type;
 } type_name_map[] = {
+	{ "D", LDMS_V_D, },
+	{ "F", LDMS_V_F, },
 	{ "NONE", LDMS_V_NONE, },
 	{ "S16", LDMS_V_S16, },
 	{ "S32", LDMS_V_S32, },
@@ -1134,6 +1146,7 @@ static struct _ldms_type_name_map {
 	{ "U32", LDMS_V_U32, },
 	{ "U64", LDMS_V_U64, },
 	{ "U8", LDMS_V_U8, },
+
 };
 
 int comparator(const void *a, const void *b)
@@ -1159,7 +1172,7 @@ enum ldms_value_type ldms_str_to_type(const char *name)
 
 const char *ldms_type_to_str(enum ldms_value_type t)
 {
-	if (t > LDMS_V_U64)
+	if (t > LDMS_V_D)
 		t = LDMS_V_NONE;
 	return type_names[t];
 }
