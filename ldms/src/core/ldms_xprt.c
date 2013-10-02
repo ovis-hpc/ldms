@@ -259,10 +259,7 @@ void __ldms_dir_del_set(const char *set_name)
 
 int ldms_xprt_connected(ldms_t _x)
 {
-	struct ldms_xprt *x = _x;
-	if (x)
-		return x->connected;
-	return 0;
+	return ((struct ldms_xprt *)_x)->connected;
 }
 
 void ldms_xprt_close(ldms_t _x)
@@ -282,6 +279,8 @@ void ldms_xprt_close(ldms_t _x)
 	if (close) {
 		if (x->close)
 			x->close(x);
+		/* pair with get in create */
+		ldms_release_xprt(x);
 	}
 }
 
@@ -345,7 +344,7 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 		mda->set_list += len;
 		mda->set_list_len += len;
 		mda->reply_count ++;
-		if (mda->reply_count < mda->set_count) 
+		if (mda->reply_count < mda->set_count)
 			return 0;
 	}
 
@@ -526,7 +525,7 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	struct ldms_context *data_ctxt = arg;
 
-        set->flags &= ~LDMS_SET_F_DIRTY; 
+        set->flags &= ~LDMS_SET_F_DIRTY;
 	if (set->meta->version == LDMS_VERSION)
 		x->read_data_start(x, s, set->meta->data_size, data_ctxt);
 	else
@@ -873,7 +872,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
 	x->log = log_fn;
-	pthread_mutex_init(&x->lock, 0);
+	pthread_mutex_init(&x->lock, NULL);
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
 	pthread_mutex_unlock(&xprt_list_lock);

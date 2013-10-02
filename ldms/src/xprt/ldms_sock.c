@@ -61,12 +61,23 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
+
+#define LOG__(r, fmt, ...) do { \
+	if (r && r->log) \
+		r->log(fmt, ##__VA_ARGS__); \
+} while(0)
+
+#define LOG_(r, fmt, ...) do { \
+	if (r && r->xprt && r->xprt->log) \
+		r->xprt->log(fmt, ##__VA_ARGS__); \
+} while(0)
 
 pthread_mutex_t sock_lock;
 
@@ -86,8 +97,12 @@ static struct ldms_sock_xprt * setup_connection(struct ldms_sock_xprt *x,
 						int sockfd,
 						struct sockaddr*remote_addr,
 						socklen_t sa_len);
-static void _setup_connection(struct ldms_sock_xprt *r,
+static void sock_xprt_error_handling(struct ldms_sock_xprt *s);
+
+static int _setup_connection(struct ldms_sock_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len);
+
+static int __set_socket_options(struct ldms_sock_xprt *s);
 
 static void release_buf_event(struct ldms_sock_xprt *r);
 
@@ -113,7 +128,6 @@ void sock_xprt_cleanup(void)
 static void sock_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
-
 	release_buf_event(s);
 	close(s->sock);
 	s->sock = 0;
@@ -144,6 +158,45 @@ static int set_nonblock(struct ldms_xprt *x, int fd)
 	return 0;
 }
 
+static int __set_socket_options(struct ldms_sock_xprt *s)
+{
+	int rc;
+	int sd = s->sock;
+	int val;
+
+	val = 1;
+	if (setsockopt(sd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val))) {
+		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPCNT (val=%d\n):"
+				" %m\n", val);
+		goto err;
+	}
+
+	val = 1;
+	if (setsockopt(sd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val))) {
+		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPCNT (val=%d\n):"
+				" %m\n", val);
+		goto err;
+	}
+
+	val = 1;
+	if (setsockopt(sd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val))) {
+		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPIDLE (val=%d\n):"
+				" %m\n", val);
+		goto err;
+	}
+
+	val = 10;
+	if (setsockopt(sd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val))) {
+		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPINTVL (val=%d\n):"
+				" %m\n", val);
+		goto err;
+	}
+
+	return 0;
+err:
+	return -1;
+}
+
 static int sock_xprt_connect(struct ldms_xprt *x,
 			     struct sockaddr *sa, socklen_t sa_len)
 {
@@ -153,19 +206,22 @@ static int sock_xprt_connect(struct ldms_xprt *x,
 	r->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (r->sock < 0)
 		return -1;
-	int rc = connect(r->sock, sa, sa_len);
+	int rc = __set_socket_options(r);
+	if (rc)
+		goto err;
+	r->type = LDMS_SOCK_ACTIVE;
+	rc = connect(r->sock, sa, sa_len);
 	if (rc)
 		goto err;
 	sa_len = sizeof(ss);
 	rc = getsockname(r->sock, (struct sockaddr *)&ss, &sa_len);
 	if (rc)
 		goto err;
-	_setup_connection(r, (struct sockaddr *)&ss, sa_len);
+	if (_setup_connection(r, (struct sockaddr *)&ss, sa_len) != 0)
+		goto err;
 	return 0;
 
 err:
-	close(r->sock);
-	r->sock = 0;
 	return -1;
 }
 int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
@@ -225,6 +281,14 @@ int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request *req)
 	return EINVAL;
 }
 
+static void sock_xprt_error_handling(struct ldms_sock_xprt *s)
+{
+	if (s->type == LDMS_SOCK_PASSIVE)
+		ldms_xprt_close(s->xprt);
+	else
+		s->xprt->connected = 0;
+}
+
 static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
 {
 	int cmd;
@@ -243,8 +307,7 @@ static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
 		s->xprt->recv_cb(s->xprt, req);
 	return 0;
  close_out:
-	ldms_xprt_close(s->xprt);
-	ldms_release_xprt(s->xprt);
+	sock_xprt_error_handling(s);
 	return -1;
 }
 
@@ -276,8 +339,7 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 		if (!req) {
 			r->xprt->log("%s Memory allocation failure reqlen %zu\n",
 				     __FUNCTION__, reqlen);
-			ldms_xprt_close(r->xprt);
-			ldms_release_xprt(r->xprt);
+			sock_xprt_error_handling(r);
 			break;
 		}
 		len = evbuffer_remove(evb, req, reqlen);
@@ -314,17 +376,16 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 	if (events & ~BEV_EVENT_CONNECTED) {
 		/* Peer disconnect or other error */
 		if (events & (BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
-			r->xprt->log("Socket errors %x\n", events);
-		r->xprt->connected = 0;
-		ldms_xprt_close(r->xprt);
-		ldms_release_xprt(r->xprt);
+			r->xprt->log("Socket errors %#x\n", events);
+		sock_xprt_error_handling(r);
 	} else
-		r->xprt->log("Peer connect complete %x\n", events);
+		r->xprt->log("Peer connect complete %#x\n", events);
 }
 
-static void _setup_connection(struct ldms_sock_xprt *r,
+static int _setup_connection(struct ldms_sock_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len)
 {
+	int rc = 0;
 	r->conn_status = CONN_CONNECTED;
 	memcpy((char *)&r->xprt->remote_ss, (char *)remote_addr, sa_len);
 	r->xprt->ss_len = sa_len;
@@ -339,16 +400,15 @@ static void _setup_connection(struct ldms_sock_xprt *r,
 	if(!r->buf_event) {
 		r->xprt->log("Error initializing buffered I/O event for "
 			     "fd %d.\n", r->sock);
-		goto err_0;
+		rc = -1;
+		goto out;
 	}
 	bufferevent_setcb(r->buf_event, sock_read, sock_write, sock_event, r);
 	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
 		r->xprt->log("Error enabling buffered I/O event for fd %d.\n",
 			     r->sock);
-	return;
- err_0:
-	ldms_xprt_close(r->xprt);
-	ldms_release_xprt(r->xprt);
+out:
+	return rc;
 }
 
 static struct ldms_sock_xprt *
@@ -367,18 +427,15 @@ setup_connection(struct ldms_sock_xprt *p, int sockfd,
 	}
 
 	r = sock_from_xprt(_x);
+	r->type = LDMS_SOCK_PASSIVE;
 	r->sock = sockfd;
 	r->xprt->local_ss = p->xprt->local_ss;
-	_setup_connection(r, remote_addr, sa_len);
+	if (_setup_connection(r, remote_addr, sa_len) != 0) {
+		sock_xprt_error_handling(r);
+		return NULL;
+	}
 	return r;
 }
-
-struct timeval listen_tv;
-struct timeval report_tv;
-// #define CRAY_BUG
-#ifdef CRAY_BUG
-struct timeval last_tv;
-#endif
 
 static void sock_connect(struct evconnlistener *listener,
 			 evutil_socket_t sockfd,
@@ -386,22 +443,17 @@ static void sock_connect(struct evconnlistener *listener,
 {
 	struct ldms_sock_xprt *r = arg;
 	struct ldms_sock_xprt *new_r = NULL;
-	static int conns;
 
 	new_r = setup_connection(r, sockfd, (struct sockaddr *)address, socklen);
-	if (new_r)
-		conns ++;
+	if (!new_r)
+		return;
 
-	struct timeval connect_tv;
-	gettimeofday(&connect_tv, NULL);
-
-	if ((connect_tv.tv_sec - report_tv.tv_sec) >= 10) {
-		double rate;
-		rate = (double)conns / (double)(connect_tv.tv_sec - report_tv.tv_sec);
-		r->xprt->log("Connection rate is %.2f connectios/second\n", rate);
-		report_tv = connect_tv;
-		conns = 0;
+	int rc = __set_socket_options(new_r);
+	if (rc) {
+		sock_xprt_error_handling(new_r);
+		return;
 	}
+
 }
 
 static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t sa_len)
@@ -409,9 +461,6 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	int rc;
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
 	int optval = 1;
-
-	gettimeofday(&listen_tv, NULL);
-	report_tv = listen_tv;
 
 	r->sock = socket(PF_INET, SOCK_STREAM, 0);
 	if (r->sock < 0) {
@@ -434,13 +483,21 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	r->sock = evconnlistener_get_fd(r->listen_ev);
 	return 0;
  err_0:
+	/* close and destroy if listen failed */
 	ldms_xprt_close(r->xprt);
-	ldms_release_xprt(r->xprt);
 	return rc;
 }
 
 static void sock_xprt_destroy(struct ldms_xprt *x)
 {
+	char lcl_buf[32];
+	char rem_buf[32];
+	struct sockaddr_in *lcl = (struct sockaddr_in *)&x->local_ss;
+	struct sockaddr_in *rem = (struct sockaddr_in *)&x->remote_ss;
+
+	(void)inet_ntop(AF_INET, &lcl->sin_addr, lcl_buf, sizeof(lcl_buf));
+	(void)inet_ntop(AF_INET, &rem->sin_addr, rem_buf, sizeof(rem_buf));
+
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
 	sock_xprt_term(r);
 }

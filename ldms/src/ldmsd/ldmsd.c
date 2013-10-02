@@ -843,7 +843,7 @@ void host_sampler_cb(int fd, short sig, void *arg)
 		break;
 	}
 
-	if (!ldms_xprt_connected(hs->x)) {
+	if (!hs->x || !ldms_xprt_connected(hs->x)) {
 		hs->timeout.tv_sec = hs->connect_interval / 1000000;
 		hs->timeout.tv_usec = hs->connect_interval % 1000000;
 	} else {
@@ -1856,11 +1856,13 @@ int do_connect(struct hostspec *hs)
 		ldms_log("Error creating transport '%s'.\n", hs->xprt_name);
 		return -1;
 	}
-	/* Take a reference since we're caching the handle */
 	ldms_xprt_get(hs->x);
 	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
 			    sizeof(hs->sin));
 	if (ret) {
+		ldms_release_xprt(hs->x);
+		ldms_xprt_close(hs->x);
+		hs->x = 0;
 		pthread_mutex_lock(&hs->conn_state_lock);
 		hs->conn_state = HOST_DISCONNECTED;
 		pthread_mutex_unlock(&hs->conn_state_lock);
@@ -1871,9 +1873,6 @@ int do_connect(struct hostspec *hs)
 	pthread_mutex_unlock(&hs->conn_state_lock);
 
 	reset_host(hs);
-	ldms_log("Connected to host '%s:%hu'\n", hs->hostname,
-		 ntohs(hs->sin.sin_port));
-
 
 	return 0;
 }
@@ -2077,6 +2076,14 @@ void do_active_host(struct hostspec *hs)
 		break;
 	case HOST_CONNECTED:
 		if (!hs->x || !ldms_xprt_connected(hs->x)) {
+			if (hs->x) {
+				/* pair with get in do_connect */
+				ldms_release_xprt(hs->x);
+				ldms_xprt_close(hs->x);
+			}
+			/* The bad hs->x shall be destroyed automatically when
+			 * the refcount is 0. Resetting hs->x here is OK. */
+			hs->x = 0;
 			hs->conn_state = HOST_DISCONNECTED;
 			pthread_mutex_unlock(&hs->conn_state_lock);
 			break;
