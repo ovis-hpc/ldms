@@ -17,6 +17,10 @@ if ENABLE_LUSTRE
 SUBDIRS += lustre
 endif
 
+if ENABLE_HADOOP
+SUBDIRS += hadoop
+endif
+
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD)
