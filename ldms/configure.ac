@@ -47,6 +47,7 @@ OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([ncsa_unified], [ENABLE_NCSA_UNIFIED])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
+OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
@@ -208,6 +209,7 @@ AC_SUBST(ac_configure_args)
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
+		 src/sampler/hadoop/Makefile
 		 src/ldmsd/Makefile
 		 ldms.spec])
 AC_OUTPUT
