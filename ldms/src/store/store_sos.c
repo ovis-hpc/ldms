@@ -68,7 +68,7 @@
 SOS_OBJ_BEGIN(ovis_metric_class, "OvisMetric")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
 	SOS_OBJ_ATTR("value", SOS_TYPE_UINT64)
 SOS_OBJ_END(4);
 
@@ -299,10 +299,10 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 			errno = ENOMEM;
 			return -1;
 		}
-		uint64_t comp_id = ldms_get_user_data(mvec->v[i]);
+		uint64_t metric_id = ldms_get_user_data(mvec->v[i]);
 		sos_obj_attr_set(si->ms[i]->sos, 0, obj, (void*)&ts->sec);
 		sos_obj_attr_set(si->ms[i]->sos, 1, obj, (void*)&ts->usec);
-		sos_obj_attr_set(si->ms[i]->sos, 2, obj, &comp_id);
+		sos_obj_attr_set(si->ms[i]->sos, 2, obj, &metric_id);
 		sos_obj_attr_set(si->ms[i]->sos, 3, obj,
 				 ldms_get_value_ptr(mvec->v[i]));
 		rc = sos_obj_add(si->ms[i]->sos, obj);
