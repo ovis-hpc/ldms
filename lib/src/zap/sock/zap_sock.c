@@ -715,6 +715,8 @@ static void __z_sock_conn_request(struct evconnlistener *listener,
 				__LINE__);
 		return;
 	}
+	void *uctxt = zap_get_ucontext(&sep->ep);
+	zap_set_ucontext(new_ep, uctxt);
 	new_sep = (void*) new_ep;
 	new_sep->sock = sockfd;
 	new_sep->ep.state = ZAP_EP_CONNECTING;
