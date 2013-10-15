@@ -1135,6 +1135,8 @@ handle_connect_request(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 		     "endpoint for a connection request.\n");
 		return;
 	}
+	void *ctxt = zap_get_ucontext(&rep->ep);
+	zap_set_ucontext(new_ep, ctxt);
 	new_rep = (struct z_rdma_ep *)new_ep;
 	new_rep->cm_id = cma_id;
 	new_rep->parent_ep = &rep->ep;
