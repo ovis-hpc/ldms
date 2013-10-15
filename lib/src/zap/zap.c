@@ -65,6 +65,15 @@
 #include "zap.h"
 #include "zap_priv.h"
 
+#ifdef DEBUG
+#define DLOG(ep, fmt, ...) do { \
+	if (ep && ep->z && ep->z->log_fn) \
+		ep->z->log_fn(fmt, ##__VA_ARGS__); \
+} while(0)
+#else
+#define DLOG(ep, fmt, ...)
+#endif
+
 static void default_log(const char *fmt, ...)
 {
 	va_list ap;
@@ -172,6 +181,8 @@ zap_err_t zap_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
 		(*pep)->z = z;
 		(*pep)->cb = cb;
 		(*pep)->ref_count = 1;
+		(*pep)->state = ZAP_EP_INIT;
+		pthread_mutex_init(&(*pep)->lock, NULL);
 	}
 	return zerr;
 }
@@ -223,26 +234,35 @@ void zap_get_ep(zap_ep_t ep)
 	pthread_mutex_unlock(&ep->lock);
 }
 
+zap_err_t zap_free(zap_ep_t ep)
+{
+	DLOG(ep, "zap_free: freeing 0x%016x\n", ep);
+	/* Unmap the zap_map first */
+	zap_map_t map;
+	pthread_mutex_lock(&ep->lock);
+	while ((map = LIST_FIRST(&ep->map_list))) {
+		LIST_REMOVE(map, link);
+		ep->z->unmap(ep, map);
+	}
+	pthread_mutex_unlock(&ep->lock);
+
+	/* Then, destroy the endpoint */
+	ep->z->destroy(ep);
+}
+
 void zap_put_ep(zap_ep_t ep)
 {
 	int destroy = 0;
+
 	pthread_mutex_lock(&ep->lock);
 	assert(ep->ref_count);
 	ep->ref_count--;
 	if (!ep->ref_count)
 		destroy = 1;
 	pthread_mutex_unlock(&ep->lock);
-	if (!destroy)
-		return;
 
-	switch (ep->state) {
-	case ZAP_EP_INIT:
-	case ZAP_EP_ERROR:
-		ep->z->destroy(ep);
-		break;
-	default:
-		assert(0);
-	}
+	if (destroy)
+		zap_free(ep);
 }
 
 zap_err_t zap_read(zap_ep_t ep,

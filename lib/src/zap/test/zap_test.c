@@ -76,6 +76,7 @@
 static int done = 0;
 pthread_mutex_t done_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t done_cv = PTHREAD_COND_INITIALIZER;
+zap_t zap;
 
 
 char *ev_str[] = {
@@ -92,6 +93,7 @@ char *ev_str[] = {
 
 /* Data src/sink for RDMA_WRITE */
 char write_buf[1024];
+zap_map_t write_map;
 
 /* Data src/sink for RDMA_READ */
 char read_buf[1024];
@@ -220,16 +222,15 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 void do_rendezvous(zap_ep_t ep)
 {
 	zap_err_t err;
-	zap_map_t map;
 
-	err = zap_map(ep, &map, write_buf, sizeof(write_buf),
+	err = zap_map(ep, &write_map, write_buf, sizeof(write_buf),
 		      ZAP_ACCESS_WRITE);
 	if (err) {
 		printf("Error %d mapping the write buffer.\n", err);
 		zap_close(ep);
 	}
 
-	err = zap_share(ep, map, (uint64_t)(unsigned long)ep);
+	err = zap_share(ep, write_map, (uint64_t)(unsigned long)ep);
 	if (err) {
 		printf("Error %d sharing the write map.\n", err);
 		zap_close(ep);
@@ -281,6 +282,11 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	err = zap_unmap(ep, read_sink_map);
 	if (err)
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
+#if 0
+	err = zap_unmap(ep, write_map);
+	if (err)
+		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
+#endif
 	printf("READ BUFFER CONTAINS '%s'.\n", read_buf);
 	zap_close(ep);
 }
@@ -295,6 +301,8 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		assert(0);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
+		done = 1;
+		pthread_cond_broadcast(&done_cv);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		do_send(ep, "Hello there!");
@@ -302,6 +310,12 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_REJECTED:
 		printf("REJECTED! try again ...\n");
 		sin = zap_get_ucontext(ep);
+		zap_close(ep);
+		err = zap_new(zap, &ep, client_cb);
+		if (err) {
+			printf("zap_new failed.\n");
+			return;
+		}
 		err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin));
 		if (err) {
 			printf("zap_connect failed.\n");
@@ -407,10 +421,10 @@ int resolve(const char *hostname, struct sockaddr_in *sin)
 	return 0;
 }
 
-#define FMT_ARGS "t:p:h:s"
+#define FMT_ARGS "x:p:h:s"
 void usage(int argc, char *argv[]) {
-	printf("usage: %s -t name -p port_no [-h host] [-s].\n"
-	       "    -t name	The transport to use.\n"
+	printf("usage: %s -x name -p port_no [-h host] [-s].\n"
+	       "    -x name	The transport to use.\n"
 	       "    -p port_no	The port number.\n"
 	       "    -h host	The host name or IP address. Must be specified\n"
 	       "		if this is the client.\n"
@@ -422,7 +436,6 @@ void usage(int argc, char *argv[]) {
 int main(int argc, char *argv[])
 {
 	int rc;
-	zap_t zap;
 	int is_server = 0;
 	char *transport = NULL;
 	char *host = NULL;
@@ -438,7 +451,7 @@ int main(int argc, char *argv[])
 		case 'h':
 			host = strdup(optarg);
 			break;
-		case 't':
+		case 'x':
 			transport = strdup(optarg);
 			break;
 		case 'p':
@@ -477,5 +490,8 @@ int main(int argc, char *argv[])
 	else
 		do_client(zap, &sin);
 
+	/* This sleep is to ensure that we see the resources get cleaned
+	 * properly */
+	sleep(1);
 	return 0;
 }
