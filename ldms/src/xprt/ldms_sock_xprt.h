@@ -115,6 +115,11 @@ struct ldms_sock_xprt {
 	struct ldms_xprt *xprt;
 	enum sock_conn_status conn_status;
 
+	enum ldms_sock_xprt_type {
+		LDMS_SOCK_PASSIVE,
+		LDMS_SOCK_ACTIVE
+	} type;
+
 	int sock;
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;

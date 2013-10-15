@@ -105,9 +105,6 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 
 	(void)inet_ntop(AF_INET, &lcl->sin_addr, lcl_buf, sizeof(lcl_buf));
 	(void)inet_ntop(AF_INET, &rem->sin_addr, rem_buf, sizeof(rem_buf));
-	LOG_(r, "RDMA: Tearing down %s:%hu <--> %s:%hu.\n",
-	     lcl_buf, ntohs(lcl->sin_port),
-	     rem_buf, ntohs(rem->sin_port));
 
 	if (r->cm_id && r->conn_status == CONN_CONNECTED)
 		assert(0);
@@ -454,8 +451,13 @@ static int rdma_post_send(struct ldms_rdma_xprt *x, struct rdma_buffer *rbuf)
 static void rdma_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_rdma_xprt *r = rdma_from_xprt(x);
-	if (r->cm_id && r->conn_status == CONN_CONNECTED)
+	if (r->cm_id && (r->conn_status == CONN_CONNECTED ||
+				r->conn_status == CONN_ERROR_CONNECTED))
 		rdma_disconnect(r->cm_id);
+	/* NOTE: rdma_disconnect should not be called if the connection is not
+	 * established. The status after the connection is established can only
+	 * be CONN_CONNECTED or CONN_ERROR_CONNECTED.
+	 */
 }
 
 static int rdma_xprt_connect(struct ldms_xprt *x,
@@ -544,7 +546,6 @@ static int rdma_xprt_connect(struct ldms_xprt *x,
  err_2:
 	ldms_release_xprt(r->xprt);
  err_1:
-	rdma_teardown_conn(r);
  err_0:
 	return rc;
 }
@@ -801,7 +802,7 @@ static int cq_event_handler(struct ibv_cq *cq, int count)
 		struct ldms_rdma_xprt *x = ctxt->x;
 		ret++;
 		if (wc.status) {
-			x->conn_status = CONN_ERROR;
+			x->conn_status = CONN_ERROR_CONNECTED;
 			x->xprt->connected = 0;
 			if (wc.status != IBV_WC_WR_FLUSH_ERR) {
 				struct rdma_request_hdr *rh = (void *)(unsigned long)
@@ -1075,21 +1076,11 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 
 	case RDMA_CM_EVENT_REJECTED:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
-		ldms_release_xprt(x->xprt);
-
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-		sin = (struct sockaddr_in *)&x->xprt->remote_ss;
-		s = (char *)inet_ntop(AF_INET, &sin->sin_addr,
-				      buf, sizeof(buf));
-		LOG_(x, "RDMA: %s for %s:%hu.\n",
-		     cma_event_str[event],
-		     s, ntohs(sin->sin_port));
 		x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
-		(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL,
-				x->cm_channel->fd, NULL);
 		ret = -1;
 		sem_post(&x->sem);
 		break;
@@ -1098,12 +1089,17 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		x->conn_status = CONN_CLOSED;
 		x->xprt->connected = 0;
 		rdma_disconnect(x->cm_id);
+		/* pair with get in rdma_accept_request (passive) or
+		 * rdma_setup_conn (active) */
 		ldms_release_xprt(x->xprt);
 		sem_post(&x->sem);
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		x->conn_status = CONN_ERROR;
+		if (x->conn_status == CONN_CONNECTED)
+			x->conn_status = CONN_ERROR_CONNECTED;
+		else
+			x->conn_status = CONN_ERROR;
 		x->xprt->connected = 0;
 		sem_post(&x->sem);
 		break;
@@ -1117,6 +1113,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 					     "transport from the "
 					     "CM event queue.\n", ret);
 			}
+			/* pair with EPOLL_CTL_ADD for cm_channel */
 			ldms_release_xprt(x->xprt);
 		}
 		if (x->cq_channel) {
@@ -1127,6 +1124,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 					     "CQ fd from "
 					     "event queue.\n", ret);
 			}
+			/* pair with EPOLL_CTL_ADD for cq_channel */
 			ldms_release_xprt(x->xprt);
 		}
 		break;
@@ -1225,6 +1223,7 @@ static int rdma_xprt_listen(struct ldms_xprt *x, struct sockaddr *s, socklen_t s
  err_3:
 	rc = epoll_ctl(cm_fd, EPOLL_CTL_DEL,
 			r->cm_channel->fd, NULL);
+	/* pair with get in this function */
 	ldms_release_xprt(r->xprt);
  err_2:
 	rdma_destroy_id(r->cm_id);

@@ -419,7 +419,6 @@ static int process_xprt_io(struct ldms_ugni_xprt *s, struct ldms_request *req)
 	return 0;
  close_out:
 	ldms_xprt_close(s->xprt);
-	ldms_release_xprt(s->xprt);
 	return -1;
 }
 
@@ -452,7 +451,6 @@ static void ugni_read(struct bufferevent *buf_event, void *arg)
 			r->xprt->log("%s Memory allocation failure reqlen %zu\n",
 				     __FUNCTION__, reqlen);
 			ldms_xprt_close(r->xprt);
-			ldms_release_xprt(r->xprt);
 			break;
 		}
 		len = evbuffer_remove(evb, req, reqlen);
@@ -576,7 +574,6 @@ static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 			LOG_(r, "Socket errors %x\n", events);
 		r->xprt->connected = 0;
 		ldms_xprt_close(r->xprt);
-		ldms_release_xprt(r->xprt);
 	} else
 		LOG_(r, "Peer connect complete %x\n", events);
 }
@@ -611,7 +608,6 @@ static void _setup_connection(struct ldms_ugni_xprt *gxp,
 
  err_0:
 	ldms_xprt_close(gxp->xprt);
-	ldms_release_xprt(gxp->xprt);
 }
 
 static struct ldms_ugni_xprt *
@@ -705,7 +701,6 @@ static int ugni_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	return 0;
  err_0:
 	ldms_xprt_close(gxp->xprt);
-	ldms_release_xprt(gxp->xprt);
 	return rc;
 }
 
