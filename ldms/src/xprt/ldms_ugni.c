@@ -479,16 +479,22 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		pthread_mutex_lock(&ugni_lock);
 		grc = GNI_GetCompleted(cq, cqe, &post);
 		pthread_mutex_unlock(&ugni_lock);
-		if (grc != GNI_RC_SUCCESS) {
-			ugni_log("Error %d getting post descriptor from CQ %p\n",
-			       grc, cq);
-			grc = GNI_RC_SUCCESS;
-			continue;
+		if (grc) {
+			ugni_log("Error %d from CQ %p\n", grc, cq);
+			if (!(grc == GNI_RC_SUCCESS ||
+			      grc == GNI_RC_TRANSACTION_ERROR))
+				continue;
 		}
 		struct ugni_desc *desc = (struct ugni_desc *)post;
 		if (!desc) {
 			ugni_log("Post descriptor is Null!\n");
 			continue;
+		}
+		if (grc) {
+			/* The request failed, tear down the transport */
+			if (desc->gxp->xprt)
+				ldms_xprt_close(desc->gxp->xprt);
+			goto skip;
 		}
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
@@ -504,6 +510,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 						     "%p.\n",
 						     desc->post.type, desc->gxp);
 		}
+	skip:
 		free_desc(desc);
 		pthread_mutex_lock(&ugni_lock);
 		grc = GNI_CqGetEvent(cq, &cqe);
@@ -531,17 +538,11 @@ static void *cq_thread_proc(void *arg)
 		pthread_mutex_unlock(&cq_empty_lock);
 
 		grc = GNI_CqWaitEvent(ugni_gxp.dom.src_cq, timeout, &cqe);
-		if (grc) {
-			if (grc != GNI_RC_TIMEOUT) {
-				ugni_log("%s: Error %d  monitoring the CQ.\n", __func__, grc);
-				exit(1);
-			} else {
-				continue;
-			}
-		} else {
-			if (grc = process_cq(ugni_gxp.dom.src_cq, cqe))
-				ugni_log("Error %d processing CQ %p.\n", grc, ugni_gxp.dom.src_cq);
-		}
+		if (grc == GNI_RC_TIMEOUT)
+			continue;
+		if (grc = process_cq(ugni_gxp.dom.src_cq, cqe))
+			ugni_log("Error %d processing CQ %p.\n",
+				 grc, ugni_gxp.dom.src_cq);
 	}
 	return NULL;
 }
