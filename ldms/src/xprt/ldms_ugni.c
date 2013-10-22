@@ -73,10 +73,6 @@
 /* Convenience macro for logging errors */
 #define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }
 
-/* Gemini Transport Variables */
-#define UGNI_PTAG   0x84
-#define UGNI_COOKIE 0xa9380000
-
 static struct ldms_ugni_xprt ugni_gxp;
 int first;
 uint8_t ptag;
@@ -913,9 +909,14 @@ static void timeout_cb(int s, short events, void *arg)
 }
 
 static int once = 0;
-static int init_once()
+static int init_once(ldms_log_fn_t log_fn)
 {
 	int rc = ENOMEM;
+	uint8_t ptag = 0;
+	uint32_t cookie = 0;
+	char* ptag_str = NULL;
+	char* cookie_str = NULL;
+	uid_t euid = 0;
 
 	evthread_use_pthreads();
 	pthread_mutex_init(&ugni_list_lock, 0);
@@ -942,13 +943,31 @@ static int init_once()
 		goto err_2;
 
 	atexit(ugni_xprt_cleanup);
-	rc = ugni_job_setup(UGNI_PTAG, UGNI_COOKIE);
-	if (rc != GNI_RC_SUCCESS)
+	ptag_str = getenv("LDMS_UGNI_PTAG");
+	if (!ptag_str) {
+		rc = EINVAL;
+		log_fn("Missing LDMS_UGNI_PTAG\n");
 		goto err_3;
+	}
+	ptag = atoi(ptag_str);
 
-	rc = ugni_dom_init(UGNI_PTAG, UGNI_COOKIE, getpid(), &ugni_gxp);
-	if (rc != GNI_RC_SUCCESS)
+	cookie_str = getenv("LDMS_UGNI_COOKIE");
+	if (!cookie_str) {
+		rc = EINVAL;
+		log_fn("Missing LDMS_UGNI_COOKIE\n");
 		goto err_3;
+	}
+	cookie = strtol(cookie_str, NULL, 0);
+
+	rc = 0;
+	euid = geteuid();
+	if ((int) euid == 0){
+		rc = ugni_job_setup(ptag, cookie);
+		if (rc != GNI_RC_SUCCESS)
+			log_fn("ugni_job_setup failed %d\n",rc);
+	}
+	if (((int) euid != 0) || rc == GNI_RC_SUCCESS )
+		rc = ugni_dom_init(ptag, cookie, getpid(), &ugni_gxp);
 
 	return 0;
  err_3:
@@ -970,7 +989,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	if (!ugni_log)
 		ugni_log = log_fn;
 	if (!once) {
-		int rc = init_once();
+		int rc = init_once(log_fn);
 		if (rc) {
 			errno = rc;
 			goto err_0;
