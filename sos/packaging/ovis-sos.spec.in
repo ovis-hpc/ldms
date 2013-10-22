@@ -1,0 +1,85 @@
+# Set topdir to be builddir/rpm
+#%-define _topdir %(echo $PWD)/rpm
+# above doesn't work with modern rpm. must use --define to rpmbuild.
+# do not set unfascist build
+#%-define _unpackaged_files_terminate_build 0
+# require doc too
+# %define _missing_doc_files_terminate_build 0
+
+%define ovis_sos_grp System Environment/Libraries
+
+# Main package
+Summary: OVIS Libraries
+Name: ovis-sos
+Version: @VERSION@
+Release: 1%{?dist}
+License: GPLv2 or BSD
+Group: %{ovis_sos_grp}
+Summary: Scalable Object Store library
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: %{name}-%{version}.tar.gz
+Url: http://ovis.ca.sandia.gov/
+
+Prefix: /opt/ovis
+
+%description
+This package provides scalable object store libraries.
+
+%prep
+%setup -q
+
+%build
+%configure @rpm_configure_args@
+make
+
+%install
+rm -rf $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} install
+# remove unpackaged files from the buildroot
+rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+# ovis-sos
+%description
+Scalable Object Store library for OVIS.
+
+%files
+%defattr(-,root,root)
+%{_libdir}/lib*.*
+%{_libdir}/python2.6/site-packages
+%{_prefix}/lib/python2.6/site-packages
+%{_sbindir}/*
+#end ovis-sos
+
+# ovis-sos-doc
+%package doc
+Summary: Documentation files for %{name}
+Group: %{ovis_sos_grp}
+Requires: %{name}-devel = %{version}-%{release}
+%description doc
+Doxygen files for ovis-sos package.
+%files doc
+%defattr(-,root,root)
+%{_datadir}/doc/%{name}-%{version}
+%docdir %{_defaultdocdir}
+# note the rpm doc directive is not properly relocatable by default
+#end doc
+
+# ovis-sos-devel
+%package devel
+Summary: Development files for ovis-sos.
+Group: %{ovis_sos_grp}
+Requires: ovis-sos = @VERSION@
+%description devel
+Development files for ovis-sos package.
+
+%files devel
+%defattr(-,root,root)
+%{_includedir}/sos/*
+#end devel
+
+%changelog
+* Thu Oct 10 2013 Benjamin Allan <baallan@sandia.gov> 1.0.0
+- Created initial packaging.

@@ -20,36 +20,36 @@ LDMS has been run on 10,000 cores collecting over 100,000 metric values per seco
 
 You may clone LDMS source (and its submodules) from the official [Git](http://git-scm.com/) repository:
 
-    git clone git://hekili.ca.sandia.gov/git-ovis/repositories/LDMS.git
+    git clone FIXME-NOT-CURRENT: git://hekili.ca.sandia.gov/git-ovis/repositories/LDMS.git
     cd LDMS
     git submodule update --init --recursive
 
 In order to build LDMS from source, you must have
 
 + a working C compiler,
-+ either automake/autoconf/libtool or [CMake](http://www.cmake.org),
++ automake/autoconf (>=2.63)/libtool
 + [readline](http://www.gnu.org/s/readline) if you wish to build `ldmsctl` (which you probably do), and
 + [papi](http://icl.cs.utk.edu/papi/) if you wish to collect performance counter metrics.
 
 LDMS comes with its own version of [libevent](http://libevent.org), but will use the one supplied with your system if it is found.
 Otherwise, it will build libevent from source.
 
-You may configure LDMS using either
+You may configure LDMS and the rest using
 
     ./autogen.sh
-    ./configure
+    ./packaging/configure-all.sh
 
-if you prefer using autotools or
+The build tree will be in .build-all, not in the source directories.
 
-    ccmake .
-
-if you prefer using CMake.
 Once configured,
-
+	cd .build-all
     make
     make install
 
-will build and install the binaries and header files.
+will build and install the binaries and header files in /opt/ovis.
+But note, the configure will fail unless there is already ovis-lib and libsos
+installed in /opt/ovis, so you may be better off building the rpms. Read
+packaging/build-all.sh and friends for the complete details.
 
 ## Configuration settings
 

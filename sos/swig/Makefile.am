@@ -13,7 +13,8 @@ _sos_la_LIBADD = \
 	$(top_builddir)/src/libsos.la
 
 # Forcing this so that _sos.so will be in lib not lib64
-pkgpyexecdir = $(pkgpythondir)
+#pkgpyexecdir = $(pkgpythondir)
+# not a good idea; use correct pythonpath
 
 sos.py: sos.c
 

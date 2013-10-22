@@ -1,14 +1,13 @@
 lib_LTLIBRARIES =
 CORE = ../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I@OVIS_LIB_INCDIR@
-STORE_LIBADD = $(CORE)/libldms.la -lcoll -lovis_util \
-		-L@OVIS_LIB_LIB64DIR@ \
-		-L@OVIS_LIB_LIBDIR@
+AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
+STORE_LIBADD = $(CORE)/libldms.la -lcoll -lovis_util @OVIS_LIB_LIB64DIR_FLAG@ \
+	       -L@OVIS_LIB_LIBDIR@
 
 if ENABLE_SOS
 libstore_sos_la_SOURCES = store_sos.c
-libstore_sos_la_CFLAGS = $(AM_CFLAGS) -I@SOS_INCDIR@
-libstore_sos_la_LIBADD = $(STORE_LIBADD) -lsos -L@SOS_LIB64DIR@ -L@SOS_LIBDIR@
+libstore_sos_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
+libstore_sos_la_LIBADD = $(STORE_LIBADD) -lsos @SOS_LIB64DIR_FLAG@ @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libstore_sos.la
 endif
 
