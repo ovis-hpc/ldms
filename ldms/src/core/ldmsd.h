@@ -103,7 +103,9 @@ struct hostspec
 	char *hostname;		/* host name */
 	char *xprt_name;	/* transport name */
 	int connect_interval;	/* connect interval */
-	int sample_interval;	/* sample interval */
+	unsigned long sample_interval;/* sample interval */
+	long sample_offset;      /* sample offset */
+	int synchronous;         /* 1 if synchronous */
 	enum {
 		HOST_DISCONNECTED=0,
 		HOST_CONNECTING,
