@@ -1,0 +1,28 @@
+INTENT
+
+All the packages live in the "ovis-" prefix space, as there are prior
+Linux packages for ldms, sos, and possibly others.
+
+This packaging scheme aims to produce relocatable RPMS, in violation of
+Redhat/Fedora packaging standards.
+Linux dynamic libraries are not normally relocatable once installed, so
+to make relocation work the environment MUST specify LD_LIBRARY_PATH at
+runtime.
+
+The rpm packaging scripts (.spec.in) files in the source tree may need
+adjustments for platforms, but will work OOTB on rhel6.4/centos6.4/toss.
+
+
+BUILDING
+
+libevent2 must be built and installed before the rest can be. We provide
+the spec files, but currently you must obtain your own copies of the sources.
+
+Currently building the rpms goes in stages, with installations needed between.
+Conceivably, the build stages could be eliminated in one enormous spec file,
+and this would eliminate the need for intermediate installations.
+The scripts in this directory are all to be run from the top of the
+source tree (and check that this is so before doing real work).
+
+A user with sudo privilege can build all the rpms using the build-all.sh script.
+This script uses sudo to perform the intermediate rpm installs.

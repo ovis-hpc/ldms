@@ -1,6 +1,8 @@
 # Set topdir to be builddir/rpm
-%define _topdir %(echo $PWD)/rpm
-#%define _unpackaged_files_terminate_build 0
+# note this is intentionally ignored by rpmbuild. must use
+# commandline syntax in makefile.am to get this effect.
+#%-define _topdir %(echo $PWD)/rpm
+#%-define _unpackaged_files_terminate_build 0
 %define _missing_doc_files_terminate_build 0
 
 %define ovis_lib_grp System Environment/Libraries

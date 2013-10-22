@@ -1,13 +1,23 @@
 dnl Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.57)
-AC_INIT(ldms, 2.1.0, tom@ogc.us)
+AC_PREREQ(2.63)
+AC_INIT(ovis-ldms, 2.1.1, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE([-Wno-portability])
-AM_PROG_LIBTOOL
+dnl AM _INIT_AUTOMAKE([-Wno-portability])
+AM_INIT_AUTOMAKE([foreign])
+AC_PROG_LIBTOOL
+
+dnl Checks for programs
+AC_PROG_CC
+AC_PROG_CXX
+AC_CHECK_SIZEOF(long)
+dnl AM_PROG_CC_C_O
+
+dnl Checks for typedefs, structures, and compiler characteristics.
+AC_C_CONST
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])
@@ -81,32 +91,8 @@ then
 PKG_CHECK_MODULES([GLIB20], [glib-2.0])
 fi
 
-dnl Checks for programs
-AC_PROG_CC
-AC_PROG_CXX
-AC_CHECK_SIZEOF(long)
-dnl AM_PROG_CC_C_O
-
-dnl Checks for typedefs, structures, and compiler characteristics.
-AC_C_CONST
-
 dnl Check for libevent
-AC_ARG_WITH(libevent,
-[  --with-libevent=DIR      use libevent in DIR],
-[ case "$withval" in
-  yes|no)
-    AC_MSG_RESULT(no)
-    ;;
-  *)
-   CPPFLAGS="-I$withval/include"
-   LIBS="-L$withval/lib -L$withval/lib64"
-    ;;
-  esac ])
-AC_CHECK_LIB(event, event_base_new, [],
-    AC_MSG_ERROR([event_base_new() not found. ldms requires libevent.]))
-
-dnl Reset LIBS variable.
-LIBS=""
+OPTION_WITH_EVENT
 
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
@@ -115,8 +101,11 @@ dnl Reset LIBS variable.
 LIBS=""
 
 dnl Check for libreadline
+AC_ARG_WITH([ldflags-readline],[AS_HELP_STRING([--with-ldflags-readline],[link flags needed for deficient readline libraries, eg needing -ltermcap.])],[LDFLAGS_READLINE=$with_ldflags_readline],[])
+AC_MSG_NOTICE([User gave $LDFLAGS_READLINE for readline support])
+AC_SUBST([LDFLAGS_READLINE])
 AC_CHECK_LIB(readline, readline, [],
-    AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]))
+    AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]),[$LDFLAGS_READLINE])
 dnl Reset LIBS variable.
 LIBS=""
 
@@ -168,7 +157,7 @@ AC_CHECK_LIB( sos, sos_open,
 	[
 		AC_MSG_FAILURE(libsos not found)
 	],
-	-lpthread -lods -loidx -lidx -L$SOS_LIBDIR
+	-lpthread -lods -loidx -lidx $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
 )
 dnl Reset LIBS variable.
 LIBS=""
@@ -193,14 +182,14 @@ dnl Check for mmalloc
 AC_CHECK_LIB(mmalloc, mm_init, [],
 	     AC_MSG_ERROR([mmalloc library not found. ldms requires mmalloc.
 			   Please install mmalloc from OVIS/lib. ]),
-	     -L$OVIS_LIB_LIBDIR -L$SOS_LIBDIR )
+	     $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG )
 dnl Reset LIBS variable.
 LIBS=""
 
 AC_CHECK_LIB(coll, idx_create, [],
 	     AC_MSG_ERROR([libcoll not found. Please install libcoll from
 			   OVIS/lib.]),
-	     -L$OVIS_LIB_LIBDIR -L$SOS_LIBDIR )
+	     $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG )
 dnl Reset LIBS variable.
 LIBS=""
 
@@ -233,6 +222,7 @@ LIBS=""
 
 
 AC_SUBST(ac_configure_args)
+AC_SUBST(configure_input)
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/store/Makefile src/sampler/Makefile
@@ -240,5 +230,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/sampler/cray_system_sampler/Makefile
 		 src/ldmsd/Makefile
+		 packaging/ovis-ldms.spec
+		 Doxyfile
 		 ldms.spec])
 AC_OUTPUT
