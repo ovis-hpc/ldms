@@ -226,8 +226,8 @@ void usage(char *argv[])
 	printf("    -t set_count   Create set_count instances of set_name.\n");
 	printf("    -I instance    The instance number\n");
 	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
-               "                     The given size must be less than 1 petabytes.\n"
-               "                     For example, 20M or 20mb are 20 megabytes.\n");
+	       "                     The given size must be less than 1 petabytes.\n"
+	       "                     For example, 20M or 20mb are 20 megabytes.\n");
 	printf("    -f count       The number of flush threads.\n");
 	printf("    -D num         The dirty threshold.\n");
 	cleanup(1);
@@ -885,24 +885,12 @@ int str_to_host_type(char *type)
 	return -1;
 }
 
-void do_active_host(struct hostspec *hs);
-void do_passive_host(struct hostspec *hs);
-void do_bridging_host(struct hostspec *hs);
+void do_host(struct hostspec *hs);
 void host_sampler_cb(int fd, short sig, void *arg)
 {
 	struct hostspec *hs = arg;
 
-	switch (hs->type) {
-	case ACTIVE:
-		do_active_host(hs);
-		break;
-	case PASSIVE:
-		do_passive_host(hs);
-		break;
-	case BRIDGING:
-		do_bridging_host(hs);
-		break;
-	}
+	do_host(hs);
 
 	if (!hs->x || !ldms_xprt_connected(hs->x)) {
 		hs->timeout.tv_sec = hs->connect_interval / 1000000;
@@ -943,7 +931,7 @@ int process_add_host(int fd,
 	if (!type)
 		goto einval;
 	host_type = str_to_host_type(type);
- 	if (host_type < 0) {
+	if (host_type < 0) {
 		sprintf(replybuf, "%d '%s' is an invalid host type.\n",
 			-EINVAL, type);
 		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
@@ -1945,17 +1933,9 @@ int do_connect(struct hostspec *hs)
 		ldms_release_xprt(hs->x);
 		ldms_xprt_close(hs->x);
 		hs->x = 0;
-		pthread_mutex_lock(&hs->conn_state_lock);
-		hs->conn_state = HOST_DISCONNECTED;
-		pthread_mutex_unlock(&hs->conn_state_lock);
 		return -1;
 	}
-	pthread_mutex_lock(&hs->conn_state_lock);
-	hs->conn_state = HOST_CONNECTED;
-	pthread_mutex_unlock(&hs->conn_state_lock);
-
 	reset_host(hs);
-
 	return 0;
 }
 
@@ -2147,40 +2127,41 @@ void update_data(struct hostspec *hs)
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
 
-void do_active_host(struct hostspec *hs)
+void do_host(struct hostspec *hs)
 {
+	int rc;
 	pthread_mutex_lock(&hs->conn_state_lock);
 	switch (hs->conn_state) {
 	case HOST_DISCONNECTED:
-		hs->conn_state = HOST_CONNECTING;
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		do_connect(hs);
+		if (hs->type != PASSIVE)
+			rc = do_connect(hs);
+		else
+			rc = do_passive_connect(hs);
+		if (rc)
+			hs->conn_state = HOST_DISCONNECTED;
+		else
+			hs->conn_state = HOST_CONNECTED;
 		break;
 	case HOST_CONNECTED:
 		if (!hs->x || !ldms_xprt_connected(hs->x)) {
 			if (hs->x) {
 				/* pair with get in do_connect */
 				ldms_release_xprt(hs->x);
-				ldms_xprt_close(hs->x);
+				if (hs->type != PASSIVE)
+					ldms_xprt_close(hs->x);
 			}
 			/* The bad hs->x shall be destroyed automatically when
 			 * the refcount is 0. Resetting hs->x here is OK. */
 			hs->x = 0;
 			hs->conn_state = HOST_DISCONNECTED;
-			pthread_mutex_unlock(&hs->conn_state_lock);
-			break;
-		}
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		update_data(hs);
-		break;
-	case HOST_CONNECTING:
-		pthread_mutex_unlock(&hs->conn_state_lock);
+		} else if (hs->type != BRIDGING)
+			update_data(hs);
 		break;
 	default:
 		ldms_log("Host connection state '%d' is invalid.\n", hs->conn_state);
-		pthread_mutex_unlock(&hs->conn_state_lock);
 		assert(0);
 	}
+	pthread_mutex_unlock(&hs->conn_state_lock);
 }
 
 int do_passive_connect(struct hostspec *hs)
@@ -2196,69 +2177,7 @@ int do_passive_connect(struct hostspec *hs)
 	hs->x = l;
 
 	reset_host(hs);
-	pthread_mutex_lock(&hs->conn_state_lock);
-	hs->conn_state = HOST_CONNECTED;
-	pthread_mutex_unlock(&hs->conn_state_lock);
 	return 0;
-
-}
-
-void do_passive_host(struct hostspec *hs)
-{
-	pthread_mutex_lock(&hs->conn_state_lock);
-	switch (hs->conn_state) {
-	case HOST_DISCONNECTED:
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		if (!hs->x) {
-			do_passive_connect(hs);
-			return;
-		}
-		break;
-	case HOST_CONNECTED:
-		if (!ldms_xprt_connected(hs->x)) {
-			hs->conn_state = HOST_DISCONNECTED;
-			pthread_mutex_unlock(&hs->conn_state_lock);
-			/* Transport closed by our bridge peer, release our
-			 * reference and wait for reconnect */
-			ldms_release_xprt(hs->x);
-			hs->x = 0;
-			return;
-		}
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		update_data(hs);
-		break;
-	default:
-		ldms_log("Host connection state '%d' is invalid.\n", hs->conn_state);
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		assert(0);
-	}
-}
-
-void do_bridging_host(struct hostspec *hs)
-{
-	pthread_mutex_lock(&hs->conn_state_lock);
-	switch (hs->conn_state) {
-	case HOST_DISCONNECTED:
-		hs->conn_state = HOST_CONNECTING;
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		do_connect(hs);
-		break;
-	case HOST_CONNECTED:
-		if (!hs->x || !ldms_xprt_connected(hs->x)) {
-			hs->conn_state = HOST_DISCONNECTED;
-			pthread_mutex_unlock(&hs->conn_state_lock);
-			break;
-		}
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		break;
-	case HOST_CONNECTING:
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		break;
-	default:
-		ldms_log("Host connection state '%d' is invalid.\n", hs->conn_state);
-		pthread_mutex_unlock(&hs->conn_state_lock);
-		assert(0);
-	}
 }
 
 int process_message(int sock, struct msghdr *msg, ssize_t msglen)
@@ -2496,7 +2415,7 @@ char *YAML_TYPE_STR[] = {
  * file.
  */
 int has_arg[LDMS_N_OPTIONS] = {[0] = 0}; // According to gcc doc (v. 4.4.7
-                                         // section 5.23 Designated
+					 // section 5.23 Designated
 					 // Initializersi) initialize array
 					 // by some indices
 					 // will zero-out the other elements
@@ -2521,7 +2440,7 @@ yaml_node_t* yaml_node_get_attr_value_node(yaml_document_t *yaml_document,
 
 	for (itr = node->data.mapping.pairs.start;
 			itr < node->data.mapping.pairs.top;
-		 	itr++) {
+			itr++) {
 		key_node = yaml_document_get_node(yaml_document, itr->key);
 		value_node = yaml_document_get_node(yaml_document, itr->value);
 		if (key_node->type == YAML_SCALAR_NODE &&
@@ -2633,7 +2552,7 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_HOSTTYPE])
 			strcpy(ldmstype, value_str);
-	} else 	if (strcmp(key_str, "hostname")==0) {
+	} else	if (strcmp(key_str, "hostname")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_HOSTNAME])
 			strcpy(myhostname, value_str);
@@ -2731,7 +2650,7 @@ void initial_config_file_routine(yaml_document_t *yaml_document)
     for (itr = root->data.sequence.items.start;
 			itr < root->data.sequence.items.top;
 			itr++) {
-        yaml_node_t *node = yaml_document_get_node(yaml_document, *itr);
+	yaml_node_t *node = yaml_document_get_node(yaml_document, *itr);
 		// Now, each item should be a mapping
 		if (node->type != YAML_MAPPING_NODE)
 			continue;
@@ -2749,17 +2668,17 @@ void initial_config_file_routine(yaml_document_t *yaml_document)
 				|| inst != instance_number )
 			continue; // skip if this is not for this host
 
-        yaml_node_pair_t *itr2 = node->data.mapping.pairs.start;
-        for (itr2 = node->data.mapping.pairs.start;
+	yaml_node_pair_t *itr2 = node->data.mapping.pairs.start;
+	for (itr2 = node->data.mapping.pairs.start;
 				itr2 < node->data.mapping.pairs.top;
 				itr2++) {
-            yaml_node_t *key_node = yaml_document_get_node(yaml_document,
-                itr2->key);
-            yaml_node_t *value_node = yaml_document_get_node(yaml_document,
-                itr2->value);
+	    yaml_node_t *key_node = yaml_document_get_node(yaml_document,
+		itr2->key);
+	    yaml_node_t *value_node = yaml_document_get_node(yaml_document,
+		itr2->value);
 			LDMS_ASSERT(key_node->type == YAML_SCALAR_NODE);
 			ldms_yaml_cmdline_option_handling(key_node, value_node);
-        }
+	}
 
 		// After the configuration for this host is found, no need to
 		// continue looking anymore .. hence break it
