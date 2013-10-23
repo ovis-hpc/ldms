@@ -379,6 +379,8 @@ struct plugin {
 	char *name;
 	char *libpath;
 	unsigned long sample_interval_us;
+	long sample_offset_us;
+	int synchronous;
 	int thread_id;
 	int ref_count;
 	union {
@@ -410,6 +412,35 @@ static void msg_logger(const char *fmt, ...)
 	va_start(ap, fmt);
 	vsprintf(msg_buf, fmt, ap);
 	ldms_log(msg_buf);
+}
+
+static int calculate_timeout(int thread_id, unsigned long interval_us,
+			     long offset_us, struct timeval* tv){
+
+	struct timeval new_tv;
+	long int adj_interval;
+	long int epoch_us;
+
+	if (thread_id < 0){
+		/* get real time of day */
+		gettimeofday(&new_tv, NULL);
+	} else {
+		/* NOTE: this uses libevent's cached time for the callback.
+		      By the time we add the event we will be at least off by
+		         the amount of time it takes to do the sample call. We
+			 deem this accepable. */
+		event_base_gettimeofday_cached(get_ev_base(thread_id), &new_tv);
+	}
+
+	epoch_us = (1000000 * (long int)new_tv.tv_sec) +
+		(long int)new_tv.tv_usec;
+	adj_interval = interval_us - (epoch_us % interval_us) + offset_us;
+	if (adj_interval <= 0) /* Should happen at most once -- 1st time */
+		adj_interval += interval_us; /* Guaranteed to be positive */
+
+	tv->tv_sec = adj_interval/1000000;
+	tv->tv_usec = adj_interval % 1000000;
+	return 0;
 }
 
 static char library_name[PATH_MAX];
@@ -452,6 +483,8 @@ struct plugin *new_plugin(char *plugin_name, char *err_str)
 		goto enomem;
 	pi->plugin = lpi;
 	pi->sample_interval_us = 1000000;
+	pi->sample_offset_us = 0;
+	pi->synchronous = 0;
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
 	return pi;
  enomem:
@@ -659,9 +692,14 @@ int process_config_plugin(int fd,
 
 void plugin_sampler_cb(int fd, short sig, void *arg)
 {
+	struct timeval tv;
 	struct plugin *pi = arg;
 	pthread_mutex_lock(&pi->lock);
 	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
+	if (pi->synchronous){
+		calculate_timeout(pi->thread_id, pi->sample_interval_us,
+				  pi->sample_offset_us, &pi->timeout);
+	}
 	pi->sampler->sample();
 	(void)evtimer_add(pi->event, &pi->timeout);
 	pthread_mutex_unlock(&pi->lock);
@@ -677,7 +715,9 @@ int process_start_sampler(int fd,
 	char *attr;
 	char *err_str = "";
 	int rc = 0;
-	long sample_interval;
+	unsigned long sample_interval;
+	long sample_offset = 0;
+	int synchronous = 0;
 	struct plugin *pi;
 
 	attr = av_value(av_list, "name");
@@ -709,13 +749,34 @@ int process_start_sampler(int fd,
 		err_str = "The sample interval must be specified.";
 		goto out;
 	}
-	sample_interval = strtol(attr, NULL, 0);
-	pi->timeout.tv_sec = sample_interval / 1000000;
-	pi->timeout.tv_usec = sample_interval % 1000000;
+	sample_interval = strtoul(attr, NULL, 0);
+
+	attr = av_value(av_list, "offset");
+	if (attr) {
+		sample_offset = strtol(attr, NULL, 0);
+		if ( !((sample_interval >= 10) &&
+		       (sample_interval >= labs(sample_offset)*2)) ){
+			err_str = "Sampler parameters interval and offset are incompatible.";
+			goto out;
+		}
+		synchronous = 1;
+	}
+
+	pi->sample_interval_us = sample_interval;
+	pi->sample_offset_us = sample_offset;
+	pi->synchronous = synchronous;
+
 	pi->ref_count++;
 
 	pi->thread_id = find_least_busy_thread();
 	pi->event = evtimer_new(get_ev_base(pi->thread_id), plugin_sampler_cb, pi);
+	if (pi->synchronous){
+		calculate_timeout(-1, pi->sample_interval_us,
+				  pi->sample_offset_us, &pi->timeout);
+	} else {
+		pi->timeout.tv_sec = sample_interval / 1000000;
+		pi->timeout.tv_usec = sample_interval % 1000000;
+	}
 	rc = evtimer_add(pi->event, &pi->timeout);
  out:
 	pthread_mutex_unlock(&pi->lock);
@@ -846,6 +907,9 @@ void host_sampler_cb(int fd, short sig, void *arg)
 	if (!hs->x || !ldms_xprt_connected(hs->x)) {
 		hs->timeout.tv_sec = hs->connect_interval / 1000000;
 		hs->timeout.tv_usec = hs->connect_interval % 1000000;
+	} else if (hs->synchronous){
+		calculate_timeout(hs->thread_id, hs->sample_interval,
+				  hs->sample_offset, &hs->timeout);
 	} else {
 		hs->timeout.tv_sec = hs->sample_interval / 1000000;
 		hs->timeout.tv_usec = hs->sample_interval % 1000000;
@@ -868,7 +932,9 @@ int process_add_host(int fd,
 	char *xprt;
 	char *sets;
 	int host_type;
-	long interval = LDMSD_DEFAULT_GATHER_INTERVAL;
+	unsigned long interval = LDMSD_DEFAULT_GATHER_INTERVAL;
+	long offset = 0;
+	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
 
 	/* Handle all the EINVAL cases first */
@@ -928,6 +994,24 @@ int process_add_host(int fd,
 		rc = EINVAL;
 		goto err;
 	}
+
+	attr = av_value(av_list, "interval");
+	if (attr)
+		interval = strtoul(attr, NULL, 0);
+
+	attr = av_value(av_list, "offset");
+	if (attr) {
+		offset = strtol(attr, NULL, 0);
+		if ( !((interval >= 10) && (interval >= labs(offset)*2)) ){
+			sprintf(replybuf,
+				"Parameters interval and offset are incompatible.");
+			send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+			rc = EINVAL;
+			goto err;
+		}
+		synchronous = 1;
+	}
+
 	attr = av_value(av_list, "port");
 	if (attr)
 		port_no = strtol(attr, NULL, 0);
@@ -941,15 +1025,13 @@ int process_add_host(int fd,
 	if (!xprt)
 		goto enomem;
 
-	attr = av_value(av_list, "interval");
-	if (attr)
-		interval = strtol(attr, NULL, 0);
-
 	sin.sin_port = htons(port_no);
 	hs->type = host_type;
 	hs->sin = sin;
 	hs->xprt_name = xprt;
 	hs->sample_interval = interval;
+	hs->sample_offset = offset;
+	hs->synchronous = synchronous;
 	hs->connect_interval = 20000000; /* twenty seconds */
 	hs->conn_state = HOST_DISCONNECTED;
 	pthread_mutex_init(&hs->set_list_lock, 0);

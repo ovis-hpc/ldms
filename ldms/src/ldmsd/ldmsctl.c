@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -105,18 +105,24 @@ int handle_help(char *kw, char *err_str)
 	       "     <attr>       An attribute name.\n"
 	       "     <value>      An attribute value.\n"
 	       "\n"
-	       "start name=<name> interval=<interval>\n"
+	       "start name=<name> interval=<interval> [ offset=<offset>]\n"
 	       "   - Begins calling the sampler's 'sample' method at the\n"
 	       "     sample interval.\n"
 	       "     <name>       The sampler name.\n"
 	       "     <interval>   The sample interval in microseconds.\n"
+	       "     <offset>     Optional offset (shift) from the sample mark\n"
+	       "                  in microseconds. Offset can be positive or\n"
+	       "                  negative with magnitude up to 1/2 the sample interval.\n"
+	       "                  If this offset is specified, including 0, \n"
+	       "                  collection will be synchronous; if the offset\n"
+	       "                  is not specified, collection will be asychronous.\n"
 	       "\n"
 	       "stop name=<name>\n"
 	       "   - Cancels sampling on the specified plugin.\n"
 	       "     <name>       The sampler name.\n"
 	       "\n"
 	       "add host=<host> type=<type> sets=<set names>\n"
-               "		[ interval=<interval> ]\n"
+	       "                [ interval=<interval> ] [ offset=<offset>]\n"
 	       "                [ xprt=<xprt> ] [ port=<port> ]\n"
 	       "   - Adds a host to the list of hosts monitored by this ldmsd.\n"
 	       "     <host>       The hostname. This can be an IP address or DNS\n"
@@ -134,6 +140,11 @@ int handle_help(char *kw, char *err_str)
                "		  The list is comma separated.\n"
 	       "     <interval>   An optional sampling interval in microseconds,\n"
 	       "                  defaults to 1000000.\n"
+	       "     <offset>     An optional offset (shift) from the sample mark\n"
+	       "                  in microseconds. If this offset is specified,\n "
+	       "                  including 0, the collection will be synchronous;\n"
+	       "                  if the offset is not specified, the collection\n"
+	       "                  will be asychronous\n"
 	       "     <xprt>       The transport type, defaults to 'sock'\n"
 	       "         sock     The sockets transport.\n"
 	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
