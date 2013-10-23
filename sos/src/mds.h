@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.                                          
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -57,7 +57,7 @@
 SOS_OBJ_BEGIN(ovis_metric_class, "OvisMetric")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
 	SOS_OBJ_ATTR("value", SOS_TYPE_UINT64)
 SOS_OBJ_END(4);
 
@@ -66,10 +66,10 @@ SOS_OBJ_END(4);
 #define MDS_COMP_ID	2
 #define MDS_VALUE	3
 
-typedef struct ovis_record_ss {	
+typedef struct ovis_record_ss {
 	uint32_t sec;
 	uint32_t usec;
-	uint32_t comp_id;
+	uint64_t comp_id;
 	uint64_t value;
 } ovis_record_s;
 
