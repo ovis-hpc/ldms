@@ -221,6 +221,7 @@ rdma_context_alloc(struct ldms_rdma_xprt *r,
 	ctxt->rb = rbuf;
 	ctxt->x = r;
 
+	/* pair with rdma_context_free */
 	ldms_xprt_get(r->xprt);
 	return ctxt;
 }
@@ -410,6 +411,7 @@ static void submit_pending(struct ldms_rdma_xprt *x)
 
 static void rdma_context_free(struct rdma_context *ctxt)
 {
+	/* pair with rdma_context_alloc */
 	ldms_release_xprt(ctxt->x->xprt);
 	free(ctxt);
 }
@@ -484,6 +486,8 @@ static int rdma_xprt_connect(struct ldms_xprt *x,
 
 	cm_event.events = EPOLLIN | EPOLLOUT;
 	cm_event.data.ptr = r;
+
+	/* pair with release in RDMA_CM_EVENT_TIMEWAIT_EXIT */
 	ldms_xprt_get(r->xprt);
 	rc = epoll_ctl(cm_fd, EPOLL_CTL_ADD, r->cm_channel->fd, &cm_event);
 	if (rc)
@@ -514,6 +518,8 @@ static int rdma_xprt_connect(struct ldms_xprt *x,
 
 	cq_event.data.ptr = r;
 	cq_event.events = EPOLLIN | EPOLLOUT;
+
+	/* pair with release in RDMA_CM_EVENT_TIMEWAIT_EXIT */
 	ldms_xprt_get(r->xprt);
 	rc = epoll_ctl(cq_fd, EPOLL_CTL_ADD, r->cq_channel->fd, &cq_event);
 	if (rc) {
@@ -544,6 +550,7 @@ static int rdma_xprt_connect(struct ldms_xprt *x,
 	 */
 	(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL, r->cm_channel->fd, NULL);
  err_2:
+	/* pair with get before the first epoll_ctl in this function */
 	ldms_release_xprt(r->xprt);
  err_1:
  err_0:
@@ -739,6 +746,9 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 
 	cq_event.events = EPOLLIN | EPOLLOUT;
 	cq_event.data.ptr = r;
+
+	/* For cq channel */
+	/* pair with release in RDMA_CM_EVENT_TIMEWAIT_EXIT */
 	ldms_xprt_get(r->xprt);
 	ret = epoll_ctl(cq_fd, EPOLL_CTL_ADD, r->cq_channel->fd, &cq_event);
 	if (ret) {
@@ -762,8 +772,10 @@ static void rdma_accept_request(struct ldms_rdma_xprt *server,
 	return;
 
  out_1:
+	/* Match with ldms_xprt_get before epoll_ctl */
 	ldms_release_xprt(r->xprt);
  out_0:
+	/* to destroy the endpoint if things gone wrong in accepting */
 	ldms_release_xprt(r->xprt);
 }
 
@@ -876,6 +888,8 @@ static void *cq_thread_proc(void *arg)
 		}
 		for (i = 0; i < fd_count; i++) {
 			r = cq_events[i].data.ptr;
+			/* pair with release after submit_pending */
+			ldms_xprt_get(r->xprt);
 
 			/* Get the next event ... this will block */
 			ret = ibv_get_cq_event(r->cq_channel, &ev_cq, &ev_ctx);
@@ -916,6 +930,8 @@ static void *cq_thread_proc(void *arg)
 			}
 		skip:
 			submit_pending(r);
+			/* pair with get before ibv_get_cq_event */
+			ldms_release_xprt(r->xprt);
 		}
 	}
 	return NULL;
@@ -1075,6 +1091,8 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
+		/* pair with get in rdma_setup_conn */
+		ldms_release_xprt(x->xprt);
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_ROUTE_ERROR:
@@ -1089,8 +1107,10 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 		x->conn_status = CONN_CLOSED;
 		x->xprt->connected = 0;
 		rdma_disconnect(x->cm_id);
-		/* pair with get in rdma_accept_request (passive) or
-		 * rdma_setup_conn (active) */
+		/* For passive side, this release pairs with transport creation.
+		 * For active side, this release pairs with get in
+		 * rdma_setup_conn.
+		 */
 		ldms_release_xprt(x->xprt);
 		sem_post(&x->sem);
 		break;
