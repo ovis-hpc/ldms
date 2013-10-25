@@ -427,7 +427,7 @@ static int calculate_timeout(int thread_id, unsigned long interval_us,
 	} else {
 		/* NOTE: this uses libevent's cached time for the callback.
 		      By the time we add the event we will be at least off by
-		         the amount of time it takes to do the sample call. We
+			 the amount of time it takes to do the sample call. We
 			 deem this accepable. */
 		event_base_gettimeofday_cached(get_ev_base(thread_id), &new_tv);
 	}
@@ -435,7 +435,11 @@ static int calculate_timeout(int thread_id, unsigned long interval_us,
 	epoch_us = (1000000 * (long int)new_tv.tv_sec) +
 		(long int)new_tv.tv_usec;
 	adj_interval = interval_us - (epoch_us % interval_us) + offset_us;
-	if (adj_interval <= 0) /* Should happen at most once -- 1st time */
+	/* Could happen initially, and later depending on when the event
+	   actually occurs. However the max negative this can be, based on
+	   the restrictions put in is (-0.5*interval+ 1us). Skip this next
+	   point and go on to the next one */
+	if (adj_interval <= 0)
 		adj_interval += interval_us; /* Guaranteed to be positive */
 
 	tv->tv_sec = adj_interval/1000000;
