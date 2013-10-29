@@ -68,6 +68,8 @@
 #include <limits.h>
 #include <netdb.h>
 #include <sys/queue.h>
+
+#include <coll/str_map.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "sampler_hadoop.h"
