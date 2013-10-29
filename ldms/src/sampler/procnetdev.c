@@ -170,7 +170,8 @@ static int create_metric_set(const char *path)
 		for (j = 0; j < niface; j++){
 			if (strcmp(iface[j],curriface) == 0){
 				for (i = 0; i < NVARS; i++){
-					snprintf(metric_name,128,"%s_%s",curriface,varname[i]);
+					snprintf(metric_name, 128, "%s#%s",
+							varname[i], curriface);
 					rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 					tot_meta_sz += meta_sz;
 					tot_data_sz += data_sz;
@@ -222,7 +223,8 @@ static int create_metric_set(const char *path)
 		for (j = 0; j < niface; j++){
 			if (strcmp(iface[j],curriface) == 0){
 				for (i = 0; i < NVARS; i++){
-					snprintf(metric_name,128,"%s_%s",curriface,varname[i]);
+					snprintf(metric_name, 128, "%s#%s",
+							varname[i], curriface);
 					metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
 					if (!metric_table[metric_no]){
 						rc = ENOMEM;

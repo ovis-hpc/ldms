@@ -79,7 +79,7 @@
 #define NFIELD 8
 static char *fieldname[NFIELD] = {
 	"Value", "Worst", "Threshold", "Pretty",
-	"Type", "Updates", "Good", "Good/Past"
+	"Type", "Updates", "Good", "Good_Past"
 };
 
 struct ldms_atasmart {
@@ -112,7 +112,7 @@ int atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 	sprintf(name_base, "%s", a->name);
 	int i;
 	for (i = 0; i < NFIELD; i++) {
-		sprintf(metric_name, "%s_%s", name_base, fieldname[i]);
+		sprintf(metric_name, "%s#%s", fieldname[i], name_base);
 		switch (i) {
 		/* If the value is invalid, the metric value is -1 */
 		case 0: /* current value */
@@ -164,7 +164,7 @@ int atasmart_add_metric(SkDisk *d, const SkSmartAttributeParsedData *a,
 	ldms_metric_t m;
 	int i;
 	for (i= 0; i < NFIELD; i++) {
-		sprintf(metric_name, "%s_%s", name_base, fieldname[i]);
+		sprintf(metric_name, "%s#%s", fieldname[i], name_base);
 		switch (i) {
 		/* If the value is invalid, the metric value is -1 */
 		case 0: /* Current value */
@@ -341,14 +341,12 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 				void *userdata)
 {
 	union ldms_value v;
-	char metric_name[128];
 	char name_base[128];
 
 	int *metric_no = (int *) userdata;
 	int i;
 	sprintf(name_base, "%s", a->name);
 	for (i = 0; i < NFIELD; i++) {
-		sprintf(metric_name, "%s_%s", name_base, fieldname[i]);
 		switch (i) {
 		/* If the value is invalid, the metric value is -1 */
 		case 0: /* Current value */
