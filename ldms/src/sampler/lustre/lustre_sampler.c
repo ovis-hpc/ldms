@@ -154,7 +154,8 @@ int lss_close_file(struct lustre_svc_stats *lss)
 int stats_construct_routine(ldms_set_t set,
 			    uint64_t comp_id,
 			    const char *stats_path,
-			    const char *metric_name_base,
+			    const char *prefix,
+			    const char *suffix,
 			    struct lustre_svc_stats_head *stats_head,
 			    char **keys, int nkeys,
 			    struct str_map *key_id_map)
@@ -169,7 +170,7 @@ int stats_construct_routine(ldms_set_t set,
 	LIST_INSERT_HEAD(stats_head, lss, link);
 	int j;
 	for (j=0; j<nkeys; j++) {
-		sprintf(metric_name, "%s.%s", metric_name_base, keys[j]);
+		sprintf(metric_name, "%s%s%s", prefix, keys[j], suffix);
 		rc = __add_metric_routine(set, comp_id, metric_name,
 				key_id_map, keys[j],
 				lss);

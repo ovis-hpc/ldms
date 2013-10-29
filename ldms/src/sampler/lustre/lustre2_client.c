@@ -226,9 +226,9 @@ static int create_metric_set(const char *path, const char *oscs,
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
 			for (j = 0; j < keylen[i]; j++) {
-				sprintf(metric_name, "%s.%s.stats.%s",
-						namebase[i], sl->str,
-						keys[i][j]);
+				sprintf(metric_name, "lstats.%s#%s.%s",
+						keys[i][j], namebase[i],
+						sl->str);
 				ldms_get_metric_size(metric_name, LDMS_V_U64,
 						&meta_sz, &data_sz);
 				tot_meta_sz += meta_sz;
@@ -242,15 +242,15 @@ static int create_metric_set(const char *path, const char *oscs,
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		goto err0;
-	char name_base[128];
+	char suffix[128];
 	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
 			sprintf(tmp_path, "/proc/fs/lustre/%s/%s*/stats",
 					namebase[i], sl->str);
-			sprintf(name_base, "%s.%s.stats", namebase[i], sl->str);
+			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
 			rc = stats_construct_routine(set, comp_id, tmp_path,
-					name_base, &svc_stats, keys[i],
+					"lstats.", suffix, &svc_stats, keys[i],
 					keylen[i], maps[i]);
 			if (rc)
 				goto err1;

@@ -256,8 +256,8 @@ static int create_metric_set(const char *path, const char *osts)
 	/* Calculate size for OSS */
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
 		for (j = 0; j < STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "oss.%s.stats.%s", oss_services[i],
-					stats_key[j]);
+			sprintf(metric_name, "lstats.%s#oss.%s", stats_key[j],
+					oss_services[i]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
 			tot_meta_sz += meta_sz;
@@ -274,8 +274,8 @@ static int create_metric_set(const char *path, const char *osts)
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
 		for (j = 0; j < OBDF_KEY_LEN; j++) {
-			sprintf(metric_name, "ost.%s.stats.%s", sl->str,
-					obdf_key[j]);
+			sprintf(metric_name, "lstats.%s#ost.%s", obdf_key[j],
+					sl->str);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
 			tot_meta_sz += meta_sz;
@@ -288,13 +288,13 @@ static int create_metric_set(const char *path, const char *osts)
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		goto err1;
-	char name_base[128];
+	char suffix[128];
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
 		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
 				oss_services[i]);
-		sprintf(name_base, "oss.%s.stats", oss_services[i]);
-		rc = stats_construct_routine(set, comp_id, tmp_path, name_base,
-					     &svc_stats, stats_key,
+		sprintf(suffix, "#oss.%s", oss_services[i]);
+		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
+					     suffix, &svc_stats, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
 			goto err2;
@@ -302,9 +302,9 @@ static int create_metric_set(const char *path, const char *osts)
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
-		sprintf(name_base, "ost.%s.stats", sl->str);
-		rc = stats_construct_routine(set, comp_id, tmp_path, name_base,
-					     &svc_stats, obdf_key,
+		sprintf(suffix, "#ost.%s", sl->str);
+		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
+					     suffix, &svc_stats, obdf_key,
 					     OBDF_KEY_LEN, obdf_key_id);
 		if (rc)
 			goto err2;

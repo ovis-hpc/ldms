@@ -153,8 +153,10 @@ static int create_metric_set(const char *path)
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				//the metric name will be %d:name (there may 1 or nprocs of them) to look like meminfo
-				snprintf(metric_name,128,"%d:%s",(currcol-1),beg_name);
+				/* the metric name will be irq.<name>#CPU_NUMBER
+				 */
+				snprintf(metric_name, 128, "irq.%s#%d",
+						beg_name, (currcol-1));
 				rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
@@ -199,10 +201,8 @@ static int create_metric_set(const char *path)
 					pch[i-1] = '\0';
 				strcpy(beg_name, pch);
 			} else {
-				/* the metric name will be %d:name (there may 1
-				 * or nprocs of them) to look like meminfo */
-				snprintf(metric_name, 128,"%d:%s", (currcol-1),
-						beg_name);
+				snprintf(metric_name, 128, "irq.%s#%d",
+						beg_name, (currcol-1));
 				metric_table[metric_no] =
 					ldms_add_metric(set, metric_name,
 							LDMS_V_U64);
