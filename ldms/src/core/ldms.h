@@ -407,6 +407,7 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_LOCAL	0x0004
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_COHERENT	0x0010
+#define LDMS_SET_F_CONNECTED	0x0100
 #define LDMS_SET_F_DIRTY	0x1000
 #define LDMS_SET_ID_DATA	0x1000000
 
@@ -949,6 +950,22 @@ extern struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s);
  * but optional.
  */
 extern int ldms_is_set_consistent(ldms_set_t s);
+
+/**
+ * \brief Return TRUE if the host of the metric set is connected.
+ *
+ * A metric set is disconnected if the host of the metric set is
+ * disconnected from the aggregator.
+ */
+extern int ldms_is_set_connected(ldms_set_t s);
+
+/**
+ * \brief Set the set flag to 'connected' or 'disconnected'
+ *
+ * If \c is_connected value is 0, the set flag of \c s will be set
+ * to 'disconnected.' Otherwise, the set flag is set to 'connected.'
+ */
+extern void ldms_set_set_connect(ldms_set_t s, int is_connected);
 
 /**
  * \brief Add a metric to the set

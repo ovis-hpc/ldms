@@ -649,7 +649,8 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				       ntohl(reply->lookup.meta_len),
 				       ntohl(reply->lookup.data_len),
 				       &set_t,
-				       LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY);
+				       LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY |
+				       LDMS_SET_F_CONNECTED);
 		if (rc)
 			goto out;
 		sd = (struct ldms_set_desc *)set_t;
