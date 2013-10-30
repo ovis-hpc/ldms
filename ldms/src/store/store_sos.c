@@ -65,17 +65,54 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-SOS_OBJ_BEGIN(ovis_metric_class, "OvisMetric")
+SOS_OBJ_BEGIN(ovis_metric_class_int32, "OvisMetric_int32")
+	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR("value", SOS_TYPE_INT32)
+SOS_OBJ_END(4);
+
+SOS_OBJ_BEGIN(ovis_metric_class_int64, "OvisMetric_int64")
+	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR("value", SOS_TYPE_INT64)
+SOS_OBJ_END(4);
+
+SOS_OBJ_BEGIN(ovis_metric_class_uint32, "OvisMetric_uint32")
+	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR("value", SOS_TYPE_UINT32)
+SOS_OBJ_END(4);
+
+SOS_OBJ_BEGIN(ovis_metric_class_uint64, "OvisMetric_uint64")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
 	SOS_OBJ_ATTR("value", SOS_TYPE_UINT64)
 SOS_OBJ_END(4);
 
+SOS_OBJ_BEGIN(ovis_metric_class_double, "OvisMetric_double")
+	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR("value", SOS_TYPE_DOUBLE)
+SOS_OBJ_END(4);
+
 #define TV_SEC_COL	0
 #define TV_USEC_COL	1
 #define GROUP_COL	2
 #define VALUE_COL	3
+
+enum {
+	LDMSD_SOS_INT32 = 0,
+	LDMSD_SOS_INT64,
+	LDMSD_SOS_UINT32,
+	LDMSD_SOS_UINT64,
+	LDMSD_SOS_DOUBLE,
+	LDMSD_SOS_NUM_TYPE,
+};
 
 /*
  * NOTE:
@@ -108,7 +145,7 @@ struct sos_store_instance {
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, sos_metric_store) ms_list;
 	int metric_count;
-	struct sos_metric_store *ms[0];
+	struct sos_metric_store **ms;
 };
 
 pthread_mutex_t cfg_lock;
@@ -167,13 +204,73 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 	return si->ucontext;
 }
 
+int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
+{
+	enum ldms_value_type type = ldms_get_metric_type(m);
+
+	switch (type) {
+	case LDMS_V_S32:
+		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
+				0660, &ovis_metric_class_int32);
+		if (!ms->sos) {
+			msglog("store_sos: Failed to open "
+					"'Ovismetric_int32\n");
+			return ENOMEM;
+		}
+		break;
+	case LDMS_V_S64:
+		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
+				0660, &ovis_metric_class_int64);
+		if (!ms->sos) {
+			msglog("store_sos: Failed to open "
+					"'Ovismetric_int64\n");
+			return ENOMEM;
+		}
+		break;
+	case LDMS_V_U32:
+		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
+					0660, &ovis_metric_class_uint32);
+		if (!ms->sos) {
+			msglog("store_sos: Failed to open "
+					"'Ovismetric_uint32\n");
+			return ENOMEM;
+		}
+		break;
+	case LDMS_V_U64:
+		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
+					0660, &ovis_metric_class_uint64);
+		if (!ms->sos) {
+			msglog("store_sos: Failed to open "
+					"'Ovismetric_uint64\n");
+			return ENOMEM;
+		}
+		break;
+	case LDMS_V_F:
+	case LDMS_V_D:
+		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
+					0660, &ovis_metric_class_double);
+		if (!ms->sos) {
+			msglog("store_sos: Failed to open "
+					"'Ovismetric_double\n");
+			return ENOMEM;
+		}
+		break;
+	default:
+		msglog("store_sos: not support ldms_value_type '%s'\n",
+						ldms_type_to_str(type));
+		return ENOTSUP;
+	}
+
+	return 0;
+}
+
 static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
 {
 	struct sos_store_instance *si;
 	struct sos_metric_store *ms;
-	int i;
+	int i, metric_count;
 
 	pthread_mutex_lock(&cfg_lock);
 	/*
@@ -185,7 +282,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		/*
 		 * First, count the metric.
 		 */
-		int metric_count = 0;
+		metric_count = 0;
 		struct ldmsd_store_metric_index *x;
 		LIST_FOREACH(x, metric_list, entry) {
 			metric_count++;
@@ -197,8 +294,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		 * Open a new store for this component-type and
 		 * metric combination
 		 */
-		si = calloc(1, sizeof(*si) +
-			    metric_count * sizeof(struct sos_metric_store *));
+		si = calloc(1, sizeof(*si));
 		if (!si)
 			goto out;
 		si->metric_count = metric_count;
@@ -213,6 +309,18 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		si->container = strdup(container);
 		if (!si->container)
 			goto err3;
+
+		if (metric_count == 0) {
+			idx_add(store_idx, (void *)container,
+					strlen(container), si);
+			goto out;
+		}
+
+		si->ms = calloc(metric_count,
+				sizeof(struct sos_metric_store *));
+		if (!si->ms)
+			goto err4;
+
 		i = 0;
 		char buff[128];
 		char *name;
@@ -233,15 +341,19 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			/* Create ms if not exist */
 			ms = calloc(1, sizeof(*ms));
 			if (!ms)
-				goto err4;
+				goto err5;
 			sprintf(tmp_path, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
-			if (!ms->path)
-				goto err4;
-			ms->sos = sos_open(tmp_path, O_RDWR|O_CREAT,
-						0660, &ovis_metric_class);
-			if (!ms->sos)
-				goto err4;
+			if (!ms->path) {
+				free(ms);
+				goto err5;
+			}
+
+			/*
+			 * NOTE: sos will be opened the first time
+			 * the metric to be stored.
+			 */
+
 			pthread_mutex_init(&ms->lock, NULL);
 			idx_add(si->ms_idx, name, strlen(name), ms);
 			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
@@ -250,16 +362,15 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		idx_add(store_idx, (void *)container, strlen(container), si);
 	}
 	goto out;
-err4:
+err5:
 	while (ms = LIST_FIRST(&si->ms_list)) {
 		LIST_REMOVE(ms, entry);
 		if (ms->path)
 			free(ms->path);
-		if (ms->sos)
-			sos_close(ms->sos);
 		free(ms);
 	}
-
+	free(si->ms);
+err4:
 	free(si->container);
 err3:
 	free(si->path);
@@ -271,6 +382,68 @@ err1:
 out:
 	pthread_mutex_unlock(&cfg_lock);
 	return si;
+}
+
+int store_sos_create_ms_list(struct sos_store_instance *si, ldms_mvec_t mvec)
+{
+	int i;
+	si->metric_count = mvec->count;
+	si->ms = calloc(mvec->count, sizeof(struct sos_metric_store *));
+	if (!si->ms)
+		return ENOMEM;
+
+	char buff[128];
+	char *name, *metric_name;
+	struct sos_metric_store *ms;
+	for (i = 0; i < mvec->count; i++) {
+		metric_name = ldms_get_metric_name(mvec->v[i]);
+		name = strchr(metric_name, '#');
+		if (name) {
+			int len = name - metric_name;
+			name = strncpy(buff, metric_name, len);
+			name[len] = 0;
+		} else {
+			name = metric_name;
+		}
+		ms = idx_find(si->ms_idx, name, strlen(name));
+		if (ms) {
+			si->ms[i] = ms;
+			continue;
+		}
+		/* Create ms if not exist */
+		ms = calloc(1, sizeof(*ms));
+		if (!ms)
+			goto err;
+		sprintf(tmp_path, "%s/%s", si->path, name);
+		ms->path = strdup(tmp_path);
+		if (!ms->path) {
+			free(ms);
+			goto err;
+		}
+
+		/*
+		 * NOTE: sos will be opened the first time
+		 * the metric to be stored.
+		 */
+
+		pthread_mutex_init(&ms->lock, NULL);
+		idx_add(si->ms_idx, name, strlen(name), ms);
+		LIST_INSERT_HEAD(&si->ms_list, ms, entry);
+		si->ms[i] = ms;
+	}
+	return 0;
+err:
+	while (ms = LIST_FIRST(&si->ms_list)) {
+		LIST_REMOVE(ms, entry);
+		if (ms->path)
+			free(ms->path);
+		free(ms);
+	}
+	free(si->ms);
+	free(si->container);
+	free(si->path);
+	idx_destroy(si->ms_idx);
+	return -1;
 }
 
 static int
@@ -288,15 +461,34 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 
 	si = _sh;
 
+	/* When call new_store the lookup_cb hasn't finished yet. */
+	if (si->metric_count == 0) {
+		rc = store_sos_create_ms_list(si, mvec);
+		if (rc) {
+			msglog("store_sos: Failed to create store "
+						"for each metric.\n");
+			return -1;
+		}
+	}
+
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
 
-	for (i=0; i<mvec->count; i++) {
+	for (i = 0; i < mvec->count; i++) {
 		pthread_mutex_lock(&si->ms[i]->lock);
+
+		if (!si->ms[i]->sos) {
+			if (store_sos_open_sos(si->ms[i], mvec->v[i])) {
+				pthread_mutex_unlock(&si->ms[i]->lock);
+				return ENOMEM;
+			}
+		}
+
 		obj = sos_obj_new(si->ms[i]->sos);
 		if (!obj) {
 			msglog("Error %d: %s at %s:%d\n", errno,
 					strerror(errno), __FILE__, __LINE__);
 			errno = ENOMEM;
+			pthread_mutex_unlock(&si->ms[i]->lock);
 			return -1;
 		}
 		uint64_t metric_id = ldms_get_user_data(mvec->v[i]);
