@@ -155,7 +155,6 @@ sos_iter_t sos_iter_new(sos_t sos, int attr_id)
 {
 	sos_attr_t attr;
 	sos_iter_t i;
-	uint64_t off;
 
 	attr = sos_obj_attr_by_id(sos, attr_id);
 	if (!attr)
@@ -909,11 +908,8 @@ void sos_attr_key(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
  */
 int sos_obj_remove(sos_t sos, sos_obj_t obj)
 {
-	int found = 0;
 	int attr_id;
-	uint64_t xo;
 	uint64_t obj_o = ods_obj_ptr_to_offset(sos->ods, obj);
-	sos_dattr_t dattr;
 	int rc = 0;
 
 	for (attr_id = 0; attr_id < sos->meta->attr_cnt; attr_id++) {
@@ -947,7 +943,8 @@ int sos_obj_add(sos_t sos, sos_obj_t obj)
 		if (!sos_attr_has_index(attr))
 			continue;
 		sos_attr_key(attr, obj, &key);
-		oidx_add(attr->oidx, key.key, key.keylen, obj_o);
+		if (oidx_add(attr->oidx, key.key, key.keylen, obj_o))
+			goto err;
 	}
 
 	return 0;
@@ -1093,6 +1090,50 @@ void sos_print_obj(sos_t sos, sos_obj_t obj, int attr_id)
 {
 	print_obj(sos, obj, attr_id);
 }
+
+/*** helper functions for swig ***/
+int sos_get_attr_count(sos_t sos)
+{
+	return sos->classp->count;
+}
+
+enum sos_type_e sos_get_attr_type(sos_t sos, int attr_id)
+{
+	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
+	if (!attr)
+		return SOS_TYPE_UNKNOWN;
+	return attr->type;
+}
+
+const char *sos_get_attr_name(sos_t sos, int attr_id)
+{
+	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
+	if (!attr)
+		return "N/A";
+	return attr->name;
+}
+
+void sos_key_set_int32(sos_t sos, int attr_id, int32_t value, sos_key_t key)
+{
+	sos_obj_attr_key_set(sos, attr_id, &value, key);
+}
+
+void sos_key_set_int64(sos_t sos, int attr_id, int64_t value, sos_key_t key)
+{
+	sos_obj_attr_key_set(sos, attr_id, &value, key);
+}
+
+void sos_key_set_uint32(sos_t sos, int attr_id, uint32_t value, sos_key_t key)
+{
+	sos_obj_attr_key_set(sos, attr_id, &value, key);
+}
+
+void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, sos_key_t key)
+{
+	sos_obj_attr_key_set(sos, attr_id, &value, key);
+}
+
+/*** end helper functions ***/
 
 #ifdef SOS_MAIN
 #include <stddef.h>
