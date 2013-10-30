@@ -50,8 +50,8 @@
  */
 
 /**
- * \file geminfo.c
- * \brief /proc/geminfo data provider
+ * \file kgnilnd.c
+ * \brief /proc/kgnilnd data provider
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -107,7 +107,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the geminfo file '%s'...exiting\n", procfile);
+		msglog("Could not open the kgnilnd file '%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 
@@ -216,7 +216,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set){
-	  msglog("geminfo: plugin not initialized\n");
+	  msglog("kgnilnd: plugin not initialized\n");
 	  return EINVAL;
 	}
 	ldms_begin_transaction(set);
@@ -259,15 +259,15 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=geminfo component_id=<comp_id> set=<setname>\n"
+	return  "config name=kgnilnd component_id=<comp_id> set=<setname>\n"
 		"    comp_id     The component id value.\n"
 		"    setname     The set name.\n";
 }
 
 
-static struct ldmsd_sampler geminfo_plugin = {
+static struct ldmsd_sampler kgnilnd_plugin = {
 	.base = {
-		.name = "geminfo",
+		.name = "kgnilnd",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -279,5 +279,5 @@ static struct ldmsd_sampler geminfo_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &geminfo_plugin.base;
+	return &kgnilnd_plugin.base;
 }

@@ -7,10 +7,10 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) -I@OVIS_LIB_INCDIR@
 AM_LDFLAGS = -L@OVIS_LIB_LIB64DIR@ -L@OVIS_LIB_LIBDIR@
 COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 
-if ENABLE_GEMINFO
-libgeminfo_la_SOURCES = geminfo.c
-libgeminfo_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libgeminfo.la
+if ENABLE_KGNILND
+libkgnilnd_la_SOURCES = kgnilnd.c
+libkgnilnd_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += libkgnilnd.la
 endif
 
 if ENABLE_LUSTRE
@@ -112,9 +112,9 @@ libgem_link_perf_util_la_LDFLAGS = $(CRAY_LDFLAGS_)
 lib_LTLIBRARIES += libgem_link_perf_util.la
 
 
-libncsa_unified_la_SOURCES = ncsa_unified.c 
-libncsa_unified_la_CFLAGS = $(CRAY_CFLAGS_) 
-libncsa_unified_la_LDFLAGS = $(CRAY_LDFLAGS_) 
+libncsa_unified_la_SOURCES = ncsa_unified.c
+libncsa_unified_la_CFLAGS = $(CRAY_CFLAGS_)
+libncsa_unified_la_LDFLAGS = $(CRAY_LDFLAGS_)
 libncsa_unified_la_LIBADD = $(COMMON_LIBADD) \
 			    ./lustre/libstr_map.la \
 			    ./lustre/liblustre_sampler.la \
