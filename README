@@ -1,0 +1,3 @@
+For generic Linux clusters, please checkout the branch "release/hpc_linux"
+
+For Cray X* systems, please checkout the branch "release/cray_xe"
