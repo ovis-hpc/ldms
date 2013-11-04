@@ -50,16 +50,17 @@
  */
 
 /**
- * Link aggregation methodlogy based on Kevin Pedretti's (Sandia National
- * Laboratories) gemini performance counter interface and link aggregation
- * library. It has been augmented with pattern analysis of the interconnect
- * file.
+ * \file gem_link_perf_util.c
+ * \brief Utilities reading and aggregating the gemini_performance counters.
  */
 
 /**
- * \file gem_link_perf_util.c
- * \brief Utilities for the gem_link_perf sampler also used in ncsa_unified
+ * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
+ * (Sandia National Laboratories) gemini performance counter interface and
+ * link aggregation library. It has been augmented with pattern analysis
+ * of the interconnect file.
  */
+
 
 #define _GNU_SOURCE
 
@@ -75,50 +76,10 @@
 #include <time.h>
 #include <pthread.h>
 #include <limits.h>
-#include <rca_lib.h>
-#include <rs_id.h>
-#include <rs_meshcoord.h>
 #include "gem_link_perf_util.h"
 #include "ldmsd.h"
 #include "ldms.h"
 
-int get_my_nid(void)
-{
-	rs_node_t node;
-	rca_get_nodeid(&node);
-	return (int)node.rs_node_s._node_id;
-}
-
-void get_my_coord(gemini_coord_t *coord)
-{
-	mesh_coord_t loc;
-	rca_get_meshcoord((uint16_t) get_my_nid(), &loc);
-	coord->x = loc.mesh_x;
-	coord->y = loc.mesh_y;
-	coord->z = loc.mesh_z;
-}
-
-void set_coord_invalid(gemini_coord_t *coord)
-{
-	coord->x = -1;
-	coord->y = -1;
-	coord->z = -1;
-}
-
-int coord_invalid(gemini_coord_t *coord)
-{
-	return (coord->x == -1) || (coord->y == -1) || (coord->z == -1);
-}
-
-int coord_valid(gemini_coord_t *coord)
-{
-	return !coord_invalid(coord);
-}
-
-int coords_equal(gemini_coord_t *a, gemini_coord_t *b)
-{
-	return ((a->x == b->x) && (a->y == b->y) && (a->z == b->z));
-}
 
 /**
  * Converts a Gemini tile ID to tile (\c row, \c col) coordinate.
@@ -363,31 +324,17 @@ double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type)
  */
 int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 					  char *filename,
-					  gemini_coord_t *neighbor,
 					  gemini_tile_t *tile,
-					  gemini_coord_t *my_coord,
 					  double (*max_link_bw)[],
 					  int (*tiles_per_dir)[])
 {
 	ldmsd_msg_log_f msglog = *msglog_outer;
 	FILE *fd;
 	int tid;
-	int link_type;
 	int my_tiles = 0;
 	int my_pattern = 0;
 	int my_z_pattern = 0;
 	int my_tmp_pattern = 0;
-	long size;
-	size_t offset;
-	gemini_coord_t src_coord, dst_coord;
-
-	/*  buffers for storing raw strings parsed from interconnct file */
-	char src_cname_str[32];
-	char src_coord_str[32];
-	char link_dir_str[32];
-	char dst_cname_str[32];
-	char dst_coord_str[32];
-	char link_type_str[32];
 	double lbw = 0.0;
 
 	int row, col;
@@ -406,20 +353,11 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 	if (rc != 0)
 	  return rc;
 
-	/*  Get my x, y, z coordinates */
-	get_my_coord(my_coord);
-
 	/*  Initialize tile parameters */
 	for (i = 0; i < GEMINI_NUM_TILES; i++) {
 		tile[i].type = GEMINI_LINK_TYPE_INVALID;
 		tile[i].dir  = GEMINI_LINK_DIR_INVALID;
 	}
-
-	/*  Initialize neighbor logical link parameters */
-	for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
-		set_coord_invalid(&neighbor[i]);
-	}
-
 
 	for (row=0; row<GEMINI_NUM_TILE_ROWS; row++) {
 		for (col=0; col<GEMINI_NUM_TILE_COLUMNS; col++) {
@@ -464,10 +402,9 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 
 	if (my_tiles != GEMINI_NUM_NET_TILES) {
 		if (msglog)
-			msglog("src (%d,%d,%d) found %d tiles in "
+			msglog("src found %d tiles in "
 			       " interconnect file, expected %d",
-				my_coord->x, my_coord->y, my_coord->z, my_tiles,
-				GEMINI_NUM_NET_TILES);
+			       my_tiles, GEMINI_NUM_NET_TILES);
 		return EINVAL;
 	}
 

@@ -50,7 +50,7 @@
  */
 /**
  * \file gem_link_perf_util.h
- * \brief Utilities for gem_link_perf/nic_perf_sampler also used in ncsa_unified
+ * \brief Utilities for processing and aggregating the gemini perf counters
  */
 
 #ifndef __GEM_LINK_PERF_UTIL_H_
@@ -67,77 +67,47 @@
 #include <string.h>
 #include <sys/types.h>
 #include <ctype.h>
-#include <rca_lib.h>
 #include <rs_id.h>
-#include <rs_meshcoord.h>
-#include <gpcd_lib.h>
+#include "gpcd_lib.h"
 #include "gemini.h"
 #include "ldms.h"
 #include "ldmsd.h"
 
-/* Array to hold counter names */
-static char ns_gemlink_gemctrname[][32] = {
-	"GEMINI_TCTR_VC0_INPUT_PHITS",
-	"GEMINI_TCTR_VC1_INPUT_PHITS",
-	"GEMINI_TCTR_VC0_INPUT_PACKETS",
-	"GEMINI_TCTR_VC1_INPUT_PACKETS",
-	"GEMINI_TCTR_INPUT_STALLS",
-	"GEMINI_TCTR_OUTPUT_STALLS"
-};
 
-static char ns_gemlink_gemstatsname[][64] = {
-	"SAMPLE_GEMINI_TCTR_LINK_BW",
-	"SAMPLE_GEMINI_TCTR_LINK_USED_BW",
-	"SAMPLE_GEMINI_TCTR_LINK_PACKETSIZE_AVE",
-	"SAMPLE_GEMINI_TCTR_LINK_INPUT_STALLS",
-	"SAMPLE_GEMINI_TCTR_LINK_OUTPUT_STALLS"
-};
+/* These are the NIC COUNTERS. The wrap is used to make an
+   enum for the raw values. In the sampler are the metric
+   names and the computation of the metrics from these. */
 
-#define NETTOPODIM 3
-static char nettopo_meshcoord_metricname[][64] = {
-	"nettopo_mesh_coord_x",
-	"nettopo_mesh_coord_y",
-	"nettopo_mesh_coord_z"
-};
-
-/* Array to hold link direction */
-static char ns_gemlink_gemctrdir[][4] = {
-	"X+", "X-", "Y+", "Y-", "Z+", "Z-", "HH"
-};
-
-#define NUM_NIC_PERF_RAW 12
+#define NUM_NIC_PERF_RAW 13
 
 #define STR_WRAP(NAME) #NAME
 #define PREFIX_ENUM_R(NAME) R_ ## NAME
 
-#define NIC_PERF_RAW_LIST(WRAP) \
-	WRAP(GM_ORB_PERF_VC1_STALLED),		\
-		WRAP(GM_ORB_PERF_VC0_STALLED),	\
-		WRAP(GM_ORB_PERF_VC1_PKTS),	\
-		WRAP(GM_ORB_PERF_VC0_PKTS),	\
-		WRAP(GM_ORB_PERF_VC1_FLITS),	\
-		WRAP(GM_ORB_PERF_VC0_FLITS),	\
-		WRAP(GM_NPT_PERF_NPT_FLIT_CNTR),	\
-		WRAP(GM_NPT_PERF_NPT_PKT_CNTR),		\
-		WRAP(GM_NPT_PERF_NPT_BLOCKED_CNTR),	\
-		WRAP(GM_NPT_PERF_NPT_STALLED_CNTR),	\
-		WRAP(GM_RAT_PERF_HEADER_FLITS_VC0),	\
-		WRAP(GM_RAT_PERF_DATA_FLITS_VC0)
+
+#define NIC_PERF_RAW_NEWLIST(WRAP) \
+	WRAP(GM_ORB_PERF_VC0_FLITS),		 \
+		WRAP(GM_NPT_PERF_ACP_FLIT_CNTR), \
+		WRAP(GM_NPT_PERF_NRP_FLIT_CNTR), \
+		WRAP(GM_NPT_PERF_NPT_FLIT_CNTR), \
+		WRAP(GM_ORB_PERF_VC0_PKTS),		   \
+		WRAP(GM_NPT_PERF_NL_RSP_PKT_CNTR),	   \
+		WRAP(GM_RAT_PERF_DATA_FLITS_VC0),	   \
+		WRAP(GM_ORB_PERF_VC1_FLITS),	   \
+		WRAP(GM_ORB_PERF_VC1_PKTS),	   \
+		WRAP(GM_TARB_PERF_FMA_FLITS),	   \
+		WRAP(GM_TARB_PERF_FMA_PKTS),	   \
+		WRAP(GM_TARB_PERF_BTE_FLITS),	   \
+		WRAP(GM_TARB_PERF_BTE_PKTS)
+
 
 static char* nic_perf_raw_name[] = {
-	NIC_PERF_RAW_LIST(STR_WRAP)
+	NIC_PERF_RAW_NEWLIST(STR_WRAP)
 };
 
 typedef enum {
-	NIC_PERF_RAW_LIST(PREFIX_ENUM_R)
+	NIC_PERF_RAW_NEWLIST(PREFIX_ENUM_R)
 } nic_perf_raw_t;
 
-int get_my_nid(void);
-void get_my_coord(gemini_coord_t *coord);
-void set_coord_invalid(gemini_coord_t *coord);
-int coord_invalid(gemini_coord_t *coord);
-int coord_valid(gemini_coord_t *coord);
-int coords_equal(gemini_coord_t *a, gemini_coord_t *b);
 int tid_to_tcoord(int tid, int *row, int *col);
 int tcoord_to_tid(int row, int col, int *tid);
 int str_to_tid(char *str);
@@ -147,9 +117,7 @@ double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type);
 int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind);
 int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 					  char *filename,
-					  gemini_coord_t *neighbor,
 					  gemini_tile_t *tile,
-					  gemini_coord_t *mycoord,
 					  double (*max_link_bw)[],
 					  int (*tiles_per_dir)[]);
 gpcd_context_t *gem_link_perf_create_context(ldmsd_msg_log_f*);

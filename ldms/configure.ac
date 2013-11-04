@@ -45,7 +45,7 @@ OPTION_DEFAULT_DISABLE([sedc], [ENABLE_SEDC])
 OPTION_DEFAULT_ENABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
-OPTION_DEFAULT_DISABLE([ncsa_unified], [ENABLE_NCSA_UNIFIED])
+OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 
@@ -204,12 +204,23 @@ AC_CHECK_LIB(coll, idx_create, [],
 dnl Reset LIBS variable.
 LIBS=""
 
+dnl Preferentially use only the gpcdr interface if it exists
+if test -z "$ENABLE_CRAY_SYSTEM_SAMPLER"
+then
+AC_CHECK_FILE("/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics",
+	AC_DEFINE([HAVE_GPCDR],[1],[Use gpcdr interface for gemini metrics.]),
+	AC_MSG_RESULT([Use gpcd for link aggregated gemini metrics.]))
+fi
+dnl Reset LIBS variable.
+LIBS=""
+
 AC_SUBST(ac_configure_args)
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/hadoop/Makefile
+		 src/sampler/cray_system_sampler/Makefile
 		 src/ldmsd/Makefile
 		 ldms.spec])
 AC_OUTPUT
