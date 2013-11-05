@@ -76,6 +76,9 @@ dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 OPTION_WITH([libevent], [LIBEVENT])
 
+OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])
+OPTION_WITH([ocm], [OCM])
+
 if test -z "$ENABLE_MYSQL_TRUE"
 then
 OPTION_WITH_MYSQL dnl MYSQL is special.

@@ -16,6 +16,12 @@ ldmsd_LDFLAGS += -lyaml
 ldmsd_CFLAGS += -DENABLE_YAML
 endif
 
+if ENABLE_OCM
+ldmsd_SOURCES += ldmsd_ocm.c
+ldmsd_LDFLAGS += -lcoll -locm -L@OCM_LIB64DIR@ -L@OCM_LIBDIR@
+ldmsd_CFLAGS += -DENABLE_OCM -I@OCM_INCDIR@
+endif
+
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lreadline -lovis_ctrl -lovis_util

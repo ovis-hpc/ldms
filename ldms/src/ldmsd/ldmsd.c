@@ -82,6 +82,14 @@
 #include <yaml.h>
 #endif
 
+#ifdef ENABLE_OCM
+#include <ocm/ocm.h>
+#include <coll/str_map.h>
+const char *ldmsd_svc_type = "ldmsd_sampler";
+uint16_t ocm_port = OCM_DEFAULT_PORT;
+int ldmsd_ocm_init(const char *svc_type, uint16_t port);
+#endif
+
 /**
  * \brief Convenient error report and exit macro.
  * \param fmt The format (as in printf format).
@@ -107,6 +115,11 @@
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define FMT "H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q"
+
+#ifdef ENABLE_OCM
+#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:qz:o:"
+#endif
+
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -230,6 +243,10 @@ void usage(char *argv[])
 	       "                     For example, 20M or 20mb are 20 megabytes.\n");
 	printf("    -f count       The number of flush threads.\n");
 	printf("    -D num         The dirty threshold.\n");
+#ifdef ENABLE_OCM
+	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
+	printf("    -z ldmsd_mode  ldmsd mode (either 'ldmsd_sampler' or 'ldmsd_aggregator'\n");
+#endif
 	cleanup(1);
 }
 
@@ -414,7 +431,7 @@ static void msg_logger(const char *fmt, ...)
 	ldms_log(msg_buf);
 }
 
-static int calculate_timeout(int thread_id, unsigned long interval_us,
+int calculate_timeout(int thread_id, unsigned long interval_us,
 			     long offset_us, struct timeval* tv){
 
 	struct timeval new_tv;
@@ -3184,6 +3201,21 @@ int main(int argc, char *argv[])
 		case 'D':
 			dirty_threshold = atoi(optarg);
 			break;
+#ifdef ENABLE_OCM
+		case 'z':
+			if (strcmp(optarg, "ldmsd_sampler")
+					&& strcmp(optarg, "ldmsd_aggregator")) {
+				printf("Invalid ldmsd type '%s', ldmsd type can"
+					" only be 'ldmsd_sampler' or "
+					"'ldmsd_aggregator'\n", optarg);
+				cleanup(-1);
+			}
+			ldmsd_svc_type = optarg;
+			break;
+		case 'o':
+			ocm_port = atoi(optarg);
+			break;
+#endif
 		default:
 			usage(argv);
 		}
@@ -3330,6 +3362,15 @@ int main(int argc, char *argv[])
 
 	if (yaml_document)
 		config_file_routine(yaml_document);
+#endif
+
+#ifdef ENABLE_OCM
+	int ocm_rc = ldmsd_ocm_init(ldmsd_svc_type, ocm_port);
+	if (ocm_rc) {
+		ldms_log("Error: cannot initialize OCM, %s\n",
+				strerror(ocm_rc));
+		cleanup(ocm_rc);
+	}
 #endif
 
 	uint64_t count = 1;
