@@ -112,7 +112,7 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	printf("%s: len %zu '%s'.\n", __func__,
 	       ev->data_len, (char *)ev->data);
 	if (len != ev->data_len) {
-		printf("%s: wrong length!!! expecting %d but got %d\n",
+		printf("%s: wrong length!!! expecting %d but got %zd\n",
 				__func__, len, ev->data_len);
 	}
 	assert(len == ev->data_len);

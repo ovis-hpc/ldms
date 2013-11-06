@@ -230,10 +230,11 @@ void *send_msg(void *arg)
 		gettimeofday(&tv, NULL);
 		zap_get_name(ep, (void*)&lsin, (void*)&rsin, &slen);
 		for (i = 0; i < count; i++) {
-			printf("%d: Sending %u.%u to %X\n", i,
-				tv.tv_sec, tv.tv_usec,
+			printf("%d: Sending %d.%d to %X\n", i,
+				(int)tv.tv_sec, (int)tv.tv_usec,
 				rsin.sin_addr.s_addr);
-			sprintf(data, "%d: %u.%u", i, tv.tv_sec, tv.tv_usec);
+			sprintf(data, "%d: %d.%d", i, (int)tv.tv_sec,
+					(int)tv.tv_usec);
 			zerr = zap_send(ep, data, strlen(data));
 			if (zerr)
 				printf("Error %d in zap_send.\n", zerr);
