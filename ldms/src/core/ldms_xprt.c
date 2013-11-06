@@ -66,6 +66,8 @@
 #include "ldms_xprt.h"
 #include "ldms_private.h"
 
+#include "coll/str_map.h"
+
 void default_log(const char *fmt, ...)
 {
 	va_list ap;
@@ -82,6 +84,7 @@ void default_log(const char *fmt, ...)
 #endif
 
 pthread_mutex_t xprt_list_lock;
+str_map_t __dlmap;
 
 static inline struct ldms_xprt *ldms_xprt_get_(struct ldms_xprt *x)
 {
@@ -843,14 +846,19 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	strcat(_libdir, "libldms");
 	strcat(_libdir, name);
 	strcat(_libdir, _SO_EXT);
-	void *d = dlopen(_libdir, RTLD_NOW);
+	void *d = (void*)str_map_get(__dlmap, name);
 	if (!d) {
-		/* The library doesn't exist */
-		log_fn("dlopen: %s\n", dlerror());
-		ret = ENOENT;
-		goto err;
+		d = dlopen(_libdir, RTLD_NOW);
+		if (!d) {
+			/* The library doesn't exist */
+			log_fn("dlopen: %s\n", dlerror());
+			ret = ENOENT;
+			goto err;
+		}
+		dlerror();
+		str_map_insert(__dlmap, name, (uint64_t)d);
 	}
-	dlerror();
+
 	ldms_xprt_get_t get = dlsym(d, "xprt_get");
 	errstr = dlerror();
 	if (errstr || !get) {
@@ -1217,6 +1225,8 @@ struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set
 void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_mutex_init(&xprt_list_lock, 0);
+	__dlmap = str_map_create(4091);
+	assert(__dlmap);
 }
 
 void __attribute__ ((destructor)) cs_term(void)
