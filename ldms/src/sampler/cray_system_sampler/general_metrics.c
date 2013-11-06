@@ -87,7 +87,6 @@ int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
 	int i;
 	int rc;
 
-	msglog("get_metric_size_lustre\n");
 	LIST_FOREACH(lss, &lustre_svc_head, link) {
 		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
 			sprintf(name, "%s.stats.%s", lss->name,
@@ -113,7 +112,6 @@ int add_metrics_lustre(ldms_set_t set, int comp_id,
 	int count = 0;
 	char name[1024];
 
-	msglog("add_metrics_lustre\n");
 	LIST_FOREACH(lss, &lustre_svc_head, link) {
 		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
 			sprintf(name, "%s.stats.%s", lss->name,
