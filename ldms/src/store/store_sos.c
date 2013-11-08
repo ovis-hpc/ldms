@@ -522,7 +522,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 	LIST_FOREACH(ms, &si->ms_list, entry) {
 		pthread_mutex_lock(&ms->lock);
 		sos_flush(ms->sos);
-		pthread_mutex_lock(&ms->lock);
+		pthread_mutex_unlock(&ms->lock);
 	}
 	return 0;
 }
