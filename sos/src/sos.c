@@ -588,38 +588,6 @@ int sos_extend(sos_t sos, size_t sz)
 	return 0;
 }
 
-#if 0
-/*
- * Find or allocate an index entry on the given attribute
- * === OBSOLETE ===
- */
-#include "ods_priv.h"
-uint64_t get_idx_entry(sos_attr_t attr, sos_key_t key)
-{
-	sos_t sos = attr->sos;
-	oidx_t oidx = attr->oidx;
-	uint64_t xo = oidx_find(oidx, key->key, key->keylen);
-	if (!xo) {
-		/* Add the index */
-		sos_idx_entry_t x = ods_alloc(sos->ods, sizeof *x);
-		if (!x) {
-			if (sos_extend(sos, sos->meta->ods_extend_sz))
-				goto err;
-			x = ods_alloc(sos->ods, sizeof *x);
-			if (!x)
-				goto err;
-		}
-		x->first = x->last = 0;
-		xo = ods_obj_ptr_to_offset(sos->ods, x);
-		oidx_add(oidx, key->key, key->keylen, xo);
-	}
-	return xo;
- err:
-	errno = ENOMEM;
-	return 0;
-}
-#endif
-
 void sos_obj_delete(sos_t sos, sos_obj_t obj)
 {
 	/* free the blobs first, otherwise they will be dangling blobs */
@@ -832,8 +800,13 @@ void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 	if (!blob->len) {
 		/* blob not allocated --> allocate it */
 		ptr = ods_alloc(bods, arg->len);
-		if (!ptr)
-			goto err1;
+		if (!ptr) {
+			if (ods_extend(bods, (arg->len | 0xFFFFF)+1))
+				goto err1;
+			ptr = ods_alloc(bods, arg->len);
+			if (!ptr)
+				goto err1;
+		}
 		blob->len = ods_get_alloc_size(bods, arg->len);
 		blob->off = ods_obj_ptr_to_offset(bods, ptr);
 	}
