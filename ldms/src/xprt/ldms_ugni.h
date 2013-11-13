@@ -133,6 +133,11 @@ struct ldms_ugni_xprt {
 	struct ldms_xprt *xprt;
 	enum ugni_conn_status conn_status;
 
+	enum ldms_ugni_xprt_type {
+		LDMS_UGNI_PASSIVE,
+		LDMS_UGNI_ACTIVE
+	} type;
+
 	int sock;
 	gni_dom_t dom;
 	gni_ep_handle_t ugni_ep;
