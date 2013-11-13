@@ -51,7 +51,7 @@
 
 
 /**
- * \file general_metrics.h non-gpcdr metrics
+ * \file general_metrics.h non-gemini metrics
  */
 
 #ifndef __GENERAL_METRICS_H_
@@ -76,6 +76,7 @@
 #define LOADAVG_FILE "/proc/loadavg"
 #define CURRENT_FREEMEM_FILE "/proc/current_freemem"
 #define KGNILND_FILE  "/proc/kgnilnd/stats"
+#define PROCNETDEV_FILE "/proc/net/dev"
 
 /* CURRENT_FREEMEM Specific */
 FILE *cf_f;
@@ -91,12 +92,24 @@ ldms_metric_t* metric_table_vmstat;
 
 /* LOADAVG Specific */
 FILE *l_f;
-static char* LOADAVG_METRICS[] = {"loadavg_latest(*100)",
-				  "loadavg_5min(*100)",
+static char* LOADAVG_METRICS[] = {"loadavg_latest(x100)",
+				  "loadavg_5min(x100)",
 				  "loadavg_running_processes",
 				  "loadavg_total_processes"};
 #define NUM_LOADAVG_METRICS (sizeof(LOADAVG_METRICS)/sizeof(LOADAVG_METRICS[0]))
 ldms_metric_t *metric_table_loadavg;
+
+/* PROCNETDEV Specific (Specific interface and indicies supported)*/
+FILE *pnd_f;
+static char* iface ="ipogif0";
+int idx_iface;
+static char* PROCNETDEV_METRICS[] = {"ipogif0_rx_bytes",
+				     "ipogif0_tx_bytes"};
+#define NUM_PROCNETDEV_METRICS (sizeof(PROCNETDEV_METRICS)/sizeof(PROCNETDEV_METRICS[0]))
+
+ldms_metric_t *metric_table_procnetdev;
+int procnetdev_valid;
+
 
 /* KGNILND Specific */
 FILE *k_f;
@@ -175,6 +188,7 @@ int add_metrics_lustre(ldms_set_t set, int comp_id,
 
 /** helpers */
 int handle_llite(const char *llite);
+int procnetdev_setup(ldmsd_msg_log_f msglog);
 
 
 /** sample */
@@ -182,6 +196,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
 int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
 int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
 int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
+int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
 int sample_metrics_lustre(ldmsd_msg_log_f msglog);
 
 #endif

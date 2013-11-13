@@ -49,39 +49,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * \file gemini_metrics.h
- * \brief Utilities for cray_system_sampler for gemini metrics
- *        Common to gpcd and gpcrd interfaces...
+ * \file rtr_util.h
+ * \brief Utilities for getting info out of the rtrfile output
  */
 
-
-/**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
- * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
- * (Sandia National Laboratories) gemini performance counter interface and
- * link aggregation library. It has been augmented with pattern analysis
- * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
- */
-
-
-#ifndef __GEMINI_METRICS_H_
-#define __GEMINI_METRICS_H_
+#ifndef __RTR_UTIL_H_
+#define __RTR_UTIL_H_
 
 #define _GNU_SOURCE
 
@@ -93,51 +66,23 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
-#include <time.h>
 #include <ctype.h>
+#include <rs_id.h>
+#include "gemini.h"
+#include "ldms.h"
+#include "ldmsd.h"
 
-#define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_M(NAME) M_ ## NAME
-#define PREFIX_ENUM_LB(NAME) LB_ ## NAME
-#define PREFIX_ENUM_LD(NAME) LD_ ## NAME
-#define PREFIX_ENUM_GM(NAME) GM_ ## NAME
-#define PREFIX_ENUM_GB(NAME) GB_ ## NAME
-#define PREFIX_ENUM_GD(NAME) GD_ ## NAME
-
-#define COUNTER_48BIT_MAX 281474976710655
-
-/** currently the nic metric names are the same for both */
-
-#define NICMETRICS_BASE_LIST(WRAP) \
-	WRAP(totaloutput_optA),     \
-		WRAP(totalinput), \
-	       WRAP(fmaout), \
-		WRAP(bteout_optA), \
-		WRAP(bteout_optB), \
-		WRAP(totaloutput_optB)
-
-static char* nicmetrics_derivedprefix = "SAMPLE";
-static char* nicmetrics_derivedunit =  "(B/s)";
-
-static char* nicmetrics_basename[] = {
-	NICMETRICS_BASE_LIST(STR_WRAP)
-};
-
-typedef enum {
-	NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
-} nicmetrics_metric_t;
-
-#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
-
-
-typedef enum {
-	GEMINI_METRICS_COUNTER,
-	GEMINI_METRICS_DERIVED,
-	GEMINI_METRICS_BOTH
-} gemini_metrics_type_t;
-
-int gemini_metrics_type; /**< raw, derived, both */
-
-char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
+int tid_to_tcoord(int tid, int *row, int *col);
+int tcoord_to_tid(int row, int col, int *tid);
+int str_to_tid(char *str);
+int str_to_linkdir(char *str);
+int str_to_linktype(char *str);
+double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type);
+int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind);
+int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
+					  char *filename,
+					  gemini_tile_t *tile,
+					  double (*max_link_bw)[],
+					  int (*tiles_per_dir)[]);
 
 #endif

@@ -1,4 +1,4 @@
-/*
+/* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -48,96 +48,49 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/**
- * \file gemini_metrics.h
- * \brief Utilities for cray_system_sampler for gemini metrics
- *        Common to gpcd and gpcrd interfaces...
- */
 
 
 /**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
- * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
- * (Sandia National Laboratories) gemini performance counter interface and
- * link aggregation library. It has been augmented with pattern analysis
- * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
+ * \file rca_metrics.c
+ * \brief Functions used in the cray_system_sampler that are particular to
+ * rca (mesh coord).
  */
 
 
-#ifndef __GEMINI_METRICS_H_
-#define __GEMINI_METRICS_H_
+#include <rca_lib.h>
+#include <rs_id.h>
+#include <rs_meshcoord.h>
+#include "rca_metrics.h"
 
-#define _GNU_SOURCE
+int nettopo_setup(ldmsd_msg_log_f msglog)
+{
+	rs_node_t node;
+	mesh_coord_t loc;
+	uint16_t nid;
 
-#include <inttypes.h>
-#include <unistd.h>
-#include <sys/errno.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
-#include <sys/types.h>
-#include <time.h>
-#include <ctype.h>
+	rca_get_nodeid(&node);
+	nid = (uint16_t)node.rs_node_s._node_id;
+	rca_get_meshcoord(nid, &loc);
+	nettopo_coord.x = loc.mesh_x;
+	nettopo_coord.y = loc.mesh_y;
+	nettopo_coord.z = loc.mesh_z;
 
-#define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_M(NAME) M_ ## NAME
-#define PREFIX_ENUM_LB(NAME) LB_ ## NAME
-#define PREFIX_ENUM_LD(NAME) LD_ ## NAME
-#define PREFIX_ENUM_GM(NAME) GM_ ## NAME
-#define PREFIX_ENUM_GB(NAME) GB_ ## NAME
-#define PREFIX_ENUM_GD(NAME) GD_ ## NAME
+	return 0;
+}
 
-#define COUNTER_48BIT_MAX 281474976710655
+int sample_metrics_nettopo(ldmsd_msg_log_f msglog)
+{
 
-/** currently the nic metric names are the same for both */
+	union ldms_value v;
 
-#define NICMETRICS_BASE_LIST(WRAP) \
-	WRAP(totaloutput_optA),     \
-		WRAP(totalinput), \
-	       WRAP(fmaout), \
-		WRAP(bteout_optA), \
-		WRAP(bteout_optB), \
-		WRAP(totaloutput_optB)
+	/*  Fill in mesh coords (this is static and should be moved) */
+	/* will want these 3 to be LDMS_V_U8 */
+	v.v_u64 = (uint64_t) nettopo_coord.x;
+	ldms_set_metric(nettopo_metric_table[0], &v);
+	v.v_u64 = (uint64_t) nettopo_coord.y;
+	ldms_set_metric(nettopo_metric_table[1], &v);
+	v.v_u64 = (uint64_t) nettopo_coord.z;
+	ldms_set_metric(nettopo_metric_table[2], &v);
 
-static char* nicmetrics_derivedprefix = "SAMPLE";
-static char* nicmetrics_derivedunit =  "(B/s)";
-
-static char* nicmetrics_basename[] = {
-	NICMETRICS_BASE_LIST(STR_WRAP)
-};
-
-typedef enum {
-	NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
-} nicmetrics_metric_t;
-
-#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
-
-
-typedef enum {
-	GEMINI_METRICS_COUNTER,
-	GEMINI_METRICS_DERIVED,
-	GEMINI_METRICS_BOTH
-} gemini_metrics_type_t;
-
-int gemini_metrics_type; /**< raw, derived, both */
-
-char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
-
-#endif
+	return 0;
+}

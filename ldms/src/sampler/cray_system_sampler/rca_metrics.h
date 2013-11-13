@@ -49,12 +49,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * \file gem_link_perf_util.h
- * \brief Utilities for processing and aggregating the gemini perf counters
+ * \file rca_metrics.h
+ * \brief Utilities for cray_system_sampler for mesh_coord metrics
  */
 
-#ifndef __GEM_LINK_PERF_UTIL_H_
-#define __GEM_LINK_PERF_UTIL_H_
+#ifndef __RCA_METRICS_H_
+#define __RCA_METRICS_H_
 
 #define _GNU_SOURCE
 
@@ -66,61 +66,30 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <time.h>
 #include <ctype.h>
-#include <rs_id.h>
-#include "gpcd_lib.h"
-#include "gemini.h"
 #include "ldms.h"
 #include "ldmsd.h"
 
-
-/* These are the NIC COUNTERS. The wrap is used to make an
-   enum for the raw values. In the sampler are the metric
-   names and the computation of the metrics from these. */
-
-#define NUM_NIC_PERF_RAW 13
-
-#define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_R(NAME) R_ ## NAME
-
-
-#define NIC_PERF_RAW_NEWLIST(WRAP) \
-	WRAP(GM_ORB_PERF_VC0_FLITS),		 \
-		WRAP(GM_NPT_PERF_ACP_FLIT_CNTR), \
-		WRAP(GM_NPT_PERF_NRP_FLIT_CNTR), \
-		WRAP(GM_NPT_PERF_NPT_FLIT_CNTR), \
-		WRAP(GM_ORB_PERF_VC0_PKTS),		   \
-		WRAP(GM_NPT_PERF_NL_RSP_PKT_CNTR),	   \
-		WRAP(GM_RAT_PERF_DATA_FLITS_VC0),	   \
-		WRAP(GM_ORB_PERF_VC1_FLITS),	   \
-		WRAP(GM_ORB_PERF_VC1_PKTS),	   \
-		WRAP(GM_TARB_PERF_FMA_FLITS),	   \
-		WRAP(GM_TARB_PERF_FMA_PKTS),	   \
-		WRAP(GM_TARB_PERF_BTE_FLITS),	   \
-		WRAP(GM_TARB_PERF_BTE_PKTS)
-
-
-static char* nic_perf_raw_name[] = {
-	NIC_PERF_RAW_NEWLIST(STR_WRAP)
+static char* nettopo_meshcoord_metricname[] = {
+      "nettopo_mesh_coord_X",
+      "nettopo_mesh_coord_Y",
+      "nettopo_mesh_coord_Z"
 };
+#define NETTOPODIM (sizeof(nettopo_meshcoord_metricname)/sizeof(nettopo_meshcoord_metricname[0]))
 
-typedef enum {
-	NIC_PERF_RAW_NEWLIST(PREFIX_ENUM_R)
-} nic_perf_raw_t;
+typedef struct {
+	int x, y, z;
+} nettopo_coord_t;
 
-int tid_to_tcoord(int tid, int *row, int *col);
-int tcoord_to_tid(int row, int col, int *tid);
-int str_to_tid(char *str);
-int str_to_linkdir(char *str);
-int str_to_linktype(char *str);
-double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type);
-int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind);
-int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
-					  char *filename,
-					  gemini_tile_t *tile,
-					  double (*max_link_bw)[],
-					  int (*tiles_per_dir)[]);
-gpcd_context_t *gem_link_perf_create_context(ldmsd_msg_log_f*);
-gpcd_context_t *nic_perf_create_context(ldmsd_msg_log_f*);
+/* NETTOPO Specific */
+nettopo_coord_t nettopo_coord;
+ldms_metric_t* nettopo_metric_table;
+
+/** setup after add before sampling */
+int nettopo_setup(ldmsd_msg_log_f msglog);
+
+/** sample metrics */
+int sample_metrics_nettopo(ldmsd_msg_log_f msglog);
 
 #endif

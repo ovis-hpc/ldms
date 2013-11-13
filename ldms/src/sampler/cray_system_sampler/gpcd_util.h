@@ -49,39 +49,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * \file gemini_metrics.h
- * \brief Utilities for cray_system_sampler for gemini metrics
- *        Common to gpcd and gpcrd interfaces...
+ * \file gpcd_util.h
+ * \brief Utilities for processing and aggregating the gemini perf counters
  */
 
-
-/**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
- * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
- * (Sandia National Laboratories) gemini performance counter interface and
- * link aggregation library. It has been augmented with pattern analysis
- * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
- */
-
-
-#ifndef __GEMINI_METRICS_H_
-#define __GEMINI_METRICS_H_
+#ifndef __GPCD_UTIL_H_
+#define __GPCD_UTIL_H_
 
 #define _GNU_SOURCE
 
@@ -93,51 +66,49 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
-#include <time.h>
 #include <ctype.h>
+#include <rs_id.h>
+#include "gpcd_lib.h"
+#include "gemini.h"
+#include "ldms.h"
+#include "ldmsd.h"
+
+
+/* These are the NIC COUNTERS. The wrap is used to make an
+   enum for the raw values. In the sampler are the metric
+   names and the computation of the metrics from these. */
+
+#define NUM_NIC_PERF_RAW 13
 
 #define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_M(NAME) M_ ## NAME
-#define PREFIX_ENUM_LB(NAME) LB_ ## NAME
-#define PREFIX_ENUM_LD(NAME) LD_ ## NAME
-#define PREFIX_ENUM_GM(NAME) GM_ ## NAME
-#define PREFIX_ENUM_GB(NAME) GB_ ## NAME
-#define PREFIX_ENUM_GD(NAME) GD_ ## NAME
+#define PREFIX_ENUM_R(NAME) R_ ## NAME
 
-#define COUNTER_48BIT_MAX 281474976710655
 
-/** currently the nic metric names are the same for both */
+#define NIC_PERF_RAW_NEWLIST(WRAP) \
+	WRAP(GM_ORB_PERF_VC0_FLITS),		 \
+		WRAP(GM_NPT_PERF_ACP_FLIT_CNTR), \
+		WRAP(GM_NPT_PERF_NRP_FLIT_CNTR), \
+		WRAP(GM_NPT_PERF_NPT_FLIT_CNTR), \
+		WRAP(GM_ORB_PERF_VC0_PKTS),		   \
+		WRAP(GM_NPT_PERF_NL_RSP_PKT_CNTR),	   \
+		WRAP(GM_RAT_PERF_DATA_FLITS_VC0),	   \
+		WRAP(GM_ORB_PERF_VC1_FLITS),	   \
+		WRAP(GM_ORB_PERF_VC1_PKTS),	   \
+		WRAP(GM_TARB_PERF_FMA_FLITS),	   \
+		WRAP(GM_TARB_PERF_FMA_PKTS),	   \
+		WRAP(GM_TARB_PERF_BTE_FLITS),	   \
+		WRAP(GM_TARB_PERF_BTE_PKTS)
 
-#define NICMETRICS_BASE_LIST(WRAP) \
-	WRAP(totaloutput_optA),     \
-		WRAP(totalinput), \
-	       WRAP(fmaout), \
-		WRAP(bteout_optA), \
-		WRAP(bteout_optB), \
-		WRAP(totaloutput_optB)
 
-static char* nicmetrics_derivedprefix = "SAMPLE";
-static char* nicmetrics_derivedunit =  "(B/s)";
-
-static char* nicmetrics_basename[] = {
-	NICMETRICS_BASE_LIST(STR_WRAP)
+static char* nic_perf_raw_name[] = {
+	NIC_PERF_RAW_NEWLIST(STR_WRAP)
 };
 
 typedef enum {
-	NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
-} nicmetrics_metric_t;
+	NIC_PERF_RAW_NEWLIST(PREFIX_ENUM_R)
+} nic_perf_raw_t;
 
-#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
-
-
-typedef enum {
-	GEMINI_METRICS_COUNTER,
-	GEMINI_METRICS_DERIVED,
-	GEMINI_METRICS_BOTH
-} gemini_metrics_type_t;
-
-int gemini_metrics_type; /**< raw, derived, both */
-
-char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
+gpcd_context_t *gem_link_perf_create_context(ldmsd_msg_log_f*);
+gpcd_context_t *nic_perf_create_context(ldmsd_msg_log_f*);
 
 #endif
