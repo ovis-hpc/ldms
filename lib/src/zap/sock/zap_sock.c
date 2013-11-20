@@ -314,20 +314,30 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 	if (zerr)
 		goto out;
 
-	sep->sock = -1;
+	sep->sock = socket(sa->sa_family, SOCK_STREAM, 0);
+	if (sep->sock == -1) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto out;
+	}
+	rc = evutil_make_socket_nonblocking(sep->sock);
+	if (rc) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto out;
+	}
 	zerr = __setup_connection(sep);
 	if (zerr)
 		goto out;
 
+	zap_get_ep(&sep->ep);
 	if (bufferevent_socket_connect(sep->buf_event, sa, sa_len)) {
 		/* Error starting connection */
 		bufferevent_free(sep->buf_event);
 		sep->buf_event = NULL;
 		zerr = ZAP_ERR_CONNECT;
+		zap_put_ep(&sep->ep);
 		goto out;
 	}
-	sep->sock = bufferevent_getfd(sep->buf_event);
-	zap_get_ep(&sep->ep);
+
  out:
 	return zerr;
 }
@@ -618,10 +628,13 @@ static void release_buf_event(struct z_sock_ep *sep)
 static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 {
 
+	struct z_sock_ep *sep = arg;
+	pthread_mutex_lock(&sep->ep.lock);
 	static const short bev_mask = BEV_EVENT_EOF | BEV_EVENT_ERROR |
 				     BEV_EVENT_TIMEOUT;
 	if (!(bev & bev_mask)) {
-		/* This is BEV_EVENT_CONNECTED
+		/*
+		 * This is BEV_EVENT_CONNECTED on initiator side.
 		 *
 		 * The underlying socket is connected, but we won't call it
 		 * zap-connected yet. The other end can choose to either
@@ -632,14 +645,19 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 		 *
 		 * Hence, we just ignore this BEV_EVENT_CONNECTED and wait for
 		 * next event (ACCEPT or REJECT) to occur. Thus, no callback
-		 * function call in this case. */
+		 * function call in this case, just notify libevent that the
+		 * underlying socket is ready to work.
+		 */
+		if (bufferevent_enable(sep->buf_event, EV_READ | EV_WRITE)) {
+			LOG_(sep, "Error enabling buffered I/O event for fd %d.\n",
+					sep->sock);
+		}
+		pthread_mutex_unlock(&sep->ep.lock);
 		return;
 	}
 
 	/* Reaching here means bev is one of the EOF, ERROR or TIMEOUT */
 
-	struct z_sock_ep *sep = arg;
-	pthread_mutex_lock(&sep->ep.lock);
 	struct zap_event ev = { 0 };
 
 	release_buf_event(sep);
@@ -678,6 +696,9 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 static zap_err_t
 __setup_connection(struct z_sock_ep *sep)
 {
+#ifdef DEBUG
+	sep->ep.z->log_fn("SOCK: setting up endpoint %p\n", &sep->ep);
+#endif
 	/* Initialize send and recv I/O events */
 	sep->buf_event = bufferevent_socket_new(io_event_loop, sep->sock,
 						BEV_OPT_THREADSAFE);
@@ -688,11 +709,6 @@ __setup_connection(struct z_sock_ep *sep)
 	}
 
 	bufferevent_setcb(sep->buf_event, sock_read, NULL, sock_event, sep);
-	if (bufferevent_enable(sep->buf_event, EV_READ | EV_WRITE)) {
-		LOG_(sep, "Error enabling buffered I/O event for fd %d.\n",
-		     sep->sock);
-		return ZAP_ERR_RESOURCE;
-	}
 	return ZAP_ERR_OK;
 }
 
@@ -849,6 +865,9 @@ static void z_sock_destroy(zap_ep_t ep)
 	release_buf_event(sep);
 	if (sep->sock > -1)
 		close(sep->sock);
+#ifdef DEBUG
+	ep->z->log_fn("SOCK: destroying endpoint %p\n", ep);
+#endif
 	free(ep);
 }
 
@@ -871,6 +890,12 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb)
 	zerr = __setup_connection(sep);
 	if (zerr)
 		goto err_1;
+
+	if (bufferevent_enable(sep->buf_event, EV_READ | EV_WRITE)) {
+		LOG_(sep, "Error enabling buffered I/O event for fd %d.\n",
+		     sep->sock);
+		goto err_1;
+	}
 
 	msg.hdr.msg_type = htons(SOCK_MSG_ACCEPTED);
 	msg.hdr.msg_len = htonl(sizeof(msg));
