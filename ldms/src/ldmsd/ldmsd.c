@@ -944,7 +944,7 @@ int process_add_host(int fd,
 	attr = "host";
 	host = av_value(av_list, attr);
 	if (!host) {
-	einval:
+einval:
 		sprintf(replybuf, "%d The %s attribute must be specified\n",
 			-EINVAL, attr);
 		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
@@ -1098,11 +1098,12 @@ struct ldmsd_store_policy *get_store_policy(const char *container,
 	struct ldmsd_store_policy *sp;
 	int found = 0;
 	pthread_mutex_lock(&sp_list_lock);
-	LIST_FOREACH(sp, &sp_list, link)
+	LIST_FOREACH(sp, &sp_list, link) {
 		if (0 == strcmp(sp->container, container)) {
 			found = 1;
 			break;
 		}
+	}
 	pthread_mutex_unlock(&sp_list_lock);
 	if (found)
 		return sp;
@@ -1240,7 +1241,8 @@ int _mvec_find_metric(ldms_mvec_t mvec, const char *name)
 	return -1;
 }
 
-int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, ldms_mvec_t mvec)
+int create_metric_idx_list(struct ldmsd_store_policy *sp,
+			const char *_metrics, ldms_mvec_t mvec)
 {
 	struct ldmsd_store_metric_index *smi;
 	if (!_metrics) {
@@ -1342,8 +1344,6 @@ void destroy_store_policy(struct ldmsd_store_policy *sp)
 	}
 	free(sp);
 }
-
-
 
 /*
  * store [attribute=value ...]
@@ -1800,7 +1800,6 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
 	if (rc)
 		ldms_log("Synchronous error %d from ldms_lookup\n", rc);
-
 }
 
 /*
@@ -2006,17 +2005,18 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		goto out;
 	}
 
-	gn = ldms_get_data_gn(hset->set);
-	if (hset->gn == gn)
-		goto out;
+	if (ldms_is_set_connected(hset->set)) {
+		gn = ldms_get_data_gn(hset->set);
+		if (hset->gn == gn)
+			goto out;
 
-	if (!ldms_is_set_consistent(hset->set))
-		goto out;
+		if (!ldms_is_set_consistent(hset->set))
+			goto out;
 
-	hset->gn = gn;
+		hset->gn = gn;
+	}
 
 	struct ldmsd_store_policy_ref *lsp_ref;
-	struct timeval tv;
 	struct ldms_mvec *mvec;
 	if (!hset->mvec) {
 		/* Recreate mvec here if it doesn't exist.  It can be destroyed
@@ -2033,13 +2033,8 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		if (lsp_ref->lsp->state != STORE_POLICY_READY)
 			continue;
 
-		struct ldms_timestamp const *ts;
 		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
 		struct store_instance *si = lsp->si;
-
-		ts = ldms_get_timestamp(hset->set);
-		tv.tv_sec = ts->sec;
-		tv.tv_usec = ts->usec;
 
 		mvec = ldms_mvec_create(lsp->metric_count);
 		if (!mvec) {
@@ -2048,16 +2043,18 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 					__LINE__);
 			continue;
 		}
-		int i=0;
+
+		int i = 0;
 		struct ldmsd_store_metric_index *idx;
 		LIST_FOREACH(idx, &lsp->metric_list, entry) {
 			mvec->v[i] = hset->mvec->v[idx->index];
 			i++;
 		}
+
 		ldmsd_store_data_add(lsp, hset->set, mvec);
 		ldms_mvec_destroy(mvec);
 	}
- out:
+out:
 	/* Put the reference taken at the call to ldms_update() */
 	hset_ref_put(hset);
 	pthread_mutex_lock(&hset->state_lock);
@@ -2131,16 +2128,89 @@ void update_data(struct hostspec *hs)
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
 
+void _update_disconnected(struct hostset *hset)
+{
+	struct ldmsd_store_policy_ref *lsp_ref;
+	struct timeval tv;
+	struct ldms_mvec *mvec;
+	if (!hset->mvec) {
+		/*
+		 * Recreate mvec here if it doesn't exist.
+		 * It can be destroyed
+		 * in the disconnect path.
+		 */
+		hset->mvec = _create_mvec(hset);
+		/* The indices should stay the same. */
+	}
+	LIST_FOREACH(lsp_ref, &hset->lsp_list, entry) {
+		if (lsp_ref->lsp->state == STORE_POLICY_CONFIGURING) {
+			pthread_mutex_lock(&lsp_ref->lsp->idx_create_lock);
+			assign_metric_index_list(lsp_ref->lsp, hset->mvec);
+			pthread_mutex_unlock(&lsp_ref->lsp->idx_create_lock);
+		}
+		if (lsp_ref->lsp->state != STORE_POLICY_READY)
+			continue;
+
+		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
+		struct store_instance *si = lsp->si;
+
+		/* Get the time when the disconnected event is noticed */
+		struct timeval tv;
+		(void)gettimeofday(&tv, NULL);
+
+		mvec = ldms_mvec_create(lsp->metric_count);
+		if (!mvec) {
+			/* Warning ENOMEM */
+			ldms_log("cannot allocate mvec at %s:%d\n", __FILE__,
+					__LINE__);
+			continue;
+		}
+		int i = 0;
+		struct ldmsd_store_metric_index *idx;
+		LIST_FOREACH(idx, &lsp->metric_list, entry) {
+			mvec->v[i] = hset->mvec->v[idx->index];
+			i++;
+		}
+		ldmsd_store_data_add(lsp, hset->set, mvec);
+		ldms_mvec_destroy(mvec);
+	}
+out:
+	/* Put the reference taken at the call to ldms_update() */
+	hset_ref_put(hset);
+}
+
+void update_disconnected(struct hostspec *hs)
+{
+	struct hostset *hset;
+	pthread_mutex_lock(&hs->set_list_lock);
+	LIST_FOREACH(hset, &hs->set_list, entry) {
+		pthread_mutex_lock(&hset->state_lock);
+		if (hset->state != LDMSD_SET_READY) {
+			pthread_mutex_unlock(&hset->state_lock);
+			continue;
+		}
+		pthread_mutex_unlock(&hset->state_lock);
+
+		/* Take a reference to update the disconnected event */
+		hset_ref_get(hset);
+		ldms_set_set_connect(hset->set, 0);
+		update_complete_cb(hs->x, hset->set, 0, hset);
+	}
+	pthread_mutex_unlock(&hs->set_list_lock);
+}
+
 void do_host(struct hostspec *hs)
 {
 	int rc;
 	pthread_mutex_lock(&hs->conn_state_lock);
 	switch (hs->conn_state) {
 	case HOST_DISCONNECTED:
+		update_disconnected(hs);
 		if (hs->type != PASSIVE)
 			rc = do_connect(hs);
 		else
 			rc = do_passive_connect(hs);
+
 		if (rc)
 			hs->conn_state = HOST_DISCONNECTED;
 		else
@@ -2162,7 +2232,8 @@ void do_host(struct hostspec *hs)
 			update_data(hs);
 		break;
 	default:
-		ldms_log("Host connection state '%d' is invalid.\n", hs->conn_state);
+		ldms_log("Host connection state '%d' is invalid.\n",
+							hs->conn_state);
 		assert(0);
 	}
 	pthread_mutex_unlock(&hs->conn_state_lock);

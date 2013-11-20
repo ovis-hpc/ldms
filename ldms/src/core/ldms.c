@@ -1211,6 +1211,21 @@ int ldms_is_set_consistent(ldms_set_t s)
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
 }
 
+void ldms_set_set_connect(ldms_set_t s, int is_connected)
+{
+	struct ldms_set_desc *sd = s;
+	if (is_connected)
+		sd->set->flags |= LDMS_SET_F_CONNECTED;
+	else
+		sd->set->flags &= ~LDMS_SET_F_CONNECTED;
+}
+
+int ldms_is_set_connected(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = s;
+	return ((sd->set->flags & LDMS_SET_F_CONNECTED) == LDMS_SET_F_CONNECTED);
+}
+
 ldms_mvec_t ldms_mvec_create(int count)
 {
 	ldms_mvec_t mvec = malloc(sizeof(*mvec) + count *
