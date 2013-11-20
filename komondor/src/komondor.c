@@ -1,0 +1,1136 @@
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <getopt.h>
+#include <string.h>
+#include <strings.h>
+#include <stdint.h>
+#include <ctype.h>
+#include <pthread.h>
+#include <stdarg.h>
+#include <time.h>
+#include <fcntl.h>
+
+#include <netinet/ip.h>
+
+#include "coll/str_map.h"
+#include "coll/idx.h"
+#include "zap/zap.h"
+#include "sos/sos.h"
+
+SOS_OBJ_BEGIN(k_event_class, "KomondorEvent")
+	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("model_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR("level", SOS_TYPE_UINT32)
+SOS_OBJ_END(5);
+
+#ifdef ENABLE_OCM
+#include "ocm/ocm.h"
+ocm_t ocm;
+char ocm_key[512]; /**< $HOSTNAME/komondor */
+uint16_t ocm_port = OCM_DEFAULT_PORT;
+int ocm_cb(struct ocm_event *e);
+#endif
+
+/***** PROGRAM OPTIONS *****/
+const char *short_opt = "c:x:p:l:w:Fz:h?";
+
+static struct option long_opt[] = {
+	{"conf",            required_argument,  0,  'c'},
+	{"xprt",            required_argument,  0,  'x'},
+	{"port",            required_argument,  0,  'p'},
+	{"log",             required_argument,  0,  'l'},
+	{"worker-threads",  required_argument,  0,  'W'},
+	{"foreground",      no_argument,        0,  'F'},
+	{"ocm_port",        required_argument,  0,  'z'},
+	{"help",            no_argument,        0,  'h'},
+	{0,                 0,                  0,  0}
+};
+
+/***** TYPES *****/
+
+#pragma pack(4)
+struct kmd_msg {
+	uint16_t model_id;
+	uint64_t metric_id;
+	uint8_t level;
+	uint32_t sec;
+	uint32_t usec;
+};
+#pragma pack()
+
+/**
+ * action queue entry.
+ */
+struct k_act_qentry {
+	struct kmd_msg msg; /* the message that cause the action */
+	const char *cmd; /* this structure doesn't own cmd, so don't free it */
+	TAILQ_ENTRY(k_act_qentry) link;
+};
+
+typedef enum {
+	K_COND_KEY_MODEL,
+	K_COND_KEY_COMP,
+	K_COND_KEY_SEVERITY,
+	K_COND_KEY_LAST
+} k_cond_key_t;
+
+char *__k_cond_keys[] = {
+	"model_id",
+	"metric_id",
+	"severity",
+};
+
+k_cond_key_t k_cond_key(const char *s)
+{
+	int i;
+	for (i=0; i<sizeof(__k_cond_keys)/sizeof(__k_cond_keys[0]); i++) {
+		if (strcmp(__k_cond_keys[i], s) == 0)
+			return i;
+	}
+	return i;
+}
+
+struct k_range {
+	int left;
+	int right;
+};
+
+struct __attribute__ ((__packed__)) k_cond {
+	uint16_t model_id;
+	uint64_t metric_id;
+};
+
+#define K_IDX_KEYLEN (sizeof(struct k_cond))
+
+/**
+ * Chain of action to be used with rule_idx.
+ */
+struct k_action {
+	/* seveirty_range is here because it is not part of the index,
+	 * instead it will be tested against before executing the action */
+	struct k_range severity_range;
+	char *cmd;
+	LIST_ENTRY(k_action) link;
+};
+
+LIST_HEAD(k_action_head, k_action);
+typedef struct k_action_head k_action_head_s;
+typedef k_action_head_s* k_action_head_t;
+
+/**
+ * Rule entry, identified by cond.
+ */
+struct k_rule {
+	struct k_cond cond;
+	k_action_head_s action_list;
+};
+
+typedef int (*handle_cmd_fn_t)(char*);
+
+#define K_WRAP_STR(X) #X
+#define K_WRAP_ENUM(X) X
+#define K_WRAP_HANDLE(X) handle_ ## X
+
+#define K_CMD_WRAP_STR(X) "K_CMD_" #X
+#define K_CMD_WRAP_ENUM(X) K_CMD_ ## X
+#define K_CMD_WRAP_HANDLE(X) handle_K_CMD_ ## X
+
+#define K_CMD_LIST(WRAP) \
+	WRAP(ACTION), \
+	WRAP(RULE), \
+	WRAP(STORE), \
+	WRAP(LAST)
+
+
+const char *__k_cmd_str[] = {
+	K_CMD_LIST(K_CMD_WRAP_STR)
+};
+
+const char *strcmd[] = {
+	K_CMD_LIST(K_WRAP_STR)
+};
+
+typedef enum {
+	K_CMD_LIST(K_CMD_WRAP_ENUM)
+} k_cmd_t;
+
+int handle_K_CMD_ACTION(char *args);
+int handle_K_CMD_RULE(char*);
+int handle_K_CMD_STORE(char*);
+int handle_K_CMD_LAST(char*);
+
+handle_cmd_fn_t handle_cmd_fn[] = {
+	K_CMD_LIST(K_CMD_WRAP_HANDLE)
+};
+
+k_cmd_t str_k_cmd(const char *str)
+{
+	int i;
+	for (i = 0; i < K_CMD_LAST; i++) {
+		if (strcmp(__k_cmd_str[i], str) == 0)
+			break;
+	}
+	return i;
+}
+
+/**
+ * string command to k_cmd_t
+ */
+k_cmd_t strcmd_k_cmd(const char *cmd)
+{
+	int i;
+	for (i = 0; i < K_CMD_LAST; i++) {
+		if (strcasecmp(strcmd[i], cmd) == 0)
+			break;
+	}
+	return i;
+}
+
+const char* k_cmd_str(k_cmd_t cmd)
+{
+	if (0 <= cmd && cmd < K_CMD_LAST)
+		return __k_cmd_str[cmd];
+	return "K_CMD_UNKNOWN";
+}
+
+/***** GLOBAL VARIABLE *****/
+
+char *conf = NULL;
+char *xprt = "sock";
+uint16_t port = 55555;
+int FOREGROUND = 0;
+sos_t event_sos = NULL; /**< Event storage */
+
+/**
+ * action queue
+ */
+TAILQ_HEAD(k_act_q, k_act_qentry) actq = TAILQ_HEAD_INITIALIZER(actq);
+pthread_mutex_t actq_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t actq_non_empty = PTHREAD_COND_INITIALIZER;
+
+/** action threads */
+int N_act_threads = 2;
+pthread_t *act_threads;
+
+zap_t zap;
+zap_ep_t listen_ep;
+
+str_map_t cmd_map; /* map command_id to command (char*) */
+
+/**
+ * rule_idx[rule] |--> chain of actions
+ */
+idx_t rule_idx;
+
+/**** Utilities ****/
+
+zap_mem_info_t k_meminfo(void)
+{
+	return NULL;
+}
+
+void k_log(const char *fmt, ...)
+{
+	char tstr[32];
+	time_t t = time(NULL);
+	struct tm tm;
+	localtime_r(&t, &tm);
+	strftime(tstr, 32, "%a %b %d %T %Y", &tm);
+	fprintf(stderr, "%s ", tstr);
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	fflush(stderr);
+}
+
+/**
+ * Trim the trailing white spaces of \c s and return the pointer to the first
+ * non white space character of \c s.
+ */
+char* trim(char *s)
+{
+	while (*s && isspace(*s))
+		s++;
+	if (!*s) /* s is now empty */
+		return s;
+	char *e = s + strlen(s) - 1;
+	while (isspace(*e))
+		e--;
+	*(e+1) = '\0';
+	return s;
+}
+
+/**
+ * Network byte order to host byte order for ::kmd_msg.
+ */
+void ntoh_kmd_msg(struct kmd_msg *msg)
+{
+	msg->metric_id = be64toh(msg->metric_id);
+	msg->model_id = ntohs(msg->model_id);
+	msg->sec = ntohl(msg->sec);
+	msg->usec = ntohl(msg->usec);
+}
+
+/**
+ * Test whether \c a is in the given range \c range.
+ * \param range The range to test against.
+ * \param a The number to test.
+ * \return 0 if \c a is not in \c range.
+ * \return 1 if \c a is in \c range.
+ */
+int in_range(struct k_range *range, int a)
+{
+	return range->left <= a && a <= range->right;
+}
+
+/**** COMMAND HANDLING *****/
+
+/**
+ * Parse a single integer value.
+ * \param[in,out] s \c *s is the string to parse. On parse success, \c *s will
+ * 			to the latest consumed string.
+ * \param[out] value \c *value will store the value if the parsing is
+ * 			successful.
+ * \return 0 on success.
+ * \return Error code on failure.
+ */
+int parse_cond_value(char **s, uint64_t *value)
+{
+	int i, n;
+	char c;
+	/* try integer */
+	n = sscanf(*s, " %"PRIu64"%n", value, &i);
+	if (n != 1) {
+		/* try '*' */
+		n = sscanf(*s, " %c%n", &c, &i);
+		if (n != 1)
+			return EINVAL;
+		if (c != '*') {
+			k_log("Expecting '*' but got '%c'\n", c);
+			return EINVAL;
+		}
+		*value = 0;
+	}
+	*s = (*s) + i;
+	return 0;
+}
+
+/**
+ * \param[in,out] s \c *s is the input string. On success, \c *s will point to
+ * 			just one character after the parsed portion of the
+ * 			string.
+ * \param[out] r The output range.
+ * \return 0 on success.
+ * \return Error code on error.
+ */
+int parse_range(char **s, struct k_range *r)
+{
+	int n, i, v;
+	char c;
+	r->left = 0;
+	r->right = (1<<(sizeof(int)*8-1))^-1;
+
+normal_range:
+	n = sscanf(*s, " [ %d .. %d ]%n", &r->left, &r->right, &i);
+	if (n == 2)
+		goto out; /* OK */
+	/* else, try another format */
+
+leq_range:
+	n = sscanf(*s, " [ %c %d ]%n", &c, &v, &i);
+	if (n < 2)
+		goto number; /* try a number if range does not work */
+	switch (c) {
+	case '<':
+		r->right = v;
+		break;
+	case '>':
+		r->left = v;
+		break;
+	default:
+		k_log("Expecting '<' or '>', but got '%c'\n", c);
+		return EINVAL;
+	}
+	goto out;
+
+number:
+	n = sscanf(*s, " %d%n", &v, &i);
+	if (n < 1)
+		goto star; /* try '*' if number doesn't work */
+	r->right = r->left = v;
+	goto out;
+
+star:
+	n = sscanf(*s, " %c%n", &c, &i);
+	if (n < 1)
+		return EINVAL;
+	if (c != '*') {
+		k_log("Expecting '*' or range, but got '%c'\n", c);
+		return EINVAL;
+	}
+
+out:
+	/* step the string pointer */
+	*s = *s + i;
+	return 0;
+}
+
+int parse_condition(char *lb, char *rb, struct k_cond *cond, struct k_range *r)
+{
+	char key[64];
+	char c, d;
+	int n, i;
+	int rc = EINVAL;
+	int model_again = 0;
+	int comp_again = 0;
+	int severity_again = 0;
+	uint64_t value;
+	cond->model_id = cond->metric_id = 0;
+	r->left = r->right = 0;
+	*rb = '\0';
+	*lb = ',';
+	while (lb < rb) {
+		n = sscanf(lb, " %c %[^ =] %c%n", &d, key, &c, &i);
+		if (n < 2) {
+			k_log("Parse error\n");
+			goto err;
+		}
+		if (d != ',') {
+			k_log("Parse error, expecting ',' but got '%c'\n", d);
+			goto err;
+		}
+		if (c != '=') {
+			k_log("Parse error, expecting '=' but got '%c'\n", c);
+			goto err;
+		}
+		lb += i;
+		k_cond_key_t k = k_cond_key(key);
+		switch (k) {
+		case K_COND_KEY_MODEL:
+			if (model_again) {
+				k_log("Setting model_id twice\n");
+				goto err;
+			}
+			model_again = 1;
+			rc = parse_cond_value(&lb, &value);
+			if (rc)
+				goto err;
+			cond->model_id = (uint16_t)value;
+			break;
+		case K_COND_KEY_COMP:
+			if (comp_again) {
+				k_log("Setting metric_id twice\n");
+				goto err;
+			}
+			comp_again = 1;
+			rc = parse_cond_value(&lb, &value);
+			if (rc)
+				goto err;
+			cond->metric_id = value;
+			break;
+		case K_COND_KEY_SEVERITY:
+			if (severity_again) {
+				k_log("Setting severity_range twice\n");
+				goto err;
+			}
+			severity_again = 1;
+			rc = parse_range(&lb, r);
+			if (rc)
+				goto err;
+			break;
+		default:
+			k_log("Unknown condition key: %s\n", key);
+			goto err;
+		}
+	}
+
+	char *left_over = lb;
+	while (lb < rb) {
+		if (!isspace(*lb)) {
+			k_log("Rule condition parse error, left-over: %s\n",
+								left_over);
+			goto err;
+		}
+		lb++;
+	}
+	rc = 0;
+err:
+	return rc;
+}
+
+struct k_rule* get_rule(struct k_cond *cond)
+{
+	struct k_rule *rule = idx_find(rule_idx, cond, sizeof(*cond));
+	if (rule)
+		return rule;
+	/* if rule == NULL, create a new one */
+	rule = calloc(1, sizeof(*rule));
+	rule->cond = *cond;
+	int rc = idx_add(rule_idx, cond, K_IDX_KEYLEN, rule);
+	if (rc) {
+		errno = rc;
+		goto err;
+	}
+	return rule;
+err:
+	free(rule);
+	return NULL;
+}
+
+int handle_K_CMD_LAST(char *args)
+{
+	return ENOSYS;
+}
+
+/**
+ * Rule command handling.
+ * WARNING: \c args is subject to be modified.
+ * \param args The arguments of the command.
+ * \return 0 on success.
+ * \return Error code on error.
+ */
+int handle_K_CMD_RULE(char *args)
+{
+	/* Format: { X=Y, ... }: ACTION
+	 * ACTION can be action_id or program with args
+	 *
+	 * This is quite a long function, so please bare with me.
+	 */
+	uint64_t value;
+	int n, i;
+	char c;
+	char *lb, *rb, *act;
+	int rc;
+
+	rc = EINVAL; /* set rc to EINVAL by default */
+
+	/* Handling the rule part */
+	lb = strchr(args, '{');
+	if (!lb) {
+		k_log("Missing '{' in the \n");
+		goto out;
+	}
+	rb = strchr(args, '}');
+	if (!rb) {
+		k_log("Missing '}' in the \n");
+		goto out;
+	}
+
+	act = rb+1;
+	struct k_cond cond;
+	struct k_range range;
+	rc = parse_condition(lb, rb, &cond, &range);
+	if (rc)
+		goto out;
+
+	rc = EINVAL; /* if rc == 0, set it back to EINVAL as default out */
+
+	/* Action part */
+	c = 0;
+	n = sscanf(act, " %c%n", &c, &i);
+	if (c != ':') {
+		k_log("Expecting ':', but got '%c'\n", c);
+		goto out;
+	}
+	act = act + i;
+	act = trim(act);
+	if (! *act) {
+		k_log("No action for the \n");
+		goto out;
+	}
+	uint64_t ptr = str_map_get(cmd_map, act);
+	char *cmd;
+	int free_cmd_on_err = 0;
+	if (ptr) {
+		/* found */
+		cmd = (char*)ptr;
+	} else {
+		/* not found, just create new cmd out of act */
+		cmd = strdup(act);
+		if (!cmd) {
+			k_log("Cannot create cmd\n");
+			rc = ENOMEM;
+			goto out;
+		}
+		free_cmd_on_err = 1;
+	}
+
+	/* we have a rule, let's add it into the rule index */
+	struct k_rule *rule = get_rule(&cond);
+	if (!rule) {
+		k_log("Cannot get rule\n");
+		rc = ENOMEM;
+		goto err0;
+	}
+
+	struct k_action *action = calloc(1, sizeof(*action));
+	if (!action) {
+		k_log("Cannot create action\n");
+		goto err0;
+		/* It's OK to not clear the rule head */
+	}
+	action->severity_range = range;
+	action->cmd = cmd;
+	LIST_INSERT_HEAD(&rule->action_list, action, link);
+
+	rc = 0; /* reset code to no error */
+	goto out;
+
+err0:
+	if (free_cmd_on_err)
+		free(cmd);
+out:
+	return rc;
+}
+
+/**
+ * Action command handling.
+ * WARNING: \c args is subject to be modified.
+ * \param args The arguments of the command.
+ * \return 0 on success.
+ * \return Error code on error.
+ */
+int handle_K_CMD_ACTION(char *args)
+{
+	char action_id[256];
+	char c;
+	int n, i;
+	int rc = EINVAL;
+	n = sscanf(args, " %[^ =] %c%n", action_id, &c, &i);
+	if (n !=2 || c != '=') {
+		k_log("Action parse error.\n");
+		goto out;
+	}
+	args += i;
+	char *cmd = (void*)str_map_get(cmd_map, action_id);
+	if (cmd) {
+		k_log("Double assign action: %s\n", action_id);
+		rc = EEXIST;
+		goto out;
+	}
+	args = trim(args);
+	cmd = strdup(args);
+	if (!cmd) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	rc = str_map_insert(cmd_map, action_id, (uint64_t)cmd);
+	if (rc) {
+		free(cmd);
+		goto out;
+	}
+out:
+	return rc;
+}
+
+int handle_K_CMD_STORE(char *args)
+{
+	char verb[128];
+	char p[128];
+	char path[4096];
+	sscanf(args, " %[^= ]=%s", p, path);
+	if (strcmp(trim(p), "path") != 0) {
+		k_log("ERROR: path not found in 'store' command\n");
+		return EINVAL;
+	}
+	event_sos = sos_open(path, O_RDWR|O_CREAT, 0644, &k_event_class);
+	if (!event_sos) {
+		k_log("ERROR: cannot open sos, path: %s\n", path);
+		return errno;
+	}
+}
+
+/**
+ * Handle configuration command.
+ *
+ * WARNING: \c cmd is subject to be modified in command handling call chain.
+ *
+ * \return 0 on success.
+ * \return Error code on error.
+ */
+int handle_conf_command(char *cmd)
+{
+	printf("parsing cmd: %s\n", cmd);
+	char *args = strchr(cmd, ' ');
+	if (args)
+		*args++ = '\0';
+	else
+		return EINVAL;
+	k_cmd_t code = strcmd_k_cmd(cmd);
+	if (code < K_CMD_LAST)
+		return handle_cmd_fn[code](args);
+	/* otherwise, invalid */
+	return EINVAL;
+}
+
+void print_usage()
+{
+	printf(
+"Synopsis: komondor [OPTIONS]\n"
+"\n"
+"OPTIONS:\n"
+"	-c,--conf <file>	Configuration File.\n"
+"	-x,--xprt <XPRT>	Transport (sock, rdma, ugni).\n"
+"	-p,--port <PORT>	Port number.\n"
+"	-W,--worker-threads <N>	Number of worker threads (default: 2).\n"
+"	-F,--foreground		Foreground mode instead of daemon.\n"
+"	-z,--ocm_port <PORT>	OCM port number.\n"
+"	-h,--help		Print this help message.\n"
+"\n"
+	);
+}
+
+void* act_thread_routine(void *arg)
+{
+	char cmd[4096];
+loop:
+	pthread_mutex_lock(&actq_mutex);
+	if (TAILQ_EMPTY(&actq))
+		pthread_cond_wait(&actq_non_empty, &actq_mutex);
+	struct k_act_qentry *ent = TAILQ_FIRST(&actq);
+	TAILQ_REMOVE(&actq, ent, link);
+	pthread_mutex_unlock(&actq_mutex);
+	/* XXX ADD KMD_MSG here */
+	sprintf(cmd, "KMD_MODEL_ID=%hu KMD_COMP_ID=%lu KMD_SEVERITY_LEVEL=%hhu"
+			" KMD_SEC=%"PRIu32" KMD_USEC=%"PRIu32" %s",
+			ent->msg.model_id, ent->msg.metric_id, ent->msg.level,
+			ent->msg.sec, ent->msg.usec, ent->cmd);
+	int rc = system(cmd);
+	if (rc)
+		k_log("Error %d in command: %s\n", rc, cmd);
+	goto loop;
+}
+
+void init()
+{
+	cmd_map = str_map_create(4099);
+	if (!cmd_map) {
+		k_log("%s: cannot create str_map for cmd_map\n", strerror(errno));
+		exit(-1);
+	}
+	rule_idx = idx_create();
+	act_threads = malloc(N_act_threads * sizeof(act_threads[0]));
+	if (!act_threads) {
+		k_log("%s: cannot create act_threads\n", strerror(errno));
+	}
+	int i;
+	for (i = 0; i < N_act_threads; i++) {
+		pthread_create(&act_threads[i], NULL, act_thread_routine, NULL);
+	}
+
+	int rc;
+	rc = zap_get(xprt, &zap, k_log, k_meminfo);
+	if (rc) {
+		k_log("zap_get failed: %m\n");
+		exit(-1);
+	}
+#if ENABLE_OCM
+	ocm = ocm_create("sock", ocm_port, ocm_cb, k_log);
+	if (!ocm) {
+		k_log("Cannot create ocm\n");
+		exit(-1);
+	}
+	char h[128];
+	rc = gethostname(h, 128);
+	if (rc) {
+		k_log("gethostname failed: %m\n");
+		exit(-1);
+	}
+	sprintf(ocm_key, "%s/komondor", h);
+	ocm_register(ocm, ocm_key, ocm_cb);
+	ocm_enable(ocm);
+#endif
+}
+
+void handle_log(const char *path)
+{
+	FILE *f = fopen(path, "a");
+	if (!f) {
+		k_log("Cannot open log file %s\n", path);
+		exit(-1);
+	}
+	int fd = fileno(f);
+	if (dup2(fd, 1) < 0) {
+		k_log("Cannot redirect log to %s\n", path);
+		exit(-1);
+	}
+	if (dup2(fd, 2) < 0) {
+		k_log("Cannot redirect log to %s\n", path);
+		exit(-1);
+	}
+}
+
+void process_args(int argc, char **argv)
+{
+	char c;
+
+next_arg:
+	c = getopt_long(argc, argv, short_opt, long_opt, NULL);
+	switch (c) {
+	case 'c':
+		conf = optarg;
+		break;
+	case 'x':
+		xprt = optarg;
+		break;
+	case 'p':
+		errno = 0;
+		port = strtoul(optarg, NULL, 10);
+		if (errno) {
+			perror("strtoul");
+			exit(-1);
+		}
+		break;
+	case 'W':
+		N_act_threads = atoi(optarg);
+		if (!N_act_threads) {
+			k_log("%s is not a number.\n", optarg);
+			exit(-1);
+		}
+		break;
+	case 'z':
+#ifdef ENABLE_OCM
+		ocm_port = atoi(optarg);
+#else
+		k_log("OCM is not enabled.\n");
+		exit(-1);
+#endif
+		break;
+	case 'l':
+		handle_log(optarg);
+		break;
+	case 'F':
+		FOREGROUND = 1;
+		break;
+	case 'h':
+	case '?':
+		print_usage();
+		exit(-1);
+	case -1:
+		goto out;
+	default:
+		k_log("Unknown argument: %s\n", argv[optind]);
+		exit(-1);
+	}
+
+	goto next_arg;
+
+out:
+	return;
+}
+
+/**
+ * Configure the komondor.
+ */
+void config()
+{
+	if (!conf)
+		return; /* No configuration file */
+	FILE *f = fopen(conf, "rt");
+	if (!f) {
+		k_log("Cannot open file: %s: %s\n", conf, strerror(errno));
+		exit(-1);
+	}
+	char buff[4096];
+	char kmd[4096];
+	char *str;
+	int n, i;
+	while (fgets(buff, sizeof(buff), f)) {
+		str = trim(buff);
+		if (!*str) /* str is not empty */
+			continue;
+		if (handle_conf_command(str)) {
+			k_log("Invalid parsing in command: %s\n", str);
+			exit(-1);
+		}
+	}
+}
+
+void handle_action_list(k_action_head_t a_list, struct kmd_msg *msg)
+{
+	struct k_action *act;
+	LIST_FOREACH(act, a_list, link) {
+		if (!in_range(&act->severity_range, msg->level))
+			continue;
+		struct k_act_qentry *qent = calloc(1, sizeof(*qent));
+		if (!qent) {
+			k_log("Cannot allocate qent for msg:\n"
+				" <%hu, %"PRIu64", %hhu, %"PRIu32", %"PRIu32">",
+				msg->model_id, msg->metric_id, msg->level,
+				msg->sec, msg->usec);
+			continue;
+		}
+		qent->msg = *msg;
+		qent->cmd = act->cmd;
+		pthread_mutex_lock(&actq_mutex);
+		TAILQ_INSERT_TAIL(&actq, qent, link);
+		pthread_cond_signal(&actq_non_empty);
+		pthread_mutex_unlock(&actq_mutex);
+	}
+}
+
+void log_kmd_msg(struct kmd_msg *msg)
+{
+#if DEBUG
+	k_log("receiving msg, sec: %d, usec: %d, model_id: %d, metric_id: %llu,"
+			" level: %d\n", msg->sec, msg->usec, msg->model_id,
+			msg->metric_id, msg->level);
+#endif
+	if (!event_sos)
+		return;
+	sos_obj_t obj = sos_obj_new(event_sos);
+	if (!obj) {
+		k_log("Cannot create sos object.\n");
+		return;
+	}
+	uint32_t v;
+	sos_obj_attr_set(event_sos, 0, obj, &msg->sec);
+	sos_obj_attr_set(event_sos, 1, obj, &msg->usec);
+	v = msg->model_id;
+	sos_obj_attr_set(event_sos, 2, obj, &v);
+	sos_obj_attr_set(event_sos, 3, obj, &msg->metric_id);
+	v = msg->level;
+	sos_obj_attr_set(event_sos, 4, obj, &v);
+	sos_obj_add(event_sos, obj);
+}
+
+void process_recv(zap_ep_t ep, zap_event_t ev)
+{
+	if (ev->data_len != sizeof(struct kmd_msg)) {
+		k_log("Wrong Komondor message length: %zu bytes\n",
+								ev->data_len);
+		return;
+	}
+	struct kmd_msg *msg = ev->data;
+	ntoh_kmd_msg(msg);
+	log_kmd_msg(msg);
+	struct k_rule *rule;
+	struct k_cond cond = {0};
+	/* (*, *) */
+	rule = idx_find(rule_idx, &cond, sizeof(cond));
+	if (rule)
+		handle_action_list(&rule->action_list, msg);
+	/* (M, *) */
+	cond.model_id = msg->model_id;
+	rule = idx_find(rule_idx, &cond, sizeof(cond));
+	if (rule)
+		handle_action_list(&rule->action_list, msg);
+	/* (M, C) */
+	cond.metric_id = msg->metric_id;
+	rule = idx_find(rule_idx, &cond, sizeof(cond));
+	if (rule)
+		handle_action_list(&rule->action_list, msg);
+	/* (*, C) */
+	cond.model_id = 0;
+	rule = idx_find(rule_idx, &cond, sizeof(cond));
+	if (rule)
+		handle_action_list(&rule->action_list, msg);
+}
+
+void k_zap_cb(zap_ep_t ep, zap_event_t ev)
+{
+	zap_err_t zerr;
+	switch (ev->type) {
+	case ZAP_EVENT_CONNECT_REQUEST:
+		zerr = zap_accept(ep, k_zap_cb);
+		if (zerr != ZAP_ERR_OK) {
+			k_log("zap_accept error: %s\n", zap_err_str(zerr));
+		}
+		break;
+	case ZAP_EVENT_RECV_COMPLETE:
+		process_recv(ep, ev);
+		break;
+	case ZAP_EVENT_DISCONNECTED:
+		/* Peer disconnected ... do nothing */
+		fprintf(stderr, "INFO: Peer disconnected\n");
+		break;
+	case ZAP_EVENT_CONNECTED:
+		fprintf(stderr, "INFO: Peer connected\n");
+		break;
+	default:
+		k_log("Unhandled zap event: %s\n", zap_event_str(ev->type));
+	}
+}
+
+#ifdef ENABLE_OCM
+void handle_ocm_cmd_RULE(ocm_cfg_cmd_t cmd)
+{
+	const struct ocm_value *ov_model_id = ocm_av_get_value(cmd, "model_id");
+	const struct ocm_value *ov_metric_id = ocm_av_get_value(cmd, "metric_id");
+	const struct ocm_value *ov_severity = ocm_av_get_value(cmd, "severity");
+	const struct ocm_value *ov_action = ocm_av_get_value(cmd, "action");
+
+	if (!ov_model_id) {
+		k_log("ocm: error, RULE missing 'model_id' attribute.\n");
+		return;
+	}
+	if (!ov_metric_id) {
+		k_log("ocm: error, RULE missing 'metric_id' attribute.\n");
+		return;
+	}
+	if (!ov_severity) {
+		k_log("ocm: error, RULE missing 'severity' attribute.\n");
+		return;
+	}
+	if (!ov_action) {
+		k_log("ocm: error, RULE missing 'action' attribute.\n");
+		return;
+	}
+	struct k_cond cond;
+	cond.model_id = ov_model_id->u16;
+	cond.metric_id = ov_metric_id->u64;
+	const char *exec = (const char *)str_map_get(cmd_map, ov_action->s.str);
+	if (!exec) {
+		k_log("ocm: error, action '%s' not found.\n", ov_action->s.str);
+		return;
+	}
+
+	struct k_rule *rule = get_rule(&cond);
+	if (!rule) {
+		k_log("ocm: error, cannot get/create rule, errno: %d\n", errno);
+		return;
+	}
+
+	struct k_action *action = calloc(1, sizeof(*action));
+	if (!action) {
+		k_log("ocm: error, cannot create action, errno: %d\n", errno);
+		return;
+		/* It's OK to not clear the rule head */
+	}
+	action->severity_range.left = ov_severity->i16;
+	action->severity_range.right = ov_severity->i16;
+	action->cmd = (char*)exec;
+	LIST_INSERT_HEAD(&rule->action_list, action, link);
+}
+
+void handle_ocm_cmd_ACTION(ocm_cfg_cmd_t cmd)
+{
+	const struct ocm_value *action_id = ocm_av_get_value(cmd, "name");
+	const struct ocm_value *action_exec = ocm_av_get_value(cmd, "execute");
+	if (!action_id) {
+		k_log("ocm: error 'name' is missing from verb 'action'\n");
+		return;
+	}
+	if (!action_exec) {
+		k_log("ocm: error 'exec' is missing from verb 'action'\n");
+		return;
+	}
+	char *exec = strdup(action_exec->s.str);
+	if (!exec) {
+		k_log("ocm: ENOMEM at %s:%d in %s.\n", __FILE__, __LINE__,
+				__func__);
+		return ;
+	}
+	int rc = str_map_insert(cmd_map, action_id->s.str, (uint64_t)exec);
+	if (rc) {
+		free(exec);
+		k_log("ocm: action insertion error code: %d, %s.\n", rc,
+				strerror(rc));
+		return ;
+	}
+}
+
+void handle_ocm_cmd_STORE(ocm_cfg_cmd_t cmd)
+{
+	const struct ocm_value *v = ocm_av_get_value(cmd, "path");
+	if (!v) {
+		k_log("ocm: error, 'path' is not specified for verb 'store'\n");
+		return;
+	}
+	event_sos = sos_open(v->s.str, O_RDWR|O_CREAT, 0644, &k_event_class);
+	if (!event_sos) {
+		k_log("ocm: error, cannot open sos, path: %s\n", v->s.str);
+		return ;
+	}
+}
+
+void process_ocm_cmd(ocm_cfg_cmd_t cmd)
+{
+	const char *verb = ocm_cfg_cmd_verb(cmd);
+	k_cmd_t kmd = strcmd_k_cmd(verb);
+	switch (kmd) {
+	case K_CMD_ACTION:
+		handle_ocm_cmd_ACTION(cmd);
+		break;
+	case K_CMD_RULE:
+		handle_ocm_cmd_RULE(cmd);
+		break;
+	case K_CMD_STORE:
+		handle_ocm_cmd_STORE(cmd);
+		break;
+	default:
+		k_log("ocm: error, unknown verb '%s'\n", verb);
+	}
+}
+
+void process_ocm_cfg(ocm_cfg_t cfg)
+{
+	ocm_cfg_cmd_t cmd;
+	struct ocm_cfg_cmd_iter iter;
+	ocm_cfg_cmd_iter_init(&iter, cfg);
+	while (ocm_cfg_cmd_iter_next(&iter, &cmd) == 0) {
+		process_ocm_cmd(cmd);
+	}
+}
+
+int ocm_cb(struct ocm_event *e)
+{
+	switch (e->type) {
+	case OCM_EVENT_CFG_REQUESTED:
+		ocm_event_resp_err(e, ENOSYS, ocm_cfg_req_key(e->req),
+							"Not implemented.");
+		break;
+	case OCM_EVENT_CFG_RECEIVED:
+		process_ocm_cfg(e->cfg);
+		break;
+	case OCM_EVENT_ERROR:
+		k_log("ocm event error, key: %s, code: %d, msg: %s\n",
+				ocm_err_key(e->err),
+				ocm_err_code(e->err),
+				ocm_err_msg(e->err));
+		break;
+	}
+	return 0;
+}
+#endif
+
+/**
+ * Listen to the \c port, using transport \c xprt.
+ */
+void k_listen()
+{
+	zap_err_t zerr;
+	zerr = zap_new(zap, &listen_ep, k_zap_cb);
+	if (zerr != ZAP_ERR_OK) {
+		k_log("zap_new error: %s\n", zap_err_str(zerr));
+		exit(-1);
+	}
+	struct sockaddr_in sin = {0};
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port);
+	zap_listen(listen_ep, (void*)&sin, sizeof(sin));
+}
+
+int main(int argc, char **argv)
+{
+	int rc;
+	process_args(argc, argv);
+	if (!FOREGROUND) {
+		/* daemonize  */
+		rc = daemon(1, 1);
+		if (rc) {
+			perror("daemon");
+			exit(-1);
+		}
+	}
+	init();
+	config();
+	k_listen();
+	pthread_exit(NULL);
+	return 0;
+}
