@@ -465,6 +465,22 @@ uint64_t oidx_find_approx_inf(oidx_t t, oidx_key_t key,
 	return 0;
 }
 
+void *__oidx_alloc_x(oidx_t t, size_t size)
+{
+	ods_t ods = t->ods;
+	void *obj;
+	obj = ods_alloc(ods, size);
+	if (!obj) {
+		/* resize */
+		if (ods_extend(ods, (size | 0xFFFFF) + 1))
+			return NULL;
+		t->udata = ods_get_user_data(t->ods, &t->udata_sz);
+		/* and try again */
+		obj = ods_alloc(ods, size);
+	}
+	return obj;
+}
+
 /**
  * \brief Add a prefix key and associated data object to the tree.
  *
@@ -500,7 +516,7 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 {
 	struct oidx_layer_s *pl;
 	unsigned char *poidx = key;
-
+	uint64_t h_off, e_off, pl_off, n_layer;
 	/* We don't allow adding a NULL pointer as an object */
 	if (!obj)
 		return EINVAL;
@@ -520,8 +536,8 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 			/* Since allocation may make my ptr no longer
 			 * valid, cache it's offset so I can
 			 * regenerate it after allocation */
-			uint64_t pl_off = ods_obj_ptr_to_offset(t->ods, pl);
-			uint64_t n_layer =
+			pl_off = ods_obj_ptr_to_offset(t->ods, pl);
+			n_layer =
 				new_oidx_layer(t, t->udata->layer_sz);
 			if (!n_layer)
 				goto err0;
@@ -531,21 +547,34 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 		}
 	}
 
+	/* save pl offset, just in case for future extension. */
+	pl_off = ods_obj_ptr_to_offset(t->ods, pl);
+
 	/* Now, get the list of object refs of this key */
 	oidx_objref_head_t h = ods_obj_offset_to_ptr(t->ods,
 						pl->entries[*poidx].obj);
 	if (!h) {
-		h = ods_alloc(t->ods, sizeof(*h));
+		h = __oidx_alloc_x(t, sizeof(*h));
 		if (!h)
 			goto err0;
 		h->begin = h->end = 0;
+		/* update pl in case of ods_extend */
+		pl = ods_obj_offset_to_ptr(t->ods, pl_off);
+		pl_off = ods_obj_ptr_to_offset(t->ods, pl);
 		pl->entries[*poidx].obj = ods_obj_ptr_to_offset(t->ods, h);
 	}
+	/* save h offset, just in case for future extension. */
+	h_off = ods_obj_ptr_to_offset(t->ods, h);
 
 	/* allocate + set up new list entry */
-	oidx_objref_entry_t e = ods_alloc(t->ods, sizeof(*e));
+	oidx_objref_entry_t e = __oidx_alloc_x(t, sizeof(*e));
 	if (!e)
 		goto err0;
+
+	/* restore pl and h */
+	pl = ods_obj_offset_to_ptr(t->ods, pl_off);
+	h = ods_obj_offset_to_ptr(t->ods, h_off);
+
 	e->next = 0;
 	e->prev = h->end;
 	e->objref = obj;
