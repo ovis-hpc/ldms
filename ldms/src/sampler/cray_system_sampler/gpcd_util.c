@@ -48,40 +48,19 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 /**
- * \file gemini_metrics.h
- * \brief Utilities for cray_system_sampler for gemini metrics
- *        Common to gpcd and gpcrd interfaces...
+ * \file gpcd_util.c
+ * \brief Utilities reading and aggregating the gemini_performance counters.
  */
 
-
 /**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
  * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
  * (Sandia National Laboratories) gemini performance counter interface and
  * link aggregation library. It has been augmented with pattern analysis
  * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
  */
 
-
-#ifndef __GEMINI_METRICS_H_
-#define __GEMINI_METRICS_H_
 
 #define _GNU_SOURCE
 
@@ -93,51 +72,81 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
-#include <time.h>
 #include <ctype.h>
+#include <time.h>
+#include <pthread.h>
+#include <limits.h>
+#include "gpcd_util.h"
+#include "ldmsd.h"
+#include "ldms.h"
 
-#define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_M(NAME) M_ ## NAME
-#define PREFIX_ENUM_LB(NAME) LB_ ## NAME
-#define PREFIX_ENUM_LD(NAME) LD_ ## NAME
-#define PREFIX_ENUM_GM(NAME) GM_ ## NAME
-#define PREFIX_ENUM_GB(NAME) GB_ ## NAME
-#define PREFIX_ENUM_GD(NAME) GD_ ## NAME
+/**
+ * Build linked list of tile performance counters we wish to get values for
+ */
+gpcd_context_t *gem_link_perf_create_context(ldmsd_msg_log_f* msglog_outer)
+{
+	int i, j, k, status;
+	char name[128];
+	gpcd_context_t *lctx;
+	gpcd_mmr_desc_t *desc;
 
-#define COUNTER_48BIT_MAX 281474976710655
+	lctx = gpcd_create_context();
+	if (!lctx)
+		return NULL;
 
-/** currently the nic metric names are the same for both */
+	/*  loop over all 48 tiles, for each tile add its 6 static counters to
+	 *  the context */
+	for (i = 0; i < GEMINI_NUM_TILE_ROWS; i++) {
+		for (j = 0; j < GEMINI_NUM_TILE_COLUMNS; j++) {
+			for (k = 0; k < GEMINI_NUM_TILE_COUNTERS; k++) {
+				sprintf(name,
+					"GM_%d_%d_TILE_PERFORMANCE_COUNTERS_%d",
+						i, j, k);
+				desc = (gpcd_mmr_desc_t *)
+						gpcd_lookup_mmr_byname(name);
+				if (!desc) {
+					gpcd_remove_context(lctx);
+					return NULL;
+				}
+				status = gpcd_context_add_mmr(lctx, desc);
+				if (status != 0) {
+					gpcd_remove_context(lctx);
+					return NULL;
+				}
+			}
+		}
+	}
+	return lctx;
+}
 
-#define NICMETRICS_BASE_LIST(WRAP) \
-	WRAP(totaloutput_optA),     \
-		WRAP(totalinput), \
-	       WRAP(fmaout), \
-		WRAP(bteout_optA), \
-		WRAP(bteout_optB), \
-		WRAP(totaloutput_optB)
 
-static char* nicmetrics_derivedprefix = "SAMPLE";
-static char* nicmetrics_derivedunit =  "(B/s)";
+/**
+ * Build linked list of performance counters we wish to get values for
+ */
+gpcd_context_t *nic_perf_create_context(ldmsd_msg_log_f* msglog)
+{
+	int i, status;
+	gpcd_context_t *lctx;
+	gpcd_mmr_desc_t *desc;
 
-static char* nicmetrics_basename[] = {
-	NICMETRICS_BASE_LIST(STR_WRAP)
-};
+	lctx = gpcd_create_context();
+	if (!lctx)
+		return NULL;
 
-typedef enum {
-	NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
-} nicmetrics_metric_t;
+	for (i = 0; i < NUM_NIC_PERF_RAW; i++) {
+		desc = (gpcd_mmr_desc_t *)
+			gpcd_lookup_mmr_byname(nic_perf_raw_name[i]);
+		if (!desc) {
+			gpcd_remove_context(lctx);
+			return NULL;
+		}
 
-#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
+		status = gpcd_context_add_mmr(lctx, desc);
+		if (status != 0) {
+			gpcd_remove_context(lctx);
+			return NULL;
+		}
+	}
 
-
-typedef enum {
-	GEMINI_METRICS_COUNTER,
-	GEMINI_METRICS_DERIVED,
-	GEMINI_METRICS_BOTH
-} gemini_metrics_type_t;
-
-int gemini_metrics_type; /**< raw, derived, both */
-
-char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
-
-#endif
+	return lctx;
+}

@@ -76,7 +76,7 @@
 #include <time.h>
 #include <pthread.h>
 #include <limits.h>
-#include "gem_link_perf_util.h"
+#include "rtr_util.h"
 #include "ldmsd.h"
 #include "ldms.h"
 
@@ -427,76 +427,9 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 	tile[43].type = GEMINI_LINK_TYPE_NIC;
 	tile[44].type = GEMINI_LINK_TYPE_NIC;
 
+	/* Manually update the host tiles and bw */
+	(*tiles_per_dir)[GEMINI_LINK_DIR_HOST] = 8;
+	(*max_link_bw)[GEMINI_LINK_DIR_HOST] = GEMINI_NIC_TILE_BW * 8.0;
+
 	return 0;
-}
-
-/**
- * Build linked list of tile performance counters we wish to get values for
- */
-gpcd_context_t *gem_link_perf_create_context(ldmsd_msg_log_f* msglog_outer)
-{
-	int i, j, k, status;
-	char name[128];
-	gpcd_context_t *lctx;
-	gpcd_mmr_desc_t *desc;
-
-	lctx = gpcd_create_context();
-	if (!lctx)
-		return NULL;
-
-	/*  loop over all 48 tiles, for each tile add its 6 static counters to
-	 *  the context */
-	for (i = 0; i < GEMINI_NUM_TILE_ROWS; i++) {
-		for (j = 0; j < GEMINI_NUM_TILE_COLUMNS; j++) {
-			for (k = 0; k < GEMINI_NUM_TILE_COUNTERS; k++) {
-				sprintf(name,
-					"GM_%d_%d_TILE_PERFORMANCE_COUNTERS_%d",
-						i, j, k);
-				desc = (gpcd_mmr_desc_t *)
-						gpcd_lookup_mmr_byname(name);
-				if (!desc) {
-					gpcd_remove_context(lctx);
-					return NULL;
-				}
-				status = gpcd_context_add_mmr(lctx, desc);
-				if (status != 0) {
-					gpcd_remove_context(lctx);
-					return NULL;
-				}
-			}
-		}
-	}
-	return lctx;
-}
-
-
-/**
- * Build linked list of performance counters we wish to get values for
- */
-gpcd_context_t *nic_perf_create_context(ldmsd_msg_log_f* msglog)
-{
-	int i, status;
-	gpcd_context_t *lctx;
-	gpcd_mmr_desc_t *desc;
-
-	lctx = gpcd_create_context();
-	if (!lctx)
-		return NULL;
-
-	for (i = 0; i < NUM_NIC_PERF_RAW; i++) {
-		desc = (gpcd_mmr_desc_t *)
-			gpcd_lookup_mmr_byname(nic_perf_raw_name[i]);
-		if (!desc) {
-			gpcd_remove_context(lctx);
-			return NULL;
-		}
-
-		status = gpcd_context_add_mmr(lctx, desc);
-		if (status != 0) {
-			gpcd_remove_context(lctx);
-			return NULL;
-		}
-	}
-
-	return lctx;
 }

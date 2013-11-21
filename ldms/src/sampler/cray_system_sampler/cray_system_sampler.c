@@ -66,14 +66,13 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
-
-#include "gem_link_perf_util.h"
-#include "general_metrics.h"
-#include "gemini_metrics.h"
 #include "config.h"
-
+#include "rca_metrics.h"
+#include "general_metrics.h"
 
 #ifdef HAVE_GPCDR
+#include "gemini_metrics_gpcdr.h"
+
 typedef enum {
 	NS_NETTOPO,
 	NS_LINKSMETRICS,
@@ -82,12 +81,13 @@ typedef enum {
 	NS_VMSTAT,
 	NS_LOADAVG,
 	NS_CURRENT_FREEMEM,
+	NS_PROCNETDEV,
 	NS_KGNILND,
-	NS_NUM,
-	NS_GEM_LINK_PERF,
-	NS_NIC_PERF
+	NS_NUM
 } cray_system_sampler_sources_t;
 #else
+#include "gemini_metrics_gpcd.h"
+
 typedef enum {
 	NS_NETTOPO,
 	NS_GEM_LINK_PERF,
@@ -96,12 +96,10 @@ typedef enum {
 	NS_VMSTAT,
 	NS_LOADAVG,
 	NS_CURRENT_FREEMEM,
+	NS_PROCNETDEV,
 	NS_KGNILND,
-	NS_NUM,
-	NS_LINKSMETRICS,
-	NS_NICMETRICS
+	NS_NUM
 } cray_system_sampler_sources_t;
-
 #endif
 
 
@@ -188,6 +186,11 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 					      NUM_CURRENT_FREEMEM_METRICS,
 					      m_sz, d_sz, msglog);
 		break;
+	case NS_PROCNETDEV:
+		return get_metric_size_simple(PROCNETDEV_METRICS,
+					      NUM_PROCNETDEV_METRICS,
+					      m_sz, d_sz, msglog);
+		break;
 	case NS_KGNILND:
 		return get_metric_size_simple(KGNILND_METRICS,
 					      NUM_KGNILND_METRICS,
@@ -196,18 +199,21 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 	case NS_LUSTRE:
 		return get_metric_size_lustre(m_sz, d_sz, msglog);
 		break;
-	case NS_NIC_PERF:
-		return get_metric_size_nic_perf(m_sz, d_sz, msglog);
-		break;
-	case NS_GEM_LINK_PERF:
-		return get_metric_size_gem_link_perf(m_sz, d_sz, msglog);
-		break;
+#ifdef HAVE_GPCDR
 	case NS_LINKSMETRICS:
 		return get_metric_size_linksmetrics(m_sz, d_sz, msglog);
 		break;
 	case NS_NICMETRICS:
 		return get_metric_size_nicmetrics(m_sz, d_sz, msglog);
 		break;
+#else
+	case NS_NIC_PERF:
+		return get_metric_size_nic_perf(m_sz, d_sz, msglog);
+		break;
+	case NS_GEM_LINK_PERF:
+		return get_metric_size_gem_link_perf(m_sz, d_sz, msglog);
+		break;
+#endif
 	default:
 		break;
 	}
@@ -301,6 +307,18 @@ static int add_metrics_generic(int comp_id,
 					  &CURRENT_FREEMEM_FILE, &cf_f,
 					  comp_id, msglog);
 		break;
+	case NS_PROCNETDEV:
+		rc = add_metrics_simple(set, PROCNETDEV_METRICS,
+					  NUM_PROCNETDEV_METRICS,
+					  &metric_table_procnetdev,
+					  &PROCNETDEV_FILE, &pnd_f,
+					  comp_id, msglog);
+		if (rc != 0)
+			return rc;
+		rc = procnetdev_setup(msglog);
+		if (rc != 0) /* Warn but OK to continue */
+			msglog("cray_system_sampler: procnetdev invalid\n");
+		break;
 	case NS_KGNILND:
 		return add_metrics_simple(set, KGNILND_METRICS,
 					  NUM_KGNILND_METRICS,
@@ -308,6 +326,10 @@ static int add_metrics_generic(int comp_id,
 					  &KGNILND_FILE, &k_f,
 					  comp_id, msglog);
 		break;
+	case NS_LUSTRE:
+		return add_metrics_lustre(set, comp_id, msglog);
+		break;
+#ifdef HAVE_GPCDR
 	case NS_LINKSMETRICS:
 		rc = add_metrics_linksmetrics(set, comp_id, msglog);
 		if (rc != 0)
@@ -330,9 +352,7 @@ static int add_metrics_generic(int comp_id,
 			msglog("cray_system_sampler: nicmetrics invalid\n");
 		return 0;
 		break;
-	case NS_LUSTRE:
-		return add_metrics_lustre(set, comp_id, msglog);
-		break;
+#else
 	case NS_NIC_PERF:
 		rc = add_metrics_nic_perf(set, comp_id, msglog);
 		if (rc != 0)
@@ -355,6 +375,7 @@ static int add_metrics_generic(int comp_id,
 			msglog("cray_system_sampler: gem_link_perf invalid\n");
 		return 0;
 		break;
+#endif
 	default:
 		break;
 	}
@@ -432,11 +453,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto out;
 	}
 
+	/* rtrfile used for bw in both gpcd and gpcdr */
 	value = av_value(avl, "rtrfile");
 	if (value)
-		ns_glp_rtrfile = strdup(value);
+		rtrfile = strdup(value);
 	else
-		ns_glp_rtrfile = NULL;
+		rtrfile = NULL;
 
 	value = av_value(avl,"gemini_metrics_type");
 	if (value) {
@@ -490,21 +512,27 @@ static int sample(void)
 		case NS_KGNILND:
 			rc = sample_metrics_kgnilnd(msglog);
 			break;
+		case NS_PROCNETDEV:
+			rc = sample_metrics_procnetdev(msglog);
+			break;
 		case NS_LUSTRE:
 			rc = sample_metrics_lustre(msglog);
 			break;
-		case NS_NIC_PERF:
-			rc = sample_metrics_nic_perf(msglog);
-			break;
-		case NS_GEM_LINK_PERF:
-			rc = sample_metrics_gem_link_perf(msglog);
-			break;
+#ifdef HAVE_GPCDR
 		case NS_LINKSMETRICS:
 			rc = sample_metrics_linksmetrics(msglog);
 			break;
 		case NS_NICMETRICS:
 			rc = sample_metrics_nicmetrics(msglog);
 			break;
+#else
+		case NS_NIC_PERF:
+			rc = sample_metrics_nic_perf(msglog);
+			break;
+		case NS_GEM_LINK_PERF:
+			rc = sample_metrics_gem_link_perf(msglog);
+			break;
+#endif
 		default:
 			//do nothing
 			break;

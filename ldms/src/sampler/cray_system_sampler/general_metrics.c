@@ -74,8 +74,6 @@
 struct str_map *lustre_idx_map = NULL;
 struct lustre_svc_stats_head lustre_svc_head = {0};
 
-
-
 int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
 			   ldmsd_msg_log_f msglog)
 {
@@ -292,6 +290,89 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 
 	return 0;
 
+}
+
+int procnetdev_setup(ldmsd_msg_log_f msglog)
+{
+	/** need tx rx bytes for ipogif0 interface only */
+	procnetdev_valid = 0;
+
+	if (!pnd_f) {
+		msglog("procnetdev: filehandle NULL\n");
+		return EINVAL;
+	}
+
+	char lbuf[256];
+	char* s;
+	int count = -1;
+
+	/* assume on product system ifaces and order do not change w/o reboot */
+	idx_iface = -1;
+	do {
+		s = fgets(lbuf, sizeof(lbuf), pnd_f);
+		if (!s)
+			break;
+		count++;
+		if (strstr(lbuf,iface))
+			idx_iface = count; /* continue past eof */
+	} while(s);
+
+	if (idx_iface == -1){
+		msglog("procnetdev: cannot find iface <%s>\n", iface);
+		return EINVAL;
+	}
+
+	procnetdev_valid = 1;
+	return 0;
+}
+
+int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
+{
+
+	if (procnetdev_valid == 0) {
+		return 0;
+	}
+
+	if (!pnd_f) {
+		msglog("procnetdev: filehandle NULL\n");
+		return EINVAL;
+	}
+
+	char lbuf[256];
+	char curriface[10];
+	union ldms_value v[2];
+	char* s;
+	int rc;
+	int i;
+	int found = 0;
+
+	i = -1;
+	fseek(pnd_f, 0, SEEK_SET);
+	do {
+		s = fgets(lbuf, sizeof(lbuf), pnd_f);
+		if (!s)
+			break;
+		i++;
+		if (i == idx_iface){
+			int rc = sscanf(lbuf, "%[^:]%*c %" PRIu64 " %*"
+					PRIu64 " %*" PRIu64 " %*" PRIu64 " %*"
+					PRIu64 " %*" PRIu64 " %*" PRIu64 " %*"
+					PRIu64 " %" PRIu64 "",
+					curriface, &v[0].v_u64, &v[1].v_u64);
+			if (strstr(curriface,iface) && (rc == 3)){
+				ldms_set_metric(
+					metric_table_procnetdev[0],&v[0]);
+				ldms_set_metric(
+					metric_table_procnetdev[1], &v[1]);
+				found++;
+			}
+		}
+	} while(s);
+
+	if (!found)
+		return EINVAL;
+
+	return 0;
 }
 
 int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
