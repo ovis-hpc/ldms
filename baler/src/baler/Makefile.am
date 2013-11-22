@@ -43,13 +43,13 @@ balerd_LDADD = libbaler.la libbset.la \
 	       libbmapper.la \
 	       libbutils.la \
 	       -lpthread -ldl -lcoll
-balerd_CFLAGS = -I@OVIS_LIB_INCDIR@
-balerd_LDFLAGS = -L@OVIS_LIB_LIBDIR@ -L@OVIS_LIB_LIB64DIR@
+balerd_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
+balerd_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 
 if ENABLE_OCM
 balerd_LDADD += -locm
-balerd_CFLAGS += -DENABLE_OCM -I@OCM_INCDIR@ -I@OVIS_LIB_INCDIR@
-balerd_LDFLAGS += -L@OCM_LIBDIR@ -L@OCM_LIB64DIR@
+balerd_CFLAGS += -DENABLE_OCM @OCM_INCDIR_FLAG@
+balerd_LDFLAGS += @OCM_LIBDIR_FLAG@
 endif
 bin_PROGRAMS += balerd
 

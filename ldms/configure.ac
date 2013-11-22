@@ -19,6 +19,8 @@ dnl AM_PROG_CC_C_O
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
+OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
+
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])
 OPTION_DEFAULT_ENABLE([mmap], [ENABLE_MMAP])
@@ -189,14 +191,14 @@ dnl Check for mmalloc
 AC_CHECK_LIB(mmalloc, mm_init, [],
 	     AC_MSG_ERROR([mmalloc library not found. ldms requires mmalloc.
 			   Please install mmalloc from OVIS/lib. ]),
-	     $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG )
+	     $OVIS_LIB_LIBDIR_FLAG )
 dnl Reset LIBS variable.
 LIBS=""
 
 AC_CHECK_LIB(coll, idx_create, [],
 	     AC_MSG_ERROR([libcoll not found. Please install libcoll from
 			   OVIS/lib.]),
-	     $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG )
+	     $OVIS_LIB_LIBDIR_FLAG )
 dnl Reset LIBS variable.
 LIBS=""
 

@@ -24,6 +24,7 @@ rpm-clean:
 doxygen doxygen/html:
 	doxygen ./Doxyfile
 
+if ENABLE_DOC
 install-data-local: doxygen
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in README COPYING ChangeLog COPYRIGHT; do \
@@ -35,5 +36,6 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
+endif
 
 clean-local: rpm-clean

@@ -4,7 +4,7 @@ lib_LTLIBRARIES =
 CORE = ../core
 
 AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 
 if ENABLE_GEMINFO
@@ -98,12 +98,11 @@ if ENABLE_CRAY_HSS_DEVEL
 if ENABLE_LUSTRE
 # NCSA_UNIFIED requires LUSTRE AND GPCD-related
 
-CRAY_CFLAGS_ = $(AM_CFLAGS) -I@GPCD_INCDIR@ -I@RCA_INCDIR@ \
-			     -I@KRCA_INCDIR@ -I@CRAY_HSS_DEVEL_INCDIR@ \
+CRAY_CFLAGS_ = $(AM_CFLAGS) @GPCD_INCDIR_FLAG@ @RCA_INCDIR_FLAG@ \
+			     @KRCA_INCDIR_FLAG@ @CRAY_HSS_DEVEL_INCDIR_FLAG@ \
                              -I@CRAY_HSS_DEVEL_INCDIR@/rsms
 
-CRAY_LDFLAGS_ = $(AM_LDFLAGS) -L@GPCD_LIB64DIR@ -L@RCA_LIB64DIR@ \
-			      -L@GPCD_LIBDIR@ -L@RCA_LIBDIR@ \
+CRAY_LDFLAGS_ = $(AM_LDFLAGS) @GPCD_LIBDIR_FLAG@ @RCA_LIBDIR_FLAG@ \
 			      -lgpcd -lrca
 
 libgem_link_perf_util_la_SOURCES = gem_link_perf_util.c gem_link_perf_util.h
@@ -112,9 +111,9 @@ libgem_link_perf_util_la_LDFLAGS = $(CRAY_LDFLAGS_)
 lib_LTLIBRARIES += libgem_link_perf_util.la
 
 
-libncsa_unified_la_SOURCES = ncsa_unified.c 
-libncsa_unified_la_CFLAGS = $(CRAY_CFLAGS_) 
-libncsa_unified_la_LDFLAGS = $(CRAY_LDFLAGS_) 
+libncsa_unified_la_SOURCES = ncsa_unified.c
+libncsa_unified_la_CFLAGS = $(CRAY_CFLAGS_)
+libncsa_unified_la_LDFLAGS = $(CRAY_LDFLAGS_)
 libncsa_unified_la_LIBADD = $(COMMON_LIBADD) \
 			    ./lustre/libstr_map.la \
 			    ./lustre/liblustre_sampler.la \

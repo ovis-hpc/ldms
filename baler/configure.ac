@@ -21,6 +21,8 @@ then
 	SWIG_PYTHON
 fi
 
+OPTION_WITH_EVENT
+
 AM_CONDITIONAL([ENABLE_SOS], [true])
 AM_CONDITIONAL([ENABLE_OVIS_LIB], [true])
 OPTION_DEFAULT_ENABLE([ocm], [ENABLE_OCM])
@@ -29,17 +31,11 @@ OPTION_WITH([sos], [SOS])
 OPTION_WITH([ovis-lib], [OVIS_LIB])
 OPTION_WITH([ocm], [OCM])
 
-dnl Check for libevent
-AC_CHECK_LIB(event, event_base_new, [],
-	AC_MSG_ERROR([event_base_new() not found. Baler requires libevent.]))
-dnl Reset LIBS variable.
-LIBS=""
-
 dnl Check for zap
 AC_CHECK_LIB(zap, zap_new, [],
 	AC_MSG_ERROR([zap library not found. Baler requires libzap. libzap is
 		      one of the libraries in lib-ovis (please see OVIS/lib)]),
-	-L$OVIS_LIB_LIBDIR -L$OVIS_LIB_LIB64DIR)
+	$OVIS_LIB_LIBDIR_FLAG)
 dnl Reset LIBS variable.
 LIBS=""
 
@@ -48,7 +44,7 @@ if test -z "$ENABLE_OCM_TRUE"
 then
 AC_CHECK_LIB(ocm, ocm_create, [],
 	     AC_MSG_ERROR([ocm library not found. Please see OVIS/ocm.]),
-	     -L$OCM_LIBDIR -L$OCM_LIB64DIR
+	     $OCM_LIBDIR_FLAG
 	     )
 LIBS=""
 fi

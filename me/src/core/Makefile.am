@@ -1,6 +1,7 @@
 pkglib_LTLIBRARIES =
 
-AM_CFLAGS = -Wall $(DBGFLAGS)
+AM_CFLAGS = -Wall $(DBGFLAGS) @OVIS_LIB_INCDIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 
 mecoreincludedir = $(includedir)/me
 mecoreinclude_HEADERS = me.h

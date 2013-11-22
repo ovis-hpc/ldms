@@ -2,7 +2,7 @@ lib_LTLIBRARIES =
 
 CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 
 # libstr_map
 libstr_map_la_SOURCES = str_map.c str_map.h fnv_hash.h

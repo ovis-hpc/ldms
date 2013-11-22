@@ -19,6 +19,8 @@ dnl Needed for per-product flags
 AC_PROG_CC_C_O
 AM_PROG_CC_C_O
 
+OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
+
 dnl Swig stuffs
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
 if test -z "$ENABLE_SWIG_TRUE"
@@ -47,34 +49,17 @@ AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
     fi)
 
 dnl
-OVIS_LIB_PREFIX=/usr
-OVIS_LIB_INCLUDE=/usr/include
-AC_ARG_WITH([ovis-prefix],
-	[AS_HELP_STRING([--with-ovis-prefix],
-              [Specify prefix of ovis lib and devel installation])],
-            [],
-            [with_ovis_prefix=check])
-if test "x$with_ovis_prefix" != "xno" ;  then
-	if test -f "$with_ovis_prefix/include/ovis-test/test.h"; then
-		OVIS_LIB_PREFIX=$with_ovis_prefix
-		OVIS_LIB_INCLUDE=$with_ovis_prefix/include
-		CPPFLAGS="-I$OVIS_LIB_INCLUDE $CPPFLAGS"
-	else
-		if test -f /opt/ovis/include/ovis-test/test.h; then
-			OVIS_LIB_PREFIX=/opt/ovis
-			OVIS_LIB_INCLUDE=/opt/ovis/include
-			CPPFLAGS="-I$OVIS_LIB_INCLUDE $CPPFLAGS"
-		fi
-	fi
-else
-   AC_MSG_ERROR([ovis prefix is not optional.])
-fi
 
-AC_CHECK_HEADER([ovis-test/test.h],[],
-   [AC_MSG_ERROR([Missing header ovis-test/test.h. Specify --with-ovis-prefix=OVISPREFIX])])
+OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
+OPTION_WITH([ovis-lib], [OVIS_LIB])
 
-AC_SUBST(OVIS_LIB_PREFIX)
-AC_SUBST(OVIS_LIB_INCLUDE)
+AC_CHECK_LIB(coll, idx_create, [],
+	     AC_MSG_ERROR([libcoll not found. Please install libcoll from
+			   OVIS/lib.]),
+	     $OVIS_LIB_LIBDIR_FLAG)
+dnl Reset LIBS variable.
+LIBS=""
+
 rpm_configure_args=`echo $ac_configure_args | sed -e "s%--prefix=[^']*%%"`
 AC_SUBST(rpm_configure_args)
 

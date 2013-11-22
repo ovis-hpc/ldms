@@ -16,9 +16,7 @@ OPTION_WITH([ovis-lib], [OVIS_LIB])
 AM_CONDITIONAL([ENABLE_SOS], [true])
 OPTION_WITH([sos], [SOS])
 
-dnl This got defined here for LIBEVENT_ENABLE
-AM_CONDITIONAL([ENABLE_LIBEVENT], [true])
-OPTION_WITH([libevent], [LIBEVENT])
+OPTION_WITH_EVENT
 
 dnl OCM
 OPTION_DEFAULT_ENABLE([ocm], [ENABLE_OCM])
@@ -32,12 +30,6 @@ dnl AM_PROG_CC_C_O
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
-dnl Check for libevent
-AC_CHECK_LIB(event, event_base_new, [],
-    AC_MSG_ERROR([event_base_new() not found. ldms requires libevent.]))
-dnl Reset LIBS variable.
-LIBS=""
-
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  ldms requires libpthread.]))
@@ -48,7 +40,7 @@ dnl Check for zap support
 AC_CHECK_LIB(zap, zap_new, [],
     AC_MSG_ERROR([zap library not found.  ldms requires libzap. libzap is
 		  one of the libraries in lib-ovis (please see OVIS/lib)]),
-    -L$OVIS_LIB_LIBDIR -L$OVIS_LIB_LIB64DIR)
+    $OVIS_LIB_LIBDIR_FLAG)
 dnl Reset LIBS variable.
 LIBS=""
 
@@ -57,7 +49,7 @@ if test -z "$ENABLE_OCM_TRUE"
 then
 AC_CHECK_LIB(ocm, ocm_create, [],
 	     AC_MSG_ERROR([ocm library not found. Please see OVIS/ocm.]),
-	     -L$OCM_LIBDIR -L$OCM_LIB64DIR
+	     $OCM_LIBDIR_FLAG
 	     )
 LIBS=""
 fi

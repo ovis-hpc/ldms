@@ -1,4 +1,4 @@
-INCLUDES = -I@OVIS_LIB_INCLUDE@
+INCLUDES = @OVIS_LIB_INCDIR_FLAG@
 
 sbin_PROGRAMS = \
 	sos \
@@ -12,11 +12,11 @@ sbin_PROGRAMS = \
 
 lib_LTLIBRARIES = \
 	libods.la \
-	libidx.la \
 	liboidx.la \
 	libsos.la
 
 AM_CFLAGS = -Wall $(INCLUDES)
+AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 
 #
 # libsos
@@ -28,7 +28,7 @@ libsos_la_SOURCES = \
 libsos_la_LIBADD = \
 	libods.la \
 	liboidx.la \
-	libidx.la
+	-lcoll
 #libsos_la_DEPENDENCIES = \
 #	libsos.map \
 #	libods.la \
@@ -59,28 +59,15 @@ liboidx_la_SOURCES = \
 	oidx.h \
 	oidx_priv.h
 liboidx_la_LIBADD = \
-	libidx.la \
+	-lcoll \
 	libods.la
 #liboidx_la_DEPENDENCIES = \
-#	libidx.la \
+#	-lcoll \
 #	libods.la \
 #	liboidx.map
 
 liboidxincludedir = $(includedir)/sos
 liboidxinclude_HEADERS = oidx.h
-
-#
-# libidx
-#
-libidx_la_SOURCES = \
-	idx.c \
-	idx.h \
-	idx_priv.h
-# libidx_la_LIBADD =
-# libidx_la_DEPENDENCIES = libidx.map
-
-libidxincludedir = $(includedir)/sos
-libidxinclude_HEADERS = idx.h
 
 sos_SOURCES = sos.c
 sos_CFLAGS = -DSOS_MAIN $(INCLUDES)
@@ -88,33 +75,33 @@ sos_LDADD = \
 	libsos.la \
 	liboidx.la \
 	libods.la \
-	libidx.la
+	-lcoll
 
 sos_rate_SOURCES = sos_rate.c
 sos_rate_LDADD = \
 	libsos.la \
 	liboidx.la \
 	libods.la \
-	libidx.la
+	-lcoll
 
 sos_stat_SOURCES = sos_stat.c
 sos_stat_LDADD = \
 	libsos.la \
 	liboidx.la \
 	libods.la \
-	libidx.la
+	-lcoll
 
 oidx_SOURCES = oidx.c
 oidx_CFLAGS = -DOIDX_MAIN $(INCLUDES)
 oidx_LDADD = \
 	libods.la \
-	libidx.la
+	-lcoll
 
 mds_load_SOURCES = mds_load.c mds.h
 mds_load_LDADD = \
 	libsos.la \
-	libidx.la
-mds_load_LDFLAGS = -lpthread
+	-lcoll
+mds_load_LDFLAGS = $(AM_LDFLAGS) -lpthread
 
 ods_dump_SOURCES = ods_dump.c
 ods_dump_LDADD = libods.la

@@ -3,7 +3,7 @@ SUBDIRS = .
 pkglib_LTLIBRARIES =
 CORE = ../core
 
-AM_CFLAGS = -I$(srcdir)/$(CORE)
+AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libme_core.la -lm
 
 if ENABLE_MODEL_EXAMPLE

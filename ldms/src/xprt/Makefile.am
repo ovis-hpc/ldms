@@ -6,9 +6,8 @@ AM_CFLAGS = $(INCLUDES)
 
 if ENABLE_SOCK
 libldmssock_la_SOURCES = ldms_sock.c ldms_sock_xprt.h
-libldmssock_la_LIBADD = -levent -levent_pthreads
-libldmssock_la_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
-libldmssock_la_LDFLAGS = $(AM_LDFLAGS) @LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@
+libldmssock_la_CFLAGS = $(AM_CFLAGS) @EVENTINC@
+libldmssock_la_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@
 lib_LTLIBRARIES += libldmssock.la
 endif
 
@@ -22,12 +21,10 @@ if ENABLE_UGNI
 UGNI_CFLAGS = $(shell pkg-config --cflags cray-ugni)
 UGNI_LIBS = $(shell pkg-config --libs cray-ugni)
 libldmsugni_la_CFLAGS = $(AM_CFLAGS) $(UGNI_CFLAGS) \
-			@LIBEVENT_INCDIR_FLAG@
-libldmsugni_la_LDFLAGS = $(UGNI_LIBS) @OVIS_LIB_LIB64DIR_FLAG@ \
-			 @LIBEVENT_LIB64DIR_FLAG@ \
-			 @OVIS_LIB_LIBDIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@
+			@EVENTINC@
+libldmsugni_la_LDFLAGS = $(UGNI_LIBS) @OVIS_LIB_LIBDIR_FLAG@ @EVENTLIBS@
 libldmsugni_la_SOURCES = ldms_ugni.c ldms_ugni.h
-libldmsugni_la_LIBADD = -levent -levent_pthreads -lmmalloc
+libldmsugni_la_LIBADD = -lmmalloc
 lib_LTLIBRARIES += libldmsugni.la
 endif
 

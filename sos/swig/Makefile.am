@@ -4,13 +4,13 @@ SWIG_SOURCES = sos.i $(top_srcdir)/src/sos.h
 pkgpython_PYTHON = sos.py __init__.py
 pkgpyexec_LTLIBRARIES = _sos.la
 _sos_la_SOURCES = sos.c $(SWIG_SOURCES)
-_sos_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src
-_sos_la_LDFLAGS = -module
-_sos_la_LIBADD = \
-	$(top_builddir)/src/libods.la \
-	$(top_builddir)/src/libidx.la \
-	$(top_builddir)/src/liboidx.la \
-	$(top_builddir)/src/libsos.la
+_sos_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src \
+		 @OVIS_LIB_INCDIR_FLAG@
+_sos_la_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ -module
+_sos_la_LIBADD = $(top_builddir)/src/libods.la \
+		 $(top_builddir)/src/liboidx.la \
+		 $(top_builddir)/src/libsos.la \
+		 -lcoll
 
 # Forcing this so that _sos.so will be in lib not lib64
 #pkgpyexecdir = $(pkgpythondir)

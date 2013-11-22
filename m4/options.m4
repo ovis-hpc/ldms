@@ -49,7 +49,7 @@ if test "x$$2_LIBDIR" = "x"; then
 fi
 if test -d $WITH_$2/lib64; then
 	$2_LIB64DIR=$WITH_$2/lib64
-	$2_LIB64DIR_FLAG=-L$WITH_$2/lib64
+	$2_LIBDIR_FLAG="$$2_LIBDIR_FLAG -L$WITH_$2/lib64"
 fi
 if test -d $WITH_$2/include; then
 	$2_INCDIR=$WITH_$2/include
@@ -59,7 +59,6 @@ AC_SUBST([$2_LIBDIR], [$$2_LIBDIR])
 AC_SUBST([$2_LIB64DIR], [$$2_LIB64DIR])
 AC_SUBST([$2_INCDIR], [$$2_INCDIR])
 AC_SUBST([$2_LIBDIR_FLAG], [$$2_LIBDIR_FLAG])
-AC_SUBST([$2_LIB64DIR_FLAG], [$$2_LIB64DIR_FLAG])
 AC_SUBST([$2_INCDIR_FLAG], [$$2_INCDIR_FLAG])
 ])
 
@@ -93,6 +92,7 @@ AC_SUBST([MYSQL_INCLUDE])
 ])
 dnl this could probably be generalized for handling lib64,lib python-binding issues
 AC_DEFUN([OPTION_WITH_EVENT],[
+  EVENTLIBS="-levent -levent_pthreads"
   AC_ARG_WITH([libevent],
   [  --with-libevent=DIR      use libevent in DIR],
   [ case "$withval" in
@@ -100,13 +100,14 @@ AC_DEFUN([OPTION_WITH_EVENT],[
       AC_MSG_RESULT(no)
       ;;
     *)
-     CPPFLAGS="-I$withval/include"
-     EVENTLIBS="-L$withval/lib -L$withval/lib64"
+     EVENTINC="-I$withval/include"
+     EVENTLIBS="-L$withval/lib -L$withval/lib64 $EVENTLIBS"
       ;;
     esac ])
   option_old_libs=$LIBS
-  AC_CHECK_LIB(event, event_base_new, [EVENTLIBS="$EVENTLIBS -levent"],
-      AC_MSG_ERROR([event_base_new() not found. sock requires libevent.]),[$EVENTLIBS])
+  AC_CHECK_LIB(event, event_base_new, [],
+      AC_MSG_ERROR([libevent not found.]),[$EVENTLIBS])
   AC_SUBST(EVENTLIBS)
+  AC_SUBST(EVENTINC)
   LIBS=$option_old_libs
 ])

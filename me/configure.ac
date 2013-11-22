@@ -18,6 +18,12 @@ AC_ARG_ENABLE(debug, [  --enable-debug    Enable debug mode],
 	]
 )
 
+OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
+OPTION_WITH([ovis-lib], [OVIS_LIB])
+
+OPTION_DEFAULT_ENABLE([ocm], [ENABLE_OCM])
+OPTION_WITH([ocm], [OCM])
+
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([me], [ENABLE_ME])
 
@@ -35,6 +41,8 @@ dnl Options for stores
 OPTION_DEFAULT_ENABLE([stores], [ENABLE_STORES])
 OPTION_DEFAULT_ENABLE([store_example], [ENABLE_STORE_EXAMPLE])
 OPTION_DEFAULT_DISABLE([store_sos], [ENABLE_STORE_SOS])
+OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
+OPTION_WITH([sos], [SOS])
 
 dnl Options for consumers
 OPTION_DEFAULT_ENABLE([consumers], [ENABLE_CONSUMERS])
@@ -55,16 +63,37 @@ AC_C_CONST
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  me-utils requires libpthread.]))
+LIBS=""
 
 dnl Checks for libraries
-AC_CHECK_LIB(zap, zap_get, [],
-	AC_MSG_ERROR([libzap not found. Please install libzap from OVIS/lib.]))
+AC_CHECK_LIB(zap, zap_new, [],
+	AC_MSG_ERROR([zap library not found. Baler requires libzap. libzap is
+		      one of the libraries in lib-ovis (please see OVIS/lib)]),
+	$OVIS_LIB_LIBDIR_FLAG)
+LIBS=""
+
+if test -z "$ENABLE_OCM_TRUE"
+then
+AC_CHECK_LIB(ocm, ocm_create, [],
+	     AC_MSG_ERROR([ocm library not found. Please see OVIS/ocm.]),
+	     $OCM_LIBDIR_FLAG
+	     )
+LIBS=""
+fi
 
 AC_CHECK_LIB(ovis_util, av_value, [],
-	AC_MSG_ERROR([libovis_util not found. Please install libovis_util from OVIS/lib..]))
+	     AC_MSG_ERROR([ovis_util library not found.
+			   Please install ovis_util from OVIS/lib. ]),
+	     $OVIS_LIB_LIBDIR_FLAG )
+dnl Reset LIBS variable.
+LIBS=""
 
 AC_CHECK_LIB(coll, idx_create, [],
-	AC_MSG_ERROR([libcoll not found. Please install libcoll from OVIS/lib.]))
+	     AC_MSG_ERROR([coll library not found.
+			   Please install coll from OVIS/lib. ]),
+	     $OVIS_LIB_LIBDIR_FLAG )
+dnl Reset LIBS variable.
+LIBS=""
 
 AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
     if test -n "`$LD --help < /dev/null 2>/dev/null | grep version-script`"; then

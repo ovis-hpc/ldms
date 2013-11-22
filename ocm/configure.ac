@@ -20,6 +20,7 @@ AM_PROG_CC_C_O
 
 AC_C_CONST
 
+OPTION_WITH_EVENT
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 OPTION_WITH([ovis-lib], [OVIS_LIB])
@@ -51,7 +52,7 @@ dnl Check for zap
 AC_CHECK_LIB(zap, zap_new, [],
 	AC_MSG_ERROR([zap library not found. ocmd requires libzap. libzap is
 		      one of the libraries in lib-ovis (please see OVIS/lib)]),
-	-L$OVIS_LIB_LIBDIR -L$OVIS_LIB_LIB64DIR)
+	$OVIS_LIB_LIBDIR_FLAG)
 dnl Reset LIBS variable.
 LIBS=""
 
