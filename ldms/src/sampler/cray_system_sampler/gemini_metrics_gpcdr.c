@@ -355,18 +355,20 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 
 	}
 
-	rc = bwhelper_maxbwperdir(msglog);
-	if (rc)
-		return rc;
 
-	rc = rcahelper_tilesperdir(msglog);
-	if (rc)
-		return rc;
-
-	/** storage for metrics for computations in terms of the ones
-	 * gpcdr can possibly have */
 	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
 	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+
+		rc = bwhelper_maxbwperdir(msglog);
+		if (rc)
+			return rc;
+
+		rc = rcahelper_tilesperdir(msglog);
+		if (rc)
+			return rc;
+
+		/** storage for metrics for computations in terms of the ones
+		 * gpcdr can possibly have */
 
 		linksmetrics_base_values = calloc(2, sizeof(uint64_t**));
 		if (!linksmetrics_base_values)
