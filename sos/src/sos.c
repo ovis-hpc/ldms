@@ -1110,7 +1110,7 @@ void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, sos_key_t key)
 
 #ifdef SOS_MAIN
 #include <stddef.h>
-#include "idx.h"
+#include <coll/idx.h>
 
 static void get_value_key(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
 {

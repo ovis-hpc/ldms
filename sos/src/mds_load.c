@@ -66,7 +66,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include "sos.h"
-#include "idx.h"
+#include <coll/idx.h>
 
 #include "mds.h"
 
