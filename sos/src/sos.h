@@ -169,6 +169,8 @@ enum sos_type_e {
 	/* SOS_TYPE_STRING,	counted string */
 };
 
+char *sos_type_to_str(enum sos_type_e type);
+
 struct sos_attr_s {
 	char *name;
 	enum sos_type_e type;

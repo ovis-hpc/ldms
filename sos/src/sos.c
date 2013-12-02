@@ -66,6 +66,7 @@
 #include <stdarg.h>
 #include <limits.h>
 #include <errno.h>
+#include <assert.h>
 
 #include "sos.h"
 #include "sos_priv.h"
@@ -123,6 +124,30 @@ static int type_is_valid(enum sos_type_e e)
 	if (e >= SOS_TYPE_INT32 && e <= SOS_TYPE_USER)
 		return (1==1);
 	return (1==2);
+}
+
+char *sos_type_to_str(enum sos_type_e type)
+{
+	switch (type) {
+	case SOS_TYPE_INT32:
+		return "int32";
+	case SOS_TYPE_INT64:
+		return "int64";
+	case SOS_TYPE_UINT32:
+		return "uint32";
+	case SOS_TYPE_UINT64:
+		return "uint64";
+	case SOS_TYPE_DOUBLE:
+		return "double";
+	case SOS_TYPE_BLOB:
+		return "blob";
+	case SOS_TYPE_USER:
+		return "user";
+	case SOS_TYPE_UNKNOWN:
+		return "unknown";
+	default:
+		assert(0);
+	}
 }
 
 size_t sos_attr_size(sos_t sos, sos_attr_t attr)

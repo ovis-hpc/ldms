@@ -57,6 +57,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
@@ -103,8 +104,13 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 	char tv_s[128];
 	struct tm *tm_p;
 	time_t t;
-	uint32_t comp_id;
-	uint64_t value;
+	uint64_t metric_id;
+
+	int32_t v32;
+	int64_t v64;
+	uint32_t vu32;
+	uint64_t vu64;
+	double vd;
 
 	SOS_OBJ_ATTR_GET(tv_sec, sos, MDS_TV_SEC, obj);
 	SOS_OBJ_ATTR_GET(tv_usec, sos, MDS_TV_USEC, obj);
@@ -119,12 +125,56 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 		sprintf(tv_s, "%s.%06u", t_s, tv_usec);
 	}
 
-	SOS_OBJ_ATTR_GET(comp_id, sos, MDS_COMP_ID, obj);
-	SOS_OBJ_ATTR_GET(value, sos, MDS_VALUE, obj);
-	if (value_only)
-		fprintf(fp, "%ld\n", value);
-	else
-		fprintf(fp, "%-24s %12d %16ld %p\n", tv_s, comp_id, value, obj);
+	SOS_OBJ_ATTR_GET(metric_id, sos, MDS_COMP_ID, obj);
+
+	enum sos_type_e vtype = sos_get_attr_type(sos, MDS_VALUE);
+	switch (vtype) {
+	case SOS_TYPE_INT32:
+		SOS_OBJ_ATTR_GET(v32, sos, MDS_VALUE, obj);
+		if (value_only)
+			fprintf(fp, "%" PRIi32 "\n", v32);
+		else
+			fprintf(fp, "%-24s %12d %16" PRIi32 " %p\n",
+					tv_s, metric_id, v32, obj);
+		break;
+	case SOS_TYPE_INT64:
+		SOS_OBJ_ATTR_GET(v64, sos, MDS_VALUE, obj);
+		if (value_only)
+			fprintf(fp, "%" PRIi64 "\n", v64);
+		else
+			fprintf(fp, "%-24s %12d %16" PRIi64 " %p\n",
+					tv_s, metric_id, v64, obj);
+		break;
+	case SOS_TYPE_UINT32:
+		SOS_OBJ_ATTR_GET(vu32, sos, MDS_VALUE, obj);
+		if (value_only)
+			fprintf(fp, "%" PRIu32 "\n", vu32);
+		else
+			fprintf(fp, "%-24s %12d %16" PRIu32 " %p\n",
+					tv_s, metric_id, vu32, obj);
+		break;
+	case SOS_TYPE_UINT64:
+		SOS_OBJ_ATTR_GET(vu64, sos, MDS_VALUE, obj);
+		if (value_only)
+			fprintf(fp, "%" PRIu64 "\n", vu64);
+		else
+			fprintf(fp, "%-24s %12d %16" PRIu64 " %p\n",
+					tv_s, metric_id, vu64, obj);
+		break;
+	case SOS_TYPE_DOUBLE:
+		SOS_OBJ_ATTR_GET(vd, sos, MDS_VALUE, obj);
+		if (value_only)
+			fprintf(fp, "%f\n", vd);
+		else
+			fprintf(fp, "%-24s %12d %16f %p\n",
+					tv_s, metric_id, vd, obj);
+		break;
+	default:
+		printf(stderr, "Not support type '%d'\n",
+				sos_type_to_str(vtype));
+		break;
+	}
+
 	if (delete) {
 		sos_obj_remove(sos, obj);
 		sos_obj_delete(sos, obj);
