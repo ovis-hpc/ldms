@@ -107,10 +107,11 @@ static struct ldms_ugni_xprt * setup_connection(struct ldms_ugni_xprt *x,
 						int sockfd,
 						struct sockaddr*remote_addr,
 						socklen_t sa_len);
-static void _setup_connection(struct ldms_ugni_xprt *r,
+static int _setup_connection(struct ldms_ugni_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len);
 
 static void release_buf_event(struct ldms_ugni_xprt *r);
+static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r);
 
 #define UGNI_MAX_OUTSTANDING_BTE 8192
 static gni_return_t ugni_job_setup(uint8_t ptag, uint32_t cookie)
@@ -256,7 +257,7 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 	gni_return_t grc;
 	release_buf_event(gxp);
 	close(gxp->sock);
-	gxp->sock = 0;
+	gxp->sock = -1;
 	if (gxp->ugni_ep) {
 		pthread_mutex_lock(&ugni_lock);
 		grc = GNI_EpDestroy(gxp->ugni_ep);
@@ -307,6 +308,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (gxp->sock < 0)
 		return -1;
+	gxp->type = LDMS_UGNI_ACTIVE;
 
 	if (!ugni_gxp.dom.src_cq) {
 		cq_depth_s = getenv("LDMS_UGNI_CQ_DEPTH");
@@ -346,7 +348,8 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	rc = getsockname(gxp->sock, (struct sockaddr *)&ss, &sa_len);
 	if (rc)
 		goto err1;
-	_setup_connection(gxp, (struct sockaddr *)&ss, sa_len);
+	if (_setup_connection(gxp, (struct sockaddr *)&ss, sa_len))
+		goto err1;
 
 	/*
 	 * When we receive the peer's hello request, we will bind the endpoint
@@ -363,8 +366,6 @@ err1:
 				grc, gxp->ugni_ep);
 	gxp->ugni_ep = NULL;
 err:
-	close(gxp->sock);
-	gxp->sock = 0;
 	return -1;
 }
 
@@ -414,7 +415,7 @@ static int process_xprt_io(struct ldms_ugni_xprt *s, struct ldms_request *req)
 		s->xprt->recv_cb(s->xprt, req);
 	return 0;
  close_out:
-	ldms_xprt_close(s->xprt);
+	ugni_xprt_error_handling(s);
 	return -1;
 }
 
@@ -446,7 +447,7 @@ static void ugni_read(struct bufferevent *buf_event, void *arg)
 		if (!req) {
 			r->xprt->log("%s Memory allocation failure reqlen %zu\n",
 				     __FUNCTION__, reqlen);
-			ldms_xprt_close(r->xprt);
+			ugni_xprt_error_handling(r);
 			break;
 		}
 		len = evbuffer_remove(evb, req, reqlen);
@@ -493,7 +494,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		if (grc) {
 			/* The request failed, tear down the transport */
 			if (desc->gxp->xprt)
-				ldms_xprt_close(desc->gxp->xprt);
+				ugni_xprt_error_handling(ugni_from_xprt(desc->gxp->xprt));
 			goto skip;
 		}
 		switch (desc->post.type) {
@@ -570,12 +571,12 @@ static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 		if (events & (BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
 			LOG_(r, "Socket errors %x\n", events);
 		r->xprt->connected = 0;
-		ldms_xprt_close(r->xprt);
+		ugni_xprt_error_handling(r);
 	} else
 		LOG_(r, "Peer connect complete %x\n", events);
 }
 
-static void _setup_connection(struct ldms_ugni_xprt *gxp,
+static int _setup_connection(struct ldms_ugni_xprt *gxp,
 			      struct sockaddr *remote_addr, socklen_t sa_len)
 {
 	int rc;
@@ -597,14 +598,16 @@ static void _setup_connection(struct ldms_ugni_xprt *gxp,
 	}
 
 	bufferevent_setcb(gxp->buf_event, ugni_read, ugni_write, ugni_event, gxp);
-	if (bufferevent_enable(gxp->buf_event, EV_READ | EV_WRITE))
+	if (bufferevent_enable(gxp->buf_event, EV_READ | EV_WRITE)) {
 		LOG_(gxp, "Error enabling buffered I/O event for fd %d.\n",
 		     gxp->sock);
+		goto err_0;
+	}
 
-	return;
+	return 0;
 
  err_0:
-	ldms_xprt_close(gxp->xprt);
+	return -1;
 }
 
 static struct ldms_ugni_xprt *
@@ -623,9 +626,13 @@ setup_connection(struct ldms_ugni_xprt *p, int sockfd,
 	}
 
 	r = ugni_from_xprt(_x);
+	r->type = LDMS_UGNI_PASSIVE;
 	r->sock = sockfd;
 	r->xprt->local_ss = p->xprt->local_ss;
-	_setup_connection(r, remote_addr, sa_len);
+	if (_setup_connection(r, remote_addr, sa_len)) {
+		ugni_xprt_error_handling(r);
+		return NULL;
+	}
 	return r;
 }
 
@@ -644,6 +651,8 @@ static void ugni_connect_req(struct evconnlistener *listener,
 				   (struct sockaddr *)&address, socklen);
 	if (new_gxp)
 		conns ++;
+	else
+		goto setup_conn_err;
 
 	struct timeval connect_tv;
 	gettimeofday(&connect_tv, NULL);
@@ -665,6 +674,11 @@ static void ugni_connect_req(struct evconnlistener *listener,
 	req.pe_addr = htonl(new_gxp->dom.info.pe_addr);
 	req.inst_id = htonl(new_gxp->dom.info.inst_id);
 	(void)bufferevent_write(new_gxp->buf_event, &req, sizeof(req));
+
+	return;
+
+setup_conn_err:
+	gxp->xprt->log("Cannot setup connection.\n");
 }
 
 static int ugni_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t sa_len)
@@ -898,6 +912,14 @@ static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 				 (len?len:ntohl(rbuf->data_size)),
 				 context);
 	return 0;
+}
+
+static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r)
+{
+	if (r->type == LDMS_UGNI_PASSIVE)
+		ldms_xprt_close(r->xprt);
+	else
+		r->xprt->connected = 0;
 }
 
 static struct timeval to;
