@@ -87,8 +87,8 @@ int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
 
 	LIST_FOREACH(lss, &lustre_svc_head, link) {
 		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			sprintf(name, "%s.stats.%s", lss->name,
-							LUSTRE_METRICS[i]);
+			sprintf(name, "%s#stats.%s", LUSTRE_METRICS[i]
+					, lss->name);
 			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
 			if (rc)
 				return rc;
@@ -112,8 +112,8 @@ int add_metrics_lustre(ldms_set_t set, int comp_id,
 
 	LIST_FOREACH(lss, &lustre_svc_head, link) {
 		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			sprintf(name, "%s.stats.%s", lss->name,
-					LUSTRE_METRICS[i]);
+			sprintf(name, "%s#stats.%s", LUSTRE_METRICS[i]
+							, lss->name);
 			ldms_metric_t m = ldms_add_metric(set, name,
 								LDMS_V_U64);
 			if (!m)
