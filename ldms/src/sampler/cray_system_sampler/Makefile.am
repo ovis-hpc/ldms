@@ -1,16 +1,16 @@
 lib_LTLIBRARIES =
 
 CORE = ../../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I@OVIS_LIB_INCDIR@
-AM_LDFLAGS = -L@OVIS_LIB_LIB64DIR@ -L@OVIS_LIB_LIBDIR@
+AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
 if ENABLE_LUSTRE
 
-CRAY_CFLAGS_ = $(AM_CFLAGS) -I@RCA_INCDIR@ -I@KRCA_INCDIR@ \
-			-I@CRAY_HSS_DEVEL_INCDIR@ \
+CRAY_CFLAGS_ = $(AM_CFLAGS) @RCA_INCDIR_FLAG@ @KRCA_INCDIR_FLAG@ \
+			@CRAY_HSS_DEVEL_INCDIR_FLAG@ \
                         -I@CRAY_HSS_DEVEL_INCDIR@/rsms
-CRAY_LDFLAGS_ = $(AM_LDFLAGS)  -L@RCA_LIB64DIR@ -L@RCA_LIBDIR@  \
-			-L@CRAY_HSS_DEVEL_LIBDIR@ \
+CRAY_LDFLAGS_ = $(AM_LDFLAGS)  @RCA_LIB64DIR_FLAG@ @RCA_LIBDIR_FLAG@  \
+			@CRAY_HSS_DEVEL_LIBDIR_FLAG@ \
 			-lrca
 
 librtr_util_la_SOURCES = rtr_util.c rtr_util.h gemini.h
@@ -38,8 +38,8 @@ lib_LTLIBRARIES += libcray_system_sampler_r.la
 
 else
 
-CRAY_CFLAGS_ += -I@GPCD_INCDIR@ -I/home/gentile/junk
-CRAY_LDFLAGS_ += -L@GPCD_LIB64DIR@ -L@GPCD_LIBDIR@ -lgpcd
+CRAY_CFLAGS_ += @GPCD_INCDIR_FLAG@ -I/home/gentile/junk
+CRAY_LDFLAGS_ += @GPCD_LIB64DIR_FLAG@ @GPCD_LIBDIR_FLAG@ -lgpcd
 
 libgpcd_util_la_SOURCES = gpcd_util.c gpcd_util.h gemini.h
 libgpcd_util_la_CFLAGS = $(CRAY_CFLAGS_)

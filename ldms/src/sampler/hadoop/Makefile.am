@@ -1,8 +1,8 @@
 lib_LTLIBRARIES =
 
 CORE = ../../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I@OVIS_LIB_INCDIR@
-AM_LDFLAGS = -L@OVIS_LIB_LIB64DIR@ -L@OVIS_LIB_LIBDIR@
+AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
 #hadoop sampler core
 libhadoop_sampler_la_SOURCES = sampler_hadoop.c sampler_hadoop.h
