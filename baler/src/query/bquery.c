@@ -606,6 +606,20 @@ out:
 }
 
 #define STR_SZ 65536
+int expand_buff(size_t *bufsz, char **buf, char **str, size_t *str_len)
+{
+	*bufsz += STR_SZ;
+	char *newbuf = realloc(*buf, *bufsz);
+	if (!newbuf)
+		goto err;
+	*str = newbuf + (*str - *buf);
+	*str_len = *bufsz - (*str - newbuf);
+	*buf = newbuf;
+	return 0;
+err:
+	return ENOMEM;
+}
+
 char* bq_get_ptns(struct bq_store *s)
 {
 	uint32_t id = bptn_store_first_id(s->ptn_store);
@@ -617,9 +631,20 @@ char* bq_get_ptns(struct bq_store *s)
 	size_t bufsz = STR_SZ; /* Tracking the total allocated size */
 	size_t str_len = STR_SZ; /* The left over bytes to write */
 	int len;
+	int wlen;
 loop:
 	if (id > last_id)
 		goto out;
+	len = snprintf(str, str_len, "%d\t", id);
+	if (len >= str_len) {
+		rc = expand_buff(&bufsz, &buf, &str, &str_len);
+		if (rc)
+			goto err;
+		goto loop;
+	}
+	str_len -= len;
+	str += len;
+middle_loop:
 	rc = bptn_store_id2str(s->ptn_store, s->tkn_store, id, str, str_len);
 	switch (rc) {
 		case 0:
@@ -629,13 +654,9 @@ loop:
 			/* else, treat as ENOMEM */
 		case ENOMEM:
 			/* Expand buf */
-			bufsz += STR_SZ;
-			newbuf = realloc(buf, bufsz);
-			if (!newbuf)
+			rc = expand_buff(&bufsz, &buf, &str, &str_len);
+			if (rc)
 				goto err;
-			str = newbuf + (str - buf);
-			str_len = bufsz - (str - newbuf);
-			buf = newbuf;
 			goto loop;
 			break;
 		default:
@@ -649,7 +670,7 @@ loop:
 	id++;
 	goto loop;
 out:
-	str[str_len-1] = '\0';
+	*(str - 1) = '\0';
 	return buf;
 
 err:
