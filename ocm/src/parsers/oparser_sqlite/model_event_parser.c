@@ -136,14 +136,12 @@ static void handle_name(char *value)
 	case MAE_OBJ_MODEL:
 		name = &model->name;
 		goto name;
-		break;
 	case MAE_OBJ_ACTION:
 		name = &action->name;
 		goto name;
-		break;
 	case MAE_OBJ_EVENT:
-		handle_metric_name(value);
-		return;
+		name = &event->name;
+		goto name;
 	default:
 		fprintf(stderr, "invalid objective '%d'.\n", objective);
 		exit(EINVAL);
@@ -359,7 +357,18 @@ static void handle_level(char *value)
 
 static void handle_msg(char *value)
 {
-	sevl->msg = strdup(value);
+	char *s = strstr(value, "$(name)");
+	if (!s) {
+		sevl->msg = strdup(value);
+		goto out;
+	}
+
+	int len = s - value;
+	s = s + strlen("$(name)");
+	char _msg[1024];
+	sprintf(_msg, "%.*s%s%s", len, value, event->name, s);
+	sevl->msg = strdup(_msg);
+out:
 	if (!sevl->msg)
 		oom_report(__FUNCTION__);
 }
@@ -372,6 +381,7 @@ static struct kw label_tbl[] = {
 	{ "execute", handle_execute },
 	{ "level", handle_level },
 	{ "metric", handle_metric },
+	{ "metric_name", handle_metric_name },
 	{ "model", handle_model },
 	{ "model_id", handle_model_id },
 	{ "msg", handle_msg },
@@ -543,46 +553,50 @@ void oparser_actions_to_sqlite()
 
 void event_to_sqlite(struct oparser_event *event, sqlite3 *db)
 {
-	char *core = "INSERT INTO event_templates(event_id, model_id, "
-				"level, message, action_name) VALUES(";
+	char value[1024], stmt[2048];
+	sprintf(stmt, "INSERT INTO rule_templates(event_id, event_name, "
+			"model_id) VALUES(%d, '%s', %d);", event->event_id,
+			event->name, event->model_id);
 
-	char value_1[1024], value_2[512], stmt[2048];
+	insert_data(stmt, db);
 
-	sprintf(value_1, "%d, %d", event->event_id, event->model_id);
+	char *core = "INSERT INTO rule_actions(event_id, level, message, "
+							"action_name) VALUES(";
+
 	int i;
 	for (i = 0; i < MAE_NUM_LEVELS; i++) {
 		if (!event->msg_level[i].msg)
-			sprintf(value_2, "%d, NULL", i);
+			sprintf(value, "%d, NULL", i);
 		else
-			sprintf(value_2, "%d, '%s'", i,
+			sprintf(value, "%d, '%s'", i,
 					event->msg_level[i].msg);
 
 		if (event->msg_level[i].action_name[0] == '\0')
-			sprintf(value_2, "%s, NULL", value_2);
+			sprintf(value, "%s, NULL", value);
 		else
-			sprintf(value_2, "%s, '%s'", value_2,
+			sprintf(value, "%s, '%s'", value,
 					event->msg_level[i].action_name);
 
 		if (!event->msg_level[i].msg &&
 				event->msg_level[i].action_name[0] == '\0') {
-			value_2[0] = '\0';
+			value[0] = '\0';
 			continue;
 		}
 
-		sprintf(stmt, "%s%s, %s);", core, value_1, value_2);
+		sprintf(stmt, "%s%d, %s);", core, event->event_id, value);
 		insert_data(stmt, db);
-		value_2[0] = '\0';
+		value[0] = '\0';
 	}
 
-	core = "INSERT INTO rules(event_id, metric_id) VALUES(";
-	value_1[0] = value_2[0] = stmt[0] = '\0';
+	core = "INSERT INTO rule_metrics(event_id, metric_id) VALUES(";
+	value[0] = stmt[0] = '\0';
 
-	sprintf(value_1, "%d", event->event_id);
 	struct metric_id_s *mid;
 	LIST_FOREACH(mid, &event->mid_list, entry) {
 		for (i = 0; i < mid->num_metric_ids; i++) {
-			sprintf(value_2, "%" PRIu64 "", mid->metric_ids[i]);
-			sprintf(stmt, "%s%s, %s);", core, value_1, value_2);
+			sprintf(value, "%" PRIu64 "", mid->metric_ids[i]);
+			sprintf(stmt, "%s%d, %s);", core, event->event_id,
+								value);
 			insert_data(stmt, db);
 		}
 	}
@@ -590,28 +604,34 @@ void event_to_sqlite(struct oparser_event *event, sqlite3 *db)
 
 void oparser_events_to_sqlite()
 {
-	oparser_drop_table("event_templates", db);
-	oparser_drop_table("rules", db);
+	oparser_drop_table("rule_templates", db);
+	oparser_drop_table("rule_actions", db);
+	oparser_drop_table("rule_metrics", db);
 	int rc;
 	char *stmt;
-	stmt = "CREATE TABLE IF NOT EXISTS event_templates (" \
+	stmt = "CREATE TABLE IF NOT EXISTS rule_templates (" \
+			" event_id	INTEGER PRIMARY KEY	NOT NULL," \
+			" event_name	TEXT			NOT NULL," \
+			" model_id	INTEGER			NOT NULL);";
+	create_table(stmt, NULL, db);
+
+	stmt = "CREATE TABLE IF NOT EXISTS rule_actions (" \
 			" event_id	INTEGER		NOT NULL," \
-			" model_id	INTEGER		NOT NULL," \
 			" level		SMALLINT	NOT NULL," \
 			" message	TEXT," \
 			" action_name	CHAR(128)," \
 			" PRIMARY KEY(event_id, level));";
 
-	char *index_stmt = "CREATE INDEX IF NOT EXISTS event_templates_idx"
-					" ON event_templates(event_id,level);";
+	char *index_stmt = "CREATE INDEX IF NOT EXISTS rule_actions_idx"
+					" ON rule_actions(event_id,level);";
 	create_table(stmt, index_stmt, db);
 
-	stmt = "CREATE TABLE IF NOT EXISTS rules (" \
+	stmt = "CREATE TABLE IF NOT EXISTS rule_metrics (" \
 			" event_id	INTEGER		NOT NULL," \
 			" metric_id	SQLITE_uint64	NOT NULL);";
 
-	index_stmt = "CREATE INDEX IF NOT EXISTS rules_idx ON "
-					"rules(event_id,metric_id);";
+	index_stmt = "CREATE INDEX IF NOT EXISTS rule_metrics_idx ON "
+					"rule_metrics(event_id,metric_id);";
 	create_table(stmt, index_stmt, db);
 
 	struct oparser_event *event;

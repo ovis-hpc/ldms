@@ -76,7 +76,8 @@ int component_to_sqlite(struct oparser_component *comp, sqlite3 *db)
 
 void scaffold_to_sqlite(struct building_sqlite_table *btable)
 {
-	struct oparser_scaffold *scaffold = (struct oparser_scaffold *)btable->obj;
+	struct oparser_scaffold *scaffold = (struct oparser_scaffold *)
+								btable->obj;
 	sqlite3 *db = btable->db;
 
 	int rc;

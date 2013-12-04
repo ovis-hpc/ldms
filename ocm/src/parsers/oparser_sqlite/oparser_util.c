@@ -80,67 +80,6 @@ int is_numeric(char *s)
 	return 1;
 }
 
-//int process_string_expand(char *core, char *expand,
-//			struct oparser_name_queue *nlist,
-//			char *sep_start, char *sep_end)
-//{
-//	int count;
-//	char start[128], end[128], name_s[256];
-//	int start_len, end_len, max_len, start_d, end_d;
-//	char *tmp;
-//	struct oparser_name *name;
-//	int i;
-//
-//	count = sscanf(expand, "%[^-]-%[^]]", start, end);
-//
-//	if (count == 2) {
-//		/* no need to expansion */
-//		if (!is_numeric(start) || !is_numeric(end)) {
-//			name = malloc(sizeof(*name));
-//			name->name = strdup(expand);
-//			TAILQ_INSERT_TAIL(nlist, name, entry);
-//			return 1;
-//		}
-//
-//		count = 0;
-//
-//		start_len = strlen(start);
-//		end_len = strlen(end);
-//		max_len = MAX(start_len, end_len);
-//
-//		start_d = atoi(start);
-//		end_d = atoi(end);
-//
-//		for (i = start_d; i <= end_d; i++) {
-//			if (start_len != end_len) {
-//				sprintf(name_s, "%s%s%d%s", core,
-//					sep_start, i, sep_end);
-//			} else {
-//				sprintf(name_s, "%s%s%0*d%s", core, sep_start,
-//							max_len, i, sep_end);
-//			}
-//
-//			name = malloc(sizeof(*name));
-//			name->name = strdup(name_s);
-//			TAILQ_INSERT_TAIL(nlist, name, entry);
-//			count++;
-//		}
-//	} else {
-//		count = 0;
-//		tmp = strtok(expand, ",");
-//		while (tmp) {
-//			sprintf(name_s, "%s%s%s%s", core, sep_start,
-//							tmp, sep_end);
-//			name = malloc(sizeof(*name));
-//			name->name = strdup(name_s);
-//			TAILQ_INSERT_TAIL(nlist, name, entry);
-//			count++;
-//			tmp = strtok(NULL, ",");
-//		}
-//	}
-//	return count;
-//}
-
 char *get_delimiter(char *s)
 {
 	char *s1, *s2, *sep;
@@ -188,103 +127,6 @@ char *get_token(char *s, char **res)
 	*res = NULL;
 	return s;
 }
-
-/**
- * \brief Parse the string name
- *
- * \param[in]	s	The string to be parsed
- * \param[in/out]	nlist	The queue of names to be filled
- * \param[in]	sep_start	The starting delimiter of the expansion part
- * 				if name expansion is performed.
- * \param[out]	sep_end		The end delimiter of the expansion part.
- *
- * \return Number of names
- *
- * Example: s = "nid[0001,0002,0003]"
- * case 1: sep_start = sep_end = NULL
- *   Output: nid0001,nid0002,nid0003
- * case 2: sep_start ="[" and sep_end = "]"
- *   Output: nid[0001],nid[0002],nid[0003].
- *
- */
-//int process_string_name(char *s, struct oparser_name_queue *nlist,
-//					char *sep_start, char *sep_end)
-//{
-//	if (!s) {
-//		nlist = NULL;
-//		return 0;
-//	}
-//
-//	if (!sep_start)
-//		sep_start = "";
-//	if (!sep_end)
-//		sep_end = "";
-//
-//	TAILQ_INIT(nlist);
-//	struct oparser_name *name;
-//	char *tmp, *sep, *saveptr;
-//	int count, count_init;
-//	count_init = 0;
-//	sep = get_delimiter(s);
-//	tmp = strtok_r(s, sep, &saveptr);
-//	while (tmp) {
-//		name = malloc(sizeof(*name));
-//		if (tmp[0] == ',')
-//			name->name = strdup(tmp + 1);
-//		else
-//			name->name = strdup(tmp);
-//
-//		TAILQ_INSERT_TAIL(nlist, name, entry);
-//		count_init++;
-//
-//		sep = get_delimiter(saveptr);
-//		tmp = strtok_r(NULL, sep, &saveptr);
-//	}
-//
-//	count = count_init;
-//	struct oparser_name *name_next;
-//	char core[256], expand[256];
-//	int num, i, j;
-//
-//	name = TAILQ_FIRST(nlist);
-//	for (i = 0; i < count_init; i++) {
-//		name_next = name->entry.tqe_next;
-//		num = sscanf(name->name, "%[^[][%[^]]",
-//				core, expand);
-//
-//		/*
-//		 * remove every name and put the new or existing one
-//		 * at the end of the queue to preserve order
-//		 */
-//		TAILQ_REMOVE(nlist, name, entry);
-//
-//		if (num == 1) {
-//			/* Check if we need to expand the core */
-//			if (!strchr(core, ',') && !strchr(core, '[') &&
-//				!strchr(core, ']' && !strchr(core, '-'))) {
-//
-//				TAILQ_INSERT_TAIL(nlist, name, entry);
-//				continue;
-//			}
-//		}
-//
-//		free(name->name);
-//		free(name);
-//		count--;
-//
-//		if (num == 1) {
-//			count += process_string_expand("", core, nlist,
-//							sep_start, sep_end);
-//		} else {
-//			count += process_string_expand(core, expand, nlist,
-//							sep_start, sep_end);
-//		}
-//
-//		name = name_next;
-//	}
-//
-//	return count;
-//}
 
 int get_expand_token(char *s, char *start, char *end)
 {
@@ -379,6 +221,24 @@ int process_string_expand(char *prefix, char *suffix, char *expand,
 	return count;
 }
 
+/**
+ * \brief Parse the string name
+ *
+ * \param[in]	s	The string to be parsed
+ * \param[in/out]	nlist	The queue of names to be filled
+ * \param[in]	sep_start	The starting delimiter of the expansion part
+ * 				if name expansion is performed.
+ * \param[out]	sep_end		The end delimiter of the expansion part.
+ *
+ * \return Number of names
+ *
+ * Example: s = "nid[0001,0002,0003]"
+ * case 1: sep_start = sep_end = NULL
+ *   Output: nid0001,nid0002,nid0003
+ * case 2: sep_start ="[" and sep_end = "]"
+ *   Output: nid[0001],nid[0002],nid[0003].
+ *
+ */
 int process_string_name(char *s, struct oparser_name_queue *nlist,
 					char *sep_start, char *sep_end)
 {
@@ -464,7 +324,8 @@ void create_table(char *create_stmt, char *index_stmt, sqlite3 *db)
 	int rc;
 	sqlite3_stmt *sql_stmt;
 
-	rc = sqlite3_prepare_v2(db, create_stmt, strlen(create_stmt), &sql_stmt, NULL);
+	rc = sqlite3_prepare_v2(db, create_stmt, strlen(create_stmt),
+							&sql_stmt, NULL);
 	if (rc) {
 		fprintf(stderr, "Failed to prepare the create table stmt: "
 				"%s: %s\n", create_stmt, sqlite3_errmsg(db));
@@ -473,7 +334,8 @@ void create_table(char *create_stmt, char *index_stmt, sqlite3 *db)
 	rc = sqlite3_step(sql_stmt);
 	if (rc != SQLITE_DONE) {
 		fprintf(stderr, "%d: Failed to step the create table stmt: "
-				"%s: %s\n", rc, create_stmt, sqlite3_errmsg(db));
+				"%s: %s\n", rc, create_stmt,
+						sqlite3_errmsg(db));
 		exit(rc);
 	}
 	sqlite3_finalize(sql_stmt);
@@ -481,7 +343,8 @@ void create_table(char *create_stmt, char *index_stmt, sqlite3 *db)
 	if (!index_stmt)
 		return;
 
-	rc = sqlite3_prepare_v2(db, index_stmt, strlen(index_stmt), &sql_stmt, NULL);
+	rc = sqlite3_prepare_v2(db, index_stmt, strlen(index_stmt),
+							&sql_stmt, NULL);
 	if (rc) {
 		fprintf(stderr, "Failed to prepare the index_stmt: "
 				"%s: %s\n", index_stmt, sqlite3_errmsg(db));
@@ -491,7 +354,8 @@ void create_table(char *create_stmt, char *index_stmt, sqlite3 *db)
 	rc = sqlite3_step(sql_stmt);
 	if (rc != SQLITE_DONE) {
 		fprintf(stderr, "%d: Failed to step the index_stmt: "
-				"%s: %s\n", rc, create_stmt, sqlite3_errmsg(db));
+					"%s: %s\n", rc, create_stmt,
+						sqlite3_errmsg(db));
 		exit(rc);
 	}
 	sqlite3_finalize(sql_stmt);
