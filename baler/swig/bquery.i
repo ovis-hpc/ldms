@@ -81,3 +81,12 @@ char* bq_get_ptns(struct bq_store *store);
 int bq_get_ptns_r(struct bq_store *store, char *buf, size_t buflen);
 
 char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
+
+/**
+ * Get host ID.
+ * \param store The store handle.
+ * \param hostname The hostname.
+ * \returns Host ID if \c hostname is found.
+ * \returns 0 if \c hostname is not found.
+ */
+int bq_get_host_id(struct bq_store *store, const char *hostname);
