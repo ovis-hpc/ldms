@@ -453,13 +453,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto out;
 	}
 
-	/* rtrfile used for bw in both gpcd and gpcdr */
-	value = av_value(avl, "rtrfile");
-	if (value)
-		rtrfile = strdup(value);
-	else
-		rtrfile = NULL;
-
 	value = av_value(avl,"gemini_metrics_type");
 	if (value) {
 		gemini_metrics_type = atoi(value);
@@ -472,6 +465,27 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		gemini_metrics_type = GEMINI_METRICS_COUNTER;
 	}
 
+
+#ifdef HAVE_GPCDR
+	/* for GPCDR only need rtrfile for derived metrics */
+	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
+	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+
+		value = av_value(avl, "rtrfile");
+		if (value)
+			rtrfile = strdup(value);
+		else
+			rtrfile = NULL;
+	}
+#else
+	/* always need rtrfile for gpcd metrics */
+	value = av_value(avl, "rtrfile");
+	if (value)
+		rtrfile = strdup(value);
+	else
+		rtrfile = NULL;
+#endif
+
 	value = av_value(avl, "set");
 	if (value)
 		rc = create_metric_set(value);
@@ -483,6 +497,7 @@ out:
 static int sample(void)
 {
 	int rc;
+	int retrc;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
@@ -495,6 +510,7 @@ static int sample(void)
 	}
 	ldms_begin_transaction(set);
 
+	retrc = 0;
 	for (i = 0; i < NS_NUM; i++){
 		switch (i){
 		case NS_NETTOPO:
@@ -537,15 +553,14 @@ static int sample(void)
 			//do nothing
 			break;
 		}
-		/* goto out on error */
+		/* Continue if error, but eventually report an error code */
 		if (rc)
-			goto out;
+			retrc = rc;
 	}
 
-	rc = 0;
  out:
 	ldms_end_transaction(set);
-	return rc;
+	return retrc;
 }
 
 static void term(void)
