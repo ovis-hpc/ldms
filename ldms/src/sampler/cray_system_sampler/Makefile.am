@@ -38,7 +38,7 @@ lib_LTLIBRARIES += libcray_system_sampler_r.la
 
 else
 
-CRAY_CFLAGS_ += @GPCD_INCDIR_FLAG@ -I/home/gentile/junk
+CRAY_CFLAGS_ += @GPCD_INCDIR_FLAG@ 
 CRAY_LDFLAGS_ += @GPCD_LIB64DIR_FLAG@ @GPCD_LIBDIR_FLAG@ -lgpcd
 
 libgpcd_util_la_SOURCES = gpcd_util.c gpcd_util.h gemini.h
