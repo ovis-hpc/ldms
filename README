@@ -1,3 +1,2 @@
-For generic Linux clusters, please checkout the branch "release/hpc_linux"
-
-For Cray X* systems, please checkout the branch "release/cray_xe"
+Please checkout the branch "release/hpc_linux" to try out our first release of OVIS.
+There will be more branches for future releases.
