@@ -100,14 +100,18 @@ AC_CHECK_LIB(pthread, pthread_mutex_init, [],
 dnl Reset LIBS variable.
 LIBS=""
 
+AX_LIB_READLINE
+
 dnl Check for libreadline
-AC_ARG_WITH([ldflags-readline],[AS_HELP_STRING([--with-ldflags-readline],[link flags needed for deficient readline libraries, eg needing -ltermcap.])],[LDFLAGS_READLINE=$with_ldflags_readline],[])
-AC_MSG_NOTICE([User gave $LDFLAGS_READLINE for readline support])
-AC_SUBST([LDFLAGS_READLINE])
-AC_CHECK_LIB(readline, readline, [],
-    AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]),[$LDFLAGS_READLINE])
+dnl AC_ARG_WITH([ldflags-readline],[AS_HELP_STRING([--with-ldflags-readline],[link flags needed for deficient readline libraries, eg needing -ltermcap.])],[LDFLAGS_READLINE=$with_ldflags_readline],[])
+dnl AC_MSG_NOTICE([User gave $LDFLAGS_READLINE for readline support])
+dnl AC_SUBST([LDFLAGS_READLINE])
+dnl AC_CHECK_LIB(readline, readline, [],
+dnl     AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]),[$LDFLAGS_READLINE])
 dnl Reset LIBS variable.
-LIBS=""
+dnl LIBS=""
+LDFLAGS_READLINE=
+AC_SUBST([LDFLAGS_READLINE])
 
 dnl Checks for libraries
 if test -z "$ENABLE_RDMA_TRUE"

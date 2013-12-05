@@ -63,8 +63,40 @@
 #include <libgen.h>
 #include <signal.h>
 #include <search.h>
+#include "config.h"
+
+#if 1
+#ifdef HAVE_LIBREADLINE
+#  if defined(HAVE_READLINE_READLINE_H)
+#    include <readline/readline.h>
+#  elif defined(HAVE_READLINE_H)
+#    include <readline.h>
+#  else /* !defined(HAVE_READLINE_H) */
+extern char *readline ();
+#  endif /* !defined(HAVE_READLINE_H) */
+char *cmdline = NULL;
+#else /* !defined(HAVE_READLINE_READLINE_H) */
+  /* no readline */
+#endif /* HAVE_LIBREADLINE */
+
+#ifdef HAVE_READLINE_HISTORY
+#  if defined(HAVE_READLINE_HISTORY_H)
+#    include <readline/history.h>
+#  elif defined(HAVE_HISTORY_H)
+#    include <history.h>
+#  else /* !defined(HAVE_HISTORY_H) */
+extern void add_history ();
+extern int write_history ();
+extern int read_history ();
+#  endif /* defined(HAVE_READLINE_HISTORY_H) */
+  /* no history */
+#endif /* HAVE_READLINE_HISTORY */
+
+#else
+
 #include <readline/readline.h>
 #include <readline/history.h>
+#endif
 #include "ldms.h"
 #include "ldmsd.h"
 #include <ovis_ctrl/ctrl.h>
@@ -308,13 +340,20 @@ int main(int argc, char *argv[])
 	}
 	atexit(cleanup);
 	do {
-		if (isatty(0))
+#ifdef HAVE_LIBREADLINE
+		if (isatty(0) ) {
 			s = readline("ldmsctl> ");
-		else
+		} else {
+#endif
 			s = fgets(linebuf, sizeof linebuf, stdin);
+#ifdef HAVE_LIBREADLINE
+		}
+#endif
 		if (!s)
 			break;
+#ifdef HAVE_READLINE_HISTORY
 		add_history(s);
+#endif
 		err_str[0] = '\0';
 		rc = tokenize(s, kw_list, av_list);
 		if (rc) {
