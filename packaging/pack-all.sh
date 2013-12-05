@@ -1,5 +1,6 @@
-#!/bin/sh
+#!/bin/sh +x
 noinst=echo
+noinst=
 # unset noinst ;# to make packages install
 if test -f packaging/pack-all.sh; then
 	echo "building all and installing in /opt/ovis"
@@ -13,12 +14,12 @@ if test -f packaging/pack-all.sh; then
 	po=.build-sos/centos/RPMS/x86_64
 	pd=.build-ldms/centos/RPMS/x86_64
 	packaging/pack-ovis-lib-rpms.sh && \
-	$noinst sudo su -c "rpm -Uvh $pl/ovis-lib-1* $pl/ovis-lib-devel-* $pl/ovis-lib-doc*" \
+	$noinst sudo su -c "rpm -Uvh $pl/ovis-lib-* $pl/ovis-lib-devel-* $pl/ovis-lib-doc*" \
 	&& packaging/pack-ovis-sos-rpms.sh && \
-	$noinst sudo su -c "rpm -Uvh $po/ovis-sos-1*  $po/ovis-sos-dev* $po/ovis-sos-doc*" \
+	$noinst sudo su -c "rpm -Uvh $po/ovis-sos-*  $po/ovis-sos-dev* $po/ovis-sos-doc*" \
 	&& packaging/pack-ovis-ldms-rpms.sh && echo SUCCESSFUL PACKING && \
-	mkdir centos-rpms centos-srpms && \
-	$noinst sudo su -c "rpm -Uvh $pd/ovis-ldms-1*  $po/ovis-ldms-dev* $po/ovis-sos-doc*" \
+	mkdir -p centos-rpms centos-srpms && \
+	$noinst sudo su -c "rpm -Uvh $pd/ovis-ldms-*  $pd/ovis-ldms-dev* $pd/ovis-sos-doc*" && \
 	cp $pl/../../SRPMS/* $po/../../SRPMS/* $pd/../../SRPMS/* centos-srpms && \
 	cp $pl/*rpm $po/*rpm $pd/*rpm centos-rpms && echo "DUMPED RPMS in centos-srpms,centos-rpms" && \
 	rm -rf .build-lib .build-sos .build-ldms
