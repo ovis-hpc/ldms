@@ -44,6 +44,10 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
                [Define to 1 if you have rdma/rdma_cma.h.])],
     [AC_MSG_ERROR([Missing header. librdmacm-devel not installed?])])
   fi
+else
+dnl  libevent only needed for zap.
+ENABLE_LIBEVENT_TRUE='#'
+ENABLE_LIBEVENT_FALSE=
 fi
 OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
