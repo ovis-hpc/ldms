@@ -7,8 +7,16 @@ cscope*
 autom4te.cache*
 src/.libs/*
 Makefile.in
-config
 configure
 build*
 config.h.in
 *.m4
+config.guess
+config.sub
+depcomp
+install-sh
+ltmain.sh
+missing
+compile
+py-compile
+

@@ -1,7 +1,6 @@
 *.o
 *.lo
 *.la
-config
 config.h
 config.h.in*
 config.log
