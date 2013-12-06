@@ -20,6 +20,7 @@ centos toss rpm: dist-gzip
 
 doc:
 	doxygen Doxyfile
+	@(errcnt=`wc -l sos.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
 
 rpm-clean:
 	rm -rf rpm/ centos/
@@ -27,6 +28,8 @@ rpm-clean:
 
 doxygen doxygen/html:
 	doxygen ./Doxyfile
+	@(errcnt=`wc -l sos.doxygen.log`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
+	
 
 install-data-local: doxygen
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search

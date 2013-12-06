@@ -23,6 +23,7 @@ rpm-clean:
 
 doxygen doxygen/html:
 	doxygen ./Doxyfile
+	@(errcnt=`wc -l lib.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
 
 install-data-local: doxygen
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search

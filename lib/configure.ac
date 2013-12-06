@@ -7,6 +7,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE([foreign])
 AM_PROG_LIBTOOL
+AC_LIB_RPATH
 
 dnl Checks for programs
 AC_PROG_CC
@@ -68,3 +69,9 @@ AC_OUTPUT(Makefile
 	  src/zap/rdma/Makefile
 	  src/zap/sock/Makefile
 	  src/zap/test/Makefile)
+
+if test "x$enable_rpath" != "xyes"; then
+echo "TURNING libtool rpath into no-ops"
+sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
+sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+fi

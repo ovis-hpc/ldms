@@ -15,7 +15,7 @@ License: GPLv2 or BSD
 Group: %{ldms_grp}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
-Url: http://ogc.us/
+Url: http://ovis.ca.sandia.gov/
 
 %description
 This package provides the LDMS commands and libraries.

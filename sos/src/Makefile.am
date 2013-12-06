@@ -113,7 +113,9 @@ oidx_LDADD = \
 mds_load_SOURCES = mds_load.c mds.h
 mds_load_LDADD = \
 	libsos.la \
-	libidx.la
+	libidx.la \
+	liboidx.la \
+	libods.la
 mds_load_LDFLAGS = -lpthread
 
 ods_dump_SOURCES = ods_dump.c
@@ -123,7 +125,10 @@ oidx_dump_SOURCES = oidx_dump.c
 oidx_dump_LDADD = liboidx.la libods.la
 
 mds_query_SOURCES = mds_query.c mds.h
-mds_query_LDADD = libsos.la
+mds_query_LDADD = libsos.la \
+        liboidx.la \
+        libods.la
+
 
 libsos_conf = /etc/ld.so.conf.d/libsos.conf
 
