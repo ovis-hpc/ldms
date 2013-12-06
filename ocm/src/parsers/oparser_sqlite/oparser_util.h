@@ -109,8 +109,6 @@ uint64_t gen_metric_id(uint32_t comp_id, uint32_t metric_type_id);
  */
 void trim_trailing_space(char *s);
 
-void insert_data(char *stmt, sqlite3 *db);
-
 void create_table(char *create_stmt, char *index_stmt, sqlite3 *db);
 
 struct building_sqlite_table;
@@ -122,5 +120,10 @@ struct building_sqlite_table {
 	build_sqlite_table_fn fn;
 };
 
+void oparser_bind_text(sqlite3 *db, sqlite3_stmt *stmt, int idx,
+					char *value, const char *fn_name);
+
+void oparser_finish_insert(sqlite3 *db, sqlite3_stmt *stmt,
+						const char *fn_name);
 
 #endif /* UTIL_H_ */

@@ -298,27 +298,6 @@ void destroy_oparser_cmd_queue(struct oparser_cmd_queue *cmd_queue)
 	}
 }
 
-
-void insert_data(char *stmt, sqlite3 *db)
-{
-	int rc;
-	sqlite3_stmt *sql_stmt;
-	rc = sqlite3_prepare_v2(db, stmt, strlen(stmt), &sql_stmt, NULL);
-	if (rc) {
-		fprintf(stderr, "Failed to insert: %s: %s\n", stmt,
-							sqlite3_errmsg(db));
-		exit(rc);
-	}
-	rc = sqlite3_step(sql_stmt);
-	if (rc != SQLITE_DONE) {
-		fprintf(stderr, "errcode = %d\n", rc);
-		fprintf(stderr, "%d: Failed to step: %s: %s\n",
-				rc, stmt, sqlite3_errmsg(db));
-		exit(rc);
-	}
-	sqlite3_finalize(sql_stmt);
-}
-
 void create_table(char *create_stmt, char *index_stmt, sqlite3 *db)
 {
 	int rc;
@@ -382,4 +361,72 @@ void oparser_drop_table(char *table_name, sqlite3 *db)
 		exit(rc);
 	}
 	sqlite3_finalize(sql_stmt);
+}
+
+void oparser_bind_text(sqlite3 *db, sqlite3_stmt *stmt, int idx,
+					char *value, const char *fn_name)
+{
+	int rc = sqlite3_bind_text(stmt, idx, value, -1, SQLITE_TRANSIENT);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: bind_text[%s]: %s\n", fn_name, rc,
+						value, sqlite3_errmsg(db));
+		exit(rc);
+	}
+}
+
+void oparser_bind_int(sqlite3 *db, sqlite3_stmt *stmt, int idx, int value,
+							const char *fn_name)
+{
+	int rc = sqlite3_bind_int(stmt, idx, value);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: bind_int[%d]: %s\n", fn_name, rc,
+						value, sqlite3_errmsg(db));
+		exit(rc);
+	}
+}
+
+void oparser_bind_int64(sqlite3 *db, sqlite3_stmt *stmt, int idx, uint64_t value,
+							const char *fn_name)
+{
+	int rc = sqlite3_bind_int64(stmt, idx, value);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: bind_int64[%" PRIu64 "]: %s\n",
+				fn_name, rc, value, sqlite3_errmsg(db));
+		exit(rc);
+	}
+}
+
+void oparser_bind_null(sqlite3 *db, sqlite3_stmt *stmt, int idx,
+						const char *fn_name)
+{
+	int rc = sqlite3_bind_null(stmt, idx);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: bind_null: %s\n", fn_name, rc,
+							sqlite3_errmsg(db));
+		exit(rc);
+	}
+}
+
+void oparser_finish_insert(sqlite3 *db, sqlite3_stmt *stmt, const char *fn_name)
+{
+	int rc = sqlite3_step(stmt);
+	if (SQLITE_DONE != rc) {
+		fprintf(stderr, "%s[%d]: error step: %s\n", fn_name, rc,
+							sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	rc = sqlite3_clear_bindings(stmt);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: error clear_binding: %s\n",
+				fn_name, rc, sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	rc = sqlite3_reset(stmt);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: error reset: %s\n", fn_name, rc,
+							sqlite3_errmsg(db));
+		exit(rc);
+	}
 }

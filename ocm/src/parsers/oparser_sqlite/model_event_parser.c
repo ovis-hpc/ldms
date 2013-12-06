@@ -482,39 +482,37 @@ void oparser_print_models_n_rules(FILE *out)
 		mae_print_event(event, out);
 }
 
-void model_to_sqlite(struct oparser_model *model, sqlite3 *db)
+void model_to_sqlite(struct oparser_model *model, sqlite3 *db,
+						sqlite3_stmt *stmt)
 {
-	char *core = "INSERT INTO models(name, model_id, params, thresholds, "
-			"report_flags) VALUES(";
-	char stmt[1024];
-	char vary[512];
+	oparser_bind_text(db, stmt, 1, model->name, __FUNCTION__);
+	oparser_bind_int(db, stmt, 2, model->model_id, __FUNCTION__);
 
-	sprintf(vary, "'%s', %d", model->name, model->model_id);
 	if (!model->params)
-		sprintf(vary, "%s, NULL", vary);
+		oparser_bind_null(db, stmt, 3, __FUNCTION__);
 	else
-		sprintf(vary, "%s, '%s'", vary, model->params);
+		oparser_bind_text(db, stmt, 3, model->params, __FUNCTION__);
 
 	if (!model->thresholds)
-		sprintf(vary, "%s, NULL", vary);
+		oparser_bind_null(db, stmt, 4, __FUNCTION__);
 	else
-		sprintf(vary, "%s, '%s'", vary, model->thresholds);
+		oparser_bind_text(db, stmt, 4, model->thresholds, __FUNCTION__);
 
 	if (!model->report_flags)
-		sprintf(vary, "%s, NULL", vary);
+		oparser_bind_null(db, stmt, 5, __FUNCTION__);
 	else
-		sprintf(vary, "%s, '%s'", vary, model->report_flags);
+		oparser_bind_text(db, stmt, 5, model->report_flags,
+							__FUNCTION__);
 
-	sprintf(stmt, "%s%s);", core, vary);
-	insert_data(stmt, db);
+	oparser_finish_insert(db, stmt, __FUNCTION__);
 }
 
 void oparser_models_to_sqlite()
 {
 	oparser_drop_table("models", db);
 	int rc;
-	char *stmt;
-	stmt = "CREATE TABLE IF NOT EXISTS models(" \
+	char *stmt_s;
+	stmt_s = "CREATE TABLE IF NOT EXISTS models(" \
 			" name		CHAR(64)	NOT NULL," \
 			" model_id	INTEGER	PRIMARY KEY	NOT NULL," \
 			" params	TEXT," \
@@ -522,11 +520,36 @@ void oparser_models_to_sqlite()
 			" report_flags	CHAR(4));";
 
 	char *index_stmt = "CREATE INDEX IF NOT EXISTS models_idx ON models(name);";
-	create_table(stmt, index_stmt, db);
+	create_table(stmt_s, index_stmt, db);
+
+	stmt_s = "INSERT INTO models(name, model_id, params, thresholds, "
+			"report_flags) VALUES(@name, @mid, @param, @th, @rf)";
+	sqlite3_stmt *stmt;
+	char *errmsg;
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
+						(const char **)&errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
 
 	struct oparser_model *model;
 	TAILQ_FOREACH(model, &model_q, entry) {
-		model_to_sqlite(model, db);
+		model_to_sqlite(model, db, stmt);
+	}
+
+	sqlite3_finalize(stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
 	}
 }
 
@@ -534,70 +557,84 @@ void oparser_actions_to_sqlite()
 {
 	oparser_drop_table("actions", db);
 	int rc;
-	char *stmt;
-	stmt = "CREATE TABLE IF NOT EXISTS actions(" \
+	char *stmt_s;
+	sqlite3_stmt *stmt;
+	char *errmsg;
+	stmt_s = "CREATE TABLE IF NOT EXISTS actions(" \
 			" name		CHAR(128) PRIMARY KEY	NOT NULL," \
 			" execute	TEXT	NOT NULL);";
 
-	create_table(stmt, NULL, db);
+	create_table(stmt_s, NULL, db);
 
-	char *core = "INSERT INTO actions(name, execute) VALUES(";
+	stmt_s = "INSERT INTO actions(name, execute) VALUES(@name, @exec)";
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
+						(const char **)&errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
+
 	char vary[512], insert_stmt[1024];
 	struct oparser_action *action;
 	TAILQ_FOREACH(action, &action_q, entry) {
-		sprintf(vary, "'%s', '%s'", action->name, action->execute);
-		sprintf(insert_stmt, "%s%s);", core, vary);
-		insert_data(insert_stmt, db);
+		oparser_bind_text(db, stmt, 1, action->name, __FUNCTION__);
+		oparser_bind_text(db, stmt, 2, action->execute, __FUNCTION__);
+		oparser_finish_insert(db, stmt, __FUNCTION__);
+	}
+
+	sqlite3_finalize(stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
 	}
 }
 
-void event_to_sqlite(struct oparser_event *event, sqlite3 *db)
+void event_to_sqlite(struct oparser_event *event, sqlite3 *db,
+		sqlite3_stmt *action_stmt, sqlite3_stmt *metric_stmt)
 {
-	char value[1024], stmt[2048];
-	sprintf(stmt, "INSERT INTO rule_templates(event_id, event_name, "
-			"model_id) VALUES(%d, '%s', %d);", event->event_id,
-			event->name, event->model_id);
+	int i, level;
+	for (level = 0; level < MAE_NUM_LEVELS; level++) {
 
-	insert_data(stmt, db);
-
-	char *core = "INSERT INTO rule_actions(event_id, level, message, "
-							"action_name) VALUES(";
-
-	int i;
-	for (i = 0; i < MAE_NUM_LEVELS; i++) {
-		if (!event->msg_level[i].msg)
-			sprintf(value, "%d, NULL", i);
-		else
-			sprintf(value, "%d, '%s'", i,
-					event->msg_level[i].msg);
-
-		if (event->msg_level[i].action_name[0] == '\0')
-			sprintf(value, "%s, NULL", value);
-		else
-			sprintf(value, "%s, '%s'", value,
-					event->msg_level[i].action_name);
-
-		if (!event->msg_level[i].msg &&
-				event->msg_level[i].action_name[0] == '\0') {
-			value[0] = '\0';
+		if (!event->msg_level[level].msg &&
+			event->msg_level[level].action_name[0] == '\0') {
 			continue;
 		}
 
-		sprintf(stmt, "%s%d, %s);", core, event->event_id, value);
-		insert_data(stmt, db);
-		value[0] = '\0';
-	}
+		oparser_bind_int(db, action_stmt, 1, event->event_id,
+							__FUNCTION__);
+		oparser_bind_int(db, action_stmt, 2, level, __FUNCTION__);
+		if (!event->msg_level[level].msg)
+			oparser_bind_null(db, action_stmt, 3, __FUNCTION__);
+		else
+			oparser_bind_text(db, action_stmt, 3,
+				event->msg_level[level].msg, __FUNCTION__);
 
-	core = "INSERT INTO rule_metrics(event_id, metric_id) VALUES(";
-	value[0] = stmt[0] = '\0';
+		if (event->msg_level[level].action_name[0] == '\0')
+			oparser_bind_null(db, action_stmt, 4, __FUNCTION__);
+		else
+			oparser_bind_text(db, action_stmt, 4,
+					event->msg_level[level].action_name,
+								__FUNCTION__);
+
+		oparser_finish_insert(db, action_stmt, __FUNCTION__);
+	}
 
 	struct metric_id_s *mid;
 	LIST_FOREACH(mid, &event->mid_list, entry) {
 		for (i = 0; i < mid->num_metric_ids; i++) {
-			sprintf(value, "%" PRIu64 "", mid->metric_ids[i]);
-			sprintf(stmt, "%s%d, %s);", core, event->event_id,
-								value);
-			insert_data(stmt, db);
+			oparser_bind_int(db, metric_stmt, 1, event->event_id,
+								__FUNCTION__);
+			oparser_bind_int64(db, metric_stmt, 2,
+					mid->metric_ids[i], __FUNCTION__);
+			oparser_finish_insert(db, metric_stmt, __FUNCTION__);
 		}
 	}
 }
@@ -608,14 +645,14 @@ void oparser_events_to_sqlite()
 	oparser_drop_table("rule_actions", db);
 	oparser_drop_table("rule_metrics", db);
 	int rc;
-	char *stmt;
-	stmt = "CREATE TABLE IF NOT EXISTS rule_templates (" \
+	char *stmt_s;
+	stmt_s = "CREATE TABLE IF NOT EXISTS rule_templates (" \
 			" event_id	INTEGER PRIMARY KEY	NOT NULL," \
 			" event_name	TEXT			NOT NULL," \
 			" model_id	INTEGER			NOT NULL);";
-	create_table(stmt, NULL, db);
+	create_table(stmt_s, NULL, db);
 
-	stmt = "CREATE TABLE IF NOT EXISTS rule_actions (" \
+	stmt_s = "CREATE TABLE IF NOT EXISTS rule_actions (" \
 			" event_id	INTEGER		NOT NULL," \
 			" level		SMALLINT	NOT NULL," \
 			" message	TEXT," \
@@ -624,19 +661,75 @@ void oparser_events_to_sqlite()
 
 	char *index_stmt = "CREATE INDEX IF NOT EXISTS rule_actions_idx"
 					" ON rule_actions(event_id,level);";
-	create_table(stmt, index_stmt, db);
+	create_table(stmt_s, index_stmt, db);
 
-	stmt = "CREATE TABLE IF NOT EXISTS rule_metrics (" \
+	stmt_s = "CREATE TABLE IF NOT EXISTS rule_metrics (" \
 			" event_id	INTEGER		NOT NULL," \
 			" metric_id	SQLITE_uint64	NOT NULL);";
 
 	index_stmt = "CREATE INDEX IF NOT EXISTS rule_metrics_idx ON "
 					"rule_metrics(event_id,metric_id);";
-	create_table(stmt, index_stmt, db);
+	create_table(stmt_s, index_stmt, db);
+
+	sqlite3_stmt *rule_templates_stmt;
+	sqlite3_stmt *rule_actions_stmt;
+	sqlite3_stmt *rule_metrics_stmt;
+	char *errmsg;
+
+	stmt_s = "INSERT INTO rule_templates(event_id, event_name, "
+			"model_id) VALUES(@eid, @ename, @model_id)";
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
+			&rule_templates_stmt, (const char **)&errmsg);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: error prepare[rule_templates]:"
+				" %s\n", __FUNCTION__, rc, errmsg);
+		exit(rc);
+	}
+
+	stmt_s = "INSERT INTO rule_actions(event_id, level, message, "
+			"action_name) VALUES(@eid, @level, @msg, @aname)";
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
+			&rule_actions_stmt, (const char **)&errmsg);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: error prepare[rule_actions]:"
+				" %s\n", __FUNCTION__, rc, errmsg);
+		exit(rc);
+	}
+
+	stmt_s = "INSERT INTO rule_metrics(event_id, metric_id) "
+			"VALUES(@eid, @mid)";
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
+			&rule_metrics_stmt, (const char **)&errmsg);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: error prepare[rule_metrics]:"
+				" %s\n", __FUNCTION__, rc, errmsg);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
 
 	struct oparser_event *event;
 	TAILQ_FOREACH(event, &event_q, entry) {
-		event_to_sqlite(event, db);
+
+		oparser_bind_int(db, rule_templates_stmt, 1, event->event_id, __FUNCTION__);
+		oparser_bind_text(db, rule_templates_stmt, 2, event->name, __FUNCTION__);
+		oparser_bind_int(db, rule_templates_stmt, 3, event->model_id, __FUNCTION__);
+		oparser_finish_insert(db, rule_templates_stmt, __FUNCTION__);
+
+		event_to_sqlite(event, db, rule_actions_stmt,
+						rule_metrics_stmt);
+	}
+
+	sqlite3_finalize(rule_templates_stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
 	}
 }
 

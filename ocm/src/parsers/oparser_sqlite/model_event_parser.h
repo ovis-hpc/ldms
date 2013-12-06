@@ -49,7 +49,7 @@ LIST_HEAD(metric_id_list, metric_id_s);
 
 struct oparser_event {
 	int event_id;
-	const char *name;
+	char *name;
 	int model_id;
 	struct metric_id_list mid_list;
 	int num_metric_id_set;

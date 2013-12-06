@@ -16,107 +16,116 @@
 #include "component_parser.h"
 #include "oparser_util.h"
 
-int component_to_sqlite(struct oparser_component *comp, sqlite3 *db)
+/**
+ * \brief Get the comma-separated string of chrildren comp id
+ * \param   children_s   A allocated string
+ */
+void get_children_string(char *children_s, int len,
+				struct oparser_component *comp)
 {
-	int rc;
-	char stmt[4086];
-	char vary[2043];
-	char children[1024];
-	char *core = "INSERT INTO components(name, type, comp_id"
-			", parent_id, children_ids) VALUES(";
-	if (comp->parent) {
-		if (comp->name)
-			sprintf(vary, "'%s', '%s', %" PRIu32 ", %" PRIu32 ", ",
-				comp->name, comp->comp_type->type,
-				comp->comp_id, comp->parent->comp_id);
-		else
-			sprintf(vary, "'%s', '%s', %" PRIu32 ", %" PRIu32 ", ",
-				comp->comp_type->type, comp->comp_type->type,
-				comp->comp_id, comp->parent->comp_id);
-	} else {
-		if (comp->name)
-			sprintf(vary, "'%s', '%s', %" PRIu32 ", NULL, ",
-					comp->name, comp->comp_type->type,
-					comp->comp_id);
-		else
-			sprintf(vary, "'%s', '%s', %" PRIu32 ", NULL, ",
-					comp->comp_type->type,
-					comp->comp_type->type, comp->comp_id);
-	}
-
 	int i;
 	struct oparser_component *child;
+	int each_len;
+	int remain_len = len;
 	for (i = 0; i < comp->num_child_types; i++) {
 		LIST_FOREACH(child, &comp->children[i], entry) {
 			if (i == 0) {
-				sprintf(children, "'%" PRIu32, child->comp_id);
+				each_len = snprintf(children_s, remain_len,
+						"%" PRIu32, child->comp_id);
 			} else {
-				sprintf(children, "%s,%" PRIu32, children,
-								child->comp_id);
+				each_len = snprintf(children_s, remain_len,
+						"%" PRIu32, child->comp_id);
 			}
+			children_s += each_len;
+			if (each_len == 0) {
+				fprintf(stderr, "children string buffer "
+							"is too small. size is %d."
+							"the remain is %d."
+							"No is %d\n",
+							len, remain_len, i);
+				exit(ENOMEM);
+			}
+
+			remain_len -= each_len;
+			if (remain_len < 0) {
+				fprintf(stderr, "children string buffer "
+							"is too small. size is %d."
+							"the remain is %d."
+							"No is %d\n",
+							len, remain_len, i);
+				exit(ENOMEM);
+			}
+			i++;
 		}
 	}
+}
 
-	if (comp->num_child_types > 0)
-		sprintf(children, "%s'", children);
+int component_to_sqlite(struct oparser_component *comp, sqlite3 *db,
+							sqlite3_stmt *stmt)
+{
+	int rc;
+	char vary[2043];
+
+	if (comp->name)
+		oparser_bind_text(db, stmt, 1, comp->name, __FUNCTION__);
 	else
-		sprintf(children, "NULL");
+		oparser_bind_text(db, stmt, 1, comp->comp_type->type,
+						__FUNCTION__);
 
-	sprintf(stmt, "%s%s%s);", core, vary, children);
-	insert_data(stmt, db);
+	oparser_bind_text(db, stmt, 2, comp->comp_type->type, __FUNCTION__);
+	oparser_bind_int(db, stmt, 3, comp->comp_id, __FUNCTION__);
+
+	if (comp->parent)
+		oparser_bind_int64(db, stmt, 4, comp->parent->comp_id,
+							__FUNCTION__);
+	else
+		oparser_bind_null(db, stmt, 4, __FUNCTION__);
+
+	int i;
+	struct oparser_component *child;
+
+	oparser_finish_insert(db, stmt, __FUNCTION__);
 
 	for (i = 0; i < comp->num_child_types; i++) {
 		LIST_FOREACH(child, &comp->children[i], entry) {
-			component_to_sqlite(child, db);
+			component_to_sqlite(child, db, stmt);
 		}
 	}
 
 	return rc;
 }
 
-void scaffold_to_sqlite(struct building_sqlite_table *btable)
-{
-	struct oparser_scaffold *scaffold = (struct oparser_scaffold *)
-								btable->obj;
-	sqlite3 *db = btable->db;
-
-	int rc;
-	char *stmt;
-	stmt =	"CREATE TABLE components(" \
-			"name		CHAR(64)	NOT NULL," \
-			"type		CHAR(64)	NOT NULL," \
-			"comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
-			"parent_id	SQLITE_uint32," \
-			"children_ids	TEXT);";
-
-	char *index_stmt = "CREATE INDEX components_idx ON components(name,type);";
-	create_table(stmt, index_stmt, db);
-
-	int i;
-	struct oparser_component_list *clist;
-	struct oparser_component *comp;
-	for (i = 0; i < scaffold->num_child_types; i++) {
-		clist = &scaffold->children[i];
-		LIST_FOREACH(comp, clist, entry)
-			component_to_sqlite(comp, db);
-	}
-	printf("Complete table 'components'\n");
-}
-
 void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 {
 	oparser_drop_table("components", db);
 	int rc;
-	char *stmt;
-	stmt =	"CREATE TABLE components(" \
-			"name		CHAR(64)	NOT NULL," \
-			"type		CHAR(64)	NOT NULL," \
-			"comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
-			"parent_id	SQLITE_uint32," \
-			"children_ids	TEXT);";
+	char *stmt_s;
+	stmt_s = "CREATE TABLE components(" \
+		 "name		CHAR(64)	NOT NULL," \
+		 "type		CHAR(64)	NOT NULL," \
+		 "comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
+		 "parent_id	SQLITE_uint32);";
 
 	char *index_stmt = "CREATE INDEX components_idx ON components(name,type);";
-	create_table(stmt, index_stmt, db);
+	create_table(stmt_s, index_stmt, db);
+
+	stmt_s = "INSERT INTO components(name, type, comp_id, parent_id) " \
+			"VALUES(@vname, @vtype, @vcomp_id, @vpid)";
+
+	sqlite3_stmt *stmt;
+	char *sqlite_err = 0;
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
+					(const char **)&sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n",__FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
 
 	int i;
 	struct oparser_component_list *clist;
@@ -124,6 +133,14 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 	for (i = 0; i < scaffold->num_child_types; i++) {
 		clist = &scaffold->children[i];
 		LIST_FOREACH(comp, clist, entry)
-			component_to_sqlite(comp, db);
+			component_to_sqlite(comp, db, stmt);
+	}
+
+	sqlite3_finalize(stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
 	}
 }
