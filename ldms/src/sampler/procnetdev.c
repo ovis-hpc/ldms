@@ -79,7 +79,7 @@ static char varname[][30] =
 
 int niface = 0;
 //max number of interfaces we can include. FIXME: alloc as added
-#define MAXIFACE 5
+#define MAXIFACE 10
 static char iface[MAXIFACE][20];
 
 ldms_set_t set;
