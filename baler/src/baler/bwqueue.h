@@ -15,6 +15,7 @@
 #include "butils.h"
 #include <sys/queue.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 /**
  * Baler Input Queue entry data.
@@ -58,7 +59,8 @@ struct bwq_entry {
 static
 void binq_entry_free(struct bwq_entry *ent)
 {
-	bstr_list_free(ent->data.in.tokens);
+	if (ent->data.in.tokens)
+		bstr_list_free(ent->data.in.tokens);
 	free(ent->data.in.hostname);
 	free(ent);
 }
@@ -70,7 +72,7 @@ void binq_entry_free(struct bwq_entry *ent)
 static
 void boutq_entry_free(struct bwq_entry *ent)
 {
-	free(ent->data.out.msg);
+	bmsg_free(ent->data.out.msg);
 	free(ent);
 }
 
@@ -80,8 +82,8 @@ void boutq_entry_free(struct bwq_entry *ent)
 struct bwq {
 	struct bwq_head head; /**< Queue head */
 	pthread_mutex_t qmutex; /**< Queue mutex */
-	pthread_cond_t avail_cond; /**< Data availability condition */
-	pthread_mutex_t avail_cond_mutex; /**< Mutex for ::bwq::avail_cond */
+	sem_t nq_sem; /**< Semaphore for enqueueing */
+	sem_t dq_sem; /**< Semaphore for dequeueing */
 };
 
 /**
@@ -92,9 +94,10 @@ struct bwq {
 static inline
 void bwq_nq(struct bwq *q, struct bwq_entry *ent)
 {
+	sem_wait(&q->nq_sem);
 	pthread_mutex_lock(&q->qmutex);
 	TAILQ_INSERT_TAIL(&q->head, ent, link);
-	pthread_cond_signal(&q->avail_cond);
+	sem_post(&q->dq_sem);
 	pthread_mutex_unlock(&q->qmutex);
 }
 
@@ -108,15 +111,11 @@ static inline
 struct bwq_entry* bwq_dq(struct bwq *q)
 {
 	struct bwq_entry *ent;
+	sem_wait(&q->dq_sem);
 	pthread_mutex_lock(&q->qmutex);
-try_again:
 	ent = TAILQ_FIRST(&q->head);
-	if (ent)
-		TAILQ_REMOVE(&q->head, ent, link);
-	else {
-		pthread_cond_wait(&q->avail_cond, &q->qmutex);
-		goto try_again;
-	}
+	TAILQ_REMOVE(&q->head, ent, link);
+	sem_post(&q->nq_sem);
 	pthread_mutex_unlock(&q->qmutex);
 	return ent;
 }
@@ -124,8 +123,9 @@ try_again:
 /**
  * Initialization of ::bwq.
  * \param q The ::bwq to be initialized.
+ * \param qsize The queue size.
  */
-void bwq_init(struct bwq *q);
+void bwq_init(struct bwq *q, size_t qsize);
 
 /**
  * Convenient allocation function WITHOUT structure initialization.
@@ -136,10 +136,13 @@ struct bwq* bwq_alloc();
 
 /**
  * Convenient allocation function WITH structure initialization.
+ *
+ * \param qsize The size of the work queue.
+ *
  * \return On success, a pointer to ::bwq.
  * \return NULL on failure.
  */
-struct bwq* bwq_alloci();
+struct bwq* bwq_alloci(size_t qsize);
 
 #endif /* __BWQUEUE_H */
 /**\}*/

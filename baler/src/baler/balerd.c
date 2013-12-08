@@ -207,6 +207,14 @@ struct btkn_store *comp_store; /**< Token store for comp_id */
 void* binqwkr_routine(void *arg);
 void* boutqwkr_routine(void *arg);
 
+void bconfig_list_free(struct bconfig_list *bl) {
+	struct bpair_str *bp;
+	while ((bp = LIST_FIRST(&bl->arg_head_s))) {
+		LIST_REMOVE(bp, link);
+		bpair_str_free(bp);
+	}
+	free(bl);
+}
 /**
  * Baler Daemon Initialization.
  */
@@ -222,13 +230,13 @@ void initialize_daemon()
 		binfo("Daemonized");
 	}
 	/* Input/Output Work Queue */
-	binq = bwq_alloci();
+	binq = bwq_alloci(1024);
 	if (!binq) {
 		berror("(binq) bwq_alloci");
 		exit(-1);
 	}
 
-	boutq = bwq_alloci();
+	boutq = bwq_alloci(1024);
 	if (!boutq) {
 		berror("(boutq) bwq_alloci");
 		exit(-1);
@@ -634,6 +642,8 @@ int process_command(const char *cmd)
 		rc = EINVAL;
 	}
 
+	bconfig_list_free(cfg);
+
 	return rc;
 }
 
@@ -908,6 +918,7 @@ loop:
 		/* XXX Do better error handling ... */
 		berr("process input error ...");
 	}
+	binq_entry_free(ent);
 	goto loop;
 }
 
@@ -951,6 +962,7 @@ loop:
 		/* XXX Do better error handling ... */
 		berr("process input error, code %d\n", errno);
 	}
+	boutq_entry_free(ent);
 	goto loop;
 }
 

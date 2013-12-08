@@ -343,11 +343,11 @@ struct bwq_entry* prepare_bwq_entry(struct bstr *s)
 	struct bstr_list_entry *lent = NULL;
 	int count = 0;
 	while (*_s && (lent = get_token(&_s))) {
-		if (!tok_tail) {
+		if (!tok_tail)
 			LIST_INSERT_HEAD(tok_head, lent, link);
-		} else {
+		else
 			LIST_INSERT_AFTER(tok_tail, lent, link);
-		}
+
 		tok_tail = lent;
 		count++;
 	}
@@ -398,6 +398,7 @@ loop:
 	struct bwq_entry *ent = prepare_bwq_entry(str);
 	if (ent)
 		binq_post(ent);
+	bstr_free(str);
 	goto loop;
 }
 
