@@ -37,22 +37,33 @@ int bout_sos_img_start(struct bplugin *this)
 int bout_sos_img_process_output(struct boutplugin *this,
 		struct boutq_data *odata)
 {
+	int rc = 0;
 	struct bout_sos_plugin *_base = (void*)this;
 	struct bout_sos_img_plugin *_this = (typeof(_this))this;
 	uint32_t *tmp;
 	pthread_mutex_lock(&_base->sos_mutex);
 	sos_iter_t iter = _this->sos_iter;
 	sos_t sos = _base->sos;
-	if (!sos || !iter)
-		return EBADF;
+	if (!sos || !iter) {
+		rc = EBADF;
+		goto err0;
+	}
 
-	struct bout_sos_img_key k = {
-		.ts = odata->tv.tv_sec,
+	sos_attr_t attr = sos_obj_attr_by_id(sos, 0);
+	if (!attr) {
+		rc = EBADF;
+		goto err0;
+	}
+
+	struct sos_key_s sk;
+	struct bout_sos_img_key bk = {
+		.ts = (odata->tv.tv_sec / _this->delta_ts) * _this->delta_ts,
 		.comp_id = odata->comp_id
 	};
+	sos_attr_key_set(attr, &bk, &sk);
 	sos_obj_t obj;
 	uint32_t count = 1;
-	if (!sos_iter_seek(iter, (void*)&k))
+	if (!sos_iter_seek(iter, &sk))
 		goto not_found;
 	/* found key, look for correct pattern_id */
 
@@ -61,7 +72,7 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	/* Current code is inefficient, but we have to live with it for now
 	 * until maximum sos key length is changed. */
 	while ((obj = sos_iter_next(iter))) {
-		if (!sos_obj_attr_key_cmp(sos, 0, obj, (void*)&k))
+		if (sos_obj_attr_key_cmp(sos, 0, obj, &sk))
 			break;
 		uint32_t *ptn = sos_obj_attr_get(sos, 1, obj);
 		if (odata->msg->ptn_id == *ptn)
@@ -73,25 +84,26 @@ int bout_sos_img_process_output(struct boutplugin *this,
 not_found:
 	/* not found, add new data */
 	obj = sos_obj_new(sos);
-	sos_obj_attr_set(sos, 0, obj, &k);
+	sos_obj_attr_set(sos, 0, obj, &bk);
 	sos_obj_attr_set(sos, 1, obj, &odata->msg->ptn_id);
 	sos_obj_attr_set(sos, 2, obj, &count);
-	if (sos_obj_add(sos, obj))
+	rc = sos_obj_add(sos, obj);
+	if (rc)
 		goto err1;
+	goto out;
 
-	pthread_mutex_unlock(&_base->sos_mutex);
-	return 0;
 found:
 	/* found, increment the couter */
 	tmp = sos_obj_attr_get(sos, 2, obj);
 	(*tmp)++;
-	pthread_mutex_unlock(&_base->sos_mutex);
-	return 0;
+	goto out;
+
 err1:
 	sos_obj_delete(sos, obj);
-	pthread_mutex_unlock(&_base->sos_mutex);
 err0:
-	return EINVAL;
+out:
+	pthread_mutex_unlock(&_base->sos_mutex);
+	return rc;
 }
 
 int bout_sos_img_stop(struct bplugin *this)
