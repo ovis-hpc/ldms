@@ -26,7 +26,7 @@
 #define VERSION "0.0.1"
 #define DEFAULT_ME_LOGFILE "/var/log/me.log"
 #define DEFAULT_ME_HASH_RBT_SZ 1000
-#define FMT "l:x:S:H:o:F"
+#define FMT "l:x:S:H:O:i:F"
 
 char myhostname[80];
 char *sockname = NULL;
@@ -38,6 +38,7 @@ int bind_succeeded;
 char *transport = NULL;
 uint16_t ocm_port = 0;
 int hash_rbt_sz = DEFAULT_ME_HASH_RBT_SZ;
+int max_sem_input = 1024;
 
 int muxr_s = -1;
 pthread_t ctrl_thread = (pthread_t) - 1;
@@ -1435,6 +1436,7 @@ typedef enum {
 	ME_FOREGROUND,
 	ME_HASH_RBT_SZ,
 	ME_OCM_PORT,
+	ME_MAX_SEM_INPUT,
 	ME_N_OPTIONS
 } ME_OPTION;
 
@@ -1485,9 +1487,13 @@ int main(int argc, char **argv) {
 			hash_rbt_sz = atoi(optarg);
 			has_arg[ME_HASH_RBT_SZ] = 1;
 			break;
-		case 'o':
+		case 'O':
 			ocm_port = atoi(optarg);
 			has_arg[ME_OCM_PORT] = 1;
+			break;
+		case 'i':
+			max_sem_input = atoi(optarg);
+			has_arg[ME_MAX_SEM_INPUT] = 1;
 			break;
 		default:
 			me_usage(argv);
@@ -1555,6 +1561,9 @@ int main(int argc, char **argv) {
 
 	if (ocm_port == 0)
 		ocm_port = ME_DEFAULT_OCM_PORT;
+
+	model_manager_init(max_sem_input);
+
 
 	if (setup_configuration("sock", ocm_port, myhostname))
 		me_cleanup(4);
