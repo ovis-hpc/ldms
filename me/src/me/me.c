@@ -83,7 +83,8 @@ void me_usage(char *argv[])
 	printf("	-p thr_count	Number of threads to evaluate inputs.\n");
 	printf("	-l log_file	The path to the log file for status messages.\n");
 	printf("	-x xprt:port_no	The transport and the port number.\n");
-	printf("	-o port		The listener port for communicating with ocmd.\n");
+	printf("	-O port		The listener port for communicating with ocmd.\n");
+	printf("	-i number inputs	The maximum number of inputs in the input queue.\n");
 }
 
 void me_log(const char *fmt, ...)
