@@ -12,6 +12,14 @@
 #include <coll/idx.h>
 #include "me_priv.h"
 
+/**
+ * \brief Initialize the model manager
+ *
+ * \param   max_sem_inq   The initial number of input enqueue semaphore
+ * \return 0 on success. Otherwise, return errno.
+ */
+int model_manager_init(int max_sem_inq);
+
 /*
  * =============================================================
  * Input buffer

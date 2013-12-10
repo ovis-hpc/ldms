@@ -18,6 +18,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <assert.h>
+#include <semaphore.h>
 
 #include "model_manager.h"
 #include "hash_rbt.h"
@@ -45,29 +46,37 @@ struct mp_ref_db {
 uint16_t producer_counts = 0;
 
 struct me_input_queue *me_input_queue;
-int inbuf_size = 0;
-pthread_cond_t input_avai = PTHREAD_COND_INITIALIZER;
+sem_t input_nq;
+sem_t input_dq;
 pthread_mutex_t inbuf_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int model_manager_init(int max_sem_inq)
+{
+	if (sem_init(&input_nq, 0, max_sem_inq))
+		return errno;
+
+	if (sem_init(&input_dq, 0, 0))
+		return errno;
+	return 0;
+}
 
 void add_input(struct me_input *input)
 {
+	sem_wait(&input_nq);
 	pthread_mutex_lock(&inbuf_lock);
 	TAILQ_INSERT_TAIL(me_input_queue, input, entry);
-	inbuf_size++;
-	pthread_cond_signal(&input_avai);
+	sem_post(&input_dq);
 	pthread_mutex_unlock(&inbuf_lock);
 }
 
 struct me_input *get_input()
 {
 	struct me_input *input;
+	sem_wait(&input_dq);
 	pthread_mutex_lock(&inbuf_lock);
-	if (inbuf_size == 0) {
-		pthread_cond_wait(&input_avai, &inbuf_lock);
-	}
 	input = TAILQ_FIRST(me_input_queue);
 	TAILQ_REMOVE(me_input_queue, input, entry);
-	inbuf_size--;
+	sem_post(&input_nq);
 	pthread_mutex_unlock(&inbuf_lock);
 	return input;
 }

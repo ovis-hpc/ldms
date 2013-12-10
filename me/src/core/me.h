@@ -67,16 +67,18 @@ enum me_severity_level {
 
 };
 
+enum me_input_type {
+	ME_INPUT_DATA = 0,
+	ME_NO_DATA
+};
+
 #pragma pack(4)
 /**
  * \struct me_msg
  * \brief Message to send from producers/consumers to ME
  */
 struct me_msg {
-	enum me_input_type {
-		ME_INPUT_DATA = 0,
-		ME_NO_DATA
-	} tag;	/**< Tag for the type of message */
+	enum me_input_type tag;	/**< Tag for the type of message */
 	uint64_t metric_id; /**< unique ID for inputs */
 	struct timeval timestamp; /**< Timestamp of the input */
 	double value;
