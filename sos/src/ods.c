@@ -67,6 +67,7 @@
 #include <errno.h>
 
 #include "ods.h"
+#include "config.h"
 #include "ods_priv.h"
 
 #define ODS_OBJ_SUFFIX		".OBJ"

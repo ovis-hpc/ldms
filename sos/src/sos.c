@@ -68,9 +68,9 @@
 #include <errno.h>
 
 #include "sos.h"
+#include "config.h"
 #include "sos_priv.h"
 #include "ods.h"
-#include "../config.h"
 
 sos_attr_t sos_attr_by_name(sos_t sos, const char *name)
 {

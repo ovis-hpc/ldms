@@ -69,7 +69,7 @@ struct idx_entry_s {
 struct idx_layer_s {
 	int obj_count;			/* objs in this layer. */
 	int layer_count;		/* sub-layers below this layer */
-	struct idx_entry_s entries[0];	/* table of entries if we are a leaf */
+	struct idx_entry_s entries[FLEXIBLE_ARRAY_MEMBER];	/* table of entries if we are a leaf */
 };
 
 #endif

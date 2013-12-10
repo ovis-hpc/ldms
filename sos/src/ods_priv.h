@@ -123,7 +123,7 @@ typedef struct ods_blk_s {
 struct ods_pgt_s {
 	char signature[8];	 /* pgt signature 'PGTSTORE' */
 	uint64_t count;		 /* count of pages */
-	unsigned char pages[0];	 /* array of page control information */
+	unsigned char pages[FLEXIBLE_ARRAY_MEMBER];	 /* array of page control information */
 };
 
 struct ods_obj_s {

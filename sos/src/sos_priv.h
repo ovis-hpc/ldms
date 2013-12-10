@@ -101,7 +101,12 @@
 
 /*
  * An object is just a blob of bytes. It is opaque without the
- * associated class definition
+ * associated class definition.
+ * 
+ * As defined, this is not compatible with the c99 definition of
+ * struct ending in flexible arrays; structs must have at least 
+ * 1 leading sized member.
+ * So we leave it 0 until improved.
  */
 struct sos_obj_s {
 	unsigned char data[0];
@@ -160,7 +165,7 @@ struct sos_meta_s {
 	uint32_t ods_extend_sz;
 	uint32_t obj_sz;	/* size of object */
 	uint32_t attr_cnt;	/* attributes in object class */
-	struct sos_dattr_s attrs[0];
+	struct sos_dattr_s attrs[FLEXIBLE_ARRAY_MEMBER];
 };
 
 struct sos_s {

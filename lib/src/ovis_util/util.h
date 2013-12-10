@@ -53,6 +53,7 @@
 #define OVIS_UTIL_H_
 
 #include <stdio.h>
+#include "config.h"
 
 struct attr_value {
 	char *name;
@@ -62,7 +63,7 @@ struct attr_value {
 struct attr_value_list {
 	int size;
 	int count;
-	struct attr_value list[0];
+	struct attr_value list[FLEXIBLE_ARRAY_MEMBER];
 };
 
 /**

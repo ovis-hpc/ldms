@@ -60,6 +60,7 @@
 
 #include "ovis-test/test.h"
 #include "oidx.h"
+#include "config.h"
 #include "oidx_priv.h"
 
 static size_t oidx_entries;

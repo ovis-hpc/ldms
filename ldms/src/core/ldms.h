@@ -56,6 +56,7 @@
 #include <sys/queue.h>
 #include <netinet/in.h>
 #include "ogc_rbt.h"
+#include "config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -181,7 +182,7 @@ struct ldms_value_desc {
 	uint32_t data_offset;	/*! Offset of the value in ldms_data_hdr */
 	uint32_t type;		/*! The type of the value, enum ldms_value_type */
 	uint8_t name_len;	/*! The length of the metric name in bytes*/
-	char name[0];		/*! The metric name */
+	char name[FLEXIBLE_ARRAY_MEMBER];		/*! The metric name */
 };
 #pragma pack()
 
@@ -608,7 +609,7 @@ typedef struct ldms_dir_s {
 	int set_count;
 
 	/** each string is null terminated. */
-	char *set_names[0];
+	char *set_names[FLEXIBLE_ARRAY_MEMBER];
 } *ldms_dir_t;
 
 /**
@@ -1523,7 +1524,7 @@ typedef struct ldms_notify_event_s {
 		LDMS_USER_DATA = 2,
 	} type;			/*! Specifies the type of event  */
 	size_t len;		/*! The size of the event in bytes */
-	union {
+	union { /* flex array usage in unions is outside the standards. */
 		unsigned char u_data[0];/*! User-data for the LDMS_USER_DATA
 					  type */
 	};

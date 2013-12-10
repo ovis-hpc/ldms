@@ -1,6 +1,6 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -I$(srcdir)/../
+AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 
 if ENABLE_OVIS_UTIL
 libovis_util_la_SOURCES = util.c util.h

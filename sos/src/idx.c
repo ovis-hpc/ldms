@@ -56,6 +56,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include "idx.h"
+#include "../config.h"
 #include "idx_priv.h"
 
 static size_t idx_memory;

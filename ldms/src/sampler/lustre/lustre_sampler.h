@@ -200,7 +200,7 @@ struct lustre_svc_stats {
 	char *name;
 	FILE *f;
 	struct str_map *key_id_map;
-	void *metrics[0];
+	void *metrics[FLEXIBLE_ARRAY_MEMBER];
 };
 
 /**

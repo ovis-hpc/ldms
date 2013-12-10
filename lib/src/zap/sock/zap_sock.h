@@ -108,7 +108,7 @@ struct sock_msg_hdr {
 struct sock_msg_regular {
 	struct sock_msg_hdr hdr;
 	uint32_t data_len;
-	char data[0];
+	char data[FLEXIBLE_ARRAY_MEMBER];
 };
 
 /**
@@ -133,7 +133,7 @@ struct sock_msg_read_resp {
 	uint64_t ctxt; /**< User context */
 	uint64_t dst_ptr; /**< Destination memory addr (on initiator) */
 	uint32_t data_len; /**< Response data length */
-	char data[0]; /**< Response data */
+	char data[FLEXIBLE_ARRAY_MEMBER]; /**< Response data */
 };
 
 /**
@@ -145,7 +145,7 @@ struct sock_msg_write_req {
 	uint64_t dst_map_ref; /**< Destination map reference */
 	uint64_t dst_ptr; /**< Destination address */
 	uint32_t data_len; /**< Data length */
-	char data[0]; /**< data for SOCK_MSG_WRITE_REQ */
+	char data[FLEXIBLE_ARRAY_MEMBER]; /**< data for SOCK_MSG_WRITE_REQ */
 };
 
 /**

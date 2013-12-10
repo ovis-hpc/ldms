@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include "fnv_hash.h"
+#include "config.h"
 
 LIST_HEAD(obj_list_head, obj_list);
 struct obj_list {
@@ -35,7 +36,7 @@ struct obj_list {
  */
 struct str_map {
 	size_t hash_size; /**< hash size */
-	struct obj_list_head lh_table[0]; /**< hash table */
+	struct obj_list_head lh_table[FLEXIBLE_ARRAY_MEMBER]; /**< hash table */
 };
 
 /**

@@ -1,4 +1,4 @@
-INCLUDES = -I@OVIS_LIB_INCLUDE@
+INCLUDES = -I$(top_srcdir) -I@OVIS_LIB_INCLUDE@ 
 
 sbin_PROGRAMS = \
 	sos \

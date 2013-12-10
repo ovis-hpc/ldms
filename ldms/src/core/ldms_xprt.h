@@ -55,7 +55,6 @@
 #include <semaphore.h>
 #include <sys/queue.h>
 
-//#include "ldms_config.h"
 #include "config.h"
 
 #pragma pack(4)
@@ -92,7 +91,7 @@ enum ldms_request_cmd {
 
 struct ldms_hello_cmd_param {
 	uint32_t msg_len;
-	char msg[0];
+	char msg[FLEXIBLE_ARRAY_MEMBER];
 };
 
 struct ldms_lookup_cmd_param {
@@ -134,7 +133,7 @@ struct ldms_lookup_reply {
 	uint32_t meta_len;
 	uint32_t data_len;
 	uint32_t xprt_data_len;
-	char xprt_data[0];
+	char xprt_data[FLEXIBLE_ARRAY_MEMBER];
 };
 
 struct ldms_dir_reply {
@@ -142,7 +141,7 @@ struct ldms_dir_reply {
 	uint32_t more;
 	uint32_t set_count;
 	uint32_t set_list_len;
-	char set_list[0];
+	char set_list[FLEXIBLE_ARRAY_MEMBER];
 };
 
 struct ldms_req_notify_reply {

@@ -60,6 +60,7 @@
 #include <sys/fcntl.h>
 
 #include "oidx.h"
+#include "../config.h"
 #include "oidx_priv.h"
 
 struct walk_s {

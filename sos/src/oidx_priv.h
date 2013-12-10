@@ -195,7 +195,7 @@ typedef struct oidx_objref_entry_s {
  */
 struct oidx_layer_s {
 	uint32_t count; /**< Reference counter. */
-	struct oidx_entry_s entries[0]; /**< Entries. */
+	struct oidx_entry_s entries[FLEXIBLE_ARRAY_MEMBER]; /**< Entries. */
 };
 
 /**

@@ -52,6 +52,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <assert.h>
+#include "config.h"
 #include "idx.h"
 #include "idx_priv.h"
 

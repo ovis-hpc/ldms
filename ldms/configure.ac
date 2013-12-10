@@ -19,6 +19,7 @@ dnl AM_PROG_CC_C_O
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
+AC_C_FLEXIBLE_ARRAY_MEMBER
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])
@@ -239,6 +240,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/ldmsd/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
+		 scripts/ldms_usertest.sh
 		 ldms.spec])
 AC_OUTPUT
 
@@ -247,3 +249,5 @@ echo "TURNING libtool rpath into no-ops"
 sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
 sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
 fi
+chmod a+x scripts/ldms_usertest.sh
+
