@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# NOTE: replace the two vars below with your paths
+# NOTE: change ports, intervals if you like
+DESTDIR=
+allowroot=0
+BUILDDIR=@prefix@
+if test ! -x $BUILDDIR/sbin/ldmsd; then
+	echo "can't find ldmsd binary. set destdir in $0 before testing?"
+	exit 1
+fi
+case "x$USER" in
+	x)
+	echo "must be run in user environment. USER not set"
+	exit 1
+	;;
+	xroot)
+	echo "must be run in user environment. root detected."
+	echo "killing other folks ldmsd might be a bad idea"
+	echo "change allowroot in $0 to override this check."
+	exit 1
+	;;
+esac
+
+export LD_LIBRARY_PATH=${BUILDDIR}/lib
+export LDMS_XPRT_LIBPATH=${BUILDDIR}/lib
+export PATH=${BUILDDIR}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=${BUILDDIR}/lib
+export LDMSD_SOCKPATH=${BUILDDIR}/run
+
+TESTDIR=/tmp/$USER/ldmstest
+STOREDIR=$TESTDIR/store
+SOCKDIR=$TESTDIR/run/ldmsd
+LOGDIR=$TESTDIR/logs
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR
+
+pkill ldmsd
+sleep 1
+
+echo removing old logs
+rm -f ${LOGDIR}/1.txt
+rm -f ${LOGDIR}/2.txt
+rm -f ${LOGDIR}/3.txt
+
+echo removing old output
+rm -rf ${STOREDIR}/node
+rm -f ${STOREDIR}/*
+
+echo Starting daemons
+ldmsd -x sock:60000 -S $SOCKDIR/metric_socket_1  -l ${BUILDDIR}/logs/1.txt
+ldmsd -x sock:70000 -S $SOCKDIR/metric_socket_2  -l ${BUILDDIR}/logs/2.txt
+ldmsd -x sock:80000 -S $SOCKDIR/metric_socket_3  -l ${BUILDDIR}/logs/3.txt
+sleep 1
+
+
+echo Starting plugins on daemon1
+ssh localhost echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+ssh localhost echo "config name=meminfo set=localhost1/meminfo component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+ssh localhost echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+ssh localhost echo "load name=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+ssh localhost echo "config name=vmstat set=localhost1/vmstat component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+ssh localhost echo "start name=vmstat interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+sleep 1
+sleep 1
+
+
+echo Starting plugins on daemon2
+ssh localhost echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+ssh localhost echo "config name=meminfo set=localhost2/meminfo component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+ssh localhost echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+ssh localhost echo "load name=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+ssh localhost echo "config name=vmstat set=localhost2/vmstat component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+ssh localhost echo "start name=vmstat interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+sleep 2
+
+echo Starting plugins on daemon3
+ssh localhost echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "config name=meminfo set=localhost3/meminfo component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "load name=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "config name=vmstat set=localhost3/vmstat component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "start name=vmstat interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+sleep 2
+
+echo Adding host2 to aggregator3
+ssh localhost echo "add host=localhost type=active xprt=sock interval=1000000 port=70000 sets=localhost2/meminfo,localhost2/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+sleep 1
+echo Adding host1 to aggregator3
+ssh localhost echo "add host=localhost type=active xprt=sock interval=1000000 port=60000 sets=localhost1/meminfo,localhost1/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+
+sleep 5
+echo Adding store_csv to aggregator3
+ssh localhost echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+sleep 2
+ssh localhost echo "config name=store_csv path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "store name=store_csv comp_type=node set=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "store name=store_csv comp_type=node set=vmstat container=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+sleep 2
+#
+
+sleep 5
+echo ldms_ls on host 1:
+ldms_ls -h localhost -x sock -p 60000 -l
+sleep 1
+echo ldms_ls on host 2:
+ldms_ls -h localhost -x sock -p 70000 -l
+sleep 1
+echo ldms_ls on host 3:
+ldms_ls -h localhost -x sock -p 80000 
+
+echo done;

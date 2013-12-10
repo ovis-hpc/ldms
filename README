@@ -1,0 +1,22 @@
+
+Quick start guide:
+
+./configure --prefix=/somewhere [options]
+make
+make install
+
+
+Options: Given them all here to insure binary consistency across all parts.
+Several practical configurations are illustrated in
+packaging/make-all-$platform.sh
+
+./configure --help=recursive 
+will give the options for all the packages (lib, sos, ldms)
+
+Options from all the packages can be combined and given to as
+the options to the top level configure in this directory.
+
+Eventually more configurations will be illustrated in our collection
+of nightly testing scripts.
+
+
