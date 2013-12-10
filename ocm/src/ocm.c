@@ -360,7 +360,7 @@ void __ocm_recv_complete(zap_ep_t ep, struct ocm_msg_hdr *hdr, struct ocm_ep_ctx
 	 *       ocm_event_resp_cfg(). */
 	oev = calloc(1, sizeof(*oev));
 	if (!oev) {
-		fprintf(stderr, "Cannot allocate ocm_event\n");
+		ocm->log_fn("OCM ERROR: Cannot allocate ocm_event\n");
 		return;
 	}
 	oev->ep = ep;
@@ -391,13 +391,13 @@ void __ocm_recv_complete(zap_ep_t ep, struct ocm_msg_hdr *hdr, struct ocm_ep_ctx
 			cb = ((struct ocm_registered_cb*)obj)->cb;
 		break;
 	default:
-		fprintf(stderr, "OCM: WARN: Unknown OCM message type: %d\n",
+		ocm->log_fn("OCM ERROR: WARN: Unknown OCM message type: %d\n",
 								hdr->type);
 		return;
 	}
 
 	if (!cb) {
-		fprintf(stderr, "OCM: WARN: No callback for key:%s\n",
+		ocm->log_fn("OCM ERROR: WARN: No callback for key:%s\n",
 								key->str);
 		return;
 	}
@@ -476,11 +476,18 @@ int ocm_add_receiver(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len)
 	zap_err_t zerr;
 	zap_ep_t ep;
 	zerr = zap_new(ocm->zap, &ep, __ocm_zap_cb);
-	if (zerr)
+	if (zerr) {
+		ocm->log_fn("OCM ERROR: zap_new failed: %s\n", zap_err_str(zerr));
+		rc = zerr;
 		goto err0;
+	}
+
 	struct ocm_ep_ctxt *ctxt = calloc(1, sizeof(*ctxt));
-	if (!ctxt)
+	if (!ctxt) {
+		rc = ENOMEM;
 		goto err1;
+	}
+
 	ctxt->is_active = 1;
 	ctxt->sa = *sa;
 	ctxt->sa_len = sa_len;
@@ -493,8 +500,11 @@ int ocm_add_receiver(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len)
 		goto err3;
 	zap_set_ucontext(ep, ctxt);
 	zerr = zap_connect(ep, sa, sa_len);
-	if (zerr)
+	if (zerr) {
+		ocm->log_fn("OCM ERROR: zap_connect failed: %s\n", zap_err_str(zerr));
+		rc = zerr;
 		goto err3;
+	}
 
 	rc = 0;
 	goto out;
@@ -566,8 +576,11 @@ int ocm_enable(ocm_t ocm)
 	zap_err_t zerr = zap_new(ocm->zap, &ocm->ep, __ocm_zap_cb);
 	int rc = 0;
 	struct ocm_ep_ctxt *ctxt = calloc(1, sizeof(*ctxt));
-	if (!ctxt)
+	if (!ctxt) {
+		rc = ENOMEM;
 		goto err0;
+	}
+
 	ctxt->ocm = ocm;
 	ctxt->is_active = 0;
 	if (zerr) {

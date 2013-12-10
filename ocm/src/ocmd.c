@@ -207,7 +207,7 @@ int ocmd_ocm_cb(struct ocm_event *e)
 	case OCM_EVENT_CFG_RECEIVED:
 		/* Just in case of configuration update, but just
 		 * do nothing for now */
-		ocmd_log("ocmd: CFG_RECEIVED, do nothing.\n");
+		ocmd_log("CFG_RECEIVED, do nothing.\n");
 		break;
 	case OCM_EVENT_ERROR:
 		break;
