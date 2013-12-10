@@ -50,7 +50,8 @@ struct oparser_scaffold *oparser_create_scaffold();
  * \param[in]   outputf   the file to print the components
  *
  */
-void oparser_print_component_def(struct oparser_component_type_list *list, FILE *outputf);
+void oparser_print_component_def(struct oparser_component_type_list *list,
+								FILE *outputf);
 
 void oparser_print_scaffold(struct oparser_scaffold *scaffold, FILE *outf);
 

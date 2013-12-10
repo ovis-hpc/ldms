@@ -14,7 +14,7 @@
 #include "oparser_util.h"
 
 struct set {
-	char *ldmsd_set_name;
+	char *sampler_pi; /** ldmsd sampler plugin name */
 	char cfg[1024];
 	struct metric_list mlist;
 	uint8_t is_synchronous;

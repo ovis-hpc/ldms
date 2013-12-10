@@ -35,7 +35,7 @@ void oquery_metric_id(char *metric_name, char *prod_comp_type,
 					"name LIKE '%s';", metric_name);
 		} else {
 			sprintf(stmt, "SELECT metric_id FROM metrics WHERE "
-					"name LIKE '%s' AND coll_comp IN (%s);",
+				"name LIKE '%s' AND coll_comp IN (%s);",
 					metric_name, coll_comp_names);
 		}
 	} else {
@@ -45,8 +45,8 @@ void oquery_metric_id(char *metric_name, char *prod_comp_type,
 
 		if (!is_coll_comp) {
 			sprintf(stmt, "SELECT metric_id FROM metrics WHERE "
-					"name LIKE '%s' AND prod_comp_id IN (%s);",
-					metric_name, prod_comps);
+				"name LIKE '%s' AND prod_comp_id IN (%s);",
+						metric_name, prod_comps);
 		} else {
 			sprintf(stmt, "SELECT metric_id FROM metrics WHERE "
 						"name LIKE '%s' AND "
@@ -83,10 +83,11 @@ void oquery_metric_id(char *metric_name, char *prod_comp_type,
 			exit(ENOMEM);
 		}
 
-		const char *metric_id = (char *) sqlite3_column_text(sql_stmt, 0);
+		const char *metric_id = (char *) sqlite3_column_text(sql_stmt,
+									0);
 		if (!metric_id) {
 			fprintf(stderr, "%s: sqlite_column_text error: ENOMEM\n",
-														__FUNCTION__);
+								__FUNCTION__);
 			exit(ENOMEM);
 		}
 

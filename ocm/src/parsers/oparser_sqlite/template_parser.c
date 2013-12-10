@@ -189,8 +189,8 @@ static void handle_set(char *value)
 							__FUNCTION__);
 			exit(ENOMEM);
 		}
-		set->ldmsd_set_name = strdup(value);
-		if (!set->ldmsd_set_name) {
+		set->sampler_pi = strdup(value);
+		if (!set->sampler_pi) {
 			tmpl_parser_log("tmpl: %s: Out of memory\n",
 					__FUNCTION__);
 			exit(ENOMEM);
@@ -221,7 +221,8 @@ static void handle_type(char *value)
 	struct set *set;
 	is_type = 1;
 	num_prod_carray = tmpl_def->num_tmpls;
-	prod_carray = calloc(num_prod_carray, sizeof(struct oparser_component *));
+	prod_carray = calloc(num_prod_carray,
+				sizeof(struct oparser_component *));
 	if (!prod_carray) {
 		tmpl_parser_log("tmpl: %s: Out of memory\n",
 						__FUNCTION__);
@@ -235,8 +236,10 @@ static void handle_type(char *value)
 	}
 }
 
-struct oparser_component *find_successor_component(struct oparser_component *current_comp,
-			char *name, struct oparser_component_type *skipped_comp_type)
+struct oparser_component *find_successor_component(
+				struct oparser_component *current_comp,
+				char *name,
+				struct oparser_component_type *skipped_comp_type)
 {
 	struct oparser_component *comp;
 	struct oparser_component_list *clist;
@@ -302,8 +305,9 @@ struct oparser_component *find_successor_component(struct oparser_component *cur
 	}
 }
 
-struct oparser_component *find_predecessor_component(struct oparser_component *current_comp,
-							char *name)
+struct oparser_component *find_predecessor_component(
+					struct oparser_component *current_comp,
+					char *name)
 {
 	struct oparser_component *comp;
 	if (!current_comp->parent)
@@ -328,8 +332,9 @@ struct oparser_component *find_predecessor_component(struct oparser_component *c
 	}
 }
 
-struct oparser_component *find_closest_component(struct oparser_component *applied_comp,
-							char *name)
+struct oparser_component *find_closest_component(
+				struct oparser_component *applied_comp,
+				char *name)
 {
 	struct oparser_component *comp;
 	struct compinent_list *clist;
@@ -362,7 +367,8 @@ void handle_name(char *value)
 						"%s\n", prod_ctype->type);
 				exit(ENOENT);
 			}
-			prod_carray[i] = malloc(sizeof(struct oparser_component *));
+			prod_carray[i] = malloc(sizeof(
+						struct oparser_component *));
 			prod_carray[i][0] = comp;
 			num_prod_comps = 1;
 		}
@@ -395,8 +401,8 @@ void handle_name(char *value)
 	}
 }
 
-struct oparser_metric *new_metric(uint32_t mtype_id, uint32_t comp_id, char *name,
-						struct oparser_component *comp)
+struct oparser_metric *new_metric(uint32_t mtype_id, uint32_t comp_id,
+				char *name, struct oparser_component *comp)
 {
 	struct oparser_metric *metric = malloc(sizeof(*metric));
 	if (mtype_id) {
@@ -434,7 +440,8 @@ static void handle_metrics(char *value)
 
 		int i;
 		for (i = 0; i < tmpl_def->num_tmpls; i++) {
-			prod_carray[i] = malloc(sizeof(struct oparser_component *));
+			prod_carray[i] = malloc(sizeof(
+					struct oparser_component *));
 			prod_carray[i][0] = tmpl_def->templates[i].comp;
 			num_prod_comps = 1;
 		}
@@ -468,7 +475,8 @@ static void handle_metrics(char *value)
 		/* not found */
 		if (!m) {
 			m = LIST_FIRST(mlist);
-			if (!m) /* If this is the first metric of the comp type. */
+			/* If this is the first metric of the comp type. */
+			if (!m)
 				mtype_id = 1;
 			else
 				mtype_id = m->mtype_id + 1;
@@ -491,8 +499,8 @@ static void handle_metrics(char *value)
 								full_name);
 					if (metric)
 						goto add_to_set;
-
 				}
+
 				metric = new_metric(m->mtype_id,
 						prod_carray[i][j]->comp_id,
 						full_name, prod_carray[i][j]);
@@ -502,7 +510,6 @@ add_to_set:
 								set_entry);
 			}
 		}
-
 	}
 }
 
@@ -607,23 +614,25 @@ struct template_def_list *oparser_parse_template(FILE *conf,
 
 void print_set(struct set *set, FILE *output)
 {
-	fprintf(output, "		set: %s\n", set->ldmsd_set_name);
+	fprintf(output, "		set: %s\n", set->sampler_pi);
 	fprintf(output, "		cfg: %s\n", set->cfg);
 	fprintf(output, "		metrics: \n");
 
 	struct oparser_metric *m = LIST_FIRST(&set->mlist);
 	if (!m) {
 		tmpl_parser_log("tmpl: no metric in set '%s'\n",
-						set->ldmsd_set_name);
+						set->sampler_pi);
 		exit(EPERM);
 	}
 	uint32_t comp_id;
 	comp_id = (uint32_t) (m->metric_id >> 32);
-	fprintf(output, ",%s	%" PRIu64 "	%" PRIu32 "\n", m->name, m->metric_id, comp_id);
+	fprintf(output, ",%s	%" PRIu64 "	%" PRIu32 "\n", m->name,
+						m->metric_id, comp_id);
 
 	while (m = LIST_NEXT(m, set_entry)) {
 		comp_id = (uint32_t) (m->metric_id >> 32);
-		fprintf(output, ",%s	%" PRIu64 "	%" PRIu32 "\n", m->name, m->metric_id, comp_id);
+		fprintf(output, ",%s	%" PRIu64 "	%" PRIu32 "\n",
+					m->name, m->metric_id, comp_id);
 	}
 
 	fprintf(output, "\n");

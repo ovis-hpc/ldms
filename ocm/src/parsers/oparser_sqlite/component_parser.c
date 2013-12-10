@@ -169,8 +169,9 @@ static struct kw label_tbl[] = {
 	{ "type", handle_type },
 };
 
-void create_subtree(struct oparser_component *comp, struct oparser_component_type *type,
-						struct oparser_scaffold *scaffold)
+void create_subtree(struct oparser_component *comp,
+			struct oparser_component_type *type,
+			struct oparser_scaffold *scaffold)
 {
 	scaffold->height++;
 	comp->num_child_types = type->num_element_types;
@@ -249,7 +250,8 @@ struct oparser_scaffold *oparser_create_scaffold()
 
 
 
-void oparser_print_component_def(struct oparser_component_type_list *list, FILE *outputf)
+void oparser_print_component_def(struct oparser_component_type_list *list,
+								FILE *outputf)
 {
 	int i;
 	struct oparser_component_type *comp_type;
@@ -308,7 +310,8 @@ struct component_list_ref {
 };
 TAILQ_HEAD(clist_ref_list, component_list_ref);
 
-struct oparser_component_list *bf_search_scaffold(char *type, char *name, struct oparser_component *scaffold)
+struct oparser_component_list *bf_search_scaffold(char *type, char *name,
+					struct oparser_component *scaffold)
 {
 	int i;
 	struct clist_ref_list queue;
@@ -343,8 +346,9 @@ struct oparser_component_type *find_comp_type(char *type)
 	return NULL;
 }
 
-struct src_array *handle_one_comp_one_name(struct oparser_component_type *comp_type,
-						struct oparser_name *name)
+struct src_array *handle_one_comp_one_name(
+			struct oparser_component_type *comp_type,
+					struct oparser_name *name)
 {
 	struct oparser_component *comp = LIST_FIRST(&comp_type->list);;
 	struct src_array *comps = malloc(sizeof(*comps));
@@ -401,14 +405,15 @@ void _handle_comp_names(struct oparser_component_list *list,
 }
 
 struct src_array *handle_comps_names(struct src_array *src,
-					struct oparser_component_type *comp_type,
+				struct oparser_component_type *comp_type,
 					struct oparser_name_queue *nlist,
 					int num_names)
 {
 	struct oparser_name *oname;
 	struct oparser_component *comp, *tmp_comp;
 	struct src_array *comps = malloc(sizeof(*comps));
-	comps->comp_array = malloc(num_names * sizeof(struct oparser_component *));
+	comps->comp_array = malloc(num_names *
+				sizeof(struct oparser_component *));
 	comps->num_comps = num_names;
 	int idx = 0;
 	if (!src) {
@@ -487,7 +492,8 @@ out:
 	return comps;
 }
 
-struct oparser_component *handle_name_map(FILE *conff, struct oparser_scaffold *scaffold)
+struct oparser_component *handle_name_map(FILE *conff,
+				struct oparser_scaffold *scaffold)
 {
 	struct src_list src_queue;
 	LIST_INIT(&src_queue);
@@ -563,7 +569,7 @@ struct oparser_component *handle_name_map(FILE *conff, struct oparser_scaffold *
 			} else {
 				comps = malloc(sizeof(*comps));
 				comps->comp_array = malloc(sizeof(
-							struct oparser_component *));
+						struct oparser_component *));
 				comps->comp_array[0] = LIST_FIRST(
 							&comp_type->list);
 				comps->num_comps = 1;

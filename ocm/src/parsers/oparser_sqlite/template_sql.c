@@ -40,7 +40,7 @@ void template_def_to_sqlite(struct template_def *tmpl_def, sqlite3 *db)
 				sprintf(vary, "'%s', '%s'", tname,
 						tmpl->comp->comp_type->type);
 			}
-			sprintf(vary, "%s, '%s'", vary, set->ldmsd_set_name);
+			sprintf(vary, "%s, '%s'", vary, set->sampler_pi);
 			sprintf(vary, "%s, '%s'", vary, set->cfg);
 
 			m = LIST_FIRST(&set->mlist);
@@ -100,32 +100,33 @@ int get_parent_path(struct oparser_component *comp, char *path)
 }
 
 void create_metric_record(struct oparser_metric *m, struct template *tmpl,
-							char *vary)
+						struct set * set, char *vary)
 {
 	char path[1024];
 	get_parent_path(m->comp->parent, path);
 	if (tmpl->comp->name) {
-		sprintf(vary, "'%s', %" PRIu64 ", %" PRIu32 ", "
+		sprintf(vary, "'%s', %" PRIu64 ", '%s', %" PRIu32 ", "
 				"'%s', %" PRIu32 ", '%s'",
-				m->name, m->metric_id,
+				m->name, m->metric_id, set->sampler_pi,
 				m->mtype_id, tmpl->comp->name,
 				m->comp->comp_id, path);
 	} else {
-		sprintf(vary, "'%s', %" PRIu64 ", %" PRIu32 ", "
+		sprintf(vary, "'%s', %" PRIu64 ", '%s', %" PRIu32 ", "
 				"'%s', %" PRIu32 ", '%s'",
-				m->name, m->metric_id,
+				m->name, m->metric_id, set->sampler_pi,
 				m->mtype_id, tmpl->comp->comp_type->type,
 				m->comp->comp_id, path);
 	}
 }
 
-void _metrics_to_sqlite(struct template_def *tmpl_def, sqlite3 *db)
+void metrics_to_sqlite(struct template_def *tmpl_def, sqlite3 *db)
 {
 	int i;
 	char *tname = tmpl_def->name;
 	struct template *tmpl;
-	char *core = "INSERT INTO metrics(name, metric_id, metric_type_id, "
-			"coll_comp, prod_comp_id, path) VALUES(";
+	char *core = "INSERT INTO metrics(name, metric_id, sampler, "
+			"metric_type_id, coll_comp, prod_comp_id, path)"
+			" VALUES(";
 
 	char stmt[4086];
 	char vary[2043];
@@ -139,48 +140,23 @@ void _metrics_to_sqlite(struct template_def *tmpl_def, sqlite3 *db)
 
 		LIST_FOREACH(set, &tmpl->slist, entry) {
 			LIST_FOREACH(m, &set->mlist, set_entry) {
-				create_metric_record(m, tmpl, vary);
+				create_metric_record(m, tmpl, set, vary);
 				sprintf(stmt, "%s%s);", core, vary);
 				insert_data(stmt, db);
 			}
-
-
 		}
 	}
 }
 
-void metrics_to_sqlite(struct building_sqlite_table *btable)
-{
-	struct template_def_list *tmpl_def_list;
-	tmpl_def_list = (struct template_def_list *)btable->obj;
-	sqlite3 *db = btable->db;
-	char *stmt;
-	stmt =	"CREATE TABLE metrics( " \
-		"name	CHAR(128)	NOT NULL, " \
-		"metric_id	SQLITE_uint64 PRIMARY KEY	NOT NULL, " \
-		"metric_type_id	SQLITE_uint32	NOT NULL, " \
-		"coll_comp	CHAR(64)	NOT NULL, " \
-		"prod_comp_id	SQLITE_uint32	NOT NULL, " \
-		"path		TEXT );";
-
-	char *index_stmt = "CREATE INDEX metrics_idx ON metrics(name," \
-					"coll_comp,metric_type_id);";
-	create_table(stmt, index_stmt, db);
-
-	struct template_def *tmpl_def;
-	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		_metrics_to_sqlite(tmpl_def, db);
-	}
-	printf("Complete table 'metrics'\n");
-}
-
-void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list, sqlite3 *db)
+void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
+								sqlite3 *db)
 {
 	oparser_drop_table("metrics", db);
 	char *stmt;
 	stmt =	"CREATE TABLE metrics( " \
 		"name	CHAR(128)	NOT NULL, " \
 		"metric_id	SQLITE_uint64 PRIMARY KEY	NOT NULL, " \
+		"sampler	TEXT, " \
 		"metric_type_id	SQLITE_uint32	NOT NULL, " \
 		"coll_comp	CHAR(64)	NOT NULL, " \
 		"prod_comp_id	SQLITE_uint32	NOT NULL, " \
@@ -192,7 +168,7 @@ void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list, sqlite3 
 
 	struct template_def *tmpl_def;
 	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		_metrics_to_sqlite(tmpl_def, db);
+		metrics_to_sqlite(tmpl_def, db);
 	}
 }
 

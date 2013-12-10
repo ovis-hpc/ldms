@@ -192,11 +192,12 @@ void postprocess_agg_cmdlist(struct oparser_cmd_queue *queue)
 void insert_baler_metric(uint64_t metric_id, uint32_t mtype_id,
 				uint32_t comp_id, char *hostname, sqlite3 *db)
 {
-	char *core = "INSERT INTO metrics(name, metric_id, metric_type_id, "
-			"coll_comp, prod_comp_id, path) VALUES(";
+	char *core = "INSERT INTO metrics(name, metric_id, sampler, "
+			"metric_type_id, coll_comp, prod_comp_id, path)"
+			" VALUES(";
 	char stmt[4086];
 	char vary[2043];
-	sprintf(vary, "'%s#baler_ptn', %" PRIu64 ", %" PRIu32 ", '%s', "
+	sprintf(vary, "'%s#baler_ptn', %" PRIu64 ", 'Baler', %" PRIu32 ", '%s', "
 			"%" PRIu32 ", NULL", hostname, metric_id, mtype_id,
 			hostname, comp_id);
 	sprintf(stmt, "%s%s);", core, vary);
