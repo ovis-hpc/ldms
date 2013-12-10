@@ -97,7 +97,7 @@
 
 #include "sos.h"
 #include "oidx.h"
-#include "idx.h"
+#include <coll/idx.h>
 
 /*
  * An object is just a blob of bytes. It is opaque without the
