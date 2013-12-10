@@ -213,7 +213,8 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 	struct sqlite3_stmt *stmt;
 
 	sprintf(sql, "SELECT model_id, metric_id, level, action_name "
-			"FROM event_templates NATURAL JOIN rules;");
+			"FROM rule_templates NATURAL JOIN rule_actions "
+			"NATURAL JOIN rule_metrics;");
 
 	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
@@ -607,9 +608,8 @@ int ocmsqlite3_query_events(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
-	sprintf(sql, "SELECT model_id, metric_id FROM "
-		"(SELECT DISTINCT event_id, model_id FROM event_templates) "
-			"AS t JOIN rules AS r ON t.event_id=r.event_id;");
+	sprintf(sql, "SELECT model_id, metric_id FROM rule_templates "
+			"NATURAL JOIN rule_metrics;");
 
 	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
