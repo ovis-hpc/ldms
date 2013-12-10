@@ -190,18 +190,18 @@ void postprocess_agg_cmdlist(struct oparser_cmd_queue *queue)
 }
 
 void insert_baler_metric(uint64_t metric_id, uint32_t mtype_id,
-				uint32_t comp_id, char *hostname, sqlite3 *db)
+				uint32_t comp_id, char *hostname,
+				sqlite3 *db, sqlite3_stmt *stmt)
 {
-	char *core = "INSERT INTO metrics(name, metric_id, sampler, "
-			"metric_type_id, coll_comp, prod_comp_id, path)"
-			" VALUES(";
-	char stmt[4086];
-	char vary[2043];
-	sprintf(vary, "'%s#baler_ptn', %" PRIu64 ", 'Baler', %" PRIu32 ", '%s', "
-			"%" PRIu32 ", NULL", hostname, metric_id, mtype_id,
-			hostname, comp_id);
-	sprintf(stmt, "%s%s);", core, vary);
-	insert_data(stmt, db);
+	char name[128];
+	sprintf(name, "%s#baler_ptn", hostname);
+	oparser_bind_text(db, stmt, 1, name, __FUNCTION__);
+	oparser_bind_int64(db, stmt, 2, metric_id, __FUNCTION__);
+	oparser_bind_text(db, stmt, 3, "Baler", __FUNCTION__);
+	oparser_bind_int64(db, stmt, 4, mtype_id, __FUNCTION__);
+	oparser_bind_text(db, stmt, 5, hostname, __FUNCTION__);
+	oparser_bind_int64(db, stmt, 6, comp_id, __FUNCTION__);
+	oparser_finish_insert(db, stmt, __FUNCTION__);
 }
 
 void process_baler_hosts(struct oparser_cmd *hostcmd)
@@ -226,6 +226,26 @@ void process_baler_hosts(struct oparser_cmd *hostcmd)
 	num_baler_hosts = process_string_name(value, &host_nqueue, NULL, NULL);
 	hostcmd->attrs_values[0] = '\0';
 
+	char *stmt_s = "INSERT INTO metrics(name, metric_id, sampler, "
+			"metric_type_id, coll_comp, prod_comp_id, path)"
+				" VALUES(@name, @mid, @sampler, @mtid, "
+						"@cllc, @pcid, NULL)";
+
+	sqlite3_stmt *stmt;
+	char *sqlite_err;
+	int rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
+					(const char **)&sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
 	int i;
 	struct oparser_name *nhname;
 	uint32_t comp_id;
@@ -235,7 +255,7 @@ void process_baler_hosts(struct oparser_cmd *hostcmd)
 		oquery_comp_id_by_name(nhname->name, &comp_id, db);
 		metric_id = gen_metric_id(comp_id, max_mtype_id);
 		insert_baler_metric(metric_id, max_mtype_id, comp_id,
-							nhname->name, db);
+						nhname->name, db, stmt);
 		if (i == 0) {
 			sprintf(hostcmd->attrs_values, "%s:%" PRIu64,
 					nhname->name, metric_id);
@@ -247,6 +267,14 @@ void process_baler_hosts(struct oparser_cmd *hostcmd)
 		nhname = TAILQ_NEXT(nhname, entry);
 	}
 	free(attrs_values);
+
+	sqlite3_finalize(stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
 }
 
 void postprocess_baler_cmdlist(struct oparser_cmd_queue *queue)
@@ -398,8 +426,8 @@ void oparser_print_service_conf(FILE *out)
 void oparser_services_to_sqlite(sqlite3 *db)
 {
 	oparser_drop_table("services", db);
-	char *stmt;
-	stmt = "CREATE TABLE IF NOT EXISTS services (" \
+	char *stmt_s;
+	stmt_s = "CREATE TABLE IF NOT EXISTS services (" \
 			" hostname	CHAR(128)	NOT NULL," \
 			" service	CHAR(16)	NOT NULL," \
 			" cmd_id	INTEGER PRIMARY KEY AUTOINCREMENT," \
@@ -408,16 +436,34 @@ void oparser_services_to_sqlite(sqlite3 *db)
 	char *index_stmt = "CREATE INDEX IF NOT EXISTS services_idx" \
 			" ON services(hostname, service);";
 
-	create_table(stmt, index_stmt, db);
+	create_table(stmt_s, index_stmt, db);
 
 	struct oparser_host_services *services;
 
 	struct oparser_name *hostname;
 	struct oparser_cmd *cmd;
-	char *core = "INSERT INTO services(hostname, service, verb, "
-						"attr_value) VALUES(";
+	stmt_s = "INSERT INTO services(hostname, service, verb, "
+			"attr_value) VALUES(@hostname, @service, "
+						"@verb, @attr)";
 	char *service_s;
 	char insert_stmt[4096];
+	sqlite3_stmt *stmt;
+	char *errmsg;
+
+	int rc;
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
+					(const char **)&errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
+
 	int i;
 	TAILQ_FOREACH(hostname, &host_queue, entry) {
 		services = (struct oparser_host_services *)
@@ -430,13 +476,26 @@ void oparser_services_to_sqlite(sqlite3 *db)
 		for (i = 0; i < OVIS_NUM_SERVICES; i++) {
 			service_s = enum_ovis_service_to_str(i);
 			TAILQ_FOREACH(cmd, &services->queue[i], entry) {
-				sprintf(insert_stmt, "%s '%s', '%s', '%s', '%s');",
-						core, hostname->name, service_s,
-						cmd->verb, cmd->attrs_values);
-				insert_data(insert_stmt, db);
-				insert_stmt[0] = '\0';
+
+				oparser_bind_text(db, stmt, 1, hostname->name,
+								__FUNCTION__);
+				oparser_bind_text(db, stmt, 2, service_s,
+								__FUNCTION__);
+				oparser_bind_text(db, stmt, 3, cmd->verb,
+								__FUNCTION__);
+				oparser_bind_text(db, stmt, 4, cmd->attrs_values,
+								__FUNCTION__);
+				oparser_finish_insert(db, stmt, __FUNCTION__);
 			}
 		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
 	}
 }
 

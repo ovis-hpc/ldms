@@ -16,71 +16,51 @@
 #include "template_parser.h"
 #include "oparser_util.h"
 
-void template_def_to_sqlite(struct template_def *tmpl_def, sqlite3 *db)
+void template_def_to_sqlite(struct template_def *tmpl_def, sqlite3 *db,
+							sqlite3_stmt *stmt)
 {
 	int i;
-	char *tname = tmpl_def->name;
 	struct template *tmpl;
-	char *core = "INSERT INTO templates(name, apply_on, ldmsd_set, "
-			"cfg, metrics) VALUES(";
-	char stmt[4086];
-	char vary[2043];
+	char metrics[2043];
 	struct set *set;
 	struct oparser_metric *m;
-	sqlite3_stmt *sql_stmt;
 
 	for (i = 0; i < tmpl_def->num_tmpls; i++) {
 		tmpl = &tmpl_def->templates[i];
 
 		LIST_FOREACH(set, &tmpl->slist, entry) {
+
+			oparser_bind_text(db, stmt, 1, tmpl_def->name,
+							__FUNCTION__);
+
 			if (tmpl->comp->name) {
-				sprintf(vary, "'%s', '%s'",
-						tname, tmpl->comp->name);
+				oparser_bind_text(db, stmt, 2,
+						tmpl->comp->name, __FUNCTION__);
 			} else {
-				sprintf(vary, "'%s', '%s'", tname,
-						tmpl->comp->comp_type->type);
+				oparser_bind_text(db, stmt, 2,
+						tmpl->comp->comp_type->type,
+						__FUNCTION__);
 			}
-			sprintf(vary, "%s, '%s'", vary, set->sampler_pi);
-			sprintf(vary, "%s, '%s'", vary, set->cfg);
+
+			oparser_bind_text(db, stmt, 3, set->sampler_pi,
+							__FUNCTION__);
+
+			oparser_bind_text(db, stmt, 4, set->cfg, __FUNCTION__);
 
 			m = LIST_FIRST(&set->mlist);
-			sprintf(vary, "%s, '%s[%" PRIu64 "]", vary, m->name,
+			sprintf(metrics, "%s[%" PRIu64 "]", m->name,
 							m->metric_id);
 
 			while (m = LIST_NEXT(m, set_entry)) {
-				sprintf(vary, "%s,%s[%" PRIu64 "]",
-						vary, m->name, m->metric_id);
+				sprintf(metrics, "%s,%s[%" PRIu64 "]",
+						metrics, m->name, m->metric_id);
 			}
 
-			sprintf(stmt, "%s%s');", core, vary);
-			insert_data(stmt, db);
+			oparser_bind_text(db, stmt, 5, metrics, __FUNCTION__);
+
+			oparser_finish_insert(db, stmt, __FUNCTION__);
 		}
 	}
-}
-
-void template_defs_to_sqlite(struct building_sqlite_table *btable)
-{
-	struct template_def_list *tmpl_def_list;
-	tmpl_def_list = (struct template_def_list *)btable->obj;
-	sqlite3 *db = btable->db;
-	int rc;
-	char *stmt;
-
-	stmt =	"CREATE TABLE templates( " \
-			"name		CHAR(64)	NOT NULL, " \
-			"apply_on	CHAR(64)	NOT NULL, " \
-			"ldmsd_set	CHAR(128)	NOT NULL, " \
-			"cfg		TEXT, " \
-			"metrics	TEXT	NOT NULL );";
-	char *index_stmt = "CREATE INDEX templates_idx ON templates(name,apply_on);";
-
-	create_table(stmt, index_stmt, db);
-
-	struct template_def *tmpl_def;
-	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		template_def_to_sqlite(tmpl_def, db);
-	}
-	printf("Complete table 'templates'\n");
 }
 
 int get_parent_path(struct oparser_component *comp, char *path)
@@ -100,62 +80,36 @@ int get_parent_path(struct oparser_component *comp, char *path)
 }
 
 void create_metric_record(struct oparser_metric *m, struct template *tmpl,
-						struct set * set, char *vary)
+			struct set * set, sqlite3_stmt *stmt, sqlite3 *db)
 {
 	char path[1024];
 	get_parent_path(m->comp->parent, path);
-	if (tmpl->comp->name) {
-		sprintf(vary, "'%s', %" PRIu64 ", '%s', %" PRIu32 ", "
-				"'%s', %" PRIu32 ", '%s'",
-				m->name, m->metric_id, set->sampler_pi,
-				m->mtype_id, tmpl->comp->name,
-				m->comp->comp_id, path);
-	} else {
-		sprintf(vary, "'%s', %" PRIu64 ", '%s', %" PRIu32 ", "
-				"'%s', %" PRIu32 ", '%s'",
-				m->name, m->metric_id, set->sampler_pi,
-				m->mtype_id, tmpl->comp->comp_type->type,
-				m->comp->comp_id, path);
-	}
-}
 
-void metrics_to_sqlite(struct template_def *tmpl_def, sqlite3 *db)
-{
-	int i;
-	char *tname = tmpl_def->name;
-	struct template *tmpl;
-	char *core = "INSERT INTO metrics(name, metric_id, sampler, "
-			"metric_type_id, coll_comp, prod_comp_id, path)"
-			" VALUES(";
+	oparser_bind_text(db, stmt, 1, m->name, __FUNCTION__);
+	oparser_bind_int64(db, stmt, 2, m->metric_id, __FUNCTION__);
+	oparser_bind_text(db, stmt, 3, set->sampler_pi, __FUNCTION__);
+	oparser_bind_int(db, stmt, 4, m->mtype_id, __FUNCTION__);
 
-	char stmt[4086];
-	char vary[2043];
-	struct set *set;
-	struct oparser_metric *m;
-	sqlite3_stmt *sql_stmt;
+	if (tmpl->comp->name)
+		oparser_bind_text(db, stmt, 5, tmpl->comp->name, __FUNCTION__);
+	else
+		oparser_bind_text(db, stmt, 5, tmpl->comp->comp_type->type,
+								__FUNCTION__);
 
-	for (i = 0; i < tmpl_def->num_tmpls; i++) {
+	oparser_bind_int(db, stmt, 6, m->comp->comp_id, __FUNCTION__);
+	oparser_bind_text(db, stmt, 7, path, __FUNCTION__);
 
-		tmpl = &tmpl_def->templates[i];
-
-		LIST_FOREACH(set, &tmpl->slist, entry) {
-			LIST_FOREACH(m, &set->mlist, set_entry) {
-				create_metric_record(m, tmpl, set, vary);
-				sprintf(stmt, "%s%s);", core, vary);
-				insert_data(stmt, db);
-			}
-		}
-	}
+	oparser_finish_insert(db, stmt, __FUNCTION__);
 }
 
 void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
 								sqlite3 *db)
 {
 	oparser_drop_table("metrics", db);
-	char *stmt;
-	stmt =	"CREATE TABLE metrics( " \
+	char *stmt_s;
+	stmt_s = "CREATE TABLE metrics( " \
 		"name	CHAR(128)	NOT NULL, " \
-		"metric_id	SQLITE_uint64 PRIMARY KEY	NOT NULL, " \
+		"metric_id	SQLITE_uint64 PRIMARY KEY NOT NULL, " \
 		"sampler	TEXT, " \
 		"metric_type_id	SQLITE_uint32	NOT NULL, " \
 		"coll_comp	CHAR(64)	NOT NULL, " \
@@ -164,11 +118,51 @@ void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
 
 	char *index_stmt = "CREATE INDEX metrics_idx ON metrics(name," \
 					"coll_comp,metric_type_id);";
-	create_table(stmt, index_stmt, db);
+	create_table(stmt_s, index_stmt, db);
 
+	stmt_s = "INSERT INTO metrics(name, metric_id, sampler, "
+			"metric_type_id, coll_comp, prod_comp_id, path)"
+			" VALUES(@name, @metric_id, @sampler, "
+			"@mtid, @collc, @pcid, @path)";
+
+	sqlite3_stmt *stmt;
+	char *sqlite_err;
+	int rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
+						(const char **)&sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
+	int i;
 	struct template_def *tmpl_def;
+	struct template *tmpl;
+	struct set *set;
+	struct oparser_metric *m;
 	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		metrics_to_sqlite(tmpl_def, db);
+		for (i = 0; i < tmpl_def->num_tmpls; i++) {
+			tmpl = &tmpl_def->templates[i];
+			LIST_FOREACH(set, &tmpl->slist, entry) {
+				LIST_FOREACH(m, &set->mlist, set_entry) {
+					create_metric_record(m, tmpl, set,
+								stmt, db);
+				}
+			}
+		}
+	}
+
+	sqlite3_finalize(stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
 	}
 }
 
@@ -177,9 +171,9 @@ void oparser_templates_to_sqlite(struct template_def_list *tmpl_def_list,
 {
 	oparser_drop_table("templates", db);
 	int rc;
-	char *stmt;
+	char *stmt_s;
 
-	stmt =	"CREATE TABLE templates( " \
+	stmt_s =	"CREATE TABLE templates( " \
 			"name		CHAR(64)	NOT NULL, " \
 			"apply_on	CHAR(64)	NOT NULL, " \
 			"ldmsd_set	CHAR(128)	NOT NULL, " \
@@ -187,10 +181,37 @@ void oparser_templates_to_sqlite(struct template_def_list *tmpl_def_list,
 			"metrics	TEXT	NOT NULL );";
 	char *index_stmt = "CREATE INDEX templates_idx ON templates(name,apply_on);";
 
-	create_table(stmt, index_stmt, db);
+	create_table(stmt_s, index_stmt, db);
+
+	stmt_s = "INSERT INTO templates(name, apply_on, ldmsd_set, "
+			"cfg, metrics) VALUES(@name, @apply_on, @ldmsd_set, "
+			"@cfg, @metrics)";
+
+	sqlite3_stmt *stmt;
+	char *sqlite_err;
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
+					(const char **)&sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
+	}
 
 	struct template_def *tmpl_def;
 	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		template_def_to_sqlite(tmpl_def, db);
+		template_def_to_sqlite(tmpl_def, db, stmt);
+	}
+
+	sqlite3_finalize(stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		exit(rc);
 	}
 }
