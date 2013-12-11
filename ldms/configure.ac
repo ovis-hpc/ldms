@@ -166,7 +166,7 @@ AC_CHECK_LIB( sos, sos_open,
 	[
 		AC_MSG_FAILURE(libsos not found)
 	],
-	-lpthread -lods -loidx -lidx $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
+	$SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
 )
 dnl Reset LIBS variable.
 LIBS=""
