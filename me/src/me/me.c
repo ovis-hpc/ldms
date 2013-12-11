@@ -1523,6 +1523,9 @@ int main(int argc, char **argv) {
 		log_fp = stdout;
 		me_log("Could not open the log file named '%s'\n", logfile);
 		me_cleanup(9);
+	} else {
+		stdout = log_fp;
+		stderr = log_fp;
 	}
 
 	/*

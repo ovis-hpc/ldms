@@ -3249,8 +3249,10 @@ int main(int argc, char *argv[])
 			log_fp = stdout;
 			ldms_log("Could not open the log file named '%s'\n", logfile);
 			cleanup(9);
+		} else {
+			stdout = log_fp;
+			stderr = log_fp;
 		}
-		stdout = log_fp;
 	}
 
 	/* Initialize LDMS */
