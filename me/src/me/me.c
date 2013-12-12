@@ -1511,7 +1511,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	if (initialize(hash_rbt_sz))
+	if (model_manager_init(hash_rbt_sz, max_sem_input))
 		me_cleanup(1);
 
 	/* Taking care of the log file */
@@ -1526,15 +1526,6 @@ int main(int argc, char **argv) {
 	} else {
 		stdout = log_fp;
 		stderr = log_fp;
-	}
-
-	/*
-	 * Create worker threads
-	 */
-	int i;
-	pthread_t worker_threads[num_worker_thread];
-	for (i = 0; i < num_worker_thread; i++) {
-		pthread_create(&worker_threads[i], NULL, evaluate_update, NULL);
 	}
 
 	/* Taking care of myhostname */
@@ -1566,17 +1557,23 @@ int main(int argc, char **argv) {
 	if (ocm_port == 0)
 		ocm_port = ME_DEFAULT_OCM_PORT;
 
-	model_manager_init(max_sem_input);
-
-
-	if (setup_configuration("sock", ocm_port, myhostname))
-		me_cleanup(4);
-
 	me_log("Started ME Daemon version " VERSION ".\n");
+
+	/*
+	 * Create worker threads
+	 */
+	int i;
+	pthread_t worker_threads[num_worker_thread];
+	for (i = 0; i < num_worker_thread; i++) {
+		pthread_create(&worker_threads[i], NULL, evaluate_update, NULL);
+	}
 
 	/* Setting up the listener port */
 	if (transport)
 		me_listen_on_transport(xprt, port_no);
+
+	if (setup_configuration("sock", ocm_port, myhostname))
+		me_cleanup(4);
 
 	for (i = 0; i < num_worker_thread; i++) {
 		ret = pthread_join(worker_threads[i], NULL);

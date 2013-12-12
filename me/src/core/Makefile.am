@@ -14,5 +14,6 @@ libme_core_la_SOURCES = me_util.c me_interface.c model_manager.c \
 			me_interface.h me_interface_priv.h \
 			model_manager.h me_priv.h me.h \
 			hash_rbt.c hash_rbt.h
-libme_core_la_LIBADD = -lzap -lcoll -lovis_util
+libme_core_la_LIBADD = -lzap -lcoll -lovis_util -lrt
+libme_core_la_LDFLAGS = -pthread $(AM_LDFLAGS)
 pkglib_LTLIBRARIES += libme_core.la
