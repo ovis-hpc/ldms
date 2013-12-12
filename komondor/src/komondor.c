@@ -1181,6 +1181,10 @@ int main(int argc, char **argv)
 	init();
 	config();
 	k_listen();
-	pthread_exit(NULL);
+
+	int i;
+	for (i = 0; i < N_act_threads; i++)
+		pthread_join(&act_threads[i], NULL);
+
 	return 0;
 }
