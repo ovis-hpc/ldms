@@ -1184,7 +1184,7 @@ int main(int argc, char **argv)
 
 	int i;
 	for (i = 0; i < N_act_threads; i++)
-		pthread_join(&act_threads[i], NULL);
+		pthread_join(act_threads[i], NULL);
 
 	return 0;
 }
