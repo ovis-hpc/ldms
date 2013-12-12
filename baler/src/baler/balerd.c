@@ -65,6 +65,7 @@
 #include <ctype.h>
 #include <dlfcn.h>
 #include <unistd.h>
+#include <signal.h>
 
 #ifdef ENABLE_OCM
 #include "ocm/ocm.h"
@@ -1036,9 +1037,10 @@ void thread_join()
 /**
  * Daemon clean-up routine.
  */
-void cleanup_daemon()
+void cleanup_daemon(int x)
 {
-	/* XXX Implement me, if there are things to do here :) */
+	binfo("Baler Daemon exiting ... status %d\n", x);
+	exit(x);
 }
 
 /**
@@ -1046,6 +1048,14 @@ void cleanup_daemon()
  */
 int main(int argc, char **argv)
 {
+	struct sigaction cleanup_act;
+	cleanup_act.sa_handler = cleanup_daemon;
+	cleanup_act.sa_flags = 0;
+
+	sigaction(SIGHUP, &cleanup_act, NULL);
+	sigaction(SIGINT, &cleanup_act, NULL);
+	sigaction(SIGTERM, &cleanup_act, NULL);
+
 	args_handling(argc, argv);
 
 	/* Initializing daemon and worker threads according to the
@@ -1061,7 +1071,7 @@ int main(int argc, char **argv)
 	thread_join();
 
 	/* On exit, clean up the daemon. */
-	cleanup_daemon();
+	cleanup_daemon(0);
 	return 0;
 }
 /**\}*/

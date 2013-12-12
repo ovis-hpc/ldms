@@ -1602,8 +1602,6 @@ int main(int argc, char **argv) {
 	if (ocm_port == 0)
 		ocm_port = ME_DEFAULT_OCM_PORT;
 
-	me_log("Started ME Daemon version " VERSION ".\n");
-
 	/*
 	 * Create worker threads
 	 */
@@ -1612,6 +1610,8 @@ int main(int argc, char **argv) {
 	for (i = 0; i < num_worker_thread; i++) {
 		pthread_create(&worker_threads[i], NULL, evaluate_update, NULL);
 	}
+
+	me_log("Started ME Daemon version " VERSION ".\n");
 
 	/* Setting up the listener port */
 	if (transport)

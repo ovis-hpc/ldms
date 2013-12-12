@@ -59,6 +59,7 @@
 #include <netinet/tcp.h>
 #include <semaphore.h>
 #include <dlfcn.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -303,9 +304,24 @@ loop:
 	goto loop;
 }
 
+void ocmd_cleanup(int x)
+{
+	ocmd_log("ocm Daemon exiting ... status %d\n", x);
+	exit(x);
+}
+
 void ocmd_init()
 {
 	int rc;
+
+	struct sigaction cleanup_act;
+	cleanup_act.sa_handler = ocmd_cleanup;
+	cleanup_act.sa_flags = 0;
+
+	sigaction(SIGHUP, &cleanup_act, NULL);
+	sigaction(SIGINT, &cleanup_act, NULL);
+	sigaction(SIGTERM, &cleanup_act, NULL);
+
 	if (!foreground) {
 		rc = daemon(1, 1);
 		if (rc) {
@@ -417,6 +433,9 @@ int main(int argc, char** argv)
 	int rc;
 	handle_args(argc, argv);
 	ocmd_init();
+
+	ocmd_log("ocm Daemon started.\n");
+
 	ocmd_add_peers();
 
 	/* use main thread for request processing too */

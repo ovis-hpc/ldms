@@ -60,6 +60,7 @@
 #include <stdarg.h>
 #include <time.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #include <netinet/ip.h>
 
@@ -1166,9 +1167,24 @@ void k_listen()
 	zap_listen(listen_ep, (void*)&sin, sizeof(sin));
 }
 
+void kmd_cleanup(int x)
+{
+	k_log("Komondor Daemon exiting ... status %d\n", x);
+	exit(x);
+}
+
 int main(int argc, char **argv)
 {
 	int rc;
+
+	struct sigaction cleanup_act;
+	cleanup_act.sa_handler = kmd_cleanup;
+	cleanup_act.sa_flags = 0;
+
+	sigaction(SIGHUP, &cleanup_act, NULL);
+	sigaction(SIGINT, &cleanup_act, NULL);
+	sigaction(SIGTERM, &cleanup_act, NULL);
+
 	process_args(argc, argv);
 	if (!FOREGROUND) {
 		/* daemonize  */
@@ -1178,9 +1194,12 @@ int main(int argc, char **argv)
 			exit(-1);
 		}
 	}
+
 	init();
 	config();
 	k_listen();
+
+	k_log("Komondor Daemon started.\n");
 
 	int i;
 	for (i = 0; i < N_act_threads; i++)
