@@ -12,14 +12,6 @@
 #include <coll/idx.h>
 #include "me_priv.h"
 
-/**
- * \brief Initialize the model manager
- *
- * \param   max_sem_inq   The initial number of input enqueue semaphore
- * \return 0 on success. Otherwise, return errno.
- */
-int model_manager_init(int max_sem_inq);
-
 /*
  * =============================================================
  * Input buffer
@@ -175,7 +167,11 @@ void *evaluate_update();
 
 /**
  * \brief Initialize the model manager
+ *
+ * \param   hash_rbt_sz   The size of the hash rbt
+ * \param   max_sem_inq   The initial number of input enqueue semaphore
+ * \return 0 on success. Otherwise, return errno.
  */
-int initialize(int hash_rbt_sz);
+int model_manager_init(int hash_rbt_sz, int max_sem_inq);
 
 #endif /* MODEL_MANAGER_H_ */

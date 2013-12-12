@@ -50,16 +50,6 @@ sem_t input_nq;
 sem_t input_dq;
 pthread_mutex_t inbuf_lock = PTHREAD_MUTEX_INITIALIZER;
 
-int model_manager_init(int max_sem_inq)
-{
-	if (sem_init(&input_nq, 0, max_sem_inq))
-		return errno;
-
-	if (sem_init(&input_dq, 0, 0))
-		return errno;
-	return 0;
-}
-
 void add_input(struct me_input *input)
 {
 	sem_wait(&input_nq);
@@ -551,13 +541,19 @@ void *evaluate_update()
 	return 0;
 }
 
-int initialize(int hash_rbt_sz)
+int model_manager_init(int hash_rbt_sz, int max_sem_inq)
 {
 	mp_ref_bd.hrbt = hash_rbt_init(hash_rbt_sz);
 	if (!mp_ref_bd.hrbt) {
 		me_log("Could not create the model reference database.\n");
 		return ENOMEM;
 	}
+
+	if (sem_init(&input_nq, 0, max_sem_inq))
+		return errno;
+
+	if (sem_init(&input_dq, 0, 0))
+		return errno;
 
 	me_input_queue = malloc(sizeof(*me_input_queue));
 	TAILQ_INIT(me_input_queue);
