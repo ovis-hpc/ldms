@@ -81,9 +81,9 @@ typedef enum {
 	NS_VMSTAT,
 	NS_LOADAVG,
 	NS_CURRENT_FREEMEM,
-	NS_PROCNETDEV,
 	NS_KGNILND,
-	NS_NUM
+	NS_NUM,
+	NS_PROCNETDEV
 } cray_system_sampler_sources_t;
 #else
 #include "gemini_metrics_gpcd.h"
@@ -96,9 +96,9 @@ typedef enum {
 	NS_VMSTAT,
 	NS_LOADAVG,
 	NS_CURRENT_FREEMEM,
-	NS_PROCNETDEV,
 	NS_KGNILND,
-	NS_NUM
+	NS_NUM,
+	NS_PROCNETDEV
 } cray_system_sampler_sources_t;
 #endif
 
