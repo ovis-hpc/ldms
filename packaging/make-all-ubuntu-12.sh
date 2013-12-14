@@ -8,8 +8,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=$prefix
 
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix "
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --disable-zap --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --disable-zap --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-sos --with-sos=$expected_sos_prefix"
 
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
@@ -24,8 +23,8 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	mkdir .build-all
 	cd .build-all
 	mkdir lib ldms sos
-	(cd lib; ../../lib/configure $allconfig && make  && make install) && \
-	(cd sos; ../../sos/configure  $allconfig && make  && make install) && \
+	(cd lib; ../../lib/configure $allconfig  && make   && make install) && \
+	(cd sos; ../../sos/configure  $allconfig  && make  && make install) && \
 	cd ldms && LDFLAGS="-L$HOME/opt/ovis/lib" ../../ldms/configure $allconfig && make  && make install
 else
 	echo "this must be run from the top of ovis source tree"

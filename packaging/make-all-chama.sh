@@ -33,7 +33,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	tprefix=$prefix
 	expected_ovislib_prefix=$tprefix
 	expected_sos_prefix=$tprefix
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --with-libevent=$expected_event2_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-perfevent --disable-rpath" 
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --with-libevent=$expected_event2_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix  --disable-perfevent --disable-rpath" 
 	export LD_LIBRARY_PATH=$prefix/lib:$LD_LIBRARY_PATH
 	(cd lib; ../../lib/configure $allconfig && make  && make install) && \
 	(cd distroot; : find . -name '*.la' -exec /bin/rm {} \; ) && \

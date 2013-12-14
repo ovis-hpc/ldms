@@ -75,10 +75,10 @@ OPTION_DEFAULT_DISABLE([cray-hss-devel], [ENABLE_CRAY_HSS_DEVEL])
 OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL])
 
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
-OPTION_WITH([sos], [SOS])
+OPTION_WITH_OR_BUILD([sos],[../sos/src])
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-OPTION_WITH([ovis-lib], [OVIS_LIB])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[../lib/src/mmalloc ../lib/src/coll ../lib/src/ovis_util ../lib/src/zap ../lib/src/ovis_ctrl])
 
 dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
@@ -152,22 +152,31 @@ fi
 
 if test -z "$ENABLE_SOS_TRUE"
 then
-AC_CHECK_LIB( sos, sos_open,
-	[
-		AC_CHECK_HEADERS($SOS_INCDIR/sos/sos.h,
-		[],
-		[
-			AC_MSG_FAILURE([sos/sos.h not found])
-		],
+	if test "x$WITH_SOS" != "xbuild"; then
+		AC_MSG_NOTICE([Trying SOS_INCDIR=$SOS_INCDIR and libs $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ])
+		AC_CHECK_LIB( sos, sos_open,
+			[
+				AC_CHECK_HEADERS($SOS_INCDIR/sos/sos.h,
+				[],
+				[
+					AC_MSG_FAILURE([sos/sos.h not found])
+				],
+				)
+			],
+			[
+				AC_MSG_FAILURE(libsos not found)
+			],
+			-lpthread -lods -loidx -lidx $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
 		)
-	],
-	[
-		AC_MSG_FAILURE(libsos not found)
-	],
-	-lpthread -lods -loidx -lidx $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
-)
-dnl Reset LIBS variable.
-LIBS=""
+		dnl Reset LIBS variable.
+		LIBS=""
+	else
+		# assume libs will be there by the time we need and create a
+		# fake include dir in the build tree. do no copying.
+		SOS_INCDIR=`(cd ../sos/src && pwd)`/tmp
+		SOS_INCDIR_FLAG=-I$SOS_INCDIR
+		AC_MSG_NOTICE([Using staged SOS_INCDIR=$SOS_INCDIR and libs $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ])
+	fi
 fi
 
 if test -z "$ENABLE_ATASMART_TRUE"
@@ -186,6 +195,7 @@ LIBS=""
 fi
 
 dnl Check for mmalloc
+if test "x$WITH_OVIS_LIB" != "xbuild"; then
 AC_CHECK_LIB(mmalloc, mm_init, [],
 	     AC_MSG_ERROR([mmalloc library not found. ldms requires mmalloc.
 			   Please install mmalloc from OVIS/lib. ]),
@@ -199,6 +209,9 @@ AC_CHECK_LIB(coll, idx_create, [],
 	     $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG )
 dnl Reset LIBS variable.
 LIBS=""
+else
+   AC_MSG_NOTICE([Using staged ovis-lib $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG for mmalloc/ and coll/. ])
+fi
 
 dnl if cray_sampler if enable_gpcdr then check that interface exists
 if test "x$enable_cray_system_sampler" = "xyes"

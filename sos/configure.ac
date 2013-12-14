@@ -49,33 +49,41 @@ AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
     fi)
 
 dnl
-OVIS_LIB_PREFIX=/usr
-OVIS_LIB_INCLUDE=/usr/include
-AC_ARG_WITH([ovis-prefix],
-	[AS_HELP_STRING([--with-ovis-prefix],
-              [Specify prefix of ovis lib and devel installation])],
-            [],
-            [with_ovis_prefix=check])
-if test "x$with_ovis_prefix" != "xno" ;  then
-	if test -f "$with_ovis_prefix/include/ovis-test/test.h"; then
-		OVIS_LIB_PREFIX=$with_ovis_prefix
-		OVIS_LIB_INCLUDE=$with_ovis_prefix/include
+AC_ARG_WITH([ovis-prefix],[AS_HELP_STRING([--with-ovis-prefix],
+              [deprecated. Use --with-ovis-include instead.])],
+            [AC_MSG_ERROR([Deprecated --with-ovis-prefix. Use --with-ovis-include instead or omit flag to search in source tree. ])],
+             [])
+
+dnl tell us where to find the src tree or identical previously installed header set
+dnl or we will try to find by relative path assuming $srctree/[lib,sos,ldms]
+dnl structure used in dec 2013
+AC_ARG_WITH([ovis-include],
+	[AS_HELP_STRING([--with-ovis-include],
+              [Specify location (installed or src) containing ovis-test/test.h])],
+            [], [with_ovis_include=check])
+if test "x$with_ovis_include" != "xno" ;  then
+	if test -f "$with_ovis_include/ovis-test/test.h"; then
+		OVIS_LIB_INCLUDE=$with_ovis_include
 		CPPFLAGS="-I$OVIS_LIB_INCLUDE $CPPFLAGS"
 	else
-		if test -f /opt/ovis/include/ovis-test/test.h; then
-			OVIS_LIB_PREFIX=/opt/ovis
-			OVIS_LIB_INCLUDE=/opt/ovis/include
+		if test -d $srcdir/../lib/src; then
+			libsrcdir=`(cd $srcdir/../lib/src && pwd)`
+		fi
+		if test -f $libsrcdir/ovis-test/test.h; then
+			OVIS_LIB_INCLUDE=$libsrcdir
 			CPPFLAGS="-I$OVIS_LIB_INCLUDE $CPPFLAGS"
+		else 
+			AC_MSG_ERROR([could not find given ovis lib headers (in $with_ovis_include) or $srcdir/../lib/src. what?])
 		fi
 	fi
 else
-   AC_MSG_ERROR([ovis prefix is not optional.])
+   AC_MSG_ERROR([ovis includes are required.])
 fi
+AC_MSG_NOTICE([Found OVIS_LIB_INCLUDE=$OVIS_LIB_INCLUDE])
 
 AC_CHECK_HEADER([ovis-test/test.h],[],
-   [AC_MSG_ERROR([Missing header ovis-test/test.h. Specify --with-ovis-prefix=OVISPREFIX])])
+   [AC_MSG_ERROR([Missing header ovis-test/test.h. Specify --with-ovis-include=OVISPREFIX_or_LIB_SRC_DIR])])
 
-AC_SUBST(OVIS_LIB_PREFIX)
 AC_SUBST(OVIS_LIB_INCLUDE)
 rpm_configure_args=`echo $ac_configure_args | sed -e "s%--prefix=[^']*%%"`
 AC_SUBST(rpm_configure_args)
