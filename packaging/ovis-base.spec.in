@@ -48,6 +48,8 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root)
 %{_libdir}/*
+%{_libdir}/python2.6/site-packages
+%{_prefix}/lib/python2.6/site-packages
 %{_sbindir}/*
 %doc README COPYING ChangeLog AUTHORS
 #end core
@@ -75,7 +77,9 @@ Requires: %{name}-devel = %{version}-%{release}
 Doxygen files for ovis-base package.
 %files doc
 %defattr(-,root,root)
-%{_datadir}/doc/%{name}-%{version}
+%{_datadir}/doc/ovis-lib-%{version}
+%{_datadir}/doc/ovis-sos-%{version}
+%{_datadir}/doc/ovis-ldms-%{version}
 %docdir %{_defaultdocdir}
 %changelog
 * Fri Dec 13 2013 Ben Allan <baallan@sandia.gov> 2.2.2-1
