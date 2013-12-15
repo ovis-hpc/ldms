@@ -1,9 +1,15 @@
+@ENABLE_SWIG_TRUE@ENABLE_SWIG=1
+
+#nodist_SOURCES= sos.c sos.py
+if ENABLE_SWIG
 # For Swig stuffs
 BUILT_SOURCES = sos.c sos.py
 SWIG_SOURCES = sos.i $(top_srcdir)/src/sos.h
-pkgpython_PYTHON = sos.py __init__.py
+nodist_pkgpython_PYTHON = sos.py 
+pkgpython_PYTHON =  __init__.py
 pkgpyexec_LTLIBRARIES = _sos.la
-_sos_la_SOURCES = sos.c $(SWIG_SOURCES)
+_sos_la_SOURCES = $(SWIG_SOURCES)
+nodist_sos_la_SOURCES=sos.c sos.py
 _sos_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src
 _sos_la_LDFLAGS = -module
 _sos_la_LIBADD = \
@@ -21,8 +27,10 @@ sos.py: sos.c
 sos.c: $(SWIG_SOURCES)
 	$(SWIG) $(SWIG_PYTHON_OPT) -I$(top_srcdir)/src -o $@ $<
 
+endif
+
 clean-local:
-	rm -f sos.c sos.py
+	-rm -f sos.c sos.py
 
 # $(PYTHON_SITE_PKG) is set by AC_PYTHON_DEVEL
 # $(pkgpyexecdir) and $(pkgpythondir) is set by automake-python

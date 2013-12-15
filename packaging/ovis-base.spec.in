@@ -1,0 +1,82 @@
+# /* @configure_input@ */
+# don' tSet topdir to be builddir/rpm
+#%-define _topdir %(echo $PWD)/rpm
+#%-define _unpackaged_files_terminate_build 0
+#%-%define _missing_doc_files_terminate_build 0
+
+%define ldms_grp System Environment/Libraries
+
+# Main package
+Summary: OVIS LDMS Commands and Libraries
+Name: ovis-base
+Version: @VERSION@
+Release: 1%{?dist}
+License: GPLv2 or BSD
+Group: %{ldms_grp}
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: %{name}-%{version}.tar.gz
+Requires: rpm >= 4.8.0
+BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel libevent2-devel
+Url: http://ovis.ca.sandia.gov/
+
+Prefix: /opt/ovis
+
+
+%description
+This package provides the LDMS commands and libraries, OVIS apis and transport libraries, and scalable object store libraries.
+Configured with @ac_configure_args@.
+* ldmsd: the LDMS daemon, which can run as sampler or aggregator (or both).
+* ldms_ls: the tool to list metric information of an ldmsd.
+* ldmsctl: the tool to control an ldmsd.
+
+%prep
+%setup -q
+
+%build
+%configure @ac_configure_args@ --enable-swig --disable-rpath --enable-rdma --enable-zaptest --enable-sos
+make
+
+%install
+rm -rf $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} install
+# remove unpackaged files from the buildroot
+rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+%{_libdir}/*
+%{_sbindir}/*
+%doc README COPYING ChangeLog AUTHORS
+#end core
+
+# devel
+%package devel
+Summary: OVIS base package.
+Group: %{ldms_grp}
+Requires: ovis-base = @VERSION@
+%description devel
+This is a development package of Lightweight Distributed Metric System (LDMS).
+Users who want to implement their own sampler or store must install this
+package.
+
+%files devel
+%defattr(-,root,root)
+%{_includedir}/*/*.h
+#end devel
+
+%package doc
+Summary: Documentation files for %{name}
+Group: %{ldms_grp}
+Requires: %{name}-devel = %{version}-%{release}
+%description doc
+Doxygen files for ovis-base package.
+%files doc
+%defattr(-,root,root)
+%{_datadir}/doc/%{name}-%{version}
+%docdir %{_defaultdocdir}
+%changelog
+* Fri Dec 13 2013 Ben Allan <baallan@sandia.gov> 2.2.2-1
+initial ovis-base packaging

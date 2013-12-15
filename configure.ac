@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-all, 2.0.0, ovis-help@sandia.gov)
+AC_INIT(ovis-base, 2.0.0, ovis-help@sandia.gov)
 #fixme=--subdir
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
@@ -33,5 +33,5 @@ PKG_CHECK_MODULES([GLIB20], [glib-2.0 >= 2.0.0])
 
 AC_SUBST(ac_configure_args)
 
-AC_CONFIG_FILES([Makefile])
+AC_CONFIG_FILES([Makefile packaging/ovis-base.spec])
 AC_OUTPUT

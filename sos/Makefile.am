@@ -1,6 +1,7 @@
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
+@ENABLE_SWIG_TRUE@ENABLE_SWIG=1
 
 if ENABLE_SWIG
 SUBDIRS += swig
@@ -12,6 +13,7 @@ OVIS_SOS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_SOS_TARBALL = $(OVIS_SOS).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
+
 .PHONY: rpm centos toss
 centos toss rpm: dist-gzip
 	mkdir -p centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
@@ -20,7 +22,7 @@ centos toss rpm: dist-gzip
 
 doc:
 	doxygen Doxyfile
-	@(errcnt=`wc -l sos.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
+	@(errcnt=`wc -l sos.doxygen.log|sed -e 's%sos.doxygen.log%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
 
 rpm-clean:
 	rm -rf rpm/ centos/

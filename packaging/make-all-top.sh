@@ -25,7 +25,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	cd .build-all2
 	mkdir distroot
 	DISTROOT=`pwd`/distroot
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-libevent=$expected_event2_prefix --enable-rdma --enable-sos --disable-perfevent --disable-rpath" 
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-libevent=$expected_event2_prefix --enable-sos --disable-perfevent --disable-rpath" 
 	../configure $allconfig && \
 	make && \
 	DESTDIR=$DISTROOT make install

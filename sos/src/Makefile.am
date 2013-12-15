@@ -136,7 +136,7 @@ all-local:
 	(mkdir -p tmp && cd tmp && if test !  -h sos; then $(LN_S) @abs_srcdir@ sos; fi)
 
 clean-local:
-	rm tmp/sos; rmdir tmp
+	-rm -f tmp/sos; rmdir tmp
 
 # This has been disabled for now, to support the case that users want to
 # install sos locally (not system-wide).
