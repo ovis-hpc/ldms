@@ -346,15 +346,6 @@ static const char *usage(void)
 		"    setname     The set name.\n";
 }
 
-/**
- * \brief Configuration
- *
- * - config procnetdev action=add iface=eth0
- *  (repeat this for each iface)
- * - config procnetdev action=init component_id=<value> set=<setname>
- *  (init must be after all the ifaces are added since it adds the metric set)
- *
- */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
