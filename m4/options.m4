@@ -68,6 +68,7 @@ AC_SUBST([$2_INCDIR_FLAG], [$$2_INCDIR_FLAG])
 ])
 
 dnl SYNOPSIS: OPTION_WITH_OR_BUILD(featurename,buildincdir,buildlibdirs)
+dnl REASON: configuring against other subprojects needs a little love.
 dnl EXAMPLE: OPTION_WITH_OR_BUILD([sos], [../sos/src])
 dnl NOTE: With featurename being sos, this macro will set SOS_INCIDR and
 dnl 	SOS_LIBDIR to the include path and library path respectively.
@@ -173,7 +174,14 @@ AC_DEFUN([OPTION_WITH_EVENT],[
     *)
       if test "x$withval" != "x/usr"; then
         CPPFLAGS="-I$withval/include"
-        EVENTLIBS="-L$withval/lib -L$withval/lib64"
+	if test -f $withval/lib/libevent.so; then
+	  libeventpath=$withval/lib
+          EVENTLIBS="-L$withval/lib"
+        fi 
+	if test -f $withval/lib64/libevent.so; then
+          EVENTLIBS="$EVENTLIBS -L$withval/lib64"
+	  libeventpath=$withval/lib64:$libeventpath
+        fi
       fi
       ;;
     esac ])
@@ -181,5 +189,6 @@ AC_DEFUN([OPTION_WITH_EVENT],[
   AC_CHECK_LIB(event, event_base_new, [EVENTLIBS="$EVENTLIBS -levent"],
       AC_MSG_ERROR([event_base_new() not found. sock requires libevent.]),[$EVENTLIBS])
   AC_SUBST(EVENTLIBS)
+  AC_SUBST(libeventpath)
   LIBS=$option_old_libs
 ])
