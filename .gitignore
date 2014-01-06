@@ -10,7 +10,6 @@ Makefile.in
 configure
 build*
 config.h.in
-*.m4
 config.guess
 config.sub
 depcomp
@@ -19,4 +18,11 @@ ltmain.sh
 missing
 compile
 py-compile
+
+aclocal.m4
+libtool.m4
+ltoptions.m4
+ltsugar.m4
+ltversion.m4
+lt~obsolete.m4
 

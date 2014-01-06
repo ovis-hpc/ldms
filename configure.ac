@@ -18,14 +18,20 @@ AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
 dnl AM_PROG_CC_C_O
 
-dnl This got defined here for LIBEVENT_ENABLE
-OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
-OPTION_WITH([libevent], [LIBEVENT])
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
+# LIBEVENT-start
+dnl This got defined here for LIBEVENT_ENABLE
+OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
+
+# LIBEVENT-ow
+OPTION_WITH([libevent], [LIBEVENT])
+
 dnl Check for libevent
+# LIBEVENT-owe
 OPTION_WITH_EVENT
+# LIBEVENT-done
 
 dnl Check for glib
 PKG_CONFIG=`which pkg-config`

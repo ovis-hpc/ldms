@@ -1,0 +1,16 @@
+#!/bin/bash
+BUILDDIR=@prefix@
+export PATH=${BUILDDIR}/sbin:$PATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libeventpath@
+export LDMS_XPRT_LIBPATH=${BUILDDIR}/lib
+export LDMSD_PLUGIN_LIBPATH=${BUILDDIR}/lib
+
+set -x
+TESTDIR=/tmp/$USER/ldmstest/$$
+STOREDIR=$TESTDIR/store
+SOCKDIR=$TESTDIR/run/ldmsd
+LOGDIR=$TESTDIR/logs
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+echo "logs and data stored under $TESTDIR"
+

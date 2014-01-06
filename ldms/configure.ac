@@ -253,6 +253,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/ldmsd/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
+		 scripts/envldms.sh
 		 scripts/ldms_usertest.sh
 		 ldms.spec])
 AC_OUTPUT

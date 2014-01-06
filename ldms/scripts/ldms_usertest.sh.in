@@ -5,6 +5,14 @@
 DESTDIR=
 allowroot=0
 BUILDDIR=@prefix@
+# Manually redefine portbase to avoid collisions.
+# Base should be above the maximum in :
+#  cat /proc/sys/net/ipv4/ip_local_port_range
+# and below 65530 or below the minimum and above 1024
+portbase=61100
+port1=`expr $portbase + 1`
+port2=`expr $portbase + 2`
+port3=`expr $portbase + 3`
 if test ! -x $BUILDDIR/sbin/ldmsd; then
 	echo "can't find ldmsd binary. set destdir in $0 before testing?"
 	exit 1
@@ -22,18 +30,19 @@ case "x$USER" in
 	;;
 esac
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib
-export LDMS_XPRT_LIBPATH=${BUILDDIR}/lib
-export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=${BUILDDIR}/lib
-export LDMSD_SOCKPATH=${BUILDDIR}/run
-
-TESTDIR=/tmp/$USER/ldmstest
+# use our pid in dirname
+TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
 LOGDIR=$TESTDIR/logs
 export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+echo "logs and data stored under $TESTDIR"
+
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libeventpath@
+export LDMS_XPRT_LIBPATH=${BUILDDIR}/lib
+export PATH=${BUILDDIR}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=${BUILDDIR}/lib
 
 pkill ldmsd
 sleep 1
@@ -48,9 +57,9 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:60000 -S $SOCKDIR/metric_socket_1  -l ${BUILDDIR}/logs/1.txt
-ldmsd -x sock:70000 -S $SOCKDIR/metric_socket_2  -l ${BUILDDIR}/logs/2.txt
-ldmsd -x sock:80000 -S $SOCKDIR/metric_socket_3  -l ${BUILDDIR}/logs/3.txt
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt
+ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt
 sleep 1
 
 
@@ -84,10 +93,10 @@ ssh localhost echo "start name=vmstat interval=1000000" | ${BUILDDIR}/sbin/ldmsc
 sleep 2
 
 echo Adding host2 to aggregator3
-ssh localhost echo "add host=localhost type=active xprt=sock interval=1000000 port=70000 sets=localhost2/meminfo,localhost2/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/meminfo,localhost2/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 sleep 1
 echo Adding host1 to aggregator3
-ssh localhost echo "add host=localhost type=active xprt=sock interval=1000000 port=60000 sets=localhost1/meminfo,localhost1/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+ssh localhost echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/meminfo,localhost1/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
 sleep 5
 echo Adding store_csv to aggregator3
@@ -101,12 +110,12 @@ sleep 2
 
 sleep 5
 echo ldms_ls on host 1:
-ldms_ls -h localhost -x sock -p 60000 -l
+ldms_ls -h localhost -x sock -p $port1 -l
 sleep 1
 echo ldms_ls on host 2:
-ldms_ls -h localhost -x sock -p 70000 -l
+ldms_ls -h localhost -x sock -p $port2 -l
 sleep 1
 echo ldms_ls on host 3:
-ldms_ls -h localhost -x sock -p 80000 
+ldms_ls -h localhost -x sock -p $port3 
 
 echo done;
