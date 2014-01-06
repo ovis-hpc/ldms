@@ -32,7 +32,8 @@ TESTDIR=/tmp/$USER/ldmstest
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
 LOGDIR=$TESTDIR/logs
-mkdir -p $STOREDIR $SOCKDIR $LOGDIR
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
 
 pkill ldmsd
 sleep 1
