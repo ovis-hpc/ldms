@@ -255,6 +255,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 Doxyfile
 		 scripts/envldms.sh
 		 scripts/ldms_usertest.sh
+		 scripts/ldms_local_usertest.sh
 		 ldms.spec])
 AC_OUTPUT
 
