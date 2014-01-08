@@ -68,46 +68,36 @@ sleep 1
 
 
 echo Starting plugins on daemon1
-echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "config name=meminfo set=localhost1/meminfo component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "load name=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "config name=vmstat set=localhost1/vmstat component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "start name=vmstat interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "config name=clock set=localhost1/clock component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
 sleep 1
 sleep 1
 
 echo Starting plugins on daemon2
-echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "config name=meminfo set=localhost2/meminfo component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "load name=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "config name=vmstat set=localhost2/vmstat component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "start name=vmstat interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo "config name=clock set=localhost2/clock component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
 sleep 2
 
 echo Starting plugins on daemon3
-echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "config name=meminfo set=localhost3/meminfo component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "load name=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "config name=vmstat set=localhost3/vmstat component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "start name=vmstat interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=clock set=localhost3/clock component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 sleep 2
 
 echo Adding host2 to aggregator3
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/meminfo,localhost2/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 sleep 1
 echo Adding host1 to aggregator3
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/meminfo,localhost1/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
 sleep 5
 echo Adding store_csv to aggregator3
 echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 sleep 2
 echo "config name=store_csv path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=vmstat container=vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_csv comp_type=node set=clock container=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 sleep 2
 #
 

@@ -44,6 +44,8 @@ export LDMS_XPRT_LIBPATH=${BUILDDIR}/lib
 export PATH=${BUILDDIR}/sbin:$PATH
 export LDMSD_PLUGIN_LIBPATH=${BUILDDIR}/lib
 
+# extensibility bug: if localhost is replaced with remotes, this
+# next bit needs corresponding ssh remotehost pkills
 pkill ldmsd
 sleep 1
 

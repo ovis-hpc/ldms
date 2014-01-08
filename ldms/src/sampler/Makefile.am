@@ -7,6 +7,10 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 
+libclock_la_SOURCES = clock.c
+libclock_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += libclock.la
+
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
 libkgnilnd_la_LIBADD = $(COMMON_LIBADD)

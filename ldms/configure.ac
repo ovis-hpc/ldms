@@ -251,12 +251,18 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/sampler/cray_system_sampler/Makefile
 		 src/ldmsd/Makefile
+		 scripts/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 scripts/envldms.sh
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh
-		 ldms.spec])
+		 scripts/ldms_local_clocktest.sh
+		 ldms.spec],[
+		chmod a+x scripts/ldms_usertest.sh
+		chmod a+x scripts/ldms_local_usertest.sh
+		chmod a+x scripts/ldms_local_clocktest.sh
+		])
 AC_OUTPUT
 
 if test "x$enable_rpath" != "xyes"; then
@@ -264,5 +270,4 @@ echo "TURNING libtool rpath into no-ops"
 sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
 sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
 fi
-chmod a+x scripts/ldms_usertest.sh
 
