@@ -1180,19 +1180,20 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 			   const char *hostname,
 			   const char *_metrics)
 {
-	int rc;
+	int rc, found_count;
 	struct hostset *hset;
 	char *set_name = sp->setname;
 	char *tmp;
 	struct ldmsd_store_policy_ref *sp_ref;
 	struct hostset_ref *hset_ref;
+	found_count = 0;
 	pthread_mutex_lock(&hs->set_list_lock);
 	LIST_FOREACH(hset, &hs->set_list, entry) {
 		char *hset_name;
 		tmp = strdup(hset->name);
 		hset_name = basename(tmp);
-		/* There is only one metric set per store command. */
 		if (0 == strcmp(set_name, hset_name)) {
+			/* Found a set with the given set name. */
 			hset_ref = malloc(sizeof(*hset_ref));
 			if (!hset_ref) {
 				sprintf(replybuf, "%d Could not create "
@@ -1215,18 +1216,16 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 			hset_ref_get(hset);
 			hset_ref->hset = hset;
 			LIST_INSERT_HEAD(&sp->hset_ref_list, hset_ref, entry);
-			/* Found the set and finish for this host */
-			break;
+			found_count++;
 		}
+		free(tmp);
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
-	if (!hset) {
+	if (found_count == 0) {
 		sprintf(replybuf, "%d Could not find the set '%s' in host '%s'",
 				-ENOENT, sp->setname, hostname);
-		free(tmp);
 		return ENOENT;
 	}
-	free(tmp);
 	return 0;
 err1:
 	free(hset_ref);
@@ -1432,7 +1431,8 @@ int process_store(int fd,
 		goto enomem;
 	}
 
-	int rc;
+	int rc, found_count;
+	found_count = 0;
 	/* Creating the hostset_ref_list for the store policy */
 	if (!hosts) {
 		/* No given hosts */
@@ -1440,7 +1440,11 @@ int process_store(int fd,
 		LIST_FOREACH(hs, &host_list, link) {
 			rc = sp_create_hset_ref_list(hs, sp, hs->hostname,
 							metrics);
-			if (rc) {
+			if (rc == 0) {
+				found_count++;
+				continue;
+			}
+			if (rc != ENOENT) {
 				pthread_mutex_unlock(&host_list_lock);
 				goto destroy_store_policy;
 			}
@@ -1449,7 +1453,9 @@ int process_store(int fd,
 	} else {
 		/* Given hosts */
 		char *hostname = strtok(hosts, ",");
+		int found_host_count;
 		while (hostname) {
+			found_host_count = 0;
 			pthread_mutex_lock(&host_list_lock);
 			/*
 			 * Find the given hosts
@@ -1458,25 +1464,36 @@ int process_store(int fd,
 				if (0 != strcmp(hs->hostname, hostname))
 					continue;
 
+				found_host_count++;
 				rc = sp_create_hset_ref_list(hs, sp, hostname,
 								metrics);
-				if (rc) {
+				if (rc == 0) {
+					found_count++;
+					continue;
+				}
+				if (rc != ENOENT) {
 					pthread_mutex_unlock(&host_list_lock);
 					goto destroy_store_policy;
 				}
-				break;
 			}
 			pthread_mutex_unlock(&host_list_lock);
 			/* Host not found */
-			if (!hs) {
+			if (found_host_count == 0) {
 				sprintf(replybuf, "%d Could not find the host "
 					"'%s'.", -ENOENT, hostname);
 				send_reply(fd, sa, sa_len, replybuf,
-						strlen(replybuf)+1);
+						strlen(replybuf) + 1);
+				goto destroy_store_policy;
 				return ENOENT;
 			}
 			hostname = strtok(NULL, ",");
 		}
+	}
+	if (found_count == 0) {
+		sprintf(replybuf, "%d Count not find the set '%s' in any hosts",
+			-ENOENT, set_name);
+		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
+		goto destroy_store_policy;
 	}
 	/* Done creating the hostset_ref_list for the store policy */
 
