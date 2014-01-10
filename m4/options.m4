@@ -67,6 +67,29 @@ AC_SUBST([$2_LIB64DIR_FLAG], [$$2_LIB64DIR_FLAG])
 AC_SUBST([$2_INCDIR_FLAG], [$$2_INCDIR_FLAG])
 ])
 
+dnl SYNOPSIS: OPTION_WITH_PORT([name])
+dnl EXAMPLE: OPTION_WITH_PORT([XYZ],[411])
+dnl sets default value of XYZPORT, using second argument as value if not given
+AC_DEFUN([OPTION_WITH_PORT], [
+AC_ARG_WITH(
+	$1PORT,
+	AS_HELP_STRING(
+		[--with-$1PORT@<:@=NNN@:>@],
+		[Specify $1 runtime default port @<:@configure default=$2@:>@]
+	),
+	[$1PORT=$withval],
+	[$1PORT=$2; withval=$2]
+)
+$1PORT=$withval
+if printf "%d" "$withval" >/dev/null 2>&1; then
+	:
+else
+	AC_MSG_ERROR([--with-$1PORT given non-integer input $withval])
+fi
+AC_DEFINE_UNQUOTED([$1PORT],[$withval],[Default port for $1 to listen on])
+AC_SUBST([$1PORT],[$$1PORT])
+])
+
 dnl SYNOPSIS: OPTION_WITH_OR_BUILD(featurename,buildincdir,buildlibdirs)
 dnl REASON: configuring against other subprojects needs a little love.
 dnl EXAMPLE: OPTION_WITH_OR_BUILD([sos], [../sos/src])
@@ -192,3 +215,4 @@ AC_DEFUN([OPTION_WITH_EVENT],[
   AC_SUBST(libeventpath)
   LIBS=$option_old_libs
 ])
+

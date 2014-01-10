@@ -241,6 +241,8 @@ fi
 dnl Reset LIBS variable.
 LIBS=""
 
+OPTION_WITH_PORT([LDMSD],[411])
+
 
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
@@ -249,11 +251,13 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/hadoop/Makefile
+		 src/sampler/hadoop/hadoop-sinks/LdmsSink.java
 		 src/sampler/cray_system_sampler/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
+		 scripts/ldmsd
 		 scripts/envldms.sh
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh

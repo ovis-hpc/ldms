@@ -67,7 +67,7 @@ import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 
 public class LdmsSink implements MetricsSink{
 
-	protected static final int DEFAULT_PORT = 50000;
+	protected static final int DEFAULT_PORT = @LDMSDPORT@;
 	protected static final String DEFAULT_HOST = "localhost";
 
 	private final LdmsVisitor visitor = new LdmsVisitor();

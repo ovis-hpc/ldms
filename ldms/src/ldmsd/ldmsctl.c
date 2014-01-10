@@ -181,7 +181,7 @@ int handle_help(char *kw, char *err_str)
 	       "         sock     The sockets transport.\n"
 	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
 	       "         ugni     The Cray Gemini transport.\n"
-	       "     <port>       The port number to connect on, defaults to 50000.\n"
+	       "     <port>       The port number to connect on, defaults to %d.\n"
 	       "\n"
 	       "store name=<store> container=<container> set=<set> comp_type=<comp_type>\n"
 	       "      [hosts=<hosts>] [metric=<metric>]\n"
@@ -203,7 +203,7 @@ int handle_help(char *kw, char *err_str)
 	       "     work queue utilization, hosts and object stores.\n"
 	       "\n"
 	       "quit\n"
-	       "   - Exit.\n");
+	       "   - Exit.\n", LDMS_DEFAULT_PORT);
 	return 0;
 }
 

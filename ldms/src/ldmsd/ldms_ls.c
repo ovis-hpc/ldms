@@ -94,7 +94,7 @@ void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
 	       "\n    -h <hostname>    The name of the host to query. Default is localhost.\n"
-	       "\n    -p <port_num>    The port number. The default is 50000.\n"
+	       "\n    -p <port_num>    The port number. The default is %d.\n"
 	       "\n    -l               Show the values of the metrics in each metric set.\n"
 	       "\n    -u               Show the user-defined metric meta data value.\n"
 	       "\n    -x <name>        The transport name: sock, rdma, or local. Default is\n"
@@ -106,7 +106,7 @@ void usage(char *argv[])
 	       "\n    -m <memory size>   Maximum size of pre-allocated memory for metric sets.\n"
 	       "                         The given size must be less than 1 petabytes.\n"
 	       "                         For example, 20M or 20mb are 20 megabytes.\n",
-	       argv[0]);
+	       argv[0],LDMS_DEFAULT_PORT);
 	exit(1);
 }
 
@@ -407,8 +407,11 @@ int main(int argc, char *argv[])
 	if (optind == argc) {
 		ret = ldms_dir(ldms, dir_cb, NULL, 0);
 		if (ret) {
-			printf("ldms_dir returned synchronous error %d\n",
-			      ret);
+			fprintf(stderr,"ldms_dir returned error (%d) %s\n",ret,
+				strerror(ret) );
+			if (ret == EBADMSG) {
+				fprintf(stderr,"Likely local transport not properly implemented.\n");
+			}
 			exit(1);
 		}
 	} else {

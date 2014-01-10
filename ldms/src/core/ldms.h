@@ -672,7 +672,7 @@ void ldms_dir_cancel(ldms_t t);
 extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
 #define LDMS_XPRT_LIBPATH_DEFAULT "/usr/local/lib/"
-#define LDMS_DEFAULT_PORT	50000
+#define LDMS_DEFAULT_PORT	LDMSDPORT
 #define LDMS_LOOKUP_PATH_MAX	511
 
 

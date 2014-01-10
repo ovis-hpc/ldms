@@ -10,6 +10,7 @@ prog=ldmsd
 LOCKFILE=/var/lock/${prog}
 SOCKET=/var/run/${prog}/metric_socket
 LOGFILE=/var/log/${prog}.log
+PORT=@LDMSDPORT@
 
 start () {
 	echo -n $"Starting $prog: "
@@ -34,7 +35,7 @@ start () {
 	fi
 	# start daemon
 	> ${LOGFILE}
-	daemon $DAEMON -x rdma:50000 -x sock:50000 -l ${LOGFILE}
+	daemon $DAEMON -x rdma:$PORT -x sock:$PORT -l ${LOGFILE}
         RETVAL=$?
 	echo
 	[ $RETVAL = 0 ] && touch ${LOCKFILE}
