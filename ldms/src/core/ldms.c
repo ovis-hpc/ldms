@@ -568,12 +568,14 @@ static int local_dir(int *set_count, char *set_list, size_t *set_list_sz)
 
 int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
-#ifdef ENABLE_MMAP
 	struct ldms_xprt *_x = (struct ldms_xprt *)x;
+#ifdef ENABLE_MMAP
 	if (0 == strcmp(_x->name, "local"))
 		return local_dir(x, cb, cb_arg, flags);
 #endif
-
+	if (0 == strcmp(_x->name, "local"))
+		fprintf(stderr,"warning: ldms_dir not implemented "
+			"for transport 'local' unless MMAP enabled.\n");
 	return __ldms_remote_dir(x, cb, cb_arg, flags);
 }
 

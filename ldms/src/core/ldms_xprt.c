@@ -804,11 +804,19 @@ static void local_xprt_destroy(struct ldms_xprt *x)
 {
 	/* Local transport destroy is a no-op */
 }
+static int local_xprt_send(struct ldms_xprt *x, void *y, size_t z)
+{
+	(void)x;
+	(void)y;
+	(void)z;
+	return EBADMSG; //x misconfigured upstream
+}
 
 struct ldms_xprt local_transport = {
 	.name = "local",
 	.connect = local_xprt_connect,
 	.destroy = local_xprt_destroy,
+	.send = local_xprt_send,
 };
 
 #if defined(__MACH__)
