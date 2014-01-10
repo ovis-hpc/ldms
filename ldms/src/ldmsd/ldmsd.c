@@ -2007,10 +2007,14 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	}
 
 	gn = ldms_get_data_gn(hset->set);
-	if (hset->gn == gn)
+	if (hset->gn == gn) {
+		ldms_log("Generation number %d static for set %s.\n", (int)gn, (s ? ldms_get_set_name(s) : "UNKNOWN"));
 		goto out;
+	}
+	else
+		ldms_log("Set %s being written.\n", (s ? ldms_get_set_name(s) : "UNKNOWN"));
 
-	if (!ldms_is_set_consistent(hset->set))
+	if (!ldms_is_set_consistent(hset->set)) 
 		goto out;
 
 	hset->gn = gn;
@@ -2216,19 +2220,19 @@ void *event_proc(void *v)
 	return NULL;
 }
 
+static unsigned char ctrl_rcv_lbuf[32768];
 void *ctrl_thread_proc(void *v)
 {
 	struct msghdr msg;
 	struct iovec iov;
-	static unsigned char lbuf[256];
 	struct sockaddr_storage ss;
-	iov.iov_base = lbuf;
+	iov.iov_base = ctrl_rcv_lbuf;
 	do {
 		ssize_t msglen;
 		ss.ss_family = AF_UNIX;
 		msg.msg_name = &ss;
 		msg.msg_namelen = sizeof(ss);
-		iov.iov_len = sizeof(lbuf);
+		iov.iov_len = sizeof(ctrl_rcv_lbuf);
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		msg.msg_control = NULL;
@@ -2242,19 +2246,19 @@ void *ctrl_thread_proc(void *v)
 	return NULL;
 }
 
+static unsigned char inet_rcv_lbuf[32768];
 void *inet_ctrl_thread_proc(void *v)
 {
 	struct msghdr msg;
 	struct iovec iov;
-	static unsigned char lbuf[256];
 	struct sockaddr_in sin;
-	iov.iov_base = lbuf;
+	iov.iov_base = inet_rcv_lbuf;
 	do {
 		ssize_t msglen;
 		sin.sin_family = AF_INET;
 		msg.msg_name = &sin;
 		msg.msg_namelen = sizeof(sin);
-		iov.iov_len = sizeof(lbuf);
+		iov.iov_len = sizeof(inet_rcv_lbuf);
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		msg.msg_control = NULL;

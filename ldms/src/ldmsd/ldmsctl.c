@@ -207,8 +207,8 @@ int handle_help(char *kw, char *err_str)
 	return 0;
 }
 
-char err_str[8192];
-char linebuf[8192];
+char err_str[32768];
+char linebuf[32768];
 char *sockname = LDMSD_CONTROL_SOCKNAME;
 struct ctrlsock *ctrl_sock;
 
