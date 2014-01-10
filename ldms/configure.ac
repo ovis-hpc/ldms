@@ -74,6 +74,11 @@ OPTION_WITH([krca], [KRCA])
 OPTION_DEFAULT_DISABLE([cray-hss-devel], [ENABLE_CRAY_HSS_DEVEL])
 OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL])
 
+
+dnl Options for Testing
+OPTION_DEFAULT_DISABLE([qc-sampler], [ENABLE_QC_SAMPLER]) dnl turn on QC testing of samplers
+
+
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos],[../sos/src])
 
@@ -242,6 +247,12 @@ dnl Reset LIBS variable.
 LIBS=""
 
 OPTION_WITH_PORT([LDMSD],[411])
+
+
+if test -z "$ENABLE_QC_SAMPLER_TRUE"
+then
+AC_DEFINE([HAVE_QC_SAMPLER],[1],[Turning on QC tests for samplers.])
+fi
 
 
 AC_SUBST(ac_configure_args)
