@@ -165,3 +165,30 @@ AC_DEFUN([OPTION_WITH_EVENT],[
   AC_SUBST(EVENTLIBS)
   LIBS=$option_old_libs
 ])
+
+dnl SYNOPSIS: OPTION_WITH_MAGIC([name])
+dnl EXAMPLE: OPTION_WITH_MAGIC([XYZ],[411],[desc])
+dnl sets default value of magic number XYZ for make and headers, 
+dnl using second argument as default if not given by user
+dnl and description.
+dnl Good for getting default sizes and ports at config time
+AC_DEFUN([OPTION_WITH_MAGIC], [
+AC_ARG_WITH(
+        $1,
+        AS_HELP_STRING(
+                [--with-$1@<:@=NNN@:>@],
+                [Specify $1 $3 @<:@configure default=$2@:>@]
+        ),
+        [$1=$withval],
+        [$1=$2; withval=$2]
+)
+$1=$withval
+if printf "%d" "$withval" >/dev/null 2>&1; then
+        :
+else
+        AC_MSG_ERROR([--with-$1 given non-integer input $withval])
+fi
+AC_DEFINE_UNQUOTED([$1],[$withval],[$3])
+AC_SUBST([$1],[$$1])
+])
+
