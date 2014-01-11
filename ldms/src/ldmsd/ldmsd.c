@@ -1198,17 +1198,19 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 			hset_ref->hset = hset;
 			LIST_INSERT_HEAD(&sp->hset_ref_list, hset_ref, entry);
 			/* Found the set and finish for this host */
-			break;
+			// break;  Commenting out --- may be many matching sets for an aggregating host
 		}
+		free(tmp);
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
-	if (!hset) {
-		sprintf(replybuf, "%d Could not find the set '%s' in host '%s'",
-				-ENOENT, sp->setname, hostname);
-		free(tmp);
-		return ENOENT;
-	}
-	free(tmp);
+	//Commenting out - will always go thru the sets.....
+	//	if (!hset) {
+	//		sprintf(replybuf, "%d Could not find the set '%s' in host '%s'",
+	//				-ENOENT, sp->setname, hostname);
+	//		free(tmp);
+	//		return ENOENT;
+	//	}
+	//	free(tmp);
 	return 0;
 err1:
 	free(hset_ref);
@@ -2008,11 +2010,8 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
-		ldms_log("Generation number %d static for set %s.\n", (int)gn, (s ? ldms_get_set_name(s) : "UNKNOWN"));
 		goto out;
 	}
-	else
-		ldms_log("Set %s being written.\n", (s ? ldms_get_set_name(s) : "UNKNOWN"));
 
 	if (!ldms_is_set_consistent(hset->set)) 
 		goto out;
