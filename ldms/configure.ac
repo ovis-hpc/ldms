@@ -15,6 +15,7 @@ dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
+AC_CHECK_SIZEOF(long double)
 dnl AM_PROG_CC_C_O
 
 dnl Checks for typedefs, structures, and compiler characteristics.
@@ -227,6 +228,7 @@ then
 fi
 dnl Reset LIBS variable.
 LIBS=""
+
 
 
 AC_SUBST(ac_configure_args)
