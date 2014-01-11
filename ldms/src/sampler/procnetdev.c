@@ -111,10 +111,8 @@ static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
-	union ldms_value v[NVARS];
+	union ldms_value v;
 	int rc, metric_count, metric_no;
-	char *s;
-	char lbuf[256];
 	char metric_name[128];
 	char curriface[20];
 	int i,j;
@@ -127,61 +125,23 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	/*
-	 * Process the file once first to determine the metric set size.
-	 */
+	/* Use all specified ifaces whether they exist or not. These will be
+	   populated with 0 values for non existent ifaces. The metrics will appear
+	   in the order of the ifaces as specified */
 
-	fseek(mf, 0, SEEK_SET);
-
-	//first and second lines are header
-	//we are currently assuming we know the header names....
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	if (!s){
-		msglog("procnetdev: not reading header line 1\n");
-		return ENOENT;
-	}
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	if (!s){
-		msglog("procnetdev: not reading header line 2\n");
-		return ENOENT;
-	}
-	int usedifaces = 0;
+	metric_count = 0;
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
-	metric_count = 0;
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
 
-		if (usedifaces == niface)
-			continue; //must get to EOF for seek to work
-
-		char *pch = strchr(lbuf, ':');
-		if (pch != NULL){
-			*pch = ' ';
+	for (i = 0; i < niface; i++){
+		for (j = 0; j < NVARS; j++){
+			snprintf(metric_name, 128, "%s#%s", varname[j], iface[i]);
+			rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+			tot_meta_sz += meta_sz;
+			tot_data_sz += data_sz;
+			metric_count++;
 		}
-
-		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface,&v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
-		if (rc != 17){
-			msglog("Procnetdev: wrong number of fields in sscanf\n");
-			continue;
-		}
-		for (j = 0; j < niface; j++){
-			if (strcmp(iface[j],curriface) == 0){
-				for (i = 0; i < NVARS; i++){
-					snprintf(metric_name, 128, "%s#%s",
-							varname[i], curriface);
-					rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-					tot_meta_sz += meta_sz;
-					tot_data_sz += data_sz;
-					metric_count++;
-				}
-				usedifaces++;
-				break;
-			}
-		} //for
-	} while (s);
+	}
 
 
 	/* Create a metric set of the required size */
@@ -193,52 +153,21 @@ static int create_metric_set(const char *path)
 	if (!metric_table)
 		goto err;
 
-	/*
-	 * Process the file again to define all the metrics.
-	 */
-	fseek(mf, 0, SEEK_SET);
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	usedifaces = 0;
-	metric_no = 0;
-	do {
-
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-
-		if (usedifaces == niface)
-			continue; //must get to EOF for seek to work
-
-		char *pch = strchr(lbuf, ':');
-		if (pch != NULL){
-			*pch = ' ';
+	v.v_u64 = 0;
+	for (i = 0; i < niface; i++){
+		for (j = 0; j < NVARS; j++){
+			snprintf(metric_name, 128, "%s#%s", varname[j], iface[i]);
+			metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
+			if (!metric_table[metric_no]){
+				rc = ENOMEM;
+				goto err;
+			}
+			/* initialize everything to zero for case of missing ifaces */
+			ldms_set_metric(metric_table[metric_no], &v);
+			ldms_set_user_data(metric_table[metric_no], comp_id);
+			metric_no++;
 		}
-
-		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface, &v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
-		if (rc != 17){
-			msglog("Procnetdev: wrong number of fields in sscanf\n");
-			continue;
-		}
-		for (j = 0; j < niface; j++){
-			if (strcmp(iface[j],curriface) == 0){
-				for (i = 0; i < NVARS; i++){
-					snprintf(metric_name, 128, "%s#%s",
-							varname[i], curriface);
-					metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
-					if (!metric_table[metric_no]){
-						rc = ENOMEM;
-						goto err;
-					}
-					ldms_set_user_data(metric_table[metric_no],
-							comp_id);
-					metric_no++;
-				}
-				usedifaces++;
-				break;
-			} //if
-		} //for
-	} while (s);
+	}
 
 	return 0;
 
@@ -247,95 +176,62 @@ err:
 	return rc;
 }
 
-static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
-	if (niface == (MAXIFACE-1)){
-		msglog("Procnetdev too many ifaces -- increase array size\n");
-		return EINVAL;
-	}
-
-	char *value;
-
-	value = av_value(avl, "iface");
-	if (value){
-		snprintf(iface[niface], 20, "%s", value);
-		niface++;
-	}
-
-	return 0;
-
-}
-
-
-static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
-	/* Set the compid and create the metric set */
-
-	char *value;
-
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
-
-	value = av_value(avl, "set");
-	if (!value)
-		return EINVAL;
-
-	return create_metric_set(value);
-}
-
-struct kw kw_tbl[] = {
-	{ "add", add_iface },
-	{ "init", init },
-};
 
 static const char *usage(void)
 {
 	return
-		"config name=procnetdev action=add iface=<iface>\n"
-		"    iface       Interface name (e.g., eth0)\n"
-		"config name=procnetdev action=config component_id=<comp_id> set=<setname>\n"
+		"config name=procnetdev component_id=<comp_id> set=<setname> ifaces=<ifaces>\n"
 		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
-
+		"    setname     The set name.\n"
+		"    ifaces      CSV list of ifaces. Order matters.\n";
 }
 
 
 /**
  * \brief Configuration
  *
- * - config procnetdev action=add iface=eth0
- *  (repeat this for each iface)
- * - config procnetdev action=init component_id=<value> set=<setname>
- *  (init must be after all the ifaces are added since it adds the metric set)
- *
+ * config name=procnetdev component_id=<comp_id> set=<setname> ifaces=<ifaces>
+ *    comp_id     The component id value.
+ *    setname     The set name.
+ *    ifaces      CSV list of ifaces. Order matters. All ifaces will be included, 
+ *                whether they exist of not up to a total of MAXIFACE
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	char* value;
+	char* ifacelist;
+	char* pch;
 
-	struct kw *kw;
-	struct kw key;
-	int rc;
-	char *action = av_value(avl, "action");
+	value = av_value(avl, "component_id");
+	if (value)
+		comp_id = strtoull(value, NULL, 0);
 
-	if (!action)
-		goto err0;
+	value = av_value(avl, "ifaces");
+	ifacelist = strdup(value);
+	pch = strtok(ifacelist, ",");
+	while (pch != NULL){
+		if (niface >= (MAXIFACE-1))
+			goto err;
+		snprintf(iface[niface], 20, "%s", pch);
+		niface++;
+		pch = strtok(NULL, ",");
+	}
+	free(ifacelist);
+	ifacelist = NULL;
 
-	key.token = action;
-	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
-			sizeof(*kw), kw_comparator);
-	if (!kw)
-		goto err1;
+	if (niface == 0)
+		goto err;
 
-	rc = kw->action(kwl, avl, NULL);
-	if (rc)
-		goto err2;
+	value = av_value(avl, "set");
+	if (value)
+		create_metric_set(value);
+
 	return 0;
-err0:
-	msglog(usage());
-	goto err2;
-err1:
-	msglog("Invalid configuration keyword '%s'\n", action);
-err2:
-	return 0;
+
+ err:
+	if (ifacelist)
+		free(ifacelist);
+	return EINVAL;
 }
 
 static int sample(void)
@@ -355,20 +251,11 @@ static int sample(void)
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
-
-	if (mf) fclose(mf);
-	mf = fopen(procfile, "r");
-	if (!mf) {
-		msglog("Could not open /proc/net/dev file '%s'...exiting\n", procfile);
-		return ENOENT;
-	}
-
 	int usedifaces = 0;
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	//data
 	ldms_begin_transaction(set);
-	metric_no = 0;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -391,7 +278,8 @@ static int sample(void)
 		//note: ifaces will be in the same order each time
 		//so we can just include/skip w/o have to keep track of which on we are on
 		for (j = 0; j < niface; j++){
-			if (strcmp(curriface,iface[j]) == 0){ //NOTE: small number so no conflicts (eg., eth1 and eth10)
+			if (strcmp(curriface,iface[j]) == 0){ 
+				metric_no = j*NVARS;
 				for (i = 0; i < NVARS; i++){
 					ldms_set_metric(metric_table[metric_no++], &v[i]);
 				}
