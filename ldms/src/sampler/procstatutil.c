@@ -141,6 +141,7 @@ static int create_metric_set(const char *path)
 
 		/* Throw away first column which is the CPU 'name' */
 		token = strtok(lbuf, " \t\n");
+		/* NOTE: dont have to check for corner case null since breaking after CPUs */
 		if (0 != strncmp(token, "cpu", 3))
 			break;
 
@@ -290,6 +291,10 @@ static int sample(void)
 			break;
 
 		token = strtok(lbuf, " \t\n");
+		/* First time have to check for corner case NULL (lbuf = "\n") */
+		if (token == NULL)
+			continue;
+
 		if (0 != strncmp(token, "cpu", 3))
 			continue; //get to EOF for seek to work
 
