@@ -156,8 +156,8 @@ void ctrl_close(struct ctrlsock *sock)
 	free(sock);
 }
 
-static char msg_buf[4096];
-static char arg[1024];
+static char msg_buf[32768]; // Brandt changed from 4096 to support large adds
+static char arg[32768]; // Brandt changed from 1024 to support large adds
 
 int ctrl_request(struct ctrlsock *sock, int cmd_id,
 		 struct attr_value_list *avl, char *err_str)
