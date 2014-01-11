@@ -114,7 +114,7 @@
 int instance_number = 1;
 
 char flush_N = 2; /**< The number of flush threads */
-char myhostname[80];
+char myhostname[HOST_NAME_MAX+1];
 char ldmstype[20];
 int foreground;
 int bind_succeeded;
@@ -2561,8 +2561,10 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 			strcpy(ldmstype, value_str);
 	} else	if (strcmp(key_str, "hostname")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
-		if (!has_arg[LDMS_HOSTNAME])
+		if (!has_arg[LDMS_HOSTNAME]) {
+			LDMS_ASSERT( (strlen(value_str) <= HOST_NAME_MAX ); 
 			strcpy(myhostname, value_str);
+		}
 	} else if (strcmp(key_str, "thread_count")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_THREAD_COUNT])
@@ -3038,6 +3040,7 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_INSTANCE] = 1;
 			break;
 		case 'H':
+			LDMS_ASSERT( (strlen(optarg) <= HOST_NAME_MAX ); 
 			strcpy(myhostname, optarg);
 			has_arg[LDMS_HOSTNAME] = 1;
 			break;
