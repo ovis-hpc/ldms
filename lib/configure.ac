@@ -56,6 +56,8 @@ OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
 OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
 
+OPTION_WITH_MAGIC([LDMS_MSG_MAX],[32768],[Maximum control message length allowed to ldmsd (min 4095)])
+
 AC_SUBST(ac_configure_args)
 
 AC_OUTPUT(Makefile

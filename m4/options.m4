@@ -166,8 +166,8 @@ AC_DEFUN([OPTION_WITH_EVENT],[
   LIBS=$option_old_libs
 ])
 
-dnl SYNOPSIS: OPTION_WITH_MAGIC([name])
-dnl EXAMPLE: OPTION_WITH_MAGIC([XYZ],[411],[desc])
+dnl SYNOPSIS: OPTION_WITH_MAGIC([name],[default_integer],[description])
+dnl EXAMPLE: OPTION_WITH_MAGIC([XYZPORT],[411],[default xyz port])
 dnl sets default value of magic number XYZ for make and headers, 
 dnl using second argument as default if not given by user
 dnl and description.

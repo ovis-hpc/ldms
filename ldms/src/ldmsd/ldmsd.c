@@ -93,6 +93,8 @@
 		exit(-1); \
 	}
 
+BIG_DSTRING_TYPE(LDMS_MSG_MAX);
+
 /**
  * \brief Convenient assert macro for LDMS.
  * \param X The assert expression.
@@ -112,6 +114,21 @@
  * from other instances' configuration in the same configuration file
  */
 int instance_number = 1;
+
+/* max cmd built with yaml */
+#define CMD_MAX 1024
+
+/* another magic number for limiting plugins using ldms_log */
+#define LOG_MSG_MAX 4096
+
+/* size limit for metadata and data sections */
+#define DATA_MSG_MAX 2048
+
+/* mmap blocks of metadata and data with this size */
+#define DATA_MSG_MMAP_SIZE 4*DATA_MSG_MAX
+
+/* size of hex dump under certain errors */
+#define HEX_DUMP_LINES (2*DATA_MSG_MAX)/16
 
 char flush_N = 2; /**< The number of flush threads */
 char myhostname[HOST_NAME_MAX+1];
@@ -303,7 +320,7 @@ int publish_kernel(const char *setfile)
 	while (3 == fscanf(fp, "%d %d %s", &set_no, &set_size, set_name)) {
 		int id = set_no << 13;
 		ldms_log("Mapping set %d name %s\n", set_no, set_name);
-		meta_addr = mmap((void *)0, 8192, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
+		meta_addr = mmap((void *)0, DATA_MSG_MMAP_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
 		if (meta_addr == MAP_FAILED)
 			return -ENOMEM;
 		sh = meta_addr;
@@ -311,11 +328,11 @@ int publish_kernel(const char *setfile)
 			sprintf(sh->name, "%s%s", myhostname, set_name);
 		else
 			sprintf(sh->name, "%s/%s", myhostname, set_name);
-		data_addr = mmap((void *)0, 8192, PROT_READ|PROT_WRITE,
+		data_addr = mmap((void *)0, DATA_MSG_MMAP_SIZE, PROT_READ|PROT_WRITE,
 				 MAP_SHARED, map_fd,
 				 id | LDMS_SET_ID_DATA);
 		if (data_addr == MAP_FAILED) {
-			munmap(meta_addr, 8192);
+			munmap(meta_addr, DATA_MSG_MMAP_SIZE);
 			return -ENOMEM;
 		}
 		rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
@@ -327,7 +344,8 @@ int publish_kernel(const char *setfile)
 		sh = meta_addr;
 		p = meta_addr;
 		ldms_log("addr: %p\n", meta_addr);
-		for (i = 0; i < 256; i = i + j) {
+		/* dump first 4k of metadata */
+		for (i = 0; i < HEX_DUMP_LINES; i = i + j) {
 			for (j = 0; j < 16; j++)
 				ldms_log("%02x ", p[i+j]);
 			ldms_log("\n");
@@ -354,7 +372,16 @@ char *skip_space(char *s)
 	return s;
 }
 
-static char replybuf[4096];
+static big_dstring_t replybuf;
+static int init_replybuf=0;
+/* space for single decimal formatted int32 or int64 */
+static char intbuf[32];
+#define chk_replybuf() \
+for (; init_replybuf <1; init_replybuf++) bdstr_init(&replybuf)
+#define cat(x) bdstrcat(&replybuf,x,DSTRING_ALL)
+#define bdstr (char*)bdstrval(&replybuf)
+#define bdlen bdstrlen(&replybuf)
+
 int send_reply(int sock, struct sockaddr *sa, ssize_t sa_len,
 	       char *msg, ssize_t msg_len)
 {
@@ -405,13 +432,18 @@ struct plugin *get_plugin(char *name)
 	return NULL;
 }
 
-static char msg_buf[4096];
+static char msg_buf[LOG_MSG_MAX];
 static void msg_logger(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	vsprintf(msg_buf, fmt, ap);
+	vsnprintf(msg_buf, sizeof(msg_buf), fmt, ap);
 	ldms_log(msg_buf);
+/* This function doesn't make sense unless we want to
+peek at what went through while in the debugger and
+as a bad side effect lose the tail of long messages.
+Should just do pget(ldms_log) and skip this thing.
+*/
 }
 
 static int calculate_timeout(int thread_id, unsigned long interval_us,
@@ -528,6 +560,7 @@ int process_info(int fd,
 	struct hostspec *hs;
 	int verbose = 0;
 	char *vb = av_value(av_list, "verbose");
+	chk_replybuf();
 	if (vb && (strcasecmp(vb, "true") == 0 ||
 			strcasecmp(vb, "t") == 0))
 		verbose = 1;
@@ -581,8 +614,8 @@ int process_info(int fd,
 	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
 	ldms_log("Grand Total Busy Count: %Lu\n", grand_total_busy);
 	pthread_mutex_unlock(&host_list_lock);
-	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	bdstr_set(&replybuf, "0");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 }
 
@@ -654,8 +687,11 @@ int process_term_plugin(int fd,
 	destroy_plugin(pi);
 	rc = 0;
  out:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	chk_replybuf();
+	sprintf(intbuf, "%d", rc);
+	bdstr_set(&replybuf,intbuf);
+	cat(err_str);
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 }
 
@@ -689,8 +725,11 @@ int process_config_plugin(int fd,
 		err_str = "Plugin configuration error.";
 	pthread_mutex_unlock(&pi->lock);
  out:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	chk_replybuf();
+	sprintf(intbuf, "%d", rc);
+	bdstr_set(&replybuf,intbuf);
+	cat( err_str);
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 }
 
@@ -785,8 +824,11 @@ int process_start_sampler(int fd,
  out:
 	pthread_mutex_unlock(&pi->lock);
  out_nolock:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	chk_replybuf();
+	sprintf(intbuf, "%d", rc);
+	bdstr_set(&replybuf,intbuf);
+	cat(err_str);
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 }
 
@@ -833,8 +875,11 @@ int process_stop_sampler(int fd,
  out:
 	pthread_mutex_unlock(&pi->lock);
  out_nolock:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	chk_replybuf();
+	sprintf(intbuf, "%d", rc);
+	bdstr_set(&replybuf,intbuf);
+	cat(err_str);
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 }
 
@@ -843,14 +888,16 @@ int process_ls_plugins(int fd,
 		       char *command)
 {
 	struct plugin *p;
-	sprintf(replybuf, "0");
+	chk_replybuf();
+	cat("0");
+
 	LIST_FOREACH(p, &plugin_list, entry) {
-		strcat(replybuf, p->name);
-		strcat(replybuf, "\n");
+		cat( p->name);
+		cat( "\n");
 		if (p->plugin->usage)
-			strcat(replybuf, p->plugin->usage());
+			cat(p->plugin->usage());
 	}
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 }
 
@@ -929,6 +976,8 @@ int process_add_host(int fd,
 	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
 
+	chk_replybuf();
+
 	/* Handle all the EINVAL cases first */
 	attr = "type";
 	type = av_value(av_list, attr);
@@ -936,18 +985,23 @@ int process_add_host(int fd,
 		goto einval;
 	host_type = str_to_host_type(type);
 	if (host_type < 0) {
-		sprintf(replybuf, "%d '%s' is an invalid host type.\n",
-			-EINVAL, type);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		sprintf(intbuf, "%d '", -EINVAL);
+		bdstr_set(&replybuf,intbuf);
+		cat(type);
+		cat("' is an invalid host type.\n");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
 	}
 	attr = "host";
 	host = av_value(av_list, attr);
 	if (!host) {
 	einval:
-		sprintf(replybuf, "%d The %s attribute must be specified\n",
-			-EINVAL, attr);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		sprintf(intbuf, "%d '", -EINVAL);
+		bdstr_set(&replybuf,intbuf);
+		cat(" The ");
+		cat(attr);
+		cat(" attribute must be specified\n");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
 	}
 
@@ -962,10 +1016,11 @@ int process_add_host(int fd,
 			goto einval;
 	} else {
 		if (sets) {
-			sprintf(replybuf, "%d Aborted!. Use type=ACTIVE to "
-					"collect the sets.", -EPERM);
-			send_reply(fd, sa, sa_len, replybuf,
-					strlen(replybuf) + 1);
+			sprintf(intbuf, "%d", -EPERM);
+			bdstr_set(&replybuf,intbuf);
+			cat(" Aborted!. Use type=ACTIVE to collect the sets.");
+			send_reply(fd, sa, sa_len, bdstr,
+				 bdlen + 1);
 			return EPERM;
 		}
 	}
@@ -979,10 +1034,15 @@ int process_add_host(int fd,
 
 	rc = resolve(hs->hostname, &sin);
 	if (rc) {
-		sprintf(replybuf,
-			"%d The host '%s' could not be resolved "
-			"due to error %d.\n", -rc, hs->hostname, rc);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		sprintf(intbuf, "%d", -rc);
+		bdstr_set(&replybuf,intbuf);
+		cat(" The host '");
+		cat(hs->hostname);
+		cat("' could not be resolved due to error ");
+		sprintf(intbuf, "%d", rc);
+		cat(intbuf);
+		cat(".\n");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		rc = EINVAL;
 		goto err;
 	}
@@ -995,9 +1055,8 @@ int process_add_host(int fd,
 	if (attr) {
 		offset = strtol(attr, NULL, 0);
 		if ( !((interval >= 10) && (interval >= labs(offset)*2)) ){
-			sprintf(replybuf,
-				"Parameters interval and offset are incompatible.");
-			send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+			cat("Parameters interval and offset are incompatible.");
+			send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 			rc = EINVAL;
 			goto err;
 		}
@@ -1070,8 +1129,8 @@ add_timeout:
 	LIST_INSERT_HEAD(&host_list, hs, link);
 	pthread_mutex_unlock(&host_list_lock);
 
-	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	bdstr_set(&replybuf,"0");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 clean_set_list:
 	while (hset = LIST_FIRST(&hs->set_list)) {
@@ -1081,8 +1140,10 @@ clean_set_list:
 	}
 enomem:
 	rc = ENOMEM;
-	sprintf(replybuf, "%dMemory allocation failure.", -ENOMEM);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	sprintf(intbuf, "%d", -ENOMEM);
+	bdstr_set(&replybuf,intbuf);
+	cat("Memory allocation failure.");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 err:
 	if (hs->hostname)
 		free(hs->hostname);
@@ -1168,6 +1229,7 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 	char *tmp;
 	struct ldmsd_store_policy_ref *sp_ref;
 	struct hostset_ref *hset_ref;
+	chk_replybuf(); /* we sprintf or bdstr err messages without deliver*/
 	pthread_mutex_lock(&hs->set_list_lock);
 	LIST_FOREACH(hset, &hs->set_list, entry) {
 		char *hset_name;
@@ -1177,19 +1239,25 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 		if (0 == strcmp(set_name, hset_name)) {
 			hset_ref = malloc(sizeof(*hset_ref));
 			if (!hset_ref) {
-				sprintf(replybuf, "%d Could not create "
-					"hostset ref for set '%s' on "
-					"host '%s'.", -ENOMEM,
-					hset_name, hostname);
+				sprintf(intbuf,"%d",-ENOMEM);
+				bdstr_set(&replybuf,intbuf);
+				cat(" Could not create hostset ref for set '");
+				cat(hset_name);
+				cat("'on host '");
+				cat(hostname);
+				cat("'.");
 				rc = ENOMEM;
 				goto err;
 			}
 			hset_ref->hostname = strdup(hostname);
 			if (!hset_ref->hostname) {
-				sprintf(replybuf, "%d Could not create "
-					"hostset ref for set '%s' on "
-					"host '%s'.", -ENOMEM,
-					hset_name, hostname);
+				sprintf(intbuf,"%d",-ENOMEM);
+				bdstr_set(&replybuf,intbuf);
+				cat(" Failed create hostset name for set '");
+				cat(hset_name);
+				cat("'on host '");
+				cat(hostname);
+				cat("'.");
 				rc = ENOMEM;
 				goto err1;
 			}
@@ -1245,6 +1313,7 @@ int _mvec_find_metric(ldms_mvec_t mvec, const char *name)
 int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, ldms_mvec_t mvec)
 {
 	struct ldmsd_store_metric_index *smi;
+	chk_replybuf(); /* we sprintf or bdstr err messages without deliver*/
 	if (!_metrics) {
 		const char *mname;
 		int i;
@@ -1274,8 +1343,11 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, 
 		while (metric) {
 			index = _mvec_find_metric(mvec, metric);
 			if (index < 0) {
-				sprintf(replybuf, "%d Could not find the "
-					"metric '%s'.", -ENOENT, metric);
+				sprintf(intbuf, "%d", -ENOENT);
+				bdstr_set(&replybuf,intbuf);
+				cat(" Could not find the metric '");
+				cat(metric);
+				cat("'.");
 				destroy_metric_idx_list(&sp->metric_list);
 				sp->metric_count = 0;
 				free(metrics);
@@ -1306,7 +1378,9 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, 
 enomem:
 	destroy_metric_idx_list(&sp->metric_list);
 	sp->metric_count = 0;
-	sprintf(replybuf, "%d Could not create metric index list.", -ENOMEM);
+	sprintf(intbuf, "%d", -ENOENT);
+	bdstr_set(&replybuf,intbuf);
+	cat(" Could not create the metric index list.");
 	return ENOMEM;
 }
 
@@ -1375,10 +1449,13 @@ int process_store(int fd,
 	struct hostspec *hs;
 	struct plugin *store;
 
+	chk_replybuf();
 	if (LIST_EMPTY(&host_list)) {
-		sprintf(replybuf, "%d No hosts were added. No metrics to "
-				"be stored. Aborted!\n", -ENOENT);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		sprintf(intbuf, "%d",-ENOENT);
+		bdstr_set(&replybuf,intbuf);
+		cat(" No hosts were added."
+			" No metrics to be stored. Aborted!\n");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return ENOENT;
 	}
 
@@ -1454,10 +1531,13 @@ int process_store(int fd,
 			pthread_mutex_unlock(&host_list_lock);
 			/* Host not found */
 			if (!hs) {
-				sprintf(replybuf, "%d Could not find the host "
-					"'%s'.", -ENOENT, hostname);
-				send_reply(fd, sa, sa_len, replybuf,
-						strlen(replybuf)+1);
+				sprintf(intbuf, "%d",-ENOENT);
+				bdstr_set(&replybuf,intbuf);
+				cat(" Could not find the host  '");
+				cat(hostname);
+				cat("'.");
+				send_reply(fd, sa, sa_len, bdstr,
+						bdlen+1);
 				return ENOENT;
 			}
 			hostname = strtok(NULL, ",");
@@ -1491,9 +1571,9 @@ int process_store(int fd,
 		while (metric) {
 			smi = malloc(sizeof(*smi));
 			if (!smi) {
-				sprintf(replybuf,
-					"%d Memory allocation failed.\n",
-					-ENOMEM);
+				sprintf(intbuf, "%d",-ENOMEM);
+				bdstr_set(&replybuf,intbuf);
+				cat(" Memory allocation failed.\n");
 				goto destroy_store_policy;
 			}
 
@@ -1501,9 +1581,9 @@ int process_store(int fd,
 			smi->name = strdup(metric);
 			if (!smi->name) {
 				free(smi);
-				sprintf(replybuf,
-					"%d Memory allocation failed.\n",
-					-ENOMEM);
+				sprintf(intbuf, "%d",-ENOMEM);
+				bdstr_set(&replybuf,intbuf);
+				cat(" Memory allocation failed.\n");
 				goto destroy_store_policy;
 			}
 			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
@@ -1515,7 +1595,9 @@ int process_store(int fd,
 	struct store_instance *si;
 	si = ldmsd_store_instance_get(store->store, sp);
 	if (!si) {
-		sprintf(replybuf, "%d Memory allocation failed.\n", -ENOMEM);
+		sprintf(intbuf, "%d",-ENOMEM);
+		bdstr_set(&replybuf,intbuf);
+		cat(" Memory allocation failed.\n");
 		destroy_store_policy(sp);
 		goto enomem;
 	}
@@ -1529,7 +1611,9 @@ int process_store(int fd,
 	LIST_FOREACH(hset_ref, &sp->hset_ref_list, entry) {
 		sp_ref = malloc(sizeof(*sp_ref));
 		if (!sp_ref) {
-			sprintf(replybuf, "%d Memory allocation failed.", -ENOMEM);
+			sprintf(intbuf, "%d",-ENOMEM);
+			bdstr_set(&replybuf,intbuf);
+			cat(" Memory allocation failed.\n");
 			free(si);
 			goto clean_fake_list;
 		}
@@ -1549,8 +1633,8 @@ int process_store(int fd,
 	pthread_mutex_unlock(&sp_list_lock);
 
 	ldms_log("Added the store '%s' successfully.\n", container);
-	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	bdstr_set(&replybuf,"0");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 
 clean_fake_list:
@@ -1560,19 +1644,25 @@ clean_fake_list:
 	}
 destroy_store_policy:
 	destroy_store_policy(sp);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return rc;
 enomem:
-	sprintf(replybuf, "%d Memory allocation failed.", -ENOMEM);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	sprintf(intbuf, "%d", -ENOMEM);
+	bdstr_set(&replybuf,intbuf);
+	cat(" Memory allocation failed.\n");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return EINVAL;
 einval:
-	sprintf(replybuf, "-22 The '%s' attribute must be specified.", attr);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	bdstr_set(&replybuf,"-22 The '");
+	cat(attr);
+	cat("' attribute must be specified.");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return EINVAL;
 enoent:
-	sprintf(replybuf, "%d The plugin was not found.", -ENOENT);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	sprintf(intbuf, "%d", -ENOENT);
+	bdstr_set(&replybuf,intbuf);
+	cat(" The plugin was not found.");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return ENOENT;
 }
 
@@ -1612,6 +1702,7 @@ int process_record(int fd,
 	char *cmd_s;
 	long cmd_id;
 	int rc = tokenize(command, kw_list, av_list);
+	chk_replybuf();
 	if (rc) {
 		ldms_log("Memory allocation failure processing '%s'\n",
 			 command);
@@ -1632,8 +1723,11 @@ int process_record(int fd,
 		goto out;
 	}
 
-	sprintf(replybuf, "-22Invalid command Id %ld\n", cmd_id);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	sprintf(intbuf, "%ld", cmd_id);
+	bdstr_set(&replybuf,"-22Invalid command Id ");
+	cat(intbuf);
+	cat("\n");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
  out:
 	return rc;
 }
@@ -2219,7 +2313,7 @@ void *event_proc(void *v)
 	return NULL;
 }
 
-static unsigned char ctrl_rcv_lbuf[32768];
+static unsigned char ctrl_rcv_lbuf[LDMS_MSG_MAX];
 void *ctrl_thread_proc(void *v)
 {
 	struct msghdr msg;
@@ -2245,7 +2339,7 @@ void *ctrl_thread_proc(void *v)
 	return NULL;
 }
 
-static unsigned char inet_rcv_lbuf[32768];
+static unsigned char inet_rcv_lbuf[LDMS_MSG_MAX];
 void *inet_ctrl_thread_proc(void *v)
 {
 	struct msghdr msg;
@@ -2650,9 +2744,9 @@ void initial_config_file_routine(yaml_document_t *yaml_document)
 	LDMS_ASSERT(root->type == YAML_SEQUENCE_NODE);
 
     yaml_node_item_t *itr = root->data.sequence.items.start;
-	char hostname[256];
+	char hostname[HOST_NAME_MAX+1];
 
-	if (gethostname(hostname, 256))
+	if (gethostname(hostname, sizeof(hostname)))
 		LDMSD_ERROR_EXIT("Cannot get hostname, err(%d): %s\n",
 			errno, sys_errlist[errno]);
 
@@ -2741,6 +2835,7 @@ int sprint_attribute(char *buff, yaml_document_t *yaml_document,
 	return bytes;
 }
 
+
 /**
  * Handling the host list from the configuration file.
  *
@@ -2758,7 +2853,8 @@ void ldms_yaml_host_list_handling(yaml_document_t *yaml_document,
 	char *xport;
 	char *h_inst;
 
-	char add_host_cmd[1024];
+	char add_host_cmd[CMD_MAX];
+	/* for maintainability this should be dstring instead . */
 
 	yaml_node_item_t *itr;
 	for (itr = hlist_node->data.sequence.items.start;
@@ -2800,6 +2896,7 @@ void ldms_yaml_host_list_handling(yaml_document_t *yaml_document,
 		if (xport)
 			cmd += sprintf(cmd, " xprt=%s", xport);
 
+		LDMS_ASSERT(cmd - add_host_cmd < CMD_MAX) ;
 		if (process_record(0, 0, 0, add_host_cmd, 0) != 0)
 			fprintf(stderr, "WARNING: Some error in list\n");
 	} // end for (host list)
@@ -2824,7 +2921,8 @@ int is_scalar_seq(yaml_document_t *yaml_document, yaml_node_t *node)
 void ldms_yaml_plugin_single_handling(yaml_document_t *yaml_document,
 		yaml_node_t *node)
 {
-	char buff[1024];
+	char buff[CMD_MAX];
+	/* for maintainability this should be dstring instead . */
 
 	// First: load the plugin (if not existed)
 	char *name = yaml_node_get_attr_value_str(yaml_document, node, "name");
@@ -2859,6 +2957,7 @@ void ldms_yaml_plugin_single_handling(yaml_document_t *yaml_document,
 		}
 	}
 
+	LDMS_ASSERT(cmd - buff < CMD_MAX) ;
 	process_record(0, 0, 0, buff, 0); // Now, issue the config command
 
 /* The following codes has been disabled due to the lack of 'on_update' support
@@ -2962,9 +3061,9 @@ void config_file_routine(yaml_document_t *yaml_document)
 	LDMS_ASSERT(root->type == YAML_SEQUENCE_NODE);
 
     yaml_node_item_t *itr = root->data.sequence.items.start;
-	char hostname[256];
+	char hostname[HOST_NAME_MAX+1];
 
-	if (gethostname(hostname, 256))
+	if (gethostname(hostname, sizeof(hostname)))
 		LDMSD_ERROR_EXIT("Cannot get hostname, err(%d): %s\n",
 				errno, sys_errlist[errno]);
 
@@ -3040,7 +3139,7 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_INSTANCE] = 1;
 			break;
 		case 'H':
-			LDMS_ASSERT( (strlen(optarg) <= HOST_NAME_MAX ); 
+			LDMS_ASSERT( (strlen(optarg) <= HOST_NAME_MAX) ); 
 			strcpy(myhostname, optarg);
 			has_arg[LDMS_HOSTNAME] = 1;
 			break;
@@ -3214,14 +3313,14 @@ int main(int argc, char *argv[])
 	}
 	if (test_set_name) {
 		int set_no;
-		static char test_set_name_no[1024];
+		static char test_set_name_no[CMD_MAX];
 		for (set_no = 1; set_no <= test_set_count; set_no++) {
 			int j;
 			ldms_metric_t m;
 			char metric_name[32];
 			sprintf(test_set_name_no, "%s/%s_%d",
 				myhostname, test_set_name, set_no);
-			ldms_create_set(test_set_name_no, 2048, 2048, &test_set);
+			ldms_create_set(test_set_name_no, DATA_MSG_MAX, DATA_MSG_MAX, &test_set);
 			test_sets[set_no-1] = test_set;
 			if (test_metric_count > 0) {
 				m = ldms_add_metric(test_set, "component_id",

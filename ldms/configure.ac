@@ -229,6 +229,7 @@ fi
 dnl Reset LIBS variable.
 LIBS=""
 
+OPTION_WITH_MAGIC([LDMS_MSG_MAX],[32768],[Maximum control message length allowed to ldmsd (min 4095)])
 
 
 AC_SUBST(ac_configure_args)
