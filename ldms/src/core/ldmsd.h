@@ -53,6 +53,7 @@
 
 #include <sys/queue.h>
 #include <ovis_util/util.h>
+#include <ovis_util/big_dstring.h>
 #include "ldms.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"

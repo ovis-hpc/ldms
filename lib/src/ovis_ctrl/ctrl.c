@@ -74,6 +74,8 @@
 #include <libgen.h>
 
 #include "ctrl.h"
+BIG_DSTRING_TYPE(LDMS_MSG_MAX);
+
 /*
  * The '#' char indicates a comment line. Empty lines are ignored.
  * The keywords are relay, passive, and bridge as follows:
@@ -156,8 +158,11 @@ void ctrl_close(struct ctrlsock *sock)
 	free(sock);
 }
 
-static char msg_buf[32768]; // Brandt changed from 4096 to support large adds
-static char arg[32768]; // Brandt changed from 1024 to support large adds
+#define BUFFER_OVERFLOWS_ALLOWED 0
+
+#if BUFFER_OVERFLOWS_ALLOWED
+static char msg_buf[LDMS_MSG_MAX]; // Brandt changed from 4096 to support large adds
+static char arg[LDMS_MSG_MAX]; // Brandt changed from 1024 to support large adds
 
 int ctrl_request(struct ctrlsock *sock, int cmd_id,
 		 struct attr_value_list *avl, char *err_str)
@@ -165,6 +170,7 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 	int rc;
 	int status;
 	int cnt;
+	dsinit;
 
 	sprintf(msg_buf, "%d ", cmd_id);
 	for (rc = 0; rc < avl->count; rc++) {
@@ -187,6 +193,59 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 	strcpy(err_str, &msg_buf[cnt]);
 	return status;
 }
+
+#else 
+/* non-threadsafe string buffer (whether dstring_t or char array)
+  to avoid constant allocation traffic.
+  In the case of dstring, there is possibly a one-time leak at exit in
+  corner cases.
+ 
+  This code is both faster and safer than the old code.
+*/
+static int init_done=0;
+big_dstring_t msg_buf;
+#define cat(x) bdstrcat(&msg_buf,x,DSTRING_ALL)
+
+int ctrl_request(struct ctrlsock *sock, int cmd_id,
+		 struct attr_value_list *avl, char *err_str)
+{
+	int rc;
+	int status;
+	int cnt;
+	static char ibuf[32]; /* big enough for int32 or 64 decimal formatted */
+        if (!init_done) {
+		init_done = 1;
+		bdstr_init(&msg_buf);
+	}
+
+	sprintf(ibuf, "%d ", cmd_id);
+	bdstr_set(&msg_buf, ibuf);
+	for (rc = 0; rc < avl->count; rc++) {
+		cat(avl->list[rc].name);
+		cat("=");
+		cat(avl->list[rc].value);
+		cat(" ");
+	}
+	cat("\n");
+	/* cast safe since passing len also */
+	rc = send_req(sock, (char *)bdstrval(&msg_buf), bdstrlen(&msg_buf)+1);
+	if (rc < 0) {
+		sprintf(err_str, "Error %d sending request.\n", rc);
+		return -1;
+	}
+	rc = recv_rsp(sock, (char *)bdstrval(&msg_buf), bdstrcurmaxlen(&msg_buf));
+	if (rc <= 0) {
+		sprintf(err_str, "Error %d receiving reply.\n", rc);
+		return -1;
+	}
+	err_str[0] = '\0';
+	rc = sscanf(bdstrval(&msg_buf), "%d%n", &status, &cnt);
+	strcpy(err_str, (bdstrval(&msg_buf)+cnt));
+	return status;
+}
+
+
+#endif
 
 struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin)
 {
