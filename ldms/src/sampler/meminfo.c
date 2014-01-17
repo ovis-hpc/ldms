@@ -78,11 +78,11 @@ FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
-char *qc_dir = NULL;
-int qc_file = -1;
+static char *qc_dir = NULL;
+static int qc_file = -1;
 
 #ifdef HAVE_QC_SAMPLER
-int get_qc_file(const char *qc_dir);
+static int get_qc_file(const char *qc_dir);
 #endif
 
 static int create_metric_set(const char *path)
@@ -332,7 +332,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 }
 
 #ifdef HAVE_QC_SAMPLER
-void close_qc_file()
+static void close_qc_file()
 {
 	close(qc_file);
 	qc_file = -1;
@@ -347,7 +347,7 @@ void close_qc_file()
  * If qc_dir is NULL, then -1 is returend.
  * @return the file handler.  If an error occurrs, -1 will be returned.
  */
-int get_qc_file(const char *qc_dir)
+static int get_qc_file(const char *qc_dir)
 {
 	if (qc_dir==NULL) {
 		errno = ENOENT;
