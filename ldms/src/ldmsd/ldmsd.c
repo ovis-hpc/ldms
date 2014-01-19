@@ -129,6 +129,7 @@ int muxr_s = -1;
 char *logfile;
 char *sockname = NULL;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
+unsigned long saggs_mask = 0;
 ldms_t ldms;
 FILE *log_fp;
 struct attr_value_list *av_list;
@@ -925,6 +926,7 @@ int process_add_host(int fd,
 	char *sets;
 	int host_type;
 	unsigned long interval = LDMSD_DEFAULT_GATHER_INTERVAL;
+	unsigned long standby_no = 0;
 	long offset = 0;
 	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
@@ -1004,6 +1006,10 @@ int process_add_host(int fd,
 		synchronous = 1;
 	}
 
+	attr = av_value(av_list, "standby");
+	if (attr)
+		standby_no = strtoul(attr, NULL, 0);
+
 	attr = av_value(av_list, "port");
 	if (attr)
 		port_no = strtol(attr, NULL, 0);
@@ -1026,6 +1032,7 @@ int process_add_host(int fd,
 	hs->synchronous = synchronous;
 	hs->connect_interval = 20000000; /* twenty seconds */
 	hs->conn_state = HOST_DISCONNECTED;
+	hs->standby = standby_no;
 	pthread_mutex_init(&hs->set_list_lock, 0);
 	pthread_mutex_init(&hs->conn_state_lock, NULL);
 
@@ -1090,6 +1097,47 @@ err:
 		free(hs->xprt_name);
 	free(hs);
 	return rc;
+}
+
+
+int process_update_standby(int fd,
+		     struct sockaddr *sa, ssize_t sa_len,
+		     char *command)
+{
+
+	char *attr;
+	char *type;
+	int agg_num;
+	int update_state;
+
+
+	attr = av_value(av_list, "agg_num");
+	if (attr)
+		agg_num = atoi(attr);
+	else
+		goto err;
+
+
+	attr = av_value(av_list, "update_state");
+	if (attr) {
+		//TODO: CHECK is 0 or 1 only
+		update_state = atoi(attr);
+	}
+	else
+		goto err;
+
+	if (update_state == 1)
+		saggs_mask |= 1 << agg_num;
+	else
+		saggs_mask &= ~(1 << agg_num);
+
+	return 0;
+
+ err:
+	//SOMETHING IF THEY ARE MISSING
+
+	
+
 }
 
 struct ldmsd_store_policy *get_store_policy(const char *container,
@@ -1601,6 +1649,7 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_ADD_HOST] = process_add_host,
 	[LDMSCTL_REM_HOST] = process_remove_host,
 	[LDMSCTL_STORE] = process_store,
+	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
 };
@@ -2161,7 +2210,7 @@ void do_host(struct hostspec *hs)
 			 * the refcount is 0. Resetting hs->x here is OK. */
 			hs->x = 0;
 			hs->conn_state = HOST_DISCONNECTED;
-		} else if (hs->type != BRIDGING)
+		} else if ((hs->type != BRIDGING) && ((hs->standby == 0) || (hs->standby & saggs_mask)))
 			update_data(hs);
 		break;
 	default:

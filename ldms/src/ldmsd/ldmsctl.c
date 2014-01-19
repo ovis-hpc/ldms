@@ -197,6 +197,10 @@ int handle_help(char *kw, char *err_str)
 	       "     <hosts>      A list of hosts to whose set data will be saved.\n"
 	       "                  If not specified, all hosts that have this set will\n"
 	       "                  have their data saved.\n"
+	       "update_standby agg_num=<agg_num> state<0/1>\n"
+	       "   - ldmsd will update it saggs_mask for this aggregator as indicated\n";
+	       "    <agg_num>    Unique integer id for an aggregator\n"
+               "    <state>      0/1 - standby/active\n"
 	       "\n"
 	       "info\n"
 	       "   - Causes the ldmsd to dump out information about plugins,\n"
@@ -253,6 +257,11 @@ int handle_host_add(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_ADD_HOST, av_list, err_str);
 }
 
+int handle_update_standby(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_UPDATE_STANDBY, av_list, err_str);
+}
+
 int handle_store(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_STORE, av_list, err_str);
@@ -287,6 +296,7 @@ struct kw keyword_tbl[] = {
 	{ "stop", handle_sampler_stop },
 	{ "store", handle_store },
 	{ "term", handle_plugin_term },
+	{ "update_standby", handle_update_standby },
 	{ "usage", handle_usage },
 };
 
