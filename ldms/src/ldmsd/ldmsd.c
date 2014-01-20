@@ -1008,7 +1008,7 @@ int process_add_host(int fd,
 
 	attr = av_value(av_list, "standby");
 	if (attr)
-		standby_no = strtoul(attr, NULL, 0);
+		standby_no |= 1 << (strtoul(attr, NULL, 0) - 1);
 
 	attr = av_value(av_list, "port");
 	if (attr)
@@ -1107,36 +1107,45 @@ int process_update_standby(int fd,
 
 	char *attr;
 	char *type;
-	int agg_num;
-	int update_state;
+	int agg_no;
+	int state;
 
 
-	attr = av_value(av_list, "agg_num");
-	if (attr)
-		agg_num = atoi(attr);
-	else
-		goto err;
-
-
-	attr = av_value(av_list, "update_state");
-	if (attr) {
-		//TODO: CHECK is 0 or 1 only
-		update_state = atoi(attr);
+	attr = av_value(av_list, "agg_no");
+	if (!attr) {
+		sprintf(replybuf, "%d The '%s' attribute must be specified.", -EINVAL, attr);
+		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		return EINVAL;
 	}
-	else
-		goto err;
+	agg_no = atoi(attr);
+	if ((agg_no < 1) || (agg_no > 64)){
+		sprintf(replybuf, "%d The value for '%s' is invalid.", -EINVAL, attr);
+		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		return EINVAL;
+	}
+	
+	attr = av_value(av_list, "state");
+	if (!attr){
+		sprintf(replybuf, "%d The '%s' attribute must be specified.", -EINVAL, attr);
+		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		return EINVAL;
+	}
+	state = atoi(attr);
+	if ( (state != 0) && (state != 1)){
+		sprintf(replybuf, "%d The value for '%s' is invalid.", -EINVAL, attr);
+		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		return EINVAL;
+	}
 
-	if (update_state == 1)
-		saggs_mask |= 1 << agg_num;
+	if (state == 1)
+		saggs_mask |= 1 << (agg_no - 1);
 	else
-		saggs_mask &= ~(1 << agg_num);
+		saggs_mask &= ~(1 << (agg_no - 1));
+
+	sprintf(replybuf, "0");
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 
 	return 0;
-
- err:
-	//SOMETHING IF THEY ARE MISSING
-
-	
 
 }
 
@@ -2062,7 +2071,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		goto out;
 	}
 
-	if (!ldms_is_set_consistent(hset->set)) 
+	if (!ldms_is_set_consistent(hset->set))
 		goto out;
 
 	hset->gn = gn;

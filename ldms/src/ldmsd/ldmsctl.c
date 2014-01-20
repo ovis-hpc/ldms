@@ -156,6 +156,7 @@ int handle_help(char *kw, char *err_str)
 	       "add host=<host> type=<type> sets=<set names>\n"
 	       "                [ interval=<interval> ] [ offset=<offset>]\n"
 	       "                [ xprt=<xprt> ] [ port=<port> ]\n"
+	       "                [ standby=<agg_no> ]\n"
 	       "   - Adds a host to the list of hosts monitored by this ldmsd.\n"
 	       "     <host>       The hostname. This can be an IP address or DNS\n"
 	       "                  hostname.\n"
@@ -182,6 +183,8 @@ int handle_help(char *kw, char *err_str)
 	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
 	       "         ugni     The Cray Gemini transport.\n"
 	       "     <port>       The port number to connect on, defaults to 50000.\n"
+	       "     <agg_no>     The number of the aggregator that this is standby for.\n"
+               "                  Defaults to 0 which means this is an active aggregator.\n"
 	       "\n"
 	       "store name=<store> container=<container> set=<set> comp_type=<comp_type>\n"
 	       "      [hosts=<hosts>] [metric=<metric>]\n"
@@ -197,9 +200,10 @@ int handle_help(char *kw, char *err_str)
 	       "     <hosts>      A list of hosts to whose set data will be saved.\n"
 	       "                  If not specified, all hosts that have this set will\n"
 	       "                  have their data saved.\n"
-	       "update_standby agg_num=<agg_num> state<0/1>\n"
-	       "   - ldmsd will update it saggs_mask for this aggregator as indicated\n";
-	       "    <agg_num>    Unique integer id for an aggregator\n"
+               "\n"
+	       "standby agg_no=<agg_no> state=<0/1>\n"
+	       "   - ldmsd will update it saggs_mask for this aggregator as indicated\n"
+	       "    <agg_no>    Unique integer id for an aggregator\n"
                "    <state>      0/1 - standby/active\n"
 	       "\n"
 	       "info\n"
@@ -292,11 +296,11 @@ struct kw keyword_tbl[] = {
 	{ "info", handle_info },
 	{ "load", handle_plugin_load },
 	{ "quit", handle_quit },
+	{ "standby", handle_update_standby },
 	{ "start", handle_sampler_start },
 	{ "stop", handle_sampler_stop },
 	{ "store", handle_store },
 	{ "term", handle_plugin_term },
-	{ "update_standby", handle_update_standby },
 	{ "usage", handle_usage },
 };
 

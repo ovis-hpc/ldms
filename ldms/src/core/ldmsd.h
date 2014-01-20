@@ -106,7 +106,7 @@ struct hostspec
 	unsigned long sample_interval;/* sample interval */
 	long sample_offset;      /* sample offset */
 	int synchronous;         /* 1 if synchronous */
-	unsigned long standby		/* 0 if active bit value if standby */
+	unsigned long standby;	/* 0 if active bit value if standby */
 	enum {
 		HOST_DISCONNECTED=0,
 		HOST_CONNECTED
@@ -319,7 +319,7 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_STORE		8    /* Store Metrics */
 #define LDMSCTL_INFO_DAEMON	9   /* Query daemon status */
 #define LDMSCTL_EXIT_DAEMON	10   /* Shut down ldmsd */
-#define LDMSCTL_UPDATE_STANDBY   11   /* update the standby state */
+#define LDMSCTL_UPDATE_STANDBY  11   /* update the standby state */
 #define LDMSCTL_LAST_COMMAND	11
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
