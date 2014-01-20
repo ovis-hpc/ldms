@@ -1007,9 +1007,18 @@ int process_add_host(int fd,
 	}
 
 	attr = av_value(av_list, "standby");
-	if (attr)
-		standby_no |= 1 << (strtoul(attr, NULL, 0) - 1);
-
+	if (attr) {
+		standby_no = strtoul(attr, NULL, 0);
+		if ((standby_no < 65) && (standby_no > 0))
+			standby_no |= 1 << (standby_no - 1);
+		else if ((standby_no > 64) || (standby_no < 0)) {
+			sprintf(replybuf,
+                                "Parameter for standby needs to be between 1 and 64 inclusive.");
+                        send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+                        rc = EINVAL;
+                        goto err;
+		}
+	}
 	attr = av_value(av_list, "port");
 	if (attr)
 		port_no = strtol(attr, NULL, 0);
