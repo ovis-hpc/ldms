@@ -79,17 +79,15 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
 static char *qc_dir = NULL;
-static int qc_file = -1;
 
 #ifdef HAVE_QC_SAMPLER
-static int get_qc_file(const char *qc_dir);
+static int qc_file = -1;
+static int qc_try_to_open_file = 1;
+static int get_qc_file(const char *qc_dir, int *qc_file);
 #endif
 
 static int create_metric_set(const char *path)
 {
-#ifdef HAVE_QC_SAMPLER
-	qc_file = get_qc_file(qc_dir);
-#endif
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
 	int rc, i, metric_count;
@@ -222,6 +220,21 @@ static int sample(void)
 	char lbuf[256];
 	char metric_name[128];
 	union ldms_value v;
+	#ifdef HAVE_QC_SAMPLER
+	/* gettimeOfday emits 2 long int                      */
+	/* on a word width of 64 bits, a long int is 21 chars */
+	const int qc_len_date_and_time = 21+strlen(",")+21+1;
+	const int qc_len_buffer =
+		  5 //strlen("#time")
+		+ 1 //strlen(",")
+		+ qc_len_date_and_time
+		+ 1 //strlen(",")
+		+ qc_len_date_and_time
+		+ 1;  //string terminator
+	char qc_date_and_time[qc_len_date_and_time];
+	char qc_buffer[qc_len_buffer];
+	struct timeval qc_time;
+	#endif
 
 	if (!set) {
 		msglog("meminfo: plugin not initialized\n");
@@ -233,22 +246,29 @@ static int sample(void)
 	fseek(mf, 0, SEEK_SET);
 
 	#ifdef HAVE_QC_SAMPLER
-		/* get current date & time */
-		char date_and_time[64];
-		char qc_buffer[1024];
-		int qc_buffer_size = 1024;
+		/* get current date & time, write to qc file */
+
+		/* if we haven't yet tried to open file, then open it */
+		if ((qc_file == -1) && (qc_try_to_open_file))
+			if (get_qc_file(qc_dir, &qc_file)!=0) {
+				qc_file = -1;
+				qc_try_to_open_file = 0;
+			}
+
+
 		if (qc_file != -1) {
-			struct timeval my_time;
-			gettimeofday(&my_time, NULL);
-			snprintf(date_and_time,64,"%ld.%ld",
-                                my_time.tv_sec, my_time.tv_usec);
-			date_and_time[63]='\0';
-			snprintf(qc_buffer,qc_buffer_size,
-				"%s,%s,%llu\n",
+			gettimeofday(&qc_time, NULL);
+			snprintf(qc_date_and_time,
+				 qc_len_date_and_time,
+				 "%ld.%ld",
+                                qc_time.tv_sec, qc_time.tv_usec);
+			qc_date_and_time[qc_len_date_and_time-1]='\0';
+			snprintf(qc_buffer,qc_len_buffer,
+				"%s,%s,%s\n",
 				"#time",
-				date_and_time,
-				date_and_time);
-			qc_buffer[qc_buffer_size-1] = '\0';
+				qc_date_and_time,
+				qc_date_and_time);
+			qc_buffer[qc_len_buffer-1] = '\0';
 			write(qc_file,	qc_buffer, strlen(qc_buffer));			
 		}
 	#endif
@@ -269,13 +289,13 @@ static int sample(void)
 		#ifdef HAVE_QC_SAMPLER
 			/* write a metric to the qc data file */
 			if (qc_file != -1) {
-				snprintf(qc_buffer,qc_buffer_size,
-					"%s,%s,%llu\n",
+				snprintf(qc_buffer,qc_len_buffer,
+					"%s,%s,%" PRIu64 "\n",
 					metric_name,
-					date_and_time,
-					(unsigned long long)v.v_u64);
-				qc_buffer[qc_buffer_size-1] = '\0';
-				write(qc_file,	qc_buffer, strlen(qc_buffer));
+					qc_date_and_time,
+					v.v_u64);
+				qc_buffer[qc_len_buffer-1] = '\0';
+				write(qc_file, qc_buffer, strlen(qc_buffer));
 			}
 		#endif
 
@@ -344,53 +364,77 @@ static void close_qc_file()
  * Open a QC output file.
  * The name of the file is QC_[hostname]_[comp_id]_[random chars].txt.
  * @param qc_dir The directory that will contain the file.
- * If qc_dir is NULL, then -1 is returend.
- * @return the file handler.  If an error occurrs, -1 will be returned.
+ * @param qc_file sends the file descriptor to the caller
+ * If qc_dir is NULL, then the errno is returned.
+ * @return the errno
  */
-static int get_qc_file(const char *qc_dir)
+static int get_qc_file(const char *qc_dir, int *qc_file)
 {
+	struct stat s;                     //need for stat()
+	char hostname[HOST_NAME_MAX+1];    //hostname
+	char *qc_filename;                 //full path name of qc file
+	int err;                           //error codes
+	char *ptr;                         //used for string parsing
+	int len;
+
+	/* used to send file descriptor back to the caller */
+	*qc_file = -1;
+
+	/* does path exist?       */
+	/* is path a directory?   */
 	if (qc_dir==NULL) {
 		errno = ENOENT;
-		return(-1);
+		return(errno);
 	}
-
-	/* does the directory exists? */
-	struct stat s;
-	int err = stat(qc_dir, &s);
+	err = stat(qc_dir, &s);
 	if (-1 == err) {
 		errno = ENOENT;
-		return (-1);
+		return (errno);
 	} else {
 		if (!S_ISDIR(s.st_mode)) {
 			errno = ENOTDIR;
-			return (-1);
+			return (errno);
 		}
 	}
 
 	/* get hostname */
-	char hostname[128] = "";
-	if (gethostname(hostname, 128) != 0) 
+	if (gethostname(hostname, HOST_NAME_MAX) != 0)
 		strcpy(hostname,"unknown");
-	hostname[127] = '\0';
+	hostname[HOST_NAME_MAX] = '\0';
 
-	/* truncate hostname to first dot */
-	char *ptr = strchr(hostname,'.');
+	/* truncate hostname to first dot?????? */
+	ptr = strchr(hostname,'.');
         if (ptr!=NULL)
 		*ptr = '\0';
 
 	/* filename is QC_[hostname]_[comp_id]_[random chars].txt */
-	char qc_filename[128];
-	snprintf(qc_filename, 128, "%s/QC_%s_%llu_meminfo_%s.txt",
-			qc_dir, hostname,
-			(unsigned long long) comp_id, "XXXXXX");
-        qc_filename[127] = '\0';
-	int qc_file = mkstemps(qc_filename, 4);
-	if (qc_file == -1) {
+        len =     strlen(qc_dir)
+        	+ 4  //strlen("/QC_")
+        	+ strlen(hostname)
+        	+1   //strlen("_")
+        	+21  //comp_id is PRIu64
+        	+8  //strlen("_meminfo_")
+        	+6  //strlen("XXXXXX")
+        	+4  //strlen(".txt")
+        	+1; //string terminator
+        qc_filename = (char *)malloc(len);
+	snprintf(qc_filename, len, "%s/QC_%s_%" PRIu64 "_meminfo_%s.txt",
+		 qc_dir,                        //user specified path
+		 hostname,                      //which node in cluster????
+		 comp_id,  //ldms comp_id
+		 "XXXXXX");                     //random chars
+        qc_filename[len-1] = '\0';
+
+        /* open the file, save the file handle                    */
+        /* NOTE:  using random chars to get a unique filename     */
+	*qc_file = mkstemps(qc_filename, 4);
+	free(qc_filename);
+	if (*qc_file == -1) {
 		errno = EIO;
-		return (-1);
+		return (errno);
 	}
 
-	return (qc_file);
+	return (errno);
 }
 #endif
 
