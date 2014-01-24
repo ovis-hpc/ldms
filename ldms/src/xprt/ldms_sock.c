@@ -345,7 +345,10 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 		status = EINVAL;
 
 	/* Prepare and send read response header */
-	len = ntohl(req->buf_info.size);
+	if (!status)
+		len = req->buf_info.size;
+	else
+		len = 0;
 	last_sock_read_req = rsp.hdr.xid = req->hdr.xid;
 	rsp.hdr.cmd = htonl(SOCK_READ_RSP_CMD);
 	rsp.hdr.len = htonl(sizeof(rsp) + len);
