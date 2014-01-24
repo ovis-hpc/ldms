@@ -182,7 +182,7 @@ int handle_help(char *kw, char *err_str)
 	       "         sock     The sockets transport.\n"
 	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
 	       "         ugni     The Cray Gemini transport.\n"
-	       "     <port>       The port number to connect on, defaults to 50000.\n"
+	       "     <port>       The port number to connect on, defaults to %d.\n"
 	       "     <agg_no>     The number of the aggregator that this is standby for.\n"
                "                  Defaults to 0 which means this is an active aggregator.\n"
 	       "\n"
