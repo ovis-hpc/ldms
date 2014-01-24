@@ -66,23 +66,23 @@
  * This structure is provided to the client in lookup and returned by
  * the client in the update request.
  */
+struct sock_key {
+	uint32_t key;
+	uint32_t size;		/* size of the buffer */
+	void *buf;		/* data buffer for this key */
+	struct ogc_rbn rb_node;
+};
+
 #pragma pack(4)
 struct sock_buf_remote_data {
-	uint64_t rbuf;
-	uint64_t lbuf;
+	uint32_t rkey;		/* remote key */
+	uint32_t lkey;		/* local key */
 	uint32_t size;
 };
 
 struct sock_buf_xprt_data {
 	struct sock_buf_remote_data meta;
 	struct sock_buf_remote_data data;
-};
-
-struct sock_buf_local_data {
-	void *meta;
-	size_t meta_size;
-	void *data;
-	size_t data_size;
 };
 
 #define SOCK_READ_REQ_CMD (LDMS_CMD_XPRT_PRIVATE | 0x1)

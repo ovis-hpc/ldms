@@ -65,6 +65,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
+#include "ogc_rbt.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
@@ -79,12 +80,73 @@
 		r->xprt->log(fmt, ##__VA_ARGS__); \
 } while(0)
 
-pthread_mutex_t sock_lock;
 
 static struct event_base *io_event_loop;
 static pthread_t io_thread;
 
+pthread_mutex_t sock_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(sock_list, ldms_sock_xprt) sock_list;
+pthread_mutex_t key_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static uint32_t last_key;
+static int key_comparator(void *a, void *b)
+{
+	uint32_t x = (uint32_t)(unsigned long)a;
+	uint32_t y = (uint32_t)(unsigned long)b;
+
+	return x - y;
+}
+static struct ogc_rbt key_tree = {
+	.root = NULL,
+	.comparator = key_comparator
+};
+
+static struct sock_key *find_key_(uint32_t key)
+{
+	struct ogc_rbn *z;
+	struct sock_key *k = NULL;
+	z = ogc_rbt_find(&key_tree, (void *)(unsigned long)key);
+	if (z)
+		k = ogc_container_of(z, struct sock_key, rb_node);
+	return k;
+}
+
+static struct sock_key *find_key(uint32_t key)
+{
+	struct sock_key *k;
+	pthread_mutex_lock(&key_tree_lock);
+	k = find_key_(key);
+	pthread_mutex_unlock(&key_tree_lock);
+	return k;
+}
+
+
+static struct sock_key *alloc_key(void *buf)
+{
+	struct sock_key *k = calloc(1, sizeof *k);
+	if (!k)
+		goto out;
+	pthread_mutex_lock(&key_tree_lock);
+	k->key = ++last_key;
+	k->buf = buf;
+	k->rb_node.key = (void *)(unsigned long)k->key;
+	ogc_rbt_ins(&key_tree, &k->rb_node);
+	pthread_mutex_unlock(&key_tree_lock);
+ out:
+	return k;
+}
+
+static void delete_key(uint32_t key)
+{
+	struct sock_key *k;
+	pthread_mutex_lock(&key_tree_lock);
+	/* Make sure the key is in the tree */
+	k = find_key_(key);
+	if (!k)
+		goto out;
+	ogc_rbt_del(&key_tree, &k->rb_node);
+ out:
+	pthread_mutex_unlock(&key_tree_lock);
+}
 
 static void *io_thread_proc(void *arg);
 
@@ -244,16 +306,25 @@ err:
 int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 {
 	size_t len;
+	char *buf;
+	struct sock_key *k;
+
 	/* Check the response status */
 	if (rsp->status)
 		return ntohl(rsp->status);
 
+	/* Look up our local key */
+	k = find_key(rsp->buf_info.lkey);
+	if (!k)
+		return EINVAL;
+
 	/* Move the set data into the local buffer */
 	len = ntohl(rsp->buf_info.size);
-	memcpy((void *)(unsigned long)rsp->buf_info.lbuf, (char *)(rsp+1), len);
+	memcpy(k->buf, (char *)(rsp+1), len);
 
 	if (x->xprt && x->xprt->read_complete_cb)
-		x->xprt->read_complete_cb(x->xprt, (void *)(unsigned long)rsp->hdr.xid);
+		x->xprt->read_complete_cb(x->xprt,
+					  (void *)(unsigned long)rsp->hdr.xid);
 	return 0;
 }
 
@@ -263,23 +334,33 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 	struct sock_read_rsp rsp;
 	size_t len;
 	int ret;
+	char *buf;
+	uint32_t key;
+	struct sock_key *k;
+	int status = 0;
 
-	len = ntohl(req->buf_info.size);
+	key = req->buf_info.rkey;
+	k = find_key(key);
+	if (!k)
+		status = EINVAL;
 
 	/* Prepare and send read response header */
+	if (!status)
+		len = htonl(req->buf_info.size);
+	else
+		len = 0;
 	last_sock_read_req = rsp.hdr.xid = req->hdr.xid;
 	rsp.hdr.cmd = htonl(SOCK_READ_RSP_CMD);
 	rsp.hdr.len = htonl(sizeof(rsp) + len);
-	rsp.status = 0;
+	rsp.status = htonl(status);
 	memcpy(&rsp.buf_info, &req->buf_info, sizeof req->buf_info);
 
 	ret = bufferevent_write(x->buf_event, &rsp, sizeof(rsp));
-	if (ret < 0)
+	if (ret < 0 || status)
 		goto err;
 
 	/* Write the requested local buffer back to the socket */
-	ret =  bufferevent_write(x->buf_event,
-			 (void *)(unsigned long)req->buf_info.rbuf, len);
+	ret =  bufferevent_write(x->buf_event, k->buf, len);
  err:
 	return ret;
 }
@@ -374,7 +455,7 @@ static void *io_thread_proc(void *arg)
 
 static void release_buf_event(struct ldms_sock_xprt *r)
 {
-	pthread_mutex_lock(&sock_lock);
+	pthread_mutex_lock(&sock_list_lock);
 	if (r->listen_ev) {
 		evconnlistener_free(r->listen_ev);
 		r->listen_ev = NULL;
@@ -383,7 +464,7 @@ static void release_buf_event(struct ldms_sock_xprt *r)
 		bufferevent_free(r->buf_event);
 		r->buf_event = NULL;
 	}
-	pthread_mutex_unlock(&sock_lock);
+	pthread_mutex_unlock(&sock_list_lock);
 }
 
 static void sock_event(struct bufferevent *buf_event, short events, void *arg)
@@ -541,35 +622,55 @@ struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 				       size_t xprt_data_len)
 {
 	struct sock_buf_xprt_data *xd;
-	struct ldms_rbuf_desc *desc = calloc(1, sizeof(struct ldms_rbuf_desc));
+	struct ldms_rbuf_desc *desc;
+	struct sock_key *mk, *dk;
+
+	desc = calloc(1, sizeof *desc);
 	if (!desc)
 		return NULL;
-	xd = calloc(1, sizeof *xd);
+
+	xd = malloc(xprt_data_len);
 	if (!xd)
 		goto err_0;
 
+	mk = alloc_key(set->meta);
+	if (!mk)
+		goto err_1;
+
+	dk = alloc_key(set->data);
+	if (!dk)
+		goto err_2;
+
 	if (xprt_data) {
-		/* The peer has provided us with the remote buffer
-		 * information. We need to fill in our local buffer
-		 * information so we can fulfill a read response
-		 * without looking anything up.
+		/*
+		 * We did a lookup, this is the xprt_data provided by
+		 * the peer. We need a local keys for our side of the
+		 * data. The remote key was provided by the peer.
 		 */
 		desc->xprt_data_len = xprt_data_len;
 		desc->xprt_data = xd;
-		// ASSERT(xprt_data_len == sizeof(*xd));
-		memcpy(xd, xprt_data, sizeof(*xd));
-		xd->meta.lbuf = (uint64_t)(unsigned long)set->meta;
-		xd->data.lbuf = (uint64_t)(unsigned long)set->data;
+		memcpy(xd, xprt_data, xprt_data_len);
+		xd->meta.lkey = mk->key;
+		xd->data.lkey = dk->key;
 	} else {
-		xd->meta.rbuf = (uint64_t)(unsigned long)set->meta;
-		xd->data.rbuf = (uint64_t)(unsigned long)set->data;
+		/*
+		 * We're responding to a lookup. This is the rkey, the
+		 * peer will use to read our data.
+		 */
 		xd->meta.size = htonl(set->meta->meta_size);
+		xd->meta.rkey = mk->key;
+		xd->meta.lkey = 0;
 		xd->data.size = htonl(set->meta->data_size);
+		xd->data.rkey = dk->key;
+		xd->data.lkey = 0;
 		desc->xprt_data = xd;
 		desc->xprt_data_len = sizeof(*xd);
 	}
 	return desc;
-
+ err_2:
+	delete_key(mk->key);
+ err_1:
+	free(xd);
  err_0:
 	free(desc);
 	return NULL;
@@ -577,9 +678,17 @@ struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 
 void sock_rbuf_free(struct ldms_xprt *x, struct ldms_rbuf_desc *desc)
 {
-	struct sock_buf_remote_data *rbuf = desc->xprt_data;
-	if (rbuf)
-		free(rbuf);
+	struct sock_buf_xprt_data *xd = desc->xprt_data;
+	if (xd) {
+		if (xd->meta.lkey == 0) {
+			delete_key(xd->meta.rkey);
+			delete_key(xd->data.rkey);
+		} else {
+			delete_key(xd->meta.lkey);
+			delete_key(xd->data.lkey);
+		}
+		free(xd);
+	}
 	free(desc);
 }
 
@@ -638,7 +747,8 @@ static int init_once()
 	int rc = ENOMEM;
 
 	evthread_use_pthreads();
-	pthread_mutex_init(&sock_lock, 0);
+	pthread_mutex_init(&sock_list_lock, 0);
+	pthread_mutex_init(&key_tree_lock, 0);
 	io_event_loop = event_base_new();
 	if (!io_event_loop)
 		return errno;
