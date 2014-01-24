@@ -118,6 +118,15 @@ int instance_number = 1;
 /* max cmd built with yaml */
 #define CMD_MAX 1024
 
+/* max standby aggregators */
+#define STANDBY_MAX 64
+
+/* min aggregator count for standby */
+#define STANDBY_MIN 1
+
+/* range check [STANDBY_MIN , x, STANDBY_MAX] */
+#define valid_standby_no(x) ( (x) >= STANDBY_MIN && (x) <= STANDBY_MAX)
+
 /* another magic number for limiting plugins using ldms_log */
 #define LOG_MSG_MAX 4096
 
@@ -377,11 +386,21 @@ static big_dstring_t replybuf;
 static int init_replybuf=0;
 /* space for single decimal formatted int32 or int64 */
 static char intbuf[32];
+/* chk_replybuf should appear at the beginning of any function
+that uses replybuf to ensure proper initialization. */
 #define chk_replybuf() \
 for (; init_replybuf <1; init_replybuf++) bdstr_init(&replybuf)
+/* start a reply string with a formatted integer variable */
+#define bdstr_reply(ec) sprintf(intbuf,"%d",ec); bdstr_set(&replybuf,intbuf)
+/* append any size string to replybuf */
 #define cat(x) bdstrcat(&replybuf,x,DSTRING_ALL)
+/* grab pointer out of dstring for reading/sending */
 #define bdstr (char*)bdstrval(&replybuf)
+/* get size of current string. O(1): A lookup, not strlen call */
 #define bdlen bdstrlen(&replybuf)
+/* convert macro constants to c string constants by applying cstr */
+#define cstr(s) mstr(s)
+#define mstr(s) #s
 
 int send_reply(int sock, struct sockaddr *sa, ssize_t sa_len,
 	       char *msg, ssize_t msg_len)
@@ -689,8 +708,7 @@ int process_term_plugin(int fd,
 	rc = 0;
  out:
 	chk_replybuf();
-	sprintf(intbuf, "%d", rc);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_reply(rc);
 	cat(err_str);
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
@@ -728,7 +746,7 @@ int process_config_plugin(int fd,
  out:
 	chk_replybuf();
 	sprintf(intbuf, "%d", rc);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_reply(rc);
 	cat( err_str);
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
@@ -826,8 +844,7 @@ int process_start_sampler(int fd,
 	pthread_mutex_unlock(&pi->lock);
  out_nolock:
 	chk_replybuf();
-	sprintf(intbuf, "%d", rc);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_reply(rc);
 	cat(err_str);
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
@@ -877,8 +894,7 @@ int process_stop_sampler(int fd,
 	pthread_mutex_unlock(&pi->lock);
  out_nolock:
 	chk_replybuf();
-	sprintf(intbuf, "%d", rc);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_reply(rc);
 	cat(err_str);
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
@@ -987,8 +1003,7 @@ int process_add_host(int fd,
 		goto einval;
 	host_type = str_to_host_type(type);
 	if (host_type < 0) {
-		sprintf(intbuf, "%d '", -EINVAL);
-		bdstr_set(&replybuf,intbuf);
+		bdstr_reply(-EINVAL);
 		cat(type);
 		cat("' is an invalid host type.\n");
 		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
@@ -998,8 +1013,7 @@ int process_add_host(int fd,
 	host = av_value(av_list, attr);
 	if (!host) {
 	einval:
-		sprintf(intbuf, "%d '", -EINVAL);
-		bdstr_set(&replybuf,intbuf);
+		bdstr_reply(-EINVAL);
 		cat(" The ");
 		cat(attr);
 		cat(" attribute must be specified\n");
@@ -1018,8 +1032,7 @@ int process_add_host(int fd,
 			goto einval;
 	} else {
 		if (sets) {
-			sprintf(intbuf, "%d", -EPERM);
-			bdstr_set(&replybuf,intbuf);
+			bdstr_reply(-EPERM);
 			cat(" Aborted!. Use type=ACTIVE to collect the sets.");
 			send_reply(fd, sa, sa_len, bdstr,
 				 bdlen + 1);
@@ -1036,8 +1049,7 @@ int process_add_host(int fd,
 
 	rc = resolve(hs->hostname, &sin);
 	if (rc) {
-		sprintf(intbuf, "%d", -rc);
-		bdstr_set(&replybuf,intbuf);
+		bdstr_reply(-rc);
 		cat(" The host '");
 		cat(hs->hostname);
 		cat("' could not be resolved due to error ");
@@ -1068,12 +1080,16 @@ int process_add_host(int fd,
 	attr = av_value(av_list, "standby");
 	if (attr) {
 		standby_no = strtoul(attr, NULL, 0);
-		if ((standby_no < 65) && (standby_no > 0))
+		if ( valid_standby_no(standby_no) )
 			standby_no |= 1 << (standby_no - 1);
-		else if ((standby_no > 64) || (standby_no < 0)) {
-			sprintf(replybuf,
-                                "Parameter for standby needs to be between 1 and 64 inclusive.");
-                        send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		else if ( ! valid_standby_no(standby_no)) {
+			bdstr_reply(-EINVAL);
+			cat("Parameter for standby needs to be between ");
+			cat(cstr(STANDBY_MIN));
+			cat(" and "); 
+			cat(cstr(STANDBY_MAX));
+			cat(" inclusive.");
+                        send_reply(fd, sa, sa_len, bdstr, bdlen+1);
                         rc = EINVAL;
                         goto err;
 		}
@@ -1149,7 +1165,7 @@ add_timeout:
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 clean_set_list:
-	while (hset = LIST_FIRST(&hs->set_list)) {
+	while ( (hset = LIST_FIRST(&hs->set_list)) != NULL ) {
 		LIST_REMOVE(hset, entry);
 		free(hset->name);
 		free(hset);
@@ -1183,27 +1199,39 @@ int process_update_standby(int fd,
 
 	attr = av_value(av_list, "agg_no");
 	if (!attr) {
-		sprintf(replybuf, "%d The '%s' attribute must be specified.", -EINVAL, attr);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		bdstr_reply(-EINVAL);
+		cat(" The '");
+		cat(attr); 
+		cat("' attribute must be specified.");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
 	}
 	agg_no = atoi(attr);
-	if ((agg_no < 1) || (agg_no > 64)){
-		sprintf(replybuf, "%d The value for '%s' is invalid.", -EINVAL, attr);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	if (! valid_standby_no(agg_no)){
+		bdstr_reply(-EINVAL);
+		cat(" The value for '");
+		cat(attr);
+		cat("' is invalid.");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
 	}
 	
 	attr = av_value(av_list, "state");
 	if (!attr){
-		sprintf(replybuf, "%d The '%s' attribute must be specified.", -EINVAL, attr);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		bdstr_reply(-EINVAL);
+		cat(" The '");
+		cat(attr); 
+		cat("' attribute must be specified.");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
 	}
 	state = atoi(attr);
 	if ( (state != 0) && (state != 1)){
-		sprintf(replybuf, "%d The value for '%s' is invalid.", -EINVAL, attr);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		bdstr_reply(-EINVAL);
+		cat(" The value for '"); 
+		cat(attr); 
+		cat("' is invalid.");
+		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
 	}
 
@@ -1212,8 +1240,8 @@ int process_update_standby(int fd,
 	else
 		saggs_mask &= ~(1 << (agg_no - 1));
 
-	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	bdstr_set(&replybuf,"0");
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 
 	return 0;
 

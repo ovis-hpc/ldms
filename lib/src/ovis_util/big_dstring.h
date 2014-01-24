@@ -29,7 +29,7 @@ char *createfoo ()
 
 /* big_dstring_t safely castable to dstring_t for functions
  * which do not rely on knowing DSTRING_STATIC_SIZE
- * (init, free, extract).
+ * (init, free, extract rely on DSTRING_STATIC_SIZE).
  */
 
 
