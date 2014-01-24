@@ -102,14 +102,16 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 		file.previous_timestamp = file.timestamp;
 
 		/* read one line from the file */
-		if (fgets(file.one_line,BUFSIZE,fp) == NULL) break;
+		if (fgets(file.one_line,BUFSIZE,fp) == NULL)
+			break;
                 file.one_line[BUFSIZE-1] = '\0';
                 assert(strlen(file.one_line)<BUFSIZE-1);
 
 		/* skip over lines from the wrong comp id */
 		ptr = strchr(file.one_line,',');
 		file.comp_id = atoi(ptr+1);
-		if (file.comp_id != comp_id) continue;
+		if (file.comp_id != comp_id)
+			continue;
 
 		/* get the timestamp that is in the first column */
 		file.timestamp = atof(file.one_line);
@@ -118,7 +120,8 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 		file.line_number++;
 
 		/* skip over the first line of data */
-		if (file.line_number==1) continue;
+		if (file.line_number==1)
+			continue;
 
 		/* how much has elapsed since the last data acquisition? */
 		file.time_difference = file.timestamp - file.previous_timestamp;
@@ -130,45 +133,43 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 		for (i=0; i<number_of_counters; i++) {
 			if (counters[i].within) {
 				if (file.time_difference <
-						counters[i].threshold_left) {
+						counters[i].threshold_left)
 					continue;
-				}
 				if (file.time_difference >
-					counters[i].threshold_right) {
+					counters[i].threshold_right)
 					continue;
-				}
 				counters[i].counter++;
-				#ifdef DEBUG
-					printf("%lf, %lf, %s\n",
-						file.timestamp,
-						file.time_difference,
-						counters[i].label);
-					bin_counter_incremented=1;
-				#endif
+#ifdef DEBUG
+				printf("%lf, %lf, %s\n",
+					file.timestamp,
+					file.time_difference,
+					counters[i].label);
+				bin_counter_incremented=1;
+#endif
 				break;
 			} else {
 				if (file.time_difference
 						<= counters[i].threshold_left) {
 					counters[i].counter++;
-					#ifdef DEBUG
-						bin_counter_incremented=1;
-						printf("%lf, %lf, %s\n",
-							file.timestamp,
-							file.time_difference,
-							counters[i].label);
-					#endif
+#ifdef DEBUG
+					bin_counter_incremented=1;
+					printf("%lf, %lf, %s\n",
+						file.timestamp,
+						file.time_difference,
+						counters[i].label);
+#endif
 					break;
 				}
 				if (file.time_difference >=
 						counters[i].threshold_right) {
 					counters[i].counter++;
-					#ifdef DEBUG
-						bin_counter_incremented=1;
-						printf("%lf, %lf, %s\n",
-							file.timestamp,
-							file.time_difference,
-							counters[i].label);
-					#endif
+#ifdef DEBUG
+					bin_counter_incremented=1;
+					printf("%lf, %lf, %s\n",
+						file.timestamp,
+						file.time_difference,
+						counters[i].label);
+#endif
 					break;
 				}
 				continue;
@@ -176,7 +177,8 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 			printf("FOUND A BUG\n");
 		}
 #ifdef DEBUG
-		if (bin_counter_incremented==0) printf("FOUND A BUG\n");
+		if (bin_counter_incremented==0)
+			printf("FOUND A BUG\n");
 #endif
 
 	}//while
