@@ -16,7 +16,7 @@ int main(int argc, char **argv ) {
 	if (argc!=4) {
 		printf("%s %s %s",
 		       "usage:  ",
-		       "./test_time_difference",
+		       "./test_time_difference_main.exe",
 		       "filename [comp id] [time period in sec]"
 			);
 		exit(0);

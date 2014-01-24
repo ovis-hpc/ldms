@@ -42,10 +42,10 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
         struct File file;
 
 	char *ptr;
-	#ifdef DEBUG
-        	/* has a counter has been incremented */
-        	int bin_counter_incremented;
-	#endif
+#ifdef DEBUG
+        /* has a counter has been incremented */
+        int bin_counter_incremented;
+#endif
         int i;
 
 
@@ -100,7 +100,6 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 		/* save the old timestamp     */
 		/* increment the line counter */
 		file.previous_timestamp = file.timestamp;
-		file.line_number++;
 
 		/* read one line from the file */
 		if (fgets(file.one_line,BUFSIZE,fp) == NULL) break;
@@ -115,16 +114,19 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 		/* get the timestamp that is in the first column */
 		file.timestamp = atof(file.one_line);
 
-		/* skip over the 2nd line */
+		/* increment the line counter */
+		file.line_number++;
+
+		/* skip over the first line of data */
 		if (file.line_number==1) continue;
 
 		/* how much has elapsed since the last data acquisition? */
 		file.time_difference = file.timestamp - file.previous_timestamp;
 
 		/* increment one of the bin counters */
-		#ifdef DEBUG
-			bin_counter_incremented = 0;
-		#endif
+#ifdef DEBUG
+		bin_counter_incremented = 0;
+#endif
 		for (i=0; i<number_of_counters; i++) {
 			if (counters[i].within) {
 				if (file.time_difference <
@@ -173,20 +175,20 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 			}
 			printf("FOUND A BUG\n");
 		}
-		#ifdef DEBUG
-			if (bin_counter_incremented==0) printf("FOUND A BUG\n");
-		#endif
+#ifdef DEBUG
+		if (bin_counter_incremented==0) printf("FOUND A BUG\n");
+#endif
 
 	}//while
 
-	#ifdef DEBUG
-		/* output bin counters */
-		for (i=0; i<number_of_counters; i++) {
-			printf("%s is %llu\n",
-				counters[i].label,
-				counters[i].counter);
-		}
-	#endif
+#ifdef DEBUG
+	/* output bin counters */
+	for (i=0; i<number_of_counters; i++) {
+		printf("%s is %llu\n",
+			counters[i].label,
+			counters[i].counter);
+	}
+#endif
 
 	/* close the file */
 	fclose(fp);
