@@ -156,6 +156,7 @@ int handle_help(char *kw, char *err_str)
 	       "add host=<host> type=<type> sets=<set names>\n"
 	       "                [ interval=<interval> ] [ offset=<offset>]\n"
 	       "                [ xprt=<xprt> ] [ port=<port> ]\n"
+	       "                [ standby=<agg_no> ]\n"
 	       "   - Adds a host to the list of hosts monitored by this ldmsd.\n"
 	       "     <host>       The hostname. This can be an IP address or DNS\n"
 	       "                  hostname.\n"
@@ -181,7 +182,9 @@ int handle_help(char *kw, char *err_str)
 	       "         sock     The sockets transport.\n"
 	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
 	       "         ugni     The Cray Gemini transport.\n"
-	       "     <port>       The port number to connect on, defaults to %d.\n"
+	       "     <port>       The port number to connect on, defaults to 50000.\n"
+	       "     <agg_no>     The number of the aggregator that this is standby for.\n"
+               "                  Defaults to 0 which means this is an active aggregator.\n"
 	       "\n"
 	       "store name=<store> container=<container> set=<set> comp_type=<comp_type>\n"
 	       "      [hosts=<hosts>] [metric=<metric>]\n"
@@ -197,6 +200,11 @@ int handle_help(char *kw, char *err_str)
 	       "     <hosts>      A list of hosts to whose set data will be saved.\n"
 	       "                  If not specified, all hosts that have this set will\n"
 	       "                  have their data saved.\n"
+               "\n"
+	       "standby agg_no=<agg_no> state=<0/1>\n"
+	       "   - ldmsd will update it saggs_mask for this aggregator as indicated\n"
+	       "    <agg_no>    Unique integer id for an aggregator\n"
+               "    <state>      0/1 - standby/active\n"
 	       "\n"
 	       "info\n"
 	       "   - Causes the ldmsd to dump out information about plugins,\n"
@@ -207,8 +215,8 @@ int handle_help(char *kw, char *err_str)
 	return 0;
 }
 
-char err_str[8192];
-char linebuf[8192];
+char err_str[LDMS_MSG_MAX];
+char linebuf[LDMS_MSG_MAX];
 char *sockname = LDMSD_CONTROL_SOCKNAME;
 struct ctrlsock *ctrl_sock;
 
@@ -253,6 +261,11 @@ int handle_host_add(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_ADD_HOST, av_list, err_str);
 }
 
+int handle_update_standby(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_UPDATE_STANDBY, av_list, err_str);
+}
+
 int handle_store(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_STORE, av_list, err_str);
@@ -283,6 +296,7 @@ struct kw keyword_tbl[] = {
 	{ "info", handle_info },
 	{ "load", handle_plugin_load },
 	{ "quit", handle_quit },
+	{ "standby", handle_update_standby },
 	{ "start", handle_sampler_start },
 	{ "stop", handle_sampler_stop },
 	{ "store", handle_store },

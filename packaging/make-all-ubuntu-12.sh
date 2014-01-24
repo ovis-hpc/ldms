@@ -11,7 +11,6 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --disable-zap  --with-ovis-lib=$expected_ovislib_prefix --enable-sos --with-sos=$expected_sos_prefix "
 CFLAGS='-Wall -g'
 
-
 	if test -f $expected_event2_prefix/include/event2/event.h; then
 		echo "Found $expected_event2_prefix/include/event2/event.h. Good."
 	else

@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <sys/un.h>
 #include "../ovis_util/util.h"
+#include "../ovis_util/big_dstring.h"
 
 struct ctrlsock {
 	int sock;

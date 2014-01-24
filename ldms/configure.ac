@@ -15,6 +15,7 @@ dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
+AC_CHECK_SIZEOF(long double)
 dnl AM_PROG_CC_C_O
 
 dnl Checks for typedefs, structures, and compiler characteristics.
@@ -246,13 +247,14 @@ fi
 dnl Reset LIBS variable.
 LIBS=""
 
-OPTION_WITH_PORT([LDMSD],[411])
-
-
 if test -z "$ENABLE_QC_SAMPLER_TRUE"
 then
 AC_DEFINE([HAVE_QC_SAMPLER],[1],[Turning on QC tests for samplers.])
 fi
+
+OPTION_WITH_PORT([LDMSD],[411])
+
+OPTION_WITH_MAGIC([LDMS_MSG_MAX],[32768],[Maximum control message length allowed to ldmsd (min 4095)])
 
 
 AC_SUBST(ac_configure_args)
