@@ -26,6 +26,8 @@ void dstr_init(dstring_t *dsPtr)
   dsPtr->length = 0;
   dsPtr->capacity = DSTRING_STATIC_SIZE;
   dsPtr->staticSpace[0] = '\0';
+  /* protect against read through end of array at least until overwritten. */
+  dsPtr->staticSpace[DSTRING_STATIC_SIZE-1] = '\0';
 }
 
 void dstr_init2(dstring_t *dsPtr, int cap)
@@ -43,14 +45,19 @@ void dstr_init2(dstring_t *dsPtr, int cap)
 
 char *dstr_set(dstring_t *dsPtr, const char *string)
 {
+  size_t input_length;
   int length;
   char *newString;
 
-  assert(NULL != dsPtr);
-  assert(NULL != string);
-  assert((int)(INT_MAX - strlen(string)) >= 0);
+  if (NULL == dsPtr || NULL == string) {
+	  return NULL;
+  }
+  input_length = strlen(string);
+  if (INT_MAX < input_length) {
+    string = "input_too_big";
+  }
+  length = (int)input_length;
 
-  length = (int)strlen(string);
 
   /*
    * Allocate a larger buffer for the string if the current one isn't
@@ -58,8 +65,12 @@ char *dstr_set(dstring_t *dsPtr, const char *string)
    * will be room to grow before we have to allocate again.
    */
   if (length >= dsPtr->capacity) {
-    dsPtr->capacity = length*2;
-    newString = (char *) malloc((size_t) dsPtr->capacity);
+    if (length > INT_MAX/2) {
+      dsPtr->capacity = INT_MAX;
+    } else {
+      dsPtr->capacity = length*2;
+    }
+    newString = malloc((size_t) dsPtr->capacity);
     if (dsPtr->string != dsPtr->staticSpace) {
       free(dsPtr->string);
     }
@@ -69,7 +80,7 @@ char *dstr_set(dstring_t *dsPtr, const char *string)
   /*
    * Copy the new string into the buffer
    */
-  strncpy(dsPtr->string, string, (size_t)length);
+  strncpy(dsPtr->string, string, input_length);
   dsPtr->length = length;
   dsPtr->string[dsPtr->length] = '\0';
   return dsPtr->string;
@@ -80,24 +91,30 @@ char *dstrcat( dstring_t *dsPtr,
                         const char *string,
                         int length)
 {
+  size_t input_length;
   int str_length;
-  int newSize;
   char *newString;
+  size_t newSize;
 
-  assert(NULL != dsPtr);
-  assert(NULL != string);
-  assert((int)(INT_MAX - strlen(string)) >= 0);
-
-  str_length = (int)strlen(string);
-
-  if (length < 0) {
-    length = str_length;
+  if (NULL == dsPtr || NULL == string) {
+	  return NULL;
   }
-  else {
+  input_length = strlen(string);
+  if (INT_MAX < input_length) {
+    return NULL;
+  }
+  str_length = (int)input_length;
+
+  if (length < 0) { /* _ALL case */
+    length = str_length;
+  } else {
     length = MIN(length, str_length);
   }
 
   newSize = length + dsPtr->length;
+  if (newSize > (INT_MAX-1) ) {
+    return NULL;
+  }
 
   /*
    * Allocate a larger buffer for the string if the current one isn't
@@ -105,9 +122,13 @@ char *dstrcat( dstring_t *dsPtr,
    * will be room to grow before we have to allocate again.
    */
   if (newSize >= dsPtr->capacity) {
-    dsPtr->capacity = newSize*2;
-    newString = (char *) malloc((size_t) dsPtr->capacity);
-    strcpy(newString, dsPtr->string);
+    if (newSize > INT_MAX/2) {
+      dsPtr->capacity = INT_MAX;
+    } else {
+      dsPtr->capacity = newSize*2;
+    }
+    newString = malloc((size_t) dsPtr->capacity);
+    strncpy(newString, dsPtr->string, dsPtr->length);
     if (dsPtr->string != dsPtr->staticSpace) {
       free(dsPtr->string);
     }
@@ -119,7 +140,7 @@ char *dstrcat( dstring_t *dsPtr,
    */
   strncpy(dsPtr->string + dsPtr->length, string, (size_t)length);
   dsPtr->length += length;
-  dsPtr->string[dsPtr->length] = '\0';
+  dsPtr->string[newSize] = '\0';
   return dsPtr->string;
 }
 

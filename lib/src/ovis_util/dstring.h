@@ -43,7 +43,7 @@ char *createfoo ()
 #define DSTRING_STATIC_SIZE 200
 #define DSTRING_ALL -1
 
-/** Dynamic string data structure. */
+/** Dynamic string data structure. Max size INT_MAX. */
 typedef struct dstring {
   char *string;   /**< Points to beginning of string:  either
                        staticSpace below or a malloc'ed array. */
