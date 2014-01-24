@@ -77,12 +77,11 @@ ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+uint64_t comp_id = UINT64_MAX;
 static char *qc_dir = NULL;
 
 #ifdef HAVE_QC_SAMPLER
 static int qc_file = -1;
-static int qc_try_to_open_file = 1;
 static int get_qc_file(const char *qc_dir, int *qc_file);
 #endif
 
@@ -189,16 +188,24 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
-	/* if user does not specify qc_log_dir
-	 then log a message and continue     */
-	value = av_value(avl, "qc_log_dir");
-	if (value) {
-		qc_dir = strdup(value);
-	}
-
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id = strtoull(value, NULL, 0);
+
+	/* open a qc data file to store this sample.          */
+	/* if user does not specify qc_log_dir, then it's ok. */
+#ifdef HAVE_QC_SAMPLER
+	value = av_value(avl, "qc_log_dir");
+	if (value) {
+		int ec;  //error code
+
+		qc_dir = strdup(value);
+		/* try to open the qc data file */
+		ec = get_qc_file(qc_dir, &qc_file);
+		if (ec!=0)
+			return(ec);
+	}
+#endif
 
 	value = av_value(avl, "set");
 	if (value)
@@ -220,10 +227,10 @@ static int sample(void)
 	char lbuf[256];
 	char metric_name[128];
 	union ldms_value v;
-	#ifdef HAVE_QC_SAMPLER
+#ifdef HAVE_QC_SAMPLER
 	/* gettimeOfday emits 2 long int                      */
 	/* on a word width of 64 bits, a long int is 21 chars */
-	const int qc_len_date_and_time = 21+strlen(",")+21+1;
+	const int qc_len_date_and_time = 32+strlen(",")+32+1;
 	const int qc_len_buffer =
 		  5 //strlen("#time")
 		+ 1 //strlen(",")
@@ -233,8 +240,7 @@ static int sample(void)
 		+ 1;  //string terminator
 	char qc_date_and_time[qc_len_date_and_time];
 	char qc_buffer[qc_len_buffer];
-	struct timeval qc_time;
-	#endif
+#endif
 
 	if (!set) {
 		msglog("meminfo: plugin not initialized\n");
@@ -245,33 +251,26 @@ static int sample(void)
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 
-	#ifdef HAVE_QC_SAMPLER
-		/* get current date & time, write to qc file */
+#ifdef HAVE_QC_SAMPLER
+	/* get current date & time, write to qc file */
+	if (qc_file != -1) {
+		struct timeval qc_time;
 
-		/* if we haven't yet tried to open file, then open it */
-		if ((qc_file == -1) && (qc_try_to_open_file))
-			if (get_qc_file(qc_dir, &qc_file)!=0) {
-				qc_file = -1;
-				qc_try_to_open_file = 0;
-			}
-
-
-		if (qc_file != -1) {
-			gettimeofday(&qc_time, NULL);
-			snprintf(qc_date_and_time,
-				 qc_len_date_and_time,
-				 "%ld.%ld",
-                                qc_time.tv_sec, qc_time.tv_usec);
-			qc_date_and_time[qc_len_date_and_time-1]='\0';
-			snprintf(qc_buffer,qc_len_buffer,
-				"%s,%s,%s\n",
-				"#time",
-				qc_date_and_time,
-				qc_date_and_time);
-			qc_buffer[qc_len_buffer-1] = '\0';
-			write(qc_file,	qc_buffer, strlen(qc_buffer));			
-		}
-	#endif
+		gettimeofday(&qc_time, NULL);
+		snprintf(qc_date_and_time,
+			 qc_len_date_and_time,
+			 "%ld.%06ld",
+			qc_time.tv_sec, qc_time.tv_usec);
+		qc_date_and_time[qc_len_date_and_time-1]='\0';
+		snprintf(qc_buffer,qc_len_buffer,
+			"%s,%s,%s\n",
+			"#time",
+			qc_date_and_time,
+			qc_date_and_time);
+		qc_buffer[qc_len_buffer-1] = '\0';
+		write(qc_file,	qc_buffer, strlen(qc_buffer));
+	}
+#endif
 
 
 	do {
@@ -286,27 +285,27 @@ static int sample(void)
 
 		ldms_set_metric(metric_table[metric_no], &v);
 
-		#ifdef HAVE_QC_SAMPLER
-			/* write a metric to the qc data file */
-			if (qc_file != -1) {
-				snprintf(qc_buffer,qc_len_buffer,
-					"%s,%s,%" PRIu64 "\n",
-					metric_name,
-					qc_date_and_time,
-					v.v_u64);
-				qc_buffer[qc_len_buffer-1] = '\0';
-				write(qc_file, qc_buffer, strlen(qc_buffer));
-			}
-		#endif
+#ifdef HAVE_QC_SAMPLER
+		/* write a metric to the qc data file */
+		if (qc_file != -1) {
+			snprintf(qc_buffer,qc_len_buffer,
+				"%s,%s,%" PRIu64 "\n",
+				ldms_get_metric_name(metric_table[metric_no]),
+				qc_date_and_time,
+				v.v_u64);
+			qc_buffer[qc_len_buffer-1] = '\0';
+			write(qc_file, qc_buffer, strlen(qc_buffer));
+		}
+#endif
 
 
 		metric_no++;
 	} while (s);
 
-	#ifdef HAVE_QC_SAMPLER
-		/* flush qc file */
-        	fsync(qc_file);
-	#endif
+#ifdef HAVE_QC_SAMPLER
+	/* flush qc file */
+	fsync(qc_file);
+#endif
 
  out:
 	ldms_end_transaction(set);
@@ -402,7 +401,7 @@ static int get_qc_file(const char *qc_dir, int *qc_file)
 		strcpy(hostname,"unknown");
 	hostname[HOST_NAME_MAX] = '\0';
 
-	/* truncate hostname to first dot?????? */
+	/* truncate hostname to first dot */
 	ptr = strchr(hostname,'.');
         if (ptr!=NULL)
 		*ptr = '\0';
@@ -412,7 +411,7 @@ static int get_qc_file(const char *qc_dir, int *qc_file)
         	+ 4  //strlen("/QC_")
         	+ strlen(hostname)
         	+1   //strlen("_")
-        	+21  //comp_id is PRIu64
+        	+32  //comp_id is PRIu64
         	+8  //strlen("_meminfo_")
         	+6  //strlen("XXXXXX")
         	+4  //strlen(".txt")
