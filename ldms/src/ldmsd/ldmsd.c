@@ -2097,8 +2097,9 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	struct hostset *hset = arg;
 	uint64_t gn;
 	if (status) {
-		ldms_log("Updated failed for set %s.\n",
-			 (s ? ldms_get_set_name(s) : "UNKNOWN"));
+		ldms_log("Updated failed for set.\n");
+		reset_set_metrics(hset);
+		hset->state = LDMSD_SET_CONFIGURED;
 		goto out;
 	}
 
