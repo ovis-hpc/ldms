@@ -96,7 +96,8 @@ int test_qc_time_difference(char *filename, double time_period) {
 		file.previous_timestamp = file.timestamp;
 
 		/* read one line from the file */
-		if (fgets(file.one_line,BUFSIZE,fp) == NULL) break;
+		if (fgets(file.one_line,BUFSIZE,fp) == NULL)
+			break;
                 file.one_line[BUFSIZE-1] = '\0';
                 assert(strlen(file.one_line)<BUFSIZE-1);
 
@@ -111,7 +112,8 @@ int test_qc_time_difference(char *filename, double time_period) {
 		file.line_number++;
 
 		/* skip over the first line of data */
-		if (file.line_number==1) continue;
+		if (file.line_number==1)
+			continue;
 
 		/* how much has elapsed since the last data acquisition? */
 		file.time_difference = file.timestamp - file.previous_timestamp;
@@ -123,45 +125,43 @@ int test_qc_time_difference(char *filename, double time_period) {
 		for (i=0; i<number_of_counters; i++) {
 			if (counters[i].within) {
 				if (file.time_difference <
-						counters[i].threshold_left) {
+						counters[i].threshold_left)
 					continue;
-				}
 				if (file.time_difference >
-					counters[i].threshold_right) {
+					counters[i].threshold_right)
 					continue;
-				}
 				counters[i].counter++;
-				#ifdef DEBUG
-					printf("%lf, %lf, %s\n",
-						file.timestamp,
-						file.time_difference,
-						counters[i].label);
-					bin_counter_incremented=1;
-				#endif
+#ifdef DEBUG
+				printf("%lf, %lf, %s\n",
+					file.timestamp,
+					file.time_difference,
+					counters[i].label);
+				bin_counter_incremented=1;
+#endif
 				break;
 			} else {
 				if (file.time_difference
 						<= counters[i].threshold_left) {
 					counters[i].counter++;
-					#ifdef DEBUG
-						bin_counter_incremented=1;
-						printf("%lf, %lf, %s\n",
-							file.timestamp,
-							file.time_difference,
-							counters[i].label);
-					#endif
+#ifdef DEBUG
+					bin_counter_incremented=1;
+					printf("%lf, %lf, %s\n",
+						file.timestamp,
+						file.time_difference,
+						counters[i].label);
+#endif
 					break;
 				}
 				if (file.time_difference >=
 						counters[i].threshold_right) {
 					counters[i].counter++;
-					#ifdef DEBUG
-						bin_counter_incremented=1;
-						printf("%lf, %lf, %s\n",
-							file.timestamp,
-							file.time_difference,
-							counters[i].label);
-					#endif
+#ifdef DEBUG
+					bin_counter_incremented=1;
+					printf("%lf, %lf, %s\n",
+						file.timestamp,
+						file.time_difference,
+						counters[i].label);
+#endif
 					break;
 				}
 				continue;
