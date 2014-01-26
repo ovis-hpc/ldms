@@ -185,6 +185,9 @@ sos_iter_t sos_iter_new(sos_t sos, int attr_id)
 	if (!attr)
 		return NULL;
 
+	if (!sos_attr_has_index(attr))
+		return NULL;
+
 	i = calloc(1, sizeof *i);
 	if (!i)
 		goto err;

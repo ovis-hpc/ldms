@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -108,14 +108,14 @@ int main(int argc, char **argv)
 {
 	if (argc < 2)
 		usage();
-	
+
 	char opt;
 	char *sos_path = NULL;
 
 	while ((opt = getopt(argc, argv, SS_OPTS)) != -1 ) {
 		switch (opt) {
 		case 'i':
-			sos_path = optarg; 
+			sos_path = optarg;
 			break;
 		case 'h':
 		default:
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
 
 	sos_iter_t iter = sos_iter_new(sos, MDS_TV_SEC);
 	sos_obj_t obj = NULL;
-	
+
 	ovis_record_s rec;
 	ovis_record_t r = &rec;
 
@@ -192,7 +192,7 @@ int main(int argc, char **argv)
 		// update prev rec
 		*p = *r;
 	}
-	
+
 	uint64_t MIN_TS = UINT64_MAX;
 	uint64_t MAX_TS = 0;
 	uint64_t MIN_IVALUE = UINT64_MAX;
@@ -207,7 +207,7 @@ int main(int argc, char **argv)
 	int c;
 	printf("comp_id min_ts max_ts min_ivalue max_ivalue min_dvalue max_dvalue count_vup count_veq count_vdown\n");
 	for (c = min_comp_id; c <= max_comp_id; c++) {
-		printf("%d %s %s %lu %lu %lf %lf %d %d %d\n", c, 
+		printf("%d %s %s %lu %lu %lf %lf %d %d %d\n", c,
 				ts_str(min_ts[c]), ts_str(max_ts[c]),
 				min_ivalue[c], max_ivalue[c],
 				min_dvalue[c], max_dvalue[c],
@@ -230,7 +230,7 @@ int main(int argc, char **argv)
 			MIN_DVALUE, MAX_DVALUE,
 			COUNT_VUP, COUNT_VEQ, COUNT_DOWN
 	);
-	
+
 	return 0;
 }
 //EOF

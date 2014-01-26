@@ -672,12 +672,6 @@ void sos_iter_seek_start(sos_iter_t i);
 void sos_iter_seek_end(sos_iter_t i);
 
 /**
- * Print sos object.
- */
-void sos_print_obj(sos_t sos, sos_obj_t obj, int attr_id);
-
-
-/**
  * \param k1 The first key
  * \param k2 The second key
  * \param keylen The length of the keys (bytes)
