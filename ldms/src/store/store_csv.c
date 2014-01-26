@@ -74,6 +74,7 @@
 static idx_t store_idx;
 static char *root_path;
 static int altheader;
+static int id_pos;
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
@@ -81,7 +82,13 @@ static ldmsd_msg_log_f msglog;
 
 #define LOGFILE "/var/log/store_csv.log"
 
-/* 1 store per set but different files per metric */
+/*
+ * store_csv - csv compid, value pairs UNLESS id_pos is specified.
+ * In that case, either only the first/last (0/1) metric's comp id
+ * will be used. First/last is determined by order in the store,
+ * not the order in ldms_ls (probably reversed).
+ */
+
 struct csv_store_handle {
 	struct ldmsd_store *store;
 	char *path;
@@ -102,6 +109,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *altvalue;
+	char *ivalue;
+	int ipos = -1;
 
 	value = av_value(avl, "path");
 	if (!value)
@@ -109,11 +118,20 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	altvalue = av_value(avl, "altheader");
 
+	ivalue = av_value(avl, "id_pos");
+	if (ivalue){
+		ipos = atoi(ivalue);
+		if ((ipos < 0) || (ipos > 1))
+			return EINVAL;
+	}
+
 	pthread_mutex_lock(&cfg_lock);
 	if (root_path)
 		free(root_path);
 
 	root_path = strdup(value);
+
+	id_pos = ipos;
 
 	if (altvalue)
 		altheader = atoi(altvalue);
@@ -135,7 +153,9 @@ static const char *usage(void)
 	return  "    config name=store_csv path=<path> altheader=<0/1>\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
-		"         - altheader Header in a separate file (optional, default 0)\n";
+		"         - altheader Header in a separate file (optional, default 0)\n"
+		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
+                "                     (Optional default use all compid)\n";
 }
 
 /*
@@ -161,6 +181,8 @@ static int print_header(struct csv_store_handle *s_handle,
 			ldms_mvec_t mvec)
 {
 
+	int compid;
+
 	/* Only called from Store which already has the lock */
 	FILE* fp = s_handle->headerfile;
 
@@ -170,17 +192,29 @@ static int print_header(struct csv_store_handle *s_handle,
 		return EINVAL;
 	}
 
-	fprintf(fp, "%s", "#Time");
-
+	fprintf(fp, "#Time");
 	int num_metrics = ldms_mvec_get_count(mvec);
-	int i, rc;
-	for (i = 0; i < num_metrics; i++) {
-		char* name = ldms_get_metric_name(mvec->v[i]);
-		fprintf(fp, ", %s.CompId, %s.value",
+	
+	if (id_pos < 0) {
+		int i, rc;
+
+		for (i = 0; i < num_metrics; i++) {
+			char* name = ldms_get_metric_name(mvec->v[i]);
+			fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
+		}
+		fprintf(fp, "\n");
+	} else {
+		int i, rc;
+
+		fprintf(fp, ", CompId");
+		for (i = 0; i < num_metrics; i++) {
+			char* name = ldms_get_metric_name(mvec->v[i]);
+			fprintf(fp, ", %s", name);
+		}
+		fprintf(fp, "\n");
 	}
 
-	fprintf(fp, "\n");
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
 
@@ -301,16 +335,36 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32, ts->sec, ts->usec);
 
 	int num_metrics = ldms_mvec_get_count(mvec);
-	int i, rc;
-	for (i = 0; i < num_metrics; i++) {
-		comp_id = ldms_get_user_data(mvec->v[i]);
-		rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
-				comp_id, ldms_get_u64(mvec->v[i]));
-		if (rc < 0)
-			msglog("store_csv: Error %d writing to '%s'\n",
-					rc, s_handle->path);
+	if (id_pos < 0){
+		int i, rc;
+		for (i = 0; i < num_metrics; i++) {
+			comp_id = ldms_get_user_data(mvec->v[i]);
+			rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
+				     comp_id, ldms_get_u64(mvec->v[i]));
+			if (rc < 0)
+				msglog("store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+		}
+		fprintf(s_handle->file,"\n");
+	} else {
+		int i, rc;
+
+		if (num_metrics > 0){
+			i = (id_pos == 0)? 0: (num_metrics-1);
+			rc = fprintf(s_handle->file, ", %" PRIu64,
+				ldms_get_user_data(mvec->v[i]));
+			if (rc < 0)
+				msglog("store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+		}
+		for (i = 0; i < num_metrics; i++) {
+			rc = fprintf(s_handle->file, ", %" PRIu64, ldms_get_u64(mvec->v[i]));
+			if (rc < 0)
+				msglog("store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+		}
+		fprintf(s_handle->file,"\n");
 	}
-	fprintf(s_handle->file,"\n");
 
 	pthread_mutex_unlock(&s_handle->lock);
 
