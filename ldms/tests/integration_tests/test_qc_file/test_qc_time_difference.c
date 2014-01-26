@@ -1,4 +1,4 @@
-#include "test_time_difference.h"
+#include "test_qc_time_difference.h"
 
 
 
@@ -11,7 +11,7 @@
  * @param time_period time period specified in ldmsctl command
  * @return true if all samples were acquired with 90% of time_period
  */
-int test_time_difference(char *filename, int comp_id, double time_period) {
+int test_qc_time_difference(char *filename, double time_period) {
 
 	/* create bin counters: */
 	/*    time difference is within 1%  */
@@ -41,7 +41,6 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
         };
         struct File file;
 
-	char *ptr;
 #ifdef DEBUG
         /* has a counter has been incremented */
         int bin_counter_incremented;
@@ -90,11 +89,6 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
         file.time_difference = 0.0;
         file.timestamp = 0.0;
 
-	/* skip over the first line.  This line contains column headers */
-	fgets(file.one_line,BUFSIZE,fp);
-        file.one_line[BUFSIZE-1] = '\0';
-        assert(strlen(file.one_line)<BUFSIZE-1);
-
 	while(1) {
 
 		/* save the old timestamp     */
@@ -107,14 +101,12 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
                 file.one_line[BUFSIZE-1] = '\0';
                 assert(strlen(file.one_line)<BUFSIZE-1);
 
-		/* skip over lines from the wrong comp id */
-		ptr = strchr(file.one_line,',');
-		file.comp_id = atoi(ptr+1);
-		if (file.comp_id != comp_id)
-			continue;
+		/* skip over lines that don't start with #time */
+                if (strncmp(file.one_line, "#time", 5)!=0)
+                	continue;
 
 		/* get the timestamp that is in the first column */
-		file.timestamp = atof(file.one_line);
+		file.timestamp = atof(file.one_line+7);
 
 		/* increment the line counter */
 		file.line_number++;
