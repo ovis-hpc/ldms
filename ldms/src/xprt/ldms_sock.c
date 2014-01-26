@@ -346,18 +346,14 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 
 	/* Prepare and send read response header */
 	if (!status) {
-		//FIXME: which one is this???
-		len = req->buf_info.size;
-		//len = htonl(req->buf_info.size);
+		len = htonl(req->buf_info.size);
 	} else
 		len = 0;
 	last_sock_read_req = rsp.hdr.xid = req->hdr.xid;
 	rsp.hdr.cmd = htonl(SOCK_READ_RSP_CMD);
 	rsp.hdr.len = htonl(sizeof(rsp) + len);
 
-	//FIXME: which one is this?
-	rsp.status = status;
-	//	rsp.status = htonl(status);
+	rsp.status = htonl(status);
 
 	memcpy(&rsp.buf_info, &req->buf_info, sizeof req->buf_info);
 
