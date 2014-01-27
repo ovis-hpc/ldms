@@ -70,6 +70,8 @@
 
 
 #define PROC_FILE "/proc/meminfo"
+#define MEMINFO_LINE_MAX 256  //max # of chars in lbuf
+#define MEMINFO_NAME_MAX 256  //max # of chars in metric_name
 
 static char *procfile = PROC_FILE;
 static uint64_t counter;
@@ -92,8 +94,8 @@ static int create_metric_set(const char *path)
 	int rc, i, metric_count;
 	uint64_t metric_value;
 	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	char lbuf[MEMINFO_LINE_MAX];
+	char metric_name[MEMINFO_NAME_MAX];
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
@@ -224,8 +226,8 @@ static int sample(void)
 	int rc;
 	int metric_no;
 	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	char lbuf[MEMINFO_LINE_MAX];
+	char metric_name[MEMINFO_NAME_MAX];
 	union ldms_value v;
 #ifdef HAVE_QC_SAMPLER
 	/* gettimeOfday emits 2 long int                      */
