@@ -98,8 +98,8 @@ int test_qc_time_difference(char *filename, double time_period) {
 		/* read one line from the file */
 		if (fgets(file.one_line,BUFSIZE,fp) == NULL)
 			break;
-                file.one_line[BUFSIZE-1] = '\0';
                 assert(strlen(file.one_line)<BUFSIZE-1);
+                file.one_line[BUFSIZE-1] = '\0';
 
 		/* skip over lines that don't start with #time */
                 if (strncmp(file.one_line, "#time", 5)!=0)
