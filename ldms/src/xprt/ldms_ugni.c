@@ -301,16 +301,15 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	struct sockaddr_storage ss;
 	int cq_depth;
+	int rc;
 	char *cq_depth_s;
+	fd_set fdset;
 	struct timeval tv;
 	gni_return_t grc;
 
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (gxp->sock < 0)
 		return -1;
-	int rc = __set_socket_options(gxp);
-	if (rc)
-		goto err;
 	gxp->type = LDMS_UGNI_ACTIVE;
 
 	if (!ugni_gxp.dom.src_cq) {
@@ -347,20 +346,19 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	rc = connect(gxp->sock, sa, sa_len);
 	if (errno != EINPROGRESS)
 		goto err1;
-        FD_ZERO(&fdset);
-        FD_SET(gxp->sock, &fdset);
-        tv.tv_sec = 1;
-        tv.tv_usec = 0;
-        if (select(gxp->sock + 1, NULL, &fdset, NULL, &tv) == 1) {
-                int so_error;
-                socklen_t len = sizeof so_error;
-                getsockopt(gxp->sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
-                if (so_error)
-                        goto err1;
-        } else
-                goto err1;
-        fcntl(gxp->sock, F_SETFL, ~O_NONBLOCK);
-
+	FD_ZERO(&fdset);
+	FD_SET(gxp->sock, &fdset);
+	tv.tv_sec = 1;
+	tv.tv_usec = 0;
+	if (select(gxp->sock + 1, NULL, &fdset, NULL, &tv) == 1) {
+		int so_error;
+		socklen_t len = sizeof so_error;
+		getsockopt(gxp->sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
+		if (so_error)
+			goto err1;
+	} else
+		goto err1;
+	fcntl(gxp->sock, F_SETFL, ~O_NONBLOCK);
 	sa_len = sizeof(ss);
 	rc = getsockname(gxp->sock, (struct sockaddr *)&ss, &sa_len);
 	if (rc)
