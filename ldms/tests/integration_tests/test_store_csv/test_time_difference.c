@@ -92,8 +92,8 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 
 	/* skip over the first line.  This line contains column headers */
 	fgets(file.one_line,BUFSIZE,fp);
-        file.one_line[BUFSIZE-1] = '\0';
         assert(strlen(file.one_line)<BUFSIZE-1);
+        file.one_line[BUFSIZE-1] = '\0';
 
 	while(1) {
 
@@ -104,8 +104,9 @@ int test_time_difference(char *filename, int comp_id, double time_period) {
 		/* read one line from the file */
 		if (fgets(file.one_line,BUFSIZE,fp) == NULL)
 			break;
-                file.one_line[BUFSIZE-1] = '\0';
                 assert(strlen(file.one_line)<BUFSIZE-1);
+                file.one_line[BUFSIZE-1] = '\0';
+
 
 		/* skip over lines from the wrong comp id */
 		ptr = strchr(file.one_line,',');
