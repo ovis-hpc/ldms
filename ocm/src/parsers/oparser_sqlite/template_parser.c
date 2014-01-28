@@ -393,7 +393,8 @@ struct oparser_component *find_closest_component(
 
 void handle_name(char *value)
 {
-	is_name = 1;
+	if (value)
+		is_name = 1;
 
 	struct oparser_name_queue cnqueue;
 	struct oparser_component *comp;
@@ -531,7 +532,7 @@ static void handle_metrics(char *value)
 		for (i = 0; i < tmpl_def->num_tmpls; i++) {
 			for (j = 0; j < num_prod_comps; j++) {
 				prod_mlist = &prod_carray[i][j]->mlist;
-				if (prod_carray[i][j]->name) {
+				if (prod_carray[i][j]->name && is_name) {
 					sprintf(full_name, "%s#%s", name->name,
 						prod_carray[i][j]->name);
 				} else {

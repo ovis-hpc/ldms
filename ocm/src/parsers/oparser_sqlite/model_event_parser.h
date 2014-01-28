@@ -73,7 +73,7 @@ struct oparser_model {
 	int model_id;
 	char *thresholds;
 	char *params;
-	char report_flags[MAE_NUM_LEVELS];
+	char report_flags[MAE_NUM_LEVELS + 1];
 	TAILQ_ENTRY(oparser_model) entry;
 };
 TAILQ_HEAD(oparser_model_q, oparser_model);

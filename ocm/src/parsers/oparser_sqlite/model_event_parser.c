@@ -246,7 +246,7 @@ static void handle_report_flags(char *value)
 				"e.g. 0011. Received '%s'\n", value);
 		exit(EINVAL);
 	}
-	sprintf(model->report_flags, "%s", value);
+	snprintf(model->report_flags, MAE_NUM_LEVELS + 1, "%s", value);
 }
 
 static void handle_action(char *value)

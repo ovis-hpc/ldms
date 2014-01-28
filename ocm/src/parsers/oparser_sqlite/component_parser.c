@@ -221,9 +221,16 @@ static struct kw label_tbl[] = {
 
 void create_subtree(struct oparser_component *comp,
 			struct oparser_component_type *type,
-			struct oparser_scaffold *scaffold)
+			struct oparser_scaffold *scaffold,
+			int is_root)
 {
-	scaffold->height++;
+	static int depth = 0;
+	if (is_root)
+		depth = 0;
+	else
+		depth++;
+	if (scaffold->height < depth)
+		scaffold->height = depth;
 	comp->num_child_types = type->num_element_types;
 	comp->children = calloc(comp->num_child_types,
 				sizeof(struct oparser_component_list));
@@ -240,12 +247,12 @@ void create_subtree(struct oparser_component *comp,
 		child_type = type->elements[i];
 		for (j = 0; j < child_type->count; j++) {
 			child = new_comp(child_type);
-			create_subtree(child, child_type, scaffold);
-			scaffold->height--;
+			create_subtree(child, child_type, scaffold, 0);
 			LIST_INSERT_HEAD(&comp->children[i], child, entry);
 			child->parent = comp;
 		}
 	}
+	depth--;
 }
 
 struct oparser_scaffold *oparser_create_scaffold()
@@ -291,7 +298,7 @@ struct oparser_scaffold *oparser_create_scaffold()
 		comp->parent = NULL;
 		LIST_INIT(&scaffold->children[i]);
 		LIST_INSERT_HEAD(&scaffold->children[i], comp, entry);
-		create_subtree(comp, top_type, scaffold);
+		create_subtree(comp, top_type, scaffold, 1);
 		i++;
 	}
 
@@ -346,7 +353,7 @@ void oparser_print_scaffold(struct oparser_scaffold *scaffold, FILE *outf)
 {
 	struct oparser_component *comp;
 	int i, j;
-	fprintf(outf, "Scaffold: height = %d\n", scaffold->height);
+	fprintf(outf, "Component tree: height = %d\n", scaffold->height);
 	for (i = 0; i < scaffold->num_child_types; i++) {
 		LIST_FOREACH(comp, &scaffold->children[i], entry)
 			print_scaffold(outf, comp, 1);
@@ -416,19 +423,20 @@ struct src_array *handle_one_comp_one_name(
 	return comps;
 }
 
-void _handle_comp_names(struct oparser_component_list *list,
+int _handle_comp_names(struct oparser_component_list *list,
 			struct oparser_name_queue *nlist,
-			struct oparser_component **comp_array)
+			struct oparser_component **comp_array,
+			int idx)
 {
-	int idx = 0;
+	int count = 0;
 	struct oparser_name *oname;
 	struct oparser_component *comp;
 	TAILQ_FOREACH(oname, nlist, entry) {
 		LIST_FOREACH(comp, list, entry) {
 			if (comp->name) {
 				if (strcmp(oname->name, comp->name) == 0) {
-					comp_array[idx] = comp;
-					idx++;
+					comp_array[idx + count] = comp;
+					count++;
 					break;
 				}
 			}
@@ -437,8 +445,8 @@ void _handle_comp_names(struct oparser_component_list *list,
 			LIST_FOREACH(comp, list, entry) {
 				if (!comp->name) {
 					comp->name = strdup(oname->name);
-					comp_array[idx] = comp;
-					idx++;
+					comp_array[idx + count] = comp;
+					count++;
 					break;
 				}
 			}
@@ -452,6 +460,7 @@ void _handle_comp_names(struct oparser_component_list *list,
 			exit(ENOENT);
 		}
 	}
+	return count;
 }
 
 struct src_array *handle_comps_names(struct src_array *src,
@@ -462,16 +471,19 @@ struct src_array *handle_comps_names(struct src_array *src,
 	struct oparser_name *oname;
 	struct oparser_component *comp, *tmp_comp;
 	struct src_array *comps = malloc(sizeof(*comps));
-	comps->comp_array = malloc(num_names *
+	comps->num_comps = num_names * src->num_comps;
+	comps->comp_array = malloc(comps->num_comps *
 				sizeof(struct oparser_component *));
-	comps->num_comps = num_names;
-	int idx = 0;
+
+
 	if (!src) {
-		_handle_comp_names(&comp_type->list, nlist, comps->comp_array);
+		_handle_comp_names(&comp_type->list, nlist,
+						comps->comp_array, 0);
 		goto out;
 	}
 
 	int i, j;
+	int idx = 0;
 	struct oparser_component_list *list;
 	for (i = 0; i < src->num_comps; i++) {
 		for (j = 0; j < src->comp_array[i]->num_child_types; j++) {
@@ -479,8 +491,8 @@ struct src_array *handle_comps_names(struct src_array *src,
 				list = &src->comp_array[i]->children[j];
 				tmp_comp = LIST_FIRST(list);
 				if (tmp_comp->comp_type == comp_type) {
-					_handle_comp_names(list, nlist,
-							comps->comp_array);
+					idx += _handle_comp_names(list, nlist,
+						comps->comp_array, idx);
 					break;
 				}
 			}

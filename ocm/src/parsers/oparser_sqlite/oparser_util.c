@@ -183,12 +183,15 @@ int get_expand_token(char *s, char *start, char *end)
 		case ',':
 			if (tmp) {
 				strncpy(end, tmp, c - tmp);
+				end[c - tmp] = '\0';
 				return c - s + 1;
 			}
 			strncpy(start, s, c - s);
+			start[c - s] = '\0';
 			return c - s + 1;
 		case '-':
 			strncpy(start, s, c - s);
+			start[c - s] = '\0';
 			tmp = c + 1;
 			break;
 		default:
@@ -317,6 +320,7 @@ int process_string_name(char *s, struct oparser_name_queue *nlist,
 				suf = close + 1;
 				if ('\0' == suf[0])
 					suf = "";
+				expand[close - (open + 1)] = '\0';
 			}
 
 			*open = '\0';
