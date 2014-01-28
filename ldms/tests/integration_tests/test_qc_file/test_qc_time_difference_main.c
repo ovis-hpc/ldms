@@ -17,7 +17,7 @@ int main(int argc, char **argv ) {
 		printf("%s %s %s",
 		       "usage:  ",
 		       "./test_time_difference_main.exe",
-		       "filename [time period in sec]"
+		       "filename [time period in sec]\n"
 			);
 		exit(0);
 	}
