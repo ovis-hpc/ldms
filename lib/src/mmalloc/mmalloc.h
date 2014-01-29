@@ -64,7 +64,7 @@ struct mm_info {
  */
 void mm_get_info(struct mm_info *mmi);
 
-/** 
+/**
  * \brief Initialize the heap.
  *
  * Allocates memory for the heap and configures the minimum block size.

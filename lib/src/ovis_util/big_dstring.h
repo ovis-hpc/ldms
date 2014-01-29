@@ -7,7 +7,7 @@
 
  /*
  * Example:
-char *createfoo () 
+char *createfoo ()
 {
 	int i;
 	dsinit;
@@ -120,5 +120,5 @@ static inline char *bdstr_set(big_dstring_t *dsPtr, const char *string) \
 \
 static const int bdsize=DSTRING_STATIC_SIZE
 
-#endif /* BIG_DSTRING_H */ 
- 
+#endif /* BIG_DSTRING_H */
+

@@ -5,8 +5,8 @@
 
 /** @file
  *  Dynamic String Utilities.
- *  These routines are modifications of TCL code by John Osterhout at 
- *  Berkeley, as allowed by the TCL distribution license.  See dstring.c 
+ *  These routines are modifications of TCL code by John Osterhout at
+ *  Berkeley, as allowed by the TCL distribution license.  See dstring.c
  *  for the details. There are minor differences internally.
  *
  * This implementation is biased toward large strings, because when you
@@ -19,7 +19,7 @@
  * Of course any char* turned over to the caller may leak.
  *
  * Example:
-char *createfoo () 
+char *createfoo ()
 {
 	int i;
 	dsinit;
@@ -85,7 +85,7 @@ extern inline const char *dstrval(const dstring_t *dsPtr) { return dsPtr->string
  *	Appends more characters to the specified dynamic string.
  *	Length bytes from string (or all of string if length is less
  *	than zero) are added to the current value of the string.  If
- *  string is shorter than length, only the length of string 
+ *  string is shorter than length, only the length of string
  *  characters are appended.  The resulting value of the
  *  dynamic string is always null-terminated.
  *  <p />
