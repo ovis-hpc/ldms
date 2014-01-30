@@ -150,7 +150,7 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_csv path=<path> altheader=<0/1>\n"
+	return  "    config name=store_csv path=<path> altheader=<0/1> id_pos=<0/1>\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
