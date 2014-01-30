@@ -1,0 +1,24 @@
+all:  test_diff_metrics_main.exe
+
+test_diff_metrics_main.exe:test_diff_metrics_main.o test_diff_metrics.o parse_qc_file.o parse_store_csv_file.o metric_set.o
+	gcc -o test_diff_metrics_main.exe test_diff_metrics_main.o test_diff_metrics.o parse_qc_file.o parse_store_csv_file.o metric_set.o
+
+test_diff_metrics_main.o: test_diff_metrics_main.c 
+	gcc -Wall -g -c  test_diff_metrics_main.c	
+	
+test_diff_metrics.o: test_diff_metrics.c test_diff_metrics.h test_diff_limits.h
+	gcc -Wall -g -c test_diff_metrics.c	
+	
+parse_qc_file.o: parse_qc_file.c parse_qc_file.h test_diff_limits.h
+	gcc -Wall -g -c parse_qc_file.c
+	
+parse_store_csv_file.o: parse_store_csv_file.c parse_store_csv_file.h test_diff_limits.h
+	gcc -Wall -g -c parse_store_csv_file.c	
+
+metric_set.o: metric_set.c metric_set.h test_diff_limits.h
+	gcc -Wall -g -c metric_set.c	
+	
+clean:
+	-rm -f *.exe
+	-rm -f *.o
+
