@@ -247,6 +247,7 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 
 #endif
 
+#ifdef DEPRECATED
 struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin)
 {
 	int rc;
@@ -266,6 +267,7 @@ struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin)
 	free(sock);
 	return NULL;
 }
+#endif
 
 struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 {
