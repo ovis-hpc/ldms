@@ -2547,6 +2547,10 @@ int setup_control(char *sockname)
 	return 0;
 }
 
+#ifdef DEPRECATED
+/* This is never used anywhere and bypasses the authentication
+provided by owner-only access control on LDMSD_SOCKPATH/LDMSD_CONTROL_SOCKNAME.
+*/
 int setup_inet_control(void)
 {
 	struct sockaddr_in sin;
@@ -2577,6 +2581,7 @@ int setup_inet_control(void)
 	}
 	return 0;
 }
+#endif
 
 typedef enum {
 	LDMS_HOSTNAME=0,
