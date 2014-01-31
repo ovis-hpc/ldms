@@ -56,7 +56,8 @@
 #include <ovis_util/big_dstring.h>
 #include "ldms.h"
 
-#define LDMSD_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"
+/* PLUGINDIR comes from automake */
+#define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
 struct hostspec;
 struct ldmsd_store_policy;

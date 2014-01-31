@@ -275,6 +275,8 @@ static int post_send(struct ldms_rdma_xprt *x,
 	return rc;
 }
 
+#ifdef DEPRECATED 
+/* use ldms_request_cmd_names instead */
 char *cmd_str[] = {
 	"LDMS_CMD_DIR",
 	"LDMS_CMD_DIR_CANCEL",
@@ -287,6 +289,7 @@ char *cmd_str[] = {
 	"LDMS_CMD_LOOKUP_REPLY",
 	"LDMS_CMD_REQ_NOTIFY_REPLY",
 };
+#endif
 
 char * op_str[] = {
 	"IBV_WC_SEND",
@@ -301,9 +304,9 @@ char * op_str[] = {
 static char *xlate_cmd(int cmd)
 {
 	static char cmd_s[16];
-	if (cmd >= 0 && cmd <= ARRAY_SIZE(cmd_str))
-		return cmd_str[cmd];
-
+	if ( is_valid_ldms_request_cmd(cmd) ) {
+		return ldms_request_cmd_names[cmd];
+	}
 	sprintf(cmd_s, "%x", cmd);
 	return cmd_s;
 }

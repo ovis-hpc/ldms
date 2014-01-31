@@ -2,6 +2,8 @@ sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_CPPFLAGS = -DPLUGINDIR='"$(libdir)"'
+
 
 ldms_ls_SOURCES = ldms_ls.c
 ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lmmalloc -lcoll

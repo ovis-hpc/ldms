@@ -29,6 +29,7 @@ OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
 OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
 OPTION_DEFAULT_ENABLE([glib], [ENABLE_GLIB])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
+OPTION_DEFAULT_DISABLE([authentication], [ENABLE_AUTHENTICATION])
 
 dnl Options for transport
 OPTION_DEFAULT_ENABLE([xprt], [ENABLE_XPRT])
@@ -250,6 +251,11 @@ LIBS=""
 if test -z "$ENABLE_QC_SAMPLER_TRUE"
 then
 AC_DEFINE([HAVE_QC_SAMPLER],[1],[Turning on QC tests for samplers.])
+fi
+
+if test -z "$ENABLE_AUTHENTICATION_TRUE"
+then
+AC_DEFINE([HAVE_AUTH],[1],[Turning on authentication checks for xprt connect.])
 fi
 
 OPTION_WITH_PORT([LDMSD],[411])

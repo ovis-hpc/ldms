@@ -293,6 +293,14 @@ ldms_t ldms_xprt_next(ldms_t);
 int ldms_xprt_connected(ldms_t);
 
 /**
+ * \brief Check if an endpoint is authenticated.
+ *
+ * \param l	The endpoint handle.
+ * \returns	!0 if the endpoint is authenticated.
+ */
+int ldms_xprt_authenticated(ldms_t);
+
+/**
  * \brief Check if an endpoint is closed.
  *
  * \param l	The endpoint handle.
@@ -527,6 +535,17 @@ extern const char *ldms_get_xprt_name(ldms_t x);
 extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
 
 /**
+ * \brief Compute the correct response to an authentication challenge.
+ *
+ * The string returned should be freed by the caller.
+ *
+ * \param n	The random number needed to prevent replay attacks.
+ * \returns	NULL if the response cannot be computed. See errno.
+ * \returns	The answer to expect/provide.
+ */
+extern char *ldms_get_auth_string(uint64_t n);
+
+/**
  * \brief Listen for connection requests from LDMS peers.
  *
  * \param x	The transport handle
@@ -671,9 +690,11 @@ void ldms_dir_cancel(ldms_t t);
 #define LDMS_DIR_F_NOTIFY	1
 extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
-#define LDMS_XPRT_LIBPATH_DEFAULT "/usr/local/lib/"
+/* PLUGINDIR comes from automake */
+#define LDMS_XPRT_LIBPATH_DEFAULT PLUGINDIR
 #define LDMS_DEFAULT_PORT	LDMSDPORT
 #define LDMS_LOOKUP_PATH_MAX	511
+#define LDMS_PASSWORD_MAX	128
 
 
 /**
@@ -1637,6 +1658,7 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e);
 /**
  * \}
  */
+
 
 #ifdef __cplusplus
 }

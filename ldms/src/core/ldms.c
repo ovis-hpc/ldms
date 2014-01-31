@@ -375,7 +375,12 @@ static ldms_t __get_xprt(ldms_set_t s)
 	return (ldms_t)(sd->rbd?sd->rbd->xprt:0);
 }
 
+#if 0
 int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
+/* moved to xprt header. avoid shadow declarations that can get inconsistent.
+perhaps ldms_remote_update should be moved here an static?
+ */
+#endif
 int ldms_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;

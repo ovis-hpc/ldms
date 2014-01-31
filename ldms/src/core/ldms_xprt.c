@@ -65,6 +65,7 @@
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_private.h"
+#include "ldms_auth.h"
 
 #include "coll/str_map.h"
 
@@ -82,6 +83,27 @@ void default_log(const char *fmt, ...)
 #else
 #define TF()
 #endif
+
+const char *ldms_request_cmd_names[] = {
+#define X(a) #a,
+#include "ldms_xprt_cmd.h"
+#undef X
+};
+
+int sizeof_ldms_request_cmd_names() {
+  int result=0;
+#define X(a) result++;
+#include "ldms_xprt_cmd.h"
+#undef X
+  return result;
+}
+
+int is_valid_ldms_request_cmd(int pc)
+{
+	return (0 <= pc && pc < sizeof_ldms_request_cmd_names()) ? 1 : 0;
+}
+
+
 
 pthread_mutex_t xprt_list_lock;
 str_map_t __dlmap;
@@ -265,6 +287,11 @@ int ldms_xprt_connected(ldms_t _x)
 	return ((struct ldms_xprt *)_x)->connected;
 }
 
+int ldms_xprt_authenticated(ldms_t _x)
+{
+	return ((struct ldms_xprt *)_x)->authenticated;
+}
+
 void ldms_xprt_close(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
@@ -273,6 +300,7 @@ void ldms_xprt_close(ldms_t _x)
 	if (!x->closed) {
 		close = 1;
 		x->connected = 0;
+		x->authenticated = 0;
 		x->closed = 1;
 	}
 	/* Cancel any dir updates */
@@ -300,10 +328,14 @@ void __release_xprt(ldms_t _x)
 	struct ldms_xprt *x = _x;
 	struct ldms_rbuf_desc *rb;
 
+	if (!x) { 
+		return;
+	}
 	while (!LIST_EMPTY(&x->rbd_list)) {
 		rb = LIST_FIRST(&x->rbd_list);
 		ldms_free_rbd(rb);
 	}
+	free(x->passwordtmp);
 	x->destroy(x);
 	free(x);
 }
@@ -493,7 +525,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	}
 
 	len = sizeof(struct ldms_reply_hdr)
-		+ sizeof(struct ldms_lookup_reply)
+	+ sizeof(struct ldms_lookup_reply)
 		+ rbd->xprt_data_len;
 
 	reply = malloc(len);
@@ -603,10 +635,111 @@ int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	return rc;
 }
 
+/* @return boolean nonzero if authentication step succeeds, 0 if fail. */
+static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
+{
+	// get u64 from clock and send with LDMS_CMD_AUTH_REPLY
+	// cache answer on transport
+	struct ldms_reply_hdr hdr;
+	struct ldms_reply *reply;
+	size_t len;
+	uint64_t challenge = 0;
+	uint32_t chi, clo;
+	x->log("Started process_auth_request");
+
+	if (x->passwordtmp) {
+		x->log("Authentication restarted before finished");
+		return 0;
+	}
+	
+	challenge = ldms_get_challenge();
+	x->passwordtmp = ldms_get_auth_string(challenge);
+	chi = htonl((uint32_t) (challenge >> 32));
+	clo = htonl((uint32_t) (challenge));
+
+	len = sizeof(struct ldms_reply_hdr)
+	+ sizeof(struct ldms_auth_reply);
+
+	reply = malloc(len);
+	if (!reply) {
+		hdr.rc = htonl(ENOMEM);
+		goto err_out;
+	}
+	reply->hdr.xid = req->hdr.xid;
+	reply->hdr.cmd = htonl(LDMS_CMD_AUTH_REPLY);
+	reply->hdr.len = htonl(len);
+	reply->hdr.rc = 0;
+	reply->auth.challenge_hi = chi;
+	reply->auth.challenge_lo = clo;
+
+	x->send(x, reply, len);
+	free(reply);
+	return 1;
+
+ err_out:
+	hdr.xid = req->hdr.xid;
+	hdr.cmd = htonl(LDMS_CMD_AUTH_REPLY);
+	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
+	x->send(x, &hdr, sizeof(hdr));
+	return 0;
+}
+
+/* @return boolean nonzero if authentication step succeeds, 0 if fail. */
+static int process_auth_password_request(struct ldms_xprt *x, struct ldms_request *req)
+{
+	char pw[LDMS_PASSWORD_MAX];
+	x->log("Started process_auth_password_request");
+	if (NULL == x->passwordtmp) {
+		x->log("Authentication password sent before challenge fetched");
+		return 0;
+	}
+	// FIXME get password from message?
+	if (req->auth.pw_len >= LDMS_PASSWORD_MAX) {
+		x->log("Password too long");
+		return 0;
+	}
+	strncpy(pw, req->auth.pw, LDMS_PASSWORD_MAX);
+	pw[LDMS_PASSWORD_MAX-1] = '\0';
+
+	if (strncmp(pw,x->passwordtmp,strlen(x->passwordtmp)) == 0) {
+		x->log("Authentication succeeded.");
+		return 1;
+	}
+	x->log("Authentication failed. Bad password.");
+	return 0;
+}
+
+/* @return boolean nonzero if authentication succeeds, 0 if fail. */
+static int ldms_xprt_authenticate(int cmd, struct ldms_xprt *x, struct ldms_request *req)
+{
+	switch (cmd) {
+	case LDMS_CMD_AUTH:
+		return process_auth_request(x, req);
+	case LDMS_CMD_AUTH_PASSWORD:
+		return process_auth_password_request(x, req);
+	default:
+		x->log("Request for work before authentication complete. %d\n", cmd);
+		return 0;
+	}
+}
+
 static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	int cmd = ntohl(req->hdr.cmd);
 
+	if (0 == x->authenticated) {
+#ifdef HAVE_AUTH
+		/* try once and close if fail. no excuses for robots. */
+		if (! ldms_xprt_authenticate(cmd, x, req)) {
+			// FIXME cause disconnect somehow
+			return 0; 
+		} else {
+			x->authenticated = 1;
+		}
+#else
+		x->authenticated = 1;
+#endif
+	}
 	switch (cmd) {
 	case LDMS_CMD_LOOKUP:
 		process_lookup_request(x, req);
@@ -624,6 +757,11 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 		process_cancel_notify_request(x, req);
 		break;
 	case LDMS_CMD_UPDATE:
+		break;
+	case LDMS_CMD_AUTH:
+		/* FALLTHRU */
+	case LDMS_CMD_AUTH_PASSWORD:
+		x->log("Already authenticated %d\n", cmd);
 		break;
 	default:
 		x->log("Unrecognized request %d\n", cmd);
@@ -753,6 +891,53 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				    event, ctxt->dir.cb_arg);
 }
 
+size_t format_auth_password_req(struct ldms_request *req, const char *password,
+                         uint64_t xid)
+{
+	size_t len = strlen(password) + 1;
+	if (len > LDMS_PASSWORD_MAX) {
+		len = LDMS_PASSWORD_MAX;
+	}
+	strncpy(req->auth.pw, password, LDMS_PASSWORD_MAX);
+	req->auth.pw[LDMS_PASSWORD_MAX-1] = '\0';
+	req->auth.pw_len = htonl(len);
+	req->hdr.xid = xid;
+	req->hdr.cmd = htonl(LDMS_CMD_AUTH_PASSWORD);
+	len += sizeof(uint32_t) + sizeof(struct ldms_request_hdr);
+	req->hdr.len = htonl(len);
+	return len;
+}
+
+void process_auth_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+		       struct ldms_context *ctxt)
+{
+#ifdef HAVE_AUTH
+	x->log("Started process_auth_reply");
+	int rc = ntohl(reply->hdr.rc);
+	uint64_t challenge;
+	if (rc)
+		return;
+	rc = 0;
+	challenge = ldms_unpack_challenge(reply->auth.challenge_hi, 
+		reply->auth.challenge_lo);
+	char* password = ldms_get_auth_string(challenge);
+	if (!password) {
+		return;
+	}
+
+ 	struct ldms_request req;
+	size_t len;
+
+	len = format_auth_password_req(&req, password, (uint64_t)ctxt);
+	free(password);
+
+	x->send(x, &req, len);
+#else
+	x->log("Unexpected call to process_auth_reply");
+#endif
+}
+
+
 void ldms_dir_release(ldms_t t, ldms_dir_t d)
 {
 	free(d);
@@ -767,7 +952,10 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 {
 	int cmd = ntohl(reply->hdr.cmd);
 	uint64_t xid = reply->hdr.xid;
-	struct ldms_context *ctxt;
+	struct ldms_context *ctxt; 
+	assert(sizeof(unsigned long) == sizeof(uintptr_t) && 
+		"can't store pointers in unsigned longs on "
+		"this platform/compiler combination");
 	ctxt = (struct ldms_context *)(unsigned long)xid;
 	switch (cmd) {
 	case LDMS_CMD_LOOKUP_REPLY:
@@ -778,6 +966,9 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 		break;
 	case LDMS_CMD_REQ_NOTIFY_REPLY:
 		process_req_notify_reply(x, reply, ctxt);
+		break;
+	case LDMS_CMD_AUTH_REPLY:
+		process_auth_reply(x, reply, ctxt);
 		break;
 	default:
 		x->log("Unrecognized reply %d\n", cmd);
@@ -884,6 +1075,8 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	}
 	strcpy(x->name, name);
 	x->connected = 0;
+	x->authenticated = 0;
+	x->passwordtmp = NULL;
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
@@ -1155,6 +1348,19 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 	if (!rc)
 		x->connected = 1;
 
+#ifdef HAVE_AUTH
+//	now authenticate or disconnect with auth error
+	x->log("Connect starting auth exchange");
+	struct ldms_request_hdr req;
+	size_t len;
+	len = sizeof(req);
+	req.cmd = LDMS_CMD_AUTH;
+	req.len = len;
+	req.xid = 0; // FIXME do we need something here?
+	x->send(x, &req, len);
+	// FIXME  now we expect the reply handling to manage the rest?
+#endif
+
  out:
 	pthread_mutex_unlock(&x->lock);
 	return rc;
@@ -1170,6 +1376,7 @@ int ldms_close(ldms_t _x)
 		errno = ENOTCONN;
 		goto out;
 	}
+	x->authenticated = 0;
 	x->close(x);
 	rc = 0;
  out:

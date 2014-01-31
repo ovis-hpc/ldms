@@ -396,6 +396,7 @@ int main(int argc, char *argv[])
 		perror("ldms_ls");
 		exit(2);
 	}
+	// wait here for authenticated to be true?
 
 	pthread_mutex_init(&dir_lock, 0);
 	pthread_cond_init(&dir_cv, NULL);

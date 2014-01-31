@@ -75,19 +75,33 @@ struct ldms_rbuf_desc {
 };
 
 enum ldms_request_cmd {
-	LDMS_CMD_DIR = 0,
-	LDMS_CMD_DIR_CANCEL,
-	LDMS_CMD_LOOKUP,
-	LDMS_CMD_UPDATE,
-	LDMS_CMD_REQ_NOTIFY,
-	LDMS_CMD_CANCEL_NOTIFY,
-	LDMS_CMD_REPLY,
-	LDMS_CMD_DIR_REPLY,
-	LDMS_CMD_LOOKUP_REPLY,
-	LDMS_CMD_REQ_NOTIFY_REPLY,
-	/* Transport private requests set bit 32 */
+/* Additions to this enum should be made in ldms_xprt_cmd.h to keep 
+   all uses in sync. 
+*/
+#define X(a) a,
+/* per C standard, first enum element defaults to 0. */
+#include "ldms_xprt_cmd.h"
+#undef X
+	/* Non-command flag: Transport private requests set bit 32 */
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
 };
+
+/** Array indexed by enum value of equivalent strings. */
+extern const char *ldms_request_cmd_names[]; 
+
+/** Name is self explanatory. Excludes bit flag members of the enumeration.
+     @return the number of commands enumerated and named.
+ */
+extern int sizeof_ldms_request_cmd_names();
+
+/** Check validity as normal (nonprivate) command.
+    @pc possible command to check.
+    @return 1 if ok, 0 if not enum member.
+  */
+extern int is_valid_ldms_request_cmd(int pc);
+
+
+
 
 struct ldms_hello_cmd_param {
 	uint32_t msg_len;
@@ -112,6 +126,11 @@ struct ldms_cancel_notify_cmd_param {
 	uint64_t set_id;	/*! The set we want to cancel notifications for  */
 };
 
+struct ldms_auth_password_cmd_param {
+	uint32_t pw_len;
+	char pw[LDMS_PASSWORD_MAX];
+};
+
 struct ldms_request_hdr {
 	uint64_t xid;		/*! Transaction id returned in reply */
 	uint32_t cmd;		/*! The operation being requested  */
@@ -125,6 +144,7 @@ struct ldms_request {
 		struct ldms_lookup_cmd_param lookup;
 		struct ldms_req_notify_cmd_param req_notify;
 		struct ldms_cancel_notify_cmd_param cancel_notify;
+		struct ldms_auth_password_cmd_param auth;
 	};
 };
 
@@ -148,6 +168,11 @@ struct ldms_req_notify_reply {
 	struct ldms_notify_event_s event;
 };
 
+struct ldms_auth_reply {
+	uint32_t challenge_hi;
+	uint32_t challenge_lo;
+};
+
 struct ldms_reply_hdr {
 	uint64_t xid;
 	uint32_t cmd;
@@ -160,6 +185,7 @@ struct ldms_reply {
 		struct ldms_lookup_reply lookup;
 		struct ldms_dir_reply dir;
 		struct ldms_req_notify_reply req_notify;
+		struct ldms_auth_reply auth;
 	};
 };
 #pragma pack()
@@ -198,6 +224,9 @@ struct ldms_context {
 
 #define LDMS_MAX_TRANSPORT_NAME_LEN 16
 
+/** Transport-independent interface data. 
+ * Normally allocated with calloc by implementations.
+ */
 struct ldms_xprt {
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
 	int ref_count;
@@ -206,10 +235,12 @@ struct ldms_xprt {
 	socklen_t ss_len;
 	pthread_mutex_t lock;
 	int connected;
+	int authenticated; 	/* server side: has connection been authenticated? */
 	int closed;
 	int max_msg;		/* max send message size */
 	uint64_t local_dir_xid;
 	uint64_t remote_dir_xid;
+	char *passwordtmp;	/* server side: password between auth and auth_password cmds */
 
 	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
 	LIST_ENTRY(ldms_xprt) xprt_link;
@@ -268,5 +299,8 @@ extern void ldms_free_rbd(struct ldms_rbuf_desc *);
 extern struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
 
 extern struct ldms_set *ldms_find_local_set(const char *path);
+
+extern int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
+
 
 #endif
