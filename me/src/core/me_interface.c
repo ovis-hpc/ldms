@@ -140,7 +140,7 @@ void *evaluate_complete_consumer_cb(void *_csm)
 		csm = (struct me_consumer *)_csm;
 		output = get_output_consumer(csm);
 		csm->process_output_data(csm, output);
-		free(output);
+		destroy_output(output);
 	}
 	return NULL;
 }
@@ -153,7 +153,7 @@ void *evaluate_complete_store_cb(void *_store)
 		store = (struct me_store *)_store;
 		output = get_output_store(store);
 		store->store(store, output);
-		free(output);
+		destroy_output(output);
 	}
 	return NULL;
 }

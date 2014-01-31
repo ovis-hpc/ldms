@@ -300,7 +300,7 @@ int process_opt(int argc, char **argv)
 			break;
 		case 'm':
 			metric_id = strtoull(optarg, &end, 10);
-			if (optarg == '\0' || end != '\0') {
+			if (*optarg == '\0' || *end != '\0') {
 				fprintf(stderr, "Invalid metric ID "
 						"'%s'\n", optarg);
 				usage(argv);

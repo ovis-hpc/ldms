@@ -175,6 +175,7 @@ void add_output(me_output_t _output, struct me_output_queue q_array[],
 		output = malloc(osize);
 		oq = &(q_array[i]);
 		memcpy(output, _output, osize);
+		output->model_name = strdup(_output->model_name);
 		pthread_mutex_lock(&oq->lock);
 		TAILQ_INSERT_TAIL(&oq->oqueue, output, entry);
 		oq->size++;
@@ -219,6 +220,7 @@ void destroy_output(struct me_output *output)
 {
 	if (output->model_name)
 		free(output->model_name);
+	pthread_mutex_destroy(&output->ref_lock);
 	free(output);
 }
 
