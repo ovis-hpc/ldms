@@ -4,13 +4,23 @@
 
 
 /**
- * Examine a sampler csv file to determine if the time between samples is ok.
- * The test passes if all samples were acquired within
- * 90% of the time period that was specified in the ldmsctl command.
- * @param filename The name of the csv sampler file
- * @param comp id specified in ldmsctl command
+ * Determine if the values in a store csv file
+ * matches values found in a QC data file.
+ * <pre>
+ * ALGORITHM:
+ * A comp_id is chosen
+ * For each metric set, in the store csv file, with the chosen comp_id
+ *     search the QC data file for a matching metric set
+ *     if no match is found, return false.
+ * return true
+ * </pre>
+ * @param filename_store_csv The name of the store csv file.  The store csv
+ * file contains metric sets from one or more different comp_ids.
+ * @param filename_qc The name of the QC data file.  The QC data file
+ * contains metric sets from one, and only one, comp_id.
  * @param time_period time period specified in ldmsctl command
- * @return true if all samples were acquired with 90% of time_period
+ * @return 1 if 100% of the values, that are from the same comp_id as the
+ * QC data file, matches with the values in the QC data file.
  */
 int test_diff_metrics(
 	char *filename_store_csv,
@@ -44,23 +54,38 @@ int test_diff_metrics(
 		/* find matching qc metric set */
 		if (find_matching_qc_data(&data_store_csv, &data_qc)==NULL) {
 			restore_saved_qc_file_position();
-			if (data_qc.eof==0)
+			if (data_qc.eof==0) {
 				number_of_unmatched_lines++;
+#ifdef DEBUG
+				printf("NO MATCH: time=%lf comp_id=%s\n",
+						data_store_csv.time,
+						data_store_csv.comp_id);
+#endif
+			}
+
 			continue;
 		}
+#ifdef DEBUG
+		printf("MATCH  : time=%lf comp_id=%s\n",
+			data_store_csv.time, data_store_csv.comp_id);
+#endif
 		number_of_matching_lines++;
 		save_qc_file_position();
-	}
+	} /*while*/
 
 
 	/* close the sample csv file and the qc data file */
 	close_qc_file();
 	close_store_csv_file();
 
+#ifdef DEBUG
 	printf("number of matching lines is %llu\n",number_of_matching_lines);
 	printf("number of unmatched lines is %llu\n",number_of_unmatched_lines);
+#endif
 
-	return(1);
+	/* the test passes if there are no unmatched lines */
+	if (number_of_unmatched_lines==0) return(1);
+	return(0);
 }
 
 
@@ -68,7 +93,7 @@ int test_diff_metrics(
  * Searches qc data file for a match with a metric from a store csv file.
  * @param data_store_csv the metric set we are are searching for
  * @param data_qc the matching qc metric set is passed back to the caller.
- * If no match is found, then the err property is set to a non-zero value.
+ * If no match is found, then data_qc->err is set to 1.
  * @return matching qc metric set.  If no match is found, then NULL is returned.
  */
 struct Time_And_Metrics *find_matching_qc_data

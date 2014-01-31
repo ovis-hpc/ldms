@@ -25,25 +25,41 @@ void close_qc_file() {
 }
 
 
+/**
+ * Save the file position
+ */
 void save_qc_file_position() {
 	saved_file_position = ftell(file_qc);
 }
 
+
+/**
+ * Move the file pointer to the file position that was saved
+ * by a previous call to save_qc_file_position.
+ */
 void restore_saved_qc_file_position() {
 	fseek(file_qc, saved_file_position, SEEK_SET);
 }
 
+/**
+ * Get the comp_id.
+ * @return comp_id
+ */
 char *get_comp_id_from_qc_file() {
 	return(comp_id);
 }
 
 /**
  * Retrieve one metric set from the qc data file.
- * @param Return to the caller, one metric set.  Also return the
- * timestamp when the metric set was acquired.
+ * @param data Return to the caller, one metric set.
+ * The caller must pass in a pointer that an allocated struct.
+ * This method populates the struct with the next metric set that is in the
+ * file.  If at end-of-file, then data->eof is set 1 and data->err is set to 1.
  */
 void get_metric_set_from_qc_file(struct Time_And_Metrics *data) {
 
+	/* To avoid confusion, initialize the struct that we will be */
+	/* returning to the caller.                                  */
 	strcpy(data->comp_id, comp_id);
 	data->time = 0;
 	strcpy(data->metrics,"");
@@ -51,10 +67,15 @@ void get_metric_set_from_qc_file(struct Time_And_Metrics *data) {
 	data->err = 0;
 	data->file_offset = ftell(file_qc);
 
-	/* create a temporary buffer so that we can reverse the order of the metrics */
+	/* Create a temporary buffer                        */
+	/* so that we can reverse the order of the metrics. */
 	const int BUFSIZE = BUFSIZE_METRICS;
         char buf[BUFSIZE];
+
+        /* We will prepend items into the temporary buffer.                  */
+        /* To do that, we need to set the last char, in the buffer, to '\0'. */
 	char *ptr_buf = buf + BUFSIZE - 1; //pt to end of metrics line
+	*ptr_buf = '\0';
 
         /* we are going to read the file, line by line */
 	char line[BUFSIZE_LINE];
@@ -62,11 +83,6 @@ void get_metric_set_from_qc_file(struct Time_And_Metrics *data) {
 
 	/* count lines */
 	int line_number = 0;
-
-	/* terminate buf */
-	/* we are going to populate buf from the end and move toward the front */
-	*ptr_buf = '\0';
-
 
 	/* for each line the sampler csv file */
 	while (1) {
@@ -84,15 +100,21 @@ void get_metric_set_from_qc_file(struct Time_And_Metrics *data) {
 		line[BUFSIZE_LINE-1] = '\0';
 
 
-		/* skip lines until we find #time */
+		/* Skip lines until we find the beginning of a metric set. */
+		/* The first line in every metric set contains #time.      */
 		if ((line_number==0) && (strncmp(line, "#time", 5)!=0)) {
 			continue;
 		}
+
+		/* Save the file position of this metric set */
 		data->file_offset = ftell(file_qc);
 
 
-                /* stop reading lines when we find another #time line */
+                /* Stop reading lines                          */
+		/* when we go past the end of the metric set.  */
 	        if ((strncmp(line,"#time",5)==0) && (line_number!=0)) {
+	        	/* reset the file position back       */
+	        	/* to the beginning of the metric set */
 	        	fseek(file_qc, file_position, SEEK_SET);
 	        	break;
 	        }
@@ -100,19 +122,19 @@ void get_metric_set_from_qc_file(struct Time_And_Metrics *data) {
 	        /* count the number of line */
 	        line_number++;
 
-	        /* get the contents of the last column */
-	        ptr = line + strlen(line) - 1;
-	        while (isspace(*ptr))
+	        /* Get the contents of the last column. */
+	        ptr = line + strlen(line) - 1; /*go to end of line*/
+	        while (isspace(*ptr))          /*remove trailing whitespace*/
 	        	*ptr-- = '\0';
-	        while (*ptr!=',')
+	        while (*ptr!=',')              /*find comma in front of col*/
 	        	ptr--;
 	        ptr++;
-	        while (isspace(*ptr))
+	        while (isspace(*ptr))          /*remove leading whitespace*/
 	        	ptr++;
 
 	        /* The first number is the timestamp */
 	        if (line_number==1) {
-	        	sscanf(ptr,"%lf",&data->time);
+	        	sscanf(ptr,"%lf",&data->time);  /*save in data*/
 	        /* The remaining numbers are metrics */
 	        } else {
 
@@ -143,7 +165,7 @@ void get_metric_set_from_qc_file(struct Time_And_Metrics *data) {
 	if (*ptr_buf==',')
 		ptr_buf = ptr_buf+2;
 
-	/* copy buf to metrics */
+	/* copy buf to data */
 	strcpy(data->metrics,ptr_buf);
 }
 
