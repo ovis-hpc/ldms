@@ -54,3 +54,17 @@ libmodel_low_exact_la_LIBADD = $(COMMON_LIBADD) -lm
 libmodel_low_exact_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libmodel_low_exact.la
 endif
+
+if ENABLE_ABOVE_MEAN
+libmodel_above_mean_la_SOURCES = model_above_mean.c
+libmodel_above_mean_la_LIBADD = $(COMMON_LIBADD) -lm
+libmodel_above_mean_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_above_mean.la
+endif
+
+if ENABLE_BELOW_MEAN
+libmodel_below_mean_la_SOURCES = model_below_mean.c
+libmodel_below_mean_la_LIBADD = $(COMMON_LIBADD) -lm
+libmodel_below_mean_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_below_mean.la
+endif
