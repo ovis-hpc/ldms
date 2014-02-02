@@ -1,10 +1,5 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
- * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
- * license for use of this work by or on behalf of the U.S. Government.
- * Export of this program may require a license from the United States
- * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -23,10 +18,6 @@
  *      copyright notice, this list of conditions and the following
  *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
- *
- *      Neither the name of Sandia nor the names of any contributors may
- *      be used to endorse or promote products derived from this software
- *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
@@ -65,45 +56,45 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-SOS_OBJ_BEGIN(ovis_metric_class_int32, "OvisMetric_int32")
+SOS_OBJ_BEGIN(ovis_metric_class_int32, "Tahoma_Ovis_Metric_int32")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("metric_type_id", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("value", SOS_TYPE_INT32)
-SOS_OBJ_END(4);
+SOS_OBJ_END(5);
 
-SOS_OBJ_BEGIN(ovis_metric_class_int64, "OvisMetric_int64")
+SOS_OBJ_BEGIN(ovis_metric_class_int64, "Tahoma_Ovis_Metric_int64")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("metric_type_id", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("value", SOS_TYPE_INT64)
-SOS_OBJ_END(4);
+SOS_OBJ_END(5);
 
-SOS_OBJ_BEGIN(ovis_metric_class_uint32, "OvisMetric_uint32")
+SOS_OBJ_BEGIN(ovis_metric_class_uint32, "Tahoma_Ovis_Metric_uint32")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("metric_type_id", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("value", SOS_TYPE_UINT32)
-SOS_OBJ_END(4);
+SOS_OBJ_END(5);
 
-SOS_OBJ_BEGIN(ovis_metric_class_uint64, "OvisMetric_uint64")
+SOS_OBJ_BEGIN(ovis_metric_class_uint64, "Tahoma_Ovis_Metric_uint64")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("metric_type_id", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("value", SOS_TYPE_UINT64)
-SOS_OBJ_END(4);
+SOS_OBJ_END(5);
 
-SOS_OBJ_BEGIN(ovis_metric_class_double, "OvisMetric_double")
+SOS_OBJ_BEGIN(ovis_metric_class_double, "Tahoma_Ovis_Metric_double")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR("metric_type_id", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("value", SOS_TYPE_DOUBLE)
-SOS_OBJ_END(4);
-
-#define TV_SEC_COL	0
-#define TV_USEC_COL	1
-#define GROUP_COL	2
-#define VALUE_COL	3
+SOS_OBJ_END(5);
 
 enum {
 	LDMSD_SOS_INT32 = 0,
@@ -130,22 +121,22 @@ static ldmsd_msg_log_f msglog;
 /**
  * \brief Store for individual metric.
  */
-struct sos_metric_store {
+static struct sos_tahoma_metric_store {
 	sos_t sos; /**< sos handle */
 	pthread_mutex_t lock; /**< lock at metric store level */
 	char *path; /**< path of the sos store */
-	LIST_ENTRY(sos_metric_store) entry;
+	LIST_ENTRY(sos_tahoma_metric_store) entry;
 };
 
-struct sos_store_instance {
+static struct sos_tahoma_store_instance {
 	struct ldmsd_store *store;
 	char *path; /**< (root_path)/(comp_type) */
 	char *container;
 	void *ucontext;
 	idx_t ms_idx;
-	LIST_HEAD(ms_list, sos_metric_store) ms_list;
+	LIST_HEAD(ms_list, sos_tahoma_metric_store) ms_list;
 	int metric_count;
-	struct sos_metric_store **ms;
+	struct sos_tahoma_metric_store **ms;
 };
 
 pthread_mutex_t cfg_lock;
@@ -200,11 +191,12 @@ get_store(const char *container)
 
 static void *get_ucontext(ldmsd_store_handle_t _sh)
 {
-	struct sos_store_instance *si = _sh;
+	struct sos_tahoma_store_instance *si = _sh;
 	return si->ucontext;
 }
 
-static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
+static int store_sos_open_sos(struct sos_tahoma_metric_store *ms,
+						ldms_metric_t m)
 {
 	enum ldms_value_type type = ldms_get_metric_type(m);
 
@@ -214,7 +206,7 @@ static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 				0660, &ovis_metric_class_int32);
 		if (!ms->sos) {
 			msglog("store_sos: Failed to open "
-					"'Ovismetric_int32\n");
+					"'Ovis_tahoma_metric_int32\n");
 			return ENOMEM;
 		}
 		break;
@@ -223,7 +215,7 @@ static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 				0660, &ovis_metric_class_int64);
 		if (!ms->sos) {
 			msglog("store_sos: Failed to open "
-					"'Ovismetric_int64\n");
+					"'Ovis_tahoma_metric_int64\n");
 			return ENOMEM;
 		}
 		break;
@@ -232,7 +224,7 @@ static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 					0660, &ovis_metric_class_uint32);
 		if (!ms->sos) {
 			msglog("store_sos: Failed to open "
-					"'Ovismetric_uint32\n");
+					"'Ovis_tahoma_metric_uint32\n");
 			return ENOMEM;
 		}
 		break;
@@ -241,7 +233,7 @@ static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 					0660, &ovis_metric_class_uint64);
 		if (!ms->sos) {
 			msglog("store_sos: Failed to open "
-					"'Ovismetric_uint64\n");
+					"'Ovis_tahoma_metric_uint64\n");
 			return ENOMEM;
 		}
 		break;
@@ -251,7 +243,7 @@ static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 					0660, &ovis_metric_class_double);
 		if (!ms->sos) {
 			msglog("store_sos: Failed to open "
-					"'Ovismetric_double\n");
+					"'Ovis_tahoma_metric_double\n");
 			return ENOMEM;
 		}
 		break;
@@ -268,8 +260,8 @@ static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
 {
-	struct sos_store_instance *si;
-	struct sos_metric_store *ms;
+	struct sos_tahoma_store_instance *si;
+	struct sos_tahoma_metric_store *ms;
 	int i, metric_count;
 
 	pthread_mutex_lock(&cfg_lock);
@@ -317,7 +309,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		}
 
 		si->ms = calloc(metric_count,
-				sizeof(struct sos_metric_store *));
+				sizeof(struct sos_tahoma_metric_store *));
 		if (!si->ms)
 			goto err4;
 
@@ -384,18 +376,18 @@ out:
 	return si;
 }
 
-static int store_sos_create_ms_list(struct sos_store_instance *si,
-						ldms_mvec_t mvec)
+static int store_sos_create_ms_list(struct sos_tahoma_store_instance *si,
+							ldms_mvec_t mvec)
 {
 	int i;
 	si->metric_count = mvec->count;
-	si->ms = calloc(mvec->count, sizeof(struct sos_metric_store *));
+	si->ms = calloc(mvec->count, sizeof(struct sos_tahoma_metric_store *));
 	if (!si->ms)
 		return ENOMEM;
 
 	char buff[128];
 	char *name, *metric_name;
-	struct sos_metric_store *ms;
+	struct sos_tahoma_metric_store *ms;
 	for (i = 0; i < mvec->count; i++) {
 		metric_name = ldms_get_metric_name(mvec->v[i]);
 		name = strchr(metric_name, '#');
@@ -450,7 +442,7 @@ err:
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 {
-	struct sos_store_instance *si;
+	struct sos_tahoma_store_instance *si;
 	sos_obj_t obj;
 	int i;
 	int rc = 0;
@@ -493,10 +485,13 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 			return -1;
 		}
 		uint64_t metric_id = ldms_get_user_data(mvec->v[i]);
+		uint32_t comp_id = (uint32_t)(metric_id >> 32);
+		uint32_t metric_type_id = (uint32_t)metric_id;
 		sos_obj_attr_set(si->ms[i]->sos, 0, obj, (void*)&ts->sec);
 		sos_obj_attr_set(si->ms[i]->sos, 1, obj, (void*)&ts->usec);
-		sos_obj_attr_set(si->ms[i]->sos, 2, obj, &metric_id);
-		sos_obj_attr_set(si->ms[i]->sos, 3, obj,
+		sos_obj_attr_set(si->ms[i]->sos, 2, obj, &comp_id);
+		sos_obj_attr_set(si->ms[i]->sos, 3, obj, &metric_type_id);
+		sos_obj_attr_set(si->ms[i]->sos, 4, obj,
 				 ldms_get_value_ptr(mvec->v[i]));
 		rc = sos_obj_add(si->ms[i]->sos, obj);
 		pthread_mutex_unlock(&si->ms[i]->lock);
@@ -515,8 +510,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 
 static int flush_store(ldmsd_store_handle_t _sh)
 {
-	struct sos_store_instance *si = _sh;
-	struct sos_metric_store *ms;
+	struct sos_tahoma_store_instance *si = _sh;
+	struct sos_tahoma_metric_store *ms;
 	if (!_sh)
 		return EINVAL;
 	int i;
@@ -533,8 +528,8 @@ static void close_store(ldmsd_store_handle_t _sh)
 	/*
 	 * NOTE: This close function looks like destroy to me.
 	 */
-	struct sos_store_instance *si = _sh;
-	struct sos_metric_store *ms;
+	struct sos_tahoma_store_instance *si = _sh;
+	struct sos_tahoma_metric_store *ms;
 	if (!_sh)
 		return;
 	int i;
@@ -557,7 +552,7 @@ static void destroy_store(ldmsd_store_handle_t _sh)
 	close_store(_sh);
 }
 
-static struct ldmsd_store store_sos = {
+static struct ldmsd_store store_tahoma_sos = {
 	.base = {
 		.name = "sos",
 		.term = term,
@@ -576,18 +571,18 @@ static struct ldmsd_store store_sos = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &store_sos.base;
+	return &store_tahoma_sos.base;
 }
 
-static void __attribute__ ((constructor)) store_sos_init();
-static void store_sos_init()
+static void __attribute__ ((constructor)) store_tahoma_sos_init();
+static void store_tahoma_sos_init()
 {
 	store_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 }
 
-static void __attribute__ ((destructor)) store_sos_fini(void);
-static void store_sos_fini()
+static void __attribute__ ((destructor)) store_tahoma_sos_fini(void);
+static void store_tahoma_sos_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	idx_destroy(store_idx);
