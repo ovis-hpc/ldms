@@ -149,6 +149,10 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 		return;
 	}
 	pi = new_plugin(plugin_name, err_str);
+	if (!pi) {
+		ldms_log("%s\n", err_str);
+		return;
+	}
 
 	/* config */
 	struct attr_value_list *av_list = av_new(128);
