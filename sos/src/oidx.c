@@ -516,7 +516,7 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 {
 	struct oidx_layer_s *pl;
 	unsigned char *poidx = key;
-	uint64_t h_off, e_off, pl_off, n_layer;
+	uint64_t h_off, pl_off, n_layer;
 	/* We don't allow adding a NULL pointer as an object */
 	if (!obj)
 		return EINVAL;

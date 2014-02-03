@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.                                        
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -172,7 +172,7 @@ mds_tuple_t mds_tuple(mds_t mds, uint64_t obj, mds_tuple_t t)
 	t->comp_id = r->comp_id;
 	t->value = r->value;
 	return t;
-}	
+}
 
 /* Retrieve the next tuple from the iterator */
 mds_tuple_t mds_next(mds_iter_t i, mds_next_e e, mds_tuple_t t)

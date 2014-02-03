@@ -283,11 +283,6 @@ ods_t ods_open(const char *path, int o_flag, ...)
 		goto err;
 	}
 
-	if (ods->obj == -1) {
-		PERROR();
-		goto err;
-	}
-
 	if (memcmp(ods->obj->signature, ODS_OBJ_SIGNATURE,
 		   sizeof(ods->obj->signature)))
 		if (init_obj(ods))
@@ -318,7 +313,7 @@ ods_t ods_open(const char *path, int o_flag, ...)
 	ods->pg_table = mmap(NULL, ods->pg_sz, PROT_READ | PROT_WRITE,
 			    MAP_FILE | MAP_SHARED,
 			    ods->pg_fd, 0);
-	if (!ods->pg_table || ods->pg_table == -1) {
+	if (ods->pg_table == MAP_FAILED) {
 		PERROR();
 		goto err;
 	}
