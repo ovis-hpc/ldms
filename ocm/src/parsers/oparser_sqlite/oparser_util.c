@@ -202,6 +202,9 @@ int get_expand_token(char *s, char *start, char *end)
 	if (tmp) {
 		strcpy(end, tmp);
 		return strlen(s);
+	} else {
+		strcpy(start, s);
+		return strlen(s);
 	}
 
 	return 0;
@@ -211,7 +214,7 @@ int process_string_expand(char *prefix, char *suffix, char *expand,
 			struct oparser_name_queue *nlist,
 			char *sep_start, char *sep_end)
 {
-	int count;
+	int count = 0;
 	char start[128], end[128], name_s[256];
 
 	struct oparser_name *name;
@@ -230,7 +233,7 @@ int process_string_expand(char *prefix, char *suffix, char *expand,
 	while (len) {
 		tmp += len;
 		if (*end) {
-			count = 0;
+
 			int start_len, end_len, max_len, start_d, end_d;
 			start_len = strlen(start);
 			end_len = strlen(end);
