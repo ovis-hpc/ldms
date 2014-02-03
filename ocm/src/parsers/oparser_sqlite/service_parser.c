@@ -263,7 +263,7 @@ void process_baler_hosts(struct oparser_cmd *hostcmd)
 	num = sscanf(attrs_values, "%[^:]:%s", key, value);
 	if (num != 2) {
 		fprintf(stderr, "Invalid attr:value '%s'. Expecting "
-				"'names:[hostnames]'", attrs_values, key);
+				"'names:[hostnames]'", attrs_values);
 		exit(EINVAL);
 	}
 
