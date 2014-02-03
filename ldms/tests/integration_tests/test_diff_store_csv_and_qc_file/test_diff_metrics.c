@@ -51,9 +51,11 @@ int test_diff_metrics(
 	strcpy(comp_id, get_comp_id_from_qc_file());
 	save_qc_file_position();
 
-	/* Read metrics sets from the QC data file.        */
-	/* Stop reading when we find a matching metric set */
-	/* or when we reach the end of the QC data file.   */
+	/* Read metrics sets from the QC data file.          */
+	/* Stop reading when we find a matching metric set   */
+	/* or when the time in the QC metric set is          */
+	/* greater than the time in the store csv metric set */
+	/* or when we reach the end of the QC data file.     */
 	while (1) {
 
 		/* get next metric set from store csv file */
@@ -70,18 +72,22 @@ int test_diff_metrics(
 		if ((qc_time.at_EOF) && (data_store_csv.time > qc_time.time))
 			break;
 
-		/* If we searched all of the remaining metrics sets in the */
-		/* QC data file and we did NOT find a match.               */
+		/* If we searched metrics sets in the        */
+		/* QC data file and we did NOT find a match. */
 		if (find_matching_qc_data(&data_store_csv, &data_qc)==NULL) {
 
-			/* Right now, the file pointer is at EOF.      */
-			/* Move the file pointer up stream to wherever */
-			/* we found the most recent match.             */
-			/* That will allows us to search for the next  */
-			/* store csv metric set.                       */
+			/* Right now, the file pointer is either at EOF */
+			/* or is too far down in the file.              */
+			/* Move the file pointer up stream to wherever  */
+			/* we found the most recent match.              */
+			/* That will allows us to search for the next   */
+			/* store csv metric set.                        */
 			restore_saved_qc_file_position();
 
-			/* if we hit EOF, then we didn't find a match */
+			/* if no match and if we are at EOF               */
+			/* then we simply ran out of metric sets to check */
+
+			/* if no match AND if we are NOT at EOF */
 			if (data_qc.eof==0) {
 				/* count the number of lines, in the   */
 				/* store csv file, that have no match  */
