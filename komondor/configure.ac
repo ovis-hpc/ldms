@@ -59,6 +59,7 @@ AC_SUBST(ac_configure_args)
 AC_CONFIG_FILES([Makefile
 		 src/Makefile
 		 src/test/Makefile
+		 src/store/Makefile
 		 ])
 AC_OUTPUT
 

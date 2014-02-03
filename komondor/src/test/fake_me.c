@@ -56,6 +56,8 @@
 #include <stdarg.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <semaphore.h>
+#include <unistd.h>
 
 #include "zap/zap.h"
 
@@ -103,6 +105,7 @@ uint16_t port = 55555;
 
 zap_t zap;
 zap_ep_t zep;
+sem_t conn_sem;
 
 void zap_log(const char *fmt, ...)
 {
@@ -157,12 +160,12 @@ void __assert_zerr(zap_err_t zerr, char *name)
 	}
 }
 
-void send_messages(zap_ep_t ep, zap_event_t ev)
+void send_messages(zap_ep_t ep)
 {
 	int n;
 	struct kmd_msg msg;
 loop:
-	n = scanf(" %hu %"PRIu64" %hhu %"PRIu32" %"PRIu32,
+	n = scanf(" %hi %"PRIi64" %hhi %"PRIi32" %"PRIi32,
 			&msg.model_id, &msg.comp_id, &msg.level, &msg.sec,
 			&msg.usec);
 	if (n < 5)
@@ -183,7 +186,7 @@ void zap_cb(zap_ep_t ep, zap_event_t ev)
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECTED:
 		printf("Connected\n");
-		send_messages(ep, ev);
+		sem_post(&conn_sem);
 		break;
 	case ZAP_EVENT_REJECTED:
 		printf("Connection rejected\n");
@@ -221,12 +224,15 @@ int main(int argc, char **argv)
 		printf("Unsupported network\n");
 		exit(-1);
 	}
+	sem_init(&conn_sem, 0, 0);
 	struct sockaddr_in sin = {0};
 	sin.sin_family = AF_INET;
 	sin.sin_addr = *(struct in_addr*)he->h_addr_list[0];
 	sin.sin_port = htons(port);
 	zerr = zap_connect(zep, (void*)&sin, sizeof(sin));
 	__assert_zerr(zerr, "zap_connect");
-	pthread_exit(NULL);
+	sem_wait(&conn_sem);
+	send_messages(zep);
+	sleep(1);
 	return 0;
 }

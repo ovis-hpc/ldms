@@ -48,6 +48,12 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+/**
+ * \file komondor.c
+ * \author Narate Taeat
+ * \brief Komondor.
+ */
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -61,21 +67,16 @@
 #include <time.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <dlfcn.h>
 
 #include <netinet/ip.h>
+
+#include "komondor.h"
 
 #include "coll/str_map.h"
 #include "coll/idx.h"
 #include "zap/zap.h"
 #include "sos/sos.h"
-
-SOS_OBJ_BEGIN(k_event_class, "KomondorEvent")
-	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("model_id", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("metric_id", SOS_TYPE_UINT64),
-	SOS_OBJ_ATTR("level", SOS_TYPE_UINT32)
-SOS_OBJ_END(5);
 
 #ifdef ENABLE_OCM
 #include "ocm/ocm.h"
@@ -86,7 +87,7 @@ int ocm_cb(struct ocm_event *e);
 #endif
 
 /***** PROGRAM OPTIONS *****/
-const char *short_opt = "c:x:p:l:w:Fz:h?";
+const char *short_opt = "c:x:p:l:W:Fz:h?";
 
 static struct option long_opt[] = {
 	{"conf",            required_argument,  0,  'c'},
@@ -101,25 +102,6 @@ static struct option long_opt[] = {
 };
 
 /***** TYPES *****/
-
-#pragma pack(4)
-struct kmd_msg {
-	uint16_t model_id;
-	uint64_t metric_id;
-	uint8_t level;
-	uint32_t sec;
-	uint32_t usec;
-};
-#pragma pack()
-
-/**
- * action queue entry.
- */
-struct k_act_qentry {
-	struct kmd_msg msg; /* the message that cause the action */
-	const char *cmd; /* this structure doesn't own cmd, so don't free it */
-	TAILQ_ENTRY(k_act_qentry) link;
-};
 
 typedef enum {
 	K_COND_KEY_MODEL,
@@ -156,6 +138,11 @@ struct __attribute__ ((__packed__)) k_cond {
 
 #define K_IDX_KEYLEN (sizeof(struct k_cond))
 
+typedef enum k_action_type {
+	KMD_ACTION_OTHER,
+	KMD_ACTION_RESOLVE,
+} k_action_type_t;
+
 /**
  * Chain of action to be used with rule_idx.
  */
@@ -163,6 +150,7 @@ struct k_action {
 	/* seveirty_range is here because it is not part of the index,
 	 * instead it will be tested against before executing the action */
 	struct k_range severity_range;
+	k_action_type_t type;
 	char *cmd;
 	LIST_ENTRY(k_action) link;
 };
@@ -194,7 +182,6 @@ typedef int (*handle_cmd_fn_t)(char*);
 	WRAP(RULE), \
 	WRAP(STORE), \
 	WRAP(LAST)
-
 
 const char *__k_cmd_str[] = {
 	K_CMD_LIST(K_CMD_WRAP_STR)
@@ -247,6 +234,77 @@ const char* k_cmd_str(k_cmd_t cmd)
 	return "K_CMD_UNKNOWN";
 }
 
+struct event_ref {
+	void *event_handle;
+	struct kmd_store *store;
+	LIST_ENTRY(event_ref) entry;
+};
+
+struct event_ref_list {
+	int count;
+	pthread_mutex_t mutex;
+	LIST_HEAD(, event_ref) list;
+};
+
+struct event_ref_list* event_ref_list_new()
+{
+	struct event_ref_list *p = calloc(1, sizeof(*p));
+	if (!p)
+		return NULL;
+	pthread_mutex_init(&p->mutex, NULL);
+	return p;
+}
+
+struct event_ref* event_ref_new(struct kmd_store *store, struct kmd_msg *msg)
+{
+	struct event_ref *eref = calloc(1, sizeof(*eref));
+	if (!eref)
+		return NULL;
+	eref->store = store;
+	eref->event_handle = store->get_event_object(store, msg);
+	if (!eref->event_handle) {
+		free(eref);
+		return NULL;
+	}
+	return eref;
+}
+
+void event_ref_list_get(struct event_ref_list *er_list)
+{
+	pthread_mutex_lock(&er_list->mutex);
+	er_list->count++;
+	k_log("DEBUG: getting, ref: %d\n", er_list->count);
+	pthread_mutex_unlock(&er_list->mutex);
+}
+
+void event_ref_list_put(struct event_ref_list *er_list)
+{
+	pthread_mutex_lock(&er_list->mutex);
+	er_list->count--;
+	k_log("DEBUG: putting, ref: %d\n", er_list->count);
+	pthread_mutex_unlock(&er_list->mutex);
+	if (!er_list->count) {
+		struct event_ref *eref;
+		while (eref = LIST_FIRST(&er_list->list)) {
+			LIST_REMOVE(eref, entry);
+			eref->store->put_event_object(eref->store,
+					eref->event_handle);
+			free(eref);
+		}
+		free(er_list);
+	}
+}
+
+/**
+ * action queue entry.
+ */
+struct k_act_qentry {
+	struct kmd_msg msg; /* the message that cause the action */
+	struct k_action *action; /* Reference to the action */
+	struct event_ref_list *eref_list;
+	TAILQ_ENTRY(k_act_qentry) link;
+};
+
 /***** GLOBAL VARIABLE *****/
 
 char *conf = NULL;
@@ -254,6 +312,10 @@ char *xprt = "sock";
 uint16_t port = 55555;
 int FOREGROUND = 0;
 sos_t event_sos = NULL; /**< Event storage */
+
+struct attr_value_list *av_list;
+struct attr_value_list *kw_list;
+LIST_HEAD(kstore_head, kmd_store) store_list = {0};
 
 /**
  * action queue
@@ -281,21 +343,6 @@ idx_t rule_idx;
 zap_mem_info_t k_meminfo(void)
 {
 	return NULL;
-}
-
-void k_log(const char *fmt, ...)
-{
-	char tstr[32];
-	time_t t = time(NULL);
-	struct tm tm;
-	localtime_r(&t, &tm);
-	strftime(tstr, 32, "%a %b %d %T %Y", &tm);
-	fprintf(stderr, "%s ", tstr);
-	va_list ap;
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-	fflush(stderr);
 }
 
 /**
@@ -446,6 +493,8 @@ int parse_condition(char *lb, char *rb, struct k_cond *cond, struct k_range *r)
 	*lb = ',';
 	while (lb < rb) {
 		n = sscanf(lb, " %c %[^ =] %c%n", &d, key, &c, &i);
+		if (n == EOF)
+			break;
 		if (n < 2) {
 			k_log("Parse error\n");
 			goto err;
@@ -549,7 +598,7 @@ int handle_K_CMD_RULE(char *args)
 	/* Format: { X=Y, ... }: ACTION
 	 * ACTION can be action_id or program with args
 	 *
-	 * This is quite a long function, so please bare with me.
+	 * This is quite a long function, so please bear with me.
 	 */
 	uint64_t value;
 	int n, i;
@@ -679,21 +728,50 @@ out:
 	return rc;
 }
 
-int handle_K_CMD_STORE(char *args)
+int handle_store(struct attr_value_list *av_list)
 {
-	char verb[128];
-	char p[128];
-	char path[4096];
-	sscanf(args, " %[^= ]=%s", p, path);
-	if (strcmp(trim(p), "path") != 0) {
-		k_log("ERROR: path not found in 'store' command\n");
+	char pname[128];
+	char *plugin = av_value(av_list, "plugin");
+	if (!plugin)
+		plugin = KSTORE_DEFAULT;
+	sprintf(pname, "lib%s.so", plugin);
+	void *dh = dlopen(pname, RTLD_LAZY);
+	if (!dh) {
+		k_log("ERROR: Cannot load store %s: %s\n", plugin, dlerror());
+		return ENOENT;
+	}
+	struct kmd_store *(*f)() = dlsym(dh, "create_store");
+	if (!f) {
+		k_log("ERROR: %s.create_store: %s\n", plugin, dlerror());
+		return ENOENT;
+	}
+	struct kmd_store *s = f();
+	if (!s) {
+		k_log("ERROR: Cannot create store.\n");
+		return ENOMEM;
+	}
+	int rc = s->config(s, av_list);
+	if (rc) {
+		k_log("ERROR: Store config error: %d\n", rc);
+		s->destroy(s);
 		return EINVAL;
 	}
-	event_sos = sos_open(path, O_RDWR|O_CREAT, 0644, &k_event_class);
-	if (!event_sos) {
-		k_log("ERROR: cannot open sos, path: %s\n", path);
-		return errno;
+	LIST_INSERT_HEAD(&store_list, s, entry);
+	return 0;
+}
+
+int handle_K_CMD_STORE(char *args)
+{
+	char tmp[4096];
+	sprintf(tmp, "store %s", args);
+
+	int rc = tokenize(tmp, kw_list, av_list);
+	if (rc) {
+		k_log("ERROR: Command tokenization failed, cmd: %s\n", tmp);
+		return EINVAL;
 	}
+
+	return handle_store(av_list);
 }
 
 /**
@@ -706,7 +784,7 @@ int handle_K_CMD_STORE(char *args)
  */
 int handle_conf_command(char *cmd)
 {
-	printf("parsing cmd: %s\n", cmd);
+	k_log("parsing cmd: %s\n", cmd);
 	char *args = strchr(cmd, ' ');
 	if (args)
 		*args++ = '\0';
@@ -738,6 +816,7 @@ void print_usage()
 
 void* act_thread_routine(void *arg)
 {
+	struct event_ref *eref;
 	char cmd[4096];
 loop:
 	pthread_mutex_lock(&actq_mutex);
@@ -747,18 +826,61 @@ loop:
 	TAILQ_REMOVE(&actq, ent, link);
 	pthread_mutex_unlock(&actq_mutex);
 	/* XXX ADD KMD_MSG here */
-	sprintf(cmd, "KMD_MODEL_ID=%hu KMD_COMP_ID=%lu KMD_SEVERITY_LEVEL=%hhu"
-			" KMD_SEC=%"PRIu32" KMD_USEC=%"PRIu32" %s",
+	sprintf(cmd, "KMD_MODEL_ID=%hu KMD_METRIC_ID=%lu KMD_SEVERITY_LEVEL=%hhu"
+			" KMD_SEC=%"PRIu32" KMD_USEC=%"PRIu32" KMD_COMP_ID=%u"
+			" KMD_METRIC_TYPE=%u %s",
 			ent->msg.model_id, ent->msg.metric_id, ent->msg.level,
-			ent->msg.sec, ent->msg.usec, ent->cmd);
+			ent->msg.sec, ent->msg.usec,
+			(uint32_t) (ent->msg.metric_id >> 32),
+			(uint32_t) (ent->msg.metric_id & 0xFFFFFFFF),
+			ent->action->cmd);
+	if (ent->action->type == KMD_ACTION_RESOLVE) {
+		LIST_FOREACH(eref, &ent->eref_list->list, entry) {
+			eref->store->event_update(eref->store,
+					eref->event_handle,
+					KMD_EVENT_RESOLVING);
+		}
+	}
 	int rc = system(cmd);
-	if (rc)
+	switch (rc) {
+	case KMD_RESOLVED_CODE:
+		/* Change event status to resolved */
+		LIST_FOREACH(eref, &ent->eref_list->list, entry) {
+			eref->store->event_update(eref->store, eref->event_handle,
+						KMD_EVENT_RESOLVED);
+		}
+		break;
+	case 0:
+		/* do nothing */
+		break;
+	default:
 		k_log("Error %d in command: %s\n", rc, cmd);
+		if (ent->action->type == KMD_ACTION_RESOLVE) {
+			LIST_FOREACH(eref, &ent->eref_list->list, entry) {
+				eref->store->event_update(eref->store,
+						eref->event_handle,
+						KMD_EVENT_RESOLVE_FAIL);
+			}
+		}
+		break;
+	}
+	event_ref_list_put(ent->eref_list);
+	free(ent);
 	goto loop;
 }
 
 void init()
 {
+	av_list = av_new(256);
+	if (!av_list) {
+		perror("av_new");
+		_exit(-1);
+	}
+	kw_list = av_new(256);
+	if (!kw_list) {
+		perror("av_new");
+		_exit(-1);
+	}
 	cmd_map = str_map_create(4099);
 	if (!cmd_map) {
 		k_log("%s: cannot create str_map for cmd_map\n", strerror(errno));
@@ -893,8 +1015,11 @@ void config()
 	int n, i;
 	while (fgets(buff, sizeof(buff), f)) {
 		str = trim(buff);
-		if (!*str) /* str is not empty */
+		switch (*str) {
+		case 0:   /* empty string */
+		case '#': /* commented out */
 			continue;
+		}
 		if (handle_conf_command(str)) {
 			k_log("Invalid parsing in command: %s\n", str);
 			exit(-1);
@@ -902,7 +1027,8 @@ void config()
 	}
 }
 
-void handle_action_list(k_action_head_t a_list, struct kmd_msg *msg)
+void handle_action_list(k_action_head_t a_list, struct kmd_msg *msg,
+			struct event_ref_list *eref_list)
 {
 	struct k_action *act;
 	LIST_FOREACH(act, a_list, link) {
@@ -916,38 +1042,15 @@ void handle_action_list(k_action_head_t a_list, struct kmd_msg *msg)
 				msg->sec, msg->usec);
 			continue;
 		}
-		qent->msg = *msg;
-		qent->cmd = act->cmd;
+		qent->msg = *msg; /* copy entire message */
+		qent->action = act;
+		event_ref_list_get(eref_list);
+		qent->eref_list = eref_list;
 		pthread_mutex_lock(&actq_mutex);
 		TAILQ_INSERT_TAIL(&actq, qent, link);
 		pthread_cond_signal(&actq_non_empty);
 		pthread_mutex_unlock(&actq_mutex);
 	}
-}
-
-void log_kmd_msg(struct kmd_msg *msg)
-{
-#if DEBUG
-	k_log("receiving msg, sec: %d, usec: %d, model_id: %d, metric_id: %llu,"
-			" level: %d\n", msg->sec, msg->usec, msg->model_id,
-			msg->metric_id, msg->level);
-#endif
-	if (!event_sos)
-		return;
-	sos_obj_t obj = sos_obj_new(event_sos);
-	if (!obj) {
-		k_log("Cannot create sos object.\n");
-		return;
-	}
-	uint32_t v;
-	sos_obj_attr_set(event_sos, 0, obj, &msg->sec);
-	sos_obj_attr_set(event_sos, 1, obj, &msg->usec);
-	v = msg->model_id;
-	sos_obj_attr_set(event_sos, 2, obj, &v);
-	sos_obj_attr_set(event_sos, 3, obj, &msg->metric_id);
-	v = msg->level;
-	sos_obj_attr_set(event_sos, 4, obj, &v);
-	sos_obj_add(event_sos, obj);
 }
 
 void process_recv(zap_ep_t ep, zap_event_t ev)
@@ -959,28 +1062,51 @@ void process_recv(zap_ep_t ep, zap_event_t ev)
 	}
 	struct kmd_msg *msg = ev->data;
 	ntoh_kmd_msg(msg);
-	log_kmd_msg(msg);
+
+	struct kmd_store *store;
+	struct event_ref *eref;
+	struct event_ref_list *eref_list = event_ref_list_new();
+	if (!eref_list) {
+		k_log("ERROR: Out of memory at %s:%d:%s\n", __FILE__, __LINE__,
+				__func__);
+		goto err0;
+	}
+	event_ref_list_get(eref_list);
+	LIST_FOREACH(store, &store_list, entry) {
+		eref = event_ref_new(store, msg);
+		if (!eref) {
+			k_log("ERROR: Out of memory at %s:%d:%s\n", __FILE__,
+					__LINE__, __func__);
+			goto err0;
+		}
+		LIST_INSERT_HEAD(&eref_list->list, eref, entry);
+	}
+
 	struct k_rule *rule;
 	struct k_cond cond = {0};
 	/* (*, *) */
 	rule = idx_find(rule_idx, &cond, sizeof(cond));
 	if (rule)
-		handle_action_list(&rule->action_list, msg);
+		handle_action_list(&rule->action_list, msg, eref_list);
 	/* (M, *) */
 	cond.model_id = msg->model_id;
 	rule = idx_find(rule_idx, &cond, sizeof(cond));
 	if (rule)
-		handle_action_list(&rule->action_list, msg);
+		handle_action_list(&rule->action_list, msg, eref_list);
 	/* (M, C) */
 	cond.metric_id = msg->metric_id;
 	rule = idx_find(rule_idx, &cond, sizeof(cond));
 	if (rule)
-		handle_action_list(&rule->action_list, msg);
+		handle_action_list(&rule->action_list, msg, eref_list);
 	/* (*, C) */
 	cond.model_id = 0;
 	rule = idx_find(rule_idx, &cond, sizeof(cond));
 	if (rule)
-		handle_action_list(&rule->action_list, msg);
+		handle_action_list(&rule->action_list, msg, eref_list);
+
+	/* Intended to pass through */
+err0:
+	event_ref_list_put(eref_list);
 }
 
 void k_zap_cb(zap_ep_t ep, zap_event_t ev)
@@ -998,10 +1124,10 @@ void k_zap_cb(zap_ep_t ep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		/* Peer disconnected ... do nothing */
-		fprintf(stderr, "INFO: Peer disconnected\n");
+		k_log("INFO: Peer disconnected\n");
 		break;
 	case ZAP_EVENT_CONNECTED:
-		fprintf(stderr, "INFO: Peer connected\n");
+		k_log("INFO: Peer connected\n");
 		break;
 	default:
 		k_log("Unhandled zap event: %s\n", zap_event_str(ev->type));
@@ -1086,18 +1212,33 @@ void handle_ocm_cmd_ACTION(ocm_cfg_cmd_t cmd)
 	}
 }
 
+int ocm_cfg_to_av_list(ocm_cfg_cmd_t cmd, struct attr_value_list *av_list)
+{
+	struct ocm_av_iter itr;
+	ocm_av_iter_init(&itr, cmd);
+	int count = 0;
+	const char *attr;
+	const struct ocm_value *value;
+	while (ocm_av_iter_next(&itr, &attr, &value) == 0) {
+		if (count == av_list->size) {
+			k_log("ocm: error, too many command arguments.\n");
+			return EINVAL;
+		}
+		av_list->list[count].name = (void*)attr;
+		av_list->list[count].value = (void*)value->s.str;
+		count++;
+	}
+	return 0;
+}
+
 void handle_ocm_cmd_STORE(ocm_cfg_cmd_t cmd)
 {
-	const struct ocm_value *v = ocm_av_get_value(cmd, "path");
-	if (!v) {
-		k_log("ocm: error, 'path' is not specified for verb 'store'\n");
+	int rc = ocm_cfg_to_av_list(cmd, av_list);
+	if (rc) {
+		k_log("ocm: error, ocm_cfg_to_av_list: %d\n", rc);
 		return;
 	}
-	event_sos = sos_open(v->s.str, O_RDWR|O_CREAT, 0644, &k_event_class);
-	if (!event_sos) {
-		k_log("ocm: error, cannot open sos, path: %s\n", v->s.str);
-		return ;
-	}
+	handle_store(av_list);
 }
 
 void process_ocm_cmd(ocm_cfg_cmd_t cmd)
