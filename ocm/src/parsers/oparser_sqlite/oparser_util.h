@@ -59,6 +59,7 @@
 #define UTIL_H_
 
 #include <sys/queue.h>
+#include <linux/limits.h>
 #include <string.h>
 #include <inttypes.h>
 #include <sqlite3.h>
@@ -91,6 +92,7 @@ LIST_HEAD(metric_list, oparser_metric);
 struct oparser_component_type {
 	char *type;
 	char *parent_type;
+	char gif_path[PATH_MAX];
 	int count;
 	struct oparser_component_type **elements;
 	int num_element_types;

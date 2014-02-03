@@ -150,6 +150,11 @@ static void handle_type(char *value)
 	}
 }
 
+static void handle_gif_path(char *value)
+{
+	sprintf(component_type->gif_path, "%s", value);
+}
+
 static struct oparser_component_type *process_elem_type(char *s)
 {
 	char type[64];
@@ -216,6 +221,7 @@ static void handle_elements(char *value)
 static struct kw label_tbl[] = {
 	{ "component", handle_component },
 	{ "elements", handle_elements },
+	{ "gif_path", handle_gif_path },
 	{ "type", handle_type },
 };
 
@@ -307,14 +313,14 @@ struct oparser_scaffold *oparser_create_scaffold()
 
 
 
-void oparser_print_component_def(struct oparser_component_type_list *list,
-								FILE *outputf)
+void oparser_print_component_def(FILE *outputf)
 {
 	int i;
 	struct oparser_component_type *comp_type;
 	TAILQ_FOREACH(comp_type, all_type_list, entry) {
 		fprintf(outputf, "component:\n");
 		fprintf(outputf, "	type: %s\n", comp_type->type);
+		fprintf(outputf, "	gif_path: %s\n", comp_type->gif_path);
 		fprintf(outputf, "	num_elem_type: %d\n",
 					comp_type->num_element_types);
 		fprintf(outputf, "	elements: ");
@@ -352,6 +358,9 @@ void print_scaffold(FILE *out, struct oparser_component *comp, int depth)
 void oparser_print_scaffold(struct oparser_scaffold *scaffold, FILE *outf)
 {
 	struct oparser_component *comp;
+
+	oparser_print_component_def(outf);
+
 	int i, j;
 	fprintf(outf, "Component tree: height = %d\n", scaffold->height);
 	for (i = 0; i < scaffold->num_child_types; i++) {

@@ -124,6 +124,13 @@ int component_to_sqlite(struct oparser_component *comp, sqlite3 *db,
 	else
 		oparser_bind_null(db, stmt, 4, __FUNCTION__);
 
+	if (comp->comp_type->gif_path) {
+		oparser_bind_text(db, stmt, 5, comp->comp_type->gif_path,
+							__FUNCTION__);
+	} else {
+		oparser_bind_null(db, stmt, 5, __FUNCTION__);
+	}
+
 	int i;
 	struct oparser_component *child;
 
@@ -147,13 +154,14 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 		 "name		CHAR(64)	NOT NULL," \
 		 "type		CHAR(64)	NOT NULL," \
 		 "comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
-		 "parent_id	SQLITE_uint32);";
+		 "parent_id	SQLITE_uint32," \
+		 "gif_path	TEXT);";
 
 	char *index_stmt = "CREATE INDEX components_idx ON components(name,type);";
 	create_table(stmt_s, index_stmt, db);
 
-	stmt_s = "INSERT INTO components(name, type, comp_id, parent_id) " \
-			"VALUES(@vname, @vtype, @vcomp_id, @vpid)";
+	stmt_s = "INSERT INTO components(name, type, comp_id, parent_id, gif_path) " \
+			"VALUES(@vname, @vtype, @vcomp_id, @vpid, @gifpath)";
 
 	sqlite3_stmt *stmt;
 	char *sqlite_err = 0;
