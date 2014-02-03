@@ -14,7 +14,7 @@ ldmscoreinclude_HEADERS = ldms.h ldmsd.h ldms_xprt.h ogc_rbt.h ldms_auth.h ldms_
 libldms_la_SOURCES = ldms.c ldms_xprt.c ogc_rbt.c ldms_private.h ldms_auth.c
 libldms_la_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
 libldms_la_LIBADD = -ldl -lpthread @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
-		    -lmmalloc -lcoll
+		    -lmmalloc -lcoll -lrt
 lib_LTLIBRARIES += libldms.la
 
 ldms_config.h: ../../config.h
