@@ -10,7 +10,10 @@
 #include "parse_store_csv_file.h"
 #include "metric_set.h"
 
-
+struct QC_Time {
+	int at_EOF;
+	double time;
+};
 
 
 int test_diff_metrics(

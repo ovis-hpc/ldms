@@ -1,7 +1,7 @@
 #include "test_diff_metrics.h"
 
-
-
+/* store the last time we read from the QC data file */
+static struct QC_Time qc_time;
 
 /**
  * Determine if the values in a store csv file
@@ -27,12 +27,23 @@ int test_diff_metrics(
 	char *filename_qc,
 	double time_period) {
 
-
+	/* one metric set from the store_csv file */
 	struct Time_And_Metrics data_store_csv;
+
+	/* one metric set from the QC data file */
 	struct Time_And_Metrics data_qc;
+
+	/* number of lines in store_csv that match a line in the QC data file */
 	unsigned long long number_of_matching_lines = 0;
+	/* number of lines that don't match */
 	unsigned long long number_of_unmatched_lines = 0;
+
+	/* contains the comp_id that we are interested in */
 	char comp_id[BUFSIZE_COMP_ID];
+
+	/* We haven't yet read any data from the qc data file */
+	qc_time.at_EOF = 0;
+	qc_time.time = 0.0;
 
 	/* open the sample csv file and the qc data file */
 	open_store_csv_file(filename_store_csv);
@@ -40,6 +51,9 @@ int test_diff_metrics(
 	strcpy(comp_id, get_comp_id_from_qc_file());
 	save_qc_file_position();
 
+	/* Read metrics sets from the QC data file.        */
+	/* Stop reading when we find a matching metric set */
+	/* or when we reach the end of the QC data file.   */
 	while (1) {
 
 		/* get next metric set from store csv file */
@@ -51,10 +65,27 @@ int test_diff_metrics(
 		if (strcmp(data_store_csv.comp_id,comp_id)!=0)
 			continue;
 
-		/* find matching qc metric set */
+		/* if the store csv time > last time in QC data file, */
+		/* then stop                                          */
+		if ((qc_time.at_EOF) && (data_store_csv.time > qc_time.time))
+			break;
+
+		/* If we searched all of the remaining metrics sets in the */
+		/* QC data file and we did NOT find a match.               */
 		if (find_matching_qc_data(&data_store_csv, &data_qc)==NULL) {
+
+			/* Right now, the file pointer is at EOF.      */
+			/* Move the file pointer up stream to wherever */
+			/* we found the most recent match.             */
+			/* That will allows us to search for the next  */
+			/* store csv metric set.                       */
 			restore_saved_qc_file_position();
+
+			/* if we hit EOF, then we didn't find a match */
 			if (data_qc.eof==0) {
+				/* count the number of lines, in the   */
+				/* store csv file, that have no match  */
+				/* in the QC data file.                */
 				number_of_unmatched_lines++;
 #ifdef DEBUG
 				printf("NO MATCH: time=%lf comp_id=%s\n",
@@ -62,14 +93,19 @@ int test_diff_metrics(
 						data_store_csv.comp_id);
 #endif
 			}
-
+                        /* go to the next store csv metric set */
 			continue;
 		}
 #ifdef DEBUG
 		printf("MATCH  : time=%lf comp_id=%s\n",
 			data_store_csv.time, data_store_csv.comp_id);
 #endif
+		/* count the number of lines, in the   */
+		/* store csv file, that have a match   */
+		/* in the QC data file.                */
 		number_of_matching_lines++;
+
+		/* Save the file position of this match */
 		save_qc_file_position();
 	} /*while*/
 
@@ -109,8 +145,11 @@ struct Time_And_Metrics *find_matching_qc_data
 		/* if we hit EOF, then no match */
 		if (data_qc->eof) {
 			data_qc->err = 1;
+			qc_time.at_EOF = 1;
 			return(NULL);
 		}
+		qc_time.at_EOF = 0;
+		qc_time.time = data_qc->time;
 
 		/* if the qc time > store csv time, then no match */
 		if (data_qc->time > data_store_csv->time) {
