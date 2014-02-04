@@ -24,8 +24,7 @@ static struct QC_Time qc_time;
  */
 int test_diff_metrics(
 	char *filename_store_csv,
-	char *filename_qc,
-	double time_period) {
+	char *filename_qc) {
 
 	/* one metric set from the store_csv file */
 	struct Time_And_Metrics data_store_csv;

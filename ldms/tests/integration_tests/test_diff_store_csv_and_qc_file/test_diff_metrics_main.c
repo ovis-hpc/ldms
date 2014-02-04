@@ -17,18 +17,17 @@
 int main(int argc, char **argv ) {
 
 
-	if (argc!=4) {
-		printf("%s %s %s %s %s",
+	if (argc!=3) {
+		printf("%s %s %s %s",
 		       "usage:  ",
 		       "./test_diff_metrics.exe",
 		       "[filename of sampler csv]",
-		       "[filename of qc data]",
-		       "[time period in sec]\n"
+		       "[filename of qc data]"
 			);
 		exit(0);
 	}
 
-	int pass = test_diff_metrics(argv[1], argv[2], atoi(argv[3]));
+	int pass = test_diff_metrics(argv[1], argv[2]);
 	printf("%s\n", pass?"pass":"fail");
 
 	return(pass);

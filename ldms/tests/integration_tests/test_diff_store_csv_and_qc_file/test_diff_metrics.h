@@ -18,8 +18,7 @@ struct QC_Time {
 
 int test_diff_metrics(
 	char *filename_store_csv,
-	char *filename_qc,
-	double time_period);
+	char *filename_qc);
 
 struct Time_And_Metrics *find_matching_qc_data
 	(struct Time_And_Metrics *data_store_csv,
