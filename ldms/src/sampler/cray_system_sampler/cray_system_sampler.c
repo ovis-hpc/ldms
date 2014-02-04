@@ -82,8 +82,8 @@ typedef enum {
 	NS_LOADAVG,
 	NS_CURRENT_FREEMEM,
 	NS_KGNILND,
-	NS_NUM,
-	NS_PROCNETDEV
+	NS_PROCNETDEV,
+	NS_NUM
 } cray_system_sampler_sources_t;
 #else
 #include "gemini_metrics_gpcd.h"
@@ -97,8 +97,8 @@ typedef enum {
 	NS_LOADAVG,
 	NS_CURRENT_FREEMEM,
 	NS_KGNILND,
-	NS_NUM,
-	NS_PROCNETDEV
+	NS_PROCNETDEV,
+	NS_NUM
 } cray_system_sampler_sources_t;
 #endif
 
@@ -494,6 +494,10 @@ out:
 	return rc;
 }
 
+#if 0
+static uint64_t dt = 999999999;
+#endif
+
 static int sample(void)
 {
 	int rc;
@@ -503,6 +507,12 @@ static int sample(void)
 	char metric_name[128];
 	union ldms_value v;
 	int i;
+
+
+#if 0
+        struct timespec time1, time2;
+        clock_gettime(CLOCK_REALTIME, &time1);
+#endif
 
 	if (!set) {
 		msglog("cray_system_sampler: plugin not initialized\n");
@@ -560,6 +570,13 @@ static int sample(void)
 
  out:
 	ldms_end_transaction(set);
+
+#if 0
+        clock_gettime(CLOCK_REALTIME, &time2);
+        uint64_t beg_nsec = (time1.tv_sec)*1000000000+time1.tv_nsec;
+        uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
+        dt = end_nsec - beg_nsec;
+#endif
 	return retrc;
 }
 
