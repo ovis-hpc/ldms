@@ -714,6 +714,23 @@ SOS_OBJ_ATTR_GET_DEF(uint16_t, uint16)
 SOS_OBJ_ATTR_GET_DEF(uint32_t, uint32)
 SOS_OBJ_ATTR_GET_DEF(uint64_t, uint64)
 
+
+#define SOS_OBJ_ATTR_SET_DEF(_T, _N) \
+inline void sos_obj_attr_set_ ## _N (sos_t sos, int attr_id, sos_obj_t obj, _T value) \
+{ \
+	sos_obj_attr_set(sos, attr_id, obj, &value); \
+}
+
+SOS_OBJ_ATTR_SET_DEF(int8_t, int8)
+SOS_OBJ_ATTR_SET_DEF(int16_t, int16)
+SOS_OBJ_ATTR_SET_DEF(int32_t, int32)
+SOS_OBJ_ATTR_SET_DEF(int64_t, int64)
+SOS_OBJ_ATTR_SET_DEF(uint8_t, uint8)
+SOS_OBJ_ATTR_SET_DEF(uint16_t, uint16)
+SOS_OBJ_ATTR_SET_DEF(uint32_t, uint32)
+SOS_OBJ_ATTR_SET_DEF(uint64_t, uint64)
+
+
 int sos_get_attr_count(sos_t sos);
 enum sos_type_e sos_get_attr_type(sos_t sos, int attr_id);
 const char *sos_get_attr_name(sos_t sos, int attr_id);
