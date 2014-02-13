@@ -224,27 +224,35 @@ dnl if cray_sampler if enable_gpcdr then check that interface exists
 if test "x$enable_cray_system_sampler" = "xyes"
 then
 
-	if test -z "$ENABLE_GPCDR_TRUE" && test -z "$ENABLE_GPCD_TRUE"
-	then
-		   AC_MSG_ERROR([Cannot enable both gpcd and gpcdr.])
-	else
-		if !(test -z "$ENABLE_GPCDR_TRUE") && !(test -z "$ENABLE_GPCD_TRUE")
-		then
-		   AC_MSG_ERROR([Must enable either gpcd or gpcdr.])
-		fi
-	fi
+        if test -z "$ENABLE_GPCDR_TRUE" && test -z "$ENABLE_GPCD_TRUE"
+        then
+                   AC_MSG_ERROR([Cannot enable both gpcd and gpcdr.])
+        else
+                if !(test -z "$ENABLE_GPCDR_TRUE") && !(test -z "$ENABLE_GPCD_TRUE")
+                then
+                   AC_MSG_ERROR([Must enable either gpcd or gpcdr.])
+                fi
+        fi
 
-	if test -z "$ENABLE_GPCDR_TRUE"
-	then
-	gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
-	AC_CHECK_FILE("$gpcdrfile",
-	AC_DEFINE([HAVE_GPCDR],[1],[Use gpcdr interface for gemini metrics.]),
-	AC_MSG_ERROR([gpcdr interface not available: $gpcdrfile ]))
-	else
-		AC_MSG_RESULT([Use gpcd interface for gemini metrics.])
-	fi
+        if test -z "$ENABLE_GPCDR_TRUE"
+        then
+        gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
+        if ! test -f $gpcdrfile; then
+           AC_MSG_WARN([
+         ++++++++++++++++++++++++++++++++++++++++++++
+           gpcdr interface not available:
+           $gpcdrfile
+           We hope your runtime environment has it.
+         ++++++++++++++++++++++++++++++++++++++++++++
+          ])
+          fi
+          AC_DEFINE([HAVE_GPCDR],[1],[Use gpcdr interface for gemini metrics.])
+        else
+          AC_MSG_RESULT([Use gpcd interface for gemini metrics.])
+        fi
 
 fi
+
 dnl Reset LIBS variable.
 LIBS=""
 
