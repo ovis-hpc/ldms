@@ -154,6 +154,7 @@ int config(struct kmd_store *s, struct attr_value_list *av_list)
 
 err1:
 	free(this->path);
+	this->path = 0;
 err0:
 out:
 	return rc;
@@ -205,7 +206,6 @@ err:
 
 void put_event_object(struct kmd_store *s, void *event_object)
 {
-	k_log("DEBUG: freeing event_object\n");
 	free(event_object);
 }
 
@@ -239,8 +239,10 @@ out:
 void destroy(struct kmd_store *s)
 {
 	struct kmd_store_tahoma *this = (void*)s;
-	sos_close(this->sos);
-	free(this->path);
+	if (this->sos) /* if sos_open failed, this->sos is 0 */
+		sos_close(this->sos);
+	if (this->path) /* if config failed, this->path is 0 */
+		free(this->path);
 	free(s);
 }
 

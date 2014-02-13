@@ -273,7 +273,6 @@ void event_ref_list_get(struct event_ref_list *er_list)
 {
 	pthread_mutex_lock(&er_list->mutex);
 	er_list->count++;
-	k_log("DEBUG: getting, ref: %d\n", er_list->count);
 	pthread_mutex_unlock(&er_list->mutex);
 }
 
@@ -281,7 +280,6 @@ void event_ref_list_put(struct event_ref_list *er_list)
 {
 	pthread_mutex_lock(&er_list->mutex);
 	er_list->count--;
-	k_log("DEBUG: putting, ref: %d\n", er_list->count);
 	pthread_mutex_unlock(&er_list->mutex);
 	if (!er_list->count) {
 		struct event_ref *eref;
