@@ -342,13 +342,14 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	pthread_mutex_unlock(&ugni_lock);
 	if (grc != GNI_RC_SUCCESS)
 		goto err;
+/*
 	fcntl(gxp->sock, F_SETFL, O_NONBLOCK);
 	rc = connect(gxp->sock, sa, sa_len);
 	if (errno != EINPROGRESS)
 		goto err1;
 	FD_ZERO(&fdset);
 	FD_SET(gxp->sock, &fdset);
-	tv.tv_sec = 1;
+	tv.tv_sec = 5;
 	tv.tv_usec = 0;
 	if (select(gxp->sock + 1, NULL, &fdset, NULL, &tv) == 1) {
 		int so_error;
@@ -365,6 +366,17 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 		goto err1;
 	if (_setup_connection(gxp, (struct sockaddr *)&ss, sa_len))
 		goto err1;
+*/
+        rc = connect(gxp->sock, sa, sa_len);
+        if (rc)
+                goto err1;
+        sa_len = sizeof(ss);
+        rc = getsockname(gxp->sock, (struct sockaddr *)&ss, &sa_len);
+        if (rc)
+                goto err1;
+        if (_setup_connection(gxp, (struct sockaddr *)&ss, sa_len))
+                goto err1;
+
 
 	/*
 	 * When we receive the peer's hello request, we will bind the endpoint
