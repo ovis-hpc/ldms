@@ -988,6 +988,7 @@ int process_add_host(int fd,
 	char *xprt;
 	char *sets;
 	int host_type;
+	int rnd_offset;
 	unsigned long interval = LDMSD_DEFAULT_GATHER_INTERVAL;
 	unsigned long standby_no = 0;
 	long offset = 0;
@@ -1123,8 +1124,10 @@ int process_add_host(int fd,
 	hs->thread_id = find_least_busy_thread();
 	hs->event = evtimer_new(get_ev_base(hs->thread_id),
 				host_sampler_cb, hs);
-	/* First connection attempt happens 'right away' */
-	hs->timeout.tv_sec = 0; // hs->connect_interval / 1000000;
+	/* First connection attempt happens 'right away...but with a random */
+	/* offset of 0 - 20 seconds' */
+	rnd_offset = rand() % 20;
+	hs->timeout.tv_sec = rnd_offset; // hs->connect_interval / 1000000;
 	hs->timeout.tv_usec = 500000; // hs->connect_interval % 1000000;
 
 	/* No hostsets will be created if the connection type is bridging. */
@@ -3228,6 +3231,9 @@ int main(int argc, char *argv[])
 	signal(SIGHUP, cleanup);
 	signal(SIGINT, cleanup);
 	signal(SIGTERM, cleanup);
+
+	/* Set seed for random number generator. */
+	srand (time(NULL));
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
