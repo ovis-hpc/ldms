@@ -271,9 +271,9 @@ void process_baler_hosts(struct oparser_cmd *hostcmd)
 	hostcmd->attrs_values[0] = '\0';
 
 	char *stmt_s = "INSERT INTO metrics(name, metric_id, sampler, "
-			"metric_type_id, coll_comp, prod_comp_id, path)"
+			"metric_type_id, coll_comp, prod_comp_id)"
 				" VALUES(@name, @mid, @sampler, @mtid, "
-						"@cllc, @pcid, NULL)";
+						"@cllc, @pcid)";
 
 	sqlite3_stmt *stmt;
 	char *sqlite_err;
@@ -408,7 +408,7 @@ void oparser_service_conf_parser(FILE *_conf)
 		cmd_queue = &hservices->queue[OVIS_LDMSD_AGG];
 		postprocess_agg_cmdlist(cmd_queue);
 	}
-	destroy_name_list(&agg_host_list);
+	empty_name_list(&agg_host_list);
 
 	host = TAILQ_FIRST(&baler_host_list);
 	TAILQ_FOREACH(host, &baler_host_list, entry) {
@@ -422,7 +422,7 @@ void oparser_service_conf_parser(FILE *_conf)
 		cmd_queue = &hservices->queue[OVIS_BALER];
 		postprocess_baler_cmdlist(cmd_queue);
 	}
-	destroy_name_list(&baler_host_list);
+	empty_name_list(&baler_host_list);
 }
 
 void print_service(FILE *out, struct oparser_cmd_queue *list)

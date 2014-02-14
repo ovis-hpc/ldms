@@ -62,13 +62,13 @@
 #include "oparser_util.h"
 
 
-struct src_array {
-	struct oparser_component **comp_array;
+struct source {
+	struct oparser_comp *comp;
 	int level;
 	int num_comps;
-	LIST_ENTRY(src_array) entry;
+	LIST_ENTRY(source) entry;
 };
-LIST_HEAD(src_list, src_array);
+LIST_HEAD(src_stack, source);
 
 /**
  * \brief Initialize the Component Parser
@@ -104,5 +104,8 @@ void oparser_print_component_def(FILE *outputf);
 void oparser_print_scaffold(struct oparser_scaffold *scaffold, FILE *outf);
 
 void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db);
+
+struct oparser_comp *find_comp(struct oparser_comp_type *ctype, char *uid);
+
 #endif /* COMPONENT_PARSER_H_ */
 

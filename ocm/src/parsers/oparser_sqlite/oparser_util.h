@@ -79,37 +79,46 @@ struct kw {
 
 int kw_comparator(const void *a, const void *b);
 
-LIST_HEAD(oparser_component_list, oparser_component);
-TAILQ_HEAD(oparser_component_type_list, oparser_component_type);
+LIST_HEAD(oparser_comp_list, oparser_comp);
+TAILQ_HEAD(oparser_comp_type_list, oparser_comp_type);
 struct oparser_scaffold {
-	struct oparser_component_list *children;
-	int num_child_types;
+	struct oparser_comp_list *children;
+	int num_children;
+	int num_nodes;
 	int height;
-	struct oparser_component_type_list *all_type_list;
+	struct oparser_comp_type_list *all_type_list;
 };
 
 LIST_HEAD(metric_list, oparser_metric);
-struct oparser_component_type {
-	char *type;
-	char *parent_type;
-	char gif_path[PATH_MAX];
-	int count;
-	struct oparser_component_type **elements;
-	int num_element_types;
-	struct oparser_component_list list;
-	struct metric_list mlist;
-	int num_comp;
-	TAILQ_ENTRY(oparser_component_type) entry;
+LIST_HEAD(mtype_list, metric_type);
+struct oparser_comp_type {
+	char *type; /* type */
+	char gif_path[PATH_MAX]; /* path to the image */
+	struct oparser_comp_list clist; /* list of all components of the type */
+	int num_comp; /* Number of components of the type */
+	struct mtype_list mtype_list; /* List of metric types that measure the comp type performace */
+	int num_mtypes; /* Number of metrics that measure the performance */
+	TAILQ_ENTRY(oparser_comp_type) entry; /* entry in the list of all component types */
+};
+
+struct metric_type {
+	char *ldms_sampler;
+	char *name;
+	uint32_t mtype_id;
+	LIST_ENTRY(metric_type) entry; /* entry of the list contained in a comp type */
 };
 
 struct oparser_metric {
+	char *ldms_sampler;
 	char *name;
 	uint32_t mtype_id;
 	uint64_t metric_id;
-	struct oparser_component *comp;
-	LIST_ENTRY(oparser_metric) entry;
+	struct oparser_comp *comp;
+	LIST_ENTRY(oparser_metric) comp_metric_entry; /* entry of the list contained by a comp metirc */
+	LIST_ENTRY(oparser_metric) entry; /* entry of the all metric list */
 	LIST_ENTRY(oparser_metric) type_entry;
 	LIST_ENTRY(oparser_metric) set_entry;
+	LIST_ENTRY(oparser_metric) comp_entry; /* entry of the list contained by the component */
 };
 
 struct mae_metric {
@@ -120,18 +129,27 @@ struct mae_metric {
 };
 LIST_HEAD(mae_metric_list, mae_metric);
 
-struct oparser_component {
-	struct oparser_component *parent;
-	struct oparser_component_list *children;
-	int num_child_types;
+struct comp_array {
+	int num_alloc;
+	int num_comps;
+	struct oparser_comp **comps;
+	LIST_ENTRY(comp_array) entry;
+};
 
-	struct oparser_component_type *comp_type;
-	char *name;
-	uint32_t comp_id;
-
-	struct metric_list mlist;
-	LIST_ENTRY(oparser_component) entry;
-	LIST_ENTRY(oparser_component) type_entry;
+LIST_HEAD(comp_array_list, comp_array);
+struct oparser_comp {
+	char *name; /* component name */
+	char *uid; /* user identifier */
+	uint32_t comp_id; /* component ID */
+	struct oparser_comp_type *comp_type; /* component type */
+	struct comp_array_list parents; /* list of parent array: each array of a type */
+	int num_ptypes; /* Number of parent types */
+	struct comp_array_list children; /* list of children array: each array of a type */
+	int num_chtype; /* Number of children types */
+	int is_stored;
+	struct metric_list mlist; /* list of metrics */
+	LIST_ENTRY(oparser_comp) type_entry; /* entry in the component type structure */
+	LIST_ENTRY(oparser_comp) root_entry; /* entry in the all root list */
 };
 
 struct oparser_cmd {
@@ -146,7 +164,7 @@ void destroy_oparser_cmd_queue(struct oparser_cmd_queue *cmd_queue);
 int process_string_name(char *s, struct oparser_name_queue *nlist,
 					char *sep_start, char *sep_end);
 
-void destroy_name_list(struct oparser_name_queue *nlist);
+void empty_name_list(struct oparser_name_queue *nlist);
 
 int count_leading_tabs(char *buf);
 

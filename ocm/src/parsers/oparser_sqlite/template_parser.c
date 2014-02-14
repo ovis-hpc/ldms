@@ -82,176 +82,82 @@ void tmpl_parser_log(const char *fmt, ...)
 	fflush(log_fp);
 }
 
-struct template_def_list tmpl_def_list;
-struct oparser_component_type_list *sys_ctype_list; /* The list of all comp types */
+struct template_def_list all_tmpl_def_list;
+struct tmpl_list all_tmpl_list;
+LIST_HEAD(, sampler_host) all_host_list;
+struct metric_list all_metric_list;
+
+struct oparser_comp_type_list *all_ctype_list; /* The list of all comp types */
 struct oparser_scaffold *sys_scaffold; /* The scaffold of the system */
 
-struct template_def *tmpl_def = NULL;
-struct oparser_component_type *prod_ctype = NULL; /* The component type that holds metrics. */
-struct set **set_array = NULL;
-struct oparser_component ***prod_carray = NULL;
-int num_prod_carray;
-int num_prod_comps;
-int is_type;
-int is_name;
+struct template_def *curr_tmpl_def = NULL;
+struct template *curr_tmpl;
+struct sampler_host *curr_host;
 
+int num_mtypes;
+int is_apply_on;
+
+static char *main_buf;
+static char *main_value;
+
+#define MAIN_BUF_SIZE (1024 * 1024)
 void oparser_template_parser_init(FILE *_log_fp)
 {
-	LIST_INIT(&tmpl_def_list);
-	set_array = NULL;
-	prod_carray = NULL;
+	LIST_INIT(&all_tmpl_def_list);
+	LIST_INIT(&all_tmpl_list);
+	LIST_INIT(&all_host_list);
+	LIST_INIT(&all_metric_list);
+	is_apply_on = 0;
+	num_mtypes = 0;
+
+	main_buf = malloc(MAIN_BUF_SIZE);
+	main_value = malloc(MAIN_BUF_SIZE);
+}
+
+struct template_def *find_tmpl_def(char *tmpl_name)
+{
+	struct template_def *tmpl_def;
+	LIST_FOREACH(tmpl_def, &all_tmpl_def_list, entry) {
+		if (strcmp(tmpl_def->name, tmpl_name) == 0)
+			return tmpl_def;
+	}
+	return NULL;
 }
 
 static void handle_template(char *value)
 {
-	tmpl_def = calloc(1, sizeof(*tmpl_def));
-	LIST_INSERT_HEAD(&tmpl_def_list, tmpl_def, entry);
+	is_apply_on = 0;
+	curr_tmpl_def = calloc(1, sizeof(*curr_tmpl_def));
+	LIST_INSERT_HEAD(&all_tmpl_def_list, curr_tmpl_def, entry);
+	LIST_INIT(&curr_tmpl_def->templates);
+	LIST_INIT(&curr_tmpl_def->cmtlist);
 }
 
 static void handle_template_name(char *value)
 {
-	tmpl_def->name = strdup(value);
-}
-
-static void handle_component_type(char *value)
-{
-	struct oparser_component_type *comp_type;
-	TAILQ_FOREACH(comp_type, sys_ctype_list, entry) {
-		if (strcmp(comp_type->type, value) == 0) {
-			tmpl_def->comp_type = comp_type;
-			prod_ctype = comp_type;
-			return;
-		}
-	}
-
-	if (!comp_type) {
-		tmpl_parser_log("template: Could not find the "
-					"comp type '%s'\n", value);
-		exit(ENOENT);
-	}
-}
-
-void handle_apply_all_comps()
-{
-	int num_comps = tmpl_def->comp_type->num_comp;
-	tmpl_def->num_tmpls = num_comps;
-	tmpl_def->templates = malloc(num_comps * sizeof(struct template));
-	if (!tmpl_def->templates) {
-		tmpl_parser_log("tmpl: %s: Out of memory\n", __FUNCTION__);
-		exit(ENOMEM);
-	}
-
-	int i = 0;
-	struct oparser_component *comp;
-	LIST_FOREACH(comp, &tmpl_def->comp_type->list, type_entry) {
-		tmpl_def->templates[i].comp = comp;
-		LIST_INIT(&tmpl_def->templates[i].slist);
-		i++;
-	}
-}
-
-void handle_apply_some_comps(char *value)
-{
-	struct oparser_name_queue nqueue;
-	TAILQ_INIT(&nqueue);
-	int num_names = process_string_name(value, &nqueue, NULL, NULL);
-	tmpl_def->num_tmpls = num_names;
-	tmpl_def->templates = malloc(num_names * sizeof(struct template));
-	if (!tmpl_def->templates) {
-		tmpl_parser_log("template: Failed to create templates. "
-				"Error %d\n", ENOMEM);
-		exit(ENOMEM);
-	}
-
-	struct oparser_component *comp;
-	struct oparser_name *name;
-	int i = 0;
-	TAILQ_FOREACH(name, &nqueue, entry) {
-		LIST_FOREACH(comp, &tmpl_def->comp_type->list, type_entry) {
-			if (strcmp(comp->name, name->name) == 0) {
-				tmpl_def->templates[i].comp = comp;
-				LIST_INIT(&(tmpl_def->templates[i].slist));
-				i++;
-				break;
-			}
-		}
-
-		if (!comp) {
-			tmpl_parser_log("template: Could not find the name"
-					" '%s' of type '%s'\n", name->name,
-					tmpl_def->comp_type->type);
+	if (!is_apply_on) {
+		curr_tmpl_def->name = strdup(value);
+	} else {
+		curr_tmpl = calloc(1, sizeof(*curr_tmpl));
+		curr_tmpl->tmpl_def = find_tmpl_def(value);
+		if (!curr_tmpl->tmpl_def) {
+			tmpl_parser_log("%s: could not find '%s'\n",
+					__FUNCTION__, value);
 			exit(ENOENT);
 		}
+		curr_tmpl->host = curr_host->host;
+		LIST_INIT(&curr_tmpl->cma_list);
+		LIST_INSERT_HEAD(&all_tmpl_list, curr_tmpl, entry);
+		LIST_INSERT_HEAD(&curr_host->tmpl_list, curr_tmpl, host_entry);
+		LIST_INSERT_HEAD(&curr_tmpl_def->templates,
+						curr_tmpl, def_entry);
 	}
 }
 
-static void handle_apply_on(char *value)
+struct oparser_comp_type *find_ctype(char *type)
 {
-	if (strcmp(value, "*") == 0)
-		handle_apply_all_comps();
-	else
-		handle_apply_some_comps(value);
-}
-
-static void handle_component(char *value)
-{
-	int i;
-	if (prod_carray) {
-		for (i = 0; i < num_prod_carray; i++)
-			free(prod_carray[i]);
-		free(prod_carray);
-		prod_carray = NULL;
-	}
-	num_prod_carray = 0;
-	num_prod_comps = 0;
-	is_name = 0;
-}
-
-static void handle_set(char *value)
-{
-	is_type = is_name = 0;
-	if (set_array) {
-		free(set_array);
-		set_array = NULL;
-	}
-
-	set_array = calloc(tmpl_def->num_tmpls, sizeof(struct set *));
-	if (!set_array) {
-		tmpl_parser_log("tmpl: %s: Out of memory\n",
-						__FUNCTION__);
-		exit(ENOMEM);
-
-	}
-
-	struct set *set;
-	struct template *tmpl;
-	int i;
-	for (i = 0; i < tmpl_def->num_tmpls; i++) {
-		set = calloc(1, sizeof(*set));
-		if (!set) {
-			tmpl_parser_log("tmpl: %s: Out of memory\n",
-							__FUNCTION__);
-			exit(ENOMEM);
-		}
-		set->sampler_pi = strdup(value);
-		if (!set->sampler_pi) {
-			tmpl_parser_log("tmpl: %s: Out of memory\n",
-					__FUNCTION__);
-			exit(ENOMEM);
-		}
-		tmpl = &tmpl_def->templates[i];
-		LIST_INSERT_HEAD(&tmpl->slist, set, entry);
-		set_array[i] = set;
-		LIST_INIT(&set->mlist);
-	}
-
-	handle_component(NULL);
-}
-
-struct oparser_component_type *find_prod_ctype(char *type)
-{
-	struct oparser_component_type *ctype;
-	TAILQ_FOREACH(ctype, sys_ctype_list, entry) {
+	struct oparser_comp_type *ctype;
+	TAILQ_FOREACH(ctype, all_ctype_list, entry) {
 		if (strcmp(ctype->type, type) == 0) {
 			return ctype;
 		}
@@ -259,312 +165,318 @@ struct oparser_component_type *find_prod_ctype(char *type)
 	return NULL;
 }
 
-static void handle_type(char *value)
+static void handle_host(char *value)
 {
-	struct template *tmpl;
-	struct set *set;
-	is_type = 1;
-	num_prod_carray = tmpl_def->num_tmpls;
-	prod_carray = calloc(num_prod_carray,
-				sizeof(struct oparser_component *));
-	if (!prod_carray) {
-		tmpl_parser_log("tmpl: %s: Out of memory\n",
-						__FUNCTION__);
+	char type[512], uid[512];
+	int rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uid);
+
+	struct oparser_name_queue nqueue;
+	int numuid = process_string_name(uid, &nqueue, NULL, NULL);
+	if (numuid > 1) {
+		tmpl_parser_log("%s: %s: Accept on one uid.\n",
+					__FUNCTION__, uid);
+		exit(EINVAL);
+	}
+	empty_name_list(&nqueue);
+
+	curr_host = calloc(1, sizeof(*curr_host));
+	LIST_INIT(&curr_host->tmpl_list);
+
+	struct oparser_comp_type *ctype = find_ctype(type);
+	if (!ctype) {
+		tmpl_parser_log("%s: couldn't find comp type '%s'.\n",
+				__FUNCTION__, type);
+		exit(ENOENT);
+	}
+
+	curr_host->host = find_comp(ctype, uid);
+	if (!curr_host->host) {
+		tmpl_parser_log("%s: couldn't find host '%s'.\n",
+				__FUNCTION__, value);
+		exit(ENOENT);
+	}
+
+	LIST_INSERT_HEAD(&all_host_list, curr_host, entry);
+}
+
+void new_metric(struct comp_metric *cm, struct metric_type *mtype,
+			char *ldms_sampler, char *metric_name)
+{
+	struct oparser_metric *m = malloc(sizeof(*m));
+	m->comp = cm->comp;
+	m->ldms_sampler = strdup(ldms_sampler);
+	if (!m->ldms_sampler) {
+		tmpl_parser_log("%s: out of memory.\n", __FUNCTION__);
 		exit(ENOMEM);
 	}
 
-	prod_ctype = find_prod_ctype(value);
-	if (!prod_ctype) {
-		fprintf(stderr, "Could not find comp type '%s'.\n", value);
-		exit(ENOENT);
-	}
-}
-
-struct oparser_component *find_successor_component(
-				struct oparser_component *current_comp,
-				char *name,
-				struct oparser_component_type *skipped_comp_type)
-{
-	struct oparser_component *comp;
-	struct oparser_component_list *clist;
-	int i;
-
-	if (current_comp->num_child_types == 0)
-		return NULL;
-
-	for (i = 0; i < current_comp->num_child_types; i++) {
-		clist = &current_comp->children[i];
-		comp = LIST_FIRST(clist);
-		/*
-		 * If the comp type is the same as the comp type that
-		 * the template is applied on, skip this child type.
-		 */
-		if (comp->comp_type == skipped_comp_type)
-			continue;
-
-		if (comp->comp_type == prod_ctype) {
-
-			if (!name) {
-				if (comp->entry.le_next) {
-					tmpl_parser_log("template: Need name of"
-							" the comp type '%s'\n",
-							prod_ctype->type);
-					exit(EPERM);
-				} else {
-					return comp;
-				}
-			}
-
-			comp = NULL;
-			LIST_FOREACH(comp, clist, entry) {
-				if (strcmp(comp->name, name) == 0) {
-					return comp;
-				}
-			}
-
-			if (!comp) {
-				tmpl_parser_log("template: The comp type '%s' "
-					"has no '%s' under the comp '%s[%s]'\n",
-					prod_ctype->type, name,
-					current_comp->comp_type->type,
-					current_comp->name);
-				exit(ENOENT);
-			}
-		}
+	m->name = strdup(metric_name);
+	if (!m->name) {
+		tmpl_parser_log("%s: out of memory.\n", __FUNCTION__);
+		exit(ENOMEM);
 	}
 
-	for (i = 0; i < current_comp->num_child_types; i++) {
-		comp = LIST_FIRST(&current_comp->children[i]);
-		/*
-		 * If the comp type is the same as the comp type that
-		 * the template is applied on, skip this child type.
-		 */
-		if (comp->comp_type == skipped_comp_type)
-			continue;
+	m->mtype_id = mtype->mtype_id;
+	m->metric_id = gen_metric_id(cm->comp->comp_id, mtype->mtype_id);
 
-		LIST_FOREACH(comp, &current_comp->children[i], entry) {
-			return find_successor_component(comp, name,
-							skipped_comp_type);
-		}
-	}
+	LIST_INSERT_HEAD(&cm->mlist, m, comp_metric_entry);
+	LIST_INSERT_HEAD(&cm->comp->mlist, m, comp_entry);
+	LIST_INSERT_HEAD(&all_metric_list, m, entry);
 }
 
-struct oparser_component *find_predecessor_component(
-					struct oparser_component *current_comp,
-					char *name)
+void create_metrics(struct comp_metric_array *cma)
 {
-	struct oparser_component *comp;
-	if (!current_comp->parent)
-		return NULL;
+	struct comp_metric *cm;
+	struct comp_metric_type *cmt = cma->cmt;
+	struct metric_type_ref *mt_ref;
 
-	struct oparser_component *parent = current_comp->parent;
-	if (parent->comp_type == prod_ctype) {
-		if (!name)
-			return parent;
+	char *sampler = curr_tmpl->tmpl_def->ldms_sampler;
 
-		if (strcmp(parent->name, name) == 0)
-			return parent;
-		else
-			return NULL;
-	} else {
-		comp = find_successor_component(parent, name,
-						current_comp->comp_type);
-		if (!comp)
-			return find_predecessor_component(parent, name);
-		else
-			return comp;
-	}
-}
+	char mname[1024];
 
-struct oparser_component *find_closest_component(
-				struct oparser_component *applied_comp,
-				char *name)
-{
-	struct oparser_component *comp;
-	struct compinent_list *clist;
-	struct oparser_component_type *comp_type;
-	int i;
-	comp = find_successor_component(applied_comp, name, NULL);
-	if (comp)
-		return comp;
-
-	return find_predecessor_component(applied_comp, name);
-}
-
-void handle_name(char *value)
-{
-	if (value)
-		is_name = 1;
-
-	struct oparser_name_queue cnqueue;
-	struct oparser_component *comp;
-	struct template *tmpl;
-
-	TAILQ_INIT(&cnqueue);
-
-	int i, j;
-	if (!value) {
-		for (i = 0; i < tmpl_def->num_tmpls; i++) {
-			tmpl = &tmpl_def->templates[i];
-			comp = find_closest_component(tmpl->comp, value);
-			if (!comp) {
-				tmpl_parser_log("template: Could not find "
-						"%s\n", prod_ctype->type);
-				exit(ENOENT);
-			}
-			prod_carray[i] = malloc(sizeof(
-						struct oparser_component *));
-			prod_carray[i][0] = comp;
-			num_prod_comps = 1;
+	if (cma->num_cms == 1) {
+	/* Only one component  in the comp metric array */
+		cm = &(cma->cms[0]);
+		LIST_INIT(&cm->mlist);
+		LIST_FOREACH(mt_ref, &cmt->mt_ref_list, entry) {
+			/* Don't attach the component name to the metric name */
+			new_metric(cm, mt_ref->mtype, sampler,
+					mt_ref->mtype->name);
 		}
 		return;
 	}
 
+	/* There are more than one component in the comp metric array */
 	struct oparser_name *name;
-	num_prod_comps = process_string_name(value, &cnqueue, NULL, NULL);
-	for (i = 0; i < tmpl_def->num_tmpls; i++) {
-		prod_carray[i] = malloc(num_prod_comps *
-					sizeof(struct oparser_component *));
-		if (!prod_carray[i]) {
-			tmpl_parser_log("tmpl: %s: Out of memory\n",
-							__FUNCTION__);
-			exit(ENOMEM);
+	int i, j;
+	for (i = 0; i < cma->num_cms; i++) {
+		cm = &(cma->cms[i]);
+		LIST_INIT(&cm->mlist);
+		LIST_FOREACH(mt_ref, &cmt->mt_ref_list, entry) {
+			/* Attach the component name to the metric name */
+			sprintf(mname, "%s#%s", mt_ref->mtype->name,
+						cm->comp->name);
+			new_metric(cm, mt_ref->mtype, sampler, mname);
 		}
-		j = 0;
-		TAILQ_FOREACH(name, &cnqueue, entry) {
-			tmpl = &tmpl_def->templates[i];
-			comp = find_closest_component(tmpl->comp, name->name);
-			if (!comp) {
-				tmpl_parser_log("template: Could not find "
-						"%s[%s]\n",
-						prod_ctype->type, name->name);
-				exit(ENOENT);
+	}
+}
+
+void _handle_component_apply_on(char *value)
+{
+	char type[512], uids[512];
+	int rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uids);
+
+	struct oparser_comp_type *ctype = find_ctype(type);
+	if (!ctype) {
+		tmpl_parser_log("%s: Could not find '%s'.\n",
+				__FUNCTION__, type);
+		exit(ENOENT);
+	}
+
+	struct comp_metric_type *cmt;
+	LIST_FOREACH(cmt, &curr_tmpl->tmpl_def->cmtlist, entry) {
+		if (cmt->ctype == ctype)
+			break;
+	}
+
+	if (!cmt) {
+		tmpl_parser_log("%s: No comp type '%s' in template '%s'.\n",
+				__FUNCTION__, type, curr_tmpl->tmpl_def->name);
+		exit(ENOENT);
+	}
+
+	struct oparser_name_queue nqueue;
+	int nuids = process_string_name(uids, &nqueue, NULL, NULL);
+
+	struct comp_metric_array *cma;
+	cma = calloc(1, sizeof(struct comp_metric_array));
+	if (!cma) {
+		tmpl_parser_log("%s: Out of memory.\n", __FUNCTION__);
+		exit(ENOMEM);
+	}
+
+	cma->num_cms = nuids;
+	cma->cms = malloc(nuids * sizeof(struct comp_metric));
+	if (!cma->cms) {
+		tmpl_parser_log("%s: Out of memory.\n", __FUNCTION__);
+		exit(ENOMEM);
+	}
+	cma->cmt = cmt;
+
+	struct oparser_comp *comp;
+	struct oparser_name *uid;
+	int i = 0;
+	TAILQ_FOREACH(uid, &nqueue, entry) {
+		comp = find_comp(ctype, uid->name);
+		if (!comp) {
+			tmpl_parser_log("%s: Could not find '%s{%s}'.\n",
+					__FUNCTION__, type, uid->name);
+			exit(ENOENT);
+		}
+		cma->cms[i++].comp = comp;
+
+	}
+	LIST_INSERT_HEAD(&curr_tmpl->cma_list, cma, entry);
+	empty_name_list(&nqueue);
+	create_metrics(cma);
+}
+
+static void handle_component(char *value)
+{
+	if (!is_apply_on) {
+		struct comp_metric_type *cm = calloc(1, sizeof(*cm));
+		LIST_INIT(&cm->mt_ref_list);
+		LIST_INSERT_HEAD(&curr_tmpl_def->cmtlist, cm, entry);
+	} else {
+		_handle_component_apply_on(value);
+	}
+}
+
+static void handle_ldms_sampler(char *value)
+{
+	curr_tmpl_def->ldms_sampler = strdup(value);
+}
+
+static void handle_type(char *value)
+{
+	struct comp_metric_type *cmt = LIST_FIRST(&curr_tmpl_def->cmtlist);
+	cmt->ctype = find_ctype(value);
+	if (!cmt->ctype) {
+		tmpl_parser_log("%s: Couldn't find the type '%s'.\n",
+				__FUNCTION__, value);
+		exit(ENOENT);
+	}
+}
+
+void change_metric_names(struct comp_metric_array *cma,
+			struct oparser_name_queue *mnqueue)
+{
+	struct comp_metric *cm;
+	struct comp_metric_type *cmt = cma->cmt;
+	struct metric_type_ref *mt_ref;
+
+	char *sampler = curr_tmpl->tmpl_def->ldms_sampler;
+	char mname[1024];
+	struct oparser_name *name;
+	int i;
+	for (i = 0; i < cma->num_cms; i++) {
+		cm = &(cma->cms[i]);
+		/*
+		 * The 'name' label is used.
+		 * A component name is given. Change the metric names.
+		 */
+		if (i == 0)
+			name = TAILQ_FIRST(mnqueue);
+		else
+			name = TAILQ_NEXT(name, entry);
+
+		struct oparser_metric *m;
+		char core_name[1024];
+		int len;
+		LIST_FOREACH(m, &cm->mlist, comp_metric_entry) {
+			len = strchr(m->name, '#') - m->name;
+			if (len > 0) {
+				snprintf(core_name, len + 1, "%s", m->name);
+			} else {
+				sprintf(core_name, "%s", m->name);
 			}
-			prod_carray[i][j] = comp;
-			j++;
+			free(m->name);
+			sprintf(mname, "%s#%s", core_name, name->name);
+			m->name = strdup(mname);
 		}
 	}
 }
 
-struct oparser_metric *new_metric(uint32_t mtype_id, uint32_t comp_id,
-				char *name, struct oparser_component *comp)
+void handle_name(char *value)
 {
-	struct oparser_metric *metric = malloc(sizeof(*metric));
-	if (mtype_id) {
-		metric->mtype_id = mtype_id;
-		if (comp_id)
-			metric->metric_id = gen_metric_id(comp_id, mtype_id);
+	struct oparser_name_queue nqueue;
+	int nnames = process_string_name(value, &nqueue, NULL, NULL);
+	struct comp_metric_array *cma = LIST_FIRST(&curr_tmpl->cma_list);
+	if (cma->num_cms != nnames) {
+		tmpl_parser_log("%s: The number of names[%d] must be equal "
+				"to the number of components[%d].\n",
+				__FUNCTION__, nnames, cma->num_cms);
+		exit(EINVAL);
 	}
-	if (name)
-		metric->name = strdup(name);
-	metric->comp = comp;
-	return metric;
+
+	change_metric_names(cma, &nqueue);
+	empty_name_list(&nqueue);
 }
 
-struct oparser_metric *search_metric(struct metric_list *list, char *name)
+struct metric_type *
+new_metric_type(struct oparser_comp_type *ctype,
+		char *name, char *ldms_sampler)
 {
-	struct oparser_metric *m;
-	LIST_FOREACH(m, list, entry) {
-		if (strcmp(m->name, name) == 0)
-			return m;
+	num_mtypes++;
+	struct metric_type *mtype = calloc(1, sizeof(*mtype));
+	mtype->name = strdup(name);
+	mtype->ldms_sampler = strdup(ldms_sampler);
+	mtype->mtype_id = num_mtypes;
+	ctype->num_mtypes++;
+	LIST_INSERT_HEAD(&ctype->mtype_list, mtype, entry);
+	return mtype;
+}
+
+struct metric_type *
+find_metric_type(struct mtype_list *mtlist, char *name, char *ldms_sampler)
+{
+	struct metric_type *mt;
+	LIST_FOREACH(mt, mtlist, entry) {
+		if (strcmp(mt->name, name) == 0)
+			if (strcmp(mt->ldms_sampler, ldms_sampler) == 0)
+				return mt;
 	}
 	return NULL;
 }
 
 static void handle_metrics(char *value)
 {
-	if (!is_type) {
-		num_prod_carray = tmpl_def->num_tmpls;
-		prod_carray = calloc(num_prod_carray,
-					sizeof(struct oparser_component *));
-		if (!prod_carray) {
-			tmpl_parser_log("tmpl: %s: Out of memory\n",
-							__FUNCTION__);
-			exit(ENOMEM);
-		}
-
-		int i;
-		for (i = 0; i < tmpl_def->num_tmpls; i++) {
-			prod_carray[i] = malloc(sizeof(
-					struct oparser_component *));
-			prod_carray[i][0] = tmpl_def->templates[i].comp;
-			num_prod_comps = 1;
-		}
-	} else {
-		if (!is_name) {
-			handle_name(NULL);
-		}
-	}
-
 	struct oparser_name_queue nqueue;
-	struct oparser_name *name;
-	struct oparser_component *comp;
 	int num_names = process_string_name(value, &nqueue, NULL, NULL);
-	int is_found = 0;
-	struct oparser_metric *m, *metric;
+	char *sampler = curr_tmpl_def->ldms_sampler;
+	struct comp_metric_type *cmt = LIST_FIRST(&curr_tmpl_def->cmtlist);
 
-	struct metric_list *mlist = &prod_ctype->mlist;
-	struct metric_list *prod_mlist;
-	char full_name[128];
-	uint32_t mtype_id;
-	int i, j;
-
-	TAILQ_FOREACH(name, &nqueue, entry) {
-		LIST_FOREACH(m, mlist, type_entry) {
-			if (strcmp(name->name, m->name) == 0) {
-				is_found = 1;
-				break;
+	struct oparser_name *mtname;
+	struct metric_type_ref *mtref;
+	struct metric_type *mtype;
+	TAILQ_FOREACH(mtname, &nqueue, entry) {
+		LIST_FOREACH(mtref, &cmt->mt_ref_list, entry) {
+			mtype = mtref->mtype;
+			if (strcmp(mtype->name, mtname->name) == 0) {
+				if (strcmp(mtype->ldms_sampler, sampler) == 0) {
+					break;
+				}
 			}
 		}
 
-		/* not found */
-		if (!m) {
-			m = LIST_FIRST(mlist);
-			/* If this is the first metric of the comp type. */
-			if (!m)
-				mtype_id = 1;
-			else
-				mtype_id = m->mtype_id + 1;
+		if (!mtref) {
+			mtype = find_metric_type(&cmt->ctype->mtype_list,
+						mtname->name, sampler);
 
-			m = new_metric(mtype_id, 0, name->name, NULL);
-			LIST_INSERT_HEAD(mlist, m, type_entry);
-		}
-		for (i = 0; i < tmpl_def->num_tmpls; i++) {
-			for (j = 0; j < num_prod_comps; j++) {
-				prod_mlist = &prod_carray[i][j]->mlist;
-				if (prod_carray[i][j]->name && is_name) {
-					sprintf(full_name, "%s#%s", name->name,
-						prod_carray[i][j]->name);
-				} else {
-					sprintf(full_name, "%s", name->name);
-				}
-
-				if (is_found) {
-					metric = search_metric(prod_mlist,
-								full_name);
-					if (metric)
-						goto add_to_set;
-				}
-
-				metric = new_metric(m->mtype_id,
-						prod_carray[i][j]->comp_id,
-						full_name, prod_carray[i][j]);
-				LIST_INSERT_HEAD(prod_mlist, metric, entry);
-add_to_set:
-				LIST_INSERT_HEAD(&set_array[i]->mlist, metric,
-								set_entry);
+			if (!mtype) {
+				mtref = calloc(1, sizeof(*mtref));
+				mtref->mtype = new_metric_type(cmt->ctype,
+						mtname->name, sampler);
 			}
+
+			LIST_INSERT_HEAD(&cmt->mt_ref_list, mtref, entry);
 		}
 	}
+	empty_name_list(&nqueue);
+}
+
+static void handle_apply_on(char *value)
+{
+	is_apply_on = 1;
 }
 
 static struct kw label_tbl[] = {
 	{ "apply_on", handle_apply_on },
 	{ "component", handle_component },
-	{ "component_type", handle_component_type },
+	{ "host", handle_host },
 	{ "metrics", handle_metrics },
 	{ "name", handle_name },
-	{ "set", handle_set },
+	{ "sampler", handle_ldms_sampler },
 	{ "template", handle_template },
 	{ "template_name", handle_template_name },
 	{ "type", handle_type },
@@ -572,22 +484,20 @@ static struct kw label_tbl[] = {
 
 static void handle_config(FILE *conf)
 {
-	char buf[1024];
-	char key[128], value[512];
+	char key[128];
 	char *s;
 
 	struct kw keyword;
 	struct kw *kw;
 
-	int i, is_first;
-	for (i = 0; i < tmpl_def->num_tmpls; i++)
-		set_array[i]->cfg[0] = '\0';
+	curr_tmpl_def->cfg[0] = '\0';
 
-	is_first = 1;
+	int is_first = 1;
+	int i;
 
-	while (s = fgets(buf, sizeof(buf), conf)) {
-		sscanf(buf, " %[^:]: %[^#\t\n]", key, value);
-		trim_trailing_space(value);
+	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		sscanf(main_buf, " %[^:]: %[^#\t\n]", key, main_value);
+		trim_trailing_space(main_value);
 
 		/* Ignore the comment line */
 		if (key[0] == '#')
@@ -598,40 +508,38 @@ static void handle_config(FILE *conf)
 					sizeof(*kw), kw_comparator);
 
 		if (kw) {
-			kw->action(value);
+			kw->action(main_value);
 			return;
 		} else {
-			for (i = 0; i < tmpl_def->num_tmpls; i++) {
-				if (is_first) {
-					sprintf(set_array[i]->cfg, "%s:%s",
-								key, value);
-					is_first = 0;
-				} else {
-					sprintf(set_array[i]->cfg, "%s;%s:%s",
-						set_array[i]->cfg, key, value);
-				}
+
+			if (is_first) {
+				sprintf(curr_tmpl_def->cfg, "%s:%s",
+							key, main_value);
+				is_first = 0;
+			} else {
+				sprintf(curr_tmpl_def->cfg, "%s;%s:%s",
+					curr_tmpl_def->cfg, key, main_value);
 			}
 		}
 	}
 }
 
-struct template_def_list *oparser_parse_template(FILE *conf,
+struct tmpl_list *oparser_parse_template(FILE *conf,
 					struct oparser_scaffold *scaffold)
 {
-	char buf[1024];
-	char key[128], value[512];
+	char key[128];
 	char *s;
 
 	struct kw keyword;
 	struct kw *kw;
-	struct oparser_component_type_list *type_list = scaffold->all_type_list;
+	struct oparser_comp_type_list *type_list = scaffold->all_type_list;
 
-	sys_ctype_list = type_list;
+	all_ctype_list = type_list;
 	sys_scaffold = scaffold;
 
-	while (s = fgets(buf, sizeof(buf), conf)) {
-		sscanf(buf, " %[^:]: %[^#\t\n]", key, value);
-		trim_trailing_space(value);
+	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		sscanf(main_buf, " %[^:]: %[^#\t\n]", key, main_value);
+		trim_trailing_space(main_value);
 
 		/* Ignore the comment line */
 		if (key[0] == '#')
@@ -648,68 +556,59 @@ struct template_def_list *oparser_parse_template(FILE *conf,
 				sizeof(*kw), kw_comparator);
 
 		if (kw) {
-			kw->action(value);
+			kw->action(main_value);
 		} else {
 			fprintf(stderr, "Invalid key '%s'\n", key);
 			exit(EINVAL);
 		}
 	}
-	return &tmpl_def_list;
+	free(main_buf);
+	free(main_value);
+	return &all_tmpl_list;
 }
 
-void print_set(struct set *set, FILE *output)
+void print_template_metrics(struct comp_metric *cm, FILE *output)
 {
-	fprintf(output, "		set: %s\n", set->sampler_pi);
-	fprintf(output, "		cfg: %s\n", set->cfg);
-	fprintf(output, "		metrics: \n");
-
-	struct oparser_metric *m = LIST_FIRST(&set->mlist);
-	if (!m) {
-		tmpl_parser_log("tmpl: no metric in set '%s'\n",
-						set->sampler_pi);
-		exit(EPERM);
+	fprintf(output, "		metrics:\n");
+	struct oparser_metric *m;
+	LIST_FOREACH(m, &cm->mlist, comp_metric_entry) {
+		fprintf(output, "		%s	%" PRIu64 "\n",
+						m->name, m->metric_id);
 	}
-	uint32_t comp_id;
-	comp_id = (uint32_t) (m->metric_id >> 32);
-	fprintf(output, ",%s	%" PRIu64 "	%" PRIu32 "\n", m->name,
-						m->metric_id, comp_id);
-
-	while (m = LIST_NEXT(m, set_entry)) {
-		comp_id = (uint32_t) (m->metric_id >> 32);
-		fprintf(output, ",%s	%" PRIu64 "	%" PRIu32 "\n",
-					m->name, m->metric_id, comp_id);
-	}
-
-	fprintf(output, "\n");
 }
 
-void print_template(struct template *tmpl, FILE *output)
+void print_template_cma(struct comp_metric_array *cma, FILE *output)
 {
-	fprintf(output, "	component: %s[%s]\n", tmpl->comp->name,
-						tmpl->comp->comp_type->type);
-	struct set *set;
-	LIST_FOREACH(set, &tmpl->slist, entry) {
-		print_set(set, output);
+	fprintf(output, "	comp_type: %s\n", cma->cmt->ctype->type);
+	int i;
+	struct oparser_comp *comp;
+	for (i = 0; i < cma->num_cms; i++) {
+		comp = cma->cms->comp;
+		fprintf(output, "		component: %s{%s} (%s)\n",
+						comp->comp_type->type,
+						comp->uid, comp->name);
+		print_template_metrics(&cma->cms[i], output);
 	}
 }
 
-void oparser_print_template_def_list(struct template_def_list *tmpl_def_list,
+void oparser_print_template_list(struct template_def_list *tmpl_def_list,
 							FILE *output)
 {
-	struct template_def *tmpl_def;
-	int i;
+	struct sampler_host *host;
 	struct template *tmpl;
-	struct set *set;
-	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		fprintf(output, "template:\n");
-		fprintf(output, "	name: %s\n", tmpl_def->name);
-		fprintf(output, "	comp_type: %s\n",
-					tmpl_def->comp_type->type);
-		for (i = 0; i < tmpl_def->num_tmpls; i++) {
-			print_template(&tmpl_def->templates[i], output);
+	struct comp_metric_array *cma;
+	LIST_FOREACH(host, &all_host_list, entry) {
+		fprintf(output, "host: %s{%s} (%s)\n",
+				host->host->comp_type->type, host->host->uid,
+							host->host->name);
+		LIST_FOREACH(tmpl, &host->tmpl_list, host_entry) {
+			fprintf(output, "	ldms_sampler: %s\n",
+						tmpl->tmpl_def->ldms_sampler);
+			LIST_FOREACH(cma, &tmpl->cma_list, entry) {
+				print_template_cma(cma, output);
+			}
 		}
 	}
-
 }
 
 #ifdef MAIN
@@ -765,11 +664,11 @@ int main(int argc, char **argv) {
 		exit(errno);
 	}
 
-	struct template_def_list *tmpl_def_list;
+	struct template_def_list *all_tmpl_def_list;
 	struct scaffold *scaffold = oparser_parse_component_def(compf);
 	oparser_print_scaffold(scaffold, soutf);
-	tmpl_def_list = oparser_parse_template(tmplf, scaffold);
-	oparser_print_template_def_list(tmpl_def_list, toutf);
+	all_tmpl_def_list = oparser_parse_template(tmplf, scaffold);
+	oparser_print_template_list(all_tmpl_def_list, toutf);
 	return 0;
 }
 #endif

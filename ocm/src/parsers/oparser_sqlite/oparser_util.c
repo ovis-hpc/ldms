@@ -68,7 +68,7 @@ int kw_comparator(const void *a, const void *b)
 	return strcmp(_a->token, _b->token);
 }
 
-void destroy_name_list(struct oparser_name_queue *list)
+void empty_name_list(struct oparser_name_queue *list)
 {
 	struct oparser_name *name;
 	while (name = TAILQ_FIRST(list)) {
@@ -480,4 +480,19 @@ void oparser_finish_insert(sqlite3 *db, sqlite3_stmt *stmt, const char *fn_name)
 							sqlite3_errmsg(db));
 		exit(rc);
 	}
+}
+
+#define NUM_ALLOC 10
+int oparser_add_comp(struct comp_array *carray, struct oparser_comp *comp)
+{
+	if (carray->num_alloc == carray->num_comps) {
+		carray->num_alloc += NUM_ALLOC;
+		carray->comps = realloc(carray->comps, carray->num_alloc *
+						sizeof(struct oparser_comp));
+		if (!carray->comps)
+			return 0;
+	}
+
+	carray->comps[(carray->num_comps)++] = comp;
+	return 1;
 }

@@ -60,94 +60,67 @@
 #include "template_parser.h"
 #include "oparser_util.h"
 
-void template_def_to_sqlite(struct template_def *tmpl_def, sqlite3 *db,
+#define METRIC_S_SIZE (1024 * 1024 * 2)
+
+static char *metric_s;
+
+void template_to_sqlite(struct template *tmpl, sqlite3 *db,
 							sqlite3_stmt *stmt)
 {
 	int i;
-	struct template *tmpl;
-	char metrics[2043];
 	struct set *set;
 	struct oparser_metric *m;
 
-	for (i = 0; i < tmpl_def->num_tmpls; i++) {
-		tmpl = &tmpl_def->templates[i];
+	oparser_bind_text(db, stmt, 1, tmpl->tmpl_def->name, __FUNCTION__);
+	oparser_bind_text(db, stmt, 2, tmpl->host->name, __FUNCTION__);
+	oparser_bind_text(db, stmt, 3, tmpl->tmpl_def->ldms_sampler,
+								__FUNCTION__);
+	oparser_bind_text(db, stmt, 4, tmpl->tmpl_def->cfg, __FUNCTION__);
 
-		LIST_FOREACH(set, &tmpl->slist, entry) {
-
-			oparser_bind_text(db, stmt, 1, tmpl_def->name,
-							__FUNCTION__);
-
-			if (tmpl->comp->name) {
-				oparser_bind_text(db, stmt, 2,
-						tmpl->comp->name, __FUNCTION__);
-			} else {
-				oparser_bind_text(db, stmt, 2,
-						tmpl->comp->comp_type->type,
-						__FUNCTION__);
+	int is_first = 1;
+	struct comp_metric_array *cma;
+	LIST_FOREACH(cma, &tmpl->cma_list, entry) {
+		for (i = 0; i < cma->num_cms; i++) {
+			LIST_FOREACH(m, &cma->cms[i].mlist, comp_metric_entry) {
+				if (is_first) {
+					sprintf(metric_s, "%s[%" PRIu64 "]",
+							m->name, m->metric_id);
+					is_first = 0;
+				} else {
+					sprintf(metric_s, "%s,%s[%" PRIu64 "]",
+						metric_s, m->name, m->metric_id);
+				}
 			}
-
-			oparser_bind_text(db, stmt, 3, set->sampler_pi,
-							__FUNCTION__);
-
-			oparser_bind_text(db, stmt, 4, set->cfg, __FUNCTION__);
-
-			m = LIST_FIRST(&set->mlist);
-			sprintf(metrics, "%s[%" PRIu64 "]", m->name,
-							m->metric_id);
-
-			while (m = LIST_NEXT(m, set_entry)) {
-				sprintf(metrics, "%s,%s[%" PRIu64 "]",
-						metrics, m->name, m->metric_id);
-			}
-
-			oparser_bind_text(db, stmt, 5, metrics, __FUNCTION__);
-
-			oparser_finish_insert(db, stmt, __FUNCTION__);
 		}
 	}
-}
 
-int get_parent_path(struct oparser_component *comp, char *path)
-{
-	int len;
-	if (!comp) {
-		len = sprintf(path, "/");
-		return len;
-	}
-
-	int offset = 0;
-
-	if (comp->parent)
-		offset = get_parent_path(comp->parent, path);
-	len = sprintf(path + offset, "/%" PRIu32, comp->comp_id);
-	return offset + len;
-}
-
-void create_metric_record(struct oparser_metric *m, struct template *tmpl,
-			struct set * set, sqlite3_stmt *stmt, sqlite3 *db)
-{
-	char path[1024];
-	get_parent_path(m->comp->parent, path);
-
-	oparser_bind_text(db, stmt, 1, m->name, __FUNCTION__);
-	oparser_bind_int64(db, stmt, 2, m->metric_id, __FUNCTION__);
-	oparser_bind_text(db, stmt, 3, set->sampler_pi, __FUNCTION__);
-	oparser_bind_int(db, stmt, 4, m->mtype_id, __FUNCTION__);
-
-	if (tmpl->comp->name)
-		oparser_bind_text(db, stmt, 5, tmpl->comp->name, __FUNCTION__);
-	else
-		oparser_bind_text(db, stmt, 5, tmpl->comp->comp_type->type,
-								__FUNCTION__);
-
-	oparser_bind_int(db, stmt, 6, m->comp->comp_id, __FUNCTION__);
-	oparser_bind_text(db, stmt, 7, path, __FUNCTION__);
-
+	oparser_bind_text(db, stmt, 5, metric_s, __FUNCTION__);
 	oparser_finish_insert(db, stmt, __FUNCTION__);
 }
 
-void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
-								sqlite3 *db)
+void create_metric_record(struct oparser_metric *m, struct template *tmpl,
+			struct comp_metric *cm, sqlite3_stmt *stmt, sqlite3 *db)
+{
+	char path[1024];
+
+	oparser_bind_text(db, stmt, 1, m->name, __FUNCTION__);
+	oparser_bind_int64(db, stmt, 2, m->metric_id, __FUNCTION__);
+	oparser_bind_text(db, stmt, 3, tmpl->tmpl_def->ldms_sampler,
+							__FUNCTION__);
+	oparser_bind_int(db, stmt, 4, m->mtype_id, __FUNCTION__);
+
+	if (tmpl->host->name) {
+		oparser_bind_text(db, stmt, 5, tmpl->host->name, __FUNCTION__);
+	} else {
+		oparser_bind_text(db, stmt, 5, tmpl->host->comp_type->type,
+								__FUNCTION__);
+	}
+
+	oparser_bind_int(db, stmt, 6, cm->comp->comp_id, __FUNCTION__);
+	oparser_finish_insert(db, stmt, __FUNCTION__);
+}
+
+void oparser_metrics_to_sqlite(struct tmpl_list *all_tmpl_list, sqlite3 *db)
 {
 	oparser_drop_table("metrics", db);
 	char *stmt_s;
@@ -157,17 +130,16 @@ void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
 		"sampler	TEXT, " \
 		"metric_type_id	SQLITE_uint32	NOT NULL, " \
 		"coll_comp	CHAR(64)	NOT NULL, " \
-		"prod_comp_id	SQLITE_uint32	NOT NULL, " \
-		"path		TEXT );";
+		"prod_comp_id	SQLITE_uint32	NOT NULL);";
 
 	char *index_stmt = "CREATE INDEX metrics_idx ON metrics(name," \
 					"coll_comp,metric_type_id);";
 	create_table(stmt_s, index_stmt, db);
 
 	stmt_s = "INSERT INTO metrics(name, metric_id, sampler, "
-			"metric_type_id, coll_comp, prod_comp_id, path)"
+			"metric_type_id, coll_comp, prod_comp_id)"
 			" VALUES(@name, @metric_id, @sampler, "
-			"@mtid, @collc, @pcid, @path)";
+			"@mtid, @collc, @pcid)";
 
 	sqlite3_stmt *stmt;
 	char *sqlite_err;
@@ -185,19 +157,21 @@ void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
 	}
 
 	int i;
-	struct template_def *tmpl_def;
 	struct template *tmpl;
-	struct set *set;
+	struct comp_metric_array *cma;
+	struct comp_metric *cm;
 	struct oparser_metric *m;
-	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		for (i = 0; i < tmpl_def->num_tmpls; i++) {
-			tmpl = &tmpl_def->templates[i];
-			LIST_FOREACH(set, &tmpl->slist, entry) {
-				LIST_FOREACH(m, &set->mlist, set_entry) {
-					create_metric_record(m, tmpl, set,
+	LIST_FOREACH(tmpl, all_tmpl_list, entry) {
+		LIST_FOREACH(cma, &tmpl->cma_list, entry) {
+			for (i = 0; i < cma->num_cms; i++) {
+				cm = &(cma->cms[i]);
+				LIST_FOREACH(m, &cm->mlist, comp_metric_entry) {
+					create_metric_record(m, tmpl, cm,
 								stmt, db);
 				}
 			}
+
+
 		}
 	}
 
@@ -210,8 +184,7 @@ void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
 	}
 }
 
-void oparser_templates_to_sqlite(struct template_def_list *tmpl_def_list,
-								sqlite3 *db)
+void oparser_templates_to_sqlite(struct tmpl_list *all_tmpl_list, sqlite3 *db)
 {
 	oparser_drop_table("templates", db);
 	int rc;
@@ -246,9 +219,11 @@ void oparser_templates_to_sqlite(struct template_def_list *tmpl_def_list,
 		exit(rc);
 	}
 
-	struct template_def *tmpl_def;
-	LIST_FOREACH(tmpl_def, tmpl_def_list, entry) {
-		template_def_to_sqlite(tmpl_def, db, stmt);
+	metric_s = malloc(METRIC_S_SIZE);
+
+	struct template *tmpl;
+	LIST_FOREACH(tmpl, all_tmpl_list, entry) {
+		template_to_sqlite(tmpl, db, stmt);
 	}
 
 	sqlite3_finalize(stmt);
@@ -258,4 +233,6 @@ void oparser_templates_to_sqlite(struct template_def_list *tmpl_def_list,
 		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
 		exit(rc);
 	}
+
+	free(metric_s);
 }

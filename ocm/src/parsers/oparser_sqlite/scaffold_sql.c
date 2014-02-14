@@ -64,14 +64,17 @@
  * \param   children_s   A allocated string
  */
 void get_children_string(char *children_s, int len,
-				struct oparser_component *comp)
+				struct oparser_comp *comp)
 {
-	int i;
-	struct oparser_component *child;
+	int i = 0;
+	struct oparser_comp *child;
 	int each_len;
 	int remain_len = len;
-	for (i = 0; i < comp->num_child_types; i++) {
-		LIST_FOREACH(child, &comp->children[i], entry) {
+	struct comp_array *charray;
+
+	LIST_FOREACH(charray, &comp->children, entry) {
+		for (i = 0; i < charray->num_comps; i++) {
+			child = charray->comps[i];
 			if (i == 0) {
 				each_len = snprintf(children_s, remain_len,
 						"%" PRIu32, child->comp_id);
@@ -98,16 +101,21 @@ void get_children_string(char *children_s, int len,
 							len, remain_len, i);
 				exit(ENOMEM);
 			}
-			i++;
+
 		}
+
 	}
 }
 
-int component_to_sqlite(struct oparser_component *comp, sqlite3 *db,
+int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
 							sqlite3_stmt *stmt)
 {
-	int rc;
-	char vary[2043];
+	if (comp->is_stored)
+		return 0;
+
+	char parents[2043];
+	struct oparser_comp *parent;
+	struct comp_array *carray;
 
 	if (comp->name)
 		oparser_bind_text(db, stmt, 1, comp->name, __FUNCTION__);
@@ -118,11 +126,24 @@ int component_to_sqlite(struct oparser_component *comp, sqlite3 *db,
 	oparser_bind_text(db, stmt, 2, comp->comp_type->type, __FUNCTION__);
 	oparser_bind_int(db, stmt, 3, comp->comp_id, __FUNCTION__);
 
-	if (comp->parent)
-		oparser_bind_int64(db, stmt, 4, comp->parent->comp_id,
-							__FUNCTION__);
-	else
+	if (comp->num_ptypes) {
+		LIST_FOREACH(carray, &comp->parents, entry) {
+			int i;
+			for (i = 0; i < carray->num_comps; i++) {
+				parent = carray->comps[i];
+				if (i == 0) {
+					sprintf(parents, "%" PRIu32,
+							parent->comp_id);
+				} else {
+					sprintf(parents, "%s,%" PRIu32,
+						parents, parent->comp_id);
+				}
+			}
+		}
+		oparser_bind_text(db, stmt, 4, parents, __FUNCTION__);
+	} else {
 		oparser_bind_null(db, stmt, 4, __FUNCTION__);
+	}
 
 	if (comp->comp_type->gif_path) {
 		oparser_bind_text(db, stmt, 5, comp->comp_type->gif_path,
@@ -132,17 +153,20 @@ int component_to_sqlite(struct oparser_component *comp, sqlite3 *db,
 	}
 
 	int i;
-	struct oparser_component *child;
+	struct oparser_comp *child;
 
 	oparser_finish_insert(db, stmt, __FUNCTION__);
+	comp->is_stored = 1;
 
-	for (i = 0; i < comp->num_child_types; i++) {
-		LIST_FOREACH(child, &comp->children[i], entry) {
+	LIST_FOREACH(carray, &comp->children, entry) {
+		for (i = 0; i < carray->num_comps; i++) {
+			child = carray->comps[i];
 			component_to_sqlite(child, db, stmt);
 		}
 	}
 
-	return rc;
+
+	return 0;
 }
 
 void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
@@ -154,7 +178,7 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 		 "name		CHAR(64)	NOT NULL," \
 		 "type		CHAR(64)	NOT NULL," \
 		 "comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
-		 "parent_id	SQLITE_uint32," \
+		 "parent_id	TEXT," \
 		 "gif_path	TEXT);";
 
 	char *index_stmt = "CREATE INDEX components_idx ON components(name,type);";
@@ -179,13 +203,11 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 	}
 
 	int i;
-	struct oparser_component_list *clist;
-	struct oparser_component *comp;
-	for (i = 0; i < scaffold->num_child_types; i++) {
-		clist = &scaffold->children[i];
-		LIST_FOREACH(comp, clist, entry)
-			component_to_sqlite(comp, db, stmt);
-	}
+	struct oparser_comp_list *clist;
+	struct oparser_comp *comp;
+
+	LIST_FOREACH(comp, scaffold->children, root_entry)
+		component_to_sqlite(comp, db, stmt);
 
 	sqlite3_finalize(stmt);
 

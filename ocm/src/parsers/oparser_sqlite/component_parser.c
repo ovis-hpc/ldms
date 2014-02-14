@@ -70,10 +70,15 @@
 #define MAX(X,Y) ((X) < (Y) ? (Y) : (X))
 
 uint32_t num_components;
-struct oparser_component_type_list *all_type_list;
+struct oparser_comp_type_list *all_type_list;
+struct oparser_comp_list *all_root_list;
 FILE *log_fp;
 
-struct oparser_component_type *component_type;
+struct oparser_comp_type *curr_ctype;
+struct oparser_name_queue curr_uids;
+int curr_nids;
+struct oparser_name_queue curr_names;
+int curr_nnames;
 
 void comp_parser_log(const char *fmt, ...)
 {
@@ -91,16 +96,6 @@ void comp_parser_log(const char *fmt, ...)
 	fflush(log_fp);
 }
 
-struct oparser_component_type *find_component_type(char *type)
-{
-	struct oparser_component_type *comp_type;
-	TAILQ_FOREACH(comp_type, all_type_list, entry) {
-		if (strcmp(comp_type->type, type) == 0)
-			return comp_type;
-	}
-	return NULL;
-}
-
 void oparser_component_parser_init(FILE *log_file)
 {
 	num_components = 0;
@@ -110,301 +105,51 @@ void oparser_component_parser_init(FILE *log_file)
 		log_fp = stderr;
 }
 
-struct oparser_component *new_comp(struct oparser_component_type *comp_type)
+struct oparser_comp *
+new_comp(struct oparser_comp_type *comp_type, char *uid, char *name)
 {
-	struct oparser_component *comp = calloc(1, sizeof(*comp));
-	LIST_INSERT_HEAD(&comp_type->list, comp, type_entry);
+	struct oparser_comp *comp = calloc(1, sizeof(*comp));
+	LIST_INSERT_HEAD(&comp_type->clist, comp, type_entry);
 	comp_type->num_comp++;
 	comp->comp_type = comp_type;
 	num_components++;
 	comp->comp_id = num_components;
 	LIST_INIT(&comp->mlist);
+	comp->uid = strdup(uid);
+	comp->name = strdup(name);
+	LIST_INSERT_HEAD(all_root_list, comp, root_entry);
+	LIST_INIT(&comp->children);
+	LIST_INIT(&comp->parents);
+
 	return comp;
 }
 
-struct oparser_component_type *new_comp_type(char *type)
+struct oparser_comp *find_comp(struct oparser_comp_type *ctype, char *uid)
 {
-	struct oparser_component_type *comp_type = calloc(1, sizeof(*comp_type));
+	struct oparser_comp *comp;
+	LIST_FOREACH(comp, &ctype->clist , type_entry) {
+		if (strcmp(comp->uid, uid) == 0)
+			return comp;
+	}
+	return NULL;
+}
+
+struct oparser_comp_type *new_comp_type(char *type)
+{
+	struct oparser_comp_type *comp_type = calloc(1, sizeof(*comp_type));
 	if (!comp_type) {
 		comp_parser_log("%s: out of memory.\n", __FUNCTION__);
 		exit(ENOMEM);
 	}
 	comp_type->type = strdup(type);
-	LIST_INIT(&comp_type->list);
-	LIST_INIT(&comp_type->mlist);
+	LIST_INIT(&comp_type->clist);
+	LIST_INIT(&comp_type->mtype_list);
 	return comp_type;
 }
 
-static void handle_component(char *value)
+struct oparser_comp_type *find_comp_type(char *type)
 {
-}
-
-
-static void handle_type(char *value)
-{
-	component_type = NULL;
-	component_type = find_component_type(value);
-	if (!component_type) {
-		component_type = new_comp_type(value);
-		TAILQ_INSERT_HEAD(all_type_list, component_type, entry);
-	}
-}
-
-static void handle_gif_path(char *value)
-{
-	sprintf(component_type->gif_path, "%s", value);
-}
-
-static struct oparser_component_type *process_elem_type(char *s)
-{
-	char type[64];
-	struct oparser_component_type *comp_type;
-	int count, rc;
-
-	rc = sscanf(s, "%[^[][%d]", type, &count);
-
-	comp_type = find_component_type(type);
-	if (!comp_type) {
-		comp_type = new_comp_type(type);
-		TAILQ_INSERT_TAIL(all_type_list, comp_type, entry);
-	} else {
-		/*
-		 * The comp types that don't have parent will
-		 * be at the top of the queue.
-		 */
-		TAILQ_REMOVE(all_type_list, comp_type, entry);
-		TAILQ_INSERT_TAIL(all_type_list, comp_type, entry);
-	}
-
-	if (comp_type->parent_type) {
-		comp_parser_log("INVALID: %s type has multiple parents"
-				" (%s, %s).\n", type, comp_type->parent_type,
-				component_type->type);
-		exit(EINVAL);
-	}
-
-	comp_type->parent_type = strdup(component_type->type);
-	if (rc == 2)
-		comp_type->count = count;
-	else
-		comp_type->count = 1;
-
-	return comp_type;
-}
-
-static void handle_elements(char *value)
-{
-	char *_value = strdup(value);
-	int count = 0;
-	char *child_type_tmp;
-	char *elem_type = strtok(_value, ",");
-
-	while (elem_type) {
-		count++;
-		elem_type = strtok(NULL, ",");
-	}
-	free(_value);
-
-	component_type->num_element_types = count;
-	component_type->elements = calloc(count, 
-					sizeof(struct oparser_component_type *));
-
-	elem_type = strtok(value, ",");
-	int i = 0;
-	while (elem_type && i < count) {
-		component_type->elements[i] = process_elem_type(elem_type);
-		i++;
-		elem_type = strtok(NULL, ",");
-	}
-}
-
-static struct kw label_tbl[] = {
-	{ "component", handle_component },
-	{ "elements", handle_elements },
-	{ "gif_path", handle_gif_path },
-	{ "type", handle_type },
-};
-
-void create_subtree(struct oparser_component *comp,
-			struct oparser_component_type *type,
-			struct oparser_scaffold *scaffold,
-			int is_root)
-{
-	static int depth = 0;
-	if (is_root)
-		depth = 0;
-	else
-		depth++;
-	if (scaffold->height < depth)
-		scaffold->height = depth;
-	comp->num_child_types = type->num_element_types;
-	comp->children = calloc(comp->num_child_types,
-				sizeof(struct oparser_component_list));
-	if (!comp->children) {
-		comp_parser_log("name_map: %s: Out of memory\n", __FUNCTION__);
-		exit(ENOMEM);
-	}
-
-	struct oparser_component *child;
-	struct oparser_component_type *child_type;
-	int i, j;
-	for (i = 0; i < type->num_element_types; i++) {
-		LIST_INIT(&comp->children[i]);
-		child_type = type->elements[i];
-		for (j = 0; j < child_type->count; j++) {
-			child = new_comp(child_type);
-			create_subtree(child, child_type, scaffold, 0);
-			LIST_INSERT_HEAD(&comp->children[i], child, entry);
-			child->parent = comp;
-		}
-	}
-	depth--;
-}
-
-struct oparser_scaffold *oparser_create_scaffold()
-{
-	struct oparser_scaffold *scaffold = malloc(sizeof(*scaffold));
-	if (!scaffold) {
-		comp_parser_log("name_map: Could not create a scaffold. "
-							"Error %d\n", ENOMEM);
-		exit(ENOMEM);
-	}
-
-	scaffold->height = 2;
-	scaffold->all_type_list = all_type_list;
-
-	struct oparser_component_type *top_type;
-	TAILQ_FOREACH(top_type, all_type_list, entry) {
-		/*
-		 * Iterate through only the component types
-		 * that don't have parents.
-		 */
-		if (top_type->parent_type)
-			break;
-
-		scaffold->num_child_types++;
-	}
-	scaffold->children = calloc(scaffold->num_child_types,
-					sizeof(struct oparser_component_list));
-	if (!scaffold->children) {
-		comp_parser_log("name_map: %s: Out of memory.\n", __FUNCTION__);
-		exit(ENOMEM);
-	}
-
-	int i = 0;
-	struct oparser_component *comp;
-	TAILQ_FOREACH(top_type, all_type_list, entry) {
-		/*
-		 * Iterate through only the component types
-		 * that don't have parents.
-		 */
-		if (top_type->parent_type)
-			break;
-		comp = new_comp(top_type);
-		comp->parent = NULL;
-		LIST_INIT(&scaffold->children[i]);
-		LIST_INSERT_HEAD(&scaffold->children[i], comp, entry);
-		create_subtree(comp, top_type, scaffold, 1);
-		i++;
-	}
-
-	return scaffold;
-}
-
-
-
-void oparser_print_component_def(FILE *outputf)
-{
-	int i;
-	struct oparser_component_type *comp_type;
-	TAILQ_FOREACH(comp_type, all_type_list, entry) {
-		fprintf(outputf, "component:\n");
-		fprintf(outputf, "	type: %s\n", comp_type->type);
-		fprintf(outputf, "	gif_path: %s\n", comp_type->gif_path);
-		fprintf(outputf, "	num_elem_type: %d\n",
-					comp_type->num_element_types);
-		fprintf(outputf, "	elements: ");
-		for (i = 0; i < comp_type->num_element_types; i ++) {
-			fprintf(outputf, "%s[%d], ",
-					comp_type->elements[i]->type,
-					comp_type->elements[i]->count);
-		}
-		fprintf(outputf, "\n");
-	}
-}
-
-void print_scaffold(FILE *out, struct oparser_component *comp, int depth)
-{
-	int i, j;
-	for (i = 0; i < depth; i++) {
-		fprintf(out, "\t");
-	}
-	if (comp->name)
-		fprintf(out, "%s[%" PRIu32 "]: %s\n", comp->comp_type->type,
-						comp->comp_id, comp->name);
-	else
-		fprintf(out, "%s[%" PRIu32 "]\n", comp->comp_type->type,
-							comp->comp_id);
-
-	struct oparser_component *child;
-
-	for (i = 0; i < comp->num_child_types; i++) {
-		LIST_FOREACH(child, &comp->children[i], entry) {
-			print_scaffold(out, child, depth + 1);
-		}
-	}
-}
-
-void oparser_print_scaffold(struct oparser_scaffold *scaffold, FILE *outf)
-{
-	struct oparser_component *comp;
-
-	oparser_print_component_def(outf);
-
-	int i, j;
-	fprintf(outf, "Component tree: height = %d\n", scaffold->height);
-	for (i = 0; i < scaffold->num_child_types; i++) {
-		LIST_FOREACH(comp, &scaffold->children[i], entry)
-			print_scaffold(outf, comp, 1);
-
-	}
-}
-
-struct component_list_ref {
-	struct oparser_component_list *list;
-	TAILQ_ENTRY(component_list_ref) entry;
-};
-TAILQ_HEAD(clist_ref_list, component_list_ref);
-
-struct oparser_component_list *bf_search_scaffold(char *type, char *name,
-					struct oparser_component *scaffold)
-{
-	int i;
-	struct clist_ref_list queue;
-	struct component_list_ref *ref;
-	TAILQ_INIT(&queue);
-
-	/* Enqueue of all components that have no parent */
-	for (i = 0; i < scaffold->num_child_types; i++) {
-		ref = malloc(sizeof(*ref));
-		ref->list = &scaffold->children[i];
-		TAILQ_INSERT_TAIL(&queue, ref, entry);
-	}
-
-	/* Do breadth-first search */
-	struct oparser_component *child;
-	while (!TAILQ_EMPTY(&queue)) {
-		ref = TAILQ_FIRST(&queue);
-		child = LIST_FIRST(ref->list);
-		if (strcmp(child->comp_type->type, type) == 0)
-			return ref->list;
-	}
-	return NULL;
-}
-
-struct oparser_component_type *find_comp_type(char *type)
-{
-	struct oparser_component_type *comp_type;
+	struct oparser_comp_type *comp_type;
 	TAILQ_FOREACH(comp_type, all_type_list, entry) {
 		if (strcmp(comp_type->type, type) == 0)
 			return comp_type;
@@ -412,179 +157,218 @@ struct oparser_component_type *find_comp_type(char *type)
 	return NULL;
 }
 
-struct src_array *handle_one_comp_one_name(
-			struct oparser_component_type *comp_type,
-					struct oparser_name *name)
+static void handle_component(char *value)
 {
-	struct oparser_component *comp = LIST_FIRST(&comp_type->list);;
-	struct src_array *comps = malloc(sizeof(*comps));
-	comps->comp_array = malloc(sizeof(struct oparser_component *));
-	comps->comp_array[0] = comp;
-	comps->num_comps = 1;
-	if (!comps->comp_array[0]->name) {
-		comp->name = strdup(name->name);
+}
+
+static void handle_type(char *value)
+{
+	curr_ctype = NULL;
+	curr_ctype = find_comp_type(value);
+	if (!curr_ctype) {
+		curr_ctype = new_comp_type(value);
+		TAILQ_INSERT_HEAD(all_type_list, curr_ctype, entry);
+	}
+}
+
+static void handle_gif_path(char *value)
+{
+	sprintf(curr_ctype->gif_path, "%s", value);
+}
+
+static void handle_give_name(char *value)
+{
+	struct oparser_name *name;
+	if (!TAILQ_EMPTY(&curr_uids)) {
+		empty_name_list(&curr_uids);
+		TAILQ_INIT(&curr_uids);
+	}
+
+	if (!TAILQ_EMPTY(&curr_names)) {
+		empty_name_list(&curr_names);
+		TAILQ_INIT(&curr_names);
+	}
+}
+
+static void handle_identifiers(char *value)
+{
+	empty_name_list(&curr_uids);
+	char *_value = strdup(value);
+	curr_nids = process_string_name(_value, &curr_uids, NULL, NULL);
+	free(_value);
+	if (curr_nids < 1) {
+		fprintf(stderr, "%s: type [%s]: Invalid identifiers. [%s]\n",
+				__FUNCTION__, curr_ctype->type, value);
+		exit(EINVAL);
+	}
+}
+
+void handle_many_ids_one_name()
+{
+	struct oparser_name *uid;
+	struct oparser_name *name = TAILQ_FIRST(&curr_names);
+	struct oparser_comp *comp;
+	TAILQ_FOREACH(uid, &curr_uids, entry)
+		comp = new_comp(curr_ctype, uid->name, name->name);
+}
+
+void handle_many_ids_names()
+{
+	struct oparser_name *uid;
+	struct oparser_name *name;
+	struct oparser_comp *comp;
+
+	uid = TAILQ_FIRST(&curr_uids);
+	name = TAILQ_FIRST(&curr_names);
+	while (uid && name) {
+		comp = new_comp(curr_ctype, uid->name, name->name);
+		uid = TAILQ_NEXT(uid, entry);
+		name = TAILQ_NEXT(name, entry);
+	}
+}
+
+void handle_one_id_name()
+{
+	struct oparser_name *uid = TAILQ_FIRST(&curr_uids);
+	struct oparser_name *name = TAILQ_FIRST(&curr_names);
+	struct oparser_comp *comp = new_comp(curr_ctype, uid->name,
+							name->name);
+}
+
+static void handle_names(char *value)
+{
+	empty_name_list(&curr_names);
+	char *_value = strdup(value);
+	curr_nnames = process_string_name(_value, &curr_names, NULL, NULL);
+	free(_value);
+	if (curr_nnames < 1) {
+		fprintf(stderr, "%s: type [%s]: Invalid names. [%s]\n",
+				__FUNCTION__, curr_ctype->type, value);
+		exit(EINVAL);
+	}
+
+	if (curr_nids > 1) {
+		if (curr_nnames == 1) {
+			handle_many_ids_one_name();
+		} else if (curr_nnames == curr_nids) {
+			handle_many_ids_names();
+		} else {
+			fprintf(stderr, "%s: # of names[%d]: # of ids[%d]: "
+					"Require # of names == # of ids. "
+					"(Except # of names = 1).\n",
+					__FUNCTION__, curr_nnames, curr_nids);
+			exit(EINVAL);
+		}
 	} else {
-		if (strcmp(comps->comp_array[0]->name, name->name)) {
-			comp_parser_log("Invalid name\n");
+		if (curr_nnames == 1) {
+			handle_one_id_name();
+		} else {
+			fprintf(stderr, "%s: # of names[%d]: # of ids[%d]: "
+					"Require # of names == # of ids. "
+					"(Except # of names = 1). \n",
+					__FUNCTION__, curr_nnames, curr_nids);
 			exit(EINVAL);
 		}
 	}
-	return comps;
 }
 
-int _handle_comp_names(struct oparser_component_list *list,
-			struct oparser_name_queue *nlist,
-			struct oparser_component **comp_array,
-			int idx)
+static struct kw label_tbl[] = {
+	{ "component", handle_component },
+	{ "gif_path", handle_gif_path },
+	{ "give_name", handle_give_name },
+	{ "identifiers", handle_identifiers },
+	{ "names", handle_names },
+	{ "type", handle_type },
+};
+
+void clear_src_stack(struct src_stack *srcq, int level)
 {
-	int count = 0;
-	struct oparser_name *oname;
-	struct oparser_component *comp;
-	TAILQ_FOREACH(oname, nlist, entry) {
-		LIST_FOREACH(comp, list, entry) {
-			if (comp->name) {
-				if (strcmp(oname->name, comp->name) == 0) {
-					comp_array[idx + count] = comp;
-					count++;
-					break;
-				}
-			}
-		}
-		if (!comp) {
-			LIST_FOREACH(comp, list, entry) {
-				if (!comp->name) {
-					comp->name = strdup(oname->name);
-					comp_array[idx + count] = comp;
-					count++;
-					break;
-				}
-			}
-		}
-		/* All components of the type are names. */
-		if (!comp) {
-			comp_parser_log("Could not find component "
-					"type '%s' of name '%s'\n",
-					LIST_FIRST(list)->comp_type->type,
-								oname->name);
-			exit(ENOENT);
-		}
+	struct source *src = LIST_FIRST(srcq);
+	while (src && src->level >= level) {
+		LIST_REMOVE(src, entry);
+		free(src);
+		src = LIST_NEXT(src, entry);
 	}
-	return count;
 }
 
-struct src_array *handle_comps_names(struct src_array *src,
-				struct oparser_component_type *comp_type,
-					struct oparser_name_queue *nlist,
-					int num_names)
+void add_parent(struct oparser_comp *comp, struct oparser_comp *parent)
 {
-	struct oparser_name *oname;
-	struct oparser_component *comp, *tmp_comp;
-	struct src_array *comps = malloc(sizeof(*comps));
-	comps->num_comps = num_names * src->num_comps;
-	comps->comp_array = malloc(comps->num_comps *
-				sizeof(struct oparser_component *));
-
-
-	if (!src) {
-		_handle_comp_names(&comp_type->list, nlist,
-						comps->comp_array, 0);
-		goto out;
+	struct comp_array *carray;
+	LIST_FOREACH(carray, &comp->parents, entry) {
+		if (carray->comps[0]->comp_type == parent->comp_type)
+			break;
 	}
 
-	int i, j;
-	int idx = 0;
-	struct oparser_component_list *list;
-	for (i = 0; i < src->num_comps; i++) {
-		for (j = 0; j < src->comp_array[i]->num_child_types; j++) {
-			if (src->comp_array[i]->num_child_types > 0) {
-				list = &src->comp_array[i]->children[j];
-				tmp_comp = LIST_FIRST(list);
-				if (tmp_comp->comp_type == comp_type) {
-					idx += _handle_comp_names(list, nlist,
-						comps->comp_array, idx);
-					break;
-				}
-			}
-		}
+	if (!carray) {
+		carray = calloc(1, sizeof(*carray));
+		LIST_INSERT_HEAD(&comp->parents, carray, entry);
+		comp->num_ptypes++;
 	}
-out:
-	return comps;
+
+	oparser_add_comp(carray, parent);
 }
 
-struct src_array *handle_all_comp(struct src_array *src,
-					struct oparser_component_type *comp_type)
+void add_child(struct oparser_comp *comp, struct oparser_comp *child)
 {
-	struct src_array *comps;
-	struct oparser_component *comp;
-
-	int count = 0;
-	if (!src) {
-		comps = malloc(sizeof(*comps));
-		comps->comp_array = malloc(comp_type->num_comp *
-					sizeof(struct oparser_component *));
-		comps->num_comps = comp_type->num_comp;
-		LIST_FOREACH(comp, &comp_type->list, type_entry) {
-			comps->comp_array[count] = comp;
-			count++;
-		}
-		goto out;
+	struct comp_array *carray;
+	LIST_FOREACH(carray, &comp->children, entry) {
+		if (carray->comps[0]->comp_type == child->comp_type)
+			break;
 	}
 
-	int i, j;
-	struct oparser_component_list *list;
-	for (i = 0; i < src->num_comps; i++) {
-		for (j = 0; j < src->comp_array[i]->num_child_types; j++) {
-			list = &src->comp_array[i]->children[j];
-			if (LIST_FIRST(list)->comp_type == comp_type) {
-				LIST_FOREACH(comp, list, entry)
-					count++;
-				break;
-			}
-		}
+	if (!carray) {
+		carray = calloc(1, sizeof(*carray));
+		LIST_INSERT_HEAD(&comp->children, carray, entry);
+		comp->num_chtype++;
 	}
 
-	comps = malloc(sizeof(*comps));
-	comps->comp_array = malloc(count * sizeof(struct oparser_component *));
-	comps->num_comps = count;
-	count = 0;
-	for (i = 0; i < src->num_comps; i++) {
-		for (j = 0; j < src->comp_array[i]->num_child_types; j++) {
-			list = &src->comp_array[i]->children[j];
-			if (LIST_FIRST(list)->comp_type == comp_type) {
-				LIST_FOREACH(comp, list, entry) {
-					comps->comp_array[count] = comp;
-					count++;
-				}
-				break;
-			}
-		}
-	}
-out:
-	return comps;
+	oparser_add_comp(carray, child);
 }
 
-struct oparser_component *handle_name_map(FILE *conff,
-				struct oparser_scaffold *scaffold)
+void process_node(struct oparser_comp *comp, struct src_stack *srcq, int level)
 {
-	struct src_list src_queue;
-	LIST_INIT(&src_queue);
-	struct src_array *src, *comps;
+	struct source *src;
+	LIST_FOREACH(src, srcq, entry) {
+		if (src->level != level - 1)
+			break;
 
-	struct oparser_component *comp;
+		add_parent(comp, src->comp);
+		add_child(src->comp, comp);
+	}
+}
+
+/*
+ * Create all the edges in the software and hardware tree
+ *
+ * \param[in]   conff   The handle to the component cfg file
+ * \param[in/out]   scaffold   The tree of the software and hardware
+ */
+void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
+{
+	struct src_stack src_stack;
+	LIST_INIT(&src_stack);
+	struct source *src, *comps;
+
+	struct oparser_comp *comp;
 	char buf[1024];
 	char type[512];
-	char names[512];
+	char uids[512];
 	char *s;
 	int is_leaf;
-	int rc, level;
-	struct oparser_component_type *comp_type;
+	int rc, level, num_names;
+	struct oparser_comp_type *comp_type;
+	struct oparser_name_queue nlist;
+	struct oparser_name *uid;
+
+	int num_roots = num_components;
+	scaffold->num_nodes = num_components;
 
 	while (s = fgets(buf, sizeof(buf), conff)) {
 		is_leaf = 0;
 		/* Discard the line name_map */
 		if (s = strchr(buf, ':')) {
 			s = strtok(buf, ":");
-			if (strcmp(s, "name_map") == 0) {
+			if (strcmp(s, "component_tree") == 0) {
 				continue;
 			} else {
 				comp_parser_log("Invalid: label '%s'. "
@@ -593,7 +377,13 @@ struct oparser_component *handle_name_map(FILE *conff,
 			}
 		}
 
-		rc = sscanf(buf, " %[^{/\n]{%[^}]/", type, names);
+		rc = sscanf(buf, " %[^{/\n]{%[^}]/", type, uids);
+		if (rc == 1) {
+			comp_parser_log("%s: %s: No user id.\n",
+						__FUNCTION__, buf);
+			exit(EINVAL);
+		}
+
 		comp_type = find_comp_type(type);
 		if (!comp_type) {
 			comp_parser_log("No component type '%s'\n", type);
@@ -601,92 +391,56 @@ struct oparser_component *handle_name_map(FILE *conff,
 		}
 
 		level = count_leading_tabs(buf);
-		if (level == 1) {
-			while (!LIST_EMPTY(&src_queue)) {
-				src = LIST_FIRST(&src_queue);
-				LIST_REMOVE(src, entry);
-				free(src->comp_array);
-				free(src);
-			}
-			src = NULL;
-		} else {
-			if (LIST_EMPTY(&src_queue)) {
-				comp_parser_log("s/t wrong: the src_queue "
-						"should not be empty.\n");
-				exit(EPERM);
-			}
+		clear_src_stack(&src_stack, level);
 
-			src = LIST_FIRST(&src_queue);
-			while (src->level >= level) {
-				LIST_REMOVE(src, entry);
-				free(src->comp_array);
-				free(src);
-				src = LIST_FIRST(&src_queue);
+		if (scaffold->height < level -1)
+			scaffold->height = level - 1;
+
+		if (level > 1) {
+			if (LIST_EMPTY(&src_stack)) {
+				comp_parser_log("%s: s/t wrong: the src_queue "
+						"should not be empty.\n", buf);
+				exit(EPERM);
 			}
 		}
 
 		if (!strchr(buf, '/'))
 			is_leaf = 1;
 
-		if (rc == 1)
-			names[0] = '\0';
+		num_names = process_string_name(uids, &nlist, NULL, NULL);
+		TAILQ_FOREACH(uid, &nlist, entry) {
+			comp = find_comp(comp_type, uid->name);
+			if (!comp) {
+				comp_parser_log("%s: could not find "
+					"'%s{%s}'.\n", __FUNCTION__,
+					comp_type->type, uid->name);
+				exit(EPERM);
+			}
 
-		/* No given names */
-		if (names[0] == '\0') {
-			if (comp_type->num_comp > 1) {
-				comp_parser_log("Need 'names' for type '%s'\n",
-									type);
-				exit(EINVAL);
-			} else {
-				comps = malloc(sizeof(*comps));
-				comps->comp_array = malloc(sizeof(
-						struct oparser_component *));
-				comps->comp_array[0] = LIST_FIRST(
-							&comp_type->list);
-				comps->num_comps = 1;
-				goto add_src;
-				continue;
+			if (level > 1) {
+				TAILQ_REMOVE(all_type_list, comp_type, entry);
+				TAILQ_INSERT_HEAD(all_type_list, comp_type,
+									entry);
+
+				LIST_REMOVE(comp, root_entry);
+				num_roots--;
+				process_node(comp, &src_stack, level);
+			}
+
+			if (!is_leaf) {
+				src = calloc(1, sizeof(*src));
+				src->comp = comp;
+				src->level = level;
+				LIST_INSERT_HEAD(&src_stack, src, entry);
 			}
 		}
 
-		/* at least a name is given. */
-		if (strcmp(names, "*") == 0) {
-			comps = handle_all_comp(src, comp_type);
-			goto add_src;
-			continue;
-		}
+		empty_name_list(&nlist);
 
-		struct oparser_name_queue nlist;
-		int num_names = process_string_name(names, &nlist, NULL, NULL);
-
-		/* number of component of type == 1*/
-		if (comp_type->num_comp == 1) {
-			if (num_names > 1) {
-				comp_parser_log("More names are given than "
-						"number of components of type "
-						"'%s'\n", type);
-				exit(EINVAL);
-			} else {
-				comps = handle_one_comp_one_name(
-						comp_type, TAILQ_FIRST(&nlist));
-				goto add_src;
-				continue;
-			}
-		}
-
-		/* Number of components of type > 1 */
-		comps = handle_comps_names(src, comp_type, &nlist, num_names);
-
-add_src:
-		if (!is_leaf) {
-			comps->level = level;
-			LIST_INSERT_HEAD(&src_queue, comps, entry);
-		}
 	}
 
-	return NULL;
+	scaffold->num_children = num_roots;
 }
-
 
 struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 {
@@ -696,7 +450,8 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 
 	struct kw keyword;
 	struct kw *kw;
-	struct oparser_scaffold *scaffold = NULL;
+	struct oparser_scaffold *scaffold = malloc(sizeof(*scaffold));
+	scaffold->height = 0;
 
 	all_type_list = malloc(sizeof(*all_type_list));
 	if (!all_type_list) {
@@ -705,8 +460,16 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 		exit(ENOMEM);
 	}
 	TAILQ_INIT(all_type_list);
-	fseek(conff, 0, SEEK_SET);
 
+	all_root_list = malloc(sizeof(*all_root_list));
+	if (!all_root_list) {
+		comp_parser_log("comp_def: %s[%d]: Out of memory.\n",
+					__FUNCTION__, __LINE__);
+		exit(ENOMEM);
+	}
+	LIST_INIT(all_root_list);
+
+	fseek(conff, 0, SEEK_SET);
 	while (s = fgets(buf, sizeof(buf), conff)) {
 		sscanf(buf, " %[^:]: %[^#\t\n]", key, value);
 		trim_trailing_space(value);
@@ -715,10 +478,8 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 		if (key[0] == '#')
 			continue;
 
-		if (strcmp(key, "name_map") == 0) {
-			/* This should come after all other labels */
-			scaffold = oparser_create_scaffold();
-			handle_name_map(conff, scaffold);
+		if (strcmp(key, "component_tree") == 0) {
+			handle_component_tree(conff, scaffold);
 			break;
 		}
 
@@ -733,6 +494,10 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 			exit(EINVAL);
 		}
 	}
+
+	scaffold->all_type_list = all_type_list;
+	scaffold->children = all_root_list;
+
 	return scaffold;
 }
 

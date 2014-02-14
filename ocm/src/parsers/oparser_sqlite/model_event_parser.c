@@ -165,7 +165,7 @@ void handle_metric_name(char *value)
 			sprintf(m->prod_comp_type, "%s", prod_comps);
 			LIST_INSERT_HEAD(&metric_comp_list, m, entry);
 		}
-		destroy_name_list(&mnqueue);
+		empty_name_list(&mnqueue);
 	} else {
 		/* Nothing to be expanded */
 		m = malloc(sizeof(*m));
@@ -274,7 +274,7 @@ static void handle_action_name(char *value)
 				sevl->action_name, name->name);
 		}
 	}
-	destroy_name_list(&mnqueue);
+	empty_name_list(&mnqueue);
 }
 
 static void handle_execute(char *value)

@@ -72,34 +72,73 @@ struct set {
 };
 LIST_HEAD(set_list, set);
 
-struct template {
-	struct oparser_component *comp;
-	struct set_list slist;
+struct metric_type_ref {
+	struct metric_type *mtype;
+	LIST_ENTRY(metric_type_ref) entry; /* Entry of the list contained by comp_metric */
 };
 
+LIST_HEAD(mtype_ref_list, metric_type_ref);
+struct comp_metric_type {
+	struct oparser_comp_type *ctype;
+	struct mtype_ref_list mt_ref_list;
+	LIST_ENTRY(comp_metric_type) entry;
+};
+LIST_HEAD(cmtype_list, comp_metric_type);
+
+LIST_HEAD(tmpl_list, template);
 struct template_def {
 	char *name;
-	struct oparser_component_type *comp_type;
-	struct template *templates;
+	char *ldms_sampler;
+	char cfg[1024];
+	struct oparser_comp_type *comp_type;
+	struct tmpl_list templates;
 	int num_tmpls;
-	LIST_ENTRY(template_def) entry;
+	struct cmtype_list cmtlist;
+	LIST_ENTRY(template_def) entry; /* entry in the list of all temp. def */
 };
 LIST_HEAD(template_def_list, template_def);
 
+struct sampler_host {
+	struct oparser_comp *host;
+	struct tmpl_list tmpl_list;
+	LIST_ENTRY(sampler_host) entry;
+};
+
+struct comp_metric {
+	struct oparser_comp *comp; /* array of components */
+	struct metric_list mlist;
+};
+
+struct comp_metric_array {
+	struct comp_metric_type *cmt;
+	int num_cms;
+	struct comp_metric *cms;
+	LIST_ENTRY(comp_metric_array) entry;
+};
+
+struct template {
+	struct template_def *tmpl_def;
+	struct oparser_comp *host;
+	LIST_HEAD(, comp_metric_array) cma_list;
+	LIST_ENTRY(template) entry; /* entry in the list of all templates */
+	LIST_ENTRY(template) def_entry; /* entry in a template def */
+	LIST_ENTRY(template) host_entry; /* entry of the list contained by a sampler_host */
+};
+
+
 struct prod_comps {
-	struct oparser_component_type *comp_type;
-	struct oparser_component_list clist;
+	struct oparser_comp_type *comp_type;
+	struct oparser_comp_list clist;
 };
 
 void oparser_template_parser_init(FILE *_log_fp);
 
-struct template_def_list *oparser_parse_template(FILE *conf,
+struct tmpl_list *oparser_parse_template(FILE *conf,
 				struct oparser_scaffold *scaffold);
 
-void oparser_metrics_to_sqlite(struct template_def_list *tmpl_def_list,
+void oparser_metrics_to_sqlite(struct tmpl_list *tmpl_list,
 								sqlite3 *db);
 
-void oparser_templates_to_sqlite(struct template_def_list *tmpl_def_list,
-								sqlite3 *db);
+void oparser_templates_to_sqlite(struct tmpl_list *tmpl_list, sqlite3 *db);
 
 #endif /* TEMPLATE_PARSER_H_ */

@@ -209,7 +209,7 @@ void oquery_max_metric_type_id(sqlite3 *db, uint32_t *max_metric_type_id)
 int query_comp_id_by_name_cb(void *_comp, int argc, char **argv,
 							char **col_name)
 {
-	struct oparser_component *comp = (struct oparser_component *)_comp;
+	struct oparser_comp *comp = (struct oparser_comp *)_comp;
 	char *end;
 	comp->comp_id = strtol(argv[0], &end, 10);
 	if (!*argv[0] || *end) {
@@ -222,7 +222,7 @@ int query_comp_id_by_name_cb(void *_comp, int argc, char **argv,
 
 void oquery_comp_id_by_name(char *name, uint32_t *comp_id, sqlite3 *db)
 {
-	struct oparser_component comp;
+	struct oparser_comp comp;
 	comp.name = strdup(name);
 	char stmt[512];
 	sprintf(stmt, "SELECT comp_id FROM components WHERE name='%s';",

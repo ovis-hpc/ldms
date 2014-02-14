@@ -202,32 +202,32 @@ int main(int argc, char **argv) {
 			sprintf(path, "%s/%s", out_path,
 					OVIS_OUTPUT(COMP_NAME));
 			oparser_open_file(path, &comp_o, "w");
-			oparser_print_scaffold(scaffold, comp_o);
+//			oparser_print_scaffold(scaffold, comp_o);
 		}
 
 		if (tmpl_path) {
 			oparser_open_file(tmpl_path, &tmpl_conf, "r");
 
 			oparser_template_parser_init(stderr);
-			struct template_def_list *tmpl_def_list = NULL;
-			tmpl_def_list = oparser_parse_template(tmpl_conf,
+			struct tmpl_list *all_tmpl_list = NULL;
+			all_tmpl_list = oparser_parse_template(tmpl_conf,
 								scaffold);
-			if (!tmpl_def_list) {
+			if (!all_tmpl_list) {
 				fprintf(stderr, "Failed to parse the sampler"
 					" template configuration file.\n");
 				return -1;
 			}
 
-			oparser_templates_to_sqlite(tmpl_def_list, ovis_db);
+			oparser_templates_to_sqlite(all_tmpl_list, ovis_db);
 			printf("Complete table 'templates'\n");
-			oparser_metrics_to_sqlite(tmpl_def_list, ovis_db);
+			oparser_metrics_to_sqlite(all_tmpl_list, ovis_db);
 			printf("Complete table 'metrics'\n");
 			if (is_printed) {
 				sprintf(path, "%s/%s", out_path,
 						OVIS_OUTPUT(TMPL_NAME));
 				oparser_open_file(path, &tmpl_o, "w");
-				oparser_print_template_def_list(
-						tmpl_def_list, tmpl_o);
+				oparser_print_template_list(
+						all_tmpl_list, tmpl_o);
 			}
 		}
 	}
@@ -271,5 +271,3 @@ int main(int argc, char **argv) {
 
 	return 0;
 }
-
-
