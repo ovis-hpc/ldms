@@ -227,6 +227,13 @@ void cleanup(int x)
 	exit(x);
 }
 
+void cleanup_sa(int signal, siginfo_t *info, void *arg)
+{
+	printf("signo : %d\n", info->si_signo);
+	printf("si_pid: %d\n", info->si_pid);
+	cleanup(100);
+}
+
 void usage(char *argv[])
 {
 	printf("%s: [%s]\n", argv[0], FMT);
@@ -1087,12 +1094,12 @@ int process_add_host(int fd,
 			bdstr_reply(-EINVAL);
 			cat("Parameter for standby needs to be between ");
 			cat(cstr(STANDBY_MIN));
-			cat(" and "); 
+			cat(" and ");
 			cat(cstr(STANDBY_MAX));
 			cat(" inclusive.");
-                        send_reply(fd, sa, sa_len, bdstr, bdlen+1);
-                        rc = EINVAL;
-                        goto err;
+			send_reply(fd, sa, sa_len, bdstr, bdlen+1);
+			rc = EINVAL;
+			goto err;
 		}
 	}
 	attr = av_value(av_list, "port");
@@ -1204,7 +1211,7 @@ int process_update_standby(int fd,
 	if (!attr) {
 		bdstr_reply(-EINVAL);
 		cat(" The '");
-		cat(attr); 
+		cat(attr);
 		cat("' attribute must be specified.");
 		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
@@ -1218,12 +1225,12 @@ int process_update_standby(int fd,
 		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
 	}
-	
+
 	attr = av_value(av_list, "state");
 	if (!attr){
 		bdstr_reply(-EINVAL);
 		cat(" The '");
-		cat(attr); 
+		cat(attr);
 		cat("' attribute must be specified.");
 		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
@@ -1231,8 +1238,8 @@ int process_update_standby(int fd,
 	state = atoi(attr);
 	if ( (state != 0) && (state != 1)){
 		bdstr_reply(-EINVAL);
-		cat(" The value for '"); 
-		cat(attr); 
+		cat(" The value for '");
+		cat(attr);
 		cat("' is invalid.");
 		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 		return EINVAL;
@@ -2255,10 +2262,10 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	}
  out:
 	/* Put the reference taken at the call to ldms_update() */
-	hset_ref_put(hset);
 	pthread_mutex_lock(&hset->state_lock);
 	hset->state = LDMSD_SET_READY;
 	pthread_mutex_unlock(&hset->state_lock);
+	hset_ref_put(hset);
 }
 
 void update_data(struct hostspec *hs)
@@ -2760,7 +2767,7 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 	} else	if (strcmp(key_str, "hostname")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_HOSTNAME]) {
-			LDMS_ASSERT( (strlen(value_str) <= HOST_NAME_MAX ); 
+			LDMS_ASSERT( (strlen(value_str) <= HOST_NAME_MAX );
 			strcpy(myhostname, value_str);
 		}
 	} else if (strcmp(key_str, "thread_count")==0) {
@@ -3227,10 +3234,14 @@ int main(int argc, char *argv[])
 	ldms_set_t test_set;
 	log_fp = stdout;
 	char *cfg_file = NULL;
+	struct sigaction action;
 
-	signal(SIGHUP, cleanup);
-	signal(SIGINT, cleanup);
-	signal(SIGTERM, cleanup);
+	memset(&action, 0, sizeof(action));
+	action.sa_sigaction = cleanup_sa;
+	action.sa_flags = SA_SIGINFO;
+	sigaction(SIGHUP, &action, NULL);
+	sigaction(SIGINT, &action, NULL);
+	sigaction(SIGTERM, &action, NULL);
 
 	/* Set seed for random number generator. */
 	srand (time(NULL));
@@ -3246,7 +3257,7 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_INSTANCE] = 1;
 			break;
 		case 'H':
-			LDMS_ASSERT( (strlen(optarg) <= HOST_NAME_MAX) ); 
+			LDMS_ASSERT( (strlen(optarg) <= HOST_NAME_MAX) );
 			strcpy(myhostname, optarg);
 			has_arg[LDMS_HOSTNAME] = 1;
 			break;

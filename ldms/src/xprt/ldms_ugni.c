@@ -64,6 +64,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <sys/epoll.h>
 #include "gni_pub.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -303,8 +304,9 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	int cq_depth;
 	int rc;
 	char *cq_depth_s;
-	fd_set fdset;
-	struct timeval tv;
+	int efd;
+	int fdcnt;
+	struct epoll_event event;
 	gni_return_t grc;
 
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -342,23 +344,27 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	pthread_mutex_unlock(&ugni_lock);
 	if (grc != GNI_RC_SUCCESS)
 		goto err;
-/*
+
 	fcntl(gxp->sock, F_SETFL, O_NONBLOCK);
+	efd = epoll_create(1);
+	if (efd < 0)
+		goto err1;
 	rc = connect(gxp->sock, sa, sa_len);
-	if (errno != EINPROGRESS)
-		goto err1;
-	FD_ZERO(&fdset);
-	FD_SET(gxp->sock, &fdset);
-	tv.tv_sec = 5;
-	tv.tv_usec = 0;
-	if (select(gxp->sock + 1, NULL, &fdset, NULL, &tv) == 1) {
-		int so_error;
-		socklen_t len = sizeof so_error;
-		getsockopt(gxp->sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
-		if (so_error)
-			goto err1;
-	} else
-		goto err1;
+	if (errno != EINPROGRESS) {
+		close(epfd);
+		goto err;
+	}
+	event.events = EPOLLIN | EPOLLOUT | EPOLLHUP;
+	event.data.fd = r->sock;
+	if (epoll_ctl(epfd, EPOLL_CTL_ADD, r->sock, &event)) {
+		close(epfd);
+		goto err;
+	}
+	epcount = epoll_wait(epfd, &event, 1, 5000 /* 5s */);
+	close(epfd);
+	if (!epcount || (event.events & (EPOLLERR | EPOLLHUP)))
+		goto err;
+
 	fcntl(gxp->sock, F_SETFL, ~O_NONBLOCK);
 	sa_len = sizeof(ss);
 	rc = getsockname(gxp->sock, (struct sockaddr *)&ss, &sa_len);
@@ -366,17 +372,6 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 		goto err1;
 	if (_setup_connection(gxp, (struct sockaddr *)&ss, sa_len))
 		goto err1;
-*/
-        rc = connect(gxp->sock, sa, sa_len);
-        if (rc)
-                goto err1;
-        sa_len = sizeof(ss);
-        rc = getsockname(gxp->sock, (struct sockaddr *)&ss, &sa_len);
-        if (rc)
-                goto err1;
-        if (_setup_connection(gxp, (struct sockaddr *)&ss, sa_len))
-                goto err1;
-
 
 	/*
 	 * When we receive the peer's hello request, we will bind the endpoint
@@ -770,7 +765,7 @@ gni_return_t ugni_get_mh(struct ldms_ugni_xprt *gxp,
 	unsigned long end;
 
 	pthread_mutex_lock(&ugni_mh_lock);
- 	umh = LIST_FIRST(&mh_list);
+	umh = LIST_FIRST(&mh_list);
 	if (!umh) {
 		struct mm_info mmi;
 		mm_get_info(&mmi);

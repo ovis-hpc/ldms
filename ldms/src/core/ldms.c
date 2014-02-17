@@ -64,7 +64,7 @@
 #include <netinet/in.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
-#include "ogc_rbt.h"
+#include <coll/rbt.h>
 #include <limits.h>
 #ifdef ENABLE_MMAP
 #include <ftw.h>
@@ -86,19 +86,19 @@ static int set_comparator(void *a, void *b)
 
 	return strcmp(x, y);
 }
-static struct ogc_rbt set_tree = {
+static struct rbt set_tree = {
 	.root = NULL,
 	.comparator = set_comparator
 };
 
 struct ldms_set *ldms_find_local_set(const char *set_name)
 {
-	struct ogc_rbn *z;
+	struct rbn *z;
 	struct ldms_set *s = NULL;
 
-	z = ogc_rbt_find(&set_tree, (void *)set_name);
+	z = rbt_find(&set_tree, (void *)set_name);
 	if (z)
-		s = ogc_container_of(z, struct ldms_set, rb_node);
+		s = container_of(z, struct ldms_set, rb_node);
 
 	return s;
 }
@@ -166,23 +166,23 @@ uint32_t ldms_get_cardinality(ldms_set_t _set)
 
 static void rem_local_set(struct ldms_set *s)
 {
-	ogc_rbt_del(&set_tree, &s->rb_node);
+	rbt_del(&set_tree, &s->rb_node);
 }
 
 static void add_local_set(struct ldms_set *s)
 {
 	s->rb_node.key = s->meta->name;
-	ogc_rbt_ins(&set_tree, &s->rb_node);
+	rbt_ins(&set_tree, &s->rb_node);
 }
 
-static int visit_subtree(struct ogc_rbn *n,
+static int visit_subtree(struct rbn *n,
 			 int (*cb)(struct ldms_set *, void *arg),
 			 void *arg)
 {
 	struct ldms_set *set;
 	int rc;
 
-	if (!ogc_rbt_is_leaf(n)) {
+	if (!rbt_is_leaf(n)) {
 		if (!n->left || !n->right) {
 			printf("Corrupted set tree %p\n", n);
 			return -1;
@@ -190,7 +190,7 @@ static int visit_subtree(struct ogc_rbn *n,
 		rc = visit_subtree(n->left, cb, arg);
 		if (rc)
 			goto err;
-		set = ogc_container_of(n, struct ldms_set, rb_node);
+		set = container_of(n, struct ldms_set, rb_node);
 		rc = cb(set, arg);
 		if (rc)
 			goto err;
@@ -204,11 +204,22 @@ static int visit_subtree(struct ogc_rbn *n,
 	return rc;
 }
 
+struct cb_arg {
+	void *user_arg;
+	int (*user_cb)(struct ldms_set *, void *);
+};
+
+static int rbn_cb(struct rbn *rbn, void *arg, int level)
+{
+	struct cb_arg *cb_arg = arg;
+	struct ldms_set *set = container_of(rbn, struct ldms_set, rb_node);
+	return cb_arg->user_cb(set, cb_arg->user_arg);
+}
+
 int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 {
-	if (set_tree.root)
-		return visit_subtree(set_tree.root, cb, arg);
-	return 0;
+	struct cb_arg user_arg = { arg, cb };
+	return rbt_traverse(&set_tree, rbn_cb, &user_arg);
 }
 
 struct set_list_arg {

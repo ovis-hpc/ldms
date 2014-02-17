@@ -72,7 +72,7 @@ struct rbn {
 typedef int (*rbn_comparator_t)(void *tree_key, void *key);
 
 /* Processor for each node during traversal. */
-typedef void (*rbn_node_fn)(struct rbn *, void *, int);
+typedef int (*rbn_node_fn)(struct rbn *, void *, int);
 
 struct rbt {
 	struct rbn       *root;
@@ -89,7 +89,7 @@ struct rbn *rbt_min(struct rbt *t);
 struct rbn *rbt_max(struct rbt *t);
 void rbt_ins(struct rbt *t, struct rbn *n);
 void rbt_del(struct rbt *t, struct rbn *n);
-void rbt_traverse(struct rbt *t, rbn_node_fn f, void *fn_data);
+int rbt_traverse(struct rbt *t, rbn_node_fn f, void *fn_data);
 int rbt_is_leaf(struct rbn *n);
 #define offsetof(type,member) ((size_t) &((type *)0)->member)
 #define container_of(ptr, type, member) ({ \

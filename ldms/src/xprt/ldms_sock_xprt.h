@@ -70,7 +70,7 @@ struct sock_key {
 	uint32_t key;
 	uint32_t size;		/* size of the buffer */
 	void *buf;		/* data buffer for this key */
-	struct ogc_rbn rb_node;
+	struct rbn rb_node;
 };
 
 #pragma pack(4)

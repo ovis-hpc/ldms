@@ -60,12 +60,13 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/epoll.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
-#include "ogc_rbt.h"
+#include <coll/rbt.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
@@ -95,18 +96,18 @@ static int key_comparator(void *a, void *b)
 
 	return x - y;
 }
-static struct ogc_rbt key_tree = {
+static struct rbt key_tree = {
 	.root = NULL,
 	.comparator = key_comparator
 };
 
 static struct sock_key *find_key_(uint32_t key)
 {
-	struct ogc_rbn *z;
+	struct rbn *z;
 	struct sock_key *k = NULL;
-	z = ogc_rbt_find(&key_tree, (void *)(unsigned long)key);
+	z = rbt_find(&key_tree, (void *)(unsigned long)key);
 	if (z)
-		k = ogc_container_of(z, struct sock_key, rb_node);
+		k = container_of(z, struct sock_key, rb_node);
 	return k;
 }
 
@@ -129,7 +130,7 @@ static struct sock_key *alloc_key(void *buf)
 	k->key = ++last_key;
 	k->buf = buf;
 	k->rb_node.key = (void *)(unsigned long)k->key;
-	ogc_rbt_ins(&key_tree, &k->rb_node);
+	rbt_ins(&key_tree, &k->rb_node);
 	pthread_mutex_unlock(&key_tree_lock);
  out:
 	return k;
@@ -143,7 +144,7 @@ static void delete_key(uint32_t key)
 	k = find_key_(key);
 	if (!k)
 		goto out;
-	ogc_rbt_del(&key_tree, &k->rb_node);
+	rbt_del(&key_tree, &k->rb_node);
  out:
 	pthread_mutex_unlock(&key_tree_lock);
 }
@@ -264,8 +265,9 @@ static int sock_xprt_connect(struct ldms_xprt *x,
 {
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
 	struct sockaddr_storage ss;
-	fd_set fdset;
-	struct timeval tv;
+	int epfd;
+	int epcount;
+	struct epoll_event event;
 
 	r->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (r->sock < 0)
@@ -276,21 +278,25 @@ static int sock_xprt_connect(struct ldms_xprt *x,
 		goto err;
 	r->type = LDMS_SOCK_ACTIVE;
 	fcntl(r->sock, F_SETFL, O_NONBLOCK);
+	epfd = epoll_create(1);
+	if (epfd < 0)
+		goto err;
 	rc = connect(r->sock, sa, sa_len);
-	if (errno != EINPROGRESS)
+	if (errno != EINPROGRESS) {
+		close(epfd);
 		goto err;
-	FD_ZERO(&fdset);
-	FD_SET(r->sock, &fdset);
-	tv.tv_sec = 1;
-	tv.tv_usec = 0;
-	if (select(r->sock + 1, NULL, &fdset, NULL, &tv) == 1) {
-		int so_error;
-		socklen_t len = sizeof so_error;
-		getsockopt(r->sock, SOL_SOCKET, SO_ERROR, &so_error, &len);
-		if (so_error)
-			goto err;
-	} else
+	}
+	event.events = EPOLLIN | EPOLLOUT | EPOLLHUP;
+	event.data.fd = r->sock;
+	if (epoll_ctl(epfd, EPOLL_CTL_ADD, r->sock, &event)) {
+		close(epfd);
 		goto err;
+	}
+	epcount = epoll_wait(epfd, &event, 1, 5000 /* 5s */);
+	close(epfd);
+	if (!epcount || (event.events & (EPOLLERR | EPOLLHUP)))
+		goto err;
+
 	fcntl(r->sock, F_SETFL, ~O_NONBLOCK);
 	sa_len = sizeof(ss);
 	rc = getsockname(r->sock, (struct sockaddr *)&ss, &sa_len);
