@@ -304,7 +304,8 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	int cq_depth;
 	int rc;
 	char *cq_depth_s;
-	int efd;
+	int epfd;
+	int epcount;
 	int fdcnt;
 	struct epoll_event event;
 	gni_return_t grc;
@@ -346,24 +347,24 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 		goto err;
 
 	fcntl(gxp->sock, F_SETFL, O_NONBLOCK);
-	efd = epoll_create(1);
-	if (efd < 0)
+	epfd = epoll_create(1);
+	if (epfd < 0)
 		goto err1;
 	rc = connect(gxp->sock, sa, sa_len);
 	if (errno != EINPROGRESS) {
 		close(epfd);
-		goto err;
+		goto err1;
 	}
 	event.events = EPOLLIN | EPOLLOUT | EPOLLHUP;
-	event.data.fd = r->sock;
-	if (epoll_ctl(epfd, EPOLL_CTL_ADD, r->sock, &event)) {
+	event.data.fd = gxp->sock;
+	if (epoll_ctl(epfd, EPOLL_CTL_ADD, gxp->sock, &event)) {
 		close(epfd);
-		goto err;
+		goto err1;
 	}
 	epcount = epoll_wait(epfd, &event, 1, 5000 /* 5s */);
 	close(epfd);
 	if (!epcount || (event.events & (EPOLLERR | EPOLLHUP)))
-		goto err;
+		goto err1;
 
 	fcntl(gxp->sock, F_SETFL, ~O_NONBLOCK);
 	sa_len = sizeof(ss);
