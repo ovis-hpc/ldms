@@ -61,6 +61,8 @@
 #include <limits.h>
 #include <time.h>
 #include <errno.h>
+#include <pthread.h>
+#include <assert.h>
 #include "mmalloc.h"
 #include "../coll/rbt.h"
 #include "ovis-test/test.h"
@@ -94,6 +96,7 @@ static int compare_addr(void *node_key, void *val_key)
 /* NB: only works for power of two r */
 #define MMR_ROUNDUP(s,r)	((s + (r - 1)) & ~(r - 1))
 
+pthread_mutex_t mmr_lock = PTHREAD_MUTEX_INITIALIZER;
 static mm_region_t mmr;
 
 void mm_get_info(struct mm_info *mmi)
@@ -159,9 +162,10 @@ void *mm_alloc(size_t size)
 	size = MMR_ROUNDUP(size, mmr->grain);
 	count = size >> mmr->grain_bits;
 
+	pthread_mutex_lock(&mmr_lock);
 	rbn = rbt_find_least_gt_or_eq(&mmr->size_tree, &count);
 	if (!rbn)
-		return NULL;
+		goto err;
 
 	p = container_of(rbn, struct mm_prefix, size_node);
 
@@ -184,9 +188,14 @@ void *mm_alloc(size_t size)
 	}
 	p->count = count;
 	p->addr = (unsigned long)p;
+	pthread_mutex_unlock(&mmr_lock);
 	return ++p;
+ err:
+	pthread_mutex_unlock(&mmr_lock);
+	return NULL;
 }
 
+#define MM_DEBUG 11
 void mm_free(void *d)
 {
 	struct mm_prefix *p = d;
@@ -194,6 +203,13 @@ void mm_free(void *d)
 	struct rbn *rbn;
 	p --;
 
+	pthread_mutex_lock(&mmr_lock);
+
+#ifdef MM_DEBUG
+	/* Assert that the address is not already in the tree */
+	rbn  = rbt_find(&mmr->addr_tree, &p->addr);
+	assert(NULL == rbn);
+#endif
 	/* See if we can coalesce with our lesser sibling */
 	rbn = rbt_find_greatest_lt_or_eq(&mmr->addr_tree, &p->addr);
 	if (rbn) {
@@ -236,6 +252,7 @@ void mm_free(void *d)
 	/* Put 'p' back in the trees */
 	rbt_ins(&mmr->size_tree, &p->size_node);
 	rbt_ins(&mmr->addr_tree, &p->addr_node);
+	pthread_mutex_unlock(&mmr_lock);
 }
 
 #ifdef MMR_TEST
