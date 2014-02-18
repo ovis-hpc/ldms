@@ -106,7 +106,7 @@ OPTION_WITH_EVENT
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  ldms requires libpthread.]))
-dnl save LIBS variable. 
+dnl save LIBS variable.
 TMPLIBS="$LIBS"
 
 AX_LIB_READLINE

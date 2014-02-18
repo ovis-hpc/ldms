@@ -72,6 +72,7 @@
 #include <assert.h>
 #include <libgen.h>
 #include <event2/thread.h>
+#include <coll/str_map.h>
 #include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
@@ -160,6 +161,8 @@ ldms_t ldms;
 FILE *log_fp;
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
+
+struct str_map *hset_map;
 
 /* dirty_threshold defined in ldmsd_store.c */
 extern int dirty_threshold;
@@ -1145,8 +1148,9 @@ int process_add_host(int fd,
 	struct hostset *hset;
 	while (set_name) {
 		/* Check to see if it's already there */
-		hset = find_host_set(hs, set_name);
-		if (!hset) {
+		uint64_t x = str_map_get(hset_map, set_name);
+
+		if (!x) {
 			hset = hset_new();
 			if (!hset) {
 				goto clean_set_list;
@@ -1159,8 +1163,16 @@ int process_add_host(int fd,
 			}
 
 			hset->host = hs;
-
+			str_map_insert(hset_map, set_name, 1);
 			LIST_INSERT_HEAD(&hs->set_list, hset, entry);
+		} else {
+			/* Duplicate hset is not allowed */
+			rc = EINVAL;
+			bdstr_reply(-rc);
+			cat("Duplicate set: ");
+			cat(set_name);
+			send_reply(fd, sa, sa_len, bdstr, bdlen+1);
+			goto clean_set_list;
 		}
 		set_name = strtok(NULL, ",");
 	}
@@ -1174,24 +1186,29 @@ add_timeout:
 	bdstr_set(&replybuf,"0");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
-clean_set_list:
-	while ( (hset = LIST_FIRST(&hs->set_list)) != NULL ) {
-		LIST_REMOVE(hset, entry);
-		free(hset->name);
-		free(hset);
-	}
 enomem:
 	rc = ENOMEM;
 	sprintf(intbuf, "%d", -ENOMEM);
 	bdstr_set(&replybuf,intbuf);
 	cat("Memory allocation failure.");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
+clean_set_list:
+	if (hs) {
+		while ( (hset = LIST_FIRST(&hs->set_list)) != NULL ) {
+			LIST_REMOVE(hset, entry);
+			str_map_remove(hset_map, hset->name);
+			free(hset->name);
+			free(hset);
+		}
+	}
 err:
-	if (hs->hostname)
-		free(hs->hostname);
-	if (hs->xprt_name)
-		free(hs->xprt_name);
-	free(hs);
+	if (hs) {
+		if (hs->hostname)
+			free(hs->hostname);
+		if (hs->xprt_name)
+			free(hs->xprt_name);
+		free(hs);
+	}
 	return rc;
 }
 
@@ -2767,7 +2784,7 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 	} else	if (strcmp(key_str, "hostname")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_HOSTNAME]) {
-			LDMS_ASSERT( (strlen(value_str) <= HOST_NAME_MAX );
+			LDMS_ASSERT( (strlen(value_str) <= HOST_NAME_MAX ));
 			strcpy(myhostname, value_str);
 		}
 	} else if (strcmp(key_str, "thread_count")==0) {
@@ -3242,6 +3259,13 @@ int main(int argc, char *argv[])
 	sigaction(SIGHUP, &action, NULL);
 	sigaction(SIGINT, &action, NULL);
 	sigaction(SIGTERM, &action, NULL);
+
+	hset_map = str_map_create(65521);
+	if (!hset_map) {
+		errno = ENOMEM;
+		perror("str_map_create");
+		exit(-1);
+	}
 
 	/* Set seed for random number generator. */
 	srand (time(NULL));
