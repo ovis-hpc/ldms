@@ -50,6 +50,17 @@ OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
 OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
 
+dnl Swig stuffs
+OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
+if test -z "$ENABLE_SWIG_TRUE"
+then
+AM_PATH_PYTHON(2.6)
+AC_PROG_SWIG
+SWIG_PYTHON
+pkgpythondir="${pythondir}/ovis_lib"
+pkgpyexecdir="${pkgpythondir}"
+fi
+
 AC_SUBST(ac_configure_args)
 
 AC_OUTPUT(Makefile
@@ -63,4 +74,7 @@ AC_OUTPUT(Makefile
 	  src/zap/Makefile
 	  src/zap/rdma/Makefile
 	  src/zap/sock/Makefile
-	  src/zap/test/Makefile)
+	  src/zap/test/Makefile
+	  swig/Makefile
+	  swig/zap/Makefile
+	  )

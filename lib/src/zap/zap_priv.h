@@ -52,6 +52,7 @@
 #ifndef __ZAP_PRIV_H__
 #define __ZAP_PRIV_H__
 #include <inttypes.h>
+#include <semaphore.h>
 #include <sys/queue.h>
 
 #include "config.h"
@@ -72,6 +73,8 @@ struct zap_ep {
 	pthread_mutex_t lock;
 	zap_ep_state_t state;
 	void *ucontext;
+
+	sem_t block_sem; /**< Semaphore to support blocking operations */
 
 	LIST_HEAD(zap_map_list, zap_map) map_list;
 
