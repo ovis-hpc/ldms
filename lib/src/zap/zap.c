@@ -62,6 +62,7 @@
 #include <time.h>
 #include <limits.h>
 #include <fcntl.h>
+#include <netdb.h>
 #include "zap.h"
 #include "zap_priv.h"
 
@@ -73,6 +74,11 @@
 #else
 #define DLOG(ep, fmt, ...)
 #endif
+
+#define ZLOG(ep, fmt, ...) do { \
+	if (ep && ep->z && ep->z->log_fn) \
+		ep->z->log_fn(fmt, ##__VA_ARGS__); \
+} while(0)
 
 static void default_log(const char *fmt, ...)
 {
@@ -107,6 +113,11 @@ void zap_set_ucontext(zap_ep_t ep, void *context)
 	ep->ucontext = context;
 }
 
+zap_mem_info_t default_zap_mem_info(void)
+{
+	return NULL;
+}
+
 zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
 		  zap_mem_info_fn_t mem_info_fn)
 {
@@ -118,6 +129,8 @@ zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
 
 	if (!log_fn)
 		log_fn = default_log;
+	if (!mem_info_fn)
+		mem_info_fn = default_zap_mem_info;
 
 	libdir = getenv("ZAP_LIBPATH");
 	if (!libdir || libdir[0] == '\0')
@@ -174,8 +187,33 @@ size_t zap_max_msg(zap_t z)
 	return z->max_msg;
 }
 
+void blocking_zap_cb(zap_ep_t zep, zap_event_t ev)
+{
+	switch (ev->type) {
+	case ZAP_EVENT_CONNECT_REQUEST:
+	case ZAP_EVENT_READ_COMPLETE:
+	case ZAP_EVENT_RECV_COMPLETE:
+	case ZAP_EVENT_RENDEZVOUS:
+		ZLOG(zep, "zap: Unhandling event %s\n", zap_event_str(ev->type));
+		break;
+	case ZAP_EVENT_CONNECTED:
+	case ZAP_EVENT_CONNECT_ERROR:
+	case ZAP_EVENT_REJECTED:
+		sem_post(&zep->block_sem);
+		break;
+	case ZAP_EVENT_DISCONNECTED:
+		/* Just do nothing */
+		break;
+	case ZAP_EVENT_WRITE_COMPLETE:
+		/* Do nothing */
+		break;
+	}
+}
+
 zap_err_t zap_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
 {
+	if (!cb)
+		cb = blocking_zap_cb;
 	zap_err_t zerr = z->new(z, pep, cb);
 	if (!zerr) {
 		(*pep)->z = z;
@@ -183,6 +221,7 @@ zap_err_t zap_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
 		(*pep)->ref_count = 1;
 		(*pep)->state = ZAP_EP_INIT;
 		pthread_mutex_init(&(*pep)->lock, NULL);
+		sem_init(&(*pep)->block_sem, 0, 0);
 	}
 	return zerr;
 }
@@ -190,6 +229,37 @@ zap_err_t zap_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb)
 {
 	return ep->z->accept(ep, cb);
+}
+
+zap_err_t zap_connect_ez(zap_ep_t ep, const char *host_port)
+{
+	char buff[256];
+	strncpy(buff, host_port, 256);
+	char *host, *port;
+	host = buff;
+	port = strchr(buff, ':');
+	if (port) {
+		*port = '\0';
+		port++;
+	}
+	struct addrinfo *ai;
+	int rc = getaddrinfo(host, port, NULL, &ai);
+	if (rc)
+		return ZAP_ERR_RESOURCE;
+	zap_err_t zerr = zap_connect_block(ep, ai->ai_addr, ai->ai_addrlen);
+	freeaddrinfo(ai);
+	return zerr;
+}
+
+zap_err_t zap_connect_block(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
+{
+	zap_err_t zerr = zap_connect(ep, sa, sa_len);
+	if (zerr)
+		return zerr;
+	sem_wait(&ep->block_sem);
+	if (ep->state != ZAP_EP_CONNECTED)
+		return ZAP_ERR_CONNECT;
+	return ZAP_ERR_OK;
 }
 
 zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)

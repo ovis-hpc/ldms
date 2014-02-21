@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = src
+SUBDIRS = src swig
 EXTRA_DIST = autogen.sh COPYRIGHT doxygen/html
 
 OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)

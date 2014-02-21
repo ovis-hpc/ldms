@@ -73,6 +73,9 @@
 #define __ZAP_H__
 #include <inttypes.h>
 #include <sys/queue.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 
 #define ZAP_MAX_TRANSPORT_NAME_LEN 16
 
@@ -263,6 +266,29 @@ zap_err_t zap_free(zap_ep_t ep);
  * \return !0	A Zap error code. See zap_err_t.
  */
 zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
+
+/**
+ * The blocking version of ::zap_connect()
+ *
+ * \param ep	The transport handle.
+ * \param sa	Pointer to a sockaddr containing the address of the
+ *		remote peer.
+ * \param sa_len Size of the sockaddr in bytes.
+ * \return 0	Success
+ * \return !0	A Zap error code. See zap_err_t.
+ */
+zap_err_t zap_connect_block(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
+
+/**
+ * The blocking and easier version of ::zap_connect()
+ *
+ * \param ep	The transport handle.
+ * \param host_port A string in the form of "host:port"
+ *
+ * \return 0	Success
+ * \return !0	A Zap error code. See zap_err_t.
+ */
+zap_err_t zap_connect_ez(zap_ep_t ep, const char *host_port);
 
 /** \brief Accept a connection request from a remote peer.
  *
