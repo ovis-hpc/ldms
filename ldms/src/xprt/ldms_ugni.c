@@ -988,7 +988,6 @@ static int init_once(ldms_log_fn_t log_fn)
 	if (rc)
 		goto err_2;
 
-	atexit(ugni_xprt_cleanup);
 	ptag_str = getenv("LDMS_UGNI_PTAG");
 	if (!ptag_str) {
 		rc = EINVAL;
@@ -1015,6 +1014,9 @@ static int init_once(ldms_log_fn_t log_fn)
 	if (((int) euid != 0) || rc == GNI_RC_SUCCESS )
 		rc = ugni_dom_init(ptag, cookie, getpid(), &ugni_gxp);
 
+	if (rc)
+		goto err_3;
+	atexit(ugni_xprt_cleanup);
 	return 0;
  err_3:
 	pthread_cancel(cq_thread);
@@ -1022,6 +1024,7 @@ static int init_once(ldms_log_fn_t log_fn)
 	pthread_cancel(io_thread);
  err_1:
 	event_base_free(io_event_loop);
+	io_event_loop = NULL;
 	return rc;
 }
 
