@@ -13,7 +13,7 @@ SUBDIRS += test
 endif
 
 libzap_la_SOURCES = zap.c zap_priv.h
-libzap_la_LIBADD = -ldl
+libzap_la_LIBADD = -ldl -lpthread
 libzapincludedir = $(includedir)/zap
 libzapinclude_HEADERS = zap.h
 
