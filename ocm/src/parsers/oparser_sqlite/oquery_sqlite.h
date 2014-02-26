@@ -68,6 +68,11 @@ void oquery_metric_id(char *metric_name, char *prod_comp_type,
 
 void oquery_num_sampling_nodes( int *num_sampling_nodes, sqlite3 *db);
 
+void oquery_all_comp_ids(int *num_compids, uint32_t **comp_ids, sqlite3 *db);
+
 void oquery_comp_id_by_name(char *name, uint32_t *comp_id, sqlite3 *db);
+
+void
+oquery_comp_id_by_uid(char *type, char *uid, uint32_t *comp_id, sqlite3 *db);
 
 #endif /* OVIS_DB_QUERY_H_ */

@@ -206,6 +206,145 @@ void oquery_max_metric_type_id(sqlite3 *db, uint32_t *max_metric_type_id)
 	sqlite3_free(errmsg);
 }
 
+void oquery_numb_comps(int *num_comps, sqlite3 *db)
+{
+	struct oparser_comp comp;
+	char command[512];
+	int rc;
+	struct sqlite3_stmt *stmt;
+	sprintf(command, "SELECT COUNT(comp_id) FROM components;");
+
+	rc = sqlite3_prepare_v2(db, command, -1, &stmt, 0);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3_prepare_v2 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_ROW) {
+		fprintf(stderr, "sqlite3_step error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+	int num = sqlite3_column_int(stmt, 0);
+	*num_comps = num;
+
+	sqlite3_finalize(stmt);
+}
+
+void oquery_all_comp_ids(int *num_compids, uint32_t **comp_ids, sqlite3 *db)
+{
+	struct oparser_comp comp;
+	char command[512];
+	int rc;
+	struct sqlite3_stmt *stmt;
+	sprintf(command, "SELECT COUNT(comp_id) FROM components;");
+
+	rc = sqlite3_prepare_v2(db, command, -1, &stmt, 0);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3_prepare_v2 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_ROW) {
+		fprintf(stderr, "sqlite3_step error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+	int num = sqlite3_column_int(stmt, 0);
+	*num_compids = num;
+
+	sqlite3_finalize(stmt);
+
+	sprintf(command, "SELECT comp_id FROM components;");
+
+	rc = sqlite3_prepare_v2(db, command, -1, &stmt, 0);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3_prepare_v2 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	uint32_t *compids = *comp_ids;
+	compids = malloc(*num_compids * sizeof(uint32_t));
+
+	int i = 0;
+	rc = sqlite3_step(stmt);
+	while (rc == SQLITE_ROW) {
+		compids[i++] = sqlite3_column_int(stmt, 0);
+		rc = sqlite3_step(stmt);
+	}
+
+	if (rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	sqlite3_finalize(stmt);
+}
+
+void oquery_comp_id_by_type(const char *type, int *numcomps,
+					uint32_t **compids, sqlite3 *db)
+{
+	char command[512];
+	int rc;
+	struct sqlite3_stmt *stmt;
+	sprintf(command, "SELECT COUNT(*) FROM components where type='%s';",
+									type);
+
+	rc = sqlite3_prepare_v2(db, command, 512, &stmt, 0);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3_prepare_v2 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	rc = sqlite3_step(stmt);
+	if (rc != SQLITE_ROW) {
+		fprintf(stderr, "sqlite3_step error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+	int num = sqlite3_column_int(stmt, 0);
+	*numcomps = num;
+	sqlite3_finalize(stmt);
+
+	sprintf(command, "SELECT comp_id FROM components where type='%s';",
+									type);
+
+	rc = sqlite3_prepare_v2(db, command, 512, &stmt, 0);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3_prepare_v2 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	uint32_t *comp_ids = malloc(num * sizeof(uint32_t));;
+	*compids = comp_ids;
+
+	int i = 0;
+
+	rc = sqlite3_step(stmt);
+	while (rc == SQLITE_ROW) {
+		const char *compid_s;
+		compid_s = sqlite3_column_text(stmt, 0);
+		comp_ids[i++] = strtoul(compid_s, NULL, 0);
+		rc = sqlite3_step(stmt);
+	}
+
+	if (rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	sqlite3_finalize(stmt);
+}
+
 int query_comp_id_by_name_cb(void *_comp, int argc, char **argv,
 							char **col_name)
 {
@@ -240,6 +379,28 @@ void oquery_comp_id_by_name(char *name, uint32_t *comp_id, sqlite3 *db)
 	}
 	*comp_id = comp.comp_id;
 	free(comp.name);
+	sqlite3_free(errmsg);
+}
+
+void
+oquery_comp_id_by_uid(char *type, char *uid, uint32_t *comp_id, sqlite3 *db)
+{
+	struct oparser_comp comp;
+	char stmt[512];
+	sprintf(stmt, "SELECT comp_id FROM components WHERE type='%s' "
+			"and identifier='%s';", type, uid);
+	int rc;
+	char *errmsg;
+
+	rc = sqlite3_exec(db, stmt, query_comp_id_by_name_cb,
+						&comp, &errmsg);
+	if (rc != SQLITE_OK) {
+		fprintf(stderr, "Failed to query comp_id by name: %s\n",
+				sqlite3_errmsg(db));
+		sqlite3_free(errmsg);
+		exit(rc);
+	}
+	*comp_id = comp.comp_id;
 	sqlite3_free(errmsg);
 }
 

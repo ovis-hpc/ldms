@@ -83,9 +83,12 @@ int num_mnames; /* Number of metric names */
 char metric_name[128];
 struct metric_id_s *mid_s;
 char prod_comp_types[256];
-struct oparser_name_queue cnqueue; /* Component name queue */
 int num_cnames;
 struct mae_metric_list metric_list;
+
+int is_user_event;
+uint32_t num_user_event;
+
 
 struct mae_metric_comp {
 	char metric_name[128];
@@ -110,6 +113,8 @@ void oparser_mae_parser_init(sqlite3 *_db)
 	LIST_INIT(&metric_comp_list);
 	event_id = 0;
 	db = _db;
+	is_user_event = 0;
+	num_user_event = 0xF0000000 - 1;
 }
 
 static void handle_model(char *value)
@@ -204,7 +209,7 @@ name:
 
 static void handle_model_id(char *value)
 {
-	int *model_id;
+	uint16_t *model_id;
 	switch (objective) {
 	case MAE_OBJ_MODEL:
 		model_id = &model->model_id;
@@ -218,11 +223,14 @@ static void handle_model_id(char *value)
 	}
 	char *end;
 	*model_id = (unsigned short) strtoul(value, &end, 10);
+
 	if (!*value || *end) {
-		fprintf(stderr, "%dmodel_id '%s' is not an integer.\n",
-						-EINVAL, value);
+		fprintf(stderr, "%dmodel_id '%s' is not "
+				"an integer.\n",
+				-EINVAL, value);
 		exit(EINVAL);
 	}
+
 }
 
 static void handle_thresholds(char *value)
@@ -284,8 +292,7 @@ static void handle_execute(char *value)
 		oom_report(__FUNCTION__);
 }
 
-void mae_print_event();
-static void handle_event(char *value)
+void create_event()
 {
 	objective = MAE_OBJ_EVENT;
 	event = calloc(1, sizeof(*event));
@@ -298,6 +305,13 @@ static void handle_event(char *value)
 	TAILQ_INSERT_TAIL(&event_q, event, entry);
 }
 
+void mae_print_event();
+static void handle_event(char *value)
+{
+	is_user_event = 0;
+	create_event();
+}
+
 static void handle_metric(char *value)
 {
 	mid_s = calloc(1, sizeof(*mid_s));
@@ -308,11 +322,88 @@ static void handle_metric(char *value)
 	LIST_INIT(&metric_comp_list);
 }
 
+void create_metric_id_user_event(char *type, struct oparser_name_queue *nqueue)
+{
+	uint64_t metric_id;
+	uint32_t offset_mtype_id = 0xF0000000;
+	uint32_t comp_id;
+	int i = 0;
+	struct oparser_name *uid;
+	TAILQ_FOREACH(uid, nqueue, entry) {
+		oquery_comp_id_by_uid(type, uid->name, &comp_id, db);
+		metric_id = gen_metric_id(comp_id, num_user_event);
+		mid_s->metric_ids[i++] = metric_id;
+	}
+}
+
+void _handle_components_uevent(char *value)
+{
+	handle_metric(NULL);
+
+	if (strcmp(value, "*") == 0) {
+		int numcomps;
+		oquery_numb_comps(&numcomps, db);
+		mid_s->num_metric_ids = numcomps;
+		mid_s->metric_ids = malloc(numcomps * sizeof(uint64_t));
+
+		int i;
+		uint64_t metricid;
+		for (i = 0; i < numcomps; i++) {
+			/* Assume that the comp ID starts from 1 to numcomps. */
+			metricid = gen_metric_id(i + 1, num_user_event);
+			mid_s->metric_ids[i] = metricid;
+		}
+	} else {
+		char type[512], uids[512];
+		int rc;
+		rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uids);
+		if (rc == 1) {
+			fprintf(stderr, "%s: %s: No user id.\n",
+					__FUNCTION__, value);
+			exit(EINVAL);
+		}
+
+		int numcomps;
+		uint32_t *comp_ids;
+		if (strcmp(uids, "*") == 0) {
+			oquery_comp_id_by_type(type, &numcomps, &comp_ids, db);
+			mid_s->num_metric_ids = numcomps;
+			mid_s->metric_ids = malloc(numcomps *
+							sizeof(uint64_t));
+			uint64_t metricid;
+			int i;
+			for (i = 0; i < numcomps; i++) {
+				metricid = gen_metric_id(comp_ids[i], num_user_event);
+				mid_s->metric_ids[i] = metricid;
+			}
+			return;
+		}
+
+		struct oparser_name_queue cnqueue;
+		int num_cnames;
+		num_cnames = process_string_name(uids, &cnqueue, NULL, NULL);
+		mid_s->num_metric_ids = num_cnames;
+		mid_s->metric_ids = malloc(num_cnames * sizeof(uint64_t));
+		create_metric_id_user_event(type, &cnqueue);
+		empty_name_list(&cnqueue);
+	}
+}
+
 static void handle_components(char *value)
 {
+	struct oparser_name_queue cnqueue;
 	struct mae_metric_comp *m;
 	struct mae_metric *metric;
 	int i;
+
+	/* handle the user-generated events */
+	if (is_user_event) {
+		_handle_components_uevent(value);
+		return;
+	}
+
+
+	/* handle the regular events */
 	if (strcmp(value, "*") == 0) {
 		LIST_FOREACH(m, &metric_comp_list, entry) {
 			oquery_metric_id(m->metric_name, m->prod_comp_type,
@@ -321,7 +412,16 @@ static void handle_components(char *value)
 		goto assign;
 	}
 
-	num_cnames = process_string_name(value, &cnqueue, NULL, NULL);
+	char type[512], uids[512];
+	int rc;
+	rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uids);
+	if (rc == 1) {
+		fprintf(stderr, "%s: %s: No user id.\n",
+				__FUNCTION__, value);
+		exit(EINVAL);
+	}
+	num_cnames = process_string_name(uids, &cnqueue, NULL, NULL);
+
 	struct oparser_name *name;
 	char coll_comps[1024];
 	name = TAILQ_FIRST(&cnqueue);
@@ -329,6 +429,7 @@ static void handle_components(char *value)
 	while (name = TAILQ_NEXT(name, entry))
 		sprintf(coll_comps, "%s,'%s'", coll_comps, name->name);
 	sprintf(coll_comps, "%s", coll_comps);
+	empty_name_list(&cnqueue);
 
 	LIST_FOREACH(m, &metric_comp_list, entry) {
 		oquery_metric_id(m->metric_name, m->prod_comp_type,
@@ -423,6 +524,14 @@ out:
 		oom_report(__FUNCTION__);
 }
 
+static void handle_user_event(char *value)
+{
+	is_user_event = 1;
+	create_event();
+	event->model_id = 0xFFFF;
+	num_user_event++;
+}
+
 static struct kw label_tbl[] = {
 	{ "action", handle_action },
 	{ "action_name", handle_action_name },
@@ -440,6 +549,7 @@ static struct kw label_tbl[] = {
 	{ "report_flags", handle_report_flags },
 	{ "severity", handle_severity },
 	{ "thresholds", handle_thresholds },
+	{ "user-event", handle_user_event },
 };
 
 void oparser_parse_model_event_conf(FILE *conf)

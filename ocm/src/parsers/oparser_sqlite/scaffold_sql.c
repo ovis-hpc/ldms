@@ -124,7 +124,8 @@ int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
 						__FUNCTION__);
 
 	oparser_bind_text(db, stmt, 2, comp->comp_type->type, __FUNCTION__);
-	oparser_bind_int(db, stmt, 3, comp->comp_id, __FUNCTION__);
+	oparser_bind_text(db, stmt, 3, comp->uid, __FUNCTION__);
+	oparser_bind_int(db, stmt, 4, comp->comp_id, __FUNCTION__);
 
 	if (comp->num_ptypes) {
 		LIST_FOREACH(carray, &comp->parents, entry) {
@@ -140,16 +141,16 @@ int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
 				}
 			}
 		}
-		oparser_bind_text(db, stmt, 4, parents, __FUNCTION__);
+		oparser_bind_text(db, stmt, 5, parents, __FUNCTION__);
 	} else {
-		oparser_bind_null(db, stmt, 4, __FUNCTION__);
+		oparser_bind_null(db, stmt, 5, __FUNCTION__);
 	}
 
 	if (comp->comp_type->gif_path) {
-		oparser_bind_text(db, stmt, 5, comp->comp_type->gif_path,
+		oparser_bind_text(db, stmt, 6, comp->comp_type->gif_path,
 							__FUNCTION__);
 	} else {
-		oparser_bind_null(db, stmt, 5, __FUNCTION__);
+		oparser_bind_null(db, stmt, 6, __FUNCTION__);
 	}
 
 	int i;
@@ -164,8 +165,6 @@ int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
 			component_to_sqlite(child, db, stmt);
 		}
 	}
-
-
 	return 0;
 }
 
@@ -177,15 +176,16 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 	stmt_s = "CREATE TABLE components(" \
 		 "name		CHAR(64)	NOT NULL," \
 		 "type		CHAR(64)	NOT NULL," \
+		 "identifier	TEXT		NOT NULL," \
 		 "comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
 		 "parent_id	TEXT," \
 		 "gif_path	TEXT);";
 
-	char *index_stmt = "CREATE INDEX components_idx ON components(name,type);";
+	char *index_stmt = "CREATE INDEX components_idx ON components(name,type,identifier);";
 	create_table(stmt_s, index_stmt, db);
 
-	stmt_s = "INSERT INTO components(name, type, comp_id, parent_id, gif_path) " \
-			"VALUES(@vname, @vtype, @vcomp_id, @vpid, @gifpath)";
+	stmt_s = "INSERT INTO components(name, type, identifier, comp_id, parent_id, gif_path) " \
+			"VALUES(@vname, @vtype, @videntifier, @vcomp_id, @vpid, @gifpath)";
 
 	sqlite3_stmt *stmt;
 	char *sqlite_err = 0;

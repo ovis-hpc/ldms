@@ -70,7 +70,7 @@ enum mae_me_sevl {
 
 struct oparser_model {
 	char *name;
-	int model_id;
+	uint16_t model_id;
 	char *thresholds;
 	char *params;
 	char report_flags[MAE_NUM_LEVELS + 1];
@@ -100,7 +100,7 @@ LIST_HEAD(metric_id_list, metric_id_s);
 struct oparser_event {
 	int event_id;
 	char *name;
-	int model_id;
+	uint16_t model_id;
 	struct metric_id_list mid_list;
 	int num_metric_id_set;
 	struct oparser_sev_level msg_level[MAE_NUM_LEVELS];
