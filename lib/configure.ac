@@ -33,7 +33,7 @@ if test "$disable_zap" != "yes"; then
   OPTION_WITH_EVENT
 
 dnl we need libibverbs-devel and librdmacm-devel to support rdma
-  if test "$disable_rdma" != "yes"; then
+  if test "$enable_rdma" = "yes"; then
     AC_CHECK_HEADER([infiniband/verbs.h],
     [AC_DEFINE([HAVE_VERBS_H], [1],
       [Define to 1 if you have infiniband/verbs.h.])],
