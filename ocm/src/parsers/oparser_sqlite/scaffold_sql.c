@@ -128,17 +128,19 @@ int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
 	oparser_bind_int(db, stmt, 4, comp->comp_id, __FUNCTION__);
 
 	if (comp->num_ptypes) {
+		int num = 0;
 		LIST_FOREACH(carray, &comp->parents, entry) {
 			int i;
 			for (i = 0; i < carray->num_comps; i++) {
 				parent = carray->comps[i];
-				if (i == 0) {
+				if (num == 0) {
 					sprintf(parents, "%" PRIu32,
 							parent->comp_id);
 				} else {
 					sprintf(parents, "%s,%" PRIu32,
 						parents, parent->comp_id);
 				}
+				num++;
 			}
 		}
 		oparser_bind_text(db, stmt, 5, parents, __FUNCTION__);

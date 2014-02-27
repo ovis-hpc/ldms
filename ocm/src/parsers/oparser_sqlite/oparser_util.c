@@ -490,9 +490,9 @@ int oparser_add_comp(struct comp_array *carray, struct oparser_comp *comp)
 		carray->comps = realloc(carray->comps, carray->num_alloc *
 						sizeof(struct oparser_comp));
 		if (!carray->comps)
-			return 0;
+			return 1;
 	}
 
 	carray->comps[(carray->num_comps)++] = comp;
-	return 1;
+	return 0;
 }
