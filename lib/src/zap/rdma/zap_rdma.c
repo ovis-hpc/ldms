@@ -629,6 +629,7 @@ static void handle_rendezvous(struct z_rdma_ep *rep,
 	zev.type = ZAP_EVENT_RENDEZVOUS;
 	zev.status = ZAP_ERR_OK;
 	zev.map = &map->map;
+	zev.context = (void*)sh->ctxt;
 	rep->ep.cb(&rep->ep, &zev);
 }
 

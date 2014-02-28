@@ -67,9 +67,12 @@
 
 struct zap_sock_map {
 	struct zap_map map;
-	uint64_t rmap_ref; /**< Remote map reference. This is used only in
-			     *   case that \c map is a remote map.
-			     */
+	uint32_t key; /**< Key of the map. */
+};
+
+struct z_sock_key {
+	struct rbn rb_node;
+	struct zap_sock_map *map; /**< reference to zap_map */
 };
 
 #define SOCK_MSG_TYPE_LIST(ZAP_WRAP) \
@@ -117,9 +120,9 @@ struct sock_msg_regular {
 struct sock_msg_read_req {
 	struct sock_msg_hdr hdr;
 	uint64_t ctxt; /**< User context */
-	uint64_t src_map_ref; /**< Source map reference (on non-initiator) */
+	uint32_t src_map_key; /**< Source map reference (on non-initiator) */
 	uint64_t src_ptr; /**< Source memory */
-	uint64_t dst_map_ref; /**< Destination map reference */
+	uint64_t dst_map_ref; /**< Source map reference (on non-initiator) */
 	uint64_t dst_ptr; /**< Destination memory addr (on initiator) */
 	uint32_t data_len; /**< Data length */
 };
@@ -142,7 +145,7 @@ struct sock_msg_read_resp {
 struct sock_msg_write_req {
 	struct sock_msg_hdr hdr;
 	uint64_t ctxt; /**< User context */
-	uint64_t dst_map_ref; /**< Destination map reference */
+	uint32_t dst_map_key; /**< Destination map key */
 	uint64_t dst_ptr; /**< Destination address */
 	uint32_t data_len; /**< Data length */
 	char data[0]; /**< data for SOCK_MSG_WRITE_REQ */
@@ -162,10 +165,11 @@ struct sock_msg_write_resp {
  */
 struct sock_msg_rendezvous {
 	struct sock_msg_hdr hdr;
-	uint64_t rmap_ref; /**< Remote map reference */
+	uint32_t rmap_key; /**< Remote map reference */
 	uint32_t acc; /**< Access */
 	uint64_t addr; /**< Address in the map */
 	uint32_t data_len; /**< Length */
+	uint64_t ctxt; /**< Context */
 };
 
 /**

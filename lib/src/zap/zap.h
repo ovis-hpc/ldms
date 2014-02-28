@@ -149,6 +149,7 @@ const char* zap_event_str(enum zap_event_type e)
 	ZAP_WRAP(ZAP_ERR_RETRY_EXCEEDED),     \
 	ZAP_WRAP(ZAP_ERR_TIMEOUT),            \
 	ZAP_WRAP(ZAP_ERR_FLUSH),              \
+	ZAP_WRAP(ZAP_ERR_REMOTE_NOENTRY),     \
 	ZAP_WRAP(ZAP_ERR_LAST)
 
 typedef enum zap_err_e {
