@@ -358,6 +358,10 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 
 	mda->x->send(mda->x, mda->reply, mda->reply_size);
 
+	/* All sets are sent. */
+	if (mda->set_count == 0)
+		return 0;
+
 	/* Change the dir type to ADD for the subsequent sends */
 	mda->reply->dir.type = htonl(LDMS_DIR_ADD);
 
@@ -424,6 +428,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->dir.type = htonl(LDMS_DIR_LIST);
 	(void)__ldms_for_all_sets(send_dir_reply_cb, &arg);
+	free(reply);
 	return;
  out:
 	len = sizeof(struct ldms_reply_hdr)
