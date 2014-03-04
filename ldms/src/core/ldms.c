@@ -66,9 +66,6 @@
 #include "ldms_xprt.h"
 #include "ogc_rbt.h"
 #include <limits.h>
-#ifdef ENABLE_MMAP
-#include <ftw.h>
-#endif
 #include <mmalloc/mmalloc.h>
 #include "ldms_private.h"
 
@@ -424,12 +421,7 @@ void ldms_destroy_set(ldms_set_t s)
 		strcat(__set_path, ".META");
 		unlink(__set_path);
 	}
-#ifdef ENABLE_MMAP
-	munmap(set->data, set->meta->data_size);
-	munmap(set->meta, set->meta->meta_size);
-#else
 	mm_free(set->meta);
-#endif
 	rem_local_set(set);
 	free(set);
 	free(sd);
@@ -441,13 +433,6 @@ int ldms_lookup(ldms_t _x, const char *path,
 	struct ldms_xprt *x = (struct ldms_xprt *)_x;
 	struct ldms_set *set;
 	ldms_set_t s;
-#ifdef ENABLE_MMAP
-	int rc = ENOMEM;
-	struct ldms_set_hdr *meta;
-	struct ldms_data_hdr *data;
-	size_t meta_size, data_size;
-	int flags;
-#endif
 	if (strlen(path) > LDMS_LOOKUP_PATH_MAX)
 		return EINVAL;
 
@@ -456,7 +441,6 @@ int ldms_lookup(ldms_t _x, const char *path,
 
 	/* See if it's in my process */
 	set = ldms_find_local_set(path);
-#ifndef ENABLE_MMAP
 	if (set) {
 		struct ldms_set_desc *sd = malloc(sizeof *sd);
 		if (!sd)
@@ -466,114 +450,10 @@ int ldms_lookup(ldms_t _x, const char *path,
 		return 0;
 	}
 	return ENODEV;
-#else
-	if (set) {
-		struct ldms_set_desc *sd = malloc(sizeof *sd);
-		if (!sd)
-			goto err_0;
-		sd->set = set;
-		s = sd;
-		goto out;
-	}
-	meta = _open_and_map_file(path, META_FILE, 0, &meta_size);
-	if (!meta)
-		goto err_0;
-	data = _open_and_map_file(path, DATA_FILE, 0, &data_size);
-	if (!data)
-		goto err_1;
-
-	flags = LDMS_SET_F_LOCAL | LDMS_SET_F_FILEMAP;
-	rc = __record_set(path, &s, meta, data, flags);
-	if (rc)
-		goto err_2;
- out:
-	cb(_x, 0, s, cb_arg);
-	return 0;
- err_2:
-#ifdef ENABLE_MMAP
-	munmap(data, data_size);
-#else
-	free(data);
-#endif
- err_1:
-#ifdef ENABLE_MMAP
-	munmap(meta, meta_size);
-#else
-	free(data);
-#endif
- err_0:
-	return rc;
-#endif
 }
-
-#ifdef ENABLE_MMAP
-static struct ftw_context {
-	char *set_list;
-	int set_count;
-	size_t set_list_size;
-} local_dir_context;
-
-static int local_dir_cb(const char *fpath, const struct stat *sb, int typeflag)
-{
-	const char *p;
-	int c, len;
-	if (typeflag != FTW_F)
-		return 0;
-
-	p = &fpath[SET_DIR_LEN];
-	len = strlen(p);
-	if (0 == strcmp(&p[len-5], ".META"))
-		return 0;
-
-	if (ldms_find_local_set(p))
-		return 0;
-
-	c = strlen(p) + 1;
-	if (c > local_dir_context.set_list_size)
-		return 1;
-
-	local_dir_context.set_list_size -= c;;
-	local_dir_context.set_count ++;
-	strcpy(local_dir_context.set_list, p);
-	local_dir_context.set_list += c;
-	return 0;
-}
-
-static int local_dir(int *set_count, char *set_list, size_t *set_list_sz)
-{
-	int rc;
-	int set_list_size;
-
-	__ldms_get_local_set_list_sz(set_count, &set_list_size);
-	if (set_list_size > *set_list_sz) {
-		*set_list_sz = set_list_size;
-		return E2BIG;
-	}
-	rc = __ldms_get_local_set_list(set_list, *set_list_sz,
-				       set_count, &set_list_size);
-
-	local_dir_context.set_list = &set_list[set_list_size];
-	local_dir_context.set_count = *set_count;
-
-	local_dir_context.set_list_size = *set_list_sz - set_list_size;
-
-	rc = ftw(__set_dir, local_dir_cb, 100);
-	*set_count = local_dir_context.set_count;
-	if (rc) {
-		perror("ftw: ");
-	}
-	return 0;
-}
-#endif
 
 int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
-#ifdef ENABLE_MMAP
-	struct ldms_xprt *_x = (struct ldms_xprt *)x;
-	if (0 == strcmp(_x->name, "local"))
-		return local_dir(x, cb, cb_arg, flags);
-#endif
-
 	return __ldms_remote_dir(x, cb, cb_arg, flags);
 }
 
@@ -621,78 +501,6 @@ char *_create_path(const char *set_name)
 	return __set_path;
 }
 
-#ifdef ENABLE_MMAP
-int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
-		     ldms_set_t *s, int flags)
-{
-	struct ldms_data_hdr *data;
-	struct ldms_set_hdr *meta;
-	struct ldms_value_desc *vd;
-	char *path;
-	int rc;
-
-	path = _create_path(set_name);
-	if (!path)
-		return ENOENT;
-
-	data_sz += sizeof(struct ldms_data_hdr);
-	meta_sz += sizeof(struct ldms_set_hdr);
-
-	meta = _open_and_map_file(set_name, META_FILE, 1, &meta_sz);
-	if (!meta) {
-		rc = ENOMEM;
-		goto out_0;
-	}
-	meta->meta_size = meta_sz;
-
-	data = _open_and_map_file(set_name, DATA_FILE, 1, &data_sz);
-	if (!data) {
-		rc =ENOMEM;
-		goto out_1;
-	}
-	meta->data_size = data_sz;
-	data->size = data_sz;
-
-	/* Initialize the metric set header */
-	if (flags & LDMS_SET_F_LOCAL)
-		meta->meta_gn = 1;
-	else
-		/* This tells ldms_update that we've never received
-		 * the remote meta data */
-		meta->meta_gn = 0;
-	meta->card = 0;
-	meta->head_off = sizeof(*meta);
-	meta->tail_off = sizeof(*meta);
-	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
-	strncpy(meta->name, set_name, LDMS_SET_NAME_MAX-1);
-	meta->name[LDMS_SET_NAME_MAX-1] = '\0';
-
-	data->gn = data->meta_gn = meta->meta_gn;
-	data->head_off = sizeof(*data);
-	data->tail_off = sizeof(*data);
-
-	/* Initialize the first value descriptor so that tail->next_offset
-	 * is the head. This normalizes the allocation logic in
-	 * ldms_add_metric. */
-	vd = ldms_ptr_(struct ldms_value_desc, meta, meta->head_off);
-	vd->next_offset = meta->head_off;
-	vd->type = LDMS_V_NONE;
-	vd->name_len = sizeof("<empty>");
-	strcpy(vd->name, "<empty>");
-
-	rc = __record_set(set_name, s, meta, data, flags);
-	if (rc)
-		goto out_1;
-	__ldms_dir_add_set(set_name);
-	return 0;
- out_2:
-	munmap(data, data_sz);
- out_1:
-	munmap(meta, meta_sz);
- out_0:
-	return rc;
-}
-#else
 int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 		      ldms_set_t *s, uint32_t flags)
 {
@@ -755,7 +563,6 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
  out_0:
 	return rc;
 }
-#endif
 
 #define LDMS_GRAIN_MMALLOC 1024
 
