@@ -28,6 +28,8 @@ then
 AM_PATH_PYTHON(2.6)
 AC_PROG_SWIG
 SWIG_PYTHON
+pkgpythondir="${pythondir}/libsos"
+pkgpyexecdir="${pkgpythondir}"
 fi
 
 dnl Check host byte order
