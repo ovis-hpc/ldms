@@ -288,7 +288,8 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 
 		ocm_cfg_buff_add_verb(buff, "rule");
 
-		ov->u16 = sqlite3_column_int(stmt, 0);
+		ocm_value_set(ov, OCM_VALUE_UINT16,
+				sqlite3_column_int(stmt, 0));
 		ocm_cfg_buff_add_av(buff, "model_id", ov);
 
 		const char *metric_id = (char*) sqlite3_column_text(stmt, 1);
@@ -297,10 +298,12 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 			rc = ENOMEM;
 			goto err;
 		}
-		ov->u64 = strtoull(metric_id, NULL, 0);
+		ocm_value_set(ov, OCM_VALUE_UINT64,
+				strtoull(metric_id, NULL, 0));
 		ocm_cfg_buff_add_av(buff, "metric_id", ov);
 
-		ov->i16 = sqlite3_column_int(stmt, 2);
+		ocm_value_set(ov, OCM_VALUE_INT16,
+			sqlite3_column_int(stmt, 2));
 		ocm_cfg_buff_add_av(buff, "severity", ov);
 
 		const char *action_name = (char*) sqlite3_column_text(stmt, 3);
