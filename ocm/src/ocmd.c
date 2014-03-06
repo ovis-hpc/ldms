@@ -287,7 +287,7 @@ void process_request(struct req_entry *req, struct ocm_cfg_buff *buff)
 
 void *resp_thread_proc(void *arg)
 {
-	struct ocm_cfg_buff *buff = ocm_cfg_buff_new(65536, "NA");
+	struct ocm_cfg_buff *buff = ocm_cfg_buff_new(16*1024*1024, "NA");
 	if (!buff) {
 		ocmd_log("ocm_cfg_buff_new failed\n");
 		return NULL;

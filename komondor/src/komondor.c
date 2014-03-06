@@ -1226,6 +1226,7 @@ int ocm_cfg_to_av_list(ocm_cfg_cmd_t cmd, struct attr_value_list *av_list)
 		av_list->list[count].value = (void*)value->s.str;
 		count++;
 	}
+	av_list->count = count;
 	return 0;
 }
 
