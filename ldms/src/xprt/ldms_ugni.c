@@ -962,6 +962,11 @@ static int init_once(ldms_log_fn_t log_fn)
 	uint32_t cookie = 0;
 	char* ptag_str = NULL;
 	char* cookie_str = NULL;
+	char *errpath = NULL;
+	char *rc_setup_errpath = NULL;
+	char *rc_init_errpath = NULL;
+	FILE *rcsfp = NULL;
+	FILE *rcifp = NULL;
 	uid_t euid = 0;
 
 	evthread_use_pthreads();
@@ -1004,18 +1009,73 @@ static int init_once(ldms_log_fn_t log_fn)
 	}
 	cookie = strtol(cookie_str, NULL, 0);
 
+	errpath = getenv("LDMSD_ERRPATH");
+	if (errpath) {
+		rc_setup_errpath = malloc(strlen(errpath) + 10);
+		if (!rc_setup_errpath) {
+			rc = ENOMEM;
+			goto err_3;
+		}
+		rc = sprintf(rc_setup_errpath, "%s/%s", errpath, "rc_setup");
+		if (!rc) {
+			rc = EINVAL;
+			goto err_3;
+		}
+		rcsfp = fopen(rc_setup_errpath, "w");
+		if (!rcsfp) {
+			rc = EPERM;
+			goto err_3;
+		}
+
+		rc_init_errpath = malloc(strlen(errpath) + 10);
+		if (!rc_init_errpath) {
+			rc = ENOMEM;
+			goto err_3;
+		}
+		rc = sprintf(rc_init_errpath, "%s/%s", errpath, "rc_init");
+		if (!rc) {
+			rc = EINVAL;
+			goto err_3;
+		}
+		rcifp = fopen(rc_init_errpath, "w");
+		if (!rcifp) {
+			rc = EPERM;
+			goto err_3;
+		}
+	}
+
 	rc = 0;
 	euid = geteuid();
 	if ((int) euid == 0){
 		rc = ugni_job_setup(ptag, cookie);
 		if (rc != GNI_RC_SUCCESS)
 			log_fn("ugni_job_setup failed %d\n",rc);
+		if (rcsfp) {
+			fprintf(rcsfp, "%d\n", rc);
+			fflush(rcsfp);
+		}
 	}
-	if (((int) euid != 0) || rc == GNI_RC_SUCCESS )
+	if (rcsfp)
+		fclose(rcsfp);
+	rcsfp = NULL;
+
+	if (((int) euid != 0) || rc == GNI_RC_SUCCESS ) {
 		rc = ugni_dom_init(ptag, cookie, getpid(), &ugni_gxp);
+		if (rc != GNI_RC_SUCCESS) {
+			log_fn("ugni_dom_init failed %d\n",rc);
+		}
+		if (rcifp) {
+			fprintf(rcifp, "%d\n", rc);
+			fflush(rcifp);
+		}
+	}
+	if (rcifp)
+		fclose(rcifp);
+	rcifp = NULL;
 
 	if (rc)
 		goto err_3;
+
 	atexit(ugni_xprt_cleanup);
 	return 0;
  err_3:
@@ -1023,6 +1083,12 @@ static int init_once(ldms_log_fn_t log_fn)
  err_2:
 	pthread_cancel(io_thread);
  err_1:
+	if (rcsfp)
+		fclose(rcsfp);
+	if (rcifp)
+		fclose(rcifp);
+	rcsfp = NULL;
+	rcifp = NULL;
 	event_base_free(io_event_loop);
 	io_event_loop = NULL;
 	return rc;
