@@ -100,11 +100,13 @@ LIST_HEAD(metric_id_list, metric_id_s);
 struct oparser_event {
 	int event_id;
 	char *name;
+	char *ctype;
 	uint16_t model_id;
 	struct metric_id_list mid_list;
 	int num_metric_id_set;
 	struct oparser_sev_level msg_level[MAE_NUM_LEVELS];
 	TAILQ_ENTRY(oparser_event) entry;
+	TAILQ_ENTRY(oparser_event) uevent_entry;
 };
 TAILQ_HEAD(oparser_event_q, oparser_event);
 

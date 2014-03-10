@@ -71,6 +71,7 @@ sqlite3 *db;
 struct oparser_model_q model_q;
 struct oparser_action_q action_q;
 struct oparser_event_q event_q;
+struct oparser_event_q uevent_q;
 
 struct oparser_model *model;
 struct oparser_action *action;
@@ -109,12 +110,13 @@ void oparser_mae_parser_init(sqlite3 *_db)
 	TAILQ_INIT(&model_q);
 	TAILQ_INIT(&action_q);
 	TAILQ_INIT(&event_q);
+	TAILQ_INIT(&uevent_q);
 	LIST_INIT(&metric_list);
 	LIST_INIT(&metric_comp_list);
 	event_id = 0;
 	db = _db;
 	is_user_event = 0;
-	num_user_event = 0xF0000000 - 1;
+	num_user_event = 0xF0000000;
 }
 
 static void handle_model(char *value)
@@ -302,7 +304,13 @@ void create_event()
 	event->event_id = event_id; /* start from 1 */
 	LIST_INIT(&event->mid_list);
 	LIST_INIT(&metric_list);
-	TAILQ_INSERT_TAIL(&event_q, event, entry);
+	if (!is_user_event) {
+		TAILQ_INSERT_TAIL(&event_q, event, entry);
+	} else {
+		TAILQ_INSERT_TAIL(&event_q, event, entry);
+		TAILQ_INSERT_TAIL(&uevent_q, event, uevent_entry);
+	}
+
 }
 
 void mae_print_event();
@@ -341,6 +349,7 @@ void _handle_components_uevent(char *value)
 	handle_metric(NULL);
 
 	if (strcmp(value, "*") == 0) {
+		event->ctype = strdup("ALL");
 		int numcomps;
 		oquery_numb_comps(&numcomps, db);
 		mid_s->num_metric_ids = numcomps;
@@ -362,6 +371,7 @@ void _handle_components_uevent(char *value)
 					__FUNCTION__, value);
 			exit(EINVAL);
 		}
+		event->ctype = strdup(type);
 
 		int numcomps;
 		uint32_t *comp_ids;
@@ -792,10 +802,25 @@ void event_to_sqlite(struct oparser_event *event, sqlite3 *db,
 		for (i = 0; i < mid->num_metric_ids; i++) {
 			oparser_bind_int(db, metric_stmt, 1, event->event_id,
 								__FUNCTION__);
-			oparser_bind_int64(db, metric_stmt, 2,
+			oparser_bind_int(db, metric_stmt, 2,
+					(uint32_t)(mid->metric_ids[i] >> 32),
+					__FUNCTION__);
+			oparser_bind_int64(db, metric_stmt, 3,
 					mid->metric_ids[i], __FUNCTION__);
 			oparser_finish_insert(db, metric_stmt, __FUNCTION__);
 		}
+	}
+}
+
+void user_event_to_sqlite(sqlite3 *db, sqlite3_stmt *uevent_stmt)
+{
+	struct oparser_event *uevent;
+	int ueid;
+	TAILQ_FOREACH(uevent, &uevent_q, uevent_entry) {
+		oparser_bind_int(db, uevent_stmt, 1, uevent->event_id, __FUNCTION__);
+		oparser_bind_text(db, uevent_stmt, 2, uevent->name, __FUNCTION__);
+		oparser_bind_text(db, uevent_stmt, 3, uevent->ctype, __FUNCTION__);
+		oparser_finish_insert(db, uevent_stmt, __FUNCTION__);
 	}
 }
 
@@ -804,6 +829,7 @@ void oparser_events_to_sqlite()
 	oparser_drop_table("rule_templates", db);
 	oparser_drop_table("rule_actions", db);
 	oparser_drop_table("rule_metrics", db);
+	oparser_drop_table("user_events", db);
 	int rc;
 	char *stmt_s;
 	stmt_s = "CREATE TABLE IF NOT EXISTS rule_templates (" \
@@ -825,15 +851,25 @@ void oparser_events_to_sqlite()
 
 	stmt_s = "CREATE TABLE IF NOT EXISTS rule_metrics (" \
 			" event_id	INTEGER		NOT NULL," \
+			" comp_id	SQLITE_uint32	NOT NULL,"
 			" metric_id	SQLITE_uint64	NOT NULL);";
 
 	index_stmt = "CREATE INDEX IF NOT EXISTS rule_metrics_idx ON "
-					"rule_metrics(event_id,metric_id);";
+					"rule_metrics(event_id,comp_id,metric_id);";
+	create_table(stmt_s, index_stmt, db);
+
+	stmt_s = "CREATE TABLE IF NOT EXISTS user_events (" \
+			" event_id	INTERGER	NOT NULL," \
+			" event_name	TEXT		NOT NULL," \
+			" comp_type	TEXT		NOT NULL);";
+	index_stmt = "CREATE INDEX IF NOT EXISTS user_events_idx ON " \
+			"user_events(event_id,comp_type);";
 	create_table(stmt_s, index_stmt, db);
 
 	sqlite3_stmt *rule_templates_stmt;
 	sqlite3_stmt *rule_actions_stmt;
 	sqlite3_stmt *rule_metrics_stmt;
+	sqlite3_stmt *user_event_stmt;
 	char *errmsg;
 
 	stmt_s = "INSERT INTO rule_templates(event_id, event_name, "
@@ -856,8 +892,8 @@ void oparser_events_to_sqlite()
 		exit(rc);
 	}
 
-	stmt_s = "INSERT INTO rule_metrics(event_id, metric_id) "
-			"VALUES(@eid, @mid)";
+	stmt_s = "INSERT INTO rule_metrics(event_id, comp_id, metric_id) "
+			"VALUES(@eid, @cid, @mid)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
 			&rule_metrics_stmt, (const char **)&errmsg);
 	if (rc) {
@@ -885,12 +921,39 @@ void oparser_events_to_sqlite()
 	}
 
 	sqlite3_finalize(rule_templates_stmt);
+	sqlite3_finalize(rule_actions_stmt);
+	sqlite3_finalize(rule_metrics_stmt);
 
 	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
 		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
+
+	stmt_s = "INSERT INTO user_events(event_id, event_name, comp_type) "
+			"VALUES(@eid, @ename, @ctype)";
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
+			&user_event_stmt, (const char **)&errmsg);
+	if (rc) {
+		fprintf(stderr, "%s[%d]: error prepare[user_event]:"
+				" %s\n", __FUNCTION__, rc, errmsg);
+		exit(rc);
+	}
+
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
+
+	user_event_to_sqlite(db, user_event_stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
+	if (rc) {
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		exit(rc);
+	}
+
 }
 
 #ifdef MAIN
