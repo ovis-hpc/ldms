@@ -113,7 +113,7 @@ enum me_severity_level {
 
 enum me_input_type {
 	ME_INPUT_DATA = 0,
-	ME_NO_DATA
+	ME_NO_DATA = 1
 };
 
 #pragma pack(4)
@@ -168,6 +168,12 @@ double *me_get_thresholds(me_model_cfg_t cfg);
 void *me_get_params(me_model_cfg_t cfg);
 
 /**
+ * \brief Get the input type
+ * \return the input type
+ */
+enum me_input_type me_get_input_type(me_input_t input);
+
+/**
  * \brief Get the model name
  */
 char *me_get_model_name(me_model_cfg_t cfg);
@@ -180,7 +186,7 @@ void me_set_input_def(me_input_t input, me_input_def_t def);
 /**
  * \brief Set the input value type
  */
-void me_set_input_value_type(me_input_t input, enum me_input_type type);
+void me_set_input_type(me_input_t input, enum me_input_type type);
 
 /**
  * \brief Set the input type ID

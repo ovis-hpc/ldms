@@ -72,6 +72,9 @@ typedef struct below_mean_param {
 static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 				me_input_t input_val, me_output_t output)
 {
+	if (me_get_input_type(input_val) == ME_NO_DATA)
+		return 0;
+
 	uint64_t value = me_get_input_value(input_val, msglog);
 	below_mean_param_t param = (below_mean_param_t)me_get_params(cfg);
 

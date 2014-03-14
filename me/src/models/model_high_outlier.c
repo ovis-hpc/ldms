@@ -112,6 +112,9 @@ static double __evaluate(high_outlier_ctxt_t ctxt, double val)
 static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 				me_input_t input_val, me_output_t output)
 {
+	if (me_get_input_type(input_val) == ME_NO_DATA)
+		return 0;
+
 	uint64_t value = me_get_input_value(input_val, msglog);
 	high_outlier_param_t param = (high_outlier_param_t)me_get_params(cfg);
 	struct high_outlier_ctxt *ctxt = m->mcontext;
@@ -158,7 +161,7 @@ static const char *usage()
 	return  "   A univariate model detects too high values according to \n"
 		"   the sample Mean and sample Standard Deviation\n"
 		"   A too high value is greater than {mean + s.d. * a given threshold}.\n"
-		"	create name=model_high_outlier model_id=<model_id> threshlds=<multipliers of s.d.>\n"
+		"	create name=model_high_outlier model_id=<model_id> thresholds=<multipliers of s.d.>\n"
 		"		params=<number>\n"
 		"	   -  number	The number of required samples. If none is given,\n"
 		"			the default is 100\n";

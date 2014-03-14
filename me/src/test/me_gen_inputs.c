@@ -197,9 +197,9 @@ void *send_input_from_file(void *arg)
 	zap_t zap = arg;
 	zap_ep_t zep;
 
+	static int count = 0;
 
 	struct me_msg msg;
-	msg.tag = htonl(ME_INPUT_DATA);
 	msg.metric_id = htobe64(metric_id);
 	struct timeval tv;
 
@@ -212,16 +212,24 @@ void *send_input_from_file(void *arg)
 			continue;
 		}
 
-		s = fgets(buff, sizeof(buff), f);
-		msg.value = atof(buff);
-		rc = gettimeofday(&tv, NULL);
-		msg.timestamp.tv_sec = htonl(tv.tv_sec);
-		msg.timestamp.tv_usec = htonl(tv.tv_usec);
+		count++;
+		if (count % 10 == 0) {
+			msg.value = 0;
+			msg.tag = htonl(ME_NO_DATA);
+		} else {
+			s = fgets(buff, sizeof(buff), f);
+			msg.value = atof(buff);
+			msg.tag = htonl(ME_INPUT_DATA);
+		}
 
+		rc = gettimeofday(&tv, NULL);
 		if (rc) {
 			fprintf(stderr, "gettimeofday: error '%d'\n", rc);
 			exit(rc);
 		}
+
+		msg.timestamp.tv_sec = htonl(tv.tv_sec);
+		msg.timestamp.tv_usec = htonl(tv.tv_usec);
 
 		zerr = zap_send(zep, (void *)&msg, sizeof(msg));
 		if (zerr) {
@@ -243,6 +251,8 @@ void *send_input(void *arg)
 	int rc;
 	zap_err_t zerr;
 
+	static int count = 0;
+
 	zap_t zap = arg;
 	zap_ep_t zep;
 
@@ -252,7 +262,6 @@ void *send_input(void *arg)
 	double div = RAND_MAX / range;
 	struct timeval tv;
 
-	msg.tag = htonl(ME_INPUT_DATA);
 	msg.metric_id = htobe64(metric_id);
 	while (1) {
 		if (!is_connected) {
@@ -260,6 +269,12 @@ void *send_input(void *arg)
 			sleep(interval);
 			continue;
 		}
+
+		count++;
+		if (count % 10 == 0)
+			msg.tag = htonl(ME_NO_DATA);
+		else
+			msg.tag = htonl(ME_INPUT_DATA);
 
 		msg.value = rand() / div;
 		printf("send: %f\n", msg.value);

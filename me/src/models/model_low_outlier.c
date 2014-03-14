@@ -112,6 +112,9 @@ static double __evaluate(low_outlier_ctxt_t ctxt, double val)
 static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 			me_input_t input_val, me_output_t output)
 {
+	if (me_get_input_type(input_val) == ME_NO_DATA)
+		return 0;
+
 	uint64_t value = me_get_input_value(input_val, msglog);
 
 	low_outlier_ctxt_t ctxt = (low_outlier_ctxt_t)m->mcontext;

@@ -480,14 +480,14 @@ int start_store(char *name, char *container, char *reply_buf)
 	struct me_store *store;
 	store = (struct me_store *) pi->intf_pi->get_instance(av_list,
 							pi->intf_pi);
-	store->container = container;
-
 	if (!store) {
 		sprintf(reply_buf, "-1Failed to start '%s'.\n",
 				name);
 		rc = -1;
 		goto err;
 	}
+	store->container = container;
+
 	pi->refcount++;
 	store->store_id = get_store_counts();
 	add_store_counts();
@@ -923,7 +923,6 @@ int process_store(int fd, struct sockaddr *sa, ssize_t sa_len, char *command)
 	struct me_store *store;
 	store = (struct me_store *) pi->intf_pi->get_instance(av_list,
 							pi->intf_pi);
-	store->container = container;
 
 	if (!store) {
 		sprintf(replybuf, "-1Failed to start '%s'.\n",
@@ -931,6 +930,8 @@ int process_store(int fd, struct sockaddr *sa, ssize_t sa_len, char *command)
 		rc = -1;
 		goto err;
 	}
+	store->container = container;
+
 	pi->refcount++;
 	store->store_id = get_store_counts();
 	add_store_counts();

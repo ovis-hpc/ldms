@@ -72,7 +72,12 @@ void *me_get_params(me_model_cfg_t cfg)
 	return ((struct me_model_cfg *)cfg)->params;
 }
 
-void me_set_input_value_type(me_input_t input, enum me_input_type type)
+enum me_input_type me_get_input_type(me_input_t input)
+{
+	return ((struct me_input *)input)->type;
+}
+
+void me_set_input_type(me_input_t input, enum me_input_type type)
 {
 	((struct me_input *)input)->type = type;
 }

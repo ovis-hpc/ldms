@@ -251,6 +251,9 @@ int __update(struct bkde_coef *coef, double value, int num_req_samples)
 static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 				me_input_t input, me_output_t output)
 {
+	if (me_get_input_type(input) == ME_NO_DATA)
+		return 0;
+
 	struct bkde_coef *coef = (struct bkde_coef *)m->mcontext;
 	struct bkde_param *param = (struct bkde_param *)me_get_params(cfg);
 	double sd, h, prob, value;

@@ -208,6 +208,9 @@ void __reset_rule(struct baler_rule *rule)
 static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 				me_input_t input_val, me_output_t output)
 {
+	if (me_get_input_type(input_val) == ME_NO_DATA)
+		return 0;
+
 	int rc = 0;
 	baler_rules_ctxt_t ctxt = (baler_rules_ctxt_t)m->mcontext;
 	uint64_t ptn_id = me_get_input_value(input_val, msglog);
