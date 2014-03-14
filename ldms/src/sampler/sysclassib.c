@@ -73,6 +73,8 @@
 #include <sys/utsname.h>
 #include <pthread.h>
 #include <wordexp.h>
+#include <fnmatch.h>
+#include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -80,7 +82,12 @@
  * sysclassib metric handle
  */
 struct scib_metric {
+	int is_rate; /**< 1 if this metric is a rate */
 	char *path;
+	struct scib_metric *rate_ref; /**< reference to the rate metric */
+
+	/** Previous value (raw) for rate calculation. */
+	union ldms_value prev_value;
 	char *metric_name;
 	FILE *f;
 	ldms_metric_t metric;
@@ -114,6 +121,10 @@ uint64_t comp_id;
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #endif
 
+struct timeval tv[2];
+struct timeval *tv_now = &tv[0];
+struct timeval *tv_prev = &tv[1];
+
 /**
  * Version comparison.
  *
@@ -136,6 +147,19 @@ int compare3(int a, int b, int c, int x, int y, int z)
 	if (c > z)
 		return 1;
 	return 0;
+}
+
+void scib_metric_free(struct scib_metric *m)
+{
+	if (m->metric)
+		ldms_metric_release(m->metric);
+	if (m->f)
+		fclose(m->f);
+	if (m->path)
+		free(m->path);
+	if (m->metric_name)
+		free(m->metric_name);
+	free(m);
 }
 
 /**
@@ -229,6 +253,54 @@ err0:
 	return NULL;
 }
 
+struct scib_metric *create_rate_metric_with_size(struct scib_metric *raw,
+					size_t *meta_sz, size_t *data_sz)
+{
+	char metric_name[128];
+	char *metric;
+	char card[64];
+	int port;
+	int n, rc;
+
+	struct scib_metric *m = calloc(1, sizeof(*m));
+	if (!m)
+		goto err0;
+
+	m->is_rate = 1;
+
+	char *sharp = strchr(raw->metric_name, '#');
+	if (!sharp) {
+		msglog("ERROR: %s: invalid metric name: %s\n.", __func__,
+				raw->metric_name);
+		errno = EINVAL;
+		goto err1;
+	}
+
+	snprintf(metric_name, 128, "%.*s.rate%s", sharp - raw->metric_name,
+			raw->metric_name, sharp);
+	m->metric_name = strdup(metric_name);
+	if (!m->metric_name)
+		goto err1;
+	m->comp = raw->comp;
+	if (!m->comp) {
+		msglog("ERROR: %s: no component\n", __func__);
+		goto err1;
+	}
+	/* m->comp is shared, don't free it on error */
+
+	rc = ldms_get_metric_size(metric_name, LDMS_V_F, meta_sz, data_sz);
+	if (rc) {
+		errno = rc;
+		goto err1;
+	}
+
+	return m;
+err1:
+	free(m);
+err0:
+	return NULL;
+}
+
 /**
  * \param wild_path The path in wild card format.
  * \param[out] meta_sz mata size that will be used for metrics in \c wild_path
@@ -251,16 +323,27 @@ int create_metric_set_wild(const char *wild_path, size_t *meta_sz,
 	size_t mz, dz;
 	int i;
 	for (i = 0; i < p.we_wordc; i++) {
+		/* create raw metric */
 		struct scib_metric *m = create_metric_with_size(p.we_wordv[i],
 								&mz, &dz);
-		if (m) {
-			LIST_INSERT_HEAD(&scib_mlist, m, entry);
-			tmz += mz;
-			tdz += dz;
-		} else {
+		if (!m) {
 			rc = -1;
 			goto out;
 		}
+		LIST_INSERT_HEAD(&scib_mlist, m, entry);
+		tmz += mz;
+		tdz += dz;
+
+		/* create rate metric */
+		struct scib_metric *mr = create_rate_metric_with_size(m, &mz,
+									&dz);
+		if (!mr) {
+			rc = -1;
+			goto out;
+		}
+		m->rate_ref = mr;
+		tmz += mz;
+		tdz += dz;
 	}
 
 	*meta_sz = tmz;
@@ -279,7 +362,7 @@ static int create_metric_set(const char *path)
 	size_t data_sz, tot_data_sz;
 	int rc, i, j, metric_count;
 	char metric_name[128];
-	struct scib_metric *m;
+	struct scib_metric *m, *mr;
 	struct scib_comp *c;
 
 	tot_meta_sz = 0;
@@ -315,6 +398,14 @@ static int create_metric_set(const char *path)
 		if (!m->metric)
 			goto err;
 		ldms_set_user_data(m->metric, m->comp->comp_id);
+		mr = m->rate_ref;
+		if (mr) {
+			mr->metric = ldms_add_metric(set, mr->metric_name,
+							LDMS_V_F);
+			if (!mr->metric)
+				goto err;
+			ldms_set_user_data(mr->metric, mr->comp->comp_id);
+		}
 	}
 
 	rc = 0;
@@ -322,18 +413,15 @@ static int create_metric_set(const char *path)
 
 err:
 	/* clean up */
-	if (set)
-		ldms_destroy_set(set);
 	while ((m = LIST_FIRST(&scib_mlist))) {
 		LIST_REMOVE(m, entry);
-		if (m->f)
-			fclose(m->f);
-		if (m->path)
-			free(m->path);
-		if (m->metric_name)
-			free(m->metric_name);
-		free(m);
+		if (m->rate_ref)
+			scib_metric_free(m->rate_ref);
+		scib_metric_free(m);
 	}
+
+	if (set)
+		ldms_destroy_set(set);
 out:
 	return rc;
 }
@@ -401,14 +489,18 @@ static int sample(void)
 	int rc;
 	char *s;
 	char lbuf[32];
-	union ldms_value v;
+	union ldms_value v, vr;
 	int i,j;
+	struct timeval *tmp;
+	struct timeval tv_diff;
 
 	if (!set){
 		msglog("sysclassib: plugin not initialized\n");
 		return EINVAL;
 	}
 
+	gettimeofday(tv_now, 0);
+	timersub(tv_now, tv_prev, &tv_diff);
 	struct scib_metric *m;
 	LIST_FOREACH(m, &scib_mlist, entry) {
 		if (newerkernel) {
@@ -433,7 +525,16 @@ static int sample(void)
 			return EINVAL;
 		}
 		ldms_set_metric(m->metric, &v);
+		float dt = tv_diff.tv_sec + (tv_diff.tv_usec / 1e06);
+		vr.v_f = (v.v_u64 - m->prev_value.v_u64) / dt;
+		ldms_set_metric(m->rate_ref->metric, &vr);
+		m->prev_value = v;
+
 	}
+
+	tmp = tv_now;
+	tv_now = tv_prev;
+	tv_prev = tmp;
 	return 0;
 }
 
