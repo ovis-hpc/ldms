@@ -61,6 +61,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <time.h>
+#include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -88,6 +89,9 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 static uint64_t counter;
 uint64_t comp_id;
+struct timeval tv[2];
+struct timeval *tv_cur = &tv[0];
+struct timeval *tv_prev = &tv[1];
 
 struct kw {
 	char *token;
@@ -118,7 +122,6 @@ static int create_metric_set(const char *path)
 	char metric_name[128];
 	char curriface[20];
 	int i,j;
-
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
@@ -170,9 +173,17 @@ static int create_metric_set(const char *path)
 		for (j = 0; j < niface; j++){
 			if (strcmp(iface[j],curriface) == 0){
 				for (i = 0; i < NVARS; i++){
+					/* raw */
 					snprintf(metric_name, 128, "%s#%s",
 							varname[i], curriface);
 					rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
+					tot_meta_sz += meta_sz;
+					tot_data_sz += data_sz;
+					metric_count++;
+					/* rate */
+					snprintf(metric_name, 128, "%s.rate#%s",
+							varname[i], curriface);
+					rc = ldms_get_metric_size(metric_name, LDMS_V_F, &meta_sz, &data_sz);
 					tot_meta_sz += meta_sz;
 					tot_data_sz += data_sz;
 					metric_count++;
@@ -223,9 +234,21 @@ static int create_metric_set(const char *path)
 		for (j = 0; j < niface; j++){
 			if (strcmp(iface[j],curriface) == 0){
 				for (i = 0; i < NVARS; i++){
+					/* raw */
 					snprintf(metric_name, 128, "%s#%s",
 							varname[i], curriface);
 					metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
+					if (!metric_table[metric_no]){
+						rc = ENOMEM;
+						goto err;
+					}
+					ldms_set_user_data(metric_table[metric_no],
+							comp_id);
+					metric_no++;
+					/* rate */
+					snprintf(metric_name, 128, "%s.rate#%s",
+							varname[i], curriface);
+					metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_F);
 					if (!metric_table[metric_no]){
 						rc = ENOMEM;
 						goto err;
@@ -247,54 +270,42 @@ err:
 	return rc;
 }
 
-static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
-	if (niface == (MAXIFACE-1)){
-		msglog("Procnetdev too many ifaces -- increase array size\n");
-		return EINVAL;
-	}
-
+static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
 	char *value;
 
 	value = av_value(avl, "iface");
-	if (value){
-		snprintf(iface[niface], 20, "%s", value);
+	if (!value) {
+		msglog("Please specify ifaces.\n");
+		return EINVAL;
+	}
+
+	char tmp[256];
+	char *ptr, *tok;
+	strncpy(tmp, value, 256);
+	tok = strtok_r(tmp, ",", &ptr);
+	while (tok && niface < MAXIFACE) {
+		snprintf(iface[niface], 20, "%s", tok);
 		niface++;
+		tok = strtok_r(NULL, ",", &ptr);
+	}
+
+	if (tok && niface == (MAXIFACE-1)){
+		msglog("Procnetdev too many ifaces -- increase array size\n");
+		return EINVAL;
 	}
 
 	return 0;
 
 }
 
-
-static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
-	/* Set the compid and create the metric set */
-
-	char *value;
-
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
-
-	value = av_value(avl, "set");
-	if (!value)
-		return EINVAL;
-
-	return create_metric_set(value);
-}
-
-struct kw kw_tbl[] = {
-	{ "add", add_iface },
-	{ "init", init },
-};
-
 static const char *usage(void)
 {
 	return
-		"config name=procnetdev action=add iface=<iface>\n"
-		"    iface       Interface name (e.g., eth0)\n"
-		"config name=procnetdev action=config component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
+"config name=procnetdev action=add iface=<ifaces> component_id=<comp_id> set=<setname>\n"
+"    iface       Comma-separated interface names (e.g. eth0,eth1)\n"
+"    comp_id     The component id value.\n"
+"    setname     The set name.\n";
 
 }
 
@@ -310,32 +321,28 @@ static const char *usage(void)
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-
+	char *value;
 	struct kw *kw;
 	struct kw key;
 	int rc;
-	char *action = av_value(avl, "action");
 
-	if (!action)
-		goto err0;
+	gettimeofday(tv_prev, 0);
 
-	key.token = action;
-	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
-			sizeof(*kw), kw_comparator);
-	if (!kw)
-		goto err1;
-
-	rc = kw->action(kwl, avl, NULL);
+	rc = add_iface(kwl, avl);
 	if (rc)
-		goto err2;
-	return 0;
-err0:
-	msglog(usage());
-	goto err2;
-err1:
-	msglog("Invalid configuration keyword '%s'\n", action);
-err2:
-	return 0;
+		return rc;
+
+
+	/* Set the compid and create the metric set */
+	value = av_value(avl, "component_id");
+	if (value)
+		comp_id = strtol(value, NULL, 0);
+
+	value = av_value(avl, "set");
+	if (!value)
+		return EINVAL;
+
+	return create_metric_set(value);
 }
 
 static int sample(void)
@@ -343,10 +350,10 @@ static int sample(void)
 	char *s;
 	char lbuf[256];
 	char curriface[20];
-	union ldms_value vtemp, v[NVARS];
-	struct timespec time1;
+	union ldms_value v[NVARS];
 	int i, j, metric_no;
-
+	struct timeval dtv;
+	float dt;
 
 	if (!set){
 		msglog("procnetdev: plugin not initialized\n");
@@ -368,6 +375,9 @@ static int sample(void)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	//data
 	ldms_begin_transaction(set);
+	gettimeofday(tv_cur, 0);
+	timersub(tv_cur, tv_prev, &dtv);
+	dt = dtv.tv_sec + dtv.tv_usec / 1e06;
 	metric_no = 0;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -393,7 +403,11 @@ static int sample(void)
 		for (j = 0; j < niface; j++){
 			if (strcmp(curriface,iface[j]) == 0){ //NOTE: small number so no conflicts (eg., eth1 and eth10)
 				for (i = 0; i < NVARS; i++){
+					uint64_t prev = ldms_get_u64(metric_table[metric_no]);
+					union ldms_value rate;
+					rate.v_f = (v[i].v_u64 - prev)/dt;
 					ldms_set_metric(metric_table[metric_no++], &v[i]);
+					ldms_set_metric(metric_table[metric_no++], &rate);
 				}
 				usedifaces++;
 				break;
@@ -401,6 +415,11 @@ static int sample(void)
 		} //for
 	} while (s);
 	ldms_end_transaction(set);
+
+	struct timeval *tv_tmp;
+	tv_tmp = tv_prev;
+	tv_prev = tv_cur;
+	tv_cur = tv_tmp;
 
 	return 0;
 }
