@@ -60,6 +60,8 @@
 
 #include <stdio.h>
 #include <sys/queue.h>
+#include <time.h>
+#include <sys/time.h>
 #include "str_map.h"
 
 #include "ldms.h"
@@ -193,14 +195,22 @@ char *stats_key[] = {
 	"update_obj",
 }; /* stats_key[] */
 
+struct lustre_metric_ctxt {
+	void *metric; /**< metric handle */
+	uint64_t rate_ref; /**< ID of the rate metric derivative */
+};
+
 LIST_HEAD(lustre_svc_stats_head, lustre_svc_stats);
 struct lustre_svc_stats {
 	LIST_ENTRY(lustre_svc_stats) link;
+	struct timeval tv[2];
+	struct timeval *tv_cur;
+	struct timeval *tv_prev;
 	char *path;
 	char *name;
 	FILE *f;
 	struct str_map *key_id_map;
-	void *metrics[0];
+	struct lustre_metric_ctxt mctxt[0];
 };
 
 /**

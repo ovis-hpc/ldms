@@ -70,12 +70,15 @@ void lustre_sampler_set_msglog(ldmsd_msg_log_f f)
 
 struct lustre_svc_stats* lustre_svc_stats_alloc(const char *path, int mlen)
 {
-	struct lustre_svc_stats *s = calloc(1, sizeof(*s) + sizeof(void*)*mlen);
+	struct lustre_svc_stats *s = calloc(1, sizeof(*s) +
+			sizeof(s->mctxt[0])*mlen);
 	if (!s)
 		goto err0;
 	s->path = strdup(path);
 	if (!s->path)
 		goto err1;
+	s->tv_cur = &s->tv[0];
+	s->tv_prev = &s->tv[1];
 	return s;
 err1:
 	free(s);
@@ -107,14 +110,21 @@ int __add_metric_routine(ldms_set_t set, uint64_t udata,
 			 const char *metric_name, struct str_map *id_map,
 			 const char *key, struct lustre_svc_stats *lss)
 {
+	char rate_key[128];
 	uint64_t id = str_map_get(id_map, key);
 	if (!id) {
 		/* Unknown IDs ... this is bad */
 		return ENOENT;
 	}
+	snprintf(rate_key, 128, "%s.rate", key);
+	uint64_t id_rate = str_map_get(id_map, rate_key);
 	/* metric is valid, add it */
-	ldms_metric_t metric = ldms_add_metric(set, metric_name, LDMS_V_U64);
-	lss->metrics[id] = metric;
+	enum ldms_value_type vt = LDMS_V_U64;
+	if (strstr(key, ".rate"))
+		vt = LDMS_V_F;
+	ldms_metric_t metric = ldms_add_metric(set, metric_name, vt);
+	lss->mctxt[id].metric = metric;
+	lss->mctxt[id].rate_ref = id_rate;
 	ldms_set_user_data(metric, udata);
 	return 0;
 }
@@ -199,22 +209,40 @@ int lss_sample(struct lustre_svc_stats *lss)
 	/* The first line is timestamp, we can ignore that */
 	fgets(lbuf, __LBUF_SIZ, lss->f);
 
+	gettimeofday(lss->tv_cur, 0);
+	struct timeval dtv;
+	timersub(lss->tv_cur, lss->tv_prev, &dtv);
+	float dt = dtv.tv_sec + dtv.tv_usec / 1e06;
+
 	while (fgets(lbuf, __LBUF_SIZ, lss->f)) {
 		sscanf(lbuf, "%s %lu samples %s %lu %lu %lu %lu",
 				name, &count, unit, &min, &max, &sum, &sum2);
 
 		uint64_t id = str_map_get(id_map, name);
+		uint64_t rate_id = lss->mctxt[id].rate_ref;
 
 		if (!id)
 			continue;
+
 		if (strcmp("[regs]", unit) == 0)
 			/* We track the count for reqs */
 			value.v_u64 = count;
 		else
 			/* and track sum for everything else */
 			value.v_u64 = sum;
-		ldms_set_metric(lss->metrics[id], &value);
+
+		if (rate_id) {
+			uint64_t prev_counter = ldms_get_u64(lss->mctxt[id].metric);
+			union ldms_value rate;
+			rate.v_f = (value.v_u64 - prev_counter) / dt;
+			ldms_set_metric(lss->mctxt[rate_id].metric, &rate);
+		}
+		ldms_set_metric(lss->mctxt[id].metric, &value);
 	}
+
+	struct timeval *tmp = lss->tv_cur;
+	lss->tv_cur = lss->tv_prev;
+	lss->tv_prev = tmp;
 out:
 	return rc;
 }

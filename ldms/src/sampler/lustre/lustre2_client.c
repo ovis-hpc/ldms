@@ -142,6 +142,10 @@ char *llite_key[] = {
 	"listxattr",
 	"removexattr",
 	"inode_permission",
+
+		/* Additional derived metrics */
+	"read_bytes.rate",
+	"write_bytes.rate",
 };
 
 #define LLITE_KEY_LEN sizeof(llite_key)/sizeof(llite_key[0])
@@ -229,7 +233,10 @@ static int create_metric_set(const char *path, const char *oscs,
 				sprintf(metric_name, "lstats.%s#%s.%s",
 						keys[i][j], namebase[i],
 						sl->str);
-				ldms_get_metric_size(metric_name, LDMS_V_U64,
+				enum ldms_value_type vt = LDMS_V_U64;
+				if (strstr(keys[i][j], ".rate"))
+					vt = LDMS_V_F;
+				ldms_get_metric_size(metric_name, vt,
 						&meta_sz, &data_sz);
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
