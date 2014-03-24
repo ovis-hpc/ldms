@@ -706,6 +706,7 @@ static zap_err_t z_rdma_reject(zap_ep_t ep)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	rdma_reject(rep->cm_id, NULL, 0);
+	zap_put_ep(ep);
 	return ZAP_ERR_OK;
 }
 
@@ -1175,6 +1176,7 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 	zap_ep_change_state(&rep->ep, ZAP_EP_CONNECTING, ZAP_EP_ERROR);
 	rep->ep.state = ZAP_EP_ERROR;
 	rep->ep.cb(&rep->ep, &zev);
+	zap_put_ep(&rep->ep);
 }
 
 static void
