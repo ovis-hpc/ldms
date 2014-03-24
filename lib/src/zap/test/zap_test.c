@@ -89,14 +89,9 @@
  * 		- client unmap the write map and send "read/write dare" message
  * 		  to server
  * 	- server receive "read/write dare" message
- * 		- server unmap its read shared map.
  *		- server perform write operation (expecting to fail)
- *		- server echo "dare" message back to client
- *	- client receive "read/write dare" message
- *		- client perform read (expecting to fail)
- *	- read fails on client and write fails on server.
- *	- client close the connection
- *	- server get DISCONNECTED event
+ *		- server torn down the connection
+ *	- server and client get DISCONNECTED event
  */
 #include <unistd.h>
 #include <inttypes.h>
@@ -171,40 +166,34 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	}
 	assert(len == ev->data_len);
 
-	if (strncmp(dare, ev->data, strlen(dare)+1) == 0) {
-		/* read dare deceived, unmap the read_map */
-		zap_unmap(ep, read_map);
-		/* try write again, as this is a server dare to write too */
-
-		zap_err_t err;
-		zap_map_t src_write_map;
-
-		if (ev->status) {
-			printf("Error %d received in rendezvous event.\n", ev->status);
-			return;
-		}
-
-		strcpy(write_buf, "Thanks for sharing!");
-
-		/* Map the data to send */
-		err = zap_map(ep, &src_write_map, write_buf, sizeof write_buf,
-				ZAP_ACCESS_NONE);
-		if (err) {
-			printf("%s:%d returns %d.\n", __func__, __LINE__, err);
-			return;
-		}
-
-		/* Perform an RDMA_WRITE to the map we just received */
-		err = zap_write(ep, src_write_map, zap_map_addr(src_write_map),
-				remote_map, zap_map_addr(remote_map),
-				zap_map_len(src_write_map), src_write_map);
-		if (err) {
-			printf("Error %d for RDMA_WRITE to share.\n", err);
-			return;
-		}
+	if (strncmp(dare, ev->data, strlen(dare)+1) != 0) {
+		/* regular message received, just echo back and return */
+		do_send(ep, ev->data);
+		return;
 	}
 
-	do_send(ep, ev->data);
+	/* write dare received */
+	zap_err_t err;
+	zap_map_t src_write_map;
+
+	strcpy(write_buf, "Thanks for sharing!");
+
+	/* Map the data to send */
+	err = zap_map(ep, &src_write_map, write_buf, sizeof write_buf,
+			ZAP_ACCESS_NONE);
+	if (err) {
+		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
+		return;
+	}
+
+	/* Perform an RDMA_WRITE to the map we just received */
+	err = zap_write(ep, src_write_map, zap_map_addr(src_write_map),
+			remote_map, zap_map_addr(remote_map),
+			zap_map_len(src_write_map), src_write_map);
+	if (err) {
+		printf("Error %d for RDMA_WRITE to share.\n", err);
+		return;
+	}
 }
 
 void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
@@ -262,6 +251,10 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 	err = zap_unmap(ep, write_src_map);
 	if (err)
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
+	if (ev->status != ZAP_ERR_OK) {
+		/* Error occur, torn down the connection */
+		zap_close(ep);
+	}
 }
 
 void server_cb(zap_ep_t ep, zap_event_t ev)
@@ -287,7 +280,6 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		assert(0);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		zap_close(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
 		break;
@@ -423,6 +415,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		}
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		zap_close(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
 		break;
@@ -451,6 +444,7 @@ void test_log(const char *fmt, ...)
 	va_list ap;
 	va_start(ap, fmt);
 	vprintf(fmt, ap);
+	fflush(stdout);
 }
 
 zap_mem_info_t test_meminfo(void)
