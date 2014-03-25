@@ -423,12 +423,14 @@ zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map);
  * that the access they are granted depends on the zap_access_t flags
  * provide when the buffer was mapped with \c zap_map_buf.
  *
- * \param ep	The endpoint handle
- * \param m	A Zap buffer mapping returned by \c zap_map_buf.
- * \param ctxt	A user-defined context that will be provided to the
- *		peer when it is notified of the mapping.
- * depending upon the
+ * \param ep The endpoint handle
+ * \param m A Zap buffer mapping returned by \c zap_map_buf.
+ * \param msg The message that will tag along with share operation.
+ * \param msg_len The length of the message.
+ *
+ * \returns ZAP_ERR_OK if there is no errors.
+ * \returns zap_error_code on error.
  */
-zap_err_t zap_share(zap_ep_t ep, zap_map_t m, uint64_t ctxt);
+zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len);
 
 #endif

@@ -80,8 +80,8 @@ struct rdma_share_msg {
 	uint32_t acc;
 	uint32_t len;
 	uint32_t rkey;
-	uint64_t ctxt;
 	uint64_t va;
+	char msg[0];
 };
 
 #pragma pack()

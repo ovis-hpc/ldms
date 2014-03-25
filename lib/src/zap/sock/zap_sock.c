@@ -634,7 +634,23 @@ static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
 	if (!map) {
 		LOG_(sep, "ENOMEM in %s at %s:%d\n",
 				__func__, __FILE__, __LINE__);
-		return;
+		goto err0;
+	}
+
+	char *amsg = NULL;
+	size_t amsg_len = msg.hdr.msg_len - sizeof(msg);
+	if (amsg_len) {
+		amsg = malloc(amsg_len);
+		if (!amsg) {
+			LOG_(sep, "ENOMEM in %s at %s:%d\n",
+					__func__, __FILE__, __LINE__);
+			goto err1;
+		}
+		size_t rb = bufferevent_read(sep->buf_event, amsg, amsg_len);
+		if (rb != amsg_len) {
+			/* read error */
+			goto err2;
+		}
 	}
 
 	map->key = msg.rmap_key;
@@ -647,9 +663,20 @@ static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
 	struct zap_event ev = {
 		.type = ZAP_EVENT_RENDEZVOUS,
 		.map = (void*)map,
-		.context = (void*)msg.ctxt
+		.data_len = amsg_len,
+		.data = amsg
 	};
+
 	sep->ep.cb((void*)sep, &ev);
+
+	free(amsg); /* map is owned by cb() function, but amsg is not. */
+	return;
+err2:
+	free(amsg);
+err1:
+	free(map);
+err0:
+	return;
 }
 
 static void process_sep_msg_accepted(struct z_sock_ep *sep)
@@ -1072,7 +1099,8 @@ static zap_err_t z_sock_unmap(zap_ep_t ep, zap_map_t map)
 	return ZAP_ERR_OK;
 }
 
-static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map, uint64_t ctxt)
+static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map,
+				const char *msg, size_t msg_len)
 {
 
 	/* validate */
@@ -1084,20 +1112,28 @@ static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map, uint64_t ctxt)
 
 	/* prepare message */
 	struct zap_sock_map *smap = (void*)map;
-	struct sock_msg_rendezvous msg;
-	msg.hdr.msg_type = htons(SOCK_MSG_RENDEZVOUS);
-	msg.hdr.msg_len = htonl(sizeof(msg));
-	msg.rmap_key = htonl(smap->key);
-	msg.acc = htonl(map->acc);
-	msg.addr = htobe64((uint64_t)map->addr);
-	msg.data_len = htonl(map->len);
-	msg.ctxt = ctxt;
+	size_t sz = sizeof(struct sock_msg_rendezvous) + msg_len;
+	struct sock_msg_rendezvous *msgr = malloc(sz);
+	if (!msgr)
+		return ZAP_ERR_RESOURCE;
+	msgr->hdr.msg_type = htons(SOCK_MSG_RENDEZVOUS);
+	msgr->hdr.msg_len = htonl(sz);
+	msgr->rmap_key = htonl(smap->key);
+	msgr->acc = htonl(map->acc);
+	msgr->addr = htobe64((uint64_t)map->addr);
+	msgr->data_len = htonl(map->len);
+	if (msg_len)
+		memcpy(msgr->msg, msg, msg_len);
+
+	zap_err_t rc = ZAP_ERR_OK;
 
 	/* write message */
 	struct z_sock_ep *sep = (void*) ep;
-	if (bufferevent_write(sep->buf_event, &msg, sizeof(msg)) != 0)
-		return ZAP_ERR_RESOURCE;
-	return ZAP_ERR_OK;
+	if (bufferevent_write(sep->buf_event, msgr, sz) != 0)
+		rc = ZAP_ERR_RESOURCE;
+
+	free(msgr);
+	return rc;
 }
 
 static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, void *src,

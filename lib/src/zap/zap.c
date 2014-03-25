@@ -410,9 +410,9 @@ zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
 	return ep->z->unmap(ep, map);
 }
 
-zap_err_t zap_share(zap_ep_t ep, zap_map_t map, uint64_t ctxt)
+zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 {
-	return ep->z->share(ep, map, ctxt);
+	return ep->z->share(ep, m, msg, msg_len);
 }
 
 zap_err_t zap_reject(zap_ep_t ep)

@@ -169,7 +169,7 @@ struct sock_msg_rendezvous {
 	uint32_t acc; /**< Access */
 	uint64_t addr; /**< Address in the map */
 	uint32_t data_len; /**< Length */
-	uint64_t ctxt; /**< Context */
+	char msg[0]; /**< Context */
 };
 
 /**

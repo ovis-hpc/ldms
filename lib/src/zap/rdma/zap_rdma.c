@@ -646,7 +646,9 @@ static void handle_rendezvous(struct z_rdma_ep *rep,
 	zev.type = ZAP_EVENT_RENDEZVOUS;
 	zev.status = ZAP_ERR_OK;
 	zev.map = &map->map;
-	zev.context = (void*)sh->ctxt;
+	zev.data_len = len - sizeof(*sh);
+	if (zev.data_len)
+		zev.data = (void*)sh->msg;
 	rep->ep.cb(&rep->ep, &zev);
 }
 
@@ -1513,18 +1515,24 @@ static zap_err_t z_rdma_send(zap_ep_t ep, void *buf, size_t len)
 	return rc;
 }
 
-static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map, uint64_t ctxt)
+static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
+				const char *msg, size_t msg_len)
 {
 	struct z_rdma_map *rmap = (struct z_rdma_map *)map;
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct rdma_share_msg *sm;
 	struct rdma_buffer *rbuf;
 	int rc;
+	size_t sz = sizeof(*sm) + msg_len;
+
+	if (sz > RQ_BUF_SZ) {
+		/* msg too big! */
+		return ZAP_ERR_NO_SPACE;
+	}
 
 	rbuf = rdma_buffer_alloc(rep, RQ_BUF_SZ, IBV_ACCESS_LOCAL_WRITE);
 	if (!rbuf) {
-		rc = ZAP_ERR_RESOURCE;
-		goto out;
+		return ZAP_ERR_RESOURCE;
 	}
 
 	sm = (struct rdma_share_msg *)rbuf->data;
@@ -1533,13 +1541,12 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map, uint64_t ctxt)
 	sm->va = (unsigned long)rmap->map.addr;
 	sm->len = htonl(rmap->map.len);
 	sm->acc = htonl(rmap->map.acc);
-	sm->ctxt = ctxt;
+	if (msg_len)
+		memcpy(sm->msg, msg, msg_len);
 
-	rbuf->data_len = sizeof(*sm);
+	rbuf->data_len = sz;
 
 	return rdma_post_send(rep, rbuf);
- out:
-	return rc;
 }
 
 /* Map buffer */

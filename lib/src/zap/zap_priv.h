@@ -132,7 +132,8 @@ struct zap {
 	zap_err_t (*unmap)(zap_ep_t ep, zap_map_t map);
 
 	/** Share a mapping with a remote peer */
-	zap_err_t (*share)(zap_ep_t ep, zap_map_t m, uint64_t ctxt);
+	zap_err_t (*share)(zap_ep_t ep, zap_map_t m,
+			   const char *msg, size_t msg_len);
 
 
 	/** Get the local and remote sockaddr for the endpoint */

@@ -150,6 +150,7 @@ zap_map_t remote_map = NULL; /* remote memory mapping */
 void do_send(zap_ep_t ep, char *message)
 {
 	zap_err_t err;
+	printf("Sending: %s\n", message);
 	err = zap_send(ep, message, strlen(message) + 1);
 	if (err)
 		printf("Error %d sending message.\n", err);
@@ -206,7 +207,8 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 		printf("error %d received in rendezvous event.\n", ev->status);
 		return;
 	}
-
+	printf("rendezvous msg_len: %zu\n", ev->data_len);
+	printf("rendezvous message: %s\n", (char*)ev->data);
 	strcpy(write_buf, "thanks for sharing!");
 
 	/* map the data to send */
@@ -235,7 +237,7 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 		printf("Error %d for map of RDMA_READ memory.\n", err);
 		return;
 	}
-	err = zap_share(ep, read_map, (uint64_t)(unsigned long)ep);
+	err = zap_share(ep, read_map, "from server", 12);
 	if (err) {
 		printf("Error %d for share of RDMA_READ map.\n", err);
 		return;
@@ -309,7 +311,7 @@ void do_rendezvous(zap_ep_t ep)
 		zap_close(ep);
 	}
 
-	err = zap_share(ep, write_map, (uint64_t)(unsigned long)ep);
+	err = zap_share(ep, write_map, "from client", 12);
 	if (err) {
 		printf("Error %d sharing the write map.\n", err);
 		zap_close(ep);
@@ -325,6 +327,11 @@ void do_read_and_verify_write(zap_ep_t ep, zap_event_t ev)
 	if (ev->status) {
 		printf("Error %d received in rendezvous event.\n", ev->status);
 		return;
+	}
+
+	if (ev->data_len) {
+		printf("rendezvous msg_len: %zu\n", ev->data_len);
+		printf("rendezvous message: %s\n", (char*)ev->data);
 	}
 
 	/* Read source comes from peer. */
@@ -378,9 +385,7 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	printf("READ BUFFER CONTAINS '%s'.\n", read_buf);
 	zap_unmap(ep, write_map);
 
-	err = zap_send(ep, dare, strlen(dare)+1);
-	if (err)
-		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
+	do_send(ep, dare);
 }
 
 void client_cb(zap_ep_t ep, zap_event_t ev)
