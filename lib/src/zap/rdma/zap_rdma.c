@@ -988,6 +988,7 @@ static void z_rdma_destroy(zap_ep_t zep)
 	rdma_teardown_conn(rep);
 	if (rep->parent_ep)
 		zap_put_ep(rep->parent_ep);
+	DLOG_(rep, "rep: %p freed\n", rep);
 	free(rep);
 }
 
