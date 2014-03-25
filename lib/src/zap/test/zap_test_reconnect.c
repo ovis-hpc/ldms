@@ -130,6 +130,8 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_RECV_COMPLETE:
 		data = (char *)ev->data;
 		printf("recv: %s\n", data);
+		printf("echoing: %s\n", data);
+		zap_send(zep, ev->data, ev->data_len);
 		break;
 	}
 }
@@ -160,6 +162,9 @@ void client_cb(zap_ep_t zep, zap_event_t ev)
 			zap_close(zep);
 		}
 		pthread_mutex_unlock(&exiting_mutex);
+		break;
+	case ZAP_EVENT_RECV_COMPLETE:
+		printf("recv: %s\n", (char*)ev->data);
 		break;
 	}
 }
