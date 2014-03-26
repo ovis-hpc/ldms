@@ -410,16 +410,20 @@ void ocmd_add_peers()
 	char port[16];
 	int n, rc;
 	struct addrinfo *ai;
+	char * comment;
 	while (1) {
 		sline = fgets(line, 1024, f);
 		if (!sline)
 			break;
+		comment = strchr(line, '#');
+		if (comment) /* ignore anything after a comment */
+			*comment ='\0';
 		n = sscanf(line, " %[^:]:%[0-9]", host, port);
 		if (n < 2)
-			break;
+			continue;
 		rc = getaddrinfo(host, port, NULL, &ai);
 		if (rc) {
-			ocmd_log("ERROR: getaddrinfo error: %d\n", rc);
+			ocmd_log("ERROR: getaddrinfo(%d) -- %s. host: %s\n", rc, gai_strerror(rc), host);
 			_exit(-1);
 		}
 		ocm_add_receiver(ocm, ai->ai_addr, ai->ai_addrlen);
