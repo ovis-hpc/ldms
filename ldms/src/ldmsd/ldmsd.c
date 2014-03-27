@@ -114,11 +114,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q"
-
-#ifdef ENABLE_OCM
 #define FMT "H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:qz:o:"
-#endif
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
@@ -3218,8 +3214,8 @@ int main(int argc, char *argv[])
 		case 'D':
 			dirty_threshold = atoi(optarg);
 			break;
-#ifdef ENABLE_OCM
 		case 'z':
+#ifdef ENABLE_OCM
 			if (strcmp(optarg, "ldmsd_sampler")
 					&& strcmp(optarg, "ldmsd_aggregator")) {
 				printf("Invalid ldmsd type '%s', ldmsd type can"
@@ -3228,11 +3224,19 @@ int main(int argc, char *argv[])
 				cleanup(-1);
 			}
 			ldmsd_svc_type = optarg;
+#else
+			printf("Error: -z options requires OCM support.\n");
+#endif
 			break;
 		case 'o':
+#ifdef ENABLE_OCM
 			ocm_port = atoi(optarg);
-			break;
+#else
+			printf("Error: -o options requires OCM support.\n");
 #endif
+			break;
+		case '?':
+			printf("Error: unknown argument: %c\n", optopt);
 		default:
 			usage(argv);
 		}
