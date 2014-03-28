@@ -208,7 +208,8 @@ struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin)
 	return NULL;
 }
 
-struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
+struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
+					const char *sock_envpath)
 {
 	int rc;
 	struct sockaddr_un my_un;
@@ -220,7 +221,7 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 	if (!sock)
 		return NULL;
 
-	sockpath = getenv("LDMSD_SOCKPATH");
+	sockpath = getenv(sock_envpath);
 	if (!sockpath)
 		sockpath = "/var/run";
 
@@ -244,7 +245,17 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 	sprintf(my_un.sun_path, "%s/%s", sockpath, basename(mn));
 	free(mn);
 
-	mkdir(my_un.sun_path, 0755);
+	rc = mkdir(my_un.sun_path, 0755);
+	if (rc < 0) {
+		/* Ignore the error if the path already exists */
+		if (errno != EEXIST) {
+			printf("Error creating '%s: %s\n", my_un.sun_path,
+							strerror(errno));
+			close(sock->sock);
+			goto err;
+		}
+	}
+
 	sprintf(sock->lcl_sun.sun_path, "%s/%d", my_un.sun_path, pid);
 
 	/* Bind to our public name */
@@ -262,4 +273,3 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 	free(sock);
 	return NULL;
 }
-

@@ -301,7 +301,8 @@ int main(int argc, char *argv[])
 	av_list = av_new(128);
 	kw_list = av_new(128);
 
-	ctrl_sock = ctrl_connect(basename(argv[0]), sockname);
+	ctrl_sock = ctrl_connect(basename(argv[0]), sockname,
+						"LDMSD_SOCKPATH");
 	if (!ctrl_sock) {
 		printf("Error setting up connection with ldmsd.\n");
 		exit(1);

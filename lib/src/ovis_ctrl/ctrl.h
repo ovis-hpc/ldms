@@ -21,7 +21,9 @@ struct ctrlsock {
 	struct sockaddr_un lcl_sun;
 };
 
-struct ctrlsock *ctrl_connect(char *my_name, char *sock_name);
+int setup_control(char *sockname);
+struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
+					const char *sock_envpath);
 struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin);
 int ctrl_request(struct ctrlsock *sock, int cmd_id,
 		 struct attr_value_list *avl, char *err_str);
