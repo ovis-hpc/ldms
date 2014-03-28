@@ -68,3 +68,24 @@ libmodel_below_mean_la_LIBADD = $(COMMON_LIBADD) -lm
 libmodel_below_mean_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libmodel_below_mean.la
 endif
+
+if ENABLE_HIGH_PERCENTAGE
+libmodel_high_percentage_la_SOURCES = model_high_percentage.c
+libmodel_high_percentage_la_LIBADD = $(COMMON_LIBADD) -lm
+libmodel_high_percentage_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_high_percentage.la
+endif
+
+if ENABLE_LOW_PERCENTAGE
+libmodel_low_percentage_la_SOURCES = model_low_percentage.c
+libmodel_low_percentage_la_LIBADD = $(COMMON_LIBADD) -lm
+libmodel_low_percentage_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_low_percentage.la
+endif
+
+if ENABLE_DETECT_INPUT_TYPE
+libmodel_detect_input_type_la_SOURCES = model_detect_input_type.c
+libmodel_detect_input_type_la_LIBADD = $(COMMON_LIBADD) -lm
+libmodel_detect_input_type_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_detect_input_type.la
+endif
