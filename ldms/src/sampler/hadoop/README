@@ -1,0 +1,19 @@
+The Hadoop samplers in this directory are for both Hadoop 1.2 and Hadoop 2.2.
+
+The Hadoop Metrics2 Sinks (Java Code) are in hadoop-sinks and hadoop-2-sinks.
+
+ - hadoop-sinks contains the Hadoop Metrics2 Sinks compatible with Hadoop 1.2.
+ - hadoop-2-sinks contains the Hadoop Metrics 2 Sinks compatible with Hadoop 2.2.
+
+Makefile.am builds every sampler if '--enable-hadoop' is given when configure
+'ldms.' However, Makefile.am does not build the Java code. For hadoop-sinks, you
+need to compile it yourself. On the other hand, we provide pom.xml in
+hadoop-2-sinks, so you can use Maven to create the jar file for the OVIS Sinks
+that are compatible with Hadoop 2.2.
+
+The OVIS Sinks for both Hadoop 1.2 and Hadoop 2.2 have the same functionalities.
+	- OvisMetricNameSink collects the metric names.
+	- OvisSink sends the metrics to the ldms samplers.
+
+The instruction to configure Hadoop (both 1.2 and 2.2) to use OVIS Sinks can be
+find in hadoop-2-sinks/README.

@@ -1,0 +1,36 @@
+Hadoop Sinks for OVIS
+=====================
+There are two OVIS Hadoop Sinks.
+
+===============================================================================
+OvisMetricName
+===============================================================================
+	Collect metric names. The Sink will flush the names if the number of collected names stays the same for 100 * period, where 'period' is the period specified in hadoop-metrics2.properties.
+
+	For example, to collect the metric names of namenode.
+		*.sink.ovis.class=org.apache.hadoop.metrics2.ovis.OvisMetricName
+		namenode.sink.ovis.file=/home/hduser/data/namenode-name.out
+===============================================================================
+
+OvisSink
+===============================================================================
+	Automatically send the metric values to the LDMS Daemon specified in hadoop-metrics2.properties.
+	The required attributes are:
+		- daemon: the prefix
+		- host: the host of the LDMS Daemon that runs the hadoop sampler of the specified daemon
+		- port: the port of the LDMS Daemon
+
+	For example, to send the metrics of namenode, add the following lines in hadoop-metrics2.properties.
+
+		*.sink.ovis.class=org.apache.hadoop.metrics2.ovis.OvisSink
+		namenode.sink.ovis.daemon=namenode
+		namenode.sink.ovis.host=vic1
+		namenode.sink.ovis.port=50001
+===============================================================================
+
+To build,
+	- you need
+		- Hadoop 2.2
+		- Maven 2.3 (Otherwise, modify the pom.xml as appropriate)
+	- Call 'mvn package' at the top level.
+	- The binary tar ball is in the target folder. Hadoop-OVIS-<version>.tar.gz

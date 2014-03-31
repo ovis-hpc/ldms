@@ -46,3 +46,13 @@ lib_LTLIBRARIES += libhadoop_reducetask.la
 libhadoop_secondarynamenode_la_SOURCES = hadoop_secondarynamenode.c
 libhadoop_secondarynamenode_la_LIBADD = $(COMMON_ADD)
 lib_LTLIBRARIES += libhadoop_secondarynamenode.la
+
+#hadoop_resourcemanager
+libhadoop_resourcemanager_la_SOURCES = hadoop_resourcemanager.c
+libhadoop_resourcemanager_la_LIBADD = $(COMMON_ADD)
+lib_LTLIBRARIES += libhadoop_resourcemanager.la
+
+#hadoop_nodemanager
+libhadoop_nodemanager_la_SOURCES = hadoop_nodemanager.c
+libhadoop_nodemanager_la_LIBADD = $(COMMON_ADD)
+lib_LTLIBRARIES += libhadoop_nodemanager.la
