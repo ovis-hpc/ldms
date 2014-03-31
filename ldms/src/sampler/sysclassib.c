@@ -502,6 +502,8 @@ static int sample(void)
 	gettimeofday(tv_now, 0);
 	timersub(tv_now, tv_prev, &tv_diff);
 	struct scib_metric *m;
+
+	ldms_begin_transaction(set);
 	LIST_FOREACH(m, &scib_mlist, entry) {
 		if (newerkernel) {
 			fseek(m->f, 0, SEEK_SET);
@@ -531,6 +533,7 @@ static int sample(void)
 		m->prev_value = v;
 
 	}
+	ldms_end_transaction(set);
 
 	tmp = tv_now;
 	tv_now = tv_prev;
