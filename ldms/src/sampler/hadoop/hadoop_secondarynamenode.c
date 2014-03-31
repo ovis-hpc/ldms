@@ -45,6 +45,13 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/*
+ * hadoop_secondarynamenode.c
+ *
+ *  Created on: Mar 31, 2014
+ *      Author: nichamon
+ */
+
 #include <stdio.h>
 #include <inttypes.h>
 #include <errno.h>
@@ -56,13 +63,13 @@ char *metric_name_file;
 int port;
 
 int num_metrics;
-struct hadoop_set maptask_set;
+struct hadoop_set secondarynamenode_set;
 pthread_t thread;
-ldmsd_msg_log_f msglog;
+ldms_log_fn_t msglog;
 
 static const char *usage(void)
 {
-	return  "config name=hadoop_maptask component_id=<comp_id> port=<port>\n"
+	return  "config name=hadoop_secondarynamenode component_id=<comp_id> port=<port>\n"
 		"	file=<file> set=<setname>\n"
 		"    comp_id     The component id value.\n"
 		"    setname     The set name.\n"
@@ -75,13 +82,13 @@ static const char *usage(void)
 
 static ldms_set_t get_set()
 {
-	return maptask_set.set;
+	return secondarynamenode_set.set;
 }
 
 /**
  * \brief Configuration
  *
- * config name=hadoop_maptask component_id=<comp_id> set=<setname>
+ * config name=hadoop_secondarynamenode component_id=<comp_id> set=<setname>
  *     comp_id     The component id value.
  *     setname     The set name.
  *     port	   The listener port which the LDMS sink sends data to
@@ -110,7 +117,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	attr = "file";
 	value = av_value(avl, attr);
 	if (!value) {
-		msglog("hadoop_maptask: no file is given.\n");
+		msglog("hadoop_secondarynamenode: no file is given.\n");
 		goto enoent;
 	}
 	metric_name_file = strdup(value);
@@ -118,34 +125,35 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	attr = "set";
 	value = av_value(avl, attr);
 	if (value)
-		maptask_set.setname = strdup(value);
+		secondarynamenode_set.setname = strdup(value);
 	else
 		goto enoent;
 
+	secondarynamenode_set.msglog = msglog;
 	int rc;
-	if (rc = setup_datagram(port, &maptask_set.sockfd)) {
-		msglog("hadoop_maptask: failed to setup "
+	if (rc = setup_datagram(port, &secondarynamenode_set.sockfd)) {
+		msglog("hadoop_secondarynamenode: failed to setup "
 				"datagram between ldmsd and hadoop.\n");
 		goto err_1;
 	}
 
 	if (rc = create_hadoop_set(NULL, metric_name_file,
-				&maptask_set, comp_id))
+				&secondarynamenode_set, comp_id))
 		goto err_2;
-	rc = pthread_create(&thread, NULL, recv_metrics, &maptask_set);
+	rc = pthread_create(&thread, NULL, recv_metrics, &secondarynamenode_set);
 	if (rc) {
-		destroy_hadoop_set(&maptask_set);
+		destroy_hadoop_set(&secondarynamenode_set);
 		goto err_0;
 	}
 	return 0;
 err_2:
-	close(maptask_set.sockfd);
+	close(secondarynamenode_set.sockfd);
 err_1:
-	free(maptask_set.setname);
+	free(secondarynamenode_set.setname);
 err_0:
 	return rc;
 enoent:
-	msglog("hadoop_maptask: need %s. Error %d\n", attr, ENOENT);
+	msglog("hadoop_secondarynamenode: need %s. Error %d\n", attr, ENOENT);
 	return ENOENT;
 }
 
@@ -157,19 +165,19 @@ static int sample(void)
 
 static void term(void)
 {
-	if (maptask_set.set)
-		ldms_destroy_set(maptask_set.set);
-	maptask_set.set = NULL;
-	if (maptask_set.map)
-		str_map_free(maptask_set.map);
-	maptask_set.map = NULL;
-	if (maptask_set.sockfd)
-		close(maptask_set.sockfd);
+	if (secondarynamenode_set.set)
+		ldms_destroy_set(secondarynamenode_set.set);
+	secondarynamenode_set.set = NULL;
+	if (secondarynamenode_set.map)
+		str_map_free(secondarynamenode_set.map);
+	secondarynamenode_set.map = NULL;
+	if (secondarynamenode_set.sockfd)
+		close(secondarynamenode_set.sockfd);
 }
 
-static struct ldmsd_sampler hadoop_maptask = {
+static struct ldmsd_sampler hadoop_secondarynamenode = {
 	.base = {
-		.name = "hadoop_maptask",
+		.name = "hadoop_secondarynamenode",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -181,5 +189,5 @@ static struct ldmsd_sampler hadoop_maptask = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &hadoop_maptask.base;
+	return &hadoop_secondarynamenode.base;
 }

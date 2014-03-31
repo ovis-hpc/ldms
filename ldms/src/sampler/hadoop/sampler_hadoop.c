@@ -71,6 +71,8 @@
 #include "sampler_hadoop.h"
 
 #define MAX_BUF_LEN 1024
+#define MAX_HADOOP_MNAME 248
+#define MAX_HADOOP_TYPE 8
 
 struct record_metrics *parse_record(char *record){
 	struct record_metrics *metrics = calloc(1, sizeof(*metrics));
@@ -123,10 +125,10 @@ int create_hadoop_set(char *given_metrics, char *fname,
 		return errno;
 	}
 
-	char *s;
-	char buf[256];
-	char metricname[128];
-	char type[128];
+	char *s, *ptr;
+	char buf[MAX_HADOOP_MNAME + MAX_HADOOP_TYPE];
+	char metricname[MAX_HADOOP_MNAME];
+	char type[MAX_HADOOP_TYPE];
 
 	int rc;
 	size_t meta_sz, data_sz, tot_meta_sz, tot_data_sz;
@@ -139,14 +141,25 @@ int create_hadoop_set(char *given_metrics, char *fname,
 		if (!s)
 			break;
 
-		rc = sscanf(buf, "%s\t%s", metricname, type);
-		if (rc < 2) {
-			break;
+		/* Ignore the commented line */
+		if (buf[0] == '#')
+			continue;
+
+		ptr = strrchr(buf, '\t');
+		if (!ptr) {
+			msglog("hadoop_%s: Invalid format: %s\n",
+						hdset->setname, buf);
+			return EINVAL;
 		}
 
-		/* Ignore the commented line */
-		if (metricname[0] == '#')
-			continue;
+		if (ptr - buf + 1 > MAX_HADOOP_MNAME) {
+			msglog("hadoop_%s: %s: metric name exceeds %d\n",
+					hdset->setname, buf, MAX_HADOOP_MNAME);
+			return EPERM;
+		}
+
+		snprintf(metricname, ptr - buf + 1, "%s", buf);
+		snprintf(type, strlen(ptr + 1), "%s", ptr + 1);
 
 		rc = ldms_get_metric_size(metricname,
 				ldms_str_to_type(type),
@@ -178,13 +191,26 @@ int create_hadoop_set(char *given_metrics, char *fname,
 		s = fgets(buf, sizeof(buf), f);
 		if (!s)
 			break;
-		rc = sscanf(buf, "%s\t%s", metricname, type);
-		if (rc < 2)
-			break;
 
 		/* Ignore the commented line */
-		if (metricname[0] == '#')
+		if (buf[0] == '#')
 			continue;
+
+		ptr = strrchr(buf, '\t');
+		if (!ptr) {
+			msglog("hadoop_%s: Invalid format: %s\n",
+						hdset->setname, buf);
+			return EINVAL;
+		}
+
+		if (ptr - buf + 1 > MAX_HADOOP_MNAME) {
+			msglog("hadoop_%s: %s: metric name exceeds %d\n",
+					hdset->setname, buf, MAX_HADOOP_MNAME);
+			return EPERM;
+		}
+
+		snprintf(metricname, ptr - buf + 1, "%s", buf);
+		snprintf(type, strlen(ptr + 1), "%s", ptr + 1);
 
 		m = ldms_add_metric(hdset->set, metricname,
 					ldms_str_to_type(type));
@@ -208,7 +234,7 @@ err_2:
 err_1:
 	ldms_set_release(hdset->set);
 err:
-	msglog("hadoop_namenode: failed to create the set.\n");
+	msglog("hadoop_%s: failed to create the set.\n", hdset->setname);
 	fclose(f);
 	return rc;
 }
@@ -279,7 +305,7 @@ void *recv_metrics(void *_hdset)
 		rc = recvfrom(hdset->sockfd, buffer, (size_t)MAX_BUF_LEN,
 							0, NULL, NULL);
 		if (rc < 0) {
-			hdset->msglog("%s: failed to recieve hadoop "
+			hdset->msglog("%s: failed to receive hadoop "
 						"metrics. Error %d\n",
 						hdset->setname, rc);
 			return NULL;

@@ -51,8 +51,6 @@
 #include <pthread.h>
 #include "sampler_hadoop.h"
 
-#define DATANODE_FILE "hadoop_datanode_metrics.config"
-
 uint64_t comp_id;
 char *metric_name_file;
 int port;
@@ -111,10 +109,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	attr = "file";
 	value = av_value(avl, attr);
-	if (value)
-		metric_name_file = strdup(value);
-	else
-		metric_name_file = DATANODE_FILE;
+	if (!value) {
+		msglog("hadoop_datanode: no file is given.\n");
+		goto enoent;
+	}
+	metric_name_file = strdup(value);
 
 	attr = "set";
 	value = av_value(avl, attr);
