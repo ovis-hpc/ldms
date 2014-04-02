@@ -58,6 +58,7 @@
 #include <dirent.h>
 #include <wordexp.h>
 #include "lustre_sampler.h"
+#include <assert.h>
 
 static ldmsd_msg_log_f msglog = NULL;
 
@@ -74,8 +75,9 @@ struct lustre_svc_stats* lustre_svc_stats_alloc(const char *path, int mlen)
 			sizeof(s->mctxt[0])*mlen);
 	if (!s)
 		goto err0;
-	s->path = strdup(path);
-	if (!s->path)
+	s->lms.path = strdup(path);
+	s->lms.type = LMS_SVC_STATS;
+	if (!s->lms.path)
 		goto err1;
 	s->tv_cur = &s->tv[0];
 	s->tv_prev = &s->tv[1];
@@ -86,19 +88,52 @@ err0:
 	return NULL;
 }
 
+struct lustre_single* lustre_single_alloc(const char *path)
+{
+	struct lustre_single *l = calloc(1, sizeof(*l));
+	if (!l)
+		goto err0;
+	l->lms.path = strdup(path);
+	l->lms.type = LMS_SINGLE;
+	if (!l->lms.path)
+		goto err1;
+	return l;
+err1:
+	free(l);
+err0:
+	return NULL;
+}
+
+void __lms_content_free(struct lustre_metric_src *lms)
+{
+	free(lms->path);
+}
+
 void lustre_svc_stats_free(struct lustre_svc_stats *lss)
 {
-	free(lss->name);
-	free(lss->path);
+	__lms_content_free(&lss->lms);
 	free(lss);
 }
 
-void lustre_svc_stats_list_free(struct lustre_svc_stats_head *h)
+void lustre_single_free(struct lustre_single *ls)
 {
-	struct lustre_svc_stats *l;
-	while (l = LIST_FIRST(h)) {
+	__lms_content_free(&ls->lms);
+	free(ls);
+}
+
+void lustre_metric_src_list_free(struct lustre_metric_src_list *list)
+{
+	struct lustre_metric_src *l;
+	while (l = LIST_FIRST(list)) {
 		LIST_REMOVE(l, link);
-		lustre_svc_stats_free(l);
+		switch (l->type) {
+		case LMS_SVC_STATS:
+			lustre_svc_stats_free((void*)l);
+			break;
+		case LMS_SINGLE:
+			lustre_single_free((void*)l);
+			break;
+		}
 	}
 }
 
@@ -106,7 +141,7 @@ void lustre_svc_stats_list_free(struct lustre_svc_stats_head *h)
  * \returns 0 on success.
  * \returns Error code on error.
  */
-int __add_metric_routine(ldms_set_t set, uint64_t udata,
+int __add_lss_metric_routine(ldms_set_t set, uint64_t udata,
 			 const char *metric_name, struct str_map *id_map,
 			 const char *key, struct lustre_svc_stats *lss)
 {
@@ -129,13 +164,13 @@ int __add_metric_routine(ldms_set_t set, uint64_t udata,
 	return 0;
 }
 
-int lss_open_file(struct lustre_svc_stats *lss)
+int lms_open_file(struct lustre_metric_src *lms)
 {
-	if (lss->f)
+	if (lms->f)
 		return EEXIST;
 	wordexp_t p = {0};
 	int rc;
-	rc = wordexp(lss->path, &p, 0);
+	rc = wordexp(lms->path, &p, 0);
 	if (rc) {
 		if (rc == WRDE_NOSPACE)
 			rc = ENOMEM;
@@ -147,18 +182,18 @@ int lss_open_file(struct lustre_svc_stats *lss)
 		rc = EINVAL;
 		goto out;
 	}
-	lss->f = fopen(p.we_wordv[0], "rt");
-	if (!lss->f)
+	lms->f = fopen(p.we_wordv[0], "rt");
+	if (!lms->f)
 		rc = errno;
 out:
 	wordfree(&p);
 	return rc;
 }
 
-int lss_close_file(struct lustre_svc_stats *lss)
+int lms_close_file(struct lustre_metric_src *lms)
 {
-	fclose(lss->f);
-	lss->f = NULL;
+	fclose(lms->f);
+	lms->f = NULL;
 }
 
 int stats_construct_routine(ldms_set_t set,
@@ -166,7 +201,7 @@ int stats_construct_routine(ldms_set_t set,
 			    const char *stats_path,
 			    const char *prefix,
 			    const char *suffix,
-			    struct lustre_svc_stats_head *stats_head,
+			    struct lustre_metric_src_list *list,
 			    char **keys, int nkeys,
 			    struct str_map *key_id_map)
 {
@@ -177,11 +212,11 @@ int stats_construct_routine(ldms_set_t set,
 	if (!lss)
 		return ENOMEM;
 	lss->key_id_map = key_id_map;
-	LIST_INSERT_HEAD(stats_head, lss, link);
+	LIST_INSERT_HEAD(list, &lss->lms, link);
 	int j;
 	for (j=0; j<nkeys; j++) {
 		sprintf(metric_name, "%s%s%s", prefix, keys[j], suffix);
-		rc = __add_metric_routine(set, comp_id, metric_name,
+		rc = __add_lss_metric_routine(set, comp_id, metric_name,
 				key_id_map, keys[j],
 				lss);
 		if (rc)
@@ -190,16 +225,43 @@ int stats_construct_routine(ldms_set_t set,
 	return 0;
 }
 
+int single_construct_routine(ldms_set_t set,
+			    uint64_t comp_id,
+			    const char *metric_path,
+			    const char *prefix,
+			    const char *suffix,
+			    struct lustre_metric_src_list *list)
+{
+	const char *name = strrchr(metric_path, '/');
+	char metric_name[128];
+	if (!name)
+		return EINVAL;
+	struct lustre_single *ls = lustre_single_alloc(metric_path);
+	if (!ls)
+		goto err0;
+	snprintf(metric_name, 128, "%s%s%s", prefix, name, suffix);
+	ls->sctxt.metric = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	if (!ls->sctxt.metric)
+		goto err1;
+	LIST_INSERT_HEAD(list, &ls->lms, link);
+	ldms_set_user_data(ls->sctxt.metric, comp_id);
+	return 0;
+err1:
+	lustre_single_free(ls);
+err0:
+	return ENOMEM;
+}
+
 #define __LBUF_SIZ 256
-int lss_sample(struct lustre_svc_stats *lss)
+int __lss_sample(struct lustre_svc_stats *lss)
 {
 	int rc = 0;
-	if (!lss->f) {
-		rc = lss_open_file(lss);
+	if (!lss->lms.f) {
+		rc = lms_open_file(&lss->lms);
 		if (rc)
 			goto out;
 	}
-	fseek(lss->f, 0, SEEK_SET);
+	fseek(lss->lms.f, 0, SEEK_SET);
 	char lbuf[__LBUF_SIZ];
 	char name[64];
 	char unit[16];
@@ -207,14 +269,14 @@ int lss_sample(struct lustre_svc_stats *lss)
 	union ldms_value value;
 	struct str_map *id_map = lss->key_id_map;
 	/* The first line is timestamp, we can ignore that */
-	fgets(lbuf, __LBUF_SIZ, lss->f);
+	fgets(lbuf, __LBUF_SIZ, lss->lms.f);
 
 	gettimeofday(lss->tv_cur, 0);
 	struct timeval dtv;
 	timersub(lss->tv_cur, lss->tv_prev, &dtv);
 	float dt = dtv.tv_sec + dtv.tv_usec / 1e06;
 
-	while (fgets(lbuf, __LBUF_SIZ, lss->f)) {
+	while (fgets(lbuf, __LBUF_SIZ, lss->lms.f)) {
 		sscanf(lbuf, "%s %lu samples %s %lu %lu %lu %lu",
 				name, &count, unit, &min, &max, &sum, &sum2);
 
@@ -244,6 +306,52 @@ int lss_sample(struct lustre_svc_stats *lss)
 	lss->tv_cur = lss->tv_prev;
 	lss->tv_prev = tmp;
 out:
+	return rc;
+}
+
+int __single_sample(struct lustre_single *ls)
+{
+	int rc = 0;
+	if (!ls->lms.f) {
+		rc = lms_open_file(&ls->lms);
+		if (rc)
+			goto out;
+	}
+	fseek(ls->lms.f, 0, SEEK_SET);
+	char line[64], *s;
+	s = fgets(line, 64, ls->lms.f);
+	if (!s) {
+		rc = ENOENT;
+		goto out;
+	}
+	union ldms_value v;
+	rc = sscanf(s, "%"PRIu64, &v.v_u64);
+	if (rc < 1) {
+		rc = errno;
+		goto out;
+	}
+	ldms_set_metric(ls->sctxt.metric, &v);
+	while (fgets(line, 64, ls->lms.f)) {
+		/* read until end of file */
+	}
+	rc = 0;
+out:
+	return rc;
+}
+
+int lms_sample(struct lustre_metric_src *lms)
+{
+	int rc;
+	switch (lms->type) {
+	case LMS_SVC_STATS:
+		rc = __lss_sample((struct lustre_svc_stats*) lms);
+		break;
+	case LMS_SINGLE:
+		rc = __single_sample((struct lustre_single*) lms);
+		break;
+	default:
+		assert(0 == "Unknown type");
+	}
 	return rc;
 }
 

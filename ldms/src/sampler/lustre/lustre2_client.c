@@ -94,7 +94,7 @@ struct str_map *stats_key_id = NULL;
  */
 struct str_map *llite_key_id = NULL;
 
-struct lustre_svc_stats_head svc_stats = {0};
+struct lustre_metric_src_list lms_list = {0};
 
 static uint64_t counter;
 static ldms_set_t set;
@@ -257,7 +257,7 @@ static int create_metric_set(const char *path, const char *oscs,
 					namebase[i], sl->str);
 			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
 			rc = stats_construct_routine(set, comp_id, tmp_path,
-					"lstats.", suffix, &svc_stats, keys[i],
+					"lstats.", suffix, &lms_list, keys[i],
 					keylen[i], maps[i]);
 			if (rc)
 				goto err1;
@@ -267,7 +267,7 @@ static int create_metric_set(const char *path, const char *oscs,
 	return 0;
 err1:
 	msglog("lustre_oss.c:create_metric_set@err1\n");
-	lustre_svc_stats_list_free(&svc_stats);
+	lustre_metric_src_list_free(&lms_list);
 	ldms_destroy_set(set);
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
@@ -350,11 +350,11 @@ static int sample(void)
 		return EINVAL;
 	ldms_begin_transaction(set);
 
-	struct lustre_svc_stats *lss;
+	struct lustre_metric_src *lms;
 
 	/* For all stats */
-	LIST_FOREACH(lss, &svc_stats, link) {
-		lss_sample(lss);
+	LIST_FOREACH(lms, &lms_list, link) {
+		lms_sample(lms);
 	}
 
  out:

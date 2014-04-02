@@ -200,17 +200,38 @@ struct lustre_metric_ctxt {
 	uint64_t rate_ref; /**< ID of the rate metric derivative */
 };
 
-LIST_HEAD(lustre_svc_stats_head, lustre_svc_stats);
+LIST_HEAD(lustre_metric_src_list, lustre_metric_src);
+/**
+ * Lustre metric source structure.
+ */
+struct lustre_metric_src {
+	LIST_ENTRY(lustre_metric_src) link;
+	enum {
+		LMS_SVC_STATS,
+		LMS_SINGLE
+	} type;
+	char *path;
+	FILE *f;
+};
+/**
+ * Lustre service stats structure, for a metric source that follow lustre stat
+ * file format.
+ */
 struct lustre_svc_stats {
-	LIST_ENTRY(lustre_svc_stats) link;
+	struct lustre_metric_src lms;
 	struct timeval tv[2];
 	struct timeval *tv_cur;
 	struct timeval *tv_prev;
-	char *path;
-	char *name;
-	FILE *f;
 	struct str_map *key_id_map;
 	struct lustre_metric_ctxt mctxt[0];
+};
+
+/**
+ * A structure for a source file that contains only one metric.
+ */
+struct lustre_single {
+	struct lustre_metric_src lms;
+	struct lustre_metric_ctxt sctxt; /** single context */
 };
 
 /**
@@ -230,7 +251,7 @@ void lustre_svc_stats_free(struct lustre_svc_stats *lss);
  * Free a list of ::lustre_svc_stats.
  * \param h The head of the list.
  */
-void lustre_svc_stats_list_free(struct lustre_svc_stats_head *h);
+void lustre_metric_src_list_free(struct lustre_metric_src_list *h);
 
 /**
  * Routine for a stats file.
@@ -242,9 +263,22 @@ int stats_construct_routine(ldms_set_t set,
 			    const char *stats_path,
 			    const char *prefix,
 			    const char *suffix,
-			    struct lustre_svc_stats_head *stats_head,
+			    struct lustre_metric_src_list *list,
 			    char **keys, int nkeys,
 			    struct str_map *key_id_map);
+
+/**
+ * Routine for a single metric file.
+ *
+ * \returns 0 on success.
+ * \returns Error code on erorr.
+ */
+int single_construct_routine(ldms_set_t set,
+			    uint64_t comp_id,
+			    const char *metric_path,
+			    const char *prefix,
+			    const char *suffix,
+			    struct lustre_metric_src_list *list);
 
 /**
  * Set message log function to \c f.
@@ -253,10 +287,10 @@ int stats_construct_routine(ldms_set_t set,
 void lustre_sampler_set_msglog(ldmsd_msg_log_f f);
 
 /**
- * \brief Sample the metrics in \c lss.
- * \param lss The ::lustre_svc_stats structure.
+ * \brief Sample the metrics in \c lms.
+ * \param lms The metric source.
  */
-int lss_sample(struct lustre_svc_stats *lss);
+int lms_sample(struct lustre_metric_src *lss);
 
 /**
  * Open the file (which can be a pattern) in lss.

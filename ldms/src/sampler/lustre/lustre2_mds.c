@@ -136,7 +136,7 @@ char *mds_services[] = {
  */
 struct str_map *stats_key_id;
 
-struct lustre_svc_stats_head svc_stats = {0};
+struct lustre_metric_src_list lms_list = {0};
 
 static uint64_t counter;
 static ldms_set_t set;
@@ -239,7 +239,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		sprintf(suffix, "#mds.%s", mds_services[i]);
 		rc = stats_construct_routine(set, comp_id, tmp_path,
 					     "lstats.", suffix,
-					     &svc_stats, stats_key,
+					     &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
 			goto err2;
@@ -249,7 +249,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/stats", sl->str);
 		sprintf(suffix, "#mdt.%s", sl->str);
 		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
-					     suffix, &svc_stats, stats_key,
+					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
 			goto err2;
@@ -257,7 +257,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/md_stats", sl->str);
 		sprintf(suffix, "#mdt.%s", sl->str);
 		rc = stats_construct_routine(set, comp_id, tmp_path,
-					     "md_stats.", suffix, &svc_stats,
+					     "md_stats.", suffix, &lms_list,
 					     md_stats_key, MD_STATS_KEY_LEN,
 					     md_stats_key_id);
 		if (rc)
@@ -267,7 +267,7 @@ static int create_metric_set(const char *path, const char *mdts)
 	return 0;
 err2:
 	msglog("lustre_mds.c:create_metric_set@err2\n");
-	lustre_svc_stats_list_free(&svc_stats);
+	lustre_metric_src_list_free(&lms_list);
 	ldms_destroy_set(set);
 	msglog("WARNING: lustre_mds set DESTROYED\n");
 	set = 0;
@@ -336,11 +336,11 @@ static int sample(void)
 		return EINVAL;
 	ldms_begin_transaction(set);
 
-	struct lustre_svc_stats *lss;
+	struct lustre_metric_src *lms;
 
 	/* For all stats */
-	LIST_FOREACH(lss, &svc_stats, link) {
-		lss_sample(lss);
+	LIST_FOREACH(lms, &lms_list, link) {
+		lms_sample(lms);
 	}
 
  out:

@@ -201,7 +201,18 @@ char *obdf_key[] = {
 
 #define OBDF_KEY_LEN __ALEN(obdf_key)
 
-struct lustre_svc_stats_head svc_stats = {0};
+/**
+ * OST metrics that are in single-metric-file source.
+ *
+ * For example, please see "/proc/fs/lustre/obdfilter/XXXXX/kbytesavail.
+ */
+const char *ost_single_attr[] = {
+	"filesfree",
+	"kbytesavail",
+};
+#define OST_SINGLE_ATTR_LEN __ALEN(ost_single_attr)
+
+struct lustre_metric_src_list lms_list = {0};
 
 static uint64_t counter;
 static ldms_set_t set;
@@ -282,6 +293,17 @@ static int create_metric_set(const char *path, const char *osts)
 			tot_data_sz += data_sz;
 			metric_count++;
 		}
+
+		/* For single attributes */
+		for (j = 0; j < OST_SINGLE_ATTR_LEN; j++) {
+			sprintf(metric_name, "lustre.%s#ost.%s",
+					ost_single_attr[j], sl->str);
+			ldms_get_metric_size(metric_name, LDMS_V_U64,
+					&meta_sz, &data_sz);
+			tot_meta_sz += meta_sz;
+			tot_data_sz += data_sz;
+			metric_count++;
+		}
 	}
 
 	/* Done calculating, now it is time to construct set */
@@ -294,7 +316,7 @@ static int create_metric_set(const char *path, const char *osts)
 				oss_services[i]);
 		sprintf(suffix, "#oss.%s", oss_services[i]);
 		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
-					     suffix, &svc_stats, stats_key,
+					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
 			goto err2;
@@ -304,16 +326,24 @@ static int create_metric_set(const char *path, const char *osts)
 		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
 		sprintf(suffix, "#ost.%s", sl->str);
 		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
-					     suffix, &svc_stats, obdf_key,
+					     suffix, &lms_list, obdf_key,
 					     OBDF_KEY_LEN, obdf_key_id);
 		if (rc)
 			goto err2;
+		for (j = 0; j < OST_SINGLE_ATTR_LEN; j++) {
+			sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/%s",
+						sl->str, ost_single_attr[j]);
+			rc = single_construct_routine(set, comp_id, tmp_path,
+					"lustre.", suffix, &lms_list);
+			if (rc)
+				goto err2;
+		}
 	}
 
 	return 0;
 err2:
 	msglog("lustre_oss.c:create_metric_set@err2\n");
-	lustre_svc_stats_list_free(&svc_stats);
+	lustre_metric_src_list_free(&lms_list);
 	ldms_destroy_set(set);
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
@@ -382,11 +412,11 @@ static int sample(void)
 		return EINVAL;
 	ldms_begin_transaction(set);
 
-	struct lustre_svc_stats *lss;
+	struct lustre_metric_src *lms;
 
 	/* For all stats */
-	LIST_FOREACH(lss, &svc_stats, link) {
-		lss_sample(lss);
+	LIST_FOREACH(lms, &lms_list, link) {
+		lms_sample(lms);
 	}
 
 out:
