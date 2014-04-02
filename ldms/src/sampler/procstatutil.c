@@ -60,6 +60,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
@@ -68,7 +69,14 @@ static uint64_t counter;
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
+ldms_metric_t *rate_metric_table;
+uint64_t *prev_value;
 ldmsd_msg_log_f msglog;
+
+long USER_HZ; /* initialized in get_plugin() */
+struct timeval _tv[2] = {0};
+struct timeval *curr_tv = &_tv[0];
+struct timeval *prev_tv = &_tv[1];
 
 int numcpu_plusone;
 uint64_t comp_id;
@@ -80,7 +88,6 @@ ldms_metric_t tv_sec_metric_handle2;
 ldms_metric_t tv_nsec_metric_handle2;
 ldms_metric_t tv_dnsec_metric_handle;
 #endif
-
 
 static ldms_set_t get_set()
 {
@@ -104,6 +111,21 @@ static char *metric_name_fmt[] = {
 	"guest#%d",
 	"guest_nice#%d",
 };
+
+static char *rate_metric_name_fmt[] = {
+	/* rate of above */
+	"user.rate#%d",
+	"nice.rate#%d",
+	"sys.rate#%d",
+	"idle.rate#%d",
+	"iowait.rate#%d",
+	"irq.rate#%d",
+	"softirq.rate#%d",
+	"steal.rate#%d",
+	"guest.rate#%d",
+	"guest_nice.rate#%d",
+};
+
 static int create_metric_set(const char *path)
 {
 	size_t meta_sz, total_meta_sz;
@@ -147,8 +169,8 @@ static int create_metric_set(const char *path)
 		column = 0;
 		for (token = strtok(NULL, " \t\n"); token;
 		     token = strtok(NULL, " \t\n")) {
-
-			sprintf(metric_name, metric_name_fmt[column++], cpu_count);
+			/* raw */
+			sprintf(metric_name, metric_name_fmt[column], cpu_count);
 			rc = ldms_get_metric_size(metric_name,
 						  LDMS_V_U64, &meta_sz,
 						  &data_sz);
@@ -157,6 +179,19 @@ static int create_metric_set(const char *path)
 
 			total_meta_sz += meta_sz;
 			total_data_sz += data_sz;
+
+			/* rate */
+			sprintf(metric_name, rate_metric_name_fmt[column], cpu_count);
+			rc = ldms_get_metric_size(metric_name,
+						  LDMS_V_F, &meta_sz,
+						  &data_sz);
+			if (rc)
+				return rc;
+
+			total_meta_sz += meta_sz;
+			total_data_sz += data_sz;
+
+			column++;
 			metric_count++;
 		}
 		column_count = column;
@@ -186,7 +221,15 @@ static int create_metric_set(const char *path)
 
 	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
-		goto err;
+		goto err0;
+
+	prev_value = calloc(metric_count, sizeof(*prev_value));
+	if (!prev_value)
+		goto err1;
+
+	rate_metric_table = calloc(metric_count, sizeof(ldms_metric_t));
+	if (!rate_metric_table)
+		goto err2;
 
 	int cpu_no;
 	ldms_metric_t m;
@@ -195,12 +238,21 @@ static int create_metric_set(const char *path)
 	for (cpu_no = 0; cpu_no < cpu_count; cpu_no++) {
 		int column;
 		for (column = 0; column < column_count; column++) {
+			/* raw counter */
 			sprintf(metric_name, metric_name_fmt[column], cpu_no);
 			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!m)
-				goto err;
+				goto err3;
 			ldms_set_user_data(m, cpu_comp_id);
-			metric_table[metric_no++] = m;
+			metric_table[metric_no] = m;
+			/* rate */
+			sprintf(metric_name, rate_metric_name_fmt[column], cpu_no);
+			m = ldms_add_metric(set, metric_name, LDMS_V_F);
+			if (!m)
+				goto err3;
+			ldms_set_user_data(m, cpu_comp_id);
+			rate_metric_table[metric_no] = m;
+			metric_no++;
 		}
 		cpu_comp_id++;
 	}
@@ -220,7 +272,13 @@ static int create_metric_set(const char *path)
 #endif
 
 	return 0;
- err:
+err3:
+	free(rate_metric_table);
+err2:
+	free(prev_value);
+err1:
+	free(metric_table);
+err0:
 	ldms_set_release(set);
 	return rc ;
 }
@@ -255,9 +313,12 @@ static int sample(void)
 	char *s;
 	char lbuf[256];
 	union ldms_value vv;
-	struct timespec time1;
+	struct timeval diff_tv;
+	struct timeval *tmp_tv;
+	float dt;
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
+	struct timespec time1;
 	uint64_t beg_nsec; //testing
 #endif
 
@@ -267,9 +328,12 @@ static int sample(void)
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
+	gettimeofday(curr_tv, NULL);
+	timersub(curr_tv, prev_tv, &diff_tv);
+	dt = diff_tv.tv_sec + diff_tv.tv_usec / 1e06;
 
-	clock_gettime(CLOCK_REALTIME, &time1);
 #ifdef CHECK_PROCSTATUTIL_TIMING
+	clock_gettime(CLOCK_REALTIME, &time1);
         beg_nsec = time1.tv_nsec;
 #endif
 
@@ -296,7 +360,12 @@ static int sample(void)
 		for (token = strtok(NULL, " \t\n"); token;
 				token = strtok(NULL, " \t\n")) {
 			uint64_t v = strtoul(token, NULL, 0);
-			ldms_set_u64(metric_table[metric_no++], v);
+			uint64_t dv = v - prev_value[metric_no];
+			float rate = (dv * 1.0 / USER_HZ) / dt * 100.0;
+			ldms_set_u64(metric_table[metric_no], v);
+			ldms_set_float(rate_metric_table[metric_no], rate);
+			prev_value[metric_no] = v;
+			metric_no++;
 		}
 	} while (1);
 
@@ -309,6 +378,9 @@ static int sample(void)
         vv.v_u64 = time1.tv_nsec - beg_nsec;
 	ldms_set_metric(tv_dnsec_metric_handle, &vv);
 #endif
+	tmp_tv = curr_tv;
+	curr_tv = prev_tv;
+	prev_tv = tmp_tv;
 	ldms_end_transaction(set);
 	return 0;
 }
@@ -342,5 +414,6 @@ static struct ldmsd_sampler procstatutil_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	USER_HZ = sysconf(_SC_CLK_TCK);
 	return &procstatutil_plugin.base;
 }
