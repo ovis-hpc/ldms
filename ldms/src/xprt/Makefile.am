@@ -7,13 +7,14 @@ AM_CFLAGS = $(INCLUDES)
 if ENABLE_SOCK
 libldmssock_la_SOURCES = ldms_sock.c ldms_sock_xprt.h
 libldmssock_la_CFLAGS = $(AM_CFLAGS) @EVENTINC@
-libldmssock_la_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@
+libldmssock_la_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ -lpthread
+libldmssock_la_LIBADD = ../core/libldms.la
 lib_LTLIBRARIES += libldmssock.la
 endif
 
 if ENABLE_RDMA
 libldmsrdma_la_SOURCES = ldms_rdma.c ldms_rdma_xprt.h
-libldmsrdma_la_LIBADD = -libverbs -lrdmacm
+libldmsrdma_la_LIBADD = -libverbs -lrdmacm ../core/libldms.la
 lib_LTLIBRARIES += libldmsrdma.la
 endif
 
