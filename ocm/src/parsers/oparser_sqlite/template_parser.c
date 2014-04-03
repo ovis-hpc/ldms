@@ -100,7 +100,6 @@ int is_apply_on;
 static char *main_buf;
 static char *main_value;
 
-#define MAIN_BUF_SIZE (1024 * 1024)
 void oparser_template_parser_init(FILE *_log_fp)
 {
 	LIST_INIT(&all_tmpl_def_list);
@@ -453,11 +452,14 @@ static void handle_metrics(char *value)
 			mtype = find_metric_type(&cmt->ctype->mtype_list,
 						mtname->name, sampler);
 
+			mtref = calloc(1, sizeof(*mtref));
 			if (!mtype) {
-				mtref = calloc(1, sizeof(*mtref));
 				mtref->mtype = new_metric_type(cmt->ctype,
 						mtname->name, sampler);
+			} else {
+				mtref->mtype = mtype;
 			}
+
 
 			LIST_INSERT_HEAD(&cmt->mt_ref_list, mtref, entry);
 		}

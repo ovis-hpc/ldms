@@ -63,6 +63,8 @@
 
 #include "oparser_util.h"
 
+#define MAIN_BUF_SIZE (1024 * 1024)
+
 struct set {
 	char *sampler_pi; /** ldmsd sampler plugin name */
 	char cfg[1024];
@@ -89,7 +91,7 @@ LIST_HEAD(tmpl_list, template);
 struct template_def {
 	char *name;
 	char *ldms_sampler;
-	char cfg[1024];
+	char cfg[MAIN_BUF_SIZE];
 	struct oparser_comp_type *comp_type;
 	struct tmpl_list templates;
 	int num_tmpls;

@@ -66,6 +66,10 @@ void oquery_metric_id(char *metric_name, char *prod_comp_type,
                                 struct mae_metric_list *list,
 				char *comp_names, sqlite3 *db);
 
+void oquery_metric_id_by_coll_type(char *metric_name, char *prod_comp_type,
+				struct mae_metric_list *list,
+				char *coll_type, char *ids, sqlite3 *db);
+
 void oquery_num_sampling_nodes( int *num_sampling_nodes, sqlite3 *db);
 
 void oquery_all_comp_ids(int *num_compids, uint32_t **comp_ids, sqlite3 *db);

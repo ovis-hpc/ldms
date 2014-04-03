@@ -430,20 +430,33 @@ static void handle_components(char *value)
 				__FUNCTION__, value);
 		exit(EINVAL);
 	}
+
+	/* The component type that collects the metrics is given. */
+	if (strcmp(uids, "*") == 0) {
+		LIST_FOREACH(m, &metric_comp_list, entry) {
+			oquery_metric_id_by_coll_type(m->metric_name,
+				m->prod_comp_type, &metric_list,
+				type, NULL, db);
+		}
+		goto assign;
+	}
+
+
+	/* The specific component type and identifiers are given. */
 	num_cnames = process_string_name(uids, &cnqueue, NULL, NULL);
 
 	struct oparser_name *name;
-	char coll_comps[1024];
+	char ids[1024];
 	name = TAILQ_FIRST(&cnqueue);
-	sprintf(coll_comps, "'%s'", name->name);
+	sprintf(ids, "'%s'", name->name);
 	while (name = TAILQ_NEXT(name, entry))
-		sprintf(coll_comps, "%s,'%s'", coll_comps, name->name);
-	sprintf(coll_comps, "%s", coll_comps);
+		sprintf(ids, "%s,'%s'", ids, name->name);
+	sprintf(ids, "%s", ids);
 	empty_name_list(&cnqueue);
 
 	LIST_FOREACH(m, &metric_comp_list, entry) {
-		oquery_metric_id(m->metric_name, m->prod_comp_type,
-				&metric_list, coll_comps, db);
+		oquery_metric_id_by_coll_type(m->metric_name, m->prod_comp_type,
+				&metric_list, type, ids, db);
 	}
 
 	while (m = LIST_FIRST(&metric_comp_list)) {
@@ -453,7 +466,7 @@ static void handle_components(char *value)
 
 assign:
 	if (LIST_EMPTY(&metric_list)) {
-		fprintf(stderr, "%d: Could not find the metrics", ENOENT);
+		fprintf(stderr, "Event %s: Could not find the metrics", event->name);
 		exit(ENOENT);
 	}
 	LIST_FOREACH(metric, &metric_list, entry)
