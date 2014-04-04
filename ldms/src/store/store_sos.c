@@ -207,58 +207,34 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 {
 	enum ldms_value_type type = ldms_get_metric_type(m);
+	struct sos_class_s *class = NULL; 
 
 	switch (type) {
 	case LDMS_V_S32:
-		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
-				0660, &ovis_metric_class_int32);
-		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
-					"'Ovismetric_int32\n");
-			return ENOMEM;
-		}
+		class = &ovis_metric_class_int32;
 		break;
 	case LDMS_V_S64:
-		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
-				0660, &ovis_metric_class_int64);
-		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
-					"'Ovismetric_int64\n");
-			return ENOMEM;
-		}
+		class = &ovis_metric_class_int64;
 		break;
 	case LDMS_V_U32:
-		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
-					0660, &ovis_metric_class_uint32);
-		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
-					"'Ovismetric_uint32\n");
-			return ENOMEM;
-		}
+		class = &ovis_metric_class_uint32;
 		break;
 	case LDMS_V_U64:
-		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
-					0660, &ovis_metric_class_uint64);
-		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
-					"'Ovismetric_uint64\n");
-			return ENOMEM;
-		}
+		class = &ovis_metric_class_uint64;
 		break;
 	case LDMS_V_F:
 	case LDMS_V_D:
-		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
-					0660, &ovis_metric_class_double);
-		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
-					"'Ovismetric_double\n");
-			return ENOMEM;
-		}
+		class = &ovis_metric_class_double;
 		break;
 	default:
 		msglog("store_sos: not support ldms_value_type '%s'\n",
 						ldms_type_to_str(type));
 		return ENOTSUP;
+	}
+	ms->sos = sos_open(ms->path, O_RDWR|O_CREAT, 0660, class);
+	if (!ms->sos) {
+		msglog("store_sos: Failed to open %s, class: %s\n", ms->path, class->name);
+		return ENOMEM;
 	}
 
 	return 0;
