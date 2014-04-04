@@ -91,10 +91,15 @@ void rbt_ins(struct rbt *t, struct rbn *n);
 void rbt_del(struct rbt *t, struct rbn *n);
 void rbt_traverse(struct rbt *t, rbn_node_fn f, void *fn_data);
 int rbt_is_leaf(struct rbn *n);
+#ifndef offsetof
 #define offsetof(type,member) ((size_t) &((type *)0)->member)
+#endif
+
+#ifndef container_of
 #define container_of(ptr, type, member) ({ \
 	const __typeof__(((type *)0)->member ) *__mptr = (ptr); \
 	(type *)((char *)__mptr - offsetof(type,member));})
+#endif
 
 #ifdef __cplusplus
 }
