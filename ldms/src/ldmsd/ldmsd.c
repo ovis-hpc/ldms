@@ -1218,9 +1218,8 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
 	if (found_count == 0) {
-		sprintf(replybuf, "%d Could not find the set '%s' in host '%s'",
-				-ENOENT, sp->setname, hostname);
-		return ENOENT;
+		ldms_log("WARNING: Could not find the set '%s' in host '%s'\n",
+						sp->setname, hostname);
 	}
 	return 0;
 err1:
@@ -1439,8 +1438,7 @@ int process_store(int fd,
 			if (rc == 0) {
 				found_count++;
 				continue;
-			}
-			if (rc != ENOENT) {
+			} else {
 				pthread_mutex_unlock(&host_list_lock);
 				goto destroy_store_policy;
 			}
@@ -1466,8 +1464,7 @@ int process_store(int fd,
 				if (rc == 0) {
 					found_count++;
 					continue;
-				}
-				if (rc != ENOENT) {
+				} else {
 					pthread_mutex_unlock(&host_list_lock);
 					goto destroy_store_policy;
 				}
