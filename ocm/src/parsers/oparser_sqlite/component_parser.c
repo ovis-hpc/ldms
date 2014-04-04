@@ -471,7 +471,7 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 
 	fseek(conff, 0, SEEK_SET);
 	while (s = fgets(buf, sizeof(buf), conff)) {
-		sscanf(buf, " %[^:]: %[^#\t\n]", key, value);
+		sscanf(buf, " %[^:]: %[^\t\n]", key, value);
 		trim_trailing_space(value);
 
 		/* Ignore the comment line */

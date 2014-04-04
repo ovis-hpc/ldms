@@ -498,7 +498,7 @@ static void handle_config(FILE *conf)
 	int i;
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
-		sscanf(main_buf, " %[^:]: %[^#\t\n]", key, main_value);
+		sscanf(main_buf, " %[^:]: %[^\t\n]", key, main_value);
 		trim_trailing_space(main_value);
 
 		/* Ignore the comment line */
@@ -540,7 +540,7 @@ struct tmpl_list *oparser_parse_template(FILE *conf,
 	sys_scaffold = scaffold;
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
-		sscanf(main_buf, " %[^:]: %[^#\t\n]", key, main_value);
+		sscanf(main_buf, " %[^:]: %[^\t\n]", key, main_value);
 		trim_trailing_space(main_value);
 
 		/* Ignore the comment line */

@@ -349,7 +349,7 @@ void oparser_service_conf_parser(FILE *_conf)
 	fseek(conf, 0, SEEK_SET);
 
 	while (s = fgets(buf, sizeof(buf), conf)) {
-		sscanf(buf, "%[^:]: %[^#\t\n]", tmp, value);
+		sscanf(buf, "%[^:]: %[^\t\n]", tmp, value);
 		num_leading_tabs = count_leading_tabs(tmp);
 		trim_trailing_space(value);
 		sscanf(tmp, " %s", key);
