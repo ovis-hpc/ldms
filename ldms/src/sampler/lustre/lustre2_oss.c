@@ -267,7 +267,7 @@ static int create_metric_set(const char *path, const char *osts)
 	/* Calculate size for OSS */
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
 		for (j = 0; j < STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#oss.%s", stats_key[j],
+			sprintf(metric_name, "oss.lstats.%s#oss.%s", stats_key[j],
 					oss_services[i]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -285,7 +285,7 @@ static int create_metric_set(const char *path, const char *osts)
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
 		for (j = 0; j < OBDF_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#ost.%s", obdf_key[j],
+			sprintf(metric_name, "oss.lstats.%s#ost.%s", obdf_key[j],
 					sl->str);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
@@ -296,7 +296,7 @@ static int create_metric_set(const char *path, const char *osts)
 
 		/* For single attributes */
 		for (j = 0; j < OST_SINGLE_ATTR_LEN; j++) {
-			sprintf(metric_name, "lustre.%s#ost.%s",
+			sprintf(metric_name, "oss.lustre.%s#ost.%s",
 					ost_single_attr[j], sl->str);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					&meta_sz, &data_sz);
@@ -315,7 +315,7 @@ static int create_metric_set(const char *path, const char *osts)
 		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
 				oss_services[i]);
 		sprintf(suffix, "#oss.%s", oss_services[i]);
-		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
+		rc = stats_construct_routine(set, comp_id, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
@@ -325,7 +325,7 @@ static int create_metric_set(const char *path, const char *osts)
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
 		sprintf(suffix, "#ost.%s", sl->str);
-		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
+		rc = stats_construct_routine(set, comp_id, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, obdf_key,
 					     OBDF_KEY_LEN, obdf_key_id);
 		if (rc)
@@ -334,7 +334,7 @@ static int create_metric_set(const char *path, const char *osts)
 			sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/%s",
 						sl->str, ost_single_attr[j]);
 			rc = single_construct_routine(set, comp_id, tmp_path,
-					"lustre.", suffix, &lms_list);
+					"oss.lustre.", suffix, &lms_list);
 			if (rc)
 				goto err2;
 		}

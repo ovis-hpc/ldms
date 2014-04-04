@@ -236,6 +236,7 @@ int single_construct_routine(ldms_set_t set,
 	char metric_name[128];
 	if (!name)
 		return EINVAL;
+	name++;
 	struct lustre_single *ls = lustre_single_alloc(metric_path);
 	if (!ls)
 		goto err0;

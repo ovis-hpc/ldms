@@ -230,7 +230,7 @@ static int create_metric_set(const char *path, const char *oscs,
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
 			for (j = 0; j < keylen[i]; j++) {
-				sprintf(metric_name, "lstats.%s#%s.%s",
+				sprintf(metric_name, "client.lstats.%s#%s.%s",
 						keys[i][j], namebase[i],
 						sl->str);
 				enum ldms_value_type vt = LDMS_V_U64;
@@ -257,7 +257,7 @@ static int create_metric_set(const char *path, const char *oscs,
 					namebase[i], sl->str);
 			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
 			rc = stats_construct_routine(set, comp_id, tmp_path,
-					"lstats.", suffix, &lms_list, keys[i],
+					"client.lstats.", suffix, &lms_list, keys[i],
 					keylen[i], maps[i]);
 			if (rc)
 				goto err1;

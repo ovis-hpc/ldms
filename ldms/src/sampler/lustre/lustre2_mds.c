@@ -190,7 +190,7 @@ static int create_metric_set(const char *path, const char *mdts)
 	/* Calculate size for MDS */
 	for (i = 0; i < MDS_SERVICES_LEN; i++) {
 		for (j = 0; j < STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#mds.%s", stats_key[j],
+			sprintf(metric_name, "mds.lstats.%s#mds.%s", stats_key[j],
 					mds_services[i]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -208,7 +208,7 @@ static int create_metric_set(const char *path, const char *mdts)
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
 		for (j = 0; j < STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#mdt.%s", stats_key[j],
+			sprintf(metric_name, "mds.lstats.%s#mdt.%s", stats_key[j],
 					sl->str);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
@@ -238,7 +238,7 @@ static int create_metric_set(const char *path, const char *mdts)
 				mds_services[i]);
 		sprintf(suffix, "#mds.%s", mds_services[i]);
 		rc = stats_construct_routine(set, comp_id, tmp_path,
-					     "lstats.", suffix,
+					     "mds.lstats.", suffix,
 					     &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
@@ -248,7 +248,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/stats", sl->str);
 		sprintf(suffix, "#mdt.%s", sl->str);
-		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
+		rc = stats_construct_routine(set, comp_id, tmp_path, "mds.lstats.",
 					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
