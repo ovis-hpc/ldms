@@ -170,15 +170,38 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 
 static void me_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
+	static zap_event_type_t is_failed_before = ZAP_EVENT_CONNECTED;
+
 	switch (ev->type) {
 	case ZAP_EVENT_DISCONNECTED:
+		if (is_failed_before != ZAP_EVENT_DISCONNECTED) {
+			msglog("Disconnected from ME.\n");
+			is_failed_before = ZAP_EVENT_DISCONNECTED;
+		}
+		zap_close(zep);
+		state = CSM_ME_DISCONNECTED;
+		break;
 	case ZAP_EVENT_CONNECT_ERROR:
+		if (is_failed_before != ZAP_EVENT_CONNECT_ERROR) {
+			msglog("Connect to ME error\n");
+			is_failed_before = ZAP_EVENT_CONNECT_ERROR;
+		}
+		zap_close(zep);
+		state = CSM_ME_DISCONNECTED;
+		break;
 	case ZAP_EVENT_REJECTED:
+		if (is_failed_before != ZAP_EVENT_REJECTED) {
+			msglog("Connect to ME error. '%s'\n",
+					zap_err_str(ev->status));
+			is_failed_before = ZAP_EVENT_REJECTED;
+		}
 		zap_close(zep);
 		state = CSM_ME_DISCONNECTED;
 		break;
 	case ZAP_EVENT_CONNECTED:
+		is_failed_before = ZAP_EVENT_CONNECTED;
 		state = CSM_ME_CONNECTED;
+		msglog("Connected to ME\n");
 		break;
 	default:
 		break;
@@ -188,38 +211,56 @@ static void me_zap_cb(zap_ep_t zep, zap_event_t ev)
 static int connect_me()
 {
 	state = CSM_ME_CONNECTING;
+	static enum {
+		ME_NO = 0,
+		ME_GETADDR = 1,
+		ME_ZAPNEW = 2,
+		ME_ZAPCONNECT = 3,
+	} is_failed_before;
+
+	is_failed_before = ME_NO;
 	struct addrinfo *ai;
 	int rc;
 	char p[16];
 	sprintf(p, "%d", port);
 	rc = getaddrinfo(host, p, NULL, &ai);
 	if (rc) {
-		msglog("me: getaddrinfo error %d\n", rc);
-		return rc;
+		if (is_failed_before != ME_GETADDR) {
+			msglog("me: getaddrinfo error %d\n", rc);
+			is_failed_before = ME_GETADDR;
+		}
+		goto err;
 	}
 
 	zap_err_t zerr;
 	zerr = zap_new(zap, &zep, me_zap_cb);
 	if (zerr) {
-		msglog("me: failed to create a zap endpoint. "
-					"Error '%d'\n", zerr);
-		return zerr;
+		if (is_failed_before != ME_ZAPNEW) {
+			msglog("me: failed to create a zap endpoint. "
+						"'%s'\n", zap_err_str(zerr));
+			is_failed_before = ME_ZAPNEW;
+		}
+		rc = zerr;
+		goto err;
 	}
 
-	static int is_failed_before = 0;
 	zerr = zap_connect(zep, ai->ai_addr, ai->ai_addrlen);
 	if (zerr) {
-		if (!is_failed_before) {
+		if (is_failed_before != ME_ZAPCONNECT) {
 			msglog("me: zap_connect error %d: %s\n", zerr,
 					zap_err_str(zerr));
-			is_failed_before = 1;
+			is_failed_before = ME_ZAPCONNECT;
 		}
 		zap_close(zep);
-		state = CSM_ME_DISCONNECTED;
-		return zerr;
+		rc = zerr;
+		goto err;
 	}
-	is_failed_before = 0;
+	is_failed_before = ME_NO;
 	return 0;
+
+err:
+	state = CSM_ME_DISCONNECTED;
+	return rc;
 }
 
 static ldmsd_store_handle_t
@@ -317,6 +358,7 @@ send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 		return 0;
 	}
 
+	/* For the case that the plug-in is connecting to ME */
 	if (state != CSM_ME_CONNECTED)
 		return 0;
 
