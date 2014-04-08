@@ -68,6 +68,10 @@
  * \li \b zap_connect() Request a connection with a remote peer.
  * \li \b zap_accept() Accept a connection from a remote peer.
  * \li \b zap_close() Close a connection with a remote peer on a Zap endpoint
+ *
+ * Zap is event-driven. Application will be notifiedt via a callback function
+ * per occurring events (e.g. read complete, data received, connection
+ * requested, etc). Please see \c ::zap_cb_fn_t for more information.
  */
 #ifndef __ZAP_H__
 #define __ZAP_H__
@@ -87,34 +91,40 @@ typedef struct zap *zap_t;
 typedef void (*zap_log_fn_t)(const char *fmt, ...);
 typedef struct zap_map *zap_map_t;
 
-#define ZAP_EVENT_LIST(ZAP_WRAP) \
-	/*! An incoming connect request is ready to be accepted or rejected.  */\
-	ZAP_WRAP(ZAP_EVENT_CONNECT_REQUEST), \
-	/*! A connect request failed due to a network error. */ \
-	ZAP_WRAP(ZAP_EVENT_CONNECT_ERROR), \
-	/*! An active request initiated with \c zap_connect was accepted.  */ \
-	ZAP_WRAP(ZAP_EVENT_CONNECTED), \
-	/*! A connect request was rejected by the peer.  */ \
-	ZAP_WRAP(ZAP_EVENT_REJECTED), \
-	/*! A connection endpoint has been disconnected. */ \
-	ZAP_WRAP(ZAP_EVENT_DISCONNECTED), \
-	/*! Data has been received. */ \
-	ZAP_WRAP(ZAP_EVENT_RECV_COMPLETE), \
-	/*! An \c zap_read_start request has completed. */ \
-	ZAP_WRAP(ZAP_EVENT_READ_COMPLETE), \
-	/*! An \c zap_write_start request has completed. */ \
-	ZAP_WRAP(ZAP_EVENT_WRITE_COMPLETE), \
-	/*! An \c The peer has shared a buffer with \c zap_share. */ \
-	ZAP_WRAP(ZAP_EVENT_RENDEZVOUS), \
-	/*! Last event (dummy) */ \
-	ZAP_WRAP(ZAP_EVENT_LAST)
-
 typedef enum zap_event_type {
-	ZAP_EVENT_LIST(ZAP_ENUM_WRAP)
+	/*! An incoming connect request is ready to be accepted or rejected. */
+	ZAP_EVENT_CONNECT_REQUEST,
+	/*! A connect request failed due to a network error. */
+	ZAP_EVENT_CONNECT_ERROR,
+	/*! An active request initiated with \c zap_connect() was accepted. */
+	ZAP_EVENT_CONNECTED,
+	/*! A connect request was rejected by the peer.  */
+	ZAP_EVENT_REJECTED,
+	/*! A connection endpoint has been disconnected. */
+	ZAP_EVENT_DISCONNECTED,
+	/*! Data has been received. */
+	ZAP_EVENT_RECV_COMPLETE,
+	/*! An \c zap_read() request has completed. */
+	ZAP_EVENT_READ_COMPLETE,
+	/*! An \c zap_write() request has completed. */
+	ZAP_EVENT_WRITE_COMPLETE,
+	/*! The peer has shared a buffer with \c zap_share(). */
+	ZAP_EVENT_RENDEZVOUS,
+	/*! Last event (dummy) */
+	ZAP_EVENT_LAST
 } zap_event_type_t;
 
 static char *__zap_event_str[] = {
-	ZAP_EVENT_LIST(ZAP_STR_WRAP)
+	"ZAP_EVENT_CONNECT_REQUEST",
+	"ZAP_EVENT_CONNECT_ERROR",
+	"ZAP_EVENT_CONNECTED",
+	"ZAP_EVENT_REJECTED",
+	"ZAP_EVENT_DISCONNECTED",
+	"ZAP_EVENT_RECV_COMPLETE",
+	"ZAP_EVENT_READ_COMPLETE",
+	"ZAP_EVENT_WRITE_COMPLETE",
+	"ZAP_EVENT_RENDEZVOUS",
+	"ZAP_EVENT_LAST"
 };
 
 static inline
@@ -125,39 +135,86 @@ const char* zap_event_str(enum zap_event_type e)
 	return __zap_event_str[e];
 }
 
-#define ZAP_ERR_LIST(ZAP_WRAP)                \
-	ZAP_WRAP(ZAP_ERR_OK),                 \
-	ZAP_WRAP(ZAP_ERR_PARAMETER),          \
-	ZAP_WRAP(ZAP_ERR_TRANSPORT),          \
-	ZAP_WRAP(ZAP_ERR_ENDPOINT),           \
-	ZAP_WRAP(ZAP_ERR_ADDRESS),            \
-	ZAP_WRAP(ZAP_ERR_ROUTE),              \
-	ZAP_WRAP(ZAP_ERR_MAPPING),            \
-	ZAP_WRAP(ZAP_ERR_RESOURCE),           \
-	ZAP_WRAP(ZAP_ERR_BUSY),               \
-	ZAP_WRAP(ZAP_ERR_NO_SPACE),           \
-	ZAP_WRAP(ZAP_ERR_INVALID_MAP_TYPE),   \
-	ZAP_WRAP(ZAP_ERR_CONNECT),            \
-	ZAP_WRAP(ZAP_ERR_NOT_CONNECTED),      \
-	ZAP_WRAP(ZAP_ERR_HOST_UNREACHABLE),   \
-	ZAP_WRAP(ZAP_ERR_LOCAL_LEN),          \
-	ZAP_WRAP(ZAP_ERR_LOCAL_OPERATION),    \
-	ZAP_WRAP(ZAP_ERR_LOCAL_PERMISSION),   \
-	ZAP_WRAP(ZAP_ERR_REMOTE_LEN),         \
-	ZAP_WRAP(ZAP_ERR_REMOTE_OPERATION),   \
-	ZAP_WRAP(ZAP_ERR_REMOTE_PERMISSION),  \
-	ZAP_WRAP(ZAP_ERR_RETRY_EXCEEDED),     \
-	ZAP_WRAP(ZAP_ERR_TIMEOUT),            \
-	ZAP_WRAP(ZAP_ERR_FLUSH),              \
-	ZAP_WRAP(ZAP_ERR_REMOTE_NOENTRY),     \
-	ZAP_WRAP(ZAP_ERR_LAST)
-
 typedef enum zap_err_e {
-	ZAP_ERR_LIST(ZAP_ENUM_WRAP)
+	/*! No error. */
+	ZAP_ERR_OK,
+	/*! Invalid parameters. */
+	ZAP_ERR_PARAMETER,
+	/*! Miscellaneous transport error. */
+	ZAP_ERR_TRANSPORT,
+	/*! Miscellaneous endpoint error. */
+	ZAP_ERR_ENDPOINT,
+	/*! Address resolve error. */
+	ZAP_ERR_ADDRESS,
+	/*! Route resolve error. */
+	ZAP_ERR_ROUTE,
+	/*! Memory mapping error. */
+	ZAP_ERR_MAPPING,
+	/*! Miscellaneous resource error (usually out of memory) */
+	ZAP_ERR_RESOURCE,
+	/*! Required resource busy (for example, trying to listen to the same
+	 * port twice). */
+	ZAP_ERR_BUSY,
+	/*! Not enough space in the transport buffer. */
+	ZAP_ERR_NO_SPACE,
+	/*! Invalid map type. */
+	ZAP_ERR_INVALID_MAP_TYPE,
+	/*! Connection error. */
+	ZAP_ERR_CONNECT,
+	/*! Endpoint not connected. */
+	ZAP_ERR_NOT_CONNECTED,
+	/*! Host unreachable. */
+	ZAP_ERR_HOST_UNREACHABLE,
+	/*! Mapping access error due to the length of local-side mapping. */
+	ZAP_ERR_LOCAL_LEN,
+	/*! Miscellaneous operation error on local-side memory mapping. */
+	ZAP_ERR_LOCAL_OPERATION,
+	/*! Mapping access error due to local-side mapping permission. */
+	ZAP_ERR_LOCAL_PERMISSION,
+	/*! Mapping access error due to the length of remote-side mapping. */
+	ZAP_ERR_REMOTE_LEN,
+	/*! Miscellaneous operation error on remote-side memory mapping. */
+	ZAP_ERR_REMOTE_OPERATION,
+	/*! Mapping access error due to remote-side mapping permission. */
+	ZAP_ERR_REMOTE_PERMISSION,
+	/*! Retry exceed error. */
+	ZAP_ERR_RETRY_EXCEEDED,
+	/*! Connection time out error. */
+	ZAP_ERR_TIMEOUT,
+	/*! Transport flush error. */
+	ZAP_ERR_FLUSH,
+	/*! Remote-side mapping access error due to no requested entry. */
+	ZAP_ERR_REMOTE_NOENTRY,
+	/*! Last error (dummy). */
+	ZAP_ERR_LAST
 } zap_err_t;
 
 static char *__zap_err_str[] = {
-	ZAP_ERR_LIST(ZAP_STR_WRAP)
+	"ZAP_ERR_OK",
+	"ZAP_ERR_PARAMETER",
+	"ZAP_ERR_TRANSPORT",
+	"ZAP_ERR_ENDPOINT",
+	"ZAP_ERR_ADDRESS",
+	"ZAP_ERR_ROUTE",
+	"ZAP_ERR_MAPPING",
+	"ZAP_ERR_RESOURCE",
+	"ZAP_ERR_BUSY",
+	"ZAP_ERR_NO_SPACE",
+	"ZAP_ERR_INVALID_MAP_TYPE",
+	"ZAP_ERR_CONNECT",
+	"ZAP_ERR_NOT_CONNECTED",
+	"ZAP_ERR_HOST_UNREACHABLE",
+	"ZAP_ERR_LOCAL_LEN",
+	"ZAP_ERR_LOCAL_OPERATION",
+	"ZAP_ERR_LOCAL_PERMISSION",
+	"ZAP_ERR_REMOTE_LEN",
+	"ZAP_ERR_REMOTE_OPERATION",
+	"ZAP_ERR_REMOTE_PERMISSION",
+	"ZAP_ERR_RETRY_EXCEEDED",
+	"ZAP_ERR_TIMEOUT",
+	"ZAP_ERR_FLUSH",
+	"ZAP_ERR_REMOTE_NOENTRY",
+	"ZAP_ERR_LAST"
 };
 
 static inline
@@ -176,14 +233,70 @@ const char* zap_err_str(enum zap_err_e e)
 enum zap_err_e errno2zaperr(int e);
 
 typedef struct zap_event {
+	/*! Event type */
 	zap_event_type_t type;
+	/*! Event status in case of error */
 	zap_err_t status;
+	/*! Mapping information for \c ::ZAP_EVENT_RENDEZVOUS event */
 	zap_map_t map;
+	/**
+	 * Pointer to the data associated with the event.
+	 *
+	 * For \c ::ZAP_EVENT_RENDEZVOUS, data contains the message attached to
+	 * \c zap_share() operation.
+	 *
+	 * For \c ::ZAP_EVENT_RECV_COMPLETE, data contains read data from the
+	 * other peer.
+	 *
+	 * \b ***REMARK*** \c data is owned by zap. Application can only read.
+	 * zap manages data and data buffer internally.
+	 */
 	void *data;
+	/*! The length of the \c #data */
 	size_t data_len;
+	/*! Application-provided context of the operation. */
 	void *context;
 } *zap_event_t;
 
+/**
+ * Zap callback function.
+ *
+ * When an event (please see \c ::zap_event) occur to an endpoint, zap will call
+ * the associated callback function to notify the application. Data associated
+ * with the event is accessible via various fields of \b ev.
+ *
+ * For all event types, \c ev->type determines the event type (see zap_event_t),
+ * and \c ev->status determines the status of the operation.
+ *
+ * The event-specific data is as follows:
+ *
+ * - \c ::ZAP_EVENT_CONNECT_REQUEST
+ *   - N/A
+ * - \c ::ZAP_EVENT_CONNECT_ERROR
+ *   - N/A
+ * - \c ::ZAP_EVENT_CONNECTED
+ *   - N/A
+ * - \c ::ZAP_EVENT_REJECTED
+ *   - N/A
+ * - \c ::ZAP_EVENT_DISCONNECTED
+ *   - N/A
+ * - \c ::ZAP_EVENT_RECV_COMPLETE
+ *   - \b\c ev->data contains the received data. zap own \c ev->data, and
+ *     application can only read this memory.
+ *   - \b\c ev->data_len indicates the length of the received data.
+ * - \c ::ZAP_EVENT_READ_COMPLETE
+ *   - \b\c ev->context refers to application-provided context when
+ *     \c ::zap_read() is called.
+ * - \c ::ZAP_EVENT_WRITE_COMPLETE
+ *   - \b\c ev->context refers to application-provided context when
+ *     \c ::zap_write() is called.
+ * - \c ::ZAP_EVENT_RENDEZVOUS
+ *   - \b\c ev->map refers to automatically-created remote memory map associated
+ *     witllthe event. The application owns the map and has to free it when it
+ *     is not used.
+ *   - \b\c ev->data contain a tag-along message of \c zap_share() operation.
+ *   - \b\c ev->data_len is the length of the tag-along message.
+ */
 typedef void (*zap_cb_fn_t)(zap_ep_t zep, zap_event_t ev);
 
 #define zap_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]

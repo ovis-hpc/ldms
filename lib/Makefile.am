@@ -4,7 +4,7 @@ if ENABLE_SWIG
 SUBDIRS += swig
 endif
 
-EXTRA_DIST = autogen.sh COPYRIGHT doxygen/html
+EXTRA_DIST = autogen.sh COPYING doxygen/html
 
 OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
@@ -31,7 +31,7 @@ doxygen doxygen/html:
 if ENABLE_DOC
 install-data-local: doxygen
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
-	for f in README COPYING ChangeLog COPYRIGHT; do \
+	for f in README COPYING ChangeLog COPYING; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
 	for f in doxygen/html/* ; do \
