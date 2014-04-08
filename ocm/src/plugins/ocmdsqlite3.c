@@ -424,7 +424,8 @@ skip:
 		key = strtok_r(NULL, "[", &tmp_buf);
 	}
 
-	ocm_cfg_buff_add_cmd_as_av(buff, "metric_id", m_buff->current_cmd);
+	ocm_cfg_buff_add_cmd_as_av(buff, "metric_id",
+					ocm_cfg_buff_curr_cmd(m_buff));
 	ocm_cfg_buff_free(m_buff);
 
 	/* Process start string */

@@ -62,6 +62,9 @@
 #include <pthread.h>
 #include <event2/event.h>
 
+#define __OCM_OFF(base, ptr) ((void*)ptr - (void*)base)
+#define __OCM_PTR(base, off) ((void*)base + off)
+
 /**
  * A registered callback structure.
  */

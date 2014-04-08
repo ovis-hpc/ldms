@@ -62,6 +62,16 @@ pthread_t __ocm_evthread;
 
 void __ocm_init();
 
+void *ocm_cfg_buff_curr_ptr(struct ocm_cfg_buff *buff)
+{
+	return (char*)buff->buff + buff->current_offset;
+}
+
+struct ocm_cfg_cmd *ocm_cfg_buff_curr_cmd(struct ocm_cfg_buff *buff)
+{
+	return (char*)buff->buff + buff->cmd_offset;
+}
+
 /**
  * ::ocm_value size calculation.
  */
@@ -189,7 +199,7 @@ void ocm_cfg_buff_free(struct ocm_cfg_buff *buff)
 
 size_t __ocm_cfg_buff_space(const struct ocm_cfg_buff *buff)
 {
-	return  buff->buff_len - (buff->current_ptr - (void*)buff->buff);
+	return  buff->buff_len - buff->current_offset;
 }
 
 /**
@@ -228,9 +238,9 @@ int __ocm_cfg_buff_add_str(struct ocm_cfg_buff *buff, const char *str)
 		if (ocm_cfg_buff_resize(buff, OCM_SZ(buff->buff_len + sz)))
 			return ENOMEM;
 	}
-	struct ocm_str *s = buff->current_ptr;
+	struct ocm_str *s = ocm_cfg_buff_curr_ptr(buff);
 	__ocm_str_set(s, str);
-	buff->current_ptr += sz;
+	buff->current_offset += sz;
 	buff->buff->len += sz;
 	return 0;
 }
@@ -241,32 +251,27 @@ int __ocm_cfg_buff_add_data(struct ocm_cfg_buff *buff, void *data, size_t sz)
 		if (ocm_cfg_buff_resize(buff, OCM_SZ(buff->buff_len + sz)))
 			return ENOMEM;
 	}
-	memcpy(buff->current_ptr, data, sz);
-	buff->current_ptr += sz;
+	memcpy(ocm_cfg_buff_curr_ptr(buff), data, sz);
+	buff->current_offset += sz;
 	buff->buff->len += sz;
 	return 0;
 }
 
 int ocm_cfg_buff_resize(struct ocm_cfg_buff *buff, size_t new_size)
 {
-	size_t cmd_offset = (buff->current_cmd == 0)?(0):
-				((void*)buff->current_cmd - (void*)buff->buff);
-	size_t ptr_offset = buff->current_ptr - (void*)buff->buff;
 	void *new_buff = realloc(buff->buff, new_size);
 	if (!new_buff)
 		return ENOMEM;
 	buff->buff = new_buff;
 	buff->buff_len = new_size;
-	buff->current_cmd = (cmd_offset)?((void*)buff->buff + cmd_offset):(0);
-	buff->current_ptr = (void*)buff->buff + ptr_offset;
 	return 0;
 }
 
 int ocm_cfg_buff_reset(struct ocm_cfg_buff *buff, const char *new_key)
 {
 	buff->buff->len = sizeof(struct ocm_cfg);
-	buff->current_ptr = buff->buff->data;
-	buff->current_cmd = NULL;
+	buff->current_offset = __OCM_OFF(buff->buff, buff->buff->data);
+	buff->cmd_offset = 0;
 	return __ocm_cfg_buff_add_str(buff, new_key);
 }
 
@@ -276,27 +281,30 @@ int ocm_cfg_buff_add_verb(struct ocm_cfg_buff *buff, const char *verb)
 		if (ocm_cfg_buff_resize(buff, OCM_SZ(buff->buff_len + 4096)))
 			return ENOMEM;
 	}
-	void *prev_cmd = buff->current_cmd;
-	void *prev_ptr = buff->current_ptr;
-	buff->current_cmd = buff->current_ptr;
-	buff->current_ptr = buff->current_cmd->data;
+	uint64_t prev_cmd_off = buff->cmd_offset;
+	uint64_t prev_ptr_off = buff->current_offset;
+	/* initiate new command */
+	buff->cmd_offset = buff->current_offset;
+	buff->current_offset = buff->cmd_offset +
+					offsetof(struct ocm_cfg_cmd, data);
 	int rc = __ocm_cfg_buff_add_str(buff, verb);
 	if (rc)
 		goto err;
-	buff->current_cmd->len = buff->current_ptr - prev_ptr;
+	struct ocm_cfg_cmd *cmd = ocm_cfg_buff_curr_cmd(buff);
+	cmd->len = buff->current_offset - buff->cmd_offset;
 	/* also, update buff->len */
-	buff->buff->len = buff->current_ptr - (void*)buff->buff;
+	buff->buff->len = buff->current_offset;
 	return 0;
 err:
-	buff->current_cmd = prev_cmd;
-	buff->current_ptr = prev_ptr;
+	buff->cmd_offset = prev_cmd_off;
+	buff->current_offset = prev_ptr_off;
 	return rc;
 }
 
 int ocm_cfg_buff_add_av(struct ocm_cfg_buff *buff, const char *attr,
 						struct ocm_value *value)
 {
-	void *prev_ptr = buff->current_ptr;
+	uint64_t prev_off = buff->current_offset;
 	int rc = __ocm_cfg_buff_add_str(buff, attr);
 	if (rc)
 		goto err;
@@ -304,17 +312,18 @@ int ocm_cfg_buff_add_av(struct ocm_cfg_buff *buff, const char *attr,
 	rc = __ocm_cfg_buff_add_data(buff, value, value_sz);
 	if (rc)
 		goto err;
-	buff->current_cmd->len += buff->current_ptr - prev_ptr;
+	struct ocm_cfg_cmd *cmd = ocm_cfg_buff_curr_cmd(buff);
+	cmd->len += buff->current_offset - prev_off;
 	return 0;
 err:
-	buff->current_ptr = prev_ptr;
+	buff->current_offset = prev_off;
 	return rc;
 }
 
 int ocm_cfg_buff_add_cmd_as_av(struct ocm_cfg_buff *buff, const char *attr,
 		ocm_cfg_cmd_t cmd)
 {
-	void *prev_ptr = buff->current_ptr;
+	uint64_t prev_off = buff->current_offset;
 	int rc = __ocm_cfg_buff_add_str(buff, attr);
 	if (rc)
 		goto err;
@@ -325,10 +334,11 @@ int ocm_cfg_buff_add_cmd_as_av(struct ocm_cfg_buff *buff, const char *attr,
 	if (rc)
 		goto err;
 	rc = __ocm_cfg_buff_add_data(buff, cmd, cmd->len);
-	buff->current_cmd->len += buff->current_ptr - prev_ptr;
+	struct ocm_cfg_cmd *_cmd = ocm_cfg_buff_curr_cmd(buff);
+	_cmd->len += buff->current_offset - prev_off;
 	return 0;
 err:
-	buff->current_ptr = prev_ptr;
+	buff->current_offset = __OCM_PTR(buff->buff, prev_off);
 	return rc;
 }
 

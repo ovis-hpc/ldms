@@ -58,6 +58,7 @@
 #include <netinet/tcp.h>
 #include <netdb.h>
 #include <assert.h>
+#include <semaphore.h>
 #include "ocm.h"
 
 const char *short_opt = "?h:p:P:x:";
@@ -73,6 +74,8 @@ char *host = NULL;
 uint16_t port = 0;
 uint16_t PORT = 54321;
 char *xprt = "sock";
+
+sem_t done;
 
 void print_usage()
 {
@@ -123,6 +126,8 @@ int req_cb(struct ocm_event *e)
 	}
 	struct ocm_cfg_buff *buff = ocm_cfg_buff_new(4096, key);
 	char _buff[4096];
+	char name[128];
+	int i;
 	struct ocm_value *v = (void*)_buff;
 
 	/* first test */
@@ -172,14 +177,14 @@ int req_cb(struct ocm_event *e)
 		struct ocm_cfg_buff *buff2 = ocm_cfg_buff_new(4096, "");
 		ocm_cfg_buff_add_verb(buff2, ""); /* no real verb */
 
-		ocm_value_set(v, OCM_VALUE_UINT64, 1000000);
-		ocm_cfg_buff_add_av(buff2, "name1", v);
-		ocm_value_set(v, OCM_VALUE_UINT64, 2000000);
-		ocm_cfg_buff_add_av(buff2, "name2", v);
-		ocm_value_set(v, OCM_VALUE_UINT64, 3000000);
-		ocm_cfg_buff_add_av(buff2, "name3", v);
+		for (i = 0; i < 65536; i++) {
+			snprintf(name, sizeof(name), "name%d", i);
+			ocm_value_set(v, OCM_VALUE_UINT64, i);
+			ocm_cfg_buff_add_av(buff2, name, v);
+		}
 
-	ocm_cfg_buff_add_cmd_as_av(buff, "metric_ids", buff2->current_cmd);
+	ocm_cfg_buff_add_cmd_as_av(buff, "metric_ids",
+					ocm_cfg_buff_curr_cmd(buff2));
 	ocm_cfg_buff_free(buff2);
 
 #if 0
@@ -333,6 +338,7 @@ int cfg_cb(struct ocm_event *e)
 	default:
 		printf("Unhandled event: %d\n", e->type);
 	}
+	sem_post(&done);
 }
 
 int main(int argc, char **argv)
@@ -340,6 +346,8 @@ int main(int argc, char **argv)
 	int rc;
 	struct addrinfo *ai;
 	char p[16];
+
+	sem_init(&done, 0, 0);
 
 	handle_arg(argc, argv);
 	ocm_t ocm = ocm_create(xprt, PORT, req_cb, NULL);
@@ -356,7 +364,7 @@ client:
 	rc = ocm_register(ocm, "reject_me", cfg_cb);
 	assert(rc == 0);
 
-	goto infinite_loop;
+	goto wait_done;
 
 server:
 	sprintf(p, "%u", port);
@@ -368,14 +376,15 @@ server:
 	rc = ocm_add_receiver(ocm, ai->ai_addr, ai->ai_addrlen);
 	assert(rc == 0);
 	freeaddrinfo(ai);
+	printf("INFO: Server will forever run. Ctrl-C to terminate it.\n");
 
-infinite_loop:
+wait_done:
 
 	ocm_enable(ocm);
 
-	while (1) {
-		sleep(10);
-	}
+	sem_wait(&done); /* one for config_me */
+	sem_wait(&done); /* another one for reject_me */
+	/* server will forever run */
 
 	return 0;
 }

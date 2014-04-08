@@ -287,8 +287,8 @@ const char *ocm_cfg_key(ocm_cfg_t cfg);
 struct ocm_cfg_buff {
 	ocm_cfg_t buff; /**< Dynamic buffer for configuration, buffer can be expanded if needed */
 	size_t buff_len; /**< Total buffer length */
-	ocm_cfg_cmd_t current_cmd; /**< Point to current command in buff */
-	void *current_ptr; /**< Point to the place that will be written next in buff */
+	uint64_t cmd_offset; /**< Indexed to the current command in buff */
+	uint64_t current_offset; /**< Indexed to the place that will be written next in buff */
 };
 
 /**
@@ -336,6 +336,24 @@ int ocm_cfg_buff_add_av(struct ocm_cfg_buff *buff, const char *attr,
  */
 int ocm_cfg_buff_add_cmd_as_av(struct ocm_cfg_buff *buff, const char *attr,
 		ocm_cfg_cmd_t cmd);
+
+/**
+ * Get current pointer in the buffer.
+ *
+ * \param buff The buffer.
+ *
+ * \returns current pointer in the buffer.
+ */
+void *ocm_cfg_buff_curr_ptr(struct ocm_cfg_buff *buff);
+
+/**
+ * Get current ::ocm_cfg_cmd in the buffer.
+ *
+ * \param buff The buffer.
+ *
+ * \returns current command in the buffer.
+ */
+struct ocm_cfg_cmd *ocm_cfg_buff_curr_cmd(struct ocm_cfg_buff *buff);
 
 /**
  * Free the buffer.
