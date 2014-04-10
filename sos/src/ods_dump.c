@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.     
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -56,29 +56,50 @@
 #include <sys/fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "ods.h"
 
 void usage(int argc, char *argv[])
 {
-	printf("usage: %s <ODS Name>\n"
-	       "    Where <ODS Name> is the canonical name of the\n"
+	printf("usage: %s [-a] <ODS Name>\n"
+	       "    -a Show allocated objects.\n"
+	       "\n"
+	       "    <ODS Name> is the canonical name of the\n"
 	       "    ODS absent the filename extension.\n",
 	       argv[0]);
 	exit(1);
 }
 
+void print_fn(ods_t ods, void *ptr, size_t sz, void *arg)
+{
+	printf("%p %zu\n", ptr, sz);
+}
+
 int main(int argc, char *argv[])
 {
 	ods_t ods;
-
-	if (argc < 2)
+	int c, show_alloc = 0;
+	char *name = NULL;
+	while ((c = getopt(argc, argv, "a")) > 0) {
+		switch (c) {
+		case 'a':
+			show_alloc = 1;
+			break;
+		default:
+			usage(argc, argv);
+		}
+	}
+	if (optind < argc)
+		name = argv[optind];
+	else
 		usage(argc, argv);
 
-	ods = ods_open(argv[1], O_RDWR | O_CREAT, 0666);
-	ods_dump(ods, stdout);
-	ods_close(ods);
+	ods = ods_open(name, O_RDWR | O_CREAT, 0666);
+	if (show_alloc)
+		ods_iter(ods, print_fn, NULL);
+	else
+		ods_dump(ods, stdout);
+	ods_close(ods, ODS_COMMIT_ASYNC);
 
 	return 0;
 }
-
-

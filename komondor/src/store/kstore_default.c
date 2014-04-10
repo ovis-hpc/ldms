@@ -139,24 +139,35 @@ int config(struct kmd_store *s, struct attr_value_list *av_list)
 	}
 
 	sos_iter_t iter = sos_iter_new(this->sos, KS_SOS_EVENT_ID);
-	struct sos_key_s k;
-	sos_key_set_uint64(this->sos, KS_SOS_EVENT_ID, -1LU, &k);
-	int found = sos_iter_seek_inf(iter, &k);
-	if (found) {
-		sos_obj_t obj = sos_iter_next(iter);
+	uint64_t kv = -1LU;
+	obj_key_t k = obj_key_new(sizeof(kv));
+	if (!k) {
+		rc = ENOMEM;
+		goto err2;
+	}
+	obj_key_set(k, &kv, sizeof(kv));
+	int seek_rc = sos_iter_seek_inf(iter, k);
+	if (seek_rc) {
+		this->next_event_id = 1;
+	} else {
+		sos_obj_t obj = sos_iter_obj(iter);
 		this->next_event_id = 1 + sos_obj_attr_get_uint64(this->sos,
 							KS_SOS_EVENT_ID, obj);
-	} else {
-		this->next_event_id = 1;
 	}
 
-	goto out;
+	goto cleanup;
 
+err2:
+	sos_close(this->sos, ODS_COMMIT_ASYNC);
 err1:
 	free(this->path);
 	this->path = 0;
 err0:
-out:
+cleanup:
+	if (iter)
+		sos_iter_free(iter);
+	if (k)
+		obj_key_delete(k);
 	return rc;
 }
 
@@ -214,24 +225,38 @@ int event_update(struct kmd_store *s, void *event_object,
 {
 	struct event_object *ref = event_object;
 	struct kmd_store_tahoma *this = (void*)s;
+	sos_iter_t iter = NULL;
+	obj_key_t k = NULL;
 	int rc;
+
 	pthread_mutex_lock(&this->mutex);
-	sos_iter_t iter = sos_iter_new(this->sos, KS_SOS_EVENT_ID);
+
+	iter = sos_iter_new(this->sos, KS_SOS_EVENT_ID);
 	if (!iter) {
 		rc = ENOMEM;
-		goto out;
+		goto cleanup;
 	}
-	struct sos_key_s k;
-	sos_key_set_uint64(this->sos, KS_SOS_EVENT_ID, ref->event_id, &k);
-	int found = sos_iter_seek(iter, &k);
-	if (!found) {
+
+	k = obj_key_new(sizeof(ref->event_id));
+	if (!k) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+	obj_key_set(k, &ref->event_id, sizeof(ref->event_id));
+	int seek_rc = sos_iter_seek(iter, k);
+	if (seek_rc) {
 		rc = ENOENT;
-		goto out;
+		goto cleanup;
 	}
-	sos_obj_t obj = sos_iter_next(iter);
+	sos_obj_t obj = sos_iter_obj(iter);
 	uint32_t v = status;
 	sos_obj_attr_set(this->sos, KS_SOS_STATUS, obj, &v);
-out:
+
+cleanup:
+	if (iter)
+		sos_iter_free(iter);
+	if (k)
+		obj_key_delete(k);
 	pthread_mutex_unlock(&this->mutex);
 	return rc;
 }
@@ -240,7 +265,7 @@ void destroy(struct kmd_store *s)
 {
 	struct kmd_store_tahoma *this = (void*)s;
 	if (this->sos) /* if sos_open failed, this->sos is 0 */
-		sos_close(this->sos);
+		sos_close(this->sos, ODS_COMMIT_ASYNC);
 	if (this->path) /* if config failed, this->path is 0 */
 		free(this->path);
 	free(s);

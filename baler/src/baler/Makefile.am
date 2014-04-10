@@ -34,7 +34,7 @@ lib_LTLIBRARIES += libbset.la
 # all libraries).
 libbaler_la_SOURCES = bwqueue.c btkn.c bptn.c binput.c boutput.c \
 		      bmapper.c bset.c bmvec.c bmem.c butils.c
-libbaler_la_LDFLAGS = $(AM_LDFLAGS) -pthread
+libbaler_la_LDFLAGS = $(AM_LDFLAGS) -lpthread
 lib_LTLIBRARIES += libbaler.la
 
 balerd_SOURCES = balerd.c

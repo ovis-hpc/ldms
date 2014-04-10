@@ -90,6 +90,7 @@ struct rbn *rbt_max(struct rbt *t);
 void rbt_ins(struct rbt *t, struct rbn *n);
 void rbt_del(struct rbt *t, struct rbn *n);
 void rbt_traverse(struct rbt *t, rbn_node_fn f, void *fn_data);
+void rbn_init(struct rbn *n, void *key);
 int rbt_is_leaf(struct rbn *n);
 #ifndef offsetof
 #define offsetof(type,member) ((size_t) &((type *)0)->member)

@@ -71,7 +71,27 @@
 #include "sos.h"
 #include "sos_priv.h"
 #include "ods.h"
+#include "obj_idx.h"
 #include "../config.h"
+
+sos_class_t sos_class_new(sos_t sos, const char *name,
+			  size_t attr_count, sos_attr_t attrs)
+{
+	size_t sz;
+	sos_class_t sc;
+	int i;
+
+	sz = sizeof *sc + (attr_count * sizeof attrs[0]);
+	sc = malloc(sz);
+	if (!sc)
+		goto out;
+	strcpy(sc->name, name);
+	sc->count = attr_count;
+	for (i = 0; i < sc->count; i++)
+		sc->attrs[i] = attrs[i];
+ out:
+	return sc;
+}
 
 sos_attr_t sos_attr_by_name(sos_t sos, const char *name)
 {
@@ -111,6 +131,7 @@ static uint32_t type_sizes[] = {
 	[SOS_TYPE_INT64] = 8,
 	[SOS_TYPE_UINT64] = 8,
 	[SOS_TYPE_DOUBLE] = 8,
+	[SOS_TYPE_STRING] = 8,
 	[SOS_TYPE_BLOB] = 16, /**< \note length + offset = 8 + 8 = 16 bytes */
 };
 static int type_is_builtin(enum sos_type_e e)
@@ -139,6 +160,10 @@ char *sos_type_to_str(enum sos_type_e type)
 		return "uint64";
 	case SOS_TYPE_DOUBLE:
 		return "double";
+	case SOS_TYPE_REF:
+		return "ref";
+	case SOS_TYPE_STRING:
+		return "string";
 	case SOS_TYPE_BLOB:
 		return "blob";
 	case SOS_TYPE_USER:
@@ -160,16 +185,17 @@ const char *sos_attr_name(sos_t sos, sos_attr_t attr)
 	return attr->name;
 }
 
-int sos_attr_id(sos_t sos, sos_attr_t attr)
-{
-}
-
-void sos_attr_key_set(sos_attr_t attr, void *value, sos_key_t key)
+void sos_attr_key_set(sos_attr_t attr, void *value, obj_key_t key)
 {
 	attr->set_key_fn(attr, value, key);
 }
 
-void sos_obj_attr_key_set(sos_t sos, int attr_id, void *value, sos_key_t key)
+void sos_key_from_str(sos_iter_t i, obj_key_t key, const char *key_val)
+{
+	obj_key_from_str(i->attr->oidx, key, key_val);
+}
+
+void sos_obj_attr_key_set(sos_t sos, int attr_id, void *value, obj_key_t key)
 {
 	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
 	attr->set_key_fn(attr, value, key);
@@ -194,13 +220,10 @@ sos_iter_t sos_iter_new(sos_t sos, int attr_id)
 
 	i->sos = sos;
 	i->attr = attr;
-	i->iter = oidx_iter_new(i->attr->oidx);
+	i->iter = obj_iter_new(i->attr->oidx);
 	if (!i->iter)
 		goto err;
-	struct sos_key_s k;
-	uint64_t v = 0;
-	sos_attr_key_set(attr, &v, &k);
-	sos_iter_seek_sup(i, &k);
+	obj_iter_begin(i->iter);
 	return i;
  err:
 	if (i)
@@ -210,7 +233,7 @@ sos_iter_t sos_iter_new(sos_t sos, int attr_id)
 
 void sos_iter_free(sos_iter_t iter)
 {
-	oidx_iter_free(iter->iter);
+	obj_iter_delete(iter->iter);
 	free(iter);
 }
 
@@ -219,81 +242,105 @@ static inline sos_dattr_t get_dattr(sos_t sos, int attr_id)
 	return &sos->meta->attrs[attr_id];
 }
 
-static sos_link_t get_link_from_dattr(sos_t sos, sos_dattr_t dattr, sos_obj_t obj)
-{
-	return (sos_link_t)((unsigned char *)obj + dattr->link);
-}
-
-static inline sos_link_t get_link(sos_t sos, sos_dattr_t dattr, uint64_t off)
-{
-	return get_link_from_dattr(sos, dattr,
-				   ods_obj_offset_to_ptr(sos->ods, off));
-}
-
-static sos_link_t get_attr_link(sos_t sos, sos_attr_t attr, sos_obj_t obj)
-{
-	return get_link_from_dattr(sos, &sos->meta->attrs[attr->id], obj);
-}
-
 const char *sos_iter_name(sos_iter_t i)
 {
 	return i->attr->name;
 }
 
-sos_obj_t sos_iter_next(sos_iter_t i)
+sos_obj_t sos_iter_obj(sos_iter_t i)
 {
-	uint64_t obj_o = oidx_iter_next_obj(i->iter);
+	obj_ref_t obj_o = obj_iter_ref(i->iter);
 	if (!obj_o)
 		return NULL;
-	return ods_obj_offset_to_ptr(i->sos->ods, obj_o);
+	return ods_obj_ref_to_ptr(i->sos->ods, obj_o);
 }
 
-sos_obj_t sos_iter_prev(sos_iter_t i)
+obj_ref_t sos_iter_ref(sos_iter_t i)
 {
-	uint64_t obj_o = oidx_iter_prev_obj(i->iter);
-	if (!obj_o)
-		return NULL;
-	return ods_obj_offset_to_ptr(i->sos->ods, obj_o);
+	obj_ref_t obj_o = obj_iter_ref(i->iter);
+	return obj_o;
 }
 
-void sos_iter_seek_start(sos_iter_t i)
+int sos_iter_next(sos_iter_t i)
 {
-	oidx_iter_seek_start(i->iter);
+	return obj_iter_next(i->iter);
 }
 
-/*
- * XXX Doesn't really work ... maybe this is an incomplete implementation ...
- * take a look into this later.
- */
-void sos_iter_seek_end(sos_iter_t i)
+int sos_iter_prev(sos_iter_t i)
 {
-	oidx_iter_seek_end(i->iter);
+	return obj_iter_prev(i->iter);
 }
 
-uint64_t sos_iter_seek_sup(sos_iter_t i, sos_key_t key)
+int sos_iter_begin(sos_iter_t i)
 {
-	uint64_t obj = oidx_iter_seek_sup(i->iter, key->key, key->keylen);
-	return obj;
+	return obj_iter_begin(i->iter);
 }
 
-uint64_t sos_iter_seek_inf(sos_iter_t i, sos_key_t key)
+int sos_iter_end(sos_iter_t i)
 {
-	uint64_t obj = oidx_iter_seek_inf(i->iter, key->key, key->keylen);
-	return obj;
+	return obj_iter_end(i->iter);
 }
 
-int sos_iter_seek(sos_iter_t i, sos_key_t key)
+int sos_iter_seek_sup(sos_iter_t i, obj_key_t key)
 {
-	if (oidx_iter_seek(i->iter, key->key, key->keylen))
-		return 1;
-	return 0;
+	return obj_iter_find_lub(i->iter, key);
 }
 
-static oidx_t init_idx(sos_t sos, int o_flag, int o_mode, sos_attr_t attr)
+int sos_iter_seek_inf(sos_iter_t i, obj_key_t key)
 {
+	return obj_iter_find_glb(i->iter, key);
+}
+
+int sos_iter_key_cmp(sos_iter_t iter, obj_key_t a, obj_key_t b)
+{
+	return obj_key_cmp(iter->attr->oidx, a, b);
+}
+
+int sos_iter_seek(sos_iter_t i, obj_key_t key)
+{
+	return obj_iter_find(i->iter, key);
+}
+
+obj_key_t sos_iter_key(sos_iter_t i)
+{
+	return obj_iter_key(i->iter);
+}
+
+static const char *sos_type_to_key_str(enum sos_type_e t)
+{
+	static const char *key_map[] = {
+		"INT32",
+		"INT64",
+		"UINT32",
+		"UINT64",
+		"DOUBLE",
+		"STRING",
+	};
+	return key_map[t];
+}
+
+static obj_idx_t init_idx(sos_t sos, int o_flag, int o_mode, sos_attr_t attr)
+{
+	obj_idx_t idx;
 	char tmp_path[PATH_MAX];
+	int rc;
 	sprintf(tmp_path, "%s_%s", sos->path, attr->name);
-	return oidx_open(tmp_path, o_flag, o_mode);
+	/* Check if the index exists */
+	idx = obj_idx_open(tmp_path);
+	if (!idx) {
+		char *order_sz = getenv("BPTREE_ORDER");
+		int order = 7;
+		if (order_sz)
+			order = atoi(order_sz);
+		if (!order)
+			order = 7;
+		/* Create the index */
+		rc = obj_idx_create(tmp_path, o_mode,
+				    "BPTREE", sos_type_to_key_str(attr->type), order);
+		if (!rc)
+			idx = obj_idx_open(tmp_path);
+	}
+	return idx;
 }
 
 /**
@@ -311,31 +358,27 @@ ods_t init_blob_ods(sos_t sos, int o_flag, int o_mode, sos_attr_t attr)
 	return ods_open(tmp_path, o_flag, o_mode);
 }
 
-void sos_flush(sos_t sos)
+void sos_commit(sos_t sos, int flags)
 {
 	int attr_id;
 
-	ods_flush(sos->ods);
+	ods_commit(sos->ods, flags);
 	for (attr_id = 0; attr_id < sos->classp->count; attr_id++)
 		if (sos->classp->attrs[attr_id].oidx)
-			oidx_flush(sos->classp->attrs[attr_id].oidx);
+			obj_idx_commit(sos->classp->attrs[attr_id].oidx,
+				       flags);
 }
 
-void sos_close(sos_t sos)
+void sos_close(sos_t sos, int flags)
 {
 	int attr_id;
-	oidx_t oidx;
-	ods_t ods;
 
-	sos_flush(sos);
-	ods_close(sos->ods);
+	sos_commit(sos, flags);
+	ods_close(sos->ods, flags);
 	for (attr_id = 0; attr_id < sos->classp->count; attr_id++) {
-		if (oidx = sos->classp->attrs[attr_id].oidx)
-			oidx_close(oidx);
-		if (ods = sos->classp->attrs[attr_id].blob_ods)
-			ods_close(ods);
+		obj_idx_close(sos->classp->attrs[attr_id].oidx, flags);
+		ods_close(sos->classp->attrs[attr_id].blob_ods, flags);
 	}
-	sos->ods = NULL;
 	if (sos->path)
 		free(sos->path);
 	free(sos);
@@ -372,18 +415,10 @@ static sos_meta_t make_meta(sos_t sos, sos_meta_t meta, sos_class_t classp)
 
 	/* Now build the index and link info */
 	for (attr_id = 0; attr_id < classp->count; attr_id++) {
-		if (classp->attrs[attr_id].has_idx) {
-			/* obsoleted by new object management */
-			/*
-			meta->attrs[attr_id].link = cur_off;
-			cur_off += sizeof(struct sos_link_s);
-			*/
+		if (classp->attrs[attr_id].has_idx)
 			meta->attrs[attr_id].has_idx = 1;
-		} else {
+		else
 			meta->attrs[attr_id].has_idx = 0;
-			/* obsoleted by new object management */
-			/* meta->attrs[attr_id].link = 0; */
-		}
 	}
 
 	meta->obj_sz = cur_off;
@@ -401,6 +436,7 @@ static sos_size_fn_t size_fns[] = {
 	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__size_fn,
 	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__size_fn,
 	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__size_fn,
+	[SOS_TYPE_STRING] = SOS_TYPE_STRING__size_fn,
 	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__size_fn
 };
 
@@ -410,6 +446,7 @@ static sos_get_key_fn_t get_key_fns[] = {
 	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__get_key_fn,
 	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__get_key_fn,
 	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__get_key_fn,
+	[SOS_TYPE_STRING] = SOS_TYPE_STRING__get_key_fn,
 	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__get_key_fn
 };
 
@@ -419,16 +456,8 @@ static sos_set_key_fn_t set_key_fns[] = {
 	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__set_key_fn,
 	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__set_key_fn,
 	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__set_key_fn,
+	[SOS_TYPE_STRING] = SOS_TYPE_STRING__set_key_fn,
 	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__set_key_fn
-};
-
-static sos_cmp_key_fn_t cmp_key_fns[] = {
-	[SOS_TYPE_INT32] = SOS_TYPE_INT32__cmp_key_fn,
-	[SOS_TYPE_INT64] = SOS_TYPE_INT64__cmp_key_fn,
-	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__cmp_key_fn,
-	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__cmp_key_fn,
-	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__cmp_key_fn,
-	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__cmp_key_fn
 };
 
 static sos_set_fn_t set_fns[] = {
@@ -437,6 +466,7 @@ static sos_set_fn_t set_fns[] = {
 	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__set_fn,
 	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__set_fn,
 	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__set_fn,
+	[SOS_TYPE_STRING] = SOS_TYPE_STRING__set_fn,
 	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__set_fn
 };
 
@@ -446,6 +476,7 @@ static sos_get_fn_t get_fns[] = {
 	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__get_fn,
 	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__get_fn,
 	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__get_fn,
+	[SOS_TYPE_STRING] = SOS_TYPE_STRING__get_fn,
 	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__get_fn
 };
 
@@ -468,7 +499,6 @@ static sos_class_t init_classp(sos_t sos, sos_meta_t meta)
 			classp->attrs[attr_id].size_fn = size_fns[at];
 			classp->attrs[attr_id].get_key_fn = get_key_fns[at];
 			classp->attrs[attr_id].set_key_fn = set_key_fns[at];
-			classp->attrs[attr_id].cmp_key_fn = cmp_key_fns[at];
 			classp->attrs[attr_id].set_fn = set_fns[at];
 			classp->attrs[attr_id].get_fn = get_fns[at];
 		}
@@ -491,7 +521,7 @@ static sos_class_t init_sos(sos_t sos, int o_flag, int o_mode,
 			goto err;
 	}
 	for (attr_id = 0; attr_id < meta->attr_cnt; attr_id++) {
-		oidx_t oidx;
+		obj_idx_t oidx;
 
 		classp->attrs[attr_id].id = attr_id;
 		classp->attrs[attr_id].sos = sos;
@@ -675,116 +705,86 @@ size_t SOS_TYPE_DOUBLE__size_fn(sos_attr_t attr)
 	return sizeof(double);
 }
 
+size_t SOS_TYPE_STRING__size_fn(sos_attr_t attr)
+{
+	return sizeof(obj_ref_t);
+}
+
 size_t SOS_TYPE_BLOB__size_fn(sos_attr_t attr)
 {
 	return sizeof(struct sos_blob_obj_s);
 }
 
-void SOS_TYPE_INT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_INT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	SOS_ATTR_GET_BE32(key->key, attr, obj);
-	key->keylen = sizeof(int32_t);
+	obj_key_set(key, &obj->data[attr->data], sizeof(int32_t));
 }
 
-void SOS_TYPE_UINT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_UINT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	SOS_ATTR_GET_BE32(key->key, attr, obj);
-	key->keylen = sizeof(uint32_t);
+	obj_key_set(key, &obj->data[attr->data], sizeof(uint32_t));
 }
 
-void SOS_TYPE_INT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_INT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	SOS_ATTR_GET_BE64(key->key, attr, obj);
-	key->keylen = sizeof(int64_t);
+	obj_key_set(key, &obj->data[attr->data], sizeof(int64_t));
 }
 
-void SOS_TYPE_UINT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_UINT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	SOS_ATTR_GET_BE64(key->key, attr, obj);
-	key->keylen = sizeof(uint64_t);
+	obj_key_set(key, &obj->data[attr->data], sizeof(uint64_t));
 }
 
-void SOS_TYPE_DOUBLE__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_DOUBLE__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	//Not implemented
+	obj_key_set(key, &obj->data[attr->data], sizeof(double));
 }
 
-void SOS_TYPE_BLOB__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_STRING__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	//Not implemented
+	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
+	char *str = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	obj_key_set(key, str, strlen(str)+1);
 }
 
-void SOS_TYPE_INT32__set_key_fn(sos_attr_t attr, void *value, sos_key_t key)
+void SOS_TYPE_BLOB__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	SOS_KEY_SET_BE32(key, value);
-	key->keylen = sizeof(int32_t);
+	assert(NULL == "Not implemented");
 }
 
-void SOS_TYPE_UINT32__set_key_fn(sos_attr_t attr, void *value, sos_key_t key)
+void SOS_TYPE_INT32__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	SOS_KEY_SET_BE32(key, value);
-	key->keylen = sizeof(uint32_t);
+	obj_key_set(key, value, sizeof(int32_t));
 }
 
-void SOS_TYPE_INT64__set_key_fn(sos_attr_t attr, void *value, sos_key_t key)
+void SOS_TYPE_UINT32__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	SOS_KEY_SET_BE64(key, value);
-	key->keylen = sizeof(int64_t);
+	obj_key_set(key, value, sizeof(uint32_t));
 }
 
-void SOS_TYPE_UINT64__set_key_fn(sos_attr_t attr, void *value, sos_key_t key)
+void SOS_TYPE_INT64__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	SOS_KEY_SET_BE64(key, value);
-	key->keylen = sizeof(uint64_t);
+	obj_key_set(key, value, sizeof(int64_t));
 }
 
-void SOS_TYPE_DOUBLE__set_key_fn(sos_attr_t attr, void *value, sos_key_t key)
+void SOS_TYPE_UINT64__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	//Not implemented
+	obj_key_set(key, value, sizeof(uint64_t));
 }
 
-void SOS_TYPE_BLOB__set_key_fn(sos_attr_t attr, void *value, sos_key_t key)
+void SOS_TYPE_DOUBLE__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	//Not implemented
+	obj_key_set(key, value, sizeof(double));
 }
 
-int SOS_TYPE_INT32__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_STRING__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	int32_t v;
-	SOS_ATTR_GET(v, attr, obj);
-	return v - htobe32((*(int32_t *)key->key));
+	obj_key_set(key, value, strlen(value)+1);
 }
 
-int SOS_TYPE_UINT32__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void SOS_TYPE_BLOB__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	uint32_t v;
-	SOS_ATTR_GET(v, attr, obj);
-	return v - htobe32((*(uint32_t *)key->key));
-}
-
-int SOS_TYPE_INT64__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
-{
-	int64_t v;
-	SOS_ATTR_GET(v, attr, obj);
-	return v - htobe64((*(int64_t *)key->key));
-}
-
-int SOS_TYPE_UINT64__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
-{
-	uint64_t v;
-	SOS_ATTR_GET(v, attr, obj);
-	return v - htobe64((*(uint64_t *)key->key));
-}
-
-int SOS_TYPE_DOUBLE__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
-{
-	//Not implemented
-}
-
-int SOS_TYPE_BLOB__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
-{
-	//Not implemented
-	return 0;
+	assert(NULL == "Not implemented");
 }
 
 void SOS_TYPE_INT32__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
@@ -812,17 +812,39 @@ void SOS_TYPE_DOUBLE__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 	*(double *)(&obj->data[attr->data]) = *(double *)value;
 }
 
+void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
+{
+	obj_ref_t ref = obj->data[attr->data];
+	char *dst = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	char *src = (char *)value;
+	size_t src_len = strlen(src) + 1;
+	if (dst) {
+		/* If the memory containing the current value is big enough, use it */
+		if (ods_obj_size(attr->sos->ods, dst) >= strlen(value) + 1) {
+			strcpy(dst, src);
+			return;
+		} else
+			ods_free(attr->sos->ods, dst);
+	}
+	dst = ods_alloc(attr->sos->ods, src_len);
+	if (!dst)
+		assert(NULL == "memory allocation failure");
+	strcpy(dst, src);
+	ref = ods_obj_ptr_to_ref(attr->sos->ods, dst);
+	*(obj_ref_t *)&obj->data[attr->data] = ref;
+}
+
 void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 {
 	ods_t bods = attr->blob_ods;
 	sos_blob_obj_t blob = (typeof(blob))&obj->data[attr->data];
 	sos_blob_arg_t arg = (typeof(arg))value;
-	void *ptr;
+	void *ptr = ods_obj_ref_to_ptr(bods, blob->ref);
 
-	if (blob->off && blob->len < arg->len) {
+	if (blob->ref && blob->len < arg->len) {
 		/* Cannot reuse space, free it and reset blob */
-		ods_free(bods, ods_obj_offset_to_ptr(bods, blob->off));
-		blob->off = blob->len = 0;
+		ods_free(bods, ods_obj_ref_to_ptr(bods, blob->ref));
+		blob->ref = blob->len = 0;
 	}
 
 	if (!blob->len) {
@@ -836,7 +858,7 @@ void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 				goto err1;
 		}
 		blob->len = ods_get_alloc_size(bods, arg->len);
-		blob->off = ods_obj_ptr_to_offset(bods, ptr);
+		blob->ref = ods_obj_ptr_to_ref(bods, ptr);
 	}
 
 	memcpy(ptr, arg->data, arg->len);
@@ -872,87 +894,85 @@ void *SOS_TYPE_DOUBLE__get_fn(sos_attr_t attr, sos_obj_t obj)
 	return &obj->data[attr->data];
 }
 
+void *SOS_TYPE_STRING__get_fn(sos_attr_t attr, sos_obj_t obj)
+{
+	obj_ref_t ref = (obj_ref_t)&obj->data[attr->data];
+	return ods_obj_ref_to_ptr(attr->sos->ods, ref);
+}
+
 void *SOS_TYPE_BLOB__get_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	sos_blob_obj_t blob = (typeof(blob)) &obj->data[attr->data];
-	return ods_obj_offset_to_ptr(attr->blob_ods, blob->off);
+	return ods_obj_ref_to_ptr(attr->blob_ods, blob->ref);
 }
 
-void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, sos_key_t key)
+void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, obj_key_t key)
 {
 	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
 	if (attr)
 		sos_attr_key(attr, obj, key);
 }
 
-int sos_obj_attr_key_cmp(sos_t sos, int attr_id,
-			 sos_obj_t obj, sos_key_t key)
-{
-	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
-	if (!attr)
-		return -1;
-	return sos_attr_key_cmp(attr, obj, key);
-}
-
-int sos_attr_key_cmp(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
-{
-	return attr->cmp_key_fn(attr, obj, key);
-}
-
-void sos_attr_key(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+void sos_attr_key(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
 	attr->get_key_fn(attr, obj, key);
 }
 
 /**
- * Unlink an object from the store, but not yet deleting it.
+ * Remove an object from all of its indexes
  */
 int sos_obj_remove(sos_t sos, sos_obj_t obj)
 {
 	int attr_id;
-	uint64_t obj_o = ods_obj_ptr_to_offset(sos->ods, obj);
-	int rc = 0;
+	size_t attr_sz;
+	size_t key_sz = 1024;
+	obj_key_t key = obj_key_new(key_sz);
 
 	for (attr_id = 0; attr_id < sos->meta->attr_cnt; attr_id++) {
-		struct sos_key_s key;
 		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
 		if (!sos_attr_has_index(attr))
 			continue;
 
-		sos_attr_key(attr, obj, &key);
-		if (rc = oidx_obj_remove(attr->oidx, key.key, key.keylen, obj_o))
-			return rc;
+		attr_sz = sos_attr_size(sos, attr);
+		if (attr_sz > key_sz) {
+			obj_key_delete(key);
+			key_sz = attr_sz;
+			key = obj_key_new(key_sz);
+		}
+		sos_attr_key(attr, obj, key);
+		obj_idx_delete(attr->oidx, key);
 	}
+	obj_key_delete(key);
 	return 0;
 }
 
-/**
- * \brief Add (index) object to the store.
- * \note Object has already been Object ODS. This function adds the object to
- * the indices (according to key attributes) so that SOS user can iterate
- * through objects correctly.
- */
 int sos_obj_add(sos_t sos, sos_obj_t obj)
 {
 	int attr_id;
-	uint64_t *idx_o;
-	uint64_t obj_o = ods_obj_ptr_to_offset(sos->ods, obj);
+	obj_ref_t obj_ref = ods_obj_ptr_to_ref(sos->ods, obj);
+	size_t attr_sz;
+	size_t key_sz = 1024;
+	obj_key_t key = obj_key_new(key_sz);
 
 	for (attr_id = 0; attr_id < sos->meta->attr_cnt; attr_id++) {
 		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
-		struct sos_key_s key;
 		if (!sos_attr_has_index(attr))
 			continue;
-		sos_attr_key(attr, obj, &key);
-		if (oidx_add(attr->oidx, key.key, key.keylen, obj_o))
+		attr_sz = sos_attr_size(sos, attr);
+		if (attr_sz > key_sz) {
+			obj_key_delete(key);
+			key_sz = attr_sz;
+			key = obj_key_new(key_sz);
+		}
+		sos_attr_key(attr, obj, key);
+		if (obj_idx_insert(attr->oidx, key, obj_ref))
 			goto err;
 	}
-
+	obj_key_delete(key);
 	return 0;
  err:
-	if (idx_o)
-		free(idx_o);
-	return (ssize_t)-1;
+	obj_key_delete(key);
+	return -1;
 }
 
 void sos_obj_attr_set(sos_t sos, int attr_id, sos_obj_t obj, void *value)
@@ -1047,10 +1067,10 @@ sos_t sos_destroy(sos_t sos)
 		}
 	}
 	free(str);
-	sos_close(sos);
+	sos_close(sos, ODS_COMMIT_ASYNC);
 	struct __str_lst *sl;
 	int rc;
-	while (sl = LIST_FIRST(&head)) {
+	while ((sl = LIST_FIRST(&head)) != NULL) {
 		LIST_REMOVE(sl, link);
 		rc = unlink(sl->str);
 		if (rc)
@@ -1067,24 +1087,25 @@ void print_obj(sos_t sos, sos_obj_t obj, int attr_id)
 	uint32_t ut;
 	uint32_t comp_id;
 	uint64_t value;
-	struct sos_key_s key;
+	obj_key_t key = obj_key_new(1024);
 	char tbuf[32];
 	char kbuf[32];
 
-	sos_obj_attr_key(sos, attr_id, obj, &key);
+	sos_obj_attr_key(sos, attr_id, obj, key);
 
 	t = *(uint32_t *)sos_obj_attr_get(sos, 0, obj);
 	ut = *(uint32_t *)sos_obj_attr_get(sos, 1, obj);
 	sprintf(tbuf, "%d:%d", t, ut);
 	sprintf(kbuf, "%02hhx:%02hhx:%02hhx:%02hhx",
-		key.key[0],
-		key.key[1],
-		key.key[2],
-		key.key[3]);
+		key->value[0],
+		key->value[1],
+		key->value[2],
+		key->value[3]);
 	comp_id = *(uint32_t *)sos_obj_attr_get(sos, 2, obj);
 	value = *(uint64_t *)sos_obj_attr_get(sos, 3, obj);
 	printf("%11s %16s %8d %12lu\n",
 	       kbuf, tbuf, comp_id, value);
+	obj_key_delete(key);
 }
 
 void sos_print_obj(sos_t sos, sos_obj_t obj, int attr_id)
@@ -1114,27 +1135,27 @@ const char *sos_get_attr_name(sos_t sos, int attr_id)
 	return attr->name;
 }
 
-void sos_key_set_int32(sos_t sos, int attr_id, int32_t value, sos_key_t key)
+void sos_key_set_int32(sos_t sos, int attr_id, int32_t value, obj_key_t key)
 {
 	sos_obj_attr_key_set(sos, attr_id, &value, key);
 }
 
-void sos_key_set_int64(sos_t sos, int attr_id, int64_t value, sos_key_t key)
+void sos_key_set_int64(sos_t sos, int attr_id, int64_t value, obj_key_t key)
 {
 	sos_obj_attr_key_set(sos, attr_id, &value, key);
 }
 
-void sos_key_set_uint32(sos_t sos, int attr_id, uint32_t value, sos_key_t key)
+void sos_key_set_uint32(sos_t sos, int attr_id, uint32_t value, obj_key_t key)
 {
 	sos_obj_attr_key_set(sos, attr_id, &value, key);
 }
 
-void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, sos_key_t key)
+void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, obj_key_t key)
 {
 	sos_obj_attr_key_set(sos, attr_id, &value, key);
 }
 
-void sos_key_set_double(sos_t sos, int attr_id, double value, sos_key_t key)
+void sos_key_set_double(sos_t sos, int attr_id, double value, obj_key_t key)
 {
 	sos_obj_attr_key_set(sos, attr_id, &value, key);
 }
@@ -1145,14 +1166,14 @@ void sos_key_set_double(sos_t sos, int attr_id, double value, sos_key_t key)
 #include <stddef.h>
 #include <coll/idx.h>
 
-static void get_value_key(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
+static void get_value_key(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
 	uint32_t kv;
 	uint32_t limit = 100;
 	uint64_t v = *(uint64_t *)sos_attr_get(attr, obj);
 
 	kv = 0;
-	key->keylen = 4;
+	key->len = 4;
 	do {
 		if (v < limit)
 			break;
@@ -1160,22 +1181,22 @@ static void get_value_key(sos_attr_t attr, sos_obj_t obj, sos_key_t key)
 		kv++;
 	} while (1);
 	kv = htobe32(kv);
-	memcpy(key->key, (unsigned char *)&kv, 4);
+	memcpy(key->value, (unsigned char *)&kv, 4);
 }
 
-static void set_key_value(sos_attr_t attr, void *value, sos_key_t key)
+static void set_key_value(sos_attr_t attr, void *value, obj_key_t key)
 {
 	uint32_t kv = *(uint32_t *)value;
 	kv = htobe32(kv);
-	memcpy(key->key, (unsigned char *)&kv, 4);
-	key->keylen = 4;
+	memcpy(key->value, (unsigned char *)&kv, 4);
+	key->len = 4;
 }
 
 SOS_OBJ_BEGIN(ovis_metric_class, "OvisMetric")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_UKEY("value", SOS_TYPE_UINT64, get_value_key, set_key_value)
+	SOS_OBJ_ATTR_WITH_KEY("value", SOS_TYPE_UINT64)
 SOS_OBJ_END(4);
 
 idx_t ct_idx;
@@ -1197,11 +1218,12 @@ void print_header(struct metric_store_s *m, const char *attr_name)
 void dump_metric_store_fwd(struct metric_store_s *m,
 			   int attr_id)
 {
+	int rc;
 	sos_obj_t obj;
 	sos_iter_t iter = sos_iter_new(m->sos, attr_id);
 	print_header(m, sos_iter_name(iter));
-	for (obj = sos_iter_next(iter);
-	     obj; obj = sos_iter_next(iter)) {
+	for (rc = sos_iter_next(iter); !rc; rc = sos_iter_next(iter)) {
+		obj = sos_iter_obj(iter);
 		print_obj(m->sos, obj, attr_id);
 	}
 	sos_iter_free(iter);
@@ -1210,12 +1232,12 @@ void dump_metric_store_fwd(struct metric_store_s *m,
 void dump_metric_store_bkwd(struct metric_store_s *m,
 			    int attr_id)
 {
+	int rc;
 	sos_obj_t obj;
 	sos_iter_t iter = sos_iter_new(m->sos, attr_id);
-	sos_iter_seek_end(iter);
 	print_header(m, sos_iter_name(iter));
-	for (obj = sos_iter_prev(iter);
-	     obj; obj = sos_iter_prev(iter)) {
+	for (rc = sos_iter_end(iter); !rc; rc = sos_iter_prev(iter)) {
+		obj = sos_iter_obj(iter);
 		print_obj(m->sos, obj, attr_id);
 	}
 	sos_iter_free(iter);

@@ -1,10 +1,5 @@
-/* -*- c-basic-offset: 8 -*-
+/*
  * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
- * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
- * license for use of this work by or on behalf of the U.S. Government.
- * Export of this program may require a license from the United States
- * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -23,10 +18,6 @@
  *      copyright notice, this list of conditions and the following
  *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
- *
- *      Neither the name of Sandia nor the names of any contributors may
- *      be used to endorse or promote products derived from this software
- *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
@@ -48,52 +39,69 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "bout_sos_msg.h"
-#include "sos_msg_class_def.h"
+
+/*
+ * Author: Tom Tucker tom at ogc dot us
+ */
+
+#ifndef _BPT_H_
+#define _BPT_H_
+
+#include "obj_idx.h"
+#include "obj_idx_priv.h"
+#include "ods.h"
+
+#pragma pack(4)
 
 /**
- * \brief process_output for SOS.
+ * B+ Tree Node Entry
  *
- * This function will create a new sos_object according to \a odata, and
- * put it into the opened sos storage.
- * \param this The pointer to the plugin instance.
- * \param odata The output data.
- * \return 0 on success.
- * \return Error code on error.
+ * Describes a key and the object to which it refers. The key is an
+ * obj_ref_t which refers to an arbitrarily sized ODS object that
+ * contains an opaque key. The key comparitor is used to compare two
+ * keys.
  */
-int bout_sos_msg_process_output(struct boutplugin *this,
-				struct boutq_data *odata)
-{
-	struct bout_sos_plugin *_this = (typeof(_this))this;
-	pthread_mutex_lock(&_this->sos_mutex);
-	sos_t sos = _this->sos;
-	if (!sos)
-		return EBADFD;
-	sos_obj_t obj = sos_obj_new(sos);
-	sos_obj_attr_set(sos, SOS_MSG_SEC, obj, &odata->tv.tv_sec);
-	sos_obj_attr_set(sos, SOS_MSG_USEC, obj, &odata->tv.tv_usec);
-	sos_obj_attr_set(sos, SOS_MSG_COMP_ID, obj, &odata->comp_id);
-	sos_obj_attr_set(sos, SOS_MSG_MSG, obj, &(struct sos_blob_arg_s) {
-				BMSG_SZ(odata->msg),
-				odata->msg
-			});
-	if (sos_obj_add(sos, obj))
-		goto err1;
-	pthread_mutex_unlock(&_this->sos_mutex);
-	return 0;
-err1:
-	sos_obj_delete(sos, obj);
-	pthread_mutex_unlock(&_this->sos_mutex);
-err0:
-	return EINVAL;
-}
+typedef struct bpn_entry {
+	/* Refers to the key object */
+	obj_ref_t key;
 
-struct bplugin *create_plugin_instance()
-{
-	struct bout_sos_msg_plugin *_p = calloc(1, sizeof(*_p));
-	_p->base.sos_class = &sos_msg_class;
-	struct boutplugin *p = (typeof(p)) _p;
-	bout_sos_init((void*)_p, "bout_sos_msg");
-	p->process_output = bout_sos_msg_process_output;
-	return (void*)p;
-}
+	/* The node or record to which the key refers */
+	obj_ref_t ref;
+} *bpn_entry_t;
+
+/*
+ * B+ Tree Node
+ */
+typedef struct bpt_node {
+	obj_ref_t parent;	/* NULL if root */
+	uint32_t count;
+	uint32_t is_leaf;
+	struct bpn_entry entries[];
+} *bpt_node_t;
+
+typedef struct bpt_udata {
+	struct obj_idx_meta_data idx_udata;
+	uint32_t order;		/* The order or each internal node */
+	obj_ref_t root;		/* The root of the tree */
+} *bpt_udata_t;
+
+/*
+ * In memory object that refers to a B+ Tree
+ */
+typedef struct bpt_s {
+	size_t order;		/* order of the tree */
+	ods_t ods;		/* The ods that contains the tree */
+	bpt_node_t root;	/* The root of the tree */
+	obj_idx_compare_fn_t comparator;
+} *bpt_t;
+
+typedef struct bpt_iter {
+	obj_idx_t idx;
+	int ent;
+	bpt_node_t node;
+} *bpt_iter_t;
+
+#define BPT_SIGNATURE "BTREE0100"
+#pragma pack()
+
+#endif

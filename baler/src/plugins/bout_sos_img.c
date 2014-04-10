@@ -105,15 +105,20 @@ int bout_sos_img_process_output(struct boutplugin *this,
 		goto err0;
 	}
 
-	struct sos_key_s sk;
 	struct bout_sos_img_key bk = {
 		.ts = (odata->tv.tv_sec / _this->delta_ts) * _this->delta_ts,
 		.comp_id = odata->comp_id
 	};
-	sos_attr_key_set(attr, &bk, &sk);
+	uint64_t bk_u64 = *(uint64_t*)(void*)&bk;
+	obj_key_t ok = obj_key_new(sizeof(bk));
+	if (!ok) {
+		rc = ENOMEM;
+		goto err0;
+	}
+	obj_key_set(ok, &bk, sizeof(bk));
 	sos_obj_t obj;
 	uint32_t count = 1;
-	if (!sos_iter_seek(iter, &sk))
+	if (0 != sos_iter_seek(iter, ok))
 		goto not_found;
 	/* found key, look for correct pattern_id */
 
@@ -121,11 +126,13 @@ int bout_sos_img_process_output(struct boutplugin *this,
 
 	/* Current code is inefficient, but we have to live with it for now
 	 * until maximum sos key length is changed. */
-	while ((obj = sos_iter_next(iter))) {
-		if (sos_obj_attr_key_cmp(sos, 0, obj, &sk))
+	while ((0 == sos_iter_next(iter))) {
+		obj = sos_iter_obj(iter);
+		uint64_t v = sos_obj_attr_get_uint64(sos, 0, obj);
+		if (bk_u64 != v)
 			break;
-		uint32_t *ptn = sos_obj_attr_get(sos, 1, obj);
-		if (odata->msg->ptn_id == *ptn)
+		uint32_t ptn = sos_obj_attr_get_uint32(sos, 1, obj);
+		if (odata->msg->ptn_id == ptn)
 			goto found;
 	}
 

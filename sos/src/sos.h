@@ -57,7 +57,10 @@
 #define __SOS_H
 
 #include <stdint.h>
-#include <stddef.h> // for size_t
+#include <stddef.h>
+#include "ods.h"
+#include "obj_idx.h"
+
 /**
  * \mainpage Scalable Object Store Documentation
  *
@@ -79,8 +82,7 @@
  *
  * - sos_open()    Create or re-open an object store.
  * - sos_close()   Close an object store and release it's in-core resources.
- * - sos_flush()   Flush all uncommited changes to the object store to
- *		   persistent storage.
+ * - sos_commit()  Commit all changes to the object store to persistent storage.
  *
  * # SOS Object Classes
  *
@@ -126,6 +128,7 @@ typedef struct sos_attr_s *sos_attr_t;
 typedef struct sos_class_s *sos_class_t;
 typedef struct sos_obj_s *sos_obj_t;
 typedef struct sos_blob_arg_s *sos_blob_arg_t;
+typedef unsigned char * sos_string_t;
 
 /**
  * \brief Argument for ::SOS_TYPE_BLOB__set_fn, representing blob value.
@@ -135,18 +138,9 @@ struct sos_blob_arg_s {
 	void *data; /**< Pointer to the data. */
 };
 
-#define SOS_KEY_MAX_LEN		sizeof(uint64_t)
-typedef struct sos_key_s {
-	size_t keylen;
-	unsigned char key[SOS_KEY_MAX_LEN];
-} *sos_key_t;
-
-typedef void *sos_oidx_t;
-
 typedef size_t (*sos_size_fn_t)(sos_attr_t);
-typedef int (*sos_cmp_key_fn_t)(sos_attr_t, sos_obj_t, sos_key_t);
-typedef void (*sos_get_key_fn_t)(sos_attr_t, sos_obj_t, sos_key_t);
-typedef void (*sos_set_key_fn_t)(sos_attr_t, void *, sos_key_t);
+typedef void (*sos_get_key_fn_t)(sos_attr_t, sos_obj_t, obj_key_t);
+typedef void (*sos_set_key_fn_t)(sos_attr_t, void *, obj_key_t);
 typedef void (*sos_set_fn_t)(sos_attr_t, sos_obj_t, void *);
 typedef void *(*sos_get_fn_t)(sos_attr_t, sos_obj_t);
 
@@ -158,15 +152,16 @@ typedef void *(*sos_get_fn_t)(sos_attr_t, sos_obj_t);
  */
 
 enum sos_type_e {
-	SOS_TYPE_INT32,
+	SOS_TYPE_INT32 = 0,
 	SOS_TYPE_INT64,
 	SOS_TYPE_UINT32,
 	SOS_TYPE_UINT64,
 	SOS_TYPE_DOUBLE,
+	SOS_TYPE_STRING,
+	SOS_TYPE_REF,
 	SOS_TYPE_BLOB,
 	SOS_TYPE_USER,
 	SOS_TYPE_UNKNOWN
-	/* SOS_TYPE_STRING,	counted string */
 };
 
 char *sos_type_to_str(enum sos_type_e type);
@@ -179,9 +174,8 @@ struct sos_attr_s {
 	sos_set_fn_t set_fn;
 	sos_get_key_fn_t get_key_fn;
 	sos_set_key_fn_t set_key_fn;
-	sos_cmp_key_fn_t cmp_key_fn;
 	sos_size_fn_t size_fn;
-	sos_oidx_t oidx;
+	obj_idx_t oidx;
 	uint32_t data;
 	sos_t sos;
 	int id;
@@ -206,7 +200,6 @@ struct sos_class_s _nm = {		\
 	_type ## __set_fn, \
 	_type ## __get_key_fn, \
 	_type ## __set_key_fn, \
-	_type ## __cmp_key_fn, \
 	_type ## __size_fn \
 }
 
@@ -217,7 +210,6 @@ struct sos_class_s _nm = {		\
 	_type ## __set_fn, \
 	_type ## __get_key_fn, \
 	_type ## __set_key_fn, \
-	_type ## __cmp_key_fn, \
 	_type ## __size_fn \
 }
 
@@ -228,7 +220,6 @@ struct sos_class_s _nm = {		\
 	_type ## __set_fn, \
 	_get_key_fn, \
 	_set_key_fn, \
-	_type ## __cmp_key_fn, \
 	_type ## __size_fn \
 }
 
@@ -242,34 +233,31 @@ size_t SOS_TYPE_UINT32__size_fn(sos_attr_t attr);
 size_t SOS_TYPE_INT64__size_fn(sos_attr_t attr);
 size_t SOS_TYPE_UINT64__size_fn(sos_attr_t attr);
 size_t SOS_TYPE_DOUBLE__size_fn(sos_attr_t attr);
+size_t SOS_TYPE_STRING__size_fn(sos_attr_t attr);
 size_t SOS_TYPE_BLOB__size_fn(sos_attr_t attr);
 
-void SOS_TYPE_INT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-void SOS_TYPE_UINT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-void SOS_TYPE_INT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-void SOS_TYPE_UINT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-void SOS_TYPE_DOUBLE__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-void SOS_TYPE_BLOB__get_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
+void SOS_TYPE_INT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
+void SOS_TYPE_UINT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
+void SOS_TYPE_INT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
+void SOS_TYPE_UINT64__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
+void SOS_TYPE_DOUBLE__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
+void SOS_TYPE_STRING__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
+void SOS_TYPE_BLOB__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
 
-void SOS_TYPE_INT32__set_key_fn(sos_attr_t attr, void *value, sos_key_t key);
-void SOS_TYPE_UINT32__set_key_fn(sos_attr_t attr, void *value, sos_key_t key);
-void SOS_TYPE_INT64__set_key_fn(sos_attr_t attr, void *value, sos_key_t key);
-void SOS_TYPE_UINT64__set_key_fn(sos_attr_t attr, void *value, sos_key_t key);
-void SOS_TYPE_DOUBLE__set_key_fn(sos_attr_t attr, void *value, sos_key_t key);
-void SOS_TYPE_BLOB__set_key_fn(sos_attr_t attr, void *value, sos_key_t key);
-
-int SOS_TYPE_INT32__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-int SOS_TYPE_UINT32__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-int SOS_TYPE_INT64__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-int SOS_TYPE_UINT64__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-int SOS_TYPE_DOUBLE__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-int SOS_TYPE_BLOB__cmp_key_fn(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
+void SOS_TYPE_INT32__set_key_fn(sos_attr_t attr, void *value, obj_key_t key);
+void SOS_TYPE_UINT32__set_key_fn(sos_attr_t attr, void *value, obj_key_t key);
+void SOS_TYPE_INT64__set_key_fn(sos_attr_t attr, void *value, obj_key_t key);
+void SOS_TYPE_UINT64__set_key_fn(sos_attr_t attr, void *value, obj_key_t key);
+void SOS_TYPE_DOUBLE__set_key_fn(sos_attr_t attr, void *value, obj_key_t key);
+void SOS_TYPE_STRING__set_key_fn(sos_attr_t attr, void *value, obj_key_t key);
+void SOS_TYPE_BLOB__set_key_fn(sos_attr_t attr, void *value, obj_key_t key);
 
 void SOS_TYPE_INT32__set_fn(sos_attr_t attr, sos_obj_t obj, void *value);
 void SOS_TYPE_UINT32__set_fn(sos_attr_t attr, sos_obj_t obj, void *value);
 void SOS_TYPE_INT64__set_fn(sos_attr_t attr, sos_obj_t obj, void *value);
 void SOS_TYPE_UINT64__set_fn(sos_attr_t attr, sos_obj_t obj, void *value);
 void SOS_TYPE_DOUBLE__set_fn(sos_attr_t attr, sos_obj_t obj, void *value);
+void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value);
 void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value);
 
 void *SOS_TYPE_INT32__get_fn(sos_attr_t attr, sos_obj_t obj);
@@ -277,6 +265,7 @@ void *SOS_TYPE_UINT32__get_fn(sos_attr_t attr, sos_obj_t obj);
 void *SOS_TYPE_INT64__get_fn(sos_attr_t attr, sos_obj_t obj);
 void *SOS_TYPE_UINT64__get_fn(sos_attr_t attr, sos_obj_t obj);
 void *SOS_TYPE_DOUBLE__get_fn(sos_attr_t attr, sos_obj_t obj);
+void *SOS_TYPE_STRING__get_fn(sos_attr_t attr, sos_obj_t obj);
 void *SOS_TYPE_BLOB__get_fn(sos_attr_t attr, sos_obj_t obj);
 
 /**
@@ -323,19 +312,32 @@ sos_t sos_destroy(sos_t sos);
 /**
  * \brief Close a SOS
  *
- * The \c sos_close performs an msync flushing all outstanding updates
- * to persistent storage.
+ * This function commits the index changes to stable storage and
+ * releases all in-memory resources associated with the index. The
+ * index handle is invalid after calling this function and should not
+ * be used.
  *
- * \param m	Handle for the SOS
+ * If ODS_COMMIT_SYNC is specified in the flags parameter, the function
+ * will wait until the changes are commited to stable stroage before
+ * returning.
+ *
+ * \param sos	The object store handle
+ * \param flags	The commit flags
  */
-void sos_close(sos_t sos);
+void sos_close(sos_t sos, int flags);
 
 /**
  * \brief Flush outstanding changes to persistent storage
  *
- * \param sos Handle for the SOS
+ * This function commits the index changes to stable storage. If
+ * ODS_COMMIT_SYNC is specified in the flags parameter, the function
+ * will wait until the changes are commited to stable stroage before
+ * returning.
+ *
+ * \param sos	Handle for the SOS
+ * \param flags	The commit flags
  */
-void sos_flush(sos_t sos);
+void sos_commit(sos_t sos, int flags);
 
 /**
  * @}
@@ -358,7 +360,7 @@ void sos_flush(sos_t sos);
  * This call will automatically extend the size of the backing store
  * to accomodate the new object. This call will fail if there is
  * insufficient disk space. Use the \c sos_obj_add to add the object
- * to the indices defined by it's object class.
+ * all indices defined by it's object class.
  *
  * \param sos	Handle for the SOS
  * \returns Pointer to the new object
@@ -457,26 +459,7 @@ int sos_attr_has_index(sos_attr_t attr);
  * \param attr_id	The attribute Id
  * \param obj		The object
  */
-void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, sos_key_t key);
-
-/**
- * \brief Compare an attribute in an object with a key
- *
- * Compares an object attribute with a key and returns a value < 0 if
- * the attribute is less than the key, 0 if they are identical, and >
- * 0 if the attribute is greater than the key.
- *
- * \param sos		Handle for the SOS
- * \param attr_id	The attribute Id
- * \param obj		The object
- * \param key		The key with which to compare the object attribute
- *
- * \returns <0 if the key is greater than the attribute
- * \returns  0 if the key and attribute are equal
- * \returns >0 if the attribute is greater than the key
- */
-int sos_obj_attr_key_cmp(sos_t sos, int attr_id,
-			 sos_obj_t obj, sos_key_t key);
+void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, obj_key_t key);
 
 /**
  * \brief Get the key for the specified attribute.
@@ -489,24 +472,7 @@ int sos_obj_attr_key_cmp(sos_t sos, int attr_id,
  *
  * \returns Pointer to the key for the attribute in the object.
  */
-void sos_attr_key(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
-
-/**
- * \brief Compare an attribute in an object with a key
- *
- * Compares an object attribute with a key and returns a value < 0 if
- * the attribute is less than the key, 0 if they are identical, and >
- * 0 if the attribute is greater than the key.
- *
- * \param attr	The sos_attr_t attribute handle
- * \param obj	The object
- * \param key	The key with which to compare the object attribute
- *
- * \returns <0 if the key is greater than the attribute
- * \returns  0 if the key and attribute are equal
- * \returns >0 if the attribute is greater than the key
- */
-int sos_attr_key_cmp(sos_attr_t attr, sos_obj_t obj, sos_key_t key);
+void sos_attr_key(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
 
 /**
  * \brief Set an object attribute
@@ -557,9 +523,6 @@ void *sos_attr_get(sos_attr_t attr, sos_obj_t obj);
 	_v = *(typeof(_v) *)sos_attr_get(_a, _o);	\
 }
 
-void sos_attr_key_set(sos_attr_t attr, void *value, sos_key_t key);
-void sos_obj_attr_key_set(sos_t sos, int attr_id, void *value, sos_key_t key);
-
 /**
  * @}
  */
@@ -569,6 +532,15 @@ void sos_obj_attr_key_set(sos_t sos, int attr_id, void *value, sos_key_t key);
  * @{
  */
 typedef struct sos_iter_s *sos_iter_t;
+
+/**
+ * \brief Build a key from a string
+ *
+ * \pram i The iterator handle
+ * \param key The key to be built
+ * \param key_val The string to use to build the key
+ */
+void sos_key_from_str(sos_iter_t i, obj_key_t key, const char *key_val);
 
 /**
  * \brief Create a new SOS iterator
@@ -602,16 +574,28 @@ void sos_iter_free(sos_iter_t iter);
 const char *sos_iter_name(sos_iter_t iter);
 
 /**
+ * \brief Compare two keys using the index's compare function
+ *
+ * \param iter	The iterator handle
+ * \param a	The first key
+ * \param b	The second key
+ * \return <0	a < b
+ * \return 0	a == b
+ * \return >0	a > b
+ */
+int sos_iter_key_cmp(sos_iter_t iter, obj_key_t a, obj_key_t b);
+
+/**
  * \brief Position the iterator at the specified key
  *
  * \param iter  Handle for the iterator.
  * \param key   The key for the iterator. The appropriate index will
  *		be searched to find the object that matches the key.
  *
- * \returns !0   Iterator is positioned at matching object.
- * \returns  0   No matching object was found.
+ * \returns 0 Iterator is positioned at matching object.
+ * \returns ENOENT No matching object was found.
  */
-int sos_iter_seek(sos_iter_t iter, sos_key_t key);
+int sos_iter_seek(sos_iter_t iter, obj_key_t key);
 
 /**
  * \brief Position the iterator at the infimum of the specified key.
@@ -619,79 +603,84 @@ int sos_iter_seek(sos_iter_t iter, sos_key_t key);
  * \param i Pointer to the iterator
  * \param key The key.
  *
- * \returns 0 if there are no infimum
- * \returns !0 if the infimum exists.
+ * \returns 0 if the iterator is positioned at the infinum
+ * \returns ENOENT if the infimum does not exist
  */
-uint64_t sos_iter_seek_inf(sos_iter_t i, sos_key_t key);
+int sos_iter_seek_inf(sos_iter_t i, obj_key_t key);
 
 /**
- * \brief Position the iterator at the supremum of the specified key.
+ * \brief Position the iterator at the supremum of the specified key
  *
  * \param i Pointer to the iterator
  * \param key The key.
  *
- * \returns 0 if there are no supremum
- * \returns !0 if the supremum exists
+ * \return 0 The iterator is positioned at the supremum
+ * \return ENOENT No supremum exists
  */
-uint64_t sos_iter_seek_sup(sos_iter_t i, sos_key_t key);
+int sos_iter_seek_sup(sos_iter_t i, obj_key_t key);
 
 /**
- * \brief Retrieve the next tuple from the iterator
+ * \brief Position the iterator at next object in the index
  *
- * \param i	Iterator handle
+ * \param i The iterator handle
  *
- * \returns sos_obj_t  The next object
- * \returns NULL       If no more matching records were found.
+ * \return 0 The iterator is positioned at the next object in the index
+ * \return ENOENT No more entries in the index
  */
-sos_obj_t sos_iter_next(sos_iter_t iter);
+int sos_iter_next(sos_iter_t iter);
 
 /**
- * \brief Retrieve the next tuple from the iterator
+ * \brief Retrieve the next object from the iterator
  *
- * \param i	Iterator handle
+ * \param i Iterator handle
  *
- * \returns sos_obj_t  The previous object
- * \returns NULL       If no more matching records were found.
+ * \returns 0  The iterator is positioned at the previous
+ * \returns ENOENT If no more matching records were found.
  */
-sos_obj_t sos_iter_prev(sos_iter_t i);
-
-/////////////////////////////////////////////////////////////////////
-// ADDITIONAL functions implemented in sos.c but were not exported //
-// Narate decided to export them as he think they are useful for   //
-// programs that use SOS                                           //
-/////////////////////////////////////////////////////////////////////
+int sos_iter_prev(sos_iter_t i);
 
 /**
- * Seek the iterator to the first object.
+ * Position the iterator at the first object.
+ *
+ * \param i	The iterator handle
+
+ * \return 0 The iterator is positioned at the first object in the index
+ * \return ENOENT The index is empty
  */
-void sos_iter_seek_start(sos_iter_t i);
+int sos_iter_begin(sos_iter_t i);
 
 /**
- * Seek the iterator to the last object.
+ * Position the iterator at the last object in the index
+ *
+ * \param i The iterator handle
+ * \return 0 The iterator is positioned at the last object in the index
+ * \return ENOENT The index is empty
  */
-void sos_iter_seek_end(sos_iter_t i);
+int sos_iter_end(sos_iter_t i);
 
 /**
- * \param k1 The first key
- * \param k2 The second key
- * \param keylen The length of the keys (bytes)
- * \returns -1 if k1 < k2
- * \returns 0 if k1==k2
- * \returns 1 if k1 > k2
+ * \brief Return the key at the current iterator position
+ *
+ * \param iter	The iterator handle
+ * \return obj_key_t at the current position
  */
-inline
-int sos_key_cmp(unsigned char *k1, unsigned char *k2, int keylen)
-{
-	int i;
-	for (i=0; i < keylen; i++) {
-		if (k1[i] < k2[i])
-			return -1;
-		if (k1[i] > k2[i])
-			return 1;
-	}
-	return 0;
-}
+obj_key_t sos_iter_key(sos_iter_t iter);
 
+/**
+ * \brief Return the object reference of the current iterator position
+ *
+ * \param iter	The iterator handle
+ * \return obj_ref_t at the current position
+ */
+obj_ref_t sos_iter_ref(sos_iter_t iter);
+
+/**
+ * \brief Return the object reference of the current iterator position
+ *
+ * \param iter	The iterator handle
+ * \return obj_ref_t at the current position
+ */
+sos_obj_t sos_iter_obj(sos_iter_t iter);
 
 /**
  * \defgroup helper_functions
@@ -714,6 +703,7 @@ SOS_OBJ_ATTR_GET_DEF(uint16_t, uint16)
 SOS_OBJ_ATTR_GET_DEF(uint32_t, uint32)
 SOS_OBJ_ATTR_GET_DEF(uint64_t, uint64)
 SOS_OBJ_ATTR_GET_DEF(double, double)
+SOS_OBJ_ATTR_GET_DEF(sos_string_t, string)
 
 #define SOS_OBJ_ATTR_SET_DEF(_T, _N) \
 inline void sos_obj_attr_set_ ## _N (sos_t sos, int attr_id, sos_obj_t obj, _T value) \
@@ -730,16 +720,18 @@ SOS_OBJ_ATTR_SET_DEF(uint16_t, uint16)
 SOS_OBJ_ATTR_SET_DEF(uint32_t, uint32)
 SOS_OBJ_ATTR_SET_DEF(uint64_t, uint64)
 SOS_OBJ_ATTR_SET_DEF(double, double)
+SOS_OBJ_ATTR_SET_DEF(sos_string_t, string)
+
 
 int sos_get_attr_count(sos_t sos);
 enum sos_type_e sos_get_attr_type(sos_t sos, int attr_id);
 const char *sos_get_attr_name(sos_t sos, int attr_id);
 
-void sos_key_set_int32(sos_t sos, int attr_id, int32_t value, sos_key_t key);
-void sos_key_set_int64(sos_t sos, int attr_id, int64_t value, sos_key_t key);
-void sos_key_set_uint32(sos_t sos, int attr_id, uint32_t value, sos_key_t key);
-void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, sos_key_t key);
-void sos_key_set_double(sos_t sos, int attr_id, double value, sos_key_t key);
+void sos_key_set_int32(sos_t sos, int attr_id, int32_t value, obj_key_t key);
+void sos_key_set_int64(sos_t sos, int attr_id, int64_t value, obj_key_t key);
+void sos_key_set_uint32(sos_t sos, int attr_id, uint32_t value, obj_key_t key);
+void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, obj_key_t key);
+void sos_key_set_double(sos_t sos, int attr_id, double value, obj_key_t key);
 
 /** \} (end helper_function) */
 

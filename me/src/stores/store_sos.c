@@ -140,7 +140,7 @@ static int flush_sos(struct me_store *strg)
 {
 	struct me_store_sos *strg_sos = (struct me_store_sos *)strg;
 	pthread_mutex_lock(&strg_sos->sos_lock);
-	sos_flush(strg_sos->sos);
+	sos_commit(strg_sos->sos, ODS_COMMIT_SYNC);
 	pthread_mutex_unlock(&strg_sos->sos_lock);
 	return 0;
 }
@@ -149,8 +149,7 @@ static void destroy_sos(struct me_store *strg)
 {
 	struct me_store_sos *strg_sos = (struct me_store_sos *)strg;
 	pthread_mutex_lock(&strg_sos->sos_lock);
-	sos_flush(strg_sos->sos);
-	sos_close(strg_sos->sos);
+	sos_close(strg_sos->sos, ODS_COMMIT_SYNC);
 	pthread_mutex_unlock(&strg_sos->sos_lock);
 	free(strg_sos);
 }

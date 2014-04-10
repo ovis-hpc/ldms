@@ -105,15 +105,6 @@ SOS_OBJ_END(4);
 #define GROUP_COL	2
 #define VALUE_COL	3
 
-enum {
-	LDMSD_SOS_INT32 = 0,
-	LDMSD_SOS_INT64,
-	LDMSD_SOS_UINT32,
-	LDMSD_SOS_UINT64,
-	LDMSD_SOS_DOUBLE,
-	LDMSD_SOS_NUM_TYPE,
-};
-
 /*
  * NOTE:
  *   (sos::path) = (root_path)/(comp_type)/(metric)
@@ -370,7 +361,8 @@ static int store_sos_create_ms_list(struct sos_store_instance *si,
 		return ENOMEM;
 
 	char buff[128];
-	char *name, *metric_name;
+	char *name;
+	const char *metric_name;
 	struct sos_metric_store *ms;
 	for (i = 0; i < mvec->count; i++) {
 		metric_name = ldms_get_metric_name(mvec->v[i]);
@@ -380,7 +372,7 @@ static int store_sos_create_ms_list(struct sos_store_instance *si,
 			name = strncpy(buff, metric_name, len);
 			name[len] = 0;
 		} else {
-			name = metric_name;
+			name = strdup(metric_name);
 		}
 		ms = idx_find(si->ms_idx, name, strlen(name));
 		if (ms) {
@@ -498,7 +490,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 	int i;
 	LIST_FOREACH(ms, &si->ms_list, entry) {
 		pthread_mutex_lock(&ms->lock);
-		sos_flush(ms->sos);
+		sos_commit(ms->sos, ODS_COMMIT_ASYNC);
 		pthread_mutex_unlock(&ms->lock);
 	}
 	return 0;
@@ -516,7 +508,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	int i;
 	while (ms = LIST_FIRST(&si->ms_list)) {
 		if (ms->sos)
-			sos_close(ms->sos);
+			sos_close(ms->sos, ODS_COMMIT_ASYNC);
 		if (ms->path)
 			free(ms->path);
 		free(ms);

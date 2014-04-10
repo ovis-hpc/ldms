@@ -54,9 +54,38 @@
 %{
 #define SWIG_FILE_WITH_INIT
 #include "sos.h"
+#include "obj_idx.h"
+
+#define OBJ_FIXED_KEY_SET_DEF(T) \
+void obj_key_set_ ## T (obj_key_t key, T v) \
+{ \
+	obj_key_set(key, &v, sizeof(v)); \
+}
+
+OBJ_FIXED_KEY_SET_DEF(int32_t)
+OBJ_FIXED_KEY_SET_DEF(int64_t)
+OBJ_FIXED_KEY_SET_DEF(uint32_t)
+OBJ_FIXED_KEY_SET_DEF(uint64_t)
+OBJ_FIXED_KEY_SET_DEF(float)
+OBJ_FIXED_KEY_SET_DEF(double)
+
+void obj_key_set_string(obj_key_t key, const char *str, size_t sz)
+{
+	obj_key_set(key, (void*)str, sz);
+}
+
 %}
 
 %include "sos.h"
+%include "obj_idx.h"
+
+void obj_key_set_int32_t (obj_key_t key, int32_t v);
+void obj_key_set_int64_t (obj_key_t key, int64_t v);
+void obj_key_set_uint32_t (obj_key_t key, uint32_t v);
+void obj_key_set_uint64_t (obj_key_t key, uint64_t v);
+void obj_key_set_float (obj_key_t key, float v);
+void obj_key_set_double (obj_key_t key, double v);
+void obj_key_set_string(obj_key_t key, const char *str, size_t sz);
 
 /* These typedef will make swig knows standard integers */
 typedef char int8_t;
@@ -67,5 +96,3 @@ typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
-
-%pointer_class(struct sos_key_s, sos_key);

@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.              
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -142,7 +142,7 @@ int queue_work(struct metric_store_s *m, io_work_fn fn)
 void flush_metric_store(struct metric_store_s *m)
 {
 	flush_count++;
-	sos_flush(m->sos);
+	sos_commit(m->sos, ODS_COMMIT_ASYNC);
 	m->dirty_count = 0;
 }
 
@@ -150,7 +150,7 @@ void close_metric_store(struct metric_store_s *m)
 {
 	if (!m->sos)
 		return;
-	sos_close(m->sos);
+	sos_close(m->sos, ODS_COMMIT_ASYNC);
 	m->sos = NULL;
 	m->state = MDS_STATE_CLOSED;
 	m->dirty_count = 0;
@@ -169,7 +169,7 @@ void *io_proc(void *arg)
 	struct timeval tvsum = { 0, 0 };
 	struct metric_store_s *m;
 	do {
- 		pthread_mutex_lock(&io_mutex);
+		pthread_mutex_lock(&io_mutex);
 		gettimeofday(&tv0, NULL);
 		while (!LIST_EMPTY(&io_work_q)) {
 			m = LIST_FIRST(&io_work_q);
@@ -204,7 +204,7 @@ int mds_term()
 		m = TAILQ_FIRST(&lru_list);
 		TAILQ_REMOVE(&lru_list, m, lru_entry);
 		pthread_mutex_unlock(&lru_list_lock);
-		sos_close(m->sos);
+		sos_close(m->sos, ODS_COMMIT_ASYNC);
 		pthread_mutex_lock(&lru_list_lock);
 	}
 	io_exit = 1;
@@ -323,7 +323,10 @@ int tuple_add(struct metric_store_s *ms, mds_tuple_t t)
 		if (flush)
 			queue_work(ms, flush_metric_store);
 	}
+	if (rc)
+		printf("tuple_add failure %d\n", rc);
 	return rc;
+
 }
 
 void close_lru()
@@ -408,7 +411,7 @@ int main(int argc, char *argv[])
 			} else {
 				if (errno != EMFILE)
 					exit(1);
-				
+
 				/*
 				 * Close the LRU mds to recoup its
 				 * handles for our use
@@ -426,6 +429,8 @@ int main(int argc, char *argv[])
 			goto err;
 		}
 	}
+	mds_term();
+	printf("records %d\n", records);
 	return 0;
  err:
 	return 1;

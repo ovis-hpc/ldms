@@ -1,6 +1,7 @@
 INCLUDES = @OVIS_LIB_INCDIR_FLAG@
 
 sbin_PROGRAMS = \
+	bpt_test \
 	sos \
 	sos_rate \
 	sos_stat \
@@ -12,12 +13,17 @@ sbin_PROGRAMS = \
 	mds_query
 
 lib_LTLIBRARIES = \
+	libkey_STRING.la \
+	libkey_UINT64.la \
+	libkey_UINT32.la \
 	libods.la \
+	libobjidx.la \
 	liboidx.la \
+	libidx_BPTREE.la \
 	libsos.la
 
 AM_CFLAGS = -Wall $(INCLUDES)
-AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ -Wl,-z,defs
 
 #
 # libsos
@@ -28,6 +34,7 @@ libsos_la_SOURCES = \
 	sos_priv.h
 libsos_la_LIBADD = \
 	libods.la \
+	libobjidx.la \
 	liboidx.la \
 	-lcoll
 #libsos_la_DEPENDENCIES = \
@@ -35,9 +42,46 @@ libsos_la_LIBADD = \
 #	libods.la \
 #	liboidx.la
 
-# Narate: I think it is a good idea to also export mds.h
 libsosincludedir = $(includedir)/sos
-libsosinclude_HEADERS = sos.h mds.h
+libsosinclude_HEADERS = sos.h mds.h ods.h obj_idx.h
+
+#
+# libidx_BPTREE
+#
+libidx_BPTREE_la_SOURCES = \
+	bpt.c
+libidx_BPTREE_la_LIBADD = \
+	libobjidx.la \
+	libods.la
+
+#
+# libidx_BPTREE
+#
+libkey_STRING_la_SOURCES = \
+	key_str.c
+
+#
+# libkey_UINT64
+#
+libkey_UINT64_la_SOURCES = \
+	key_uint64.c
+
+#
+# libkey_UINT32
+#
+libkey_UINT32_la_SOURCES = \
+	key_uint32.c
+
+#
+# libobjidx
+#
+libobjidx_la_SOURCES = \
+	obj_idx.c \
+	odj_idx.h
+libobjidx_la_LIBADD = -ldl -lcoll \
+		      libods.la
+libobjidxincludedir = $(includedir)/sos
+libobjidxinclude_HEADERS = ods.h
 
 #
 # libods
@@ -70,10 +114,19 @@ liboidx_la_LIBADD = \
 liboidxincludedir = $(includedir)/sos
 liboidxinclude_HEADERS = oidx.h
 
+bpt_test_SOURCES = bpt_test.c
+bpt_test_CFLAGS = $(INCLUDES)
+bpt_test_LDADD = \
+	libods.la \
+	libobjidx.la \
+	-lcoll
+
 sos_SOURCES = sos.c
 sos_CFLAGS = -DSOS_MAIN $(INCLUDES)
 sos_LDADD = \
+	-ldl \
 	libsos.la \
+	libobjidx.la \
 	liboidx.la \
 	libods.la \
 	-lcoll
@@ -97,6 +150,7 @@ sos_query_LDADD = \
 	libsos.la \
 	liboidx.la \
 	libods.la \
+	libobjidx.la \
 	-lcoll
 
 oidx_SOURCES = oidx.c
@@ -118,7 +172,8 @@ oidx_dump_SOURCES = oidx_dump.c
 oidx_dump_LDADD = liboidx.la libods.la
 
 mds_query_SOURCES = mds_query.c mds.h
-mds_query_LDADD = libsos.la
+mds_query_LDADD = libsos.la \
+	libobjidx.la
 
 libsos_conf = /etc/ld.so.conf.d/libsos.conf
 

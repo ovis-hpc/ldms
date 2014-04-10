@@ -341,7 +341,7 @@ struct bmsg {
  * Convenient size calculation for a given \a msg.
  * \param msg The pointer to ::bmsg.
  */
-#define BMSG_SZ(msg) (sizeof(struct bmsg) + msg->argc*sizeof(*msg->argv))
+#define BMSG_SZ(msg_p) (sizeof(struct bmsg) + msg_p->argc*sizeof(*msg_p->argv))
 
 /**
  * Convenient allocation macro for ::bmsg.

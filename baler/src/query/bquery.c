@@ -152,7 +152,7 @@ struct bsos_wrap* bsos_wrap_open(const char *path)
 		goto err2;
 	return bsw;
 err2:
-	sos_close(bsw->sos);
+	sos_close(bsw->sos, ODS_COMMIT_ASYNC);
 err1:
 	free(bsw);
 err0:
@@ -161,7 +161,7 @@ err0:
 
 void bsos_wrap_close_free(struct bsos_wrap *bsw)
 {
-	sos_close(bsw->sos);
+	sos_close(bsw->sos, ODS_COMMIT_ASYNC);
 	free(bsw->store_name);
 	free(bsw);
 }
@@ -249,7 +249,7 @@ err5:
 		bsos_wrap_close_free(bsw);
 	}
 err4:
-	sos_close(s->msg_sos);
+	sos_close(s->msg_sos, ODS_COMMIT_ASYNC);
 err3:
 	bptn_store_close_free(s->ptn_store);
 err2:
@@ -499,29 +499,34 @@ int bq_query_r(struct bquery *q, char *buff, size_t bufsz)
 			goto out;
 		}
 		if (q->ts_0) {
-			struct sos_key_s key;
-			sos_attr_key_set(attr, &q->ts_0, &key);
-			uint64_t obj = sos_iter_seek_inf(q->itr, &key);
-			if (!obj) {
-				/* Don't worry, there's just no infimum */
-				sos_iter_seek_start(q->itr);
+			obj_key_t key = obj_key_new(sizeof(uint32_t));
+			if (!key) {
+				rc = ENOMEM;
+				goto out;
 			}
+			uint32_t _t = q->ts_0; /* sizeof(time_t) can be 8 */
+			obj_key_set(key, &_t, sizeof(_t));
+			if (0 != sos_iter_seek_inf(q->itr, key)) {
+				/* Don't worry, there's just no infimum */
+				sos_iter_begin(q->itr);
+			}
+			obj_key_delete(key);
 		}
-		q->obj = sos_iter_next(q->itr);
 	}
 
-	if (!q->obj) {
-		rc = ENOENT;
+	rc = sos_iter_next(q->itr);
+	if (rc)
 		goto out;
-	}
 
 	uint32_t comp_id;
 	uint32_t sec;
 	uint32_t usec;
 	struct bmsg *msg;
+	sos_obj_t obj;
 	int len;
 loop:
-	SOS_OBJ_ATTR_GET(sec, msg_sos, SOS_MSG_SEC, q->obj);
+	obj = sos_iter_obj(q->itr);
+	SOS_OBJ_ATTR_GET(sec, msg_sos, SOS_MSG_SEC, obj);
 	/* need to check ts_0 again because of seek_inf is not an exact seek */
 	if (q->ts_0 && sec < q->ts_0) {
 		goto next;
@@ -531,11 +536,11 @@ loop:
 		rc = ENOENT;
 		goto out;
 	}
-	SOS_OBJ_ATTR_GET(usec, msg_sos, SOS_MSG_USEC, q->obj);
-	SOS_OBJ_ATTR_GET(comp_id, msg_sos, SOS_MSG_COMP_ID, q->obj);
+	SOS_OBJ_ATTR_GET(usec, msg_sos, SOS_MSG_USEC, obj);
+	SOS_OBJ_ATTR_GET(comp_id, msg_sos, SOS_MSG_COMP_ID, obj);
 	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
 		goto next;
-	msg = sos_obj_attr_get(msg_sos, SOS_MSG_MSG, q->obj);
+	msg = sos_obj_attr_get(msg_sos, SOS_MSG_MSG, obj);
 	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, msg->ptn_id))
 		goto next;
 	if (q->text_flag) {
@@ -560,16 +565,12 @@ loop:
 	rc = bq_print_msg(q->store, buff+len, bufsz-len, msg);
 	goto done;
 next:
-	q->obj = sos_iter_next(q->itr);
-	if (!q->obj) {
-		rc = ENOENT;
+	rc = sos_iter_next(q->itr);
+	if (rc)
 		goto out;
-	}
 	goto loop;
 
 done:
-	/* When done, point obj to the next message */
-	q->obj = sos_iter_next(q->itr);
 out:
 	return rc;
 }
@@ -597,21 +598,23 @@ int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz)
 			k.comp_id = LIST_FIRST(q->hst_rngs)->a;
 		else
 			k.comp_id = 0;
-		struct sos_key_s key;
-		sos_attr_key_set(attr, &k, &key);
-		uint64_t obj = sos_iter_seek_inf(_q->itr, &key);
-		if (!obj) {
+		obj_key_t key = obj_key_new(sizeof(&k));
+		if (!key) {
+			rc = ENOMEM;
+			goto out;
+		}
+		obj_key_set(key, &k, sizeof(k));
+		if (0 != sos_iter_seek_inf(_q->itr, key)) {
 			/* Don't worry, there's just no infimum
 			 * to the key. */
-			sos_iter_seek_start(_q->itr);
+			sos_iter_begin(_q->itr);
 		}
-		_q->obj = sos_iter_next(_q->itr);
+		obj_key_delete(key);
 	}
 
-	if (!_q->obj) {
-		rc = ENOENT;
+	rc = sos_iter_next(_q->itr);
+	if (rc)
 		goto out;
-	}
 
 	struct bout_sos_img_key k;
 	uint32_t comp_id;
@@ -620,9 +623,11 @@ int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz)
 	uint32_t ptn_id;
 	uint32_t count;
 	struct bmsg *msg;
+	sos_obj_t obj;
 	int len;
 loop:
-	SOS_OBJ_ATTR_GET(k, img_sos, 0, _q->obj);
+	obj = sos_iter_obj(_q->itr);
+	SOS_OBJ_ATTR_GET(k, img_sos, 0, obj);
 	sec = k.ts;
 	comp_id = k.comp_id;
 	/* need to check ts_0 again because of seek_inf is not an exact seek */
@@ -636,21 +641,19 @@ loop:
 	}
 	if (_q->hst_ids && !bset_u32_exist(_q->hst_ids, comp_id))
 		goto next;
-	SOS_OBJ_ATTR_GET(ptn_id, img_sos, 1, _q->obj);
+	SOS_OBJ_ATTR_GET(ptn_id, img_sos, 1, obj);
 	if (_q->ptn_ids && !bset_u32_exist(_q->ptn_ids, ptn_id))
 		goto next;
-	SOS_OBJ_ATTR_GET(count, img_sos, 2, _q->obj);
+	SOS_OBJ_ATTR_GET(count, img_sos, 2, obj);
 	len = sprintf(buff, "%u %u %u %u", sec, comp_id, ptn_id, count);
 	goto done;
 next:
-	_q->obj = sos_iter_next(_q->itr);
-	if (!_q->obj)
+	rc = sos_iter_next(_q->itr);
+	if (rc)
 		goto out;
 	goto loop;
 
 done:
-	/* When done, point obj to the next message */
-	_q->obj = sos_iter_next(_q->itr);
 out:
 	return rc;
 }

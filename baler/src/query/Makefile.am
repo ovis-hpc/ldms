@@ -3,7 +3,7 @@ BALER = ../baler
 
 bquery_SOURCES = bquery.c bquery.h
 bquery_CFLAGS = $(AM_CFLAGS) -DBIN @SOS_INCDIR_FLAG@
-bquery_LDADD = $(BALER)/libbaler.la -lsos @SOS_LIBDIR_FLAG@
+bquery_LDADD = $(BALER)/libbaler.la -lsos -lobjidx @SOS_LIBDIR_FLAG@
 
 bin_PROGRAMS = bquery
 

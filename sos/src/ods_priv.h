@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.   
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -81,23 +81,39 @@
  *   |   +---------------------------: The prev page is part of this chunk
  *   +-------------------------------: The page is part of an allocation
  *
- * 
+ *
  */
 
 /* In memory pointer to base of ods region on disk */
 struct ods_obj_s;
 struct ods_s {
+	/* That path to the file on disk */
 	char *path;
+
+	/* The open file descriptor */
 	int obj_fd;
+	/* The current map size in bytes */
 	size_t obj_sz;
-	struct ods_obj_s *obj;
+
+	/* The page-file file descriptor */
 	int pg_fd;
-	size_t pg_sz;		/* size of pg file */
+	/* The page-file size */
+	size_t pg_sz;
+
+	/* The mapping generation number. Used to detect if another
+	 * process extended the map and we need to remap.*/
+	uint64_t obj_gen;
+	/* Pointer to the mapped memory */
+	struct ods_obj_s *obj;
+	/* Equivalent of obj_gen for pg_table mapping */
+	uint64_t pg_gen;
+	/* Pointer to the page-file data in memory */
 	struct ods_pgt_s *pg_table;
 };
 
 #define ODS_OBJ_SIGNATURE "OBJSTORE"
 #define ODS_PGT_SIGNATURE "PGTSTORE"
+#define ODS_OBJ_VERSION   "04012014"
 
 typedef struct ods_pg_s {
 	uint64_t next;	/* Next free page range */
@@ -109,7 +125,7 @@ typedef struct ods_blk_s {
 } *ods_blk_t;
 
 #define ODS_PAGE_SIZE	4096
-#define ODS_PAGE_SHIFT 	12
+#define ODS_PAGE_SHIFT	12
 #define ODS_PAGE_MASK	~(ODS_PAGE_SIZE-1)
 #define ODS_GRAIN_SIZE	32
 #define ODS_GRAIN_SHIFT	5
@@ -122,12 +138,15 @@ typedef struct ods_blk_s {
 
 struct ods_pgt_s {
 	char signature[8];	 /* pgt signature 'PGTSTORE' */
+	uint64_t gen;		 /* generation number */
 	uint64_t count;		 /* count of pages */
 	unsigned char pages[0];	 /* array of page control information */
 };
 
 struct ods_obj_s {
 	char signature[8];	 /* obj signature 'OBJSTORE' */
+	uint64_t version;	 /* The file format version number */
+	uint64_t gen;		 /* generation number */
 	uint64_t pg_free;	 /* first free page offset */
 	uint64_t blk_free[ODS_PAGE_SHIFT - ODS_GRAIN_SHIFT];
 };
@@ -165,6 +184,7 @@ static inline struct ods_pg_s *ods_obj_page_to_ptr(ods_t ods, uint64_t page) {
 	return (struct ods_pg_s *)(off + (page << ODS_PAGE_SHIFT));
 }
 
+#define ODS_PGTBL_MIN_SZ	(4096)
 #define ODS_PGTBL_MIN_SZ	(4096)
 #define ODS_OBJ_MIN_SZ		(16 * 4096)
 #endif

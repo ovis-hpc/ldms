@@ -99,21 +99,20 @@ static uint64_t new_oidx_layer(oidx_t t, size_t sz)
 			goto err0;
 	}
 	memset((void *)l, 0, sz + sizeof(*l));
-	return ods_obj_ptr_to_offset(t->ods, l);
+	return ods_obj_ptr_to_ref(t->ods, l);
 
  err0:
 	return 0;
 }
 
-void oidx_flush(oidx_t oidx)
+void oidx_commit(oidx_t oidx)
 {
-	ods_flush(oidx->ods);
+	ods_commit(oidx->ods, ODS_COMMIT_ASYNC);
 }
 
 void oidx_close(oidx_t oidx)
 {
-	oidx_flush(oidx);
-	ods_close(oidx->ods);
+	ods_close(oidx->ods, ODS_COMMIT_ASYNC);
 	free(oidx);
 }
 
@@ -166,7 +165,7 @@ static void free_layer(oidx_t t, struct oidx_layer_s *l)
 
 	for (i = 0; i < t->udata->radix; i++)
 		free_layer(t,
-			   ods_obj_offset_to_ptr(t->ods, l->entries[i].next));
+			   ods_obj_ref_to_ptr(t->ods, l->entries[i].next));
 
 	ods_free(t->ods, l);
 }
@@ -178,7 +177,7 @@ static void free_layer(oidx_t t, struct oidx_layer_s *l)
  */
 void oidx_destroy(oidx_t t)
 {
-	free_layer(t, ods_obj_offset_to_ptr(t->ods, t->udata->top));
+	free_layer(t, ods_obj_ref_to_ptr(t->ods, t->udata->top));
 	free(t);
 }
 
@@ -194,9 +193,9 @@ uint64_t oidx_find(oidx_t t, oidx_key_t key, size_t keylen)
 		return 0;
 
 	keylen--;
-	for (pl = ods_obj_offset_to_ptr(t->ods, t->udata->top);
+	for (pl = ods_obj_ref_to_ptr(t->ods, t->udata->top);
 	     pl && keylen; keylen--)
-		pl = ods_obj_offset_to_ptr(t->ods, pl->entries[*pkey++].next);
+		pl = ods_obj_ref_to_ptr(t->ods, pl->entries[*pkey++].next);
 
 	/* If we ran out of key before we ran out of layers --> not found */
 	if (keylen)
@@ -220,18 +219,15 @@ uint64_t oidx_find_right_most(oidx_t t, struct oidx_layer_s *pl,
 			      unsigned char* opkey)
 {
 	int tmp_k;
-	struct oidx_layer_s *tmp_pl;
-	uint64_t ref;
-loop:
+ loop:
 	for (tmp_k = t->udata->radix; tmp_k >= 0; tmp_k--) {
-		if (ref = pl->entries[tmp_k].obj) {
+		if (pl->entries[tmp_k].obj) {
 			*opkey++ = tmp_k;
-			return ref;
+			return pl->entries[tmp_k].obj;
 		}
-		if (tmp_pl = ods_obj_offset_to_ptr(t->ods,
-					pl->entries[tmp_k].next)) {
+		if (ods_obj_ref_to_ptr(t->ods, pl->entries[tmp_k].next)) {
 			*opkey++ = tmp_k;
-			pl = tmp_pl;
+			pl = ods_obj_ref_to_ptr(t->ods, pl->entries[tmp_k].next);
 			goto loop;
 		}
 	}
@@ -255,10 +251,10 @@ uint64_t oidx_find_left_most(oidx_t t, struct oidx_layer_s *pl,
 loop:
 	for (tmp_k = 0; tmp_k < t->udata->radix; tmp_k++) {
 		if (ref = pl->entries[tmp_k].obj) {
-			*(opkey++) = tmp_k;
+			*opkey = tmp_k;
 			return ref;
 		}
-		if (tmp_pl = ods_obj_offset_to_ptr(t->ods,
+		if (tmp_pl = ods_obj_ref_to_ptr(t->ods,
 					pl->entries[tmp_k].next)) {
 			*(opkey++) = tmp_k;
 			pl = tmp_pl;
@@ -293,9 +289,9 @@ uint64_t oidx_find_approx_sup(oidx_t t, oidx_key_t key,
 	tmp_pl = 0;
 	keylen--;
 
-	for (pl = ods_obj_offset_to_ptr(t->ods, t->udata->top);
+	for (pl = ods_obj_ref_to_ptr(t->ods, t->udata->top);
 	     pl && keylen; keylen--){
-		tmp_pl = ods_obj_offset_to_ptr(t->ods, pl->entries[*pkey].next);
+		tmp_pl = ods_obj_ref_to_ptr(t->ods, pl->entries[*pkey].next);
 		if (!tmp_pl) {
 			break;
 		}
@@ -317,7 +313,7 @@ uint64_t oidx_find_approx_sup(oidx_t t, oidx_key_t key,
 			tmp_k++;
 			if (tmp_k > 255)
 				break;
-			tmp_pl = ods_obj_offset_to_ptr(t->ods,
+			tmp_pl = ods_obj_ref_to_ptr(t->ods,
 					pl->entries[tmp_k].next);
 		} while (!tmp_pl);
 
@@ -392,9 +388,9 @@ uint64_t oidx_find_approx_inf(oidx_t t, oidx_key_t key,
 	tmp_pl = 0;
 	keylen--;
 
-	for (pl = ods_obj_offset_to_ptr(t->ods, t->udata->top);
+	for (pl = ods_obj_ref_to_ptr(t->ods, t->udata->top);
 	     pl && keylen; keylen--){
-		tmp_pl = ods_obj_offset_to_ptr(t->ods, pl->entries[*pkey].next);
+		tmp_pl = ods_obj_ref_to_ptr(t->ods, pl->entries[*pkey].next);
 		if (!tmp_pl) {
 			break;
 		}
@@ -415,7 +411,7 @@ uint64_t oidx_find_approx_inf(oidx_t t, oidx_key_t key,
 			tmp_k--;
 			if (tmp_k < 0)
 				break;
-			tmp_pl = ods_obj_offset_to_ptr(t->ods,
+			tmp_pl = ods_obj_ref_to_ptr(t->ods,
 						pl->entries[tmp_k].next);
 		} while (!tmp_pl);
 		if (tmp_pl) {
@@ -527,31 +523,31 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 
 	oidx_entries++;
 	keylen--;
-	for (pl = ods_obj_offset_to_ptr(t->ods, t->udata->top);
+	for (pl = ods_obj_ref_to_ptr(t->ods, t->udata->top);
 	     keylen;
-	     keylen--, pl = ods_obj_offset_to_ptr(t->ods,
+	     keylen--, pl = ods_obj_ref_to_ptr(t->ods,
 						  pl->entries[*poidx++].next)) {
 		/* If there is no layer at this prefix, add one */
 		if (!pl->entries[*poidx].next) {
 			/* Since allocation may make my ptr no longer
 			 * valid, cache it's offset so I can
 			 * regenerate it after allocation */
-			pl_off = ods_obj_ptr_to_offset(t->ods, pl);
+			pl_off = ods_obj_ptr_to_ref(t->ods, pl);
 			n_layer =
 				new_oidx_layer(t, t->udata->layer_sz);
 			if (!n_layer)
 				goto err0;
-			pl = ods_obj_offset_to_ptr(t->ods, pl_off);
+			pl = ods_obj_ref_to_ptr(t->ods, pl_off);
 			pl->entries[*poidx].next = n_layer;
 			pl->count++; /* Add layer reference */
 		}
 	}
 
 	/* save pl offset, just in case for future extension. */
-	pl_off = ods_obj_ptr_to_offset(t->ods, pl);
+	pl_off = ods_obj_ptr_to_ref(t->ods, pl);
 
 	/* Now, get the list of object refs of this key */
-	oidx_objref_head_t h = ods_obj_offset_to_ptr(t->ods,
+	oidx_objref_head_t h = ods_obj_ref_to_ptr(t->ods,
 						pl->entries[*poidx].obj);
 	if (!h) {
 		h = __oidx_alloc_x(t, sizeof(*h));
@@ -559,12 +555,12 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 			goto err0;
 		h->begin = h->end = 0;
 		/* update pl in case of ods_extend */
-		pl = ods_obj_offset_to_ptr(t->ods, pl_off);
-		pl_off = ods_obj_ptr_to_offset(t->ods, pl);
-		pl->entries[*poidx].obj = ods_obj_ptr_to_offset(t->ods, h);
+		pl = ods_obj_ref_to_ptr(t->ods, pl_off);
+		pl_off = ods_obj_ptr_to_ref(t->ods, pl);
+		pl->entries[*poidx].obj = ods_obj_ptr_to_ref(t->ods, h);
 	}
 	/* save h offset, just in case for future extension. */
-	h_off = ods_obj_ptr_to_offset(t->ods, h);
+	h_off = ods_obj_ptr_to_ref(t->ods, h);
 
 	/* allocate + set up new list entry */
 	oidx_objref_entry_t e = __oidx_alloc_x(t, sizeof(*e));
@@ -572,8 +568,8 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 		goto err0;
 
 	/* restore pl and h */
-	pl = ods_obj_offset_to_ptr(t->ods, pl_off);
-	h = ods_obj_offset_to_ptr(t->ods, h_off);
+	pl = ods_obj_ref_to_ptr(t->ods, pl_off);
+	h = ods_obj_ref_to_ptr(t->ods, h_off);
 
 	e->next = 0;
 	e->prev = h->end;
@@ -582,12 +578,12 @@ int oidx_add(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 	/* insert the obj ref into the list */
 	if (h->begin) {
 		/* list not empty */
-		oidx_objref_entry_t prev = ods_obj_offset_to_ptr(t->ods, h->end);
-		prev->next = ods_obj_ptr_to_offset(t->ods, e);
+		oidx_objref_entry_t prev = ods_obj_ref_to_ptr(t->ods, h->end);
+		prev->next = ods_obj_ptr_to_ref(t->ods, e);
 		h->end = prev->next;
 	} else {
 		/* list empty */
-		h->begin = h->end = ods_obj_ptr_to_offset(t->ods, e);
+		h->begin = h->end = ods_obj_ptr_to_ref(t->ods, e);
 	}
 	pl->count++;	/* Add object reference */
 	return 0;
@@ -611,7 +607,7 @@ static int _delete_from_layer(struct oidx_s *oidx, oidx_layer_t pl,
 	if (key_idx < keylen-1) {
 		if (pl->entries[idx].next) {
 			oidx_layer_t nl =
-				ods_obj_offset_to_ptr(oidx->ods,
+				ods_obj_ref_to_ptr(oidx->ods,
 						      pl->entries[idx].next);
 			count = _delete_from_layer(oidx, nl,
 						   key, keylen, key_idx + 1,
@@ -654,7 +650,7 @@ uint64_t oidx_delete(oidx_t t, oidx_key_t key, size_t keylen)
 {
 	struct oidx_s *oidx = t;
 	uint64_t obj = 0;
-	oidx_layer_t top = ods_obj_offset_to_ptr(oidx->ods, oidx->udata->top);
+	oidx_layer_t top = ods_obj_ref_to_ptr(oidx->ods, oidx->udata->top);
 	(void)_delete_from_layer(oidx, top, key, keylen, 0, &obj);
 	return obj;
 }
@@ -664,11 +660,11 @@ int oidx_obj_remove(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 	uint64_t hoff = oidx_find(t, key, keylen);
 	if (!hoff)
 		return ENOENT;
-	oidx_objref_head_t h = ods_obj_offset_to_ptr(t->ods, hoff);
+	oidx_objref_head_t h = ods_obj_ref_to_ptr(t->ods, hoff);
 	uint64_t eoff = h->begin;
 	oidx_objref_entry_t e, en, ep;
 	while (eoff) {
-		e = ods_obj_offset_to_ptr(t->ods, eoff);
+		e = ods_obj_ref_to_ptr(t->ods, eoff);
 		if (e->objref == obj)
 			break;
 		eoff = e->next;
@@ -679,28 +675,28 @@ int oidx_obj_remove(oidx_t t, oidx_key_t key, size_t keylen, uint64_t obj)
 	if (e->next) {
 		if (e->prev) {
 			/* Middle of the list */
-			en = ods_obj_offset_to_ptr(t->ods, e->next);
-			ep = ods_obj_offset_to_ptr(t->ods, e->prev);
+			en = ods_obj_ref_to_ptr(t->ods, e->next);
+			ep = ods_obj_ref_to_ptr(t->ods, e->prev);
 			en->prev = e->prev;
 			ep->next = e->next;
 		} else {
 			/* First entry */
 			h->begin = e->next;
-			en = ods_obj_offset_to_ptr(t->ods, e->next);
+			en = ods_obj_ref_to_ptr(t->ods, e->next);
 			en->prev = 0;
 		}
 	} else {
 		if (e->prev) {
 			/* Last entry */
 			h->end = e->prev;
-			ep = ods_obj_offset_to_ptr(t->ods, e->prev);
+			ep = ods_obj_ref_to_ptr(t->ods, e->prev);
 			ep->next = 0;
 
 		} else {
 			/* e is the only entry, delete the key from the layer */
 			uint64_t list = oidx_delete(t, key, keylen);
 			if (list)
-				ods_free(t->ods, ods_obj_offset_to_ptr(t->ods,
+				ods_free(t->ods, ods_obj_ref_to_ptr(t->ods,
 								list));
 
 		}
@@ -725,7 +721,7 @@ static void _walk(oidx_t oidx, oidx_layer_t pl,
 			continue;
 
 		_walk(oidx,
-		      ods_obj_offset_to_ptr(oidx->ods, pl->entries[col].next),
+		      ods_obj_ref_to_ptr(oidx->ods, pl->entries[col].next),
 		      walk_fn, key, keylen + 1, context);
 	}
 }
@@ -734,7 +730,7 @@ void oidx_walk(oidx_t oidx, oidx_walk_fn walk_fn, void *context)
 {
 	char _key[256];
 	oidx_key_t key = _key;
-	oidx_layer_t top = ods_obj_offset_to_ptr(oidx->ods, oidx->udata->top);
+	oidx_layer_t top = ods_obj_ref_to_ptr(oidx->ods, oidx->udata->top);
 	_walk(oidx, top, walk_fn, key, 0, context);
 }
 
@@ -744,7 +740,7 @@ oidx_iter_t oidx_iter_new(oidx_t oidx)
 	if (!iter)
 		return NULL;
 	iter->oidx = oidx;
-	iter->layer[0] = ods_obj_offset_to_ptr(oidx->ods, oidx->udata->top);
+	iter->layer[0] = ods_obj_ref_to_ptr(oidx->ods, oidx->udata->top);
 	return iter;
 }
 
@@ -768,18 +764,18 @@ uint64_t oidx_iter_next_in_list(oidx_iter_t iter)
 {
 	if (!iter->cur_list_head)
 		return 0;
-	oidx_objref_head_t h = ods_obj_offset_to_ptr(iter->oidx->ods,
+	oidx_objref_head_t h = ods_obj_ref_to_ptr(iter->oidx->ods,
 							iter->cur_list_head);
 	oidx_objref_entry_t ent;
 	if (!iter->cur_list_entry) {
 		if (h->begin)
-			ent = ods_obj_offset_to_ptr(iter->oidx->ods, h->begin);
+			ent = ods_obj_ref_to_ptr(iter->oidx->ods, h->begin);
 		else {
 			reset_cur_list(iter);
 			return 0;
 		}
 	} else {
-		ent = ods_obj_offset_to_ptr(iter->oidx->ods,
+		ent = ods_obj_ref_to_ptr(iter->oidx->ods,
 							iter->cur_list_entry);
 	}
 
@@ -801,18 +797,18 @@ uint64_t oidx_iter_prev_in_list(oidx_iter_t iter)
 {
 	if (!iter->cur_list_head)
 		return 0;
-	oidx_objref_head_t h = ods_obj_offset_to_ptr(iter->oidx->ods,
+	oidx_objref_head_t h = ods_obj_ref_to_ptr(iter->oidx->ods,
 							iter->cur_list_head);
 	oidx_objref_entry_t ent;
 	if (!iter->cur_list_entry) {
 		if (h->end)
-			ent = ods_obj_offset_to_ptr(iter->oidx->ods, h->end);
+			ent = ods_obj_ref_to_ptr(iter->oidx->ods, h->end);
 		else {
 			reset_cur_list(iter);
 			return 0;
 		}
 	} else {
-		ent = ods_obj_offset_to_ptr(iter->oidx->ods,
+		ent = ods_obj_ref_to_ptr(iter->oidx->ods,
 							iter->cur_list_entry);
 	}
 
@@ -834,7 +830,7 @@ uint64_t oidx_iter_current_obj(oidx_iter_t iter)
 {
 	if (!iter->cur_list_entry)
 		return 0;
-	oidx_objref_entry_t e = ods_obj_offset_to_ptr(iter->oidx->ods,
+	oidx_objref_entry_t e = ods_obj_ref_to_ptr(iter->oidx->ods,
 							iter->cur_list_entry);
 	return e->objref;
 }
@@ -900,7 +896,7 @@ next_index:
 	if (next_off) {
 		/* go deeper */
 		icl = ++(iter->cur_layer);
-		iter->layer[icl] = ods_obj_offset_to_ptr(iter->oidx->ods,
+		iter->layer[icl] = ods_obj_ref_to_ptr(iter->oidx->ods,
 								next_off);
 		iter->layer_idx[icl] = -1;
 		goto layer_work;
@@ -952,7 +948,7 @@ next_index:
 	if (next_off) {
 		/* go deeper */
 		icl = ++(iter->cur_layer);
-		iter->layer[icl] = ods_obj_offset_to_ptr(iter->oidx->ods,
+		iter->layer[icl] = ods_obj_ref_to_ptr(iter->oidx->ods,
 								next_off);
 		iter->layer_idx[icl] = iter->oidx->udata->radix;
 		goto layer_work;
@@ -983,12 +979,12 @@ uint64_t oidx_iter_sync_key_layers(oidx_iter_t iter)
 	struct oidx_layer_s *pl, *next_pl;
 	unsigned char *ckey = iter->key;
 	oidx_t oidx = iter->oidx;
-	pl = iter->layer[0] = ods_obj_offset_to_ptr(oidx->ods,
+	pl = iter->layer[0] = ods_obj_ref_to_ptr(oidx->ods,
 						    oidx->udata->top);
 	int count = 0;
 	uint64_t obj = 0;
 loop:
-	next_pl = ods_obj_offset_to_ptr(oidx->ods, pl->entries[*ckey].next);
+	next_pl = ods_obj_ref_to_ptr(oidx->ods, pl->entries[*ckey].next);
 	if (next_pl) {
 		iter->layer_idx[count] = *ckey++;
 		iter->layer[++count] = next_pl;
@@ -1007,7 +1003,7 @@ void oidx_iter_seek_start(oidx_iter_t iter)
 	oidx_t oidx = iter->oidx;
 	memset(iter, 0, sizeof *iter);
 	iter->oidx = oidx;
-	struct oidx_layer_s *pl = ods_obj_offset_to_ptr(oidx->ods,
+	struct oidx_layer_s *pl = ods_obj_ref_to_ptr(oidx->ods,
 							oidx->udata->top);
 	oidx_find_left_most(oidx, pl, iter->key);
 	uint64_t obj = oidx_iter_sync_key_layers(iter);
@@ -1020,7 +1016,7 @@ void oidx_iter_seek_end(oidx_iter_t iter)
 	oidx_t oidx = iter->oidx;
 	memset(iter, 0, sizeof *iter);
 	iter->oidx = oidx;
-	struct oidx_layer_s *pl = ods_obj_offset_to_ptr(oidx->ods,
+	struct oidx_layer_s *pl = ods_obj_ref_to_ptr(oidx->ods,
 							oidx->udata->top);
 	oidx_find_right_most(oidx, pl, iter->key);
 	uint64_t obj = oidx_iter_sync_key_layers(iter);
@@ -1039,14 +1035,14 @@ uint64_t oidx_iter_seek(oidx_iter_t iter, oidx_key_t key, size_t keylen)
 		goto out;
 	memcpy(iter->key, key, keylen);
 	iter->keylen = keylen;
-	iter->layer[0] = ods_obj_offset_to_ptr(iter->oidx->ods,
+	iter->layer[0] = ods_obj_ref_to_ptr(iter->oidx->ods,
 					       iter->oidx->udata->top);
 	for (i = 0; i < keylen; i++) {
 		nxt_off = iter->layer[i]->entries[c_key[i]].next;
 		iter->layer_idx[i] = (int)c_key[i];
 		if (i < keylen-1)
 			iter->layer[i+1] =
-				ods_obj_offset_to_ptr(iter->oidx->ods,
+				ods_obj_ref_to_ptr(iter->oidx->ods,
 						      nxt_off);
 	}
 	iter->cur_layer = keylen-1;
@@ -1077,14 +1073,14 @@ uint64_t oidx_iter_seek_sup(oidx_iter_t iter, oidx_key_t key, size_t keylen)
 		goto out;
 	memcpy(iter->key, c_key, keylen);
 	iter->keylen = keylen;
-	iter->layer[0] = ods_obj_offset_to_ptr(iter->oidx->ods,
+	iter->layer[0] = ods_obj_ref_to_ptr(iter->oidx->ods,
 					       iter->oidx->udata->top);
 	for (i = 0; i < keylen; i++) {
 		nxt_off = iter->layer[i]->entries[c_key[i]].next;
 		iter->layer_idx[i] = (int)c_key[i];
 		if (i < keylen-1)
 			iter->layer[i+1] =
-				ods_obj_offset_to_ptr(iter->oidx->ods,
+				ods_obj_ref_to_ptr(iter->oidx->ods,
 						      nxt_off);
 	}
 	iter->cur_layer = keylen-1;
@@ -1112,14 +1108,14 @@ uint64_t oidx_iter_seek_inf(oidx_iter_t iter, oidx_key_t key, size_t keylen)
 		goto out;
 	memcpy(iter->key, c_key, keylen);
 	iter->keylen = keylen;
-	iter->layer[0] = ods_obj_offset_to_ptr(iter->oidx->ods,
+	iter->layer[0] = ods_obj_ref_to_ptr(iter->oidx->ods,
 					       iter->oidx->udata->top);
 	for (i = 0; i < keylen; i++) {
 		nxt_off = iter->layer[i]->entries[c_key[i]].next;
 		iter->layer_idx[i] = (int)c_key[i];
 		if (i < keylen-1)
 			iter->layer[i+1] =
-				ods_obj_offset_to_ptr(iter->oidx->ods,
+				ods_obj_ref_to_ptr(iter->oidx->ods,
 						      nxt_off);
 	}
 	iter->cur_layer = keylen-1;
@@ -1243,7 +1239,7 @@ int main(int argc, char *argv[]) {
 			c_id[3], c_id[2], c_id[1], c_id[0]);
 		uint64_t l = oidx_delete(oidx, &comp_id, 4);
 		/* now delete the list */
-		oidx_objref_head_t h = ods_obj_offset_to_ptr(oidx->ods, l);
+		oidx_objref_head_t h = ods_obj_ref_to_ptr(oidx->ods, l);
 		oidx_objref_entry_t e;
 		while (e = OIDX_LIST_FIRST(oidx, h)) {
 			OIDX_LIST_REMOVE(oidx, h, e);

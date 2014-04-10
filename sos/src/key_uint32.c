@@ -1,10 +1,5 @@
-/* -*- c-basic-offset: 8 -*-
+/*
  * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
- * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
- * license for use of this work by or on behalf of the U.S. Government.
- * Export of this program may require a license from the United States
- * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -23,10 +18,6 @@
  *      copyright notice, this list of conditions and the following
  *      disclaimer in the documentation and/or other materials provided
  *      with the distribution.
- *
- *      Neither the name of Sandia nor the names of any contributors may
- *      be used to endorse or promote products derived from this software
- *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
@@ -48,52 +39,69 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "bout_sos_msg.h"
-#include "sos_msg_class_def.h"
 
-/**
- * \brief process_output for SOS.
- *
- * This function will create a new sos_object according to \a odata, and
- * put it into the opened sos storage.
- * \param this The pointer to the plugin instance.
- * \param odata The output data.
- * \return 0 on success.
- * \return Error code on error.
+/*
+ * Author: Tom Tucker tom at ogc dot us
  */
-int bout_sos_msg_process_output(struct boutplugin *this,
-				struct boutq_data *odata)
+#include <assert.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include "obj_idx.h"
+#include "obj_idx_priv.h"
+
+static const char *get_type(void)
 {
-	struct bout_sos_plugin *_this = (typeof(_this))this;
-	pthread_mutex_lock(&_this->sos_mutex);
-	sos_t sos = _this->sos;
-	if (!sos)
-		return EBADFD;
-	sos_obj_t obj = sos_obj_new(sos);
-	sos_obj_attr_set(sos, SOS_MSG_SEC, obj, &odata->tv.tv_sec);
-	sos_obj_attr_set(sos, SOS_MSG_USEC, obj, &odata->tv.tv_usec);
-	sos_obj_attr_set(sos, SOS_MSG_COMP_ID, obj, &odata->comp_id);
-	sos_obj_attr_set(sos, SOS_MSG_MSG, obj, &(struct sos_blob_arg_s) {
-				BMSG_SZ(odata->msg),
-				odata->msg
-			});
-	if (sos_obj_add(sos, obj))
-		goto err1;
-	pthread_mutex_unlock(&_this->sos_mutex);
-	return 0;
-err1:
-	sos_obj_delete(sos, obj);
-	pthread_mutex_unlock(&_this->sos_mutex);
-err0:
-	return EINVAL;
+	return "UINT32";
 }
 
-struct bplugin *create_plugin_instance()
+static const char *get_doc(void)
 {
-	struct bout_sos_msg_plugin *_p = calloc(1, sizeof(*_p));
-	_p->base.sos_class = &sos_msg_class;
-	struct boutplugin *p = (typeof(p)) _p;
-	bout_sos_init((void*)_p, "bout_sos_msg");
-	p->process_output = bout_sos_msg_process_output;
-	return (void*)p;
+	return  "OBJ_KEY_UINT32: The key is an unsigned 32b long.\n"
+		"                The comparator returns a - b.\n";
 }
+
+static int uint32_comparator(obj_key_t a, obj_key_t b)
+{
+	assert(a->len == 4);
+	assert(b->len == 4);
+	return *(uint32_t *)&a->value[0] - *(uint32_t *)&b->value[0];
+}
+
+static char sbuf[32];
+
+static const char *to_str(obj_key_t key)
+{
+	assert(key->len == 4);
+	sprintf(sbuf, "0x%08x", *(uint32_t *)key->value);
+	return sbuf;
+}
+
+static int from_str(obj_key_t key, const char *str)
+{
+	unsigned long lv;
+	uint32_t v;
+	errno = 0;
+	lv = strtoul(str, NULL, 0);
+	if (errno)
+		return -1;
+	v = (uint32_t)lv;
+	memcpy(&key->value[0], &v, 4);
+	key->len = 4;
+	return 0;
+}
+
+static struct obj_idx_comparator key_comparator = {
+	get_type,
+	get_doc,
+	to_str,
+	from_str,
+	uint32_comparator
+};
+
+struct obj_idx_comparator *get(void)
+{
+	return &key_comparator;
+}
+

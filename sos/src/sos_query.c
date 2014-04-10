@@ -88,6 +88,7 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int col_count, int *width)
 	int32_t v32;
 	int64_t v64;
 	double vd;
+	char *s;
 	int col;
 
 	for (col = 0; col < col_count; col++) {
@@ -99,15 +100,19 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int col_count, int *width)
 			break;
 		case SOS_TYPE_INT64:
 			SOS_OBJ_ATTR_GET(v64, sos, col, obj);
-			fprintf(fp, "%*" PRIx64 "", width[col], v64);
+			fprintf(fp, "%*" PRIi64 "", width[col], v64);
 			break;
 		case SOS_TYPE_UINT32:
 			SOS_OBJ_ATTR_GET(vu32, sos, col, obj);
-			fprintf(fp, "%*" PRIx32 "", width[col], vu32);
+			fprintf(fp, "%*u", width[col], vu32);
 			break;
 		case SOS_TYPE_UINT64:
 			SOS_OBJ_ATTR_GET(vu64, sos, col, obj);
-			fprintf(fp, "%*" PRIx64 "", width[col], vu64);
+			fprintf(fp, "%*" PRIu64 "", width[col], vu64);
+			break;
+		case SOS_TYPE_STRING:
+			SOS_OBJ_ATTR_GET(s, sos, col, obj);
+			fprintf(fp, "%*s", width[col], s);
 			break;
 		case SOS_TYPE_DOUBLE:
 			SOS_OBJ_ATTR_GET(vd, sos, col, obj);
@@ -195,7 +200,7 @@ int main(int argc, char *argv[])
 {
 	extern int optind;
 	extern char *optarg;
-	struct sos_key_s key;
+	obj_key_t key = obj_key_new(1024);
 	sos_obj_t obj;
 	sos_t sos;
 	sos_iter_t iter;
@@ -208,6 +213,7 @@ int main(int argc, char *argv[])
 	int *col_width;
 	const char **col_name;
 	int meta_data = 0;
+	int rc;
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -251,11 +257,11 @@ int main(int argc, char *argv[])
 		switch (vtype) {
 		case SOS_TYPE_INT32:
 		case SOS_TYPE_UINT32:
-			min = 9;
+			min = 12;
 			break;
 		case SOS_TYPE_INT64:
 		case SOS_TYPE_UINT64:
-			min = 17;
+			min = 24;
 			break;
 		case SOS_TYPE_DOUBLE:
 			min = 16;
@@ -286,16 +292,18 @@ int main(int argc, char *argv[])
 		exit(3);
 	}
 	if (key_val) {
-		sos_obj_attr_key_set(sos, key_col,
-				     get_key_value(sos, key_col, key_val),
-				     &key);
-		if (!sos_iter_seek(iter, &key)) {
+		sos_key_from_str(iter, key, key_val);
+		rc = sos_iter_seek(iter, key);
+		if (rc) {
 			printf("The key '%s' was not found.\n", key_val);
 			exit(4);
 		}
-	}
-	for (obj = sos_iter_next(iter); obj; obj = sos_iter_next(iter)) {
-		if (key_val && sos_obj_attr_key_cmp(sos, key_col, obj, &key))
+	} else
+		rc = sos_iter_begin(iter);
+	for (; !rc; rc = sos_iter_next(iter)) {
+		obj = sos_iter_obj(iter);
+		obj_key_t iter_key = sos_iter_key(iter);
+		if (key_val && sos_iter_key_cmp(iter, iter_key, key))
 			break;
 		records ++;
 		print_record(stdout, sos, obj, col_count, col_width);

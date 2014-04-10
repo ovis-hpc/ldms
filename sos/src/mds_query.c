@@ -88,8 +88,8 @@ void usage(int argc, char *argv[])
 	       "        -T             - Show results by Time\n"
 	       "        -C             - Show results by Component\n"
 	       "        -q             - Quiet output (no table headers and total report)\n"
-				 "        -Z             - Disable timestamp conversion\n"
-				 "        -V             - Print values only\n",
+	       "        -Z             - Disable timestamp conversion\n"
+	       "        -V             - Print values only\n",
 	       argv[0]);
 	exit(1);
 }
@@ -134,7 +134,7 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 		if (value_only)
 			fprintf(fp, "%" PRIi32 "\n", v32);
 		else
-			fprintf(fp, "%-24s %12d %16" PRIi32 " %p\n",
+			fprintf(fp, "%-24s %12"PRIi64" %16" PRIi32 " %p\n",
 					tv_s, metric_id, v32, obj);
 		break;
 	case SOS_TYPE_INT64:
@@ -142,7 +142,7 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 		if (value_only)
 			fprintf(fp, "%" PRIi64 "\n", v64);
 		else
-			fprintf(fp, "%-24s %12d %16" PRIi64 " %p\n",
+			fprintf(fp, "%-24s %12"PRIu64" %16" PRIi64 " %p\n",
 					tv_s, metric_id, v64, obj);
 		break;
 	case SOS_TYPE_UINT32:
@@ -150,7 +150,7 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 		if (value_only)
 			fprintf(fp, "%" PRIu32 "\n", vu32);
 		else
-			fprintf(fp, "%-24s %12d %16" PRIu32 " %p\n",
+			fprintf(fp, "%-24s %12"PRIu64" %16" PRIu32 " %p\n",
 					tv_s, metric_id, vu32, obj);
 		break;
 	case SOS_TYPE_UINT64:
@@ -158,7 +158,7 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 		if (value_only)
 			fprintf(fp, "%" PRIu64 "\n", vu64);
 		else
-			fprintf(fp, "%-24s %12d %16" PRIu64 " %p\n",
+			fprintf(fp, "%-24s %12"PRIu64" %16" PRIu64 " %p\n",
 					tv_s, metric_id, vu64, obj);
 		break;
 	case SOS_TYPE_DOUBLE:
@@ -166,12 +166,12 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int delete)
 		if (value_only)
 			fprintf(fp, "%f\n", vd);
 		else
-			fprintf(fp, "%-24s %12d %16f %p\n",
+			fprintf(fp, "%-24s %12"PRIu64" %16f %p\n",
 					tv_s, metric_id, vd, obj);
 		break;
 	default:
-		printf(stderr, "Not support type '%d'\n",
-				sos_type_to_str(vtype));
+		fprintf(stderr, "Unsupported type '%s'\n",
+			sos_type_to_str(vtype));
 		break;
 	}
 
@@ -194,8 +194,8 @@ int main(int argc, char *argv[])
 	uint32_t tv_sec = -1;
 	extern int optind;
 	extern char *optarg;
-	struct sos_key_s tv_key;
-	struct sos_key_s comp_key;
+	obj_key_t tv_key = obj_key_new(16);
+	obj_key_t comp_key = obj_key_new(16);
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -267,35 +267,38 @@ int main(int argc, char *argv[])
 		tv_iter = sos_iter_new(sos, MDS_TV_SEC);
 		comp_iter = sos_iter_new(sos, MDS_COMP_ID);
 
+		int rc;
 		if (tv_sec != -1) {
-			sos_obj_attr_key_set(sos, MDS_TV_SEC, &tv_sec, &tv_key);
-			if (!sos_iter_seek(tv_iter, &tv_key))
-				goto out;
-		}
+			obj_key_set(tv_key, &tv_sec, sizeof(tv_sec));
+			rc = sos_iter_seek(tv_iter, tv_key);
+		} else
+			rc = sos_iter_begin(tv_iter);
+
 		if (comp_id != -1) {
-			sos_obj_attr_key_set(sos, MDS_COMP_ID, &comp_id, &comp_key);
-			if (!sos_iter_seek(comp_iter, &comp_key))
-				goto out;
-		}
+			obj_key_set(comp_key, &comp_id, sizeof(comp_id));
+			rc = sos_iter_seek(comp_iter, comp_key);
+		} else
+			rc = sos_iter_begin(comp_iter);
+
 		sos_obj_t obj;
 		if (show_by_time)
 			iter = tv_iter;
 		else
 			iter = comp_iter;
-		for (obj = sos_iter_next(iter); obj; obj = sos_iter_next(iter)) {
+		for (; !rc; rc = sos_iter_next(iter)) {
+			obj = sos_iter_obj(iter);
+			obj_key_t key = sos_iter_key(iter);
 			/*
 			 * If the user specified a key on the index
 			 * we need to stop when the iterator passes the key.
 			 */
-			if (tv_sec != -1
-			    && sos_obj_attr_key_cmp(sos, MDS_TV_SEC, obj, &tv_key)) {
+			if (tv_sec != -1 && sos_iter_key_cmp(tv_iter, key, tv_key)) {
 				if (iter == tv_iter)
 					break;
 				else
 					continue;
 			}
-			if (comp_id != -1
-			    && sos_obj_attr_key_cmp(sos, MDS_COMP_ID, obj, &comp_key)) {
+			if (comp_id != -1 && sos_iter_key_cmp(comp_iter, key, comp_key)) {
 				if (iter == comp_iter)
 					break;
 				else
@@ -304,7 +307,6 @@ int main(int argc, char *argv[])
 			records ++;
 			print_record(stdout, sos, obj, delete);
 		}
-	out:
 		if (!quiet) {
 			printf("------------------------ ------------ ----------------\n");
 			printf("%d records\n", records);

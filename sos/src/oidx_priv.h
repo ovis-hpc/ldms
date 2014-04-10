@@ -120,9 +120,9 @@ typedef struct oidx_objref_entry_s {
  * 		    This is the variable used to iterate through the list.
  */
 #define OIDX_LIST_FOREACH(oidx, head_ptr, entry_ptr) \
-	for (entry_ptr = ods_obj_offset_to_ptr(oidx->ods, head_ptr->begin); \
+	for (entry_ptr = ods_obj_ref_to_ptr(oidx->ods, head_ptr->begin); \
 		entry_ptr; \
-		entry_ptr = ods_obj_offset_to_ptr(oidx->ods, entry_ptr->next))
+		entry_ptr = ods_obj_ref_to_ptr(oidx->ods, entry_ptr->next))
 
 /**
  * Similar to LIST_FIRST.
@@ -130,7 +130,7 @@ typedef struct oidx_objref_entry_s {
  * \param head_ptr The pointer to ::oidx_objref_head_s.
  */
 #define OIDX_LIST_FIRST(oidx, head_ptr) \
-	ods_obj_offset_to_ptr(oidx->ods, head_ptr->begin)
+	ods_obj_ref_to_ptr(oidx->ods, head_ptr->begin)
 
 /**
  * Similar to LIST_INSERT_HEAD.
@@ -142,9 +142,9 @@ typedef struct oidx_objref_entry_s {
 #define OIDX_LIST_INSERT_HEAD(oidx, head_ptr, entry_ptr) do { \
 	entry_ptr->next = head_ptr->begin; \
 	entry_ptr->prev = 0; \
-	oidx_objref_entry_t e = ods_obj_offset_to_ptr(oidx->ods, \
+	oidx_objref_entry_t e = ods_obj_ref_to_ptr(oidx->ods, \
 							head_ptr->begin); \
-	head_ptr->begin = ods_obj_ptr_to_offset(oidx->ods, entry_ptr); \
+	head_ptr->begin = ods_obj_ptr_to_ref(oidx->ods, entry_ptr); \
 	if (e) \
 		e->prev = head_ptr->begin; \
 } while(0)
@@ -159,9 +159,9 @@ typedef struct oidx_objref_entry_s {
 #define OIDX_LIST_INSERT_TAIL(oidx, head_ptr, entry_ptr) do { \
 	entry_ptr->prev = head_ptr->end; \
 	entry_ptr->next = 0; \
-	oidx_objref_entry_t e = ods_obj_offset_to_ptr(oidx->ods, \
+	oidx_objref_entry_t e = ods_obj_ref_to_ptr(oidx->ods, \
 							head_ptr->end); \
-	head_ptr->end = ods_obj_ptr_to_offset(oidx->ods, entry_ptr); \
+	head_ptr->end = ods_obj_ptr_to_ref(oidx->ods, entry_ptr); \
 	if (e) \
 		e->next = head_ptr->end; \
 } while(0)
@@ -178,8 +178,8 @@ typedef struct oidx_objref_entry_s {
  */
 #define OIDX_LIST_REMOVE(oidx, head_ptr, entry_ptr) do { \
 	oidx_objref_entry_t n,p; \
-	n = ods_obj_offset_to_ptr(oidx->ods, entry_ptr->next); \
-	p = ods_obj_offset_to_ptr(oidx->ods, entry_ptr->prev); \
+	n = ods_obj_ref_to_ptr(oidx->ods, entry_ptr->next); \
+	p = ods_obj_ref_to_ptr(oidx->ods, entry_ptr->prev); \
 	if (n) \
 		n->prev = entry_ptr->prev; \
 	else \

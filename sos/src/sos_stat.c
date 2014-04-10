@@ -106,6 +106,8 @@ const char* ts_str(uint64_t ts)
 
 int main(int argc, char **argv)
 {
+	int rc;
+
 	if (argc < 2)
 		usage();
 
@@ -165,7 +167,8 @@ int main(int argc, char **argv)
 	uint32_t *count_vdown = calloc(MAX_COMP_ID, sizeof(uint32_t));
 	uint32_t *count_veq = calloc(MAX_COMP_ID, sizeof(uint32_t));
 
-	while (obj = sos_iter_next(iter)) {
+	for (rc = sos_iter_begin(iter); !rc; rc = sos_iter_next(iter)) {
+		obj = sos_iter_obj(iter);
 		// r is the current record
 		// p is the previous record of the same comp_id;
 		OBJ2OVISREC_T(sos, obj, r);

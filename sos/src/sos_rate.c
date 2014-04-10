@@ -26,14 +26,14 @@
  *
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
- *      without specific prior written permission. 
+ *      without specific prior written permission.
  *
  *      Neither the name of Open Grid Computing nor the names of any
  *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission. 
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.    
+ *      must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -58,7 +58,7 @@
  * The output is also written in SOS (with the default name <ORIGINAL>_rate).
  * The rate is defined as (value@t_1 - value@t_2) / (t_2 - t_1) (obviously
  * the values must be of the same component).
- */ 
+ */
 
 #include <stdio.h>
 #include <unistd.h>
@@ -92,7 +92,7 @@ void usage()
  * \param sec1
  * \param sec2
  * \param usec1
- * \param usec2 
+ * \param usec2
  * \returns sec1.usec1 - sec2.usec2
  */
 inline
@@ -103,7 +103,7 @@ double diff_time(uint32_t sec1, uint32_t usec1,
 }
 
 int main(int argc, char **argv)
-{	
+{
 	char o;
 	char *isos_path = NULL;
 	char *osos_path = NULL;
@@ -155,7 +155,9 @@ int main(int argc, char **argv)
 
 	ovis_record_s rec;
 
-	while (obj = sos_iter_next(iter)) {
+	int rc;
+	for (rc = sos_iter_begin(iter); !rc; rc = sos_iter_next(iter)) {
+		obj = sos_iter_obj(iter);
 		OBJ2OVISREC_S(isos, obj, rec);
 		uint32_t comp_id = rec.comp_id;
 		ovis_record_t p = prev_rec + comp_id;
@@ -163,15 +165,15 @@ int main(int argc, char **argv)
 			// if it is 0, this record
 			// will be the first record. Thus, no need to do anything except
 			// update the last seen record.
-			// 
+			//
 			// If it is not 0, then we need to calculate the rate and store it :D
 			/*
-			 * NOTE: I abusively use 8 bytes of uint64_t to store double 
+			 * NOTE: I abusively use 8 bytes of uint64_t to store double
 			 *       from the calculation.
 			 */
 			ovis_record_s rec2;
 			double dv, dt, rate;
-			rec2 = rec; 
+			rec2 = rec;
 			if (rec.value >= p->value)
 				dv = rec.value - p->value;
 			else // if counter overflow
@@ -190,7 +192,6 @@ int main(int argc, char **argv)
 		*p = rec;
 	}
 
-	sos_flush(osos);
-	
+	sos_commit(osos, ODS_COMMIT_ASYNC);
 	return 0;
 }

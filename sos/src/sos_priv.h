@@ -96,7 +96,8 @@
 #endif
 
 #include "sos.h"
-#include "oidx.h"
+#include "ods.h"
+#include "obj_idx.h"
 #include <coll/idx.h>
 
 /*
@@ -115,37 +116,14 @@ typedef struct sos_blob_obj_s* sos_blob_obj_t;
  */
 struct sos_blob_obj_s {
 	uint64_t len; /**< Length of the blob. */
-	uint64_t off; /**< Reference of the blob object in blob ODS. */
+	obj_ref_t ref; /**< Reference of the blob object in blob ODS. */
 };
-
-/* Maintains first and last entries in the store */
-/* Deprecated.
-typedef struct sos_idx_entry_s {
-	uint64_t first;
-	uint64_t last;
-} *sos_idx_entry_t;
-*/
-
-struct sos_oidx_s {
-	oidx_t oidx;
-};
-
-/**
- * \brief Linked list of references to objects of same key.
- */
-typedef struct sos_link_s {
-	uint64_t prev; /**< offset to previous link entry (in index ODS). */
-	uint64_t obj_offset; /**< offset to the object (in object ODS). */
-	uint64_t next; /**< offset to next link entry (in index ODS). */
-} *sos_link_t;
 
 typedef struct sos_dattr_s *sos_dattr_t;
 struct sos_dattr_s {
 	char name[SOS_ATTR_NAME_LEN];
 	uint32_t type;		/* enum sos_type_e */
 	uint32_t data;		/* Offset into object of the attribute's data */
-	uint32_t link;		/* Offset into object of the attribute's link */
-				/* data. Not used if !has_idx */
 	uint32_t has_idx;	/* !0 if index is to be maintained */
 };
 
@@ -166,7 +144,7 @@ struct sos_meta_s {
 struct sos_s {
 	/* "Path" to the file. This is used as a prefix for all the
 	 *  real file paths */
-	const char *path;
+	char *path;
 
 	/* ODS containing all index objects, i.e the objects pointed
 	 * to by the indices. */
@@ -178,23 +156,25 @@ struct sos_s {
 	/* The size of the meta-data.  */
 	size_t meta_sz;
 
-	/* In-memory object class descrioption */
+	/* In-memory object class description */
 	sos_class_t classp;
 };
 
 struct sos_iter_s {
 	sos_t sos;
 	sos_attr_t attr;
-	oidx_iter_t iter;
+	obj_iter_t iter;
+#if 0
 	uint64_t start;
 	uint64_t end;
 	uint64_t next;
 	uint64_t prev;
+#endif
 };
 
 #define SOS_ATTR_GET_BE32(_v, _a, _o) \
 { \
-	*(uint32_t *)(_v) = htobe32(*(uint32_t *)sos_attr_get(_a, _o));	\
+	*(uint32_t *)(void *)(_v) = htobe32(*(uint32_t *)sos_attr_get(_a, _o)); \
 }
 
 #define SOS_ATTR_GET_BE64(_v, _a, _o) \

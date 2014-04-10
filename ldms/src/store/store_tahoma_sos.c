@@ -517,7 +517,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 	int i;
 	LIST_FOREACH(ms, &si->ms_list, entry) {
 		pthread_mutex_lock(&ms->lock);
-		sos_flush(ms->sos);
+		sos_flush(ms->sos, ODS_COMMIT_SYNC);
 		pthread_mutex_unlock(&ms->lock);
 	}
 	return 0;
@@ -535,7 +535,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	int i;
 	while (ms = LIST_FIRST(&si->ms_list)) {
 		if (ms->sos)
-			sos_close(ms->sos);
+			sos_close(ms->sos, ODS_COMMIT_SYNC);
 		if (ms->path)
 			free(ms->path);
 		free(ms);

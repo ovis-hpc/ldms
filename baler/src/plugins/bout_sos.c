@@ -119,7 +119,7 @@ int bout_sos_stop(struct bplugin *this)
 	if (!_this->sos)
 		return EINVAL;
 	pthread_mutex_lock(&_this->sos_mutex);
-	sos_close(_this->sos);
+	sos_close(_this->sos, ODS_COMMIT_SYNC);
 	_this->sos = 0;
 	pthread_mutex_unlock(&_this->sos_mutex);
 	return 0;
