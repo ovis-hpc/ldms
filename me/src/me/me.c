@@ -877,7 +877,7 @@ int process_start_consumer(int fd, struct sockaddr *sa,
 	pthread_t thread;
 	pthread_create(&thread, NULL, evaluate_complete_consumer_cb,
 			(void *)(unsigned long) csm);
-	sprintf(replybuf, "0\n", -EINVAL, attr);
+	sprintf(replybuf, "0\n");
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 einval:
