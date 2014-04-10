@@ -418,6 +418,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 	int rc = 0;
 	int last_rc = 0;
 	int last_errno = 0;
+	enum ldms_value_type mtype;
 
 	if (!_sh)
 		return EINVAL;
@@ -429,11 +430,16 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 		rc = store_sos_create_ms_list(si, mvec);
 		if (rc) {
 			msglog("store_sos: Failed to create store "
-						"for each metric.\n");
+				"for %s.\n", si->container);
 			return -1;
 		}
 	}
 
+	int32_t v32;
+	uint32_t vu32;
+	int64_t v64;
+	uint64_t vu64;
+	double vd;
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
 
 	for (i = 0; i < mvec->count; i++) {
@@ -458,8 +464,56 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 		sos_obj_attr_set(si->ms[i]->sos, 0, obj, (void*)&ts->sec);
 		sos_obj_attr_set(si->ms[i]->sos, 1, obj, (void*)&ts->usec);
 		sos_obj_attr_set(si->ms[i]->sos, 2, obj, &metric_id);
-		sos_obj_attr_set(si->ms[i]->sos, 3, obj,
-				 ldms_get_value_ptr(mvec->v[i]));
+
+		mtype = ldms_get_metric_type(mvec->v[i]);
+		switch (mtype) {
+		case LDMS_V_S8:
+			v32 = ldms_get_s8(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &v32);
+			break;
+		case LDMS_V_U8:
+			vu32 = ldms_get_u8(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vu32);
+			break;
+		case LDMS_V_S16:
+			v32 = ldms_get_s16(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &v32);
+			break;
+		case LDMS_V_U16:
+			vu32 = ldms_get_u16(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vu32);
+			break;
+		case LDMS_V_S32:
+			v32 = ldms_get_s32(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &v32);
+			break;
+		case LDMS_V_U32:
+			vu32 = ldms_get_u32(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vu32);
+			break;
+		case LDMS_V_S64:
+			v64 = ldms_get_s64(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &v64);
+			break;
+		case LDMS_V_U64:
+			vu64 = ldms_get_u64(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vu64);
+			break;
+		case LDMS_V_F:
+			vd = ldms_get_float(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vd);
+			break;
+		case LDMS_V_D:
+			vd = ldms_get_double(mvec->v[i]);
+			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vd);
+			break;
+		case LDMS_V_LD:
+		default:
+			msglog("store_sos: Does not support type '%s'\n",
+						ldms_type_to_str(mtype));
+			break;
+		}
+
 		rc = sos_obj_add(si->ms[i]->sos, obj);
 		pthread_mutex_unlock(&si->ms[i]->lock);
 		if (rc) {
