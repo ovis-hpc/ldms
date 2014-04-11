@@ -1134,6 +1134,11 @@ void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, sos_key_t key)
 	sos_obj_attr_key_set(sos, attr_id, &value, key);
 }
 
+void sos_key_set_double(sos_t sos, int attr_id, double value, sos_key_t key)
+{
+	sos_obj_attr_key_set(sos, attr_id, &value, key);
+}
+
 /*** end helper functions ***/
 
 #ifdef SOS_MAIN

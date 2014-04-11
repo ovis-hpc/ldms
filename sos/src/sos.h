@@ -713,7 +713,7 @@ SOS_OBJ_ATTR_GET_DEF(uint8_t, uint8)
 SOS_OBJ_ATTR_GET_DEF(uint16_t, uint16)
 SOS_OBJ_ATTR_GET_DEF(uint32_t, uint32)
 SOS_OBJ_ATTR_GET_DEF(uint64_t, uint64)
-
+SOS_OBJ_ATTR_GET_DEF(double, double)
 
 #define SOS_OBJ_ATTR_SET_DEF(_T, _N) \
 inline void sos_obj_attr_set_ ## _N (sos_t sos, int attr_id, sos_obj_t obj, _T value) \
@@ -729,7 +729,7 @@ SOS_OBJ_ATTR_SET_DEF(uint8_t, uint8)
 SOS_OBJ_ATTR_SET_DEF(uint16_t, uint16)
 SOS_OBJ_ATTR_SET_DEF(uint32_t, uint32)
 SOS_OBJ_ATTR_SET_DEF(uint64_t, uint64)
-
+SOS_OBJ_ATTR_SET_DEF(double, double)
 
 int sos_get_attr_count(sos_t sos);
 enum sos_type_e sos_get_attr_type(sos_t sos, int attr_id);
@@ -739,6 +739,7 @@ void sos_key_set_int32(sos_t sos, int attr_id, int32_t value, sos_key_t key);
 void sos_key_set_int64(sos_t sos, int attr_id, int64_t value, sos_key_t key);
 void sos_key_set_uint32(sos_t sos, int attr_id, uint32_t value, sos_key_t key);
 void sos_key_set_uint64(sos_t sos, int attr_id, uint64_t value, sos_key_t key);
+void sos_key_set_double(sos_t sos, int attr_id, double value, sos_key_t key);
 
 /** \} (end helper_function) */
 
