@@ -79,10 +79,6 @@ public class OvisSink implements MetricsSink{
 	@Override
 	public void init(SubsetConfiguration conf) {
 
-//		DefaultMetricsSystem.INSTANCE.register("ldms",
-//				"Send metrics to Hadoop sampler in LDMS",
-//				new OvisSink());
-
 		ldmsSamplerPort = conf.getInt("port", DEFAULT_PORT);
 		hostname = conf.getString("host", DEFAULT_HOST);
 		daemonName = conf.getString("daemon", "unknown");

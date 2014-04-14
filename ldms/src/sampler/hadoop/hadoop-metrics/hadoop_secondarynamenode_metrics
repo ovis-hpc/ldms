@@ -1,0 +1,56 @@
+default.StartupProgress:PercentComplete	F
+default.StartupProgress:LoadingEditsPercentComplete	F
+default.StartupProgress:LoadingEditsTotal	S64
+default.StartupProgress:SafeModePercentComplete	F
+default.StartupProgress:SafeModeElapsedTime	S64
+default.StartupProgress:SavingCheckpointPercentComplete	F
+default.StartupProgress:SavingCheckpointCount	S64
+default.StartupProgress:SafeModeCount	S64
+default.StartupProgress:SavingCheckpointElapsedTime	S64
+default.StartupProgress:LoadingFsImageCount	S64
+default.StartupProgress:LoadingFsImagePercentComplete	F
+default.StartupProgress:LoadingEditsCount	S64
+default.StartupProgress:LoadingFsImageTotal	S64
+default.StartupProgress:ElapsedTime	S64
+default.StartupProgress:LoadingEditsElapsedTime	S64
+default.StartupProgress:SafeModeTotal	S64
+default.StartupProgress:LoadingFsImageElapsedTime	S64
+default.StartupProgress:SavingCheckpointTotal	S64
+ugi.UgiMetrics:LoginFailureAvgTime	D
+ugi.UgiMetrics:LoginFailureNumOps	S64
+ugi.UgiMetrics:LoginSuccessNumOps	S64
+ugi.UgiMetrics:LoginSuccessAvgTime	D
+jvm.JvmMetrics:MemNonHeapUsedM	F
+jvm.JvmMetrics:ThreadsRunnable	S32
+jvm.JvmMetrics:LogError	S64
+jvm.JvmMetrics:ThreadsTerminated	S32
+jvm.JvmMetrics:GcTimeMillisPS Scavenge	S64
+jvm.JvmMetrics:GcCount	S64
+jvm.JvmMetrics:LogFatal	S64
+jvm.JvmMetrics:MemNonHeapCommittedM	F
+jvm.JvmMetrics:GcTimeMillisPS MarkSweep	S64
+jvm.JvmMetrics:GcCountPS Scavenge	S64
+jvm.JvmMetrics:GcTimeMillis	S64
+jvm.JvmMetrics:LogInfo	S64
+jvm.JvmMetrics:ThreadsNew	S32
+jvm.JvmMetrics:LogWarn	S64
+jvm.JvmMetrics:ThreadsBlocked	S32
+jvm.JvmMetrics:GcCountPS MarkSweep	S64
+jvm.JvmMetrics:MemHeapUsedM	F
+jvm.JvmMetrics:ThreadsWaiting	S32
+jvm.JvmMetrics:MemMaxM	F
+jvm.JvmMetrics:MemHeapCommittedM	F
+jvm.JvmMetrics:ThreadsTimedWaiting	S32
+metricssystem.MetricsSystem:NumAllSources	S32
+metricssystem.MetricsSystem:Sink_ovisDropped	S32
+metricssystem.MetricsSystem:PublishNumOps	S64
+metricssystem.MetricsSystem:NumActiveSources	S32
+metricssystem.MetricsSystem:PublishAvgTime	D
+metricssystem.MetricsSystem:Sink_ovisAvgTime	D
+metricssystem.MetricsSystem:SnapshotAvgTime	D
+metricssystem.MetricsSystem:Sink_ovisNumOps	S64
+metricssystem.MetricsSystem:NumActiveSinks	S32
+metricssystem.MetricsSystem:Sink_ovisQsize	S32
+metricssystem.MetricsSystem:DroppedPubAll	S64
+metricssystem.MetricsSystem:SnapshotNumOps	S64
+metricssystem.MetricsSystem:NumAllSinks	S32

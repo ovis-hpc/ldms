@@ -129,6 +129,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		goto enoent;
 
+	nodemanager_set.daemon = "nodemanager";
 	nodemanager_set.msglog = msglog;
 	int rc;
 	if (rc = setup_datagram(port, &nodemanager_set.sockfd)) {
@@ -137,8 +138,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto err_1;
 	}
 
-	if (rc = create_hadoop_set(NULL, metric_name_file,
-				&nodemanager_set, comp_id))
+	if (rc = create_hadoop_set(metric_name_file, &nodemanager_set, comp_id))
 		goto err_2;
 	rc = pthread_create(&thread, NULL, recv_metrics, &nodemanager_set);
 	if (rc) {

@@ -34,3 +34,4 @@ To build,
 		- Maven 2.3 (Otherwise, modify the pom.xml as appropriate)
 	- Call 'mvn package' at the top level.
 	- The binary tar ball is in the target folder. Hadoop-OVIS-<version>.tar.gz
+	- Add the .jar path to the HADOOP_CLASSPATH in hadoop-env.sh.

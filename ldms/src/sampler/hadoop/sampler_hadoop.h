@@ -59,6 +59,12 @@ struct metric_name {
 
 struct hadoop_set {
 	ldms_set_t set;
+	/*
+	 * Hadoop Daemon: namenode, secondarynamenode, datanode
+	 * 	resourcemanager, nodemanager, jobtracker, maptask, reducetask,
+	 * 	tasktrack
+	 */
+	const char *daemon;
 	char *setname;
 	ldms_log_fn_t msglog;
 	int sockfd;
@@ -85,14 +91,12 @@ struct record_list *parse_given_metrics(char *metrics, int *count);
 
 /**
  * \brief Create a Hadoop Metric set
- * \param[in]	given_metrics	The given metric string
  * \param[in]	fname	    	The name of the file containing the metric names
  * \param[in/out]   hdset	the hadoop set to be created
  * \patam[in]   udata		the udata
  * \return 0 on success.
  */
-int create_hadoop_set(char *given_metrics, char *fname,
-			struct hadoop_set *hdset, uint64_t udata);
+int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata);
 
 /**
  * \brief Destroy a Hadoop Metric set

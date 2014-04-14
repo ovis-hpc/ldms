@@ -122,6 +122,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		goto enoent;
 
+	maptask_set.msglog = msglog;
+	maptask_set.daemon = "maptask";
+
 	int rc;
 	if (rc = setup_datagram(port, &maptask_set.sockfd)) {
 		msglog("hadoop_maptask: failed to setup "
@@ -129,8 +132,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto err_1;
 	}
 
-	if (rc = create_hadoop_set(NULL, metric_name_file,
-				&maptask_set, comp_id))
+	if (rc = create_hadoop_set(metric_name_file, &maptask_set, comp_id))
 		goto err_2;
 	rc = pthread_create(&thread, NULL, recv_metrics, &maptask_set);
 	if (rc) {

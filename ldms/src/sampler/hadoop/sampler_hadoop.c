@@ -71,8 +71,8 @@
 #include "sampler_hadoop.h"
 
 #define MAX_BUF_LEN 1024
-#define MAX_HADOOP_MNAME 248
-#define MAX_HADOOP_TYPE 8
+#define MAX_LEN_HADOOP_MNAME 248
+#define MAX_LEN_HADOOP_TYPE 8
 
 struct record_metrics *parse_record(char *record){
 	struct record_metrics *metrics = calloc(1, sizeof(*metrics));
@@ -114,8 +114,7 @@ struct record_list *parse_given_metrics(char *metrics, int *count)
 	return record_list;
 }
 
-int create_hadoop_set(char *given_metrics, char *fname,
-			struct hadoop_set *hdset, uint64_t udata)
+int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 {
 	ldms_log_fn_t msglog = hdset->msglog;
 	FILE *f = fopen(fname, "r");
@@ -126,14 +125,17 @@ int create_hadoop_set(char *given_metrics, char *fname,
 	}
 
 	char *s, *ptr;
-	char buf[MAX_HADOOP_MNAME + MAX_HADOOP_TYPE];
-	char metricname[MAX_HADOOP_MNAME];
-	char type[MAX_HADOOP_TYPE];
+	char buf[MAX_LEN_HADOOP_MNAME + MAX_LEN_HADOOP_TYPE];
+	char metricname[MAX_LEN_HADOOP_MNAME];
+	char type[MAX_LEN_HADOOP_TYPE];
+	size_t dlen = strlen(hdset->daemon);
 
 	int rc;
 	size_t meta_sz, data_sz, tot_meta_sz, tot_data_sz;
 	tot_meta_sz = tot_data_sz = meta_sz = data_sz = 0;
 	int num_metrics = 0;
+
+	size_t total_mname_len;
 
 	fseek(f, 0, SEEK_SET);
 	do {
@@ -151,15 +153,17 @@ int create_hadoop_set(char *given_metrics, char *fname,
 						hdset->setname, buf);
 			return EINVAL;
 		}
+		*ptr = '\0';
+		total_mname_len = dlen + (ptr - buf) + 1; /* This includes '\0.' */
 
-		if (ptr - buf + 1 > MAX_HADOOP_MNAME) {
+		if (total_mname_len > MAX_LEN_HADOOP_MNAME) {
 			msglog("hadoop_%s: %s: metric name exceeds %d\n",
-					hdset->setname, buf, MAX_HADOOP_MNAME);
+					hdset->setname, buf, MAX_LEN_HADOOP_MNAME);
 			return EPERM;
 		}
 
-		snprintf(metricname, ptr - buf + 1, "%s", buf);
-		snprintf(type, strlen(ptr + 1), "%s", ptr + 1);
+		snprintf(metricname, total_mname_len, "%s.%s", hdset->daemon, buf);
+		snprintf(type, strlen(ptr + 1) + 1, "%s", ptr + 1);
 
 		rc = ldms_get_metric_size(metricname,
 				ldms_str_to_type(type),
@@ -203,9 +207,9 @@ int create_hadoop_set(char *given_metrics, char *fname,
 			return EINVAL;
 		}
 
-		if (ptr - buf + 1 > MAX_HADOOP_MNAME) {
+		if (ptr - buf + 1 > MAX_LEN_HADOOP_MNAME) {
 			msglog("hadoop_%s: %s: metric name exceeds %d\n",
-					hdset->setname, buf, MAX_HADOOP_MNAME);
+					hdset->setname, buf, MAX_LEN_HADOOP_MNAME);
 			return EPERM;
 		}
 
@@ -251,18 +255,21 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 {
 	char *daemon_name, *rctxt_name, *metric_name;
 	char buf[256];
-	char *s, *tmp;
+	char *s, *tmp, *ptr;
 	ldms_metric_t m;
 	enum ldms_value_type type;
 	union ldms_value value;
 	ldms_log_fn_t msglog = hdset->msglog;
 
 	tmp = strdup(data);
-	rctxt_name = strtok(tmp, ":");
+	rctxt_name = strtok_r(tmp, ":", ptr);
 	char *value_s;
 
-	while (metric_name = strtok(NULL, "=")) {
-		sprintf(buf, "%s:%s", rctxt_name, metric_name);
+	size_t base_len = strlen(hdset->daemon) + strlen(rctxt_name);
+
+	while (metric_name = strtok_r(NULL, "=", ptr)) {
+		snprintf(buf, base_len + strlen(metric_name) + 1,  "%s.%s:%s",
+				hdset->daemon, rctxt_name, metric_name);
 		m = str_map_get(hdset->map, buf);
 		if (!m)
 			continue;

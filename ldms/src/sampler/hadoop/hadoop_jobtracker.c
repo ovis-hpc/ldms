@@ -122,6 +122,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		goto enoent;
 
+	jobtracker_set.msglog = msglog;
+	jobtracker_set.daemon = "jobtracker";
+
+
 	int rc;
 	if (rc = setup_datagram(port, &jobtracker_set.sockfd)) {
 		msglog("hadoop_jobtracker: failed to setup "
@@ -129,8 +133,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto err_1;
 	}
 
-	if (rc = create_hadoop_set(NULL, metric_name_file,
-				&jobtracker_set, comp_id))
+	if (rc = create_hadoop_set(metric_name_file, &jobtracker_set, comp_id))
 		goto err_2;
 	rc = pthread_create(&thread, NULL, recv_metrics, &jobtracker_set);
 	if (rc) {

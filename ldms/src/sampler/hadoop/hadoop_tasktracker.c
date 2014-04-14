@@ -122,6 +122,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		goto enoent;
 
+	tasktracker_set.daemon = "tasktracker";
+	tasktracker_set.msglog = msglog;
+
 	int rc;
 	if (rc = setup_datagram(port, &tasktracker_set.sockfd)) {
 		msglog("hadoop_tasktracker: failed to setup "
@@ -129,8 +132,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto err_1;
 	}
 
-	if (rc = create_hadoop_set(NULL, metric_name_file,
-				&tasktracker_set, comp_id))
+	if (rc = create_hadoop_set(metric_name_file, &tasktracker_set, comp_id))
 		goto err_2;
 	rc = pthread_create(&thread, NULL, recv_metrics, &tasktracker_set);
 	if (rc) {
