@@ -663,8 +663,12 @@ int ocmsqlite3_query_events(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
+	/*
+	 * model_id = 65535 are for user_event.
+	 * Filter the user-generated events out
+	 */
 	sprintf(sql, "SELECT model_id, metric_id FROM rule_templates "
-			"NATURAL JOIN rule_metrics;");
+			"NATURAL JOIN rule_metrics WHERE model_id != 65535;");
 
 	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
