@@ -56,6 +56,7 @@
 #include "ocmd_plugin.h"
 
 #define LOG(p, FMT, ...) p->log_fn("ocmsqlite3: " FMT, ##__VA_ARGS__);
+#define OCMSQL_BUFFER_SIZE (1024 * 1024)
 
 struct ocmsqlite3 {
 	struct ocmd_plugin base;
@@ -126,7 +127,12 @@ int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
 	int rc;
 	struct ocmsqlite3 *s = (void*)p;
 	char sql[1024];
-	char _buff[1024];
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
@@ -191,6 +197,7 @@ int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
 err:
 	sqlite3_finalize(stmt);
 out:
+	free(_buff);
 	return rc;
 }
 
@@ -199,7 +206,12 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 	int rc = 0;
 	struct ocmsqlite3 *s = (void*)p;
 	char sql[1024];
-	char _buff[1024];
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
@@ -250,6 +262,7 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 err:
 	sqlite3_finalize(stmt);
 out:
+	free(_buff);
 	return rc;
 }
 
@@ -258,7 +271,12 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 	int rc = 0;
 	struct ocmsqlite3 *s = (void*)p;
 	char sql[1024];
-	char _buff[1024];
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
@@ -272,7 +290,6 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
 		goto out;
 	}
-
 
 	rc = sqlite3_step(stmt);
 	int count = 0;
@@ -324,6 +341,7 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 err:
 	sqlite3_finalize(stmt);
 out:
+	free(_buff);
 	return rc;
 }
 
@@ -349,8 +367,13 @@ int handle_OSVC_KOMONDOR(ocmd_plugin_t p, const char *host,
 int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
 		struct ocm_cfg_buff *buff)
 {
-	char in_buff[4096];
-	struct ocm_value *v = (void *)in_buff;
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
+	struct ocm_value *v = (void *)_buff;
 
 	int idx_apply_on = 1;
 	int idx_ldmsd_set = 2;
@@ -448,7 +471,7 @@ skip:
 		ocm_value_set(v, OCM_VALUE_INT64, offset);
 		ocm_cfg_buff_add_av(buff, "offset", v);
 	}
-
+	free(_buff);
 	return 0;
 }
 
@@ -503,7 +526,12 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 		struct ocm_cfg_buff *buff, struct sqlite3_stmt *stmt)
 {
 	int rc;
-	char _buff[1024];
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
 	struct ocm_value *ov = (void*)_buff;
 	uint64_t interval;
 	int64_t offset;
@@ -511,6 +539,7 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 	char *avs = (char*) sqlite3_column_text(stmt, 4);
 	if (!avs) {
 		LOG(p, "sqlite3_column_text error: ENOMEM\n");
+		free(_buff);
 		return ENOMEM;
 	}
 	/* avs format >> A1:V1;A2:V2;... */
@@ -549,13 +578,12 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 
 		av = strtok_r(NULL, ";", &_ptr);
 	}
+	free(_buff);
 	return 0;
 err:
-	if (rc) {
-		LOG(p, "ocm_cfg_buff_add_av error %d: %s\n",
-				rc, strerror(rc));
-		return rc;
-	}
+	LOG(p, "ocm_cfg_buff_add_av error %d: %s\n", rc, strerror(rc));
+	free(_buff);
+	return rc;
 }
 
 int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
@@ -564,7 +592,12 @@ int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
 	int rc;
 	struct ocmsqlite3 *s = (void*)p;
 	char sql[1024];
-	char _buff[1024];
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
@@ -637,6 +670,7 @@ int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
 err:
 	sqlite3_finalize(stmt);
 out:
+	free(_buff);
 	return rc;
 }
 
@@ -659,7 +693,12 @@ int ocmsqlite3_query_events(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 
 	int rc = 0;
 	char sql[1024];
-	char _buff[1024];
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
@@ -726,6 +765,7 @@ int ocmsqlite3_query_events(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 err:
 	sqlite3_finalize(stmt);
 out:
+	free(_buff);
 	return rc;
 }
 
@@ -736,7 +776,12 @@ int ocmsqlite3_query_model_policy(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 
 	int rc = 0;
 	char sql[1024];
-	char _buff[1024];
+	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
+	if (!_buff) {
+		LOG(p, "Could not allocate a buffer. Out of memory.\n");
+		return ENOMEM;
+	}
+
 	struct ocm_value *ov = (void*)_buff;
 	const char *tail;
 	struct sqlite3_stmt *stmt;
@@ -827,6 +872,7 @@ int ocmsqlite3_query_model_policy(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 err:
 	sqlite3_finalize(stmt);
 out:
+	free(_buff);
 	return rc;
 }
 
