@@ -111,9 +111,12 @@ SOS_OBJ_END(4);
  */
 
 static idx_t store_idx;
+static idx_t metric_idx;
 static char tmp_path[PATH_MAX];
 static char *root_path; /**< store root path */
 static ldmsd_msg_log_f msglog;
+static pthread_mutex_t cfg_lock;
+
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -133,13 +136,10 @@ struct sos_store_instance {
 	char *path; /**< (root_path)/(comp_type) */
 	char *container;
 	void *ucontext;
-	idx_t ms_idx;
 	LIST_HEAD(ms_list, sos_metric_store) ms_list;
 	int metric_count;
 	struct sos_metric_store **ms;
 };
-
-pthread_mutex_t cfg_lock;
 
 /**
  * \brief Configuration
@@ -265,9 +265,6 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		if (!si)
 			goto out;
 		si->metric_count = metric_count;
-		si->ms_idx = idx_create();
-		if (!si->ms_idx)
-			goto err1;
 		si->ucontext = ucontext;
 		si->store = s;
 		si->path = strdup(tmp_path);
@@ -300,7 +297,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			} else {
 				name = x->name;
 			}
-			ms = idx_find(si->ms_idx, name, strlen(name));
+			ms = idx_find(metric_idx, name, strlen(name));
 			if (ms) {
 				si->ms[i++] = ms;
 				continue;
@@ -322,7 +319,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			 */
 
 			pthread_mutex_init(&ms->lock, NULL);
-			idx_add(si->ms_idx, name, strlen(name), ms);
+			idx_add(metric_idx, name, strlen(name), ms);
 			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
 			si->ms[i++] = ms;
 		}
@@ -342,8 +339,6 @@ err4:
 err3:
 	free(si->path);
 err2:
-	idx_destroy(si->ms_idx);
-err1:
 	free(si);
 	si = NULL;
 out:
@@ -374,7 +369,7 @@ static int store_sos_create_ms_list(struct sos_store_instance *si,
 		} else {
 			name = strdup(metric_name);
 		}
-		ms = idx_find(si->ms_idx, name, strlen(name));
+		ms = idx_find(metric_idx, name, strlen(name));
 		if (ms) {
 			si->ms[i] = ms;
 			continue;
@@ -396,7 +391,7 @@ static int store_sos_create_ms_list(struct sos_store_instance *si,
 		 */
 
 		pthread_mutex_init(&ms->lock, NULL);
-		idx_add(si->ms_idx, name, strlen(name), ms);
+		idx_add(metric_idx, name, strlen(name), ms);
 		LIST_INSERT_HEAD(&si->ms_list, ms, entry);
 		si->ms[i] = ms;
 	}
@@ -411,7 +406,6 @@ err:
 	free(si->ms);
 	free(si->container);
 	free(si->path);
-	idx_destroy(si->ms_idx);
 	return -1;
 }
 
@@ -516,7 +510,6 @@ static void close_store(ldmsd_store_handle_t _sh)
 	idx_delete(store_idx, (void *)(si->container), strlen(si->container));
 	free(si->path);
 	free(si->container);
-	idx_destroy(si->ms_idx);
 	free(si);
 }
 
@@ -551,6 +544,7 @@ static void __attribute__ ((constructor)) store_sos_init();
 static void store_sos_init()
 {
 	store_idx = idx_create();
+	metric_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 }
 
@@ -559,4 +553,5 @@ static void store_sos_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	idx_destroy(store_idx);
+	idx_destroy(metric_idx);
 }
