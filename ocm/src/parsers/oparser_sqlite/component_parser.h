@@ -72,9 +72,9 @@ LIST_HEAD(src_stack, source);
 
 /**
  * \brief Initialize the Component Parser
- *
  */
-void oparser_component_parser_init();
+void oparser_component_parser_init(FILE *log_file, char *read_buf,
+						char *value_buf);
 
 /**
  * \brief Parse the component definitions in \c conf_file

@@ -63,8 +63,6 @@
 
 #include "oparser_util.h"
 
-#define MAIN_BUF_SIZE (1024 * 1024)
-
 struct set {
 	char *sampler_pi; /** ldmsd sampler plugin name */
 	char cfg[1024];
@@ -133,7 +131,8 @@ struct prod_comps {
 	struct oparser_comp_list clist;
 };
 
-void oparser_template_parser_init(FILE *_log_fp);
+void oparser_template_parser_init(FILE *_log_fp, char *read_buf,
+					char *value_buf);
 
 struct tmpl_list *oparser_parse_template(FILE *conf,
 				struct oparser_scaffold *scaffold);

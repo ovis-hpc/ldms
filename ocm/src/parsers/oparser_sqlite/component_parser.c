@@ -80,6 +80,9 @@ int curr_nids;
 struct oparser_name_queue curr_names;
 int curr_nnames;
 
+static char *main_buf;
+static char *main_value;
+
 void comp_parser_log(const char *fmt, ...)
 {
 	va_list ap;
@@ -96,13 +99,16 @@ void comp_parser_log(const char *fmt, ...)
 	fflush(log_fp);
 }
 
-void oparser_component_parser_init(FILE *log_file)
+void oparser_component_parser_init(FILE *log_file, char *read_buf, char *value_buf)
 {
 	num_components = 0;
 	if (log_file)
 		log_fp = log_file;
 	else
 		log_fp = stderr;
+
+	main_buf = read_buf;
+	main_value = value_buf;
 }
 
 struct oparser_comp *
@@ -350,9 +356,7 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 	struct source *src, *comps;
 
 	struct oparser_comp *comp;
-	char buf[1024];
 	char type[512];
-	char uids[512];
 	char *s;
 	int is_leaf;
 	int rc, level, num_names;
@@ -363,11 +367,11 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 	int num_roots = num_components;
 	scaffold->num_nodes = num_components;
 
-	while (s = fgets(buf, sizeof(buf), conff)) {
+	while (s = fgets(main_buf, MAIN_BUF_SIZE, conff)) {
 		is_leaf = 0;
 		/* Discard the line name_map */
-		if (s = strchr(buf, ':')) {
-			s = strtok(buf, ":");
+		if (s = strchr(main_buf, ':')) {
+			s = strtok(main_buf, ":");
 			if (strcmp(s, "component_tree") == 0) {
 				continue;
 			} else {
@@ -377,10 +381,10 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 			}
 		}
 
-		rc = sscanf(buf, " %[^{/\n]{%[^}]/", type, uids);
+		rc = sscanf(main_buf, " %[^{/\n]{%[^}]/", type, main_value);
 		if (rc == 1) {
 			comp_parser_log("%s: %s: No user id.\n",
-						__FUNCTION__, buf);
+						__FUNCTION__, main_buf);
 			exit(EINVAL);
 		}
 
@@ -390,7 +394,7 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 			exit(ENOENT);
 		}
 
-		level = count_leading_tabs(buf);
+		level = count_leading_tabs(main_buf);
 		clear_src_stack(&src_stack, level);
 
 		if (scaffold->height < level -1)
@@ -399,15 +403,15 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 		if (level > 1) {
 			if (LIST_EMPTY(&src_stack)) {
 				comp_parser_log("%s: s/t wrong: the src_queue "
-						"should not be empty.\n", buf);
+						"should not be empty.\n", main_buf);
 				exit(EPERM);
 			}
 		}
 
-		if (!strchr(buf, '/'))
+		if (!strchr(main_buf, '/'))
 			is_leaf = 1;
 
-		num_names = process_string_name(uids, &nlist, NULL, NULL);
+		num_names = process_string_name(main_value, &nlist, NULL, NULL);
 		TAILQ_FOREACH(uid, &nlist, entry) {
 			comp = find_comp(comp_type, uid->name);
 			if (!comp) {
@@ -438,14 +442,13 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 		empty_name_list(&nlist);
 
 	}
-
+	clear_src_stack(&src_stack, 1);
 	scaffold->num_children = num_roots;
 }
 
 struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 {
-	char buf[1024];
-	char key[128], value[512];
+	char key[128];
 	char *s;
 
 	struct kw keyword;
@@ -470,9 +473,9 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 	LIST_INIT(all_root_list);
 
 	fseek(conff, 0, SEEK_SET);
-	while (s = fgets(buf, sizeof(buf), conff)) {
-		sscanf(buf, " %[^:]: %[^\t\n]", key, value);
-		trim_trailing_space(value);
+	while (s = fgets(main_buf, MAIN_BUF_SIZE, conff)) {
+		sscanf(main_buf, " %[^:]: %[^\t\n]", key, main_value);
+		trim_trailing_space(main_value);
 
 		/* Ignore the comment line */
 		if (key[0] == '#')
@@ -488,7 +491,7 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 				sizeof(*kw), kw_comparator);
 
 		if (kw) {
-			kw->action(value);
+			kw->action(main_value);
 		} else {
 			fprintf(stderr, "Invalid key '%s'\n", key);
 			exit(EINVAL);

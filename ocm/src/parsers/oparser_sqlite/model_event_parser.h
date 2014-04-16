@@ -110,7 +110,7 @@ struct oparser_event {
 };
 TAILQ_HEAD(oparser_event_q, oparser_event);
 
-void oparser_mae_parser_init();
+void oparser_mae_parser_init(sqlite3 *_db, char *read_buf, char *value_buf);
 
 void oparser_models_to_sqlite();
 void oparser_actions_to_sqlite();

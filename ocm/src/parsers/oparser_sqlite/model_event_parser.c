@@ -90,6 +90,8 @@ struct mae_metric_list metric_list;
 int is_user_event;
 uint32_t num_user_event;
 
+static char *main_buf;
+static char *main_value;
 
 struct mae_metric_comp {
 	char metric_name[128];
@@ -105,7 +107,7 @@ static enum mae_parser_obj {
 	MAE_OBJ_EVENT
 } objective;
 
-void oparser_mae_parser_init(sqlite3 *_db)
+void oparser_mae_parser_init(sqlite3 *_db, char *read_buf, char *value_buf)
 {
 	TAILQ_INIT(&model_q);
 	TAILQ_INIT(&action_q);
@@ -117,6 +119,9 @@ void oparser_mae_parser_init(sqlite3 *_db)
 	db = _db;
 	is_user_event = 0;
 	num_user_event = 0xF0000000;
+
+	main_buf = read_buf;
+	main_value = value_buf;
 }
 
 static void handle_model(char *value)
@@ -363,7 +368,8 @@ void _handle_components_uevent(char *value)
 			mid_s->metric_ids[i] = metricid;
 		}
 	} else {
-		char type[512], uids[512];
+		char type[512];
+		char *uids = main_buf;
 		int rc;
 		rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uids);
 		if (rc == 1) {
@@ -422,7 +428,8 @@ static void handle_components(char *value)
 		goto assign;
 	}
 
-	char type[512], uids[512];
+	char type[512];
+	char *uids = main_buf;
 	int rc;
 	rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uids);
 	if (rc == 1) {
@@ -577,8 +584,7 @@ static struct kw label_tbl[] = {
 
 void oparser_parse_model_event_conf(FILE *conf)
 {
-	char buf[512];
-	char key[128], value[256];
+	char key[128];
 	char *s;
 
 	struct kw keyword;
@@ -586,9 +592,9 @@ void oparser_parse_model_event_conf(FILE *conf)
 
 	fseek(conf, 0, SEEK_SET);
 
-	while (s = fgets(buf, sizeof(buf), conf)) {
-		sscanf(buf, " %[^:]: %[^\n]", key, value);
-		trim_trailing_space(value);
+	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		sscanf(main_buf, " %[^:]: %[^\n]", key, main_value);
+		trim_trailing_space(main_value);
 		/* Ignore the comment line */
 		if (key[0] == '#')
 			continue;
@@ -598,7 +604,7 @@ void oparser_parse_model_event_conf(FILE *conf)
 				sizeof(*kw), kw_comparator);
 
 		if (kw) {
-			kw->action(value);
+			kw->action(main_value);
 		} else {
 			fprintf(stderr, "Invalid key '%s'\n", key);
 			exit(EINVAL);

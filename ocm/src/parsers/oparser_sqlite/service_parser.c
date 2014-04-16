@@ -76,7 +76,10 @@ struct oparser_cmd *cmd;
 struct oparser_name_queue agg_host_list;
 struct oparser_name_queue baler_host_list;
 
-void oparser_service_conf_init(sqlite3 *_db)
+static char *main_buf;
+static char *main_value;
+
+void oparser_service_conf_init(sqlite3 *_db, char *read_buf, char *value_buf)
 {
 	db = _db;
 
@@ -89,6 +92,9 @@ void oparser_service_conf_init(sqlite3 *_db)
 	TAILQ_INIT(&host_queue);
 	TAILQ_INIT(&agg_host_list);
 	TAILQ_INIT(&baler_host_list);
+
+	main_buf = read_buf;
+	main_value = value_buf;
 }
 
 static void handle_hostname(char *value)
@@ -156,7 +162,12 @@ void process_agg_add(struct oparser_cmd_queue *queue, char *attrs_values,
 {
 	int num_added_hosts;
 	char *attrs, *key, *value;
-	char tmp_attr[512];
+	char *tmp_attr = malloc(MAIN_BUF_SIZE);
+	if (!tmp_attr) {
+		fprintf(stderr, "%s: %s: Out of memory\n",
+				__FILE__, __FUNCTION__);
+		exit(ENOMEM);
+	}
 	char *sets;
 	char *hosts;
 
@@ -214,6 +225,7 @@ void process_agg_add(struct oparser_cmd_queue *queue, char *attrs_values,
 		}
 		added_hname = TAILQ_NEXT(added_hname, entry);
 	}
+	free(tmp_attr);
 }
 
 void postprocess_agg_cmdlist(struct oparser_cmd_queue *queue)
@@ -253,21 +265,21 @@ void process_baler_hosts(struct oparser_cmd *hostcmd)
 	char *attrs_values = strdup(hostcmd->attrs_values);
 	int num_baler_hosts, num;
 	struct oparser_name_queue host_nqueue;
-	char key[16], value[512];
+	char key[16];
 	char tmp_attr[512];
 
 	uint32_t max_mtype_id;
 	oquery_max_metric_type_id(db, &max_mtype_id);
 	max_mtype_id++;
 
-	num = sscanf(attrs_values, "%[^:]:%s", key, value);
+	num = sscanf(attrs_values, "%[^:]:%s", key, main_value);
 	if (num != 2) {
 		fprintf(stderr, "Invalid attr:value '%s'. Expecting "
 				"'names:[hostnames]'", attrs_values);
 		exit(EINVAL);
 	}
 
-	num_baler_hosts = process_string_name(value, &host_nqueue, NULL, NULL);
+	num_baler_hosts = process_string_name(main_value, &host_nqueue, NULL, NULL);
 	hostcmd->attrs_values[0] = '\0';
 
 	char *stmt_s = "INSERT INTO metrics(name, metric_id, sampler, "
@@ -338,8 +350,7 @@ void oparser_service_conf_parser(FILE *_conf)
 {
 	conf = _conf;
 
-	char buf[1024];
-	char key[128], value[512], tmp[128];
+	char key[128], tmp[128];
 	char *s;
 	int num_leading_tabs;
 
@@ -348,10 +359,10 @@ void oparser_service_conf_parser(FILE *_conf)
 
 	fseek(conf, 0, SEEK_SET);
 
-	while (s = fgets(buf, sizeof(buf), conf)) {
-		sscanf(buf, "%[^:]: %[^\t\n]", tmp, value);
+	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		sscanf(main_buf, "%[^:]: %[^\t\n]", tmp, main_value);
 		num_leading_tabs = count_leading_tabs(tmp);
-		trim_trailing_space(value);
+		trim_trailing_space(main_value);
 		sscanf(tmp, " %s", key);
 
 		/* Ignore the comment line */
@@ -368,7 +379,7 @@ void oparser_service_conf_parser(FILE *_conf)
 					sizeof(*kw), kw_comparator);
 
 			if (kw) {
-				kw->action(value);
+				kw->action(main_value);
 			} else {
 				fprintf(stderr, "Invalid key '%s'\n", key);
 				exit(EINVAL);
@@ -384,14 +395,14 @@ void oparser_service_conf_parser(FILE *_conf)
 		} else if (num_leading_tabs == 3) {
 			if (strlen(cmd->attrs_values) == 0)
 				sprintf(cmd->attrs_values, "%s:%s",
-						key, value);
+						key, main_value);
 			else
 				sprintf(cmd->attrs_values, "%s;%s:%s",
-						cmd->attrs_values, key, value);
+						cmd->attrs_values, key, main_value);
 		} else {
 			fprintf(stderr, "(%s: %s). Exceed expected number of "
 					"leading tabs.\n",
-					key, value);
+					key, main_value);
 			exit(EPERM);
 		}
 	}

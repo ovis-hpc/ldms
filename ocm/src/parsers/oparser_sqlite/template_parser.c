@@ -100,7 +100,7 @@ int is_apply_on;
 static char *main_buf;
 static char *main_value;
 
-void oparser_template_parser_init(FILE *_log_fp)
+void oparser_template_parser_init(FILE *_log_fp, char *read_buf, char *value_buf)
 {
 	LIST_INIT(&all_tmpl_def_list);
 	LIST_INIT(&all_tmpl_list);
@@ -109,8 +109,8 @@ void oparser_template_parser_init(FILE *_log_fp)
 	is_apply_on = 0;
 	num_mtypes = 0;
 
-	main_buf = malloc(MAIN_BUF_SIZE);
-	main_value = malloc(MAIN_BUF_SIZE);
+	main_buf = read_buf;
+	main_value = value_buf;
 }
 
 struct template_def *find_tmpl_def(char *tmpl_name)
@@ -564,8 +564,6 @@ struct tmpl_list *oparser_parse_template(FILE *conf,
 			exit(EINVAL);
 		}
 	}
-	free(main_buf);
-	free(main_value);
 	return &all_tmpl_list;
 }
 

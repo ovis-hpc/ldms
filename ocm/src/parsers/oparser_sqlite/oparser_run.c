@@ -182,10 +182,12 @@ int main(int argc, char **argv) {
 	}
 
 	struct building_sqlite_table btable;
+	char *read_buf = malloc(MAIN_BUF_SIZE);
+	char *value_buf = malloc(MAIN_BUF_SIZE);
 
 	if (comp_path) {
 		oparser_open_file(comp_path, &comp_conf, "r");
-		oparser_component_parser_init(stderr);
+		oparser_component_parser_init(stderr, read_buf, value_buf);
 
 		struct oparser_scaffold *scaffold = NULL;
 		scaffold = oparser_parse_component_def(comp_conf);
@@ -208,7 +210,7 @@ int main(int argc, char **argv) {
 		if (tmpl_path) {
 			oparser_open_file(tmpl_path, &tmpl_conf, "r");
 
-			oparser_template_parser_init(stderr);
+			oparser_template_parser_init(stderr, read_buf, value_buf);
 			struct tmpl_list *all_tmpl_list = NULL;
 			all_tmpl_list = oparser_parse_template(tmpl_conf,
 								scaffold);
@@ -236,7 +238,7 @@ int main(int argc, char **argv) {
 		oparser_open_file(service_path, &service_conf, "r");
 
 
-		oparser_service_conf_init(ovis_db);
+		oparser_service_conf_init(ovis_db, read_buf, value_buf);
 		oparser_service_conf_parser(service_conf);
 		oparser_services_to_sqlite(ovis_db);
 		printf("Complete table 'services'\n");
@@ -251,7 +253,7 @@ int main(int argc, char **argv) {
 	if (mae_path) {
 		oparser_open_file(mae_path, &mae_conf, "r");
 
-		oparser_mae_parser_init(ovis_db);
+		oparser_mae_parser_init(ovis_db, read_buf, value_buf);
 		oparser_parse_model_event_conf(mae_conf);
 		oparser_models_to_sqlite();
 		printf("Complete table 'models'\n");

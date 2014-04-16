@@ -64,6 +64,8 @@
 #include <inttypes.h>
 #include <sqlite3.h>
 
+#define MAIN_BUF_SIZE (1024 * 1024)
+
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
 struct oparser_name {
@@ -154,7 +156,7 @@ struct oparser_comp {
 
 struct oparser_cmd {
 	char verb[64];
-	char attrs_values[2048];
+	char attrs_values[MAIN_BUF_SIZE];
 	TAILQ_ENTRY(oparser_cmd) entry;
 };
 TAILQ_HEAD(oparser_cmd_queue, oparser_cmd);
