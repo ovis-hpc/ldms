@@ -2227,11 +2227,14 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
+		ldms_log("Set %s with Generation# <%d> Stale.\n", hset->name, hset->gn);
 		goto out;
 	}
 
-	if (!ldms_is_set_consistent(hset->set))
+	if (!ldms_is_set_consistent(hset->set)) {
+		ldms_log("Set %s Inconsistent. Generation# = <%d>\n", hset->name, hset->gn);
 		goto out;
+	}
 
 	hset->gn = gn;
 
@@ -2361,10 +2364,14 @@ void do_host(struct hostspec *hs)
 			rc = do_connect(hs);
 		else
 			rc = do_passive_connect(hs);
-		if (rc)
+		if (rc) {
 			hs->conn_state = HOST_DISCONNECTED;
-		else
+			ldms_log("Host connection state for host %s changed from HOST_DISCONNECTED to HOST_DISCONNECTED.\n", hs->hostname);
+		}
+		else {
 			hs->conn_state = HOST_CONNECTED;
+			ldms_log("Host connection state for host %s changed from HOST_DISCONNECTED to HOST_CONNECTED.\n", hs->hostname);
+		}
 		break;
 	case HOST_CONNECTED:
 		if (!hs->x || !ldms_xprt_connected(hs->x)) {
@@ -2378,6 +2385,7 @@ void do_host(struct hostspec *hs)
 			 * the refcount is 0. Resetting hs->x here is OK. */
 			hs->x = 0;
 			hs->conn_state = HOST_DISCONNECTED;
+			ldms_log("Host Disconnect: Host connection state for host %s changed from HOST_CONNECTED to HOST_DISCONNECTED.\n", hs->hostname);
 		} else if ((hs->type != BRIDGING) && ((hs->standby == 0) || (hs->standby & saggs_mask)))
 			update_data(hs);
 		break;

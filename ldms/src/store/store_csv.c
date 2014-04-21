@@ -192,9 +192,11 @@ static int print_header(struct csv_store_handle *s_handle,
 		return EINVAL;
 	}
 
-	fprintf(fp, "#Time");
+	// Brandt split Time to Time_sec and Time_usec
+	fprintf(fp, "#Time_sec, Time_usec");
+	//fprintf(fp, "#Time");
 	int num_metrics = ldms_mvec_get_count(mvec);
-	
+
 	if (id_pos < 0) {
 		int i, rc;
 
@@ -331,8 +333,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 	if (s_handle->printheader)
 		print_header(s_handle, mvec);
-
-	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32, ts->sec, ts->usec);
+	// Brandt changed . to , for ncsa. Will make this a flag setting
+	fprintf(s_handle->file, "%"PRIu32",%06"PRIu32, ts->sec, ts->usec);
+	//fprintf(s_handle->file, "%"PRIu32".%06"PRIu32, ts->sec, ts->usec);
 
 	int num_metrics = ldms_mvec_get_count(mvec);
 	if (id_pos < 0){

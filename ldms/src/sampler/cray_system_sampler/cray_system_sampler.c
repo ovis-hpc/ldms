@@ -299,13 +299,32 @@ static int add_metrics_generic(int comp_id,
 					  &metric_table_loadavg,
 					  &LOADAVG_FILE, &l_f,
 					  comp_id, msglog);
+		if (rc != 0)
+			return rc;
+		if (l_f != NULL){
+			fclose(l_f);
+			l_f = NULL;
+		}
+
+		return rc;
+
 		break;
 	case NS_CURRENT_FREEMEM:
-		return add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
-					  NUM_CURRENT_FREEMEM_METRICS,
-					  &metric_table_current_freemem,
-					  &CURRENT_FREEMEM_FILE, &cf_f,
-					  comp_id, msglog);
+		rc = add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
+					NUM_CURRENT_FREEMEM_METRICS,
+					&metric_table_current_freemem,
+					&CURRENT_FREEMEM_FILE, &cf_f,
+					comp_id, msglog);
+
+		if (rc != 0)
+			return rc;
+		if (cf_f != NULL) {
+			fclose(cf_f);
+			cf_f = NULL;
+		}
+
+		return rc;
+
 		break;
 	case NS_PROCNETDEV:
 		rc = add_metrics_simple(set, PROCNETDEV_METRICS,

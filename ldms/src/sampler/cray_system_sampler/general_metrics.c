@@ -266,23 +266,41 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 	int j, rc;
 
 
-	if (!cf_f)
-		return 0;
+	/* Close and open each time */
+//	if (!cf_f)
+//		return 0;
+
+
+	if (cf_f)
+		close(cf_f);
+
+	if (CURRENT_FREEMEM_FILE != NULL){
+		cf_f = fopen(CURRENT_FREEMEM_FILE, "r");
+		if (!cf_f)
+			return 0;
+	}
+
 
 	found_metrics = 0;
-	fseek(cf_f, 0, SEEK_SET);
+//	fseek(cf_f, 0, SEEK_SET);
 	s = fgets(lbuf, sizeof(lbuf), cf_f);
 	if (s) {
 		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 		if (rc != 1) {
 			msglog("ERR: Issue reading the source file '%s'\n",
 							CURRENT_FREEMEM_FILE);
+			fclose(cf_f);
+			cf_f = 0;
 			rc = EINVAL;
 			return rc;
 		}
 		ldms_set_metric(metric_table_current_freemem[0], &v);
 		found_metrics++;
 	}
+
+
+	fclose(cf_f);
+	cf_f = 0;
 
 	if (found_metrics != NUM_CURRENT_FREEMEM_METRICS){
 		return EINVAL;
@@ -389,11 +407,21 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 	int vi[3];
 	int i, j, rc;
 
-	if (!l_f)
-		return 0;
+	/* open and close each time */
+	if (l_f)
+		close(l_f);
+
+	if (LOADAVG_FILE != NULL){
+		l_f = fopen(LOADAVG_FILE, "r");
+		if (!l_f)
+			return 0;
+	}
+
+//	if (!l_f)
+//		return 0;
 
 	found_metrics = 0;
-	fseek(l_f, 0, SEEK_SET);
+//	fseek(l_f, 0, SEEK_SET);
 	s = fgets(lbuf, sizeof(lbuf), l_f);
 	if (s) {
 		rc = sscanf(lbuf, "%f %f %f %d/%d %d\n",
@@ -401,6 +429,8 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		if (rc != 6) {
 			msglog("ERR: Issue reading the source file '%s'"
 					" (rc=%d)\n", LOADAVG_FILE, rc);
+			fclose(l_f);
+			l_f = NULL;
 			rc = EINVAL;
 			return rc;
 		}
@@ -413,6 +443,9 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		}
 		found_metrics=4;
 	}
+
+	fclose(l_f);
+	l_f = NULL;
 
 	if (found_metrics != NUM_LOADAVG_METRICS){
 		return EINVAL;
