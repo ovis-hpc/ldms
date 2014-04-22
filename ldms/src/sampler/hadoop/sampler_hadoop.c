@@ -154,7 +154,7 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 			return EINVAL;
 		}
 		*ptr = '\0';
-		total_mname_len = dlen + (ptr - buf) + 1; /* This includes '\0.' */
+		total_mname_len = dlen + (ptr - buf);
 
 		if (total_mname_len > MAX_LEN_HADOOP_MNAME) {
 			msglog("hadoop_%s: %s: metric name exceeds %d\n",
@@ -162,8 +162,8 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 			return EPERM;
 		}
 
-		snprintf(metricname, total_mname_len, "%s.%s", hdset->daemon, buf);
-		snprintf(type, strlen(ptr + 1) + 1, "%s", ptr + 1);
+		snprintf(metricname, total_mname_len + 2, "%s.%s", hdset->daemon, buf);
+		snprintf(type, strlen(ptr + 1), "%s", ptr + 1); /* Don't copy the newline character */
 
 		rc = ldms_get_metric_size(metricname,
 				ldms_str_to_type(type),
@@ -262,19 +262,19 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 	ldms_log_fn_t msglog = hdset->msglog;
 
 	tmp = strdup(data);
-	rctxt_name = strtok_r(tmp, ":", ptr);
+	rctxt_name = strtok_r(tmp, ":", &ptr);
 	char *value_s;
 
-	size_t base_len = strlen(hdset->daemon) + strlen(rctxt_name);
+	size_t base_len = strlen(rctxt_name);
 
-	while (metric_name = strtok_r(NULL, "=", ptr)) {
-		snprintf(buf, base_len + strlen(metric_name) + 1,  "%s.%s:%s",
-				hdset->daemon, rctxt_name, metric_name);
+	while (metric_name = strtok_r(NULL, "=", &ptr)) {
+		snprintf(buf, base_len + strlen(metric_name) + 2,  "%s:%s",
+						rctxt_name, metric_name);
 		m = str_map_get(hdset->map, buf);
 		if (!m)
 			continue;
 		type = ldms_get_metric_type(m);
-		value_s = strtok(NULL, ",");
+		value_s = strtok_r(NULL, ",", &ptr);
 		switch (type) {
 		case LDMS_V_S32:
 			value.v_s32 = strtol(value_s, NULL, 10);
