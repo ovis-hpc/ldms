@@ -59,14 +59,18 @@ static const char *get_type(void)
 static const char *get_doc(void)
 {
 	return  "OBJ_KEY_UINT32: The key is an unsigned 32b long.\n"
-		"                The comparator returns a - b.\n";
+		"                The comparator returns -1,0,1 for a <,=,> b respectively.\n";
 }
 
 static int uint32_comparator(obj_key_t a, obj_key_t b)
 {
 	assert(a->len == 4);
 	assert(b->len == 4);
-	return *(uint32_t *)&a->value[0] - *(uint32_t *)&b->value[0];
+	if (*(uint32_t*)a->value < *(uint32_t*)b->value)
+		return -1;
+	if (*(uint32_t*)a->value > *(uint32_t*)b->value)
+		return 1;
+	return 0;
 }
 
 static char sbuf[32];
