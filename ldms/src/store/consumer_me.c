@@ -54,6 +54,7 @@
 #include <errno.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <limits.h>
 #include <coll/idx.h>
 #include <zap/zap.h>
 #include "ldms.h"
@@ -222,15 +223,47 @@ static int connect_me()
 	struct addrinfo *ai;
 	int rc;
 	char p[16];
+	char resolved[HOST_NAME_MAX];
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_INET;    /* Allow IPv4 only */
+	hints.ai_socktype = 0;
+	hints.ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
+	hints.ai_protocol = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
+
 	sprintf(p, "%d", port);
-	rc = getaddrinfo(host, p, NULL, &ai);
+	rc = getaddrinfo(host, p, &hints, &ai);
 	if (rc) {
 		if (is_failed_before != ME_GETADDR) {
-			msglog("me: getaddrinfo error %d\n", rc);
+			msglog("me: getaddrinfo(%d): %s\n", rc, gai_strerror(rc));
 			is_failed_before = ME_GETADDR;
 		}
 		goto err;
 	}
+	while(ai) {
+		if (ai->ai_family == AF_INET) {
+			if (NULL == inet_ntop(ai->ai_family,
+				&((struct sockaddr_in *)ai->ai_addr)->sin_addr,
+					resolved, HOST_NAME_MAX)) {
+				msglog("me: resolving host %s\n", host);
+				perror("inet_ntop");
+			}
+			else {
+#ifdef DEBUG
+				msglog("me: Added host %s:%s\n", resolved, p);
+#endif // DEBUG
+				break; /* successs */
+			}
+		}
+		else {
+			msglog("ignoring host %s\n", resolved);
+		}
+		ai = ai->ai_next;
+	}
+
 
 	zap_err_t zerr;
 	zerr = zap_new(zap, &zep, me_zap_cb);

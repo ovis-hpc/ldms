@@ -65,6 +65,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <limits.h>
 
 #include <sys/queue.h>
 
@@ -408,9 +409,19 @@ void ocmd_add_peers()
 	char line[1024];
 	char host[128];
 	char port[16];
+	char resolved[HOST_NAME_MAX];
 	int n, rc;
 	struct addrinfo *ai;
 	char * comment;
+	struct addrinfo hints;
+	memset(&hints, 0, sizeof(struct addrinfo));
+	hints.ai_family = AF_INET;    /* Allow IPv4 only */
+	hints.ai_socktype = 0;
+	hints.ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG);
+	hints.ai_protocol = 0;
+	hints.ai_canonname = NULL;
+	hints.ai_addr = NULL;
+	hints.ai_next = NULL;
 	while (1) {
 		sline = fgets(line, 1024, f);
 		if (!sline)
@@ -421,12 +432,31 @@ void ocmd_add_peers()
 		n = sscanf(line, " %[^:]:%[0-9]", host, port);
 		if (n < 2)
 			continue;
-		rc = getaddrinfo(host, port, NULL, &ai);
+		rc = getaddrinfo(host, port, &hints, &ai);
 		if (rc) {
 			ocmd_log("ERROR: getaddrinfo(%d) -- %s. host: %s\n", rc, gai_strerror(rc), host);
 			_exit(-1);
 		}
-		ocm_add_receiver(ocm, ai->ai_addr, ai->ai_addrlen);
+		while(ai) {
+			if (ai->ai_family == AF_INET) {
+				if (NULL == inet_ntop(ai->ai_family,
+					&((struct sockaddr_in *)ai->ai_addr)->sin_addr,
+					resolved, HOST_NAME_MAX)) {
+					ocmd_log("ERROR: resolving host %s:%s\n", host);
+					perror("inet_ntop");
+				}
+				else if (ocm_add_receiver(ocm, ai->ai_addr, ai->ai_addrlen)==0) {
+#ifdef DEBUG
+					ocmd_log("Added reciever %s:%s\n", resolved,port);
+#endif // DEBUG
+					break; /* successs */
+				}
+			}
+			else {
+				ocmd_log("ignoring host %s\n", resolved);
+			}
+			ai = ai->ai_next;
+		}
 		freeaddrinfo(ai);
 	}
 	fclose(f);
