@@ -77,7 +77,7 @@ static pthread_mutex_t cfg_lock;
 
 static char *host;
 static char *xprt;
-static int port;
+static char *port;
 static int kmd_is_connected;
 
 #pragma pack(4)
@@ -119,10 +119,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto einval;
 	xprt = strdup(value);
 
-	char *port_s = av_value(avl, "port");
-	if (!port_s)
+	value = av_value(avl, "port");
+	if (!value)
 		goto einval;
-	port = atoi(port_s);
+	port = strdup(value);
 	pthread_mutex_unlock(&cfg_lock);
 	return 0;
 einval:
@@ -210,40 +210,37 @@ static int connect_kmd(struct me_consumer_KMD *kmdi)
 		return -1;;
 	}
 
+	int rc;
 	struct hostent *h;
 	struct sockaddr_in sin;
 	static int is_failed = 0;
 
-	h = gethostbyname(host);
-	if (!h) {
-		msglog("kmd: Error '%d' resolving hostname '%s'.\n",
-				host, h_errno);
-		zap_close(kmdi->zep);
-		return -1;
+	struct addrinfo *ai;
+	struct addrinfo hints;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+
+	rc = getaddrinfo(host, port, &hints, &ai);
+	if (rc) {
+		msglog("kmd: %s. %s:%s\n", gai_strerror(rc), host, port);
+		return rc;
 	}
 
-	if (h->h_addrtype != AF_INET) {
-		msglog("kmd: Hostname '%s' not supported.\n", host);
-		zap_close(kmdi->zep);
-		return -1;
-	}
-
-	memset(&sin, 0, sizeof(sin));
-	sin.sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
-	sin.sin_family = h->h_addrtype;
-	sin.sin_port = htons(port);
-
-	zerr = zap_connect(kmdi->zep, (struct sockaddr *)&sin, sizeof(sin));
+	zerr = zap_connect(kmdi->zep, ai->ai_addr, ai->ai_addrlen);
 	if (zerr) {
 		if (!is_failed)
 			msglog("kmd: Failed to connect to Komondor. "
-					"Error '%d'.\n", zerr);
+				"Error: '%s'.\n", zap_err_str(zerr));
 		is_failed = 1;
 		zap_close(kmdi->zep);
+		freeaddrinfo(ai);
 		return zerr;
 	}
 	is_failed = 0;
 	kmd_is_connected = 1;
+	freeaddrinfo(ai);
 	return 0;
 }
 
