@@ -182,7 +182,7 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	pthread_mutex_lock(&pi->lock);
 	int rc = pi->plugin->config(kw_list, av_list);
 	if (rc) {
-		ldms_log("Plugin '%s' configure error", plugin_name);
+		ldms_log("Plugin '%s' configure error\n", plugin_name);
 		pthread_mutex_unlock(&pi->lock);
 		return;
 	}
