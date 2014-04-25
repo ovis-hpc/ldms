@@ -89,3 +89,10 @@ libmodel_detect_input_type_la_LIBADD = $(COMMON_LIBADD) -lm
 libmodel_detect_input_type_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libmodel_detect_input_type.la
 endif
+
+if ENABLE_SEVERITY_LEVEL
+libmodel_severity_level_la_SOURCES = model_severity_level.c
+libmodel_severity_level_la_LIBADD = $(COMMON_LIBADD) -lm
+libmodel_severity_level_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_severity_level.la
+endif
