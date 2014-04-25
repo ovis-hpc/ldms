@@ -80,7 +80,7 @@ endif
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c
-libsysclassib_la_LIBADD = $(COMMON_LIBADD)
+libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad
 lib_LTLIBRARIES += libsysclassib.la
 endif
 

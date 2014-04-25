@@ -120,6 +120,30 @@ dnl Reset LIBS variable.
 LIBS=""
 
 dnl Checks for libraries
+if test -z "$ENABLE_SYSCLASSIB_TRUE"
+then
+AC_CHECK_LIB(ibmad, mad_rpc_open_port, [],
+    AC_MSG_ERROR([mad_rpc_open_port() function not found. sysclassib sampler
+		  requires libibmad.]))
+dnl Reset LIBS variable.
+LIBS=""
+
+AC_CHECK_HEADER(infiniband/mad.h, [],
+    AC_MSG_ERROR([<infiniband/mad.h> not found.  Is libibmad-dev or
+		  libibmad-devel installed?]))
+
+AC_CHECK_LIB(ibumad, umad_get_port, [],
+    AC_MSG_ERROR([umad_get_port() function not found. sysclassib sampler
+		  requires libibumad.]))
+dnl Reset LIBS variable.
+LIBS=""
+
+AC_CHECK_HEADER(infiniband/umad.h, [],
+    AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
+		  libibumad-devel installed?]))
+fi
+
+dnl Checks for libraries
 if test -z "$ENABLE_RDMA_TRUE"
 then
 AC_CHECK_LIB(ibverbs, ibv_get_device_list, [],
