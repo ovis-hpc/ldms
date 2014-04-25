@@ -175,9 +175,11 @@ int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
 		char *_ptr;
 		char *av = strtok_r(avs, ";", &_ptr);
 		while (av) {
-			char *_ptr2;
-			char *a = strtok_r(av, ":", &_ptr2);
-			char *v = strtok_r(NULL, ":", &_ptr2);
+			char *tmp, *a, *v;
+			tmp = strchr(av, ':');
+			*tmp = '\0';
+			a = av;
+			v = tmp + 1;
 			ocm_value_set_s(ov, v);
 			rc = ocm_cfg_buff_add_av(buff, a, ov);
 			if (rc) {
@@ -546,9 +548,11 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 	char *_ptr;
 	char *av = strtok_r(avs, ";", &_ptr);
 	while (av) {
-		char *_ptr2;
-		char *a = strtok_r(av, ":", &_ptr2);
-		char *v = strtok_r(NULL, ":", &_ptr2);
+		char *tmp, *a, *v;
+		tmp = strchr(av, ':');
+		*tmp = '\0';
+		a = av;
+		v = tmp + 1;
 
 		if (strcmp(a, "interval") == 0) {
 			interval = strtoull(v, NULL, 10);
@@ -648,9 +652,11 @@ int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
 		char *_ptr;
 		char *av = strtok_r(avs, ";", &_ptr);
 		while (av) {
-			char *_ptr2;
-			char *a = strtok_r(av, ":", &_ptr2);
-			char *v = strtok_r(NULL, ":", &_ptr2);
+			char *tmp, *a, *v;
+			tmp = strchr(av, ':');
+			*tmp = '\0';
+			a = av;
+			v = tmp + 1;
 			ocm_value_set_s(ov, v);
 			rc = ocm_cfg_buff_add_av(buff, a, ov);
 			if (rc) {
