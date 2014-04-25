@@ -218,6 +218,13 @@ void *send_input_from_file(void *arg)
 			msg.tag = htonl(ME_NO_DATA);
 		} else {
 			s = fgets(buff, sizeof(buff), f);
+
+			if (!s) {
+				count--;
+				fseek(f, 0, SEEK_SET);
+				continue;
+			}
+
 			msg.value = atof(buff);
 			msg.tag = htonl(ME_INPUT_DATA);
 		}
@@ -238,9 +245,6 @@ void *send_input_from_file(void *arg)
 		}
 
 		sleep(interval);
-
-		if (!s)
-			fseek(f, 0, SEEK_SET);
 	}
 
 	return NULL;

@@ -1587,10 +1587,8 @@ int main(int argc, char **argv) {
 	av_list = av_new(128);
 	kw_list = av_new(128);
 
-#ifdef DEBUG
 	if (setup_control(sockname))
 		me_cleanup(4);
-#endif
 
 	char *xprt = strtok(transport, ":");
 	char *port_s = strtok(NULL, ":");
