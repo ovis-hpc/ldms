@@ -126,7 +126,7 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 
 	char *s, *ptr;
 	char buf[MAX_LEN_HADOOP_MNAME + MAX_LEN_HADOOP_TYPE];
-	char metricname[MAX_LEN_HADOOP_MNAME];
+	char metricname[MAX_LEN_HADOOP_MNAME], short_mname[MAX_LEN_HADOOP_MNAME];
 	char type[MAX_LEN_HADOOP_TYPE];
 	size_t dlen = strlen(hdset->daemon);
 
@@ -206,15 +206,17 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 						hdset->setname, buf);
 			return EINVAL;
 		}
+		*ptr = '\0';
+		total_mname_len = dlen + (ptr - buf);
 
-		if (ptr - buf + 1 > MAX_LEN_HADOOP_MNAME) {
+		if (total_mname_len > MAX_LEN_HADOOP_MNAME) {
 			msglog("hadoop_%s: %s: metric name exceeds %d\n",
 					hdset->setname, buf, MAX_LEN_HADOOP_MNAME);
 			return EPERM;
 		}
 
-		snprintf(metricname, ptr - buf + 1, "%s", buf);
-		snprintf(type, strlen(ptr + 1), "%s", ptr + 1);
+		snprintf(metricname, total_mname_len + 2, "%s.%s", hdset->daemon, buf);
+		snprintf(type, strlen(ptr + 1), "%s", ptr + 1); /* Don't copy the newline character */
 
 		m = ldms_add_metric(hdset->set, metricname,
 					ldms_str_to_type(type));
@@ -224,6 +226,16 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 		}
 
 		ldms_set_user_data(m, udata);
+
+		/*
+		 * Re-use the metricname variable.
+		 *
+		 * Unlike the metric names in the metric set, the metric names
+		 * in the str_map exclude the daemon name. For example,
+		 * In metric set: 'namenode.jvm.JvmMetrics: MemNonHeapUsedM'
+		 * In str_map: 'jvm.JvmMetrics: MemNonHeapUsedM'
+		 */
+		snprintf(metricname, ptr - buf + 1, "%s", buf);
 		rc = str_map_insert(hdset->map, metricname,
 				(uint64_t)(unsigned char *)m);
 		if (rc)
