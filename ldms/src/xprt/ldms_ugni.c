@@ -77,7 +77,7 @@
 static struct ldms_ugni_xprt ugni_gxp;
 int first;
 uint8_t ptag;
-int cookie;
+uint32_t cookie;
 int modes = 0;
 int device_id = 0;
 int cq_entries = 128;
@@ -115,10 +115,19 @@ static void release_buf_event(struct ldms_ugni_xprt *r);
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r);
 
 #define UGNI_MAX_OUTSTANDING_BTE 8192
-static gni_return_t ugni_job_setup(uint8_t ptag, uint32_t cookie)
+static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 {
 	gni_job_limits_t limits;
 	gni_return_t grc;
+
+        /* ptag=0 will be passed if XC30. Call GNI_GetPtag(0, cookie, &ptag) to return ptag associated with cookie */
+	if (IS_ARIES) {
+        	if (!ptag) {
+                	grc = GNI_GetPtag(0, cookie, ptag);
+	                if (grc)
+	                        goto err;
+	        }
+	}
 
 	/* Do not apply any resource limits */
 	limits.mdd_limit = GNI_JOB_INVALID_LIMIT;
@@ -138,6 +147,8 @@ static gni_return_t ugni_job_setup(uint8_t ptag, uint32_t cookie)
 	pthread_mutex_lock(&ugni_lock);
 	grc = GNI_ConfigureJob(0, 0, ptag, cookie, &limits);
 	pthread_mutex_unlock(&ugni_lock);
+	return grc;
+ err:
 	return grc;
 }
 
@@ -200,17 +211,26 @@ static void free_desc(struct ugni_desc *desc)
 	pthread_mutex_unlock(&desc_list_lock);
 }
 
-static gni_return_t ugni_dom_init(uint8_t ptag, uint32_t cookie, uint32_t inst_id,
+static gni_return_t ugni_dom_init(uint8_t *ptag, uint32_t cookie, uint32_t inst_id,
 				  struct ldms_ugni_xprt *gxp)
 {
 	gni_return_t grc;
 
-	if (!ptag)
-		return GNI_RC_INVALID_PARAM;
+	if (IS_GEMINI) {
+		if (!ptag)
+			return GNI_RC_INVALID_PARAM;
+	}
 
 	pthread_mutex_lock(&ugni_lock);
-	grc = GNI_CdmCreate(inst_id, ptag, cookie, GNI_CDM_MODE_FMA_SHARED,
+	if (IS_GEMINI)
+		grc = GNI_CdmCreate(inst_id, ptag, cookie, GNI_CDM_MODE_FMA_SHARED,
 			    &gxp->dom.cdm);
+	else if (IS_ARIES)
+		grc = GNI_CdmCreate(inst_id, GNI_FIND_ALLOC_PTAG, cookie, GNI_CDM_MODE_FMA_SHARED,
+                            &gxp->dom.cdm);
+	else
+		goto err;
+
 	if (grc)
 		goto err;
 
@@ -218,7 +238,8 @@ static gni_return_t ugni_dom_init(uint8_t ptag, uint32_t cookie, uint32_t inst_i
 	if (grc != GNI_RC_SUCCESS)
 		goto err;
 
-	gxp->dom.info.ptag = ptag;
+	if (IS_GEMINI)
+		gxp->dom.info.ptag = ptag;
 	gxp->dom.info.cookie = cookie;
 	gxp->dom.info.inst_id = inst_id;
 
@@ -302,13 +323,13 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	struct sockaddr_storage ss;
 	int cq_depth;
-	int rc;
 	char *cq_depth_s;
+	int rc;
+	gni_return_t grc;
 	int epfd;
 	int epcount;
 	int fdcnt;
 	struct epoll_event event;
-	gni_return_t grc;
 
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (gxp->sock < 0)
@@ -962,12 +983,12 @@ static int init_once(ldms_log_fn_t log_fn)
 	uint32_t cookie = 0;
 	char* ptag_str = NULL;
 	char* cookie_str = NULL;
+	uid_t euid = 0;
 	char *errpath = NULL;
 	char *rc_setup_errpath = NULL;
 	char *rc_init_errpath = NULL;
 	FILE *rcsfp = NULL;
 	FILE *rcifp = NULL;
-	uid_t euid = 0;
 
 	evthread_use_pthreads();
 	pthread_mutex_init(&ugni_list_lock, 0);
@@ -993,13 +1014,15 @@ static int init_once(ldms_log_fn_t log_fn)
 	if (rc)
 		goto err_2;
 
-	ptag_str = getenv("LDMS_UGNI_PTAG");
-	if (!ptag_str) {
-		rc = EINVAL;
-		log_fn("Missing LDMS_UGNI_PTAG\n");
-		goto err_3;
+	if (IS_GEMINI) {
+		ptag_str = getenv("LDMS_UGNI_PTAG");
+		if (!ptag_str) {
+			rc = EINVAL;
+			log_fn("Missing LDMS_UGNI_PTAG\n");
+			goto err_3;
+		}
+		ptag = atoi(ptag_str);
 	}
-	ptag = atoi(ptag_str);
 
 	cookie_str = getenv("LDMS_UGNI_COOKIE");
 	if (!cookie_str) {
@@ -1045,22 +1068,24 @@ static int init_once(ldms_log_fn_t log_fn)
 	}
 
 	rc = 0;
-	euid = geteuid();
-	if ((int) euid == 0){
-		rc = ugni_job_setup(ptag, cookie);
-		if (rc != GNI_RC_SUCCESS)
-			log_fn("ugni_job_setup failed %d\n",rc);
-		if (rcsfp) {
-			fprintf(rcsfp, "%d\n", rc);
-			fflush(rcsfp);
+	if (IS_GEMINI) {
+		euid = geteuid();
+		if ((int) euid == 0){
+			rc = ugni_job_setup(&ptag, cookie);
+			if (rc != GNI_RC_SUCCESS)
+				log_fn("ugni_job_setup failed %d\n",rc);
+			if (rcsfp) {
+				fprintf(rcsfp, "%d\n", rc);
+				fflush(rcsfp);
+			}
 		}
+		if (rcsfp)
+			fclose(rcsfp);
+		rcsfp = NULL;
 	}
-	if (rcsfp)
-		fclose(rcsfp);
-	rcsfp = NULL;
 
-	if (((int) euid != 0) || rc == GNI_RC_SUCCESS ) {
-		rc = ugni_dom_init(ptag, cookie, getpid(), &ugni_gxp);
+	if (((int) euid != 0) || rc == GNI_RC_SUCCESS || IS_ARIES ) {
+		rc = ugni_dom_init(&ptag, cookie, getpid(), &ugni_gxp);
 		if (rc != GNI_RC_SUCCESS) {
 			log_fn("ugni_dom_init failed %d\n",rc);
 		}
