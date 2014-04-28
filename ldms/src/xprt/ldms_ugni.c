@@ -71,9 +71,11 @@
 #include "ldms_ugni.h"
 #include "mmalloc/mmalloc.h"
 
+#define VERSION_FILE "/proc/version"
 /* Convenience macro for logging errors */
 #define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }
 
+static char *verfile = VERSION_FILE;
 static struct ldms_ugni_xprt ugni_gxp;
 int first;
 uint8_t ptag;
@@ -81,6 +83,8 @@ uint32_t cookie;
 int modes = 0;
 int device_id = 0;
 int cq_entries = 128;
+int IS_GEMINI=FALSE;
+int IS_ARIES=FALSE;
 static int reg_count;
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
@@ -989,7 +993,13 @@ static int init_once(ldms_log_fn_t log_fn)
 	char *rc_init_errpath = NULL;
 	FILE *rcsfp = NULL;
 	FILE *rcifp = NULL;
+	FILE *vfp = NULL;
 
+	vfp = fopen(verfile, "r");
+	if (strstr(vfp, cray_gem) != NULL)
+		IS_GEMINI = TRUE;
+	if (strstr(vfp, cray_ari) != NULL)
+		IS_ARIES = TRUE;
 	evthread_use_pthreads();
 	pthread_mutex_init(&ugni_list_lock, 0);
 	pthread_mutex_init(&desc_list_lock, 0);
