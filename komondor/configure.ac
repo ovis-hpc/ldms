@@ -8,6 +8,8 @@ AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE([-Wno-portability])
 AM_PROG_LIBTOOL
 
+AM_PATH_PYTHON(2.6)
+
 dnl Other libraries
 
 AM_CONDITIONAL([ENABLE_OVIS_LIB], [true])
@@ -60,6 +62,8 @@ AC_CONFIG_FILES([Makefile
 		 src/Makefile
 		 src/test/Makefile
 		 src/store/Makefile
+		 python/Makefile
+		 python/komondor/Makefile
 		 ])
 AC_OUTPUT
 
