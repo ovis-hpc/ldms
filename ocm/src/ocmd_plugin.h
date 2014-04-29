@@ -93,6 +93,7 @@ struct ocmd_plugin {
 	 * ::ocm_cfg_buff_add_cmd_as_av().
 	 *
 	 * \returns 0 on success.
+	 * \returns ENOENT if there is no configuration for the key.
 	 * \returns Error code on error.
 	 */
 	int (*get_config)(ocmd_plugin_t p, const char *key, struct ocm_cfg_buff *buff);

@@ -251,7 +251,7 @@ void handle_cfg_request(struct ocm_event *e)
 	sem_post(&req_sem);
 }
 
-int ocmd_ocm_cb(struct ocm_event *e)
+void ocmd_ocm_cb(struct ocm_event *e)
 {
 	switch (e->type) {
 	case OCM_EVENT_CFG_REQUESTED:
