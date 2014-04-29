@@ -1000,6 +1000,8 @@ static int init_once(ldms_log_fn_t log_fn)
 		IS_GEMINI = TRUE;
 	if (strstr(vfp, cray_ari) != NULL)
 		IS_ARIES = TRUE;
+	fclose (vfp);
+	vfp = NULL;
 	evthread_use_pthreads();
 	pthread_mutex_init(&ugni_list_lock, 0);
 	pthread_mutex_init(&desc_list_lock, 0);
