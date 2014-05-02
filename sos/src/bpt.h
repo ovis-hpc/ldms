@@ -91,14 +91,14 @@ typedef struct bpt_udata {
 typedef struct bpt_s {
 	size_t order;		/* order of the tree */
 	ods_t ods;		/* The ods that contains the tree */
-	bpt_node_t root;	/* The root of the tree */
+	obj_ref_t root_ref;	/* The root of the tree */
 	obj_idx_compare_fn_t comparator;
 } *bpt_t;
 
 typedef struct bpt_iter {
 	obj_idx_t idx;
 	int ent;
-	bpt_node_t node;
+	obj_ref_t node_ref;
 } *bpt_iter_t;
 
 #define BPT_SIGNATURE "BTREE0100"

@@ -90,7 +90,8 @@ void print_node(obj_idx_t idx, int ent, bpt_node_t n, int indent)
 void print_tree(obj_idx_t idx)
 {
 	bpt_t t = idx->priv;
-	print_node(idx, 0, t->root, 0);
+	bpt_node_t node = ods_obj_ref_to_ptr(t->ods, t->root_ref);
+	print_node(idx, 0, node, 0);
 }
 
 void iter_tree(obj_idx_t idx)
@@ -231,9 +232,11 @@ int main(int argc, char *argv[])
 
 	/* Delete an interior key until the tree is empty */
 	bpt_t t = idx->priv;
-	while (t->root) {
-		int cnt = t->root->count >> 1;
-		obj_ref_t key_ref = t->root->entries[cnt].key;
+	bpt_node_t root;
+	while (t->root_ref) {
+		root = ods_obj_ref_to_ptr(t->ods, t->root_ref);
+		int cnt = root->count >> 1;
+		obj_ref_t key_ref = root->entries[cnt].key;
 		obj_key_t k = ods_obj_ref_to_ptr(t->ods, key_ref);
 		printf("delete %s\n", obj_key_to_str(idx, k));
 		ref = obj_idx_delete(idx, k);
