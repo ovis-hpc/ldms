@@ -502,7 +502,6 @@ err:
 	return rc;
 }
 
-#ifdef DEBUG
 int process_ls_plugins(int fd,
 		       struct sockaddr *sa, ssize_t sa_len,
 		       char *command)
@@ -1082,7 +1081,6 @@ int setup_control(char *sockname)
 	}
 	return 0;
 }
-#endif
 
 /* --- configure --- */
 
