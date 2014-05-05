@@ -241,6 +241,9 @@ int ods_remap(ods_t ods)
 	ods->obj_sz = sb.st_size;
 	ods->obj = obj_map;
 	ods->obj_gen = ods->obj->gen;
+
+	ods_commit(ods, ODS_COMMIT_SYNC);
+
 	return 0;
  out:
 	return rc;
