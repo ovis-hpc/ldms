@@ -314,17 +314,19 @@ int main(int argc, char *argv[])
 	short port_no = LDMS_DEFAULT_PORT;
 	int op;
 	int i;
-	char *xprt = "local";
+	char *xprt = "sock";
 	int waitsecs = 10;
 	struct timespec ts;
+
+	/* If no arguments are given, print usage. */
+	if (argc == 1)
+		usage(argv);
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'h':
 			hostname = strdup(optarg);
-			if (strcmp(xprt, "local")==0)
-				xprt = "sock";
 			break;
 		case 'p':
 			port_no = atoi(optarg);
@@ -354,9 +356,7 @@ int main(int argc, char *argv[])
 			usage(argv);
 		}
 	}
-	/* If they specify a host name change the default transport to socket */
-	if (0 != strcmp(hostname, "localhost") && 0 == strcmp(xprt, "local"))
-		xprt = "sock";
+
 	h = gethostbyname(hostname);
 	if (!h) {
 		herror(argv[0]);
