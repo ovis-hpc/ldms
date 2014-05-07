@@ -206,6 +206,14 @@ void cleanup(int x)
 	if (ldms)
 		ldms_release_xprt(ldms);
 
+	/* Destroy all store instances */
+	struct ldmsd_store_policy *sp;
+	pthread_mutex_lock(&sp_list_lock);
+	LIST_FOREACH(sp, &sp_list, link) {
+		sp->si->store_engine->destroy(sp->si);
+		sp->si = NULL;
+	}
+	pthread_mutex_unlock(&sp_list_lock);
 	exit(x);
 }
 
