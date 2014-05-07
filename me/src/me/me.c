@@ -114,6 +114,7 @@ void me_cleanup(int x)
 	if (sockname && bind_succeeded)
 		unlink(sockname);
 
+	close_all_store();
 	exit(x);
 }
 

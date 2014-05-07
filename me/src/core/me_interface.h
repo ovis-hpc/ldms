@@ -175,6 +175,8 @@ LIST_HEAD(store_list, me_store);
  */
 void add_store(struct me_store *strg);
 
+void close_all_store();
+
 void *evaluate_complete_consumer_cb(void *_consumer);
 
 void *evaluate_complete_store_cb(void *_store);

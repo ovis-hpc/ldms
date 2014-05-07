@@ -83,7 +83,7 @@ consumer_list_t get_consumer_list()
 	return &consumer_list;
 }
 
-pthread_mutex_t store_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t store_list_lock = PTHREAD_MUTEX_INITIALIZER;
 struct store_list store_list;
 
 store_list_t get_store_list()
@@ -100,9 +100,23 @@ void add_consumer(struct me_consumer *csm)
 
 void add_store(struct me_store *strg)
 {
-	pthread_mutex_lock(&store_lock);
+	pthread_mutex_lock(&store_list_lock);
 	LIST_INSERT_HEAD(&store_list, strg, entry);
-	pthread_mutex_unlock(&store_lock);
+	pthread_mutex_unlock(&store_list_lock);
+}
+
+void close_all_store()
+{
+	struct me_store *store;
+	pthread_mutex_lock(&store_list_lock);
+	store = LIST_FIRST(&store_list);
+	while (store) {
+		LIST_REMOVE(store, entry);
+		store->flush_store(store);
+		store->destroy_store(store);
+		store = LIST_FIRST(&store_list);
+	}
+	pthread_mutex_unlock(&store_list_lock);
 }
 
 void close_interface_plugin(me_interface_plugin_t intf_pi)
