@@ -59,6 +59,17 @@
 #include "component_parser.h"
 #include "oparser_util.h"
 
+enum {
+	CNAME_IDX = 1,
+	CTYPE_IDX,
+	CIDENTIFIER_IDX,
+	CCOMP_IDX,
+	CPARENT_IDX,
+	CGIF_PATH_IDX,
+	CVISIBLE_IDX,
+	CNUM_IDX,
+};
+
 /**
  * \brief Get the comma-separated string of chrildren comp id
  * \param   children_s   A allocated string
@@ -118,14 +129,14 @@ int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
 	struct comp_array *carray;
 
 	if (comp->name)
-		oparser_bind_text(db, stmt, 1, comp->name, __FUNCTION__);
+		oparser_bind_text(db, stmt, CNAME_IDX, comp->name, __FUNCTION__);
 	else
-		oparser_bind_text(db, stmt, 1, comp->comp_type->type,
+		oparser_bind_text(db, stmt, CNAME_IDX, comp->comp_type->type,
 						__FUNCTION__);
 
-	oparser_bind_text(db, stmt, 2, comp->comp_type->type, __FUNCTION__);
-	oparser_bind_text(db, stmt, 3, comp->uid, __FUNCTION__);
-	oparser_bind_int(db, stmt, 4, comp->comp_id, __FUNCTION__);
+	oparser_bind_text(db, stmt, CTYPE_IDX, comp->comp_type->type, __FUNCTION__);
+	oparser_bind_text(db, stmt, CIDENTIFIER_IDX, comp->uid, __FUNCTION__);
+	oparser_bind_int(db, stmt, CCOMP_IDX, comp->comp_id, __FUNCTION__);
 
 	if (comp->num_ptypes) {
 		int num = 0;
@@ -143,17 +154,19 @@ int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
 				num++;
 			}
 		}
-		oparser_bind_text(db, stmt, 5, parents, __FUNCTION__);
+		oparser_bind_text(db, stmt, CPARENT_IDX, parents, __FUNCTION__);
 	} else {
-		oparser_bind_null(db, stmt, 5, __FUNCTION__);
+		oparser_bind_null(db, stmt, CPARENT_IDX, __FUNCTION__);
 	}
 
 	if (comp->comp_type->gif_path) {
-		oparser_bind_text(db, stmt, 6, comp->comp_type->gif_path,
+		oparser_bind_text(db, stmt, CGIF_PATH_IDX, comp->comp_type->gif_path,
 							__FUNCTION__);
 	} else {
-		oparser_bind_null(db, stmt, 6, __FUNCTION__);
+		oparser_bind_null(db, stmt, CGIF_PATH_IDX, __FUNCTION__);
 	}
+
+	oparser_bind_int(db, stmt, CVISIBLE_IDX, comp->comp_type->visible, __FUNCTION__);
 
 	int i;
 	struct oparser_comp *child;
@@ -181,20 +194,20 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 		 "identifier	TEXT		NOT NULL," \
 		 "comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
 		 "parent_id	TEXT," \
-		 "gif_path	TEXT);";
+		 "gif_path	TEXT," \
+		 "visible	INTEGER);";
 
 	char *index_stmt = "CREATE INDEX components_idx ON components(name,type,identifier);";
 	create_table(stmt_s, index_stmt, db);
 
-	stmt_s = "INSERT INTO components(name, type, identifier, comp_id, parent_id, gif_path) " \
-			"VALUES(@vname, @vtype, @videntifier, @vcomp_id, @vpid, @gifpath)";
+	stmt_s = "INSERT INTO components(name, type, identifier, comp_id, parent_id, gif_path, visible) " \
+			"VALUES(@vname, @vtype, @videntifier, @vcomp_id, @vpid, @gifpath, @visible)";
 
 	sqlite3_stmt *stmt;
 	char *sqlite_err = 0;
-	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
-					(const char **)&sqlite_err);
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n",__FUNCTION__, sqlite_err);
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
 		exit(rc);
 	}
 

@@ -68,6 +68,9 @@
 
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
+#define TRUE 1
+#define FALSE 0
+
 struct oparser_name {
 	char *name;
 	TAILQ_ENTRY(oparser_name) entry;
@@ -96,6 +99,7 @@ LIST_HEAD(mtype_list, metric_type);
 struct oparser_comp_type {
 	char *type; /* type */
 	char gif_path[PATH_MAX]; /* path to the image */
+	int visible; /* visibility on Web GUI. The value is either TRUE or FALSE */
 	struct oparser_comp_list clist; /* list of all components of the type */
 	int num_comp; /* Number of components of the type */
 	struct mtype_list mtype_list; /* List of metric types that measure the comp type performace */

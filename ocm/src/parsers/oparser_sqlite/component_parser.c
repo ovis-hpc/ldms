@@ -148,6 +148,7 @@ struct oparser_comp_type *new_comp_type(char *type)
 		exit(ENOMEM);
 	}
 	comp_type->type = strdup(type);
+	comp_type->visible = TRUE;
 	LIST_INIT(&comp_type->clist);
 	LIST_INIT(&comp_type->mtype_list);
 	return comp_type;
@@ -180,6 +181,23 @@ static void handle_type(char *value)
 static void handle_gif_path(char *value)
 {
 	sprintf(curr_ctype->gif_path, "%s", value);
+}
+
+static void handle_visible(char *value)
+{
+	if ((0 == strcmp(value, "true")) ||
+			(0 == strcmp(value, "True")) ||
+			(0 == strcmp(value, "TRUE"))) {
+		curr_ctype->visible = TRUE;
+	} else if ((0 == strcmp(value, "false")) ||
+			(0 == strcmp(value, "False")) ||
+			(0 == strcmp(value, "FALSE"))) {
+		curr_ctype->visible = FALSE;
+	} else {
+		fprintf(stderr, "comp_type '%s': Invalid visibility "
+				"flag '%s'", curr_ctype->type, value);
+		exit(EINVAL);
+	}
 }
 
 static void handle_give_name(char *value)
@@ -285,6 +303,7 @@ static struct kw label_tbl[] = {
 	{ "identifiers", handle_identifiers },
 	{ "names", handle_names },
 	{ "type", handle_type },
+	{ "visible", handle_visible },
 };
 
 void clear_src_stack(struct src_stack *srcq, int level)
@@ -368,22 +387,26 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 	scaffold->num_nodes = num_components;
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conff)) {
+		/* Ignore the comment line */
+		if (main_buf[0] == '#')
+			continue;
+
 		is_leaf = 0;
-		/* Discard the line name_map */
+		/* Discard the line component_tree */
 		if (s = strchr(main_buf, ':')) {
 			s = strtok(main_buf, ":");
 			if (strcmp(s, "component_tree") == 0) {
 				continue;
 			} else {
 				comp_parser_log("Invalid: label '%s'. "
-					"Expecting 'name_map'\n", s);
+					"Expecting 'component_tree'\n", s);
 				exit(EINVAL);
 			}
 		}
 
 		rc = sscanf(main_buf, " %[^{/\n]{%[^}]/", type, main_value);
 		if (rc == 1) {
-			comp_parser_log("%s: %s: No user id.\n",
+			comp_parser_log("%s: %s: No identifier.\n",
 						__FUNCTION__, main_buf);
 			exit(EINVAL);
 		}
