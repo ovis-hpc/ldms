@@ -317,12 +317,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static const char *usage(void)
 {
-	return "config name=lustre_mds component_id=<comp_id> set=<setname>\n"
-		"	component_id	The component id value.\n"
-		"	set		The set name.\n"
-		"	mdts		The list of MDTs.\n"
-		"For mdts: if not specified, all of the\n"
-		"currently available MDTs will be added.\n";
+	return
+"config name=lustre_mds component_id=<comp_id> set=<setname> mdts=MDT1,...\n"
+"	component_id	The component id value.\n"
+"	set		The set name.\n"
+"	mdts		The list of MDTs.\n"
+"For mdts: if not specified, all of the\n"
+"currently available MDTs will be added.\n";
 }
 
 static ldms_set_t get_set()

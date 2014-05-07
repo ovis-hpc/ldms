@@ -52,6 +52,8 @@
  * \file lustre_sampler.h
  * \brief Lustre sampler header file.
  *
+ * \author Narate Taerat (narate at ogc dot us)
+ *
  * This header file contains contents shared among multiple Lustre samplers,
  * such as possible keys in a regular 'stats' file.
  */
@@ -78,6 +80,9 @@ void free_str_list(struct str_list_head *h);
 #define __ALEN(x) (sizeof(x)/sizeof(*x))
 #define STATS_KEY_LEN (__ALEN(stats_key))
 char *stats_key[] = {
+	/* metric source status (sampler induced) */
+	"status",
+
 	/* Lustre RPC counter*/
 	"req_waittime",
 	"req_qdepth",
@@ -223,6 +228,14 @@ struct lustre_svc_stats {
 	struct timeval *tv_cur;
 	struct timeval *tv_prev;
 	struct str_map *key_id_map;
+	/**
+	 * This metric handle refer to the special metric, named 'status'.
+	 *
+	 * - 0: source not available, possibly caused by lustre unmounted or
+	 *      misconfiguration.
+	 * - 1: OK
+	 */
+	void *mh_status;
 	struct lustre_metric_ctxt mctxt[0];
 };
 

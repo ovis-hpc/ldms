@@ -52,6 +52,7 @@
  * \file lustre_sampler.c
  * \brief Lustre sampler common routine implementation.
  *
+ * \author Narate Taerat (narate at ogc dot us)
  */
 
 #include <stdlib.h>
@@ -222,6 +223,9 @@ int stats_construct_routine(ldms_set_t set,
 		if (rc)
 			return rc;
 	}
+	if ((j = str_map_get(key_id_map, "status")))
+		lss->mh_status = lss->mctxt[j].metric;
+
 	return 0;
 }
 
@@ -258,10 +262,14 @@ int __lss_sample(struct lustre_svc_stats *lss)
 {
 	int rc = 0;
 	if (!lss->lms.f) {
+		if (lss->mh_status)
+			ldms_set_u64(lss->mh_status, 0);
 		rc = lms_open_file(&lss->lms);
 		if (rc)
 			goto out;
 	}
+	if (lss->mh_status)
+		ldms_set_u64(lss->mh_status, 1);
 	fseek(lss->lms.f, 0, SEEK_SET);
 	char lbuf[__LBUF_SIZ];
 	char name[64];

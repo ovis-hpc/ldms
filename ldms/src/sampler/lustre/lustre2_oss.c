@@ -111,6 +111,10 @@ struct str_map *stats_key_id;
 struct str_map *obdf_key_id;
 
 char *obdf_key[] = {
+	/* metric source status (sampler induced) */
+	"status",
+
+	/* real statistics */
 	"iocontrol",
 	"get_info",
 	"set_info_async",
@@ -393,12 +397,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static const char *usage(void)
 {
-	return "config name=lustre_oss component_id=<comp_id> set=<setname>\n"
-		"	component_id	The component id value.\n"
-		"	set		The set name.\n"
-		"	osts		The list of OSTs.\n"
-		"For mdts: if not specified, all of the\n"
-		"currently available MDTs will be added.\n";
+	return
+"config name=lustre_oss component_id=<comp_id> set=<setname> osts=OST1,...\n"
+"	component_id	The component id value.\n"
+"	set		The set name.\n"
+"	osts		The list of OSTs.\n"
+"For osts: if not specified, all of the\n"
+"currently available OSTs will be added.\n";
 }
 
 static ldms_set_t get_set()

@@ -105,6 +105,10 @@ uint64_t comp_id;
 char tmp_path[PATH_MAX];
 
 char *llite_key[] = {
+	/* metric source status (sampler induced) */
+	"status",
+
+	/* real statistics */
 	"dirty_pages_hits",
 	"dirty_pages_misses",
 	"read_bytes",
@@ -120,12 +124,14 @@ char *llite_key[] = {
 	"seek",
 	"fsync",
 	"readdir",
-		/* inode operation */
+
+	/* inode operation */
 	"setattr",
 	"truncate",
 	"flock",
 	"getattr",
-		/* dir inode operation */
+
+	/* dir inode operation */
 	"create",
 	"link",
 	"unlink",
@@ -134,7 +140,8 @@ char *llite_key[] = {
 	"rmdir",
 	"mknod",
 	"rename",
-		/* special inode operation */
+
+	/* special inode operation */
 	"statfs",
 	"alloc_inode",
 	"setxattr",
@@ -143,7 +150,7 @@ char *llite_key[] = {
 	"removexattr",
 	"inode_permission",
 
-		/* Additional derived metrics */
+	/* Additional derived metrics */
 	"read_bytes.rate",
 	"write_bytes.rate",
 };
