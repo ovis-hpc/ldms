@@ -314,6 +314,7 @@ sos_t event_sos = NULL; /**< Event storage */
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
 LIST_HEAD(kstore_head, kmd_store) store_list = {0};
+pthread_mutex_t store_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /**
  * action queue
@@ -1070,15 +1071,18 @@ void process_recv(zap_ep_t ep, zap_event_t ev)
 		goto err0;
 	}
 	event_ref_list_get(eref_list);
+	pthread_mutex_lock(&store_list_lock);
 	LIST_FOREACH(store, &store_list, entry) {
 		eref = event_ref_new(store, msg);
 		if (!eref) {
+			pthread_mutex_unlock(&store_list_lock);
 			k_log("ERROR: Out of memory at %s:%d:%s\n", __FILE__,
 					__LINE__, __func__);
 			goto err0;
 		}
 		LIST_INSERT_HEAD(&eref_list->list, eref, entry);
 	}
+	pthread_mutex_unlock(&store_list_lock);
 
 	struct k_rule *rule;
 	struct k_cond cond = {0};
@@ -1310,6 +1314,18 @@ void k_listen()
 void kmd_cleanup(int x)
 {
 	k_log("Komondor Daemon exiting ... status %d\n", x);
+
+	/* Destroy all stores */
+	struct kmd_store *s;
+	pthread_mutex_lock(&store_list_lock);
+	s = LIST_FIRST(&store_list);
+	while (s) {
+		LIST_REMOVE(s, entry);
+		s->destroy(s);
+		s = LIST_FIRST(&store_list);
+	}
+	pthread_mutex_unlock(&store_list_lock);
+
 	exit(x);
 }
 
