@@ -31,7 +31,7 @@ OvisSink
 To build,
 	- you need
 		- Hadoop 2.2
-		- Maven 2.3 (Otherwise, modify the pom.xml as appropriate)
+		- Maven
 	- Call 'mvn package' at the top level.
 	- The binary tar ball is in the target folder. Hadoop-OVIS-<version>.tar.gz
 	- Add the .jar path to the HADOOP_CLASSPATH in hadoop-env.sh.

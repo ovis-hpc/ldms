@@ -49,8 +49,6 @@ package org.apache.hadoop.metrics2.ovis;
 
 import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileWriter;
-import java.io.PrintWriter;
 import java.net.*;
 import java.util.Collection;
 
@@ -74,8 +72,6 @@ public class OvisSink implements MetricsSink{
 	private String hostname;
 	private String daemonName;
 
-	private PrintWriter writer;
-
 	@Override
 	public void init(SubsetConfiguration conf) {
 
@@ -86,24 +82,9 @@ public class OvisSink implements MetricsSink{
 			ldmsSamplerAddr = InetAddress.getByName(hostname);
 			socket = new DatagramSocket();
 		} catch (Exception e) {
-			throw new MetricsException("ldmsSink: Failed to new " +
-					"DatagramSocket", e);
+			throw new MetricsException("OvisSink: Failed to new " +
+					"DatagramSocket: " +  e.getMessage());
 		}
-
-		String filename = "/hadoop/hduser/OvisSink.out";
-		try {
-			writer = filename == null
-					? new PrintWriter(new BufferedOutputStream
-						(System.out))
-					: new PrintWriter(new FileWriter(
-						new File(filename), true));
-		} catch (Exception e) {
-			throw new MetricsException("Error creating " + filename, e);
-		}
-		writer.println("starting the OvisSink");
-		writer.println("host: " + hostname);
-		writer.println("port: " + ldmsSamplerPort);
-		writer.flush();
 	}
 
 	private void sendToOvis(StringBuilder sb) {
@@ -116,11 +97,10 @@ public class OvisSink implements MetricsSink{
 								outMetrics.length,
 								ldmsSamplerAddr,
 								ldmsSamplerPort);
-			writer.println(s);
 			socket.send(outPacket);
 		} catch (Exception e) {
-			writer.println("failed to send");
-			throw new MetricsException("Error sending to LDMS.", e);
+			throw new MetricsException("OvisSink: Error sending to LDMS. "
+			+ e.getMessage());
 		}
 	}
 
@@ -152,7 +132,7 @@ public class OvisSink implements MetricsSink{
 			}
 		} catch (Exception e) {
 			throw new MetricsException("OvisSink: Error in " +
-							"putMetrics.", e);
+							"putMetrics. " + e.getMessage());
 		}
 	}
 

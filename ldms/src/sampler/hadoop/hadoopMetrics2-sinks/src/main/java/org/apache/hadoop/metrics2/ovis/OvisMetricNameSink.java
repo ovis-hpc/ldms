@@ -54,6 +54,7 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
+import java.lang.Exception;
 
 import org.apache.commons.configuration.SubsetConfiguration;
 import org.apache.commons.logging.Log;
@@ -137,7 +138,8 @@ public class OvisMetricNameSink implements MetricsSink {
 			}
 		} catch (Exception e) {
 			throw new MetricsException("OvisMetricNameSink: " +
-				"Error in creating file " + filename, e);
+				"Error in creating file " + filename + ": " +
+				e.getMessage());
 		}
 	}
 
@@ -190,7 +192,8 @@ public class OvisMetricNameSink implements MetricsSink {
 				numCountEqual = 0;
 
 		} catch (Exception e) {
-			throw new MetricsException("OvisMetricNameSink: error", e);
+			throw new MetricsException("OvisMetricNameSink: error: "
+			+ e.getMessage());
 		}
 	}
 

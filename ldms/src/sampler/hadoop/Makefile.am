@@ -56,3 +56,17 @@ lib_LTLIBRARIES += libhadoop_resourcemanager.la
 libhadoop_nodemanager_la_SOURCES = hadoop_nodemanager.c
 libhadoop_nodemanager_la_LIBADD = $(COMMON_ADD)
 lib_LTLIBRARIES += libhadoop_nodemanager.la
+
+#hadoop_jobhistoryserver
+libhadoop_jobhistoryserver_la_SOURCES = hadoop_jobhistoryserver.c
+libhadoop_jobhistoryserver_la_LIBADD = $(COMMON_ADD)
+lib_LTLIBRARIES += libhadoop_jobhistoryserver.la
+
+#hadoop metrics
+ovisconfdir = /etc/ovis/
+install-data-local:
+	mkdir -p $(ovisconfdir)
+	cp -r $(srcdir)/hadoop-metrics $(ovisconfdir)
+
+uninstall-local:
+	rm -fr $(ovisconfdir)/hadoop-metrics
