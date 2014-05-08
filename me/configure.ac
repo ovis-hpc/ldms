@@ -117,6 +117,7 @@ AC_CONFIG_FILES([Makefile src/Makefile
 		src/models/Makefile
 		src/stores/Makefile
 		src/consumers/Makefile
-		src/test/Makefile])
-AC_OUTPUT
+		src/test/Makefile
+		etc/Makefile])
+AC_OUTPUT(etc/init.d/me)
 

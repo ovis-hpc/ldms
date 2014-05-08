@@ -1,0 +1,148 @@
+#!/bin/sh
+#
+
+. /etc/profile.d/set-ovis-variables.sh
+. /etc/ovis/ovis-functions.sh
+
+if [ -z $OVIS_HOME ]; then
+	OVIS_HOME=@prefix@
+	echo "OVIS_HOME not defined, using default of $OVIS_HOME"
+fi
+
+if [ ! -d $OVIS_HOME ]; then
+	echo "OVIS_HOME: $OVIS_HOME is not a directory"
+	exit 1
+fi
+
+# Source function library.
+if [ -f /lib/lsb/init-functions ] ; then
+	. /lib/lsb/init-functions
+	STATUS=status_of_proc
+fi
+
+if [ -f /etc/init.d/functions ] ; then
+	. /etc/init.d/functions
+	STATUS=status
+else
+	echo_success() {
+		echo 'success'
+	}
+	echo_failure() {
+		echo 'failure'
+	}
+fi
+
+RETVAL=0
+prog="ocmd"
+OCMD=$OVIS_HOME/sbin/ocmd
+
+if [ -z $OCMD_XPORT ] ; then
+	OCMD_XPORT=sock
+	echo "OCMD_XPORT not set using default of $OCMD_XPORT"
+fi
+if [ -z $OCMD_PORT ] ; then
+	OCMD_PORT=12345
+	echo "OCMD_PORT not set using default of $OCMD_PORT"
+fi
+if [ -z $OCMD_PEER_LIST ] ; then
+	OCMD_PEER_LIST=$OVIS_HOME/etc/ocmd_peer_list
+	echo "OCMD_PEER_LIST not set using default of $OCMD_PEER_LIST"
+fi
+
+if [ ! -f $OVIS_RUN_CONF ]; then
+	echo "DB: $OVIS_RUN_CONF missing"
+	exit 1
+fi
+if [ ! -f $OCMD_PEER_LIST ]; then
+	echo "Peer list: $OCMD_PEER_LIST missing"
+	exit 1
+fi
+
+lockfile=$OVIS_HOME/var/lock/$prog.lock
+pidfile=$OVIS_HOME/var/pid/$prog.pid
+
+mkdir -p $(dirname $lockfile)
+mkdir -p $(dirname $pidfile)
+
+status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
+running=$?
+
+start() {
+	echo -n "Starting $prog: "
+
+	$OCMD -x $OCMD_XPORT -p $OCMD_PORT -l $OVIS_HOME/var/log/ocmd.log -R $OCMD_PEER_LIST -P ocmdsqlite3 -- path=$OVIS_RUN_CONF
+
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ] ; then
+		sleep 1;
+		pid=`get_pid $OCMD`
+		if [ $pid ] && [ -d /proc/$pid ] ; then
+			echo $pid > $pidfile
+			echo_success
+			echo
+		else
+			echo_failure
+			echo
+		fi
+	else
+		echo_failure
+		echo
+	fi
+}
+
+stop() {
+	if [ -f $pidfile ]; then
+		pid=`cat $pidfile`
+	else
+		echo "pidfile of $pidfile doesn't exists, using ps"
+		pid=`get_pid $OCMD`
+	fi
+
+	if [ ! $pid ]; then
+		echo "Cannot obtain pid ..."
+		echo_failure
+		echo
+		return -1
+	else
+		kill $pid
+	fi
+
+	if ps -p $pid >/dev/null 2>&1 ; then
+		echo_failure
+	else
+		echo_success
+		rm -f $lockfile
+		rm -f $pidfile
+	fi
+	echo
+}
+
+dostatus() {
+	$STATUS -p $pidfile $OCMD $LDMSD_AGG
+}
+
+restart() {
+	stop
+	start
+}
+
+# See how we were called.
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  status)
+	dostatus
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo "Usage: $0 {start|stop|status|restart|reload}"
+	exit 3
+esac
+
+exit $RETVAL

@@ -67,7 +67,7 @@ AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([docs/Doxyfile])])
 AC_CONFIG_FILES(Makefile docs/Makefile src/Makefile
 	scripts/Makefile src/baler/Makefile src/plugins/Makefile
 	src/query/Makefile src/test/Makefile
-	src/plugins/test/Makefile swig/Makefile
+	src/plugins/test/Makefile swig/Makefile etc/Makefile
 )
 
-AC_OUTPUT
+AC_OUTPUT(etc/init.d/balerd)

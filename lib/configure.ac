@@ -77,4 +77,7 @@ AC_OUTPUT(Makefile
 	  src/zap/test/Makefile
 	  swig/Makefile
 	  swig/zap/Makefile
+	  etc/ovis/set-ovis-variables.sh
+	  etc/ld.so.conf.d/ovis-ld-so.conf
+	  etc/Makefile
 	  )

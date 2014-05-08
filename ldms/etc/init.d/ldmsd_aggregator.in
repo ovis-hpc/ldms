@@ -1,0 +1,137 @@
+#!/bin/sh
+#
+
+. /etc/profile.d/set-ovis-variables.sh
+. /etc/ovis/ovis-functions.sh
+
+if [ -z $OVIS_HOME ]; then
+	OVIS_HOME=@prefix@
+	echo "OVIS_HOME not defined, using default of $OVIS_HOME"
+fi
+
+if [ ! -d $OVIS_HOME ]; then
+	echo "OVIS_HOME: $OVIS_HOME is not a directory"
+	exit 1
+fi
+
+# Source function library.
+if [ -f /lib/lsb/init-functions ] ; then
+	. /lib/lsb/init-functions
+	STATUS=status_of_proc
+fi
+
+if [ -f /etc/init.d/functions ] ; then
+	. /etc/init.d/functions
+	STATUS=status
+else
+	echo_success() {
+		echo 'success'
+	}
+	echo_failure() {
+		echo 'failure'
+	}
+fi
+
+RETVAL=0
+prog="ldmsd"
+LDMSD_AGG=$OVIS_HOME/sbin/ldmsd
+
+if [ -z $LDMSD_AGG_XPORT ] ; then
+	LDMSD_AGG_XPORT=sock
+	echo "LDMSD_AFF_XPORT not defined, using default of $LDMSD_AGG_XPORT"
+fi
+if [ -z $LDMSD_AGG_PORT_TO_OCMD ] ; then
+	LDMSD_AGG_PORT_TO_OCMD=40002
+	echo "LDMSD_AFF_PORT_TO_OCMD not defined, using default of $LDMSD_AGG_PORT_TO_OCMD"
+fi
+if [ -z $LDMSD_AGG_PORT_LISTEN ] ; then
+	LDMSD_AGG_PORT_LISTEN=50002
+	echo "LDMSD_AFF_PORT_LISTEN not defined, using default of $LDMSD_AGG_PORT_LISTEN"
+fi
+
+lockfile=$OVIS_HOME/var/lock/$prog.aggregator.lock
+pidfile=$OVIS_HOME/var/pid/$prog.aggregator.pid
+
+mkdir -p $(dirname $lockfile)
+mkdir -p $(dirname $pidfile)
+mkdir -p $OVIS_HOME/var/sock/
+mkdir -p $OVIS_HOME/var/log/
+
+start() {
+	echo -n "Starting $prog: "
+
+	$LDMSD_AGG -l $OVIS_HOME/var/log/ldmsd_aggregator.log -S $OVIS_HOME/var/sock/ldmsd_aggregator.ctrl -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -o $LDMSD_PORT_TO_OCMD -z ldmsd_aggregator
+
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ] ; then
+		sleep 1;
+		ps -C ldmsd -opid,cmd | grep ldmsd_aggregator | sed 's/ *\([0-9]\+\) .*/\1/' > $pidfile
+		pid=`cat $pidfile`
+		if [ $pid ] && [ -d /proc/$pid ] ; then
+			echo_success
+			echo
+		else
+			echo_failure
+			echo
+		fi
+	else
+		echo_failure
+		echo
+	fi
+}
+
+stop() {
+	if [ -f $pidfile ]; then
+		pid=`cat $pidfile`
+	elif [ ! -z `pgrep -f ldmsd_sampler` ]; then
+		echo "pidfile of $pidfile doesn't exists, using ps"
+		pid=`ps -C ldmsd -opid,cmd | grep ldmsd_aggregator | sed 's/ *\([0-9]\+\) .*/\1/'`
+	fi
+
+	if [ ! $pid ]; then
+		echo "Cannot obtain ldmsd_aggregator pid ..."
+		echo_failure
+		echo
+	else
+		kill $pid
+	fi
+
+	if ps -p $pid >/dev/null 2>&1 ; then
+		echo_failure
+	else
+		echo_success
+		rm -f $lockfile
+		rm -f $pidfile
+		echo
+	fi
+}
+
+dostatus() {
+	$STATUS -p $pidfile $LDMSD_AGG $LDMSD_AGG
+}
+
+restart() {
+	stop
+	start
+}
+
+# See how we were called.
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  status)
+	dostatus
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo "Usage: $0 {start|stop|status}"
+	exit 3
+esac
+
+exit $RETVAL

@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = src
+SUBDIRS = src etc
 ME = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 ME_TARBALL = $(ME).tar.gz
 

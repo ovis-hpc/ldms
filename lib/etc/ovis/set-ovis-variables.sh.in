@@ -1,0 +1,41 @@
+#!/bin/bash
+export OVIS_RUN_PATH=@prefix@
+export OVIS_HOME=@prefix@
+export OVIS_RUN_CONF=$OVIS_RUN_PATH/etc/ovis_conf.db
+export OVIS_WEB_ROOT=$OVIS_HOME/tahoma-www/
+
+OLIB=$OVIS_HOME/lib
+export LDMSD_PLUGIN_LIBPATH=$OLIB
+export LDMS_XPRT_LIBPATH=$OLIB
+export ZAP_LIBPATH=$OLIB
+export ME_PLUGIN_LIBPATH=$OLIB/me
+
+export PYTHONPATH=$PYTHONPATH:$OVIS_HOME/lib/python2.7/site-packages
+export PATH=$PATH:$OVIS_HOME/bin:$OVIS_HOME/sbin
+
+export LDMSD_SAMPLER_XPORT=sock
+export LDMSD_SAMPLER_PORT_TO_OCMD=40001
+export LDMSD_SAMPLER_PORT_LISTEN=50001
+
+export OCMD_XPORT=sock
+export OCMD_PORT=12345
+export OCMD_PEER_LIST=$OVIS_HOME/etc/ocmd_peer_list
+
+export ME_XPORT=sock
+export ME_PORT_TO_OCMD=41001
+export ME_PORT_LISTEN=60001
+
+export KOMONDOR_XPORT=sock
+export KOMONDOR_PORT_TO_OCMD=43001
+export KOMONDOR_PORT_LISTEN=55555
+
+export LDMSD_AGG_XPORT=sock
+export LDMSD_AGG_PORT_TO_OCMD=40002
+export LDMSD_AGG_PORT_LISTEN=50002
+
+export BALER_XPORT=sock
+export BALER_PORT_TO_OCMD=42001
+export BALER_STORE=$OVIS_WEB_ROOT/baler2/store/
+
+
+ulimit -c unlimited

@@ -65,5 +65,5 @@ AC_CONFIG_FILES([Makefile
 		 python/Makefile
 		 python/komondor/Makefile
 		 ])
-AC_OUTPUT
+AC_OUTPUT(etc/Makefile etc/init.d/komondor)
 

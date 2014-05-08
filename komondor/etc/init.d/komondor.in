@@ -1,0 +1,142 @@
+#!/bin/sh
+#
+
+. /etc/profile.d/set-ovis-variables.sh
+. /etc/ovis/ovis-functions.sh
+
+if [ -z $OVIS_HOME ]; then
+	OVIS_HOME=@prefix@
+	echo "OVIS_HOME not defined, using default of $OVIS_HOME"
+fi
+
+if [ ! -d $OVIS_HOME ]; then
+	echo "OVIS_HOME: $OVIS_HOME is not a directory"
+	exit 1
+fi
+
+# Source function library.
+if [ -f /lib/lsb/init-functions ] ; then
+	. /lib/lsb/init-functions
+	STATUS=status_of_proc
+fi
+
+if [ -f /etc/init.d/functions ] ; then
+	. /etc/init.d/functions
+	STATUS=status
+else
+	echo_success() {
+		echo 'success'
+	}
+	echo_failure() {
+		echo 'failure'
+	}
+fi
+
+RETVAL=0
+prog="komondor"
+KOMONDOR=$OVIS_HOME/sbin/komondor
+
+if [ -z $KOMONDOR_XPORT ] ; then
+	KOMONDOR_XPORT=sock
+	echo "KOMONDOR_XPORT not set using default of $KOMONDOR_XPORT"
+fi
+if [ -z $KOMONDOR_PORT_TO_OCMD ] ; then
+	KOMONDOR_PORT_TO_OCMD=43001
+	echo "KOMONDOR_PORT_TO_OCMD not set using default of $KOMONDOR_PORT_TO_OCMD"
+fi
+if [ -z $KOMONDOR_PORT_LISTEN ] ; then
+	KOMONDOR_PORT_LISTEN=55555
+	echo "KOMONDOR_PORT_LISTEN not set using default of $KOMONDOR_PORT_LISTEN"
+fi
+
+lockfile=$OVIS_HOME/var/lock/$prog.lock
+pidfile=$OVIS_HOME/var/pid/$prog.pid
+
+mkdir -p $(dirname $lockfile)
+mkdir -p $(dirname $pidfile)
+mkdir -p $OVIS_HOME/var/sock/
+mkdir -p $OVIS_HOME/var/log/
+
+status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
+running=$?
+
+start() {
+	echo -n "Starting $prog: "
+
+	$KOMONDOR -x $KOMONDOR_XPORT -p $KOMONDOR_PORT_LISTEN -z $KOMONDOR_PORT_TO_OCMD -l $OVIS_HOME/var/log/komondor.log
+
+	RETVAL=$?
+	if [ $RETVAL -eq 0 ] ; then
+		sleep 1;
+		pid=`get_pid $KOMONDOR`
+		if [ $pid ] && [ -d /proc/$pid ] ; then
+			echo $pid > $pidfile
+			echo_success
+			echo
+		else
+			echo_failure
+			echo
+		fi
+	else
+		echo_failure
+		echo
+	fi
+}
+
+stop() {
+	if [ -f $pidfile ]; then
+		pid=`cat $pidfile`
+	else
+		echo "pidfile of $pidfile doesn't exists, using ps"
+		pid=`get_pid $KOMONDOR`
+	fi
+
+	if [ ! $pid ]; then
+		echo "Cannot obtain pid ..."
+		echo_failure
+		echo
+		return -1
+	else
+		kill $pid
+	fi
+
+	if ps -p $pid >/dev/null 2>&1 ; then
+		echo_failure
+	else
+		echo_success
+		rm -f $lockfile
+		rm -f $pidfile
+	fi
+	echo
+}
+
+dostatus() {
+	status $KOMONDOR
+	$STATUS -p $pidfile $KOMONDOR $KOMONDOR
+}
+
+restart() {
+	stop
+	start
+}
+
+# See how we were called.
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  status)
+	dostatus
+	;;
+  restart|reload)
+	restart
+	;;
+  *)
+	echo "Usage: $0 {start|stop|status|restart|reload}"
+	exit 3
+esac
+
+exit $RETVAL

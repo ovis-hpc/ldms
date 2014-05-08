@@ -61,4 +61,7 @@ AC_OUTPUT(Makefile
 	  src/test/Makefile
 	  src/plugins/Makefile
 	  src/parsers/Makefile
-	  src/parsers/oparser_sqlite/Makefile)
+	  src/parsers/oparser_sqlite/Makefile
+	  etc/init.d/ocmd
+	  etc/Makefile
+	)
