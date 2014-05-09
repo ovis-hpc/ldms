@@ -57,6 +57,9 @@
 
 #define LOG(p, FMT, ...) p->log_fn("ocmsqlite3: " FMT, ##__VA_ARGS__);
 #define OCMSQL_BUFFER_SIZE (1024 * 1024)
+#define OCMSQL_STRING_SIZE (1024 * 4)
+
+char *buff = 0;
 
 struct ocmsqlite3 {
 	struct ocmd_plugin base;
@@ -121,6 +124,88 @@ const char *osvc_to_str(osvc_t o)
 	return __osvc_str[OSVC_UNKNOWN];
 }
 
+/*
+ * Check if the input character is valid for environment variables
+ */
+int is_env_var(char c)
+{
+	if (isalnum(c) || (c == '_') || (c == '{') || (c == '}')) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
+int _sub_env_var(ocmd_plugin_t p, char *s, char *env_var, int size_s)
+{
+	char *tmp = getenv(env_var);
+	if (!tmp) {
+		LOG(p, "$%s isn't set\n", env_var);
+		return 0;
+	} else {
+		sprintf(s + size_s, "%s", tmp);
+		return strlen(s);
+	}
+}
+
+/*
+ * Substitute the environment variables in the string with their values.
+ */
+char *sub_env_var(ocmd_plugin_t p, char *in_s)
+{
+	char *s = buff;
+	memset(s, 0, OCMSQL_STRING_SIZE);
+	char *env_var = calloc(0, OCMSQL_STRING_SIZE);
+	int env_var_len = 0;
+
+	char *c = in_s;
+	env_var[0] = '\0';
+	int env_var_idx, s_idx;
+	env_var_idx = s_idx = 0;
+	while (*c) {
+		if (*c == '$') {
+			if (env_var_idx) {
+				s_idx = _sub_env_var(p, s, env_var, s_idx);
+				if (!s_idx)
+					goto err;
+			}
+			env_var_idx = 1;
+		} else {
+			if (env_var_idx) {
+				if (is_env_var(*c)) {
+					if ((*c != '{') && (*c != '}')) {
+						env_var[env_var_idx - 1] = *c;
+						env_var_idx++;
+					}
+				} else {
+					s_idx = _sub_env_var(p, s,
+							env_var, s_idx);
+					if (!s_idx)
+						goto err;
+					s[s_idx++] = *c;
+					env_var_idx = 0;
+				}
+			} else {
+				s[s_idx++] = *c;
+			}
+		}
+		c++;
+	}
+
+	if (env_var_idx) {
+		s_idx = _sub_env_var(p, s, env_var, s_idx);
+		if (!s_idx)
+			goto err;
+	}
+
+	s[s_idx] = '\0';
+	free(env_var);
+	return s;
+err:
+	free(env_var);
+	return NULL;
+}
+
 int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
 			      const char *svc, struct ocm_cfg_buff *buff)
 {
@@ -181,7 +266,10 @@ int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
 			tmp = strchr(av, ':');
 			*tmp = '\0';
 			a = av;
-			v = tmp + 1;
+			v = sub_env_var(p, tmp + 1);
+			if (!v)
+				goto err;
+
 			ocm_value_set_s(ov, v);
 			rc = ocm_cfg_buff_add_av(buff, a, ov);
 			if (rc) {
@@ -250,7 +338,11 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 			rc = ENOMEM;
 			goto err;
 		}
-		ocm_value_set_s(ov, name);
+		char *value = sub_env_var(p, name);
+		if (!value)
+			goto err;
+
+		ocm_value_set_s(ov, value);
 		ocm_cfg_buff_add_av(buff, "name", ov);
 
 		const char *execute = (char*) sqlite3_column_text(stmt, 1);
@@ -341,7 +433,11 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 			rc = ENOMEM;
 			goto err;
 		}
-		ocm_value_set_s(ov, action_name);
+		char *value = sub_env_var(p, action_name);
+		if (!value)
+			goto err;
+
+		ocm_value_set_s(ov, value);
 		ocm_cfg_buff_add_av(buff, "action", ov);
 
 		rc = sqlite3_step(stmt);
@@ -432,7 +528,7 @@ int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
 
 	ocm_value_set_s(v, ldmsd_set);
 	ocm_cfg_buff_add_av(buff, "name", v);
-	/* defautl set name */
+	/* default set name */
 	sprintf(set_name, "%s/%s", host, ldmsd_set);
 
 	key = strtok_r(cfg_s, ":", &tmp_buf);
@@ -455,7 +551,11 @@ int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
 			sprintf(set_name, "%.*s%s%s", len, _p, host, _s);
 		} else {
 			value = strtok_r(NULL, ";", &tmp_buf);
-			ocm_value_set_s(v, value);
+			char *tmp = sub_env_var(p, value);
+			if (!tmp)
+				goto err;
+
+			ocm_value_set_s(v, tmp);
 			ocm_cfg_buff_add_av(buff, key, v);
 		}
 skip:
@@ -508,6 +608,9 @@ skip:
 	}
 	free(_buff);
 	return 0;
+err:
+	free(_buff);
+	return -1;
 }
 
 int ocmsqlite3_query_sampler_cfg(struct ocm_cfg_buff *buff, sqlite3 *db,
@@ -536,7 +639,9 @@ int ocmsqlite3_query_sampler_cfg(struct ocm_cfg_buff *buff, sqlite3 *db,
 			rc = EINVAL;
 			goto err;
 		}
-		query_sampler_cfg(p, stmt, buff);
+		rc = query_sampler_cfg(p, stmt, buff);
+		if (rc)
+			goto err;
 		rc = sqlite3_step(stmt);
 	}
 
@@ -592,7 +697,9 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 		tmp = strchr(av, ':');
 		*tmp = '\0';
 		a = av;
-		v = tmp + 1;
+		v = sub_env_var(p, tmp + 1);
+		if (!v)
+			goto err;
 
 		if (strcmp(a, "interval") == 0) {
 			interval = strtoull(v, NULL, 10);
@@ -698,7 +805,10 @@ int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
 			tmp = strchr(av, ':');
 			*tmp = '\0';
 			a = av;
-			v = tmp + 1;
+			v = sub_env_var(p, tmp + 1);
+			if (!v)
+				goto err;
+
 			ocm_value_set_s(ov, v);
 			rc = ocm_cfg_buff_add_av(buff, a, ov);
 			if (rc) {
@@ -1016,6 +1126,7 @@ err:
 
 void ocmsqlite3_destroy(ocmd_plugin_t p)
 {
+	free(buff);
 	struct ocmsqlite3 *s = (void*)p;
 	if (s->db)
 		sqlite3_close(s->db);
@@ -1040,6 +1151,7 @@ struct ocmd_plugin* ocmd_plugin_create(void (*log_fn)(const char *fmt, ...),
 	}
 	s->base.get_config = ocmsqlite3_get_config;
 	s->base.log_fn = log_fn;
+	s->base.destroy = ocmsqlite3_destroy;
 	s->path = strdup(path);
 	if (!s->path)
 		goto err1;
@@ -1056,6 +1168,14 @@ struct ocmd_plugin* ocmd_plugin_create(void (*log_fn)(const char *fmt, ...),
 		errno = EBUSY;
 		goto err1;
 	}
+
+	buff = malloc(OCMSQL_STRING_SIZE);
+	if (!buff) {
+		log_fn("ocmsqlite3: Out of memory.\n");
+		errno = ENOMEM;
+		goto err1;
+	}
+
 	return (ocmd_plugin_t) s;
 err1:
 	ocmsqlite3_destroy((ocmd_plugin_t)s);

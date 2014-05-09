@@ -77,7 +77,7 @@ typedef struct ocmd_plugin* ocmd_plugin_t;
  *
  * The \c create function should create and initialize \c ocmd_plugin.
  * Attribute-value list (\c avl) is provided for plugin initialization.
- * Upon erorr, the \c create function should return NULL and set errno
+ * Upon error, the \c create function should return NULL and set errno
  * appropriately.
  *
  * The \c log_fn is a log function for the plugin to log its messages.
