@@ -565,7 +565,9 @@ static int flush_store(ldmsd_store_handle_t _sh)
 	int i;
 	LIST_FOREACH(ms, &si->ms_list, entry) {
 		pthread_mutex_lock(&ms->lock);
-		sos_flush(ms->sos, ODS_COMMIT_SYNC);
+		/* It is possible that a sos was unsuccessfully created. */
+		if (ms->sos)
+			sos_flush(ms->sos, ODS_COMMIT_SYNC);
 		pthread_mutex_unlock(&ms->lock);
 	}
 	return 0;
