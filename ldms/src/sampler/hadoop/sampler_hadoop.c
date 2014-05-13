@@ -114,6 +114,15 @@ struct record_list *parse_given_metrics(char *metrics, int *count)
 	return record_list;
 }
 
+void _substitute_char(char *s, char old_c, char new_c)
+{
+	char *ptr = strchr(s, old_c);
+	while (ptr) {
+		*ptr = new_c;
+		ptr = strchr(ptr + 1, old_c);
+	}
+}
+
 int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 {
 	ldms_log_fn_t msglog = hdset->msglog;
@@ -162,7 +171,9 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 			return EPERM;
 		}
 
-		snprintf(metricname, total_mname_len + 2, "%s.%s", hdset->daemon, buf);
+		_substitute_char(buf, ':', '.');
+		_substitute_char(buf, '\t', '_');
+		snprintf(metricname, total_mname_len + 2, "%s#%s", buf, hdset->daemon);
 		snprintf(type, strlen(ptr + 1), "%s", ptr + 1); /* Don't copy the newline character */
 
 		rc = ldms_get_metric_size(metricname,
@@ -215,7 +226,9 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 			return EPERM;
 		}
 
-		snprintf(metricname, total_mname_len + 2, "%s.%s", hdset->daemon, buf);
+		_substitute_char(buf, ':', '.');
+		_substitute_char(buf, '\t', '_');
+		snprintf(metricname, total_mname_len + 2, "%s#%s", buf, hdset->daemon);
 		snprintf(type, strlen(ptr + 1), "%s", ptr + 1); /* Don't copy the newline character */
 
 		m = ldms_add_metric(hdset->set, metricname,
@@ -280,8 +293,9 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 	size_t base_len = strlen(rctxt_name);
 
 	while (metric_name = strtok_r(NULL, "=", &ptr)) {
-		snprintf(buf, base_len + strlen(metric_name) + 2,  "%s:%s",
+		snprintf(buf, base_len + strlen(metric_name) + 2,  "%s.%s",
 						rctxt_name, metric_name);
+		_substitute_char(buf, '\t', '_');
 		m = str_map_get(hdset->map, buf);
 		if (!m)
 			continue;
