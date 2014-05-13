@@ -644,7 +644,7 @@ einval:
 	ldms_log("ocm: error, the '%s' attribute is not specified.\n", attr);
 	return ;
 enoent:
-	ldms_log("ocm: error, the plugin '%s' was not found.", store_name);
+	ldms_log("ocm: error, the plugin '%s' was not found.\n", store_name);
 	return ;
 }
 
