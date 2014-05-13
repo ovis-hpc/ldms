@@ -369,7 +369,7 @@ static int me_get_ldsm_metric_value(ldms_metric_t m, double *v)
 		*v = ldms_get_double(m);
 		break;
 	default:
-		msglog("me: not support ldms_value_type '%s'\n", type);
+		msglog("me: not support ldms_value_type '%s'\n", ldms_type_to_str(type));
 		return -1;
 	}
 	return 0;
@@ -424,6 +424,7 @@ send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 static int flush_store(ldmsd_store_handle_t _sh)
 {
 	/* do nothing */
+	return 0;
 }
 
 static void close_store(ldmsd_store_handle_t _sh)
