@@ -198,7 +198,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 {
 	enum ldms_value_type type = ldms_get_metric_type(m);
-	struct sos_class_s *class = NULL; 
+	struct sos_class_s *class = NULL;
 
 	switch (type) {
 	case LDMS_V_S32:
@@ -540,7 +540,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 		pthread_mutex_lock(&ms->lock);
 		/* It is possible that a sos was unsuccessfully created. */
 		if (ms->sos)
-			sos_flush(ms->sos, ODS_COMMIT_SYNC);
+			sos_commit(ms->sos, ODS_COMMIT_ASYNC);
 		pthread_mutex_unlock(&ms->lock);
 	}
 	return 0;
