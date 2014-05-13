@@ -201,12 +201,16 @@ static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 	struct sos_class_s *class = NULL;
 
 	switch (type) {
+	case LDMS_V_S8:
+	case LDMS_V_S16:
 	case LDMS_V_S32:
 		class = &ovis_metric_class_int32;
 		break;
 	case LDMS_V_S64:
 		class = &ovis_metric_class_int64;
 		break;
+	case LDMS_V_U8:
+	case LDMS_V_U16:
 	case LDMS_V_U32:
 		class = &ovis_metric_class_uint32;
 		break;
