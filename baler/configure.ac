@@ -3,7 +3,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([baler], 2.4.0, narate@ogc.us)
+AC_INIT([baler], 3.4.2, narate@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/baler/balerd.c])
 AC_CONFIG_AUX_DIR(config)
