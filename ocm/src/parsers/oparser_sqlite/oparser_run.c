@@ -64,6 +64,7 @@
 #include "component_parser.h"
 #include "model_event_parser.h"
 #include "service_parser.h"
+#include "cable_parser.h"
 
 
 #define OVIS_DB "ovis_conf.db"
@@ -81,11 +82,13 @@ const char *comp_path = NULL;
 const char *tmpl_path = NULL;
 const char *mae_path = NULL;
 const char *service_path = NULL;
+const char *cable_path = NULL;
 
 FILE *comp_conf;
 FILE *tmpl_conf;
 FILE *mae_conf;
 FILE *service_conf;
+FILE *cable_conf;
 
 FILE *comp_o;
 FILE *tmpl_o;
@@ -97,10 +100,11 @@ int is_printed = 0;
 
 sqlite3 *ovis_db;
 
-#define FMT "c:t:m:s:o:p"
+#define FMT "b:c:t:m:s:o:p"
 void usage(char *argv[])
 {
 	printf("%s: [%s]\n", argv[0], FMT);
+	printf("   -b cable_file	The path to the cable configuration file.\n");
 	printf("   -c comp_file		The path to the component definition configuration file.\n");
 	printf("   -t tmpl_file		The path to the sampler configuration file.\n");
 	printf("   -m mae_file		The path to the model, event and action configuration file.\n");
@@ -139,6 +143,9 @@ int main(int argc, char **argv) {
 			break;
 		case 'o':
 			out_path = strdup(optarg);
+			break;
+		case 'b':
+			cable_path = strdup(optarg);
 			break;
 		case 'f':
 			is_replaced_table = 1;
@@ -204,7 +211,6 @@ int main(int argc, char **argv) {
 			sprintf(path, "%s/%s", out_path,
 					OVIS_OUTPUT(COMP_NAME));
 			oparser_open_file(path, &comp_o, "w");
-//			oparser_print_scaffold(scaffold, comp_o);
 		}
 
 		if (tmpl_path) {
@@ -270,6 +276,14 @@ int main(int argc, char **argv) {
 			oparser_print_models_n_rules(mae_o);
 		}
 	}
+
+	if (cable_path) {
+		oparser_open_file(cable_path, &cable_conf, "r");
+		oparser_cable_init(read_buf, value_buf, ovis_db);
+		oparser_parse_cable_def(cable_conf);
+		printf("Complete table 'cable_types' and 'cables'\n");
+	}
+
 
 	return 0;
 }

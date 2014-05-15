@@ -716,10 +716,9 @@ void oparser_models_to_sqlite()
 			"report_flags) VALUES(@name, @mid, @param, @th, @rf)";
 	sqlite3_stmt *stmt;
 	char *errmsg;
-	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
-						(const char **)&errmsg);
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
@@ -757,10 +756,9 @@ void oparser_actions_to_sqlite()
 	create_table(stmt_s, db);
 
 	stmt_s = "INSERT INTO actions(name, execute) VALUES(@name, @exec)";
-	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
-						(const char **)&errmsg);
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
@@ -894,30 +892,30 @@ void oparser_events_to_sqlite()
 	stmt_s = "INSERT INTO rule_templates(event_id, event_name, "
 			"model_id) VALUES(@eid, @ename, @model_id)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
-			&rule_templates_stmt, (const char **)&errmsg);
+					&rule_templates_stmt, NULL);
 	if (rc) {
 		fprintf(stderr, "%s[%d]: error prepare[rule_templates]:"
-				" %s\n", __FUNCTION__, rc, errmsg);
+				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
 	stmt_s = "INSERT INTO rule_actions(event_id, level, message, "
 			"action_name) VALUES(@eid, @level, @msg, @aname)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
-			&rule_actions_stmt, (const char **)&errmsg);
+					&rule_actions_stmt, NULL);
 	if (rc) {
 		fprintf(stderr, "%s[%d]: error prepare[rule_actions]:"
-				" %s\n", __FUNCTION__, rc, errmsg);
+				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
 	stmt_s = "INSERT INTO rule_metrics(event_id, comp_id, metric_id) "
 			"VALUES(@eid, @cid, @mid)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
-			&rule_metrics_stmt, (const char **)&errmsg);
+					&rule_metrics_stmt, NULL);
 	if (rc) {
 		fprintf(stderr, "%s[%d]: error prepare[rule_metrics]:"
-				" %s\n", __FUNCTION__, rc, errmsg);
+				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
@@ -952,10 +950,10 @@ void oparser_events_to_sqlite()
 	stmt_s = "INSERT INTO user_events(event_id, event_name, comp_type) "
 			"VALUES(@eid, @ename, @ctype)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
-			&user_event_stmt, (const char **)&errmsg);
+			&user_event_stmt, NULL);
 	if (rc) {
 		fprintf(stderr, "%s[%d]: error prepare[user_event]:"
-				" %s\n", __FUNCTION__, rc, errmsg);
+				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
 

@@ -486,3 +486,11 @@ int oparser_add_comp(struct comp_array *carray, struct oparser_comp *comp)
 	carray->comps[(carray->num_comps)++] = comp;
 	return 0;
 }
+
+void msglog(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	fprintf(stderr, fmt, ap);
+	va_end(ap);
+}

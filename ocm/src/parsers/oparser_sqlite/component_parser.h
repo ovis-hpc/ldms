@@ -107,5 +107,10 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db);
 
 struct oparser_comp *find_comp(struct oparser_comp_type *ctype, char *uid);
 
+void component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
+					sqlite3_stmt *comp_stmt);
+
+struct oparser_comp_type *new_comp_type(char *type);
+
 #endif /* COMPONENT_PARSER_H_ */
 

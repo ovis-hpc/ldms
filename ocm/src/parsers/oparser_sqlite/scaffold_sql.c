@@ -59,23 +59,6 @@
 #include "component_parser.h"
 #include "oparser_util.h"
 
-enum components_field {
-	CNAME_IDX = 1,
-	CTYPE_IDX,
-	CIDENTIFIER_IDX,
-	CCOMP_IDX,
-	CPARENT_IDX,
-	CGIF_PATH_IDX,
-	CVISIBLE_IDX,
-	CNUM_IDX,
-};
-
-enum component_relations_field {
-	PARENT_IDX = 1,
-	CHILD_IDX,
-};
-
-
 /**
  * \brief Get the comma-separated string of children comp id
  * \param   children_s   A allocated string

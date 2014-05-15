@@ -6,5 +6,5 @@ oparser_sqlite_SOURCES = oparser_run.c template_parser.c \
 				component_parser.c template_sql.c \
 				scaffold_sql.c service_parser.c \
 				model_event_parser.c oparser_util.c \
-				oquery_sqlite.c
+				oquery_sqlite.c cable_parser.c
 oparser_sqlite_LDADD = -lsqlite3 -lcoll

@@ -71,6 +71,22 @@
 #define TRUE 1
 #define FALSE 0
 
+enum components_field {
+	CNAME_IDX = 1,
+	CTYPE_IDX,
+	CIDENTIFIER_IDX,
+	CCOMP_IDX,
+	CPARENT_IDX,
+	CGIF_PATH_IDX,
+	CVISIBLE_IDX,
+	CNUM_IDX,
+};
+
+enum component_relations_field {
+	PARENT_IDX = 1,
+	CHILD_IDX,
+};
+
 struct oparser_name {
 	char *name;
 	TAILQ_ENTRY(oparser_name) entry;
@@ -209,5 +225,7 @@ void oparser_bind_text(sqlite3 *db, sqlite3_stmt *stmt, int idx,
 
 void oparser_finish_insert(sqlite3 *db, sqlite3_stmt *stmt,
 						const char *fn_name);
+
+void msglog(const char *fmt, ...);
 
 #endif /* UTIL_H_ */

@@ -289,10 +289,9 @@ void process_baler_hosts(struct oparser_cmd *hostcmd)
 
 	sqlite3_stmt *stmt;
 	char *sqlite_err;
-	int rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
-					(const char **)&sqlite_err);
+	int rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
@@ -507,10 +506,9 @@ void oparser_services_to_sqlite(sqlite3 *db)
 	char *errmsg;
 
 	int rc;
-	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
-					(const char **)&errmsg);
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
