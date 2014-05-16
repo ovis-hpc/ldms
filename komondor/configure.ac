@@ -12,6 +12,8 @@ AM_PATH_PYTHON(2.6)
 
 dnl Other libraries
 
+OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
+
 AM_CONDITIONAL([ENABLE_OVIS_LIB], [true])
 OPTION_WITH([ovis-lib], [OVIS_LIB])
 

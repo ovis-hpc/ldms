@@ -20,6 +20,7 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
 OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
+OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])

@@ -1,0 +1,55 @@
+BUILDING NOTE
+The top-level automake doesn't work because the dependent modules doesn't
+understand source structure of the module they depended on. They are managed
+separately. Hence, one-by-one module installation is required.
+
+Please build the modules in the following order:
+
+1. lib
+	This module is needed by everybody.
+
+2. sos
+	Need 'lib' to be *installed* before building. You can tell sos about the
+'lib' installation directory by giving it --with-ovis-lib option at configure
+time.
+
+3. ocm
+	Need 'lib' to be *installed* before building. You can tell ocm about the
+'lib' installation directory by giving it --with-ovis-lib option at configure
+time.
+	OCM is optionally needed by ldms, baler, me and komondor. We encourage
+you to use it for configuration distribution.
+
+4. ldms
+	Need 'lib' to be *installed* before building. You can tell ldms about
+the 'lib' installation directory by giving it --with-ovis-lib option at
+configure time.
+	sos is optional. If you wish to use store_sos plugin, then sos is needed
+to be installed too. Installed sos directory is referred to by --with-sos
+option.
+	ocm is optional. Specify a path to installed ocm directory with
+--with-ocm at configure time.
+
+5. baler
+	Need 'lib' to be *installed* before building. You can tell baler about
+the 'lib' installation directory by giving it --with-ovis-lib option at
+configure time.
+	Need 'sos' to be *installed* before building. You can tell baler about
+the 'sos' installation directory by giving it --with-sos option at
+configure time.
+	ocm is optional. Specify a path to installed ocm directory with
+--with-ocm at configure time.
+
+6. me
+	Need 'lib' to be *installed* before building. You can tell me about
+the 'lib' installation directory by giving it --with-ovis-lib option at
+configure time.
+	ocm is optional. Specify a path to installed ocm directory with
+--with-ocm at configure time.
+
+7. komondor
+	Need 'lib' to be *installed* before building. You can tell komondor
+about the 'lib' installation directory by giving it --with-ovis-lib option at
+configure time.
+	ocm is optional. Specify a path to installed ocm directory with
+--with-ocm at configure time.

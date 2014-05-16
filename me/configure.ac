@@ -9,6 +9,8 @@ AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE([-Wno-portability])
 AM_PROG_LIBTOOL
 
+OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
+
 AC_ARG_ENABLE(debug, [  --enable-debug    Enable debug mode],
 	[
 		if test x$enableval = xyes ; then

@@ -1,5 +1,6 @@
 
 install-data-local:
+	$(MKDIR_P) /etc/ovis
 	$(MKDIR_P) $(DESTDIR)/$(prefix)/etc/profile.d/
 	$(MKDIR_P) $(DESTDIR)/$(prefix)/etc/ovis
 	$(MKDIR_P) $(DESTDIR)/$(prefix)/etc/ld.so.conf.d/
