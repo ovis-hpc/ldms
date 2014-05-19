@@ -312,7 +312,7 @@ void clear_src_stack(struct src_stack *srcq, int level)
 	while (src && src->level >= level) {
 		LIST_REMOVE(src, entry);
 		free(src);
-		src = LIST_NEXT(src, entry);
+		src = LIST_FIRST(srcq);
 	}
 }
 

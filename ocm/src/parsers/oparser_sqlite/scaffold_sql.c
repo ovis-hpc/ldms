@@ -59,7 +59,7 @@
 #include "component_parser.h"
 #include "oparser_util.h"
 
-enum {
+enum components_field {
 	CNAME_IDX = 1,
 	CTYPE_IDX,
 	CIDENTIFIER_IDX,
@@ -69,6 +69,12 @@ enum {
 	CVISIBLE_IDX,
 	CNUM_IDX,
 };
+
+enum component_relations_field {
+	PARENT_IDX = 1,
+	CHILD_IDX,
+};
+
 
 /**
  * \brief Get the comma-separated string of children comp id
@@ -118,72 +124,78 @@ void get_children_string(char *children_s, int len,
 	}
 }
 
-int component_to_sqlite(struct oparser_comp *comp, sqlite3 *db,
-							sqlite3_stmt *stmt)
+void handle_parents_components_table(struct oparser_comp *comp, sqlite3 *db,
+						sqlite3_stmt *comp_stmt)
 {
-	if (comp->is_stored)
-		return 0;
-
 	char parents[2043];
 	struct oparser_comp *parent;
 	struct comp_array *carray;
+	int num = 0;
+	LIST_FOREACH(carray, &comp->parents, entry) {
+		int i;
+		for (i = 0; i < carray->num_comps; i++) {
+			/* Create the comma-separated list of parent IDs. */
+			parent = carray->comps[i];
+			if (num == 0) {
+				sprintf(parents, "%" PRIu32, parent->comp_id);
+			} else {
+				sprintf(parents, "%s,%" PRIu32, parents,
+							parent->comp_id);
+			}
+			num++;
+		}
+	}
+	oparser_bind_text(db, comp_stmt, CPARENT_IDX, parents, __FUNCTION__);
+}
+
+void component_to_sqlite(struct oparser_comp *comp, sqlite3 *db, sqlite3_stmt *comp_stmt)
+{
+	if (comp->is_stored == 1)
+		return;
 
 	if (comp->name)
-		oparser_bind_text(db, stmt, CNAME_IDX, comp->name, __FUNCTION__);
+		oparser_bind_text(db, comp_stmt, CNAME_IDX, comp->name, __FUNCTION__);
 	else
-		oparser_bind_text(db, stmt, CNAME_IDX, comp->comp_type->type,
+		oparser_bind_text(db, comp_stmt, CNAME_IDX, comp->comp_type->type,
 						__FUNCTION__);
 
-	oparser_bind_text(db, stmt, CTYPE_IDX, comp->comp_type->type, __FUNCTION__);
-	oparser_bind_text(db, stmt, CIDENTIFIER_IDX, comp->uid, __FUNCTION__);
-	oparser_bind_int(db, stmt, CCOMP_IDX, comp->comp_id, __FUNCTION__);
+	oparser_bind_text(db, comp_stmt, CTYPE_IDX, comp->comp_type->type, __FUNCTION__);
+	oparser_bind_text(db, comp_stmt, CIDENTIFIER_IDX, comp->uid, __FUNCTION__);
+	oparser_bind_int(db, comp_stmt, CCOMP_IDX, comp->comp_id, __FUNCTION__);
 
+	/* parents */
 	if (comp->num_ptypes) {
-		int num = 0;
-		LIST_FOREACH(carray, &comp->parents, entry) {
-			int i;
-			for (i = 0; i < carray->num_comps; i++) {
-				parent = carray->comps[i];
-				if (num == 0) {
-					sprintf(parents, "%" PRIu32,
-							parent->comp_id);
-				} else {
-					sprintf(parents, "%s,%" PRIu32,
-						parents, parent->comp_id);
-				}
-				num++;
-			}
-		}
-		oparser_bind_text(db, stmt, CPARENT_IDX, parents, __FUNCTION__);
+		handle_parents_components_table(comp, db, comp_stmt);
 	} else {
-		oparser_bind_null(db, stmt, CPARENT_IDX, __FUNCTION__);
+		oparser_bind_null(db, comp_stmt, CPARENT_IDX, __FUNCTION__);
 	}
 
 	if (comp->comp_type->gif_path) {
-		oparser_bind_text(db, stmt, CGIF_PATH_IDX, comp->comp_type->gif_path,
-							__FUNCTION__);
+		oparser_bind_text(db, comp_stmt, CGIF_PATH_IDX,
+				comp->comp_type->gif_path, __FUNCTION__);
 	} else {
-		oparser_bind_null(db, stmt, CGIF_PATH_IDX, __FUNCTION__);
+		oparser_bind_null(db, comp_stmt, CGIF_PATH_IDX, __FUNCTION__);
 	}
 
-	oparser_bind_int(db, stmt, CVISIBLE_IDX, comp->comp_type->visible, __FUNCTION__);
+	oparser_bind_int(db, comp_stmt, CVISIBLE_IDX, comp->comp_type->visible,
+								__FUNCTION__);
 
 	int i;
 	struct oparser_comp *child;
 
-	oparser_finish_insert(db, stmt, __FUNCTION__);
+	oparser_finish_insert(db, comp_stmt, __FUNCTION__);
 	comp->is_stored = 1;
 
+	struct comp_array *carray;
 	LIST_FOREACH(carray, &comp->children, entry) {
 		for (i = 0; i < carray->num_comps; i++) {
 			child = carray->comps[i];
-			component_to_sqlite(child, db, stmt);
+			component_to_sqlite(child, db, comp_stmt);
 		}
 	}
-	return 0;
 }
 
-void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
+void gen_components_table(struct oparser_scaffold *scaffold, sqlite3 *db)
 {
 	oparser_drop_table("components", db);
 	int rc;
@@ -192,7 +204,7 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 		 "name		CHAR(64)	NOT NULL," \
 		 "type		CHAR(64)	NOT NULL," \
 		 "identifier	TEXT		NOT NULL," \
-		 "comp_id	SQLITE_uint32 PRIMARY KEY	NOT NULL," \
+		 "comp_id	INTEGER PRIMARY KEY	NOT NULL," \
 		 "parent_id	TEXT," \
 		 "gif_path	TEXT," \
 		 "visible	INTEGER);";
@@ -201,35 +213,142 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 	create_table(stmt_s, db);
 	create_index(index_stmt, db);
 
-	stmt_s = "INSERT INTO components(name, type, identifier, comp_id, parent_id, gif_path, visible) " \
-			"VALUES(@vname, @vtype, @videntifier, @vcomp_id, @vpid, @gifpath, @visible)";
+	sqlite3_stmt *insert_stmt;
 
-	sqlite3_stmt *stmt;
+	stmt_s = "INSERT INTO components(name, type, identifier, comp_id," \
+			" parent_id, gif_path, visible) " \
+			"VALUES(@vname, @vtype, @videntifier, @vcomp_id, " \
+			"@vpid, @gifpath, @visible)";
+
 	char *sqlite_err = 0;
-	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
+						&insert_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
+		fprintf(stderr, "Failed to prepare 'INSERT INTO "
+				"components(...)': %s\n", sqlite3_errmsg(db));
 		exit(rc);
 	}
 
 	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &sqlite_err);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		fprintf(stderr, "%s: Failed 'BEGIN TRANSACTION': %s\n",
+				__FUNCTION__, sqlite_err);
 		exit(rc);
 	}
 
-	int i;
-	struct oparser_comp_list *clist;
 	struct oparser_comp *comp;
 
 	LIST_FOREACH(comp, scaffold->children, root_entry)
-		component_to_sqlite(comp, db, stmt);
+		component_to_sqlite(comp, db, insert_stmt);
 
-	sqlite3_finalize(stmt);
+	sqlite3_finalize(insert_stmt);
 
 	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &sqlite_err);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite_err);
+		fprintf(stderr, "%s: Failed 'END TRANSACTION': %s\n",
+						__FUNCTION__, sqlite_err);
 		exit(rc);
 	}
+}
+
+void insert_parent_child(struct oparser_comp *comp, sqlite3 *db,
+					sqlite3_stmt *insert_stmt)
+{
+	if (comp->is_stored == 2)
+		return;
+
+	if (comp->is_stored == 0) {
+		fprintf(stderr, "%s{%s} wasn't  stored.\n",
+			comp->comp_type->type, comp->uid);
+		exit(EPERM);
+	}
+
+	if (comp->is_stored == 1)
+		comp->is_stored++;
+
+	struct oparser_comp *parent, *child;
+	struct comp_array *carray;
+	int i;
+	if (comp->num_ptypes > 0) {
+		LIST_FOREACH(carray, &comp->parents, entry) {
+			for (i = 0; i < carray->num_comps; i++) {
+				parent = carray->comps[i];
+				oparser_bind_int(db, insert_stmt, PARENT_IDX,
+						parent->comp_id, __FUNCTION__);
+
+				oparser_bind_int(db, insert_stmt, CHILD_IDX,
+						comp->comp_id, __FUNCTION__);
+
+				oparser_finish_insert(db, insert_stmt,
+								__FUNCTION__);
+			}
+		}
+	}
+
+	LIST_FOREACH(carray, &comp->children, entry) {
+		for (i = 0; i < carray->num_comps; i++) {
+			child = carray->comps[i];
+			insert_parent_child(child, db, insert_stmt);
+		}
+	}
+}
+
+void gen_component_relations_table(struct oparser_scaffold *scaffold, sqlite3 *db)
+{
+	char *stmt_s, *index_stmt;
+	int rc = 0;
+
+	oparser_drop_table("component_relations", db);
+	stmt_s = "CREATE TABLE component_relations(" \
+			"parent	INTEGER REFERENCES components ON DELETE CASCADE, " \
+			"child	INTEGER REFERENCES components ON DELETE CASCADE);";
+
+	create_table(stmt_s, db);
+
+	index_stmt = "CREATE INDEX relations_parent_idx ON " \
+			"component_relations(parent, child);";
+	create_index(index_stmt, db);
+
+	sqlite3_stmt *insert_stmt;
+
+	stmt_s = "INSERT INTO component_relations(parent, child) " \
+			"VALUES(@vparent_id, @vchild_id)";
+
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
+					&insert_stmt, NULL);
+	if (rc) {
+		fprintf(stderr, "Failed to prepare 'INSERT INTO " \
+				"component_relations()': %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	char *sqlite_err = 0;
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: Failed 'BEGIN TRANSACTION': %s\n",
+						__FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
+	struct oparser_comp *comp;
+
+	LIST_FOREACH(comp, scaffold->children, root_entry) {
+		insert_parent_child(comp, db, insert_stmt);
+	}
+
+	sqlite3_finalize(insert_stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: Failed 'END TRANSACTION': %s\n",
+						__FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+}
+
+void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
+{
+	gen_components_table(scaffold, db);
+	gen_component_relations_table(scaffold, db);
 }
