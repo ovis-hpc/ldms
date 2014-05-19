@@ -349,47 +349,37 @@ void destroy_oparser_cmd_queue(struct oparser_cmd_queue *cmd_queue)
 	}
 }
 
-void create_table(char *create_stmt, char *index_stmt, sqlite3 *db)
+void _create_table(char *stmt, sqlite3 *db)
 {
 	int rc;
 	sqlite3_stmt *sql_stmt;
-
-	rc = sqlite3_prepare_v2(db, create_stmt, strlen(create_stmt),
+	rc = sqlite3_prepare_v2(db, stmt, strlen(stmt),
 							&sql_stmt, NULL);
 	if (rc) {
 		fprintf(stderr, "Failed to prepare the create table stmt: "
-				"%s: %s\n", create_stmt, sqlite3_errmsg(db));
+				"%s: %s\n", stmt, sqlite3_errmsg(db));
 		exit(rc);
 	}
 	rc = sqlite3_step(sql_stmt);
 	if (rc != SQLITE_DONE) {
 		fprintf(stderr, "%d: Failed to step the create table stmt: "
-				"%s: %s\n", rc, create_stmt,
-						sqlite3_errmsg(db));
-		exit(rc);
-	}
-	sqlite3_finalize(sql_stmt);
-
-	if (!index_stmt)
-		return;
-
-	rc = sqlite3_prepare_v2(db, index_stmt, strlen(index_stmt),
-							&sql_stmt, NULL);
-	if (rc) {
-		fprintf(stderr, "Failed to prepare the index_stmt: "
-				"%s: %s\n", index_stmt, sqlite3_errmsg(db));
-		exit(rc);
-	}
-
-	rc = sqlite3_step(sql_stmt);
-	if (rc != SQLITE_DONE) {
-		fprintf(stderr, "%d: Failed to step the index_stmt: "
-					"%s: %s\n", rc, create_stmt,
+				"%s: %s\n", rc, stmt,
 						sqlite3_errmsg(db));
 		exit(rc);
 	}
 	sqlite3_finalize(sql_stmt);
 }
+
+void create_table(char *create_stmt, sqlite3 *db)
+{
+	_create_table(create_stmt, db);
+}
+
+void create_index(char *index_stmt, sqlite3 *db)
+{
+	_create_table(index_stmt, db);
+}
+
 
 void oparser_drop_table(char *table_name, sqlite3 *db)
 {

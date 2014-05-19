@@ -181,11 +181,19 @@ uint64_t gen_metric_id(uint32_t comp_id, uint32_t metric_type_id);
 /**
  * \brief Trim the trailing space
  *
- * The string \c s is modified to get rid of all trailing spaceses.
+ * The string \c s is modified to get rid of all trailing spaces.
  */
 void trim_trailing_space(char *s);
 
-void create_table(char *create_stmt, char *index_stmt, sqlite3 *db);
+/**
+ * \brief Create a table in the database \c db
+ */
+void create_table(char *create_stmt, sqlite3 *db);
+
+/**
+ * \brief Create an index of an existing table in the database \c db
+ */
+void create_index(char *index_stmt, sqlite3 *db);
 
 struct building_sqlite_table;
 typedef void (*build_sqlite_table_fn)(struct building_sqlite_table *obj);

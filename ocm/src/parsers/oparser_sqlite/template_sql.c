@@ -132,9 +132,10 @@ void oparser_metrics_to_sqlite(struct tmpl_list *all_tmpl_list, sqlite3 *db)
 		"coll_comp	CHAR(64)	NOT NULL, " \
 		"prod_comp_id	SQLITE_uint32	NOT NULL);";
 
-	char *index_stmt = "CREATE INDEX metrics_idx ON metrics(name," \
-					"coll_comp,metric_type_id);";
-	create_table(stmt_s, index_stmt, db);
+	char *index_stmt = "CREATE INDEX metrics_idx ON metrics(" \
+					"coll_comp,metric_type_id,metric_id);";
+	create_table(stmt_s, db);
+	create_index(index_stmt, db);
 
 	stmt_s = "INSERT INTO metrics(name, metric_id, sampler, "
 			"metric_type_id, coll_comp, prod_comp_id)"
@@ -196,9 +197,11 @@ void oparser_templates_to_sqlite(struct tmpl_list *all_tmpl_list, sqlite3 *db)
 			"ldmsd_set	CHAR(128)	NOT NULL, " \
 			"cfg		TEXT, " \
 			"metrics	TEXT	NOT NULL );";
-	char *index_stmt = "CREATE INDEX templates_idx ON templates(name,apply_on);";
 
-	create_table(stmt_s, index_stmt, db);
+	create_table(stmt_s, db);
+
+	char *index_stmt = "CREATE INDEX templates_idx ON templates(apply_on, name);";
+	create_index(index_stmt, db);
 
 	stmt_s = "INSERT INTO templates(name, apply_on, ldmsd_set, "
 			"cfg, metrics) VALUES(@name, @apply_on, @ldmsd_set, "

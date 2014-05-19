@@ -71,7 +71,7 @@ enum {
 };
 
 /**
- * \brief Get the comma-separated string of chrildren comp id
+ * \brief Get the comma-separated string of children comp id
  * \param   children_s   A allocated string
  */
 void get_children_string(char *children_s, int len,
@@ -197,8 +197,9 @@ void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 		 "gif_path	TEXT," \
 		 "visible	INTEGER);";
 
-	char *index_stmt = "CREATE INDEX components_idx ON components(name,type,identifier);";
-	create_table(stmt_s, index_stmt, db);
+	char *index_stmt = "CREATE INDEX components_idx ON components(type,identifier);";
+	create_table(stmt_s, db);
+	create_index(index_stmt, db);
 
 	stmt_s = "INSERT INTO components(name, type, identifier, comp_id, parent_id, gif_path, visible) " \
 			"VALUES(@vname, @vtype, @videntifier, @vcomp_id, @vpid, @gifpath, @visible)";

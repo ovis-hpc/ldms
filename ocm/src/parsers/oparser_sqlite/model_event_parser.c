@@ -709,7 +709,8 @@ void oparser_models_to_sqlite()
 			" report_flags	CHAR(4));";
 
 	char *index_stmt = "CREATE INDEX IF NOT EXISTS models_idx ON models(name);";
-	create_table(stmt_s, index_stmt, db);
+	create_table(stmt_s, db);
+	create_index(index_stmt, db);
 
 	stmt_s = "INSERT INTO models(name, model_id, params, thresholds, "
 			"report_flags) VALUES(@name, @mid, @param, @th, @rf)";
@@ -753,7 +754,7 @@ void oparser_actions_to_sqlite()
 			" name		CHAR(128) PRIMARY KEY	NOT NULL," \
 			" execute	TEXT	NOT NULL);";
 
-	create_table(stmt_s, NULL, db);
+	create_table(stmt_s, db);
 
 	stmt_s = "INSERT INTO actions(name, execute) VALUES(@name, @exec)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt,
@@ -855,7 +856,7 @@ void oparser_events_to_sqlite()
 			" event_id	INTEGER PRIMARY KEY	NOT NULL," \
 			" event_name	TEXT			NOT NULL," \
 			" model_id	INTEGER			NOT NULL);";
-	create_table(stmt_s, NULL, db);
+	create_table(stmt_s, db);
 
 	stmt_s = "CREATE TABLE IF NOT EXISTS rule_actions (" \
 			" event_id	INTEGER		NOT NULL," \
@@ -863,19 +864,17 @@ void oparser_events_to_sqlite()
 			" message	TEXT," \
 			" action_name	CHAR(128)," \
 			" PRIMARY KEY(event_id, level));";
-
-	char *index_stmt = "CREATE INDEX IF NOT EXISTS rule_actions_idx"
-					" ON rule_actions(event_id,level);";
-	create_table(stmt_s, index_stmt, db);
+	create_table(stmt_s, db);
 
 	stmt_s = "CREATE TABLE IF NOT EXISTS rule_metrics (" \
 			" event_id	INTEGER		NOT NULL," \
 			" comp_id	SQLITE_uint32	NOT NULL,"
 			" metric_id	SQLITE_uint64	NOT NULL);";
 
-	index_stmt = "CREATE INDEX IF NOT EXISTS rule_metrics_idx ON "
+	char *index_stmt = "CREATE INDEX IF NOT EXISTS rule_metrics_idx ON "
 					"rule_metrics(event_id,comp_id,metric_id);";
-	create_table(stmt_s, index_stmt, db);
+	create_table(stmt_s, db);
+	create_index(index_stmt, db);
 
 	stmt_s = "CREATE TABLE IF NOT EXISTS user_events (" \
 			" event_id	INTERGER	NOT NULL," \
@@ -883,7 +882,8 @@ void oparser_events_to_sqlite()
 			" comp_type	TEXT		NOT NULL);";
 	index_stmt = "CREATE INDEX IF NOT EXISTS user_events_idx ON " \
 			"user_events(event_id,comp_type);";
-	create_table(stmt_s, index_stmt, db);
+	create_table(stmt_s, db);
+	create_index(index_stmt, db);
 
 	sqlite3_stmt *rule_templates_stmt;
 	sqlite3_stmt *rule_actions_stmt;

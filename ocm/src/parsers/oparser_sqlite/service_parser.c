@@ -491,7 +491,8 @@ void oparser_services_to_sqlite(sqlite3 *db)
 	char *index_stmt = "CREATE INDEX IF NOT EXISTS services_idx" \
 			" ON services(hostname, service);";
 
-	create_table(stmt_s, index_stmt, db);
+	create_table(stmt_s, db);
+	create_index(index_stmt, db);
 
 	struct oparser_host_services *services;
 
