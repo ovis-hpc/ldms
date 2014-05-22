@@ -878,15 +878,15 @@ static uint64_t __linksmetrics_derived_metric_calc(int i, int j,
 	switch (i) {
 	case LD_SAMPLE_GEMINI_LINK_BW:
 		if (timedelta > 0)
-			return (1000 * diff[LB_traffic][j])/
-				timedelta;
+			return (uint64_t)((double)(1000.0 * (double)(diff[LB_traffic][j]))/
+				(double)(timedelta));
 		else
 			return 0;
 		break;
 	case LD_SAMPLE_GEMINI_LINK_USED_BW:
 		if ((linksmetrics_max_link_bw[j] > 0 ) && (timedelta > 0))
 			return (uint64_t) (
-				((double)(100 * 1000000 * diff[LB_traffic][j])/
+				((double)(100.0 * 1000000.0 * (double)(diff[LB_traffic][j]))/
 				 ((double)timedelta * 1000000)) /
 				linksmetrics_max_link_bw[j]);
 		else
