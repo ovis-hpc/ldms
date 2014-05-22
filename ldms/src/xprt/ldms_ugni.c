@@ -83,8 +83,8 @@ uint32_t cookie;
 int modes = 0;
 int device_id = 0;
 int cq_entries = 128;
-int IS_GEMINI=FALSE;
-int IS_ARIES=FALSE;
+int IS_GEMINI=0;
+int IS_ARIES=0;
 static int reg_count;
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
@@ -126,11 +126,15 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 
         /* ptag=0 will be passed if XC30. Call GNI_GetPtag(0, cookie, &ptag) to return ptag associated with cookie */
 	if (IS_ARIES) {
-        	if (!ptag) {
-                	grc = GNI_GetPtag(0, cookie, ptag);
-	                if (grc)
-	                        goto err;
-	        }
+		if (*ptag == 0) {
+			#ifdef GNI_FIND_ALLOC_PTAG
+				grc = GNI_GetPtag(0, cookie, ptag);
+				if (grc)
+					goto err;
+			#else
+				goto err;
+			#endif
+		}
 	}
 
 	/* Do not apply any resource limits */
@@ -149,7 +153,7 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 	 * -job_id should always be 0 (meaning "no job container created")
 	 */
 	pthread_mutex_lock(&ugni_lock);
-	grc = GNI_ConfigureJob(0, 0, ptag, cookie, &limits);
+	grc = GNI_ConfigureJob(0, 0, *ptag, cookie, &limits);
 	pthread_mutex_unlock(&ugni_lock);
 	return grc;
  err:
@@ -221,17 +225,22 @@ static gni_return_t ugni_dom_init(uint8_t *ptag, uint32_t cookie, uint32_t inst_
 	gni_return_t grc;
 
 	if (IS_GEMINI) {
-		if (!ptag)
+		if (*ptag == 0)
 			return GNI_RC_INVALID_PARAM;
 	}
 
 	pthread_mutex_lock(&ugni_lock);
 	if (IS_GEMINI)
-		grc = GNI_CdmCreate(inst_id, ptag, cookie, GNI_CDM_MODE_FMA_SHARED,
+		grc = GNI_CdmCreate(inst_id, *ptag, cookie, GNI_CDM_MODE_FMA_SHARED,
 			    &gxp->dom.cdm);
-	else if (IS_ARIES)
-		grc = GNI_CdmCreate(inst_id, GNI_FIND_ALLOC_PTAG, cookie, GNI_CDM_MODE_FMA_SHARED,
-                            &gxp->dom.cdm);
+	else if (IS_ARIES) {
+		#ifdef GNI_FIND_ALLOC_PTAG
+			grc = GNI_CdmCreate(inst_id, GNI_FIND_ALLOC_PTAG, cookie, GNI_CDM_MODE_FMA_SHARED,
+				&gxp->dom.cdm);
+		#else
+			goto err;
+		#endif
+	}
 	else
 		goto err;
 
@@ -243,7 +252,7 @@ static gni_return_t ugni_dom_init(uint8_t *ptag, uint32_t cookie, uint32_t inst_
 		goto err;
 
 	if (IS_GEMINI)
-		gxp->dom.info.ptag = ptag;
+		gxp->dom.info.ptag = *ptag;
 	gxp->dom.info.cookie = cookie;
 	gxp->dom.info.inst_id = inst_id;
 
@@ -994,13 +1003,16 @@ static int init_once(ldms_log_fn_t log_fn)
 	FILE *rcsfp = NULL;
 	FILE *rcifp = NULL;
 	FILE *vfp = NULL;
+	char lbuf[256];
+	char *s;
 
 	vfp = fopen(verfile, "r");
-	if (strstr(vfp, cray_gem) != NULL)
-		IS_GEMINI = TRUE;
-	if (strstr(vfp, cray_ari) != NULL)
-		IS_ARIES = TRUE;
+	s = fgets(lbuf, sizeof(lbuf), vfp);
 	fclose (vfp);
+	if (strstr(lbuf, "cray_gem") != NULL)
+		IS_GEMINI = 1;
+	if (strstr(lbuf, "cray_ari") != NULL)
+		IS_ARIES = 1;
 	vfp = NULL;
 	evthread_use_pthreads();
 	pthread_mutex_init(&ugni_list_lock, 0);
