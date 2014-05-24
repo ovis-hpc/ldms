@@ -499,7 +499,10 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 	if (!sp)
 		goto enomem;
 
-	int rc;
+	sp->store_engine = store->store;
+
+	int rc, found_count;
+	found_count = 0;
 	/* Creating the hostset_ref_list for the store policy */
 	if (!hosts) {
 		/* No given hosts */
@@ -507,7 +510,10 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 		LIST_FOREACH(hs, &host_list, link) {
 			rc = sp_create_hset_ref_list(hs, sp, hs->hostname,
 							metrics);
-			if (rc) {
+			if (rc == 0) {
+				found_count++;
+				continue;
+			} else {
 				pthread_mutex_unlock(&host_list_lock);
 				goto destroy_store_policy;
 			}
@@ -516,7 +522,9 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 	} else {
 		/* Given hosts */
 		char *hostname = strtok(hosts, ",");
+		int found_host_count;
 		while (hostname) {
+			found_host_count = 0;
 			pthread_mutex_lock(&host_list_lock);
 			/*
 			 * Find the given hosts
@@ -525,23 +533,31 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 				if (0 != strcmp(hs->hostname, hostname))
 					continue;
 
+				found_host_count++;
 				rc = sp_create_hset_ref_list(hs, sp, hostname,
 								metrics);
-				if (rc) {
+				if (rc == 0) {
+					found_count++;
+					continue;
+				} else {
 					pthread_mutex_unlock(&host_list_lock);
 					goto destroy_store_policy;
 				}
-				break;
 			}
 			pthread_mutex_unlock(&host_list_lock);
 			/* Host not found */
-			if (!hs) {
+			if (found_host_count == 0) {
 				ldms_log("ocm: error, could not find the host "
 					"'%s'.", hostname);
-				return ;
+				goto destroy_store_policy;
 			}
 			hostname = strtok(NULL, ",");
 		}
+	}
+	if (found_count == 0) {
+		ldms_log("ocm: error, count not find the set '%s' in any hosts",
+				set_name);
+		goto destroy_store_policy;
 	}
 	/* Done creating the hostset_ref_list for the store policy */
 
@@ -571,17 +587,14 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 		while (metric) {
 			smi = malloc(sizeof(*smi));
 			if (!smi) {
-				ldms_log("ocm: error, memory allocation"
-						" failed.\n");
+				ldms_log("ocm: error, memory allocation failed.\n");
 				goto destroy_store_policy;
 			}
-
 
 			smi->name = strdup(metric);
 			if (!smi->name) {
 				free(smi);
-				ldms_log("ocm: error, memory allocation"
-						" failed.\n");
+				ldms_log("ocm: error, memory allocation failed.\n");
 				goto destroy_store_policy;
 			}
 			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
@@ -590,12 +603,14 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 		}
 	}
 
-	struct store_instance *si;
-	si = ldmsd_store_instance_get(store->store, sp);
-	if (!si) {
-		ldms_log("ocm: error, memory allocation failed.\n");
-		destroy_store_policy(sp);
-		goto enomem;
+	struct store_instance *si = NULL;
+	if (sp->state == STORE_POLICY_READY) {
+		si = ldmsd_store_instance_get(store->store, sp);
+		if (!si) {
+			ldms_log("ocm: error, memory allocation failed.\n");
+			destroy_store_policy(sp);
+			goto enomem;
+		}
 	}
 
 	sp->si = si;
@@ -608,7 +623,11 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 		sp_ref = malloc(sizeof(*sp_ref));
 		if (!sp_ref) {
 			ldms_log("ocm: error, memory allocation failed.\n");
-			free(si);
+			if (sp->si) {
+				free(sp->si);
+				sp->si = NULL;
+			}
+
 			goto clean_fake_list;
 		}
 		LIST_INSERT_HEAD(&fake_list, sp_ref, entry);
@@ -626,8 +645,8 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 	LIST_INSERT_HEAD(&sp_list, sp, link);
 	pthread_mutex_unlock(&sp_list_lock);
 
-	ldms_log("ocm: Added the store '%s' successfully.\n", container);
-	return ;
+	ldms_log("Added the store '%s' successfully.\n", container);
+	return;
 
 clean_fake_list:
 	while (sp_ref = LIST_FIRST(&fake_list)) {
@@ -636,13 +655,13 @@ clean_fake_list:
 	}
 destroy_store_policy:
 	destroy_store_policy(sp);
-	return ;
+	return;
 enomem:
 	ldms_log("ocm: error, memory allocation failed.\n");
-	return ;
+	return;
 einval:
 	ldms_log("ocm: error, the '%s' attribute is not specified.\n", attr);
-	return ;
+	return;
 enoent:
 	ldms_log("ocm: error, the plugin '%s' was not found.\n", store_name);
 	return ;

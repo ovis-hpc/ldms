@@ -226,7 +226,9 @@ struct ldmsd_store_policy {
 	int metric_count; /**< The number of metrics. */
 	struct ldmsd_store_metric_index_list metric_list; /**< List of the indices. */
 	char *comp_type;
+	struct ldmsd_store *store_engine; /**< The store plugin. */
 	struct store_instance *si; /**< Store instance. */
+
 	enum {
 		STORE_POLICY_CONFIGURING=0, /* Need metric index list */
 		STORE_POLICY_READY,

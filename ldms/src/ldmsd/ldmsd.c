@@ -1248,21 +1248,50 @@ void destroy_metric_idx_list(struct ldmsd_store_metric_index_list *list)
 	}
 }
 
-int _mvec_find_metric(ldms_mvec_t mvec, const char *name)
+int _mvec_find_metric(ldms_mvec_t mvec, const char *name, int start_index)
 {
-	int i;
+	int i = start_index;
 	const char *metric_name;
-	for (i = 0; i < mvec->count; i++) {
+	char *tmp = name;
+
+	while (i < mvec->count) {
 		metric_name = ldms_get_metric_name(mvec->v[i]);
-		if (0 == strcmp(name, metric_name))
+
+		while ((*tmp != 0) && (*metric_name != 0)) {
+
+			if (*tmp != *metric_name) {
+				/*
+				 * This metric_name is not the one we are
+				 *  looking for, then go to the next one.
+				 */
+				goto next_metric_name;
+			}
+
+			tmp++;
+			metric_name++;
+		}
+
+		if ((*tmp == '\0') && (*metric_name == '\0'))
 			return i;
+
+		/*
+		 * This is the case that the given name is only the first path
+		 * of the whole metric name (before the '#').
+		 */
+		if ((*tmp == '\0') && (*metric_name == '#'))
+			return i;
+next_metric_name:
+		i++;
+		tmp = name;
 	}
+
 	return -1;
 }
 
 int create_metric_idx_list(struct ldmsd_store_policy *sp,
 			const char *_metrics, ldms_mvec_t mvec)
 {
+	int rc = 0;
 	struct ldmsd_store_metric_index *smi;
 	if (!_metrics) {
 		const char *mname;
@@ -1285,38 +1314,32 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp,
 		}
 	} else {
 		char *metrics = strdup(_metrics);
-		char *metric;
-		int index;
+		char *metric, *ptr;
+		int index, found;
+		found = 0;
 		uint32_t count = ldms_mvec_get_count(mvec);
 
-		metric = strtok(metrics, ",");
+		metric = strtok_r(metrics, ",", &ptr);
 		while (metric) {
-			index = _mvec_find_metric(mvec, metric);
-			if (index < 0) {
+			index = _mvec_find_metric(mvec, metric, 0);
+			while (index >= 0) {
+				found = 1;
+				rc = new_store_metric_idx(sp, mvec, index);
+				if (rc)
+					goto err;
+				index = _mvec_find_metric(mvec, metric, index + 1);
+			}
+			if (!found) {
 				sprintf(replybuf, "%d Could not find the "
 					"metric '%s'.", -ENOENT, metric);
+				ldms_log("error %d: Could not find the "
+					"metric '%s'.", ENOENT, metric);
 				destroy_metric_idx_list(&sp->metric_list);
 				sp->metric_count = 0;
 				free(metrics);
 				return ENOENT;
 			}
-			smi = malloc(sizeof(*smi));
-			if (!smi) {
-				free(metrics);
-				goto enomem;
-			}
-
-			smi->name = strdup(metric);
-			if (!smi->name) {
-				free(smi);
-				free(metrics);
-				goto enomem;
-			}
-			smi->index = index;
-			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
-			sp->metric_count++;
-
-			metric = strtok(NULL, ",");
+			metric = strtok_r(NULL, ",", &ptr);
 		}
 
 	}
@@ -1326,7 +1349,14 @@ enomem:
 	destroy_metric_idx_list(&sp->metric_list);
 	sp->metric_count = 0;
 	sprintf(replybuf, "%d Could not create metric index list.", -ENOMEM);
+	ldms_log("error %d: Could not create metric index list.", ENOMEM);
 	return ENOMEM;
+err:
+	destroy_metric_idx_list(&sp->metric_list);
+	sp->metric_count = 0;
+	sprintf(replybuf, "%d Could not create metric index list.", -rc);
+	ldms_log("error %d: Could not create metric index list.", rc);
+	return rc;
 }
 
 void destroy_hset_ref(struct hostset_ref *hset_ref, struct ldmsd_store_policy *sp)
@@ -1434,6 +1464,8 @@ int process_store(int fd,
 		goto enomem;
 	}
 
+	sp->store_engine = store->store;
+
 	int rc, found_count;
 	found_count = 0;
 	/* Creating the hostset_ref_list for the store policy */
@@ -1530,7 +1562,6 @@ int process_store(int fd,
 				goto destroy_store_policy;
 			}
 
-
 			smi->name = strdup(metric);
 			if (!smi->name) {
 				free(smi);
@@ -1545,12 +1576,14 @@ int process_store(int fd,
 		}
 	}
 
-	struct store_instance *si;
-	si = ldmsd_store_instance_get(store->store, sp);
-	if (!si) {
-		sprintf(replybuf, "%d Memory allocation failed.\n", -ENOMEM);
-		destroy_store_policy(sp);
-		goto enomem;
+	struct store_instance *si = NULL;
+	if (sp->state == STORE_POLICY_READY) {
+		si = ldmsd_store_instance_get(store->store, sp);
+		if (!si) {
+			sprintf(replybuf, "%d Memory allocation failed.\n", -ENOMEM);
+			destroy_store_policy(sp);
+			goto enomem;
+		}
 	}
 
 	sp->si = si;
@@ -1563,7 +1596,11 @@ int process_store(int fd,
 		sp_ref = malloc(sizeof(*sp_ref));
 		if (!sp_ref) {
 			sprintf(replybuf, "%d Memory allocation failed.", -ENOMEM);
-			free(si);
+			if (sp->si) {
+				free(sp->si);
+				sp->si = NULL;
+			}
+
 			goto clean_fake_list;
 		}
 		LIST_INSERT_HEAD(&fake_list, sp_ref, entry);
@@ -1977,6 +2014,26 @@ int do_connect(struct hostspec *hs)
 	return 0;
 }
 
+int new_store_metric_idx(struct ldmsd_store_policy *sp, ldms_mvec_t mvec,
+								int index)
+{
+	struct ldmsd_store_metric_index *smi;
+	smi = malloc(sizeof(*smi));
+	if (!smi)
+		return ENOMEM;
+
+	const char *metric = ldms_get_metric_name(mvec->v[index]);
+	smi->name = strdup(metric);
+	if (!smi->name) {
+		free(smi);
+		return ENOMEM;
+	}
+	smi->index = index;
+	LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
+	sp->metric_count++;
+	return 0;
+}
+
 int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)
 {
 	if (sp->state != STORE_POLICY_CONFIGURING)
@@ -1988,26 +2045,24 @@ int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)
 	if (LIST_EMPTY(&sp->metric_list)) {
 		/* No metric is given. */
 		for (i = 0; i < mvec->count; i++) {
-			smi = malloc(sizeof(*smi));
-			if (!smi) {
-				rc = ENOMEM;
+			rc = new_store_metric_idx(sp, mvec, i);
+			if (rc)
 				goto err;
-			}
-			metric = ldms_get_metric_name(mvec->v[i]);
-			smi->name = strdup(metric);
-			if (!smi->name) {
-				free(smi);
-				rc = ENOMEM;
-				goto err;
-			}
-			smi->index = i;
-			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
-			sp->metric_count++;
 		}
 	} else {
-		LIST_FOREACH(smi, &sp->metric_list, entry) {
-			i = _mvec_find_metric(mvec, smi->name);
-			if (i < 0) {
+		struct ldmsd_store_metric_index *tmp_smi;
+		int found = 0;
+		smi = LIST_FIRST(&sp->metric_list);
+		while (smi) {
+			i = _mvec_find_metric(mvec, smi->name, 0);
+			while (i >= 0) {
+				found = 1;
+				rc = new_store_metric_idx(sp, mvec, i);
+				if (rc)
+					goto err;
+				i = _mvec_find_metric(mvec, smi->name, i + 1);
+			}
+			if (!found) {
 				ldms_log("Store '%s': Could not find metric "
 						"'%s'.\n", sp->container,
 						smi->name);
@@ -2015,7 +2070,10 @@ int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)
 				rc = ENOENT;
 				goto err;
 			}
-			smi->index = i;
+			tmp_smi = smi;
+			LIST_REMOVE(smi, entry);
+			smi = LIST_NEXT(tmp_smi, entry);
+			sp->metric_count--;
 		}
 	}
 	sp->state = STORE_POLICY_READY;
@@ -2060,15 +2118,32 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		/* The indices should stay the same. */
 	}
 	LIST_FOREACH(lsp_ref, &hset->lsp_list, entry) {
-		if (lsp_ref->lsp->state == STORE_POLICY_CONFIGURING) {
-			pthread_mutex_lock(&lsp_ref->lsp->idx_create_lock);
-			assign_metric_index_list(lsp_ref->lsp, hset->mvec);
-			pthread_mutex_unlock(&lsp_ref->lsp->idx_create_lock);
-		}
-		if (lsp_ref->lsp->state != STORE_POLICY_READY)
+		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
+
+		/*
+		 * TODO: The store policy should be removed
+		 * if the state is STORE_POLICY_WRONG_CONFIG
+		 */
+		if (lsp->state == STORE_POLICY_WRONG_CONFIG)
 			continue;
 
-		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
+		if (lsp->state == STORE_POLICY_CONFIGURING) {
+			pthread_mutex_lock(&lsp->idx_create_lock);
+			assign_metric_index_list(lsp, hset->mvec);
+			pthread_mutex_unlock(&lsp_ref->lsp->idx_create_lock);
+			if (lsp->state == STORE_POLICY_READY) {
+				lsp->si = ldmsd_store_instance_get(lsp->store_engine, lsp);
+				if (!lsp->si) {
+					ldms_log("ENOMEM: Could not create the store instance of "
+							"'%s'\n", lsp->container);
+					destroy_store_policy(lsp);
+					continue;
+				}
+			} else {
+				continue;
+			}
+		}
+
 		struct store_instance *si = lsp->si;
 
 		mvec = ldms_mvec_create(lsp->metric_count);
