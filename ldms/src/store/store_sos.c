@@ -561,6 +561,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 		return;
 	int i;
 	while (ms = LIST_FIRST(&si->ms_list)) {
+		LIST_REMOVE(ms, entry);
 		if (ms->sos)
 			sos_close(ms->sos, ODS_COMMIT_ASYNC);
 		if (ms->path)
