@@ -210,7 +210,7 @@ void cleanup(int x)
 	struct ldmsd_store_policy *sp;
 	pthread_mutex_lock(&sp_list_lock);
 	LIST_FOREACH(sp, &sp_list, link) {
-		sp->si->store_engine->destroy(sp->si);
+		sp->si->store_engine->destroy(sp->si->store_handle);
 		sp->si = NULL;
 	}
 	pthread_mutex_unlock(&sp_list_lock);
