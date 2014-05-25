@@ -38,15 +38,15 @@ LDMSD_AGG=$OVIS_HOME/sbin/ldmsd
 
 if [ -z $LDMSD_AGG_XPORT ] ; then
 	LDMSD_AGG_XPORT=sock
-	echo "LDMSD_AFF_XPORT not defined, using default of $LDMSD_AGG_XPORT"
+	echo "LDMSD_AGG_XPORT not defined, using default of $LDMSD_AGG_XPORT"
 fi
 if [ -z $LDMSD_AGG_PORT_TO_OCMD ] ; then
 	LDMSD_AGG_PORT_TO_OCMD=40002
-	echo "LDMSD_AFF_PORT_TO_OCMD not defined, using default of $LDMSD_AGG_PORT_TO_OCMD"
+	echo "LDMSD_AGG_PORT_TO_OCMD not defined, using default of $LDMSD_AGG_PORT_TO_OCMD"
 fi
 if [ -z $LDMSD_AGG_PORT_LISTEN ] ; then
 	LDMSD_AGG_PORT_LISTEN=50002
-	echo "LDMSD_AFF_PORT_LISTEN not defined, using default of $LDMSD_AGG_PORT_LISTEN"
+	echo "LDMSD_AGG_PORT_LISTEN not defined, using default of $LDMSD_AGG_PORT_LISTEN"
 fi
 
 lockfile=$OVIS_HOME/var/lock/$prog.aggregator.lock
@@ -60,7 +60,7 @@ mkdir -p $OVIS_HOME/var/log/
 start() {
 	echo -n "Starting $prog: "
 
-	$LDMSD_AGG -l $OVIS_HOME/var/log/ldmsd_aggregator.log -S $OVIS_HOME/var/sock/ldmsd_aggregator.ctrl -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -o $LDMSD_PORT_TO_OCMD -z ldmsd_aggregator
+	$LDMSD_AGG -l $OVIS_HOME/var/log/ldmsd_aggregator.log -S $OVIS_HOME/var/sock/ldmsd_aggregator.ctrl -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -o $LDMSD_AGG_PORT_TO_OCMD -z ldmsd_aggregator
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then
