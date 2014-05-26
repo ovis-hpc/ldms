@@ -793,22 +793,25 @@ static bpt_node_t leaf_right_most(bpt_t t, bpt_node_t node)
  * \returns NULL if the left node is not found.
  * \returns A pointer to the left node, if it is found.
  */
-static bpt_node_t leaf_left(bpt_t t, bpt_node_t node)
+static bpt_node_t leaf_left(bpt_t t, uint64_t node_ref)
 {
 	int idx;
-	uint64_t node_ref;
-	node_ref = ods_obj_ptr_to_ref(t->ods, node);
+	bpt_node_t node;
+	uint64_t parent_ref;
+	node = ods_obj_ref_to_ptr(t->ods, node_ref);
 	assert(node->is_leaf);
 loop:
 	if (t->root_ref == node_ref)
 		return NULL;
 	assert(node->parent);
+	parent_ref = node->parent;
 	bpt_node_t parent = ods_obj_ref_to_ptr(t->ods, node->parent);
 	for (idx = 0; idx < parent->count; idx++)
 		if (parent->entries[idx].ref == node_ref)
 			break;
 	assert(idx < parent->count);
 	if (!idx) {
+		node_ref = parent_ref;
 		node = parent;
 		goto loop;
 	}
@@ -1254,20 +1257,17 @@ static int bpt_iter_next(obj_iter_t oi)
 static int bpt_iter_prev(obj_iter_t oi)
 {
 	bpt_iter_t i = (bpt_iter_t)oi;
-	bpt_node_t node;
 	bpt_t t = i->idx->priv;
 	if (!i->node_ref)
 		goto not_found;
-	node = ods_obj_ref_to_ptr(i->idx->ods, i->node_ref);
 	if (i->ent) {
 		i->ent--;
 	} else {
 		bpt_node_t left;
-
-		left = leaf_left(t, node);
-		i->node_ref = ods_obj_ptr_to_ref(i->idx->ods, left);
-		if (!i->node_ref)
+		left = leaf_left(t, i->node_ref);
+		if (!left)
 			goto not_found;
+		i->node_ref = ods_obj_ptr_to_ref(i->idx->ods, left);
 		i->ent = left->count - 1;
 	}
 	return 0;
