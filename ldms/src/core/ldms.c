@@ -66,11 +66,24 @@
 #include "ldms_xprt.h"
 #include <coll/rbt.h>
 #include <limits.h>
+#include <assert.h>
 #ifdef ENABLE_MMAP
 #include <ftw.h>
 #endif
 #include <mmalloc/mmalloc.h>
 #include "ldms_private.h"
+#include <pthread.h>
+
+#if USE_TF
+#ifdef __linux
+#define TF() default_log("Thd%lu:%s:%lu:%s\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__,__FILE__)
+#else
+#define TF() default_log("%s:%d\n", __FUNCTION__, __LINE__)
+#endif /* linux */
+#else
+#define TF()
+#endif /* 1 or 0 disable tf */
+
 
 #define SET_DIR_PATH "/var/run/ldms"
 static char *__set_dir = SET_DIR_PATH;
@@ -90,13 +103,16 @@ static struct rbt set_tree = {
 	.root = NULL,
 	.comparator = set_comparator
 };
+pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct ldms_set *ldms_find_local_set(const char *set_name)
 {
 	struct rbn *z;
 	struct ldms_set *s = NULL;
 
+	pthread_mutex_lock(&set_tree_lock);
 	z = rbt_find(&set_tree, (void *)set_name);
+	pthread_mutex_unlock(&set_tree_lock);
 	if (z)
 		s = container_of(z, struct ldms_set, rb_node);
 
@@ -166,15 +182,22 @@ uint32_t ldms_get_cardinality(ldms_set_t _set)
 
 static void rem_local_set(struct ldms_set *s)
 {
+	pthread_mutex_lock(&set_tree_lock);
 	rbt_del(&set_tree, &s->rb_node);
+	pthread_mutex_unlock(&set_tree_lock);
 }
 
 static void add_local_set(struct ldms_set *s)
 {
+	struct rbn *z;
 	s->rb_node.key = s->meta->name;
+	pthread_mutex_lock(&set_tree_lock);
+	z = rbt_find(&set_tree, s->meta->name);
+	assert(NULL == z);
 	rbt_ins(&set_tree, &s->rb_node);
+	pthread_mutex_unlock(&set_tree_lock);
 }
-
+#if 0
 static int visit_subtree(struct rbn *n,
 			 int (*cb)(struct ldms_set *, void *arg),
 			 void *arg)
@@ -203,7 +226,7 @@ static int visit_subtree(struct rbn *n,
  err:
 	return rc;
 }
-
+#endif
 struct cb_arg {
 	void *user_arg;
 	int (*user_cb)(struct ldms_set *, void *);
@@ -219,7 +242,11 @@ static int rbn_cb(struct rbn *rbn, void *arg, int level)
 int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 {
 	struct cb_arg user_arg = { arg, cb };
-	return rbt_traverse(&set_tree, rbn_cb, &user_arg);
+	int rc;
+	pthread_mutex_lock(&set_tree_lock);
+	rc = rbt_traverse(&set_tree, rbn_cb, &user_arg);
+	pthread_mutex_unlock(&set_tree_lock);
+	return rc;
 }
 
 struct set_list_arg {

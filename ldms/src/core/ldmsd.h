@@ -124,6 +124,7 @@ struct hostspec
 	pthread_mutex_t set_list_lock;
 	LIST_HEAD(set_list, hostset) set_list;
 	LIST_ENTRY(hostspec) link;
+	TAILQ_ENTRY(hostspec) conn_link;
 };
 
 typedef struct ldmsd_store_tuple_s {

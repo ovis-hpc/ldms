@@ -109,7 +109,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q"
+#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -190,6 +190,9 @@ pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(host_list_s, hostspec) host_list;
 LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
+TAILQ_HEAD(conn_s, hostspec) conn_list;
+pthread_mutex_t conn_list_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t conn_list_cv = PTHREAD_COND_INITIALIZER;
 
 int passive = 0;
 int quiet = 0; /* by default ldmsd should not be quiet */
@@ -242,6 +245,7 @@ void usage(char *argv[])
 	printf("%s: [%s]\n", argv[0], FMT);
 	printf("    -C config_file    The path to the configuration file. \n");
 	printf("    -P thr_count   Count of event threads to start.\n");
+	printf("    -Z conn_count  Count of connection threads to start.\n");
 	printf("    -i             Test metric set sample interval.\n");
 	printf("    -k             Publish publish kernel metrics.\n");
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
@@ -270,6 +274,8 @@ void usage(char *argv[])
 	cleanup(1);
 }
 
+int conn_thread_count = 1;
+pthread_t *conn_thread;		/* connector threads */
 int ev_thread_count = 1;
 struct event_base **ev_base;	/* event bases */
 pthread_t *ev_thread;		/* sampler threads */
@@ -970,17 +976,6 @@ void host_sampler_cb(int fd, short sig, void *arg)
 
 	do_host(hs);
 
-	if (!hs->x || !ldms_xprt_connected(hs->x)) {
-		hs->timeout.tv_sec = hs->connect_interval / 1000000;
-		hs->timeout.tv_usec = hs->connect_interval % 1000000;
-	} else if (hs->synchronous){
-		calculate_timeout(hs->thread_id, hs->sample_interval,
-				  hs->sample_offset, &hs->timeout);
-	} else {
-		hs->timeout.tv_sec = hs->sample_interval / 1000000;
-		hs->timeout.tv_usec = hs->sample_interval % 1000000;
-	}
-	evtimer_add(hs->event, &hs->timeout);
 }
 
 struct hostset *find_host_set(struct hostspec *hs, const char *set_name);
@@ -2354,24 +2349,36 @@ void update_data(struct hostspec *hs)
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
 
+void add_connect_candidate(struct hostspec *hs)
+{
+	pthread_mutex_lock(&conn_list_lock);
+	TAILQ_INSERT_TAIL(&conn_list, hs, conn_link);
+	pthread_cond_signal(&conn_list_cv);
+	pthread_mutex_unlock(&conn_list_lock);
+}
+
+void schedule_update(struct hostspec *hs)
+{
+	if (!hs->x || !ldms_xprt_connected(hs->x))
+		return;
+
+	if (hs->synchronous){
+		calculate_timeout(hs->thread_id, hs->sample_interval,
+				  hs->sample_offset, &hs->timeout);
+	} else {
+		hs->timeout.tv_sec = hs->sample_interval / ONESEC_US;
+		hs->timeout.tv_usec = hs->sample_interval % ONESEC_US;
+	}
+	evtimer_add(hs->event, &hs->timeout);
+}
+
 void do_host(struct hostspec *hs)
 {
 	int rc;
 	pthread_mutex_lock(&hs->conn_state_lock);
 	switch (hs->conn_state) {
 	case HOST_DISCONNECTED:
-		if (hs->type != PASSIVE)
-			rc = do_connect(hs);
-		else
-			rc = do_passive_connect(hs);
-		if (rc) {
-			hs->conn_state = HOST_DISCONNECTED;
-			ldms_log("Host connection state for host %s changed from HOST_DISCONNECTED to HOST_DISCONNECTED.\n", hs->hostname);
-		}
-		else {
-			hs->conn_state = HOST_CONNECTED;
-			ldms_log("Host connection state for host %s changed from HOST_DISCONNECTED to HOST_CONNECTED.\n", hs->hostname);
-		}
+		add_connect_candidate(hs);
 		break;
 	case HOST_CONNECTED:
 		if (!hs->x || !ldms_xprt_connected(hs->x)) {
@@ -2385,12 +2392,19 @@ void do_host(struct hostspec *hs)
 			 * the refcount is 0. Resetting hs->x here is OK. */
 			hs->x = 0;
 			hs->conn_state = HOST_DISCONNECTED;
-			ldms_log("Host Disconnect: Host connection state for host %s changed from HOST_CONNECTED to HOST_DISCONNECTED.\n", hs->hostname);
-		} else if ((hs->type != BRIDGING) && ((hs->standby == 0) || (hs->standby & saggs_mask)))
+			ldms_log("Host Disconnect: Host connection state "
+				"for host %s changed from HOST_CONNECTED to "
+				"HOST_DISCONNECTED.\n", hs->hostname);
+			add_connect_candidate(hs);
+		} else if ((hs->type != BRIDGING) &&
+			   ((hs->standby == 0) || (hs->standby & saggs_mask))) {
 			update_data(hs);
+			schedule_update(hs);
+		}
 		break;
 	default:
-		ldms_log("Host connection state '%d' is invalid.\n", hs->conn_state);
+		ldms_log("Host connection state '%d' is invalid.\n",
+							hs->conn_state);
 		assert(0);
 	}
 	pthread_mutex_unlock(&hs->conn_state_lock);
@@ -2427,6 +2441,64 @@ void keepalive_cb(int fd, short sig, void *arg)
 	keepalive_to.tv_sec = 10;
 	keepalive_to.tv_usec = 0;
 	evtimer_add(keepalive, &keepalive_to);
+}
+
+/* Schedule a timeout to reconnect. When this timeout expires, the
+ * host will be added back to the connect-candidate list. Must be
+ * called with the hostset conn_state lock held.
+ */
+void host_conn_reschedule(struct hostspec *hs)
+{
+	hs->conn_state = HOST_DISCONNECTED;
+	hs->timeout.tv_sec = hs->connect_interval / ONESEC_US;
+	hs->timeout.tv_usec = hs->connect_interval % ONESEC_US;
+	evtimer_add(hs->event, &hs->timeout);
+}
+
+void *connect_proc(void *v)
+{
+	struct hostspec *hs;
+	int rc;
+
+	TF();
+	while (1) {
+		/* Wait for a host to appear on the connect list */
+		pthread_mutex_lock(&conn_list_lock);
+
+		/* Remove the head of the list */
+		if (TAILQ_EMPTY(&conn_list))
+			pthread_cond_wait(&conn_list_cv, &conn_list_lock);
+
+		/* Get the head of the connect candidate list */
+		hs = TAILQ_FIRST(&conn_list);
+		TAILQ_REMOVE(&conn_list, hs, conn_link);
+		pthread_mutex_unlock(&conn_list_lock);
+
+		pthread_mutex_lock(&hs->conn_state_lock);
+		switch (hs->conn_state) {
+		case HOST_DISCONNECTED:
+			if (hs->type != PASSIVE)
+				rc = do_connect(hs);
+			else
+				rc = do_passive_connect(hs);
+			if (rc)
+				host_conn_reschedule(hs);
+			else {
+				hs->conn_state = HOST_CONNECTED;
+				rc = do_authenticate(hs);
+				if (rc)
+					ldms_log("%s: Authentication failed\n", __func__);
+			}
+			schedule_update(hs);
+			break;
+		default:
+			ldms_log("%s: Host connection state '%d' is invalid.\n",
+				 __func__, hs->conn_state);
+			assert(0);
+		}
+		pthread_mutex_unlock(&hs->conn_state_lock);
+	}
+	return NULL;
 }
 
 void *event_proc(void *v)
@@ -2622,6 +2694,7 @@ typedef enum {
 	LDMS_HOSTNAME=0,
 	LDMS_HOSTTYPE,
 	LDMS_THREAD_COUNT,
+	LDMS_CONN_THREAD_COUNT,
 	LDMS_INTERVAL,
 	LDMS_KERNEL_METRIC,
 	LDMS_KERNEL_METRIC_SET,
@@ -2799,6 +2872,10 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_THREAD_COUNT])
 			ev_thread_count = atoi(value_str);
+	} else if (strcmp(key_str, "conn_thread_count")==0) {
+		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
+		if (!has_arg[LDMS_CONN_THREAD_COUNT])
+			conn_thread_count = atoi(value_str);
 	} else if (strcmp(key_str, "interval")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_INTERVAL])
@@ -3261,6 +3338,8 @@ int main(int argc, char *argv[])
 	char *cfg_file = NULL;
 	struct sigaction action;
 
+	TAILQ_INIT(&conn_list);
+
 	memset(&action, 0, sizeof(action));
 	action.sa_sigaction = cleanup_sa;
 	action.sa_flags = SA_SIGINFO;
@@ -3348,6 +3427,10 @@ int main(int argc, char *argv[])
 			ev_thread_count = atoi(optarg);
 			has_arg[LDMS_THREAD_COUNT] = 1;
 			break;
+		case 'Z':
+			conn_thread_count = atoi(optarg);
+			has_arg[LDMS_CONN_THREAD_COUNT] = 1;
+			break;
 		case 'N':
 			notify = 1;
 			has_arg[LDMS_NOTIFY] = 1;
@@ -3427,7 +3510,8 @@ int main(int argc, char *argv[])
 	}
 	ev_thread = calloc(ev_thread_count, sizeof(pthread_t));
 	if (!ev_thread) {
-		ldms_log("Memory allocation failure.\n");
+		ldms_log("Could not allocate the memory "
+			 "for the event thread arrray.\n");
 		exit(1);
 	}
 	for (op = 0; op < ev_thread_count; op++) {
@@ -3439,6 +3523,20 @@ int main(int argc, char *argv[])
 		ret = pthread_create(&ev_thread[op], NULL, event_proc, ev_base[op]);
 		if (ret) {
 			ldms_log("Error %d creating the event thread.\n", ret);
+			cleanup(7);
+		}
+	}
+
+	conn_thread = calloc(ev_thread_count, sizeof(pthread_t));
+	if (!conn_thread) {
+		ldms_log("Could not allocate the memory "
+			 "for the connect thread arrray.\n");
+		exit(1);
+	}
+	for (op = 0; op < conn_thread_count; op++) {
+		ret = pthread_create(&conn_thread[op], NULL, connect_proc, NULL);
+		if (ret) {
+			ldms_log("Error %d creating the connect threads.\n", ret);
 			cleanup(7);
 		}
 	}

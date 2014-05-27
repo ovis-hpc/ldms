@@ -170,6 +170,8 @@ void rbt_ins(struct rbt *t, struct rbn *x)
 			n = n->left;
 		else
 			n = n->right;
+		assert(n->left != parent);
+		assert(n->right != parent);
 	}
 	/* Replace leaf with new node */
 	x->parent = parent;

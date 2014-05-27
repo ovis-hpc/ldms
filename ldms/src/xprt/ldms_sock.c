@@ -121,13 +121,20 @@ static struct sock_key *find_key(uint32_t key)
 }
 
 
-static struct sock_key *alloc_key(void *buf)
+static struct sock_key *alloc_key(struct ldms_xprt *x, void *buf)
 {
+	struct rbn *z;
 	struct sock_key *k = calloc(1, sizeof *k);
 	if (!k)
 		goto out;
 	pthread_mutex_lock(&key_tree_lock);
+ next_key:
 	k->key = ++last_key;
+	z = rbt_find(&key_tree, (void *)(unsigned long)last_key);
+	if (z) {
+		x->log("%s: key collision at %d.\n", __func__, last_key);
+		goto next_key;
+	}
 	k->buf = buf;
 	k->rb_node.key = (void *)(unsigned long)k->key;
 	rbt_ins(&key_tree, &k->rb_node);
@@ -136,14 +143,16 @@ static struct sock_key *alloc_key(void *buf)
 	return k;
 }
 
-static void delete_key(uint32_t key)
+static void delete_key(struct ldms_xprt *x, uint32_t key)
 {
 	struct sock_key *k;
 	pthread_mutex_lock(&key_tree_lock);
 	/* Make sure the key is in the tree */
 	k = find_key_(key);
-	if (!k)
+	if (!k) {
+		x->log("%s: The specified key %d, is not in the tree.\n", __func__, key);
 		goto out;
+	}
 	rbt_del(&key_tree, &k->rb_node);
  out:
 	pthread_mutex_unlock(&key_tree_lock);
@@ -641,11 +650,11 @@ struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 	if (!xd)
 		goto err_0;
 
-	mk = alloc_key(set->meta);
+	mk = alloc_key(x, set->meta);
 	if (!mk)
 		goto err_1;
 
-	dk = alloc_key(set->data);
+	dk = alloc_key(x, set->data);
 	if (!dk)
 		goto err_2;
 
@@ -676,7 +685,7 @@ struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 	}
 	return desc;
  err_2:
-	delete_key(mk->key);
+	delete_key(x, mk->key);
  err_1:
 	free(xd);
  err_0:
@@ -689,11 +698,11 @@ void sock_rbuf_free(struct ldms_xprt *x, struct ldms_rbuf_desc *desc)
 	struct sock_buf_xprt_data *xd = desc->xprt_data;
 	if (xd) {
 		if (xd->meta.lkey == 0) {
-			delete_key(xd->meta.rkey);
-			delete_key(xd->data.rkey);
+			delete_key(x, xd->meta.rkey);
+			delete_key(x, xd->data.rkey);
 		} else {
-			delete_key(xd->meta.lkey);
-			delete_key(xd->data.lkey);
+			delete_key(x, xd->meta.lkey);
+			delete_key(x, xd->data.lkey);
 		}
 		free(xd);
 	}
