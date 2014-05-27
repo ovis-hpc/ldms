@@ -123,8 +123,8 @@ void cable_type_to_sqlite()
 	int rc = 0;
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "cable: Failed to prepare insert cable_types: %s\n",
-						sqlite3_errstr(rc));
+		fprintf(stderr, "cable: Failed to prepare insert cable_types: "
+				"%s\n", sqlite3_errmsg(ovis_db));
 		exit(rc);
 	}
 
