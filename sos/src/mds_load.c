@@ -187,7 +187,7 @@ void *io_proc(void *arg)
 		gettimeofday(&tv1, NULL);
 		timersub(&tv1, &tv0, &tvres);
 		timeradd(&tvsum, &tvres, &tvsum);
-		if (!io_exit)
+		while (!io_exit)
 			pthread_cond_wait(&io_cv, &io_mutex);
 		pthread_mutex_unlock(&io_mutex);
 	} while (!io_exit || !LIST_EMPTY(&io_work_q));
