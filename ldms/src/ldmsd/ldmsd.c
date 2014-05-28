@@ -2466,7 +2466,7 @@ void *connect_proc(void *v)
 		pthread_mutex_lock(&conn_list_lock);
 
 		/* Remove the head of the list */
-		if (TAILQ_EMPTY(&conn_list))
+		while (TAILQ_EMPTY(&conn_list))
 			pthread_cond_wait(&conn_list_cv, &conn_list_lock);
 
 		/* Get the head of the connect candidate list */
