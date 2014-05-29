@@ -29,6 +29,7 @@ OPTION_DEFAULT_ENABLE([ovis_ctrl], [ENABLE_OVIS_CTRL])
 OPTION_DEFAULT_ENABLE([ovis_util], [ENABLE_OVIS_UTIL])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
+OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
 dnl we need libevent to support zap
 if test "$disable_zap" != "yes"; then
   OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])

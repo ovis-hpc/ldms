@@ -19,6 +19,7 @@ rpm-clean:
 	rm -rf rpm/ centos
 	rm -f $(LDMS_TARBALL)
 
+if ENABLE_DOC
 doc:
 	doxygen Doxyfile
 	@(errcnt=`wc -l ldms.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
@@ -38,6 +39,6 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
-
+endif
 
 clean-local: rpm-clean

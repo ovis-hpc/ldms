@@ -21,6 +21,7 @@ rpm-clean:
 	rm -rf rpm/ centos/
 	rm -f $(OVIS_LIB_TARBALL)
 
+if ENABLE_DOC
 doxygen doxygen/html:
 	doxygen ./Doxyfile
 	@(errcnt=`wc -l lib.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
@@ -36,5 +37,6 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
+endif
 
 clean-local: rpm-clean
