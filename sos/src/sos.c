@@ -918,17 +918,28 @@ void sos_attr_key(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 	attr->get_key_fn(attr, obj, key);
 }
 
-/**
- * Remove an object from all of its indexes
- */
-int sos_obj_remove(sos_t sos, sos_obj_t obj)
+static int __remove_key(sos_t sos, sos_obj_t obj, sos_iter_t iter)
 {
 	int attr_id;
 	size_t attr_sz;
 	size_t key_sz = 1024;
-	obj_key_t key = obj_key_new(key_sz);
+	if (!obj)
+		obj = sos_iter_obj(iter);
+	obj_ref_t obj_ref = ods_obj_ptr_to_ref(sos->ods, obj);
+	obj_iter_t oiter;
+	obj_ref_t oref;
+	int rc;
 
+	/* Delete key at iterator position */
+	if (iter) {
+		obj_iter_key_del(iter->iter);
+	}
+
+	/* Delete the other keys related to the object */
+	obj_key_t key = obj_key_new(key_sz);
 	for (attr_id = 0; attr_id < sos->meta->attr_cnt; attr_id++) {
+		if (iter && attr_id == iter->attr->id)
+			continue;
 		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
 		if (!sos_attr_has_index(attr))
 			continue;
@@ -940,10 +951,32 @@ int sos_obj_remove(sos_t sos, sos_obj_t obj)
 			key = obj_key_new(key_sz);
 		}
 		sos_attr_key(attr, obj, key);
-		obj_idx_delete(attr->oidx, key);
+		oiter = obj_iter_new(attr->oidx);
+		assert(oiter);
+		rc = obj_iter_find_glb(oiter, key);
+		assert(rc == 0);
+		oref = obj_iter_ref(oiter);
+		while (oref != obj_ref) {
+			rc = obj_iter_next(oiter);
+			assert(rc == 0);
+			oref = obj_iter_ref(oiter);
+		}
+		obj_iter_key_del(oiter);
+		obj_iter_delete(oiter);
 	}
 	obj_key_delete(key);
+
 	return 0;
+}
+
+int sos_obj_remove(sos_t sos, sos_obj_t obj)
+{
+	return __remove_key(sos, obj, NULL);
+}
+
+int sos_iter_obj_remove(sos_iter_t iter)
+{
+	return __remove_key(iter->sos, NULL, iter);
 }
 
 int sos_obj_add(sos_t sos, sos_obj_t obj)

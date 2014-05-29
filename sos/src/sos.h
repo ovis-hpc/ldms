@@ -683,6 +683,18 @@ obj_ref_t sos_iter_ref(sos_iter_t iter);
 sos_obj_t sos_iter_obj(sos_iter_t iter);
 
 /**
+ * Remove the current object (pointed by \c iter) from all of its indices.
+ *
+ * The iterator then point at the next object if it exists. Otherwise, it points
+ * to the previous object.
+ *
+ * \param iter The iterator handle
+ * \return 0 on success.
+ * \return Error code on failure.
+ */
+int sos_iter_obj_remove(sos_iter_t iter);
+
+/**
  * \defgroup helper_functions
  * \{
  * \brief These are helper functions to aid swig-generated sos.

@@ -61,6 +61,7 @@ struct obj_idx_provider {
 	obj_ref_t (*find_glb)(obj_idx_t idx, obj_key_t key);
 	obj_iter_t (*iter_new)(obj_idx_t idx);
 	void (*iter_delete)(obj_iter_t i);
+	obj_ref_t (*iter_key_del)(obj_iter_t i);
 	int (*iter_find)(obj_iter_t iter, obj_key_t key);
 	int (*iter_find_lub)(obj_iter_t iter, obj_key_t key);
 	int (*iter_find_glb)(obj_iter_t iter, obj_key_t key);

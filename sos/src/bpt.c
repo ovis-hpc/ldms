@@ -58,6 +58,9 @@ static int search_leaf(bpt_t t, bpt_node_t leaf, obj_key_t key);
 static bpt_node_t leaf_left(bpt_t t, uint64_t node_ref);
 static bpt_node_t leaf_right(bpt_t t, uint64_t node_ref);
 static int node_neigh(bpt_t t, bpt_node_t node, bpt_node_t *left, bpt_node_t *right);
+static bpt_node_t fixup_parents(bpt_t t, bpt_node_t parent, bpt_node_t node);
+
+obj_ref_t bad_ref;
 
 static void print_node(obj_idx_t idx, int ent, bpt_node_t n, int indent)
 {
@@ -75,7 +78,7 @@ static void print_node(obj_idx_t idx, int ent, bpt_node_t n, int indent)
 	printf("%p - %*s%s[%d] | %p : ", (void *)n->parent, indent, "",
 	       (n->is_leaf?"LEAF":"NODE"),
 	       ent, n);
-	for (i = 0; i < n->count; i++) {
+	for (i = 0; i < t->order; i++) {
 		obj_key_t key = ods_obj_ref_to_ptr(t->ods, n->entries[i].key);
 		printf("%s:%p, ",
 		       (key ? obj_key_to_str(idx, key) : "-"),
@@ -414,8 +417,10 @@ static bpt_node_t leaf_split_insert(obj_idx_t idx, bpt_t t, obj_ref_t left_ref,
 		 * Put the new item in the entry list
 		 */
 		left->entries[ins_idx].ref = obj;
-		left->entries[ins_idx].key = ods_obj_ptr_to_ref(t->ods, new_key);
+		left->entries[ins_idx].key = new_key_ref;
 		left->count++;
+		if (!ins_idx)
+			fixup_parents(t, ods_obj_ref_to_ptr(t->ods, left->parent), left);
 	} else {
 		/*
 		 * New entry goes in the right node. This means that
@@ -439,7 +444,7 @@ static bpt_node_t leaf_split_insert(obj_idx_t idx, bpt_t t, obj_ref_t left_ref,
 		 * Put the new item in the entry list
 		 */
 		right->entries[ins_idx].ref = obj;
-		right->entries[ins_idx].key = ods_obj_ptr_to_ref(t->ods, new_key);
+		right->entries[ins_idx].key = new_key_ref;
 		right->count++;
 	}
 	/* Link left --> right */
@@ -470,6 +475,7 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 		}
 	}
 	if (t->root_ref != ods_obj_ptr_to_ref(t->ods, n)) {
+		assert(n->parent);
 		if (n->is_leaf)
 			midpoint--;
 		/* Make sure it has at least midpoint entries */
@@ -487,7 +493,12 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 		obj_key_t parent_key = ods_obj_ref_to_ptr(t->ods, n->entries[i].key);
 		bpt_node_t child = ods_obj_ref_to_ptr(t->ods, n->entries[i].ref);
 		obj_key_t child_key = ods_obj_ref_to_ptr(t->ods, child->entries[0].key);
-		if (!(t->comparator(parent_key, child_key) == 0)) {
+		if (parent_key != child_key) {
+			print_tree(idx);
+			assert(0);
+		}
+		if (n->entries[i].key == bad_ref) {
+			printf("BAD REF %p\n", (void*)bad_ref);
 			print_tree(idx);
 			assert(0);
 		}
@@ -500,17 +511,23 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 	return 1;
 }
 
-static int debug = 0;
+void verify_leafs(obj_idx_t idx);
+
+#ifdef DEBUG
 static int verify_tree(obj_idx_t idx)
 {
 	bpt_t t;
-	if (!debug)
-		return 1;
 
 	t = idx->priv;
+	if (!t->root_ref)
+		return 1;
+	verify_leafs(idx);
 	verify_node(idx, ods_obj_ref_to_ptr(t->ods, t->root_ref));
 	return 1;
 }
+#else
+#define verify_tree(X)
+#endif
 
 static void node_insert(bpt_t t, bpt_node_t node, bpt_node_t left,
 			obj_ref_t key_ref, bpt_node_t right)
@@ -717,11 +734,9 @@ static int bpt_insert(obj_idx_t idx, obj_key_t uk, obj_ref_t obj)
 
 	/* Is there room in the leaf? */
 	if (leaf->count < t->order - 1) {
-		if (!leaf_insert(t, leaf, new_key, obj) && leaf->parent) {
+		if (0 == leaf_insert(t, leaf, new_key, obj) && leaf->parent) {
 			bpt_node_t parent = ods_obj_ref_to_ptr(t->ods, leaf->parent);
-			/* Maintain this to simplify other logic */
-			if (parent->entries[0].ref == leaf_ref)
-				parent->entries[0].key = leaf->entries[0].key;
+			fixup_parents(t, parent, leaf);
 		}
 		verify_tree(idx);
 		return 0;
@@ -759,19 +774,21 @@ static int bpt_insert(obj_idx_t idx, obj_key_t uk, obj_ref_t obj)
 		leaf->parent = parent_ref;
 		new_leaf->parent = parent_ref;
 		t->root_ref = parent_ref;
+		verify_tree(idx);
 		goto out;
 	}
 	if (parent->count < t->order) {
 		node_insert(t, parent, leaf, new_leaf->entries[0].key, new_leaf);
+		verify_tree(idx);
 		goto out;
 	}
 	parent = node_split_insert(idx, t, leaf_ref,
 				   new_leaf->entries[0].key, new_leaf_ref);
+	verify_tree(idx);
 	if (!parent)
 		goto err_3;
  out:
 	((bpt_udata_t)idx->udata)->root = t->root_ref;
-	verify_tree(idx);
 	return 0;
 
  err_3:
@@ -884,7 +901,8 @@ static bpt_node_t leaf_right(bpt_t t, uint64_t node_ref)
 	node = ods_obj_ref_to_ptr(t->ods, node_ref);
 	assert(node->is_leaf);
 	right_ref = node->entries[t->order - 1].ref;
-	return ods_obj_ref_to_ptr(t->ods, right_ref);
+	node = ods_obj_ref_to_ptr(t->ods, right_ref);
+	return node;
 }
 
 static int node_neigh(bpt_t t, bpt_node_t node, bpt_node_t *left, bpt_node_t *right)
@@ -932,13 +950,14 @@ static int combine_right(bpt_t t, bpt_node_t right, int idx, bpt_node_t node)
 	int i, j;
 	int count = node->count - idx;
 	obj_ref_t right_ref;
+	bpt_node_t parent;
 	bpt_node_t entry;
 
 	if (!right || !count)
 		return idx;
 
 	/* Make room to the left */
-	for (i = right->count + count - 1; i > idx; i--)
+	for (i = right->count + count - 1; i >= count; i--)
 		right->entries[i] = right->entries[i-count];
 
 	right_ref = ods_obj_ptr_to_ref(t->ods, right);
@@ -950,9 +969,10 @@ static int combine_right(bpt_t t, bpt_node_t right, int idx, bpt_node_t node)
 		}
 		/* Move the entry to the right sibling */
 		right->entries[i] = node->entries[j];
-		right->count ++;
+		right->count++;
 		idx++;
 	}
+	parent = ods_obj_ref_to_ptr(t->ods, right->parent);
 	return idx;
 }
 
@@ -967,7 +987,7 @@ static int combine_left(bpt_t t, bpt_node_t left, int idx, bpt_node_t node)
 		return idx;
 
 	left_ref = ods_obj_ptr_to_ref(t->ods, left);
-	for (i = left->count, j = idx; j < count; i++, j++) {
+	for (i = left->count, j = idx; j < count && i < t->order - node->is_leaf; i++, j++) {
 		/* Update the entry's parent */
 		if (!node->is_leaf) {
 			entry = ods_obj_ref_to_ptr(t->ods, node->entries[j].ref);
@@ -997,7 +1017,7 @@ static bpt_node_t fixup_parents(bpt_t t, bpt_node_t parent, bpt_node_t node)
 	return ods_obj_ref_to_ptr(t->ods, t->root_ref);
 }
 
-static void merge_from_left(bpt_t t, bpt_node_t left, bpt_node_t node, int midpoint)
+static int merge_from_left(bpt_t t, bpt_node_t left, bpt_node_t node, int midpoint)
 {
 	int count;
 	int i, j;
@@ -1021,6 +1041,7 @@ static void merge_from_left(bpt_t t, bpt_node_t left, bpt_node_t node, int midpo
 		left->count--;
 		node->count++;
 	}
+	return count;
 }
 
 static void merge_from_right(bpt_t t, bpt_node_t right, bpt_node_t node, int midpoint)
@@ -1054,13 +1075,20 @@ static void merge_from_right(bpt_t t, bpt_node_t right, bpt_node_t node, int mid
 	fixup_parents(t, parent, right);
 }
 
-static bpt_node_t entry_delete(bpt_t t, bpt_node_t node, obj_key_t key, int idx)
+/**
+ * \returns new root of the tree.
+ */
+static bpt_node_t entry_delete(obj_idx_t oidx, bpt_node_t node, int idx,
+				obj_ref_t *leaf_ref, int *ent)
 {
+	bpt_t t = oidx->priv;
 	int i, midpoint;
-	bpt_node_t left, right;
+	bpt_node_t left, right, leaf;
 	bpt_node_t parent;
 	int node_idx;
 	int count;
+	int e;
+	int left_space, right_space;
 	bpt_node_t root;
 
  next_level:
@@ -1071,23 +1099,35 @@ static bpt_node_t entry_delete(bpt_t t, bpt_node_t node, obj_key_t key, int idx)
 
 	node->entries[node->count-1] = ENTRY_INITIALIZER;
 	node->count--;
+
+	if (node->is_leaf) {
+		leaf = node;
+		e = idx;
+	}
+
 	root = ods_obj_ref_to_ptr(t->ods, t->root_ref);
 	if (node == root) {
 		switch (node->count) {
 		case 0:
 			/* This is the root and it is empty */
 			ods_free(t->ods, node);
-			return NULL;
+			node = NULL;
+			leaf = NULL;
+			e = 0;
+			goto out;
 		case 1:
 			if (!node->is_leaf) {
 				/* Promote my last remaining child to root */
 				parent = ods_obj_ref_to_ptr(t->ods, root->entries[0].ref);
 				parent->parent = 0;
 				ods_free(t->ods, root);
-				return parent;
+				node = parent;
+				goto out;
 			}
 		default:
-			return root;
+			node = root;
+			verify_tree(oidx);
+			goto out;
 		}
 	}
 
@@ -1095,11 +1135,27 @@ static bpt_node_t entry_delete(bpt_t t, bpt_node_t node, obj_key_t key, int idx)
 	if (node->is_leaf)
 		midpoint--;
 
-	if (node->count >= midpoint)
-		return fixup_parents(t, parent, node);
+	if (node->count >= midpoint) {
+		if (node->is_leaf) {
+			if (e == node->count) {
+				if (node->entries[t->order-1].ref) {
+					leaf = ods_obj_ref_to_ptr(t->ods, node->entries[t->order-1].ref);
+					e = 0;
+				} else {
+					e--;
+				}
+			}
+		}
+		node = fixup_parents(t, parent, node);
+		verify_tree(oidx);
+		goto out;
+	}
 
+	/* left and right are of the same parent */
 	node_idx = node_neigh(t, node, &left, &right);
-	count = space(t, left) + space(t, right);
+	left_space = space(t, left);
+	right_space = space(t, right);
+	count = left_space + right_space;
 	if (count < node->count) {
 		/*
 		 * There's not enough room in the left and right
@@ -1107,40 +1163,130 @@ static bpt_node_t entry_delete(bpt_t t, bpt_node_t node, obj_key_t key, int idx)
 		 * collect a few entries from the left and right
 		 * siblings to put this node over the min.
 		 */
-		if (left && left->count > midpoint)
-			merge_from_left(t, left, node, midpoint);
+		if (left && left->count > midpoint) {
+			count = merge_from_left(t, left, node, midpoint);
+			if (node->is_leaf)
+				e += count;
+		}
 
 		if (right && right->count > midpoint
 		    && node->count < midpoint) {
 			merge_from_right(t, right, node, midpoint);
 		}
 		assert(node->count >= midpoint);
-		return fixup_parents(t, parent, node);
+		if (node->is_leaf) {
+			if (e == node->count) {
+				if (node->entries[t->order-1].ref) {
+					leaf = ods_obj_ref_to_ptr(t->ods, node->entries[t->order-1].ref);
+					e = 0;
+				} else {
+					e--;
+				}
+			}
+		}
+		node = fixup_parents(t, parent, node);
+		verify_tree(oidx);
+		goto out;
 	}
-	/* Node is going away, link our left and right siblings */
-	if (node->is_leaf && left)
-		left->entries[t->order-1].ref = ods_obj_ptr_to_ref(t->ods, right);
 
-	/* Combine as many as possible to the left */
+	/* Node is going away, combine as many as possible to the left */
 	idx = combine_left(t, left, 0, node);
-	if (left) {
-		parent->entries[node_idx-1].key = left->entries[0].key;
-		parent->entries[node_idx-1].ref =
-			ods_obj_ptr_to_ref(t->ods, left);
+
+	/* Then, follow the next entry and fix the leaf chain */
+	if (node->is_leaf) {
+		if (e < idx) {
+			/* the entry will go to the left */
+			leaf = left;
+			e += t->order - left_space;
+		} else {
+			/* the entry goes to the right */
+			leaf = right;
+			e -= idx;
+		}
+
+		/* fix leaf chain*/
+
+		if (!left) {
+			/* If there is no same-parent left node, get the left
+			 * leaf (from different parent). */
+			left = leaf_left(t, ods_obj_ptr_to_ref(t->ods, node));
+		}
+		if (left)
+			left->entries[t->order-1].ref = node->entries[t->order-1].ref;
 	}
+
 	/* Move the remainder to the right */
 	if (idx < node->count) {
-		combine_right(t, right, idx, node);
+		idx = combine_right(t, right, idx, node);
+		assert(idx == node->count);
 		if (right) {
 			parent->entries[node_idx+1].key = right->entries[0].key;
 			parent->entries[node_idx+1].ref =
 				ods_obj_ptr_to_ref(t->ods, right);
 		}
 	}
+
 	/* Remove the node(idx) from the parent. */
 	idx = node_idx;
+	ods_free(t->ods, node);
 	node = parent;
 	goto next_level;
+out:
+	if (leaf_ref)
+		*leaf_ref = ods_obj_ptr_to_ref(t->ods, leaf);
+	if (ent)
+		*ent = e;
+	return node;
+}
+
+/**
+ * Linear search the obj_ref
+ */
+static int find_obj_ref(bpt_t t, obj_key_t key, obj_ref_t obj_ref,
+				obj_ref_t *leaf_ref, int *ent)
+{
+	bpt_node_t leaf = ods_obj_ref_to_ptr(t->ods, *leaf_ref);
+	obj_key_t _key;
+	while (1) {
+		if (leaf->entries[*ent].ref == obj_ref)
+			return 0;
+		_key = ods_obj_ref_to_ptr(t->ods, leaf->entries[*ent].key);
+		if (t->comparator(_key, key))
+			return ENOENT; /* out of bound */
+
+		/* next entry */
+		(*ent)++;
+		if (*ent == leaf->count) {
+			leaf = leaf_right(t, *leaf_ref);
+			if (!leaf)
+				return ENOENT;
+			*leaf_ref = ods_obj_ptr_to_ref(t->ods, leaf);
+			*ent = 0;
+		}
+	}
+}
+
+void verify_leafs(obj_idx_t idx)
+{
+	bpt_t t = idx->priv;
+	bpt_node_t node;
+	obj_ref_t node_ref;
+	int mid = split_midpoint(t->order) - 1;
+	node_ref = t->root_ref;
+	node = ods_obj_ref_to_ptr(t->ods, node_ref);
+	while (!node->is_leaf) {
+		node_ref = node->entries[0].ref;
+		node = ods_obj_ref_to_ptr(t->ods, node_ref);
+	}
+
+	while (node) {
+		if (node->parent && node->count < mid) {
+			print_node(idx, -1, node, 0);
+			assert(0);
+		}
+		node = leaf_right(t, node_ref);
+		node_ref = ods_obj_ptr_to_ref(t->ods, node);
+	}
 }
 
 static obj_ref_t bpt_delete(obj_idx_t idx, obj_key_t key)
@@ -1159,10 +1305,15 @@ static obj_ref_t bpt_delete(obj_idx_t idx, obj_key_t key)
 	if (!obj)
 		return 0;
 	key_ref = leaf->entries[ent].key;
-	root = entry_delete(t, leaf, key, ent);
+#if DEBUG
+	bad_ref = key_ref;
+#endif
+	root = entry_delete(idx, leaf, ent, NULL, NULL);
 	t->root_ref = ods_obj_ptr_to_ref(t->ods, root);
 	((bpt_udata_t)idx->udata)->root = t->root_ref;
 	ods_free(t->ods, ods_obj_ref_to_ptr(t->ods, key_ref));
+
+	verify_tree(idx);
 
 	return obj;
 }
@@ -1377,6 +1528,44 @@ static int bpt_iter_prev(obj_iter_t oi)
 	return ENOENT;
 }
 
+static obj_ref_t bpt_iter_key_delete(obj_iter_t oi)
+{
+	bpt_iter_t i = (bpt_iter_t)oi;
+	bpt_t t = i->idx->priv;
+	int ent = -1;
+	obj_ref_t leaf_ref;
+	obj_ref_t obj_ref;
+	obj_ref_t key_ref;
+	bpt_node_t root;
+	bpt_node_t leaf;
+
+	if (!i->node_ref)
+		return 0;
+
+	leaf = ods_obj_ref_to_ptr(t->ods, i->node_ref);
+	obj_ref = leaf->entries[i->ent].ref;
+	key_ref = leaf->entries[i->ent].key;
+
+#if DEBUG
+	bad_ref = key_ref;
+#endif
+	root = entry_delete(i->idx, leaf, i->ent, &leaf_ref, &ent);
+
+	assert(ent >= 0);
+	assert(ent < t->order);
+
+	/* update root */
+	t->root_ref = ods_obj_ptr_to_ref(t->ods, root);
+	((bpt_udata_t)i->idx->udata)->root = t->root_ref;
+
+	/* Free the key */
+	ods_free(t->ods, ods_obj_ref_to_ptr(t->ods, key_ref));
+
+	i->node_ref = leaf_ref;
+	i->ent = ent;
+	return obj_ref;
+}
+
 static const char *bpt_get_type(void)
 {
 	return "BPTREE";
@@ -1400,6 +1589,7 @@ static struct obj_idx_provider bpt_provider = {
 	.find_glb = bpt_find_glb,
 	.iter_new = bpt_iter_new,
 	.iter_delete = bpt_iter_delete,
+	.iter_key_del = bpt_iter_key_delete,
 	.iter_find = bpt_iter_find,
 	.iter_find_lub = bpt_iter_find_lub,
 	.iter_find_glb = bpt_iter_find_glb,

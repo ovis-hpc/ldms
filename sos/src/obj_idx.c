@@ -275,6 +275,11 @@ void obj_iter_delete(obj_iter_t iter)
 	return iter->idx->idx_class->prv->iter_delete(iter);
 }
 
+obj_ref_t obj_iter_key_del(obj_iter_t iter)
+{
+	return iter->idx->idx_class->prv->iter_key_del(iter);
+}
+
 int obj_iter_find(obj_iter_t iter, obj_key_t key)
 {
 	return iter->idx->idx_class->prv->iter_find(iter, key);

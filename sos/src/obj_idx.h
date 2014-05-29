@@ -410,6 +410,17 @@ obj_iter_t obj_iter_new(obj_idx_t idx);
 void obj_iter_delete(obj_iter_t iter);
 
 /**
+ * \brief Delete the key at the current iterator position.
+ *
+ * Delete the key at the current iterator position. After deletion, the iterator
+ * is positioned at the next key in the index or the previous key if the tail
+ * was deleted.
+ *
+ * \param iter The iterator handle.
+ */
+obj_ref_t obj_iter_key_del(obj_iter_t iter);
+
+/**
  * \brief Position an iterator at the specified key.
  *
  * Positions the iterator's cursor to the object with the specified

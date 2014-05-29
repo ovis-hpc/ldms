@@ -3,6 +3,7 @@ INCLUDES = @OVIS_LIB_INCDIR_FLAG@
 sbin_PROGRAMS = \
 	bpt_test \
 	sos \
+	sos_test \
 	sos_rate \
 	sos_stat \
 	sos_query \
@@ -130,6 +131,10 @@ sos_LDADD = \
 	liboidx.la \
 	libods.la \
 	-lcoll
+
+sos_test_SOURCES = sos_test.c
+sos_test_LDADD = \
+		 libsos.la
 
 sos_rate_SOURCES = sos_rate.c
 sos_rate_LDADD = \
