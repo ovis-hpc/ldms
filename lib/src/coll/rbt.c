@@ -45,6 +45,7 @@
  */
 #include <stdlib.h>
 #include "rbt.h"
+#include <assert.h>
 
 struct rbn _LEAF = {
 	.left = &_LEAF,

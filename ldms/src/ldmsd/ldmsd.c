@@ -2366,8 +2366,8 @@ void schedule_update(struct hostspec *hs)
 		calculate_timeout(hs->thread_id, hs->sample_interval,
 				  hs->sample_offset, &hs->timeout);
 	} else {
-		hs->timeout.tv_sec = hs->sample_interval / ONESEC_US;
-		hs->timeout.tv_usec = hs->sample_interval % ONESEC_US;
+		hs->timeout.tv_sec = hs->sample_interval / 1000000;
+		hs->timeout.tv_usec = hs->sample_interval % 1000000;
 	}
 	evtimer_add(hs->event, &hs->timeout);
 }
@@ -2450,8 +2450,8 @@ void keepalive_cb(int fd, short sig, void *arg)
 void host_conn_reschedule(struct hostspec *hs)
 {
 	hs->conn_state = HOST_DISCONNECTED;
-	hs->timeout.tv_sec = hs->connect_interval / ONESEC_US;
-	hs->timeout.tv_usec = hs->connect_interval % ONESEC_US;
+	hs->timeout.tv_sec = hs->connect_interval / 1000000;
+	hs->timeout.tv_usec = hs->connect_interval % 1000000;
 	evtimer_add(hs->event, &hs->timeout);
 }
 
