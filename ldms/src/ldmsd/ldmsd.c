@@ -198,6 +198,7 @@ int passive = 0;
 int quiet = 0; /* by default ldmsd should not be quiet */
 void ldms_log(const char *fmt, ...)
 {
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	if (quiet) /* Don't say a word when quiet */
 		return;
 	va_list ap;
@@ -205,6 +206,7 @@ void ldms_log(const char *fmt, ...)
 	struct tm *tm;
 	char dtsz[200];
 
+	pthread_mutex_lock(&mutex);
 	t = time(NULL);
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
@@ -212,6 +214,7 @@ void ldms_log(const char *fmt, ...)
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
+	pthread_mutex_unlock(&mutex);
 }
 
 void cleanup(int x)
@@ -978,7 +981,6 @@ void host_sampler_cb(int fd, short sig, void *arg)
 
 }
 
-struct hostset *find_host_set(struct hostspec *hs, const char *set_name);
 struct hostset *hset_new();
 int process_add_host(int fd,
 		     struct sockaddr *sa, ssize_t sa_len,
@@ -1938,15 +1940,13 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 {
 	struct hset_metric *hsm;
 	struct hostset *hset = arg;
+	pthread_mutex_lock(&hset->state_lock);
 	if (status != LDMS_LOOKUP_OK){
-		pthread_mutex_lock(&hset->state_lock);
 		hset->state = LDMSD_SET_CONFIGURED;
-		pthread_mutex_unlock(&hset->state_lock);
 		ldms_log("Error doing lookup for set '%s'\n",
 				hset->name);
 		hset->set = NULL;
-		hset_ref_put(hset);
-		return;
+		goto out;
 	}
 	hset->set = s;
 	/*
@@ -1961,59 +1961,10 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 		}
 		free(hset->mvec);
 	}
-	pthread_mutex_lock(&hset->state_lock);
 	hset->state = LDMSD_SET_READY;
+out:
 	pthread_mutex_unlock(&hset->state_lock);
 	hset_ref_put(hset);
-}
-
-struct hostset *find_host_set(struct hostspec *hs, const char *set_name)
-{
-	struct hostset *hset;
-	pthread_mutex_lock(&hs->set_list_lock);
-	LIST_FOREACH(hset, &hs->set_list, entry) {
-		if (0 == strcmp(set_name, hset->name)) {
-			pthread_mutex_unlock(&hs->set_list_lock);
-			hset_ref_get(hset);
-			return hset;
-		}
-	}
-	pthread_mutex_unlock(&hs->set_list_lock);
-	return NULL;
-}
-
-void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
-{
-	struct hostset *hset;
-	int rc;
-
-	ldms_log("Adding the metric set '%s'\n", set_name);
-
-	/* Check to see if it's already there */
-	hset = find_host_set(hs, set_name);
-	if (!hset) {
-		hset = hset_new();
-		if (!hset) {
-			ldms_log("Memory allocation failure in %s for set_name %s\n",
-				 __FUNCTION__, set_name);
-			return;
-		}
-		hset->name = strdup(set_name);
-		hset->host = hs;
-
-		pthread_mutex_lock(&hs->set_list_lock);
-		LIST_INSERT_HEAD(&hs->set_list, hset, entry);
-		pthread_mutex_unlock(&hs->set_list_lock);
-
-		/* Take a lookup reference. Find takes one for us. */
-		hset_ref_get(hset);
-	}
-
-	/* Refresh the set with a lookup */
-	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
-	if (rc)
-		ldms_log("Synchronous error %d from ldms_lookup\n", rc);
-
 }
 
 /*
@@ -2037,20 +1988,6 @@ void reset_set_metrics(struct hostset *hset)
 }
 
 /*
- * Destroy the set and metrics associated with the set named in the
- * directory update.
- */
-void _dir_cb_del(ldms_t t, struct hostspec *hs, const char *set_name)
-{
-	struct hostset *hset = find_host_set(hs, set_name);
-	ldms_log("%s removing set '%s'\n", __FUNCTION__, set_name);
-	if (hset) {
-		reset_set_metrics(hset);
-		hset_ref_put(hset);
-	}
-}
-
-/*
  * Release all existing sets for the host. This is done when the
  * connection to the host has been lost. The hostset record is
  * retained, but the set and metrics are released. When the host comes
@@ -2060,76 +1997,14 @@ void reset_host(struct hostspec *hs)
 {
 	struct hostset *hset;
 	LIST_FOREACH(hset, &hs->set_list, entry) {
+		pthread_mutex_lock(&hset->state_lock);
 		reset_set_metrics(hset);
 		/*
 		 * Do the lookup again after the reconnection is successful.
 		 */
-		pthread_mutex_lock(&hset->state_lock);
 		hset->state = LDMSD_SET_CONFIGURED;
 		pthread_mutex_unlock(&hset->state_lock);
 	}
-}
-
-/*
- * Process the directory list and add or restore specified sets.
- */
-void dir_cb_list(ldms_t t, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	int i;
-
-	for (i = 0; i < dir->set_count; i++)
-		_add_cb(t, hs, dir->set_names[i]);
-}
-
-/*
- * Process the directory list and add or restore specified sets.
- */
-void dir_cb_add(ldms_t t, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	int i;
-	for (i = 0; i < dir->set_count; i++)
-		_add_cb(t, hs, dir->set_names[i]);
-}
-
-/*
- * Process the directory list and release the sets and metrics
- * associated with the specified sets.
- */
-void dir_cb_del(ldms_t t, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	int i;
-
-	for (i = 0; i < dir->set_count; i++)
-		_dir_cb_del(t, hs, dir->set_names[i]);
-}
-
-/*
- * The ldms_dir has completed. Decode the directory type and call the
- * appropriate handler function.
- */
-void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	if (status) {
-		ldms_log("Error %d in lookup on host %s.\n",
-		       status, hs->hostname);
-		return;
-	}
-	switch (dir->type) {
-	case LDMS_DIR_LIST:
-		dir_cb_list(t, dir, hs);
-		break;
-	case LDMS_DIR_ADD:
-		dir_cb_add(t, dir, hs);
-		break;
-	case LDMS_DIR_DEL:
-		dir_cb_del(t, dir, hs);
-		break;
-	}
-	ldms_dir_release(t, dir);
 }
 
 int do_connect(struct hostspec *hs)
@@ -2213,6 +2088,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 {
 	struct hostset *hset = arg;
 	uint64_t gn;
+	pthread_mutex_lock(&hset->state_lock);
 	if (status) {
 		ldms_log("Updated failed for set.\n");
 		reset_set_metrics(hset);
@@ -2277,7 +2153,6 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	}
  out:
 	/* Put the reference taken at the call to ldms_update() */
-	pthread_mutex_lock(&hset->state_lock);
 	hset->state = LDMSD_SET_READY;
 	pthread_mutex_unlock(&hset->state_lock);
 	hset_ref_put(hset);
@@ -2300,12 +2175,9 @@ void update_data(struct hostspec *hs)
 			hset->state = LDMSD_SET_LOOKUP;
 			/* Get a lookup reference */
 			hset_ref_get(hset);
-			pthread_mutex_unlock(&hset->state_lock);
 			ret = ldms_lookup(hs->x, hset->name, lookup_cb, hset);
 			if (ret) {
-				pthread_mutex_lock(&hset->state_lock);
 				hset->state = LDMSD_SET_CONFIGURED;
-				pthread_mutex_unlock(&hset->state_lock);
 				ldms_log("Synchronous error %d "
 					"from ldms_lookup\n", ret);
 				hset_ref_put(hset);
@@ -2318,7 +2190,6 @@ void update_data(struct hostspec *hs)
 				hset->total_busy_count += hset->curr_busy_count;
 				hset->curr_busy_count = 0;
 			}
-			pthread_mutex_unlock(&hset->state_lock);
 			/* Get reference for update */
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
@@ -2332,19 +2203,17 @@ void update_data(struct hostspec *hs)
 
 			break;
 		case LDMSD_SET_LOOKUP:
-			pthread_mutex_unlock(&hset->state_lock);
 			/* do nothing */
 			break;
 		case LDMSD_SET_BUSY:
 			hset->curr_busy_count++;
-			pthread_mutex_unlock(&hset->state_lock);
 			break;
 		default:
 			ldms_log("Invalid hostset state '%d'\n", hset->state);
-			pthread_mutex_unlock(&hset->state_lock);
 			assert(0);
 			break;
 		}
+		pthread_mutex_unlock(&hset->state_lock);
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
@@ -2460,7 +2329,6 @@ void *connect_proc(void *v)
 	struct hostspec *hs;
 	int rc;
 
-	TF();
 	while (1) {
 		/* Wait for a host to appear on the connect list */
 		pthread_mutex_lock(&conn_list_lock);
@@ -2483,12 +2351,8 @@ void *connect_proc(void *v)
 				rc = do_passive_connect(hs);
 			if (rc)
 				host_conn_reschedule(hs);
-			else {
+			else
 				hs->conn_state = HOST_CONNECTED;
-				rc = do_authenticate(hs);
-				if (rc)
-					ldms_log("%s: Authentication failed\n", __func__);
-			}
 			schedule_update(hs);
 			break;
 		default:

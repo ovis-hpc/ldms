@@ -296,6 +296,7 @@ void ldms_xprt_close(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	int close = 0;
+	x->log("%s x=%p.\n", __func__, _x);
 	pthread_mutex_lock(&xprt_list_lock);
 	if (!x->closed) {
 		close = 1;
@@ -328,7 +329,7 @@ void __release_xprt(ldms_t _x)
 	struct ldms_xprt *x = _x;
 	struct ldms_rbuf_desc *rb;
 
-	if (!x) { 
+	if (!x) {
 		return;
 	}
 	while (!LIST_EMPTY(&x->rbd_list)) {
@@ -651,7 +652,7 @@ static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 		x->log("Authentication restarted before finished");
 		return 0;
 	}
-	
+
 	challenge = ldms_get_challenge();
 	x->passwordtmp = ldms_get_auth_string(challenge);
 	chi = htonl((uint32_t) (challenge >> 32));
@@ -732,7 +733,7 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 		/* try once and close if fail. no excuses for robots. */
 		if (! ldms_xprt_authenticate(cmd, x, req)) {
 			// FIXME cause disconnect somehow
-			return 0; 
+			return 0;
 		} else {
 			x->authenticated = 1;
 		}
@@ -918,7 +919,7 @@ void process_auth_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (rc)
 		return;
 	rc = 0;
-	challenge = ldms_unpack_challenge(reply->auth.challenge_hi, 
+	challenge = ldms_unpack_challenge(reply->auth.challenge_hi,
 		reply->auth.challenge_lo);
 	char* password = ldms_get_auth_string(challenge);
 	if (!password) {
@@ -952,8 +953,8 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 {
 	int cmd = ntohl(reply->hdr.cmd);
 	uint64_t xid = reply->hdr.xid;
-	struct ldms_context *ctxt; 
-	assert(sizeof(unsigned long) == sizeof(uintptr_t) && 
+	struct ldms_context *ctxt;
+	assert(sizeof(unsigned long) == sizeof(uintptr_t) &&
 		"can't store pointers in unsigned longs on "
 		"this platform/compiler combination");
 	ctxt = (struct ldms_context *)(unsigned long)xid;
@@ -1238,8 +1239,6 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	ctxt->lookup.cb_arg = arg;
 	ctxt->lookup.path = strdup(path);
 	rc = x->send(x, req, len);
-	if (rc)
-		ldms_xprt_close(x);
 	return rc;
 }
 
