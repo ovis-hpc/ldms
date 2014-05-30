@@ -226,6 +226,7 @@ void ocm_handle_cfg_cmd_start(ocm_cfg_cmd_t cmd)
 	if (!pi) {
 		ldms_log("ocm: erorr, trying to start unloaded plugin: %s\n",
 				plugin_name);
+		return;
 	}
 
 	pthread_mutex_lock(&pi->lock);
