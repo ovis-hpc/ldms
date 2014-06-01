@@ -53,6 +53,10 @@
 #include "ods.h"
 #include "bpt.h"
 
+static int search_leaf_reverse(bpt_t t, bpt_node_t leaf, obj_key_t key);
+static int search_leaf(bpt_t t, bpt_node_t leaf, obj_key_t key);
+static bpt_node_t leaf_left(bpt_t t, uint64_t node_ref);
+static bpt_node_t leaf_right(bpt_t t, uint64_t node_ref);
 static int node_neigh(bpt_t t, bpt_node_t node, bpt_node_t *left, bpt_node_t *right);
 
 static void print_node(obj_idx_t idx, int ent, bpt_node_t n, int indent)
@@ -147,7 +151,7 @@ obj_ref_t leaf_find_ref(bpt_t t, obj_key_t key)
 		int rc;
 		for (i = 1; i < n->count; i++) {
 			entry_key = ods_obj_ref_to_ptr(t->ods, n->entries[i].key);
-			n = ods_obj_ref_to_ptr(t->ods, ref); /* n may stale from remapping */
+			n = ods_obj_ref_to_ptr(t->ods, ref);
 			rc = t->comparator(key, entry_key);
 			if (rc >= 0)
 				continue;
@@ -177,6 +181,48 @@ static obj_ref_t bpt_find(obj_idx_t idx, obj_key_t key)
 	return 0;
 }
 
+static void find_first_dup(bpt_t t, obj_key_t key, obj_ref_t *leaf_ref, int *ent)
+{
+	int j;
+	bpt_node_t left;
+	while (NULL != (left = leaf_left(t, *leaf_ref))) {
+		/* Search the left sibling to see if there is a match */
+		j = search_leaf_reverse(t, left, key);
+		if (j < 0)
+			break;
+		*leaf_ref = ods_obj_ptr_to_ref(t->ods, left);
+		*ent = j;
+		if (j)
+			break;
+	}
+}
+
+static void find_last_dup(bpt_t t, obj_key_t key, obj_ref_t *leaf_ref, int *ent)
+{
+	int j;
+	bpt_node_t right = ods_obj_ref_to_ptr(t->ods, *leaf_ref);
+	/* Exhaust the current node */
+	for (j = *ent; j < right->count; j++) {
+		obj_key_t entry_key = ods_obj_ref_to_ptr(t->ods, right->entries[j].key);
+		int rc = t->comparator(key, entry_key);
+		if (rc)
+			break;
+		*ent = j;
+	}
+	if (*ent < right->count - 1)
+		return;
+	while (NULL != (right = leaf_right(t, *leaf_ref))) {
+		/* Search the right sibling to see if there is a match */
+		j = search_leaf(t, right, key);
+		if (j < 0)
+			break;
+		*leaf_ref = ods_obj_ptr_to_ref(t->ods, right);
+		*ent = j;
+		if (j < right->count - 1)
+			break;
+	}
+}
+
 static int __find_lub(obj_idx_t idx, obj_key_t key,
 			obj_ref_t *node_ref, int *ent)
 {
@@ -188,13 +234,14 @@ static int __find_lub(obj_idx_t idx, obj_key_t key,
 		return 0;
 	for (i = 0; i < leaf->count; i++) {
 		obj_key_t entry_key = ods_obj_ref_to_ptr(t->ods, leaf->entries[i].key);
-		leaf = ods_obj_ref_to_ptr(t->ods, leaf_ref);
 		int rc = t->comparator(key, entry_key);
 		if (rc > 0) {
 			continue;
 		} else if (rc == 0 || i < leaf->count) {
 			*ent = i;
 			*node_ref = leaf_ref;
+			if (rc == 0)
+				find_last_dup(t, key, node_ref, ent);
 			return 1;
 		} else {
 			break;
@@ -238,9 +285,10 @@ static int __find_glb(obj_idx_t idx, obj_key_t key, obj_ref_t *node_ref, int *en
 		rc = t->comparator(key, entry_key);
 		if (rc > 0)
 			continue;
-		if (rc == 0)
+		if (rc == 0) {
 			*ent = i;
-		else
+			find_first_dup(t, key, node_ref, ent);
+		} else
 			*ent = i - 1;
 		goto found;
 	}
@@ -785,7 +833,7 @@ static bpt_node_t leaf_right_most(bpt_t t, bpt_node_t node)
 }
 
 /**
- * Find left node of the given \c node in the tree \c t.
+ * Find left sibling of the given \c node in the tree \c t.
  *
  * \param t The tree.
  * \param node The reference leaf node.
@@ -818,6 +866,25 @@ loop:
 
 	node = ods_obj_ref_to_ptr(t->ods, parent->entries[idx-1].ref);
 	return leaf_right_most(t, node);
+}
+
+/**
+ * Find left sibling of the given \c node in the tree \c t.
+ *
+ * \param t The tree.
+ * \param node The reference leaf node.
+ *
+ * \returns NULL if the left node is not found.
+ * \returns A pointer to the left node, if it is found.
+ */
+static bpt_node_t leaf_right(bpt_t t, uint64_t node_ref)
+{
+	bpt_node_t node;
+	uint64_t right_ref;
+	node = ods_obj_ref_to_ptr(t->ods, node_ref);
+	assert(node->is_leaf);
+	right_ref = node->entries[t->order - 1].ref;
+	return ods_obj_ref_to_ptr(t->ods, right_ref);
 }
 
 static int node_neigh(bpt_t t, bpt_node_t node, bpt_node_t *left, bpt_node_t *right)
@@ -1182,6 +1249,34 @@ static obj_ref_t bpt_iter_ref(obj_iter_t oi)
 	return ref;
 }
 
+static int search_leaf(bpt_t t, bpt_node_t leaf, obj_key_t key)
+{
+	int i, rc;
+	for (i = 0; i < leaf->count; i++) {
+		obj_key_t entry_key = ods_obj_ref_to_ptr(t->ods, leaf->entries[i].key);
+		rc = t->comparator(key, entry_key);
+		if (!rc)
+			return i;
+		else if (rc < 0)
+			return -1;
+	}
+	return -1;
+}
+
+static int search_leaf_reverse(bpt_t t, bpt_node_t leaf, obj_key_t key)
+{
+	int i, rc, last_match = -1;
+	for (i = leaf->count-1; i >= 0; i--) {
+		obj_key_t entry_key = ods_obj_ref_to_ptr(t->ods, leaf->entries[i].key);
+		rc = t->comparator(key, entry_key);
+		if (0 == rc)
+			last_match = i;
+		else
+			break;
+	}
+	return last_match;
+}
+
 static int bpt_iter_find(obj_iter_t oi, obj_key_t key)
 {
 	bpt_iter_t iter = (bpt_iter_t)oi;
@@ -1189,19 +1284,26 @@ static int bpt_iter_find(obj_iter_t oi, obj_key_t key)
 	obj_ref_t leaf_ref = leaf_find_ref(t, key);
 	bpt_node_t leaf = ods_obj_ref_to_ptr(t->ods, leaf_ref);
 	int i;
+
 	if (!leaf)
 		return ENOENT;
+
 	assert(leaf->is_leaf);
-	for (i = 0; i < leaf->count; i++) {
-		obj_key_t entry_key = ods_obj_ref_to_ptr(t->ods, leaf->entries[i].key);
-		leaf = ods_obj_ref_to_ptr(t->ods, leaf_ref);
-		if (t->comparator(key, entry_key) == 0) {
-			iter->node_ref = leaf_ref;
-			iter->ent = i;
-			return 0;
-		}
-	}
-	return ENOENT;
+	i = search_leaf(t, leaf, key);
+	if (i < 0)
+		return ENOENT;
+
+	/* If the key is not the first element in the leaf, then a duplicate key
+	 * cannot be a predecessor.
+	 */
+	if (i)
+		goto found;
+
+	find_first_dup(t, key, &leaf_ref, &i);
+ found:
+	iter->node_ref = leaf_ref;
+	iter->ent = i;
+	return 0;
 }
 
 static int bpt_iter_find_lub(obj_iter_t oi, obj_key_t key)

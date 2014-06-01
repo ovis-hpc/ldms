@@ -128,7 +128,7 @@ const char *nlstrip(char *s)
 	strtok(ss, " \t\n");
 }
 
-#define FMT "k:p:o:"
+#define FMT "k:p:o:i:"
 int main(int argc, char *argv[])
 {
 	obj_idx_t idx;
@@ -137,6 +137,7 @@ int main(int argc, char *argv[])
 	char *key_str = NULL;
 	char buf[2048];
 	char *s, *k;
+	char *iter_key = NULL;
 	obj_iter_t iter;
 	obj_key_t key = obj_key_new(1024);
 	obj_ref_t ref;
@@ -154,6 +155,9 @@ int main(int argc, char *argv[])
 		case 'o':
 			order = atoi(optarg);
 			break;
+		case 'i':
+			iter_key = strdup(optarg);
+			break;
 		default:
 			usage(argc, argv);
 		}
@@ -168,9 +172,10 @@ int main(int argc, char *argv[])
 		return rc;
 	}
 	idx = obj_idx_open(idx_path);
+	inode = 1;
 	while ((s = fgets(buf, sizeof(buf), stdin)) != NULL) {
 		obj_key_from_str(idx, key, nlstrip(s));
-		inode = strtoul(s, NULL, 0);
+		inode++; // = strtoul(s, NULL, 0);
 		if (!inode) {
 			printf("Ignoring key that results in <nil> object reference.\n");
 			continue;
@@ -179,6 +184,47 @@ int main(int argc, char *argv[])
 	}
 	print_tree(idx);
 
+	/* Find the specified key and iterate until it doesn't match */
+	if (!iter_key)
+		goto skip_iter_key;
+
+	/* Find all matching keys */
+	printf("All matches...\n");
+	iter = obj_iter_new(idx);
+	obj_key_from_str(idx, key, iter_key);
+	for (rc = obj_iter_find(iter, key); !rc; rc = obj_iter_next(iter)) {
+		obj_key_t k = obj_iter_key(iter);
+		if (obj_key_cmp(idx, key, k))
+			break;
+		printf("key %s\n", obj_key_to_str(idx, k));
+	}
+	printf("... End matches.\n");
+
+	/* Find GLB of key */
+	printf("All GLB...\n");
+	iter = obj_iter_new(idx);
+	obj_key_from_str(idx, key, iter_key);
+	for (rc = obj_iter_find_glb(iter, key); !rc; rc = obj_iter_next(iter)) {
+		obj_key_t k = obj_iter_key(iter);
+		if (obj_key_cmp(idx, key, k))
+			break;
+		printf("key %s obj %p\n", obj_key_to_str(idx, k), obj_iter_ref(iter));
+	}
+	printf("... End matches.\n");
+
+	/* Find lub of key */
+	printf("All LUB...\n");
+	iter = obj_iter_new(idx);
+	obj_key_from_str(idx, key, iter_key);
+	for (rc = obj_iter_find_lub(iter, key); !rc; rc = obj_iter_next(iter)) {
+		obj_key_t k = obj_iter_key(iter);
+		if (obj_key_cmp(idx, key, k))
+			break;
+		printf("key %s obj %p\n", obj_key_to_str(idx, k), obj_iter_ref(iter));
+	}
+	printf("... End matches.\n");
+
+ skip_iter_key:
 	/* Delete the min in the tree until the tree is empty */
 	iter = obj_iter_new(idx);
 	for (rc = obj_iter_begin(iter); !rc; rc = obj_iter_begin(iter)) {
