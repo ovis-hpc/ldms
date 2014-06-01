@@ -117,6 +117,8 @@ void *ods_obj_ref_to_ptr(ods_t ods, uint64_t off)
 
 uint64_t ods_obj_ptr_to_ref(ods_t ods, void *p)
 {
+	if (!p)
+		return 0;
 	return (uint64_t)p - (uint64_t)ods->obj;
 }
 

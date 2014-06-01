@@ -264,6 +264,19 @@ int obj_key_from_str(obj_idx_t idx, obj_key_t key, const char *str);
 const char *obj_key_to_str(obj_idx_t idx, obj_key_t key);
 
 /**
+ * \brief Compare two keys using the index's compare function
+ *
+ * \param idx	The index handle
+ * \param a	The first key
+ * \param b	The second key
+ * \return <0	a < b
+ * \return 0	a == b
+ * \return >0	a > b
+ */
+int obj_key_cmp(obj_idx_t idx, obj_key_t a, obj_key_t b);
+
+
+/**
  * \brief Return the size of a key
  *
  * \param key	The key
@@ -520,17 +533,5 @@ obj_ref_t obj_iter_ref(obj_iter_t iter);
  * \return 0	The cursor is not positioned at an object
  */
 void *obj_iter_obj(obj_iter_t iter);
-
-/**
- * \brief Compare two keys using the index's compare function
- *
- * \param idx	The index handle
- * \param a	The first key
- * \param b	The second key
- * \return <0	a < b
- * \return 0	a == b
- * \return >0	a > b
- */
-int obj_key_cmp(obj_idx_t idx, obj_key_t a, obj_key_t b);
 
 #endif
