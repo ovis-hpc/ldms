@@ -384,7 +384,6 @@ int compare_model_policy(struct me_model_plugin *pi,
  * For each input type, remove the model_policy_ref that
  * holds a handle to the model_policy.
  *
- * TODO: complete this
  */
 int destroy_model(struct model *model)
 {
@@ -401,7 +400,13 @@ int destroy_model(struct model *model)
 		}
 		free(mref);
 	}
+	if (!model->policy->model_pi->destroy_model_engine) {
+		me_log("Couldn't destroy the model engine '%s'.\n",
+				model->policy->model_pi->base.name);
+		return -1;
+	}
 	model->policy->model_pi->destroy_model_engine(model->engine);
+
 	free(model);
 	return 0;
 }

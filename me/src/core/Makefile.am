@@ -1,3 +1,4 @@
+lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
 AM_CFLAGS = -Wall $(DBGFLAGS) @OVIS_LIB_INCDIR_FLAG@
@@ -8,7 +9,7 @@ mecoreinclude_HEADERS = me.h
 
 libme_la_SOURCES = me_util.c me.h me_priv.h
 libme_la_LIBADD = -lovis_util
-pkglib_LTLIBRARIES += libme.la
+lib_LTLIBRARIES += libme.la
 
 libme_core_la_SOURCES = me_util.c me_interface.c model_manager.c \
 			me_interface.h me_interface_priv.h \

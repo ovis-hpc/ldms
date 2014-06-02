@@ -149,7 +149,7 @@ TAILQ_HEAD(me_input_queue, me_input);
  * \brief Get the input value from an input structure
  * \return the input value in unsigned int 64
  */
-uint64_t me_get_input_value(me_input_t input, me_log_fn msglog);
+double me_get_input_value(me_input_t input, me_log_fn msglog);
 
 /**
  * \brief Get the timestamp

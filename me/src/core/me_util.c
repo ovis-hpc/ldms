@@ -51,7 +51,7 @@
 
 #include "me_priv.h"
 
-uint64_t me_get_input_value(me_input_t _input, me_log_fn msglog)
+double me_get_input_value(me_input_t _input, me_log_fn msglog)
 {
 	struct me_input *input = (struct me_input *)_input;
 	return input->value;
