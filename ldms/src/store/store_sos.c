@@ -116,7 +116,7 @@ static char tmp_path[PATH_MAX];
 static char *root_path; /**< store root path */
 static ldmsd_msg_log_f msglog;
 static pthread_mutex_t cfg_lock;
-
+static time_t time_limit = 0;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -158,6 +158,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	pthread_mutex_unlock(&cfg_lock);
 	if (!root_path)
 		return ENOMEM;
+	value = av_value(avl, "time_limit");
+	if (value)
+		time_limit = atoi(value);
 	return 0;
  err:
 	return EINVAL;
@@ -413,6 +416,24 @@ err:
 	return -1;
 }
 
+void store_sos_cleanup(sos_t sos, uint32_t sec)
+{
+	int rc;
+	sos_iter_t itr = sos_iter_new(sos, 0);
+	sos_obj_t obj;
+	rc = sos_iter_begin(itr);
+	if (rc)
+		return;
+	obj = sos_iter_obj(itr);
+	while (obj) {
+		if (sos_obj_attr_get_uint32(sos, 0, obj) >= sec)
+			break;
+		sos_iter_obj_remove(itr);
+		sos_obj_delete(sos, obj);
+		obj = sos_iter_obj(itr);
+	}
+}
+
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 {
@@ -456,6 +477,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 			}
 		}
 
+		/* clean up old stuff before creating a new one */
 		obj = sos_obj_new(si->ms[i]->sos);
 		if (!obj) {
 			msglog("Error %d: %s at %s:%d\n", errno,
@@ -526,6 +548,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 			msglog("Error %d: %s at %s:%d\n", errno,
 					strerror(errno), __FILE__, __LINE__);
 		}
+		if (time_limit)
+			store_sos_cleanup(si->ms[i]->sos, ts->sec - time_limit);
 	}
 
 	if (last_errno)
