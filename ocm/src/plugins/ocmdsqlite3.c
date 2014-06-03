@@ -1073,7 +1073,7 @@ int ocmsqlite3_query_model_policy(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 		}
 
 		const char *report_flags = (char*) sqlite3_column_text(stmt, 4);
-		if (report_flags && '\0' == report_flags[0]) {
+		if (report_flags && '\0' != report_flags[0]) {
 			ocm_value_set_s(ov, report_flags);
 			rc = ocm_cfg_buff_add_av(buff, "report_flags", ov);
 		}
