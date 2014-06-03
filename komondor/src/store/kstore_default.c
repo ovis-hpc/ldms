@@ -139,11 +139,16 @@ int config(struct kmd_store *s, struct attr_value_list *av_list)
 	}
 
 	sos_iter_t iter = sos_iter_new(this->sos, KS_SOS_EVENT_ID);
+	if (!iter) {
+		rc = ENOMEM;
+		goto err2;
+	}
+
 	uint64_t kv = -1LU;
 	obj_key_t k = obj_key_new(sizeof(kv));
 	if (!k) {
 		rc = ENOMEM;
-		goto err2;
+		goto err3;
 	}
 	obj_key_set(k, &kv, sizeof(kv));
 	int seek_rc = sos_iter_seek_inf(iter, k);
@@ -155,19 +160,19 @@ int config(struct kmd_store *s, struct attr_value_list *av_list)
 							KS_SOS_EVENT_ID, obj);
 	}
 
-	goto cleanup;
+	sos_iter_free(iter);
+	obj_key_delete(k);
 
+	return 0;
+
+err3:
+	sos_iter_free(iter);
 err2:
 	sos_close(this->sos, ODS_COMMIT_ASYNC);
 err1:
 	free(this->path);
 	this->path = 0;
 err0:
-cleanup:
-	if (iter)
-		sos_iter_free(iter);
-	if (k)
-		obj_key_delete(k);
 	return rc;
 }
 
