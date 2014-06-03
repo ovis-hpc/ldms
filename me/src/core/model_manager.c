@@ -190,7 +190,7 @@ struct me_output *get_output_consumer(struct me_consumer *csm)
 	uint16_t id = csm->consumer_id;
 	struct me_output_queue *oq = &(csm_outputq_array[id]);
 	pthread_mutex_lock(&oq->lock);
-	if (oq->size == 0) {
+	while (oq->size == 0) {
 		pthread_cond_wait(&oq->output_avai, &oq->lock);
 	}
 	output = TAILQ_FIRST(&oq->oqueue);
@@ -206,7 +206,7 @@ struct me_output *get_output_store(struct me_store *strg)
 	uint16_t id = strg->store_id;
 	struct me_output_queue *oq = &(store_outputq_array[id]);
 	pthread_mutex_lock(&oq->lock);
-	if (oq->size == 0) {
+	while (oq->size == 0) {
 		pthread_cond_wait(&oq->output_avai, &oq->lock);
 	}
 	output = TAILQ_FIRST(&oq->oqueue);

@@ -819,7 +819,7 @@ void* act_thread_routine(void *arg)
 	char cmd[4096];
 loop:
 	pthread_mutex_lock(&actq_mutex);
-	if (TAILQ_EMPTY(&actq))
+	while (TAILQ_EMPTY(&actq))
 		pthread_cond_wait(&actq_non_empty, &actq_mutex);
 	struct k_act_qentry *ent = TAILQ_FIRST(&actq);
 	TAILQ_REMOVE(&actq, ent, link);
