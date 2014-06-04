@@ -62,7 +62,7 @@ running=$?
 start() {
 	echo -n "Starting $prog: "
 
-	$ME -S $OVIS_HOME/var/sock/me.ctrl -l $OVIS_HOME/var/log/me.log -x $ME_XPORT:$ME_PORT_TO_OCMD -O $ME_PORT_LISTEN  $@
+	$ME -S $OVIS_HOME/var/sock/me.sock -l $OVIS_HOME/var/log/me.log -x $ME_XPORT:$ME_PORT_LISTEN -O $ME_PORT_TO_OCMD  $@
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then

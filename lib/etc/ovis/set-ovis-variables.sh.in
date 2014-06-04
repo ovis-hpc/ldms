@@ -35,7 +35,7 @@ export LDMSD_AGG_PORT_LISTEN=50002
 
 export BALER_XPORT=sock
 export BALER_PORT_TO_OCMD=42001
-export BALER_STORE=$OVIS_WEB_ROOT/baler2/store/
+export BALER_STORE=$OVIS_RUN_PATH/data/baler
 
 
 ulimit -c unlimited
