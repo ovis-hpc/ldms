@@ -345,6 +345,37 @@ static struct kw label_tbl[] = {
 		{ "service", handle_service }
 };
 
+char *process_value(const char *value)
+{
+	struct oparser_name_queue nqueue;
+	int num = process_string_name(value, &nqueue, "", "");
+
+	/* re-use main_buf */
+	char *new_value = main_buf;
+
+	struct oparser_name *name;
+	name = TAILQ_FIRST(&nqueue);
+	if (name)
+		sprintf(new_value, "%s", name->name);
+	else
+		return NULL;
+
+	TAILQ_REMOVE(&nqueue, name, entry);
+	free(name->name);
+	free(name);
+
+	name = TAILQ_FIRST(&nqueue);
+	while (name) {
+		sprintf(new_value, "%s,%s", new_value, name->name);
+		TAILQ_REMOVE(&nqueue, name, entry);
+		free(name->name);
+		free(name);
+		name = TAILQ_FIRST(&nqueue);
+	}
+
+	return new_value;
+}
+
 void oparser_service_conf_parser(FILE *_conf)
 {
 	conf = _conf;
@@ -392,12 +423,18 @@ void oparser_service_conf_parser(FILE *_conf)
 			cmd->attrs_values[0] = '\0';
 			TAILQ_INSERT_TAIL(cmd_queue, cmd, entry);
 		} else if (num_leading_tabs == 3) {
+			char *new_value = process_value(main_value);
+			if (!new_value) {
+				fprintf(stderr, "service_parser: Failed to "
+					"process: %s\n", main_value);
+				exit(EPERM);
+			}
 			if (strlen(cmd->attrs_values) == 0)
 				sprintf(cmd->attrs_values, "%s:%s",
-						key, main_value);
+						key, new_value);
 			else
 				sprintf(cmd->attrs_values, "%s;%s:%s",
-						cmd->attrs_values, key, main_value);
+						cmd->attrs_values, key, new_value);
 		} else {
 			fprintf(stderr, "(%s: %s). Exceed expected number of "
 					"leading tabs.\n",
