@@ -109,7 +109,8 @@ char *md_stats_key[] = {
 	"statfs",
 	"sync",
 	"samedir_rename",
-	"crossdir_rename"
+	"crossdir_rename",
+	"status" /* status of md_stats file */
 };
 
 /**
