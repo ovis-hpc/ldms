@@ -60,7 +60,7 @@ mkdir -p $OVIS_HOME/var/log/
 start() {
 	echo -n "Starting $prog: "
 
-	$LDMSD_AGG -l $OVIS_HOME/var/log/ldmsd_aggregator.log -S $OVIS_HOME/var/sock/ldmsd_aggregator.ctrl -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -o $LDMSD_AGG_PORT_TO_OCMD -z ldmsd_aggregator
+	$LDMSD_AGG -l $OVIS_HOME/var/log/ldmsd_aggregator.log -S $OVIS_HOME/var/sock/ldmsd_aggregator.ctrl -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -m $LDMSD_AGG_MEM -o $LDMSD_AGG_PORT_TO_OCMD -z ldmsd_aggregator
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then
