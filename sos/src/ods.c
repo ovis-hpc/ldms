@@ -284,9 +284,12 @@ int ods_extend(ods_t ods, size_t sz)
 	pg = ods_obj_ref_to_ptr(ods, new_pg_off);
 	pg->count = n_pages - ods->pg_table->count;
 	pg->next = ods->obj->pg_free; /* prepend the page free list */
+	msync(pg, sizeof(*pg), MS_ASYNC);
 	ods->obj->pg_free = new_pg_off; /* new page free head */
+	msync(ods->obj, sizeof(*ods->obj), MS_ASYNC);
 
 	ods->pg_table->count = n_pages;
+	msync(ods->pg_table, sizeof(*ods->pg_table), MS_ASYNC);
 	ods->pg_gen = ods->pg_table->gen;
 	ods->obj_gen = ods->obj->gen;
 	rc = 0;
@@ -391,6 +394,8 @@ static void update_page_table(ods_t ods, ods_pg_t pg, size_t count, int bkt)
 {
 	unsigned char flags;
 	uint64_t page;
+	uint64_t page0;
+	size_t sz = count;
 	/*
 	 * Update page table so that all pages in pg are now
 	 * allocated.
@@ -400,13 +405,15 @@ static void update_page_table(ods_t ods, ods_pg_t pg, size_t count, int bkt)
 		flags |= bkt | ODS_F_IDX_VALID;;
 	if (count > 1)
 		flags |= ODS_F_NEXT;
-	for (page = ods_obj_ptr_to_page(ods, pg);
+	page0 = ods_obj_ptr_to_page(ods, pg);
+	for (page = page0;
 	     count; count--,page++) {
 		if (count == 1)
 			flags &= ~ODS_F_NEXT;
 		ods->pg_table->pages[page] = flags;
 		flags |= ODS_F_PREV;
 	}
+	msync(&ods->pg_table->pages[page0], sz, MS_ASYNC); /* SYNC or ASYNC? */
 }
 
 static void *alloc_pages(ods_t ods, size_t sz, int bkt)
@@ -434,6 +441,7 @@ static void *alloc_pages(ods_t ods, size_t sz, int bkt)
 		n_pg = ods_obj_page_to_ptr(ods, page);
 		n_pg->count = pg->count - pg_needed;
 		n_pg->next = pg->next;
+		msync(n_pg, sizeof(*n_pg), MS_ASYNC);
 
 		pg_off = page << ODS_PAGE_SHIFT;
 	} else {
@@ -443,10 +451,13 @@ static void *alloc_pages(ods_t ods, size_t sz, int bkt)
 	update_page_table(ods, pg, pg_needed, bkt);
 
 	/* p_pg is either NULL or pointing to a previous list member */
-	if (p_pg)
+	if (p_pg) {
 		p_pg->next = pg_off;
-	else
+		msync(p_pg, sizeof(*p_pg), MS_ASYNC);
+	} else {
 		ods->obj->pg_free = pg_off;
+		msync(ods->obj, sizeof(*ods->obj), MS_ASYNC);
+	}
 
  out:
 	return pg;
@@ -470,6 +481,8 @@ static void replenish_bkt(ods_t ods, int bkt)
 		blk->next = ods->obj->blk_free[bkt];
 		ods->obj->blk_free[bkt] = off;
 	}
+	msync(p, ODS_PAGE_SIZE, MS_ASYNC);
+	msync(ods->obj, sizeof(*ods->obj), MS_ASYNC);
 }
 
 static void *alloc_bkt(ods_t ods, int bkt)
@@ -478,6 +491,7 @@ static void *alloc_bkt(ods_t ods, int bkt)
 	if (!blk)
 		goto out;
 	ods->obj->blk_free[bkt] = blk->next;
+	msync(&ods->obj->blk_free[bkt], sizeof(ods->obj->blk_free[bkt]), MS_ASYNC);
  out:
 	return blk;
 }
@@ -550,7 +564,9 @@ static void free_blk(ods_t ods, void *ptr)
 
 	blk = ptr;
 	blk->next = ods->obj->blk_free[bkt];
+	msync(blk, sizeof(*blk), MS_ASYNC);
 	ods->obj->blk_free[bkt] = ods_obj_ptr_to_ref(ods, blk);
+	msync(ods->obj, sizeof(*ods->obj), MS_ASYNC);
 }
 
 static void free_pages(ods_t ods, void *ptr)
@@ -558,6 +574,7 @@ static void free_pages(ods_t ods, void *ptr)
 	ods_pg_t pg;
 	uint64_t count;
 	uint64_t page;
+	uint64_t page0;
 	unsigned char flags;
 
 	page = ods_obj_ptr_to_page(ods, ptr);
@@ -572,7 +589,8 @@ static void free_pages(ods_t ods, void *ptr)
 		return;
 	}
 	count = 1;
-	for (page = ods_obj_ptr_to_page(ods, ptr); page;
+	page0 = ods_obj_ptr_to_page(ods, ptr);
+	for (page = page0; page;
 	     page++, count++) {
 		flags = ods->pg_table->pages[page];
 		ods->pg_table->pages[page] = 0; /* free */
@@ -580,10 +598,13 @@ static void free_pages(ods_t ods, void *ptr)
 		if (0 == (flags & ODS_F_NEXT))
 			break;
 	}
+	msync(&ods->pg_table->pages[page0], count, MS_ASYNC);
 	pg = ptr;
 	pg->count = count;
 	pg->next = ods->obj->pg_free;
+	msync(pg, sizeof(*pg), MS_ASYNC);
 	ods->obj->pg_free = ods_obj_ptr_to_ref(ods, pg);
+	msync(ods->obj, sizeof(*ods->obj), MS_ASYNC);
 }
 
 void ods_commit(ods_t ods, int flags)
