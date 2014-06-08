@@ -186,5 +186,5 @@ static inline struct ods_pg_s *ods_obj_page_to_ptr(ods_t ods, uint64_t page) {
 
 #define ODS_PGTBL_MIN_SZ	(4096)
 #define ODS_PGTBL_MIN_SZ	(4096)
-#define ODS_OBJ_MIN_SZ		(16 * 4096)
+#define ODS_OBJ_MIN_SZ		(4096 * 4096)
 #endif
