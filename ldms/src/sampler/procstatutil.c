@@ -65,13 +65,16 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static uint64_t counter;
+#define fname "/proc/stat"
+
 ldms_set_t set;
-FILE *mf;
 ldms_metric_t *metric_table;
 ldms_metric_t *rate_metric_table;
 uint64_t *prev_value;
 ldmsd_msg_log_f msglog;
+int column_count;
+int cpu_count;
+int is_reset_zero; /* 1 if the sampler couldn't read the file and set all values to 0 */
 
 long USER_HZ; /* initialized in get_plugin() */
 struct timeval _tv[2] = {0};
@@ -112,6 +115,8 @@ static char *metric_name_fmt[] = {
 	"guest_nice#%d",
 };
 
+#define NUM_METRICS_PER_CORE 10
+
 static char *rate_metric_name_fmt[] = {
 	/* rate of above */
 	"user.rate#%d",
@@ -132,15 +137,17 @@ static int create_metric_set(const char *path)
 	size_t data_sz, total_data_sz;
 	int rc;
 	int metric_count;
-	int column_count = 0;
-	int cpu_count;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
+	FILE *mf;
 
-	mf = fopen("/proc/stat", "r");
+	column_count = 0;
+	cpu_count = 0;
+
+	mf = fopen(fname, "r");
 	if (!mf) {
-		msglog("Could not open the /proc/stat file.\n");
+		msglog("procstatutil: Could not open the %s file.\n", fname);
 		return ENOENT;
 	}
 
@@ -153,7 +160,6 @@ static int create_metric_set(const char *path)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 
 	metric_count = 0;
-	cpu_count = 0;
 	do {
 		int column;
 		char *token;
@@ -163,6 +169,12 @@ static int create_metric_set(const char *path)
 
 		/* Throw away first column which is the CPU 'name' */
 		token = strtok(lbuf, " \t\n");
+		if (!token) {
+			msglog("procstatutil: Failed to start. Unexpected format.\n");
+			rc = EPERM;
+			goto err;
+		}
+
 		if (0 != strncmp(token, "cpu", 3))
 			break;
 
@@ -271,6 +283,7 @@ static int create_metric_set(const char *path)
 	  goto err;
 #endif
 
+        fclose(mf);
 	return 0;
 err3:
 	free(rate_metric_table);
@@ -280,6 +293,8 @@ err1:
 	free(metric_table);
 err0:
 	ldms_set_release(set);
+err:
+	fclose(mf);
 	return rc ;
 }
 
@@ -293,6 +308,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc = EINVAL;
+
+	is_reset_zero = 0;
 
 	value = av_value(avl, "component_id");
 	if (!value)
@@ -309,7 +326,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static int sample(void)
 {
-	int metric_no;
+	int metric_no = 0;
+	int column = 0;
 	char *s;
 	char lbuf[256];
 	union ldms_value vv;
@@ -317,16 +335,18 @@ static int sample(void)
 	struct timeval *tmp_tv;
 	float dt;
 
+	FILE *mf = 0;
+
 #ifdef CHECK_PROCSTATUTIL_TIMING
 	struct timespec time1;
 	uint64_t beg_nsec; //testing
 #endif
 
-	//	if (!set || !compid_metric_handle ){
 	if (!set ){
 		msglog("procstatutil: plugin not initialized\n");
 		return EINVAL;
 	}
+
 	ldms_begin_transaction(set);
 	gettimeofday(curr_tv, NULL);
 	timersub(curr_tv, prev_tv, &diff_tv);
@@ -337,6 +357,11 @@ static int sample(void)
         beg_nsec = time1.tv_nsec;
 #endif
 
+	mf = fopen(fname, "r");
+	if (!mf) {
+		msglog("procstatutil: Couldn't open the file %s\n", fname);
+		goto reset_to_0;
+	}
 
 	fseek(mf, 0, SEEK_SET);
 
@@ -353,22 +378,54 @@ static int sample(void)
 		if (!s)
 			break;
 
+		column = 0;
 		token = strtok(lbuf, " \t\n");
+		if (!token) {
+			if (metric_no < cpu_count * column_count) {
+				/*
+				 * The /proc/stat isn't in the expected format.
+				 * Stop the reading and set all values to 0
+				 * because the metric source is untrustworthy.
+				 */
+				if (is_reset_zero == 0) {
+					msglog("procstatutil: Wrong format.\n");
+					is_reset_zero = 1;
+				}
+
+				goto reset_to_0;
+			}
+			break;
+		}
+
 		if (0 != strncmp(token, "cpu", 3))
 			continue; //get to EOF for seek to work
 
 		for (token = strtok(NULL, " \t\n"); token;
 				token = strtok(NULL, " \t\n")) {
 			uint64_t v = strtoul(token, NULL, 0);
-			uint64_t dv = v - prev_value[metric_no];
+			uint64_t dv;
+			if (prev_value[metric_no] == 0)
+				dv = 0;
+			else
+				dv = v - prev_value[metric_no];
 			float rate = (dv * 1.0 / USER_HZ) / dt * 100.0;
 			ldms_set_u64(metric_table[metric_no], v);
 			ldms_set_float(rate_metric_table[metric_no], rate);
 			prev_value[metric_no] = v;
 			metric_no++;
+			column++;
 		}
-	} while (1);
 
+		if (column < column_count) {
+			if (is_reset_zero == 0) {
+				msglog("procstatutil: Wrong format.\n");
+				is_reset_zero = 1;
+			}
+			goto reset_to_0;
+		}
+
+	} while (1);
+	fclose(mf);
 #ifdef CHECK_PROCSTATUTIL_TIMING
 	clock_gettime(CLOCK_REALTIME, &time1);
         vv.v_u64 = time1.tv_sec;
@@ -382,6 +439,24 @@ static int sample(void)
 	curr_tv = prev_tv;
 	prev_tv = tmp_tv;
 	ldms_end_transaction(set);
+	if (is_reset_zero == 1) {
+		msglog("procstatutil: values obtained.\n");
+		is_reset_zero = 0;
+	}
+	return 0;
+
+reset_to_0:
+	/* The set state is inconsistent. */
+	if (mf)
+		fclose(mf);
+	for (metric_no = 0; metric_no < cpu_count * column_count; metric_no++) {
+		ldms_set_u64(metric_table[metric_no], 0);
+		ldms_set_float(rate_metric_table[metric_no], 0);
+		prev_value[metric_no] = 0;
+	}
+	tmp_tv = curr_tv;
+	curr_tv = prev_tv;
+	prev_tv = tmp_tv;
 	return 0;
 }
 
