@@ -117,6 +117,7 @@ static char *root_path; /**< store root path */
 static ldmsd_msg_log_f msglog;
 static pthread_mutex_t cfg_lock;
 static time_t time_limit = 0;
+static size_t init_size = 4 * 1024 * 1024; /* default size 4MB */
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -161,6 +162,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "time_limit");
 	if (value)
 		time_limit = atoi(value);
+	value = av_value(avl, "init_size");
+	if (value)
+		init_size = atoi(value);
 	return 0;
  err:
 	return EINVAL;
@@ -229,7 +233,7 @@ static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 						ldms_type_to_str(type));
 		return ENOTSUP;
 	}
-	ms->sos = sos_open(ms->path, O_RDWR|O_CREAT, 0660, class);
+	ms->sos = sos_open_sz(ms->path, O_RDWR|O_CREAT, 0660, class, init_size);
 	if (!ms->sos) {
 		msglog("store_sos: Failed to open %s, class: %s\n", ms->path, class->name);
 		return ENOMEM;
