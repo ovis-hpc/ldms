@@ -150,7 +150,7 @@ struct sos_s {
 	 * to by the indices. */
 	ods_t ods;
 
-#define SOS_ODS_EXTEND_SZ (16*1024*1024);
+#define SOS_ODS_EXTEND_SZ (16*1024*1024)
 	/* The meta-data to associate with the object store */
 	sos_meta_t meta;
 	/* The size of the meta-data.  */
@@ -159,6 +159,8 @@ struct sos_s {
 	/* In-memory object class description */
 	sos_class_t classp;
 };
+
+#define SOS_INITIAL_SIZE (16*1024*1024)
 
 struct sos_iter_s {
 	sos_t sos;

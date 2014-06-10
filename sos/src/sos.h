@@ -297,6 +297,23 @@ void *SOS_TYPE_BLOB__get_fn(sos_attr_t attr, sos_obj_t obj);
 sos_t sos_open(const char *path, int o_flags, ...);
 
 /**
+ * \brief similar to sos_open, but with size initialization at the end.
+ *
+ * If o_flag does not contain O_CREAT, o_mode, class_p and init_size will be
+ * ignored.
+ *
+ * \param path		Pathname for files implementing the SOS
+ * \param o_flags	Permission flags, refer to the open system call
+ * \param o_mode	If o_flags contains O_CREAT, the mode for the new file
+ * \param class_p	Class ptr if creating a new data store
+ * \param init_size	The initial size of the store
+ *
+ * \returns sos_t 	The handle for the SOS
+ * \returns NULL	If there was an error opening the SOS
+ */
+sos_t sos_open_sz(const char *path, int o_flag, ...);
+
+/**
  * \brief Delete storage associated with a Scalable Object Store
  *
  * Removes all files associated with the object store. The sos_t

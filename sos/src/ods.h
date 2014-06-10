@@ -61,6 +61,7 @@ typedef struct ods_s *ods_t;
 typedef uint64_t obj_ref_t;
 
 extern ods_t ods_open(const char *path, int o_flag, ...);
+extern ods_t ods_open_sz(const char *path, int o_flag, ...);
 extern void *ods_get_user_data(ods_t ods, size_t *p_sz);
 
 

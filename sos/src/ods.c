@@ -134,7 +134,7 @@ static int extend_file(int fd, size_t sz)
 	return 0;
 }
 
-static int init_pgtbl(ods_t ods)
+static int init_pgtbl(ods_t ods, size_t init_size)
 {
 	static struct ods_pgt_s pgt;
 	size_t min_sz;
@@ -142,7 +142,7 @@ static int init_pgtbl(ods_t ods)
 	unsigned char pge;
 	int count;
 
-	count = ODS_OBJ_MIN_SZ >> ODS_PAGE_SHIFT;
+	count = init_size >> ODS_PAGE_SHIFT;
 	min_sz = count + sizeof(struct ods_pgt_s);
 	extend_file(ods->pg_fd, min_sz);
 
@@ -173,7 +173,7 @@ static int init_pgtbl(ods_t ods)
 	return 0;
 }
 
-static int init_obj(ods_t ods)
+static int init_obj(ods_t ods, size_t init_size)
 {
 	static struct obj_hdr {
 		struct ods_obj_s obj;
@@ -202,9 +202,9 @@ static int init_obj(ods_t ods)
 	if (rc != sizeof(hdr))
 		return -1;
 
-	if (extend_file(ods->obj_fd, ODS_OBJ_MIN_SZ))
+	if (extend_file(ods->obj_fd, init_size))
 		return -1;
-	ods->obj_sz = ODS_OBJ_MIN_SZ;
+	ods->obj_sz = init_size;
 	return 0;
 }
 
@@ -259,6 +259,7 @@ int ods_extend(ods_t ods, size_t sz)
 	size_t new_pg_off;
 	int rc;
 
+	fprintf(stderr, "EXTENDING: %s\n", ods->path);
 	/*
 	 * Extend the page table first, that way if we fail extending
 	 * the object file, we can simply adjust the page_count back
@@ -297,15 +298,15 @@ int ods_extend(ods_t ods, size_t sz)
 	return rc;
 }
 
-static int ods_create(ods_t ods)
+static int ods_create(ods_t ods, size_t init_size)
 {
 	int rc;
 
-	rc = init_obj(ods);
+	rc = init_obj(ods, init_size);
 	if (rc)
 		goto out;
 
-	rc = init_pgtbl(ods);
+	rc = init_pgtbl(ods, init_size);
 	if (rc)
 		goto out;
 
@@ -313,11 +314,12 @@ static int ods_create(ods_t ods)
 	return rc;
 }
 
-ods_t ods_open(const char *path, int o_flag, ...)
+ods_t ods_open_sz(const char *path, int o_flag, ...)
 {
 	char tmp_path[PATH_MAX];
 	va_list argp;
 	int o_mode;
+	size_t init_size;
 	struct stat sb;
 	ods_t ods;
 	int fd;
@@ -330,6 +332,7 @@ ods_t ods_open(const char *path, int o_flag, ...)
 	if (o_flag & O_CREAT) {
 		va_start(argp, o_flag);
 		o_mode = va_arg(argp, int);
+		init_size = va_arg(argp, size_t);
 	} else
 		o_mode = 0;
 
@@ -355,8 +358,8 @@ ods_t ods_open(const char *path, int o_flag, ...)
 	if (rc)
 		goto err;
 
-	if (sb.st_size < ODS_OBJ_MIN_SZ) {
-		rc = ods_create(ods);
+	if (sb.st_size <= 0) {
+		rc = ods_create(ods, init_size);
 		if (rc)
 			goto err;
 	}
@@ -374,6 +377,20 @@ ods_t ods_open(const char *path, int o_flag, ...)
 		close(ods->obj_fd);
 	free(ods);
 	return NULL;
+}
+
+ods_t ods_open(const char *path, int o_flag, ...)
+{
+	va_list argp;
+	int o_mode;
+
+	if (o_flag & O_CREAT) {
+		va_start(argp, o_flag);
+		o_mode = va_arg(argp, int);
+	} else
+		o_mode = 0;
+
+	return ods_open_sz(path, o_flag, o_mode, ODS_OBJ_MIN_SZ);
 }
 
 size_t ods_set_user_data(ods_t ods, void *data, size_t sz)

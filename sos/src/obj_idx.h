@@ -106,6 +106,14 @@ int obj_idx_create(const char *path, int mode,
 		   ...);
 
 /**
+ * The same as obj_idx_create(), but with initial size.
+ */
+int obj_idx_create_sz(const char *path, int mode,
+		   const char *type, const char *key,
+		   size_t size,
+		   ...);
+
+/**
  * \brief Open an object index
  *
  * An index implements a persistent key/value store in an ODS data

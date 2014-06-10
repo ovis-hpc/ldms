@@ -150,6 +150,43 @@ struct obj_idx_class *get_idx_class(const char *type, const char *key)
 	return idx_class;
 }
 
+int obj_idx_create_sz(const char *path, int mode,
+		   const char *type, const char *key,
+		   size_t size,
+		   ...)
+{
+	va_list argp;
+	struct obj_idx_class *idx_class;
+	struct obj_idx_meta_data *udata;
+	size_t udata_sz;
+	ods_t ods;
+
+	va_start(argp, key);
+
+	/* Get the class that handles this index type/key combination */
+	idx_class = get_idx_class(type, key);
+	if (!idx_class)
+		return ENOENT;
+
+	/* Create/truncate a new ODS store */
+	ods = ods_open_sz(path, O_RDWR | O_CREAT | O_TRUNC, mode, size);
+	if (!ods) {
+		errno = ENOENT;
+		goto out;
+	}
+
+	/* Set up the IDX meta data in the ODS store. */
+	udata = ods_get_user_data(ods, &udata_sz);
+	memset(udata, 0, udata_sz);
+	strcpy(udata->signature, OBJ_IDX_SIGNATURE);
+	strcpy(udata->type_name, type);
+	strcpy(udata->key_name, key);
+	errno = idx_class->prv->init(ods, argp);
+	ods_close(ods, ODS_COMMIT_ASYNC);
+ out:
+	return errno;
+}
+
 int obj_idx_create(const char *path, int mode,
 		   const char *type, const char *key,
 		   ...)

@@ -335,8 +335,9 @@ static obj_idx_t init_idx(sos_t sos, int o_flag, int o_mode, sos_attr_t attr)
 		if (!order)
 			order = 7;
 		/* Create the index */
-		rc = obj_idx_create(tmp_path, o_mode,
-				    "BPTREE", sos_type_to_key_str(attr->type), order);
+		rc = obj_idx_create_sz(tmp_path, o_mode,
+				    "BPTREE", sos_type_to_key_str(attr->type),
+				    SOS_INITIAL_SIZE, order);
 		if (!rc)
 			idx = obj_idx_open(tmp_path);
 	}
@@ -569,14 +570,12 @@ sos_class_t dup_class(sos_class_t classp)
 	return dup;
 }
 
-/**
- * Create a new tuple store
- */
-sos_t sos_open(const char *path, int o_flag, ...)
+sos_t sos_open_sz(const char *path, int o_flag, ...)
 {
 	char tmp_path[PATH_MAX];
 	va_list argp;
 	int o_mode;
+	size_t init_size = 0;
 	sos_meta_t meta;
 	sos_class_t classp;
 	struct sos_s *sos;
@@ -591,6 +590,7 @@ sos_t sos_open(const char *path, int o_flag, ...)
 		va_start(argp, o_flag);
 		o_mode = va_arg(argp, int);
 		classp = va_arg(argp, sos_class_t);
+		init_size = va_arg(argp, size_t);
 	} else {
 		o_mode = 0;
 		classp = NULL;
@@ -606,7 +606,7 @@ sos_t sos_open(const char *path, int o_flag, ...)
 	}
 
 	sprintf(tmp_path, "%s_sos", sos->path);
-	sos->ods = ods_open(tmp_path, o_flag, o_mode);
+	sos->ods = ods_open_sz(tmp_path, o_flag, o_mode, init_size);
 	if (!sos->ods)
 		goto err;
 
@@ -633,6 +633,27 @@ sos_t sos_open(const char *path, int o_flag, ...)
  err:
 	free_sos(sos);
 	return NULL;
+}
+
+/**
+ * Create a new tuple store
+ */
+sos_t sos_open(const char *path, int o_flag, ...)
+{
+	va_list argp;
+	int o_mode;
+	sos_class_t classp;
+
+	if (o_flag & O_CREAT) {
+		va_start(argp, o_flag);
+		o_mode = va_arg(argp, int);
+		classp = va_arg(argp, sos_class_t);
+	} else {
+		o_mode = 0;
+		classp = NULL;
+	}
+
+	return sos_open_sz(path, o_flag, o_mode, classp, SOS_INITIAL_SIZE);
 }
 
 int sos_extend(sos_t sos, size_t sz)
@@ -1327,8 +1348,8 @@ int main(int argc, char *argv[])
 			m = malloc(sizeof *m);
 			sprintf(tmp_path, "%s/%s/%s", pfx, comp_type, metric_name);
 			m->key = strdup(c_key);
-			m->sos = sos_open(tmp_path, O_CREAT | O_RDWR, 0660,
-					  &ovis_metric_class);
+			m->sos = sos_open_sz(tmp_path, O_CREAT | O_RDWR, 0660,
+					  &ovis_metric_class, SOS_INITIAL_SIZE);
 			if (m->sos) {
 				idx_add(c_idx, c_key, strlen(c_key), m);
 				LIST_INSERT_HEAD(&ms_head, m, entry);
