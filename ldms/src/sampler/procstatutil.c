@@ -404,7 +404,9 @@ static int sample(void)
 				token = strtok(NULL, " \t\n")) {
 			uint64_t v = strtoul(token, NULL, 0);
 			uint64_t dv;
-			if (prev_value[metric_no] == 0)
+			if (prev_value[metric_no] == 0 ||
+					prev_value[metric_no] > v)
+				/* for some reasons, the counters can decrease */
 				dv = 0;
 			else
 				dv = v - prev_value[metric_no];
