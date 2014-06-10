@@ -335,7 +335,7 @@ static int create_metric_set(const char *path, const char *osts)
 		if (rc)
 			goto err2;
 		for (j = 0; j < OST_SINGLE_ATTR_LEN; j++) {
-			sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/%s",
+			sprintf(tmp_path, "/proc/fs/lustre/osd-ldiskfs/%s/%s",
 						sl->str, ost_single_attr[j]);
 			rc = single_construct_routine(set, comp_id, tmp_path,
 					"oss.lustre.", suffix, &lms_list);
