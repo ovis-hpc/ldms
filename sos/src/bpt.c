@@ -102,9 +102,15 @@ static void print_tree(obj_idx_t idx)
 	print_node(idx, 0, node, 0);
 }
 
+static struct bpt_udata *__get_udata(ods_t ods)
+{
+	size_t udata_sz;
+	return ods_get_user_data(ods, &udata_sz);
+}
+
 static int bpt_open(obj_idx_t idx)
 {
-	struct bpt_udata *udata = (struct bpt_udata *)idx->udata;
+	struct bpt_udata *udata = __get_udata(idx->ods);
 	bpt_t t = malloc(sizeof *t);
 	if (!t)
 		return ENOMEM;
@@ -118,8 +124,7 @@ static int bpt_open(obj_idx_t idx)
 
 static int bpt_init(ods_t ods, va_list argp)
 {
-	size_t udata_sz;
-	struct bpt_udata *udata = ods_get_user_data(ods, &udata_sz);
+	struct bpt_udata *udata = __get_udata(ods);
 	int order = va_arg(argp, int);
 	if (order <= 0) {
 		/*
@@ -135,7 +140,7 @@ static int bpt_init(ods_t ods, va_list argp)
 
 static void bpt_close(obj_idx_t idx)
 {
-	struct bpt_udata *udata = (struct bpt_udata *)idx->udata;
+	struct bpt_udata *udata = __get_udata(idx->ods);
 	bpt_t t = idx->priv;
 	udata->root = t->root_ref;
 }
@@ -711,6 +716,7 @@ static int bpt_insert(obj_idx_t idx, obj_key_t uk, obj_ref_t obj)
 	bpt_node_t node;
 	bpt_node_t leaf;
 	bpt_node_t parent;
+	bpt_udata_t udata;
 	obj_ref_t new_key_ref, leaf_ref, new_leaf_ref;
 
 	new_key = key_new(idx, t, uk->len + sizeof(*uk));
@@ -724,7 +730,8 @@ static int bpt_insert(obj_idx_t idx, obj_key_t uk, obj_ref_t obj)
 		if (!node)
 			goto err_1;
 		t->root_ref = ods_obj_ptr_to_ref(idx->ods, node);
-		((bpt_udata_t)idx->udata)->root = t->root_ref;
+		udata = __get_udata(idx->ods);
+		udata->root = t->root_ref;
 		node->is_leaf = 1;
 		leaf_ref = t->root_ref;
 	} else
@@ -788,7 +795,9 @@ static int bpt_insert(obj_idx_t idx, obj_key_t uk, obj_ref_t obj)
 	if (!parent)
 		goto err_3;
  out:
-	((bpt_udata_t)idx->udata)->root = t->root_ref;
+	udata = __get_udata(idx->ods);
+	udata->root = t->root_ref;
+	verify_tree(idx);
 	return 0;
 
  err_3:
@@ -1296,6 +1305,7 @@ static obj_ref_t bpt_delete(obj_idx_t idx, obj_key_t key)
 	obj_ref_t obj, key_ref, leaf_ref;
 	bpt_node_t leaf;
 	bpt_node_t root;
+	bpt_udata_t udata;
 
 	leaf_ref = leaf_find_ref(t, key);
 	leaf = ods_obj_ref_to_ptr(t->ods, leaf_ref);
@@ -1310,7 +1320,8 @@ static obj_ref_t bpt_delete(obj_idx_t idx, obj_key_t key)
 #endif
 	root = entry_delete(idx, leaf, ent, NULL, NULL);
 	t->root_ref = ods_obj_ptr_to_ref(t->ods, root);
-	((bpt_udata_t)idx->udata)->root = t->root_ref;
+	udata = __get_udata(idx->ods);
+	udata->root = t->root_ref;
 	ods_free(t->ods, ods_obj_ref_to_ptr(t->ods, key_ref));
 
 	verify_tree(idx);
@@ -1556,7 +1567,7 @@ static obj_ref_t bpt_iter_key_delete(obj_iter_t oi)
 
 	/* update root */
 	t->root_ref = ods_obj_ptr_to_ref(t->ods, root);
-	((bpt_udata_t)i->idx->udata)->root = t->root_ref;
+	__get_udata(i->idx->ods)->root = t->root_ref;
 
 	/* Free the key */
 	ods_free(t->ods, ods_obj_ref_to_ptr(t->ods, key_ref));

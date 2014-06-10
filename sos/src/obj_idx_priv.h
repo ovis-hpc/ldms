@@ -106,9 +106,6 @@ struct obj_idx {
 	struct obj_idx_class *idx_class;
 	/** The ODS object store for the index */
 	ods_t ods;
-	/** The ODS meta data */
-	struct obj_idx_meta_data *udata;
-	size_t udata_sz;
 	/** Place for the index to store its private data */
 	void *priv;
 };

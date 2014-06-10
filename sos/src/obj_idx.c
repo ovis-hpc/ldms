@@ -190,6 +190,8 @@ obj_idx_t obj_idx_open(const char *path)
 {
 	obj_idx_t idx;
 	struct obj_idx_class *idx_class;
+	struct obj_idx_meta_data *udata;
+	size_t udata_sz;
 
 	idx = calloc(1, sizeof *idx);
 	if (!idx)
@@ -199,14 +201,14 @@ obj_idx_t obj_idx_open(const char *path)
 	if (!idx->ods)
 		goto err_0;
 
-	idx->udata = ods_get_user_data(idx->ods, &idx->udata_sz);
-	if (strcmp(idx->udata->signature, OBJ_IDX_SIGNATURE)) {
+	udata = ods_get_user_data(idx->ods, &udata_sz);
+	if (strcmp(udata->signature, OBJ_IDX_SIGNATURE)) {
 		/* This file doesn't point to an index */
 		errno = EBADF;
 		goto err_1;
 	}
 
-	idx_class = get_idx_class(idx->udata->type_name, idx->udata->key_name);
+	idx_class = get_idx_class(udata->type_name, udata->key_name);
 	if (!idx_class) {
 		/* The libraries necessary to handle this index
 		   type/key combinationare not present */
@@ -367,8 +369,6 @@ void *obj_idx_alloc(obj_idx_t idx, size_t sz)
 	void *p = ods_alloc(idx->ods, sz);
 	if (!p) {
 		if (!ods_extend(idx->ods, 64 * 1024)) {
-			/* All cached ptrs are invalid */
-			idx->udata = ods_get_user_data(idx->ods, &idx->udata_sz);
 			p = ods_alloc(idx->ods, sz);
 		}
 	}
