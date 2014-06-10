@@ -1,5 +1,20 @@
 #!/bin/sh
 #
+#
+# balerd        This shell script takes care of starting and stopping
+#               balerd (ovis log analysis daemon).
+#
+# chkconfig: - 98 0
+# description: balerd is an ovis daemon.
+#
+### BEGIN INIT INFO
+# Provides: balerd
+# Required-Start:
+# Defalt-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Description: balerd init script
+### END INIT INFO
+
 
 . /etc/profile.d/set-ovis-variables.sh
 . /etc/ovis/ovis-functions.sh

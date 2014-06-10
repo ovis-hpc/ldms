@@ -1,5 +1,19 @@
 #!/bin/sh
 #
+# ldmsd_sampler This shell script takes care of starting and stopping
+#               ldmsd_sampler (ovis data collector daemon).
+#
+# chkconfig: - 98 0
+# description: ldmsd_sampler is an ovis daemon.
+#
+### BEGIN INIT INFO
+# Provides: ldmsd_sampler
+# Required-Start:
+# Defalt-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Description: ldmsd_sampler init script
+### END INIT INFO
+
 . /etc/profile.d/set-ovis-variables.sh
 . /etc/ovis/ovis-functions.sh
 

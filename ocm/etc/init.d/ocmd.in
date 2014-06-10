@@ -1,5 +1,21 @@
 #!/bin/sh
 #
+# ocmd          This shell script takes care of starting and stopping
+#               ocmd (ovis daemon).
+#
+# chkconfig: - 99 0
+# description: ocmd is an ovis daemon.
+#
+### BEGIN INIT INFO
+# Provides: ocmd
+# Required-Start:
+# Defalt-Start: 2 3 4 5
+# Default-Stop: 0 1 6
+# Description: ocmd init script
+### END INIT INFO
+
+
+
 
 . /etc/profile.d/set-ovis-variables.sh
 . /etc/ovis/ovis-functions.sh
