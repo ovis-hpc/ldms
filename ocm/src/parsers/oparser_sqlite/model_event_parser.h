@@ -105,6 +105,7 @@ struct oparser_event {
 	struct metric_id_list mid_list;
 	int num_metric_id_set;
 	struct oparser_sev_level msg_level[MAE_NUM_LEVELS];
+	uint32_t fake_mtype_id;	/* fake metric type id for a user event */
 	TAILQ_ENTRY(oparser_event) entry;
 	TAILQ_ENTRY(oparser_event) uevent_entry;
 };
