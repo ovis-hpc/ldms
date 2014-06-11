@@ -841,7 +841,18 @@ loop:
 		}
 	}
 	int rc = system(cmd);
-	switch (rc) {
+	if (rc == -1) {
+		k_log("Failed to execute command '%s'\n", cmd);
+		/*
+		 * TODO: XXX: Consider whether we need to update the
+		 * event status to be KMD_EVENT_RESOLVE_FAILED or
+		 * another status
+		 */
+		goto skip;
+	}
+
+	int cmd_exit_status = WEXITSTATUS(rc);
+	switch (cmd_exit_status) {
 	case KMD_RESOLVED_CODE:
 		/* Change event status to resolved */
 		LIST_FOREACH(eref, &ent->eref_list->list, entry) {
@@ -853,7 +864,7 @@ loop:
 		/* do nothing */
 		break;
 	default:
-		k_log("Error %d in command: %s\n", rc, cmd);
+		k_log("Error %d in command: %s\n", cmd_exit_status, cmd);
 		if (ent->action->type == KMD_ACTION_RESOLVE) {
 			LIST_FOREACH(eref, &ent->eref_list->list, entry) {
 				eref->store->event_update(eref->store,
@@ -863,6 +874,7 @@ loop:
 		}
 		break;
 	}
+skip:
 	event_ref_list_put(ent->eref_list);
 	free(ent);
 	goto loop;
