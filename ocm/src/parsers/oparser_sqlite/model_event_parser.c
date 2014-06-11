@@ -840,6 +840,26 @@ void user_event_to_sqlite(sqlite3 *db, sqlite3_stmt *uevent_stmt)
 		oparser_bind_text(db, uevent_stmt, 2, uevent->name, __FUNCTION__);
 		oparser_bind_text(db, uevent_stmt, 3, uevent->ctype, __FUNCTION__);
 		oparser_bind_int(db, uevent_stmt, 4, uevent->fake_mtype_id, __FUNCTION__);
+
+		int count_level = 0;
+
+		int i, level;
+		for (level = 0; level < MAE_NUM_LEVELS; level++) {
+			if (uevent->msg_level[level].action_name[0] == '\0') {
+				continue;
+			}
+
+			oparser_bind_int(db, uevent_stmt, 5, level, __FUNCTION__);
+			count_level++;
+		}
+		if (count_level != 1) {
+			fprintf(stderr, "%s: Invalid user event definition. "
+					"Exactly one severity level must be "
+					"defined for a message and/or "
+					"actions\n", uevent->name);
+			exit(EINVAL);
+		}
+
 		oparser_finish_insert(db, uevent_stmt, __FUNCTION__);
 	}
 }
@@ -880,9 +900,10 @@ void oparser_events_to_sqlite()
 			" event_id	INTEGER	NOT NULL," \
 			" event_name	TEXT		NOT NULL," \
 			" comp_type	TEXT		NOT NULL," \
-			" fake_mtype_id	INTEGER NOT NULL);";
+			" fake_mtype_id	INTEGER 	NOT NULL,"
+			" level		INTEGER		NOT NULL);";
 	index_stmt = "CREATE INDEX IF NOT EXISTS user_events_idx ON " \
-			"user_events(event_id,comp_type);";
+			"user_events(event_id,comp_type,fake_mtype_id);";
 	create_table(stmt_s, db);
 	create_index(index_stmt, db);
 
@@ -950,8 +971,8 @@ void oparser_events_to_sqlite()
 		exit(rc);
 	}
 
-	stmt_s = "INSERT INTO user_events(event_id, event_name, comp_type, fake_mtype_id) "
-			"VALUES(@eid, @ename, @ctype, @fake_mtype_id)";
+	stmt_s = "INSERT INTO user_events(event_id, event_name, comp_type, fake_mtype_id, level) "
+			"VALUES(@eid, @ename, @ctype, @fake_mtype_id, @level)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
 			&user_event_stmt, NULL);
 	if (rc) {
