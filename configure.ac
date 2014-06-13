@@ -33,6 +33,9 @@ dnl Check for libevent
 OPTION_WITH_EVENT
 # LIBEVENT-done
 
+OPTION_GITINFO
+
+
 dnl Check for glib
 PKG_CONFIG=`which pkg-config`
 PKG_CHECK_MODULES([GLIB20], [glib-2.0 >= 2.0.0])

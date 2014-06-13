@@ -627,7 +627,7 @@ char *_create_path(const char *set_name)
 	int tail, rc = 0;
 
 	/* Create each node in the dir. __set_dir is presumed to exist */
-	sprintf(__set_path, "%s/", __set_dir);
+	snprintf(__set_path, PATH_MAX, "%s/", __set_dir);
 	tail = strlen(__set_path) - 1;
 	for (p = strtok(dname, "/"); p; p = strtok(NULL, "/")) {
 		/* remove duplicate '/'s */

@@ -242,3 +242,17 @@ fi
 AC_DEFINE_UNQUOTED([$1],[$withval],[$3])
 AC_SUBST([$1],[$$1])
 ])
+
+dnl SYNOPSIS: OPTION_GITINFO
+dnl dnl queries git for version hash and branch info.
+AC_DEFUN([OPTION_GITINFO], [
+if test "x`which git`" = "x"; then
+        GITSHORT="no_git_command"
+        GITLONG=$GITSHORT
+else
+        GITLONG="`git log -1 --format="%H"`"
+        GITSHORT="`git describe`"
+fi
+AC_DEFINE_UNQUOTED([LDMS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
+AC_DEFINE_UNQUOTED([LDMS_GIT_SHORT],["$GITSHORT"],[Branch and hash mangle of last commit])
+])

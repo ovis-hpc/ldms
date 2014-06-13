@@ -3453,6 +3453,7 @@ int main(int argc, char *argv[])
 		logfile = LDMSD_LOGFILE;
 
 	ldms_log("Started LDMS Daemon version " VERSION "\n");
+	ldms_log("git tag " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n");
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 

@@ -105,7 +105,8 @@ void usage(char *argv[])
 	       "                     this option multiple times increases the verbosity.\n"
 	       "\n    -m <memory size>   Maximum size of pre-allocated memory for metric sets.\n"
 	       "                         The given size must be less than 1 petabytes.\n"
-	       "                         For example, 20M or 20mb are 20 megabytes.\n",
+	       "                         For example, 20M or 20mb are 20 megabytes.\n"
+	       " git info: " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n",
 	       argv[0],LDMS_DEFAULT_PORT);
 	exit(1);
 }
