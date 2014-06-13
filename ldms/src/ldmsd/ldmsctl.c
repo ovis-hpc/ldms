@@ -350,6 +350,7 @@ int main(int argc, char *argv[])
 	char *s = NULL;
 	int rc;
 
+	printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
