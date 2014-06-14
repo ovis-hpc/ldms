@@ -10,7 +10,7 @@ export LDMS_XPRT_LIBPATH=$OLIB
 export ZAP_LIBPATH=$OLIB
 export ME_PLUGIN_LIBPATH=$OLIB/me
 
-export PYTHONPATH=$PYTHONPATH:$OVIS_HOME/lib/python2.7/site-packages
+export PYTHONPATH=$PYTHONPATH:$OVIS_HOME/lib/python@PYTHON_VERSION@/site-packages
 export PATH=$PATH:$OVIS_HOME/bin:$OVIS_HOME/sbin
 
 export LDMSD_SAMPLER_XPORT=sock
