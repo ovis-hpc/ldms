@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT([me], [0.0.1], [nichamon@ogc.us])
+AC_INIT([me], [1.0.1], [nichamon@ogc.us])
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/me.h])
 AC_CONFIG_AUX_DIR(config)
@@ -44,6 +44,8 @@ OPTION_DEFAULT_ENABLE([high_percentage], [ENABLE_HIGH_PERCENTAGE])
 OPTION_DEFAULT_ENABLE([low_percentage], [ENABLE_LOW_PERCENTAGE])
 OPTION_DEFAULT_ENABLE([detect_input_type], [ENABLE_DETECT_INPUT_TYPE])
 OPTION_DEFAULT_ENABLE([severity_level], [ENABLE_SEVERITY_LEVEL])
+OPTION_DEFAULT_ENABLE([high_exact_bound], [ENABLE_HIGH_EXACT_BOUND])
+OPTION_DEFAULT_ENABLE([high_exact_detect_no_data], [ENABLE_HIGH_EXACT_DETECT_NO_DATA])
 
 dnl Options for stores
 OPTION_DEFAULT_ENABLE([stores], [ENABLE_STORES])

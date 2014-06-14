@@ -96,3 +96,17 @@ libmodel_severity_level_la_LIBADD = $(COMMON_LIBADD) -lm
 libmodel_severity_level_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libmodel_severity_level.la
 endif
+
+if ENABLE_HIGH_EXACT_BOUND
+libmodel_high_exact_bound_la_SOURCES = model_high_exact_bound.c
+libmodel_high_exact_bound_la_LIBADD = $(COMMON_LIBADD)
+libmodel_high_exact_bound_la_CFLGAS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_high_exact_bound.la
+endif
+
+if ENABLE_HIGH_EXACT_DETECT_NO_DATA
+libmodel_high_exact_detect_no_data_la_SOURCES = model_high_exact_detect_no_data.c
+libmodel_high_exact_detect_no_data_la_LIBADD = $(COMMON_LIBADD)
+libmodel_high_exact_detect_no_data_la_CFLGAS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libmodel_high_exact_detect_no_data.la
+endif
