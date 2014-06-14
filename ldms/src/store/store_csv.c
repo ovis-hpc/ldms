@@ -181,10 +181,10 @@ static int print_header(struct csv_store_handle *s_handle,
 			ldms_mvec_t mvec)
 {
 
-	int compid;
-
 	/* Only called from Store which already has the lock */
 	FILE* fp = s_handle->headerfile;
+	const char* name;
+	int i;
 
 	s_handle->printheader = 0;
 	if (!fp){
@@ -192,30 +192,27 @@ static int print_header(struct csv_store_handle *s_handle,
 		return EINVAL;
 	}
 
-	// Brandt split Time to Time_sec and Time_usec
-	fprintf(fp, "#Time_sec, Time_usec");
-	//fprintf(fp, "#Time");
+	/* This allows optional loading a float (Time) into an int field and
+	   retaining usec as a separate field */
+	fprintf(fp, "#Time, Time_usec");
+
 	int num_metrics = ldms_mvec_get_count(mvec);
 
 	if (id_pos < 0) {
-		int i, rc;
-
 		for (i = 0; i < num_metrics; i++) {
-			char* name = ldms_get_metric_name(mvec->v[i]);
+			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 		}
-		fprintf(fp, "\n");
 	} else {
-		int i, rc;
-
 		fprintf(fp, ", CompId");
 		for (i = 0; i < num_metrics; i++) {
-			char* name = ldms_get_metric_name(mvec->v[i]);
+			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s", name);
 		}
-		fprintf(fp, "\n");
 	}
+	fprintf(fp, "\n");
+
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
@@ -239,10 +236,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		char tmp_path[PATH_MAX];
 
 		//append or create
-		sprintf(tmp_path, "%s/%s", root_path, comp_type);
-		mkdir(tmp_path, 0777);
-		sprintf(tmp_path, "%s/%s/%s", root_path, comp_type,
+		snprintf(tmp_path, PATH_MAX, "%s/%s", root_path, comp_type);
+		mkdir(tmp_path, 0777); /* FIXME: this must be checked and handled. */
+		snprintf(tmp_path, PATH_MAX, "%s/%s/%s", root_path, comp_type,
 				container);
+
 
 		s_handle = calloc(1, sizeof *s_handle);
 		if (!s_handle)
@@ -278,7 +276,8 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		char tmp_headerpath[PATH_MAX];
 
 		if (altheader) {
-			sprintf(tmp_headerpath, "%s.HEADER", s_handle->path);
+			snprintf(tmp_headerpath, PATH_MAX,
+				 "%s.HEADER", s_handle->path);
 			/* truncate a separate headerfile if exists */
 			s_handle->headerfile = fopen(tmp_headerpath, "w");
 		} else {
@@ -333,9 +332,8 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 	if (s_handle->printheader)
 		print_header(s_handle, mvec);
-	// Brandt changed . to , for ncsa. Will make this a flag setting
-	fprintf(s_handle->file, "%"PRIu32",%06"PRIu32, ts->sec, ts->usec);
-	//fprintf(s_handle->file, "%"PRIu32".%06"PRIu32, ts->sec, ts->usec);
+	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %06"PRIu32,
+		ts->sec, ts->usec, ts->usec);
 
 	int num_metrics = ldms_mvec_get_count(mvec);
 	if (id_pos < 0){
