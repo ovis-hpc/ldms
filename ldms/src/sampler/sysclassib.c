@@ -116,6 +116,12 @@
  */
 #define SCIB_PC_EXT_LAST IB_PC_EXT_LAST_F
 
+typedef enum {
+	SYSCLASSIB_METRICS_COUNTER,
+	SYSCLASSIB_METRICS_BOTH
+} sysclassib_metrics_type_t;
+
+
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -244,6 +250,12 @@ struct timeval *tv_now = &tv[0];
 struct timeval *tv_prev = &tv[1];
 
 /**
+ * Which metrics - counter or both. default both.
+ */
+sysclassib_metrics_type_t sysclassib_metrics_type;
+
+
+/**
  * \param setname The set name (e.g. nid00001/sysclassib)
  */
 static int create_metric_set(const char *setname)
@@ -266,22 +278,24 @@ static int create_metric_set(const char *setname)
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 			/* counters */
 			snprintf(metric_name, 128, "ib.%s#%s.%d",
-					all_metric_names[i],
-					port->ca,
-					port->portno);
+				 all_metric_names[i],
+				 port->ca,
+				 port->portno);
 			ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz,
-					&data_sz);
+					     &data_sz);
 			tot_meta_sz += meta_sz;
 			tot_data_sz += data_sz;
 			/* rates */
-			snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
-					all_metric_names[i],
-					port->ca,
-					port->portno);
-			ldms_get_metric_size(metric_name, LDMS_V_F, &meta_sz,
-					&data_sz);
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
+			if (sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH){
+				snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
+					 all_metric_names[i],
+					 port->ca,
+					 port->portno);
+				ldms_get_metric_size(metric_name, LDMS_V_F, &meta_sz,
+						     &data_sz);
+				tot_meta_sz += meta_sz;
+				tot_data_sz += data_sz;
+			}
 		}
 	}
 
@@ -296,20 +310,22 @@ static int create_metric_set(const char *setname)
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 			/* counters */
 			snprintf(metric_name, 128, "ib.%s#%s.%d",
-					all_metric_names[i],
-					port->ca,
-					port->portno);
+				 all_metric_names[i],
+				 port->ca,
+				 port->portno);
 			port->handle[i] = ldms_add_metric(set, metric_name,
-					LDMS_V_U64);
+							  LDMS_V_U64);
 			ldms_set_user_data(port->handle[i], comp_id);
 			/* rates */
-			snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
-					all_metric_names[i],
-					port->ca,
-					port->portno);
-			port->rate[i] = ldms_add_metric(set, metric_name,
-					LDMS_V_F);
-			ldms_set_user_data(port->rate[i], comp_id);
+			if (sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH){
+				snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
+					 all_metric_names[i],
+					 port->ca,
+					 port->portno);
+				port->rate[i] = ldms_add_metric(set, metric_name,
+								LDMS_V_F);
+				ldms_set_user_data(port->rate[i], comp_id);
+			}
 		}
 	}
 }
@@ -317,11 +333,12 @@ static int create_metric_set(const char *setname)
 static const char *usage(void)
 {
 	return
-"config name=sysclassib component_id=<comp_id> set=<setname> ports=CA.PRT,...\n"
-"    comp_id     The component id value.\n"
-"    setname     The set name.\n"
-"    ports       A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
-"                a * for all IB ports. If not given, '*' is assumed.\n"
+"config name=sysclassib component_id=<comp_id> set=<setname> metrics_type=<0/1> ports=CA.PRT,...\n"
+"    comp_id      The component id value.\n"
+"    setname      The set name.\n"
+"    metrics_type 0=counters only, 1=both (Optional - default=both)\n"
+"    ports        A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
+"                 a * for all IB ports. If not given, '*' is assumed.\n"
 ;
 }
 
@@ -550,6 +567,19 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (!setstr)
 		return EINVAL;
 
+
+	value = av_value(avl,"metrics_type");
+	if (value) {
+		sysclassib_metrics_type = atoi(value);
+		if ((sysclassib_metrics_type < SYSCLASSIB_METRICS_COUNTER) ||
+		    (sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH)){
+			return EINVAL;
+		}
+	} else {
+		sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH;
+	}
+
+
 	ports = av_value(avl, "ports");
 	if (!ports)
 		ports = "*";
@@ -579,8 +609,10 @@ inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
 	uint64_t old_v = ldms_get_u64(port->handle[idx]);
 	if (!port->ext)
 		new_v += old_v;
+
 	ldms_set_u64(port->handle[idx], new_v);
-	ldms_set_float(port->rate[idx], (new_v - old_v) / dt);
+	if (sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH)
+		ldms_set_float(port->rate[idx], (new_v - old_v) / dt);
 }
 
 /**
