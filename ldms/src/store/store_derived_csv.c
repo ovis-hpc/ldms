@@ -214,7 +214,7 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		else
 			snprintf(s_handle->der[s_handle->numder].dername,
 				 STORE_DERIVED_NAME_MAX,
-				 "DT_%s (x %d)",
+				 "Rate_%s (x %d)",
 				 s_handle->der[s_handle->numder].rawname,
 				 s_handle->der[s_handle->numder].multiplier);
 		s_handle->numder++;
@@ -429,6 +429,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 {
 	struct csv_store_handle *s_handle;
 	int add_handle = 0;
+	int rc = 0;
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
@@ -437,7 +438,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 		//append or create
 		snprintf(tmp_path, PATH_MAX, "%s/%s", root_path, comp_type);
-		mkdir(tmp_path, 0777);
+		rc = mkdir(tmp_path, 0777);
+		if ((rc != 0) && (errno != EEXIST)){
+			pthread_mutex_unlock(&cfg_lock);
+			return errno;
+		}
 		snprintf(tmp_path, PATH_MAX, "%s/%s/%s", root_path, comp_type,
 				container);
 
@@ -631,7 +636,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	pthread_mutex_unlock(&cfg_lock);
 
 
-	/* format: #Time, Time_usec, DT_sec, DT_usec */
 	struct timeval prev, curr, diff;
 	prev.tv_sec = dp->ts->sec;
 	prev.tv_usec = dp->ts->usec;
@@ -649,9 +653,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 
 	/* format: #Time, Time_usec, DT, DT_usec */
-	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %06"PRIu32,
+	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
 		ts->sec, ts->usec, ts->usec);
-	fprintf(s_handle->file, ", %lu.%06lu, %06lu",
+	fprintf(s_handle->file, ", %lu.%06lu, %lu",
 		diff.tv_sec, diff.tv_usec, diff.tv_usec);
 
 	int num_metrics = ldms_mvec_get_count(mvec);

@@ -229,6 +229,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 {
 	struct csv_store_handle *s_handle;
 	int add_handle = 0;
+	int rc;
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
@@ -237,7 +238,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 		//append or create
 		snprintf(tmp_path, PATH_MAX, "%s/%s", root_path, comp_type);
-		mkdir(tmp_path, 0777); /* FIXME: this must be checked and handled. */
+		rc = mkdir(tmp_path, 0777);
+		if ((rc != 0) && (errno != EEXIST)){
+			pthread_mutex_unlock(&cfg_lock);
+			return errno;
+		}
 		snprintf(tmp_path, PATH_MAX, "%s/%s/%s", root_path, comp_type,
 				container);
 
@@ -332,7 +337,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 	if (s_handle->printheader)
 		print_header(s_handle, mvec);
-	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %06"PRIu32,
+	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
 		ts->sec, ts->usec, ts->usec);
 
 	int num_metrics = ldms_mvec_get_count(mvec);
