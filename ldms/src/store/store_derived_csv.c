@@ -103,6 +103,7 @@ static ldmsd_msg_log_f msglog;
  * another.
  *
  * Notes:
+ * - format of the configuration file is comma separated
  * - rollover (determined by a neg value) and neg values - both return 0
  * - STORE_DERIVED_METRIC_MAX - is fixed value.
  * - there is no function to iterate thru an idx. Right now, that memory is
@@ -187,7 +188,7 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		if (!s)
 			break;
 		//		printf("Read <%s>\n", lbuf);
-		rc = sscanf(lbuf, "%s %d %d", metric_name, &tval, &mval);
+		rc = sscanf(lbuf, "%[^,],%d,%d", metric_name, &tval, &mval);
 		//		printf("Name <%s> val <%d> mult <%d>\n", metric_name, tval, mval);
 		if (rc != 3) {
 			msglog("Bad format in derived config file <%s>. Skipping\n",lbuf);
