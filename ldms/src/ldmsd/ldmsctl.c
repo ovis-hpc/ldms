@@ -210,6 +210,9 @@ int handle_help(char *kw, char *err_str)
 	       "   - Causes the ldmsd to dump out information about plugins,\n"
 	       "     work queue utilization, hosts and object stores.\n"
 	       "\n"
+	       "version\n"
+	       "   - Returns version information\n"
+	       "\n"
 	       "quit\n"
 	       "   - Exit.\n", LDMS_DEFAULT_PORT);
 	return 0;
@@ -276,6 +279,14 @@ int handle_info(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_INFO_DAEMON, av_list, err_str);
 }
 
+int handle_version(char *kw, char *err_str)
+{
+	int rc = ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
+	printf(err_str);
+
+	return rc;
+}
+
 int handle_quit(char *kw, char *err_str)
 {
 	exit(0);
@@ -302,6 +313,7 @@ struct kw keyword_tbl[] = {
 	{ "store", handle_store },
 	{ "term", handle_plugin_term },
 	{ "usage", handle_usage },
+	{ "version", handle_version },
 };
 
 static int kw_comparator(const void *a, const void *b)
@@ -334,7 +346,7 @@ int main(int argc, char *argv[])
 	char *s;
 	int rc;
 
-	printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
+	//	printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
