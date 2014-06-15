@@ -190,6 +190,11 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		//		printf("Read <%s>\n", lbuf);
 		rc = sscanf(lbuf, "%[^,],%d,%d", metric_name, &tval, &mval);
 		//		printf("Name <%s> val <%d> mult <%d>\n", metric_name, tval, mval);
+		if ((strlen(metric_name) > 0) && (metric_name[0] = '#')){
+		// hashed lines are comments (means metric name cannot start with #)
+			msglog("Comment in derived config file <%s>. Skipping\n",lbuf);
+			continue;
+		}
 		if (rc != 3) {
 			msglog("Bad format in derived config file <%s>. Skipping\n",lbuf);
 			continue;
