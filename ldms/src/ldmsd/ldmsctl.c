@@ -102,7 +102,7 @@ extern int read_history ();
 #include <ovis_ctrl/ctrl.h>
 #include <ovis_util/util.h>
 
-#define FMT "S:"
+#define FMT "S:v"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
 struct attr_value_list *av_list, *kw_list;
@@ -111,7 +111,8 @@ void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
                "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
-               "                    [" LDMSD_CONTROL_SOCKNAME "].\n",
+               "                    [" LDMSD_CONTROL_SOCKNAME "].\n"
+	       "    -v              Prints the version of this ldmsctl\n",
                argv[0], FMT);
 	exit(1);
 }
@@ -281,10 +282,7 @@ int handle_info(char *kw, char *err_str)
 
 int handle_version(char *kw, char *err_str)
 {
-	int rc = ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
-	printf(err_str);
-
-	return rc;
+	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
 }
 
 int handle_quit(char *kw, char *err_str)
@@ -346,10 +344,12 @@ int main(int argc, char *argv[])
 	char *s;
 	int rc;
 
-	//	printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
+		case 'v':
+			printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
+			exit(1);
 		case 'S':
 			sockname = strdup(optarg);
 			break;

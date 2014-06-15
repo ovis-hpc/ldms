@@ -109,7 +109,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q"
+#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:qv"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -274,6 +274,7 @@ void usage(char *argv[])
 	       "                     For example, 20M or 20mb are 20 megabytes.\n");
 	printf("    -f count       The number of flush threads.\n");
 	printf("    -D num         The dirty threshold.\n");
+	printf("    -v version     Prints the version.\n");
 	cleanup(1);
 }
 
@@ -3329,6 +3330,9 @@ int main(int argc, char *argv[])
 		case 'D':
 			dirty_threshold = atoi(optarg);
 			break;
+		case 'v':
+                        printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
+			exit(1);
 		default:
 			usage(argv);
 		}
