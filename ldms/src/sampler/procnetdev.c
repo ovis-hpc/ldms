@@ -172,7 +172,7 @@ static int create_metric_set(const char *path)
 	return 0;
 
 err:
-	ldms_set_release(set);
+	ldms_destroy_set(set);
 	return rc;
 }
 
@@ -193,7 +193,7 @@ static const char *usage(void)
  * config name=procnetdev component_id=<comp_id> set=<setname> ifaces=<ifaces>
  *    comp_id     The component id value.
  *    setname     The set name.
- *    ifaces      CSV list of ifaces. Order matters. All ifaces will be included, 
+ *    ifaces      CSV list of ifaces. Order matters. All ifaces will be included,
  *                whether they exist of not up to a total of MAXIFACE
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -278,7 +278,7 @@ static int sample(void)
 		//note: ifaces will be in the same order each time
 		//so we can just include/skip w/o have to keep track of which on we are on
 		for (j = 0; j < niface; j++){
-			if (strcmp(curriface,iface[j]) == 0){ 
+			if (strcmp(curriface,iface[j]) == 0){
 				metric_no = j*NVARS;
 				for (i = 0; i < NVARS; i++){
 					ldms_set_metric(metric_table[metric_no++], &v[i]);

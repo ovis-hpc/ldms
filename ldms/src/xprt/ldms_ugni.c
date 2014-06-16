@@ -100,6 +100,15 @@ LIST_HEAD(ugni_list, ldms_ugni_xprt) ugni_list;
 pthread_mutex_t desc_list_lock;
 LIST_HEAD(desc_list, ugni_desc) desc_list;
 
+struct ugni_rbuf_desc {
+	struct ldms_rbuf_desc desc;
+	struct ugni_buf_local_data ldata;
+	struct ugni_buf_remote_data rdata;
+	LIST_ENTRY(ugni_rbuf_desc) link;
+};
+LIST_HEAD(ugni_rbuf_list, ugni_rbuf_desc) ugni_rbuf_list;
+pthread_mutex_t ugni_rbuf_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void *io_thread_proc(void *arg);
 static void *cq_thread_proc(void *arg);
 
@@ -509,7 +518,8 @@ static void ugni_read(struct bufferevent *buf_event, void *arg)
 		}
 		len = evbuffer_remove(evb, req, reqlen);
 		assert(len == reqlen);
-		process_xprt_io(r, req);
+		if (r->conn_status == CONN_CONNECTED)
+			process_xprt_io(r, req);
 		free(req);
 	} while (1);
 }
@@ -535,10 +545,11 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		}
 		post = NULL;
 		pthread_mutex_lock(&ugni_lock);
+		post = NULL;
 		grc = GNI_GetCompleted(cq, cqe, &post);
 		pthread_mutex_unlock(&ugni_lock);
 		if (grc) {
-			ugni_log("Error %d from CQ %p\n", grc, cq);
+			/* ugni_log("Error %d from CQ %p\n", grc, cq); Removed by Brandt 6-14-2014 */
 			if (!(grc == GNI_RC_SUCCESS ||
 			      grc == GNI_RC_TRANSACTION_ERROR))
 				continue;
@@ -549,9 +560,12 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			continue;
 		}
 		if (grc) {
+			/* ugni_log("%s GNI_GetCompleted failed with %d, desc = %p.\n", desc); Removed by Brandt 6-14-2014 */
+#if 0
 			/* The request failed, tear down the transport */
 			if (desc->gxp->xprt)
-				ugni_xprt_error_handling(ugni_from_xprt(desc->gxp->xprt));
+				ugni_xprt_error_handling(desc->gxp);
+#endif
 			goto skip;
 		}
 		switch (desc->post.type) {
@@ -628,6 +642,7 @@ static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 		if (events & (BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
 			LOG_(r, "Socket errors %x\n", events);
 		r->xprt->connected = 0;
+		r->conn_status = CONN_IDLE;
 		ugni_xprt_error_handling(r);
 	} else
 		LOG_(r, "Peer connect complete %x\n", events);
@@ -833,6 +848,20 @@ out:
 	return grc;
 }
 
+void ugni_rbuf_free(struct ldms_xprt *x, struct ldms_rbuf_desc *desc)
+{
+	struct ugni_rbuf_desc *udesc = container_of(desc, struct ugni_rbuf_desc, desc);
+	pthread_mutex_lock(&ugni_rbuf_lock);
+	if (desc->lcl_data)
+		assert(desc->lcl_data == &udesc->ldata);
+	if (desc->xprt_data)
+		assert(desc->xprt_data == &udesc->rdata);
+	assert(udesc->link.le_prev == NULL);
+	assert(udesc->link.le_next == NULL);
+	LIST_INSERT_HEAD(&ugni_rbuf_list, udesc, link);
+	pthread_mutex_unlock(&ugni_rbuf_lock);
+}
+
 /*
  * Allocate a remote buffer. If we are the producer, the xprt_data
  * will be NULL. In this case, we fill in the local side
@@ -846,37 +875,42 @@ struct ldms_rbuf_desc *ugni_rbuf_alloc(struct ldms_xprt *x,
 	gni_return_t grc;
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	struct ugni_buf_local_data *lcl_data;
-	struct ldms_rbuf_desc *desc = calloc(1, sizeof(struct ldms_rbuf_desc));
-	if (!desc)
+	struct ldms_rbuf_desc *desc;
+	struct ugni_rbuf_desc *udesc;
+
+	pthread_mutex_lock(&ugni_rbuf_lock);
+	if (!LIST_EMPTY(&ugni_rbuf_list)) {
+		udesc = LIST_FIRST(&ugni_rbuf_list);
+		LIST_REMOVE(udesc, link);
+		memset(udesc, 0, sizeof(*udesc));
+	} else
+		udesc = calloc(1, sizeof *udesc);
+	pthread_mutex_unlock(&ugni_rbuf_lock);
+	if (!udesc)
 		return NULL;
+	desc = &udesc->desc;
 
-	lcl_data = calloc(1, sizeof *lcl_data);
-	if (!lcl_data)
-		goto err_0;
-
+	lcl_data = &udesc->ldata;
 	lcl_data->meta = set->meta;
 	lcl_data->meta_size = set->meta->meta_size;
 	lcl_data->data = set->data;
 	lcl_data->data_size = set->meta->data_size;
 	grc = ugni_get_mh(gxp, set->meta, set->meta->meta_size, &lcl_data->meta_mh);
 	if (grc)
-		goto err_1;
+		goto err;
 	grc = ugni_get_mh(gxp, set->data, set->meta->data_size, &lcl_data->data_mh);
 	if (grc)
-		goto err_1;
+		goto err;
 
 	desc->lcl_data = lcl_data;
 
 	if (xprt_data) {
+		assert(xprt_data_len == sizeof(udesc->rdata));
 		desc->xprt_data_len = xprt_data_len;
-		desc->xprt_data = calloc(1, xprt_data_len);
-		if (!desc->xprt_data)
-			goto err_1;
+		desc->xprt_data = &udesc->rdata;
 		memcpy(desc->xprt_data, xprt_data, xprt_data_len);
 	} else {
-		struct ugni_buf_remote_data *rem_data = calloc(1, sizeof *rem_data);
-		if (!rem_data)
-			goto err_1;
+		struct ugni_buf_remote_data *rem_data = &udesc->rdata;
 		rem_data->meta_buf = (uint64_t)(unsigned long)lcl_data->meta;
 		rem_data->meta_size = htonl(lcl_data->meta_size);
 		rem_data->meta_mh = lcl_data->meta_mh;
@@ -887,27 +921,10 @@ struct ldms_rbuf_desc *ugni_rbuf_alloc(struct ldms_xprt *x,
 		desc->xprt_data_len = sizeof(*rem_data);
 	}
 	return desc;
- err_1:
-	free(lcl_data);
- err_0:
-	free(desc);
+ err:
+	ugni_rbuf_free(x, desc);
 	gxp->xprt->log("RBUF allocation failed. Registration count is %d\n", reg_count);
 	return NULL;
-}
-
-void ugni_rbuf_free(struct ldms_xprt *x, struct ldms_rbuf_desc *desc)
-{
-	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
-	struct ugni_buf_remote_data *rbuf = desc->xprt_data;
-	struct ugni_buf_local_data *lbuf = desc->lcl_data;
-
-	if (rbuf)
-		free(rbuf);
-
-	if (lbuf)
-		free(lbuf);
-
-	free(desc);
 }
 
 static int ugni_read_start(struct ldms_ugni_xprt *gxp,
@@ -973,6 +990,7 @@ static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r)
 {
+	/* r->xprt->log("%s error on transport %p.\n", __func__, r); removed by Brandt 6-14-2014 */
 	if (r->type == LDMS_UGNI_PASSIVE)
 		ldms_xprt_close(r->xprt);
 	else
@@ -1171,6 +1189,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	*gxp = ugni_gxp;
 	LIST_INSERT_HEAD(&ugni_list, gxp, client_link);
 
+	gxp->conn_status = CONN_IDLE;
 	x->max_msg = (1024*1024);
 	x->log = log_fn;
 	x->connect = ugni_xprt_connect;

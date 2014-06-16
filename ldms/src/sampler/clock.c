@@ -50,7 +50,7 @@
  */
 /**
  * \file clock.c
- * \brief simplest example of a data provider. 
+ * \brief simplest example of a data provider.
  * Also handy for overhead measurement.
  */
 #define _GNU_SOURCE
@@ -118,7 +118,7 @@ static int create_metric_set(const char *path)
 	return 0;
 
  err:
-	ldms_set_release(set);
+	ldms_destroy_set(set);
 	return rc;
 }
 

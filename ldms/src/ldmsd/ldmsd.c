@@ -1389,14 +1389,6 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 		free(tmp);
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
-	//Commenting out - will always go thru the sets.....
-	//	if (!hset) {
-	//		sprintf(replybuf, "%d Could not find the set '%s' in host '%s'",
-	//				-ENOENT, sp->setname, hostname);
-	//		free(tmp);
-	//		return ENOENT;
-	//	}
-	//	free(tmp);
 	return 0;
 err1:
 	free(hset_ref);
@@ -1950,8 +1942,7 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 	}
 	hset->set = s;
 	/*
-	 * Run the list of stored metrics and refresh the metric
-	 * handle.
+	 * If there is a cached mvec for this set, destroy it.
 	 */
 	if (hset->mvec) {
 		int i;
@@ -1960,6 +1951,7 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 				ldms_metric_release(hset->mvec->v[i]);
 		}
 		free(hset->mvec);
+		hset->mvec = NULL;
 	}
 	hset->state = LDMSD_SET_READY;
 out:
@@ -2024,10 +2016,9 @@ int do_connect(struct hostspec *hs)
 	if (ret) {
 		ldms_release_xprt(hs->x);
 		ldms_xprt_close(hs->x);
-		hs->x = 0;
+		hs->x = NULL;
 		return -1;
 	}
-	reset_host(hs);
 	return 0;
 }
 
@@ -2220,6 +2211,8 @@ void update_data(struct hostspec *hs)
 
 void add_connect_candidate(struct hostspec *hs)
 {
+	/* Make certain we're not scheduled for an update */
+	evtimer_del(hs->event);
 	pthread_mutex_lock(&conn_list_lock);
 	TAILQ_INSERT_TAIL(&conn_list, hs, conn_link);
 	pthread_cond_signal(&conn_list_cv);
@@ -2238,6 +2231,8 @@ void schedule_update(struct hostspec *hs)
 		hs->timeout.tv_sec = hs->sample_interval / 1000000;
 		hs->timeout.tv_usec = hs->sample_interval % 1000000;
 	}
+	assert(hs->conn_link.tqe_next == NULL);
+	assert(hs->conn_link.tqe_prev == NULL);
 	evtimer_add(hs->event, &hs->timeout);
 }
 
@@ -2254,16 +2249,15 @@ void do_host(struct hostspec *hs)
 			if (hs->x) {
 				/* pair with get in do_connect */
 				ldms_release_xprt(hs->x);
-				if (hs->type != PASSIVE)
+				if (hs->type != PASSIVE) {
 					ldms_xprt_close(hs->x);
+					hs->x = NULL;
+				}
 			}
-			/* The bad hs->x shall be destroyed automatically when
-			 * the refcount is 0. Resetting hs->x here is OK. */
-			hs->x = 0;
 			hs->conn_state = HOST_DISCONNECTED;
-			ldms_log("Host Disconnect: Host connection state "
+			/* ldms_log("Host Disconnect: Host connection state "
 				"for host %s changed from HOST_CONNECTED to "
-				"HOST_DISCONNECTED.\n", hs->hostname);
+				"HOST_DISCONNECTED.\n", hs->hostname); Removed by Brandt 6-14-2014 */
 			add_connect_candidate(hs);
 		} else if ((hs->type != BRIDGING) &&
 			   ((hs->standby == 0) || (hs->standby & saggs_mask))) {
@@ -2291,7 +2285,6 @@ int do_passive_connect(struct hostspec *hs)
 	 */
 	hs->x = l;
 
-	reset_host(hs);
 	return 0;
 }
 
@@ -2340,11 +2333,14 @@ void *connect_proc(void *v)
 		/* Get the head of the connect candidate list */
 		hs = TAILQ_FIRST(&conn_list);
 		TAILQ_REMOVE(&conn_list, hs, conn_link);
+		hs->conn_link.tqe_next = NULL;
+		hs->conn_link.tqe_prev = NULL;
 		pthread_mutex_unlock(&conn_list_lock);
 
 		pthread_mutex_lock(&hs->conn_state_lock);
 		switch (hs->conn_state) {
 		case HOST_DISCONNECTED:
+			reset_host(hs);
 			if (hs->type != PASSIVE)
 				rc = do_connect(hs);
 			else

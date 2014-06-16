@@ -114,7 +114,7 @@ typedef void *ldms_metric_t;
  * \li \b ldms_listen() Create a listening endpoint and respond to
  * queries from peers.
  * \li \b ldms_connect() Request a connection with a remote peer.
- * \li \b ldms_close() Close a connection with a remote peer.
+ * \li \b ldms_xprt_close() Close a connection with a remote peer.
  *
  * \section metric_sets Creating Metric Sets
  *
@@ -299,21 +299,6 @@ int ldms_xprt_connected(ldms_t);
  * \returns	!0 if the endpoint is authenticated.
  */
 int ldms_xprt_authenticated(ldms_t);
-
-/**
- * \brief Check if an endpoint is closed.
- *
- * \param l	The endpoint handle.
- * \returns	!0 if the endpoint is closed.
- */
-int ldms_xprt_closed(ldms_t);
-
-/**
- * \brief Close a connecttion
- *
- * \param l	The endpoint handle.
- */
-void ldms_xprt_close(ldms_t);
 
 /**
  * \brief Return value at iterator
@@ -559,10 +544,8 @@ extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  * \brief Close a connection to an LDMS host.
  *
  * \param x	The transport handle
- * \returns	0 if the connection was closed.
- * \returns	!0 if the transport handle is not valid or not connected.
  */
-extern int ldms_close(ldms_t x);
+extern void ldms_xprt_close(ldms_t x);
 
 /** \} */
 
@@ -731,16 +714,6 @@ extern int ldms_lookup(ldms_t t, const char *name,
  * and to update the contents of remote metric sets.
  * \{
  */
-
-/**
- * \brief Release a reference on the metric set.
- *
- * Releases the reference obtained by ldms_lookup(). The specified set
- * handle \c s should not be used after calling this function.
- *
- * \param s	The metric set handle.
- */
-extern void ldms_set_release(ldms_set_t s);
 
 /**
  * \brief Prototype for the function called when update completes.

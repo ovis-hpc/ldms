@@ -75,8 +75,11 @@ struct ugni_buf_local_data {
 
 struct ugni_desc {
 	gni_post_descriptor_t post;
+	char pad1[32];
 	struct ldms_ugni_xprt *gxp;
+	char pad3[32];
 	void *context;
+	char pad4[32];
 	LIST_ENTRY(ugni_desc) link;
 };
 
@@ -123,10 +126,10 @@ typedef struct {
 } gni_dom_info_t;
 
 typedef struct {
-        gni_dom_info_t   info;
-        gni_cdm_handle_t cdm;
-        gni_nic_handle_t nic;
-        gni_cq_handle_t  src_cq;
+	gni_dom_info_t   info;
+	gni_cdm_handle_t cdm;
+	gni_nic_handle_t nic;
+	gni_cq_handle_t  src_cq;
 } gni_dom_t;
 
 struct ldms_ugni_xprt {

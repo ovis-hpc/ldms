@@ -259,7 +259,7 @@ static int create_metric_set(char *setname)
 err2:
 	free(metric_table);
 err1:
-	ldms_set_release(set);
+	ldms_destroy_set(set);
 err0:
 	i = 0;
 	while (i < num_disks && smarts[i].d) {

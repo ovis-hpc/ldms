@@ -105,6 +105,11 @@ static struct rbt set_tree = {
 };
 pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
+void ldms_release_local_set(struct ldms_set *set)
+{
+	pthread_mutex_unlock(&set_tree_lock);
+}
+
 struct ldms_set *ldms_find_local_set(const char *set_name)
 {
 	struct rbn *z;
@@ -112,9 +117,10 @@ struct ldms_set *ldms_find_local_set(const char *set_name)
 
 	pthread_mutex_lock(&set_tree_lock);
 	z = rbt_find(&set_tree, (void *)set_name);
-	pthread_mutex_unlock(&set_tree_lock);
 	if (z)
 		s = container_of(z, struct ldms_set, rb_node);
+	else
+		pthread_mutex_unlock(&set_tree_lock);
 
 	return s;
 }
@@ -128,7 +134,7 @@ extern ldms_set_t ldms_get_set(const char *set_name)
 
 	sd = calloc(1, sizeof *sd);
 	sd->set = set;
-
+	ldms_release_local_set(set);
  out:
 	return sd;
 }
@@ -320,8 +326,10 @@ static int __record_set(const char *set_name, ldms_set_t *s,
 	struct ldms_set_desc *sd;
 
 	set = ldms_find_local_set(set_name);
-	if (set)
+	if (set) {
+		ldms_release_local_set(set);
 		return -EEXIST;
+	}
 
 	sd = calloc(1, sizeof *sd);
 	if (!sd)
@@ -428,46 +436,23 @@ int ldms_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	return 0;
 }
 
-void _release_set(struct ldms_set *set)
-{
-	rem_local_set(set);
-
-	if (set->flags & (LDMS_SET_F_MEMMAP | LDMS_SET_F_FILEMAP)) {
-		munmap(set->meta, set->meta->meta_size);
-		munmap(set->data, set->meta->data_size);
-	}
-	free(set);
-}
-
-void ldms_set_release(ldms_set_t set_p)
-{
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)set_p;
-	if (sd->rbd)
-		ldms_free_rbd(sd->rbd);
-	if (LIST_EMPTY(&sd->set->rbd_list))
-		_release_set(sd->set);
-	free(sd);
-}
-
 void ldms_destroy_set(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
+	struct ldms_xprt *x;
 
-	__ldms_dir_del_set(set->meta->name);
+	// __ldms_dir_del_set(set->meta->name);
 
-	while (!LIST_EMPTY(&set->rbd_list)) {
-		rbd = LIST_FIRST(&set->rbd_list);
-		ldms_free_rbd(rbd);
-	}
+	ldms_free_rbd(set);
 
+#ifdef ENABLE_MMAP
 	if (set->flags & LDMS_SET_F_FILEMAP) {
 		unlink(_create_path(sd->set->meta->name));
 		strcat(__set_path, ".META");
 		unlink(__set_path);
 	}
-#ifdef ENABLE_MMAP
 	munmap(set->data, set->meta->data_size);
 	munmap(set->meta, set->meta->meta_size);
 #else
@@ -506,6 +491,7 @@ int ldms_lookup(ldms_t _x, const char *path,
 			return ENOMEM;
 		sd->set = set;
 		s = sd;
+		ldms_release_local_set(set);
 		return 0;
 	}
 	return ENODEV;
@@ -560,6 +546,7 @@ static int local_dir_cb(const char *fpath, const struct stat *sb, int typeflag)
 {
 	const char *p;
 	int c, len;
+	struct ldms_set *set;
 	if (typeflag != FTW_F)
 		return 0;
 
@@ -568,8 +555,11 @@ static int local_dir_cb(const char *fpath, const struct stat *sb, int typeflag)
 	if (0 == strcmp(&p[len-5], ".META"))
 		return 0;
 
-	if (ldms_find_local_set(p))
+	set = ldms_find_local_set(p);
+	if (set) {
+		ldms_release_local_set(set);
 		return 0;
+	}
 
 	c = strlen(p) + 1;
 	if (c > local_dir_context.set_list_size)
@@ -728,7 +718,7 @@ int _ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	__ldms_dir_add_set(set_name);
+	// __ldms_dir_add_set(set_name);
 	return 0;
  out_2:
 	munmap(data, data_sz);
@@ -792,7 +782,7 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 	rc = __record_set(set_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	__ldms_dir_add_set(set_name);
+	// __ldms_dir_add_set(set_name);
 	return 0;
 
  out_1:

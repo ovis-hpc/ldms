@@ -75,8 +75,8 @@ struct ldms_rbuf_desc {
 };
 
 enum ldms_request_cmd {
-/* Additions to this enum should be made in ldms_xprt_cmd.h to keep 
-   all uses in sync. 
+/* Additions to this enum should be made in ldms_xprt_cmd.h to keep
+   all uses in sync.
 */
 #define X(a) a,
 /* per C standard, first enum element defaults to 0. */
@@ -87,7 +87,7 @@ enum ldms_request_cmd {
 };
 
 /** Array indexed by enum value of equivalent strings. */
-extern const char *ldms_request_cmd_names[]; 
+extern const char *ldms_request_cmd_names[];
 
 /** Name is self explanatory. Excludes bit flag members of the enumeration.
      @return the number of commands enumerated and named.
@@ -224,7 +224,7 @@ struct ldms_context {
 
 #define LDMS_MAX_TRANSPORT_NAME_LEN 16
 
-/** Transport-independent interface data. 
+/** Transport-independent interface data.
  * Normally allocated with calloc by implementations.
  */
 struct ldms_xprt {
@@ -236,7 +236,6 @@ struct ldms_xprt {
 	pthread_mutex_t lock;
 	int connected;
 	int authenticated; 	/* server side: has connection been authenticated? */
-	int closed;
 	int max_msg;		/* max send message size */
 	uint64_t local_dir_xid;
 	uint64_t remote_dir_xid;
@@ -290,15 +289,9 @@ typedef struct ldms_xprt *(*ldms_xprt_get_t)
 
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]
 
-extern struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *,
-					     struct ldms_set *s,
-					     void *xprt_data, size_t xprt_data_len);
-
-extern void ldms_free_rbd(struct ldms_rbuf_desc *);
-
-extern struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
-
+extern void ldms_free_rbd(struct ldms_set *set);
 extern struct ldms_set *ldms_find_local_set(const char *path);
+extern void ldms_release_local_set(struct ldms_set *set);
 
 extern int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
 

@@ -98,6 +98,11 @@ int sizeof_ldms_request_cmd_names() {
   return result;
 }
 
+static struct ldms_rbuf_desc *lookup_rbd(struct ldms_xprt *x, struct ldms_set *set);
+static struct ldms_rbuf_desc *alloc_rbd(struct ldms_xprt *x,
+					struct ldms_set *s,
+					void *xprt_data, size_t xprt_data_len);
+
 int is_valid_ldms_request_cmd(int pc)
 {
 	return (0 <= pc && pc < sizeof_ldms_request_cmd_names()) ? 1 : 0;
@@ -105,11 +110,13 @@ int is_valid_ldms_request_cmd(int pc)
 
 
 
-pthread_mutex_t xprt_list_lock;
+pthread_mutex_t rbd_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t xprt_list_lock = PTHREAD_MUTEX_INITIALIZER;
 str_map_t __dlmap;
 
 static inline struct ldms_xprt *ldms_xprt_get_(struct ldms_xprt *x)
 {
+	assert(x->ref_count);
 	x->ref_count++;
 	return x;
 }
@@ -131,6 +138,7 @@ ldms_t ldms_xprt_first()
 	x = LIST_FIRST(&xprt_list);
 	if (!x)
 		goto out;
+	assert(x->ref_count);
 	x_ = (ldms_t)ldms_xprt_get_(x);
  out:
 	pthread_mutex_unlock(&xprt_list_lock);
@@ -144,7 +152,9 @@ ldms_t ldms_xprt_next(ldms_t _x)
 	pthread_mutex_lock(&xprt_list_lock);
 	if (x->xprt_link.le_next == xprt_list.lh_first)
 		goto out;
+	assert(x->ref_count);
 	x = x->xprt_link.le_next;
+	assert(x->ref_count);
 	if (!x)
 		goto out;
 	_x = (ldms_t)ldms_xprt_get_(x);
@@ -262,11 +272,7 @@ static void dir_update(const char *set_name, enum ldms_dir_type t)
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
 	     x = (struct ldms_xprt *)ldms_xprt_next(x)) {
-		if (ldms_xprt_closed(x)) {
-			ldms_release_xprt(x);
-			continue;
-		}
-		if (x->remote_dir_xid)
+		if (x->remote_dir_xid && ldms_xprt_connected(x))
 			send_dir_update(x, t, set_name);
 		ldms_release_xprt(x);
 	}
@@ -292,70 +298,90 @@ int ldms_xprt_authenticated(ldms_t _x)
 	return ((struct ldms_xprt *)_x)->authenticated;
 }
 
-void ldms_xprt_close(ldms_t _x)
+static void free_rbd(struct ldms_rbuf_desc *rbd)
 {
-	struct ldms_xprt *x = _x;
-	int close = 0;
-	x->log("%s x=%p.\n", __func__, _x);
-	pthread_mutex_lock(&xprt_list_lock);
-	if (!x->closed) {
-		close = 1;
-		x->connected = 0;
-		x->authenticated = 0;
-		x->closed = 1;
-	}
-	/* Cancel any dir updates */
-	x->remote_dir_xid = x->local_dir_xid = 0;
-	pthread_mutex_unlock(&xprt_list_lock);
+	LIST_REMOVE(rbd, xprt_link);
+	LIST_REMOVE(rbd, set_link);
 
-	if (close) {
-		if (x->close)
-			x->close(x);
-		/* pair with get in create */
-		ldms_release_xprt(x);
-	}
+	rbd->xprt->free(rbd->xprt, rbd);
 }
 
-int ldms_xprt_closed(ldms_t _x)
-{
-	struct ldms_xprt *x = _x;
-	if (x)
-		return x->closed;
-	return 1;
-}
-
-void __release_xprt(ldms_t _x)
+static void release_xprt(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	struct ldms_rbuf_desc *rb;
 
-	if (!x) {
+	if (!x)
 		return;
-	}
+
+	pthread_mutex_lock(&rbd_lock);
+	/* x->log("%s transport %p ref_count %d.\n", __func__, _x, x->ref_count); Removed by Brandt 6-14-2014 */
 	while (!LIST_EMPTY(&x->rbd_list)) {
 		rb = LIST_FIRST(&x->rbd_list);
-		ldms_free_rbd(rb);
+		// x->log("%s destroy rbd %p.\n", __func__, rb);
+		free_rbd(rb);
 	}
+	pthread_mutex_unlock(&rbd_lock);
+
 	free(x->passwordtmp);
 	x->destroy(x);
-	free(x);
 }
 
-void ldms_release_xprt(ldms_t _x)
+void release_xprt_(struct ldms_xprt *x)
 {
-	struct ldms_xprt *x = _x;
 	int destroy = 0;
 
-	pthread_mutex_lock(&xprt_list_lock);
 	assert(x->ref_count);
 	x->ref_count--;
 	if (!x->ref_count) {
 		destroy = 1;
 		LIST_REMOVE(x, xprt_link);
 	}
-	pthread_mutex_unlock(&xprt_list_lock);
 	if (destroy)
-		__release_xprt(x);
+		release_xprt(x);
+}
+
+void ldms_xprt_close(ldms_t _x)
+{
+	struct ldms_xprt *x = _x;
+	struct sockaddr_in *sin = (struct sockaddr_in *)&x->remote_ss;
+	/* x->log("%s transport %p ref_count %d.\n", __func__, _x, x->ref_count); Removed by Brandt 6-14-2014 */
+	pthread_mutex_lock(&xprt_list_lock);
+	assert(x->ref_count);
+	x->connected = 0;
+	x->authenticated = 0;
+	/* Cancel any dir updates */
+	x->remote_dir_xid = x->local_dir_xid = 0;
+	x->close(x);
+	/* pair with get in create */
+	release_xprt_(x);
+	pthread_mutex_unlock(&xprt_list_lock);
+}
+
+/*
+ * Free all RBD associated with a metric set
+ */
+void ldms_free_rbd(struct ldms_set *set)
+{
+	struct ldms_rbuf_desc *rbd;
+
+	pthread_mutex_lock(&rbd_lock);
+	while (!LIST_EMPTY(&set->rbd_list)) {
+		rbd = LIST_FIRST(&set->rbd_list);
+		assert(rbd->xprt->ref_count);
+		// rbd->xprt->log("%s destroy rbd %p for %s on xprt %p.\n", __func__, rbd, set->meta->name, rbd->xprt);
+		free_rbd(rbd);
+	}
+	pthread_mutex_unlock(&rbd_lock);
+}
+
+void ldms_release_xprt(ldms_t _x)
+{
+	struct ldms_xprt *x = _x;
+
+	pthread_mutex_lock(&xprt_list_lock);
+	release_xprt_(x);
+	pthread_mutex_unlock(&xprt_list_lock);
 }
 
 struct make_dir_arg {
@@ -460,6 +486,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->dir.type = htonl(LDMS_DIR_LIST);
 	(void)__ldms_for_all_sets(send_dir_reply_cb, &arg);
+	free(reply);
 	return;
  out:
 	len = sizeof(struct ldms_reply_hdr)
@@ -505,7 +532,7 @@ process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	struct ldms_set *set = ldms_find_local_set(req->lookup.path);
-	struct ldms_rbuf_desc *rbd = ldms_lookup_rbd(x, set);
+	struct ldms_rbuf_desc *rbd = lookup_rbd(x, set);
 	struct ldms_reply_hdr hdr;
 	struct ldms_reply *reply;
 	size_t len;
@@ -517,7 +544,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	}
 
 	if (!rbd) {
-		rbd = ldms_alloc_rbd(x, set, NULL, 0);
+		rbd = alloc_rbd(x, set, NULL, 0);
 		if (!rbd) {
 			hdr.rc = htonl(ENOMEM);
 			goto err_out;
@@ -531,6 +558,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 
 	reply = malloc(len);
 	if (!reply) {
+		ldms_release_local_set(set);
 		hdr.rc = htonl(ENOMEM);
 		goto err_out;
 	}
@@ -540,10 +568,10 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	reply->hdr.rc = 0;
 	reply->lookup.xprt_data_len = htonl(rbd->xprt_data_len);
 	memcpy(reply->lookup.xprt_data, rbd->xprt_data, rbd->xprt_data_len);
+	ldms_release_local_set(set);
 	reply->lookup.set_id = (uint64_t)(unsigned long)rbd;
 	reply->lookup.meta_len = htonl(set->meta->meta_size);
 	reply->lookup.data_len = htonl(set->meta->data_size);
-
 	x->send(x, reply, len);
 	free(reply);
 	return;
@@ -561,7 +589,7 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	struct ldms_context *data_ctxt = arg;
 
-        set->flags &= ~LDMS_SET_F_DIRTY;
+	set->flags &= ~LDMS_SET_F_DIRTY;
 	if (set->meta->version == LDMS_VERSION)
 		x->read_data_start(x, s, set->meta->data_size, data_ctxt);
 	else
@@ -806,9 +834,8 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 
 	/* Bind this set to an RBD */
-	rbd = ldms_alloc_rbd(x, set,
-			     reply->lookup.xprt_data,
-			     ntohl(reply->lookup.xprt_data_len));
+	rbd = alloc_rbd(x, set, reply->lookup.xprt_data,
+			ntohl(reply->lookup.xprt_data_len));
 	if (!rbd)
 		goto out_1;
 
@@ -1088,8 +1115,6 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	pthread_mutex_unlock(&xprt_list_lock);
 	return x;
  err:
-	if (x)
-		free(x);
 	errno = ret;
 	return NULL;
 }
@@ -1235,6 +1260,8 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 
 	len = format_lookup_req(req, path, (uint64_t)(unsigned long)ctxt);
 	ctxt->lookup.set = ldms_find_local_set(path);
+	if (ctxt->lookup.set)
+		ldms_release_local_set(ctxt->lookup.set);
 	ctxt->lookup.cb = cb;
 	ctxt->lookup.cb_arg = arg;
 	ctxt->lookup.path = strdup(path);
@@ -1318,17 +1345,16 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 	if (!set)
 		return;
 
-	if (LIST_EMPTY(&set->rbd_list))
-		return;
-
+	pthread_mutex_lock(&rbd_lock);
 	LIST_FOREACH(r, &set->rbd_list, set_link) {
-		if (ldms_xprt_closed(r->xprt))
+		if (!ldms_xprt_connected(r->xprt))
 			continue;
 		if (r->remote_notify_xid)
 			send_req_notify_reply(r->xprt,
 					      set, r->remote_notify_xid,
 					      e);
 	}
+	pthread_mutex_unlock(&rbd_lock);
 }
 
 int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
@@ -1365,25 +1391,6 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 	return rc;
 }
 
-int ldms_close(ldms_t _x)
-{
-	int rc = -1;
-	struct ldms_xprt *x = _x;
-
-	pthread_mutex_lock(&x->lock);
-	if (!x->connected) {
-		errno = ENOTCONN;
-		goto out;
-	}
-	x->authenticated = 0;
-	x->close(x);
-	rc = 0;
- out:
-	pthread_mutex_unlock(&x->lock);
-	ldms_release_xprt(x);
-	return rc;
-}
-
 int ldms_listen(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 {
 	struct ldms_xprt *x = _x;
@@ -1392,48 +1399,42 @@ int ldms_listen(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 	return x->listen(x, sa, sa_len);
 }
 
-struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *x,
-				      struct ldms_set *s,
-				      void *xprt_data, size_t xprt_data_len)
+static struct ldms_rbuf_desc *alloc_rbd(struct ldms_xprt *x,
+					struct ldms_set *s,
+					void *xprt_data, size_t xprt_data_len)
 {
 	struct ldms_rbuf_desc *rbd = x->alloc(x, s, xprt_data, xprt_data_len);
 	if (!rbd)
 		goto out_0;
 
+	pthread_mutex_lock(&rbd_lock);
 	rbd->xprt = x;
 	rbd->set = s;
 
 	/* Add RBD to set list */
 	LIST_INSERT_HEAD(&s->rbd_list, rbd, set_link);
 	LIST_INSERT_HEAD(&x->rbd_list, rbd, xprt_link);
+	pthread_mutex_unlock(&rbd_lock);
 
  out_0:
 	return rbd;
 }
 
-void ldms_free_rbd(struct ldms_rbuf_desc *rbd)
+static struct ldms_rbuf_desc *lookup_rbd(struct ldms_xprt *x, struct ldms_set *set)
 {
-	LIST_REMOVE(rbd, xprt_link);
-	LIST_REMOVE(rbd, set_link);
-
-	rbd->xprt->free(rbd->xprt, rbd);
-}
-
-struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set)
-{
-	struct ldms_rbuf_desc *r;
+	struct ldms_rbuf_desc *r = NULL;
 	if (!set)
 		return NULL;
 
-	if (LIST_EMPTY(&x->rbd_list))
-		return NULL;
-
+	pthread_mutex_lock(&rbd_lock);
 	LIST_FOREACH(r, &x->rbd_list, xprt_link) {
 		if (r->set == set)
-			return r;
+			goto out;
 	}
-
-	return NULL;
+	r = NULL;
+out:
+	pthread_mutex_unlock(&rbd_lock);
+	return r;
 }
 
 void __attribute__ ((constructor)) cs_init(void)
