@@ -124,7 +124,7 @@ struct derived_data {
 	char rawname[STORE_DERIVED_NAME_MAX]; //can lose this after the deridx is set....
 	char dername[STORE_DERIVED_NAME_MAX]; //should we bother to keep this???
 	der_t dertype;
-	int multiplier;
+	double multiplier;
 	int deridx;
 };
 
@@ -163,7 +163,8 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 	s_handle->numder = 0;
 	char lbuf[STORE_DERIVED_LINE_MAX];
 	char metric_name[STORE_DERIVED_NAME_MAX];
-	int tval, mval;
+	int tval;
+	double mval;
 	char* s;
 	int rc;
 
@@ -172,14 +173,17 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 
 
 	FILE* fp = fopen(fname, "r");
-	if (!fp)
+	if (!fp) {
+		msglog("Cannot open config file <%s>\n", fname);
 		return EINVAL;
+	}
 
 	rc = 0;
 	do {
 
 		//FIXME: TOO many metrics
 		if (s_handle->numder == STORE_DERIVED_METRIC_MAX) {
+			msglog("Too many metrics <%s>\n", fname);
 			rc = EINVAL;
 			break;
 		}
@@ -187,20 +191,20 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		s = fgets(lbuf, sizeof(lbuf), fp);
 		if (!s)
 			break;
-		//		printf("Read <%s>\n", lbuf);
-		rc = sscanf(lbuf, "%[^,],%d,%d", metric_name, &tval, &mval);
-		//		printf("Name <%s> val <%d> mult <%d>\n", metric_name, tval, mval);
-		if ((strlen(metric_name) > 0) && (metric_name[0] = '#')){
+//		printf("Read <%s>\n", lbuf);
+		rc = sscanf(lbuf, "%[^,],%d,%lf", metric_name, &tval, &mval);
+//		printf("Name <%s> val <%d> mult <%lf>\n", metric_name, tval, mval);
+		if ((strlen(metric_name) > 0) && (metric_name[0] == '#')){
 		// hashed lines are comments (means metric name cannot start with #)
 			msglog("Comment in derived config file <%s>. Skipping\n",lbuf);
 			continue;
 		}
 		if (rc != 3) {
-			msglog("Bad format in derived config file <%s>. Skipping\n",lbuf);
+			msglog("Bad format in derived config file <%s> rc=%d. Skipping\n",lbuf, rc);
 			continue;
 		}
 		if ((tval < 0) || (tval > 1)) {
-			msglog("Bad type in derived config file <%s>. Skipping\n",lbuf);
+			msglog("Bad type in derived config file <%s> <%d>. Skipping\n", lbuf, tval);
 			continue;
 		}
 
@@ -213,13 +217,13 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		if (tval == RAW)
 			snprintf(s_handle->der[s_handle->numder].dername,
 				 STORE_DERIVED_NAME_MAX,
-				 "%s (x %d)",
+				 "%s (x %.2e)",
 				 s_handle->der[s_handle->numder].rawname,
 				 s_handle->der[s_handle->numder].multiplier);
 		else
 			snprintf(s_handle->der[s_handle->numder].dername,
 				 STORE_DERIVED_NAME_MAX,
-				 "Rate_%s (x %d)",
+				 "Rate_%s (x %.2e)",
 				 s_handle->der[s_handle->numder].rawname,
 				 s_handle->der[s_handle->numder].multiplier);
 		s_handle->numder++;
@@ -700,7 +704,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 						if (temp > 0){
 							temp /= (double)(diff.tv_sec*1000000.0 + diff.tv_usec);
 							temp *= 1000000.0;
-							temp *= (double)s_handle->der[i].multiplier;
+							temp *= s_handle->der[i].multiplier;
 							val = (uint64_t) temp;
 						} else {
 						       setflag = 1;
