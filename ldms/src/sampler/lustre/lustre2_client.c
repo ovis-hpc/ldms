@@ -319,10 +319,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	oscs = av_value(avl, "osc");
 	mdcs = av_value(avl, "mdc");
 	llites = av_value(avl, "llite");
-	if (value)
-		create_metric_set(value, oscs, mdcs, llites);
-
-	return 0;
+	if (!value)
+		return EINVAL;
+	return create_metric_set(value, oscs, mdcs, llites);
 }
 
 static const char *usage(void)

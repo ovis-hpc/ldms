@@ -310,10 +310,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "set");
 	mdts = av_value(avl, "mdts");
-	if (value)
-		create_metric_set(value, mdts);
+	if (!value)
+		return EINVAL;
 
-	return 0;
+	return create_metric_set(value, mdts);
 }
 
 static const char *usage(void)

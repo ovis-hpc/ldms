@@ -355,7 +355,8 @@ err1:
 	msglog("lustre_oss.c:create_metric_set@err1\n");
 	free_str_list(lh);
 err0:
-	msglog("lustre_oss.c:create_metric_set@err0\n");
+	msglog("%s:%s@err0\n", __FILE__, __func__);
+	msglog("%s:%s: osts: %s\n", __FILE__, __func__, osts);
 	return errno;
 }
 
@@ -389,10 +390,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "set");
 	osts = av_value(avl, "osts");
-	if (value)
-		create_metric_set(value, osts);
+	if (!value)
+		return EINVAL;
 
-	return 0;
+	return create_metric_set(value, osts);
 }
 
 static const char *usage(void)
