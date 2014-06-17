@@ -449,8 +449,12 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 	int last_errno = 0;
 	enum ldms_value_type mtype;
 
+	if (!ldms_is_set_connected(set)) /* no store if set is not connected */
+		return 0;
+
 	if (!_sh)
 		return EINVAL;
+
 
 	si = _sh;
 
