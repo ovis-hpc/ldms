@@ -2191,12 +2191,9 @@ void update_data(struct hostspec *hs)
 			hset->state = LDMSD_SET_LOOKUP;
 			/* Get a lookup reference */
 			hset_ref_get(hset);
-			pthread_mutex_unlock(&hset->state_lock);
 			ret = ldms_lookup(hs->x, hset->name, lookup_cb, hset);
 			if (ret) {
-				pthread_mutex_lock(&hset->state_lock);
 				hset->state = LDMSD_SET_CONFIGURED;
-				pthread_mutex_unlock(&hset->state_lock);
 				ldms_log("Synchronous error %d "
 					"from ldms_lookup\n", ret);
 				hset_ref_put(hset);
@@ -2209,11 +2206,11 @@ void update_data(struct hostspec *hs)
 				hset->total_busy_count += hset->curr_busy_count;
 				hset->curr_busy_count = 0;
 			}
-			pthread_mutex_unlock(&hset->state_lock);
 			/* Get reference for update */
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
+				hset->state = LDMSD_SET_READY;
 				ldms_log("Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
 					hs->hostname, ntohs(hs->sin.sin_port),
@@ -2223,19 +2220,17 @@ void update_data(struct hostspec *hs)
 
 			break;
 		case LDMSD_SET_LOOKUP:
-			pthread_mutex_unlock(&hset->state_lock);
 			/* do nothing */
 			break;
 		case LDMSD_SET_BUSY:
 			hset->curr_busy_count++;
-			pthread_mutex_unlock(&hset->state_lock);
 			break;
 		default:
 			ldms_log("Invalid hostset state '%d'\n", hset->state);
-			pthread_mutex_unlock(&hset->state_lock);
 			assert(0);
 			break;
 		}
+		pthread_mutex_unlock(&hset->state_lock);
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
