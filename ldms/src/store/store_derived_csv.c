@@ -696,20 +696,19 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 				val = (uint64_t) (val * s_handle->der[i].multiplier);
 			} else {
 				if ((diff.tv_sec != 0) || (diff.tv_usec != 0)){
-					if ((ldms_get_u64(mvec->v[midx]) == dp->datavals[i])){
+					uint64_t currval = ldms_get_u64(mvec->v[midx]);
+					if (currval == dp->datavals[i]){
 						val = 0;
-					} else {
-						double temp = (double)(ldms_get_u64(mvec->v[midx]) - dp->datavals[i]);
+					} else if (currval > dp->datavals[i]){
+						double temp = (double)(currval - dp->datavals[i]);
 						//ROLLOVER - Should we assume ULONG_MAX is the rollover? Just use 0 for now....
-						if (temp > 0){
-							temp /= (double)(diff.tv_sec*1000000.0 + diff.tv_usec);
-							temp *= 1000000.0;
-							temp *= s_handle->der[i].multiplier;
-							val = (uint64_t) temp;
-						} else {
-						       setflag = 1;
-						       val = 0;
-						}
+						temp /= (double)(diff.tv_sec*1000000.0 + diff.tv_usec);
+						temp *= 1000000.0;
+						temp *= s_handle->der[i].multiplier;
+						val = (uint64_t) temp;
+					} else {
+						setflag = 1;
+						val = 0;
 					}
 				} else {
 					setflag = 1;
