@@ -1171,6 +1171,11 @@ struct ldms_mvec* _create_mvec(struct hostset *hset)
 		ldms_metric_t m = ldms_make_metric(hset->set, vd);
 		mvec->v[c++] = m;
 	}
+	if (c != count) {
+		ldms_log("%s:%s(): c(%d) != count(%d)\n", __FILE__, __func__, c, count);
+		ldms_mvec_destroy(mvec);
+		mvec = NULL;
+	}
 	return mvec;
 }
 
@@ -2117,6 +2122,8 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		/* Recreate mvec here if it doesn't exist.  It can be destroyed
 		 * in the disconnect path. */
 		hset->mvec = _create_mvec(hset);
+		if (!hset->mvec)
+			goto out;
 		/* The indices should stay the same. */
 	}
 	LIST_FOREACH(lsp_ref, &hset->lsp_list, entry) {
@@ -2146,7 +2153,17 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 			}
 		}
 
+		if (lsp->metric_count > hset->mvec->count) {
+			ldms_log("store %s: Expected number of metrics (%d) > "
+				"number of existing metrics (%d). "
+				"Possible mis-configuration\n",
+				lsp->container, lsp->metric_count,
+				hset->mvec->count);
+			continue;
+		}
+
 		struct store_instance *si = lsp->si;
+
 
 		mvec = ldms_mvec_create(lsp->metric_count);
 		if (!mvec) {
