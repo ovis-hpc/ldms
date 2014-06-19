@@ -21,7 +21,7 @@ lib_LTLIBRARIES += libbmvec.la
 
 # Virtual-memory unordered_map
 libbmapper_la_SOURCES = bmapper.c
-libbmapper_la_LIBADD = libbutils.la libbmem.la
+libbmapper_la_LIBADD = libbutils.la libbmem.la libbmvec.la
 lib_LTLIBRARIES += libbmapper.la
 
 # Convenient set implementation utility.

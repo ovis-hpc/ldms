@@ -7,8 +7,14 @@ pkgpython_PYTHON = bquery.py __init__.py
 pkgpyexec_LTLIBRARIES = _bquery.la
 _bquery_la_SOURCES = bquery.c
 _bquery_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) $(INC)
-_bquery_la_LDFLAGS = -module -shared
-_bquery_la_LIBADD = $(top_builddir)/src/query/libbquery.la
+_bquery_la_LDFLAGS = -module -shared $(PYTHON_LDFLAGS) @SOS_LIBDIR_FLAG@
+_bquery_la_LIBADD = $(top_builddir)/src/query/libbquery.la \
+		    $(top_builddir)/src/baler/libbmapper.la \
+		    $(top_builddir)/src/baler/libbmvec.la \
+		    $(top_builddir)/src/baler/libbmem.la \
+		    $(top_builddir)/src/baler/libbutils.la \
+		    -lsos \
+		    -lobjidx
 
 pkgpyexecdir = $(pkgpythondir)
 

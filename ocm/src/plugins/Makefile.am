@@ -5,4 +5,4 @@ AM_LDFLAGS = -lovis_util @OVIS_LIB_LIBDIR_FLAG@
 
 lib_LTLIBRARIES += libocmdsqlite3.la
 libocmdsqlite3_la_SOURCES = ocmdsqlite3.c
-libocmdsqlite3_la_LIBADD = -lsqlite3
+libocmdsqlite3_la_LIBADD = -lsqlite3 ../libocm.la

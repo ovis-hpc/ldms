@@ -6,10 +6,11 @@ pkgpyexec_LTLIBRARIES = _sos.la
 _sos_la_SOURCES = sos.c $(SWIG_SOURCES)
 _sos_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src \
 		 @OVIS_LIB_INCDIR_FLAG@
-_sos_la_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ -module
+_sos_la_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@  $(PYTHON_LDFLAGS) -module
 _sos_la_LIBADD = $(top_builddir)/src/libods.la \
 		 $(top_builddir)/src/liboidx.la \
 		 $(top_builddir)/src/libsos.la \
+		 $(top_builddir)/src/libobjidx.la \
 		 -lcoll
 
 # Forcing this so that _sos.so will be in lib not lib64

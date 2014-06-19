@@ -29,7 +29,7 @@ endif
 
 if ENABLE_PERFEVENT
 libperfevent_la_SOURCES = perfevent.c
-libperfevent_la_LIBADD = $(COMMON_LIBADD)
+libperfevent_la_LIBADD = $(COMMON_LIBADD) -lm
 lib_LTLIBRARIES += libperfevent.la
 endif
 

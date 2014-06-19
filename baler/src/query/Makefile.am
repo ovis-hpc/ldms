@@ -9,5 +9,5 @@ bin_PROGRAMS = bquery
 
 libbquery_la_SOURCES = bquery.c bquery.h
 libbquery_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
-libbquery_la_LIBADD = $(BALER)/libbaler.la -lsos @SOS_LIBDIR_FLAG@
+libbquery_la_LIBADD = $(BALER)/libbaler.la -lsos -lobjidx @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES = libbquery.la

@@ -7,12 +7,15 @@ libbin_rsyslog_tcp_la_SOURCES = bin_rsyslog_tcp.c
 libbin_rsyslog_tcp_la_CFLAGS = $(AM_CFLAGS) @EVENTINC@
 libbin_rsyslog_tcp_la_LIBADD = ../baler/libbutils.la \
 			       @EVENTLIBS@ \
+			       -lpthread \
 			       ../baler/libbaler.la
 lib_LTLIBRARIES += libbin_rsyslog_tcp.la
 
 libbout_sos_la_SOURCES = bout_sos.c
 libbout_sos_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
 libbout_sos_la_LIBADD = ../baler/libbutils.la -lsos ../baler/libbaler.la \
+			-lpthread \
+			-lobjidx \
 			@SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos.la
 
@@ -20,6 +23,8 @@ libbout_sos_img_la_SOURCES = bout_sos_img.c
 libbout_sos_img_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
 libbout_sos_img_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
 			    libbout_sos.la \
+			    -lpthread \
+			    -lobjidx \
 			    -lsos @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos_img.la
 
@@ -27,6 +32,8 @@ libbout_sos_msg_la_SOURCES = bout_sos_msg.c
 libbout_sos_msg_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
 libbout_sos_msg_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
 			    libbout_sos.la \
+			    -lpthread \
+			    -lobjidx \
 			    -lsos @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos_msg.la
 

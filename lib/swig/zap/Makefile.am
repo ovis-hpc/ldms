@@ -5,7 +5,7 @@ pkgpython_PYTHON = zap.py __init__.py
 pkgpyexec_LTLIBRARIES = _zap.la
 _zap_la_SOURCES = zap.c $(SWIG_SOURCES)
 _zap_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src
-_zap_la_LDFLAGS = -module
+_zap_la_LDFLAGS = -module $(PYTHON_LDFLAGS)
 _zap_la_LIBADD = $(top_builddir)/src/zap/libzap.la
 
 zap.py: zap.c
