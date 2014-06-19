@@ -1,6 +1,10 @@
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
+AM_CFLAGS += \
+"-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \
+"-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
+
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 AM_CPPFLAGS = -DPLUGINDIR='"$(libdir)"'
 
