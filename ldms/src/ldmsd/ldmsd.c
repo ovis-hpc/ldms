@@ -2204,6 +2204,7 @@ void update_data(struct hostspec *hs)
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
+				hset->state = LDMSD_SET_READY;
 				ldms_log("Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
 					hs->hostname, ntohs(hs->sin.sin_port),
