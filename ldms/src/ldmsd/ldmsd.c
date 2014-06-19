@@ -596,6 +596,12 @@ int process_info(int fd,
 		 struct sockaddr *sa, ssize_t sa_len,
 		 char *command)
 {
+	static const char set_state[] = {
+		"CONFIGURED",
+		"LOOKUP",
+		"BUSY",
+		"READY"
+	};
 	int i;
 	struct hostspec *hs;
 	int verbose = 0;
@@ -632,23 +638,36 @@ int process_info(int fd,
 	uint64_t grand_total_busy = 0;
 	LIST_FOREACH(hs, &host_list, link) {
 		struct hostset *hset;
+		ldms_log("%-12s %-12s", hs->hostname, hs->xprt_name);
+		if (verbose)
+			ldms_log("%-12s\n", (hs->conn_state?"CONNECTED":"NOT CONNECTED"));
+		else
+			ldms_log("\n");
 		ldms_log("%-12s %-12s\n", hs->hostname, hs->xprt_name);
 		LIST_FOREACH(hset, &hs->set_list, entry) {
 			ldms_log("%-12s %-12s %-12s\n",
 				 "", "", hset->name);
 			if (verbose) {
+				char *state;
 				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
 						"", "", "", "curr_busy_count",
 						hset->curr_busy_count);
 				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
 						"", "", "", "total_busy_count",
 						hset->total_busy_count);
+				if (hset->state >= 0 &&
+				    hset->state < sizeof(set_state)/sizeof(set_state[0]))
+					state = set_state[hset->state];
+				else
+					state = "INVALID";
+				ldms_log("%-12s %-12s %-12s %-12s\n",
+					 "", "", "", state);
 			}
 			total_curr_busy += hset->curr_busy_count;
 			grand_total_busy += hset->total_busy_count;
 		}
 	}
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldms_log("%-12s %-12s %-12s %-12s\n", 
 		 "------------", "------------", "------------",
 		 "------------");
 	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
