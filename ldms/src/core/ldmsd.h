@@ -323,8 +323,10 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_INFO_DAEMON	9   /* Query daemon status */
 #define LDMSCTL_EXIT_DAEMON	10   /* Shut down ldmsd */
 #define LDMSCTL_UPDATE_STANDBY  11   /* update the standby state */
-#define LDMSCTL_VERSION         12   /* Query for version info */
-#define LDMSCTL_LAST_COMMAND	12
+//TEMPORARILY disable remote version query thru ldmsctl
+//#define LDMSCTL_VERSION         12   /* Query for version info */
+//#define LDMSCTL_LAST_COMMAND	12
+#define LDMSCTL_LAST_COMMAND	11
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 
