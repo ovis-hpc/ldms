@@ -596,7 +596,7 @@ int process_info(int fd,
 		 struct sockaddr *sa, ssize_t sa_len,
 		 char *command)
 {
-	static const char set_state[] = {
+	static const char* set_state[] = {
 		"CONFIGURED",
 		"LOOKUP",
 		"BUSY",
