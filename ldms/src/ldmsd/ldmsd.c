@@ -2125,7 +2125,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		ldms_log("Updated failed for set.\n");
 		reset_set_metrics(hset);
 		hset->state = LDMSD_SET_CONFIGURED;
-		goto out;
+		goto out1;
 	}
 
 	gn = ldms_get_data_gn(hset->set);
@@ -2186,6 +2186,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
  out:
 	/* Put the reference taken at the call to ldms_update() */
 	hset->state = LDMSD_SET_READY;
+ out1:
 	pthread_mutex_unlock(&hset->state_lock);
 	hset_ref_put(hset);
 }
