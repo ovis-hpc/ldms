@@ -57,6 +57,7 @@
 
 #include <sys/queue.h>
 #include <stdarg.h>
+#include "sos/sos.h"
 #include "ovis_util/util.h"
 
 /**
@@ -77,6 +78,15 @@ struct kmd_msg {
 	uint32_t sec;
 	uint32_t usec;
 };
+
+typedef struct event_action_s {
+	struct sos_blob_obj_s blob;
+	struct {
+		uint32_t model_id;
+		uint64_t metric_id;
+		char action[0];
+	} data;
+} *event_action_t;
 #pragma pack()
 
 typedef enum k_event_status {
@@ -85,6 +95,13 @@ typedef enum k_event_status {
 	KMD_EVENT_RESOLVED,
 	KMD_EVENT_RESOLVE_FAIL,
 } k_event_status_e;
+
+static inline size_t evact_blob_len(event_action_t e)
+{
+	size_t slen = strlen(e->data.action) + 1;
+	return sizeof(e->data) + slen;
+}
+
 
 /**
  * Komondor store interface.

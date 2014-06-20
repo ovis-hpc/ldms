@@ -54,20 +54,24 @@
  * \brief Komondor.
  */
 
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
+#include <assert.h>
+#include <ctype.h>
+#include <dlfcn.h>
+#include <fcntl.h>
 #include <getopt.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <stdint.h>
-#include <ctype.h>
-#include <pthread.h>
-#include <stdarg.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <dlfcn.h>
+#include <unistd.h>
 
 #include <netinet/ip.h>
 
@@ -75,8 +79,11 @@
 
 #include "coll/str_map.h"
 #include "coll/idx.h"
+#include "coll/rbt.h"
 #include "zap/zap.h"
 #include "sos/sos.h"
+/* This is a hack */
+#include "../../sos/src/sos_priv.h"
 
 #ifdef ENABLE_OCM
 #include "ocm/ocm.h"
@@ -87,9 +94,10 @@ int ocm_cb(struct ocm_event *e);
 #endif
 
 /***** PROGRAM OPTIONS *****/
-const char *short_opt = "c:x:p:l:W:Fz:h?";
+const char *short_opt = "a:c:x:p:l:W:Fz:h?";
 
 static struct option long_opt[] = {
+	{"act_sos",         required_argument,  0,  'a'},
 	{"conf",            required_argument,  0,  'c'},
 	{"xprt",            required_argument,  0,  'x'},
 	{"port",            required_argument,  0,  'p'},
@@ -98,7 +106,7 @@ static struct option long_opt[] = {
 	{"foreground",      no_argument,        0,  'F'},
 	{"ocm_port",        required_argument,  0,  'z'},
 	{"help",            no_argument,        0,  'h'},
-	{0,                 0,                  0,  0}
+	{0,                 0,                  0,  0},
 };
 
 /***** TYPES *****/
@@ -300,8 +308,70 @@ struct k_act_qentry {
 	struct kmd_msg msg; /* the message that cause the action */
 	struct k_action *action; /* Reference to the action */
 	struct event_ref_list *eref_list;
+	char *cmd;
+	obj_ref_t evact_ref;
 	TAILQ_ENTRY(k_act_qentry) link;
 };
+
+static
+struct k_act_qentry *k_act_qentry_alloc(struct kmd_msg *msg,
+					struct k_action *act,
+					struct event_ref_list *eref_list)
+{
+	struct k_act_qentry *qent = calloc(1, sizeof(*qent));
+	if (!qent)
+		return NULL;
+	qent->msg = *msg; /* copy entire message */
+	qent->action = act;
+	event_ref_list_get(eref_list);
+	qent->eref_list = eref_list;
+	return qent;
+}
+
+static
+void k_act_qentry_free(struct k_act_qentry *e)
+{
+	if (e->eref_list)
+		event_ref_list_put(e->eref_list);
+	if (e->cmd)
+		free(e->cmd);
+	free(e);
+}
+
+struct pid_rbn {
+	struct rbn rbn; /* rbn->key is pid */
+	struct k_act_qentry *act_ent; /**< action entry of the pid, pid_rbn owns the act_ent */
+};
+
+static inline pid_t pid_rbn_get_pid(struct pid_rbn *n)
+{
+	return (pid_t)(uint64_t)n->rbn.key;
+}
+
+static
+struct pid_rbn *pid_rbn_alloc(pid_t pid, struct k_act_qentry *act_ent)
+{
+	struct pid_rbn *n = calloc(1, sizeof(*n));
+	if (!n)
+		return NULL;
+	n->rbn.key = (void*)(uint64_t)pid;
+	n->act_ent = act_ent;
+	return n;
+}
+
+static
+void pid_rbn_free(struct pid_rbn *n)
+{
+	k_act_qentry_free(n->act_ent);
+	free(n);
+}
+
+static int pid_rbn_cmp(void *tree_key, void *key)
+{
+	pid_t a = (pid_t)(uint64_t)tree_key;
+	pid_t b = (pid_t)(uint64_t)key;
+	return a - b;
+}
 
 /***** GLOBAL VARIABLE *****/
 
@@ -309,7 +379,26 @@ char *conf = NULL;
 char *xprt = "sock";
 uint16_t port = 55555;
 int FOREGROUND = 0;
-sos_t event_sos = NULL; /**< Event storage */
+int32_t act_sos_gn;
+sos_t act_sos;
+sos_iter_t act_sos_iter = NULL;
+const char *act_sos_path = "./act_sos/act";
+pthread_mutex_t act_sos_mutex = PTHREAD_MUTEX_INITIALIZER;
+event_action_t evact = NULL;
+obj_key_t evact_key = NULL;
+pid_t pid;
+
+SOS_OBJ_BEGIN(act_sos_class, "ActSOSClass")
+	SOS_OBJ_ATTR_WITH_KEY("event_action", SOS_TYPE_BLOB),
+	SOS_OBJ_ATTR("pid", SOS_TYPE_INT32),
+	SOS_OBJ_ATTR("gn", SOS_TYPE_INT32),
+SOS_OBJ_END(3);
+
+static int __add_event(struct k_act_qentry *ent);
+static int __remove_event(struct k_act_qentry *ent);
+
+struct rbt pid_rbt; /**< red-black tree for child process info */
+pthread_mutex_t pid_rbt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
@@ -324,7 +413,7 @@ pthread_mutex_t actq_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t actq_non_empty = PTHREAD_COND_INITIALIZER;
 
 /** action threads */
-int N_act_threads = 2;
+int N_act_threads = 1;
 pthread_t *act_threads;
 
 zap_t zap;
@@ -802,10 +891,11 @@ void print_usage()
 "Synopsis: komondor [OPTIONS]\n"
 "\n"
 "OPTIONS:\n"
+"	-a,--act_sos <file>	Action SOS path (default: ./act_sos/act).\n"
 "	-c,--conf <file>	Configuration File.\n"
 "	-x,--xprt <XPRT>	Transport (sock, rdma, ugni).\n"
 "	-p,--port <PORT>	Port number.\n"
-"	-W,--worker-threads <N>	Number of worker threads (default: 2).\n"
+"	-W,--worker-threads <N>	Number of worker threads (default: 1).\n"
 "	-F,--foreground		Foreground mode instead of daemon.\n"
 "	-z,--ocm_port <PORT>	OCM port number.\n"
 "	-h,--help		Print this help message.\n"
@@ -813,10 +903,148 @@ void print_usage()
 	);
 }
 
+#define BASH "/bin/bash"
+
+pid_t execute(const char *cmd)
+{
+	k_log("INFO: executing: %s\n", cmd);
+	char *argv[] = {BASH, "-c", NULL, NULL};
+	pid_t pid = fork();
+	int i, flags;
+	if (pid)
+		return pid;
+	/* close all parent's file descriptor */
+	for (i = getdtablesize() - 1; i > -1; i--) {
+		close(i); /* blindly closes everything before exec */
+	}
+	argv[2] = (char*)cmd;
+	execv(BASH, argv);
+}
+
+/**
+ * \return 0 if evact is running with PID \c pid
+ * \return -1 otherwise
+ */
+static int __check_running(event_action_t evact, pid_t pid)
+{
+	char buf[2048];
+	int fd;
+	ssize_t count;
+	int i;
+	sprintf(buf, "/proc/%d/cmdline", pid);
+	fd = open(buf, O_RDONLY);
+	if (fd < 0)
+		return -1;
+	count = read(fd, buf, sizeof(buf) - 1);
+	if (count < 0) {
+		k_log("ERROR: %s: read error: %d\n", __func__, errno);
+		assert(0);
+	}
+	buf[count] = 0;
+	for (i = 0; i < count; i++) {
+		if (buf[i] == 0)
+			buf[i] = ' ';
+	}
+	if (strstr(buf, evact->data.action))
+		return 0;
+	return -1;
+}
+
+/**
+ * \return 0 if OK
+ * \return Error code if error
+ */
+static int __add_event(struct k_act_qentry *ent)
+{
+	int rc = 0;
+	int32_t gn;
+	pid_t pid;
+	obj_ref_t ref;
+	sos_obj_t obj;
+	pthread_mutex_lock(&act_sos_mutex);
+	evact->data.metric_id = ent->msg.metric_id;
+	evact->data.model_id = ent->msg.model_id;
+	strcpy(evact->data.action, ent->action->cmd);
+	evact->blob.len = evact_blob_len(evact);
+	obj_key_set(evact_key, evact, SOS_BLOB_SIZE(&evact->blob));
+	rc = sos_iter_seek(act_sos_iter, evact_key);
+	if (rc == 0) {
+		/* event exists in DB, check if it is still running. */
+		obj = sos_iter_obj(act_sos_iter);
+		pid = sos_obj_attr_get_int32(act_sos, 1, obj);
+		gn = sos_obj_attr_get_int32(act_sos, 2, obj);
+		if (gn == act_sos_gn) {
+			/* Komondor has not restarted, the event will be cleaned
+			 * in sigchld_action() */
+			rc = EEXIST;
+			goto out;
+		}
+		if (__check_running(evact, pid) == 0) {
+			rc = EEXIST;
+			goto out;
+		}
+		/* it is not running, and from old komondor run -- remove it */
+		sos_obj_remove(act_sos, obj);
+		sos_obj_delete(act_sos, obj);
+
+	}
+	obj = sos_obj_new(act_sos);
+	if (!obj) {
+		rc = ENOMEM;
+		goto out;
+	}
+	ref = ods_obj_ptr_to_ref(act_sos->ods, obj);
+	sos_obj_attr_set(act_sos, 0, obj, evact);
+	obj = ods_obj_ref_to_ptr(act_sos->ods, ref);
+	rc = sos_obj_add(act_sos, obj);
+	if (rc) {
+		sos_obj_delete(act_sos, obj);
+		rc = ENOMEM;
+		goto out;
+	}
+	ent->evact_ref = ref;
+out:
+	pthread_mutex_unlock(&act_sos_mutex);
+	return rc;
+}
+
+static int __remove_event(struct k_act_qentry *ent)
+{
+	assert(ent->evact_ref);
+
+	pthread_mutex_lock(&act_sos_mutex);
+	sos_obj_t obj = ods_obj_ref_to_ptr(act_sos->ods, ent->evact_ref);
+	sos_obj_remove(act_sos, obj);
+	sos_obj_delete(act_sos, obj);
+	pthread_mutex_unlock(&act_sos_mutex);
+
+	return 0;
+
+}
+
 void* act_thread_routine(void *arg)
 {
+	int rc;
 	struct event_ref *eref;
-	char cmd[4096];
+	sos_obj_t obj;
+	char *str;
+	pid_t pid;
+	char *cmd = malloc(65536);
+	if (!cmd) {
+		k_log("ERROR in %s: Cannot allocate command buffer\n", __func__);
+		return NULL;
+	}
+
+	/* Action threads should not handle SIGCHLD */
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGCHLD);
+	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (rc) {
+		k_log("pthread_sigmask: errno %d\n", errno);
+		assert(0);
+	}
+
 loop:
 	pthread_mutex_lock(&actq_mutex);
 	while (TAILQ_EMPTY(&actq))
@@ -824,8 +1052,15 @@ loop:
 	struct k_act_qentry *ent = TAILQ_FIRST(&actq);
 	TAILQ_REMOVE(&actq, ent, link);
 	pthread_mutex_unlock(&actq_mutex);
+	rc = __add_event(ent);
+	if (rc) {
+		k_log("__add_event rc: %d\n", rc);
+		k_act_qentry_free(ent);
+		goto loop;
+	}
 	/* XXX ADD KMD_MSG here */
-	sprintf(cmd, "KMD_MODEL_ID=%hu KMD_METRIC_ID=%lu KMD_SEVERITY_LEVEL=%hhu"
+	sprintf(cmd, "KMD_MODEL_ID=%hu KMD_METRIC_ID=%lu "
+			"KMD_SEVERITY_LEVEL=%hhu"
 			" KMD_SEC=%"PRIu32" KMD_USEC=%"PRIu32" KMD_COMP_ID=%u"
 			" KMD_METRIC_TYPE=%u %s",
 			ent->msg.model_id, ent->msg.metric_id, ent->msg.level,
@@ -833,6 +1068,12 @@ loop:
 			(uint32_t) (ent->msg.metric_id >> 32),
 			(uint32_t) (ent->msg.metric_id & 0xFFFFFFFF),
 			ent->action->cmd);
+	ent->cmd = strdup(cmd);
+	if (!ent->cmd) {
+		k_log("ERROR: Not enough memory (command: '%s')\n", cmd);
+		k_act_qentry_free(ent);
+		goto loop;
+	}
 	if (ent->action->type == KMD_ACTION_RESOLVE) {
 		LIST_FOREACH(eref, &ent->eref_list->list, entry) {
 			eref->store->event_update(eref->store,
@@ -840,44 +1081,78 @@ loop:
 					KMD_EVENT_RESOLVING);
 		}
 	}
-	int rc = system(cmd);
-	if (rc == -1) {
-		k_log("Failed to execute command '%s'\n", cmd);
+	pid = execute(ent->cmd);
+	if (pid == -1) {
+		k_log("ERROR: Failed to execute command '%s'\n", ent->cmd);
+		__remove_event(ent);
 		/*
 		 * TODO: XXX: Consider whether we need to update the
 		 * event status to be KMD_EVENT_RESOLVE_FAILED or
 		 * another status
 		 */
-		goto skip;
+		k_act_qentry_free(ent);
+		goto loop;
 	}
 
-	int cmd_exit_status = WEXITSTATUS(rc);
-	switch (cmd_exit_status) {
-	case KMD_RESOLVED_CODE:
-		/* Change event status to resolved */
-		LIST_FOREACH(eref, &ent->eref_list->list, entry) {
-			eref->store->event_update(eref->store, eref->event_handle,
-						KMD_EVENT_RESOLVED);
-		}
-		break;
-	case 0:
-		/* do nothing */
-		break;
-	default:
-		k_log("Error %d in command: %s\n", cmd_exit_status, cmd);
-		if (ent->action->type == KMD_ACTION_RESOLVE) {
-			LIST_FOREACH(eref, &ent->eref_list->list, entry) {
-				eref->store->event_update(eref->store,
-						eref->event_handle,
-						KMD_EVENT_RESOLVE_FAIL);
-			}
-		}
-		break;
+	obj = ods_obj_ref_to_ptr(act_sos->ods, ent->evact_ref);
+	sos_obj_attr_set_int32(act_sos, 1, obj, pid);
+	sos_obj_attr_set_int32(act_sos, 2, obj, act_sos_gn);
+
+	struct pid_rbn *n = pid_rbn_alloc(pid, ent);
+	if (!n) {
+		k_log("ERROR in %s: Cannot allocate pid_rbn.\n", __func__);
+		k_act_qentry_free(ent);
+		goto loop;
 	}
-skip:
-	event_ref_list_put(ent->eref_list);
-	free(ent);
+
+	pthread_mutex_lock(&pid_rbt_mutex);
+	rbt_ins(&pid_rbt, (void*)n);
+	pthread_mutex_unlock(&pid_rbt_mutex);
+
 	goto loop;
+}
+
+static int __act_sos_gn_routine()
+{
+	sos_obj_t obj;
+	obj_ref_t objref;
+	int rc;
+	pthread_mutex_lock(&act_sos_mutex);
+	evact->data.model_id = 0;
+	evact->data.metric_id = 0;
+	evact->data.action[0] = 0;
+	evact->blob.len = evact_blob_len(evact);
+	obj_key_set(evact_key, evact, SOS_BLOB_SIZE(&evact->blob));
+	rc = sos_iter_seek(act_sos_iter, evact_key);
+	if (rc == 0) {
+		obj = sos_iter_obj(act_sos_iter);
+		act_sos_gn = sos_obj_attr_get_int32(act_sos, 2, obj);
+	} else {
+		obj = sos_obj_new(act_sos);
+		if (!obj) {
+			rc = ENOMEM;
+			goto out;
+		}
+		objref = ods_obj_ptr_to_ref(act_sos->ods, obj);
+		sos_obj_attr_set_int32(act_sos, 1, obj, 0);
+		sos_obj_attr_set_int32(act_sos, 2, obj, 0);
+		sos_obj_attr_set(act_sos, 0, obj, evact);
+		obj = ods_obj_ref_to_ptr(act_sos->ods, objref);
+		rc = sos_obj_add(act_sos, obj);
+		if (rc) {
+			sos_obj_delete(act_sos, obj);
+			rc = ENOMEM;
+			goto out;
+		}
+		act_sos_gn = 0;
+	}
+	act_sos_gn++;
+	sos_obj_attr_set_int32(act_sos, 2, obj, act_sos_gn);
+	sos_commit(act_sos, ODS_COMMIT_ASYNC);
+	rc = 0;
+out:
+	pthread_mutex_unlock(&act_sos_mutex);
+	return rc;
 }
 
 void init()
@@ -898,6 +1173,11 @@ void init()
 		exit(-1);
 	}
 	rule_idx = idx_create();
+	if (!rule_idx) {
+		k_log("Cannot create rule index\n");
+		exit(-1);
+	}
+	rbt_init(&pid_rbt, pid_rbn_cmp);
 	act_threads = malloc(N_act_threads * sizeof(act_threads[0]));
 	if (!act_threads) {
 		k_log("%s: cannot create act_threads\n", strerror(errno));
@@ -906,6 +1186,32 @@ void init()
 	for (i = 0; i < N_act_threads; i++) {
 		pthread_create(&act_threads[i], NULL, act_thread_routine, NULL);
 	}
+
+	act_sos = sos_open(act_sos_path, O_RDWR|O_CREAT, 0660, &act_sos_class);
+	if (!act_sos) {
+		k_log("Cannot open sos: %s\n", act_sos_path);
+		exit(-1);
+	}
+
+	act_sos_iter = sos_iter_new(act_sos, 0);
+	if (!act_sos_iter) {
+		k_log("Cannot create iterator for sos: %s\n", act_sos_path);
+		exit(-1);
+	}
+
+	evact = malloc(65536);
+	if (!evact) {
+		k_log("Cannot preallocate evact\n");
+		exit(-1);
+	}
+
+	evact_key = obj_key_new(65536);
+	if (!evact_key) {
+		k_log("Cannot preallocate evact_key\n");
+		exit(-1);
+	}
+
+	__act_sos_gn_routine();
 
 	int rc;
 	rc = zap_get(xprt, &zap, k_log, k_meminfo);
@@ -956,6 +1262,9 @@ void process_args(int argc, char **argv)
 next_arg:
 	c = getopt_long(argc, argv, short_opt, long_opt, NULL);
 	switch (c) {
+	case 'a':
+		act_sos_path = optarg;
+		break;
 	case 'c':
 		conf = optarg;
 		break;
@@ -1045,7 +1354,7 @@ void handle_action_list(k_action_head_t a_list, struct kmd_msg *msg,
 	LIST_FOREACH(act, a_list, link) {
 		if (!in_range(&act->severity_range, msg->level))
 			continue;
-		struct k_act_qentry *qent = calloc(1, sizeof(*qent));
+		struct k_act_qentry *qent = k_act_qentry_alloc(msg, act, eref_list);
 		if (!qent) {
 			k_log("Cannot allocate qent for msg:\n"
 				" <%hu, %"PRIu64", %hhu, %"PRIu32", %"PRIu32">",
@@ -1053,15 +1362,17 @@ void handle_action_list(k_action_head_t a_list, struct kmd_msg *msg,
 				msg->sec, msg->usec);
 			continue;
 		}
-		qent->msg = *msg; /* copy entire message */
-		qent->action = act;
-		event_ref_list_get(eref_list);
-		qent->eref_list = eref_list;
 		pthread_mutex_lock(&actq_mutex);
 		TAILQ_INSERT_TAIL(&actq, qent, link);
 		pthread_cond_signal(&actq_non_empty);
 		pthread_mutex_unlock(&actq_mutex);
 	}
+}
+
+void log_zap_event(struct kmd_msg *msg)
+{
+	k_log("INFO: <%u.%u, %hu, %lu, %hhu>\n", msg->sec, msg->usec,
+			msg->model_id, msg->metric_id, msg->level);
 }
 
 void process_recv(zap_ep_t ep, zap_event_t ev)
@@ -1073,6 +1384,7 @@ void process_recv(zap_ep_t ep, zap_event_t ev)
 	}
 	struct kmd_msg *msg = ev->data;
 	ntoh_kmd_msg(msg);
+	log_zap_event(msg);
 
 	struct kmd_store *store;
 	struct event_ref *eref;
@@ -1341,13 +1653,106 @@ void kmd_cleanup(int x)
 	exit(x);
 }
 
+void child_terminated_handler(pid_t pid, int status)
+{
+	struct event_ref *eref;
+	struct pid_rbn *n;
+	struct k_act_qentry *ent;
+
+	pthread_mutex_lock(&pid_rbt_mutex);
+	n = (void*)rbt_find(&pid_rbt, (void*)(uint64_t)pid);
+	if (!n) {
+		k_log("ERROR in %s: cannot find entry for pid: %d\n", pid);
+		pthread_mutex_unlock(&pid_rbt_mutex);
+		return;
+	}
+	ent = n->act_ent; /* NOTE: n owns ent */
+	__remove_event(ent);
+	rbt_del(&pid_rbt, (void*)n);
+	pthread_mutex_unlock(&pid_rbt_mutex);
+
+	int rc_sig; /* rc or sig */
+
+	if (WIFSIGNALED(status))
+		goto signaled;
+
+exited: /* child exited */
+	rc_sig = WEXITSTATUS(status);
+	switch (rc_sig) {
+	case KMD_RESOLVED_CODE:
+		/* Change event status to resolved */
+		LIST_FOREACH(eref, &ent->eref_list->list, entry) {
+			eref->store->event_update(eref->store, eref->event_handle,
+					KMD_EVENT_RESOLVED);
+		}
+		break;
+	case 0:
+		/* do nothing */
+		break;
+	default:
+		k_log("Error %d in command: %s\n", rc_sig, ent->cmd);
+		if (ent->action->type == KMD_ACTION_RESOLVE) {
+			LIST_FOREACH(eref, &ent->eref_list->list, entry) {
+				eref->store->event_update(eref->store,
+						eref->event_handle,
+						KMD_EVENT_RESOLVE_FAIL);
+			}
+		}
+		break;
+	}
+
+	goto cleanup;
+
+signaled: /* child terminated by signal */
+	rc_sig = WTERMSIG(status);
+	k_log("Error: command: %s got signal %d\n", ent->cmd, rc_sig);
+	if (ent->action->type == KMD_ACTION_RESOLVE) {
+		LIST_FOREACH(eref, &ent->eref_list->list, entry) {
+			eref->store->event_update(eref->store,
+					eref->event_handle,
+					KMD_EVENT_RESOLVE_FAIL);
+		}
+	}
+
+cleanup:
+	pid_rbn_free(n);
+}
+
+static void sigchld_action(int sig, siginfo_t *siginfo, void *ctxt)
+{
+	pid_t pid;
+	int status;
+	int rc;
+loop:
+	pid = waitpid(-1, &status, WNOHANG);
+	if (pid < 0) {
+		k_log("ERROR in %s:  waitpid return %d, errno: %d\n",
+				__func__, pid, errno);
+		return;
+	}
+
+	if (pid == 0) {
+		return; /* nothing to do */
+	}
+
+	if (WIFEXITED(status) || WIFSIGNALED(status)) {
+		child_terminated_handler(pid, status);
+	}
+	/* otherwise, do nothing */
+	goto loop;
+}
+
 int main(int argc, char **argv)
 {
 	int rc;
 
 	struct sigaction cleanup_act;
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGCHLD);
 	cleanup_act.sa_handler = kmd_cleanup;
 	cleanup_act.sa_flags = 0;
+	cleanup_act.sa_mask = sigset;
 
 	sigaction(SIGHUP, &cleanup_act, NULL);
 	sigaction(SIGINT, &cleanup_act, NULL);
@@ -1363,7 +1768,26 @@ int main(int argc, char **argv)
 		}
 	}
 
+	k_log("Komondor Daemon initializing ...\n");
 	init();
+
+	sigset_t child_set;
+	sigemptyset(&child_set);
+	sigaddset(&child_set, SIGCHLD);
+	sigaddset(&child_set, SIGHUP);
+	sigaddset(&child_set, SIGINT);
+	sigaddset(&child_set, SIGTERM);
+	struct sigaction child_act = {
+		.sa_sigaction = sigchld_action,
+		.sa_mask = child_set,
+		.sa_flags = SA_SIGINFO|SA_NOCLDSTOP,
+	};
+	rc = sigaction(SIGCHLD, &child_act, NULL);
+	if (rc) {
+		k_log("sigaction: error %d\n", errno);
+		assert(0);
+	}
+
 	config();
 	k_listen();
 

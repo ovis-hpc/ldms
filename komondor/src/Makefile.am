@@ -7,7 +7,7 @@ AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ \
 sbin_PROGRAMS = komondor
 
 komondor_SOURCES = komondor.c
-komondor_LDADD = -lcoll -lzap -lpthread -lsos -lovis_util -ldl
+komondor_LDADD = -lcoll -lzap -lpthread -lsos -lovis_util -ldl -lods -lobjidx
 
 if ENABLE_OCM
 komondor_CFLAGS = $(AM_CFLAGS) -DENABLE_OCM @OCM_INCDIR_FLAG@
