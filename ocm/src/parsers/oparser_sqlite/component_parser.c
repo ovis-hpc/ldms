@@ -164,6 +164,11 @@ struct oparser_comp_type *find_comp_type(char *type)
 	return NULL;
 }
 
+static void handle_category(char *value)
+{
+	curr_ctype->category = strdup(value);
+}
+
 static void handle_component(char *value)
 {
 }
@@ -297,6 +302,7 @@ static void handle_names(char *value)
 }
 
 static struct kw label_tbl[] = {
+	{ "category", handle_category },
 	{ "component", handle_component },
 	{ "gif_path", handle_gif_path },
 	{ "give_name", handle_give_name },

@@ -163,6 +163,16 @@ void component_to_sqlite(struct oparser_comp *comp, sqlite3 *db, sqlite3_stmt *c
 	oparser_bind_int(db, comp_stmt, CVISIBLE_IDX, comp->comp_type->visible,
 								__FUNCTION__);
 
+	if (comp->comp_type->category == NULL) {
+		fprintf(stderr, "No category is given for component type '%s'\n",
+							comp->comp_type->type);
+		exit(EINVAL);
+	} else {
+		oparser_bind_text(db, comp_stmt, CCATEGORY_IDX,
+				comp->comp_type->category, __FUNCTION__);
+	}
+
+
 	int i;
 	struct oparser_comp *child;
 
@@ -190,7 +200,8 @@ void gen_components_table(struct oparser_scaffold *scaffold, sqlite3 *db)
 		 "comp_id	INTEGER PRIMARY KEY	NOT NULL," \
 		 "parent_id	TEXT," \
 		 "gif_path	TEXT," \
-		 "visible	INTEGER);";
+		 "visible	INTEGER, " \
+		 "category	TEXT		NOT NULL);";
 
 	char *index_stmt = "CREATE INDEX components_idx ON components(type,identifier);";
 	create_table(stmt_s, db);
@@ -199,9 +210,9 @@ void gen_components_table(struct oparser_scaffold *scaffold, sqlite3 *db)
 	sqlite3_stmt *insert_stmt;
 
 	stmt_s = "INSERT INTO components(name, type, identifier, comp_id," \
-			" parent_id, gif_path, visible) " \
+			" parent_id, gif_path, visible, category) " \
 			"VALUES(@vname, @vtype, @videntifier, @vcomp_id, " \
-			"@vpid, @gifpath, @visible)";
+			"@vpid, @gifpath, @visible, @category)";
 
 	char *sqlite_err = 0;
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),

@@ -79,6 +79,7 @@ enum components_field {
 	CPARENT_IDX,
 	CGIF_PATH_IDX,
 	CVISIBLE_IDX,
+	CCATEGORY_IDX,
 	CNUM_IDX,
 };
 
@@ -114,6 +115,7 @@ LIST_HEAD(metric_list, oparser_metric);
 LIST_HEAD(mtype_list, metric_type);
 struct oparser_comp_type {
 	char *type; /* type */
+	char *category; /* component category, e.g., physical, hadoop, raid */
 	char gif_path[PATH_MAX]; /* path to the image */
 	int visible; /* visibility on Web GUI. The value is either TRUE or FALSE */
 	struct oparser_comp_list clist; /* list of all components of the type */
