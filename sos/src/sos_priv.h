@@ -108,17 +108,6 @@ struct sos_obj_s {
 	unsigned char data[0];
 };
 
-typedef struct sos_blob_obj_s* sos_blob_obj_t;
-
-/**
- * \brief SOS Blob data type.
- * This data structure is stored in SOS Object ODS as a value of blob attribute.
- */
-struct sos_blob_obj_s {
-	uint64_t len; /**< Length of the blob. */
-	obj_ref_t ref; /**< Reference of the blob object in blob ODS. */
-};
-
 typedef struct sos_dattr_s *sos_dattr_t;
 struct sos_dattr_s {
 	char name[SOS_ATTR_NAME_LEN];
@@ -150,7 +139,6 @@ struct sos_s {
 	 * to by the indices. */
 	ods_t ods;
 
-#define SOS_ODS_EXTEND_SZ (16*1024*1024)
 	/* The meta-data to associate with the object store */
 	sos_meta_t meta;
 	/* The size of the meta-data.  */
@@ -160,6 +148,20 @@ struct sos_s {
 	sos_class_t classp;
 };
 
+/**
+ * \brief SOS extend size.
+ *
+ * SOS uses ODS to store its data. Once SOS failed to allocate an object from
+ * ODS, it will try to extend the ODS. This value indicates the size of each
+ * extension.
+ *
+ * \note Assumes to be 2^N.
+ */
+#define SOS_ODS_EXTEND_SZ (16*1024*1024)
+
+/**
+ * \brief Initial size of the ODS for SOS.
+ */
 #define SOS_INITIAL_SIZE (16*1024*1024)
 
 struct sos_iter_s {

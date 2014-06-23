@@ -127,16 +127,20 @@ typedef struct sos_s *sos_t;
 typedef struct sos_attr_s *sos_attr_t;
 typedef struct sos_class_s *sos_class_t;
 typedef struct sos_obj_s *sos_obj_t;
-typedef struct sos_blob_arg_s *sos_blob_arg_t;
 typedef unsigned char * sos_string_t;
+typedef struct sos_blob_obj_s* sos_blob_obj_t;
 
 /**
- * \brief Argument for ::SOS_TYPE_BLOB__set_fn, representing blob value.
+ * \brief SOS Blob data type.
+ * This data structure is stored in SOS Object ODS as a value of blob attribute.
  */
-struct sos_blob_arg_s {
-	uint64_t len; /**< Length of the data. */
-	void *data; /**< Pointer to the data. */
+struct sos_blob_obj_s {
+	uint64_t len; /**< Length of the blob. */
+	unsigned char data[0]; /**< blob data */
 };
+
+#define SOS_BLOB_SIZE(blob) (sizeof(*(blob)) + (blob)->len)
+
 
 typedef size_t (*sos_attr_size_fn_t)(sos_attr_t, sos_obj_t);
 typedef void (*sos_get_key_fn_t)(sos_attr_t, sos_obj_t, obj_key_t);
@@ -178,7 +182,6 @@ struct sos_attr_s {
 	uint32_t data;
 	sos_t sos;
 	int id;
-	struct ods_s *blob_ods; /**< Pointer to the ODS that contain blobs. */
 };
 
 struct sos_class_s {

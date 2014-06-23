@@ -51,6 +51,11 @@
 #include "bout_sos_msg.h"
 #include "sos_msg_class_def.h"
 
+/*
+ * This is a hack to prevent stale obj.
+ */
+#include "../../../sos/src/sos_priv.h"
+
 /**
  * \brief process_output for SOS.
  *
@@ -64,34 +69,60 @@
 int bout_sos_msg_process_output(struct boutplugin *this,
 				struct boutq_data *odata)
 {
-	struct bout_sos_plugin *_this = (typeof(_this))this;
-	pthread_mutex_lock(&_this->sos_mutex);
-	sos_t sos = _this->sos;
+	struct bout_sos_plugin *sp = (typeof(sp))this;
+	struct bout_sos_msg_plugin *mp = (typeof(mp))this;
+	pthread_mutex_lock(&sp->sos_mutex);
+	sos_t sos = sp->sos;
+	size_t len;
+	size_t req_len;
 	if (!sos)
 		return EBADFD;
+
 	sos_obj_t obj = sos_obj_new(sos);
+	if (!obj)
+		goto err0;
+	obj_ref_t objref = ods_obj_ptr_to_ref(sos->ods, obj);
 	sos_obj_attr_set(sos, SOS_MSG_SEC, obj, &odata->tv.tv_sec);
 	sos_obj_attr_set(sos, SOS_MSG_USEC, obj, &odata->tv.tv_usec);
 	sos_obj_attr_set(sos, SOS_MSG_COMP_ID, obj, &odata->comp_id);
-	sos_obj_attr_set(sos, SOS_MSG_MSG, obj, &(struct sos_blob_arg_s) {
-				BMSG_SZ(odata->msg),
-				odata->msg
-			});
+	len = BMSG_SZ(odata->msg);
+	req_len = len + sizeof(struct sos_blob_obj_s);
+	if (mp->blob_sz < req_len) {
+		size_t new_size = (req_len | 0xFFFF) + 1;
+		void *new_blob = malloc(new_size);
+		if (!new_blob)
+			goto err1;
+		free(mp->blob);
+		mp->blob = new_blob;
+		mp->blob_sz = new_size;
+	}
+	mp->blob->len = len;
+	memcpy(mp->blob->data, odata->msg, len);
+	sos_obj_attr_set(sos, SOS_MSG_MSG, obj, mp->blob);
+	obj = ods_obj_ref_to_ptr(sos->ods, objref);
 	if (sos_obj_add(sos, obj))
 		goto err1;
-	pthread_mutex_unlock(&_this->sos_mutex);
+	pthread_mutex_unlock(&sp->sos_mutex);
 	return 0;
 err1:
 	sos_obj_delete(sos, obj);
-	pthread_mutex_unlock(&_this->sos_mutex);
+	pthread_mutex_unlock(&sp->sos_mutex);
 err0:
-	return EINVAL;
+	return ENOMEM;
 }
 
 struct bplugin *create_plugin_instance()
 {
 	struct bout_sos_msg_plugin *_p = calloc(1, sizeof(*_p));
+	if (!_p)
+		return NULL;
 	_p->base.sos_class = &sos_msg_class;
+	_p->blob_sz = 65536;
+	_p->blob = malloc(_p->blob_sz);
+	if (!_p->blob) {
+		free(_p);
+		return NULL;
+	}
 	struct boutplugin *p = (typeof(p)) _p;
 	bout_sos_init((void*)_p, "bout_sos_msg");
 	p->process_output = bout_sos_msg_process_output;

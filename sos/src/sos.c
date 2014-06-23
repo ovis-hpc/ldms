@@ -132,7 +132,7 @@ static uint32_t type_sizes[] = {
 	[SOS_TYPE_UINT64] = 8,
 	[SOS_TYPE_DOUBLE] = 8,
 	[SOS_TYPE_STRING] = 8,
-	[SOS_TYPE_BLOB] = 16, /**< \note length + offset = 8 + 8 = 16 bytes */
+	[SOS_TYPE_BLOB] = 8, /**< \note ODS reference to BLOB. */
 };
 static int type_is_builtin(enum sos_type_e e)
 {
@@ -344,21 +344,6 @@ static obj_idx_t init_idx(sos_t sos, int o_flag, int o_mode, sos_attr_t attr)
 	return idx;
 }
 
-/**
- * \brief Blob ODS initialization for the attribute \a attr.
- * \param sos The store handle.
- * \param o_flag The open flag (e.g. O_RDWR)
- * \param o_mode The mode (in the case of creation).
- * \param attr The blob attribute.
- */
-static
-ods_t init_blob_ods(sos_t sos, int o_flag, int o_mode, sos_attr_t attr)
-{
-	char tmp_path[PATH_MAX];
-	sprintf(tmp_path, "%s_%s_blob", sos->path, attr->name);
-	return ods_open(tmp_path, o_flag, o_mode);
-}
-
 void sos_commit(sos_t sos, int flags)
 {
 	int attr_id;
@@ -378,7 +363,6 @@ void sos_close(sos_t sos, int flags)
 	ods_close(sos->ods, flags);
 	for (attr_id = 0; attr_id < sos->classp->count; attr_id++) {
 		obj_idx_close(sos->classp->attrs[attr_id].oidx, flags);
-		ods_close(sos->classp->attrs[attr_id].blob_ods, flags);
 	}
 	if (sos->path)
 		free(sos->path);
@@ -528,17 +512,6 @@ static sos_class_t init_sos(sos_t sos, int o_flag, int o_mode,
 		classp->attrs[attr_id].sos = sos;
 		classp->attrs[attr_id].data = meta->attrs[attr_id].data;
 
-		if (classp->attrs[attr_id].type == SOS_TYPE_BLOB) {
-			/* It's a blob, so it needs blob initialization. */
-			ods_t ods = init_blob_ods(sos, o_flag, o_mode,
-					&classp->attrs[attr_id]);
-			if (!ods)
-				goto err;
-			classp->attrs[attr_id].blob_ods = ods;
-		} else {
-			classp->attrs[attr_id].blob_ods = NULL;
-		}
-
 		if (!classp->attrs[attr_id].has_idx) {
 			classp->attrs[attr_id].oidx = NULL;
 			continue;
@@ -669,16 +642,24 @@ int sos_extend(sos_t sos, size_t sz)
 
 void sos_obj_delete(sos_t sos, sos_obj_t obj)
 {
-	/* free the blobs first, otherwise they will be dangling blobs */
+	/* free the blobs/strings first, otherwise they will be
+	 * dangling blobs/strings */
 	int i;
+	obj_ref_t ref;
+	void *ptr;
 	for (i = 0; i < sos->classp->count; i++) {
 		sos_attr_t attr = sos_obj_attr_by_id(sos, i);
-		if (attr->type != SOS_TYPE_BLOB)
-			continue;
-		/* blob ods_free routine */
-		sos_obj_t blob = sos_obj_attr_get(sos, i, obj);
-		ods_free(attr->blob_ods, blob);
-
+		switch (attr->type) {
+		case SOS_TYPE_BLOB:
+		case SOS_TYPE_STRING:
+			ref = *(obj_ref_t *)&obj->data[attr->data];
+			ptr = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+			ods_free(attr->sos->ods, ptr);
+			break;
+		default:
+			/* do nothing */
+			break;
+		}
 	}
 	ods_free(sos->ods, obj);
 }
@@ -728,13 +709,16 @@ size_t SOS_TYPE_DOUBLE__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 
 size_t SOS_TYPE_STRING__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
-	return sizeof(obj_ref_t);
+	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
+	char *str = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	return strlen(str) + 1;
 }
 
 size_t SOS_TYPE_BLOB__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
-	/* TODO Implement me!!! */
-	return 0;
+	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
+	sos_blob_obj_t blob = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	return sizeof(*blob) + blob->len;
 }
 
 void SOS_TYPE_INT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
@@ -771,7 +755,9 @@ void SOS_TYPE_STRING__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 
 void SOS_TYPE_BLOB__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
-	assert(NULL == "Not implemented");
+	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
+	sos_blob_obj_t blob = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	obj_key_set(key, blob, sizeof(*blob) + blob->len);
 }
 
 void SOS_TYPE_INT32__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
@@ -806,7 +792,8 @@ void SOS_TYPE_STRING__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 
 void SOS_TYPE_BLOB__set_key_fn(sos_attr_t attr, void *value, obj_key_t key)
 {
-	assert(NULL == "Not implemented");
+	sos_blob_obj_t blob = value;
+	obj_key_set(key, blob, sizeof(*blob) +  blob->len);
 }
 
 void SOS_TYPE_INT32__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
@@ -836,7 +823,8 @@ void SOS_TYPE_DOUBLE__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 
 void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 {
-	obj_ref_t ref = obj->data[attr->data];
+	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
+	obj_ref_t objref = ods_obj_ptr_to_ref(attr->sos->ods, obj);
 	char *dst = ods_obj_ref_to_ptr(attr->sos->ods, ref);
 	char *src = (char *)value;
 	size_t src_len = strlen(src) + 1;
@@ -849,8 +837,16 @@ void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 			ods_free(attr->sos->ods, dst);
 	}
 	dst = ods_alloc(attr->sos->ods, src_len);
-	if (!dst)
-		assert(NULL == "memory allocation failure");
+	if (!dst) {
+		if (ods_extend(attr->sos->ods, (src_len | (SOS_ODS_EXTEND_SZ - 1))+1))
+			assert(NULL == "ods extend failure.");
+		/* ods extended, obj and meta are now stale: update it */
+		attr->sos->meta = ods_get_user_data(attr->sos->ods, &attr->sos->meta_sz);
+		obj = ods_obj_ref_to_ptr(attr->sos->ods, objref);
+		dst = ods_alloc(attr->sos->ods, src_len);
+		if (!dst)
+			assert(NULL == "memory allocation failure");
+	}
 	strcpy(dst, src);
 	ref = ods_obj_ptr_to_ref(attr->sos->ods, dst);
 	*(obj_ref_t *)&obj->data[attr->data] = ref;
@@ -858,32 +854,38 @@ void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 
 void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 {
-	ods_t bods = attr->blob_ods;
-	sos_blob_obj_t blob = (typeof(blob))&obj->data[attr->data];
-	sos_blob_arg_t arg = (typeof(arg))value;
-	void *ptr = ods_obj_ref_to_ptr(bods, blob->ref);
+	ods_t ods = attr->sos->ods;
+	obj_ref_t objref = ods_obj_ptr_to_ref(ods, obj);
+	obj_ref_t bref = *(obj_ref_t *)&obj->data[attr->data];
+	sos_blob_obj_t blob = ods_obj_ref_to_ptr(ods, bref);
+	sos_blob_obj_t arg = (typeof(arg))value;
+	size_t alloc_len = sizeof(*blob) + arg->len;
 
-	if (blob->ref && blob->len < arg->len) {
+	if (blob && ods_obj_size(ods, blob) < alloc_len) {
 		/* Cannot reuse space, free it and reset blob */
-		ods_free(bods, ods_obj_ref_to_ptr(bods, blob->ref));
-		blob->ref = blob->len = 0;
+		ods_free(ods, blob);
+		blob = NULL;
+		*(obj_ref_t *)&obj->data[attr->data] = 0;
 	}
 
-	if (!blob->len) {
+	if (!blob) {
 		/* blob not allocated --> allocate it */
-		ptr = ods_alloc(bods, arg->len);
-		if (!ptr) {
-			if (ods_extend(bods, (arg->len | 0xFFFFF)+1))
+		blob = ods_alloc(ods, alloc_len);
+		if (!blob) {
+			if (ods_extend(ods, (alloc_len | (SOS_ODS_EXTEND_SZ - 1))+1))
 				goto err1;
-			ptr = ods_alloc(bods, arg->len);
-			if (!ptr)
+			/* ods extended, obj is now stale: update it */
+			attr->sos->meta = ods_get_user_data(attr->sos->ods, &attr->sos->meta_sz);
+			obj = ods_obj_ref_to_ptr(attr->sos->ods, objref);
+			blob = ods_alloc(ods, alloc_len);
+			if (!blob)
 				goto err1;
 		}
-		blob->len = ods_get_alloc_size(bods, arg->len);
-		blob->ref = ods_obj_ptr_to_ref(bods, ptr);
+		bref = ods_obj_ptr_to_ref(ods, blob);
 	}
 
-	memcpy(ptr, arg->data, arg->len);
+	memcpy(blob, arg, alloc_len);
+	*(obj_ref_t *)&obj->data[attr->data] = bref;
 
 	return;
 err1:
@@ -918,14 +920,14 @@ void *SOS_TYPE_DOUBLE__get_fn(sos_attr_t attr, sos_obj_t obj)
 
 void *SOS_TYPE_STRING__get_fn(sos_attr_t attr, sos_obj_t obj)
 {
-	obj_ref_t ref = (obj_ref_t)&obj->data[attr->data];
+	obj_ref_t ref = *(obj_ref_t*)&obj->data[attr->data];
 	return ods_obj_ref_to_ptr(attr->sos->ods, ref);
 }
 
 void *SOS_TYPE_BLOB__get_fn(sos_attr_t attr, sos_obj_t obj)
 {
-	sos_blob_obj_t blob = (typeof(blob)) &obj->data[attr->data];
-	return ods_obj_ref_to_ptr(attr->blob_ods, blob->ref);
+	obj_ref_t ref = *(obj_ref_t*)&obj->data[attr->data];
+	return ods_obj_ref_to_ptr(attr->sos->ods, ref);
 }
 
 void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, obj_key_t key)
@@ -1113,13 +1115,6 @@ sos_t sos_destroy(sos_t sos)
 			sprintf(str, "%s_%s.PG", sos->path, attr->name);
 			__str_lst_add(&head, str);
 		}
-		if (attr->type == SOS_TYPE_BLOB) {
-			/* It is a blob, remove the blob file. */
-			sprintf(str, "%s_%s_blob.OBJ", sos->path, attr->name);
-			__str_lst_add(&head, str);
-			sprintf(str, "%s_%s_blob.PG", sos->path, attr->name);
-			__str_lst_add(&head, str);
-		}
 	}
 	free(str);
 	sos_close(sos, ODS_COMMIT_ASYNC);
@@ -1145,6 +1140,8 @@ void print_obj(sos_t sos, sos_obj_t obj, int attr_id)
 	obj_key_t key = obj_key_new(1024);
 	char tbuf[32];
 	char kbuf[32];
+	sos_blob_obj_t blob;
+	const char *str;
 
 	sos_obj_attr_key(sos, attr_id, obj, key);
 
@@ -1158,8 +1155,10 @@ void print_obj(sos_t sos, sos_obj_t obj, int attr_id)
 		key->value[3]);
 	comp_id = *(uint32_t *)sos_obj_attr_get(sos, 2, obj);
 	value = *(uint64_t *)sos_obj_attr_get(sos, 3, obj);
-	printf("%11s %16s %8d %12lu\n",
-	       kbuf, tbuf, comp_id, value);
+	str = sos_obj_attr_get(sos, 4, obj);
+	blob = sos_obj_attr_get(sos, 5, obj);
+	printf("%11s %16s %8d %12lu %12s %*s\n",
+	       kbuf, tbuf, comp_id, value, str, (int)blob->len, blob->data);
 	obj_key_delete(key);
 }
 
@@ -1251,8 +1250,10 @@ SOS_OBJ_BEGIN(ovis_metric_class, "OvisMetric")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR_WITH_KEY("comp_id", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR_WITH_KEY("value", SOS_TYPE_UINT64)
-SOS_OBJ_END(4);
+	SOS_OBJ_ATTR_WITH_KEY("value", SOS_TYPE_UINT64),
+	SOS_OBJ_ATTR_WITH_KEY("string", SOS_TYPE_STRING),
+	SOS_OBJ_ATTR_WITH_KEY("blob", SOS_TYPE_BLOB),
+SOS_OBJ_END(6);
 
 idx_t ct_idx;
 idx_t c_idx;
@@ -1266,8 +1267,8 @@ LIST_HEAD(ms_q, metric_store_s) ms_head;
 void print_header(struct metric_store_s *m, const char *attr_name)
 {
 	printf("\n%s by %s\n", m->key, attr_name);
-	printf("%11s %16s %8s %12s\n", "Key", "Time", "CompID", "Value");
-	printf("----------- ---------------- -------- ------------\n");
+	printf("%11s %16s %8s %12s %12s %12s\n", "Key", "Time", "CompID", "Value", "String", "Blob");
+	printf("----------- ---------------- -------- ------------ ------------ ------------\n");
 }
 
 void dump_metric_store_fwd(struct metric_store_s *m,
@@ -1277,7 +1278,7 @@ void dump_metric_store_fwd(struct metric_store_s *m,
 	sos_obj_t obj;
 	sos_iter_t iter = sos_iter_new(m->sos, attr_id);
 	print_header(m, sos_iter_name(iter));
-	for (rc = sos_iter_next(iter); !rc; rc = sos_iter_next(iter)) {
+	for (rc = sos_iter_begin(iter); !rc; rc = sos_iter_next(iter)) {
 		obj = sos_iter_obj(iter);
 		print_obj(m->sos, obj, attr_id);
 	}
@@ -1304,6 +1305,9 @@ int main(int argc, char *argv[])
 	char *s;
 	static char pfx[32];
 	static char buf[128];
+	static char buf2[128] = {0};
+	sos_blob_obj_t blob = (void*)buf2;
+	char *str;
 	static char c_key[32];
 	static char comp_type[32];
 	static char metric_name[32];
@@ -1322,13 +1326,16 @@ int main(int argc, char *argv[])
 		uint32_t tv_sec;
 		uint32_t tv_usec;
 		uint64_t value;
+		int n;
 
-		sscanf(buf, "%[^,],%[^,],%d,%ld,%d,%d",
+		sscanf(buf, "%[^,],%[^,],%d,%ld,%d,%d,%s",
 		       comp_type, metric_name,
 		       &comp_id,
 		       &value,
 		       &tv_usec,
-		       &tv_sec);
+		       &tv_sec,
+		       blob->data);
+		blob->len = strlen(blob->data) + 1;
 
 		/*
 		 * Add a component type directory if one does not
@@ -1366,10 +1373,18 @@ int main(int argc, char *argv[])
 		if (!obj)
 			goto err;
 
+		obj_ref_t objref = ods_obj_ptr_to_ref(m->sos->ods, obj);
+
 		sos_obj_attr_set(m->sos, 0, obj, &tv_sec);
 		sos_obj_attr_set(m->sos, 1, obj, &tv_usec);
 		sos_obj_attr_set(m->sos, 2, obj, &comp_id);
 		sos_obj_attr_set(m->sos, 3, obj, &value);
+		sos_obj_attr_set(m->sos, 4, obj, blob->data); /* string */
+		/* obj may stale due to possible ods_extend */
+		obj = ods_obj_ref_to_ptr(m->sos->ods, objref);
+		sos_obj_attr_set(m->sos, 5, obj, blob); /* blob */
+		/* obj may stale due to possible ods_extend */
+		obj = ods_obj_ref_to_ptr(m->sos->ods, objref);
 
 		/* Add it to the indexes */
 		if (sos_obj_add(m->sos, obj))
@@ -1388,6 +1403,12 @@ int main(int argc, char *argv[])
 	LIST_FOREACH(m, &ms_head, entry) {
 		dump_metric_store_fwd(m, 2);
 	}
+	LIST_FOREACH(m, &ms_head, entry) {
+		dump_metric_store_fwd(m, 4);
+	}
+	LIST_FOREACH(m, &ms_head, entry) {
+		dump_metric_store_fwd(m, 5);
+	}
 	/*
 	 * Iterate backwards through all the objects we've added and
 	 * print them out
@@ -1400,6 +1421,16 @@ int main(int argc, char *argv[])
 	}
 	LIST_FOREACH(m, &ms_head, entry) {
 		dump_metric_store_bkwd(m, 2);
+	}
+	LIST_FOREACH(m, &ms_head, entry) {
+		dump_metric_store_bkwd(m, 4);
+	}
+	LIST_FOREACH(m, &ms_head, entry) {
+		dump_metric_store_bkwd(m, 5);
+	}
+
+	LIST_FOREACH(m, &ms_head, entry) {
+		sos_close(m->sos, ODS_COMMIT_SYNC);
 	}
 	return 0;
  err:

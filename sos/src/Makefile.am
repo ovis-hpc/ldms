@@ -15,6 +15,7 @@ sbin_PROGRAMS = \
 
 lib_LTLIBRARIES = \
 	libkey_STRING.la \
+	libkey_BLOB.la \
 	libkey_UINT64.la \
 	libkey_UINT32.la \
 	libods.la \
@@ -60,6 +61,9 @@ libidx_BPTREE_la_LIBADD = \
 #
 libkey_STRING_la_SOURCES = \
 	key_str.c
+
+libkey_BLOB_la_SOURCES = \
+	key_blob.c
 
 #
 # libkey_UINT64

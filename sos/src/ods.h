@@ -118,14 +118,6 @@ extern void *ods_alloc(ods_t ods, size_t sz);
 extern void ods_free(ods_t ods, void *ptr);
 
 /**
- * \brief Release the resources associated with an object
- *
- * \param ods	The ODS handle
- * \param ref	A reference to the object
- */
-extern void ods_free_ref(ods_t ods, obj_ref_t ref);
-
-/**
  * \brief Extend the object store by the specified amount
  *
  * This function increases the size of the object store by the

@@ -16,6 +16,7 @@ libbout_sos_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
 libbout_sos_la_LIBADD = ../baler/libbutils.la -lsos ../baler/libbaler.la \
 			-lpthread \
 			-lobjidx \
+			-lods \
 			@SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos.la
 
@@ -25,6 +26,7 @@ libbout_sos_img_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
 			    libbout_sos.la \
 			    -lpthread \
 			    -lobjidx \
+			    -lods \
 			    -lsos @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos_img.la
 
@@ -34,6 +36,7 @@ libbout_sos_msg_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
 			    libbout_sos.la \
 			    -lpthread \
 			    -lobjidx \
+			    -lods \
 			    -lsos @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos_msg.la
 

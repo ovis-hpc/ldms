@@ -90,6 +90,8 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int col_count, int *width)
 	double vd;
 	char *s;
 	int col;
+	int n;
+	sos_blob_obj_t blob;
 
 	for (col = 0; col < col_count; col++) {
 		enum sos_type_e vtype = sos_get_attr_type(sos, col);
@@ -111,8 +113,13 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int col_count, int *width)
 			fprintf(fp, "%*" PRIu64 "", width[col], vu64);
 			break;
 		case SOS_TYPE_STRING:
-			SOS_OBJ_ATTR_GET(s, sos, col, obj);
+			s = sos_obj_attr_get(sos, col, obj);
 			fprintf(fp, "%*s", width[col], s);
+			break;
+		case SOS_TYPE_BLOB:
+			blob = sos_obj_attr_get(sos, col, obj);
+			n = fprintf(fp, " %d:", blob->len);
+			fprintf(fp, "%*s", width[col] - n, blob->data);
 			break;
 		case SOS_TYPE_DOUBLE:
 			SOS_OBJ_ATTR_GET(vd, sos, col, obj);
@@ -267,7 +274,7 @@ int main(int argc, char *argv[])
 			min = 16;
 			break;
 		default:
-			min = 0;
+			min = 12;
 			break;
 		}
 		if (col_width[col] < min)

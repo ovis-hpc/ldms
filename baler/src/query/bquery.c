@@ -511,10 +511,13 @@ int bq_query_r(struct bquery *q, char *buff, size_t bufsz)
 				sos_iter_begin(q->itr);
 			}
 			obj_key_delete(key);
+		} else {
+			rc = sos_iter_begin(q->itr);
 		}
+	} else {
+		rc = sos_iter_next(q->itr);
 	}
 
-	rc = sos_iter_next(q->itr);
 	if (rc)
 		goto out;
 
@@ -540,7 +543,8 @@ loop:
 	SOS_OBJ_ATTR_GET(comp_id, msg_sos, SOS_MSG_COMP_ID, obj);
 	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
 		goto next;
-	msg = sos_obj_attr_get(msg_sos, SOS_MSG_MSG, obj);
+	sos_blob_obj_t blob = sos_obj_attr_get(msg_sos, SOS_MSG_MSG, obj);
+	msg = blob->data;
 	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, msg->ptn_id))
 		goto next;
 	if (q->text_flag) {
