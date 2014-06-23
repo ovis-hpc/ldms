@@ -160,8 +160,6 @@ char *sos_type_to_str(enum sos_type_e type)
 		return "uint64";
 	case SOS_TYPE_DOUBLE:
 		return "double";
-	case SOS_TYPE_REF:
-		return "ref";
 	case SOS_TYPE_STRING:
 		return "string";
 	case SOS_TYPE_BLOB:
@@ -175,9 +173,10 @@ char *sos_type_to_str(enum sos_type_e type)
 	}
 }
 
-size_t sos_attr_size(sos_t sos, sos_attr_t attr)
+size_t sos_obj_attr_size(sos_t sos, int attr_id, sos_obj_t obj)
 {
-	return attr->size_fn(attr);
+	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
+	return attr->attr_size_fn(attr, obj);
 }
 
 const char *sos_attr_name(sos_t sos, sos_attr_t attr)
@@ -315,6 +314,7 @@ static const char *sos_type_to_key_str(enum sos_type_e t)
 		"UINT64",
 		"DOUBLE",
 		"STRING",
+		"BLOB",
 	};
 	return key_map[t];
 }
@@ -431,14 +431,14 @@ static sos_meta_t make_meta(sos_t sos, sos_meta_t meta, sos_class_t classp)
 	return NULL;
 }
 
-static sos_size_fn_t size_fns[] = {
-	[SOS_TYPE_INT32] = SOS_TYPE_INT32__size_fn,
-	[SOS_TYPE_INT64] = SOS_TYPE_INT64__size_fn,
-	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__size_fn,
-	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__size_fn,
-	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__size_fn,
-	[SOS_TYPE_STRING] = SOS_TYPE_STRING__size_fn,
-	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__size_fn
+static sos_attr_size_fn_t attr_size_fns[] = {
+	[SOS_TYPE_INT32] = SOS_TYPE_INT32__attr_size_fn,
+	[SOS_TYPE_INT64] = SOS_TYPE_INT64__attr_size_fn,
+	[SOS_TYPE_UINT32] = SOS_TYPE_UINT32__attr_size_fn,
+	[SOS_TYPE_UINT64] = SOS_TYPE_UINT64__attr_size_fn,
+	[SOS_TYPE_DOUBLE] = SOS_TYPE_DOUBLE__attr_size_fn,
+	[SOS_TYPE_STRING] = SOS_TYPE_STRING__attr_size_fn,
+	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__attr_size_fn
 };
 
 static sos_get_key_fn_t get_key_fns[] = {
@@ -497,7 +497,7 @@ static sos_class_t init_classp(sos_t sos, sos_meta_t meta)
 		classp->attrs[attr_id].has_idx = meta->attrs[attr_id].has_idx;
 		at = classp->attrs[attr_id].type;
 		if (type_is_builtin(at)) {
-			classp->attrs[attr_id].size_fn = size_fns[at];
+			classp->attrs[attr_id].attr_size_fn = attr_size_fns[at];
 			classp->attrs[attr_id].get_key_fn = get_key_fns[at];
 			classp->attrs[attr_id].set_key_fn = set_key_fns[at];
 			classp->attrs[attr_id].set_fn = set_fns[at];
@@ -701,39 +701,40 @@ sos_obj_t sos_obj_new(sos_t sos)
 	return NULL;
 }
 
-size_t SOS_TYPE_INT32__size_fn(sos_attr_t attr)
+size_t SOS_TYPE_INT32__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	return sizeof(int32_t);
 }
 
-size_t SOS_TYPE_UINT32__size_fn(sos_attr_t attr)
+size_t SOS_TYPE_UINT32__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	return sizeof(uint32_t);
 }
 
-size_t SOS_TYPE_INT64__size_fn(sos_attr_t attr)
+size_t SOS_TYPE_INT64__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	return sizeof(int64_t);
 }
 
-size_t SOS_TYPE_UINT64__size_fn(sos_attr_t attr)
+size_t SOS_TYPE_UINT64__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	return sizeof(uint64_t);
 }
 
-size_t SOS_TYPE_DOUBLE__size_fn(sos_attr_t attr)
+size_t SOS_TYPE_DOUBLE__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	return sizeof(double);
 }
 
-size_t SOS_TYPE_STRING__size_fn(sos_attr_t attr)
+size_t SOS_TYPE_STRING__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	return sizeof(obj_ref_t);
 }
 
-size_t SOS_TYPE_BLOB__size_fn(sos_attr_t attr)
+size_t SOS_TYPE_BLOB__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
-	return sizeof(struct sos_blob_obj_s);
+	/* TODO Implement me!!! */
+	return 0;
 }
 
 void SOS_TYPE_INT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
@@ -965,7 +966,7 @@ static int __remove_key(sos_t sos, sos_obj_t obj, sos_iter_t iter)
 		if (!sos_attr_has_index(attr))
 			continue;
 
-		attr_sz = sos_attr_size(sos, attr);
+		attr_sz = sos_obj_attr_size(sos, attr_id, obj);
 		if (attr_sz > key_sz) {
 			obj_key_delete(key);
 			key_sz = attr_sz;
@@ -1012,7 +1013,7 @@ int sos_obj_add(sos_t sos, sos_obj_t obj)
 		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
 		if (!sos_attr_has_index(attr))
 			continue;
-		attr_sz = sos_attr_size(sos, attr);
+		attr_sz = sos_obj_attr_size(sos, attr_id, obj);
 		if (attr_sz > key_sz) {
 			obj_key_delete(key);
 			key_sz = attr_sz;

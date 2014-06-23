@@ -138,7 +138,7 @@ struct sos_blob_arg_s {
 	void *data; /**< Pointer to the data. */
 };
 
-typedef size_t (*sos_size_fn_t)(sos_attr_t);
+typedef size_t (*sos_attr_size_fn_t)(sos_attr_t, sos_obj_t);
 typedef void (*sos_get_key_fn_t)(sos_attr_t, sos_obj_t, obj_key_t);
 typedef void (*sos_set_key_fn_t)(sos_attr_t, void *, obj_key_t);
 typedef void (*sos_set_fn_t)(sos_attr_t, sos_obj_t, void *);
@@ -158,7 +158,6 @@ enum sos_type_e {
 	SOS_TYPE_UINT64,
 	SOS_TYPE_DOUBLE,
 	SOS_TYPE_STRING,
-	SOS_TYPE_REF,
 	SOS_TYPE_BLOB,
 	SOS_TYPE_USER,
 	SOS_TYPE_UNKNOWN
@@ -174,7 +173,7 @@ struct sos_attr_s {
 	sos_set_fn_t set_fn;
 	sos_get_key_fn_t get_key_fn;
 	sos_set_key_fn_t set_key_fn;
-	sos_size_fn_t size_fn;
+	sos_attr_size_fn_t attr_size_fn;
 	obj_idx_t oidx;
 	uint32_t data;
 	sos_t sos;
@@ -200,7 +199,7 @@ struct sos_class_s _nm = {		\
 	_type ## __set_fn, \
 	_type ## __get_key_fn, \
 	_type ## __set_key_fn, \
-	_type ## __size_fn \
+	_type ## __attr_size_fn \
 }
 
 #define SOS_OBJ_ATTR_WITH_KEY(_nm, _type) \
@@ -210,17 +209,17 @@ struct sos_class_s _nm = {		\
 	_type ## __set_fn, \
 	_type ## __get_key_fn, \
 	_type ## __set_key_fn, \
-	_type ## __size_fn \
+	_type ## __attr_size_fn \
 }
 
-#define SOS_OBJ_ATTR_WITH_UKEY(_nm, _type, _get_key_fn, _set_key_fn) \
+#define SOS_OBJ_ATTR_WITH_UKEY(_nm, _type, _get_key_fn, _set_key_fn, _attr_size_fn) \
 { \
 	_nm, _type, 1, \
 	_type ## __get_fn, \
 	_type ## __set_fn, \
 	_get_key_fn, \
 	_set_key_fn, \
-	_type ## __size_fn \
+	_attr_size_fn \
 }
 
 #define SOS_OBJ_END(_cnt)	\
@@ -228,13 +227,13 @@ struct sos_class_s _nm = {		\
 	.count = _cnt		\
 }
 
-size_t SOS_TYPE_INT32__size_fn(sos_attr_t attr);
-size_t SOS_TYPE_UINT32__size_fn(sos_attr_t attr);
-size_t SOS_TYPE_INT64__size_fn(sos_attr_t attr);
-size_t SOS_TYPE_UINT64__size_fn(sos_attr_t attr);
-size_t SOS_TYPE_DOUBLE__size_fn(sos_attr_t attr);
-size_t SOS_TYPE_STRING__size_fn(sos_attr_t attr);
-size_t SOS_TYPE_BLOB__size_fn(sos_attr_t attr);
+size_t SOS_TYPE_INT32__attr_size_fn(sos_attr_t attr, sos_obj_t obj);
+size_t SOS_TYPE_UINT32__attr_size_fn(sos_attr_t attr, sos_obj_t obj);
+size_t SOS_TYPE_INT64__attr_size_fn(sos_attr_t attr, sos_obj_t obj);
+size_t SOS_TYPE_UINT64__attr_size_fn(sos_attr_t attr, sos_obj_t obj);
+size_t SOS_TYPE_DOUBLE__attr_size_fn(sos_attr_t attr, sos_obj_t obj);
+size_t SOS_TYPE_STRING__attr_size_fn(sos_attr_t attr, sos_obj_t obj);
+size_t SOS_TYPE_BLOB__attr_size_fn(sos_attr_t attr, sos_obj_t obj);
 
 void SOS_TYPE_INT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
 void SOS_TYPE_UINT32__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
@@ -477,6 +476,17 @@ int sos_attr_has_index(sos_attr_t attr);
  * \param obj		The object
  */
 void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, obj_key_t key);
+
+/**
+ * \brief Get the size of the attribut of an object.
+ *
+ * \param sos		SOS handle
+ * \param attr_id	The attribute ID
+ * \param obj		The object
+ *
+ * \returns The size of the key of the attribute of the object.
+ */
+size_t sos_obj_attr_size(sos_t sos, int attr_id, sos_obj_t obj);
 
 /**
  * \brief Get the key for the specified attribute.
