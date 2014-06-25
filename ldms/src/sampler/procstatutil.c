@@ -64,14 +64,13 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-static uint64_t counter;
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 
 int numcpu_plusone;
-uint64_t comp_id;
+uint64_t comp_id = UINT64_MAX;
 
 #undef CHECK_PROCSTATUTIL_TIMING
 #ifdef CHECK_PROCSTATUTIL_TIMING
@@ -80,7 +79,18 @@ ldms_metric_t tv_sec_metric_handle2;
 ldms_metric_t tv_nsec_metric_handle2;
 ldms_metric_t tv_dnsec_metric_handle;
 #endif
+#define PROCSTATUTIL_LINE_MAX 256
+#define PROCSTATUTIL_NAME_MAX 256
 
+typedef enum {
+        PROCSTATUTIL_METRICS_CPU,
+        PROCSTATUTIL_METRICS_BOTH
+} procstatutil_metrics_type_t;
+
+/**
+ * Which metrics - cpu or both. default cpu.
+ */
+procstatutil_metrics_type_t procstatutil_metrics_type;
 
 static ldms_set_t get_set()
 {
@@ -92,6 +102,7 @@ static ldms_set_t get_set()
  * necessarily be used. Since new columns are added at the end of the
  * line, this should work across all kernels up to 3.5.
  */
+static int ncoresuffix = 3; //used for getting sum names from per core names (below)
 static char *metric_name_fmt[] = {
 	"user#%d",
 	"nice#%d",
@@ -113,8 +124,8 @@ static int create_metric_set(const char *path)
 	int column_count = 0;
 	int cpu_count;
 	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	char lbuf[PROCSTATUTIL_LINE_MAX];
+	char metric_name[PROCSTATUTIL_NAME_MAX];
 
 	mf = fopen("/proc/stat", "r");
 	if (!mf) {
@@ -127,11 +138,8 @@ static int create_metric_set(const char *path)
 
 	fseek(mf, 0, SEEK_SET);
 
-	/* Skip first line that is sum of remaining CPUs numbers */
-	s = fgets(lbuf, sizeof(lbuf), mf);
-
 	metric_count = 0;
-	cpu_count = 0;
+	cpu_count = -1;
 	do {
 		int column;
 		char *token;
@@ -145,11 +153,25 @@ static int create_metric_set(const char *path)
 		if (0 != strncmp(token, "cpu", 3))
 			break;
 
+		if ((cpu_count == -1) && 
+		    (procstatutil_metrics_type != PROCSTATUTIL_METRICS_BOTH)){
+			cpu_count++;
+			continue;
+		}
+
 		column = 0;
 		for (token = strtok(NULL, " \t\n"); token;
 		     token = strtok(NULL, " \t\n")) {
 
-			sprintf(metric_name, metric_name_fmt[column++], cpu_count);
+			if ((cpu_count == -1) && 
+			    (procstatutil_metrics_type == PROCSTATUTIL_METRICS_BOTH)){
+				int len = (strlen(metric_name_fmt[column]) - ncoresuffix + 1) < PROCSTATUTIL_NAME_MAX ?
+					(strlen(metric_name_fmt[column]) - ncoresuffix + 1) : PROCSTATUTIL_NAME_MAX;
+				snprintf(metric_name, len, metric_name_fmt[column++]);
+			} else {
+				snprintf(metric_name, PROCSTATUTIL_NAME_MAX,
+					 metric_name_fmt[column++], cpu_count);
+			}
 			rc = ldms_get_metric_size(metric_name,
 						  LDMS_V_U64, &meta_sz,
 						  &data_sz);
@@ -193,10 +215,26 @@ static int create_metric_set(const char *path)
 	ldms_metric_t m;
 	int metric_no = 0;
 	uint64_t cpu_comp_id = comp_id;
+	
+	if (procstatutil_metrics_type == PROCSTATUTIL_METRICS_BOTH){
+		int column;
+		for (column = 0; column < column_count; column++) {
+			int len = (strlen(metric_name_fmt[column]) - ncoresuffix + 1) < PROCSTATUTIL_NAME_MAX ?
+				(strlen(metric_name_fmt[column]) - ncoresuffix + 1) : PROCSTATUTIL_NAME_MAX;
+			snprintf(metric_name, len, metric_name_fmt[column]);
+			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
+			if (!m)
+				goto err;
+			ldms_set_user_data(m, cpu_comp_id);
+			metric_table[metric_no++] = m;
+		}
+	}
+
 	for (cpu_no = 0; cpu_no < cpu_count; cpu_no++) {
 		int column;
 		for (column = 0; column < column_count; column++) {
-			sprintf(metric_name, metric_name_fmt[column], cpu_no);
+			snprintf(metric_name, PROCSTATUTIL_NAME_MAX,
+				 metric_name_fmt[column], cpu_no);
 			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!m)
 				goto err;
@@ -222,7 +260,7 @@ static int create_metric_set(const char *path)
 
 	return 0;
  err:
-	ldms_destroy_set(set);
+	ldms_set_release(set);
 	return rc ;
 }
 
@@ -242,6 +280,18 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto out;
 	comp_id = strtol(value, NULL, 0);
 
+	value = av_value(avl,"metrics_type");
+        if (value) {
+                procstatutil_metrics_type = atoi(value);
+                if ((procstatutil_metrics_type < PROCSTATUTIL_METRICS_CPU) ||
+                    (procstatutil_metrics_type > PROCSTATUTIL_METRICS_BOTH)){
+                        return EINVAL;
+                }
+        } else {
+                procstatutil_metrics_type = PROCSTATUTIL_METRICS_CPU;
+        }
+
+
 	value = av_value(avl, "set");
 	if (!value)
 		goto out;
@@ -254,12 +304,12 @@ static int sample(void)
 {
 	int metric_no;
 	char *s;
-	char lbuf[256];
-	union ldms_value vv;
+	char lbuf[PROCSTATUTIL_LINE_MAX];
 	struct timespec time1;
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
 	uint64_t beg_nsec; //testing
+	union ldms_value vv;
 #endif
 
 	//	if (!set || !compid_metric_handle ){
@@ -277,10 +327,13 @@ static int sample(void)
 
 	fseek(mf, 0, SEEK_SET);
 
+
 	/* Discard the first line that is a sum of the other cpu's values */
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	if (!s)
-		return 0;
+	if (procstatutil_metrics_type != PROCSTATUTIL_METRICS_BOTH){
+		s = fgets(lbuf, sizeof(lbuf), mf);
+		if (!s)
+			return 0;
+	}
 
 	metric_no = 0;
 	do {
@@ -301,7 +354,8 @@ static int sample(void)
 		for (token = strtok(NULL, " \t\n"); token;
 				token = strtok(NULL, " \t\n")) {
 			uint64_t v = strtoul(token, NULL, 0);
-			ldms_set_u64(metric_table[metric_no++], v);
+			ldms_set_u64(metric_table[metric_no], v);
+			metric_no++;
 		}
 	} while (1);
 
