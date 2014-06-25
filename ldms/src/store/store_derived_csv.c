@@ -450,8 +450,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		rc = mkdir(tmp_path, 0777);
 		if ((rc != 0) && (errno != EEXIST)){
 			msglog("Error: cannot create dir '%s'\n", tmp_path);
-			pthread_mutex_unlock(&cfg_lock);
-			return errno;
+			goto out;
 		}
 		snprintf(tmp_path, PATH_MAX, "%s/%s/%s", root_path, comp_type,
 				container);
