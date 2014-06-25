@@ -124,7 +124,6 @@ static struct ldms_ugni_xprt * setup_connection(struct ldms_ugni_xprt *x,
 static int _setup_connection(struct ldms_ugni_xprt *r,
 			      struct sockaddr *remote_addr, socklen_t sa_len);
 
-static void release_buf_event(struct ldms_ugni_xprt *r);
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r);
 
 #define UGNI_MAX_OUTSTANDING_BTE 8192
@@ -299,10 +298,16 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	gni_return_t grc;
+	struct bufferevent *buf_event, *listenv_event;
+
 	pthread_mutex_lock(&ugni_lock);
+	buf_event = gxp->buf_event;
+	gxp->buf_event = NULL;
+	listen_ev = gxp->listen_ev;
+	gxp->listen_ev = NULL;
 	if (gxp->xprt) {
-		release_buf_event(gxp);
-		close(gxp->sock);
+		if (gxp->sock >= 0)
+			close(gxp->sock);
 		gxp->sock = -1;
 		if (gxp->ugni_ep) {
 			grc = GNI_EpDestroy(gxp->ugni_ep);
@@ -314,6 +319,10 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 		gxp->xprt = NULL;
 	}
 	pthread_mutex_unlock(&ugni_lock);
+	if (buf_event)
+		bufferevent_free(buf_event);
+	if (listen_ev)
+		bufferevent_free(listen_ev);
 }
 
 static void ugni_xprt_term(struct ldms_ugni_xprt *r)
@@ -546,7 +555,6 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 				 GNI_CQ_GET_TYPE(cqe), cqe, cq);
 			continue;
 		}
-		post = NULL;
 		pthread_mutex_lock(&ugni_lock);
 		post = NULL;
 		grc = GNI_GetCompleted(cq, cqe, &post);
@@ -644,7 +652,7 @@ static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 			LOG_(r, "Socket errors %x\n", events);
 		r->xprt->connected = 0;
 		r->conn_status = CONN_IDLE;
-		ugni_xprt_error_handling(r);
+		// ugni_xprt_error_handling(r);
 	} else
 		LOG_(r, "Peer connect complete %x\n", events);
 }
