@@ -288,6 +288,7 @@ static void handle_action_name(char *value)
 			sprintf(sevl->action_name, "%s,%s",
 				sevl->action_name, name->name);
 		}
+		i++;
 	}
 	empty_name_list(&mnqueue);
 }
