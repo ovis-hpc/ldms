@@ -2195,6 +2195,7 @@ void update_data(struct hostspec *hs)
 {
 	int ret;
 	struct hostset *hset;
+	int host_error = 0;
 
 	if (!hs->x)
 		return;
@@ -2211,11 +2212,13 @@ void update_data(struct hostspec *hs)
 			ret = ldms_lookup(hs->x, hset->name, lookup_cb, hset);
 			if (ret) {
 				hset->state = LDMSD_SET_CONFIGURED;
+				ldms_xprt_close(hs->x);
+				hs->x = NULL;
+				host_error = 1;
 				ldms_log("Synchronous error %d "
 					"from ldms_lookup\n", ret);
 				hset_ref_put(hset);
 			}
-
 			break;
 		case LDMSD_SET_READY:
 			hset->state = LDMSD_SET_BUSY;
@@ -2227,14 +2230,16 @@ void update_data(struct hostspec *hs)
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
-				hset->state = LDMSD_SET_READY;
+				hset->state = LDMSD_SET_CONFIGURED;
+				ldms_xprt_close(hs->x);
+				hs->x = NULL;
+				host_error = 1;
 				ldms_log("Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
 					hs->hostname, ntohs(hs->sin.sin_port),
 					hs->xprt_name);
 				hset_ref_put(hset);
 			}
-
 			break;
 		case LDMSD_SET_LOOKUP:
 			/* do nothing */
@@ -2248,6 +2253,8 @@ void update_data(struct hostspec *hs)
 			break;
 		}
 		pthread_mutex_unlock(&hset->state_lock);
+		if (host_error)
+			break;
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
 }
@@ -2290,17 +2297,15 @@ void do_host(struct hostspec *hs)
 	case HOST_CONNECTED:
 		if (!hs->x || !ldms_xprt_connected(hs->x)) {
 			if (hs->x) {
+				ldms_t x = hs->x;
 				/* pair with get in do_connect */
-				ldms_release_xprt(hs->x);
 				if (hs->type != PASSIVE) {
 					ldms_xprt_close(hs->x);
 					hs->x = NULL;
 				}
+				ldms_release_xprt(x);
 			}
 			hs->conn_state = HOST_DISCONNECTED;
-			/* ldms_log("Host Disconnect: Host connection state "
-				"for host %s changed from HOST_CONNECTED to "
-				"HOST_DISCONNECTED.\n", hs->hostname); Removed by Brandt 6-14-2014 */
 			add_connect_candidate(hs);
 		} else if ((hs->type != BRIDGING) &&
 			   ((hs->standby == 0) || (hs->standby & saggs_mask))) {
