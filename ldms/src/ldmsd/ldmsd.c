@@ -638,7 +638,8 @@ int process_info(int fd,
 	uint64_t grand_total_busy = 0;
 	LIST_FOREACH(hs, &host_list, link) {
 		struct hostset *hset;
-		ldms_log("%-12s %-12s", hs->hostname, hs->xprt_name);
+		ldms_log("%p %2d %-12s %-12s", hs, ldms_xprt_connected(hs->x),
+			hs->hostname, hs->xprt_name);
 		if (verbose)
 			ldms_log("%-12s\n", (hs->conn_state?"CONNECTED":"NOT CONNECTED"));
 		else
@@ -667,7 +668,7 @@ int process_info(int fd,
 			grand_total_busy += hset->total_busy_count;
 		}
 	}
-	ldms_log("%-12s %-12s %-12s %-12s\n", 
+	ldms_log("%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
 	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
@@ -2263,6 +2264,7 @@ void add_connect_candidate(struct hostspec *hs)
 {
 	/* Make certain we're not scheduled for an update */
 	evtimer_del(hs->event);
+	hs->conn_state = HOST_DISCONNECTED;
 	pthread_mutex_lock(&conn_list_lock);
 	TAILQ_INSERT_TAIL(&conn_list, hs, conn_link);
 	pthread_cond_signal(&conn_list_cv);
@@ -2271,8 +2273,10 @@ void add_connect_candidate(struct hostspec *hs)
 
 void schedule_update(struct hostspec *hs)
 {
-	if (!hs->x || !ldms_xprt_connected(hs->x))
+	if (!hs->x || !ldms_xprt_connected(hs->x)) {
+		add_connect_candidate(hs);
 		return;
+	}
 
 	if (hs->synchronous){
 		calculate_timeout(hs->thread_id, hs->sample_interval,

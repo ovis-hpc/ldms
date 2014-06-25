@@ -95,8 +95,8 @@ static pthread_t io_thread;
 static pthread_t cq_thread;
 
 pthread_mutex_t ugni_lock;
-pthread_mutex_t ugni_list_lock;
-LIST_HEAD(ugni_list, ldms_ugni_xprt) ugni_list;
+// pthread_mutex_t ugni_list_lock;
+// LIST_HEAD(ugni_list, ldms_ugni_xprt) ugni_list;
 pthread_mutex_t desc_list_lock;
 LIST_HEAD(desc_list, ugni_desc) desc_list;
 
@@ -299,23 +299,26 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	gni_return_t grc;
-	release_buf_event(gxp);
-	close(gxp->sock);
-	gxp->sock = -1;
-	if (gxp->ugni_ep) {
-		pthread_mutex_lock(&ugni_lock);
-		grc = GNI_EpDestroy(gxp->ugni_ep);
-		pthread_mutex_unlock(&ugni_lock);
-		if (grc != GNI_RC_SUCCESS)
-			gxp->xprt->log("Error %d destroying Ep %p.\n",
-				       grc, gxp->ugni_ep);
-		gxp->ugni_ep = NULL;
+	pthread_mutex_lock(&ugni_lock);
+	if (gxp->xprt) {
+		release_buf_event(gxp);
+		close(gxp->sock);
+		gxp->sock = -1;
+		if (gxp->ugni_ep) {
+			grc = GNI_EpDestroy(gxp->ugni_ep);
+			if (grc != GNI_RC_SUCCESS)
+				gxp->xprt->log("Error %d destroying Ep %p.\n",
+					grc, gxp->ugni_ep);
+			gxp->ugni_ep = NULL;
+		}
+		gxp->xprt = NULL;
 	}
+	pthread_mutex_unlock(&ugni_lock);
 }
 
 static void ugni_xprt_term(struct ldms_ugni_xprt *r)
 {
-	LIST_REMOVE(r, client_link);
+	// LIST_REMOVE(r, client_link);
 	if (r->listen_ev)
 		free(r->listen_ev);
 	free(r);
@@ -621,7 +624,6 @@ static void *cq_thread_proc(void *arg)
 
 static void release_buf_event(struct ldms_ugni_xprt *r)
 {
-	pthread_mutex_lock(&ugni_list_lock);
 	if (r->listen_ev) {
 		evconnlistener_free(r->listen_ev);
 		r->listen_ev = NULL;
@@ -630,7 +632,6 @@ static void release_buf_event(struct ldms_ugni_xprt *r)
 		bufferevent_free(r->buf_event);
 		r->buf_event = NULL;
 	}
-	pthread_mutex_unlock(&ugni_list_lock);
 }
 
 static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
@@ -991,10 +992,12 @@ static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r)
 {
 	/* r->xprt->log("%s error on transport %p.\n", __func__, r); removed by Brandt 6-14-2014 */
-	if (r->type == LDMS_UGNI_PASSIVE)
-		ldms_xprt_close(r->xprt);
-	else
-		r->xprt->connected = 0;
+	ldms_t x = r->xprt;
+	if (x) {
+		ldms_xprt_get(x);
+		ldms_xprt_close(x);
+		ldms_xprt_release(x);
+	}
 }
 
 static struct timeval to;
@@ -1033,7 +1036,7 @@ static int init_once(ldms_log_fn_t log_fn)
 		IS_ARIES = 1;
 	vfp = NULL;
 	evthread_use_pthreads();
-	pthread_mutex_init(&ugni_list_lock, 0);
+	// pthread_mutex_init(&ugni_list_lock, 0);
 	pthread_mutex_init(&desc_list_lock, 0);
 	pthread_mutex_init(&ugni_mh_lock, 0);
 	io_event_loop = event_base_new();
@@ -1187,7 +1190,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 
 	gxp = calloc(1, sizeof(struct ldms_ugni_xprt));
 	*gxp = ugni_gxp;
-	LIST_INSERT_HEAD(&ugni_list, gxp, client_link);
+	// LIST_INSERT_HEAD(&ugni_list, gxp, client_link);
 
 	gxp->conn_status = CONN_IDLE;
 	x->max_msg = (1024*1024);
