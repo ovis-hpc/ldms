@@ -154,6 +154,7 @@ static void delete_key(struct ldms_xprt *x, uint32_t key)
 		goto out;
 	}
 	rbt_del(&key_tree, &k->rb_node);
+	free(k);
  out:
 	pthread_mutex_unlock(&key_tree_lock);
 }
@@ -210,6 +211,7 @@ static void sock_xprt_term(struct ldms_sock_xprt *r)
 	LIST_REMOVE(r, client_link);
 	if (r->listen_ev)
 		free(r->listen_ev);
+	free(r->xprt);
 	free(r);
 }
 

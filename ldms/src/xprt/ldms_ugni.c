@@ -298,7 +298,7 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	gni_return_t grc;
-	struct bufferevent *buf_event, *listenv_event;
+	struct bufferevent *buf_event, *listen_ev;
 
 	pthread_mutex_lock(&ugni_lock);
 	buf_event = gxp->buf_event;
@@ -316,7 +316,9 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 					grc, gxp->ugni_ep);
 			gxp->ugni_ep = NULL;
 		}
+		free(gxp->xprt);
 		gxp->xprt = NULL;
+
 	}
 	pthread_mutex_unlock(&ugni_lock);
 	if (buf_event)
@@ -652,7 +654,8 @@ static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 			LOG_(r, "Socket errors %x\n", events);
 		r->xprt->connected = 0;
 		r->conn_status = CONN_IDLE;
-		// ugni_xprt_error_handling(r);
+		if (r->type == LDMS_UGNI_PASSIVE)
+			ldms_xprt_close(r->xprt);
 	} else
 		LOG_(r, "Peer connect complete %x\n", events);
 }
@@ -1004,7 +1007,7 @@ static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r)
 	if (x) {
 		ldms_xprt_get(x);
 		ldms_xprt_close(x);
-		ldms_xprt_release(x);
+		ldms_release_xprt(x);
 	}
 }
 
