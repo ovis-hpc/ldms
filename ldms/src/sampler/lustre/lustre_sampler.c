@@ -315,12 +315,16 @@ int __lss_sample(struct lustre_svc_stats *lss)
 	lss->tv_cur = lss->tv_prev;
 	lss->tv_prev = tmp;
 out:
+	if (lss->lms.f) {
+		lms_close_file(&lss->lms);
+	}
 	return rc;
 }
 
 int __single_sample(struct lustre_single *ls)
 {
 	int rc = 0;
+	union ldms_value v = {0};
 	if (!ls->lms.f) {
 		rc = lms_open_file(&ls->lms);
 		if (rc)
@@ -333,18 +337,20 @@ int __single_sample(struct lustre_single *ls)
 		rc = ENOENT;
 		goto out;
 	}
-	union ldms_value v;
 	rc = sscanf(s, "%"PRIu64, &v.v_u64);
 	if (rc < 1) {
+		v.v_u64 = 0;
 		rc = errno;
 		goto out;
 	}
-	ldms_set_metric(ls->sctxt.metric, &v);
 	while (fgets(line, 64, ls->lms.f)) {
 		/* read until end of file */
 	}
 	rc = 0;
 out:
+	if (ls->lms.f)
+		lms_close_file(&ls->lms);
+	ldms_set_metric(ls->sctxt.metric, &v);
 	return rc;
 }
 
