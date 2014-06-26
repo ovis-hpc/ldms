@@ -272,9 +272,7 @@ void ocmd_ocm_cb(struct ocm_event *e)
 void process_request(struct req_entry *req, struct ocm_cfg_buff *buff)
 {
 	/* Process request here, but just response error for now */
-#ifdef DEBUG
 	ocmd_log("recv key: %s\n", req->key);
-#endif
 	ocm_cfg_buff_reset(buff, req->key);
 	int rc = plugin->get_config(plugin, req->key, buff);
 	if (rc) {
