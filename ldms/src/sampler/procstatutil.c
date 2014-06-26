@@ -359,7 +359,8 @@ static int sample(void)
 
 	mf = fopen(fname, "r");
 	if (!mf) {
-		msglog("procstatutil: Couldn't open the file %s\n", fname);
+		msglog("procstatutil: Error %d: Couldn't open the file %s\n",
+							errno, fname);
 		goto reset_to_0;
 	}
 
