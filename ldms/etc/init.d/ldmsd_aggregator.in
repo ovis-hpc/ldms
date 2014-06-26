@@ -98,7 +98,7 @@ start() {
 stop() {
 	if [ -f $pidfile ]; then
 		pid=`cat $pidfile`
-	elif [ ! -z `pgrep -f ldmsd_sampler` ]; then
+	else
 		echo "pidfile of $pidfile doesn't exists, using ps"
 		pid=`ps -C ldmsd -opid,cmd | grep ldmsd_aggregator | sed 's/ *\([0-9]\+\) .*/\1/'`
 	fi
