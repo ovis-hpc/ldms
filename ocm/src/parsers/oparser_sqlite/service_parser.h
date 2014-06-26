@@ -108,7 +108,8 @@ struct oparser_host_services {
 	struct oparser_cmd_queue queue[OVIS_NUM_SERVICES];
 };
 
-void oparser_service_conf_init(sqlite3 *_db, char *read_buf, char *value_buf);
+void oparser_service_conf_init(FILE *log_file, sqlite3 *_db, char *read_buf,
+							char *value_buf);
 void oparser_service_conf_parser(FILE *_conf);
 void oparser_services_to_sqlite(sqlite3 *db);
 

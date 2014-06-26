@@ -34,7 +34,8 @@ LIST_HEAD(cable_list, cable);
 /**
  * \brief Initialize the cable parser
  */
-void oparser_cable_parser_init(FILE *log_file, char *read_buf, char *value_buf);
+void oparser_cable_init(FILE *log_file, char *read_buf, char *value_buf,
+							sqlite3 *db);
 
 /**
  * \brief Parse the cable definitions in \c conff

@@ -243,7 +243,7 @@ int main(int argc, char **argv) {
 		oparser_open_file(service_path, &service_conf, "r");
 
 
-		oparser_service_conf_init(ovis_db, read_buf, value_buf);
+		oparser_service_conf_init(stderr, ovis_db, read_buf, value_buf);
 		oparser_service_conf_parser(service_conf);
 		oparser_services_to_sqlite(ovis_db);
 		printf("Complete table 'services'\n");
@@ -258,7 +258,7 @@ int main(int argc, char **argv) {
 	if (mae_path) {
 		oparser_open_file(mae_path, &mae_conf, "r");
 
-		oparser_mae_parser_init(ovis_db, read_buf, value_buf);
+		oparser_mae_parser_init(stderr, ovis_db, read_buf, value_buf);
 		oparser_parse_model_event_conf(mae_conf);
 		oparser_models_to_sqlite();
 		printf("Complete table 'models'\n");
@@ -278,7 +278,7 @@ int main(int argc, char **argv) {
 
 	if (cable_path) {
 		oparser_open_file(cable_path, &cable_conf, "r");
-		oparser_cable_init(read_buf, value_buf, ovis_db);
+		oparser_cable_init(stderr, read_buf, value_buf, ovis_db);
 		oparser_parse_cable_def(cable_conf);
 		printf("Complete table 'cable_types' and 'cables'\n");
 	}

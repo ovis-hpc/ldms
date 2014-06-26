@@ -82,6 +82,7 @@ int curr_nnames;
 
 static char *main_buf;
 static char *main_value;
+static int comp_line_count;
 
 void comp_parser_log(const char *fmt, ...)
 {
@@ -94,6 +95,7 @@ void comp_parser_log(const char *fmt, ...)
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 		fprintf(log_fp, "%s: ", dtsz);
+	fprintf(log_fp, "components: line %d: ", comp_line_count);
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
@@ -109,6 +111,7 @@ void oparser_component_parser_init(FILE *log_file, char *read_buf, char *value_b
 
 	main_buf = read_buf;
 	main_value = value_buf;
+	comp_line_count = 0;
 }
 
 struct oparser_comp *
@@ -199,7 +202,7 @@ static void handle_visible(char *value)
 			(0 == strcmp(value, "FALSE"))) {
 		curr_ctype->visible = FALSE;
 	} else {
-		fprintf(stderr, "comp_type '%s': Invalid visibility "
+		comp_parser_log("comp_type '%s': Invalid visibility "
 				"flag '%s'", curr_ctype->type, value);
 		exit(EINVAL);
 	}
@@ -226,7 +229,7 @@ static void handle_identifiers(char *value)
 	curr_nids = process_string_name(_value, &curr_uids, NULL, NULL);
 	free(_value);
 	if (curr_nids < 1) {
-		fprintf(stderr, "%s: type [%s]: Invalid identifiers. [%s]\n",
+		comp_parser_log("%s: type [%s]: Invalid identifiers. [%s]\n",
 				__FUNCTION__, curr_ctype->type, value);
 		exit(EINVAL);
 	}
@@ -271,7 +274,7 @@ static void handle_names(char *value)
 	curr_nnames = process_string_name(_value, &curr_names, NULL, NULL);
 	free(_value);
 	if (curr_nnames < 1) {
-		fprintf(stderr, "%s: type [%s]: Invalid names. [%s]\n",
+		comp_parser_log("%s: type [%s]: Invalid names. [%s]\n",
 				__FUNCTION__, curr_ctype->type, value);
 		exit(EINVAL);
 	}
@@ -282,7 +285,7 @@ static void handle_names(char *value)
 		} else if (curr_nnames == curr_nids) {
 			handle_many_ids_names();
 		} else {
-			fprintf(stderr, "%s: # of names[%d]: # of ids[%d]: "
+			comp_parser_log("%s: # of names[%d]: # of ids[%d]: "
 					"Require # of names == # of ids. "
 					"(Except # of names = 1).\n",
 					__FUNCTION__, curr_nnames, curr_nids);
@@ -292,7 +295,7 @@ static void handle_names(char *value)
 		if (curr_nnames == 1) {
 			handle_one_id_name();
 		} else {
-			fprintf(stderr, "%s: # of names[%d]: # of ids[%d]: "
+			comp_parser_log("%s: # of names[%d]: # of ids[%d]: "
 					"Require # of names == # of ids. "
 					"(Except # of names = 1). \n",
 					__FUNCTION__, curr_nnames, curr_nids);
@@ -393,6 +396,10 @@ void handle_component_tree(FILE *conff, struct oparser_scaffold *scaffold)
 	scaffold->num_nodes = num_components;
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conff)) {
+		comp_line_count++;
+		if (s[0] == '\n')
+			continue;
+
 		/* Ignore the comment line */
 		if (main_buf[0] == '#')
 			continue;
@@ -503,6 +510,10 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 
 	fseek(conff, 0, SEEK_SET);
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conff)) {
+		comp_line_count++;
+		if (s[0] == '\n')
+			continue;
+
 		sscanf(main_buf, " %[^:]: %[^\t\n]", key, main_value);
 		trim_trailing_space(main_value);
 
@@ -522,7 +533,7 @@ struct oparser_scaffold *oparser_parse_component_def(FILE *conff)
 		if (kw) {
 			kw->action(main_value);
 		} else {
-			fprintf(stderr, "Invalid key '%s'\n", key);
+			comp_parser_log("Invalid key '%s'\n", key);
 			exit(EINVAL);
 		}
 	}
@@ -553,7 +564,7 @@ int main(int argc, char **argv) {
 			output_file = strdup(optarg);
 			break;
 		default:
-			fprintf(stderr, "Invalid argument '%c'\n", op);
+			comp_parser_log("Invalid argument '%c'\n", op);
 			exit(EINVAL);
 			break;
 		}
@@ -563,13 +574,13 @@ int main(int argc, char **argv) {
 
 	FILE *conff = fopen(conf_file, "r");
 	if (!conff) {
-		fprintf(stderr, "Cannot open the file '%s'\n", conf_file);
+		comp_parser_log("Cannot open the file '%s'\n", conf_file);
 		exit(errno);
 	}
 
 	FILE *outputf = fopen(output_file, "w");
 	if (!outputf) {
-		fprintf(stderr, "Cannot open the output file '%s'\n", output_file);
+		comp_parser_log("Cannot open the output file '%s'\n", output_file);
 		exit(errno);
 	}
 

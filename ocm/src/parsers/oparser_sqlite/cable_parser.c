@@ -60,12 +60,15 @@
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
+#include <time.h>
 
 #include "cable_parser.h"
 
 static char *main_buf;
 static char *main_value;
+static int cable_line_count;
 sqlite3 *ovis_db;
+FILE *log_fp;
 
 static uint32_t comp_id;
 
@@ -73,11 +76,31 @@ struct cable_type *curr_cbtype;
 struct cable_type_list cbtype_list;
 struct cable_list cb_list;
 
+
+
+void cable_parser_log(const char *fmt, ...)
+{
+	va_list ap;
+	time_t t;
+	struct tm *tm;
+	char dtsz[200];
+
+	t = time(NULL);
+	tm = localtime(&t);
+	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+		fprintf(log_fp, "%s: ", dtsz);
+	fprintf(log_fp, "cables: line %d: ", cable_line_count);
+	va_start(ap, fmt);
+	vfprintf(log_fp, fmt, ap);
+	fflush(log_fp);
+}
+
+
 void handle_cable_type(char *value)
 {
 	curr_cbtype = malloc(sizeof(*curr_cbtype));
 	if (!curr_cbtype) {
-		fprintf(stderr, "cable: %s: Out of memory.\n", value);
+		cable_parser_log("%s: Out of memory.\n", value);
 		exit(ENOMEM);
 	}
 	LIST_INSERT_HEAD(&cbtype_list, curr_cbtype, entry);
@@ -87,7 +110,7 @@ void handle_type(char *value)
 {
 	curr_cbtype->type = strdup(value);
 	if (!curr_cbtype->type) {
-		fprintf(stderr, "cable: %s: Out of memory.\n", value);
+		cable_parser_log("%s: Out of memory.\n", value);
 		exit(ENOMEM);
 	}
 }
@@ -96,7 +119,7 @@ void handle_description(char *value)
 {
 	curr_cbtype->description = strdup(value);
 	if (!curr_cbtype) {
-		fprintf(stderr, "cable: %s: Out of memory.\n", value);
+		cable_parser_log("%s: Out of memory.\n", value);
 		exit(ENOMEM);
 	}
 }
@@ -123,14 +146,14 @@ void cable_type_to_sqlite()
 	int rc = 0;
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "cable: Failed to prepare insert cable_types: "
+		cable_parser_log("Failed to prepare insert cable_types: "
 				"%s\n", sqlite3_errmsg(ovis_db));
 		exit(rc);
 	}
 
 	rc = sqlite3_exec(ovis_db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "cable: %s\n", errmsg);
+		cable_parser_log("%s\n", errmsg);
 		exit(rc);
 	}
 
@@ -145,7 +168,7 @@ void cable_type_to_sqlite()
 
 	rc = sqlite3_exec(ovis_db, "END TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "cable: %s\n", errmsg);
+		cable_parser_log("%s\n", errmsg);
 		exit(rc);
 	}
 }
@@ -176,14 +199,14 @@ uint32_t query_comp_id(char *ctype, char *uidf)
 
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if ((rc != SQLITE_OK) && (rc != SQLITE_DONE)) {
-		fprintf(stderr, "cable: %s: %s\n", stmt_s, sqlite3_errmsg(ovis_db));
+		cable_parser_log("%s: %s\n", stmt_s, sqlite3_errmsg(ovis_db));
 		exit(rc);
 	}
 
 	uint32_t comp_id;
 	rc = sqlite3_step(stmt);
 	if (rc == SQLITE_DONE) {
-		fprintf(stderr, "cable: No component '%s{%s}'\n", ctype, uidf);
+		cable_parser_log("No component '%s{%s}'\n", ctype, uidf);
 		exit(EINVAL);
 	} else if (rc == SQLITE_ROW) {
 		comp_id = sqlite3_column_int(stmt, 0);
@@ -197,7 +220,7 @@ uint32_t query_comp_id(char *ctype, char *uidf)
 	sqlite3_finalize(stmt);
 	return comp_id;
 err:
-	fprintf(stderr, "cable: Query component failed: %s\n", sqlite3_errmsg(ovis_db));
+	cable_parser_log("Query component failed: %s\n", sqlite3_errmsg(ovis_db));
 	exit(rc);
 }
 
@@ -211,7 +234,7 @@ int query_cable_type_id(char *type)
 
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if ((rc != SQLITE_OK) && (rc != SQLITE_DONE)) {
-		fprintf(stderr, "cable: %s: %s\n", stmt_s, sqlite3_errmsg(ovis_db));
+		cable_parser_log("%s: %s\n", stmt_s, sqlite3_errmsg(ovis_db));
 		exit(rc);
 	}
 
@@ -220,7 +243,7 @@ int query_cable_type_id(char *type)
 	rc = sqlite3_step(stmt);
 
 	if (rc == SQLITE_DONE) {
-		fprintf(stderr, "cable: No cable type '%s'\n", type);
+		cable_parser_log("No cable type '%s'\n", type);
 		exit(EINVAL);
 	} else if (rc == SQLITE_ROW) {
 		type_id = sqlite3_column_int(stmt, 0);
@@ -235,7 +258,7 @@ int query_cable_type_id(char *type)
 	return type_id;
 err:
 	sqlite3_finalize(stmt);
-	fprintf(stderr, "cable: Query cable_type failed: %s\n", sqlite3_errmsg(ovis_db));
+	cable_parser_log("Query cable_type failed: %s\n", sqlite3_errmsg(ovis_db));
 	exit(rc);
 }
 
@@ -310,7 +333,7 @@ void cable_to_sqlite()
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s),
 						&cable_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "cable: Failed to prepare insert cable: %s\n",
+		cable_parser_log("Failed to prepare insert cable: %s\n",
 						sqlite3_errmsg(ovis_db));
 		exit(rc);
 	}
@@ -324,7 +347,7 @@ void cable_to_sqlite()
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s),
 							&comp_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "cable: Failed to prepare insert components"
+		cable_parser_log("Failed to prepare insert components"
 					": %s\n", sqlite3_errmsg(ovis_db));
 		exit(rc);
 	}
@@ -334,7 +357,7 @@ void cable_to_sqlite()
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s),
 						&relation_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "cable: Failed to prepare insert "
+		cable_parser_log("Failed to prepare insert "
 					"component_relations: %s\n",
 					sqlite3_errmsg(ovis_db));
 		exit(rc);
@@ -342,7 +365,7 @@ void cable_to_sqlite()
 
 	rc = sqlite3_exec(ovis_db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "cable: %s\n", errmsg);
+		cable_parser_log("%s\n", errmsg);
 		exit(rc);
 	}
 
@@ -365,7 +388,7 @@ void cable_to_sqlite()
 
 	rc = sqlite3_exec(ovis_db, "END TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "cable: %s\n", errmsg);
+		cable_parser_log("%s\n", errmsg);
 		exit(rc);
 	}
 }
@@ -378,7 +401,7 @@ struct cable_type *find_cable_type(char *type)
 			return cbtype;
 	}
 
-	fprintf(stderr, "cable: Couldn't find the cable of type '%s'\n", type);
+	cable_parser_log("Couldn't find the cable of type '%s'\n", type);
 	exit(ENOENT);
 }
 
@@ -386,12 +409,12 @@ struct cable *new_cable(char *name)
 {
 	struct cable *cable = malloc(sizeof(*cable));
 	if (!cable) {
-		fprintf(stderr, "cable: %s: Out of memory\n", name);
+		cable_parser_log("%s: Out of memory\n", name);
 		exit(ENOMEM);
 	}
 	cable->name = strdup(name);
 	if (!cable->name) {
-		fprintf(stderr, "cable: %s: Out of memory\n", name);
+		cable_parser_log("%s: Out of memory\n", name);
 		exit(ENOMEM);
 	}
 	cable->comp_id = comp_id;
@@ -411,6 +434,10 @@ void handle_cables(FILE *conff)
 	struct cable *cable;
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conff)) {
+		cable_line_count++;
+		if (s[0] == '\n')
+			continue;
+
 		/* Ignore the comment line */
 		if (main_buf[0] == '#')
 			continue;
@@ -418,7 +445,7 @@ void handle_cables(FILE *conff)
 		tmp = strtok(main_buf, "\t");
 		cable = new_cable(tmp);
 		if (!cable) {
-			fprintf(stderr, "cable: Out of memory\n");
+			cable_parser_log("Out of memory\n");
 			exit(ENOMEM);
 		}
 
@@ -452,15 +479,22 @@ static struct kw lable_tbl[] = {
 	{ "type", handle_type },
 };
 
-void oparser_cable_init(char *read_buf, char *value_buf, sqlite3 *db)
+void oparser_cable_init(FILE *log_file, char *read_buf, char *value_buf,
+							sqlite3 *db)
 {
 	main_buf = read_buf;
 	main_value = value_buf;
 
 	ovis_db = db;
 
+	if (log_file)
+		log_fp = log_file;
+	else
+		log_fp = stderr;
+
 	LIST_INIT(&cbtype_list);
 	LIST_INIT(&cb_list);
+	cable_line_count = 0;
 }
 
 int query_max_comp_id()
@@ -472,7 +506,7 @@ int query_max_comp_id()
 
 	rc = sqlite3_prepare_v2(ovis_db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if ((rc != SQLITE_OK) && (rc != SQLITE_DONE)) {
-		fprintf(stderr, "cable: %s: %s\n", stmt_s, sqlite3_errmsg(ovis_db));
+		cable_parser_log("%s: %s\n", stmt_s, sqlite3_errmsg(ovis_db));
 		exit(rc);
 	}
 
@@ -481,7 +515,7 @@ int query_max_comp_id()
 	rc = sqlite3_step(stmt);
 
 	if (rc == SQLITE_DONE) {
-		fprintf(stderr, "cable: Could not get the max comp_id from "
+		cable_parser_log("Could not get the max comp_id from "
 						"the components table\n");
 		exit(EINVAL);
 	} else if (rc == SQLITE_ROW) {
@@ -497,7 +531,7 @@ int query_max_comp_id()
 	return max_comp_id;
 err:
 	sqlite3_finalize(stmt);
-	fprintf(stderr, "cable: Query max comp_id failed: %s\n",
+	cable_parser_log("Query max comp_id failed: %s\n",
 					sqlite3_errmsg(ovis_db));
 	exit(rc);
 }
@@ -514,6 +548,10 @@ void oparser_parse_cable_def(FILE *conff) {
 
 	fseek(conff, 0, SEEK_SET);
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conff)) {
+		cable_line_count++;
+		if (s[0] == '\n')
+			continue;
+
 		sscanf(main_buf, " %[^:]: %[^\t\n]", key, main_value);
 		trim_trailing_space(main_value);
 
@@ -533,7 +571,7 @@ void oparser_parse_cable_def(FILE *conff) {
 		if (kw) {
 			kw->action(main_value);
 		} else {
-			fprintf(stderr, "Invalid key '%s'\n", key);
+			cable_parser_log("Invalid key '%s'\n", key);
 			exit(EINVAL);
 		}
 	}

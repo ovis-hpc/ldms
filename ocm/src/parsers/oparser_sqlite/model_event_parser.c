@@ -61,6 +61,7 @@
 #include <stddef.h>
 #include <inttypes.h>
 #include <sqlite3.h>
+#include <time.h>
 
 #include "oparser_util.h"
 #include "model_event_parser.h"
@@ -92,6 +93,8 @@ uint32_t num_user_event;
 
 static char *main_buf;
 static char *main_value;
+static int mae_line_count;
+static FILE *log_fp;
 
 struct mae_metric_comp {
 	char metric_name[128];
@@ -107,7 +110,24 @@ static enum mae_parser_obj {
 	MAE_OBJ_EVENT
 } objective;
 
-void oparser_mae_parser_init(sqlite3 *_db, char *read_buf, char *value_buf)
+void mae_parser_log(const char *fmt, ...)
+{
+	va_list ap;
+	time_t t;
+	struct tm *tm;
+	char dtsz[200];
+
+	t = time(NULL);
+	tm = localtime(&t);
+	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+		fprintf(log_fp, "%s: ", dtsz);
+	fprintf(log_fp, "model_events: line %d: ", mae_line_count);
+	va_start(ap, fmt);
+	vfprintf(log_fp, fmt, ap);
+	fflush(log_fp);
+}
+
+void oparser_mae_parser_init(FILE *log_file, sqlite3 *_db, char *read_buf, char *value_buf)
 {
 	TAILQ_INIT(&model_q);
 	TAILQ_INIT(&action_q);
@@ -120,8 +140,14 @@ void oparser_mae_parser_init(sqlite3 *_db, char *read_buf, char *value_buf)
 	is_user_event = 0;
 	num_user_event = 0xF0000000;
 
+	if (log_file)
+		log_fp = log_file;
+	else
+		log_fp = stderr;
+
 	main_buf = read_buf;
 	main_value = value_buf;
+	mae_line_count = 0;
 }
 
 static void handle_model(char *value)
@@ -205,7 +231,7 @@ static void handle_name(char *value)
 		name = &event->name;
 		goto name;
 	default:
-		fprintf(stderr, "invalid objective '%d'.\n", objective);
+		mae_parser_log("invalid objective '%d'.\n", objective);
 		exit(EINVAL);
 	}
 name:
@@ -225,14 +251,14 @@ static void handle_model_id(char *value)
 		model_id = &event->model_id;
 		break;
 	default:
-		fprintf(stderr, "invalid objective '%d'.\n", objective);
+		mae_parser_log("invalid objective '%d'.\n", objective);
 		exit(EINVAL);
 	}
 	char *end;
 	*model_id = (unsigned short) strtoul(value, &end, 10);
 
 	if (!*value || *end) {
-		fprintf(stderr, "%dmodel_id '%s' is not "
+		mae_parser_log("%dmodel_id '%s' is not "
 				"an integer.\n",
 				-EINVAL, value);
 		exit(EINVAL);
@@ -257,7 +283,7 @@ static void handle_parameters(char *value)
 static void handle_report_flags(char *value)
 {
 	if (strlen(value) > 4) {
-		fprintf(stderr, "report_flags need to be 4 binary digits, "
+		mae_parser_log("report_flags need to be 4 binary digits, "
 				"e.g. 0011. Received '%s'\n", value);
 		exit(EINVAL);
 	}
@@ -374,7 +400,7 @@ void _handle_components_uevent(char *value)
 		int rc;
 		rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uids);
 		if (rc == 1) {
-			fprintf(stderr, "%s: %s: No user id.\n",
+			mae_parser_log("%s: %s: No user id.\n",
 					__FUNCTION__, value);
 			exit(EINVAL);
 		}
@@ -434,7 +460,7 @@ static void handle_components(char *value)
 	int rc;
 	rc = sscanf(value, " %[^{/\n]{%[^}]/", type, uids);
 	if (rc == 1) {
-		fprintf(stderr, "%s: %s: No user id.\n",
+		mae_parser_log("%s: %s: No user id.\n",
 				__FUNCTION__, value);
 		exit(EINVAL);
 	}
@@ -474,7 +500,7 @@ static void handle_components(char *value)
 
 assign:
 	if (LIST_EMPTY(&metric_list)) {
-		fprintf(stderr, "Event %s: Could not find the metrics", event->name);
+		mae_parser_log("Event %s: Could not find the metrics", event->name);
 		exit(ENOENT);
 	}
 	LIST_FOREACH(metric, &metric_list, entry)
@@ -510,7 +536,7 @@ enum mae_me_sevl str_to_enum_level(char *value)
 	else if (strcmp(value, "critical") == 0)
 		return MAE_CRITICAL;
 
-	fprintf(stderr, "Invalid severity level: %s\n", value);
+	mae_parser_log("Invalid severity level: %s\n", value);
 	exit(EINVAL);
 }
 
@@ -595,6 +621,9 @@ void oparser_parse_model_event_conf(FILE *conf)
 	fseek(conf, 0, SEEK_SET);
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		mae_line_count++;
+		if (s[0] == '\n')
+			continue;
 		sscanf(main_buf, " %[^:]: %[^\n]", key, main_value);
 		trim_trailing_space(main_value);
 		/* Ignore the comment line */
@@ -608,7 +637,7 @@ void oparser_parse_model_event_conf(FILE *conf)
 		if (kw) {
 			kw->action(main_value);
 		} else {
-			fprintf(stderr, "Invalid key '%s'\n", key);
+			mae_parser_log("Invalid key '%s'\n", key);
 			exit(EINVAL);
 		}
 
@@ -720,13 +749,13 @@ void oparser_models_to_sqlite()
 	char *errmsg;
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
+		mae_parser_log("%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
 	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 
@@ -739,7 +768,7 @@ void oparser_models_to_sqlite()
 
 	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 }
@@ -760,13 +789,13 @@ void oparser_actions_to_sqlite()
 	stmt_s = "INSERT INTO actions(name, execute) VALUES(@name, @exec)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
+		mae_parser_log("%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
 	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 
@@ -782,7 +811,7 @@ void oparser_actions_to_sqlite()
 
 	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 }
@@ -854,7 +883,7 @@ void user_event_to_sqlite(sqlite3 *db, sqlite3_stmt *uevent_stmt)
 			count_level++;
 		}
 		if (count_level != 1) {
-			fprintf(stderr, "%s: Invalid user event definition. "
+			mae_parser_log("%s: Invalid user event definition. "
 					"Exactly one severity level must be "
 					"defined for a message and/or "
 					"actions\n", uevent->name);
@@ -919,7 +948,7 @@ void oparser_events_to_sqlite()
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
 					&rule_templates_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s[%d]: error prepare[rule_templates]:"
+		mae_parser_log("%s[%d]: error prepare[rule_templates]:"
 				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
@@ -929,7 +958,7 @@ void oparser_events_to_sqlite()
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
 					&rule_actions_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s[%d]: error prepare[rule_actions]:"
+		mae_parser_log("%s[%d]: error prepare[rule_actions]:"
 				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
@@ -939,14 +968,14 @@ void oparser_events_to_sqlite()
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
 					&rule_metrics_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s[%d]: error prepare[rule_metrics]:"
+		mae_parser_log("%s[%d]: error prepare[rule_metrics]:"
 				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
 	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 
@@ -968,7 +997,7 @@ void oparser_events_to_sqlite()
 
 	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 
@@ -977,14 +1006,14 @@ void oparser_events_to_sqlite()
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
 			&user_event_stmt, NULL);
 	if (rc) {
-		fprintf(stderr, "%s[%d]: error prepare[user_event]:"
+		mae_parser_log("%s[%d]: error prepare[user_event]:"
 				" %s\n", __FUNCTION__, rc, sqlite3_errmsg(db));
 		exit(rc);
 	}
 
 	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 
@@ -992,7 +1021,7 @@ void oparser_events_to_sqlite()
 
 	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &errmsg);
 	if (rc) {
-		fprintf(stderr, "%s: %s\n", __FUNCTION__, errmsg);
+		mae_parser_log("%s: %s\n", __FUNCTION__, errmsg);
 		exit(rc);
 	}
 
@@ -1021,20 +1050,20 @@ int main(int argc, char **argv) {
 			out_path = strdup(optarg);
 			break;
 		default:
-			fprintf(stderr, "Invalid argument '%c'\n", op);
+			mae_parser_log("Invalid argument '%c'\n", op);
 			exit(EINVAL);
 		}
 	}
 
 	maef = fopen(mae_conf, "r");
 	if (!maef) {
-		fprintf(stderr, "Could not open the conf file '%s'\n", mae_conf);
+		mae_parser_log("Could not open the conf file '%s'\n", mae_conf);
 		exit(errno);
 	}
 
 	out = fopen(out_path, "w");
 	if (!maef) {
-		fprintf(stderr, "Could not open the conf file '%s'\n", out_path);
+		mae_parser_log("Could not open the conf file '%s'\n", out_path);
 		exit(errno);
 	}
 
@@ -1042,7 +1071,7 @@ int main(int argc, char **argv) {
 	char *err_msg = 0;
 	rc = sqlite3_open_v2(db_path, &db, SQLITE_OPEN_READWRITE, NULL);
 	if (rc) {
-		fprintf(stderr, "%d: Failed to open sqlite '%s': %s\n",
+		mae_parser_log("%d: Failed to open sqlite '%s': %s\n",
 				rc, db_path, sqlite3_errmsg(db));
 		sqlite3_close(db);
 		sqlite3_free(err_msg);

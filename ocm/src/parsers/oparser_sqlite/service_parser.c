@@ -56,6 +56,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <string.h>
+#include <time.h>
 
 #include "oparser_util.h"
 #include "service_parser.h"
@@ -66,6 +67,7 @@
 sqlite3 *db;
 str_map_t host_scfg;
 FILE *conf;
+static FILE *log_fp;
 
 struct oparser_name_queue host_queue;
 struct oparser_host_services *hservices;
@@ -78,8 +80,28 @@ struct oparser_name_queue baler_host_list;
 
 static char *main_buf;
 static char *main_value;
+static int service_line_count;
 
-void oparser_service_conf_init(sqlite3 *_db, char *read_buf, char *value_buf)
+void service_parser_log(const char *fmt, ...)
+{
+	va_list ap;
+	time_t t;
+	struct tm *tm;
+	char dtsz[200];
+
+	t = time(NULL);
+	tm = localtime(&t);
+	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+		fprintf(log_fp, "%s: ", dtsz);
+	fprintf(log_fp, "service: line %d: ", service_line_count);
+	va_start(ap, fmt);
+	vfprintf(log_fp, fmt, ap);
+	fflush(log_fp);
+}
+
+
+void oparser_service_conf_init(FILE *log_file, sqlite3 *_db, char *read_buf,
+							char *value_buf)
 {
 	db = _db;
 
@@ -93,8 +115,14 @@ void oparser_service_conf_init(sqlite3 *_db, char *read_buf, char *value_buf)
 	TAILQ_INIT(&agg_host_list);
 	TAILQ_INIT(&baler_host_list);
 
+	if (log_file)
+		log_fp = log_file;
+	else
+		log_fp = stderr;
+
 	main_buf = read_buf;
 	main_value = value_buf;
+	service_line_count = 0;
 }
 
 static void handle_hostname(char *value)
@@ -390,6 +418,9 @@ void oparser_service_conf_parser(FILE *_conf)
 	fseek(conf, 0, SEEK_SET);
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		service_line_count++;
+		if (s[0] == '\n')
+			continue;
 		sscanf(main_buf, "%[^:]: %[^\t\n]", tmp, main_value);
 		num_leading_tabs = count_leading_tabs(tmp);
 		trim_trailing_space(main_value);

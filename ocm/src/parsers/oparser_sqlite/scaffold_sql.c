@@ -167,15 +167,10 @@ void component_to_sqlite(struct oparser_comp *comp, sqlite3 *db, sqlite3_stmt *c
 	oparser_bind_int(db, comp_stmt, CVISIBLE_IDX, comp->comp_type->visible,
 								__FUNCTION__);
 
-	if (comp->comp_type->category == NULL) {
-		fprintf(stderr, "No category is given for component type '%s'\n",
-							comp->comp_type->type);
-		exit(EINVAL);
-	} else {
+	if (comp->comp_type->category) {
 		oparser_bind_text(db, comp_stmt, CCATEGORY_IDX,
 				comp->comp_type->category, __FUNCTION__);
 	}
-
 
 	int i;
 	struct oparser_comp *child;
@@ -205,9 +200,9 @@ void gen_components_table(struct oparser_scaffold *scaffold, sqlite3 *db)
 		 "parent_id	TEXT," \
 		 "gif_path	TEXT," \
 		 "visible	INTEGER, " \
-		 "category	TEXT		NOT NULL);";
+		 "category	TEXT);";
 
-	char *index_stmt = "CREATE INDEX components_idx ON components(type,identifier);";
+	char *index_stmt = "CREATE INDEX components_idx ON components(type,identifier,category);";
 	create_table(stmt_s, db);
 	create_index(index_stmt, db);
 

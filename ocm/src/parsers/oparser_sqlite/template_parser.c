@@ -65,6 +65,7 @@
 #include "component_parser.h"
 
 FILE *log_fp;
+static int template_line_count;
 
 void tmpl_parser_log(const char *fmt, ...)
 {
@@ -77,6 +78,7 @@ void tmpl_parser_log(const char *fmt, ...)
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 		fprintf(log_fp, "%s: ", dtsz);
+	fprintf(log_fp, "line %d: ", template_line_count);
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
@@ -111,6 +113,7 @@ void oparser_template_parser_init(FILE *_log_fp, char *read_buf, char *value_buf
 
 	main_buf = read_buf;
 	main_value = value_buf;
+	template_line_count = 0;
 }
 
 struct template_def *find_tmpl_def(char *tmpl_name)
@@ -498,6 +501,10 @@ static void handle_config(FILE *conf)
 	int i;
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		template_line_count++;
+		if (s[0] == '\n')
+			continue;
+
 		sscanf(main_buf, " %[^:]: %[^\t\n]", key, main_value);
 		trim_trailing_space(main_value);
 
@@ -540,6 +547,10 @@ struct tmpl_list *oparser_parse_template(FILE *conf,
 	sys_scaffold = scaffold;
 
 	while (s = fgets(main_buf, MAIN_BUF_SIZE, conf)) {
+		template_line_count++;
+		if (s[0] == '\n')
+			continue;
+
 		sscanf(main_buf, " %[^:]: %[^\t\n]", key, main_value);
 		trim_trailing_space(main_value);
 
@@ -560,7 +571,7 @@ struct tmpl_list *oparser_parse_template(FILE *conf,
 		if (kw) {
 			kw->action(main_value);
 		} else {
-			fprintf(stderr, "Invalid key '%s'\n", key);
+			tmpl_parser_log("Invalid key '%s'\n", key);
 			exit(EINVAL);
 		}
 	}
@@ -634,7 +645,7 @@ int main(int argc, char **argv) {
 			toutput_file = strdup(optarg);
 			break;
 		default:
-			fprintf(stderr, "Invalid argument '%c'\n", op);
+			tmpl_parser_log("Invalid argument '%c'\n", op);
 			exit(EINVAL);
 			break;
 		}
@@ -642,25 +653,25 @@ int main(int argc, char **argv) {
 	log_fp = stdout;
 	compf = fopen(comp_file, "r");
 	if (!compf) {
-		fprintf(stderr, "Cannot open the file '%s'\n", comp_file);
+		tmpl_parser_log("Cannot open the file '%s'\n", comp_file);
 		exit(errno);
 	}
 
 	tmplf = fopen(tmpl_file, "r");
 	if (!tmplf) {
-		fprintf(stderr, "Cannot open the file '%s'\n", tmpl_file);
+		tmpl_parser_log("Cannot open the file '%s'\n", tmpl_file);
 		exit(errno);
 	}
 
 	soutf = fopen(soutput_file, "w");
 	if (!soutf) {
-		fprintf(stderr, "Cannot open the file '%s'\n", soutput_file);
+		tmpl_parser_log("Cannot open the file '%s'\n", soutput_file);
 		exit(errno);
 	}
 
 	toutf = fopen(toutput_file, "w");
 	if (!toutf) {
-		fprintf(stderr, "Cannot open the file '%s'\n", toutput_file);
+		tmpl_parser_log("Cannot open the file '%s'\n", toutput_file);
 		exit(errno);
 	}
 
