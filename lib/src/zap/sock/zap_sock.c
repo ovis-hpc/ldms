@@ -61,6 +61,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
@@ -384,6 +385,37 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 	return errno2zaperr(errno);
 }
 
+static int __set_keep_alive(struct z_sock_ep *sep)
+{
+	int rc;
+	int optval;
+	rc = setsockopt(sep->sock, SOL_SOCKET, SO_KEEPALIVE, &optval,
+			sizeof(int));
+	if (rc) {
+		LOG_(sep, "zap_sock: WARNING: set SO_KEEPALIVE error: %d\n", errno);
+		return errno;
+	}
+	optval = ZAP_SOCK_KEEPCNT;
+	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPCNT, &optval, sizeof(int));
+	if (rc) {
+		LOG_(sep, "zap_sock: WARNING: set TCP_KEEPCNT error: %d\n", errno);
+		return errno;
+	}
+	optval = ZAP_SOCK_KEEPIDLE;
+	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPIDLE, &optval, sizeof(int));
+	if (rc) {
+		LOG_(sep, "zap_sock: WARNING: set TCP_KEEPIDLE error: %d\n", errno);
+		return errno;
+	}
+	optval = ZAP_SOCK_KEEPINTVL;
+	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPINTVL, &optval, sizeof(int));
+	if (rc) {
+		LOG_(sep, "zap_sock: WARNING: set TCP_KEEPINTVL error: %d\n", errno);
+		return errno;
+	}
+	return 0;
+}
+
 static zap_err_t z_sock_connect(zap_ep_t ep,
 				struct sockaddr *sa, socklen_t sa_len)
 {
@@ -403,6 +435,10 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 	if (rc) {
 		zerr = ZAP_ERR_RESOURCE;
 		goto out;
+	}
+	rc = __set_keep_alive(sep);
+	if (rc) {
+		LOG_(sep, "zap_sock: WARNING: __set_keep_alive() rc: %d\n", rc);
 	}
 	zerr = __setup_connection(sep);
 	if (zerr)
