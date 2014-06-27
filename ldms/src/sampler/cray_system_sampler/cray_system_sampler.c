@@ -310,19 +310,28 @@ static int add_metrics_generic(int comp_id,
 
 		break;
 	case NS_CURRENT_FREEMEM:
+		sample_metrics_cf_ptr = NULL;
+		cf_m = 0;
 		rc = add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
 					NUM_CURRENT_FREEMEM_METRICS,
 					&metric_table_current_freemem,
 					&CURRENT_FREEMEM_FILE, &cf_f,
 					comp_id, msglog);
-
 		if (rc != 0)
-			return rc;
+			return rc; //This will NOT happen if the file DNE
 		if (cf_f != NULL) {
 			fclose(cf_f);
 			cf_f = NULL;
+			sample_metrics_cf_ptr = &sample_metrics_current_freemem;
+		} else {
+			/* if there is no current_freemem, use meminfo */
+			int cf_m = open(MEMINFO_FILE, O_RDONLY);
+			if (!cf_m)
+				msglog("WARNING: Could not open the source file '%s'\n",
+				       MEMINFO_FILE);
+			else
+				sample_metrics_cf_ptr = &sample_metrics_cf_from_meminfo;
 		}
-
 		return rc;
 
 		break;
@@ -549,7 +558,10 @@ static int sample(void)
 			rc = sample_metrics_vmstat(msglog);
 			break;
 		case NS_CURRENT_FREEMEM:
-			rc = sample_metrics_current_freemem(msglog);
+			if (sample_metrics_cf_ptr != NULL)
+				rc = sample_metrics_cf_ptr(msglog);
+			else
+				rc = 0;
 			break;
 		case NS_LOADAVG:
 			rc = sample_metrics_loadavg(msglog);

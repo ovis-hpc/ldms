@@ -255,6 +255,104 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 
 }
 
+
+int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
+
+{
+	char lbuf[256];
+	char metric_name[128];
+	int found_metrics;
+	char* s;
+	union ldms_value v;
+	int j, rc;
+
+	if (!v_f)
+		return 0;
+
+	found_metrics = 0;
+
+	fseek(v_f, 0, SEEK_SET);
+	do {
+		s = fgets(lbuf, sizeof(lbuf), v_f);
+		if (!s)
+			break;
+		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
+		if (rc != 2) {
+			msglog("ERR: Issue reading the source file '%s'\n",
+								VMSTAT_FILE);
+			rc = EINVAL;
+			return rc;
+		}
+		for (j = 0; j < NUM_VMSTAT_METRICS; j++){
+			if (!strcmp(metric_name, VMSTAT_METRICS[j])){
+				ldms_set_metric(metric_table_vmstat[j], &v);
+				found_metrics++;
+				break;
+			}
+		}
+	} while (s);
+
+	if (found_metrics != NUM_VMSTAT_METRICS){
+		return EINVAL;
+	}
+
+	return 0;
+
+}
+
+
+int sample_metrics_cf_from_meminfo(ldmsd_msg_log_f msglog)
+{
+	/* return memfree+cached. Since these are usually at the top of the output
+	   read a large enuf buffer once and then parse it */
+
+	char lbuf[256];
+	unsigned long long mval = 0;
+	int foundmval = 0;
+	union ldms_value v;
+	char* s;
+	char* x;
+	int rc;
+
+	if (!cf_m)
+		return 0;
+
+	lseek(cf_m, 0, SEEK_SET);
+	rc = read(cf_m, lbuf, 255);
+	if (rc <= 0)
+		return errno;
+	lbuf[255] = '\0';
+	s = lbuf;
+	while (1){
+		char metric[256];
+		unsigned long long val;
+		rc = sscanf(s, "s %llu", metric, &val);
+		if (rc != 2)
+			break;
+		if (strcmp("MemFree:", metric) == 0){
+			mval = val;
+		} else if (strcmp("Cached:", metric) == 0){
+			if (!foundmval)
+				break;
+			v.v_u64 = mval+val;
+			ldms_set_metric(metric_table_current_freemem[0], &v);
+			/* know there is only 1 val and we want the buffer to be
+			 big enough to get past it */
+			return 0;
+		}
+		x = strchr(s, '\n');
+		if ((x == NULL) || (strlen(x) <= 1))
+			break;
+		x++;
+		s = x;
+	}
+
+	/* didnt find the vals. */
+	msglog("cf_from_meminfo: cannot find MemFree and Cached\n");
+	return EINVAL;
+}
+
+
 int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 {
 	/* only has 1 val, no label */
@@ -309,6 +407,7 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 	return 0;
 
 }
+
 
 int procnetdev_setup(ldmsd_msg_log_f msglog)
 {

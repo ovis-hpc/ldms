@@ -75,14 +75,17 @@
 #define VMSTAT_FILE "/proc/vmstat"
 #define LOADAVG_FILE "/proc/loadavg"
 #define CURRENT_FREEMEM_FILE "/proc/current_freemem"
+#define MEMINFO_FILE "/proc/meminfo"
 #define KGNILND_FILE  "/proc/kgnilnd/stats"
 #define PROCNETDEV_FILE "/proc/net/dev"
 
 /* CURRENT_FREEMEM Specific */
 FILE *cf_f;
+int cf_m;
 static char* CURRENT_FREEMEM_METRICS[] = {"current_freemem"};
 #define NUM_CURRENT_FREEMEM_METRICS (sizeof(CURRENT_FREEMEM_METRICS)/sizeof(CURRENT_FREEMEM_METRICS[0]))
 ldms_metric_t* metric_table_current_freemem;
+int (*sample_metrics_cf_ptr)(ldmsd_msg_log_f msglog);
 
 /* VMSTAT Specific */
 FILE *v_f;
@@ -195,6 +198,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog);
 int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
 int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
 int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
+int sample_metrics_cf_from_meminfo(ldmsd_msg_log_f msglog);
 int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
 int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
 int sample_metrics_lustre(ldmsd_msg_log_f msglog);
