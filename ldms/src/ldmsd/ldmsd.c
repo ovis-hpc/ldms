@@ -638,7 +638,7 @@ int process_info(int fd,
 	uint64_t grand_total_busy = 0;
 	LIST_FOREACH(hs, &host_list, link) {
 		struct hostset *hset;
-		ldms_log("%p %2d %-12s %-12s", hs, ldms_xprt_connected(hs->x),
+		ldms_log("%p %2d %-12s %-12s", hs, (hs->x?ldms_xprt_connected(hs->x):0),
 			hs->hostname, hs->xprt_name);
 		if (verbose)
 			ldms_log("%-12s\n", (hs->conn_state?"CONNECTED":"NOT CONNECTED"));
@@ -2274,7 +2274,7 @@ void add_connect_candidate(struct hostspec *hs)
 void schedule_update(struct hostspec *hs)
 {
 	if (!hs->x || !ldms_xprt_connected(hs->x)) {
-		add_connect_candidate(hs);
+		host_conn_reschedule(hs);
 		return;
 	}
 
@@ -2310,7 +2310,7 @@ void do_host(struct hostspec *hs)
 				ldms_release_xprt(x);
 			}
 			hs->conn_state = HOST_DISCONNECTED;
-			add_connect_candidate(hs);
+			host_conn_reschedule(hs);
 		} else if ((hs->type != BRIDGING) &&
 			   ((hs->standby == 0) || (hs->standby & saggs_mask))) {
 			update_data(hs);
@@ -2399,9 +2399,10 @@ void *connect_proc(void *v)
 				rc = do_passive_connect(hs);
 			if (rc)
 				host_conn_reschedule(hs);
-			else
+			else {
 				hs->conn_state = HOST_CONNECTED;
-			schedule_update(hs);
+				schedule_update(hs);
+			}
 			break;
 		default:
 			ldms_log("%s: Host connection state '%d' is invalid.\n",
