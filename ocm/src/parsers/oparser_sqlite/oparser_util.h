@@ -83,9 +83,10 @@ enum components_field {
 	CNUM_IDX,
 };
 
-enum component_relations_field {
+enum component_relations_trees_field {
 	PARENT_IDX = 1,
 	CHILD_IDX,
+	CATEGORY_IDX,
 };
 
 struct oparser_name {

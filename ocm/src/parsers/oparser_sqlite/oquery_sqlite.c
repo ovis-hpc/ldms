@@ -542,3 +542,54 @@ int oquery_service_cfg(const char *hostname, const char *service,
 	sqlite3_free(errmsg);
 	return 0;
 }
+
+void oquery_tree_parent(uint32_t child_comp_id, char *parent, size_t str_len, sqlite3 *db)
+{
+	int rc;
+	char *errmsg;
+	char command[512];
+	struct sqlite3_stmt *stmt;
+	sprintf(command, "SELECT components.type, components.identifier FROM component_trees JOIN "
+			"components WHERE "
+			"component_trees.parent = components.comp_id AND "
+			"component_trees.child =%" PRIu32 ";", child_comp_id);
+
+	rc = sqlite3_prepare_v2(db, command, 512, &stmt, 0);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3_prepare_v2 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	int i = 0;
+	size_t avai_len = str_len;
+	size_t len = 0;
+	rc = sqlite3_step(stmt);
+	while (rc == SQLITE_ROW) {
+		const char *type, *identifier;
+		type = sqlite3_column_text(stmt, 0);
+		identifier = sqlite3_column_text(stmt, 1);
+		if (i == 0) {
+			len = sprintf(parent, "%s{%s}", type, identifier);
+		} else {
+			len = sprintf(parent, "%s,%s{%s}", parent, type, identifier);
+		}
+
+		if (len > avai_len) {
+			fprintf(stderr, "%s: Out of memory\n", __FUNCTION__);
+			exit(ENOMEM);
+		}
+
+		avai_len -= len;
+		i++;
+		rc = sqlite3_step(stmt);
+	}
+
+	if (rc != SQLITE_DONE) {
+		fprintf(stderr, "sqlite3 error: %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	sqlite3_finalize(stmt);
+}

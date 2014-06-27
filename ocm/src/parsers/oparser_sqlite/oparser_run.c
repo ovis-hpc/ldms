@@ -205,7 +205,6 @@ int main(int argc, char **argv) {
 		}
 
 		oparser_scaffold_to_sqlite(scaffold, ovis_db);
-		printf("Complete table 'components'\n");
 
 		if (is_printed) {
 			sprintf(path, "%s/%s", out_path,

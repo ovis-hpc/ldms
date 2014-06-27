@@ -59,6 +59,10 @@
 #include "component_parser.h"
 #include "oparser_util.h"
 
+#define COMPONENT_TABLE 1
+#define COMP_RELATION_TABLE 2
+#define COMP_IN_TREE 3
+
 /**
  * \brief Get the comma-separated string of children comp id
  * \param   children_s   A allocated string
@@ -133,7 +137,7 @@ void handle_parents_components_table(struct oparser_comp *comp, sqlite3 *db,
 
 void component_to_sqlite(struct oparser_comp *comp, sqlite3 *db, sqlite3_stmt *comp_stmt)
 {
-	if (comp->is_stored == 1)
+	if (comp->is_stored == COMPONENT_TABLE)
 		return;
 
 	if (comp->name)
@@ -177,7 +181,7 @@ void component_to_sqlite(struct oparser_comp *comp, sqlite3 *db, sqlite3_stmt *c
 	struct oparser_comp *child;
 
 	oparser_finish_insert(db, comp_stmt, __FUNCTION__);
-	comp->is_stored = 1;
+	comp->is_stored = COMPONENT_TABLE;
 
 	struct comp_array *carray;
 	LIST_FOREACH(carray, &comp->children, entry) {
@@ -248,7 +252,7 @@ void gen_components_table(struct oparser_scaffold *scaffold, sqlite3 *db)
 void insert_parent_child(struct oparser_comp *comp, sqlite3 *db,
 					sqlite3_stmt *insert_stmt)
 {
-	if (comp->is_stored == 2)
+	if (comp->is_stored == COMP_RELATION_TABLE)
 		return;
 
 	if (comp->is_stored == 0) {
@@ -257,7 +261,7 @@ void insert_parent_child(struct oparser_comp *comp, sqlite3 *db,
 		exit(EPERM);
 	}
 
-	if (comp->is_stored == 1)
+	if (comp->is_stored == COMPONENT_TABLE)
 		comp->is_stored++;
 
 	struct oparser_comp *parent, *child;
@@ -341,8 +345,178 @@ void gen_component_relations_table(struct oparser_scaffold *scaffold, sqlite3 *d
 	}
 }
 
+void insert_comp_tree(struct oparser_comp *comp, struct oparser_comp *parent,
+					sqlite3 *db, sqlite3_stmt *insert_stmt)
+{
+	static struct oparser_name_queue exist_cat_list;
+	static int num_exist_cat = 0;
+
+	int is_in_tree = 0;
+
+	if (num_exist_cat == 0)
+		TAILQ_INIT(&exist_cat_list);
+
+	if (!parent) {
+		/* root */
+		if (comp->is_stored == COMP_IN_TREE) {
+			fprintf(stderr, "'%s' is a root of more than one tree. "
+					"Abort!\n", comp->name);
+			exit(EPERM);
+		}
+
+		comp->is_stored = COMP_IN_TREE;
+
+		char *comp_cat = comp->comp_type->category;
+		struct oparser_name *dummy_cat, *cat;
+		TAILQ_FOREACH(dummy_cat, &exist_cat_list, entry) {
+			if (comp_cat) {
+				if (0 == strcmp(comp_cat, dummy_cat->name)) {
+					fprintf(stderr, "category '%s' has "
+							"more than one root.\n",
+								comp_cat);
+
+					exit(EPERM);
+				}
+			}
+		}
+
+		num_exist_cat++;
+		is_in_tree = 1;
+
+		oparser_bind_null(db, insert_stmt, PARENT_IDX, __FUNCTION__);
+		oparser_bind_int(db, insert_stmt, CHILD_IDX, comp->comp_id,
+								__FUNCTION__);
+		if (comp_cat) {
+			oparser_bind_text(db, insert_stmt, CATEGORY_IDX,
+					comp_cat, __FUNCTION__);
+		} else {
+			oparser_bind_null(db, insert_stmt, CATEGORY_IDX,
+							__FUNCTION__);
+		}
+		oparser_finish_insert(db, insert_stmt, __FUNCTION__);
+	} else {
+		char *parent_cat = parent->comp_type->category;
+		if (parent_cat && comp->comp_type->category &&
+				(0 == strcmp(parent_cat, comp->comp_type->category))) {
+			if (comp->is_stored == COMP_IN_TREE) {
+				char parent_s[1024];
+				oquery_tree_parent(comp->comp_id, parent_s,
+								1024, db);
+				fprintf(stderr, "'%s' is a child of %s and "
+					"%s{%s}. Abort!\n", comp->name, parent_s,
+					parent->comp_type->type, parent->uid);
+				exit(EPERM);
+			}
+			is_in_tree = 1;
+			comp->is_stored = COMP_IN_TREE;
+
+			oparser_bind_int(db, insert_stmt, PARENT_IDX,
+						parent->comp_id, __FUNCTION__);
+
+			oparser_bind_int(db, insert_stmt, CHILD_IDX,
+						comp->comp_id, __FUNCTION__);
+
+			oparser_bind_text(db, insert_stmt, CATEGORY_IDX,
+						parent_cat, __FUNCTION__);
+
+			oparser_finish_insert(db, insert_stmt, __FUNCTION__);
+		} else if (!parent_cat && !comp->comp_type->category) {
+			if (comp->is_stored == COMP_IN_TREE) {
+				fprintf(stderr, "'%s' is a child of more than "
+					"one parent in a tree or trees. "
+						"Abort!\n", comp->name);
+				exit(EPERM);
+			}
+			is_in_tree = 1;
+			comp->is_stored = COMP_IN_TREE;
+
+			oparser_bind_int(db, insert_stmt, PARENT_IDX,
+						parent->comp_id, __FUNCTION__);
+
+			oparser_bind_int(db, insert_stmt, CHILD_IDX,
+						comp->comp_id, __FUNCTION__);
+
+			oparser_bind_null(db, insert_stmt, CATEGORY_IDX,
+							__FUNCTION__);
+			oparser_finish_insert(db, insert_stmt, __FUNCTION__);
+		}
+	}
+
+	struct oparser_comp *child;
+	struct comp_array *carray;
+	int i;
+
+	LIST_FOREACH(carray, &comp->children, entry) {
+		for (i = 0; i < carray->num_comps; i++) {
+			child = carray->comps[i];
+			if (is_in_tree)
+				insert_comp_tree(child, comp, db, insert_stmt);
+			else
+				insert_comp_tree(child, parent, db, insert_stmt);
+		}
+	}
+}
+
+void gen_component_tree_table(struct oparser_scaffold *scaffold, sqlite3 *db)
+{
+	char *stmt_s, *index_stmt;
+	int rc = 0;
+
+	oparser_drop_table("component_trees", db);
+	stmt_s = "CREATE TABLE component_trees(" \
+			"parent	INTEGER REFERENCES components ON DELETE CASCADE, " \
+			"child	INTEGER REFERENCES components ON DELETE CASCADE,"
+			"category	TEXT,"
+			"PRIMARY KEY(parent, child));";
+
+	create_table(stmt_s, db);
+
+	sqlite3_stmt *insert_stmt;
+
+	stmt_s = "INSERT OR IGNORE INTO component_trees(parent, child, category) " \
+			"VALUES(@vparent_id, @vchild_id, @vcategory)";
+
+	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s),
+					&insert_stmt, NULL);
+	if (rc) {
+		fprintf(stderr, "Failed to prepare 'INSERT INTO " \
+				"component_trees()': %s\n",
+				sqlite3_errmsg(db));
+		exit(rc);
+	}
+
+	char *sqlite_err = 0;
+	rc = sqlite3_exec(db, "BEGIN TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: Failed 'BEGIN TRANSACTION': %s\n",
+						__FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+
+	struct oparser_comp *comp;
+
+	LIST_FOREACH(comp, scaffold->children, root_entry) {
+		insert_comp_tree(comp, NULL, db, insert_stmt);
+	}
+
+	sqlite3_finalize(insert_stmt);
+
+	rc = sqlite3_exec(db, "END TRANSACTION", NULL, NULL, &sqlite_err);
+	if (rc) {
+		fprintf(stderr, "%s: Failed 'END TRANSACTION': %s\n",
+						__FUNCTION__, sqlite_err);
+		exit(rc);
+	}
+}
+
 void oparser_scaffold_to_sqlite(struct oparser_scaffold *scaffold, sqlite3 *db)
 {
 	gen_components_table(scaffold, db);
+	printf("Complete table 'components'\n");
+
 	gen_component_relations_table(scaffold, db);
+	printf("Complete table 'component_relations'\n");
+
+	gen_component_tree_table(scaffold, db);
+	printf("Complete table 'component_trees'\n");
 }
