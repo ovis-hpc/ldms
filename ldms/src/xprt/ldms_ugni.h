@@ -137,8 +137,8 @@ struct ldms_ugni_xprt {
 	enum ugni_conn_status conn_status;
 
 	enum ldms_ugni_xprt_type {
-		LDMS_UGNI_PASSIVE,
-		LDMS_UGNI_ACTIVE
+		LDMS_UGNI_ACTIVE,
+		LDMS_UGNI_PASSIVE
 	} type;
 
 	int sock;
