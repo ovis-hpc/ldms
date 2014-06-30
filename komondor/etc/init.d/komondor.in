@@ -77,8 +77,9 @@ running=$?
 
 start() {
 	echo -n "Starting $prog: "
+	mkdir -p $OVIS_DATA/act_sos
 
-	$KOMONDOR -x $KOMONDOR_XPORT -p $KOMONDOR_PORT_LISTEN -z $KOMONDOR_PORT_TO_OCMD -l $OVIS_HOME/var/log/komondor.log
+	$KOMONDOR -a $OVIS_DATA/act_sos/act -x $KOMONDOR_XPORT -p $KOMONDOR_PORT_LISTEN -z $KOMONDOR_PORT_TO_OCMD -l $OVIS_HOME/var/log/komondor.log
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then
