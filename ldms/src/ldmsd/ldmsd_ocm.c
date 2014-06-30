@@ -145,7 +145,7 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	/* load */
 	struct plugin *pi = get_plugin(plugin_name);
 	if (pi) {
-		ldms_log("Plugin '%s' already loaded", plugin_name);
+		ldms_log("Plugin '%s' already loaded\n", plugin_name);
 		return;
 	}
 	pi = new_plugin(plugin_name, err_str);
@@ -549,14 +549,14 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 			/* Host not found */
 			if (found_host_count == 0) {
 				ldms_log("ocm: error, could not find the host "
-					"'%s'.", hostname);
+					"'%s'\n.", hostname);
 				goto destroy_store_policy;
 			}
 			hostname = strtok(NULL, ",");
 		}
 	}
 	if (found_count == 0) {
-		ldms_log("ocm: error, count not find the set '%s' in any hosts",
+		ldms_log("ocm: error, count not find the set '%s' in any hosts.\n",
 				set_name);
 		goto destroy_store_policy;
 	}
