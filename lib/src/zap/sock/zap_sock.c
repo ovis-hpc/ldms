@@ -99,6 +99,9 @@ uint32_t z_last_key;
 struct rbt z_key_tree;
 pthread_mutex_t z_key_tree_mutex;
 
+LIST_HEAD(, z_sock_ep) z_sock_list = LIST_HEAD_INITIALIZER(0);
+pthread_mutex_t z_sock_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 int z_rbn_cmp(void *a, void *b)
 {
 	uint32_t x = (uint32_t)(uint64_t)a;
@@ -360,7 +363,7 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 	case ZAP_EP_LISTENING:
 	case ZAP_EP_PEER_CLOSE:
 		close(sep->sock);
-		sep->sock = 0;
+		sep->sock = -1;
 		sep->ep.state = ZAP_EP_ERROR;
 		break;
 	}
@@ -470,6 +473,11 @@ static void sock_write(struct bufferevent *buf_event, void *arg)
 static void process_sep_msg_unknown(struct z_sock_ep *sep)
 {
 	/* Decide what to do and IMPLEMENT ME */
+	LOG_(sep, "zap_sock: WARNING: Unknown zap message.\n");
+	struct zap_event ev = {
+		.type = ZAP_EVENT_CONNECT_ERROR,
+	};
+	sep->ep.cb((void*)sep, &ev);
 }
 
 /**
@@ -1027,6 +1035,10 @@ zap_err_t z_sock_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
 	struct z_sock_ep *sep = calloc(1, sizeof(*sep));
 	if (!sep)
 		return ZAP_ERR_RESOURCE;
+	sep->sock = -1;
+	pthread_mutex_lock(&z_sock_list_mutex);
+	LIST_INSERT_HEAD(&z_sock_list, sep, link);
+	pthread_mutex_unlock(&z_sock_list_mutex);
 	*pep = (void*)sep;
 	/* buf_event, listen_ev and sock will be created in connect, listen
 	 * or accept. */
@@ -1042,6 +1054,9 @@ static void z_sock_destroy(zap_ep_t ep)
 #ifdef DEBUG
 	ep->z->log_fn("SOCK: destroying endpoint %p\n", ep);
 #endif
+	pthread_mutex_lock(&z_sock_list_mutex);
+	LIST_REMOVE(sep, link);
+	pthread_mutex_unlock(&z_sock_list_mutex);
 	free(ep);
 }
 
@@ -1074,20 +1089,14 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb)
 	msg.hdr.msg_type = htons(SOCK_MSG_ACCEPTED);
 	msg.hdr.msg_len = htonl(sizeof(msg));
 
-	/* use blocking write here to synchronously send ACCEPTED message
-	 * to the peer. Otherwise, the message might be pending (very shortly)
-	 * and we might get BROKEN_PIPE error if we try to immediately close it
-	 * after CONNECTED. In this situation, the peer will get REJECTED event
-	 * instead of CONNECTED and DISCONNECTED. Synchronous send of ACCEPTED
-	 * message helps preventing this. */
-	rc = write(sep->sock, &msg, sizeof(msg));
-	if (rc != sizeof(msg)) {
+	sep->ep.state = ZAP_EP_CONNECTED;
+	rc = bufferevent_write(sep->buf_event, &msg, sizeof(msg));
+	if (rc) {
 		LOG_(sep, "Cannot send SOCK_MSG_ACCEPTED to peer.");
 		zerr = ZAP_ERR_CONNECT;
 		goto err_1;
 	}
 
-	sep->ep.state = ZAP_EP_CONNECTED;
 	pthread_mutex_unlock(&sep->ep.lock);
 	zap_get_ep(&sep->ep);
 	ev.type = ZAP_EVENT_CONNECTED;
