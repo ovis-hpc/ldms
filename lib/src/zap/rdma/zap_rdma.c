@@ -59,6 +59,7 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #include "zap.h"
 #include "zap_rdma.h"
@@ -923,6 +924,15 @@ static void *cq_thread_proc(void *arg)
 	struct ibv_cq *ev_cq;
 	void *ev_ctx;
 	int ret;
+	int rc;
+	sigset_t sigset;
+	sigfillset(&sigset);
+	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (rc) {
+		fprintf(stderr, "zap_rdma: ERROR: pthread_sigmask errno: %d\n",
+				errno);
+		assert(rc == 0);
+	}
 
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 	while (1) {
@@ -1323,6 +1333,16 @@ static void *cm_thread_proc(void *arg)
 	struct rdma_cm_event *event;
 	struct z_rdma_ep *rep;
 	int ret, i;
+
+	int rc;
+	sigset_t sigset;
+	sigfillset(&sigset);
+	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (rc) {
+		fprintf(stderr, "zap_rdma: ERROR: pthread_sigmask errno: %d\n",
+				errno);
+		assert(rc == 0);
+	}
 
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 	while (1) {

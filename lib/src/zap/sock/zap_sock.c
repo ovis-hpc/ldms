@@ -66,6 +66,7 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <endian.h>
+#include <signal.h>
 #include "coll/rbt.h"
 
 #include "zap_sock.h"
@@ -772,6 +773,12 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 
 static void *io_thread_proc(void *arg)
 {
+	/* Zap thread will not handle any signal */
+	int rc;
+	sigset_t sigset;
+	sigfillset(&sigset);
+	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	assert(rc == 0 && "pthread_sigmask error");
 	event_base_dispatch(io_event_loop);
 	return NULL;
 }
