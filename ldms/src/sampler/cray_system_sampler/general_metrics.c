@@ -256,51 +256,6 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
-
-{
-	char lbuf[256];
-	char metric_name[128];
-	int found_metrics;
-	char* s;
-	union ldms_value v;
-	int j, rc;
-
-	if (!v_f)
-		return 0;
-
-	found_metrics = 0;
-
-	fseek(v_f, 0, SEEK_SET);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), v_f);
-		if (!s)
-			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
-		if (rc != 2) {
-			msglog("ERR: Issue reading the source file '%s'\n",
-								VMSTAT_FILE);
-			rc = EINVAL;
-			return rc;
-		}
-		for (j = 0; j < NUM_VMSTAT_METRICS; j++){
-			if (!strcmp(metric_name, VMSTAT_METRICS[j])){
-				ldms_set_metric(metric_table_vmstat[j], &v);
-				found_metrics++;
-				break;
-			}
-		}
-	} while (s);
-
-	if (found_metrics != NUM_VMSTAT_METRICS){
-		return EINVAL;
-	}
-
-	return 0;
-
-}
-
-
 int sample_metrics_cf_from_meminfo(ldmsd_msg_log_f msglog)
 {
 	/* return memfree+cached. Since these are usually at the top of the output
@@ -326,11 +281,12 @@ int sample_metrics_cf_from_meminfo(ldmsd_msg_log_f msglog)
 	while (1){
 		char metric[256];
 		unsigned long long val;
-		rc = sscanf(s, "s %llu", metric, &val);
+		rc = sscanf(s, "%s %llu", metric, &val);
 		if (rc != 2)
 			break;
 		if (strcmp("MemFree:", metric) == 0){
 			mval = val;
+			foundmval = 1;
 		} else if (strcmp("Cached:", metric) == 0){
 			if (!foundmval)
 				break;
@@ -370,7 +326,7 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 
 
 	if (cf_f)
-		close(cf_f);
+		fclose(cf_f);
 
 	if (CURRENT_FREEMEM_FILE != NULL){
 		cf_f = fopen(CURRENT_FREEMEM_FILE, "r");
@@ -508,7 +464,7 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 
 	/* open and close each time */
 	if (l_f)
-		close(l_f);
+		fclose(l_f);
 
 	if (LOADAVG_FILE != NULL){
 		l_f = fopen(LOADAVG_FILE, "r");

@@ -58,6 +58,8 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -325,7 +327,7 @@ static int add_metrics_generic(int comp_id,
 			sample_metrics_cf_ptr = &sample_metrics_current_freemem;
 		} else {
 			/* if there is no current_freemem, use meminfo */
-			int cf_m = open(MEMINFO_FILE, O_RDONLY);
+			cf_m = open(MEMINFO_FILE, O_RDONLY);
 			if (!cf_m)
 				msglog("WARNING: Could not open the source file '%s'\n",
 				       MEMINFO_FILE);
