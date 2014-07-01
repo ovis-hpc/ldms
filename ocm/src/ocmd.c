@@ -60,6 +60,7 @@
 #include <semaphore.h>
 #include <dlfcn.h>
 #include <signal.h>
+#include <assert.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -286,6 +287,15 @@ void process_request(struct req_entry *req, struct ocm_cfg_buff *buff)
 
 void *resp_thread_proc(void *arg)
 {
+	int rc;
+	sigset_t sigset;
+
+	if (arg) { /* arg != NULL --> not a main thread */
+		sigfillset(&sigset);
+		rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+		assert(rc == 0 && "__ocm_evthread_proc() pthread_sigmask() error.");
+	}
+
 	struct ocm_cfg_buff *buff = ocm_cfg_buff_new(16*1024*1024, "NA");
 	if (!buff) {
 		ocmd_log("ocm_cfg_buff_new failed\n");
