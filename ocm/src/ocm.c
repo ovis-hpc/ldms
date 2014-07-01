@@ -50,6 +50,8 @@
  */
 #include <stdarg.h>
 #include <stdio.h>
+#include <signal.h>
+#include <assert.h>
 #include <event2/event.h>
 #include <event2/thread.h>
 
@@ -795,6 +797,11 @@ int ocm_close(ocm_t ocm)
 
 void *__ocm_evthread_proc(void *arg)
 {
+	int rc;
+	sigset_t sigset;
+	sigfillset(&sigset);
+	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	assert(rc == 0 && "__ocm_evthread_proc() pthread_sigmask() error.");
 	event_base_dispatch(__ocm_evbase);
 	fprintf(stderr, "OCM: evthread exit.\n");
 }
