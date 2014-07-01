@@ -78,6 +78,7 @@ typedef struct mm_region {
 	size_t grain;		/* minimum allocation size and alignment */
 	size_t grain_bits;
 	size_t size;
+	size_t in_use;
 	void *start;
 	struct rbt size_tree;
 	struct rbt addr_tree;
@@ -151,6 +152,11 @@ int mm_init(size_t size, size_t grain)
 	return errno;
 }
 
+#define MM_DEBUG 1
+#ifdef MM_DEBUG
+static uint64_t max_addr = 0;
+#endif
+
 void *mm_alloc(size_t size)
 {
 	struct mm_prefix *p, *n;
@@ -160,6 +166,7 @@ void *mm_alloc(size_t size)
 
 	size += sizeof(*p);
 	size = MMR_ROUNDUP(size, mmr->grain);
+	mmr->in_use += size;
 	count = size >> mmr->grain_bits;
 
 	pthread_mutex_lock(&mmr_lock);
@@ -168,6 +175,10 @@ void *mm_alloc(size_t size)
 		goto err;
 
 	p = container_of(rbn, struct mm_prefix, size_node);
+#ifdef MM_DEBUG
+	if (p > max_addr)
+		max_addr = p;
+#endif
 
 	/* Remove the node from the size and address trees */
 	rbt_del(&mmr->size_tree, &p->size_node);
@@ -195,7 +206,6 @@ void *mm_alloc(size_t size)
 	return NULL;
 }
 
-#define MM_DEBUG 11
 void mm_free(void *d)
 {
 	struct mm_prefix *p = d;
@@ -210,6 +220,7 @@ void mm_free(void *d)
 	rbn  = rbt_find(&mmr->addr_tree, &p->addr);
 	assert(NULL == rbn);
 #endif
+	mmr->in_use -= p->count << mmr->grain_bits;
 	/* See if we can coalesce with our lesser sibling */
 	rbn = rbt_find_greatest_lt_or_eq(&mmr->addr_tree, &p->addr);
 	if (rbn) {
@@ -255,16 +266,21 @@ void mm_free(void *d)
 	pthread_mutex_unlock(&mmr_lock);
 }
 
-#ifdef MMR_TEST
-int node_count;
-void heap_print(struct rbn *rbn, void *fn_data, int level)
+static int node_count;
+static void heap_print(struct rbn *rbn, void *fn_data, int level)
 {
 	struct mm_prefix *mm =
 		container_of(rbn, struct mm_prefix, addr_node);
 	printf("#%*p[%d]\n", 80 - (level * 20), mm, mm->count);
 	node_count++;
 }
-
+void mm_dump()
+{
+	printf("in_use %ld\n", mmr->in_use);
+	printf("max_addr %p\n", (void *)(unsigned long)max_addr);
+	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
+}
+#ifdef MMR_TEST
 int main(int argc, char *argv[])
 {
 	void *b[6];

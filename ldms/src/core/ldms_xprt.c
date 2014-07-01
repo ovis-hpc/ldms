@@ -380,6 +380,7 @@ void ldms_release_xprt(ldms_t _x)
 	struct ldms_xprt *x = _x;
 
 	pthread_mutex_lock(&xprt_list_lock);
+	assert(x->ref_count != 0);
 	release_xprt_(x);
 	pthread_mutex_unlock(&xprt_list_lock);
 }

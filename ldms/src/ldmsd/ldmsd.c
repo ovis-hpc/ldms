@@ -169,6 +169,7 @@ extern int dirty_threshold;
 extern size_t calculate_total_dirty_threshold(size_t mem_total,
 					      size_t dirty_ratio);
 
+void host_conn_reschedule(struct hostspec *hs);
 /**
  * Some statistics for ldmsd.
  */
@@ -2045,8 +2046,10 @@ int do_connect(struct hostspec *hs)
 {
 	int ret;
 
-	if (!hs->x)
-		hs->x = ldms_create_xprt(hs->xprt_name, ldms_log);
+	if (hs->x)
+		ldms_xprt_close(hs->x);
+
+	hs->x = ldms_create_xprt(hs->xprt_name, ldms_log);
 
 	if (!hs->x) {
 		ldms_log("Error creating transport '%s'.\n", hs->xprt_name);
@@ -2056,8 +2059,10 @@ int do_connect(struct hostspec *hs)
 	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
 			    sizeof(hs->sin));
 	if (ret) {
+		/* Release the connect reference */
 		ldms_release_xprt(hs->x);
-		ldms_xprt_close(hs->x);
+		/* Release the create reference */
+		ldms_release_xprt(hs->x);
 		hs->x = NULL;
 		return -1;
 	}

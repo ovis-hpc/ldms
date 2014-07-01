@@ -198,6 +198,7 @@ static pthread_mutex_t cq_table_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t cq_empty_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cq_empty_cv = PTHREAD_COND_INITIALIZER;
 
+int desc_count = 0;
 /*
  * Allocate an I/O request context. These descriptors contain the context for
  * RDMA submitted to the transport.
@@ -206,12 +207,15 @@ static struct ugni_desc *alloc_desc(struct ldms_ugni_xprt *gxp)
 {
 	struct ugni_desc *desc = NULL;
 	pthread_mutex_lock(&desc_list_lock);
+	desc_count++;
 	if (!LIST_EMPTY(&desc_list)) {
 		desc = LIST_FIRST(&desc_list);
 		LIST_REMOVE(desc, link);
 	}
 	pthread_mutex_unlock(&desc_list_lock);
-	desc = desc ? desc : calloc(1, sizeof *desc);
+	if (!desc)
+		desc = calloc(1, sizeof *desc);
+	// desc = desc ? desc : calloc(1, sizeof *desc);
 	if (desc)
 		desc->gxp = gxp;
 	return desc;
@@ -223,6 +227,7 @@ static struct ugni_desc *alloc_desc(struct ldms_ugni_xprt *gxp)
 static void free_desc(struct ugni_desc *desc)
 {
 	pthread_mutex_lock(&desc_list_lock);
+	desc_count--;
 	LIST_INSERT_HEAD(&desc_list, desc, link);
 	pthread_mutex_unlock(&desc_list_lock);
 }
@@ -298,41 +303,31 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
 	gni_return_t grc;
-	struct bufferevent *buf_event, *listen_ev;
+	struct bufferevent *buf_event;
+	struct evconnlistener *listen_ev;
 
 	pthread_mutex_lock(&ugni_lock);
+	gxp->conn_status = CONN_IDLE;
 	buf_event = gxp->buf_event;
 	gxp->buf_event = NULL;
 	listen_ev = gxp->listen_ev;
 	gxp->listen_ev = NULL;
-	if (gxp->xprt) {
-		if (gxp->sock >= 0)
-			close(gxp->sock);
-		gxp->sock = -1;
-		if (gxp->ugni_ep) {
-			grc = GNI_EpDestroy(gxp->ugni_ep);
-			if (grc != GNI_RC_SUCCESS)
-				gxp->xprt->log("Error %d destroying Ep %p.\n",
-					grc, gxp->ugni_ep);
-			gxp->ugni_ep = NULL;
-		}
-		free(gxp->xprt);
-		gxp->xprt = NULL;
-
+	assert(gxp->xprt);
+	if (gxp->sock >= 0)
+		close(gxp->sock);
+	gxp->sock = -1;
+	if (gxp->ugni_ep) {
+		grc = GNI_EpDestroy(gxp->ugni_ep);
+		if (grc != GNI_RC_SUCCESS)
+			gxp->xprt->log("Error %d destroying Ep %p.\n",
+				grc, gxp->ugni_ep);
+		gxp->ugni_ep = NULL;
 	}
 	pthread_mutex_unlock(&ugni_lock);
 	if (buf_event)
 		bufferevent_free(buf_event);
 	if (listen_ev)
-		bufferevent_free(listen_ev);
-}
-
-static void ugni_xprt_term(struct ldms_ugni_xprt *r)
-{
-	// LIST_REMOVE(r, client_link);
-	if (r->listen_ev)
-		free(r->listen_ev);
-	free(r);
+		evconnlistener_free(listen_ev);
 }
 
 static int set_nonblock(struct ldms_xprt *x, int fd)
@@ -440,6 +435,8 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 err1:
 	pthread_mutex_lock(&ugni_lock);
 	grc = GNI_EpDestroy(gxp->ugni_ep);
+	close(gxp->sock);
+	gxp->sock = -1;
 	pthread_mutex_unlock(&ugni_lock);
 	if (grc != GNI_RC_SUCCESS)
 		gxp->xprt->log("Error %d destroying Ep %p.\n",
@@ -632,18 +629,6 @@ static void *cq_thread_proc(void *arg)
 	return NULL;
 }
 
-static void release_buf_event(struct ldms_ugni_xprt *r)
-{
-	if (r->listen_ev) {
-		evconnlistener_free(r->listen_ev);
-		r->listen_ev = NULL;
-	}
-	if (r->buf_event) {
-		bufferevent_free(r->buf_event);
-		r->buf_event = NULL;
-	}
-}
-
 static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 {
 	struct ldms_ugni_xprt *r = arg;
@@ -802,7 +787,10 @@ static int ugni_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 static void ugni_xprt_destroy(struct ldms_xprt *x)
 {
 	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
-	ugni_xprt_term(gxp);
+	assert(NULL == gxp->listen_ev);
+	assert(NULL == gxp->buf_event);
+	free(gxp);
+	free(x);
 }
 
 static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
@@ -1002,7 +990,7 @@ static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r)
 {
-	/* r->xprt->log("%s error on transport %p.\n", __func__, r); removed by Brandt 6-14-2014 */
+	r->xprt->log("%s error on transport %p.\n", __func__, r);
 	ldms_t x = r->xprt;
 	if (x) {
 		ldms_xprt_get(x);
