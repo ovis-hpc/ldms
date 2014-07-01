@@ -522,10 +522,13 @@ void verify_leafs(obj_idx_t idx);
 static int verify_tree(obj_idx_t idx)
 {
 	bpt_t t;
+	bpt_node_t root;
 
 	t = idx->priv;
 	if (!t->root_ref)
 		return 1;
+	root = ods_obj_ref_to_ptr(idx->ods, t->root_ref);
+	assert(root->parent == 0);
 	verify_leafs(idx);
 	verify_node(idx, ods_obj_ref_to_ptr(t->ods, t->root_ref));
 	return 1;
@@ -1325,6 +1328,9 @@ static obj_ref_t bpt_delete(obj_idx_t idx, obj_key_t key)
 	ods_free(t->ods, ods_obj_ref_to_ptr(t->ods, key_ref));
 
 	verify_tree(idx);
+#if DEBUG
+	bad_ref = 0; /* reset bad_ref */
+#endif
 
 	return obj;
 }
@@ -1568,6 +1574,11 @@ static obj_ref_t bpt_iter_key_delete(obj_iter_t oi)
 	/* update root */
 	t->root_ref = ods_obj_ptr_to_ref(t->ods, root);
 	__get_udata(i->idx->ods)->root = t->root_ref;
+
+	verify_tree(i->idx);
+#if DEBUG
+	bad_ref = 0;
+#endif
 
 	/* Free the key */
 	ods_free(t->ods, ods_obj_ref_to_ptr(t->ods, key_ref));
