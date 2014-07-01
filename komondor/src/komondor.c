@@ -1451,6 +1451,11 @@ void k_zap_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_DISCONNECTED:
 		/* Peer disconnected ... do nothing */
 		k_log("INFO: Peer disconnected\n");
+		zap_close(ep);
+		break;
+	case ZAP_EVENT_CONNECT_ERROR:
+		k_log("ERROR: Error in zap connection.\n");
+		zap_close(ep);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		k_log("INFO: Peer connected\n");
