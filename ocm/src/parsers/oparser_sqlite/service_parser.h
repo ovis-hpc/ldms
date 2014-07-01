@@ -62,6 +62,7 @@
 #include <stddef.h>
 
 enum ovis_service {
+	OVIS_INVALID_SERVICE = -1,
 	OVIS_LDMSD_SAMPLER = 0,
 	OVIS_LDMSD_AGG,
 	OVIS_BALER,
@@ -83,7 +84,7 @@ static enum ovis_service str_to_enum_ovis_service(char *s)
 	else if (strcmp(s, "komondor") == 0)
 		return OVIS_KOMONDOR;
 	else
-		return -1;
+		return OVIS_INVALID_SERVICE;
 }
 
 static char *enum_ovis_service_to_str(enum ovis_service s)

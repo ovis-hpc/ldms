@@ -155,7 +155,7 @@ static void handle_hostname(char *value)
 static void handle_service(char *value)
 {
 	service = str_to_enum_ovis_service(value);
-	if (service < 0) {
+	if (service == OVIS_INVALID_SERVICE) {
 		fprintf(stderr, "Invalid service '%s'. The choices are "
 				"ldmsd_sampler, ldmsd_aggregator, baler, "
 				"me and komondor\n", value);
