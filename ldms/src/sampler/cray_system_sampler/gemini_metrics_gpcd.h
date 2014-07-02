@@ -111,10 +111,10 @@ static char* ns_glp_baseunit[] = {
 
 static char* ns_glp_derivedunit[] = {
 	"(B/s)",
-	"(\% x10e6)",
+	"(\% x1e6)",
 	"(B)",
-	"(\% x10e6)",
-	"(\% x10e6)"
+	"(\% x1e6)",
+	"(\% x1e6)"
 	};
 
 
