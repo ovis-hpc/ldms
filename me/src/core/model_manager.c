@@ -526,8 +526,8 @@ void *evaluate_update()
 				engine = policy->model_pi->new_model_engine(cfg);
 				if (!engine) {
 					me_log("Failed to create a model "
-						"engine '%S'.\n", mname);
-					exit(ENOMEM);
+						"engine '%s'.\n", mname);
+					continue;
 				}
 
 				mref->model->engine = engine;
@@ -537,7 +537,7 @@ void *evaluate_update()
 					sizeof(uint64_t)));
 			if (!output) {
 				me_log("Out of memory to create an output.\n");
-				exit(ENOMEM);
+				continue;
 			}
 			if (engine->evaluate(engine, cfg, input, output)) {
 				me_log("Failed to evaluate model %s'.\n",
@@ -588,7 +588,6 @@ void *evaluate_update()
 		pthread_mutex_unlock(&(mref_list->list_lock));
 		free(input);
 	}
-	return 0;
 }
 
 int model_manager_init(int hash_rbt_sz, int max_sem_inq)
