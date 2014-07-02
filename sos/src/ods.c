@@ -163,6 +163,7 @@ static int init_pgtbl(ods_t ods, size_t init_size)
 	rc = write(ods->pg_fd, &pge, 1);
 	if (rc != 1)
 		return -1;
+	count--;
 	pge = 0;
 	while (count--) {
 		rc = write(ods->pg_fd, &pge, 1);
@@ -193,7 +194,7 @@ static int init_obj(ods_t ods, size_t init_size)
 	memset(hdr.obj.blk_free, 0, sizeof hdr.obj.blk_free);
 
 	hdr.pg.next = 0;
-	hdr.pg.count = (ODS_OBJ_MIN_SZ >> ODS_PAGE_SHIFT) - 1;
+	hdr.pg.count = (init_size >> ODS_PAGE_SHIFT) - 1;
 
 	rc = lseek(ods->obj_fd, 0, SEEK_SET);
 	if (rc < 0)
