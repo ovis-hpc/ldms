@@ -273,14 +273,20 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 {
 	int rc;
 	struct sockaddr_un my_un;
+	if (!my_name || !sockname)
+		return NULL;
 	char *mn = strdup(my_name);
+	if (!mn) {
+		return NULL; /* hopeless situation that may however resolve later */
+	}
 	char *sockpath;
 	struct ctrlsock *sock;
 
 	sock = calloc(1, sizeof *sock);
-	if (!sock)
+	if (!sock) {
+		free(mn);
 		return NULL;
-
+	}
 	sockpath = getenv("LDMSD_SOCKPATH");
 	if (!sockpath)
 		sockpath = "/var/run";
@@ -296,8 +302,10 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 
 	/* Create control socket */
 	sock->sock = socket(AF_UNIX, SOCK_DGRAM, 0);
-	if (sock->sock < 0)
+	if (sock->sock < 0) {
+		free(mn);
 		goto err;
+	}
 
 	pid_t pid = getpid();
 	sock->lcl_sun.sun_family = AF_UNIX;
