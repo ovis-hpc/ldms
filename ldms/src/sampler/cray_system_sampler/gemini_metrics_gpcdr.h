@@ -120,10 +120,10 @@ static char* linksmetrics_baseunit[] = {
 
 static char* linksmetrics_derivedunit[] = {
 	"(B/s)",
-	"(\% x10e6)",
+	"(\% x1e6)",
 	"(B)",
-	"(\% x10e6)",
-	"(\% x10e6)"
+	"(\% x1e6)",
+	"(\% x1e6)"
 	};
 #define NUM_LINKSMETRICS_DIR (sizeof(linksmetrics_dir)/sizeof(linksmetrics_dir[0]))
 #define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
