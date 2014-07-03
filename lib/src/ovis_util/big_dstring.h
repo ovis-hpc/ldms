@@ -6,18 +6,17 @@
  */
 
  /*
- * Example:
-char *createfoo ()
-{
-	int i;
+  * Example:
+  char *createfoo ()
+  {
+	  int i;
 	dsinit;
 	for (i=0; i < 10000; i++) {
 		dscat("1 year good luck ");
 	}
 	return dsdone;
-}
- */
-
+  }
+  */
 
 #ifndef BIG_DSTRING_H
 #define BIG_DSTRING_H
@@ -32,13 +31,13 @@ char *createfoo ()
  * (init, free, extract rely on DSTRING_STATIC_SIZE).
  */
 
-
 #define BIG_DSTRING_TYPE(DSTRING_STATIC_SIZE) \
 typedef struct big_dstring { \
-  char *string;  \
-  int length;  \
-  int capacity;  \
-  char staticSpace[DSTRING_STATIC_SIZE]; \
+	char *string;  \
+	int length;  \
+	int capacity;  \
+	int dead; \
+	char staticSpace[DSTRING_STATIC_SIZE]; \
 } big_dstring_t; \
  \
 static void bdstr_free(big_dstring_t *dsPtr); \
@@ -54,31 +53,32 @@ static inline const char *bdstrval(const big_dstring_t *dsPtr); \
  \
 static void bdstr_free(big_dstring_t *dsPtr) \
 { \
-  assert(NULL != dsPtr); \
-  if (dsPtr->string != dsPtr->staticSpace) { \
-    free(dsPtr->string); \
-  } \
-  dsPtr->string = dsPtr->staticSpace; \
-  dsPtr->length = 0; \
-  dsPtr->capacity = DSTRING_STATIC_SIZE; \
-  dsPtr->staticSpace[0] = '\0'; \
+	assert(NULL != dsPtr); \
+	if (dsPtr->string != dsPtr->staticSpace) { \
+		free(dsPtr->string); \
+	} \
+	dsPtr->string = dsPtr->staticSpace; \
+	dsPtr->length = 0; \
+	dsPtr->dead = 0; \
+	dsPtr->capacity = DSTRING_STATIC_SIZE; \
+	dsPtr->staticSpace[0] = '\0'; \
 } \
  \
  \
 static void bdstr_init(big_dstring_t *dsPtr) \
 { \
-  assert(NULL != dsPtr); \
-  dsPtr->string = dsPtr->staticSpace; \
-  dsPtr->length = 0; \
-  dsPtr->capacity = DSTRING_STATIC_SIZE; \
-  dsPtr->staticSpace[0] = '\0'; \
+	assert(NULL != dsPtr); \
+	dsPtr->string = dsPtr->staticSpace; \
+	dsPtr->length = 0; \
+	dsPtr->dead = 0; \
+	dsPtr->capacity = DSTRING_STATIC_SIZE; \
+	dsPtr->staticSpace[0] = '\0'; \
 } \
  \
  \
 static char *bdstr_extract(big_dstring_t *dsPtr) \
 { \
 	char *result; \
- \
 	assert (NULL != dsPtr); \
 	result = (char *)malloc(strlen(dsPtr->string)+1); \
 	strcpy(result,dsPtr->string); \
@@ -118,7 +118,6 @@ static inline char *bdstr_set(big_dstring_t *dsPtr, const char *string) \
 	return dstr_set((dstring_t*)dsPtr, string); \
 } \
 \
-static const int bdsize=DSTRING_STATIC_SIZE
+static const int bd_static_size=DSTRING_STATIC_SIZE
 
 #endif /* BIG_DSTRING_H */
-

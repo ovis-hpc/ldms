@@ -9,179 +9,193 @@
 #include <limits.h>
 #include <string.h>
 
-
 # define MAX(a,b) ( (a) < (b) ? (b) : (a) )
 # define MIN(a,b) ( (a) < (b) ? (a) : (b) )
 
-int dstrlen(const dstring_t *dsPtr)
-{ return dsPtr->length; }
-
-const char *dstrval(const dstring_t *dsPtr) 
-{ return dsPtr->string;}
-
-void dstr_init(dstring_t *dsPtr)
+int dstrlen(const dstring_t * dsPtr)
 {
-  assert(NULL != dsPtr);
-  dsPtr->string = dsPtr->staticSpace;
-  dsPtr->length = 0;
-  dsPtr->capacity = DSTRING_STATIC_SIZE;
-  dsPtr->staticSpace[0] = '\0';
-  /* protect against read through end of array at least until overwritten. */
-  dsPtr->staticSpace[DSTRING_STATIC_SIZE-1] = '\0';
+	return dsPtr->length;
 }
 
-void dstr_init2(dstring_t *dsPtr, int cap)
+const char *dstrval(const dstring_t * dsPtr)
 {
-  dstr_init(dsPtr);
-  char *newString;
-  if (cap >= dsPtr->capacity) {
-    dsPtr->capacity = cap;
-    newString = (char *) malloc((size_t) dsPtr->capacity);
-    newString[0] = '\0';
-    dsPtr->string = newString;
-  }
+	return dsPtr->string;
 }
 
-
-char *dstr_set(dstring_t *dsPtr, const char *string)
+void dstr_init(dstring_t * dsPtr)
 {
-  size_t input_length;
-  int length;
-  char *newString;
-
-  if (NULL == dsPtr || NULL == string) {
-	  return NULL;
-  }
-  input_length = strlen(string);
-  if (INT_MAX < input_length) {
-    string = "input_too_big";
-  }
-  length = (int)input_length;
-
-
-  /*
-   * Allocate a larger buffer for the string if the current one isn't
-   * large enough.  Allocate extra space in the new buffer so that there
-   * will be room to grow before we have to allocate again.
-   */
-  if (length >= dsPtr->capacity) {
-    if (length > INT_MAX/2) {
-      dsPtr->capacity = INT_MAX;
-    } else {
-      dsPtr->capacity = length*2;
-    }
-    newString = malloc((size_t) dsPtr->capacity);
-    if (dsPtr->string != dsPtr->staticSpace) {
-      free(dsPtr->string);
-    }
-    dsPtr->string = newString;
-  }
-
-  /*
-   * Copy the new string into the buffer
-   */
-  strncpy(dsPtr->string, string, input_length);
-  dsPtr->length = length;
-  dsPtr->string[dsPtr->length] = '\0';
-  return dsPtr->string;
+	assert(NULL != dsPtr);
+	dsPtr->string = dsPtr->staticSpace;
+	dsPtr->length = 0;
+	dsPtr->dead = 0;
+	dsPtr->capacity = DSTRING_STATIC_SIZE;
+	dsPtr->staticSpace[0] = '\0';
+	/* protect against read through end of array at least until overwritten. */
+	dsPtr->staticSpace[DSTRING_STATIC_SIZE - 1] = '\0';
 }
 
-
-char *dstrcat( dstring_t *dsPtr,
-                        const char *string,
-                        int length)
+void dstr_init2(dstring_t * dsPtr, int cap)
 {
-  size_t input_length;
-  int str_length;
-  char *newString;
-  size_t newSize;
-
-  if (NULL == dsPtr || NULL == string) {
-	  return NULL;
-  }
-  input_length = strlen(string);
-  if (INT_MAX < input_length) {
-    return NULL;
-  }
-  str_length = (int)input_length;
-
-  if (length < 0) { /* _ALL case */
-    length = str_length;
-  } else {
-    length = MIN(length, str_length);
-  }
-
-  newSize = length + dsPtr->length;
-  if (newSize > (INT_MAX-1) ) {
-    return NULL;
-  }
-
-  /*
-   * Allocate a larger buffer for the string if the current one isn't
-   * large enough.  Allocate extra space in the new buffer so that there
-   * will be room to grow before we have to allocate again.
-   */
-  if (newSize >= dsPtr->capacity) {
-    if (newSize > INT_MAX/2) {
-      dsPtr->capacity = INT_MAX;
-    } else {
-      dsPtr->capacity = newSize*2;
-    }
-    newString = malloc((size_t) dsPtr->capacity);
-    strncpy(newString, dsPtr->string, dsPtr->length);
-    if (dsPtr->string != dsPtr->staticSpace) {
-      free(dsPtr->string);
-    }
-    dsPtr->string = newString;
-  }
-
-  /*
-   * Copy the new string into the buffer at the end of the old one.
-   */
-  strncpy(dsPtr->string + dsPtr->length, string, (size_t)length);
-  dsPtr->length += length;
-  dsPtr->string[newSize] = '\0';
-  return dsPtr->string;
+	dstr_init(dsPtr);
+	char *newString;
+	if (cap >= dsPtr->capacity) {
+		dsPtr->capacity = cap;
+		dsPtr->dead = 0;
+		newString = (char *)malloc((size_t) dsPtr->capacity);
+		if (!newString) {
+			dsPtr->dead = 1;
+			return;
+		}
+		newString[0] = '\0';
+		dsPtr->string = newString;
+	}
 }
 
-
-
-void dstr_trunc( dstring_t *dsPtr, int length)
+char *dstr_set(dstring_t * dsPtr, const char *string)
 {
-  assert(NULL != dsPtr);
-  
-  if (length < 0) {
-    length = 0;
-  }
-  if (length < dsPtr->length) {
-    dsPtr->length = length;
-    dsPtr->string[length] = '\0';
-  }
+	size_t input_length;
+	int length;
+	char *newString;
+
+	if (NULL == dsPtr || NULL == string) {
+		return NULL;
+	}
+	input_length = strlen(string);
+	if (INT_MAX < input_length) {
+		string = "input_too_big";
+	}
+	length = (int)input_length;
+	dsPtr->dead = 0;	/* set can revive a dead string if it fits in static space */
+
+	/*
+	 * Allocate a larger buffer for the string if the current one isn't
+	 * large enough.  Allocate extra space in the new buffer so that there
+	 * will be room to grow before we have to allocate again.
+	 */
+	if (length >= dsPtr->capacity) {
+		int oldSize = dsPtr->capacity;
+		if (length > INT_MAX / 2) {
+			dsPtr->capacity = INT_MAX;
+		} else {
+			dsPtr->capacity = length * 2;
+		}
+		newString = malloc((size_t) dsPtr->capacity);
+		if (!newString) {
+			dsPtr->dead = 1;
+			dsPtr->capacity = oldSize;
+			return NULL;
+		}
+		if (dsPtr->string != dsPtr->staticSpace) {
+			free(dsPtr->string);
+		}
+		dsPtr->string = newString;
+	}
+
+	/*
+	 * Copy the new string into the buffer
+	 */
+	strncpy(dsPtr->string, string, input_length);
+	dsPtr->length = length;
+	dsPtr->string[dsPtr->length] = '\0';
+	return dsPtr->string;
 }
 
-
-
-void dstr_free( dstring_t *dsPtr)
+char *dstrcat(dstring_t * dsPtr, const char *string, int length)
 {
-  assert(NULL != dsPtr);
-  if (dsPtr->string != dsPtr->staticSpace) {
-    free(dsPtr->string);
-  }
-  dsPtr->string = dsPtr->staticSpace;
-  dsPtr->length = 0;
-  dsPtr->capacity = DSTRING_STATIC_SIZE;
-  dsPtr->staticSpace[0] = '\0';
+	size_t input_length = 0;
+	int str_length = -1;
+	char *newString = NULL;
+	size_t newSize = 0;
+
+	if (NULL == dsPtr || NULL == string || dsPtr->dead) {
+		return NULL;
+	}
+	input_length = strlen(string);
+	if (INT_MAX < input_length) {
+		return NULL;
+	}
+	str_length = (int)input_length;
+
+	if (length < 0) {	/* _ALL case */
+		length = str_length;
+	} else {
+		length = MIN(length, str_length);
+	}
+
+	newSize = length + dsPtr->length;
+	if (newSize > (INT_MAX - 1)) {
+		return NULL;
+	}
+
+	/*
+	 * Allocate a larger buffer for the string if the current one isn't
+	 * large enough.  Allocate extra space in the new buffer so that there
+	 * will be room to grow before we have to allocate again.
+	 */
+	if (newSize >= dsPtr->capacity) {
+		int oldSize = dsPtr->capacity;
+		if (newSize > INT_MAX / 2) {
+			dsPtr->capacity = INT_MAX;
+		} else {
+			dsPtr->capacity = newSize * 2;
+		}
+		newString = malloc((size_t) dsPtr->capacity);
+		if (!newString) {
+			dsPtr->dead = 1;
+			dsPtr->capacity = oldSize;
+			return NULL;
+		}
+		strncpy(newString, dsPtr->string, dsPtr->length);
+		if (dsPtr->string != dsPtr->staticSpace) {
+			free(dsPtr->string);
+		}
+		dsPtr->string = newString;
+	}
+
+	/*
+	 * Copy the new string into the buffer at the end of the old one.
+	 */
+	strncpy(dsPtr->string + dsPtr->length, string, (size_t) length);
+	dsPtr->length += length;
+	dsPtr->string[newSize] = '\0';
+	return dsPtr->string;
 }
 
-
-
-char *dstr_extract(dstring_t *dsPtr)
+void dstr_trunc(dstring_t * dsPtr, int length)
 {
-   char *result;
+	assert(NULL != dsPtr);
 
-  assert (NULL != dsPtr);
-  result = (char *)malloc(strlen(dsPtr->string)+1);
-  strcpy(result,dsPtr->string);
-  dstr_free(dsPtr);
-  return result;
+	if (length < 0) {
+		length = 0;
+	}
+	if (length < dsPtr->length) {
+		dsPtr->length = length;
+		dsPtr->string[length] = '\0';
+	}
+}
+
+void dstr_free(dstring_t * dsPtr)
+{
+	assert(NULL != dsPtr);
+	if (dsPtr->string != dsPtr->staticSpace) {
+		free(dsPtr->string);
+	}
+	dsPtr->string = dsPtr->staticSpace;
+	dsPtr->length = 0;
+	dsPtr->dead = 0;
+	dsPtr->capacity = DSTRING_STATIC_SIZE;
+	dsPtr->staticSpace[0] = '\0';
+}
+
+char *dstr_extract(dstring_t * dsPtr)
+{
+	char *result;
+
+	assert(NULL != dsPtr);
+	result = (char *)malloc(strlen(dsPtr->string) + 1);
+	if (result) {
+		strcpy(result, dsPtr->string);
+	}
+	dstr_free(dsPtr);
+	return result;
 }
