@@ -118,12 +118,13 @@ static char* linksmetrics_baseunit[] = {
 	"(1)"
 	};
 
+/* FIXME: These are really 1e6, but cannot change naming convention until NCSA updates image */
 static char* linksmetrics_derivedunit[] = {
 	"(B/s)",
-	"(\% x1e6)",
+	"(\% x10e6)",
 	"(B)",
-	"(\% x1e6)",
-	"(\% x1e6)"
+	"(\% x10e6)",
+	"(\% x10e6)"
 	};
 #define NUM_LINKSMETRICS_DIR (sizeof(linksmetrics_dir)/sizeof(linksmetrics_dir[0]))
 #define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
