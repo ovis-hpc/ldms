@@ -133,6 +133,10 @@ extern ldms_set_t ldms_get_set(const char *set_name)
 		goto out;
 
 	sd = calloc(1, sizeof *sd);
+	if (!sd) {
+		ldms_release_local_set(set);
+		return NULL;
+	}
 	sd->set = set;
 	ldms_release_local_set(set);
  out:
@@ -619,6 +623,8 @@ void ldms_dir_cancel(ldms_t x)
 
 char *_create_path(const char *set_name)
 {
+	if (!set_name)
+		return NULL;
 	char *dirc = strdup(set_name);
 	char *basec = strdup(set_name);
 	char *dname = dirname(dirc);
@@ -633,8 +639,10 @@ char *_create_path(const char *set_name)
 		/* remove duplicate '/'s */
 		if (*p == '/')
 			p++;
-		if (*p == '\0')
-			return NULL;
+		if (*p == '\0') {
+			rc = 1;
+			goto out;
+		}
 		tail += strlen(p);
 		strcat(__set_path, p);
 		rc = mkdir(__set_path, 0755);
