@@ -112,7 +112,7 @@ static int create_metric_set(const char *path)
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
 	union ldms_value v;
-	int rc, metric_count, metric_no;
+	int rc, metric_count, metric_no = 0; /* fixed memory corruption */
 	char metric_name[128];
 	char curriface[20];
 	int i,j;
