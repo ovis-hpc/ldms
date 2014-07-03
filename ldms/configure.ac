@@ -319,9 +319,9 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 scripts/ldms_local_usertest.sh
 		 scripts/ldms_local_clocktest.sh
 		 ldms.spec],[
-		chmod a+x scripts/ldms_usertest.sh
-		chmod a+x scripts/ldms_local_usertest.sh
-		chmod a+x scripts/ldms_local_clocktest.sh
+		if test -f scripts/ldms_usertest.sh; then chmod a+x scripts/ldms_usertest.sh; fi
+		if test -f scripts/ldms_local_usertest.sh; then chmod a+x scripts/ldms_local_usertest.sh; fi
+		if test -f scripts/ldms_local_clocktest.sh; then chmod a+x scripts/ldms_local_clocktest.sh; fi
 		])
 AC_OUTPUT
 

@@ -138,6 +138,8 @@ else
 		for dirtmp in $3; do
 			tmpbuilddir=`(cd $dirtmp && pwd)` && tmpflag="$tmpflag -L$tmpbuilddir" && dirlist="$dirlist $tmpbuilddir"
 		done
+		# no -L without args allowed.
+		tmpflag=`echo $tmpflag | sed -e 's%-L %%g'`
 	else
 		tmpbuilddir=`(cd $2 && pwd)`
 		tmpflag="-L$tmpbuilddir"

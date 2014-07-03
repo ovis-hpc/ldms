@@ -7,13 +7,13 @@ AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AC_CONFIG_SUBDIRS([lib sos ldms])
+AC_CONFIG_SUBDIRS([lib ldms])
+AC_PROG_CC
 AM_INIT_AUTOMAKE([foreign -Wno-portability])
 AM_PROG_LIBTOOL
 
 
 dnl Checks for programs
-AC_PROG_CC
 AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
 dnl AM_PROG_CC_C_O
@@ -24,6 +24,14 @@ AC_C_CONST
 # LIBEVENT-start
 dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
+
+
+OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
+dnl OPTION_WITH_OR_BUILD([sos],[../sos/src])
+
+if test "$enable_sos" = "yes"; then
+AC_CONFIG_SUBDIRS([sos])
+fi
 
 # LIBEVENT-ow
 OPTION_WITH([libevent], [LIBEVENT])

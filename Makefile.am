@@ -1,5 +1,10 @@
 ACLOCAL_AMFLAGS = -I m4
+
+if ENABLE_SOS
 SUBDIRS= lib sos ldms
+else
+SUBDIRS= lib ldms
+endif
 
 BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
