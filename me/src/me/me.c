@@ -268,7 +268,7 @@ struct model_policy *find_model_policy(uint16_t model_id)
 
 int create_model_policy(char *model_name, char *model_id_s,
 				char *thresholds, char *param,
-				char report_flags[4], char *reply_buf)
+				char report_flags[ME_NUM_SEV_LEVELS], char *reply_buf)
 {
 	int rc, model_id;
 	struct me_plugin *pi = me_find_plugin(model_name);

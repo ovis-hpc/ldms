@@ -155,7 +155,7 @@ struct model_policy *mp_new(struct me_model_plugin *model_pi);
  */
 struct me_model_cfg *
 cfg_new(struct me_model_plugin *mpi,const char *model_id_s, char *thresholds,
-		char *params, char *report_flags, char *err_str);
+		char *params, char report_flags[ME_NUM_SEV_LEVELS], char *err_str);
 
 /**
  * \brief Find a model policy

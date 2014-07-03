@@ -293,8 +293,11 @@ int parse_thresholds(char *_thresholds, double thrs[ME_NUM_SEV_LEVELS])
 int parse_report_flags(char *report_flags,
 		char is_report[ME_NUM_SEV_LEVELS])
 {
-	return sscanf(report_flags, "%[^,],%[^,],%[^,]", &is_report[ME_SEV_INFO],
-			&is_report[ME_SEV_WARNING], &is_report[ME_SEV_CRITICAL]);
+	return sscanf(report_flags, "%[^,],%[^,],%[^,],%[^,]",
+			&is_report[ME_SEV_NOMINAL],
+			&is_report[ME_SEV_INFO],
+			&is_report[ME_SEV_WARNING],
+			&is_report[ME_SEV_CRITICAL]);
 }
 
 struct model_policy *mp_new(struct me_model_plugin *model_pi)
@@ -317,7 +320,7 @@ struct model_policy *mp_new(struct me_model_plugin *model_pi)
 
 struct me_model_cfg *
 cfg_new(struct me_model_plugin *mpi,const char *model_id_s, char *thresholds,
-		char *params, char *report_flags, char *err_str)
+		char *params, char report_flags[ME_NUM_SEV_LEVELS], char *err_str)
 {
 	int rc = 0;
 	struct me_model_cfg *cfg = malloc(sizeof(*cfg));
@@ -334,10 +337,9 @@ cfg_new(struct me_model_plugin *mpi,const char *model_id_s, char *thresholds,
 	}
 
 	int i;
-	if (!report_flags || *report_flags == 0) {
-		cfg->report_flags[ME_SEV_NOMINAL] = '0';
+	if (!report_flags) {
 		for (i = 0; i < ME_NUM_SEV_LEVELS; i++) {
-			if (i <= ME_SEV_INFO)
+			if (i == ME_SEV_NOMINAL)
 				cfg->report_flags[i] = '0';
 			else
 				cfg->report_flags[i] = '1';
