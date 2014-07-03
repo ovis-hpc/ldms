@@ -347,7 +347,7 @@ int handle_nxt_token(char *word, char *err_str)
 int main(int argc, char *argv[])
 {
 	int op;
-	char *s;
+	char *s = NULL;
 	int rc;
 
 	opterr = 0;
@@ -374,6 +374,10 @@ int main(int argc, char *argv[])
 	atexit(cleanup);
 	do {
 #ifdef HAVE_LIBREADLINE
+#ifndef HAVE_READLINE_HISTORY
+		if (s != NULL)
+			free(s); /* previous readline output must be freed if not in history */
+#endif
 		if (isatty(0) ) {
 			s = readline("ldmsctl> ");
 		} else {
