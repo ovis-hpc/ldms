@@ -240,7 +240,7 @@ static int __set_socket_options(struct ldms_sock_xprt *s)
 
 	val = 1;
 	if (setsockopt(sd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val))) {
-		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPCNT (val=%d\n):"
+		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPALIVE (val=%d\n):" /* fixed typo in log message*/
 				" %m\n", val);
 		goto err;
 	}
