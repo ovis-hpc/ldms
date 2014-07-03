@@ -78,6 +78,23 @@
 		__FUNCTION__, __LINE__); \
 	exit(1); \
 }
+
+void ods_mem_dump(char *ptr, size_t len)
+{
+	int l = len;
+	char *p = ptr;
+	fprintf(stderr, "=== ods_mem_dump (%p, %zu) ===\n", ptr, len);
+	while (l) {
+		fprintf(stderr, "%p:", p);
+		while (l && (((uint64_t)p+1) % 8)) {
+			fprintf(stderr, " %02hhx", *p);
+			p++;
+			l--;
+		}
+		fprintf(stderr, "\n");
+	}
+}
+
 static int ods_remap(ods_t ods);
 
 static inline size_t ods_page_count(ods_t ods, size_t sz)
