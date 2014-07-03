@@ -2128,7 +2128,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	uint64_t gn;
 	pthread_mutex_lock(&hset->state_lock);
 	if (status) {
-		ldms_log("Updated failed for set.\n");
+		/* ldms_log("Update failed for set.\n"); Removed by Brandt 7-2-2014 */
 		reset_set_metrics(hset);
 		hset->state = LDMSD_SET_CONFIGURED;
 		goto out1;

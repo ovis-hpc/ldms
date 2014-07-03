@@ -729,7 +729,7 @@ static void ugni_connect_req(struct evconnlistener *listener,
 	if ((connect_tv.tv_sec - report_tv.tv_sec) >= 10) {
 		double rate;
 		rate = (double)conns / (double)(connect_tv.tv_sec - report_tv.tv_sec);
-		gxp->xprt->log("Connection rate is %.2f/second\n", rate);
+		/* gxp->xprt->log("Connection rate is %.2f/second\n", rate); Removed by Brandt 7-1-2014 */
 		report_tv = connect_tv;
 		conns = 0;
 	}
