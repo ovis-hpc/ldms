@@ -328,6 +328,7 @@ static int create_metric_set(const char *setname)
 			}
 		}
 	}
+	return 0; /* FIXED: missing return that could cause random failures. */
 }
 
 static const char *usage(void)
