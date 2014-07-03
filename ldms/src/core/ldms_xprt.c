@@ -186,8 +186,8 @@ static void send_dir_update(struct ldms_xprt *x,
 			    const char *set_name)
 {
 	size_t len;
-	int set_count;
-	int set_list_sz;
+	int set_count = 0;
+	int set_list_sz = 0;
 	int rc = 0;
 	struct ldms_reply *reply;
 
@@ -611,9 +611,14 @@ static int do_read_meta(ldms_t t, ldms_set_t s, size_t len,
 			ldms_update_cb_t cb, void *arg)
 {
 	struct ldms_xprt *x = t;
-	struct ldms_context *meta_ctxt = malloc(sizeof *meta_ctxt);
-	struct ldms_context *data_ctxt = malloc(sizeof *data_ctxt);
 	TF();
+	struct ldms_context *meta_ctxt = calloc(1,sizeof *meta_ctxt);
+	if (!meta_ctxt)
+		goto err_0;
+	struct ldms_context *data_ctxt = calloc(1,sizeof *data_ctxt);
+	if (!data_ctxt)
+		goto err_1;
+
 	data_ctxt->rc = 0;
 	data_ctxt->update.s = s;
 	data_ctxt->update.cb = cb;
@@ -625,12 +630,18 @@ static int do_read_meta(ldms_t t, ldms_set_t s, size_t len,
 	meta_ctxt->update.arg = data_ctxt;
 
 	return x->read_meta_start(x, s, len, meta_ctxt);
+ err_1:
+ 	 free(meta_ctxt);
+ err_0:
+ 	 return -1;
 }
 
 static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb, void*arg)
 {
 	struct ldms_xprt *x = t;
-	struct ldms_context *ctxt = malloc(sizeof *ctxt);
+	struct ldms_context *ctxt = calloc(1,sizeof *ctxt);
+	if (!ctxt)
+		goto err_0;
 	TF();
 	ctxt->rc = 0;
 	ctxt->update.s = s;
@@ -638,6 +649,8 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 	ctxt->update.arg = arg;
 
 	return x->read_data_start(x, s, len, ctxt);
+ err_0:
+ 	 return -1;
 }
 
 /*
