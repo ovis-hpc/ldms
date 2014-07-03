@@ -3264,6 +3264,7 @@ int main(int argc, char *argv[])
 	sigaction(SIGHUP, &action, NULL);
 	sigaction(SIGINT, &action, NULL);
 	sigaction(SIGTERM, &action, NULL);
+	sigaction(SIGABRT, &action, NULL);
 
 	hset_map = str_map_create(65521);
 	if (!hset_map) {
