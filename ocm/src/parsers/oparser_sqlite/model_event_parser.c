@@ -168,7 +168,7 @@ void handle_metric_name(char *value)
 	int num;
 
 	prod_comps[0] = '\0';
-	num = sscanf(value, "%[^{]{%[^]]}", metric_name_full, tmp);
+	num = sscanf(value, "%[^{]{%[^}]}", metric_name_full, tmp);
 
 	char core_name[256], variation[256];
 	/* at least one comp type is given */
@@ -182,11 +182,18 @@ void handle_metric_name(char *value)
 
 	char *wild_card = strstr(metric_name_full, "[*]");
 	if (wild_card) {
-		int len = wild_card - metric_name_full;
-		wild_card = wild_card + strlen("[*]");
+		int len;
+		while (wild_card) {
+			len = wild_card - metric_name_full;
+			wild_card = wild_card + strlen("[*]");
+
+			sprintf(metric_name_full, "%.*s%%%s", len,
+					metric_name_full, wild_card);
+			wild_card = strstr(metric_name_full, "[*]");
+		}
+
 		m = malloc(sizeof(*m));
-		sprintf(m->metric_name, "%.*s%%%s", len,
-				metric_name_full, wild_card);
+		sprintf(m->metric_name, "%s", metric_name_full);
 		sprintf(m->prod_comp_type, "%s", prod_comps);
 		LIST_INSERT_HEAD(&metric_comp_list, m, entry);
 		return;
