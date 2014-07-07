@@ -889,7 +889,6 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 {
 	int rc = 0;
 	struct binq_data *in_data = &ent->data.in;
-	binq_data_print(in_data);
 	uint32_t comp_id = bmap_get_id(comp_store->map, in_data->hostname);
 	if (comp_id < BMAP_ID_BEGIN) {
 		/* Error, cannot find the comp_id */
@@ -975,10 +974,7 @@ loop:
 
 int process_output_entry(struct bwq_entry *ent, struct bout_wkr_ctxt *ctxt)
 {
-	/* Print stuffs into the log just for testing */
 	struct boutq_data *d = &ent->data.out;
-	binfo("owkr_id: %d: %d %lu %lu %d", ctxt->worker_id, d->comp_id,
-			d->tv.tv_sec, d->tv.tv_usec, d->msg->ptn_id);
 	struct bplugin *p;
 	struct boutplugin *op;
 	int rc = 0;
