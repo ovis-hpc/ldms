@@ -5,7 +5,7 @@ endif
 
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -Wall $(DBGFLAGS) -I$(top_srcdir)
+AM_CFLAGS = -Wall $(DBGFLAGS) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_CPPFLAGS = -DSYSCONFDIR='"$(sysconfdir)"' -DPLUGINDIR='"$(libdir)"'
 
 ldmscoreincludedir = $(includedir)/ldms
