@@ -1503,7 +1503,8 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, 
 
 			metric = strtok(NULL, ",");
 		}
-		free(metrics);
+		if (metrics)
+			free(metrics);
 
 	}
 	sp->state = STORE_POLICY_READY;
