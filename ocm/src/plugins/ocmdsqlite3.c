@@ -328,6 +328,9 @@ err:
 	return rc;
 }
 
+#define NOT_CORRECTIVE "0"	/* Not corrective action */
+#define CORRECTIVE "1"	/* Corrective action */
+
 int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 {
 	int rc = 0;
@@ -355,9 +358,9 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 	while (rc == SQLITE_ROW) {
 		count++;
 		int ccount = sqlite3_column_count(stmt);
-		if (ccount != 2) {
+		if (ccount != 3) {
 			/* invalid result */
-			LOG(p, "column count (%d) != 2.\n", ccount);
+			LOG(p, "column count (%d) != 3 (name, execute, type).\n", ccount);
 			rc = EINVAL;
 			goto err;
 		}
@@ -366,7 +369,7 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 
 		const char *name = sqlite3_column_text(stmt, 0);
 		if (!name) {
-			LOG(p, "sqlite3_column_text error: ENOMEM\n");
+			LOG(p, "query_actions: sqlite3_column_text error: ENOMEM\n");
 			rc = ENOMEM;
 			goto err;
 		}
@@ -380,12 +383,25 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 
 		const char *execute = (char*) sqlite3_column_text(stmt, 1);
 		if (!execute) {
-			LOG(p, "sqlite3_column_text error: ENOMEM\n");
+			LOG(p, "query_actions: sqlite3_column_text error: ENOMEM\n");
 			rc = ENOMEM;
 			goto err;
 		}
 		ocm_value_set_s(ov, execute);
 		ocm_cfg_buff_add_av(buff, "execute", ov);
+
+		const char *type = (char *) sqlite3_column_text(stmt, 2);
+		if (!type) {
+			LOG(p, "query_actions: sqlite3_column_text error: ENOMEM\n");
+			rc = ENOMEM;
+			goto err;
+		}
+		if (0 == strcmp(type, "corrective")) {
+			ocm_value_set_s(ov, CORRECTIVE);
+		} else {
+			ocm_value_set_s(ov, NOT_CORRECTIVE);
+		}
+		ocm_cfg_buff_add_av(buff, "type", ov);
 
 		rc = sqlite3_step(stmt);
 	}

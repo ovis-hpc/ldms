@@ -81,6 +81,7 @@ TAILQ_HEAD(oparser_model_q, oparser_model);
 struct oparser_action {
 	char *name;
 	char *execute;
+	char *type;
 	TAILQ_ENTRY(oparser_action) entry;
 };
 TAILQ_HEAD(oparser_action_q, oparser_action);

@@ -333,6 +333,18 @@ static void handle_execute(char *value)
 		oom_report(__FUNCTION__);
 }
 
+static void handle_action_type(char *value)
+{
+	if (0 == strcasecmp(value, "corrective")) {
+		action->type = strdup("corrective");
+	} else {
+		mae_parser_log("Invalid action type '%s': Support only "
+			"'corrective' type. If no type is given, the "
+			"type is assumed to be 'not-corrective'.\n", value);
+		exit(EINVAL);
+	}
+}
+
 void create_event()
 {
 	objective = MAE_OBJ_EVENT;
@@ -600,6 +612,7 @@ static void handle_user_event(char *value)
 static struct kw label_tbl[] = {
 	{ "action", handle_action },
 	{ "action_name", handle_action_name },
+	{ "action_type", handle_action_type },
 	{ "components", handle_components },
 	{ "event", handle_event },
 	{ "execute", handle_execute },
@@ -789,11 +802,12 @@ void oparser_actions_to_sqlite()
 	char *errmsg;
 	stmt_s = "CREATE TABLE IF NOT EXISTS actions(" \
 			" name		CHAR(128) PRIMARY KEY	NOT NULL," \
-			" execute	TEXT	NOT NULL);";
+			" execute	TEXT	NOT NULL," \
+			" type		TEXT	NOT NULL);";
 
 	create_table(stmt_s, db);
 
-	stmt_s = "INSERT INTO actions(name, execute) VALUES(@name, @exec)";
+	stmt_s = "INSERT INTO actions(name, execute, type) VALUES(@name, @exec, @type)";
 	rc = sqlite3_prepare_v2(db, stmt_s, strlen(stmt_s), &stmt, NULL);
 	if (rc) {
 		mae_parser_log("%s: %s\n", __FUNCTION__, sqlite3_errmsg(db));
@@ -811,6 +825,11 @@ void oparser_actions_to_sqlite()
 	TAILQ_FOREACH(action, &action_q, entry) {
 		oparser_bind_text(db, stmt, 1, action->name, __FUNCTION__);
 		oparser_bind_text(db, stmt, 2, action->execute, __FUNCTION__);
+		if (action->type == 0) {
+			oparser_bind_text(db, stmt, 3, "not-corrective", __FUNCTION__);
+		} else {
+			oparser_bind_text(db, stmt, 3, action->type, __FUNCTION__);
+		}
 		oparser_finish_insert(db, stmt, __FUNCTION__);
 	}
 
@@ -828,29 +847,41 @@ void event_to_sqlite(struct oparser_event *event, sqlite3 *db,
 {
 	int i, level;
 	for (level = 0; level < MAE_NUM_LEVELS; level++) {
-
 		if (!event->msg_level[level].msg &&
 			event->msg_level[level].action_name[0] == '\0') {
 			continue;
 		}
+		if (event->msg_level[level].msg &&
+			event->msg_level[level].action_name[0] == '\0') {
+			mae_parser_log("event %d: level %d: Need action\n",
+				event->event_id, level);
+			exit(EINVAL);
+		}
 
-		oparser_bind_int(db, action_stmt, 1, event->event_id,
-							__FUNCTION__);
-		oparser_bind_int(db, action_stmt, 2, level, __FUNCTION__);
-		if (!event->msg_level[level].msg)
-			oparser_bind_null(db, action_stmt, 3, __FUNCTION__);
-		else
-			oparser_bind_text(db, action_stmt, 3,
-				event->msg_level[level].msg, __FUNCTION__);
+		char *actions = strdup(event->msg_level[level].action_name);
+		if (!actions) {
+			mae_parser_log("Out of memory in event_to_sqlite\n");
+			exit(ENOMEM);
+		}
 
-		if (event->msg_level[level].action_name[0] == '\0')
-			oparser_bind_null(db, action_stmt, 4, __FUNCTION__);
-		else
-			oparser_bind_text(db, action_stmt, 4,
-					event->msg_level[level].action_name,
+		char *action = strtok(actions, ",");
+		while (action) {
+			oparser_bind_int(db, action_stmt, 1, event->event_id,
 								__FUNCTION__);
+			oparser_bind_int(db, action_stmt, 2, level, __FUNCTION__);
 
-		oparser_finish_insert(db, action_stmt, __FUNCTION__);
+			if (!event->msg_level[level].msg)
+				oparser_bind_null(db, action_stmt, 3, __FUNCTION__);
+			else
+				oparser_bind_text(db, action_stmt, 3,
+					event->msg_level[level].msg, __FUNCTION__);
+
+			oparser_bind_text(db, action_stmt, 4, action, __FUNCTION__);
+
+			oparser_finish_insert(db, action_stmt, __FUNCTION__);
+			action = strtok(NULL, ",");
+		}
+		free(actions);
 	}
 
 	struct metric_id_s *mid;
@@ -919,8 +950,8 @@ void oparser_events_to_sqlite()
 			" event_id	INTEGER		NOT NULL," \
 			" level		SMALLINT	NOT NULL," \
 			" message	TEXT," \
-			" action_name	CHAR(128)," \
-			" PRIMARY KEY(event_id, level));";
+			" action_name	CHAR(128)	NOT NULL," \
+			" PRIMARY KEY(event_id, level, action_name));";
 	create_table(stmt_s, db);
 
 	stmt_s = "CREATE TABLE IF NOT EXISTS rule_metrics (" \
