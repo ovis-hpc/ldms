@@ -420,6 +420,7 @@ zap_t zap;
 zap_ep_t listen_ep;
 
 str_map_t cmd_map; /* map command_id to command (char*) */
+str_map_t act_type_map;
 
 /**
  * rule_idx[rule] |--> chain of actions
@@ -1172,6 +1173,11 @@ void init()
 		k_log("%s: cannot create str_map for cmd_map\n", strerror(errno));
 		exit(-1);
 	}
+	act_type_map = str_map_create(4099);
+	if (!act_type_map) {
+		k_log("%s: cannot create str_map for act_type_map\n", strerror(errno));
+		exit(-1);
+	}
 	rule_idx = idx_create();
 	if (!rule_idx) {
 		k_log("Cannot create rule index\n");
@@ -1493,6 +1499,7 @@ void handle_ocm_cmd_RULE(ocm_cfg_cmd_t cmd)
 	cond.model_id = ov_model_id->u16;
 	cond.metric_id = ov_metric_id->u64;
 	const char *exec = (const char *)str_map_get(cmd_map, ov_action->s.str);
+	enum k_action_type act_type = (int) str_map_get(act_type_map, ov_action->s.str);
 	if (!exec) {
 		k_log("ocm: error, action '%s' not found.\n", ov_action->s.str);
 		return;
@@ -1513,6 +1520,7 @@ void handle_ocm_cmd_RULE(ocm_cfg_cmd_t cmd)
 	action->severity_range.left = ov_severity->i16;
 	action->severity_range.right = ov_severity->i16;
 	action->cmd = (char*)exec;
+	action->type = act_type;
 	LIST_INSERT_HEAD(&rule->action_list, action, link);
 }
 
@@ -1520,6 +1528,8 @@ void handle_ocm_cmd_ACTION(ocm_cfg_cmd_t cmd)
 {
 	const struct ocm_value *action_id = ocm_av_get_value(cmd, "name");
 	const struct ocm_value *action_exec = ocm_av_get_value(cmd, "execute");
+	const struct ocm_value *action_type = ocm_av_get_value(cmd, "type");
+	enum k_action_type type = KMD_ACTION_OTHER;
 	if (!action_id) {
 		k_log("ocm: error 'name' is missing from verb 'action'\n");
 		return;
@@ -1527,6 +1537,11 @@ void handle_ocm_cmd_ACTION(ocm_cfg_cmd_t cmd)
 	if (!action_exec) {
 		k_log("ocm: error 'exec' is missing from verb 'action'\n");
 		return;
+	}
+	if (action_type) {
+		int x = atoi(action_type->s.str);
+		if (x == KMD_ACTION_RESOLVE)
+			type = KMD_ACTION_RESOLVE;
 	}
 	char *exec = strdup(action_exec->s.str);
 	if (!exec) {
@@ -1540,6 +1555,17 @@ void handle_ocm_cmd_ACTION(ocm_cfg_cmd_t cmd)
 		k_log("ocm: action insertion error code: %d, %s.\n", rc,
 				strerror(rc));
 		return ;
+	}
+
+	if (type == KMD_ACTION_OTHER)
+		return;
+
+	rc = str_map_insert(act_type_map, action_id->s.str, type);
+	if (rc) {
+		str_map_remove(cmd_map, action_id->s.str);
+		free(exec);
+		k_log("ocm: action type insertion error code: %d, %s.\n", rc,
+				strerror(rc));
 	}
 }
 
