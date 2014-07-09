@@ -236,9 +236,15 @@ void sos_iter_free(sos_iter_t iter)
 	free(iter);
 }
 
+static inline sos_meta_t sos_meta(sos_t sos)
+{
+	size_t sz;
+	return ods_get_user_data(sos->ods, &sos->meta_sz);
+}
+
 static inline sos_dattr_t get_dattr(sos_t sos, int attr_id)
 {
-	return &sos->meta->attrs[attr_id];
+	return &sos_meta(sos)->attrs[attr_id];
 }
 
 const char *sos_iter_name(sos_iter_t i)
@@ -631,7 +637,7 @@ sos_t sos_open(const char *path, int o_flag, ...)
 
 int sos_extend(sos_t sos, size_t sz)
 {
-	int rc = ods_extend(sos->ods, sos->meta->ods_extend_sz);
+	int rc = ods_extend(sos->ods, sos_meta(sos)->ods_extend_sz);
 	if (rc) {
 		perror("ods_extend");
 		return rc;
@@ -666,17 +672,17 @@ void sos_obj_delete(sos_t sos, sos_obj_t obj)
 
 sos_obj_t sos_obj_new(sos_t sos)
 {
-	sos_obj_t obj = ods_alloc(sos->ods, sos->meta->obj_sz);
+	sos_obj_t obj = ods_alloc(sos->ods, sos_meta(sos)->obj_sz);
 	if (!obj) {
-		if (sos_extend(sos, sos->meta->ods_extend_sz))
+		if (sos_extend(sos, sos_meta(sos)->ods_extend_sz))
 			goto err;
-		obj = ods_alloc(sos->ods, sos->meta->obj_sz);
+		obj = ods_alloc(sos->ods, sos_meta(sos)->obj_sz);
 		if (!obj) {
 			errno = ENOMEM;
 			goto err;
 		}
 	}
-	bzero(obj, sos->meta->obj_sz);
+	bzero(obj, sos_meta(sos)->obj_sz);
 	return obj;
  err:
 	return NULL;
@@ -961,7 +967,7 @@ static int __remove_key(sos_t sos, sos_obj_t obj, sos_iter_t iter)
 
 	/* Delete the other keys related to the object */
 	obj_key_t key = obj_key_new(key_sz);
-	for (attr_id = 0; attr_id < sos->meta->attr_cnt; attr_id++) {
+	for (attr_id = 0; attr_id < sos_meta(sos)->attr_cnt; attr_id++) {
 		if (iter && attr_id == iter->attr->id)
 			continue;
 		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
@@ -1011,7 +1017,7 @@ int sos_obj_add(sos_t sos, sos_obj_t obj)
 	size_t key_sz = 1024;
 	obj_key_t key = obj_key_new(key_sz);
 
-	for (attr_id = 0; attr_id < sos->meta->attr_cnt; attr_id++) {
+	for (attr_id = 0; attr_id < sos_meta(sos)->attr_cnt; attr_id++) {
 		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
 		if (!sos_attr_has_index(attr))
 			continue;
@@ -1107,7 +1113,7 @@ sos_t sos_destroy(sos_t sos)
 	sprintf(str, "%s_sos.PG", sos->path);
 	__str_lst_add(&head, str);
 	/* index files */
-	for (i = 0; i < sos->meta->attr_cnt; i++) {
+	for (i = 0; i < sos_meta(sos)->attr_cnt; i++) {
 		sos_attr_t attr = sos->classp->attrs + i;
 		if (attr->has_idx) {
 			sprintf(str, "%s_%s.OBJ", sos->path, attr->name);
