@@ -82,7 +82,9 @@ static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 	double *thresholds = me_get_thresholds(cfg);
 
 	if (input_val->type == ME_NO_DATA) {
+		output->level = ME_DO_NOTHING;
 		msglog("Mexample: no data.\n");
+		return 0;
 	}
 
 	if (value <= thresholds[ME_SEV_INFO])

@@ -72,8 +72,10 @@ typedef struct low_percentage_param {
 static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 				me_input_t input, me_output_t output)
 {
-	if (me_get_input_type(input) == ME_NO_DATA)
+	if (me_get_input_type(input) == ME_NO_DATA) {
+		output->level = ME_DO_NOTHING;
 		return 0;
+	}
 
 	low_pct_param_t param = (low_pct_param_t)me_get_params(cfg);
 

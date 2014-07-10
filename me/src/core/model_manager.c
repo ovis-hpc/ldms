@@ -555,7 +555,6 @@ void *evaluate_update()
 			 * Ignore if the output level is not a severity level.
 			 */
 			if (output->level > ME_NUM_SEV_LEVELS) {
-				engine->last_level = output->level;
 				free(output);
 				continue;
 			}

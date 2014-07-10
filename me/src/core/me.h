@@ -108,7 +108,7 @@ enum me_severity_level {
 	ME_NUM_SEV_LEVELS,
 	ME_RESET_STATE,
 	ME_ONLY_UPDATE,
-
+	ME_DO_NOTHING,
 };
 
 enum me_input_type {
