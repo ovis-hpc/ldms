@@ -1,22 +1,24 @@
-# /* @configure_input@ */
-# don' tSet topdir to be builddir/rpm
-#%-define _topdir %(echo $PWD)/rpm
+# Set topdir to be builddir/rpm
+# note this is intentionally ignored by rpmbuild. must use
+# commandline syntax in makefile.am to get this effect.
+#% define _topdir %(echo $PWD)/toss
+# do not set unfascist build
 #%-define _unpackaged_files_terminate_build 0
-#%-%define _missing_doc_files_terminate_build 0
+#%-define _missing_doc_files_terminate_build 0
 
-%define ldms_grp System Environment/Libraries
+%define ldms_all System Environment/Libraries
 
 # Main package
 Summary: OVIS LDMS Commands and Libraries
-Name: ovis-base
+Name: ldms-all
 Version: @VERSION@
-Release: 1%{?dist}
+Release: ovis1%{?dist}
 License: GPLv2 or BSD
-Group: %{ldms_grp}
+Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
 Requires: rpm >= 4.8.0
-BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel libevent2-devel
+BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel
 Url: http://ovis.ca.sandia.gov/
 
 Prefix: /opt/ovis
@@ -33,32 +35,35 @@ Configured with @ac_configure_args@.
 %setup -q
 
 %build
-%configure @ac_configure_args@ --enable-swig --disable-rpath --enable-rdma --enable-zaptest --enable-sos
+echo bTMPPATH %{_tmppath}
+echo bBUILDROOT $RPM_BUILD_ROOT
+%configure @ac_configure_args@ --disable-sos
 make
 
 %install
+echo TMPPATH %{_tmppath}
+echo BUILDROOT $RPM_BUILD_ROOT
 rm -rf $RPM_BUILD_ROOT
 make DESTDIR=${RPM_BUILD_ROOT} install
 # remove unpackaged files from the buildroot
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 
 %clean
-rm -rf $RPM_BUILD_ROOT
+#rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root)
 %{_libdir}/*
-%{_libdir}/python2.6/site-packages
-%{_prefix}/lib/python2.6/site-packages
+%{_bindir}/*
 %{_sbindir}/*
-%doc README COPYING ChangeLog AUTHORS
+%doc ldms/README ldms/COPYING ldms/ChangeLog ldms/AUTHORS
 #end core
 
 # devel
 %package devel
-Summary: OVIS base package.
+Summary: LDMS devel package
 Group: %{ldms_grp}
-Requires: ovis-base = @VERSION@
+Requires: ldms-all = @VERSION@
 %description devel
 This is a development package of Lightweight Distributed Metric System (LDMS).
 Users who want to implement their own sampler or store must install this
@@ -71,16 +76,14 @@ package.
 
 %package doc
 Summary: Documentation files for %{name}
-Group: %{ldms_grp}
+Group: %{ldms_all}
 Requires: %{name}-devel = %{version}-%{release}
 %description doc
-Doxygen files for ovis-base package.
+Doxygen files for ldms-all package.
 %files doc
 %defattr(-,root,root)
-%{_datadir}/doc/ovis-lib-%{version}
-%{_datadir}/doc/ovis-sos-%{version}
-%{_datadir}/doc/ovis-ldms-%{version}
+%{_datadir}/doc/ldms-all-%{version}
 %docdir %{_defaultdocdir}
 %changelog
-* Fri Dec 13 2013 Ben Allan <baallan@sandia.gov> 2.2.2-1
-initial ovis-base packaging
+* Wed Jul 9 2014 Ben Allan <baallan@sandia.gov> 2.1.0-1
+all-in-one packaging
