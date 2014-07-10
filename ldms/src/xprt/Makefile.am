@@ -1,7 +1,7 @@
 lib_LTLIBRARIES =
 
 CORE = ../core
-INCLUDES = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@ 
+INCLUDES = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@ @LIBEVENT_INCDIR_FLAG@
 AM_CFLAGS = $(INCLUDES)
 
 if ENABLE_SOCK
