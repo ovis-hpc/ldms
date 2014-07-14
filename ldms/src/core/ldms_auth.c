@@ -30,9 +30,9 @@ uint64_t ldms_unpack_challenge(uint32_t chi, uint32_t clo)
 {
 	uint32_t hi = ntohl(chi);
 	uint32_t lo = ntohl(clo);
-	int64_t ret = (int64_t) hi;
+	uint64_t ret = (uint64_t) hi;
 	ret = (ret << 32);
-	ret = ret | (int64_t) lo;
+	ret = ret | (uint64_t) lo;
 	return ret;
 }
 
@@ -100,8 +100,11 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
             goto err;
         }
         snprintf( ldmsauth_path, ldmsauth_path_len-1, "%s/" CONFNAME , pwent->pw_dir );
-        if ( access( ldmsauth_path, R_OK ) != 0 )
+        if ( access( ldmsauth_path, R_OK ) != 0 ) {
+
+            x->log("Cannot read password file defined in env(LDMS_AUTH_FILE): %s\n");
             snprintf( ldmsauth_path, ldmsauth_path_len-1, "%s/" CONFNAME, SYSCONFDIR );
+        }
     }
 	errno=0;
     conf_file = fopen( ldmsauth_path, "r");
@@ -136,6 +139,10 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 
     size_t len = strlen(secretword) + 2 + strlen( xstr( UINT64_MAX ));
     result = malloc(len);
+	if (!result) {
+		holderr = ENOMEM;
+		goto err;
+	}
 	snprintf(result, len, "%" PRIu64 "%s", n, secretword);
 
 	EVP_MD_CTX *mdctx;
@@ -152,6 +159,10 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 	EVP_MD_CTX_destroy(mdctx);
 	free(result);
 	result = malloc(2*EVP_MAX_MD_SIZE+1);
+	if (!result) {
+		holderr = ENOMEM;
+		goto err;
+	}
 	for(i = 0; i < md_len; i++) {
 		snprintf(&result[2*i],3,"%02x", md_value[i]);
 	}
