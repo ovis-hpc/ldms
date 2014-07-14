@@ -72,6 +72,7 @@
 #include "rca_metrics.h"
 #include "general_metrics.h"
 
+/* NOTE: fallback for current_freemem sample is vmstat, so make sure have both */
 #ifdef HAVE_GPCDR
 #include "gemini_metrics_gpcdr.h"
 
@@ -174,6 +175,7 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 					      m_sz, d_sz, msglog);
 		break;
 	case NS_VMSTAT:
+		sample_metrics_vmstat_ptr = NULL;
 		return get_metric_size_simple(VMSTAT_METRICS,
 					      NUM_VMSTAT_METRICS,
 					      m_sz, d_sz, msglog);
@@ -184,6 +186,7 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 					      m_sz, d_sz, msglog);
 		break;
 	case NS_CURRENT_FREEMEM:
+		sample_metrics_cf_ptr = NULL;
 		return get_metric_size_simple(CURRENT_FREEMEM_METRICS,
 					      NUM_CURRENT_FREEMEM_METRICS,
 					      m_sz, d_sz, msglog);
@@ -289,11 +292,20 @@ static int add_metrics_generic(int comp_id,
 		nettopo_setup(msglog);
 		return 0;
 	case NS_VMSTAT:
-		return add_metrics_simple(set, VMSTAT_METRICS,
-					  NUM_VMSTAT_METRICS,
-					  &metric_table_vmstat,
-					  &VMSTAT_FILE, &v_f,
-					  comp_id, msglog);
+		rc = add_metrics_simple(set, VMSTAT_METRICS,
+					NUM_VMSTAT_METRICS,
+					&metric_table_vmstat,
+					&VMSTAT_FILE, &v_f,
+					comp_id, msglog);
+		if (rc != 0) {
+			sample_metrics_vmstat_ptr == NULL;
+			return rc;
+		}
+		if (sample_metrics_vmstat_ptr == NULL) {
+			//could be set from current_freemem
+			sample_metrics_vmstat_ptr == sample_metrics_vmstat;
+		}
+		return rc;
 		break;
 	case NS_LOADAVG:
 		return add_metrics_simple(set, LOADAVG_METRICS,
@@ -312,7 +324,6 @@ static int add_metrics_generic(int comp_id,
 
 		break;
 	case NS_CURRENT_FREEMEM:
-		sample_metrics_cf_ptr = NULL;
 		cf_m = 0;
 		rc = add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
 					NUM_CURRENT_FREEMEM_METRICS,
@@ -326,13 +337,10 @@ static int add_metrics_generic(int comp_id,
 			cf_f = NULL;
 			sample_metrics_cf_ptr = &sample_metrics_current_freemem;
 		} else {
-			/* if there is no current_freemem, use meminfo */
-			cf_m = open(MEMINFO_FILE, O_RDONLY);
-			if (!cf_m)
-				msglog("WARNING: Could not open the source file '%s'\n",
-				       MEMINFO_FILE);
-			else
-				sample_metrics_cf_ptr = &sample_metrics_cf_from_meminfo;
+			/* if there is no current_freemem, get it out of vmstat */
+			sample_metrics_cf_ptr = NULL;
+			sample_metrics_vmstat_ptr = sample_metrics_vmcf_ptr;
+			//FIXME: some flag or alternate function for vmstat call
 		}
 		return rc;
 
