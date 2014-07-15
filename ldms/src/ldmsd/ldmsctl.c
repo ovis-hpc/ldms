@@ -112,7 +112,7 @@ void usage(char *argv[])
 	printf("%s: [%s]\n"
                "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
                "                    [" LDMSD_CONTROL_SOCKNAME "].\n"
-	       "    -v              Prints the version of this ldmsctl\n",
+	       "    -V              Prints the version of this ldmsctl\n",
                argv[0], FMT);
 	exit(1);
 }
@@ -350,7 +350,6 @@ int main(int argc, char *argv[])
 	char *s = NULL;
 	int rc;
 
-	printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {

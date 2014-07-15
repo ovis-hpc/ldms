@@ -358,7 +358,7 @@ int main(int argc, char *argv[])
 				usage(argv);
 			}
 			break;
-		case '-V':
+		case 'V':
 			/* FALLTHRU  until we get more ambition. */
 		default:
 			usage(argv);
