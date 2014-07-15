@@ -13,6 +13,8 @@ bin_PROGRAMS = test_big_dstring test_dstring
 
 test_dstring_SOURCES= test_dstring.c 
 test_dstring_LDFLAGS = -lovis_util
+test_dstring_DEPENDENCIES = libovis_util.la
 test_big_dstring_SOURCES=test_big_dstring.c big_dstring.h 
 test_big_dstring_LDFLAGS = -lovis_util
+test_big_dstring_DEPENDENCIES = libovis_util.la
 endif

@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT([ovis-lib], 2.0.0, ovis-help@sandia.gov)
+AC_INIT([ovis-lib], 2.1.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
@@ -33,6 +33,7 @@ OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
 dnl we need libevent to support zap
 if test "$disable_zap" != "yes"; then
   OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
+  OPTION_WITH([libevent], [LIBEVENT])
   OPTION_WITH_EVENT
 
 dnl we need libibverbs-devel and librdmacm-devel to support rdma
@@ -49,6 +50,8 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
   fi
 else
 dnl  libevent only needed for zap.
+LIBEVENT_INCDIR_FLAG=""
+AC_SUBST(LIBEVENT_INCDIR_FLAG)
 ENABLE_LIBEVENT_TRUE='#'
 ENABLE_LIBEVENT_FALSE=
 fi

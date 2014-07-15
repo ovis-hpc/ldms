@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 2.0.0, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 2.1.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -85,7 +85,9 @@ OPTION_DEFAULT_DISABLE([qc-sampler], [ENABLE_QC_SAMPLER]) dnl turn on QC testing
 
 
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
+if test "$enable_sos" == "yes"; then
 OPTION_WITH_OR_BUILD([sos],[../sos/src])
+fi
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[../lib/src/mmalloc ../lib/src/coll ../lib/src/ovis_util ../lib/src/zap ../lib/src/ovis_ctrl])

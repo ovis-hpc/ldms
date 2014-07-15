@@ -198,7 +198,7 @@ AC_DEFUN([OPTION_WITH_EVENT],[
       ;;
     *)
       if test "x$withval" != "x/usr"; then
-        CPPFLAGS="-I$withval/include"
+        dnl CPPFLAGS="-I$withval/include"
 	if test -f $withval/lib/libevent.so; then
 	  libeventpath=$withval/lib
           EVENTLIBS="-L$withval/lib"

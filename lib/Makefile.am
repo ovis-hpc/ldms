@@ -37,6 +37,10 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
+else
+doxygen doxygen/html:
+	mkdir -p doxygen/html
+	echo "Documentation suppressed by configure options" > doxygen/html/README.txt
 endif
 
 clean-local: rpm-clean

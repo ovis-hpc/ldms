@@ -12,10 +12,15 @@ OPV=-$(PACKAGE_VERSION)
 
 .PHONY: rpm centos toss doxygen 
 
-rpm toss centos: dist-gzip
+rpm centos: dist-gzip
 	mkdir -p centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(BASE_TARBALL) packaging/ovis-base.spec centos/SOURCES
 	rpmbuild --define "_topdir `pwd`/centos" -ba packaging/ovis-base.spec
+
+toss: dist-gzip
+	mkdir -p toss/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	cp $(BASE_TARBALL) packaging/ovis-base.spec toss/SOURCES
+	rpmbuild --define "_topdir `pwd`/toss" -ba packaging/ovis-base.spec
 
 rpm-clean:
 	rm -rf rpm/ centos

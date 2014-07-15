@@ -20,13 +20,15 @@ centos toss rpm: dist-gzip
 	cp $(OVIS_SOS_TARBALL) packaging/ovis-sos.spec centos/SOURCES
 	rpmbuild -v --define "_topdir `pwd`/centos" -ba packaging/ovis-sos.spec
 
+rpm-clean:
+	rm -rf rpm/ centos/
+	rm -f $(OVIS_SOS_TARBALL)
+
+if ENABLE_DOC
 doc:
 	doxygen Doxyfile
 	@(errcnt=`wc -l sos.doxygen.log|sed -e 's%sos.doxygen.log%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
 
-rpm-clean:
-	rm -rf rpm/ centos/
-	rm -f $(OVIS_SOS_TARBALL)
 
 doxygen doxygen/html:
 	doxygen ./Doxyfile
@@ -44,7 +46,10 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
-
+else
+doxygen doxygen/html:
+	mkdir -p doxygen/html
+	echo "Documentation suppressed by configure options" > doxygen/html/README.txt
+endif
 
 clean-local: rpm-clean
-
