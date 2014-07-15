@@ -60,6 +60,10 @@
 #include <linux/limits.h>
 #include <pthread.h>
 #include <errno.h>
+#include <unistd.h>
+#include <grp.h>
+#include <pwd.h>
+#include <sys/syscall.h>
 #include <sos/sos.h>
 #include <coll/idx.h>
 #include "ldms.h"
@@ -106,18 +110,25 @@ SOS_OBJ_END(4);
 #define VALUE_COL	3
 
 /*
+ * According to 'man useradd' and 'man groupadd'
+ * the max length of the user/group name is 32
+ */
+#define MAX_USER_GROUP_LEN	32
+#define MAX_OWNER	(MAX_USER_GROUP_LEN * 2 + 1)
+
+/*
  * NOTE:
  *   (sos::path) = (root_path)/(comp_type)/(metric)
  */
 
 static idx_t store_idx;
 static idx_t metric_idx;
-static char tmp_path[PATH_MAX];
-static char *root_path; /**< store root path */
+static char root_path[PATH_MAX]; /**< store root path */
 static ldmsd_msg_log_f msglog;
 static pthread_mutex_t cfg_lock;
 static time_t time_limit = 0;
 static size_t init_size = 4 * 1024 * 1024; /* default size 4MB */
+static char owner[MAX_OWNER];
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -142,6 +153,92 @@ struct sos_store_instance {
 	struct sos_metric_store **ms;
 };
 
+static int store_sos_change_owner(char *path)
+{
+	int rc = 0;
+	if (owner[0] != '\0') {
+		errno = 0;
+		char cmd_s[1024];
+		sprintf(cmd_s, "chown -R %s %s", owner, root_path);
+		rc = system(cmd_s);
+		if (rc) {
+			msglog("store_sos: Error %d: Changing owner "
+					"%s to %s\n", errno, owner);
+			return -1;
+		}
+	}
+	return rc;
+}
+
+static int store_sos_open_sos(struct sos_metric_store *ms, enum ldms_value_type type);
+
+static struct sos_metric_store *create_metric_store(char *name,
+				enum ldms_value_type type, char *path)
+{
+	struct sos_metric_store *ms;
+	ms = calloc(1, sizeof(*ms));
+	if (!ms) {
+		msglog("store_sos: Out of memory\n");
+		return NULL;
+	}
+
+	char tmp_path[PATH_MAX];
+	snprintf(tmp_path, PATH_MAX, "%s/%s", path, name);
+	ms->path = strdup(tmp_path);
+	if (!ms->path) {
+		msglog("store_sos: Out of memory\n");
+		goto err;
+	}
+	pthread_mutex_init(&ms->lock, NULL);
+	idx_add(metric_idx, name, strlen(name), ms);
+
+	if (store_sos_open_sos(ms, type) < 0)
+		goto err;
+
+	return ms;
+err:
+	msglog("store_sos: Failed to create metric store of '%s'\n",
+								name);
+	free(ms);
+	return NULL;
+}
+
+static int store_sos_init_store(char *metric_names)
+{
+	int rc = mkdir(root_path, 0777);
+	if ((rc == -1) && (errno != EEXIST)) {
+		msglog("store_sos: Error %d: Failed to make "
+				"the directory '%s'\n",
+				errno, root_path);
+		return -1;
+	}
+
+	char *name, *ptr, *type_s;
+	enum ldms_value_type type;
+	struct sos_metric_store *ms;
+
+	name = strtok_r(metric_names, "(", &ptr);
+	while (name) {
+		type_s = strtok_r(NULL, ")", &ptr);
+		if (!type_s) {
+			msglog("store_sos: Expect metric_name(type)\n");
+			return -1;
+		}
+
+		type = ldms_str_to_type(type_s);
+		if (type == LDMS_V_NONE) {
+			msglog("store_sos: '%s' has an invalid type '%s'.",
+					name, type_s);
+			return -1;
+		}
+		ms = create_metric_store(name, type, root_path);
+		name = strtok_r(NULL, ",", &ptr);
+		name = strtok_r(NULL, "(", &ptr);
+	}
+
+	return store_sos_change_owner(root_path);
+}
+
 /**
  * \brief Configuration
  */
@@ -150,24 +247,43 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	value = av_value(avl, "path");
 	if (!value)
-		goto err;
+		goto einval;
 
 	pthread_mutex_lock(&cfg_lock);
-	if (root_path)
-		free(root_path);
-	root_path = strdup(value);
-	pthread_mutex_unlock(&cfg_lock);
-	if (!root_path)
-		return ENOMEM;
+	snprintf(root_path, PATH_MAX, "%s", value);
+
 	value = av_value(avl, "time_limit");
 	if (value)
 		time_limit = atoi(value);
 	value = av_value(avl, "init_size");
 	if (value)
 		init_size = atoi(value);
+
+	value = av_value(avl, "owner");
+	if (value) {
+		if (strlen(value) > MAX_OWNER) {
+			msglog("store_sos: 'owner' (%s) exceeds %d "
+					"characters.\n", value, MAX_OWNER);
+			goto einval;
+		}
+		snprintf(owner, MAX_OWNER, "%s", value);
+	} else {
+		owner[0] = '\0';
+	}
+
+	value = av_value(avl, "metric_names");
+	if (value)
+		if (store_sos_init_store(value))
+			goto err;
+
+	pthread_mutex_unlock(&cfg_lock);
 	return 0;
- err:
+einval:
+	pthread_mutex_unlock(&cfg_lock);
 	return EINVAL;
+err:
+	pthread_mutex_unlock(&cfg_lock);
+	return errno;
 }
 
 static void term(void)
@@ -176,9 +292,13 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_sos path=<path>\n"
+	return  "    config name=store_sos path=<path> owner=<user:group> metric_names=<metrics>\n"
 		"        - Set the root path for the storage of SOS files.\n"
-		"        path      The path to the root of the SOS directory\n";
+		"        path      The path to the root of the SOS directory\n"
+		"	 user:group     Optional. Store_sos will 'chown -R user:group <path>'\n"
+		"	 metric_names   Optional. The format is <metric_name(type)>,<metric_name(type)>,...\n"
+		"			If this is given the store sos of the metrics will be created\n"
+		"			when store_sos is configured.\n";
 }
 
 static ldmsd_store_handle_t
@@ -202,9 +322,8 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 	return si->ucontext;
 }
 
-static int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
+static int store_sos_open_sos(struct sos_metric_store *ms, enum ldms_value_type type)
 {
-	enum ldms_value_type type = ldms_get_metric_type(m);
 	struct sos_class_s *class = NULL;
 
 	switch (type) {
@@ -265,6 +384,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		LIST_FOREACH(x, metric_list, entry) {
 			metric_count++;
 		}
+		char tmp_path[PATH_MAX];
 		sprintf(tmp_path, "%s/%s", root_path, comp_type);
 		mkdir(tmp_path, 0777);
 
@@ -317,9 +437,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			ms = calloc(1, sizeof(*ms));
 			if (!ms)
 				goto err5;
-			sprintf(tmp_path, "%s/%s", si->path, name);
+			char tmp_path[PATH_MAX];
+			snprintf(tmp_path, PATH_MAX, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
 			if (!ms->path) {
+				msglog("store_sos: Out of memory\n");
 				free(ms);
 				goto err5;
 			}
@@ -389,9 +511,12 @@ static int store_sos_create_ms_list(struct sos_store_instance *si,
 		ms = calloc(1, sizeof(*ms));
 		if (!ms)
 			goto err;
-		sprintf(tmp_path, "%s/%s", si->path, name);
+
+		char tmp_path[PATH_MAX];
+		snprintf(tmp_path, PATH_MAX, "%s/%s", si->path, name);
 		ms->path = strdup(tmp_path);
 		if (!ms->path) {
+			msglog("store_sos: Out of memory\n");
 			free(ms);
 			goto err;
 		}
@@ -479,10 +604,12 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 		pthread_mutex_lock(&si->ms[i]->lock);
 
 		if (!si->ms[i]->sos) {
-			if (store_sos_open_sos(si->ms[i], mvec->v[i])) {
+			if (store_sos_open_sos(si->ms[i],
+					ldms_get_metric_type(mvec->v[i]))) {
 				pthread_mutex_unlock(&si->ms[i]->lock);
 				return ENOMEM;
 			}
+			store_sos_change_owner(root_path);
 		}
 
 		/* clean up old stuff before creating a new one */
