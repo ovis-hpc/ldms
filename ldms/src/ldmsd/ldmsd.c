@@ -109,7 +109,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:qv"
+#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:qV"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -275,7 +275,7 @@ void usage(char *argv[])
 	       "                     For example, 20M or 20mb are 20 megabytes.\n");
 	printf("    -f count       The number of flush threads.\n");
 	printf("    -D num         The dirty threshold.\n");
-	printf("    -v version     Prints the version.\n");
+	printf("    -V version     Prints the version.\n");
 	cleanup(1);
 }
 
@@ -1816,17 +1816,19 @@ int process_exit(int fd,
 }
 
 
+
 //TEMPORARILY disable remote version query thru ldmsctl
 //int process_version(int fd,
 //			struct sockaddr *sa, ssize_t sa_len,
 //			char *command)
 //{
 //
-//	char err_str[128];
-//	char reply[128];
+//#define VERSTRMAX 256
+//	char err_str[VERSTRMAX];
+//	char reply[VERSTRMAX];
 //	int rc = 0;
 //
-//	snprintf(err_str, 128, "git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
+//	snprintf(err_str, VERSTRMAX, "git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
 //	sprintf(reply, "%d%s", rc, err_str);
 //	send_reply(fd, sa, sa_len, reply, strlen(reply)+1);
 //	return 0;
@@ -3372,8 +3374,11 @@ int main(int argc, char *argv[])
 		case 'D':
 			dirty_threshold = atoi(optarg);
 			break;
-		case 'v':
-                        printf("git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
+		case 'V':
+                        printf("git source tag: %s\n", LDMS_GIT_LONG);
+                        printf("git source desc: %s\n", LDMS_GIT_SHORT);
+			printf("source location: %s\n", LDMS_SRCDIR);
+			printf("build location: %s\n", LDMS_BUILDDIR);
 			exit(1);
 		default:
 			usage(argv);

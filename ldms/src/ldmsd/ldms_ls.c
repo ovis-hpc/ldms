@@ -106,7 +106,9 @@ void usage(char *argv[])
 	       "\n    -m <memory size>   Maximum size of pre-allocated memory for metric sets.\n"
 	       "                         The given size must be less than 1 petabytes.\n"
 	       "                         For example, 20M or 20mb are 20 megabytes.\n"
-	       " git info: " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n",
+	       " git info: " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n"
+	       " src dir: " LDMS_SRCDIR "\n"
+	       " build dir: " LDMS_BUILDDIR "\n",
 	       argv[0],LDMS_DEFAULT_PORT);
 	exit(1);
 }
@@ -356,6 +358,8 @@ int main(int argc, char *argv[])
 				usage(argv);
 			}
 			break;
+		case 'V':
+			/* FALLTHRU  until we get more ambition. */
 		default:
 			usage(argv);
 		}
