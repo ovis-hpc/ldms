@@ -132,6 +132,12 @@ libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
 lib_LTLIBRARIES += libsampler_atasmart.la
 endif
 
+if ENABLE_GENERIC_SAMPLER
+libgeneric_sampler_la_SOURCES = generic_sampler.c
+libgeneric_sampler_la_LIBADD = $(COMMON_LIBADD) -lcoll
+lib_LTLIBRARIES += libgeneric_sampler.la
+endif
+
 #if ENABLE_GEM_LINK_PERF
 #libgem_link_perf_la_SOURCES = gem_link_perf.c
 #libgem_link_perf_la_CFLAGS = $(AM_CFLAGS) -I@GPCD_INCDIR@ -I@RCA_INCDIR@ \
