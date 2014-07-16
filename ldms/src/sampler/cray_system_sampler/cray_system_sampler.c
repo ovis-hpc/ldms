@@ -339,8 +339,7 @@ static int add_metrics_generic(int comp_id,
 		} else {
 			/* if there is no current_freemem, get it out of vmstat */
 			sample_metrics_cf_ptr = NULL;
-			sample_metrics_vmstat_ptr = sample_metrics_vmcf_ptr;
-			//FIXME: some flag or alternate function for vmstat call
+			sample_metrics_vmstat_ptr = sample_metrics_vmcf;
 		}
 		return rc;
 
@@ -565,7 +564,10 @@ static int sample(void)
 			rc = sample_metrics_nettopo(msglog);
 			break;
 		case NS_VMSTAT:
-			rc = sample_metrics_vmstat(msglog);
+			if (sample_metrics_vmstat_ptr != NULL)
+				rc = sample_metrics_vmstat_ptr(msglog);
+			else 
+				rc = 0;
 			break;
 		case NS_CURRENT_FREEMEM:
 			if (sample_metrics_cf_ptr != NULL)

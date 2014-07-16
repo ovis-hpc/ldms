@@ -308,7 +308,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 
 		if (sscanf(s, "%s", metric_name) != 1){
 			msglog("ERR: Issue reading metric name from the source"
-						" file '%s'\n", VMSTAT_FILE);
+						" file '%s'\n", KGNILND_FILE);
 			rc = EINVAL;
 			return rc;
 		}
