@@ -301,11 +301,16 @@ static int add_metrics_generic(int comp_id,
 			sample_metrics_vmstat_ptr == NULL;
 			return rc;
 		}
+		if (v_f != NULL){
+			fclose(v_f);
+			v_f = NULL;
+		}
 		if (sample_metrics_vmstat_ptr == NULL) {
 			//could be set from current_freemem
 			sample_metrics_vmstat_ptr == sample_metrics_vmstat;
 		}
 		return rc;
+
 		break;
 	case NS_LOADAVG:
 		return add_metrics_simple(set, LOADAVG_METRICS,

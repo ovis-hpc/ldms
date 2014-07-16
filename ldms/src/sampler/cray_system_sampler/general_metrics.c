@@ -162,12 +162,18 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 	union ldms_value v;
 	int j, rc;
 
-	if (!v_f)
-		return 0;
+
+	/* open and close each time */
+	if (v_f)
+		fclose(v_f);
+
+	if (VMSTAT_FILE != NULL){
+		v_f = fopen(VMSTAT_FILE, "r");
+		if (!v_f)
+			return 0;
+	}
 
 	found_metrics = 0;
-
-	fseek(v_f, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), v_f);
 		if (!s)
@@ -176,6 +182,8 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 		if (rc != 2) {
 			msglog("ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
+			fclose(v_f);
+			v_f = 0;
 			rc = EINVAL;
 			return rc;
 		}
@@ -187,6 +195,9 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 			}
 		}
 	} while (s);
+
+	fclose(v_f);
+	v_f = 0;
 
 	if (found_metrics != NUM_VMSTAT_METRICS){
 		return EINVAL;
@@ -209,13 +220,18 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 	union ldms_value v;
 	int j, rc;
 
-	if (!v_f)
-		return 0;
+	/* open and close each time */
+	if (v_f)
+		fclose(v_f);
+
+	if (VMSTAT_FILE != NULL){
+		v_f = fopen(VMSTAT_FILE, "r");
+		if (!v_f)
+			return 0;
+	}
 
 	found_metrics = 0;
 	found_submetrics = 0;
-
-	fseek(v_f, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), v_f);
 		if (!s)
@@ -224,6 +240,8 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 		if (rc != 2) {
 			msglog("ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
+			fclose(v_f);
+			v_f = 0;
 			rc = EINVAL;
 			return rc;
 		}
@@ -256,6 +274,9 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 			}
 		}
 	} while (s && !done);
+
+	fclose(v_f);
+	v_f = 0;
 
 	if (found_submetrics == NUM_VMCF_METRICS) {
 		//treating the order like its well known
