@@ -71,11 +71,23 @@ mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
 mkdir -p $OVIS_HOME/var/sock/
 mkdir -p $OVIS_HOME/var/log/
+LOG=$OVIS_HOME/var/log/ldmsd_aggregator.log
+SOCK=$OVIS_HOME/var/sock/ldmsd_aggregator.ctrl
 
 start() {
 	echo -n "Starting $prog: "
+	# Check running instance
+	pid=`ps -C ldmsd -opid,cmd | grep ldmsd_aggregator | sed 's/ *\([0-9]\+\) .*/\1/'`
+	if [ $pid ] ; then
+		echo -n "ldmsd_aggregator is already running: "
+		echo_failure
+		echo
+		exit 1
+	fi
 
-	$LDMSD_AGG -l $OVIS_HOME/var/log/ldmsd_aggregator.log -S $OVIS_HOME/var/sock/ldmsd_aggregator.ctrl -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -m $LDMSD_AGG_MEM -o $LDMSD_AGG_PORT_TO_OCMD -z ldmsd_aggregator
+	rm -f $SOCK
+
+	$LDMSD_AGG -l $LOG -S $SOCK -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -m $LDMSD_AGG_MEM -o $LDMSD_AGG_PORT_TO_OCMD -z ldmsd_aggregator
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then
@@ -96,6 +108,7 @@ start() {
 }
 
 stop() {
+	echo -n "Stopping $prog: "
 	if [ -f $pidfile ]; then
 		pid=`cat $pidfile`
 	else

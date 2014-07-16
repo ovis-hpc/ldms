@@ -87,6 +87,15 @@ running=$?
 start() {
 	echo -n "Starting $prog: "
 
+	# Check running instance
+	pid=`get_pid $OCMD`
+	if [ $pid ] ; then
+		echo -n "OCMD is already running: "
+		echo_failure
+		echo
+		exit 1
+	fi
+
 	$OCMD -x $OCMD_XPORT -p $OCMD_PORT -l $OVIS_HOME/var/log/ocmd.log -R $OCMD_PEER_LIST -P ocmdsqlite3 -- path=$OVIS_RUN_CONF
 
 	RETVAL=$?
@@ -108,6 +117,7 @@ start() {
 }
 
 stop() {
+	echo -n "Stopping $prog: "
 	if [ -f $pidfile ]; then
 		pid=`cat $pidfile`
 	else
@@ -119,7 +129,7 @@ stop() {
 		echo "Cannot obtain pid ..."
 		echo_failure
 		echo
-		return -1
+		exit 1
 	else
 		kill $pid
 	fi

@@ -70,6 +70,7 @@ mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
 mkdir -p $OVIS_HOME/var/sock/
 mkdir -p $OVIS_HOME/var/log/
+SOCK=$OVIS_HOME/var/sock/me.ctrl
 
 status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
 running=$?
@@ -77,7 +78,19 @@ running=$?
 start() {
 	echo -n "Starting $prog: "
 
-	$ME -S $OVIS_HOME/var/sock/me.sock -l $OVIS_HOME/var/log/me.log -x $ME_XPORT:$ME_PORT_LISTEN -O $ME_PORT_TO_OCMD  $@
+	# Check running instance
+	pid=`get_pid $ME`
+	if [ $pid ] ; then
+		echo -n "ME is already running: "
+		echo_failure
+		echo
+		exit 1
+	fi
+
+	rm -f $SOCK
+
+	#Start me
+	$ME -S $SOCK -l $OVIS_HOME/var/log/me.log -x $ME_XPORT:$ME_PORT_LISTEN -O $ME_PORT_TO_OCMD  $@
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then
@@ -98,6 +111,7 @@ start() {
 }
 
 stop() {
+	echo -n "Stopping $prog: "
 	if [ -f $pidfile ]; then
 		pid=`cat $pidfile`
 	else
@@ -109,7 +123,7 @@ stop() {
 		echo "Cannot obtain pid ..."
 		echo_failure
 		echo
-		return -1
+		exit 1
 	else
 		kill $pid
 	fi
