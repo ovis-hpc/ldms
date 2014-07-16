@@ -1,13 +1,12 @@
+KDIR := /lib/modules/`uname -r`/build
+PWD := $(shell pwd)
 
-EXTRA_CFLAGS += -I$(SUBDIRS)/../../ldms/src/core -Wall
-EXTRA_CFLAGS += -I$(SUBDIRS) -DCONFIG_CRAY_ARIES
+EXTRA_CFLAGS = -I./ -I${PWD}/../../ldms/src/core -g -O0
 
-CONFIG_LDMS=m
-CONFIG_LDMS_VMSTAT=m
-CONFIG_LDMS_GPCDR=m
+default: modules
 
-obj-$(CONFIG_LDMS)		+= kldms.o
-obj-$(CONFIG_LDMS_VMSTAT)	+= kldms_vmstat.o
- obj-$(CONFIG_LDMS_GPCDR)	+= kldms_gpcdr.o
+modules:
+	${MAKE} -C ${KDIR} M=${PWD} NOSTDINC_FLAGS="$(EXTRA_CFLAGS)"
 
-kldms_gpcdr-objs		:= kgpcdr.o gpcdr.o ghal.o
+clean:
+	${MAKE) -C ${KDIR} M=${PWD} clean

@@ -53,10 +53,16 @@
 #ifndef __LDMS_CORE_H__
 #define __LDMS_CORE_H__
 
+#ifndef __KERNEL__
 #include <stdint.h>
+#include "ovis-ldms-config.h"
+#else
+#define OVIS_FLEX	0
+#define OVIS_FLEX_UNION	0
+#endif
+
 #include <asm/byteorder.h>
 
-#include "ovis-ldms-config.h"
 
 #define LDMS_SETH_F_BE		0x0001
 #define LDMS_SETH_F_LE		0x0002

@@ -71,7 +71,7 @@ static struct ctl_table_header *kldms_table_header;
 static void vmstat_gather(struct work_struct *work);
 static DECLARE_DELAYED_WORK(vmstat_work, vmstat_gather);
 
-static int handle_start(ctl_table *table, int write,
+static int handle_start(struct ctl_table *table, int write,
 			void __user *buffer, size_t *lenp,
 			loff_t *ppos)
 {
@@ -81,13 +81,13 @@ static int handle_start(ctl_table *table, int write,
 	if (!test_and_set_bit(0, &sampler_status)) {
 		printk(KERN_INFO "ldms_vmstat: Starting the VMSTAT sampler.\n");
 		schedule_delayed_work(&vmstat_work, sample_interval);
-	} else 
+	} else
 		printk(KERN_INFO "ldms_vmstat: Request ignored because the sampler is already RUNNING.");
 
 	return 0;
 }
 
-static int handle_stop(ctl_table *table, int write,
+static int handle_stop(struct ctl_table *table, int write,
 		       void __user *buffer, size_t *lenp,
 		       loff_t *ppos)
 {
@@ -97,14 +97,14 @@ static int handle_stop(ctl_table *table, int write,
 	if (test_and_clear_bit(0, &sampler_status)) {
 		printk("Stopping the VMSTAT sampler.\n");
 		cancel_delayed_work(&vmstat_work);
-	} else
+	} else {
 		printk(KERN_INFO "ldms_vmstat: Request ignored because the sampler is already STOPPED.");
-		
+	}
 	return 0;
 }
 
 
-static ctl_table vmstat_parm_table[] = {
+static struct ctl_table vmstat_parm_table[] = {
 	{
 		.procname	= "vmstat_sample_interval",
 		.data		= &sample_interval,
@@ -138,7 +138,7 @@ static ctl_table vmstat_parm_table[] = {
 	{ },
 };
 
-static ctl_table vmstat_root_table[] = {
+static struct ctl_table vmstat_root_table[] = {
 	{
 		.procname	= "kldms",
 		.mode		= 0555,
@@ -150,7 +150,7 @@ static ctl_table vmstat_root_table[] = {
 static void unreg_sysctl(void)
 {
 	if (kldms_table_header) {
-		unregister_sysctl_table(kldms_table_header);
+		unregister_sysstruct ctl_table(kldms_table_header);
 		kldms_table_header = NULL;
 	}
 }
@@ -264,10 +264,10 @@ int parse_proc_vmstat(void)
 	vmstat_txt = kzalloc(vmstat_count * sizeof(char *), GFP_KERNEL);
 	if (!vmstat_txt)
 		goto err;
-	
+
 	/* Run through the list again and put the names into the array */
 	for (i = 0, s = strtok(vmstat_txt_buf, "\n", 1); s; s = strtok(NULL, "\n", 1)) {
-		vmstat_txt[i] = s;		
+		vmstat_txt[i] = s;
 		while (*s != '\0' && !isspace(*s))
 			s++;
 		*s = '\0';
@@ -294,7 +294,7 @@ int kldms_vmstat_init(void)
 	int i;
 
 	kldms_table_header =
-		register_sysctl_table(vmstat_root_table);
+		register_sysstruct ctl_table(vmstat_root_table);
 
 	if (parse_proc_vmstat())
 		goto err_0;

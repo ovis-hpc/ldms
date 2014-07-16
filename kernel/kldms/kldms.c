@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010,2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010,2017 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -50,6 +50,7 @@
 #include <linux/sysctl.h>
 #include <linux/mm.h>
 #include <linux/string.h>
+#include <linux/time.h>
 #include <asm/uaccess.h>
 #include <asm/page.h>
 
@@ -154,7 +155,38 @@ void kldms_set_delete(struct kldms_set *set)
 }
 EXPORT_SYMBOL(kldms_set_delete);
 
-static struct kldms_schema_s *kldms_find_schema(const char *schema_name)
+void kldms_transaction_begin(kldms_set_t s)
+{
+	struct ldms_data_hdr *dh = s->ks_data;
+	struct timespec ts;
+	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
+	getnstimeofday(&ts);
+	dh->trans.ts.sec = __cpu_to_le32(ts.tv_sec);
+	dh->trans.ts.usec = __cpu_to_le32(ts.tv_nsec / 1000);
+}
+EXPORT_SYMBOL(kldms_transaction_begin);
+
+void kldms_transaction_end(kldms_set_t s)
+{
+	struct ldms_data_hdr *dh = s->ks_data;
+	struct timespec ts;
+	getnstimeofday(&ts);
+	dh->trans.dur.sec = ts.tv_sec - __le32_to_cpu(dh->trans.ts.sec);
+	dh->trans.dur.usec = (ts.tv_nsec / 1000) - __le32_to_cpu(dh->trans.ts.usec);
+	if (((int32_t)dh->trans.dur.usec) < 0) {
+		dh->trans.dur.sec -= 1;
+		dh->trans.dur.usec += 1000000;
+	}
+	dh->trans.dur.sec = __cpu_to_le32(dh->trans.dur.sec);
+	dh->trans.dur.usec = __cpu_to_le32(dh->trans.dur.usec);
+	dh->trans.ts.sec = __cpu_to_le32(ts.tv_sec);
+	dh->trans.ts.usec = __cpu_to_le32(ts.tv_nsec / 1000);
+	dh->trans.flags = LDMS_TRANSACTION_END;
+	// __ldms_xprt_push(s, LDMS_RBD_F_PUSH_CHANGE);
+}
+EXPORT_SYMBOL(kldms_transaction_end);
+
+kldms_schema_t kldms_schema_find(const char *schema_name)
 {
 	struct kldms_schema_s *schema;
 
@@ -168,6 +200,7 @@ static struct kldms_schema_s *kldms_find_schema(const char *schema_name)
 	spin_unlock(&schema_list_lock);
 	return NULL;
 }
+EXPORT_SYMBOL(kldms_schema_find);
 
 static int value_size[] = {
 	[LDMS_V_NONE] = 0,
@@ -225,6 +258,7 @@ static kldms_set_t kldms_set_alloc(const char *instance_name,
 	size_t vd_size;
 	struct kldms_set *set;
 	size_t sz;
+	int i;
 
 	if (!instance_name || !schema) {
 		return NULL;
@@ -287,7 +321,8 @@ static kldms_set_t kldms_set_alloc(const char *instance_name,
 
 	/* Add the metrics from the schema */
 	vd = get_first_metric_desc(meta);
-	value_off = roundup(sizeof(*data), 8);
+	value_off = (uint8_t *)data - (uint8_t *)meta;
+	value_off = roundup(value_off + sizeof(*data), 8);
 	metric_idx = 0;
 	vd_size = 0;
 	list_for_each_entry(md, &schema->metric_list, entry) {
@@ -296,16 +331,35 @@ static kldms_set_t kldms_set_alloc(const char *instance_name,
 
 		/* Build the descriptor */
 		vd->vd_type = md->type;
-		vd->array_count = md->count;
+		vd->vd_flags = md->flags;
+		vd->vd_array_count = __cpu_to_le32(md->count);
+		// memcpy(vd->vd_units, md->units, sizeof(vd->vd_units));
 		vd->vd_name_len = strlen(md->name) + 1;
 		strncpy(vd->vd_name, md->name, vd->vd_name_len);
-		vd->vd_data_offset = __cpu_to_le32(value_off);
+		if (md->flags & LDMS_MDESC_F_DATA) {
+			vd->vd_data_offset = __cpu_to_le32(value_off);
+			value_off += __ldms_value_size_get(md->type, md->count);
+		} else
+			vd->vd_data_offset = 0; /* set after all metrics defined */
 
 		/* Advance to next descriptor */
 		metric_idx++;
 		vd = (struct ldms_value_desc *)((char *)vd + md->meta_sz);
-		value_off += __ldms_value_size_get(md->type, md->count);
 		vd_size += md->meta_sz;
+	}
+	/*
+	 * Now that the end of all vd is known, assign the data offsets for the
+	 * meta-attributes from the meta data area
+	 */
+	value_off = (uint64_t)((char *)vd - (char *)meta);
+	value_off = roundup(value_off, 8);
+	for (i = 0; i < schema->metric_count; i++) {
+		vd = ldms_ptr_(struct ldms_value_desc, meta, __le32_to_cpu(meta->dict[i]));
+		if (vd->vd_flags & LDMS_MDESC_F_DATA)
+			continue;
+		vd->vd_data_offset = value_off;
+		value_off += __ldms_value_size_get(vd->vd_type,
+						   __le32_to_cpu(vd->vd_array_count));
 	}
 
 	set->ks_meta = meta;
@@ -358,8 +412,9 @@ union ldms_value ldms_value_zero = {
 	.v_u64 = 0
 };
 
-int __schema_metric_add(kldms_schema_t s, const char *name,
-		enum ldms_value_type type, uint32_t array_count)
+int __schema_metric_add(kldms_schema_t s, const char *name, int flags,
+			enum ldms_value_type type, const char *units,
+			uint32_t array_count)
 {
 	kldms_mdef_t m;
 
@@ -377,28 +432,71 @@ int __schema_metric_add(kldms_schema_t s, const char *name,
 
 	m->name = kstrdup(name, GFP_KERNEL);
 	m->type = type;
+	m->flags = flags;
 	m->count = array_count;
+	if (units)
+		strncpy(m->units, units, sizeof(m->units));
+	else
+		memset(m->units, '\0', sizeof(m->units));
 	__ldms_metric_size_get(name, type, m->count, &m->meta_sz, &m->data_sz);
 	list_add_tail(&m->entry, &s->metric_list);
 	s->metric_count++;
 	s->meta_sz += m->meta_sz + sizeof(uint32_t) /* + dict entry */;
-	s->data_sz += m->data_sz;
+	if (flags & LDMS_MDESC_F_DATA)
+		s->data_sz += m->data_sz;
+	else
+		s->meta_sz += m->data_sz;
 	return s->metric_count - 1;
 }
 
-int kldms_schema_metric_add(kldms_schema_t s, const char *name, enum ldms_value_type type)
+int kldms_schema_metric_add(kldms_schema_t s, const char *name,
+			    enum ldms_value_type type, const char *units)
 {
 	if (type > LDMS_V_D64)
 		return EINVAL;
-	return __schema_metric_add(s, name, type, 1);
+	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, units, 1);
 }
 EXPORT_SYMBOL(kldms_schema_metric_add);
+
+int kldms_schema_meta_add(kldms_schema_t s, const char *name,
+			  enum ldms_value_type type, const char *units)
+{
+	if (type > LDMS_V_D64)
+		return EINVAL;
+	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, units, 1);
+}
+EXPORT_SYMBOL(kldms_schema_meta_add);
+
+static int __type_is_array(enum ldms_value_type t)
+{
+	return !(t < LDMS_V_CHAR_ARRAY || LDMS_V_D64_ARRAY < t);
+}
+
+int kldms_schema_metric_array_add(kldms_schema_t s, const char *name,
+				  enum ldms_value_type type, const char *units,
+				  uint32_t count)
+{
+	if (!__type_is_array(type))
+		return EINVAL;
+	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, units, count);
+}
+EXPORT_SYMBOL(kldms_schema_metric_array_add);
+
+int kldms_schema_meta_array_add(kldms_schema_t s, const char *name,
+				enum ldms_value_type type, const char *units,
+				uint32_t count)
+{
+	if (!__type_is_array(type))
+		return EINVAL;
+	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, units, count);
+}
+EXPORT_SYMBOL(kldms_schema_meta_array_add);
 
 void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v)
 {
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->ks_meta,
 			__le32_to_cpu(s->ks_meta->dict[i]));
-	ldms_mval_t mv = ldms_ptr_(union ldms_value, s->ks_data,
+	ldms_mval_t mv = ldms_ptr_(union ldms_value, s->ks_meta,
 			__le32_to_cpu(desc->vd_data_offset));
 
 	switch (desc->vd_type) {
@@ -434,9 +532,9 @@ void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v)
 EXPORT_SYMBOL(kldms_metric_set);
 
 static char create_schema[LDMS_SET_NAME_MAX+64];
-static int handle_create_schema(ctl_table *table, int write,
-			     void __user *buffer, size_t *lenp,
-			     loff_t *ppos)
+static int handle_create_schema(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp,
+				loff_t *ppos)
 {
 	int n;
 	kldms_schema_t schema;
@@ -462,7 +560,7 @@ static int handle_create_schema(ctl_table *table, int write,
 
 	schema = kldms_schema_new(schema_name);
 	if (schema == NULL) {
-		printk("handle_create_schema: create failed\n");
+		pr_info("handle_create_schema: create failed\n");
 		return -EINVAL;
 	}
 
@@ -470,7 +568,7 @@ static int handle_create_schema(ctl_table *table, int write,
 }
 
 static char create_req[(2*LDMS_SET_NAME_MAX)+64];
-static int handle_create_set(ctl_table *table, int write,
+static int handle_create_set(struct ctl_table *table, int write,
 			     void __user *buffer, size_t *lenp,
 			     loff_t *ppos)
 {
@@ -499,22 +597,22 @@ static int handle_create_set(ctl_table *table, int write,
 	set_name[LDMS_SET_NAME_MAX-1] = '\0';
 	schema_name[LDMS_SET_NAME_MAX-1] = '\0';
 
-	schema = kldms_find_schema(schema_name);
+	schema = kldms_schema_find(schema_name);
 	if (schema == NULL) {
-		printk("handle_create_set: schema %s not found\n", schema_name);
+		pr_info("handle_create_set: schema %s not found\n", schema_name);
 		return -ENOENT;
 	}
 
 	set = kldms_set_new(set_name, schema);
 	if (set == NULL) {
-		printk("handle_create_set: set %s not found\n", set_name);
+		pr_info("handle_create_set: set %s not found\n", set_name);
 		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static int handle_create_metric(ctl_table *table, int write,
+static int handle_create_metric(struct ctl_table *table, int write,
 				void __user *buffer, size_t *lenp,
 				loff_t *ppos)
 {
@@ -540,7 +638,7 @@ static int handle_create_metric(ctl_table *table, int write,
 	if (n != 3)
 		return -EINVAL;
 
-	s = kldms_find_schema(schema_name);
+	s = kldms_schema_find(schema_name);
 	if (s == NULL)
 		return -ENOENT;
 
@@ -556,13 +654,13 @@ static int handle_create_metric(ctl_table *table, int write,
 
  found_type:
 
-	if (!kldms_schema_metric_add(s, metric_name, n))
+	if (!kldms_schema_metric_add(s, metric_name, n, ""))
 		return -EINVAL;
 	return 0;
 }
 
 static char set_list_req[1024];
-static int handle_set_list(ctl_table *table, int write,
+static int handle_set_list(struct ctl_table *table, int write,
 			   void __user *buffer, size_t *lenp,
 			   loff_t *ppos)
 {
@@ -570,12 +668,13 @@ static int handle_set_list(ctl_table *table, int write,
 	size_t max_len = *lenp;
 	size_t skip_len = *ppos;
 
-	printk("Hello from the OVIS kldms module!\n");
 	*lenp = 0;
 	list_for_each_entry_safe(set, tmp, &set_list, ks_list) {
 		size_t len;
 		char *sz;
-		sprintf(set_list_req, "%d %u %s\n", set->ks_id, set->ks_meta->data_sz + set->ks_meta->meta_sz, set->ks_name);
+		sprintf(set_list_req, "%d %u %s\n", set->ks_id,
+			set->ks_meta->data_sz + set->ks_meta->meta_sz,
+			set->ks_name);
 		len = strlen(set_list_req);
 		sz = set_list_req;
 		if (skip_len) {
@@ -601,7 +700,7 @@ static int handle_set_list(ctl_table *table, int write,
 }
 
 static char metric_list_req[1024];
-static int handle_metric_list(ctl_table *table, int write,
+static int handle_metric_list(struct ctl_table *table, int write,
 			      void __user *buffer, size_t *lenp,
 			      loff_t *ppos)
 {
@@ -692,7 +791,7 @@ void publish_set(struct kldms_set *set)
 	}
 }
 
-static int handle_publish(ctl_table *table, int write,
+static int handle_publish(struct ctl_table *table, int write,
 			  void __user *buffer, size_t *lenp,
 			  loff_t *ppos)
 {
@@ -730,7 +829,7 @@ static int handle_publish(ctl_table *table, int write,
 }
 
 static struct ctl_table_header *kldms_table_header;
-static ctl_table kldms_parm_table[] = {
+static struct ctl_table kldms_parm_table[] = {
 	{
 		.procname	= "create_set",
 		.data		= NULL,
@@ -994,10 +1093,10 @@ static int kldms_file_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct kldms_set *set;
 	int rc;
 
-	printk("%s:%d len %d\n", __func__, __LINE__, len);
-	printk("%s:%d vm_pgoff %0lx\n", __func__, __LINE__, vma->vm_pgoff);
-	printk("%s:%d vm_start %0lx\n", __func__, __LINE__, vma->vm_start);
-	printk("%s:%d vm_end %0lx\n", __func__, __LINE__, vma->vm_end);
+	pr_info("%s:%d len %d\n", __func__, __LINE__, len);
+	pr_info("%s:%d vm_pgoff %0lx\n", __func__, __LINE__, vma->vm_pgoff);
+	pr_info("%s:%d vm_start %0lx\n", __func__, __LINE__, vma->vm_start);
+	pr_info("%s:%d vm_end %0lx\n", __func__, __LINE__, vma->vm_end);
 
 	/* Look up the set */
 	set_no = vma->vm_pgoff & ~(LDMS_SET_ID_DATA >> PAGE_SHIFT);
@@ -1010,15 +1109,15 @@ static int kldms_file_mmap(struct file *filp, struct vm_area_struct *vma)
 		goto out;
 	}
 
-	printk("%s:%d page %p pfn %p\n", __func__, __LINE__,
+	pr_info("%s:%d page %p pfn %p\n", __func__, __LINE__,
 	       set->ks_page, (void *)(unsigned long)page_to_pfn(set->ks_page));
-	printk("%s:%d ks_page %p pfn %p size %d\n", __func__, __LINE__,
+	pr_info("%s:%d ks_page %p pfn %p size %d\n", __func__, __LINE__,
 	       set->ks_page, (void *)(unsigned long)page_to_pfn(set->ks_page), (int)set->ks_size);
 	rc = remap_pfn_range(vma, vma->vm_start, page_to_pfn(set->ks_page),
 			     len, vma->vm_page_prot);
 
  out:
-	printk("%s:%d rc %d\n", __func__, __LINE__, rc);
+	pr_info("%s:%d rc %d\n", __func__, __LINE__, rc);
 	return rc;
 }
 
@@ -1091,11 +1190,11 @@ static struct kldms_device *create_kldms_device(void)
 	return kdev;
 
 err_class:
-	printk("Error creating class file.\n");
+	pr_info("Error creating class file.\n");
 	device_destroy(kldms_class, kdev->cdev.dev);
 
 err_cdev:
-	printk("Error creating cdev.\n");
+	pr_info("Error creating cdev.\n");
 	cdev_del(&kdev->cdev);
 
 	kref_put(&kdev->ref, kldms_release_dev);
@@ -1117,7 +1216,7 @@ static void delete_kldms_device(struct kldms_device *kdev)
 
 void kldms_cleanup(void)
 {
-	printk("KLDMS Module Removed\n");
+	pr_info("KLDMS Module Removed\n");
 	if (kldms_table_header) {
 		unregister_sysctl_table(kldms_table_header);
 		kldms_table_header = NULL;
@@ -1135,25 +1234,25 @@ int kldms_init(void)
 
 	ret = register_chrdev_region(KLDMS_BASE_DEV, KLDMS_MAX_DEVICES, "kldms");
 	if (ret) {
-		printk(KERN_ERR "kldms: couldn't register device number\n");
+		pr_err("kldms: couldn't register device number\n");
 		goto out0;
 	}
 	kldms_class = class_create(THIS_MODULE, "kldms");
 	if (IS_ERR(kldms_class)) {
 		ret = PTR_ERR(kldms_class);
-		printk(KERN_ERR "kldms: couldn't create class kldms\n");
+		pr_err("kldms: couldn't create class kldms\n");
 		goto out1;
 	}
 
 	ret = class_create_file(kldms_class, &class_attr_abi_version);
 	if (ret) {
-		printk(KERN_ERR "kldms: couldn't create abi_version attribute\n");
+		pr_err("kldms: couldn't create abi_version attribute\n");
 		goto out2;
 	}
 
 	kldms_dev = create_kldms_device();
 	if (IS_ERR(kldms_dev)) {
-		printk(KERN_ERR "kldms: couldn't create kldms interface file\n");
+		pr_err("kldms: couldn't create kldms interface file\n");
 		ret = PTR_ERR(kldms_dev);
 		goto out2;
 	}
@@ -1163,7 +1262,7 @@ int kldms_init(void)
 	spin_lock_init(&schema_list_lock);
 	INIT_LIST_HEAD(&schema_list);
 
-	printk("KLDMS Module Installed\n");
+	pr_info("KLDMS Module Installed\n");
 	return 0;
  out2:
 	class_destroy(kldms_class);
