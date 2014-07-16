@@ -243,6 +243,14 @@ struct ldms_iterator {
 int ldms_init(size_t max_size);
 
 /**
+ * \brief Description of this build.
+ *
+ *  Return a string describing this build suitable for humans.
+ *  \return 0 on success
+ */
+const char * ldms_pedigree();
+
+/**
  * \brief Take a reference on a transport
  *
  * \param x 	The transport handle

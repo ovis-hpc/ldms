@@ -810,6 +810,24 @@ int ldms_init(size_t max_size)
 	return 0;
 }
 
+const char *
+ldms_pedigree()
+{
+	const char *pedigree = 
+	"git source tag: " LDMS_GIT_LONG "\n"
+	"git source description: " LDMS_GIT_SHORT "\n"
+	"packaging label: " PACKAGE_STRING "\n"
+	"questions to: " PACKAGE_BUGREPORT "\n"
+	"source location: " LDMS_SRCDIR "\n"
+	"build location: " LDMS_BUILDDIR "\n"
+	"compile hostname: " LDMS_COMPILE_HOST_NAME "\n"
+	"compile CPU: " LDMS_COMPILE_HOST_CPU "\n"
+	"compile OS: " LDMS_COMPILE_HOST_OS "\n"
+	"configure args: " LDMS_CONFIG_ARGS "\n";
+	return pedigree;
+
+}
+
 int ldms_create_set(const char *set_name,
 		    size_t meta_sz, size_t data_sz, ldms_set_t *s)
 {

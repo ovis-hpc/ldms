@@ -354,10 +354,7 @@ int main(int argc, char *argv[])
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'V':
-			printf("git source tag: %s \n", LDMS_GIT_LONG);
-			printf("git source description: %s\n", LDMS_GIT_SHORT);
-			printf("source location: %s\n", LDMS_SRCDIR);
-			printf("build location: %s\n", LDMS_BUILDDIR);
+			printf("%s",ldms_pedigree());
 			exit(1);
 		case 'S':
 			sockname = strdup(optarg);
