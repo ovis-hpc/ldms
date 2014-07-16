@@ -97,6 +97,8 @@ struct kldms_file {
 struct kldms_mdef_s {
 	char *name;
 	enum ldms_value_type type;
+	char units[8];
+	uint32_t flags;	/* DATA/MDATA flag */
 	uint32_t count; /* Number of elements in the array if this is of an array type */
 	size_t meta_sz;
 	size_t data_sz;
@@ -177,11 +179,15 @@ static inline int ldms_transaction_end(kldms_set_t set)
 /*
  * exported KLDMS API
  */
-extern int kldms_schema_metric_add(kldms_schema_t s, const char *name, enum ldms_value_type type);
+extern int kldms_schema_metric_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+				   const char *units);
 extern void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v);
 extern kldms_schema_t kldms_schema_new(const char * schema_name);
+extern kldms_schema_t kldms_schema_find(const char *schema_name);
 extern kldms_set_t kldms_set_new(const char *name, kldms_schema_t schema);
 extern void kldms_schema_delete(kldms_schema_t schema);
 extern void kldms_set_delete(kldms_set_t schema);
+extern void kldms_transaction_begin(kldms_set_t s);
+extern void kldms_transaction_end(kldms_set_t s);
 
 #endif
