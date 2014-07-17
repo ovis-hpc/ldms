@@ -301,7 +301,7 @@ char * op_str[] = {
 };
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
-static char *xlate_cmd(int cmd)
+static const char *xlate_cmd(int cmd)
 {
 	static char cmd_s[16];
 	if ( is_valid_ldms_request_cmd(cmd) ) {
@@ -323,8 +323,8 @@ static char *xlate_ctxt(struct rdma_context *ctxt)
 		struct ldms_request_hdr *hdr = (void *)(rh+1);
 		int cmd = ntohl(hdr->cmd);
 		sprintf(s, "SEND '%s'",
-		     xlate_cmd(cmd),
-		     (void *)(unsigned long)hdr->xid);
+		     xlate_cmd(cmd) /*,
+		     (void *)(unsigned long)hdr->xid */);
 	}
 	return s;
 }
