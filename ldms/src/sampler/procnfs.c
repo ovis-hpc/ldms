@@ -237,7 +237,7 @@ static int sample(void)
 	int rc, i;
 	char *s;
 	char lbuf[256];
-	union ldms_value v[23],vtemp;
+	union ldms_value v[23];
 
 	if (!set) {
 		msglog("procnfs: plugin not initialized\n");

@@ -632,8 +632,8 @@ int process_info(int fd,
 	ldms_log("%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
-	char *metric_name;
-	char *container;
+
+
 	pthread_mutex_lock(&host_list_lock);
 	uint64_t total_curr_busy = 0;
 	uint64_t grand_total_busy = 0;
@@ -794,7 +794,7 @@ int process_config_plugin(int fd,
 
 void plugin_sampler_cb(int fd, short sig, void *arg)
 {
-	struct timeval tv;
+
 	struct plugin *pi = arg;
 	pthread_mutex_lock(&pi->lock);
 	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
@@ -1237,7 +1237,7 @@ int process_update_standby(int fd,
 {
 
 	char *attr;
-	char *type;
+
 	int agg_no;
 	int state;
 
@@ -1366,7 +1366,7 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 	struct hostset *hset;
 	char *set_name = sp->setname;
 	char *tmp;
-	struct ldmsd_store_policy_ref *sp_ref;
+
 	struct hostset_ref *hset_ref;
 	chk_replybuf(); /* we sprintf or bdstr err messages without deliver*/
 	pthread_mutex_lock(&hs->set_list_lock);
@@ -1700,6 +1700,7 @@ int process_store(int fd,
 			if (!smi) {
 				bdstr_set_int(&replybuf,-ENOMEM);
 				cat(" Memory allocation failed.\n");
+				rc = ENOMEM;
 				goto destroy_store_policy;
 			}
 
@@ -1965,7 +1966,7 @@ int sample_interval = 2000000;
 void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 		void *arg)
 {
-	struct hset_metric *hsm;
+
 	struct hostset *hset = arg;
 	pthread_mutex_lock(&hset->state_lock);
 	if (status != LDMS_LOOKUP_OK){
@@ -1999,7 +2000,7 @@ out:
  */
 void reset_set_metrics(struct hostset *hset)
 {
-	struct hset_metric *hsm;
+
 	if (hset->mvec) {
 		int i;
 		for (i = 0; i < hset->mvec->count; i++) {
@@ -2289,7 +2290,7 @@ void schedule_update(struct hostspec *hs)
 
 void do_host(struct hostspec *hs)
 {
-	int rc;
+
 	pthread_mutex_lock(&hs->conn_state_lock);
 	switch (hs->conn_state) {
 	case HOST_DISCONNECTED:

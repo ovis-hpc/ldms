@@ -307,7 +307,7 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 static zap_err_t z_sock_connect(zap_ep_t ep,
 				struct sockaddr *sa, socklen_t sa_len)
 {
-	int rc;
+
 	zap_err_t zerr;
 	struct z_sock_ep *sep = (void*)ep;
 	zerr = zap_ep_change_state(&sep->ep, ZAP_EP_INIT, ZAP_EP_CONNECTING);
@@ -574,8 +574,8 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 	struct z_sock_ep *sep = (struct z_sock_ep *)arg;
 	struct evbuffer *evb;
 	struct sock_msg_hdr hdr;
-	struct ldms_request *req;
-	size_t len;
+
+
 	size_t reqlen;
 	size_t buflen;
 	enum sock_msg_type msg_type;
@@ -759,7 +759,7 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 static zap_err_t z_sock_send(zap_ep_t ep, void *buf, size_t len)
 {
 	struct z_sock_ep *sep = (void*)ep;
-	int rc;
+
 
 	if (ep->state != ZAP_EP_CONNECTED)
 		return ZAP_ERR_NOT_CONNECTED;

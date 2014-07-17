@@ -239,8 +239,8 @@ static int sample(void)
 	char *s;
 	char lbuf[256];
 	char curriface[20];
-	union ldms_value vtemp, v[NVARS];
-	struct timespec time1;
+	union ldms_value  v[NVARS];
+
 	int i, j, metric_no;
 
 

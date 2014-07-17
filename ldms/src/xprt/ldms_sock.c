@@ -234,7 +234,7 @@ static int set_nonblock(struct ldms_xprt *x, int fd)
 
 static int __set_socket_options(struct ldms_sock_xprt *s)
 {
-	int rc;
+
 	int sd = s->sock;
 	int val;
 
@@ -323,7 +323,7 @@ err:
 int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 {
 	size_t len;
-	char *buf;
+
 	struct sock_key *k;
 
 	/* Check the response status */
@@ -351,7 +351,7 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 	struct sock_read_rsp rsp;
 	size_t len;
 	int ret;
-	char *buf;
+
 	uint32_t key;
 	struct sock_key *k;
 	int status = 0;
