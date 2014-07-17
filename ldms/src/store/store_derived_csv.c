@@ -229,7 +229,11 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		s_handle->numder++;
 	} while (s);
 
-	return 0;
+	if (fp)
+		fclose(fp);
+	fp = NULL;
+
+	return rc;
 }
 
 /**
