@@ -42,4 +42,14 @@ install-data-local: doxygen
 	done
 endif
 
+install-exec-local:
+	COMMIT=`git rev-parse HEAD`; \
+	DIRTY=`git status -uno -s | wc -l`; \
+	if [[ $$DIRTY != 0 ]]; then \
+		COMMIT="$$COMMIT-dirty" ; \
+	fi ; \
+	echo '#!/bin/bash' > $(DESTDIR)/$(bindir)/ldms-commit-id ; \
+	echo echo $$COMMIT >> $(DESTDIR)/$(bindir)/ldms-commit-id ; \
+	chmod 555 $(DESTDIR)/$(bindir)/ldms-commit-id ;
+
 clean-local: rpm-clean
