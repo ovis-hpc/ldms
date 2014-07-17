@@ -566,7 +566,7 @@ static int rdma_post_recv(struct ldms_rdma_xprt *r, struct rdma_buffer *rb)
 	struct ibv_sge sge;
 	struct ibv_recv_wr *bad_wr;
 	struct rdma_context *ctxt;
-	int rc;
+
 
 	if (r->conn_status > CONN_CONNECTED) {
 		errno = ENOTCONN;
@@ -615,7 +615,7 @@ static void process_recv_wc(struct ldms_rdma_xprt *r, struct ibv_wc *wc,
 	pthread_mutex_unlock(&r->credit_lock);
 
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
-		if (rdma_post_recv(r, rb)) {
+		if ((ret = rdma_post_recv(r, rb))) {
 			LOG_(r, "RDMA: ibv_post_recv failed: %d\n", ret);
 			rdma_buffer_free(rb);
 		}
@@ -879,7 +879,7 @@ static void *cq_thread_proc(void *arg)
 	struct ibv_cq *ev_cq;
 	void *ev_ctx;
 	int ret;
-	int fd_count;
+
 
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 	while (1) {
@@ -1050,7 +1050,7 @@ static int cma_event_handler(struct ldms_rdma_xprt *r,
 	int ret = 0;
 	struct ldms_rdma_xprt *x = cma_id->context;
 	char buf[32];
-	char *s;
+
 
 	switch (event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
