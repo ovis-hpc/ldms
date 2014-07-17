@@ -82,7 +82,7 @@ static char *bdstr_extract(big_dstring_t *dsPtr) \
 	char *result; \
 	assert (NULL != dsPtr); \
 	result = (char *)malloc(strlen(dsPtr->string)+1); \
-	strcpy(result,dsPtr->string); \
+	if (result) strcpy(result,dsPtr->string); \
 	bdstr_free(dsPtr);  \
 	return result; \
 } \
