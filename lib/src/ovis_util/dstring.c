@@ -8,6 +8,8 @@
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
+#include <stdio.h>
+#include <inttypes.h>
 
 # define MAX(a,b) ( (a) < (b) ? (b) : (a) )
 # define MIN(a,b) ( (a) < (b) ? (a) : (b) )
@@ -55,7 +57,7 @@ char *dstr_set(dstring_t * dsPtr, const char *string)
 {
 	size_t input_length;
 	int length;
-	char *newString;
+	char *newString = NULL;
 
 	if (NULL == dsPtr || NULL == string) {
 		return NULL;
@@ -97,6 +99,50 @@ char *dstr_set(dstring_t * dsPtr, const char *string)
 	strncpy(dsPtr->string, string, input_length);
 	dsPtr->length = length;
 	dsPtr->string[dsPtr->length] = '\0';
+	return dsPtr->string;
+}
+
+char *dstr_set_int(dstring_t * dsPtr, int64_t val)
+{
+	size_t input_length;
+	int length;
+	char *newString = NULL;
+#define FMT_INT64_LEN 32
+	char string[FMT_INT64_LEN];
+
+	sprintf(string, "%" PRId64, val);
+	input_length = strlen(string);
+	length = (int)input_length;
+	dsPtr->dead = 0;	/* set can revive a dead string if it fits in static space */
+
+	/*
+	 * Allocate a larger buffer for the string if the current one isn't
+	 * large enough.  Allocate extra space in the new buffer so that there
+	 * will be room to grow before we have to allocate again.
+	 * For DSTRING_STATIC_SIZE > FMT_INT64_LEN this is unreachable.
+	 * As DSTRING_STATIC_SIZE may evolve, leave the check in.
+	 */
+	if (length >= dsPtr->capacity) {
+		int oldSize = dsPtr->capacity;
+		if (length > INT_MAX / 2) {
+			dsPtr->capacity = INT_MAX;
+		} else {
+			dsPtr->capacity = length * 2;
+		}
+		newString = malloc((size_t) dsPtr->capacity);
+		if (!newString) {
+			dsPtr->dead = 1;
+			dsPtr->capacity = oldSize;
+			return NULL;
+		}
+		if (dsPtr->string != dsPtr->staticSpace) {
+			free(dsPtr->string);
+		}
+		dsPtr->string = newString;
+	}
+
+	strcpy(dsPtr->string, string);
+	dsPtr->length = length;
 	return dsPtr->string;
 }
 

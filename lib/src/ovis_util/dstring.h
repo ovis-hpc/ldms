@@ -48,6 +48,7 @@ char *createfoo ()
 */
 #define DSTRING_STATIC_SIZE 200
 #define DSTRING_ALL -1
+#include <stdint.h>
 
 /** Dynamic string data structure. Max size INT_MAX. */
 typedef struct dstring {
@@ -192,6 +193,19 @@ extern void dstr_trunc(dstring_t * dsPtr, int length);
  *  fails in the process.
  */
 extern char *dstr_set(dstring_t * dsPtr, const char *string);
+
+/*----------------------------------------------------------------------*/
+/**
+ *  Sets the value of the dynamic string to the string formatted int value.
+ *  Memory gets reallocated if needed to accomodate the string's new
+ *  size.  dsPtr may not be NULL (checked by assertion).
+ *
+ *  \param dsPtr   Structure describing dynamic string (non-NULL).
+ *  \param val  int to format and append.
+ *  \return Returns the new value of the dynamic string, or null if malloc
+ *  fails in the process.
+ */
+extern char *dstr_set_int(dstring_t * dsPtr, int64_t val);
 
 #if 0
 /* macros for convenience in typical use of one dynamic string in a function */

@@ -403,16 +403,16 @@ char *skip_space(char *s)
 	return s;
 }
 
+#define FMT_INT64_LEN 32
 static big_dstring_t replybuf;
 static int init_replybuf=0;
 /* space for single decimal formatted int32 or int64 */
-static char intbuf[32];
 /* chk_replybuf should appear at the beginning of any function
 that uses replybuf to ensure proper initialization. */
 #define chk_replybuf() \
 for (; init_replybuf <1; init_replybuf++) bdstr_init(&replybuf)
 /* start a reply string with a formatted integer variable */
-#define bdstr_reply(ec) sprintf(intbuf,"%d",ec); bdstr_set(&replybuf,intbuf)
+#define bdstr_reply(ec) bdstr_set_int(&replybuf,ec)
 /* append any size string to replybuf */
 #define cat(x) bdstrcat(&replybuf,x,DSTRING_ALL)
 /* grab pointer out of dstring for reading/sending */
@@ -786,7 +786,6 @@ int process_config_plugin(int fd,
 	pthread_mutex_unlock(&pi->lock);
  out:
 	chk_replybuf();
-	sprintf(intbuf, "%d", rc);
 	bdstr_reply(rc);
 	cat( err_str);
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
@@ -1023,6 +1022,7 @@ int process_add_host(int fd,
 	long offset = 0;
 	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
+	char intbuf[FMT_INT64_LEN];
 
 	chk_replybuf();
 
@@ -1207,8 +1207,7 @@ add_timeout:
 	return 0;
 enomem:
 	rc = ENOMEM;
-	sprintf(intbuf, "%d", -ENOMEM);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_set_int(&replybuf,-rc);
 	cat("Memory allocation failure.");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 clean_set_list:
@@ -1379,26 +1378,24 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 		if (0 == strcmp(set_name, hset_name)) {
 			hset_ref = malloc(sizeof(*hset_ref));
 			if (!hset_ref) {
-				sprintf(intbuf,"%d",-ENOMEM);
-				bdstr_set(&replybuf,intbuf);
+				rc = ENOMEM;
+				bdstr_set_int(&replybuf,-rc);
 				cat(" Could not create hostset ref for set '");
 				cat(hset_name);
 				cat("'on host '");
 				cat(hostname);
 				cat("'.");
-				rc = ENOMEM;
 				goto err;
 			}
 			hset_ref->hostname = strdup(hostname);
 			if (!hset_ref->hostname) {
-				sprintf(intbuf,"%d",-ENOMEM);
-				bdstr_set(&replybuf,intbuf);
+				rc = ENOMEM;
+				bdstr_set_int(&replybuf,-rc);
 				cat(" Failed create hostset name for set '");
 				cat(hset_name);
 				cat("'on host '");
 				cat(hostname);
 				cat("'.");
-				rc = ENOMEM;
 				goto err1;
 			}
 			/* Get a reference on the hostset for this store policy. */
@@ -1475,8 +1472,7 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, 
 		while (metric) {
 			index = _mvec_find_metric(mvec, metric);
 			if (index < 0) {
-				sprintf(intbuf, "%d", -ENOENT);
-				bdstr_set(&replybuf,intbuf);
+				bdstr_set_int(&replybuf,-ENOENT);
 				cat(" Could not find the metric '");
 				cat(metric);
 				cat("'.");
@@ -1512,8 +1508,7 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, 
 enomem:
 	destroy_metric_idx_list(&sp->metric_list);
 	sp->metric_count = 0;
-	sprintf(intbuf, "%d", -ENOENT);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_set_int(&replybuf,-ENOENT);
 	cat(" Could not create the metric index list.");
 	return ENOMEM;
 }
@@ -1585,8 +1580,7 @@ int process_store(int fd,
 
 	chk_replybuf();
 	if (LIST_EMPTY(&host_list)) {
-		sprintf(intbuf, "%d",-ENOENT);
-		bdstr_set(&replybuf,intbuf);
+		bdstr_set_int(&replybuf,-ENOENT);
 		cat(" No hosts were added."
 			" No metrics to be stored. Aborted!\n");
 		send_reply(fd, sa, sa_len, bdstr, bdlen+1);
@@ -1665,8 +1659,7 @@ int process_store(int fd,
 			pthread_mutex_unlock(&host_list_lock);
 			/* Host not found */
 			if (!hs) {
-				sprintf(intbuf, "%d",-ENOENT);
-				bdstr_set(&replybuf,intbuf);
+				bdstr_set_int(&replybuf,-ENOENT);
 				cat(" Could not find the host  '");
 				cat(hostname);
 				cat("'.");
@@ -1705,8 +1698,7 @@ int process_store(int fd,
 		while (metric) {
 			smi = malloc(sizeof(*smi));
 			if (!smi) {
-				sprintf(intbuf, "%d",-ENOMEM);
-				bdstr_set(&replybuf,intbuf);
+				bdstr_set_int(&replybuf,-ENOMEM);
 				cat(" Memory allocation failed.\n");
 				goto destroy_store_policy;
 			}
@@ -1715,8 +1707,7 @@ int process_store(int fd,
 			smi->name = strdup(metric);
 			if (!smi->name) {
 				free(smi);
-				sprintf(intbuf, "%d",-ENOMEM);
-				bdstr_set(&replybuf,intbuf);
+				bdstr_set_int(&replybuf,-ENOMEM);
 				cat(" Memory allocation failed.\n");
 				goto destroy_store_policy;
 			}
@@ -1729,8 +1720,7 @@ int process_store(int fd,
 	struct store_instance *si;
 	si = ldmsd_store_instance_get(store->store, sp);
 	if (!si) {
-		sprintf(intbuf, "%d",-ENOMEM);
-		bdstr_set(&replybuf,intbuf);
+		bdstr_set_int(&replybuf,-ENOMEM);
 		cat(" Memory allocation failed.\n");
 		destroy_store_policy(sp);
 		goto enomem;
@@ -1745,8 +1735,7 @@ int process_store(int fd,
 	LIST_FOREACH(hset_ref, &sp->hset_ref_list, entry) {
 		sp_ref = malloc(sizeof(*sp_ref));
 		if (!sp_ref) {
-			sprintf(intbuf, "%d",-ENOMEM);
-			bdstr_set(&replybuf,intbuf);
+			bdstr_set_int(&replybuf,-ENOMEM);
 			cat(" Memory allocation failed.\n");
 			free(si);
 			goto clean_fake_list;
@@ -1781,8 +1770,7 @@ destroy_store_policy:
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return rc;
 enomem:
-	sprintf(intbuf, "%d", -ENOMEM);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_set_int(&replybuf,-ENOMEM);
 	cat(" Memory allocation failed.\n");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return EINVAL;
@@ -1793,8 +1781,7 @@ einval:
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return EINVAL;
 enoent:
-	sprintf(intbuf, "%d", -ENOENT);
-	bdstr_set(&replybuf,intbuf);
+	bdstr_set_int(&replybuf,-ENOENT);
 	cat(" The plugin was not found.");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return ENOENT;
@@ -1859,6 +1846,7 @@ int process_record(int fd,
 {
 	char *cmd_s;
 	long cmd_id;
+	char intbuf[FMT_INT64_LEN];
 	int rc = tokenize(command, kw_list, av_list);
 	chk_replybuf();
 	if (rc) {
