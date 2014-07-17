@@ -87,6 +87,8 @@ start() {
 
 	rm -f $SOCK
 
+	archive_log $LOG
+
 	$LDMSD_AGG -l $LOG -S $SOCK -x $LDMSD_AGG_XPORT:$LDMSD_AGG_PORT_LISTEN -m $LDMSD_AGG_MEM -o $LDMSD_AGG_PORT_TO_OCMD -z ldmsd_aggregator
 
 	RETVAL=$?

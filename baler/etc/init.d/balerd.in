@@ -87,6 +87,7 @@ mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
 mkdir -p $OVIS_HOME/var/sock/
 mkdir -p $OVIS_HOME/var/log/
+LOG=$OVIS_RUN/var/log/balerd.log
 
 start() {
 	echo -n "Starting $prog: "
@@ -99,7 +100,9 @@ start() {
 		exit 1
 	fi
 
-	$BALER -l $OVIS_HOME/var/log/balerd.log -s $BALER_STORE -z $BALER_PORT_TO_OCMD
+	archive_log $LOG
+
+	$BALER -l $LOG -s $BALER_STORE -z $BALER_PORT_TO_OCMD
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then

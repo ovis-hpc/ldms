@@ -71,6 +71,7 @@ mkdir -p $(dirname $pidfile)
 mkdir -p $OVIS_HOME/var/sock/
 mkdir -p $OVIS_HOME/var/log/
 SOCK=$OVIS_HOME/var/sock/me.ctrl
+LOG=$OVIS_HOME/var/log/me.log
 
 status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
 running=$?
@@ -88,9 +89,10 @@ start() {
 	fi
 
 	rm -f $SOCK
+	archive_log $LOG
 
 	#Start me
-	$ME -S $SOCK -l $OVIS_HOME/var/log/me.log -x $ME_XPORT:$ME_PORT_LISTEN -O $ME_PORT_TO_OCMD  $@
+	$ME -S $SOCK -l $LOG -x $ME_XPORT:$ME_PORT_LISTEN -O $ME_PORT_TO_OCMD  $@
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then

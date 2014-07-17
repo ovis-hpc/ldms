@@ -71,6 +71,7 @@ mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
 mkdir -p $OVIS_HOME/var/sock/
 mkdir -p $OVIS_HOME/var/log/
+LOG=$OVIS_HOME/var/log/komondor.log
 
 status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
 running=$?
@@ -88,7 +89,8 @@ start() {
 		exit 1
 	fi
 
-	$KOMONDOR -a $OVIS_DATA/act_sos/act -x $KOMONDOR_XPORT -p $KOMONDOR_PORT_LISTEN -z $KOMONDOR_PORT_TO_OCMD -l $OVIS_HOME/var/log/komondor.log
+	archive_log $LOG
+	$KOMONDOR -a $OVIS_DATA/act_sos/act -x $KOMONDOR_XPORT -p $KOMONDOR_PORT_LISTEN -z $KOMONDOR_PORT_TO_OCMD -l $LOG
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then

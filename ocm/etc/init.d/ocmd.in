@@ -80,6 +80,7 @@ pidfile=$OVIS_HOME/var/pid/$prog.pid
 mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
 mkdir -p $OVIS_HOME/var/log
+LOG=$OVIS_HOME/var/log/ocmd.log
 
 status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
 running=$?
@@ -96,7 +97,8 @@ start() {
 		exit 1
 	fi
 
-	$OCMD -x $OCMD_XPORT -p $OCMD_PORT -l $OVIS_HOME/var/log/ocmd.log -R $OCMD_PEER_LIST -P ocmdsqlite3 -- path=$OVIS_RUN_CONF
+	archive_log $LOG
+	$OCMD -x $OCMD_XPORT -p $OCMD_PORT -l $LOG -R $OCMD_PEER_LIST -P ocmdsqlite3 -- path=$OVIS_RUN_CONF
 
 	RETVAL=$?
 	if [ $RETVAL -eq 0 ] ; then
