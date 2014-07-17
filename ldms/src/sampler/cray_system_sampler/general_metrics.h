@@ -75,7 +75,6 @@
 #define VMSTAT_FILE "/proc/vmstat"
 #define LOADAVG_FILE "/proc/loadavg"
 #define CURRENT_FREEMEM_FILE "/proc/current_freemem"
-#define MEMINFO_FILE "/proc/meminfo"
 #define KGNILND_FILE  "/proc/kgnilnd/stats"
 #define PROCNETDEV_FILE "/proc/net/dev"
 
@@ -92,6 +91,11 @@ FILE *v_f;
 static char* VMSTAT_METRICS[] = {"nr_dirty", "nr_writeback"};
 #define NUM_VMSTAT_METRICS (sizeof(VMSTAT_METRICS)/sizeof(VMSTAT_METRICS[0]))
 ldms_metric_t* metric_table_vmstat;
+/* additional vmstat metrics if getting cf from vmstat. Order matters (see calc within) */
+static char* VMCF_METRICS[] = {"nr_free_pages", "nr_file_pages", "nr_slab_reclaimable", "nr_shmem"};
+#define NUM_VMCF_METRICS (sizeof(VMCF_METRICS)/sizeof(VMCF_METRICS[0]))
+int (*sample_metrics_vmstat_ptr)(ldmsd_msg_log_f msglog);
+
 
 /* LOADAVG Specific */
 FILE *l_f;
@@ -196,9 +200,9 @@ int procnetdev_setup(ldmsd_msg_log_f msglog);
 
 /** sample */
 int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
+int sample_metrics_vmcf(ldmsd_msg_log_f msglog);
 int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
 int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
-int sample_metrics_cf_from_meminfo(ldmsd_msg_log_f msglog);
 int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
 int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
 int sample_metrics_lustre(ldmsd_msg_log_f msglog);

@@ -300,6 +300,7 @@ OPTION_WITH_PORT([LDMSD],[411])
 OPTION_WITH_MAGIC([LDMS_MSG_MAX],[32768],[Maximum control message length allowed to ldmsd (min 4095)])
 
 OPTION_GITINFO
+OPTION_HOSTINFO
 
 
 AC_SUBST(ac_configure_args)

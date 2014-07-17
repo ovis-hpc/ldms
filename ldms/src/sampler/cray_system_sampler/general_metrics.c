@@ -154,7 +154,6 @@ err:
 }
 
 int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
-
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -163,12 +162,18 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 	union ldms_value v;
 	int j, rc;
 
-	if (!v_f)
-		return 0;
+
+	/* open and close each time */
+	if (v_f)
+		fclose(v_f);
+
+	if (VMSTAT_FILE != NULL){
+		v_f = fopen(VMSTAT_FILE, "r");
+		if (!v_f)
+			return 0;
+	}
 
 	found_metrics = 0;
-
-	fseek(v_f, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), v_f);
 		if (!s)
@@ -177,6 +182,8 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 		if (rc != 2) {
 			msglog("ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
+			fclose(v_f);
+			v_f = 0;
 			rc = EINVAL;
 			return rc;
 		}
@@ -189,9 +196,99 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 		}
 	} while (s);
 
+	fclose(v_f);
+	v_f = 0;
+
 	if (found_metrics != NUM_VMSTAT_METRICS){
 		return EINVAL;
 	}
+
+	return 0;
+
+}
+
+
+int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
+{
+	char lbuf[256];
+	char metric_name[128];
+	uint64_t vmcf[NUM_VMCF_METRICS];
+	int found_metrics;
+	int found_submetrics;
+	int done = 0;
+	char* s;
+	union ldms_value v;
+	int j, rc;
+
+	/* open and close each time */
+	if (v_f)
+		fclose(v_f);
+
+	if (VMSTAT_FILE != NULL){
+		v_f = fopen(VMSTAT_FILE, "r");
+		if (!v_f)
+			return 0;
+	}
+
+	found_metrics = 0;
+	found_submetrics = 0;
+	do {
+		s = fgets(lbuf, sizeof(lbuf), v_f);
+		if (!s)
+			break;
+		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
+		if (rc != 2) {
+			msglog("ERR: Issue reading the source file '%s'\n",
+								VMSTAT_FILE);
+			fclose(v_f);
+			v_f = 0;
+			rc = EINVAL;
+			return rc;
+		}
+		if (found_metrics < NUM_VMSTAT_METRICS){
+			for (j = 0; j < NUM_VMSTAT_METRICS; j++){
+				if (!strcmp(metric_name, VMSTAT_METRICS[j])){
+					ldms_set_metric(metric_table_vmstat[j], &v);
+					found_metrics++;
+					if ((found_metrics == NUM_VMSTAT_METRICS) && 
+					    (found_submetrics == NUM_VMCF_METRICS)){
+						done = 1;
+						break;
+					}
+					break;
+				}
+			}
+		}
+		if (found_submetrics < NUM_VMCF_METRICS){
+			for (j = 0; j < NUM_VMCF_METRICS; j++){
+				if (!strcmp(metric_name, VMCF_METRICS[j])){
+					vmcf[j] = v.v_u64;
+					found_submetrics++;
+					if ((found_metrics == NUM_VMSTAT_METRICS) && 
+					    (found_submetrics == NUM_VMCF_METRICS)){
+						done = 1;
+						break;
+					}
+					break;
+				}
+			}
+		}
+	} while (s && !done);
+
+	fclose(v_f);
+	v_f = 0;
+
+	if (found_submetrics == NUM_VMCF_METRICS) {
+		//treating the order like its well known
+		//	(nr_free_pages + nr_file_pages + nr_slab_reclaimable - nr_shmem) * 4 
+		v.v_u64 = (vmcf[0] + vmcf[1] + vmcf[2] - vmcf[3]) * 4;
+		ldms_set_metric(metric_table_current_freemem[0], &v);
+	} else {
+		return EINVAL;
+	}
+
+	if (found_metrics != NUM_VMSTAT_METRICS)
+		return EINVAL;
 
 	return 0;
 
@@ -232,7 +329,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 
 		if (sscanf(s, "%s", metric_name) != 1){
 			msglog("ERR: Issue reading metric name from the source"
-						" file '%s'\n", VMSTAT_FILE);
+						" file '%s'\n", KGNILND_FILE);
 			rc = EINVAL;
 			return rc;
 		}
@@ -254,60 +351,6 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 	return 0;
 
 }
-
-
-int sample_metrics_cf_from_meminfo(ldmsd_msg_log_f msglog)
-{
-	/* return memfree+cached. Since these are usually at the top of the output
-	   read a large enuf buffer once and then parse it */
-
-	char lbuf[256];
-	unsigned long long mval = 0;
-	int foundmval = 0;
-	union ldms_value v;
-	char* s;
-	char* x;
-	int rc;
-
-	if (!cf_m)
-		return 0;
-
-	lseek(cf_m, 0, SEEK_SET);
-	rc = read(cf_m, lbuf, 255);
-	if (rc <= 0)
-		return errno;
-	lbuf[255] = '\0';
-	s = lbuf;
-	while (1){
-		char metric[256];
-		unsigned long long val;
-		rc = sscanf(s, "%s %llu", metric, &val);
-		if (rc != 2)
-			break;
-		if (strcmp("MemFree:", metric) == 0){
-			mval = val;
-			foundmval = 1;
-		} else if (strcmp("Cached:", metric) == 0){
-			if (!foundmval)
-				break;
-			v.v_u64 = mval+val;
-			ldms_set_metric(metric_table_current_freemem[0], &v);
-			/* know there is only 1 val and we want the buffer to be
-			 big enough to get past it */
-			return 0;
-		}
-		x = strchr(s, '\n');
-		if ((x == NULL) || (strlen(x) <= 1))
-			break;
-		x++;
-		s = x;
-	}
-
-	/* didnt find the vals. */
-	msglog("cf_from_meminfo: cannot find MemFree and Cached\n");
-	return EINVAL;
-}
-
 
 int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 {

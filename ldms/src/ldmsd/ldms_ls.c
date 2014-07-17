@@ -89,7 +89,7 @@ struct ls_set {
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:x:w:m:lvu"
+#define FMT "h:p:x:w:m:lvVu"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
@@ -106,10 +106,8 @@ void usage(char *argv[])
 	       "\n    -m <memory size>   Maximum size of pre-allocated memory for metric sets.\n"
 	       "                         The given size must be less than 1 petabytes.\n"
 	       "                         For example, 20M or 20mb are 20 megabytes.\n"
-	       " git info: " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n"
-	       " src dir: " LDMS_SRCDIR "\n"
-	       " build dir: " LDMS_BUILDDIR "\n",
-	       argv[0],LDMS_DEFAULT_PORT);
+	       "\n%s",
+	       argv[0],LDMS_DEFAULT_PORT,ldms_pedigree());
 	exit(1);
 }
 
@@ -359,7 +357,8 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 'V':
-			/* FALLTHRU  until we get more ambition. */
+			printf("%s",ldms_pedigree());
+			exit(1);
 		default:
 			usage(argv);
 		}

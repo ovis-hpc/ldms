@@ -248,13 +248,29 @@ AC_SUBST([$1],[$$1])
 dnl SYNOPSIS: OPTION_GITINFO
 dnl dnl queries git for version hash and branch info.
 AC_DEFUN([OPTION_GITINFO], [
+
 if test "x`which git`" = "x"; then
         GITSHORT="no_git_command"
         GITLONG=$GITSHORT
 else
-        GITLONG="`git log -1 --format="%H"`"
+        GITLONG="`git log -1 |grep ^commit | sed -e 's%commit %%'`"
         GITSHORT="`git describe`"
 fi
 AC_DEFINE_UNQUOTED([LDMS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
 AC_DEFINE_UNQUOTED([LDMS_GIT_SHORT],["$GITSHORT"],[Branch and hash mangle of last commit])
 ])
+
+dnl SYNOPSIS: OPTION_HOSTINFO
+dnl build environment description
+AC_DEFUN([OPTION_HOSTINFO], [
+AC_CANONICAL_HOST
+AC_CANONICAL_BUILD
+LDMS_COMPILE_HOST_NAME=$ac_hostname
+LDMS_COMPILE_HOST_CPU=$host_cpu
+LDMS_COMPILE_HOST_OS=$host_os
+AC_DEFINE_UNQUOTED([LDMS_COMPILE_HOST_NAME],["$LDMS_COMPILE_HOST_NAME"],[host where configured])
+AC_DEFINE_UNQUOTED([LDMS_COMPILE_HOST_CPU],["$LDMS_COMPILE_HOST_CPU"],[cpu where configured])
+AC_DEFINE_UNQUOTED([LDMS_COMPILE_HOST_OS],["$LDMS_COMPILE_HOST_OS"],[os where configured])
+AC_DEFINE_UNQUOTED([LDMS_CONFIG_ARGS],["$ac_configure_args"],[configure input])
+])
+

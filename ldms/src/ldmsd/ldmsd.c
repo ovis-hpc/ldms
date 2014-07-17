@@ -3363,10 +3363,7 @@ int main(int argc, char *argv[])
 			dirty_threshold = atoi(optarg);
 			break;
 		case 'V':
-                        printf("git source tag: %s\n", LDMS_GIT_LONG);
-                        printf("git source desc: %s\n", LDMS_GIT_SHORT);
-			printf("source location: %s\n", LDMS_SRCDIR);
-			printf("build location: %s\n", LDMS_BUILDDIR);
+                        printf("%s", ldms_pedigree());
 			exit(1);
 		default:
 			usage(argv);
