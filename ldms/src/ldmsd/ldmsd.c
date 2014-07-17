@@ -3352,12 +3352,6 @@ int main(int argc, char *argv[])
 			initial_config_file_routine(yaml_document);
 	}
 #endif
-	if (!foreground) {
-		if (daemon(1, 1)) {
-			perror("ldmsd: ");
-			cleanup(8);
-		}
-	}
 	if (logfile) {
 		log_fp = fopen(logfile, "a");
 		if (!log_fp) {
@@ -3365,8 +3359,24 @@ int main(int argc, char *argv[])
 			ldms_log("Could not open the log file named '%s'\n", logfile);
 			cleanup(9);
 		} else {
+			int fd = fileno(log_fp);
+			if (dup2(fd, 1) < 0) {
+				ldms_log("Cannot redirect log to %s\n", logfile);
+				cleanup(10);
+			}
+			if (dup2(fd, 2) < 0) {
+				ldms_log("Cannot redirect log to %s\n", logfile);
+				cleanup(11);
+			}
 			stdout = log_fp;
 			stderr = log_fp;
+		}
+	}
+
+	if (!foreground) {
+		if (daemon(1, 1)) {
+			perror("ldmsd: ");
+			cleanup(8);
 		}
 	}
 
