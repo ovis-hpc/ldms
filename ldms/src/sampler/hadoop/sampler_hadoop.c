@@ -79,16 +79,16 @@
 struct record_metrics *parse_record(char *record){
 	struct record_metrics *metrics = calloc(1, sizeof(*metrics));
 	metrics->count = 0;
-	char *context, *name;
-	metrics->context = strtok(record, ".");
-	metrics->name = strtok(NULL, ":");
+	char *context, *name, saveptr = NULL;
+	metrics->context = strtok_r(record, ".", &saveptr);
+	metrics->name = strtok_r(NULL, ":", &saveptr);
 	if (!metrics->name)
 		return NULL;
 
 	struct metric_name *metric_name;
 
 	char *m_name;
-	while (m_name = strtok(NULL, ",")) {
+	while (m_name = strtok_r(NULL, ",", &saveptr)) {
 		metric_name = malloc(sizeof(*metric_name));
 		metric_name->name = strdup(m_name);
 		LIST_INSERT_HEAD(&metrics->list, metric_name, entry);
@@ -99,11 +99,12 @@ struct record_metrics *parse_record(char *record){
 
 struct record_list *parse_given_metrics(char *metrics, int *count)
 {
+	char *saveptr;
 	*count = 0;
 	struct record_list *record_list = calloc(1, sizeof(*record_list));
 	struct record_metrics *r_metrics;
 
-	char *record = strtok(metrics, ";");
+	char *record = strtok_r(metrics, ";", &saveptr);
 	do {
 		r_metrics = parse_record(record);
 		if (!r_metrics) {
@@ -111,7 +112,7 @@ struct record_list *parse_given_metrics(char *metrics, int *count)
 		}
 		LIST_INSERT_HEAD(record_list, r_metrics, entry);
 		*count += r_metrics->count;
-	} while (record = strtok(NULL, ";"));
+	} while (record = strtok_r(NULL, ";", &saveptr));
 
 	return record_list;
 }
@@ -228,6 +229,7 @@ void destroy_hadoop_set(struct hadoop_set *hdset)
 void _recv_metrics(char *data, struct hadoop_set *hdset)
 {
 	char *daemon_name, *rctxt_name, *metric_name;
+	char *saveptr = NULL;
 	char buf[256];
 	char *s, *tmp;
 	ldms_metric_t m;
@@ -236,16 +238,16 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 	ldms_log_fn_t msglog = hdset->msglog;
 
 	tmp = strdup(data);
-	rctxt_name = strtok(tmp, ":");
+	rctxt_name = strtok_r(tmp, ":", &saveptr);
 	char *value_s;
 
-	while (metric_name = strtok(NULL, "=")) {
+	while (metric_name = strtok_r(NULL, "=", &saveptr)) {
 		sprintf(buf, "%s:%s", rctxt_name, metric_name);
 		m = str_map_get(hdset->map, buf);
 		if (!m)
 			continue;
 		type = ldms_get_metric_type(m);
-		value_s = strtok(NULL, ",");
+		value_s = strtok_r(NULL, ",", &saveptr);
 		switch (type) {
 		case LDMS_V_S32:
 			value.v_s32 = strtol(value_s, NULL, 10);

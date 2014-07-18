@@ -131,10 +131,11 @@ int add_metrics_lustre(ldms_set_t set, int comp_id,
 
 int handle_llite(const char *llite)
 {
+	char *saveptr = NULL;
 	char *_llite = strdup(llite);
 	if (!_llite)
 		return ENOMEM;
-	char *tok = strtok(_llite, ",");
+	char *tok = strtok_r(_llite, ",", &saveptr);
 	struct lustre_svc_stats *lss;
 	char path[4096];
 	while (tok) {
@@ -145,8 +146,9 @@ int handle_llite(const char *llite)
 			goto err;
 		lss->key_id_map = lustre_idx_map;
 		LIST_INSERT_HEAD(&lustre_svc_head, lss, link);
-		tok = strtok(NULL, ",");
+		tok = strtok_r(NULL, ",", &saveptr);
 	}
+	free(_llite);
 	return 0;
 err:
 	lustre_svc_stats_list_free(&lustre_svc_head);

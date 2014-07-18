@@ -126,6 +126,7 @@ static int create_metric_set(const char *path)
 	char *s;
 	char lbuf[PROCSTATUTIL_LINE_MAX];
 	char metric_name[PROCSTATUTIL_NAME_MAX];
+	char *saveptr = NULL;
 
 	mf = fopen("/proc/stat", "r");
 	if (!mf) {
@@ -148,7 +149,7 @@ static int create_metric_set(const char *path)
 			break;
 
 		/* Throw away first column which is the CPU 'name' */
-		token = strtok(lbuf, " \t\n");
+		token = strtok_r(lbuf, " \t\n", &saveptr);
 		/* NOTE: dont have to check for corner case null since breaking after CPUs */
 		if (0 != strncmp(token, "cpu", 3))
 			break;
@@ -160,8 +161,9 @@ static int create_metric_set(const char *path)
 		}
 
 		column = 0;
-		for (token = strtok(NULL, " \t\n"); token;
-		     token = strtok(NULL, " \t\n")) {
+		for (token = strtok_r(NULL, " \t\n", &saveptr);
+			token;
+			token = strtok_r(NULL, " \t\n", &saveptr)) {
 
 			if ((cpu_count == -1) && 
 			    (procstatutil_metrics_type == PROCSTATUTIL_METRICS_BOTH)){
@@ -306,6 +308,7 @@ static int sample(void)
 	char *s;
 	char lbuf[PROCSTATUTIL_LINE_MAX];
 	struct timespec time1;
+	char *saveptr = NULL;
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
 	uint64_t beg_nsec; //testing
@@ -343,7 +346,7 @@ static int sample(void)
 		if (!s)
 			break;
 
-		token = strtok(lbuf, " \t\n");
+		token = strtok_r(lbuf, " \t\n", &saveptr);
 		/* First time have to check for corner case NULL (lbuf = "\n") */
 		if (token == NULL)
 			continue;
@@ -351,8 +354,8 @@ static int sample(void)
 		if (0 != strncmp(token, "cpu", 3))
 			continue; //get to EOF for seek to work
 
-		for (token = strtok(NULL, " \t\n"); token;
-				token = strtok(NULL, " \t\n")) {
+		for (token = strtok_r(NULL, " \t\n", &saveptr); token;
+				token = strtok_r(NULL, " \t\n", &saveptr)) {
 			uint64_t v = strtoul(token, NULL, 0);
 			ldms_set_u64(metric_table[metric_no], v);
 			metric_no++;

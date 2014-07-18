@@ -199,8 +199,9 @@ static int processSEDCHeader(char* lbuf){
   }
   metric_count = 0;
   int count = 0;
+  char *saveptr = NULL;
   
-  char *pch = strtok(lbuf, ",\n");
+  char *pch = strtok_r(lbuf, ",\n", &saveptr);
   //  if (strlen(logfile) > 0){
   //  outfile = fopen(logfile, "a");
   // if (outfile != NULL){
@@ -238,7 +239,7 @@ static int processSEDCHeader(char* lbuf){
       // }
     }
     count++;
-    pch = strtok(NULL,",\n");
+    pch = strtok_r(NULL,",\n", &saveptr);
   }
 
   return 0;
