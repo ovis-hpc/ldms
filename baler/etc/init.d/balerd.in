@@ -87,7 +87,7 @@ mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
 mkdir -p $OVIS_HOME/var/sock/
 mkdir -p $OVIS_HOME/var/log/
-LOG=$OVIS_RUN/var/log/balerd.log
+LOG=$OVIS_HOME/var/log/balerd.log
 
 start() {
 	echo -n "Starting $prog: "
