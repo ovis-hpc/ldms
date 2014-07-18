@@ -19,6 +19,16 @@ rpm-clean:
 	rm -rf rpm/ centos
 	rm -f $(LDMS_TARBALL)
 
+install-exec-hook: 
+	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
+	@echo "INSTALL COMPLETED."
+	@echo "Errors seen after this matter to developers only."
+	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
+	$(bindir)/ldms_ban.sh $(srcdir)/../
+
+banned:
+	bash $(srcdir)/scripts/ldms_ban.sh.in $(srcdir)/../
+
 if ENABLE_DOC
 doc:
 	doxygen Doxyfile

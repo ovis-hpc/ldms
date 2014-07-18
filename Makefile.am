@@ -12,6 +12,9 @@ OPV=-$(PACKAGE_VERSION)
 
 .PHONY: rpm centos toss doxygen 
 
+banned:
+	(cd ldms; make banned)
+
 rpm centos: dist-gzip
 	mkdir -p centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(BASE_TARBALL) packaging/ovis-base.spec centos/SOURCES
