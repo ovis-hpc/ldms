@@ -1106,7 +1106,7 @@ static bpt_node_t entry_delete(obj_idx_t oidx, bpt_node_t node, int idx,
  next_level:
 	parent = ods_obj_ref_to_ptr(t->ods, node->parent);
 	/* Remove the key and object from the node */
-	for (i = idx; i < node->count; i++)
+	for (i = idx; i < node->count - 1; i++)
 		node->entries[i] = node->entries[i+1];
 
 	node->entries[node->count-1] = ENTRY_INITIALIZER;
