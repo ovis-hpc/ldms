@@ -518,7 +518,7 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 
 void verify_leafs(obj_idx_t idx);
 
-#ifdef DEBUG
+#ifdef BPT_VERIFY
 static int verify_tree(obj_idx_t idx)
 {
 	bpt_t t;
