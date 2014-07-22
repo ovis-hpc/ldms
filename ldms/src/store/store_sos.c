@@ -561,6 +561,7 @@ void store_sos_cleanup(sos_t sos, uint32_t sec)
 		sos_obj_delete(sos, obj);
 		obj = sos_iter_obj(itr);
 	}
+	sos_iter_free(itr);
 }
 
 static int
