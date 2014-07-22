@@ -116,4 +116,6 @@ struct obj_iter {
 
 void *obj_idx_alloc(obj_idx_t idx, size_t sz);
 
+#define OBJ_IDX_EXTEND_SZ (16*1024*1024)
+
 #endif

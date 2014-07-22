@@ -405,7 +405,7 @@ void *obj_idx_alloc(obj_idx_t idx, size_t sz)
 {
 	void *p = ods_alloc(idx->ods, sz);
 	if (!p) {
-		if (!ods_extend(idx->ods, 64 * 1024)) {
+		if (!ods_extend(idx->ods, OBJ_IDX_EXTEND_SZ)) {
 			p = ods_alloc(idx->ods, sz);
 		}
 	}
