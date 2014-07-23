@@ -300,7 +300,7 @@ int assign_flush_thread(struct store_instance *si)
 struct timeval tv0, tv1, tvres, tvsum;
 
 int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
-			ldms_set_t set, struct ldms_mvec *mvec)
+			ldms_set_t set, struct ldms_mvec *mvec, int flags)
 {
 	int rc;
 	struct store_instance *si = lsp->si;
@@ -335,7 +335,7 @@ int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
 		/* If no error, treat it as STORE_STATE_OPEN case */
 		/* Intentionally NO break here */
 	case STORE_STATE_OPEN:
-		rc = si->store_engine->store(si->store_handle, set, mvec);
+		rc = si->store_engine->store(si->store_handle, set, mvec, flags);
 		/* If error, don't do dirty counting and flush checking */
 		if (rc)
 			break;

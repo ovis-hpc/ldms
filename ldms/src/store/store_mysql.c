@@ -643,7 +643,7 @@ out:
 
 
 static int
-store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec)
+store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 {
 	/* NOTE: ldmsd_store invokes the lock on the whole si */
 

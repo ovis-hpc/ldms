@@ -157,6 +157,10 @@ struct ldmsd_sampler {
 
 typedef void *ldmsd_store_handle_t;
 
+enum ldmsd_store_flags {
+	LDMSD_STORE_UPDATE_COMPLETE = 0x1,
+};
+
 struct ldmsd_store_metric_index_list;
 /**
  * \brief ldms_store
@@ -186,7 +190,7 @@ struct ldmsd_store {
 	void (*close)(ldmsd_store_handle_t sh);
 	void *(*get_context)(ldmsd_store_handle_t sh);
 	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set,
-		     ldms_mvec_t mvec);
+		     ldms_mvec_t mvec, int flags);
 };
 
 struct store_instance;
@@ -249,7 +253,7 @@ void ldms_log(const char *fmt, ...);
  */
 int ldmsd_store_init(int __flush_N);
 int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
-		ldms_set_t set, struct ldms_mvec *mvec);
+		ldms_set_t set, struct ldms_mvec *mvec, int flags);
 
 struct store_instance *
 ldmsd_store_instance_get(struct ldmsd_store *store,
@@ -280,13 +284,6 @@ static inline void
 ldmsd_store_destroy(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 {
 	store->destroy(sh);
-}
-
-static inline int
-ldmsd_store_store(struct ldmsd_store *store, ldmsd_store_handle_t sh,
-		   ldms_set_t set, struct ldms_mvec *mvec)
-{
-	return store->store(sh, set, mvec);
 }
 
 static inline void

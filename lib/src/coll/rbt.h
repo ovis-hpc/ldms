@@ -46,6 +46,8 @@
 #ifndef _RBT_T
 #define _RBT_T
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -68,11 +70,14 @@ struct rbn {
 	void             *key;
 };
 
+/* Sets key on n.  */
+void rbn_init(struct rbn *n, void *key);
+
 /* Comparator callback provided for insert and search operations */
 typedef int (*rbn_comparator_t)(void *tree_key, void *key);
 
 /* Processor for each node during traversal. */
-typedef void (*rbn_node_fn)(struct rbn *, void *, int);
+typedef int (*rbn_node_fn)(struct rbn *, void *, int);
 
 struct rbt {
 	struct rbn       *root;
@@ -89,10 +94,10 @@ struct rbn *rbt_min(struct rbt *t);
 struct rbn *rbt_max(struct rbt *t);
 void rbt_ins(struct rbt *t, struct rbn *n);
 void rbt_del(struct rbt *t, struct rbn *n);
-void rbt_traverse(struct rbt *t, rbn_node_fn f, void *fn_data);
-void rbn_init(struct rbn *n, void *key);
+int rbt_traverse(struct rbt *t, rbn_node_fn f, void *fn_data);
 int rbt_is_leaf(struct rbn *n);
 #ifndef offsetof
+/* C standard since c89 */
 #define offsetof(type,member) ((size_t) &((type *)0)->member)
 #endif
 

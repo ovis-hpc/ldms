@@ -234,9 +234,14 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	       ldms_set_t s, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
-	if (status)
+	if (status) {
+		last = 1;
+		pthread_mutex_lock(&print_lock);
+		print_done = 1;
+		pthread_cond_signal(&print_cv);
+		pthread_mutex_unlock(&print_lock);
 		goto err;
-
+	}
 	ldms_update(s, print_cb, (void *)last);
 	return;
  err:
@@ -484,6 +489,6 @@ done:
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
 
-	ldms_close(ldms);
+	ldms_xprt_close(ldms);
 	exit(0);
 }

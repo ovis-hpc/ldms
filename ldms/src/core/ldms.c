@@ -66,8 +66,10 @@
 #include "ldms_xprt.h"
 #include <coll/rbt.h>
 #include <limits.h>
+#include <assert.h>
 #include <mmalloc/mmalloc.h>
 #include "ldms_private.h"
+#include <pthread.h>
 
 #define SET_DIR_PATH "/var/run/ldms"
 static char *__set_dir = SET_DIR_PATH;
@@ -87,15 +89,24 @@ static struct rbt set_tree = {
 	.root = NULL,
 	.comparator = set_comparator
 };
+pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void ldms_release_local_set(struct ldms_set *set)
+{
+	pthread_mutex_unlock(&set_tree_lock);
+}
 
 struct ldms_set *ldms_find_local_set(const char *set_name)
 {
 	struct rbn *z;
 	struct ldms_set *s = NULL;
 
+	pthread_mutex_lock(&set_tree_lock);
 	z = rbt_find(&set_tree, (void *)set_name);
 	if (z)
 		s = container_of(z, struct ldms_set, rb_node);
+	else
+		pthread_mutex_unlock(&set_tree_lock);
 
 	return s;
 }
@@ -108,8 +119,12 @@ extern ldms_set_t ldms_get_set(const char *set_name)
 		goto out;
 
 	sd = calloc(1, sizeof *sd);
+	if (!sd) {
+		ldms_release_local_set(set);
+		return NULL;
+	}
 	sd->set = set;
-
+	ldms_release_local_set(set);
  out:
 	return sd;
 }
@@ -163,49 +178,42 @@ uint32_t ldms_get_cardinality(ldms_set_t _set)
 
 static void rem_local_set(struct ldms_set *s)
 {
+	pthread_mutex_lock(&set_tree_lock);
 	rbt_del(&set_tree, &s->rb_node);
+	pthread_mutex_unlock(&set_tree_lock);
 }
 
 static void add_local_set(struct ldms_set *s)
 {
+	struct rbn *z;
 	s->rb_node.key = s->meta->name;
+	pthread_mutex_lock(&set_tree_lock);
+	z = rbt_find(&set_tree, s->meta->name);
+	assert(NULL == z);
 	rbt_ins(&set_tree, &s->rb_node);
+	pthread_mutex_unlock(&set_tree_lock);
 }
 
-static int visit_subtree(struct rbn *n,
-			 int (*cb)(struct ldms_set *, void *arg),
-			 void *arg)
+struct cb_arg {
+	void *user_arg;
+	int (*user_cb)(struct ldms_set *, void *);
+};
+
+static int rbn_cb(struct rbn *rbn, void *arg, int level)
 {
-	struct ldms_set *set;
-	int rc;
-
-	if (!rbt_is_leaf(n)) {
-		if (!n->left || !n->right) {
-			printf("Corrupted set tree %p\n", n);
-			return -1;
-		}
-		rc = visit_subtree(n->left, cb, arg);
-		if (rc)
-			goto err;
-		set = container_of(n, struct ldms_set, rb_node);
-		rc = cb(set, arg);
-		if (rc)
-			goto err;
-		rc = visit_subtree(n->right, cb, arg);
-		if (rc)
-			goto err;
-	}
-	return 0;
-
- err:
-	return rc;
+	struct cb_arg *cb_arg = arg;
+	struct ldms_set *set = container_of(rbn, struct ldms_set, rb_node);
+	return cb_arg->user_cb(set, cb_arg->user_arg);
 }
 
 int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 {
-	if (set_tree.root)
-		return visit_subtree(set_tree.root, cb, arg);
-	return 0;
+	struct cb_arg user_arg = { arg, cb };
+	int rc;
+	pthread_mutex_lock(&set_tree_lock);
+	rc = rbt_traverse(&set_tree, rbn_cb, &user_arg);
+	pthread_mutex_unlock(&set_tree_lock);
+	return rc;
 }
 
 struct set_list_arg {
@@ -279,8 +287,10 @@ static int __record_set(const char *set_name, ldms_set_t *s,
 	struct ldms_set_desc *sd;
 
 	set = ldms_find_local_set(set_name);
-	if (set)
+	if (set) {
+		ldms_release_local_set(set);
 		return -EEXIST;
+	}
 
 	sd = calloc(1, sizeof *sd);
 	if (!sd)
@@ -382,39 +392,16 @@ int ldms_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	return 0;
 }
 
-void _release_set(struct ldms_set *set)
-{
-	rem_local_set(set);
-
-	if (set->flags & (LDMS_SET_F_MEMMAP | LDMS_SET_F_FILEMAP)) {
-		munmap(set->meta, set->meta->meta_size);
-		munmap(set->data, set->meta->data_size);
-	}
-	free(set);
-}
-
-void ldms_set_release(ldms_set_t set_p)
-{
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)set_p;
-	if (sd->rbd)
-		ldms_free_rbd(sd->rbd);
-	if (LIST_EMPTY(&sd->set->rbd_list))
-		_release_set(sd->set);
-	free(sd);
-}
-
 void ldms_destroy_set(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
+	struct ldms_xprt *x;
 
 	__ldms_dir_del_set(set->meta->name);
 
-	while (!LIST_EMPTY(&set->rbd_list)) {
-		rbd = LIST_FIRST(&set->rbd_list);
-		ldms_free_rbd(rbd);
-	}
+	ldms_free_rbd(set);
 
 	if (set->flags & LDMS_SET_F_FILEMAP) {
 		unlink(_create_path(sd->set->meta->name));
@@ -443,10 +430,14 @@ int ldms_lookup(ldms_t _x, const char *path,
 	set = ldms_find_local_set(path);
 	if (set) {
 		struct ldms_set_desc *sd = malloc(sizeof *sd);
-		if (!sd)
+		if (!sd) {
+			ldms_release_local_set(set);
 			return ENOMEM;
+		}
+
 		sd->set = set;
 		s = sd;
+		ldms_release_local_set(set);
 		return 0;
 	}
 	return ENODEV;
@@ -464,6 +455,8 @@ void ldms_dir_cancel(ldms_t x)
 
 char *_create_path(const char *set_name)
 {
+	if (!set_name)
+		return NULL;
 	char *dirc = strdup(set_name);
 	char *basec = strdup(set_name);
 	char *dname = dirname(dirc);
@@ -472,14 +465,17 @@ char *_create_path(const char *set_name)
 	int tail, rc = 0;
 
 	/* Create each node in the dir. __set_dir is presumed to exist */
-	sprintf(__set_path, "%s/", __set_dir);
+	char *ptr;
+	snprintf(__set_path, PATH_MAX, "%s/", __set_dir);
 	tail = strlen(__set_path) - 1;
-	for (p = strtok(dname, "/"); p; p = strtok(NULL, "/")) {
+	for (p = strtok_r(dname, "/", &ptr); p; p = strtok_r(NULL, "/", &ptr)) {
 		/* remove duplicate '/'s */
 		if (*p == '/')
 			p++;
-		if (*p == '\0')
-			return NULL;
+		if (*p == '\0') {
+			rc = 1;
+			goto out;
+		}
 		tail += strlen(p);
 		strcat(__set_path, p);
 		rc = mkdir(__set_path, 0755);
@@ -1016,21 +1012,6 @@ int ldms_is_set_consistent(ldms_set_t s)
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
-}
-
-void ldms_set_set_connect(ldms_set_t s, int is_connected)
-{
-	struct ldms_set_desc *sd = s;
-	if (is_connected)
-		sd->set->flags |= LDMS_SET_F_CONNECTED;
-	else
-		sd->set->flags &= ~LDMS_SET_F_CONNECTED;
-}
-
-int ldms_is_set_connected(ldms_set_t s)
-{
-	struct ldms_set_desc *sd = s;
-	return ((sd->set->flags & LDMS_SET_F_CONNECTED) == LDMS_SET_F_CONNECTED);
 }
 
 ldms_mvec_t ldms_mvec_create(int count)

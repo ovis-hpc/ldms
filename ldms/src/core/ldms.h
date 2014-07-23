@@ -113,7 +113,7 @@ typedef void *ldms_metric_t;
  * \li \b ldms_listen() Create a listening endpoint and respond to
  * queries from peers.
  * \li \b ldms_connect() Request a connection with a remote peer.
- * \li \b ldms_close() Close a connection with a remote peer.
+ * \li \b ldms_xprt_close() Close a connection with a remote peer.
  *
  * \section metric_sets Creating Metric Sets
  *
@@ -292,21 +292,6 @@ ldms_t ldms_xprt_next(ldms_t);
 int ldms_xprt_connected(ldms_t);
 
 /**
- * \brief Check if an endpoint is closed.
- *
- * \param l	The endpoint handle.
- * \returns	!0 if the endpoint is closed.
- */
-int ldms_xprt_closed(ldms_t);
-
-/**
- * \brief Close a connecttion
- *
- * \param l	The endpoint handle.
- */
-void ldms_xprt_close(ldms_t);
-
-/**
  * \brief Return value at iterator
  *
  * \param i	Pointer to the iterator.
@@ -407,7 +392,6 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_LOCAL	0x0004
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_COHERENT	0x0010
-#define LDMS_SET_F_CONNECTED	0x0100
 #define LDMS_SET_F_DIRTY	0x1000
 #define LDMS_SET_ID_DATA	0x1000000
 
@@ -540,10 +524,8 @@ extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  * \brief Close a connection to an LDMS host.
  *
  * \param x	The transport handle
- * \returns	0 if the connection was closed.
- * \returns	!0 if the transport handle is not valid or not connected.
  */
-extern int ldms_close(ldms_t x);
+extern void ldms_xprt_close(ldms_t x);
 
 /** \} */
 
@@ -710,16 +692,6 @@ extern int ldms_lookup(ldms_t t, const char *name,
  * and to update the contents of remote metric sets.
  * \{
  */
-
-/**
- * \brief Release a reference on the metric set.
- *
- * Releases the reference obtained by ldms_lookup(). The specified set
- * handle \c s should not be used after calling this function.
- *
- * \param s	The metric set handle.
- */
-extern void ldms_set_release(ldms_set_t s);
 
 /**
  * \brief Prototype for the function called when update completes.
@@ -950,22 +922,6 @@ extern struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s);
  * but optional.
  */
 extern int ldms_is_set_consistent(ldms_set_t s);
-
-/**
- * \brief Return TRUE if the host of the metric set is connected.
- *
- * A metric set is disconnected if the host of the metric set is
- * disconnected from the aggregator.
- */
-extern int ldms_is_set_connected(ldms_set_t s);
-
-/**
- * \brief Set the set flag to 'connected' or 'disconnected'
- *
- * If \c is_connected value is 0, the set flag of \c s will be set
- * to 'disconnected.' Otherwise, the set flag is set to 'connected.'
- */
-extern void ldms_set_set_connect(ldms_set_t s, int is_connected);
 
 /**
  * \brief Add a metric to the set

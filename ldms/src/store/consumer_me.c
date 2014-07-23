@@ -377,7 +377,7 @@ static int me_get_ldsm_metric_value(ldms_metric_t m, double *v)
 }
 
 static int
-send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
+send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 {
 	int rc = 0;
 	zap_err_t zerr;
@@ -396,7 +396,7 @@ send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 		return 0;
 
 	struct me_msg msg;
-	int has_data = ldms_is_set_connected(set);
+	int has_data = flags & LDMSD_STORE_UPDATE_COMPLETE;
 	if (has_data)
 		msg.tag = htonl(ME_INPUT_DATA);
 	else

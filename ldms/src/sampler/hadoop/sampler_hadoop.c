@@ -261,7 +261,7 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 err_2:
 	str_map_free(hdset->map);
 err_1:
-	ldms_set_release(hdset->set);
+	ldms_destroy_set(hdset->set);
 err:
 	msglog("hadoop_%s: failed to create the set.\n", hdset->setname);
 	fclose(f);
@@ -272,7 +272,7 @@ void destroy_hadoop_set(struct hadoop_set *hdset)
 {
 	close(hdset->sockfd);
 	str_map_free(hdset->map);
-	ldms_set_release(hdset->set);
+	ldms_destroy_set(hdset->set);
 	free(hdset->setname);
 }
 

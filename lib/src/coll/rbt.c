@@ -45,6 +45,7 @@
  */
 #include <stdlib.h>
 #include "rbt.h"
+#include <assert.h>
 
 struct rbn _LEAF = {
 	.left = &_LEAF,
@@ -170,6 +171,8 @@ void rbt_ins(struct rbt *t, struct rbn *x)
 			n = n->left;
 		else
 			n = n->right;
+		assert(n->left != parent);
+		assert(n->right != parent);
 	}
 	/* Replace leaf with new node */
 	x->parent = parent;
@@ -502,14 +505,24 @@ struct rbn *rbt_max(struct rbt *t)
 	return x;
 }
 
-static void rbt_traverse_subtree(struct rbn *n, rbn_node_fn f,
+static int rbt_traverse_subtree(struct rbn *n, rbn_node_fn f,
 				 void *fn_data, int level)
 {
+	int rc;
 	if (n != LEAF) {
-		rbt_traverse_subtree(n->left, f, fn_data, level+1);
-		f(n, fn_data, level);
-		rbt_traverse_subtree(n->right, f, fn_data, level+1);
+		rc = rbt_traverse_subtree(n->left, f, fn_data, level+1);
+		if (rc)
+			goto err;
+		rc = f(n, fn_data, level);
+		if (rc)
+			goto err;
+		rc = rbt_traverse_subtree(n->right, f, fn_data, level+1);
+		if (rc)
+			goto err;
 	}
+	return 0;
+ err:
+	return rc;
 }
 
 /**
@@ -525,10 +538,11 @@ static void rbt_traverse_subtree(struct rbn *n, rbn_node_fn f,
  * \param p	Pointer to provide as an argument to the callback
  *		function along with the RBT node pointer.
  */
-void rbt_traverse(struct rbt *t, rbn_node_fn f, void *p)
+int rbt_traverse(struct rbt *t, rbn_node_fn f, void *p)
 {
 	if (t->root)
-		rbt_traverse_subtree(t->root, f, p, 0);
+		return rbt_traverse_subtree(t->root, f, p, 0);
+	return 0;
 }
 
 /**
@@ -560,10 +574,11 @@ int test_comparator(void *a, void *b)
 	return *(int *)a - *(int *)b;
 }
 
-void rbt_print(struct rbn *rbn, void *fn_data, int level)
+int rbt_print(struct rbn *rbn, void *fn_data, int level)
 {
 	struct test_key *k = (struct test_key *)rbn;
-	printf("%*d\n", 30 - (level * 3), k->key);
+	printf("%*d\n", 200 - (level * 3), k->key);
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -577,6 +592,8 @@ int main(int argc, char *argv[])
 	int x;
 	time_t t = time(NULL);
 
+	if (argc > 2)
+		t = atoi(argv[2]);
 	rbt_init(&rbtB, test_comparator);
 	for (key_count = 0; key_count < 100; key_count += 2) {
 		struct test_key *k = calloc(1, sizeof *k);
@@ -608,14 +625,21 @@ int main(int argc, char *argv[])
 	key_count = atoi(argv[1]);
 	while (key_count--) {
 		struct test_key *k = calloc(1, sizeof *k);
+		struct rbn *rbn;
 		rbn_init(&k->n, &k->key);
 		k->key = (int)random();
+		rbn = rbt_find(&rbt, &k->key);
+		if (rbn) {
+			printf("FAIL -- DUPLICATE %d.\n", &k->key);
+			continue;
+		}
 		rbt_ins(&rbt, &k->n);
 		if (k->key > max)
 			max = k->key;
 		else if (k->key < min)
 			min = k->key;
 	}
+	rbt_traverse(&rbt, rbt_print, NULL);
 	struct rbn *min_rbn = rbt_min(&rbt);
 	struct rbn *max_rbn = rbt_max(&rbt);
 	TEST_ASSERT((min_rbn && ((struct test_key *)min_rbn)->key == min),
@@ -642,12 +666,19 @@ int main(int argc, char *argv[])
 		rbn = rbt_find(&rbt, &x);
 		if (x == min || x == max) {
 			TEST_ASSERT((rbn == NULL),
-				    "%14d is not found.\n", x);
+				    "min/max %14d is not found.\n", x);
 			continue;
 		}
 		TEST_ASSERT((rbn != NULL),
 			    "%14d is found.\n", x);
+		rbt_del(&rbt, rbn);
+		rbn = rbt_find(&rbt, &x);
+		TEST_ASSERT((rbn == NULL),
+			    "%14d is not found.\n", x);
 	}
+	rbt_traverse(&rbt, rbt_print, NULL);
+	printf("FAIL seed is %d.\n", t);
+	return 0;
 }
 
 #endif

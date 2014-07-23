@@ -292,7 +292,7 @@ err2:
 err1:
 	free(metric_table);
 err0:
-	ldms_set_release(set);
+	ldms_destroy_set(set);
 err:
 	fclose(mf);
 	return rc ;

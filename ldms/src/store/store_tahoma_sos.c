@@ -434,7 +434,7 @@ err:
 }
 
 static int
-store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
+store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 {
 	struct sos_tahoma_store_instance *si;
 	sos_obj_t obj;

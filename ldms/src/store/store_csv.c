@@ -278,8 +278,13 @@ out:
 }
 
 static int
-store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
+store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec,
+		int flags)
 {
+	/* Do not store if data update is not complete */
+	if (!(flags & LDMSD_STORE_UPDATE_COMPLETE))
+		return 0;
+
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
 	uint64_t comp_id;
 	struct csv_store_handle *s_handle;

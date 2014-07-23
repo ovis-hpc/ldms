@@ -565,7 +565,7 @@ void store_sos_cleanup(sos_t sos, uint32_t sec)
 }
 
 static int
-store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
+store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 {
 	struct sos_store_instance *si;
 	sos_obj_t obj;
@@ -575,7 +575,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 	int last_errno = 0;
 	enum ldms_value_type mtype;
 
-	if (!ldms_is_set_connected(set)) /* no store if set is not connected */
+	/* Do not store if data update is not complete */
+	if (!(flags & LDMSD_STORE_UPDATE_COMPLETE))
 		return 0;
 
 	if (!_sh)

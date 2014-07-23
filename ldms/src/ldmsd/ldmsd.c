@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-14 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-14 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -72,6 +72,7 @@
 #include <assert.h>
 #include <libgen.h>
 #include <event2/thread.h>
+#include <coll/str_map.h>
 #include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
@@ -174,6 +175,7 @@ int passive = 0;
 int quiet = 0; /* by default ldmsd should not be quiet */
 void ldms_log(const char *fmt, ...)
 {
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	if (quiet) /* Don't say a word when quiet */
 		return;
 	va_list ap;
@@ -181,6 +183,7 @@ void ldms_log(const char *fmt, ...)
 	struct tm *tm;
 	char dtsz[200];
 
+	pthread_mutex_lock(&mutex);
 	t = time(NULL);
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
@@ -188,6 +191,7 @@ void ldms_log(const char *fmt, ...)
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
+	pthread_mutex_unlock(&mutex);
 }
 
 void cleanup(int x)
@@ -217,6 +221,13 @@ void cleanup(int x)
 	}
 	pthread_mutex_unlock(&sp_list_lock);
 	exit(x);
+}
+
+void cleanup_sa(int signal, siginfo_t *info, void *arg)
+{
+	printf("signo : %d\n", info->si_signo);
+	printf("si_pid: %d\n", info->si_pid);
+	cleanup(100);
 }
 
 void usage(char *argv[])
@@ -433,7 +444,7 @@ static void msg_logger(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	vsprintf(msg_buf, fmt, ap);
+	vsnprintf(msg_buf, sizeof(msg_buf), fmt, ap);
 	ldms_log(msg_buf);
 }
 
@@ -1259,7 +1270,7 @@ int _mvec_find_metric(ldms_mvec_t mvec, const char *name, int start_index)
 {
 	int i = start_index;
 	const char *metric_name;
-	char *tmp = name;
+	const char *tmp = name;
 
 	while (i < mvec->count) {
 		metric_name = ldms_get_metric_name(mvec->v[i]);
@@ -1804,20 +1815,17 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 {
 	struct hset_metric *hsm;
 	struct hostset *hset = arg;
+	pthread_mutex_lock(&hset->state_lock);
 	if (status != LDMS_LOOKUP_OK){
-		pthread_mutex_lock(&hset->state_lock);
 		hset->state = LDMSD_SET_CONFIGURED;
-		pthread_mutex_unlock(&hset->state_lock);
 		ldms_log("Error doing lookup for set '%s'\n",
 				hset->name);
 		hset->set = NULL;
-		hset_ref_put(hset);
-		return;
+		goto out;
 	}
 	hset->set = s;
 	/*
-	 * Run the list of stored metrics and refresh the metric
-	 * handle.
+	 * If there is a cached mvec for this set, destroy it.
 	 */
 	if (hset->mvec) {
 		int i;
@@ -1826,9 +1834,10 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 				ldms_metric_release(hset->mvec->v[i]);
 		}
 		free(hset->mvec);
+		hset->mvec = NULL;
 	}
-	pthread_mutex_lock(&hset->state_lock);
 	hset->state = LDMSD_SET_READY;
+out:
 	pthread_mutex_unlock(&hset->state_lock);
 	hset_ref_put(hset);
 }
@@ -1925,11 +1934,11 @@ void reset_host(struct hostspec *hs)
 {
 	struct hostset *hset;
 	LIST_FOREACH(hset, &hs->set_list, entry) {
+		pthread_mutex_lock(&hset->state_lock);
 		reset_set_metrics(hset);
 		/*
 		 * Do the lookup again after the reconnection is successful.
 		 */
-		pthread_mutex_lock(&hset->state_lock);
 		hset->state = LDMSD_SET_CONFIGURED;
 		pthread_mutex_unlock(&hset->state_lock);
 	}
@@ -2001,8 +2010,10 @@ int do_connect(struct hostspec *hs)
 {
 	int ret;
 
-	if (!hs->x)
-		hs->x = ldms_create_xprt(hs->xprt_name, ldms_log);
+	if (hs->x)
+		ldms_xprt_close(hs->x);
+
+	hs->x = ldms_create_xprt(hs->xprt_name, ldms_log);
 
 	if (!hs->x) {
 		ldms_log("Error creating transport '%s'.\n", hs->xprt_name);
@@ -2012,12 +2023,13 @@ int do_connect(struct hostspec *hs)
 	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
 			    sizeof(hs->sin));
 	if (ret) {
+		/* Release the connect reference */
 		ldms_release_xprt(hs->x);
-		ldms_xprt_close(hs->x);
-		hs->x = 0;
+		/* Release the create reference */
+		ldms_release_xprt(hs->x);
+		hs->x = NULL;
 		return -1;
 	}
-	reset_host(hs);
 	return 0;
 }
 
@@ -2099,24 +2111,31 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 {
 	struct hostset *hset = arg;
 	uint64_t gn;
+	pthread_mutex_lock(&hset->state_lock);
 	if (status) {
-		ldms_log("Updated failed for set %s.\n",
-			 (s ? ldms_get_set_name(s) : "UNKNOWN"));
+		/* ldms_log("Update failed for set.\n"); Removed by Brandt 7-2-2014 */
+		reset_set_metrics(hset);
+		hset->state = LDMSD_SET_CONFIGURED;
+		goto out1;
+	}
+
+	gn = ldms_get_data_gn(hset->set);
+	if (hset->gn == gn) {
+		ldms_log("Set %s with Generation# <%d> Stale.\n",
+					hset->name, hset->gn);
 		goto out;
 	}
 
-	if (ldms_is_set_connected(hset->set)) {
-		gn = ldms_get_data_gn(hset->set);
-		if (hset->gn == gn)
-			goto out;
-
-		if (!ldms_is_set_consistent(hset->set))
-			goto out;
-
-		hset->gn = gn;
+	if (!ldms_is_set_consistent(hset->set)) {
+		ldms_log("Set %s with Generation# <%d> Inconsistent.\n",
+						hset->name, hset->gn);
+		goto out;
 	}
 
+	hset->gn = gn;
+
 	struct ldmsd_store_policy_ref *lsp_ref;
+	struct timeval tv;
 	struct ldms_mvec *mvec;
 	if (!hset->mvec) {
 		/* Recreate mvec here if it doesn't exist.  It can be destroyed
@@ -2180,21 +2199,22 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 			i++;
 		}
 
-		ldmsd_store_data_add(lsp, hset->set, mvec);
+		ldmsd_store_data_add(lsp, hset->set, mvec, LDMSD_STORE_UPDATE_COMPLETE);
 		ldms_mvec_destroy(mvec);
 	}
 out:
 	/* Put the reference taken at the call to ldms_update() */
-	hset_ref_put(hset);
-	pthread_mutex_lock(&hset->state_lock);
 	hset->state = LDMSD_SET_READY;
+ out1:
 	pthread_mutex_unlock(&hset->state_lock);
+	hset_ref_put(hset);
 }
 
 void update_data(struct hostspec *hs)
 {
 	int ret;
 	struct hostset *hset;
+	int host_error = 0;
 
 	if (!hs->x)
 		return;
@@ -2211,11 +2231,13 @@ void update_data(struct hostspec *hs)
 			ret = ldms_lookup(hs->x, hset->name, lookup_cb, hset);
 			if (ret) {
 				hset->state = LDMSD_SET_CONFIGURED;
+				ldms_xprt_close(hs->x);
+				hs->x = NULL;
+				host_error = 1;
 				ldms_log("Synchronous error %d "
 					"from ldms_lookup\n", ret);
 				hset_ref_put(hset);
 			}
-
 			break;
 		case LDMSD_SET_READY:
 			hset->state = LDMSD_SET_BUSY;
@@ -2228,13 +2250,15 @@ void update_data(struct hostspec *hs)
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
 				hset->state = LDMSD_SET_READY;
+				ldms_xprt_close(hs->x);
+				hs->x = NULL;
+				host_error = 1;
 				ldms_log("Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
 					hs->hostname, ntohs(hs->sin.sin_port),
 					hs->xprt_name);
 				hset_ref_put(hset);
 			}
-
 			break;
 		case LDMSD_SET_LOOKUP:
 			/* do nothing */
@@ -2248,59 +2272,10 @@ void update_data(struct hostspec *hs)
 			break;
 		}
 		pthread_mutex_unlock(&hset->state_lock);
+		if (host_error)
+			break;
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
-}
-
-void _update_disconnected(struct hostset *hset)
-{
-	struct ldmsd_store_policy_ref *lsp_ref;
-	struct timeval tv;
-	struct ldms_mvec *mvec;
-	if (!hset->mvec) {
-		/*
-		 * Recreate mvec here if it doesn't exist.
-		 * It can be destroyed
-		 * in the disconnect path.
-		 */
-		hset->mvec = _create_mvec(hset);
-		/* The indices should stay the same. */
-	}
-	LIST_FOREACH(lsp_ref, &hset->lsp_list, entry) {
-		if (lsp_ref->lsp->state == STORE_POLICY_CONFIGURING) {
-			pthread_mutex_lock(&lsp_ref->lsp->idx_create_lock);
-			assign_metric_index_list(lsp_ref->lsp, hset->mvec);
-			pthread_mutex_unlock(&lsp_ref->lsp->idx_create_lock);
-		}
-		if (lsp_ref->lsp->state != STORE_POLICY_READY)
-			continue;
-
-		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
-		struct store_instance *si = lsp->si;
-
-		/* Get the time when the disconnected event is noticed */
-		struct timeval tv;
-		(void)gettimeofday(&tv, NULL);
-
-		mvec = ldms_mvec_create(lsp->metric_count);
-		if (!mvec) {
-			/* Warning ENOMEM */
-			ldms_log("cannot allocate mvec at %s:%d\n", __FILE__,
-					__LINE__);
-			continue;
-		}
-		int i = 0;
-		struct ldmsd_store_metric_index *idx;
-		LIST_FOREACH(idx, &lsp->metric_list, entry) {
-			mvec->v[i] = hset->mvec->v[idx->index];
-			i++;
-		}
-		ldmsd_store_data_add(lsp, hset->set, mvec);
-		ldms_mvec_destroy(mvec);
-	}
-out:
-	/* Put the reference taken at the call to ldms_update() */
-	hset_ref_put(hset);
 }
 
 void update_disconnected(struct hostspec *hs)
@@ -2317,7 +2292,6 @@ void update_disconnected(struct hostspec *hs)
 
 		/* Take a reference to update the disconnected event */
 		hset_ref_get(hset);
-		ldms_set_set_connect(hset->set, 0);
 		update_complete_cb(hs->x, hset->set, 0, hset);
 	}
 	pthread_mutex_unlock(&hs->set_list_lock);
@@ -2343,14 +2317,14 @@ void do_host(struct hostspec *hs)
 	case HOST_CONNECTED:
 		if (!hs->x || !ldms_xprt_connected(hs->x)) {
 			if (hs->x) {
-				/* pair with get in do_connect */
-				ldms_release_xprt(hs->x);
 				if (hs->type != PASSIVE)
 					ldms_xprt_close(hs->x);
+				/* pair with get in do_connect */
+				ldms_release_xprt(hs->x);
+				hs->x = 0;
 			}
 			/* The bad hs->x shall be destroyed automatically when
 			 * the refcount is 0. Resetting hs->x here is OK. */
-			hs->x = 0;
 			hs->conn_state = HOST_DISCONNECTED;
 		} else if (hs->type != BRIDGING)
 			update_data(hs);
@@ -2359,6 +2333,10 @@ void do_host(struct hostspec *hs)
 		ldms_log("Host connection state '%d' is invalid.\n",
 							hs->conn_state);
 		assert(0);
+	}
+
+	if (hs->conn_state != HOST_CONNECTED) {
+		reset_host(hs);
 	}
 	pthread_mutex_unlock(&hs->conn_state_lock);
 }
@@ -2375,7 +2353,6 @@ int do_passive_connect(struct hostspec *hs)
 	 */
 	hs->x = l;
 
-	reset_host(hs);
 	return 0;
 }
 
@@ -3214,10 +3191,15 @@ int main(int argc, char *argv[])
 	ldms_set_t test_set;
 	log_fp = stdout;
 	char *cfg_file = NULL;
+	struct sigaction action;
 
-	signal(SIGHUP, cleanup);
-	signal(SIGINT, cleanup);
-	signal(SIGTERM, cleanup);
+	memset(&action, 0, sizeof(action));
+	action.sa_sigaction = cleanup_sa;
+	action.sa_flags = SA_SIGINFO;
+	sigaction(SIGHUP, &action, NULL);
+	sigaction(SIGINT, &action, NULL);
+	sigaction(SIGTERM, &action, NULL);
+	sigaction(SIGABRT, &action, NULL);
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
