@@ -3,11 +3,11 @@ lib_LTLIBRARIES =
 AM_CFLAGS = -Wall $(DBGFLAGS)
 
 ldmscoreincludedir = $(includedir)/ldms
-ldmscoreinclude_HEADERS = ldms.h ldmsd.h ldms_xprt.h ogc_rbt.h
+ldmscoreinclude_HEADERS = ldms.h ldmsd.h ldms_xprt.h
 
-libldms_la_SOURCES = ldms.c ldms_xprt.c ogc_rbt.c ldms_private.h
+libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h
 libldms_la_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
-libldms_la_LIBADD = -ldl -lpthread @OVIS_LIB_LIBDIR_FLAG@ \
+libldms_la_LIBADD = -ldl -lpthread -lcoll @OVIS_LIB_LIBDIR_FLAG@ \
 		    -lmmalloc
 lib_LTLIBRARIES += libldms.la
 

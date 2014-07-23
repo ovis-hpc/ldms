@@ -55,7 +55,7 @@
 #include <sys/socket.h>
 #include <sys/queue.h>
 #include <netinet/in.h>
-#include "ogc_rbt.h"
+#include <coll/rbt.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -415,7 +415,7 @@ struct ldms_set {
 	unsigned long flags;
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data;
-	struct ogc_rbn rb_node;
+	struct rbn rb_node;
 	LIST_HEAD(rbd_list, ldms_rbuf_desc) rbd_list;
 };
 
