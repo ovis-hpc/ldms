@@ -125,6 +125,9 @@ int handle_help(char *kw, char *err_str)
 	       "usage\n"
 	       "   - Show loaded plugin usage information.\n"
 	       "\n"
+	       "version\n"
+	       "   - Returns version information\n"
+	       "\n"
 	       "load name=<name>\n"
 	       "   - Loads the specified plugin. The library that implements\n"
 	       "     the plugin should be in the directory specified by the\n"
@@ -215,10 +218,6 @@ int handle_help(char *kw, char *err_str)
 	       "   - Exit.\n", LDMS_DEFAULT_PORT);
 	return 0;
 
-//TEMPORARILY disable remote version query thru ldmsctl
-//	       "version\n"
-//	       "   - Returns version information\n"
-//	       "\n"
 
 }
 
@@ -283,11 +282,10 @@ int handle_info(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_INFO_DAEMON, av_list, err_str);
 }
 
-//TEMPORARILY disable remote version query thru ldmsctl
-//int handle_version(char *kw, char *err_str)
-//{
-//	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
-//}
+int handle_version(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
+}
 
 int handle_quit(char *kw, char *err_str)
 {
@@ -315,9 +313,10 @@ struct kw keyword_tbl[] = {
 	{ "store", handle_store },
 	{ "term", handle_plugin_term },
 	{ "usage", handle_usage },
+	{ "version", handle_version },
 };
-//TEMPORARILY disable remote version query thru ldmsctl
-//	{ "version", handle_version },
+
+
 
 
 static int kw_comparator(const void *a, const void *b)

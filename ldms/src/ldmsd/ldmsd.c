@@ -1817,23 +1817,20 @@ int process_exit(int fd,
 
 
 
-//TEMPORARILY disable remote version query thru ldmsctl
-//int process_version(int fd,
-//			struct sockaddr *sa, ssize_t sa_len,
-//			char *command)
-//{
-//
-//#define VERSTRMAX 256
-//	char err_str[VERSTRMAX];
-//	char reply[VERSTRMAX];
-//	int rc = 0;
-//
-//	snprintf(err_str, VERSTRMAX, "git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
-//	sprintf(reply, "%d%s", rc, err_str);
-//	send_reply(fd, sa, sa_len, reply, strlen(reply)+1);
-//	return 0;
-//
-//}
+int process_version(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+#define VERSTRMAX 256
+	char err_str[VERSTRMAX];
+	char reply[VERSTRMAX];
+	int rc = 0;
+
+	snprintf(err_str, VERSTRMAX, "git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
+	sprintf(reply, "%d%s", rc, err_str);
+	send_reply(fd, sa, sa_len, reply, strlen(reply)+1);
+	return 0;
+}
 
 ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_LIST_PLUGINS] = process_ls_plugins,
@@ -1848,10 +1845,8 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
+	[LDMSCTL_VERSION] = process_version,
 };
-//TEMPORARILY disable remote version query thru ldmsctl
-//	[LDMSCTL_VERSION] = process_version,
-
 
 int process_record(int fd,
 		   struct sockaddr *sa, ssize_t sa_len,
