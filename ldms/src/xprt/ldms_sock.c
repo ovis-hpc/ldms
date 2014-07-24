@@ -375,8 +375,11 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 
 	if (events & ~BEV_EVENT_CONNECTED) {
 		/* Peer disconnect or other error */
-		if (events & (BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
+		if (events & (BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT)) {
 			r->xprt->log("Socket errors %#x\n", events);
+			r->xprt->log("%s\n", evutil_socket_error_to_string(errno));
+		}
+
 		sock_xprt_error_handling(r);
 	} else
 		r->xprt->log("Peer connect complete %#x\n", events);
