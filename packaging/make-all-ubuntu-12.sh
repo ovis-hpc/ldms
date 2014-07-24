@@ -1,6 +1,10 @@
 #!/bin/bash -x
 echo BUILDING FOR UBUNTU 12.04
-export CC=gcc
+if test -x /usr/bin/colorgcc; then
+	export CC=colorgcc
+else
+	export CC=gcc
+fi
 export LD_LIBRARY_PATH=$HOME/opt/ovis/lib:$LD_LIBRARY_PATH
 if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	prefix=$HOME/opt/ovis
@@ -8,7 +12,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=$prefix
 
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --disable-zap  --with-ovis-lib=$expected_ovislib_prefix --enable-sos --with-sos=$expected_sos_prefix  --enable-authentication"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --disable-zap  --with-ovis-lib=$expected_ovislib_prefix --enable-sos --with-sos=$expected_sos_prefix  --disable-authentication"
 CFLAGS='-Wall -g'
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
