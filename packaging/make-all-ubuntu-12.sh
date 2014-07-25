@@ -22,6 +22,15 @@ CFLAGS='-Wall -g'
 		exit 1
 	fi
 
+	if test -f ldms/configure; then
+		echo "Found ldms/configure. Good."
+	else
+		echo "You forgot to autogen.sh at the top or you need to edit $0 or you need to use
+ a released tarred version."
+		exit 1
+	fi
+
+
 	echo "reinitializing .build-all"
 	rm -rf .build-all
 	mkdir .build-all
