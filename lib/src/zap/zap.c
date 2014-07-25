@@ -420,11 +420,11 @@ zap_err_t zap_reject(zap_ep_t ep)
 	return ep->z->reject(ep);
 }
 
-void __attribute__ ((constructor)) cs_init(void)
+static void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_mutex_init(&zap_list_lock, 0);
 }
 
-void __attribute__ ((destructor)) cs_term(void)
+static void __attribute__ ((destructor)) cs_term(void)
 {
 }
