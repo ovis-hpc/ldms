@@ -1250,13 +1250,13 @@ out:
 	return r;
 }
 
-void __attribute__ ((constructor)) cs_init(void)
+static void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_mutex_init(&xprt_list_lock, 0);
 	__dlmap = str_map_create(4091);
 	assert(__dlmap);
 }
 
-void __attribute__ ((destructor)) cs_term(void)
+static void __attribute__ ((destructor)) cs_term(void)
 {
 }
