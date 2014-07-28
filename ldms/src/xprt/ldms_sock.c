@@ -129,8 +129,10 @@ static void sock_xprt_close(struct ldms_xprt *x)
 {
 	struct ldms_sock_xprt *s = sock_from_xprt(x);
 	release_buf_event(s);
-	close(s->sock);
-	s->sock = 0;
+	if (s->sock > -1) {
+		close(s->sock);
+		s->sock = -1;
+	}
 }
 
 static void sock_xprt_term(struct ldms_sock_xprt *r)
@@ -138,6 +140,8 @@ static void sock_xprt_term(struct ldms_sock_xprt *r)
 	LIST_REMOVE(r, client_link);
 	if (r->listen_ev)
 		free(r->listen_ev);
+	if (r->sock > -1)
+		close(r->sock);
 	free(r);
 }
 
@@ -670,6 +674,7 @@ struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
 	}
 
 	r = calloc(1, sizeof(struct ldms_sock_xprt));
+	r->sock = -1;
 	LIST_INSERT_HEAD(&sock_list, r, client_link);
 
 	x->max_msg = (1024 * 1024);
