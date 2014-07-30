@@ -69,10 +69,10 @@ pidfile=$OVIS_HOME/var/pid/$prog.aggregator.pid
 
 mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
-mkdir -p $OVIS_HOME/var/sock/
-mkdir -p $OVIS_HOME/var/log/
-LOG=$OVIS_HOME/var/log/ldmsd_aggregator.log
-SOCK=$OVIS_HOME/var/sock/ldmsd_aggregator.ctrl
+mkdir -p $OVIS_SOCK/
+mkdir -p $OVIS_LOG/
+LOG=$OVIS_LOG/ldmsd_aggregator.log
+SOCK=$OVIS_SOCK/ldmsd_aggregator.ctrl
 
 start() {
 	echo -n "Starting $prog: "

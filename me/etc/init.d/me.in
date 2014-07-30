@@ -68,10 +68,10 @@ pidfile=$OVIS_HOME/var/pid/$prog.pid
 
 mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
-mkdir -p $OVIS_HOME/var/sock/
-mkdir -p $OVIS_HOME/var/log/
-SOCK=$OVIS_HOME/var/sock/me.ctrl
-LOG=$OVIS_HOME/var/log/me.log
+mkdir -p $OVIS_SOCK/
+mkdir -p $OVIS_LOG/
+SOCK=$OVIS_SOCK/me.ctrl
+LOG=$OVIS_LOG/me.log
 
 status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
 running=$?

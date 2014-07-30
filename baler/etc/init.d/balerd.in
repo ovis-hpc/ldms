@@ -54,7 +54,7 @@ fi
 ####
 # mkdir -p $OVIS_WEB_ROOT/baler2/store/
 #
-# CMD="balerd -l $OVIS_HOME/var/log/balerd.log -s $OVIS_WEB_ROOT/baler2/store -z 42001 $@"
+# CMD="balerd -l $OVIS_LOG/balerd.log -s $OVIS_WEB_ROOT/baler2/store -z 42001 $@"
 #
 ####
 
@@ -85,9 +85,9 @@ pidfile=$OVIS_HOME/var/pid/$prog.pid
 
 mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
-mkdir -p $OVIS_HOME/var/sock/
-mkdir -p $OVIS_HOME/var/log/
-LOG=$OVIS_HOME/var/log/balerd.log
+mkdir -p $OVIS_SOCK/
+mkdir -p $OVIS_LOG/
+LOG=$OVIS_LOG/balerd.log
 
 start() {
 	echo -n "Starting $prog: "

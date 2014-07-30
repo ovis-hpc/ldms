@@ -79,8 +79,8 @@ pidfile=$OVIS_HOME/var/pid/$prog.pid
 
 mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
-mkdir -p $OVIS_HOME/var/log
-LOG=$OVIS_HOME/var/log/ocmd.log
+mkdir -p $OVIS_LOG
+LOG=$OVIS_LOG/ocmd.log
 
 status -p $pidfile -l $(basename $lockfile) master >/dev/null 2>&1
 running=$?

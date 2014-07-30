@@ -45,7 +45,7 @@ else
 	}
 fi
 
-# CMD="ldmsd -l $OVIS_HOME/var/log/ldmsd_sampler.log -S $OVIS_HOME/var/sock/ldmsd_sampler.sock -x sock:50001 -o 40001 -z ldmsd_sampler"
+# CMD="ldmsd -l $OVIS_LOG/ldmsd_sampler.log -S $OVIS_SOCK/ldmsd_sampler.sock -x sock:50001 -o 40001 -z ldmsd_sampler"
 
 
 RETVAL=0
@@ -70,10 +70,10 @@ pidfile=$OVIS_HOME/var/pid/$prog.sampler.pid
 
 mkdir -p $(dirname $lockfile)
 mkdir -p $(dirname $pidfile)
-mkdir -p $OVIS_HOME/var/sock/
-mkdir -p $OVIS_HOME/var/log/
-LOG=$OVIS_HOME/var/log/ldmsd_sampler.log
-SOCK=$OVIS_HOME/var/sock/ldmsd_sampler.sock
+mkdir -p $OVIS_SOCK/
+mkdir -p $OVIS_LOG/
+LOG=$OVIS_LOG/ldmsd_sampler.log
+SOCK=$OVIS_SOCK/ldmsd_sampler.sock
 
 start() {
 	echo -n "Starting $prog: "
