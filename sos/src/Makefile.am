@@ -1,6 +1,7 @@
 INCLUDES = @OVIS_LIB_INCDIR_FLAG@
 
 sbin_PROGRAMS = \
+	bpt_verify \
 	bpt_test \
 	sos \
 	sos_test \
@@ -118,6 +119,13 @@ liboidx_la_LIBADD = \
 
 liboidxincludedir = $(includedir)/sos
 liboidxinclude_HEADERS = oidx.h
+
+bpt_verify_SOURCES = bpt_verify.c
+bpt_verify_CFLAGS = $(INCLUDES)
+bpt_verify_LDADD = \
+		   libods.la \
+		   libobjidx.la \
+		   libidx_BPTREE.la
 
 bpt_test_SOURCES = bpt_test.c
 bpt_test_CFLAGS = $(INCLUDES)

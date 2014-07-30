@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -40,79 +40,90 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- * Author: Tom Tucker tom at ogc dot us
- */
-
-#ifndef _BPT_H_
-#define _BPT_H_
-
-#include "obj_idx.h"
-#include "obj_idx_priv.h"
-#include "ods.h"
-
-#pragma pack(4)
-
 /**
- * B+ Tree Node Entry
- *
- * Describes a key and the object to which it refers. The key is an
- * obj_ref_t which refers to an arbitrarily sized ODS object that
- * contains an opaque key. The key comparitor is used to compare two
- * keys.
+ * \file bpt_verify.c
+ * \author Narate Taerat (narate at ogc dot us)
+ * \brief Verify a given index and exit (exit code will tell the health of the
+ * ree).
  */
-typedef struct bpn_entry {
-	/* Refers to the key object */
-	obj_ref_t key;
 
-	/* The node or record to which the key refers */
-	obj_ref_t ref;
-} *bpn_entry_t;
+#include <stdio.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <errno.h>
 
-/*
- * B+ Tree Node
- */
-typedef struct bpt_node {
-	obj_ref_t parent;	/* NULL if root */
-	uint32_t count;
-	uint32_t is_leaf;
-	struct bpn_entry entries[];
-} *bpt_node_t;
+#include <sys/types.h>
+#include <sys/stat.h>
 
-typedef struct bpt_udata {
-	struct obj_idx_meta_data idx_udata;
-	uint32_t order;		/* The order or each internal node */
-	obj_ref_t root;		/* The root of the tree */
-} *bpt_udata_t;
+#include "bpt.h"
 
-/*
- * In memory object that refers to a B+ Tree
- */
-typedef struct bpt_s {
-	size_t order;		/* order of the tree */
-	ods_t ods;		/* The ods that contains the tree */
-	obj_ref_t root_ref;	/* The root of the tree */
-	obj_idx_compare_fn_t comparator;
-} *bpt_t;
+#define FMT "hs:v"
 
-typedef struct bpt_iter {
-	obj_idx_t idx;
-	int ent;
-	obj_ref_t node_ref;
-} *bpt_iter_t;
+void usage()
+{
+	printf(
+"Usage: bpt_verify [-v] -s <INDEX> \n"
+"    where <INDEX> is the path to the index file (without .OBJ or .PG)\n"
+"    The -v option is for verbose output.\n"
+	      );
+}
 
-#define BPT_SIGNATURE "BTREE0100"
-#pragma pack()
+void check_file(const char *path)
+{
+	struct stat s;
+	int rc;
+	rc = stat(path, &s);
+	if (rc) {
+		printf("ERROR: Cannot stat file %s, errno: %d\n",
+				path, errno);
+		_exit(-1);
+	}
+}
 
-/**
- * Verify B+ tree of the given \c idx.
- *
- * \param idx The index
- * \param verbose verbosity - 0 for non-verbose, 1 for verbose.
- *
- * \returns 0 OK
- * \returns -1 Error
- */
-int bpt_verify(obj_idx_t idx, int verbose);
+int main(int argc, char **argv)
+{
+	char c;
+	const char *path = NULL;
+	char buff[4096];
+	int verbose = 0;
+	int rc;
 
-#endif
+	while ((c = getopt(argc, argv, FMT)) > -1) {
+		switch (c) {
+		case 's':
+			path = optarg;
+			break;
+		case 'v':
+			verbose = 1;
+			break;
+		default:
+			usage();
+			_exit(-1);
+		}
+	}
+
+	if (!path) {
+		usage();
+		_exit(-1);
+	}
+
+	/* check file existence */
+	snprintf(buff, sizeof(buff), "%s.OBJ", path);
+	check_file(buff);
+	snprintf(buff, sizeof(buff), "%s.PG", path);
+	check_file(buff);
+
+	obj_idx_t idx = obj_idx_open(path);
+	if (!idx) {
+		printf("ERROR: Cannot open index: %s\n", path);
+		_exit(-1);
+	}
+
+	rc = bpt_verify(idx, verbose);
+	if (rc) {
+		printf("ERROR: B+ Tree corrupted\n");
+		_exit(-1);
+	}
+
+	return 0;
+}
