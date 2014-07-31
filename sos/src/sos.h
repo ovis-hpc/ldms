@@ -725,6 +725,28 @@ sos_obj_t sos_iter_obj(sos_iter_t iter);
 int sos_iter_obj_remove(sos_iter_t iter);
 
 /**
+ * \brief Verify index of the given \c attr_id.
+ *
+ * \param sos The SOS handle.
+ * \param attr_id The attribute ID
+ *
+ * \return 0 if OK.
+ * \return -1 if Error.
+ */
+int sos_verify_index(sos_t sos, int attr_id);
+
+/**
+ * \brief Rebuild index of the given attribute \c attr_id.
+ *
+ * \param sos The SOS handle.
+ * \param attr_id The attribute ID
+ *
+ * \return 0 on success.
+ * \return -1 on failure.
+ */
+int sos_rebuild_index(sos_t sos, int attr_id);
+
+/**
  * \defgroup helper_functions
  * \{
  * \brief These are helper functions to aid swig-generated sos.

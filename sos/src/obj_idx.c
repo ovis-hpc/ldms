@@ -412,3 +412,8 @@ void *obj_idx_alloc(obj_idx_t idx, size_t sz)
 	return p;
 }
 
+int obj_idx_verify(obj_idx_t idx)
+{
+	return idx->idx_class->prv->verify(idx);
+}
+

@@ -553,4 +553,13 @@ obj_ref_t obj_iter_ref(obj_iter_t iter);
  */
 void *obj_iter_obj(obj_iter_t iter);
 
+/**
+ * \brief Verify index.
+ *
+ * \param idx The index to be verified.
+ * \returns 0 OK
+ * \returns !0 on Error.
+ */
+int obj_idx_verify(obj_idx_t idx);
+
 #endif

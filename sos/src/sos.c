@@ -1220,6 +1220,75 @@ void sos_key_set_double(sos_t sos, int attr_id, double value, obj_key_t key)
 	sos_obj_attr_key_set(sos, attr_id, &value, key);
 }
 
+int sos_verify_index(sos_t sos, int attr_id)
+{
+	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
+	if (!sos_attr_has_index(attr))
+		return 0;
+	return obj_idx_verify(attr->oidx);
+}
+
+struct __idx_ods_arg {
+	int rc;
+	sos_attr_t attr;
+};
+
+void __idx_ods_rebuild_fn(ods_t ods, void *ptr, size_t sz, void *_arg)
+{
+	struct __idx_ods_arg *arg = _arg;
+	if (arg->rc)
+		return;
+	sos_t sos = arg->attr->sos;
+	sos_attr_t attr = arg->attr;
+	size_t attr_sz = sos_obj_attr_size(sos, attr->id, ptr);
+	obj_ref_t obj_ref = ods_obj_ptr_to_ref(sos->ods, ptr);
+	obj_key_t key = obj_key_new(attr_sz);
+	if (!key) {
+		arg->rc = ENOMEM;
+		return;
+	}
+	sos_attr_key(attr, ptr, key);
+	arg->rc = obj_idx_insert(attr->oidx, key, obj_ref);
+	obj_key_delete(key);
+}
+
+int sos_rebuild_index(sos_t sos, int attr_id)
+{
+	int rc = 0;
+	char *buff = malloc(PATH_MAX);
+	if (!buff) {
+		rc = ENOMEM;
+		goto out;
+	}
+	sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
+	obj_idx_close(attr->oidx, ODS_COMMIT_ASYNC);
+	attr->oidx = NULL;
+	snprintf(buff, PATH_MAX, "%s_%s.OBJ", sos->path, attr->name);
+	rc = unlink(buff);
+	if (rc)
+		goto out;
+	snprintf(buff, PATH_MAX, "%s_%s.PG", sos->path, attr->name);
+	rc = unlink(buff);
+	if (rc)
+		goto out;
+	attr->oidx = init_idx(sos, O_CREAT|O_RDWR, 0660, attr);
+	if (!attr->oidx) {
+		fprintf(stderr, "sos: ERROR: Cannot initialize index: %s_%s\n",
+			sos->path, attr->name);
+		rc = -1;
+		goto out;
+	}
+
+	struct __idx_ods_arg arg = {0, attr};
+
+	ods_iter(sos->ods, __idx_ods_rebuild_fn, &arg);
+	rc = arg.rc;
+
+out:
+	free(buff);
+	return rc;
+}
+
 /*** end helper functions ***/
 
 #ifdef SOS_MAIN

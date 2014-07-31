@@ -71,6 +71,7 @@ struct obj_idx_provider {
 	int (*iter_prev)(obj_iter_t iter);
 	obj_key_t (*iter_key)(obj_iter_t iter);
 	obj_ref_t (*iter_ref)(obj_iter_t iter);
+	int (*verify)(obj_idx_t idx);
 };
 
 struct obj_idx_comparator {

@@ -517,7 +517,7 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 
 int verify_leafs(obj_idx_t idx);
 
-int bpt_verify(obj_idx_t idx, int verbose)
+int bpt_verify_verbose(obj_idx_t idx, int verbose)
 {
 	int rc;
 	bpt_t t;
@@ -547,8 +547,13 @@ int bpt_verify(obj_idx_t idx, int verbose)
 	return 0;
 }
 
-#ifdef BPT_VERIFY
-#define verify_tree(X) bpt_verify(X, 1)
+static int bpt_verify(obj_idx_t idx)
+{
+	return bpt_verify_verbose(idx, 0);
+}
+
+#ifdef DEBUG_BPT_VERIFY
+#define verify_tree(X) bpt_verify_verbose(X, 1)
 #else
 #define verify_tree(X)
 #endif
@@ -1303,7 +1308,9 @@ int verify_leafs(obj_idx_t idx)
 	bpt_t t = idx->priv;
 	bpt_node_t node;
 	obj_ref_t node_ref;
+	obj_ref_t key_ref, prev_key_ref;
 	int mid = split_midpoint(t->order) - 1;
+	int rc, i;
 	node_ref = t->root_ref;
 	node = ods_obj_ref_to_ptr(t->ods, node_ref);
 	while (!node->is_leaf) {
@@ -1311,10 +1318,33 @@ int verify_leafs(obj_idx_t idx)
 		node = ods_obj_ref_to_ptr(t->ods, node_ref);
 	}
 
+	key_ref = 0;
 	while (node) {
 		if (node->parent && node->count < mid) {
 			print_node(idx, -1, node, 0);
 			return -1;
+		}
+		prev_key_ref = key_ref;
+		key_ref = node->entries[0].key;
+		if (ods_verify_ref(idx->ods, key_ref) != 0)
+			return -1;
+		if (prev_key_ref) {
+			rc = t->comparator(ods_obj_ref_to_ptr(t->ods, key_ref),
+				ods_obj_ref_to_ptr(t->ods, prev_key_ref));
+			if (rc < 0)
+				return -1;
+		}
+		for (i = 1; i < node->count; i++) {
+			prev_key_ref = key_ref;
+			key_ref = node->entries[i].key;
+			if (ods_verify_ref(idx->ods, key_ref) != 0)
+				return -1;
+			rc = t->comparator(ods_obj_ref_to_ptr(t->ods, key_ref),
+				ods_obj_ref_to_ptr(t->ods, prev_key_ref));
+			if (rc < 0) {
+				return -1;
+			}
+			node = ods_obj_ref_to_ptr(t->ods, node_ref);
 		}
 		node = leaf_right(t, node_ref);
 		node_ref = ods_obj_ptr_to_ref(t->ods, node);
@@ -1642,7 +1672,8 @@ static struct obj_idx_provider bpt_provider = {
 	.iter_next = bpt_iter_next,
 	.iter_prev = bpt_iter_prev,
 	.iter_key = bpt_iter_key,
-	.iter_ref = bpt_iter_ref
+	.iter_ref = bpt_iter_ref,
+	.verify = bpt_verify,
 };
 
 struct obj_idx_provider *get(void)

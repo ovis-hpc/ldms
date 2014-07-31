@@ -113,6 +113,6 @@ typedef struct bpt_iter {
  * \returns 0 OK
  * \returns -1 Error
  */
-int bpt_verify(obj_idx_t idx, int verbose);
+int bpt_verify_verbose(obj_idx_t idx, int verbose);
 
 #endif

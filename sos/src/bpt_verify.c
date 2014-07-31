@@ -119,7 +119,7 @@ int main(int argc, char **argv)
 		_exit(-1);
 	}
 
-	rc = bpt_verify(idx, verbose);
+	rc = bpt_verify_verbose(idx, verbose);
 	if (rc) {
 		printf("ERROR: B+ Tree corrupted\n");
 		_exit(-1);
