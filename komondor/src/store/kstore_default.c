@@ -109,6 +109,8 @@ struct kmd_store_tahoma {
 	sos_t sos;
 };
 
+static void (*kstore_log)(const char *fmt, ...);
+
 /**
  * \brief Store configuration.
  * Expecting only one attribute-value pair, path="..." .
@@ -133,7 +135,7 @@ int config(struct kmd_store *s, struct attr_value_list *av_list)
 	this->sos = sos_open(this->path, O_RDWR|O_CREAT, 0660,
 			  &k_tahoma_event_class);
 	if (!this->sos) {
-		k_log("ERROR: Cannot open sos: %s\n", this->path);
+		kstore_log("ERROR: Cannot open sos: %s\n", this->path);
 		rc = ENOMEM;
 		goto err1;
 	}
@@ -276,7 +278,7 @@ void destroy(struct kmd_store *s)
 	free(s);
 }
 
-struct kmd_store *create_store()
+struct kmd_store *create_store(kmd_log_f log_fn)
 {
 	struct kmd_store_tahoma *g = calloc(1, sizeof(*g));
 	if (!g)
@@ -287,5 +289,6 @@ struct kmd_store *create_store()
 	s->put_event_object = put_event_object;
 	s->event_update = event_update;
 	s->destroy = destroy;
+	kstore_log = log_fn;
 	return s;
 }

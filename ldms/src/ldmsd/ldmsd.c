@@ -138,6 +138,7 @@ int notify=0;
 int muxr_s = -1;
 char *logfile;
 char *sockname = NULL;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 ldms_t ldms;
 FILE *log_fp;
@@ -175,7 +176,6 @@ int passive = 0;
 int quiet = 0; /* by default ldmsd should not be quiet */
 void ldms_log(const char *fmt, ...)
 {
-	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	if (quiet) /* Don't say a word when quiet */
 		return;
 	va_list ap;
@@ -183,7 +183,7 @@ void ldms_log(const char *fmt, ...)
 	struct tm *tm;
 	char dtsz[200];
 
-	pthread_mutex_lock(&mutex);
+	pthread_mutex_lock(&log_lock);
 	t = time(NULL);
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
@@ -191,7 +191,7 @@ void ldms_log(const char *fmt, ...)
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
-	pthread_mutex_unlock(&mutex);
+	pthread_mutex_unlock(&log_lock);
 }
 
 void cleanup(int x)
@@ -221,6 +221,47 @@ void cleanup(int x)
 	}
 	pthread_mutex_unlock(&sp_list_lock);
 	exit(x);
+}
+
+FILE *ldmsd_open_log()
+{
+	FILE *f;
+	f = fopen(logfile, "a");
+	if (!f) {
+		ldms_log("Could not open the log file named '%s'\n",
+							logfile);
+		cleanup(9);
+	} else {
+		int fd = fileno(f);
+		if (dup2(fd, 1) < 0) {
+			ldms_log("Cannot redirect log to %s\n",
+							logfile);
+			cleanup(10);
+		}
+		if (dup2(fd, 2) < 0) {
+			ldms_log("Cannot redirect log to %s\n",
+							logfile);
+			cleanup(11);
+		}
+		stdout = f;
+		stderr = f;
+	}
+	return f;
+}
+
+void ldmsd_logrotate(int x) {
+	if (logfile) {
+		/*
+		 * Close after open the new log file
+		 * to reserve the file descriptors 1 and 2.
+		 */
+		pthread_mutex_lock(&log_lock);
+		FILE *new_log = ldmsd_open_log();
+		fflush(log_fp);
+		fclose(log_fp);
+		log_fp = new_log;
+		pthread_mutex_unlock(&log_lock);
+	}
 }
 
 void cleanup_sa(int signal, siginfo_t *info, void *arg)
@@ -3191,15 +3232,29 @@ int main(int argc, char *argv[])
 	ldms_set_t test_set;
 	log_fp = stdout;
 	char *cfg_file = NULL;
-	struct sigaction action;
+	struct sigaction action, logrotate_act;
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGUSR1);
 
 	memset(&action, 0, sizeof(action));
 	action.sa_sigaction = cleanup_sa;
 	action.sa_flags = SA_SIGINFO;
+	action.sa_mask = sigset;
+
 	sigaction(SIGHUP, &action, NULL);
 	sigaction(SIGINT, &action, NULL);
 	sigaction(SIGTERM, &action, NULL);
 	sigaction(SIGABRT, &action, NULL);
+
+	sigaddset(&sigset, SIGHUP);
+	sigaddset(&sigset, SIGINT);
+	sigaddset(&sigset, SIGTERM);
+	sigaddset(&sigset, SIGABRT);
+	memset(&logrotate_act, 0, sizeof(logrotate_act));
+	logrotate_act.sa_handler = ldmsd_logrotate;
+	logrotate_act.sa_mask = sigset;
+	sigaction(SIGUSR1, &logrotate_act, NULL);
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -3334,26 +3389,8 @@ int main(int argc, char *argv[])
 			initial_config_file_routine(yaml_document);
 	}
 #endif
-	if (logfile) {
-		log_fp = fopen(logfile, "a");
-		if (!log_fp) {
-			log_fp = stdout;
-			ldms_log("Could not open the log file named '%s'\n", logfile);
-			cleanup(9);
-		} else {
-			int fd = fileno(log_fp);
-			if (dup2(fd, 1) < 0) {
-				ldms_log("Cannot redirect log to %s\n", logfile);
-				cleanup(10);
-			}
-			if (dup2(fd, 2) < 0) {
-				ldms_log("Cannot redirect log to %s\n", logfile);
-				cleanup(11);
-			}
-			stdout = log_fp;
-			stderr = log_fp;
-		}
-	}
+	if (logfile)
+		log_fp = ldmsd_open_log();
 
 	if (!foreground) {
 		if (daemon(1, 1)) {

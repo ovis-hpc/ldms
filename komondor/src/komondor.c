@@ -378,6 +378,9 @@ static int pid_rbn_cmp(void *tree_key, void *key)
 char *conf = NULL;
 char *xprt = "sock";
 uint16_t port = 55555;
+FILE *logf = NULL;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+char *log_path = NULL;
 int FOREGROUND = 0;
 int32_t act_sos_gn;
 sos_t act_sos;
@@ -432,6 +435,23 @@ idx_t rule_idx;
 zap_mem_info_t k_meminfo(void)
 {
 	return NULL;
+}
+
+void k_log(const char *fmt, ...)
+{
+	char tstr[32];
+	time_t t = time(NULL);
+	struct tm tm;
+	localtime_r(&t, &tm);
+	strftime(tstr, 32, "%a %b %d %T %Y", &tm);
+	pthread_mutex_lock(&log_lock);
+	fprintf(stderr, "%s ", tstr);
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(stderr, fmt, ap);
+	va_end(ap);
+	fflush(stderr);
+	pthread_mutex_unlock(&log_lock);
 }
 
 /**
@@ -829,12 +849,12 @@ int handle_store(struct attr_value_list *av_list)
 		k_log("ERROR: Cannot load store %s: %s\n", plugin, dlerror());
 		return ENOENT;
 	}
-	struct kmd_store *(*f)() = dlsym(dh, "create_store");
+	kmd_create_store_f f = dlsym(dh, "create_store");
 	if (!f) {
 		k_log("ERROR: %s.create_store: %s\n", plugin, dlerror());
 		return ENOENT;
 	}
-	struct kmd_store *s = f();
+	struct kmd_store *s = f(k_log);
 	if (!s) {
 		k_log("ERROR: Cannot create store.\n");
 		return ENOMEM;
@@ -1243,21 +1263,34 @@ void init()
 #endif
 }
 
-void handle_log(const char *path)
+FILE *kmd_open_log()
 {
-	FILE *f = fopen(path, "a");
+	FILE *f = fopen(log_path, "a");
 	if (!f) {
-		k_log("Cannot open log file %s\n", path);
+		k_log("Cannot open log file %s\n", log_path);
 		exit(-1);
 	}
 	int fd = fileno(f);
 	if (dup2(fd, 1) < 0) {
-		k_log("Cannot redirect log to %s\n", path);
+		k_log("Cannot redirect log to %s\n", log_path);
 		exit(-1);
 	}
 	if (dup2(fd, 2) < 0) {
-		k_log("Cannot redirect log to %s\n", path);
+		k_log("Cannot redirect log to %s\n", log_path);
 		exit(-1);
+	}
+	return f;
+}
+
+void kmd_logrotate(int x)
+{
+	if (log_path) {
+		pthread_mutex_lock(&log_lock);
+		FILE *new_log = kmd_open_log();
+		fflush(logf);
+		fclose(logf);
+		logf = new_log;
+		pthread_mutex_unlock(&log_lock);
 	}
 }
 
@@ -1301,7 +1334,12 @@ next_arg:
 #endif
 		break;
 	case 'l':
-		handle_log(optarg);
+		log_path = strdup(optarg);
+		if (!log_path) {
+			k_log("Failed to copy the log path\n");
+			exit(ENOMEM);
+		}
+		logf = kmd_open_log();
 		break;
 	case 'F':
 		FOREGROUND = 1;
@@ -1777,10 +1815,11 @@ int main(int argc, char **argv)
 {
 	int rc;
 
-	struct sigaction cleanup_act;
+	struct sigaction cleanup_act, logrotate_act;
 	sigset_t sigset;
 	sigemptyset(&sigset);
 	sigaddset(&sigset, SIGCHLD);
+	sigaddset(&sigset, SIGUSR1);
 	cleanup_act.sa_handler = kmd_cleanup;
 	cleanup_act.sa_flags = 0;
 	cleanup_act.sa_mask = sigset;
@@ -1788,6 +1827,14 @@ int main(int argc, char **argv)
 	sigaction(SIGHUP, &cleanup_act, NULL);
 	sigaction(SIGINT, &cleanup_act, NULL);
 	sigaction(SIGTERM, &cleanup_act, NULL);
+
+	sigaddset(&sigset, SIGHUP);
+	sigaddset(&sigset, SIGINT);
+	sigaddset(&sigset, SIGTERM);
+	logrotate_act.sa_handler = kmd_logrotate;
+	logrotate_act.sa_flags = 0;
+	logrotate_act.sa_mask = sigset;
+	sigaction(SIGUSR1, &logrotate_act, NULL);
 
 	process_args(argc, argv);
 	if (!FOREGROUND) {
@@ -1808,6 +1855,7 @@ int main(int argc, char **argv)
 	sigaddset(&child_set, SIGHUP);
 	sigaddset(&child_set, SIGINT);
 	sigaddset(&child_set, SIGTERM);
+	sigaddset(&child_set, SIGUSR1);
 	struct sigaction child_act = {
 		.sa_sigaction = sigchld_action,
 		.sa_mask = child_set,

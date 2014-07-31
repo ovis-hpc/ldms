@@ -89,7 +89,7 @@ int blog_open_file(const char *path)
 {
 	FILE *f = fopen(path, "a");
 	if (!f)
-		return -1;
+		return errno;
 	blog_set_file(f);
 	return 0;
 }
@@ -118,6 +118,25 @@ void __blog(const char *fmt, ...)
 int blog_flush()
 {
 	return fflush(blog_file);
+}
+
+int blog_rotate(const char *path)
+{
+	int rc = 0;
+	FILE *new_log = fopen(path, "a");
+	if (!new_log)
+		return errno;
+
+	pthread_mutex_lock(&__blog_mutex);
+	dup2(fileno(new_log), 1);
+	dup2(fileno(new_log), 2);
+
+	blog_flush();
+	blog_close_file();
+
+	blog_file = new_log;
+	pthread_mutex_unlock(&__blog_mutex);
+	return rc;
 }
 
 int bfile_exists(const char *path)

@@ -173,17 +173,7 @@ struct kmd_store {
 	LIST_ENTRY(kmd_store) entry;
 };
 
-static void k_log(const char *fmt, ...)
-{
-	char tstr[32];
-	time_t t = time(NULL);
-	struct tm tm;
-	localtime_r(&t, &tm);
-	strftime(tstr, 32, "%a %b %d %T %Y", &tm);
-	fprintf(stderr, "%s ", tstr);
-	va_list ap;
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-	fflush(stderr);
-}
+typedef void (*kmd_log_f)(const char *fmt, ...);
+typedef struct kmd_store *(*kmd_create_store_f)(kmd_log_f f);
+
+void k_log(const char *fmt, ...);

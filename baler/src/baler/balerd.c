@@ -92,6 +92,7 @@ const char *optstring = "hFC:l:s:z:";
 const char *optstring = "hFC:l:s:";
 #endif
 const char *config_path = NULL;
+const char *log_path = NULL;
 
 void display_help_msg()
 {
@@ -816,12 +817,17 @@ int ocm_cb(struct ocm_event *e)
 
 void handle_set_log_file(const char *path)
 {
-	FILE *f = fopen(path, "a");
-	if (!f) {
+	log_path = strdup(path);
+	if (!log_path) {
 		perror(path);
 		exit(-1);
 	}
-	blog_set_file(f);
+
+	int rc = blog_open_file(log_path);
+	if (rc) {
+		fprintf(stderr, "Failed to open the log file '%s'\n", path);
+		exit(rc);
+	}
 }
 
 /**
@@ -1040,17 +1046,43 @@ void cleanup_daemon(int x)
 }
 
 /**
+ * Action when receives SIGUSR1 from logrotate
+ */
+void handle_logrotate(int x)
+{
+	int rc = 0;
+	rc = blog_rotate(log_path);
+	if (rc) {
+		berr("Failed to open a new log file. '%s'\n",
+						strerror(errno));
+		cleanup_daemon(x);
+	}
+}
+
+/**
  * \brief The main function.
  */
 int main(int argc, char **argv)
 {
-	struct sigaction cleanup_act;
+	struct sigaction cleanup_act, logrotate_act;
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGUSR1);
 	cleanup_act.sa_handler = cleanup_daemon;
 	cleanup_act.sa_flags = 0;
+	cleanup_act.sa_mask = sigset;
 
 	sigaction(SIGHUP, &cleanup_act, NULL);
 	sigaction(SIGINT, &cleanup_act, NULL);
 	sigaction(SIGTERM, &cleanup_act, NULL);
+
+	sigaddset(&sigset, SIGHUP);
+	sigaddset(&sigset, SIGINT);
+	sigaddset(&sigset, SIGTERM);
+	logrotate_act.sa_handler = handle_logrotate;
+	logrotate_act.sa_flags = 0;
+	logrotate_act.sa_mask = sigset;
+	sigaction(SIGUSR1, &logrotate_act, NULL);
 
 	args_handling(argc, argv);
 

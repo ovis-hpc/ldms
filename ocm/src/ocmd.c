@@ -82,6 +82,8 @@ uint16_t port = OCM_DEFAULT_PORT;
 const char *xprt = "sock";
 const char *peer_list_path = NULL;
 const char *log_path = NULL;
+FILE *log_file = NULL;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 const char *plugin_name = NULL;
 struct ocmd_plugin *plugin = NULL;
 
@@ -107,12 +109,14 @@ void ocmd_log(const char *fmt, ...)
 	struct tm tm;
 	localtime_r(&t, &tm);
 	strftime(tstr, 32, "%a %b %d %T %Y", &tm);
+	pthread_mutex_lock(&log_lock);
 	printf("%s ", tstr);
 	va_list ap;
 	va_start(ap, fmt);
 	vprintf(fmt, ap);
 	va_end(ap);
 	fflush(stdout);
+	pthread_mutex_unlock(&log_lock);
 }
 
 const char *short_opt = "x:p:l:t:FR:P:h?";
@@ -319,17 +323,60 @@ void ocmd_cleanup(int x)
 	exit(x);
 }
 
+FILE *ocmd_open_log()
+{
+	FILE *f = fopen(log_path, "a");
+	if (!f) {
+		perror("ERROR: Cannot open log file, ");
+		_exit(-1);
+	}
+	int fd = fileno(f);
+	if (dup2(fd, 1) < 0) {
+		perror("ERROR: Cannot redirect STDOUT to log file, ");
+		_exit(-1);
+	}
+	if (dup2(fd, 2) < 0) {
+		perror("ERROR: Cannot redirect STDERR to log file, ");
+		_exit(-1);
+	}
+	return f;
+}
+
+void ocmd_logrotate(int x)
+{
+	if (log_path) {
+		pthread_mutex_lock(&log_lock);
+		FILE *new_log = ocmd_open_log();
+		fflush(log_file);
+		fclose(log_file);
+		log_file = new_log;
+		pthread_mutex_unlock(&log_lock);
+	}
+}
+
 void ocmd_init()
 {
 	int rc;
 
-	struct sigaction cleanup_act;
+	struct sigaction cleanup_act, logrotate_act;
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGUSR1);
 	cleanup_act.sa_handler = ocmd_cleanup;
 	cleanup_act.sa_flags = 0;
+	cleanup_act.sa_mask = sigset;
 
 	sigaction(SIGHUP, &cleanup_act, NULL);
 	sigaction(SIGINT, &cleanup_act, NULL);
 	sigaction(SIGTERM, &cleanup_act, NULL);
+
+	sigaddset(&sigset, SIGHUP);
+	sigaddset(&sigset, SIGINT);
+	sigaddset(&sigset, SIGTERM);
+	logrotate_act.sa_handler = ocmd_logrotate;
+	logrotate_act.sa_flags = 0;
+	logrotate_act.sa_mask = sigset;
+	sigaction(SIGUSR1, &logrotate_act, NULL);
 
 	if (!foreground) {
 		rc = daemon(1, 1);
@@ -339,21 +386,10 @@ void ocmd_init()
 		}
 	}
 
-	if (log_path) {
-		int fd = open(log_path, O_WRONLY|O_APPEND|O_CREAT, 0644);
-		if (fd < 0) {
-			perror("ERROR: Cannot open log file, ");
-			_exit(-1);
-		}
-		if (dup2(fd, 1) < 0) {
-			perror("ERROR: Cannot redirect STDOUT to log file, ");
-			_exit(-1);
-		}
-		if (dup2(fd, 2) < 0) {
-			perror("ERROR: Cannot redirect STDERR to log file, ");
-			_exit(-1);
-		}
-	}
+	if (log_path)
+		log_file = ocmd_open_log();
+	else
+		log_file = stdout;
 
 	char *tv = getenv("OCMD_RECONNECT_INTERVAL");
 	if (tv) {

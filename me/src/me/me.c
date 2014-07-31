@@ -76,8 +76,9 @@
 char myhostname[80];
 char *sockname = NULL;
 int foreground = 0;
-char *logfile;
+char *logfile = NULL;
 FILE *log_fp;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 int num_worker_thread = 1;
 int bind_succeeded;
 char *transport = NULL;
@@ -118,6 +119,42 @@ void me_cleanup(int x)
 	exit(x);
 }
 
+FILE *me_open_log() {
+	FILE *f;
+	if (logfile) {
+		f = fopen(logfile, "a");
+		if (!f) {
+			me_log("Could not open the log file named '%s'\n",
+								logfile);
+			me_cleanup(9);
+		} else {
+			int fd = fileno(f);
+			if (dup2(fd, 1) < 0) {
+				me_log("Cannot redirect log to %s\n",
+								logfile);
+				me_cleanup(10);
+			}
+			if (dup2(fd, 2) < 0) {
+				me_log("Cannot redirect log to %s\n",
+								logfile);
+				me_cleanup(11);
+			}
+			stdout = f;
+			stderr = f;
+		}
+	}
+	return f;
+}
+
+void me_logrotate_act(int x)
+{
+	pthread_mutex_lock(&log_lock);
+	FILE *new_log = me_open_log();
+	fflush(log_fp);
+	fclose(log_fp);
+	log_fp = new_log;
+	pthread_mutex_unlock(&log_lock);
+}
 
 void me_usage(char *argv[])
 {
@@ -142,11 +179,13 @@ void me_log(const char *fmt, ...)
 
 	t = time(NULL);
 	tm = localtime(&t);
+	pthread_mutex_lock(&log_lock);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 		fprintf(log_fp, "%s: ", dtsz);
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
+	pthread_mutex_unlock(&log_lock);
 }
 
 char *av_value(struct attr_value_list *av_list, char *name)
@@ -1495,13 +1534,25 @@ int main(int argc, char **argv) {
 	int op;
 	char *model_name;
 
-	struct sigaction cleanup_act;
+	struct sigaction cleanup_act, logrotate_act;
+	sigset_t sigset;
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGUSR1);
 	cleanup_act.sa_handler = me_cleanup;
 	cleanup_act.sa_flags = 0;
+	cleanup_act.sa_mask = sigset;
 
 	sigaction(SIGHUP, &cleanup_act, NULL);
 	sigaction(SIGINT, &cleanup_act, NULL);
 	sigaction(SIGTERM, &cleanup_act, NULL);
+
+	sigaddset(&sigset, SIGHUP);
+	sigaddset(&sigset, SIGINT);
+	sigaddset(&sigset, SIGTERM);
+	logrotate_act.sa_handler = me_logrotate_act;
+	logrotate_act.sa_flags = 0;
+	logrotate_act.sa_mask = sigset;
+	sigaction(SIGUSR1, &logrotate_act, NULL);
 
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
@@ -1548,6 +1599,12 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	/* Taking care of the log file */
+	if (logfile)
+		log_fp = me_open_log();
+	else
+		log_fp = stdout;
+
 	if (!foreground) {
 		if (daemon(1, 1)) {
 			me_log("Model Evaluator: daemon(1,1) failed: "
@@ -1558,20 +1615,6 @@ int main(int argc, char **argv) {
 
 	if (model_manager_init(hash_rbt_sz, max_sem_input))
 		me_cleanup(1);
-
-	/* Taking care of the log file */
-	if (!logfile)
-		logfile = DEFAULT_ME_LOGFILE;
-
-	log_fp = fopen(logfile, "a");
-	if (!log_fp) {
-		log_fp = stdout;
-		me_log("Could not open the log file named '%s'\n", logfile);
-		me_cleanup(9);
-	} else {
-		stdout = log_fp;
-		stderr = log_fp;
-	}
 
 	/* Taking care of myhostname */
 	if (myhostname[0] == '\0') {
