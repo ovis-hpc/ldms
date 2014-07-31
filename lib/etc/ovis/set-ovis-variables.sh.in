@@ -1,19 +1,19 @@
 #!/bin/bash
-export OVIS_PREFIX=@prefix@
-export OVIS_RUN_CONF=$OVIS_PREFIX/conf/ovis_conf.db
+export OVIS_HOME=@prefix@
+export OVIS_RUN_CONF=$OVIS_HOME/conf/ovis_conf.db
 export OVIS_WEB_ROOT=/var/www/tahoma-test/
 export OVIS_DATA=/home/ovis-data
-export OVIS_LOG=$OVIS_PREFIX/var/log
-export OVIS_SOCK=$OVIS_PREFIX/var/sock
+export OVIS_LOG=$OVIS_HOME/var/log
+export OVIS_SOCK=$OVIS_HOME/var/sock
 
-OLIB=$OVIS_PREFIX/lib
+OLIB=$OVIS_HOME/lib
 export LDMSD_PLUGIN_LIBPATH=$OLIB
 export LDMS_XPRT_LIBPATH=$OLIB
 export ZAP_LIBPATH=$OLIB
 export ME_PLUGIN_LIBPATH=$OLIB/me
 
-export PYTHONPATH=$PYTHONPATH:$OVIS_PREFIX/lib/python@PYTHON_VERSION@/site-packages
-export PATH=$PATH:$OVIS_PREFIX/bin:$OVIS_PREFIX/sbin
+export PYTHONPATH=$PYTHONPATH:$OVIS_HOME/lib/python@PYTHON_VERSION@/site-packages
+export PATH=$PATH:$OVIS_HOME/bin:$OVIS_HOME/sbin
 
 export LDMSD_SAMPLER_XPORT=sock
 export LDMSD_SAMPLER_PORT_TO_OCMD=20001
@@ -21,7 +21,7 @@ export LDMSD_SAMPLER_PORT_LISTEN=10001
 
 export OCMD_XPORT=sock
 export OCMD_PORT=12345
-export OCMD_PEER_LIST=$OVIS_PREFIX/etc/ocmd_peer_list
+export OCMD_PEER_LIST=$OVIS_HOME/etc/ocmd_peer_list
 
 export ME_XPORT=sock
 export ME_PORT_TO_OCMD=20003
