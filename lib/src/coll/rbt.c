@@ -50,7 +50,7 @@
 struct rbn _LEAF = {
 	.left = &_LEAF,
 	.right = &_LEAF,
-	.parent = &_LEAF,
+	.parent = NULL,
 	.color = RBN_BLACK,
 };
 static struct rbn *LEAF = &_LEAF;
@@ -72,8 +72,10 @@ static void rotate_left(struct rbt *t, struct rbn *x)
 			parent->left = y;
 		else
 			parent->right = y;
-	} else
+	} else {
 		t->root = y;
+		y->parent = NULL;
+	}
 
 	/* Attach x as y's new left */
 	y->left = x;
@@ -97,8 +99,10 @@ static void rotate_right(struct rbt *t, struct rbn *x)
 			parent->right = y;
 		else
 			parent->left = y;
-	} else
+	} else {
 		t->root = y;
+		y->parent = NULL;
+	}
 
 	/* Attach x as y's new left */
 	y->right = x;
@@ -126,7 +130,7 @@ void rbt_init(struct rbt *t, rbn_comparator_t c)
  * still allowing the RBN to be embedded in the applications object
  * and avoiding a second allocation in rbn_ins.
  *
- * \param rbn The RBN to initialie
+ * \param rbn The RBN to initialize
  * \param key Pointer to the key
  */
 void rbn_init(struct rbn *n, void *key)
@@ -190,6 +194,7 @@ void rbt_ins(struct rbt *t, struct rbn *x)
 		if (x->parent == x->parent->parent->left) {
 			uncle = x->parent->parent->right;
 			if (uncle->color == RBN_RED) {
+				assert(uncle != LEAF);
 				x->parent->color = RBN_BLACK;
 				uncle->color = RBN_BLACK;
 				x->parent->parent->color = RBN_RED;
@@ -206,6 +211,7 @@ void rbt_ins(struct rbt *t, struct rbn *x)
 		} else {
 			uncle = x->parent->parent->left;
 			if (uncle->color == RBN_RED) {
+				assert(uncle != LEAF);
 				x->parent->color = RBN_BLACK;
 				uncle->color = RBN_BLACK;
 				x->parent->parent->color = RBN_RED;
@@ -658,23 +664,40 @@ int main(int argc, char *argv[])
 		rbt_del(&rbt, max_rbn);
 	TEST_ASSERT((rbt_find(&rbt, &max) == NULL),
 		    "Delete %d and make certain it's not found.\n", max);
-	srandom(t);
-	key_count = atoi(argv[1]);
-	while (key_count--) {
-		struct rbn *rbn;
-		x = (int)random();
-		rbn = rbt_find(&rbt, &x);
-		if (x == min || x == max) {
-			TEST_ASSERT((rbn == NULL),
-				    "min/max %14d is not found.\n", x);
-			continue;
+	while (1) {
+		t = time(NULL);
+		printf("seed %d\n", t);
+		srandom(t);
+		key_count = atoi(argv[1]);
+		while (key_count--) {
+			struct test_key *k = calloc(1, sizeof *k);
+			struct rbn *rbn;
+			rbn_init(&k->n, &k->key);
+			k->key = (int)random();
+			rbn = rbt_find(&rbt, &k->key);
+			if (rbn) {
+				printf("FAIL -- DUPLICATE %d.\n", &k->key);
+				continue;
+			}
+			rbt_ins(&rbt, &k->n);
 		}
-		TEST_ASSERT((rbn != NULL),
-			    "%14d is found.\n", x);
-		rbt_del(&rbt, rbn);
-		rbn = rbt_find(&rbt, &x);
-		TEST_ASSERT((rbn == NULL),
-			    "%14d is not found.\n", x);
+		srandom(t);
+		key_count = atoi(argv[1]);
+		printf("Created %d keys.\n", key_count);
+		while (key_count--) {
+			int key;
+			struct rbn *rbn;
+			key = (int)random();
+			rbn = rbt_find(&rbt, &key);
+			if (rbn) {
+				rbt_del(&rbt, rbn);
+				free(rbn);
+				continue;
+			} else {
+				printf("Doh!!\n");
+			}
+		}
+		printf("Deleted...\n");
 	}
 	rbt_traverse(&rbt, rbt_print, NULL);
 	printf("FAIL seed is %d.\n", t);
