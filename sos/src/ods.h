@@ -207,4 +207,15 @@ extern void *ods_obj_ref_to_ptr(ods_t ods, obj_ref_t ref);
  */
 extern obj_ref_t ods_obj_ptr_to_ref(ods_t ods, void *obj);
 
+/**
+ * \brief Veirfy if the ref is in ods range.
+ *
+ * \param ods The ODS handle
+ * \param ref The object reference
+ *
+ * \returns 0 if OK
+ * \returns -1 if Error
+ */
+int ods_verify_ref(ods_t ods, obj_ref_t ref);
+
 #endif

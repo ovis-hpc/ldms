@@ -817,6 +817,11 @@ void ods_iter(ods_t ods, ods_iter_fn_t iter_fn, void *arg)
 	}
 }
 
+int ods_verify_ref(ods_t ods, obj_ref_t ref)
+{
+	return !(0 < ref && ref < ods->obj_sz);
+}
+
 #ifdef ODS_MAIN
 int main(int argc, char *argv[])
 {
