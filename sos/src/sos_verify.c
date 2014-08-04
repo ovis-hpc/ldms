@@ -79,6 +79,7 @@ struct option long_opt[] = {
 	{"store",    required_argument,  NULL,  's'},
 	{"recover",  no_argument,        NULL,  'r'},
 	{"help",     no_argument,        NULL,  '?'},
+	{0,          0,                  0,     0},
 };
 
 void usage()
