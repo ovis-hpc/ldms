@@ -1,4 +1,4 @@
-sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
+sbin_PROGRAMS = ldmsd ldms_ls ldmsctl ldmsd_sos_init
 CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
@@ -26,3 +26,7 @@ ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lreadline -lovis_ctrl -lovis_util \
 		  @LDFLAGS_READLINE@
+
+ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
+ldmsd_sos_init_LDADD = -lsos -lpthread
+ldmsd_sos_init_LDFLAGS = $(AM_LDFLAGS)
