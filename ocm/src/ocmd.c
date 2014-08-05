@@ -355,6 +355,13 @@ void ocmd_init()
 		}
 	}
 
+	char *tv = getenv("OCMD_RECONNECT_INTERVAL");
+	if (tv) {
+		int sec = 20;
+		int usec = 0;
+		sscanf(tv, "%d.%d", &sec, &usec);
+		ocm_set_reconnect_interval(sec, usec);
+	}
 
 	if (plugin_name) {
 		struct ocmd_plugin* (*plugin_create)(

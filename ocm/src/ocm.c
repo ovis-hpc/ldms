@@ -61,8 +61,15 @@
 struct event_base *__ocm_evbase = NULL;
 void __ocm_zap_cb(zap_ep_t zep, zap_event_t ev);
 pthread_t __ocm_evthread;
+struct timeval reconnect_tv = {20, 0}; /* default: 20 sec */
 
 void __ocm_init();
+
+void ocm_set_reconnect_interval(int sec, int usec)
+{
+	reconnect_tv.tv_usec = usec;
+	reconnect_tv.tv_sec = sec;
+}
 
 void *ocm_cfg_buff_curr_ptr(struct ocm_cfg_buff *buff)
 {
@@ -385,8 +392,7 @@ zap_mem_info_fn_t map_info_fn = __ocm_zap_meminfo;
 
 void __ocm_reconnect(struct ocm_ep_ctxt *ctxt)
 {
-	struct timeval tv = {20, 0}; /* 20 sec */
-	evtimer_add(ctxt->reconn_event, &tv);
+	evtimer_add(ctxt->reconn_event, &reconnect_tv);
 	/* NOTE: The callback of ctxt->reconn_event is __ocm_reconnect_cb */
 }
 

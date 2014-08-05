@@ -24,6 +24,7 @@ export LDMSD_SAMPLER_PORT_LISTEN=10001
 export OCMD_XPORT=sock
 export OCMD_PORT=12345
 export OCMD_PEER_LIST=$OVIS_HOME/etc/ocmd_peer_list
+export OCMD_RECONNECT_INTERVAL=20.00
 
 export ME_XPORT=sock
 export ME_PORT_TO_OCMD=20003

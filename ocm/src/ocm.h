@@ -391,6 +391,14 @@ ocm_t ocm_create(const char *xprt, uint16_t port, ocm_cb_fn_t request_cb,
 int ocm_add_receiver(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len);
 
 /**
+ * \brief Set receiver reconnect interval.
+ *
+ * \param sec second part of the interval
+ * \param usec micro second part of the interval
+ */
+void ocm_set_reconnect_interval(int sec, int usec);
+
+/**
  * Remove a receiver.
  *
  * \returns 0 on success.
