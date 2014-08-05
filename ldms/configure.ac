@@ -238,6 +238,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/ldmsd/Makefile
 		 etc/Makefile
+		 scripts/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 ldms.spec])

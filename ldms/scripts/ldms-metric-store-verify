@@ -1,0 +1,38 @@
+#!/bin/bash
+#
+# SYNOPSIS: ldms-metric-store-verify <STORE_DIR>
+#     where <STORE_DIR> is a directory that contain metric SOSes.
+
+STORE_DIR=$1
+if [ ! -d $STORE_DIR ]; then
+	echo "No directory: $STORE_DIR"
+	exit -1
+fi
+
+OPTS=
+if [ "$LDMSD_STORE_RECOVER" == "rebuild" ]; then
+	OPTS="-r"
+fi
+
+LIST=($(ls $STORE_DIR/*_sos.OBJ))
+LIST=${LIST[*]%_sos.OBJ}
+
+for X in $LIST; do
+	sos_verify $OPTS -s $X
+	if [ 0 -eq $? ]; then
+		continue;
+	fi
+	if [ "$LDMSD_STORE_RECOVER" == "clean" ]; then
+		S=(`stat -L -c '%u %g %a' ${X}_sos.OBJ`)
+		T=`sos_query -i -s dummy | head | grep '^value' | awk '{print $2}'`
+		# S = (UID, GID, octal access)
+		echo "INFO: Cleaning " $X
+		ldmsd_sos_init -f -s $X -t $T -u ${S[0]} -g ${S[1]} -m ${S[2]}
+		if [ 0 -eq $? ]; then
+			continue;
+		fi
+	fi
+	exit -1
+done
+
+exit 0
