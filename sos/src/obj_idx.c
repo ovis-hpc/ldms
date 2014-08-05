@@ -417,3 +417,7 @@ int obj_idx_verify(obj_idx_t idx)
 	return idx->idx_class->prv->verify(idx);
 }
 
+int obj_idx_verify_key(obj_idx_t idx, obj_key_t key)
+{
+	return idx->idx_class->cmp->verify_key(key);
+}

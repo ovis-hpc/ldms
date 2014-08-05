@@ -983,7 +983,6 @@ static int combine_right(bpt_t t, bpt_node_t right, int idx, bpt_node_t node)
 	int i, j;
 	int count = node->count - idx;
 	obj_ref_t right_ref;
-	bpt_node_t parent;
 	bpt_node_t entry;
 
 	if (!right || !count)
@@ -1005,7 +1004,6 @@ static int combine_right(bpt_t t, bpt_node_t right, int idx, bpt_node_t node)
 		right->count++;
 		idx++;
 	}
-	parent = ods_obj_ref_to_ptr(t->ods, right->parent);
 	return idx;
 }
 
@@ -1309,8 +1307,10 @@ int verify_leafs(obj_idx_t idx)
 	bpt_node_t node;
 	obj_ref_t node_ref;
 	obj_ref_t key_ref, prev_key_ref;
+	obj_key_t k0, k1;
 	int mid = split_midpoint(t->order) - 1;
 	int rc, i;
+	size_t alloc_sz;
 	node_ref = t->root_ref;
 	node = ods_obj_ref_to_ptr(t->ods, node_ref);
 	while (!node->is_leaf) {
@@ -1319,19 +1319,31 @@ int verify_leafs(obj_idx_t idx)
 	}
 
 	key_ref = 0;
+	k1 = 0;
 	while (node) {
 		if (node->parent && node->count < mid) {
 			print_node(idx, -1, node, 0);
 			return -1;
 		}
 		prev_key_ref = key_ref;
+		k0 = k1;
 		key_ref = node->entries[0].key;
 		if (ods_verify_ref(idx->ods, key_ref) != 0)
 			return -1;
-		if (prev_key_ref) {
-			rc = t->comparator(ods_obj_ref_to_ptr(t->ods, key_ref),
-				ods_obj_ref_to_ptr(t->ods, prev_key_ref));
-			if (rc < 0)
+		k1 = ods_obj_ref_to_ptr(t->ods, key_ref);
+
+		/* key size allocation verification */
+		alloc_sz = ods_obj_alloc_size(t->ods, k1);
+		if ((sizeof(*k1) + k1->len) > alloc_sz)
+			return -1;
+
+		/* key verification */
+		if (obj_idx_verify_key(idx, k1))
+			return -1;
+
+		if (k0) {
+			rc = t->comparator(k0, k1);
+			if (rc > 0)
 				return -1;
 		}
 		for (i = 1; i < node->count; i++) {

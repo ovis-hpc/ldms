@@ -107,6 +107,11 @@ static inline uint64_t ods_obj_ptr_to_page(ods_t ods, void *p)
 	return ods_obj_ptr_to_ref(ods, p) >> ODS_PAGE_SHIFT;
 }
 
+static inline uint64_t ods_obj_ref_to_page(ods_t ods, obj_ref_t ref)
+{
+	return ref >> ODS_PAGE_SHIFT;
+}
+
 static inline int ods_bkt(ods_t ods, size_t sz)
 {
 	size_t bkt_sz;
@@ -820,6 +825,30 @@ void ods_iter(ods_t ods, ods_iter_fn_t iter_fn, void *arg)
 int ods_verify_ref(ods_t ods, obj_ref_t ref)
 {
 	return !(0 < ref && ref < ods->obj_sz);
+}
+
+size_t ods_obj_alloc_size(ods_t ods, void *obj)
+{
+	uint64_t i = ods_obj_ptr_to_page(ods, obj);
+	uint64_t start, end, sz;
+	int bkt;
+
+	if (!(ods->pg_table->pages[i] & ODS_F_ALLOCATED))
+		return 0;
+
+	if (ods->pg_table->pages[i] & ODS_F_IDX_VALID) {
+		bkt = ods->pg_table->pages[i] & ODS_M_IDX;
+		if (blk_is_free(ods, bkt, obj))
+			return 0;
+		sz = ods_bkt_to_size(ods, bkt);
+	} else {
+		for (start = end = i;
+				(end < ods->pg_table->count) &&
+				(0 != (ods->pg_table->pages[end] & ODS_F_NEXT));
+				end++);
+		sz = (end - start + 1) << ODS_PAGE_SHIFT;
+	}
+	return sz;
 }
 
 #ifdef ODS_MAIN

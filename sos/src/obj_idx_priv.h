@@ -74,6 +74,9 @@ struct obj_idx_provider {
 	int (*verify)(obj_idx_t idx);
 };
 
+/**
+ * \brief Object index comparator interface
+ */
 struct obj_idx_comparator {
 	/** Return the name of the comparator */
 	const char *(*get_type)(void);
@@ -85,6 +88,8 @@ struct obj_idx_comparator {
 	int (*from_str)(obj_key_t, const char *);
 	/** Compare two keys */
 	obj_idx_compare_fn_t compare_fn;
+	/** Verify if the key is valid (0==valid, !0==invalid) */
+	int (*verify_key)(obj_key_t key);
 };
 
 #pragma pack(1)

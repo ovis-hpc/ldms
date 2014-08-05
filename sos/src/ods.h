@@ -218,4 +218,15 @@ extern obj_ref_t ods_obj_ptr_to_ref(ods_t ods, void *obj);
  */
 int ods_verify_ref(ods_t ods, obj_ref_t ref);
 
+/**
+ * \brief Get allocated size of the object in ODS.
+ *
+ * \param ods The ODS handle
+ * \param obj Object pointer
+ *
+ * \returns Size of the object
+ * \returns 0 if object is not allocated
+ */
+size_t ods_obj_alloc_size(ods_t ods, void *obj);
+
 #endif

@@ -47,6 +47,7 @@
  */
 
 #include <string.h>
+#include <errno.h>
 #include "obj_idx.h"
 #include "obj_idx_priv.h"
 
@@ -86,15 +87,23 @@ static int blob_comparator(obj_key_t a, obj_key_t b)
 
 static const char *to_str(obj_key_t key)
 {
-	return ((sos_blob_obj_t)key->value)->data;
+	return (void*)((sos_blob_obj_t)key->value)->data;
 }
 
 static int from_str(obj_key_t key, const char *str)
 {
-	sos_blob_obj_t blob = key->value;
-        strcpy(blob->data, str);
+	sos_blob_obj_t blob = (void*)key->value;
+        strcpy((char*)blob->data, str);
 	blob->len = strlen(str)+1;
 	key->len = SOS_BLOB_SIZE(blob);
+	return 0;
+}
+
+static int blob_verify_key(obj_key_t key)
+{
+	/* doesn't make sense to have a blob of length 0 */
+	if (key->len <= sizeof(struct sos_blob_obj_s))
+		return EINVAL;
 	return 0;
 }
 
@@ -103,7 +112,8 @@ static struct obj_idx_comparator key_comparator = {
 	get_doc,
 	to_str,
 	from_str,
-	blob_comparator
+	blob_comparator,
+	blob_verify_key,
 };
 
 struct obj_idx_comparator *get(void)

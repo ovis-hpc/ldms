@@ -562,4 +562,15 @@ void *obj_iter_obj(obj_iter_t iter);
  */
 int obj_idx_verify(obj_idx_t idx);
 
+/**
+ * \brief Verify if the key is valid for the index.
+ *
+ * \param idx The index handle
+ * \param key The key handle
+ *
+ * \retval 0 OK
+ * \retval !0 Error
+ */
+int obj_idx_verify_key(obj_idx_t idx, obj_key_t key);
+
 #endif

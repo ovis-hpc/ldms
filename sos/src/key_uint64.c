@@ -93,12 +93,20 @@ static int from_str(obj_key_t key, const char *str)
 	return 0;
 }
 
+static int uint64_verify_key(obj_key_t key)
+{
+	if (key->len != 8)
+		return EINVAL;
+	return 0;
+}
+
 static struct obj_idx_comparator key_comparator = {
 	get_type,
 	get_doc,
 	to_str,
 	from_str,
-	uint64_comparator
+	uint64_comparator,
+	uint64_verify_key,
 };
 
 struct obj_idx_comparator *get(void)

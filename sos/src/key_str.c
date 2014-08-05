@@ -44,6 +44,7 @@
  * Author: Tom Tucker tom at ogc dot us
  */
 #include <string.h>
+#include <errno.h>
 #include "obj_idx.h"
 #include "obj_idx_priv.h"
 
@@ -84,12 +85,31 @@ static int from_str(obj_key_t key, const char *str)
 	return 0;
 }
 
+static int string_verify_key(obj_key_t key)
+{
+	int i;
+	/* valid string key should not be an empty string */
+	if (key->len <= 1)
+		return EINVAL;
+
+	/* String termination '\0' should appear only at the end */
+	for (i = 0; i < key->len - 1; i++) {
+		if (key->value[i] == 0)
+			return EINVAL;
+	}
+	if (key->value[key->len - 1] != 0)
+		return EINVAL;
+
+	return 0;
+}
+
 static struct obj_idx_comparator key_comparator = {
 	get_type,
 	get_doc,
 	to_str,
 	from_str,
-	string_comparator
+	string_comparator,
+	string_verify_key,
 };
 
 struct obj_idx_comparator *get(void)
