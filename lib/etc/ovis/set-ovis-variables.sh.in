@@ -6,6 +6,8 @@ export OVIS_DATA=/home/ovis-data
 export OVIS_LOG=$OVIS_HOME/var/log
 export OVIS_SOCK=$OVIS_HOME/var/sock
 
+export LDMSD_STORE_RECOVER=rebuild
+
 OLIB=$OVIS_HOME/lib
 export LDMSD_PLUGIN_LIBPATH=$OLIB
 export LDMS_XPRT_LIBPATH=$OLIB
@@ -35,6 +37,7 @@ export LDMSD_AGG_XPORT=sock
 export LDMSD_AGG_PORT_TO_OCMD=20002
 export LDMSD_AGG_PORT_LISTEN=10002
 export LDMSD_AGG_MEM="2G"
+export LDMSD_AGG_SOS=$OVIS_DATA/metrics
 
 export BALER_XPORT=sock
 export BALER_PORT_TO_OCMD=20005

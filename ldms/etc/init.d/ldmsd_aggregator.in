@@ -74,6 +74,19 @@ mkdir -p $OVIS_LOG/
 LOG=$OVIS_LOG/ldmsd_aggregator.log
 SOCK=$OVIS_SOCK/ldmsd_aggregator.ctrl
 
+verify_sos() {
+	if [ ! -d "$LDMSD_AGG_SOS" ]; then
+		return 0
+	fi
+	for X in $LDMSD_AGG_SOS/*/; do
+		ldms-metric-store-verify $X >>$LOG 2>&1
+		if [ 0 -ne $? ]; then
+			return 1
+		fi
+	done
+	return 0
+}
+
 start() {
 	echo -n "Starting $prog: "
 	# Check running instance
@@ -86,6 +99,20 @@ start() {
 	fi
 
 	rm -f $SOCK
+
+	verify_sos
+
+	if [ $? -ne 0 ]; then
+		echo_failure
+		echo
+		echo "SOS verify failed"
+		if [ -z "$LDMSD_STORE_RECOVER" ]; then
+			echo "\$LDMSD_STORE_RECOVER env var is not set"
+			echo "Please set it to 'clean' or 'rebuild' for"
+			echo "SOS recovery action."
+		fi
+		exit 1
+	fi
 
 	archive_log $LOG
 
