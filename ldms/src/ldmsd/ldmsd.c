@@ -1023,6 +1023,7 @@ int process_add_host(int fd,
 	long offset = 0;
 	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
+
 	char *saveptr = NULL;
 
 	chk_replybuf();
