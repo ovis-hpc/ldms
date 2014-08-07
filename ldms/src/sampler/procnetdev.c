@@ -201,6 +201,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char* value;
 	char* ifacelist;
 	char* pch;
+	char *saveptr = NULL;
 
 	value = av_value(avl, "component_id");
 	if (value)
@@ -208,13 +209,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "ifaces");
 	ifacelist = strdup(value);
-	pch = strtok(ifacelist, ",");
+	pch = strtok_r(ifacelist, ",", &saveptr);
 	while (pch != NULL){
 		if (niface >= (MAXIFACE-1))
 			goto err;
 		snprintf(iface[niface], 20, "%s", pch);
 		niface++;
-		pch = strtok(NULL, ",");
+		pch = strtok_r(NULL, ",", &saveptr);
 	}
 	free(ifacelist);
 	ifacelist = NULL;

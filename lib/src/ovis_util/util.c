@@ -80,13 +80,13 @@ int tokenize(char *cmd,
 	     struct attr_value_list *kw_list,
 	     struct attr_value_list *av_list)
 {
-	char *token, *next_token;
+	char *token, *next_token, *saveptr = 0;
 	struct attr_value *av;
 	int next_av, next_kw;
 	next_av = next_kw = 0;
-	for (token = strtok(cmd, " \t\n"); token;) {
+	for (token = strtok_r(cmd, " \t\n", &saveptr); token;) {
 		char *value = strstr(token, "=");
-		next_token = strtok(NULL, " \t\n");
+		next_token = strtok_r(NULL, " \t\n", &saveptr);
 		if (value) {
 			if (next_av >= av_list->size)
 				goto err;

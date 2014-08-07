@@ -235,11 +235,12 @@ struct str_list_head* construct_str_list(const char *strlist)
 	struct str_list_head *h = calloc(1, sizeof(*h));
 	struct str_list *sl;
 	static const char *delim = ",";
+	char *saveptr = NULL;
 	if (!strlist)
 		return NULL;
 
 	char *tmp = strdup(strlist);
-	char *s = strtok(tmp, delim);
+	char *s = strtok_r(tmp, delim, &saveptr);
 	while (s) {
 		sl = calloc(1, sizeof(*sl));
 		if (!sl)
@@ -248,7 +249,7 @@ struct str_list_head* construct_str_list(const char *strlist)
 		if (!sl->str)
 			goto err1;
 		LIST_INSERT_HEAD(h, sl, link);
-		s = strtok(NULL, delim);
+		s = strtok_r(NULL, delim, &saveptr);
 	}
 	free(tmp);
 	return h;

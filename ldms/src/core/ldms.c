@@ -629,13 +629,16 @@ char *_create_path(const char *set_name)
 	char *basec = strdup(set_name);
 	char *dname = dirname(dirc);
 	char *bname = basename(basec);
+	char *saveptr = NULL;
 	char *p;
 	int tail, rc = 0;
 
 	/* Create each node in the dir. __set_dir is presumed to exist */
 	snprintf(__set_path, PATH_MAX, "%s/", __set_dir);
 	tail = strlen(__set_path) - 1;
-	for (p = strtok(dname, "/"); p; p = strtok(NULL, "/")) {
+	for (	p = strtok_r(dname, "/",&saveptr);
+		p;
+		p = strtok_r(NULL, "/",&saveptr )) {
 		/* remove duplicate '/'s */
 		if (*p == '/')
 			p++;

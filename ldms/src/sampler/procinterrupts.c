@@ -84,7 +84,8 @@ static ldms_set_t get_set()
 static int getNProcs(char buf[]){
 	int nproc = 0;
 	char* pch;
-	pch = strtok(buf, " ");
+	char* saveptr = NULL;
+	pch = strtok_r(buf, " ", &saveptr);
 	while (pch != NULL){
 		if (pch[0] == '\n'){
 			break;
@@ -92,7 +93,7 @@ static int getNProcs(char buf[]){
 		if (pch[0] != ' '){
 			nproc++;
 		}
-		pch = strtok(NULL," ");
+		pch = strtok_r(NULL," ", &saveptr);
 	}
 
 	return nproc;
@@ -104,7 +105,7 @@ static int create_metric_set(const char *path)
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
 	int rc, i, metric_count;
-	char *s;
+	char *s, *saveptr = NULL;
 	char lbuf[256];
 	char metric_name[128];
 
@@ -141,7 +142,7 @@ static int create_metric_set(const char *path)
 		if (!s)
 			break;
 		int currcol = 0;
-		char* pch = strtok (lbuf," ");
+		char* pch = strtok_r(lbuf," ",&saveptr);
 		while (pch != NULL && currcol <= nprocs){
 			if (pch[0] == '\n'){
 				break;
@@ -163,8 +164,8 @@ static int create_metric_set(const char *path)
 				metric_count++;
 			}
 			currcol++;
-			pch = strtok(NULL," ");
-		} // while (strtok)
+			pch = strtok_r(NULL," ",&saveptr);
+		} // while (strtok_r)
 	} //while(s)
 
 	/* Create a metric set of the required size */
@@ -188,7 +189,7 @@ static int create_metric_set(const char *path)
 		if (!s)
 			break;
 		int currcol = 0;
-		char* pch = strtok (lbuf," ");
+		char* pch = strtok_r(lbuf," ", &saveptr);
 		while (pch != NULL && currcol <= nprocs){
 			if (pch[0] == '\n'){
 				break;
@@ -215,8 +216,8 @@ static int create_metric_set(const char *path)
 				metric_no++;
 			}
 			currcol++;
-			pch = strtok(NULL," ");
-		} // while (strtok)
+			pch = strtok_r(NULL," ", &saveptr);
+		} // while (strtok_r)
 	} //while(s)
 	return 0;
 
@@ -250,7 +251,7 @@ static int sample(void)
 {
 	int rc;
 	int metric_no;
-	char *s;
+	char *s, *saveptr = NULL;
 	char lbuf[256];
 	union ldms_value v;
 
@@ -271,7 +272,7 @@ static int sample(void)
 			break;
 
 		int currcol = 0;
-		char* pch = strtok(lbuf, " ");
+		char* pch = strtok_r(lbuf, " ", &saveptr);
 		while (pch != NULL && currcol <= nprocs){
 			if (pch[0] == '\n'){
 				break;
@@ -295,8 +296,8 @@ static int sample(void)
 				}
 				currcol++;
 			}
-			pch = strtok(NULL," ");
-		} //strtok
+			pch = strtok_r(NULL," ", &saveptr);
+		} 
 	} while (s);
 	rc = 0;
 out:

@@ -296,23 +296,24 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	char *s;
 	char *tmp;
+	char *saveptr = NULL;
 	num_disks = 0;
 
 	value = av_value(avl, "disks");
 	if (value) {
 		s = strdup(value);
-		tmp = strtok(s, ",");
+		tmp = strtok_r(s, ",", &saveptr);
 		while (tmp) {
 			num_disks++;
-			tmp = strtok(NULL, ",");
+			tmp = strtok_r(NULL, ",", &saveptr);
 		}
 		disknames = malloc(num_disks * sizeof(char *));
 		free(s);
-		tmp = strtok(value, ",");
+		tmp = strtok_r(value, ",", &saveptr);
 		int i = 0;
 		while (tmp) {
 			disknames[i] = strdup(tmp);
-			tmp = strtok(NULL, ",");
+			tmp = strtok_r(NULL, ",", &saveptr);
 			i++;
 		}
 	} else {

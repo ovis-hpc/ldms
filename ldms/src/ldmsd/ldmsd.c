@@ -1024,6 +1024,8 @@ int process_add_host(int fd,
 	long port_no = LDMS_DEFAULT_PORT;
 	char intbuf[FMT_INT64_LEN];
 
+	char *saveptr = NULL;
+
 	chk_replybuf();
 
 	/* Handle all the EINVAL cases first */
@@ -1163,7 +1165,7 @@ int process_add_host(int fd,
 	if (host_type == BRIDGING)
 		goto add_timeout;
 
-	char *set_name = strtok(sets, ",");
+	char *set_name = strtok_r(sets, ",", &saveptr);
 	struct hostset *hset;
 	while (set_name) {
 		/* Check to see if it's already there */
@@ -1193,7 +1195,7 @@ int process_add_host(int fd,
 			send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 			goto clean_set_list;
 		}
-		set_name = strtok(NULL, ",");
+		set_name = strtok_r(NULL, ",", &saveptr);
 	}
 add_timeout:
 	evtimer_add(hs->event, &hs->timeout);
@@ -1442,6 +1444,7 @@ int _mvec_find_metric(ldms_mvec_t mvec, const char *name)
 int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, ldms_mvec_t mvec)
 {
 	struct ldmsd_store_metric_index *smi;
+	char *saveptr = NULL;
 	chk_replybuf(); /* we sprintf or bdstr err messages without deliver*/
 	if (!_metrics) {
 		const char *mname;
@@ -1466,9 +1469,7 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, 
 		char *metrics = strdup(_metrics);
 		char *metric;
 		int index;
-		uint32_t count = ldms_mvec_get_count(mvec);
-
-		metric = strtok(metrics, ",");
+		metric = strtok_r(metrics, ",", &saveptr);
 		while (metric) {
 			index = _mvec_find_metric(mvec, metric);
 			if (index < 0) {
@@ -1497,10 +1498,8 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics, 
 			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
 			sp->metric_count++;
 
-			metric = strtok(NULL, ",");
+			metric = strtok_r(NULL, ",", &saveptr);
 		}
-		if (metrics)
-			free(metrics);
 
 	}
 	sp->state = STORE_POLICY_READY;
@@ -1577,6 +1576,7 @@ int process_store(int fd,
 	char err_s[128];
 	struct hostspec *hs;
 	struct plugin *store;
+	char *saveptr;
 
 	chk_replybuf();
 	if (LIST_EMPTY(&host_list)) {
@@ -1638,7 +1638,7 @@ int process_store(int fd,
 		pthread_mutex_unlock(&host_list_lock);
 	} else {
 		/* Given hosts */
-		char *hostname = strtok(hosts, ",");
+		char *hostname = strtok_r(hosts, ",", &saveptr);
 		while (hostname) {
 			pthread_mutex_lock(&host_list_lock);
 			/*
@@ -1667,7 +1667,7 @@ int process_store(int fd,
 						bdlen+1);
 				return ENOENT;
 			}
-			hostname = strtok(NULL, ",");
+			hostname = strtok_r(NULL, ",", &saveptr);
 		}
 	}
 	/* Done creating the hostset_ref_list for the store policy */
@@ -1693,7 +1693,7 @@ int process_store(int fd,
 	 * and, if metrics are given, create a blank metric list.
 	 */
 	if (sp->state != STORE_POLICY_READY && metrics) {
-		char *metric = strtok(metrics, ",");
+		char *metric = strtok_r(metrics, ",", &saveptr);
 		struct ldmsd_store_metric_index *smi;
 		while (metric) {
 			smi = malloc(sizeof(*smi));
@@ -1714,7 +1714,7 @@ int process_store(int fd,
 			}
 			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
 			sp->metric_count++;
-			metric = strtok(NULL, ",");
+			metric = strtok_r(NULL, ",", &saveptr);
 		}
 	}
 
@@ -2487,10 +2487,13 @@ void listen_on_transport(char *transport_str)
 	ldms_t l;
 	int ret;
 	struct sockaddr_in sin;
+	char *tmp;
+	char *saveptr = NULL;
 
 	ldms_log("Listening on transport %s\n", transport_str);
-	name = strtok(transport_str, ":");
-	port_s = strtok(NULL, ":");
+	tmp = strdup(transport_str);
+	name = strtok_r(tmp, ":", &saveptr);
+	port_s = strtok_r(NULL, ":", &saveptr);
 	if (!port_s)
 		port_no = LDMS_DEFAULT_PORT;
 	else
@@ -2499,6 +2502,7 @@ void listen_on_transport(char *transport_str)
 	l = ldms_create_xprt(name, ldms_log);
 	if (!l) {
 		ldms_log("The transport specified, '%s', is invalid.\n", name);
+		free(tmp);
 		cleanup(6);
 	}
 	sin.sin_family = AF_INET;
@@ -2508,8 +2512,10 @@ void listen_on_transport(char *transport_str)
 	if (ret) {
 		ldms_log("Error %d listening on the '%s' transport.\n",
 			 ret, name);
+		free(tmp);
 		cleanup(7);
 	}
+	free(tmp);
 }
 
 void ev_log_cb(int sev, const char *msg)

@@ -124,6 +124,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 
 	FILE* pipe;
 	char buffer[128];
+	char *saveptr = NULL;
 
 	int i;
 	int rc;
@@ -155,7 +156,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 		int ntiles = -1;
 
 		if(fgets(buffer, 128, pipe) != NULL){
-			pch = strtok (buffer, " \n");
+			pch = strtok_r(buffer, " \n", &saveptr);
 			while (pch != NULL){
 				if (ntiles == -1) {
 					if (strcmp(linksmetrics_dir[i],
@@ -167,7 +168,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 					}
 				}
 				ntiles++;
-				pch = strtok(NULL, " \n");
+				pch = strtok_r(NULL, " \n", &saveptr);
 			}
 		}
 		if (ntiles >= 0) {
