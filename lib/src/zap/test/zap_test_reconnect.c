@@ -136,10 +136,10 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 
 void client_cb(zap_ep_t zep, zap_event_t ev)
 {
-	zap_err_t zerr;
+
 	struct sockaddr_in lsin = {0};
 	struct sockaddr_in rsin = {0};
-	socklen_t slen;
+
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -256,7 +256,7 @@ void *send_msg(void *arg)
 void do_client(struct sockaddr_in *sin)
 {
 	struct addrinfo *ai;
-	zap_err_t zerr;
+
 	int rc;
 
 	rc = getaddrinfo(host, NULL, NULL, &ai);

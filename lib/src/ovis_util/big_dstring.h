@@ -43,6 +43,7 @@ typedef struct big_dstring { \
 static void bdstr_free(big_dstring_t *dsPtr); \
 static void bdstr_init(big_dstring_t *dsPtr); \
 static inline char *bdstr_set(big_dstring_t *dsPtr, const char *string); \
+static inline char *bdstr_set_int(big_dstring_t *dsPtr, int64_t val); \
 static inline char *bdstrcat( big_dstring_t *dsPtr, const char * string, int len); \
 static inline void bdstr_trunc(big_dstring_t *dsPtr, int length); \
 static char *bdstr_extract(big_dstring_t *dsPtr); \
@@ -81,7 +82,7 @@ static char *bdstr_extract(big_dstring_t *dsPtr) \
 	char *result; \
 	assert (NULL != dsPtr); \
 	result = (char *)malloc(strlen(dsPtr->string)+1); \
-	strcpy(result,dsPtr->string); \
+	if (result) strcpy(result,dsPtr->string); \
 	bdstr_free(dsPtr);  \
 	return result; \
 } \
@@ -116,6 +117,11 @@ static inline void bdstr_trunc(big_dstring_t *dsPtr, int length) \
 static inline char *bdstr_set(big_dstring_t *dsPtr, const char *string) \
 { \
 	return dstr_set((dstring_t*)dsPtr, string); \
+} \
+\
+static inline char *bdstr_set_int(big_dstring_t *dsPtr, int64_t val) \
+{ \
+	return dstr_set_int((dstring_t*)dsPtr, val); \
 } \
 \
 static const int bd_static_size=DSTRING_STATIC_SIZE

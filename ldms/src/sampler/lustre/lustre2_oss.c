@@ -247,7 +247,7 @@ static int create_metric_set(const char *path, const char *osts)
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
 	int rc, i, j, metric_count;
-	uint64_t metric_value;
+
 	char metric_name[128];
 
 	/* First calculate the set size */

@@ -262,7 +262,7 @@ static int create_metric_set(const char *setname)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
-	int rc, i, j, metric_count;
+	int rc, i;
 	char metric_name[128];
 	struct scib_port *port;
 
@@ -409,7 +409,7 @@ int populate_ports(struct scib_port_list *list, char *ports)
 {
 	int rc, n, port_no;
 	struct scib_port *port;
-	char *pstr, *tok, *s;
+	char *s;
 	char ca[64];
 	if (strcmp(ports, "*") == 0)
 		return populate_ports_wild(list);
@@ -624,7 +624,7 @@ int query_port(struct scib_port *port, float dt)
 	void *p;
 	int rc;
 	uint64_t v;
-	float r;
+
 	int i, j;
 	if (!port->srcport) {
 		rc = open_port(port);
@@ -689,11 +689,11 @@ int query_port(struct scib_port *port, float dt)
 
 static int sample(void)
 {
-	int rc;
-	char *s;
+
+
 	char lbuf[32];
-	union ldms_value v, vr;
-	int i,j;
+
+
 	struct timeval *tmp;
 	struct timeval tv_diff;
 	float dt;

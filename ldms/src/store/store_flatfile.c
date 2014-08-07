@@ -303,7 +303,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 	struct flatfile_store_instance *si = _sh;
 	if (!_sh)
 		return EINVAL;
-	int i;
+
 	int lrc, rc = 0;
 	int eno = 0;
 	struct flatfile_metric_store *ms;
@@ -332,7 +332,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 	struct flatfile_store_instance *si = _sh;
 	if (!_sh)
 		return;
-	int i;
+
 	struct flatfile_metric_store *ms;
 	while (ms = LIST_FIRST(&si->ms_list)) {
 		LIST_REMOVE(ms, entry);

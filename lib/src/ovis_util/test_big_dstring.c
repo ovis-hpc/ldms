@@ -2,6 +2,7 @@
 #include "stdlib.h"
 #include "string.h"
 #include "assert.h"
+#include "limits.h"
 #include "big_dstring.h"
 BIG_DSTRING_TYPE(65536);
 
@@ -31,8 +32,21 @@ struct x createfoo(int lim)
 	return x;
 }
 
-int main(int argc, char **argv)
+void check_int()
 {
+	int j = INT_MAX;
+	int64_t k = INT64_MAX;
+	big_dstring_t bs;
+	bdstr_init(&bs);
+	char *c = bdstr_set_int(&bs,j);
+	printf("fmt intmax= %s\n",c);
+
+	c = bdstr_set_int(&bs,k);
+	printf("fmt int8max= %s\n",c);
+}
+
+void dostuff() {
+	check_int();
 	struct x x, y;
 	x = createfoo(10);
 	printf("%s\n", x.x1);
@@ -44,6 +58,11 @@ int main(int argc, char **argv)
 	printf("%lu,%lu\n", strlen(y.x1), strlen(y.x2));
 	free(y.x1);
 	free(y.x2);
+}
+
+int main(int argc, char **argv)
+{
+	dostuff();
 	return 0;
 }
 

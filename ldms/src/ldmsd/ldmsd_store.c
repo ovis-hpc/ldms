@@ -307,7 +307,7 @@ int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
 	int flush = 0;
 	records++;
 	double bytespersec = 0.0;
-	int i;
+
 
 	pthread_mutex_lock(&si->lock);
 	switch (si->state) {
