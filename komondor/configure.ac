@@ -66,6 +66,9 @@ AC_CONFIG_FILES([Makefile
 		 src/store/Makefile
 		 python/Makefile
 		 python/komondor/Makefile
+		 etc/Makefile
+		 etc/init.d/Makefile
+		 etc/init.d/komondor
+		 etc/logrotate.d/Makefile
 		 ])
-AC_OUTPUT(etc/Makefile etc/init.d/komondor)
-
+AC_OUTPUT

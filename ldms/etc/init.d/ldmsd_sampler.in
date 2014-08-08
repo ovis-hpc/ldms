@@ -89,8 +89,6 @@ start() {
 
 	rm -f $SOCK
 
-	archive_log $LOG
-
 	$LDMSD_SAMPLER -l $LOG -S $SOCK -x $LDMSD_SAMPLER_XPORT:$LDMSD_SAMPLER_PORT_LISTEN -o $LDMSD_SAMPLER_PORT_TO_OCMD -z ldmsd_sampler
 
 	RETVAL=$?

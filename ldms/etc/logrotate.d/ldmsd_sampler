@@ -1,0 +1,9 @@
+"ldmsd_sampler.log" {
+	maxsize 5M
+	maxage 90
+	rotate 168
+	notifempty
+	compress
+	delaycompress
+	copytruncate
+}

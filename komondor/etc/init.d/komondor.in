@@ -88,8 +88,6 @@ start() {
 		exit 1
 	fi
 
-	archive_log $LOG
-
 	sos_check_dir $OVIS_DATA/act_sos restore >> $LOG 2>&1
 	if [ $? -ne 0 ]; then
 		echo_failure

@@ -88,7 +88,6 @@ start() {
 	fi
 
 	rm -f $SOCK
-	archive_log $LOG
 
 	#Start me
 	$ME -S $SOCK -l $LOG -x $ME_XPORT:$ME_PORT_LISTEN -O $ME_PORT_TO_OCMD  $@

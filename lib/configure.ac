@@ -64,21 +64,26 @@ fi
 
 AC_SUBST(ac_configure_args)
 
-AC_OUTPUT(Makefile
-	  ovis-lib.spec
-	  Doxyfile
-	  packaging/ovis-lib-toss.spec
-	  src/Makefile src/coll/Makefile
-	  src/mmalloc/Makefile
-	  src/ovis_ctrl/Makefile
-	  src/ovis_util/Makefile
-	  src/zap/Makefile
-	  src/zap/rdma/Makefile
-	  src/zap/sock/Makefile
-	  src/zap/test/Makefile
-	  swig/Makefile
-	  swig/zap/Makefile
-	  etc/ovis/set-ovis-variables.sh
-	  etc/ld.so.conf.d/ovis-ld-so.conf
-	  etc/Makefile
-	  )
+AC_CONFIG_FILES([ovis-lib.spec
+		Doxyfile
+		packaging/ovis-lib-toss.spec
+		Makefile
+		src/Makefile src/coll/Makefile
+		src/mmalloc/Makefile
+		src/ovis_ctrl/Makefile
+		src/ovis_util/Makefile
+		src/zap/Makefile
+		src/zap/rdma/Makefile
+		src/zap/sock/Makefile
+		src/zap/test/Makefile
+		swig/Makefile
+		swig/zap/Makefile
+		etc/Makefile
+		etc/ovis/Makefile
+		etc/ovis/set-ovis-variables.sh
+		etc/ovis/ovis-logrotate
+		etc/ld.so.conf.d/Makefile
+		etc/ld.so.conf.d/ovis-ld-so.conf
+])
+
+AC_OUTPUT

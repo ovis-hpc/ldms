@@ -99,8 +99,6 @@ start() {
 		exit 1
 	fi
 
-	archive_log $LOG
-
 	$BALER -l $LOG -s $BALER_STORE -z $BALER_PORT_TO_OCMD
 
 	RETVAL=$?

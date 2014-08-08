@@ -65,10 +65,12 @@ fi
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([docs/Doxyfile])])
 
-AC_CONFIG_FILES(Makefile docs/Makefile src/Makefile
+AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
 	scripts/Makefile src/baler/Makefile src/plugins/Makefile
 	src/query/Makefile src/test/Makefile
 	src/plugins/test/Makefile swig/Makefile etc/Makefile
-)
+	etc/init.d/Makefile etc/init.d/balerd
+	etc/logrotate.d/Makefile
+])
 
-AC_OUTPUT(etc/init.d/balerd)
+AC_OUTPUT

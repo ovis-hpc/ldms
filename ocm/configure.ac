@@ -58,12 +58,16 @@ AC_CHECK_LIB(zap, zap_new, [],
 dnl Reset LIBS variable.
 LIBS=""
 
-AC_OUTPUT(Makefile
-	  src/Makefile
-	  src/test/Makefile
-	  src/plugins/Makefile
-	  src/parsers/Makefile
-	  src/parsers/oparser_sqlite/Makefile
-	  etc/init.d/ocmd
-	  etc/Makefile
-	)
+AC_CONFIG_FILES([Makefile
+		src/Makefile
+		src/test/Makefile
+		src/plugins/Makefile
+		src/parsers/Makefile
+		src/parsers/oparser_sqlite/Makefile
+		etc/Makefile
+		etc/init.d/Makefile
+		etc/init.d/ocmd
+		etc/logrotate.d/Makefile
+])
+
+AC_OUTPUT

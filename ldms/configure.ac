@@ -238,7 +238,13 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/ldmsd/Makefile
 		 etc/Makefile
+		 etc/init.d/Makefile
+		 etc/init.d/ldmsd_aggregator
+		 etc/init.d/ldmsd_sampler
+		 etc/logrotate.d/Makefile
+		 scripts/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 ldms.spec])
-AC_OUTPUT(etc/init.d/ldmsd_aggregator etc/init.d/ldmsd_sampler)
+
+AC_OUTPUT
