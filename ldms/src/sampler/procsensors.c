@@ -297,41 +297,43 @@ static ldms_set_t get_set()
 
 static int sample(void)
 {
-	int rc;
+	int rc, retrc;
 	char *s;
 	char lbuf[20];
 	union ldms_value v;
 	int i;
 
-	ldms_begin_transaction(set);
+	rc = 0;
+	retrc = 0;
 
+	ldms_begin_transaction(set);
 	for (i = 0; i < metric_count; i++){
 		//FIXME: do we really want to open and close each one?
 		mf = fopen(sensorrawname[i], "r");
 		if (!mf) {
-			msglog("Could not open the procsensors file '%s'...exiting\n", sensorrawname[i]);
-			rc = ENOENT;
-			goto out;
-		}
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s){
+			msglog("Could not open the procsensors file '%s'...continuing\n",
+			       sensorrawname[i]);
+			retrc = ENOENT;
+		} else {
+			s = fgets(lbuf, sizeof(lbuf), mf);
+			if (!s){
+				if (mf) fclose(mf);
+				break;
+			}
+			rc = sscanf(lbuf, "%"PRIu64 "\n", &v.v_u64);
+			if (rc != 1){
+				retrc = EINVAL;
+				/* do not goto out - keep going */
+			} else {
+				ldms_set_metric(metric_table[i], &v);
+			}
 			if (mf) fclose(mf);
-			break;
 		}
-		rc = sscanf(lbuf, "%"PRIu64 "\n", &v.v_u64);
-		if (rc != 1){
-			if (mf) fclose(mf);
-			rc = EINVAL;
-			goto out;
-		}
-		ldms_set_metric(metric_table[i], &v);
-		if (mf) fclose(mf);
 	}
 
-	rc = 0;
 out:
 	ldms_end_transaction(set);
-	return rc;
+	return retrc;
 }
 
 static void term(void)
