@@ -13,8 +13,11 @@ ldmscoreinclude_HEADERS = ldms.h ldmsd.h ldms_xprt.h ldms_auth.h ldms_xprt_cmd.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h ldms_auth.c
 libldms_la_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
-libldms_la_LIBADD = -ldl -lpthread @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
-		    -lmmalloc -lcoll -lrt
+libldms_la_LIBADD = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
+			-lmmalloc -lcoll \
+			@OPENSSL_LIBS@ \
+			-lpthread \
+			-ldl -lrt
 lib_LTLIBRARIES += libldms.la
 
 ldms_config.h: ../../config.h

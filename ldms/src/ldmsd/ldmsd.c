@@ -83,6 +83,18 @@
 #include <yaml.h>
 #endif
 
+#if USE_TF
+#if USE_RTC
+#define LOGRTC
+#endif
+#if (defined(__linux) && USE_TID)
+#define TF() default_log("Thd%lu:%s:%lu:%s\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__,__FILE__)
+#else
+#define TF() default_log("%s:%d\n", __FUNCTION__, __LINE__)
+#endif /* linux */
+#else
+#define TF()
+#endif /* 1 or 0 disable tf */
 /**
  * \brief Convenient error report and exit macro.
  * \param fmt The format (as in printf format).
@@ -203,15 +215,23 @@ void ldms_log(const char *fmt, ...)
 	if (quiet) /* Don't say a word when quiet */
 		return;
 	va_list ap;
+	pthread_mutex_lock(&mutex);
+#ifdef LOGRTC
+	struct timespec ts;
+	if (clock_gettime(CLOCK_REALTIME,&ts) != 0) {
+		ts.tv_sec= 0;
+		ts.tv_nsec=0;
+	}
+	fprintf(log_fp,"%lu:%9lu: ",ts.tv_sec, ts.tv_nsec);
+#else
 	time_t t;
 	struct tm *tm;
 	char dtsz[200];
-
-	pthread_mutex_lock(&mutex);
 	t = time(NULL);
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 		fprintf(log_fp, "%s: ", dtsz);
+#endif
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
@@ -324,6 +344,7 @@ int map_fd;
 ldms_set_t map_set;
 int publish_kernel(const char *setfile)
 {
+	TF();
 	int rc;
 	int i, j;
 	void *meta_addr;
@@ -426,6 +447,7 @@ for (; init_replybuf <1; init_replybuf++) bdstr_init(&replybuf)
 int send_reply(int sock, struct sockaddr *sa, ssize_t sa_len,
 	       char *msg, ssize_t msg_len)
 {
+	TF();
 	struct msghdr reply;
 	struct iovec iov;
 
@@ -465,6 +487,7 @@ LIST_HEAD(plugin_list, plugin) plugin_list;
 
 struct plugin *get_plugin(char *name)
 {
+	TF();
 	struct plugin *p;
 	LIST_FOREACH(p, &plugin_list, entry) {
 		if (0 == strcmp(p->name, name))
@@ -523,6 +546,7 @@ static int calculate_timeout(int thread_id, unsigned long interval_us,
 static char library_name[PATH_MAX];
 struct plugin *new_plugin(char *plugin_name, char *err_str)
 {
+	TF();
 	struct ldmsd_plugin *lpi;
 	struct plugin *pi = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
@@ -579,6 +603,7 @@ struct plugin *new_plugin(char *plugin_name, char *err_str)
 
 void destroy_plugin(struct plugin *p)
 {
+	TF();
 	free(p->libpath);
 	free(p->name);
 	LIST_REMOVE(p, entry);
@@ -603,6 +628,7 @@ int process_info(int fd,
 		"BUSY",
 		"READY"
 	};
+	TF();
 	int i;
 	struct hostspec *hs;
 	int verbose = 0;
@@ -687,6 +713,7 @@ int process_load_plugin(int fd,
 			struct sockaddr *sa, ssize_t sa_len,
 			char *command)
 {
+	TF();
 	char *plugin_name;
 	char err_str[128];
 	char reply[128];
@@ -720,6 +747,7 @@ int process_term_plugin(int fd,
 			struct sockaddr *sa, ssize_t sa_len,
 			char *command)
 {
+	TF();
 	char *plugin_name;
 	char *err_str = "";
 	int rc = 0;
@@ -762,6 +790,7 @@ int process_config_plugin(int fd,
 			  struct sockaddr *sa, ssize_t sa_len,
 			  char *command)
 {
+	TF();
 	char *plugin_name;
 	char *err_str = "";
 	int rc = 0;
@@ -815,6 +844,7 @@ int process_start_sampler(int fd,
 			 struct sockaddr *sa, ssize_t sa_len,
 			 char *command)
 {
+	TF();
 	char *attr;
 	char *err_str = "";
 	int rc = 0;
@@ -898,6 +928,7 @@ int process_stop_sampler(int fd,
 			 struct sockaddr *sa, ssize_t sa_len,
 			 char *command)
 {
+	TF();
 	char *plugin_name;
 	char *err_str = "";
 	int rc = 0;
@@ -945,6 +976,7 @@ int process_ls_plugins(int fd,
 		       struct sockaddr *sa, ssize_t sa_len,
 		       char *command)
 {
+	TF();
 	struct plugin *p;
 	chk_replybuf();
 	cat("0");
@@ -997,6 +1029,7 @@ int str_to_host_type(char *type)
 void do_host(struct hostspec *hs);
 void host_sampler_cb(int fd, short sig, void *arg)
 {
+	TF();
 	struct hostspec *hs = arg;
 
 	do_host(hs);
@@ -1008,6 +1041,7 @@ int process_add_host(int fd,
 		     struct sockaddr *sa, ssize_t sa_len,
 		     char *command)
 {
+	TF();
 	int rc;
 	struct sockaddr_in sin;
 	struct hostspec *hs;
@@ -1236,6 +1270,7 @@ int process_update_standby(int fd,
 		     struct sockaddr *sa, ssize_t sa_len,
 		     char *command)
 {
+	TF();
 
 	char *attr;
 	char *type;
@@ -1296,6 +1331,7 @@ int process_update_standby(int fd,
 struct ldmsd_store_policy *get_store_policy(const char *container,
 			const char *set_name, const char *comp_type)
 {
+	TF();
 	struct ldmsd_store_policy *sp;
 	int found = 0;
 	pthread_mutex_lock(&sp_list_lock);
@@ -1363,6 +1399,7 @@ int sp_create_hset_ref_list(struct hostspec *hs,
 			   const char *hostname,
 			   const char *_metrics)
 {
+	TF();
 	int rc;
 	struct hostset *hset;
 	char *set_name = sp->setname;
@@ -1571,6 +1608,7 @@ int process_store(int fd,
 		  struct sockaddr *sa, ssize_t sa_len,
 		  char *command)
 {
+	TF();
 	char *err_str;
 	char *set_name;
 	char *store_name;
@@ -1804,6 +1842,7 @@ int process_remove_host(int fd,
 			 struct sockaddr *sa, ssize_t sa_len,
 			 char *command)
 {
+	TF();
 	return -1;
 }
 
@@ -1857,6 +1896,7 @@ int process_record(int fd,
 		   struct sockaddr *sa, ssize_t sa_len,
 		   char *command, ssize_t cmd_len)
 {
+	TF();
 	char *cmd_s;
 	long cmd_id;
 	int rc = tokenize(command, kw_list, av_list);
@@ -1977,6 +2017,7 @@ int sample_interval = 2000000;
 void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 		void *arg)
 {
+	TF();
 	struct hset_metric *hsm;
 	struct hostset *hset = arg;
 	pthread_mutex_lock(&hset->state_lock);
@@ -2011,6 +2052,7 @@ out:
  */
 void reset_set_metrics(struct hostset *hset)
 {
+	TF();
 	struct hset_metric *hsm;
 	if (hset->mvec) {
 		int i;
@@ -2048,6 +2090,7 @@ void reset_host(struct hostspec *hs)
 
 int do_connect(struct hostspec *hs)
 {
+	TF();
 	int ret;
 
 	if (hs->x)
@@ -2128,6 +2171,7 @@ err:
 
 void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 {
+	TF();
 	struct hostset *hset = arg;
 	uint64_t gn;
 	pthread_mutex_lock(&hset->state_lock);
@@ -2203,12 +2247,17 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 
 void update_data(struct hostspec *hs)
 {
+	TF();
 	int ret;
 	struct hostset *hset;
 	int host_error = 0;
 
 	if (!hs->x)
 		return;
+	if (!ldms_xprt_authenticated(hs->x)) {
+		ldms_log("transport not yet authenticated. deferring.\n");
+		return;
+	}
 
 	/* Take the host lock to protect the set_list */
 	pthread_mutex_lock(&hs->set_list_lock);
@@ -2301,6 +2350,7 @@ void schedule_update(struct hostspec *hs)
 
 void do_host(struct hostspec *hs)
 {
+	TF();
 	int rc;
 	pthread_mutex_lock(&hs->conn_state_lock);
 	switch (hs->conn_state) {
@@ -2336,6 +2386,7 @@ void do_host(struct hostspec *hs)
 
 int do_passive_connect(struct hostspec *hs)
 {
+	TF();
 	ldms_t l = ldms_xprt_find(&hs->sin);
 	if (!l)
 		return -1;
@@ -2351,6 +2402,7 @@ int do_passive_connect(struct hostspec *hs)
 
 int process_message(int sock, struct msghdr *msg, ssize_t msglen)
 {
+	TF();
 	return process_record(sock,
 			      msg->msg_name, msg->msg_namelen,
 			      msg->msg_iov->iov_base, msglen);
@@ -2358,6 +2410,7 @@ int process_message(int sock, struct msghdr *msg, ssize_t msglen)
 
 void keepalive_cb(int fd, short sig, void *arg)
 {
+	TF();
 	struct event *keepalive = arg;
 	struct timeval keepalive_to;
 
@@ -2425,6 +2478,7 @@ void *connect_proc(void *v)
 
 void *event_proc(void *v)
 {
+	TF();
 	struct event_base *sampler_base = v;
 	struct timeval keepalive_to;
 	struct event *keepalive;
@@ -2441,6 +2495,7 @@ void *event_proc(void *v)
 static unsigned char ctrl_rcv_lbuf[LDMS_MSG_MAX];
 void *ctrl_thread_proc(void *v)
 {
+	TF();
 	struct msghdr msg;
 	struct iovec iov;
 	struct sockaddr_storage ss;
@@ -2467,6 +2522,7 @@ void *ctrl_thread_proc(void *v)
 static unsigned char inet_rcv_lbuf[LDMS_MSG_MAX];
 void *inet_ctrl_thread_proc(void *v)
 {
+	TF();
 	struct msghdr msg;
 	struct iovec iov;
 	struct sockaddr_in sin;
@@ -2492,6 +2548,7 @@ void *inet_ctrl_thread_proc(void *v)
 
 void listen_on_transport(char *transport_str)
 {
+	TF();
 	char *name;
 	char *port_s;
 	int port_no;
@@ -2536,6 +2593,7 @@ void ev_log_cb(int sev, const char *msg)
 
 int setup_control(char *sockname)
 {
+	TF();
 	struct sockaddr_un sun;
 	int ret;
 
@@ -3534,6 +3592,7 @@ int main(int argc, char *argv[])
 		cleanup(7);
 	}
 
+	TF();
 	if (listen_arg)
 		listen_on_transport(listen_arg);
 
@@ -3546,6 +3605,7 @@ int main(int argc, char *argv[])
 
 	uint64_t count = 1;
 	do {
+		 /* TF(); */
 		int set_no;
 		for (set_no = 0; set_no < test_set_count; set_no++) {
 			ldms_begin_transaction(test_sets[set_no]);

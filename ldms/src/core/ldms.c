@@ -75,7 +75,7 @@
 #include <pthread.h>
 
 #if USE_TF
-#ifdef __linux
+#if (defined(__linux) && USE_TID)
 #define TF() default_log("Thd%lu:%s:%lu:%s\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__,__FILE__)
 #else
 #define TF() default_log("%s:%d\n", __FUNCTION__, __LINE__)
@@ -470,6 +470,7 @@ void ldms_destroy_set(ldms_set_t s)
 int ldms_lookup(ldms_t _x, const char *path,
 		ldms_lookup_cb_t cb, void *cb_arg)
 {
+	TF();
 	struct ldms_xprt *x = (struct ldms_xprt *)_x;
 	struct ldms_set *set;
 	ldms_set_t s;
@@ -548,6 +549,7 @@ static struct ftw_context {
 
 static int local_dir_cb(const char *fpath, const struct stat *sb, int typeflag)
 {
+	TF();
 	const char *p;
 	int c, len;
 	struct ldms_set *set;
@@ -578,6 +580,7 @@ static int local_dir_cb(const char *fpath, const struct stat *sb, int typeflag)
 
 static int local_dir(int *set_count, char *set_list, size_t *set_list_sz)
 {
+	TF();
 	int rc;
 	int set_list_size;
 
@@ -605,6 +608,7 @@ static int local_dir(int *set_count, char *set_list, size_t *set_list_sz)
 
 int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
+	TF();
 	struct ldms_xprt *_x = (struct ldms_xprt *)x;
 #ifdef ENABLE_MMAP
 	if (0 == strcmp(_x->name, "local"))
@@ -618,6 +622,7 @@ int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 
 void ldms_dir_cancel(ldms_t x)
 {
+	TF();
 	__ldms_remote_dir_cancel(x);
 }
 
@@ -804,6 +809,7 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 
 int ldms_init(size_t max_size)
 {
+	TF();
 	size_t grain = LDMS_GRAIN_MMALLOC;
 	if (mm_init(max_size, grain))
 		return -1;
@@ -813,6 +819,7 @@ int ldms_init(size_t max_size)
 int ldms_create_set(const char *set_name,
 		    size_t meta_sz, size_t data_sz, ldms_set_t *s)
 {
+	TF();
 	return __ldms_create_set(set_name, meta_sz, data_sz,
 				 s, LDMS_SET_F_LOCAL);
 }
@@ -1222,6 +1229,7 @@ const char *ldms_type_to_str(enum ldms_value_type t)
 
 int ldms_begin_transaction(ldms_set_t s)
 {
+	// TF();
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
 	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
@@ -1230,6 +1238,7 @@ int ldms_begin_transaction(ldms_set_t s)
 
 int ldms_end_transaction(ldms_set_t s)
 {
+	// TF();
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
 	struct timeval tv;

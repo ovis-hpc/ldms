@@ -303,7 +303,7 @@ char * op_str[] = {
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 static char *xlate_cmd(int cmd)
 {
-	static char cmd_s[16];
+	static char cmd_s[35];
 	if ( is_valid_ldms_request_cmd(cmd) ) {
 		return ldms_request_cmd_names[cmd];
 	}
@@ -324,7 +324,7 @@ static char *xlate_ctxt(struct rdma_context *ctxt)
 		int cmd = ntohl(hdr->cmd);
 		sprintf(s, "SEND '%s'",
 		     xlate_cmd(cmd),
-		     (void *)(unsigned long)hdr->xid);
+		     (void *)(unsigned long)hdr->xid); /* OGC: is format wrong or arg list wrong? FIXME */
 	}
 	return s;
 }
