@@ -2106,14 +2106,23 @@ int do_connect(struct hostspec *hs)
 	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
 			    sizeof(hs->sin));
 	if (ret) {
-		/* Release the connect reference */
-		ldms_release_xprt(hs->x);
-		/* Release the create reference */
-		ldms_release_xprt(hs->x);
-		hs->x = NULL;
-		return -1;
+		goto err;
 	}
+
+	ret = ldms_xprt_auth(hs->x);
+	if (ret) {
+		goto err;
+	}
+
 	return 0;
+
+ err:
+	/* Release the connect reference */
+	ldms_release_xprt(hs->x);
+	/* Release the create reference */
+	ldms_release_xprt(hs->x);
+	hs->x = NULL;
+	return -1;
 }
 
 int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)

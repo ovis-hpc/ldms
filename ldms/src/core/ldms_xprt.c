@@ -1387,18 +1387,20 @@ int ldms_xprt_auth( ldms_t _x )
 	x->log("Waiting on password exchange.\n");
 #endif
 	struct timespec to;
+#define AUTH_TIMEOUT_SEC 30
 	int mrc = pthread_mutex_lock(&x->lock);
 	if (mrc) {
 		x->log("failed pthread_mutex_lock(&x->lock);\n");
 		x->log("with: %s\n",strerror(mrc));
 	}
 	clock_gettime(CLOCK_REALTIME, &to);
-	to.tv_sec += 30;
+	to.tv_sec += AUTH_TIMEOUT_SEC;
 	to.tv_nsec = 0;
 	while (x->authenticated != 2) {
 		rc = pthread_cond_timedwait(&(x->authcond), &(x->lock), &to);
 		if (rc) {
-			x->log("ldms_xprt_auth timeout: pthread_cond_timedwait: %s\n",strerror(rc));
+			x->log("ldms_xprt_auth timeout expired (%d s): %s\n",
+				AUTH_TIMEOUT_SEC, strerror(rc));
 			break;
 		}
 	}

@@ -523,6 +523,8 @@ extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
 / \brief Authenticate to an LDMS host.
  *
  * \param x	The transport handle
+ * \returns 	0 if the authentication succeeds or is not checked.
+ * \returns	nonzero if authentication is required but fails.
  */
 extern int ldms_xprt_auth(ldms_t x);
 
