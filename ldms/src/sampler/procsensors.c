@@ -52,48 +52,31 @@
  * \file procsensors.c
  * \brief reads from sysfs the data that populates lm sensors (e.g., in*_input, fan*_input, temp*_input)
  *
- * NOTE: see srcinfo struct,maxvarspersrc vars and srcs var for defining the base files for your setup.
- * These vars will have to be changed and the code recompiled for your set up.
- * NOTE: there is an optional number (rangenum) in the filenames:
- * expecting files with name of path/vnamerangenumval_input OR path/vname_input if rangemin=rangemax
- * writes to variable name mnamerangenumval or mname if rangemin=rangemax
+ * NOTE: data of interest defined in config file with format:
+ * full_path_to_sysfs_var metricname multiplier offset
  *
- * For example:
- * define MAXVARS_PER_SRC 3
+ * All fields must be defined. No extraneous space. No other separators. Blank lines ok.
+ * Hash in first char position are comments.
+ * As of 8/12/14 revision, this is NOT backwards compatible.
  *
- * struct srcinfo {
- * char* path;
- * char* vname[MAXVARS_PER_SRC];
- * char* mname[MAXVARS_PER_SRC];
- * int inputflag[MAXVARS_PER_SRC];
- * int ranges[MAXVARS_PER_SRC*2];
- * };
+ * for example:
+ * /home/xxx/temp tempa 1 0
+ * /home/xxx/fan fanx 1 0
+ * /home/yyy/temp tempb 2 0.2
  *
+ * /home/yyy/fanx fannew 1 0
+ * # this is a comment
  *
- * struct srcinfo srcs[] = {
- * {"/home/xxx", {"temp", "fan"}, {"tempa","fan"}, {1,0}, {0,1,0,4}},
- * {"/home/yyy", {"temp", "fanx", "cpu"}, {"tempb", "fanx", "CPU"}, {1,0,1}, {0,2,0,0,0,4}}
- * };
- * char** basesensorfilenames
- *
- * Results in:
- * /home/xxx/temp0_input -> tempa0
- * /home/xxx/fan0 -> fan0
- * /home/xxx/fan1 -> fan1
- * /home/xxx/fan2 -> fan2
- * /home/xxx/fan3 -> fan3
- * /home/yyy/temp0_input -> tempb0
- * /home/yyy/temp1_input -> tempb1
- * /home/yyy/fanx -> fanx
- * /home/yyy/cpu0_input -> CPU0
- * /home/yyy/cpu1_input -> CPU1
- * /home/yyy/cpu2_input -> CPU2
- * /home/yyy/cpu3_input -> CPU3
+ * #
+ * /home/yyy/temp0_input temp0 1 0
  *
  *
- * NOTE: data files have to be opened and closed on each file in sys for the data vaules to change.
+ * This results in metricset variables: tempa, fanx, tempb, fannew
  *
- * FIXME: decideif multipliers should go here....
+ * NOTE: metricname must be unique to the metric set
+ * NOTE: Multiplier and offset are float but the evenual val will be u64
+ *
+ * NOTE: data files have to be opened and closed on each file in sys for the data values to change.
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -109,29 +92,108 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define MAXVARS_PER_SRC 5
-#define MAXSENSORFILENAME 256
+#define MAXSENSORFILENAME 512
 
-struct srcinfo {
-	char* path;
-	char* vname[MAXVARS_PER_SRC];
-	char* mname[MAXVARS_PER_SRC];
-	int inputflag[MAXVARS_PER_SRC];
-	int ranges[MAXVARS_PER_SRC*2];
-};
-
-
-struct srcinfo srcs[] = {
-	{"/sys/devices/pci0000:00/0000:00:01.1/i2c-1/1-002f/", {"in", "fan", "temp"}, {"in","fan", "temp"}, {1,1,1}, {0,9,1,9,1,6}}
+struct vinfo {
+	char* vname;
+	char* mname;
+	float multiplier;
+	float offset;
 };
 
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
-char** sensorrawname;
-int metric_count; //now global
+struct vinfo** lm_srcs;
+int lm_nentries;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
+
+
+static int parse_conf_file(const char* ffile)
+{
+	char lbuf[MAXSENSORFILENAME];
+	char* s;
+	int rc = 0;
+
+	FILE *fp = fopen(ffile,"r");
+	if (!fp) {
+		msglog("Could not open the procsensors config file '%s'...returning\n",
+		       ffile);
+		return EINVAL;
+	}
+
+	//count the entries
+	lm_nentries = 0;
+	do {
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+
+		if ((strlen(lbuf) > 0) && (lbuf[0] != '#') && (lbuf[0] != '\n')){
+			lm_nentries++;
+		}
+	} while (s);
+
+	if (lm_nentries == 0){
+		msglog("No entries in the procsensors config file '%s'...returning\n",
+		       ffile);
+		if (fp) fclose(fp);
+		return EINVAL;
+	}
+
+	fseek(fp, 0, SEEK_SET);
+
+	lm_srcs = (struct vinfo**)malloc(lm_nentries*sizeof(struct vinfo));
+	if (!lm_srcs){
+		fclose(fp);
+		return ENOMEM;
+	}
+
+	int i = 0;
+	do {
+		char vname[MAXSENSORFILENAME];
+		char mname[MAXSENSORFILENAME];
+		double multiplier;
+		double offset;
+
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+		// each line format: path, varname, newname, multiplier, offset
+		if ((strlen(lbuf) == 0) || (lbuf[0] == '#') || (lbuf[0] == '\n')){
+			continue;
+		}
+
+		rc = sscanf(lbuf, "%s %s %lf %lf",
+			    vname, mname, &multiplier, &offset);
+		if (rc != 4){
+			msglog("Bad format line in the procsensors config file '%s' '%s'...returning\n",
+			       lbuf, ffile);
+			rc = EINVAL;
+			break;
+		}
+
+		lm_srcs[i] = (struct vinfo*)malloc(sizeof(struct vinfo));
+		if (!lm_srcs[i]){
+			fclose(fp);
+			return ENOMEM;
+		}
+
+		lm_srcs[i]->vname = strdup(vname);
+		lm_srcs[i]->mname = strdup(mname);
+		lm_srcs[i]->multiplier = multiplier;
+		lm_srcs[i]->offset = offset;
+		i++;
+	} while (s);
+
+	if (fp)
+		fclose(fp);
+	fp = NULL;
+
+	return rc;
+
+}
 
 static int create_metric_set(const char *path)
 {
@@ -140,46 +202,17 @@ static int create_metric_set(const char *path)
 	int rc, i, j, k;
 	char metric_name[MAXSENSORFILENAME];
 	int metric_no, metric_rawno;
-	int nsrcs = sizeof(srcs)/sizeof(srcs[0]);
 
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
-	metric_count = 0;
-	/* determine metric set size */
-	for (i = 0; i < nsrcs; i++){
-		for (j = 0; j < MAXVARS_PER_SRC; j++){
-			if (srcs[i].vname[j] != NULL){
-				int rangemin = srcs[i].ranges[j*2];
-				int rangemax = srcs[i].ranges[j*2+1];
-				if (rangemin == rangemax){ /* NO integer */
-					snprintf(metric_name, MAXSENSORFILENAME, "%s", srcs[i].mname[j]);
-					rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-					if (rc)
-						return rc;
+	for (i = 0 ; i < lm_nentries; i++){
+		rc = ldms_get_metric_size(lm_srcs[i].mname, LDMS_V_U64, &meta_sz, &data_sz);
+		if (rc)
+			return rc;
 
-					tot_meta_sz += meta_sz;
-					tot_data_sz += data_sz;
-					metric_count++;
-				} else {
-					for (k = rangemin; k < rangemax; k++){ /* WITH integer */
-						snprintf(metric_name, MAXSENSORFILENAME, "%s%d", srcs[i].mname[j],k);
-						rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-						if (rc)
-							return rc;
-
-						tot_meta_sz += meta_sz;
-						tot_data_sz += data_sz;
-						metric_count++;
-					}
-				}
-			}
-		}
-	}
-
-	sensorrawname = (char**) malloc(metric_count*sizeof(char*));
-	if (!sensorrawname){
-		return ENOMEM;
+		tot_meta_sz += meta_sz;
+		tot_data_sz += data_sz;
 	}
 
 	/* Create the metric set */
@@ -187,82 +220,36 @@ static int create_metric_set(const char *path)
 	if (rc)
 		return rc;
 
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
+	metric_table = calloc(lm_nentries, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
 
 	/*
 	 * Process again to define all the metrics.
 	 */
-	metric_no = 0;
-	metric_rawno = -1;
-	for (i = 0; i < nsrcs; i++){
-		for (j = 0; j < MAXVARS_PER_SRC; j++){
-			if (srcs[i].vname[j] != NULL){
-				int rangemin = srcs[i].ranges[j*2];
-				int rangemax = srcs[i].ranges[j*2+1];
-				if (rangemin == rangemax){ /* NO integer */
-					if (srcs[i].inputflag[j] == 1){
-						snprintf(metric_name, MAXSENSORFILENAME,
-							 "%s/%s_input", srcs[i].path, srcs[i].vname[j]);
-					} else {
-						snprintf(metric_name, MAXSENSORFILENAME, "%s/%s",
-							 srcs[i].path, srcs[i].vname[j]);
-					}
-					sensorrawname[metric_no] = strdup(metric_name);
-					if (!sensorrawname[metric_no]){
-						rc = ENOMEM;
-						goto err;
-					}
-					metric_rawno++;
-
-					snprintf(metric_name, MAXSENSORFILENAME, "%s", srcs[i].mname[j]);
-					metric_table[metric_no] =
-						ldms_add_metric(set, metric_name, LDMS_V_U64);
-					if (!metric_table[metric_no]) {
-						rc = ENOMEM;
-						goto err;
-					}
-					ldms_set_user_data(metric_table[metric_no], comp_id);
-					metric_no++;
-				} else {
-					for (k = rangemin; k < rangemax; k++){ /* WITH integer */
-						if (srcs[i].inputflag[j] == 1){
-							snprintf(metric_name, MAXSENSORFILENAME,
-								 "%s/%s%d_input", srcs[i].path, srcs[i].vname[j], k);
-						} else {
-							snprintf(metric_name, MAXSENSORFILENAME,
-								 "%s/%s%d", srcs[i].path, srcs[i].vname[j], k);
-						}
-						sensorrawname[metric_no] = strdup(metric_name);
-						if (!sensorrawname[metric_no]){
-							rc = ENOMEM;
-							goto err;
-						}
-						metric_rawno++;
-
-						snprintf(metric_name, MAXSENSORFILENAME, "%s%d", srcs[i].mname[j],k);
-						metric_table[metric_no] =
-							ldms_add_metric(set, metric_name, LDMS_V_U64);
-						if (!metric_table[metric_no]) {
-							rc = ENOMEM;
-							goto err;
-						}
-						ldms_set_user_data(metric_table[metric_no], comp_id);
-						metric_no++;
-					}
-				}
-			}
+	for (i = 0; i < lm_nentries; i++){
+		metric_table[i] = ldms_add_metric(set, lm_lm_srcs[i].mname, LDMS_V_U64);
+		if (!metric_table[i]) {
+			rc = ENOMEM;
+			goto err;
 		}
+		ldms_set_user_data(metric_table[i], comp_id);
 	}
 
 	return 0;
 
 err:
+
 	ldms_destroy_set(set);
-	for (i = 0; i < metric_rawno; i++){
-		free(sensorrawname[i]);
+	for (i = 0; i < metric_count; i++){
+		if (lm_lm_srcs[i]){
+			if (lm_lm_srcs[i].vname) free(lm_lm_srcs[i].vname);
+			if (lm_lm_srcs[i].mname) free(lm_lm_srcs[i].mname);
+			free(lm_lm_srcs[i]);
+		}
 	}
+	if (lm_lm_srcs)
+		free(lm_lm_srcs);
 
 	return rc;
 }
@@ -271,9 +258,10 @@ err:
  * \brief Configuration
  *
  * Usage:
- * config name=procsensors component_id=<comp_id> set=<setname>
+ * config name=procsensors component_id=<comp_id> set=<setname> conffile=<conf>
  *     comp_id     The component id value.
  *     setname     The set name.
+ *     conf        The full pathname for the config file
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -282,6 +270,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id = strtol(value, NULL, 0);
+
+
+	value = av_value(avl, "conffile");
+	if (value)
+		parse_conf_file(value);
+	else
+		return -1;
 
 	value = av_value(avl, "set");
 	if (value)
@@ -307,12 +302,12 @@ static int sample(void)
 	retrc = 0;
 
 	ldms_begin_transaction(set);
-	for (i = 0; i < metric_count; i++){
+	for (i = 0; i < lm_entries; i++){
 		//FIXME: do we really want to open and close each one?
-		mf = fopen(sensorrawname[i], "r");
+		mf = fopen(lm_srcs[i]->vname, "r");
 		if (!mf) {
 			msglog("Could not open the procsensors file '%s'...continuing\n",
-			       sensorrawname[i]);
+			       lm_srcs[i]->vname);
 			retrc = ENOENT;
 		} else {
 			s = fgets(lbuf, sizeof(lbuf), mf);
@@ -342,13 +337,19 @@ static void term(void)
 
 	ldms_destroy_set(set);
 	for (i = 0; i < metric_count; i++){
-		free(sensorrawname[i]);
+		if (lm_lm_srcs[i]){
+			if (lm_lm_srcs[i].vname) free(lm_lm_srcs[i].vname);
+			if (lm_lm_srcs[i].mname) free(lm_lm_srcs[i].mname);
+			free(lm_lm_srcs[i]);
+		}
 	}
+	if (lm_lm_srcs)
+		free(lm_lm_srcs);
 }
 
 static const char *usage(void)
 {
-	return  "config name=procsensors component_id=<comp_id> set=<set>\n"
+	return  "config name=procsensors component_id=<comp_id> set=<set> config\n"
 		"    comp_id    The component id.\n"
 		"    set        The set name.\n";
 }
