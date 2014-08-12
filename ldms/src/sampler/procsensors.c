@@ -199,15 +199,13 @@ static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
-	int rc, i, j, k;
-	char metric_name[MAXSENSORFILENAME];
-	int metric_no, metric_rawno;
+	int rc, i;
 
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
 	for (i = 0 ; i < lm_nentries; i++){
-		rc = ldms_get_metric_size(lm_srcs[i].mname, LDMS_V_U64, &meta_sz, &data_sz);
+		rc = ldms_get_metric_size(lm_srcs[i]->mname, LDMS_V_U64, &meta_sz, &data_sz);
 		if (rc)
 			return rc;
 
@@ -228,7 +226,7 @@ static int create_metric_set(const char *path)
 	 * Process again to define all the metrics.
 	 */
 	for (i = 0; i < lm_nentries; i++){
-		metric_table[i] = ldms_add_metric(set, lm_lm_srcs[i].mname, LDMS_V_U64);
+		metric_table[i] = ldms_add_metric(set, lm_srcs[i]->mname, LDMS_V_U64);
 		if (!metric_table[i]) {
 			rc = ENOMEM;
 			goto err;
@@ -241,15 +239,15 @@ static int create_metric_set(const char *path)
 err:
 
 	ldms_destroy_set(set);
-	for (i = 0; i < metric_count; i++){
-		if (lm_lm_srcs[i]){
-			if (lm_lm_srcs[i].vname) free(lm_lm_srcs[i].vname);
-			if (lm_lm_srcs[i].mname) free(lm_lm_srcs[i].mname);
-			free(lm_lm_srcs[i]);
+	for (i = 0; i < lm_nentries; i++){
+		if (lm_srcs[i]){
+			if (lm_srcs[i]->vname) free(lm_srcs[i]->vname);
+			if (lm_srcs[i]->mname) free(lm_srcs[i]->mname);
+			free(lm_srcs[i]);
 		}
 	}
-	if (lm_lm_srcs)
-		free(lm_lm_srcs);
+	if (lm_srcs)
+		free(lm_srcs);
 
 	return rc;
 }
@@ -295,6 +293,7 @@ static int sample(void)
 	int rc, retrc;
 	char *s;
 	char lbuf[20];
+	uint64_t tempval;
 	union ldms_value v;
 	int i;
 
@@ -302,7 +301,7 @@ static int sample(void)
 	retrc = 0;
 
 	ldms_begin_transaction(set);
-	for (i = 0; i < lm_entries; i++){
+	for (i = 0; i < lm_nentries; i++){
 		//FIXME: do we really want to open and close each one?
 		mf = fopen(lm_srcs[i]->vname, "r");
 		if (!mf) {
@@ -311,22 +310,24 @@ static int sample(void)
 			retrc = ENOENT;
 		} else {
 			s = fgets(lbuf, sizeof(lbuf), mf);
-			if (!s){
-				if (mf) fclose(mf);
-				break;
-			}
-			rc = sscanf(lbuf, "%"PRIu64 "\n", &v.v_u64);
-			if (rc != 1){
-				retrc = EINVAL;
-				/* do not goto out - keep going */
+			if (s){
+				rc = sscanf(lbuf, "%"PRIu64 "\n", &tempval);
+				if (rc != 1){
+					/* do not go to out */
+					retrc = EINVAL;
+				} else {
+					/* assume since sensors can cast w/o overflow */
+					v.v_u64 = (uint64_t)((double)tempval*lm_srcs[i]->multiplier + lm_srcs[i]->offset);
+					ldms_set_metric(metric_table[i], &v);
+				}
 			} else {
-				ldms_set_metric(metric_table[i], &v);
+				/* do not go to out */
+				retrc = EINVAL;
 			}
 			if (mf) fclose(mf);
 		}
 	}
 
-out:
 	ldms_end_transaction(set);
 	return retrc;
 }
@@ -336,15 +337,15 @@ static void term(void)
 	int i;
 
 	ldms_destroy_set(set);
-	for (i = 0; i < metric_count; i++){
-		if (lm_lm_srcs[i]){
-			if (lm_lm_srcs[i].vname) free(lm_lm_srcs[i].vname);
-			if (lm_lm_srcs[i].mname) free(lm_lm_srcs[i].mname);
-			free(lm_lm_srcs[i]);
+	for (i = 0; i < lm_nentries; i++){
+		if (lm_srcs[i]){
+			if (lm_srcs[i]->vname) free(lm_srcs[i]->vname);
+			if (lm_srcs[i]->mname) free(lm_srcs[i]->mname);
+			free(lm_srcs[i]);
 		}
 	}
-	if (lm_lm_srcs)
-		free(lm_lm_srcs);
+	if (lm_srcs)
+		free(lm_srcs);
 }
 
 static const char *usage(void)
