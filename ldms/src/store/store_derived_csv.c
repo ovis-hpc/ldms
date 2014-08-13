@@ -166,7 +166,7 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 	int tval;
 	double mval;
 	char* s;
-	int rc;
+	int rc, rcl;
 
 	//FIXME: for now will read this in for every option (e.g., different base set for store)
 	//Dont yet have a way to determine which of the handles a certain metric will be associated with
@@ -179,6 +179,7 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 	}
 
 	rc = 0;
+	rcl = 0;
 	do {
 
 		//FIXME: TOO many metrics
@@ -192,15 +193,15 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		if (!s)
 			break;
 //		printf("Read <%s>\n", lbuf);
-		rc = sscanf(lbuf, "%[^,],%d,%lf", metric_name, &tval, &mval);
+		rcl = sscanf(lbuf, "%[^,],%d,%lf", metric_name, &tval, &mval);
 //		printf("Name <%s> val <%d> mult <%lf>\n", metric_name, tval, mval);
 		if ((strlen(metric_name) > 0) && (metric_name[0] == '#')){
 		// hashed lines are comments (means metric name cannot start with #)
 			msglog("Comment in derived config file <%s>. Skipping\n",lbuf);
 			continue;
 		}
-		if (rc != 3) {
-			msglog("Bad format in derived config file <%s> rc=%d. Skipping\n",lbuf, rc);
+		if (rcl != 3) {
+			msglog("Bad format in derived config file <%s> rc=%d. Skipping\n",lbuf, rcl);
 			continue;
 		}
 		if ((tval < 0) || (tval > 1)) {
@@ -376,7 +377,7 @@ static int print_header(struct csv_store_handle *s_handle,
 
 	rc = derivedConfig(derivedconf,s_handle);
 	if (rc != 0) {
-		msglog("derviedConfig failed for store_derived_csv. \n");
+		msglog("derivedConfig failed for store_derived_csv. \n");
 		return rc;
 	}
 
