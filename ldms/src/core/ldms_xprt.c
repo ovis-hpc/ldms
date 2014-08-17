@@ -53,6 +53,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <assert.h>
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -344,8 +345,6 @@ void release_xprt_(struct ldms_xprt *x)
 void ldms_xprt_close(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
-	struct sockaddr_in *sin = (struct sockaddr_in *)&x->remote_ss;
-	/* x->log("%s transport %p ref_count %d.\n", __func__, _x, x->ref_count); Removed by Brandt 6-14-2014 */
 	pthread_mutex_lock(&xprt_list_lock);
 	assert(x->ref_count);
 	x->connected = 0;
@@ -591,18 +590,22 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	struct ldms_context *data_ctxt = arg;
 
 	set->flags &= ~LDMS_SET_F_DIRTY;
-	if (set->meta->version == LDMS_VERSION)
+	if (set->meta->version == LDMS_VERSION && !rc)
 		x->read_data_start(x, s, set->meta->data_size, data_ctxt);
-	else
+	else {
+		if (!rc)
+			rc = EINVAL;
 		data_ctxt->update.cb(t, data_ctxt->update.s,
-				     EINVAL, data_ctxt->update.arg);
+				     rc, data_ctxt->update.arg);
+	}
 }
 
-static int read_complete_cb(struct ldms_xprt *x, void *context)
+static int read_complete_cb(struct ldms_xprt *x, void *context, int status)
 {
 	struct ldms_context *ctxt = context;
+	assert(ctxt->update.cb);
 	if (ctxt->update.cb)
-		ctxt->update.cb((ldms_t)x, ctxt->update.s, 0, ctxt->update.arg);
+		ctxt->update.cb((ldms_t)x, ctxt->update.s, status, ctxt->update.arg);
 	free(ctxt);
 	return 0;
 }

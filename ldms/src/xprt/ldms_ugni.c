@@ -569,21 +569,23 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			ugni_log("Post descriptor is Null!\n");
 			continue;
 		}
+#if 0
 		if (grc) {
 			/* ugni_log("%s GNI_GetCompleted failed with %d, desc = %p.\n", desc); Removed by Brandt 6-14-2014 */
-#if 0
 			/* The request failed, tear down the transport */
 			if (desc->gxp->xprt)
 				ugni_xprt_error_handling(desc->gxp);
-#endif
 			goto skip;
 		}
+#endif
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
+			if (grc)
+				ugni_log("%s update completing with error %d.\n", __func__, grc);
 			if (desc->gxp->xprt && desc->gxp->xprt->read_complete_cb)
 				desc->gxp->xprt->
 					read_complete_cb(desc->gxp->xprt,
-							 desc->context);
+							 desc->context, grc);
 			break;
 		default:
 			if (desc->gxp)
@@ -1163,8 +1165,8 @@ static int init_once(ldms_log_fn_t log_fn)
 	return rc;
 }
 
-struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
-			   int (*read_complete_cb)(struct ldms_xprt *, void *),
+struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
+			   read_complete_cb_t read_complete_cb,
 			   ldms_log_fn_t log_fn)
 {
 	struct ldms_xprt *x;

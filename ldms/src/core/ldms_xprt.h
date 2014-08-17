@@ -227,6 +227,8 @@ struct ldms_context {
 /** Transport-independent interface data.
  * Normally allocated with calloc by implementations.
  */
+typedef int (*read_complete_cb_t)(struct ldms_xprt *, void *, int);
+typedef int (*recv_cb_t)(struct ldms_xprt *, void *);
 struct ldms_xprt {
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
 	int ref_count;
@@ -260,9 +262,9 @@ struct ldms_xprt {
 	int (*read_meta_start)(struct ldms_xprt *, ldms_set_t, size_t, void *);
 
 	/** User callback routine invoked when the read completes. */
-	int (*read_complete_cb)(struct ldms_xprt *, void *);
+	read_complete_cb_t read_complete_cb;
 	/** User callback routine called when data arrives on the transport. */
-	int (*recv_cb)(struct ldms_xprt *, void *);
+	recv_cb_t recv_cb;
 	/** User callback invoked when ldms_dir completes */
 	ldms_dir_cb_t *dir_cb;
 	void *dir_cb_arg;
@@ -282,8 +284,7 @@ struct ldms_xprt {
 };
 typedef struct ldms_xprt *(*ldms_xprt_get_t)
 	(
-	 int (*recv_cb)(struct ldms_xprt *, void *),
-	 int (*read_complete_cb)(struct ldms_xprt *, void *),
+	recv_cb_t recv_cb, read_complete_cb_t read_complete_cb,
 	 ldms_log_fn_t log_fn
 	 );
 

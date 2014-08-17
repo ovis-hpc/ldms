@@ -650,7 +650,7 @@ int process_info(int fd,
 			ldms_log("%-12s %-12s %-12s\n",
 				 "", "", hset->name);
 			if (verbose) {
-				char *state;
+				const char *state;
 				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
 						"", "", "", "curr_busy_count",
 						hset->curr_busy_count);
@@ -2201,6 +2201,14 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	hset_ref_put(hset);
 }
 
+void update_cleanup(struct hostspec *hs, struct hostset *hset)
+{
+	hset->state = LDMSD_SET_CONFIGURED;
+	ldms_xprt_close(hs->x);
+	hs->x = NULL;
+	hset_ref_put(hset);
+}
+
 void update_data(struct hostspec *hs)
 {
 	int ret;
@@ -2240,15 +2248,12 @@ void update_data(struct hostspec *hs)
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
-				hset->state = LDMSD_SET_CONFIGURED;
-				ldms_xprt_close(hs->x);
-				hs->x = NULL;
-				host_error = 1;
 				ldms_log("Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
 					hs->hostname, ntohs(hs->sin.sin_port),
 					hs->xprt_name);
-				hset_ref_put(hset);
+				update_cleanup(hs, hset);
+				host_error = 1;
 			}
 			break;
 		case LDMSD_SET_LOOKUP:
@@ -2256,6 +2261,14 @@ void update_data(struct hostspec *hs)
 			break;
 		case LDMSD_SET_BUSY:
 			hset->curr_busy_count++;
+			if (hset->curr_busy_count > 60) {
+				ldms_log("Busy count limit exceeded "
+					"on host %s:%d[%s].\n",
+					hs->hostname, ntohs(hs->sin.sin_port),
+					hs->xprt_name);
+				update_cleanup(hs, hset);
+				host_error = 1;
+			}
 			break;
 		default:
 			ldms_log("Invalid hostset state '%d'\n", hset->state);

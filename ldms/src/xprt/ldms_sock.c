@@ -341,7 +341,7 @@ int process_sock_read_rsp(struct ldms_sock_xprt *x, struct sock_read_rsp *rsp)
 
 	if (x->xprt && x->xprt->read_complete_cb)
 		x->xprt->read_complete_cb(x->xprt,
-					  (void *)(unsigned long)rsp->hdr.xid);
+					  (void *)(unsigned long)rsp->hdr.xid, 0);
 	return 0;
 }
 
@@ -792,8 +792,8 @@ static int init_once()
 	return rc;
 }
 
-struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
-			   int (*read_complete_cb)(struct ldms_xprt *, void *),
+struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
+			   read_complete_cb_t read_complete_cb,
 			   ldms_log_fn_t log_fn)
 {
 	struct ldms_xprt *x;

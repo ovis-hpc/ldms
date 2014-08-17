@@ -275,7 +275,7 @@ static int post_send(struct ldms_rdma_xprt *x,
 	return rc;
 }
 
-#ifdef DEPRECATED 
+#ifdef DEPRECATED
 /* use ldms_request_cmd_names instead */
 char *cmd_str[] = {
 	"LDMS_CMD_DIR",
@@ -599,7 +599,7 @@ static void process_read_wc(struct ldms_rdma_xprt *r, struct ibv_wc *wc,
 			    void *usr_context)
 {
 	if (r->xprt && r->xprt->read_complete_cb)
-		r->xprt->read_complete_cb(r->xprt, usr_context);
+		r->xprt->read_complete_cb(r->xprt, usr_context, 0);
 }
 
 static void process_recv_wc(struct ldms_rdma_xprt *r, struct ibv_wc *wc,
@@ -1572,8 +1572,7 @@ static int init_once()
 	return 1;
 }
 
-struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
-			   int (*read_complete_cb)(struct ldms_xprt *, void *),
+struct ldms_xprt *xprt_get(recv_cb_t recv_cb, read_complete_cb_t read_complete_cb,
 			   ldms_log_fn_t log_fn)
 {
 	struct ldms_xprt *x;
