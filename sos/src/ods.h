@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2012 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012-14 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-14 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -217,6 +217,14 @@ extern obj_ref_t ods_obj_ptr_to_ref(ods_t ods, void *obj);
  * \returns -1 if Error
  */
 int ods_verify_ref(ods_t ods, obj_ref_t ref);
+
+/**
+ * \brief verify ODS metadata (page file, free list, etc)
+ *
+ * \retval  0       OK
+ * \retval  EINVAL  Invalid  ODS
+ */
+int ods_verify(ods_t ods);
 
 /**
  * \brief Get allocated size of the object in ODS.

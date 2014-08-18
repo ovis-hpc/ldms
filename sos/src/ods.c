@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012-14 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-14 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -849,6 +849,59 @@ size_t ods_obj_alloc_size(ods_t ods, void *obj)
 		sz = (end - start + 1) << ODS_PAGE_SHIFT;
 	}
 	return sz;
+}
+
+int ods_verify(ods_t ods)
+{
+	int rc, i;
+	struct stat stat;
+	ods_blk_t blk;
+	ods_pg_t page;
+	uint64_t blk_sz;
+	uint64_t pg;
+	obj_ref_t ref;
+	/* page table size verification */
+	rc = fstat(ods->pg_fd, &stat);
+	if (rc)
+		return rc;
+	if (stat.st_size != (ods->pg_table->count + sizeof(*ods->pg_table)))
+		return EINVAL;
+	/* object file size verification */
+	rc = fstat(ods->obj_fd, &stat);
+	if (rc)
+		return rc;
+	if (stat.st_size != (ods->pg_table->count << ODS_PAGE_SHIFT))
+		return EINVAL;
+	/* block free list verification */
+	for (i = 0; i < ODS_PAGE_SHIFT - ODS_GRAIN_SHIFT; i++) {
+		blk_sz = ods_bkt_to_size(ods, i);
+		ref = ods->obj->blk_free[i];
+		while (ref) {
+			rc = ods_verify_ref(ods, ref);
+			if (rc)
+				return EINVAL;
+			blk = ods_obj_ref_to_ptr(ods, ref);
+			if (ods_obj_size(ods, blk) != blk_sz)
+				return EINVAL;
+			ref = blk->next;
+		}
+
+	}
+	/* page free list verification */
+	ref = ods->obj->pg_free;
+	while (ref) {
+		rc = ods_verify_ref(ods, ref);
+		if (rc)
+			return EINVAL;
+		page = ods_obj_ref_to_ptr(ods, ref);
+		pg = ods_obj_ref_to_page(ods, ref);
+		for (i = 0; i < page->count; i++) {
+			if (ods->pg_table->pages[pg+i])
+				return EINVAL;
+		}
+		ref = page->next;
+	}
+	return 0;
 }
 
 #ifdef ODS_MAIN
