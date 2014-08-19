@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-14 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-14 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -53,6 +53,7 @@
 #define OVIS_UTIL_H_
 
 #include <stdio.h>
+#include <unistd.h>
 
 struct attr_value {
 	char *name;
@@ -98,5 +99,21 @@ struct attr_value_list *av_new(size_t size);
  * \return size of memory in bytes
  */
 size_t ovis_get_mem_size(const char *s);
+
+/**
+ * \brief Fork and exec the given command with /bin/sh.
+ *
+ * This function call will fork and execute the given command with bash. It is
+ * non-blocking, i.e. the function returns right away after fork (not after the
+ * child process finished execution). Caller can handle child process
+ * termination by handling SIGCHLD (see signal(7)), or using a variaion of
+ * wait(2).
+ *
+ * This utility function also close all inherited file descriptors (including
+ * STDIN, STDOUT and STDERR).
+ *
+ * \retval pid The PID of the forked child.
+ */
+pid_t ovis_execute(const char *command);
 
 #endif /* OVIS_UTIL_H_ */
