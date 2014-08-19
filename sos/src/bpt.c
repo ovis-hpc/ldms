@@ -471,7 +471,11 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 		return 0;
 
 	/* Make sure each entry is lexically >= previous */
+	if (n->count && ods_verify_ref(t->ods, n->entries[0].key) != 0)
+		return -1;
 	for (i = 0; i < n->count-1; i++) {
+		if (ods_verify_ref(t->ods, n->entries[i+1].key) != 0)
+			return -1;
 		obj_key_t e1 = ods_obj_ref_to_ptr(t->ods, n->entries[i].key);
 		obj_key_t e2 = ods_obj_ref_to_ptr(t->ods, n->entries[i+1].key);
 		if (!(t->comparator(e2, e1) >= 0)) {
@@ -479,7 +483,8 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 		}
 	}
 	if (t->root_ref != ods_obj_ptr_to_ref(t->ods, n)) {
-		assert(n->parent);
+		if (!n->parent)
+			return -1;
 		if (n->is_leaf)
 			midpoint--;
 		/* Make sure it has at least midpoint entries */
@@ -493,8 +498,16 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 
 	/* Make certain all n's keys refer to the min. of each child entry */
 	for (i = 0; i < n->count; i++) {
+		if (ods_verify_ref(t->ods, n->entries[i].key) != 0)
+			return -1;
 		obj_key_t parent_key = ods_obj_ref_to_ptr(t->ods, n->entries[i].key);
+
+		if (ods_verify_ref(t->ods, n->entries[i].ref) != 0)
+			return -1;
 		bpt_node_t child = ods_obj_ref_to_ptr(t->ods, n->entries[i].ref);
+
+		if (ods_verify_ref(t->ods, child->entries[0].ref) != 0)
+			return -1;
 		obj_key_t child_key = ods_obj_ref_to_ptr(t->ods, child->entries[0].key);
 		if (parent_key != child_key) {
 			return -1;
@@ -506,6 +519,8 @@ static int verify_node(obj_idx_t idx, bpt_node_t n)
 	}
 	/* Now verify each entry */
 	for (i = 0; i < n->count; i++) {
+		if (ods_verify_ref(t->ods, n->entries[i].ref) != 0)
+			return -1;
 		bpt_node_t child = ods_obj_ref_to_ptr(t->ods, n->entries[i].ref);
 		rc = verify_node(idx, child);
 		if (rc)
@@ -526,6 +541,9 @@ int bpt_verify_verbose(obj_idx_t idx, int verbose)
 	t = idx->priv;
 	if (!t->root_ref)
 		return 0;
+	rc = ods_verify_ref(idx->ods, t->root_ref);
+	if (rc)
+		return rc;
 	root = ods_obj_ref_to_ptr(idx->ods, t->root_ref);
 	if (root->parent != 0) {
 		if (verbose) {
@@ -549,6 +567,9 @@ int bpt_verify_verbose(obj_idx_t idx, int verbose)
 
 static int bpt_verify(obj_idx_t idx)
 {
+	int rc = ods_verify(idx->ods);
+	if (rc)
+		return rc;
 	return bpt_verify_verbose(idx, 0);
 }
 
@@ -1312,15 +1333,23 @@ int verify_leafs(obj_idx_t idx)
 	int rc, i;
 	size_t alloc_sz;
 	node_ref = t->root_ref;
+	if (ods_verify_ref(t->ods, node_ref) != 0)
+		return -1;
 	node = ods_obj_ref_to_ptr(t->ods, node_ref);
 	while (!node->is_leaf) {
 		node_ref = node->entries[0].ref;
+		if (ods_verify_ref(t->ods, node_ref) != 0)
+			return -1;
 		node = ods_obj_ref_to_ptr(t->ods, node_ref);
 	}
 
 	key_ref = 0;
 	k1 = 0;
-	while (node) {
+	while (node_ref) {
+		if (ods_verify_ref(t->ods, node_ref) != 0)
+			return -1;
+		node = ods_obj_ref_to_ptr(t->ods, node_ref);
+
 		if (node->parent && node->count < mid) {
 			print_node(idx, -1, node, 0);
 			return -1;
@@ -1358,8 +1387,7 @@ int verify_leafs(obj_idx_t idx)
 			}
 			node = ods_obj_ref_to_ptr(t->ods, node_ref);
 		}
-		node = leaf_right(t, node_ref);
-		node_ref = ods_obj_ptr_to_ref(t->ods, node);
+		node_ref = node->entries[t->order - 1].ref;
 	}
 
 	return 0;

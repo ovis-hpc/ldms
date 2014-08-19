@@ -41,15 +41,11 @@
  */
 
 /**
- * \file sos_verify.c
+ * \file sos_restore.c
  * \author Narate Taerat (narate at ogc dot us)
- * \brief Verify a given sos store
- *
- * Given a sos store path (a sos store path is the string before _sos.OBJ, e.g.
- * if you have /data/abc_sos.OBJ, /data/abc is the sos store path), this program
- * will check if the store (i.e. the data ODS and indices) is not corrupted. If
- * a '--recover' option is given, it will try to recover the corrupted store.
+ * \brief Restoring index of the given SOS.
  */
+
 #include <stdio.h>
 #include <unistd.h>
 #include <getopt.h>
@@ -62,16 +58,16 @@
 #include "sos_priv.h"
 
 const char *usage_str = "\
-Usage: sos_verify [OPTIONS] -s <SOS_PATH> \n\
+Usage: sos_restore [OPTIONS] -s <SOS_PATH> \n\
     where <SOS_PATH> is the sos path (e.g. if you have /a/b_sos.OBJ, the\n\
     SOS_PATH is /a/b)\n\
 \n\
-    The program exits with code 0 if the store is healthy.\n\
+    The program exits with code 0 if it successfully restore the given sos\n\
     Otherwise, it exits with code -1.\n\
 \n\
 OPTIONS:\n\
-    -i,--idxonly\n\
-        Only verify indices.\n\
+    -N,--nocheck\n\
+	Perform restore without checking ODS.\n\
 \n\
     -s,--store STORE_PATH\n\
         Path of the SOS store (required).\n\
@@ -80,9 +76,9 @@ OPTIONS:\n\
         Print this message.\n\
 ";
 
-const char *short_opt = "is:?";
+const char *short_opt = "Ns:?";
 const struct option long_opt[] = {
-	{"idxonly",  no_argument,        NULL,  'i'},
+	{"nocheck",  no_argument,        NULL,  'N'},
 	{"store",    required_argument,  NULL,  's'},
 	{"help",     no_argument,        NULL,  '?'},
 	{0,          0,                  0,     0},
@@ -106,15 +102,15 @@ int main(int argc, char **argv)
 	sos_iter_t iter;
 	uint64_t count_base = 0;
 	uint64_t count;
-	int idxonly = 0;
+	int check = 1;
 
 arg_loop:
 	c = getopt_long(argc, argv, short_opt, long_opt, NULL);
 	if (c < 0)
 		goto out_arg_loop;
 	switch (c) {
-	case 'i':
-		idxonly = 1;
+	case 'N':
+		check = 0;
 		break;
 	case 's':
 		sos_path = optarg;
@@ -123,6 +119,7 @@ arg_loop:
 		usage();
 	}
 	goto arg_loop;
+
 out_arg_loop:
 	if (!sos_path) {
 		printf("ERROR: No sos path given\n");
@@ -135,43 +132,27 @@ out_arg_loop:
 		_exit(-1);
 	}
 
-	/* Verify _sos ODS */
-	if (!idxonly) {
-		if (ods_verify(sos->ods) != 0) {
-			printf("ERROR: SOS ODS corrupted\n");
-			_exit(-1);
-		}
-		printf("INFO: %s:ODS verified\n", sos_path);
+	if (check && ods_verify(sos->ods) != 0) {
+		printf("ERROR: ODS verify failed\n");
+		_exit(-1);
 	}
 
-	/* Verify Index */
+	/* Recovery */
 	attr_count = sos_get_attr_count(sos);
 	for (attr_id = 0; attr_id < attr_count; attr_id++) {
 		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
 		if (!sos_attr_has_index(attr))
 			continue;
-		rc = sos_verify_index(sos, attr_id);
-		if (rc)
-			goto corrupted;
-		iter = sos_iter_new(sos, attr_id);
-		count = 0;
-		sos_iter_begin(iter);
-		while (sos_iter_next(iter) == 0)
-			count++;
-		if (count_base == 0)
-			count_base = count;
-		if (count != count_base)
-			goto corrupted;
-
-		printf("INFO: Index %s:%s verified\n", sos_path, attr->name);
-
-		continue;
-
-	corrupted:
-		rc = -1;
-		printf("ERROR: Index corrupted: %s:%s\n", sos_path, attr->name);
-		break;
+		rc = sos_rebuild_index(sos, attr_id);
+		if (rc) {
+			printf("ERROR: sos rebuild index failed: %s:%s\n",
+					sos_path, attr->name);
+			goto out;
+		}
+		printf("INFO: index recovery %s:%s successful\n",
+				sos_path, attr->name);
 	}
 
+out:
 	return rc;
 }
