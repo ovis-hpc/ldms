@@ -203,7 +203,6 @@ char *obdf_key[] = {
 
 struct lustre_svc_stats_head svc_stats = {0};
 
-static uint64_t counter;
 static ldms_set_t set;
 FILE *mf;
 ldmsd_msg_log_f msglog;
@@ -247,8 +246,7 @@ static int create_metric_set(const char *path, const char *osts)
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
 	int rc, i, j, metric_count;
-	uint64_t metric_value;
-	char metric_name[128];
+	char metric_name[LUSTRE_NAME_MAX];
 
 	/* First calculate the set size */
 	metric_count = 0;
@@ -256,7 +254,8 @@ static int create_metric_set(const char *path, const char *osts)
 	/* Calculate size for OSS */
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
 		for (j = 0; j < STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#oss.%s", stats_key[j],
+			snprintf(metric_name, LUSTRE_NAME_MAX,
+				 "lstats.%s#oss.%s", stats_key[j],
 					oss_services[i]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -274,7 +273,8 @@ static int create_metric_set(const char *path, const char *osts)
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
 		for (j = 0; j < OBDF_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#ost.%s", obdf_key[j],
+			snprintf(metric_name, LUSTRE_NAME_MAX,
+				"lstats.%s#ost.%s", obdf_key[j],
 					sl->str);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
@@ -288,11 +288,12 @@ static int create_metric_set(const char *path, const char *osts)
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		goto err1;
-	char suffix[128];
+	char suffix[LUSTRE_NAME_MAX];
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
-		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
+		snprintf(tmp_path, PATH_MAX,
+			"/proc/fs/lustre/ost/OSS/%s/stats",
 				oss_services[i]);
-		sprintf(suffix, "#oss.%s", oss_services[i]);
+		snprintf(suffix, LUSTRE_NAME_MAX, "#oss.%s", oss_services[i]);
 		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
 					     suffix, &svc_stats, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
@@ -301,8 +302,9 @@ static int create_metric_set(const char *path, const char *osts)
 	}
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
-		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
-		sprintf(suffix, "#ost.%s", sl->str);
+		snprintf(tmp_path, PATH_MAX,
+			 "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
+		snprintf(suffix, LUSTRE_NAME_MAX, "#ost.%s", sl->str);
 		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
 					     suffix, &svc_stats, obdf_key,
 					     OBDF_KEY_LEN, obdf_key_id);
@@ -310,6 +312,7 @@ static int create_metric_set(const char *path, const char *osts)
 			goto err2;
 	}
 
+	free_str_list(lh);
 	return 0;
 err2:
 	msglog("lustre_oss.c:create_metric_set@err2\n");
@@ -389,7 +392,6 @@ static int sample(void)
 		lss_sample(lss);
 	}
 
-out:
 	ldms_end_transaction(set);
 	return 0;
 }

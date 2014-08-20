@@ -96,7 +96,6 @@ struct str_map *llite_key_id = NULL;
 
 struct lustre_svc_stats_head svc_stats = {0};
 
-static uint64_t counter;
 static ldms_set_t set;
 FILE *mf;
 ldmsd_msg_log_f msglog;
@@ -190,35 +189,33 @@ static int create_metric_set(const char *path, const char *oscs,
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
 	int rc, i, j, metric_count;
-	uint64_t metric_value;
-	char metric_name[128];
+	char metric_name[LUSTRE_NAME_MAX];
 
 	/* First calculate the set size */
 	metric_count = 0;
 	tot_meta_sz = tot_data_sz = 0;
 
 	/* Calculate size for Clients */
-	struct str_list_head *lh_osc, *lh_mdc, *lh_llite;
-	struct str_list_head *heads[] = {lh_osc, lh_mdc, lh_llite};
+#define LH_OSC 0
+#define LH_MDC 1
+#define LH_LLITE 2
+#define HEADCOUNT 3
+	struct str_list_head *heads[ HEADCOUNT] = {0};
 	char **keys[] = {stats_key, stats_key, llite_key};
 	int keylen[] = {STATS_KEY_LEN, STATS_KEY_LEN, LLITE_KEY_LEN};
 	struct str_map *maps[] = {stats_key_id, stats_key_id, llite_key_id};
-	lh_osc = lh_mdc = lh_llite = 0;
 
-	lh_osc = construct_client_list(oscs, "/proc/fs/lustre/osc");
-	if (!lh_osc)
+	heads[LH_OSC] = construct_client_list(oscs, "/proc/fs/lustre/osc");
+	if (!heads[LH_OSC])
 		goto err0;
-	heads[0] = lh_osc;
 
-	lh_mdc = construct_client_list(mdcs, "/proc/fs/lustre/mdc");
-	if (!lh_mdc)
+	heads[LH_MDC] = construct_client_list(mdcs, "/proc/fs/lustre/mdc");
+	if (!heads[LH_MDC])
 		goto err0;
-	heads[1] = lh_mdc;
 
-	lh_llite = construct_client_list(llites, "/proc/fs/lustre/llite");
-	if (!lh_llite)
+	heads[LH_LLITE] = construct_client_list(llites, "/proc/fs/lustre/llite");
+	if (!heads[LH_LLITE])
 		goto err0;
-	heads[2] = lh_llite;
 
 	char *namebase[] = {"osc", "mdc", "llite"};
 	struct str_list *sl;
@@ -226,7 +223,8 @@ static int create_metric_set(const char *path, const char *oscs,
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
 			for (j = 0; j < keylen[i]; j++) {
-				sprintf(metric_name, "lstats.%s#%s.%s",
+				snprintf(metric_name, LUSTRE_NAME_MAX,
+					 "lstats.%s#%s.%s",
 						keys[i][j], namebase[i],
 						sl->str);
 				ldms_get_metric_size(metric_name, LDMS_V_U64,
@@ -242,13 +240,15 @@ static int create_metric_set(const char *path, const char *oscs,
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		goto err0;
-	char suffix[128];
-	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
+	char suffix[LUSTRE_NAME_MAX];
+	for (i = 0; i < HEADCOUNT; i++) {
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
-			sprintf(tmp_path, "/proc/fs/lustre/%s/%s*/stats",
+			snprintf(tmp_path, PATH_MAX,
+				 "/proc/fs/lustre/%s/%s*/stats",
 					namebase[i], sl->str);
-			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
+			snprintf(suffix, LUSTRE_NAME_MAX, "#%s.%s",
+				 namebase[i], sl->str);
 			rc = stats_construct_routine(set, comp_id, tmp_path,
 					"lstats.", suffix, &svc_stats, keys[i],
 					keylen[i], maps[i]);
@@ -257,7 +257,8 @@ static int create_metric_set(const char *path, const char *oscs,
 		}
 	}
 
-	return 0;
+	rc = 0;
+	goto out;
 err1:
 	msglog("lustre_oss.c:create_metric_set@err1\n");
 	lustre_svc_stats_list_free(&svc_stats);
@@ -265,12 +266,22 @@ err1:
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err0:
-	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
+	for (i = 0; i < HEADCOUNT; i++) {
 		if (heads[i])
 			free_str_list(heads[i]);
 	}
 	msglog("lustre_oss.c:create_metric_set@err0\n");
-	return errno;
+	rc = errno;
+out:
+	for (i = 0; i < HEADCOUNT; i++) {
+		// 1) could the heads be passed to the list fillers instead of built by the list fillers?
+		// 2) free_str_list(heads[i]); FTFY: OGC we need to destroy heads unless they are the empty head.
+	}
+#undef LH_OSC
+#undef LH_MDC
+#undef LH_LLITE
+#undef HEADCOUNT
+	return rc;
 }
 
 static void term(void)
@@ -350,7 +361,6 @@ static int sample(void)
 		lss_sample(lss);
 	}
 
- out:
 	ldms_end_transaction(set);
 	return 0;
 }

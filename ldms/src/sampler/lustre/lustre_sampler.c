@@ -85,6 +85,12 @@ err0:
 
 void lustre_svc_stats_free(struct lustre_svc_stats *lss)
 {
+	if (!lss) {
+		if (msglog) {
+			msglog("%s:%d null lss received\n",__FILE__,__LINE__);
+		}
+		exit(-1);
+	}
 	free(lss->name);
 	free(lss->path);
 	free(lss);
@@ -93,7 +99,7 @@ void lustre_svc_stats_free(struct lustre_svc_stats *lss)
 void lustre_svc_stats_list_free(struct lustre_svc_stats_head *h)
 {
 	struct lustre_svc_stats *l;
-	while (l = LIST_FIRST(h)) {
+	while ((l = LIST_FIRST(h))) {
 		LIST_REMOVE(l, link);
 		lustre_svc_stats_free(l);
 	}
@@ -145,10 +151,12 @@ out:
 	return rc;
 }
 
-int lss_close_file(struct lustre_svc_stats *lss)
+void lss_close_file(struct lustre_svc_stats *lss)
 {
-	fclose(lss->f);
-	lss->f = NULL;
+	if (lss) {
+		fclose(lss->f);
+		lss->f = NULL;
+	}
 }
 
 int stats_construct_routine(ldms_set_t set,
@@ -160,7 +168,7 @@ int stats_construct_routine(ldms_set_t set,
 			    char **keys, int nkeys,
 			    struct str_map *key_id_map)
 {
-	char metric_name[128];
+	char metric_name[LUSTRE_NAME_MAX];
 	int rc;
 	struct lustre_svc_stats *lss =
 		lustre_svc_stats_alloc(stats_path, nkeys + 1);
@@ -170,7 +178,8 @@ int stats_construct_routine(ldms_set_t set,
 	LIST_INSERT_HEAD(stats_head, lss, link);
 	int j;
 	for (j=0; j<nkeys; j++) {
-		sprintf(metric_name, "%s%s%s", prefix, keys[j], suffix);
+		snprintf(metric_name, LUSTRE_NAME_MAX, "%s%s%s", prefix,
+			keys[j], suffix);
 		rc = __add_metric_routine(set, comp_id, metric_name,
 				key_id_map, keys[j],
 				lss);
@@ -189,7 +198,8 @@ int lss_sample(struct lustre_svc_stats *lss)
 		if (rc)
 			goto out;
 	}
-	fseek(lss->f, 0, SEEK_SET);
+	if (fseek(lss->f, 0, SEEK_SET))
+		goto out;
 	char lbuf[__LBUF_SIZ];
 	char name[64];
 	char unit[16];
@@ -197,7 +207,8 @@ int lss_sample(struct lustre_svc_stats *lss)
 	union ldms_value value;
 	struct str_map *id_map = lss->key_id_map;
 	/* The first line is timestamp, we can ignore that */
-	fgets(lbuf, __LBUF_SIZ, lss->f);
+	if (!fgets(lbuf, __LBUF_SIZ, lss->f))
+		goto out;
 
 	while (fgets(lbuf, __LBUF_SIZ, lss->f)) {
 		sscanf(lbuf, "%s %lu samples %s %lu %lu %lu %lu",
@@ -221,8 +232,14 @@ out:
 
 void free_str_list(struct str_list_head *h)
 {
+	if (!h) {
+		if ( msglog ) {
+			msglog("%s:%d: null given to free_str_list.\n");
+		}
+		exit(-1);
+	}
 	struct str_list *sl;
-	while (sl = LIST_FIRST(h)) {
+	while ((sl = LIST_FIRST(h))) {
 		LIST_REMOVE(sl, link);
 		free(sl->str);
 		free(sl);
@@ -232,14 +249,15 @@ void free_str_list(struct str_list_head *h)
 
 struct str_list_head* construct_str_list(const char *strlist)
 {
-	struct str_list_head *h = calloc(1, sizeof(*h));
 	struct str_list *sl;
 	static const char *delim = ",";
+	char *saveptr = NULL;
 	if (!strlist)
 		return NULL;
 
+	struct str_list_head *h = calloc(1, sizeof(*h));
 	char *tmp = strdup(strlist);
-	char *s = strtok(tmp, delim);
+	char *s = strtok_r(tmp, delim, &saveptr);
 	while (s) {
 		sl = calloc(1, sizeof(*sl));
 		if (!sl)
@@ -248,13 +266,14 @@ struct str_list_head* construct_str_list(const char *strlist)
 		if (!sl->str)
 			goto err1;
 		LIST_INSERT_HEAD(h, sl, link);
-		s = strtok(NULL, delim);
+		s = strtok_r(NULL, delim, &saveptr);
 	}
 	free(tmp);
 	return h;
 err1:
+	free(sl);
 	free_str_list(h);
-err0:
+	free(tmp);
 	return NULL;
 }
 
@@ -266,8 +285,10 @@ struct str_list_head* construct_dir_list(const char *path)
 	if (!d)
 		goto err0;
 	struct str_list_head *h = calloc(1, sizeof(*h));
+	if (!h)
+		goto err0;
 	struct str_list *sl;
-	while (dir = readdir(d)) {
+	while ((dir = readdir(d))) {
 		if (dir->d_type & DT_DIR) {
 			if (strcmp(dir->d_name, ".")==0 ||
 					strcmp(dir->d_name, "..")==0)
@@ -281,10 +302,13 @@ struct str_list_head* construct_dir_list(const char *path)
 			LIST_INSERT_HEAD(h, sl, link);
 		}
 	}
+	closedir(d);
 	return h;
 err1:
+	free(sl);
 	free_str_list(h);
 err0:
+	closedir(d);
 	return NULL;
 }
 
