@@ -157,12 +157,12 @@ struct sos_s {
  *
  * \note Assumes to be 2^N.
  */
-#define SOS_ODS_EXTEND_SZ (16*1024*1024)
+#define SOS_ODS_EXTEND_SZ (1024*1024)
 
 /**
  * \brief Initial size of the ODS for SOS.
  */
-#define SOS_INITIAL_SIZE (16*1024*1024)
+#define SOS_INITIAL_SIZE (1024*1024)
 
 struct sos_iter_s {
 	sos_t sos;

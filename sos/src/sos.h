@@ -747,6 +747,53 @@ int sos_verify_index(sos_t sos, int attr_id);
 int sos_rebuild_index(sos_t sos, int attr_id);
 
 /**
+ * \brief Rotate store (similar to logrotate).
+ *
+ * Assuming that the current store path is SPATH, this function will rename the
+ * current store to SPATH.1, and strip indices from it. The existing SPATH.1 ...
+ * SPATH.(N-1) will be renamed to SPATH.2 ... SPATH.N respectively. The old
+ * SPATH.N is removed by this process. Then, this function re-initialize the
+ * store SPATH and returns. If \c N is 0, no existing rotated store will be
+ * removed.
+ *
+ * If the application want to use a post-rotate hook mechanism, please see
+ * sos_post_rotation() function.
+ *
+ * Please also note that if a rotation is a success, new SOS store handle is
+ * returned and the existing store handle will be destroyed. All outstanding
+ * object handle will be stale.
+ *
+ * \param sos SOS handle
+ * \param N The number of backups allowed. 0 means no limit.
+ *
+ * \retval sos New SOS handle if rotation is a success.
+ * \retval NULL If rotation failed, the input \c sos is left unchanged.
+ */
+sos_t sos_rotate(sos_t sos, int N);
+
+/**
+ * \brief Convenient post-rotation function call.
+ *
+ * This convenient function provide a post-rotation hook mechanism. Namely, the
+ * function will execute the command/script in the given environment variable \c
+ * env_var using ovis_execute(). SOS_PATH environment variable will be set to
+ * the path of the given \c sos for the command/script execution. If \c env_var
+ * is \c NULL, "SOS_POST_ROTATE" is used. If the environment variable does not
+ * exists, the function returns \c EINVAL.
+ *
+ * Please note that this function does not wait the hook script to finish. It
+ * just fork and return (the child process does the exec obviously).
+ *
+ * \param sos SOS handle.
+ * \param env_var Environment variable pointing to the post-rotation hook
+ *                script. If this is NULL, "SOS_POST_ROTATE" is used.
+ *
+ * \retval 0 OK
+ * \retval error_code Error
+ */
+int sos_post_rotation(sos_t sos, const char *env_var);
+
+/**
  * \defgroup helper_functions
  * \{
  * \brief These are helper functions to aid swig-generated sos.

@@ -104,6 +104,8 @@ int main(int argc, char **argv)
 	uint64_t count;
 	int check = 1;
 
+	umask(0);
+
 arg_loop:
 	c = getopt_long(argc, argv, short_opt, long_opt, NULL);
 	if (c < 0)

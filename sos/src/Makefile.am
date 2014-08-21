@@ -42,7 +42,8 @@ libsos_la_LIBADD = \
 	libods.la \
 	libobjidx.la \
 	liboidx.la \
-	-lcoll
+	-lcoll \
+	-lovis_util
 #libsos_la_DEPENDENCIES = \
 #	libsos.map \
 #	libods.la \
@@ -163,7 +164,8 @@ sos_LDADD = \
 	libobjidx.la \
 	liboidx.la \
 	libods.la \
-	-lcoll
+	-lcoll \
+	-lovis_util
 
 sos_test_SOURCES = sos_test.c
 sos_test_LDADD = \
