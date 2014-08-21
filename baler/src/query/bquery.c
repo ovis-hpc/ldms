@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-14 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-14 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -50,6 +50,7 @@
  */
 /**
  * \file bquery.c
+ * \author Narate Taerat (narate at ogc dot us)
  * \brief Baler storage query.
  *
  * bquery queries Baler database for:
@@ -385,6 +386,7 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 			_rc = EINVAL;
 			goto err;
 		}
+		tm.tm_isdst = -1;
 		q->ts_0 = mktime(&tm);
 	}
 
@@ -395,6 +397,7 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 			_rc = EINVAL;
 			goto err;
 		}
+		tm.tm_isdst = -1;
 		q->ts_1 = mktime(&tm);
 	}
 
