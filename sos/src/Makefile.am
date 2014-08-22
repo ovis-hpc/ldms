@@ -4,6 +4,7 @@ sbin_PROGRAMS = \
 	bpt_verify \
 	sos_verify \
 	sos_restore \
+	sos_reinit \
 	ods_verify \
 	bpt_test \
 	sos \
@@ -134,6 +135,13 @@ sos_verify_LDADD = \
 sos_restore_SOURCES = sos_restore.c
 sos_restore_CFLAGS = $(INCLUDES)
 sos_restore_LDADD = \
+		   libsos.la \
+		   libods.la \
+		   libobjidx.la
+
+sos_reinit_SOURCES = sos_reinit.c
+sos_reinit_CFLAGS = $(INCLUDES)
+sos_reinit_LDADD = \
 		   libsos.la \
 		   libods.la \
 		   libobjidx.la

@@ -926,6 +926,11 @@ int ods_verify(ods_t ods)
 	return 0;
 }
 
+int ods_stat(ods_t ods, struct stat *buff)
+{
+	return fstat(ods->obj_fd, buff);
+}
+
 #ifdef ODS_MAIN
 int main(int argc, char *argv[])
 {

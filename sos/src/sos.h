@@ -794,6 +794,21 @@ sos_t sos_rotate(sos_t sos, int N);
 int sos_post_rotation(sos_t sos, const char *env_var);
 
 /**
+ * \brief Reinitialize SOS.
+ *
+ * Reinitializing SOS will destroy all objects and indices in the store. The
+ * store will be resized to the given initial size. If the given initial size is
+ * 0, the default value (::SOS_INITIAL_SIZE) will be used.
+ *
+ * \param sos the store handle to be reinitialized.
+ * \param sz Size (in bytes). If 0, SOS_INITIAL_SIZE will be used.
+ *
+ * \retval sos the new SOS handle if reinitialization is a success.
+ * \retval NULL if reinitialization is a failure.
+ */
+sos_t sos_reinit(sos_t sos, uint64_t sz);
+
+/**
  * \defgroup helper_functions
  * \{
  * \brief These are helper functions to aid swig-generated sos.

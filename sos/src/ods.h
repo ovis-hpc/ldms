@@ -57,6 +57,10 @@
 #define __ODS_H
 #include <stdint.h>
 #include <stdio.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
 typedef struct ods_s *ods_t;
 typedef uint64_t obj_ref_t;
 
@@ -236,5 +240,16 @@ int ods_verify(ods_t ods);
  * \returns 0 if object is not allocated
  */
 size_t ods_obj_alloc_size(ods_t ods, void *obj);
+
+/**
+ * \brief A wrapper to get OBJ stat
+ *
+ * \param ods The ODS handle
+ * \param[out] buff Output buffer
+ *
+ * \retval 0 if success
+ * \retval errno if error
+ */
+int ods_stat(ods_t ods, struct stat *buff);
 
 #endif

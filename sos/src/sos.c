@@ -1506,6 +1506,50 @@ int sos_post_rotation(sos_t sos, const char *env_var)
 	return rc;
 }
 
+sos_t sos_reinit(sos_t sos, uint64_t sz)
+{
+	char *buff;
+	int attr_id, attr_count;
+	sos_attr_t attr;
+	sos_t new_sos = NULL;
+	sos_class_t class = NULL;
+	mode_t mode = 0660;
+	int rc = 0;
+	struct stat _stat;
+
+	if (!sz)
+		sz = SOS_INITIAL_SIZE;
+
+	buff = malloc(PATH_MAX);
+	if (!buff)
+		goto out;
+
+	class = dup_class(sos->classp);
+	if (!class)
+		goto out;
+
+	attr_count = sos->classp->count;
+	for (attr_id = 0; attr_id < attr_count; attr_id++) {
+		attr = sos_obj_attr_by_id(sos, attr_id);
+		if (!attr->has_idx)
+			continue;
+		sprintf(buff, "%s_%s", sos->path, attr->name);
+		__unlink_obj_pg(buff);
+	}
+	rc = ods_stat(sos->ods, &_stat);
+	if (!rc)
+		mode = _stat.st_mode;
+	sprintf(buff, "%s_sos", sos->path);
+	__unlink_obj_pg(buff);
+	sos_close(sos, ODS_COMMIT_ASYNC);
+	buff[strlen(buff) - 4] = 0;
+	new_sos = sos_open_sz(buff, O_CREAT|O_RDWR, mode, class, sz);
+out:
+	free(buff);
+	free(class);
+	return new_sos;
+}
+
 /*** end helper functions ***/
 
 #ifdef SOS_MAIN
