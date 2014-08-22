@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = src scripts
+SUBDIRS = src
 if ENABLE_ETC
 SUBDIRS += etc
 endif

@@ -20,3 +20,52 @@ archive_log() {
 		mv $log $log.0
 	fi
 }
+
+sos_check_single() {
+	local P=$1
+	local POLICY=$2
+
+	sos_verify -s $P
+	if [ 0 -eq $? ]; then
+		return 0
+	fi
+
+	case "$POLICY" in
+	restore)
+		sos_restore -s $P
+		if [ 0 -eq $? ]; then
+			return 0
+		fi
+		# re-init the store if cannot restore
+		echo "reinitializing $P"
+		sos_reinit -s $P
+		return $?
+		;;
+	reinit)
+		echo "reinitializing $P"
+		sos_reinit -s $P
+		return $?
+		;;
+	esac
+
+	return 255
+}
+
+sos_check_dir() {
+	local D=$1
+	local POLICY=$2
+
+	if [ ! -d "$D" ]; then
+		return 0
+	fi
+	local LIST
+	LIST=$(ls $D/*_sos.OBJ)
+	for X in $LIST; do
+		X=${X%_sos.OBJ}
+		sos_check_single $X $POLICY
+		if [ 0 -ne $? ]; then
+			return 1
+		fi
+	done
+	return 0
+}

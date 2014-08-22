@@ -78,7 +78,7 @@ verify_sos() {
 		return 0
 	fi
 	for X in $LDMSD_AGG_SOS/*/; do
-		ldms-metric-store-verify $X >>$LOG 2>&1
+		sos_check_dir $X $LDMSD_STORE_RECOVER >>$LOG 2>&1
 		if [ 0 -ne $? ]; then
 			return 1
 		fi
@@ -107,7 +107,7 @@ start() {
 		echo "SOS verify failed"
 		if [ -z "$LDMSD_STORE_RECOVER" ]; then
 			echo "\$LDMSD_STORE_RECOVER env var is not set"
-			echo "Please set it to 'clean' or 'rebuild' for"
+			echo "Please set it to 'reinit' or 'restore' for"
 			echo "SOS recovery action."
 		fi
 		exit 1
