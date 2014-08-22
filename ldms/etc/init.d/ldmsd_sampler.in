@@ -14,19 +14,6 @@
 # Description: ldmsd_sampler init script
 ### END INIT INFO
 
-. /etc/profile.d/set-ovis-variables.sh
-. /etc/ovis/ovis-functions.sh
-
-if [ -z $OVIS_HOME ]; then
-	OVIS_HOME=@prefix@
-	echo "OVIS_HOME not defined, using default of $OVIS_HOME"
-fi
-
-if [ ! -d $OVIS_HOME ]; then
-	echo "OVIS_HOME: $OVIS_HOME is not a directory"
-	exit 1
-fi
-
 # Source function library.
 if [ -f /lib/lsb/init-functions ] ; then
 	. /lib/lsb/init-functions
@@ -43,6 +30,19 @@ else
 	echo_failure() {
 		echo 'failure'
 	}
+fi
+
+. /etc/profile.d/set-ovis-variables.sh
+. /etc/ovis/ovis-functions.sh
+
+if [ -z $OVIS_HOME ]; then
+	OVIS_HOME=@prefix@
+	echo "OVIS_HOME not defined, using default of $OVIS_HOME"
+fi
+
+if [ ! -d $OVIS_HOME ]; then
+	echo "OVIS_HOME: $OVIS_HOME is not a directory"
+	exit 1
 fi
 
 # CMD="ldmsd -l $OVIS_LOG/ldmsd_sampler.log -S $OVIS_SOCK/ldmsd_sampler.sock -x sock:50001 -o 40001 -z ldmsd_sampler"
