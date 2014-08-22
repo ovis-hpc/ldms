@@ -860,6 +860,7 @@ int ods_verify(ods_t ods)
 	uint64_t blk_sz;
 	uint64_t pg;
 	obj_ref_t ref;
+	obj_ref_t fast_ref; /* fast_ref to check if the list is a snail */
 	/* page table size verification */
 	rc = fstat(ods->pg_fd, &stat);
 	if (rc)
@@ -876,13 +877,34 @@ int ods_verify(ods_t ods)
 	for (i = 0; i < ODS_PAGE_SHIFT - ODS_GRAIN_SHIFT; i++) {
 		blk_sz = ods_bkt_to_size(ods, i);
 		ref = ods->obj->blk_free[i];
-		while (ref) {
-			rc = ods_verify_ref(ods, ref);
+		fast_ref = ref;
+		while (fast_ref) {
+			/* Move the faster ref twice */
+			rc = ods_verify_ref(ods, fast_ref);
 			if (rc)
 				return EINVAL;
-			blk = ods_obj_ref_to_ptr(ods, ref);
+			blk = ods_obj_ref_to_ptr(ods, fast_ref);
 			if (ods_obj_size(ods, blk) != blk_sz)
 				return EINVAL;
+			fast_ref = blk->next;
+			if (ref == fast_ref)
+				return EINVAL; /* snail */
+
+			if (!fast_ref)
+				break;
+
+			rc = ods_verify_ref(ods, fast_ref);
+			if (rc)
+				return EINVAL;
+			blk = ods_obj_ref_to_ptr(ods, fast_ref);
+			if (ods_obj_size(ods, blk) != blk_sz)
+				return EINVAL;
+			fast_ref = blk->next;
+			if (ref == fast_ref)
+				return EINVAL; /* snail */
+
+			/* Then, move the slower ref */
+			blk = ods_obj_ref_to_ptr(ods, ref);
 			ref = blk->next;
 		}
 
