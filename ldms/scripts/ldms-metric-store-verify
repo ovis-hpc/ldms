@@ -6,7 +6,7 @@
 STORE_DIR=$1
 if [ ! -d $STORE_DIR ]; then
 	echo "No directory: $STORE_DIR"
-	exit -1
+	exit 0
 fi
 
 OPTS=
