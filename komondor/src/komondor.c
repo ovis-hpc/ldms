@@ -1847,6 +1847,7 @@ int main(int argc, char **argv)
 	}
 
 	k_log("Komondor Daemon initializing ...\n");
+	umask(0);
 	init();
 
 	sigset_t child_set;
