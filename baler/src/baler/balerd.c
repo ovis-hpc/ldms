@@ -281,6 +281,7 @@ void initialize_daemon()
 		}
 		binfo("Daemonized");
 	}
+	umask(0);
 	/* Input/Output Work Queue */
 	binq = bwq_alloci(1024);
 	if (!binq) {
