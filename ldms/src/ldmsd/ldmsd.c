@@ -60,6 +60,7 @@
 #include <string.h>
 #include <sys/queue.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
 #include <pthread.h>
@@ -3400,6 +3401,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Initialize LDMS */
+	umask(0);
 	if (ldms_init(max_mem_size)) {
 		ldms_log("LDMS could not pre-allocate the memory of size %lu.\n",
 								max_mem_size);
