@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012-14 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-14 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -75,6 +75,8 @@
 #define GROUP_COL	2
 #define VALUE_COL	3
 
+#define LDMSD_SOS_POSTROT "LDMSD_SOS_POSTROTATE"
+
 /*
  * According to 'man useradd' and 'man groupadd'
  * the max length of the user/group name is 32
@@ -93,6 +95,7 @@ static char root_path[PATH_MAX]; /**< store root path */
 static ldmsd_msg_log_f msglog;
 static pthread_mutex_t cfg_lock;
 static time_t time_limit = 0;
+static int max_copy = 1;
 static size_t init_size = 4 * 1024 * 1024; /* default size 4MB */
 static char owner[MAX_OWNER];
 
@@ -106,6 +109,7 @@ struct sos_metric_store {
 	sos_t sos; /**< sos handle */
 	pthread_mutex_t lock; /**< lock at metric store level */
 	char *path; /**< path of the sos store */
+	uint32_t last_rotate; /**< Last rotation timestamp */
 	LIST_ENTRY(sos_metric_store) entry;
 };
 
@@ -221,6 +225,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "time_limit");
 	if (value)
 		time_limit = atoi(value);
+
+	value = av_value(avl, "max_copy");
+	if (value)
+		max_copy = atoi(value);
+
 	value = av_value(avl, "init_size");
 	if (value)
 		init_size = atoi(value);
@@ -580,7 +589,21 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 			store_sos_change_owner(root_path);
 		}
 
-		/* clean up old stuff before creating a new one */
+		if (!si->ms[i]->last_rotate)
+			si->ms[i]->last_rotate = ts->sec;
+
+		if (time_limit && (ts->sec / time_limit) > (si->ms[i]->last_rotate / time_limit)) {
+			sos_t new_sos = sos_rotate(si->ms[i]->sos, max_copy);
+			if (new_sos) {
+				si->ms[i]->sos = new_sos;
+				si->ms[i]->last_rotate = ts->sec;
+				sos_post_rotation(new_sos, LDMSD_SOS_POSTROT);
+			} else {
+				msglog("WARN: sos_rotate failed: %s\n",
+					si->ms[i]->path);
+			}
+		}
+
 		obj = sos_obj_new(si->ms[i]->sos);
 		if (!obj) {
 			msglog("Error %d: %s at %s:%d\n", errno,
@@ -651,8 +674,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 			msglog("Error %d: %s at %s:%d\n", errno,
 					strerror(errno), __FILE__, __LINE__);
 		}
-		if (time_limit)
-			store_sos_cleanup(si->ms[i]->sos, ts->sec - time_limit);
 	}
 
 	if (last_errno)
