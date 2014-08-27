@@ -59,7 +59,7 @@ sos_check_dir() {
 		return 0
 	fi
 	local LIST
-	LIST=$(ls $D/*_sos.OBJ)
+	LIST=$(ls $D/*_sos.OBJ 2>/dev/null)
 	for X in $LIST; do
 		X=${X%_sos.OBJ}
 		sos_check_single $X $POLICY
