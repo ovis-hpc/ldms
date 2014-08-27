@@ -27,7 +27,7 @@ CFLAGS='-g -O0 -DDEBUG -Wl,-z,defs'
 # Exit immediately if a command failed
 set -e
 
-LIST="lib sos ocm ldms baler me komondor"
+LIST="lib sos ocm ldms baler me komondor helper-scripts"
 for X in $LIST; do
 	echo "----------------------------------"
 	echo "$X"
