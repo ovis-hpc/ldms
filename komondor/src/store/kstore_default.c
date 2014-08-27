@@ -51,7 +51,7 @@
 
 /**
  * \file kstore_default.c
- * \author Narate Taerat
+ * \author Narate Taerat (narate@ogc.us)
  * \brief Default komondor store.
  *
  * This store plugin uses Scalable Object Storeage (SOS) as its storage engine.
@@ -79,6 +79,8 @@
 #include "sos/sos.h"
 #include "../komondor.h"
 
+#define KSTORE_DEFAULT_POSTROTATE "KOMONDOR_STORE_POSTROTATE"
+
 enum KSTORE_SOS_KEY_IDX {
 	KS_SOS_SEC = 0,
 	KS_SOS_USEC,
@@ -90,7 +92,7 @@ enum KSTORE_SOS_KEY_IDX {
 	KS_SOS_STATUS,
 };
 
-SOS_OBJ_BEGIN(k_tahoma_event_class, "KomondorGenericEvent")
+SOS_OBJ_BEGIN(k_default_event_class, "KomondorGenericEvent")
 	SOS_OBJ_ATTR_WITH_KEY("tv_sec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR("tv_usec", SOS_TYPE_UINT32),
 	SOS_OBJ_ATTR_WITH_KEY("model_id", SOS_TYPE_UINT32),
@@ -101,12 +103,15 @@ SOS_OBJ_BEGIN(k_tahoma_event_class, "KomondorGenericEvent")
 	SOS_OBJ_ATTR("status", SOS_TYPE_UINT32)
 SOS_OBJ_END(8);
 
-struct kmd_store_tahoma {
+struct kmd_store_default {
 	struct kmd_store s;
 	char *path;
 	pthread_mutex_t mutex;
 	uint64_t next_event_id;
 	sos_t sos;
+	int time_limit;
+	int max_copy;
+	time_t last_rotate;
 };
 
 static void (*kstore_log)(const char *fmt, ...);
@@ -120,8 +125,9 @@ static void (*kstore_log)(const char *fmt, ...);
  */
 int config(struct kmd_store *s, struct attr_value_list *av_list)
 {
-	struct kmd_store_tahoma *this = (void*)s;
+	struct kmd_store_default *this = (void*)s;
 	char *path = av_value(av_list, "path");
+	char *value;
 	int rc = 0;
 	if (!path) {
 		rc = EINVAL;
@@ -133,12 +139,20 @@ int config(struct kmd_store *s, struct attr_value_list *av_list)
 		goto err0;
 	}
 	this->sos = sos_open(this->path, O_RDWR|O_CREAT, 0660,
-			  &k_tahoma_event_class);
+			  &k_default_event_class);
 	if (!this->sos) {
 		kstore_log("ERROR: Cannot open sos: %s\n", this->path);
 		rc = ENOMEM;
 		goto err1;
 	}
+
+	value = av_value(av_list, "time_limit");
+	if (value)
+		this->time_limit = atoi(value);
+
+	value = av_value(av_list, "max_copy");
+	if (value)
+		this->max_copy = atoi(value);
 
 	sos_iter_t iter = sos_iter_new(this->sos, KS_SOS_EVENT_ID);
 	if (!iter) {
@@ -165,6 +179,19 @@ int config(struct kmd_store *s, struct attr_value_list *av_list)
 	sos_iter_free(iter);
 	obj_key_delete(k);
 
+	iter = sos_iter_new(this->sos, KS_SOS_SEC);
+	if (!iter) {
+		rc = ENOMEM;
+		goto err2;
+	}
+
+	rc = sos_iter_end(iter);
+	if (!rc) {
+		this->last_rotate = sos_obj_attr_get_uint32(this->sos,
+						KS_SOS_SEC, sos_iter_obj(iter));
+	}
+	sos_iter_free(iter);
+
 	return 0;
 
 err3:
@@ -182,13 +209,39 @@ struct event_object {
 	uint64_t event_id;
 };
 
+static void __rotate_routine(struct kmd_store_default *this, struct kmd_msg *e)
+{
+	time_t a, b;
+	sos_t new_sos;
+	if (!this->time_limit)
+		return;
+	if (!this->last_rotate) {
+		this->last_rotate = e->sec;
+		return;
+	}
+
+	a = this->last_rotate / this->time_limit;
+	b = e->sec / this->time_limit;
+	if (b > a) {
+		new_sos = sos_rotate(this->sos, this->max_copy);
+		if (!new_sos) {
+			kstore_log("WARN: Cannot rotate: %s\n", this->path);
+			return;
+		}
+		this->sos = new_sos;
+		sos_post_rotation(new_sos, KSTORE_DEFAULT_POSTROTATE);
+	}
+}
+
 void* get_event_object(struct kmd_store *s, struct kmd_msg *e)
 {
-	struct kmd_store_tahoma *this = (void*)s;
+	struct kmd_store_default *this = (void*)s;
 	pthread_mutex_lock(&this->mutex);
 	struct event_object *x = malloc(sizeof(*x));
 	if (!x)
 		goto err;
+
+	__rotate_routine(this, e);
 
 	sos_obj_t obj = sos_obj_new(this->sos);
 	if (!obj)
@@ -231,7 +284,7 @@ int event_update(struct kmd_store *s, void *event_object,
 		k_event_status_e status)
 {
 	struct event_object *ref = event_object;
-	struct kmd_store_tahoma *this = (void*)s;
+	struct kmd_store_default *this = (void*)s;
 	sos_iter_t iter = NULL;
 	obj_key_t k = NULL;
 	int rc;
@@ -270,7 +323,7 @@ cleanup:
 
 void destroy(struct kmd_store *s)
 {
-	struct kmd_store_tahoma *this = (void*)s;
+	struct kmd_store_default *this = (void*)s;
 	if (this->sos) /* if sos_open failed, this->sos is 0 */
 		sos_close(this->sos, ODS_COMMIT_ASYNC);
 	if (this->path) /* if config failed, this->path is 0 */
@@ -280,7 +333,7 @@ void destroy(struct kmd_store *s)
 
 struct kmd_store *create_store(kmd_log_f log_fn)
 {
-	struct kmd_store_tahoma *g = calloc(1, sizeof(*g));
+	struct kmd_store_default *g = calloc(1, sizeof(*g));
 	if (!g)
 		return NULL;
 	struct kmd_store *s = (void*)g;
