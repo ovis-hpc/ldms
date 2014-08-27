@@ -6,7 +6,9 @@ export OVIS_DATA=/home/ovis-data
 export OVIS_LOG=$OVIS_HOME/var/log
 export OVIS_SOCK=$OVIS_HOME/var/sock
 
+# *_RECOVER choices are "restore" or "reinit"
 export LDMSD_STORE_RECOVER=restore
+export KOMONDOR_STORE_RECOVER=restore
 
 OLIB=$OVIS_HOME/lib
 export LDMSD_PLUGIN_LIBPATH=$OLIB

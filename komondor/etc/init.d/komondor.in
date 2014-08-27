@@ -89,6 +89,18 @@ start() {
 	fi
 
 	archive_log $LOG
+
+	sos_check_dir $OVIS_DATA/act_sos restore >> $LOG 2>&1
+	if [ $? -ne 0 ]; then
+		echo_failure
+		echo "ERROR: act_sos verify failed"
+	fi
+	sos_check_dir $OVIS_DATA/events restore >> $LOG 2>&1
+	if [ $? -ne 0 ]; then
+		echo_failure
+		echo "ERROR: events verify failed"
+	fi
+
 	$KOMONDOR -a $OVIS_DATA/act_sos/act -x $KOMONDOR_XPORT -p $KOMONDOR_PORT_LISTEN -z $KOMONDOR_PORT_TO_OCMD -l $LOG
 
 	RETVAL=$?
