@@ -296,7 +296,7 @@ static int evaluate(me_model_engine_t m, me_model_cfg_t cfg,
 	return 0;
 
 update_only:
- 	output->level = ME_ONLY_UPDATE;
+	output->level = ME_SEV_NOMINAL;
 	return 0;
 }
 
