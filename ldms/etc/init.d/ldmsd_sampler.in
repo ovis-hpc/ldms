@@ -50,6 +50,7 @@ fi
 
 RETVAL=0
 prog="ldmsd"
+service="ldmsd_sampler"
 LDMSD_SAMPLER=$OVIS_HOME/sbin/ldmsd
 if [ -z $LDMSD_SAMPLER_XPORT ] ; then
 	LDMSD_SAMPLER_XPORT=sock
@@ -76,11 +77,11 @@ LOG=$OVIS_LOG/ldmsd_sampler.log
 SOCK=$OVIS_SOCK/ldmsd_sampler.sock
 
 start() {
-	echo -n "Starting $prog: "
+	echo -n "Starting $service: "
 	pid=`ps -C ldmsd -opid,cmd | grep ldmsd_sampler | sed 's/ *\([0-9]\+\) .*/\1/'`
 
 	if [ $pid ]; then
-		echo -n "ldmsd_sampler is already running: "
+		echo -n "$service is already running: "
 		echo_failure
 		echo
 		exit 1
@@ -111,7 +112,7 @@ start() {
 }
 
 stop() {
-	echo -n "Stopping $prog: "
+	echo -n "Stopping $service: "
 	if [ -f $pidfile ]; then
 		pid=`cat $pidfile`
 	else
@@ -138,7 +139,7 @@ stop() {
 }
 
 dostatus() {
-	$STATUS -p $pidfile $LDMSD_SAMPLER $LDMSD_SAMPLER
+	$STATUS -p $pidfile $LDMSD_SAMPLER $service
 }
 
 restart() {

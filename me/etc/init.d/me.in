@@ -140,7 +140,7 @@ stop() {
 }
 
 dostatus() {
-	$STATUS -p $pidfile $ME $ME
+	$STATUS -p $pidfile $ME ME
 }
 
 restart() {

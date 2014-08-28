@@ -150,7 +150,7 @@ stop() {
 }
 
 dostatus() {
-	$STATUS -p $pidfile $BALER $BALER
+	$STATUS -p $pidfile $BALER $prog
 }
 
 restart() {
