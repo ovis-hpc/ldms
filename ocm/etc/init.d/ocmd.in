@@ -144,7 +144,7 @@ stop() {
 }
 
 dostatus() {
-	$STATUS -p $pidfile $OCMD $LDMSD_AGG
+	$STATUS -p $pidfile $OCMD $prog
 }
 
 restart() {

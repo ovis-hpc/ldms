@@ -138,8 +138,7 @@ stop() {
 }
 
 dostatus() {
-	status $KOMONDOR
-	$STATUS -p $pidfile $KOMONDOR $KOMONDOR
+	$STATUS -p $pidfile $KOMONDOR $prog
 }
 
 restart() {
