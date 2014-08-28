@@ -931,6 +931,15 @@ int ods_stat(ods_t ods, struct stat *buff)
 	return fstat(ods->obj_fd, buff);
 }
 
+int ods_chown(ods_t ods, uid_t owner, gid_t group)
+{
+	int rc;
+	rc = fchown(ods->obj_fd, owner, group);
+	if (rc)
+		return rc;
+	return fchown(ods->pg_fd, owner, group);
+}
+
 #ifdef ODS_MAIN
 int main(int argc, char *argv[])
 {

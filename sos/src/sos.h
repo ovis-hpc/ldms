@@ -747,6 +747,18 @@ int sos_verify_index(sos_t sos, int attr_id);
 int sos_rebuild_index(sos_t sos, int attr_id);
 
 /**
+ * \brief Change SOS owner.
+ *
+ * \param sos SOS handle
+ * \param owner Owner's UID
+ * \param group Owner's GID
+ *
+ * \retval 0 success
+ * \retval -1 failed
+ */
+int sos_chown(sos_t sos, uid_t owner, gid_t group);
+
+/**
  * \brief Rotate store (similar to logrotate).
  *
  * Assuming that the current store path is SPATH, this function will rename the

@@ -252,4 +252,16 @@ size_t ods_obj_alloc_size(ods_t ods, void *obj);
  */
 int ods_stat(ods_t ods, struct stat *buff);
 
+/**
+ * \brief A \c fchown() wrapper to change owner of ODS OBJ and PG.
+ *
+ * \param ods The ODS handle
+ * \param owner Owner user ID
+ * \param group Owner group ID
+ *
+ * \retval 0 success
+ * \retval -1 failure
+ */
+int ods_chown(ods_t ods, uid_t owner, gid_t group);
+
 #endif

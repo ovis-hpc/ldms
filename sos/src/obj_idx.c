@@ -421,3 +421,8 @@ int obj_idx_verify_key(obj_idx_t idx, obj_key_t key)
 {
 	return idx->idx_class->cmp->verify_key(key);
 }
+
+int obj_idx_chown(obj_idx_t idx, uid_t owner, gid_t group)
+{
+	return ods_chown(idx->ods, owner, group);
+}

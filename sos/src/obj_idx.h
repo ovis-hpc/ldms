@@ -573,4 +573,16 @@ int obj_idx_verify(obj_idx_t idx);
  */
 int obj_idx_verify_key(obj_idx_t idx, obj_key_t key);
 
+/**
+ * \brief A wrapper of \c fchown() for object index.
+ *
+ * \param idx The index handle
+ * \param owner Owner's UID
+ * \param group Owner's GID
+ *
+ * \retval 0 OK
+ * \retval -1 Error
+ */
+int obj_idx_chown(obj_idx_t idx, uid_t owner, gid_t group);
+
 #endif

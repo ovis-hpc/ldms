@@ -1379,6 +1379,23 @@ static void __unlink_obj_pg(char *path)
 	path[len] = 0;
 }
 
+int sos_chown(sos_t sos, uid_t owner, gid_t group)
+{
+	int rc;
+	sos_attr_t attr;
+	int attr_id;
+	int attr_count = sos_get_attr_count(sos);
+	for (attr_id = 0; attr_id < attr_count; attr_id++) {
+		attr = sos_obj_attr_by_id(sos, attr_id);
+		if (!attr->has_idx)
+			continue;
+		rc = obj_idx_chown(attr->oidx, owner, group);
+		if (rc)
+			return rc;
+	}
+	return ods_chown(sos->ods, owner, group);
+}
+
 sos_t sos_rotate(sos_t sos, int N)
 {
 	sos_t new_sos = NULL;
@@ -1387,7 +1404,12 @@ sos_t sos_rotate(sos_t sos, int N)
 	char *_a, *_b, *_tmp;
 	size_t _len = strlen(sos->path);
 	int i, attr_id, attr_count;
+	struct stat st;
 	int rc;
+
+	rc = ods_stat(sos->ods, &st);
+	if (rc)
+		return NULL;
 
 	buff = malloc(PATH_MAX * 2);
 	if (!buff)
@@ -1433,9 +1455,10 @@ sos_t sos_rotate(sos_t sos, int N)
 	}
 
 	/* create new sos */
-	new_sos = sos_open(sos->path, O_CREAT | O_RDWR, 0660, sos->classp);
+	new_sos = sos_open(sos->path, O_CREAT | O_RDWR, st.st_mode, sos->classp);
 	if (!new_sos)
 		goto roll_back2;
+	sos_chown(new_sos, st.st_uid, st.st_gid);
 
 	/* close old sos and strip the indices, there's no going from here */
 	sos_close(sos, ODS_COMMIT_ASYNC);
