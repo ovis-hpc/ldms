@@ -378,7 +378,7 @@ static int pid_rbn_cmp(void *tree_key, void *key)
 char *conf = NULL;
 char *xprt = "sock";
 uint16_t port = 55555;
-FILE *logf = NULL;
+FILE *logfp = NULL;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 char *log_path = NULL;
 int FOREGROUND = 0;
@@ -1287,9 +1287,9 @@ void kmd_logrotate(int x)
 	if (log_path) {
 		pthread_mutex_lock(&log_lock);
 		FILE *new_log = kmd_open_log();
-		fflush(logf);
-		fclose(logf);
-		logf = new_log;
+		fflush(logfp);
+		fclose(logfp);
+		logfp = new_log;
 		pthread_mutex_unlock(&log_lock);
 	}
 }
@@ -1339,7 +1339,7 @@ next_arg:
 			k_log("Failed to copy the log path\n");
 			exit(ENOMEM);
 		}
-		logf = kmd_open_log();
+		logfp = kmd_open_log();
 		break;
 	case 'F':
 		FOREGROUND = 1;
@@ -1731,7 +1731,9 @@ void child_terminated_handler(pid_t pid, int status)
 	pthread_mutex_lock(&pid_rbt_mutex);
 	n = (void*)rbt_find(&pid_rbt, (void*)(uint64_t)pid);
 	if (!n) {
-		k_log("ERROR in %s: cannot find entry for pid: %d\n", pid);
+#ifdef DEBUG
+		k_log("WARN: %s: cannot find entry for pid: %d\n", __func__, pid);
+#endif
 		pthread_mutex_unlock(&pid_rbt_mutex);
 		return;
 	}
