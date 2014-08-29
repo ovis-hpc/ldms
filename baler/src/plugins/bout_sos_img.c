@@ -84,6 +84,15 @@ int bout_sos_img_start(struct bplugin *this)
 	return 0;
 }
 
+static
+void rotate_cb(struct bout_sos_plugin *p)
+{
+	struct bout_sos_img_plugin *_this = (void*)p;
+	if (_this->sos_iter)
+		sos_iter_free(_this->sos_iter);
+	_this->sos_iter = sos_iter_new(p->sos, 0);
+}
+
 int bout_sos_img_process_output(struct boutplugin *this,
 		struct boutq_data *odata)
 {
@@ -92,12 +101,22 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	struct bout_sos_img_plugin *_this = (typeof(_this))this;
 	uint32_t *tmp;
 	pthread_mutex_lock(&_base->sos_mutex);
-	sos_iter_t iter = _this->sos_iter;
-	sos_t sos = _base->sos;
-	if (!sos || !iter) {
+	sos_iter_t iter;
+	sos_t sos;
+	if (!_base->sos) {
 		rc = EBADF;
 		goto err0;
 	}
+
+	bout_sos_rotate(_base, odata->tv.tv_sec, rotate_cb);
+
+	if (!_this->sos_iter) {
+		rc = EBADF;
+		goto err0;
+	}
+
+	sos = _base->sos;
+	iter = _this->sos_iter;
 
 	sos_attr_t attr = sos_obj_attr_by_id(sos, 0);
 	if (!attr) {

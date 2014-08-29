@@ -230,7 +230,7 @@ dent_loop:
 	/* go to next entry if suffix is not "_sos.OBJ" */
 	if ((suffix = strrchr(dent.d_name, '_')) == NULL)
 		goto dent_loop;
-	if (strcmp(suffix, "_sos.OBJ") != 0)
+	if (strcmp(suffix, "_ptn_id.OBJ") != 0)
 		goto dent_loop;
 	/* main sos filename is {store_name}_sos.OBJ */
 	suffix[0] = '\0'; /* cut the suffix off of dent.d_name */

@@ -72,11 +72,14 @@ int bout_sos_msg_process_output(struct boutplugin *this,
 	struct bout_sos_plugin *sp = (typeof(sp))this;
 	struct bout_sos_msg_plugin *mp = (typeof(mp))this;
 	pthread_mutex_lock(&sp->sos_mutex);
-	sos_t sos = sp->sos;
+	sos_t sos;
 	size_t len;
 	size_t req_len;
-	if (!sos)
+	if (!sp->sos)
 		return EBADFD;
+
+	bout_sos_rotate(sp, odata->tv.tv_sec, NULL);
+	sos = sp->sos;
 
 	sos_obj_t obj = sos_obj_new(sos);
 	if (!obj)

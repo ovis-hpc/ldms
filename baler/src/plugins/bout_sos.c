@@ -99,6 +99,36 @@ int bout_sos_config(struct bplugin *this, struct bpair_str_head *arg_head)
 			sprintf(sos_path + strlen(sos_path), "/%s", type);
 	}
 	_this->sos_path = sos_path;
+	bpstr = bpair_str_search(arg_head, "time_limit", NULL);
+	if (bpstr) {
+		_this->time_limit = atoi(bpstr->s1);
+	}
+	bpstr = bpair_str_search(arg_head, "max_copy", NULL);
+	if (bpstr) {
+		_this->max_copy = atoi(bpstr->s1);
+	}
+	return 0;
+}
+
+int bout_sos_rotate(struct bout_sos_plugin *_this, int ts,
+						bout_sos_rotate_cb_fn cb)
+{
+	if (!_this->time_limit)
+		return 0;
+	if (!_this->last_rotate) {
+		_this->last_rotate = ts;
+		return 0;
+	}
+	if (_this->last_rotate/_this->time_limit >= ts/_this->time_limit)
+		return 0;
+
+	sos_t new_sos = sos_rotate(_this->sos, _this->max_copy);
+	if (!new_sos)
+		return errno;
+	_this->sos = new_sos;
+	if (cb)
+		cb(_this);
+	sos_post_rotation(new_sos, "BALER_STORE_POSTROTATE");
 	return 0;
 }
 
