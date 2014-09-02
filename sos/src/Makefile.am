@@ -3,6 +3,7 @@ INCLUDES = @OVIS_LIB_INCDIR_FLAG@
 sbin_PROGRAMS = \
 	bpt_verify \
 	sos_verify \
+	sos_archive \
 	sos_restore \
 	sos_reinit \
 	ods_verify \
@@ -128,6 +129,13 @@ liboidxinclude_HEADERS = oidx.h
 sos_verify_SOURCES = sos_verify.c
 sos_verify_CFLAGS = $(INCLUDES)
 sos_verify_LDADD = \
+		   libsos.la \
+		   libods.la \
+		   libobjidx.la
+
+sos_archive_SOURCES = sos_archive.c
+sos_archive_CFLAGS = $(INCLUDES)
+sos_archive_LDADD = \
 		   libsos.la \
 		   libods.la \
 		   libobjidx.la
