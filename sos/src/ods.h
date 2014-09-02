@@ -264,4 +264,24 @@ int ods_stat(ods_t ods, struct stat *buff);
  */
 int ods_chown(ods_t ods, uid_t owner, gid_t group);
 
+/**
+ * \brief An \c unlink() wrapper to unlink ODS OBJ and PG files.
+ *
+ * \param path ODS path
+ *
+ * \retval 0 OK
+ * \retval errno Error
+ */
+int ods_unlink(const char *ods_path);
+
+/**
+ * \brief Trimming long trailing free pages.
+ *
+ * \param ods The ODS handle
+ *
+ * \retval 0 OK
+ * \retval errno Error
+ */
+int ods_pack(ods_t ods);
+
 #endif

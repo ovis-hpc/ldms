@@ -940,6 +940,78 @@ int ods_chown(ods_t ods, uid_t owner, gid_t group)
 	return fchown(ods->pg_fd, owner, group);
 }
 
+int ods_unlink(const char *ods_path)
+{
+	int rc = 0;
+	struct stat st;
+	char *buff = malloc(PATH_MAX);
+	int i;
+	static char *suffix[] = {".OBJ", ".PG"};
+	if (!buff)
+		return ENOMEM;
+	for (i = 0; i < 2; i++) {
+		snprintf(buff, PATH_MAX, "%s%s", ods_path, suffix[i]);
+		rc = stat(buff, &st);
+		if (rc) {
+			rc = errno;
+			goto out;
+		}
+		rc = unlink(buff);
+		if (rc) {
+			rc = errno;
+			goto out;
+		}
+	}
+out:
+	free(buff);
+	return rc;
+}
+
+int ods_pack(ods_t ods)
+{
+	int i;
+	ods_pg_t pg;
+	ods_pg_t pg_prev;
+	ods_pg_t pg_cur;
+	size_t obj_sz, pg_sz;
+	int rc;
+
+	for (i = ods->pg_table->count-1; i > -1; i--) {
+		if (ods->pg_table->pages[i])
+			break;
+	}
+	i++;
+	if (i < 0 || ods->pg_table->count <= i)
+		return 0;
+	ods->pg_table;
+	pg_sz = sizeof(*ods->pg_table) + i;
+	pg = ods_obj_page_to_ptr(ods, i);
+	pg_prev = 0;
+	pg_cur = ods_obj_ref_to_ptr(ods, ods->obj->pg_free);
+	while (pg_cur && pg_cur != pg) {
+		pg_prev = pg_cur;
+		pg_cur = ods_obj_ref_to_ptr(ods, pg_cur->next);
+	}
+	if (!pg_cur)
+		return ENOENT;
+	if (!pg_prev) {
+		ods->obj->pg_free = pg->next;
+	} else {
+		pg_prev->next = pg->next;
+	}
+	ods->pg_table->count = i;
+	ods_commit(ods, ODS_COMMIT_ASYNC);
+	/* offset of the trailing page is the new file size */
+	obj_sz = (size_t)ods_obj_ptr_to_ref(ods, pg);
+	rc = ftruncate(ods->pg_fd, pg_sz);
+	if (rc)
+		return errno;
+	rc = ftruncate(ods->obj_fd, obj_sz);
+	if (rc)
+		return errno;
+	return ods_remap(ods);
+}
+
 #ifdef ODS_MAIN
 int main(int argc, char *argv[])
 {
