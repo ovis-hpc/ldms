@@ -21,10 +21,6 @@ case "$cmd" in
 	start)
 		echo "Starting all ldmsd_samplers"
 		ldmsd-sampler-services start
-		if [ ! $? -eq 1 ]; then
-			exit $?
-		fi
-
 		echo "--------------------------------"
 		echo "Starting OVIS services on the OVIS head node"
 		ovis-head-services start
@@ -32,9 +28,6 @@ case "$cmd" in
 	stop)
 		echo "Stopping all ldmsd_samplers"
 		ldmsd-sampler-services stop
-		if [ ! $? -eq 1 ]; then
-			exit $?
-		fi
 		echo "--------------------------------"
 		echo "Stopping OVIS services on the OVIS head node"
 		ovis-head-services stop
@@ -42,9 +35,6 @@ case "$cmd" in
 	status)
 		echo "Checking the status of all ldmsd_samplers"
 		ldmsd-sampler-services status
-		if [ ! $? -eq 1 ]; then
-			exit $?
-		fi
 		echo "--------------------------------"
 		echo "Checking the status of the OVIS services on the OVIS head node"
 		ovis-head-services check
