@@ -176,6 +176,8 @@ static char *LUSTRE_METRICS[] = {
 };
 #define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
 #define LLITE_PREFIX "/proc/fs/lustre/llite"
+#define CSS_LUSTRE_NAME_MAX 1024
+#define CSS_LUSTRE_PATH_MAX 4096
 
 /* Lustre specific vars */
 /**
