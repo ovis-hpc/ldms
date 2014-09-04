@@ -100,11 +100,16 @@
 #include "obj_idx.h"
 #include <coll/idx.h>
 
+#define SOS_OBJ_TYPE_OBJ 0x1
+#define SOS_OBJ_TYPE_ATTR 0x2
+
 /*
  * An object is just a blob of bytes. It is opaque without the
  * associated class definition
  */
 struct sos_obj_s {
+	uint32_t type:2;
+	uint32_t class_id:30; /* NOTE: for future use */
 	unsigned char data[0];
 };
 

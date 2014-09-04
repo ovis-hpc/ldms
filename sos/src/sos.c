@@ -409,7 +409,7 @@ static sos_meta_t make_meta(sos_t sos, sos_meta_t meta, sos_class_t classp)
 	strncpy(meta->classname, classp->name, sizeof(meta->signature));
 	meta->attr_cnt = classp->count;
 
-	cur_off = 0;
+	cur_off = sizeof (struct sos_obj_s);
 	for (attr_id = 0; attr_id < classp->count; attr_id++) {
 		strncpy(meta->attrs[attr_id].name, classp->attrs[attr_id].name,
 			SOS_ATTR_NAME_LEN);
@@ -702,6 +702,7 @@ sos_obj_t sos_obj_new(sos_t sos)
 		}
 	}
 	bzero(obj, sos_meta(sos)->obj_sz);
+	obj->type = SOS_OBJ_TYPE_OBJ;
 	return obj;
  err:
 	return NULL;
@@ -735,14 +736,16 @@ size_t SOS_TYPE_DOUBLE__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 size_t SOS_TYPE_STRING__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
-	char *str = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_obj_t strobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	char *str = strobj->data;
 	return strlen(str) + 1;
 }
 
 size_t SOS_TYPE_BLOB__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
-	sos_blob_obj_t blob = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_obj_t blobobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_blob_obj_t blob = blobobj->data;
 	return sizeof(*blob) + blob->len;
 }
 
@@ -774,14 +777,16 @@ void SOS_TYPE_DOUBLE__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 void SOS_TYPE_STRING__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
-	char *str = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_obj_t strobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	char *str = strobj->data;
 	obj_key_set(key, str, strlen(str)+1);
 }
 
 void SOS_TYPE_BLOB__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
-	sos_blob_obj_t blob = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_obj_t blobobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_blob_obj_t blob = blobobj->data;
 	obj_key_set(key, blob, sizeof(*blob) + blob->len);
 }
 
@@ -848,33 +853,36 @@ void SOS_TYPE_DOUBLE__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 
 void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 {
-	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
+	obj_ref_t strref = *(obj_ref_t *)&obj->data[attr->data];
 	obj_ref_t objref = ods_obj_ptr_to_ref(attr->sos->ods, obj);
-	char *dst = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_obj_t dst = ods_obj_ref_to_ptr(attr->sos->ods, strref);
 	char *src = (char *)value;
 	size_t src_len = strlen(src) + 1;
+	size_t newstr_sz = src_len + sizeof(struct sos_obj_s);
 	if (dst) {
 		/* If the memory containing the current value is big enough, use it */
-		if (ods_obj_size(attr->sos->ods, dst) >= strlen(value) + 1) {
-			strcpy(dst, src);
+		if (ods_obj_size(attr->sos->ods, dst) >= newstr_sz) {
+			strcpy(dst->data, src);
 			return;
 		} else
 			ods_free(attr->sos->ods, dst);
 	}
-	dst = ods_alloc(attr->sos->ods, src_len);
+	dst = ods_alloc(attr->sos->ods, newstr_sz);
 	if (!dst) {
-		if (ods_extend(attr->sos->ods, (src_len | (SOS_ODS_EXTEND_SZ - 1))+1))
+		if (ods_extend(attr->sos->ods, (newstr_sz | (SOS_ODS_EXTEND_SZ - 1))+1))
 			assert(NULL == "ods extend failure.");
 		/* ods extended, obj and meta are now stale: update it */
 		attr->sos->meta = ods_get_user_data(attr->sos->ods, &attr->sos->meta_sz);
 		obj = ods_obj_ref_to_ptr(attr->sos->ods, objref);
 		dst = ods_alloc(attr->sos->ods, src_len);
 		if (!dst)
-			assert(NULL == "memory allocation failure");
+			assert(NULL == "ods allocation failure");
+		dst->type = SOS_OBJ_TYPE_ATTR;
 	}
-	strcpy(dst, src);
-	ref = ods_obj_ptr_to_ref(attr->sos->ods, dst);
-	*(obj_ref_t *)&obj->data[attr->data] = ref;
+
+	strcpy(dst->data, src);
+	strref = ods_obj_ptr_to_ref(attr->sos->ods, dst);
+	*(obj_ref_t *)&obj->data[attr->data] = strref;
 }
 
 void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
@@ -882,9 +890,10 @@ void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 	ods_t ods = attr->sos->ods;
 	obj_ref_t objref = ods_obj_ptr_to_ref(ods, obj);
 	obj_ref_t bref = *(obj_ref_t *)&obj->data[attr->data];
-	sos_blob_obj_t blob = ods_obj_ref_to_ptr(ods, bref);
+	sos_obj_t blob = ods_obj_ref_to_ptr(ods, bref);
 	sos_blob_obj_t arg = (typeof(arg))value;
-	size_t alloc_len = sizeof(*blob) + arg->len;
+	size_t alloc_len = sizeof(struct sos_obj_s)
+				+ sizeof(struct sos_blob_obj_s) + arg->len;
 
 	if (blob && ods_obj_size(ods, blob) < alloc_len) {
 		/* Cannot reuse space, free it and reset blob */
@@ -898,24 +907,20 @@ void SOS_TYPE_BLOB__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 		blob = ods_alloc(ods, alloc_len);
 		if (!blob) {
 			if (ods_extend(ods, (alloc_len | (SOS_ODS_EXTEND_SZ - 1))+1))
-				goto err1;
+				assert(NULL == "ods extend failure.");
 			/* ods extended, obj is now stale: update it */
 			attr->sos->meta = ods_get_user_data(attr->sos->ods, &attr->sos->meta_sz);
 			obj = ods_obj_ref_to_ptr(attr->sos->ods, objref);
 			blob = ods_alloc(ods, alloc_len);
 			if (!blob)
-				goto err1;
+				assert(NULL == "ods allocation failure");
 		}
 		bref = ods_obj_ptr_to_ref(ods, blob);
+		blob->type = SOS_OBJ_TYPE_ATTR;
 	}
 
-	memcpy(blob, arg, alloc_len);
+	memcpy(blob->data, arg, sizeof(struct sos_blob_obj_s) + arg->len);
 	*(obj_ref_t *)&obj->data[attr->data] = bref;
-
-	return;
-err1:
-	blob->len = 0;
-	/* XXX Have some error report here */
 }
 
 void *SOS_TYPE_INT32__get_fn(sos_attr_t attr, sos_obj_t obj)
@@ -946,13 +951,15 @@ void *SOS_TYPE_DOUBLE__get_fn(sos_attr_t attr, sos_obj_t obj)
 void *SOS_TYPE_STRING__get_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	obj_ref_t ref = *(obj_ref_t*)&obj->data[attr->data];
-	return ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_obj_t strobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	return strobj->data;
 }
 
 void *SOS_TYPE_BLOB__get_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	obj_ref_t ref = *(obj_ref_t*)&obj->data[attr->data];
-	return ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	sos_obj_t blobobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
+	return blobobj->data;
 }
 
 void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, obj_key_t key)
