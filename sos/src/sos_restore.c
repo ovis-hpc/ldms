@@ -50,10 +50,12 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/fcntl.h>
 
+#include "ods.h"
 #include "sos.h"
 #include "sos_priv.h"
 
@@ -92,9 +94,11 @@ void usage()
 
 int recover = 0;
 const char *sos_path = NULL;
+char sbuf[PATH_MAX];
 
 int main(int argc, char **argv)
 {
+	ods_t ods;
 	int attr_count;
 	int attr_id;
 	int rc = 0;
@@ -102,6 +106,7 @@ int main(int argc, char **argv)
 	sos_iter_t iter;
 	uint64_t count_base = 0;
 	uint64_t count;
+	struct stat st;
 	int check = 1;
 
 	umask(0);
@@ -128,7 +133,27 @@ out_arg_loop:
 		usage();
 	}
 
-	sos_t sos = sos_open(sos_path, O_RDWR);
+	snprintf(sbuf, PATH_MAX, "%s_sos", sos_path);
+
+	ods = ods_open(sbuf, O_RDWR);
+	if (!ods) {
+		printf("ERROR: Cannot open ODS: %s\n", sbuf);
+		_exit(-1);
+	}
+
+	rc = ods_stat(ods, &st);
+	if (rc) {
+		printf("ERROR: Cannot stat %s, error: %m\n", sbuf);
+		_exit(-1);
+	}
+
+	sos_class_t classp = sos_class_from_ods(ods);
+	if (!classp) {
+		printf("ERROR: Cannot get SOS class from ODS: %s\n", sbuf);
+		_exit(-1);
+	}
+
+	sos_t sos = sos_open(sos_path, O_RDWR | O_CREAT, st.st_mode, classp);
 	if (!sos) {
 		printf("ERROR: Cannot open SOS: %s\n", sos_path);
 		_exit(-1);

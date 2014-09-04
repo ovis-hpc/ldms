@@ -349,7 +349,7 @@ static obj_idx_t init_idx(sos_t sos, int o_flag, int o_mode, sos_attr_t attr)
 	sprintf(tmp_path, "%s_%s", sos->path, attr->name);
 	/* Check if the index exists */
 	idx = obj_idx_open(tmp_path);
-	if (!idx) {
+	if (!idx && (o_flag & O_CREAT)) {
 		char *order_sz = getenv("BPTREE_ORDER");
 		int order = 7;
 		if (order_sz)
