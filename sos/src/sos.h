@@ -505,6 +505,27 @@ size_t sos_obj_attr_size(sos_t sos, int attr_id, sos_obj_t obj);
 void sos_attr_key(sos_attr_t attr, sos_obj_t obj, obj_key_t key);
 
 /**
+ * \brief Compare two keys using the attribute's compare function
+ *
+ * \param attr	The attribute handle
+ * \param a	The first key
+ * \param b	The second key
+ * \retval <0	a < b
+ * \retval 0	a == b
+ * \retval >0	a > b
+ */
+int sos_attr_key_cmp(sos_attr_t attr, obj_key_t a, obj_key_t b);
+
+/**
+ * \brief Set \c key from input \c str.
+ *
+ * \param attr The attribute handle
+ * \param[out] key The output key
+ * \param str The input string
+ */
+void sos_attr_key_from_str(sos_attr_t attr, obj_key_t key, const char *str);
+
+/**
  * \brief Set an object attribute
  *
  * An attribute has an \c id that is the order of the attribute in the
@@ -604,16 +625,18 @@ void sos_iter_free(sos_iter_t iter);
 const char *sos_iter_name(sos_iter_t iter);
 
 /**
- * \brief Compare two keys using the index's compare function
+ * \brief Compare iterator object's key with other key.
+ *
+ * This function compare the key of the object pointed by the iterator with the
+ * other key.
  *
  * \param iter	The iterator handle
- * \param a	The first key
- * \param b	The second key
- * \return <0	a < b
- * \return 0	a == b
- * \return >0	a > b
+ * \param other	The other key
+ * \return <0	iter < other
+ * \return 0	iter == other
+ * \return >0	iter > other
  */
-int sos_iter_key_cmp(sos_iter_t iter, obj_key_t a, obj_key_t b);
+int sos_iter_key_cmp(sos_iter_t iter, obj_key_t other);
 
 /**
  * \brief Position the iterator at the specified key
@@ -711,6 +734,26 @@ obj_ref_t sos_iter_ref(sos_iter_t iter);
  * \return obj_ref_t at the current position
  */
 sos_obj_t sos_iter_obj(sos_iter_t iter);
+
+/**
+ * \brief Convert object reference to object handle.
+ *
+ * \param sos The SOS handle
+ * \param ref Object reference
+ *
+ * \retval obj Object handle
+ */
+sos_obj_t sos_ref_to_obj(sos_t sos, obj_ref_t ref);
+
+/**
+ * \brief Convert object handle to object reference
+ *
+ * \param sos The SOS handle
+ * \param obj The object handle
+ *
+ * \retval ref Object reference
+ */
+obj_ref_t sos_obj_to_ref(sos_t sos, sos_obj_t obj);
 
 /**
  * Remove the current object (pointed by \c iter) from all of its indices.

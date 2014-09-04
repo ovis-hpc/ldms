@@ -292,13 +292,13 @@ int main(int argc, char *argv[])
 			 * If the user specified a key on the index
 			 * we need to stop when the iterator passes the key.
 			 */
-			if (tv_sec != -1 && sos_iter_key_cmp(tv_iter, key, tv_key)) {
+			if (tv_sec != -1 && sos_iter_key_cmp(tv_iter, tv_key)) {
 				if (iter == tv_iter)
 					break;
 				else
 					continue;
 			}
-			if (comp_id != -1 && sos_iter_key_cmp(comp_iter, key, comp_key)) {
+			if (comp_id != -1 && sos_iter_key_cmp(comp_iter, comp_key)) {
 				if (iter == comp_iter)
 					break;
 				else

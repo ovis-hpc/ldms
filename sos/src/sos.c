@@ -191,6 +191,11 @@ void sos_attr_key_set(sos_attr_t attr, void *value, obj_key_t key)
 	attr->set_key_fn(attr, value, key);
 }
 
+void sos_attr_key_from_str(sos_attr_t attr, obj_key_t key, const char *str)
+{
+	obj_key_from_str(attr->oidx, key, str);
+}
+
 void sos_key_from_str(sos_iter_t i, obj_key_t key, const char *key_val)
 {
 	obj_key_from_str(i->attr->oidx, key, key_val);
@@ -253,6 +258,16 @@ const char *sos_iter_name(sos_iter_t i)
 	return i->attr->name;
 }
 
+sos_obj_t sos_ref_to_obj(sos_t sos, obj_ref_t ref)
+{
+	return ods_obj_ref_to_ptr(sos->ods, ref);
+}
+
+obj_ref_t sos_obj_to_ref(sos_t sos, sos_obj_t obj)
+{
+	return ods_obj_ptr_to_ref(sos->ods, obj);
+}
+
 sos_obj_t sos_iter_obj(sos_iter_t i)
 {
 	obj_ref_t obj_o = obj_iter_ref(i->iter);
@@ -297,9 +312,9 @@ int sos_iter_seek_inf(sos_iter_t i, obj_key_t key)
 	return obj_iter_find_glb(i->iter, key);
 }
 
-int sos_iter_key_cmp(sos_iter_t iter, obj_key_t a, obj_key_t b)
+int sos_iter_key_cmp(sos_iter_t iter, obj_key_t other)
 {
-	return obj_key_cmp(iter->attr->oidx, a, b);
+	return obj_key_cmp(iter->attr->oidx, obj_iter_key(iter->iter), other);
 }
 
 int sos_iter_seek(sos_iter_t i, obj_key_t key)
@@ -950,6 +965,11 @@ void sos_obj_attr_key(sos_t sos, int attr_id, sos_obj_t obj, obj_key_t key)
 void sos_attr_key(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
 	attr->get_key_fn(attr, obj, key);
+}
+
+int sos_attr_key_cmp(sos_attr_t attr, obj_key_t a, obj_key_t b)
+{
+	return obj_key_cmp(attr->oidx, a, b);
 }
 
 static int __remove_key(sos_t sos, sos_obj_t obj, sos_iter_t iter)

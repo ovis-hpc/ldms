@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-14 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -67,19 +67,90 @@
 
 #include "sos.h"
 
-#define FMT "s:k:v:i"
+#define FMT "s:k:e:m:M:i"
+
 void usage(int argc, char *argv[])
 {
-	printf("usage: %s -s <path> [-k <key_column>] [-k <key_value>]\n"
-	       "        -s <path>          - The path to the object store\n"
-	       "        -k <key_column>    - The column index for the key (default 0)\n"
-	       "        -v <key value>     - The key value.\n"
-	       "        -i                 - Show the object store meta data.\n",
+	printf(
+"usage: %s -s <path> [-k <key_column>] [-e <exact_value>] [-m <min_value>] \n"
+"                    [-M <max_value>] ...\n"
+"        -s <path>          - The path to the object store\n"
+"        -k <key_column>    - The column index for the key (default 0)\n"
+"        -e <exact_value>   - Query with exact value of the last key.\n"
+"        -m <min_value>     - Query with minimum value of the last key.\n"
+"        -M <max_value>     - Query with maximum value of the last key.\n"
+"        -i                 - Show the object store meta data.\n"
+"\n"
+"    The -k -e -m -M query conditions can be repeated for multiple attributes.\n"
+"    The query results will satisfy all query conditions. The first attribute\n"
+"    is used to create iterator. The other specified attributes and conditions\n"
+"    are used for condition checking only.\n"
+"\n",
 	       argv[0]);
 	exit(1);
 }
 
+typedef struct sos_cond_s {
+	sos_attr_t attr;
+	obj_key_t min;
+	obj_key_t max;
+	TAILQ_ENTRY(sos_cond_s) entry;
+} *sos_cond_t;
+
+TAILQ_HEAD(sos_cond_head, sos_cond_s);
+
+obj_key_t key_buff = NULL;
+int bufflen= 0;
+
+struct sos_cond_head cond_head = TAILQ_HEAD_INITIALIZER(cond_head);
+
+static int __sos_cond_single_test(sos_t sos, obj_ref_t ref, sos_cond_t cond)
+{
+	sos_attr_t attr = cond->attr;
+	obj_key_t k = key_buff;
+	size_t attr_sz;
+	attr_sz = sos_obj_attr_size(sos, attr->id, sos_ref_to_obj(sos, ref));
+	if (bufflen < attr_sz) {
+		k = obj_key_new(attr_sz);
+		if (!k)
+			return ENOMEM;
+		bufflen = attr_sz;
+		obj_key_delete(key_buff);
+		key_buff = k;
+	}
+	sos_attr_key(attr, sos_ref_to_obj(sos, ref), k);
+
+	if (cond->min && sos_attr_key_cmp(attr, k, cond->min) < 0)
+		return EINVAL;
+
+	if (cond->max && sos_attr_key_cmp(attr, cond->max, k) < 0)
+		return EINVAL;
+
+	return 0;
+}
+
+static int sos_cond_test(sos_t sos, obj_ref_t ref, struct sos_cond_head h)
+{
+	int rc;
+	sos_cond_t cond;
+	TAILQ_FOREACH(cond, &h, entry) {
+		rc = __sos_cond_single_test(sos, ref, cond);
+		if (rc)
+			return rc;
+	}
+	return 0;
+}
+
 int records = 0;
+
+void print_blob(FILE *fp, int width, size_t len, unsigned char *blob)
+{
+	int i;
+	for (i = 0; 0 < width && i < len; i++) {
+		fprintf(fp, " %02X", blob[i]);
+		width -= 2;
+	}
+}
 
 void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int col_count, int *width)
 {
@@ -118,8 +189,8 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int col_count, int *width)
 			break;
 		case SOS_TYPE_BLOB:
 			blob = sos_obj_attr_get(sos, col, obj);
-			n = fprintf(fp, " %d:", blob->len);
-			fprintf(fp, "%*s", width[col] - n, blob->data);
+			n = fprintf(fp, " %lu:", blob->len);
+			print_blob(fp, width[col] - n, blob->len, blob->data);
 			break;
 		case SOS_TYPE_DOUBLE:
 			SOS_OBJ_ATTR_GET(vd, sos, col, obj);
@@ -133,38 +204,6 @@ void print_record(FILE *fp, sos_t sos, sos_obj_t obj, int col_count, int *width)
 	}
 	printf("\n");
 }
-
-void *get_key_value(sos_t sos, int col, char *sz)
-{
-	static uint32_t vu32;
-	static uint64_t vu64;
-	static int32_t v32;
-	static int64_t v64;
-	static double vd;
-
-	enum sos_type_e vtype = sos_get_attr_type(sos, col);
-	switch (vtype) {
-	case SOS_TYPE_INT32:
-		sscanf(sz, "%d", &v32);
-		return &v32;
-	case SOS_TYPE_INT64:
-		sscanf(sz, "%" PRIi64 "", &v64);
-		return &v64;
-	case SOS_TYPE_UINT32:
-		sscanf(sz, "%" PRIu32 "", &vu32);
-		return &vu32;
-	case SOS_TYPE_UINT64:
-		sscanf(sz, "%" PRIu64 "", &vu64);
-		return &vu64;
-	case SOS_TYPE_DOUBLE:
-		sscanf(sz, "%lf", &vd);
-		return &vd;
-	default:
-		vu64 = -1;
-		return &vu64;
-	}
-}
-
 
 const char *type_name(enum sos_type_e vtype)
 {
@@ -203,17 +242,28 @@ void print_meta_data(sos_t sos)
 	printf("\n");
 }
 
+void check_sos(sos_t sos)
+{
+	if (sos)
+		return;
+	fprintf(stderr, "ERROR: Please specify SOS first\n");
+	_exit(-1);
+}
+
+#define SOS_QKSIZE 1024
+
 int main(int argc, char *argv[])
 {
 	extern int optind;
 	extern char *optarg;
 	obj_key_t key = obj_key_new(1024);
-	sos_obj_t obj;
-	sos_t sos;
-	sos_iter_t iter;
+	obj_ref_t ref;
+	sos_t sos = NULL;
+	sos_iter_t iter = NULL;
 	int key_col = 0;
-	char *key_val = NULL;
 	char *path = NULL;
+	sos_attr_t attr;
+	sos_cond_t cond = NULL;
 	int op;
 	int col;
 	int col_count;
@@ -226,13 +276,53 @@ int main(int argc, char *argv[])
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 's':
-			path = strdup(optarg);
+			path = optarg;
+			sos = sos_open(path, O_RDWR);
+			if (!sos) {
+				fprintf(stderr, "ERROR: Cannot open sos: %s\n",
+						path);
+				_exit(-1);
+			}
 			break;
 		case 'k':
+			check_sos(sos);
 			key_col = atoi(optarg);
+			attr = sos_obj_attr_by_id(sos, key_col);
+			if (!attr) {
+				fprintf(stderr, "ERROR: Invalid attribute: %d\n",
+						key_col);
+				_exit(-1);
+			}
+			if (!attr->has_idx) {
+				fprintf(stderr, "ERROR: attribute '%d' "
+						"is not indexed.\n",
+						key_col);
+				_exit(-1);
+			}
+			cond = calloc(1, sizeof(*cond));
+			if (!cond) {
+				fprintf(stderr, "ERROR: Not enough memory\n");
+				_exit(-1);
+			}
+			cond->attr = attr;
+			TAILQ_INSERT_TAIL(&cond_head, cond, entry);
 			break;
-		case 'v':
-			key_val = strdup(optarg);
+		case 'm':
+		case 'M':
+		case 'e':
+			check_sos(sos);
+			key = obj_key_new(SOS_QKSIZE);
+			if (!key) {
+				fprintf(stderr, "ERROR: Not enough memory\n");
+				_exit(-1);
+			}
+			sos_attr_key_from_str(cond->attr, key, optarg);
+			if (op != 'm') {
+				cond->max = key;
+			}
+			if (op != 'M') {
+				cond->min = key;
+			}
 			break;
 		case 'i':
 			meta_data = 1;
@@ -242,14 +332,7 @@ int main(int argc, char *argv[])
 			usage(argc, argv);
 		}
 	}
-	if (!path || key_col < 0)
-		usage(argc, argv);
 
-	sos = sos_open(path, O_RDWR);
-	if (!sos) {
-		printf("Could not open the specified object store.\n");
-		usage(argc, argv);
-	}
 	if (meta_data)
 		print_meta_data(sos);
 
@@ -293,28 +376,43 @@ int main(int argc, char *argv[])
 	}
 	printf("%s\n", heading);
 
-	iter = sos_iter_new(sos, key_col);
+	cond = TAILQ_FIRST(&cond_head);
+	if (cond) {
+		iter = sos_iter_new(sos, cond->attr->id);
+	} else {
+		for (col = 0; col < col_count; col++) {
+			attr = sos_obj_attr_by_id(sos, col);
+			if (!attr->has_idx)
+				continue;
+			iter = sos_iter_new(sos, col);
+			break;
+		}
+	}
+
 	if (!iter) {
 		fprintf(stderr, "There is no index on column %d.\n", key_col);
 		exit(3);
 	}
-	if (key_val) {
-		sos_key_from_str(iter, key, key_val);
-		rc = sos_iter_seek(iter, key);
-		if (rc) {
-			printf("The key '%s' was not found.\n", key_val);
-			exit(4);
-		}
-	} else
+
+	if (cond && cond->min) {
+		rc = sos_iter_seek_inf(iter, cond->min);
+		if (rc) /* no inf */
+			rc = sos_iter_begin(iter);
+	} else {
 		rc = sos_iter_begin(iter);
-	for (; !rc; rc = sos_iter_next(iter)) {
-		obj = sos_iter_obj(iter);
-		obj_key_t iter_key = sos_iter_key(iter);
-		if (key_val && sos_iter_key_cmp(iter, iter_key, key))
-			break;
-		records ++;
-		print_record(stdout, sos, obj, col_count, col_width);
 	}
+
+	for (; !rc; rc = sos_iter_next(iter)) {
+		ref = sos_iter_ref(iter);
+		if (cond && cond->max && sos_iter_key_cmp(iter, cond->max) > 0)
+			break;
+		if (cond && sos_cond_test(sos, ref, cond_head) != 0)
+			continue;
+		records ++;
+		print_record(stdout, sos, sos_ref_to_obj(sos, ref),
+						col_count, col_width);
+	}
+
 	printf("%s\n", heading);
 	printf("%d record(s).\n", records);
 	return 0;
