@@ -1269,6 +1269,9 @@ void __idx_ods_rebuild_fn(ods_t ods, void *ptr, size_t sz, void *_arg)
 	struct __idx_ods_arg *arg = _arg;
 	if (arg->rc)
 		return;
+	sos_obj_t obj = ptr;
+	if (obj->type != SOS_OBJ_TYPE_OBJ)
+		return; /* skip non SOS object (e.g. attribute) */
 	sos_t sos = arg->attr->sos;
 	sos_attr_t attr = arg->attr;
 	size_t attr_sz = sos_obj_attr_size(sos, attr->id, ptr);
