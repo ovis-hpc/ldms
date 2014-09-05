@@ -12,7 +12,6 @@ sbin_PROGRAMS = \
 	sos \
 	sos_test \
 	sos_rate \
-	sos_stat \
 	sos_query \
 	oidx \
 	oidx_dump \
@@ -197,13 +196,6 @@ sos_test_LDADD = \
 
 sos_rate_SOURCES = sos_rate.c
 sos_rate_LDADD = \
-	libsos.la \
-	liboidx.la \
-	libods.la \
-	-lcoll
-
-sos_stat_SOURCES = sos_stat.c
-sos_stat_LDADD = \
 	libsos.la \
 	liboidx.la \
 	libods.la \
