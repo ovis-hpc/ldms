@@ -44,8 +44,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- * Author: Tom Tucker tom at ogc dot us
+/**
+ * \brief sos_query utility
+ * \author Tom Tucker (tom at ogc dot us)
+ * \author Narate Taerat (narate at ogc dot us)
  */
 
 #include <sys/queue.h>
@@ -66,15 +68,18 @@
 #include <endian.h>
 
 #include "sos.h"
+#include "sos_priv.h"
 
-#define FMT "s:k:e:m:M:i"
+#define FMT "s:o:k:e:m:M:i"
 
 void usage(int argc, char *argv[])
 {
 	printf(
 "usage: %s -s <path> [-k <key_column>] [-e <exact_value>] [-m <min_value>] \n"
-"                    [-M <max_value>] ...\n"
+"                    [-M <max_value>] ... [-o <out_path>]\n"
 "        -s <path>          - The path to the object store\n"
+"        -o <out_path>      - The path to output SOS. If specified, sos_query\n"
+"                             will output to the store instead of STDOUT.\n"
 "        -k <key_column>    - The column index for the key (default 0)\n"
 "        -e <exact_value>   - Query with exact value of the last key.\n"
 "        -m <min_value>     - Query with minimum value of the last key.\n"
@@ -256,9 +261,11 @@ int main(int argc, char *argv[])
 {
 	extern int optind;
 	extern char *optarg;
+	char buff[PATH_MAX];
 	obj_key_t key = obj_key_new(1024);
-	obj_ref_t ref;
 	sos_t sos = NULL;
+	sos_t outsos = NULL;
+	struct stat st;
 	sos_iter_t iter = NULL;
 	int key_col = 0;
 	char *path = NULL;
@@ -281,6 +288,24 @@ int main(int argc, char *argv[])
 			if (!sos) {
 				fprintf(stderr, "ERROR: Cannot open sos: %s\n",
 						path);
+				_exit(-1);
+			}
+			break;
+		case 'o':
+			if (!sos) {
+				fprintf(stderr, "ERROR: Please specify -s before -o.\n");
+				_exit(-1);
+			}
+			snprintf(buff, PATH_MAX, "%s_sos.OBJ", optarg);
+			rc = stat(buff, &st);
+			if (!rc) {
+				fprintf(stderr, "ERROR: output store existed.\n");
+				_exit(-1);
+			}
+			outsos = sos_open(optarg, O_RDWR|O_CREAT, 0660, sos->classp);
+			if (!outsos) {
+				fprintf(stderr, "ERROR: Cannot open output sos:"
+						" %s\n", optarg);
 				_exit(-1);
 			}
 			break;
@@ -337,6 +362,10 @@ int main(int argc, char *argv[])
 		print_meta_data(sos);
 
 	col_count = sos_get_attr_count(sos);
+
+	if (outsos)
+		goto skip_heading;
+
 	col_width = calloc(col_count, sizeof(int));
 	col_name = calloc(col_count, sizeof(char *));
 	for (col = 0; col < col_count; col++) {
@@ -374,7 +403,10 @@ int main(int argc, char *argv[])
 		for (w = 0; w < col_width[col]-1; w++)
 			strcat(heading, "-");
 	}
+
 	printf("%s\n", heading);
+
+skip_heading:
 
 	cond = TAILQ_FIRST(&cond_head);
 	if (cond) {
@@ -403,14 +435,30 @@ int main(int argc, char *argv[])
 	}
 
 	for (; !rc; rc = sos_iter_next(iter)) {
-		ref = sos_iter_ref(iter);
 		if (cond && cond->max && sos_iter_key_cmp(iter, cond->max) > 0)
 			break;
-		if (cond && sos_cond_test(sos, ref, cond_head) != 0)
+		if (cond && sos_cond_test(sos, sos_iter_ref(iter), cond_head) != 0)
 			continue;
 		records ++;
-		print_record(stdout, sos, sos_ref_to_obj(sos, ref),
-						col_count, col_width);
+		if (outsos) {
+			sos_obj_t obj = sos_obj_new(outsos);
+			if (!obj) {
+				fprintf(stderr, "ERROR: Cannot allocate sos"
+						" object in output SOS.\n");
+				_exit(-1);
+			}
+			for (col = 0; col < sos_get_attr_count(sos); col++) {
+				void *v = sos_obj_attr_get(sos, col, sos_iter_obj(iter));
+				sos_obj_attr_set(outsos, col, obj, v);
+			}
+			rc = sos_obj_add(outsos, obj);
+			if (rc) {
+				fprintf(stderr, "ERROR: sos_obj_add() failed.\n");
+				_exit(-1);
+			}
+			continue;
+		}
+		print_record(stdout, sos, sos_iter_obj(iter), col_count, col_width);
 	}
 
 	printf("%s\n", heading);
