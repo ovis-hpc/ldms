@@ -201,5 +201,9 @@ struct sos_iter_s {
 	*(uint64_t *)(_k->key) = htobe64(*(uint64_t *)_v); \
 }
 
-#endif
+/* Private functions for sos_* utilities */
+int sos_class_cmp(sos_class_t c0, sos_class_t c1);
+sos_class_t sos_class_from_ods(ods_t ods);
+void sos_class_free(sos_class_t classp);
 
+#endif

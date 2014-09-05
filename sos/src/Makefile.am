@@ -4,6 +4,7 @@ sbin_PROGRAMS = \
 	bpt_verify \
 	sos_verify \
 	sos_archive \
+	sos_combine \
 	sos_restore \
 	sos_reinit \
 	ods_verify \
@@ -136,6 +137,13 @@ sos_verify_LDADD = \
 sos_archive_SOURCES = sos_archive.c
 sos_archive_CFLAGS = $(INCLUDES)
 sos_archive_LDADD = \
+		   libsos.la \
+		   libods.la \
+		   libobjidx.la
+
+sos_combine_SOURCES = sos_combine.c
+sos_combine_CFLAGS = $(INCLUDES)
+sos_combine_LDADD = \
 		   libsos.la \
 		   libods.la \
 		   libobjidx.la

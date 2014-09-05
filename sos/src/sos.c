@@ -487,11 +487,31 @@ static sos_get_fn_t get_fns[] = {
 	[SOS_TYPE_BLOB] = SOS_TYPE_BLOB__get_fn
 };
 
-static sos_class_t init_classp(sos_t sos, sos_meta_t meta)
+int sos_class_cmp(sos_class_t c0, sos_class_t c1)
+{
+	int i, rc;
+	rc = strcmp(c0->name, c1->name);
+	if (rc)
+		return rc;
+	rc = c0->count - c1->count;
+	if (rc)
+		return rc;
+	for (i = 0; i < c0->count; i++) {
+		rc = strcmp(c0->attrs[i].name, c1->attrs[i].name);
+		if (rc)
+			return rc;
+		rc = c0->attrs[i].type - c1->attrs[i].type;
+		if (rc)
+			return rc;
+	}
+	return 0;
+}
+
+static sos_class_t init_classp(sos_meta_t meta)
 {
 	int attr_id;
 	sos_class_t classp =
-		malloc(sizeof(*classp) + (meta->attr_cnt * sizeof(struct sos_attr_s)));
+		calloc(1, sizeof(*classp) + (meta->attr_cnt * sizeof(struct sos_attr_s)));
 	if (!classp)
 		goto out;
 	classp->name = strdup(meta->classname);
@@ -515,6 +535,18 @@ static sos_class_t init_classp(sos_t sos, sos_meta_t meta)
 	return classp;
 }
 
+void sos_class_free(sos_class_t classp)
+{
+	int i;
+	if (classp->name)
+		free(classp->name);
+	for (i = 0; i < classp->count; i++) {
+		if (classp->attrs[i].name)
+			free(classp->attrs[i].name);
+	}
+	free(classp);
+}
+
 /*
  * Create/open the indexes as required from the meta data
  */
@@ -523,7 +555,7 @@ static sos_class_t init_sos(sos_t sos, int o_flag, int o_mode,
 {
 	int attr_id;
 	if (!classp) {
-		classp = init_classp(sos, meta);
+		classp = init_classp(meta);
 		if (!classp)
 			goto err;
 	}
@@ -737,7 +769,7 @@ size_t SOS_TYPE_STRING__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
 	sos_obj_t strobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
-	char *str = strobj->data;
+	char *str = (char*)strobj->data;
 	return strlen(str) + 1;
 }
 
@@ -745,7 +777,7 @@ size_t SOS_TYPE_BLOB__attr_size_fn(sos_attr_t attr, sos_obj_t obj)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
 	sos_obj_t blobobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
-	sos_blob_obj_t blob = blobobj->data;
+	sos_blob_obj_t blob = (typeof(blob))blobobj->data;
 	return sizeof(*blob) + blob->len;
 }
 
@@ -778,7 +810,7 @@ void SOS_TYPE_STRING__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
 	sos_obj_t strobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
-	char *str = strobj->data;
+	char *str = (char*)strobj->data;
 	obj_key_set(key, str, strlen(str)+1);
 }
 
@@ -786,7 +818,7 @@ void SOS_TYPE_BLOB__get_key_fn(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
 {
 	obj_ref_t ref = *(obj_ref_t *)&obj->data[attr->data];
 	sos_obj_t blobobj = ods_obj_ref_to_ptr(attr->sos->ods, ref);
-	sos_blob_obj_t blob = blobobj->data;
+	sos_blob_obj_t blob = (typeof(blob))blobobj->data;
 	obj_key_set(key, blob, sizeof(*blob) + blob->len);
 }
 
@@ -862,7 +894,7 @@ void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 	if (dst) {
 		/* If the memory containing the current value is big enough, use it */
 		if (ods_obj_size(attr->sos->ods, dst) >= newstr_sz) {
-			strcpy(dst->data, src);
+			strcpy((char*)dst->data, src);
 			return;
 		} else
 			ods_free(attr->sos->ods, dst);
@@ -880,7 +912,7 @@ void SOS_TYPE_STRING__set_fn(sos_attr_t attr, sos_obj_t obj, void *value)
 		dst->type = SOS_OBJ_TYPE_ATTR;
 	}
 
-	strcpy(dst->data, src);
+	strcpy((char*)dst->data, src);
 	strref = ods_obj_ptr_to_ref(attr->sos->ods, dst);
 	*(obj_ref_t *)&obj->data[attr->data] = strref;
 }
@@ -1599,8 +1631,15 @@ sos_t sos_reinit(sos_t sos, uint64_t sz)
 	new_sos = sos_open_sz(buff, O_CREAT|O_RDWR, mode, class, sz);
 out:
 	free(buff);
-	free(class);
+	sos_class_free(class);
 	return new_sos;
+}
+
+sos_class_t sos_class_from_ods(ods_t ods)
+{
+	size_t meta_sz;
+	sos_meta_t meta = ods_get_user_data(ods, &meta_sz);
+	return init_classp(meta);
 }
 
 /*** end helper functions ***/
