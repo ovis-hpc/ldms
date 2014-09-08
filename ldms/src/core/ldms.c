@@ -1274,8 +1274,8 @@ int ldms_is_set_consistent(ldms_set_t s)
 
 ldms_mvec_t ldms_mvec_create(int count)
 {
-	ldms_mvec_t mvec = malloc(sizeof(*mvec) + count *
-				  sizeof(ldms_metric_t));
+	ldms_mvec_t mvec =
+		calloc(1, sizeof(*mvec) + (count * sizeof(ldms_metric_t)));
 	if (!mvec)
 		return NULL;
 	mvec->count = count;

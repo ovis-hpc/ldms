@@ -1349,6 +1349,7 @@ struct ldms_mvec* _create_mvec(struct hostset *hset)
 		ldms_metric_t m = ldms_make_metric(hset->set, vd);
 		mvec->v[c++] = m;
 	}
+	assert(c == count);
 	return mvec;
 }
 
@@ -2180,6 +2181,8 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		int i=0;
 		struct ldmsd_store_metric_index *idx;
 		LIST_FOREACH(idx, &lsp->metric_list, entry) {
+			assert(idx->index < hset->mvec->count);
+			assert(hset->mvec->v[idx->index]);
 			mvec->v[i] = hset->mvec->v[idx->index];
 			i++;
 		}
