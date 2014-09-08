@@ -65,12 +65,16 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
+#define LUSTRE_NAME_MAX 128
 LIST_HEAD(str_list_head, str_list);
 struct str_list {
 	char *str;
 	LIST_ENTRY(str_list) link;
 };
 
+/** destroy list h if not null or exit if h is null.
+ * \param h list to be destroyed.
+ */
 void free_str_list(struct str_list_head *h);
 
 #define __ALEN(x) (sizeof(x)/sizeof(*x))
@@ -260,7 +264,7 @@ int lss_open_file(struct lustre_svc_stats *lss);
 /**
  * Close the file opened by \c lss.
  */
-int lss_close_file(struct lustre_svc_stats *lss);
+void lss_close_file(struct lustre_svc_stats *lss);
 
 /**
  * Construct ::str_list out of comma-separated \c strlist.

@@ -138,7 +138,6 @@ struct str_map *stats_key_id;
 
 struct lustre_svc_stats_head svc_stats = {0};
 
-static uint64_t counter;
 static ldms_set_t set;
 FILE *mf;
 ldmsd_msg_log_f msglog;
@@ -181,8 +180,7 @@ static int create_metric_set(const char *path, const char *mdts)
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
 	int rc, i, j, metric_count;
-	uint64_t metric_value;
-	char metric_name[128];
+	char metric_name[LUSTRE_NAME_MAX];
 
 	/* First calculate the set size */
 	metric_count = 0;
@@ -190,7 +188,8 @@ static int create_metric_set(const char *path, const char *mdts)
 	/* Calculate size for MDS */
 	for (i = 0; i < MDS_SERVICES_LEN; i++) {
 		for (j = 0; j < STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#mds.%s", stats_key[j],
+			snprintf(metric_name, LUSTRE_NAME_MAX,
+				 "lstats.%s#mds.%s", stats_key[j],
 					mds_services[i]);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -208,7 +207,8 @@ static int create_metric_set(const char *path, const char *mdts)
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
 		for (j = 0; j < STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "lstats.%s#mdt.%s", stats_key[j],
+			snprintf(metric_name, LUSTRE_NAME_MAX,
+				 "lstats.%s#mdt.%s", stats_key[j],
 					sl->str);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
@@ -218,7 +218,8 @@ static int create_metric_set(const char *path, const char *mdts)
 		}
 		/* For md_stats */
 		for (j = 0; j < MD_STATS_KEY_LEN; j++) {
-			sprintf(metric_name, "md_stats.%s#mdt.%s", md_stats_key[j],
+			snprintf(metric_name, LUSTRE_NAME_MAX,
+				"md_stats.%s#mdt.%s", md_stats_key[j],
 					sl->str);
 			ldms_get_metric_size(metric_name, LDMS_V_U64,
 					     &meta_sz, &data_sz);
@@ -232,11 +233,11 @@ static int create_metric_set(const char *path, const char *mdts)
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		goto err1;
-	char suffix[128];
+	char suffix[LUSTRE_NAME_MAX];
 	for (i = 0; i < MDS_SERVICES_LEN; i++) {
-		sprintf(tmp_path, "/proc/fs/lustre/mds/MDS/%s/stats",
+		snprintf(tmp_path, PATH_MAX, "/proc/fs/lustre/mds/MDS/%s/stats",
 				mds_services[i]);
-		sprintf(suffix, "#mds.%s", mds_services[i]);
+		snprintf(suffix, LUSTRE_NAME_MAX, "#mds.%s", mds_services[i]);
 		rc = stats_construct_routine(set, comp_id, tmp_path,
 					     "lstats.", suffix,
 					     &svc_stats, stats_key,
@@ -246,16 +247,18 @@ static int create_metric_set(const char *path, const char *mdts)
 	}
 	LIST_FOREACH(sl, lh, link) {
 		/* For general stats */
-		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/stats", sl->str);
-		sprintf(suffix, "#mdt.%s", sl->str);
+		snprintf(tmp_path, PATH_MAX,
+			"/proc/fs/lustre/mdt/%s/stats", sl->str);
+		snprintf(suffix, LUSTRE_NAME_MAX, "#mdt.%s", sl->str);
 		rc = stats_construct_routine(set, comp_id, tmp_path, "lstats.",
 					     suffix, &svc_stats, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
 			goto err2;
 		/* For md_stats */
-		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/md_stats", sl->str);
-		sprintf(suffix, "#mdt.%s", sl->str);
+		snprintf(tmp_path, PATH_MAX,
+			 "/proc/fs/lustre/mdt/%s/md_stats", sl->str);
+		snprintf(suffix, LUSTRE_NAME_MAX, "#mdt.%s", sl->str);
 		rc = stats_construct_routine(set, comp_id, tmp_path,
 					     "md_stats.", suffix, &svc_stats,
 					     md_stats_key, MD_STATS_KEY_LEN,
@@ -264,7 +267,7 @@ static int create_metric_set(const char *path, const char *mdts)
 			goto err2;
 	}
 
-	return 0;
+	return 0; // FTFY: OGC lh leaked here. is it?
 err2:
 	msglog("lustre_mds.c:create_metric_set@err2\n");
 	lustre_svc_stats_list_free(&svc_stats);
@@ -343,7 +346,6 @@ static int sample(void)
 		lss_sample(lss);
 	}
 
- out:
 	ldms_end_transaction(set);
 	return 0;
 }
