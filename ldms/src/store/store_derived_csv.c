@@ -525,32 +525,37 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	goto out;
 
 
-err4:
+ err4: //NO Headerfile
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
 
-err3:
+ err3: //NO file
 	if (s_handle->file)
 		fclose(s_handle->file);
 	s_handle->file = NULL;
 
-	free(s_handle->store_key);
-err2:
+ err2: //NO store key OR NO path
+	if (s_handle->store_key)
+		free(s_handle->store_key);
+	s_handle->store_key = NULL;
+
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
 
-	pthread_mutex_unlock(&s_handle->lock);
-	pthread_mutex_destroy(&s_handle->lock);
-	free(s_handle);
-	s_handle = NULL;
-err1:
 	if (s_handle->sets_idx)
 		idx_destroy(s_handle->sets_idx);
 
+	pthread_mutex_unlock(&s_handle->lock);
+	pthread_mutex_destroy(&s_handle->lock);
 
-out:
+ err1: //NO sets_idx
+	free(s_handle);
+	s_handle = NULL;
+
+
+ out: //NO shandle OR successful
 	pthread_mutex_unlock(&cfg_lock);
 	return s_handle;
 }

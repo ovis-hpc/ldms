@@ -413,6 +413,7 @@ that uses replybuf to ensure proper initialization. */
 for (; init_replybuf <1; init_replybuf++) bdstr_init(&replybuf)
 /* start a reply string with a formatted integer variable */
 #define bdstr_reply(ec) sprintf(intbuf,"%d",ec); bdstr_set(&replybuf,intbuf)
+#define bdstr_reply_ok() bdstr_set(&replybuf,"0")
 /* append any size string to replybuf */
 #define cat(x) bdstrcat(&replybuf,x,DSTRING_ALL)
 /* grab pointer out of dstring for reading/sending */
@@ -675,7 +676,8 @@ int process_info(int fd,
 	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
 	ldms_log("Grand Total Busy Count: %Lu\n", grand_total_busy);
 	pthread_mutex_unlock(&host_list_lock);
-	bdstr_set(&replybuf, "0");
+	bdstr_reply_ok();
+	cat("see log file for output (not yet sent here, too)");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
 }
@@ -786,7 +788,6 @@ int process_config_plugin(int fd,
 	pthread_mutex_unlock(&pi->lock);
  out:
 	chk_replybuf();
-	sprintf(intbuf, "%d", rc);
 	bdstr_reply(rc);
 	cat( err_str);
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
@@ -947,7 +948,7 @@ int process_ls_plugins(int fd,
 {
 	struct plugin *p;
 	chk_replybuf();
-	cat("0");
+	bdstr_reply_ok();
 
 	LIST_FOREACH(p, &plugin_list, entry) {
 		cat( p->name);
@@ -1817,23 +1818,17 @@ int process_exit(int fd,
 
 
 
-//TEMPORARILY disable remote version query thru ldmsctl
-//int process_version(int fd,
-//			struct sockaddr *sa, ssize_t sa_len,
-//			char *command)
-//{
-//
-//#define VERSTRMAX 256
-//	char err_str[VERSTRMAX];
-//	char reply[VERSTRMAX];
-//	int rc = 0;
-//
-//	snprintf(err_str, VERSTRMAX, "git source tag: %s %s\n", LDMS_GIT_LONG,LDMS_GIT_SHORT);
-//	sprintf(reply, "%d%s", rc, err_str);
-//	send_reply(fd, sa, sa_len, reply, strlen(reply)+1);
-//	return 0;
-//
-//}
+int process_version(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+	const char *ver = ldms_pedigree();
+	chk_replybuf();
+	bdstr_reply_ok();
+	cat( ver );
+	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
+	return 0;
+}
 
 ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_LIST_PLUGINS] = process_ls_plugins,
@@ -1848,10 +1843,8 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
+	[LDMSCTL_VERSION] = process_version,
 };
-//TEMPORARILY disable remote version query thru ldmsctl
-//	[LDMSCTL_VERSION] = process_version,
-
 
 int process_record(int fd,
 		   struct sockaddr *sa, ssize_t sa_len,

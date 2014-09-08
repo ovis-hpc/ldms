@@ -133,7 +133,7 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"
 then
 AC_CHECK_LIB(ibmad, mad_rpc_open_port, [],
     AC_MSG_ERROR([mad_rpc_open_port() function not found. sysclassib sampler
-		  requires libibmad.]))
+		  requires libibmad 1.3.]))
 dnl Reset LIBS variable.
 LIBS=""
 
@@ -317,12 +317,14 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 scripts/ldmsd
+		 scripts/ldms_ctltest.sh
 		 scripts/envldms.sh
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh
 		 scripts/ldms_local_valgrind.sh
 		 scripts/ldms_local_clocktest.sh
 		 ldms.spec],[
+		if test -f scripts/ldms_ctltest.sh; then chmod a+x scripts/ldms_ctltest.sh; fi
 		if test -f scripts/ldms_usertest.sh; then chmod a+x scripts/ldms_usertest.sh; fi
 		if test -f scripts/ldms_local_usertest.sh; then chmod a+x scripts/ldms_local_usertest.sh; fi
 		if test -f scripts/ldms_local_valgrind.sh; then chmod a+x scripts/ldms_local_valgrind.sh; fi
