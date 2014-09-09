@@ -87,7 +87,7 @@ void lustre_svc_stats_free(struct lustre_svc_stats *lss)
 {
 	if (!lss) {
 		if (msglog) {
-			msglog("%s:%d null lss received\n",__FILE__,__LINE__);
+			msglog(LDMS_LDEBUG,"%s:%d null lss received\n",__FILE__,__LINE__);
 		}
 		exit(-1);
 	}
@@ -234,7 +234,7 @@ void free_str_list(struct str_list_head *h)
 {
 	if (!h) {
 		if ( msglog ) {
-			msglog("%s:%d: null given to free_str_list.\n");
+			msglog(LDMS_LDEBUG,"%s:%d: null given to free_str_list.\n");
 		}
 		exit(-1);
 	}

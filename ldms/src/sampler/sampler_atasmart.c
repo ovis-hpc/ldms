@@ -211,13 +211,13 @@ static int create_metric_set(char *setname)
 	int i = 0;
 	for (i = 0; i < num_disks; i++) {
 		if (ret = sk_disk_open(disknames[i], &smarts[i].d)) {
-			msglog("atasmart: Failed to create SkDisk '%s'."
+			msglog(LDMS_LDEBUG,"atasmart: Failed to create SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err0;
 		}
 
 		if (ret = sk_disk_smart_read_data(smarts[i].d)) {
-			msglog("atasmart: Failed to read data SkDisk '%s'."
+			msglog(LDMS_LDEBUG,"atasmart: Failed to read data SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err0;
 		}
@@ -225,7 +225,7 @@ static int create_metric_set(char *setname)
 		ret = sk_disk_smart_parse_attributes(smarts[i].d,
 				atasmart_get_disk_info, (void *) &size);
 		if (ret) {
-			msglog("atasmart: Failed to get size of SkDisk '%s'."
+			msglog(LDMS_LDEBUG,"atasmart: Failed to get size of SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err0;
 		}
@@ -250,7 +250,7 @@ static int create_metric_set(char *setname)
 			(SkSmartAttributeParseCallback)atasmart_add_metric,
 			(void *) &metric_no);
 		if (ret) {
-			msglog("atasmart: Failed to add metric. SkDisk '%s'."
+			msglog(LDMS_LDEBUG,"atasmart: Failed to add metric. SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err2;
 		}
@@ -392,7 +392,7 @@ static int sample(void)
 	int metric_no;
 
 	if (!set) {
-		msglog("meminfo: plugin not initialized\n");
+		msglog(LDMS_LDEBUG,"atasmart: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
@@ -404,7 +404,7 @@ static int sample(void)
 			(SkSmartAttributeParseCallback)atasmart_set_metric,
 			&metric_no);
 		if (ret) {
-			msglog("atasmart: Failed to get metric. SkDisk '%s'."
+			msglog(LDMS_LDEBUG,"atasmart: Failed to get metric. SkDisk '%s'."
 					" Error %d\n", disknames[i], ret);
 			goto err;
 		}

@@ -70,17 +70,19 @@
 
 #include "coll/str_map.h"
 
-void default_log(const char *fmt, ...)
+void default_log(int level, const char *fmt, ...)
 {
-	va_list ap;
+	if (level < LDMS_LERROR)
+		return;
 
+	va_list ap;
 	va_start(ap, fmt);
 	vfprintf(stdout, fmt, ap);
 	fflush(stdout);
 }
 
 #if 0
-#define TF() default_log("%s:%d\n", __FUNCTION__, __LINE__)
+#define TF() default_log(LDMS_LINFO, "%s:%d\n", __FUNCTION__, __LINE__)
 #else
 #define TF()
 #endif
@@ -209,7 +211,7 @@ static void send_dir_update(struct ldms_xprt *x,
 
 	reply = malloc(len);
 	if (!reply) {
-		x->log("Memory allocation failure "
+		x->log(LDMS_LERROR,"Memory allocation failure "
 		       "in dir update of peer.\n");
 		return;
 	}
@@ -251,7 +253,7 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	len = sizeof(struct ldms_reply_hdr) + e->len;
 	reply = malloc(len);
 	if (!reply) {
-		x->log("Memory allocation failure "
+		x->log(LDMS_LERROR,"Memory allocation failure "
 		       "in notify of peer.\n");
 		return;
 	}
@@ -316,10 +318,10 @@ static void release_xprt(ldms_t _x)
 		return;
 
 	pthread_mutex_lock(&rbd_lock);
-	/* x->log("%s transport %p ref_count %d.\n", __func__, _x, x->ref_count); Removed by Brandt 6-14-2014 */
+	/* x->log(LDMS_LDEBUG,"%s transport %p ref_count %d.\n", __func__, _x, x->ref_count); Removed by Brandt 6-14-2014 */
 	while (!LIST_EMPTY(&x->rbd_list)) {
 		rb = LIST_FIRST(&x->rbd_list);
-		// x->log("%s destroy rbd %p.\n", __func__, rb);
+		// x->log(LDMS_LDEBUG, "%s destroy rbd %p.\n", __func__, rb);
 		free_rbd(rb);
 	}
 	pthread_mutex_unlock(&rbd_lock);
@@ -368,7 +370,7 @@ void ldms_free_rbd(struct ldms_set *set)
 	while (!LIST_EMPTY(&set->rbd_list)) {
 		rbd = LIST_FIRST(&set->rbd_list);
 		assert(rbd->xprt->ref_count);
-		// rbd->xprt->log("%s destroy rbd %p for %s on xprt %p.\n", __func__, rbd, set->meta->name, rbd->xprt);
+		// rbd->xprt->log(LDMS_LDEBUG, "%s destroy rbd %p for %s on xprt %p.\n", __func__, rbd, set->meta->name, rbd->xprt);
 		free_rbd(rbd);
 	}
 	pthread_mutex_unlock(&rbd_lock);
@@ -691,10 +693,10 @@ static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 	size_t len;
 	uint64_t challenge = 0;
 	uint32_t chi, clo;
-	x->log("Started process_auth_request");
+	x->log(LDMS_LINFO,"Started process_auth_request");
 
 	if (x->passwordtmp) {
-		x->log("Authentication restarted before finished");
+		x->log(LDMS_LINFO,"Authentication restarted before finished");
 		return 0;
 	}
 
@@ -734,24 +736,24 @@ static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 static int process_auth_password_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	char pw[LDMS_PASSWORD_MAX];
-	x->log("Started process_auth_password_request");
+	x->log(LDMS_LINFO,"Started process_auth_password_request");
 	if (NULL == x->passwordtmp) {
-		x->log("Authentication password sent before challenge fetched");
+		x->log(LDMS_LINFO,"Authentication password sent before challenge fetched");
 		return 0;
 	}
 	// FIXME get password from message?
 	if (req->auth.pw_len >= LDMS_PASSWORD_MAX) {
-		x->log("Password too long");
+		x->log(LDMS_LINFO,"Password too long");
 		return 0;
 	}
 	strncpy(pw, req->auth.pw, LDMS_PASSWORD_MAX);
 	pw[LDMS_PASSWORD_MAX-1] = '\0';
 
 	if (strncmp(pw,x->passwordtmp,strlen(x->passwordtmp)) == 0) {
-		x->log("Authentication succeeded.");
+		x->log(LDMS_LINFO,"Authentication succeeded.");
 		return 1;
 	}
-	x->log("Authentication failed. Bad password.");
+	x->log(LDMS_LINFO,"Authentication failed. Bad password.");
 	return 0;
 }
 
@@ -764,7 +766,7 @@ static int ldms_xprt_authenticate(int cmd, struct ldms_xprt *x, struct ldms_requ
 	case LDMS_CMD_AUTH_PASSWORD:
 		return process_auth_password_request(x, req);
 	default:
-		x->log("Request for work before authentication complete. %d\n", cmd);
+		x->log(LDMS_LINFO,"Request for work before authentication complete. %d\n", cmd);
 		return 0;
 	}
 }
@@ -807,10 +809,10 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	case LDMS_CMD_AUTH:
 		/* FALLTHRU */
 	case LDMS_CMD_AUTH_PASSWORD:
-		x->log("Already authenticated %d\n", cmd);
+		x->log(LDMS_LINFO,"Already authenticated %d\n", cmd);
 		break;
 	default:
-		x->log("Unrecognized request %d\n", cmd);
+		x->log(LDMS_LINFO,"Unrecognized request %d\n", cmd);
 		assert(0);
 	}
 	return 0;
@@ -957,7 +959,7 @@ void process_auth_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt)
 {
 #ifdef HAVE_AUTH
-	x->log("Started process_auth_reply");
+	x->log(LDMS_LINFO,"Started process_auth_reply");
 	int rc = ntohl(reply->hdr.rc);
 	uint64_t challenge;
 	if (rc)
@@ -978,7 +980,7 @@ void process_auth_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 
 	x->send(x, &req, len);
 #else
-	x->log("Unexpected call to process_auth_reply");
+	x->log(LDMS_LINFO,"Unexpected call to process_auth_reply");
 #endif
 }
 
@@ -1016,7 +1018,7 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 		process_auth_reply(x, reply, ctxt);
 		break;
 	default:
-		x->log("Unrecognized reply %d\n", cmd);
+		x->log(LDMS_LERROR,"Unrecognized reply %d\n", cmd);
 	}
 	return 0;
 }
@@ -1392,7 +1394,7 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 
 #ifdef HAVE_AUTH
 //	now authenticate or disconnect with auth error
-	x->log("Connect starting auth exchange");
+	x->log(LDMS_LINFO,"Connect starting auth exchange");
 	struct ldms_request_hdr req;
 	size_t len;
 	len = sizeof(req);

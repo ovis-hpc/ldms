@@ -240,7 +240,7 @@ struct ldmsd_store_policy {
 	LIST_ENTRY(ldmsd_store_policy) link;
 };
 
-void ldms_log(const char *fmt, ...);
+void ldms_log(int level, const char *fmt, ...);
 
 /**
  * Initialize the ldmsd_store.
@@ -303,7 +303,7 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 	store->close(sh);
 }
 
-typedef void (*ldmsd_msg_log_f)(const char *fmt, ...);
+typedef void (*ldmsd_msg_log_f)(int level, const char *fmt, ...);
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
 
 /* ldmsctl command callback function definition */

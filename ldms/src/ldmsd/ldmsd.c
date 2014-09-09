@@ -109,7 +109,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:qV"
+#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:V"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -196,11 +196,14 @@ pthread_mutex_t conn_list_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t conn_list_cv = PTHREAD_COND_INITIALIZER;
 
 int passive = 0;
-int quiet = 0; /* by default ldmsd should not be quiet */
-void ldms_log(const char *fmt, ...)
+
+/* by default ldmsd should not be 'ERROR' */
+int log_level = LDMS_LERROR;
+void ldms_log(int level, const char *fmt, ...)
 {
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-	if (quiet) /* Don't say a word when quiet */
+	/* Don't say a word when the level is below the threshold */
+	if (level < log_level)
 		return;
 	va_list ap;
 	time_t t;
@@ -220,7 +223,7 @@ void ldms_log(const char *fmt, ...)
 
 void cleanup(int x)
 {
-	ldms_log("LDMS Daemon exiting...status %d\n", x);
+	ldms_log(LDMS_LCRITICAL, "LDMS Daemon exiting...status %d\n", x);
 	if (ctrl_thread != (pthread_t)-1) {
 		void *dontcare;
 		pthread_cancel(ctrl_thread);
@@ -248,34 +251,39 @@ void usage(char *argv[])
 {
 	printf("%s: [%s]\n", argv[0], FMT);
 	printf("    -C config_file    The path to the configuration file. \n");
-	printf("    -P thr_count   Count of event threads to start.\n");
-	printf("    -Z conn_count  Count of connection threads to start.\n");
+	printf("    -D num         The dirty threshold.\n");
+	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
+	printf("    -f count       The number of flush threads.\n");
+	printf("    -I instance    The instance number\n");
+#ifdef DEBUG
 	printf("    -i             Test metric set sample interval.\n");
-	printf("    -k             Publish publish kernel metrics.\n");
-	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
-	       "                   [" LDMSD_SETFILE "]\n");
+	printf("    -k             Publish kernel metrics.\n");
+#endif /* DEBUG */
+	printf("    -l log_file    The path to the log file for status messages.\n"
+	       "                   [" LDMSD_LOGFILE "]\n");
+	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
+	       "                     The given size must be less than 1 petabytes.\n"
+	       "                     For example, 20M or 20mb are 20 megabytes.\n");
+#ifdef DEBUG
+	printf("    -N             Notify registered monitors of the test metric sets\n");
+#endif /* DEBUG */
+	printf("    -P thr_count   Count of event threads to start.\n");
+	printf("    -q log_level   The log_level can be one of DEBUG, INFO, ERROR, CRITICAL\n"
+	       "		   or QUIET. The default level is ERROR. QUIET produces no output.\n")
 	printf("    -S sockname    Specifies the unix domain socket name to\n"
 	       "                   use for ldmsctl access.\n");
+#ifdef DEBUG
+	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
+	       "                   [" LDMSD_SETFILE "]\n");
+	printf("    -T set_name    Test set prefix.\n");
+	printf("    -t set_count   Create set_count instances of set_name.\n");
+#endif /* DEBUG */
+	printf("    -V version     Prints the version.\n");
 	printf("    -x xprt:port   Specifies the transport type to listen on. May be specified\n"
 	       "                   more than once for multiple transports. The transport string\n"
 	       "                   is one of 'rdma', or 'sock'. A transport specific port number\n"
 	       "                   is optionally specified following a ':', e.g. rdma:50000.\n");
-	printf("    -l log_file    The path to the log file for status messages.\n"
-	       "                   [" LDMSD_LOGFILE "]\n");
-	printf("    -q             Quiet mode. All the logging messages will be suppressed.\n"
-	       "                   [false].\n");
-	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
-	printf("    -t count       Number of test sets to create.\n");
-	printf("    -T set_name    Test set prefix.\n");
-	printf("    -N             Notify registered monitors of the test metric sets\n");
-	printf("    -t set_count   Create set_count instances of set_name.\n");
-	printf("    -I instance    The instance number\n");
-	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
-	       "                     The given size must be less than 1 petabytes.\n"
-	       "                     For example, 20M or 20mb are 20 megabytes.\n");
-	printf("    -f count       The number of flush threads.\n");
-	printf("    -D num         The dirty threshold.\n");
-	printf("    -V version     Prints the version.\n");
+	printf("    -Z conn_count  Count of connection threads to start.\n");
 	cleanup(1);
 }
 
@@ -337,20 +345,20 @@ int publish_kernel(const char *setfile)
 
 	fp = fopen(setfile, "r");
 	if (!fp) {
-		ldms_log("The specified kernel metric set file '%s' could not be opened.\n",
+		ldms_log(LDMS_LERROR, "The specified kernel metric set file '%s' could not be opened.\n",
 			 setfile);
 		return 0;
 	}
 
 	map_fd = open("/dev/kldms0", O_RDWR);
 	if (map_fd < 0) {
-		ldms_log("Error %d opening the KLDMS device file '/dev/kldms0'\n", map_fd);
+		ldms_log(LDMS_LERROR, "Error %d opening the KLDMS device file '/dev/kldms0'\n", map_fd);
 		return map_fd;
 	}
 
 	while (3 == fscanf(fp, "%d %d %s", &set_no, &set_size, set_name)) {
 		int id = set_no << 13;
-		ldms_log("Mapping set %d name %s\n", set_no, set_name);
+		ldms_log(LDMS_LINFO, "Mapping set %d name %s\n", set_no, set_name);
 		meta_addr = mmap((void *)0, DATA_MSG_MMAP_SIZE, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
 		if (meta_addr == MAP_FAILED)
 			return -ENOMEM;
@@ -368,28 +376,28 @@ int publish_kernel(const char *setfile)
 		}
 		rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
 		if (rc) {
-			ldms_log("Error encountered mmaping the set '%s', rc %d\n",
+			ldms_log(LDMS_LERROR, "Error encountered mmaping the set '%s', rc %d\n",
 				 set_name, rc);
 			return rc;
 		}
 		sh = meta_addr;
 		p = meta_addr;
-		ldms_log("addr: %p\n", meta_addr);
+		ldms_log(LDMS_LINFO, "addr: %p\n", meta_addr);
 		/* dump first 4k of metadata */
 		for (i = 0; i < HEX_DUMP_LINES; i = i + j) {
 			for (j = 0; j < 16; j++)
-				ldms_log("%02x ", p[i+j]);
-			ldms_log("\n");
+				ldms_log(LDMS_LINFO, "%02x ", p[i+j]);
+			ldms_log(LDMS_LINFO, "\n");
 			for (j = 0; j < 16; j++) {
 				if (isalnum(p[i+j]))
-					ldms_log("%2c ", p[i+j]);
+					ldms_log(LDMS_LINFO, "%2c ", p[i+j]);
 				else
-					ldms_log("%2s ", ".");
+					ldms_log(LDMS_LINFO, "%2s ", ".");
 			}
-			ldms_log("\n");
+			ldms_log(LDMS_LINFO, "\n");
 		}
-		ldms_log("name: '%s'\n", sh->name);
-		ldms_log("size: %d\n", sh->meta_size);
+		ldms_log(LDMS_LINFO, "name: '%s'\n", sh->name);
+		ldms_log(LDMS_LINFO, "size: %d\n", sh->meta_size);
 	}
 	return 0;
 }
@@ -475,12 +483,12 @@ struct plugin *get_plugin(char *name)
 }
 
 static char msg_buf[LOG_MSG_MAX];
-static void msg_logger(const char *fmt, ...)
+static void msg_logger(int level, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
 	vsnprintf(msg_buf, sizeof(msg_buf), fmt, ap);
-	ldms_log(msg_buf);
+	ldms_log(level, msg_buf);
 /* This function doesn't make sense unless we want to
 peek at what went through while in the debugger and
 as a bad side effect lose the tail of long messages.
@@ -613,24 +621,24 @@ int process_info(int fd,
 			strcasecmp(vb, "t") == 0))
 		verbose = 1;
 
-	ldms_log("Event Thread Info:\n");
-	ldms_log("%-16s %s\n", "----------------", "------------");
-	ldms_log("%-16s %s\n", "Thread", "Task Count");
-	ldms_log("%-16s %s\n", "----------------", "------------");
+	ldms_log(LDMS_LALWAYS,"Event Thread Info:\n");
+	ldms_log(LDMS_LALWAYS,"%-16s %s\n", "----------------", "------------");
+	ldms_log(LDMS_LALWAYS,"%-16s %s\n", "Thread", "Task Count");
+	ldms_log(LDMS_LALWAYS,"%-16s %s\n", "----------------", "------------");
 	for (i = 0; i < ev_thread_count; i++) {
-		ldms_log("%-16p %d\n",
+		ldms_log(LDMS_LALWAYS,"%-16p %d\n",
 			 (void *)ev_thread[i], ev_count[i]);
 	}
 	/* For flush_thread information */
 	process_info_flush_thread();
 
-	ldms_log("Host List Info:\n");
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldms_log(LDMS_LALWAYS,"Host List Info:\n");
+	ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s %-12s\n",
 			"Hostname", "Transport", "Set", "Stat");
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
 	char *metric_name;
@@ -640,22 +648,22 @@ int process_info(int fd,
 	uint64_t grand_total_busy = 0;
 	LIST_FOREACH(hs, &host_list, link) {
 		struct hostset *hset;
-		ldms_log("%p %2d %-12s %-12s", hs, (hs->x?ldms_xprt_connected(hs->x):0),
+		ldms_log(LDMS_LALWAYS,"%p %2d %-12s %-12s", hs, (hs->x?ldms_xprt_connected(hs->x):0),
 			hs->hostname, hs->xprt_name);
 		if (verbose)
-			ldms_log("%-12s\n", (hs->conn_state?"CONNECTED":"NOT CONNECTED"));
+			ldms_log(LDMS_LALWAYS,"%-12s\n", (hs->conn_state?"CONNECTED":"NOT CONNECTED"));
 		else
-			ldms_log("\n");
-		ldms_log("%-12s %-12s\n", hs->hostname, hs->xprt_name);
+			ldms_log(LDMS_LALWAYS,"\n");
+		ldms_log(LDMS_LALWAYS,"%-12s %-12s\n", hs->hostname, hs->xprt_name);
 		LIST_FOREACH(hset, &hs->set_list, entry) {
-			ldms_log("%-12s %-12s %-12s\n",
+			ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s\n",
 				 "", "", hset->name);
 			if (verbose) {
 				const char *state;
-				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
+				ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s %.12s %-12Lu\n",
 						"", "", "", "curr_busy_count",
 						hset->curr_busy_count);
-				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
+				ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s %.12s %-12Lu\n",
 						"", "", "", "total_busy_count",
 						hset->total_busy_count);
 				if (hset->state >= 0 &&
@@ -663,18 +671,18 @@ int process_info(int fd,
 					state = set_state[hset->state];
 				else
 					state = "INVALID";
-				ldms_log("%-12s %-12s %-12s %-12s\n",
+				ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s %-12s\n",
 					 "", "", "", state);
 			}
 			total_curr_busy += hset->curr_busy_count;
 			grand_total_busy += hset->total_busy_count;
 		}
 	}
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldms_log(LDMS_LALWAYS,"%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
-	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
-	ldms_log("Grand Total Busy Count: %Lu\n", grand_total_busy);
+	ldms_log(LDMS_LALWAYS,"Total Current Busy Count: %Lu\n", total_curr_busy);
+	ldms_log(LDMS_LALWAYS,"Grand Total Busy Count: %Lu\n", grand_total_busy);
 	pthread_mutex_unlock(&host_list_lock);
 	bdstr_reply_ok();
 	cat("see log file for output (not yet sent here, too)");
@@ -1768,7 +1776,7 @@ int process_store(int fd,
 	LIST_INSERT_HEAD(&sp_list, sp, link);
 	pthread_mutex_unlock(&sp_list_lock);
 
-	ldms_log("Added the store '%s' successfully.\n", container);
+	ldms_log(LDMS_LINFO, "Added the store '%s' successfully.\n", container);
 	bdstr_set(&replybuf,"0");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 	return 0;
@@ -1856,7 +1864,7 @@ int process_record(int fd,
 	int rc = tokenize(command, kw_list, av_list);
 	chk_replybuf();
 	if (rc) {
-		ldms_log("Memory allocation failure processing '%s'\n",
+		ldms_log(LDMS_LERROR, "Memory allocation failure processing '%s'\n",
 			 command);
 		rc = ENOMEM;
 		goto out;
@@ -1864,7 +1872,7 @@ int process_record(int fd,
 
 	cmd_s = av_name(kw_list, 0);
 	if (!cmd_s) {
-		ldms_log("Request is missing Id '%s'\n", command);
+		ldms_log(LDMS_LERROR, "Request is missing Id '%s'\n", command);
 		rc = EINVAL;
 		goto out;
 	}
@@ -1925,7 +1933,7 @@ void hset_ref_put(struct hostset *hset)
 	pthread_mutex_unlock(&hset->refcount_lock);
 
 	if (destroy) {
-		ldms_log("Destroying hostset '%s'.\n", hset->name);
+		ldms_log(LDMS_LERROR, "Destroying hostset '%s'.\n", hset->name);
 		/*
 		 * Take the host set_list_lock since we are modifying the host
 		 * set_list
@@ -1976,7 +1984,7 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 	pthread_mutex_lock(&hset->state_lock);
 	if (status != LDMS_LOOKUP_OK){
 		hset->state = LDMSD_SET_CONFIGURED;
-		ldms_log("Error doing lookup for set '%s'\n",
+		ldms_log(LDMS_LERROR, "Error doing lookup for set '%s'\n",
 				hset->name);
 		hset->set = NULL;
 		goto out;
@@ -2050,7 +2058,7 @@ int do_connect(struct hostspec *hs)
 	hs->x = ldms_create_xprt(hs->xprt_name, ldms_log);
 
 	if (!hs->x) {
-		ldms_log("Error creating transport '%s'.\n", hs->xprt_name);
+		ldms_log(LDMS_LERROR, "Error creating transport '%s'.\n", hs->xprt_name);
 		return -1;
 	}
 	ldms_xprt_get(hs->x);
@@ -2098,7 +2106,7 @@ int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)
 		LIST_FOREACH(smi, &sp->metric_list, entry) {
 			i = _mvec_find_metric(mvec, smi->name);
 			if (i < 0) {
-				ldms_log("Store '%s': Could not find metric "
+				ldms_log(LDMS_LERROR, "Store '%s': Could not find metric "
 						"'%s'.\n", sp->container,
 						smi->name);
 				sp->state = STORE_POLICY_WRONG_CONFIG;
@@ -2126,7 +2134,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	uint64_t gn;
 	pthread_mutex_lock(&hset->state_lock);
 	if (status) {
-		/* ldms_log("Update failed for set.\n"); Removed by Brandt 7-2-2014 */
+		/* ldms_log(LDMSD_LOG_ERROR, "Update failed for set.\n"); Removed by Brandt 7-2-2014 */
 		reset_set_metrics(hset);
 		hset->state = LDMSD_SET_CONFIGURED;
 		goto out1;
@@ -2134,12 +2142,12 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
-		ldms_log("Set %s with Generation# <%d> Stale.\n", hset->name, hset->gn);
+		ldms_log(LDMS_LINFO, "Set %s with Generation# <%d> Stale.\n", hset->name, hset->gn);
 		goto out;
 	}
 
 	if (!ldms_is_set_consistent(hset->set)) {
-		ldms_log("Set %s Inconsistent. Generation# = <%d>\n", hset->name, hset->gn);
+		ldms_log(LDMS_LINFO, "Set %s Inconsistent. Generation# = <%d>\n", hset->name, hset->gn);
 		goto out;
 	}
 
@@ -2174,7 +2182,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		mvec = ldms_mvec_create(lsp->metric_count);
 		if (!mvec) {
 			/* Warning ENOMEM */
-			ldms_log("cannot allocate mvec at %s:%d\n", __FILE__,
+			ldms_log(LDMS_LERROR, "cannot allocate mvec at %s:%d\n", __FILE__,
 					__LINE__);
 			continue;
 		}
@@ -2229,7 +2237,7 @@ void update_data(struct hostspec *hs)
 				ldms_xprt_close(hs->x);
 				hs->x = NULL;
 				host_error = 1;
-				ldms_log("Synchronous error %d "
+				ldms_log(LDMS_LERROR, "Synchronous error %d "
 					"from ldms_lookup\n", ret);
 				hset_ref_put(hset);
 			}
@@ -2244,7 +2252,7 @@ void update_data(struct hostspec *hs)
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
-				ldms_log("Error %d updating metric set "
+				ldms_log(LDMS_LERROR, "Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
 					hs->hostname, ntohs(hs->sin.sin_port),
 					hs->xprt_name);
@@ -2258,7 +2266,7 @@ void update_data(struct hostspec *hs)
 		case LDMSD_SET_BUSY:
 			hset->curr_busy_count++;
 			if (hset->curr_busy_count > 60) {
-				ldms_log("Busy count limit exceeded "
+				ldms_log(LDMS_LERROR, "Busy count limit exceeded "
 					"on host %s:%d[%s].\n",
 					hs->hostname, ntohs(hs->sin.sin_port),
 					hs->xprt_name);
@@ -2267,7 +2275,7 @@ void update_data(struct hostspec *hs)
 			}
 			break;
 		default:
-			ldms_log("Invalid hostset state '%d'\n", hset->state);
+			ldms_log(LDMS_LERROR, "Invalid hostset state '%d'\n", hset->state);
 			assert(0);
 			break;
 		}
@@ -2336,7 +2344,7 @@ void do_host(struct hostspec *hs)
 		}
 		break;
 	default:
-		ldms_log("Host connection state '%d' is invalid.\n",
+		ldms_log(LDMS_LERROR, "Host connection state '%d' is invalid.\n",
 							hs->conn_state);
 		assert(0);
 	}
@@ -2423,7 +2431,7 @@ void *connect_proc(void *v)
 			}
 			break;
 		default:
-			ldms_log("%s: Host connection state '%d' is invalid.\n",
+			ldms_log(LDMS_LERROR, "%s: Host connection state '%d' is invalid.\n",
 				 __func__, hs->conn_state);
 			assert(0);
 		}
@@ -2443,7 +2451,7 @@ void *event_proc(void *v)
 	evtimer_assign(keepalive, sampler_base, keepalive_cb, keepalive);
 	evtimer_add(keepalive, &keepalive_to);
 	event_base_loop(sampler_base, 0);
-	ldms_log("Exiting the sampler thread.\n");
+	ldms_log(LDMS_LINFO, "Exiting the sampler thread.\n");
 	return NULL;
 }
 
@@ -2508,7 +2516,7 @@ void listen_on_transport(char *transport_str)
 	int ret;
 	struct sockaddr_in sin;
 
-	ldms_log("Listening on transport %s\n", transport_str);
+	ldms_log(LDMS_LCRITICAL,"Listening on transport %s\n", transport_str);
 	name = strtok(transport_str, ":");
 	port_s = strtok(NULL, ":");
 	if (!port_s)
@@ -2518,7 +2526,7 @@ void listen_on_transport(char *transport_str)
 
 	l = ldms_create_xprt(name, ldms_log);
 	if (!l) {
-		ldms_log("The transport specified, '%s', is invalid.\n", name);
+		ldms_log(LDMS_LERROR, "The transport specified, '%s', is invalid.\n", name);
 		cleanup(6);
 	}
 	sin.sin_family = AF_INET;
@@ -2526,7 +2534,7 @@ void listen_on_transport(char *transport_str)
 	sin.sin_port = htons(port_no);
 	ret = ldms_listen(l, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret) {
-		ldms_log("Error %d listening on the '%s' transport.\n",
+		ldms_log(LDMS_LERROR, "Error %d listening on the '%s' transport.\n",
 			 ret, name);
 		cleanup(7);
 	}
@@ -2540,7 +2548,7 @@ void ev_log_cb(int sev, const char *msg)
 		"EV_WARN",
 		"EV_ERR"
 	};
-	ldms_log("%s: %s\n", sev_s[sev], msg);
+	ldms_log(LDMS_LERROR, "%s: %s\n", sev_s[sev], msg);
 }
 
 int setup_control(char *sockname)
@@ -2564,14 +2572,14 @@ int setup_control(char *sockname)
 	/* Create listener */
 	muxr_s = socket(AF_UNIX, SOCK_DGRAM, 0);
 	if (muxr_s < 0) {
-		ldms_log("Error %d creating muxr socket.\n", muxr_s);
+		ldms_log(LDMS_LERROR, "Error %d creating muxr socket.\n", muxr_s);
 		return -1;
 	}
 
 	/* Bind to our public name */
 	ret = bind(muxr_s, (struct sockaddr *)&sun, sizeof(struct sockaddr_un));
 	if (ret < 0) {
-		ldms_log("Error %d binding to socket named '%s'.\n",
+		ldms_log(LDMS_LERROR, "Error %d binding to socket named '%s'.\n",
 			 errno, sockname);
 		return -1;
 	}
@@ -2579,7 +2587,7 @@ int setup_control(char *sockname)
 
 	ret = pthread_create(&ctrl_thread, NULL, ctrl_thread_proc, 0);
 	if (ret) {
-		ldms_log("Error %d creating the control pthread'.\n");
+		ldms_log(LDMS_LERROR, "Error %d creating the control pthread'.\n");
 		return -1;
 	}
 	return 0;
@@ -2596,7 +2604,7 @@ int setup_inet_control(void)
 	/* Create listener */
 	muxr_s = socket(AF_UNIX, SOCK_DGRAM, 0);
 	if (muxr_s < 0) {
-		ldms_log("Error %d creating muxr socket.\n", muxr_s);
+		ldms_log(LDMS_LERROR, "Error %d creating muxr socket.\n", muxr_s);
 		return -1;
 	}
 
@@ -2607,14 +2615,14 @@ int setup_inet_control(void)
 	/* Bind to our public name */
 	ret = bind(muxr_s, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret < 0) {
-		ldms_log("Error %d binding control socket.\n", errno);
+		ldms_log(LDMS_LERROR, "Error %d binding control socket.\n", errno);
 		return -1;
 	}
 	bind_succeeded = 1;
 
 	ret = pthread_create(&ctrl_thread, NULL, inet_ctrl_thread_proc, 0);
 	if (ret) {
-		ldms_log("Error %d creating the control thread.\n");
+		ldms_log(LDMS_LERROR, "Error %d creating the control thread.\n");
 		return -1;
 	}
 	return 0;
@@ -2745,7 +2753,7 @@ int parse_interval(char *str)
 	} else if (strcmp(unit, "us") == 0) {
 		/* already microseconds: do nothing */
 	} else {
-		LDMSD_ERROR_EXIT("Unknown interval unit: %s\n", unit);
+		LDMS_LERROR_EXIT("Unknown interval unit: %s\n", unit);
 	}
 
 	return number;
@@ -2768,14 +2776,14 @@ yaml_document_t* parse_config_file(char *cfg_file)
 	}
 
 	if (!yaml_parser_initialize(&yaml_parser))
-		LDMSD_ERROR_EXIT("yaml initialization error");
+		LDMS_LERROR_EXIT("yaml initialization error");
 
 	yaml_parser_set_input_file(&yaml_parser, fcfg);
 
 	yaml_document_t *yaml_document = calloc(1, sizeof(yaml_document_t));
 
 	if (!yaml_parser_load(&yaml_parser, yaml_document))
-		LDMSD_ERROR_EXIT("yaml load error");
+		LDMS_LERROR_EXIT("yaml load error");
 
 	return yaml_document;
 }
@@ -2854,7 +2862,7 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 		if (!has_arg[LDMS_QUIET])
 			if (strcasecmp("true", value_str) == 0 ||
 					atoi(value_str))
-				quiet = 1;
+				log_level = LDMSD_QUIET;
 	} else if (strcmp(key_str, "foreground")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_FOREGROUND])
@@ -2891,7 +2899,7 @@ void initial_config_file_routine(yaml_document_t *yaml_document)
 	char hostname[HOST_NAME_MAX+1];
 
 	if (gethostname(hostname, sizeof(hostname)))
-		LDMSD_ERROR_EXIT("Cannot get hostname, err(%d): %s\n",
+		LDMS_LERROR_EXIT("Cannot get hostname, err(%d): %s\n",
 			errno, sys_errlist[errno]);
 
     for (itr = root->data.sequence.items.start;
@@ -2972,7 +2980,7 @@ int sprint_attribute(char *buff, yaml_document_t *yaml_document,
 		}
 		break;
 	default:
-		LDMSD_ERROR_EXIT("Unexpexted node type %s",
+		LDMS_LERROR_EXIT("Unexpexted node type %s",
 				YAML_TYPE_STR[value_node->type]);
 	}
 
@@ -3021,7 +3029,7 @@ void ldms_yaml_host_list_handling(yaml_document_t *yaml_document,
 		if (host)
 			cmd += sprintf(cmd, " host=%s", host);
 		else
-			LDMSD_ERROR_EXIT("host is needed in each item in the hostlist");
+			LDMS_LERROR_EXIT("host is needed in each item in the hostlist");
 
 		if (port)
 			cmd += sprintf(cmd, " port=%s", port);
@@ -3032,7 +3040,7 @@ void ldms_yaml_host_list_handling(yaml_document_t *yaml_document,
 		if (type)
 			cmd += sprintf(cmd, " type=%s", type);
 		else
-			LDMSD_ERROR_EXIT("type is needed in each item in the hostlist");
+			LDMS_LERROR_EXIT("type is needed in each item in the hostlist");
 
 		if (interval_int)
 			cmd += sprintf(cmd, " interval=%d", interval_int);
@@ -3071,14 +3079,14 @@ void ldms_yaml_plugin_single_handling(yaml_document_t *yaml_document,
 	// First: load the plugin (if not existed)
 	char *name = yaml_node_get_attr_value_str(yaml_document, node, "name");
 	if (!name)
-		LDMSD_ERROR_EXIT("Attribute name is needed for each plugin");
+		LDMS_LERROR_EXIT("Attribute name is needed for each plugin");
 	char *type = yaml_node_get_attr_value_str(yaml_document, node, "type");
 	if (!type)
-		LDMSD_ERROR_EXIT("Attribute type is needed for each plugin");
+		LDMS_LERROR_EXIT("Attribute type is needed for each plugin");
 
 	if (!get_plugin(name))
 		if (!new_plugin(name, buff))
-			LDMSD_ERROR_EXIT("Cannot load plugin %s, error: %s", name, buff);
+			LDMS_LERROR_EXIT("Cannot load plugin %s, error: %s", name, buff);
 
 	// Second: configure
 	//  -> need to construct the command string
@@ -3118,7 +3126,7 @@ void ldms_yaml_plugin_single_handling(yaml_document_t *yaml_document,
 
 	if (update_node) {
 		if (update_node->type != YAML_SEQUENCE_NODE)
-			LDMSD_ERROR_EXIT("on_update attribute need to be a sequence"
+			LDMS_LERROR_EXIT("on_update attribute need to be a sequence"
 					", but got %s", YAML_TYPE_STR[update_node->type]);
 
 		yaml_node_item_t *seq_itr;
@@ -3198,7 +3206,7 @@ void config_file_routine(yaml_document_t *yaml_document)
 	 * For empty document, just return with a warning
 	 */
 	if (!root) {
-		ldms_log("WARNING: yaml document is empty\n");
+		ldms_log(LDMS_LINFO, "WARNING: yaml document is empty\n");
 		return;
 	}
 
@@ -3208,7 +3216,7 @@ void config_file_routine(yaml_document_t *yaml_document)
 	char hostname[HOST_NAME_MAX+1];
 
 	if (gethostname(hostname, sizeof(hostname)))
-		LDMSD_ERROR_EXIT("Cannot get hostname, err(%d): %s\n",
+		LDMS_LERROR_EXIT("Cannot get hostname, err(%d): %s\n",
 				errno, sys_errlist[errno]);
 
     for (itr = root->data.sequence.items.start;
@@ -3250,7 +3258,7 @@ void config_file_routine(yaml_document_t *yaml_document)
 		if (plugin_list_node)
 			ldms_yaml_plugin_list_handling(yaml_document, plugin_list_node);
 
-		ldms_log("Done plugin_list_handling\n");
+		ldms_log(LDMS_LINFO, "Done plugin_list_handling\n");
 
 		// After the configuration for this host is found, no need to
 		// continue looking anymore .. hence break it
@@ -3330,7 +3338,7 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_KERNEL_METRIC_SET] = 1;
 			break;
 		case 'q':
-			quiet = 1;
+			log_level = ldms_str_to_level(optarg);
 			has_arg[LDMS_QUIET] = 1;
 			break;
 		case 'C':
@@ -3384,7 +3392,7 @@ int main(int argc, char *argv[])
 			dirty_threshold = atoi(optarg);
 			break;
 		case 'V':
-                        printf("%s", ldms_pedigree());
+            printf("%s", ldms_pedigree());
 			exit(1);
 		default:
 			usage(argv);
@@ -3417,7 +3425,7 @@ int main(int argc, char *argv[])
 		log_fp = fopen(logfile, "a");
 		if (!log_fp) {
 			log_fp = stdout;
-			ldms_log("Could not open the log file named '%s'\n", logfile);
+			ldms_log(LDMS_LERROR, "Could not open the log file named '%s'\n", logfile);
 			cleanup(9);
 		}
 		stdout = log_fp;
@@ -3425,7 +3433,7 @@ int main(int argc, char *argv[])
 
 	/* Initialize LDMS */
 	if (ldms_init(max_mem_size)) {
-		ldms_log("LDMS could not pre-allocate the memory of size %lu.\n",
+		ldms_log(LDMS_LERROR, "LDMS could not pre-allocate the memory of size %lu.\n",
 								max_mem_size);
 		exit(1);
 	}
@@ -3435,43 +3443,43 @@ int main(int argc, char *argv[])
 
 	ev_count = calloc(ev_thread_count, sizeof(int));
 	if (!ev_count) {
-		ldms_log("Memory allocation failure.\n");
+		ldms_log(LDMS_LERROR, "Memory allocation failure.\n");
 		exit(1);
 	}
 	ev_base = calloc(ev_thread_count, sizeof(struct event_base *));
 	if (!ev_base) {
-		ldms_log("Memory allocation failure.\n");
+		ldms_log(LDMS_LERROR, "Memory allocation failure.\n");
 		exit(1);
 	}
 	ev_thread = calloc(ev_thread_count, sizeof(pthread_t));
 	if (!ev_thread) {
-		ldms_log("Could not allocate the memory "
+		ldms_log(LDMS_LERROR, "Could not allocate the memory "
 			 "for the event thread arrray.\n");
 		exit(1);
 	}
 	for (op = 0; op < ev_thread_count; op++) {
 		ev_base[op] = event_init();
 		if (!ev_base[op]) {
-			ldms_log("Error creating an event base.\n");
+			ldms_log(LDMS_LERROR, "Error creating an event base.\n");
 			cleanup(6);
 		}
 		ret = pthread_create(&ev_thread[op], NULL, event_proc, ev_base[op]);
 		if (ret) {
-			ldms_log("Error %d creating the event thread.\n", ret);
+			ldms_log(LDMS_LERROR, "Error %d creating the event thread.\n", ret);
 			cleanup(7);
 		}
 	}
 
 	conn_thread = calloc(ev_thread_count, sizeof(pthread_t));
 	if (!conn_thread) {
-		ldms_log("Could not allocate the memory "
+		ldms_log(LDMS_LERROR, "Could not allocate the memory "
 			 "for the connect thread arrray.\n");
 		exit(1);
 	}
 	for (op = 0; op < conn_thread_count; op++) {
 		ret = pthread_create(&conn_thread[op], NULL, connect_proc, NULL);
 		if (ret) {
-			ldms_log("Error %d creating the connect threads.\n", ret);
+			ldms_log(LDMS_LERROR, "Error %d creating the connect threads.\n", ret);
 			cleanup(7);
 		}
 	}
@@ -3490,7 +3498,7 @@ int main(int argc, char *argv[])
 	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
 	ldms_metric_t *test_metrics = calloc(test_set_count, sizeof(ldms_metric_t));
 	if (!test_metrics) {
-		ldms_log("Could not create test_metrics table to contain %d items\n",
+		ldms_log(LDMS_LERROR, "Could not create test_metrics table to contain %d items\n",
 			 test_set_count);
 		cleanup(10);
 	}
@@ -3527,8 +3535,8 @@ int main(int argc, char *argv[])
 	if (!logfile)
 		logfile = LDMSD_LOGFILE;
 
-	ldms_log("Started LDMS Daemon version " VERSION "\n");
-	ldms_log("git tag " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n");
+	ldms_log(LDMS_LCRITICAL,"Started LDMS Daemon version " VERSION "\n");
+	ldms_log(LDMS_LCRITICAL, "git tag " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n");
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 
@@ -3536,7 +3544,7 @@ int main(int argc, char *argv[])
 		cleanup(4);
 
 	if (ldmsd_store_init(flush_N)) {
-		ldms_log("Could not initialize the storage subsystem.\n");
+		ldms_log(LDMS_LERROR, "Could not initialize the storage subsystem.\n");
 		cleanup(7);
 	}
 

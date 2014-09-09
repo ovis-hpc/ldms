@@ -94,7 +94,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the vmstat file '%s'...exiting\n", procfile);
+		msglog(LDMS_LDEBUG,"Could not open the vmstat file '%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 
@@ -194,7 +194,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set) {
-		msglog("vmstat: plugin not initialized\n");
+		msglog(LDMS_LDEBUG,"vmstat: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);

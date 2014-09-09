@@ -174,7 +174,7 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 
 	FILE* fp = fopen(fname, "r");
 	if (!fp) {
-		msglog("Cannot open config file <%s>\n", fname);
+		msglog(LDMS_LDEBUG,"Cannot open config file <%s>\n", fname);
 		return EINVAL;
 	}
 
@@ -184,7 +184,7 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 
 		//FIXME: TOO many metrics
 		if (s_handle->numder == STORE_DERIVED_METRIC_MAX) {
-			msglog("Too many metrics <%s>\n", fname);
+			msglog(LDMS_LDEBUG,"Too many metrics <%s>\n", fname);
 			rc = EINVAL;
 			break;
 		}
@@ -197,15 +197,15 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 //		printf("Name <%s> val <%d> mult <%lf>\n", metric_name, tval, mval);
 		if ((strlen(metric_name) > 0) && (metric_name[0] == '#')){
 		// hashed lines are comments (means metric name cannot start with #)
-			msglog("Comment in derived config file <%s>. Skipping\n",lbuf);
+			msglog(LDMS_LDEBUG,"Comment in derived config file <%s>. Skipping\n",lbuf);
 			continue;
 		}
 		if (rcl != 3) {
-			msglog("Bad format in derived config file <%s> rc=%d. Skipping\n",lbuf, rcl);
+			msglog(LDMS_LDEBUG,"Bad format in derived config file <%s> rc=%d. Skipping\n",lbuf, rcl);
 			continue;
 		}
 		if ((tval < 0) || (tval > 1)) {
-			msglog("Bad type in derived config file <%s> <%d>. Skipping\n", lbuf, tval);
+			msglog(LDMS_LDEBUG,"Bad type in derived config file <%s> <%d>. Skipping\n", lbuf, tval);
 			continue;
 		}
 
@@ -371,13 +371,13 @@ static int print_header(struct csv_store_handle *s_handle,
 
 	s_handle->printheader = 0;
 	if (!fp){
-		msglog("Cannot print header for store_derived_csv. No headerfile\n");
+		msglog(LDMS_LDEBUG,"Cannot print header for store_derived_csv. No headerfile\n");
 		return EINVAL;
 	}
 
 	rc = derivedConfig(derivedconf,s_handle);
 	if (rc != 0) {
-		msglog("derivedConfig failed for store_derived_csv. \n");
+		msglog(LDMS_LDEBUG,"derivedConfig failed for store_derived_csv. \n");
 		return rc;
 	}
 
@@ -454,7 +454,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		snprintf(tmp_path, PATH_MAX, "%s/%s", root_path, comp_type);
 		rc = mkdir(tmp_path, 0777);
 		if ((rc != 0) && (errno != EEXIST)){
-			msglog("Error: cannot create dir '%s'\n", tmp_path);
+			msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", tmp_path);
 			goto out;
 		}
 		snprintf(tmp_path, PATH_MAX, "%s/%s/%s", root_path, comp_type,
@@ -512,7 +512,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 
 		if (!s_handle->headerfile){
-			msglog("store_derived_csv: Cannot open headerfile");
+			msglog(LDMS_LDEBUG,"store_derived_csv: Cannot open headerfile");
 			goto err4;
 		}
 	}
@@ -578,7 +578,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		return EINVAL;
 
 	if (!s_handle->file){
-		msglog("Cannot insert values for <%s>: file is closed\n",
+		msglog(LDMS_LDEBUG,"Cannot insert values for <%s>: file is closed\n",
 				s_handle->path);
 		return EPERM;
 	}
@@ -589,7 +589,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	if (s_handle->printheader) {
 		rc = print_header(s_handle, mvec);
 		if (rc != 0){
-			msglog("store_derived_csv: Error in print_header: %d\n", rc);
+			msglog(LDMS_LDEBUG,"store_derived_csv: Error in print_header: %d\n", rc);
 			pthread_mutex_unlock(&cfg_lock);
 			pthread_mutex_unlock(&s_handle->lock);
 			return rc;
@@ -663,7 +663,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 	timersub(&curr, &prev, &diff);
 	if ((diff.tv_sec == 0) && (diff.tv_usec == 0)){
-		msglog("store_derived_csv: Time diff is zero for set %s. Skipping\n", ldms_get_set_name(set));
+		msglog(LDMS_LDEBUG,"store_derived_csv: Time diff is zero for set %s. Skipping\n", ldms_get_set_name(set));
 		goto out;
 	}
 
@@ -686,7 +686,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			rc = fprintf(s_handle->file, ", %" PRIu64,
 				ldms_get_user_data(mvec->v[i]));
 			if (rc < 0)
-				msglog("store_derived_csv: Error %d writing to '%s'\n",
+				msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 		}
 	}
@@ -729,12 +729,12 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 				rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 					     comp_id, val);
 				if (rc < 0)
-					msglog("store_derived_csv: Error %d writing to '%s'\n",
+					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 			} else {
 				rc = fprintf(s_handle->file, ", %" PRIu64, val);
 				if (rc < 0)
-					msglog("store_derived_csv: Error %d writing to '%s'\n",
+					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 			}
 		}
@@ -764,7 +764,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog("store_derived_csv: flush error.\n");
+		msglog(LDMS_LDEBUG,"store_derived_csv: flush error.\n");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -803,7 +803,7 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog("Destroying store_derived_csv with path <%s>\n", s_handle->path);
+	msglog(LDMS_LDEBUG,"Destroying store_derived_csv with path <%s>\n", s_handle->path);
 
 	fflush(s_handle->file);
 	s_handle->store = NULL;

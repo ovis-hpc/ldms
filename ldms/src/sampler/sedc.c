@@ -126,7 +126,7 @@ static int processCompIdMap(char * fname){
 
   FILE *cid = fopen(fname, "r");
   if (!cid) {
-    msglog("Could not open the sedc file '%s'...exiting\n", fname);
+    msglog(LDMS_LDEBUG,"Could not open the sedc file '%s'...exiting\n", fname);
     return ENOENT;
   }
 
@@ -248,14 +248,14 @@ static int setdatafile(struct attr_value_list *kwl, struct attr_value_list *avl)
 
   dirnamex = strdup(av_value(avl,"datafiledir"));
   if (dirnamex == NULL){
-    msglog("sedc: no datafiledir\n");
+    msglog(LDMS_LDEBUG,"sedc: no datafiledir\n");
     return EINVAL;
   }
 
  filebasename = strdup(av_value(avl,"datafilebasename"));
   if (filebasename == NULL){
     free(dirnamex);
-    msglog("sedc: no datafilebasename\n");
+    msglog(LDMS_LDEBUG,"sedc: no datafilebasename\n");
     return EINVAL;
   }
 
@@ -263,7 +263,7 @@ static int setdatafile(struct attr_value_list *kwl, struct attr_value_list *avl)
   if (filetype == NULL){
     free(dirnamex);
     free(filebasename);
-    msglog("sedc: no datafiletype\n");
+    msglog(LDMS_LDEBUG,"sedc: no datafiletype\n");
     return EINVAL;
   }
 
@@ -278,7 +278,7 @@ static int setdatafile(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 
   if ((strcmp(filetype, "sedc") != 0) && (strcmp(filetype, "rsyslog"))){
-    msglog("sedc: bad datafiletype\n");
+    msglog(LDMS_LDEBUG,"sedc: bad datafiletype\n");
     return EINVAL;
   }
 
@@ -292,14 +292,14 @@ static int setconfigfiles(struct attr_value_list *kwl, struct attr_value_list *a
 
   char* junk= strdup(av_value(avl,"headerfile"));
   if (junk == NULL){
-    msglog("sedc: no headerfile\n");
+    msglog(LDMS_LDEBUG,"sedc: no headerfile\n");
     return EINVAL;
   }
 
   char lbuf[10240]; //how big does this have to be? 
   mf = fopen(junk, "r");
   if (!mf) {
-    msglog("Could not open the sedc file '%s'...exiting\n", junk);
+    msglog(LDMS_LDEBUG,"Could not open the sedc file '%s'...exiting\n", junk);
     free(junk);
     return ENOENT;
   }
@@ -332,7 +332,7 @@ static int setconfigfiles(struct attr_value_list *kwl, struct attr_value_list *a
   //compidmap
   junk = strdup(av_value(avl,"compidmap"));
   if (junk == NULL){
-    msglog("sedc: no compidmap\n");
+    msglog(LDMS_LDEBUG,"sedc: no compidmap\n");
     return EINVAL;
   }
 
@@ -345,7 +345,7 @@ static int setconfigfiles(struct attr_value_list *kwl, struct attr_value_list *a
 static int setMSshortname(struct attr_value_list *kwl, struct attr_value_list *avl){
   setshortname = strdup(av_value(avl,"shortname"));
   if (setshortname == NULL){
-    msglog("sedc: no metricset shortname\n");
+    msglog(LDMS_LDEBUG,"sedc: no metricset shortname\n");
     return EINVAL;
   }
 
@@ -398,7 +398,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
   char* action = av_value(avl, "action");
   if (!action){
-    msglog("sedc: no action\n");
+    msglog(LDMS_LDEBUG,"sedc: no action\n");
     return EINVAL;
   }
 
@@ -411,7 +411,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
   } else if (0 == strcmp(action, "setshortname")){
     rc = setMSshortname(kwl, avl);
   } else {
-    msglog("sedc: Invalid configuration string '%s'\n", action);
+    msglog(LDMS_LDEBUG,"sedc: Invalid configuration string '%s'\n", action);
     rc = EINVAL;
   }
   pthread_mutex_unlock(&cfg_lock);
@@ -591,7 +591,7 @@ int processSEDCData(char* line){
       {
 	compid = (int*)g_hash_table_lookup(compidmap, pch);
 	if (compid == NULL){
-	  msglog("Error: cannot find compname to id assoc %s\n", pch);
+	  msglog(LDMS_LDEBUG,"Error: cannot find compname to id assoc %s\n", pch);
 	  return -1;
 	}
 	currfset = (struct fset*)g_hash_table_lookup(setmap, compid);
@@ -800,13 +800,13 @@ static int sample(void)
   //}
 
   if (dirnamex == NULL || filebasename == NULL){
-    msglog("sedc: No data file info\n");
+    msglog(LDMS_LDEBUG,"sedc: No data file info\n");
     pthread_mutex_unlock(&cfg_lock);
     return ENOENT;
   }
 
   if (setshortname == NULL){
-    msglog("sedc: No set shortname\n");
+    msglog(LDMS_LDEBUG,"sedc: No set shortname\n");
     pthread_mutex_unlock(&cfg_lock);
     return ENOENT;
   }

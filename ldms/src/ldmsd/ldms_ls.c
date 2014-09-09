@@ -295,7 +295,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	pthread_cond_signal(&dir_cv);
 }
 
-void null_log(const char *fmt, ...)
+void null_log(int level, const char *fmt, ...)
 {
 	va_list ap;
 

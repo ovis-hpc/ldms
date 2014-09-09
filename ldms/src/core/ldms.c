@@ -92,6 +92,22 @@ static char __set_path[PATH_MAX];
 
 char *_create_path(const char *set_name);
 
+int ldms_str_to_level(const char *level_s)
+{
+	if (0 == strcasecmp(level_s, "DEBUG")
+		return LDMS_LDEBUG;
+	else if (0 == strcasecmp(level_s, "INFO"))
+		return LDMS_LINFO;
+	else if (0 == strcasecmp(level_s, "ERROR"))
+		return LDMS_LERROR;
+	else if (0 == strcasecmp(level_s, "CRITICAL"))
+		return LDMS_LCRITICAL;
+	else if (0 == strcasecmp(level_s, "QUIET"))
+		return LDMS_LALWAYS;
+	else
+		return -1;
+}
+
 static int set_comparator(void *a, void *b)
 {
 	char *x = a;

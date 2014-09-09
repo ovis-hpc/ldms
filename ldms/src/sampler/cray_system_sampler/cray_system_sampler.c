@@ -240,7 +240,7 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 
 	*metric_table = calloc(num_metrics, sizeof(ldms_metric_t));
 	if (! (*metric_table)){
-		msglog("cray_system_sampler: cannot calloc metric_table\n");
+		msglog(LDMS_LDEBUG,"cray_system_sampler: cannot calloc metric_table\n");
 		return ENOMEM;
 	}
 
@@ -248,7 +248,7 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 		*g_f = fopen(*fname, "r");
 		if (!(*g_f)) {
 			/* this is not an error */
-			msglog("WARNING: Could not open the source file '%s'\n",
+			msglog(LDMS_LDEBUG,"WARNING: Could not open the source file '%s'\n",
 			       *fname);
 		}
 	} else {
@@ -262,7 +262,7 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 						     LDMS_V_U64);
 
 		if (!(*metric_table)[i]){
-			msglog("cray_system_sampler: cannot add metric %d\n",
+			msglog(LDMS_LDEBUG,"cray_system_sampler: cannot add metric %d\n",
 			       i);
 			rc = ENOMEM;
 			return rc;
@@ -359,7 +359,7 @@ static int add_metrics_generic(int comp_id,
 			return rc;
 		rc = procnetdev_setup(msglog);
 		if (rc != 0) /* Warn but OK to continue */
-			msglog("cray_system_sampler: procnetdev invalid\n");
+			msglog(LDMS_LDEBUG,"cray_system_sampler: procnetdev invalid\n");
 		break;
 	case NS_KGNILND:
 		return add_metrics_simple(set, KGNILND_METRICS,
@@ -380,7 +380,7 @@ static int add_metrics_generic(int comp_id,
 		if (rc == ENOMEM)
 			return rc;
 		if (rc != 0) /*  Warn but OK to continue */
-			msglog("cray_system_sampler: linksmetrics invalid\n");
+			msglog(LDMS_LDEBUG,"cray_system_sampler: linksmetrics invalid\n");
 		return 0;
 		break;
 	case NS_NICMETRICS:
@@ -391,7 +391,7 @@ static int add_metrics_generic(int comp_id,
 		if (rc == ENOMEM)
 			return rc;
 		if (rc != 0) /*  Warn but OK to continue */
-			msglog("cray_system_sampler: nicmetrics invalid\n");
+			msglog(LDMS_LDEBUG,"cray_system_sampler: nicmetrics invalid\n");
 		return 0;
 		break;
 #else
@@ -403,7 +403,7 @@ static int add_metrics_generic(int comp_id,
 		if (rc == ENOMEM)
 			return rc;
 		if (rc != 0) /*  Warn but OK to continue */
-			msglog("cray_system_sampler: nic_perf invalid\n");
+			msglog(LDMS_LDEBUG,"cray_system_sampler: nic_perf invalid\n");
 		return 0;
 		break;
 	case NS_GEM_LINK_PERF:
@@ -414,7 +414,7 @@ static int add_metrics_generic(int comp_id,
 		if (rc == ENOMEM)
 			return rc;
 		if (rc != 0) /*  Warn but OK to continue */
-			msglog("cray_system_sampler: gem_link_perf invalid\n");
+			msglog(LDMS_LDEBUG,"cray_system_sampler: gem_link_perf invalid\n");
 		return 0;
 		break;
 #endif
@@ -557,7 +557,7 @@ static int sample(void)
 #endif
 
 	if (!set) {
-		msglog("cray_system_sampler: plugin not initialized\n");
+		msglog(LDMS_LDEBUG,"cray_system_sampler: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
