@@ -206,6 +206,7 @@ void *mm_alloc(size_t size)
 	}
 	p->count = count;
 	p->addr = (unsigned long)p;
+	bzero(p + 1, size - sizeof(*p));
 	pthread_mutex_unlock(&mmr_lock);
 	return ++p;
  err:
