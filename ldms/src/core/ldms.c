@@ -94,7 +94,7 @@ char *_create_path(const char *set_name);
 
 int ldms_str_to_level(const char *level_s)
 {
-	if (0 == strcasecmp(level_s, "DEBUG")
+	if (0 == strcasecmp(level_s, "DEBUG"))
 		return LDMS_LDEBUG;
 	else if (0 == strcasecmp(level_s, "INFO"))
 		return LDMS_LINFO;

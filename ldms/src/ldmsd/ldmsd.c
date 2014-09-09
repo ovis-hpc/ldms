@@ -269,7 +269,7 @@ void usage(char *argv[])
 #endif /* DEBUG */
 	printf("    -P thr_count   Count of event threads to start.\n");
 	printf("    -q log_level   The log_level can be one of DEBUG, INFO, ERROR, CRITICAL\n"
-	       "		   or QUIET. The default level is ERROR. QUIET produces no output.\n")
+	       "		   or QUIET. The default level is ERROR. QUIET produces no output.\n");
 	printf("    -S sockname    Specifies the unix domain socket name to\n"
 	       "                   use for ldmsctl access.\n");
 #ifdef DEBUG
