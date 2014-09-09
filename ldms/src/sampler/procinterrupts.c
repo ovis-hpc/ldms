@@ -110,7 +110,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the interrupts file '%s'...exiting\n",
+		msglog(LDMS_LDEBUG,"Could not open the interrupts file '%s'...exiting\n",
 				procfile);
 		return ENOENT;
 	}
@@ -131,7 +131,7 @@ static int create_metric_set(const char *path)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	nprocs = getNProcs(lbuf);
 	if (nprocs <= 0){
-		msglog("Bad number of CPU. Exiting\n");
+		msglog(LDMS_LDEBUG,"Bad number of CPU. Exiting\n");
 		return EINVAL;
 	}
 
@@ -255,7 +255,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set){
-		msglog("procinterrupts: plugin not initialized\n");
+		msglog(LDMS_LDEBUG,"procinterrupts: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);
@@ -288,7 +288,7 @@ static int sample(void)
 							&v);
 						metric_no++;
 					} else {
-						msglog("bad val <%s>\n",pch);
+						msglog(LDMS_LDEBUG,"bad val <%s>\n",pch);
 						rc = EINVAL;
 						goto out;
 					}

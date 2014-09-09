@@ -481,6 +481,19 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
  */
 
 /**
+ * \brief Log levels
+ */
+enum {
+	LDMS_LDEBUG = 0,
+	LDMS_LINFO,
+	LDMS_LERROR,
+	LDMS_LCRITICAL,
+	LDMS_LALWAYS,
+};
+
+typedef void (*ldms_log_fn_t)(int level, const char *fmt, ...);
+
+/**
  * \brief Create a transport handle
  *
  * Metric sets are exported on the network through a transport. A
@@ -491,7 +504,6 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
-typedef void (*ldms_log_fn_t)(const char *fmt, ...);
 extern ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn);
 
 /**

@@ -64,7 +64,7 @@ int port;
 int num_metrics;
 struct hadoop_set datanode_set;
 pthread_t thread;
-ldms_log_fn_t msglog;
+ldmsd_msg_log_f msglog;
 
 static const char *usage(void)
 {

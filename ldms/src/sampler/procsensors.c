@@ -118,7 +118,7 @@ static int parse_conf_file(const char* ffile)
 
 	FILE *fp = fopen(ffile,"r");
 	if (!fp) {
-		msglog("Could not open the procsensors config file '%s'...returning\n",
+		msglog(LDMS_LDEBUG,"Could not open the procsensors config file '%s'...returning\n",
 		       ffile);
 		return EINVAL;
 	}
@@ -136,7 +136,7 @@ static int parse_conf_file(const char* ffile)
 	} while (s);
 
 	if (lm_nentries == 0){
-		msglog("No entries in the procsensors config file '%s'...returning\n",
+		msglog(LDMS_LDEBUG,"No entries in the procsensors config file '%s'...returning\n",
 		       ffile);
 		if (fp) fclose(fp);
 		return EINVAL;
@@ -168,7 +168,7 @@ static int parse_conf_file(const char* ffile)
 		rc = sscanf(lbuf, "%s %s %lf %lf",
 			    vname, mname, &multiplier, &offset);
 		if (rc != 4){
-			msglog("Bad format line in the procsensors config file '%s' '%s'...returning\n",
+			msglog(LDMS_LDEBUG,"Bad format line in the procsensors config file '%s' '%s'...returning\n",
 			       lbuf, ffile);
 			rc = EINVAL;
 			break;
@@ -305,7 +305,7 @@ static int sample(void)
 		//FIXME: do we really want to open and close each one?
 		mf = fopen(lm_srcs[i]->vname, "r");
 		if (!mf) {
-			msglog("Could not open the procsensors file '%s'...continuing\n",
+			msglog(LDMS_LDEBUG,"Could not open the procsensors file '%s'...continuing\n",
 			       lm_srcs[i]->vname);
 			retrc = ENOENT;
 		} else {

@@ -188,7 +188,7 @@ static int print_header(struct csv_store_handle *s_handle,
 
 	s_handle->printheader = 0;
 	if (!fp){
-		msglog("Cannot print header for store_csv. No headerfile\n");
+		msglog(LDMS_LDEBUG,"Cannot print header for store_csv. No headerfile\n");
 		return EINVAL;
 	}
 
@@ -240,7 +240,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		snprintf(tmp_path, PATH_MAX, "%s/%s", root_path, comp_type);
 		rc = mkdir(tmp_path, 0777);
 		if ((rc != 0) && (errno != EEXIST)){
-			msglog("Error: cannot create dir '%s'\n", tmp_path);
+			msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", tmp_path);
 			goto out;
 		}
 		snprintf(tmp_path, PATH_MAX, "%s/%s/%s", root_path, comp_type,
@@ -328,7 +328,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		return EINVAL;
 
 	if (!s_handle->file){
-		msglog("Cannot insert values for <%s>: file is closed\n",
+		msglog(LDMS_LDEBUG,"Cannot insert values for <%s>: file is closed\n",
 				s_handle->path);
 		return EPERM;
 	}
@@ -348,7 +348,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 				     comp_id, ldms_get_u64(mvec->v[i]));
 			if (rc < 0)
-				msglog("store_csv: Error %d writing to '%s'\n",
+				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 		}
 		fprintf(s_handle->file,"\n");
@@ -360,13 +360,13 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			rc = fprintf(s_handle->file, ", %" PRIu64,
 				ldms_get_user_data(mvec->v[i]));
 			if (rc < 0)
-				msglog("store_csv: Error %d writing to '%s'\n",
+				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 		}
 		for (i = 0; i < num_metrics; i++) {
 			rc = fprintf(s_handle->file, ", %" PRIu64, ldms_get_u64(mvec->v[i]));
 			if (rc < 0)
-				msglog("store_csv: Error %d writing to '%s'\n",
+				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 		}
 		fprintf(s_handle->file,"\n");
@@ -381,7 +381,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog("store_csv: flush error.\n");
+		msglog(LDMS_LDEBUG,"store_csv: flush error.\n");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -417,7 +417,7 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog("Destroying store_csv with path <%s>\n", s_handle->path);
+	msglog(LDMS_LDEBUG,"Destroying store_csv with path <%s>\n", s_handle->path);
 	fflush(s_handle->file);
 	s_handle->store = NULL;
 	if (s_handle->path)

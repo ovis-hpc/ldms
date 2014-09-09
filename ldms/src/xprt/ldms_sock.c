@@ -71,14 +71,14 @@
 #include "ldms_xprt.h"
 #include "ldms_sock_xprt.h"
 
-#define LOG__(r, fmt, ...) do { \
+#define LOG__(r, level, fmt, ...) do { \
 	if (r && r->log) \
-		r->log(fmt, ##__VA_ARGS__); \
+		r->log(level, fmt, ##__VA_ARGS__); \
 } while(0)
 
-#define LOG_(r, fmt, ...) do { \
+#define LOG_(r, level, fmt, ...) do { \
 	if (r && r->xprt && r->xprt->log) \
-		r->xprt->log(fmt, ##__VA_ARGS__); \
+		r->xprt->log(level, fmt, ##__VA_ARGS__); \
 } while(0)
 
 
@@ -132,7 +132,7 @@ static struct sock_key *alloc_key(struct ldms_xprt *x, void *buf)
 	k->key = ++last_key;
 	z = rbt_find(&key_tree, (void *)(unsigned long)last_key);
 	if (z) {
-		x->log("%s: key collision at %d.\n", __func__, last_key);
+		x->log(LDMS_LDEBUG, "%s: key collision at %d.\n", __func__, last_key);
 		goto next_key;
 	}
 	k->buf = buf;
@@ -150,7 +150,7 @@ static void delete_key(struct ldms_xprt *x, uint32_t key)
 	/* Make sure the key is in the tree */
 	k = find_key_(key);
 	if (!k) {
-		x->log("%s: The specified key %d, is not in the tree.\n", __func__, key);
+		x->log(LDMS_LDEBUG, "%s: The specified key %d, is not in the tree.\n", __func__, key);
 		goto out;
 	}
 	rbt_del(&key_tree, &k->rb_node);
@@ -221,12 +221,12 @@ static int set_nonblock(struct ldms_xprt *x, int fd)
 
 	flags = fcntl(fd, F_GETFL);
 	if(flags == -1) {
-		x->log("Error getting flags on fd %d", fd);
+		x->log(LDMS_LDEBUG,"Error getting flags on fd %d", fd);
 		return -1;
 	}
 	flags |= O_NONBLOCK;
 	if(fcntl(fd, F_SETFL, flags)) {
-		x->log("Error setting non-blocking I/O on fd %d", fd);
+		x->log(LDMS_LDEBUG,"Error setting non-blocking I/O on fd %d", fd);
 		return -1;
 	}
 	return 0;
@@ -240,28 +240,28 @@ static int __set_socket_options(struct ldms_sock_xprt *s)
 
 	val = 1;
 	if (setsockopt(sd, SOL_SOCKET, SO_KEEPALIVE, &val, sizeof(val))) {
-		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPALIVE (val=%d\n):" /* fixed typo in log message*/
+		LOG_(s, LDMS_LDEBUG, "SOCK: Error in setsockopt TCP_KEEPALIVE (val=%d\n):" /* fixed typo in log message*/
 				" %m\n", val);
 		goto err;
 	}
 
 	val = 1;
 	if (setsockopt(sd, IPPROTO_TCP, TCP_KEEPCNT, &val, sizeof(val))) {
-		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPCNT (val=%d\n):"
+		LOG_(s, LDMS_LDEBUG, "SOCK: Error in setsockopt TCP_KEEPCNT (val=%d\n):"
 				" %m\n", val);
 		goto err;
 	}
 
 	val = 1;
 	if (setsockopt(sd, IPPROTO_TCP, TCP_KEEPIDLE, &val, sizeof(val))) {
-		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPIDLE (val=%d\n):"
+		LOG_(s, LDMS_LDEBUG, "SOCK: Error in setsockopt TCP_KEEPIDLE (val=%d\n):"
 				" %m\n", val);
 		goto err;
 	}
 
 	val = 10;
 	if (setsockopt(sd, IPPROTO_TCP, TCP_KEEPINTVL, &val, sizeof(val))) {
-		LOG_(s, "SOCK: Error in setsockopt TCP_KEEPINTVL (val=%d\n):"
+		LOG_(s, LDMS_LDEBUG, "SOCK: Error in setsockopt TCP_KEEPINTVL (val=%d\n):"
 				" %m\n", val);
 		goto err;
 	}
@@ -392,7 +392,7 @@ int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request *req)
 	case SOCK_READ_RSP_CMD:
 		return process_sock_read_rsp(x, (struct sock_read_rsp *)req);
 	default:
-		x->xprt->log("Invalid request on socket transport %d\n",
+		x->xprt->log(LDMS_LDEBUG,"Invalid request on socket transport %d\n",
 			     ntohl(req->hdr.cmd));
 	}
 	return EINVAL;
@@ -416,7 +416,7 @@ static int process_xprt_io(struct ldms_sock_xprt *s, struct ldms_request *req)
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
 		int ret = process_sock_req(s, req);
 		if (ret) {
-			s->xprt->log("Error %d processing transport request.\n",
+			s->xprt->log(LDMS_LDEBUG,"Error %d processing transport request.\n",
 				     ret);
 			goto close_out;
 		}
@@ -454,7 +454,7 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 			break;
 		req = malloc(reqlen);
 		if (!req) {
-			r->xprt->log("%s Memory allocation failure reqlen %zu\n",
+			r->xprt->log(LDMS_LDEBUG,"%s Memory allocation failure reqlen %zu\n",
 				     __FUNCTION__, reqlen);
 			sock_xprt_error_handling(r);
 			break;
@@ -493,10 +493,10 @@ static void sock_event(struct bufferevent *buf_event, short events, void *arg)
 	if (events & ~BEV_EVENT_CONNECTED) {
 		/* Peer disconnect or other error */
 		if (events & (BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
-			r->xprt->log("Socket errors %#x\n", events);
+			r->xprt->log(LDMS_LDEBUG,"Socket errors %#x\n", events);
 		sock_xprt_error_handling(r);
 	} else
-		r->xprt->log("Peer connect complete %#x\n", events);
+		r->xprt->log(LDMS_LDEBUG,"Peer connect complete %#x\n", events);
 }
 
 static int _setup_connection(struct ldms_sock_xprt *r,
@@ -509,20 +509,20 @@ static int _setup_connection(struct ldms_sock_xprt *r,
 	r->xprt->connected = 1;
 
 	if (set_nonblock(r->xprt, r->sock))
-		r->xprt->log("Warning: error setting non-blocking I/O on an "
+		r->xprt->log(LDMS_LDEBUG,"Warning: error setting non-blocking I/O on an "
 			     "incoming connection.\n");
 
 	/* Initialize send and recv I/O events */
 	r->buf_event = bufferevent_socket_new(io_event_loop, r->sock, BEV_OPT_THREADSAFE);
 	if(!r->buf_event) {
-		r->xprt->log("Error initializing buffered I/O event for "
+		r->xprt->log(LDMS_LDEBUG,"Error initializing buffered I/O event for "
 			     "fd %d.\n", r->sock);
 		rc = -1;
 		goto out;
 	}
 	bufferevent_setcb(r->buf_event, sock_read, sock_write, sock_event, r);
 	if (bufferevent_enable(r->buf_event, EV_READ | EV_WRITE))
-		r->xprt->log("Error enabling buffered I/O event for fd %d.\n",
+		r->xprt->log(LDMS_LDEBUG,"Error enabling buffered I/O event for fd %d.\n",
 			     r->sock);
 out:
 	return rc;
@@ -538,7 +538,7 @@ setup_connection(struct ldms_sock_xprt *p, int sockfd,
 	/* Create a transport instance for this new connection */
 	_x = ldms_create_xprt("sock", p->xprt->log);
 	if (!_x) {
-		p->xprt->log("Could not create a new transport.\n");
+		p->xprt->log(LDMS_LDEBUG,"Could not create a new transport.\n");
 		close(sockfd);
 		return NULL;
 	}
@@ -588,7 +588,7 @@ static int sock_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	setsockopt(r->sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 
 	if (set_nonblock(x, r->sock))
-		x->log("Warning: Could not set listening socket to non-blocking\n");
+		x->log(LDMS_LDEBUG,"Warning: Could not set listening socket to non-blocking\n");
 
 	rc = ENOMEM;
 	r->listen_ev = evconnlistener_new_bind(io_event_loop, sock_connect, r,

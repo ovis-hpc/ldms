@@ -181,7 +181,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog("ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -239,7 +239,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog("ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -329,7 +329,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 		replace_space(s);
 
 		if (sscanf(s, "%s", metric_name) != 1){
-			msglog("ERR: Issue reading metric name from the source"
+			msglog(LDMS_LDEBUG,"ERR: Issue reading metric name from the source"
 						" file '%s'\n", KGNILND_FILE);
 			rc = EINVAL;
 			return rc;
@@ -385,7 +385,7 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 	if (s) {
 		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 		if (rc != 1) {
-			msglog("ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
 							CURRENT_FREEMEM_FILE);
 			fclose(cf_f);
 			cf_f = 0;
@@ -415,7 +415,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	procnetdev_valid = 0;
 
 	if (!pnd_f) {
-		msglog("procnetdev: filehandle NULL\n");
+		msglog(LDMS_LDEBUG,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -435,7 +435,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	} while(s);
 
 	if (idx_iface == -1){
-		msglog("procnetdev: cannot find iface <%s>\n", iface);
+		msglog(LDMS_LDEBUG,"procnetdev: cannot find iface <%s>\n", iface);
 		return EINVAL;
 	}
 
@@ -451,7 +451,7 @@ int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 	}
 
 	if (!pnd_f) {
-		msglog("procnetdev: filehandle NULL\n");
+		msglog(LDMS_LDEBUG,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -526,7 +526,7 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%f %f %f %d/%d %d\n",
 			    &vf[0], &vf[1], &vf[2], &vi[0], &vi[1], &vi[2]);
 		if (rc != 6) {
-			msglog("ERR: Issue reading the source file '%s'"
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'"
 					" (rc=%d)\n", LOADAVG_FILE, rc);
 			fclose(l_f);
 			l_f = NULL;

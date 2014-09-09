@@ -73,7 +73,7 @@
 
 #define VERSION_FILE "/proc/version"
 /* Convenience macro for logging errors */
-#define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }
+#define LOG_(x, level, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(level, __VA_ARGS__); }
 
 static char *verfile = VERSION_FILE;
 static struct ldms_ugni_xprt ugni_gxp;
@@ -319,7 +319,7 @@ static void ugni_xprt_close(struct ldms_xprt *x)
 	if (gxp->ugni_ep) {
 		grc = GNI_EpDestroy(gxp->ugni_ep);
 		if (grc != GNI_RC_SUCCESS)
-			gxp->xprt->log("Error %d destroying Ep %p.\n",
+			gxp->xprt->log(LDMS_LDEBUG,"Error %d destroying Ep %p.\n",
 				grc, gxp->ugni_ep);
 		gxp->ugni_ep = NULL;
 	}
@@ -336,12 +336,12 @@ static int set_nonblock(struct ldms_xprt *x, int fd)
 
 	flags = fcntl(fd, F_GETFL);
 	if (flags == -1) {
-		x->log("Error getting flags on fd %d", fd);
+		x->log(LDMS_LDEBUG,"Error getting flags on fd %d", fd);
 		return -1;
 	}
 	flags |= O_NONBLOCK;
 	if (fcntl(fd, F_SETFL, flags)) {
-		x->log("Error setting non-blocking I/O on fd %d", fd);
+		x->log(LDMS_LDEBUG,"Error setting non-blocking I/O on fd %d", fd);
 		return -1;
 	}
 	return 0;
@@ -382,7 +382,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 				   GNI_CQ_BLOCKING, NULL, NULL, &ugni_gxp.dom.src_cq);
 		pthread_mutex_unlock(&ugni_lock);
 		if (grc != GNI_RC_SUCCESS) {
-			gxp->xprt->log("The CQ could not be created.\n");
+			gxp->xprt->log(LDMS_LDEBUG,"The CQ could not be created.\n");
 			goto err;
 		}
 		gxp->dom.src_cq = ugni_gxp.dom.src_cq;
@@ -439,7 +439,7 @@ err1:
 	gxp->sock = -1;
 	pthread_mutex_unlock(&ugni_lock);
 	if (grc != GNI_RC_SUCCESS)
-		gxp->xprt->log("Error %d destroying Ep %p.\n",
+		gxp->xprt->log(LDMS_LDEBUG,"Error %d destroying Ep %p.\n",
 				grc, gxp->ugni_ep);
 	gxp->ugni_ep = NULL;
 err:
@@ -468,7 +468,7 @@ int process_ugni_msg(struct ldms_ugni_xprt *x, struct ldms_request *req)
 	case UGNI_HELLO_REQ_CMD:
 		return process_ugni_hello_req(x, (struct ugni_hello_req *)req);
 	default:
-		x->xprt->log("Invalid request on uGNI transport %d\n",
+		x->xprt->log(LDMS_LDEBUG,"Invalid request on uGNI transport %d\n",
 			     ntohl(req->hdr.cmd));
 	}
 	return EINVAL;
@@ -484,7 +484,7 @@ static int process_xprt_io(struct ldms_ugni_xprt *s, struct ldms_request *req)
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
 		int ret = process_ugni_msg(s, req);
 		if (ret) {
-			s->xprt->log("Error %d processing transport request.\n",
+			s->xprt->log(LDMS_LDEBUG,"Error %d processing transport request.\n",
 				     ret);
 			goto close_out;
 		}
@@ -522,7 +522,7 @@ static void ugni_read(struct bufferevent *buf_event, void *arg)
 			break;
 		req = malloc(reqlen);
 		if (!req) {
-			r->xprt->log("%s Memory allocation failure reqlen %zu\n",
+			r->xprt->log(LDMS_LDEBUG,"%s Memory allocation failure reqlen %zu\n",
 				     __FUNCTION__, reqlen);
 			ugni_xprt_error_handling(r);
 			break;
@@ -550,7 +550,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 	gni_post_descriptor_t *post;
 	do {
 		if (GNI_CQ_GET_TYPE(cqe) != GNI_CQ_EVENT_TYPE_POST) {
-			ugni_log("Unexepcted cqe type %d cqe %08x on CQ %p\n",
+			ugni_log(LDMS_LDEBUG,"Unexepcted cqe type %d cqe %08x on CQ %p\n",
 				 GNI_CQ_GET_TYPE(cqe), cqe, cq);
 			continue;
 		}
@@ -559,19 +559,19 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		grc = GNI_GetCompleted(cq, cqe, &post);
 		pthread_mutex_unlock(&ugni_lock);
 		if (grc) {
-			/* ugni_log("Error %d from CQ %p\n", grc, cq); Removed by Brandt 6-14-2014 */
+			/* ugni_log(LDMS_LDEBUG,"Error %d from CQ %p\n", grc, cq); Removed by Brandt 6-14-2014 */
 			if (!(grc == GNI_RC_SUCCESS ||
 			      grc == GNI_RC_TRANSACTION_ERROR))
 				continue;
 		}
 		struct ugni_desc *desc = (struct ugni_desc *)post;
 		if (!desc) {
-			ugni_log("Post descriptor is Null!\n");
+			ugni_log(LDMS_LDEBUG,"Post descriptor is Null!\n");
 			continue;
 		}
 #if 0
 		if (grc) {
-			/* ugni_log("%s GNI_GetCompleted failed with %d, desc = %p.\n", desc); Removed by Brandt 6-14-2014 */
+			/* ugni_log(LDMS_LDEBUG,"%s GNI_GetCompleted failed with %d, desc = %p.\n", desc); Removed by Brandt 6-14-2014 */
 			/* The request failed, tear down the transport */
 			if (desc->gxp->xprt)
 				ugni_xprt_error_handling(desc->gxp);
@@ -581,7 +581,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
 			if (grc)
-				ugni_log("%s update completing with error %d.\n", __func__, grc);
+				ugni_log(LDMS_LDEBUG,"%s update completing with error %d.\n", __func__, grc);
 			if (desc->gxp->xprt && desc->gxp->xprt->read_complete_cb)
 				desc->gxp->xprt->
 					read_complete_cb(desc->gxp->xprt,
@@ -589,7 +589,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			break;
 		default:
 			if (desc->gxp)
-				desc->gxp->xprt->log("Unknown completion "
+				desc->gxp->xprt->log(LDMS_LDEBUG,"Unknown completion "
 						     "type %d on transport "
 						     "%p.\n",
 						     desc->post.type, desc->gxp);
@@ -625,7 +625,7 @@ static void *cq_thread_proc(void *arg)
 		if (grc == GNI_RC_TIMEOUT)
 			continue;
 		if (grc = process_cq(ugni_gxp.dom.src_cq, cqe))
-			ugni_log("Error %d processing CQ %p.\n",
+			ugni_log(LDMS_LDEBUG,"Error %d processing CQ %p.\n",
 				 grc, ugni_gxp.dom.src_cq);
 	}
 	return NULL;
@@ -638,13 +638,13 @@ static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 	if (events & ~BEV_EVENT_CONNECTED) {
 		/* Peer disconnect or other error */
 		if (events & (BEV_EVENT_ERROR | BEV_EVENT_TIMEOUT))
-			LOG_(r, "Socket errors %x\n", events);
+			LOG_(r, LDMS_LDEBUG, "Socket errors %x\n", events);
 		r->xprt->connected = 0;
 		r->conn_status = CONN_IDLE;
 		if (r->type == LDMS_UGNI_PASSIVE)
 			ldms_xprt_close(r->xprt);
 	} else
-		LOG_(r, "Peer connect complete %x\n", events);
+		LOG_(r, LDMS_LDEBUG, "Peer connect complete %x\n", events);
 }
 
 static int _setup_connection(struct ldms_ugni_xprt *gxp,
@@ -657,20 +657,20 @@ static int _setup_connection(struct ldms_ugni_xprt *gxp,
 	gxp->xprt->ss_len = sa_len;
 
 	if (set_nonblock(gxp->xprt, gxp->sock))
-		LOG_(gxp,"Warning: error setting non-blocking I/O on an "
+		LOG_(gxp, LDMS_LDEBUG,"Warning: error setting non-blocking I/O on an "
 			     "incoming connection.\n");
 
 	/* Initialize send and recv I/O events */
 	gxp->buf_event = bufferevent_socket_new(io_event_loop, gxp->sock, BEV_OPT_THREADSAFE);
 	if(!gxp->buf_event) {
-		LOG_(gxp, "Error initializing buffered I/O event for "
+		LOG_(gxp, LDMS_LDEBUG, "Error initializing buffered I/O event for "
 		     "fd %d.\n", gxp->sock);
 		goto err_0;
 	}
 
 	bufferevent_setcb(gxp->buf_event, ugni_read, ugni_write, ugni_event, gxp);
 	if (bufferevent_enable(gxp->buf_event, EV_READ | EV_WRITE)) {
-		LOG_(gxp, "Error enabling buffered I/O event for fd %d.\n",
+		LOG_(gxp, LDMS_LDEBUG, "Error enabling buffered I/O event for fd %d.\n",
 		     gxp->sock);
 		goto err_0;
 	}
@@ -691,7 +691,7 @@ setup_connection(struct ldms_ugni_xprt *p, int sockfd,
 	/* Create a transport instance for this new connection */
 	_x = ldms_create_xprt("ugni", p->xprt->log);
 	if (!_x) {
-		p->xprt->log("Could not create a new transport.\n");
+		p->xprt->log(LDMS_LDEBUG,"Could not create a new transport.\n");
 		close(sockfd);
 		return NULL;
 	}
@@ -731,7 +731,7 @@ static void ugni_connect_req(struct evconnlistener *listener,
 	if ((connect_tv.tv_sec - report_tv.tv_sec) >= 10) {
 		double rate;
 		rate = (double)conns / (double)(connect_tv.tv_sec - report_tv.tv_sec);
-		/* gxp->xprt->log("Connection rate is %.2f/second\n", rate); Removed by Brandt 7-1-2014 */
+		/* gxp->xprt->log(LDMS_LDEBUG,"Connection rate is %.2f/second\n", rate); Removed by Brandt 7-1-2014 */
 		report_tv = connect_tv;
 		conns = 0;
 	}
@@ -749,7 +749,7 @@ static void ugni_connect_req(struct evconnlistener *listener,
 	return;
 
 setup_conn_err:
-	gxp->xprt->log("Cannot setup connection.\n");
+	gxp->xprt->log(LDMS_LDEBUG,"Cannot setup connection.\n");
 }
 
 static int ugni_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t sa_len)
@@ -770,7 +770,7 @@ static int ugni_xprt_listen(struct ldms_xprt *x, struct sockaddr *sa, socklen_t 
 	setsockopt(gxp->sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 
 	if (set_nonblock(x, gxp->sock))
-		x->log("Warning: Could not set listening socket to non-blocking\n");
+		x->log(LDMS_LDEBUG,"Warning: Could not set listening socket to non-blocking\n");
 
 	rc = ENOMEM;
 	gxp->listen_ev = evconnlistener_new_bind(io_event_loop, ugni_connect_req, gxp,
@@ -925,7 +925,7 @@ struct ldms_rbuf_desc *ugni_rbuf_alloc(struct ldms_xprt *x,
 	return desc;
  err:
 	ugni_rbuf_free(x, desc);
-	gxp->xprt->log("RBUF allocation failed. Registration count is %d\n", reg_count);
+	gxp->xprt->log(LDMS_LDEBUG,"RBUF allocation failed. Registration count is %d\n", reg_count);
 	return NULL;
 }
 
@@ -992,7 +992,7 @@ static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r)
 {
-	r->xprt->log("%s error on transport %p.\n", __func__, r);
+	r->xprt->log(LDMS_LDEBUG,"%s error on transport %p.\n", __func__, r);
 	ldms_t x = r->xprt;
 	if (x) {
 		ldms_xprt_get(x);

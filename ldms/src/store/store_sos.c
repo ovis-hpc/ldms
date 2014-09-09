@@ -213,7 +213,7 @@ int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
 				0660, &ovis_metric_class_int32);
 		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
+			msglog(LDMS_LDEBUG,"store_sos: Failed to open "
 					"'Ovismetric_int32\n");
 			return ENOMEM;
 		}
@@ -222,7 +222,7 @@ int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
 				0660, &ovis_metric_class_int64);
 		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
+			msglog(LDMS_LDEBUG,"store_sos: Failed to open "
 					"'Ovismetric_int64\n");
 			return ENOMEM;
 		}
@@ -231,7 +231,7 @@ int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
 					0660, &ovis_metric_class_uint32);
 		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
+			msglog(LDMS_LDEBUG,"store_sos: Failed to open "
 					"'Ovismetric_uint32\n");
 			return ENOMEM;
 		}
@@ -240,7 +240,7 @@ int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
 					0660, &ovis_metric_class_uint64);
 		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
+			msglog(LDMS_LDEBUG,"store_sos: Failed to open "
 					"'Ovismetric_uint64\n");
 			return ENOMEM;
 		}
@@ -250,13 +250,13 @@ int store_sos_open_sos(struct sos_metric_store *ms, ldms_metric_t m)
 		ms->sos = sos_open(ms->path, O_RDWR|O_CREAT,
 					0660, &ovis_metric_class_double);
 		if (!ms->sos) {
-			msglog("store_sos: Failed to open "
+			msglog(LDMS_LDEBUG,"store_sos: Failed to open "
 					"'Ovismetric_double\n");
 			return ENOMEM;
 		}
 		break;
 	default:
-		msglog("store_sos: not support ldms_value_type '%s'\n",
+		msglog(LDMS_LDEBUG,"store_sos: not support ldms_value_type '%s'\n",
 						ldms_type_to_str(type));
 		return ENOTSUP;
 	}
@@ -465,7 +465,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 	if (si->metric_count == 0) {
 		rc = store_sos_create_ms_list(si, mvec);
 		if (rc) {
-			msglog("store_sos: Failed to create store "
+			msglog(LDMS_LDEBUG,"store_sos: Failed to create store "
 						"for each metric.\n");
 			return -1;
 		}
@@ -485,7 +485,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 
 		obj = sos_obj_new(si->ms[i]->sos);
 		if (!obj) {
-			msglog("Error %d: %s at %s:%d\n", errno,
+			msglog(LDMS_LDEBUG,"Error %d: %s at %s:%d\n", errno,
 					strerror(errno), __FILE__, __LINE__);
 			errno = ENOMEM;
 			pthread_mutex_unlock(&si->ms[i]->lock);
@@ -502,7 +502,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 		if (rc) {
 			last_errno = errno;
 			last_rc = rc;
-			msglog("Error %d: %s at %s:%d\n", errno,
+			msglog(LDMS_LDEBUG,"Error %d: %s at %s:%d\n", errno,
 					strerror(errno), __FILE__, __LINE__);
 		}
 	}

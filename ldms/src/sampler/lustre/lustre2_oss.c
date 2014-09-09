@@ -315,16 +315,16 @@ static int create_metric_set(const char *path, const char *osts)
 	free_str_list(lh);
 	return 0;
 err2:
-	msglog("lustre_oss.c:create_metric_set@err2\n");
+	msglog(LDMS_LDEBUG,"lustre_oss.c:create_metric_set@err2\n");
 	lustre_svc_stats_list_free(&svc_stats);
 	ldms_destroy_set(set);
-	msglog("WARNING: lustre_oss set DESTROYED\n");
+	msglog(LDMS_LDEBUG,"WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err1:
-	msglog("lustre_oss.c:create_metric_set@err1\n");
+	msglog(LDMS_LDEBUG,"lustre_oss.c:create_metric_set@err1\n");
 	free_str_list(lh);
 err0:
-	msglog("lustre_oss.c:create_metric_set@err0\n");
+	msglog(LDMS_LDEBUG,"lustre_oss.c:create_metric_set@err0\n");
 	return errno;
 }
 
@@ -416,14 +416,14 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	lustre_sampler_set_msglog(pf);
 	stats_key_id = str_map_create(STR_MAP_SIZE);
 	if (!stats_key_id) {
-		msglog("stats_key_id map create error!\n");
+		msglog(LDMS_LDEBUG,"stats_key_id map create error!\n");
 		goto err_nomem;
 	}
 	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
 
 	obdf_key_id = str_map_create(STR_MAP_SIZE);
 	if (!obdf_key_id) {
-		msglog("obdf_key_id map create error!\n");
+		msglog(LDMS_LDEBUG,"obdf_key_id map create error!\n");
 		goto err_nomem;
 	}
 	str_map_id_init(obdf_key_id, obdf_key, OBDF_KEY_LEN, 1);
