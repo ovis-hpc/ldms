@@ -135,18 +135,18 @@ int handle_llite(const char *llite)
 	if (!_llite)
 		return ENOMEM;
 	char *saveptr = NULL;
-	char *tok = strtok_r(_llite, ",", saveptr);
+	char *tok = strtok_r(_llite, ",", &saveptr);
 	struct lustre_svc_stats *lss;
 	char path[CSS_LUSTRE_PATH_MAX];
 	while (tok) {
-		snprintf(path, CSS_LUSTRE_PATH_LEN,"/proc/fs/lustre/llite/%s-*/stats",tok);
+		snprintf(path, CSS_LUSTRE_PATH_MAX,"/proc/fs/lustre/llite/%s-*/stats",tok);
 		lss = lustre_svc_stats_alloc(path, LUSTRE_METRICS_LEN+1);
 		lss->name = strdup(tok);
 		if (!lss->name)
 			goto err;
 		lss->key_id_map = lustre_idx_map;
 		LIST_INSERT_HEAD(&lustre_svc_head, lss, link);
-		tok = strtok_r(NULL, ",", saveptr);
+		tok = strtok_r(NULL, ",", &saveptr);
 	}
 	return 0;
 err:
