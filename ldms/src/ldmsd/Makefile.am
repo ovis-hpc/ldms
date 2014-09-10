@@ -10,13 +10,18 @@ AM_CPPFLAGS = -DPLUGINDIR='"$(libdir)"'
 
 
 ldms_ls_SOURCES = ldms_ls.c
-ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lmmalloc -lcoll
+ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lmmalloc -lcoll \
+		@OPENSSL_LDFLAGS@ @OPENSSL_LIBS@
 
 ldmsd_SOURCES = ldmsd.c ldmsd_store.c
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) @LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
-		-levent -lpthread -levent_pthreads -lovis_util -lmmalloc -lcoll -ldl
-ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
+		@OPENSSL_LDFLAGS@ \
+		-levent -lpthread -levent_pthreads \
+		-lovis_util -lmmalloc -lcoll \
+		@OPENSSL_LIBS@ \
+		-ldl
+ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@ @OPENSSL_INCLUDES@
 
 if ENABLE_YAML
 ldmsd_LDFLAGS += -lyaml

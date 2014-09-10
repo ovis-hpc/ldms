@@ -73,6 +73,15 @@
 #include <pthread.h>
 #include <libgen.h>
 
+#if USE_TF
+#ifdef __linux
+#define TF() default_log(LDMS_LINFO,"Thd%lu:%s:%lu\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__)
+#else
+#define TF() default_log(LDMS_LINFO,"%s:%d\n", __FUNCTION__, __LINE__)
+#endif /* linux */
+#else
+#define TF()
+#endif /* 1 or 0 disable tf */
 #include "ctrl.h"
 BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
@@ -106,6 +115,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
 static int send_req(struct ctrlsock *sock, char *data, ssize_t data_len)
 {
+	TF();
 	struct msghdr reply;
 	struct iovec iov;
 
@@ -123,6 +133,7 @@ static int send_req(struct ctrlsock *sock, char *data, ssize_t data_len)
 
 static int recv_rsp(struct ctrlsock *sock, char *data, ssize_t data_len)
 {
+	TF();
 	struct msghdr msg;
 	int msglen;
 	struct iovec iov;
@@ -167,6 +178,7 @@ static char arg[LDMS_MSG_MAX]; // Brandt changed from 1024 to support large adds
 int ctrl_request(struct ctrlsock *sock, int cmd_id,
 		 struct attr_value_list *avl, char *err_str)
 {
+	TF();
 	int rc;
 	int status;
 	int cnt;
@@ -209,6 +221,7 @@ big_dstring_t msg_buf;
 int ctrl_request(struct ctrlsock *sock, int cmd_id,
 		 struct attr_value_list *avl, char *err_str)
 {
+	TF();
 	int rc;
 	int status;
 	int cnt;
@@ -271,6 +284,7 @@ struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin)
 
 struct ctrlsock *ctrl_connect(char *my_name, char *sockname)
 {
+	TF();
 	int rc;
 	struct sockaddr_un my_un;
 	if (!my_name || !sockname)

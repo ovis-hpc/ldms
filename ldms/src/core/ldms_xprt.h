@@ -236,8 +236,10 @@ struct ldms_xprt {
 	struct sockaddr_storage remote_ss;
 	socklen_t ss_len;
 	pthread_mutex_t lock;
+	pthread_cond_t authcond;
 	int connected;
-	int authenticated; 	/* server side: has connection been authenticated? */
+	int authenticated; 	/* server side: 0 new, 1 handshake, 2 authenticated. */
+	int closed;
 	int max_msg;		/* max send message size */
 	uint64_t local_dir_xid;
 	uint64_t remote_dir_xid;
@@ -284,8 +286,9 @@ struct ldms_xprt {
 };
 typedef struct ldms_xprt *(*ldms_xprt_get_t)
 	(
-	recv_cb_t recv_cb, read_complete_cb_t read_complete_cb,
-	 ldms_log_fn_t log_fn
+	recv_cb_t recv_cb, 
+	read_complete_cb_t read_complete_cb,
+	ldms_log_fn_t log_fn
 	 );
 
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]
@@ -296,5 +299,6 @@ extern void ldms_release_local_set(struct ldms_set *set);
 
 extern int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
 
+extern void default_log(int level, const char *fmt, ...);
 
 #endif

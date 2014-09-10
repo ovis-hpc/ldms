@@ -53,6 +53,7 @@ X(LDMS_CMD_DIR_REPLY)
 X(LDMS_CMD_LOOKUP_REPLY)
 X(LDMS_CMD_REQ_NOTIFY_REPLY)
 X(LDMS_CMD_AUTH_REPLY)
+X(LDMS_CMD_AUTH_PASSWORD_REPLY)
 
 /* Transport private requests set bit 32.
 with LDMS_CMD_XPRT_PRIVATE; it is not a valid command.

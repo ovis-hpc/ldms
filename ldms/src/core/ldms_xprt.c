@@ -69,23 +69,39 @@
 #include "ldms_auth.h"
 
 #include "coll/str_map.h"
-
+#if (defined(__linux) && USE_RTC)
+#define LOGRTC 1
+#else
+#define LOGRTC 0
+#endif
 void default_log(int level, const char *fmt, ...)
 {
 	if (level < LDMS_LERROR)
 		return;
-
 	va_list ap;
+
+#if LOGRTC
+	struct timespec ts;
+	if (clock_gettime(CLOCK_REALTIME,&ts) != 0) {
+		ts.tv_sec= 0;
+		ts.tv_nsec=0;
+	}
+	fprintf(stdout,"%lu:%9lu: ",ts.tv_sec, ts.tv_nsec);
+#endif
 	va_start(ap, fmt);
 	vfprintf(stdout, fmt, ap);
 	fflush(stdout);
 }
 
-#if 0
+#if USE_TF
+#if (defined(__linux) && USE_TID)
+#define TF() default_log(LDMS_LINFO, "Thd%lu:%s:%lu:%s\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__,__FILE__)
+#else
 #define TF() default_log(LDMS_LINFO, "%s:%d\n", __FUNCTION__, __LINE__)
+#endif /* __linux */
 #else
 #define TF()
-#endif
+#endif /* 1 or 0 disable tf */
 
 const char *ldms_request_cmd_names[] = {
 #define X(a) #a,
@@ -188,6 +204,7 @@ static void send_dir_update(struct ldms_xprt *x,
 			    enum ldms_dir_type t,
 			    const char *set_name)
 {
+	TF();
 	size_t len;
 	int set_count = 0;
 	int set_list_sz = 0;
@@ -246,6 +263,7 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 				  uint64_t xid,
 				  ldms_notify_event_t e)
 {
+	TF();
 	size_t len;
 	int rc = 0;
 	struct ldms_reply *reply;
@@ -272,6 +290,7 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 
 static void dir_update(const char *set_name, enum ldms_dir_type t)
 {
+	TF();
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
 	     x = (struct ldms_xprt *)ldms_xprt_next(x)) {
@@ -298,7 +317,7 @@ int ldms_xprt_connected(ldms_t _x)
 
 int ldms_xprt_authenticated(ldms_t _x)
 {
-	return ((struct ldms_xprt *)_x)->authenticated;
+	return (2 == ((struct ldms_xprt *)_x)->authenticated );
 }
 
 static void free_rbd(struct ldms_rbuf_desc *rbd)
@@ -311,6 +330,7 @@ static void free_rbd(struct ldms_rbuf_desc *rbd)
 
 static void release_xprt(ldms_t _x)
 {
+	TF();
 	struct ldms_xprt *x = _x;
 	struct ldms_rbuf_desc *rb;
 
@@ -327,6 +347,8 @@ static void release_xprt(ldms_t _x)
 	pthread_mutex_unlock(&rbd_lock);
 
 	free(x->passwordtmp);
+	pthread_cond_destroy(&x->authcond);
+	/* ba; need this here? pthread_mutex_destroy(&x->lock); or subsumed by rbd_lock change */
 	x->destroy(x);
 }
 
@@ -398,6 +420,7 @@ struct make_dir_arg {
 
 static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 {
+	TF();
 	struct make_dir_arg *mda = arg;
 	int len;
 
@@ -438,6 +461,7 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
 	struct make_dir_arg arg;
 	size_t len;
 	int set_count;
@@ -509,12 +533,14 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 static void
 process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
 	x->remote_dir_xid = 0;
 }
 
 static void
 process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
 
 	struct ldms_rbuf_desc *r =
 		(struct ldms_rbuf_desc *)req->req_notify.set_id;
@@ -526,6 +552,7 @@ process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 static void
 process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
 	struct ldms_rbuf_desc *r =
 		(struct ldms_rbuf_desc *)req->cancel_notify.set_id;
 	r->remote_notify_xid = 0;
@@ -533,6 +560,7 @@ process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 
 static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
 	struct ldms_set *set = ldms_find_local_set(req->lookup.path);
 	struct ldms_rbuf_desc *rbd = lookup_rbd(x, set);
 	struct ldms_reply_hdr hdr;
@@ -587,6 +615,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 
 void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
+	TF();
 	struct ldms_xprt *x = t;
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	struct ldms_context *data_ctxt = arg;
@@ -604,6 +633,7 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 
 static int read_complete_cb(struct ldms_xprt *x, void *context, int status)
 {
+	TF();
 	struct ldms_context *ctxt = context;
 	assert(ctxt->update.cb);
 	if (ctxt->update.cb)
@@ -615,6 +645,7 @@ static int read_complete_cb(struct ldms_xprt *x, void *context, int status)
 static int do_read_meta(ldms_t t, ldms_set_t s, size_t len,
 			ldms_update_cb_t cb, void *arg)
 {
+	TF();
 	struct ldms_xprt *x = t;
 	TF();
 	struct ldms_context *meta_ctxt = calloc(1,sizeof *meta_ctxt);
@@ -643,6 +674,7 @@ static int do_read_meta(ldms_t t, ldms_set_t s, size_t len,
 
 static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb, void*arg)
 {
+	TF();
 	struct ldms_xprt *x = t;
 	struct ldms_context *ctxt = calloc(1,sizeof *ctxt);
 	if (!ctxt)
@@ -670,6 +702,7 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
  */
 int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
+	TF();
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	int rc;
 
@@ -684,8 +717,10 @@ int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 }
 
 /* @return boolean nonzero if authentication step succeeds, 0 if fail. */
-static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
+static int is_good_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
+#ifdef HAVE_AUTH
 	// get u64 from clock and send with LDMS_CMD_AUTH_REPLY
 	// cache answer on transport
 	struct ldms_reply_hdr hdr;
@@ -693,15 +728,20 @@ static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 	size_t len;
 	uint64_t challenge = 0;
 	uint32_t chi, clo;
-	x->log(LDMS_LINFO,"Started process_auth_request");
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Started process_auth_request\n");
+#endif
 
 	if (x->passwordtmp) {
-		x->log(LDMS_LINFO,"Authentication restarted before finished");
+		x->log(LDMS_LERROR,"Authentication restarted before finished");
 		return 0;
 	}
 
 	challenge = ldms_get_challenge();
-	x->passwordtmp = ldms_get_auth_string(challenge);
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO, "Challenge is %"PRIu64"\n",challenge);
+#endif
+	x->passwordtmp = ldms_get_auth_string(challenge,x);
 	chi = htonl((uint32_t) (challenge >> 32));
 	clo = htonl((uint32_t) (challenge));
 
@@ -722,6 +762,10 @@ static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 
 	x->send(x, reply, len);
 	free(reply);
+	x->authenticated = 1; /* now in handshake */
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Succeed in process_auth_request\n");
+#endif
 	return 1;
 
  err_out:
@@ -729,63 +773,113 @@ static int process_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 	hdr.cmd = htonl(LDMS_CMD_AUTH_REPLY);
 	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
 	x->send(x, &hdr, sizeof(hdr));
+	x->log(LDMS_LERROR,"Fail in process_auth_request\n");
 	return 0;
+#else
+	x->log(LDMS_ERROR,"Unexpected call to process_auth_request\n");
+	return 1;
+#endif
 }
 
 /* @return boolean nonzero if authentication step succeeds, 0 if fail. */
-static int process_auth_password_request(struct ldms_xprt *x, struct ldms_request *req)
+static int is_good_auth_password_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
+#ifdef HAVE_AUTH
 	char pw[LDMS_PASSWORD_MAX];
-	x->log(LDMS_LINFO,"Started process_auth_password_request");
+	int rc = 1;
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO, "Started process_auth_password_request\n");
+#endif
 	if (NULL == x->passwordtmp) {
-		x->log(LDMS_LINFO,"Authentication password sent before challenge fetched");
-		return 0;
+		x->log(LDMS_LERROR, "Authentication password sent before challenge fetched\n");
+		rc = 0;
 	}
 	// FIXME get password from message?
-	if (req->auth.pw_len >= LDMS_PASSWORD_MAX) {
-		x->log(LDMS_LINFO,"Password too long");
-		return 0;
+	int pwlen = ntohl(req->auth.pw_len);
+	if (1 == rc && pwlen >= LDMS_PASSWORD_MAX) {
+		x->log(LDMS_LERROR, "Password too long %d > %d\n", pwlen,LDMS_PASSWORD_MAX);
+		rc = 0;
+	} else {
+		strncpy(pw, req->auth.pw, LDMS_PASSWORD_MAX);
+		pw[LDMS_PASSWORD_MAX-1] = '\0';
 	}
-	strncpy(pw, req->auth.pw, LDMS_PASSWORD_MAX);
-	pw[LDMS_PASSWORD_MAX-1] = '\0';
 
-	if (strncmp(pw,x->passwordtmp,strlen(x->passwordtmp)) == 0) {
-		x->log(LDMS_LINFO,"Authentication succeeded.");
-		return 1;
+	if (1 == rc && strncmp(pw,x->passwordtmp,strlen(x->passwordtmp)) == 0) {
+		x->authenticated = 2;
+		x->log(LDMS_LINFO,"Authentication succeeded.\n");
+	} else {
+		x->log(LDMS_LERROR,"Authentication failed. Bad password.\n");
+		rc = 0;
 	}
-	x->log(LDMS_LINFO,"Authentication failed. Bad password.");
-	return 0;
+	struct ldms_reply_hdr hdr;
+	size_t len;
+
+	len = sizeof(struct ldms_reply_hdr);
+
+	hdr.xid = req->hdr.xid;
+	hdr.cmd = htonl(LDMS_CMD_AUTH_PASSWORD_REPLY);
+	hdr.len = htonl(len);
+	hdr.rc = htonl(rc ? 0 : 1);
+	x->send(x, &hdr, len);
+	return rc;
+
+#else
+	x->log(LDMS_LERROR,"Unexpected call to process_auth_password_request\n");
+	return 1;
+#endif
 }
 
 /* @return boolean nonzero if authentication succeeds, 0 if fail. */
-static int ldms_xprt_authenticate(int cmd, struct ldms_xprt *x, struct ldms_request *req)
+int ldms_xprt_checkauth(int cmd, struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
 	switch (cmd) {
 	case LDMS_CMD_AUTH:
-		return process_auth_request(x, req);
+		if ( 0 == x->authenticated) {
+			return is_good_auth_request(x, req);
+		} else {
+			x->log(LDMS_LERROR,"Repeated LDMS_CMD_AUTH received\n");
+			return 0;
+		}
 	case LDMS_CMD_AUTH_PASSWORD:
-		return process_auth_password_request(x, req);
+		if ( 1 == x->authenticated) {
+			return is_good_auth_password_request(x, req);
+		} else {
+			x->log(LDMS_LINFO, 
+				"LDMS_CMD_AUTH_PASSWORD received "
+				"before LDMS_CMD_AUTH\n");
+			return 0;
+		}
 	default:
-		x->log(LDMS_LINFO,"Request for work before authentication complete. %d\n", cmd);
+		x->log(LDMS_LERROR, "Request for work before"
+			" authentication complete. %d\n", cmd);
 		return 0;
 	}
 }
 
 static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 {
+	TF();
 	int cmd = ntohl(req->hdr.cmd);
+	if (!is_valid_ldms_request_cmd(cmd)) {
+		x->log(LDMS_LERROR, "Unrecognized request %d\n", cmd);
+		return 1;
+	}
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Received %s\n",ldms_request_cmd_names[cmd]);
+#endif
 
-	if (0 == x->authenticated) {
+	if (x->authenticated < 2) {
 #ifdef HAVE_AUTH
 		/* try once and close if fail. no excuses for robots. */
-		if (! ldms_xprt_authenticate(cmd, x, req)) {
+		if (! ldms_xprt_checkauth(cmd, x, req)) {
 			// FIXME cause disconnect somehow
-			return 0;
-		} else {
-			x->authenticated = 1;
+			x->log(LDMS_LERROR, "ldms_xprt_checkauth failed\n");
 		}
+		return 0;
 #else
-		x->authenticated = 1;
+		x->authenticated = 2;
 #endif
 	}
 	switch (cmd) {
@@ -812,8 +906,8 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 		x->log(LDMS_LINFO,"Already authenticated %d\n", cmd);
 		break;
 	default:
-		x->log(LDMS_LINFO,"Unrecognized request %d\n", cmd);
-		assert(0);
+		x->log(LDMS_LERROR,"Unexpected request %s\n", ldms_request_cmd_names[cmd]);
+		return 1;
 	}
 	return 0;
 }
@@ -821,6 +915,7 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			  struct ldms_context *ctxt)
 {
+	TF();
 	struct ldms_set *set = ctxt->lookup.set;
 	struct ldms_set_desc *sd = NULL;
 	struct ldms_rbuf_desc *rbd;
@@ -877,6 +972,7 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt)
 {
+	TF();
 	int i;
 	char *src, *dst;
 	enum ldms_dir_type type = ntohl(reply->dir.type);
@@ -918,6 +1014,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			      struct ldms_context *ctxt)
 {
+	TF();
 	ldms_notify_event_t event;
 	size_t len = ntohl(reply->req_notify.event.len);
 	event = malloc(len);
@@ -938,9 +1035,20 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				    event, ctxt->dir.cb_arg);
 }
 
+size_t format_auth_req(struct ldms_request *req, uint64_t xid)
+{
+
+	size_t len;
+	len = sizeof(*req);
+	req->hdr.cmd = htonl(LDMS_CMD_AUTH);
+	req->hdr.len = htonl(len);
+	req->hdr.xid = xid;
+	return len;
+}
 size_t format_auth_password_req(struct ldms_request *req, const char *password,
                          uint64_t xid)
 {
+	TF();
 	size_t len = strlen(password) + 1;
 	if (len > LDMS_PASSWORD_MAX) {
 		len = LDMS_PASSWORD_MAX;
@@ -955,11 +1063,34 @@ size_t format_auth_password_req(struct ldms_request *req, const char *password,
 	return len;
 }
 
+void process_auth_password_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+		       struct ldms_context *ctxt)
+{
+	TF();
+#ifdef HAVE_AUTH
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Started process_auth_password_reply\n");
+#endif
+	int rc = ntohl(reply->hdr.rc);
+	if (rc) {
+		x->log(LDMS_LERROR, "Authentication failed\n");
+		return;
+	}
+	pthread_mutex_lock(&x->lock);
+	x->authenticated = 2; /* now ready on client side.*/
+	pthread_cond_broadcast(&x->authcond);
+	pthread_mutex_unlock(&x->lock);
+#else
+	x->log(LDMS_LERROR,"Unexpected call to process_auth_password_reply\n");
+#endif
+}
 void process_auth_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt)
 {
 #ifdef HAVE_AUTH
-	x->log(LDMS_LINFO,"Started process_auth_reply");
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Started process_auth_reply\n");
+#endif
 	int rc = ntohl(reply->hdr.rc);
 	uint64_t challenge;
 	if (rc)
@@ -967,7 +1098,10 @@ void process_auth_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	rc = 0;
 	challenge = ldms_unpack_challenge(reply->auth.challenge_hi,
 		reply->auth.challenge_lo);
-	char* password = ldms_get_auth_string(challenge);
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Challenge sent %"PRIu64"\n",challenge);
+#endif
+	char* password = ldms_get_auth_string(challenge,x);
 	if (!password) {
 		return;
 	}
@@ -980,7 +1114,7 @@ void process_auth_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 
 	x->send(x, &req, len);
 #else
-	x->log(LDMS_LINFO,"Unexpected call to process_auth_reply");
+	x->log(LDMS_LERROR,"Unexpected call to process_auth_reply");
 #endif
 }
 
@@ -997,7 +1131,12 @@ void ldms_event_release(ldms_t t, ldms_notify_event_t e)
 
 static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 {
+	TF();
 	int cmd = ntohl(reply->hdr.cmd);
+	if (!is_valid_ldms_request_cmd(cmd)) {
+		x->log(LDMS_LERROR,"Unrecognized reply %d\n", cmd);
+		return 1;
+	}
 	uint64_t xid = reply->hdr.xid;
 	struct ldms_context *ctxt;
 	assert(sizeof(unsigned long) == sizeof(uintptr_t) &&
@@ -1017,14 +1156,19 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 	case LDMS_CMD_AUTH_REPLY:
 		process_auth_reply(x, reply, ctxt);
 		break;
+	case LDMS_CMD_AUTH_PASSWORD_REPLY:
+		process_auth_password_reply(x, reply, ctxt);
+		break;
 	default:
-		x->log(LDMS_LERROR,"Unrecognized reply %d\n", cmd);
+		x->log(LDMS_LERROR,"Request command found in reply handler %s\n",
+			ldms_request_cmd_names[cmd]);
 	}
 	return 0;
 }
 
 static int recv_cb(struct ldms_xprt *x, void *r)
 {
+	TF();
 	struct ldms_request_hdr *h = r;
 	int cmd = ntohl(h->cmd);
 	if (cmd > LDMS_CMD_REPLY)
@@ -1067,6 +1211,7 @@ struct ldms_xprt local_transport = {
 static char _libdir[PATH_MAX];
 ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 {
+	TF();
 	int ret = 0;
 	char *libdir;
 	struct ldms_xprt *x = 0;
@@ -1129,6 +1274,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 
 	x->log = log_fn;
 	pthread_mutex_init(&x->lock, NULL);
+	pthread_cond_init(&x->authcond,NULL);
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
 	pthread_mutex_unlock(&xprt_list_lock);
@@ -1141,6 +1287,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 size_t format_lookup_req(struct ldms_request *req, const char *path,
 			 uint64_t xid)
 {
+	TF();
 	size_t len = strlen(path) + 1;
 	strcpy(req->lookup.path, path);
 	req->lookup.path_len = htonl(len);
@@ -1154,6 +1301,7 @@ size_t format_lookup_req(struct ldms_request *req, const char *path,
 size_t format_dir_req(struct ldms_request *req, uint64_t xid,
 		      uint32_t flags)
 {
+	TF();
 	size_t len;
 	req->hdr.xid = xid;
 	req->hdr.cmd = htonl(LDMS_CMD_DIR);
@@ -1166,6 +1314,7 @@ size_t format_dir_req(struct ldms_request *req, uint64_t xid,
 
 size_t format_dir_cancel_req(struct ldms_request *req)
 {
+	TF();
 	size_t len;
 	req->hdr.xid = 0;
 	req->hdr.cmd = htonl(LDMS_CMD_DIR_CANCEL);
@@ -1179,6 +1328,7 @@ size_t format_req_notify_req(struct ldms_request *req,
 			     uint64_t set_id,
 			     uint64_t flags)
 {
+	TF();
 	size_t len = sizeof(struct ldms_request_hdr)
 		+ sizeof(struct ldms_req_notify_cmd_param);
 	req->hdr.xid = xid;
@@ -1191,6 +1341,7 @@ size_t format_req_notify_req(struct ldms_request *req,
 
 size_t format_cancel_notify_req(struct ldms_request *req, uint64_t xid)
 {
+	TF();
 	size_t len = sizeof(struct ldms_request_hdr)
 		+ sizeof(struct ldms_cancel_notify_cmd_param);
 	req->hdr.xid = xid;
@@ -1207,8 +1358,9 @@ size_t format_cancel_notify_req(struct ldms_request *req, uint64_t xid)
  */
 static int alloc_req_ctxt(struct ldms_request **req, struct ldms_context **ctxt)
 {
+	TF();
 	struct ldms_context *ctxt_;
-	void *buf = malloc(sizeof(struct ldms_request) + sizeof(struct ldms_context));
+	void *buf = calloc(sizeof(struct ldms_request) + sizeof(struct ldms_context), 1);
 	if (!buf)
 		return 1;
 	*ctxt = ctxt_ = buf;
@@ -1216,8 +1368,65 @@ static int alloc_req_ctxt(struct ldms_request **req, struct ldms_context **ctxt)
 	return 0;
 }
 
+int ldms_xprt_auth( ldms_t _x )
+{
+        TF();
+	int rc = 0;
+        struct ldms_xprt *x = _x;
+#ifdef HAVE_AUTH
+        struct ldms_request *req;
+        struct ldms_context *ctxt;
+        size_t len;
+
+        if (alloc_req_ctxt(&req, &ctxt))
+                return ENOMEM;
+
+	len = format_auth_req(req,  (uint64_t)(unsigned long)ctxt );
+	x->send(x, req, len);
+	/* caling thread (client) needs to wait here for authenticated==2
+	to become true or the caller may go on and schedule stuff
+	on this xprt that will break. xprt thread will continue processing
+	the auth events.
+	gotta be a better way to handle this.
+	*/
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Waiting on password exchange.\n");
+#endif
+	struct timespec to;
+#define AUTH_TIMEOUT_SEC 30
+	int mrc = pthread_mutex_lock(&x->lock);
+	if (mrc) {
+		x->log(LDMS_LERROR,"failed pthread_mutex_lock(&x->lock);\n");
+		x->log(LDMS_LERROR,"with: %s\n",strerror(mrc));
+	}
+	clock_gettime(CLOCK_REALTIME, &to);
+	to.tv_sec += AUTH_TIMEOUT_SEC;
+	to.tv_nsec = 0;
+	while (x->authenticated != 2) {
+		rc = pthread_cond_timedwait(&(x->authcond), &(x->lock), &to);
+		if (rc) {
+			x->log(LDMS_LERROR,"ldms_xprt_auth timeout expired (%d s): %s\n",
+				AUTH_TIMEOUT_SEC, strerror(rc));
+			break;
+		}
+	}
+	mrc = pthread_mutex_unlock(&x->lock);
+	if (mrc) {
+		x->log(LDMS_LERROR,"failed pthread_mutex_unlock(&x->lock);\n");
+		x->log(LDMS_LERROR,"with: %s\n",strerror(mrc));
+	}
+#else
+	x->authenticated = 2;
+#ifdef HAVE_AUTHDEBUG
+	x->log(LDMS_LINFO,"Authentication not compiled in.\n");
+#endif
+#endif
+	return rc;
+}
+
 int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
+	TF();
 	struct ldms_xprt *x = _x;
  	struct ldms_request *req;
 	struct ldms_context *ctxt;
@@ -1246,6 +1455,7 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 /* This request has no reply */
 void __ldms_remote_dir_cancel(ldms_t _x)
 {
+	TF();
 	struct ldms_xprt *x = _x;
  	struct ldms_request *req;
 	struct ldms_context *ctxt;
@@ -1268,6 +1478,7 @@ void __ldms_remote_dir_cancel(ldms_t _x)
 int __ldms_remote_lookup(ldms_t _x, const char *path,
 			 ldms_lookup_cb_t cb, void *arg)
 {
+	TF();
 	struct ldms_xprt *x = _x;
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
@@ -1285,12 +1496,14 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	ctxt->lookup.cb_arg = arg;
 	ctxt->lookup.path = strdup(path);
 	rc = x->send(x, req, len);
+	/* should we close xprt here if send fails? */
 	return rc;
 }
 
 static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 			   ldms_notify_cb_t cb_fn, void *cb_arg)
 {
+	TF();
 	struct ldms_rbuf_desc *r =
 		(struct ldms_rbuf_desc *)
 		((struct ldms_set_desc *)s)->rbd;
@@ -1319,6 +1532,7 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
 			    ldms_notify_cb_t cb_fn, void *cb_arg)
 {
+	TF();
 	if (!cb_fn)
 		goto err;
 	return send_req_notify(x, s, (uint32_t)flags, cb_fn, cb_arg);
@@ -1329,6 +1543,7 @@ int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
 
 static int send_cancel_notify(ldms_t _x, ldms_set_t s)
 {
+	TF();
 	struct ldms_rbuf_desc *r =
 		(struct ldms_rbuf_desc *)
 		((struct ldms_set_desc *)s)->rbd;
@@ -1345,6 +1560,7 @@ static int send_cancel_notify(ldms_t _x, ldms_set_t s)
 
 int ldms_cancel_notify(ldms_t t, ldms_set_t s)
 {
+	TF();
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	if (!set)
 		goto err;
@@ -1356,6 +1572,7 @@ int ldms_cancel_notify(ldms_t t, ldms_set_t s)
 
 void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 {
+	TF();
 	struct ldms_set *set;
 	struct ldms_rbuf_desc *r;
 	if (!s)
@@ -1378,6 +1595,7 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 
 int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 {
+	TF();
 	int rc = -1;
 	struct ldms_xprt *x = _x;
 
@@ -1392,18 +1610,6 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 	if (!rc)
 		x->connected = 1;
 
-#ifdef HAVE_AUTH
-//	now authenticate or disconnect with auth error
-	x->log(LDMS_LINFO,"Connect starting auth exchange");
-	struct ldms_request_hdr req;
-	size_t len;
-	len = sizeof(req);
-	req.cmd = LDMS_CMD_AUTH;
-	req.len = len;
-	req.xid = 0; // FIXME do we need something here?
-	x->send(x, &req, len);
-	// FIXME  now we expect the reply handling to manage the rest?
-#endif
 
  out:
 	pthread_mutex_unlock(&x->lock);
@@ -1412,6 +1618,7 @@ int ldms_connect(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 
 int ldms_listen(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
 {
+	TF();
 	struct ldms_xprt *x = _x;
 	memcpy(&x->local_ss, sa, sa_len);
 	x->ss_len = sa_len;

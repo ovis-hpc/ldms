@@ -122,7 +122,7 @@ int create_hadoop_set(char *given_metrics, char *fname,
 	ldms_log_fn_t msglog = hdset->msglog;
 	FILE *f = fopen(fname, "r");
 	if (!f) {
-		msglog("hadoop_namenode: Failed to open file '%s'.\n",
+		msglog(LDMS_LERROR,"hadoop_namenode: Failed to open file '%s'.\n",
 				fname);
 		return errno;
 	}
@@ -212,7 +212,7 @@ err_2:
 err_1:
 	ldms_set_release(hdset->set);
 err:
-	msglog("hadoop_namenode: failed to create the set.\n");
+	msglog(LDMS_LERROR,"hadoop_namenode: failed to create the set.\n");
 	fclose(f);
 	return rc;
 }
@@ -260,7 +260,7 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 			value.v_d = strtod(value_s, NULL);
 			break;
 		default:
-			msglog("hadoop_namenode: Not support type '%s'.\n",
+			msglog(LDMS_LERROR,"hadoop_namenode: Not support type '%s'.\n",
 					ldms_type_to_str(type));
 			continue;
 		}
@@ -283,7 +283,7 @@ void *recv_metrics(void *_hdset)
 		rc = recvfrom(hdset->sockfd, buffer, (size_t)MAX_BUF_LEN,
 							0, NULL, NULL);
 		if (rc < 0) {
-			hdset->msglog("%s: failed to recieve hadoop "
+			hdset->msglog(LDMS_LERROR,"%s: failed to recieve hadoop "
 						"metrics. Error %d\n",
 						hdset->setname, rc);
 			return NULL;

@@ -301,7 +301,7 @@ ldms_t ldms_xprt_next(ldms_t);
 int ldms_xprt_connected(ldms_t);
 
 /**
- * \brief Check if an endpoint is authenticated.
+ * \brief Check if an endpoint is authenticated. Client side.
  *
  * \param l	The endpoint handle.
  * \returns	!0 if the endpoint is authenticated.
@@ -542,15 +542,25 @@ extern const char *ldms_get_xprt_name(ldms_t x);
 extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
 
 /**
+/ \brief Authenticate to an LDMS host.
+ *
+ * \param x	The transport handle
+ * \returns 	0 if the authentication succeeds or is not checked.
+ * \returns	nonzero if authentication is required but fails.
+ */
+extern int ldms_xprt_auth(ldms_t x);
+
+/**
  * \brief Compute the correct response to an authentication challenge.
  *
  * The string returned should be freed by the caller.
  *
  * \param n	The random number needed to prevent replay attacks.
+ * \param x	The transport handle.
  * \returns	NULL if the response cannot be computed. See errno.
  * \returns	The answer to expect/provide.
  */
-extern char *ldms_get_auth_string(uint64_t n);
+extern char *ldms_get_auth_string(uint64_t n, ldms_t x);
 
 /**
  * \brief Listen for connection requests from LDMS peers.

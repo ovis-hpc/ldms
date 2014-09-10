@@ -21,6 +21,7 @@ dnl AM_PROG_CC_C_O
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
+AX_CHECK_OPENSSL
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])
@@ -29,10 +30,12 @@ OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
 OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
 OPTION_DEFAULT_ENABLE([glib], [ENABLE_GLIB])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
-OPTION_DEFAULT_DISABLE([authentication], [ENABLE_AUTHENTICATION])
-OPTION_DEFAULT_DISABLE([authdebug], [ENABLE_AUTHDEBUG])
-OPTION_DEFAULT_DISABLE([use-tf], [ENABLE_USE_TF])
-OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
+OPTION_DEFAULT_DISABLE([authentication], [ENABLE_AUTHENTICATION],[require shared secret to query ldmsd])
+OPTION_DEFAULT_DISABLE([authdebug], [ENABLE_AUTHDEBUG],[log authentication steps])
+OPTION_DEFAULT_DISABLE([use-tf], [ENABLE_USE_TF],[log tracing of calls])
+OPTION_DEFAULT_DISABLE([use-rtc], [ENABLE_USE_RTC],[log rtc stamp with traced calls])
+OPTION_DEFAULT_DISABLE([use-tid], [ENABLE_USE_TID],[log thread id with traced calls])
+OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC],[generate doxygen output])
 
 dnl Options for transport
 OPTION_DEFAULT_ENABLE([xprt], [ENABLE_XPRT])
@@ -293,6 +296,32 @@ fi
 if test -z "$ENABLE_AUTHENTICATION_TRUE"
 then
 AC_DEFINE([HAVE_AUTH],[1],[Turning on authentication checks for xprt connect.])
+fi
+
+if test -z "$ENABLE_AUTHDEBUG_TRUE"
+then
+AC_DEFINE([HAVE_AUTHDEBUG],[1],[Turning on auth debug logging.])
+fi
+
+if test -z "$ENABLE_USE_TF_TRUE"
+then
+AC_DEFINE([USE_TF],[1],[Turning on tracing facilities.])
+else
+AC_DEFINE([USE_TF],[0],[Turning on tracing facilities.])
+fi
+
+if test -z "$ENABLE_USE_RTC_TRUE"
+then
+AC_DEFINE([USE_RTC],[1],[Use rtc timestamp in trace.])
+else
+AC_DEFINE([USE_RTC],[0],[Use rtc timestamp in trace.])
+fi
+
+if test -z "$ENABLE_USE_TID_TRUE"
+then
+AC_DEFINE([USE_TID],[1],[Use thread id in trace.])
+else
+AC_DEFINE([USE_TID],[0],[Use thread id timestamp in trace.])
 fi
 
 OPTION_WITH_PORT([LDMSD],[411])
