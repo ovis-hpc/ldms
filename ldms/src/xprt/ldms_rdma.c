@@ -135,7 +135,7 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 	/* Destroy the PD */
 	if (r->pd) {
 		if (ibv_dealloc_pd(r->pd))
-			LOG_(r, LDMS_LERROR, LDMS_LERROR, "RDMA: Error %d : ibv_dealloc_pd failed\n",
+			LOG_(r, LDMS_LERROR, "RDMA: Error %d : ibv_dealloc_pd failed\n",
 			     errno);
 	}
 	/* Destroy the CM id */

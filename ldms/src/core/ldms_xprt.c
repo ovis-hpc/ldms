@@ -1097,7 +1097,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 		d = dlopen(_libdir, RTLD_NOW);
 		if (!d) {
 			/* The library doesn't exist */
-			log_fn("dlopen: %s\n", dlerror());
+			log_fn(LDMS_LERROR, "dlopen: %s\n", dlerror());
 			ret = ENOENT;
 			goto err;
 		}
@@ -1108,7 +1108,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	ldms_xprt_get_t get = dlsym(d, "xprt_get");
 	errstr = dlerror();
 	if (errstr || !get) {
-		log_fn("dlsym: %s\n", errstr);
+		log_fn(LDMS_LERROR, "dlsym: %s\n", errstr);
 		/* The library exists but doesn't export the correct
 		 * symbol and is therefore likely the wrong library type */
 		ret = EINVAL;

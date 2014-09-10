@@ -1064,7 +1064,7 @@ static int init_once(ldms_log_fn_t log_fn)
 		ptag_str = getenv("LDMS_UGNI_PTAG");
 		if (!ptag_str) {
 			rc = EINVAL;
-			log_fn("Missing LDMS_UGNI_PTAG\n");
+			log_fn(LDMS_LERROR, "Missing LDMS_UGNI_PTAG\n");
 			goto err_3;
 		}
 		ptag = atoi(ptag_str);
@@ -1073,7 +1073,7 @@ static int init_once(ldms_log_fn_t log_fn)
 	cookie_str = getenv("LDMS_UGNI_COOKIE");
 	if (!cookie_str) {
 		rc = EINVAL;
-		log_fn("Missing LDMS_UGNI_COOKIE\n");
+		log_fn(LDMS_LERROR, "Missing LDMS_UGNI_COOKIE\n");
 		goto err_3;
 	}
 	cookie = strtol(cookie_str, NULL, 0);
@@ -1119,7 +1119,7 @@ static int init_once(ldms_log_fn_t log_fn)
 		if ((int) euid == 0){
 			rc = ugni_job_setup(&ptag, cookie);
 			if (rc != GNI_RC_SUCCESS)
-				log_fn("ugni_job_setup failed %d\n",rc);
+				log_fn(LDMS_LERROR, "ugni_job_setup failed %d\n",rc);
 			if (rcsfp) {
 				fprintf(rcsfp, "%d\n", rc);
 				fflush(rcsfp);
@@ -1133,7 +1133,7 @@ static int init_once(ldms_log_fn_t log_fn)
 	if (((int) euid != 0) || rc == GNI_RC_SUCCESS || IS_ARIES ) {
 		rc = ugni_dom_init(&ptag, cookie, getpid(), &ugni_gxp);
 		if (rc != GNI_RC_SUCCESS) {
-			log_fn("ugni_dom_init failed %d\n",rc);
+			log_fn(LDMS_LERROR, "ugni_dom_init failed %d\n",rc);
 		}
 		if (rcifp) {
 			fprintf(rcifp, "%d\n", rc);

@@ -460,8 +460,6 @@ void ldms_destroy_set(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
 	struct ldms_set *set = sd->set;
-	struct ldms_rbuf_desc *rbd;
-	struct ldms_xprt *x;
 
 	// __ldms_dir_del_set(set->meta->name);
 
@@ -829,7 +827,7 @@ int ldms_init(size_t max_size)
 const char *
 ldms_pedigree()
 {
-	const char *pedigree = 
+	const char *pedigree =
 	"git source tag: " LDMS_GIT_LONG "\n"
 	"git source description: " LDMS_GIT_SHORT "\n"
 	"packaging label: " PACKAGE_STRING "\n"

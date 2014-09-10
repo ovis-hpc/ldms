@@ -135,18 +135,18 @@ int handle_llite(const char *llite)
 	if (!_llite)
 		return ENOMEM;
 	char *saveptr = NULL;
-	char *tok = strtok_r(_llite, ",", saveptr);
+	char *tok = strtok_r(_llite, ",", &saveptr);
 	struct lustre_svc_stats *lss;
 	char path[CSS_LUSTRE_PATH_MAX];
 	while (tok) {
-		snprintf(path, CSS_LUSTRE_PATH_LEN,"/proc/fs/lustre/llite/%s-*/stats",tok);
+		snprintf(path, CSS_LUSTRE_PATH_MAX,"/proc/fs/lustre/llite/%s-*/stats",tok);
 		lss = lustre_svc_stats_alloc(path, LUSTRE_METRICS_LEN+1);
 		lss->name = strdup(tok);
 		if (!lss->name)
 			goto err;
 		lss->key_id_map = lustre_idx_map;
 		LIST_INSERT_HEAD(&lustre_svc_head, lss, link);
-		tok = strtok_r(NULL, ",", saveptr);
+		tok = strtok_r(NULL, ",", &saveptr);
 	}
 	return 0;
 err:
@@ -251,7 +251,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 				if (!strcmp(metric_name, VMSTAT_METRICS[j])){
 					ldms_set_metric(metric_table_vmstat[j], &v);
 					found_metrics++;
-					if ((found_metrics == NUM_VMSTAT_METRICS) && 
+					if ((found_metrics == NUM_VMSTAT_METRICS) &&
 					    (found_submetrics == NUM_VMCF_METRICS)){
 						done = 1;
 						break;
@@ -265,7 +265,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 				if (!strcmp(metric_name, VMCF_METRICS[j])){
 					vmcf[j] = v.v_u64;
 					found_submetrics++;
-					if ((found_metrics == NUM_VMSTAT_METRICS) && 
+					if ((found_metrics == NUM_VMSTAT_METRICS) &&
 					    (found_submetrics == NUM_VMCF_METRICS)){
 						done = 1;
 						break;
@@ -281,7 +281,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 
 	if (found_submetrics == NUM_VMCF_METRICS) {
 		//treating the order like its well known
-		//	(nr_free_pages + nr_file_pages + nr_slab_reclaimable - nr_shmem) * 4 
+		//	(nr_free_pages + nr_file_pages + nr_slab_reclaimable - nr_shmem) * 4
 		v.v_u64 = (vmcf[0] + vmcf[1] + vmcf[2] - vmcf[3]) * 4;
 		ldms_set_metric(metric_table_current_freemem[0], &v);
 	} else {
