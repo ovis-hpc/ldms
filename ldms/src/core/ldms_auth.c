@@ -180,14 +180,16 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 	
 	}
 	if (fc) {
-		x->log(LDMS_LERROR,"%s: unable to find a usable secret\n");
+		x->log(LDMS_LERROR,"%s: unable to find a usable secret\n",
+			__FILE__);
 		return NULL;
 	}
 
 	size_t len = strlen(secretword) + 2 + strlen(xstr(UINT64_MAX));
 	result = malloc(len);
 	if (!result) {
-		x->log(LDMS_LERROR, "auth key malloc failed.\n");
+		x->log(LDMS_LERROR, "%s auth key malloc failed.\n",
+			__FILE__);
 		return result;
 	}
 	snprintf(result, len, "%" PRIu64 "%s", n, secretword);
@@ -207,7 +209,8 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 	free(result);
 	result = malloc(2 * EVP_MAX_MD_SIZE + 1);
 	if (!result) {
-		x->log(LDMS_LERROR, "auth key malloc failed.\n");
+		x->log(LDMS_LERROR, "%s auth key malloc failed.\n",
+			__FILE__);
 		return result;
 	}
 	for (i = 0; i < md_len; i++) {
