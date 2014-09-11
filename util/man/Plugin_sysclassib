@@ -56,7 +56,7 @@ ldmsctl> start name=sysclassib interval=1000000
 ldmsctl> quit
 
 .SH SEE ALSO
-ldmsctl(8), Plugin_kgnilnd(5), Plugin_meminfo(5), Plugin_procnetdev(5), Plugin_procnfs(5), Plugin_procstatutil(5), Plugin_vmstat(5)
+ldmsctl(8), Plugin_kgnilnd(5), Plugin_lustre2_client(5), Plugin_meminfo(5), Plugin_procnetdev(5), Plugin_procnfs(5), Plugin_procstatutil(5), Plugin_vmstat(5)
 
 .SH BUGS
 No known bugs.
