@@ -120,7 +120,7 @@ typedef enum {
 	RATE
 } der_t;
 
-struct derived_data {
+struct derived_data { // rawname/dername are good candidates for dstrings.
 	char rawname[STORE_DERIVED_NAME_MAX]; //can lose this after the deridx is set....
 	char dername[STORE_DERIVED_NAME_MAX]; //should we bother to keep this???
 	der_t dertype;
@@ -213,7 +213,7 @@ static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
 		s_handle->der[s_handle->numder].dertype = tval;
 		s_handle->der[s_handle->numder].deridx = -1; //Don't have this yet
 		snprintf(s_handle->der[s_handle->numder].rawname,
-			 strlen(metric_name)+1, "%s",
+			 STORE_DERIVED_NAME_MAX, "%s",
 			 metric_name);
 		if (tval == RAW)
 			snprintf(s_handle->der[s_handle->numder].dername,

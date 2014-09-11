@@ -226,7 +226,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			sprintf(tmp_path, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
 			if (!ms->path)
-				goto err4;
+				goto err5;
 			ms->file = fopen(ms->path, "a+");
 			if (!ms->file)
 				goto err4;
@@ -238,6 +238,9 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		idx_add(store_idx, (void *)container, strlen(container), si);
 	}
 	goto out;
+err5:
+	free(ms);
+	ms = NULL;
 err4:
 	while (ms = LIST_FIRST(&si->ms_list)) {
 		LIST_REMOVE(ms, entry);
@@ -255,6 +258,7 @@ err2:
 	idx_destroy(si->ms_idx);
 err1:
 	free(si);
+	si = NULL;
 out:
 	pthread_mutex_unlock(&cfg_lock);
 	return si;

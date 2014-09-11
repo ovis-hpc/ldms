@@ -602,6 +602,7 @@ struct plugin *new_plugin(char *plugin_name, char *err_str)
 	sprintf(err_str, "No memory");
  err:
 	if (pi) {
+		pthread_mutex_destroy(&pi->lock);
 		if (pi->name)
 			free(pi->name);
 		if (pi->libpath)
@@ -779,6 +780,7 @@ int process_term_plugin(int fd,
 	if (pi->ref_count) {
 		err_str = "The specified plugin has active users "
 			"and cannot be terminated.\n";
+		pthread_mutex_unlock(&pi->lock);
 		goto out;
 	}
 	pi->plugin->term();

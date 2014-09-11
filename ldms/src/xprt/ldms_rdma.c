@@ -618,7 +618,8 @@ static void process_recv_wc(struct ldms_rdma_xprt *r, struct ibv_wc *wc,
 	pthread_mutex_unlock(&r->credit_lock);
 
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
-		if ((ret = rdma_post_recv(r, rb))) {
+		ret = rdma_post_recv(r, rb);
+		if ( ret ) {
 			LOG_(r, "RDMA: ibv_post_recv failed: %d\n", ret);
 			rdma_buffer_free(rb);
 		}
