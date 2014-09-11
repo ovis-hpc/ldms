@@ -330,7 +330,7 @@ Execute collect.sh (Note: When executing this across many nodes you would use pd
 .PP
 .nf
 .RS
-4) Example lines for adding hosts to an aggregator
+4) Example lines for adding hosts to an aggregator:
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
 ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
@@ -341,7 +341,7 @@ ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=v
 .PP
 .nf
 .RS
-5) Example lines for configuring one store type but for 2 different metric sets.
+5) Example lines for configuring one store type but for 2 different metric sets:
 ldmsctl> load name=store_csv
 ldmsctl> config name=store_csv path=/XXX/stored_data  
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo 
@@ -352,10 +352,22 @@ ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
 .PP
 .nf
 .RS
-6) To kill all LDMS's on a host
-killall ldmsd
-.RE
-.fi
+6) Chaining aggregators and storing:
+ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=foo/meminfo, foo/vmstat,foo/procnetdev
+ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=bar/meminfo, bar/vmstat,bar/procnetdev
+ldmsctl> load name=store_csv
+ldmsctl> config name=store_csv path=/projects/ovis/ClusterData/chama/storecsv
+ldmsctl> store name=store_store_csv comp_type=node set=vmstat container=vmstat
+ldmsctl> store name=store_store_csv comp_type=node set=meminfo container=meminfo
+
+NOTES:
+You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
+Syntax for add host is sets plural with comma separation.
+Syntax for store is only 1 set at a time.
+CSV file will be <path>/<comp_type>/<container>.
+Do not mix containers across sets
+Cannot put all the foo and bar in the same line......
+
 
 .SH SEE ALSO
 ldmsd(8), ldms_ls(8), ldmsd.conf(5), Plugin_cray_system_sampler(5), Plugin_kgnilnd(5), Plugin_lustre2_client(5), Plugin_meminfo(5), 
