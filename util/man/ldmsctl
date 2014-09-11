@@ -72,7 +72,12 @@ name=<name>
 Loads the specified plugin. The library that implements
 the plugin should be in the directory specified by the
 LDMSD_PLUGIN_LIBPATH environment variable.
-<name> is the plugin name, this is used to locate a loadable library named lib<name>.so.
+.RS
+.TP
+<name>
+.br
+The plugin name. This is used to locate a loadable library named lib<name>.so.
+.RE
 
 .TP
 .BR config
@@ -323,7 +328,7 @@ Execute collect.sh (Note: When executing this across many nodes you would use pd
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldms_ls(8), ldmsd.conf(5)
+ldmsd(8), ldms_ls(8), ldmsd.conf(5), Plugin_procstatutil(5)
 
 .SH BUGS
 No known bugs.

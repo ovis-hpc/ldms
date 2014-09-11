@@ -268,7 +268,7 @@ static int create_metric_set(const char *path)
  * \brief Configuration
  *
  * Usage:
- * - config name=procstatutil component_id=<value> set=<value>
+ * - config name=procstatutil component_id=<value> set=<value> metrics_type=<0/1>
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
