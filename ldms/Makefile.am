@@ -19,7 +19,7 @@ rpm-clean:
 	rm -rf rpm/ centos
 	rm -f $(LDMS_TARBALL)
 
-install-exec-hook: 
+install-exec-hook:
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
 	@echo "INSTALL COMPLETED."
 	@echo "Errors seen after this matter to developers only."

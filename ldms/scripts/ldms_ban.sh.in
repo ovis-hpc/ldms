@@ -1,5 +1,5 @@
 #!/bin/bash
-# This script reports any call to a banned function (or other 
+# This script reports any call to a banned function (or other
 # checked one-line syntax).
 # update the evil list as needed
 evil="
@@ -24,7 +24,7 @@ done
 if test "x$bad" != "x0"; then
 cat << _EOF
 **************************
-Found banned functions in $bad places: 
+Found banned functions in $bad places:
 $foundlist
 as located specifically above.
 Code with these calls should not be committed.

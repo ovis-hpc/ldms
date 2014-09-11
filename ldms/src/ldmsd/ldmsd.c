@@ -1238,7 +1238,7 @@ int process_add_host(int fd,
 			send_reply(fd, sa, sa_len, bdstr, bdlen+1);
 			goto clean_set_list;
 		}
-		set_name = strtok_r(NULL, ",", &saveptr); 
+		set_name = strtok_r(NULL, ",", &saveptr);
 	}
 add_timeout:
 	evtimer_add(hs->event, &hs->timeout);
@@ -2585,7 +2585,7 @@ void listen_on_transport(char *transport_str)
 	l = ldms_create_xprt(name, ldms_log);
 	if (!l) {
 		ldms_log(LDMS_LERROR, "The transport specified, '%s', is invalid.\n", name);
-		free(tmp);		
+		free(tmp);
 		cleanup(6);
 	}
 	sin.sin_family = AF_INET;
