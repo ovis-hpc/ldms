@@ -1,0 +1,80 @@
+.\" Manpage for ldms_ls
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "11 Sep 2014" "1.2" "ldms_ls man page"
+.SH NAME
+ldms_ls \- Query an ldmsd for metric set values
+.SH SYNOPSIS
+ldms_ls [OPTION...]
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldms_ls command is used to query an ldmsd (ldms daemon) for metric set values.
+.SH ENVIRONMENT
+The following environment variables must be set:
+.TP
+LD_LIBRARY_PATH
+include path to ovis/lib64
+.TP
+LDMS_XPRT_LIBPATH
+path to ovis/lib64/
+.TP
+LDMSD_PLUGIN_LIBPATH
+path to ovis/lib64/
+.TP
+PATH
+include path to ovis/sbin
+.SH OPTIONS
+.TP
+.BR -h =\flHOST\fR
+HOST to query. Default is XXX.
+.TP
+.BR -x =\flTRANSPORT\fR
+TRANSPORT to use for the query. values are sock, rdma, or ugni. Default is sock.
+.TP
+.BR -p =\flPORT\fR
+PORT of the HOST to use for the query. Default is XXX.
+.TP
+.BR -l 
+.br
+display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
+.TP
+.BR -v
+.br
+display metadata information
+.SH DEFAULTS
+.SH EXAMPLES
+.PP
+.nf
+.RS
+$ldms_ls -h vm1 -x sock -p 60000
+vm1_1/meminfo
+vm1_1/vmstat
+.RE
+.PP
+.nf
+.RS
+$ldms_ls -h vm1 -x sock-p 60000 -l
+vm1_1/meminfo: consistent, last update: Wed Jul 31 21:51:08 2013 [246540us]
+U64 33084652         MemTotal
+U64 32092964         MemFree
+U64 0                Buffers
+U64 49244            Cached
+U64 0                SwapCached
+U64 13536            Active
+U64 39844            Inactive
+U64 5664             Active(anon)
+...
+.RE
+.PP
+.nf
+.RS
+For a non-existent set:
+$ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
+ldms_ls: No such file or directory
+ldms_ls: lookup failed for set 'vm1_1/foo'
+.RE
+.fi
+.SH SEE ALSO
+ldmsd(8), ldmsctl(8)
+.SH BUGS
+No known bugs.
+.SH AUTHOR
+OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
