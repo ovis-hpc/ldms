@@ -1,0 +1,319 @@
+.\" Manpage for ldmsctl
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "11 Sep 2014" "1.2" "ldmsctl man page"
+
+.SH NAME
+ldmsctl \- Issue control commands to ldmsd.
+
+.SH SYNOPSIS
+ldmsctl [OPTION...] 
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons).
+After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
+can be created and piped into the ldmsctl.
+
+.SH ENVIRONMENT
+The following environment variables must be set:
+.TP
+LD_LIBRARY_PATH
+.br
+include path to ovis/lib64
+.TP
+LDMS_XPRT_LIBPATH
+.br
+path to ovis/lib64/
+.TP
+LDMSD_PLUGIN_LIBPATH
+.br
+path to ovis/lib64/
+.TP
+PATH
+.br
+include path to ovis/sbin
+
+
+.SH OPTIONS
+.TP
+.BR -S =\flSOCKET\fR 
+.br
+SOCKET is the unix domain socket that the ldmsd is listening on.
+.TP
+.BR -V
+.br
+Display LDMS version information and then exit.
+
+.SH DEFAULTS
+ldmsctl with no arguments defaults to ???
+
+.SH LDMSCTL COMMANDS
+After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
+can be created and piped into the ldmsctl.
+
+.TP
+.BR help
+.br
+Display the list of commands.
+
+.TP
+.BR usage
+.br
+Show loaded plugin usage information.
+
+.TP
+.BR version
+.br
+Show version information.
+
+.TP
+.BR load
+name=<name>
+.br
+Loads the specified plugin. The library that implements
+the plugin should be in the directory specified by the
+LDMSD_PLUGIN_LIBPATH environment variable.
+<name> is the plugin name, this is used to locate a loadable library named lib<name>.so.
+
+.TP
+.BR config
+name=<name> [ <attr>=<value> ... ]
+.br
+Provides a mechanism to specify configuration options.
+.RS
+.TP
+<name>
+.br
+The plugin name.
+.TP
+<attr>
+.br
+An attribute name.
+.TP
+<value>
+.br
+An attribute value.
+Valid <attr> <value> pairs are specific to the plugin.
+.RE
+
+.TP
+.BR start
+name=<name> interval=<interval> [ offset=<offset>]
+.br
+Begins calling the sampler's 'sample' method at the sample interval.
+.RS
+.TP
+<name>
+.br
+The sampler name.
+.TP
+<interval>
+.br
+The sample interval in microseconds.
+.TP
+<offset>
+.br
+Optional offset (shift) from the sample mark in microseconds. Offset can be positive or
+negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, 
+collection will be synchronous; if the offset is not specified, collection will be asychronous.
+.RE
+
+.TP
+.BR stop
+name=<name>
+.br
+Cancels sampling on the specified plugin.
+.RS
+.TP
+<name>
+.br
+The sampler name.
+.RE
+
+
+.TP
+.BR add
+host=<host> type=<type> sets=<set names>
+[ interval=<interval> ] [ offset=<offset>]
+[ xprt=<xprt> ] [ port=<port> ]
+[ standby=<agg_no> ]
+.br
+Adds a host to the list of hosts monitored by this ldmsd.
+.RS
+.TP
+<host>
+.br
+The hostname. This can be an IP address or DNS hostname.
+.TP
+<type>
+.RS
+.TP
+One of the following host types:
+.br
+.TP
+active
+.br
+A connection is initiated with the peer and it's metric sets will be periodically queried.
+.TP
+passive
+.br
+A connect request is expected from the specified host.
+After this request is received, the peer's metric sets
+will be queried periodically.
+.TP
+bridging
+.br
+A connect request is initiated to the remote peer,
+but it's metric sets are not queried. This is the active
+side of the passive host above.
+.RE
+.TP
+<set names>
+.br
+The list of metric set names to be queried.
+The list is comma separated.
+.TP
+<interval>
+.br
+An optional sampling interval in microseconds, defaults to 1000000.
+.TP
+<offset>
+.br
+An optional offset (shift) from the sample mark
+in microseconds. If this offset is specified,
+including 0, the collection will be synchronous;
+if the offset is not specified, the collection
+will be asychronous.
+.TP
+<xprt>
+.br
+The transport type, defaults to 'sock'.
+.RS
+.TP
+sock
+.br
+The sockets transport.
+.TP
+rdma
+.br
+The OFA Verbs Transport for Infiniband or iWARP
+.TP
+ugni
+.br
+Cray XE/XK/XC transport.
+.RE
+.TP
+<port>
+.br
+The port number to connect on, defaults to LDMS_DEFAULT_PORT
+.TP
+<agg_no>
+.br
+The number of the aggregator that this is standby for.
+Defaults to 0 which means this is an active aggregator.
+.RE
+.TP
+.BR store
+.br
+name=<store> container=<container> set=<set> comp_type=<comp_type>
+[hosts=<hosts>] [metric=<metric>]
+.br
+Saves a set from one or more hosts to a persistent object store.
+.RS
+.TP
+<store>
+.br
+The name of the storage plugin.
+.TP
+<container>
+.br
+The store policy ID, e.g., meminfo-essential
+.TP
+<set>
+.br
+The set whose data will be saved. Data is saved
+when update completes if the generation number has changed.
+.TP
+<comp_type>
+.br
+The component type.
+.TP
+<metrics>
+.br
+A list of metric names in the specified set. If not specified, all metrics will be saved.
+.TP
+<hosts> 
+.br
+A list of hosts to whose set data will be saved.
+If not specified, all hosts that have this set will
+have their data saved.
+.RE
+.TP
+.BR standby
+.br
+agg_no=<agg_no> state=<0/1>
+.br
+ldmsd will update it saggs_mask for this aggregator as indicated.
+.RS
+.TP
+<agg_no>
+.br
+Unique integer id for an aggregator
+.TP
+<state>
+.br
+0/1 - standby/active
+.RE
+.TP
+.BR info
+.br
+Causes the ldmsd to dump out information about plugins,
+work queue utilization, hosts and object stores.
+.TP
+.BR quit
+.br
+Exit
+.RE
+
+.SH EXAMPLES
+.PP
+.nf
+.RS
+$ldms_ls -h vm1 -x sock -p 60000
+vm1_1/meminfo
+vm1_1/vmstat
+.RE
+.br
+.PP
+.nf
+.RS
+$ldms_ls -h vm1 -x sock -p 60000 -l
+vm1_1/meminfo: consistent, last update: Wed Jul 31 21:51:08 2013 [246540us]
+U64 33084652         MemTotal
+U64 32092964         MemFree
+U64 0                Buffers
+U64 49244            Cached
+U64 0                SwapCached
+U64 13536            Active
+U64 39844            Inactive
+U64 5664             Active(anon)
+...
+.RE
+.br
+.PP
+.nf
+.RS
+For a non-existent set:
+$ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
+ldms_ls: No such file or directory
+ldms_ls: lookup failed for set 'vm1_1/foo'
+.RE
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldmsctl(8), ldmsd.conf(5)
+
+.SH BUGS
+No known bugs.
+
+.SH AUTHOR
+OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
