@@ -6,7 +6,9 @@
 Plugin_procstatutil - man page for the LDMS procstatutil plugin
 
 .SH SYNOPSIS
-config
+Within ldmsctl
+.br
+ldmsctl> config name=procstatutil [ <attr> = <value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.

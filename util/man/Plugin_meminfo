@@ -6,7 +6,9 @@
 Plugin_meminfo - man page for the LDMS meminfo plugin
 
 .SH SYNOPSIS
-config
+Within ldmsctl
+.br
+ldmsctl> config name=meminfo [ <attr>=<value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
