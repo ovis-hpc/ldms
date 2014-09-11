@@ -39,7 +39,7 @@ The default output writes the header to the same file as the data file. alt_head
 .TP
 <idpos>
 .br
-The default output format in the CSV stores writes out a separate unique identifier along with each data value. In most, but not all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node as described above and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
 .RE
 
 .SH LDMSCTL STORE OPTIONS
@@ -74,12 +74,14 @@ Use an unique container parameter for different metric sets coming from differen
 .RS
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_csv
-ldmsctl> config name=store_csv component_id=1 set=vm1_1/store_csv alt_header=1 id_pos=1
+ldmsctl> config name=store_csv alt_header=1 id_pos=1
 ldmsctl> start name=store_csv interval=1000000
 ldmsctl> quit
+.RE
+.fi
 
 .SH SEE ALSO
-ldmsctl(8)
+ldmsctl(8), Plugin_store_csv(5)
 
 .SH BUGS
 No known bugs.
