@@ -684,7 +684,7 @@ struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 		return NULL;
 
 	if (xprt_data && sizeof(*xd) > xprt_data_len) {
-		x->log("%s:%d: sock_rbuf_alloc called with xprt_data size %zu."
+		x->log(LDMS_LERROR,"%s:%d: sock_rbuf_alloc called with xprt_data size %zu."
 			" Expected at least %zu.  "
 			"Remote protocol implementation mismatch?\n",
 			__FILE__,__LINE__, xprt_data_len, sizeof(*xd));
