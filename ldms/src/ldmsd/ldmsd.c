@@ -2104,15 +2104,13 @@ int do_connect(struct hostspec *hs)
 		goto err;
 	}
 	ret = ldms_xprt_auth(hs->x);
-	if (ret) {
+	if (ret) 
 		goto err;
-	}
 	return 0;
  err:
 	/* Release the connect reference */
 	ldms_release_xprt(hs->x);
-	/* Release the create reference */
-	ldms_release_xprt(hs->x);
+	ldms_xprt_close(hs->x);
 	hs->x = NULL;
 	return -1;
 }

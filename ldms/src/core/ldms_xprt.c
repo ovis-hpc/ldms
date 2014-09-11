@@ -1074,6 +1074,9 @@ void process_auth_password_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	int rc = ntohl(reply->hdr.rc);
 	if (rc) {
 		x->log(LDMS_LERROR, "Authentication failed\n");
+		x->authenticated = 3;
+		pthread_cond_broadcast(&x->authcond);
+		pthread_mutex_unlock(&x->lock);
 		return;
 	}
 	pthread_mutex_lock(&x->lock);
@@ -1402,7 +1405,7 @@ int ldms_xprt_auth( ldms_t _x )
 	clock_gettime(CLOCK_REALTIME, &to);
 	to.tv_sec += AUTH_TIMEOUT_SEC;
 	to.tv_nsec = 0;
-	while (x->authenticated != 2) {
+	while (x->authenticated != 2 && x->authenticated != 3) {
 		rc = pthread_cond_timedwait(&(x->authcond), &(x->lock), &to);
 		if (rc) {
 			x->log(LDMS_LERROR,"ldms_xprt_auth timeout expired (%d s): %s\n",
@@ -1415,6 +1418,8 @@ int ldms_xprt_auth( ldms_t _x )
 		x->log(LDMS_LERROR,"failed pthread_mutex_unlock(&x->lock);\n");
 		x->log(LDMS_LERROR,"with: %s\n",strerror(mrc));
 	}
+	if (x->authenticated == 3)
+		rc = EINVAL; 
 #else
 	x->authenticated = 2;
 #ifdef HAVE_AUTHDEBUG
