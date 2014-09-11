@@ -28,6 +28,8 @@ include path to ovis/sbin
 
 .SH OPTIONS
 .TP
+If the SETNAME is specified on the command line, only information for that set is displayed.
+.TP
 .BR -h =\flHOST\fR
 HOST to query. Default is localhost.
 .TP
@@ -103,7 +105,7 @@ ldms_ls: lookup failed for set 'vm1_1/foo'
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8)
+ldmsd(8), ldmsctl(8), ldmsd.conf(5)
 
 .SH BUGS
 No known bugs.
