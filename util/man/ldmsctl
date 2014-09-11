@@ -328,7 +328,7 @@ Execute collect.sh (Note: When executing this across many nodes you would use pd
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldms_ls(8), ldmsd.conf(5), Plugin_procstatutil(5), Plugin_meminfo(5), Plugin_store_csv(5)
+ldmsd(8), ldms_ls(8), ldmsd.conf(5), Plugin_meminfo(5), Plugin_procstatutil(5), Plugin_store_csv(5), Plugin_vmstat(5)
 
 .SH BUGS
 No known bugs.
