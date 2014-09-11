@@ -776,7 +776,7 @@ static int is_good_auth_request(struct ldms_xprt *x, struct ldms_request *req)
 	x->log(LDMS_LERROR,"Fail in process_auth_request\n");
 	return 0;
 #else
-	x->log(LDMS_ERROR,"Unexpected call to process_auth_request\n");
+	x->log(LDMS_LERROR,"Unexpected call to process_auth_request\n");
 	return 1;
 #endif
 }
@@ -846,7 +846,7 @@ int ldms_xprt_checkauth(int cmd, struct ldms_xprt *x, struct ldms_request *req)
 		if ( 1 == x->authenticated) {
 			return is_good_auth_password_request(x, req);
 		} else {
-			x->log(LDMS_LINFO, 
+			x->log(LDMS_LINFO,
 				"LDMS_CMD_AUTH_PASSWORD received "
 				"before LDMS_CMD_AUTH\n");
 			return 0;
