@@ -22,12 +22,16 @@ if ENABLE_UGNI
 UGNI_CFLAGS = $(shell pkg-config --cflags cray-ugni)
 UGNI_LIBS = $(shell pkg-config --libs cray-ugni)
 libldmsugni_la_CFLAGS = $(AM_CFLAGS) $(UGNI_CFLAGS) \
-			@LIBEVENT_INCDIR_FLAG@
+			@LIBEVENT_INCDIR_FLAG@ \
+			@RCA_INCDIR_FLAG@ \
+			@KRCA_INCDIR_FLAG@ \
+			@CRAY_HSS_DEVEL_INCDIR_FLAG@
 libldmsugni_la_LDFLAGS = $(UGNI_LIBS) @OVIS_LIB_LIB64DIR_FLAG@ \
 			 @LIBEVENT_LIB64DIR_FLAG@ \
-			 @OVIS_LIB_LIBDIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@
+			 @OVIS_LIB_LIBDIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
+			 @RCA_LIB64DIR_FLAG@ @RCA_LIBDIR_FLAG@
 libldmsugni_la_SOURCES = ldms_ugni.c ldms_ugni.h
-libldmsugni_la_LIBADD = -levent -levent_pthreads -lmmalloc
+libldmsugni_la_LIBADD = -levent -levent_pthreads -lmmalloc -lrca
 pkglib_LTLIBRARIES += libldmsugni.la
 endif
 

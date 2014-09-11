@@ -60,12 +60,15 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
 #include <sys/epoll.h>
+#include <time.h>
 #include "gni_pub.h"
+#include "rca_lib.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_ugni.h"
@@ -74,6 +77,9 @@
 #define VERSION_FILE "/proc/version"
 /* Convenience macro for logging errors */
 #define LOG_(x, level, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(level, __VA_ARGS__); }
+
+/* 100000 because the Cray node names have only 5 digits, e.g, nid00000  */
+#define UGNI_MAX_NUM_NODE 100000
 
 static char *verfile = VERSION_FILE;
 static struct ldms_ugni_xprt ugni_gxp;
@@ -86,6 +92,10 @@ int cq_entries = 128;
 int IS_GEMINI=0;
 int IS_ARIES=0;
 static int reg_count;
+
+#define UGNI_AGE_UNIT 1000000 /* micro seconds */
+#define UGNI_AGE_DEFAULT 10
+static int age_thr = UGNI_AGE_DEFAULT; /* Age threshold to refresh the node info */
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
 pthread_mutex_t ugni_mh_lock;
@@ -108,6 +118,101 @@ struct ugni_rbuf_desc {
 };
 LIST_HEAD(ugni_rbuf_list, ugni_rbuf_desc) ugni_rbuf_list;
 pthread_mutex_t ugni_rbuf_lock = PTHREAD_MUTEX_INITIALIZER;
+
+struct ugni_node_info {
+	struct timespec time;
+	int *state;
+};
+
+#define UGNI_NODE_STATE_INIT 0
+#define UGNI_NODE_PREFIX "nid"
+
+static struct ugni_node_info nodeinfo;
+int get_nodeinfo(struct ldms_xprt *x)
+{
+	if (!nodeinfo.state) {;
+		nodeinfo.state = calloc(UGNI_MAX_NUM_NODE, sizeof(int));
+		if (!nodeinfo.state) {
+			x->log(LDMS_LERROR, "Out of memory\n");
+			errno = ENOMEM;
+			return -1;
+		}
+		memset(nodeinfo.state, UGNI_NODE_STATE_INIT,
+				UGNI_MAX_NUM_NODE * sizeof(int));
+	}
+
+	clock_gettime(CLOCK_REALTIME, &(nodeinfo.time));
+	rs_node_array_t nodelist;
+	if (rca_get_sysnodes(&nodelist)) {
+		x->log(LDMS_LERROR, "ugni: Failed to get node info.\n");
+		return -1;
+	}
+	int i, node_id;
+	for (i = 0; i < nodelist.na_len; i++) {
+		assert(i < UGNI_MAX_NUM_NODE);
+		node_id = nodelist.na_ids[i].rs_node_s._node_id;
+		nodeinfo.state[node_id] =
+				nodelist.na_ids[i].rs_node_s._node_state;
+	}
+	return 0;
+}
+
+int get_nodeid(struct sockaddr *sa, socklen_t sa_len,
+				struct ldms_ugni_xprt *gxp)
+{
+	int rc = 0;
+	char host[HOST_NAME_MAX];
+	rc = getnameinfo(sa, sa_len, host, HOST_NAME_MAX,
+					NULL, 0, NI_NAMEREQD);
+	if (rc) {
+		gxp->xprt->log(LDMS_LERROR, "ugni: %s\n", gai_strerror(rc));
+		return rc;
+	}
+	char *ptr = strstr(host, UGNI_NODE_PREFIX);
+	if (!ptr) {
+		gxp->xprt->log(LDMS_LINFO, "ugni: Unexpected node name '%s'\n", host);
+		return -1;
+	}
+	ptr = 0;
+	int id = strtol(host + strlen(UGNI_NODE_PREFIX), &ptr, 10);
+	if (ptr[0] != '\0') {
+		gxp->xprt->log(LDMS_LINFO, "ugni: Unexpected node name '%s'\n", host);
+		return -1;
+	}
+	gxp->node_id = id;
+	return 0;
+}
+
+int is_nodeinfo_old()
+{
+	struct timespec now, past;
+	clock_gettime(CLOCK_REALTIME, &now);
+	past = nodeinfo.time;
+
+	time_t diff_sec = now.tv_sec - past.tv_sec;
+	if (diff_sec > (age_thr / UGNI_AGE_UNIT))
+		return 1;
+
+	double diff_nsec = (now.tv_nsec - past.tv_nsec) / 1000000000.0;
+	if ((diff_nsec * UGNI_AGE_UNIT) > (age_thr % UGNI_AGE_UNIT))
+		return 1;
+	return 0;
+}
+
+#define UGNI_NODE_GOOD 7
+int is_good_state(struct ldms_ugni_xprt *gxp)
+{
+	int rc = 0;
+	if (is_nodeinfo_old()) {
+		if (get_nodeinfo(gxp->xprt))
+			return -1; /* error */
+	}
+
+	if (nodeinfo.state[gxp->node_id] != UGNI_NODE_GOOD)
+		return 0; /* not good */
+
+	return 1; /* good */
+}
 
 static void *io_thread_proc(void *arg);
 static void *cq_thread_proc(void *arg);
@@ -361,6 +466,20 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	int epcount;
 	int fdcnt;
 	struct epoll_event event;
+
+	if (!nodeinfo.state)
+		if (get_nodeinfo(x))
+			return -1;
+
+	if (gxp->node_id == -1)
+		if (get_nodeid(sa, sa_len, gxp))
+			return -1;
+
+	if (!is_good_state(gxp)) {
+		x->log(LDMS_LDEBUG, "node %d is in a bad state.\n",
+							gxp->node_id);
+		return -1;
+	}
 
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (gxp->sock < 0)
@@ -934,6 +1053,9 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 			   uint64_t raddr, gni_mem_handle_t remote_mh,
 			   uint32_t len, void *context)
 {
+	if (!is_good_state(gxp))
+		return EPERM;
+
 	gni_return_t grc;
 	struct ugni_desc *desc = alloc_desc(gxp);
 	if (!desc)
@@ -971,6 +1093,7 @@ static int ugni_read_meta_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 				 rbuf->meta_mh,
 				 (len?len:ntohl(rbuf->meta_size)),
 				 context);
+	return rc;
 }
 
 static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, void *context)
@@ -987,7 +1110,7 @@ static int ugni_read_data_start(struct ldms_xprt *x, ldms_set_t s, size_t len, v
 				 rbuf->data_mh,
 				 (len?len:ntohl(rbuf->data_size)),
 				 context);
-	return 0;
+	return rc;
 }
 
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r)
@@ -1008,6 +1131,13 @@ static void timeout_cb(int s, short events, void *arg)
 	to.tv_sec = 10;
 	to.tv_usec = 0;
 	evtimer_add(keepalive, &to);
+}
+
+void get_age_threshold()
+{
+	char *thr = getenv("LDMS_UGNI_STATE_AGE");
+	if (thr)
+		age_thr = atoi(thr);
 }
 
 static int once = 0;
@@ -1147,6 +1277,10 @@ static int init_once(ldms_log_fn_t log_fn)
 	if (rc)
 		goto err_3;
 
+	/* node state */
+	nodeinfo.state = NULL;
+	get_age_threshold();
+
 	atexit(ugni_xprt_cleanup);
 	return 0;
  err_3:
@@ -1194,6 +1328,7 @@ struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
 	// LIST_INSERT_HEAD(&ugni_list, gxp, client_link);
 
 	gxp->conn_status = CONN_IDLE;
+	gxp->node_id = -1;
 	x->max_msg = (1024*1024);
 	x->log = log_fn;
 	x->connect = ugni_xprt_connect;
