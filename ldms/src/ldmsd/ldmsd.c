@@ -300,8 +300,9 @@ void usage(char *argv[])
 	printf("    -V version     Prints the version.\n");
 	printf("    -x xprt:port   Specifies the transport type to listen on. May be specified\n"
 	       "                   more than once for multiple transports. The transport string\n"
-	       "                   is one of 'rdma', or 'sock'. A transport specific port number\n"
-	       "                   is optionally specified following a ':', e.g. rdma:50000.\n");
+	       "                   is one of 'rdma', or 'sock' of 'ugni' (Cray XE/XK/XC).\n"
+               "                   A transport specific port number is optionally specified\n"
+               "                   following a ':', e.g. rdma:50000.\n");
 	printf("    -Z conn_count  Count of connection threads to start.\n");
 	cleanup(1);
 }
