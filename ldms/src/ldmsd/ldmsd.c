@@ -176,8 +176,6 @@ struct attr_value_list *kw_list;
 
 struct str_map *hset_map;
 
-/* dirty_threshold defined in ldmsd_store.c */
-extern int dirty_threshold;
 extern size_t calculate_total_dirty_threshold(size_t mem_total,
 					      size_t dirty_ratio);
 

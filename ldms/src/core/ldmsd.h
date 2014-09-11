@@ -138,6 +138,13 @@ extern int parse_cfg(const char *config_file);
 extern struct hostspec *host_first(void);
 extern struct hostspec *host_next(struct hostspec *hs);
 
+/**
+ \brief Dirty Threshold (per flush thread).
+ The value of dirty_threshold is set in ldmsd.c and
+ declared in ldmsd_store.c.
+ */
+extern size_t dirty_threshold;
+
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_MAX_CONFIG_STR_LEN 256
 struct attr_value_list;
