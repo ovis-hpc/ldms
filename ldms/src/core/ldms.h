@@ -301,7 +301,7 @@ ldms_t ldms_xprt_next(ldms_t);
 int ldms_xprt_connected(ldms_t);
 
 /**
- * \brief Check if an endpoint is authenticated.
+ * \brief Check if an endpoint is authenticated. Client side.
  *
  * \param l	The endpoint handle.
  * \returns	!0 if the endpoint is authenticated.
@@ -481,6 +481,21 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
  */
 
 /**
+ * \brief Log levels
+ */
+enum {
+	LDMS_LDEBUG = 0,
+	LDMS_LINFO,
+	LDMS_LERROR,
+	LDMS_LCRITICAL,
+	LDMS_LALWAYS,
+};
+
+int ldms_str_to_level(const char *level_s);
+
+typedef void (*ldms_log_fn_t)(int level, const char *fmt, ...);
+
+/**
  * \brief Create a transport handle
  *
  * Metric sets are exported on the network through a transport. A
@@ -491,7 +506,6 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
-typedef void (*ldms_log_fn_t)(const char *fmt, ...);
 extern ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn);
 
 /**
@@ -528,15 +542,25 @@ extern const char *ldms_get_xprt_name(ldms_t x);
 extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
 
 /**
+/ \brief Authenticate to an LDMS host.
+ *
+ * \param x	The transport handle
+ * \returns 	0 if the authentication succeeds or is not checked.
+ * \returns	nonzero if authentication is required but fails.
+ */
+extern int ldms_xprt_auth(ldms_t x);
+
+/**
  * \brief Compute the correct response to an authentication challenge.
  *
  * The string returned should be freed by the caller.
  *
  * \param n	The random number needed to prevent replay attacks.
+ * \param x	The transport handle.
  * \returns	NULL if the response cannot be computed. See errno.
  * \returns	The answer to expect/provide.
  */
-extern char *ldms_get_auth_string(uint64_t n);
+extern char *ldms_get_auth_string(uint64_t n, ldms_t x);
 
 /**
  * \brief Listen for connection requests from LDMS peers.

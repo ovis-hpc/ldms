@@ -109,13 +109,12 @@ static char* ns_glp_baseunit[] = {
 	"(ns)",
 	};
 
-/* FIXME: These are really 1e6, but cannot change naming convention until NCSA updates image */
 static char* ns_glp_derivedunit[] = {
 	"(B/s)",
-	"(\% x10e6)",
+	"(\% x1e6)",
 	"(B)",
-	"(\% x10e6)",
-	"(\% x10e6)"
+	"(\% x1e6)",
+	"(\% x1e6)"
 	};
 
 

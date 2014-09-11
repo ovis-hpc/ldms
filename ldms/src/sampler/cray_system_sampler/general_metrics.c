@@ -81,13 +81,13 @@ int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
 	size_t msize = 0;
 	size_t dsize = 0;
 	size_t m, d;
-	char name[1024];
+	char name[CSS_LUSTRE_NAME_MAX];
 	int i;
 	int rc;
 
 	LIST_FOREACH(lss, &lustre_svc_head, link) {
 		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			sprintf(name, "%s#stats.%s", LUSTRE_METRICS[i]
+			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
 					, lss->name);
 			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
 			if (rc)
@@ -108,11 +108,11 @@ int add_metrics_lustre(ldms_set_t set, int comp_id,
 	struct lustre_svc_stats *lss;
 	int i;
 	int count = 0;
-	char name[1024];
+	char name[CSS_LUSTRE_NAME_MAX];
 
 	LIST_FOREACH(lss, &lustre_svc_head, link) {
 		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			sprintf(name, "%s#stats.%s", LUSTRE_METRICS[i]
+			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
 							, lss->name);
 			ldms_metric_t m = ldms_add_metric(set, name,
 								LDMS_V_U64);
@@ -131,15 +131,15 @@ int add_metrics_lustre(ldms_set_t set, int comp_id,
 
 int handle_llite(const char *llite)
 {
-	char *saveptr = NULL;
 	char *_llite = strdup(llite);
 	if (!_llite)
 		return ENOMEM;
+	char *saveptr = NULL;
 	char *tok = strtok_r(_llite, ",", &saveptr);
 	struct lustre_svc_stats *lss;
-	char path[4096];
+	char path[CSS_LUSTRE_PATH_MAX];
 	while (tok) {
-		sprintf(path, "/proc/fs/lustre/llite/%s-*/stats",tok);
+		snprintf(path, CSS_LUSTRE_PATH_MAX,"/proc/fs/lustre/llite/%s-*/stats",tok);
 		lss = lustre_svc_stats_alloc(path, LUSTRE_METRICS_LEN+1);
 		lss->name = strdup(tok);
 		if (!lss->name)
@@ -182,7 +182,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog("ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -240,7 +240,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog("ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -252,7 +252,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 				if (!strcmp(metric_name, VMSTAT_METRICS[j])){
 					ldms_set_metric(metric_table_vmstat[j], &v);
 					found_metrics++;
-					if ((found_metrics == NUM_VMSTAT_METRICS) && 
+					if ((found_metrics == NUM_VMSTAT_METRICS) &&
 					    (found_submetrics == NUM_VMCF_METRICS)){
 						done = 1;
 						break;
@@ -266,7 +266,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 				if (!strcmp(metric_name, VMCF_METRICS[j])){
 					vmcf[j] = v.v_u64;
 					found_submetrics++;
-					if ((found_metrics == NUM_VMSTAT_METRICS) && 
+					if ((found_metrics == NUM_VMSTAT_METRICS) &&
 					    (found_submetrics == NUM_VMCF_METRICS)){
 						done = 1;
 						break;
@@ -282,7 +282,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 
 	if (found_submetrics == NUM_VMCF_METRICS) {
 		//treating the order like its well known
-		//	(nr_free_pages + nr_file_pages + nr_slab_reclaimable - nr_shmem) * 4 
+		//	(nr_free_pages + nr_file_pages + nr_slab_reclaimable - nr_shmem) * 4
 		v.v_u64 = (vmcf[0] + vmcf[1] + vmcf[2] - vmcf[3]) * 4;
 		ldms_set_metric(metric_table_current_freemem[0], &v);
 	} else {
@@ -330,7 +330,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 		replace_space(s);
 
 		if (sscanf(s, "%s", metric_name) != 1){
-			msglog("ERR: Issue reading metric name from the source"
+			msglog(LDMS_LDEBUG,"ERR: Issue reading metric name from the source"
 						" file '%s'\n", KGNILND_FILE);
 			rc = EINVAL;
 			return rc;
@@ -386,7 +386,7 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 	if (s) {
 		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 		if (rc != 1) {
-			msglog("ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
 							CURRENT_FREEMEM_FILE);
 			fclose(cf_f);
 			cf_f = 0;
@@ -416,7 +416,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	procnetdev_valid = 0;
 
 	if (!pnd_f) {
-		msglog("procnetdev: filehandle NULL\n");
+		msglog(LDMS_LDEBUG,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -436,7 +436,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	} while(s);
 
 	if (idx_iface == -1){
-		msglog("procnetdev: cannot find iface <%s>\n", iface);
+		msglog(LDMS_LDEBUG,"procnetdev: cannot find iface <%s>\n", iface);
 		return EINVAL;
 	}
 
@@ -452,7 +452,7 @@ int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 	}
 
 	if (!pnd_f) {
-		msglog("procnetdev: filehandle NULL\n");
+		msglog(LDMS_LDEBUG,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -527,7 +527,7 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%f %f %f %d/%d %d\n",
 			    &vf[0], &vf[1], &vf[2], &vi[0], &vi[1], &vi[2]);
 		if (rc != 6) {
-			msglog("ERR: Issue reading the source file '%s'"
+			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'"
 					" (rc=%d)\n", LOADAVG_FILE, rc);
 			fclose(l_f);
 			l_f = NULL;

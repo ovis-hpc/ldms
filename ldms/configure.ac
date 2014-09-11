@@ -21,6 +21,7 @@ dnl AM_PROG_CC_C_O
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
+AX_CHECK_OPENSSL
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])
@@ -29,10 +30,12 @@ OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
 OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
 OPTION_DEFAULT_ENABLE([glib], [ENABLE_GLIB])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
-OPTION_DEFAULT_DISABLE([authentication], [ENABLE_AUTHENTICATION])
-OPTION_DEFAULT_DISABLE([authdebug], [ENABLE_AUTHDEBUG])
-OPTION_DEFAULT_DISABLE([use-tf], [ENABLE_USE_TF])
-OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
+OPTION_DEFAULT_DISABLE([authentication], [ENABLE_AUTHENTICATION],[require shared secret to query ldmsd])
+OPTION_DEFAULT_DISABLE([authdebug], [ENABLE_AUTHDEBUG],[log authentication steps])
+OPTION_DEFAULT_DISABLE([use-tf], [ENABLE_USE_TF],[log tracing of calls])
+OPTION_DEFAULT_DISABLE([use-rtc], [ENABLE_USE_RTC],[log rtc stamp with traced calls])
+OPTION_DEFAULT_DISABLE([use-tid], [ENABLE_USE_TID],[log thread id with traced calls])
+OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC],[generate doxygen output])
 
 dnl Options for transport
 OPTION_DEFAULT_ENABLE([xprt], [ENABLE_XPRT])
@@ -133,7 +136,7 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"
 then
 AC_CHECK_LIB(ibmad, mad_rpc_open_port, [],
     AC_MSG_ERROR([mad_rpc_open_port() function not found. sysclassib sampler
-		  requires libibmad.]))
+		  requires libibmad 1.3.]))
 dnl Reset LIBS variable.
 LIBS=""
 
@@ -295,6 +298,32 @@ then
 AC_DEFINE([HAVE_AUTH],[1],[Turning on authentication checks for xprt connect.])
 fi
 
+if test -z "$ENABLE_AUTHDEBUG_TRUE"
+then
+AC_DEFINE([HAVE_AUTHDEBUG],[1],[Turning on auth debug logging.])
+fi
+
+if test -z "$ENABLE_USE_TF_TRUE"
+then
+AC_DEFINE([USE_TF],[1],[Turning on tracing facilities.])
+else
+AC_DEFINE([USE_TF],[0],[Turning on tracing facilities.])
+fi
+
+if test -z "$ENABLE_USE_RTC_TRUE"
+then
+AC_DEFINE([USE_RTC],[1],[Use rtc timestamp in trace.])
+else
+AC_DEFINE([USE_RTC],[0],[Use rtc timestamp in trace.])
+fi
+
+if test -z "$ENABLE_USE_TID_TRUE"
+then
+AC_DEFINE([USE_TID],[1],[Use thread id in trace.])
+else
+AC_DEFINE([USE_TID],[0],[Use thread id timestamp in trace.])
+fi
+
 OPTION_WITH_PORT([LDMSD],[411])
 
 OPTION_WITH_MAGIC([LDMS_MSG_MAX],[32768],[Maximum control message length allowed to ldmsd (min 4095)])
@@ -317,6 +346,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 scripts/ldmsd
+		 scripts/ldms_ctltest.sh
 		 scripts/envldms.sh
 		 scripts/ldms_ban.sh
 		 scripts/ldms_usertest.sh
@@ -325,6 +355,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 scripts/ldms_local_clocktest.sh
 		 ldms.spec],[
 		if test -f scripts/ldms_ban.sh.in; then chmod a+x scripts/ldms_ban.sh.in; fi
+		if test -f scripts/ldms_ctltest.sh; then chmod a+x scripts/ldms_ctltest.sh; fi
 		if test -f scripts/ldms_usertest.sh; then chmod a+x scripts/ldms_usertest.sh; fi
 		if test -f scripts/ldms_local_usertest.sh; then chmod a+x scripts/ldms_local_usertest.sh; fi
 		if test -f scripts/ldms_local_valgrind.sh; then chmod a+x scripts/ldms_local_valgrind.sh; fi

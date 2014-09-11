@@ -70,6 +70,15 @@
 #include "ldms.h"
 #include "ldms_xprt.h"
 
+#if USE_TF
+#if (defined(__linux) &&  USE_TID)
+#define TF() default_log(LDMS_LINFO,"Thd%lu:%s:%lu:%s\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__,__FILE__)
+#else
+#define TF() default_log(LDMS_LINFO,"%s:%d\n", __FUNCTION__, __LINE__)
+#endif /* linux */
+#else
+#define TF()
+#endif /* 1 or 0 disable tf */
 static pthread_mutex_t dir_lock;
 static pthread_cond_t dir_cv;
 static int dir_done;
@@ -113,6 +122,7 @@ void usage(char *argv[])
 
 void server_timeout(void)
 {
+	TF();
 	printf("A timeout occurred waiting for a response from the server.\n"
 	       "Use the -w option to specify the amount of time to wait "
 	       "for the server\n");
@@ -197,6 +207,7 @@ static int long_format = 0;
 
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
+	TF();
 	unsigned long last = (unsigned long)arg;
 	struct ldms_timestamp const *ts = ldms_get_timestamp(s);
 	int consistent = ldms_is_set_consistent(s);
@@ -234,6 +245,7 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	       ldms_set_t s, void *arg)
 {
+	TF();
 	unsigned long last = (unsigned long)arg;
 	if (status) {
 		last = 1;
@@ -277,6 +289,7 @@ void add_set_list(ldms_t t, ldms_dir_t _dir)
 
 void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 {
+	TF();
 	int more;
 	if (status) {
 		dir_status = status;
@@ -295,9 +308,11 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	pthread_cond_signal(&dir_cv);
 }
 
-void null_log(const char *fmt, ...)
+void null_log(int level, const char *fmt, ...)
 {
 	va_list ap;
+	if (level < LDMS_LERROR) 
+		return;
 
 	va_start(ap, fmt);
 	vfprintf(stdout, fmt, ap);
@@ -400,12 +415,16 @@ int main(int argc, char *argv[])
 		printf("Port        : %hu\n", port_no);
 		printf("Transport   : %s\n", xprt);
 	}
+	TF();
 	ret  = ldms_connect(ldms, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret) {
 		perror("ldms_ls");
 		exit(2);
 	}
-	// wait here for authenticated to be true?
+        if ( ldms_xprt_auth(ldms) ) {
+		perror("ldms_ls: auth");
+		exit(2);
+	}
 
 	pthread_mutex_init(&dir_lock, 0);
 	pthread_cond_init(&dir_cv, NULL);
@@ -451,6 +470,7 @@ int main(int argc, char *argv[])
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += waitsecs;
 	pthread_mutex_lock(&dir_lock);
+	TF();
 	while (!dir_done)
 		ret = pthread_cond_timedwait(&dir_cv, &dir_lock, &ts);
 	pthread_mutex_unlock(&dir_lock);
@@ -473,6 +493,7 @@ int main(int argc, char *argv[])
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
 
+		TF();
 		if (verbose || long_format) {
 			pthread_mutex_lock(&print_lock);
 			print_done = 0;
@@ -493,10 +514,12 @@ int main(int argc, char *argv[])
 	}
 done:
 	pthread_mutex_lock(&done_lock);
+	TF();
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
 
 	ldms_xprt_close(ldms);
+	TF();
 	exit(0);
 }

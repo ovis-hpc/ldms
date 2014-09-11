@@ -120,7 +120,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open /proc/net/dev file '%s'...exiting\n",
+		msglog(LDMS_LDEBUG,"Could not open /proc/net/dev file '%s'...exiting\n",
 				procfile);
 		return ENOENT;
 	}
@@ -246,7 +246,7 @@ static int sample(void)
 
 
 	if (!set){
-		msglog("procnetdev: plugin not initialized\n");
+		msglog(LDMS_LDEBUG,"procnetdev: plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -272,7 +272,7 @@ static int sample(void)
 
 		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface, &v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
 		if (rc != 17){
-			msglog("Procnetdev: wrong number of fields in sscanf\n");
+			msglog(LDMS_LDEBUG,"Procnetdev: wrong number of fields in sscanf\n");
 			continue;
 		}
 

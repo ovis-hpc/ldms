@@ -64,8 +64,11 @@
 #include "ldms_xprt.h"
 #include "ldms_rdma_xprt.h"
 
-#define LOG__(x, ...) { if (x && x->log) x->log(__VA_ARGS__); }
-#define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(__VA_ARGS__); }
+#define LOG__(x, ...) { if (x && x->log) x->log(LDMS_LERROR, __VA_ARGS__); }
+#define LOG_(x, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(LDMS_LERROR, __VA_ARGS__); }
+/* turns out all log messages are in lerror class; just in case, generic below: */
+#define GLOG__(x, level, ...) { if (x && x->log) x->log(level, __VA_ARGS__); }
+#define GLOG_(x, level, ...) { if (x && x->xprt && x->xprt->log) x->xprt->log(level, __VA_ARGS__); }
 
 LIST_HEAD(rdma_list, ldms_rdma_xprt) rdma_list;
 
@@ -123,25 +126,25 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 	/* Destroy the RQ CQ */
 	if (r->rq_cq) {
 		if (ibv_destroy_cq(r->rq_cq))
-			LOG_(r, "RDMA: Error %d : ibv_destroy_cq failed\n",
+			LOG_(r,  "RDMA: Error %d : ibv_destroy_cq failed\n",
 			     errno);
 	}
 	/* Destroy the SQ CQ */
 	if (r->sq_cq) {
 		if (ibv_destroy_cq(r->sq_cq))
-			LOG_(r, "RDMA: Error %d : ibv_destroy_cq failed\n",
+			LOG_(r,  "RDMA: Error %d : ibv_destroy_cq failed\n",
 			     errno);
 	}
 	/* Destroy the PD */
 	if (r->pd) {
 		if (ibv_dealloc_pd(r->pd))
-			LOG_(r, "RDMA: Error %d : ibv_dealloc_pd failed\n",
+			LOG_(r,  "RDMA: Error %d : ibv_dealloc_pd failed\n",
 			     errno);
 	}
 	/* Destroy the CM id */
 	if (r->cm_id) {
 		if (rdma_destroy_id(r->cm_id))
-			LOG_(r, "RDMA: Error %d : rdma_destroy_id failed\n",
+			LOG_(r,  "RDMA: Error %d : rdma_destroy_id failed\n",
 			     errno);
 	}
 	if (r->cm_channel)
@@ -149,7 +152,7 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 
 	if (r->cq_channel) {
 		if (ibv_destroy_comp_channel(r->cq_channel))
-			LOG_(r, "RDMA: Error %d : "
+			LOG_(r,  "RDMA: Error %d : "
 			     "ibv_destroy_comp__channel failed\n", errno);
 	}
 	r->cm_id = NULL;
@@ -195,7 +198,7 @@ static struct rdma_buffer *rdma_buffer_alloc(struct ldms_rdma_xprt *x,
 	rbuf->mr = ibv_reg_mr(x->pd, rbuf->data, len, f);
 	if (!rbuf->mr) {
 		free(rbuf);
-		LOG_(x, "RDMA: recv_buf reg_mr failed: error %d\n", errno);
+		LOG_(x,  "RDMA: recv_buf reg_mr failed: error %d\n", errno);
 		return NULL;
 	}
 	return rbuf;
@@ -249,7 +252,7 @@ static int post_send(struct ldms_rdma_xprt *x,
 	int rc;
 	struct rdma_request_hdr *msg;
 	if (x->conn_status != CONN_CONNECTED) {
-		LOG_(x, "%s: not connected conn_status %d\n",
+		LOG_(x,  "%s: not connected conn_status %d\n",
 		     __func__, x->conn_status);
 		errno = ENOTCONN;
 		return ENOTCONN;
@@ -267,7 +270,7 @@ static int post_send(struct ldms_rdma_xprt *x,
 
 	rc = ibv_post_send(x->qp, &ctxt->wr, bad_wr);
 	if (rc) {
-		LOG_(x, "%s: error %d posting send is_rdma %d sq_credits %d "
+		LOG_(x,  "%s: error %d posting send is_rdma %d sq_credits %d "
 		     "lcl_rq_credits %d rem_rq_credits %d.\n", __func__,
 		     rc, is_rdma, x->sq_credits, x->lcl_rq_credits, x->rem_rq_credits);
 		ldms_release_xprt(x->xprt);
@@ -303,7 +306,7 @@ char * op_str[] = {
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 static const char *xlate_cmd(int cmd)
 {
-	static char cmd_s[16];
+	static char cmd_s[35];
 	if ( is_valid_ldms_request_cmd(cmd) ) {
 		return ldms_request_cmd_names[cmd];
 	}
@@ -406,7 +409,7 @@ static void submit_pending(struct ldms_rdma_xprt *x)
 		TAILQ_REMOVE(&x->io_q, ctxt, pending_link);
 
 		if (post_send(x, ctxt, &badwr, is_rdma))
-			LOG_(x, "Error posting queued I/O.\n");
+			LOG_(x,  "Error posting queued I/O.\n");
 	}
  out:
 	pthread_mutex_unlock(&x->credit_lock);
@@ -599,7 +602,7 @@ static void process_read_wc(struct ldms_rdma_xprt *r, struct ibv_wc *wc,
 			    void *usr_context)
 {
 	if (r->xprt && r->xprt->read_complete_cb)
-		r->xprt->read_complete_cb(r->xprt, usr_context);
+		r->xprt->read_complete_cb(r->xprt, usr_context, wc->status);
 }
 
 static void process_recv_wc(struct ldms_rdma_xprt *r, struct ibv_wc *wc,
@@ -1572,8 +1575,8 @@ static int init_once()
 	return 1;
 }
 
-struct ldms_xprt *xprt_get(int (*recv_cb)(struct ldms_xprt *, void *),
-			   int (*read_complete_cb)(struct ldms_xprt *, void *),
+struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
+			   read_complete_cb_t read_complete_cb,
 			   ldms_log_fn_t log_fn)
 {
 	struct ldms_xprt *x;

@@ -261,7 +261,7 @@ static char metric_name[128];
 		kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl),
 			     sizeof(*kw), kw_comparator);
 		if (!kw) {
-			msglog("Uncrecognized keyword '%s' in "
+			msglog(LDMS_LDEBUG,"Uncrecognized keyword '%s' in "
 			       "configuration string.\n", token);
 			return -1;
 		}
@@ -270,39 +270,39 @@ static char metric_name[128];
 			return rc;
 	}
 	if (!pe->name) {
-		msglog("An event name must be specifed.\n");
+		msglog(LDMS_LDEBUG,"An event name must be specifed.\n");
 		goto err;
 	}
 	pe->fd = pe_open(&pe->attr, pe->pid, pe->cpu, -1, 0);
 	if (pe->fd < 0) {
-		msglog("Error adding event '%s', errno %d\n", pe->name, pe->fd);
+		msglog(LDMS_LDEBUG,"Error adding event '%s', errno %d\n", pe->name, pe->fd);
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "value");
 	pe->metric_value = ldms_add_metric(set, metric_name, LDMS_V_U64);
 	if (!pe->metric_value) {
-		msglog("Could not create the metric for event '%s'\n",
+		msglog(LDMS_LDEBUG,"Could not create the metric for event '%s'\n",
 		       metric_name);
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "mean");
 	pe->metric_mean = ldms_add_metric(set, metric_name, LDMS_V_U64);
 	if (!pe->metric_mean) {
-		msglog("Could not create the metric for event '%s'\n",
+		msglog(LDMS_LDEBUG,"Could not create the metric for event '%s'\n",
 		       metric_name);
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "variance");
 	pe->metric_variance = ldms_add_metric(set, metric_name, LDMS_V_U64);
 	if (!pe->metric_variance) {
-		msglog("Could not create the metric for event '%s'\n",
+		msglog(LDMS_LDEBUG,"Could not create the metric for event '%s'\n",
 		       metric_name);
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "stddev");
 	pe->metric_stddev = ldms_add_metric(set, metric_name, LDMS_V_U64);
 	if (!pe->metric_stddev) {
-		msglog("Could not create the metric for event '%s'\n",
+		msglog(LDMS_LDEBUG,"Could not create the metric for event '%s'\n",
 		       metric_name);
 		goto err;
 	}
@@ -347,15 +347,15 @@ static int del_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 static int list(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct pevent *pe;
-	msglog("%-24s %8s %8s %8s %8s %16s\n",
+	msglog(LDMS_LALWAYS,"%-24s %8s %8s %8s %8s %16s\n",
 	       "Name", "Pid", "Cpu", "Fd", "Type", "Event");
-	msglog("%-24s %8s %8s %8s %8s %16s\n",
+	msglog(LDMS_LALWAYS,"%-24s %8s %8s %8s %8s %16s\n",
 	       "------------------------",
 	       "--------", "--------", "--------",
 	       "--------", "----------------");
-	msglog("Name Fd Type Config\n");
+	msglog(LDMS_LALWAYS,"Name Fd Type Config\n");
 	LIST_FOREACH(pe, &pevent_list, entry) {
-		msglog("%-24s %8d %8d %8d %8d %16llx\n",
+		msglog(LDMS_LALWAYS,"%-24s %8d %8d %8d %8d %16llx\n",
 		       pe->name, pe->pid, pe->cpu,
 		       pe->fd, pe->attr.type, pe->attr.config);
 	}
@@ -399,10 +399,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto err2;
 	return 0;
  err0:
-	msglog(usage());
+	msglog(LDMS_LDEBUG,usage());
 	goto err2;
  err1:
-	msglog("Invalid configuration keyword '%s'\n", action);
+	msglog(LDMS_LDEBUG,"Invalid configuration keyword '%s'\n", action);
  err2:
 	return 0;
 }
@@ -421,7 +421,7 @@ static int sample(void)
 		pe->last_value = pe->sample.value;
 		rc = read(pe->fd, &pe->sample, sizeof(pe->sample));
 		if (rc != sizeof(pe->sample)) {
-			msglog("Error %d sampling event '%s'\n",
+			msglog(LDMS_LDEBUG,"Error %d sampling event '%s'\n",
 			       errno, pe->name);
 			continue;
 		}

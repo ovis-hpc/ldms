@@ -16,7 +16,7 @@ dnl SYNOPSIS: OPTION_DEFAULT_DISABLE([name], [enable_flag_var])
 dnl EXAMPLE: OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
 dnl note: supports hyphenated feature names now.
 AC_DEFUN([OPTION_DEFAULT_DISABLE], [
-AC_ARG_ENABLE($1, [  --enable-$1     Enable the $1 module],
+AC_ARG_ENABLE($1, [  --enable-$1     Enable the $1 module: $3],
         [       if test "x$enableval" = "xyes" ; then
                         enable_]m4_translit([$1], [-+.], [___])[=yes
                         disable_]m4_translit([$1], [-+.], [___])[=no

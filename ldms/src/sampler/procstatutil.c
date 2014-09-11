@@ -130,7 +130,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen("/proc/stat", "r");
 	if (!mf) {
-		msglog("Could not open the /proc/stat file.\n");
+		msglog(LDMS_LDEBUG,"Could not open the /proc/stat file.\n");
 		return ENOENT;
 	}
 
@@ -317,7 +317,7 @@ static int sample(void)
 
 	//	if (!set || !compid_metric_handle ){
 	if (!set ){
-		msglog("procstatutil: plugin not initialized\n");
+		msglog(LDMS_LDEBUG,"procstatutil: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_begin_transaction(set);

@@ -123,6 +123,13 @@ int mm_init(size_t size, size_t grain)
 	if (!mmr)
 		return ENOMEM;
 
+	if (grain < 128) {
+		/*
+		 * The grain must be greater than sizeof mm_prefix
+		 * which is 96B. The next power of 2 is 128B.
+		 */
+		grain = 128;
+	}
 	size = MMR_ROUNDUP(size, 4096);
 	mmr->start = mmap(NULL, size, PROT_READ | PROT_WRITE,
 			  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -176,8 +183,8 @@ void *mm_alloc(size_t size)
 
 	p = container_of(rbn, struct mm_prefix, size_node);
 #ifdef MM_DEBUG
-	if (p > max_addr)
-		max_addr = p;
+	if ((uint64_t)(unsigned long)p > max_addr)
+		max_addr = (uint64_t)(unsigned long)p;
 #endif
 
 	/* Remove the node from the size and address trees */
@@ -199,6 +206,7 @@ void *mm_alloc(size_t size)
 	}
 	p->count = count;
 	p->addr = (unsigned long)p;
+	bzero(p + 1, size - sizeof(*p));
 	pthread_mutex_unlock(&mmr_lock);
 	return ++p;
  err:
@@ -267,18 +275,43 @@ void mm_free(void *d)
 }
 
 static int node_count;
-static void heap_print(struct rbn *rbn, void *fn_data, int level)
+static int heap_print(struct rbn *rbn, void *fn_data, int level)
 {
 	struct mm_prefix *mm =
 		container_of(rbn, struct mm_prefix, addr_node);
-	printf("#%*p[%d]\n", 80 - (level * 20), mm, mm->count);
+	assert(rbn->left != rbn->parent);
+	assert(rbn->right != rbn->parent);
+	printf("#%*p[%d]-%c\n", 80 - (level * 20), mm, mm->count,
+	       (rbn->color == RBN_RED?'R':'B'));
 	node_count++;
+	return 0;
 }
+static int verify(struct rbn *rbn, void *fn_data, int level)
+{
+	assert(rbn->left != rbn->parent);
+	assert(rbn->right != rbn->parent);
+	return 0;
+}
+
 void mm_dump()
 {
 	printf("in_use %ld\n", mmr->in_use);
 	printf("max_addr %p\n", (void *)(unsigned long)max_addr);
 	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
+}
+static int heap_print_by_size(struct rbn *rbn, void *fn_data, int level)
+{
+	struct mm_prefix *mm =
+		container_of(rbn, struct mm_prefix, size_node);
+	assert(rbn->left != rbn->parent);
+	assert(rbn->right != rbn->parent);
+	printf("#%*p[%d]-%c\n", 80 - (level * 20), mm, mm->count,
+	       (rbn->color == RBN_RED?'R':'B'));
+	return 0;
+}
+void mm_dump_by_size()
+{
+	rbt_traverse(&mmr->size_tree, heap_print_by_size, NULL);
 }
 #ifdef MMR_TEST
 int main(int argc, char *argv[])
@@ -320,6 +353,7 @@ int main(int argc, char *argv[])
 	 * +---++---+|---++---++---++---++--~~~-+
 	 */
 	node_count = 0;
+	rbt_traverse(&mmr->size_tree, verify, NULL);
 	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
 	TEST_ASSERT((node_count == 1),
 		    "There is only a single node in the heap "
@@ -329,7 +363,19 @@ int main(int argc, char *argv[])
 	 * each of these newly freed blocks, they can't be coelesced.
 	 */
 	mm_free(b[0]);
+	node_count = 0;
+	rbt_traverse(&mmr->size_tree, verify, NULL);
+	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
+	TEST_ASSERT((node_count == 2),
+		    "There are two nodes in the heap "
+		    "after one discontiguous frees.\n");
 	mm_free(b[2]);
+	node_count = 0;
+	rbt_traverse(&mmr->size_tree, verify, NULL);
+	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
+	TEST_ASSERT((node_count == 3),
+		    "There are three nodes in the heap "
+		    "after two discontiguous frees.\n");
 	mm_free(b[4]);
 	/*
 	 * +---++---++---++---++---++---++--~~--+
@@ -337,6 +383,7 @@ int main(int argc, char *argv[])
 	 * +---++---+|---++---++---++---++--~~~-+
 	 */
 	node_count = 0;
+	rbt_traverse(&mmr->size_tree, verify, NULL);
 	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
 	TEST_ASSERT((node_count == 4),
 		    "There are four nodes in the heap "
@@ -351,6 +398,7 @@ int main(int argc, char *argv[])
 	 * +-------------++---++---++---++--~~--+
 	 */
 	node_count = 0;
+	rbt_traverse(&mmr->size_tree, verify, NULL);
 	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
 	TEST_ASSERT((node_count == 3),
 		    "There are three nodes in the heap "
@@ -366,6 +414,7 @@ int main(int argc, char *argv[])
 	 * +-------------++---++---~~---~~--~~--+
 	 */
 	node_count = 0;
+	rbt_traverse(&mmr->size_tree, verify, NULL);
 	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
 	TEST_ASSERT((node_count == 2),
 		    "There are two nodes in the heap "
@@ -381,6 +430,7 @@ int main(int argc, char *argv[])
 	 * +---------~~------~~--------~~-------+
 	 */
 	node_count = 0;
+	rbt_traverse(&mmr->size_tree, verify, NULL);
 	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
 	TEST_ASSERT((node_count == 1),
 		    "There is one node in the heap "

@@ -240,7 +240,7 @@ struct ldmsd_store_policy {
 	LIST_ENTRY(ldmsd_store_policy) link;
 };
 
-void ldms_log(const char *fmt, ...);
+void ldms_log(int level, const char *fmt, ...);
 
 /**
  * Initialize the ldmsd_store.
@@ -303,7 +303,7 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 	store->close(sh);
 }
 
-typedef void (*ldmsd_msg_log_f)(const char *fmt, ...);
+typedef void (*ldmsd_msg_log_f)(int level, const char *fmt, ...);
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
 
 /* ldmsctl command callback function definition */
@@ -323,10 +323,8 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_INFO_DAEMON	9   /* Query daemon status */
 #define LDMSCTL_EXIT_DAEMON	10   /* Shut down ldmsd */
 #define LDMSCTL_UPDATE_STANDBY  11   /* update the standby state */
-//TEMPORARILY disable remote version query thru ldmsctl
-//#define LDMSCTL_VERSION         12   /* Query for version info */
-//#define LDMSCTL_LAST_COMMAND	12
-#define LDMSCTL_LAST_COMMAND	11
+#define LDMSCTL_VERSION         12   /* Query for version info */
+#define LDMSCTL_LAST_COMMAND	12
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 

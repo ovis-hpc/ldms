@@ -107,7 +107,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the kgnilnd file '%s'...exiting\n", procfile);
+		msglog(LDMS_LDEBUG,"Could not open the kgnilnd file '%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 
@@ -216,7 +216,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set){
-	  msglog("kgnilnd: plugin not initialized\n");
+	  msglog(LDMS_LDEBUG,"kgnilnd: plugin not initialized\n");
 	  return EINVAL;
 	}
 	ldms_begin_transaction(set);

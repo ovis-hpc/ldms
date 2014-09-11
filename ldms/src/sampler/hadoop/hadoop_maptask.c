@@ -129,7 +129,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	int rc;
 	if (rc = setup_datagram(port, &maptask_set.sockfd)) {
-		msglog("hadoop_maptask: failed to setup "
+		msglog(LDMS_LERROR,"hadoop_maptask: failed to setup "
 				"datagram between ldmsd and hadoop.\n");
 		goto err_1;
 	}
@@ -150,7 +150,7 @@ err_1:
 err_0:
 	return rc;
 enoent:
-	msglog("hadoop_maptask: need %s. Error %d\n", attr, ENOENT);
+	msglog(LDMS_LERROR,"hadoop_maptask: need %s. Error %d\n", attr, ENOENT);
 	return ENOENT;
 }
 

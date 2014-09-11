@@ -50,17 +50,33 @@
  */
 /**
  * \file procsensors.c
- * \brief reads from proc the data that populates lm sensors (in*_input, fan*_input, temp*_input)
+ * \brief reads from sysfs the data that populates lm sensors (e.g., in*_input, fan*_input, temp*_input)
  *
- * NOTE: data files have to be opened and closed on each file in sys for the data vaules to change.
- * The actual functionality of the data gathering by the system takes time on systems.
- * Sample stores the data locally and then writes it out so that the collection will not occur during
- * partial set. There is therefore some slop in the actaul time for the data point.
+ * NOTE: data of interest defined in config file with format:
+ * full_path_to_sysfs_var metricname multiplier offset
  *
- * filename will be the variable name. mysql inserter will have to convert names and downselect which ones
- * to record.
+ * All fields must be defined. No extraneous space. No other separators. Blank lines ok.
+ * Hash in first char position are comments.
+ * As of 8/12/14 revision, this is NOT backwards compatible.
  *
- * FIXME: decideif multipliers should go here....
+ * for example:
+ * /home/xxx/temp tempa 1 0
+ * /home/xxx/fan fanx 1 0
+ * /home/yyy/temp tempb 2 0.2
+ *
+ * /home/yyy/fanx fannew 1 0
+ * # this is a comment
+ *
+ * #
+ * /home/yyy/temp0_input temp0 1 0
+ *
+ *
+ * This results in metricset variables: tempa, fanx, tempb, fannew
+ *
+ * NOTE: metricname must be unique to the metric set
+ * NOTE: Multiplier and offset are float but the evenual val will be u64
+ *
+ * NOTE: data files have to be opened and closed on each file in sys for the data values to change.
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -76,168 +92,163 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-//FIXME: make this a parameter later..
-static char* procsensorsfiledir = "/sys/devices/pci0000:00/0000:00:01.1/i2c-1/1-002f/";
-const static int vartypes = 3;
-const static char* varnames[] = {"in", "fan", "temp"};
-const static int varbounds[] = {0,9,1,9,1,6};
-static uint64_t counter;
+#define MAXSENSORFILENAME 512
+
+struct vinfo {
+	char* vname;
+	char* mname;
+	float multiplier;
+	float offset;
+};
+
 ldms_set_t set;
 FILE *mf;
 ldms_metric_t *metric_table;
-int metric_count; //now global
-uint64_t* metric_values;
-uint64_t* metric_times;
-int num_metric_times;
+struct vinfo** lm_srcs;
+int lm_nentries;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
 
-#undef CHECK_SENSORS_TIMING
-#ifdef CHECK_SENSORS_TIMING
-//Some temporary for testing x ref with metric_times
-ldms_metric_t tv_sec_metric_handle2;
-ldms_metric_t tv_nsec_metric_handle2;
-ldms_metric_t tv_dnsec_metric_handle;
-ldms_metric_t tv_sec_metric_handle3;
-ldms_metric_t tv_nsec_metric_handle3;
-ldms_metric_t tv_dnwrite_metric_handle;
-#endif
+
+static int parse_conf_file(const char* ffile)
+{
+	char lbuf[MAXSENSORFILENAME];
+	char* s;
+	int rc = 0;
+
+	FILE *fp = fopen(ffile,"r");
+	if (!fp) {
+		msglog(LDMS_LDEBUG,"Could not open the procsensors config file '%s'...returning\n",
+		       ffile);
+		return EINVAL;
+	}
+
+	//count the entries
+	lm_nentries = 0;
+	do {
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+
+		if ((strlen(lbuf) > 0) && (lbuf[0] != '#') && (lbuf[0] != '\n')){
+			lm_nentries++;
+		}
+	} while (s);
+
+	if (lm_nentries == 0){
+		msglog(LDMS_LDEBUG,"No entries in the procsensors config file '%s'...returning\n",
+		       ffile);
+		if (fp) fclose(fp);
+		return EINVAL;
+	}
+
+	fseek(fp, 0, SEEK_SET);
+
+	lm_srcs = (struct vinfo**)malloc(lm_nentries*sizeof(struct vinfo));
+	if (!lm_srcs){
+		fclose(fp);
+		return ENOMEM;
+	}
+
+	int i = 0;
+	do {
+		char vname[MAXSENSORFILENAME];
+		char mname[MAXSENSORFILENAME];
+		double multiplier;
+		double offset;
+
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+		// each line format: path, varname, newname, multiplier, offset
+		if ((strlen(lbuf) == 0) || (lbuf[0] == '#') || (lbuf[0] == '\n')){
+			continue;
+		}
+
+		rc = sscanf(lbuf, "%s %s %lf %lf",
+			    vname, mname, &multiplier, &offset);
+		if (rc != 4){
+			msglog(LDMS_LDEBUG,"Bad format line in the procsensors config file '%s' '%s'...returning\n",
+			       lbuf, ffile);
+			rc = EINVAL;
+			break;
+		}
+
+		lm_srcs[i] = (struct vinfo*)malloc(sizeof(struct vinfo));
+		if (!lm_srcs[i]){
+			fclose(fp);
+			return ENOMEM;
+		}
+
+		lm_srcs[i]->vname = strdup(vname);
+		lm_srcs[i]->mname = strdup(mname);
+		lm_srcs[i]->multiplier = multiplier;
+		lm_srcs[i]->offset = offset;
+		i++;
+	} while (s);
+
+	if (fp)
+		fclose(fp);
+	fp = NULL;
+
+	return rc;
+
+}
 
 static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
-	int rc, i, j;
-	char metric_name[128];
+	int rc, i;
 
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
-	metric_count = 0;
-	for (i = 0; i < vartypes; i++){
-		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
-			snprintf(metric_name, 127, "%s%d_input",varnames[i],j);
-			rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-			if (rc)
-				return rc;
+	for (i = 0 ; i < lm_nentries; i++){
+		rc = ldms_get_metric_size(lm_srcs[i]->mname, LDMS_V_U64, &meta_sz, &data_sz);
+		if (rc)
+			return rc;
 
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
-			metric_count++;
-		}
+		tot_meta_sz += meta_sz;
+		tot_data_sz += data_sz;
 	}
-
-#ifdef CHECK_SENSORS_TIMING
-	rc = ldms_get_metric_size("procsensors_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	num_metric_times++;
-
-	rc = ldms_get_metric_size("procsensors_tv_nsec2", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	num_metric_times++;
-
-	rc = ldms_get_metric_size("procsensors_tv_dnsec", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	//no increment for deltas
-
-	rc = ldms_get_metric_size("procsensors_tv_sec3", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	num_metric_times++;
-
-	rc = ldms_get_metric_size("procsensors_tv_nsec3", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	num_metric_times++;
-
-	rc = ldms_get_metric_size("procsensors_tv_dnwrite", LDMS_V_U64, &meta_sz, &data_sz);
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	//no increment for deltas
-#endif
 
 	/* Create the metric set */
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
 		return rc;
 
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
+	metric_table = calloc(lm_nentries, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
 
 	/*
 	 * Process again to define all the metrics.
 	 */
-
-	int metric_no = 0;
-	for (i = 0; i < vartypes; i++){
-		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
-			snprintf(metric_name, 127,
-					"%s%d_input",varnames[i],j);
-			metric_table[metric_no] =
-				ldms_add_metric(set, metric_name, LDMS_V_U64);
-			if (!metric_table[metric_no]) {
-				rc = ENOMEM;
-				goto err;
-			}
-			ldms_set_user_data(metric_table[metric_no], comp_id);
-			metric_no++;
+	for (i = 0; i < lm_nentries; i++){
+		metric_table[i] = ldms_add_metric(set, lm_srcs[i]->mname, LDMS_V_U64);
+		if (!metric_table[i]) {
+			rc = ENOMEM;
+			goto err;
 		}
+		ldms_set_user_data(metric_table[i], comp_id);
 	}
-
-#ifdef CHECK_SENSORS_TIMING
-	tv_sec_metric_handle2 = ldms_add_metric(set, "procsensors_tv_sec2", LDMS_V_U64);
-	if (!tv_sec_metric_handle2){
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_nsec_metric_handle2 = ldms_add_metric(set, "procsensors_tv_nsec2", LDMS_V_U64);
-	if (!tv_nsec_metric_handle2){
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_dnsec_metric_handle = ldms_add_metric(set, "procsensors_tv_dnsec", LDMS_V_U64);
-	if (!tv_dnsec_metric_handle){
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_sec_metric_handle3 = ldms_add_metric(set, "procsensors_tv_sec3", LDMS_V_U64);
-	if (!tv_sec_metric_handle3){
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_nsec_metric_handle3 = ldms_add_metric(set, "procsensors_tv_nsec3", LDMS_V_U64);
-	if (!tv_nsec_metric_handle3){
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_dnwrite_metric_handle = ldms_add_metric(set, "procsensors_tv_dnwrite", LDMS_V_U64);
-	if (!tv_dnwrite_metric_handle){
-		rc = ENOMEM;
-		goto err;
-	}
-#endif
-
-	metric_values = calloc(metric_count, sizeof(uint64_t));
-	if (!metric_values)
-		goto err;
-
-	metric_times = calloc(num_metric_times, sizeof(uint64_t));
-	if (!metric_values)
-		goto err;
 
 	return 0;
 
 err:
+
 	ldms_destroy_set(set);
+	for (i = 0; i < lm_nentries; i++){
+		if (lm_srcs[i]){
+			if (lm_srcs[i]->vname) free(lm_srcs[i]->vname);
+			if (lm_srcs[i]->mname) free(lm_srcs[i]->mname);
+			free(lm_srcs[i]);
+		}
+	}
+	if (lm_srcs)
+		free(lm_srcs);
+
 	return rc;
 }
 
@@ -245,9 +256,10 @@ err:
  * \brief Configuration
  *
  * Usage:
- * config name=procsensors component_id=<comp_id> set=<setname>
+ * config name=procsensors component_id=<comp_id> set=<setname> conffile=<conf>
  *     comp_id     The component id value.
  *     setname     The set name.
+ *     conf        The full pathname for the config file
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -256,6 +268,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id = strtol(value, NULL, 0);
+
+
+	value = av_value(avl, "conffile");
+	if (value)
+		parse_conf_file(value);
+	else
+		return -1;
 
 	value = av_value(avl, "set");
 	if (value)
@@ -271,99 +290,67 @@ static ldms_set_t get_set()
 
 static int sample(void)
 {
-	int rc;
-	int metric_no;
+	int rc, retrc;
 	char *s;
-	char procfile[256];
 	char lbuf[20];
+	uint64_t tempval;
 	union ldms_value v;
-	struct timespec time1;
-	int i, j;
+	int i;
 
-	//set the counter
-	uint64_t counterval = ++counter;
+	rc = 0;
+	retrc = 0;
 
-	int metric_time_no = 0;
-	clock_gettime(CLOCK_REALTIME, &time1);
-	metric_times[metric_time_no++] = time1.tv_sec;
-	metric_times[metric_time_no++] = time1.tv_nsec;
 	ldms_begin_transaction(set);
-	metric_no = 0;
-	for (i = 0; i < vartypes; i++){
-		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
-			snprintf(procfile, 255, "%s/%s%d_input",procsensorsfiledir,varnames[i],j);
-
-			//FIXME: do we really want to open and close each one?
-			mf = fopen(procfile, "r");
-			if (!mf) {
-				msglog("Could not open the procsensors file '%s'...exiting\n", procfile);
-				rc = ENOENT;
-				goto out;
-			}
+	for (i = 0; i < lm_nentries; i++){
+		//FIXME: do we really want to open and close each one?
+		mf = fopen(lm_srcs[i]->vname, "r");
+		if (!mf) {
+			msglog(LDMS_LDEBUG,"Could not open the procsensors file '%s'...continuing\n",
+			       lm_srcs[i]->vname);
+			retrc = ENOENT;
+		} else {
 			s = fgets(lbuf, sizeof(lbuf), mf);
-			if (!s){
-				if (mf) fclose(mf);
-				break;
+			if (s){
+				rc = sscanf(lbuf, "%"PRIu64 "\n", &tempval);
+				if (rc != 1){
+					/* do not go to out */
+					retrc = EINVAL;
+				} else {
+					/* assume since sensors can cast w/o overflow */
+					v.v_u64 = (uint64_t)((double)tempval*lm_srcs[i]->multiplier + lm_srcs[i]->offset);
+					ldms_set_metric(metric_table[i], &v);
+				}
+			} else {
+				/* do not go to out */
+				retrc = EINVAL;
 			}
-			rc = sscanf(lbuf, "%"PRIu64 "\n", &metric_values[metric_no]);
-			if (rc != 1){
-				if (mf) fclose(mf);
-				rc = EINVAL;
-				goto out;
-			}
-
-			metric_no++;
 			if (mf) fclose(mf);
 		}
 	}
 
-#ifdef CHECK_SENSORS_TIMING
-	clock_gettime(CLOCK_REALTIME, &time1);
-	metric_times[metric_time_no++] = time1.tv_sec;
-	metric_times[metric_time_no++] = time1.tv_nsec;
-#endif
-
-	//now do the writeout
-
-	//metrics
-	metric_no = 0;
-	for (i = 0; i < metric_count; i++){
-		v.v_u64 = metric_values[i];
-		ldms_set_metric(metric_table[i], &v);
-	}
-
-#ifdef CHECK_SENSORS_TIMING
-	//second set of times
-	v.v_u64 = metric_times[2];
-	ldms_set_metric(tv_sec_metric_handle2, &v);
-	v.v_u64 = metric_times[3];
-	ldms_set_metric(tv_nsec_metric_handle2, &v);
-	v.v_u64 = metric_times[3]-metric_times[1];  //sub start of writeout nsec
-	ldms_set_metric(tv_dnsec_metric_handle, &v);
-
-	//and get the last write times. array storage for these is unused
-	clock_gettime(CLOCK_REALTIME, &time1);
-	v.v_u64 = time1.tv_sec;
-	ldms_set_metric(tv_sec_metric_handle3, &v);
-	v.v_u64 = time1.tv_nsec;
-	ldms_set_metric(tv_nsec_metric_handle3, &v);
-	v.v_u64 = time1.tv_nsec-metric_times[3];  //sub start of writeout nsec
-	ldms_set_metric(tv_dnwrite_metric_handle, &v);
-#endif
-	rc = 0;
-out:
 	ldms_end_transaction(set);
-	return rc;
+	return retrc;
 }
 
 static void term(void)
 {
+	int i;
+
 	ldms_destroy_set(set);
+	for (i = 0; i < lm_nentries; i++){
+		if (lm_srcs[i]){
+			if (lm_srcs[i]->vname) free(lm_srcs[i]->vname);
+			if (lm_srcs[i]->mname) free(lm_srcs[i]->mname);
+			free(lm_srcs[i]);
+		}
+	}
+	if (lm_srcs)
+		free(lm_srcs);
 }
 
 static const char *usage(void)
 {
-	return  "config name=procsensors component_id=<comp_id> set=<set>\n"
+	return  "config name=procsensors component_id=<comp_id> set=<set> config\n"
 		"    comp_id    The component id.\n"
 		"    set        The set name.\n";
 }

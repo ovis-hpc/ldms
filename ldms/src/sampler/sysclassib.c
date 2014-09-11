@@ -267,7 +267,7 @@ static int create_metric_set(const char *setname)
 	struct scib_port *port;
 
 	if (set) {
-		msglog("sysclassib: Double create set: %s\n", setname);
+		msglog(LDMS_LDEBUG,"sysclassib: Double create set: %s\n", setname);
 		return EEXIST;
 	}
 
@@ -302,7 +302,7 @@ static int create_metric_set(const char *setname)
 	/* create set and metrics */
 	rc = ldms_create_set(setname, tot_meta_sz, tot_data_sz, &set);
 	if (rc) {
-		msglog("sysclassib: ldms_create_set failed, rc: %d\n", rc);
+		msglog(LDMS_LDEBUG,"sysclassib: ldms_create_set failed, rc: %d\n", rc);
 		return rc;
 	}
 
@@ -466,7 +466,7 @@ int open_port(struct scib_port *port)
 			mgmt_classes, 3);
 
 	if (!port->srcport) {
-		msglog("sysclassib: ERROR: Cannot open CA:%s port:%d,"
+		msglog(LDMS_LDEBUG,"sysclassib: ERROR: Cannot open CA:%s port:%d,"
 				" ERRNO: %d\n", port->ca, port->portno,
 				errno);
 		return errno;
@@ -478,7 +478,7 @@ int open_port(struct scib_port *port)
 	 * open another port just to get LID */
 	rc = umad_get_port(port->ca, port->portno, &uport);
 	if (rc) {
-		msglog("sysclassib: umad_get_port('%s', %d) error: %d\n",
+		msglog(LDMS_LDEBUG,"sysclassib: umad_get_port('%s', %d) error: %d\n",
 				port->ca, port->portno, rc);
 		return rc;
 	}
@@ -491,7 +491,7 @@ int open_port(struct scib_port *port)
 	p = pma_query_via(rcvbuf, &port->portid, port->portno, 0,
 			CLASS_PORT_INFO, port->srcport);
 	if (!p) {
-		msglog("sysclassib: pma_query_via ca: %s port: %d"
+		msglog(LDMS_LDEBUG,"sysclassib: pma_query_via ca: %s port: %d"
 				" error: %d\n", port->ca, port->portno, errno);
 		return errno;
 	}
@@ -500,7 +500,7 @@ int open_port(struct scib_port *port)
 			| IB_PM_EXT_WIDTH_NOIETF_SUP);
 
 	if (!port->ext) {
-		msglog("sysclassib: WARNING: Extended query not supported for"
+		msglog(LDMS_LDEBUG,"sysclassib: WARNING: Extended query not supported for"
 			" %s:%d, the sampler will reset counters every query\n",
 			port->ca, port->portno);
 	}
@@ -635,7 +635,7 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog("sysclassib: Error querying %s.%d, errno: %d\n",
+		msglog(LDMS_LDEBUG,"sysclassib: Error querying %s.%d, errno: %d\n",
 				port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
@@ -672,7 +672,7 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS_EXT, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog("sysclassib: Error extended querying %s.%d, errno: %d\n",
+		msglog(LDMS_LDEBUG,"sysclassib: Error extended querying %s.%d, errno: %d\n",
 				port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
@@ -700,7 +700,7 @@ static int sample(void)
 	struct scib_port *port;
 
 	if (!set){
-		msglog("sysclassib: plugin not initialized\n");
+		msglog(LDMS_LDEBUG,"sysclassib: plugin not initialized\n");
 		return EINVAL;
 	}
 
