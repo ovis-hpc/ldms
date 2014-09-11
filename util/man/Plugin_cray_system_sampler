@@ -280,7 +280,7 @@ U64 507905281        RDMA_rx_bytes
 
 .SH SEE ALSO
 ldms_ls(8), ldmsctl(8), Plugin_kgnilnd(5), Plugin_lustre2_client(5), Plugin_meminfo(5), Plugin_procnetdev(5), Plugin_procnfs(5), 
-Plugin_sysclassib(5), Plugin_procstatutil(5), Plugin_vmstat(5)
+Plugin_procsensors(5), Plugin_sysclassib(5), Plugin_procstatutil(5), Plugin_vmstat(5)
 
 .SH BUGS
 No known bugs.
