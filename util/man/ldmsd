@@ -9,22 +9,27 @@ ldmsd \- Start an ldms daemon
 ldmsd [OPTION...] 
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), the ldmsd command is used to start an ldms daemon.
-Plugin configuration of the ldmsd can be done via the ldmsctl command.
+With LDMS (Lightweight Distributed Metric Service), the ldmsd command is used
+to start an ldms daemon. Plugin configuration of the ldmsd can be done via the
+ldmsctl command.
 
 .SH ENVIRONMENT
 The following environment variables must be set:
 .TP
 LD_LIBRARY_PATH
+.br
 include path to ovis/lib64
 .TP
 LDMS_XPRT_LIBPATH
+.br
 path to ovis/lib64/
 .TP
 LDMSD_PLUGIN_LIBPATH
+.br
 path to ovis/lib64/
 .TP
 PATH
+.br
 include path to ovis/sbin
 
 .SH OPTIONS
@@ -36,14 +41,17 @@ CONFIGFILE is the path to the configuration file.
 .BR -D =\flNUM\fR
 .br
 NUM is the number of bytes of the dirty threshold used for store rollover.
+.TP
 .BR -F 
 .br
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
 .BR -f =\flCOUNT\fR
+.br
 COUNT is the number of flush threads.
 .TP
 .BR -I =\flINSTANCE\fR
+.br
 INSTANCE is the instance number.
 .TP
 .BR -l =\flLOGFILE\fR 
@@ -62,7 +70,8 @@ THR_COUNT is the number of event threads to start.
 .TP
 .BR -q =\flLOG_LEVEL\fR 
 .br
-LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET. The default level is ERROR. QUIET produces no output.
+LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
+The default level is ERROR. QUIET produces no output.
 .TP
 .BR -S =\flSOCKNAME\fR 
 .br
@@ -73,9 +82,9 @@ Display LDMS version information and then exit.
 .TP
 .BR -x =\flXPRT:PORT\fR 
 .br
-Specifies the transport type to listen on. May be specified more than once for multiple transports. 
-The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC). A transport specific port number
-is optionally specified following a ':', e.g. rdma:50000.
+Specifies the transport type to listen on. May be specified more than once for
+multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC).
+A transport specific port number is optionally specified following a ':', e.g. rdma:50000.
 .TP
 .BR -Z =\flCONN_COUNT\fR 
 .br
