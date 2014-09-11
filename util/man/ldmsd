@@ -1,0 +1,115 @@
+.\" Manpage for ldmsd
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "11 Sep 2014" "1.2" "ldmsd man page"
+
+.SH NAME
+ldmsd \- Start an ldms daemon
+
+.SH SYNOPSIS
+ldmsd [OPTION...] 
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldmsd command is used to start an ldms daemon.
+Plugin configuration of the ldmsd can be done via the ldmsctl command.
+
+.SH ENVIRONMENT
+The following environment variables must be set:
+.TP
+LD_LIBRARY_PATH
+include path to ovis/lib64
+.TP
+LDMS_XPRT_LIBPATH
+path to ovis/lib64/
+.TP
+LDMSD_PLUGIN_LIBPATH
+path to ovis/lib64/
+.TP
+PATH
+include path to ovis/sbin
+
+.SH OPTIONS
+.TP
+.BR -C =\flCONFIG_FILE\fR
+.br
+CONFIGFILE is the path to the configuration file.
+.TP
+.BR -D =\flNUM\fR
+.br
+NUM is the number of bytes of the dirty threshold used for store rollover.
+.BR -F 
+.br
+Run in foreground mode; don't daemonize the program. Default is false.
+.TP
+.BR -f =\flCOUNT\fR
+COUNT is the number of flush threads.
+.TP
+.BR -I =\flINSTANCE\fR
+INSTANCE is the instance number.
+.TP
+.BR -l =\flLOGFILE\fR 
+.br
+LOGFILE is the path to the log file for status messages. Default is LDMSD_LOGFILE.
+.TP
+.BR -m =\flMEMORY_SIZE\fR 
+.br
+MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
+The given size must be less than 1 petabytes.
+For example, 20M or 20mb are 20 megabytes.
+.TP
+.BR -P =\flTHR_COUNT\fR 
+.br
+THR_COUNT is the number of event threads to start.
+.TP
+.BR -q =\flLOG_LEVEL\fR 
+.br
+LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET. The default level is ERROR. QUIET produces no output.
+.TP
+.BR -S =\flSOCKNAME\fR 
+.br
+SOCKNAME is the unix domain socket name to use for ldmsctl access.
+.TP
+.BR -V
+Display LDMS version information and then exit.
+.TP
+.BR -x =\flXPRT:PORT\fR 
+.br
+Specifies the transport type to listen on. May be specified more than once for multiple transports. 
+The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC). A transport specific port number
+is optionally specified following a ':', e.g. rdma:50000.
+.TP
+.BR -Z =\flCONN_COUNT\fR 
+.br
+CONN_COUNT is the number of connection threads to start.
+
+.SH DEFAULTS
+ldmsd with no arguments defaults to ???
+
+
+.SH FILES
+ldmsd.conf is the configuration file. See ldmsd.conf(5) for format information.
+
+
+.SH EXAMPLES
+.PP
+.nf
+.RS
+$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
+.RE
+.br
+.PP
+.nf
+.RS
+Same but sending stdout and stderr to /dev/null
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
+.RE
+.br
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldmsctl(8), ldmsd.conf(5)
+
+.SH BUGS
+No known bugs.
+
+.SH AUTHOR
+OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
