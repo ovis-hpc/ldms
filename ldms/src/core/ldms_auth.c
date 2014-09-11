@@ -14,6 +14,7 @@
 
 #define NAME_LEN 512
 #define CONFNAME ".ldmsauth.conf"
+#define SYSCONFNAME "ldmsauth.conf"
 
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -154,7 +155,7 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 	/*
 	 * We look for a readable .conf in the following order.
 	 * - LDMS_AUTH_FILE set in environment
-	 * - .conf in the user's home directory
+	 * - .ldmsauth.conf in the user's home directory
 	 * - The system wide default in SYSCONFDIR/ldmsauth.conf
 	 * which should have 600 perm
 	 */
@@ -171,9 +172,9 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 			 pwent->pw_dir);
 		fc = try_password_file(ldmsauth_path, secretword, x);
 		if (fc) {
-			/* try /etc/.ldmsauth.conf */
+			/* try /etc/ldmsauth.conf */
 			snprintf(ldmsauth_path, ldmsauth_path_len - 1, 
-				"%s/" CONFNAME, SYSCONFDIR);
+				"%s/" SYSCONFNAME, SYSCONFDIR);
 			fc = try_password_file(ldmsauth_path, secretword, x);
 		}
 	
