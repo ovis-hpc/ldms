@@ -275,42 +275,55 @@ Exit
 .RE
 
 .SH EXAMPLES
+
 .PP
 .nf
 .RS
-$ldms_ls -h vm1 -x sock -p 60000
-vm1_1/meminfo
-vm1_1/vmstat
+1) Run ldmsctl -S <unix domain socket path/name associated with target ldmsd>
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl>
 .RE
-.br
+.fi
+
 .PP
 .nf
 .RS
-$ldms_ls -h vm1 -x sock -p 60000 -l
-vm1_1/meminfo: consistent, last update: Wed Jul 31 21:51:08 2013 [246540us]
-U64 33084652         MemTotal
-U64 32092964         MemFree
-U64 0                Buffers
-U64 49244            Cached
-U64 0                SwapCached
-U64 13536            Active
-U64 39844            Inactive
-U64 5664             Active(anon)
-...
+2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second. Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
+ldmsctl> load name=meminfo
+ldmsctl> config name=meminfo component_id=1 set=vm1_1/meminfo
+ldmsctl> start name=meminfo interval=1000000
+ldmsctl> quit
 .RE
-.br
+.fi
+
 .PP
 .nf
 .RS
-For a non-existent set:
-$ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
-ldms_ls: No such file or directory
-ldms_ls: lookup failed for set 'vm1_1/foo'
+3) Configure collectors on host "vm1" via bash script called collect.sh
+#!/bin/bash
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
+# Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
+echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo config name=meminfo component_id=2 set=vm1_2/meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo start name=meminfo interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+# Configure "vmstat" collector plugin to collect every second (1000000 usec) on vm1_2
+echo load name=vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo config name=vmstat component_id=2 set=vm1_2/vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo start name=vmstat interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+
+Make collect.sh executable
+chmod +x collect.sh
+
+Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes in parallel)
+./collect.sh
 .RE
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8), ldmsd.conf(5)
+ldmsd(8), ldms_ls(8), ldmsd.conf(5)
 
 .SH BUGS
 No known bugs.
