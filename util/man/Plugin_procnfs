@@ -1,31 +1,31 @@
-.\" Manpage for Plugin_procstatutil
+.\" Manpage for Plugin_procnfs
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 5 "11 Sep 2014" "1.2" "LDMS Plugin procstatutil man page"
+.TH man 5 "11 Sep 2014" "1.2" "LDMS Plugin procnfs man page"
 
 .SH NAME
-Plugin_procstatutil - man page for the LDMS procstatutil plugin
+Plugin_procnfs - man page for the LDMS procnfs plugin
 
 .SH SYNOPSIS
 Within ldmsctl
 .br
-ldmsctl> config name=procstatutil [ <attr> = <value> ]
+ldmsctl> config name=procnfs [ <attr>=<value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The procstatutil plugin provides cpu utilization info from /proc/stat.
+The procnfs plugin provides cpu utilization info from /proc/net/rpc/nfs
 
 .SH LDMSCTL CONFIGURATION OPTIONS
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> metrics_type=<num>
+name=<plugin_name> component_id=<comp_id> set=<set_name> 
 .br
 ldmsctl configuration line
 .RS
 .TP
 <plugin_name>
 .br
-This MUST be procstatutil.
+This MUST be procnfs.
 .TP
 <comp_id>
 .br
@@ -34,11 +34,6 @@ The component id numerical value.
 <set_name>
 .br
 The name of the metric set.
-.TP
-<metrics_type>
-.br
-Values are 0 or 1. 0 = per cpu metrics. 1 = includes node level metrics as well.
-Default is 0.
 .RE
 
 .SH EXAMPLES
@@ -46,13 +41,13 @@ Default is 0.
 .nf
 .RS
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
-ldmsctl> load name=procstatutil
-ldmsctl> config name=procstatutil component_id=1 set=vm1_1/procstatutil
-ldmsctl> start name=procstatutil interval=1000000
+ldmsctl> load name=procnfs
+ldmsctl> config name=procnfs component_id=1 set=vm1_1/procnfs
+ldmsctl> start name=procnfs interval=1000000
 ldmsctl> quit
 
 .SH SEE ALSO
-ldmsctl(8), Plugin_meminfo(5), Plugin_procnfs(5)
+ldmsctl(8), Plugin_procstatutil(5), Plugin_procmeminfo(5)
 
 .SH BUGS
 No known bugs.
