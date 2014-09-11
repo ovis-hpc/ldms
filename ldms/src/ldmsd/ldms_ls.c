@@ -106,8 +106,8 @@ void usage(char *argv[])
 	       "\n    -p <port_num>    The port number. The default is %d.\n"
 	       "\n    -l               Show the values of the metrics in each metric set.\n"
 	       "\n    -u               Show the user-defined metric meta data value.\n"
-	       "\n    -x <name>        The transport name: sock, rdma, or local. Default is\n"
-	       "                       localhost unless -h is specified in which case it is sock.\n"
+	       "\n    -x <name>        The transport name: sock, rdma, or ugni (Cray XE/XK/XC).\n",
+               "                       Default is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
 	       "                       The default is 10 seconds.\n"
 	       "\n    -v               Show detail information about the metric set. Specifying\n"
@@ -115,6 +115,7 @@ void usage(char *argv[])
 	       "\n    -m <memory size>   Maximum size of pre-allocated memory for metric sets.\n"
 	       "                         The given size must be less than 1 petabytes.\n"
 	       "                         For example, 20M or 20mb are 20 megabytes.\n"
+	       "\n    -V               Show the LDMS version information and exit.\n"
 	       "\n%s",
 	       argv[0],LDMS_DEFAULT_PORT,ldms_pedigree());
 	exit(1);

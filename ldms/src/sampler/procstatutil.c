@@ -268,7 +268,7 @@ static int create_metric_set(const char *path)
  * \brief Configuration
  *
  * Usage:
- * - config name=procstatutil component_id=<value> set=<value>
+ * - config name=procstatutil component_id=<comp_id> set=<setname> metrics_type=<0/1>
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -383,9 +383,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procstatutil component_id=<comp_id> set=<setname>\n"
+	return  "config name=procstatutil component_id=<comp_id> set=<setname> metrics_type=<value>\n"
 		"    comp_id     The component id value\n"
-		"    setname     The set name\n";
+		"    setname     The set name\n"
+		"    metrics_type 0=cpu's only, 1=include node level values. Defaults to 0\n";
 }
 
 static struct ldmsd_sampler procstatutil_plugin = {

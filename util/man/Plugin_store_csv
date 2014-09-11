@@ -1,0 +1,90 @@
+.\" Manpage for Plugin_store_csv
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 5 "11 Sep 2014" "1.2" "LDMS Plugin store_csv man page"
+
+.SH NAME
+Plugin_store_csv - man page for the LDMS store_csv plugin
+
+.SH SYNOPSIS
+Within ldmsctl:
+.br
+ldmsctl> config name=store_csv [ <attr> = <value> ]
+.br
+ldmsctl> store name=store_csv [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The store_csv plugin is a CSV store.
+
+.SH LDMSCTL CONFIGURATION OPTIONS
+
+.TP
+.BR config
+name=<plugin_name> path=<path> [ alt_header=<altheader> idpos=<idpos> ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+<path>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/node/meminfo.
+.TP
+<altheader>
+.br
+The default output writes the header to the same file as the data file. alt_header=1 will write the header to an alternate file (e.g., if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER"). Default is alt_header=0.
+.TP
+<idpos>
+.br
+The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+.RE
+
+.SH LDMSCTL STORE OPTIONS
+
+.TP
+.BR store
+name=<plugin_name> comp_type=<type> set=<set_name> container=<container> 
+.br
+ldmsctl store line
+.RS
+.TP
+<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+<set_name>
+.br
+The set parameter here is the base name of the sets, independent of the host name. For example, if you have configured samplers with parameter set=<hostname>/meminfo, then use the store parameter set=meminfo and all datasets for all combinations of <hostname>/meminfo will be stored.
+.TP
+<container>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will b\
+e created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/n\
+ode/meminfo.
+
+Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
+.RE
+
+.SH EXAMPLES
+.PP
+.nf
+.RS
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl> load name=store_csv
+ldmsctl> config name=store_csv alt_header=1 id_pos=1
+ldmsctl> start name=store_csv interval=1000000
+ldmsctl> quit
+.RE
+.fi
+
+.SH SEE ALSO
+ldmsctl(8), Plugin_store_csv(5)
+
+.SH BUGS
+No known bugs.
+
+.SH AUTHOR
+OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
