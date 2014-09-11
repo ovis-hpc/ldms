@@ -159,7 +159,6 @@ int atasmart_add_metric(SkDisk *d, const SkSmartAttributeParsedData *a,
 	char metric_name[128];
 	int *metric_no = (int *) userdata;
 	sprintf(name_base, "%s", a->name);
-	int comp_id_increment = (*metric_no / NFIELD);
 
 	ldms_metric_t m;
 	int i;
@@ -190,7 +189,7 @@ int atasmart_add_metric(SkDisk *d, const SkSmartAttributeParsedData *a,
 		}
 		if (!m)
 			return ENOMEM;
-		ldms_set_user_data(m, comp_id + comp_id_increment);
+		ldms_set_user_data(m, comp_id);
 		metric_table[*metric_no] = m;
 		(*metric_no)++;
 	}

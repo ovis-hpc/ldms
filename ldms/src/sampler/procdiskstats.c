@@ -39,7 +39,6 @@ static int create_metric_set(const char *path)
 	char name[64];
 	int i, junk1, junk2;
 	int num_device = 0;
-	uint64_t temp_comp_id = comp_id;
 	ldms_metric_t m;
 
 	mf = fopen(procfile, "r");
@@ -119,10 +118,9 @@ static int create_metric_set(const char *path)
 				rc = ENOMEM;
 				goto err;
 			}
-			ldms_set_user_data(m, temp_comp_id);
+			ldms_set_user_data(m, comp_id);
 			metric_table[metric_no++] = m;
 		}
-		temp_comp_id++;
 
 	} while (s);
 	return 0;
