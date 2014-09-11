@@ -216,7 +216,6 @@ static int create_metric_set(const char *path)
 	int cpu_no;
 	ldms_metric_t m;
 	int metric_no = 0;
-	uint64_t cpu_comp_id = comp_id;
 	
 	if (procstatutil_metrics_type == PROCSTATUTIL_METRICS_BOTH){
 		int column;
@@ -227,7 +226,7 @@ static int create_metric_set(const char *path)
 			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!m)
 				goto err;
-			ldms_set_user_data(m, cpu_comp_id);
+			ldms_set_user_data(m, comp_id);
 			metric_table[metric_no++] = m;
 		}
 	}
@@ -240,10 +239,9 @@ static int create_metric_set(const char *path)
 			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!m)
 				goto err;
-			ldms_set_user_data(m, cpu_comp_id);
+			ldms_set_user_data(m, comp_id);
 			metric_table[metric_no++] = m;
 		}
-		cpu_comp_id++;
 	}
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
