@@ -399,6 +399,12 @@ int process_sock_read_req(struct ldms_sock_xprt *x, struct sock_read_req *req)
 	return ret;
 }
 
+/* There is a known, expected, and by design ok data race
+ * between process_sock_req and
+ * ldms_begin/end_transaction calls as part of the overlap
+ * of servicing data pull requests and sampler execution
+ * in independent threads.
+ */
 int process_sock_req(struct ldms_sock_xprt *x, struct ldms_request *req)
 {
 	TF(x->xprt);
@@ -677,7 +683,19 @@ struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 	if (!desc)
 		return NULL;
 
-	xd = malloc(xprt_data_len);
+	if (xprt_data && sizeof(*xd) > xprt_data_len) {
+		x->log("%s:%d: sock_rbuf_alloc called with xprt_data size %zu."
+			" Expected at least %zu.  "
+			"Remote protocol implementation mismatch?\n",
+			__FILE__,__LINE__, xprt_data_len, sizeof(*xd));
+		return NULL;
+	}
+	if (xprt_data) {
+		assert(xprt_data_len >= sizeof(struct sock_buf_xprt_data));
+		xd = calloc(xprt_data_len,1);
+	} else {
+		xd = calloc(sizeof(struct sock_buf_xprt_data),1);
+	}
 	if (!xd)
 		goto err_0;
 

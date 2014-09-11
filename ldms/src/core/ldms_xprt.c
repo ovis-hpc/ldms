@@ -131,6 +131,14 @@ int is_valid_ldms_request_cmd(int pc)
 
 pthread_mutex_t rbd_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t xprt_list_lock = PTHREAD_MUTEX_INITIALIZER;
+/* \global xprt_ld_lock
+ * Serialization for __dlmap access and init of loaded library in xprt_get.
+ * One might be able to argue based on command line usage restricted
+ * through a unix socket that this lock is unnecesary, but expected
+ * attempts to allow ldms use in applications via a library api
+ * invalidate that argument.
+ */
+pthread_mutex_t xprt_ld_lock = PTHREAD_MUTEX_INITIALIZER;
 str_map_t __dlmap;
 
 static inline struct ldms_xprt *ldms_xprt_get_(struct ldms_xprt *x)
@@ -1240,6 +1248,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	strcat(_libdir, "libldms");
 	strcat(_libdir, name);
 	strcat(_libdir, _SO_EXT);
+	pthread_mutex_lock(&xprt_ld_lock);
 	void *d = (void*)str_map_get(__dlmap, name);
 	if (!d) {
 		d = dlopen(_libdir, RTLD_NOW);
@@ -1247,6 +1256,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 			/* The library doesn't exist */
 			log_fn(LDMS_LERROR, "dlopen: %s\n", dlerror());
 			ret = ENOENT;
+			pthread_mutex_unlock(&xprt_ld_lock);
 			goto err;
 		}
 		dlerror();
@@ -1260,12 +1270,14 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 		/* The library exists but doesn't export the correct
 		 * symbol and is therefore likely the wrong library type */
 		ret = EINVAL;
+		pthread_mutex_unlock(&xprt_ld_lock);
 		goto err;
 	}
 	x = get(recv_cb, read_complete_cb, log_fn);
 	if (!x) {
 		/* The transport library refused the request */
 		ret = ENOSYS;
+		pthread_mutex_unlock(&xprt_ld_lock);
 		goto err;
 	}
 	strcpy(x->name, name);
@@ -1276,6 +1288,8 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
 	x->log = log_fn;
+	pthread_mutex_unlock(&xprt_ld_lock);
+
 	pthread_mutex_init(&x->lock, NULL);
 	pthread_cond_init(&x->authcond,NULL);
 	pthread_mutex_lock(&xprt_list_lock);
@@ -1444,7 +1458,7 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	/* If a dir has previously been done and updates were asked
 	 * for, free that cached context */
 	if (x->local_dir_xid) {
-		free((void *)(unsigned long)x->local_dir_xid);
+		free((void *)(x->local_dir_xid));
 		x->local_dir_xid = 0;
 	}
 	len = format_dir_req(req, (uint64_t)(unsigned long)ctxt, flags);
@@ -1471,7 +1485,7 @@ void __ldms_remote_dir_cancel(ldms_t _x)
 
 	pthread_mutex_lock(&x->lock);
 	if (x->local_dir_xid)
-		free((void *)(unsigned long)x->local_dir_xid);
+		free((void *)(x->local_dir_xid));
 	x->local_dir_xid = 0;
 	pthread_mutex_unlock(&x->lock);
 
@@ -1521,7 +1535,7 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 		return ENOMEM;
 
 	if (r->local_notify_xid) {
-		free((void *)(unsigned long)r->local_notify_xid);
+		free((void *)(r->local_notify_xid));
 		r->local_notify_xid = 0;
 	}
 	len = format_req_notify_req(req, (uint64_t)(unsigned long)ctxt,

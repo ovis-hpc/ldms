@@ -69,7 +69,6 @@
 #include <ovis_util/util.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
-
 #if USE_TF
 #if (defined(__linux) &&  USE_TID)
 #define TF() default_log(LDMS_LINFO,"Thd%lu:%s:%lu:%s\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__,__FILE__)
@@ -79,9 +78,15 @@
 #else
 #define TF()
 #endif /* 1 or 0 disable tf */
+/* \global dir_lock
+ * dir_lock/cv combine to implement waiting for dir_done
+ * to be true, indicating dir listing completed.
+ * A good explanation of this behavior is in sec 2.5.1 of
+ * http://docs.oracle.com/cd/E19205-01/820-0619/gecqf/index.html
+ */
 static pthread_mutex_t dir_lock;
 static pthread_cond_t dir_cv;
-static int dir_done;
+static int dir_done = 0;
 static int dir_status;
 
 static pthread_mutex_t print_lock;
@@ -121,14 +126,16 @@ void usage(char *argv[])
 	exit(1);
 }
 
+/* use the macro form (SERVER_TIMEOUT) to avoid hiding exit from
+ * analysis tools.
+ */
 void server_timeout(void)
 {
-	TF();
 	printf("A timeout occurred waiting for a response from the server.\n"
 	       "Use the -w option to specify the amount of time to wait "
 	       "for the server\n");
-	exit(1);
 }
+#define SERVER_TIMEOUT() server_timeout(); exit(1)
 
 static int user_data = 0;
 void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
@@ -208,7 +215,6 @@ static int long_format = 0;
 
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
-	TF();
 	unsigned long last = (unsigned long)arg;
 	struct ldms_timestamp const *ts = ldms_get_timestamp(s);
 	int consistent = ldms_is_set_consistent(s);
@@ -238,8 +244,10 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	pthread_cond_signal(&print_cv);
 	pthread_mutex_unlock(&print_lock);
 	if (last) {
+		pthread_mutex_lock(&done_lock);
 		done = 1;
 		pthread_cond_signal(&done_cv);
+		pthread_mutex_unlock(&done_lock);
 	}
 }
 
@@ -305,8 +313,10 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
  wakeup:
 	if (!verbose && !long_format)
 		done = 1;
+	pthread_mutex_lock(&dir_lock);
 	dir_done = 1;
 	pthread_cond_signal(&dir_cv);
+	pthread_mutex_unlock(&dir_lock);
 }
 
 void null_log(int level, const char *fmt, ...)
@@ -422,7 +432,7 @@ int main(int argc, char *argv[])
 		perror("ldms_ls");
 		exit(2);
 	}
-        if ( ldms_xprt_auth(ldms) ) {
+	if ( ldms_xprt_auth(ldms) ) {
 		perror("ldms_ls: auth");
 		exit(2);
 	}
@@ -475,9 +485,14 @@ int main(int argc, char *argv[])
 	while (!dir_done)
 		ret = pthread_cond_timedwait(&dir_cv, &dir_lock, &ts);
 	pthread_mutex_unlock(&dir_lock);
-	if (ret)
-		server_timeout();
+	if (ret) {
+		SERVER_TIMEOUT();
+	}
 
+	/* Possible false positive race detection on dir_status used next.
+	 * A proper use of dir_lock ensures that dir_status is not actually racy.
+	 * see comments on dir_lock.
+	 */
 	if (dir_status) {
 		printf("Error %d looking up the metric set directory.\n",
 		       dir_status);
