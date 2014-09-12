@@ -265,7 +265,9 @@ dnl defines automake pkglibdir value for configure output
 dnl and enables gcc color
 AC_DEFUN([OVIS_PKGLIBDIR], [
 AC_SUBST([pkglibdir],['${libdir}'/$PACKAGE])
-AX_CHECK_COMPILE_FLAG([-fdiagnostics-color=auto], [CFLAGS="$CFLAGS -fdiagnostics-color=auto"])
+AX_CHECK_COMPILE_FLAG([-fdiagnostics-color=auto], [
+CFLAGS="$CFLAGS -fdiagnostics-color=auto"
+])
 ])
 
 dnl SYNOPSIS: OPTION_HOSTINFO
