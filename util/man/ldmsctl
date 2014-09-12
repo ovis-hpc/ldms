@@ -38,7 +38,8 @@ SOCKET is the unix domain socket that the ldmsd is listening on.
 Display LDMS version information and then exit.
 
 .SH DEFAULTS
-ldmsctl with no arguments defaults to ???
+.BR ldmsctl
+with no arguments defaults to ???
 
 .SH LDMSCTL COMMANDS
 After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.

@@ -13,8 +13,7 @@ There are 3 major functional components:
 .TP
 Samplers run one or more sampling plugins that periodically sample data of interest on monitored nodes. Each plugin defines a collection of metrics called a metric set.
 .TP
-Aggregators collect data in a pull fashion from samplers
-and/or other aggregators. 
+Aggregators collect data in a pull fashion from samplers and/or other aggregators. 
 .TP
 Storage plugins write in a variety of formats. 
 .RE
@@ -48,7 +47,9 @@ configuring a store_csv storage plugin on an ldmsd.
 .PP
 The order in which these configurations should be performed does not matter with respect to collectors and aggregators.
 .PP
-While a complete listing of flags and parameters can be seen by running ldmsd with the --help directive, this document describes the flags and parameters required for running a basic setup.
+While a complete listing of flags and parameters can be seen by running
+.B ldmsd
+with the --help directive, this document describes the flags and parameters required for running a basic setup.
 .PP
 There are no run scripts provided in the current release; the commands here can be used in the creation of such.
 
@@ -85,6 +86,7 @@ Notes:
 * The unix domain socket is used by ldmsctl to communicate configuration information to an ldmsd
 .RS
 ** The default path for this is /var/run/ldmsd/. To change this the environment variable LDMSD_SOCKPATH must be set to the desired path (e.g. export LDMSD_SOCKPATH=/tmp/run/ldmsd)
+.br
 ** Instead of specifying the log file path using the "-l" flag you can use the "-q" flag and not write to a log file. This is typically used on compute nodes for production.
 .RE
 .br
@@ -185,7 +187,9 @@ ldmsctl> quit
 
 .SS Verifying the collector
 .PP
-At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below)
+At this point the ldmsd collector should be checked using the utility
+.B ldms_ls 
+(See Using ldms_ls below)
 
 .SH CONFIGURE COLLECTORS ON HOST VM1 VIA BASH SCRIPT
 .PP
@@ -218,7 +222,9 @@ Execute collect.sh (Note: When executing this across many nodes you would use pd
 ./collect.sh
 .RE
 .PP
-At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below)
+At this point the ldmsd collector should be checked using the utility
+.B ldms_ls 
+(See Using ldms_ls below)
 
 
 .SH CONFIGURE AN AGGREGATOR
@@ -283,7 +289,9 @@ Notes:
 .PP
 A script based configuration would be done in the same manner as that for collection above
 .PP
-At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below). In this case you should see metric sets for both vm1_1 and vm1_2 displayed when you query the aggregator ldmsd using ldms_ls
+At this point the ldmsd collector should be checked using the utility
+.B ldms_ls 
+(See Using ldms_ls below). In this case you should see metric sets for both vm1_1 and vm1_2 displayed when you query the aggregator ldmsd using ldms_ls.
 
 
 .SH CONFIGURE A STORE_CSV STORAGE PLUGIN

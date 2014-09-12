@@ -7,7 +7,12 @@ LDMS_Authentication \- Authentication in LDMS
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), when compiled with authentication enabled, ldmsd servers require clients
-(including ldms_ls, ldmsctl, and ldmsd aggregators) to prove they share a secret with the server. The secret is a text file containing the line
+(including
+.BR ldms_ls,
+.BR ldmsctl,
+ and
+.BR ldmsd
+aggregators) to prove they share a secret with the server. The secret is a text file containing the line
 .PP
 .RS
        secretword=X
@@ -25,7 +30,9 @@ Three locations are checked in order for the secret before failure is declared:
 3) $SYSCONFDIR/ldmsauth.conf (e.g. /etc/ldmsauth.conf)
 .RE
 
-where $HOME is taken from /etc/password and $SYSCONFDIR is determined at ldms compile time. If the LDMS_AUTH_FILE is not set or does not point to a good secret, the search continues with the next location.
+where $HOME is taken from
+.I /etc/password 
+and $SYSCONFDIR is determined at ldms compile time. If the LDMS_AUTH_FILE is not set or does not point to a good secret, the search continues with the next location.
  
 To provide security, the secret file permissions should be set so that only the file owner can read it.
 

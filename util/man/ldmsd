@@ -82,7 +82,8 @@ A transport specific port number is optionally specified following a ':', e.g. r
 CONN_COUNT is the number of connection threads to start.
 
 .SH DEFAULTS
-ldmsd with no arguments defaults to ???
+.BR ldmsd
+with no arguments defaults to ???
 
 .SH EXAMPLES
 .PP

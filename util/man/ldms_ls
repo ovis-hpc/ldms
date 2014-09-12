@@ -62,7 +62,18 @@ Display LDMS version information and then exit.
 WAIT_SEC is the time to wait before giving up on the server. Default is 10 sec.
 
 .SH DEFAULTS
-ldms_ls with no arguments defaults to ldms_ls -p XXX -h localhost -x sock, where XXX is the LDMS_DEFAULT_PORT.
+.BR ldms_ls
+with no arguments defaults to
+.BR ldms_ls -p
+.I
+XXX
+.BR -h 
+.I
+localhost
+.BR -x
+.I
+sock
+where XXX is the LDMS_DEFAULT_PORT.
 
 .SH EXAMPLES
 .PP
