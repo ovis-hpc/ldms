@@ -71,8 +71,10 @@ ldmsctl> start name=lustre2_client interval=1000000
 ldmsctl> quit
 
 .SH SEE ALSO
-ldmsctl(1), ldmsd(1), ldms_ls(1), Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7), 
-Plugin_procsensors(7), Plugin_procstatutil(7), Plugin_sysclassib(7), Plugin_vmstat(7)
+LDMS_Authentication(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
+Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
+
 
 .SH BUGS
 No known bugs.
