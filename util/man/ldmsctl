@@ -9,8 +9,7 @@ ldmsctl \- Issue control commands to ldmsd.
 ldmsctl [OPTION...] 
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons).
-After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
+With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
 can be created and piped into the ldmsctl.
 
 .SH ENVIRONMENT
@@ -42,8 +41,7 @@ Display LDMS version information and then exit.
 ldmsctl with no arguments defaults to ???
 
 .SH LDMSCTL COMMANDS
-After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
-can be created and piped into the ldmsctl.
+After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
 
 .TP
 .BR help
@@ -103,9 +101,7 @@ The sample interval in microseconds.
 .TP
 <offset>
 .br
-Optional offset (shift) from the sample mark in microseconds. Offset can be positive or
-negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, 
-collection will be synchronous; if the offset is not specified, collection will be asychronous.
+Optional offset (shift) from the sample mark in microseconds. Offset can be positive or negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, collection will be synchronous; if the offset is not specified, collection will be asychronous.
 .RE
 
 .TP
@@ -330,12 +326,16 @@ ldmsctl> store name=store_store_csv comp_type=node set=vmstat container=vmstat
 ldmsctl> store name=store_store_csv comp_type=node set=meminfo container=meminfo
 
 NOTES:
-You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
-Syntax for add host is sets plural with comma separation.
-Syntax for store is only 1 set at a time.
-CSV file will be <path>/<comp_type>/<container>.
-Do not mix containers across sets
-Cannot put all the foo and bar in the same line......
+.RS
+* You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
+* Syntax for add host is sets plural with comma separation.
+* Syntax for store is only 1 set at a time.
+* CSV file will be <path>/<comp_type>/<container>.
+* Do not mix containers across sets
+* Cannot put all the foo and bar in the same line.
+.RE
+.RS
+.fi
 
 
 .SH SEE ALSO
