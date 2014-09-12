@@ -1,4 +1,4 @@
-lib_LTLIBRARIES = libzap_sock.la
+pkglib_LTLIBRARIES = libzap_sock.la
 
 AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir) @LIBEVENT_INCDIR_FLAG@
 

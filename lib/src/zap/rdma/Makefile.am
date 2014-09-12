@@ -1,4 +1,4 @@
-lib_LTLIBRARIES = libzap_rdma.la
+pkglib_LTLIBRARIES = libzap_rdma.la
 
 AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 

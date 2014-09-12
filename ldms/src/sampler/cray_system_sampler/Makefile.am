@@ -1,4 +1,4 @@
-lib_LTLIBRARIES =
+pkglib_LTLIBRARIES =
 
 CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
@@ -16,7 +16,7 @@ CRAY_LDFLAGS_ = $(AM_LDFLAGS)  @RCA_LIB64DIR_FLAG@ @RCA_LIBDIR_FLAG@  \
 librtr_util_la_SOURCES = rtr_util.c rtr_util.h gemini.h
 librtr_util_la_CFLAGS = $(CRAY_CFLAGS_)
 librtr_util_la_LDFLAGS = $(CRAY_LDFLAGS_)
-lib_LTLIBRARIES += librtr_util.la
+pkglib_LTLIBRARIES += librtr_util.la
 
 CRAY_SOURCES_ = cray_system_sampler.c \
 	gemini_metrics.h \
@@ -34,7 +34,7 @@ libcray_system_sampler_r_la_LDFLAGS = $(CRAY_LDFLAGS_)
 libcray_system_sampler_r_la_SOURCES = $(CRAY_SOURCES_) \
 	gemini_metrics_gpcdr.c gemini_metrics_gpcdr.h
 libcray_system_sampler_r_la_LIBADD = $(CRAY_LIBADD_)
-lib_LTLIBRARIES += libcray_system_sampler_r.la
+pkglib_LTLIBRARIES += libcray_system_sampler_r.la
 
 else
 
@@ -44,7 +44,7 @@ CRAY_LDFLAGS_ += @GPCD_LIB64DIR_FLAG@ @GPCD_LIBDIR_FLAG@ -lgpcd
 libgpcd_util_la_SOURCES = gpcd_util.c gpcd_util.h gemini.h
 libgpcd_util_la_CFLAGS = $(CRAY_CFLAGS_)
 libgpcd_util_la_LDFLAGS = $(CRAY_LDFLAGS_)
-lib_LTLIBRARIES += libgpcd_util.la
+pkglib_LTLIBRARIES += libgpcd_util.la
 
 libcray_system_sampler_d_la_CFLAGS = $(CRAY_CFLAGS_)
 libcray_system_sampler_d_la_LDFLAGS = $(CRAY_LDFLAGS_)
@@ -52,6 +52,6 @@ libcray_system_sampler_d_la_SOURCES = $(CRAY_SOURCES_) \
 	gpcd_util.c gpcd_util.h \
 	gemini_metrics_gpcd.c gemini_metrics_gpcd.h
 libcray_system_sampler_d_la_LIBADD = $(CRAY_LIBADD_) ./libgpcd_util.la
-lib_LTLIBRARIES += libcray_system_sampler_d.la
+pkglib_LTLIBRARIES += libcray_system_sampler_d.la
 endif
 endif

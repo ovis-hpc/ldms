@@ -4,6 +4,9 @@
 # NOTE: change ports, intervals if you like
 DESTDIR=
 allowroot=0
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
 BUILDDIR=@prefix@
 # Manually redefine portbase to avoid collisions.
 # Base should be above the maximum in :
@@ -39,10 +42,10 @@ export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libeventpath@:$LD_LIBRARY_PATH
-export LDMS_XPRT_LIBPATH=${BUILDDIR}/lib
+export LD_LIBRARY_PATH=$ILIB:${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=@pkglibdir@
 export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=${BUILDDIR}/lib
+export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
 
 # whack the daemons we own
 pkill ldmsd

@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS =
-lib_LTLIBRARIES =
+pkglib_LTLIBRARIES =
 CORE = ../core
 
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
@@ -9,12 +9,12 @@ COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 
 libclock_la_SOURCES = clock.c
 libclock_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libclock.la
+pkglib_LTLIBRARIES += libclock.la
 
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
 libkgnilnd_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libkgnilnd.la
+pkglib_LTLIBRARIES += libkgnilnd.la
 endif
 
 if ENABLE_LUSTRE
@@ -31,49 +31,49 @@ endif
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libmeminfo.la
+pkglib_LTLIBRARIES += libmeminfo.la
 endif
 
 if ENABLE_PERFEVENT
 libperfevent_la_SOURCES = perfevent.c
 libperfevent_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libperfevent.la
+pkglib_LTLIBRARIES += libperfevent.la
 endif
 
 if ENABLE_PROCDISKSTATS
 libprocdiskstats_la_SOURCES = procdiskstats.c
 libprocdiskstats_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libprocdiskstats.la
+pkglib_LTLIBRARIES += libprocdiskstats.la
 endif
 
 if ENABLE_PROCINTERRUPTS
 libprocinterrupts_la_SOURCES = procinterrupts.c
 libprocinterrupts_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libprocinterrupts.la
+pkglib_LTLIBRARIES += libprocinterrupts.la
 endif
 
 if ENABLE_PROCNETDEV
 libprocnetdev_la_SOURCES = procnetdev.c
 libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libprocnetdev.la
+pkglib_LTLIBRARIES += libprocnetdev.la
 endif
 
 if ENABLE_PROCNFS
 libprocnfs_la_SOURCES = procnfs.c
 libprocnfs_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libprocnfs.la
+pkglib_LTLIBRARIES += libprocnfs.la
 endif
 
 if ENABLE_PROCSENSORS
 libprocsensors_la_SOURCES = procsensors.c
 libprocsensors_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libprocsensors.la
+pkglib_LTLIBRARIES += libprocsensors.la
 endif
 
 if ENABLE_PROCSTATUTIL
 libprocstatutil_la_SOURCES = procstatutil.c
 libprocstatutil_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libprocstatutil.la
+pkglib_LTLIBRARIES += libprocstatutil.la
 endif
 
 if ENABLE_GLIB
@@ -81,26 +81,26 @@ if ENABLE_SEDC
 libsedc_la_SOURCES = sedc.c
 libsedc_la_CFLAGS = $(AM_CFLAGS) $(GLIB20_CFLAGS)
 libsedc_la_LIBADD = $(COMMON_LIBADD) $(GLIB20_LIBS)
-lib_LTLIBRARIES += libsedc.la
+pkglib_LTLIBRARIES += libsedc.la
 endif
 endif
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c
 libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad
-lib_LTLIBRARIES += libsysclassib.la
+pkglib_LTLIBRARIES += libsysclassib.la
 endif
 
 if ENABLE_VMSTAT
 libvmstat_la_SOURCES = vmstat.c
 libvmstat_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libvmstat.la
+pkglib_LTLIBRARIES += libvmstat.la
 endif
 
 if ENABLE_ATASMART
 libsampler_atasmart_la_SOURCES = sampler_atasmart.c
 libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
-lib_LTLIBRARIES += libsampler_atasmart.la
+pkglib_LTLIBRARIES += libsampler_atasmart.la
 endif
 
 
