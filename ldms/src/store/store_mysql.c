@@ -110,7 +110,7 @@ struct mysql_store_instance {
 	struct mysql_metric_store *ms[0];
 };
 
-pthread_mutex_t cfg_lock;
+static pthread_mutex_t cfg_lock;
 
 void cleanse_string(char *s)
 {

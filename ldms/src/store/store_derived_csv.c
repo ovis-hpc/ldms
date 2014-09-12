@@ -151,7 +151,7 @@ struct csv_store_handle {
 	void *ucontext;
 };
 
-pthread_mutex_t cfg_lock;
+static pthread_mutex_t cfg_lock;
 
 
 /**

@@ -148,7 +148,7 @@ struct sos_store_instance {
 	struct sos_metric_store **ms;
 };
 
-pthread_mutex_t cfg_lock;
+static pthread_mutex_t cfg_lock;
 
 /**
  * \brief Configuration

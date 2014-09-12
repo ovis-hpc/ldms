@@ -114,7 +114,7 @@ struct mysqlbulk_store_instance {
 	struct mysqlbulk_metric_store *ms[0];
 };
 
-pthread_mutex_t cfg_lock;
+static pthread_mutex_t cfg_lock;
 
 void cleanse_string(char *s)
 {
