@@ -17,30 +17,25 @@ can be created and piped into the ldmsctl.
 The following environment variables must be set:
 .TP
 LD_LIBRARY_PATH
-.br
 include path to ovis/lib64
 .TP
 LDMS_XPRT_LIBPATH
-.br
 path to ovis/lib64/
 .TP
 LDMSD_PLUGIN_LIBPATH
-.br
 path to ovis/lib64/
 .TP
 PATH
-.br
 include path to ovis/sbin
 
 
 .SH OPTIONS
 .TP
-.BR -S =\flSOCKET\fR 
+.BI -S " SOCKET"
 .br
 SOCKET is the unix domain socket that the ldmsd is listening on.
 .TP
 .BR -V
-.br
 Display LDMS version information and then exit.
 
 .SH DEFAULTS
@@ -52,17 +47,14 @@ can be created and piped into the ldmsctl.
 
 .TP
 .BR help
-.br
 Display the list of commands.
 
 .TP
 .BR usage
-.br
 Show loaded plugin usage information.
 
 .TP
 .BR version
-.br
 Show version information.
 
 .TP
@@ -75,7 +67,6 @@ LDMSD_PLUGIN_LIBPATH environment variable.
 .RS
 .TP
 <name>
-.br
 The plugin name. This is used to locate a loadable library named lib<name>.so.
 .RE
 
@@ -87,15 +78,12 @@ Provides a mechanism to specify configuration options.
 .RS
 .TP
 <name>
-.br
 The plugin name.
 .TP
 <attr>
-.br
 An attribute name.
 .TP
 <value>
-.br
 An attribute value.
 Valid <attr> <value> pairs are specific to the plugin.
 .RE
@@ -108,11 +96,9 @@ Begins calling the sampler's 'sample' method at the sample interval.
 .RS
 .TP
 <name>
-.br
 The sampler name.
 .TP
 <interval>
-.br
 The sample interval in microseconds.
 .TP
 <offset>
@@ -130,7 +116,6 @@ Cancels sampling on the specified plugin.
 .RS
 .TP
 <name>
-.br
 The sampler name.
 .RE
 
@@ -146,7 +131,6 @@ Adds a host to the list of hosts monitored by this ldmsd.
 .RS
 .TP
 <host>
-.br
 The hostname. This can be an IP address or DNS hostname.
 .TP
 <type>
@@ -173,12 +157,9 @@ side of the passive host above.
 .RE
 .TP
 <set names>
-.br
-The list of metric set names to be queried.
-The list is comma separated.
+The list of metric set names to be queried. The list is comma separated.
 .TP
 <interval>
-.br
 An optional sampling interval in microseconds, defaults to 1000000.
 .TP
 <offset>
@@ -190,7 +171,6 @@ if the offset is not specified, the collection
 will be asychronous.
 .TP
 <xprt>
-.br
 The transport type, defaults to 'sock'.
 .RS
 .TP
@@ -212,9 +192,7 @@ Cray XE/XK/XC transport.
 The port number to connect on, defaults to LDMS_DEFAULT_PORT
 .TP
 <agg_no>
-.br
-The number of the aggregator that this is standby for.
-Defaults to 0 which means this is an active aggregator.
+The number of the aggregator that this is standby for. Defaults to 0 which means this is an active aggregator.
 .RE
 .TP
 .BR store
@@ -226,20 +204,16 @@ Saves a set from one or more hosts to a persistent object store.
 .RS
 .TP
 <store>
-.br
 The name of the storage plugin.
 .TP
 <container>
-.br
 The store policy ID, e.g., meminfo-essential
 .TP
 <set>
-.br
 The set whose data will be saved. Data is saved
 when update completes if the generation number has changed.
 .TP
 <comp_type>
-.br
 The component type.
 .TP
 <metrics>
@@ -247,7 +221,6 @@ The component type.
 A list of metric names in the specified set. If not specified, all metrics will be saved.
 .TP
 <hosts> 
-.br
 A list of hosts to whose set data will be saved.
 If not specified, all hosts that have this set will
 have their data saved.
@@ -261,21 +234,17 @@ ldmsd will update it saggs_mask for this aggregator as indicated.
 .RS
 .TP
 <agg_no>
-.br
 Unique integer id for an aggregator
 .TP
 <state>
-.br
 0/1 - standby/active
 .RE
 .TP
 .BR info
-.br
 Causes the ldmsd to dump out information about plugins,
 work queue utilization, hosts and object stores.
 .TP
 .BR quit
-.br
 Exit
 .RE
 
