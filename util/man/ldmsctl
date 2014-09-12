@@ -1,6 +1,6 @@
 .\" Manpage for ldmsctl
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "11 Sep 2014" "1.2" "ldmsctl man page"
+.TH man 1 "11 Sep 2014" "1.2" "ldmsctl man page"
 
 .SH NAME
 ldmsctl \- Issue control commands to ldmsd.
@@ -370,7 +370,7 @@ Cannot put all the foo and bar in the same line......
 
 
 .SH SEE ALSO
-ldmsd(8), ldms_ls(8), Plugin_cray_system_sampler(5), Plugin_kgnilnd(5), Plugin_lustre2_client(5), Plugin_meminfo(5), 
+ldmsd(1), ldms_ls(1), Plugin_cray_system_sampler(5), Plugin_kgnilnd(5), Plugin_lustre2_client(5), Plugin_meminfo(5), 
 Plugin_procsensors(5), Plugin_procstatutil(5), Plugin_store_csv(5), Plugin_store_derived_csv(5), Plugin_sysclassib(5), Plugin_vmstat(5)
 
 .SH BUGS

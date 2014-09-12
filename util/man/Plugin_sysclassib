@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_sysclassib
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 5 "11 Sep 2014" "1.2" "LDMS Plugin sysclassib man page"
+.TH man 7 "11 Sep 2014" "1.2" "LDMS Plugin sysclassib man page"
 
 .SH NAME
 Plugin_sysclassib - man page for the LDMS sysclassib plugin
@@ -56,8 +56,8 @@ ldmsctl> start name=sysclassib interval=1000000
 ldmsctl> quit
 
 .SH SEE ALSO
-ldmsctl(8), Plugin_cray_system_sampler(5), Plugin_kgnilnd(5), Plugin_lustre2_client(5), Plugin_meminfo(5), Plugin_procnetdev(5), Plugin_procnfs(5),
-Plugin_procsensors(5), Plugin_procstatutil(5), Plugin_vmstat(5)
+ldmsctl(1), ldmsd(1), ldms_ls(1), Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7),
+Plugin_procnfs(7), Plugin_procsensors(7), Plugin_procstatutil(7), Plugin_vmstat(7)
 
 .SH BUGS
 No known bugs.

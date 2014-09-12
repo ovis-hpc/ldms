@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 5 "11 Sep 2014" "1.2" "LDMS Plugin store_csv man page"
+.TH man 7 "11 Sep 2014" "1.2" "LDMS Plugin store_csv man page"
 
 .SH NAME
 Plugin_store_csv - man page for the LDMS store_csv plugin
@@ -81,7 +81,7 @@ ldmsctl> quit
 .fi
 
 .SH SEE ALSO
-ldmsctl(8), Plugin_store_csv(5)
+ldmsctl(1), ldmsd(1), ldms_ls(1), Plugin_store_csv(7)
 
 .SH BUGS
 No known bugs.
