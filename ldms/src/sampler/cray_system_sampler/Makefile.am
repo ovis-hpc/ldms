@@ -24,7 +24,6 @@ CRAY_SOURCES_ = cray_system_sampler.c \
 	general_metrics.c general_metrics.h \
 	rtr_util.c rtr_util.h
 CRAY_LIBADD_ = $(COMMON_LIBADD) \
-	               ../lustre/libstr_map.la \
                        ../lustre/liblustre_sampler.la \
 			./librtr_util.la
 
@@ -38,7 +37,7 @@ pkglib_LTLIBRARIES += libcray_system_sampler_r.la
 
 else
 
-CRAY_CFLAGS_ += @GPCD_INCDIR_FLAG@ 
+CRAY_CFLAGS_ += @GPCD_INCDIR_FLAG@
 CRAY_LDFLAGS_ += @GPCD_LIB64DIR_FLAG@ @GPCD_LIBDIR_FLAG@ -lgpcd
 
 libgpcd_util_la_SOURCES = gpcd_util.c gpcd_util.h gemini.h
