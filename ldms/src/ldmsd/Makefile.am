@@ -6,7 +6,7 @@ AM_CFLAGS += \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
-AM_CPPFLAGS = -DPLUGINDIR='"$(libdir)"'
+AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
 
 ldms_ls_SOURCES = ldms_ls.c

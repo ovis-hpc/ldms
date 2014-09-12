@@ -260,6 +260,14 @@ AC_DEFINE_UNQUOTED([LDMS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
 AC_DEFINE_UNQUOTED([LDMS_GIT_SHORT],["$GITSHORT"],[Branch and hash mangle of last commit])
 ])
 
+dnl SYNOPSIS: OVIS_PKGLIBDIR
+dnl defines automake pkglibdir value for configure output
+dnl and enables gcc color
+AC_DEFUN([OVIS_PKGLIBDIR], [
+AC_SUBST([pkglibdir],['${libdir}'/$PACKAGE])
+AX_CHECK_COMPILE_FLAG([-fdiagnostics-color=auto], [CFLAGS="$CFLAGS -fdiagnostics-color=auto"])
+])
+
 dnl SYNOPSIS: OPTION_HOSTINFO
 dnl build environment description
 AC_DEFUN([OPTION_HOSTINFO], [

@@ -22,6 +22,7 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
 AX_CHECK_OPENSSL
+OVIS_PKGLIBDIR
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])

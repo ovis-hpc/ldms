@@ -40,6 +40,7 @@ AC_C_BIGENDIAN(
 
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
+OVIS_PKGLIBDIR
 
 
 AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
