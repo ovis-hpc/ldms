@@ -2384,9 +2384,9 @@ void do_host(struct hostspec *hs)
 			}
 			hs->conn_state = HOST_DISCONNECTED;
 			host_conn_reschedule(hs);
-		} else if ((hs->type != BRIDGING) &&
-			   ((hs->standby == 0) || (hs->standby & saggs_mask))) {
-			update_data(hs);
+		} else if (hs->type != BRIDGING) {
+			if ((hs->standby == 0) || (hs->standby & saggs_mask)) 
+				update_data(hs);
 			schedule_update(hs);
 		}
 		break;
