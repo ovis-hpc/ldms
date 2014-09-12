@@ -30,7 +30,7 @@ configuring a collector plugin on a running ldmsd
 .TP
 configuring a ldmsd to aggregate information from other ldmsds
 .TP
-configuring a flat file storage plugin on an ldmsd.
+configuring a store_csv storage plugin on an ldmsd.
 .RE
 .PP
 The order in which these configurations should be performed does not matter with respect to collectors and aggregators.
@@ -105,7 +105,7 @@ Note: Make sure to use different socket names and listen on different ports.
 .RE
 .fi
 
-.SH CONFIGURE COLLECTORS ON HOST vm1 DIRECTLY VIA LDMSCTL
+.SH CONFIGURE COLLECTORS ON HOST VM1 DIRECTLY VIA LDMSCTL
 .SS Set environment variables
 .nf
 .RS
@@ -177,225 +177,414 @@ ldmsctl> quit
 .PP
 At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below)
 
-
-
-
-.SH INTERCONNECT INFORMATION
-The interconnect information is produced in two steps:
-.TP
-1) From the smw as root: 
-.RS
-    rtr --interconnect >> interconnect.txt
-.RE
-This produces a list of all the tile, link, and media information
+.SH CONFIGURE COLLECTORS ON HOST VM1 VIA BASH SCRIPT
 .PP
-NOTE: This will be used for the calculation of derived metrics for both the gpcd and gpcdr interfaces since it is the only way to get the media information to estimate max BW.
-.PP
-NOTE: the gemini_metrics_type flag in the sampler configuration controls whether counter-only, derived-only, or both types of metrics will be output to the set. If you use gemini_metrics_type=0 (counter-only) then the interconnect file is not required to be specified in the configuration line.
-
-.TP
-2) On some host:
-.RS
-   parse_rtr_dump interconnect.txt >> parsed_interconnect.txt
-.RE
-This produces a formatted version of the interconnect.txt file which is greatly reduced in size.
-Using the even/oddness of the component numbers and the slot id at one end of the chassis or the other the direction and the
-cable/backplane connection information can be derived. This code produces that look-up information (~31k for a fully connected 3-D torus)
-as opposed to the raw data which grows with the system size.
-
-.SH GEMINI PERFORMANCE COUNTER INFORMATION
-The gemini performance counter information will be accessed and aggregated by link direction in one of two ways:
-.TP
-a) If your system has the Oct 2013 Cray release CLE 4.2 UP02 that provides access to this information via the gpcdr module, then you can use that source.
-This currently supports only a specific grcdr-init.config. The configuration file and instructions for using it can be found in until/gemini.
-.br
-OR
-.TP
-b) if it does not, then this information can be calculated from the raw performance counters via the gpcd interface. In this case, you will need the gpcd libraries.
-.PP
-NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to either us or your Cray contact. (gpcd will be released as a submodule in util in a future release.)
-.PP
-The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with --enable-gpcdr then the cray_system_sampler will be named cray_system_sampler_r; if you have built with --enable-gpcd then the cray_system_sampler will be named cray_system_sampler_d.
-
-.SH EXAMPLES
-.PP
+The following is an example bash script named "collect.sh"
 .nf
 .RS
-$/projects/ldms/Build/ldms.usr/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
-ldmsctl> load name=cray_system_sampler_r
-ldmsctl> config name=cray_system_sampler_r component_id=1 set=nid0001/cray_system_sampler_r rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11001" gemini_metrics_type=2
-ldmsctl> start name=cray_system_sampler_r interval=1000000
+#!/bin/bash
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
+# Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
+echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo config name=meminfo component_id=2 set=vm1_2/meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo start name=meminfo interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+# Configure "vmstat" collector plugin to collect every second (1000000 usec) on vm1_2
+echo load name=vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo config name=vmstat component_id=2 set=vm1_2/vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo start name=vmstat interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+.RE
+.fi
+.PP
+Make collect.sh executable
+.RS
+chmod +x collect.sh
+.RE
+.PP
+Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes in parallel)
+.RS
+./collect.sh
+.RE
+.PP
+At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below)
+
+
+.SH CONFIGURE AN AGGREGATOR
+.SS Start ldmsd's to collect
+.PP
+Start an ldmsd as described above.
+
+.SS Set environment variables
+.nf
+.RS
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+export PATH=/tmp/opt/ovis/sbin:$PATH
+.RE
+.ni
+
+.SS Start an ldmsd to aggregate
+Start a ldmsd on your vm using "sock" as the listening transport
+.RS
+/tmp/opt/ovis/sbin/ldmsd -x sock:60002 -S /var/run/ldmsd/metric_socket_agg -l /tmp/opt/ovis/logs/vm1_agg  > /dev/null 2>&1
+.RE
+
+.SS Start ldmsctl to configure the aggregator
+.PP
+.RS
+ldmsctl -S <unix domain socket path/name associated with target ldmsd>
+.RE
+.br
+.SS Example for running ldmsctl:
+.nf
+.RS
+/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_agg
+ldmsctl>
+.RE
+.ni
+
+.SS Use ldmsctl to configure the aggegator
+Now configure ldmsd to collect metric sets from vm1_1 and vm1_2 every second (1000000 usec) (assumes the collector was configured to listen on port 60020)
+.nf
+.RS
+ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
+ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
+ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
+ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat 
+ldmsctl> quit
+.RE
+.ni
+.PP
+Notes:
+.RS
+.br
+* Sets must be specified on the "add host" line; you can add hosts with sets to an aggregator even if those sets are not yet present on the host.
+.br
+* There is currently no "remove" so if a host should be dropped from the list or have its parameters changed it requires stopping, restarting, 
+and adding with appropriate parameters
+.br
+* There is no requirement that aggregator intervals match collection intervals
+* Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed 
+samples. The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss in 
+fidelity (if collecting counter data) or a loss of data points here and there (if collecting differences of counter values or non counter values).
+This can be handled using the synchronous option on both collector and aggregator but is not covered here.
+.RE
+.fi
+
+.PP
+A script based configuration would be done in the same manner as that for collection above
+.PP
+At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below).
+In this case you should see metric sets for both vm1_1 and vm1_2 displayed when you query the aggregator ldmsd using ldms_ls
+
+
+.SH CONFIGURE A STORE_CSV STORAGE PLUGIN
+Configure as ldmsd aggregator on a host that has access to a storage device using "sock" as the listening transport.
+
+.SS Configure an aggregator
+Configure an Aggregator as above.
+
+.SS Set environment variables
+.nf
+.RS
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+export PATH=/tmp/opt/ovis/sbin:$PATH
+.RE
+.ni
+
+.SS Start ldmsctl to configure the storage plugin on the aggregator
+.PP
+.RS
+ldmsctl -S <unix domain socket path/name associated with target ldmsd>
+.RE
+.br
+.SS Example for running ldmsctl:
+.nf
+.RS
+/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_agg
+ldmsctl>
+.RE
+.ni
+
+.SS Configure the store_csv plugin
+Configure ldmsd to store metric sets being retrieved from vm1_1 and vm1_2
+.nf
+.RS
+ldmsctl> load name=store_csv
+ldmsctl> config name=store_csv path=~/stored_data  
+ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo 
+ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
 ldmsctl> quit
 .RE
 .fi
 .PP
+NOTES:
+.RS
+You can optionally use "hosts" and "metrics" in the store command to down select what is stored.
+.RE
+
+.SS Verify the store
+Go to data store and verify files have been created and are being written to
 .nf
 .RS
-$ldms_ls -h nid00001 -x ugni -p 60020 -l
-nid00002/cray_system_sampler_r: consistent, last update: Wed Nov 27 11:35:21 2013 [3694us]
-U64 0                nettopo_mesh_coord_X
-U64 0                nettopo_mesh_coord_Y
-U64 1                nettopo_mesh_coord_Z
-U64 511796170434     X+_traffic (B)
-U64 0                X-_traffic (B)
-U64 3303792579630    Y+_traffic (B)
-U64 0                Y-_traffic (B)
-U64 3465635261280    Z+_traffic (B)
-U64 440005690365     Z-_traffic (B)
-U64 11550455465      X+_packets (1)
-U64 0                X-_packets (1)
-U64 69565153178      Y+_packets (1)
-U64 0                Y-_packets (1)
-U64 77814592569      Z+_packets (1)
-U64 11016585172      Z-_packets (1)
-U64 279915898696     X+_inq_stall (ns)
-U64 0                X-_inq_stall (ns)
-U64 1166528050735    Y+_inq_stall (ns)
-U64 0                Y-_inq_stall (ns)
-U64 1388142391120    Z+_inq_stall (ns)
-U64 178629273450     Z-_inq_stall (ns)
-U64 53317089003      X+_credit_stall (ns)
-U64 0                X-_credit_stall (ns)
-U64 1113615361307    Y+_credit_stall (ns)
-U64 0                Y-_credit_stall (ns)
-U64 378939358726     Z+_credit_stall (ns)
-U64 317184207        Z-_credit_stall (ns)
-U64 48               X+_sendlinkstatus (1)
-U64 0                X-_sendlinkstatus (1)
-U64 24               Y+_sendlinkstatus (1)
-U64 0                Y-_sendlinkstatus (1)
-U64 24               Z+_sendlinkstatus (1)
-U64 24               Z-_sendlinkstatus (1)
-U64 48               X+_recvlinkstatus (1)
-U64 0                X-_recvlinkstatus (1)
-U64 24               Y+_recvlinkstatus (1)
-U64 0                Y-_recvlinkstatus (1)
-U64 24               Z+_recvlinkstatus (1)
-U64 24               Z-_recvlinkstatus (1)
-U64 2112             X+_SAMPLE_GEMINI_LINK_BW (B/s)
-U64 0                X-_SAMPLE_GEMINI_LINK_BW (B/s)
-U64 867              Y+_SAMPLE_GEMINI_LINK_BW (B/s)
-U64 0                Y-_SAMPLE_GEMINI_LINK_BW (B/s)
-U64 180              Z+_SAMPLE_GEMINI_LINK_BW (B/s)
-U64 2805             Z-_SAMPLE_GEMINI_LINK_BW (B/s)
-U64 22               X+_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
-U64 0                X-_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
-U64 9                Y+_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
-U64 0                Y-_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
-U64 1                Z+_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
-U64 18               Z-_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
-U64 24               X+_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
-U64 0                X-_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
-U64 18               Y+_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
-U64 0                Y-_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
-U64 9                Z+_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
-U64 37               Z-_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
-U64 0                X+_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
-U64 0                X-_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
-U64 0                Y+_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
-U64 0                Y-_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
-U64 0                Z+_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
-U64 0                Z-_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
-U64 0                X+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
-U64 0                X-_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
-U64 0                Y+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
-U64 0                Y-_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
-U64 0                Z+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
-U64 0                Z-_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
-U64 4295117269008    totaloutput_optA
-U64 3403679290176    totalinput
-U64 782052680944     fmaout
-U64 693055825776     bteout_optA
-U64 47578643456      bteout_optB
-U64 3650200400448    totaloutput_optB
-U64 1344             SAMPLE_totaloutput_optA (B/s)
-U64 0                SAMPLE_totalinput (B/s)
-U64 0                SAMPLE_fmaout (B/s)
-U64 0                SAMPLE_bteout_optA (B/s)
-U64 0                SAMPLE_bteout_optB (B/s)
-U64 1344             SAMPLE_totaloutput_optB (B/s)
-U64 455385           lustrefs.stats.dirty_pages_hits
-U64 1535982          lustrefs.stats.dirty_pages_misses
-U64 0                lustrefs.stats.writeback_from_writepage
-U64 0                lustrefs.stats.writeback_from_pressure
-U64 0                lustrefs.stats.writeback_ok_pages
-U64 0                lustrefs.stats.writeback_failed_pages
-U64 3214118560       lustrefs.stats.read_bytes
-U64 6188335392       lustrefs.stats.write_bytes
-U64 40960            lustrefs.stats.brw_read
-U64 0                lustrefs.stats.brw_write
-U64 0                lustrefs.stats.ioctl
-U64 56489            lustrefs.stats.open
-U64 56489            lustrefs.stats.close
-U64 0                lustrefs.stats.mmap
-U64 6328             lustrefs.stats.seek
-U64 1                lustrefs.stats.fsync
-U64 95               lustrefs.stats.setattr
-U64 95               lustrefs.stats.truncate
-U64 0                lustrefs.stats.lockless_truncate
-U64 0                lustrefs.stats.flock
-U64 443              lustrefs.stats.getattr
-U64 2                lustrefs.stats.statfs
-U64 4909             lustrefs.stats.alloc_inode
-U64 0                lustrefs.stats.setxattr
-U64 0                lustrefs.stats.getxattr
-U64 0                lustrefs.stats.listxattr
-U64 0                lustrefs.stats.removexattr
-U64 216060           lustrefs.stats.inode_permission
-U64 0                lustrefs.stats.direct_read
-U64 0                lustrefs.stats.direct_write
-U64 0                lustrefs.stats.lockless_read_bytes
-U64 0                lustrefs.stats.lockless_write_bytes
-U64 0                snx11024.stats.dirty_pages_hits
-U64 1                snx11024.stats.dirty_pages_misses
-U64 0                snx11024.stats.writeback_from_writepage
-U64 0                snx11024.stats.writeback_from_pressure
-U64 0                snx11024.stats.writeback_ok_pages
-U64 0                snx11024.stats.writeback_failed_pages
-U64 612162576        snx11024.stats.read_bytes
-U64 96               snx11024.stats.write_bytes
-U64 0                snx11024.stats.brw_read
-U64 0                snx11024.stats.brw_write
-U64 0                snx11024.stats.ioctl
-U64 21921            snx11024.stats.open
-U64 21921            snx11024.stats.close
-U64 0                snx11024.stats.mmap
-U64 1216             snx11024.stats.seek
-U64 1                snx11024.stats.fsync
-U64 15               snx11024.stats.setattr
-U64 15               snx11024.stats.truncate
-U64 0                snx11024.stats.lockless_truncate
-U64 0                snx11024.stats.flock
-U64 3                snx11024.stats.getattr
-U64 2                snx11024.stats.statfs
-U64 2359             snx11024.stats.alloc_inode
-U64 0                snx11024.stats.setxattr
-U64 0                snx11024.stats.getxattr
-U64 0                snx11024.stats.listxattr
-U64 0                snx11024.stats.removexattr
-U64 107967           snx11024.stats.inode_permission
-U64 0                snx11024.stats.direct_read
-U64 0                snx11024.stats.direct_write
-U64 0                snx11024.stats.lockless_read_bytes
-U64 0                snx11024.stats.lockless_write_bytes
-U64 0                nr_dirty
-U64 0                nr_writeback
-U64 224              loadavg_latest(x100)
-U64 207              loadavg_5min(x100)
-U64 2                loadavg_running_processes
-U64 182              loadavg_total_processes
-U64 32294648         current_freemem
-U64 1267352565       ipogif0_rx_bytes
-U64 28155323         ipogif0_tx_bytes
-U64 1364774          SMSG_ntx
-U64 354553746        SMSG_tx_bytes
-U64 1367371          SMSG_nrx
-U64 298329388        SMSG_rx_bytes
-U64 30962            RDMA_ntx
-U64 6239550053       RDMA_tx_bytes
-U64 6522             RDMA_nrx
-U64 507905281        RDMA_rx_bytes
+cd ~/stored_data/node/<container>
+ls -ltr
+.RE
+.fi
+You can now utilize this data.
 
+.SH USING LDMS_LS TO DISPLAY SETS/METRICS FROM AN LDMSD
+
+.SS Set environment variables
+.nf
+.RS
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+export PATH=/tmp/opt/ovis/sbin:$PATH
+.RE
+.ni
+
+.SS Examples for running ldms_ls
+Query ldmsd on host vm1 listening on port 60000 using the sock transport for metric sets being served by that ldmsd
+.nf
+.RS
+ldms_ls -h vm1 -x sock -p 60000
+Should return:
+vm1_1/meminfo
+vm1_1/vmstat
+.RE
+.fi
+
+.PP
+Query ldmsd on host vm1 listening on port 60000 using the sock transport for the names and contents of metric sets being served by that ldmsd.
+Should return: Set names (vm1_1/meminfo and vm1_1/vmstat in this case) as well as all names and values associated with each set respectively.
+Only vm1_1/meminfo shown here.
+.nf
+.RS
+> ldms_ls -h vm1 -x sock-p 60000 -l
+vm1_1/meminfo: consistent, last update: Wed Jul 31 21:51:08 2013 [246540us]
+U64 33084652         MemTotal
+U64 32092964         MemFree
+U64 0                Buffers
+U64 49244            Cached
+U64 0                SwapCached
+U64 13536            Active
+U64 39844            Inactive
+U64 5664             Active(anon)
+U64 13540            Inactive(anon)
+U64 7872             Active(file)
+U64 26304            Inactive(file)
+U64 2996             Unevictable
+U64 2988             Mlocked
+U64 0                SwapTotal
+U64 0                SwapFree
+U64 0                Dirty
+U64 0                Writeback
+U64 7164             AnonPages
+U64 6324             Mapped
+U64 12544            Shmem
+U64 84576            Slab
+U64 3948             SReclaimable
+U64 80628            SUnreclaim
+U64 1608             KernelStack
+U64 804              PageTables
+U64 0                NFS_Unstable
+U64 0                Bounce
+U64 0                WritebackTmp
+U64 16542324         CommitLimit
+U64 73764            Committed_AS
+U64 34359738367      VmallocTotal
+U64 3467004          VmallocUsed
+U64 34356268363      VmallocChunk
+U64 0                HugePages_Total
+U64 0                HugePages_Free
+U64 0                HugePages_Rsvd
+U64 0                HugePages_Surp
+U64 2048             Hugepagesize
+U64 565248           DirectMap4k
+U64 5726208          DirectMap2M
+U64 27262976         DirectMap1G
+.RE
+.nf
+
+.PP
+For a non-existent set
+.nf
+.RS
+ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
+ldms_ls: No such file or directory
+ldms_ls: lookup failed for set 'vm1_1/foo'
+.RE
+.fi
+
+.PP
+Display metadata about sets contained by vm1 ldmsd listening on port 60000
+.nf
+.RS
+ldms_ls -h vm1 -x sock -p 60000 -v will output metadata information
+.RE
+.fi
+.PP
+Note: A script can be utilized for starting and stopping the collectors, aggregators, and store ldmsds as presented above
+
+.SH STOP AN LDMSD
+To kill all ldmsd on a host
+.RS
+killall ldmsd
+.RE
+
+.SH PROTECTION DOMAIN TAGS (Cray XE/XK)
+If you are going to be using the "ugni" transport (RDMA over Gemini) you will need to run with either system (as root) or user (as user) ptags. While root CAN run using any ptag the fact that its use is unknown to ALPS could cause collisions with applications.
+
+.SS To see current ptags:
+.nf
+.RS
+> apstat -P
+PDomainID           Type    Uid   PTag     Cookie
+LDMS              system      0     84 0xa9380000
+.RE
+.ni
+
+.SS To create a userspace ptag:
+.nf
+.RS
+apmgr pdomain -c <somenamehere>
+
+Example:
+> apmgr pdomain -c foo
+> apstat -P
+PDomainID           Type    Uid   PTag     Cookie
+LDMS              system      0     84 0xa9380000
+foo                 user     12345  233 0xa1230000
+.RE
+.fi
+Note: A system administrator will have to setup system ptags and/or enable users to set up ptags.
+
+.SS To remove a userspace ptag:
+.nf
+.RS
+apmgr pdomain -r <somenamehere>
+.RE
+.fi
+Note: The userid of the ptag being removed must match that of the user running the command or root
+
+.SS PTAG-Related Enviroment variables for ldms
+Set the following environment variables for either user or system ptags (example shows user ptag values):
+.nf
+.RS
+export LDMS_UGNI_PTAG 233
+export LDMS_UGNI_COOKIE 0xa1230000
+.RE
+.fi
+
+.SS Starting ldms from aprun with ptags
+When running with user space ptags you must specify the ptag name when using aprun
+.nf
+.RS
+aprun <<usual aprun args here>> -p foo ldmsd <<usual ldmsd flags here>>
+or
+aprun <<usual aprun args here>> -p foo ldms_ls <<usual ldms_ls flags here>>
+.RE
+.fi
+Note: On some systems you will run aprun after a qsub -I or within a script specified in qsub or similiar.
+
+
+.SH TROUBLESHOOTING
+
+.SS What causes the following error: libibverbs: Warning: RLIMIT_MEMLOCK is 32768 bytes?
+Running as a user with "max locked memory" set too low.
+The following is an example of trying to run ldms_ls as a user with "max locked memory" set to 32k:
+.nf
+.RS
+ldms_ls -h <hostname> -x rdma -p <portnum> 
+libibverbs: Warning: RLIMIT_MEMLOCK is 32768 bytes.
+   This will severely limit memory registrations.
+RDMA: recv_buf reg_mr failed: error 12
+ldms_ls: Cannot allocate memory
+.RE
+.ni
+
+.SS Why doesn't my ldmsd start?
+.PP
+Possible options:
+* Check for exsiting /var/run/ldms/metric_socket or similar
+.RS
+* Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
+.RE
+* The port you are trying to use may already be in use on the node
+.RS
+* The following shows the logfile output of such a case:
+.nf
+Tue Sep 24 08:36:54 2013: Started LDMS Daemon version 2.1.0
+Tue Sep 24 08:36:54 2013: Listening on transport ugni:60020
+Tue Sep 24 08:36:54 2013: EV_WARN: Can't change condition callbacks once they have been initialized.
+Tue Sep 24 08:36:54 2013: Error 12 listening on the 'ugni' transport.
+Tue Sep 24 08:36:54 2013: LDMS Daemon exiting...status 7
+.fi
+.RE
+* If using the -l flag make sure that your log directory exists prior to running
+.br
+* If writing to a store with this particular lmdsd make sure that your store directory exists prior to running
+.br
+* If you are running on a Cray with transport ugni using a user space PTag, check that you called aprun with the -p flag
+.RS
+aprun -N 1 -n <number of nodes> -p <ptag name> run_my_ldmsd.sh
+.RE
+.RE
+
+.SS How can I find what process is using the port?
+.RS
+netstat -abno
+.RE
+
+.SS Why arent all my hosts/sets adding to the aggregator?
+Possible options:
+.RS
+* running multiples on the same host from a script -- note that sometimes multiple ldmsctls running concurrently may collide in creating ports. They should clean up after themselves and this usually isnt an issue. Are they supposed to be retrying after a fail?
+.br
+* use -m flag on the aggregator to use more memory when adding a lot of hosts
+.br
+* use -p on the aggregator to use more processors
+.RE
+
+
+.SS What is the syntax for chaining aggregators and storing?
+.nf
+.RS
+add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=foo/meminfo, foo/vmstat,foo/procnetdev
+add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=bar/meminfo, bar/vmstat,bar/procnetdev
+load name=store_csv
+config name=store_csv path=/projects/ovis/ClusterData/chama/storecsv
+store name=store_store_csv comp_type=node set=vmstat container=vmstat
+store name=store_store_csv comp_type=node set=meminfo container=meminfo
+.RE
+.fi
+.PP
+NOTES:
+.RS
+* you can do the add host more than once, but only for different prefix on the sets (foo vs bar)
+.br
+* syntax for add host is sets plural with comma separation
+.br
+*syntax for store is only 1 set at a time
+.br
+* csv file will be <path>/<comp_type>/<container>
+* do not mix containers across sets
+* cannot put all the foo and bar in the same line.
+.RE
+
+.SS Why is my aggregator not responding (CRAY XE/XK)?
+Running a ldmsd aggregator as a user but trying to aggregate from a ldmsd that uses a system ptag can result in the aggregator hanging (alive but not responding and not writing to the store). The following is the logfile output of such an aggregator:
+.nf
+.RS
+Tue Sep 24 08:42:40 2013: Connected to host 'nid00081:60020'
+Tue Sep 24 08:42:42 2013: cq_thread_proc: Error 11  monitoring the CQ.
 .RE
 .fi
 
