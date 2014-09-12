@@ -281,7 +281,7 @@ static int heap_print(struct rbn *rbn, void *fn_data, int level)
 		container_of(rbn, struct mm_prefix, addr_node);
 	assert(rbn->left != rbn->parent);
 	assert(rbn->right != rbn->parent);
-	printf("#%*p[%d]-%c\n", 80 - (level * 20), mm, mm->count,
+	printf("#%*p[%zu]-%c\n", 80 - (level * 20), mm, mm->count,
 	       (rbn->color == RBN_RED?'R':'B'));
 	node_count++;
 	return 0;
@@ -305,7 +305,7 @@ static int heap_print_by_size(struct rbn *rbn, void *fn_data, int level)
 		container_of(rbn, struct mm_prefix, size_node);
 	assert(rbn->left != rbn->parent);
 	assert(rbn->right != rbn->parent);
-	printf("#%*p[%d]-%c\n", 80 - (level * 20), mm, mm->count,
+	printf("#%*p[%zu]-%c\n", 80 - (level * 20), mm, mm->count,
 	       (rbn->color == RBN_RED?'R':'B'));
 	return 0;
 }

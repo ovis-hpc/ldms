@@ -232,7 +232,7 @@ static int purge_layer(struct idx_layer_s *pl, idx_key_t key, size_t keylen)
 	return 0;
 }
 
-static int purge_layers(idx_t t, idx_key_t key, size_t keylen)
+static void purge_layers(idx_t t, idx_key_t key, size_t keylen)
 {
 	int l = 0;
 	unsigned char *pkey = key;

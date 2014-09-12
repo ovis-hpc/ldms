@@ -111,7 +111,7 @@ void usage(char *argv[])
 	       "\n    -p <port_num>    The port number. The default is %d.\n"
 	       "\n    -l               Show the values of the metrics in each metric set.\n"
 	       "\n    -u               Show the user-defined metric meta data value.\n"
-	       "\n    -x <name>        The transport name: sock, rdma, or ugni (Cray XE/XK/XC).\n",
+	       "\n    -x <name>        The transport name: sock, rdma, or ugni (Cray XE/XK/XC).\n"
                "                       Default is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
 	       "                       The default is 10 seconds.\n"
@@ -122,7 +122,7 @@ void usage(char *argv[])
 	       "                         For example, 20M or 20mb are 20 megabytes.\n"
 	       "\n    -V               Show the LDMS version information and exit.\n"
 	       "\n%s",
-	       argv[0],LDMS_DEFAULT_PORT,ldms_pedigree());
+	       argv[0], LDMS_DEFAULT_PORT, ldms_pedigree());
 	exit(1);
 }
 
