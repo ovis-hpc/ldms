@@ -5,6 +5,27 @@
 .SH NAME
 LDMS_QuickStart - man page for Quick Start of LDMS
 
+.SH INTRODUCTION
+LDMS is the Lightweight Distributed Metric Service. 
+LDMS is a distributed data collection, transport, and storage
+tool that supports a wide variety of configuration options.
+.PP
+There are 3 major functional components:
+.RS
+.TP
+Samplers run one or more sampling plugins that periodically sample data of interest on monitored nodes.
+Each plugin defines a collection of metrics called a metric set.
+.TP
+Aggregators collect data in a pull fashion from samplers
+and/or other aggregators. 
+.TP
+Storage plugins write in a variety of formats. 
+.RE
+.PP
+The host daemon is the same base code in all cases; differentiation is based
+on configuration of plugins for sampling or storage and on configuring
+aggregation of data from other host daemons.
+
 .SH DESCRIPTION
 Quick Start instructions for LDMS (Lightweight Distributed Metric Service).
 .PP
