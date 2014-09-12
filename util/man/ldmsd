@@ -17,72 +17,67 @@ ldmsctl command.
 The following environment variables must be set:
 .TP
 LD_LIBRARY_PATH
-.br
 include path to ovis/lib64
 .TP
 LDMS_XPRT_LIBPATH
-.br
 path to ovis/lib64/
 .TP
 LDMSD_PLUGIN_LIBPATH
-.br
 path to ovis/lib64/
 .TP
 PATH
-.br
 include path to ovis/sbin
 
 .SH OPTIONS
 .TP
-.BR -D =\flNUM\fR
+.BI -D " NUM"
 .br
 NUM is the number of bytes of the dirty threshold used for store rollover.
 .TP
 .BR -F 
-.br
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
-.BR -f =\flCOUNT\fR
+.BI -f " COUNT"
 .br
 COUNT is the number of flush threads.
 .TP
-.BR -I =\flINSTANCE\fR
+.BI -I " INSTANCE"
 .br
 INSTANCE is the instance number.
 .TP
-.BR -l =\flLOGFILE\fR 
+.BI -l " LOGFILE"
 .br
 LOGFILE is the path to the log file for status messages. Default is LDMSD_LOGFILE.
 .TP
-.BR -m =\flMEMORY_SIZE\fR 
+.BI -m " MEMORY_SIZE"
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
 The given size must be less than 1 petabytes.
 For example, 20M or 20mb are 20 megabytes.
 .TP
-.BR -P =\flTHR_COUNT\fR 
+.BI -P " THR_COUNT"
 .br
 THR_COUNT is the number of event threads to start.
 .TP
-.BR -q =\flLOG_LEVEL\fR 
+.BI -q " LOG_LEVEL"
 .br
 LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
 The default level is ERROR. QUIET produces no output.
 .TP
-.BR -S =\flSOCKNAME\fR 
+.BI -S " SOCKNAME"
 .br
 SOCKNAME is the unix domain socket name to use for ldmsctl access.
 .TP
 .BR -V
 Display LDMS version information and then exit.
 .TP
-.BR -x =\flXPRT:PORT\fR 
+.BI -x " XPRT:PORT"
 .br
 Specifies the transport type to listen on. May be specified more than once for
 multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC).
 A transport specific port number is optionally specified following a ':', e.g. rdma:50000.
 .TP
-.BR -Z =\flCONN_COUNT\fR 
+.BI -Z " CONN_COUNT"
 .br
 CONN_COUNT is the number of connection threads to start.
 

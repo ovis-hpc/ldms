@@ -30,40 +30,35 @@ include path to ovis/sbin
 .TP
 If the SETNAME is specified on the command line, only information for that set is displayed.
 .TP
-.BR -h =\flHOST\fR
+.BI -h " HOST"
+.br
 HOST to query. Default is localhost.
 .TP
-.BR -x =\flTRANSPORT\fR
+.BI -x " TRANSPORT"
 TRANSPORT to use for the query. values are sock, rdma, or ugni (Cray XE/XK/XC). Default is sock.
 .TP
-.BR -p =\flPORT\fR
+.BI -p " PORT"
 PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
 .TP
 .BR -l 
-.br
 Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
 .TP
-.BR -m =\flMEMORY_SIZE\fR 
+.BI -m  " MEMORY_SIZE"
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
 The given size must be less than 1 petabytes.
 For example, 20M or 20mb are 20 megabytes.
 .TP
 .BR -u 
-.br
 Display the user data for the metrics. (Usually compid)
 .TP
 .BR -v
-.br
 Display metadata information. Specifying this option multiple times increases the verbosity.
 .TP
 .BR -V
 Display LDMS version information and then exit.
-.br
-Display metadata information. Specifying this option multiple times increases the verbosity.
 .TP
-.BR -w =\flWAIT_SEC\fR 
-.br
+.BI -w " WAIT_SEC"
 WAIT_SEC is the time to wait before giving up on the server. Default is 10 sec.
 
 .SH DEFAULTS
