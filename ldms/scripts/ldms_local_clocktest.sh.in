@@ -32,6 +32,11 @@ case "x$USER" in
 	exit 1
 	;;
 esac
+function mysleep() {
+	echo -n sleep $1 ... 
+	sleep $1
+	echo done
+}
 
 # use our pid in dirname to prevent collisions in dir & file naming
 TESTDIR=/tmp/$USER/ldmstest/$$
@@ -49,7 +54,7 @@ export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
 
 # whack the daemons we own
 pkill ldmsd
-sleep 1
+mysleep 1
 echo "Listing ldmsd's still running:"
 pgrep ldmsd
 echo "Done."
@@ -67,50 +72,50 @@ echo Starting daemons
 ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt
 ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt
 ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt
-sleep 1
+mysleep 1
 
 
 echo Starting plugins on daemon1
 echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
 echo "config name=clock set=localhost1/clock component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
 echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-sleep 1
-sleep 1
+mysleep 1
+mysleep 1
 
 echo Starting plugins on daemon2
 echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
 echo "config name=clock set=localhost2/clock component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
 echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-sleep 2
+mysleep 2
 
 echo Starting plugins on daemon3
 echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 echo "config name=clock set=localhost3/clock component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-sleep 2
+mysleep 2
 
 echo Adding host2 to aggregator3
 echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-sleep 1
+mysleep 1
 echo Adding host1 to aggregator3
 echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
-sleep 5
+mysleep 5
 echo Adding store_csv to aggregator3
 echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-sleep 2
+mysleep 2
 echo "config name=store_csv path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 echo "store name=store_csv comp_type=node set=clock container=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-sleep 2
+mysleep 2
 #
 
-sleep 5
+mysleep 5
 echo ldms_ls on host 1:
 ldms_ls -h localhost -x sock -p $port1 -l
-sleep 1
+mysleep 1
 echo ldms_ls on host 2:
 ldms_ls -h localhost -x sock -p $port2 -l
-sleep 1
+mysleep 1
 echo ldms_ls on host 3:
 ldms_ls -h localhost -x sock -p $port3 
 

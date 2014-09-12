@@ -97,7 +97,7 @@ TAILQ_HEAD(lru_list, store_instance) lru_list;
 pthread_mutex_t lru_list_lock;
 int open_count;
 
-pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct flush_thread {
 	pthread_t thread; /**< the thread */
