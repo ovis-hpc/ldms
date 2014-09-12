@@ -1,0 +1,412 @@
+.\" Manpage for LDMS_QuickStart
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "12 Sep 2014" "1.2" "LDMS_QuickStart man page"
+
+.SH NAME
+LDMS_QuickStart - man page for Quick Start of LDMS
+
+.SH SYNOPSIS
+LDMS_QuickStart - basic info for starting LDMS
+
+.SH DESCRIPTION
+Quick Start instructions for LDMS (Lightweight Distributed Metric Service).
+.PP
+This man page describes how to configure and run LDMS daemons (ldmsd) to perform the following tasks:
+.RS
+.TP
+collect data
+.TP
+aggregate data from multiple ldmsds
+.TP
+store collected data to files.
+.RE
+.PP
+There are four basic configurations that will be addressed:
+.RS
+.TP
+configuring ldmsd
+.TP
+configuring a collector plugin on a running ldmsd
+.TP
+configuring a ldmsd to aggregate information from other ldmsds
+.TP
+configuring a flat file storage plugin on an ldmsd.
+.RE
+.PP
+The order in which these configurations should be performed does not matter with respect to collectors and aggregators.
+.PP
+While a complete listing of flags and parameters can be seen by running ldmsd with the --help directive, this document describes the flags and parameters required for running a basic setup.
+.PP
+There are no run scripts provided in the current release; the commands here can be used in the creation of such.
+
+.SH START AN LDMSD ON YOUR HOST
+.PP
+Currently must be run be run as root if using the default path of /var/run/ for the unix domain socket. This can be changed using the environment variable LDMSD_SOCKPATH as described below.
+
+.SS Set environment variables:
+.nf
+.RS
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+export PATH=/tmp/opt/ovis/sbin/:$PATH
+.RE
+.fi
+.PP
+A script can be made to start ldmsd and collectors on a host where that script contains the information to execute the command below. Sample are scripts included in your ~/ldms_scripts/ directory.
+.RE
+.SS Run ldmsd:
+.nf
+.RS
+<path to executable>/ldmsd -x <transport>:<listen port> -P <# worker threads to start> -S <unix domain socket path/name> -l <log file path/name>
+.RE
+.fi
+.PP
+Notes:
+.RS
+.br
+* transport is one of: sock, rdma, ugni (ugni is Cray specific for using RDMA over the Gemini network)
+.br
+* # worker threads defaults to 1 if not specified by -P and should not exceed the core count
+.br
+* The unix domain socket is used by ldmsctl to communicate configuration information to an ldmsd
+.RS
+** The default path for this is /var/run/ldmsd/. To change this the environment variable LDMSD_SOCKPATH must be set to the desired path (e.g. export LDMSD_SOCKPATH=/tmp/run/ldmsd)
+** Instead of specifying the log file path using the "-l" flag you can use the "-q" flag and not write to a log file. This is typically used on compute nodes for production.
+.RE
+.br
+* The default is to run as a background process but the -F flag can be specified for foreground
+.RE
+.PP
+.SS Examples for running ldmsd:
+
+.PP
+.nf
+.RS
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
+.RE
+.ni
+
+.PP
+.nf
+.RS
+Same but sending stdout and stderr to /dev/null
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
+.RE
+.fi
+
+.PP
+.nf
+.RS
+Start 2 instances of ldmsd on your vm
+Note: Make sure to use different socket names and listen on different ports.
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket_vm1_1 -l /tmp/opt/ovis/logs/vm_1  > /dev/null 2>&1
+/tmp/opt/ovis/sbin/ldmsd -x sock:60001 -S /var/run/ldmsd/metric_socket_vm1_2 -l /tmp/opt/ovis/logs/vm_2  > /dev/null 2>&1
+.RE
+.fi
+
+.SH CONFIGURE COLLECTORS ON HOST vm1 DIRECTLY VIA LDMSCTL
+.SS Set environment variables
+.nf
+.RS
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+export PATH=/tmp/opt/ovis/sbin:$PATH
+.RE
+.ni
+
+.SS Run ldmsctl:
+.PP
+.RS
+ldmsctl -S <unix domain socket path/name associated with target ldmsd>
+.RE
+.br
+.SS Example for running ldmsctl:
+.nf
+.RS
+/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl>
+.RE
+.ni
+
+.SS Configure a collector with ldmsctl
+Now configure "meminfo" collector plugin to collect every second. 
+.br
+Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
+.nf
+.RS
+ldmsctl> load name=meminfo
+ldmsctl> config name=meminfo component_id=1 set=vm1_1/meminfo
+ldmsctl> start name=meminfo interval=1000000
+ldmsctl> quit
+.RE
+.ni
+
+.PP
+Notes:
+.RS
+* At the ldmsctl> prompt typing "help" will print out info about the ldmsctl commands and options
+.br
+* You can use stop name=meminfo followed by start name=meminfo interval=xxx to change collection intervals
+.br
+* For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy)
+This will cause the sampler to target interval + yyy aligned to the second and micro second (e.g. every 5 seconds with an offset of 
+0 usec would ideally result in collections at 00:00:00, 00:00:05, 00:00:10, etc. whereas with an offset of 100,000 usec
+it would be 00:00:00.1, 00:00:05.1, 00:00:10.1, etc)
+.br
+* Different plugins may have additional configuration parameters. Use help within ldmsctl to see these
+.br
+* At the ldmsctl> prompt typing "info" will output all config information to that ldmsd's log file.
+.RE
+
+.SS Example configuring a collector:
+.nf
+.RS
+Configure "vmstat" collector plugin to collect every second (1000000 usec)
+
+/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl> load name=vmstat
+ldmsctl> config name=vmstat component_id=1 set=vm1_1/vmstat
+ldmsctl> start name=vmstat interval=1000000
+ldmsctl> quit
+.RE
+.fi
+
+.SS Verifying the collector
+.PP
+At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below)
+
+
+
+
+.SH INTERCONNECT INFORMATION
+The interconnect information is produced in two steps:
+.TP
+1) From the smw as root: 
+.RS
+    rtr --interconnect >> interconnect.txt
+.RE
+This produces a list of all the tile, link, and media information
+.PP
+NOTE: This will be used for the calculation of derived metrics for both the gpcd and gpcdr interfaces since it is the only way to get the media information to estimate max BW.
+.PP
+NOTE: the gemini_metrics_type flag in the sampler configuration controls whether counter-only, derived-only, or both types of metrics will be output to the set. If you use gemini_metrics_type=0 (counter-only) then the interconnect file is not required to be specified in the configuration line.
+
+.TP
+2) On some host:
+.RS
+   parse_rtr_dump interconnect.txt >> parsed_interconnect.txt
+.RE
+This produces a formatted version of the interconnect.txt file which is greatly reduced in size.
+Using the even/oddness of the component numbers and the slot id at one end of the chassis or the other the direction and the
+cable/backplane connection information can be derived. This code produces that look-up information (~31k for a fully connected 3-D torus)
+as opposed to the raw data which grows with the system size.
+
+.SH GEMINI PERFORMANCE COUNTER INFORMATION
+The gemini performance counter information will be accessed and aggregated by link direction in one of two ways:
+.TP
+a) If your system has the Oct 2013 Cray release CLE 4.2 UP02 that provides access to this information via the gpcdr module, then you can use that source.
+This currently supports only a specific grcdr-init.config. The configuration file and instructions for using it can be found in until/gemini.
+.br
+OR
+.TP
+b) if it does not, then this information can be calculated from the raw performance counters via the gpcd interface. In this case, you will need the gpcd libraries.
+.PP
+NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to either us or your Cray contact. (gpcd will be released as a submodule in util in a future release.)
+.PP
+The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with --enable-gpcdr then the cray_system_sampler will be named cray_system_sampler_r; if you have built with --enable-gpcd then the cray_system_sampler will be named cray_system_sampler_d.
+
+.SH EXAMPLES
+.PP
+.nf
+.RS
+$/projects/ldms/Build/ldms.usr/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
+ldmsctl> load name=cray_system_sampler_r
+ldmsctl> config name=cray_system_sampler_r component_id=1 set=nid0001/cray_system_sampler_r rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11001" gemini_metrics_type=2
+ldmsctl> start name=cray_system_sampler_r interval=1000000
+ldmsctl> quit
+.RE
+.fi
+.PP
+.nf
+.RS
+$ldms_ls -h nid00001 -x ugni -p 60020 -l
+nid00002/cray_system_sampler_r: consistent, last update: Wed Nov 27 11:35:21 2013 [3694us]
+U64 0                nettopo_mesh_coord_X
+U64 0                nettopo_mesh_coord_Y
+U64 1                nettopo_mesh_coord_Z
+U64 511796170434     X+_traffic (B)
+U64 0                X-_traffic (B)
+U64 3303792579630    Y+_traffic (B)
+U64 0                Y-_traffic (B)
+U64 3465635261280    Z+_traffic (B)
+U64 440005690365     Z-_traffic (B)
+U64 11550455465      X+_packets (1)
+U64 0                X-_packets (1)
+U64 69565153178      Y+_packets (1)
+U64 0                Y-_packets (1)
+U64 77814592569      Z+_packets (1)
+U64 11016585172      Z-_packets (1)
+U64 279915898696     X+_inq_stall (ns)
+U64 0                X-_inq_stall (ns)
+U64 1166528050735    Y+_inq_stall (ns)
+U64 0                Y-_inq_stall (ns)
+U64 1388142391120    Z+_inq_stall (ns)
+U64 178629273450     Z-_inq_stall (ns)
+U64 53317089003      X+_credit_stall (ns)
+U64 0                X-_credit_stall (ns)
+U64 1113615361307    Y+_credit_stall (ns)
+U64 0                Y-_credit_stall (ns)
+U64 378939358726     Z+_credit_stall (ns)
+U64 317184207        Z-_credit_stall (ns)
+U64 48               X+_sendlinkstatus (1)
+U64 0                X-_sendlinkstatus (1)
+U64 24               Y+_sendlinkstatus (1)
+U64 0                Y-_sendlinkstatus (1)
+U64 24               Z+_sendlinkstatus (1)
+U64 24               Z-_sendlinkstatus (1)
+U64 48               X+_recvlinkstatus (1)
+U64 0                X-_recvlinkstatus (1)
+U64 24               Y+_recvlinkstatus (1)
+U64 0                Y-_recvlinkstatus (1)
+U64 24               Z+_recvlinkstatus (1)
+U64 24               Z-_recvlinkstatus (1)
+U64 2112             X+_SAMPLE_GEMINI_LINK_BW (B/s)
+U64 0                X-_SAMPLE_GEMINI_LINK_BW (B/s)
+U64 867              Y+_SAMPLE_GEMINI_LINK_BW (B/s)
+U64 0                Y-_SAMPLE_GEMINI_LINK_BW (B/s)
+U64 180              Z+_SAMPLE_GEMINI_LINK_BW (B/s)
+U64 2805             Z-_SAMPLE_GEMINI_LINK_BW (B/s)
+U64 22               X+_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
+U64 0                X-_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
+U64 9                Y+_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
+U64 0                Y-_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
+U64 1                Z+_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
+U64 18               Z-_SAMPLE_GEMINI_LINK_USED_BW (% x10e6)
+U64 24               X+_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
+U64 0                X-_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
+U64 18               Y+_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
+U64 0                Y-_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
+U64 9                Z+_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
+U64 37               Z-_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE (B)
+U64 0                X+_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
+U64 0                X-_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
+U64 0                Y+_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
+U64 0                Y-_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
+U64 0                Z+_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
+U64 0                Z-_SAMPLE_GEMINI_LINK_INQ_STALL (% x10e6)
+U64 0                X+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
+U64 0                X-_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
+U64 0                Y+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
+U64 0                Y-_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
+U64 0                Z+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
+U64 0                Z-_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6)
+U64 4295117269008    totaloutput_optA
+U64 3403679290176    totalinput
+U64 782052680944     fmaout
+U64 693055825776     bteout_optA
+U64 47578643456      bteout_optB
+U64 3650200400448    totaloutput_optB
+U64 1344             SAMPLE_totaloutput_optA (B/s)
+U64 0                SAMPLE_totalinput (B/s)
+U64 0                SAMPLE_fmaout (B/s)
+U64 0                SAMPLE_bteout_optA (B/s)
+U64 0                SAMPLE_bteout_optB (B/s)
+U64 1344             SAMPLE_totaloutput_optB (B/s)
+U64 455385           lustrefs.stats.dirty_pages_hits
+U64 1535982          lustrefs.stats.dirty_pages_misses
+U64 0                lustrefs.stats.writeback_from_writepage
+U64 0                lustrefs.stats.writeback_from_pressure
+U64 0                lustrefs.stats.writeback_ok_pages
+U64 0                lustrefs.stats.writeback_failed_pages
+U64 3214118560       lustrefs.stats.read_bytes
+U64 6188335392       lustrefs.stats.write_bytes
+U64 40960            lustrefs.stats.brw_read
+U64 0                lustrefs.stats.brw_write
+U64 0                lustrefs.stats.ioctl
+U64 56489            lustrefs.stats.open
+U64 56489            lustrefs.stats.close
+U64 0                lustrefs.stats.mmap
+U64 6328             lustrefs.stats.seek
+U64 1                lustrefs.stats.fsync
+U64 95               lustrefs.stats.setattr
+U64 95               lustrefs.stats.truncate
+U64 0                lustrefs.stats.lockless_truncate
+U64 0                lustrefs.stats.flock
+U64 443              lustrefs.stats.getattr
+U64 2                lustrefs.stats.statfs
+U64 4909             lustrefs.stats.alloc_inode
+U64 0                lustrefs.stats.setxattr
+U64 0                lustrefs.stats.getxattr
+U64 0                lustrefs.stats.listxattr
+U64 0                lustrefs.stats.removexattr
+U64 216060           lustrefs.stats.inode_permission
+U64 0                lustrefs.stats.direct_read
+U64 0                lustrefs.stats.direct_write
+U64 0                lustrefs.stats.lockless_read_bytes
+U64 0                lustrefs.stats.lockless_write_bytes
+U64 0                snx11024.stats.dirty_pages_hits
+U64 1                snx11024.stats.dirty_pages_misses
+U64 0                snx11024.stats.writeback_from_writepage
+U64 0                snx11024.stats.writeback_from_pressure
+U64 0                snx11024.stats.writeback_ok_pages
+U64 0                snx11024.stats.writeback_failed_pages
+U64 612162576        snx11024.stats.read_bytes
+U64 96               snx11024.stats.write_bytes
+U64 0                snx11024.stats.brw_read
+U64 0                snx11024.stats.brw_write
+U64 0                snx11024.stats.ioctl
+U64 21921            snx11024.stats.open
+U64 21921            snx11024.stats.close
+U64 0                snx11024.stats.mmap
+U64 1216             snx11024.stats.seek
+U64 1                snx11024.stats.fsync
+U64 15               snx11024.stats.setattr
+U64 15               snx11024.stats.truncate
+U64 0                snx11024.stats.lockless_truncate
+U64 0                snx11024.stats.flock
+U64 3                snx11024.stats.getattr
+U64 2                snx11024.stats.statfs
+U64 2359             snx11024.stats.alloc_inode
+U64 0                snx11024.stats.setxattr
+U64 0                snx11024.stats.getxattr
+U64 0                snx11024.stats.listxattr
+U64 0                snx11024.stats.removexattr
+U64 107967           snx11024.stats.inode_permission
+U64 0                snx11024.stats.direct_read
+U64 0                snx11024.stats.direct_write
+U64 0                snx11024.stats.lockless_read_bytes
+U64 0                snx11024.stats.lockless_write_bytes
+U64 0                nr_dirty
+U64 0                nr_writeback
+U64 224              loadavg_latest(x100)
+U64 207              loadavg_5min(x100)
+U64 2                loadavg_running_processes
+U64 182              loadavg_total_processes
+U64 32294648         current_freemem
+U64 1267352565       ipogif0_rx_bytes
+U64 28155323         ipogif0_tx_bytes
+U64 1364774          SMSG_ntx
+U64 354553746        SMSG_tx_bytes
+U64 1367371          SMSG_nrx
+U64 298329388        SMSG_rx_bytes
+U64 30962            RDMA_ntx
+U64 6239550053       RDMA_tx_bytes
+U64 6522             RDMA_nrx
+U64 507905281        RDMA_rx_bytes
+
+.RE
+.fi
+
+
+.SH SEE ALSO
+LDMS_Authentication(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
+Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
+
+.SH BUGS
+No known bugs.
+
+.SH AUTHOR
+OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
