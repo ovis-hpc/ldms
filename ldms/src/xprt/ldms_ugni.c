@@ -66,7 +66,6 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <sys/epoll.h>
-#include <time.h>
 #include "gni_pub.h"
 #include "rca_lib.h"
 #include "ldms.h"
@@ -93,9 +92,12 @@ int IS_GEMINI=0;
 int IS_ARIES=0;
 static int reg_count;
 
-#define UGNI_AGE_UNIT 1000000 /* micro seconds */
-#define UGNI_AGE_DEFAULT 10
-static int age_thr = UGNI_AGE_DEFAULT; /* Age threshold to refresh the node info */
+#define UGNI_INTERVAL_DEFAULT 1000000 /* micro seconds */
+static struct timeval state_interval;
+static struct event_base *node_state_base;
+static pthread_t node_state_thread;
+static int state_ready = 0;
+static int is_get_state = 0;
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
 pthread_mutex_t ugni_mh_lock;
@@ -104,6 +106,7 @@ static struct event_base *io_event_loop;
 static pthread_t io_thread;
 static pthread_t cq_thread;
 
+static ldms_log_fn_t ugni_log;
 pthread_mutex_t ugni_lock;
 // pthread_mutex_t ugni_list_lock;
 // LIST_HEAD(ugni_list, ldms_ugni_xprt) ugni_list;
@@ -119,41 +122,37 @@ struct ugni_rbuf_desc {
 LIST_HEAD(ugni_rbuf_list, ugni_rbuf_desc) ugni_rbuf_list;
 pthread_mutex_t ugni_rbuf_lock = PTHREAD_MUTEX_INITIALIZER;
 
-struct ugni_node_info {
-	struct timespec time;
-	int *state;
-};
-
-#define UGNI_NODE_STATE_INIT 0
 #define UGNI_NODE_PREFIX "nid"
+#define UGNI_NODE_GOOD 7
 
-static struct ugni_node_info nodeinfo;
-int get_nodeinfo(struct ldms_xprt *x)
+static int *node_state;
+static int rca_get_failed = 0;
+int get_node_state()
 {
-	if (!nodeinfo.state) {;
-		nodeinfo.state = calloc(UGNI_MAX_NUM_NODE, sizeof(int));
-		if (!nodeinfo.state) {
-			x->log(LDMS_LERROR, "Out of memory\n");
-			errno = ENOMEM;
-			return -1;
-		}
-		memset(nodeinfo.state, UGNI_NODE_STATE_INIT,
-				UGNI_MAX_NUM_NODE * sizeof(int));
-	}
-
-	clock_gettime(CLOCK_REALTIME, &(nodeinfo.time));
+	int i, node_id;
 	rs_node_array_t nodelist;
 	if (rca_get_sysnodes(&nodelist)) {
-		x->log(LDMS_LERROR, "ugni: Failed to get node info.\n");
+		rca_get_failed++;
+		if ((rca_get_failed % 100) == 0) {
+			ugni_log(LDMS_LERROR, "ugni: rca_get_sysnodes"
+							" failed.\n");
+		}
+
+		for (i = 0; i < UGNI_MAX_NUM_NODE; i++)
+			node_state[i] = UGNI_NODE_GOOD;
+
+		state_ready = -1;
 		return -1;
 	}
-	int i, node_id;
+	rca_get_failed = 0;
 	for (i = 0; i < nodelist.na_len; i++) {
 		assert(i < UGNI_MAX_NUM_NODE);
 		node_id = nodelist.na_ids[i].rs_node_s._node_id;
-		nodeinfo.state[node_id] =
+		node_state[node_id] =
 				nodelist.na_ids[i].rs_node_s._node_state;
 	}
+	free(nodelist.na_ids);
+	state_ready = 1;
 	return 0;
 }
 
@@ -165,53 +164,85 @@ int get_nodeid(struct sockaddr *sa, socklen_t sa_len,
 	rc = getnameinfo(sa, sa_len, host, HOST_NAME_MAX,
 					NULL, 0, NI_NAMEREQD);
 	if (rc) {
-		gxp->xprt->log(LDMS_LERROR, "ugni: %s\n", gai_strerror(rc));
+		ugni_log(LDMS_LERROR, "ugni: %s\n", gai_strerror(rc));
 		return rc;
 	}
 	char *ptr = strstr(host, UGNI_NODE_PREFIX);
 	if (!ptr) {
-		gxp->xprt->log(LDMS_LINFO, "ugni: Unexpected node name '%s'\n", host);
+		ugni_log(LDMS_LINFO, "ugni: '%s', unexpected "
+				"node name format\n", host);
 		return -1;
 	}
 	ptr = 0;
 	int id = strtol(host + strlen(UGNI_NODE_PREFIX), &ptr, 10);
 	if (ptr[0] != '\0') {
-		gxp->xprt->log(LDMS_LINFO, "ugni: Unexpected node name '%s'\n", host);
+		ugni_log(LDMS_LINFO, "ugni: '%s', unexpected "
+				"node name format\n", host);
 		return -1;
 	}
 	gxp->node_id = id;
 	return 0;
 }
 
-int is_nodeinfo_old()
+int check_node_state(struct ldms_ugni_xprt *gxp)
 {
-	struct timespec now, past;
-	clock_gettime(CLOCK_REALTIME, &now);
-	past = nodeinfo.time;
-
-	time_t diff_sec = now.tv_sec - past.tv_sec;
-	if (diff_sec > (age_thr / UGNI_AGE_UNIT))
-		return 1;
-
-	double diff_nsec = (now.tv_nsec - past.tv_nsec) / 1000000000.0;
-	if ((diff_nsec * UGNI_AGE_UNIT) > (age_thr % UGNI_AGE_UNIT))
-		return 1;
-	return 0;
-}
-
-#define UGNI_NODE_GOOD 7
-int is_good_state(struct ldms_ugni_xprt *gxp)
-{
-	int rc = 0;
-	if (is_nodeinfo_old()) {
-		if (get_nodeinfo(gxp->xprt))
-			return -1; /* error */
+	while (state_ready == 0) {
+		/* wait for the state to be populated. */
 	}
 
-	if (nodeinfo.state[gxp->node_id] != UGNI_NODE_GOOD)
-		return 0; /* not good */
+	if (node_state[gxp->node_id] != UGNI_NODE_GOOD)
+		return 1; /* not good */
 
-	return 1; /* good */
+	return 0; /* good */
+}
+
+void node_state_cb(int fd, short sig, void *arg)
+{
+	struct event *keepalive = arg;
+	get_node_state();
+	evtimer_add(keepalive, &state_interval);
+}
+
+void *node_state_proc(void *v)
+{
+	struct event *keepalive;
+	keepalive = evtimer_new(node_state_base, node_state_cb, NULL);
+	get_node_state();
+	evtimer_assign(keepalive, node_state_base, node_state_cb, keepalive);
+	evtimer_add(keepalive, &state_interval);
+	event_base_loop(node_state_base, 0);
+	return NULL;
+}
+
+int node_state_thread_init()
+{
+	node_state = malloc(UGNI_MAX_NUM_NODE * sizeof(int));
+	if (!node_state) {
+		ugni_log(LDMS_LERROR, "Out of memory\n");
+		errno = ENOMEM;
+		return -1;
+	}
+	memset(node_state, UGNI_NODE_GOOD, UGNI_MAX_NUM_NODE);
+
+	if (evthread_use_pthreads()) {
+		ugni_log(LDMS_LERROR, "evthread_use_pthreads failed\n");
+		return -1;
+	}
+
+	node_state_base = event_base_new();
+	if (!node_state_base) {
+		ugni_log(LDMS_LERROR, "Failed to init node_state_base\n");
+		return -1;
+	}
+
+	int rc = 0;
+	rc = pthread_create(&node_state_thread, NULL, node_state_proc, NULL);
+	if (rc) {
+		event_base_free(node_state_base);
+		ugni_log(LDMS_LERROR, "%s\n", strerror(rc));
+		return -1;
+	}
+	return 0;
 }
 
 static void *io_thread_proc(void *arg);
@@ -241,7 +272,7 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 	if (IS_ARIES) {
 		if (*ptag == 0) {
 			#ifdef GNI_FIND_ALLOC_PTAG
-				grc = GNI_GetPtag(0, cookie, ptag);
+				grc = GNI_FIND_ALLOC_PTAG;
 				if (grc)
 					goto err;
 			#else
@@ -402,6 +433,18 @@ void ugni_xprt_cleanup(void)
 	}
 	if (io_event_loop)
 		event_base_free(io_event_loop);
+
+	if (node_state_base)
+		event_base_loopbreak(node_state_base);
+	if (node_state_thread) {
+		pthread_cancel(node_state_thread);
+		pthread_join(node_state_thread, &dontcare);
+	}
+	if (node_state_base)
+		event_base_free(node_state_base);
+
+	if (node_state)
+		free(node_state);
 }
 
 static void ugni_xprt_close(struct ldms_xprt *x)
@@ -467,18 +510,17 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	int fdcnt;
 	struct epoll_event event;
 
-	if (!nodeinfo.state)
-		if (get_nodeinfo(x))
-			return -1;
+	if (is_get_state) {
+		node_state_thread_init();
+		if (gxp->node_id == -1)
+			if (get_nodeid(sa, sa_len, gxp))
+				return -1;
 
-	if (gxp->node_id == -1)
-		if (get_nodeid(sa, sa_len, gxp))
-			return -1;
-
-	if (!is_good_state(gxp)) {
-		x->log(LDMS_LDEBUG, "node %d is in a bad state.\n",
+		if (check_node_state(gxp)) {
+			x->log(LDMS_LERROR, "node %d is in a bad state.\n",
 							gxp->node_id);
-		return -1;
+			return -1;
+		}
 	}
 
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -662,7 +704,6 @@ static void *io_thread_proc(void *arg)
 	return NULL;
 }
 
-static ldms_log_fn_t ugni_log;
 static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 {
 	gni_return_t grc;
@@ -917,6 +958,13 @@ static void ugni_xprt_destroy(struct ldms_xprt *x)
 static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
+	if (is_get_state && (check_node_state(r))) {
+		x->log(LDMS_LERROR, "node %d is in a bad state.\n",
+						r->node_id);
+		return -1;
+	}
+
+
 	int rc;
 
 	if (r->conn_status != CONN_CONNECTED)
@@ -1053,8 +1101,11 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 			   uint64_t raddr, gni_mem_handle_t remote_mh,
 			   uint32_t len, void *context)
 {
-	if (!is_good_state(gxp))
-		return EPERM;
+	if (is_get_state && (check_node_state(gxp))) {
+		ugni_log(LDMS_LERROR, "node %d is in a bad state.\n",
+							gxp->node_id);
+		return -1;
+	}
 
 	gni_return_t grc;
 	struct ugni_desc *desc = alloc_desc(gxp);
@@ -1133,11 +1184,26 @@ static void timeout_cb(int s, short events, void *arg)
 	evtimer_add(keepalive, &to);
 }
 
-void get_age_threshold()
+int get_state_interval()
 {
-	char *thr = getenv("LDMS_UGNI_STATE_AGE");
-	if (thr)
-		age_thr = atoi(thr);
+	char *thr = getenv("LDMS_UGNI_STATE_INTERVAL");
+	if (!thr) {
+		state_interval.tv_sec = 0;
+		state_interval.tv_usec = 0;
+		return 0;
+	}
+	char *ptr;
+	int tmp = strtol(thr, &ptr, 10);
+	if (ptr[0] != '\0') {
+		ugni_log(LDMS_LERROR, "Invalid "
+			"LDMS_UGNI_STATE_INTERVAL value\n");
+		return -1;
+	}
+	state_interval.tv_sec = (tmp / UGNI_INTERVAL_DEFAULT);
+	state_interval.tv_usec = (tmp % UGNI_INTERVAL_DEFAULT);
+	if (0 < (state_interval.tv_sec + state_interval.tv_usec))
+		is_get_state = 1;
+	return 0;
 }
 
 static int once = 0;
@@ -1278,8 +1344,8 @@ static int init_once(ldms_log_fn_t log_fn)
 		goto err_3;
 
 	/* node state */
-	nodeinfo.state = NULL;
-	get_age_threshold();
+	node_state = NULL;
+	get_state_interval();
 
 	atexit(ugni_xprt_cleanup);
 	return 0;
