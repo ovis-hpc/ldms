@@ -537,5 +537,6 @@ done:
 
 	ldms_xprt_close(ldms);
 	TF();
+	usleep(100000); /* sleep 100ms for xprt teardown */ 
 	exit(0);
 }
