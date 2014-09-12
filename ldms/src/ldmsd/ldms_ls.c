@@ -429,7 +429,7 @@ int main(int argc, char *argv[])
 	TF();
 	ret  = ldms_connect(ldms, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret) {
-		perror("ldms_ls");
+		printf("ldms_ls: ldms_connect error\n");
 		exit(2);
 	}
 	if ( ldms_xprt_auth(ldms) ) {
