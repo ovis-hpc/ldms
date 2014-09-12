@@ -1,6 +1,6 @@
 .\" Manpage for ldms_ls
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "11 Sep 2014" "1.2" "ldms_ls man page"
+.TH man 1 "11 Sep 2014" "1.2" "ldms_ls man page"
 
 .SH NAME
 ldms_ls \- Query an ldmsd for metric set values
@@ -105,7 +105,7 @@ ldms_ls: lookup failed for set 'vm1_1/foo'
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8), ldmsd.conf(5)
+ldmsd(1), ldmsctl(1)
 
 .SH BUGS
 No known bugs.

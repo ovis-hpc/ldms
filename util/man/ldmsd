@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "11 Sep 2014" "1.2" "ldmsd man page"
+.TH man 1 "11 Sep 2014" "1.2" "ldmsd man page"
 
 .SH NAME
 ldmsd \- Start an ldms daemon
@@ -33,10 +33,6 @@ PATH
 include path to ovis/sbin
 
 .SH OPTIONS
-.TP
-.BR -C =\flCONFIG_FILE\fR
-.br
-CONFIGFILE is the path to the configuration file.
 .TP
 .BR -D =\flNUM\fR
 .br
@@ -93,11 +89,6 @@ CONN_COUNT is the number of connection threads to start.
 .SH DEFAULTS
 ldmsd with no arguments defaults to ???
 
-
-.SH FILES
-ldmsd.conf is the configuration file. See ldmsd.conf(5) for format information.
-
-
 .SH EXAMPLES
 .PP
 .nf
@@ -115,7 +106,7 @@ Same but sending stdout and stderr to /dev/null
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8), ldmsd.conf(5)
+ldmsd(1), ldmsctl(1)
 
 .SH BUGS
 No known bugs.
