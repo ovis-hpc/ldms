@@ -20,7 +20,7 @@ The store_derived_csv plugin is a CSV store.
 
 .TP
 .BR config
-name=<plugin_name> path=<path> derived_conf=<confname>[ alt_header=<altheader> idpos=<idpos> agesec=<agesec>]
+name=<plugin_name> path=<path> derivedconf=<confname>[ alt_header=<altheader> idpos=<idpos> agesec=<agesec>]
 .br
 ldmsctl configuration line
 .RS
@@ -111,7 +111,7 @@ ldmsctl lines for configuring store_derived_csv:
 .RS
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_derived_csv
-ldmsctl> config name=store_derived_csv alt_header=1 id_pos=1 derived_conf=/XXX/der.conf path=/XXX/storedir
+ldmsctl> config name=store_derived_csv alt_header=1 id_pos=1 derivedconf=/XXX/der.conf path=/XXX/storedir
 ldmsctl> store name=store_derived_csv comp_type=node set=meminfo container=meminfo_store
 ldmsctl> quit
 .RE
