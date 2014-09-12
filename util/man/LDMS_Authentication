@@ -5,9 +5,6 @@
 .SH NAME
 LDMS_Authentication \- Authentication in LDMS
 
-.SH SYNOPSIS
-Authentication in LDMS
-
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), when compiled with authentication enabled, ldmsd servers require clients
 (including ldms_ls, ldmsctl, and ldmsd aggregators) to prove they share a secret with the server. The secret is a text file containing the line

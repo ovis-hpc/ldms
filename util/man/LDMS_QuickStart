@@ -5,9 +5,6 @@
 .SH NAME
 LDMS_QuickStart - man page for Quick Start of LDMS
 
-.SH SYNOPSIS
-LDMS_QuickStart - basic info for starting LDMS
-
 .SH DESCRIPTION
 Quick Start instructions for LDMS (Lightweight Distributed Metric Service).
 .PP
