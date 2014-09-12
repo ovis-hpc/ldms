@@ -118,11 +118,6 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 	/* Destroy the QP */
 	if (!r->server && r->qp)
 		rdma_destroy_qp(r->cm_id);
-
-	while (!LIST_EMPTY(&r->xprt->rbd_list)) {
-		struct ldms_rbuf_desc *desc = LIST_FIRST(&r->xprt->rbd_list);
-		ldms_free_rbd(desc);
-	}
 	/* Destroy the RQ CQ */
 	if (r->rq_cq) {
 		if (ibv_destroy_cq(r->rq_cq))

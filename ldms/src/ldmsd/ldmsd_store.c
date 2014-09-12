@@ -177,6 +177,7 @@ int flush_check(struct flush_thread *ft)
 		pthread_cond_signal(&ft->cv);
 	}
 	pthread_mutex_unlock(&ft->dmutex);
+	return 0;
 }
 
 void flush_store_instance(struct store_instance *si)
@@ -342,7 +343,7 @@ int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
 		pthread_mutex_lock(&si->ft->dmutex);
 		si->ft->dirty_count += mvec->count;
 		pthread_mutex_unlock(&si->ft->dmutex);
-		flush_check(si->ft);
+		(void)flush_check(si->ft);
 		break;
 
 	case STORE_STATE_ERROR:
