@@ -15,6 +15,9 @@ ldmsctl> store name=store_derived_csv [ <attr> = <value> ]
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
 The store_derived_csv plugin is a CSV store.
+.PP
+Note: If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator
+with a store plugin only.
 
 .SH LDMSCTL CONFIGURATION OPTIONS
 

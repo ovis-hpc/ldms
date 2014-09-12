@@ -6,15 +6,12 @@
 LDMS_QuickStart - man page for Quick Start of LDMS
 
 .SH INTRODUCTION
-LDMS is the Lightweight Distributed Metric Service. 
-LDMS is a distributed data collection, transport, and storage
-tool that supports a wide variety of configuration options.
+LDMS is the Lightweight Distributed Metric Service. LDMS is a distributed data collection, transport, and storage tool that supports a wide variety of configuration options.
 .PP
 There are 3 major functional components:
 .RS
 .TP
-Samplers run one or more sampling plugins that periodically sample data of interest on monitored nodes.
-Each plugin defines a collection of metrics called a metric set.
+Samplers run one or more sampling plugins that periodically sample data of interest on monitored nodes. Each plugin defines a collection of metrics called a metric set.
 .TP
 Aggregators collect data in a pull fashion from samplers
 and/or other aggregators. 
@@ -22,9 +19,7 @@ and/or other aggregators.
 Storage plugins write in a variety of formats. 
 .RE
 .PP
-The host daemon is the same base code in all cases; differentiation is based
-on configuration of plugins for sampling or storage and on configuring
-aggregation of data from other host daemons.
+The host daemon is the same base code in all cases; differentiation is based on configuration of plugins for sampling or storage and on configuring aggregation of data from other host daemons.
 
 .SH DESCRIPTION
 Quick Start instructions for LDMS (Lightweight Distributed Metric Service).
@@ -164,16 +159,13 @@ ldmsctl> quit
 .PP
 Notes:
 .RS
-* At the ldmsctl> prompt typing "help" will print out info about the ldmsctl commands and options
+* At the ldmsctl> prompt typing "help" will print out info about the ldmsctl commands and options.
 .br
-* You can use stop name=meminfo followed by start name=meminfo interval=xxx to change collection intervals
+* You can use stop name=meminfo followed by start name=meminfo interval=xxx to change collection intervals.
 .br
-* For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy)
-This will cause the sampler to target interval + yyy aligned to the second and micro second (e.g. every 5 seconds with an offset of 
-0 usec would ideally result in collections at 00:00:00, 00:00:05, 00:00:10, etc. whereas with an offset of 100,000 usec
-it would be 00:00:00.1, 00:00:05.1, 00:00:10.1, etc)
+* For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy). This will cause the sampler to target interval + yyy aligned to the second and micro second (e.g. every 5 seconds with an offset of 0 usec would ideally result in collections at 00:00:00, 00:00:05, 00:00:10, etc. whereas with an offset of 100,000 usec it would be 00:00:00.1, 00:00:05.1, 00:00:10.1, etc)
 .br
-* Different plugins may have additional configuration parameters. Use help within ldmsctl to see these
+* Different plugins may have additional configuration parameters. Use help within ldmsctl to see these.
 .br
 * At the ldmsctl> prompt typing "info" will output all config information to that ldmsd's log file.
 .RE
@@ -281,22 +273,17 @@ Notes:
 .br
 * Sets must be specified on the "add host" line; you can add hosts with sets to an aggregator even if those sets are not yet present on the host.
 .br
-* There is currently no "remove" so if a host should be dropped from the list or have its parameters changed it requires stopping, restarting, 
-and adding with appropriate parameters
+* There is currently no "remove" so if a host should be dropped from the list or have its parameters changed it requires stopping, restarting, and adding with appropriate parameters
 .br
 * There is no requirement that aggregator intervals match collection intervals
-* Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed 
-samples. The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss in 
-fidelity (if collecting counter data) or a loss of data points here and there (if collecting differences of counter values or non counter values).
-This can be handled using the synchronous option on both collector and aggregator but is not covered here.
+* Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed samples. The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss in fidelity (if collecting counter data) or a loss of data points here and there (if collecting differences of counter values or non counter values). This can be handled using the synchronous option on both collector and aggregator but is not covered here.
 .RE
 .fi
 
 .PP
 A script based configuration would be done in the same manner as that for collection above
 .PP
-At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below).
-In this case you should see metric sets for both vm1_1 and vm1_2 displayed when you query the aggregator ldmsd using ldms_ls
+At this point the ldmsd collector should be checked using the utility ldms_ls (See Using ldms_ls below). In this case you should see metric sets for both vm1_1 and vm1_2 displayed when you query the aggregator ldmsd using ldms_ls
 
 
 .SH CONFIGURE A STORE_CSV STORAGE PLUGIN
@@ -336,15 +323,19 @@ Configure ldmsd to store metric sets being retrieved from vm1_1 and vm1_2
 ldmsctl> load name=store_csv
 ldmsctl> config name=store_csv path=~/stored_data  
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo 
-ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
 ldmsctl> quit
 .RE
 .fi
+
 .PP
 NOTES:
 .RS
-You can optionally use "hosts" and "metrics" in the store command to down select what is stored.
+* You can optionally use "hosts" and "metrics" in the store command to down select what is stored.
 .RE
+
+.PP
+If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator with a store plugin only.
+
 
 .SS Verify the store
 Go to data store and verify files have been created and are being written to
@@ -355,6 +346,10 @@ ls -ltr
 .RE
 .fi
 You can now utilize this data.
+.PP
+Data will flush to the store when the OS flushes data unless an advanced flag is used. Thus,
+in a default configuration, if you have a small number of nodes and/or a long interval,
+you may not see data appear in the store for a few minutes.
 
 .SH USING LDMS_LS TO DISPLAY SETS/METRICS FROM AN LDMSD
 
@@ -531,6 +526,7 @@ ldms_ls: Cannot allocate memory
 .SS Why doesn't my ldmsd start?
 .PP
 Possible options:
+.RS
 * Check for exsiting /var/run/ldms/metric_socket or similar
 .RS
 * Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
@@ -590,7 +586,7 @@ NOTES:
 .br
 * syntax for add host is sets plural with comma separation
 .br
-*syntax for store is only 1 set at a time
+* syntax for store is only 1 set at a time
 .br
 * csv file will be <path>/<comp_type>/<container>
 * do not mix containers across sets
