@@ -105,7 +105,7 @@ ldms_ls: lookup failed for set 'vm1_1/foo'
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8), ldmsd.conf(5)
+ldmsd(8), ldmsctl(8)
 
 .SH BUGS
 No known bugs.
