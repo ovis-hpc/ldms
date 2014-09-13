@@ -122,6 +122,7 @@ Cray XC Systems:
 PDomainID   Type   Uid     Cookie    Cookie2
 LDMS      system     0 0x86b80000          0
 foo         user 20596 0x86bb0000 0x86bc0000
+.RE
 .fi
 .PP
 Set the environment variables LDMS_UGNI_PTAG and LDMS_UGNI_COOKIE with the appropriate ptag and cookie.

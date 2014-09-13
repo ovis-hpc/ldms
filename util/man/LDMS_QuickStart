@@ -565,7 +565,7 @@ Set the Cookie (not Cookie2) for either user or system ptag.
 .nf
 .RS
 export LDMS_UGNI_PTAG=0
-export LDMS_UGNI_COOKIE=0x86c50000
+export LDMS_UGNI_COOKIE=0x86bb0000
 .RE
 .fi
 
