@@ -719,7 +719,7 @@ static void ugni_connect_req(struct evconnlistener *listener,
 	static int conns;
 
 	new_gxp = setup_connection(gxp, sockfd,
-				   (struct sockaddr *)&address, socklen);
+				   (struct sockaddr *)address, socklen);
 	if (new_gxp)
 		conns ++;
 	else
