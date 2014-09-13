@@ -287,5 +287,3 @@ Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_
 .SH BUGS
 No known bugs.
 
-.SH AUTHOR
-OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)

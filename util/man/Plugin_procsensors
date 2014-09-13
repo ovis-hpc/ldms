@@ -69,6 +69,3 @@ LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
 Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
 
-
-.SH AUTHOR
-OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
