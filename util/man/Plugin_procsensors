@@ -48,7 +48,6 @@ No known bugs.
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $/projects/ldms/Build/ldms.usr/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
 ldmsctl> load name=procsensors
 ldmsctl> config name=procsensors component_id=1 set=nid0001/procsensors_r conffile=/XXX/procsensors.conf
@@ -60,7 +59,6 @@ $more /XXX/procsensors.conf
 /sys/devices/pci0000:00/0000:00:19.3/temp1_input    temp1_19.3    0.0001  0
 /sys/devices/pci0000:00/0000:00:1a.3/temp1_input    temp1_1a.3    0.0001  0
 /sys/devices/pci0000:00/0000:00:1b.3/temp1_input    temp1_1b.3    0.0001  0
-.RE
 .fi
 
 

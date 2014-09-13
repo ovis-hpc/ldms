@@ -40,14 +40,13 @@ The name of the metric set.
 No known bugs.
 
 .SH EXAMPLES
-.PP
 .nf
-.RS
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=kgnilnd
 ldmsctl> config name=kgnilnd component_id=1 set=vm1_1/kgnilnd
 ldmsctl> start name=kgnilnd interval=1000000
 ldmsctl> quit
+.fi
 
 .SH SEE ALSO
 LDMS_Authentication(7), ldmsctl(1), ldmsd(1), ldms_ls(1),

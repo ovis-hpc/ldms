@@ -252,27 +252,22 @@ No known bugs.
 
 .PP
 .nf
-.RS
 1) Run ldmsctl -S <unix domain socket path/name associated with target ldmsd>
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl>
-.RE
 .fi
 
 .PP
 .nf
-.RS
 2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second. Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
 ldmsctl> load name=meminfo
 ldmsctl> config name=meminfo component_id=1 set=vm1_1/meminfo
 ldmsctl> start name=meminfo interval=1000000
 ldmsctl> quit
-.RE
 .fi
 
 .PP
 .nf
-.RS
 3) Configure collectors on host "vm1" via bash script called collect.sh
 #!/bin/bash
 export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
@@ -293,34 +288,28 @@ chmod +x collect.sh
 
 Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes in parallel)
 ./collect.sh
-.RE
 .fi
 
 .PP
 .nf
-.RS
 4) Example lines for adding hosts to an aggregator:
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
 ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
 ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat 
-.RE
 .fi
 
 .PP
 .nf
-.RS
 5) Example lines for configuring one store type but for 2 different metric sets:
 ldmsctl> load name=store_csv
 ldmsctl> config name=store_csv path=/XXX/stored_data  
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo 
 ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
-.RE
 .fi
 
 .PP
 .nf
-.RS
 6) Chaining aggregators and storing:
 ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=foo/meminfo, foo/vmstat,foo/procnetdev
 ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=bar/meminfo, bar/vmstat,bar/procnetdev
@@ -330,7 +319,6 @@ ldmsctl> store name=store_store_csv comp_type=node set=vmstat container=vmstat
 ldmsctl> store name=store_store_csv comp_type=node set=meminfo container=meminfo
 
 Notes for example 6:
-.RS
 * You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
 * Syntax for add host is sets plural with comma separation.
 * Syntax for store is only 1 set at a time.
@@ -338,7 +326,6 @@ Notes for example 6:
 * Do not mix containers across sets
 * Cannot put all the foo and bar in the same line.
 .RE
-.RS
 .fi
 
 

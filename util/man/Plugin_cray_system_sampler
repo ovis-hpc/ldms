@@ -98,17 +98,14 @@ The only difference in output information in the two cases is that currently the
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $/projects/ldms/Build/ldms.usr/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
 ldmsctl> load name=cray_system_sampler_r
 ldmsctl> config name=cray_system_sampler_r component_id=1 set=nid0001/cray_system_sampler_r rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11001" gemini_metrics_type=2
 ldmsctl> start name=cray_system_sampler_r interval=1000000
 ldmsctl> quit
-.RE
 .fi
 .PP
 .nf
-.RS
 $ldms_ls -h nid00001 -x ugni -p 60020 -l
 nid00002/cray_system_sampler_r: consistent, last update: Wed Nov 27 11:35:21 2013 [3694us]
 U64 0                nettopo_mesh_coord_X
@@ -273,8 +270,6 @@ U64 30962            RDMA_ntx
 U64 6239550053       RDMA_tx_bytes
 U64 6522             RDMA_nrx
 U64 507905281        RDMA_rx_bytes
-
-.RE
 .fi
 
 

@@ -81,15 +81,12 @@ No known bugs.
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $ldms_ls -h vm1 -x sock -p 60000
 vm1_1/meminfo
 vm1_1/vmstat
-.RE
 .br
 .PP
 .nf
-.RS
 $ldms_ls -h vm1 -x sock -p 60000 -l
 vm1_1/meminfo: consistent, last update: Wed Jul 31 21:51:08 2013 [246540us]
 U64 33084652         MemTotal
@@ -101,16 +98,13 @@ U64 13536            Active
 U64 39844            Inactive
 U64 5664             Active(anon)
 ...
-.RE
 .br
 .PP
 .nf
-.RS
 For a non-existent set:
 $ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
 ldms_ls: No such file or directory
 ldms_ls: lookup failed for set 'vm1_1/foo'
-.RE
 .fi
 
 .SH SEE ALSO

@@ -42,12 +42,12 @@ No known bugs.
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=procnfs
 ldmsctl> config name=procnfs component_id=1 set=vm1_1/procnfs
 ldmsctl> start name=procnfs interval=1000000
 ldmsctl> quit
+.fi
 
 .SH SEE ALSO
 LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),

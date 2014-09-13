@@ -91,16 +91,12 @@ No known bugs.
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
-.RE
 .br
 .PP
 .nf
-.RS
 Same but sending stdout and stderr to /dev/null
 /tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
-.RE
 .br
 .fi
 

@@ -78,13 +78,11 @@ No known bugs.
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_csv
 ldmsctl> config name=store_csv alt_header=1 id_pos=1 path=/XXX/storedir
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo_store
 ldmsctl> quit
-.RE
 .fi
 
 .SH SEE ALSO
