@@ -64,6 +64,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 export PATH=/tmp/opt/ovis/sbin/:$PATH
+export LDMSD_SOCKPATH=/tmp/run/ldmsd  #(non-root. Change -S arguments accordingly)
 .RE
 .fi
 .PP
@@ -83,7 +84,7 @@ Notes:
 .br
 * # worker threads defaults to 1 if not specified by -P and should not exceed the core count
 .br
-* The unix domain socket is used by ldmsctl to communicate configuration information to an ldmsd
+* The unix domain socket is used by ldmsctl to communicate configuration information to an ldmsd.
 .RS
 ** The default path for this is /var/run/ldmsd/. To change this the environment variable LDMSD_SOCKPATH must be set to the desired path (e.g. export LDMSD_SOCKPATH=/tmp/run/ldmsd)
 .br
@@ -128,6 +129,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 export PATH=/tmp/opt/ovis/sbin:$PATH
+(LDMSD_SOCKPATH does not need to be set)
 .RE
 .ni
 
@@ -200,6 +202,7 @@ The following is an example bash script named "collect.sh"
 export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+# Note: LDMSD_SOCKPATH does not need to be set
 LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
 # Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
 echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
@@ -239,6 +242,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 export PATH=/tmp/opt/ovis/sbin:$PATH
+export LDMSD_SOCKPATH=/tmp/run/ldmsd  #(non-root. Change -S arguments accordingly)
 .RE
 .ni
 
@@ -307,6 +311,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 export PATH=/tmp/opt/ovis/sbin:$PATH
+(LDMSD_SOCKPATH does not need to be set)
 .RE
 .ni
 
@@ -368,6 +373,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 export PATH=/tmp/opt/ovis/sbin:$PATH
+(LDMSD_SOCKPATH does not need to be set)
 .RE
 .ni
 
@@ -495,7 +501,7 @@ apmgr pdomain -r <somenamehere>
 .fi
 Note: The userid of the ptag being removed must match that of the user running the command or root
 
-.SS PTAG-Related Enviroment variables for ldms
+.SS PTAG-Related Enviroment variables for ldms 
 Set the following environment variables for either user or system ptags (example shows user ptag values):
 .nf
 .RS
@@ -539,17 +545,16 @@ Possible options:
 .RS
 * Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
 .RE
-* The port you are trying to use may already be in use on the node
-.RS
-* The following shows the logfile output of such a case:
+* The port you are trying to use may already be in use on the node. The following shows the logfile output of such a case:
 .nf
+.RS
 Tue Sep 24 08:36:54 2013: Started LDMS Daemon version 2.1.0
 Tue Sep 24 08:36:54 2013: Listening on transport ugni:60020
 Tue Sep 24 08:36:54 2013: EV_WARN: Can't change condition callbacks once they have been initialized.
 Tue Sep 24 08:36:54 2013: Error 12 listening on the 'ugni' transport.
 Tue Sep 24 08:36:54 2013: LDMS Daemon exiting...status 7
-.fi
 .RE
+.fi
 * If using the -l flag make sure that your log directory exists prior to running
 .br
 * If writing to a store with this particular lmdsd make sure that your store directory exists prior to running

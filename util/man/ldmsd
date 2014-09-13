@@ -25,6 +25,9 @@ path to ovis/lib64/
 LDMSD_PLUGIN_LIBPATH
 path to ovis/lib64/
 .TP
+LDMSD_SOCKPATH
+path to the unix domain socket for the ldmsd. Default is /var/run. If you want to change the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
+.TP
 PATH
 include path to ovis/sbin
 
