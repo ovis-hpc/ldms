@@ -31,6 +31,22 @@ path to the unix domain socket for the ldmsd. Default is /var/run. If you want t
 PATH
 include path to ovis/sbin
 
+.SS Additional PTAG-Related Enviroment variables for ldms: Cray XE/XK
+.TP
+LDMS_UGNI_PTAG 
+the PTag value as given by apstat -P
+.TP
+LDMS_UGNI_COOKIE
+the Cookie value corresponding to the PTag value as given by apstat -P
+
+.SS Additional PTAG-Related Enviroment variables for ldms: Cray XC
+.TP
+LDMS_UGNI_PTAG 
+the value does not matter for XC, but the environment variable must be set.
+.TP
+LDMS_UGNI_COOKIE
+the Cookie value (not Cookie2) as given by apstat -P
+
 .SH OPTIONS
 .TP
 .BI -D " NUM"
@@ -88,6 +104,31 @@ CONN_COUNT is the number of connection threads to start.
 .BR ldmsd
 with no arguments defaults to ???
 
+.SH RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
+.PP
+ldsmd can be run as either a user or as root using the appropriate PTag and cookie.
+.PP
+Check (or set) the PTag and cookie.
+.RS
+Cray XE/XK Systems:
+.nf
+> apstat -P
+PDomainID           Type    Uid   PTag     Cookie
+LDMS              system      0     84 0xa9380000
+foo               user    22398    243  0x2bb0000
+
+Cray XC Systems:
+> apstat -P
+PDomainID   Type   Uid     Cookie    Cookie2
+LDMS      system     0 0x86b80000          0
+foo         user 20596 0x86bb0000 0x86bc0000
+.fi
+.PP
+Set the environment variables LDMS_UGNI_PTAG and LDMS_UGNI_COOKIE with the appropriate ptag and cookie.
+.PP
+Run ldmsd directly or as part of a script launched from aprun. In either case, Use aprun with the correct -p <ptag> when running.
+
+
 .SH BUGS
 No known bugs.
 
@@ -102,6 +143,7 @@ Same but sending stdout and stderr to /dev/null
 /tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
 .br
 .fi
+
 
 .SH SEE ALSO
 LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldms_ls(1),

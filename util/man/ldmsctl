@@ -24,6 +24,9 @@ path to ovis/lib64/
 LDMSD_PLUGIN_LIBPATH
 path to ovis/lib64/
 .TP
+LDMSD_SOCKPATH
+path to the unix domain socket for the ldmsd. Default is /var/run. If you have changed the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
+.TP
 PATH
 include path to ovis/sbin
 
@@ -273,6 +276,8 @@ ldmsctl> quit
 export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+# Set LDMSD_SOCKPATH for non-root. Change -S arguments accordingly)
+export LDMSD_SOCKPATH=/tmp/run/ldmsd  
 LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
 # Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
 echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2

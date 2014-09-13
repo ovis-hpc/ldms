@@ -129,7 +129,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 export PATH=/tmp/opt/ovis/sbin:$PATH
-(LDMSD_SOCKPATH does not need to be set)
+export LDMSD_SOCKPATH=/tmp/run/ldmsd  #(non-root. Change -S arguments accordingly)
 .RE
 .ni
 
@@ -202,7 +202,8 @@ The following is an example bash script named "collect.sh"
 export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
-# Note: LDMSD_SOCKPATH does not need to be set
+# LDMSD_SOCKPATH for non-root. Change -S arguments accordingly.
+export LDMSD_SOCKPATH=/tmp/run/ldmsd  
 LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
 # Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
 echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
@@ -311,7 +312,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 export PATH=/tmp/opt/ovis/sbin:$PATH
-(LDMSD_SOCKPATH does not need to be set)
+export LDMSD_SOCKPATH=/tmp/run/ldmsd  #(non-root. Change -S arguments accordingly)
 .RE
 .ni
 
@@ -501,12 +502,70 @@ apmgr pdomain -r <somenamehere>
 .fi
 Note: The userid of the ptag being removed must match that of the user running the command or root
 
-.SS PTAG-Related Enviroment variables for ldms 
+.SS PTAG-Related Enviroment variables for ldms (XE/XK)
 Set the following environment variables for either user or system ptags (example shows user ptag values):
 .nf
 .RS
 export LDMS_UGNI_PTAG 233
 export LDMS_UGNI_COOKIE 0xa1230000
+.RE
+.fi
+
+.SS Starting ldms from aprun with ptags
+When running with user space ptags you must specify the ptag name when using aprun
+.nf
+.RS
+aprun <<usual aprun args here>> -p foo ldmsd <<usual ldmsd flags here>>
+or
+aprun <<usual aprun args here>> -p foo ldms_ls <<usual ldms_ls flags here>>
+.RE
+.fi
+Note: On some systems you will run aprun after a qsub -I or within a script specified in qsub or similiar.
+
+
+.SH PROTECTION DOMAIN TAGS (Cray XC)
+If you are going to be using the "ugni" transport (RDMA over Gemini) you will need to run with either system (as root) or user (as user) ptags. While root CAN run using any ptag the fact that its use is unknown to ALPS could cause collisions with applications.
+
+.SS To see current ptags:
+.nf
+.RS
+> apstat -P
+PDomainID   Type   Uid     Cookie    Cookie2
+LDMS      system     0 0x86b80000          0
+.RE
+.ni
+
+.SS To create a userspace ptag:
+.nf
+.RS
+apmgr pdomain -c <somenamehere>
+
+Example:
+> apmgr pdomain -c foo
+> apstat -P
+PDomainID   Type   Uid     Cookie    Cookie2
+LDMS      system     0 0x86b80000          0
+foo         user 20596 0x86bb0000 0x86bc0000
+.RE
+.fi
+Note: A system administrator will have to setup system ptags and/or enable users to set up ptags.
+
+.SS To remove a userspace ptag:
+.nf
+.RS
+apmgr pdomain -r <somenamehere>
+.RE
+.fi
+Note: The userid of the ptag being removed must match that of the user running the command or root
+
+.SS PTAG-Related Enviroment variables for ldms (XC)
+Set the following environment variables.
+On XC the ptag value doesn't matter but LDMS_UGNI_PTAG must be defined.
+Set the Cookie (not Cookie2) for either user or system ptag.
+.nf
+.RS
+export LDMS_UGNI_PTAG=0
+export LDMS_UGNI_COOKIE=0x86c50000
 .RE
 .fi
 
