@@ -257,12 +257,18 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		pthread_mutex_init(&s_handle->lock, NULL);
 
 		s_handle->path = strdup(tmp_path);
-		if (!s_handle->path)
+		if (!s_handle->path) {
+			/* Take the lock becauase we will unlock in the err path */
+			pthread_mutex_lock(&s_handle->lock); 
 			goto err1;
+		}
 
 		s_handle->store_key = strdup(container);
-		if (!s_handle->store_key)
+		if (!s_handle->store_key) {
+			/* Take the lock becauase we will unlock in the err path */
+			pthread_mutex_lock(&s_handle->lock);
 			goto err2;
+		}
 
 		s_handle->printheader = 1;
 	}

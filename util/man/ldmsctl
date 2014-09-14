@@ -9,8 +9,7 @@ ldmsctl \- Issue control commands to ldmsd.
 ldmsctl [OPTION...] 
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons).
-After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
+With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
 can be created and piped into the ldmsctl.
 
 .SH ENVIRONMENT
@@ -24,6 +23,9 @@ path to ovis/lib64/
 .TP
 LDMSD_PLUGIN_LIBPATH
 path to ovis/lib64/
+.TP
+LDMSD_SOCKPATH
+path to the unix domain socket for the ldmsd. Default is /var/run. If you have changed the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
 .TP
 PATH
 include path to ovis/sbin
@@ -39,11 +41,11 @@ SOCKET is the unix domain socket that the ldmsd is listening on.
 Display LDMS version information and then exit.
 
 .SH DEFAULTS
-ldmsctl with no arguments defaults to ???
+.BR ldmsctl
+with no arguments defaults to ???
 
 .SH LDMSCTL COMMANDS
-After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
-can be created and piped into the ldmsctl.
+After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
 
 .TP
 .BR help
@@ -103,9 +105,7 @@ The sample interval in microseconds.
 .TP
 <offset>
 .br
-Optional offset (shift) from the sample mark in microseconds. Offset can be positive or
-negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, 
-collection will be synchronous; if the offset is not specified, collection will be asychronous.
+Optional offset (shift) from the sample mark in microseconds. Offset can be positive or negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, collection will be synchronous; if the offset is not specified, collection will be asychronous.
 .RE
 
 .TP
@@ -248,36 +248,39 @@ work queue utilization, hosts and object stores.
 Exit
 .RE
 
+.SH NOTES
+LDMS is not supported on XC in this release.
+
+.SH BUGS
+No known bugs.
+
 .SH EXAMPLES
 
 .PP
 .nf
-.RS
 1) Run ldmsctl -S <unix domain socket path/name associated with target ldmsd>
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl>
-.RE
 .fi
 
 .PP
 .nf
-.RS
 2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second. Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
 ldmsctl> load name=meminfo
 ldmsctl> config name=meminfo component_id=1 set=vm1_1/meminfo
 ldmsctl> start name=meminfo interval=1000000
 ldmsctl> quit
-.RE
 .fi
 
 .PP
 .nf
-.RS
 3) Configure collectors on host "vm1" via bash script called collect.sh
 #!/bin/bash
 export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+# Set LDMSD_SOCKPATH for non-root. Change -S arguments accordingly)
+export LDMSD_SOCKPATH=/tmp/run/ldmsd  
 LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
 # Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
 echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
@@ -293,34 +296,28 @@ chmod +x collect.sh
 
 Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes in parallel)
 ./collect.sh
-.RE
 .fi
 
 .PP
 .nf
-.RS
 4) Example lines for adding hosts to an aggregator:
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
 ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
 ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat 
-.RE
 .fi
 
 .PP
 .nf
-.RS
 5) Example lines for configuring one store type but for 2 different metric sets:
 ldmsctl> load name=store_csv
 ldmsctl> config name=store_csv path=/XXX/stored_data  
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo 
 ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
-.RE
 .fi
 
 .PP
 .nf
-.RS
 6) Chaining aggregators and storing:
 ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=foo/meminfo, foo/vmstat,foo/procnetdev
 ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=bar/meminfo, bar/vmstat,bar/procnetdev
@@ -329,23 +326,18 @@ ldmsctl> config name=store_csv path=/projects/ovis/ClusterData/chama/storecsv
 ldmsctl> store name=store_store_csv comp_type=node set=vmstat container=vmstat
 ldmsctl> store name=store_store_csv comp_type=node set=meminfo container=meminfo
 
-NOTES:
-You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
-Syntax for add host is sets plural with comma separation.
-Syntax for store is only 1 set at a time.
-CSV file will be <path>/<comp_type>/<container>.
-Do not mix containers across sets
-Cannot put all the foo and bar in the same line......
+Notes for example 6:
+* You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
+* Syntax for add host is sets plural with comma separation.
+* Syntax for store is only 1 set at a time.
+* CSV file will be <path>/<comp_type>/<container>.
+* Do not mix containers across sets
+* Cannot put all the foo and bar in the same line.
+.RE
+.fi
 
 
 .SH SEE ALSO
 LDMS_Authentication(7), LDMS_QuickStart(7), ldmsd(1), ldms_ls(1),
 Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
-
-
-.SH BUGS
-No known bugs.
-
-.SH AUTHOR
-OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
