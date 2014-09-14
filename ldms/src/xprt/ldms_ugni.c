@@ -407,6 +407,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 		close(epfd);
 		goto err1;
 	}
+	memset(&event,0,sizeof(event));  // reset random stack bits to zero
 	event.events = EPOLLIN | EPOLLOUT | EPOLLHUP;
 	event.data.fd = gxp->sock;
 	if (epoll_ctl(epfd, EPOLL_CTL_ADD, gxp->sock, &event)) {
@@ -1114,21 +1115,19 @@ static int init_once(ldms_log_fn_t log_fn)
 	}
 
 	rc = 0;
-	if (IS_GEMINI) {
-		euid = geteuid();
-		if ((int) euid == 0){
-			rc = ugni_job_setup(&ptag, cookie);
-			if (rc != GNI_RC_SUCCESS)
-				log_fn(LDMS_LERROR, "ugni_job_setup failed %d\n",rc);
-			if (rcsfp) {
-				fprintf(rcsfp, "%d\n", rc);
-				fflush(rcsfp);
-			}
+	euid = geteuid();
+	if ((int) euid == 0){
+		rc = ugni_job_setup(&ptag, cookie);
+		if (rc != GNI_RC_SUCCESS)
+			log_fn(LDMS_LERROR, "ugni_job_setup failed %d\n",rc);
+		if (rcsfp) {
+			fprintf(rcsfp, "%d\n", rc);
+			fflush(rcsfp);
 		}
-		if (rcsfp)
-			fclose(rcsfp);
-		rcsfp = NULL;
 	}
+	if (rcsfp)
+		fclose(rcsfp);
+	rcsfp = NULL;
 
 	if (((int) euid != 0) || rc == GNI_RC_SUCCESS || IS_ARIES ) {
 		rc = ugni_dom_init(&ptag, cookie, getpid(), &ugni_gxp);
