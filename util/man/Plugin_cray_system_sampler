@@ -84,31 +84,28 @@ as opposed to the raw data which grows with the system size.
 .SH GEMINI PERFORMANCE COUNTER INFORMATION
 The gemini performance counter information will be accessed and aggregated by link direction in one of two ways:
 .TP
-a) If your system has the Oct 2013 Cray release CLE 4.2 UP02 that provides access to this information via the gpcdr module, then you can use that source.
-This currently supports only a specific grcdr-init.config. The configuration file and instructions for using it can be found in until/gemini.
+a) If your system has the Oct 2013 Cray release CLE 4.2 UP02 or later that provides access to this information via the gpcdr module, then you can use that source.
+.B NOTE: This sampler currently supports only a specific grcdr-init.config which specifies certain variables, sample expiration time, and time units. The configuration file and instructions for using it can be found in util/gemini.
 .br
 OR
 .TP
 b) if it does not, then this information can be calculated from the raw performance counters via the gpcd interface. In this case, you will need the gpcd libraries.
 .PP
-NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to either us or your Cray contact. (gpcd will be released as a submodule in util in a future release.)
+NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to your Cray contact. 
 .PP
 The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with --enable-gpcdr then the cray_system_sampler will be named cray_system_sampler_r; if you have built with --enable-gpcd then the cray_system_sampler will be named cray_system_sampler_d.
 
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $/projects/ldms/Build/ldms.usr/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
 ldmsctl> load name=cray_system_sampler_r
 ldmsctl> config name=cray_system_sampler_r component_id=1 set=nid0001/cray_system_sampler_r rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11001" gemini_metrics_type=2
 ldmsctl> start name=cray_system_sampler_r interval=1000000
 ldmsctl> quit
-.RE
 .fi
 .PP
 .nf
-.RS
 $ldms_ls -h nid00001 -x ugni -p 60020 -l
 nid00002/cray_system_sampler_r: consistent, last update: Wed Nov 27 11:35:21 2013 [3694us]
 U64 0                nettopo_mesh_coord_X
@@ -273,8 +270,6 @@ U64 30962            RDMA_ntx
 U64 6239550053       RDMA_tx_bytes
 U64 6522             RDMA_nrx
 U64 507905281        RDMA_rx_bytes
-
-.RE
 .fi
 
 
@@ -287,5 +282,3 @@ Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_
 .SH BUGS
 No known bugs.
 
-.SH AUTHOR
-OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)

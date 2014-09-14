@@ -15,6 +15,7 @@ ldmsctl> store name=store_csv [ <attr> = <value> ]
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
 The store_csv plugin is a CSV store.
+.PP
 
 .SH LDMSCTL CONFIGURATION OPTIONS
 
@@ -68,25 +69,23 @@ ode/meminfo.
 Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
 .RE
 
+.SH NOTES
+If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator with a store plugin only.
+
+.SH BUGS
+No known bugs.
+
 .SH EXAMPLES
 .PP
 .nf
-.RS
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_csv
 ldmsctl> config name=store_csv alt_header=1 id_pos=1 path=/XXX/storedir
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo_store
 ldmsctl> quit
-.RE
 .fi
 
 .SH SEE ALSO
 LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
 Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_procsensors(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
-
-.SH BUGS
-No known bugs.
-
-.SH AUTHOR
-OVIS Team at Sandia National Laboratories, ABQ NM and Open Grid Computing, Austin TX (ovis-help@sandia.gov)
