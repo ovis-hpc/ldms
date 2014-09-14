@@ -248,6 +248,9 @@ work queue utilization, hosts and object stores.
 Exit
 .RE
 
+.SH NOTES
+LDMS is not supported on XC in this release.
+
 .SH BUGS
 No known bugs.
 

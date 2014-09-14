@@ -12,7 +12,17 @@ ldmsctl> config name=cray_system_sampler [ <attr> = <value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The cray_system_sampler plugin provides data from a variety of sources on the XE/XK systems.
+The cray_system_sampler plugin provides data from a variety of sources on the XE/XK systems. 
+The cray_system_sampler is 
+.I
+not
+for XC systems.
+.PP
+If you have built with
+.B --enable-gpcdr
+then the cray_system_sampler will be named cray_system_sampler_r; if you have built with
+.B --enable-gpcd 
+then the cray_system_sampler will be named cray_system_sampler_d.
 
 .SH LDMSCTL CONFIGURATION OPTIONS
 
@@ -93,7 +103,14 @@ b) if it does not, then this information can be calculated from the raw performa
 .PP
 NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to your Cray contact. 
 .PP
-The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with --enable-gpcdr then the cray_system_sampler will be named cray_system_sampler_r; if you have built with --enable-gpcd then the cray_system_sampler will be named cray_system_sampler_d.
+The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with 
+.B --enable-gpcdr
+then the cray_system_sampler will be named cray_system_sampler_r; if you have built with
+.B --enable-gpcd
+then the cray_system_sampler will be named cray_system_sampler_d.
+
+.SH NOTES
+In some future LDMS release, the gpcd interface will be deprecated as more systems move to CLE releases supporting gpcdr.
 
 .SH EXAMPLES
 .PP

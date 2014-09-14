@@ -75,6 +75,9 @@ localhost
 sock
 where XXX is the LDMS_DEFAULT_PORT.
 
+.SH NOTES
+LDMS is not supported on XC in this release.
+
 .SH BUGS
 No known bugs.
 

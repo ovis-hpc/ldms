@@ -580,6 +580,7 @@ aprun <<usual aprun args here>> -p foo ldms_ls <<usual ldms_ls flags here>>
 .fi
 Note: On some systems you will run aprun after a qsub -I or within a script specified in qsub or similiar.
 
+NOTE: LDMS is not supported on XC in this release.
 
 .SH TROUBLESHOOTING
 
@@ -673,6 +674,9 @@ Tue Sep 24 08:42:40 2013: Connected to host 'nid00081:60020'
 Tue Sep 24 08:42:42 2013: cq_thread_proc: Error 11  monitoring the CQ.
 .RE
 .fi
+
+.SH NOTES
+LDMS is not supported on XC in this release.
 
 .SH BUGS
 No known bugs.
