@@ -76,14 +76,14 @@ libprocstatutil_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocstatutil.la
 endif
 
-if ENABLE_GLIB
-if ENABLE_SEDC
-libsedc_la_SOURCES = sedc.c
-libsedc_la_CFLAGS = $(AM_CFLAGS) $(GLIB20_CFLAGS)
-libsedc_la_LIBADD = $(COMMON_LIBADD) $(GLIB20_LIBS)
-pkglib_LTLIBRARIES += libsedc.la
-endif
-endif
+## if ENABLE_GLIB
+## if ENABLE_SEDC
+## libsedc_la_SOURCES = sedc.c
+## libsedc_la_CFLAGS = $(AM_CFLAGS) $(GLIB20_CFLAGS)
+## libsedc_la_LIBADD = $(COMMON_LIBADD) $(GLIB20_LIBS)
+## pkglib_LTLIBRARIES += libsedc.la
+## endif
+## endif
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c
