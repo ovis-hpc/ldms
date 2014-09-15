@@ -7,18 +7,51 @@ LDMS_QuickStart - man page for Quick Start of LDMS
 
 .SH INTRODUCTION
 LDMS is the Lightweight Distributed Metric Service. LDMS is a distributed data collection, transport, and storage tool that supports a wide variety of configuration options.
+The three major functional components are described below.
+The host daemon is the same base code in all cases; differ-
+entiation is based on configuration of plugins for sampling or
+storage and on configuring aggregation of data from other host daemons.
 .PP
-There are 3 major functional components:
-.RS
-.TP
-Samplers run one or more sampling plugins that periodically sample data of interest on monitored nodes. Each plugin defines a collection of metrics called a metric set.
-.TP
-Aggregators collect data in a pull fashion from samplers and/or other aggregators. 
-.TP
-Storage plugins write in a variety of formats. 
-.RE
+.I
+Samplers
+run one or more sampling plugins that periodically sample data of interest on monitored nodes. The sampling
+frequency is user defined and can be changed on the fly.
+Sampling plugins are written in C. Each plugin defines a
+collection of metrics called a metric set. Multiple plugins can
+be simultaneously active. By default each sampling plugin
+operates independently and asynchronously with respect to
+all others. Memory allocated for a particular metric set is
+overwritten by each successive sampling and no sample history
+is retained within a plugin or the host daemon.
 .PP
-The host daemon is the same base code in all cases; differentiation is based on configuration of plugins for sampling or storage and on configuring aggregation of data from other host daemons.
+.I
+Aggregators 
+collect data in a pull fashion from samplers
+and/or other aggregators. As with the sampler, the frequency of
+collection is user defined and operates independently of other
+collection operations and sampling operations. Distinct metric
+sets can be collected and aggregated at different frequencies.
+Unlike the samplers, the aggregation schedule cannot be altered once set without restarting the aggregator. The number of
+hosts collected from by a single aggregator is referred to as the
+fan-in. The maximum fan-in varies by transport but is roughly
+9,000:1 for the socket transport in general and for the RDMA
+transport over Infiniband. It is > 15, 000 : 1 for RDMA over
+the Cray Gemini transport. Daisy chaining is not limited to two
+levels and multiple aggregators may aggregate from the same
+sampler or aggregator ldmsd. Fan-in at higher levels is limited
+by the aggregator host capabilities (CPU, memory, network
+bandwidth, and storage bandwidth).
+.PP
+.I
+Storage plugins
+write in a variety of formats. 
+Comma Separated Value (CSV) file storage of metric sets
+plugins are provided. The
+frequency of storage is dependent on the frequency with which
+valid updated metric set data is collected by an aggregator that
+has been configured to write that data to storage. Collection of
+a metric set whose data has not been updated or is incomplete
+does not result in a write to storage in any format.
 
 .SH DESCRIPTION
 Quick Start instructions for LDMS (Lightweight Distributed Metric Service).
