@@ -60,7 +60,7 @@
 
 #include <stdio.h>
 #include <sys/queue.h>
-#include "str_map.h"
+#include "coll/str_map.h"
 
 #include "ldms.h"
 #include "ldmsd.h"

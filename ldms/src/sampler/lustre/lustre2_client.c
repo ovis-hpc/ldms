@@ -79,7 +79,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#include "str_map.h"
+#include "coll/str_map.h"
 #include "lustre_sampler.h"
 
 #define STR_MAP_SIZE 4093
