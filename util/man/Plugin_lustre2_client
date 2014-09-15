@@ -14,36 +14,36 @@ ldmsctl> config name=lustre2_client [ <attr> = <value> ]
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
 The lustre2_client plugin provides Lustre metric information.
 
-.SH LDMSCTL CONFIGURATION OPTIONS
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> oscs=<osc> mcds=<mcd> llites=<llite>
+name=<plugin_name> component_id=<comp_id> set=<set_name> osc=<osc> mcd=<mcd> llite=<llite>
 .br
 ldmsctl configuration line
 .RS
 .TP
-<plugin_name>
+name=<plugin_name>
 .br
 This MUST be lustre2_client.
 .TP
-<comp_id>
+component_id=<comp_id>
 .br
 The component id numerical value.
 .TP
-<set_name>
+set=<set_name>
 .br
 The name of the metric set.
 .TP
-<osc>
+osc=<osc>
 .br
 CSV list of osc's.
 .TP
-<mcd>
+mcd=<mcd>
 .br
 CSV list of mcd's.
 .TP
-<llite>
+llite=<llite>
 .br
 CSV list of llites.
 

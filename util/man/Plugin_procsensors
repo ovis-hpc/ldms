@@ -16,7 +16,7 @@ The procsensors plugin provides data from sources in /sys that are the data retu
 .PP
 This plugin is unsupported and its configuration file format is in flux.
 
-.SH LDMSCTL CONFIGURATION OPTIONS
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
@@ -25,19 +25,19 @@ name=<plugin_name> component_id=<comp_id> set=<set_name> conffile=<conffile>
 ldmsctl configuration line
 .RS
 .TP
-<plugin_name>
+name=<plugin_name>
 .br
 This MUST be procsensors.
 .TP
-<comp_id>
+component_id=<comp_id>
 .br
 The component id numerical value.
 .TP
-<set_name>
+set=<set_name>
 .br
 The name of the metric set.
 .TP
-<conffile>
+conffile=<conffile>
 .br
 Location of the configuration file. Format of file file is full_path_to_sysfs_var metricname multiplier offset (e.g., /home/xxx/temp tempA 1 0). 
 .RE

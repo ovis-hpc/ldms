@@ -40,11 +40,7 @@ SOCKET is the unix domain socket that the ldmsd is listening on.
 .BR -V
 Display LDMS version information and then exit.
 
-.SH DEFAULTS
-.BR ldmsctl
-with no arguments defaults to ???
-
-.SH LDMSCTL COMMANDS
+.SH LDMSCTL COMMANDS AND ATTRIBUTE SYNTAX
 After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
 
 .TP
@@ -68,7 +64,7 @@ the plugin should be in the directory specified by the
 LDMSD_PLUGIN_LIBPATH environment variable.
 .RS
 .TP
-<name>
+name=<name>
 The plugin name. This is used to locate a loadable library named lib<name>.so.
 .RE
 
@@ -79,15 +75,11 @@ name=<name> [ <attr>=<value> ... ]
 Provides a mechanism to specify configuration options.
 .RS
 .TP
-<name>
+name=<name>
 The plugin name.
 .TP
-<attr>
-An attribute name.
-.TP
-<value>
-An attribute value.
-Valid <attr> <value> pairs are specific to the plugin.
+<attr>=<value>
+An attribute name and value pair. Valid <attr> <value> pairs are specific to the plugin. These are described in the manpages for the plugins.
 .RE
 
 .TP
@@ -97,13 +89,13 @@ name=<name> interval=<interval> [ offset=<offset>]
 Begins calling the sampler's 'sample' method at the sample interval.
 .RS
 .TP
-<name>
+name=<name>
 The sampler name.
 .TP
-<interval>
+interval=<interval>
 The sample interval in microseconds.
 .TP
-<offset>
+offset=<offset>
 .br
 Optional offset (shift) from the sample mark in microseconds. Offset can be positive or negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, collection will be synchronous; if the offset is not specified, collection will be asychronous.
 .RE
@@ -115,7 +107,7 @@ name=<name>
 Cancels sampling on the specified plugin.
 .RS
 .TP
-<name>
+name=<name>
 The sampler name.
 .RE
 
@@ -130,10 +122,10 @@ host=<host> type=<type> sets=<set names>
 Adds a host to the list of hosts monitored by this ldmsd.
 .RS
 .TP
-<host>
+host=<host>
 The hostname. This can be an IP address or DNS hostname.
 .TP
-<type>
+type=<type>
 .RS
 .TP
 One of the following host types:
@@ -156,13 +148,13 @@ but it's metric sets are not queried. This is the active
 side of the passive host above.
 .RE
 .TP
-<set names>
+sets=<set names>
 The list of metric set names to be queried. The list is comma separated.
 .TP
-<interval>
+interval=<interval>
 An optional sampling interval in microseconds, defaults to 1000000.
 .TP
-<offset>
+offset=<offset>
 .br
 An optional offset (shift) from the sample mark
 in microseconds. If this offset is specified,
@@ -170,7 +162,7 @@ including 0, the collection will be synchronous;
 if the offset is not specified, the collection
 will be asychronous.
 .TP
-<xprt>
+xprt=<xprt>
 The transport type, defaults to 'sock'.
 .RS
 .TP
@@ -187,11 +179,11 @@ ugni
 Cray XE/XK/XC transport.
 .RE
 .TP
-<port>
+port=<port>
 .br
 The port number to connect on, defaults to LDMS_DEFAULT_PORT
 .TP
-<agg_no>
+standby=<agg_no>
 The number of the aggregator that this is standby for. Defaults to 0 which means this is an active aggregator.
 .RE
 .TP
@@ -203,24 +195,24 @@ name=<store> container=<container> set=<set> comp_type=<comp_type>
 Saves a set from one or more hosts to a persistent object store.
 .RS
 .TP
-<store>
+name=<store>
 The name of the storage plugin.
 .TP
-<container>
+container=<container>
 The store policy ID, e.g., meminfo-essential
 .TP
-<set>
+set=<set>
 The set whose data will be saved. Data is saved
 when update completes if the generation number has changed.
 .TP
-<comp_type>
+comp_type=<comp_type>
 The component type.
 .TP
-<metrics>
+metric=<metrics>
 .br
 A list of metric names in the specified set. If not specified, all metrics will be saved.
 .TP
-<hosts> 
+hosts=<hosts> 
 A list of hosts to whose set data will be saved.
 If not specified, all hosts that have this set will
 have their data saved.
@@ -228,16 +220,16 @@ have their data saved.
 .TP
 .BR standby
 .br
-agg_no=<agg_no> state=<0/1>
+agg_no=<agg_no> state=<stateval>
 .br
 ldmsd will update it saggs_mask for this aggregator as indicated.
 .RS
 .TP
-<agg_no>
+agg_no=<agg_no>
 Unique integer id for an aggregator
 .TP
-<state>
-0/1 - standby/active
+state=<stateval>
+Valid values are 0=standby and 1=active
 .RE
 .TP
 .BR info

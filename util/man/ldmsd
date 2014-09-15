@@ -100,10 +100,6 @@ A transport specific port number is optionally specified following a ':', e.g. r
 .br
 CONN_COUNT is the number of connection threads to start.
 
-.SH DEFAULTS
-.BR ldmsd
-with no arguments defaults to ???
-
 .SH RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
 .PP
 ldsmd can be run as either a user or as root using the appropriate PTag and cookie.

@@ -14,7 +14,7 @@ ldmsctl> config name=procstatutil [ <attr> = <value> ]
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
 The procstatutil plugin provides cpu utilization info from /proc/stat.
 
-.SH LDMSCTL CONFIGURATION OPTIONS
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
@@ -23,19 +23,19 @@ name=<plugin_name> component_id=<comp_id> set=<set_name> metrics_type=<num>
 ldmsctl configuration line
 .RS
 .TP
-<plugin_name>
+name=<plugin_name>
 .br
 This MUST be procstatutil.
 .TP
-<comp_id>
+component_id=<comp_id>
 .br
 The component id numerical value.
 .TP
-<set_name>
+set=<set_name>
 .br
 The name of the metric set.
 .TP
-<metrics_type>
+metrics_type=<metrics_type>
 .br
 Values are 0 or 1. 0 = per cpu metrics. 1 = includes node level metrics as well.
 Default is 0.

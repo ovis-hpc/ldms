@@ -24,7 +24,7 @@ then the cray_system_sampler will be named cray_system_sampler_r; if you have bu
 .B --enable-gpcd 
 then the cray_system_sampler will be named cray_system_sampler_d.
 
-.SH LDMSCTL CONFIGURATION OPTIONS
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
@@ -33,28 +33,28 @@ name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mt
 ldmsctl configuration line
 .RS
 .TP
-<plugin_name>
+name=<plugin_name>
 .br
 This MUST be cray_system_sampler.
 .TP
-<comp_id>
+component_id=<comp_id>
 .br
 The component id numerical value.
 .TP
-<set_name>
+set=<set_name>
 .br
 The name of the metric set.
 .TP
-<mtype>
+gemini_metrics_type=<mtype>
 .br
 Gemini metrics type identifier - Values are 0,1,2. 0 = counter data only, 1 = derived data (for certain HSN values), 2 = both.
-Default is ???.
+Default is counter data only.
 .TP
-<llite>
+llite=<llite>
 .br
 CSV separated ost list. Non-existent values will be populated with 0's
 .TP
-<rtrfile>
+rtrfile=<rtrfile>
 .br
 parsed rtr file with media type and link information.
 .RE

@@ -14,7 +14,7 @@ ldmsctl> config name=procnetdev [ <attr> = <value> ]
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
 The procnetdev plugin provides network info from /proc/net/dev.
 
-.SH LDMSCTL CONFIGURATION OPTIONS
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
@@ -23,19 +23,19 @@ name=<plugin_name> component_id=<comp_id> set=<set_name> ifaces=<ifaces>
 ldmsctl configuration line
 .RS
 .TP
-<plugin_name>
+name=<plugin_name>
 .br
 This MUST be procnetdev.
 .TP
-<comp_id>
+component_id=<comp_id>
 .br
 The component id numerical value.
 .TP
-<set_name>
+set=<set_name>
 .br
 The name of the metric set.
 .TP
-<ifaces>
+ifaces=<ifaces>
 .br
 CSV list of ifaces. Metric values for non-existent ifaces will be set to 0.
 .RE

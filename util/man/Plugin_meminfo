@@ -14,7 +14,7 @@ ldmsctl> config name=meminfo [ <attr>=<value> ]
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
 The meminfo plugin provides memory info from /proc/meminfo.
 
-.SH LDMSCTL CONFIGURATION OPTIONS
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
@@ -23,15 +23,15 @@ name=<plugin_name> component_id=<comp_id> set=<set_name>
 ldmsctl configuration line
 .RS
 .TP
-<plugin_name>
+name=<plugin_name>
 .br
 This MUST be meminfo.
 .TP
-<comp_id>
+component_id=<comp_id>
 .br
 The component id numerical value.
 .TP
-<set_name>
+set=<set_name>
 .br
 The name of the metric set.
 .RE
