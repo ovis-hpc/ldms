@@ -15,9 +15,7 @@ sbin_PROGRAMS = \
 	sos_query \
 	oidx \
 	oidx_dump \
-	ods_dump \
-	mds_load \
-	mds_query
+	ods_dump
 
 lib_LTLIBRARIES = \
 	libkey_STRING.la \
@@ -52,7 +50,7 @@ libsos_la_LIBADD = \
 #	liboidx.la
 
 libsosincludedir = $(includedir)/sos
-libsosinclude_HEADERS = sos.h mds.h ods.h obj_idx.h
+libsosinclude_HEADERS = sos.h ods.h obj_idx.h
 
 #
 # libidx_BPTREE
@@ -215,21 +213,11 @@ oidx_LDADD = \
 	libods.la \
 	-lcoll
 
-mds_load_SOURCES = mds_load.c mds.h
-mds_load_LDADD = \
-	libsos.la \
-	-lcoll
-mds_load_LDFLAGS = $(AM_LDFLAGS) -lpthread
-
 ods_dump_SOURCES = ods_dump.c
 ods_dump_LDADD = libods.la
 
 oidx_dump_SOURCES = oidx_dump.c
 oidx_dump_LDADD = liboidx.la libods.la
-
-mds_query_SOURCES = mds_query.c mds.h
-mds_query_LDADD = libsos.la \
-	libobjidx.la
 
 libsos_conf = /etc/ld.so.conf.d/libsos.conf
 
