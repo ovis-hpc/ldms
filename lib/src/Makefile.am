@@ -18,6 +18,6 @@ if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util
 endif
 
-if ENABLE_ZAP
-SUBDIRS += zap
-endif
+## if ENABLE_ZAP
+## SUBDIRS += zap
+## endif

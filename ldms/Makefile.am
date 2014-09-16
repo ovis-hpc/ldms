@@ -24,7 +24,7 @@ install-exec-hook:
 	@echo "INSTALL COMPLETED."
 	@echo "Errors seen after this matter to developers only."
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
-	$(bindir)/ldms_ban.sh $(srcdir)/../
+	-$(bindir)/ldms_ban.sh $(srcdir)/../
 
 banned:
 	bash $(srcdir)/scripts/ldms_ban.sh.in $(srcdir)/../

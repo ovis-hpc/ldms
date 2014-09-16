@@ -10,19 +10,24 @@ to make relocation work the environment MUST specify LD_LIBRARY_PATH at
 runtime.
 
 The rpm packaging scripts (.spec.in) files in the source tree may need
-adjustments for platforms, but will work OOTB on rhel6.4/centos6.4/toss.
+adjustments for other platforms, but will work on rhel6.4/centos6.4/toss.
 
 
-BUILDING
+BUILDING ldms 2.2 RPMs (expected to change in future release)
 
-libevent2 must be built and installed before the rest can be. We provide
-the spec files, but currently you must obtain your own copies of the sources.
+libevent2 must be built and accessible before ldms can be configured.
+Because RHEL 6.x does not support libevent2, we install libevent
+as part of this rpm build in an LDMS-specific location. 
 
-Currently building the rpms goes in stages, with installations needed between.
-Conceivably, the build stages could be eliminated in one enormous spec file,
-and this would eliminate the need for intermediate installations.
-The scripts in this directory are all to be run from the top of the
-source tree (and check that this is so before doing real work).
+Packaging is done by:
+	- checking out the source tree.
+	- ./autogen.sh at the top of the source tree.
+	- putting a copy of libevent-2.0.21-stable.tar.gz in the top of the source.
+	- running ./packaging/pack-toss.sh from the top of the source.
 
-A user with sudo privilege can build all the rpms using the build-all.sh script.
-This script uses sudo to perform the intermediate rpm installs.
+The result (if all is well and the needed devel packages for ssl, rdma, etc
+are installed) will be a set of rpms in centos-* directories at the top of the
+source tree. Only ldms-all-2.2.0-ovis1.ch5.1.x86_64.rpm must be installed to
+use ldms. The man pages for login and admin nodes are in the corresponding
+doc rpm.
+

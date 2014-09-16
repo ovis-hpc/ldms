@@ -188,6 +188,37 @@ fi
 AC_SUBST([MYSQL_LIBS])
 AC_SUBST([MYSQL_INCLUDE])
 ])
+
+AC_DEFUN([OPTION_BUILD_LIBEVENT],[
+if test "x$LIBEVENT_BUILD" = "x1"; then
+	AC_MSG_NOTICE([Generating libevent2 ])
+	if test -f libevent-2.0.21-stable.tar.gz; then
+		tar zxf libevent-2.0.21-stable.tar.gz
+		cd libevent-2.0.21-stable && \
+		iprefix=`pwd`/lib/ovis-ldms
+		mkdir -p $iprefix
+		./configure \
+		CFLAGS="-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -march=native" \
+		--prefix=${iprefix} \
+		--datadir=${iprefix}/share \
+		--includedir=${iprefix}/include \
+		--libdir=${iprefix}/lib \
+		--libexecdir=${iprefix}/libexec \
+		--mandir=${iprefix}/share/man \
+		--infodir=${iprefix}/share/info \
+		--disable-dependency-tracking \
+		--disable-static &&
+		make install
+		with_libevent=$iprefix	
+		cd ..
+	else
+		AC_MSG_ERROR([cannot find libevent-2.0.21-stable.tar.gz ])
+	fi
+else
+	AC_MSG_NOTICE([Assuming external libevent2 ])
+fi
+])
+
 dnl this could probably be generalized for handling lib64,lib python-binding issues
 AC_DEFUN([OPTION_WITH_EVENT],[
   AC_ARG_WITH([libevent],

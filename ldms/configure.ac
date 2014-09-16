@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 2.1.0, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 2.2.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -88,13 +88,14 @@ dnl Options for Testing
 OPTION_DEFAULT_DISABLE([qc-sampler], [ENABLE_QC_SAMPLER]) dnl turn on QC testing of samplers
 
 
-OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
-if test "$enable_sos" == "yes"; then
-OPTION_WITH_OR_BUILD([sos],[../sos/src])
-fi
+dnl OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
+dnl if test "$enable_sos" == "yes"; then
+dnl OPTION_WITH_OR_BUILD([sos],[../sos/src])
+dnl fi
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[../lib/src/mmalloc ../lib/src/coll ../lib/src/ovis_util ../lib/src/zap ../lib/src/ovis_ctrl])
+dnl OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[../lib/src/mmalloc ../lib/src/coll ../lib/src/ovis_util ../lib/src/zap ../lib/src/ovis_ctrl])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[../lib/src/mmalloc ../lib/src/coll ../lib/src/ovis_util ../lib/src/ovis_ctrl])
 
 dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
@@ -190,34 +191,34 @@ fi
 AC_SUBST(IBV_DEVICE_LIBRARY_EXTENSION)
 fi
 
-if test -z "$ENABLE_SOS_TRUE"
-then
-	if test "x$WITH_SOS" != "xbuild"; then
-		AC_MSG_NOTICE([Trying SOS_INCDIR=$SOS_INCDIR and libs $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ])
-		AC_CHECK_LIB( sos, sos_open,
-			[
-				AC_CHECK_HEADERS($SOS_INCDIR/sos/sos.h,
-				[],
-				[
-					AC_MSG_FAILURE([sos/sos.h not found])
-				],
-				)
-			],
-			[
-				AC_MSG_FAILURE(libsos not found)
-			],
-			-lpthread -lods -loidx -lidx $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
-		)
-		dnl Reset LIBS variable.
-		LIBS=""
-	else
-		# assume libs will be there by the time we need and create a
-		# fake include dir in the build tree. do no copying.
-		SOS_INCDIR=`(cd ../sos/src && pwd)`/tmp
-		SOS_INCDIR_FLAG=-I$SOS_INCDIR
-		AC_MSG_NOTICE([Using staged SOS_INCDIR=$SOS_INCDIR and libs $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ])
-	fi
-fi
+dnl if test -z "$ENABLE_SOS_TRUE"
+dnl then
+dnl 	if test "x$WITH_SOS" != "xbuild"; then
+dnl 		AC_MSG_NOTICE([Trying SOS_INCDIR=$SOS_INCDIR and libs $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ])
+dnl 		AC_CHECK_LIB( sos, sos_open,
+dnl 			[
+dnl 				AC_CHECK_HEADERS($SOS_INCDIR/sos/sos.h,
+dnl 				[],
+dnl 				[
+dnl 					AC_MSG_FAILURE([sos/sos.h not found])
+dnl 				],
+dnl 				)
+dnl 			],
+dnl 			[
+dnl 				AC_MSG_FAILURE(libsos not found)
+dnl 			],
+dnl 			-lpthread -lods -loidx -lidx $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
+dnl 		)
+dnl 		dnl Reset LIBS variable.
+dnl 		LIBS=""
+dnl 	else
+dnl 		# assume libs will be there by the time we need and create a
+dnl 		# fake include dir in the build tree. do no copying.
+dnl 		SOS_INCDIR=`(cd ../sos/src && pwd)`/tmp
+dnl 		SOS_INCDIR_FLAG=-I$SOS_INCDIR
+dnl 		AC_MSG_NOTICE([Using staged SOS_INCDIR=$SOS_INCDIR and libs $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ])
+dnl 	fi
+dnl fi
 
 if test -z "$ENABLE_ATASMART_TRUE"
 then

@@ -1,10 +1,13 @@
 ACLOCAL_AMFLAGS = -I m4
 
-if ENABLE_SOS
-SUBDIRS= lib sos ldms
-else
-SUBDIRS= lib ldms
-endif
+EXTRA_DIST=libevent-2.0.21-stable.tar.gz
+
+## if ENABLE_SOS
+## SUBDIRS= lib sos ldms
+## else
+## SUBDIRS= lib ldms
+## endif
+SUBDIRS= lib ldms util
 
 BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
@@ -31,3 +34,11 @@ rpm-clean:
 
 clean-local: rpm-clean
 
+install-exec-local:
+	if test -d libevent-2.0.21-stable/lib/ovis-ldms/lib; then \
+		mkdir $(DESTDIR)$(libdir)/ovis-libevent ; \
+		cp -a libevent-2.0.21-stable/lib/ovis-ldms/lib/* $(DESTDIR)$(libdir)/ovis-libevent/ ;\
+		sed -e 's%LD_LIBRARY_PATH=.*%LD_LIBRARY_PATH=${libdir}/ovis-libevent:$$LD_LIBRARY_PATH%' \
+			$(DESTDIR)$(bindir)/*.sh ; \
+		/bin/rm -rf $(DESTDIR)$(libdir)/ovis-libevent/pkgconfig ; \
+	fi

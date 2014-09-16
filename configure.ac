@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ldms-all, 2.1.0, ovis-help@sandia.gov)
+AC_INIT(ldms-all, 2.2.0, ovis-help@sandia.gov)
 #fixme=--subdir
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
@@ -21,17 +21,20 @@ dnl AM_PROG_CC_C_O
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 
+# if LIBEVENT_BUILD=1 is in the environment, untar and install libevent to our install tree
+OPTION_BUILD_LIBEVENT
+
 # LIBEVENT-start
 dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 
 
-OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
+dnl OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 dnl OPTION_WITH_OR_BUILD([sos],[../sos/src])
 
-if test "$enable_sos" = "yes"; then
-AC_CONFIG_SUBDIRS([sos])
-fi
+dnl if test "$enable_sos" = "yes"; then
+dnl AC_CONFIG_SUBDIRS([sos])
+dnl fi
 
 # LIBEVENT-ow
 OPTION_WITH([libevent], [LIBEVENT])
@@ -51,5 +54,8 @@ PKG_CHECK_MODULES([GLIB20], [glib-2.0 >= 2.0.0])
 
 AC_SUBST(ac_configure_args)
 
-AC_CONFIG_FILES([Makefile packaging/ovis-base.spec])
+AC_CONFIG_FILES([Makefile
+util/Makefile
+util/man/Makefile
+packaging/ovis-base.spec])
 AC_OUTPUT
