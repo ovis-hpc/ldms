@@ -79,7 +79,7 @@ package.
 %package doc
 Summary: Documentation files for %{name}
 Group: %{ldms_all}
-Requires: %{name}-devel = %{version}-%{release}
+## Requires: %{name}-devel = %{version}-%{release}
 %description doc
 Doxygen files for ldms-all package.
 %files doc
