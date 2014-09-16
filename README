@@ -1,15 +1,32 @@
 
 Quick start guide:
 
+-----------------------------------------------------------
 0) Requirements:
 libevent2 (not libevent 1.4) must be installed somewhere (it need not be the 
 system default). The most recently tested libevent we test with is from 
 libevent.org:
 	libevent-2.0.21-stable.tar.gz
 It is easy to build and install; see README.libevent2.
+Ubuntu 12 and other modern distributions supply libevent2 packages.
+
+For rdma support, ibmad and umad devel packages must be installed.
+For authentication support, openssl devel must be installed.
 
 
+-----------------------------------------------------------
 1) Building:
+
+##### rpms for redhat #####
+
+Download libevent-2.0.21-stable.tar.gz into the top of the source tree.
+# ./autogen.sh
+# ./packaging/pack-toss.sh
+will generate rpm files in centos-rpms/ if all goes well.
+These may be installed with rpm -Uvh ldms-all*.rpm.
+
+##### with custom libevent installed in /opt/ovis #####
+
 libevent2_prefix=/opt/ovis
 if test -x $libevent2_prefix/lib/libevent_openssl.so; then
   ./configure --prefix=/opt/ovis --with-libevent=$libevent2_prefix [options]
@@ -17,12 +34,10 @@ if test -x $libevent2_prefix/lib/libevent_openssl.so; then
   sudo make install
 fi
 
-Options: Given them all here to insure binary consistency across all parts.
-	./configure --help=recursive 
-will show the options for all the subpackages (lib, sos, ldms).
+./configure --help=recursive 
+will show the options for all the subpackages (lib, ldms).
 Several practical configurations are illustrated in
 packaging/make-all-$platform.sh
-
 
 Options from all the packages can be combined and given as the options to 
 the top level configure in this directory. The subpackages will ignore unknown options (with warning about them).
@@ -30,4 +45,11 @@ the top level configure in this directory. The subpackages will ignore unknown o
 Eventually more configurations will be illustrated in our collection
 of nightly testing scripts.
 
+-----------------------------------------------------------
 2) Running:
+Put $prefix/bin in your path and then run
+	ldms_local_clocktest.sh
+Which will run 3 user-space daemons and several clients on localhost to verify 
+that the tcp socket transport works on your host. It may complain about
+not finding a secret word file. If so, "man LDMS_Authentication" to
+find out how to fix it.
