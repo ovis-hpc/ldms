@@ -36,9 +36,9 @@ clean-local: rpm-clean
 
 install-exec-local:
 	if test -d libevent-2.0.21-stable/lib/ovis-ldms/lib; then \
-		mkdir $(DESTDIR)$(libdir)/ovis-libevent ; \
+		mkdir -p $(DESTDIR)$(libdir)/ovis-libevent ; \
 		cp -a libevent-2.0.21-stable/lib/ovis-ldms/lib/* $(DESTDIR)$(libdir)/ovis-libevent/ ;\
-		sed -e 's%LD_LIBRARY_PATH=.*%LD_LIBRARY_PATH=${libdir}/ovis-libevent:$$LD_LIBRARY_PATH%' \
+		sed -i -e 's%LD_LIBRARY_PATH=.*%LD_LIBRARY_PATH=${libdir}/ovis-libevent:$$LD_LIBRARY_PATH%' \
 			$(DESTDIR)$(bindir)/*.sh ; \
 		/bin/rm -rf $(DESTDIR)$(libdir)/ovis-libevent/pkgconfig ; \
 	fi
