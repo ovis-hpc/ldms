@@ -17,8 +17,18 @@ mkdir -p $TMP_DIR
 # cd to local git clone
 cd $REPO_DIR
 
+# Checkout $BRANCH_NAME
+git checkout origin/$BRANCH_NAME -b $BRANCH_NAME
+
+# Find SHA of latest checkin
+COMMIT_ID="$(git log -1 --pretty="%H")"
+
+# Get most recent tag id for this branch
+TAG_ID="$(git describe --tags --abbrev=0)"
+
 # Create archive of desired branch
-git archive $BRANCH_NAME --format=tar --output=${OUTPUT_DIR}/ldms-${VERSION}.tar
+#git archive $BRANCH_NAME --format=tar --output=${OUTPUT_DIR}/ldms-${VERSION}.tar
+git archive $COMMIT_ID --format=tar --output=${OUTPUT_DIR}/ldms-${VERSION}.tar
 sleep 0.1
 
 # cd to output dir
@@ -28,6 +38,10 @@ cd $OUTPUT_DIR
 echo "Untarring archive"
 tar xf ldms-${VERSION}.tar
 sleep 0.1
+
+# Add SHA file
+echo $COMMIT_ID > SHA.txt
+echo $TAG_ID > TAG.txt
 
 # Tar back up excluding unwanted files and dirs
 echo "tarring archive with excludes"
