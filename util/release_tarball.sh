@@ -5,7 +5,7 @@ if ! test -f m4/Ovis-top.m4; then
 	exit 1
 fi
 REPO_DIR=`pwd`
-OUTPUT_DIR=`pwd`/ldms_release
+OUTPUT_DIR=`pwd`/Release
 BRANCH_NAME=ovispublic_RC1.2_a
 # Will get this from git in the future
 VERSION=2.2.0
