@@ -7,3 +7,4 @@ lib/src/zap
 util/release_tarball.sh
 scratch
 ldms_release
+sedcutils

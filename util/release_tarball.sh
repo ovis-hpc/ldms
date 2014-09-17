@@ -51,12 +51,12 @@ popd
 echo "tarring archive with excludes from "
 echo "$REPO_DIR/util/tar-excludes.txt"
 TAR_OPTS="-X $REPO_DIR/util/tar-excludes.txt"
-tar cf $TARGET $TAR_OPTS ldms-${VERSION}
+tar czf $TARGET.gz $TAR_OPTS ldms-${VERSION}
 sleep 0.1
 
 # Remove untarred stuff
 echo "Removing cruft"
-rm -rf ldms-${VERSION}
+rm -rf ldms-${VERSION} $TARGET
 sleep 0.1
 
 ls -l
