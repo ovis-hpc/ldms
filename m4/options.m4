@@ -280,11 +280,12 @@ dnl SYNOPSIS: OPTION_GITINFO
 dnl dnl queries git for version hash and branch info.
 AC_DEFUN([OPTION_GITINFO], [
 
-if -s ../TAG.txt && -s ../SHA.txt; then
-do
-	GITSHORT="$( cat ../TAG.txt)"
-	GITLONG="$( cat ../SHA.txt)"
+#if test -s $srcdir/TAG.txt && test -s $srcdir/SHA.txt; then
+	AC_MSG_NOTICE([Using $srcdir/SHA.txt and $srcdir/TAG.txt for version info. ])
+	GITSHORT="$( cat $srcdir/TAG.txt)"
+	GITLONG="$( cat $srcdir/SHA.txt)"
 else
+	AC_MSG_NOTICE([$srcdir/SHA.txt and/or $srcdir/TAG.txt not found... Trying git ])
 	if test "x`which git`" = "x"; then
 	        GITSHORT="no_git_command"
 	        GITLONG=$GITSHORT
