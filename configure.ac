@@ -4,7 +4,7 @@ AC_PREREQ(2.63)
 AC_INIT(ldms-all, 2.2.0, ovis-help@sandia.gov)
 #fixme=--subdir
 AC_CONFIG_MACRO_DIR([m4])
-dnl AC_CONFIG_SRCDIR([src/ldms.h])
+AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AC_CONFIG_SUBDIRS([lib ldms])

@@ -279,19 +279,31 @@ AC_SUBST([$1],[$$1])
 dnl SYNOPSIS: OPTION_GITINFO
 dnl dnl queries git for version hash and branch info.
 AC_DEFUN([OPTION_GITINFO], [
-
-#if test -s $srcdir/TAG.txt && test -s $srcdir/SHA.txt; then
-	AC_MSG_NOTICE([Using $srcdir/SHA.txt and $srcdir/TAG.txt for version info. ])
-	GITSHORT="$( cat $srcdir/TAG.txt)"
-	GITLONG="$( cat $srcdir/SHA.txt)"
+	treetop=missing
+	for ovis_top in `pwd` $ac_abs_confdir $ac_abs_confdir/.. $ac_abs_confdir/../..; do
+		if test -f $ovis_top/m4/Ovis-top.m4; then
+			treetop=`(cd "$ovis_top"
+			pwd)`
+			break
+		fi
+	done
+	if test "$treetop" = "missing"; then
+		AC_MSG_ERROR([Unable to locate top of ovis source tree.])
+	fi	
+if test -s $treetop/TAG.txt && test -s $treetop/SHA.txt; then
+	AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $treetop for version info. ])
+	GITSHORT="$( cat $treetop/TAG.txt)"
+	GITLONG="$( cat $treetop/SHA.txt)"
 else
-	AC_MSG_NOTICE([$srcdir/SHA.txt and/or $srcdir/TAG.txt not found... Trying git ])
+	AC_MSG_CHECKING([Missing SHA.txt or TAG.txt in $treetop. Trying git])
 	if test "x`which git`" = "x"; then
 	        GITSHORT="no_git_command"
 	        GITLONG=$GITSHORT
+		AC_MSG_RESULT([Faking it.])
 	else
 	        GITLONG="`git log -1 |grep ^commit | sed -e 's%commit %%'`"
 	        GITSHORT="`git describe --tags`"
+		AC_MSG_RESULT([ok.])
 	fi
 fi
 
