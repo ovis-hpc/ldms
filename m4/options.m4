@@ -280,13 +280,20 @@ dnl SYNOPSIS: OPTION_GITINFO
 dnl dnl queries git for version hash and branch info.
 AC_DEFUN([OPTION_GITINFO], [
 
-if test "x`which git`" = "x"; then
-        GITSHORT="no_git_command"
-        GITLONG=$GITSHORT
+if -s ../TAG.txt && -s ../SHA.txt; then
+do
+	GITSHORT="$( cat ../TAG.txt)"
+	GITLONG="$( cat ../SHA.txt)"
 else
-        GITLONG="`git log -1 |grep ^commit | sed -e 's%commit %%'`"
-        GITSHORT="`git describe`"
+	if test "x`which git`" = "x"; then
+	        GITSHORT="no_git_command"
+	        GITLONG=$GITSHORT
+	else
+	        GITLONG="`git log -1 |grep ^commit | sed -e 's%commit %%'`"
+	        GITSHORT="`git describe --tags`"
+	fi
 fi
+
 AC_DEFINE_UNQUOTED([LDMS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
 AC_DEFINE_UNQUOTED([LDMS_GIT_SHORT],["$GITSHORT"],[Branch and hash mangle of last commit])
 ])
