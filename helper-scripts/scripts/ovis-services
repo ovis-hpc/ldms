@@ -37,7 +37,7 @@ case "$cmd" in
 		ldmsd-sampler-services status
 		echo "--------------------------------"
 		echo "Checking the status of the OVIS services on the OVIS head node"
-		ovis-head-services check
+		ovis-head-services status
 		;;
 	*)
 		usage
