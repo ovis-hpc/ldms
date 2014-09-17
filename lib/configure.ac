@@ -27,6 +27,7 @@ OPTION_DEFAULT_ENABLE([ovis_ctrl], [ENABLE_OVIS_CTRL])
 OPTION_DEFAULT_ENABLE([ovis_util], [ENABLE_OVIS_UTIL])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
+OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 dnl we need libevent to support zap
 if test "$disable_zap" != "yes"; then
   OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
@@ -44,7 +45,18 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
                [Define to 1 if you have rdma/rdma_cma.h.])],
     [AC_MSG_ERROR([Missing header. librdmacm-devel not installed?])])
   fi
+  if test "$enable_ugni" = "yes"; then
+    PKG_CHECK_MODULES([UGNI], [cray-ugni],
+		      [],
+		      AC_MSG_ERROR([pkg-config cray-ugni failed])
+		      )
+    PKG_CHECK_MODULES([RCA], [cray-rca],
+		      [],
+		      AC_MSG_ERROR([pkg-config cray-rca failed])
+		      )
+  fi
 fi
+
 OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
@@ -75,6 +87,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		src/zap/Makefile
 		src/zap/rdma/Makefile
 		src/zap/sock/Makefile
+		src/zap/ugni/Makefile
 		src/zap/test/Makefile
 		swig/Makefile
 		swig/zap/Makefile
