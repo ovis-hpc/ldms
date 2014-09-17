@@ -1,0 +1,191 @@
+# Paths to executables and libs
+prefix=/opt/ovis
+
+LDMSD=$prefix/sbin/ldmsd
+LDMSCTL=$prefix/sbin/ldmsctl
+
+LIBEVENT_LIB_PATH=$prefix/lib64
+LDMS_LIB_PATH=$prefix/lib64/ovis-ldms
+LDMS_PLUGIN_PATH=$prefix/lib64/ovis-ldms
+
+# socket that ldmsd listens on
+NODE_SOCKET=411
+AGG_SOCKET=411
+
+# Transport being used for non-aggregator nodes (one of sock, rdma, ugni)
+#NODE_LDMSD_TRANSPORT=rdma
+NODE_LDMSD_TRANSPORT=sock
+
+# Transport being used for aggregator nodes (one of sock, rdma, ugni)
+AGG_LDMSD_TRANSPORT=sock
+
+# Path to file with node list
+NODEFILE_PATH=/projects/ovis/share/ldmsd
+
+# Path to stores
+STORE_PATH=/projects/ovis/ClusterData/store_csv
+DER_STORE_PATH=/projects/ovis/ClusterData/store_csv_der
+
+STORE_CONFIG_FILE=/projects/ovis/Config/store.config
+
+#Paths to unix domain socket used by ldmsctl to communicate with ldmsd
+LDMSD_LOCAL_SOCK_DIR=/var/run/ldmsd
+LDMSCTL_SOCK_DIR=/var/run/ldmsctl
+
+# Path to log file for non-aggregator nodes. If this is undefined ldmsd will not write to logs.
+#NODE_LDMSD_LOG_PATH=/projects/ovis/ldms_logs
+
+# Path to log file for aggregator nodes. If this is undefined ldmsd will not write to logs.
+AGG_LDMSD_LOG_PATH=/var/log/ldms_logs
+
+# Set number of open file descriptors
+NUM_OPEN_FD=10000
+
+# Set comma seperaged list (e.g. OSTLIST="snx11024,snx11025,..." ) of OSTs for lustre samplers (e.g. lustre_client, ncsa_unified)
+OSTLIST=scratch1
+
+# Remove the domain name from MYHOSTNAME
+MYHOSTNAME="$( echo $HOSTNAME | cut -d "." -f1 )"
+
+ Derive component IDs from hostnames. Use node number for regular nodes, 11000 + rps#, 12000 + lsm#, and 13000 + gw#
+if [[ "$(echo $HOSTNAME | grep "\-rps")" ]]; then
+        COMPONENT_ID="$(( 11000 + $(echo $HOSTNAME | sed 's/[a-z\-]//g' ) ))"
+elif [[ "$(echo $HOSTNAME | grep "\-lsm")" ]]; then
+        COMPONENT_ID="$(( 12000 + $(echo $HOSTNAME | sed 's/[a-z\-]//g') ))"
+elif [[ "$(echo $HOSTNAME | grep "\-gw")" ]]; then
+        COMPONENT_ID="$(( 13000 + $(echo $HOSTNAME | sed 's/[a-z\-]//g') ))"
+else
+        COMPONENT_ID="$(( $(echo $HOSTNAME | sed 's/[a-z]//g') ))"
+fi
+
+# Define name of Unix domain socket for communication with ldmsd
+LDMSD_LOCAL_SOCK=metric_socket
+
+# Space/comma seperated list of metric sets to load at startup
+DEFAULT_METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib"
+
+# Sample intervals to be used on a per-sampler basis else the DEFAULT_COLLECTION_INTERVAL will be used
+# Intervals are in micro-seconds (e.g. 5000000 = 5 sec sampling interval)        
+#meminfo_INTERVAL=1000000
+#vmstat_INTERVAL=1000000
+#procnfs_INTERVAL=1000000
+#procstatutil_INTERVAL=1000000
+#procnetdev_INTERVAL=1000000
+#lustre2_client_INTERVAL=1000000
+#sysclassib_INTERVAL=1000000
+DEFAULT_COLLECTION_INTERVAL=20000000
+
+# Set target sampler offset (in microseconds) from 0:0:0:0.0
+NODE_COLLECTION_OFFSET=0
+
+# Set aggregator collection interval (using same for all nodes)
+AGG_COLLECTION_INTERVAL=20000000
+
+# Set target aggregator collection offset (in microseconds) from 0:0:0:0.0
+AGG_COLLECTION_OFFSET=350000
+
+# Start above defined metric plugins with above defined collection intervals
+start_ldms_plugins () {
+	echoq "In start_ldms_plugins"
+	if [[ -z $LDMSCTL ]]; then
+		return 1;
+	else
+                for metric_set in $(eval echo ${DEFAULT_METRIC_SETS} | sed 's/,/ /g')
+                do
+                        interval="${metric_set}_INTERVAL"
+                        if [[ -z "${!interval}" ]]; then
+                        interval="DEFAULT_COLLECTION_INTERVAL"
+                        fi
+                        echoq "Loading <${metric_set}>"
+                        if [[ $metric_set = "lustre2_client" ]]; then
+                                echoq "In lustre2_client: load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
+                                { echo load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                { echo config name=${metric_set} component_id=${COMPONENT_ID} set=${HOSTNAME}/${metric_set} llite=${OSTLIST} | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                { echo start name=${metric_set} interval="${!interval}" offset=${NODE_COLLECTION_OFFSET} | ${LDMSCTL} -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; }
+                        elif [[ $metric_set = "procnetdev" ]]; then
+                                echoq "In procnetdev: load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
+                                { echo load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                { echo config name=$metric_set component_id=${COMPONENT_ID} set=${HOSTNAME}/${metric_set} ifaces=${IFACES} | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                echo start name=$metric_set interval="${!interval}" offset=${NODE_COLLECTION_OFFSET} | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}
+                        elif [[ $metric_set = "sysclassib" ]]; then
+                                echoq "In sysclassib: load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
+                                echo load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}
+                                echo config name=$metric_set component_id=$COMPONENT_ID set=$HOSTNAME/$metric_set ports=qib0.1 metric_type=0 | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}
+                                echo start name=$metric_set interval="${!interval}" offset=${NODE_COLLECTION_OFFSET} | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}
+                        elif [[ $metric_set = "procstatutil" ]]; then
+                                echoq "In procstatutil: load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
+                                { echo load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                { echo config name=${metric_set} component_id=${COMPONENT_ID} set=${HOSTNAME}/${metric_set} metrics_type=1 | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                { echo start name=${metric_set} interval="${!interval}" offset=${NODE_COLLECTION_OFFSET} | ${LDMSCTL} -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; }
+                        else
+                        # This handles cases: meminfo, vmstat, procnfs, procstatutil
+                                echoq "In general: load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
+                                { echo load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                { echo config name=${metric_set} component_id=${COMPONENT_ID} set=${HOSTNAME}/${metric_set} | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
+                                { echo start name=${metric_set} interval="${!interval}" offset=${NODE_COLLECTION_OFFSET} | ${LDMSCTL} -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; }
+                        fi
+                done
+		return $?
+	fi
+}
+
+start_add_hosts () {
+	if ! test -d $NODEFILE_PATH; then
+		echo "NODEFILE_PATH specified does not exist: $NODEFILE_PATH"
+		exit 2
+	fi
+	if ! test -f ${NODEFILE_PATH}/${PLATNAME}_add_nodes.txt; then
+		echo "${NODEFILE_PATH}/${PLATNAME}_add_nodes.txt does not exist... Exiting"
+		exit 2
+	fi
+	# Read from file "${PLATNAME}_add_nodes.txt" with format: <Aggregator Host> <comma separated list of metric sets to be aggregated> <Host to collect from>
+	# An example line from the file for aggregator "foo" collecting metric sets "bar/meminfo" and "bar/vmstat" from another aggregator "zed" would look like: 
+	# foo bar/meminfo,bar/vmstat zed
+	# Note that this example does NOT show a failover configuration
+	while read MYHOST SET TARGETHOST
+	do
+		if [[ (X${MYHOST} = X${MYHOSTNAME}) && ((-z $TARGET) || (X${TARGET} = X${TARGETHOST})) ]]; then
+			CMD="echo add host=${TARGETHOST} type=active interval=${AGG_COLLECTION_INTERVAL} offset=${AGG_COLLECTION_OFFSET} xprt=${NODE_LDMSD_TRANSPORT} port=${NODE_SOCKET} sets=${SET}";
+			echoq "$CMD | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME";
+			eval $CMD | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME;
+		fi 
+	done < ${NODEFILE_PATH}/${PLATNAME}_add_nodes.txt
+
+}
+
+start_stores () {
+	if [[ -z $LDMSCTL ]]; then
+		return 1;
+	else
+        	# Make directory to store into (store will fail if this doesn't exist)
+	        mkdir -p $STORE_PATH
+	        mkdir -p $DER_STORE_PATH
+	        echoq "echo load name=store_csv | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME"
+	        echo load name=store_csv | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME
+
+	        echoq "echo load name=store_derived_csv | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME"
+	        echo load name=store_derived_csv | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME
+
+	        echoq "echo config name=store_csv path=$STORE_PATH altheader=1 id_pos=1 | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME"
+	        echo config name=store_csv path=$STORE_PATH altheader=1 id_pos=1 | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME
+
+		echoq "echo config name=store_derived_csv path=$DER_STORE_PATH derivedconf=$STORE_CONFIG_FILE altheader=1 id_pos=1 agesec=40 | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME"
+		echo config name=store_derived_csv path=$DER_STORE_PATH derivedconf=$STORE_CONFIG_FILE altheader=1 id_pos=1 agesec=40 | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME
+
+		for metric_set in $(eval echo ${DEFAULT_METRIC_SETS} | sed 's/,/ /g')
+		do
+
+		        # Set up a csv store for all samplers in all collectors that is picked up by this aggregator
+
+		        echoq "echo store name=store_csv comp_type=node set=$metric_set container=${PLATNAME}_$metric_set | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME"
+		        echo store name=store_csv comp_type=node set=$metric_set container=${PLATNAME}_$metric_set | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME
+			echoq "store name=store_derived_csv comp_type=node set=$metric_set container=${PLATNAME}_${metric_set}_der | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME"
+			echo store name=store_derived_csv comp_type=node set=$metric_set container=${PLATNAME}_${metric_set}_der | ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}.$PLATNAME
+#			fi
+		done
+	fi
+}
+
+#export -f start_ldms_plugins start_add_hosts start_stores
+export start_ldms_plugins start_add_hosts start_stores
+
