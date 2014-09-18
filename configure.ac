@@ -9,7 +9,8 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AC_CONFIG_SUBDIRS([lib ldms])
 AC_PROG_CC
-AM_INIT_AUTOMAKE([foreign -Wno-portability])
+AM_INIT_AUTOMAKE([foreign -Wno-portability silent-rules])
+AM_SILENT_RULES([yes])
 AM_PROG_LIBTOOL
 
 
@@ -57,5 +58,6 @@ AC_SUBST(ac_configure_args)
 AC_CONFIG_FILES([Makefile
 util/Makefile
 util/man/Makefile
+util/sample_init_scripts/Makefile
 packaging/ovis-base.spec])
 AC_OUTPUT

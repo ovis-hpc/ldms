@@ -1,13 +1,13 @@
 #!/bin/bash -x
 eventname=libevent-2.0.21-stable
-export LOCALEVENT=1 ; # else expect /usr to be a good libevent2
+export LOCALEVENT=0 ; # else expect /usr to be a good libevent2
 # we build libevent once, then reinstall it as first built if
 # it goes missing from the install tree.
 
-export CC=gcc46; # on chama, gcc46 is in default path. 
+export CC=gcc49; # on chama, gcc46 is in default path. 
 # If using module gnu/4.7.x, change CC above to CC=gcc. gcc 4.4 is not good enough.
 
-export CXX=g++ ; # needed for configure. not used anywhere in build yet.
+export CXX=g++49 ; # needed for configure. not used anywhere in build yet.
 
 export CFLAGS="-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -march=native" ; # cflags common to us, libevent2
 
@@ -26,7 +26,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 		echo "You forgot to autogen.sh at the top or you need to edit $0 or you need to use a released tarred version."
 		exit 1
 	fi
-	expected_event2_prefix=$prefix
+	expected_event2_prefix=/usr
 	# clean out old build headers if reinstalling. prevents build confusion.
 	oldinc="coll ldms mmalloc ovis_ctrl ovis-test ovis_util sos zap"
 	for i in $oldinc; do
@@ -76,7 +76,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --disable-zap --disable-zaptest --disable-swig "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --disable-zap --disable-zaptest --disable-swig --enable-authentication"
 	../configure $allconfig && \
 	make && \
 	make install && \
