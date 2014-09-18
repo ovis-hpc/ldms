@@ -1,5 +1,5 @@
 #!/bin/sh +x
-cleanup=1
+cleanup=0
 if test -f packaging/pack-toss.sh; then
 	echo "building all for /usr with private libevent2"
 	echo -n "is this ok? y/[n]"

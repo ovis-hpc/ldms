@@ -6,6 +6,9 @@ m4/Ovis-top.m4 \
 SHA.txt \
 TAG.txt
 
+docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
+dist_doc_DATA = README.txt
+
 ## if ENABLE_SOS
 ## SUBDIRS= lib sos ldms
 ## else

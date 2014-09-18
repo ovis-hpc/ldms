@@ -48,7 +48,11 @@ echo BUILDROOT $RPM_BUILD_ROOT
 make DESTDIR=${RPM_BUILD_ROOT} install
 # remove unpackaged files from the buildroot
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
-rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-ldms/lib/*.la
+rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-ldms/lib*.la
+rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-libevent/lib*.la
+rm $RPM_BUILD_ROOT%{_bindir}/test_*
+rm $RPM_BUILD_ROOT%{_bindir}/ldms_ban.sh
+mv $RPM_BUILD_ROOT%{_docdir}/ovis-ldms-*/* $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -58,7 +62,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_libdir}/*
 %{_bindir}/*
 %{_sbindir}/*
-%doc ldms/README ldms/COPYING ldms/ChangeLog ldms/AUTHORS
+%{_docdir}/%{name}-%{version}/COPYING
+%{_docdir}/%{name}-%{version}/ChangeLog
+%{_docdir}/%{name}-%{version}/AUTHORS 
 #end core
 
 # devel
@@ -85,7 +91,7 @@ Doxygen files for ldms-all package.
 %files doc
 %defattr(-,root,root)
 %{_mandir}/*/*
-%{_datadir}/doc/ldms-all-%{version}
+%{_datadir}/doc/%{name}-%{version}
 %docdir %{_defaultdocdir}
 %changelog
 * Mon Sep 15 2014 Ben Allan <baallan@sandia.gov> 2.2.0-1
