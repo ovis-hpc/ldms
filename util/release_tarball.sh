@@ -10,6 +10,11 @@ BRANCH_NAME=ovispublic_RC1.2_a
 # Will get this from git in the future
 VERSION=2.2.0
 
+if ! test -f libevent-2.0.21-stable.tar.gz; then
+	echo "need a copy of libevent-2.0.21-stable.tar.gz in $REPO_DIR"
+	echo "for release $VERSION before packing."
+	exit 1
+fi
 # Create output dir
 mkdir -p $OUTPUT_DIR
 
@@ -45,6 +50,7 @@ pushd ldms-${VERSION}
 echo $COMMIT_ID > SHA.txt
 echo $TAG_ID > TAG.txt
 ./autogen.sh
+cp $REPO_DIR/libevent-2.0.21-stable.tar.gz .
 popd
 
 # Tar back up excluding unwanted files and dirs
