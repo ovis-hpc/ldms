@@ -1,6 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
 
-EXTRA_DIST=libevent-2.0.21-stable.tar.gz
+EXTRA_DIST=libevent-2.0.21-stable.tar.gz m4/Ovis-top.m4
 
 ## if ENABLE_SOS
 ## SUBDIRS= lib sos ldms
