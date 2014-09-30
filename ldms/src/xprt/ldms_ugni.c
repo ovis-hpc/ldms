@@ -93,8 +93,8 @@ int IS_ARIES=0;
 static int reg_count;
 
 #define UGNI_INTERVAL_DEFAULT 1000000 /* micro seconds */
-static struct timeval state_interval;
-static unsigned long  state_offset;
+static unsigned long state_interval_us;
+static unsigned long state_offset_us;
 static struct event_base *node_state_base;
 static pthread_t node_state_thread;
 static int state_ready = 0;
@@ -128,6 +128,45 @@ pthread_mutex_t ugni_rbuf_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int *node_state;
 static int rca_get_failed = 0;
+
+
+static int calculate_node_state_timeout(unsigned long interval_us,
+			       long offset_us, struct timeval* tv){
+
+	  struct timeval new_tv;
+	  long int adj_interval;
+	  long int epoch_us;
+
+	  if (thread_id < 0){
+		  /* get real time of day */
+		  gettimeofday(&new_tv, NULL);
+	  } else {
+	  /* NOTE: this uses libevent's cached time for the callback.
+	     By the time we add the event we will be at least off by
+	     the amount of time the thread takes to do its other funcationality.
+	     We deem this accepable. */
+		  event_base_gettimeofday_cached(node_state_base, &new_tv); 
+	  }
+	  epoch_us = (1000000 * (long int)new_tv.tv_sec) +
+		  (long int)new_tv.tv_usec;
+	  adj_interval = interval_us - (epoch_us % interval_us) + offset_us;
+	  /* Could happen initially, and later depending on when the event
+	   actually occurs. However the max negative this can be, based on
+	   the restrictions put in is (-0.5*interval+ 1us). Skip this next
+	   point and go on to the next one.
+
+	   FIXME: IS THIS STILL TRUE???
+	  */
+	  if (adj_interval <= 0)
+		  adj_interval += interval_us; /* Guaranteed to be positive */
+
+	  tv->tv_sec = adj_interval/1000000;
+	  tv->tv_usec = adj_interval % 1000000;
+
+	  return 0;
+}
+
+
 int get_node_state()
 {
 	int i, node_id;
@@ -189,6 +228,7 @@ int check_node_state(struct ldms_ugni_xprt *gxp)
 {
 	while (state_ready == 0) {
 		/* wait for the state to be populated. */
+		/* FIXME: what if cant read rca? */
 	}
 
 	if (node_state[gxp->node_id] != UGNI_NODE_GOOD)
@@ -199,19 +239,25 @@ int check_node_state(struct ldms_ugni_xprt *gxp)
 
 void node_state_cb(int fd, short sig, void *arg)
 {
-	struct event *keepalive = arg;
-	get_node_state();
-	evtimer_add(keepalive, &state_interval);
+	struct timeval tv;
+	struct event *ns = arg;
+	get_node_state(); /* FIXME: what if this fails? */
+	calculate_node_state_timeout(state_interval_us, state_offset_us, &tv);	
+	evtimer_add(ns, &tv);
 }
 
 void *node_state_proc(void *v)
 {
-	struct event *keepalive;
-	keepalive = evtimer_new(node_state_base, node_state_cb, NULL);
-	get_node_state();
-	evtimer_assign(keepalive, node_state_base, node_state_cb, keepalive);
-	evtimer_add(keepalive, &state_interval);
+	struct timeval tv;
+	struct event *ns;
+
+	ns = evtimer_new(node_state_base, node_state_cb, NULL);
+	get_node_state(); /* FIXME: what if this fails? */
+	evtimer_assign(ns, node_state_base, node_state_cb, ns);
+	calculate_node_state_timeout(state_interval_us, state_offset_us, &tv);
+	(void)evtimer_add(ns, &tv);
 	event_base_loop(node_state_base, 0);
+	ldms_log(LDMS_LINFO, "Exiting the node state thread\n");
 	return NULL;
 }
 
@@ -269,7 +315,7 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 	gni_job_limits_t limits;
 	gni_return_t grc;
 
-        /* ptag=0 will be passed if XC30. Call GNI_GetPtag(0, cookie, &ptag) to return ptag associated with cookie */
+	/* ptag=0 will be passed if XC30. Call GNI_GetPtag(0, cookie, &ptag) to return ptag associated with cookie */
 	if (IS_ARIES) {
 		if (*ptag == 0) {
 			#ifdef GNI_FIND_ALLOC_PTAG
@@ -512,7 +558,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	struct epoll_event event;
 
 	if (get_state_success) {
-		node_state_thread_init();
+		node_state_thread_init(); /* FIXME - is this for every individual conn? */
 		if (gxp->node_id == -1)
 			if (get_nodeid(sa, sa_len, gxp))
 				return -1;
@@ -1189,9 +1235,8 @@ int get_state_interval()
 {
 	char *thr = getenv("LDMS_UGNI_STATE_INTERVAL");
 	if (!thr) {
-		state_interval.tv_sec = 0;
-		state_interval.tv_usec = 0;
-		state_offset = 0;
+		state_interval_us = 0;
+		state_offset_us = 0;
 		return 0;
 	}
 	char *ptr;
@@ -1202,23 +1247,37 @@ int get_state_interval()
 		return -1;
 	}
 	if (tmp < 100000) {
-		state_interval.tv_sec = 0;
-		state_interval.tv_usec = 100000;
+		state_interval_us = 100000;
 		ugni_log(LDMS_LERROR, "Invalid "
 			"LDMS_UGNI_STATE_INTERVAL value. Using 100ms.\n");
+	} else {
+		state_interval_us = tmp;
 	}
-	else {
-		state_interval.tv_sec = (tmp / 1000000);
-		state_interval.tv_usec = (tmp % 1000000);
-	}
+
 	char *thr = getenv("LDMS_UGNI_STATE_OFFSET");
 	if (!thr) {
-		state_offset = 0;
+		state_offset_us = 0;
 		return 0;
 	}
+
+	tmp = strtol(thr, &ptr, 10);
+	if (ptr[0] != '\0') {
+		ugni_log(LDMS_LERROR, "Invalid "
+			"LDMS_UGNI_STATE_OFFSET value\n");
+		return -1;
+	}
+	if ( !(state_interval >= labs(state_offset)*2) ){ /* FIXME: What should this check be ? */
+		ugni_log(LDMS_LERROR, "Invalid "
+			"LDMS_UGNI_STATE_OFFSET value. Using 0ms.\n");
+		state_offset_us = 0;
+	} else {
+		state_offset_us = tmp;
+	}
+
 	get_state_success = 1;
 	return 0;
 }
+
 static int once = 0;
 static int init_once(ldms_log_fn_t log_fn)
 {
