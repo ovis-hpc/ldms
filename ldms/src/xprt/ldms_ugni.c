@@ -145,7 +145,7 @@ static int calculate_node_state_timeout(unsigned long interval_us,
 	     By the time we add the event we will be at least off by
 	     the amount of time the thread takes to do its other funcationality.
 	     We deem this accepable. */
-		  event_base_gettimeofday_cached(node_state_base, &new_tv); 
+		  event_base_gettimeofday_cached(node_state_base, &new_tv);
 	  }
 	  epoch_us = (1000000 * (long int)new_tv.tv_sec) +
 		  (long int)new_tv.tv_usec;
@@ -242,7 +242,7 @@ void node_state_cb(int fd, short sig, void *arg)
 	struct timeval tv;
 	struct event *ns = arg;
 	get_node_state(); /* FIXME: what if this fails? */
-	calculate_node_state_timeout(state_interval_us, state_offset_us, &tv);	
+	calculate_node_state_timeout(state_interval_us, state_offset_us, &tv);
 	evtimer_add(ns, &tv);
 }
 
