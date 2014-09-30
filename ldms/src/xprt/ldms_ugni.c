@@ -94,10 +94,11 @@ static int reg_count;
 
 #define UGNI_INTERVAL_DEFAULT 1000000 /* micro seconds */
 static struct timeval state_interval;
+static unsigned long  state_offset;
 static struct event_base *node_state_base;
 static pthread_t node_state_thread;
 static int state_ready = 0;
-static int is_get_state = 0;
+static int get_state_success = 0;
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
 pthread_mutex_t ugni_mh_lock;
@@ -510,7 +511,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	int fdcnt;
 	struct epoll_event event;
 
-	if (is_get_state) {
+	if (get_state_success) {
 		node_state_thread_init();
 		if (gxp->node_id == -1)
 			if (get_nodeid(sa, sa_len, gxp))
@@ -958,7 +959,7 @@ static void ugni_xprt_destroy(struct ldms_xprt *x)
 static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
-	if (is_get_state && (check_node_state(r))) {
+	if (get_state_success && (check_node_state(r))) {
 		x->log(LDMS_LERROR, "node %d is in a bad state.\n",
 						r->node_id);
 		return -1;
@@ -1101,7 +1102,7 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 			   uint64_t raddr, gni_mem_handle_t remote_mh,
 			   uint32_t len, void *context)
 {
-	if (is_get_state && (check_node_state(gxp))) {
+	if (get_state_success && (check_node_state(gxp))) {
 		ugni_log(LDMS_LERROR, "node %d is in a bad state.\n",
 							gxp->node_id);
 		return -1;
@@ -1190,6 +1191,7 @@ int get_state_interval()
 	if (!thr) {
 		state_interval.tv_sec = 0;
 		state_interval.tv_usec = 0;
+		state_offset = 0;
 		return 0;
 	}
 	char *ptr;
@@ -1199,13 +1201,24 @@ int get_state_interval()
 			"LDMS_UGNI_STATE_INTERVAL value\n");
 		return -1;
 	}
-	state_interval.tv_sec = (tmp / UGNI_INTERVAL_DEFAULT);
-	state_interval.tv_usec = (tmp % UGNI_INTERVAL_DEFAULT);
-	if (0 < (state_interval.tv_sec + state_interval.tv_usec))
-		is_get_state = 1;
+	if (tmp < 100000) {
+		state_interval.tv_sec = 0;
+		state_interval.tv_usec = 100000;
+		ugni_log(LDMS_LERROR, "Invalid "
+			"LDMS_UGNI_STATE_INTERVAL value. Using 100ms.\n");
+	}
+	else {
+		state_interval.tv_sec = (tmp / 1000000);
+		state_interval.tv_usec = (tmp % 1000000);
+	}
+	char *thr = getenv("LDMS_UGNI_STATE_OFFSET");
+	if (!thr) {
+		state_offset = 0;
+		return 0;
+	}
+	get_state_success = 1;
 	return 0;
 }
-
 static int once = 0;
 static int init_once(ldms_log_fn_t log_fn)
 {
