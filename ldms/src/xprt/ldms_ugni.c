@@ -137,16 +137,12 @@ static int calculate_node_state_timeout(unsigned long interval_us,
 	  long int adj_interval;
 	  long int epoch_us;
 
-	  if (thread_id < 0){
-		  /* get real time of day */
-		  gettimeofday(&new_tv, NULL);
-	  } else {
 	  /* NOTE: this uses libevent's cached time for the callback.
 	     By the time we add the event we will be at least off by
 	     the amount of time the thread takes to do its other funcationality.
 	     We deem this accepable. */
-		  event_base_gettimeofday_cached(node_state_base, &new_tv);
-	  }
+	  event_base_gettimeofday_cached(node_state_base, &new_tv);
+
 	  epoch_us = (1000000 * (long int)new_tv.tv_sec) +
 		  (long int)new_tv.tv_usec;
 	  adj_interval = interval_us - (epoch_us % interval_us) + offset_us;
@@ -154,8 +150,6 @@ static int calculate_node_state_timeout(unsigned long interval_us,
 	   actually occurs. However the max negative this can be, based on
 	   the restrictions put in is (-0.5*interval+ 1us). Skip this next
 	   point and go on to the next one.
-
-	   FIXME: IS THIS STILL TRUE???
 	  */
 	  if (adj_interval <= 0)
 		  adj_interval += interval_us; /* Guaranteed to be positive */
@@ -1254,7 +1248,7 @@ int get_state_interval()
 		state_interval_us = tmp;
 	}
 
-	char *thr = getenv("LDMS_UGNI_STATE_OFFSET");
+	thr = getenv("LDMS_UGNI_STATE_OFFSET");
 	if (!thr) {
 		state_offset_us = 0;
 		return 0;
@@ -1266,7 +1260,7 @@ int get_state_interval()
 			"LDMS_UGNI_STATE_OFFSET value\n");
 		return -1;
 	}
-	if ( !(state_interval >= labs(state_offset)*2) ){ /* FIXME: What should this check be ? */
+	if ( !(state_interval_us >= labs(state_offset_us)*2) ){ /* FIXME: What should this check be ? */
 		ugni_log(LDMS_LERROR, "Invalid "
 			"LDMS_UGNI_STATE_OFFSET value. Using 0ms.\n");
 		state_offset_us = 0;
