@@ -99,6 +99,7 @@ static struct event_base *node_state_base;
 static pthread_t node_state_thread;
 static int state_ready = 0;
 static int get_state_success = 0;
+static int rca_log_thresh = 1;
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
 pthread_mutex_t ugni_mh_lock;
@@ -167,7 +168,7 @@ int get_node_state()
 	rs_node_array_t nodelist;
 	if (rca_get_sysnodes(&nodelist)) {
 		rca_get_failed++;
-		if ((rca_get_failed % 100) == 0) {
+		if ((rca_get_failed % rca_log_thresh) == 0) {
 			ugni_log(LDMS_LERROR, "ugni: rca_get_sysnodes"
 							" failed.\n");
 		}
@@ -222,11 +223,11 @@ int check_node_state(struct ldms_ugni_xprt *gxp)
 {
 	while (state_ready == 0) {
 		/* wait for the state to be populated. */
-		/* FIXME: what if cant read rca? */
 	}
 
-	if (node_state[gxp->node_id] != UGNI_NODE_GOOD)
-		return 1; /* not good */
+	if (gxp->node_id != -1)
+		if (node_state[gxp->node_id] != UGNI_NODE_GOOD)
+			return 1; /* not good */
 
 	return 0; /* good */
 }
@@ -251,7 +252,7 @@ void *node_state_proc(void *v)
 	calculate_node_state_timeout(state_interval_us, state_offset_us, &tv);
 	(void)evtimer_add(ns, &tv);
 	event_base_loop(node_state_base, 0);
-	ldms_log(LDMS_LINFO, "Exiting the node state thread\n");
+	ugni_log(LDMS_LINFO, "Exiting the node state thread\n");
 	return NULL;
 }
 
@@ -552,7 +553,6 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	struct epoll_event event;
 
 	if (get_state_success) {
-		node_state_thread_init(); /* FIXME - is this for every individual conn? */
 		if (gxp->node_id == -1)
 			if (get_nodeid(sa, sa_len, gxp))
 				return -1;
@@ -1231,19 +1231,24 @@ int get_state_interval()
 	if (!thr) {
 		state_interval_us = 0;
 		state_offset_us = 0;
-		return 0;
+		get_state_success = 0;
+		return -1;
 	}
+
 	char *ptr;
 	int tmp = strtol(thr, &ptr, 10);
 	if (ptr[0] != '\0') {
 		ugni_log(LDMS_LERROR, "Invalid "
-			"LDMS_UGNI_STATE_INTERVAL value\n");
+			 "LDMS_UGNI_STATE_INTERVAL value (%s)\n", thr);
+		state_interval_us = 0;
+		state_offset_us = 0;
+		get_state_success = 0;
 		return -1;
 	}
 	if (tmp < 100000) {
-		state_interval_us = 100000;
 		ugni_log(LDMS_LERROR, "Invalid "
-			"LDMS_UGNI_STATE_INTERVAL value. Using 100ms.\n");
+			 "LDMS_UGNI_STATE_INTERVAL value (%s). Using 100ms.\n", thr);
+		state_interval_us = 100000;
 	} else {
 		state_interval_us = tmp;
 	}
@@ -1251,18 +1256,21 @@ int get_state_interval()
 	thr = getenv("LDMS_UGNI_STATE_OFFSET");
 	if (!thr) {
 		state_offset_us = 0;
+		get_state_success = 1;
 		return 0;
 	}
 
 	tmp = strtol(thr, &ptr, 10);
 	if (ptr[0] != '\0') {
 		ugni_log(LDMS_LERROR, "Invalid "
-			"LDMS_UGNI_STATE_OFFSET value\n");
+			 "LDMS_UGNI_STATE_OFFSET value (%s)\n", thr);
+		state_offset_us = 0;
+		get_state_success = 0;
 		return -1;
 	}
 	if ( !(state_interval_us >= labs(state_offset_us)*2) ){ /* FIXME: What should this check be ? */
 		ugni_log(LDMS_LERROR, "Invalid "
-			"LDMS_UGNI_STATE_OFFSET value. Using 0ms.\n");
+			 "LDMS_UGNI_STATE_OFFSET value (%s). Using 0ms.\n", thr);
 		state_offset_us = 0;
 	} else {
 		state_offset_us = tmp;
@@ -1411,7 +1419,8 @@ static int init_once(ldms_log_fn_t log_fn)
 
 	/* node state */
 	node_state = NULL;
-	get_state_interval();
+	if (get_state_interval() == 0)
+		node_state_thread_init();
 
 	atexit(ugni_xprt_cleanup);
 	return 0;
