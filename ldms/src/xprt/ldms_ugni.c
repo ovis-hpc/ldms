@@ -98,7 +98,7 @@ static unsigned long state_offset_us;
 static struct event_base *node_state_base;
 static pthread_t node_state_thread;
 static int state_ready = 0;
-static int get_state_success = 0;
+static int check_state = 0;
 static int rca_log_thresh = 1;
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
@@ -139,8 +139,8 @@ static int calculate_node_state_timeout(unsigned long interval_us,
 
 	  /* NOTE: this uses libevent's cached time for the callback.
 	     By the time we add the event we will be at least off by
-	     the amount of time the thread takes to do its other funcationality.
-	     We deem this accepable. */
+	     the amount of time the thread takes to do its other functionality.
+	     We deem this acceptable. */
 	  event_base_gettimeofday_cached(node_state_base, &new_tv);
 
 	  epoch_us = (1000000 * (long int)new_tv.tv_sec) +
@@ -219,8 +219,17 @@ int get_nodeid(struct sockaddr *sa, socklen_t sa_len,
 
 int check_node_state(struct ldms_ugni_xprt *gxp)
 {
-	while (state_ready == 0) {
+	ugni_log(LDMS_LDEBUG, "Checking the node states\n");
+	while (state_ready != 1) {
 		/* wait for the state to be populated. */
+		if (state_ready == -1) {
+			/*
+			 * XXX: FIXME: Handle this case
+			 * For now, when rca_get_sysnodes fails,
+			 * the node states are set to UGNI_NODE_GOOD.
+			 */
+			break;
+		}
 	}
 
 	if (gxp->node_id != -1)
@@ -262,7 +271,9 @@ int node_state_thread_init()
 		errno = ENOMEM;
 		return -1;
 	}
-	memset(node_state, UGNI_NODE_GOOD, UGNI_MAX_NUM_NODE);
+	int i;
+	for (i = 0; i < UGNI_MAX_NUM_NODE; i++)
+		node_state[i] = UGNI_NODE_GOOD;
 
 	if (evthread_use_pthreads()) {
 		ugni_log(LDMS_LERROR, "evthread_use_pthreads failed\n");
@@ -312,7 +323,7 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 	if (IS_ARIES) {
 		if (*ptag == 0) {
 			#ifdef GNI_FIND_ALLOC_PTAG
-				grc = GNI_FIND_ALLOC_PTAG;
+				*ptag = GNI_FIND_ALLOC_PTAG;
 				if (grc)
 					goto err;
 			#else
@@ -550,7 +561,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	int fdcnt;
 	struct epoll_event event;
 
-	if (get_state_success) {
+	if (check_state) {
 		if (gxp->node_id == -1)
 			if (get_nodeid(sa, sa_len, gxp))
 				return -1;
@@ -903,6 +914,11 @@ setup_connection(struct ldms_ugni_xprt *p, int sockfd,
 		ugni_xprt_error_handling(r);
 		return NULL;
 	}
+
+	if (get_nodeid(remote_addr, sa_len, r)) {
+		ugni_xprt_error_handling(r);
+		return NULL;
+	}
 	return r;
 }
 
@@ -918,7 +934,7 @@ static void ugni_connect_req(struct evconnlistener *listener,
 	static int conns;
 
 	new_gxp = setup_connection(gxp, sockfd,
-				   (struct sockaddr *)&address, socklen);
+				   (struct sockaddr *)address, socklen);
 	if (new_gxp)
 		conns ++;
 	else
@@ -997,7 +1013,7 @@ static void ugni_xprt_destroy(struct ldms_xprt *x)
 static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
-	if (get_state_success && (check_node_state(r))) {
+	if (check_state && (check_node_state(r))) {
 		x->log(LDMS_LERROR, "node %d is in a bad state.\n",
 						r->node_id);
 		return -1;
@@ -1140,7 +1156,7 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 			   uint64_t raddr, gni_mem_handle_t remote_mh,
 			   uint32_t len, void *context)
 {
-	if (get_state_success && (check_node_state(gxp))) {
+	if (check_state && (check_node_state(gxp))) {
 		ugni_log(LDMS_LERROR, "node %d is in a bad state.\n",
 							gxp->node_id);
 		return -1;
@@ -1229,7 +1245,7 @@ int get_state_interval()
 	if (!thr) {
 		state_interval_us = 0;
 		state_offset_us = 0;
-		get_state_success = 0;
+		check_state = 0;
 		return -1;
 	}
 
@@ -1240,7 +1256,7 @@ int get_state_interval()
 			 "LDMS_UGNI_STATE_INTERVAL value (%s)\n", thr);
 		state_interval_us = 0;
 		state_offset_us = 0;
-		get_state_success = 0;
+		check_state = 0;
 		return -1;
 	}
 	if (tmp < 100000) {
@@ -1254,7 +1270,7 @@ int get_state_interval()
 	thr = getenv("LDMS_UGNI_STATE_OFFSET");
 	if (!thr) {
 		state_offset_us = 0;
-		get_state_success = 1;
+		check_state = 1;
 		return 0;
 	}
 
@@ -1263,18 +1279,18 @@ int get_state_interval()
 		ugni_log(LDMS_LERROR, "Invalid "
 			 "LDMS_UGNI_STATE_OFFSET value (%s)\n", thr);
 		state_offset_us = 0;
-		get_state_success = 0;
+		check_state = 0;
 		return -1;
 	}
+
+	state_offset_us = tmp;
 	if ( !(state_interval_us >= labs(state_offset_us)*2) ){ /* FIXME: What should this check be ? */
 		ugni_log(LDMS_LERROR, "Invalid "
 			 "LDMS_UGNI_STATE_OFFSET value (%s). Using 0ms.\n", thr);
 		state_offset_us = 0;
-	} else {
-		state_offset_us = tmp;
 	}
 
-	get_state_success = 1;
+	check_state = 1;
 	return 0;
 }
 
@@ -1382,21 +1398,19 @@ static int init_once(ldms_log_fn_t log_fn)
 	}
 
 	rc = 0;
-	if (IS_GEMINI) {
-		euid = geteuid();
-		if ((int) euid == 0){
-			rc = ugni_job_setup(&ptag, cookie);
-			if (rc != GNI_RC_SUCCESS)
-				log_fn(LDMS_LERROR, "ugni_job_setup failed %d\n",rc);
-			if (rcsfp) {
-				fprintf(rcsfp, "%d\n", rc);
-				fflush(rcsfp);
-			}
+	euid = geteuid();
+	if ((int) euid == 0){
+		rc = ugni_job_setup(&ptag, cookie);
+		if (rc != GNI_RC_SUCCESS)
+			log_fn(LDMS_LERROR, "ugni_job_setup failed %d\n",rc);
+		if (rcsfp) {
+			fprintf(rcsfp, "%d\n", rc);
+			fflush(rcsfp);
 		}
-		if (rcsfp)
-			fclose(rcsfp);
-		rcsfp = NULL;
 	}
+	if (rcsfp)
+		fclose(rcsfp);
+	rcsfp = NULL;
 
 	if (((int) euid != 0) || rc == GNI_RC_SUCCESS || IS_ARIES ) {
 		rc = ugni_dom_init(&ptag, cookie, getpid(), &ugni_gxp);
