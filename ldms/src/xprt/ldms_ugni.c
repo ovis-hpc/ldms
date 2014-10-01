@@ -93,11 +93,13 @@ int IS_ARIES=0;
 static int reg_count;
 
 #define UGNI_INTERVAL_DEFAULT 1000000 /* micro seconds */
-static struct timeval state_interval;
-static struct event_base *getinfo_base;
-static pthread_t getinfo_thread;
+static unsigned long state_interval_us;
+static unsigned long state_offset_us;
+static struct event_base *node_state_base;
+static pthread_t node_state_thread;
 static int state_ready = 0;
-static int is_get_state = 0;
+static int get_state_success = 0;
+static int rca_log_thresh = 1;
 
 LIST_HEAD(mh_list, ugni_mh) mh_list;
 pthread_mutex_t ugni_mh_lock;
@@ -127,13 +129,44 @@ pthread_mutex_t ugni_rbuf_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int *node_state;
 static int rca_get_failed = 0;
+
+static int calculate_node_state_timeout(unsigned long interval_us,
+			       long offset_us, struct timeval* tv){
+
+	  struct timeval new_tv;
+	  long int adj_interval;
+	  long int epoch_us;
+
+	  /* NOTE: this uses libevent's cached time for the callback.
+	     By the time we add the event we will be at least off by
+	     the amount of time the thread takes to do its other funcationality.
+	     We deem this accepable. */
+	  event_base_gettimeofday_cached(node_state_base, &new_tv);
+
+	  epoch_us = (1000000 * (long int)new_tv.tv_sec) +
+		  (long int)new_tv.tv_usec;
+	  adj_interval = interval_us - (epoch_us % interval_us) + offset_us;
+	  /* Could happen initially, and later depending on when the event
+	   actually occurs. However the max negative this can be, based on
+	   the restrictions put in is (-0.5*interval+ 1us). Skip this next
+	   point and go on to the next one.
+	  */
+	  if (adj_interval <= 0)
+		  adj_interval += interval_us; /* Guaranteed to be positive */
+
+	  tv->tv_sec = adj_interval/1000000;
+	  tv->tv_usec = adj_interval % 1000000;
+
+	  return 0;
+}
+
 int get_node_state()
 {
 	int i, node_id;
 	rs_node_array_t nodelist;
 	if (rca_get_sysnodes(&nodelist)) {
 		rca_get_failed++;
-		if ((rca_get_failed % 100) == 0) {
+		if ((rca_get_failed % rca_log_thresh) == 0) {
 			ugni_log(LDMS_LERROR, "ugni: rca_get_sysnodes"
 							" failed.\n");
 		}
@@ -190,27 +223,34 @@ int check_node_state(struct ldms_ugni_xprt *gxp)
 		/* wait for the state to be populated. */
 	}
 
-	if (node_state[gxp->node_id] != UGNI_NODE_GOOD)
-		return 1; /* not good */
+	if (gxp->node_id != -1)
+		if (node_state[gxp->node_id] != UGNI_NODE_GOOD)
+			return 1; /* not good */
 
 	return 0; /* good */
 }
 
 void node_state_cb(int fd, short sig, void *arg)
 {
-	struct event *keepalive = arg;
-	get_node_state();
-	evtimer_add(keepalive, &state_interval);
+	struct timeval tv;
+	struct event *ns = arg;
+	get_node_state(); /* FIXME: what if this fails? */
+	calculate_node_state_timeout(state_interval_us, state_offset_us, &tv);
+	evtimer_add(ns, &tv);
 }
 
 void *node_state_proc(void *v)
 {
-	struct event *keepalive;
-	keepalive = evtimer_new(ev_base, node_state_cb, NULL);
-	get_node_state();
-	evtimer_assing(keepalive, getinfo_base, node_state_cb, keepalive);
-	evtimer_add(keepalive, &state_interval);
-	event_base_loop(getinfo_base, 0);
+	struct timeval tv;
+	struct event *ns;
+
+	ns = evtimer_new(node_state_base, node_state_cb, NULL);
+	get_node_state(); /* FIXME: what if this fails? */
+	evtimer_assign(ns, node_state_base, node_state_cb, ns);
+	calculate_node_state_timeout(state_interval_us, state_offset_us, &tv);
+	(void)evtimer_add(ns, &tv);
+	event_base_loop(node_state_base, 0);
+	ugni_log(LDMS_LINFO, "Exiting the node state thread\n");
 	return NULL;
 }
 
@@ -229,16 +269,16 @@ int node_state_thread_init()
 		return -1;
 	}
 
-	getinfo_base = event_base_new();
-	if (!getinfo_base) {
-		ugni_log(LDMS_LERROR, "Failed to init getinfo_base\n");
+	node_state_base = event_base_new();
+	if (!node_state_base) {
+		ugni_log(LDMS_LERROR, "Failed to init node_state_base\n");
 		return -1;
 	}
 
 	int rc = 0;
-	rc = pthread_create(&getinfo_thread, NULL, node_state_proc, NULL);
+	rc = pthread_create(&node_state_thread, NULL, node_state_proc, NULL);
 	if (rc) {
-		event_base_free(getinfo_base);
+		event_base_free(node_state_base);
 		ugni_log(LDMS_LERROR, "%s\n", strerror(rc));
 		return -1;
 	}
@@ -268,7 +308,7 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 	gni_job_limits_t limits;
 	gni_return_t grc;
 
-        /* ptag=0 will be passed if XC30. Call GNI_GetPtag(0, cookie, &ptag) to return ptag associated with cookie */
+	/* ptag=0 will be passed if XC30. Call GNI_GetPtag(0, cookie, &ptag) to return ptag associated with cookie */
 	if (IS_ARIES) {
 		if (*ptag == 0) {
 			#ifdef GNI_FIND_ALLOC_PTAG
@@ -434,14 +474,14 @@ void ugni_xprt_cleanup(void)
 	if (io_event_loop)
 		event_base_free(io_event_loop);
 
-	if (getinfo_base)
-		event_base_loopbreak(getinfo_base);
-	if (getinfo_thread) {
-		pthread_cancel(getinfo_thread);
-		pthread_join(getinfo_thread, &dontcare);
+	if (node_state_base)
+		event_base_loopbreak(node_state_base);
+	if (node_state_thread) {
+		pthread_cancel(node_state_thread);
+		pthread_join(node_state_thread, &dontcare);
 	}
-	if (getinfo_base)
-		event_base_free(getinfo_base);
+	if (node_state_base)
+		event_base_free(node_state_base);
 
 	if (node_state)
 		free(node_state);
@@ -510,8 +550,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	int fdcnt;
 	struct epoll_event event;
 
-	if (is_get_state) {
-		node_state_thread_init();
+	if (get_state_success) {
 		if (gxp->node_id == -1)
 			if (get_nodeid(sa, sa_len, gxp))
 				return -1;
@@ -958,7 +997,7 @@ static void ugni_xprt_destroy(struct ldms_xprt *x)
 static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
-	if (is_get_state && (check_node_state(r))) {
+	if (get_state_success && (check_node_state(r))) {
 		x->log(LDMS_LERROR, "node %d is in a bad state.\n",
 						r->node_id);
 		return -1;
@@ -1101,7 +1140,7 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 			   uint64_t raddr, gni_mem_handle_t remote_mh,
 			   uint32_t len, void *context)
 {
-	if (is_get_state && (check_node_state(gxp))) {
+	if (get_state_success && (check_node_state(gxp))) {
 		ugni_log(LDMS_LERROR, "node %d is in a bad state.\n",
 							gxp->node_id);
 		return -1;
@@ -1188,21 +1227,54 @@ int get_state_interval()
 {
 	char *thr = getenv("LDMS_UGNI_STATE_INTERVAL");
 	if (!thr) {
-		state_interval.tv_sec = 0;
-		state_interval.tv_usec = 0;
-		return 0;
+		state_interval_us = 0;
+		state_offset_us = 0;
+		get_state_success = 0;
+		return -1;
 	}
+
 	char *ptr;
 	int tmp = strtol(thr, &ptr, 10);
 	if (ptr[0] != '\0') {
 		ugni_log(LDMS_LERROR, "Invalid "
-			"LDMS_UGNI_STATE_INTERVAL value\n");
+			 "LDMS_UGNI_STATE_INTERVAL value (%s)\n", thr);
+		state_interval_us = 0;
+		state_offset_us = 0;
+		get_state_success = 0;
 		return -1;
 	}
-	state_interval.tv_sec = (tmp / UGNI_INTERVAL_DEFAULT);
-	state_interval.tv_usec = (tmp % UGNI_INTERVAL_DEFAULT);
-	if (0 < (state_interval.tv_sec + state_interval.tv_usec))
-		is_get_state = 1;
+	if (tmp < 100000) {
+		ugni_log(LDMS_LERROR, "Invalid "
+			 "LDMS_UGNI_STATE_INTERVAL value (%s). Using 100ms.\n", thr);
+		state_interval_us = 100000;
+	} else {
+		state_interval_us = tmp;
+	}
+
+	thr = getenv("LDMS_UGNI_STATE_OFFSET");
+	if (!thr) {
+		state_offset_us = 0;
+		get_state_success = 1;
+		return 0;
+	}
+
+	tmp = strtol(thr, &ptr, 10);
+	if (ptr[0] != '\0') {
+		ugni_log(LDMS_LERROR, "Invalid "
+			 "LDMS_UGNI_STATE_OFFSET value (%s)\n", thr);
+		state_offset_us = 0;
+		get_state_success = 0;
+		return -1;
+	}
+	if ( !(state_interval_us >= labs(state_offset_us)*2) ){ /* FIXME: What should this check be ? */
+		ugni_log(LDMS_LERROR, "Invalid "
+			 "LDMS_UGNI_STATE_OFFSET value (%s). Using 0ms.\n", thr);
+		state_offset_us = 0;
+	} else {
+		state_offset_us = tmp;
+	}
+
+	get_state_success = 1;
 	return 0;
 }
 
@@ -1345,7 +1417,8 @@ static int init_once(ldms_log_fn_t log_fn)
 
 	/* node state */
 	node_state = NULL;
-	get_state_interval();
+	if (get_state_interval() == 0)
+		node_state_thread_init();
 
 	atexit(ugni_xprt_cleanup);
 	return 0;
