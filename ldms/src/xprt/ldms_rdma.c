@@ -179,6 +179,11 @@ static void rdma_xprt_destroy(struct ldms_xprt *x)
 	free(r);
 }
 
+static int rdma_xprt_check_proceed(struct ldms_xprt *x)
+{
+	return 0;
+}
+
 static struct rdma_buffer *rdma_buffer_alloc(struct ldms_rdma_xprt *x,
 					     size_t len,
 					     enum ibv_access_flags f)
@@ -273,7 +278,7 @@ static int post_send(struct ldms_rdma_xprt *x,
 	return rc;
 }
 
-#ifdef DEPRECATED 
+#ifdef DEPRECATED
 /* use ldms_request_cmd_names instead */
 char *cmd_str[] = {
 	"LDMS_CMD_DIR",
@@ -1599,6 +1604,7 @@ struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
 
 	x->max_msg = RQ_BUF_SZ - sizeof(struct rdma_request_hdr);
 	x->connect = rdma_xprt_connect;
+	x->check_proceed = rdma_xprt_check_proceed;
 	x->listen = rdma_xprt_listen;
 	x->close = rdma_xprt_close;
 	x->destroy = rdma_xprt_destroy;

@@ -282,6 +282,11 @@ err:
 	return -1;
 }
 
+static int sock_xprt_check_proceed(struct ldms_xprt *x)
+{
+	return 0;
+}
+
 static int sock_xprt_connect(struct ldms_xprt *x,
 			     struct sockaddr *sa, socklen_t sa_len)
 {
@@ -869,6 +874,7 @@ struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
 	x->log(LDMS_LINFO,"xprt_get: created %x\n", r);
 	TF(x);
 	x->connect = sock_xprt_connect;
+	x->check_proceed = sock_xprt_check_proceed;
 	x->listen = sock_xprt_listen;
 	x->destroy = sock_xprt_destroy;
 	x->close = sock_xprt_close;

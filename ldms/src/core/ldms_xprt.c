@@ -328,6 +328,18 @@ int ldms_xprt_authenticated(ldms_t _x)
 	return (2 == ((struct ldms_xprt *)_x)->authenticated );
 }
 
+int ldms_check_proceed(ldms_t _x)
+{
+	int ret = 0;
+	struct ldms_xprt *x = _x;
+
+        pthread_mutex_lock(&x->lock);
+	ret = x->check_proceed(x);
+        pthread_mutex_unlock(&x->lock);
+
+	return ret;
+}
+
 static void free_rbd(struct ldms_rbuf_desc *rbd)
 {
 	LIST_REMOVE(rbd, xprt_link);
@@ -1433,7 +1445,7 @@ int ldms_xprt_auth( ldms_t _x )
 		x->log(LDMS_LERROR,"with: %s\n",strerror(mrc));
 	}
 	if (x->authenticated == 3)
-		rc = EINVAL; 
+		rc = EINVAL;
 #else
 	x->authenticated = 2;
 #ifdef HAVE_AUTHDEBUG

@@ -219,7 +219,7 @@ int get_nodeid(struct sockaddr *sa, socklen_t sa_len,
 
 int check_node_state(struct ldms_ugni_xprt *gxp)
 {
-	ugni_log(LDMS_LDEBUG, "Checking the node states\n");
+	ugni_log(LDMS_LDEBUG, "Checking node state for nid%d\n", gxp->node_id);
 	while (state_ready != 1) {
 		/* wait for the state to be populated. */
 		if (state_ready == -1) {
@@ -546,6 +546,13 @@ static int set_nonblock(struct ldms_xprt *x, int fd)
 	return 0;
 }
 
+
+static int ugni_xprt_check_proceed(struct ldms_xprt *x)
+{
+	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
+	return check_node_state(gxp);
+}
+
 #define UGNI_CQ_DEPTH 2048
 static int ugni_xprt_connect(struct ldms_xprt *x,
 			     struct sockaddr *sa, socklen_t sa_len)
@@ -567,7 +574,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 				return -1;
 
 		if (check_node_state(gxp)) {
-			x->log(LDMS_LERROR, "node %d is in a bad state.\n",
+			x->log(LDMS_LINFO, "Node %d is in a bad state.\n",
 							gxp->node_id);
 			return -1;
 		}
@@ -1013,11 +1020,11 @@ static void ugni_xprt_destroy(struct ldms_xprt *x)
 static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
-	if (check_state && (check_node_state(r))) {
-		x->log(LDMS_LERROR, "node %d is in a bad state.\n",
-						r->node_id);
-		return -1;
-	}
+//	if (check_state && (check_node_state(r))) {
+//		x->log(LDMS_LERROR, "node %d is in a bad state.\n",
+//						r->node_id);
+//		return -1;
+//	}
 
 
 	int rc;
@@ -1156,11 +1163,11 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 			   uint64_t raddr, gni_mem_handle_t remote_mh,
 			   uint32_t len, void *context)
 {
-	if (check_state && (check_node_state(gxp))) {
-		ugni_log(LDMS_LERROR, "node %d is in a bad state.\n",
-							gxp->node_id);
-		return -1;
-	}
+//	if (check_state && (check_node_state(gxp))) {
+//		ugni_log(LDMS_LERROR, "node %d is in a bad state.\n",
+//							gxp->node_id);
+//		return -1;
+//	}
 
 	gni_return_t grc;
 	struct ugni_desc *desc = alloc_desc(gxp);
@@ -1485,6 +1492,7 @@ struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
 	x->max_msg = (1024*1024);
 	x->log = log_fn;
 	x->connect = ugni_xprt_connect;
+	x->check_proceed = ugni_xprt_check_proceed;
 	x->listen = ugni_xprt_listen;
 	x->destroy = ugni_xprt_destroy;
 	x->close = ugni_xprt_close;

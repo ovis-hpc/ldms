@@ -248,6 +248,8 @@ struct ldms_xprt {
 	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
 	LIST_ENTRY(ldms_xprt) xprt_link;
 
+	/** Check before connecting */
+	int (*check_proceed)(struct ldms_xprt *);
 	/** Request a connection with a server */
 	int (*connect)(struct ldms_xprt *, struct sockaddr *sa, socklen_t sa_len);
 	/** Listen for incoming connection requests */
@@ -286,7 +288,7 @@ struct ldms_xprt {
 };
 typedef struct ldms_xprt *(*ldms_xprt_get_t)
 	(
-	recv_cb_t recv_cb, 
+	recv_cb_t recv_cb,
 	read_complete_cb_t read_complete_cb,
 	ldms_log_fn_t log_fn
 	 );

@@ -2105,7 +2105,7 @@ int do_connect(struct hostspec *hs)
 		goto err;
 	}
 	ret = ldms_xprt_auth(hs->x);
-	if (ret) 
+	if (ret)
 		goto err;
 	return 0;
  err:
@@ -2264,7 +2264,13 @@ void update_data(struct hostspec *hs)
 	if (!hs->x)
 		return;
 	if (!ldms_xprt_authenticated(hs->x)) {
-		ldms_log(LDMS_LERROR,"transport not yet authenticated. deferring.\n");
+		ldms_log(LDMS_LERROR,"Transport not yet authenticated. deferring.\n");
+		return;
+	}
+	if (ldms_check_proceed(hs->x) != 0){
+		ldms_log(LDMS_LINFO,"Will not proceed with this transport. Closeing transport...\n");
+		ldms_xprt_close(hs->x);
+		hs->x = NULL;
 		return;
 	}
 
@@ -2385,7 +2391,7 @@ void do_host(struct hostspec *hs)
 			hs->conn_state = HOST_DISCONNECTED;
 			host_conn_reschedule(hs);
 		} else if (hs->type != BRIDGING) {
-			if ((hs->standby == 0) || (hs->standby & saggs_mask)) 
+			if ((hs->standby == 0) || (hs->standby & saggs_mask))
 				update_data(hs);
 			schedule_update(hs);
 		}
