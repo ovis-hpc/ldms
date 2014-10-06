@@ -76,10 +76,11 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define NFIELD 8
+#define NFIELD 10
 static char *fieldname[NFIELD] = {
 	"Value", "Worst", "Threshold", "Pretty",
-	"Type", "Updates", "Good", "Good_Past"
+	"Prefailure", "Online", "Good_now", "Good_past",
+	"Flag", "Raw_value"
 };
 
 struct ldms_atasmart {
@@ -90,6 +91,7 @@ struct atatsmart_set_size {
 	size_t tot_meta_sz;
 	size_t tot_data_sz;
 	int metric_count;
+	int disk_no;
 };
 
 static ldms_set_t set;
@@ -101,18 +103,45 @@ static int num_disks;
 
 struct ldms_atasmart *smarts;
 
+#define MAX_METRIC_NAME_LEN 256
+
+int get_metric_name(char *metric_name, char *fieldname,
+					char *namebase, char *diskname)
+{
+	char *disk = strrchr(diskname, '/');
+	if (!disk)
+		disk = diskname;
+	else
+		disk = disk + 1;
+
+	/* + 1 for the hash character '#' */
+	size_t mname_len = strlen(fieldname) + strlen(namebase)
+						+ strlen(disk) + 1;
+	if (mname_len >= MAX_METRIC_NAME_LEN)
+		return -1;
+
+	sprintf(metric_name, "%s_%s#%s", fieldname, namebase, disk);
+	return 0;
+}
+
 int atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 				void *userdata)
 {
 	int rc;
 	char name_base[128];
-	char metric_name[128];
+	char metric_name[MAX_METRIC_NAME_LEN];
 	struct atatsmart_set_size *sz = (struct atatsmart_set_size *) userdata;
 	size_t meta_sz, data_sz;
 	sprintf(name_base, "%s", a->name);
 	int i;
 	for (i = 0; i < NFIELD; i++) {
-		sprintf(metric_name, "%s#%s", fieldname[i], name_base);
+		char *dname = disknames[sz->disk_no];
+		rc = get_metric_name(metric_name, fieldname[i], name_base, dname);
+		if (rc) {
+			msglog("A metric_name is longer than the max length. "
+				"'%s_%s#%s'", fieldname[i], name_base, dname);
+			return rc;
+		}
 		switch (i) {
 		/* If the value is invalid, the metric value is -1 */
 		case 0: /* current value */
@@ -137,6 +166,14 @@ int atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 			rc = ldms_get_metric_size(metric_name, LDMS_V_S8,
 					&meta_sz, &data_sz);
 			break;
+		case 8: /* flag */
+			rc = ldms_get_metric_size(metric_name, LDMS_V_U16,
+					&meta_sz, &data_sz);
+			break;
+		case 9: /* raw value */
+			rc = ldms_get_metric_size(metric_name, LDMS_V_U8,
+					&meta_sz, &data_sz);
+			break;
 		default:
 			assert(0);
 		}
@@ -151,20 +188,30 @@ int atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 	return 0;
 }
 
+struct udata_add_metric {
+	int metric_no;
+	int disk_no;
+};
+
 int atasmart_add_metric(SkDisk *d, const SkSmartAttributeParsedData *a,
 				void *userdata)
 {
 	int rc;
 	char name_base[128];
-	char metric_name[128];
-	int *metric_no = (int *) userdata;
+	char metric_name[MAX_METRIC_NAME_LEN];
+	struct udata_add_metric *udata = (struct udata_add_metric *) userdata;
 	sprintf(name_base, "%s", a->name);
-	int comp_id_increment = (*metric_no / NFIELD);
 
 	ldms_metric_t m;
 	int i;
 	for (i= 0; i < NFIELD; i++) {
-		sprintf(metric_name, "%s#%s", fieldname[i], name_base);
+		char *dname = disknames[udata->disk_no];
+		rc = get_metric_name(metric_name, fieldname[i], name_base, dname);
+		if (rc) {
+			msglog("A metric_name is longer than the max length. "
+				"'%s_%s#%s'", fieldname[i], name_base, dname);
+			return rc;
+		}
 		switch (i) {
 		/* If the value is invalid, the metric value is -1 */
 		case 0: /* Current value */
@@ -185,14 +232,20 @@ int atasmart_add_metric(SkDisk *d, const SkSmartAttributeParsedData *a,
 		case 7: /* good in the past: yes/(n/a) */
 			m = ldms_add_metric(set, metric_name, LDMS_V_S8);
 			break;
+		case 8: /* flag */
+			m = ldms_add_metric(set, metric_name, LDMS_V_U16);
+			break;
+		case 9: /* raw value */
+			m = ldms_add_metric(set, metric_name, LDMS_V_U8);
+			break;
 		default:
 			assert(0);
 		}
 		if (!m)
 			return ENOMEM;
-		ldms_set_user_data(m, comp_id + comp_id_increment);
-		metric_table[*metric_no] = m;
-		(*metric_no)++;
+		ldms_set_user_data(m, comp_id + udata->disk_no);
+		metric_table[udata->metric_no] = m;
+		(udata->metric_no)++;
 	}
 	return 0;
 }
@@ -200,6 +253,7 @@ int atasmart_add_metric(SkDisk *d, const SkSmartAttributeParsedData *a,
 static int create_metric_set(char *setname)
 {
 	int ret;
+	int num_skipped_disks = 0;
 	struct atatsmart_set_size size;
 	size.metric_count = size.tot_data_sz = size.tot_meta_sz = 0;
 	/* Create the array of SkDisks */
@@ -210,24 +264,36 @@ static int create_metric_set(char *setname)
 	/* Get the total meta and data sizes */
 	int i = 0;
 	for (i = 0; i < num_disks; i++) {
-		if (ret = sk_disk_open(disknames[i], &smarts[i].d)) {
+		ret = sk_disk_open(disknames[i], &smarts[i].d);
+		if (ret) {
 			msglog("atasmart: Failed to create SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
-			goto err0;
+			free(disknames[i]);
+			disknames[i] = NULL;
+			num_skipped_disks++;
+			continue;
 		}
 
-		if (ret = sk_disk_smart_read_data(smarts[i].d)) {
+		ret = sk_disk_smart_read_data(smarts[i].d);
+		if (ret) {
 			msglog("atasmart: Failed to read data SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
-			goto err0;
+			free(disknames[i]);
+			disknames[i] = NULL;
+			num_skipped_disks++;
+			continue;
 		}
 
+		size.disk_no = i;
 		ret = sk_disk_smart_parse_attributes(smarts[i].d,
 				atasmart_get_disk_info, (void *) &size);
 		if (ret) {
 			msglog("atasmart: Failed to get size of SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
-			goto err0;
+			free(disknames[i]);
+			disknames[i] = NULL;
+			num_skipped_disks++;
+			continue;
 		}
 	}
 
@@ -244,11 +310,13 @@ static int create_metric_set(char *setname)
 	}
 
 	/* Add metrics to the set */
-	int metric_no = 0;
+	struct udata_add_metric udata_add;
+	udata_add.metric_no = 0;
 	for (i = 0; i < num_disks; i++) {
+		udata_add.disk_no = i;
 		ret = sk_disk_smart_parse_attributes(smarts[i].d,
 			(SkSmartAttributeParseCallback)atasmart_add_metric,
-			(void *) &metric_no);
+			(void *) &udata_add);
 		if (ret) {
 			msglog("atasmart: Failed to add metric. SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
@@ -341,11 +409,9 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 				void *userdata)
 {
 	union ldms_value v;
-	char name_base[128];
 
 	int *metric_no = (int *) userdata;
 	int i;
-	sprintf(name_base, "%s", a->name);
 	for (i = 0; i < NFIELD; i++) {
 		switch (i) {
 		/* If the value is invalid, the metric value is -1 */
@@ -376,6 +442,12 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 		case 7: /* good in the past: yes/(n/a) */
 			v.v_s8 = a->good_in_the_past_valid ?
 					a->good_in_the_past : -1;
+			break;
+		case 8: /* flag */
+			v.v_u16 = a->flags;
+			break;
+		case 9: /* raw value */
+			v.v_u8 = a->raw;
 			break;
 		default:
 			assert(0);
