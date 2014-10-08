@@ -1187,8 +1187,10 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 	pthread_mutex_lock(&ugni_lock);
 	grc = GNI_PostRdma(gxp->ugni_ep, &desc->post);
 	pthread_mutex_unlock(&ugni_lock);
-	if (grc != GNI_RC_SUCCESS)
+	if (grc != GNI_RC_SUCCESS) {
+		gxp->xprt->log(LDMS_LERROR,"GNI_PostRdma failed with %d\n", grc);
 		return -1;
+	}
 	return 0;
 }
 
