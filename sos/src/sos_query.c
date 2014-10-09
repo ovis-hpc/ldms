@@ -77,7 +77,7 @@ void usage(int argc, char *argv[])
 	printf(
 "usage: %s -s <path> [-k <key_column>] [-e <exact_value>] [-m <min_value>] \n"
 "                    [-M <max_value>] ... [-o <out_path>]\n"
-"        -s <path>          - The path to the object store\n"
+"        -s <path>          - The path to the object store (required)\n"
 "        -o <out_path>      - The path to output SOS. If specified, sos_query\n"
 "                             will output to the store instead of STDOUT.\n"
 "        -k <key_column>    - The column index for the key (default 0)\n"
@@ -356,6 +356,12 @@ int main(int argc, char *argv[])
 		default:
 			usage(argc, argv);
 		}
+	}
+
+	if (!sos) {
+		fprintf(stderr, "Please give a sos path.\n");
+		usage(argc, argv);
+		_exit(-1);
 	}
 
 	if (meta_data)
