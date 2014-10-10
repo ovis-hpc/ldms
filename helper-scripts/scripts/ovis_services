@@ -20,24 +20,24 @@ cmd=$1
 case "$cmd" in
 	start)
 		echo "Starting all ldmsd_samplers"
-		ldmsd-sampler-services start
+		ldmsd_sampler_services start
 		echo "--------------------------------"
 		echo "Starting OVIS services on the OVIS head node"
-		ovis-head-services start
+		ovis_head_services start
 		;;
 	stop)
 		echo "Stopping all ldmsd_samplers"
-		ldmsd-sampler-services stop
+		ldmsd_sampler_services stop
 		echo "--------------------------------"
 		echo "Stopping OVIS services on the OVIS head node"
-		ovis-head-services stop
+		ovis_head_services stop
 		;;
 	status)
 		echo "Checking the status of all ldmsd_samplers"
-		ldmsd-sampler-services status
+		ldmsd_sampler_services status
 		echo "--------------------------------"
 		echo "Checking the status of the OVIS services on the OVIS head node"
-		ovis-head-services status
+		ovis_head_services status
 		;;
 	*)
 		usage
