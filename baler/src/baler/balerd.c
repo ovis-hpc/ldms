@@ -740,6 +740,7 @@ void process_ocm_cmd(ocm_cfg_cmd_t cmd)
 {
 	struct bconfig_list *bl;
 	struct bpair_str *bp;
+	struct bpair_str *blast;
 	struct ocm_av_iter iter;
 	const char *key;
 	const struct ocm_value *v;
@@ -753,11 +754,16 @@ void process_ocm_cmd(ocm_cfg_cmd_t cmd)
 	/* Create baler command from ocm command */
 	ocm_av_iter_init(&iter, cmd);
 	bl->command = (char*)ocm_cfg_cmd_verb(cmd);
+	blast = NULL;
 	while (ocm_av_iter_next(&iter, &key, &v) == 0) {
 		bp = calloc(1, sizeof(*bp));
 		bp->s0 = (char*)key;
 		bp->s1 = (char*)v->s.str;
-		LIST_INSERT_HEAD(&bl->arg_head_s, bp, link);
+		if (!blast)
+			LIST_INSERT_HEAD(&bl->arg_head_s, bp, link);
+		else
+			LIST_INSERT_AFTER(blast, bp, link);
+		blast = bp;
 	}
 	/* end create baler command */
 
