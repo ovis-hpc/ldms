@@ -269,14 +269,37 @@ int bq_local_ptn_routine(struct bq_store *s)
 	uint32_t id = bptn_store_first_id(s->ptn_store);
 	uint32_t last_id = bptn_store_last_id(s->ptn_store);
 	int rc = 0;
+	printf("-------- --------------\n");
+	printf("  ptn_id pattern\n");
+	printf("-------- --------------\n");
 	while (id <= last_id) {
 		rc = bptn_store_id2str(s->ptn_store, s->tkn_store, id, buff,
 									4096);
 		if (rc)
 			return rc;
-		printf("%d %s\n", id, buff);
+		printf("%8d %s\n", id, buff);
 		id++;
 	}
+	printf("-------- --------------\n");
+	return rc;
+}
+
+int bq_local_host_routine(struct bq_store *s)
+{
+	int rc = 0;
+	char buff[4096];
+	uint32_t id = BMAP_ID_BEGIN;
+	uint32_t count = s->cmp_store->map->hdr->count;
+	printf("-------- --------------\n");
+	printf(" host_id hostname\n");
+	printf("-------- --------------\n");
+	while (count) {
+		rc = btkn_store_id2str(s->cmp_store, id, buff, sizeof(buff));
+		printf("%8d %s\n", id - (BMAP_ID_BEGIN - 1), buff);
+		id++;
+		count--;
+	}
+	printf("-------- --------------\n");
 	return rc;
 }
 
@@ -814,22 +837,20 @@ int bq_get_host_id(struct bq_store *store, const char *hostname)
 
 #ifdef BIN
 
-/* query type definitions */
-#define BQ_TYPE__LIST(WRAP) \
-	WRAP(UNKNOWN) \
-	WRAP(MSG) \
-	WRAP(PTN)
-
-#define BQ_TYPE_WRAP_ENUM(X) BQ_TYPE_##X,
-#define BQ_TYPE_WRAP_STR(X) #X,
-
 enum BQ_TYPE {
-	BQ_TYPE__LIST(BQ_TYPE_WRAP_ENUM)
+	BQ_TYPE_UNKNOWN,
+	BQ_TYPE_MSG,
+	BQ_TYPE_PTN,
+	BQ_TYPE_HOST,
 	BQ_TYPE_LAST
 };
 
 const char *BQ_TYPE_STR[] = {
-	BQ_TYPE__LIST(BQ_TYPE_WRAP_STR)
+	[BQ_TYPE_UNKNOWN]  =  "BQ_TYPE_UNKNOWN",
+	[BQ_TYPE_MSG]      =  "MSG",
+	[BQ_TYPE_PTN]      =  "PTN",
+	[BQ_TYPE_HOST]     =  "HOST",
+	[BQ_TYPE_LAST]     =  "BQ_TYPE_LAST"
 };
 
 const char* bq_type_str(enum BQ_TYPE type)
@@ -880,11 +901,14 @@ void show_help()
 {
 	printf(
 "Usages\n"
+#if 0
 "    (single query): Read data from the baler store. Data are filtered by\n"
 "	specified query options.\n"
 "\n"
+#endif
 "	bquery --store-path <path> [QUERY_OPTIONS]\n"
 "\n"
+#if 0
 "\n"
 "    (daemon mode): Run bquery in daemon mode. Providing data from the store\n"
 "	to other bquery over the network.\n"
@@ -903,8 +927,20 @@ void show_help()
 "    --port,-p NUMBER		Port number to listen to (daemon mode) or \n"
 "				connect to (query through daemon).\n"
 "\n"
+#endif
 "QUERY_OPTIONS:\n"
-"    --type,-t TYPE             The TYPE of the query, can be MSG or PTN.\n"
+"    --type,-t TYPE             The TYPE of the query, can be MSG, PTN or HOST.\n"
+"                                 * PTN will list all log patterns with their\n"
+"                                   pattern_ids. These pattern_ids are to be \n"
+"                                   used in ptn_id-mask option when querying\n"
+"                                   for MSG.\n"
+"                                 * HOST will list all hostnames with their\n"
+"                                   host_ids. These host_ids are to be used\n"
+"                                   with host-mask option when querying for\n"
+"                                   MSG.\n"
+"                                 * MSG will query messages from the store.\n"
+"                                   Users can give host-mask, begin, end, \n"
+"                                   ptn_id-mask to filter the message query.\n"
 "    --host-mask,-H NUMBER,...	The comma-separated list of numbers of\n"
 "				required hosts. The NUMBER can be in X-Y\n"
 "				format. (example: -H 1-10,20,30-50)\n"
@@ -925,6 +961,7 @@ void show_help()
 "				Pattern IDs to be queried. If ptn_id-mask is\n"
 "				is not specified, all patterns are included.\n"
 "\n"
+#if 0
 "Other OPTIONS:\n"
 "    --store-path,s PATH	The path to the baler store. Using this\n"
 "				option without --daemon implies single query\n"
@@ -938,6 +975,7 @@ void show_help()
 "				option to specify transport type and port\n"
 "				number of the remote host.\n"
 "\n"
+#endif
 	      );
 }
 
@@ -973,6 +1011,11 @@ struct option long_opt[] = {
  */
 int bq_get_mode()
 {
+	return BQ_MODE_LOCAL;
+
+#if 0
+	/* Enable this in the future, when all of these options are
+	 * supported. */
 	if (store_path) {
 		if (daemon_flag)
 			return BQ_MODE_DAEMON;
@@ -983,6 +1026,7 @@ int bq_get_mode()
 	}
 
 	return BQ_MODE_INVAL;
+#endif
 }
 
 void process_args(int argc, char **argv)
@@ -1089,6 +1133,11 @@ int bq_local_routine()
 {
 	int rc = 0;
 	struct bq_store *s;
+	if (!store_path) {
+		berr("store-path is not given.\n");
+		rc = EINVAL;
+		goto out;
+	}
 	if ((s = bq_open_store(store_path)) == NULL) {
 		berr("bq_open_store error %d: %s\n", rc, strerror(rc));
 		goto out;
@@ -1105,6 +1154,10 @@ int bq_local_routine()
 		break;
 	case BQ_TYPE_PTN:
 		rc = bq_local_ptn_routine(s);
+		break;
+	case BQ_TYPE_HOST:
+		rc = bq_local_host_routine(s);
+		break;
 	default:
 		rc = EINVAL;
 	}
