@@ -293,8 +293,11 @@ int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
 			*tmp = '\0';
 			a = av;
 			v = sub_env_var(p, tmp + 1);
-			if (!v)
+			if (!v) {
+				rc = EINVAL;
 				goto err;
+			}
+
 
 			ocm_value_set_s(ov, v);
 			free(v);
@@ -374,8 +377,11 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 			goto err;
 		}
 		char *value = sub_env_var(p, name);
-		if (!value)
+		if (!value) {
+			rc = EINVAL;
 			goto err;
+		}
+
 
 		ocm_value_set_s(ov, value);
 		free(value);
@@ -483,8 +489,11 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 			goto err;
 		}
 		char *value = sub_env_var(p, action_name);
-		if (!value)
+		if (!value) {
+			rc = EINVAL;
 			goto err;
+		}
+
 
 		ocm_value_set_s(ov, value);
 		free(value);
@@ -749,8 +758,11 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 		*tmp = '\0';
 		a = av;
 		v = sub_env_var(p, tmp + 1);
-		if (!v)
+		if (!v) {
+			rc = EINVAL;
 			goto err;
+		}
+
 
 		if (strcmp(a, "interval") == 0) {
 			interval = strtoull(v, NULL, 10);
@@ -861,8 +873,11 @@ int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
 			*tmp = '\0';
 			a = av;
 			v = sub_env_var(p, tmp + 1);
-			if (!v)
+			if (!v) {
+				rc = EINVAL;
 				goto err;
+			}
+
 
 			ocm_value_set_s(ov, v);
 			free(v);
