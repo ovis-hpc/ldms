@@ -368,8 +368,11 @@ static int sample(void)
 
 	/* Discard the first line that is a sum of the other cpu's values */
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	if (!s)
+	if (!s) {
+		fclose(mf);
 		return 0;
+	}
+
 
 	metric_no = 0;
 	do {
