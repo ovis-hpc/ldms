@@ -826,6 +826,18 @@ int sos_chown(sos_t sos, uid_t owner, gid_t group);
  */
 sos_t sos_rotate(sos_t sos, int N);
 
+
+/**
+ * \brief Similar to sos_roate(), but keep indices.
+ *
+ * \param sos SOS handle
+ * \param N The number of backups allowed. 0 means unlimited.
+ *
+ * \retval sos New SOS handle if rotation is a success.
+ * \retval NULL If rotation failed, the input \c sos is left unchanged.
+ */
+sos_t sos_rotate_i(sos_t sos, int N);
+
 /**
  * \brief Convenient post-rotation function call.
  *

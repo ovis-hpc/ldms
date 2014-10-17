@@ -1355,7 +1355,7 @@ out:
 	return rc;
 }
 
-#define SOS_BAK_FMT ".%d_sos"
+#define SOS_BAK_FMT ".%d"
 
 static int __get_latest_backup(const char *sos_path)
 {
@@ -1369,13 +1369,13 @@ static int __get_latest_backup(const char *sos_path)
 	i = 1;
 	while (1) {
 		/* Check for sos_path.i.OBJ */
-		snprintf(buff, PATH_MAX, "%s" SOS_BAK_FMT ".OBJ", sos_path, i);
+		snprintf(buff, PATH_MAX, "%s" SOS_BAK_FMT "_sos.OBJ", sos_path, i);
 		rc = stat(buff, &st);
 		if (rc)
 			goto out;
 
 		/* Check for sos_path.i.PG */
-		snprintf(buff, PATH_MAX, "%s" SOS_BAK_FMT ".PG", sos_path, i);
+		snprintf(buff, PATH_MAX, "%s" SOS_BAK_FMT "_sos.PG", sos_path, i);
 		rc = stat(buff, &st);
 		if (rc)
 			goto out;
@@ -1406,14 +1406,18 @@ static int __rename_obj_pg(const char *from, const char *to)
 	strcpy(_to + tlen, ".OBJ");
 
 	rc = rename(_from, _to);
-	if (rc)
+	if (rc) {
+		rc = errno;
 		goto out;
+	}
 
 	strcpy(_from + flen, ".PG");
 	strcpy(_to + tlen, ".PG");
 	rc = rename(_from, _to);
-	if (rc)
+	if (rc) {
+		rc = errno;
 		goto revert;
+	}
 
 	goto out;
 
@@ -1428,6 +1432,82 @@ out:
 	return rc;
 }
 
+static int __rename_sos(sos_class_t class, const char *from, const char *to)
+{
+	sos_attr_t attr;
+	int attr_id;
+	char *b0, *b1, *p0, *p1;
+	int len0, len1, left0, left1;
+	char *buff = malloc(PATH_MAX*2);
+	int rc = 0;
+
+	if (!buff) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	b0 = buff;
+	b1 = buff + PATH_MAX;
+
+	len0 = snprintf(b0, PATH_MAX, "%s", from);
+	len1 = snprintf(b1, PATH_MAX, "%s", to);
+
+	left0 = PATH_MAX - len0 - 1;
+	left1 = PATH_MAX - len1 - 1;
+
+	p0 = b0 + len0;
+	p1 = b1 + len1;
+
+	snprintf(p0, left0, "_sos");
+	snprintf(p1, left1, "_sos");
+
+	rc = __rename_obj_pg(b0, b1);
+	if (rc)
+		goto cleanup;
+
+	for (attr_id = 0; attr_id < class->count; attr_id++) {
+		attr = &class->attrs[attr_id];
+		if (!attr->has_idx)
+			continue;
+
+		snprintf(p0, left0, "_%s", attr->name);
+		snprintf(p1, left1, "_%s", attr->name);
+		rc = __rename_obj_pg(b0, b1);
+		if (rc == ENOENT) {
+			rc = 0; /* ENOENT is OK */
+			continue;
+		}
+		if (rc)
+			goto rollback;
+	}
+
+	goto cleanup;
+
+rollback:
+	/* rollback only success attributes and main object store */
+	attr_id--;
+	while (attr_id > -1) {
+		attr = &class->attrs[attr_id];
+		if (!attr->has_idx)
+			continue;
+
+		snprintf(p0, left0, "_%s", attr->name);
+		snprintf(p1, left1, "_%s", attr->name);
+		__rename_obj_pg(b1, b0);
+		attr_id--;
+	}
+
+	snprintf(p0, left0, "_sos");
+	snprintf(p1, left1, "_sos");
+
+	__rename_obj_pg(b1, b0);
+
+cleanup:
+	free(buff);
+out:
+	return rc;
+}
+
 /*
  * path is mutable, and expect to be able to append ".OBJ" or ".PG" at the end.
  */
@@ -1438,6 +1518,26 @@ static void __unlink_obj_pg(char *path)
 	unlink(path);
 	strcpy(path + len, ".PG");
 	unlink(path);
+	path[len] = 0;
+}
+
+/*
+ * path is mutable
+ */
+static void __unlink_sos(sos_class_t class, char *path)
+{
+	size_t len = strlen(path);
+	int attr_id;
+	sos_attr_t attr;
+	strcpy(path + len, "_sos");
+	__unlink_obj_pg(path);
+	for (attr_id = 0; attr_id < class->count; attr_id++) {
+		attr = &class->attrs[attr_id];
+		if (!attr->has_idx)
+			continue;
+		sprintf(path + len, "_%s", attr->name);
+		__unlink_obj_pg(path);
+	}
 	path[len] = 0;
 }
 
@@ -1458,7 +1558,8 @@ int sos_chown(sos_t sos, uid_t owner, gid_t group)
 	return ods_chown(sos->ods, owner, group);
 }
 
-sos_t sos_rotate(sos_t sos, int N)
+static
+sos_t __sos_rotate(sos_t sos, int N, int keep_index)
 {
 	sos_t new_sos = NULL;
 	int M = __get_latest_backup(sos->path);
@@ -1487,81 +1588,60 @@ sos_t sos_rotate(sos_t sos, int N)
 		if (i)
 			sprintf(_a + _len, SOS_BAK_FMT, i);
 		else
-			sprintf(_a + _len, "_sos");
-		rc = __rename_obj_pg(_a, _b);
+			_a[_len] = '\0';
 
+		rc = __rename_sos(sos->classp, _a, _b);
 		if (rc)
-			goto roll_back1;
+			goto roll_back;
 
 		_tmp = _a;
 		_a = _b;
 		_b = _tmp;
 	}
 
-	/* rename && unlink indices
-	 *   Rename before unlink because other processes might also have
-	 *   index files opened, making the files lingering around until such
-	 *   processes close the files. Non SOS owner processes are not expected
-	 *   to open and use SOS for a long period of time.
-	 */
-	attr_count = sos_get_attr_count(sos);
-	for (attr_id = 0; attr_id < attr_count; attr_id++) {
-		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
-		if (!attr->has_idx)
-			continue;
-		sprintf(_a + _len, "_%s", attr->name);
-		sprintf(_b + _len, ".1_%s", attr->name);
-		rc = __rename_obj_pg(_a, _b);
-		if (rc)
-			goto roll_back2;
-	}
-
 	/* create new sos */
 	new_sos = sos_open(sos->path, O_CREAT | O_RDWR, st.st_mode, sos->classp);
 	if (!new_sos)
-		goto roll_back2;
+		goto roll_back;
 	sos_chown(new_sos, st.st_uid, st.st_gid);
 
-	/* close old sos and strip the indices, there's no going from here */
+	/* close old sos and strip the indices, there's no going back from here */
 	sos_close(sos, ODS_COMMIT_ASYNC);
-	for (attr_id = 0; attr_id < attr_count; attr_id++) {
-		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
-		if (!attr->has_idx)
-			continue;
-		sprintf(_a + _len, ".1_%s", attr->name);
-		__unlink_obj_pg(_a);
+	sos = new_sos;
+
+	if (!keep_index) {
+		attr_count = sos_get_attr_count(sos);
+		for (attr_id = 0; attr_id < attr_count; attr_id++) {
+			sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
+			if (!attr->has_idx)
+				continue;
+			sprintf(_a + _len, ".1_%s", attr->name);
+			__unlink_obj_pg(_a);
+		}
 	}
 
 	/* remove too-old backups */
 	if (!N)
 		goto out;
+
 	for (i = N+1; i <= M + 1; i++) {
 		sprintf(_a + _len, SOS_BAK_FMT, i);
-		__unlink_obj_pg(_a);
+		__unlink_sos(sos->classp, _a);
 	}
+
 	goto out;
 
-roll_back2:
-	/* index rename rollback */
-	for (attr_id = 0; attr_id < attr_count; attr_id++) {
-		sos_attr_t attr = sos_obj_attr_by_id(sos, attr_id);
-		if (!attr->has_idx)
-			continue;
-		sprintf(_a + _len, "_%s", attr->name);
-		sprintf(_b + _len, ".1_%s", attr->name);
-		__rename_obj_pg(_b, _a);
-	}
-roll_back1:
+roll_back:
 	/* _sos rename rollback */
 	i++;
 	if (i)
 		sprintf(_a + _len, SOS_BAK_FMT, i);
 	else
-		sprintf(_a + _len, "_sos");
+		_a[_len] = '\0';
 	while (i <= M) {
 		/* rename i+1 -> i */
 		sprintf(_b + _len, SOS_BAK_FMT, i+1);
-		__rename_obj_pg(_b, _a);
+		__rename_sos(sos->classp, _b, _a);
 
 		i++;
 		_tmp = _a;
@@ -1571,6 +1651,16 @@ roll_back1:
 out:
 	free(buff);
 	return new_sos;
+}
+
+sos_t sos_rotate_i(sos_t sos, int N)
+{
+	return __sos_rotate(sos, N, 1);
+}
+
+sos_t sos_rotate(sos_t sos, int N)
+{
+	return __sos_rotate(sos, N, 0);
 }
 
 int sos_post_rotation(sos_t sos, const char *env_var)

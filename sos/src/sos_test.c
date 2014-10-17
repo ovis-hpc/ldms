@@ -77,16 +77,17 @@ SOS_OBJ_BEGIN(ovis_metric_class, "OvisMetric")
 	SOS_OBJ_ATTR("value", SOS_TYPE_UINT64)
 SOS_OBJ_END(4);
 
-const char *short_options = "b:s:l:rR?";
+const char *short_options = "b:s:l:rRi?";
 
 struct option long_options[] = {
-	{"store",    required_argument,  0,  's'},
-	{"remove",   no_argument,        0,  'r'},
-	{"rotate",   no_argument,        0,  'R'},
-	{"limit",    required_argument,  0,  'l'},
-	{"backups",  required_argument,  0,  'l'},
-	{"help",     no_argument,        0,  '?'},
-	{0,          0,                  0,  0}
+	{"store",       required_argument,  0,  's'},
+	{"remove",      no_argument,        0,  'r'},
+	{"rotate",      no_argument,        0,  'R'},
+	{"keep-index",  no_argument,        0,  'i'},
+	{"limit",       required_argument,  0,  'l'},
+	{"backups",     required_argument,  0,  'l'},
+	{"help",        no_argument,        0,  '?'},
+	{0,             0,                  0,  0}
 };
 
 void usage()
@@ -100,6 +101,9 @@ OPTIONS: \n\
 \n\
     -R,--rotate \n\
 	Enable store rotation\n\
+\n\
+    -i,--keep-index \n\
+	SOS rotation keep indices\n\
 \n\
     -r,--remove \n\
 	Enable old data removal (disabled if -R is given)\n\
@@ -155,6 +159,7 @@ int main(int argc, char **argv)
 	int remove = 0;
 	int rotate = 0;
 	int backups = 0;
+	int keep_index = 0;
 	sos_iter_t iter;
 	sos_t sos;
 	sos_obj_t obj;
@@ -174,6 +179,9 @@ arg_loop:
 		break;
 	case 'R':
 		rotate = 1;
+		break;
+	case 'i':
+		keep_index = 1;
 		break;
 	case 'l':
 		limit = atoi(optarg);
@@ -220,7 +228,11 @@ arg_out:
 		if (remove)
 			remove_data(sos, sec, limit);
 		if (rotate && (sec - sec0) >= limit) {
-			sos_t new_sos = sos_rotate(sos, backups);
+			sos_t new_sos;
+			if (keep_index)
+				new_sos = sos_rotate_i(sos, backups);
+			else
+				new_sos = sos_rotate(sos, backups);
 			assert(new_sos);
 			sos = new_sos;
 			sec0 = sec;
