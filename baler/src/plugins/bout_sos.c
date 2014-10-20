@@ -122,10 +122,11 @@ int bout_sos_rotate(struct bout_sos_plugin *_this, int ts,
 	if (_this->last_rotate/_this->time_limit >= ts/_this->time_limit)
 		return 0;
 
-	sos_t new_sos = sos_rotate(_this->sos, _this->max_copy);
+	sos_t new_sos = sos_rotate_i(_this->sos, _this->max_copy);
 	if (!new_sos)
 		return errno;
 	_this->sos = new_sos;
+	_this->last_rotate = ts;
 	if (cb)
 		cb(_this);
 	sos_post_rotation(new_sos, "BALER_STORE_POSTROTATE");
