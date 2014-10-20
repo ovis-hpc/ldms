@@ -92,11 +92,12 @@
 
 LIST_HEAD(bsos_wrap_head, bsos_wrap);
 
-struct bsos_wrap {
+typedef struct bsos_wrap {
 	sos_t sos;
 	char *store_name;
+	char *path;
 	LIST_ENTRY(bsos_wrap) link;
-};
+} *bsos_wrap_t;
 
 /**
  * Open sos and put it into the wrapper.
@@ -128,11 +129,10 @@ struct bsos_wrap* bsos_wrap_find(struct bsos_wrap_head *head,
 }
 
 struct bq_store {
+	char *path;
 	struct bptn_store *ptn_store;
 	struct btkn_store *tkn_store;
 	struct btkn_store *cmp_store;
-	sos_t msg_sos;
-	struct bsos_wrap_head img_sos_list;
 };
 
 /**
@@ -147,6 +147,7 @@ typedef enum bquery_status {
 	BQ_STAT_INIT,
 	BQ_STAT_QUERYING,
 	BQ_STAT_DONE,
+	BQ_STAT_LAST,
 } bq_stat_t;
 
 /**
@@ -176,11 +177,15 @@ struct bquery {
 	int text_flag; /**< Non-zero if the query wants text in date-time and
 			    host field */
 	char sep; /**< Field separator for output */
+	bsos_wrap_t bsos; /**< SOS wrap for the query */
+	char sos_prefix[PATH_MAX]; /**< SOS prefix. Prefix is also used as a
+					     path buffer.*/
+	char *sos_prefix_end; /**< Point to the end of the original prefix */
+	int sos_number; /**< The current number of SOS store (for rotation) */
 };
 
 struct bimgquery {
 	struct bquery base;
-	sos_t img_sos;
 	char *store_name;
 	LIST_HEAD(, brange_u32) *hst_rngs; /**< Ranges of hosts */
 	struct brange_u32 *crng; /**< Current range */

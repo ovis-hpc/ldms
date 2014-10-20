@@ -145,6 +145,7 @@ struct bsos_wrap* bsos_wrap_open(const char *path)
 	bsw->sos = sos_open(path, O_RDWR);
 	if (!bsw->sos)
 		goto err1;
+
 	char *bname = basename(path);
 	if (!bname)
 		goto err2;
@@ -185,6 +186,7 @@ struct bq_store* bq_open_store(const char *path)
 	struct bq_store *s = calloc(1, sizeof(*s));
 	if (!s)
 		return NULL;
+	s->path = strdup(path);
 	char spath[PATH_MAX];
 	/* comp_store */
 	sprintf(spath, "%s/comp_store", path);
@@ -204,55 +206,11 @@ struct bq_store* bq_open_store(const char *path)
 	if (!s->ptn_store)
 		goto err2;
 
-	/* msg_store */
-	sprintf(spath, "%s/msg_store/msg", path);
-	s->msg_sos = sos_open(spath, O_RDWR);
-	if (!s->msg_sos)
-		goto err3;
-
-	/* img_store */
-	sprintf(spath, "%s/img_store", path);
-	DIR *imgd = opendir(spath);
-	if (!imgd)
-		goto err4;
-
-	struct dirent dent;
-	struct dirent *dentp;
-	struct bsos_wrap *bsw;
-	char *suffix;
-
-dent_loop:
-	if (readdir_r(imgd, &dent, &dentp) != 0)
-		goto err5;
-	if (!dentp)
-		goto out; /* no more entry */
-
-	/* go to next entry if suffix is not "_sos.OBJ" */
-	if ((suffix = strrchr(dent.d_name, '_')) == NULL)
-		goto dent_loop;
-	if (strcmp(suffix, "_ptn_id.OBJ") != 0)
-		goto dent_loop;
-	/* main sos filename is {store_name}_sos.OBJ */
-	suffix[0] = '\0'; /* cut the suffix off of dent.d_name */
-	sprintf(spath + strlen(spath), "/%s", dent.d_name);
-	bsw = bsos_wrap_open(spath);
-	if (!bsw)
-		goto err5;
-	LIST_INSERT_HEAD(&s->img_sos_list, bsw, link);
-	goto dent_loop;
+	/* msg_store and img_store will be opened at query time */
 
 out:
 	return s;
-err5:
-	/* clear list image store */
-	while (bsw = LIST_FIRST(&s->img_sos_list)) {
-		LIST_REMOVE(bsw, link);
-		bsos_wrap_close_free(bsw);
-	}
-err4:
-	sos_close(s->msg_sos, ODS_COMMIT_ASYNC);
-err3:
-	bptn_store_close_free(s->ptn_store);
+
 err2:
 	btkn_store_close_free(s->tkn_store);
 err1:
@@ -355,6 +313,8 @@ void bquery_destroy(struct bquery *q)
 		bset_u32_free(q->hst_ids);
 	if (q->ptn_ids)
 		bset_u32_free(q->ptn_ids);
+	if (q->bsos)
+		bsos_wrap_close_free(q->bsos);
 	free(q);
 }
 
@@ -375,6 +335,7 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 			     const char *ts1, int is_text, char sep, int *rc)
 {
 	int _rc = 0;
+	ssize_t len = 0;
 	if (!store) {
 		_rc = EINVAL;
 		goto out;
@@ -387,6 +348,7 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 	}
 
 	q->store = store;
+	q->stat = BQ_STAT_INIT;
 
 	if (hst_ids) {
 		_rc = strnumlist2set(hst_ids, &q->hst_ids);
@@ -426,6 +388,10 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 
 	q->text_flag = is_text;
         q->sep = (sep)?(sep):(' ');
+
+	len = snprintf(q->sos_prefix, PATH_MAX, "%s/msg_store/msg", store->path);
+	q->sos_prefix_end = q->sos_prefix + len;
+
 	goto out;
 
 err:
@@ -441,11 +407,7 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 				const char *ts1, const char *img_store_name,
 				int *rc)
 {
-	struct bsos_wrap *bsw = bsos_wrap_find(&store->img_sos_list,
-						img_store_name);
-	if (!bsw)
-		return NULL; /* cannot find the given store name */
-
+	ssize_t len;
         struct bquery *bq = bquery_create(store, hst_ids, ptn_ids, ts0, ts1, 0,
                                                 0, rc);
 	if (!bq)
@@ -456,7 +418,9 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 	 * bq */
 	bi->base = *bq;
 	free(bq);
-	bi->img_sos = bsw->sos;
+	len = snprintf(bi->base.sos_prefix, PATH_MAX, "%s/img_store/%s",
+						store->path, img_store_name);
+	bi->base.sos_prefix_end = bi->base.sos_prefix + len;
 	bi->store_name = strdup(img_store_name);
 	if (!bi->store_name)
 		goto err;
@@ -464,7 +428,6 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 		bi->hst_rngs = bset_u32_to_brange_u32(bi->base.hst_ids);
 		if (!bi->hst_rngs)
 			goto err;
-		bi->crng = LIST_FIRST(bi->hst_rngs);
 	}
 	return bi;
 err:
@@ -509,57 +472,187 @@ char* bq_imgquery(struct bimgquery *q, int *rc)
 	return bq_query_generic(q, rc, 64, (void*)bq_imgquery_r);
 }
 
+char* __str_combine(const char *str0, const char *str1)
+{
+	int len = strlen(str0) + strlen(str1);
+	char *str = malloc(len + 1);
+	if (!str)
+		return NULL;
+	sprintf(str, "%s%s", str0, str1);
+	return str;
+}
+
+static int __bq_init(struct bquery *q)
+{
+	q->bsos = bsos_wrap_open(q->sos_prefix);
+	if (!q->bsos) {
+		return errno;
+	}
+	return 0;
+}
+
+static int __bq_open_bsos(struct bquery *q)
+{
+	struct bsos_wrap *bsos;
+	sos_iter_t iter;
+	if (q->sos_number) {
+		snprintf(q->sos_prefix_end,
+			PATH_MAX - (q->sos_prefix_end - q->sos_prefix),
+			".%d", q->sos_number);
+
+	} else {
+		*q->sos_prefix_end = 0;
+	}
+	bsos = bsos_wrap_open(q->sos_prefix);
+	if (!bsos)
+		return errno;
+	iter = sos_iter_new(bsos->sos, 0);
+	if (!iter) {
+		bsos_wrap_close_free(bsos);
+		return ENOMEM;
+	}
+	q->bsos = bsos;
+	q->itr = iter;
+	return 0;
+}
+
+static int __bq_next_store(struct bquery *q)
+{
+	/* destroy the old store's itr first */
+	int rc;
+	sos_iter_t old_itr = q->itr;
+	struct bsos_wrap *old_bsos = q->bsos;
+	if (!q->sos_number)
+		return ENOENT;
+
+	q->sos_number--;
+	rc = __bq_open_bsos(q);
+
+	if (!rc) {
+		/* clean old stuff */
+		if (old_itr)
+			sos_iter_free(old_itr);
+		if (old_bsos)
+			bsos_wrap_close_free(old_bsos);
+	}
+	return rc;
+}
+
+static int __bq_first_entry(struct bquery *q)
+{
+	int rc = 0;
+
+loop:
+	if (!q->ts_0) {
+		rc = sos_iter_begin(q->itr);
+		goto out;
+	}
+
+	sos_attr_t attr = sos_obj_attr_by_id(q->bsos->sos, 0);
+	size_t ksz = attr->attr_size_fn(attr, 0);
+	struct bout_sos_img_key imgkey = {q->ts_0, 0};
+	void *p;
+
+	switch (attr->type) {
+	case SOS_TYPE_UINT32:
+		ksz = 4;
+		p = &imgkey.ts;
+		break;
+	case SOS_TYPE_UINT64:
+		ksz = 8;
+		p = &imgkey;
+		break;
+	}
+	obj_key_t key = obj_key_new(ksz);
+	if (!key) {
+		rc = ENOMEM;
+		goto out;
+	}
+	obj_key_set(key, p, ksz);
+
+	if (0 != sos_iter_seek_sup(q->itr, key)) {
+		rc = ENOENT;
+	}
+	obj_key_delete(key);
+	if (rc == ENOENT) {
+		rc = __bq_next_store(q);
+		if (rc)
+			goto out;
+		goto loop;
+	}
+out:
+	return rc;
+}
+
+static int __get_max_sos_number(const char *sos_path)
+{
+	int i;
+	struct stat _st;
+	int rc;
+	char *path = malloc(PATH_MAX);
+	if (!path)
+		return 0;
+	for (i = 1; i < 65536; i++) {
+		snprintf(path, PATH_MAX, "%s.%d_sos.PG", sos_path, i);
+		rc = stat(path, &_st);
+		if (rc)
+			break;
+	}
+	free(path);
+	return i - 1;
+}
+
+/**
+ * Move the iterator to the next entry.
+ */
+static int __bq_next_entry(struct bquery *q)
+{
+	int rc = 0;
+	if (!q->bsos) {
+		q->sos_number = __get_max_sos_number(q->sos_prefix);
+		rc = __bq_open_bsos(q);
+		if (rc && q->sos_number) {
+			rc = __bq_next_store(q);
+			if (rc)
+				goto out;
+		}
+		/* first call */
+		rc = __bq_first_entry(q);
+		goto out;
+	}
+
+	rc = sos_iter_next(q->itr);
+	while (rc == ENOENT) {
+		/* try again with the next store */
+		rc = __bq_next_store(q);
+		if (rc)
+			goto out;
+		rc = sos_iter_begin(q->itr);
+	}
+out:
+	return rc;
+}
+
 int bq_query_r(struct bquery *q, char *buff, size_t bufsz)
 {
 	int rc = 0;
-	sos_t msg_sos = q->store->msg_sos;
-	sos_attr_t attr = sos_obj_attr_by_id(msg_sos, SOS_MSG_SEC);
-
-	buff[0] = 0;
-
-	if (!q->itr) {
-		/* First call */
-		q->itr = sos_iter_new(msg_sos, SOS_MSG_SEC);
-		if (!q->itr) {
-			rc = errno;
-			goto out;
-		}
-		if (q->ts_0) {
-			obj_key_t key = obj_key_new(sizeof(uint32_t));
-			if (!key) {
-				rc = ENOMEM;
-				goto out;
-			}
-			uint32_t _t = q->ts_0; /* sizeof(time_t) can be 8 */
-			obj_key_set(key, &_t, sizeof(_t));
-			if (0 != sos_iter_seek_inf(q->itr, key)) {
-				/* Don't worry, there's just no infimum */
-				sos_iter_begin(q->itr);
-			}
-			obj_key_delete(key);
-		} else {
-			rc = sos_iter_begin(q->itr);
-		}
-	} else {
-		rc = sos_iter_next(q->itr);
-	}
-
-	if (rc)
-		goto out;
-
 	uint32_t comp_id;
 	uint32_t sec;
 	uint32_t usec;
 	struct bmsg *msg;
 	sos_obj_t obj;
 	int len;
-loop:
+	sos_t msg_sos;
+
+	buff[0] = 0;
+
+next:
+	rc = __bq_next_entry(q);
+	if (rc)
+		goto out;
 	obj = sos_iter_obj(q->itr);
+	msg_sos = q->bsos->sos;
 	SOS_OBJ_ATTR_GET(sec, msg_sos, SOS_MSG_SEC, obj);
-	/* need to check ts_0 again because of seek_inf is not an exact seek */
-	if (q->ts_0 && sec < q->ts_0) {
-		goto next;
-	}
 	if (q->ts_1 && sec > q->ts_1) {
 		/* Out of time window, no need to continue */
 		rc = ENOENT;
@@ -593,14 +686,6 @@ loop:
                                 q->sep);
 	}
 	rc = bq_print_msg(q->store, buff+len, bufsz-len, msg);
-	goto done;
-next:
-	rc = sos_iter_next(q->itr);
-	if (rc)
-		goto out;
-	goto loop;
-
-done:
 out:
 	return rc;
 }
@@ -608,43 +693,9 @@ out:
 int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz)
 {
 	int rc = 0;
-	sos_t img_sos = q->img_sos;
 	struct bquery *_q = (void*)&q->base;
-	/* For an image, the attr 0  is {time, node} */
-	sos_attr_t attr = sos_obj_attr_by_id(img_sos, 0);
 
 	buff[0] = 0;
-
-	if (!_q->itr) {
-		/* First call */
-		_q->itr = sos_iter_new(img_sos, 0);
-		if (!_q->itr) {
-			rc = errno;
-			goto out;
-		}
-		struct bout_sos_img_key k;
-		k.ts = _q->ts_0;
-		if (q->hst_rngs)
-			k.comp_id = LIST_FIRST(q->hst_rngs)->a;
-		else
-			k.comp_id = 0;
-		obj_key_t key = obj_key_new(sizeof(&k));
-		if (!key) {
-			rc = ENOMEM;
-			goto out;
-		}
-		obj_key_set(key, &k, sizeof(k));
-		if (0 != sos_iter_seek_inf(_q->itr, key)) {
-			/* Don't worry, there's just no infimum
-			 * to the key. */
-			sos_iter_begin(_q->itr);
-		}
-		obj_key_delete(key);
-	}
-
-	rc = sos_iter_next(_q->itr);
-	if (rc)
-		goto out;
 
 	struct bout_sos_img_key k;
 	uint32_t comp_id;
@@ -654,16 +705,17 @@ int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz)
 	uint32_t count;
 	struct bmsg *msg;
 	sos_obj_t obj;
+	sos_t img_sos;
 	int len;
-loop:
+next:
+	rc = __bq_next_entry(_q);
+	if (rc)
+		goto out;
+	img_sos = _q->bsos->sos;
 	obj = sos_iter_obj(_q->itr);
 	SOS_OBJ_ATTR_GET(k, img_sos, 0, obj);
 	sec = k.ts;
 	comp_id = k.comp_id;
-	/* need to check ts_0 again because of seek_inf is not an exact seek */
-	if (_q->ts_0 && sec < _q->ts_0) {
-		goto next;
-	}
 	if (_q->ts_1 && sec > _q->ts_1) {
 		/* Out of time window, no need to continue */
 		rc = ENOENT;
@@ -676,14 +728,7 @@ loop:
 		goto next;
 	SOS_OBJ_ATTR_GET(count, img_sos, 2, obj);
 	len = sprintf(buff, "%u %u %u %u", sec, comp_id, ptn_id, count);
-	goto done;
-next:
-	rc = sos_iter_next(_q->itr);
-	if (rc)
-		goto out;
-	goto loop;
 
-done:
 out:
 	return rc;
 }
@@ -888,7 +933,6 @@ char *ts_end = NULL;
 struct btkn_store *tkn_store = NULL;
 struct btkn_store *comp_store = NULL;
 struct bptn_store *ptn_store = NULL;
-sos_t msg_sos = NULL;
 
 enum {
 	BQ_MODE_INVAL = -1, /* invalid mode */
@@ -1143,7 +1187,6 @@ int bq_local_routine()
 		goto out;
 	}
 
-	msg_sos = s->msg_sos;
 	comp_store = s->cmp_store;
 	tkn_store = s->tkn_store;
 	ptn_store = s->ptn_store;
