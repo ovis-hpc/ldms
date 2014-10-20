@@ -634,29 +634,25 @@ static char *type_names[] = {
 
 uint32_t ldms_get_metric_meta_size(const char *name, enum ldms_value_type t)
 {
-	size_t s = sizeof(struct ldms_value_desc) + strlen(name) + 1;
-	/* Value is aligned on value-size boundary */
-	s += ROUNDUP(s, value_size[t]);
-	/* Add size of value */
-	s += value_size[t];
-	/* Next value is aligned on 8B boundary */
-	s = ROUNDUP(s, 8);
-	return s;
+	size_t sz;
+
+	/* Descriptors are aligned on eight byte boundaries */
+	sz = ROUNDUP(sizeof(struct ldms_value_desc) + strlen(name) + 1, 8);
+
+	/* Values are aligned on 8b boundary */
+	sz += ROUNDUP(value_size[t], 8);
+
+	return sz;
 }
 
 int ldms_get_metric_size(const char *name, enum ldms_value_type t,
 			 size_t *meta_sz, size_t *data_sz)
 {
-	size_t s = sizeof(struct ldms_value_desc) + strlen(name) + 1;
-	/* Desc is aligned on value-size boundary */
-	s += ROUNDUP(s, 8);
-	*meta_sz = s;
+	/* Descriptors are aligned on eight byte boundaries */
+	*meta_sz = ROUNDUP(sizeof(struct ldms_value_desc) + strlen(name) + 1, 8);
 
-	/* Add size of value */
-	s = value_size[t];
-	/* Next value is aligned on 8B boundary */
-	s = ROUNDUP(s, 8);
-	*data_sz = s;
+	/* Values are aligned on 8b boundary */
+	*data_sz = ROUNDUP(value_size[t], 8);
 
 	return 0;
 }
