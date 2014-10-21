@@ -242,7 +242,6 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 etc/init.d/ldmsd_aggregator
 		 etc/init.d/ldmsd_sampler
 		 etc/logrotate.d/Makefile
-		 scripts/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 ldms.spec])
