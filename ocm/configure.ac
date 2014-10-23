@@ -15,6 +15,9 @@ AC_CHECK_SIZEOF(long)
 
 AM_PROG_LIBTOOL
 
+dnl check for python interpreter
+AM_PATH_PYTHON([2.6])
+
 dnl Needed for per-product flags
 AM_PROG_CC_C_O
 
@@ -69,5 +72,7 @@ AC_CONFIG_FILES([Makefile
 		etc/init.d/ocmd
 		etc/logrotate.d/Makefile
 ])
+
+AC_CONFIG_SUBDIRS([src/parsers/oparser_sqlite/python])
 
 AC_OUTPUT
