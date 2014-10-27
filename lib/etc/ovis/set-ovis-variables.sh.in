@@ -1,10 +1,10 @@
 #!/bin/bash
 export OVIS_HOME=@prefix@
-export OVIS_RUN_CONF=$OVIS_HOME/conf/ovis_conf.db
+export OVIS_RUN_CONF=/etc/ovis/conf/ovis_conf.db
 export OVIS_WEB_ROOT=/var/www/tahoma-test/
 export OVIS_DATA=/home/ovis-data
-export OVIS_LOG=$OVIS_HOME/var/log
-export OVIS_SOCK=$OVIS_HOME/var/sock
+export OVIS_LOG=/var/log/ovis
+export OVIS_SOCK=/var/run/ovis
 
 # *_RECOVER choices are "restore" or "reinit"
 export LDMSD_STORE_RECOVER=restore
@@ -25,7 +25,7 @@ export LDMSD_SAMPLER_PORT_LISTEN=10001
 
 export OCMD_XPORT=sock
 export OCMD_PORT=12345
-export OCMD_PEER_LIST=$OVIS_HOME/etc/ocmd_peer_list
+export OCMD_PEER_LIST=/etc/ovis/ocmd_peer_list
 export OCMD_RECONNECT_INTERVAL=20.00
 
 export ME_XPORT=sock
