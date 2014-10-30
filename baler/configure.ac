@@ -12,6 +12,7 @@ AC_PROG_CC()
 AC_PROG_CXX()
 AM_PROG_CC_C_O()
 
+OPTION_DEFAULT_ENABLE([dict], [ENABLE_DICT])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 dnl Swig stuffs
 OPTION_DEFAULT_ENABLE([swig], [ENABLE_SWIG])
@@ -71,6 +72,7 @@ AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
 	src/plugins/test/Makefile swig/Makefile etc/Makefile
 	etc/init.d/Makefile etc/init.d/balerd
 	etc/logrotate.d/Makefile
+	dict/Makefile
 ])
 
 AC_OUTPUT
