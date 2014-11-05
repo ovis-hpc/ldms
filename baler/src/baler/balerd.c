@@ -1048,8 +1048,8 @@ void thread_join()
  */
 void cleanup_daemon(int x)
 {
-	binfo("Baler Daemon exiting ... status %d\n", x);
-	exit(x);
+	binfo("Baler Daemon exiting ... code %d\n", x);
+	exit(0);
 }
 
 /**
