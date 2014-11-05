@@ -1,5 +1,5 @@
 "me.log" {
-	maxsize 5M
+	size 5M
 	copytruncate
 	maxage 90
 	rotate 168

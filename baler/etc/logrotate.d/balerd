@@ -1,5 +1,5 @@
 "balerd.log" {
-	maxsize 5M
+	size 5M
 	maxage 90
 	rotate 168
 	notifempty
