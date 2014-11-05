@@ -396,6 +396,7 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 
 err:
 	bquery_destroy(q);
+	q = NULL;
 out:
 	if (rc)
 		*rc = _rc;
@@ -1161,6 +1162,8 @@ int bq_local_msg_routine(struct bq_store *s)
 					 1, 0, &rc);
 	const static int N = 4096;
 	char buff[N];
+	if (rc)
+		goto out;
 loop:
 	rc = bq_query_r(q, buff, N);
 	if (rc)
