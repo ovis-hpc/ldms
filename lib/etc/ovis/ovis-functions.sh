@@ -69,3 +69,81 @@ sos_check_dir() {
 	done
 	return 0
 }
+
+collapse_hostnames() {
+	local hostnames=$1
+	local prefix
+	local begin=-1
+	local end
+	local result=""
+
+	local re='([0-9]*)(.+)'
+	local tmp_prefix
+	local tmp_number
+
+	for name in $hostnames; do
+		rev_name=`echo $name|rev`
+		if [[ $rev_name =~ $re ]]; then
+			tmp_prefix=`echo ${BASH_REMATCH[2]}|rev`
+			tmp_number=`echo ${BASH_REMATCH[1]}|rev`
+		else
+			return -1
+		fi
+		if [[ $begin -eq -1 ]]; then
+			begin=$tmp_number
+			prefix=$tmp_prefix
+			if [[ $begin == "" ]]; then
+				if [[ $result == "" ]]; then
+					result=$prefix
+				else
+					result="$result,$prefix"
+				fi
+				begin=-1
+			fi
+			end=$begin
+		else
+			if [[ $tmp_prefix == $prefix ]]; then
+				tmp=$(expr $tmp_number + 0)
+				tmp_end=$(expr $end + 0)
+				if [[ $tmp-1 -eq $tmp_end ]]; then
+					end=$tmp_number
+				else
+					if [[ $begin == $end ]]; then
+						tmp="$prefix$begin"
+					else
+						tmp="$prefix[$begin-$end]"
+					fi
+					result=$result,$tmp
+					begin=$tmp_number
+					end=$begin
+				fi
+			else
+				if [[ $begin == $end ]]; then
+					tmp=$prefix$begin
+				else
+					tmp=$prefix[$begin-$end]
+				fi
+				if [[ $result == "" ]]; then
+					result="$tmp"
+				else
+					result="$result,$tmp"
+				fi
+				begin=`echo ${BASH_REMATCH[1]}|rev`
+				prefix=$tmp_prefix
+				if [[ $begin == "" ]]; then
+					result="$result,$prefix"
+					begin=-1
+				fi
+				end=$begin
+			fi
+		fi
+	done
+	if [[ $begin == $end ]]; then
+		tmp=$prefix$begin
+	else
+		tmp=$prefix[$begin-$end]
+	fi
+	result="$result,$tmp"
+	echo $result
+	return 0
+}

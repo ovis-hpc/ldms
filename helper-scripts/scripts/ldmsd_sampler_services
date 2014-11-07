@@ -1,7 +1,7 @@
 #!/bin/bash
 
 usage() {
-	echo "Usage: ldmsd-sampler-services [start|stop|status]"
+	echo "Usage: ldmsd_sampler_services [start|stop|status]"
 	echo "	start	Start ldmsd_sampler daemons on the nodes configured to"
 	echo "		collect metrics, e.g., compute nodes, IO nodes and"
 	echo "		management nodes"
@@ -31,6 +31,14 @@ else
 	exit -1
 fi
 
+if [ -f "/etc/ovis/ovis-functions.sh" ]; then
+	. /etc/ovis/ovis-functions.sh
+else
+	echo "Cannot find /etc/ovis/ovis-functions.sh. Please install
+		OVIS/lib."
+	exit -1
+fi
+
 if [ "$OVIS_RUN_CONF" = "" ]; then
 	echo '$OVIS_RUN_CONF is not defined'
 	exit -1
@@ -41,7 +49,7 @@ if [ ! -f "$OVIS_RUN_CONF" ]; then
 	exit -1
 fi
 
-SQL_SAMPLER_HOST="SELECT DISTINCT(apply_on) FROM templates;"
+SQL_SAMPLER_HOST="SELECT DISTINCT(apply_on) FROM templates ORDER BY apply_on;"
 HOSTS=`sqlite3 $OVIS_RUN_CONF "$SQL_SAMPLER_HOST"`
 if [ ! $? -eq 0 ]; then
 	exit $?
@@ -52,11 +60,9 @@ if [[ "$HOSTS" == "" ]]; then
 	exit -1
 fi
 
-# Replace ' ' by comma
-HOSTS=`echo $HOSTS`
-HOSTS=`echo ${HOSTS// /,}`
+HOSTS_S=`collapse_hostnames "$HOSTS"`
 
-echo "Connecting to hosts: $HOSTS ..."
+echo "Connecting to hosts: $HOSTS_S ..."
 
 case "$cmd" in
 	start)
