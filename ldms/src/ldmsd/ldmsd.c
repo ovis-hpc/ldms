@@ -208,8 +208,10 @@ void cleanup(int x)
 		close(muxr_s);
 	if (sockname && bind_succeeded)
 		unlink(sockname);
-	if (ldms)
-		ldms_release_xprt(ldms);
+	if (ldms) {
+		ldms_xprt_close(ldms);
+		ldms = NULL;
+	}
 
 	/* Destroy all store instances */
 	struct ldmsd_store_policy *sp;
@@ -2504,6 +2506,7 @@ void listen_on_transport(char *transport_str)
 		ldms_log("The transport specified, '%s', is invalid.\n", name);
 		cleanup(6);
 	}
+	ldms = l;
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(port_no);
