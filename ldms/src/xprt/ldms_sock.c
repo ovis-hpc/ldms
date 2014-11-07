@@ -115,14 +115,11 @@ void sock_xprt_cleanup(void)
 {
 	void *dontcare;
 
-	if (io_event_loop)
-		event_base_loopbreak(io_event_loop);
-	if (io_thread) {
-		pthread_cancel(io_thread);
-		pthread_join(io_thread, &dontcare);
-	}
-	if (io_event_loop)
+	if (io_event_loop) {
+		event_base_loopexit(io_event_loop, NULL);
 		event_base_free(io_event_loop);
+		io_event_loop = NULL;
+	}
 }
 
 static void sock_xprt_close(struct ldms_xprt *x)
