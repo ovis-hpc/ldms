@@ -397,10 +397,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	time_t appx = time(NULL); //append the files with epoch. assume wont collide to the sec.
 
 	/* For both actual new store and reopened store, open the data file */
+	char tmp_path[PATH_MAX];
+	snprintf(tmp_path, PATH_MAX, "%s.%d",
+		 s_handle->path, (int)appx);
+
 	if (!s_handle->file) {
-		char tmp_path[PATH_MAX];
-		snprintf(tmp_path, PATH_MAX, "%s.%d",
-			 s_handle->path, (int)appx);
 		s_handle->file = fopen(tmp_path, "a+");
 	}
 	if (!s_handle->file)
@@ -408,15 +409,14 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 	/* Only bother to open the headerfile if we have to print the header */
 	if (s_handle->printheader && !s_handle->headerfile){
-		char tmp_headerpath[PATH_MAX];
-
 		if (altheader) {
+			char tmp_headerpath[PATH_MAX];
 			snprintf(tmp_headerpath, PATH_MAX,
 				 "%s.HEADER.%d", s_handle->path, (int)appx);
 			/* truncate a separate headerfile if exists */
 			s_handle->headerfile = fopen(tmp_headerpath, "w");
 		} else {
-			s_handle->headerfile = fopen(s_handle->path, "a+");
+			s_handle->headerfile = fopen(tmp_path, "a+");
 		}
 
 		if (!s_handle->headerfile)
