@@ -249,7 +249,7 @@ void process_agg_add(struct oparser_cmd_queue *queue, char *attrs_values,
 
 		if (i == 0)
 			*first_new_cmd = new_cmd;
-		TAILQ_INSERT_TAIL(queue, new_cmd, entry);
+		TAILQ_INSERT_HEAD(queue, new_cmd, entry);
 		sprintf(new_cmd->verb, "add");
 		setname = TAILQ_FIRST(&setqueue);
 		__str = new_cmd->attrs_values;
