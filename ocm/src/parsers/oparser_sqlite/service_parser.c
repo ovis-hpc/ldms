@@ -198,6 +198,7 @@ void process_agg_add(struct oparser_cmd_queue *queue, char *attrs_values,
 	}
 	char *sets;
 	char *hosts;
+	char *conn_targets = NULL;
 
 	tmp_attr[0] = '\0';
 	attrs = strdup(cmd->attrs_values);
@@ -210,6 +211,8 @@ void process_agg_add(struct oparser_cmd_queue *queue, char *attrs_values,
 			hosts = strdup(value);
 		} else if (strcmp(key, "sets") == 0) {
 			sets = strdup(value);
+		} else if (strcmp(key, "conn_target") == 0) {
+			conn_targets = strdup(value);
 		} else {
 			if (strlen(tmp_attr) == 0)
 				sprintf(tmp_attr, "%s:%s", key, value);
@@ -220,17 +223,25 @@ void process_agg_add(struct oparser_cmd_queue *queue, char *attrs_values,
 		key = strtok(NULL, ":");
 	}
 
+	if (!conn_targets) {
+		conn_targets = strdup(hosts);
+	}
+
 	int i;
-	int num_sets;
+	int num_sets, num_targets;
 	struct oparser_cmd *new_cmd;
 	struct oparser_name_queue added_hqueue;
 	struct oparser_name_queue setqueue;
-	struct oparser_name *added_hname, *setname;
+	struct oparser_name_queue added_tqueue;
+	struct oparser_name *added_hname, *setname, *target_name;
+	char *__str;
 	num_added_hosts = process_string_name(hosts, &added_hqueue,
 							NULL, NULL);
 	num_sets = process_string_name(sets, &setqueue, NULL, NULL);
+	num_targets = process_string_name(conn_targets, &added_tqueue, NULL, NULL);
 
 	added_hname = TAILQ_FIRST(&added_hqueue);
+	target_name = TAILQ_FIRST(&added_tqueue);
 	for (i = 0; i < num_added_hosts; i++) {
 		new_cmd = malloc(sizeof(*new_cmd));
 		if (!new_cmd)
@@ -238,20 +249,22 @@ void process_agg_add(struct oparser_cmd_queue *queue, char *attrs_values,
 
 		if (i == 0)
 			*first_new_cmd = new_cmd;
-		TAILQ_INSERT_HEAD(queue, new_cmd, entry);
+		TAILQ_INSERT_TAIL(queue, new_cmd, entry);
 		sprintf(new_cmd->verb, "add");
 		setname = TAILQ_FIRST(&setqueue);
+		__str = new_cmd->attrs_values;
 
-		sprintf(new_cmd->attrs_values, "%s;host:%s;sets:%s/%s",
-				tmp_attr, added_hname->name,
+		__str += sprintf(__str, "%s;host:%s;sets:%s/%s",
+				tmp_attr, target_name->name,
 				added_hname->name, setname->name);
 
-		while (setname = TAILQ_NEXT(setname, entry)) {
-			sprintf(new_cmd->attrs_values, "%s,%s/%s",
-					new_cmd->attrs_values, added_hname->name,
+		while ((setname = TAILQ_NEXT(setname, entry))) {
+			__str += sprintf(__str, ",%s/%s",
+					added_hname->name,
 					setname->name);
 		}
 		added_hname = TAILQ_NEXT(added_hname, entry);
+		target_name = TAILQ_NEXT(target_name, entry);
 	}
 	free(tmp_attr);
 }
