@@ -124,6 +124,12 @@ int main(int argc, char **argv)
 		usage();
 	snprintf(path, sizeof(path), "%s_sos", sos_path);
 	ods = ods_open(path, O_RDWR);
+	if (!ods) {
+		fprintf(stderr, "ERROR: Could not open the sos store '%s'. "
+				"The given path might not be a SOS store path.\n",
+				sos_path);
+		_exit(-1);
+	}
 	meta = ods_get_user_data(ods, &meta_sz);
 	for (i = 0; i < meta->attr_cnt; i++) {
 		snprintf(path, sizeof(path), "%s_%s", sos_path,
