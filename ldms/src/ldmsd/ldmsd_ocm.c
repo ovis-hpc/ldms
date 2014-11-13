@@ -708,6 +708,7 @@ int ocm_cfg_cb(struct ocm_event *e)
 
 int ldmsd_ocm_init(const char *svc_type, uint16_t port)
 {
+	int rc;
 	ocm_cb_fn_t cb;
 	ocm = ocm_create("sock", port, ocm_req_cb, ldms_log);
 	if (!ocm)
@@ -724,5 +725,6 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port)
 	str_map_insert(ocm_verb_fn, "start", (uint64_t)ocm_handle_cfg_cmd_start);
 	str_map_insert(ocm_verb_fn, "add", (uint64_t)ocm_handle_cfg_cmd_add_host);
 	str_map_insert(ocm_verb_fn, "store", (uint64_t)ocm_handle_cfg_cmd_store);
-	ocm_enable(ocm);
+	rc = ocm_enable(ocm);
+	return rc;
 }

@@ -3518,8 +3518,8 @@ int main(int argc, char *argv[])
 #ifdef ENABLE_OCM
 	int ocm_rc = ldmsd_ocm_init(ldmsd_svc_type, ocm_port);
 	if (ocm_rc) {
-		ldms_log("Error: cannot initialize OCM, %s\n",
-				strerror(ocm_rc));
+		ldms_log("Error: cannot initialize OCM, rc: %d\n",
+				ocm_rc);
 		cleanup(ocm_rc);
 	}
 #endif
