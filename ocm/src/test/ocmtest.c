@@ -380,7 +380,11 @@ server:
 
 wait_done:
 
-	ocm_enable(ocm);
+	rc = ocm_enable(ocm);
+	if (rc) {
+		printf("ocm_enable failed: %d\n", rc);
+		exit(-1);
+	}
 
 	sem_wait(&done); /* one for config_me */
 	sem_wait(&done); /* another one for reject_me */
