@@ -471,6 +471,7 @@ void do_server(zap_t zap, struct sockaddr_in *sin)
 	err = zap_listen(ep, (struct sockaddr *)sin, sizeof(*sin));
 	if (err) {
 		printf("zap_listen failed.\n");
+		zap_close(ep);
 		return;
 	}
 

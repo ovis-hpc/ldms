@@ -1430,14 +1430,13 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
  err_3:
 	rc = epoll_ctl(cm_fd, EPOLL_CTL_DEL,
 			rep->cm_channel->fd, NULL);
-	__zap_put_ep(&rep->ep);
  err_2:
 	rdma_destroy_id(rep->cm_id);
 	rep->cm_id = NULL;
  err_1:
 	rdma_destroy_event_channel(rep->cm_channel);
 	rep->cm_channel = NULL;
-	zerr = zap_ep_change_state(&rep->ep, ZAP_EP_LISTENING, ZAP_EP_INIT);
+	zap_ep_change_state(&rep->ep, ZAP_EP_LISTENING, ZAP_EP_INIT);
  err_0:
 	return zerr;
 }

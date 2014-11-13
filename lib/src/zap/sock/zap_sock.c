@@ -945,8 +945,6 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 	return ZAP_ERR_OK;
 
  err_0:
-	z_sock_close(ep);
-	zap_put_ep(ep);
 	return zerr;
 }
 
