@@ -391,7 +391,12 @@ void initialize_daemon()
 	}
 	sprintf(ocm_key + strlen(ocm_key), "/%s", "balerd");
 	ocm_register(ocm, ocm_key, ocm_cb);
-	ocm_enable(ocm);
+	rc = ocm_enable(ocm);
+	if (rc) {
+		berr("ocm_enable failed, rc: %d", rc);
+		berr("Please check if port %d is occupied.", ocm_port);
+		exit(-1);
+	}
 #endif
 	binfo("Baler Initialization Complete.");
 }
