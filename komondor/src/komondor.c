@@ -1259,7 +1259,11 @@ void init()
 	}
 	sprintf(ocm_key, "%s/komondor", h);
 	ocm_register(ocm, ocm_key, ocm_cb);
-	ocm_enable(ocm);
+	rc = ocm_enable(ocm);
+	if (rc) {
+		k_log("ocm_enable failed: %d\n", rc);
+		exit(-1);
+	}
 #endif
 }
 
