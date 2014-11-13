@@ -281,6 +281,7 @@ void process_request(struct req_entry *req, struct ocm_cfg_buff *buff)
 	ocm_cfg_buff_reset(buff, req->key);
 	int rc = plugin->get_config(plugin, req->key, buff);
 	if (rc) {
+		ocmd_log("Error: %s: get_config failed.\n", req->key);
 		ocm_event_resp_err(req->ocm_ev, rc, req->key,
 					"get_config failed");
 	} else {

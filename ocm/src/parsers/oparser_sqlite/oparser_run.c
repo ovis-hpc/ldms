@@ -179,7 +179,8 @@ int main(int argc, char **argv) {
 
 	sprintf(path, "%s/%s", out_path, OVIS_DB);
 	rc = sqlite3_open_v2(path, &ovis_db,
-			SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+			SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE |
+			SQLITE_OPEN_FULLMUTEX, NULL);
 	if (rc) {
 		fprintf(stderr, "Failed to open sqlite '%s': %s\n",
 				path, sqlite3_errmsg(ovis_db));

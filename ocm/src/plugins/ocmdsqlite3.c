@@ -63,7 +63,6 @@
 struct ocmsqlite3 {
 	struct ocmd_plugin base;
 	char *path;
-	sqlite3 *db;
 };
 
 typedef enum osvc {
@@ -232,7 +231,30 @@ err:
 	return NULL;
 }
 
-int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
+int ocmsqlite3_connect_db(ocmd_plugin_t p, char *path, sqlite3 **db)
+{
+	int rc;
+	*db = NULL;
+	rc = sqlite3_open_v2(path, db,
+			SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, NULL);
+	if (!*db) {
+		LOG(p, "ocmsqlite3: sqlite3_open error: ENOMEM\n");
+		errno = ENOMEM;
+		goto err;
+	}
+	if (rc != SQLITE_OK) {
+		LOG(p, "ocmsqlite3: sqlite3_open error: %s\n",
+				sqlite3_errmsg(*db));
+		errno = EBUSY;
+		goto err;
+	}
+	return 0;
+err:
+	sqlite3_close_v2(*db);
+	return rc;
+}
+
+int ocmsqlite3_query_service(ocmd_plugin_t p, sqlite3 *db, const char *host,
 			      const char *svc, struct ocm_cfg_buff *buff)
 {
 	int rc, count;
@@ -250,9 +272,9 @@ int ocmsqlite3_query_service(ocmd_plugin_t p, const char *host,
 	struct sqlite3_stmt *stmt;
 	sprintf(sql, "SELECT * FROM services WHERE hostname='%s' AND"
 			" service='%s';", host, svc);
-	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
-		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
 		goto out;
 	}
 
@@ -334,7 +356,7 @@ err:
 #define NOT_CORRECTIVE "0"	/* Not corrective action */
 #define CORRECTIVE "1"	/* Corrective action */
 
-int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
+int ocmsqlite3_query_actions(ocmd_plugin_t p, sqlite3 *db, struct ocm_cfg_buff *buff)
 {
 	int rc = 0;
 	int count = 0;
@@ -350,9 +372,9 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 	const char *tail;
 	struct sqlite3_stmt *stmt;
 	sprintf(sql, "SELECT * FROM actions;");
-	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
-		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
 		goto out;
 	}
 
@@ -381,7 +403,6 @@ int ocmsqlite3_query_actions(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 			rc = EINVAL;
 			goto err;
 		}
-
 
 		ocm_value_set_s(ov, value);
 		free(value);
@@ -425,7 +446,7 @@ out:
 	return rc;
 }
 
-int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
+int ocmsqlite3_query_rules(ocmd_plugin_t p, sqlite3 *db, struct ocm_cfg_buff *buff)
 {
 	int rc = 0;
 	struct ocmsqlite3 *s = (void*)p;
@@ -444,9 +465,9 @@ int ocmsqlite3_query_rules(ocmd_plugin_t p , struct ocm_cfg_buff *buff)
 			"FROM rule_templates NATURAL JOIN rule_actions "
 			"NATURAL JOIN rule_metrics;");
 
-	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
-		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
 		goto out;
 	}
 
@@ -520,8 +541,12 @@ int handle_OSVC_KOMONDOR(ocmd_plugin_t p, const char *host,
 {
 	int rc = 0;
 	struct ocmsqlite3 *s = (void*)p;
+	sqlite3 *db;
+	rc = ocmsqlite3_connect_db(p, s->path, &db);
+	if (rc)
+		goto out;
 
-	rc = ocmsqlite3_query_service(p, host, svc, buff);
+	rc = ocmsqlite3_query_service(p, db, host, svc, buff);
 	if (rc) {
 		if (rc == ENOENT) {
 			p->log_fn("ocmsqlite3: Warning: No service "
@@ -532,25 +557,26 @@ int handle_OSVC_KOMONDOR(ocmd_plugin_t p, const char *host,
 					"configuration for '%s/%s'\n",
 					host, svc);
 		}
-		return rc;
+		goto out;
 	}
 
-	rc = ocmsqlite3_query_actions(p, buff);
+	rc = ocmsqlite3_query_actions(p, db, buff);
 	if (rc) {
 		p->log_fn("ocmsqlite3: failed to get the action "
 				"configuration for '%s/%s'\n",
 				host, svc);
-		return rc;
+		goto out;
 	}
 
-	rc = ocmsqlite3_query_rules(p, buff);
+	rc = ocmsqlite3_query_rules(p, db, buff);
 	if (rc) {
 		p->log_fn("ocmsqlite3: failed to get the event rule "
 				"configuration for '%s/%s'\n",
 				host, svc);
-		return rc;
+		goto out;
 	}
-
+out:
+	sqlite3_close_v2(db);
 	return rc;
 }
 
@@ -683,9 +709,9 @@ int ocmsqlite3_query_sampler_cfg(struct ocm_cfg_buff *buff, sqlite3 *db,
 	const char *tail;
 	struct sqlite3_stmt *stmt;
 	sprintf(sql, "SELECT * FROM templates WHERE apply_on='%s';", hostname);
-	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
-		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
 		goto out;
 	}
 
@@ -721,11 +747,18 @@ int handle_OSVC_LDMSD_SAMPLER(ocmd_plugin_t p, const char *host,
 			      const char *svc, struct ocm_cfg_buff *buff)
 {
 	struct ocmsqlite3 *s = (struct ocmsqlite3 *)p;
-	int rc = ocmsqlite3_query_sampler_cfg(buff, s->db, host, p);
+	sqlite3 *db;
+	int rc = 0;
+	rc = ocmsqlite3_connect_db(p, s->path, &db);
+	if (rc)
+		return rc;
+
+	rc = ocmsqlite3_query_sampler_cfg(buff, db, host, p);
 	if (rc == ENOENT) {
 		p->log_fn("ocmsqlite3: No configuration for '%s/%s'\n",
 				host, svc);
 	}
+	sqlite3_close_v2(db);
 	return rc;
 }
 
@@ -762,7 +795,6 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 			rc = EINVAL;
 			goto err;
 		}
-
 
 		if (strcmp(a, "interval") == 0) {
 			interval = strtoull(v, NULL, 10);
@@ -804,7 +836,7 @@ err:
 	return rc;
 }
 
-int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
+int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p, sqlite3 *db,
 		const char *host, const char *svc, struct ocm_cfg_buff *buff)
 {
 	int rc, count;
@@ -822,9 +854,9 @@ int ocmsqlite3_query_ldmsd_aggregator_service(ocmd_plugin_t p,
 	struct sqlite3_stmt *stmt;
 	sprintf(sql, "SELECT * FROM services WHERE hostname='%s' AND"
 			" service='%s';", host, svc);
-	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
-		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
 		goto out;
 	}
 
@@ -909,27 +941,45 @@ out:
 int handle_OSVC_LDMSD_AGGREGATOR(ocmd_plugin_t p, const char *host,
 			      const char *svc, struct ocm_cfg_buff *buff)
 {
-	int rc = ocmsqlite3_query_ldmsd_aggregator_service(p, host, svc, buff);
+	int rc = 0;
+	struct ocmsqlite3 *s = (struct ocmsqlite3 *)p;
+	sqlite3 *db;
+	rc = ocmsqlite3_connect_db(p, s->path, &db);
+	if (rc)
+		goto out;
+
+	rc = ocmsqlite3_query_ldmsd_aggregator_service(p, db, host, svc, buff);
 	if (rc == ENOENT) {
 		p->log_fn("ocmsqlite3: No configuration for '%s/%s'\n",
 				host, svc);
 	}
+out:
+	sqlite3_close_v2(db);
 	return rc;
 }
 
 int handle_OSVC_BALERD(ocmd_plugin_t p, const char *host,
 			      const char *svc, struct ocm_cfg_buff *buff)
 {
-	int rc = ocmsqlite3_query_service(p, host, svc, buff);
+	int rc = 0;
+	struct ocmsqlite3 *s = (struct ocmsqlite3 *)p;
+	sqlite3 *db;
+	rc = ocmsqlite3_connect_db(p, s->path, &db);
+	if (rc)
+		goto out;
+
+	rc = ocmsqlite3_query_service(p, db, host, svc, buff);
 	if (rc == ENOENT) {
 		p->log_fn("ocmsqlite3: No configuration for '%s/%s'\n",
 				host, svc);
 	}
+out:
+	sqlite3_close_v2(db);
 	return rc;
 
 }
 
-int ocmsqlite3_query_events(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
+int ocmsqlite3_query_events(ocmd_plugin_t p, sqlite3 *db, struct ocm_cfg_buff *buff)
 {
 	struct ocmsqlite3 *s = (void*)p;
 	int count = 0;
@@ -951,9 +1001,9 @@ int ocmsqlite3_query_events(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 	sprintf(sql, "SELECT model_id, metric_id FROM rule_templates "
 			"NATURAL JOIN rule_metrics WHERE model_id != 65535;");
 
-	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
-		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
 		goto out;
 	}
 
@@ -1015,7 +1065,8 @@ out:
 	return rc;
 }
 
-int ocmsqlite3_query_model_policy(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
+int ocmsqlite3_query_model_policy(ocmd_plugin_t p, sqlite3 *db,
+						struct ocm_cfg_buff *buff)
 {
 	struct ocmsqlite3 *s = (void*)p;
 	int count = 0;
@@ -1031,9 +1082,9 @@ int ocmsqlite3_query_model_policy(ocmd_plugin_t p, struct ocm_cfg_buff *buff)
 	const char *tail;
 	struct sqlite3_stmt *stmt;
 	sprintf(sql, "SELECT * FROM models;");
-	rc = sqlite3_prepare_v2(s->db, sql, 1024, &stmt, &tail);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
 	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
-		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(s->db));
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
 		goto out;
 	}
 
@@ -1129,9 +1180,14 @@ int handle_OSVC_ME(ocmd_plugin_t p, const char *host,
 			      const char *svc, struct ocm_cfg_buff *buff)
 {
 	int rc = 0;
-	int count = 0;
 	struct ocmsqlite3 *s = (struct ocmsqlite3 *)p;
-	rc = ocmsqlite3_query_service(p, host, svc, buff);
+	sqlite3 *db;
+	rc = ocmsqlite3_connect_db(p, s->path, &db);
+	if (rc)
+		goto out;
+
+	int count = 0;
+	rc = ocmsqlite3_query_service(p, db, host, svc, buff);
 	if (rc) {
 		if (rc == ENOENT) {
 			p->log_fn("ocmsqlite3: Warning: No service "
@@ -1140,27 +1196,29 @@ int handle_OSVC_ME(ocmd_plugin_t p, const char *host,
 		} else {
 			p->log_fn("ocmsqlite3: failed to get the service "
 					"configuration for '%s/%s'\n", host, svc);
-			return rc;
+			goto out;
 		}
 	}
 
 	/* Get the model policy configuration */
-	rc = ocmsqlite3_query_model_policy(p, buff);
+	rc = ocmsqlite3_query_model_policy(p, db, buff);
 	if (rc) {
 		p->log_fn("ocmsqlite3: failed to get the model policy "
 				"configuration for '%s/%s'\n",
 				host, svc);
-		return rc;
+		goto out;
 	}
 
 	/* Get the event configuration */
-	rc = ocmsqlite3_query_events(p, buff);
+	rc = ocmsqlite3_query_events(p, db, buff);
 	if (rc) {
 		p->log_fn("ocmsqlite3: failed to get the event "
 				"configuration for '%s/%s'\n",
 				host, svc);
-		return rc;
+		goto out;
 	}
+out:
+	sqlite3_close_v2(db);
 	return 0;
 }
 
@@ -1198,8 +1256,6 @@ err:
 void ocmsqlite3_destroy(ocmd_plugin_t p)
 {
 	struct ocmsqlite3 *s = (void*)p;
-	if (s->db)
-		sqlite3_close(s->db);
 	if (s->path)
 		free(s->path);
 	free(s);
@@ -1225,21 +1281,19 @@ struct ocmd_plugin* ocmd_plugin_create(void (*log_fn)(const char *fmt, ...),
 	s->path = strdup(path);
 	if (!s->path)
 		goto err1;
-	int rc;
-	rc = sqlite3_open_v2(path, &s->db, SQLITE_OPEN_READONLY, NULL);
-	if (!s->db) {
-		log_fn("sqlite3: sqlite3_open error: ENOMEM\n");
-		errno = ENOMEM;
-		goto err1;
-	}
-	if (rc != SQLITE_OK) {
-		log_fn("ocmsqlite3: sqlite3_open error: %s\n",
-				sqlite3_errmsg(s->db));
-		errno = EBUSY;
-		goto err1;
-	}
 
+	/* Check if the plugin can open the database or not. If it cannot open,
+	 * it should fail to create.
+	 */
+	sqlite3 *db;
+	int rc = ocmsqlite3_connect_db((ocmd_plugin_t)s, path, &db);
+	if (rc)
+		goto err2;
+
+	sqlite3_close_v2(db);
 	return (ocmd_plugin_t) s;
+err2:
+	sqlite3_close_v2(db);
 err1:
 	ocmsqlite3_destroy((ocmd_plugin_t)s);
 err0:
