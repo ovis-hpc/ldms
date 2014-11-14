@@ -110,7 +110,7 @@ void ocmd_log(const char *fmt, ...)
 	localtime_r(&t, &tm);
 	strftime(tstr, 32, "%a %b %d %T %Y", &tm);
 	pthread_mutex_lock(&log_lock);
-	printf("%s ", tstr);
+	printf("%s: ", tstr);
 	va_list ap;
 	va_start(ap, fmt);
 	vprintf(fmt, ap);
@@ -392,6 +392,8 @@ void ocmd_init()
 	else
 		log_file = stdout;
 
+	ocmd_log("ocm Daemon started.\n");
+
 	char *tv = getenv("OCMD_RECONNECT_INTERVAL");
 	if (tv) {
 		int sec = 20;
@@ -518,9 +520,8 @@ int main(int argc, char** argv)
 {
 	int rc;
 	handle_args(argc, argv);
-	ocmd_init();
 
-	ocmd_log("ocm Daemon started.\n");
+	ocmd_init();
 
 	ocmd_add_peers();
 

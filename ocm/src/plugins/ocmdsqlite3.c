@@ -231,6 +231,39 @@ err:
 	return NULL;
 }
 
+int ocmsqlite3_verify_db(ocmd_plugin_t p, sqlite3 *db)
+{
+	int rc = 0;
+	char sql[1024];
+	const char *tail;
+	struct sqlite3_stmt *stmt;
+	sprintf(sql, "SELECT * FROM components LIMIT 1;");
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
+		goto out;
+	}
+	rc = 0;
+out:
+	sqlite3_finalize(stmt);
+	return rc;
+
+}
+
+int ocmsqlite3_close_db(ocmd_plugin_t p, sqlite3 *db)
+{
+	int rc = sqlite3_close(db);
+	while (rc == SQLITE_BUSY) {
+		rc = sqlite3_close(db);
+	}
+	if (rc != SQLITE_OK) {
+		LOG(p, "ocmsqlite3: sqlite3_close error: %s\n",
+				sqlite3_errmsg(db));
+		return rc;
+	}
+	return 0;
+}
+
 int ocmsqlite3_connect_db(ocmd_plugin_t p, char *path, sqlite3 **db)
 {
 	int rc;
@@ -250,7 +283,7 @@ int ocmsqlite3_connect_db(ocmd_plugin_t p, char *path, sqlite3 **db)
 	}
 	return 0;
 err:
-	sqlite3_close_v2(*db);
+	ocmsqlite3_close_db(p, *db);
 	return rc;
 }
 
@@ -576,7 +609,7 @@ int handle_OSVC_KOMONDOR(ocmd_plugin_t p, const char *host,
 		goto out;
 	}
 out:
-	sqlite3_close_v2(db);
+	ocmsqlite3_close_db(p, db);
 	return rc;
 }
 
@@ -758,7 +791,7 @@ int handle_OSVC_LDMSD_SAMPLER(ocmd_plugin_t p, const char *host,
 		p->log_fn("ocmsqlite3: No configuration for '%s/%s'\n",
 				host, svc);
 	}
-	sqlite3_close_v2(db);
+	ocmsqlite3_close_db(p, db);
 	return rc;
 }
 
@@ -954,7 +987,7 @@ int handle_OSVC_LDMSD_AGGREGATOR(ocmd_plugin_t p, const char *host,
 				host, svc);
 	}
 out:
-	sqlite3_close_v2(db);
+	ocmsqlite3_close_db(p, db);
 	return rc;
 }
 
@@ -974,7 +1007,7 @@ int handle_OSVC_BALERD(ocmd_plugin_t p, const char *host,
 				host, svc);
 	}
 out:
-	sqlite3_close_v2(db);
+	ocmsqlite3_close_db(p, db);
 	return rc;
 
 }
@@ -1218,7 +1251,7 @@ int handle_OSVC_ME(ocmd_plugin_t p, const char *host,
 		goto out;
 	}
 out:
-	sqlite3_close_v2(db);
+	ocmsqlite3_close_db(p, db);
 	return 0;
 }
 
@@ -1289,11 +1322,13 @@ struct ocmd_plugin* ocmd_plugin_create(void (*log_fn)(const char *fmt, ...),
 	int rc = ocmsqlite3_connect_db((ocmd_plugin_t)s, path, &db);
 	if (rc)
 		goto err2;
-
-	sqlite3_close_v2(db);
+	rc = ocmsqlite3_verify_db((ocmd_plugin_t)s, db);
+	if (rc)
+		goto err2;
+	ocmsqlite3_close_db((ocmd_plugin_t)s, db);
 	return (ocmd_plugin_t) s;
 err2:
-	sqlite3_close_v2(db);
+	ocmsqlite3_close_db((ocmd_plugin_t)s, db);
 err1:
 	ocmsqlite3_destroy((ocmd_plugin_t)s);
 err0:
