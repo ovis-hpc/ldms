@@ -86,8 +86,30 @@ static char *root_path;
 static int altheader;
 static char* derivedconf = NULL;
 static int id_pos;
-static int rollover;
 static int agedt_sec = -1;
+static int rollover;
+static int rolltype;
+/** ROLLTYPES documents rolltype and is used in help output. */
+#define ROLLTYPES \
+"                     0: wake at midnight and roll for any rollover > 0.\n" \
+"                     1: wake approximately every rollover seconds and roll.\n" \
+"                     2: wake daily at rollover seconds after midnight and roll.\n" \
+"                     3: roll after approximately rollover records are written.\n" \
+"                     4: roll after approximately rollover bytes are written.\n" 
+
+#define MAXROLLTYPE 4
+#define DEFAULT_ROLLTYPE 0
+/** minimum rollover for type 1; 
+    rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1 */
+#define MIN_ROLL_1 10 
+/** minimum rollover for type 3; 
+    rolltype==3 and rollover < MIN_ROLL_RECORDS -> rollover = MIN_ROLL_RECORDS */
+#define MIN_ROLL_RECORDS 3
+/** minimum rollover for type 4; 
+    rolltype==4 and rollover < MIN_ROLL_BYTES -> rollover = MIN_ROLL_BYTES */
+#define MIN_ROLL_BYTES 1024
+/** Interval to check for passing the record or byte count limits */
+#define ROLL_LIMIT_INTERVAL 60
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
@@ -155,10 +177,17 @@ struct csv_store_rollover_handle {
 	char *store_key;
 	pthread_mutex_t lock;
 	void *ucontext;
+	int64_t store_count;
+	int64_t byte_count;
 };
 
 static pthread_mutex_t cfg_lock;
 
+/* Time-based rolltypes will always roll the files when this
+function is called.
+Volume-based rolltypes must check and shortcircuit within this
+function.
+*/
 static int handleRollover(){
 	//get the config lock
 	//for every handle we have, do the rollover
@@ -181,6 +210,34 @@ static int handleRollover(){
 
 				//if we've got here then we've called new_store, but it might be closed
 				pthread_mutex_lock(&s_handle->lock);
+				switch (rolltype) {
+				case 0:
+					break;
+				case 1:
+					break;
+				case 2:
+					break;
+				case 3:
+					if (s_handle->store_count < rollover)  {
+						pthread_mutex_unlock(&s_handle->lock);
+						continue;
+					} else {
+						s_handle->store_count = 0;
+					}
+					break;
+				case 4:
+					if (s_handle->byte_count < rollover) {
+						pthread_mutex_unlock(&s_handle->lock);
+						continue;
+					} else {
+						s_handle->byte_count = 0;
+					}
+					break;
+				default:
+					msglog(LDMS_LDEBUG, "Error: unexpected rolltype in store(%d)\n",
+						rolltype);
+					break;
+				}
 			
 				if (s_handle->file)
 					fflush(s_handle->file);
@@ -243,8 +300,36 @@ static int handleRollover(){
 static void* rolloverThreadInit(void* m){
 	while(1){
 		if (rollover > 0){
+			int tsleep;
 			time_t secSinceMidnight = time(NULL) % 86400;
-			int tsleep = 86400 - (int) secSinceMidnight;
+			int now = (int) secSinceMidnight;
+			switch (rolltype) {
+			case 0:
+				tsleep = 86400 - now;
+				break;
+			case 1:
+				tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
+				break;
+			case 2:
+				if ( now < rollover) {
+					tsleep = rollover - now;
+				} else {
+					tsleep = 86400 - now + rollover; 
+				}
+				break;
+			case 3:
+				if (rollover < MIN_ROLL_RECORDS)
+					rollover = MIN_ROLL_RECORDS;
+				tsleep = ROLL_LIMIT_INTERVAL;
+				break;
+			case 4:
+				if (rollover < MIN_ROLL_BYTES)
+					rollover = MIN_ROLL_BYTES;
+				tsleep = ROLL_LIMIT_INTERVAL;
+				break;
+			default:
+				tsleep = INT_MAX;
+			}
 			sleep(tsleep);
 			handleRollover();
 		}
@@ -348,6 +433,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *ivalue = NULL;
 	char *rvalue = NULL;
 	int roll = -1;
+	int rollmethod = DEFAULT_ROLLTYPE;
 	int ipos = -1;
 	int agev = -1;
 
@@ -372,11 +458,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	rvalue = av_value(avl, "rollover");
 	if (rvalue){
-		roll = atoi(ivalue);
+		roll = atoi(rvalue);
 		if (roll < 0){
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		}
+	}
+
+	rvalue = av_value(avl, "rolltype");
+	if (rvalue){
+		if (roll <= 0) /* rolltype not valid without rollover also */
+			return EINVAL;
+		rollmethod = atoi(rvalue);
+		if (rollmethod <= 0)
+			return EINVAL;
+		if (rollmethod > MAXROLLTYPE)
+			return EINVAL;
 	}
 
 	ivalue = av_value(avl, "agesec");
@@ -401,9 +498,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	id_pos = ipos;
 	rollover = roll;
-	if (rollover > 0)
+	if (rollover > 0) {
+		rolltype = rollmethod;
 		pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
-
+	}
 	agedt_sec = agev;
 
 	if (altvalue)
@@ -433,7 +531,9 @@ static const char *usage(void)
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
-		"         - rollover Greater than zero will rollover at midnight (optional)\n"
+		"         - rollover  Greater than zero; enables file rollover and sets interval\n"
+		"         - rolltype  [0-n] Defines the policy used to schedule rollover events.\n"
+		ROLLTYPES
 		"         - derivedconf (optional) Full path to derived config file\n"
 		"         - agesec     Set flag field if dt > this val in sec.\n"
 		"                     (Optional default no value used.)\n"
@@ -821,6 +921,8 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
+			else 
+				s_handle->byte_count += rc;
 		}
 	}
 
@@ -864,17 +966,21 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 				if (rc < 0)
 					msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
+				else 
+					s_handle->byte_count += rc;
 			} else {
 				rc = fprintf(s_handle->file, ", %" PRIu64, val);
 				if (rc < 0)
 					msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
+				else 
+					s_handle->byte_count += rc;
 			}
 		}
 
 	} // i
 	fprintf(s_handle->file, ", %d\n", setflag);
-
+	s_handle->byte_count += 1;
 
 	dp->ts->sec = ts->sec;
 	dp->ts->usec = ts->usec;
@@ -887,6 +993,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	}
 
 out:
+	s_handle->store_count++;
 	pthread_mutex_unlock(&cfg_lock);
 	pthread_mutex_unlock(&s_handle->lock);
 

@@ -373,8 +373,8 @@ static const char *usage(void)
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
-                "         - rollover  Greater than zero; enables file rollover and sets interval\n"
-                "         - rolltype  [0-n] Defines the policy used to schedule rollover events.\n"
+		"         - rollover  Greater than zero; enables file rollover and sets interval\n"
+		"         - rolltype  [0-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
 		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
                 "                     (Optional default use all compid)\n";
@@ -451,7 +451,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 {
 	struct csv_store_rollover_handle *s_handle;
 	int add_handle = 0;
-	int rc;
+	int rc = 0;
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
@@ -608,6 +608,8 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv_rollover: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
+			else 
+				s_handle->byte_count += rc;
 		}
 		for (i = 0; i < num_metrics; i++) {
 			rc = fprintf(s_handle->file, ", %" PRIu64, ldms_get_u64(mvec->v[i]));
