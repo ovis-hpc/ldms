@@ -359,6 +359,10 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 scripts/ldms_local_inspxe.sh
 		 scripts/ldms_local_inspxe_rdma.sh
 		 scripts/ldms_local_rdmatest.sh
+		 scripts/ldms_local_rollbytes_test.sh
+		 scripts/ldms_local_rollperiod_test.sh
+		 scripts/ldms_local_rollrecords_test.sh
+		 scripts/ldms_local_rolltime_test.sh
 		 ldms.spec],[
 		if test -f scripts/ldms_ban.sh.in; then chmod a+x scripts/ldms_ban.sh.in; fi
 		if test -f scripts/ldms_ctltest.sh; then chmod a+x scripts/ldms_ctltest.sh; fi
@@ -369,6 +373,10 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		if test -f scripts/ldms_local_inspxe.sh ; then chmod a+x scripts/ldms_local_inspxe.sh; fi;
 		if test -f scripts/ldms_local_inspxe_rdma.sh ; then chmod a+x scripts/ldms_local_inspxe_rdma.sh; fi
 		if test -f scripts/ldms_local_rdmatest.sh; then chmod a+x scripts/ldms_local_rdmatest.sh; fi
+		if test -f scripts/ldms_local_rollbytes_test.sh; then chmod a+x scripts/ldms_local_rollbytes_test.sh; fi
+		if test -f scripts/ldms_local_rollperiod_test.sh; then chmod a+x scripts/ldms_local_rollperiod_test.sh; fi
+		if test -f scripts/ldms_local_rollrecords_test.sh; then chmod a+x scripts/ldms_local_rollrecords_test.sh; fi
+		if test -f scripts/ldms_local_rolltime_test.sh; then chmod a+x scripts/ldms_local_rolltime_test.sh; fi
 		])
 AC_OUTPUT
 
