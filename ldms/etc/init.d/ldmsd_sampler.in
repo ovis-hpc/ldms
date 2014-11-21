@@ -122,9 +122,16 @@ stop() {
 		echo "Cannot obtain ldmsd_sampler pid ..."
 		echo_failure
 		echo
+		return
 	else
 		kill $pid
 	fi
+
+	COUNT=$((4*10))
+	while [ -d /proc/$pid ] && [ $COUNT -gt 0 ]; do
+		sleep 0.25
+		COUNT=$((COUNT-1))
+	done
 
 	if ps -p $pid >/dev/null 2>&1 ; then
 		echo_failure
