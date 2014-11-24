@@ -77,6 +77,9 @@ dnl Other libraries
 OPTION_DEFAULT_DISABLE([gpcdr], [ENABLE_GPCDR]) dnl use gpcdr vs gpcd
 OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD]) dnl for the path to gpcd if relevant
 OPTION_WITH([gpcd], [GPCD])
+OPTION_DEFAULT_DISABLE([nvidia], [ENABLE_NVIDIA])
+OPTION_WITH([nvidia-inc-base], [NVIDIA_INC_BASE])
+OPTION_WITH([nvidia-lib-base], [NVIDIA_LIB_BASE])
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
 OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
@@ -285,6 +288,13 @@ then
         else
           AC_MSG_RESULT([Use gpcd interface for gemini metrics.])
         fi
+
+	if test -z "$ENABLE_NVIDIA_TRUE"
+	then
+	AC_DEFINE([HAVE_NVIDIA],[1],[Compile with nvidia-ml using NVIDIA paths.])
+	else
+	AC_MSG_RESULT([Not compiling with nvidia-ml.])
+	fi
 
 fi
 

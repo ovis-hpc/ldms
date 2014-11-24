@@ -86,6 +86,7 @@ typedef enum {
 	NS_CURRENT_FREEMEM,
 	NS_KGNILND,
 	NS_PROCNETDEV,
+	NS_NVIDIA,
 	NS_NUM
 } cray_system_sampler_sources_t;
 #else
@@ -101,6 +102,7 @@ typedef enum {
 	NS_CURRENT_FREEMEM,
 	NS_KGNILND,
 	NS_PROCNETDEV,
+	NS_NVIDIA,
 	NS_NUM
 } cray_system_sampler_sources_t;
 #endif
@@ -219,6 +221,10 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 		return get_metric_size_gem_link_perf(m_sz, d_sz, msglog);
 		break;
 #endif
+	case NS_NVIDIA:
+		nvidia_setup(msglog);
+		return get_metric_size_nvidia(m_sz, d_sz, msglog);
+		break;
 	default:
 		break;
 	}
@@ -418,6 +424,11 @@ static int add_metrics_generic(int comp_id,
 		return 0;
 		break;
 #endif
+	case NS_NVIDIA:
+		rc = add_metrics_nvidia(set, comp_id, msglog);
+		if (rc != 0) 
+			return rc;
+		break;
 	default:
 		break;
 	}
@@ -607,6 +618,9 @@ static int sample(void)
 			rc = sample_metrics_gem_link_perf(msglog);
 			break;
 #endif
+		case NS_NVIDIA:
+			rc = sample_metrics_nvidia(msglog);
+			break;
 		default:
 			//do nothing
 			break;
