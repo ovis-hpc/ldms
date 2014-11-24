@@ -62,16 +62,20 @@ fi
 
 HOSTS_S=`collapse_hostnames "$HOSTS"`
 
-echo "Connecting to hosts: $HOSTS_S ..."
+HOSTS=`echo $HOSTS`
+HOSTS=`echo ${HOSTS// /,}`
 
 case "$cmd" in
 	start)
+		echo "Connecting to hosts: $HOSTS_S ..."
 		pdsh -f 80 -w $HOSTS "service ldmsd_sampler start"
 		;;
 	stop)
+		ho "Connecting to hosts: $HOSTS_S ..."
 		pdsh -f 80 -w $HOSTS "service ldmsd_sampler stop"
 		;;
 	status)
+		echo "Connecting to hosts: $HOSTS_S ..."
 		pdsh -f 80 -w $HOSTS "service ldmsd_sampler status" | sort
 		;;
 	usage)
