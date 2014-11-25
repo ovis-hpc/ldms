@@ -91,16 +91,17 @@ static int rollover;
 static int rolltype;
 /** ROLLTYPES documents rolltype and is used in help output. */
 #define ROLLTYPES \
-"                     0: wake at midnight and roll for any rollover > 0.\n" \
 "                     1: wake approximately every rollover seconds and roll.\n" \
-"                     2: wake daily at rollover seconds after midnight and roll.\n" \
+"                     2: wake daily at rollover seconds after midnight (>=0) and roll.\n" \
 "                     3: roll after approximately rollover records are written.\n" \
 "                     4: roll after approximately rollover bytes are written.\n" 
 
 #define MAXROLLTYPE 4
 #define DEFAULT_ROLLTYPE 0
-/** minimum rollover for type 1; 
-    rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1 */
+/** minimum rollover for type 1;
+    rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1
+    also used for minimum sleep time for type 2;
+    rolltype==2 and rollover results in sleep < MIN_ROLL_SLEEPTIME -> skip this roll and do it the next day */
 #define MIN_ROLL_1 10 
 /** minimum rollover for type 3; 
     rolltype==3 and rollover < MIN_ROLL_RECORDS -> rollover = MIN_ROLL_RECORDS */
@@ -115,7 +116,7 @@ static ldmsd_msg_log_f msglog;
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
-#define LOGFILE "/var/log/store_derived_csv_rollover_rollover.log"
+#define LOGFILE "/var/log/store_derived_csv_rollover.log"
 
 /**
  * BASED on:
@@ -211,8 +212,6 @@ static int handleRollover(){
 				//if we've got here then we've called new_store, but it might be closed
 				pthread_mutex_lock(&s_handle->lock);
 				switch (rolltype) {
-				case 0:
-					break;
 				case 1:
 					break;
 				case 2:
@@ -299,41 +298,35 @@ static int handleRollover(){
 
 static void* rolloverThreadInit(void* m){
 	while(1){
-		if (rollover > 0){
-			int tsleep;
-			time_t secSinceMidnight = time(NULL) % 86400;
-			int now = (int) secSinceMidnight;
-			switch (rolltype) {
-			case 0:
-				tsleep = 86400 - now;
-				break;
-			case 1:
-				tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
-				break;
-			case 2:
-				if ( now < rollover) {
-					tsleep = rollover - now;
-				} else {
-					tsleep = 86400 - now + rollover; 
-				}
-				break;
-			case 3:
-				if (rollover < MIN_ROLL_RECORDS)
-					rollover = MIN_ROLL_RECORDS;
-				tsleep = ROLL_LIMIT_INTERVAL;
-				break;
-			case 4:
-				if (rollover < MIN_ROLL_BYTES)
-					rollover = MIN_ROLL_BYTES;
-				tsleep = ROLL_LIMIT_INTERVAL;
-				break;
-			default:
-				tsleep = INT_MAX;
-			}
-			sleep(tsleep);
-			handleRollover();
+	        int tsleep;
+		switch (rolltype) {
+		case 1:
+		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
+		  break;
+		case 2: {
+		  time_t secSinceMidnight = time(NULL) % 86400;
+		  tsleep = 86400 - (int) secSinceMidnight + rollover;
+		  if (tsleep < MIN_ROLL_1){
+		    /* if we just did a roll then skip this one */
+		    tsleep+=86400;
+		  }
 		}
-	}
+		case 3:
+		  if (rollover < MIN_ROLL_RECORDS)
+		    rollover = MIN_ROLL_RECORDS;
+		  tsleep = ROLL_LIMIT_INTERVAL;
+		  break;
+		case 4:
+		  if (rollover < MIN_ROLL_BYTES)
+		    rollover = MIN_ROLL_BYTES;
+		  tsleep = ROLL_LIMIT_INTERVAL;
+		  break;
+		default:
+		  break;
+		}
+		sleep(tsleep);
+		handleRollover();
+	}		
 
 	return NULL;
 }
@@ -467,10 +460,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	rvalue = av_value(avl, "rolltype");
 	if (rvalue){
-		if (roll <= 0) /* rolltype not valid without rollover also */
+		if (roll < 0) /* rolltype not valid without rollover also */
 			return EINVAL;
 		rollmethod = atoi(rvalue);
-		if (rollmethod <= 0)
+		if (rollmethod < MINROLLTYPE)
 			return EINVAL;
 		if (rollmethod > MAXROLLTYPE)
 			return EINVAL;
@@ -498,7 +491,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	id_pos = ipos;
 	rollover = roll;
-	if (rollover > 0) {
+	if (rollmethod >= MINROLLTYPE) {
 		rolltype = rollmethod;
 		pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
 	}
@@ -532,7 +525,7 @@ static const char *usage(void)
 		"           path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - rollover  Greater than zero; enables file rollover and sets interval\n"
-		"         - rolltype  [0-n] Defines the policy used to schedule rollover events.\n"
+		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
 		"         - derivedconf (optional) Full path to derived config file\n"
 		"         - agesec     Set flag field if dt > this val in sec.\n"
