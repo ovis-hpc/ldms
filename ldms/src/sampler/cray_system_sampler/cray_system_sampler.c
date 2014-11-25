@@ -76,6 +76,8 @@
 #ifdef HAVE_GPCDR
 #include "gemini_metrics_gpcdr.h"
 
+#ifdef HAVE_NVIDIA
+#include "nvidia_metrics.h"
 typedef enum {
 	NS_NETTOPO,
 	NS_LINKSMETRICS,
@@ -90,8 +92,25 @@ typedef enum {
 	NS_NUM
 } cray_system_sampler_sources_t;
 #else
+typedef enum {
+	NS_NETTOPO,
+	NS_LINKSMETRICS,
+	NS_NICMETRICS,
+	NS_LUSTRE,
+	NS_VMSTAT,
+	NS_LOADAVG,
+	NS_CURRENT_FREEMEM,
+	NS_KGNILND,
+	NS_PROCNETDEV,
+	NS_NUM
+} cray_system_sampler_sources_t;
+#endif
+
+#else
 #include "gemini_metrics_gpcd.h"
 
+#ifdef HAVE_NVIDIA
+#include "nvidia_metrics.h"
 typedef enum {
 	NS_NETTOPO,
 	NS_GEM_LINK_PERF,
@@ -105,6 +124,20 @@ typedef enum {
 	NS_NVIDIA,
 	NS_NUM
 } cray_system_sampler_sources_t;
+#else
+typedef enum {
+	NS_NETTOPO,
+	NS_GEM_LINK_PERF,
+	NS_NIC_PERF,
+	NS_LUSTRE,
+	NS_VMSTAT,
+	NS_LOADAVG,
+	NS_CURRENT_FREEMEM,
+	NS_KGNILND,
+	NS_PROCNETDEV,
+	NS_NUM
+} cray_system_sampler_sources_t;
+#endif
 #endif
 
 
@@ -221,10 +254,12 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 		return get_metric_size_gem_link_perf(m_sz, d_sz, msglog);
 		break;
 #endif
+#ifdef HAVE_NVIDIA
 	case NS_NVIDIA:
 		nvidia_setup(msglog);
 		return get_metric_size_nvidia(m_sz, d_sz, msglog);
 		break;
+#endif
 	default:
 		break;
 	}
@@ -424,11 +459,13 @@ static int add_metrics_generic(int comp_id,
 		return 0;
 		break;
 #endif
+#ifdef HAVE_NVIDIA
 	case NS_NVIDIA:
 		rc = add_metrics_nvidia(set, comp_id, msglog);
 		if (rc != 0) 
 			return rc;
 		break;
+#endif
 	default:
 		break;
 	}
@@ -618,9 +655,11 @@ static int sample(void)
 			rc = sample_metrics_gem_link_perf(msglog);
 			break;
 #endif
+#ifdef HAVE_NVIDIA
 		case NS_NVIDIA:
 			rc = sample_metrics_nvidia(msglog);
 			break;
+#endif
 		default:
 			//do nothing
 			break;

@@ -69,6 +69,8 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
+//What to do about having nvml.h ? Should we have zero'ed metrics even w/o nvml.h?
+#include "nvml.h"
 
 #define NVIDIA_MAX_DEVICES 4
 #define NVIDIA_MAX_METRIC_NAME_SIZE (NVML_DEVICE_NAME_BUFFER_SIZE+40)
@@ -97,6 +99,7 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 int add_metrics_nvidia(ldms_set_t set, int comp_id,
 			      ldmsd_msg_log_f msglog);
 int nvidia_setup(ldmsd_msg_log_f msglog);
+int nvidia_shutdown(ldmsd_msg_log_f msglog);
 int sample_metrics_nvidia(ldmsd_msg_log_f msglog);
 
 
