@@ -105,22 +105,22 @@ static int create_metric_set(const char *path)
 	tot_meta_sz = 0;
 
 	for (i = 0; i < NS_NUM; i++){
-		rc =  get_metric_size_generic(&meta_sz, &data_sz, i);
+		switch(i){
+		case NS_LINKSMETRICS:
+			rc = get_metric_size_linksmetrics(&meta_sz, &data_sz, msglog);
+			break;
+		case NS_NICMETRICS:
+			rc = get_metric_size_nicmetrics(&meta_sz, &data_sz, msglog);
+			break;
+		default:
+			//returns zero vals if not in generic
+			rc = get_metric_size_generic(&meta_sz, &data_sz, i);
+		}
 		if (rc)
 			return rc;
 		tot_meta_sz += meta_sz;
 		tot_data_sz += data_sz;
 	}
-	rc = get_metric_size_linksmetrics(&meta_sz, &data_sz, msglog);
-	if (rc)
-		return rc;
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	rc = get_metric_size_nicmetrics(&meta_sz, &data_sz, msglog);
-	if (rc)
-		return rc;
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
 
 
 	/* Create the metric set */
@@ -134,28 +134,33 @@ static int create_metric_set(const char *path)
 	rc = ENOMEM;
 
 	for (i = 0; i < NS_NUM; i++) {
-		rc = add_metrics_generic(set, comp_id, i);
-		if (rc)
-			goto err;
+		switch(i){
+		case NS_LINKSMETRICS:
+			rc = add_metrics_linksmetrics(set, comp_id, msglog);
+			if (rc)
+				goto err;
+			rc = linksmetrics_setup(msglog);
+			if (rc == ENOMEM)
+				goto err;
+			if (rc != 0) /*  Warn but OK to continue */
+				msglog(LDMS_LDEBUG,"cray_gemini_r_sampler: linksmetrics invalid\n");
+			break;
+		case NS_NICMETRICS:
+			rc = add_metrics_nicmetrics(set, comp_id, msglog);
+			if (rc)
+				goto err;
+			rc = nicmetrics_setup(msglog);
+			if (rc == ENOMEM)
+				return rc;
+			if (rc != 0) /*  Warn but OK to continue */
+				msglog(LDMS_LDEBUG,"cray_gemini_r_sampler: nicmetrics invalid\n");
+			break;
+		default:
+			rc = add_metrics_generic(set, comp_id, i);
+			if (rc)
+				goto err;
+		}
 	}
-
-	rc = add_metrics_linksmetrics(set, comp_id, msglog);
-	if (rc)
-		goto err;
-	rc = linksmetrics_setup(msglog);
-	if (rc == ENOMEM)
-		goto err;
-	if (rc != 0) /*  Warn but OK to continue */
-		msglog(LDMS_LDEBUG,"cray_gemini_r_sampler: linksmetrics invalid\n");
-
-	 rc = add_metrics_nicmetrics(set, comp_id, msglog);
-	 if (rc)
-		 goto err;
-	 rc = nicmetrics_setup(msglog);
-	 if (rc == ENOMEM)
-		 return rc;
-	 if (rc != 0) /*  Warn but OK to continue */
-		 msglog(LDMS_LDEBUG,"cray_gemini_r_sampler: nicmetrics invalid\n");
 
 	return 0;
 
@@ -243,19 +248,20 @@ static int sample(void)
 
 	retrc = 0;
 	for (i = 0; i < NS_NUM; i++){
-		rc = sample_metrics_generic(i, msglog);
+		switch(i){
+		case NS_LINKSMETRICS:
+			rc = sample_metrics_linksmetrics(msglog);
+			break;
+		case NS_NICMETRICS:
+			rc = sample_metrics_nicmetrics(msglog);
+			break;
+		default:
+			rc = sample_metrics_generic(i, msglog);
+		}
 		/* Continue if error, but eventually report an error code */
 		if (rc)
 			retrc = rc;
 	}
-	rc = sample_metrics_linksmetrics(msglog);
-	/* Continue if error, but eventually report an error code */
-	if (rc)
-		retrc = rc;
-	rc = sample_metrics_nicmetrics(msglog);
-	/* Continue if error, but eventually report an error code */
-	if (rc)
-		retrc = rc;
 
  out:
 	ldms_end_transaction(set);

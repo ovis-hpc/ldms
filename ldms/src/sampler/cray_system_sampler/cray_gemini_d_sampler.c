@@ -106,23 +106,22 @@ static int create_metric_set(const char *path)
 	tot_meta_sz = 0;
 
 	for (i = 0; i < NS_NUM; i++){
-		rc =  get_metric_size_generic(&meta_sz, &data_sz, i);
+		switch (i){
+		case NS_GEM_LINK_PERF:
+			rc = get_metric_size_gem_link_perf(&meta_sz, &data_sz, msglog);
+			break;
+		case NS_NIC_PERF:
+			rc = get_metric_size_nic_perf(&meta_sz, &data_sz, msglog);
+			break;
+		default:
+			//returns zero vals if not in generic
+			rc = get_metric_size_generic(&meta_sz, &data_sz, i);
+		}
 		if (rc)
 			return rc;
 		tot_meta_sz += meta_sz;
 		tot_data_sz += data_sz;
 	}
-	rc = get_metric_size_nic_perf(&meta_sz, &data_sz, msglog);
-	if (rc)
-		return rc;
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-	rc = get_metric_size_gem_link_perf(&meta_sz, &data_sz, msglog);
-	if (rc)
-		return rc;
-	tot_meta_sz += meta_sz;
-	tot_data_sz += data_sz;
-
 
 
 	/* Create the metric set */
@@ -136,31 +135,33 @@ static int create_metric_set(const char *path)
 	rc = ENOMEM;
 
 	for (i = 0; i < NS_NUM; i++) {
-		rc = add_metrics_generic(set, comp_id, i);
-		if (rc)
-			goto err;
+		switch(i){
+		case NS_GEM_LINK_PERF:
+			rc = add_metrics_gem_link_perf(set, comp_id, msglog);
+			if (rc)
+				goto err;
+			rc = gem_link_perf_setup(msglog);
+			if (rc == ENOMEM)
+				goto err;
+			if (rc != 0) /*  Warn but OK to continue */
+				msglog(LDMS_LDEBUG,"cray_gemini_d_sampler: gem_link_perf invalid\n");
+			break;
+		case NS_NIC_PERF:
+			rc = add_metrics_nic_perf(set, comp_id, msglog);
+			if (rc)
+				goto err;
+			rc = nic_perf_setup(msglog);
+			if (rc == ENOMEM)
+				goto err;
+			if (rc != 0) /*  Warn but OK to continue */
+				msglog(LDMS_LDEBUG,"cray_gemini_d_sampler: nic_perf invalid\n");
+			break;
+		default:
+			rc = add_metrics_generic(set, comp_id, i);
+			if (rc)
+				goto err;
+		}
 	}
-
-
-	rc = add_metrics_nic_perf(set, comp_id, msglog);
-	if (rc)
-		goto err;
-	rc = nic_perf_setup(msglog);
-	if (rc == ENOMEM)
-		goto err;
-	if (rc != 0) /*  Warn but OK to continue */
-		msglog(LDMS_LDEBUG,"cray_gemini_d_sampler: nic_perf invalid\n");
-
-	rc = add_metrics_gem_link_perf(set, comp_id, msglog);
-	if (rc)
-		goto err;
-	rc = gem_link_perf_setup(msglog);
-	if (rc == ENOMEM)
-		goto err;
-	if (rc != 0) /*  Warn but OK to continue */
-		msglog(LDMS_LDEBUG,"cray_gemini_d_sampler: gem_link_perf invalid\n");
-
-	return 0;
 
  err:
 	ldms_destroy_set(set);
@@ -241,19 +242,20 @@ static int sample(void)
 
 	retrc = 0;
 	for (i = 0; i < NS_NUM; i++){
-		rc = sample_metrics_generic(i, msglog);
+		switch(i){
+		case NS_GEM_LINK_PERF:
+			rc = sample_metrics_gem_link_perf(msglog);
+			break;
+		case NS_NIC_PERF:
+			rc = sample_metrics_nic_perf(msglog);
+			break;
+		default:
+			rc = sample_metrics_generic(i, msglog);
+		}
 		/* Continue if error, but eventually report an error code */
 		if (rc)
 			retrc = rc;
 	}
-	rc = sample_metrics_nic_perf(msglog);
-	/* Continue if error, but eventually report an error code */
-	if (rc)
-		retrc = rc;
-	rc = sample_metrics_gem_link_perf(msglog);
-	/* Continue if error, but eventually report an error code */
-	if (rc)
-		retrc = rc;
 
  out:
 	ldms_end_transaction(set);

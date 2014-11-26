@@ -781,6 +781,9 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 		return get_metric_size_lustre(m_sz, d_sz, msglog);
 		break;
 	default:
+		m_sz = 0;
+		d_sz = 0;
+		//will handle it elsewhere
 		break;
 	}
 
@@ -875,7 +878,7 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 
 		break;
 	case NS_LOADAVG:
-		return add_metrics_simple(set, LOADAVG_METRICS,
+		rc = add_metrics_simple(set, LOADAVG_METRICS,
 					  NUM_LOADAVG_METRICS,
 					  &metric_table_loadavg,
 					  &LOADAVG_FILE, &l_f,
@@ -934,6 +937,7 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 		return add_metrics_lustre(set, comp_id, msglog);
 		break;
 	default:
+		//will handle it elsewhere
 		break;
 	}
 
@@ -943,7 +947,7 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 			   ldmsd_msg_log_f msglog)
 {
-	int rc;
+	int rc = 0;
 
 	switch (source_id){
 	case NS_NETTOPO:
@@ -974,7 +978,7 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 		rc = sample_metrics_lustre(msglog);
 		break;
 	default:
-		//do nothing
+		//will handle it elsewhere
 		break;
 	}
 

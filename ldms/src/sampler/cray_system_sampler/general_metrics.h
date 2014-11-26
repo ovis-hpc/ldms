@@ -73,10 +73,17 @@
 #include "ldmsd.h"
 #include "ldms.h"
 
-//note: doing this will change the order of the metric set metrics.
-//is there any reason want the other options in the enum?
+//NOTE: LINKSMETRICS and NICMETRICS are for gemini_r
+//      GEM_LINK_PERF and NIC_PERF are for gemini_d
+//these are mutually exclusive. keeping these in the enum
+//for backwards compatibility in the order of the metrics
+//in metric sets
 typedef enum {
         NS_NETTOPO,
+	NS_LINKSMETRICS,
+        NS_NICMETRICS,
+        NS_GEM_LINK_PERF,
+        NS_NIC_PERF,
         NS_LUSTRE,
         NS_VMSTAT,
         NS_LOADAVG,
