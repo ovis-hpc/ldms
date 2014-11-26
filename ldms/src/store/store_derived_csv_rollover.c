@@ -95,8 +95,8 @@ static int rolltype;
 "                     2: wake daily at rollover seconds after midnight (>=0) and roll.\n" \
 "                     3: roll after approximately rollover records are written.\n" \
 "                     4: roll after approximately rollover bytes are written.\n" 
-#define MINROLLTYPE 0
 #define MAXROLLTYPE 4
+#define MINROLLTYPE 1
 #define DEFAULT_ROLLTYPE -1
 /** minimum rollover for type 1;
     rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1
@@ -311,6 +311,7 @@ static void* rolloverThreadInit(void* m){
 		    tsleep+=86400;
 		  }
 		}
+		  break;
 		case 3:
 		  if (rollover < MIN_ROLL_RECORDS)
 		    rollover = MIN_ROLL_RECORDS;
