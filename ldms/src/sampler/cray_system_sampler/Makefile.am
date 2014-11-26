@@ -4,6 +4,7 @@ CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
+#random choice ...reeval this...
 if ENABLE_LUSTRE
 CRAY_CFLAGS_ = $(AM_CFLAGS) @RCA_INCDIR_FLAG@ @KRCA_INCDIR_FLAG@ \
 			@CRAY_HSS_DEVEL_INCDIR_FLAG@ \
@@ -20,7 +21,8 @@ pkglib_LTLIBRARIES += librtr_util.la
 CRAY_SOURCES_ = gemini_metrics.h \
 	cray_sampler_base.h cray_sampler_base.c \
 	rca_metrics.h rca_metrics.c\
-	general_metrics.c general_metrics.h \
+	lustre_metrics.h lustre_metrics.c \
+	general_metrics.h general_metrics.c \
 	rtr_util.c rtr_util.h
 CRAY_LIBADD_ = $(COMMON_LIBADD) \
                        ../lustre/liblustre_sampler.la \

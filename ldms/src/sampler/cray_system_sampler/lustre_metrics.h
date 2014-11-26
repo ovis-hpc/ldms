@@ -73,15 +73,28 @@
 #include "ldmsd.h"
 #include "ldms.h"
 
+
+  /* Lustre specific vars */
+  /**                                                                                                         
+   * str<->idx in LUSTRE_METRICS.                                                                             
+   */
+extern struct lustre_svc_stats_head lustre_svc_head;
+extern struct str_map *lustre_idx_map;
+
+/** get metric size */
+int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
+                           ldmsd_msg_log_f msglog);
+
+
+/** add metrics */
+int add_metrics_lustre(ldms_set_t set, int comp_id,
+		       ldmsd_msg_log_f msglog);
+
 /** helpers */
-int procnetdev_setup(ldmsd_msg_log_f msglog);
+int handle_llite(const char *llite);
+
 
 /** sample */
-int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
-int sample_metrics_vmcf(ldmsd_msg_log_f msglog);
-int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
-int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
-int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
-int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
+int sample_metrics_lustre(ldmsd_msg_log_f msglog);
 	
 #endif

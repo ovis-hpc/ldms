@@ -72,7 +72,6 @@
 
 //------------------------//
 //make these all static....
-#include "../lustre/lustre_sampler.h"
 
 #define VMSTAT_FILE "/proc/vmstat"
 #define LOADAVG_FILE "/proc/loadavg"
@@ -134,138 +133,8 @@ static char* KGNILND_METRICS[] = {"SMSG_ntx",
 #define NUM_KGNILND_METRICS (sizeof(KGNILND_METRICS)/sizeof(KGNILND_METRICS[0]))
 ldms_metric_t* metric_table_kgnilnd;
 
-/* LUSTRE Specific */
-/**
- * This is for single llite.
- * The real metrics will contain all llites.
- */
-static char *LUSTRE_METRICS[] = {
-	/* file operation */
-	"dirty_pages_hits",
-	"dirty_pages_misses",
-	"writeback_from_writepage",
-	"writeback_from_pressure",
-	"writeback_ok_pages",
-	"writeback_failed_pages",
-	"read_bytes",
-	"write_bytes",
-	"brw_read",
-	"brw_write",
-	"ioctl",
-	"open",
-	"close",
-	"mmap",
-	"seek",
-	"fsync",
-	/* inode operation */
-	"setattr",
-	"truncate",
-	"lockless_truncate",
-	"flock",
-	"getattr",
-	/* special inode operation */
-	"statfs",
-	"alloc_inode",
-	"setxattr",
-	"getxattr",
-	"listxattr",
-	"removexattr",
-	"inode_permission",
-	"direct_read",
-	"direct_write",
-	"lockless_read_bytes",
-	"lockless_write_bytes",
-};
-#define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
-#define LLITE_PREFIX "/proc/fs/lustre/llite"
-#define CSS_LUSTRE_NAME_MAX 1024
-#define CSS_LUSTRE_PATH_MAX 4096
 
 //---------------------------------------//
-
-/* LUSTRE SPECIFIC */
-struct str_map *lustre_idx_map = NULL;
-struct lustre_svc_stats_head lustre_svc_head = {0};
-
-int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
-			   ldmsd_msg_log_f msglog)
-{
-	struct lustre_svc_stats *lss;
-	size_t msize = 0;
-	size_t dsize = 0;
-	size_t m, d;
-	char name[CSS_LUSTRE_NAME_MAX];
-	int i;
-	int rc;
-
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
-					, lss->name);
-			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
-			if (rc)
-				return rc;
-			msize += m;
-			dsize += d;
-		}
-	}
-	*m_sz = msize;
-	*d_sz = dsize;
-	return 0;
-}
-
-
-int add_metrics_lustre(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog)
-{
-	struct lustre_svc_stats *lss;
-	int i;
-	int count = 0;
-	char name[CSS_LUSTRE_NAME_MAX];
-
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
-							, lss->name);
-			ldms_metric_t m = ldms_add_metric(set, name,
-								LDMS_V_U64);
-			if (!m)
-				return ENOMEM;
-			lss->metrics[i+1] = m;
-			ldms_set_user_data(m, comp_id);
-			count++;
-		}
-	}
-	return 0;
-}
-
-
-
-int handle_llite(const char *llite)
-{
-	char *_llite = strdup(llite);
-	if (!_llite)
-		return ENOMEM;
-	char *saveptr = NULL;
-	char *tok = strtok_r(_llite, ",", &saveptr);
-	struct lustre_svc_stats *lss;
-	char path[CSS_LUSTRE_PATH_MAX];
-	while (tok) {
-		snprintf(path, CSS_LUSTRE_PATH_MAX,"/proc/fs/lustre/llite/%s-*/stats",tok);
-		lss = lustre_svc_stats_alloc(path, LUSTRE_METRICS_LEN+1);
-		lss->name = strdup(tok);
-		if (!lss->name)
-			goto err;
-		lss->key_id_map = lustre_idx_map;
-		LIST_INSERT_HEAD(&lustre_svc_head, lss, link);
-		tok = strtok_r(NULL, ",", &saveptr);
-	}
-	free(_llite);
-	return 0;
-err:
-	lustre_svc_stats_list_free(&lustre_svc_head);
-	return ENOMEM;
-}
 
 int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 {
@@ -678,22 +547,6 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		return EINVAL;
 	}
 
-	return 0;
-}
-
-
-int sample_metrics_lustre(ldmsd_msg_log_f msglog)
-{
-	struct lustre_svc_stats *lss;
-	int rc;
-	int count = 0;
-
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		rc = lss_sample(lss);
-		if (rc && rc != ENOENT)
-			return rc;
-		count += LUSTRE_METRICS_LEN;
-	}
 	return 0;
 }
 

@@ -73,15 +73,34 @@
 #include "ldmsd.h"
 #include "ldms.h"
 
-/** helpers */
-int procnetdev_setup(ldmsd_msg_log_f msglog);
+//NOTE: LINKSMETRICS and NICMETRICS are for gemini_r
+//      GEM_LINK_PERF and NIC_PERF are for gemini_d
+//these are mutually exclusive. keeping these in the enum
+//for backwards compatibility in the order of the metrics
+//in metric sets
+typedef enum {
+        NS_NETTOPO,
+	NS_LINKSMETRICS,
+        NS_NICMETRICS,
+        NS_GEM_LINK_PERF,
+        NS_NIC_PERF,
+        NS_LUSTRE,
+        NS_VMSTAT,
+        NS_LOADAVG,
+        NS_CURRENT_FREEMEM,
+        NS_KGNILND,
+        NS_PROCNETDEV,
+        NS_NUM
+} cray_system_sampler_sources_t
 
-/** sample */
-int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
-int sample_metrics_vmcf(ldmsd_msg_log_f msglog);
-int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
-int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
-int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
-int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
+
+int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
+                            cray_system_sampler_sources_t source_id,
+                            ldmsd_msg_log_f msglog);
+int add_metrics_generic(ldms_set_t set, int comp_id,
+			cray_system_sampler_sources_t source_id,
+			ldmsd_msg_log_f msglog)
+int sample_metrics_generic(cray_system_sampler_sources_t source_id,
+			   ldmsd_msg_log_f msglog)
 	
 #endif

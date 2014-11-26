@@ -70,6 +70,7 @@
 #include <wordexp.h>
 #include "config.h"
 #include "cray_sampler_base.h"
+#include "lustre_metrics.h"
 #include "gemini_metrics_gpcdr.h"
 
 
