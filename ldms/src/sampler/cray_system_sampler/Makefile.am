@@ -18,6 +18,7 @@ librtr_util_la_LDFLAGS = $(CRAY_LDFLAGS_)
 pkglib_LTLIBRARIES += librtr_util.la
 
 CRAY_SOURCES_ = gemini_metrics.h \
+	cray_sampler_base.h cray_sampler_base.c \
 	rca_metrics.h rca_metrics.c\
 	general_metrics.c general_metrics.h \
 	rtr_util.c rtr_util.h

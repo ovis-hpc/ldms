@@ -69,8 +69,7 @@
 #include <ctype.h>
 #include <wordexp.h>
 #include "config.h"
-#include "rca_metrics.h"
-#include "general_metrics.h"
+#include "cray_sampler_base.h"
 #include "gemini_metrics_gpcd.h"
 
 
