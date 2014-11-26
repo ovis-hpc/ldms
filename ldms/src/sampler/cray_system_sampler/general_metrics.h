@@ -51,7 +51,7 @@
 
 
 /**
- * \file general_metrics.h non-gemini metrics
+ * \file general_metrics.h non-HSN metrics
  */
 
 #ifndef __GENERAL_METRICS_H_
@@ -69,144 +69,33 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
+//have it for the logfile and set
+#include "ldmsd.h"
+#include "ldms.h"
 
-#include "../lustre/lustre_sampler.h"
-
-#define VMSTAT_FILE "/proc/vmstat"
-#define LOADAVG_FILE "/proc/loadavg"
-#define CURRENT_FREEMEM_FILE "/proc/current_freemem"
-#define KGNILND_FILE  "/proc/kgnilnd/stats"
-#define PROCNETDEV_FILE "/proc/net/dev"
-
-/* CURRENT_FREEMEM Specific */
-FILE *cf_f;
-int cf_m;
-static char* CURRENT_FREEMEM_METRICS[] = {"current_freemem"};
-#define NUM_CURRENT_FREEMEM_METRICS (sizeof(CURRENT_FREEMEM_METRICS)/sizeof(CURRENT_FREEMEM_METRICS[0]))
-ldms_metric_t* metric_table_current_freemem;
-int (*sample_metrics_cf_ptr)(ldmsd_msg_log_f msglog);
-
-/* VMSTAT Specific */
-FILE *v_f;
-static char* VMSTAT_METRICS[] = {"nr_dirty", "nr_writeback"};
-#define NUM_VMSTAT_METRICS (sizeof(VMSTAT_METRICS)/sizeof(VMSTAT_METRICS[0]))
-ldms_metric_t* metric_table_vmstat;
-/* additional vmstat metrics if getting cf from vmstat. Order matters (see calc within) */
-static char* VMCF_METRICS[] = {"nr_free_pages", "nr_file_pages", "nr_slab_reclaimable", "nr_shmem"};
-#define NUM_VMCF_METRICS (sizeof(VMCF_METRICS)/sizeof(VMCF_METRICS[0]))
-int (*sample_metrics_vmstat_ptr)(ldmsd_msg_log_f msglog);
+//note: doing this will change the order of the metric set metrics.
+//is there any reason want the other options in the enum?
+typedef enum {
+        NS_NETTOPO,
+        NS_LUSTRE,
+        NS_VMSTAT,
+        NS_LOADAVG,
+        NS_CURRENT_FREEMEM,
+        NS_KGNILND,
+        NS_PROCNETDEV,
+        NS_NUM
+} cray_system_sampler_sources_t
 
 
-/* LOADAVG Specific */
-FILE *l_f;
-static char* LOADAVG_METRICS[] = {"loadavg_latest(x100)",
-				  "loadavg_5min(x100)",
-				  "loadavg_running_processes",
-				  "loadavg_total_processes"};
-#define NUM_LOADAVG_METRICS (sizeof(LOADAVG_METRICS)/sizeof(LOADAVG_METRICS[0]))
-ldms_metric_t *metric_table_loadavg;
-
-/* PROCNETDEV Specific (Specific interface and indicies supported)*/
-FILE *pnd_f;
-static char* iface ="ipogif0";
-int idx_iface;
-static char* PROCNETDEV_METRICS[] = {"ipogif0_rx_bytes",
-				     "ipogif0_tx_bytes"};
-#define NUM_PROCNETDEV_METRICS (sizeof(PROCNETDEV_METRICS)/sizeof(PROCNETDEV_METRICS[0]))
-
-ldms_metric_t *metric_table_procnetdev;
-int procnetdev_valid;
-
-
-/* KGNILND Specific */
-FILE *k_f;
-static char* KGNILND_METRICS[] = {"SMSG_ntx",
-				  "SMSG_tx_bytes",
-				  "SMSG_nrx",
-				  "SMSG_rx_bytes",
-				  "RDMA_ntx",
-				  "RDMA_tx_bytes",
-				  "RDMA_nrx",
-				  "RDMA_rx_bytes"
-};
-#define NUM_KGNILND_METRICS (sizeof(KGNILND_METRICS)/sizeof(KGNILND_METRICS[0]))
-ldms_metric_t* metric_table_kgnilnd;
-
-/* LUSTRE Specific */
-/**
- * This is for single llite.
- * The real metrics will contain all llites.
- */
-static char *LUSTRE_METRICS[] = {
-	/* file operation */
-	"dirty_pages_hits",
-	"dirty_pages_misses",
-	"writeback_from_writepage",
-	"writeback_from_pressure",
-	"writeback_ok_pages",
-	"writeback_failed_pages",
-	"read_bytes",
-	"write_bytes",
-	"brw_read",
-	"brw_write",
-	"ioctl",
-	"open",
-	"close",
-	"mmap",
-	"seek",
-	"fsync",
-	/* inode operation */
-	"setattr",
-	"truncate",
-	"lockless_truncate",
-	"flock",
-	"getattr",
-	/* special inode operation */
-	"statfs",
-	"alloc_inode",
-	"setxattr",
-	"getxattr",
-	"listxattr",
-	"removexattr",
-	"inode_permission",
-	"direct_read",
-	"direct_write",
-	"lockless_read_bytes",
-	"lockless_write_bytes",
-};
-#define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
-#define LLITE_PREFIX "/proc/fs/lustre/llite"
-#define CSS_LUSTRE_NAME_MAX 1024
-#define CSS_LUSTRE_PATH_MAX 4096
-
-/* Lustre specific vars */
-/**
- * str<->idx in LUSTRE_METRICS.
- */
-extern struct lustre_svc_stats_head lustre_svc_head;
-extern struct str_map *lustre_idx_map;
-
-/** get metric size */
-int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
-			   ldmsd_msg_log_f msglog);
-
-
-/** add metrics */
-int add_metrics_lustre(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
-
-/** helpers */
 int handle_llite(const char *llite);
-int procnetdev_setup(ldmsd_msg_log_f msglog);
 
-
-/** sample */
-int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
-int sample_metrics_vmcf(ldmsd_msg_log_f msglog);
-int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
-int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
-int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
-int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
-int sample_metrics_lustre(ldmsd_msg_log_f msglog);
-
+int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
+                            cray_system_sampler_sources_t source_id,
+                            ldmsd_msg_log_f msglog);
+int add_metrics_generic(ldms_set_t set, int comp_id,
+			cray_system_sampler_sources_t source_id,
+			ldmsd_msg_log_f msglog)
+int sample_metrics_generic(cray_system_sampler_sources_t source_id,
+			   ldmsd_msg_log_f msglog)
+	
 #endif

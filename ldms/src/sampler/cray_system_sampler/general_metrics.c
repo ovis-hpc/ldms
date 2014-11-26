@@ -55,9 +55,11 @@
  */
 
 #define _GNU_SOURCE
+#include <fcntl.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -66,15 +68,135 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
-
+#include "rca_metrics.h"
 #include "general_metrics.h"
 
-/* LUSTRE SPECIFIC */
+//------------------------//
+//make these all static....
+#include "../lustre/lustre_sampler.h"
 
+#define VMSTAT_FILE "/proc/vmstat"
+#define LOADAVG_FILE "/proc/loadavg"
+#define CURRENT_FREEMEM_FILE "/proc/current_freemem"
+#define KGNILND_FILE  "/proc/kgnilnd/stats"
+#define PROCNETDEV_FILE "/proc/net/dev"
+
+/* CURRENT_FREEMEM Specific */
+FILE *cf_f;
+int cf_m;
+static char* CURRENT_FREEMEM_METRICS[] = {"current_freemem"};
+#define NUM_CURRENT_FREEMEM_METRICS (sizeof(CURRENT_FREEMEM_METRICS)/sizeof(CURRENT_FREEMEM_METRICS[0]))
+ldms_metric_t* metric_table_current_freemem;
+int (*sample_metrics_cf_ptr)(ldmsd_msg_log_f msglog);
+
+/* VMSTAT Specific */
+FILE *v_f;
+static char* VMSTAT_METRICS[] = {"nr_dirty", "nr_writeback"};
+#define NUM_VMSTAT_METRICS (sizeof(VMSTAT_METRICS)/sizeof(VMSTAT_METRICS[0]))
+ldms_metric_t* metric_table_vmstat;
+/* additional vmstat metrics if getting cf from vmstat. Order matters (see calc within) */
+static char* VMCF_METRICS[] = {"nr_free_pages", "nr_file_pages", "nr_slab_reclaimable", "nr_shmem"};
+#define NUM_VMCF_METRICS (sizeof(VMCF_METRICS)/sizeof(VMCF_METRICS[0]))
+int (*sample_metrics_vmstat_ptr)(ldmsd_msg_log_f msglog);
+
+
+/* LOADAVG Specific */
+FILE *l_f;
+static char* LOADAVG_METRICS[] = {"loadavg_latest(x100)",
+				  "loadavg_5min(x100)",
+				  "loadavg_running_processes",
+				  "loadavg_total_processes"};
+#define NUM_LOADAVG_METRICS (sizeof(LOADAVG_METRICS)/sizeof(LOADAVG_METRICS[0]))
+ldms_metric_t *metric_table_loadavg;
+
+/* PROCNETDEV Specific (Specific interface and indicies supported)*/
+FILE *pnd_f;
+static char* iface ="ipogif0";
+int idx_iface;
+static char* PROCNETDEV_METRICS[] = {"ipogif0_rx_bytes",
+				     "ipogif0_tx_bytes"};
+#define NUM_PROCNETDEV_METRICS (sizeof(PROCNETDEV_METRICS)/sizeof(PROCNETDEV_METRICS[0]))
+
+ldms_metric_t *metric_table_procnetdev;
+int procnetdev_valid;
+
+
+/* KGNILND Specific */
+FILE *k_f;
+static char* KGNILND_METRICS[] = {"SMSG_ntx",
+				  "SMSG_tx_bytes",
+				  "SMSG_nrx",
+				  "SMSG_rx_bytes",
+				  "RDMA_ntx",
+				  "RDMA_tx_bytes",
+				  "RDMA_nrx",
+				  "RDMA_rx_bytes"
+};
+#define NUM_KGNILND_METRICS (sizeof(KGNILND_METRICS)/sizeof(KGNILND_METRICS[0]))
+ldms_metric_t* metric_table_kgnilnd;
+
+/* LUSTRE Specific */
+/**
+ * This is for single llite.
+ * The real metrics will contain all llites.
+ */
+static char *LUSTRE_METRICS[] = {
+	/* file operation */
+	"dirty_pages_hits",
+	"dirty_pages_misses",
+	"writeback_from_writepage",
+	"writeback_from_pressure",
+	"writeback_ok_pages",
+	"writeback_failed_pages",
+	"read_bytes",
+	"write_bytes",
+	"brw_read",
+	"brw_write",
+	"ioctl",
+	"open",
+	"close",
+	"mmap",
+	"seek",
+	"fsync",
+	/* inode operation */
+	"setattr",
+	"truncate",
+	"lockless_truncate",
+	"flock",
+	"getattr",
+	/* special inode operation */
+	"statfs",
+	"alloc_inode",
+	"setxattr",
+	"getxattr",
+	"listxattr",
+	"removexattr",
+	"inode_permission",
+	"direct_read",
+	"direct_write",
+	"lockless_read_bytes",
+	"lockless_write_bytes",
+};
+#define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
+#define LLITE_PREFIX "/proc/fs/lustre/llite"
+#define CSS_LUSTRE_NAME_MAX 1024
+#define CSS_LUSTRE_PATH_MAX 4096
+
+
+/* Lustre specific vars */
+/**
+ * str<->idx in LUSTRE_METRICS.
+ */
+extern struct lustre_svc_stats_head lustre_svc_head;
+extern struct str_map *lustre_idx_map;
+
+//---------------------------------------//
+
+/* LUSTRE SPECIFIC */
 struct str_map *lustre_idx_map = NULL;
 struct lustre_svc_stats_head lustre_svc_head = {0};
 
-int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
+static int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
 			   ldmsd_msg_log_f msglog)
 {
 	struct lustre_svc_stats *lss;
@@ -102,7 +224,7 @@ int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
 }
 
 
-int add_metrics_lustre(ldms_set_t set, int comp_id,
+static int add_metrics_lustre(ldms_set_t set, int comp_id,
 			      ldmsd_msg_log_f msglog)
 {
 	struct lustre_svc_stats *lss;
@@ -125,7 +247,6 @@ int add_metrics_lustre(ldms_set_t set, int comp_id,
 	}
 	return 0;
 }
-
 
 
 
@@ -155,7 +276,7 @@ err:
 	return ENOMEM;
 }
 
-int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
+static int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -210,7 +331,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
+static int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -296,8 +417,23 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 
 }
 
+static char *replace_space(char *s)
+{
+        char *s1;
 
-int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
+        s1 = s;
+        while ( *s1 ) {
+                if ( isspace( *s1 ) ) {
+                        *s1 = '_';
+                }
+                ++s1;
+        }
+        return s;
+}
+
+
+
+static int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -354,7 +490,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 
 }
 
-int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
+static int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 {
 	/* only has 1 val, no label */
 	char lbuf[256];
@@ -410,7 +546,7 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 }
 
 
-int procnetdev_setup(ldmsd_msg_log_f msglog)
+static int procnetdev_setup(ldmsd_msg_log_f msglog)
 {
 	/** need tx rx bytes for ipogif0 interface only */
 	procnetdev_valid = 0;
@@ -444,7 +580,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	return 0;
 }
 
-int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
+static int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 {
 
 	if (procnetdev_valid == 0) {
@@ -493,7 +629,7 @@ int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 	return 0;
 }
 
-int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
+static int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 {
 	/* 0.12 0.98 0.86 1/345 24593. well known: want fields 1, 2, and both of
 	 * 4 in that order.*/
@@ -555,7 +691,7 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_lustre(ldmsd_msg_log_f msglog)
+static int sample_metrics_lustre(ldmsd_msg_log_f msglog)
 {
 	struct lustre_svc_stats *lss;
 	int rc;
@@ -569,3 +705,279 @@ int sample_metrics_lustre(ldmsd_msg_log_f msglog)
 	}
 	return 0;
 }
+
+
+static int get_metric_size_simple(char** metric_names, int num_metrics,
+				  size_t *m_sz, size_t *d_sz,
+				  ldmsd_msg_log_f msglog)
+{
+
+	size_t meta_sz, tot_meta_sz;
+	size_t data_sz, tot_data_sz;
+	int i, rc;
+
+	tot_data_sz = 0;
+	tot_meta_sz = 0;
+
+
+
+	for (i = 0; i < num_metrics; i++){
+		rc = ldms_get_metric_size(metric_names[i], LDMS_V_U64,
+							&meta_sz, &data_sz);
+		if (rc)
+			return rc;
+		tot_meta_sz+= meta_sz;
+		tot_data_sz+= data_sz;
+	}
+
+	*m_sz = tot_meta_sz;
+	*d_sz = tot_data_sz;
+
+	return 0;
+
+}
+
+int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
+			    cray_system_sampler_sources_t source_id,
+			    ldmsd_msg_log_f msglog)
+{
+
+	int i, rc;
+
+	switch (source_id){
+	case NS_NETTOPO:
+		return get_metric_size_simple(nettopo_meshcoord_metricname,
+					      NETTOPODIM,
+					      m_sz, d_sz, msglog);
+		break;
+	case NS_VMSTAT:
+		sample_metrics_vmstat_ptr = NULL;
+		return get_metric_size_simple(VMSTAT_METRICS,
+					      NUM_VMSTAT_METRICS,
+					      m_sz, d_sz, msglog);
+		break;
+	case NS_LOADAVG:
+		return get_metric_size_simple(LOADAVG_METRICS,
+					      NUM_LOADAVG_METRICS,
+					      m_sz, d_sz, msglog);
+		break;
+	case NS_CURRENT_FREEMEM:
+		sample_metrics_cf_ptr = NULL;
+		return get_metric_size_simple(CURRENT_FREEMEM_METRICS,
+					      NUM_CURRENT_FREEMEM_METRICS,
+					      m_sz, d_sz, msglog);
+		break;
+	case NS_PROCNETDEV:
+		return get_metric_size_simple(PROCNETDEV_METRICS,
+					      NUM_PROCNETDEV_METRICS,
+					      m_sz, d_sz, msglog);
+		break;
+	case NS_KGNILND:
+		return get_metric_size_simple(KGNILND_METRICS,
+					      NUM_KGNILND_METRICS,
+					      m_sz, d_sz, msglog);
+		break;
+	case NS_LUSTRE:
+		return get_metric_size_lustre(m_sz, d_sz, msglog);
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+
+static int add_metrics_simple(ldms_set_t set, char** metric_names,
+			      int num_metrics, ldms_metric_t** metric_table,
+			      char (*fname)[], FILE** g_f,
+			      int comp_id, ldmsd_msg_log_f msglog)
+{
+	int i, rc;
+
+	if (num_metrics == 0){
+		return 0;
+	}
+
+	*metric_table = calloc(num_metrics, sizeof(ldms_metric_t));
+	if (! (*metric_table)){
+		msglog(LDMS_LDEBUG,"cray_system_sampler: cannot calloc metric_table\n");
+		return ENOMEM;
+	}
+
+	if (fname != NULL){
+		*g_f = fopen(*fname, "r");
+		if (!(*g_f)) {
+			/* this is not an error */
+			msglog(LDMS_LDEBUG,"WARNING: Could not open the source file '%s'\n",
+			       *fname);
+		}
+	} else {
+		if (g_f && *g_f)
+			*g_f = NULL;
+	}
+
+
+	for (i = 0; i < num_metrics; i++){
+		(*metric_table)[i] = ldms_add_metric(set, metric_names[i],
+						     LDMS_V_U64);
+
+		if (!(*metric_table)[i]){
+			msglog(LDMS_LDEBUG,"cray_system_sampler: cannot add metric %d\n",
+			       i);
+			rc = ENOMEM;
+			return rc;
+		}
+		ldms_set_user_data((*metric_table)[i], comp_id);
+	}
+
+	return 0;
+}
+
+
+int add_metrics_generic(ldms_set_t set, int comp_id,
+			       cray_system_sampler_sources_t source_id,
+			       ldmsd_msg_log_f msglog)
+{
+	int i, rc;
+
+	switch (source_id){
+	case NS_NETTOPO:
+		rc = add_metrics_simple(set,
+					nettopo_meshcoord_metricname,
+					NETTOPODIM,
+					&nettopo_metric_table,
+					NULL, NULL,
+					comp_id, msglog);
+		if (rc != 0)
+			return rc;
+		nettopo_setup(msglog);
+		return 0;
+	case NS_VMSTAT:
+		rc = add_metrics_simple(set, VMSTAT_METRICS,
+					NUM_VMSTAT_METRICS,
+					&metric_table_vmstat,
+					&VMSTAT_FILE, &v_f,
+					comp_id, msglog);
+		if (rc != 0) {
+			sample_metrics_vmstat_ptr == NULL;
+			return rc;
+		}
+		if (v_f != NULL){
+			fclose(v_f);
+			v_f = NULL;
+		}
+		if (sample_metrics_vmstat_ptr == NULL) {
+			//could be set from current_freemem
+			sample_metrics_vmstat_ptr == sample_metrics_vmstat;
+		}
+		return rc;
+
+		break;
+	case NS_LOADAVG:
+		return add_metrics_simple(set, LOADAVG_METRICS,
+					  NUM_LOADAVG_METRICS,
+					  &metric_table_loadavg,
+					  &LOADAVG_FILE, &l_f,
+					  comp_id, msglog);
+		if (rc != 0)
+			return rc;
+		if (l_f != NULL){
+			fclose(l_f);
+			l_f = NULL;
+		}
+
+		return rc;
+
+		break;
+	case NS_CURRENT_FREEMEM:
+		cf_m = 0;
+		rc = add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
+					NUM_CURRENT_FREEMEM_METRICS,
+					&metric_table_current_freemem,
+					&CURRENT_FREEMEM_FILE, &cf_f,
+					comp_id, msglog);
+		if (rc != 0)
+			return rc; //This will NOT happen if the file DNE
+		if (cf_f != NULL) {
+			fclose(cf_f);
+			cf_f = NULL;
+			sample_metrics_cf_ptr = &sample_metrics_current_freemem;
+		} else {
+			/* if there is no current_freemem, get it out of vmstat */
+			sample_metrics_cf_ptr = NULL;
+			sample_metrics_vmstat_ptr = sample_metrics_vmcf;
+		}
+		return rc;
+
+		break;
+	case NS_PROCNETDEV:
+		rc = add_metrics_simple(set, PROCNETDEV_METRICS,
+					  NUM_PROCNETDEV_METRICS,
+					  &metric_table_procnetdev,
+					  &PROCNETDEV_FILE, &pnd_f,
+					  comp_id, msglog);
+		if (rc != 0)
+			return rc;
+		rc = procnetdev_setup(msglog);
+		if (rc != 0) /* Warn but OK to continue */
+			msglog(LDMS_LDEBUG,"cray_system_sampler: procnetdev invalid\n");
+		break;
+	case NS_KGNILND:
+		return add_metrics_simple(set, KGNILND_METRICS,
+					  NUM_KGNILND_METRICS,
+					  &metric_table_kgnilnd,
+					  &KGNILND_FILE, &k_f,
+					  comp_id, msglog);
+		break;
+	case NS_LUSTRE:
+		return add_metrics_lustre(set, comp_id, msglog);
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+int sample_metrics_generic(cray_system_sampler_sources_t source_id,
+			   ldmsd_msg_log_f msglog)
+{
+	int rc;
+
+	switch (source_id){
+	case NS_NETTOPO:
+		rc = sample_metrics_nettopo(msglog);
+		break;
+	case NS_VMSTAT:
+		if (sample_metrics_vmstat_ptr != NULL)
+			rc = sample_metrics_vmstat_ptr(msglog);
+		else 
+			rc = 0;
+		break;
+	case NS_CURRENT_FREEMEM:
+		if (sample_metrics_cf_ptr != NULL)
+			rc = sample_metrics_cf_ptr(msglog);
+		else
+			rc = 0;
+		break;
+	case NS_LOADAVG:
+		rc = sample_metrics_loadavg(msglog);
+		break;
+	case NS_KGNILND:
+		rc = sample_metrics_kgnilnd(msglog);
+		break;
+	case NS_PROCNETDEV:
+		rc = sample_metrics_procnetdev(msglog);
+		break;
+	case NS_LUSTRE:
+		rc = sample_metrics_lustre(msglog);
+		break;
+	default:
+		//do nothing
+		break;
+	}
+
+	return rc;
+}
+

@@ -74,8 +74,8 @@ OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
 dnl Other libraries
-OPTION_DEFAULT_DISABLE([gpcdr], [ENABLE_GPCDR]) dnl use gpcdr vs gpcd
-OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD]) dnl for the path to gpcd if relevant
+OPTION_DEFAULT_DISABLE([gpcdr], [ENABLE_GPCDR]) dnl use gpcdr (not mutually exclusive)
+OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD]) dnl use gpcd (not mutually exclusive) for the path to gpcd if relevant
 OPTION_WITH([gpcd], [GPCD])
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
@@ -259,14 +259,9 @@ dnl if cray_sampler if enable_gpcdr then check that interface exists
 if test "x$enable_cray_system_sampler" = "xyes"
 then
 
-        if test -z "$ENABLE_GPCDR_TRUE" && test -z "$ENABLE_GPCD_TRUE"
+        if !(test -z "$ENABLE_GPCDR_TRUE") && !(test -z "$ENABLE_GPCD_TRUE")
         then
-                   AC_MSG_ERROR([Cannot enable both gpcd and gpcdr.])
-        else
-                if !(test -z "$ENABLE_GPCDR_TRUE") && !(test -z "$ENABLE_GPCD_TRUE")
-                then
-                   AC_MSG_ERROR([Must enable either gpcd or gpcdr.])
-                fi
+		AC_MSG_ERROR([Must enable either or both gpcd or gpcdr.])
         fi
 
         if test -z "$ENABLE_GPCDR_TRUE"
@@ -281,9 +276,10 @@ then
          ++++++++++++++++++++++++++++++++++++++++++++
           ])
           fi
-          AC_DEFINE([HAVE_GPCDR],[1],[Use gpcdr interface for gemini metrics.])
-        else
-          AC_MSG_RESULT([Use gpcd interface for gemini metrics.])
+          AC_MSG_RESULT([Building gpcdr interface for gemini metrics.])
+        fi
+        if test -z "$ENABLE_GPCD_TRUE"
+          AC_MSG_RESULT([Building gpcd interface for gemini metrics.])
         fi
 
 fi
