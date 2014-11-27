@@ -54,8 +54,8 @@
  * \file general_metrics.h non-HSN metrics
  */
 
-#ifndef __GENERAL_METRICS_H_
-#define __GENERAL_METRICS_H_
+#ifndef __LUSTRE_METRICS_H_
+#define __LUSTRE_METRICS_H_
 
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -74,10 +74,59 @@
 #include "ldms.h"
 
 
-  /* Lustre specific vars */
-  /**                                                                                                         
-   * str<->idx in LUSTRE_METRICS.                                                                             
-   */
+#include "../lustre/lustre_sampler.h"
+
+/* LUSTRE Specific */
+/**
+ * This is for single llite.
+ * The real metrics will contain all llites.
+ */
+static char *LUSTRE_METRICS[] = {
+        /* file operation */
+        "dirty_pages_hits",
+        "dirty_pages_misses",
+        "writeback_from_writepage",
+        "writeback_from_pressure",
+        "writeback_ok_pages",
+	"writeback_failed_pages",
+        "read_bytes",
+        "write_bytes",
+        "brw_read",
+        "brw_write",
+        "ioctl",
+        "open",
+        "close",
+        "mmap",
+        "seek",
+	"fsync",
+	/* inode operation */
+        "setattr",
+        "truncate",
+        "lockless_truncate",
+        "flock",
+        "getattr",
+        /* special inode operation */
+        "statfs",
+        "alloc_inode",
+        "setxattr",
+        "getxattr",
+        "listxattr",
+        "removexattr",
+        "inode_permission",
+        "direct_read",
+        "direct_write",
+        "lockless_read_bytes",
+        "lockless_write_bytes",
+};
+#define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
+#define LLITE_PREFIX "/proc/fs/lustre/llite"
+#define CSS_LUSTRE_NAME_MAX 1024
+#define CSS_LUSTRE_PATH_MAX 4096
+
+/* Lustre specific vars */
+/**
+ * str<->idx in LUSTRE_METRICS.
+ */
 extern struct lustre_svc_stats_head lustre_svc_head;
 extern struct str_map *lustre_idx_map;
 
@@ -96,5 +145,5 @@ int handle_llite(const char *llite);
 
 /** sample */
 int sample_metrics_lustre(ldmsd_msg_log_f msglog);
-	
+
 #endif

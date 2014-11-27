@@ -322,7 +322,7 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 	case NS_VMSTAT:
 		if (sample_metrics_vmstat_ptr != NULL)
 			rc = sample_metrics_vmstat_ptr(msglog);
-		else 
+		else
 			rc = 0;
 		break;
 	case NS_CURRENT_FREEMEM:

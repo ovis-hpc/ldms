@@ -115,7 +115,7 @@ static int create_metric_set(const char *path)
 			break;
 		default:
 			//returns zero vals if not in generic
-			rc = get_metric_size_generic(&meta_sz, &data_sz, i);
+			rc = get_metric_size_generic(&meta_sz, &data_sz, i, msglog);
 		}
 		if (rc)
 			return rc;
@@ -157,7 +157,7 @@ static int create_metric_set(const char *path)
 				msglog(LDMS_LDEBUG,"cray_gemini_r_sampler: nicmetrics invalid\n");
 			break;
 		default:
-			rc = add_metrics_generic(set, comp_id, i);
+			rc = add_metrics_generic(set, comp_id, i, msglog);
 			if (rc)
 				goto err;
 		}

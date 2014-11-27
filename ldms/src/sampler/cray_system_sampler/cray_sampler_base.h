@@ -54,8 +54,8 @@
  * \file general_metrics.h non-HSN metrics
  */
 
-#ifndef __GENERAL_METRICS_H_
-#define __GENERAL_METRICS_H_
+#ifndef __CRAY_SAMPLER_BASE_H_
+#define __CRAY_SAMPLER_BASE_H_
 
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -78,6 +78,7 @@
 //these are mutually exclusive. keeping these in the enum
 //for backwards compatibility in the order of the metrics
 //in metric sets
+
 typedef enum {
         NS_NETTOPO,
 	NS_LINKSMETRICS,
@@ -91,7 +92,7 @@ typedef enum {
         NS_KGNILND,
         NS_PROCNETDEV,
         NS_NUM
-} cray_system_sampler_sources_t
+} cray_system_sampler_sources_t;
 
 
 int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
@@ -99,8 +100,8 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
                             ldmsd_msg_log_f msglog);
 int add_metrics_generic(ldms_set_t set, int comp_id,
 			cray_system_sampler_sources_t source_id,
-			ldmsd_msg_log_f msglog)
+			ldmsd_msg_log_f msglog);
 int sample_metrics_generic(cray_system_sampler_sources_t source_id,
-			   ldmsd_msg_log_f msglog)
-	
+			   ldmsd_msg_log_f msglog);
+
 #endif
