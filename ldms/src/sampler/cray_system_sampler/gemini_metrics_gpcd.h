@@ -99,123 +99,15 @@
 #include "gpcd_util.h"
 
 typedef enum {
-        GEMINI_METRICS_COUNTER,
-        GEMINI_METRICS_DERIVED,
-        GEMINI_METRICS_BOTH
-} gemini_metrics_type_t;
+        HSN_METRICS_COUNTER,
+        HSN_METRICS_DERIVED,
+        HSN_METRICS_BOTH
+} hsn_metrics_type_t;
 
-int gemini_metrics_type; /**< raw, derived, both */
+int hsn_metrics_type; /**< raw, derived, both */
 
 char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
 
-#define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_GB(NAME) GB_ ## NAME
-#define PREFIX_ENUM_GD(NAME) GD_ ## NAME
-#define PREFIX_ENUM_M(NAME) M_ ## NAME
-
-#define NS_GLP_BASE_LIST(WRAP)	\
-	WRAP(traffic),	\
-	WRAP(packets),	\
-	WRAP(inq_stall),	\
-	WRAP(credit_stall)
-
-#define NS_GLP_DERIVED_LIST(WRAP) \
-	WRAP(SAMPLE_GEMINI_LINK_BW),	\
-	WRAP(SAMPLE_GEMINI_LINK_USED_BW),	\
-	WRAP(SAMPLE_GEMINI_LINK_PACKETSIZE_AVE), \
-	WRAP(SAMPLE_GEMINI_LINK_INQ_STALL),	\
-	WRAP(SAMPLE_GEMINI_LINK_CREDIT_STALL)
-
-
-static char* ns_glp_basename[] = {
-	NS_GLP_BASE_LIST(STR_WRAP)
-};
-static char* ns_glp_derivedname[] = {
-	NS_GLP_DERIVED_LIST(STR_WRAP)
-};
-typedef enum {
-	NS_GLP_BASE_LIST(PREFIX_ENUM_GB)
-} ns_glp_base_metric_t;
-typedef enum {
-	NS_GLP_DERIVED_LIST(PREFIX_ENUM_GD)
-} ns_glp_derived_metric_t;
-
-
-static char* ns_glp_baseunit[] = {
-	"(B)",
-	"(1)",
-	"(ns)",
-	"(ns)",
-	};
-
-static char* ns_glp_derivedunit[] = {
-	"(B/s)",
-	"(\% x1e6)",
-	"(B)",
-	"(\% x1e6)",
-	"(\% x1e6)"
-	};
-
-
-#define NUM_NS_GLP_BASENAME (sizeof(ns_glp_basename)/sizeof(ns_glp_basename[0]))
-#define NUM_NS_GLP_DERIVEDNAME (sizeof(ns_glp_derivedname)/sizeof(ns_glp_derivedname[0]))
-
-#define NICMETRICS_BASE_LIST(WRAP) \
-        WRAP(totaloutput_optA),     \
-                WRAP(totalinput), \
-		WRAP(fmaout), \
-                WRAP(bteout_optA), \
-                WRAP(bteout_optB), \
-                WRAP(totaloutput_optB)
-
-static char* nicmetrics_derivedprefix = "SAMPLE";
-static char* nicmetrics_derivedunit =  "(B/s)";
-
-static char* nicmetrics_basename[] = {
-        NICMETRICS_BASE_LIST(STR_WRAP)
-};
-
-typedef enum {
-        NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
-} nicmetrics_metric_t;
-
-#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
-
-/* GEM_LINK_PERF_SPECIFIC */
-gpcd_context_t *ns_glp_curr_ctx;
-gpcd_context_t *ns_glp_prev_ctx;
-gpcd_context_t *ns_glp_int_ctx;
-gpcd_mmr_list_t *ns_glp_listp;
-gpcd_mmr_list_t *ns_glp_plistp;
-uint64_t* ns_glp_base_acc; /**< per base metric accumulator */
-ldms_metric_t* ns_glp_base_metric_table;
-ldms_metric_t* ns_glp_derived_metric_table;
-int ns_glp_valid;
-
-double ns_glp_max_link_bw[GEMINI_NUM_LOGICAL_LINKS];
-int ns_glp_tiles_per_dir[GEMINI_NUM_LOGICAL_LINKS];
-
-gemini_state_t *ns_glp_state;
-int ns_glp_rc_to_tid[GEMINI_NUM_TILE_ROWS][GEMINI_NUM_TILE_COLUMNS];
-struct timespec ns_glp_time1, ns_glp_time2;
-struct timespec *ns_glp_curr_time, *ns_glp_prev_time,
-	*ns_glp_int_time;
-uint64_t ns_glp_diff;
-
-/* NIC_PERF Specific */
-uint64_t ns_nic_diff[NUM_NIC_PERF_RAW];
-uint64_t ns_nic_curr[NUM_NIC_PERF_RAW];
-gpcd_context_t *ns_nic_curr_ctx;
-gpcd_context_t *ns_nic_prev_ctx;
-gpcd_context_t *ns_nic_int_ctx;
-gpcd_mmr_list_t *ns_nic_listp;
-gpcd_mmr_list_t *ns_nic_plistp;
-uint64_t* ns_nic_base_acc; /**< prev per metric accumulator */
-ldms_metric_t* ns_nic_base_metric_table;
-ldms_metric_t* ns_nic_derived_metric_table;
-struct timespec ns_nic_time1, ns_nic_time2;
-struct timespec *ns_nic_curr_time, *ns_nic_prev_time, *ns_nic_int_time;
-int ns_nic_valid;
 
 /** get metric size */
 int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,

@@ -74,129 +74,15 @@
 #include "gemini.h"
 
 typedef enum {
-        GEMINI_METRICS_COUNTER,
-        GEMINI_METRICS_DERIVED,
-        GEMINI_METRICS_BOTH
-} gemini_metrics_type_t;
+	HSN_METRICS_COUNTER,
+	HSN_METRICS_DERIVED,
+	HSN_METRICS_BOTH
+} hsn_metrics_type_t;
 
-int gemini_metrics_type; /**< raw, derived, both */
+int hsn_metrics_type; /**< raw, derived, both */
 
 char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
 
-#define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_M(NAME) M_ ## NAME
-#define PREFIX_ENUM_LB(NAME) LB_ ## NAME
-#define PREFIX_ENUM_LD(NAME) LD_ ## NAME
-
-/** order in the module. Counting on this being same as in gemini.h */
-static char* linksmetrics_dir[] = {
-	"X+","X-","Y+","Y-","Z+","Z-"
-};
-
-/** default conf file reports these as "stalled" but the counter is the inq_stall" */
-#define LINKSMETRICS_BASE_LIST(WRAP)\
-	WRAP(traffic), \
-	WRAP(packets), \
-	WRAP(inq_stall),	      \
-	WRAP(credit_stall),	      \
-	WRAP(sendlinkstatus), \
-	WRAP(recvlinkstatus)
-
-#define LINKSMETRICS_DERIVED_LIST(WRAP) \
-	WRAP(SAMPLE_GEMINI_LINK_BW),	\
-	WRAP(SAMPLE_GEMINI_LINK_USED_BW),	\
-	WRAP(SAMPLE_GEMINI_LINK_PACKETSIZE_AVE), \
-		WRAP(SAMPLE_GEMINI_LINK_INQ_STALL), \
-	WRAP(SAMPLE_GEMINI_LINK_CREDIT_STALL)
-
-
-static char* linksmetrics_basename[] = {
-	LINKSMETRICS_BASE_LIST(STR_WRAP)
-};
-static char* linksmetrics_derivedname[] = {
-	LINKSMETRICS_DERIVED_LIST(STR_WRAP)
-};
-typedef enum {
-	LINKSMETRICS_BASE_LIST(PREFIX_ENUM_LB)
-} linksmetrics_base_metric_t;
-typedef enum {
-	LINKSMETRICS_DERIVED_LIST(PREFIX_ENUM_LD)
-} linksmetrics_derived_metric_t;
-
-static char* linksmetrics_baseunit[] = {
-	"(B)",
-	"(1)",
-	"(ns)",
-	"(ns)",
-	"(1)",
-	"(1)"
-	};
-
-static char* linksmetrics_derivedunit[] = {
-	"(B/s)",
-	"(\% x1e6)",
-	"(B)",
-	"(\% x1e6)",
-	"(\% x1e6)"
-	};
-#define NUM_LINKSMETRICS_DIR (sizeof(linksmetrics_dir)/sizeof(linksmetrics_dir[0]))
-#define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
-#define NUM_LINKSMETRICS_DERIVEDNAME (sizeof(linksmetrics_derivedname)/sizeof(linksmetrics_derivedname[0]))
-
-#define NICMETRICS_BASE_LIST(WRAP) \
-        WRAP(totaloutput_optA),     \
-                WRAP(totalinput), \
-		WRAP(fmaout), \
-                WRAP(bteout_optA), \
-                WRAP(bteout_optB), \
-                WRAP(totaloutput_optB)
-
-static char* nicmetrics_derivedprefix = "SAMPLE";
-static char* nicmetrics_derivedunit =  "(B/s)";
-
-static char* nicmetrics_basename[] = {
-        NICMETRICS_BASE_LIST(STR_WRAP)
-};
-
-typedef enum {
-        NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
-} nicmetrics_metric_t;
-#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
-
-#define LINKSMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
-#define NICMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/nic/metrics"
-
-#define RCAHELPER_CMD "/opt/cray/rca/default/bin/rca-helper -O"
-
-/* LINKSMETRICS Specific */
-FILE *lm_f;
-uint64_t linksmetrics_prev_time;
-ldms_metric_t* linksmetrics_base_metric_table;
-ldms_metric_t* linksmetrics_derived_metric_table;
-uint64_t*** linksmetrics_base_values; /**< holds curr & prev raw module
-					   data for derived computation */
-uint64_t** linksmetrics_base_diff; /**< holds diffs for the module values */
-
-int linksmetrics_values_idx; /**< index of the curr values for the above */
-int num_linksmetrics_exists;
-int* linksmetrics_indicies; /**< track metric table index in
-			       which to store the raw data */
-
-double linksmetrics_max_link_bw[GEMINI_NUM_LOGICAL_LINKS];
-int linksmetrics_tiles_per_dir[GEMINI_NUM_LOGICAL_LINKS];
-int linksmetrics_valid;
-
-
-
-/* NICMETRICS Specific */
-FILE *nm_f;
-uint64_t nicmetrics_prev_time;
-ldms_metric_t* nicmetrics_base_metric_table;
-ldms_metric_t* nicmetrics_derived_metric_table;
-uint64_t** nicmetrics_base_values; /**< holds curr & prev raw module data
-					for derived computation */
-int nicmetrics_values_idx; /**< index of the curr values for the above */
-int nicmetrics_valid;
 
 /* get metric_size */
 int get_metric_size_linksmetrics(size_t *m_sz, size_t *d_sz,

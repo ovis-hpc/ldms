@@ -197,22 +197,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto out;
 	}
 
-	value = av_value(avl,"gemini_metrics_type");
+	value = av_value(avl,"hsn_metrics_type");
 	if (value) {
-		gemini_metrics_type = atoi(value);
-		if ((gemini_metrics_type < GEMINI_METRICS_COUNTER) ||
-		    (gemini_metrics_type > GEMINI_METRICS_BOTH)){
+		hsn_metrics_type = atoi(value);
+		if ((hsn_metrics_type < HSN_METRICS_COUNTER) ||
+		    (hsn_metrics_type > HSN_METRICS_BOTH)){
 			rc = EINVAL;
 			goto out;
 		}
 	} else {
-		gemini_metrics_type = GEMINI_METRICS_COUNTER;
+		hsn_metrics_type = HSN_METRICS_COUNTER;
 	}
 
 
 	/* for GPCDR only need rtrfile for derived metrics */
-	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 
 		value = av_value(avl, "rtrfile");
 		if (value)
@@ -302,7 +302,7 @@ static const char *usage(void)
 		"    setname             The set name.\n",
 		"    parsedrtr           The parsed interconnect file.\n",
 		"    ostlist             Lustre OSTs\n",
-		"    gemini_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
+		"    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
 }
 
 

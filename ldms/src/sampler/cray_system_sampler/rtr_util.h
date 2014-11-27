@@ -72,13 +72,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-int tid_to_tcoord(int tid, int *row, int *col);
 int tcoord_to_tid(int row, int col, int *tid);
-int str_to_tid(char *str);
-int str_to_linkdir(char *str);
-int str_to_linktype(char *str);
-double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type);
-int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind);
 int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 					  char *filename,
 					  gemini_tile_t *tile,
