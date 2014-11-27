@@ -127,6 +127,10 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 					      NUM_LOADAVG_METRICS,
 					      m_sz, d_sz, msglog);
 		break;
+	case NS_ENERGY:
+                return get_metric_size_simple(ENERGY_METRICS,
+					      NUM_ENERGY_METRICS,
+					      m_sz, d_sz, msglog);
 	case NS_CURRENT_FREEMEM:
 		sample_metrics_cf_ptr = NULL;
 		return get_metric_size_simple(CURRENT_FREEMEM_METRICS,
@@ -259,6 +263,19 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 		return rc;
 
 		break;
+	case NS_ENERGY:
+                rc = add_metrics_simple(set, ENERGY_METRICS,
+					NUM_ENERGY_METRICS,
+					&metric_table_energy,
+					&ENERGY_FILE, &ene_f,
+					comp_id, msglog);
+                if (rc != 0)
+                        return rc;
+                if (ene_f)
+                        fclose(ene_f);
+                ene_f = NULL;
+                return 0;
+                break;
 	case NS_CURRENT_FREEMEM:
 		cf_m = 0;
 		rc = add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
@@ -330,6 +347,9 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 			rc = sample_metrics_cf_ptr(msglog);
 		else
 			rc = 0;
+		break;
+	case NS_ENERGY:
+		rc = sample_metrics_energy(msglog);
 		break;
 	case NS_LOADAVG:
 		rc = sample_metrics_loadavg(msglog);

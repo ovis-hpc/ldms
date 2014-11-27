@@ -53,6 +53,31 @@
  * \brief Utilities for cray_system_sampler for gemini metrics using gpcd
  */
 
+/**
+ * Sub sampler notes:
+ *
+ * gem_link_perf and linksmetrics are alternate interfaces to approximately
+ * the same data. similarly true for nic_perf and nicmetrics.
+ * Use depends on whether or not your system has the the gpcdr module.
+ *
+ * gem_link_perf:
+ * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
+ * (Sandia National Laboratories) gemini performance counter interface and
+ * link aggregation library. It has been augmented with pattern analysis
+ * of the interconnect file.
+ *
+ * linksmetrics:
+ * uses gpcdr interface
+ *
+ * nic_perf:
+ * raw counter read, performing the same sum defined in the gpcdr design
+ * document.
+ *
+ * nicmetrics:
+ * uses gpcdr interface
+ */
+
+
 #ifndef __GEMINI_METRICS_GPCD_H_
 #define __GEMINI_METRICS_GPCD_H_
 
@@ -71,8 +96,22 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "gemini.h"
-#include "gemini_metrics.h"
 #include "gpcd_util.h"
+
+typedef enum {
+        GEMINI_METRICS_COUNTER,
+        GEMINI_METRICS_DERIVED,
+        GEMINI_METRICS_BOTH
+} gemini_metrics_type_t;
+
+int gemini_metrics_type; /**< raw, derived, both */
+
+char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
+
+#define STR_WRAP(NAME) #NAME
+#define PREFIX_ENUM_GB(NAME) GB_ ## NAME
+#define PREFIX_ENUM_GD(NAME) GD_ ## NAME
+#define PREFIX_ENUM_M(NAME) M_ ## NAME
 
 #define NS_GLP_BASE_LIST(WRAP)	\
 	WRAP(traffic),	\
@@ -120,6 +159,27 @@ static char* ns_glp_derivedunit[] = {
 
 #define NUM_NS_GLP_BASENAME (sizeof(ns_glp_basename)/sizeof(ns_glp_basename[0]))
 #define NUM_NS_GLP_DERIVEDNAME (sizeof(ns_glp_derivedname)/sizeof(ns_glp_derivedname[0]))
+
+#define NICMETRICS_BASE_LIST(WRAP) \
+        WRAP(totaloutput_optA),     \
+                WRAP(totalinput), \
+		WRAP(fmaout), \
+                WRAP(bteout_optA), \
+                WRAP(bteout_optB), \
+                WRAP(totaloutput_optB)
+
+static char* nicmetrics_derivedprefix = "SAMPLE";
+static char* nicmetrics_derivedunit =  "(B/s)";
+
+static char* nicmetrics_basename[] = {
+        NICMETRICS_BASE_LIST(STR_WRAP)
+};
+
+typedef enum {
+        NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
+} nicmetrics_metric_t;
+
+#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
 
 /* GEM_LINK_PERF_SPECIFIC */
 gpcd_context_t *ns_glp_curr_ctx;

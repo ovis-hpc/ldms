@@ -341,6 +341,52 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 }
 
 
+int sample_metrics_energy(ldmsd_msg_log_f msglog)
+{
+        /* only has 1 val, no label */
+        char lbuf[256];
+        char metric_name[128];
+        int found_metrics;
+        char* s;
+        union ldms_value v;
+        int j, rc;
+
+
+        if (ene_f)
+                fclose(ene_f);
+        ene_f = fopen(ENERGY_FILE, "r");
+        if (!ene_f)
+                return 0;
+
+        found_metrics = 0;
+        fseek(ene_f, 0, SEEK_SET);
+        s = fgets(lbuf, sizeof(lbuf), ene_f);
+        if (s) {
+                //Ignore the unit
+                rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
+                if (rc != 1) {
+                        msglog("ERR: Issue reading the source file '%s'\n",
+			       ENERGY_FILE);
+                        rc = EINVAL;
+                        return rc;
+                }
+                ldms_set_metric(metric_table_energy[0], &v);
+                found_metrics++;
+        }
+
+        if (found_metrics != NUM_ENERGY_METRICS){
+                return EINVAL;
+        }
+
+        if (ene_f)
+                fclose(ene_f);
+        ene_f = 0;
+
+        return 0;
+
+}
+
+
 int procnetdev_setup(ldmsd_msg_log_f msglog)
 {
 	/** need tx rx bytes for ipogif0 interface only */

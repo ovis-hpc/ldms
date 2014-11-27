@@ -107,10 +107,15 @@ static int create_metric_set(const char *path)
 
 	for (i = 0; i < NS_NUM; i++){
 		switch (i){
-		case NS_GEM_LINK_PERF:
+		case NS_ENERGY:
+			meta_sz = 0;
+			data_sz = 0;
+			rc = 0;
+			break;
+		case NS_LINKSMETRICS:
 			rc = get_metric_size_gem_link_perf(&meta_sz, &data_sz, msglog);
 			break;
-		case NS_NIC_PERF:
+		case NS_NICMETRICS:
 			rc = get_metric_size_nic_perf(&meta_sz, &data_sz, msglog);
 			break;
 		default:
@@ -136,7 +141,10 @@ static int create_metric_set(const char *path)
 
 	for (i = 0; i < NS_NUM; i++) {
 		switch(i){
-		case NS_GEM_LINK_PERF:
+		case NS_ENERGY:
+			rc = 0;
+			break;
+		case NS_LINKSMETRICS:
 			rc = add_metrics_gem_link_perf(set, comp_id, msglog);
 			if (rc)
 				goto err;
@@ -146,7 +154,7 @@ static int create_metric_set(const char *path)
 			if (rc != 0) /*  Warn but OK to continue */
 				msglog(LDMS_LDEBUG,"cray_gemini_d_sampler: gem_link_perf invalid\n");
 			break;
-		case NS_NIC_PERF:
+		case NS_NICMETRICS:
 			rc = add_metrics_nic_perf(set, comp_id, msglog);
 			if (rc)
 				goto err;
@@ -243,10 +251,13 @@ static int sample(void)
 	retrc = 0;
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
-		case NS_GEM_LINK_PERF:
+		case NS_ENERGY:
+			rc = 0;
+			break;
+		case NS_LINKSMETRICS:
 			rc = sample_metrics_gem_link_perf(msglog);
 			break;
-		case NS_NIC_PERF:
+		case NS_NICMETRICS:
 			rc = sample_metrics_nic_perf(msglog);
 			break;
 		default:

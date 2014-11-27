@@ -107,6 +107,11 @@ static int create_metric_set(const char *path)
 
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
+		case NS_ENERGY:
+			meta_sz = 0;
+			data_sz = 0;
+			rc = 0;
+			break;
 		case NS_LINKSMETRICS:
 			rc = get_metric_size_linksmetrics(&meta_sz, &data_sz, msglog);
 			break;
@@ -136,6 +141,9 @@ static int create_metric_set(const char *path)
 
 	for (i = 0; i < NS_NUM; i++) {
 		switch(i){
+		case NS_ENERGY:
+			rc = 0;
+			break;
 		case NS_LINKSMETRICS:
 			rc = add_metrics_linksmetrics(set, comp_id, msglog);
 			if (rc)
@@ -250,6 +258,9 @@ static int sample(void)
 	retrc = 0;
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
+		case NS_ENERGY:
+			rc = 0;
+			break;
 		case NS_LINKSMETRICS:
 			rc = sample_metrics_linksmetrics(msglog);
 			break;
@@ -297,7 +308,7 @@ static const char *usage(void)
 
 static struct ldmsd_sampler cray_gemini_r_sampler_plugin = {
 	.base = {
-		.name = "cray_geminir_r_sampler",
+		.name = "cray_gemini_r_sampler",
 		.term = term,
 		.config = config,
 		.usage = usage,

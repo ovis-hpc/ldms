@@ -8,6 +8,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 dnl AM _INIT_AUTOMAKE([-Wno-portability])
 AM_INIT_AUTOMAKE([foreign])
+m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AC_PROG_LIBTOOL
 AC_LIB_RPATH
@@ -74,9 +75,10 @@ OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
 dnl Other libraries
-OPTION_DEFAULT_DISABLE([gpcdr], [ENABLE_GPCDR]) dnl use gpcdr (not mutually exclusive)
-OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD]) dnl use gpcd (not mutually exclusive) for the path to gpcd if relevant
-OPTION_WITH([gpcd], [GPCD])
+OPTION_DEFAULT_DISABLE([gemini-gpcdr], [ENABLE_GEMINI_GPCDR]) dnl use gpcdr for gemini (not mutually exclusive)
+OPTION_DEFAULT_DISABLE([aries-gpcdr], [ENABLE_ARIES_GPCDR]) dnl use gpcdr for aries (not mutually exclusive)
+OPTION_DEFAULT_DISABLE([gemini-gpcd], [ENABLE_GEMINI_GPCD]) dnl use gpcd for gemini (not mutually exclusive) for the path to gpcd if relevant
+OPTION_WITH([gemini-gpcd], [GEMINI_GPCD])
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
 OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
@@ -259,12 +261,12 @@ dnl if cray_sampler if enable_gpcdr then check that interface exists
 if test "x$enable_cray_system_sampler" = "xyes"
 then
 
-        if !(test -z "$ENABLE_GPCDR_TRUE") && !(test -z "$ENABLE_GPCD_TRUE")
+        if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_GEMINI_GPCD_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
         then
-		AC_MSG_ERROR([Must enable either or both gpcd or gpcdr.])
+		AC_MSG_ERROR([Must enable at least one of gemini-gpcd, gemini-gpcdr, and aries-gpcdr.])
         fi
 
-        if test -z "$ENABLE_GPCDR_TRUE"
+        if (test -z "$ENABLE_GEMINI_GPCDR_TRUE") || (test -z "$ENABLE_ARIES_GPCDR_TRUE")
         then
         gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
         if ! test -f $gpcdrfile; then
@@ -276,9 +278,10 @@ then
          ++++++++++++++++++++++++++++++++++++++++++++
           ])
           fi
-          AC_MSG_RESULT([Building gpcdr interface for gemini metrics.])
+          AC_MSG_RESULT([Building gpcdr interface for HSN metrics.])
         fi
-        if test -z "$ENABLE_GPCD_TRUE"
+        if test -z "$ENABLE_GEMINI_GPCD_TRUE"
+	then
           AC_MSG_RESULT([Building gpcd interface for gemini metrics.])
         fi
 

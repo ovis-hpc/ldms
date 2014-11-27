@@ -65,6 +65,8 @@
 #include "gemini_metrics_gpcd.h"
 #include "gemini_metrics.h"
 
+#define COUNTER_48BIT_MAX 281474976710655
+
 /** internal calculations */
 
 static uint64_t __gem_link_aggregate_phits(

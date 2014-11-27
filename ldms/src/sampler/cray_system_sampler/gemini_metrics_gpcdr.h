@@ -72,7 +72,21 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "gemini.h"
-#include "gemini_metrics.h"
+
+typedef enum {
+        GEMINI_METRICS_COUNTER,
+        GEMINI_METRICS_DERIVED,
+        GEMINI_METRICS_BOTH
+} gemini_metrics_type_t;
+
+int gemini_metrics_type; /**< raw, derived, both */
+
+char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
+
+#define STR_WRAP(NAME) #NAME
+#define PREFIX_ENUM_M(NAME) M_ ## NAME
+#define PREFIX_ENUM_LB(NAME) LB_ ## NAME
+#define PREFIX_ENUM_LD(NAME) LD_ ## NAME
 
 /** order in the module. Counting on this being same as in gemini.h */
 static char* linksmetrics_dir[] = {
@@ -129,6 +143,26 @@ static char* linksmetrics_derivedunit[] = {
 #define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
 #define NUM_LINKSMETRICS_DERIVEDNAME (sizeof(linksmetrics_derivedname)/sizeof(linksmetrics_derivedname[0]))
 
+#define NICMETRICS_BASE_LIST(WRAP) \
+        WRAP(totaloutput_optA),     \
+                WRAP(totalinput), \
+		WRAP(fmaout), \
+                WRAP(bteout_optA), \
+                WRAP(bteout_optB), \
+                WRAP(totaloutput_optB)
+
+static char* nicmetrics_derivedprefix = "SAMPLE";
+static char* nicmetrics_derivedunit =  "(B/s)";
+
+static char* nicmetrics_basename[] = {
+        NICMETRICS_BASE_LIST(STR_WRAP)
+};
+
+typedef enum {
+        NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
+} nicmetrics_metric_t;
+#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
+
 #define LINKSMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
 #define NICMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/nic/metrics"
 
@@ -151,6 +185,8 @@ int* linksmetrics_indicies; /**< track metric table index in
 double linksmetrics_max_link_bw[GEMINI_NUM_LOGICAL_LINKS];
 int linksmetrics_tiles_per_dir[GEMINI_NUM_LOGICAL_LINKS];
 int linksmetrics_valid;
+
+
 
 /* NICMETRICS Specific */
 FILE *nm_f;
@@ -176,7 +212,6 @@ int add_metrics_nicmetrics(ldms_set_t set, int comp_id,
 
 /** setup after add before sampling */
 int linksmetrics_setup(ldmsd_msg_log_f msglog);
-int nic_perf_setup(ldmsd_msg_log_f msglog);
 
 /* sampling */
 int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog);

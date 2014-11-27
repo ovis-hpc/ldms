@@ -73,18 +73,16 @@
 #include "ldmsd.h"
 #include "ldms.h"
 
-//NOTE: LINKSMETRICS and NICMETRICS are for gemini_r
-//      GEM_LINK_PERF and NIC_PERF are for gemini_d
-//these are mutually exclusive. keeping these in the enum
-//for backwards compatibility in the order of the metrics
-//in metric sets
 
+/**
+ * linksmetrics and nicmetrics have no defaults and will have to be handled in the sampler.
+ * energy and nettopo have defaults and may have to be bypassed in the sampler
+ */
 typedef enum {
         NS_NETTOPO,
 	NS_LINKSMETRICS,
         NS_NICMETRICS,
-        NS_GEM_LINK_PERF,
-        NS_NIC_PERF,
+	NS_ENERGY,
         NS_LUSTRE,
         NS_VMSTAT,
         NS_LOADAVG,

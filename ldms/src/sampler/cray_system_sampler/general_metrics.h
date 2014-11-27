@@ -76,8 +76,15 @@
 #define VMSTAT_FILE "/proc/vmstat"
 #define LOADAVG_FILE "/proc/loadavg"
 #define CURRENT_FREEMEM_FILE "/proc/current_freemem"
+#define ENERGY_FILE "/sys/cray/pm_counters/energy"
 #define KGNILND_FILE  "/proc/kgnilnd/stats"
 #define PROCNETDEV_FILE "/proc/net/dev"
+
+/* ENERGY Specific */
+FILE *ene_f;
+static char* ENERGY_METRICS[] = {"energy(J)"};
+#define NUM_ENERGY_METRICS (sizeof(ENERGY_METRICS)/sizeof(ENERGY_METRICS[0]))
+ldms_metric_t* metric_table_energy;
 
 /* CURRENT_FREEMEM Specific */
 FILE *cf_f;
@@ -142,6 +149,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
 int sample_metrics_vmcf(ldmsd_msg_log_f msglog);
 int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
 int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
+int sample_metrics_energy(ldmsd_msg_log_f msglog);
 int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
 int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
 

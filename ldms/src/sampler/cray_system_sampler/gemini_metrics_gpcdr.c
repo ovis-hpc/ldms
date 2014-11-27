@@ -57,7 +57,6 @@
  */
 
 #include "gemini_metrics_gpcdr.h"
-#include "gemini_metrics.h"
 /* have to include this now to get the max bw */
 #include "rtr_util.h"
 
