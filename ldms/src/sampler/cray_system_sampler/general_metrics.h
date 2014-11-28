@@ -73,6 +73,7 @@
 #include "ldmsd.h"
 #include "ldms.h"
 
+//FIXME: move cases into individual files. move vars into the c files.
 #define VMSTAT_FILE "/proc/vmstat"
 #define LOADAVG_FILE "/proc/loadavg"
 #define CURRENT_FREEMEM_FILE "/proc/current_freemem"

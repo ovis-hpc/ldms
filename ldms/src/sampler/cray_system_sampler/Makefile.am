@@ -69,6 +69,13 @@ pkglib_LTLIBRARIES += libcray_gemini_r_sampler.la
 endif
 
 if ENABLE_ARIES_GPCDR
+libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_)
+libcray_aries_r_sampler_la_LDFLAGS = $(CRAY_LDFLAGS_)
+libcray_aries_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
+	cray_aries_r_sampler.c \
+	aries_metrics_gpcdr.c aries_metrics_gpcdr.h
+libcray_gemini_r_sampler_la_LIBADD = $(CRAY_LIBADD_)
+pkglib_LTLIBRARIES += libcray_aries_r_sampler.la
 endif
 
 endif

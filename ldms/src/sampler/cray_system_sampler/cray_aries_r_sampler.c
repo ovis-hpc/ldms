@@ -233,8 +233,8 @@ static int sample(void)
 
 
 #if 0
-        struct timespec time1, time2;
-        clock_gettime(CLOCK_REALTIME, &time1);
+	struct timespec time1, time2;
+	clock_gettime(CLOCK_REALTIME, &time1);
 #endif
 
 	if (!set) {
@@ -268,10 +268,10 @@ static int sample(void)
 	ldms_end_transaction(set);
 
 #if 0
-        clock_gettime(CLOCK_REALTIME, &time2);
-        uint64_t beg_nsec = (time1.tv_sec)*1000000000+time1.tv_nsec;
-        uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
-        dt = end_nsec - beg_nsec;
+	clock_gettime(CLOCK_REALTIME, &time2);
+	uint64_t beg_nsec = (time1.tv_sec)*1000000000+time1.tv_nsec;
+	uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
+	dt = end_nsec - beg_nsec;
 #endif
 	return retrc;
 }

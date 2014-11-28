@@ -110,6 +110,24 @@ static char* linksmetrics_derivedunit[] = {
 #define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
 #define NUM_LINKSMETRICS_DERIVEDNAME (sizeof(linksmetrics_derivedname)/sizeof(linksmetrics_derivedname[0]))
 
+#define NICMETRICS_BASE_LIST(WRAP) \
+        WRAP(totaloutput), \
+                WRAP(totalinput), \
+                WRAP(fmaout), \
+                WRAP(bteout)
+
+static char* nicmetrics_derivedprefix = "SAMPLE";
+static char* nicmetrics_derivedunit =  "(B/s)";
+
+static char* nicmetrics_basename[] = {
+        NICMETRICS_BASE_LIST(STR_WRAP)
+};
+
+typedef enum {
+        NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
+} nicmetrics_metric_t;
+#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
+
 #define LINKSMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
 #define NICMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/nic/metrics"
 
