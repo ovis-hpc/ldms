@@ -190,10 +190,13 @@ static int __links_metric_name(int isbase, int nameidx,
 
 
 int hsn_metrics_config(int i){
-	if ((i < 0) || (i >= HSN_METRICS_END))
+	if (i >= HSN_METRICS_END){
 		return EINVAL;
-
-	hsn_metrics_type = i;
+	} else if (i < 0){
+		hsn_metrics_type = HSN_METRICS_DEFAULT;
+	} else {
+		hsn_metrics_type = i;
+	}
 
 	return 0;
 
@@ -541,7 +544,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 				    &val, units);
 			if (rc != 3) {
 				msglog(LDMS_LDEBUG,"ERR: Issue reading source file '%s'\n",
-				       LINKSMETRICS_FILE);
+				       NICMETRICS_FILE);
 				rc = EINVAL;
 				return rc;
 			}
@@ -851,7 +854,6 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 			}
 
 			if (time_delta > 0)
-				//				v.v_u64 = (uint64_t)((diff*1000)/time_delta);
 				v.v_u64 = (uint64_t)((diff*nicmetrics_time_multiplier)/time_delta);
 			else
 				v.v_u64 = 0;

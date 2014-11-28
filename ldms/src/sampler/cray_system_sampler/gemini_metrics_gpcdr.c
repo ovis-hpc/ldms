@@ -178,6 +178,7 @@ static char* rtrfile = NULL; /**< needed for gpcd, but also used to get maxbw fo
 /* NICMETRICS Specific */
 static FILE *nm_f;
 static uint64_t nicmetrics_prev_time;
+static int nicmetrics_time_multiplier;
 static ldms_metric_t* nicmetrics_base_metric_table;
 static ldms_metric_t* nicmetrics_derived_metric_table;
 static uint64_t** nicmetrics_base_values; /**< holds curr & prev raw module data
@@ -324,10 +325,13 @@ err:
 
 
 int hsn_metrics_config(int i, char* fname){
-	if ((i < 0) || (i >= HSN_METRICS_END))
+	if (i >= HSN_METRICS_END){
 		return EINVAL;
-
-	hsn_metrics_type = i;
+	} else if (i < 0){
+		hsn_metrics_type = HSN_METRICS_DEFAULT;
+	} else {
+		hsn_metrics_type = i;
+	}
 
 	if (rtrfile)
 		free(rtrfile);
@@ -681,8 +685,10 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 			rc = EINVAL;
 			return rc;
 		}
-		if (strcmp(units,"ms") != 0){
-			msglog(LDMS_LDEBUG,"nicmetrics: wrong gpcdr interface\n");
+		if (strcmp(units,"ms") == 0){
+			nicmetrics_time_multiplier = 1000;
+		} else {
+			msglog(LDMS_LDEBUG,"nicmetrics: wrong gpcdr interface (time units)\n");
 			rc = EINVAL;
 			return rc;
 		}
@@ -1006,7 +1012,7 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 			}
 
 			if (time_delta > 0)
-				v.v_u64 = (uint64_t)((diff*1000)/time_delta);
+				v.v_u64 = (uint64_t)((diff*nicmetrics_time_multiplier)/time_delta);
 			else
 				v.v_u64 = 0;
 

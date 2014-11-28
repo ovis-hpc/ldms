@@ -282,10 +282,13 @@ int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz, ldmsd_msg_log_f msglog)
 
 
 int hsn_metrics_config(int i, char* fname){
-	if ((i < 0) || (i >= HSN_METRICS_END))
+	if (i >= HSN_METRICS_END){
 		return EINVAL;
-
-	hsn_metrics_type = i;
+	} else if (i < 0){
+		hsn_metrics_type = HSN_METRICS_DEFAULT;
+	} else {
+		hsn_metrics_type = i;
+	}
 
 	if (rtrfile)
 		free(rtrfile);
