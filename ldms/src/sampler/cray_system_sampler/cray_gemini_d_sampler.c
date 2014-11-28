@@ -178,7 +178,9 @@ static int create_metric_set(const char *path)
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
+	char *value = NULL;
+	char *rvalue = NULL;
+	int mvalue = -1;
 	int rc = 0;
 
 	value = av_value(avl, "component_id");
@@ -196,23 +198,17 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	value = av_value(avl,"hsn_metrics_type");
-	if (value) {
-		hsn_metrics_type = atoi(value);
-		if ((hsn_metrics_type < HSN_METRICS_COUNTER) ||
-		    (hsn_metrics_type > HSN_METRICS_BOTH)){
-			rc = EINVAL;
-			goto out;
-		}
-	} else {
-		hsn_metrics_type = HSN_METRICS_COUNTER;
-	}
+        if (value) {
+                mvalue = atoi(value);
+        }
 
-	/* always need rtrfile for gpcd metrics */
 	value = av_value(avl, "rtrfile");
-	if (value)
-		rtrfile = strdup(value);
-	else
-		rtrfile = NULL;
+        if (value)
+                rvalue = value;
+
+	rc = hsn_metrics_config(mvalue, rvalue);
+        if (rc != 0)
+                goto out;
 
 	value = av_value(avl, "set");
 	if (value)

@@ -60,9 +60,18 @@
 #include <rs_meshcoord.h>
 #include "gpcd_util.h"
 #include "rtr_util.h"
+#include "gemini.h"
 #include "gemini_metrics_gpcd.h"
 
 #define COUNTER_48BIT_MAX 281474976710655
+
+typedef enum {
+	HSN_METRICS_COUNTER,
+	HSN_METRICS_DERIVED,
+	HSN_METRICS_BOTH,
+	HSN_METRICS_END
+} hsn_metrics_type_t;
+#define HSN_METRICS_DEFAULT HSN_METRICS_COUNTER
 
 #define STR_WRAP(NAME) #NAME
 #define PREFIX_ENUM_GB(NAME) GB_ ## NAME
@@ -158,6 +167,8 @@ static struct timespec *ns_glp_curr_time, *ns_glp_prev_time,
 	*ns_glp_int_time;
 static uint64_t ns_glp_diff;
 
+static char* rtrfile = NULL; /**< needed for gpcd, but also used to get maxbw for gpcdr */
+
 /* NIC_PERF Specific */
 static uint64_t ns_nic_diff[NUM_NIC_PERF_RAW];
 static uint64_t ns_nic_curr[NUM_NIC_PERF_RAW];
@@ -172,6 +183,9 @@ static ldms_metric_t* ns_nic_derived_metric_table;
 static struct timespec ns_nic_time1, ns_nic_time2;
 static struct timespec *ns_nic_curr_time, *ns_nic_prev_time, *ns_nic_int_time;
 static int ns_nic_valid;
+
+
+static int hsn_metrics_type = HSN_METRICS_DEFAULT;
 
 /** internal calculations */
 static uint64_t __gem_link_aggregate_phits(
@@ -265,6 +279,28 @@ int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz, ldmsd_msg_log_f msglog)
 	return 0;
 
 }
+
+
+int hsn_metrics_config(int i, char* fname){
+	if ((i < 0) || (i >= HSN_METRICS_END))
+		return EINVAL;
+
+	hsn_metrics_type = i;
+
+	if (rtrfile)
+		free(rtrfile);
+	if (fname == NULL)
+		rtrfile = NULL;
+	else
+		rtrfile = strdup(fname);
+
+	//always need rtr file
+	if (rtrfile == NULL)
+		return EINVAL;
+
+	return 0;
+}
+
 
 int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
 				  ldmsd_msg_log_f msglog)

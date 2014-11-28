@@ -56,9 +56,19 @@
  * gemini using gpcdr interface.
  */
 
-#include "gemini_metrics_gpcdr.h"
 /* have to include this now to get the max bw */
 #include "rtr_util.h"
+#include "gemini.h"
+#include "gemini_metrics_gpcdr.h"
+
+typedef enum {
+	HSN_METRICS_COUNTER,
+	HSN_METRICS_DERIVED,
+	HSN_METRICS_BOTH,
+	HSN_METRICS_END
+} hsn_metrics_type_t;
+#define HSN_METRICS_DEFAULT HSN_METRICS_COUNTER
+
 
 /** order in the module. Counting on this being same as in gemini.h */
 static char* linksmetrics_dir[] = {
@@ -163,6 +173,7 @@ static double linksmetrics_max_link_bw[GEMINI_NUM_LOGICAL_LINKS];
 static int linksmetrics_tiles_per_dir[GEMINI_NUM_LOGICAL_LINKS];
 static int linksmetrics_valid;
 
+static char* rtrfile = NULL; /**< needed for gpcd, but also used to get maxbw for gpcdr */
 
 /* NICMETRICS Specific */
 static FILE *nm_f;
@@ -174,6 +185,8 @@ static uint64_t** nicmetrics_base_values; /**< holds curr & prev raw module data
 static int nicmetrics_values_idx; /**< index of the curr values for the above */
 static int nicmetrics_valid;
 
+
+static int hsn_metrics_type = HSN_METRICS_DEFAULT;
 
 /** internal calculations */
 static uint64_t __linksmetrics_derived_metric_calc(
@@ -222,7 +235,7 @@ static int bwhelper_maxbwperdir(ldmsd_msg_log_f msglog)
 						   &tiles_per_dir_junk);
 
 	if (rc != 0){
-		msglog(LDMS_LDEBUG,LDMS_LDEBUG,"linksmetrics: Error parsing interconnect file\n");
+		msglog(LDMS_LDEBUG,"linksmetrics: Error parsing interconnect file\n");
 		return rc;
 	}
 
@@ -243,7 +256,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 
 	pipe = popen(RCAHELPER_CMD, "r");
 	if (!pipe) {
-		msglog(LDMS_LDEBUG,LDMS_LDEBUG,"gemini_metrics: rca-helper fail\n");
+		msglog(LDMS_LDEBUG,"gemini_metrics: rca-helper fail\n");
 		rc = EINVAL;
 		goto err;
 	}
@@ -306,6 +319,31 @@ err:
 		pclose(pipe);
 
 	return rc;
+
+}
+
+
+int hsn_metrics_config(int i, char* fname){
+	if ((i < 0) || (i >= HSN_METRICS_END))
+		return EINVAL;
+
+	hsn_metrics_type = i;
+
+	if (rtrfile)
+		free(rtrfile);
+	if (fname == NULL)
+		rtrfile = NULL;
+	else
+		rtrfile = strdup(fname);
+
+	//only need rtrfile for derived
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		if (rtrfile == NULL)
+			return EINVAL;
+	}
+
+	return 0;
 
 }
 

@@ -183,6 +183,7 @@ static int create_metric_set(const char *path)
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	int mvalue = -1;
 	int rc = 0;
 
 	value = av_value(avl, "component_id");
@@ -199,17 +200,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto out;
 	}
 
-	value = av_value(avl,"aries_metrics_type");
+	value = av_value(avl,"hsn_metrics_type");
 	if (value) {
-		aries_metrics_type = atoi(value);
-		if ((aries_metrics_type < ARIES_METRICS_COUNTER) ||
-		    (aries_metrics_type > ARIES_METRICS_BOTH)){
-			rc = EINVAL;
-			goto out;
-		}
-	} else {
-		aries_metrics_type = ARIES_METRICS_COUNTER;
+		mvalue = atoi(value);
 	}
+
+	rc = hsn_metrics_config(mvalue);
+	if (rc != 0)
+		goto out;
 
 	value = av_value(avl, "set");
 	if (value)
@@ -292,7 +290,7 @@ static const char *usage(void)
 		"    comp_id             The component id value.\n"
 		"    setname             The set name.\n",
 		"    ostlist             Lustre OSTs\n",
-		"    aries_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
+		"    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
 }
 
 

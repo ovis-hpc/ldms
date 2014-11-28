@@ -98,16 +98,9 @@
 #include "gemini.h"
 #include "gpcd_util.h"
 
-typedef enum {
-        HSN_METRICS_COUNTER,
-        HSN_METRICS_DERIVED,
-        HSN_METRICS_BOTH
-} hsn_metrics_type_t;
 
-int hsn_metrics_type; /**< raw, derived, both */
-
-char* rtrfile; /**< needed for gpcd, but also used to get maxbw for gpcdr */
-
+/* config */
+int hsn_metrics_config(int i, char* filename);
 
 /** get metric size */
 int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
