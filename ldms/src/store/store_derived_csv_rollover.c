@@ -305,12 +305,17 @@ static void* rolloverThreadInit(void* m){
 		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
 		  break;
 		case 2: {
-		  time_t secSinceMidnight = time(NULL) % 86400;
-		  tsleep = 86400 - (int) secSinceMidnight + rollover;
-		  if (tsleep < MIN_ROLL_1){
-		    /* if we just did a roll then skip this one */
-		    tsleep+=86400;
-		  }
+		  time_t rawtime;
+                  struct tm *info;
+
+                  time( &rawtime );
+                  info = localtime( &rawtime );
+                  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
+                  tsleep = 86400 - secSinceMidnight + rollover;
+                  if (tsleep < MIN_ROLL_1){
+                    /* if we just did a roll then skip this one */
+                    tsleep+=86400;
+                  }
 		}
 		  break;
 		case 3:
