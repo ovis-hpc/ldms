@@ -565,13 +565,13 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 	if (!s_handle)
 		return EINVAL;
 
+	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
 		msglog(LDMS_LDEBUG,"Cannot insert values for <%s>: file is closed\n",
 				s_handle->path);
+		pthread_mutex_unlock(&s_handle->lock);
 		return EPERM;
 	}
-
-	pthread_mutex_lock(&s_handle->lock);
 
 	if (s_handle->printheader)
 		print_header(s_handle, mvec);

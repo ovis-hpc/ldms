@@ -175,6 +175,7 @@ struct csv_store_rollover_handle {
 	idx_t sets_idx;
 	int numsets;
 	int printheader;
+        int parseconfig;
 	char *store_key;
 	pthread_mutex_t lock;
 	void *ucontext;
@@ -339,7 +340,6 @@ static void* rolloverThreadInit(void* m){
 static int derivedConfig(char* fname, struct csv_store_rollover_handle *s_handle){
 	//read the file and keep the metrics names until its time to print the headers
 
-	s_handle->numder = 0;
 	char lbuf[STORE_DERIVED_LINE_MAX];
 	char metric_name[STORE_DERIVED_NAME_MAX];
 	int tval;
@@ -356,6 +356,8 @@ static int derivedConfig(char* fname, struct csv_store_rollover_handle *s_handle
 		msglog(LDMS_LDEBUG,"Cannot open config file <%s>\n", fname);
 		return EINVAL;
 	}
+	s_handle->parseconfig = 0;
+	s_handle->numder = 0;
 
 	rc = 0;
 	rcl = 0;
@@ -578,17 +580,18 @@ static int print_header(struct csv_store_rollover_handle *s_handle,
 
 	/* Only called from Store which already has the lock */
 	FILE* fp = s_handle->headerfile;
-
-	s_handle->printheader = 0;
 	if (!fp){
 		msglog(LDMS_LDEBUG,"Cannot print header for store_derived_csv_rollover. No headerfile\n");
 		return EINVAL;
 	}
+	s_handle->printheader = 0;
 
-	rc = derivedConfig(derivedconf,s_handle);
-	if (rc != 0) {
-		msglog(LDMS_LDEBUG,"derivedConfig failed for store_derived_csv_rollover. \n");
-		return rc;
+	if (s_handle->parseconfig){
+	  rc = derivedConfig(derivedconf,s_handle);
+	  if (rc != 0) {
+	    msglog(LDMS_LDEBUG,"derivedConfig failed for store_derived_csv_rollover. \n");
+	    return rc;
+	  }
 	}
 
 
@@ -699,6 +702,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		}
 
 		s_handle->printheader = 1;
+		s_handle->parseconfig = 1;
 	}
 
 	/* Take the lock in case its a store that has been closed */
@@ -804,20 +808,18 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	if (!s_handle)
 		return EINVAL;
 
+	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
 		msglog(LDMS_LDEBUG,"Cannot insert values for <%s>: file is closed\n",
 				s_handle->path);
+		pthread_mutex_unlock(&s_handle->lock);
 		return EPERM;
 	}
 
-
-	pthread_mutex_lock(&s_handle->lock);
-	pthread_mutex_lock(&cfg_lock);
 	if (s_handle->printheader) {
 		rc = print_header(s_handle, mvec);
 		if (rc != 0){
 			msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error in print_header: %d\n", rc);
-			pthread_mutex_unlock(&cfg_lock);
 			pthread_mutex_unlock(&s_handle->lock);
 			return rc;
 		}
@@ -831,7 +833,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	if (dp == NULL){
 		dp = (struct setdatapoint*)malloc(sizeof(struct setdatapoint));
 		if (!dp) {
-			pthread_mutex_unlock(&cfg_lock);
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
@@ -848,7 +849,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	if (dp->ts == NULL){ //first time - ONLY save
 		dp->ts = (struct ldms_timestamp*)malloc(sizeof (struct ldms_timestamp));
 		if (dp->ts == NULL) {
-			pthread_mutex_unlock(&cfg_lock);
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
@@ -857,13 +857,11 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 		dp->datavals = (uint64_t*) malloc((s_handle->numder)*sizeof(uint64_t));
 		if (dp->datavals == NULL){
-			pthread_mutex_unlock(&cfg_lock);
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
 		ldms_metric_t* v = ldms_mvec_get_metrics(mvec); //new vals
 		if (v == NULL) {
-			pthread_mutex_unlock(&cfg_lock);
 			pthread_mutex_unlock(&s_handle->lock);
 			return EINVAL; //shouldnt happen
 		}
@@ -879,8 +877,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		}
 		goto out;
 	}
-	pthread_mutex_unlock(&cfg_lock);
-
 
 	struct timeval prev, curr, diff;
 	prev.tv_sec = dp->ts->sec;
@@ -921,7 +917,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	}
 
 	/* for all metrics in the conf, write the vals */
-	pthread_mutex_lock(&cfg_lock);
 	for (i = 0; i < s_handle->numder; i++){
 		int midx = s_handle->der[i].deridx;
 		//NOTE: once intended to enable deltas to be specified for metrics which did not exist,
@@ -988,7 +983,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 out:
 	s_handle->store_count++;
-	pthread_mutex_unlock(&cfg_lock);
 	pthread_mutex_unlock(&s_handle->lock);
 
 	return 0;
