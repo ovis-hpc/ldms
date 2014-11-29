@@ -21,7 +21,7 @@ The store_csv plugin is a CSV store.
 
 .TP
 .BR config
-name=<plugin_name> path=<path> [ alt_header=<altheader> idpos=<idpos> ]
+name=<plugin_name> path=<path> [ alt_header=<altheader> idpos=<idpos> rolltype=<rolltype> rollover=<rollover> ]
 .br
 ldmsctl configuration line
 .RS
@@ -41,6 +41,31 @@ The default output writes the header to the same file as the data file. alt_head
 idpos=<idpos>
 .br
 The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are: 
+.RS 
+.TP
+1 
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
 .RE
 
 .SH LDMSCTL STORE ATTRIBUTE SYNTAX
@@ -62,15 +87,12 @@ The set parameter here is the base name of the sets, independent of the host nam
 .TP
 comp_type=<type>
 .br
-The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will b\
-e created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/n\
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/n\
 ode/meminfo.
 .TP
 container=<container>
 .br
-The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will b\
-e created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/n\
-ode/meminfo.
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/node/meminfo.
 
 Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
 .RE
