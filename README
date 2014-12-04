@@ -5,6 +5,36 @@ separately. Hence, one-by-one module installation is required.
 
 Please build the modules in the following order:
 
+0. util/libevent
+	Please install libevent2 development package from your OS repository, or
+build it from source by: 'git submodule init && git submodule update' and go to
+./util/libevent, and build libevent2 from there.
+	libevent is required by ldms/ and zap in lib/.
+
+0.1 the usage of convenient script:
+	After libevent installation, you can edit
+./all-autogen-configure-make-makeinstall.sh script to your liking and use this
+convenient script to build and install modules in OVIS. The variables in the
+file that you may want to modify:
+
+- ENABLE: enabling features in modules (please see ./configure --help in each
+  module to see details). The default values in the script should be OK for a
+  generic installation.
+
+- DISABLE: disabling features in modules. The default values in the script
+  should be OK for a generic installation.
+
+- LIBEVENT_PREFIX: specifying location of libevent if it is not installed in
+  standard location (like /usr or /usr/local).
+
+- LIST: space-delimited ordered list of modules to install. Feel free to remove
+  unwanted modules, but please preserve the order.
+
+- sudo: If you wish to install as a normal user, just remove the sudo in line 50
+  and comment out line 51.
+
+Otherwise, you can manually build each module by the following order:
+
 1. lib
 	This module is needed by everybody.
 

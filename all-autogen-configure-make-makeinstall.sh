@@ -18,10 +18,16 @@ ENABLE="--enable-swig --enable-ocmd --enable-parsers \
 	--enable-ocm-test --enable-etc"
 
 # add --disable-FEATURE here
-DISABLE=""
+DISABLE="--disable-rdma --disable-sysclassib"
 
-#WITH_EVENT="--with-event=/usr/local --with-libevent=/usr/local"
-WITH="--with-ovis-lib=$PREFIX --with-sos=$PREFIX --with-ocm=$PREFIX $WITH_EVENT"
+# libevent2 prefix
+#LIBEVENT_PREFIX=/usr/local
+
+WITH="--with-ovis-lib=$PREFIX --with-sos=$PREFIX --with-ocm=$PREFIX"
+if [ -n "$LIBEVENT_PREFIX" ]; then
+	WITH="$WITH --with-libevent=$LIBEVENT_PREFIX"
+fi
+
 CFLAGS='-g -O0 -DDEBUG -Wl,-z,defs'
 
 # Exit immediately if a command failed
