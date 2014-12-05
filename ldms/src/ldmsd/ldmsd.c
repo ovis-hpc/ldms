@@ -1874,7 +1874,7 @@ int process_loglevel(int fd,
 		goto out;
 	}
 
-	nlvl = ldms_str_to_level(optarg);
+	nlvl = ldms_str_to_level(lvl);
 	if (nlvl < 0){
 		sprintf(err_str, "The level name is not valid\n");
 		rc = EINVAL;
