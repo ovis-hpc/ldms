@@ -1874,7 +1874,7 @@ int process_loglevel(int fd,
 		goto out;
 	}
 
-	int nlvl = ldms_str_to_level(optarg);
+	nlvl = ldms_str_to_level(optarg);
 	if (nlvl < 0){
 		sprintf(err_str, "The level name is not valid\n");
 		rc = EINVAL;
@@ -1882,7 +1882,7 @@ int process_loglevel(int fd,
 	}
 
 	log_level = nlvl;
-	has_arg[LDMS_QUIET] = 1;
+	//has_arg[LDMS_QUIET] = 1; Only used for yaml. Not relevant to this release
 
  out:
 	sprintf(reply, "%d%s", -rc, err_str);

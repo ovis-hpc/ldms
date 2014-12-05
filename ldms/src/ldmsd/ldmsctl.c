@@ -211,6 +211,10 @@ int handle_help(char *kw, char *err_str)
 	       "   - Causes the ldmsd to dump out information about plugins,\n"
 	       "     work queue utilization, hosts and object stores.\n"
 	       "\n"
+	       "loglevel level=<levelflag>\n"
+	       "   - adjusts the loglevel for this ldmsd\n"
+	       "     <levelflag>  Options are: DEBUG, INFO, ERROR, CRITICAL, and QUIET\n"
+	       "\n"
 	       "quit\n"
 	       "   - Exit.\n", LDMS_DEFAULT_PORT);
 	return 0;
@@ -241,6 +245,11 @@ int handle_usage(char *kw, char *err_str)
 int handle_plugin_load(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_LOAD_PLUGIN, av_list, err_str);
+}
+
+int handle_loglevel(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_LOGLEVEL, av_list, err_str);
 }
 
 int handle_plugin_term(char *kw, char *err_str)
@@ -309,6 +318,7 @@ struct kw keyword_tbl[] = {
 	{ "help", handle_help },
 	{ "info", handle_info },
 	{ "load", handle_plugin_load },
+	{ "loglevel", handle_loglevel },
 	{ "quit", handle_quit },
 	{ "standby", handle_update_standby },
 	{ "start", handle_sampler_start },
