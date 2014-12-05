@@ -1854,7 +1854,42 @@ int process_exit(int fd,
 	return 0;
 }
 
+int process_loglevel(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+	TF();
+	char err_str[128];
+	char* lvl;
+	char reply[128];
+	int nlvl;
+	int rc = 0;
 
+	err_str[0] = '\0';
+
+	lvl = av_value(av_list, "level");
+	if (!lvl) {
+		sprintf(err_str, "The level name was not specified\n");
+		rc = EINVAL;
+		goto out;
+	}
+
+	int nlvl = ldms_str_to_level(optarg);
+	if (nlvl < 0){
+		sprintf(err_str, "The level name is not valid\n");
+		rc = EINVAL;
+		goto out;
+	}
+
+	log_level = nlvl;
+	has_arg[LDMS_QUIET] = 1;
+
+ out:
+	sprintf(reply, "%d%s", -rc, err_str);
+	send_reply(fd, sa, sa_len, reply, strlen(reply)+1);
+	return 0;
+
+}
 
 int process_version(int fd,
 			struct sockaddr *sa, ssize_t sa_len,

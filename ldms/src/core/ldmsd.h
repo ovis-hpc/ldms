@@ -331,7 +331,8 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_EXIT_DAEMON	10   /* Shut down ldmsd */
 #define LDMSCTL_UPDATE_STANDBY  11   /* update the standby state */
 #define LDMSCTL_VERSION         12   /* Query for version info */
-#define LDMSCTL_LAST_COMMAND	12
+#define LDMSCTL_LOGLEVEL        13   /* Adjust the loglevel */
+#define LDMSCTL_LAST_COMMAND	13
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 
