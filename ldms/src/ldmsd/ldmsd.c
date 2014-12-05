@@ -1917,6 +1917,7 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
 	[LDMSCTL_VERSION] = process_version,
+	[LDMSCTL_LOGLEVEL] = process_loglevel,
 };
 
 
