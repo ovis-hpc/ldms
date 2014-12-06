@@ -1854,7 +1854,42 @@ int process_exit(int fd,
 	return 0;
 }
 
+int process_loglevel(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+	TF();
+	char err_str[128];
+	char* lvl;
+	char reply[128];
+	int nlvl;
+	int rc = 0;
 
+	err_str[0] = '\0';
+
+	lvl = av_value(av_list, "level");
+	if (!lvl) {
+		sprintf(err_str, "The level name was not specified\n");
+		rc = EINVAL;
+		goto out;
+	}
+
+	nlvl = ldms_str_to_level(lvl);
+	if (nlvl < 0){
+		sprintf(err_str, "The level name is not valid\n");
+		rc = EINVAL;
+		goto out;
+	}
+
+	log_level = nlvl;
+	//has_arg[LDMS_QUIET] = 1; Only used for yaml. Not relevant to this release
+
+ out:
+	sprintf(reply, "%d%s", -rc, err_str);
+	send_reply(fd, sa, sa_len, reply, strlen(reply)+1);
+	return 0;
+
+}
 
 int process_version(int fd,
 			struct sockaddr *sa, ssize_t sa_len,
@@ -1882,6 +1917,7 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
 	[LDMSCTL_VERSION] = process_version,
+	[LDMSCTL_LOGLEVEL] = process_loglevel,
 };
 
 
@@ -2105,7 +2141,7 @@ int do_connect(struct hostspec *hs)
 		goto err;
 	}
 	ret = ldms_xprt_auth(hs->x);
-	if (ret) 
+	if (ret)
 		goto err;
 	return 0;
  err:
@@ -2264,7 +2300,13 @@ void update_data(struct hostspec *hs)
 	if (!hs->x)
 		return;
 	if (!ldms_xprt_authenticated(hs->x)) {
-		ldms_log(LDMS_LERROR,"transport not yet authenticated. deferring.\n");
+		ldms_log(LDMS_LERROR,"Transport not yet authenticated. deferring.\n");
+		return;
+	}
+	if (ldms_check_proceed(hs->x) != 0){
+		ldms_log(LDMS_LINFO,"Will not proceed with this transport. Closeing transport...\n");
+		ldms_xprt_close(hs->x);
+		hs->x = NULL;
 		return;
 	}
 
@@ -2385,7 +2427,7 @@ void do_host(struct hostspec *hs)
 			hs->conn_state = HOST_DISCONNECTED;
 			host_conn_reschedule(hs);
 		} else if (hs->type != BRIDGING) {
-			if ((hs->standby == 0) || (hs->standby & saggs_mask)) 
+			if ((hs->standby == 0) || (hs->standby & saggs_mask))
 				update_data(hs);
 			schedule_update(hs);
 		}

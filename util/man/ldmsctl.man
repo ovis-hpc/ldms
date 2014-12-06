@@ -222,7 +222,7 @@ have their data saved.
 .br
 agg_no=<agg_no> state=<stateval>
 .br
-ldmsd will update it saggs_mask for this aggregator as indicated.
+ldmsd will update its saggs_mask for this aggregator as indicated.
 .RS
 .TP
 agg_no=<agg_no>
@@ -230,6 +230,16 @@ Unique integer id for an aggregator
 .TP
 state=<stateval>
 Valid values are 0=standby and 1=active
+.RE
+.TP
+.BR loglevel
+level=<levelflag>
+.br
+Update loglevel for this ldmsd as indicated.
+.RS
+.TP
+<levelflag>
+The log level. Options are: DEBUG, INFO, ERROR, CRITICAL or QUIET. 
 .RE
 .TP
 .BR info

@@ -542,6 +542,14 @@ extern const char *ldms_get_xprt_name(ldms_t x);
 extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
 
 /**
+ * \brief Check the transport before proceeding
+ *
+ * \param x    The transport handle
+ * \returns    0 if good
+ */
+extern int ldms_check_proceed(ldms_t x);
+
+/**
 / \brief Authenticate to an LDMS host.
  *
  * \param x	The transport handle

@@ -148,7 +148,7 @@ struct ldms_ugni_xprt {
 	uint32_t rem_inst_id;
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;
-
+	int node_id;
 	LIST_ENTRY(ldms_ugni_xprt) client_link;
 };
 
