@@ -483,7 +483,7 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
 /**
  * \brief Log levels
  */
-#define STR_WRAP(NAME) #NAME,
+#define LDMS_STR_WRAP(NAME) #NAME,
 #define LDMS_LWRAP(NAME) LDMS_L ## NAME,
 
 #define LOGLEVELS(WRAP) \
@@ -499,7 +499,7 @@ typedef enum {
 } loglevels_t;
 
 static char* loglevels_names[] = {
-	LOGLEVELS(STR_WRAP)
+	LOGLEVELS(LDMS_STR_WRAP)
 };
 
 int ldms_str_to_level(const char *level_s);
