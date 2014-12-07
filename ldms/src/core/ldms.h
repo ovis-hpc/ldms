@@ -483,12 +483,23 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
 /**
  * \brief Log levels
  */
-enum {
-	LDMS_LDEBUG = 0,
-	LDMS_LINFO,
-	LDMS_LERROR,
-	LDMS_LCRITICAL,
-	LDMS_LALWAYS,
+#define STR_WRAP(NAME) #NAME,
+#define LDMS_LWRAP(NAME) LDMS_L ## NAME,
+
+#define LOGLEVELS(WRAP) \
+	WRAP (DEBUG) \
+	WRAP (INFO) \
+	WRAP (ERROR) \
+	WRAP (CRITICAL) \
+	WRAP (ALWAYS) \
+	WRAP (ENDLEVEL)
+
+typedef enum {
+	LOGLEVELS(LDMS_LWRAP)
+} loglevels_t;
+
+static char* loglevels_names[] = {
+	LOGLEVELS(STR_WRAP)
 };
 
 int ldms_str_to_level(const char *level_s);
