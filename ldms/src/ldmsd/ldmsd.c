@@ -1884,8 +1884,10 @@ int process_loglevel(int fd,
 		goto out;
 	}
 
+	ldms_log(LDMS_LINFO,"Updating loglevel to %s\n", loglevels_names[nlvl]);
 	log_level = nlvl;
 	//has_arg[LDMS_QUIET] = 1; Only used for yaml. Not relevant to this release
+
 
  out:
 	sprintf(reply, "%d%s", -rc, err_str);
