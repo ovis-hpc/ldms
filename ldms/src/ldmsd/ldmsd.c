@@ -234,6 +234,9 @@ void ldms_log(int level, const char *fmt, ...)
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 		fprintf(log_fp, "%s: ", dtsz);
 #endif
+	if ((level >= 0) && (level < LDMS_LENDLEVEL)){
+		fprintf(log_fp, "%-10s: ", loglevels_names[level]);
+	}
 	va_start(ap, fmt);
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
