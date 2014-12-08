@@ -270,7 +270,7 @@ int ldms_xprt_connected(ldms_t _x)
 }
 
 
-static void free_rbd(struct ldms_rbuf_desc *rbd)
+void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 {
 	LIST_REMOVE(rbd, xprt_link);
 	LIST_REMOVE(rbd, set_link);
@@ -296,7 +296,7 @@ static void release_xprt(ldms_t _x)
 #ifdef DEBUG
 		x->log("%s destroy rbd %p.\n", __func__, rb);
 #endif
-		free_rbd(rb);
+		__ldms_free_rbd(rb);
 	}
 	pthread_mutex_unlock(&rbd_lock);
 
@@ -349,9 +349,10 @@ void ldms_free_rbd(struct ldms_set *set)
 		assert(rbd->xprt->ref_count);
 #ifdef DEBUG
 		rbd->xprt->log("%s destroy rbd %p for %s on xprt %p.\n",
-				__func__, rbd, set->meta->name, rbd->xprt);
+				__func__, rbd, get_schema_name(set->meta)->name,
+				rbd->xprt);
 #endif
-		free_rbd(rbd);
+		__ldms_free_rbd(rbd);
 	}
 	pthread_mutex_unlock(&rbd_lock);
 }
@@ -381,10 +382,10 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 	struct make_dir_arg *mda = arg;
 	int len;
 
-	len = strlen(set->meta->name) + 1;
+	len = strlen(get_instance_name(set->meta)->name) + 1;
 	if (mda->reply_size + len < __ldms_xprt_max_msg(mda->x)) {
 		mda->reply_size += len;
-		strcpy(mda->set_list, set->meta->name);
+		strcpy(mda->set_list, get_instance_name(set->meta)->name);
 		mda->set_list += len;
 		mda->set_list_len += len;
 		mda->reply_count ++;
@@ -409,7 +410,7 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 	mda->reply_size = sizeof(struct ldms_reply_hdr) +
 		sizeof(struct ldms_dir_reply) +
 		len;
-	strcpy(mda->reply->dir.set_list, set->meta->name);
+	strcpy(mda->reply->dir.set_list, get_instance_name(set->meta)->name);
 	mda->set_list = mda->reply->dir.set_list + len;
 	mda->set_list_len = len;
 	mda->reply_count = 1;
@@ -552,8 +553,8 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	memcpy(reply->lookup.xprt_data, rbd->xprt_data, rbd->xprt_data_len);
 	ldms_release_local_set(set);
 	reply->lookup.set_id = (uint64_t)(unsigned long)rbd;
-	reply->lookup.meta_len = htonl(set->meta->meta_size);
-	reply->lookup.data_len = htonl(set->meta->data_size);
+	reply->lookup.meta_len = htonl(set->meta->meta_sz);
+	reply->lookup.data_len = htonl(set->meta->data_sz);
 	x->send(x, reply, len);
 	free(reply);
 	return;
@@ -573,7 +574,7 @@ void meta_read_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 
 	set->flags &= ~LDMS_SET_F_DIRTY;
 	if (set->meta->version == LDMS_VERSION)
-		x->read_data_start(x, s, set->meta->data_size, data_ctxt);
+		x->read_data_start(x, s, set->meta->data_sz, data_ctxt);
 	else
 		data_ctxt->update.cb(t, data_ctxt->update.s,
 				     EINVAL, data_ctxt->update.arg);
@@ -654,7 +655,7 @@ int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		/* Update the metadata */
 		rc = do_read_meta(t, s, 0, cb, arg);
 	} else
-		rc = do_read_data(t, s, set->data->tail_off, cb, arg);
+		rc = do_read_data(t, s, set->meta->data_sz, cb, arg);
 
 	return rc;
 }
@@ -734,7 +735,7 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	goto out;
 
  out_1:
-	ldms_destroy_set(set);
+	ldms_destroy_set(sd);
 	free(sd);
 	sd = NULL;
  out:

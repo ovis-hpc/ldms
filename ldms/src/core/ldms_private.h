@@ -50,12 +50,54 @@
  */
 #ifndef _LDMS_PRIVATE_H
 #define _LDMS_PRIVATE_H
+#include <sys/queue.h>
+#include <ldms_xprt.h>
+typedef struct ldms_mdef_s {
+	char *name;
+	enum ldms_value_type type;
+	size_t meta_sz;
+	size_t data_sz;
+	STAILQ_ENTRY(ldms_mdef_s) entry;
+} *ldms_mdef_t;
 
+struct ldms_schema_s {
+	char *name;
+	int metric_count;
+	size_t meta_sz;
+	size_t data_sz;
+	STAILQ_HEAD(metric_list_head, ldms_mdef_s) metric_list;
+	LIST_ENTRY(ldms_schema_s) entry;
+};
+
+/* Convenience macro to roundup a value to a multiple of the _s parameter */
+#define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
+
+static inline ldms_name_t get_instance_name(struct ldms_set_hdr *meta)
+{
+	ldms_name_t name  = (ldms_name_t)(&meta->dict[meta->card]);
+	return name;
+}
+
+static inline ldms_name_t get_schema_name(struct ldms_set_hdr *meta)
+{
+	ldms_name_t inst = get_instance_name(meta);
+	return (ldms_name_t)(&inst->name[inst->len+sizeof(*inst)]);
+}
+
+static inline struct ldms_value_desc *get_first_metric_desc(struct ldms_set_hdr *meta)
+{
+	ldms_name_t name = get_schema_name(meta);
+	char *p = &name->name[name->len+sizeof(*name)];
+	p = (char *)roundup((uint64_t)p, 8);
+	return (struct ldms_value_desc *)p;
+}
+
+extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 				ldms_lookup_cb_t cb, void *cb_arg);
 extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 extern void __ldms_remote_dir_cancel(ldms_t x);
-extern int __ldms_create_set(const char *set_name,
+extern int __ldms_create_set(const char *instance_name,
 			     size_t meta_sz, size_t data_sz,
 			     ldms_set_t *s, uint32_t flags);
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);

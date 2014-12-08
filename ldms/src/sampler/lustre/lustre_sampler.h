@@ -201,8 +201,9 @@ char *stats_key[] = {
 }; /* stats_key[] */
 
 struct lustre_metric_ctxt {
-	void *metric; /**< metric handle */
-	uint64_t rate_ref; /**< ID of the rate metric derivative */
+	int metric_idx;		/* The metric index */
+	uint64_t udata;
+	uint64_t rate_ref;	/**< ID of the rate metric derivative */
 };
 
 LIST_HEAD(lustre_metric_src_list, lustre_metric_src);
@@ -235,7 +236,8 @@ struct lustre_svc_stats {
 	 *      misconfiguration.
 	 * - 1: OK
 	 */
-	void *mh_status;
+	int mh_status_idx;
+	ldms_set_t set;
 	struct lustre_metric_ctxt mctxt[0];
 };
 
@@ -244,6 +246,7 @@ struct lustre_svc_stats {
  */
 struct lustre_single {
 	struct lustre_metric_src lms;
+	ldms_set_t set;
 	struct lustre_metric_ctxt sctxt; /** single context */
 };
 
@@ -271,7 +274,7 @@ void lustre_metric_src_list_free(struct lustre_metric_src_list *h);
  * \returns 0 on success.
  * \returns Error code on error.
  */
-int stats_construct_routine(ldms_set_t set,
+int stats_construct_routine(ldms_schema_t schema,
 			    uint64_t comp_id,
 			    const char *stats_path,
 			    const char *prefix,
@@ -286,7 +289,7 @@ int stats_construct_routine(ldms_set_t set,
  * \returns 0 on success.
  * \returns Error code on erorr.
  */
-int single_construct_routine(ldms_set_t set,
+int single_construct_routine(ldms_schema_t set,
 			    uint64_t comp_id,
 			    const char *metric_path,
 			    const char *prefix,
@@ -303,7 +306,7 @@ void lustre_sampler_set_msglog(ldmsd_msg_log_f f);
  * \brief Sample the metrics in \c lms.
  * \param lms The metric source.
  */
-int lms_sample(struct lustre_metric_src *lss);
+int lms_sample(ldms_set_t set, struct lustre_metric_src *lss);
 
 /**
  * Open the file (which can be a pattern) in lss.

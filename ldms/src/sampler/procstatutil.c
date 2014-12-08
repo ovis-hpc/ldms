@@ -68,8 +68,9 @@
 #define fname "/proc/stat"
 
 ldms_set_t set;
-ldms_metric_t *metric_table;
-ldms_metric_t *rate_metric_table;
+ldms_schema_t schema;
+int *metric_table;
+int *rate_metric_table;
 uint64_t *prev_value;
 ldmsd_msg_log_f msglog;
 int column_count;
@@ -133,14 +134,15 @@ static char *rate_metric_name_fmt[] = {
 
 static int create_metric_set(const char *path)
 {
-	size_t meta_sz, total_meta_sz;
-	size_t data_sz, total_data_sz;
-	int rc;
-	int metric_count;
+	int rc, i;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
 	FILE *mf;
+
+	schema = ldms_create_schema("procstatutil");
+	if (!schema)
+		return ENOMEM;
 
 	column_count = 0;
 	cpu_count = 0;
@@ -151,122 +153,46 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	total_meta_sz = 0;
-	total_data_sz = 0;
-
-	fseek(mf, 0, SEEK_SET);
-
-	/* Skip first line that is sum of remaining CPUs numbers */
-	s = fgets(lbuf, sizeof(lbuf), mf);
-
-	metric_count = 0;
-	do {
-		int column;
-		char *token;
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-
-		/* Throw away first column which is the CPU 'name' */
-		token = strtok(lbuf, " \t\n");
-		if (!token) {
-			msglog("procstatutil: Failed to start. Unexpected format.\n");
-			rc = EPERM;
-			goto err;
-		}
-
-		if (0 != strncmp(token, "cpu", 3))
-			break;
-
-		column = 0;
-		for (token = strtok(NULL, " \t\n"); token;
-		     token = strtok(NULL, " \t\n")) {
-			/* raw */
-			sprintf(metric_name, metric_name_fmt[column], cpu_count);
-			rc = ldms_get_metric_size(metric_name,
-						  LDMS_V_U64, &meta_sz,
-						  &data_sz);
-			if (rc)
-				return rc;
-
-			total_meta_sz += meta_sz;
-			total_data_sz += data_sz;
-
-			/* rate */
-			sprintf(metric_name, rate_metric_name_fmt[column], cpu_count);
-			rc = ldms_get_metric_size(metric_name,
-						  LDMS_V_F, &meta_sz,
-						  &data_sz);
-			if (rc)
-				return rc;
-
-			total_meta_sz += meta_sz;
-			total_data_sz += data_sz;
-
-			column++;
-			metric_count++;
-		}
-		column_count = column;
-		cpu_count++;
-	} while (1);
-
-#ifdef CHECK_PROCSTATUTIL_TIMING
-	rc = ldms_get_metric_size("procstatutil_tv_sec2", LDMS_V_U64, &meta_sz, &data_sz);
-        total_meta_sz += meta_sz;
-        total_data_sz += data_sz;
-
-        rc = ldms_get_metric_size("procstatutil_tv_nsec2", LDMS_V_U64, &meta_sz, &data_sz);
-        total_meta_sz += meta_sz;
-        total_data_sz += data_sz;
-
-        rc = ldms_get_metric_size("procstatutil_tv_dnsec", LDMS_V_U64, &meta_sz, &data_sz);
-        total_meta_sz += meta_sz;
-        total_data_sz += data_sz;
-#endif
-
-	/* Create a metric set of the required size */
-	rc = ldms_create_set(path, total_meta_sz, total_data_sz, &set);
-	if (rc)
-		return rc;
-
 	rc = ENOMEM;
-
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!metric_table)
-		goto err0;
-
-	prev_value = calloc(metric_count, sizeof(*prev_value));
-	if (!prev_value)
-		goto err1;
-
-	rate_metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!rate_metric_table)
-		goto err2;
-
 	int cpu_no;
-	ldms_metric_t m;
+	int m;
 	int metric_no = 0;
-	uint64_t cpu_comp_id = comp_id;
 	for (cpu_no = 0; cpu_no < cpu_count; cpu_no++) {
 		int column;
 		for (column = 0; column < column_count; column++) {
 			/* raw counter */
 			sprintf(metric_name, metric_name_fmt[column], cpu_no);
-			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
-			if (!m)
+			m = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+			if (m < 0)
 				goto err3;
-			ldms_set_user_data(m, cpu_comp_id);
 			metric_table[metric_no] = m;
 			/* rate */
 			sprintf(metric_name, rate_metric_name_fmt[column], cpu_no);
-			m = ldms_add_metric(set, metric_name, LDMS_V_F);
-			if (!m)
+			m = ldms_add_metric(schema, metric_name, LDMS_V_F32);
+			if (m < 0)
 				goto err3;
-			ldms_set_user_data(m, cpu_comp_id);
 			rate_metric_table[metric_no] = m;
 			metric_no++;
 		}
-		cpu_comp_id++;
+	}
+
+	rate_metric_table = calloc(metric_no, sizeof(int));
+	if (!rate_metric_table)
+		goto err0;
+
+	prev_value = calloc(metric_no, sizeof(*prev_value));
+	if (!prev_value)
+		goto err1;
+
+	rate_metric_table = calloc(metric_no, sizeof(int));
+	if (!rate_metric_table)
+		goto err2;
+
+	uint64_t cpu_comp_id = comp_id;
+	for (i = 0; i < metric_no; i++) {
+		ldms_set_midx_udata(set, metric_table[i], cpu_comp_id);
+		ldms_set_midx_udata(set, rate_metric_table[i], cpu_comp_id);
+		cpu_comp_id ++;
 	}
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
@@ -292,7 +218,8 @@ err2:
 err1:
 	free(metric_table);
 err0:
-	ldms_destroy_set(set);
+	ldms_destroy_schema(schema);
+	schema = NULL;
 err:
 	fclose(mf);
 	return rc ;
@@ -334,7 +261,6 @@ static int sample(void)
 	struct timeval diff_tv;
 	struct timeval *tmp_tv;
 	float dt;
-
 	FILE *mf = 0;
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
@@ -415,8 +341,8 @@ static int sample(void)
 			else
 				dv = v - prev_value[metric_no];
 			float rate = (dv * 1.0 / USER_HZ) / dt * 100.0;
-			ldms_set_u64(metric_table[metric_no], v);
-			ldms_set_float(rate_metric_table[metric_no], rate);
+			ldms_set_midx_u64(set, metric_table[metric_no], v);
+			ldms_set_midx_float(set, rate_metric_table[metric_no], rate);
 			prev_value[metric_no] = v;
 			metric_no++;
 			column++;
@@ -435,11 +361,11 @@ static int sample(void)
 #ifdef CHECK_PROCSTATUTIL_TIMING
 	clock_gettime(CLOCK_REALTIME, &time1);
         vv.v_u64 = time1.tv_sec;
-	ldms_set_metric(tv_sec_metric_handle2, &vv);
+	ldms_set_midx(set, tv_sec_metric_handle2, &vv);
         vv.v_u64 = time1.tv_nsec;
-	ldms_set_metric(tv_nsec_metric_handle2, &vv);
+	ldms_set_midx(set, tv_nsec_metric_handle2, &vv);
         vv.v_u64 = time1.tv_nsec - beg_nsec;
-	ldms_set_metric(tv_dnsec_metric_handle, &vv);
+	ldms_set_midx(set, tv_dnsec_metric_handle, &vv);
 #endif
 	tmp_tv = curr_tv;
 	curr_tv = prev_tv;
@@ -456,8 +382,8 @@ reset_to_0:
 	if (mf)
 		fclose(mf);
 	for (metric_no = 0; metric_no < cpu_count * column_count; metric_no++) {
-		ldms_set_u64(metric_table[metric_no], 0);
-		ldms_set_float(rate_metric_table[metric_no], 0);
+		ldms_set_midx_u64(set, metric_table[metric_no], 0);
+		ldms_set_midx_float(set, rate_metric_table[metric_no], 0);
 		prev_value[metric_no] = 0;
 	}
 	tmp_tv = curr_tv;
@@ -468,6 +394,8 @@ reset_to_0:
 
 static void term(void)
 {
+	if (schema)
+		ldms_destroy_schema(schema);
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;

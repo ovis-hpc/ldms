@@ -198,15 +198,9 @@ struct str_list_head* construct_client_list(const char *clients,
 static int create_metric_set(const char *path, const char *oscs,
 			     const char *mdcs, const char *llites)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, i, j, metric_count;
+	int rc, i, j;
 	uint64_t metric_value;
 	char metric_name[128];
-
-	/* First calculate the set size */
-	metric_count = 0;
-	tot_meta_sz = tot_data_sz = 0;
 
 	/* Calculate size for Clients */
 	struct str_list_head *lh_osc, *lh_mdc, *lh_llite;
@@ -231,31 +225,13 @@ static int create_metric_set(const char *path, const char *oscs,
 		goto err0;
 	heads[2] = lh_llite;
 
+	ldms_schema_t schema = ldms_create_schema("Lustre_Client");
+	if (!schema)
+		goto err0;
+
 	char *namebase[] = {"osc", "mdc", "llite"};
 	struct str_list *sl;
-	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
-		LIST_FOREACH(sl, heads[i], link) {
-			/* For general stats */
-			for (j = 0; j < keylen[i]; j++) {
-				sprintf(metric_name, "client.lstats.%s#%s.%s",
-						keys[i][j], namebase[i],
-						sl->str);
-				enum ldms_value_type vt = LDMS_V_U64;
-				if (strstr(keys[i][j], ".rate"))
-					vt = LDMS_V_F;
-				ldms_get_metric_size(metric_name, vt,
-						&meta_sz, &data_sz);
-				tot_meta_sz += meta_sz;
-				tot_data_sz += data_sz;
-				metric_count++;
-			}
-		}
-	}
 
-	/* Done calculating, now it is time to construct set */
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		goto err0;
 	char suffix[128];
 	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
 		LIST_FOREACH(sl, heads[i], link) {
@@ -263,7 +239,7 @@ static int create_metric_set(const char *path, const char *oscs,
 			sprintf(tmp_path, "/proc/fs/lustre/%s/%s*/stats",
 					namebase[i], sl->str);
 			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
-			rc = stats_construct_routine(set, comp_id, tmp_path,
+			rc = stats_construct_routine(schema, comp_id, tmp_path,
 					"client.lstats.", suffix, &lms_list, keys[i],
 					keylen[i], maps[i]);
 			if (rc)
@@ -271,6 +247,10 @@ static int create_metric_set(const char *path, const char *oscs,
 		}
 	}
 
+	/* Done calculating, now it is time to construct set */
+	rc = ldms_create_set(path, schema, &set);
+	if (rc)
+		goto err1;
 	return 0;
 err1:
 	msglog("lustre_oss.c:create_metric_set@err1\n");
@@ -360,7 +340,7 @@ static int sample(void)
 
 	/* For all stats */
 	LIST_FOREACH(lms, &lms_list, link) {
-		lms_sample(lms);
+		lms_sample(set, lms);
 	}
 
  out:

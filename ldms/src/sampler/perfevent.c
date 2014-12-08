@@ -98,10 +98,10 @@ struct pevent {
 	int fd;
 	uint64_t val;
 	uint64_t tstamp;
-	ldms_metric_t metric_value;
-	ldms_metric_t metric_mean;
-	ldms_metric_t metric_variance;
-	ldms_metric_t metric_stddev;
+	int metric_value;
+	int metric_mean;
+	int metric_variance;
+	int metric_stddev;
 	double mean;
 	double variance;
 	double card;		/* samples taken */
@@ -134,8 +134,10 @@ pe_open(struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd,
                        group_fd, flags);
 }
 
-ldms_set_t set;
-ldmsd_msg_log_f msglog;
+static char *setname;
+static ldms_set_t set;
+static ldms_schema_t schema;
+static ldmsd_msg_log_f msglog;
 
 static const char *usage(void)
 {
@@ -279,28 +281,28 @@ static char metric_name[128];
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "value");
-	pe->metric_value = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	pe->metric_value = ldms_add_metric(schema, metric_name, LDMS_V_U64);
 	if (!pe->metric_value) {
 		msglog("Could not create the metric for event '%s'\n",
 		       metric_name);
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "mean");
-	pe->metric_mean = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	pe->metric_mean = ldms_add_metric(schema, metric_name, LDMS_V_U64);
 	if (!pe->metric_mean) {
 		msglog("Could not create the metric for event '%s'\n",
 		       metric_name);
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "variance");
-	pe->metric_variance = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	pe->metric_variance = ldms_add_metric(schema, metric_name, LDMS_V_U64);
 	if (!pe->metric_variance) {
 		msglog("Could not create the metric for event '%s'\n",
 		       metric_name);
 		goto err;
 	}
 	sprintf(metric_name, "%s/%s", pe->name, "stddev");
-	pe->metric_stddev = ldms_add_metric(set, metric_name, LDMS_V_U64);
+	pe->metric_stddev = ldms_add_metric(schema, metric_name, LDMS_V_U64);
 	if (!pe->metric_stddev) {
 		msglog("Could not create the metric for event '%s'\n",
 		       metric_name);
@@ -311,14 +313,6 @@ static char metric_name[128];
  err:
 	if (pe->name)
 		free(pe->name);
-	if (pe->metric_value)
-		ldms_metric_release(pe->metric_value);
-	if (pe->metric_mean)
-		ldms_metric_release(pe->metric_mean);
-	if (pe->metric_variance)
-		ldms_metric_release(pe->metric_variance);
-	if (pe->metric_stddev)
-		ldms_metric_release(pe->metric_stddev);
 	free(pe);
 	return -1;
 }
@@ -331,14 +325,6 @@ static int del_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 		LIST_REMOVE(pe, entry);
 		close(pe->fd);
 		free(pe->name);
-		if (pe->metric_value)
-			ldms_metric_release(pe->metric_value);
-		if (pe->metric_mean)
-			ldms_metric_release(pe->metric_mean);
-		if (pe->metric_variance)
-			ldms_metric_release(pe->metric_variance);
-		if (pe->metric_stddev)
-			ldms_metric_release(pe->metric_stddev);
 		free(pe);
 	}
 	return 0;
@@ -365,10 +351,12 @@ static int list(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	/* Create the metric set */
-	char *setname = av_value(avl, "set");
-	if (!setname)
+	char *av = av_value(avl, "set");
+	if (!av)
 		return EINVAL;
-	return ldms_create_set(setname, 8192, 4096, &set);
+	setname = strdup(av);
+	schema = ldms_create_schema("perfevent");
+	return 0;
 }
 
 struct kw kw_tbl[] = {
@@ -416,6 +404,11 @@ static int sample(void)
 {
 	int rc;
 	struct pevent *pe;
+	if (!set) {
+		rc = ldms_create_set(setname, schema, &set);
+		if (!set)
+			return rc;
+	}
 	ldms_begin_transaction(set);
 	LIST_FOREACH(pe, &pevent_list, entry) {
 		pe->last_value = pe->sample.value;
@@ -440,10 +433,10 @@ static int sample(void)
 		pe->card =  pe->card + 1.0;
 		pe->variance = pe->variance / (pe->card * pe->card);
 
-		ldms_set_u64(pe->metric_value, value);
-		ldms_set_u64(pe->metric_mean, pe->mean);
-		ldms_set_u64(pe->metric_variance, pe->variance);
-		ldms_set_u64(pe->metric_stddev, sqrt(pe->variance));
+		ldms_set_midx_u64(set, pe->metric_value, value);
+		ldms_set_midx_u64(set, pe->metric_mean, pe->mean);
+		ldms_set_midx_u64(set, pe->metric_variance, pe->variance);
+		ldms_set_midx_u64(set, pe->metric_stddev, sqrt(pe->variance));
 	}
 	ldms_end_transaction(set);
  	return 0;

@@ -9,6 +9,8 @@
 #include <time.h>
 #include <sys/time.h>
 #include <limits.h>
+#include <sys/queue.h>
+#include <assert.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -41,17 +43,8 @@ static char *fieldname[NFIELD] = {
 #define SECT_READ_IDX 2
 #define SECT_WRITE_IDX 6
 
-static char **devices;
-static int ndevices;
-static int monitored_ndevices;
-
-int *sector_sz;
-
 ldms_set_t set;
 FILE *mf;
-ldms_metric_t *metric_table;
-ldms_metric_t *rate_metric_table;
-uint64_t *prev_value;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
 
@@ -60,81 +53,46 @@ struct timeval _tv[2] = {0};
 struct timeval *curr_tv = &_tv[0];
 struct timeval *prev_tv = &_tv[1];
 
-static int get_device_metrics_size(char *name, size_t *tot_meta_sz,
-				size_t *tot_data_sz, int *metric_count)
+struct proc_disk_s {
+	char *name;
+	size_t sect_sz;
+	int monitored;
+	int metric_id;
+	int comp_id;
+	uint64_t prev_value[NFIELD];
+	TAILQ_ENTRY(proc_disk_s) entry;
+};
+TAILQ_HEAD(proc_disk_list, proc_disk_s) disk_list =
+	TAILQ_HEAD_INITIALIZER(disk_list);
+
+static int add_disk_metrics(ldms_schema_t schema, struct proc_disk_s *disk,
+			    int *next_metric_id)
 {
-	size_t meta_sz, data_sz;
 	char metric_name[128];
 	int i, rc;
-	for (i = 0; i < NFIELD; i++) {
-		snprintf(metric_name, 128,
-			"%s#%s", fieldname[i], name);
-		if (i < NRAW_FIELD) {
-			/* raw metric */
-			rc = ldms_get_metric_size(metric_name, LDMS_V_U64,
-							&meta_sz, &data_sz);
-		} else {
-			/* derived */
-			rc = ldms_get_metric_size(metric_name, LDMS_V_F,
-							&meta_sz, &data_sz);
-		}
-		if (rc)
-			return rc;
-
-		(*tot_meta_sz) += meta_sz;
-		(*tot_data_sz) += data_sz;
-
-		/* rate */
-		snprintf(metric_name, 128,
-			"%s.rate#%s", fieldname[i], name);
-		rc = ldms_get_metric_size(metric_name, LDMS_V_F,
-						&meta_sz, &data_sz);
-
-		if (rc)
-			return rc;
-
-		(*tot_meta_sz) += meta_sz;
-		(*tot_data_sz) += data_sz;
-
-		/* count the raw metric and the rate metric as one */
-		(*metric_count)++;
-	}
-
-	return 0;
-}
-
-static int add_device_metrics(char *name, int comp_id, int *_metric_no)
-{
-	int metric_no = *_metric_no;
-	ldms_metric_t m;
-	char metric_name[128];
-	int i, rc;
+	int metric_id = *next_metric_id;
+	disk->metric_id = metric_id;
 	for (i = 0; i < NFIELD; i++) {
 		/* raw metric */
-		snprintf(metric_name, 128, "%s#%s", fieldname[i], name);
-		m = ldms_add_metric(set, metric_name, LDMS_V_U64);
-		if (!m)
+		snprintf(metric_name, 128, "%s#%s", fieldname[i], disk->name);
+		rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+		if (rc)
 			return ENOMEM;
-
-		ldms_set_user_data(m, comp_id);
-		metric_table[metric_no] = m;
+		metric_id++;
 
 		/* rate metric */
-		snprintf(metric_name, 128, "%s.rate#%s", fieldname[i], name);
-		m = ldms_add_metric(set, metric_name, LDMS_V_F);
-		if (!m)
+		snprintf(metric_name, 128, "%s.rate#%s", fieldname[i], disk->name);
+		rc = ldms_add_metric(schema, metric_name, LDMS_V_F32);
+		if (rc)
 			return ENOMEM;
-
-		ldms_set_user_data(m, comp_id);
-		rate_metric_table[metric_no] = m;
-		metric_no++;
+		metric_id++;
 	}
-	*_metric_no = metric_no;
+	*next_metric_id = metric_id;
 	return 0;
 }
 
 #define DEFAULT_SECTOR_SZ 512
-int get_sector_sz(char *device)
+static int get_sector_sz(char *device)
 {
 	int rc = 0;
 	int result;
@@ -166,211 +124,113 @@ int get_sector_sz(char *device)
 	return result;
 }
 
-static int create_metric_set(const char *path)
+static int scan_line(char *lbuf, char *name, uint64_t *v)
 {
-	size_t tot_meta_sz;
-	size_t tot_data_sz;
-	union ldms_value v[NFIELD];
-	int rc, metric_count, metric_no;
+	int rc;
+	int junk1, junk2;
+	rc = sscanf(lbuf, "%d %d %s %" PRIu64 " %" PRIu64
+		    " %" PRIu64 " %" PRIu64 " %" PRIu64 " %"
+		    PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+		    " %" PRIu64 " %" PRIu64 "\n", &junk1, &junk2, name,
+		    &v[0], &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7],
+		    &v[8], &v[9], &v[10]);
+	return (rc == 14);
+}
+
+static struct proc_disk_s *add_disk(char *name, int *next_comp_id)
+{
+	struct proc_disk_s *disk = calloc(1, sizeof *disk);
+	if (!disk)
+		goto out;
+	disk->name = strdup(name);
+	disk->sect_sz = get_sector_sz(disk->name);
+	disk->comp_id = *next_comp_id;
+	*next_comp_id++;
+	TAILQ_INSERT_TAIL(&disk_list, disk, entry);
+ out:
+	return disk;
+}
+
+/*
+ * Parse the /proc/diskstats file and collect all the devices names
+ */
+static int get_disks(int next_comp_id)
+{
+	uint64_t v[NFIELD];
+	int rc;
 	char *s;
 	char lbuf[256];
 	char name[64];
-	int i, j, junk1, junk2;
-	int nfound_device = 0;
-	uint64_t temp_comp_id = comp_id;
+	struct proc_disk_s *disk;
+	FILE *pf;
 
-	mf = fopen(procfile, "r");
-
-	if(!mf) {
-		msglog("Could not open the diskstats file '%s'...exiting\n",
-			 procfile);
+	pf = fopen(procfile, "r");
+	if (!pf)
 		return ENOENT;
-	}
 
-	metric_count = 0;
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
-
-	fseek(mf, 0, SEEK_SET);
+	fseek(pf, 0, SEEK_SET);
 	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
+		s = fgets(lbuf, sizeof(lbuf), pf);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%d %d %s %" PRIu64 " %" PRIu64
-			" %" PRIu64 " %" PRIu64 " %" PRIu64 " %"
-			PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-			" %" PRIu64 " %" PRIu64 "\n", &junk1, &junk2, name,
-			&v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64,
-			&v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64,
-			&v[8].v_u64, &v[9].v_u64, &v[10].v_u64);
-
-		if (rc != 14)
+		rc = scan_line(s, name, v);
+		if (!rc)
 			break;
+		disk = add_disk(name, &next_comp_id);
+	} while (1);
 
-		if (ndevices > 0) {
-			if (nfound_device == ndevices)
-				/* Found all specified devices */
-				continue;
-
-			monitored_ndevices++;
-			for (j = 0; j < ndevices; j++) {
-				if (0 == strcmp(devices[j], name)) {
-					rc = get_device_metrics_size(name,
-						&tot_meta_sz, &tot_data_sz,
-						&metric_count);
-					if (rc)
-						return rc;
-
-					nfound_device++;
-					break;
-				}
-			}
-		} else {
-			monitored_ndevices++;
-			rc = get_device_metrics_size(name, &tot_meta_sz,
-						&tot_data_sz, &metric_count);
-			if (rc)
-				return rc;
-		}
-		i++;
-	} while (s);
-
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		return rc;
-
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!metric_table)
-		goto err;
-
-	rate_metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!rate_metric_table)
-		goto err1;
-
-	prev_value = calloc(metric_count, sizeof(*prev_value));
-	if (!prev_value)
-		goto err2;
-
-	sector_sz = malloc(monitored_ndevices * sizeof(int));
-	if (!sector_sz)
-		goto err3;
-
-	/*
-	 * Process the file again to define all the metrics.
-	 */
-	metric_no = 0;
-	nfound_device = 0;
-	i = 0;
-
-	fseek(mf, 0, SEEK_SET);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if(!s)
-			break;
-		rc = sscanf(lbuf, "%d %d %s %" PRIu64 " %" PRIu64
-			" %" PRIu64 " %" PRIu64 " %" PRIu64 " %"
-			PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-			" %" PRIu64 " %" PRIu64 "\n", &junk1, &junk2, name,
-			&v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64,
-			&v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64,
-			&v[8].v_u64, &v[9].v_u64, &v[10].v_u64);
-		if (rc != 14)
-			break;
-
-		if (ndevices > 0) {
-			if (nfound_device == ndevices)
-				/* Found all specified devices */
-				continue;
-
-			for (j = 0; j < ndevices; j++) {
-				if (0 == strcmp(devices[j], name)) {
-					rc = add_device_metrics(name, temp_comp_id,
-								&metric_no);
-					if (rc)
-						goto err4;
-					sector_sz[i] = get_sector_sz(name);
-					nfound_device++;
-					i++;
-					break;
-				}
-			}
-		} else {
-			rc = add_device_metrics(name, temp_comp_id, &metric_no);
-			if (rc)
-				goto err4;
-			sector_sz[i] = get_sector_sz(name);
-			i++;
-		}
-		temp_comp_id++;
-
-	} while (s);
+	fclose(pf);
 	return 0;
-
-err4:
-	free(sector_sz);
-err3:
-	free(prev_value);
-err2:
-	free(rate_metric_table);
-err1:
-	free(metric_table);
-err:
-	ldms_destroy_set(set);
-	return rc;
-
 }
 
-static int add_device(struct attr_value_list *avl)
+static int config_add_disks(struct attr_value_list *avl, int comp_id,
+		     ldms_schema_t schema)
 {
+	int rc = 0;
+	int next_comp_id = 0;
+	int next_metric_id = 0;
+	struct proc_disk_s *disk;
 	char *value = av_value(avl, "device");
 
-	if (!value) {
-		/*
-		 * If no devices are give, collect all devices.
-		 */
-		ndevices = -1;
-		devices = NULL;
-		return 0;
+	rc = get_disks(comp_id);
+	if (rc)
+		goto err;
+
+	if (value) {
+		/* Mark selected disks as monitored */
+		char *value_tmp = strdup(value);
+		if (!value_tmp) {
+			rc = ENOMEM;
+			goto err;
+		}
+		char *ptr, *name;
+		for (name = strtok_r(value_tmp, ",", &ptr);
+		     name; name = strtok_r(NULL, ",", &ptr)) {
+			TAILQ_FOREACH(disk, &disk_list, entry) {
+				if (0 == strcmp(name, disk->name))
+					disk->monitored = 1;
+			}
+		}
+		free(value_tmp);
+	} else {
+		/* Mark all the disks as monitored */
+		TAILQ_FOREACH(disk, &disk_list, entry)
+			disk->monitored = 1;
 	}
 
-	char *value_tmp = strdup(value);
-	if (!value_tmp)
-		goto enomem;
-
-	char *ptr, *token;
-	token = strtok_r(value_tmp, ",", &ptr);
-	while (token) {
-		ndevices++;
-		token = strtok_r(NULL, ",", &ptr);
+	/* Add metrics for monitored disks */
+	TAILQ_FOREACH(disk, &disk_list, entry) {
+		if (!disk->monitored)
+			continue;
+		rc = add_disk_metrics(schema, disk, &next_metric_id);
+		if (rc)
+			goto err;
 	}
-	free(value_tmp);
+	return rc;
 
-	devices = malloc(ndevices * sizeof(char *));
-	if (!devices)
-		goto enomem;
-
-	int i, j;
-	token = strtok_r(value, ",", &ptr);
-	devices[0] = strdup(token);
-	if (!devices[0])
-		goto free_devices;
-
-	for (i = 1; i < ndevices; i++) {
-		token = strtok_r(NULL, ",", &ptr);
-		devices[i] = strdup(token);
-		if (!devices[i])
-			goto free_devices;
-	}
-
-	return 0;
-
-free_devices:
-	for (j = 0; j < i; j++)
-		free(devices[j]);
-	free(devices);
-enomem:
-	msglog("procdiskstat: add_device: Out of memory.\n");
-	return ENOMEM;
+err:
+	msglog("%s Error %d adding metrics.\n", __FILE__, rc);
+	return rc;
 
 }
 
@@ -379,12 +239,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	char *attr;
 	int rc;
-
-	monitored_ndevices = 0;
-
-	rc = add_device(avl);
-	if (rc)
-		return rc;
+	ldms_schema_t schema = ldms_create_schema("procdiskstats");
 
 	attr = "component_id";
 	value = av_value(avl, attr);
@@ -393,131 +248,111 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		goto enoent;
 
+	rc = config_add_disks(avl, comp_id, schema);
+	if (rc)
+		return rc;
+
 	attr = "set";
 	value = av_value(avl, attr);
 	if (value)
-		create_metric_set(value);
+		rc = ldms_create_set(value, schema, &set);
 	else
 		goto enoent;
 
-	return 0;
+	/* Run through the metrics and set their component id in their udata */
+	struct proc_disk_s *disk;
+	TAILQ_FOREACH(disk, &disk_list, entry)
+		ldms_set_midx_udata(set, rc, disk->comp_id);
+
+	return rc;
 enoent:
 	msglog("procdiskstat: requires '%s'\n", attr);
 	return ENOENT;
 }
 
-static float calculate_rate(int metric_no, uint64_t curr_v, float dt)
+static float calculate_rate(uint64_t prev_value, uint64_t curr_v, float dt)
 {
-	uint64_t dv;
-	if ((prev_value[metric_no] == 0) || (prev_value[metric_no] > curr_v))
-		dv = 0;
-	else
-		dv = curr_v - prev_value[metric_no];
-	float rate = (dv * 1.0 / USER_HZ) / dt * 100.0;
-	return rate;
+	if ((prev_value == 0) || (prev_value > curr_v))
+		return 0.0;
+
+	return ((float)(curr_v - prev_value) / USER_HZ) / dt * 100.0;
 }
 
-static void set_device_metrics(int *_metric_no, uint64_t *values, float dt,
-							int _sector_sz)
+static void set_disk_metrics(struct proc_disk_s *disk,
+			     uint64_t *values, float dt)
 {
-	float rate;
-	uint64_t derived;
-	int i, metric_no;
-	metric_no = *_metric_no;
+	float f, rate;
+	int i;
+	int metric_no = disk->metric_id;
+
 	for (i = 0; i < NRAW_FIELD; i++) {
 		/* raw */
-		ldms_set_u64(metric_table[metric_no], values[i]);
+		ldms_set_midx_u64(set, metric_no++, values[i]);
 
 		/* rate */
-		rate = calculate_rate(metric_no, values[i], dt);
-		ldms_set_float(rate_metric_table[metric_no], rate);
+		rate = calculate_rate(disk->prev_value[i], values[i], dt);
+		ldms_set_midx_float(set, metric_no++, rate);
 
-		prev_value[metric_no] = values[i];
-		metric_no++;
+		disk->prev_value[i] = values[i];
 	}
-
 	/* read_bytes */
-	derived = values[SECT_READ_IDX] * _sector_sz;
-	ldms_set_float(metric_table[metric_no], derived);
-	rate = calculate_rate(metric_no, derived, dt);
-	ldms_set_float(rate_metric_table[metric_no], rate);
-	prev_value[metric_no] = derived;
-	metric_no++;
+	f = values[SECT_READ_IDX] * disk->sect_sz;
+	ldms_set_midx_float(set, metric_no, f);
+	rate = calculate_rate(metric_no, f, dt);
+	ldms_set_midx_float(set, metric_no, rate);
+	disk->prev_value[SECT_READ_IDX] = (uint64_t)f;
 
 	/* write bytes */
-	derived = values[SECT_WRITE_IDX] * _sector_sz;
-	ldms_set_float(metric_table[metric_no], derived);
-	rate = calculate_rate(metric_no, derived, dt);
-	ldms_set_float(rate_metric_table[metric_no], rate);
-	prev_value[metric_no] = derived;
-	metric_no++;
-
-	*_metric_no = metric_no;
+	f = values[SECT_WRITE_IDX] * disk->sect_sz;
+	ldms_set_midx_float(set, metric_no, f);
+	rate = calculate_rate(metric_no, f, dt);
+	ldms_set_midx_float(set, metric_no, rate);
+	disk->prev_value[SECT_WRITE_IDX] = (uint64_t)f;
 }
 
 static int sample(void)
 {
-	int rc, i, j;
-	int metric_no;
+	int rc = 0;
 	char *s;
 	char name[64];
 	char lbuf[256];
-	char metric_name[128];
-	int junk1, junk2, nfound_device;
 	uint64_t v[NFIELD];
 	struct timeval diff_tv;
 	struct timeval *tmp_tv;
 	float dt;
-
-	rc = 0;
+	struct proc_disk_s *disk;
 
 	if (!set) {
 		msglog("diskstats: plugin not initialized\n");
 		return EINVAL;
 	}
+
+	if (!mf)
+		mf = fopen(procfile, "r");
+	if (!mf)
+		return ENOENT;
 	ldms_begin_transaction(set);
 	gettimeofday(curr_tv, NULL);
 	timersub(curr_tv, prev_tv, &diff_tv);
 	dt = diff_tv.tv_sec + diff_tv.tv_usec / 1e06;
 
-	metric_no = 0;
-	nfound_device = 0;
-	i = 0;
 	fseek(mf, 0, SEEK_SET);
+	disk = TAILQ_FIRST(&disk_list);
+	assert(disk);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%d %d %s %" PRIu64 " %" PRIu64
-			 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %"
-			 PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-			 " %" PRIu64 " %" PRIu64 "\n", &junk1, &junk2, name,
-			 &v[0], &v[1], &v[2], &v[3], &v[4], &v[5],
-			 &v[6], &v[7], &v[8], &v[9], &v[10]);
-
-		if (rc != (NRAW_FIELD + 3)) { /* + 3 for junk1, junk2 and name */
+		if (!disk->monitored)
+			continue;
+		rc = scan_line(s, name, v);
+		if (!rc) {
 			rc = EINVAL;
 			goto out;
 		}
-
-		if (ndevices > 0) {
-			if (nfound_device == ndevices)
-				/* Found all specified devices */
-				continue;
-
-			for (j = 0; j < ndevices; j++) {
-				if (0 == strcmp(devices[j], name)) {
-					set_device_metrics(&metric_no, v, dt, sector_sz[i]);
-					nfound_device++;
-					i++;
-					break;
-				}
-			}
-		} else {
-			set_device_metrics(&metric_no, v, dt, sector_sz[i]);
-			i++;
-		}
-	} while (s);
+		set_disk_metrics(disk, v, dt);
+		disk = TAILQ_NEXT(disk, entry);
+	} while (disk);
 out:
 	tmp_tv = curr_tv;
 	curr_tv = prev_tv;
@@ -540,6 +375,11 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+	while (!TAILQ_EMPTY(&disk_list)) {
+		struct proc_disk_s *disk = TAILQ_FIRST(&disk_list);
+		TAILQ_REMOVE(&disk_list, disk, entry);
+		free(disk);
+	}
 }
 
 static const char *usage(void)

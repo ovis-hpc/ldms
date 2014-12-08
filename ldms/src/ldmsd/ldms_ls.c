@@ -150,13 +150,13 @@ void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
 	case LDMS_V_S64:
 		sprintf(value_str, "%" PRId64, v->v_s64);
 		break;
-	case LDMS_V_F:
+	case LDMS_V_F32:
 		sprintf(value_str, "%f", v->v_f);
 		break;
-	case LDMS_V_D:
+	case LDMS_V_D64:
 		sprintf(value_str, "%f", v->v_d);
 		break;
-	case LDMS_V_LD:
+	case LDMS_V_LD128:
 		sprintf(value_str, "%Lf", v->v_ld);
 		break;
 	}
@@ -169,7 +169,8 @@ void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
 void print_detail(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
-	struct ldms_timestamp const *ts = ldms_get_timestamp(s);
+	struct ldms_timestamp const *ts = ldms_get_transaction_timestamp(s);
+	struct ldms_timestamp const *dur = ldms_get_transaction_duration(s);
 	int consistent = ldms_is_set_consistent(s);
 	struct tm *tm;
 	char dtsz[200];
@@ -178,16 +179,18 @@ void print_detail(ldms_set_t s)
 	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
 
 	printf("  METADATA --------\n");
-	printf("             Size : %" PRIu32 "\n", sd->set->meta->meta_size);
-	printf("            Inuse : %" PRIu32 "\n", sd->set->meta->tail_off);
-	printf("     Metric Count : %" PRIu32 "\n", sd->set->meta->card);
-	printf("               GN : %" PRIu64 "\n", sd->set->meta->meta_gn);
+	printf("      Producer ID : %lx\n", ldms_get_producer_id(s));
+	printf("    Instance Name : %s\n", ldms_get_set_name(s));
+	printf("      Schema Name : %s\n", ldms_get_set_schema_name(s));
+	printf("             Size : %" PRIu32 "\n", sd->set->meta->meta_sz);
+	printf("     Metric Count : %" PRIu32 "\n", ldms_get_set_card(s));
+	printf("               GN : %" PRIu64 "\n", ldms_get_meta_gn(s));
 	printf("  DATA ------------\n");
 	printf("        Timestamp : %s [%dus]\n", dtsz, ts->usec);
+	printf("         Duration : [%d.%06ds]\n", dur->sec, dur->usec);
 	printf("       Consistent : %s\n", (consistent?"TRUE":"FALSE"));
-	printf("             Size : %" PRIu32 "\n", sd->set->meta->data_size);
-	printf("            Inuse : %" PRIu32 "\n", sd->set->data->tail_off);
-	printf("               GN : %" PRIu64 "\n", sd->set->data->gn);
+	printf("             Size : %" PRIu32 "\n", sd->set->meta->data_sz);
+	printf("               GN : %" PRIu64 "\n", ldms_get_data_gn(s));
 	printf("  -----------------\n");
 }
 
@@ -197,7 +200,7 @@ static int long_format = 0;
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
-	struct ldms_timestamp const *ts = ldms_get_timestamp(s);
+	struct ldms_timestamp const *ts = ldms_get_transaction_timestamp(s);
 	int consistent = ldms_is_set_consistent(s);
 	struct tm *tm;
 	char dtsz[200];

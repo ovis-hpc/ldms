@@ -54,6 +54,7 @@
 #include <inttypes.h>
 #include <sys/socket.h>
 #include <sys/queue.h>
+#include <string.h>
 #include <netinet/in.h>
 #include <coll/rbt.h>
 
@@ -65,10 +66,11 @@ extern "C" {
 #endif
 typedef void *ldms_t;
 
-typedef void *ldms_rbuf_t;
-typedef void *ldms_set_t;
-typedef void *ldms_value_t;
-typedef void *ldms_metric_t;
+typedef struct ldms_rbuf_desc *ldms_rbuf_t;
+typedef struct ldms_set_desc *ldms_set_t;
+typedef struct ldms_value_s *ldms_value_t;
+typedef struct ldms_metric *ldms_metric_t;
+typedef struct ldms_schema_s *ldms_schema_t;
 
 /**
  * \mainpage LDMS
@@ -172,14 +174,14 @@ typedef void *ldms_metric_t;
  * \brief Metric value descriptor
  *
  * This structure describes a metric value in the metric set. Metrics
- * are self describing.
+ * are self describing. Value descriptors are aligned on 64 bit boundaries.
  */
 #pragma pack(4)
 struct ldms_value_desc {
 	uint64_t user_data;	/*! User defined meta-data */
-	uint32_t next_offset;	/*! Offset of next descriptor */
+	// uint32_t next_offset;/*! Offset of next descriptor */
 	uint32_t data_offset;	/*! Offset of the value in ldms_data_hdr */
-	uint32_t type;		/*! The type of the value, enum ldms_value_type */
+	uint8_t type;		/*! The type of the value, enum ldms_value_type */
 	uint8_t name_len;	/*! The length of the metric name in bytes*/
 	char name[0];		/*! The metric name */
 };
@@ -217,9 +219,10 @@ enum ldms_value_type {
 	LDMS_V_S32,
 	LDMS_V_U64,
 	LDMS_V_S64,
-	LDMS_V_F,
-	LDMS_V_D,
-	LDMS_V_LD,
+	LDMS_V_F32,
+	LDMS_V_D64,
+	LDMS_V_LD128,
+	LDMS_V_LAST = LDMS_V_LD128
 };
 
 /**
@@ -229,7 +232,7 @@ struct ldms_iterator {
 	struct ldms_set *set;
 	struct ldms_value_desc *curr_desc;
 	union ldms_value *curr_value;
-	uint32_t curr_off;
+	int curr_idx;
 };
 
 /**
@@ -322,20 +325,23 @@ static inline struct ldms_value_desc *ldms_iter_desc(struct ldms_iterator *i)
 #define LDMS_SETH_F_LCLBYTEORDER	LDMS_SETH_F_LE
 #endif
 
-#define LDMS_VERSION 0x02020000	/* 2.2.1.0 */
+#define LDMS_VERSION 0x03010000	/* 3.1.0.0 */
 #define LDMS_SET_NAME_MAX 256
 struct ldms_set_hdr {
+	uint64_t producer_id;	/* The unique metric set producer ID */
 	uint64_t meta_gn;	/* Meta-data generation number */
 	uint32_t version;	/* LDMS version number */
 	uint32_t flags;		/* Set format flags */
-	uint32_t card;		/* Number of values in this set. */
-	uint32_t meta_size;	/* size of meta data in bytes */
-	uint32_t data_size;	/* size of metric values in bytes */
-	uint64_t values;	/* Local handle for values */
-	uint32_t head_off;	/* offset of first descriptor */
-	uint32_t tail_off;	/* offset of last descriptor */
-	char name[LDMS_SET_NAME_MAX];
+	uint32_t card;		/* Size of dictionary (i.e. metric count). */
+	uint32_t meta_sz;	/* size of meta data in bytes */
+	uint32_t data_sz;	/* size of metric values in bytes */
+	uint32_t dict[0];	/* The metric dictionary */
 };
+
+typedef struct ldms_name {
+	uint8_t len;
+	uint8_t name[0];
+} *ldms_name_t;
 
 enum ldms_transaction_flags {
 	LDMS_TRANSACTION_NONE = 0,
@@ -350,6 +356,7 @@ struct ldms_timestamp  {
 
 struct ldms_transaction {
 	struct ldms_timestamp ts;
+	struct ldms_timestamp dur;
 	uint32_t flags;
 };
 
@@ -359,8 +366,6 @@ struct ldms_data_hdr {
 	uint64_t gn;		/* Metric-value generation number */
 	uint64_t size;		/* Max size of data */
 	uint64_t meta_gn;	/* Meta-data generation number */
-	uint32_t head_off;	/* Offset of first value */
-	uint32_t tail_off;	/* Offset of last value */
 };
 
 enum ldms_lookup_status {
@@ -669,7 +674,7 @@ extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
  * ldms_release() function should be called when this metric set is no
  * longer needed.
  *
- * See the \c ldms_dir() function for detail on how to query a host for
+ * See the ldms_dir() function for detail on how to query a host for
  * the list of published metric sets.
  *
  * \param t	 The transport handle
@@ -720,28 +725,86 @@ typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int status, void *arg);
 extern int ldms_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg);
 
 /**
+ * \brief Create a metric set schema
+ *
+ * Create a metric set schema. The schema can later be used to create
+ * a metric set. The schema name must be unique.
+ *
+ * \param name	The set schema name
+ * \retval !0 The schema handle.
+ * \retval ENOMEM There were insufficient resources to create the schema
+ */
+extern ldms_schema_t ldms_create_schema(const char *schema_name);
+extern void ldms_destroy_schema(ldms_schema_t schema);
+
+/**
+ * \brief Return the number of metrics in the schema
+ *
+ * \param schema
+ * \returns The number of metrics in the schema
+ */
+extern int ldms_get_metric_count(ldms_schema_t schema);
+
+/**
  * \brief Create a Metric set
  *
  * Create a metric set on the local host. The metric set is added to
- * the data base of metric sets exported by this host. The \c set_name
- * parameter specifies the logical name of the metric set. This name
- * is returned to the client when queried with the \c ldms_dir
- * function.
+ * the data base of metric sets exported by this host. The <tt>instance_name</tt>
+ * parameter specifies the name of the metric set as it will appear to
+ * hosts who query the set dictionary with ldms_dir().
  *
- * \param set_name	The name of the metric set.
- * \param meta_sz	The maximum meta data size.
- * \param data_sz	The maximum data size.
+ * Multiple metric sets of the same type (schema) may be created
+ * provided that they have different instance names.
+ *
+ * \param instance_name	The metric set instance name.
+ * \param schema	The metric set schema being created.
  * \param s		Pointer to ldms_set_t handle that will be set to the new handle.
- * \returns		0 on success
+ * \retval 0 Success
+ * \retval ENOMEM Insufficient resources
+ * \retval EEXIST The specified instance name is already used.
+ * \retval EINVAL A parameter or the schema itself is invalid
  */
-extern int ldms_create_set(const char *set_name,
-			   size_t meta_sz, size_t data_sz, ldms_set_t *s);
+extern int ldms_create_set(const char *instance_name, ldms_schema_t schema, ldms_set_t *s);
+
+/**
+ * \brief Get the schema name for the set
+ *
+ * \param s	The set handle
+ * \retval !0	Pointer to a string containing the schema name
+ * \retval 0	The set handle invalid
+ */
+extern const char *ldms_get_schema_name(ldms_set_t s);
+
+/**
+ * \brief Get the instance name for the set
+ *
+ * \param s	The set handle
+ * \retval !0	Pointer to a string containing the instance name
+ * \retval 0	The set handle invalid
+ */
+extern const char *ldms_get_instance_name(ldms_set_t s);
+
+/**
+ * \brief Get the producer id for the set
+ *
+ * \param s	The set handle
+ * \returns	The producer id for the set.
+ */
+extern uint64_t ldms_get_producer_id(ldms_set_t s);
+
+/**
+ * \brief Get the producer id for the set
+ *
+ * \param s	The set handle
+ * \parm id	The producer id for the set.
+ */
+extern void ldms_set_producer_id(ldms_set_t s, uint64_t id);
 
 /**
  * \brief Map a metric set for remote access
  *
  * This service is used to map a local metric set for access on the
- * network. The \c addr parameter specifies the address of the memory
+ * network. The <tt>addr</tt> parameter specifies the address of the memory
  * containing the metric set. This service is typically used to export
  * metric sets that are created in the kernel.
  *
@@ -772,6 +835,16 @@ extern void ldms_destroy_set(ldms_set_t s);
  * \returns	The metric set name as a character string.
  */
 extern const char *ldms_get_set_name(ldms_set_t s);
+
+/**
+ * \brief Get the set's schema name.
+ *
+ * Return the schema name of the metric set.
+ *
+ * \param s	The ldms_set_t handle.
+ * \returns	The metric set name as a character string.
+ */
+extern const char *ldms_get_set_schema_name(ldms_set_t s);
 
 /**
  * \brief Get the number of metrics in the metric set.
@@ -898,18 +971,30 @@ extern int ldms_begin_transaction(ldms_set_t s);
 extern int ldms_end_transaction(ldms_set_t s);
 
 /**
- * \brief Get the time the set was last modified.
+ * \brief Get the time the transaction ended
  *
  * Returns an ldms_timestamp structure that specifies when
- * ldms_end_transaction was last called by the metric set provider. If
+ * ldms_end_transaction() was last called by the metric set provider. If
  * the metric set provider does not update it's metric sets inside
  * transactions, then this value is invalid. This value is undefined
- * if the metric set is not consistent, see \c ldms_is_set_consistent.
+ * if the metric set is not consistent, see ldms_is_set_consistent().
  *
  * \param s     The metric set handle
  * \returns ts  A pointer to a timestamp structure.
  */
-extern struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s);
+extern struct ldms_timestamp const *ldms_get_transaction_timestamp(ldms_set_t s);
+
+/**
+ * \brief Get the duration of the last transaction
+ *
+ * Returns an ldms_timestamp structure that specifies the time between
+ * ldms_begin_transaction() and ldms_end_transaction(). This
+ * measures how long the sampler took to update the metric set.
+ *
+ * \param s     The metric set handle
+ * \returns ts  A pointer to a timestamp structure.
+ */
+extern struct ldms_timestamp const *ldms_get_transaction_duration(ldms_set_t s);
 
 /**
  * \brief Returns TRUE if the metric set is consistent.
@@ -924,18 +1009,18 @@ extern struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s);
 extern int ldms_is_set_consistent(ldms_set_t s);
 
 /**
- * \brief Add a metric to the set
+ * \brief Add a metric to schema
  *
- * Adds a metric to the metric set. The \c name of the metric must be
- * unique.
+ * Adds a metric to a metric set schema. The \c name of the metric must be
+ * unique within the metric set.
  *
  * \param s	The ldms_set_t handle.
  * \param name	The name of the metric.
  * \param t	The type of the metric.
- * \returns	A handle to the newly created metric if successful.
- * \returns	0 if an error occured.
+ * \retval >=0  The metric index.
+ * \retval <0	Insufficient resources or duplicate name
  */
-extern ldms_metric_t ldms_add_metric(ldms_set_t s, const char *name, enum ldms_value_type t);
+extern int ldms_add_metric(ldms_schema_t s, const char *name, enum ldms_value_type t);
 
 /**
  * \brief Return the storage needed for metric
@@ -949,10 +1034,22 @@ extern ldms_metric_t ldms_add_metric(ldms_set_t s, const char *name, enum ldms_v
  * \param t	The LDMS metric type.
  * \param meta_sz Pointer to the variable to receive the meta data size
  * \param data_sz Pointer to the variable to receive the data size
- * \returns	0 on success or EINVAL if \c t is an unrecognized type.
  */
-extern int ldms_get_metric_size(const char *name, enum ldms_value_type t,
-				     size_t *meta_sz, size_t *data_sz);
+extern void ldms_get_metric_size(const char *name, enum ldms_value_type t,
+				 size_t *meta_sz, size_t *data_sz);
+
+/**
+ * \brief Build a metric object given an index
+ *
+ * Build a metric handle for the specified metric. The handle is used
+ * to set and get values from the associated metric.
+ *
+ * \param s	The metric set handle
+ * \param int	The metric index
+ * \retval !0	Pointer to the prepared metric handle
+ * \retval 0	The specified index is not present in the set
+ */
+extern ldms_metric_t ldms_metric_get(ldms_set_t s, int idx, struct ldms_metric *metric);
 
 /**
  * \brief Get the metric handle for a metric
@@ -996,6 +1093,14 @@ extern void ldms_metric_release(ldms_metric_t m);
  * \returns	A character string containing the name of the metric.
  */
 extern const char *ldms_get_metric_name(ldms_metric_t m);
+
+/**
+ * \brief Returns the dictionary index of a metric.
+ *
+ * \param m	The metric handle
+ * \returns	The metric's dictionary index
+ */
+extern int ldms_get_metric_idx(ldms_metric_t m);
 
 /**
  * \brief Returns the type of a metric.
@@ -1099,6 +1204,12 @@ static inline void ldms_set_user_data(ldms_metric_t m, uint64_t u)
 	struct ldms_metric *_m = (struct ldms_metric *)m;
 	_m->desc->user_data = u;
 }
+static inline void ldms_set_midx_udata(ldms_set_t set, int idx, uint64_t u)
+{
+	struct ldms_metric _m;
+	ldms_metric_t m = ldms_metric_get(set, idx, &_m);
+	m->desc->user_data = u;
+}
 
 /**
  * \brief Get the user-data associated with a metric
@@ -1147,19 +1258,25 @@ static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
 	case LDMS_V_S64:
 		m->value->v_u64 = v->v_u64;
 		break;
-	case LDMS_V_F:
+	case LDMS_V_F32:
 		m->value->v_f = v->v_f;
 		break;
-	case LDMS_V_D:
+	case LDMS_V_D64:
 		m->value->v_d = v->v_d;
 		break;
-	case LDMS_V_LD:
+	case LDMS_V_LD128:
 		m->value->v_ld = v->v_ld;
 		break;
 	default:
 		return;
 	}
 	m->set->data->gn++;
+}
+static inline void ldms_set_midx(ldms_set_t set, int idx, union ldms_value *v)
+{
+	struct ldms_metric _m;
+	ldms_metric_t m = ldms_metric_get(set, idx, &_m);
+	ldms_set_metric(m, v);
 }
 
 /**
@@ -1173,6 +1290,12 @@ static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
  */
 static inline void ldms_set_u8(ldms_metric_t _m, uint8_t v) {
 	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_u8 = v;
+	m->set->data->gn++;
+}
+static inline void ldms_set_midx_u8(ldms_set_t set, int idx, uint8_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
 	m->value->v_u8 = v;
 	m->set->data->gn++;
 }
@@ -1191,6 +1314,12 @@ static inline void ldms_set_u16(ldms_metric_t _m, uint16_t v) {
 	m->value->v_u16 = v;
 	m->set->data->gn++;
 }
+static inline void ldms_set_midx_u16(ldms_set_t set, int idx, uint16_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	m->value->v_u16 = v;
+	m->set->data->gn++;
+}
 
 /**
  * \brief Set the value of a metric.
@@ -1203,6 +1332,12 @@ static inline void ldms_set_u16(ldms_metric_t _m, uint16_t v) {
  */
 static inline void ldms_set_u32(ldms_metric_t _m, uint32_t v) {
 	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_u32 = v;
+	m->set->data->gn++;
+}
+static inline void ldms_set_midx_u32(ldms_set_t set, int idx, uint32_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
 	m->value->v_u32 = v;
 	m->set->data->gn++;
 }
@@ -1221,6 +1356,12 @@ static inline void ldms_set_u64(ldms_metric_t _m, uint64_t v) {
 	m->value->v_u64 = v;
 	m->set->data->gn++;
 }
+static inline void ldms_set_midx_u64(ldms_set_t set, int idx, uint64_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	m->value->v_u64 = v;
+	m->set->data->gn++;
+}
 
 /**
  * \brief Set the value of a metric.
@@ -1233,6 +1374,12 @@ static inline void ldms_set_u64(ldms_metric_t _m, uint64_t v) {
  */
 static inline void ldms_set_s8(ldms_metric_t _m, int8_t v) {
 	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_s8 = v;
+	m->set->data->gn++;
+}
+static inline void ldms_set_midx_s8(ldms_set_t set, int idx, int8_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
 	m->value->v_s8 = v;
 	m->set->data->gn++;
 }
@@ -1251,6 +1398,12 @@ static inline void ldms_set_s16(ldms_metric_t _m, int16_t v) {
 	m->value->v_s16 = v;
 	m->set->data->gn++;
 }
+static inline void ldms_set_midx_s16(ldms_set_t set, int idx, int16_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	m->value->v_s16 = v;
+	m->set->data->gn++;
+}
 
 /**
  * \brief Set the value of a metric.
@@ -1263,6 +1416,12 @@ static inline void ldms_set_s16(ldms_metric_t _m, int16_t v) {
  */
 static inline void ldms_set_s32(ldms_metric_t _m, int32_t v) {
 	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_s32 = v;
+	m->set->data->gn++;
+}
+static inline void ldms_set_midx_s32(ldms_set_t set, int idx, int32_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
 	m->value->v_s32 = v;
 	m->set->data->gn++;
 }
@@ -1281,6 +1440,12 @@ static inline void ldms_set_s64(ldms_metric_t _m, int64_t v) {
 	m->value->v_s64 = v;
 	m->set->data->gn++;
 }
+static inline void ldms_set_midx_s64(ldms_set_t set, int idx, int64_t v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	m->value->v_s64 = v;
+	m->set->data->gn++;
+}
 
 /**
  * \brief Set the value of a metric.
@@ -1293,6 +1458,12 @@ static inline void ldms_set_s64(ldms_metric_t _m, int64_t v) {
  */
 static inline void ldms_set_float(ldms_metric_t _m, float v) {
 	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_f = v;
+	m->set->data->gn++;
+}
+static inline void ldms_set_midx_float(ldms_set_t set, int idx, float v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
 	m->value->v_f = v;
 	m->set->data->gn++;
 }
@@ -1311,6 +1482,12 @@ static inline void ldms_set_double(ldms_metric_t _m, double v) {
 	m->value->v_d = v;
 	m->set->data->gn++;
 }
+static inline void ldms_set_midx_double(ldms_set_t set, int idx, double v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	m->value->v_d = v;
+	m->set->data->gn++;
+}
 
 /**
  * \brief Set the value of a metric.
@@ -1323,6 +1500,12 @@ static inline void ldms_set_double(ldms_metric_t _m, double v) {
  */
 static inline void ldms_set_long_double(ldms_metric_t _m, long double v) {
 	struct ldms_metric *m = (struct ldms_metric *)_m;
+	m->value->v_ld = v;
+	m->set->data->gn++;
+}
+static inline void ldms_set_midx_long_double(ldms_set_t set, int idx, long double v) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
 	m->value->v_ld = v;
 	m->set->data->gn++;
 }
@@ -1350,6 +1533,11 @@ static inline void *ldms_get_value_ptr(ldms_metric_t _m) {
 static inline uint8_t ldms_get_u8(ldms_metric_t _m) {
 	return ((struct ldms_metric *)_m)->value->v_u8;
 }
+static inline uint8_t ldms_get_midx_u8(ldms_set_t set, int idx) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	return m->value->v_u8;
+}
 
 /**
  * \brief Get the value of a metric.
@@ -1361,6 +1549,11 @@ static inline uint8_t ldms_get_u8(ldms_metric_t _m) {
  */
 static inline uint16_t ldms_get_u16(ldms_metric_t _m) {
 	return ((struct ldms_metric *)_m)->value->v_u16;
+}
+static inline uint16_t ldms_get_midx_u16(ldms_set_t set, int idx) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	return m->value->v_u16;
 }
 
 /**
@@ -1374,6 +1567,11 @@ static inline uint16_t ldms_get_u16(ldms_metric_t _m) {
 static inline uint32_t ldms_get_u32(ldms_metric_t _m) {
 	return ((struct ldms_metric *)_m)->value->v_u32;
 }
+static inline uint32_t ldms_get_midx_u32(ldms_set_t set, int idx) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	return m->value->v_u32;
+}
 
 /**
  * \brief Get the value of a metric.
@@ -1385,6 +1583,11 @@ static inline uint32_t ldms_get_u32(ldms_metric_t _m) {
  */
 static inline uint64_t ldms_get_u64(ldms_metric_t _m) {
 	return ((struct ldms_metric *)_m)->value->v_u64;
+}
+static inline uint64_t ldms_get_midx_u64(ldms_set_t set, int idx) {
+	struct ldms_metric m_;
+	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	return m->value->v_u64;
 }
 
 /**

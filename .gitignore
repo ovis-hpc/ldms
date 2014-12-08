@@ -13,3 +13,4 @@ configure
 build*
 config.h.in
 *.m4
+*doxygen*

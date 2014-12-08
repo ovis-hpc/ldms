@@ -93,7 +93,7 @@
 typedef struct gs_metric {
 	char *name; /**< metric name */
 	enum ldms_value_type type; /**< type */
-	ldms_metric_t mh; /**< ldms metric handle */
+	int mh; /**< ldms metric index */
 	TAILQ_ENTRY(gs_metric) entry; /**< List entry */
 } *gs_metric_t;
 
@@ -104,6 +104,7 @@ str_map_t gs_map = NULL; /**< gs metric map */
 ldmsd_msg_log_f msglog; /**< Log function */
 const char *path = "/tmp/metrics"; /**< metric file path */
 ldms_set_t set;
+ldms_schema_t schema;
 static char buff[65536];
 uint64_t comp_id;
 
@@ -149,41 +150,23 @@ static const char *usage(void)
 
 static int create_metric_set(const char *set_name)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, i, metric_count;
+	int rc, i;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
 	gs_metric_t gs_metric;
 
-	metric_count = 0;
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
+	schema = ldms_create_schema("generic_sampler");
+	if (!schema)
+		return ENOMEM;
 
-	/* First iteration for set size calculation. */
 	TAILQ_FOREACH(gs_metric, &gs_list, entry) {
-		ldms_get_metric_size(gs_metric->name, gs_metric->type,
-					  &meta_sz, &data_sz);
-		tot_meta_sz += meta_sz;
-		tot_data_sz += data_sz;
-		metric_count++;
+		gs_metric->mh = ldms_add_metric(schema, gs_metric->name,
+						gs_metric->type);
 	}
 
-	/* Create the metric set */
-	rc = ENOMEM;
-	rc = ldms_create_set(set_name, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		return rc;
-
-	/*
-	 * Process the file again to define all the metrics.
-	 */
-	TAILQ_FOREACH(gs_metric, &gs_list, entry) {
-		gs_metric->mh = ldms_add_metric(set, gs_metric->name,
-				gs_metric->type);
-	}
-	return 0;
+	rc = ldms_create_set(set_name, schema, &set);
+	return rc;
 }
 
 void permute_metrics(char *name, enum ldms_value_type type)
@@ -309,7 +292,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			break;
 		case 'D':
 		case 'd':
-			type = LDMS_V_D;
+			type = LDMS_V_D64;
 			break;
 		default:
 			msglog("generic_sampler config: unknown type %c\n", *t);
@@ -398,11 +381,11 @@ static int sample(void)
 		case LDMS_V_U64:
 			value.v_u64 = strtoull(v, NULL, 0);
 			break;
-		case LDMS_V_D:
+		case LDMS_V_D64:
 			value.v_d = strtod(v, NULL);
 			break;
 		}
-		ldms_set_metric(gs_metric->mh, &value);
+		ldms_set_midx(set, gs_metric->mh, &value);
 skip:
 		tok = strchr(v, '\n');
 		while (tok && *tok && isspace(*tok)) {

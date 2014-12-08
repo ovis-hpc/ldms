@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-all, 2.1.1, ovis-help@sandia.gov)
+AC_INIT(ovis-all, 3.1.0, ovis-help@sandia.gov)
 #fixme=--subdir
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])

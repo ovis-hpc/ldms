@@ -354,6 +354,9 @@ int map_fd;
 ldms_set_t map_set;
 int publish_kernel(const char *setfile)
 {
+#if 1
+	return ENOSYS;
+#else
 	int rc;
 	int i, j;
 	void *meta_addr;
@@ -386,9 +389,9 @@ int publish_kernel(const char *setfile)
 			return -ENOMEM;
 		sh = meta_addr;
 		if (set_name[0] == '/')
-			sprintf(sh->name, "%s%s", myhostname, set_name);
+			sprintf(sh->instance_name, "%s%s", myhostname, set_name);
 		else
-			sprintf(sh->name, "%s/%s", myhostname, set_name);
+			sprintf(sh->instance_name, "%s/%s", myhostname, set_name);
 		data_addr = mmap((void *)0, 8192, PROT_READ|PROT_WRITE,
 				 MAP_SHARED, map_fd,
 				 id | LDMS_SET_ID_DATA);
@@ -417,10 +420,11 @@ int publish_kernel(const char *setfile)
 			}
 			ldms_log("\n");
 		}
-		ldms_log("name: '%s'\n", sh->name);
-		ldms_log("size: %d\n", sh->meta_size);
+		ldms_log("name: '%s'\n", sh->instance_name);
+		ldms_log("size: %d\n", sh->meta_sz);
 	}
 	return 0;
+#endif
 }
 
 
@@ -3454,35 +3458,30 @@ int main(int argc, char *argv[])
 
 	/* Create the test sets */
 	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
-	ldms_metric_t *test_metrics = calloc(test_set_count, sizeof(ldms_metric_t));
-	if (!test_metrics) {
-		ldms_log("Could not create test_metrics table to contain %d items\n",
-			 test_set_count);
-		cleanup(10);
-	}
 	if (test_set_name) {
-		int set_no;
+		int rc, set_no, j;
+		char metric_name[32];
 		static char test_set_name_no[1024];
+		ldms_schema_t schema = ldms_create_schema("test_set");
+		if (!schema)
+			cleanup(11);
+		rc = ldms_add_metric(schema, "component_id", LDMS_V_U64);
+		if (rc < 0)
+			cleanup(12);
+		for (j = 1; j <= test_metric_count; j++) {
+			sprintf(metric_name, "metric_no_%d", j);
+			rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+			if (rc < 0)
+				cleanup(13);
+		}
 		for (set_no = 1; set_no <= test_set_count; set_no++) {
-			int j;
-			ldms_metric_t m;
-			char metric_name[32];
 			sprintf(test_set_name_no, "%s/%s_%d",
 				myhostname, test_set_name, set_no);
-			ldms_create_set(test_set_name_no, 2048, 2048, &test_set);
+			rc = ldms_create_set(test_set_name_no, schema, &test_set);
+			if (rc)
+				cleanup(14);
 			test_sets[set_no-1] = test_set;
-			if (test_metric_count > 0) {
-				m = ldms_add_metric(test_set, "component_id",
-						    LDMS_V_U64);
-				ldms_set_u64(m, (uint64_t)1);
-				test_metrics[set_no-1] = m;
-			}
-			for (j = 1; j <= test_metric_count; j++) {
-				sprintf(metric_name, "metric_no_%d", j);
-				m = ldms_add_metric(test_set, metric_name,
-						    LDMS_V_U64);
-				ldms_set_u64(m, (uint64_t)(set_no * j));
-			}
+
 		}
 	} else
 		test_set_count = 0;
@@ -3529,7 +3528,7 @@ int main(int argc, char *argv[])
 		int set_no;
 		for (set_no = 0; set_no < test_set_count; set_no++) {
 			ldms_begin_transaction(test_sets[set_no]);
-			ldms_set_u64(test_metrics[set_no], count);
+			ldms_set_midx_u64(test_sets[set_no], 0, count);
 			ldms_end_transaction(test_sets[set_no]);
 			if (notify) {
 				struct ldms_notify_event_s event;

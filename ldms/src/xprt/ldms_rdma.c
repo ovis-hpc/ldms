@@ -118,7 +118,7 @@ static void rdma_teardown_conn(struct ldms_rdma_xprt *r)
 
 	while (!LIST_EMPTY(&r->xprt->rbd_list)) {
 		struct ldms_rbuf_desc *desc = LIST_FIRST(&r->xprt->rbd_list);
-		ldms_free_rbd(desc);
+		__ldms_free_rbd(desc);
 	}
 	/* Destroy the RQ CQ */
 	if (r->rq_cq) {
@@ -1367,7 +1367,7 @@ struct ldms_rbuf_desc *rdma_rbuf_alloc(struct ldms_xprt *x,
 		goto err_0;
 
 	lbuf->meta = set->meta;
-	lbuf->meta_size = set->meta->meta_size;
+	lbuf->meta_size = set->meta->meta_sz;
 	lbuf->meta_mr = ibv_reg_mr(r->pd,
 				   lbuf->meta, lbuf->meta_size,
 				   IBV_ACCESS_LOCAL_WRITE |
@@ -1377,7 +1377,7 @@ struct ldms_rbuf_desc *rdma_rbuf_alloc(struct ldms_xprt *x,
 		goto err_1;
 
 	lbuf->data = set->data;
-	lbuf->data_size = set->meta->data_size;
+	lbuf->data_size = set->meta->data_sz;
 	lbuf->data_mr = ibv_reg_mr(r->pd,
 				   lbuf->data, lbuf->data_size,
 				   IBV_ACCESS_LOCAL_WRITE |

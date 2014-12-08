@@ -141,21 +141,15 @@ uint64_t ldms_get_data_gn(ldms_set_t _set)
 	return sd->set->data->gn;
 }
 
-static uint32_t _get_size(struct ldms_set *s)
+uint32_t ldms_get_size(ldms_set_t s)
 {
-	return s->meta->tail_off;
-}
-
-uint32_t ldms_get_size(ldms_set_t _set)
-{
-	struct ldms_set_desc *sd = _set;
-	return _get_size(sd->set);
+	return s->set->meta->meta_sz + s->set->meta->data_sz;
 }
 
 
 static uint32_t _get_max_size(struct ldms_set *s)
 {
-	return s->meta->data_size;
+	return s->meta->data_sz;
 }
 
 uint32_t ldms_get_max_size(ldms_set_t _set)
@@ -186,9 +180,9 @@ static void rem_local_set(struct ldms_set *s)
 static void add_local_set(struct ldms_set *s)
 {
 	struct rbn *z;
-	s->rb_node.key = s->meta->name;
+	s->rb_node.key = get_instance_name(s->meta)->name;
 	pthread_mutex_lock(&set_tree_lock);
-	z = rbt_find(&set_tree, s->meta->name);
+	z = rbt_find(&set_tree, get_instance_name(s->meta)->name);
 	assert(NULL == z);
 	rbt_ins(&set_tree, &s->rb_node);
 	pthread_mutex_unlock(&set_tree_lock);
@@ -227,12 +221,12 @@ int set_list_cb(struct ldms_set *set, void *arg)
 	struct set_list_arg *a = arg;
 	int len;
 
-	len = strlen(set->meta->name) + 1;
+	len = get_instance_name(set->meta)->len;
 	if (len > a->set_list_len)
 		return -ENOMEM;
 
 	a->count++;
-	strcpy(a->set_list, set->meta->name);
+	strcpy(a->set_list, get_instance_name(set->meta)->name);
 	a->set_list += len;
 	a->set_list_len -= len;
 
@@ -262,7 +256,7 @@ int set_list_sz_cb(struct ldms_set *set, void *arg)
 	struct set_list_arg *a = arg;
 	int len;
 
-	len = strlen(set->meta->name) + 1;
+	len = get_instance_name(set->meta)->len;
 	a->set_list_len += len;
 	a->count++;
 
@@ -280,13 +274,13 @@ void __ldms_get_local_set_list_sz(int *set_count, int *set_list_size)
 	*set_count = arg.count;
 	*set_list_size = arg.set_list_len;
 }
-static int __record_set(const char *set_name, ldms_set_t *s,
+static int __record_set(const char *instance_name, ldms_set_t *s,
 			struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
 {
 	struct ldms_set *set;
 	struct ldms_set_desc *sd;
 
-	set = ldms_find_local_set(set_name);
+	set = ldms_find_local_set(instance_name);
 	if (set) {
 		ldms_release_local_set(set);
 		return -EEXIST;
@@ -399,12 +393,12 @@ void ldms_destroy_set(ldms_set_t s)
 	struct ldms_rbuf_desc *rbd;
 	struct ldms_xprt *x;
 
-	__ldms_dir_del_set(set->meta->name);
+	__ldms_dir_del_set(get_instance_name(set->meta)->name);
 
 	ldms_free_rbd(set);
 
 	if (set->flags & LDMS_SET_F_FILEMAP) {
-		unlink(_create_path(sd->set->meta->name));
+		unlink(_create_path(get_instance_name(sd->set->meta)->name));
 		strcat(__set_path, ".META");
 		unlink(__set_path);
 	}
@@ -497,17 +491,41 @@ char *_create_path(const char *set_name)
 	return __set_path;
 }
 
-int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
+const char *ldms_get_schema_name(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
+	ldms_name_t name = get_schema_name(sd->set->meta);
+	return name->name;
+}
+
+const char *ldms_get_instance_name(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
+	ldms_name_t name = get_instance_name(sd->set->meta);
+	return name->name;
+}
+
+uint64_t ldms_get_producer_id(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
+	return sd->set->meta->producer_id;
+}
+
+void ldms_set_producer_id(ldms_set_t s, uint64_t id)
+{
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
+	sd->set->meta->producer_id = id;
+}
+
+int __ldms_create_set(const char *instance_name,
+		      size_t meta_sz, size_t data_sz,
 		      ldms_set_t *s, uint32_t flags)
 {
 	struct ldms_data_hdr *data;
 	struct ldms_set_hdr *meta;
 	struct ldms_value_desc *vd;
+	ldms_mdef_t m;
 	int rc;
-
-	meta_sz = (meta_sz + 7) & ~7;
-	data_sz += sizeof(struct ldms_data_hdr);
-	meta_sz += sizeof(struct ldms_set_hdr);
 
 	meta = mm_alloc(meta_sz + data_sz);
 	if (!meta) {
@@ -515,10 +533,10 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 		goto out_0;
 	}
 	meta->version = LDMS_VERSION;
-	meta->meta_size = meta_sz;
+	meta->meta_sz = meta_sz;
 
 	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_sz);
-	meta->data_size = data_sz;
+	meta->data_sz = data_sz;
 	data->size = data_sz;
 
 	/* Initialize the metric set header */
@@ -529,29 +547,18 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 		 * the remote meta data */
 		meta->meta_gn = 0;
 	meta->card = 0;
-	meta->head_off = sizeof(*meta);
-	meta->tail_off = sizeof(*meta);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
-	strncpy(meta->name, set_name, LDMS_SET_NAME_MAX-1);
-	meta->name[LDMS_SET_NAME_MAX-1] = '\0';
+
+	ldms_name_t lname = get_instance_name(meta);
+	lname->len = strlen(instance_name) + 1;
+	strcpy(lname->name, instance_name);
 
 	data->gn = data->meta_gn = meta->meta_gn;
-	data->head_off = sizeof(*data);
-	data->tail_off = sizeof(*data);
 
-	/* Initialize the first value descriptor so that tail->next_offset
-	 * is the head. This normalizes the allocation logic in
-	 * ldms_add_metric. */
-	vd = ldms_ptr_(struct ldms_value_desc, meta, meta->head_off);
-	vd->next_offset = meta->head_off;
-	vd->type = LDMS_V_NONE;
-	vd->name_len = sizeof("<empty>");
-	strcpy(vd->name, "<empty>");
-
-	rc = __record_set(set_name, s, meta, data, flags);
+	rc = __record_set(instance_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	__ldms_dir_add_set(set_name);
+	__ldms_dir_add_set(instance_name);
 	return 0;
 
  out_1:
@@ -570,20 +577,146 @@ int ldms_init(size_t max_size)
 	return 0;
 }
 
-int ldms_create_set(const char *set_name,
-		    size_t meta_sz, size_t data_sz, ldms_set_t *s)
+ldms_schema_t ldms_create_schema(const char *schema_name)
 {
-	return __ldms_create_set(set_name, meta_sz, data_sz,
-				 s, LDMS_SET_F_LOCAL);
+	ldms_schema_t s = calloc(1, sizeof *s);
+	if (s) {
+		s->name = strdup(schema_name);
+		s->meta_sz = sizeof(struct ldms_set_hdr);
+		s->data_sz = sizeof(struct ldms_data_hdr);
+		STAILQ_INIT(&s->metric_list);
+	}
+	return s;
 }
 
-/** \brief Return the name of the set
- */
+void ldms_destroy_schema(ldms_schema_t schema)
+{
+	int i;
+	ldms_mdef_t m;
+
+	while (!STAILQ_EMPTY(&schema->metric_list)) {
+		m = STAILQ_FIRST(&schema->metric_list);
+		STAILQ_REMOVE_HEAD(&schema->metric_list, entry);
+		free(m->name);
+		free(m);
+	}
+	free(schema->name);
+	free(schema);
+}
+
+int ldms_get_metric_count(ldms_schema_t schema)
+{
+	return schema->metric_count;
+}
+
+static int value_size[] = {
+	[LDMS_V_NONE] = 0,
+	[LDMS_V_U8] = sizeof(uint8_t),
+	[LDMS_V_S8] = sizeof(uint8_t),
+	[LDMS_V_U16] = sizeof(uint16_t),
+	[LDMS_V_S16] = sizeof(uint16_t),
+	[LDMS_V_U32] = sizeof(uint32_t),
+	[LDMS_V_S32] = sizeof(uint32_t),
+	[LDMS_V_U64] = sizeof(uint64_t),
+	[LDMS_V_S64] = sizeof(uint64_t),
+	[LDMS_V_F32] = sizeof(float),
+	[LDMS_V_D64] = sizeof(double),
+	[LDMS_V_LD128] = sizeof(long double),
+};
+
+int ldms_create_set(const char *instance_name, ldms_schema_t schema, ldms_set_t *s)
+{
+	struct ldms_data_hdr *data;
+	struct ldms_set_hdr *meta;
+	struct ldms_value_desc *vd;
+	size_t meta_sz;
+	uint64_t value_off;
+	ldms_mdef_t md;
+	int metric_idx;
+	int rc;
+
+	if (!instance_name || !schema)
+		return EINVAL;
+
+	meta_sz = schema->meta_sz /* header + metric dict */
+		+ strlen(schema->name) + 2 /* schema name + '\0' + len */
+		+ strlen(instance_name) + 2; /* instance name + '\0' + len */
+	meta_sz = roundup(meta_sz, 8);
+	meta = mm_alloc(meta_sz + schema->data_sz);
+	if (!meta)
+		return ENOMEM;
+
+	meta->version = LDMS_VERSION;
+	meta->card = schema->metric_count;
+	meta->meta_sz = meta_sz;
+
+	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_sz);
+	meta->data_sz = schema->data_sz;
+	data->size = schema->data_sz;
+
+	/* Initialize the metric set header */
+	meta->meta_gn = 1;
+	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
+
+	/*
+	 * Set the instance name.
+	 * NB: Must be set first because get_schema_name uses the
+	 * instance name len field.
+	 */
+	ldms_name_t lname = get_instance_name(meta);
+	lname->len = strlen(instance_name) + 1;
+	strcpy(lname->name, instance_name);
+
+	/* Set the schema name. */
+	lname = get_schema_name(meta);
+	lname->len = strlen(schema->name) + 1;
+	strcpy(lname->name, schema->name);
+
+	data->gn = data->meta_gn = meta->meta_gn;
+
+	/* Add the metrics from the schema */
+	vd = get_first_metric_desc(meta);
+	value_off = roundup(sizeof(*data), 8);
+	metric_idx = 0;
+	size_t vd_size = 0;
+	STAILQ_FOREACH(md, &schema->metric_list, entry) {
+		/* Add descriptor to dictionary */
+		meta->dict[metric_idx] = ldms_off_(meta, vd);
+
+		/* Build the descriptor */
+		vd->type = md->type;
+		vd->name_len = strlen(md->name) + 1;
+		strncpy(vd->name, md->name, vd->name_len);
+		vd->data_offset = value_off;
+
+		/* Advance to next descriptor */
+		metric_idx++;
+		vd = (struct ldms_value_desc *)((char *)vd + md->meta_sz);
+		value_off += roundup(value_size[md->type], 8);
+		vd_size += md->meta_sz;
+	}
+	rc = __record_set(instance_name, s, meta, data, LDMS_SET_F_LOCAL);
+	if (rc)
+		goto out_1;
+	__ldms_dir_add_set(instance_name);
+	return 0;
+
+ out_1:
+	mm_free(meta);
+}
+
 const char *ldms_get_set_name(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
 	struct ldms_set_hdr *sh = sd->set->meta;
-	return sh->name;
+	return get_instance_name(sh)->name;
+}
+
+const char *ldms_get_set_schema_name(ldms_set_t _set)
+{
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
+	struct ldms_set_hdr *sh = sd->set->meta;
+	return get_schema_name(sh)->name;
 }
 
 uint32_t ldms_get_set_card(ldms_set_t _set)
@@ -599,71 +732,39 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s)
 	int flags;
 
 	flags = LDMS_SET_F_MEMMAP | LDMS_SET_F_LOCAL;
-	int rc = __record_set(sh->name, s, sh, dh, flags);
+	int rc = __record_set(get_instance_name(sh)->name, s, sh, dh, flags);
 	return rc;
 }
 
-static int value_size[] = {
-	[LDMS_V_NONE] = 0,
-	[LDMS_V_U8] = sizeof(uint8_t),
-	[LDMS_V_S8] = sizeof(uint8_t),
-	[LDMS_V_U16] = sizeof(uint16_t),
-	[LDMS_V_S16] = sizeof(uint16_t),
-	[LDMS_V_U32] = sizeof(uint32_t),
-	[LDMS_V_S32] = sizeof(uint32_t),
-	[LDMS_V_U64] = sizeof(uint64_t),
-	[LDMS_V_S64] = sizeof(uint64_t),
-	[LDMS_V_F] = sizeof(float),
-	[LDMS_V_D] = sizeof(double),
-};
 static char *type_names[] = {
-	[LDMS_V_NONE] = "NONE",
-	[LDMS_V_U8] = "U8",
-	[LDMS_V_S8] = "S8",
-	[LDMS_V_U16] = "U16",
-	[LDMS_V_S16] = "S16",
-	[LDMS_V_U32] = "U32",
-	[LDMS_V_S32] = "S32",
-	[LDMS_V_U64] = "U64",
-	[LDMS_V_S64] = "S64",
-	[LDMS_V_F] = "F",
-	[LDMS_V_D] = "D",
+	[LDMS_V_NONE] = "none",
+	[LDMS_V_U8] = "u8",
+	[LDMS_V_S8] = "s8",
+	[LDMS_V_U16] = "u16",
+	[LDMS_V_S16] = "s16",
+	[LDMS_V_U32] = "u32",
+	[LDMS_V_S32] = "s32",
+	[LDMS_V_U64] = "u64",
+	[LDMS_V_S64] = "s64",
+	[LDMS_V_F32] = "f32",
+	[LDMS_V_D64] = "d64",
 };
 
-#define ROUNDUP(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
-
-uint32_t ldms_get_metric_meta_size(const char *name, enum ldms_value_type t)
-{
-	size_t sz;
-
-	/* Descriptors are aligned on eight byte boundaries */
-	sz = ROUNDUP(sizeof(struct ldms_value_desc) + strlen(name) + 1, 8);
-
-	/* Values are aligned on 8b boundary */
-	sz += ROUNDUP(value_size[t], 8);
-
-	return sz;
-}
-
-int ldms_get_metric_size(const char *name, enum ldms_value_type t,
-			 size_t *meta_sz, size_t *data_sz)
+void ldms_get_metric_size(const char *name, enum ldms_value_type t,
+			  size_t *meta_sz, size_t *data_sz)
 {
 	/* Descriptors are aligned on eight byte boundaries */
-	*meta_sz = ROUNDUP(sizeof(struct ldms_value_desc) + strlen(name) + 1, 8);
+	*meta_sz = roundup(sizeof(struct ldms_value_desc) + strlen(name) + 1, 8);
 
 	/* Values are aligned on 8b boundary */
-	*data_sz = ROUNDUP(value_size[t], 8);
-
-	return 0;
+	*data_sz = roundup(value_size[t], 8);
 }
 
-static uint32_t __get_value(struct ldms_set *s, uint32_t off,
-			    struct ldms_value_desc **pvd, union ldms_value **pv)
+static void __get_value(struct ldms_set *s, int idx,
+			struct ldms_value_desc **pvd, union ldms_value **pv)
 {
-	*pvd = ldms_ptr_(struct ldms_value_desc, s->meta, off);
+	*pvd = ldms_ptr_(struct ldms_value_desc, s->meta, s->meta->dict[idx]);
 	*pv = ldms_ptr_(union ldms_value, s->data, (*pvd)->data_offset);
-
-	return (*pvd)->next_offset;
 }
 
 void ldms_print_set_metrics(ldms_set_t _set)
@@ -671,20 +772,20 @@ void ldms_print_set_metrics(ldms_set_t _set)
 	struct ldms_set_desc *sd = _set;
 	struct ldms_value_desc *vd;
 	union ldms_value *v;
-	uint32_t off;
+	int i;
 
 	printf("--------------------------------\n");
-	printf("set: '%s'\n", sd->set->meta->name);
-	printf("metadata size : %" PRIu32 "\n", sd->set->meta->meta_size);
-	printf("    data size : %" PRIu32 "\n", sd->set->meta->data_size);
+	printf("schema: '%s'\n", get_schema_name(sd->set->meta)->name);
+	printf("instance: '%s'\n", get_instance_name(sd->set->meta)->name);
+	printf("metadata size : %" PRIu32 "\n", sd->set->meta->meta_sz);
+	printf("    data size : %" PRIu32 "\n", sd->set->meta->data_sz);
 	printf("  metadata gn : %" PRIu64 "\n", sd->set->meta->meta_gn);
 	printf("      data gn : %" PRIu64 "\n", sd->set->data->gn);
 	printf("         card : %" PRIu32 "\n", sd->set->meta->card);
 	printf("--------------------------------\n");
-	for (off = sd->set->meta->head_off; off < sd->set->meta->tail_off; ) {
-		off = __get_value(sd->set, off, &vd, &v);
-		printf("  %32s[%4s] = ",
-		       vd->name, type_names[vd->type]);
+	for (i = 0; i < sd->set->meta->card; i++) {
+		__get_value(sd->set, i, &vd, &v);
+		printf("  %32s[%4s] = ", vd->name, type_names[vd->type]);
 		switch (vd->type) {
 		case LDMS_V_U8:
 			printf("%2hhu\n", v->v_u8);
@@ -710,11 +811,14 @@ void ldms_print_set_metrics(ldms_set_t _set)
 		case LDMS_V_S64:
 			printf("%" PRId64 "\n", v->v_s64);
 			break;
-		case LDMS_V_F:
+		case LDMS_V_F32:
 			printf("%.2f", v->v_f);
 			break;
-		case LDMS_V_D:
+		case LDMS_V_D64:
 			printf("%.2f", v->v_d);
+			break;
+		case LDMS_V_LD128:
+			printf("%.2Lf", v->v_ld);
 			break;
 		}
 	}
@@ -725,10 +829,10 @@ void ldms_visit_metrics(ldms_set_t _set, ldms_visit_cb_t cb, void *arg)
 	struct ldms_set_desc *sd = _set;
 	struct ldms_value_desc *vd;
 	union ldms_value *v;
-	uint32_t off;
+	int i;
 
-	for (off = sd->set->meta->head_off; off < sd->set->meta->tail_off; ) {
-		off = __get_value(sd->set, off, &vd, &v);
+	for (i = 0; i < sd->set->meta->card; i++) {
+		__get_value(sd->set, i, &vd, &v);
 		cb(vd, v, arg);
 	}
 }
@@ -737,21 +841,22 @@ struct ldms_value_desc *ldms_first(struct ldms_iterator *i, ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = _set;
 
-	if (sd->set->meta->head_off >= sd->set->meta->tail_off)
+	if (!sd->set->meta->card)
 		return NULL;
 
 	i->set = sd->set;
-	i->curr_off = sd->set->meta->head_off;
-	return ldms_next(i);
+	i->curr_idx = 0;
+	__get_value(i->set, i->curr_idx, &i->curr_desc, &i->curr_value);
+	return i->curr_desc;
 }
 
 struct ldms_value_desc *ldms_next(struct ldms_iterator *i)
 {
-	if (i->curr_off >= i->set->meta->tail_off)
+	i->curr_idx ++;
+	if (i->curr_idx >= i->set->meta->card)
 		return NULL;
 
-	i->curr_off = __get_value(i->set, i->curr_off,
-				  &i->curr_desc, &i->curr_value);
+	__get_value(i->set, i->curr_idx, &i->curr_desc, &i->curr_value);
 	return i->curr_desc;
 }
 
@@ -786,6 +891,25 @@ ldms_metric_t ldms_get_metric(ldms_set_t _set, const char *name)
 	return NULL;
 }
 
+ldms_metric_t ldms_metric_get(ldms_set_t _set, int idx, struct ldms_metric *metric)
+{
+	struct ldms_value_desc *vd;
+	union ldms_value *v;
+	struct ldms_set *s = _set->set;
+
+	if (idx >= s->meta->card)
+		return NULL;
+
+	vd = ldms_ptr_(struct ldms_value_desc, s->meta, s->meta->dict[idx]);
+	v = ldms_ptr_(union ldms_value, s->data, vd->data_offset);
+
+	metric->set = s;
+	metric->desc = vd;
+	metric->value = v;
+
+	return metric;
+}
+
 ldms_metric_t ldms_make_metric(ldms_set_t _set, struct ldms_value_desc *vd)
 {
 	struct ldms_data_hdr *dh;
@@ -812,131 +936,40 @@ static inline uint64_t next_gn(uint64_t _gn)
 	return gn;
 }
 
-ldms_metric_t ldms_add_metric(ldms_set_t _set, const char *name,
-			      enum ldms_value_type type)
+int ldms_add_metric(ldms_schema_t s, const char *name, enum ldms_value_type type)
 {
-	struct ldms_metric *m;
-	struct ldms_set_desc *sd = _set;
-	struct ldms_set_hdr *sh = sd->set->meta;
-	struct ldms_data_hdr *dh = sd->set->data;
-	struct ldms_value_desc *vd;
-	union ldms_value *v;
-	uint64_t meta_gn;
-	uint32_t value_offset;
-	uint8_t name_len;
-	int mysize;	/* the size of the desc + pad + value */
+	ldms_mdef_t m;
 
-	/* Validate type */
-	if (type <= LDMS_V_NONE || type > LDMS_V_D)
-		return NULL;
+	if (!s || !name)
+		return -EINVAL;
 
-	/* Compute my space */
-	name_len = strlen(name)+1;
-	mysize = sizeof(struct ldms_value_desc) + name_len;
-	mysize = ROUNDUP(mysize, 8);
-
-	if (sh->tail_off + mysize > sh->meta_size) {
-		errno = ENOMEM;
-		return NULL;
+	/* check if the name is a duplicate */
+	STAILQ_FOREACH(m, &s->metric_list, entry) {
+		if (!strcmp(m->name, name))
+			return -EEXIST;
 	}
-	if (dh->tail_off + value_size[type] > sh->data_size) {
-		errno = ENOMEM;
-		return NULL;
-	}
-
-	/* Allocate a metric */
-	m = malloc(sizeof *m);
+	m = calloc(1, sizeof *m);
 	if (!m)
-		return NULL;
+		return -ENOMEM;
 
-	/* After this, the metric set can be modified. To ensure that
-	 * the remote peer detects a meta data update, we need to be
-	 * careful about ordering. */
-
-	/* My descriptor starts at meta tail */
-	vd = ldms_ptr_(struct ldms_value_desc, sh, sh->tail_off);
-
-	/* Build the descriptor */
-	vd->type = type;
-	vd->name_len = name_len;
-	strcpy(vd->name, name);
-
-	/* Compute offset of next descriptor and update the meta data */
-	vd->next_offset = sh->tail_off + mysize;
-
-	/* My value starts at data tail. If the tail isn't aligned for
-	 * my data type fix it up */
-	value_offset = ROUNDUP(dh->tail_off, value_size[type]);
-	vd->data_offset = value_offset;
-
-	v = ldms_ptr_(union ldms_value, dh, value_offset);
-	switch (type) {
-	case LDMS_V_U8:
-	case LDMS_V_S8:
-		v->v_u8 = 0;
-		break;
-	case LDMS_V_U16:
-	case LDMS_V_S16:
-		v->v_u16 = 0;
-		break;
-	case LDMS_V_U32:
-	case LDMS_V_S32:
-		v->v_u32 = 0;
-		break;
-	case LDMS_V_U64:
-	case LDMS_V_S64:
-		v->v_u64 = 0;
-		break;
-	case LDMS_V_F:
-		v->v_f = 0.0;
-		break;
-	case LDMS_V_D:
-		v->v_d = 0.0;
-		break;
-	case LDMS_V_LD:
-		v->v_ld = 0.0;
-		break;
-	case LDMS_V_NONE:
-		break;
-	}
-
-	m->set = sd->set;
-	m->value = v;
-	m->desc = vd;
-
-	/*
-	 * We implement an opportunistic locking scheme as follows:
-	 * - Set the meta_gn to zero. a client who fetches the meta
-	 *   data will recognize that it needs an update and fetch
-	 *   again.
-	 * - A client who fetches the metric data will compare the
-	 *   meta_ga in the data to the cached meta_gn and recognize
-	 *   it needs an update.
-	 * - When the metadata and data copies of the metadata gn
-	 *   match, we're consistent.
-	 * - The meta_gn can never legitimately be 'zero', or the
-	 *   client will retry forever. Zero means 'inconsistent'.
-	 */
-	meta_gn = next_gn(sh->meta_gn);
-	sh->meta_gn = 0;	/* clients will refetch on this. */
-
-	dh->tail_off = value_offset + value_size[type];
-	sh->card++;
-	sh->tail_off = vd->next_offset;
-
-	dh->meta_gn = meta_gn;	/* clients will refetch when dh != sh meta_gn */
-	sh->meta_gn = meta_gn;	/* we're consistent. */
-
-	return m;
+	m->name = strdup(name);
+	m->type = type;
+	ldms_get_metric_size(name, type, &m->meta_sz, &m->data_sz);
+	STAILQ_INSERT_TAIL(&s->metric_list, m, entry);
+	s->metric_count++;
+	s->meta_sz += m->meta_sz + sizeof(uint32_t) /* + dict entry */;
+	s->data_sz += m->data_sz;
+	return s->metric_count - 1;
 }
 
 static struct _ldms_type_name_map {
 	const char *name;
 	enum ldms_value_type type;
 } type_name_map[] = {
-	{ "D", LDMS_V_D, },
-	{ "F", LDMS_V_F, },
+	{ "D64", LDMS_V_D64, },
+	{ "F32", LDMS_V_F32, },
 	{ "NONE", LDMS_V_NONE, },
+	{ "LD128", LDMS_V_LD128, },
 	{ "S16", LDMS_V_S16, },
 	{ "S32", LDMS_V_S32, },
 	{ "S64", LDMS_V_S64, },
@@ -971,7 +1004,7 @@ enum ldms_value_type ldms_str_to_type(const char *name)
 
 const char *ldms_type_to_str(enum ldms_value_type t)
 {
-	if (t > LDMS_V_D)
+	if (t > LDMS_V_LAST)
 		t = LDMS_V_NONE;
 	return type_names[t];
 }
@@ -980,7 +1013,11 @@ int ldms_begin_transaction(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
+	struct timeval tv;
 	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
+	(void)gettimeofday(&tv, NULL);
+	dh->trans.ts.sec = tv.tv_sec;
+	dh->trans.ts.usec = tv.tv_usec;
 	return 0;
 }
 
@@ -990,17 +1027,26 @@ int ldms_end_transaction(ldms_set_t s)
 	struct ldms_data_hdr *dh = sd->set->data;
 	struct timeval tv;
 	(void)gettimeofday(&tv, NULL);
+	dh->trans.dur.sec = tv.tv_sec - dh->trans.ts.sec;
+	dh->trans.dur.usec = tv.tv_usec - dh->trans.ts.usec;
 	dh->trans.ts.sec = tv.tv_sec;
 	dh->trans.ts.usec = tv.tv_usec;
 	dh->trans.flags = LDMS_TRANSACTION_END;
 	return 0;
 }
 
-struct ldms_timestamp const *ldms_get_timestamp(ldms_set_t s)
+struct ldms_timestamp const *ldms_get_transaction_timestamp(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
 	return &dh->trans.ts;
+}
+
+struct ldms_timestamp const *ldms_get_transaction_duration(ldms_set_t s)
+{
+	struct ldms_set_desc *sd = s;
+	struct ldms_data_hdr *dh = sd->set->data;
+	return &dh->trans.dur;
 }
 
 int ldms_is_set_consistent(ldms_set_t s)
