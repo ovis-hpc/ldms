@@ -498,6 +498,7 @@ typedef enum {
 	LOGLEVELS(LDMS_LWRAP)
 } loglevels_t;
 
+/* strings matching the loglevels enum */
 static char* loglevels_names[] = {
 	LOGLEVELS(LDMS_STR_WRAP)
 };
