@@ -9,6 +9,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AC_CONFIG_SUBDIRS([lib ldms])
 AC_PROG_CC
+m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_INIT_AUTOMAKE([foreign -Wno-portability silent-rules])
 AM_SILENT_RULES([yes])
 AM_PROG_LIBTOOL

@@ -8,6 +8,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 dnl AM _INIT_AUTOMAKE([-Wno-portability])
 AM_INIT_AUTOMAKE([foreign])
+m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AC_PROG_LIBTOOL
 AC_LIB_RPATH
