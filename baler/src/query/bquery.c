@@ -188,20 +188,41 @@ struct bq_store* bq_open_store(const char *path)
 		return NULL;
 	s->path = strdup(path);
 	char spath[PATH_MAX];
+	struct stat st;
+	int rc;
+
 	/* comp_store */
 	sprintf(spath, "%s/comp_store", path);
+	rc = stat(spath, &st);
+	if (rc || !S_ISDIR(st.st_mode)) {
+		berr("Invalid store '%s': comp_store subdirectory does"
+				" not exist", path);
+		goto err0;
+	}
 	s->cmp_store = btkn_store_open(spath);
 	if (!s->cmp_store)
 		goto err0;
 
 	/* tkn_store */
 	sprintf(spath, "%s/tkn_store", path);
+	rc = stat(spath, &st);
+	if (rc || !S_ISDIR(st.st_mode)) {
+		berr("Invalid store '%s': tkn_store subdirectory does"
+				" not exist", path);
+		goto err1;
+	}
 	s->tkn_store = btkn_store_open(spath);
 	if (!s->tkn_store)
 		goto err1;
 
 	/* ptn_store */
 	sprintf(spath, "%s/ptn_store", path);
+	rc = stat(spath, &st);
+	if (rc || !S_ISDIR(st.st_mode)) {
+		berr("Invalid store '%s': ptn_store subdirectory does"
+				" not exist", path);
+		goto err2;
+	}
 	s->ptn_store = bptn_store_open(spath);
 	if (!s->ptn_store)
 		goto err2;
@@ -216,7 +237,7 @@ err2:
 err1:
 	btkn_store_close_free(s->cmp_store);
 err0:
-	berr("Cannot open %s\n", spath);
+	berr("Cannot open %s", spath);
 	free(s);
 	return NULL;
 }
@@ -612,7 +633,9 @@ static int __bq_next_entry(struct bquery *q)
 	if (!q->bsos) {
 		q->sos_number = __get_max_sos_number(q->sos_prefix);
 		rc = __bq_open_bsos(q);
-		if (rc && q->sos_number) {
+		if (rc) {
+			if (!q->sos_number)
+				goto out;
 			rc = __bq_next_store(q);
 			if (rc)
 				goto out;
@@ -1186,7 +1209,7 @@ int bq_local_routine()
 		goto out;
 	}
 	if ((s = bq_open_store(store_path)) == NULL) {
-		berr("bq_open_store error %d: %s\n", rc, strerror(rc));
+		berr("bq_open_store error, store: %s", store_path);
 		goto out;
 	}
 
