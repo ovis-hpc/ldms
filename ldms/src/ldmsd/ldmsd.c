@@ -2349,7 +2349,12 @@ void update_data(struct hostspec *hs)
 			}
 			break;
 		case LDMSD_SET_LOOKUP:
-			/* do nothing */
+			/* If the transport went away clean up and restart */
+			if (!hs->x || !ldms_xprt_connected(hs->x)) {
+				hset->state = LDMSD_SET_CONFIGURED;
+				ldms_xprt_close(hs->x);
+				hs->x = NULL;
+			}
 			break;
 		case LDMSD_SET_BUSY:
 			hset->curr_busy_count++;
@@ -2420,9 +2425,10 @@ void do_host(struct hostspec *hs)
 				/* pair with get in do_connect */
 				if (hs->type != PASSIVE) {
 					ldms_xprt_close(hs->x);
+					// assert(((struct ldms_xprt *)hs->x)->ref_count != 0);
 					hs->x = NULL;
-				}
-				ldms_release_xprt(x);
+				} else
+					ldms_release_xprt(x);
 			}
 			hs->conn_state = HOST_DISCONNECTED;
 			host_conn_reschedule(hs);
