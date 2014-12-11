@@ -74,6 +74,10 @@
 #include "ldms_private.h"
 #include <pthread.h>
 
+const char* loglevels_names[] = {
+	LOGLEVELS(LDMS_STR_WRAP)
+};
+
 #if USE_TF
 #if (defined(__linux) && USE_TID)
 #define TF() default_log(LDMS_LINFO,"Thd%lu:%s:%lu:%s\n", (unsigned long)pthread_self, __FUNCTION__, __LINE__,__FILE__)
