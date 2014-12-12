@@ -379,7 +379,7 @@ static int derivedConfig(char* fname, struct csv_store_rollover_handle *s_handle
 		if (!s)
 			break;
 //		printf("Read <%s>\n", lbuf);
-		rcl = sscanf(lbuf, "%[^,],%d,%lf", metric_name, &tval, &mval);
+		rcl = sscanf(lbuf, "%[^,] , %d , %lf", metric_name, &tval, &mval);
 //		printf("Name <%s> val <%d> mult <%lf>\n", metric_name, tval, mval);
 		if ((strlen(metric_name) > 0) && (metric_name[0] == '#')){
 		// hashed lines are comments (means metric name cannot start with #)
