@@ -13,7 +13,7 @@ OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm rpm-old toss centos doxygen
+.PHONY: rpm rpm-old toss centos doxygen doc install-doc
 rpm-old: dist-gzip
 	mkdir -p rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(OVIS_LIB_TARBALL) ovis-lib.spec rpm/SOURCES
@@ -28,11 +28,20 @@ rpm-clean:
 	rm -rf rpm/ centos/
 	rm -f $(OVIS_LIB_TARBALL)
 
-doxygen doxygen/html:
+if ENABLE_DOC
+all: doc
+install-data-local: install-doc
+endif
+
+# The rules docs and install-docs is not under ENABLE_DOC so that users can
+# manually call 'make docs' and 'make install-docs'. If
+# --enable-docs is given at configure time, 'docs' rule will be invoked when
+# "make" is called and 'install-docs' will be invoked when "make install" is
+# called.
+doc doxygen doxygen/html:
 	doxygen ./Doxyfile
 
-if ENABLE_DOC
-install-data-local: doxygen
+install-doc:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in README COPYING ChangeLog COPYING; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
@@ -43,7 +52,6 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
-endif
 
 PEDIGREE = $(DESTDIR)/$(bindir)/lib-pedigree
 include $(top_srcdir)/../automake/pedigree.am
