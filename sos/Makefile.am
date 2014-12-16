@@ -12,24 +12,25 @@ OVIS_SOS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_SOS_TARBALL = $(OVIS_SOS).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm centos toss
+.PHONY: rpm centos toss doxygen doc install-doc
 centos toss rpm: dist-gzip
 	mkdir -p centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(OVIS_SOS_TARBALL) packaging/ovis-sos.spec centos/SOURCES
 	rpmbuild -v --define "_topdir `pwd`/centos" -ba packaging/ovis-sos.spec
 
-doc:
-	doxygen Doxyfile
-
 rpm-clean:
 	rm -rf rpm/ centos/
 	rm -f $(OVIS_SOS_TARBALL)
 
-doxygen doxygen/html:
+if ENABLE_DOC
+all: doc
+install-data-local: install-doc
+endif
+
+doc doxygen doxygen/html:
 	doxygen ./Doxyfile
 
-if ENABLE_DOC
-install-data-local: doxygen
+install-doc:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in README COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
@@ -40,7 +41,6 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
-endif
 
 PEDIGREE = $(DESTDIR)/$(bindir)/sos-pedigree
 include $(top_srcdir)/../automake/pedigree.am
