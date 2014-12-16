@@ -7,7 +7,7 @@ LDMS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 LDMS_TARBALL = $(LDMS).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm centos toss doxygen rpm-old
+.PHONY: rpm centos toss doxygen rpm-old doc install-doc
 rpm-old: dist-gzip
 	mkdir -p rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(LDMS_TARBALL) rpm/SOURCES
@@ -22,14 +22,15 @@ rpm-clean:
 	rm -rf rpm/ centos
 	rm -f $(LDMS_TARBALL)
 
-doc:
-	doxygen Doxyfile
+if ENABLE_DOC
+all: doc
+install-data-local: install-doc
+endif
 
-doxygen doxygen/html:
+doc doxygen doxygen/html:
 	doxygen ./Doxyfile
 
-if ENABLE_DOC
-install-data-local: doxygen
+install-doc:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in AUTHORS README COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
@@ -40,7 +41,6 @@ install-data-local: doxygen
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
-endif
 
 PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
 include $(top_srcdir)/../automake/pedigree.am
