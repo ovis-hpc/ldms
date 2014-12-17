@@ -3,11 +3,11 @@ dnl EXAMPLE: OPTION_DEFAULT_ENABLE([mysql], [ENABLE_MYSQL])
 AC_DEFUN([OPTION_DEFAULT_ENABLE], [
 AC_ARG_ENABLE($1, [  --disable-$1     Disable the $1 module],
         [       if test x$enableval = xno ; then
-                        disable_$1=yes
+                        disable_$2=yes
 			echo $1 module is disabled
                 fi
         ])
-AM_CONDITIONAL([$2], [test "$disable_$1" != "yes"])
+AM_CONDITIONAL([$2], [test "$disable_$2" != "yes"])
 ])
 
 dnl SYNOPSIS: OPTION_DEFAULT_DISABLE([name], [enable_flag_var])
@@ -15,11 +15,11 @@ dnl EXAMPLE: OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
 AC_DEFUN([OPTION_DEFAULT_DISABLE], [
 AC_ARG_ENABLE($1, [  --enable-$1     Enable the $1 module],
         [       if test x$enableval = xyes ; then
-                        enable_$1=yes
+                        enable_$2=yes
 			echo $1 module is enabled
                 fi
         ])
-AM_CONDITIONAL([$2], [test "$enable_$1" == "yes"])
+AM_CONDITIONAL([$2], [test "$enable_$2" == "yes"])
 ])
 
 dnl SYNOPSIS: OPTION_WITH([name], [VAR_BASE_NAME])
