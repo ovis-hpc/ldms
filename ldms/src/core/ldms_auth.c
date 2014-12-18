@@ -9,9 +9,12 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+
 #include <pwd.h>
 #include <syslog.h>
+#ifdef HAVE_AUTH
 #include <openssl/evp.h>
+#endif /* HAVE_AUTH */
 
 #define NAME_LEN 512
 #define CONFNAME ".ldmsauth.conf"
@@ -26,6 +29,7 @@
 #ifdef NEEDS_SNPRINTF_DECL
 int snprintf(char *str, size_t size, const char *format, ...);
 #endif
+
 
 uint64_t ldms_unpack_challenge(uint32_t chi, uint32_t clo)
 {
@@ -59,6 +63,8 @@ uint64_t ldms_get_challenge()
 	return r;
 
 }
+
+#ifdef HAVE_AUTH
 
 /** 
   Get secret from candidate file. Could be better: should enforce
@@ -239,3 +245,5 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 
 	return result;
 }
+
+#endif /* HAVE_AUTH */
