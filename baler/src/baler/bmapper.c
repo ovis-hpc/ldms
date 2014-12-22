@@ -337,7 +337,7 @@ uint32_t bmap_get_id(struct bmap *map, const struct bstr *s)
 const struct bstr* bmap_get_bstr(struct bmap *map, uint32_t id)
 {
 	struct bvec_u64 *str_idx = map->bmstr_idx->bvec;
-	if (id < 0 || str_idx->len <= id) /* out of range */
+	if (str_idx->len <= id) /* out of range */
 		return NULL;
 	if (id < BMAP_ID_BEGIN) /* special ID */
 		return special_bstr[id];
@@ -350,20 +350,31 @@ const struct bstr* bmap_get_bstr(struct bmap *map, uint32_t id)
  * \note On error, the allocated memory in ::bmem will not be freed.
  * 	Note as to do later.
  */
-uint32_t bmap_insert(struct bmap *bm, const struct bstr *s,
-		bmap_ins_ret_t *ret_flags)
+uint32_t bmap_insert(struct bmap *bm, const struct bstr *s)
+{
+	return bmap_insert_with_id(bm, s, 0);
+}
+
+uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id)
 {
 	uint32_t id;
 	uint64_t hidx;
+	const struct bstr *prev_bstr;
+
 	/* Check first if s exists in the map. */
 	if ((id=bmap_get_id_plus64(bm, s, &hidx)) != BMAP_ID_NOTFOUND) {
-		if (ret_flags && id != BMAP_ID_ERR)
-			*ret_flags = BMAP_CODE_EXIST;
-		return id;
+		if (id == _id)
+			return id;
+		return BMAP_ID_INVAL;
 	}
 
-	if (ret_flags)
-		*ret_flags = BMAP_CODE_OK;
+	/* Also check if id exists in the map */
+	prev_bstr = bmap_get_bstr(bm, _id);
+	if (prev_bstr) {
+		bdebug("ERR: %s: prev_bstr exists for id: %d, prev_bstr: %.*s",
+				__func__, _id, prev_bstr->blen, prev_bstr->cstr);
+		return BMAP_ID_INVAL;
+	}
 
 	pthread_mutex_lock(&bm->mutex);
 	/* If s does not exist, allocate space for new bstr, and copy it */
@@ -377,7 +388,10 @@ uint32_t bmap_insert(struct bmap *bm, const struct bstr *s,
 	memcpy(str, s, sizeof(*s) + s->blen);
 
 	/* Then, assign ID (which is also used as an index) */
-	id = bm->hdr->next_id++;
+	id = (_id)?(_id):(bm->hdr->next_id);
+	if (id >= bm->hdr->next_id) {
+		bm->hdr->next_id = id + 1;
+	}
 
 	/* and set an index to it */
 	if (bmvec_u64_set(bm->bmstr_idx, id, str_off)) {
@@ -405,7 +419,5 @@ uint32_t bmap_insert(struct bmap *bm, const struct bstr *s,
 	bm->hdr->count++;
 out:
 	pthread_mutex_unlock(&bm->mutex);
-	if (id == BMAP_ID_ERR && ret_flags)
-		*ret_flags = BMAP_CODE_ERR;
 	return id;
 }

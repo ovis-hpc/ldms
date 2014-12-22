@@ -74,24 +74,32 @@
 #include "bmvec.h"
 
 /**
+ * Special ID for error code for Baler Map.
+ */
+typedef enum {
+	BMAP_ID_ERR_BEGIN = 0,
+	BMAP_ID_NOTFOUND=0,	/**< For search not foundt */
+	BMAP_ID_NONE = BMAP_ID_NOTFOUND,
+	BMAP_ID_ERR,		/**< For various error */
+	BMAP_ID_INVAL,
+	BMAP_ID_ERR_END = 63,
+} bmap_id_error_t;
+
+static inline
+int bmap_id_is_err(uint32_t id)
+{
+	return BMAP_ID_ERR_BEGIN <= id && id <= BMAP_ID_ERR_END;
+}
+
+/**
  * Special ID for Baler Map.
  */
 typedef enum {
-	BMAP_ID_ERR=-1,		/**< For various error */
-	BMAP_ID_NOTFOUND=0,	/**< For search not foundt */
-	BMAP_ID_STAR,		/**< The special ID for KLEEN_STAR */
+	BMAP_ID_SPECIAL_BEGIN = 64,
+	BMAP_ID_STAR=64,	/**< The special ID for KLEEN_STAR */
+	BMAP_ID_SPECIAL_END = 127,
 	BMAP_ID_BEGIN=128,	/**< The first non-special ID */
-} bmap_special_id;
-
-/**
- * Baler Map return codes.
- */
-typedef enum {
-	BMAP_CODE_ERR=-1, /**< Generic error */
-	BMAP_CODE_OK=0, /**< OK */
-	BMAP_CODE_EXIST, /**< Element exists in the ::bmap structure (not an
-			      error) */
-} bmap_code_t;
+} bmap_id_special_t;
 
 /**
  * Information to be saved in additional mmap file as header of ::bmap.
@@ -223,13 +231,20 @@ static char* bmap_ins_ret_str[] = {
  * Insert ::bstr \a s into ::bmap \a bm.
  * \param bm The ::bmap structure.
  * \param s The ::bstr structure.
- * \param ret_flags The pointer to ret_flag variable. If it is not null, the
- * 	(*ret_flags) will be set to let the caller know whether the \a s
- * 	existed in \a bm or not. See more about ret_flags at ::bmap_ins_ret_t.
- * \return ID on success.
+ * \retval ID on success.
+ * \retval bmap_id_error_t appropriate special ID for error.
  */
-uint32_t bmap_insert(struct bmap *bm, const struct bstr *s,
-		bmap_ins_ret_t *ret_flags);
+uint32_t bmap_insert(struct bmap *bm, const struct bstr *s);
+
+/**
+ * Insert mapping \c id <---> \c s in the map, in which both 'id' and 's' do not
+ * exist in the map.
+ *
+ * \retval _id If success.
+ * \retval bmap_id_error_t If error.
+ */
+uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s,
+		uint32_t _id);
 
 #endif // _BMAPPER_H
 /**\}*/

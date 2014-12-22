@@ -61,12 +61,11 @@ uint32_t test_insert(struct bmap *bmap, char *cstr)
 	char buff[4096];
 	struct bstr *str = (void*)buff;
 	int id;
-	bmap_ins_ret_t ret;
 
 	bstr_set_cstr(str, cstr, 0);
-	id = bmap_insert(bmap, str, &ret);
-	if (id == BMAP_ID_ERR) {
-		berr("bmap_insert error: %s", bmap_ins_ret_str[ret]);
+	id = bmap_insert(bmap, str);
+	if (id < BMAP_ID_BEGIN) {
+		berr("bmap_insert error, code: %d", id);
 		exit(-1);
 	}
 	return id;
