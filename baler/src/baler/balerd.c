@@ -53,11 +53,69 @@
  * \author Narate Taerat (narate@ogc.us)
  * \date Mar 19, 2013
  *
- * \defgroup balerd Baler Daemon
- * \{
- * \brief Baler daemon (core).
+ * \page balerd Baler Daemon
  *
- * The implementation of Baler daemon core goes in here.
+ * \section synopsis SYNOPSIS
+ *   balerd [OPTIONS]
+ *
+ * \section description DESCRIPTION
+ * TODO More about balerd here.
+ *
+ * In master mode, balerd manages its own token and pattern maps.  It won't ask
+ * other balerd when it found a new token or pattern. Master-mode balerd also
+ * serves token/pattern operations requested by client-mode balerd.
+ *
+ * Client-mode balerd always ask its master when it finds a new token or
+ * pattern. The information received from the master will also be stored locally
+ * to reduce further network traffic.
+ *
+ * \section options OPTIONS
+ *
+ * \par -l LOG_PATH
+ * Log file (default: None, and log to stdout)
+ *
+ * \par -s STORE_PATH
+ * Path to a baler store (default: ./store)
+ *
+ * \par -C CONFIG_FILE
+ * Path to the configuration (Baler commands) file. This is optional as users
+ * may use ocmd to configure baler.
+ *
+ * \par -F
+ * Run in foreground mode (default: daemon mode)
+ *
+ * \par -m SM_MODE
+ * Either 'master' or 'slave' mode (default: master).
+ *
+ * \par -x SM_XPRT
+ * Zap transport to be used in slave-master communication (default: sock).
+ *
+ * \par -h M_HOST
+ * For slave-mode balerd, this option specifies master hostname or IP address to
+ * connect to. This option is ignored in master-mode. This option is required in
+ * slave-mode balerd and has no default value.
+ *
+ * \par -p M_PORT
+ * For slave-mode balerd, this specifies the port of the master to connect to.
+ * For master-mode balerd, this specifies the port number to listen to.
+ * (default: ':30003').
+ *
+ * \par -z OCM_PORT
+ * Specifying a port for receiving OCM connection and configuration (default:
+ * 20005).
+ *
+ * \par -?
+ * Display help message.
+ *
+ * \section configuration CONFIGURATION
+ * Baler configuration file
+ *
+ * \section conf_example CONFIGURATION_EXAMPLE
+ * TODO Configuration example here
+ *
+ * \defgroup balerd_dev Baler Daemon Development Documentation
+ * \{
+ * \brief Baler daemon implementation.
  */
 #include <stdio.h>
 #include <pthread.h>
@@ -66,12 +124,18 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdarg.h>
+#include <assert.h>
+#include <semaphore.h>
+
+#include <event2/event.h>
+#include <zap/zap.h>
 
 #ifdef ENABLE_OCM
 #include "ocm/ocm.h"
 ocm_t ocm; /**< ocm handle */
 char ocm_key[512]; /**< $HOSTNAME/balerd */
-uint16_t ocm_port = OCM_DEFAULT_PORT;
+uint16_t ocm_port = 20005;
 int ocm_cb(struct ocm_event *e);
 #endif
 
@@ -85,18 +149,59 @@ int ocm_cb(struct ocm_event *e);
 #include "bptn.h"
 #include "bwqueue.h"
 
+/***** Definitions *****/
+typedef enum bmap_idx_enum {
+	BMAP_IDX_TKN,
+	BMAP_IDX_HST,
+	BMAP_IDX_PTN,
+} bmap_idx_e;
+
+typedef enum bzmsg_type_enum {
+	BZMSG_TYPE_FIRST=0,
+	BZMSG_ID_REQ = BZMSG_TYPE_FIRST,
+	BZMSG_ID_REP,
+	BZMSG_BSTR_REQ,
+	BZMSG_BSTR_REP,
+	BZMSG_INSERT_REQ,
+	BZMSG_INSERT_REP,
+	BZMSG_TYPE_LAST,
+} bzmsg_type_e;
+
+struct bzmsg {
+	uint32_t type;
+	void *ctxt;
+	void *ctxt_bstr;
+	int rc;
+	uint32_t mapidx;
+	int tkn_idx;
+
+	uint32_t id;
+	struct btkn_attr attr;
+	struct bstr bstr;
+};
+
+struct bzmsg *bzmsg_alloc(size_t bstr_len)
+{
+	return malloc(sizeof(struct bzmsg) + bstr_len);
+}
+
+struct bzap_ctxt {
+	pthread_mutex_t mutex;
+	int is_ready;
+};
+
 /***** Command line arguments ****/
 #ifdef ENABLE_OCM
-const char *optstring = "hFC:l:s:z:";
+const char *optstring = "FC:l:s:z:m:x:h:p:?";
 #else
-const char *optstring = "hFC:l:s:";
+const char *optstring = "FC:l:s:m:x:h:p:?";
 #endif
 const char *config_path = NULL;
 const char *log_path = NULL;
 
 void display_help_msg()
 {
-	char *help_msg =
+	const char *help_msg =
 "Usage: balerd [options]\n"
 "\n"
 "Options: \n"
@@ -104,7 +209,16 @@ void display_help_msg()
 "	-s <path>	Store path (default: ./store)\n"
 "	-C <path>	Configuration (Baler commands) file\n"
 "	-F		Foreground mode (default: daemon mode)\n"
-"	-h		Show help message\n"
+"	-m <mode>	'master' or 'slave' (default: master)\n"
+"	-h <host>	master host name or IP address.\n"
+"	-x <xprt>	transport (default: sock).\n"
+"	-p <port>	port of master balerd (default: 30003).\n"
+#ifdef ENABLE_OCM
+"	-z <port>	ocm port for balerd (default: 20005).\n"
+#endif
+"	-?		Show help message\n"
+"\n"
+"For more information see balerd(3) manpage.\n"
 "\n";
 	printf("%s\n", help_msg);
 }
@@ -117,6 +231,13 @@ void display_help_msg()
 int binqwkrN = 1; /**< Input Worker Thread Number */
 int boutqwkrN = 1; /**< Output Worker Thread Number */
 int is_foreground = 0; /**< Run as foreground? */
+int is_master = 1; /**< Run in master mode */
+
+uint16_t m_port = 30003;
+char *m_host = NULL;
+char *sm_xprt = "sock";
+struct timeval reconnect_interval = {.tv_sec = 2};
+
 /**\}*/
 
 /********** Configuration Commands **********/
@@ -155,6 +276,13 @@ enum BCFG_CMD bcfg_cmd_str2enum(const char *s)
 }
 
 /********** Global Variable Section **********/
+zap_t zap;
+zap_ep_t zap_ep;
+struct event_base *evbase;
+
+int master_connected = 0;
+struct bzap_ctxt slave_zap_ctxt = {.mutex = PTHREAD_MUTEX_INITIALIZER};
+
 extern uint64_t *metric_ids;
 
 /**
@@ -212,6 +340,15 @@ struct bwq *boutq;
 pthread_t *boutqwkr;
 
 /**
+ * Pending input queue.
+ *
+ * Input entry that requires master-mode balerd consultant will have to wait in
+ * this pending input queue. When the data is ready, the input entry will be put
+ * into normal input queue again.
+ */
+struct bwq *binq_pending;
+
+/**
  * Baler Input Worker's Context.
  * Data in this structure will be reused repeatedly by the worker thread
  * that owns it. Repeatedly allocate and deallocate is much slower than
@@ -220,6 +357,10 @@ pthread_t *boutqwkr;
  */
 struct bin_wkr_ctxt {
 	int worker_id; /**< Worker ID */
+	uint32_t comp_id;
+	uint32_t unresolved_count;
+	int rc;
+	int (*next_fn)(struct bwq_entry *);
 	union {
 		/**
 		 * Space for ptn_str.
@@ -240,6 +381,16 @@ struct bin_wkr_ctxt {
 		 */
 		struct bmsg msg;
 	};
+	union {
+		/**
+		 * Space for zap message.
+		 */
+		char _zmsg[sizeof(struct bzmsg) + sizeof(uint32_t)*4096];
+		/**
+		 * zap message buffer.
+		 */
+		struct bzmsg zmsg;
+	};
 };
 
 /**
@@ -251,10 +402,80 @@ struct bout_wkr_ctxt {
 
 struct btkn_store *token_store; /**< Token store */
 struct bptn_store *pattern_store; /**< Pattern store */
-
 struct btkn_store *comp_store; /**< Token store for comp_id */
 
 /*********************************************/
+
+const char *bzmsg_type_str(bzmsg_type_e e)
+{
+	static const char *_str[] = {
+		[BZMSG_ID_REQ]      =  "BZMSG_ID_REQ",
+		[BZMSG_ID_REP]      =  "BZMSG_ID_REP",
+		[BZMSG_BSTR_REQ]    =  "BZMSG_BSTR_REQ",
+		[BZMSG_BSTR_REP]    =  "BZMSG_BSTR_REP",
+		[BZMSG_INSERT_REQ]  =  "BZMSG_INSERT_REQ",
+		[BZMSG_INSERT_REP]  =  "BZMSG_INSERT_REP",
+	};
+
+	if (BZMSG_TYPE_FIRST <= e && e < BZMSG_TYPE_LAST)
+		return _str[e];
+	return "UNKNOWN";
+}
+
+size_t bzmsg_len(struct bzmsg *m)
+{
+	size_t len = sizeof(*m);
+	switch (m->type) {
+	case BZMSG_ID_REQ:
+	case BZMSG_BSTR_REP:
+	case BZMSG_INSERT_REQ:
+		len += m->bstr.blen;
+		break;
+	}
+	return len;
+}
+
+void hton_bzmsg(struct bzmsg *m)
+{
+	switch (m->type) {
+	case BZMSG_BSTR_REP:
+	case BZMSG_INSERT_REQ:
+		m->attr.type = htobe32(m->attr.type);
+	case BZMSG_ID_REQ:
+		m->bstr.blen = htobe32(m->bstr.blen);
+		break;
+	case BZMSG_ID_REP:
+	case BZMSG_INSERT_REP:
+		m->attr.type = htobe32(m->attr.type);
+	case BZMSG_BSTR_REQ:
+		m->id = htobe32(m->id);
+		break;
+	}
+	m->mapidx = htobe32(m->mapidx);
+	m->rc = htobe32(m->rc);
+	m->type = htobe32(m->type);
+}
+
+void ntoh_bzmsg(struct bzmsg *m)
+{
+	m->type = be32toh(m->type);
+	m->rc = be32toh(m->rc);
+	m->mapidx = be32toh(m->mapidx);
+	switch (m->type) {
+	case BZMSG_BSTR_REP:
+	case BZMSG_INSERT_REQ:
+		m->attr.type = be32toh(m->attr.type);
+	case BZMSG_ID_REQ:
+		m->bstr.blen = be32toh(m->bstr.blen);
+		break;
+	case BZMSG_ID_REP:
+	case BZMSG_INSERT_REP:
+		m->attr.type = be32toh(m->attr.type);
+	case BZMSG_BSTR_REQ:
+		m->id = be32toh(m->id);
+		break;
+	}
+}
 
 void* binqwkr_routine(void *arg);
 void* boutqwkr_routine(void *arg);
@@ -267,6 +488,392 @@ void bconfig_list_free(struct bconfig_list *bl) {
 	}
 	free(bl);
 }
+
+static
+zap_mem_info_t bzap_mem_info()
+{
+	return NULL;
+}
+
+void snprint_sockaddr(char *buff, size_t len, struct sockaddr *sa)
+{
+	uint64_t x, y;
+	switch (sa->sa_family) {
+	case AF_INET:
+		x = ((struct sockaddr_in*)sa)->sin_addr.s_addr;
+		snprintf(buff, len, "%d.%d.%d.%d",
+				(int)(0xff & (x)),
+				(int)(0xff & (x>>8)),
+				(int)(0xff & (x>>16)),
+				(int)(0xff & (x>>32))
+			);
+		break;
+	default:
+		snprintf(buff, len, "UNKNOWN");
+	}
+}
+
+inline
+bzmsg_type_e bzmsg_type_inverse(bzmsg_type_e type)
+{
+	return (type ^ 1);
+}
+
+void master_handle_recv(zap_ep_t ep, zap_event_t ev)
+{
+	struct bzmsg *m = ev->data;
+	struct bzmsg simple_rep;
+	struct bzmsg *rep;
+	struct bmap *map = NULL;
+	int has_attr = 0;
+	void *store = NULL;
+	const struct bstr *bstr;
+	size_t len;
+	uint32_t (*ins_fn)(void*, void*);
+	zap_err_t zerr;
+
+	ntoh_bzmsg(m);
+
+	simple_rep.ctxt = m->ctxt;
+	simple_rep.ctxt_bstr = m->ctxt_bstr;
+	simple_rep.tkn_idx = m->tkn_idx;
+	simple_rep.mapidx = m->mapidx;
+
+	rep = &simple_rep;
+
+	switch (m->mapidx) {
+	case BMAP_IDX_TKN:
+		has_attr = 1;
+		map = token_store->map;
+		ins_fn = (void*)btkn_store_insert;
+		store = token_store;
+		break;
+	case BMAP_IDX_HST:
+		has_attr = 1;
+		map = comp_store->map;
+		ins_fn = (void*)btkn_store_insert;
+		store = comp_store;
+		break;
+	case BMAP_IDX_PTN:
+		map = pattern_store->map;
+		ins_fn = (void*)bptn_store_addptn;
+		store = pattern_store;
+		break;
+	default:
+		berr("Unknown mapid: %u", m->mapidx);
+		rep->rc = EINVAL;
+		rep->type = bzmsg_type_inverse(m->type);
+		goto out;
+	}
+
+	switch (m->type) {
+	case BZMSG_ID_REQ:
+		rep->type = BZMSG_ID_REP;
+		rep->rc = 0;
+		rep->id = bmap_get_id(map, &m->bstr);
+		if (has_attr) {
+			rep->attr = btkn_store_get_attr(store, rep->id);
+		}
+		break;
+	case BZMSG_BSTR_REQ:
+		bstr = bmap_get_bstr(map, m->id);
+		if (!bstr) {
+			rep = &simple_rep;
+			rep->type = BZMSG_BSTR_REP;
+			rep->rc = ENOENT;
+			goto out;
+		}
+		rep = bzmsg_alloc(bstr->blen);
+		if (!rep) {
+			rep = &simple_rep;
+			rep->type = BZMSG_BSTR_REP;
+			rep->rc = ENOMEM;
+			goto out;
+		}
+		*rep = simple_rep;
+		rep->type = BZMSG_BSTR_REP;
+		rep->rc = 0;
+		if (has_attr)
+			rep->attr = btkn_store_get_attr(store, m->id);
+		bstr_set_cstr(&rep->bstr, bstr->cstr, bstr->blen);
+		break;
+	case BZMSG_INSERT_REQ:
+		rep->type = BZMSG_INSERT_REP;
+		rep->id = ins_fn(store, &m->bstr);
+		if (rep->id < BMAP_ID_BEGIN) {
+			rep->rc = ENOMEM;
+			goto out;
+		}
+		if (has_attr) {
+			if (m->attr.type != BTKN_TYPE_STAR) {
+				btkn_store_set_attr(store, rep->id, m->attr);
+			}
+			rep->attr = btkn_store_get_attr(store, rep->id);
+		}
+		rep->rc = 0;
+		break;
+	default:
+		berr("Unexpected balerd zap message type: %s",
+						bzmsg_type_str(m->type));
+	}
+out:
+	len = bzmsg_len(rep);
+	hton_bzmsg(rep);
+	zerr = zap_send(ep, rep, len);
+	if (zerr != ZAP_ERR_OK) {
+		berr("%s: zap_send() error: %s", __func__, zap_err_str(zerr));
+	}
+cleanup:
+	if (rep != &simple_rep)
+		free(rep);
+}
+
+/**
+ * zap call back function for master-mode balerd
+ */
+void master_zap_cb(zap_ep_t ep, zap_event_t ev)
+{
+	struct sockaddr lsock, rsock;
+	char tmp[64];
+	socklen_t slen;
+	switch (ev->type) {
+	case ZAP_EVENT_CONNECT_REQUEST:
+		zap_accept(ep, master_zap_cb);
+		break;
+	case ZAP_EVENT_CONNECTED:
+		zap_get_name(ep, &lsock, &rsock, &slen);
+		snprint_sockaddr(tmp, sizeof(tmp), &rsock);
+		binfo("connected from slave-mode balerd: %s", tmp);
+		break;
+	case ZAP_EVENT_DISCONNECTED:
+		zap_get_name(ep, &lsock, &rsock, &slen);
+		snprint_sockaddr(tmp, sizeof(tmp), &rsock);
+		binfo("disconnected from slave-mode balerd: %s", tmp);
+		break;
+	case ZAP_EVENT_RECV_COMPLETE:
+		master_handle_recv(ep, ev);
+		break;
+	default:
+		bwarn("%s: Unexpected zap event: %s", __func__,
+						zap_event_str(ev->type));
+		break;
+	}
+}
+
+void slave_zap_cb(zap_ep_t ep, zap_event_t ev);
+void slave_connect(int sock, short which, void *arg);
+
+void slave_schedule_reconnect()
+{
+	struct event *event;
+	bdebug("Scheduling reconnect...");
+	event = event_new(evbase, -1, 0, 0, 0);
+	event_assign(event, evbase, -1, 0, slave_connect, event);
+	event_add(event, &reconnect_interval);
+}
+
+void slave_connect(int sock, short which, void *arg)
+{
+	zap_err_t zerr;
+	struct event *ev = arg;
+	struct sockaddr *sa;
+	struct addrinfo hint = {.ai_family = AF_INET};
+	struct addrinfo *ai = NULL;
+	char tmp[8];
+	int rc;
+	pthread_mutex_lock(&slave_zap_ctxt.mutex);
+	bdebug("connecting to master ...");
+	zerr = zap_new(zap, &zap_ep, slave_zap_cb);
+	if (zerr != ZAP_ERR_OK) {
+		berr("%s: zap_new() error: %s", __func__, zap_err_str(zerr));
+		slave_schedule_reconnect();
+		goto out;
+	}
+	zap_set_ucontext(zap_ep, &slave_zap_ctxt);
+	snprintf(tmp, sizeof(tmp), "%hu", m_port);
+	rc = getaddrinfo(m_host, tmp, &hint, &ai);
+	if (rc) {
+		berr("getaddrinfo() error: %d, %s\n", rc, gai_strerror(rc));
+		goto out;
+	}
+	uint32_t addr = ((struct sockaddr_in*)ai->ai_addr)->sin_addr.s_addr;
+	uint16_t prt = ((struct sockaddr_in*)ai->ai_addr)->sin_port;
+	bdebug("connecting to master: %hhu.%hhu.%hhu.%hhu:%hu",
+			addr & 0xFF,
+			(addr>>8) & 0xFF,
+			(addr>>16) & 0xFF,
+			(addr>>24) & 0xFF,
+			be16toh(prt));
+
+	zerr = zap_connect(zap_ep, ai->ai_addr, ai->ai_addrlen);
+	if (zerr != ZAP_ERR_OK) {
+		zap_close(zap_ep);
+		berr("zap_connect() error: %s", zap_err_str(zerr));
+		slave_schedule_reconnect();
+		goto out;
+	}
+out:
+	if (ev)
+		event_free(ev);
+	if (ai)
+		freeaddrinfo(ai);
+	pthread_mutex_unlock(&slave_zap_ctxt.mutex);
+}
+
+void slave_handle_insert_rep(struct bzmsg *bzmsg)
+{
+	uint32_t id;
+	struct bwq_entry *ent = bzmsg->ctxt;
+	struct bin_wkr_ctxt *ctxt = ent->ctxt;
+	struct bstr *bstr = bzmsg->ctxt_bstr;
+	ctxt->unresolved_count--;
+
+	if (bzmsg->rc) {
+		ctxt->rc = bzmsg->rc;
+	}
+
+	uint32_t (*ins_fn)(void *, void*, uint32_t);
+	void *store = NULL;
+	const char *store_name = "Unknown";
+	int has_attr = 0;
+
+	/* Handle by map type */
+	switch (bzmsg->mapidx) {
+	case BMAP_IDX_HST:
+		ctxt->comp_id = bzmsg->id - (BMAP_ID_BEGIN - 1);
+		ins_fn = (void*)btkn_store_insert_with_id;
+		has_attr = 1;
+		store = comp_store;
+		store_name = "comp_store";
+		break;
+	case BMAP_IDX_TKN:
+		ctxt->ptn_str.u32str[bzmsg->tkn_idx] = bzmsg->id;
+		ins_fn = (void*)btkn_store_insert_with_id;
+		has_attr = 1;
+		store = token_store;
+		store_name = "token_store";
+		break;
+	case BMAP_IDX_PTN:
+		ctxt->msg.ptn_id = bzmsg->id;
+		ins_fn = (void*)bptn_store_addptn_with_id;
+		has_attr = 0;
+		store = pattern_store;
+		store_name = "pattern_store";
+		break;
+	}
+
+	/* Update local map with the replied information */
+	id = ins_fn(store, bzmsg->ctxt_bstr, bzmsg->id);
+	if (id < BMAP_ID_BEGIN) {
+		ctxt->rc = ENOMEM;
+		berr("Error inserting <str, id>: <%.*s, %u>, into store: %s, "
+				"ret: %u",
+				bstr->blen, bstr->cstr,
+				bzmsg->id,
+				store_name,
+				id);
+		return;
+	}
+
+	if (has_attr) {
+		btkn_store_set_attr(store, id, bzmsg->attr);
+	}
+
+	if (ctxt->unresolved_count)
+		return;
+
+	/* Ready for next processing */
+	if (ctxt->rc) {
+		binq_entry_free(ent);
+		free(ctxt);
+		return;
+	}
+
+	ctxt->next_fn(ent);
+}
+
+void slave_handle_recv(zap_ep_t ep, zap_event_t ev)
+{
+	struct bzmsg *bzmsg = ev->data;
+	ntoh_bzmsg(bzmsg);
+	switch (bzmsg->type) {
+	case BZMSG_INSERT_REP:
+		slave_handle_insert_rep(bzmsg);
+		break;
+	default:
+		berr("Unexpected bzmsg type: %s", bzmsg_type_str(bzmsg->type));
+	}
+}
+
+/**
+ * zap call back function for slave-mode balerd
+ */
+void slave_zap_cb(zap_ep_t ep, zap_event_t ev)
+{
+	struct event *event;
+	struct bzap_ctxt *ctxt = zap_get_ucontext(ep);
+	switch (ev->type) {
+	case ZAP_EVENT_CONNECTED:
+		pthread_mutex_lock(&ctxt->mutex);
+		ctxt->is_ready = 1;
+		pthread_mutex_unlock(&ctxt->mutex);
+		break;
+	case ZAP_EVENT_DISCONNECTED:
+	case ZAP_EVENT_CONNECT_ERROR:
+		pthread_mutex_lock(&ctxt->mutex);
+		ctxt->is_ready = 0;
+		bdebug("master disconnected!!!");
+		pthread_mutex_unlock(&ctxt->mutex);
+		zap_close(ep);
+		slave_schedule_reconnect();
+		break;
+	case ZAP_EVENT_RECV_COMPLETE:
+		slave_handle_recv(ep, ev);
+		break;
+	default:
+		berr("Unexpected event: %s", zap_event_str(ev->type));
+		break;
+	}
+}
+
+void zap_log_fn(const char *fmt, ...)
+{
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+	static char buff[4096];
+	va_list ap;
+	pthread_mutex_lock(&mutex);
+	va_start(ap, fmt);
+	vsnprintf(buff, sizeof(buff), fmt, ap);
+	va_end(ap);
+	pthread_mutex_unlock(&mutex);
+}
+
+void master_init()
+{
+	zap_err_t zerr;
+	struct sockaddr_in sin = {
+		.sin_family = AF_INET,
+		.sin_port = htons(m_port),
+	};
+
+	zerr = zap_new(zap, &zap_ep, master_zap_cb);
+	if (zerr) {
+		berr("zap_new() error: %s", zap_err_str(zerr));
+		exit(-1);
+	}
+
+	zerr = zap_listen(zap_ep, (void*)&sin, sizeof(sin));
+	if (zerr) {
+		berr("zap_listen() error: %s", zap_err_str(zerr));
+		exit(-1);
+	}
+}
+
+void slave_init()
+{
+	slave_schedule_reconnect();
+}
+
 /**
  * Baler Daemon Initialization.
  */
@@ -282,6 +889,15 @@ void initialize_daemon()
 		binfo("Daemonized");
 	}
 	umask(0);
+	evthread_use_pthreads();
+
+	/* Event base for internal balerd event */
+	evbase = event_base_new();
+	if (!evbase) {
+		berr("event_base_new() error, errno: %d, %m", errno);
+		exit(-1);
+	}
+
 	/* Input/Output Work Queue */
 	binq = bwq_alloci(1024);
 	if (!binq) {
@@ -292,6 +908,12 @@ void initialize_daemon()
 	boutq = bwq_alloci(1024);
 	if (!boutq) {
 		berror("(boutq) bwq_alloci");
+		exit(-1);
+	}
+
+	binq_pending = bwq_alloci(1024);
+	if (!binq_pending) {
+		berror("(binq_pending) bwq_alloci");
 		exit(-1);
 	}
 
@@ -398,6 +1020,18 @@ void initialize_daemon()
 		exit(-1);
 	}
 #endif
+	/* slave/master network init */
+	zap_err_t zerr;
+	zerr = zap_get(sm_xprt, &zap, zap_log_fn, bzap_mem_info);
+	if (zerr) {
+		berr("zap_get() error: %s", zap_err_str(zerr));
+		exit(-1);
+	}
+	zap_cb_fn_t cb;
+	if (is_master)
+		master_init();
+	else
+		slave_init();
 	binfo("Baler Initialization Complete.");
 }
 
@@ -445,13 +1079,13 @@ int load_plugin(struct bconfig_list *pcl, struct bplugin_head *inst_head)
 	LIST_INSERT_HEAD(inst_head, p, link);
 
 	/* Configure the plugin. */
-	if (rc = p->config(p, &pcl->arg_head_s)) {
+	if ((rc = p->config(p, &pcl->arg_head_s))) {
 		berr("Config error, code: %d\n", rc);
 		goto out;
 	}
 
 	/* And start the plugin. Plugin should not block this though. */
-	if (rc = p->start(p)) {
+	if ((rc = p->start(p))) {
 		berr("Plugin %s start error, code: %d\n", bname->s1,
 				rc);
 		goto out;
@@ -563,7 +1197,7 @@ err3:
 err2:
 	free(key);
 	/* Reuse pstr */
-	while (pstr = LIST_FIRST(&l->arg_head_s)) {
+	while ((pstr = LIST_FIRST(&l->arg_head_s))) {
 		LIST_REMOVE(pstr, link);
 		bpair_str_free(pstr);
 	}
@@ -822,6 +1456,9 @@ int ocm_cb(struct ocm_event *e)
 				ocm_err_code(e->err),
 				ocm_err_msg(e->err));
 		break;
+	default:
+		/* do nothing, but suppressing compilation warning */
+		break;
 	}
 	return 0;
 }
@@ -852,6 +1489,7 @@ void args_handling(int argc, char **argv)
 {
 	bset_store_path("./store");
 	int c;
+	int len;
 
 next_arg:
 	c = getopt(argc, argv, optstring);
@@ -873,7 +1511,27 @@ next_arg:
 		ocm_port = atoi(optarg);
 		break;
 #endif
+	case 'm':
+		len = strlen(optarg);
+		if (strncasecmp("master", optarg, len) == 0) {
+			is_master = 1;
+		} else if (strncasecmp("slave", optarg, len) == 0) {
+			is_master = 0;
+		} else {
+			berr("Unknown mode: %s", optarg);
+			exit(-1);
+		}
+		break;
+	case 'x':
+		sm_xprt = optarg;
+		break;
 	case 'h':
+		m_host = optarg;
+		break;
+	case 'p':
+		m_port = atoi(optarg);
+		break;
+	case '?':
 		display_help_msg();
 		exit(0);
 	case -1:
@@ -896,6 +1554,208 @@ void binq_data_print(struct binq_data *d)
 	printf("\n");
 }
 
+int slave_bzmsg_send(struct bzmsg *bzmsg)
+{
+	zap_err_t zerr;
+	int rc = 0;
+	size_t len;
+	pthread_mutex_lock(&slave_zap_ctxt.mutex);
+	if (!slave_zap_ctxt.is_ready) {
+		rc = EIO;
+		goto out;
+	}
+
+	len = bzmsg_len(bzmsg);
+	hton_bzmsg(bzmsg);
+	zerr = zap_send(zap_ep, bzmsg, len);
+	if (zerr != ZAP_ERR_OK)
+		rc = EIO;
+
+out:
+	pthread_mutex_unlock(&slave_zap_ctxt.mutex);
+	return rc;
+}
+
+int slave_process_input_entry_step3(struct bwq_entry *ent)
+{
+	struct bin_wkr_ctxt *ctxt = ent->ctxt;
+	struct binq_data *in_data = &ent->data.in;
+	struct bmsg *msg = &ctxt->msg;
+	int rc;
+	rc = bptn_store_addmsg(pattern_store, msg);
+	if (rc)
+		goto cleanup;
+	/* Copy msg to omsg for future usage in output queue. */
+	struct bmsg *omsg = bmsg_alloc(msg->argc);
+	if (!omsg) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+	memcpy(omsg, msg, BMSG_SZ(msg));
+	/* Prepare output queue entry. */
+	struct bwq_entry *oent = (typeof(oent))malloc(sizeof(*oent));
+	struct boutq_data *odata = &oent->data.out;
+	odata->comp_id = ctxt->comp_id;
+	odata->tv = in_data->tv;
+	odata->msg = omsg;
+	/* Put the processed message into output queue */
+	bwq_nq(boutq, oent);
+cleanup:
+	binq_entry_free(ent);
+	free(ent->ctxt);
+	return rc;
+}
+
+int slave_process_input_entry_step2(struct bwq_entry *ent)
+{
+	int rc = 0;
+	struct bin_wkr_ctxt *ctxt = ent->ctxt;
+	struct binq_data *in_data = &ent->data.in;
+
+	struct bmsg *msg = &ctxt->msg;
+	struct bstr *str = &ctxt->ptn_str;
+	int attr_count = 0;
+	int tkn_idx = 0;
+	struct bstr_list_entry *str_ent;
+
+	ctxt->next_fn = slave_process_input_entry_step3;
+
+	for (tkn_idx = 0; tkn_idx < in_data->tok_count; tkn_idx++) {
+		int tid = ctxt->ptn_str.u32str[tkn_idx];
+		struct btkn_attr attr = btkn_store_get_attr(token_store, tid);
+		/* REMARK: The default type of a token is '*' */
+		if (attr.type == BTKN_TYPE_STAR) {
+			/* This will be marked as '*' and put into arg list. */
+			str->u32str[tkn_idx] = BMAP_ID_STAR;
+			msg->argv[attr_count++] = tid;
+		}
+		/* else, do nothing */
+	}
+	msg->argc = attr_count;
+
+	/* Now str is the pattern string, with arguments in msg->argv */
+	/* pid stands for pattern id */
+
+	msg->ptn_id = bptn_store_get_id(pattern_store, str);
+	if (msg->ptn_id >= BMAP_ID_BEGIN)
+		return slave_process_input_entry_step3(ent);
+
+	zap_err_t zerr;
+	struct bzmsg *bzmsg = &ctxt->zmsg;
+	bzmsg->type = BZMSG_INSERT_REQ;
+	bzmsg->mapidx = BMAP_IDX_PTN;
+	bzmsg->attr.type = -1;
+	bzmsg->ctxt = ent;
+	bzmsg->ctxt_bstr = str;
+	bstr_cpy(&bzmsg->bstr, str);
+	ctxt->unresolved_count = 1;
+	rc = slave_bzmsg_send(bzmsg);
+	if (rc)
+		goto err;
+
+	return 0;
+
+err:
+	binq_entry_free(ent);
+	free(ent->ctxt);
+	return rc;
+}
+
+/*
+ * TODO make sure that ctxt owns by ent. (see callers)
+ */
+int slave_process_input_entry_step1(struct bwq_entry *ent, struct bin_wkr_ctxt *_ignore)
+{
+	int rc = 0;
+	struct binq_data *in_data = &ent->data.in;
+	uint32_t comp_id = bmap_get_id(comp_store->map, in_data->hostname);
+	int unresolved_count = 0;
+
+	if (comp_id < BMAP_ID_BEGIN) {
+		comp_id = -1; /* all 0xFF */
+		unresolved_count++;
+	} else {
+		comp_id -= (BMAP_ID_BEGIN - 1);
+	}
+
+	struct bin_wkr_ctxt *ctxt = malloc(sizeof(*ctxt));
+	if (!ctxt) {
+		berr("Cannot allocate input context in %s:%s",
+							__FILE__, __func__);
+		return ENOMEM;
+	}
+
+	ent->ctxt = ctxt;
+	ctxt->comp_id = comp_id;
+	ctxt->next_fn = slave_process_input_entry_step2;
+	ctxt->rc = 0;
+	ctxt->worker_id = -1;
+
+	struct bstr_list_entry *str_ent;
+	/* NOTE: ptn and msg is meant to be a uint32_t string */
+	struct bstr *str = &ctxt->ptn_str;
+	/* msg->agrv will hold the pattern arguments. */
+	uint32_t attr_count = 0;
+	uint32_t tkn_idx = 0;
+	/* resolving token IDs, use ctxt->ptn_str to temporarily hold tok IDs */
+	LIST_FOREACH(str_ent, in_data->tokens, link) {
+		struct btkn_attr attr;
+		int tid = btkn_store_get_id(token_store, &str_ent->str);
+		if (tid == BMAP_ID_NOTFOUND)
+			unresolved_count++;
+		str->u32str[tkn_idx] = tid;
+		tkn_idx++;
+	}
+	str->blen = in_data->tok_count * sizeof(uint32_t);
+	ctxt->unresolved_count = unresolved_count;
+
+	if (!unresolved_count)
+		return slave_process_input_entry_step2(ent);
+
+	/* Reaching here means there are some unresolved */
+	/* Make requests for the unresolved tokens */
+	zap_err_t zerr;
+	struct bzmsg *bzmsg = &ctxt->zmsg;
+
+	if (ctxt->comp_id == -1) {
+		bzmsg->ctxt = (void*)ent;
+		bzmsg->ctxt_bstr = in_data->hostname;
+		bzmsg->type = BZMSG_INSERT_REQ;
+		bzmsg->attr.type = BTKN_TYPE_HOST;
+		bzmsg->tkn_idx = -1;
+		bzmsg->mapidx = BMAP_IDX_HST;
+		bstr_cpy(&bzmsg->bstr, in_data->hostname);
+		rc = slave_bzmsg_send(bzmsg);
+		if (rc)
+			goto err;
+	}
+
+	tkn_idx = 0;
+	LIST_FOREACH(str_ent, in_data->tokens, link) {
+		if (str->u32str[tkn_idx] != BMAP_ID_NOTFOUND)
+			goto next;
+		bzmsg->ctxt = ent;
+		bzmsg->ctxt_bstr = &str_ent->str;
+		bzmsg->type = BZMSG_INSERT_REQ;
+		bzmsg->attr.type = BTKN_TYPE_LAST; /* master will set it */
+		bzmsg->tkn_idx = tkn_idx;
+		bzmsg->mapidx = BMAP_IDX_TKN;
+		bstr_cpy(&bzmsg->bstr, &str_ent->str);
+		rc = slave_bzmsg_send(bzmsg);
+		if (rc)
+			goto err;
+	next:
+		tkn_idx++;
+	}
+
+	return rc;
+
+err:
+	binq_entry_free(ent);
+	free(ent->ctxt);
+	return rc;
+}
+
 /**
  * Core processing of an input entry.
  * \param ent Input entry.
@@ -910,8 +1770,8 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	uint32_t comp_id = bmap_get_id(comp_store->map, in_data->hostname);
 	if (comp_id < BMAP_ID_BEGIN) {
 		/* Error, cannot find the comp_id */
-		errno = ENOENT;
-		return -1;
+		rc = ENOENT;
+		goto cleanup;
 	}
 	comp_id -= (BMAP_ID_BEGIN - 1);
 	struct bstr_list_entry *str_ent;
@@ -923,8 +1783,10 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	uint32_t tkn_idx = 0;
 	LIST_FOREACH(str_ent, in_data->tokens, link) {
 		int tid = btkn_store_insert(token_store, &str_ent->str);
-		if (tid == BMAP_ID_ERR)
-			return errno;
+		if (tid == BMAP_ID_ERR) {
+			rc = errno;
+			goto cleanup;
+		}
 		struct btkn_attr attr = btkn_store_get_attr(token_store, tid);
 		/* REMARK: The default type of a token is '*' */
 		if (attr.type == BTKN_TYPE_STAR) {
@@ -942,16 +1804,20 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	/* Now str is the pattern string, with arguments in msg->argv */
 	/* pid stands for pattern id */
 	uint32_t pid = bptn_store_addptn(pattern_store, str);
-	if (pid == BMAP_ID_ERR)
-		return errno;
+	if (pid == BMAP_ID_ERR) {
+		rc = errno;
+		goto cleanup;
+	}
 	msg->ptn_id = pid;
 	rc = bptn_store_addmsg(pattern_store, msg);
 	if (rc)
-		return rc;
+		goto cleanup;
 	/* Copy msg to omsg for future usage in output queue. */
 	struct bmsg *omsg = bmsg_alloc(msg->argc);
-	if (!omsg)
-		return ENOMEM;
+	if (!omsg) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
 	memcpy(omsg, msg, BMSG_SZ(msg));
 	/* Prepare output queue entry. */
 	struct bwq_entry *oent = (typeof(oent))malloc(sizeof(*oent));
@@ -961,7 +1827,10 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	odata->msg = omsg;
 	/* Put the processed message into output queue */
 	bwq_nq(boutq, oent);
-	return 0;
+
+cleanup:
+	binq_entry_free(ent);
+	return rc;
 }
 
 /**
@@ -975,6 +1844,11 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 void* binqwkr_routine(void *arg)
 {
 	struct bwq_entry *ent;
+	int (*fn)(struct bwq_entry *, struct bin_wkr_ctxt *);
+	if (is_master)
+		fn = process_input_entry;
+	else
+		fn = slave_process_input_entry_step1;
 loop:
 	/* bwq_dq will block the execution if the queue is empty. */
 	ent = bwq_dq(binq);
@@ -982,11 +1856,10 @@ loop:
 		/* This is not supposed to happen. */
 		berr("Error, ent == NULL\n");
 	}
-	if (process_input_entry(ent, (struct bin_wkr_ctxt*) arg) == -1) {
+	if (fn(ent, (struct bin_wkr_ctxt*) arg) == -1) {
 		/* XXX Do better error handling ... */
 		berr("process input error ...");
 	}
-	binq_entry_free(ent);
 	goto loop;
 }
 
@@ -1071,6 +1944,24 @@ void handle_logrotate(int x)
 	}
 }
 
+void keepalive_cb(int fd, short what, void *arg)
+{
+	berr("keepalive_cb() should not be invoked!!!");
+	assert(0);
+}
+
+void main_event_routine()
+{
+	/* Instead of periodiaclly getting invoked, this keepalive event is
+	 * looking for an impossible read event on fd -1. Hence, it will forever
+	 * be pending in the evbase and keep evbase from exiting. */
+	struct event *keepalive = event_new(evbase, -1, EV_READ | EV_PERSIST,
+							keepalive_cb, 0);
+	event_add(keepalive, NULL);
+	event_base_dispatch(evbase);
+	bwarn("Exiting main_event_routine()");
+}
+
 /**
  * \brief The main function.
  */
@@ -1106,6 +1997,9 @@ int main(int argc, char **argv)
 		config_file_handling(config_path);
 
 	binfo("Baler is ready.");
+
+	/* Main thread handle events pertaining to balerd */
+	main_event_routine();
 
 	/* Then join the worker threads. */
 	thread_join();

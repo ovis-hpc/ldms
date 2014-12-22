@@ -8,5 +8,9 @@ if ENABLE_DICT
 SUBDIRS += dict
 endif
 
+if ENABLE_DOC
+SUBDIRS += docs
+endif
+
 PEDIGREE = $(DESTDIR)/$(bindir)/baler-pedigree
 include $(top_srcdir)/../automake/pedigree.am

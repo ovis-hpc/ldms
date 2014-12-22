@@ -42,9 +42,9 @@ balerd_LDADD = libbaler.la libbset.la \
 	       libbmem.la \
 	       libbmapper.la \
 	       libbutils.la \
-	       -lpthread -ldl -lcoll
-balerd_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
-balerd_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
+	       -lpthread -ldl -lcoll -levent -lzap
+balerd_CFLAGS = @OVIS_LIB_INCDIR_FLAG@ @EVENTINC@
+balerd_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ @EVENTLIBS@
 
 if ENABLE_OCM
 balerd_LDADD += -locm

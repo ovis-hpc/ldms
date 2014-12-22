@@ -33,6 +33,8 @@ OPTION_WITH([sos], [SOS])
 OPTION_WITH([ovis-lib], [OVIS_LIB])
 OPTION_WITH([ocm], [OCM])
 
+OPTION_DOC
+
 dnl Check for zap
 AC_CHECK_LIB(zap, zap_new, [],
 	AC_MSG_ERROR([zap library not found. Baler requires libzap. libzap is

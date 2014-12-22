@@ -99,6 +99,7 @@ struct bwq_entry {
 		struct binq_data in;
 		struct boutq_data out;
 	} data;
+	void *ctxt;
 	TAILQ_ENTRY(bwq_entry) link; /**< Link to next/prev entry. */
 };
 

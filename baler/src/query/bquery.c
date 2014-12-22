@@ -254,9 +254,19 @@ int bq_local_ptn_routine(struct bq_store *s)
 	while (id <= last_id) {
 		rc = bptn_store_id2str(s->ptn_store, s->tkn_store, id, buff,
 									4096);
-		if (rc)
+		switch (rc) {
+		case 0:
+			/* do nothing, just continue the execution. */
+			break;
+		case ENOENT:
+			/* skip a loop for no entry */
+			goto skip;
+		default:
 			return rc;
+		}
+
 		printf("%8d %s\n", id, buff);
+	skip:
 		id++;
 	}
 	printf("-------- --------------\n");

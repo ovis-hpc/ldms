@@ -187,12 +187,36 @@ uint32_t btkn_store_insert(struct btkn_store *store, struct bstr *str)
 		/* errno should be set in bmap_insert() */
 		goto out;
 
-	/* set attribute to '*' by default */
-	struct btkn_attr attr = {BTKN_TYPE_STAR};
-	btkn_store_set_attr(store, id, attr);
+	/* set attribute to '*' by default for new token */
+	struct btkn_attr attr;
+	if (store->attr->bvec->len <= id ) {
+		attr.type = BTKN_TYPE_STAR;
+		btkn_store_set_attr(store, id, attr);
+	}
 
 out:
 	return id;
+}
+
+static inline
+uint32_t btkn_store_insert_with_id(struct btkn_store *store, struct bstr *str, uint32_t id)
+{
+	uint32_t _id;
+	bmap_ins_ret_t ret_flag;
+	_id = bmap_insert_with_id(store->map, str, id);
+	if (_id == BMAP_ID_ERR)
+		/* errno should be set in bmap_insert() */
+		goto out;
+
+	/* set attribute to '*' by default for new token */
+	struct btkn_attr attr;
+	if (store->attr->bvec->len <= id ) {
+		attr.type = BTKN_TYPE_STAR;
+		btkn_store_set_attr(store, id, attr);
+	}
+
+out:
+	return _id;
 }
 
 static inline

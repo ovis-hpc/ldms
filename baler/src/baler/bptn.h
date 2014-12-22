@@ -162,6 +162,21 @@ uint32_t bptn_store_addptn(struct bptn_store *store, struct bstr *ptn)
 }
 
 /**
+ * Similar to bptn_store_addptn(), but with specific \c id.
+ * \param store Pattern store handle
+ * \param ptn Pattern handle
+ * \param id The pattern ID
+ * \retval id if success.
+ * \retval special_id One of the special IDs if error.
+ */
+static
+uint32_t bptn_store_addptn_with_id(struct bptn_store *store, struct bstr *ptn,
+		uint32_t id)
+{
+	return bmap_insert_with_id(store->map, ptn, id);
+}
+
+/**
  * Add \a msg (which is pattern + args) into \a store.
  * \param store The store.
  * \param msg The message.

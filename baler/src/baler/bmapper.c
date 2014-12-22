@@ -101,7 +101,7 @@ void __special_bstr_init()
 	if (initialized)
 		return;
 	initialized = 1;
-	___SPECIAL_BSTR(1, "*");
+	___SPECIAL_BSTR(BMAP_ID_STAR, "*");
 }
 
 struct bmap* bmap_open(const char *path)
@@ -363,7 +363,7 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 
 	/* Check first if s exists in the map. */
 	if ((id=bmap_get_id_plus64(bm, s, &hidx)) != BMAP_ID_NOTFOUND) {
-		if (id == _id)
+		if (!_id || id == _id)
 			return id;
 		return BMAP_ID_INVAL;
 	}
