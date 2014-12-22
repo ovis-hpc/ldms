@@ -206,5 +206,13 @@ int bdstr_expand(struct bdstr *bs, size_t new_size);
  */
 int bdstr_append(struct bdstr *bs, const char *str);
 
+/**
+ * Baler log rotate utility.
+ *
+ * \returns 0 if success.
+ * \returns errno if failed.
+ */
+int blog_rotate(const char *path);
+
 #endif // _BUTILS_H
 /**\}*/
