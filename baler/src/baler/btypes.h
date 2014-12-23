@@ -179,6 +179,13 @@ void bstr_set_cstr(struct bstr *bstr, const char *cstr, int len)
 	bstr->blen = len;
 }
 
+static inline
+void bstr_cpy(struct bstr *dest, const struct bstr *src)
+{
+	dest->blen = src->blen;
+	strncpy(dest->cstr, src->cstr, src->blen);
+}
+
 /**
  * Convenient allocation function for ::bstr.
  * \param blen The byte length of the string.
