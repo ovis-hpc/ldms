@@ -385,7 +385,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_nic_curr_ctx = nic_perf_create_context(&msglog);
 	if (!ns_nic_curr_ctx) {
-		msglog(LDMS_LDEBUG,"ns_nic: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -393,7 +393,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_nic_prev_ctx = nic_perf_create_context(&msglog);
 	if (!ns_nic_prev_ctx) {
-		msglog(LDMS_LDEBUG,"ns_nic: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -406,7 +406,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 	error = gpcd_context_read_mmr_vals(ns_nic_prev_ctx);
 
 	if (error) {
-		msglog(LDMS_LDEBUG,"nic_perf: Error in gpcd_context_read_mmr_vals\n");
+		msglog(LDMS_LERROR,"nic_perf: Error in gpcd_context_read_mmr_vals\n");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -432,7 +432,7 @@ int add_metrics_nic_perf(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 			ns_nic_base_metric_table[i] =
 				ldms_add_metric(set, newname, LDMS_V_U64);
 			if (!ns_nic_base_metric_table[i]) {
-				msglog(LDMS_LDEBUG,"Bad add_metric %d\n",i);
+				msglog(LDMS_LERROR,"Bad add_metric %d\n",i);
 				rc = ENOMEM;
 				return rc;
 			}
@@ -452,7 +452,7 @@ int add_metrics_nic_perf(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 			ns_nic_derived_metric_table[i] =
 				ldms_add_metric(set, newname, LDMS_V_U64);
 			if (!ns_nic_derived_metric_table[i]) {
-				msglog(LDMS_LDEBUG,"Bad add_metric %d\n", i);
+				msglog(LDMS_LERROR,"Bad add_metric %d\n", i);
 				rc = ENOMEM;
 				return rc;
 			}
@@ -537,14 +537,14 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_glp_curr_ctx = gem_link_perf_create_context(&msglog);
 	if (!ns_glp_curr_ctx) {
-		msglog(LDMS_LDEBUG,"ns_glp: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_glp: gpcd_create_context failed");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
 
 	ns_glp_prev_ctx = gem_link_perf_create_context(&msglog);
 	if (!ns_glp_prev_ctx) {
-		msglog(LDMS_LDEBUG,"ns_nic: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
@@ -552,7 +552,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 	/*  Allocate memory for struct state */
 	ns_glp_state = malloc(sizeof(gemini_state_t));
 	if (!ns_glp_state) {
-		msglog(LDMS_LDEBUG,"ns_glp: Error allocating memory for state\n");
+		msglog(LDMS_LERROR,"ns_glp: Error allocating memory for state\n");
 		ns_glp_valid = 0;
 		return ENOMEM;
 	}
@@ -565,7 +565,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 						   &ns_glp_max_link_bw,
 						   &ns_glp_tiles_per_dir);
 	if (rc != 0){
-		msglog(LDMS_LDEBUG,"ns_glp: Error parsing interconnect file\n");
+		msglog(LDMS_LERROR,"ns_glp: Error parsing interconnect file\n");
 		ns_glp_valid = 0;
 		return rc;
 	}
@@ -576,7 +576,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 			error = tcoord_to_tid(i, j,
 					      &(ns_glp_rc_to_tid[i][j]));
 			if (error) {
-				msglog(LDMS_LDEBUG,"ns_glp: Error converting r,c to"
+				msglog(LDMS_LERROR,"ns_glp: Error converting r,c to"
 				       " tid\n");
 				ns_glp_valid = 0;
 				return error;
@@ -591,7 +591,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 	error = gpcd_context_read_mmr_vals(ns_glp_prev_ctx);
 
 	if (error) {
-		msglog(LDMS_LDEBUG,"ns_glp: Error in gpcd_context_read_mmr_vals\n");
+		msglog(LDMS_LERROR,"ns_glp: Error in gpcd_context_read_mmr_vals\n");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
@@ -675,7 +675,7 @@ int sample_metrics_nic_perf(ldmsd_msg_log_f msglog)
 
 	error = gpcd_context_read_mmr_vals(ns_nic_curr_ctx);
 	if (error) {
-		msglog(LDMS_LDEBUG,"nic_perf: Error reading mmr_vals\n");
+		msglog(LDMS_LERROR,"nic_perf: Error reading mmr_vals\n");
 		rc = EINVAL;
 		return rc;
 	} else {
@@ -929,7 +929,7 @@ int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
 
 	error = gpcd_context_read_mmr_vals(ns_glp_curr_ctx);
 	if (error) {
-		msglog(LDMS_LDEBUG,"nic_perf: Error reading mmr_vals\n");
+		msglog(LDMS_LERROR,"nic_perf: Error reading mmr_vals\n");
 		rc = EINVAL;
 		return rc;
 	} else {

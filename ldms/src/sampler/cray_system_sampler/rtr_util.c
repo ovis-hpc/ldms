@@ -134,7 +134,7 @@ static int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind
 	fd = fopen("/proc/cray_xt/cname", "r");
 	if (!fd) {
 		if (msglog)
-			msglog(LDMS_LDEBUG,"Could not open cnameprocfile\n");
+			msglog(LDMS_LERROR,"Could not open cnameprocfile\n");
 		return ENOENT;
 	}
 	fseek(fd, 0, SEEK_SET);
@@ -219,7 +219,7 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 	fd = fopen(link_file, "r");
 	if (!fd) {
 		if (msglog)
-			msglog(LDMS_LDEBUG,"Could not open %s for read\n", link_file);
+			msglog(LDMS_LERROR,"Could not open %s for read\n", link_file);
 		return ENOENT;
 	}
 	fseek(fd, 0, SEEK_SET);
@@ -231,7 +231,7 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 			    &file_tile_type, &file_z_pattern);
 		if (rc < 3){
 			if (msglog)
-				msglog(LDMS_LDEBUG,"Failure reading line in linkfile %s\n",
+				msglog(LDMS_LERROR,"Failure reading line in linkfile %s\n",
 				       link_file);
 			fclose(fd);
 			return EINVAL;

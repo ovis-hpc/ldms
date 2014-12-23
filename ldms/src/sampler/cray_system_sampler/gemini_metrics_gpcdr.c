@@ -236,7 +236,7 @@ static int bwhelper_maxbwperdir(ldmsd_msg_log_f msglog)
 						   &tiles_per_dir_junk);
 
 	if (rc != 0){
-		msglog(LDMS_LDEBUG,"linksmetrics: Error parsing interconnect file\n");
+		msglog(LDMS_LERROR,"linksmetrics: Error parsing interconnect file\n");
 		return rc;
 	}
 
@@ -257,7 +257,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 
 	pipe = popen(RCAHELPER_CMD, "r");
 	if (!pipe) {
-		msglog(LDMS_LDEBUG,"gemini_metrics: rca-helper fail\n");
+		msglog(LDMS_LERROR,"gemini_metrics: rca-helper fail\n");
 		rc = EINVAL;
 		goto err;
 	}
@@ -287,7 +287,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 				if (ntiles == -1) {
 					if (strcmp(linksmetrics_dir[i],
 						   pch) != 0){
-						msglog(LDMS_LDEBUG,"rca-helper: err %d <%s>\n",
+						msglog(LDMS_LERROR,"rca-helper: err %d <%s>\n",
 						       i, pch);
 						rc = EINVAL;
 						goto err;
@@ -306,7 +306,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 
 	/** NOTE: does not include the hostfacing dir */
 	if (i != NUM_LINKSMETRICS_DIR) {
-		msglog(LDMS_LDEBUG,"rca-helper: err (i = %d NUM_LINKSMETRICS_DIR = %d)\n",
+		msglog(LDMS_LERROR,"rca-helper: err (i = %d NUM_LINKSMETRICS_DIR = %d)\n",
 		       i, NUM_LINKSMETRICS_DIR);
 		rc = EINVAL;
 		goto err;
@@ -504,7 +504,7 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 
 	lm_f = fopen(LINKSMETRICS_FILE, "r");
 	if (!lm_f) {
-		msglog(LDMS_LDEBUG,"WARNING: Could not open the source file '%s'\n",
+		msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		return EINVAL;
 
@@ -571,13 +571,13 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
 		    &linksmetrics_prev_time, units);
 	if (rc != 3) {
-		msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		rc = EINVAL;
 		return rc;
 	}
 	if (strcmp(units,"ms") != 0){
-		msglog(LDMS_LDEBUG,"linksmetrics: wrong gpcdr interface\n");
+		msglog(LDMS_LERROR,"linksmetrics: wrong gpcdr interface\n");
 		rc = EINVAL;
 		return rc;
 	}
@@ -590,7 +590,7 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &val,
 			    units);
 		if (rc != 3) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 			       LINKSMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -607,7 +607,7 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 			}
 		}
 		if ( (dir < 0) || (lastbase == NUM_LINKSMETRICS_BASENAME)){
-			msglog(LDMS_LDEBUG,"cray_system_sampler: linksmetric bad metric\n");
+			msglog(LDMS_LERROR,"cray_system_sampler: linksmetric bad metric\n");
 			return EINVAL;
 		}
 		/* metric_no in terms of the ones gpcdr can possibly have */
@@ -647,7 +647,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 
 	nm_f = fopen(NICMETRICS_FILE, "r");
 	if (!nm_f) {
-		msglog(LDMS_LDEBUG,"WARNING: Could not open the source file '%s'\n",
+		msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
 		       NICMETRICS_FILE);
 		return EINVAL;
 	}
@@ -680,7 +680,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n",
 			    metric_name, &nicmetrics_prev_time, units);
 		if (rc != 3) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading source file '%s'\n",
+			msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
 			       NICMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -688,7 +688,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 		if (strcmp(units,"ms") == 0){
 			nicmetrics_time_multiplier = 1000;
 		} else {
-			msglog(LDMS_LDEBUG,"nicmetrics: wrong gpcdr interface (time units)\n");
+			msglog(LDMS_LERROR,"nicmetrics: wrong gpcdr interface (time units)\n");
 			rc = EINVAL;
 			return rc;
 		}
@@ -700,7 +700,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 			rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
 				    &val, units);
 			if (rc != 3) {
-				msglog(LDMS_LDEBUG,"ERR: Issue reading source file '%s'\n",
+				msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
 				       NICMETRICS_FILE);
 				rc = EINVAL;
 				return rc;
@@ -839,14 +839,14 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 	/* read the timestamp */
 	s = fgets(lbuf, sizeof(lbuf), lm_f);
 	if (!s) {
-		msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		return EINVAL;
 	}
 	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
 		    units);
 	if (rc != 3) {
-		msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		rc = EINVAL;
 		return rc;
@@ -862,7 +862,7 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &v.v_u64,
 			    units);
 		if (rc != 3) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 			       LINKSMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -961,7 +961,7 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
 		    units);
 	if (rc != 3) {
-		msglog(LDMS_LDEBUG,"ERR: Issue reading source file '%s'\n",
+		msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
 		       NICMETRICS_FILE);
 		rc = EINVAL;
 		return rc;
@@ -977,7 +977,7 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &v.v_u64,
 			    units);
 		if (rc != 3) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading source file '%s'\n",
+			msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
 			       NICMETRICS_FILE);
 			rc = EINVAL;
 			return rc;

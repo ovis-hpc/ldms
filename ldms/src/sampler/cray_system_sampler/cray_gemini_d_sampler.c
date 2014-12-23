@@ -152,7 +152,7 @@ static int create_metric_set(const char *path)
 			if (rc == ENOMEM)
 				goto err;
 			if (rc != 0) /*  Warn but OK to continue */
-				msglog(LDMS_LDEBUG,"cray_gemini_d_sampler: gem_link_perf invalid\n");
+				msglog(LDMS_LERROR,"cray_gemini_d_sampler: gem_link_perf invalid\n");
 			break;
 		case NS_NICMETRICS:
 			rc = add_metrics_nic_perf(set, comp_id, msglog);
@@ -162,7 +162,7 @@ static int create_metric_set(const char *path)
 			if (rc == ENOMEM)
 				goto err;
 			if (rc != 0) /*  Warn but OK to continue */
-				msglog(LDMS_LDEBUG,"cray_gemini_d_sampler: nic_perf invalid\n");
+				msglog(LDMS_LERROR,"cray_gemini_d_sampler: nic_perf invalid\n");
 			break;
 		default:
 			rc = add_metrics_generic(set, comp_id, i, msglog);

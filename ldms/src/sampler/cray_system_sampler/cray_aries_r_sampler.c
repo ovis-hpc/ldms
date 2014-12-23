@@ -154,7 +154,7 @@ static int create_metric_set(const char *path)
 			if (rc == ENOMEM)
 				goto err;
 			if (rc != 0) /*  Warn but OK to continue */
-				msglog(LDMS_LDEBUG,"cray_aries_r_sampler: linksmetrics invalid\n");
+				msglog(LDMS_LERROR,"cray_aries_r_sampler: linksmetrics invalid\n");
 			break;
 		case NS_NICMETRICS:
 			rc = add_metrics_nicmetrics(set, comp_id, msglog);
@@ -164,7 +164,7 @@ static int create_metric_set(const char *path)
 			if (rc == ENOMEM)
 				return rc;
 			if (rc != 0) /*  Warn but OK to continue */
-				msglog(LDMS_LDEBUG,"cray_aries_r_sampler: nicmetrics invalid\n");
+				msglog(LDMS_LERROR,"cray_aries_r_sampler: nicmetrics invalid\n");
 			break;
 		default:
 			rc = add_metrics_generic(set, comp_id, i, msglog);

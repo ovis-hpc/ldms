@@ -174,15 +174,15 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 
 	*metric_table = calloc(num_metrics, sizeof(ldms_metric_t));
 	if (! (*metric_table)){
-		msglog(LDMS_LDEBUG,"cray_system_sampler: cannot calloc metric_table\n");
+		msglog(LDMS_LERROR,"cray_system_sampler: cannot calloc metric_table\n");
 		return ENOMEM;
 	}
 
 	if (fname != NULL){
 		*g_f = fopen(*fname, "r");
 		if (!(*g_f)) {
-			/* this is not an error */
-			msglog(LDMS_LDEBUG,"WARNING: Could not open the source file '%s'\n",
+			/* this is not necessarily an error */
+			msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
 			       *fname);
 		}
 	} else {
@@ -196,7 +196,7 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 						     LDMS_V_U64);
 
 		if (!(*metric_table)[i]){
-			msglog(LDMS_LDEBUG,"cray_system_sampler: cannot add metric %d\n",
+			msglog(LDMS_LERROR,"cray_system_sampler: cannot add metric %d\n",
 			       i);
 			rc = ENOMEM;
 			return rc;
@@ -307,7 +307,7 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 			return rc;
 		rc = procnetdev_setup(msglog);
 		if (rc != 0) /* Warn but OK to continue */
-			msglog(LDMS_LDEBUG,"cray_system_sampler: procnetdev invalid\n");
+			msglog(LDMS_LERROR,"cray_system_sampler: procnetdev invalid\n");
 		break;
 	case NS_KGNILND:
 		return add_metrics_simple(set, KGNILND_METRICS,
