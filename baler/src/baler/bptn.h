@@ -198,6 +198,17 @@ uint32_t bptn_store_last_id(struct bptn_store *ptns);
  */
 uint32_t bptn_store_first_id(struct bptn_store *ptns);
 
+/**
+ * Get pattern ID corresponding to the given \c ptn.
+ *
+ * \retval ptn_id The pattern ID of \c ptn.
+ * \retval bmap_id_error_t If the given pattern is not found.
+ */
+static inline
+uint32_t bptn_store_get_id(struct bptn_store *ptns, struct bstr *ptn)
+{
+	return bmap_get_id(ptns->map, ptn);
+}
 #endif
 
 /**\}*/
