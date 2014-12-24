@@ -164,5 +164,5 @@ int btkn_store_char_insert(struct btkn_store *store, const char *cstr,
 		btkn_store_set_attr(store, tkn_id, attr);
 		c++;
 	}
+	return 0;
 }
-
