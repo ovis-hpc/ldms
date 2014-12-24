@@ -421,3 +421,16 @@ out:
 	pthread_mutex_unlock(&bm->mutex);
 	return id;
 }
+
+void bmap_dump(struct bmap *bmap)
+{
+	uint32_t max_id = bmap->hdr->next_id;
+	uint32_t id;
+	const struct bstr *bstr;
+	for (id = BMAP_ID_BEGIN; id < max_id; id++) {
+		bstr = bmap_get_bstr(bmap, id);
+		if (!bstr)
+			continue;
+		printf("%10u %.*s\n", id, bstr->blen, bstr->cstr);
+	}
+}

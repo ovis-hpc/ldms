@@ -53,4 +53,8 @@ balerd_LDFLAGS += @OCM_LIBDIR_FLAG@
 endif
 bin_PROGRAMS += balerd
 
+bmap_dump_SOURCES = bmap_dump.c
+bmap_dump_LDADD = libbaler.la
+bin_PROGRAMS += bmap_dump
+
 pkginclude_HEADERS = bmem.h bmapper.h butils.h bmlist.h

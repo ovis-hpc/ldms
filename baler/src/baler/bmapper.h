@@ -246,5 +246,6 @@ uint32_t bmap_insert(struct bmap *bm, const struct bstr *s);
 uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s,
 		uint32_t _id);
 
+void bmap_dump(struct bmap *bmap);
 #endif // _BMAPPER_H
 /**\}*/
