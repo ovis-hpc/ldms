@@ -69,27 +69,29 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
+#include "ldms.h"
 //What to do about having nvml.h ? Should we have zero'ed metrics even w/o nvml.h?
 #include "nvml.h"
 
 #define NVIDIA_MAX_DEVICES 4
 #define NVIDIA_MAX_METRIC_NAME_SIZE (NVML_DEVICE_NAME_BUFFER_SIZE+40)
 unsigned int nvidia_device_count;
-char nvidia_device_names[NVML_MAX_DEVICES][NVML_DEVICE_NAME_BUFFER_SIZE];
-nvmlPciInfo_t nvidia_pci[NVML_MAX_DEVICES];
+char nvidia_device_names[NVIDIA_MAX_DEVICES][NVML_DEVICE_NAME_BUFFER_SIZE];
+nvmlPciInfo_t nvidia_pci[NVIDIA_MAX_DEVICES];
+nvmlDevice_t nvidia_device[NVIDIA_MAX_DEVICES];
 
 static char* NVIDIA_METRICS[] = {"gpu_power_usage",
 				 "gpu_power_limit",
 				 "gpu_pstate",
 				 "gpu_temp",
-				 "gpu_memory_used", 
+				 "gpu_memory_used",
 				 "gpu_agg_dbl_ecc_register_file",
 				 "gpu_agg_dbl_ecc_l1_cache",
 				 "gpu_agg_dbl_ecc_l2_cache",
 				 "gpu_agg_dbl_ecc_total_errors",
-				 "gpu_util_rate"}
+				 "gpu_util_rate"};
 
-#define NUM_NVIDIA_METRICS (sizeof(NUM_NVIDIA_METRICS)/sizeof(NUM_NVIDIA_METRICS[0]))
+#define NUM_NVIDIA_METRICS (sizeof(NVIDIA_METRICS)/sizeof(NVIDIA_METRICS[0]))
 ldms_metric_t* metric_table_nvidia;
 int nvidia_valid;
 

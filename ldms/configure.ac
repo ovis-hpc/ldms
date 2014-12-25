@@ -78,8 +78,9 @@ dnl Other libraries
 OPTION_DEFAULT_DISABLE([gpcdr], [ENABLE_GPCDR]) dnl use gpcdr vs gpcd
 OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD]) dnl for the path to gpcd if relevant
 OPTION_WITH([gpcd], [GPCD])
-OPTION_DEFAULT_DISABLE([nvidia], [ENABLE_NVIDIA])
-OPTION_WITH([nvidia-inc-base], [NVIDIA_INC_BASE]) dnl for the path to nvidia include
+OPTION_DEFAULT_DISABLE([cray-nvidia], [ENABLE_CRAY_NVIDIA])
+OPTION_DEFAULT_DISABLE([cray-nvidia-inc], [ENABLE_CRAY_NVIDIA_INC])
+OPTION_WITH([cray-nvidia-inc], [CRAY_NVIDIA_INC]) dnl for the path to nvidia include
 dnl Will need to have the NVIDIA library in the LD_LIBRARY_PATH
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
@@ -290,19 +291,9 @@ then
           AC_MSG_RESULT([Use gpcd interface for gemini metrics.])
         fi
 
-	if test -z "$ENABLE_NVIDIA_TRUE"
+	if test -z "$ENABLE_CRAY_NVIDIA_TRUE"
 	then
-	nvidiaincfile="$NVIDIA_INC_BASE/include/nvml.h"
-	if ! test -f $nvidiaincfile; then
-           AC_MSG_WARN([
-         ++++++++++++++++++++++++++++++++++++++++++++
-           nvidia include file not available:
-           $nvidiaincfile
-           We hope your runtime environment has it.
-         ++++++++++++++++++++++++++++++++++++++++++++
-          ])
-          fi
-	  AC_DEFINE([HAVE_NVIDIA],[1],[Include NVIDIA metrics.])
+	  AC_DEFINE([HAVE_CRAY_NVIDIA],[1],[Include NVIDIA metrics.])
 	else
           AC_MSG_RESULT([Not including NVIDIA metrics.])
 	fi

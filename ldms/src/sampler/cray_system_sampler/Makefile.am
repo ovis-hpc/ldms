@@ -4,16 +4,14 @@ CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
-CRAY_CFLAGS_ = $(AM_CFLAGS) @NVIDIA_INCDIR_BASE_INCDIR_FLAG@
-NVIDIA_SOURCES_ = nvidia_metrics.h nvidia_metrics.c
 
 if ENABLE_LUSTRE
-CRAY_CFLAGS_ += @RCA_INCDIR_FLAG@ @KRCA_INCDIR_FLAG@ \
+CRAY_CFLAGS_ = $(AM_CFLAGS) @RCA_INCDIR_FLAG@ @KRCA_INCDIR_FLAG@ \
 			@CRAY_HSS_DEVEL_INCDIR_FLAG@ \
                         -I@CRAY_HSS_DEVEL_INCDIR@/rsms
 CRAY_LDFLAGS_ = $(AM_LDFLAGS) @RCA_LIB64DIR_FLAG@ @RCA_LIBDIR_FLAG@  \
 			@CRAY_HSS_DEVEL_LIBDIR_FLAG@ \
-			-lrca 
+			-lrca
 
 librtr_util_la_SOURCES = rtr_util.c rtr_util.h gemini.h
 librtr_util_la_CFLAGS = $(CRAY_CFLAGS_)
@@ -30,11 +28,18 @@ CRAY_LIBADD_ = $(COMMON_LIBADD) \
 			./librtr_util.la
 
 if ENABLE_GPCDR
-libcray_system_sampler_r_la_CFLAGS = $(CRAY_CFLAGS_)
-libcray_system_sampler_r_la_LDFLAGS = $(CRAY_LDFLAGS_)
+if ENABLE_CRAY_NVIDIA
+libcray_system_sampler_r_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@ -I /usr/include/nvidia/gdk/
 libcray_system_sampler_r_la_SOURCES = $(CRAY_SOURCES_) \
 	gemini_metrics_gpcdr.c gemini_metrics_gpcdr.h \
-	$(NVIDIA_SOURCES_)
+	nvidia_metrics.c nvidia_metrics.h
+libcray_system_sampler_r_la_LDFLAGS = $(CRAY_LDFLAGS_) -ldl
+else
+libcray_system_sampler_r_la_CFLAGS = $(CRAY_CFLAGS_)
+libcray_system_sampler_r_la_SOURCES = $(CRAY_SOURCES_) \
+	gemini_metrics_gpcdr.c gemini_metrics_gpcdr.h
+libcray_system_sampler_r_la_LDFLAGS = $(CRAY_LDFLAGS_)
+endif
 libcray_system_sampler_r_la_LIBADD = $(CRAY_LIBADD_)
 pkglib_LTLIBRARIES += libcray_system_sampler_r.la
 
@@ -48,12 +53,21 @@ libgpcd_util_la_CFLAGS = $(CRAY_CFLAGS_)
 libgpcd_util_la_LDFLAGS = $(CRAY_LDFLAGS_)
 pkglib_LTLIBRARIES += libgpcd_util.la
 
+
+if ENABLE_CRAY_NVIDIA
+libcray_system_sampler_d_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@ -I /usr/include/nvidia/gdk/
+libcray_system_sampler_d_la_SOURCES = $(CRAY_SOURCES_) \
+	gpcd_util.c gpcd_util.h \
+	gemini_metrics_gpcd.c gemini_metrics_gpcd.h \
+	nvidia_metrics.c nvidia_metrics.h
+libcray_system_sampler_d_la_LDFLAGS = $(CRAY_LDFLAGS_) -ldl
+else
 libcray_system_sampler_d_la_CFLAGS = $(CRAY_CFLAGS_)
-libcray_system_sampler_d_la_LDFLAGS = $(CRAY_LDFLAGS_)
 libcray_system_sampler_d_la_SOURCES = $(CRAY_SOURCES_) \
 	gpcd_util.c gpcd_util.h \
 	gemini_metrics_gpcd.c gemini_metrics_gpcd.h
-	$(NVIDIA_SOURCES_) \
+libcray_system_sampler_d_la_LDFLAGS = $(CRAY_LDFLAGS_)
+endif
 libcray_system_sampler_d_la_LIBADD = $(CRAY_LIBADD_) ./libgpcd_util.la
 pkglib_LTLIBRARIES += libcray_system_sampler_d.la
 endif
