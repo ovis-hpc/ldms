@@ -85,10 +85,11 @@ static char* NVIDIA_METRICS[] = {"gpu_power_usage",
 				 "gpu_pstate",
 				 "gpu_temp",
 				 "gpu_memory_used",
-				 "gpu_agg_dbl_ecc_device_memory",
-				 "gpu_agg_dbl_ecc_register_file",
 				 "gpu_agg_dbl_ecc_l1_cache",
 				 "gpu_agg_dbl_ecc_l2_cache",
+				 "gpu_agg_dbl_ecc_device_memory",
+				 "gpu_agg_dbl_ecc_register_file",
+				 "gpu_agg_dbl_ecc_texture_memory",
 				 "gpu_agg_dbl_ecc_total_errors",
 				 "gpu_util_rate"};
 

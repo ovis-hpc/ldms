@@ -84,7 +84,12 @@ static nvmlReturn_t (*nvmlDeviceGetPowerManagementLimitPtr) (nvmlDevice_t, unsig
 static nvmlReturn_t (*nvmlDeviceGetPerformanceStatePtr) (nvmlDevice_t, unsigned int*);
 static nvmlReturn_t (*nvmlDeviceGetTemperaturePtr) (nvmlDevice_t, nvmlTemperatureSensors_t, unsigned int *);
 static nvmlReturn_t (*nvmlDeviceGetMemoryInfoPtr) (nvmlDevice_t, nvmlMemory_t *);
-static nvmlReturn_t (*nvmlDeviceGetDetailedEccErrorsPtr) (nvmlDevice_t, nvmlEccBitType_t, nvmlEccCounterType_t, nvmlEccErrorCounts_t *);
+static nvmlReturn_t (*nvmlDeviceGetMemoryErrorCounterPtr)(nvmlDevice_t,
+							  nvmlMemoryErrorType_t,
+							  nvmlEccCounterType_t,
+							  nvmlMemoryLocation_t,
+							  unsigned long long *);
+//static nvmlReturn_t (*nvmlDeviceGetDetailedEccErrorsPtr) (nvmlDevice_t, nvmlEccBitType_t, nvmlEccCounterType_t, nvmlEccErrorCounts_t *);
 static nvmlReturn_t (*nvmlDeviceGetTotalEccErrorsPtr) (nvmlDevice_t, nvmlEccBitType_t, nvmlEccCounterType_t, unsigned long long *);
 static nvmlReturn_t (*nvmlDeviceGetUtilizationRatesPtr) (nvmlDevice_t, nvmlUtilization_t *);
 
@@ -100,7 +105,6 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 	int i, j;
 	int rc;
 
-	msglog(LDMS_LINFO, "Enter get metric size nvidia\n");
 
 	for (i = 0; i < nvidia_device_count; i++){
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
@@ -118,7 +122,6 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 	}
 	*m_sz = msize;
 	*d_sz = dsize;
-	msglog(LDMS_LINFO, "Leaving get metric size nvidia\n");
 	return 0;
 }
 
@@ -133,14 +136,12 @@ int add_metrics_nvidia(ldms_set_t set, int comp_id,
 	int count = 0;
 	int i, j;
 
-	msglog(LDMS_LINFO, "In add metrics nvidia\n");
-
 	if (NUM_NVIDIA_METRICS == 0){
                 return 0;
         }
 
-	msglog(LDMS_LINFO, "nvidia metric table allocating space for %d metrics\n",
-	       (nvidia_device_count*NUM_NVIDIA_METRICS));
+//	msglog(LDMS_LDEBUG, "nvidia metric table allocating space for %d metrics\n",
+//	       (nvidia_device_count*NUM_NVIDIA_METRICS));
         metric_table_nvidia = calloc((nvidia_device_count*NUM_NVIDIA_METRICS), sizeof(ldms_metric_t));
         if (!metric_table_nvidia){
                 msglog(LDMS_LDEBUG,"cray_system_sampler: cannot calloc metric_table_nvidia\n");
@@ -152,7 +153,6 @@ int add_metrics_nvidia(ldms_set_t set, int comp_id,
 			snprintf(name, NVIDIA_MAX_METRIC_NAME_SIZE,
 				 "%s.%s", nvidia_device_names[i],
 				 NVIDIA_METRICS[j]);
-			msglog(LDMS_LINFO, "Trying to add metric <%s>\n", name);
 			metric_table_nvidia[count] = ldms_add_metric(set, name,
 								     LDMS_V_U64);
 
@@ -164,7 +164,6 @@ int add_metrics_nvidia(ldms_set_t set, int comp_id,
 			count++;
 		}
 	}
-	msglog(LDMS_LINFO, "after add metrics nvidia\n");
 	return 0;
 }
 
@@ -257,24 +256,13 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 	//FIXME: how to handle errs? keep going?
 	for (i = 0; i < nvidia_device_count; i++){
 		unsigned int ret;
+		unsigned long long retl;
 		nvmlReturn_t rc;
 		nvmlMemory_t meminfo;
-		nvmlEccErrorCounts_t eccCounts;
 		nvmlUtilization_t util;
 		union ldms_value v1, v2;
 
-		//FIXME: well known order
-		/* gpu_power_usage
-		   gpu_power_limit
-		   gpu_pstate
-		   gpu_temp
-		   gpu_memory_used
-		   gpu_agg_dbl_ecc_register_file
-		   gpu_agg_dbl_ecc_l1_cache
-		   gpu_agg_dbl_ecc_l2_cache
-		   gpu_agg_dbl_ecc_total_errors
-		   gpu_util_rate
-		*/
+		//NOTE: well known order
 
 		if (nvmlDeviceGetPowerUsagePtr != NULL){
 			rc = (*nvmlDeviceGetPowerUsagePtr)(nvidia_device[i], &ret);
@@ -356,72 +344,98 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 
 
-//	nvmlReturn_t DECLDIR nvmlDeviceGetMemoryErrorCounter(nvmlDevice_t device,
-//     nvmlMemoryErrorType_t errorType,
-//     nvmlEccCounterType_t counterType,
-//     nvmlMemoryLocation_t locationType, unsigned long long *count);
-//     nvmlMemoryLocation_enum:
-//	NVML_MEMORY_LOCATION_L1_CACHE = 0,       //!< GPU L1 Cache
-//	NVML_MEMORY_LOCATION_L2_CACHE = 1,       //!< GPU L2 Cache
-//	NVML_MEMORY_LOCATION_DEVICE_MEMORY = 2,  //!< GPU Device Memory
-//	NVML_MEMORY_LOCATION_REGISTER_FILE = 3,  //!< GPU Register File
-//	NVML_MEMORY_LOCATION_TEXTURE_MEMORY = 4, //!< GPU Texture Memory
-//	nvmlReturn_t DECLDIR nvmlDeviceGetDetailedEccErrors(nvmlDevice_t device,
-//     nvmlMemoryErrorType_t errorType,
-//     nvmlEccCounterType_t counterType, nvmlEccErrorCounts_t *eccCounts);
-
-
-		//FIXME: temporary -- till can do this another way
-		v1.v_u64 = 0;
-		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-		found_metrics+=4;
-/*
-		if (nvmlDeviceGetDetailedEccErrorsPtr != NULL){
-			rc = nvmlDeviceGetDetailedEccErrors(nvidia_device[i],
-							    NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
-							    NVML_AGGREGATE_ECC, &eccCounts);
-
+		if (nvmlDeviceGetMemoryErrorCounterPtr != NULL){
+			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
+								NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
+								NVML_AGGREGATE_ECC,
+								NVML_MEMORY_LOCATION_L1_CACHE,
+								&retl);
 			if (rc !=  NVML_SUCCESS){
 				msglog(LDMS_LDEBUG,
-				       "ERR: issue getting aggregate double detailed ECC Errors for device %d\n",
+				       "ERR: issue getting aggregate double detailed ECC l1 cache Errors for device %d\n",
 				       i);
 				v1.v_u64 = 0;
 				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 			} else {
-				v1.v_u64 = (unsigned long long) (eccCounts.deviceMemory);
-				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
-				v1.v_u64 = (unsigned long long) (eccCounts.registerFile);
-				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
-				v1.v_u64 = (unsigned long long) (eccCounts.l1Cache);
-				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
-				v1.v_u64 = (unsigned long long) (eccCounts.l2Cache);
+				v1.v_u64 = retl;
 				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 				found_metrics++;
 			}
+
+			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
+								NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
+								NVML_AGGREGATE_ECC,
+								NVML_MEMORY_LOCATION_L2_CACHE,
+								&retl);
+			if (rc !=  NVML_SUCCESS){
+				msglog(LDMS_LDEBUG,
+				       "ERR: issue getting aggregate double detailed ECC l2 cache Errors for device %d\n",
+				       i);
+				v1.v_u64 = 0;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+			} else {
+				v1.v_u64 = retl;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+				found_metrics++;
+			}
+
+			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
+								NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
+								NVML_AGGREGATE_ECC,
+								NVML_MEMORY_LOCATION_DEVICE_MEMORY,
+								&retl);
+			if (rc !=  NVML_SUCCESS){
+				msglog(LDMS_LDEBUG,
+				       "ERR: issue getting aggregate double detailed ECC device memory Errors for device %d\n", i);
+				v1.v_u64 = 0;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+			} else {
+				v1.v_u64 = retl;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+				found_metrics++;
+			}
+
+			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
+								NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
+								NVML_AGGREGATE_ECC,
+								NVML_MEMORY_LOCATION_REGISTER_FILE,
+								&retl);
+			if (rc !=  NVML_SUCCESS){
+				msglog(LDMS_LDEBUG,
+				       "ERR: issue getting aggregate double detailed ECC register file Errors for device %d\n", i);
+				v1.v_u64 = 0;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+			} else {
+				v1.v_u64 = retl;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+				found_metrics++;
+			}
+
+
+			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
+								NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
+								NVML_AGGREGATE_ECC,
+								NVML_MEMORY_LOCATION_TEXTURE_MEMORY,
+								&retl);
+			if (rc !=  NVML_SUCCESS){
+				msglog(LDMS_LDEBUG,
+				       "ERR: issue getting aggregate double detailed ECC texture memory Errors for device %d\n", i);
+				v1.v_u64 = 0;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+			} else {
+				v1.v_u64 = retl;
+				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+				found_metrics++;
+			}
+
 		} else {
-			v1.v_u64 = (unsigned long long) (eccCounts.deviceMemory);
+			v1.v_u64 = 0;
 			ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-			found_metrics++;
-			v1.v_u64 = (unsigned long long) (eccCounts.registerFile);
 			ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-			found_metrics++;
-			v1.v_u64 = (unsigned long long) (eccCounts.l1Cache);
 			ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-			found_metrics++;
-			v1.v_u64 = (unsigned long long) (eccCounts.l2Cache);
 			ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-			found_metrics++;
+			ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 		}
-*/
 
 		if (nvmlDeviceGetTotalEccErrorsPtr != NULL){
 			unsigned long long teep;
@@ -477,8 +491,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 static int loadFctns(ldmsd_msg_log_f msglog){
 	char library_name[PATH_MAX];
 	void *dl1;
-
-	msglog(LDMS_LINFO, "entering load fctns\n");
 
 	char *path = getenv("LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH");
 	if (path) {
@@ -583,10 +595,14 @@ static int loadFctns(ldmsd_msg_log_f msglog){
 	}
 	msglog(LDMS_LINFO, "NVML devicegetmemoryInfo Found\n");
 
+	//NOTE: this will return a non-null value even though the function is deprecated.
+	//it fails when it is tried to be called
 //	nvmlDeviceGetDetailedEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetDetailedEccErrors");
-//	if ((dlerror() != NULL) || (!nvmlDeviceGetDetailedEccErrorsPtr)){
-//		msglog(LDMS_LERROR, "NVML DeviceGetDetailedEccErrors not found\n");
-//	}
+	nvmlDeviceGetMemoryErrorCounterPtr = dlsym(dl1, "nvmlDeviceGetMemoryErrorCounter");
+	if ((dlerror() != NULL) || (!nvmlDeviceGetMemoryErrorCounterPtr)){
+		msglog(LDMS_LERROR, "NVML DeviceGetMemoryErrorCounter not found\n");
+	}
+	msglog(LDMS_LINFO, "NVML devicegetMemoryErrorCounter Found\n");
 
 	nvmlDeviceGetTotalEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetTotalEccErrors");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetTotalEccErrorsPtr)){

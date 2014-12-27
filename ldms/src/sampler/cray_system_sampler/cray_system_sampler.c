@@ -201,7 +201,7 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 				   cray_system_sampler_sources_t source_id)
 {
 
-	int i, rc;
+	int i, rc, rc2;
 
 	switch (source_id){
 	case NS_NETTOPO:
@@ -257,8 +257,14 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 #ifdef HAVE_CRAY_NVIDIA
 	case NS_NVIDIA:
 		msglog(LDMS_LINFO, "Before nvidia setup\n");
-		nvidia_setup(msglog);
-		return get_metric_size_nvidia(m_sz, d_sz, msglog);
+		rc = nvidia_setup(msglog);
+		rc2 = get_metric_size_nvidia(m_sz, d_sz, msglog);
+		//FIXME: decide what is the best return. Will still want to add the metrics
+		//even if we cant load the library
+		if (rc != 0)
+			return rc;
+		if (rc2 != 0)
+			return rc2;
 		break;
 #endif
 	default:
