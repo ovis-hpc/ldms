@@ -100,20 +100,25 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 	int i, j;
 	int rc;
 
+	msglog(LDMS_LINFO, "Enter get metric size nvidia\n");
+
 	for (i = 0; i < nvidia_device_count; i++){
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
 			snprintf(name, NVIDIA_MAX_METRIC_NAME_SIZE,
 				 "%s.%s", nvidia_device_names[i],
 				 NVIDIA_METRICS[j]);
 			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
-			if (rc)
+			if (rc) {
+				msglog(LDMS_LERROR, "nvidia_metrics: Error getting metric size\n");
 				return rc;
+			}
 			msize += m;
 			dsize += d;
 		}
 	}
 	*m_sz = msize;
 	*d_sz = dsize;
+	msglog(LDMS_LINFO, "Leaving get metric size nvidia\n");
 	return 0;
 }
 
@@ -128,21 +133,38 @@ int add_metrics_nvidia(ldms_set_t set, int comp_id,
 	int count = 0;
 	int i, j;
 
+	msglog(LDMS_LINFO, "In add metrics nvidia\n");
+
+	if (NUM_NVIDIA_METRICS == 0){
+                return 0;
+        }
+
+	msglog(LDMS_LINFO, "nvidia metric table allocating space for %d metrics\n",
+	       (nvidia_device_count*NUM_NVIDIA_METRICS));
+        metric_table_nvidia = calloc((nvidia_device_count*NUM_NVIDIA_METRICS), sizeof(ldms_metric_t));
+        if (!metric_table_nvidia){
+                msglog(LDMS_LDEBUG,"cray_system_sampler: cannot calloc metric_table_nvidia\n");
+                return ENOMEM;
+        }
 
 	for (i = 0; i < nvidia_device_count; i++){
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
 			snprintf(name, NVIDIA_MAX_METRIC_NAME_SIZE,
 				 "%s.%s", nvidia_device_names[i],
 				 NVIDIA_METRICS[j]);
+			msglog(LDMS_LINFO, "Trying to add metric <%s>\n", name);
 			metric_table_nvidia[count] = ldms_add_metric(set, name,
 								     LDMS_V_U64);
 
-			if (!metric_table_nvidia[count])
+			if (!metric_table_nvidia[count]) {
+				msglog(LDMS_LERROR, "Failed to add metric <%s>\n", name);
 				return ENOMEM;
+			}
 			ldms_set_user_data(metric_table_nvidia[count], comp_id);
 			count++;
 		}
 	}
+	msglog(LDMS_LINFO, "after add metrics nvidia\n");
 	return 0;
 }
 
@@ -225,6 +247,8 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 	int found_metrics = 0;
 	int metric_count = 0;
 
+	msglog(LDMS_LINFO, "In sample metrics nvidia\n");
+
 	if (nvidia_valid == 0){
 		return 0;
 	}
@@ -260,10 +284,12 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v1.v_u64 = 0;
 			} else {
+				msglog(LDMS_LINFO, "After successful getpowerusage\n");
 				v1.v_u64 = (unsigned long long) ret;
 				found_metrics++;
 			}
 		} else {
+			msglog(LDMS_LINFO, "NULL power usage fct\n");
 			v1.v_u64 = 0;
 		}
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
@@ -276,6 +302,7 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v1.v_u64 = 0;
 			} else {
+				msglog(LDMS_LINFO, "After successful getpowermanagment limit\n");
 				v1.v_u64 = (unsigned long long) ret;
 				found_metrics++;
 			}
@@ -328,6 +355,30 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 		}
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 
+
+//	nvmlReturn_t DECLDIR nvmlDeviceGetMemoryErrorCounter(nvmlDevice_t device,
+//     nvmlMemoryErrorType_t errorType,
+//     nvmlEccCounterType_t counterType,
+//     nvmlMemoryLocation_t locationType, unsigned long long *count);
+//     nvmlMemoryLocation_enum:
+//	NVML_MEMORY_LOCATION_L1_CACHE = 0,       //!< GPU L1 Cache
+//	NVML_MEMORY_LOCATION_L2_CACHE = 1,       //!< GPU L2 Cache
+//	NVML_MEMORY_LOCATION_DEVICE_MEMORY = 2,  //!< GPU Device Memory
+//	NVML_MEMORY_LOCATION_REGISTER_FILE = 3,  //!< GPU Register File
+//	NVML_MEMORY_LOCATION_TEXTURE_MEMORY = 4, //!< GPU Texture Memory
+//	nvmlReturn_t DECLDIR nvmlDeviceGetDetailedEccErrors(nvmlDevice_t device,
+//     nvmlMemoryErrorType_t errorType,
+//     nvmlEccCounterType_t counterType, nvmlEccErrorCounts_t *eccCounts);
+
+
+		//FIXME: temporary -- till can do this another way
+		v1.v_u64 = 0;
+		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
+		found_metrics+=4;
+/*
 		if (nvmlDeviceGetDetailedEccErrorsPtr != NULL){
 			rc = nvmlDeviceGetDetailedEccErrors(nvidia_device[i],
 							    NVML_MEMORY_ERROR_TYPE_UNCORRECTED,
@@ -370,7 +421,7 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 			found_metrics++;
 		}
-
+*/
 
 		if (nvmlDeviceGetTotalEccErrorsPtr != NULL){
 			unsigned long long teep;
@@ -383,6 +434,7 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v2.v_u64 = 0;
 			} else {
+				msglog(LDMS_LINFO, "Successful get totaleccerrors\n");
 				v2.v_u64 = teep;
 				found_metrics++;
 			}
@@ -400,6 +452,7 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v1.v_u64 = 0;
 			} else {
+				msglog(LDMS_LINFO, "Successful get utilization rates\n");
 				v1.v_u64 = (unsigned long long)(util.gpu);
 				found_metrics++;
 			}
@@ -409,106 +462,143 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 	}
 
-	if (found_metrics != NUM_NVIDIA_METRICS*nvidia_device_count)
+	if (found_metrics != NUM_NVIDIA_METRICS*nvidia_device_count) {
+		msglog(LDMS_LERROR, "Wrong number of nvida metrics \n");
 		return EINVAL;
+	}
+
+	msglog(LDMS_LINFO, "Returning after sample\n");
 
 	return 0;
 
 }
 
 
-static int loadFcnts(){
+static int loadFctns(ldmsd_msg_log_f msglog){
+	char library_name[PATH_MAX];
 	void *dl1;
 
-	dl1 = dlopen("libnvidia-ml.so", RTLD_NOW | RTLD_GLOBAL );
-	//dl1 = dlopen("libnvidia-ml.so", RTLD_NOW | RTLD_DEEPBIND);
-	if (!dl1){
+	msglog(LDMS_LINFO, "entering load fctns\n");
+
+	char *path = getenv("LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH");
+	if (path) {
+		msglog(LDMS_LDEBUG, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH <%s>\n", path);
+		sprintf(library_name, "%s/libnvidia-ml.so", path);
+	} else {
+		msglog(LDMS_LERROR, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH undefined\n");
+		path = getenv("LDMSD_PLUGIN_LIBPATH");
+		if (!path) {
+			msglog(LDMS_LERROR, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH undefined\n");
+			sprintf(library_name, "libnvidia-ml.so");
+		} else {
+			sprintf(library_name, "%s/libnvidia-ml.so", path);
+		}
+	}
+
+	dl1 = dlopen(library_name, RTLD_NOW | RTLD_GLOBAL );
+	//dl1 = dlopen(library_name, RTLD_NOW | RTLD_DEEPBIND);
+	if ((dlerror() != NULL) || (!dl1)){
 		msglog(LDMS_LERROR, "NVML runtime library libnvidia-ml.so not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML runtime library libnvidia-ml.so found\n");
 
 	nvmlErrorStringPtr = dlsym(dl1, "nvmlErrorString");
 	if ((dlerror() != NULL) || (!nvmlErrorStringPtr)){
 		msglog(LDMS_LERROR, "NVML ErrorString not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML ErrorString Found\n");
 
 	nvmlInitPtr = dlsym(dl1, "nvmlInit");
 	if ((dlerror() != NULL) || (!nvmlInitPtr)){
 		msglog(LDMS_LERROR, "NVML init not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML init Found\n");
 
 	nvmlShutdownPtr = dlsym(dl1, "nvmlShutdown");
 	if ((dlerror() != NULL) || (!nvmlShutdownPtr)){
 		msglog(LDMS_LERROR, "NVML shutdown not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML shutdown Found\n");
 
 	nvmlDeviceGetCountPtr = dlsym(dl1, "nvmlDeviceGetCount");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetCountPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetCountPtr not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML devicegetcount Found\n");
 
 	nvmlDeviceGetHandleByIndexPtr = dlsym(dl1, "nvmlDeviceGetHandleByIndex");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetHandleByIndexPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetHandleByIndexPtr not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML devicegethandlebyindex Found\n");
 
 	nvmlDeviceGetNamePtr = dlsym(dl1, "nvmlDeviceGetName");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetNamePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetNamePtr not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML devicegetname Found\n");
 
 	nvmlDeviceGetPciInfoPtr = dlsym(dl1, "nvmlDeviceGetPciInfo");
-	if ((dlerror() != NULL) || (!nvmlDeviceGetPciInfo)){
+	if ((dlerror() != NULL) || (!nvmlDeviceGetPciInfoPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPciInfo not found\n");
 		return -1;
 	}
+	msglog(LDMS_LINFO, "NVML devicegetpciinfo Found\n");
 
 	// these ok to be null
 	nvmlDeviceGetPowerUsagePtr = dlsym(dl1, "nvmlDeviceGetPowerUsage");
-	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerUsage)){
+	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerUsagePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPowerUsage not found\n");
 	}
+	msglog(LDMS_LINFO, "NVML devicegetpowerusage Found\n");
 
 	nvmlDeviceGetPowerManagementLimitPtr = dlsym(dl1, "nvmlDeviceGetPowerManagementLimit");
-	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerManagementLimit)){
+	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerManagementLimitPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPowerManagementLimit not found\n");
 	}
+	msglog(LDMS_LINFO, "NVML devicegetpowermanagementlimit Found\n");
 
 	nvmlDeviceGetPerformanceStatePtr = dlsym(dl1, "nvmlDeviceGetPerformanceState");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPerformanceStatePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPerformanceState not found\n");
 	}
+	msglog(LDMS_LINFO, "NVML devicegetperformancestate Found\n");
 
 	nvmlDeviceGetTemperaturePtr = dlsym(dl1, "nvmlDeviceGetTemperature");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetTemperaturePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetTemperature not found\n");
 	}
+	msglog(LDMS_LINFO, "NVML devicegettemperature Found\n");
 
 	nvmlDeviceGetMemoryInfoPtr = dlsym(dl1, "nvmlDeviceGetMemoryInfo");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetMemoryInfoPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetMemoryInfo not found\n");
 	}
+	msglog(LDMS_LINFO, "NVML devicegetmemoryInfo Found\n");
 
-	nvmlDeviceGetDetailedEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetDetailedEccErrors");
-	if ((dlerror() != NULL) || (!nvmlDeviceGetDetailedEccErrors)){
-		msglog(LDMS_LERROR, "NVML DeviceGetDetailedEccErrors not found\n");
-	}
+//	nvmlDeviceGetDetailedEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetDetailedEccErrors");
+//	if ((dlerror() != NULL) || (!nvmlDeviceGetDetailedEccErrorsPtr)){
+//		msglog(LDMS_LERROR, "NVML DeviceGetDetailedEccErrors not found\n");
+//	}
 
 	nvmlDeviceGetTotalEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetTotalEccErrors");
-	if ((dlerror() != NULL) || (!nvmlDeviceGetDetailedEccErrors)){
-		msglog(LDMS_LERROR, "NVML DeviceGetDetailedEccErrors not found\n");
+	if ((dlerror() != NULL) || (!nvmlDeviceGetTotalEccErrorsPtr)){
+		msglog(LDMS_LERROR, "NVML DeviceGetTotalEccErrors not found\n");
 	}
+	msglog(LDMS_LINFO, "NVML devicegetTotalEccErrors Found\n");
 
 	nvmlDeviceGetUtilizationRatesPtr = dlsym(dl1, "nvmlDeviceGetUtilizationRates");
-	if ((dlerror() != NULL) || (!nvmlDeviceGetUtilizationRates)){
+	if ((dlerror() != NULL) || (!nvmlDeviceGetUtilizationRatesPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetUtilizationRates not found\n");
 	}
+	msglog(LDMS_LINFO, "NVML devicegetUtilizationRates Found\n");
 
 	return 0;
 
@@ -523,6 +613,7 @@ int nvidia_shutdown(ldmsd_msg_log_f msglog){
 		return -1;
 	}
 
+
 	return 0;
 }
 
@@ -535,11 +626,13 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 	nvidia_device_count = 0;
 	nvidia_valid = 0;
 
-	rc = loadFctns();
+	msglog(LDMS_LINFO,"In nvidia setup\n");
+	rc = loadFctns(msglog);
 	if (rc != 0){
 		msglog(LDMS_LERROR, "NVML loadFctns failed\n");
 		return EINVAL;
 	}
+	msglog(LDMS_LINFO,"After loadFcnts\n");
 
 	//FIXME: is there anywhere I can do shutdown? what happens if it isnt?
 	result = (*nvmlInitPtr)();
@@ -548,6 +641,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		       (*nvmlErrorStringPtr)(result));
 		return EINVAL;
 	}
+	msglog(LDMS_LINFO,"After nvml init\n");
 
 	result = (*nvmlDeviceGetCountPtr)(&nvidia_device_count);
 	if (result != NVML_SUCCESS){
@@ -555,6 +649,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		       (*nvmlErrorStringPtr)(result));
 		return EINVAL;
 	}
+	msglog(LDMS_LINFO,"After device get count <%d>\n", nvidia_device_count);
 
 	for (i = 0; i < nvidia_device_count; i++){
 		if (i >= NVIDIA_MAX_DEVICES){
@@ -567,6 +662,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
+		msglog(LDMS_LINFO,"After get handle by index\n");
 
 		result = (*nvmlDeviceGetNamePtr)(nvidia_device[i], nvidia_device_names[i],
 					   NVML_DEVICE_NAME_BUFFER_SIZE);
@@ -575,6 +671,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
+		msglog(LDMS_LINFO,"After get device name <%s>\n", nvidia_device_names[i]);
 
 		//FIXME: will we need this?
 		result = (*nvmlDeviceGetPciInfoPtr)(nvidia_device[i], &nvidia_pci[i]);
@@ -583,6 +680,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
+		msglog(LDMS_LINFO,"After get pci info\n");
 	}
 
 	nvidia_valid = 1;

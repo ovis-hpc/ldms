@@ -256,6 +256,7 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 #endif
 #ifdef HAVE_CRAY_NVIDIA
 	case NS_NVIDIA:
+		msglog(LDMS_LINFO, "Before nvidia setup\n");
 		nvidia_setup(msglog);
 		return get_metric_size_nvidia(m_sz, d_sz, msglog);
 		break;
@@ -461,9 +462,13 @@ static int add_metrics_generic(int comp_id,
 #endif
 #ifdef HAVE_CRAY_NVIDIA
 	case NS_NVIDIA:
+		msglog(LDMS_LINFO, "Before add metrics nvidia\n");
 		rc = add_metrics_nvidia(set, comp_id, msglog);
-		if (rc != 0)
+		if (rc != 0) {
+			msglog(LDMS_LERROR, "Error adding metrics nvidia\n");
 			return rc;
+		}
+		return 0;
 		break;
 #endif
 	default:
