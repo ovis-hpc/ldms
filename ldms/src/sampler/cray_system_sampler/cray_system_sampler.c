@@ -706,11 +706,12 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "config name=cray_system_sampler component_id=<comp_id>"
-		" set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist>\n"
+		" set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist> gpu_devices=<gpulist>\n"
 		"    comp_id             The component id value.\n"
 		"    setname             The set name.\n",
 		"    parsedrtr           The parsed interconnect file.\n",
 		"    ostlist             Lustre OSTs\n",
+		"    gpu_devices         GPU devices names\n",
 		"    gemini_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
 }
 
