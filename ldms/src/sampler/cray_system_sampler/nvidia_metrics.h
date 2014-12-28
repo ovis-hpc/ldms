@@ -79,6 +79,7 @@ unsigned int nvidia_device_count;
 char nvidia_device_names[NVIDIA_MAX_DEVICES][NVML_DEVICE_NAME_BUFFER_SIZE];
 nvmlPciInfo_t nvidia_pci[NVIDIA_MAX_DEVICES];
 nvmlDevice_t nvidia_device[NVIDIA_MAX_DEVICES];
+char* gpudevicestr;
 
 static char* NVIDIA_METRICS[] = {"gpu_power_usage",
 				 "gpu_power_limit",

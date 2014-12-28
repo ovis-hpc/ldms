@@ -95,21 +95,48 @@ static nvmlReturn_t (*nvmlDeviceGetUtilizationRatesPtr) (nvmlDevice_t, nvmlUtili
 
 int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			   ldmsd_msg_log_f msglog){
-	//FIXME: for now get the info for all the devices.
-	//later make it specified devices.
-
 	char name[NVIDIA_MAX_METRIC_NAME_SIZE];
 	size_t msize = 0;
 	size_t dsize = 0;
 	size_t m, d;
+	char* pch;
+	char* saveptr = NULL;
+	int count;
 	int i, j;
 	int rc;
 
+	*m_sz = 0;
+	*d_sz = 0;
+	nvidia_device_count = 0;
+	if (gpudevicestr == NULL){
+		//its ok to have no devices
+		msglog(LDMS_LDEBUG, "No nvidia devices specified\n");
+		return 0;
+	} else {
+		msglog(LDMS_LDEBUG, "Device string is <%s>\n", gpudevicestr);
+	}
 
-	for (i = 0; i < nvidia_device_count; i++){
+	//determine the devices...independent of whether they exist or not
+	count = 0;
+	nvidia_device_count = 0;
+	pch = strtok_r(gpudevicestr, ",\n", &saveptr); //FIXME: free?
+	while (pch != NULL){
+		if (count == NVIDIA_MAX_DEVICES){
+			msglog(LDMS_LERROR, "NVML: Too many devices %d\n", count);
+			return EINVAL;
+		}
+		if (strlen(pch) == 0){
+			msglog(LDMS_LERROR, "NVML: Empty device name %d\n", count);
+			return EINVAL;
+		}
+		msglog(LDMS_LDEBUG, "Will be looking for nvidia device <%s>\n", pch);
+		snprintf(nvidia_device_names[count], NVML_DEVICE_NAME_BUFFER_SIZE,
+			 "%s", pch);
+
+		nvidia_device[count] = NULL; //Note: this works
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
 			snprintf(name, NVIDIA_MAX_METRIC_NAME_SIZE,
-				 "%s.%s", nvidia_device_names[i],
+				 "%s.%s", nvidia_device_names[count],
 				 NVIDIA_METRICS[j]);
 			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
 			if (rc) {
@@ -119,7 +146,12 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			msize += m;
 			dsize += d;
 		}
+
+		count++;
+		pch = strtok_r(NULL, ",\n", &saveptr);
 	}
+
+	nvidia_device_count = count;
 	*m_sz = msize;
 	*d_sz = dsize;
 	return 0;
@@ -129,24 +161,22 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 int add_metrics_nvidia(ldms_set_t set, int comp_id,
 		       ldmsd_msg_log_f msglog){
 
-	//FIXME: for now get the info for all the devices.
-	//later make it specified devices
-
 	char name[NVIDIA_MAX_METRIC_NAME_SIZE];
-	int count = 0;
+	int count;
 	int i, j;
 
-	if (NUM_NVIDIA_METRICS == 0){
-                return 0;
-        }
+	if ((NUM_NVIDIA_METRICS == 0) || (nvidia_device_count == 0)){
+		msglog(LDMS_LDEBUG,"Adding no nvidia gpu metrics\n");
+		return 0;
+	}
 
 //	msglog(LDMS_LDEBUG, "nvidia metric table allocating space for %d metrics\n",
 //	       (nvidia_device_count*NUM_NVIDIA_METRICS));
-        metric_table_nvidia = calloc((nvidia_device_count*NUM_NVIDIA_METRICS), sizeof(ldms_metric_t));
-        if (!metric_table_nvidia){
-                msglog(LDMS_LDEBUG,"cray_system_sampler: cannot calloc metric_table_nvidia\n");
-                return ENOMEM;
-        }
+	metric_table_nvidia = calloc((nvidia_device_count*NUM_NVIDIA_METRICS), sizeof(ldms_metric_t));
+	if (!metric_table_nvidia){
+		msglog(LDMS_LDEBUG,"cray_system_sampler: cannot calloc metric_table_nvidia\n");
+		return ENOMEM;
+	}
 
 	for (i = 0; i < nvidia_device_count; i++){
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
@@ -243,15 +273,13 @@ static nvmlReturn_t getPState(nvmlDevice_t dev, unsigned int* retx){
 
 int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 	int i, j;
-	int found_metrics = 0;
 	int metric_count = 0;
 
-	msglog(LDMS_LINFO, "In sample metrics nvidia\n");
+	msglog(LDMS_LINFO, "In sample metrics nvidia <%d>\n", nvidia_device_count);
 
 	if (nvidia_valid == 0){
 		return 0;
 	}
-
 
 	//FIXME: how to handle errs? keep going?
 	for (i = 0; i < nvidia_device_count; i++){
@@ -262,8 +290,13 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 		nvmlUtilization_t util;
 		union ldms_value v1, v2;
 
-		//NOTE: well known order
+		if (nvidia_device[i] == NULL) {
+			msglog(LDMS_LDEBUG, "Device is null for <%s>\n",
+			       nvidia_device_names[i]);
+			continue;
+		}
 
+		//NOTE: well known order
 		if (nvmlDeviceGetPowerUsagePtr != NULL){
 			rc = (*nvmlDeviceGetPowerUsagePtr)(nvidia_device[i], &ret);
 			if (rc != NVML_SUCCESS){
@@ -274,7 +307,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				msglog(LDMS_LINFO, "After successful getpowerusage\n");
 				v1.v_u64 = (unsigned long long) ret;
-				found_metrics++;
 			}
 		} else {
 			msglog(LDMS_LINFO, "NULL power usage fct\n");
@@ -292,7 +324,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				msglog(LDMS_LINFO, "After successful getpowermanagment limit\n");
 				v1.v_u64 = (unsigned long long) ret;
-				found_metrics++;
 			}
 		} else {
 			v1.v_u64 = 0;
@@ -307,7 +338,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			v1.v_u64 = 0;
 		} else {
 			v1.v_u64 = (unsigned long long) ret;
-			found_metrics++;
 		}
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 
@@ -320,7 +350,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				v1.v_u64 = 0;
 			} else {
 				v1.v_u64 = (unsigned long long) ret;
-				found_metrics++;
 			}
 		} else {
 			v1.v_u64 = 0;
@@ -336,7 +365,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				v1.v_u64 = 0;
 			} else {
 				v1.v_u64 = (unsigned long long) (meminfo.used);
-				found_metrics++;
 			}
 		} else {
 			v1.v_u64 = 0;
@@ -359,7 +387,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				v1.v_u64 = retl;
 				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
 			}
 
 			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
@@ -376,7 +403,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				v1.v_u64 = retl;
 				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
 			}
 
 			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
@@ -392,7 +418,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				v1.v_u64 = retl;
 				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
 			}
 
 			rc = nvmlDeviceGetMemoryErrorCounterPtr(nvidia_device[i],
@@ -408,7 +433,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				v1.v_u64 = retl;
 				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
 			}
 
 
@@ -425,7 +449,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				v1.v_u64 = retl;
 				ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-				found_metrics++;
 			}
 
 		} else {
@@ -450,7 +473,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				msglog(LDMS_LINFO, "Successful get totaleccerrors\n");
 				v2.v_u64 = teep;
-				found_metrics++;
 			}
 		} else {
 			v2.v_u64 = 0;
@@ -468,17 +490,11 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 			} else {
 				msglog(LDMS_LINFO, "Successful get utilization rates\n");
 				v1.v_u64 = (unsigned long long)(util.gpu);
-				found_metrics++;
 			}
 		} else {
 			v1.v_u64 = 0;
 		}
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
-	}
-
-	if (found_metrics != NUM_NVIDIA_METRICS*nvidia_device_count) {
-		msglog(LDMS_LERROR, "Wrong number of nvida metrics \n");
-		return EINVAL;
 	}
 
 	msglog(LDMS_LINFO, "Returning after sample\n");
@@ -636,13 +652,20 @@ int nvidia_shutdown(ldmsd_msg_log_f msglog){
 
 int nvidia_setup(ldmsd_msg_log_f msglog){
 	nvmlReturn_t result;
-	int i;
+	nvmlDevice_t device;
+	char name[NVML_DEVICE_NAME_BUFFER_SIZE];
+	int count = 0;
+	int i,j;
 	int rc;
 
-	nvidia_device_count = 0;
 	nvidia_valid = 0;
 
-	msglog(LDMS_LINFO,"In nvidia setup\n");
+	//if we've asked for no devices, then skip all this and consider it valid
+	if (nvidia_device_count == 0){
+		nvidia_valid = 1;
+		return 0;
+	}
+
 	rc = loadFctns(msglog);
 	if (rc != 0){
 		msglog(LDMS_LERROR, "NVML loadFctns failed\n");
@@ -659,7 +682,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 	}
 	msglog(LDMS_LINFO,"After nvml init\n");
 
-	result = (*nvmlDeviceGetCountPtr)(&nvidia_device_count);
+	result = (*nvmlDeviceGetCountPtr)(&count);
 	if (result != NVML_SUCCESS){
 		msglog(LDMS_LERROR, "NVML: Failed to query device count: %s\n",
 		       (*nvmlErrorStringPtr)(result));
@@ -667,12 +690,10 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 	}
 	msglog(LDMS_LINFO,"After device get count <%d>\n", nvidia_device_count);
 
-	for (i = 0; i < nvidia_device_count; i++){
-		if (i >= NVIDIA_MAX_DEVICES){
-			msglog(LDMS_LERROR, "NVML: Too many devices %d\n", i);
-			return EINVAL;
-		}
-		result = (*nvmlDeviceGetHandleByIndexPtr)(i, &nvidia_device[i]);
+	//determine which devices corresponds to the ones asked for. its ok to ask for
+	//a device which does not exist.
+	for (i = 0; i < count; i++){
+		result = (*nvmlDeviceGetHandleByIndexPtr)(i, &device);
 		if (result != NVML_SUCCESS){
 			msglog(LDMS_LERROR, "NVML: Failed to get handle of device %d: %s\n",
 			       i, (*nvmlErrorStringPtr)(result));
@@ -680,23 +701,32 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		}
 		msglog(LDMS_LINFO,"After get handle by index\n");
 
-		result = (*nvmlDeviceGetNamePtr)(nvidia_device[i], nvidia_device_names[i],
-					   NVML_DEVICE_NAME_BUFFER_SIZE);
+		result = (*nvmlDeviceGetNamePtr)(device, name,
+						 NVML_DEVICE_NAME_BUFFER_SIZE);
 		if (result != NVML_SUCCESS){
 			msglog(LDMS_LERROR, "NVML: Failed to get name of device %d: %s\n",
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
-		msglog(LDMS_LINFO,"After get device name <%s>\n", nvidia_device_names[i]);
+		msglog(LDMS_LINFO,"After get device name <%s>\n", name);
 
-		//FIXME: will we need this?
-		result = (*nvmlDeviceGetPciInfoPtr)(nvidia_device[i], &nvidia_pci[i]);
-		if (result != NVML_SUCCESS){
-			msglog(LDMS_LERROR, "NVML: Failed to get pci info for device %d: %s\n",
-			       i, (*nvmlErrorStringPtr)(result));
-			return EINVAL;
+		//is this a device we are interested in?
+		for (j = 0; j < nvidia_device_count; j++){
+			if (strcmp(name, nvidia_device_names[j]) == 0){ //FIXME: note still have a problem handling spaces
+				msglog(LDMS_LDEBUG, "Found matching device for <%s>\n",
+				       nvidia_device_names[j]);
+				nvidia_device[j] = device;  //Note: copy works
+				//FIXME: will we need this?
+				result = (*nvmlDeviceGetPciInfoPtr)(nvidia_device[j], &nvidia_pci[j]);
+				if (result != NVML_SUCCESS){
+					msglog(LDMS_LERROR, "NVML: Failed to get pci info for device %s: %s\n",
+					       nvidia_device_names[j], (*nvmlErrorStringPtr)(result));
+					return EINVAL;
+				}
+				msglog(LDMS_LINFO,"After get pci info\n");
+				break;
+			}
 		}
-		msglog(LDMS_LINFO,"After get pci info\n");
 	}
 
 	nvidia_valid = 1;

@@ -256,11 +256,6 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 #endif
 #ifdef HAVE_CRAY_NVIDIA
 	case NS_NVIDIA:
-		msglog(LDMS_LINFO, "Before nvidia setup\n");
-		nvidia_device_count = 0;
-		// if this fails because cannot load the library will have nvidia_valid = 0
-		nvidia_setup(msglog);
-		msglog(LDMS_LINFO, "After nvidia_setup nvidia_valid=%d\n", nvidia_valid);
 		return get_metric_size_nvidia(m_sz, d_sz, msglog);
 		break;
 #endif
@@ -465,12 +460,15 @@ static int add_metrics_generic(int comp_id,
 #endif
 #ifdef HAVE_CRAY_NVIDIA
 	case NS_NVIDIA:
-		msglog(LDMS_LINFO, "Before add metrics nvidia\n");
 		rc = add_metrics_nvidia(set, comp_id, msglog);
 		if (rc != 0) {
 			msglog(LDMS_LERROR, "Error adding metrics nvidia\n");
 			return rc;
 		}
+		// if this fails because cannot load the library will have nvidia_valid = 0
+		rc = nvidia_setup(msglog);
+		if (rc != 0) /* Warn but ok to continue...nvidia_valid may be 0 */
+			msglog(LDMS_LDEBUG, "After nvidia_setup nvidia_valid=%d\n", nvidia_valid);
 		return 0;
 		break;
 #endif
@@ -582,6 +580,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		rtrfile = strdup(value);
 	else
 		rtrfile = NULL;
+#endif
+
+
+#ifdef HAVE_CRAY_NVIDIA
+	value = av_value(avl, "gpu_devices");
+	if (value)
+		gpudevicestr = strdup(value);
+	else
+		gpudevicestr = NULL;
 #endif
 
 	value = av_value(avl, "set");
