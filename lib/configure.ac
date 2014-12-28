@@ -6,6 +6,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE([foreign])
+m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
@@ -37,14 +38,14 @@ dnl if test "$disable_zap" != "yes"; then
 dnl   OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 dnl   OPTION_WITH([libevent], [LIBEVENT])
 dnl   OPTION_WITH_EVENT
-dnl 
+dnl
 dnl # we need libibverbs-devel and librdmacm-devel to support rdma
 dnl   if test "$disable_rdma" != "yes"; then
 dnl     AC_CHECK_HEADER([infiniband/verbs.h],
 dnl     [AC_DEFINE([HAVE_VERBS_H], [1],
 dnl       [Define to 1 if you have infiniband/verbs.h.])],
 dnl     [AC_MSG_ERROR([Missing header. libibverbs-devel not installed?])])
-dnl 
+dnl
 dnl     AC_CHECK_HEADER([rdma/rdma_cma.h],
 dnl     [AC_DEFINE([HAVE_RDMA_CMA_H], [1],
 dnl                [Define to 1 if you have rdma/rdma_cma.h.])],
