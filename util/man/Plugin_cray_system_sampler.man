@@ -12,8 +12,8 @@ ldmsctl> config name=cray_system_sampler [ <attr> = <value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The cray_system_sampler plugin provides data from a variety of sources on the XE/XK systems. 
-The cray_system_sampler is 
+The cray_system_sampler plugin provides data from a variety of sources on the XE/XK systems.
+The cray_system_sampler is
 .I
 not
 for XC systems.
@@ -21,14 +21,22 @@ for XC systems.
 If you have built with
 .B --enable-gpcdr
 then the cray_system_sampler will be named cray_system_sampler_r; if you have built with
-.B --enable-gpcd 
+.B --enable-gpcd
 then the cray_system_sampler will be named cray_system_sampler_d.
+
+.SH ENVIRONMENT
+If you have built with
+.B --enable_cray_nvidia
+and intend to collect data for gpu devices, then the following environment variable must be set:
+.TP
+LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH
+Path to libnvidia-ml.so library
 
 .SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile>
+name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist>
 .br
 ldmsctl configuration line
 .RS
@@ -57,7 +65,28 @@ CSV separated ost list. Non-existent values will be populated with 0's
 rtrfile=<rtrfile>
 .br
 parsed rtr file with media type and link information.
+.TP
+gpu_devices=<gpulist>
+.br
+CSV separated gpu device names list. Non-existent values will be populated with 0's.
 .RE
+
+
+.SH GPU INFORMATION
+GPU information is gotten from the libnvidia-ml.so. You will need to specify the GPU device names about which you want to collect data. An empty device list will not attempt to collect for any devices.
+
+In order to enable the ability to collect GPU information, then build with:
+.B --enable_cray_nvidia
+and with
+.B --with-cray-nvidia-inc
+set to the path to nvml.h.
+
+Further, the configuration variable
+.B gpu_devices
+will determine whether gpu information will be collected. If you specify devices, then also specify the path to libnvidia_ml.so via the environment variable
+.B LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH
+as described above. If you do not specify devices, then collection will not be attempted and neither the environment variable nor the library need exist.
+
 
 .SH LUSTRE INFORMATION
 Lustre information can be gotten from /proc/fs/lustre/llite:
@@ -66,12 +95,12 @@ Lustre information can be gotten from /proc/fs/lustre/llite:
 sh-3.2# ls /proc/fs/lustre/llite/
 lustrefs-ffff88081d38f800  snx11024-ffff88041f1aec00
 .if
-You will need to specify the Lustre mount points that you want to collect data about (e.g. "lustrefs,snx11024" in this case)
+You will need to specify the Lustre mount points about which you want to collect data (e.g. "lustrefs,snx11024" in this case).
 
 .SH INTERCONNECT INFORMATION
 The interconnect information is produced in two steps:
 .TP
-1) From the smw as root: 
+1) From the smw as root:
 .RS
     rtr --interconnect >> interconnect.txt
 .RE
@@ -101,9 +130,9 @@ OR
 .TP
 b) if it does not, then this information can be calculated from the raw performance counters via the gpcd interface. In this case, you will need the gpcd libraries.
 .PP
-NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to your Cray contact. 
+NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to your Cray contact.
 .PP
-The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with 
+The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with
 .B --enable-gpcdr
 then the cray_system_sampler will be named cray_system_sampler_r; if you have built with
 .B --enable-gpcd

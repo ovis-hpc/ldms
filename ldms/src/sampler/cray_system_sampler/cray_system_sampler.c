@@ -76,6 +76,22 @@
 #ifdef HAVE_GPCDR
 #include "gemini_metrics_gpcdr.h"
 
+#ifdef HAVE_CRAY_NVIDIA
+#include "nvidia_metrics.h"
+typedef enum {
+	NS_NETTOPO,
+	NS_LINKSMETRICS,
+	NS_NICMETRICS,
+	NS_LUSTRE,
+	NS_VMSTAT,
+	NS_LOADAVG,
+	NS_CURRENT_FREEMEM,
+	NS_KGNILND,
+	NS_PROCNETDEV,
+	NS_NVIDIA,
+	NS_NUM
+} cray_system_sampler_sources_t;
+#else
 typedef enum {
 	NS_NETTOPO,
 	NS_LINKSMETRICS,
@@ -88,9 +104,27 @@ typedef enum {
 	NS_PROCNETDEV,
 	NS_NUM
 } cray_system_sampler_sources_t;
+#endif
+
 #else
 #include "gemini_metrics_gpcd.h"
 
+#ifdef HAVE_CRAY_NVIDIA
+#include "nvidia_metrics.h"
+typedef enum {
+	NS_NETTOPO,
+	NS_GEM_LINK_PERF,
+	NS_NIC_PERF,
+	NS_LUSTRE,
+	NS_VMSTAT,
+	NS_LOADAVG,
+	NS_CURRENT_FREEMEM,
+	NS_KGNILND,
+	NS_PROCNETDEV,
+	NS_NVIDIA,
+	NS_NUM
+} cray_system_sampler_sources_t;
+#else
 typedef enum {
 	NS_NETTOPO,
 	NS_GEM_LINK_PERF,
@@ -103,6 +137,7 @@ typedef enum {
 	NS_PROCNETDEV,
 	NS_NUM
 } cray_system_sampler_sources_t;
+#endif
 #endif
 
 
@@ -217,6 +252,11 @@ static int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 		break;
 	case NS_GEM_LINK_PERF:
 		return get_metric_size_gem_link_perf(m_sz, d_sz, msglog);
+		break;
+#endif
+#ifdef HAVE_CRAY_NVIDIA
+	case NS_NVIDIA:
+		return get_metric_size_nvidia(m_sz, d_sz, msglog);
 		break;
 #endif
 	default:
@@ -418,6 +458,20 @@ static int add_metrics_generic(int comp_id,
 		return 0;
 		break;
 #endif
+#ifdef HAVE_CRAY_NVIDIA
+	case NS_NVIDIA:
+		rc = add_metrics_nvidia(set, comp_id, msglog);
+		if (rc != 0) {
+			msglog(LDMS_LERROR, "Error adding metrics nvidia\n");
+			return rc;
+		}
+		// if this fails because cannot load the library will have nvidia_valid = 0
+		rc = nvidia_setup(msglog);
+		if (rc != 0) /* Warn but ok to continue...nvidia_valid may be 0 */
+			msglog(LDMS_LDEBUG, "After nvidia_setup nvidia_valid=%d\n", nvidia_valid);
+		return 0;
+		break;
+#endif
 	default:
 		break;
 	}
@@ -528,6 +582,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		rtrfile = NULL;
 #endif
 
+
+#ifdef HAVE_CRAY_NVIDIA
+	value = av_value(avl, "gpu_devices");
+	if (value)
+		gpudevicestr = strdup(value);
+	else
+		gpudevicestr = NULL;
+#endif
+
 	value = av_value(avl, "set");
 	if (value)
 		rc = create_metric_set(value);
@@ -571,7 +634,7 @@ static int sample(void)
 		case NS_VMSTAT:
 			if (sample_metrics_vmstat_ptr != NULL)
 				rc = sample_metrics_vmstat_ptr(msglog);
-			else 
+			else
 				rc = 0;
 			break;
 		case NS_CURRENT_FREEMEM:
@@ -607,6 +670,11 @@ static int sample(void)
 			rc = sample_metrics_gem_link_perf(msglog);
 			break;
 #endif
+#ifdef HAVE_CRAY_NVIDIA
+		case NS_NVIDIA:
+			rc = sample_metrics_nvidia(msglog);
+			break;
+#endif
 		default:
 			//do nothing
 			break;
@@ -638,11 +706,12 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "config name=cray_system_sampler component_id=<comp_id>"
-		" set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist>\n"
+		" set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist> gpu_devices=<gpulist>\n"
 		"    comp_id             The component id value.\n"
 		"    setname             The set name.\n",
 		"    parsedrtr           The parsed interconnect file.\n",
 		"    ostlist             Lustre OSTs\n",
+		"    gpu_devices         GPU devices names\n",
 		"    gemini_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
 }
 

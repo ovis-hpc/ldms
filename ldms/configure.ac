@@ -79,6 +79,10 @@ OPTION_DEFAULT_DISABLE([gemini-gpcdr], [ENABLE_GEMINI_GPCDR]) dnl use gpcdr for 
 OPTION_DEFAULT_DISABLE([aries-gpcdr], [ENABLE_ARIES_GPCDR]) dnl use gpcdr for aries (not mutually exclusive)
 OPTION_DEFAULT_DISABLE([gemini-gpcd], [ENABLE_GEMINI_GPCD]) dnl use gpcd for gemini (not mutually exclusive) for the path to gpcd if relevant
 OPTION_WITH([gemini-gpcd], [GEMINI_GPCD])
+OPTION_DEFAULT_DISABLE([cray-nvidia], [ENABLE_CRAY_NVIDIA])
+OPTION_DEFAULT_DISABLE([cray-nvidia-inc], [ENABLE_CRAY_NVIDIA_INC])
+OPTION_WITH([cray-nvidia-inc], [CRAY_NVIDIA_INC]) dnl for the path to nvidia include
+dnl Will need to have the NVIDIA library in the LD_LIBRARY_PATH
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
 OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
@@ -285,6 +289,12 @@ then
           AC_MSG_RESULT([Building gpcd interface for gemini metrics.])
         fi
 
+	if test -z "$ENABLE_CRAY_NVIDIA_TRUE"
+	then
+	  AC_DEFINE([HAVE_CRAY_NVIDIA],[1],[Include NVIDIA metrics.])
+	else
+          AC_MSG_RESULT([Not including NVIDIA metrics.])
+	fi
 fi
 
 dnl Reset LIBS variable.
