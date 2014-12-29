@@ -44,4 +44,5 @@ libstore_derived_csv_la_SOURCES = store_derived_csv.c
 libstore_derived_csv_la_CFLAGS = $(AM_CFLAGS)
 libstore_derived_csv_la_LIBADD = $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_derived_csv.la
+
 endif

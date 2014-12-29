@@ -20,7 +20,7 @@ The store_derived_csv plugin is a CSV store.
 
 .TP
 .BR config
-name=<plugin_name> path=<path> derivedconf=<confname>[ alt_header=<altheader> idpos=<idpos> agesec=<agesec>]
+name=<plugin_name> path=<path> derivedconf=<confname>[ alt_header=<altheader> idpos=<idpos> agesec=<agesec> rolltype=<rolltype> rollover=<rollover> ]
 .br
 ldmsctl configuration line
 .RS
@@ -48,6 +48,31 @@ The default output format in the CSV stores writes out a separate unique identif
 agesec=<agesec>
 .br
 Set output data field Flag = 1 if the interval between two successive data reports for the same host's same metric set is greater than agesec.
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are: 
+.RS 
+.TP
+1 
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
 .RE
 
 .SH LDMSCTL STORE ATTRIBUTE SYNTAX
