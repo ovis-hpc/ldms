@@ -6,7 +6,7 @@
 ldmsctl \- Issue control commands to ldmsd.
 
 .SH SYNOPSIS
-ldmsctl [OPTION...] 
+ldmsctl [OPTION...]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
@@ -212,7 +212,7 @@ metric=<metrics>
 .br
 A list of metric names in the specified set. If not specified, all metrics will be saved.
 .TP
-hosts=<hosts> 
+hosts=<hosts>
 A list of hosts to whose set data will be saved.
 If not specified, all hosts that have this set will
 have their data saved.
@@ -272,7 +272,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 # Set LDMSD_SOCKPATH for non-root. Change -S arguments accordingly)
-export LDMSD_SOCKPATH=/tmp/run/ldmsd  
+export LDMSD_SOCKPATH=/tmp/run/ldmsd
 LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
 # Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
 echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
@@ -296,15 +296,15 @@ Execute collect.sh (Note: When executing this across many nodes you would use pd
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
 ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
-ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat 
+ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat
 .fi
 
 .PP
 .nf
 5) Example lines for configuring one store type but for 2 different metric sets:
 ldmsctl> load name=store_csv
-ldmsctl> config name=store_csv path=/XXX/stored_data  
-ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo 
+ldmsctl> config name=store_csv path=/XXX/stored_data
+ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo
 ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
 .fi
 
@@ -331,5 +331,5 @@ Notes for example 6:
 
 .SH SEE ALSO
 LDMS_Authentication(7), LDMS_QuickStart(7), ldmsd(1), ldms_ls(1),
-Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)

@@ -54,7 +54,7 @@ Set output data field Flag = 1 if the interval between two successive data repor
 
 .TP
 .BR store
-name=<plugin_name> set=<set_name> comp_type=<type>  container=<container> 
+name=<plugin_name> set=<set_name> comp_type=<type>  container=<container>
 .br
 ldmsctl store line
 .RS
@@ -89,7 +89,7 @@ Example:
 .nf
 .RS
 $more /XXX/storeder.conf
-sys#1,0,1    
+sys#1,0,1
 idle#0,1,1000000
 Active,0,1
 user#0,1,1000000
@@ -108,7 +108,7 @@ Z+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6),0,20
 .PP
 Blank lines are allowed in the file as shown
 .PP
-Any metric can only be in the file once. 
+Any metric can only be in the file once.
 
 .SH NOTES
 If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator
@@ -130,5 +130,5 @@ ldmsctl> quit
 
 .SH SEE ALSO
 LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
-Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_procsensors(7), Plugin_store_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)

@@ -7,7 +7,7 @@ ldms_ls.man
 dist_man7_MANS= \
 LDMS_Authentication.man \
 LDMS_QuickStart.man \
-Plugin_cray_system_sampler.man \
+Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
 Plugin_lustre2_client.man \
 Plugin_meminfo.man \

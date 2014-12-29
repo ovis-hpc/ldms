@@ -18,7 +18,7 @@ aggregators) to prove they share a secret with the server. The secret is a text 
        secretword=X
 .RE
 .PP
-where X is a string at least 5 characters long. Lines starting with # in the file are ignored. 
+where X is a string at least 5 characters long. Lines starting with # in the file are ignored.
 .PP
 Three locations are checked in order for the secret before failure is declared:
 .RS
@@ -31,9 +31,9 @@ Three locations are checked in order for the secret before failure is declared:
 .RE
 
 where $HOME is taken from
-.I /etc/password 
+.I /etc/password
 and $SYSCONFDIR is determined at ldms compile time. If the LDMS_AUTH_FILE is not set or does not point to a good secret, the search continues with the next location.
- 
+
 To provide security, the secret file permissions should be set so that only the file owner can read it.
 
 .SH ENVIRONMENT
@@ -44,6 +44,6 @@ In this release, ldmsd does not verify that the secret file has permissions 400.
 
 .SH SEE ALSO
 ldmsctl(1), ldmsd(1), ldms_ls(1), LDMS_QuickStart(7),
-Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
 

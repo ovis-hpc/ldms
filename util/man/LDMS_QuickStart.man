@@ -11,7 +11,7 @@ There are three main functional components described below.
 .PP
 .I
 Samplers
-run one or more plugins that periodically sample data of interest. 
+run one or more plugins that periodically sample data of interest.
 Each plugin defines a group of metrics called a metric set.
 The sampling frequency is user defined and can be dynamically changed.
 A host can simultaneously run multiple plugins.
@@ -33,14 +33,14 @@ Maximum fan-in varies by transport but is roughly
 9,000:1 for the socket transport and for the RDMA
 transport over Infiniband. It is > 15000:1 for RDMA over
 the Cray Gemini transport. Daisy chaining  is not limited to two levels;
-multiple aggregators may aggregate from the same sampler or aggregator ldmsd. 
+multiple aggregators may aggregate from the same sampler or aggregator ldmsd.
 Fan-in at higher levels is limited
 by the aggregator host capabilities (CPU, memory, network
 bandwidth, and storage bandwidth).
 .PP
 .I
 Storage
-plugins write in a variety of formats. 
+plugins write in a variety of formats.
 Comma Separated Value (CSV) file storage of metric sets
 plugins are provided. Storage occurs when a
 valid updated metric set data is collected by an aggregator that
@@ -183,7 +183,7 @@ ldmsctl>
 .ni
 
 .SS Configure a collector with ldmsctl
-Now configure "meminfo" collector plugin to collect every second. 
+Now configure "meminfo" collector plugin to collect every second.
 .br
 Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
 .nf
@@ -225,7 +225,7 @@ ldmsctl> quit
 .SS Verifying the collector
 .PP
 At this point the ldmsd collector should be checked using the utility
-.B ldms_ls 
+.B ldms_ls
 (See Using ldms_ls below)
 
 .SH CONFIGURE COLLECTORS ON HOST VM1 VIA BASH SCRIPT
@@ -238,7 +238,7 @@ export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
 export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
 # LDMSD_SOCKPATH for non-root. Change -S arguments accordingly.
-export LDMSD_SOCKPATH=/tmp/run/ldmsd  
+export LDMSD_SOCKPATH=/tmp/run/ldmsd
 LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
 # Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
 echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
@@ -262,7 +262,7 @@ Execute collect.sh (Note: When executing this across many nodes you would use pd
 .RE
 .PP
 At this point the ldmsd collector should be checked using the utility
-.B ldms_ls 
+.B ldms_ls
 (See Using ldms_ls below)
 
 
@@ -309,7 +309,7 @@ Now configure ldmsd to collect metric sets from vm1_1 and vm1_2 every second (10
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
 ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
 ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
-ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat 
+ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat
 ldmsctl> quit
 .RE
 .ni
@@ -330,7 +330,7 @@ Notes:
 A script based configuration would be done in the same manner as that for collection above
 .PP
 At this point the ldmsd collector should be checked using the utility
-.B ldms_ls 
+.B ldms_ls
 (See Using ldms_ls below). In this case you should see metric sets for both vm1_1 and vm1_2 displayed when you query the aggregator ldmsd using ldms_ls.
 
 
@@ -370,8 +370,8 @@ Configure ldmsd to store metric sets being retrieved from vm1_1 and vm1_2
 .nf
 .RS
 ldmsctl> load name=store_csv
-ldmsctl> config name=store_csv path=~/stored_data  
-ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo 
+ldmsctl> config name=store_csv path=~/stored_data
+ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo
 ldmsctl> quit
 .RE
 .fi
@@ -624,7 +624,7 @@ Running as a user with "max locked memory" set too low.
 The following is an example of trying to run ldms_ls as a user with "max locked memory" set to 32k:
 .nf
 .RS
-ldms_ls -h <hostname> -x rdma -p <portnum> 
+ldms_ls -h <hostname> -x rdma -p <portnum>
 libibverbs: Warning: RLIMIT_MEMLOCK is 32768 bytes.
    This will severely limit memory registrations.
 RDMA: recv_buf reg_mr failed: error 12
@@ -719,6 +719,6 @@ No known bugs.
 
 .SH SEE ALSO
 LDMS_Authentication(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
-Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
 
