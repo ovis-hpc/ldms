@@ -70,35 +70,9 @@
 #include <ctype.h>
 #include <wordexp.h>
 #include "ldms.h"
-//What to do about having nvml.h ? Should we have zero'ed metrics even w/o nvml.h?
-#include "nvml.h"
 
-#define NVIDIA_MAX_DEVICES 4
-#define NVIDIA_MAX_METRIC_NAME_SIZE (NVML_DEVICE_NAME_BUFFER_SIZE+40)
-unsigned int nvidia_device_count;
-char nvidia_device_names[NVIDIA_MAX_DEVICES][NVML_DEVICE_NAME_BUFFER_SIZE];
-nvmlPciInfo_t nvidia_pci[NVIDIA_MAX_DEVICES];
-nvmlDevice_t nvidia_device[NVIDIA_MAX_DEVICES];
-char* gpudevicestr;
-
-static char* NVIDIA_METRICS[] = {"gpu_power_usage",
-				 "gpu_power_limit",
-				 "gpu_pstate",
-				 "gpu_temp",
-				 "gpu_memory_used",
-				 "gpu_agg_dbl_ecc_l1_cache",
-				 "gpu_agg_dbl_ecc_l2_cache",
-				 "gpu_agg_dbl_ecc_device_memory",
-				 "gpu_agg_dbl_ecc_register_file",
-				 "gpu_agg_dbl_ecc_texture_memory",
-				 "gpu_agg_dbl_ecc_total_errors",
-				 "gpu_util_rate"};
-
-#define NUM_NVIDIA_METRICS (sizeof(NVIDIA_METRICS)/sizeof(NVIDIA_METRICS[0]))
-ldms_metric_t* metric_table_nvidia;
-int nvidia_valid;
-
-
+int nvidia_config_arg(char* configarg, char* configvalue,
+		      ldmsd_msg_log_f msglog);
 int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			   ldmsd_msg_log_f msglog);
 int add_metrics_nvidia(ldms_set_t set, int comp_id,
@@ -109,3 +83,23 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog);
 
 
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

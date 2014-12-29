@@ -205,6 +205,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		mvalue = atoi(value);
 	}
 
+	value = av_value(avl, "gpu_devices");
+	rc = handle_config_arg_generic(NS_NVIDIA, "gpu_devices",
+				       value, msglog);
+	if (rc != 0)
+                goto out;
+
 	rc = hsn_metrics_config(mvalue);
 	if (rc != 0)
 		goto out;
@@ -286,10 +292,11 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "config name=cray_aries_r_sampler component_id=<comp_id>"
-		" set=<setname> llite=<ostlist>\n"
+		" set=<setname> llite=<ostlist> gpu_devices=<gpulist>\n"
 		"    comp_id             The component id value.\n"
 		"    setname             The set name.\n",
 		"    ostlist             Lustre OSTs\n",
+		"    gpu_devices         GPU devices names\n",
 		"    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
 }
 

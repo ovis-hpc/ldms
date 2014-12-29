@@ -69,6 +69,7 @@
 #include <wordexp.h>
 #include "ldmsd.h"
 
+#include "nvml.h"
 #include "nvidia_metrics.h"
 
 static const char* (*nvmlErrorStringPtr) (nvmlReturn_t);
@@ -92,6 +93,53 @@ static nvmlReturn_t (*nvmlDeviceGetMemoryErrorCounterPtr)(nvmlDevice_t,
 //static nvmlReturn_t (*nvmlDeviceGetDetailedEccErrorsPtr) (nvmlDevice_t, nvmlEccBitType_t, nvmlEccCounterType_t, nvmlEccErrorCounts_t *);
 static nvmlReturn_t (*nvmlDeviceGetTotalEccErrorsPtr) (nvmlDevice_t, nvmlEccBitType_t, nvmlEccCounterType_t, unsigned long long *);
 static nvmlReturn_t (*nvmlDeviceGetUtilizationRatesPtr) (nvmlDevice_t, nvmlUtilization_t *);
+
+#define NVIDIA_MAX_DEVICES 4
+#define NVIDIA_MAX_METRIC_NAME_SIZE (NVML_DEVICE_NAME_BUFFER_SIZE+40)
+static unsigned int nvidia_device_count = 0;
+static char nvidia_device_names[NVIDIA_MAX_DEVICES][NVML_DEVICE_NAME_BUFFER_SIZE];
+static nvmlPciInfo_t nvidia_pci[NVIDIA_MAX_DEVICES];
+static nvmlDevice_t nvidia_device[NVIDIA_MAX_DEVICES];
+static char* gpudevicestr = NULL;
+
+static char* NVIDIA_METRICS[] = {"gpu_power_usage",
+				 "gpu_power_limit",
+				 "gpu_pstate",
+				 "gpu_temp",
+				 "gpu_memory_used",
+				 "gpu_agg_dbl_ecc_l1_cache",
+				 "gpu_agg_dbl_ecc_l2_cache",
+				 "gpu_agg_dbl_ecc_device_memory",
+				 "gpu_agg_dbl_ecc_register_file",
+				 "gpu_agg_dbl_ecc_texture_memory",
+				 "gpu_agg_dbl_ecc_total_errors",
+				 "gpu_util_rate"};
+
+#define NUM_NVIDIA_METRICS (sizeof(NVIDIA_METRICS)/sizeof(NVIDIA_METRICS[0]))
+static ldms_metric_t* metric_table_nvidia = NULL;
+static int nvidia_valid = 0;
+
+//NOTE: default gpudevicestr is NULL
+int nvidia_config_arg(char* configarg, char* configvalue, ldmsd_msg_log_f msglog){
+	if (configarg == NULL){
+		msglog(LDMS_LERROR, "NULL config arg <%s>\n", configarg);
+		return EINVAL;
+	}
+	if (strcmp(configarg, "gpu_devices") == 0){
+		if (!configvalue){
+			gpudevicestr = NULL;
+		} else {
+			gpudevicestr = strdup(configvalue);
+		}
+		return 0;
+	} else {
+		msglog(LDMS_LERROR, "Unknown config arg <%s>\n", configarg);
+		return EINVAL;
+	}
+
+	return EINVAL;
+}
+
 
 int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			   ldmsd_msg_log_f msglog){

@@ -108,3 +108,5 @@ endif
 libcray_gemini_r_sampler_la_LIBADD = $(CRAY_LIBADD_)
 pkglib_LTLIBRARIES += libcray_aries_r_sampler.la
 endif
+
+endif

@@ -75,27 +75,55 @@
 
 
 /**
- * linksmetrics and nicmetrics have no defaults and will have to be handled in the sampler.
- * energy and nettopo have defaults and may have to be bypassed in the sampler
+ * The intent is that the various cray network sampler files handle whatever has
+ * to be handled for the particular transports (gemini vs aries) AND
+ * you can build different versions of the network sampler at the same time
+ * (e.g., both gemini_r and gemini_d).
+ *
+ * Everything else is handled here in the "generic" functions that have a
+ * big switch statement. All those cases are handled within the switch statement
+ * either by a simple interface or a particular interface. The former are calls
+ * called "simple" which are static to cray_sampler_base.c. The latter are
+ * particular calls which are defined in separate files (e.g, lustre).
+ *
+ * Right now, several calls which are generally simple, but might have some
+ * particul-osity (e.g., sample function might be particular) are grouped
+ * together in "general_metrics" but could be split out into their own files.
+ *
+ * Anything can be defined here with a default and bypassed in the cray network
+ * sampler files.
+ *
+ * Specifically then:
+ * 1) the transport related cases, linksmetrics and nicmetrics, have no defaults
+ * (other than do nothing) and will have to be handled in the network base
+ * sampler files.
+ * 2) other data sources which are handled or not in different transport
+ * cases, in particular, energy and nettopo, have defaults and may be
+ * bypassed in the sampler.
+ * 3) other non-network related data sources, in particular existence of
+ * cray_nvidia as specified by the build, is handled in this related c file.
  */
 typedef enum {
-        NS_NETTOPO,
+	NS_NETTOPO,
 	NS_LINKSMETRICS,
-        NS_NICMETRICS,
+	NS_NICMETRICS,
 	NS_ENERGY,
-        NS_LUSTRE,
-        NS_VMSTAT,
-        NS_LOADAVG,
-        NS_CURRENT_FREEMEM,
-        NS_KGNILND,
-        NS_PROCNETDEV,
-        NS_NUM
+	NS_LUSTRE,
+	NS_VMSTAT,
+	NS_LOADAVG,
+	NS_CURRENT_FREEMEM,
+	NS_KGNILND,
+	NS_PROCNETDEV,
+	NS_NVIDIA,
+	NS_NUM
 } cray_system_sampler_sources_t;
 
-
+int handle_config_arg_generic(cray_system_sampler_sources_t source_id,
+			      char* configarg, char* configvalue,
+			    ldmsd_msg_log_f msglog);
 int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
-                            cray_system_sampler_sources_t source_id,
-                            ldmsd_msg_log_f msglog);
+			    cray_system_sampler_sources_t source_id,
+			    ldmsd_msg_log_f msglog);
 int add_metrics_generic(ldms_set_t set, int comp_id,
 			cray_system_sampler_sources_t source_id,
 			ldmsd_msg_log_f msglog);

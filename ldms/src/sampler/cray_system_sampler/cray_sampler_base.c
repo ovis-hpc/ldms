@@ -73,6 +73,34 @@
 #include "lustre_metrics.h"
 #include "cray_sampler_base.h"
 
+#ifdef HAVE_CRAY_NVIDIA
+#include "nvidia_metrics.h"
+#endif
+
+int handle_config_arg_generic(cray_system_sampler_sources_t source_id,
+			      char* configarg, char* configvalue,
+			      ldmsd_msg_log_f msglog)
+{
+
+	int rc = 0;
+
+	switch (source_id){
+	case NS_NVIDIA:
+#ifdef HAVE_CRAY_NVIDIA
+		rc = nvidia_config_arg(configarg, configvalue, msglog);
+#else
+		//do nothing
+#endif
+		break;
+	default:
+		//do nothing
+		break;
+	}
+
+	return rc;
+};
+
+
 static int get_metric_size_simple(char** metric_names, int num_metrics,
 				  size_t *m_sz, size_t *d_sz,
 				  ldmsd_msg_log_f msglog)
@@ -128,7 +156,7 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 					      m_sz, d_sz, msglog);
 		break;
 	case NS_ENERGY:
-                return get_metric_size_simple(ENERGY_METRICS,
+		return get_metric_size_simple(ENERGY_METRICS,
 					      NUM_ENERGY_METRICS,
 					      m_sz, d_sz, msglog);
 	case NS_CURRENT_FREEMEM:
@@ -149,6 +177,15 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 		break;
 	case NS_LUSTRE:
 		return get_metric_size_lustre(m_sz, d_sz, msglog);
+		break;
+	case NS_NVIDIA:
+#ifdef HAVE_CRAY_NVIDIA
+		return get_metric_size_nvidia(m_sz, d_sz, msglog);
+#else
+		//unused
+		m_sz = 0;
+		d_sz = 0;
+#endif
 		break;
 	default:
 		m_sz = 0;
@@ -264,18 +301,18 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 
 		break;
 	case NS_ENERGY:
-                rc = add_metrics_simple(set, ENERGY_METRICS,
+		rc = add_metrics_simple(set, ENERGY_METRICS,
 					NUM_ENERGY_METRICS,
 					&metric_table_energy,
 					&ENERGY_FILE, &ene_f,
 					comp_id, msglog);
-                if (rc != 0)
-                        return rc;
-                if (ene_f)
-                        fclose(ene_f);
-                ene_f = NULL;
-                return 0;
-                break;
+		if (rc != 0)
+			return rc;
+		if (ene_f)
+			fclose(ene_f);
+		ene_f = NULL;
+		return 0;
+		break;
 	case NS_CURRENT_FREEMEM:
 		cf_m = 0;
 		rc = add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
@@ -318,6 +355,22 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 		break;
 	case NS_LUSTRE:
 		return add_metrics_lustre(set, comp_id, msglog);
+		break;
+	case NS_NVIDIA:
+#ifdef HAVE_CRAY_NVIDIA
+		rc = add_metrics_nvidia(set, comp_id, msglog);
+		if (rc != 0) {
+			msglog(LDMS_LERROR, "Error adding metrics nvidia\n");
+			return rc;
+		}
+		// if this fails because cannot load the library will have nvidia_valid = 0
+		rc = nvidia_setup(msglog);
+		if (rc != 0) /* Warn but ok to continue...nvidia_valid may be 0 */
+			msglog(LDMS_LDEBUG, "cray_system_sampler: cray_nvidia invalid\n");
+		return 0;
+#else
+		//default unused
+#endif
 		break;
 	default:
 		//will handle it elsewhere
@@ -363,6 +416,14 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 	case NS_LUSTRE:
 		rc = sample_metrics_lustre(msglog);
 		break;
+	case NS_NVIDIA:
+#ifdef HAVE_CRAY_NVIDIA
+		rc = sample_metrics_nvidia(msglog);
+		break;
+#else
+		//do nothing
+#endif
+		break;
 	default:
 		//will handle it elsewhere
 		break;
@@ -370,4 +431,3 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 
 	return rc;
 }
-
