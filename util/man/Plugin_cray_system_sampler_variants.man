@@ -55,7 +55,7 @@ Path to libnvidia-ml.so library
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist>
+name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1
 .br
 ldmsctl configuration line
 .RS
@@ -90,8 +90,36 @@ gpu_devices=<gpulist>
 .br
 CSV separated gpu device names list. Non-existent values will be populated with 0's.
 Only relevant if you have built with --enable_cray_nvidia
+.TP
+off_<namespace>=1
+.br
+Optionally turn off collection of any non-hsn metrics (Currently hsn metrics cannot be turned off).
+Valid options for <namespace> are:
+.RS
+.TP
+vmstat
+.TP
+loadavg
+.TP
+current_freemem
+.TP
+kgnilnd
+.TP
+procnetdev
+.TP
+lustre (if built with --enable-lustre)
+.TP
+nvidia (if built with --enable-cray_nvidia)
+.TP
+energy (cray_aries_r_sampler only)
 .RE
-
+.br
+Multiple different options should be specified as different attributes
+(e.g., off_vmstat=1 off_lustre=1). Note that not specifying any gpu_devices or
+llites will also result in no gpu or lustre metrics, respectively, without
+requiring this flag. Use of this flag has precedence over specifying gpu_devices
+or llites.
+.RE
 
 .SH GPU INFORMATION
 GPU information is gotten from the libnvidia-ml.so. You will need to specify the GPU device names about which you want to collect data. An empty device list will not attempt to collect for any devices.
