@@ -203,23 +203,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 #endif
 
 	value = av_value(avl,"hsn_metrics_type");
-        if (value) {
-                mvalue = atoi(value);
-        }
+	if (value) {
+		mvalue = atoi(value);
+	}
 
 	value = av_value(avl, "rtrfile");
-        if (value)
-                rvalue = value;
+	if (value)
+		rvalue = value;
 
-	value = av_value(avl, "gpu_devices");
-	rc = handle_config_arg_generic(NS_NVIDIA, "gpu_devices",
-				       value, msglog);
+	rc = hsn_metrics_config(mvalue, rvalue);
 	if (rc != 0)
 		goto out;
 
-	rc = hsn_metrics_config(mvalue, rvalue);
-        if (rc != 0)
-                goto out;
+	rc = config_generic(kwl, avl, msglog);
+	if (rc != 0){
+		goto out;
+	}
 
 	value = av_value(avl, "set");
 	if (value)
@@ -245,8 +244,8 @@ static int sample(void)
 
 
 #if 0
-        struct timespec time1, time2;
-        clock_gettime(CLOCK_REALTIME, &time1);
+	struct timespec time1, time2;
+	clock_gettime(CLOCK_REALTIME, &time1);
 #endif
 
 	if (!set) {
@@ -279,10 +278,10 @@ static int sample(void)
 	ldms_end_transaction(set);
 
 #if 0
-        clock_gettime(CLOCK_REALTIME, &time2);
-        uint64_t beg_nsec = (time1.tv_sec)*1000000000+time1.tv_nsec;
-        uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
-        dt = end_nsec - beg_nsec;
+	clock_gettime(CLOCK_REALTIME, &time2);
+	uint64_t beg_nsec = (time1.tv_sec)*1000000000+time1.tv_nsec;
+	uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
+	dt = end_nsec - beg_nsec;
 #endif
 	return retrc;
 }

@@ -119,26 +119,20 @@ static char* NVIDIA_METRICS[] = {"gpu_power_usage",
 static ldms_metric_t* metric_table_nvidia = NULL;
 static int nvidia_valid = 0;
 
-//NOTE: default gpudevicestr is NULL
-int nvidia_config_arg(char* configarg, char* configvalue, ldmsd_msg_log_f msglog){
-	if (configarg == NULL){
-		msglog(LDMS_LERROR, "NULL config arg <%s>\n", configarg);
-		return EINVAL;
-	}
-	if (strcmp(configarg, "gpu_devices") == 0){
-		if (!configvalue){
-			gpudevicestr = NULL;
-		} else {
-			gpudevicestr = strdup(configvalue);
-		}
-		return 0;
+int config_nvidia(struct attr_value_list* kwl,
+		  struct attr_value_list* avl,
+			 ldmsd_msg_log_f msglog){
+	char* value = NULL;
+
+	value = av_value(avl, "gpu_devices");
+	if (value){
+		gpudevicestr = strdup(value);
 	} else {
-		msglog(LDMS_LERROR, "Unknown config arg <%s>\n", configarg);
-		return EINVAL;
+		gpudevicestr = NULL;
 	}
 
-	return EINVAL;
-}
+	return 0;
+};
 
 
 int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,

@@ -78,6 +78,7 @@
 
 
 /* General vars */
+static int usens[NS_NUM];
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
@@ -192,6 +193,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (value)
 		comp_id = strtol(value, NULL, 0);
 
+
 #ifdef HAVE_LUSTRE
 	value = av_value(avl, "llite");
 	if (value) {
@@ -213,15 +215,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (value)
 		rvalue = value;
 
-	value = av_value(avl, "gpu_devices");
-	rc = handle_config_arg_generic(NS_NVIDIA, "gpu_devices",
-                                  value, msglog);
-	if (rc != 0)
-		goto out;
-
 	rc = hsn_metrics_config(mvalue, rvalue);
 	if (rc != 0)
 		goto out;
+
+	rc = config_generic(kwl, avl, msglog);
+	if (rc != 0){
+		goto out;
+	}
 
 	value = av_value(avl, "set");
 	if (value)
@@ -324,8 +325,14 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	static int init_complete = 0;
+	int i;
+
 	if (init_complete)
 		goto out;
+
+	for (i = 0; i < NS_NUM; i++){
+		usens[i] = 0;
+	}
 
 #ifdef HAVE_LUSTRE
 	lustre_idx_map = str_map_create(1021);

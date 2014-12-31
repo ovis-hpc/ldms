@@ -71,8 +71,9 @@
 #include <wordexp.h>
 #include "ldms.h"
 
-int nvidia_config_arg(char* configarg, char* configvalue,
-		      ldmsd_msg_log_f msglog);
+int config_nvidia(struct attr_value_list* kwl,
+		  struct attr_value_list* avl,
+		  ldmsd_msg_log_f msglog);
 int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			   ldmsd_msg_log_f msglog);
 int add_metrics_nvidia(ldms_set_t set, int comp_id,

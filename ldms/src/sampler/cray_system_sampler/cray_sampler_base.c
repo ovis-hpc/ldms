@@ -76,34 +76,21 @@
 #include "lustre_metrics.h"
 #endif
 
-
 #ifdef HAVE_CRAY_NVIDIA
 #include "nvidia_metrics.h"
 #endif
 
-int handle_config_arg_generic(cray_system_sampler_sources_t source_id,
-			      char* configarg, char* configvalue,
-			      ldmsd_msg_log_f msglog)
-{
-
+int config_generic(struct attr_value_list* kwl,
+			  struct attr_value_list* avl,
+			  ldmsd_msg_log_f msglog){
+	char *value = NULL;
 	int rc = 0;
 
-	switch (source_id){
-	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
-		rc = nvidia_config_arg(configarg, configvalue, msglog);
-#else
-		//do nothing
+	rc = config_nvidia(kwl, avl, msglog);
 #endif
-		break;
-	default:
-		//do nothing
-		break;
-	}
-
 	return rc;
 };
-
 
 static int get_metric_size_simple(char** metric_names, int num_metrics,
 				  size_t *m_sz, size_t *d_sz,

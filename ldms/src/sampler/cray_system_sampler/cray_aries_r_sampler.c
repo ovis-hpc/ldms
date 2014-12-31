@@ -211,15 +211,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		mvalue = atoi(value);
 	}
 
-	value = av_value(avl, "gpu_devices");
-	rc = handle_config_arg_generic(NS_NVIDIA, "gpu_devices",
-				       value, msglog);
-	if (rc != 0)
-                goto out;
-
 	rc = hsn_metrics_config(mvalue);
 	if (rc != 0)
 		goto out;
+
+	rc = config_generic(kwl, avl, msglog);
+        if (rc != 0){
+                goto out;
+        }
 
 	value = av_value(avl, "set");
 	if (value)

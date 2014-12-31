@@ -118,9 +118,9 @@ typedef enum {
 	NS_NUM
 } cray_system_sampler_sources_t;
 
-int handle_config_arg_generic(cray_system_sampler_sources_t source_id,
-			      char* configarg, char* configvalue,
-			    ldmsd_msg_log_f msglog);
+int config_generic(struct attr_value_list *kwl,
+		   struct attr_value_list *avl,
+		   ldmsd_msg_log_f msglog);
 int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 			    cray_system_sampler_sources_t source_id,
 			    ldmsd_msg_log_f msglog);
