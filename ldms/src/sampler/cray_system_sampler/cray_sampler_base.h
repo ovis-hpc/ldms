@@ -118,6 +118,9 @@ typedef enum {
 	NS_NUM
 } cray_system_sampler_sources_t;
 
+
+int set_offns_generic(cray_system_sampler_sources_t i);
+int get_offns_generic(cray_system_sampler_sources_t i);
 int config_generic(struct attr_value_list *kwl,
 		   struct attr_value_list *avl,
 		   ldmsd_msg_log_f msglog);
@@ -131,3 +134,5 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 			   ldmsd_msg_log_f msglog);
 
 #endif
+
+

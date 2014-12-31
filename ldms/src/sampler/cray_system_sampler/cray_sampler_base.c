@@ -80,15 +80,145 @@
 #include "nvidia_metrics.h"
 #endif
 
+static int offns[NS_NUM] = { 0 };
+
+int set_offns_generic(cray_system_sampler_sources_t i){
+	offns[i] = 1;
+}
+
+int get_offns_generic(cray_system_sampler_sources_t i){
+	return offns[i];
+}
+
 int config_generic(struct attr_value_list* kwl,
 			  struct attr_value_list* avl,
 			  ldmsd_msg_log_f msglog){
 	char *value = NULL;
+	int flag;
 	int rc = 0;
 
-#ifdef HAVE_CRAY_NVIDIA
-	rc = config_nvidia(kwl, avl, msglog);
+	/*
+	  options to turn off the generic ones here
+
+	  NOTE: unless we ask for these values in
+	  the main sampler, any ones overridden there
+	  (e.g., hsn related ones) wont be affected
+	  by this
+
+	  NOTE: there is no innate checking to make sure you
+	  havent turned off on that adds metrics in this but
+	  then tries to populate them with an overridden
+	  sample in the sampler. If you think you might write
+	  such a thing, use the get_offns function to check
+
+	  NOTE: eventually just want to add in ptrs to functions for
+	  the different stages of the ones the user wants and then
+	  just go thru the list
+	*/
+
+
+/*
+
+  Currently don't allow these to be turned off
+	value = av_value(avl, "off_nettopo");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_NETTOPO] = 1;
+		}
+	}
+
+	value = av_value(avl, "off_linksmetrics");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_LINKSMETRICS] = 1;
+		}
+	}
+
+	value = av_value(avl, "off_nicmetrics");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_NICMETRICS] = 1;
+		}
+	}
+*/
+
+	value = av_value(avl, "off_energy");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_ENERGY] = 1;
+		}
+	}
+
+	value = av_value(avl, "off_vmstat");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_VMSTAT] = 1;
+		}
+	}
+
+	value = av_value(avl, "off_loadavg");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_LOADAVG] = 1;
+		}
+	}
+
+	value = av_value(avl, "off_current_freemem");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_CURRENT_FREEMEM] = 1;
+		}
+	}
+
+	value = av_value(avl, "off_kgnilnd");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_KGNILND] = 1;
+		}
+	}
+
+	//note: you can also turn off lustre but not specifying
+	//any llites. If you do specify llites, this has precedence
+#ifdef HAVE_LUSTRE
+	value = av_value(avl, "off_lustre");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_LUSTRE] = 1;
+		}
+	}
 #endif
+
+	value = av_value(avl, "off_procnetdev");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_PROCNETDEV] = 1;
+		}
+	}
+
+#ifdef HAVE_CRAY_NVIDIA
+	value = av_value(avl, "off_nvidia");
+	if (value){
+		flag = atoi(value);
+		if (flag == 1){
+			offns[NS_NVIDIA] = 1;
+		}
+	}
+
+	if (!offns[NS_NVIDIA]){
+		rc = config_nvidia(kwl, avl, msglog);
+	}
+#endif
+
 	return rc;
 };
 
@@ -127,7 +257,16 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 			    ldmsd_msg_log_f msglog)
 {
 
-	int i, rc;
+	int i;
+	int rc = 0;
+
+	*m_sz = 0;
+	*d_sz = 0;
+
+	if (offns[source_id]){
+		//skip it
+		return 0;
+	}
 
 	switch (source_id){
 	case NS_NETTOPO:
@@ -168,12 +307,9 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
-		msglog(LDMS_LDEBUG, "Have luster size\n");
 		return get_metric_size_lustre(m_sz, d_sz, msglog);
 #else
 		//unused
-		*m_sz = 0;
-		*d_sz = 0;
 		return 0;
 #endif
 		break;
@@ -182,14 +318,10 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 		return get_metric_size_nvidia(m_sz, d_sz, msglog);
 #else
 		//unused
-		*m_sz = 0;
-		*d_sz = 0;
 		return 0;
 #endif
 		break;
 	default:
-		*m_sz = 0;
-		*d_sz = 0;
 		//will handle it elsewhere
 		break;
 	}
@@ -249,7 +381,13 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 			       cray_system_sampler_sources_t source_id,
 			       ldmsd_msg_log_f msglog)
 {
-	int i, rc;
+	int i;
+	int rc = 0;
+
+	if (offns[source_id]){
+		//skip it
+		return 0;
+	}
 
 	switch (source_id){
 	case NS_NETTOPO:
@@ -355,7 +493,6 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
-		msglog(LDMS_LDEBUG, "Have luster add\n");
 		return add_metrics_lustre(set, comp_id, msglog);
 #else
 		//default unused
@@ -391,6 +528,11 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 			   ldmsd_msg_log_f msglog)
 {
 	int rc = 0;
+
+	if (offns[source_id]){
+		//skip it
+		return 0;
+	}
 
 	switch (source_id){
 	case NS_NETTOPO:

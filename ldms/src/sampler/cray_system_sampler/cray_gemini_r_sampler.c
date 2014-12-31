@@ -78,7 +78,6 @@
 
 
 /* General vars */
-static int usens[NS_NUM];
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
@@ -111,11 +110,6 @@ static int create_metric_set(const char *path)
 
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
-		case NS_ENERGY:
-			meta_sz = 0;
-			data_sz = 0;
-			rc = 0;
-			break;
 		case NS_LINKSMETRICS:
 			rc = get_metric_size_linksmetrics(&meta_sz, &data_sz, msglog);
 			break;
@@ -145,9 +139,6 @@ static int create_metric_set(const char *path)
 
 	for (i = 0; i < NS_NUM; i++) {
 		switch(i){
-		case NS_ENERGY:
-			rc = 0;
-			break;
 		case NS_LINKSMETRICS:
 			rc = add_metrics_linksmetrics(set, comp_id, msglog);
 			if (rc)
@@ -219,6 +210,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (rc != 0)
 		goto out;
 
+	set_offns_generic(NS_ENERGY);
 	rc = config_generic(kwl, avl, msglog);
 	if (rc != 0){
 		goto out;
@@ -261,9 +253,6 @@ static int sample(void)
 	retrc = 0;
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
-		case NS_ENERGY:
-			rc = 0;
-			break;
 		case NS_LINKSMETRICS:
 			rc = sample_metrics_linksmetrics(msglog);
 			break;
@@ -300,13 +289,18 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "config name=cray_gemini_r_sampler component_id=<comp_id>"
-		" set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist> gpu_devices=<gpulist>\n"
+		" set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist>"
+		" gpu_devices=<gpulist> off_<namespace>=1\n"
 		"    comp_id             The component id value.\n"
 		"    setname             The set name.\n",
 		"    parsedrtr           The parsed interconnect file.\n",
 		"    ostlist             Lustre OSTs\n",
 		"    gpu_devices         GPU devices names\n",
-		"    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n";
+		"    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n",
+		"    off_<namespace>     Collection for the non-hsn variables\n",
+                "                        can be turned off: vmstat\n",
+		"                        loadavg, current_freemem, kgnilnd\n",
+		"                        lustre, procnetdev, nvidia\n";
 }
 
 
@@ -329,10 +323,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 
 	if (init_complete)
 		goto out;
-
-	for (i = 0; i < NS_NUM; i++){
-		usens[i] = 0;
-	}
 
 #ifdef HAVE_LUSTRE
 	lustre_idx_map = str_map_create(1021);
