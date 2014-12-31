@@ -5,6 +5,7 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
 if ENABLE_CRAY_SYSTEM_SAMPLER
+
 CRAY_CFLAGS_ = $(AM_CFLAGS) @RCA_INCDIR_FLAG@ @KRCA_INCDIR_FLAG@ \
 			@CRAY_HSS_DEVEL_INCDIR_FLAG@ \
                         -I@CRAY_HSS_DEVEL_INCDIR@/rsms
@@ -13,12 +14,14 @@ CRAY_LDFLAGS_ = $(AM_LDFLAGS) @RCA_LIB64DIR_FLAG@ @RCA_LIBDIR_FLAG@  \
 			-lrca
 
 CRAY_SOURCES_ = cray_sampler_base.h cray_sampler_base.c \
-	rca_metrics.h rca_metrics.c\
-	lustre_metrics.h lustre_metrics.c \
+	rca_metrics.h rca_metrics.c \
 	general_metrics.h general_metrics.c
+CRAY_LIBADD_ = $(COMMON_LIBADD)
 
-CRAY_LIBADD_ = $(COMMON_LIBADD) \
-                       ../lustre/liblustre_sampler.la
+if ENABLE_LUSTRE
+CRAY_SOURCES_ += lustre_metrics.h lustre_metrics.c
+CRAY_LIBADD_ += ../lustre/liblustre_sampler.la
+endif
 
 #how do I do an or???
 if ENABLE_GEMINI_GPCD

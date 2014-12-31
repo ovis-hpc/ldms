@@ -70,8 +70,12 @@
 #include <wordexp.h>
 #include "rca_metrics.h"
 #include "general_metrics.h"
-#include "lustre_metrics.h"
 #include "cray_sampler_base.h"
+
+#ifdef HAVE_LUSTRE
+#include "lustre_metrics.h"
+#endif
+
 
 #ifdef HAVE_CRAY_NVIDIA
 #include "nvidia_metrics.h"
@@ -176,20 +180,29 @@ int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
 					      m_sz, d_sz, msglog);
 		break;
 	case NS_LUSTRE:
+#ifdef HAVE_LUSTRE
+		msglog(LDMS_LDEBUG, "Have luster size\n");
 		return get_metric_size_lustre(m_sz, d_sz, msglog);
+#else
+		//unused
+		*m_sz = 0;
+		*d_sz = 0;
+		return 0;
+#endif
 		break;
 	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
 		return get_metric_size_nvidia(m_sz, d_sz, msglog);
 #else
 		//unused
-		m_sz = 0;
-		d_sz = 0;
+		*m_sz = 0;
+		*d_sz = 0;
+		return 0;
 #endif
 		break;
 	default:
-		m_sz = 0;
-		d_sz = 0;
+		*m_sz = 0;
+		*d_sz = 0;
 		//will handle it elsewhere
 		break;
 	}
@@ -354,7 +367,13 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 					  comp_id, msglog);
 		break;
 	case NS_LUSTRE:
+#ifdef HAVE_LUSTRE
+		msglog(LDMS_LDEBUG, "Have luster add\n");
 		return add_metrics_lustre(set, comp_id, msglog);
+#else
+		//default unused
+		return 0;
+#endif
 		break;
 	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
@@ -370,6 +389,7 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 		return 0;
 #else
 		//default unused
+		return 0;
 #endif
 		break;
 	default:
@@ -414,14 +434,19 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 		rc = sample_metrics_procnetdev(msglog);
 		break;
 	case NS_LUSTRE:
+#ifdef HAVE_LUSTRE
 		rc = sample_metrics_lustre(msglog);
+#else
+		//do nothing
+		rc = 0;
+#endif
 		break;
 	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
 		rc = sample_metrics_nvidia(msglog);
-		break;
 #else
 		//do nothing
+		rc = 0;
 #endif
 		break;
 	default:

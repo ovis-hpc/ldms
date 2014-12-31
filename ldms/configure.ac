@@ -261,7 +261,8 @@ else
    AC_MSG_NOTICE([Using staged ovis-lib $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG for mmalloc/ and coll/. ])
 fi
 
-dnl if cray_sampler if enable_gpcdr then check that interface exists
+
+dnl if cray_sampler set some other variables
 if test "x$enable_cray_system_sampler" = "xyes"
 then
 
@@ -291,9 +292,16 @@ then
 
 	if test -z "$ENABLE_CRAY_NVIDIA_TRUE"
 	then
-	  AC_DEFINE([HAVE_CRAY_NVIDIA],[1],[Include NVIDIA metrics.])
+	  AC_DEFINE([HAVE_CRAY_NVIDIA],[1],[cray_system_sampler: Including option for NVIDIA metrics.])
 	else
-          AC_MSG_RESULT([Not including NVIDIA metrics.])
+          AC_MSG_RESULT([cray_system_sampler: Not including option for NVIDIA metrics.])
+	fi
+
+	if test -z "$ENABLE_LUSTRE_TRUE"
+	then
+		AC_DEFINE([HAVE_LUSTRE],[1],[cray_system_sampler: Include option for Lustre metrics.])
+	else
+		AC_MSG_RESULT([cray_system_sampler: Not including option for lustre metrics.])
 	fi
 fi
 

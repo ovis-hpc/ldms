@@ -79,7 +79,8 @@ Default is counter data only. (NOTE: Formerly called gemini_metrics_type)
 .TP
 llite=<llite>
 .br
-CSV separated ost list. Non-existent values will be populated with 0's
+CSV separated ost list. Non-existent values will be populated with 0's.
+Only relevant if you have built with --enable-lustre
 .TP
 rtrfile=<rtrfile>
 .br
@@ -88,6 +89,7 @@ parsed rtr file with media type and link information. For cray_gemini_r/d_sample
 gpu_devices=<gpulist>
 .br
 CSV separated gpu device names list. Non-existent values will be populated with 0's.
+Only relevant if you have built with --enable_cray_nvidia
 .RE
 
 
@@ -115,6 +117,11 @@ sh-3.2# ls /proc/fs/lustre/llite/
 lustrefs-ffff88081d38f800  snx11024-ffff88041f1aec00
 .if
 You will need to specify the Lustre mount points about which you want to collect data (e.g. "lustrefs,snx11024" in this case).
+
+In order to enable the ability to collect Lustre information then build with:
+.B --enable-lustre
+Note that this will also build the lustre_sampler.
+
 
 .SH INTERCONNECT INFORMATION FOR THE GEMINI VARIANTS
 Interconnect information may be needed for the cray_gemini_r/d_samplers. No such information is needed for the cray_aries_r_sampler.

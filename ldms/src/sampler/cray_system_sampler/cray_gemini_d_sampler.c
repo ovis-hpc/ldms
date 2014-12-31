@@ -69,9 +69,12 @@
 #include <ctype.h>
 #include <wordexp.h>
 #include "config.h"
-#include "lustre_metrics.h"
 #include "cray_sampler_base.h"
 #include "gemini_metrics_gpcd.h"
+
+#ifdef HAVE_LUSTRE
+#include "lustre_metrics.h"
+#endif
 
 
 /* General vars */
@@ -187,6 +190,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (value)
 		comp_id = strtol(value, NULL, 0);
 
+#ifdef HAVE_LUSTRE
 	value = av_value(avl, "llite");
 	if (value) {
 		rc = handle_llite(value);
@@ -196,6 +200,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		rc = EINVAL;
 		goto out;
 	}
+#endif
 
 	value = av_value(avl,"hsn_metrics_type");
         if (value) {
@@ -320,6 +325,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	if (init_complete)
 		goto out;
 
+#ifdef HAVE_LUSTRE
 	lustre_idx_map = str_map_create(1021);
 	if (!lustre_idx_map)
 		goto err;
@@ -327,6 +333,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	if (str_map_id_init(lustre_idx_map, LUSTRE_METRICS,
 				LUSTRE_METRICS_LEN, 1))
 		goto err;
+#endif
 
 	init_complete = 1;
 
@@ -334,9 +341,13 @@ out:
 	return &cray_gemini_d_sampler_plugin.base;
 
 err:
+
+#ifdef HAVE_LUSTRE
 	if (lustre_idx_map) {
 		str_map_free(lustre_idx_map);
 		lustre_idx_map = NULL;
 	}
+#endif
+
 	return NULL;
 }
