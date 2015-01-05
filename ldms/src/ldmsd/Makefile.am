@@ -1,4 +1,7 @@
-sbin_PROGRAMS = ldmsd ldms_ls ldmsctl ldmsd_sos_init
+sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
+if ENABLE_SOS
+sbin_PROGRAMS += ldmsd_sos_init
+endif
 CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
