@@ -81,6 +81,7 @@
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
+static int off_hsn = 0;
 
 static ldms_set_t get_set()
 {
@@ -108,13 +109,24 @@ static int create_metric_set(const char *path)
 	tot_data_sz = 0;
 	tot_meta_sz = 0;
 
+	rc = 0;
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
 		case NS_LINKSMETRICS:
-			rc = get_metric_size_linksmetrics(&meta_sz, &data_sz, msglog);
+			if (!off_hsn){
+				rc = get_metric_size_linksmetrics(&meta_sz, &data_sz, msglog);
+			} else {
+				meta_sz = 0;
+				data_sz = 0;
+			}
 			break;
 		case NS_NICMETRICS:
-			rc = get_metric_size_nicmetrics(&meta_sz, &data_sz, msglog);
+			if (!off_hsn){
+				rc = get_metric_size_nicmetrics(&meta_sz, &data_sz, msglog);
+			} else {
+				meta_sz = 0;
+				data_sz = 0;
+			}
 			break;
 		default:
 			//returns zero vals if not in generic
@@ -135,29 +147,32 @@ static int create_metric_set(const char *path)
 	/*
 	 * Define all the metrics.
 	 */
-	rc = ENOMEM;
-
+	rc = 0;
 	for (i = 0; i < NS_NUM; i++) {
 		switch(i){
 		case NS_LINKSMETRICS:
-			rc = add_metrics_linksmetrics(set, comp_id, msglog);
-			if (rc)
-				goto err;
-			rc = linksmetrics_setup(msglog);
-			if (rc == ENOMEM)
-				goto err;
-			if (rc != 0) /*  Warn but OK to continue */
-				msglog(LDMS_LERROR,"cray_gemini_r_sampler: linksmetrics invalid\n");
+			if (!off_hsn){
+				rc = add_metrics_linksmetrics(set, comp_id, msglog);
+				if (rc)
+					goto err;
+				rc = linksmetrics_setup(msglog);
+				if (rc == ENOMEM)
+					goto err;
+				if (rc != 0) /*  Warn but OK to continue */
+					msglog(LDMS_LERROR,"cray_gemini_r_sampler: linksmetrics invalid\n");
+			}
 			break;
 		case NS_NICMETRICS:
-			rc = add_metrics_nicmetrics(set, comp_id, msglog);
-			if (rc)
-				goto err;
-			rc = nicmetrics_setup(msglog);
-			if (rc == ENOMEM)
-				return rc;
-			if (rc != 0) /*  Warn but OK to continue */
-				msglog(LDMS_LERROR,"cray_gemini_r_sampler: nicmetrics invalid\n");
+			if (!off_hsn){
+				rc = add_metrics_nicmetrics(set, comp_id, msglog);
+				if (rc)
+					goto err;
+				rc = nicmetrics_setup(msglog);
+				if (rc == ENOMEM)
+					return rc;
+				if (rc != 0) /*  Warn but OK to continue */
+					msglog(LDMS_LERROR,"cray_gemini_r_sampler: nicmetrics invalid\n");
+			}
 			break;
 		default:
 			rc = add_metrics_generic(set, comp_id, i, msglog);
@@ -180,40 +195,49 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int mvalue = -1;
 	int rc = 0;
 
+	off_hsn = 0;
+
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id = strtol(value, NULL, 0);
-
-
-#ifdef HAVE_LUSTRE
-	value = av_value(avl, "llite");
-	if (value) {
-		rc = handle_llite(value);
-		if (rc)
-			goto out;
-	} else {
-		rc = EINVAL;
-		goto out;
-	}
-#endif
-
-	value = av_value(avl,"hsn_metrics_type");
-	if (value) {
-		mvalue = atoi(value);
-	}
-
-	value = av_value(avl, "rtrfile");
-	if (value)
-		rvalue = value;
-
-	rc = hsn_metrics_config(mvalue, rvalue);
-	if (rc != 0)
-		goto out;
 
 	set_offns_generic(NS_ENERGY);
 	rc = config_generic(kwl, avl, msglog);
 	if (rc != 0){
 		goto out;
+	}
+
+#ifdef HAVE_LUSTRE
+	if (!get_offns_generic(NS_LUSTRE)){
+		value = av_value(avl, "llite");
+		if (value) {
+			rc = handle_llite(value);
+			if (rc)
+				goto out;
+		} else {
+			rc = EINVAL;
+			goto out;
+		}
+	}
+#endif
+
+	value = av_value(avl, "off_hsn");
+	if (value)
+		off_hsn = (atoi(value) == 1? 1:0);
+
+	if (!off_hsn){
+		value = av_value(avl,"hsn_metrics_type");
+		if (value) {
+			mvalue = atoi(value);
+		}
+
+		value = av_value(avl, "rtrfile");
+		if (value)
+			rvalue = value;
+
+		rc = hsn_metrics_config(mvalue, rvalue);
+		if (rc != 0)
+			goto out;
 	}
 
 	value = av_value(avl, "set");
@@ -240,8 +264,8 @@ static int sample(void)
 
 
 #if 0
-        struct timespec time1, time2;
-        clock_gettime(CLOCK_REALTIME, &time1);
+	struct timespec time1, time2;
+	clock_gettime(CLOCK_REALTIME, &time1);
 #endif
 
 	if (!set) {
@@ -251,13 +275,22 @@ static int sample(void)
 	ldms_begin_transaction(set);
 
 	retrc = 0;
+	rc = 0;
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
 		case NS_LINKSMETRICS:
-			rc = sample_metrics_linksmetrics(msglog);
+			if (!off_hsn){
+				rc = sample_metrics_linksmetrics(msglog);
+			} else {
+				rc = 0;
+			}
 			break;
 		case NS_NICMETRICS:
-			rc = sample_metrics_nicmetrics(msglog);
+			if (!off_hsn){
+				rc = sample_metrics_nicmetrics(msglog);
+			} else {
+				rc = 0;
+			}
 			break;
 		default:
 			rc = sample_metrics_generic(i, msglog);
@@ -271,10 +304,10 @@ static int sample(void)
 	ldms_end_transaction(set);
 
 #if 0
-        clock_gettime(CLOCK_REALTIME, &time2);
-        uint64_t beg_nsec = (time1.tv_sec)*1000000000+time1.tv_nsec;
-        uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
-        dt = end_nsec - beg_nsec;
+	clock_gettime(CLOCK_REALTIME, &time2);
+	uint64_t beg_nsec = (time1.tv_sec)*1000000000+time1.tv_nsec;
+	uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
+	dt = end_nsec - beg_nsec;
 #endif
 	return retrc;
 }
@@ -297,9 +330,9 @@ static const char *usage(void)
 		"    ostlist             Lustre OSTs\n",
 		"    gpu_devices         GPU devices names\n",
 		"    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n",
-		"    off_<namespace>     Collection for the non-hsn variables\n",
-                "                        can be turned off: vmstat\n",
-		"                        loadavg, current_freemem, kgnilnd\n",
+		"    off_<namespace>     Collection for variable classes\n",
+		"                        can be turned off: hsn (both links and nics)\n",
+		"                        vmstat, loadavg, current_freemem, kgnilnd\n",
 		"                        lustre, procnetdev, nvidia\n";
 }
 

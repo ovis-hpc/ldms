@@ -117,9 +117,6 @@ int config_generic(struct attr_value_list* kwl,
 	*/
 
 
-/*
-
-  Currently don't allow these to be turned off
 	value = av_value(avl, "off_nettopo");
 	if (value){
 		flag = atoi(value);
@@ -127,23 +124,6 @@ int config_generic(struct attr_value_list* kwl,
 			offns[NS_NETTOPO] = 1;
 		}
 	}
-
-	value = av_value(avl, "off_linksmetrics");
-	if (value){
-		flag = atoi(value);
-		if (flag == 1){
-			offns[NS_LINKSMETRICS] = 1;
-		}
-	}
-
-	value = av_value(avl, "off_nicmetrics");
-	if (value){
-		flag = atoi(value);
-		if (flag == 1){
-			offns[NS_NICMETRICS] = 1;
-		}
-	}
-*/
 
 	value = av_value(avl, "off_energy");
 	if (value){

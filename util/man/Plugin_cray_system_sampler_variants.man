@@ -93,9 +93,12 @@ Only relevant if you have built with --enable_cray_nvidia
 .TP
 off_<namespace>=1
 .br
-Optionally turn off collection of any non-hsn metrics (Currently hsn metrics cannot be turned off).
+Optionally turn off collection for any set of metrics.
 Valid options for <namespace> are:
 .RS
+.TP
+hsn (both links and nics. NOTE: even if you intend to turn off hsn metrics,
+	 you must build with the necessary hsn related flags defined).
 .TP
 vmstat
 .TP
@@ -152,7 +155,7 @@ Note that this will also build the lustre_sampler.
 
 
 .SH INTERCONNECT INFORMATION FOR THE GEMINI VARIANTS
-Interconnect information may be needed for the cray_gemini_r/d_samplers. No such information is needed for the cray_aries_r_sampler.
+Interconnect information may be needed for the cray_gemini_r/d_samplers if hsn metrics are on. No such information is needed for the cray_aries_r_sampler.
 The interconnect information is produced in two steps:
 .TP
 1) From the smw as root:
@@ -190,7 +193,7 @@ NOTE: gpcd is a Cray library. You can use a system installation of the gpcd libr
 The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below).
 
 .SH ARIES PERFORMANCE COUNTER INFORMATION
-The aries performance counter information will be accessed via the gpcdr module.
+The aries performance counter information will be accessed via the gpcdr module, if the hsn metrics are turned on.
 
 .SH DATA DIFFERENCES AMONG THE VARIANTS
 .TP
