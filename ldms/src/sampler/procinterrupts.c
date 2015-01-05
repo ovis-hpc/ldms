@@ -69,11 +69,9 @@ static char *procfile = PROC_FILE;
 
 static ldms_set_t set;
 static FILE *mf;
-static ldms_metric_t *metric_table;
 static ldmsd_msg_log_f msglog;
 static int nprocs;
 static uint64_t comp_id;
-static uint64_t counter;
 static ldms_schema_t schema;
 
 static ldms_set_t get_set()
@@ -118,15 +116,24 @@ static int create_metric_set(const char *path)
 
 	/* Create a metric set of the required size */
 	schema = ldms_create_schema("procinterrupts");
-	if (!schema)
+	if (!schema) {
+		fclose(mf);
 		return ENOMEM;
+	}
 
 	/*
 	 * Process the file to define all the metrics.
 	 */
 	fseek(mf, 0, SEEK_SET);
-	//first line is the cpu list
+	/* first line is the cpu list */
 	s = fgets(lbuf, sizeof(lbuf), mf);
+	nprocs = getNProcs(lbuf);
+	if (nprocs <= 0) {
+		msglog("Bad number of CPU.\n");
+		fclose(mf);
+		return EINVAL;
+	}
+
 	while(s){
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -138,8 +145,7 @@ static int create_metric_set(const char *path)
 				break;
 			}
 			if (currcol == 0){
-				/* Strip the colon from metric name if present
-				 * */
+				/* Strip the colon from metric name if present */
 				i = strlen(pch);
 				if (i && pch[i-1] == ':')
 					pch[i-1] = '\0';
@@ -156,17 +162,18 @@ static int create_metric_set(const char *path)
 			}
 			currcol++;
 			pch = strtok(NULL," ");
-		} // while (strtok)
-	} //while(s)
+		} /* end while (strtok) */
+	} /* end while(s) */
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
 		goto err;
 
-	for (i = 0; i < ldms_metric_count(schema); i++)
+	for (i = 0; i < ldms_get_metric_count(schema); i++)
 		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
+	fclose(mf);
 	ldms_destroy_schema(schema);
 	schema = NULL;
 	return rc;
@@ -179,7 +186,7 @@ err:
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-
+	int rc = 0;
 	char *value;
 
 	value = av_value(avl, "component_id");
@@ -188,9 +195,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "set");
 	if (value)
-		create_metric_set(value);
+		rc = create_metric_set(value);
 
-	return 0;
+	return rc;
 }
 
 static int sample(void)
@@ -209,7 +216,7 @@ static int sample(void)
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
-	//first line is the cpu list
+	/* first line is the cpu list */
 	s = fgets(lbuf, sizeof(lbuf), mf);
 
 	while(s){
@@ -241,7 +248,7 @@ static int sample(void)
 				currcol++;
 			}
 			pch = strtok(NULL," ");
-		} //strtok
+		} /* end while(strtok) */
 	} while (s);
 	rc = 0;
 out:
@@ -252,11 +259,16 @@ out:
 
 static void term(void)
 {
+	if (mf)
+		fclose(mf);
+	mf = 0;
+	if (schema)
+		ldms_destroy_schema(schema);
+	schema = NULL;
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
 }
-
 
 static const char *usage(void)
 {

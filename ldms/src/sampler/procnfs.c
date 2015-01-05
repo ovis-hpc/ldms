@@ -116,13 +116,11 @@ static char* varnames[MAXOPTS][21] = {
 
 static int numvars[MAXOPTS] = { 2, 21 };
 
-ldms_set_t set;
-ldms_schema_t schema;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
-static uint64_t counter;
-uint64_t comp_id;
+static ldms_set_t set;
+static ldms_schema_t schema;
+static FILE *mf;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
 static ldms_set_t get_set()
 {
@@ -144,13 +142,15 @@ static int create_metric_set(const char *path)
 
 	/* Create a metric set of the required size */
 	schema = ldms_create_schema("procnfs");
-	if (!schema)
+	if (!schema) {
+		fclose(mf);
 		return ENOMEM;
+	}
 
 	/* Make sure these are added in the order they will appear in the file */
 	for (i = 0; i < MAXOPTS; i++) {
 		for (j = 0; j < numvars[i]; j++) {
-			snprintf(metric_name,127,"%s", varnames[i][j]);
+			snprintf(metric_name, 127, "%s", varnames[i][j]);
 			rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
 			if (rc < 0) {
 				rc = ENOMEM;
@@ -161,11 +161,12 @@ static int create_metric_set(const char *path)
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
 		goto err;
-	for (i = 0; i < ldms_metric_count(schema); i++)
+	for (i = 0; i < ldms_get_metric_count(schema); i++)
 		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
+	fclose(mf);
 	ldms_destroy_schema(schema);
 	schema = NULL;
 	return rc;
@@ -206,6 +207,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 	PRIu64 " %" PRIu64 " %" PRIu64 " %s\n"
+
 static int sample(void)
 {
 	int metric_no;
@@ -279,7 +281,9 @@ static void term(void)
 	if (mf)
 		fclose(mf);
 	mf = 0;
-
+	if (schema)
+		ldms_destroy_schema(schema);
+	schema = NULL;
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;

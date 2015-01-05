@@ -50,6 +50,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include "sampler_hadoop.h"
+#include "coll/str_map.h"
 
 uint64_t comp_id;
 char *metric_name_file;
@@ -58,7 +59,7 @@ int port;
 int num_metrics;
 struct hadoop_set datanode_set;
 pthread_t thread;
-ldms_log_fn_t msglog;
+ldmsd_msg_log_f msglog;
 
 static const char *usage(void)
 {
@@ -125,13 +126,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	datanode_set.daemon = "datanode";
 	datanode_set.msglog = msglog;
 	int rc;
-	if (rc = setup_datagram(port, &datanode_set.sockfd)) {
+	rc = setup_datagram(port, &datanode_set.sockfd);
+	if (rc) {
 		msglog("hadoop_datanode: failed to setup "
 				"datagram between ldmsd and hadoop.\n");
 		goto err_1;
 	}
 
-	if (rc = create_hadoop_set(metric_name_file, &datanode_set, comp_id))
+	rc = create_hadoop_set(metric_name_file, &datanode_set, comp_id);
+	if (rc)
 		goto err_2;
 	rc = pthread_create(&thread, NULL, recv_metrics, &datanode_set);
 	if (rc) {
@@ -158,14 +161,7 @@ static int sample(void)
 
 static void term(void)
 {
-	if (datanode_set.set)
-		ldms_destroy_set(datanode_set.set);
-	datanode_set.set = NULL;
-	if (datanode_set.map)
-		str_map_free(datanode_set.map);
-	datanode_set.map = NULL;
-	if (datanode_set.sockfd)
-		close(datanode_set.sockfd);
+	destroy_hadoop_set(&datanode_set);
 }
 
 static struct ldmsd_sampler hadoop_datanode = {

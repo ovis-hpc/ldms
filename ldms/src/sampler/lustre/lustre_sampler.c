@@ -190,7 +190,7 @@ out:
 	return rc;
 }
 
-int lms_close_file(struct lustre_metric_src *lms)
+void lms_close_file(struct lustre_metric_src *lms)
 {
 	fclose(lms->f);
 	lms->f = NULL;
@@ -214,7 +214,7 @@ int stats_construct_routine(ldms_schema_t schema,
 	lss->key_id_map = key_id_map;
 	LIST_INSERT_HEAD(list, &lss->lms, link);
 	int j;
-	for (j=0; j<nkeys; j++) {
+	for (j = 0; j < nkeys; j++) {
 		sprintf(metric_name, "%s%s%s", prefix, keys[j], suffix);
 		rc = __add_lss_metric_routine(schema, comp_id, metric_name,
 				key_id_map, keys[j],

@@ -50,6 +50,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include "sampler_hadoop.h"
+#include "coll/str_map.h"
 
 uint64_t comp_id;
 char *metric_name_file;
@@ -159,14 +160,7 @@ static int sample(void)
 
 static void term(void)
 {
-	if (reducetask_set.set)
-		ldms_destroy_set(reducetask_set.set);
-	reducetask_set.set = NULL;
-	if (reducetask_set.map)
-		str_map_free(reducetask_set.map);
-	reducetask_set.map = NULL;
-	if (reducetask_set.sockfd)
-		close(reducetask_set.sockfd);
+	destroy_hadoop_set(&reducetask_set);
 }
 
 static struct ldmsd_sampler hadoop_reducetask = {

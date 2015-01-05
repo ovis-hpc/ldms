@@ -57,6 +57,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include "sampler_hadoop.h"
+#include "coll/str_map.h"
 
 uint64_t comp_id;
 char *metric_name_file;
@@ -65,7 +66,7 @@ int port;
 int num_metrics;
 struct hadoop_set jobhistoryserver_set;
 pthread_t thread;
-ldms_log_fn_t msglog;
+ldmsd_msg_log_f msglog;
 
 static const char *usage(void)
 {
@@ -166,14 +167,7 @@ static int sample(void)
 
 static void term(void)
 {
-	if (jobhistoryserver_set.set)
-		ldms_destroy_set(jobhistoryserver_set.set);
-	jobhistoryserver_set.set = NULL;
-	if (jobhistoryserver_set.map)
-		str_map_free(jobhistoryserver_set.map);
-	jobhistoryserver_set.map = NULL;
-	if (jobhistoryserver_set.sockfd)
-		close(jobhistoryserver_set.sockfd);
+	destroy_hadoop_set(&jobhistoryserver_set);
 }
 
 static struct ldmsd_sampler hadoop_jobhistoryserver = {

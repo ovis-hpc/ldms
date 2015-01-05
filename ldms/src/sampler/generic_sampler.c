@@ -101,12 +101,12 @@ typedef struct gs_metric {
 
 TAILQ_HEAD(, gs_metric) gs_list = TAILQ_HEAD_INITIALIZER(gs_list); /**< List of metrics */
 str_map_t gs_map = NULL; /**< gs metric map */
-ldmsd_msg_log_f msglog; /**< Log function */
+static ldmsd_msg_log_f msglog; /**< Log function */
 const char *path = "/tmp/metrics"; /**< metric file path */
-ldms_set_t set;
-ldms_schema_t schema;
+static ldms_set_t set;
+static ldms_schema_t schema;
 static char buff[65536];
-uint64_t comp_id;
+static uint64_t comp_id;
 
 int gs_fd = -1; /**< File descriptor to the metric file */
 
@@ -321,6 +321,9 @@ static ldms_set_t get_set()
 
 static void term(void)
 {
+	if (schema)
+		ldms_destroy_schema(schema);
+	schema = NULL;
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;

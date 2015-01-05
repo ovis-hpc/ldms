@@ -9,7 +9,7 @@ libhadoop_sampler_la_SOURCES = sampler_hadoop.c sampler_hadoop.h
 libhadoop_sampler_la_LIBADD = $(CORE)/libldms.la -lovis_util -lrt -lcoll
 lib_LTLIBRARIES += libhadoop_sampler.la
 
-COMMON_ADD = $(CORE)/libldms.la -lovis_util -lrt \
+COMMON_ADD = $(CORE)/libldms.la -lovis_util -lrt -lpthread -lcoll \
 		libhadoop_sampler.la
 
 #hadoop_namenode

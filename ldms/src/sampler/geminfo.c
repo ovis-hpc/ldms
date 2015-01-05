@@ -69,8 +69,8 @@
 
 static char *procfile = PROC_FILE;
 
-ldms_set_t set;
-FILE *mf;
+static ldms_set_t set;
+static FILE *mf = 0;
 int *metric_table;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
@@ -118,10 +118,8 @@ static int create_metric_set(const char *path)
 	if (schema)
 		return ENOMEM;
 
-	/* Process the file again to define all the metrics.
-	 */
+	/* Process the file again to define all the metrics.*/
 
-	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -129,20 +127,17 @@ static int create_metric_set(const char *path)
 			break;
 
 		char* end = strchr(s, ':');
-		if ( end ) {
-			if ( *end ) {
-				*end = '\0';
-				replace_space(s);
-				if ( sscanf( end + 1, " %" PRIu64 "\n", &metric_value ) == 1 ) {
-					rc = ldms_add_metric(schema, s, LDMS_V_U64);
-					if (rc < 0) {
-						rc = ENOMEM;
-						goto err;
-					}
+		if (end && *end) {
+			*end = '\0';
+			replace_space(s);
+			if (sscanf(end + 1, " %" PRIu64 "\n", &metric_value) == 1) {
+				rc = ldms_add_metric(schema, s, LDMS_V_U64);
+				if (rc < 0) {
+					rc = ENOMEM;
+					goto err;
 				}
 			}
 		} else {
-			//	    fprintf( stderr, "Error: string \"%s\" had no colon\n", s );
 			rc = ENOMEM;
 			goto err;
 		}
@@ -152,6 +147,7 @@ static int create_metric_set(const char *path)
 		goto err;
 	for (rc = 0; rc < ldms_get_metric_count(schema); rc++)
 		ldms_set_midx_udata(set, rc, comp_id);
+	ldms_destroy_schema(schema);
 	return 0;
 
  err:
@@ -195,32 +191,31 @@ static int sample(void)
 			break;
 
 		char* end = strchr(s, ':');
-		if ( end ) {
-			if ( *end ) {
-				*end = '\0';
-				replace_space(s);
-				if ( sscanf( end + 1, " %" PRIu64 "\n", &v.v_u64 ) == 1 ) {
-					ldms_set_midx(set, metric_table[metric_no], &v);
-					metric_no++;
-				}
+		if (end && *end) {
+			*end = '\0';
+			replace_space(s);
+			if (sscanf(end + 1, " %" PRIu64 "\n", &v.v_u64) == 1) {
+				ldms_set_midx(set, metric_no, &v);
+				metric_no++;
 			}
 		} else {
-			//fprintf( stderr, "Error: string \"%s\" had no colon\n", s );
 			rc = EINVAL;
 			goto out;
 		}
 	} while (s);
 	rc = 0;
- out:
+out:
 	ldms_end_transaction(set);
 	return 0;
 }
 
 static void term(void)
 {
-  if (set)
-	ldms_destroy_set(set);
-  set = NULL;
+	if (mf)
+		fclose(mf);
+	if (set)
+		ldms_destroy_set(set);
+	set = NULL;
 }
 
 static const char *usage(void)

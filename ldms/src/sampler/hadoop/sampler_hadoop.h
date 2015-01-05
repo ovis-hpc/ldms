@@ -52,12 +52,19 @@
 #include "ldmsd.h"
 #include <coll/str_map.h>
 
-struct metric_name {
-	char *name;
-	LIST_ENTRY(metric_name) entry;
+#define MAX_LEN_HADOOP_MNAME 248
+#define MAX_LEN_HADOOP_TYPE 8
+
+struct hadoop_metric {
+	char name[MAX_LEN_HADOOP_MNAME];
+	enum ldms_value_type type;
+	uint64_t metric_idx;
+	TAILQ_ENTRY(hadoop_metric) entry;
 };
+TAILQ_HEAD(hadoop_metric_queue, hadoop_metric);
 
 struct hadoop_set {
+	ldms_schema_t schema;
 	ldms_set_t set;
 	/*
 	 * Hadoop Daemon: namenode, secondarynamenode, datanode
@@ -76,7 +83,7 @@ struct record_metrics {
 	char *context; /* record context */
 	char *name; /* record name */
 	int count; /* number of metrics to be collected in this record */
-	LIST_HEAD(metric_name_list, metric_name) list; /* metric list */
+	struct hadoop_metric_queue queue; /* metric queue */
 	LIST_ENTRY(record_metrics) entry;
 };
 

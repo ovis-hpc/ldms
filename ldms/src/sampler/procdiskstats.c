@@ -25,11 +25,11 @@ static char *fieldname[NFIELD] = {
 	/* raw */
 	"reads_comp",
 	"reads_merg",
-	"sect_read",
+	"sect_read",	/* SECT_READ_IDX points here */
 	"time_read",
 	"writes_comp",
 	"writes_merg",
-	"sect_written",
+	"sect_written",	/* SECT_WRITTEN_IDX points here */
 	"time_write",
 	"ios_in_progress",
 	"time_ios",
@@ -41,23 +41,25 @@ static char *fieldname[NFIELD] = {
 };
 
 #define SECT_READ_IDX 2
-#define SECT_WRITE_IDX 6
+#define SECT_WRITTEN_IDX 6
+#define SECT_READ_BYTES_IDX 11
+#define SECT_WRITTEN_BYTES_IDX 12
 
-ldms_set_t set;
-FILE *mf;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldms_set_t set;
+static FILE *mf = NULL;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
-long USER_HZ; /* initialized in get_plugin() */
-struct timeval _tv[2] = {0};
-struct timeval *curr_tv = &_tv[0];
-struct timeval *prev_tv = &_tv[1];
+static long USER_HZ; /* initialized in get_plugin() */
+static struct timeval _tv[2] = {0};
+static struct timeval *curr_tv = &_tv[0];
+static struct timeval *prev_tv = &_tv[1];
 
 struct proc_disk_s {
 	char *name;
 	size_t sect_sz;
 	int monitored;
-	int metric_id;
+	int metric_idx[NFIELD * 2]; /* raw + rate metrics */
 	int comp_id;
 	uint64_t prev_value[NFIELD];
 	TAILQ_ENTRY(proc_disk_s) entry;
@@ -65,29 +67,25 @@ struct proc_disk_s {
 TAILQ_HEAD(proc_disk_list, proc_disk_s) disk_list =
 	TAILQ_HEAD_INITIALIZER(disk_list);
 
-static int add_disk_metrics(ldms_schema_t schema, struct proc_disk_s *disk,
-			    int *next_metric_id)
+static int add_disk_metrics(ldms_schema_t schema, struct proc_disk_s *disk)
 {
 	char metric_name[128];
 	int i, rc;
-	int metric_id = *next_metric_id;
-	disk->metric_id = metric_id;
 	for (i = 0; i < NFIELD; i++) {
 		/* raw metric */
 		snprintf(metric_name, 128, "%s#%s", fieldname[i], disk->name);
 		rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
-		if (rc)
+		if (rc < 0)
 			return ENOMEM;
-		metric_id++;
+		disk->metric_idx[2 * i] = rc;
 
 		/* rate metric */
 		snprintf(metric_name, 128, "%s.rate#%s", fieldname[i], disk->name);
 		rc = ldms_add_metric(schema, metric_name, LDMS_V_F32);
-		if (rc)
+		if (rc < 0)
 			return ENOMEM;
-		metric_id++;
+		disk->metric_idx[2 * i + 1] = rc;
 	}
-	*next_metric_id = metric_id;
 	return 0;
 }
 
@@ -145,7 +143,7 @@ static struct proc_disk_s *add_disk(char *name, int *next_comp_id)
 	disk->name = strdup(name);
 	disk->sect_sz = get_sector_sz(disk->name);
 	disk->comp_id = *next_comp_id;
-	*next_comp_id++;
+	(*next_comp_id)++;
 	TAILQ_INSERT_TAIL(&disk_list, disk, entry);
  out:
 	return disk;
@@ -188,7 +186,6 @@ static int config_add_disks(struct attr_value_list *avl, int comp_id,
 {
 	int rc = 0;
 	int next_comp_id = 0;
-	int next_metric_id = 0;
 	struct proc_disk_s *disk;
 	char *value = av_value(avl, "device");
 
@@ -222,7 +219,7 @@ static int config_add_disks(struct attr_value_list *avl, int comp_id,
 	TAILQ_FOREACH(disk, &disk_list, entry) {
 		if (!disk->monitored)
 			continue;
-		rc = add_disk_metrics(schema, disk, &next_metric_id);
+		rc = add_disk_metrics(schema, disk);
 		if (rc)
 			goto err;
 	}
@@ -240,6 +237,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *attr;
 	int rc;
 	ldms_schema_t schema = ldms_create_schema("procdiskstats");
+	if (!schema)
+		return ENOMEM;
 
 	attr = "component_id";
 	value = av_value(avl, attr);
@@ -261,12 +260,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	/* Run through the metrics and set their component id in their udata */
 	struct proc_disk_s *disk;
-	TAILQ_FOREACH(disk, &disk_list, entry)
-		ldms_set_midx_udata(set, rc, disk->comp_id);
 
-	return rc;
+	TAILQ_FOREACH(disk, &disk_list, entry) {
+		if (!disk->monitored)
+			continue;
+		int i;
+		for (i = 0; i < (NFIELD * 2); i++) {
+			ldms_set_midx_udata(set, disk->metric_idx[i],
+							disk->comp_id);
+		}
+	}
+
+	ldms_destroy_schema(schema);
+	return 0;
 enoent:
 	msglog("procdiskstat: requires '%s'\n", attr);
+	ldms_destroy_schema(schema);
 	return ENOENT;
 }
 
@@ -282,32 +291,40 @@ static void set_disk_metrics(struct proc_disk_s *disk,
 			     uint64_t *values, float dt)
 {
 	float f, rate;
-	int i;
-	int metric_no = disk->metric_id;
+	int i, idx;
+	for (i = 0; i < NFIELD; i++) {
+		idx = 2 * i;
+		if (i == SECT_READ_BYTES_IDX) {
+			/* Calculate sect_read in bytes */
+			/* sect_read's been updated already. */
+			f = values[SECT_READ_IDX] * disk->sect_sz;
+			ldms_set_midx_float(set, disk->metric_idx[idx], f);
 
-	for (i = 0; i < NRAW_FIELD; i++) {
-		/* raw */
-		ldms_set_midx_u64(set, metric_no++, values[i]);
+			rate = calculate_rate(disk->prev_value[i], f, dt);
+			ldms_set_midx_float(set, disk->metric_idx[idx + 1], rate);
 
-		/* rate */
-		rate = calculate_rate(disk->prev_value[i], values[i], dt);
-		ldms_set_midx_float(set, metric_no++, rate);
+			disk->prev_value[SECT_READ_BYTES_IDX] = (uint64_t)f;
+		} else if (i == SECT_WRITTEN_BYTES_IDX) {
+			/* Calculate sect_written in bytes */
+			/* sect_written's been updated already */
+			f = values[SECT_WRITTEN_IDX] * disk->sect_sz;
+			ldms_set_midx_float(set, disk->metric_idx[idx], f);
 
-		disk->prev_value[i] = values[i];
+			rate = calculate_rate(disk->prev_value[i], f, dt);
+			ldms_set_midx_float(set, disk->metric_idx[idx + 1], rate);
+
+			disk->prev_value[SECT_WRITTEN_BYTES_IDX] = (uint64_t)f;
+		} else {
+			/* raw */
+			ldms_set_midx_u64(set, disk->metric_idx[idx], values[i]);
+
+			/* rate */
+			rate = calculate_rate(disk->prev_value[i], values[i], dt);
+			ldms_set_midx_float(set, disk->metric_idx[idx + 1], rate);
+
+			disk->prev_value[i] = values[i];
+		}
 	}
-	/* read_bytes */
-	f = values[SECT_READ_IDX] * disk->sect_sz;
-	ldms_set_midx_float(set, metric_no, f);
-	rate = calculate_rate(metric_no, f, dt);
-	ldms_set_midx_float(set, metric_no, rate);
-	disk->prev_value[SECT_READ_IDX] = (uint64_t)f;
-
-	/* write bytes */
-	f = values[SECT_WRITE_IDX] * disk->sect_sz;
-	ldms_set_midx_float(set, metric_no, f);
-	rate = calculate_rate(metric_no, f, dt);
-	ldms_set_midx_float(set, metric_no, rate);
-	disk->prev_value[SECT_WRITE_IDX] = (uint64_t)f;
 }
 
 static int sample(void)
@@ -343,8 +360,11 @@ static int sample(void)
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-		if (!disk->monitored)
+		if (!disk->monitored) {
+			disk = TAILQ_NEXT(disk, entry);
 			continue;
+		}
+
 		rc = scan_line(s, name, v);
 		if (!rc) {
 			rc = EINVAL;

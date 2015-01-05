@@ -235,10 +235,10 @@ LIST_HEAD(scib_port_list, scib_port);
 struct scib_port_list scib_port_list = {0};
 char rcvbuf[BUFSIZ] = {0};
 
-ldms_set_t set = NULL;
-ldms_schema_t schema;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldms_set_t set = NULL;
+static ldms_schema_t schema = NULL;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
 struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
@@ -257,6 +257,7 @@ static int create_metric_set(const char *setname)
 		msglog("sysclassib: Double create set: %s\n", setname);
 		return EEXIST;
 	}
+
 	schema = ldms_create_schema("sysclassib");
 	if (!schema)
 		return ENOMEM;
@@ -283,6 +284,8 @@ static int create_metric_set(const char *setname)
 	rc = ldms_create_set(setname, schema, &set);
 	if (rc) {
 		msglog("sysclassib: ldms_create_set failed, rc: %d\n", rc);
+		ldms_destroy_schema(schema);
+		schema = NULL;
 		return rc;
 	}
 	for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
@@ -675,6 +678,9 @@ static void term(void){
 		free(port->ca);
 		free(port);
 	}
+	if (schema)
+		ldms_destroy_schema(schema);
+	schema = NULL;
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;

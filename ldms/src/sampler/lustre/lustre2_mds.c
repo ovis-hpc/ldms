@@ -135,17 +135,15 @@ char *mds_services[] = {
 /**
  * This will holds IDs for stats_key.
  */
-struct str_map *stats_key_id;
+static struct str_map *stats_key_id;
 
-struct lustre_metric_src_list lms_list = {0};
+static struct lustre_metric_src_list lms_list = {0};
 
-static uint64_t counter;
 static ldms_set_t set;
-FILE *mf;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
-char tmp_path[PATH_MAX];
+static char tmp_path[PATH_MAX];
 
 /**
  * \brief Construct string list out of a given comma-separated list of MDTs.
@@ -187,7 +185,7 @@ static int create_metric_set(const char *path, const char *mdts)
 
 	ldms_schema_t schema = ldms_create_schema("Lustre_MDS");
 	if (!schema)
-		goto err0;
+		goto err1;
 
 	char suffix[128];
 	for (i = 0; i < MDS_SERVICES_LEN; i++) {
@@ -224,13 +222,14 @@ static int create_metric_set(const char *path, const char *mdts)
 	}
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
-		goto err1;
+		goto err2;
 
+	ldms_destroy_schema(schema);
 	return 0;
 err2:
 	msglog("lustre_mds.c:create_metric_set@err2\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_destroy_set(set);
+	ldms_destroy_schema(schema);
 	msglog("WARNING: lustre_mds set DESTROYED\n");
 	set = 0;
 err1:
