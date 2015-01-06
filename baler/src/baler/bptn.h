@@ -158,7 +158,7 @@ void bptn_store_close_free(struct bptn_store *store);
 static
 uint32_t bptn_store_addptn(struct bptn_store *store, struct bstr *ptn)
 {
-	return bmap_insert(store->map, ptn, NULL);
+	return bmap_insert(store->map, ptn);
 }
 
 /**

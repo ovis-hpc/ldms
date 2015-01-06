@@ -182,8 +182,8 @@ uint32_t btkn_store_insert(struct btkn_store *store, struct bstr *str)
 {
 	uint32_t id;
 	bmap_ins_ret_t ret_flag;
-	id = bmap_insert(store->map, str, &ret_flag);
-	if (id == BMAP_ID_ERR || ret_flag == BMAP_CODE_EXIST)
+	id = bmap_insert(store->map, str);
+	if (id == BMAP_ID_ERR)
 		/* errno should be set in bmap_insert() */
 		goto out;
 

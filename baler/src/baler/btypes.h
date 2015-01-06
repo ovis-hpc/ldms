@@ -171,7 +171,7 @@ struct __attribute__((packed)) bstr {
  * \param len \c cstr length. 0 means using \c strlen(cstr).
  */
 static inline
-void bstr_set_cstr(struct bstr *bstr, char *cstr, int len)
+void bstr_set_cstr(struct bstr *bstr, const char *cstr, int len)
 {
 	if (!len)
 		len = strlen(cstr);
@@ -203,6 +203,19 @@ struct bstr* bstr_alloc_init_cstr(char *cstr)
  * \param ptr The pointer to ::bstr.
  */
 #define bstr_free(ptr) free(ptr)
+
+static inline
+int bstr_cmp(const struct bstr *b0, const struct bstr *b1)
+{
+	int len = (b0->blen < b1->blen)?(b0->blen):(b1->blen);
+	return strncmp(b0->cstr, b1->cstr, len);
+}
+
+static inline
+uint32_t bstr_len(const struct bstr *s)
+{
+	return sizeof(*s) + s->blen;
+}
 
 /**
  * Generic bvec structure (using char[] as data array).
