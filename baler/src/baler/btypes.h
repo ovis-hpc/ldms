@@ -320,7 +320,7 @@ static
 void bstr_list_free(struct bstr_list_head *head)
 {
 	struct bstr_list_entry *x;
-	while (x = LIST_FIRST(head)) {
+	while ((x = LIST_FIRST(head))) {
 		LIST_REMOVE(x, link);
 		free(x);
 	}
