@@ -849,6 +849,13 @@ void zap_log_fn(const char *fmt, ...)
 	pthread_mutex_unlock(&mutex);
 }
 
+void master_pattern_bmap_ev_cb(struct bmap *map, bmap_event_t ev, void *_arg)
+{
+	struct bmap_event_new_insert_arg *arg = _arg;
+	/* XXX TODO IMPLEMENT ME IN THE FUTURE */
+	/* Do nohting for now ... */
+}
+
 void master_init()
 {
 	zap_err_t zerr;
@@ -856,6 +863,8 @@ void master_init()
 		.sin_family = AF_INET,
 		.sin_port = htons(m_port),
 	};
+
+	bmap_set_event_cb(pattern_store->map, master_pattern_bmap_ev_cb);
 
 	zerr = zap_new(zap, &zap_ep, master_zap_cb);
 	if (zerr) {
