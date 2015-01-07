@@ -87,7 +87,7 @@ LIST_HEAD(bpair_str_head, bpair_str);
  * \param s0 The first string of the pair.
  * \param s1 The second string of the pair.
  */
-static
+static inline
 struct bpair_str* bpair_str_alloc(const char *s0, const char *s1)
 {
 	struct bpair_str *pstr = (typeof(pstr)) calloc(1,sizeof(*pstr));
@@ -113,7 +113,7 @@ err0:
  * Free function for ::bpair_str.
  * \param pstr The pair of strings to be freed.
  */
-static
+static inline
 void bpair_str_free(struct bpair_str *pstr)
 {
 	free(pstr->s0);
@@ -133,7 +133,7 @@ void bpair_str_free(struct bpair_str *pstr)
  * \param s1 The second string of the pair.
  * \return NULL if there is no pair matched (\a s0, \a s1)
  */
-static
+static inline
 struct bpair_str* bpair_str_search(struct bpair_str_head *head,
 		const char *s0, const char *s1)
 {
@@ -266,7 +266,7 @@ struct __attribute__((packed)) bvec_u64 {
  * \param alloc_len The allocation length (in number of element).
  * \param elm_size The size of an element.
  */
-static
+static inline
 void* bvec_generic_alloc(uint32_t alloc_len, uint32_t elm_size) {
 	return malloc(sizeof(struct bvec_generic) + alloc_len*elm_size);
 }
@@ -310,7 +310,7 @@ struct bstr_list_entry {
  * \return NULL on error.
  * \return A pointer to ::bstr_list_entry of string lenght \a str_len.
  */
-static
+static inline
 struct bstr_list_entry* bstr_list_entry_alloc(int str_blen)
 {
 	struct bstr_list_entry *e = (typeof(e)) malloc(sizeof(*e) + str_blen);
@@ -325,7 +325,7 @@ struct bstr_list_entry* bstr_list_entry_alloc(int str_blen)
  * \param str_blen The byte length of the string.
  * \param s The initialization string.
  */
-static
+static inline
 struct bstr_list_entry* bstr_list_entry_alloci(int str_blen, char *s)
 {
 	struct bstr_list_entry *e = (typeof(e)) malloc(sizeof(*e) + str_blen);
@@ -336,7 +336,7 @@ struct bstr_list_entry* bstr_list_entry_alloci(int str_blen, char *s)
 	return e;
 }
 
-static
+static inline
 void bstr_list_free(struct bstr_list_head *head)
 {
 	struct bstr_list_entry *x;
