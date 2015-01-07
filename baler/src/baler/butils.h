@@ -70,6 +70,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "btypes.h"
+
 /* *** LOGGING *** */
 extern FILE *blog_file;
 
@@ -213,6 +215,30 @@ int bdstr_append(struct bdstr *bs, const char *str);
  * \returns errno if failed.
  */
 int blog_rotate(const char *path);
+
+#define BMIN(a, b) (((a)<(b))?(a):(b))
+#define BMAX(a, b) (((a)>(b))?(a):(b))
+
+/**
+ * Levenshtein distance of u32 bstr.
+ *
+ * \retval -1 if error.
+ * \retval dist if success.
+ */
+int bstr_lev_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
+								size_t buffsz);
+
+/**
+ * Longest common subsequence length calculation.
+ */
+int bstr_lcs_u32(const struct bstr *a, const struct bstr *b, void *buff,
+								size_t buffsz);
+
+/**
+ * LCS distance between two given bstr (u32 variant)
+ */
+int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
+								size_t buffsz);
 
 #endif // _BUTILS_H
 /**\}*/

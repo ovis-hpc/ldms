@@ -226,3 +226,110 @@ int bdstr_append(struct bdstr *bs, const char *str)
 	return 0;
 }
 
+int bstr_lev_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
+								size_t buffsz)
+{
+	int i, j, d;
+	int na = a->blen / sizeof(uint32_t);
+	int nb = b->blen / sizeof(uint32_t);
+	int *x0, *x1;
+	void *tmp;
+
+	if (na < nb) {
+		d = na;
+		na = nb;
+		nb = d;
+		tmp = (void*)a;
+		a = b;
+		b = tmp;
+	}
+
+	if (2*na*sizeof(*x0) > buffsz) {
+		berr("%s: Not enough buffsz: %d, required: %d", __func__,
+				buffsz, 2*na*sizeof(*x0));
+		errno = ENOMEM;
+		return -1;
+	}
+
+	x0 = buff;
+	x1 = x0 + na;
+	x0[0] = a->u32str[0] != b->u32str[0];
+	for (i = 1; i < na; i++) {
+		x0[i] = (a->u32str[i] == b->u32str[0])?(i):(x0[i-1] + 1);
+	}
+
+	for (j = 1; j < nb; j++) {
+		x1[0] = (a->u32str[0] == b->u32str[j])?(j):(x0[0] + 1);
+		for (i = 1; i < na; i++) {
+			x1[i] = x0[i-1] + (a->u32str[i] != b->u32str[j]);
+			d = 1 + BMIN(x1[i-1], x0[i]);
+			x1[i] = BMIN(x1[i], d);
+		}
+		tmp = x0;
+		x0 = x1;
+		x1 = tmp;
+	}
+
+	return x0[na-1];
+}
+
+int bstr_lcs_u32(const struct bstr *a, const struct bstr *b, void *buff,
+								size_t buffsz)
+{
+	int i, j, d;
+	int na = a->blen / sizeof(uint32_t);
+	int nb = b->blen / sizeof(uint32_t);
+	int *x0, *x1;
+	void *tmp;
+
+	if (na < nb) {
+		d = na;
+		na = nb;
+		nb = d;
+		tmp = (void*)a;
+		a = b;
+		b = tmp;
+	}
+
+	if (2*na*sizeof(*x0) > buffsz) {
+		berr("%s: Not enough buffsz: %d, required: %d", __func__,
+				buffsz, 2*na*sizeof(*x0));
+		errno = ENOMEM;
+		return -1;
+	}
+
+	x0 = buff;
+	x1 = x0 + na;
+	x0[0] = a->u32str[0] == b->u32str[0];
+	for (i = 1; i < na; i++) {
+		x0[i] = (a->u32str[i] == b->u32str[0])?(1):(x0[i-1]);
+	}
+
+	for (j = 1; j < nb; j++) {
+		x1[0] = (a->u32str[0] == b->u32str[j])?(1):(x0[0]);
+		for (i = 1; i < na; i++) {
+			x1[i] = BMAX(x1[i-1], x0[i]);
+			if (a->u32str[i] == b->u32str[j])
+				x1[i] = BMAX(x1[i], x0[i-1] + 1);
+		}
+		tmp = x0;
+		x0 = x1;
+		x1 = tmp;
+	}
+
+	return x0[na-1];
+}
+
+int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
+								size_t buffsz)
+{
+	int na = a->blen/sizeof(uint32_t);
+	int nb = b->blen/sizeof(uint32_t);
+	int lcs_len;
+	lcs_len = bstr_lcs_u32(a, b, buff, buffsz);
+	if (lcs_len < 0)
+		return lcs_len;
+	return na + nb - 2*lcs_len;
+}
+
+/* END OF FILE */
