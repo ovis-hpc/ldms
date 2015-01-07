@@ -109,6 +109,25 @@ struct bmap_hdr {
 	uint32_t count;
 };
 
+typedef enum {
+	BMAP_EVENT_NEW_INSERT,
+	BMAP_EVENT_LAST
+} bmap_event_t;
+
+typedef struct bmap* bmap_t;
+
+/**
+ * Call back interface for bmap events.
+ *
+ * The actual structure of \c arg depends on event type.
+ */
+typedef void (*bmap_ev_cb_fn)(bmap_t, bmap_event_t, void *arg);
+
+struct bmap_event_new_insert_arg {
+	uint32_t id;
+	const struct bstr *bstr;
+};
+
 /**
  * \brief Baler Mapper structure.
  *
@@ -168,6 +187,16 @@ struct bmap {
 	 * This part of the memory will be mapped to \a path /str.mmap.
 	 */
 	struct bmem *mstr;
+
+	/**
+	 * \brief User context.
+	 */
+	void *ucontext;
+
+	/**
+	 * \brief BMAP Event callback function.
+	 */
+	bmap_ev_cb_fn ev_cb;
 };
 
 /**
@@ -247,5 +276,12 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s,
 		uint32_t _id);
 
 void bmap_dump(struct bmap *bmap);
+
+void* bmap_get_ucontext(struct bmap *bmap);
+
+void bmap_set_ucontext(struct bmap *bmap, void *ucontext);
+
+void bmap_set_event_cb(struct bmap *bmap, bmap_ev_cb_fn ev_cb);
+
 #endif // _BMAPPER_H
 /**\}*/

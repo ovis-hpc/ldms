@@ -434,3 +434,18 @@ void bmap_dump(struct bmap *bmap)
 		printf("%10u %.*s\n", id, bstr->blen, bstr->cstr);
 	}
 }
+
+void* bmap_get_ucontext(struct bmap *bmap)
+{
+	return bmap->ucontext;
+}
+
+void bmap_set_ucontext(struct bmap *bmap, void *ucontext)
+{
+	bmap->ucontext = ucontext;
+}
+
+void bmap_set_event_cb(struct bmap *bmap, bmap_ev_cb_fn ev_cb)
+{
+	bmap->ev_cb = ev_cb;
+}
