@@ -580,6 +580,8 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 		if (check_node_state(gxp)) {
 			x->log(LDMS_LINFO, "Node %d is in a bad state.\n",
 							gxp->node_id);
+			assert(x->connected == 0);
+			assert(gxp->sock == -1);
 			return -1;
 		}
 	}
@@ -680,8 +682,10 @@ int process_ugni_hello_req(struct ldms_ugni_xprt *x, struct ugni_hello_req *req)
 	pthread_mutex_lock(&ugni_lock);
 	rc = GNI_EpBind(x->ugni_ep, x->rem_pe_addr, x->rem_inst_id);
 	pthread_mutex_unlock(&ugni_lock);
+#ifdef _its_all_your_fault
 	if (rc == GNI_RC_SUCCESS)
 		x->xprt->connected = 1;
+#endif
 	return rc;
 }
 
@@ -865,8 +869,9 @@ static void ugni_event(struct bufferevent *buf_event, short events, void *arg)
 		r->conn_status = CONN_IDLE;
 		if (r->type == LDMS_UGNI_PASSIVE)
 			ldms_xprt_close(r->xprt);
-	} else
+	} else {
 		LOG_(r, LDMS_LDEBUG, "Peer connect complete %x\n", events);
+	}
 }
 
 static int _setup_connection(struct ldms_ugni_xprt *gxp,
@@ -875,6 +880,7 @@ static int _setup_connection(struct ldms_ugni_xprt *gxp,
 	int rc;
 
 	gxp->conn_status = CONN_CONNECTED;
+	gxp->xprt->connected = 1;
 	memcpy((char *)&gxp->xprt->remote_ss, (char *)remote_addr, sa_len);
 	gxp->xprt->ss_len = sa_len;
 
@@ -1498,6 +1504,7 @@ struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
 
 	gxp->conn_status = CONN_IDLE;
 	gxp->node_id = -1;
+	gxp->sock = -1;
 	x->max_msg = (1024*1024);
 	x->log = log_fn;
 	x->connect = ugni_xprt_connect;
