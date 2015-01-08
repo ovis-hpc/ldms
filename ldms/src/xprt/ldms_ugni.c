@@ -549,8 +549,12 @@ static int set_nonblock(struct ldms_xprt *x, int fd)
 
 static int ugni_xprt_check_proceed(struct ldms_xprt *x)
 {
-	struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
-	return check_node_state(gxp);
+	if (check_state){
+		struct ldms_ugni_xprt *gxp = ugni_from_xprt(x);
+		return check_node_state(gxp);
+	} else {
+		return 0;
+	}
 }
 
 #define UGNI_CQ_DEPTH 2048
@@ -1253,6 +1257,7 @@ int get_state_interval()
 {
 	char *thr = getenv("LDMS_UGNI_STATE_INTERVAL");
 	if (!thr) {
+		ugni_log(LDMS_LDEBUG, "Note: no envvar LDMS_UGNI_STATE_INTERVAL.\n");
 		state_interval_us = 0;
 		state_offset_us = 0;
 		check_state = 0;
@@ -1279,6 +1284,7 @@ int get_state_interval()
 
 	thr = getenv("LDMS_UGNI_STATE_OFFSET");
 	if (!thr) {
+		ugni_log(LDMS_LDEBUG, "Note: no envvar LDMS_UGNI_STATE_OFFSET.\n");
 		state_offset_us = 0;
 		check_state = 1;
 		return 0;
