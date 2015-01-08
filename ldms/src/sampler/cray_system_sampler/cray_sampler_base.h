@@ -1,4 +1,4 @@
-/*
+/* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -48,41 +48,16 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/**
- * \file gemini_metrics_gpcd.h
- * \brief Utilities for cray_system_sampler for gemini metrics using gpcd
- */
+
 
 /**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
- * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
- * (Sandia National Laboratories) gemini performance counter interface and
- * link aggregation library. It has been augmented with pattern analysis
- * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
+ * \file general_metrics.h non-HSN metrics
  */
 
-
-#ifndef __GEMINI_METRICS_GPCD_H_
-#define __GEMINI_METRICS_GPCD_H_
+#ifndef __CRAY_SAMPLER_BASE_H_
+#define __CRAY_SAMPLER_BASE_H_
 
 #define _GNU_SOURCE
-
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -90,36 +65,74 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <pthread.h>
 #include <sys/types.h>
-#include <time.h>
 #include <ctype.h>
-#include "ldms.h"
+#include <wordexp.h>
+//have it for the logfile and set
 #include "ldmsd.h"
-#include "gemini.h"
-#include "gpcd_util.h"
+#include "ldms.h"
 
 
-/* config */
-int hsn_metrics_config(int i, char* filename);
+/**
+ * The intent is that the various cray network sampler files handle whatever has
+ * to be handled for the particular transports (gemini vs aries) AND
+ * you can build different versions of the network sampler at the same time
+ * (e.g., both gemini_r and gemini_d).
+ *
+ * Everything else is handled here in the "generic" functions that have a
+ * big switch statement. All those cases are handled within the switch statement
+ * either by a simple interface or a particular interface. The former are calls
+ * called "simple" which are static to cray_sampler_base.c. The latter are
+ * particular calls which are defined in separate files (e.g, lustre).
+ *
+ * Right now, several calls which are generally simple, but might have some
+ * particul-osity (e.g., sample function might be particular) are grouped
+ * together in "general_metrics" but could be split out into their own files.
+ *
+ * Anything can be defined here with a default and bypassed in the cray network
+ * sampler files.
+ *
+ * Specifically then:
+ * 1) the transport related cases, linksmetrics and nicmetrics, have no defaults
+ * (other than do nothing) and will have to be handled in the network base
+ * sampler files.
+ * 2) other data sources which are handled or not in different transport
+ * cases, in particular, energy and nettopo, have defaults and may be
+ * bypassed in the sampler.
+ * 3) other non-network related data sources, in particular existence of
+ * cray_nvidia as specified by the build, is handled in this related c file.
+ */
+typedef enum {
+	NS_NETTOPO,
+	NS_LINKSMETRICS,
+	NS_NICMETRICS,
+	NS_ENERGY,
+	NS_LUSTRE,
+	NS_VMSTAT,
+	NS_LOADAVG,
+	NS_CURRENT_FREEMEM,
+	NS_KGNILND,
+	NS_PROCNETDEV,
+	NS_NVIDIA,
+	NS_NUM
+} cray_system_sampler_sources_t;
 
-/** get metric size */
-int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
-int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
 
-/** add metrics */
-int add_metrics_gem_link_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
-int add_metrics_nic_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
-
-/** setup after add before sampling */
-int gem_link_perf_setup(ldmsd_msg_log_f msglog);
-int nic_perf_setup(ldmsd_msg_log_f msglog);
-
-/** sampling */
-int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog);
-int sample_metrics_nic_perf(ldmsd_msg_log_f msglog);
+int set_offns_generic(cray_system_sampler_sources_t i);
+int get_offns_generic(cray_system_sampler_sources_t i);
+int config_generic(struct attr_value_list *kwl,
+		   struct attr_value_list *avl,
+		   ldmsd_msg_log_f msglog);
+int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
+			    cray_system_sampler_sources_t source_id,
+			    ldmsd_msg_log_f msglog);
+int add_metrics_generic(ldms_set_t set, int comp_id,
+			cray_system_sampler_sources_t source_id,
+			ldmsd_msg_log_f msglog);
+int sample_metrics_generic(cray_system_sampler_sources_t source_id,
+			   ldmsd_msg_log_f msglog);
 
 #endif
+
+

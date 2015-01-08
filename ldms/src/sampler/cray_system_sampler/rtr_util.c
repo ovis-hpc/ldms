@@ -81,13 +81,15 @@
 #include "ldms.h"
 
 
+
+
 /**
  * Converts a Gemini tile ID to tile (\c row, \c col) coordinate.
  *
  * \returns 0 on success.
  * \returns -1 on failure.
  */
-int tid_to_tcoord(int tid, int *row, int *col)
+static int tid_to_tcoord(int tid, int *row, int *col)
 {
 	if (tid >= GEMINI_NUM_TILES)
 	  return -1;
@@ -114,7 +116,7 @@ int tcoord_to_tid(int row, int col, int *tid)
 }
 
 
-int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind)
+static int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind)
 {
 	ldmsd_msg_log_f msglog = *msglog_outer;
 	int cabrow;
@@ -132,7 +134,7 @@ int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind)
 	fd = fopen("/proc/cray_xt/cname", "r");
 	if (!fd) {
 		if (msglog)
-			msglog(LDMS_LDEBUG,"Could not open cnameprocfile\n");
+			msglog(LDMS_LERROR,"Could not open cnameprocfile\n");
 		return ENOENT;
 	}
 	fseek(fd, 0, SEEK_SET);
@@ -167,7 +169,38 @@ int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind)
 	 return 0;
 }
 
-int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
+
+/**
+ * Converts the input link direction string (e.g., "X+") into a
+ * link direction integer value, representing the direction of the link.
+ */
+static int str_to_linkdir(char *str)
+{
+	int dir = GEMINI_LINK_DIR_INVALID;
+
+	if      (strcmp(str, "X+")   == 0)
+		dir = GEMINI_LINK_DIR_X_PLUS;
+	else if (strcmp(str, "X-")   == 0)
+		dir = GEMINI_LINK_DIR_X_MINUS;
+	else if (strcmp(str, "Y+")   == 0)
+		dir = GEMINI_LINK_DIR_Y_PLUS;
+	else if (strcmp(str, "Y-")   == 0)
+		dir = GEMINI_LINK_DIR_Y_MINUS;
+	else if (strcmp(str, "Z+")   == 0)
+		dir = GEMINI_LINK_DIR_Z_PLUS;
+	else if (strcmp(str, "Z-")   == 0)
+		dir = GEMINI_LINK_DIR_Z_MINUS;
+	else if (strcmp(str, "HOST") == 0)
+		dir = GEMINI_LINK_DIR_HOST;
+	else
+		dir = GEMINI_LINK_DIR_INVALID;
+		/*printf("unknown link direction %s", str); */
+
+	return dir;
+}
+
+
+static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 		    int my_z_pattern, char *link_file, gemini_tile_t *tile)
 {
 	ldmsd_msg_log_f msglog = *msglog_outer;
@@ -186,7 +219,7 @@ int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 	fd = fopen(link_file, "r");
 	if (!fd) {
 		if (msglog)
-			msglog(LDMS_LDEBUG,"Could not open %s for read\n", link_file);
+			msglog(LDMS_LERROR,"Could not open %s for read\n", link_file);
 		return ENOENT;
 	}
 	fseek(fd, 0, SEEK_SET);
@@ -198,7 +231,7 @@ int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 			    &file_tile_type, &file_z_pattern);
 		if (rc < 3){
 			if (msglog)
-				msglog(LDMS_LDEBUG,"Failure reading line in linkfile %s\n",
+				msglog(LDMS_LERROR,"Failure reading line in linkfile %s\n",
 				       link_file);
 			fclose(fd);
 			return EINVAL;
@@ -243,39 +276,10 @@ int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 
 
 /**
- * Converts the input link direction string (e.g., "X+") into a
- * link direction integer value, representing the direction of the link.
- */
-int str_to_linkdir(char *str)
-{
-	int dir = GEMINI_LINK_DIR_INVALID;
-
-	if      (strcmp(str, "X+")   == 0)
-		dir = GEMINI_LINK_DIR_X_PLUS;
-	else if (strcmp(str, "X-")   == 0)
-		dir = GEMINI_LINK_DIR_X_MINUS;
-	else if (strcmp(str, "Y+")   == 0)
-		dir = GEMINI_LINK_DIR_Y_PLUS;
-	else if (strcmp(str, "Y-")   == 0)
-		dir = GEMINI_LINK_DIR_Y_MINUS;
-	else if (strcmp(str, "Z+")   == 0)
-		dir = GEMINI_LINK_DIR_Z_PLUS;
-	else if (strcmp(str, "Z-")   == 0)
-		dir = GEMINI_LINK_DIR_Z_MINUS;
-	else if (strcmp(str, "HOST") == 0)
-		dir = GEMINI_LINK_DIR_HOST;
-	else
-		dir = GEMINI_LINK_DIR_INVALID;
-		/*printf("unknown link direction %s", str); */
-
-	return dir;
-}
-
-/**
  * Converts the input link type string (e.g., "mezzanine") into a
  * link type integer value, representing the type of the link.
  */
-int str_to_linktype(char *str)
+static int str_to_linktype(char *str)
 {
 	if (strcmp(str,  "backplane") == 0)
 		return GEMINI_LINK_TYPE_BACKPLANE;
@@ -293,7 +297,7 @@ int str_to_linktype(char *str)
 /**
  * Return link bandwidth based on type. This is specified in ldms_gemini.h
  */
-double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type)
+static double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type)
 {
 	ldmsd_msg_log_f msglog = *msglog_outer;
 	switch (tile_type) {

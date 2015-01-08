@@ -38,14 +38,14 @@ dnl if test "$disable_zap" != "yes"; then
 dnl   OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 dnl   OPTION_WITH([libevent], [LIBEVENT])
 dnl   OPTION_WITH_EVENT
-dnl 
+dnl
 dnl # we need libibverbs-devel and librdmacm-devel to support rdma
 dnl   if test "$disable_rdma" != "yes"; then
 dnl     AC_CHECK_HEADER([infiniband/verbs.h],
 dnl     [AC_DEFINE([HAVE_VERBS_H], [1],
 dnl       [Define to 1 if you have infiniband/verbs.h.])],
 dnl     [AC_MSG_ERROR([Missing header. libibverbs-devel not installed?])])
-dnl 
+dnl
 dnl     AC_CHECK_HEADER([rdma/rdma_cma.h],
 dnl     [AC_DEFINE([HAVE_RDMA_CMA_H], [1],
 dnl                [Define to 1 if you have rdma/rdma_cma.h.])],

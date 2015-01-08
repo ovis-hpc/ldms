@@ -1,4 +1,4 @@
-/*
+/* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -48,78 +48,125 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/**
- * \file gemini_metrics_gpcd.h
- * \brief Utilities for cray_system_sampler for gemini metrics using gpcd
- */
+
 
 /**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
- * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
- * (Sandia National Laboratories) gemini performance counter interface and
- * link aggregation library. It has been augmented with pattern analysis
- * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
+ * \file general_metrics.c
  */
-
-
-#ifndef __GEMINI_METRICS_GPCD_H_
-#define __GEMINI_METRICS_GPCD_H_
 
 #define _GNU_SOURCE
-
+#include <fcntl.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <pthread.h>
 #include <sys/types.h>
-#include <time.h>
 #include <ctype.h>
-#include "ldms.h"
-#include "ldmsd.h"
-#include "gemini.h"
-#include "gpcd_util.h"
+#include <wordexp.h>
+#include "lustre_metrics.h"
+
+/* LUSTRE SPECIFIC */
+struct str_map *lustre_idx_map = NULL;
+struct lustre_svc_stats_head lustre_svc_head = {0};
+
+int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
+			   ldmsd_msg_log_f msglog)
+{
+	struct lustre_svc_stats *lss;
+	size_t msize = 0;
+	size_t dsize = 0;
+	size_t m, d;
+	char name[CSS_LUSTRE_NAME_MAX];
+	int i;
+	int rc;
+
+	LIST_FOREACH(lss, &lustre_svc_head, link) {
+		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
+			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
+					, lss->name);
+			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
+			if (rc)
+				return rc;
+			msize += m;
+			dsize += d;
+		}
+	}
+	*m_sz = msize;
+	*d_sz = dsize;
+	return 0;
+}
 
 
-/* config */
-int hsn_metrics_config(int i, char* filename);
+int add_metrics_lustre(ldms_set_t set, int comp_id,
+			      ldmsd_msg_log_f msglog)
+{
+	struct lustre_svc_stats *lss;
+	int i;
+	int count = 0;
+	char name[CSS_LUSTRE_NAME_MAX];
 
-/** get metric size */
-int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
-int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
+	LIST_FOREACH(lss, &lustre_svc_head, link) {
+		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
+			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
+							, lss->name);
+			ldms_metric_t m = ldms_add_metric(set, name,
+								LDMS_V_U64);
+			if (!m)
+				return ENOMEM;
+			lss->metrics[i+1] = m;
+			ldms_set_user_data(m, comp_id);
+			count++;
+		}
+	}
+	return 0;
+}
 
-/** add metrics */
-int add_metrics_gem_link_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
-int add_metrics_nic_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
 
-/** setup after add before sampling */
-int gem_link_perf_setup(ldmsd_msg_log_f msglog);
-int nic_perf_setup(ldmsd_msg_log_f msglog);
 
-/** sampling */
-int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog);
-int sample_metrics_nic_perf(ldmsd_msg_log_f msglog);
+int handle_llite(const char *llite)
+{
+	char *_llite = strdup(llite);
+	if (!_llite)
+		return ENOMEM;
+	char *saveptr = NULL;
+	char *tok = strtok_r(_llite, ",", &saveptr);
+	struct lustre_svc_stats *lss;
+	char path[CSS_LUSTRE_PATH_MAX];
+	while (tok) {
+		snprintf(path, CSS_LUSTRE_PATH_MAX,"/proc/fs/lustre/llite/%s-*/stats",tok);
+		lss = lustre_svc_stats_alloc(path, LUSTRE_METRICS_LEN+1);
+		lss->name = strdup(tok);
+		if (!lss->name)
+			goto err;
+		lss->key_id_map = lustre_idx_map;
+		LIST_INSERT_HEAD(&lustre_svc_head, lss, link);
+		tok = strtok_r(NULL, ",", &saveptr);
+	}
+	free(_llite);
+	return 0;
+err:
+	lustre_svc_stats_list_free(&lustre_svc_head);
+	return ENOMEM;
+}
 
-#endif
+int sample_metrics_lustre(ldmsd_msg_log_f msglog)
+{
+	struct lustre_svc_stats *lss;
+	int rc;
+	int count = 0;
+
+	LIST_FOREACH(lss, &lustre_svc_head, link) {
+		rc = lss_sample(lss);
+		if (rc && rc != ENOENT)
+			return rc;
+		count += LUSTRE_METRICS_LEN;
+	}
+	return 0;
+}
+
+

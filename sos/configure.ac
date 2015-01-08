@@ -8,6 +8,7 @@ AC_CONFIG_SRCDIR([src/sos.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE()
+m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AC_PROG_LIBTOOL
 AC_LIB_RPATH
@@ -75,7 +76,7 @@ if test "x$with_ovis_include" != "xno" ;  then
 		if test -f $libsrcdir/ovis-test/test.h; then
 			OVIS_LIB_INCLUDE=$libsrcdir
 			CPPFLAGS="-I$OVIS_LIB_INCLUDE $CPPFLAGS"
-		else 
+		else
 			AC_MSG_ERROR([could not find given ovis lib headers (in $with_ovis_include) or $srcdir/../lib/src. what?])
 		fi
 	fi

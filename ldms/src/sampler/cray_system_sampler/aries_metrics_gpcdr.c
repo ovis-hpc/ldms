@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2014 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -51,15 +51,14 @@
 
 
 /**
- * \file gemini_metrics_gpcdr.c
+ * \file aries_metrics_gpcdr.c
  * \brief Functions used in the cray_system_sampler that are particular to
- * gemini using gpcdr interface.
+ * aries using gpcdr interface.
  */
 
-/* have to include this now to get the max bw */
-#include "rtr_util.h"
-#include "gemini.h"
-#include "gemini_metrics_gpcdr.h"
+#include "aries_metrics_gpcdr.h"
+
+#define ARIES_NUM_TILES 48
 
 typedef enum {
 	HSN_METRICS_COUNTER,
@@ -69,33 +68,20 @@ typedef enum {
 } hsn_metrics_type_t;
 #define HSN_METRICS_DEFAULT HSN_METRICS_COUNTER
 
-
-/** order in the module. Counting on this being same as in gemini.h */
-static char* linksmetrics_dir[] = {
-	"X+","X-","Y+","Y-","Z+","Z-"
-};
-
 #define STR_WRAP(NAME) #NAME
 #define PREFIX_ENUM_M(NAME) M_ ## NAME
 #define PREFIX_ENUM_LB(NAME) LB_ ## NAME
 #define PREFIX_ENUM_LD(NAME) LD_ ## NAME
 
-/** default conf file reports these as "stalled" but the counter is the inq_stall" */
 #define LINKSMETRICS_BASE_LIST(WRAP)\
 	WRAP(traffic), \
-	WRAP(packets), \
-	WRAP(inq_stall),	      \
-	WRAP(credit_stall),	      \
+	WRAP(stalled),	      \
 	WRAP(sendlinkstatus), \
 	WRAP(recvlinkstatus)
 
+//THESE HAVE NOT BEEN FIXED YET
 #define LINKSMETRICS_DERIVED_LIST(WRAP) \
-	WRAP(SAMPLE_GEMINI_LINK_BW),	\
-	WRAP(SAMPLE_GEMINI_LINK_USED_BW),	\
-	WRAP(SAMPLE_GEMINI_LINK_PACKETSIZE_AVE), \
-		WRAP(SAMPLE_GEMINI_LINK_INQ_STALL), \
-	WRAP(SAMPLE_GEMINI_LINK_CREDIT_STALL)
-
+	WRAP(SAMPLE_ARIES_TRAFFIC)
 
 static char* linksmetrics_basename[] = {
 	LINKSMETRICS_BASE_LIST(STR_WRAP)
@@ -112,8 +98,6 @@ typedef enum {
 
 static char* linksmetrics_baseunit[] = {
 	"(B)",
-	"(1)",
-	"(ns)",
 	"(ns)",
 	"(1)",
 	"(1)"
@@ -121,43 +105,37 @@ static char* linksmetrics_baseunit[] = {
 
 static char* linksmetrics_derivedunit[] = {
 	"(B/s)",
-	"(\% x1e6)",
-	"(B)",
-	"(\% x1e6)",
-	"(\% x1e6)"
 	};
 #define NUM_LINKSMETRICS_DIR (sizeof(linksmetrics_dir)/sizeof(linksmetrics_dir[0]))
 #define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
 #define NUM_LINKSMETRICS_DERIVEDNAME (sizeof(linksmetrics_derivedname)/sizeof(linksmetrics_derivedname[0]))
 
 #define NICMETRICS_BASE_LIST(WRAP) \
-	WRAP(totaloutput_optA),     \
-		WRAP(totalinput), \
-		WRAP(fmaout), \
-		WRAP(bteout_optA), \
-		WRAP(bteout_optB), \
-		WRAP(totaloutput_optB)
+        WRAP(totaloutput), \
+                WRAP(totalinput), \
+                WRAP(fmaout), \
+                WRAP(bteout)
 
 static char* nicmetrics_derivedprefix = "SAMPLE";
 static char* nicmetrics_derivedunit =  "(B/s)";
 
 static char* nicmetrics_basename[] = {
-	NICMETRICS_BASE_LIST(STR_WRAP)
+        NICMETRICS_BASE_LIST(STR_WRAP)
 };
 
 typedef enum {
-	NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
+        NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
 } nicmetrics_metric_t;
 #define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
 
 #define LINKSMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
 #define NICMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/nic/metrics"
 
-#define RCAHELPER_CMD "/opt/cray/rca/default/bin/rca-helper -O"
 
 /* LINKSMETRICS Specific */
 static FILE *lm_f;
 static uint64_t linksmetrics_prev_time;
+static int linksmetrics_time_multiplier;
 static ldms_metric_t* linksmetrics_base_metric_table;
 static ldms_metric_t* linksmetrics_derived_metric_table;
 static uint64_t*** linksmetrics_base_values; /**< holds curr & prev raw module
@@ -169,11 +147,7 @@ static int num_linksmetrics_exists;
 static int* linksmetrics_indicies; /**< track metric table index in
 			       which to store the raw data */
 
-static double linksmetrics_max_link_bw[GEMINI_NUM_LOGICAL_LINKS];
-static int linksmetrics_tiles_per_dir[GEMINI_NUM_LOGICAL_LINKS];
 static int linksmetrics_valid;
-
-static char* rtrfile = NULL; /**< needed for gpcd, but also used to get maxbw for gpcdr */
 
 /* NICMETRICS Specific */
 static FILE *nm_f;
@@ -189,142 +163,33 @@ static int nicmetrics_valid;
 
 static int hsn_metrics_type = HSN_METRICS_DEFAULT;
 
+
 /** internal calculations */
 static uint64_t __linksmetrics_derived_metric_calc(
 	int i, int j, uint64_t** diff, uint64_t time_delta);
 static int __links_metric_name(int, int, int, char[]);
-static int rcahelper_tilesperdir(ldmsd_msg_log_f msglog);
-static int bwhelper_maxbwperdir(ldmsd_msg_log_f msglog);
 
 
+//diridx is now the tile
 static int __links_metric_name(int isbase, int nameidx,
 				   int diridx, char newname[]){
 
 	if (isbase == 1)
-		sprintf(newname, "%s_%s %s",
-			linksmetrics_dir[diridx],
+		sprintf(newname, "%s_%03d %s",
 			linksmetrics_basename[nameidx],
+			diridx,
 			linksmetrics_baseunit[nameidx]);
 	else
-		sprintf(newname, "%s_%s %s",
-			linksmetrics_dir[diridx],
+		sprintf(newname, "%s_%03d %s",
 			linksmetrics_derivedname[nameidx],
+			diridx,
 			linksmetrics_derivedunit[nameidx]);
 
 	return 0;
 }
 
 
-static int bwhelper_maxbwperdir(ldmsd_msg_log_f msglog)
-{
-
-	/** have to get these values from the interconnect file for now.
-	 * dimension will then include the host dir
-	 */
-
-	gemini_state_t junk;
-	int tiles_per_dir_junk[GEMINI_NUM_LOGICAL_LINKS];
-	int rc;
-
-	if (rtrfile == NULL)
-		return EINVAL;
-
-	rc = gem_link_perf_parse_interconnect_file(&msglog,
-						   rtrfile,
-						   junk.tile,
-						   &linksmetrics_max_link_bw,
-						   &tiles_per_dir_junk);
-
-	if (rc != 0){
-		msglog(LDMS_LERROR,"linksmetrics: Error parsing interconnect file\n");
-		return rc;
-	}
-
-	return 0;
-
-}
-
-
-int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
-{
-
-	FILE* pipe;
-	char buffer[128];
-	char *saveptr = NULL;
-
-	int i;
-	int rc;
-
-	pipe = popen(RCAHELPER_CMD, "r");
-	if (!pipe) {
-		msglog(LDMS_LERROR,"gemini_metrics: rca-helper fail\n");
-		rc = EINVAL;
-		goto err;
-	}
-
-	/**
-	 * output format:
-	 * rca-helper -O
-	 * X+      002 003 004 005 012 013 014 015 030 031 036 037 040 041 046 047
-	 * X-
-	 * Y+      042 045 050 051 052 055 056 057
-	 * Y-
-	 * Z+      000 001 010 011 025 026 027 035
-	 * Z-      006 007 016 017 020 021 022 032
-	 *
-	 * NOTE: Can later see about using the new ioctl
-	 * NOTE: later may want to retain the tile info.
-	 */
-
-	i = 0;
-	while(!feof(pipe)) {
-		char* pch;
-		int ntiles = -1;
-
-		if(fgets(buffer, 128, pipe) != NULL){
-			pch = strtok_r(buffer, " \n", &saveptr);
-			while (pch != NULL){
-				if (ntiles == -1) {
-					if (strcmp(linksmetrics_dir[i],
-						   pch) != 0){
-						msglog(LDMS_LERROR,"rca-helper: err %d <%s>\n",
-						       i, pch);
-						rc = EINVAL;
-						goto err;
-					}
-				}
-				ntiles++;
-				pch = strtok_r(NULL, " \n", &saveptr);
-			}
-		}
-		if (ntiles >= 0) {
-			linksmetrics_tiles_per_dir[i++] = ntiles;
-		}
-	}
-	pclose(pipe);
-	pipe = 0;
-
-	/** NOTE: does not include the hostfacing dir */
-	if (i != NUM_LINKSMETRICS_DIR) {
-		msglog(LDMS_LERROR,"rca-helper: err (i = %d NUM_LINKSMETRICS_DIR = %d)\n",
-		       i, NUM_LINKSMETRICS_DIR);
-		rc = EINVAL;
-		goto err;
-	}
-
-	return 0;
-
-err:
-
-	if (pipe)
-		pclose(pipe);
-
-	return rc;
-
-}
-
-
-int hsn_metrics_config(int i, char* fname){
+int hsn_metrics_config(int i){
 	if (i >= HSN_METRICS_END){
 		return EINVAL;
 	} else if (i < 0){
@@ -333,26 +198,12 @@ int hsn_metrics_config(int i, char* fname){
 		hsn_metrics_type = i;
 	}
 
-	if (rtrfile)
-		free(rtrfile);
-	if (fname == NULL)
-		rtrfile = NULL;
-	else
-		rtrfile = strdup(fname);
-
-	//only need rtrfile for derived
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		if (rtrfile == NULL)
-			return EINVAL;
-	}
-
 	return 0;
 
 }
 
 
-int get_metric_size_linksmetrics(size_t *m_sz, size_t *d_sz,
+int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 				 ldmsd_msg_log_f msglog)
 {
 	size_t tot_meta_sz = 0;
@@ -369,7 +220,7 @@ int get_metric_size_linksmetrics(size_t *m_sz, size_t *d_sz,
 	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_LINKSMETRICS_BASENAME; i++){
-			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++){
+			for (j = 0; j < ARIES_NUM_TILES; j++){
 				__links_metric_name(1, i, j, newname);
 				rc = ldms_get_metric_size(newname,
 							  LDMS_V_U64,
@@ -392,14 +243,13 @@ int get_metric_size_linksmetrics(size_t *m_sz, size_t *d_sz,
 		linksmetrics_indicies = calloc(count, sizeof(int));
 		if (!linksmetrics_indicies)
 			return ENOMEM;
-
 	}
 
 	count = 0;
 	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
-			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++) {
+			for (j = 0; j < ARIES_NUM_TILES; j++) {
 				__links_metric_name(0, i, j, newname);
 				rc = ldms_get_metric_size(newname,
 							  LDMS_V_U64,
@@ -486,7 +336,7 @@ int get_metric_size_nicmetrics(size_t *m_sz, size_t *d_sz,
 }
 
 
-int linksmetrics_setup(ldmsd_msg_log_f msglog)
+int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -514,14 +364,6 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 
-		rc = bwhelper_maxbwperdir(msglog);
-		if (rc)
-			return rc;
-
-		rc = rcahelper_tilesperdir(msglog);
-		if (rc)
-			return rc;
-
 		/** storage for metrics for computations in terms of the ones
 		 * gpcdr can possibly have */
 
@@ -543,15 +385,15 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 
 			for (j = 0; j < NUM_LINKSMETRICS_BASENAME; j++){
 				linksmetrics_base_values[i][j] =
-					calloc(NUM_LINKSMETRICS_DIR,
+					calloc(ARIES_NUM_TILES,
 					       sizeof(uint64_t));
 				if (!linksmetrics_base_values[i][j])
 					return ENOMEM;
 
 				if (i == 0){
 					linksmetrics_base_diff[j] =
-					calloc(NUM_LINKSMETRICS_DIR,
-					       sizeof(uint64_t));
+						calloc(ARIES_NUM_TILES,
+						       sizeof(uint64_t));
 					if (!linksmetrics_base_diff[j])
 						return ENOMEM;
 				}
@@ -576,8 +418,12 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 		rc = EINVAL;
 		return rc;
 	}
-	if (strcmp(units,"ms") != 0){
-		msglog(LDMS_LERROR,"linksmetrics: wrong gpcdr interface\n");
+	if (strcmp(units,"ms") == 0){
+		linksmetrics_time_multiplier = 1000;
+	} else if (strcmp(units,"seconds") == 0){
+		linksmetrics_time_multiplier = 1;
+	} else {
+		msglog(LDMS_LERROR,"linksmetrics: wrong gpcdr interface (time units)\n");
 		rc = EINVAL;
 		return rc;
 	}
@@ -587,9 +433,9 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 		s = fgets(lbuf, sizeof(lbuf), lm_f);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &val,
+		rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &val,
 			    units);
-		if (rc != 3) {
+		if (rc != 4) {
 			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 			       LINKSMETRICS_FILE);
 			rc = EINVAL;
@@ -600,20 +446,15 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 		      !strstr(metric_name, linksmetrics_basename[lastbase])){
 			lastbase++;
 		}
-		for (i = 0; i < NUM_LINKSMETRICS_DIR; i++){
-			if (strstr(metric_name, linksmetrics_dir[i])){
-				dir = i;
-				break;
-			}
-		}
+
 		if ( (dir < 0) || (lastbase == NUM_LINKSMETRICS_BASENAME)){
 			msglog(LDMS_LERROR,"cray_system_sampler: linksmetric bad metric\n");
 			return EINVAL;
 		}
-		/* metric_no in terms of the ones gpcdr can possibly have */
-		metric_no = lastbase*NUM_LINKSMETRICS_DIR+dir;
-		linksmetrics_indicies[num_linksmetrics_exists++] =  metric_no;
 
+		/* metric_no in terms of the ones gpcdr can possibly have */
+		metric_no = lastbase*ARIES_NUM_TILES+dir;
+		linksmetrics_indicies[num_linksmetrics_exists++] =  metric_no;
 
 		/* store the val for the first calculation */
 		if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
@@ -687,6 +528,8 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 		}
 		if (strcmp(units,"ms") == 0){
 			nicmetrics_time_multiplier = 1000;
+		} else if (strcmp(units,"seconds") == 0){
+			nicmetrics_time_multiplier = 1;
 		} else {
 			msglog(LDMS_LERROR,"nicmetrics: wrong gpcdr interface (time units)\n");
 			rc = EINVAL;
@@ -718,7 +561,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 }
 
 
-int add_metrics_linksmetrics(ldms_set_t set, int comp_id,
+int add_metrics_aries_linksmetrics(ldms_set_t set, int comp_id,
 			     ldmsd_msg_log_f msglog)
 {
 	char newname[96];
@@ -731,7 +574,7 @@ int add_metrics_linksmetrics(ldms_set_t set, int comp_id,
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_no = 0;
 		for (i = 0; i < NUM_LINKSMETRICS_BASENAME; i++){
-			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++){
+			for (j = 0; j < ARIES_NUM_TILES; j++){
 				__links_metric_name(1, i, j, newname);
 				linksmetrics_base_metric_table[metric_no] =
 					ldms_add_metric(set, newname,
@@ -751,7 +594,7 @@ int add_metrics_linksmetrics(ldms_set_t set, int comp_id,
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_no = 0;
 		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
-			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++) {
+			for (j = 0; j < ARIES_NUM_TILES; j++) {
 				__links_metric_name(0, i, j, newname);
 				linksmetrics_derived_metric_table[metric_no] =
 					ldms_add_metric(set, newname,
@@ -816,10 +659,11 @@ int add_metrics_nicmetrics(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 	return rc;
 }
 
-int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
+int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[64];
+	int dir;
 	char units[32];
 	char* s;
 	union ldms_value v;
@@ -859,9 +703,9 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 		s = fgets(lbuf, sizeof(lbuf), lm_f);
 		if (!s)
 			break;
-		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &v.v_u64,
+		rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &v.v_u64,
 			    units);
-		if (rc != 3) {
+		if (rc != 4) {
 			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 			       LINKSMETRICS_FILE);
 			rc = EINVAL;
@@ -880,9 +724,8 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 		    (hsn_metrics_type == HSN_METRICS_BOTH)){
 			int ibase, idir;
 			ibase = (int)(linksmetrics_indicies[count]/
-				      NUM_LINKSMETRICS_DIR);
-			idir = linksmetrics_indicies[count] %
-				NUM_LINKSMETRICS_DIR;
+				      ARIES_NUM_TILES);
+			idir = dir;
 
 			linksmetrics_base_values[idx][ibase][idir] = v.v_u64;
 
@@ -911,7 +754,7 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_no = 0;
 		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
-			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++) {
+			for (j = 0; j < ARIES_NUM_TILES; j++) {
 				v.v_u64 = __linksmetrics_derived_metric_calc(
 					i, j, linksmetrics_base_diff,
 					time_delta);
@@ -996,7 +839,6 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 
 	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		/* time in ms (this is set in the gpcdr config) */
 		for (i = 0; i < NUM_NICMETRICS; i++){
 			uint64_t diff;
 
@@ -1029,63 +871,16 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 static uint64_t __linksmetrics_derived_metric_calc(int i, int j,
 						   uint64_t** diff,
 						   uint64_t timedelta){
-	/* time in the config file is ms */
 	int rc = 0;
 
 	switch (i) {
-	case LD_SAMPLE_GEMINI_LINK_BW:
+	case LD_SAMPLE_ARIES_TRAFFIC:
 		if (timedelta > 0)
-			return (uint64_t)((double)(1000.0 * (double)(diff[LB_traffic][j]))/
-				(double)(timedelta));
+			return (uint64_t)
+				((double)(linksmetrics_time_multiplier * diff[LB_traffic][j])/(double) timedelta);
 		else
 			return 0;
 		break;
-	case LD_SAMPLE_GEMINI_LINK_USED_BW:
-		if ((linksmetrics_max_link_bw[j] > 0 ) && (timedelta > 0))
-			return (uint64_t) (
-				((double)(100.0 * 1000000.0 * (double)(diff[LB_traffic][j]))/
-				 ((double)timedelta * 1000000)) /
-				linksmetrics_max_link_bw[j]);
-		else
-			return 0;
-		break;
-	case LD_SAMPLE_GEMINI_LINK_PACKETSIZE_AVE:
-		if (diff[LB_packets][j] > 0)
-			return (diff[LB_traffic][j]/diff[LB_packets][j]);
-		else
-			return 0;
-		break;
-	case LD_SAMPLE_GEMINI_LINK_INQ_STALL:
-		/* see __gem_link_derived_metric_calc for a description of this
-		 * calculation. 1.25 is already accounted for in the counter.
-		 */
-		if ((linksmetrics_tiles_per_dir[j] > 0) && (timedelta > 0)){
-			uint64_t temp = (uint64_t)(
-				(((double)diff[LB_inq_stall][j]/
-				 (double)linksmetrics_tiles_per_dir[j])/
-				 (double)(timedelta*1000000)) *
-				100.0 * 1000000.0);
-			return temp;
-		} else {
-			return 0;
-		}
-		break;
-	case LD_SAMPLE_GEMINI_LINK_CREDIT_STALL:
-		/* see __gem_link_derived_metric_calc for a description of this
-		 * calculation. 1.25 is already accounted for in the counter.
-		 */
-		if ((linksmetrics_tiles_per_dir[j] > 0) && (timedelta > 0)){
-			uint64_t temp = (uint64_t)(
-				(((double)diff[LB_credit_stall][j]/
-				 (double)linksmetrics_tiles_per_dir[j])/
-				(double)(timedelta*1000000)) *
-				100.0 * 1000000.0);
-			return temp;
-		} else {
-			return 0;
-		}
-		break;
-
 	default:
 		return 0;
 	}

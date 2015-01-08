@@ -1,6 +1,6 @@
-/*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+/* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2014 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -48,41 +48,16 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/**
- * \file gemini_metrics_gpcd.h
- * \brief Utilities for cray_system_sampler for gemini metrics using gpcd
- */
+
 
 /**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
- * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
- * (Sandia National Laboratories) gemini performance counter interface and
- * link aggregation library. It has been augmented with pattern analysis
- * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
+ * \file nvidia_metrics.h nvidia gpu metrics using nvml
  */
 
-
-#ifndef __GEMINI_METRICS_GPCD_H_
-#define __GEMINI_METRICS_GPCD_H_
+#ifndef __NVIDIA_METRICS_H_
+#define __NVIDIA_METRICS_H_
 
 #define _GNU_SOURCE
-
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -90,36 +65,42 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <pthread.h>
 #include <sys/types.h>
-#include <time.h>
 #include <ctype.h>
+#include <wordexp.h>
 #include "ldms.h"
-#include "ldmsd.h"
-#include "gemini.h"
-#include "gpcd_util.h"
 
-
-/* config */
-int hsn_metrics_config(int i, char* filename);
-
-/** get metric size */
-int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
-int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
-
-/** add metrics */
-int add_metrics_gem_link_perf(ldms_set_t set, int comp_id,
+int config_nvidia(struct attr_value_list* kwl,
+		  struct attr_value_list* avl,
+		  ldmsd_msg_log_f msglog);
+int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
+			   ldmsd_msg_log_f msglog);
+int add_metrics_nvidia(ldms_set_t set, int comp_id,
 			      ldmsd_msg_log_f msglog);
-int add_metrics_nic_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
+int nvidia_setup(ldmsd_msg_log_f msglog);
+int nvidia_shutdown(ldmsd_msg_log_f msglog);
+int sample_metrics_nvidia(ldmsd_msg_log_f msglog);
 
-/** setup after add before sampling */
-int gem_link_perf_setup(ldmsd_msg_log_f msglog);
-int nic_perf_setup(ldmsd_msg_log_f msglog);
-
-/** sampling */
-int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog);
-int sample_metrics_nic_perf(ldmsd_msg_log_f msglog);
 
 #endif
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
