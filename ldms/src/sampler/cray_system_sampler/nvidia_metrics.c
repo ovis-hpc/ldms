@@ -186,7 +186,6 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			msglog(LDMS_LERROR, "NVML: Empty device name %d\n", count);
 			return EINVAL;
 		}
-		msglog(LDMS_LDEBUG, "Will be looking for nvidia device <%s>\n", pch);
 		snprintf(nvidia_device_names[count], NVML_DEVICE_NAME_BUFFER_SIZE,
 			 "%s", pch);
 
