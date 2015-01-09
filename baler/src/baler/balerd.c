@@ -129,6 +129,7 @@
 #include <semaphore.h>
 
 #include <event2/event.h>
+#include <event2/thread.h>
 #include <zap/zap.h>
 
 #ifdef ENABLE_OCM
