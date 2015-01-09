@@ -165,7 +165,7 @@ struct setdatapoint {
 };
 
 //If this is going to have the last dp, then a store_handle can only be for a particular sampler (not multiple samplers)
-struct csv_store_handle {
+struct csv_derived_store_handle {
 	struct ldmsd_store *store;
 	char *path;
 	FILE *file;
@@ -195,7 +195,7 @@ static int handleRollover(){
 	//for every handle we have, do the rollover
 
 	int i;
-	struct csv_store_handle *s_handle;
+	struct csv_derived_store_handle *s_handle;
 
 	pthread_mutex_lock(&cfg_lock);
 
@@ -342,7 +342,7 @@ static void* rolloverThreadInit(void* m){
 /**
  * \brief Config for derived vars
  */
-static int derivedConfig(char* fname, struct csv_store_handle *s_handle){
+static int derivedConfig(char* fname, struct csv_derived_store_handle *s_handle){
 	//read the file and keep the metrics names until its time to print the headers
 
 	char lbuf[STORE_DERIVED_LINE_MAX];
@@ -557,13 +557,13 @@ static ldmsd_store_handle_t get_store(const char *container)
 
 static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_store_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	return s_handle->ucontext;
 }
 
 
 /*
-static void printDataStructure(struct csv_store_handle *s_handle){
+static void printDataStructure(struct csv_derived_store_handle *s_handle){
 	int i;
 	for (i = 0; i < s_handle->numder; i++){
 		printf("%d: dername=<%s> type=%d idx=%d\n",
@@ -573,7 +573,7 @@ static void printDataStructure(struct csv_store_handle *s_handle){
 */
 
 
-static int print_header(struct csv_store_handle *s_handle,
+static int print_header(struct csv_derived_store_handle *s_handle,
 			ldms_mvec_t mvec)
 {
 	int num_metrics;
@@ -659,7 +659,7 @@ static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		struct ldmsd_store_metric_index_list *list, void *ucontext)
 {
-	struct csv_store_handle *s_handle;
+	struct csv_derived_store_handle *s_handle;
 	int add_handle = 0;
 	int rc = 0;
 
@@ -803,7 +803,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	/* NOTE: ldmsd_store invokes the lock on the whole s_handle */
 
 	uint64_t comp_id;
-	struct csv_store_handle *s_handle;
+	struct csv_derived_store_handle *s_handle;
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
 	int setflag = 0;
 	int rc;
@@ -995,7 +995,7 @@ out:
 
 static int flush_store(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_store_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
 		msglog(LDMS_LDEBUG,"store_derived_csv: flush error.\n");
 		return -1;
@@ -1009,7 +1009,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 
 static void close_store(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_store_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	if (!s_handle)
 		return;
 
@@ -1031,7 +1031,7 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	int i;
 
 	pthread_mutex_lock(&cfg_lock);
-	struct csv_store_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
 		pthread_mutex_unlock(&cfg_lock);
 		return;
