@@ -337,8 +337,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 	int i, j;
 	int metric_count = 0;
 
-	msglog(LDMS_LINFO, "In sample metrics nvidia <%d>\n", nvidia_device_count);
-
 	if (nvidia_valid == 0){
 		return 0;
 	}
@@ -367,7 +365,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v1.v_u64 = 0;
 			} else {
-				msglog(LDMS_LINFO, "After successful getpowerusage\n");
 				v1.v_u64 = (unsigned long long) ret;
 			}
 		} else {
@@ -384,7 +381,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v1.v_u64 = 0;
 			} else {
-				msglog(LDMS_LINFO, "After successful getpowermanagment limit\n");
 				v1.v_u64 = (unsigned long long) ret;
 			}
 		} else {
@@ -533,7 +529,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v2.v_u64 = 0;
 			} else {
-				msglog(LDMS_LINFO, "Successful get totaleccerrors\n");
 				v2.v_u64 = teep;
 			}
 		} else {
@@ -550,7 +545,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				       i);
 				v1.v_u64 = 0;
 			} else {
-				msglog(LDMS_LINFO, "Successful get utilization rates\n");
 				v1.v_u64 = (unsigned long long)(util.gpu);
 			}
 		} else {
@@ -558,8 +552,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 		}
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
 	}
-
-	msglog(LDMS_LINFO, "Returning after sample\n");
 
 	return 0;
 
@@ -591,87 +583,87 @@ static int loadFctns(ldmsd_msg_log_f msglog){
 		msglog(LDMS_LERROR, "NVML runtime library libnvidia-ml.so not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML runtime library libnvidia-ml.so found\n");
+	msglog(LDMS_LDEBUG "NVML runtime library libnvidia-ml.so found\n");
 
 	nvmlErrorStringPtr = dlsym(dl1, "nvmlErrorString");
 	if ((dlerror() != NULL) || (!nvmlErrorStringPtr)){
 		msglog(LDMS_LERROR, "NVML ErrorString not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML ErrorString Found\n");
+	msglog(LDMS_LDEBUG, "NVML ErrorString Found\n");
 
 	nvmlInitPtr = dlsym(dl1, "nvmlInit");
 	if ((dlerror() != NULL) || (!nvmlInitPtr)){
 		msglog(LDMS_LERROR, "NVML init not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML init Found\n");
+	msglog(LDMS_LDEBUG, "NVML init Found\n");
 
 	nvmlShutdownPtr = dlsym(dl1, "nvmlShutdown");
 	if ((dlerror() != NULL) || (!nvmlShutdownPtr)){
 		msglog(LDMS_LERROR, "NVML shutdown not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML shutdown Found\n");
+	msglog(LDMS_LDEBUG, "NVML shutdown Found\n");
 
 	nvmlDeviceGetCountPtr = dlsym(dl1, "nvmlDeviceGetCount");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetCountPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetCountPtr not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML devicegetcount Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetcount Found\n");
 
 	nvmlDeviceGetHandleByIndexPtr = dlsym(dl1, "nvmlDeviceGetHandleByIndex");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetHandleByIndexPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetHandleByIndexPtr not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML devicegethandlebyindex Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegethandlebyindex Found\n");
 
 	nvmlDeviceGetNamePtr = dlsym(dl1, "nvmlDeviceGetName");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetNamePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetNamePtr not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML devicegetname Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetname Found\n");
 
 	nvmlDeviceGetPciInfoPtr = dlsym(dl1, "nvmlDeviceGetPciInfo");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPciInfoPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPciInfo not found\n");
 		return -1;
 	}
-	msglog(LDMS_LINFO, "NVML devicegetpciinfo Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetpciinfo Found\n");
 
 	// these ok to be null
 	nvmlDeviceGetPowerUsagePtr = dlsym(dl1, "nvmlDeviceGetPowerUsage");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerUsagePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPowerUsage not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegetpowerusage Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetpowerusage Found\n");
 
 	nvmlDeviceGetPowerManagementLimitPtr = dlsym(dl1, "nvmlDeviceGetPowerManagementLimit");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPowerManagementLimitPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPowerManagementLimit not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegetpowermanagementlimit Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetpowermanagementlimit Found\n");
 
 	nvmlDeviceGetPerformanceStatePtr = dlsym(dl1, "nvmlDeviceGetPerformanceState");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetPerformanceStatePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetPerformanceState not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegetperformancestate Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetperformancestate Found\n");
 
 	nvmlDeviceGetTemperaturePtr = dlsym(dl1, "nvmlDeviceGetTemperature");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetTemperaturePtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetTemperature not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegettemperature Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegettemperature Found\n");
 
 	nvmlDeviceGetMemoryInfoPtr = dlsym(dl1, "nvmlDeviceGetMemoryInfo");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetMemoryInfoPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetMemoryInfo not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegetmemoryInfo Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetmemoryInfo Found\n");
 
 	//NOTE: this will return a non-null value even though the function is deprecated.
 	//it fails when it is tried to be called
@@ -680,19 +672,19 @@ static int loadFctns(ldmsd_msg_log_f msglog){
 	if ((dlerror() != NULL) || (!nvmlDeviceGetMemoryErrorCounterPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetMemoryErrorCounter not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegetMemoryErrorCounter Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetMemoryErrorCounter Found\n");
 
 	nvmlDeviceGetTotalEccErrorsPtr = dlsym(dl1, "nvmlDeviceGetTotalEccErrors");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetTotalEccErrorsPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetTotalEccErrors not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegetTotalEccErrors Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetTotalEccErrors Found\n");
 
 	nvmlDeviceGetUtilizationRatesPtr = dlsym(dl1, "nvmlDeviceGetUtilizationRates");
 	if ((dlerror() != NULL) || (!nvmlDeviceGetUtilizationRatesPtr)){
 		msglog(LDMS_LERROR, "NVML DeviceGetUtilizationRates not found\n");
 	}
-	msglog(LDMS_LINFO, "NVML devicegetUtilizationRates Found\n");
+	msglog(LDMS_LDEBUG, "NVML devicegetUtilizationRates Found\n");
 
 	return 0;
 
