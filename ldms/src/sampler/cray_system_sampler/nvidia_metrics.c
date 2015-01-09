@@ -368,7 +368,6 @@ int sample_metrics_nvidia(ldmsd_msg_log_f msglog){
 				v1.v_u64 = (unsigned long long) ret;
 			}
 		} else {
-			msglog(LDMS_LINFO, "NULL power usage fct\n");
 			v1.v_u64 = 0;
 		}
 		ldms_set_metric(metric_table_nvidia[metric_count++], &v1);
@@ -725,7 +724,6 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		msglog(LDMS_LERROR, "NVML loadFctns failed\n");
 		return EINVAL;
 	}
-	msglog(LDMS_LINFO,"After loadFcnts\n");
 
 	//FIXME: is there anywhere I can do shutdown? what happens if it isnt?
 	result = (*nvmlInitPtr)();
@@ -734,7 +732,6 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		       (*nvmlErrorStringPtr)(result));
 		return EINVAL;
 	}
-	msglog(LDMS_LINFO,"After nvml init\n");
 
 	result = (*nvmlDeviceGetCountPtr)(&count);
 	if (result != NVML_SUCCESS){
@@ -742,7 +739,6 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		       (*nvmlErrorStringPtr)(result));
 		return EINVAL;
 	}
-	msglog(LDMS_LINFO,"After device get count <%d>\n", nvidia_device_count);
 
 	//determine which devices corresponds to the ones asked for. its ok to ask for
 	//a device which does not exist.
@@ -753,7 +749,6 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
-		msglog(LDMS_LINFO,"After get handle by index\n");
 
 		result = (*nvmlDeviceGetNamePtr)(device, name,
 						 NVML_DEVICE_NAME_BUFFER_SIZE);
@@ -762,11 +757,10 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 			       i, (*nvmlErrorStringPtr)(result));
 			return EINVAL;
 		}
-		msglog(LDMS_LINFO,"After get device name <%s>\n", name);
 
 		//is this a device we are interested in?
 		for (j = 0; j < nvidia_device_count; j++){
-			if (strcmp(name, nvidia_device_names[j]) == 0){ //FIXME: note still have a problem handling spaces
+			if (strcmp(name, nvidia_device_names[j]) == 0){ 
 				msglog(LDMS_LDEBUG, "Found matching device for <%s>\n",
 				       nvidia_device_names[j]);
 				nvidia_device[j] = device;  //Note: copy works
@@ -777,7 +771,6 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 					       nvidia_device_names[j], (*nvmlErrorStringPtr)(result));
 					return EINVAL;
 				}
-				msglog(LDMS_LINFO,"After get pci info\n");
 				break;
 			}
 		}
