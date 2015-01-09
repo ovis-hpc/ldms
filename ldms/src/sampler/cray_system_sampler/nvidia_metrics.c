@@ -186,13 +186,9 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			msglog(LDMS_LERROR, "NVML: Empty device name %d\n", count);
 			return EINVAL;
 		}
-		//FIXME: temporarily we cannot pass in args with spaces. replace underscore with space before using
-		char *tmpname = strdup(pch);
-		replace_underscore(tmpname);
-		msglog(LDMS_LDEBUG, "Will be looking for nvidia device <%s>\n", tmpname);
+		msglog(LDMS_LDEBUG, "Will be looking for nvidia device <%s>\n", pch);
 		snprintf(nvidia_device_names[count], NVML_DEVICE_NAME_BUFFER_SIZE,
-			 "%s", tmpname);
-		free(tmpname);
+			 "%s", pch);
 
 		nvidia_device[count] = NULL; //Note: this works
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
@@ -760,19 +756,30 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 
 		//is this a device we are interested in?
 		for (j = 0; j < nvidia_device_count; j++){
-			if (strcmp(name, nvidia_device_names[j]) == 0){ 
+			//FIXME: temporarily we cannot pass in args with spaces. replace underscore with space before using
+			char *tmpname = strdup(nvidia_device_names[j]);
+			replace_underscore(tmpname);
+			if (strcmp(name, tmpname) == 0){ 
 				msglog(LDMS_LDEBUG, "Found matching device for <%s>\n",
-				       nvidia_device_names[j]);
+				       tmpname);
 				nvidia_device[j] = device;  //Note: copy works
 				//FIXME: will we need this?
 				result = (*nvmlDeviceGetPciInfoPtr)(nvidia_device[j], &nvidia_pci[j]);
 				if (result != NVML_SUCCESS){
 					msglog(LDMS_LERROR, "NVML: Failed to get pci info for device %s: %s\n",
 					       nvidia_device_names[j], (*nvmlErrorStringPtr)(result));
+					if (tmpname){
+						free(tmpname);
+					}
+					tmpname = NULL;
 					return EINVAL;
 				}
 				break;
 			}
+			if (tmpname){
+				free(tmpname);
+			}
+			tmpname = NULL;
 		}
 	}
 
