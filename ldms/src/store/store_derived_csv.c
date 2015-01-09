@@ -1086,7 +1086,7 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 
 static struct ldmsd_store store_derived_csv = {
 	.base = {
-			.name = "store_derived_csv",
+			.name = "derived_csv",
 			.term = term,
 			.config = config,
 			.usage = usage,
