@@ -135,6 +135,21 @@ int config_nvidia(struct attr_value_list* kwl,
 };
 
 
+static char *replace_underscore(char *s)
+{
+	char *s1;
+
+	s1 = s;
+	while ( *s1 ) {
+		if ( *s1 == '_'){
+			*s1 = ' ';
+		}
+		++s1;
+	}
+	return s;
+};
+
+
 int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			   ldmsd_msg_log_f msglog){
 	char name[NVIDIA_MAX_METRIC_NAME_SIZE];
@@ -171,9 +186,13 @@ int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
 			msglog(LDMS_LERROR, "NVML: Empty device name %d\n", count);
 			return EINVAL;
 		}
-		msglog(LDMS_LDEBUG, "Will be looking for nvidia device <%s>\n", pch);
+		//FIXME: temporarily we cannot pass in args with spaces. replace underscore with space before using
+		char *tmpname = strdup(pch);
+		replace_underscore(tmpname);
+		msglog(LDMS_LDEBUG, "Will be looking for nvidia device <%s>\n", tmpname);
 		snprintf(nvidia_device_names[count], NVML_DEVICE_NAME_BUFFER_SIZE,
-			 "%s", pch);
+			 "%s", tmpname);
+		free(tmpname);
 
 		nvidia_device[count] = NULL; //Note: this works
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
