@@ -239,6 +239,7 @@ int add_metrics_nvidia(ldms_set_t set, int comp_id,
 		return ENOMEM;
 	}
 
+	count = 0;
 	for (i = 0; i < nvidia_device_count; i++){
 		for (j = 0; j < NUM_NVIDIA_METRICS; j++){
 			snprintf(name, NVIDIA_MAX_METRIC_NAME_SIZE,
