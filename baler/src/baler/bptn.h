@@ -224,6 +224,12 @@ uint32_t bptn_store_get_id(struct bptn_store *ptns, struct bstr *ptn)
 {
 	return bmap_get_id(ptns->map, ptn);
 }
+
+static inline
+const struct bstr *bptn_store_get_ptn(struct bptn_store *ptns, uint32_t id)
+{
+	return bmap_get_bstr(ptns->map, id);
+}
 #endif
 
 /**\}*/

@@ -234,6 +234,16 @@ uint32_t bstr_len(const struct bstr *s)
 	return sizeof(*s) + s->blen;
 }
 
+static inline
+struct bstr *bstr_dup(const struct bstr *b)
+{
+	struct bstr *out = bstr_alloc(b->blen);
+	if (!out)
+		return NULL;
+	memcpy(out->cstr, b->cstr, b->blen);
+	return out;
+}
+
 /**
  * Generic bvec structure (using char[] as data array).
  *

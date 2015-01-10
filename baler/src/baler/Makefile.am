@@ -35,6 +35,7 @@ lib_LTLIBRARIES += libbset.la
 libbaler_la_SOURCES = bwqueue.c btkn.c bptn.c binput.c boutput.c \
 		      bmapper.c bset.c bmvec.c bmem.c butils.c bhash.c \
 		      bmhash.c \
+		      bmeta.c \
 		      bqueue.c
 libbaler_la_LDFLAGS = $(AM_LDFLAGS) -lpthread
 lib_LTLIBRARIES += libbaler.la
@@ -54,6 +55,12 @@ balerd_CFLAGS += -DENABLE_OCM @OCM_INCDIR_FLAG@
 balerd_LDFLAGS += @OCM_LIBDIR_FLAG@
 endif
 bin_PROGRAMS += balerd
+
+bmetad_SOURCES = bmeta.c
+bmetad_LDADD = libbaler.la -lpthread -levent -lzap
+bmetad_LDFLAGS = $(AM_LDFLAGS) @OVIS_LIB_LIBDIR_FLAG@ @EVENTLIBS@
+bmetad_CFLAGS = -DBIN $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@ @EVENTINC@
+bin_PROGRAMS += bmetad
 
 bmap_dump_SOURCES = bmap_dump.c
 bmap_dump_LDADD = libbaler.la
