@@ -152,7 +152,11 @@ int bis_dir(const char *path)
 	int rc = stat(path, &st);
 	if (rc == -1)
 		return 0;
-	return S_ISDIR(st.st_mode);
+	rc = S_ISDIR(st.st_mode);
+	if (!rc) {
+		errno = EINVAL;
+	}
+	return rc;
 }
 
 int bmkdir_p(const char *path, __mode_t mode)
