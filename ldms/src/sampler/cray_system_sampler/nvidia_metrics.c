@@ -577,7 +577,7 @@ static int loadFctns(ldmsd_msg_log_f msglog){
 		msglog(LDMS_LERROR, "NVML runtime library libnvidia-ml.so not found\n");
 		return -1;
 	}
-	msglog(LDMS_LDEBUG "NVML runtime library libnvidia-ml.so found\n");
+	msglog(LDMS_LDEBUG, "NVML runtime library libnvidia-ml.so found\n");
 
 	nvmlErrorStringPtr = dlsym(dl1, "nvmlErrorString");
 	if ((dlerror() != NULL) || (!nvmlErrorStringPtr)){
@@ -758,7 +758,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 			//FIXME: temporarily we cannot pass in args with spaces. replace underscore with space before using
 			char *tmpname = strdup(nvidia_device_names[j]);
 			replace_underscore(tmpname);
-			if (strcmp(name, tmpname) == 0){ 
+			if (strcmp(name, tmpname) == 0){
 				msglog(LDMS_LDEBUG, "Found matching device for <%s>\n",
 				       tmpname);
 				nvidia_device[j] = device;  //Note: copy works
