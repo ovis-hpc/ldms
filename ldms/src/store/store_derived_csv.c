@@ -116,7 +116,7 @@ static ldmsd_msg_log_f msglog;
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
-#define LOGFILE "/var/log/store_derived_csv_rollover.log"
+#define LOGFILE "/var/log/store_derived_csv.log"
 
 /**
  * BASED on:
@@ -165,7 +165,7 @@ struct setdatapoint {
 };
 
 //If this is going to have the last dp, then a store_handle can only be for a particular sampler (not multiple samplers)
-struct csv_store_rollover_handle {
+struct csv_derived_store_handle {
 	struct ldmsd_store *store;
 	char *path;
 	FILE *file;
@@ -195,7 +195,7 @@ static int handleRollover(){
 	//for every handle we have, do the rollover
 
 	int i;
-	struct csv_store_rollover_handle *s_handle;
+	struct csv_derived_store_handle *s_handle;
 
 	pthread_mutex_lock(&cfg_lock);
 
@@ -342,7 +342,7 @@ static void* rolloverThreadInit(void* m){
 /**
  * \brief Config for derived vars
  */
-static int derivedConfig(char* fname, struct csv_store_rollover_handle *s_handle){
+static int derivedConfig(char* fname, struct csv_derived_store_handle *s_handle){
 	//read the file and keep the metrics names until its time to print the headers
 
 	char lbuf[STORE_DERIVED_LINE_MAX];
@@ -528,7 +528,7 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_derived_csv_rollover path=<path> altheader=<0/1> id_pos=<0/1> derivedconf=<fullpath> agesec=<sec>\n"
+	return  "    config name=store_derived_csv path=<path> altheader=<0/1> id_pos=<0/1> derivedconf=<fullpath> agesec=<sec>\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
@@ -557,13 +557,13 @@ static ldmsd_store_handle_t get_store(const char *container)
 
 static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_store_rollover_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	return s_handle->ucontext;
 }
 
 
 /*
-static void printDataStructure(struct csv_store_rollover_handle *s_handle){
+static void printDataStructure(struct csv_derived_store_handle *s_handle){
 	int i;
 	for (i = 0; i < s_handle->numder; i++){
 		printf("%d: dername=<%s> type=%d idx=%d\n",
@@ -573,7 +573,7 @@ static void printDataStructure(struct csv_store_rollover_handle *s_handle){
 */
 
 
-static int print_header(struct csv_store_rollover_handle *s_handle,
+static int print_header(struct csv_derived_store_handle *s_handle,
 			ldms_mvec_t mvec)
 {
 	int num_metrics;
@@ -586,7 +586,7 @@ static int print_header(struct csv_store_rollover_handle *s_handle,
 	/* Only called from Store which already has the lock */
 	FILE* fp = s_handle->headerfile;
 	if (!fp){
-		msglog(LDMS_LDEBUG,"Cannot print header for store_derived_csv_rollover. No headerfile\n");
+		msglog(LDMS_LDEBUG,"Cannot print header for store_derived_csv. No headerfile\n");
 		return EINVAL;
 	}
 	s_handle->printheader = 0;
@@ -594,7 +594,7 @@ static int print_header(struct csv_store_rollover_handle *s_handle,
 	if (s_handle->parseconfig){
 	  rc = derivedConfig(derivedconf,s_handle);
 	  if (rc != 0) {
-	    msglog(LDMS_LDEBUG,"derivedConfig failed for store_derived_csv_rollover. \n");
+	    msglog(LDMS_LDEBUG,"derivedConfig failed for store_derived_csv. \n");
 	    return rc;
 	  }
 	}
@@ -659,7 +659,7 @@ static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		struct ldmsd_store_metric_index_list *list, void *ucontext)
 {
-	struct csv_store_rollover_handle *s_handle;
+	struct csv_derived_store_handle *s_handle;
 	int add_handle = 0;
 	int rc = 0;
 
@@ -741,7 +741,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 
 		if (!s_handle->headerfile){
-			msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Cannot open headerfile");
+			msglog(LDMS_LDEBUG,"store_derived_csv: Cannot open headerfile");
 			goto err4;
 		}
 	}
@@ -803,7 +803,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	/* NOTE: ldmsd_store invokes the lock on the whole s_handle */
 
 	uint64_t comp_id;
-	struct csv_store_rollover_handle *s_handle;
+	struct csv_derived_store_handle *s_handle;
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
 	int setflag = 0;
 	int rc;
@@ -824,7 +824,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	if (s_handle->printheader) {
 		rc = print_header(s_handle, mvec);
 		if (rc != 0){
-			msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error in print_header: %d\n", rc);
+			msglog(LDMS_LDEBUG,"store_derived_csv: Error in print_header: %d\n", rc);
 			pthread_mutex_unlock(&s_handle->lock);
 			return rc;
 		}
@@ -891,7 +891,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 	timersub(&curr, &prev, &diff);
 	if ((diff.tv_sec == 0) && (diff.tv_usec == 0)){
-		msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Time diff is zero for set %s. Skipping\n", ldms_get_set_name(set));
+		msglog(LDMS_LDEBUG,"store_derived_csv: Time diff is zero for set %s. Skipping\n", ldms_get_set_name(set));
 		goto out;
 	}
 
@@ -914,7 +914,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			rc = fprintf(s_handle->file, ", %" PRIu64,
 				ldms_get_user_data(mvec->v[i]));
 			if (rc < 0)
-				msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error %d writing to '%s'\n",
+				msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else 
 				s_handle->byte_count += rc;
@@ -958,14 +958,14 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 				rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 					     comp_id, val);
 				if (rc < 0)
-					msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error %d writing to '%s'\n",
+					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 				else 
 					s_handle->byte_count += rc;
 			} else {
 				rc = fprintf(s_handle->file, ", %" PRIu64, val);
 				if (rc < 0)
-					msglog(LDMS_LDEBUG,"store_derived_csv_rollover: Error %d writing to '%s'\n",
+					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 				else 
 					s_handle->byte_count += rc;
@@ -995,9 +995,9 @@ out:
 
 static int flush_store(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_store_rollover_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog(LDMS_LDEBUG,"store_derived_csv_rollover: flush error.\n");
+		msglog(LDMS_LDEBUG,"store_derived_csv: flush error.\n");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -1009,7 +1009,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 
 static void close_store(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_store_rollover_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	if (!s_handle)
 		return;
 
@@ -1031,14 +1031,14 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	int i;
 
 	pthread_mutex_lock(&cfg_lock);
-	struct csv_store_rollover_handle *s_handle = _s_handle;
+	struct csv_derived_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
 		pthread_mutex_unlock(&cfg_lock);
 		return;
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog(LDMS_LDEBUG,"Destroying store_derived_csv_rollover with path <%s>\n", s_handle->path);
+	msglog(LDMS_LDEBUG,"Destroying store_derived_csv with path <%s>\n", s_handle->path);
 
 	fflush(s_handle->file);
 	s_handle->store = NULL;
@@ -1084,9 +1084,9 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	free(s_handle);
 }
 
-static struct ldmsd_store store_derived_csv_rollover = {
+static struct ldmsd_store store_derived_csv = {
 	.base = {
-			.name = "derived_csv_rollover",
+			.name = "derived_csv",
 			.term = term,
 			.config = config,
 			.usage = usage,
@@ -1103,18 +1103,18 @@ static struct ldmsd_store store_derived_csv_rollover = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &store_derived_csv_rollover.base;
+	return &store_derived_csv.base;
 }
 
-static void __attribute__ ((constructor)) store_derived_csv_rollover_init();
-static void store_derived_csv_rollover_init()
+static void __attribute__ ((constructor)) store_derived_csv_init();
+static void store_derived_csv_init()
 {
 	store_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 }
 
-static void __attribute__ ((destructor)) store_derived_csv_rollover_fini(void);
-static void store_derived_csv_rollover_fini()
+static void __attribute__ ((destructor)) store_derived_csv_fini(void);
+static void store_derived_csv_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	idx_destroy(store_idx);
