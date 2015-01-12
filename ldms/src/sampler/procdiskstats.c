@@ -21,11 +21,11 @@ static char *fieldname[NFIELD] =
 	"writes_comp","writes_merg", "sect_written", "time_write",
 	"ios_in_progress", "time_ios", "weighted_time"};
 
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldms_set_t set;
+static FILE *mf;
+static ldms_metric_t *metric_table;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
 static int create_metric_set(const char *path)
 {

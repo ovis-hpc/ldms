@@ -101,13 +101,13 @@ struct vinfo {
 	float offset;
 };
 
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-struct vinfo** lm_srcs;
-int lm_nentries;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldms_set_t set;
+static FILE *mf;
+static ldms_metric_t *metric_table;
+static struct vinfo** lm_srcs;
+static int lm_nentries;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
 
 static int parse_conf_file(const char* ffile)

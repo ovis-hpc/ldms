@@ -64,20 +64,20 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
+static ldms_set_t set;
+static FILE *mf;
+static ldms_metric_t *metric_table;
+static ldmsd_msg_log_f msglog;
 
-int numcpu_plusone;
-uint64_t comp_id = UINT64_MAX;
+static int numcpu_plusone;
+static uint64_t comp_id = UINT64_MAX;
 
 #undef CHECK_PROCSTATUTIL_TIMING
 #ifdef CHECK_PROCSTATUTIL_TIMING
 //Some temporary for testing
-ldms_metric_t tv_sec_metric_handle2;
-ldms_metric_t tv_nsec_metric_handle2;
-ldms_metric_t tv_dnsec_metric_handle;
+static ldms_metric_t tv_sec_metric_handle2;
+static ldms_metric_t tv_nsec_metric_handle2;
+static ldms_metric_t tv_dnsec_metric_handle;
 #endif
 #define PROCSTATUTIL_LINE_MAX 256
 #define PROCSTATUTIL_NAME_MAX 256

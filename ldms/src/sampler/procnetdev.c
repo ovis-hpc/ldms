@@ -77,17 +77,17 @@ static char varname[][30] =
 	"rx_compressed", "rx_multicast", "tx_bytes", "tx_packets", "tx_errs",
 	"tx_drop", "tx_fifo", "tx_colls", "tx_carrier", "tx_compressed"};
 
-int niface = 0;
+static int niface = 0;
 //max number of interfaces we can include. FIXME: alloc as added
 #define MAXIFACE 10
 static char iface[MAXIFACE][20];
 
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
+static ldms_set_t set;
+static FILE *mf;
+static ldms_metric_t *metric_table;
+static ldmsd_msg_log_f msglog;
 static uint64_t counter;
-uint64_t comp_id;
+static uint64_t comp_id;
 
 struct kw {
 	char *token;
