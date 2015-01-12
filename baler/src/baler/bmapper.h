@@ -283,5 +283,15 @@ void bmap_set_ucontext(struct bmap *bmap, void *ucontext);
 
 void bmap_set_event_cb(struct bmap *bmap, bmap_ev_cb_fn ev_cb);
 
+/**
+ * \brief Unlink the mapper of the given \c path.
+ *
+ * \param path The path of the bmapper.
+ *
+ * \retval 0 if no error.
+ * \retval errno if error.
+ */
+int bmap_unlink(const char *path);
+
 #endif // _BMAPPER_H
 /**\}*/

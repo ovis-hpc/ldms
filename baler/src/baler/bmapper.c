@@ -449,3 +449,44 @@ void bmap_set_event_cb(struct bmap *bmap, bmap_ev_cb_fn ev_cb)
 {
 	bmap->ev_cb = ev_cb;
 }
+
+int bmap_unlink(const char *path)
+{
+	char *buff = malloc(PATH_MAX);
+	int rc;
+	int plen;
+	if (!buff) {
+		rc = ENOMEM;
+		goto out;
+	}
+	plen = snprintf(buff, PATH_MAX, "%s", path);
+
+	snprintf(buff + plen, PATH_MAX - plen, "bmhash.mmap");
+	rc = bmvec_unlink(buff);
+	if (rc && rc != ENOENT)
+		goto out;
+
+	snprintf(buff + plen, PATH_MAX - plen, "mlist.mmap");
+	rc = bmem_unlink(buff);
+	if (rc && rc != ENOENT)
+		goto out;
+
+	snprintf(buff + plen, PATH_MAX - plen, "mstr.mmap");
+	rc = bmem_unlink(buff);
+	if (rc && rc != ENOENT)
+		goto out;
+
+	snprintf(buff + plen, PATH_MAX - plen, "bmstr_idx.mmap");
+	rc = bmvec_unlink(buff);
+	if (rc && rc != ENOENT)
+		goto out;
+
+	snprintf(buff + plen, PATH_MAX - plen, "mhdr.mmap");
+	rc = bmem_unlink(buff);
+	if (rc && rc != ENOENT)
+		goto out;
+
+out:
+	free(buff);
+	return 0;
+}
