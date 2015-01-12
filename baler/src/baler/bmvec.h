@@ -279,6 +279,13 @@ void bmvec_u64_close_free(struct bmvec_u64 *vec);
  */
 void bmvec_generic_close_free(void *_vec);
 
+/**
+ * \brief Unlink the bmvec of given \c path from the file system.
+ *
+ * \retval 0 if success.
+ * \retval errno if error.
+ */
+int bmvec_unlink(const char *path);
 /**\}*/ // bmvec
 
 #endif /* __BMVEC_H */

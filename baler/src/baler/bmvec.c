@@ -151,3 +151,7 @@ void bmvec_generic_close_free(void *_vec)
 	free(vec);
 }
 
+int bmvec_unlink(const char *path)
+{
+	return bmem_unlink(path);
+}
