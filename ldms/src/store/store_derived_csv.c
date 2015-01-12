@@ -94,7 +94,7 @@ static int rolltype;
 "                     1: wake approximately every rollover seconds and roll.\n" \
 "                     2: wake daily at rollover seconds after midnight (>=0) and roll.\n" \
 "                     3: roll after approximately rollover records are written.\n" \
-"                     4: roll after approximately rollover bytes are written.\n" 
+"                     4: roll after approximately rollover bytes are written.\n"
 #define MAXROLLTYPE 4
 #define MINROLLTYPE 1
 #define DEFAULT_ROLLTYPE -1
@@ -102,11 +102,11 @@ static int rolltype;
     rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1
     also used for minimum sleep time for type 2;
     rolltype==2 and rollover results in sleep < MIN_ROLL_SLEEPTIME -> skip this roll and do it the next day */
-#define MIN_ROLL_1 10 
-/** minimum rollover for type 3; 
+#define MIN_ROLL_1 10
+/** minimum rollover for type 3;
     rolltype==3 and rollover < MIN_ROLL_RECORDS -> rollover = MIN_ROLL_RECORDS */
 #define MIN_ROLL_RECORDS 3
-/** minimum rollover for type 4; 
+/** minimum rollover for type 4;
     rolltype==4 and rollover < MIN_ROLL_BYTES -> rollover = MIN_ROLL_BYTES */
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits */
@@ -238,12 +238,13 @@ static int handleRollover(){
 						rolltype);
 					break;
 				}
-			
+
 				if (s_handle->file)
 					fflush(s_handle->file);
 				if (s_handle->headerfile)
 					fflush(s_handle->headerfile);
 
+				//re name: if got here then rollover requested
 				snprintf(tmp_path, PATH_MAX, "%s.%d",
 					 s_handle->path, (int) appx);
 				nfp = fopen(tmp_path, "a+");
@@ -255,6 +256,7 @@ static int handleRollover(){
 					continue;
 				}
 				if (altheader){
+					//re name: if got here then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
 						 "%s.HEADER.%d",
 						 s_handle->path, (int)appx);
@@ -289,7 +291,7 @@ static int handleRollover(){
 				pthread_mutex_unlock(&s_handle->lock);
 			}
 		}
-	}				
+	}
 
 	pthread_mutex_unlock(&cfg_lock);
 
@@ -333,7 +335,7 @@ static void* rolloverThreadInit(void* m){
 		}
 		sleep(tsleep);
 		handleRollover();
-	}		
+	}
 
 	return NULL;
 }
@@ -713,12 +715,16 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	/* Take the lock in case its a store that has been closed */
 	pthread_mutex_lock(&s_handle->lock);
 
-	time_t appx = time(NULL);
-
 	/* For both actual new store and reopened store, open the data file */
 	char tmp_path[PATH_MAX];
-	snprintf(tmp_path, PATH_MAX, "%s.%d",
-		 s_handle->path, (int)appx);
+	time_t appx = time(NULL);
+	if (rolltype >= MINROLLTYPE){
+		snprintf(tmp_path, PATH_MAX, "%s.%d",
+			 s_handle->path, (int)appx);
+	} else {
+		snprintf(tmp_path, PATH_MAX, "%s",
+			 s_handle->path);
+	}
 
 	if (!s_handle->file)  {
 		s_handle->file = fopen(tmp_path, "a+");
@@ -728,11 +734,15 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 	/* Only bother to open the headerfile if we have to print the header(s) */
 	if (s_handle->printheader && !s_handle->headerfile){
-		char tmp_headerpath[PATH_MAX];
-
 		if (altheader) {
-			snprintf(tmp_headerpath, PATH_MAX,
-				 "%s.HEADER.%d", s_handle->path, (int)appx);
+			char tmp_headerpath[PATH_MAX];
+			if (rolltype >= MINROLLTYPE){
+				snprintf(tmp_headerpath, PATH_MAX,
+					 "%s.HEADER.%d", s_handle->path, (int)appx);
+			} else {
+				snprintf(tmp_headerpath, PATH_MAX,
+					 "%s.HEADER", s_handle->path);
+			}
 			/* truncate a separate headerfile if exists */
 			s_handle->headerfile = fopen(tmp_headerpath, "w");
 		} else {
@@ -916,7 +926,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
-			else 
+			else
 				s_handle->byte_count += rc;
 		}
 	}
@@ -960,14 +970,14 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 				if (rc < 0)
 					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
-				else 
+				else
 					s_handle->byte_count += rc;
 			} else {
 				rc = fprintf(s_handle->file, ", %" PRIu64, val);
 				if (rc < 0)
 					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
-				else 
+				else
 					s_handle->byte_count += rc;
 			}
 		}
