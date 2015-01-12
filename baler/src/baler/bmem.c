@@ -189,3 +189,12 @@ int64_t bmem_alloc(struct bmem *b, uint64_t size)
 
 	return off;
 }
+
+int bmem_unlink(const char *path)
+{
+	int rc;
+	rc = unlink(path);
+	if (rc)
+		rc = errno;
+	return rc;
+}

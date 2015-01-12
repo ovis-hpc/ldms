@@ -137,5 +137,11 @@ void bmem_close_free(struct bmem *b);
  */
 int64_t bmem_alloc(struct bmem *b, uint64_t size);
 
+/**
+ * \brief Utility function to unlink bmem of the given \c path.
+ * \retval 0 if success.
+ * \retval errno if error.
+ */
+int bmem_unlink(const char *path);
 #endif // _BMEM_H
 /**\}*/ // bmem
