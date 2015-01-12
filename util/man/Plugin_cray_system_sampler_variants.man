@@ -87,9 +87,9 @@ rtrfile=<rtrfile>
 parsed rtr file with media type and link information. For cray_gemini_r/d_samplers only.
 .TP
 gpu_devices=<gpulist>
-.br
-CSV separated gpu device names list. Non-existent values will be populated with 0's.
-Only relevant if you have built with --enable_cray_nvidia
+.b
+CSV separated gpu device names list. For example: gpu_devices="Tesla_K20X". Currently, have to use an underscore in the name that will be replaced by a space at the time of name resolution. This will be revised in a future release. Non-existent gpu device names will be populated with 0 valued metrics.
+Only relevant if you have built with --enable_cray_nvidia.
 .TP
 off_<namespace>=1
 .br
@@ -125,7 +125,7 @@ or llites.
 .RE
 
 .SH GPU INFORMATION
-GPU information is gotten from the libnvidia-ml.so. You will need to specify the GPU device names about which you want to collect data. An empty device list will not attempt to collect for any devices.
+GPU information is gotten from the libnvidia-ml.so. You will need to specify the GPU device names about which you want to collect data. An empty device list will not attempt to collect for any devices. Currently, have to use an underscore in the name that will be replaced by a space at the time of name resolution (e.g., Tesla_K20X). This will be revised in a future release. Non-existent gpu device names will be populated with 0 valued metrics.
 
 In order to enable the ability to collect GPU information, then build with:
 .B --enable_cray_nvidia
