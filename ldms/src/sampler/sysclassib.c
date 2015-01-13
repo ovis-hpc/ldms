@@ -129,7 +129,7 @@ typedef enum {
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #endif
 
-const char *all_metric_names[] = {
+static const char *all_metric_names[] = {
 	/* These exist only in IB_PC_* */
 	"symbol_error",
 	"link_error_recovery",
@@ -162,7 +162,7 @@ const char *all_metric_names[] = {
 /**
  * IB_PC_* to scib index map.
  */
-const int scib_idx[] = {
+static const int scib_idx[] = {
 	/* ignore these two */
 	[IB_PC_PORT_SELECT_F]         =  -1,
 	[IB_PC_COUNTER_SELECT_F]      =  -1,
@@ -238,12 +238,12 @@ struct scib_port {
 };
 
 LIST_HEAD(scib_port_list, scib_port);
-struct scib_port_list scib_port_list = {0};
-char rcvbuf[BUFSIZ] = {0};
+static struct scib_port_list scib_port_list = {0};
+static char rcvbuf[BUFSIZ] = {0};
 
-ldms_set_t set = NULL;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldms_set_t set = NULL;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
 struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
@@ -252,7 +252,7 @@ struct timeval *tv_prev = &tv[1];
 /**
  * Which metrics - counter or both. default both.
  */
-sysclassib_metrics_type_t sysclassib_metrics_type;
+static sysclassib_metrics_type_t sysclassib_metrics_type;
 
 
 /**

@@ -1,41 +1,68 @@
-.\" Manpage for Plugin_cray_system_sampler
+.\" Manpage for Plugin_cray_system_sampler_variants
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Sep 2014" "1.2" "LDMS Plugin cray_system_sampler man page"
+.TH man 7 "11 Sep 2014" "1.2" "LDMS Plugin for all variants of the cray_system_sampler man page"
 
 .SH NAME
-Plugin_cray_system_sampler - man page for the LDMS cray_system_sampler plugin
+Plugin_cray_system_sampler_variants - man page for all variants of the LDMS cray_system_sampler plugin
 
 .SH SYNOPSIS
 Within ldmsctl
 .br
-ldmsctl> config name=cray_system_sampler [ <attr> = <value> ]
+ldmsctl> config name=cray_gemini_r_sampler [ <attr> = <value> ]
+.br
+ldmsctl> config name=cray_gemini_d_sampler [ <attr> = <value> ]
+.br
+ldmsctl> config name=cray_aries_r_sampler [ <attr> = <value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The cray_system_sampler plugin provides data from a variety of sources on the XE/XK systems. 
-The cray_system_sampler is 
-.I
-not
-for XC systems.
+There are three variants of the cray_system_sampler.
+
+The cray_gemini_r_sampler (previously called cray_system_sampler_r) provides
+data from a variety of sources on the XE/XK systems and uses the gpcdr module
+for obtaining HSN data. The cray_gemini_d_sampler (previously called
+cray_system_sampler_d) is similar, but uses the gpcd library for obtaining HSN
+data. The cray_aries_r_sampler is for XC systems and uses the gpcdr module for
+obtaining HSN data.
+
 .PP
+To build the cray_gemini_r_sampler, build with the following flags:
+.B --enable_cray_system_sampler
+.B --enable-gemini-gpcdr
+
+.PP
+To build the cray_gemini_d_sampler, build with the following flags:
+.B --enable_cray_system_sampler
+.B --enable-gemini-gpcd
+
+.PP
+To build the cray_aries_r_sampler, build with the following flags:
+.B --enable_cray_system_sampler
+.B --enable-aries-gpcdr
+
+.PP
+You may build multiple variants simultaneously.
+
+.SH ENVIRONMENT
 If you have built with
-.B --enable-gpcdr
-then the cray_system_sampler will be named cray_system_sampler_r; if you have built with
-.B --enable-gpcd 
-then the cray_system_sampler will be named cray_system_sampler_d.
+.B --enable_cray_nvidia
+and intend to collect data for gpu devices, then the following environment variable must be set:
+.TP
+LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH
+Path to libnvidia-ml.so library
 
 .SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile>
+name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1
 .br
 ldmsctl configuration line
 .RS
 .TP
 name=<plugin_name>
 .br
-This MUST be cray_system_sampler.
+This MUST be cray_gemini_r sampler OR cray_gemini_d_sampler OR cray_aries_r_sampler.
 .TP
 component_id=<comp_id>
 .br
@@ -45,19 +72,73 @@ set=<set_name>
 .br
 The name of the metric set.
 .TP
-gemini_metrics_type=<mtype>
+hsn_metrics_type=<mtype>
 .br
-Gemini metrics type identifier - Values are 0,1,2. 0 = counter data only, 1 = derived data (for certain HSN values), 2 = both.
-Default is counter data only.
+HSN metrics type identifier - Values are 0,1,2. 0 = counter data only, 1 = derived data (for certain HSN values), 2 = both.
+Default is counter data only. (NOTE: Formerly called gemini_metrics_type)
 .TP
 llite=<llite>
 .br
-CSV separated ost list. Non-existent values will be populated with 0's
+CSV separated ost list. Non-existent values will be populated with 0's.
+Only relevant if you have built with --enable-lustre
 .TP
 rtrfile=<rtrfile>
 .br
-parsed rtr file with media type and link information.
+parsed rtr file with media type and link information. For cray_gemini_r/d_samplers only.
+.TP
+gpu_devices=<gpulist>
+.b
+CSV separated gpu device names list. For example: gpu_devices="Tesla_K20X". Currently, have to use an underscore in the name that will be replaced by a space at the time of name resolution. This will be revised in a future release. Non-existent gpu device names will be populated with 0 valued metrics.
+Only relevant if you have built with --enable_cray_nvidia.
+.TP
+off_<namespace>=1
+.br
+Optionally turn off collection for any set of metrics.
+Valid options for <namespace> are:
+.RS
+.TP
+hsn (both links and nics. NOTE: even if you intend to turn off hsn metrics,
+	 you must build with the necessary hsn related flags defined).
+.TP
+vmstat
+.TP
+loadavg
+.TP
+current_freemem
+.TP
+kgnilnd
+.TP
+procnetdev
+.TP
+lustre (if built with --enable-lustre)
+.TP
+nvidia (if built with --enable-cray_nvidia)
+.TP
+energy (cray_aries_r_sampler only)
 .RE
+.br
+Multiple different options should be specified as different attributes
+(e.g., off_vmstat=1 off_lustre=1). Note that not specifying any gpu_devices or
+llites will also result in no gpu or lustre metrics, respectively, without
+requiring this flag. Use of this flag has precedence over specifying gpu_devices
+or llites.
+.RE
+
+.SH GPU INFORMATION
+GPU information is gotten from the libnvidia-ml.so. You will need to specify the GPU device names about which you want to collect data. An empty device list will not attempt to collect for any devices. Currently, have to use an underscore in the name that will be replaced by a space at the time of name resolution (e.g., Tesla_K20X). This will be revised in a future release. Non-existent gpu device names will be populated with 0 valued metrics.
+
+In order to enable the ability to collect GPU information, then build with:
+.B --enable_cray_nvidia
+and with
+.B --with-cray-nvidia-inc
+set to the path to nvml.h.
+
+Further, the configuration variable
+.B gpu_devices
+will determine whether gpu information will be collected. If you specify devices, then also specify the path to libnvidia_ml.so via the environment variable
+.B LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH
+as described above. If you do not specify devices, then collection will not be attempted and neither the environment variable nor the library need exist.
+
 
 .SH LUSTRE INFORMATION
 Lustre information can be gotten from /proc/fs/lustre/llite:
@@ -66,20 +147,26 @@ Lustre information can be gotten from /proc/fs/lustre/llite:
 sh-3.2# ls /proc/fs/lustre/llite/
 lustrefs-ffff88081d38f800  snx11024-ffff88041f1aec00
 .if
-You will need to specify the Lustre mount points that you want to collect data about (e.g. "lustrefs,snx11024" in this case)
+You will need to specify the Lustre mount points about which you want to collect data (e.g. "lustrefs,snx11024" in this case).
 
-.SH INTERCONNECT INFORMATION
+In order to enable the ability to collect Lustre information then build with:
+.B --enable-lustre
+Note that this will also build the lustre_sampler.
+
+
+.SH INTERCONNECT INFORMATION FOR THE GEMINI VARIANTS
+Interconnect information may be needed for the cray_gemini_r/d_samplers if hsn metrics are on. No such information is needed for the cray_aries_r_sampler.
 The interconnect information is produced in two steps:
 .TP
-1) From the smw as root: 
+1) From the smw as root:
 .RS
     rtr --interconnect >> interconnect.txt
 .RE
 This produces a list of all the tile, link, and media information
 .PP
-NOTE: This will be used for the calculation of derived metrics for both the gpcd and gpcdr interfaces since it is the only way to get the media information to estimate max BW.
+NOTE: This will be used for the calculation of derived metrics for both the gemini gpcd and gemini gpcdr interfaces since it is the only way to get the media information to estimate max BW.
 .PP
-NOTE: the gemini_metrics_type flag in the sampler configuration controls whether counter-only, derived-only, or both types of metrics will be output to the set. If you use gemini_metrics_type=0 (counter-only) then the interconnect file is not required to be specified in the configuration line.
+NOTE: the hsn_metrics_type flag in the sampler configuration controls whether counter-only, derived-only, or both types of metrics will be output to the set. If you use hsn_metrics_type=0 (counter-only) then the interconnect file is not required to be specified in the configuration line.
 
 .TP
 2) On some host:
@@ -101,30 +188,37 @@ OR
 .TP
 b) if it does not, then this information can be calculated from the raw performance counters via the gpcd interface. In this case, you will need the gpcd libraries.
 .PP
-NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to your Cray contact. 
+NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to your Cray contact.
 .PP
-The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below) If you have built with 
-.B --enable-gpcdr
-then the cray_system_sampler will be named cray_system_sampler_r; if you have built with
-.B --enable-gpcd
-then the cray_system_sampler will be named cray_system_sampler_d.
+The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below).
+
+.SH ARIES PERFORMANCE COUNTER INFORMATION
+The aries performance counter information will be accessed via the gpcdr module, if the hsn metrics are turned on.
+
+.SH DATA DIFFERENCES AMONG THE VARIANTS
+.TP
+The cray_gemini_d_sampler outputs aggregate host-facing file information that is not output in the cray_gemini_r_sampler.
+.TP
+The aries transport does not have X, Y, Z directional link aggregation nor X, Y, Z mesh coord information.
+.TP
+The cray_aries_r_sampler also outputs some additional non-HSN-related data available on the XC systems.
 
 .SH NOTES
-In some future LDMS release, the gpcd interface will be deprecated as more systems move to CLE releases supporting gpcdr.
+In some future LDMS release, the cray_gemini_d_sampler will be deprecated as more systems move to CLE releases supporting gpcdr.
 
 .SH EXAMPLES
 .PP
 .nf
 $/projects/ldms/Build/ldms.usr/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
-ldmsctl> load name=cray_system_sampler_r
-ldmsctl> config name=cray_system_sampler_r component_id=1 set=nid0001/cray_system_sampler_r rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11001" gemini_metrics_type=2
-ldmsctl> start name=cray_system_sampler_r interval=1000000
+ldmsctl> load name=cray_gemini_r_sampler
+ldmsctl> config name=cray_gemini_r_sampler component_id=1 set=nid00001/cray_gemini_r_sampler rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11001" hsn_metrics_type=2
+ldmsctl> start name=cray_gemini_r_sampler interval=1000000
 ldmsctl> quit
 .fi
 .PP
 .nf
 $ldms_ls -h nid00001 -x ugni -p 60020 -l
-nid00002/cray_system_sampler_r: consistent, last update: Wed Nov 27 11:35:21 2013 [3694us]
+nid00002/cray_gemini_r_sampler: consistent, last update: Wed Nov 27 11:35:21 2013 [3694us]
 U64 0                nettopo_mesh_coord_X
 U64 0                nettopo_mesh_coord_Y
 U64 1                nettopo_mesh_coord_Z

@@ -75,9 +75,14 @@ OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
 dnl Other libraries
-OPTION_DEFAULT_DISABLE([gpcdr], [ENABLE_GPCDR]) dnl use gpcdr vs gpcd
-OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD]) dnl for the path to gpcd if relevant
-OPTION_WITH([gpcd], [GPCD])
+OPTION_DEFAULT_DISABLE([gemini-gpcdr], [ENABLE_GEMINI_GPCDR]) dnl use gpcdr for gemini (not mutually exclusive)
+OPTION_DEFAULT_DISABLE([aries-gpcdr], [ENABLE_ARIES_GPCDR]) dnl use gpcdr for aries (not mutually exclusive)
+OPTION_DEFAULT_DISABLE([gemini-gpcd], [ENABLE_GEMINI_GPCD]) dnl use gpcd for gemini (not mutually exclusive) for the path to gpcd if relevant
+OPTION_WITH([gemini-gpcd], [GEMINI_GPCD])
+OPTION_DEFAULT_DISABLE([cray-nvidia], [ENABLE_CRAY_NVIDIA])
+OPTION_DEFAULT_DISABLE([cray-nvidia-inc], [ENABLE_CRAY_NVIDIA_INC])
+OPTION_WITH([cray-nvidia-inc], [CRAY_NVIDIA_INC]) dnl for the path to nvidia include
+dnl Will need to have the NVIDIA library in the LD_LIBRARY_PATH
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
 OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
@@ -256,21 +261,17 @@ else
    AC_MSG_NOTICE([Using staged ovis-lib $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG for mmalloc/ and coll/. ])
 fi
 
-dnl if cray_sampler if enable_gpcdr then check that interface exists
+
+dnl if cray_sampler set some other variables
 if test "x$enable_cray_system_sampler" = "xyes"
 then
 
-        if test -z "$ENABLE_GPCDR_TRUE" && test -z "$ENABLE_GPCD_TRUE"
+        if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_GEMINI_GPCD_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
         then
-                   AC_MSG_ERROR([Cannot enable both gpcd and gpcdr.])
-        else
-                if !(test -z "$ENABLE_GPCDR_TRUE") && !(test -z "$ENABLE_GPCD_TRUE")
-                then
-                   AC_MSG_ERROR([Must enable either gpcd or gpcdr.])
-                fi
+		AC_MSG_ERROR([Must enable at least one of gemini-gpcd, gemini-gpcdr, and aries-gpcdr.])
         fi
 
-        if test -z "$ENABLE_GPCDR_TRUE"
+        if (test -z "$ENABLE_GEMINI_GPCDR_TRUE") || (test -z "$ENABLE_ARIES_GPCDR_TRUE")
         then
         gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
         if ! test -f $gpcdrfile; then
@@ -282,11 +283,26 @@ then
          ++++++++++++++++++++++++++++++++++++++++++++
           ])
           fi
-          AC_DEFINE([HAVE_GPCDR],[1],[Use gpcdr interface for gemini metrics.])
-        else
-          AC_MSG_RESULT([Use gpcd interface for gemini metrics.])
+          AC_MSG_RESULT([Building gpcdr interface for HSN metrics.])
+        fi
+        if test -z "$ENABLE_GEMINI_GPCD_TRUE"
+	then
+          AC_MSG_RESULT([Building gpcd interface for gemini metrics.])
         fi
 
+	if test -z "$ENABLE_CRAY_NVIDIA_TRUE"
+	then
+	  AC_DEFINE([HAVE_CRAY_NVIDIA],[1],[cray_system_sampler: Including option for NVIDIA metrics.])
+	else
+          AC_MSG_RESULT([cray_system_sampler: Not including option for NVIDIA metrics.])
+	fi
+
+	if test -z "$ENABLE_LUSTRE_TRUE"
+	then
+		AC_DEFINE([HAVE_LUSTRE],[1],[cray_system_sampler: Include option for Lustre metrics.])
+	else
+		AC_MSG_RESULT([cray_system_sampler: Not including option for lustre metrics.])
+	fi
 fi
 
 dnl Reset LIBS variable.

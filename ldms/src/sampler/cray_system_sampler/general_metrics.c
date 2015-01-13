@@ -55,9 +55,11 @@
  */
 
 #define _GNU_SOURCE
+#include <fcntl.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -66,94 +68,8 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
-
 #include "general_metrics.h"
 
-/* LUSTRE SPECIFIC */
-
-struct str_map *lustre_idx_map = NULL;
-struct lustre_svc_stats_head lustre_svc_head = {0};
-
-int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
-			   ldmsd_msg_log_f msglog)
-{
-	struct lustre_svc_stats *lss;
-	size_t msize = 0;
-	size_t dsize = 0;
-	size_t m, d;
-	char name[CSS_LUSTRE_NAME_MAX];
-	int i;
-	int rc;
-
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
-					, lss->name);
-			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
-			if (rc)
-				return rc;
-			msize += m;
-			dsize += d;
-		}
-	}
-	*m_sz = msize;
-	*d_sz = dsize;
-	return 0;
-}
-
-
-int add_metrics_lustre(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog)
-{
-	struct lustre_svc_stats *lss;
-	int i;
-	int count = 0;
-	char name[CSS_LUSTRE_NAME_MAX];
-
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
-							, lss->name);
-			ldms_metric_t m = ldms_add_metric(set, name,
-								LDMS_V_U64);
-			if (!m)
-				return ENOMEM;
-			lss->metrics[i+1] = m;
-			ldms_set_user_data(m, comp_id);
-			count++;
-		}
-	}
-	return 0;
-}
-
-
-
-
-int handle_llite(const char *llite)
-{
-	char *_llite = strdup(llite);
-	if (!_llite)
-		return ENOMEM;
-	char *saveptr = NULL;
-	char *tok = strtok_r(_llite, ",", &saveptr);
-	struct lustre_svc_stats *lss;
-	char path[CSS_LUSTRE_PATH_MAX];
-	while (tok) {
-		snprintf(path, CSS_LUSTRE_PATH_MAX,"/proc/fs/lustre/llite/%s-*/stats",tok);
-		lss = lustre_svc_stats_alloc(path, LUSTRE_METRICS_LEN+1);
-		lss->name = strdup(tok);
-		if (!lss->name)
-			goto err;
-		lss->key_id_map = lustre_idx_map;
-		LIST_INSERT_HEAD(&lustre_svc_head, lss, link);
-		tok = strtok_r(NULL, ",", &saveptr);
-	}
-	free(_llite);
-	return 0;
-err:
-	lustre_svc_stats_list_free(&lustre_svc_head);
-	return ENOMEM;
-}
 
 int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 {
@@ -182,7 +98,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -240,7 +156,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -296,6 +212,21 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 
 }
 
+static char *replace_space(char *s)
+{
+	char *s1;
+
+	s1 = s;
+	while ( *s1 ) {
+		if ( isspace( *s1 ) ) {
+			*s1 = '_';
+		}
+		++s1;
+	}
+	return s;
+}
+
+
 
 int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 {
@@ -330,7 +261,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 		replace_space(s);
 
 		if (sscanf(s, "%s", metric_name) != 1){
-			msglog(LDMS_LDEBUG,"ERR: Issue reading metric name from the source"
+			msglog(LDMS_LERROR,"ERR: Issue reading metric name from the source"
 						" file '%s'\n", KGNILND_FILE);
 			rc = EINVAL;
 			return rc;
@@ -386,7 +317,7 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 	if (s) {
 		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 		if (rc != 1) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
 							CURRENT_FREEMEM_FILE);
 			fclose(cf_f);
 			cf_f = 0;
@@ -410,13 +341,60 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 }
 
 
+int sample_metrics_energy(ldmsd_msg_log_f msglog)
+{
+	/* only has 1 val, no label */
+	char lbuf[256];
+	char metric_name[128];
+	int found_metrics;
+	char* s;
+	union ldms_value v;
+	int j, rc;
+
+
+	if (ene_f)
+		fclose(ene_f);
+	ene_f = fopen(ENERGY_FILE, "r");
+	if (!ene_f)
+		return 0;
+
+	found_metrics = 0;
+	fseek(ene_f, 0, SEEK_SET);
+	s = fgets(lbuf, sizeof(lbuf), ene_f);
+	if (s) {
+		//Ignore the unit
+		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
+		if (rc != 1) {
+			msglog(LDMS_LERROR,
+			       "ERR: Issue reading the source file '%s'\n",
+			       ENERGY_FILE);
+			rc = EINVAL;
+			return rc;
+		}
+		ldms_set_metric(metric_table_energy[0], &v);
+		found_metrics++;
+	}
+
+	if (found_metrics != NUM_ENERGY_METRICS){
+		return EINVAL;
+	}
+
+	if (ene_f)
+		fclose(ene_f);
+	ene_f = 0;
+
+	return 0;
+
+}
+
+
 int procnetdev_setup(ldmsd_msg_log_f msglog)
 {
 	/** need tx rx bytes for ipogif0 interface only */
 	procnetdev_valid = 0;
 
 	if (!pnd_f) {
-		msglog(LDMS_LDEBUG,"procnetdev: filehandle NULL\n");
+		msglog(LDMS_LERROR,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -436,7 +414,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	} while(s);
 
 	if (idx_iface == -1){
-		msglog(LDMS_LDEBUG,"procnetdev: cannot find iface <%s>\n", iface);
+		msglog(LDMS_LERROR,"procnetdev: cannot find iface <%s>\n", iface);
 		return EINVAL;
 	}
 
@@ -452,7 +430,7 @@ int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 	}
 
 	if (!pnd_f) {
-		msglog(LDMS_LDEBUG,"procnetdev: filehandle NULL\n");
+		msglog(LDMS_LERROR,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -527,7 +505,7 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%f %f %f %d/%d %d\n",
 			    &vf[0], &vf[1], &vf[2], &vi[0], &vi[1], &vi[2]);
 		if (rc != 6) {
-			msglog(LDMS_LDEBUG,"ERR: Issue reading the source file '%s'"
+			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'"
 					" (rc=%d)\n", LOADAVG_FILE, rc);
 			fclose(l_f);
 			l_f = NULL;
@@ -551,21 +529,5 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		return EINVAL;
 	}
 
-	return 0;
-}
-
-
-int sample_metrics_lustre(ldmsd_msg_log_f msglog)
-{
-	struct lustre_svc_stats *lss;
-	int rc;
-	int count = 0;
-
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		rc = lss_sample(lss);
-		if (rc && rc != ENOENT)
-			return rc;
-		count += LUSTRE_METRICS_LEN;
-	}
 	return 0;
 }

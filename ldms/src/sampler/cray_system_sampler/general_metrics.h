@@ -51,7 +51,7 @@
 
 
 /**
- * \file general_metrics.h non-gemini metrics
+ * \file general_metrics.h non-HSN metrics
  */
 
 #ifndef __GENERAL_METRICS_H_
@@ -69,14 +69,23 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
+//have it for the logfile and set
+#include "ldmsd.h"
+#include "ldms.h"
 
-#include "../lustre/lustre_sampler.h"
-
+//FIXME: move cases into individual files. move vars into the c files.
 #define VMSTAT_FILE "/proc/vmstat"
 #define LOADAVG_FILE "/proc/loadavg"
 #define CURRENT_FREEMEM_FILE "/proc/current_freemem"
+#define ENERGY_FILE "/sys/cray/pm_counters/energy"
 #define KGNILND_FILE  "/proc/kgnilnd/stats"
 #define PROCNETDEV_FILE "/proc/net/dev"
+
+/* ENERGY Specific */
+FILE *ene_f;
+static char* ENERGY_METRICS[] = {"energy(J)"};
+#define NUM_ENERGY_METRICS (sizeof(ENERGY_METRICS)/sizeof(ENERGY_METRICS[0]))
+ldms_metric_t* metric_table_energy;
 
 /* CURRENT_FREEMEM Specific */
 FILE *cf_f;
@@ -132,81 +141,17 @@ static char* KGNILND_METRICS[] = {"SMSG_ntx",
 #define NUM_KGNILND_METRICS (sizeof(KGNILND_METRICS)/sizeof(KGNILND_METRICS[0]))
 ldms_metric_t* metric_table_kgnilnd;
 
-/* LUSTRE Specific */
-/**
- * This is for single llite.
- * The real metrics will contain all llites.
- */
-static char *LUSTRE_METRICS[] = {
-	/* file operation */
-	"dirty_pages_hits",
-	"dirty_pages_misses",
-	"writeback_from_writepage",
-	"writeback_from_pressure",
-	"writeback_ok_pages",
-	"writeback_failed_pages",
-	"read_bytes",
-	"write_bytes",
-	"brw_read",
-	"brw_write",
-	"ioctl",
-	"open",
-	"close",
-	"mmap",
-	"seek",
-	"fsync",
-	/* inode operation */
-	"setattr",
-	"truncate",
-	"lockless_truncate",
-	"flock",
-	"getattr",
-	/* special inode operation */
-	"statfs",
-	"alloc_inode",
-	"setxattr",
-	"getxattr",
-	"listxattr",
-	"removexattr",
-	"inode_permission",
-	"direct_read",
-	"direct_write",
-	"lockless_read_bytes",
-	"lockless_write_bytes",
-};
-#define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
-#define LLITE_PREFIX "/proc/fs/lustre/llite"
-#define CSS_LUSTRE_NAME_MAX 1024
-#define CSS_LUSTRE_PATH_MAX 4096
-
-/* Lustre specific vars */
-/**
- * str<->idx in LUSTRE_METRICS.
- */
-extern struct lustre_svc_stats_head lustre_svc_head;
-extern struct str_map *lustre_idx_map;
-
-/** get metric size */
-int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
-			   ldmsd_msg_log_f msglog);
-
-
-/** add metrics */
-int add_metrics_lustre(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
 
 /** helpers */
-int handle_llite(const char *llite);
 int procnetdev_setup(ldmsd_msg_log_f msglog);
-
 
 /** sample */
 int sample_metrics_vmstat(ldmsd_msg_log_f msglog);
 int sample_metrics_vmcf(ldmsd_msg_log_f msglog);
 int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog);
 int sample_metrics_current_freemem(ldmsd_msg_log_f msglog);
+int sample_metrics_energy(ldmsd_msg_log_f msglog);
 int sample_metrics_loadavg(ldmsd_msg_log_f msglog);
 int sample_metrics_procnetdev(ldmsd_msg_log_f msglog);
-int sample_metrics_lustre(ldmsd_msg_log_f msglog);
 
 #endif

@@ -40,7 +40,7 @@ TRANSPORT to use for the query. values are sock, rdma, or ugni (Cray XE/XK/XC). 
 .BI -p " PORT"
 PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
 .TP
-.BR -l 
+.BR -l
 Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
 .TP
 .BI -m  " MEMORY_SIZE"
@@ -49,7 +49,7 @@ MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
 The given size must be less than 1 petabytes.
 For example, 20M or 20mb are 20 megabytes.
 .TP
-.BR -u 
+.BR -u
 Display the user data for the metrics. (Usually compid)
 .TP
 .BR -v
@@ -67,7 +67,7 @@ with no arguments defaults to
 .BR ldms_ls -p
 .I
 XXX
-.BR -h 
+.BR -h
 .I
 localhost
 .BR -x
@@ -111,6 +111,6 @@ ldms_ls: lookup failed for set 'vm1_1/foo'
 .fi
 
 .SH SEE ALSO
-LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), 
-Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
 Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)

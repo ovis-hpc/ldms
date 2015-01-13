@@ -49,24 +49,145 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
 /**
  * \file gemini_metrics.c
  * \brief Functions used in the cray_system_sampler that are particular to
  * gemini -- gpcd and gpcdr as well as related rca (mesh coord).
  */
 
-
 #include <rca_lib.h>
 #include <rs_id.h>
 #include <rs_meshcoord.h>
 #include "gpcd_util.h"
 #include "rtr_util.h"
+#include "gemini.h"
 #include "gemini_metrics_gpcd.h"
-#include "gemini_metrics.h"
+
+#define COUNTER_48BIT_MAX 281474976710655
+
+typedef enum {
+	HSN_METRICS_COUNTER,
+	HSN_METRICS_DERIVED,
+	HSN_METRICS_BOTH,
+	HSN_METRICS_END
+} hsn_metrics_type_t;
+#define HSN_METRICS_DEFAULT HSN_METRICS_COUNTER
+
+#define STR_WRAP(NAME) #NAME
+#define PREFIX_ENUM_GB(NAME) GB_ ## NAME
+#define PREFIX_ENUM_GD(NAME) GD_ ## NAME
+#define PREFIX_ENUM_M(NAME) M_ ## NAME
+
+#define NS_GLP_BASE_LIST(WRAP)	\
+	WRAP(traffic),	\
+	WRAP(packets),	\
+	WRAP(inq_stall),	\
+	WRAP(credit_stall)
+
+#define NS_GLP_DERIVED_LIST(WRAP) \
+	WRAP(SAMPLE_GEMINI_LINK_BW),	\
+	WRAP(SAMPLE_GEMINI_LINK_USED_BW),	\
+	WRAP(SAMPLE_GEMINI_LINK_PACKETSIZE_AVE), \
+	WRAP(SAMPLE_GEMINI_LINK_INQ_STALL),	\
+	WRAP(SAMPLE_GEMINI_LINK_CREDIT_STALL)
+
+
+static char* ns_glp_basename[] = {
+	NS_GLP_BASE_LIST(STR_WRAP)
+};
+static char* ns_glp_derivedname[] = {
+	NS_GLP_DERIVED_LIST(STR_WRAP)
+};
+typedef enum {
+	NS_GLP_BASE_LIST(PREFIX_ENUM_GB)
+} ns_glp_base_metric_t;
+typedef enum {
+	NS_GLP_DERIVED_LIST(PREFIX_ENUM_GD)
+} ns_glp_derived_metric_t;
+
+
+static char* ns_glp_baseunit[] = {
+	"(B)",
+	"(1)",
+	"(ns)",
+	"(ns)",
+	};
+
+static char* ns_glp_derivedunit[] = {
+	"(B/s)",
+	"(\% x1e6)",
+	"(B)",
+	"(\% x1e6)",
+	"(\% x1e6)"
+	};
+
+
+#define NUM_NS_GLP_BASENAME (sizeof(ns_glp_basename)/sizeof(ns_glp_basename[0]))
+#define NUM_NS_GLP_DERIVEDNAME (sizeof(ns_glp_derivedname)/sizeof(ns_glp_derivedname[0]))
+
+#define NICMETRICS_BASE_LIST(WRAP) \
+	WRAP(totaloutput_optA),     \
+		WRAP(totalinput), \
+		WRAP(fmaout), \
+		WRAP(bteout_optA), \
+		WRAP(bteout_optB), \
+		WRAP(totaloutput_optB)
+
+static char* nicmetrics_derivedprefix = "SAMPLE";
+static char* nicmetrics_derivedunit =  "(B/s)";
+
+static char* nicmetrics_basename[] = {
+	NICMETRICS_BASE_LIST(STR_WRAP)
+};
+
+typedef enum {
+	NICMETRICS_BASE_LIST(PREFIX_ENUM_M)
+} nicmetrics_metric_t;
+
+#define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
+
+/* GEM_LINK_PERF_SPECIFIC */
+static gpcd_context_t *ns_glp_curr_ctx;
+static gpcd_context_t *ns_glp_prev_ctx;
+static gpcd_context_t *ns_glp_int_ctx;
+static gpcd_mmr_list_t *ns_glp_listp;
+static gpcd_mmr_list_t *ns_glp_plistp;
+static uint64_t* ns_glp_base_acc; /**< per base metric accumulator */
+static ldms_metric_t* ns_glp_base_metric_table;
+static ldms_metric_t* ns_glp_derived_metric_table;
+static int ns_glp_valid;
+
+static double ns_glp_max_link_bw[GEMINI_NUM_LOGICAL_LINKS];
+static int ns_glp_tiles_per_dir[GEMINI_NUM_LOGICAL_LINKS];
+
+static gemini_state_t *ns_glp_state;
+static int ns_glp_rc_to_tid[GEMINI_NUM_TILE_ROWS][GEMINI_NUM_TILE_COLUMNS];
+static struct timespec ns_glp_time1, ns_glp_time2;
+static struct timespec *ns_glp_curr_time, *ns_glp_prev_time,
+	*ns_glp_int_time;
+static uint64_t ns_glp_diff;
+
+static char* rtrfile = NULL; /**< needed for gpcd, but also used to get maxbw for gpcdr */
+
+/* NIC_PERF Specific */
+static uint64_t ns_nic_diff[NUM_NIC_PERF_RAW];
+static uint64_t ns_nic_curr[NUM_NIC_PERF_RAW];
+static gpcd_context_t *ns_nic_curr_ctx;
+static gpcd_context_t *ns_nic_prev_ctx;
+static gpcd_context_t *ns_nic_int_ctx;
+static gpcd_mmr_list_t *ns_nic_listp;
+static gpcd_mmr_list_t *ns_nic_plistp;
+static uint64_t* ns_nic_base_acc; /**< prev per metric accumulator */
+static ldms_metric_t* ns_nic_base_metric_table;
+static ldms_metric_t* ns_nic_derived_metric_table;
+static struct timespec ns_nic_time1, ns_nic_time2;
+static struct timespec *ns_nic_curr_time, *ns_nic_prev_time, *ns_nic_int_time;
+static int ns_nic_valid;
+
+
+static int hsn_metrics_type = HSN_METRICS_DEFAULT;
 
 /** internal calculations */
-
 static uint64_t __gem_link_aggregate_phits(
 	int i, uint64_t sample_link_ctrs[][GEMINI_NUM_TILE_COUNTERS]);
 static uint64_t __gem_link_aggregate_packets(
@@ -106,8 +227,8 @@ int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz, ldmsd_msg_log_f msglog)
 	int i, j;
 	int rc;
 
-	if ((gemini_metrics_type == GEMINI_METRICS_COUNTER) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_NICMETRICS; i++){
 			sprintf(newname, "%s", nicmetrics_basename[i]);
 			rc = ldms_get_metric_size(newname, LDMS_V_U64,
@@ -130,8 +251,8 @@ int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz, ldmsd_msg_log_f msglog)
 			return ENOMEM;
 	}
 
-	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_NICMETRICS; i++) {
 			sprintf(newname, "%s_%s %s",
 				nicmetrics_derivedprefix,
@@ -159,6 +280,31 @@ int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz, ldmsd_msg_log_f msglog)
 
 }
 
+
+int hsn_metrics_config(int i, char* fname){
+	if (i >= HSN_METRICS_END){
+		return EINVAL;
+	} else if (i < 0){
+		hsn_metrics_type = HSN_METRICS_DEFAULT;
+	} else {
+		hsn_metrics_type = i;
+	}
+
+	if (rtrfile)
+		free(rtrfile);
+	if (fname == NULL)
+		rtrfile = NULL;
+	else
+		rtrfile = strdup(fname);
+
+	//always need rtr file
+	if (rtrfile == NULL)
+		return EINVAL;
+
+	return 0;
+}
+
+
 int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
 				  ldmsd_msg_log_f msglog)
 {
@@ -173,8 +319,8 @@ int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
-	if ((gemini_metrics_type == GEMINI_METRICS_COUNTER) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_count = 0;
 		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
 			for (j = 0; j < NUM_NS_GLP_BASENAME; j++){
@@ -204,8 +350,8 @@ int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
 	}
 
 
-	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_count = 0;
 		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
 			for (j = 0; j < NUM_NS_GLP_DERIVEDNAME; j++) {
@@ -239,7 +385,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_nic_curr_ctx = nic_perf_create_context(&msglog);
 	if (!ns_nic_curr_ctx) {
-		msglog(LDMS_LDEBUG,"ns_nic: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -247,7 +393,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_nic_prev_ctx = nic_perf_create_context(&msglog);
 	if (!ns_nic_prev_ctx) {
-		msglog(LDMS_LDEBUG,"ns_nic: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -260,7 +406,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 	error = gpcd_context_read_mmr_vals(ns_nic_prev_ctx);
 
 	if (error) {
-		msglog(LDMS_LDEBUG,"nic_perf: Error in gpcd_context_read_mmr_vals\n");
+		msglog(LDMS_LERROR,"nic_perf: Error in gpcd_context_read_mmr_vals\n");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -279,14 +425,14 @@ int add_metrics_nic_perf(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 	int rc = 0;
 
 
-	if ((gemini_metrics_type == GEMINI_METRICS_COUNTER) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_NICMETRICS; i++){
 			sprintf(newname, "%s", nicmetrics_basename[i]);
 			ns_nic_base_metric_table[i] =
 				ldms_add_metric(set, newname, LDMS_V_U64);
 			if (!ns_nic_base_metric_table[i]) {
-				msglog(LDMS_LDEBUG,"Bad add_metric %d\n",i);
+				msglog(LDMS_LERROR,"Bad add_metric %d\n",i);
 				rc = ENOMEM;
 				return rc;
 			}
@@ -296,8 +442,8 @@ int add_metrics_nic_perf(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 		}
 	}
 
-	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_NICMETRICS; i++) {
 			sprintf(newname, "%s_%s %s",
 				nicmetrics_derivedprefix,
@@ -306,7 +452,7 @@ int add_metrics_nic_perf(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 			ns_nic_derived_metric_table[i] =
 				ldms_add_metric(set, newname, LDMS_V_U64);
 			if (!ns_nic_derived_metric_table[i]) {
-				msglog(LDMS_LDEBUG,"Bad add_metric %d\n", i);
+				msglog(LDMS_LERROR,"Bad add_metric %d\n", i);
 				rc = ENOMEM;
 				return rc;
 			}
@@ -330,8 +476,8 @@ int add_metrics_gem_link_perf(ldms_set_t set, int comp_id,
 	int i, j;
 	int rc = 0;
 
-	if ((gemini_metrics_type == GEMINI_METRICS_COUNTER) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_no = 0;
 		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
 			for (j = 0; j < NUM_NS_GLP_BASENAME; j++){
@@ -350,8 +496,8 @@ int add_metrics_gem_link_perf(ldms_set_t set, int comp_id,
 		}
 	}
 
-	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_no = 0;
 		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
 			for (j = 0; j < NUM_NS_GLP_DERIVEDNAME; j++) {
@@ -391,14 +537,14 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_glp_curr_ctx = gem_link_perf_create_context(&msglog);
 	if (!ns_glp_curr_ctx) {
-		msglog(LDMS_LDEBUG,"ns_glp: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_glp: gpcd_create_context failed");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
 
 	ns_glp_prev_ctx = gem_link_perf_create_context(&msglog);
 	if (!ns_glp_prev_ctx) {
-		msglog(LDMS_LDEBUG,"ns_nic: gpcd_create_context failed");
+		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
@@ -406,7 +552,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 	/*  Allocate memory for struct state */
 	ns_glp_state = malloc(sizeof(gemini_state_t));
 	if (!ns_glp_state) {
-		msglog(LDMS_LDEBUG,"ns_glp: Error allocating memory for state\n");
+		msglog(LDMS_LERROR,"ns_glp: Error allocating memory for state\n");
 		ns_glp_valid = 0;
 		return ENOMEM;
 	}
@@ -419,7 +565,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 						   &ns_glp_max_link_bw,
 						   &ns_glp_tiles_per_dir);
 	if (rc != 0){
-		msglog(LDMS_LDEBUG,"ns_glp: Error parsing interconnect file\n");
+		msglog(LDMS_LERROR,"ns_glp: Error parsing interconnect file\n");
 		ns_glp_valid = 0;
 		return rc;
 	}
@@ -430,7 +576,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 			error = tcoord_to_tid(i, j,
 					      &(ns_glp_rc_to_tid[i][j]));
 			if (error) {
-				msglog(LDMS_LDEBUG,"ns_glp: Error converting r,c to"
+				msglog(LDMS_LERROR,"ns_glp: Error converting r,c to"
 				       " tid\n");
 				ns_glp_valid = 0;
 				return error;
@@ -445,7 +591,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 	error = gpcd_context_read_mmr_vals(ns_glp_prev_ctx);
 
 	if (error) {
-		msglog(LDMS_LDEBUG,"ns_glp: Error in gpcd_context_read_mmr_vals\n");
+		msglog(LDMS_LERROR,"ns_glp: Error in gpcd_context_read_mmr_vals\n");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
@@ -529,7 +675,7 @@ int sample_metrics_nic_perf(ldmsd_msg_log_f msglog)
 
 	error = gpcd_context_read_mmr_vals(ns_nic_curr_ctx);
 	if (error) {
-		msglog(LDMS_LDEBUG,"nic_perf: Error reading mmr_vals\n");
+		msglog(LDMS_LERROR,"nic_perf: Error reading mmr_vals\n");
 		rc = EINVAL;
 		return rc;
 	} else {
@@ -573,15 +719,15 @@ int sample_metrics_nic_perf(ldmsd_msg_log_f msglog)
 
 	for (i = 0; i < NUM_NICMETRICS; i++){
 		uint64_t temp = __nic_perf_metric_calc(i, ns_nic_diff);
-		if ((gemini_metrics_type == GEMINI_METRICS_COUNTER) ||
-		    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+		if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+		    (hsn_metrics_type == HSN_METRICS_BOTH)){
 			/* end user has to deal with "rollover" */
 			ns_nic_base_acc[i] += temp;
 			v.v_u64 = ns_nic_base_acc[i];
 			ldms_set_metric(ns_nic_base_metric_table[i], &v);
 		}
-		if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
-		    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+		if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+		    (hsn_metrics_type == HSN_METRICS_BOTH)){
 			v.v_u64 = (double)(temp)/
 				((double)time_delta/1000000000);
 			ldms_set_metric(ns_nic_derived_metric_table[i], &v);
@@ -783,7 +929,7 @@ int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
 
 	error = gpcd_context_read_mmr_vals(ns_glp_curr_ctx);
 	if (error) {
-		msglog(LDMS_LDEBUG,"nic_perf: Error reading mmr_vals\n");
+		msglog(LDMS_LERROR,"nic_perf: Error reading mmr_vals\n");
 		rc = EINVAL;
 		return rc;
 	} else {
@@ -847,8 +993,8 @@ int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
 	} while (!done);
 	done = 0;
 
-	if ((gemini_metrics_type == GEMINI_METRICS_COUNTER) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		metric_no = 0;
 		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
 			for (j = 0; j < NUM_NS_GLP_BASENAME; j++) {
@@ -864,8 +1010,8 @@ int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
 		}
 	}
 
-	if ((gemini_metrics_type == GEMINI_METRICS_DERIVED) ||
-	    (gemini_metrics_type == GEMINI_METRICS_BOTH)){
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		time_delta =
 			((ns_glp_curr_time->tv_sec - ns_glp_prev_time->tv_sec) *
 			 1000000000) +

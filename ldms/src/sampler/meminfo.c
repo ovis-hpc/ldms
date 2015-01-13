@@ -75,11 +75,11 @@
 
 static char *procfile = PROC_FILE;
 static uint64_t counter;
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id = UINT64_MAX;
+static ldms_set_t set;
+static FILE *mf;
+static ldms_metric_t *metric_table;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id = UINT64_MAX;
 static char *qc_dir = NULL;
 
 #ifdef HAVE_QC_SAMPLER

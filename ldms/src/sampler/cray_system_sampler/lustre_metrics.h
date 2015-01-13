@@ -1,4 +1,4 @@
-/*
+/* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -48,41 +48,16 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/**
- * \file gemini_metrics_gpcd.h
- * \brief Utilities for cray_system_sampler for gemini metrics using gpcd
- */
+
 
 /**
- * Sub sampler notes:
- *
- * gem_link_perf and linksmetrics are alternate interfaces to approximately
- * the same data. similarly true for nic_perf and nicmetrics.
- * Use depends on whether or not your system has the the gpcdr module.
- *
- * gem_link_perf:
- * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
- * (Sandia National Laboratories) gemini performance counter interface and
- * link aggregation library. It has been augmented with pattern analysis
- * of the interconnect file.
- *
- * linksmetrics:
- * uses gpcdr interface
- *
- * nic_perf:
- * raw counter read, performing the same sum defined in the gpcdr design
- * document.
- *
- * nicmetrics:
- * uses gpcdr interface
+ * \file general_metrics.h non-HSN metrics
  */
 
-
-#ifndef __GEMINI_METRICS_GPCD_H_
-#define __GEMINI_METRICS_GPCD_H_
+#ifndef __LUSTRE_METRICS_H_
+#define __LUSTRE_METRICS_H_
 
 #define _GNU_SOURCE
-
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -90,36 +65,85 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <pthread.h>
 #include <sys/types.h>
-#include <time.h>
 #include <ctype.h>
-#include "ldms.h"
+#include <wordexp.h>
+//have it for the logfile and set
 #include "ldmsd.h"
-#include "gemini.h"
-#include "gpcd_util.h"
+#include "ldms.h"
 
 
-/* config */
-int hsn_metrics_config(int i, char* filename);
+#include "../lustre/lustre_sampler.h"
+
+/* LUSTRE Specific */
+/**
+ * This is for single llite.
+ * The real metrics will contain all llites.
+ */
+static char *LUSTRE_METRICS[] = {
+        /* file operation */
+        "dirty_pages_hits",
+        "dirty_pages_misses",
+        "writeback_from_writepage",
+        "writeback_from_pressure",
+        "writeback_ok_pages",
+	"writeback_failed_pages",
+        "read_bytes",
+        "write_bytes",
+        "brw_read",
+        "brw_write",
+        "ioctl",
+        "open",
+        "close",
+        "mmap",
+        "seek",
+	"fsync",
+	/* inode operation */
+        "setattr",
+        "truncate",
+        "lockless_truncate",
+        "flock",
+        "getattr",
+        /* special inode operation */
+        "statfs",
+        "alloc_inode",
+        "setxattr",
+        "getxattr",
+        "listxattr",
+        "removexattr",
+        "inode_permission",
+        "direct_read",
+        "direct_write",
+        "lockless_read_bytes",
+        "lockless_write_bytes",
+};
+#define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
+#define LLITE_PREFIX "/proc/fs/lustre/llite"
+#define CSS_LUSTRE_NAME_MAX 1024
+#define CSS_LUSTRE_PATH_MAX 4096
+
+/* Lustre specific vars */
+/**
+ * str<->idx in LUSTRE_METRICS.
+ */
+extern struct lustre_svc_stats_head lustre_svc_head;
+extern struct str_map *lustre_idx_map;
 
 /** get metric size */
-int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
-int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog);
+int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
+                           ldmsd_msg_log_f msglog);
+
 
 /** add metrics */
-int add_metrics_gem_link_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
-int add_metrics_nic_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
+int add_metrics_lustre(ldms_set_t set, int comp_id,
+		       ldmsd_msg_log_f msglog);
 
-/** setup after add before sampling */
-int gem_link_perf_setup(ldmsd_msg_log_f msglog);
-int nic_perf_setup(ldmsd_msg_log_f msglog);
+/** helpers */
+int handle_llite(const char *llite);
 
-/** sampling */
-int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog);
-int sample_metrics_nic_perf(ldmsd_msg_log_f msglog);
+
+/** sample */
+int sample_metrics_lustre(ldmsd_msg_log_f msglog);
 
 #endif

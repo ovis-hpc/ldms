@@ -19,9 +19,10 @@ endif
 
 if ENABLE_LUSTRE
 SUBDIRS += lustre
+endif
+
 if ENABLE_CRAY_SYSTEM_SAMPLER
 SUBDIRS += cray_system_sampler
-endif
 endif
 
 if ENABLE_HADOOP
