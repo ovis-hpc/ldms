@@ -6,9 +6,11 @@ AM_CFLAGS = $(INCLUDES)
 
 if ENABLE_SOCK
 libldmssock_la_SOURCES = ldms_sock.c ldms_sock_xprt.h
-libldmssock_la_LIBADD = -levent -levent_pthreads
+libldmssock_la_LIBADD = -levent -levent_pthreads -lcoll -lpthread \
+			../core/libldms.la
 libldmssock_la_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
-libldmssock_la_LDFLAGS = $(AM_LDFLAGS) @LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@
+libldmssock_la_LDFLAGS = $(AM_LDFLAGS) @LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
+	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 pkglib_LTLIBRARIES += libldmssock.la
 endif
 
