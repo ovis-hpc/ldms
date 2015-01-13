@@ -13,17 +13,15 @@ BUILD_DIR="build-$HOSTNAME"
 PREFIX=/opt/ovis
 
 # add --enable-FEATURE here
-ENABLE="--enable-swig --enable-ocmd --enable-parsers \
-	--enable-sos --enable-ocm --enable-me --enable-debug\
-	--enable-ocm-test --enable-etc"
+ENABLE="--enable-debug"
 
 # add --disable-FEATURE here
-DISABLE="--disable-rdma --disable-sysclassib"
+# DISABLE="--disable-rdma --disable-sysclassib"
 
 # libevent2 prefix
 #LIBEVENT_PREFIX=/usr/local
 
-WITH="--with-ovis-lib=$PREFIX --with-sos=$PREFIX --with-ocm=$PREFIX"
+WITH="--with-ovis-lib=$PREFIX"
 if [ -n "$LIBEVENT_PREFIX" ]; then
 	WITH="$WITH --with-libevent=$LIBEVENT_PREFIX"
 fi
@@ -33,7 +31,7 @@ CFLAGS='-g -O0 -DDEBUG -Wl,-z,defs'
 # Exit immediately if a command failed
 set -e
 
-LIST="lib sos ocm ldms baler me komondor helper-scripts"
+LIST="lib ldms"
 for X in $LIST; do
 	echo "----------------------------------"
 	echo "$X"
@@ -47,8 +45,7 @@ for X in $LIST; do
 	../configure --prefix=$PREFIX $ENABLE $DISABLE $WITH CFLAGS="$CFLAGS"
 	make
 	chmod o+w -R .
-	sudo make install
-	sudo ldconfig
+	make install
 	popd
 	popd
 	set +x; # disable command echo so that it won't print the "for ..." command
