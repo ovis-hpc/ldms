@@ -319,13 +319,11 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 	gni_job_limits_t limits;
 	gni_return_t grc;
 
-	/* ptag=0 will be passed if XC30. Call GNI_GetPtag(0, cookie, &ptag) to return ptag associated with cookie */
+	/* ptag=0 will be passed if aries. */
 	if (IS_ARIES) {
 		if (*ptag == 0) {
 			#ifdef GNI_FIND_ALLOC_PTAG
 				*ptag = GNI_FIND_ALLOC_PTAG;
-				if (grc)
-					goto err;
 			#else
 				goto err;
 			#endif
