@@ -88,21 +88,21 @@ static int rolltype;
 "                     1: wake approximately every rollover seconds and roll.\n" \
 "                     2: wake daily at rollover seconds after midnight (>=0) and roll.\n" \
 "                     3: roll after approximately rollover records are written.\n" \
-"                     4: roll after approximately rollover bytes are written.\n" 
+"                     4: roll after approximately rollover bytes are written.\n"
 
 #define MAXROLLTYPE 4
 #define MINROLLTYPE 1
 /** default -- do not roll */
 #define DEFAULT_ROLLTYPE -1
-/** minimum rollover for type 1; 
-    rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1 
+/** minimum rollover for type 1;
+    rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1
     also used for minimum sleep time for type 2;
     rolltype==2 and rollover results in sleep < MIN_ROLL_SLEEPTIME -> skip this roll and do it the next day */
-#define MIN_ROLL_1 10 
-/** minimum rollover for type 3; 
+#define MIN_ROLL_1 10
+/** minimum rollover for type 3;
     rolltype==3 and rollover < MIN_ROLL_RECORDS -> rollover = MIN_ROLL_RECORDS */
 #define MIN_ROLL_RECORDS 3
-/** minimum rollover for type 4; 
+/** minimum rollover for type 4;
     rolltype==4 and rollover < MIN_ROLL_BYTES -> rollover = MIN_ROLL_BYTES */
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits. */
@@ -110,7 +110,7 @@ static int rolltype;
 
 
 static ldmsd_msg_log_f msglog;
-static pthread_t rothread; 
+static pthread_t rothread;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -135,7 +135,7 @@ struct csv_store_handle {
 	void *ucontext;
 	int64_t store_count;
 	int64_t byte_count;
-	
+
 };
 
 static pthread_mutex_t cfg_lock ;
@@ -193,12 +193,13 @@ static int handleRollover(){
 					break;
 				}
 
-			
+
 				if (s_handle->file)
 					fflush(s_handle->file);
 				if (s_handle->headerfile)
 					fflush(s_handle->headerfile);
 
+				//re name: if got here, then rollover requested
 				snprintf(tmp_path, PATH_MAX, "%s.%d",
 					 s_handle->path, (int) appx);
 				nfp = fopen(tmp_path, "a+");
@@ -210,6 +211,7 @@ static int handleRollover(){
 					continue;
 				}
 				if (altheader){
+					//re name: if got here, then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
 						 "%s.HEADER.%d",
 						 s_handle->path, (int)appx);
@@ -244,7 +246,7 @@ static int handleRollover(){
 				pthread_mutex_unlock(&s_handle->lock);
 			}
 		}
-	}				
+	}
 
 	pthread_mutex_unlock(&cfg_lock);
 
@@ -253,6 +255,8 @@ static int handleRollover(){
 }
 
 static void* rolloverThreadInit(void* m){
+	//if got here, then rollover requested
+
 	while(1){
 		int tsleep;
 		switch (rolltype) {
@@ -266,7 +270,7 @@ static void* rolloverThreadInit(void* m){
 		  time( &rawtime );
 		  info = localtime( &rawtime );
 		  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
-		  tsleep = 86400 - secSinceMidnight + rollover; 
+		  tsleep = 86400 - secSinceMidnight + rollover;
 		  if (tsleep < MIN_ROLL_1){
 		    /* if we just did a roll then skip this one */
 		    tsleep+=86400;
@@ -284,7 +288,7 @@ static void* rolloverThreadInit(void* m){
 		  tsleep = ROLL_LIMIT_INTERVAL;
 		  break;
 		default:
-		  break; 
+		  break;
 		}
 		sleep(tsleep);
 		handleRollover();
@@ -292,7 +296,7 @@ static void* rolloverThreadInit(void* m){
 
 	return NULL;
 }
-		
+
 
 /**
  * \brief Configuration
@@ -377,7 +381,7 @@ static const char *usage(void)
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
 		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
-                "                     (Optional default use all compid)\n";
+		"                     (Optional default use all compid)\n";
 }
 
 /*
@@ -481,7 +485,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		s_handle->path = strdup(tmp_path);
 		if (!s_handle->path) {
 			/* Take the lock becauase we will unlock in the err path */
-			pthread_mutex_lock(&s_handle->lock); 
+			pthread_mutex_lock(&s_handle->lock);
 			goto err1;
 		}
 
@@ -500,12 +504,17 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	/* Take the lock in case its a store that has been closed */
 	pthread_mutex_lock(&s_handle->lock);
 
-	time_t appx = time(NULL); //append the files with epoch. assume wont collide to the sec.
-
 	/* For both actual new store and reopened store, open the data file */
 	char tmp_path[PATH_MAX];
-	snprintf(tmp_path, PATH_MAX, "%s.%d",
-		 s_handle->path, (int)appx);
+	time_t appx = time(NULL);
+	if (rolltype >= MINROLLTYPE){
+		//append the files with epoch. assume wont collide to the sec.
+		snprintf(tmp_path, PATH_MAX, "%s.%d",
+			 s_handle->path, (int)appx);
+	} else {
+		snprintf(tmp_path, PATH_MAX, "%s",
+			 s_handle->path);
+	}
 
 	if (!s_handle->file) {
 		s_handle->file = fopen(tmp_path, "a+");
@@ -517,8 +526,13 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	if (s_handle->printheader && !s_handle->headerfile){
 		if (altheader) {
 			char tmp_headerpath[PATH_MAX];
-			snprintf(tmp_headerpath, PATH_MAX,
-				 "%s.HEADER.%d", s_handle->path, (int)appx);
+			if (rolltype >= MINROLLTYPE){
+				snprintf(tmp_headerpath, PATH_MAX,
+					 "%s.HEADER.%d", s_handle->path, (int)appx);
+			} else {
+				snprintf(tmp_headerpath, PATH_MAX,
+					 "%s.HEADER", s_handle->path);
+			}
 			/* truncate a separate headerfile if exists */
 			s_handle->headerfile = fopen(tmp_headerpath, "w");
 		} else {
@@ -534,7 +548,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			msglog(LDMS_LDEBUG, "Error: Exceeded max store keys\n");
 			goto err5;
 		} else {
-			idx_add(store_idx, (void *)container,			
+			idx_add(store_idx, (void *)container,
 				strlen(container), s_handle);
 			storekeys[nstorekeys++] = strdup(container);
 		}
@@ -593,7 +607,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
-			else 
+			else
 				s_handle->byte_count += rc;
 		}
 		fprintf(s_handle->file,"\n");
@@ -608,7 +622,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
-			else 
+			else
 				s_handle->byte_count += rc;
 		}
 		for (i = 0; i < num_metrics; i++) {
@@ -616,7 +630,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
-			else 
+			else
 				s_handle->byte_count += rc;
 		}
 		fprintf(s_handle->file,"\n");
