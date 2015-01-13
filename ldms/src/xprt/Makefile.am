@@ -16,7 +16,8 @@ endif
 
 if ENABLE_RDMA
 libldmsrdma_la_SOURCES = ldms_rdma.c ldms_rdma_xprt.h
-libldmsrdma_la_LIBADD = -libverbs -lrdmacm
+libldmsrdma_la_LIBADD = -libverbs -lrdmacm ../core/libldms.la \
+			-lpthread
 pkglib_LTLIBRARIES += libldmsrdma.la
 endif
 
