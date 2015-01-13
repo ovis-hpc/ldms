@@ -228,7 +228,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (value)
 		off_hsn= (atoi(value) == 1? 1:0);
 
-	if (!offhsn){
+	if (!off_hsn){
 		value = av_value(avl,"hsn_metrics_type");
 		if (value) {
 			mvalue = atoi(value);
@@ -278,14 +278,14 @@ static int sample(void)
 	for (i = 0; i < NS_NUM; i++){
 		switch(i){
 		case NS_LINKSMETRICS:
-			if (!off_linksmetrics){
+			if (!off_hsn){
 				rc = sample_metrics_linksmetrics(msglog);
 			} else {
 				rc = 0;
 			}
 			break;
 		case NS_NICMETRICS:
-			if (!off_nicmetrics){
+			if (!off_hsn){
 				rc = sample_metrics_nicmetrics(msglog);
 			} else {
 				rc = 0;
