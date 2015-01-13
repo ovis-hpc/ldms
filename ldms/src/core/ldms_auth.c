@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <string.h>
 #include <time.h>
 #include <errno.h>
@@ -97,6 +98,22 @@ static int try_password_file(const char *filepath, char *secretword,
 				filepath);
 			return 1;
 		}
+	}
+	struct stat st;
+	if (stat(filepath, &st)) {
+		holderr = errno;
+		x->log(LDMS_LERROR,"%s: %s while trying to stat %s\n",
+			__FILE__, strerror(errno), filepath);
+		return 2;
+	}
+	if ((st.st_uid == getuid()) && (st.st_mode & 077) != 0) {
+		x->log(LDMS_LERROR,"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+			x->log(LDMS_LERROR,"@     WARNING: UNPROTECTED SECRET WORD FILE!     @\n");
+		x->log(LDMS_LERROR,"Permissions 0%3.3o for '%s' are too open.",
+			(u_int)st.st_mode & 0777, filepath);
+		x->log(LDMS_LERROR,"It your secret word files must NOT accessible by others.");
+		x->log(LDMS_LERROR,"This secret will be ignored.");
+		return 2;
 	}
 	FILE *conf_file = NULL;
 	conf_file = fopen(filepath, "r");
