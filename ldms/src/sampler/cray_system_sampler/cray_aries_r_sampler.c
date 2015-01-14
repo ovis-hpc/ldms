@@ -211,7 +211,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 #ifdef HAVE_LUSTRE
-	if (!get_offhsn_generic(NS_LUSTRE)){
+	if (!get_offns_generic(NS_LUSTRE)){
 		value = av_value(avl, "llite");
 		if (value) {
 			rc = handle_llite(value);
