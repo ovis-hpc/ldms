@@ -30,12 +30,6 @@ OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
 OPTION_DEFAULT_ENABLE([glib], [ENABLE_GLIB])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
 
-dnl Options for transport
-OPTION_DEFAULT_ENABLE([xprt], [ENABLE_XPRT])
-OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
-OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
-OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
-
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
 OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
@@ -232,7 +226,7 @@ LIBS=""
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
-AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
+AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/hadoop/Makefile

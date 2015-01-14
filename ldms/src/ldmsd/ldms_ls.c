@@ -67,6 +67,7 @@
 #include <sys/queue.h>
 #include <time.h>
 #include <ovis_util/util.h>
+#include <semaphore.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 
@@ -82,6 +83,8 @@ static int print_done;
 static pthread_mutex_t done_lock;
 static pthread_cond_t done_cv;
 static int done;
+
+static sem_t conn_sem;
 
 struct ls_set {
 	char *name;
@@ -308,6 +311,16 @@ void null_log(const char *fmt, ...)
 	// print nothing at all!!!!
 }
 
+void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+{
+	if (e == LDMS_CONN_EVENT_ERROR) {
+		printf("Connection failed.\n");
+		exit(2);
+	}
+
+	sem_post(&conn_sem);
+}
+
 #define LDMS_LS_MAX_MEM_SIZE 512L * 1024L
 size_t max_mem_size = LDMS_LS_MAX_MEM_SIZE;
 
@@ -329,6 +342,11 @@ int main(int argc, char *argv[])
 	/* If no arguments are given, print usage. */
 	if (argc == 1)
 		usage(argv);
+	int rc = sem_init(&conn_sem, 0, 0);
+	if (rc) {
+		perror("sem_init");
+		_exit(-1);
+	}
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -399,11 +417,14 @@ int main(int argc, char *argv[])
 		printf("Port        : %hu\n", port_no);
 		printf("Transport   : %s\n", xprt);
 	}
-	ret  = ldms_connect(ldms, (struct sockaddr *)&sin, sizeof(sin));
+	ret  = ldms_connect(ldms, (struct sockaddr *)&sin, sizeof(sin),
+				ldms_connect_cb, NULL);
 	if (ret) {
-		perror("ldms_ls");
+		perror("ldms_connect");
 		exit(2);
 	}
+
+	sem_wait(&conn_sem);
 
 	pthread_mutex_init(&dir_lock, 0);
 	pthread_cond_init(&dir_cv, NULL);

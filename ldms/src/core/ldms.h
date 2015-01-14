@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-14 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-14 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -56,7 +56,7 @@
 #include <sys/queue.h>
 #include <string.h>
 #include <netinet/in.h>
-#include <coll/rbt.h>
+#include "coll/rbt.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -115,7 +115,7 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * \li \b ldms_listen() Create a listening endpoint and respond to
  * queries from peers.
  * \li \b ldms_connect() Request a connection with a remote peer.
- * \li \b ldms_xprt_close() Close a connection with a remote peer.
+ * \li \b ldms_close() Close a connection with a remote peer.
  *
  * \section metric_sets Creating Metric Sets
  *
@@ -295,6 +295,21 @@ ldms_t ldms_xprt_next(ldms_t);
 int ldms_xprt_connected(ldms_t);
 
 /**
+ * \brief Check if an endpoint is closed.
+ *
+ * \param l	The endpoint handle.
+ * \returns	!0 if the endpoint is closed.
+ */
+int ldms_xprt_closed(ldms_t);
+
+/**
+ * \brief Close a connecttion
+ *
+ * \param l	The endpoint handle.
+ */
+void ldms_xprt_close(ldms_t);
+
+/**
  * \brief Return value at iterator
  *
  * \param i	Pointer to the iterator.
@@ -469,6 +484,15 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
  */
 
 /**
+ * LDMS log function definition.
+ *
+ * Users can implememnt customized log function using this API.
+ *
+ * \param fmt The format of the printing string (as in \c printf).
+ */
+typedef void (*ldms_log_fn_t)(const char *fmt, ...);
+
+/**
  * \brief Create a transport handle
  *
  * Metric sets are exported on the network through a transport. A
@@ -479,7 +503,6 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
-typedef void (*ldms_log_fn_t)(const char *fmt, ...);
 extern ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn);
 
 /**
@@ -492,28 +515,41 @@ extern ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn);
  */
 extern void ldms_release_xprt(ldms_t x);
 
-/**
- * \brief Return the name of a transport
- *
- * Return a character string representing the transport.
- *
- * \param x	The transport handle
- * \returns	A character string representing the local interface
- * address on which the transport is communicating.
- * \returns	0 if the transport handle is invalid.
- */
-extern const char *ldms_get_xprt_name(ldms_t x);
+typedef enum ldms_conn_event {
+	LDMS_CONN_EVENT_CONNECTED,
+	LDMS_CONN_EVENT_ERROR,
+	LDMS_CONN_EVENT_DISCONNECTED,
+	LDMS_CONN_EVENT_LAST
+} ldms_conn_event_t;
 
 /**
- * \brief Request a connection to an LDMS host.
+ * Definition of callback function for ldms_connect.
+ *
+ * Because ldms_connect is asynchronous, the caller that request a connection
+ * will be notified through a callback function whether the connection is a
+ * success (\c e=LDMS_CONN_EVENT_CONNECTED) or a failure (\c
+ * e=LDMS_CONN_EVENT_ERROR).
+ *
+ * \param x The ldms transport handle.
+ * \param e The connection event flag.
+ * \param cb_arg The \c cb_arg specified when ::ldms_connect() is called.
+ */
+typedef void (*ldms_connect_cb_t)(ldms_t x, ldms_conn_event_t e, void *cb_arg);
+
+/**
+ * \brief Asynchronously request a connection to an LDMS host.
  *
  * \param x	The transport handle
  * \param sa	Socket address specifying the host address and port.
  * \param sa_len The length of the socket address.
- * \returns	0 if the connection was established.
- * \returns	An error indicating why the connection failed.
+ * \param cb	The callback function.
+ * \param cb_arg An argument to be passed to \c cb when it is called.
+ * \returns	0 if the request is posted successfully. Please note that this
+ *		doesn't mean that the transport is connected.
+ * \returns	An error indicating why the request failed.
  */
-extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
+extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
+			ldms_connect_cb_t cb, void *cb_arg);
 
 /**
  * \brief Listen for connection requests from LDMS peers.
@@ -525,12 +561,15 @@ extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
  * \returns	An error indicating why the listen failed.
  */
 extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
+
 /**
  * \brief Close a connection to an LDMS host.
  *
  * \param x	The transport handle
+ * \returns	0 if the connection was closed.
+ * \returns	!0 if the transport handle is not valid or not connected.
  */
-extern void ldms_xprt_close(ldms_t x);
+extern int ldms_close(ldms_t x);
 
 /** \} */
 
@@ -697,6 +736,16 @@ extern int ldms_lookup(ldms_t t, const char *name,
  * and to update the contents of remote metric sets.
  * \{
  */
+
+/**
+ * \brief Release a reference on the metric set.
+ *
+ * Releases the reference obtained by ldms_lookup(). The specified set
+ * handle \c s should not be used after calling this function.
+ *
+ * \param s	The metric set handle.
+ */
+extern void ldms_set_release(ldms_set_t s);
 
 /**
  * \brief Prototype for the function called when update completes.

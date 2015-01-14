@@ -5,10 +5,6 @@ if ENABLE_CORE
 SUBDIRS += core
 endif
 
-if ENABLE_XPRT
-SUBDIRS += xprt
-endif
-
 if ENABLE_STORE
 SUBDIRS += store
 endif
