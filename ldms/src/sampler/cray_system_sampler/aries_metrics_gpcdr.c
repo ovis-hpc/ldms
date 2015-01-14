@@ -617,7 +617,7 @@ int add_metrics_aries_linksmetrics(ldms_set_t set, int comp_id,
 }
 
 
-int add_metrics_nicmetrics(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
+int add_metrics_aries_nicmetrics(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 {
 	char newname[96];
 	int i;
