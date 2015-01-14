@@ -277,7 +277,7 @@ int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 
 }
 
-int get_metric_size_nicmetrics(size_t *m_sz, size_t *d_sz,
+int get_metric_size_aries_nicmetrics(size_t *m_sz, size_t *d_sz,
 			       ldmsd_msg_log_f msglog)
 {
 	size_t tot_meta_sz = 0;
@@ -473,7 +473,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 }
 
 
-int nicmetrics_setup(ldmsd_msg_log_f msglog)
+int aries_nicmetrics_setup(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -778,7 +778,7 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
+int sample_metrics_aries_nicmetrics(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[64];

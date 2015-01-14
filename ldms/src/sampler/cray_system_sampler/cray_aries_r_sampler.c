@@ -124,7 +124,7 @@ static int create_metric_set(const char *path)
 			break;
 		case NS_NICMETRICS:
 			if (!off_hsn){
-				rc = get_metric_size_nicmetrics(&meta_sz, &data_sz, msglog);
+				rc = get_metric_size_aries_nicmetrics(&meta_sz, &data_sz, msglog);
 			} else {
 				meta_sz = 0;
 				data_sz = 0;
@@ -167,10 +167,10 @@ static int create_metric_set(const char *path)
 			break;
 		case NS_NICMETRICS:
 			if (!off_hsn){
-				rc = add_metrics_nicmetrics(set, comp_id, msglog);
+				rc = add_metrics_aries_nicmetrics(set, comp_id, msglog);
 				if (rc)
 					goto err;
-				rc = nicmetrics_setup(msglog);
+				rc = aries_nicmetrics_setup(msglog);
 				if (rc == ENOMEM)
 					return rc;
 				if (rc != 0) /*  Warn but OK to continue */
@@ -279,14 +279,14 @@ static int sample(void)
 		switch(i){
 		case NS_LINKSMETRICS:
 			if (!off_hsn){
-				rc = sample_metrics_linksmetrics(msglog);
+				rc = sample_metrics_aries_linksmetrics(msglog);
 			} else {
 				rc = 0;
 			}
 			break;
 		case NS_NICMETRICS:
 			if (!off_hsn){
-				rc = sample_metrics_nicmetrics(msglog);
+				rc = sample_metrics_aries_nicmetrics(msglog);
 			} else {
 				rc = 0;
 			}
