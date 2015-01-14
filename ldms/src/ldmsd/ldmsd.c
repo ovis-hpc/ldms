@@ -2139,7 +2139,7 @@ int do_connect(struct hostspec *hs)
 		ldms_log(LDMS_LERROR, "Error creating transport '%s'.\n", hs->xprt_name);
 		return -1;
 	}
-	ldms_xprt_get(hs->x);
+	// ldms_xprt_get(hs->x);
 	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
 			    sizeof(hs->sin));
 	if (ret) {
@@ -2151,7 +2151,7 @@ int do_connect(struct hostspec *hs)
 	return 0;
  err:
 	/* Release the connect reference */
-	ldms_release_xprt(hs->x);
+	// ldms_release_xprt(hs->x);
 	ldms_xprt_close(hs->x);
 	hs->x = NULL;
 	return -1;
@@ -2427,13 +2427,13 @@ void do_host(struct hostspec *hs)
 		if (!hs->x || !ldms_xprt_connected(hs->x)) {
 			if (hs->x) {
 				ldms_t x = hs->x;
-				/* pair with get in do_connect */
 				if (hs->type != PASSIVE) {
 					ldms_xprt_close(hs->x);
-					// assert(((struct ldms_xprt *)hs->x)->ref_count != 0);
 					hs->x = NULL;
-				} else
+				} else {
+					/* pair with find in do_passive_connect */
 					ldms_release_xprt(x);
+				}
 			}
 			hs->conn_state = HOST_DISCONNECTED;
 			host_conn_reschedule(hs);
