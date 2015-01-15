@@ -362,10 +362,10 @@ static int me_get_ldsm_metric_value(ldms_metric_t m, double *v)
 	case LDMS_V_U64:
 		*v = ldms_get_u64(m);
 		break;
-	case LDMS_V_F:
+	case LDMS_V_F32:
 		*v = ldms_get_float(m);
 		break;
-	case LDMS_V_D:
+	case LDMS_V_D64:
 		*v = ldms_get_double(m);
 		break;
 	default:
@@ -384,7 +384,7 @@ send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags
 	struct me_store_instance *si;
 	si = _sh;
 
-	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 
 	if (state == CSM_ME_DISCONNECTED) {
 		connect_me();

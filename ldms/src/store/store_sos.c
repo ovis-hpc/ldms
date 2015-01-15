@@ -318,8 +318,8 @@ static int store_sos_open_sos(struct sos_metric_store *ms, enum ldms_value_type 
 	case LDMS_V_U64:
 		class = &ovis_metric_class_uint64;
 		break;
-	case LDMS_V_F:
-	case LDMS_V_D:
+	case LDMS_V_F32:
+	case LDMS_V_D64:
 		class = &ovis_metric_class_double;
 		break;
 	default:
@@ -575,7 +575,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 	int64_t v64;
 	uint64_t vu64;
 	double vd;
-	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 
 	for (i = 0; i < mvec->count; i++) {
 		pthread_mutex_lock(&si->ms[i]->lock);
@@ -651,15 +651,15 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 			vu64 = ldms_get_u64(mvec->v[i]);
 			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vu64);
 			break;
-		case LDMS_V_F:
+		case LDMS_V_F32:
 			vd = ldms_get_float(mvec->v[i]);
 			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vd);
 			break;
-		case LDMS_V_D:
+		case LDMS_V_D64:
 			vd = ldms_get_double(mvec->v[i]);
 			sos_obj_attr_set(si->ms[i]->sos, 3, obj, &vd);
 			break;
-		case LDMS_V_LD:
+		case LDMS_V_LD128:
 		default:
 			msglog("store_sos: Does not support type '%s'\n",
 						ldms_type_to_str(mtype));
