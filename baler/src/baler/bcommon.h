@@ -58,6 +58,7 @@
 #define __BCOMMON_H
 
 #include <string.h>
+#include <stdint.h>
 
 #define BTKN_SYMBOL_STR  ",.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?"
 
