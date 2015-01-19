@@ -98,7 +98,7 @@ static struct lustre_metric_src_list lms_list = {0};
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id;
 
 static char tmp_path[PATH_MAX];
 
@@ -237,7 +237,7 @@ static int create_metric_set(const char *path, const char *oscs,
 			sprintf(tmp_path, "/proc/fs/lustre/%s/%s*/stats",
 					namebase[i], sl->str);
 			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
-			rc = stats_construct_routine(schema, comp_id, tmp_path,
+			rc = stats_construct_routine(schema, producer_id, tmp_path,
 					"client.lstats.", suffix, &lms_list, keys[i],
 					keylen[i], maps[i]);
 			if (rc)
@@ -278,10 +278,10 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_client component_id=<comp_id> set=<setname> osts=<OST1>,...
- *     comp_id     The component id value.
- *     setname     The set name.
- *     osts        The comma-separated list of the OSTs to sample from.
+ * config name=lustre_client producer_id=<producer_id> instance_name=<instance_name> osts=<OST1>,...
+ *     producer_id       The producer id value.
+ *     instance_name     The set name.
+ *     osts              The comma-separated list of the OSTs to sample from.
  * </code>
  * If osts is not given, the plugin will create ldms_set according to the
  * available OSTs at the time.
@@ -290,17 +290,27 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *oscs, *mdcs, *llites;
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("lustre2_client: missing producer_id\n");
+		return ENOENT;
+	}
+	producer_id = strtol(value, NULL, 0);
 
-	value = av_value(avl, "set");
+	value = av_value(avl, "instance_name");
+	if (!value) {
+		msglog("lustre2_client: missing instance_name\n");
+		return EINVAL;
+	}
 	oscs = av_value(avl, "osc");
 	mdcs = av_value(avl, "mdc");
 	llites = av_value(avl, "llite");
-	if (!value)
-		return EINVAL;
-	return create_metric_set(value, oscs, mdcs, llites);
+
+	int rc = create_metric_set(value, oscs, mdcs, llites);
+	if (rc)
+		return rc;
+	ldms_set_producer_id(set, producer_id);
+	return 0;
 }
 
 static const char *usage(void)
@@ -308,11 +318,11 @@ static const char *usage(void)
 	return
 "config name=lustre2_client [OPTIONS]\n"
 "    OPTIONS:\n"
-"	component_id=NUMBER	The component id value.\n"
-"	set=STRING		The set name.\n"
-"	osc=STR,STR,...	The list of OCSs.\n"
-"	mdc=STR,STR,...	The list of MDCs.\n"
-"	llite=STR,STR,...	The list of llites.\n"
+"	producer_id=NUMBER       The producer id value.\n"
+"	instance_name=STRING     The set name.\n"
+"	osc=STR,STR,...	         The list of OCSs.\n"
+"	mdc=STR,STR,...	         The list of MDCs.\n"
+"	llite=STR,STR,...	 The list of llites.\n"
 "For oscs,mdcs and llites: if not specified, NONE of the\n"
 "oscs/mdcs/llites will be added. If {oscs,mdcs,llites} is set to *, all\n"
 "of the available {oscs,mdcs,llites} at the time will be added.\n"

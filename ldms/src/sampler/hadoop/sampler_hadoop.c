@@ -167,7 +167,7 @@ static struct hadoop_metric *create_hadoop_metric(struct hadoop_set *hdset,
 }
 
 
-int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
+int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t producer_id)
 {
 	int rc = 0;
 	ldms_log_fn_t msglog = hdset->msglog;
@@ -190,7 +190,6 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 	char metricname[MAX_LEN_HADOOP_MNAME], short_mname[MAX_LEN_HADOOP_MNAME];
 	char type[MAX_LEN_HADOOP_TYPE];
 	int num_metrics = 0;
-
 
 	struct hadoop_metric *hmetric;
 	struct hadoop_metric_queue metric_queue;
@@ -237,11 +236,11 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 					(uint64_t) (void *)hmetric);
 		if (rc)
 			goto err_2;
-		ldms_set_midx_udata(hdset->set, hmetric->metric_idx, udata);
 		TAILQ_REMOVE(&metric_queue, hmetric, entry);
 		hmetric = TAILQ_FIRST(&metric_queue);
 	}
 	fclose(f);
+	ldms_set_producer_id(hdset->set, producer_id);
 	return 0;
 
 err_2:

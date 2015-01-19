@@ -71,7 +71,7 @@ static ldms_set_t set;
 static FILE *mf;
 static ldmsd_msg_log_f msglog;
 static int nprocs;
-static uint64_t comp_id;
+static uint64_t producer_id;
 static ldms_schema_t schema;
 
 static ldms_set_t get_set()
@@ -98,7 +98,7 @@ static int getNProcs(char buf[]){
 }
 
 
-static int create_metric_set(const char *path)
+static int create_metric_set(const char *instance_name)
 {
 	int rc, i;
 	char *s;
@@ -164,12 +164,10 @@ static int create_metric_set(const char *path)
 			pch = strtok(NULL," ");
 		} /* end while (strtok) */
 	} /* end while(s) */
-	rc = ldms_create_set(path, schema, &set);
+	rc = ldms_create_set(instance_name, schema, &set);
 	if (rc)
 		goto err;
 
-	for (i = 0; i < ldms_get_metric_count(schema); i++)
-		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
@@ -182,20 +180,31 @@ err:
 /**
  * \brief Configuration
  *
- * - config procinterrupts component_id <value>
+ * - config name=procinterrupts producer_id=<producer_id> instance_name=<instance_name>
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 	char *value;
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("procinterrupts: missing producer_id.\n");
+		return ENOENT;
+	}
+	producer_id = strtol(value, NULL, 0);
 
-	value = av_value(avl, "set");
-	if (value)
-		rc = create_metric_set(value);
+	value = av_value(avl, "instance_name");
+	if (!value) {
+		msglog("procinterrupts: missing instance_name.\n");
+		return ENOENT;
+	}
+	rc = create_metric_set(value);
+	if (rc) {
+		msglog("procinterrupts: failed to create the metric set.\n");
+		return rc;
+	}
+	ldms_set_producer_id(set, producer_id);
 
 	return rc;
 }
@@ -272,12 +281,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procinterrupts component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
+	return  "config name=procinterrupts producer_id=<producer_id> instance_name=<instance_name>\n"
+		"    producer_id       The producer id value.\n"
+		"    instance_name     The set name.\n";
 }
-
-
 
 static struct ldmsd_sampler procinterrupts_plugin = {
 	.base = {

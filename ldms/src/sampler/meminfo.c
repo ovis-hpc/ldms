@@ -72,10 +72,10 @@ static char *procfile = PROC_FILE;
 static ldms_set_t set;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id = 0;
 static ldms_schema_t schema;
 
-static int create_metric_set(const char *path)
+static int create_metric_set(const char *instance_name)
 {
 	int rc, i;
 	uint64_t metric_value;
@@ -118,12 +118,9 @@ static int create_metric_set(const char *path)
 		}
 	} while (s);
 
-	rc = ldms_create_set(path, schema, &set);
+	rc = ldms_create_set(instance_name, schema, &set);
 	if (rc)
 		goto err;
-
-	for (rc = 0; rc < ldms_get_metric_count(schema); rc++)
-		ldms_set_midx_udata(set, rc, comp_id);
 
 	return 0;
  err:
@@ -134,22 +131,33 @@ static int create_metric_set(const char *path)
 /**
  * \brief Configuration
  *
- * config name=meminfo component_id=<comp_id> set=<setname>
- *     comp_id     The component id value.
- *     setname     The set name.
+ * config name=meminfo producer_id=<comp_id> instance_name=<instance_name>
+ *     producer_id      The producer id value.
+ *     instance_name    The set name.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	value = av_value(avl, "producer_id");
+	if (value) {
+		producer_id = strtoull(value, NULL, 0);
+	} else {
+		msglog("meminfo: missing producer_id\n");
+		return ENOENT;
+	}
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtoull(value, NULL, 0);
+	value = av_value(avl, "instance_name");
+	if (!value) {
+		msglog("meminfo: missing instance name.\n");
+		return ENOENT;
+	}
 
-	value = av_value(avl, "set");
-	if (value)
-		create_metric_set(value);
-
+	int rc = create_metric_set(value);
+	if (rc) {
+		msglog("meminfo: failed to create a metric set.\n");
+		return rc;
+	}
+	ldms_set_producer_id(set, producer_id);
 	return 0;
 }
 
@@ -208,9 +216,9 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=meminfo component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
+	return  "config name=meminfo producer_id=<producer_id> instance_name=<setname>\n"
+		"    producer_id     The producer id value.\n"
+		"    setname         The set name.\n";
 }
 
 static struct ldmsd_sampler meminfo_plugin = {

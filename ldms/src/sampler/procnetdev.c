@@ -87,7 +87,7 @@ static ldms_set_t set;
 static ldms_schema_t schema;
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id;
 static struct timeval tv[2];
 static struct timeval *tv_cur = &tv[0];
 static struct timeval *tv_prev = &tv[1];
@@ -110,7 +110,7 @@ static ldms_set_t get_set()
 	return set;
 }
 
-static int create_metric_set(const char *path)
+static int create_metric_set(const char *instance_name)
 {
 	union ldms_value v[NVARS];
 	int rc;
@@ -142,7 +142,6 @@ static int create_metric_set(const char *path)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	int usedifaces = 0;
 	do {
-
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
@@ -170,7 +169,7 @@ static int create_metric_set(const char *path)
 			continue;
 		}
 		for (j = 0; j < niface; j++){
-			if (strcmp(iface[j],curriface) == 0){
+			if (strcmp(iface[j], curriface) == 0){
 				for (i = 0; i < NVARS; i++){
 					/* raw */
 					snprintf(metric_name, 128, "%s#%s",
@@ -194,11 +193,9 @@ static int create_metric_set(const char *path)
 			} /* end if */
 		} /* end for */
 	} while (s);
-	rc = ldms_create_set(path, schema, &set);
+	rc = ldms_create_set(instance_name, schema, &set);
 	if (rc)
 		goto err;
-	for (i = 0; i < ldms_get_metric_count(schema); i++)
-		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
@@ -235,17 +232,15 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	return 0;
-
 }
 
 static const char *usage(void)
 {
 	return
-"config name=procnetdev iface=<ifaces> component_id=<comp_id> set=<setname>\n"
-"    iface       Comma-separated interface names (e.g. eth0,eth1)\n"
-"    comp_id     The component id value.\n"
-"    setname     The set name.\n";
-
+"config name=procnetdev iface=<ifaces> producer_id=<producer_id> instance_name=<instance_name>\n"
+"    iface           Comma-separated interface names (e.g. eth0,eth1)\n"
+"    producer_id     The producer id value.\n"
+"    instance_name         The set name.\n";
 }
 
 
@@ -271,19 +266,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (rc)
 		return rc;
 
-
 	/* Set the compid and create the metric set */
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("procnetdev: missing producer_id.\n");
+		return ENOENT;
+	}
+	producer_id = strtol(value, NULL, 0);
 
-	value = av_value(avl, "set");
+	value = av_value(avl, "instance_name");
 	if (!value)
-		return EINVAL;
+		return ENOENT;
 
 	rc = create_metric_set(value);
 	if (rc)
 		return rc;
+	ldms_set_producer_id(set, producer_id);
 
 	return 0;
 }

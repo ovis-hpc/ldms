@@ -99,7 +99,7 @@ struct atatsmart_set_size {
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id;
 static char **disknames;
 static int num_disks;
 
@@ -222,7 +222,7 @@ static int create_metric_set(char *setname)
 		}
 
 		rc = sk_disk_smart_parse_attributes(smarts->d[i],
-				atasmart_get_disk_info, (void *) &smarts);
+				atasmart_get_disk_info, (void *) smarts);
 		if (rc) {
 			msglog("atasmart: Get size of SkDisk '%s'. Error %d\n",
 					disknames[i], rc);
@@ -259,21 +259,21 @@ err:
 
 static const char *usage(void)
 {
-	return  "config name=sampler_atasmart component_id=<comp_id> \n"
-		"	set=<setname> disks=<disknames>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n"
-		"    disknames   The comma-separated list of disk names,\n"
-		"		 e.g., /dev/sda,/dev/sda1.\n";
+	return  "config name=sampler_atasmart producer_id=<producer_id> \n"
+		"	instance_name=<instance_name> disks=<disknames>\n"
+		"    producer_id       The producer id value.\n"
+		"    instance_name     The set name.\n"
+		"    disknames         The comma-separated list of disk names,\n"
+		"		       e.g., /dev/sda,/dev/sda1.\n";
 }
 
 /**
  * \brief Configuration
  *
- * config name=sampler_atasmart component_id=<comp_id>
- * 	  set=<setname> disks=<disknames>
- *     comp_id     The component id value.
- *     setname     The set name.
+ * config name=sampler_atasmart producer_id=<producer_id>
+ * 	  instance_name=<instance_name> disks=<disknames>
+ *     producer_id     The producer id value.
+ *     instance_name     The set name.
  *     disknames   The comma-separated list of disk names,
  *     		   e.g., /dev/sda,/dev/sda1.
  */
@@ -302,20 +302,27 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			i++;
 		}
 	} else {
+		msglog("atasmart: failed to parse the disk names\n");
 		return -1;
 	}
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtoull(value, NULL, 0);
-	else
-		return -1;
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("atasmart: missing producer_id.\n");
+		return ENOENT;
+	}
+	producer_id = strtoull(value, NULL, 0);
 
-	value = av_value(avl, "set");
-	if (value)
-		return create_metric_set(value);
-	else
-		return -1;
+	value = av_value(avl, "instance_name");
+	if (!value) {
+		msglog("atasmart: missing instance_name\n");
+		return ENOENT;
+	}
+	int rc = create_metric_set(value);
+	if (rc)
+		return rc;
+	ldms_set_producer_id(set, producer_id);
+	return 0;
 }
 
 static ldms_set_t get_set()

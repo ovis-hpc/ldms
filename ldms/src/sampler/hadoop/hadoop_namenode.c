@@ -52,23 +52,22 @@
 #include "sampler_hadoop.h"
 #include "coll/str_map.h"
 
-uint64_t comp_id;
-char *metric_name_file;
-int port;
+static uint64_t producer_id;
+static char *metric_name_file;
+static int port;
 
-int num_metrics;
-struct hadoop_set namenode_set;
-pthread_t thread;
-ldmsd_msg_log_f msglog;
+static struct hadoop_set namenode_set;
+static pthread_t thread;
+static ldmsd_msg_log_f msglog;
 
 static const char *usage(void)
 {
-	return  "config name=hadoop_namenode component_id=<comp_id> port=<port>\n"
-		"	file=<file> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n"
-		"    port	 The listener port which the LDMS sink sends data to.\n"
-		"    file	 The file that contains metric names and their ldms_metric_types.\n"
+	return  "config name=hadoop_namenode producer_id=<producer_id> instance_name=<instance_name>\n"
+		"	port=<port> file=<file> \n"
+		"    producer_id       The producer id value.\n"
+		"    instance_name     The set name.\n"
+		"    port	       The listener port which the LDMS sink sends data to.\n"
+		"    file	       The file that contains metric names and their ldms_metric_types.\n"
 		"		 For example, "
 		"			jvm.metrics:memNonHeapUsedM	F\n"
 		"			dfs.FSNamesystem:FileTotal	S32\n";
@@ -82,22 +81,22 @@ static ldms_set_t get_set()
 /**
  * \brief Configuration
  *
- * config name=hadoop_namenode component_id=<comp_id> set=<setname>
- *     comp_id     The component id value.
- *     setname     The set name.
- *     port	   The listener port which the LDMS sink sends data to
- *     metrics	   The list of metrics, given with the record contexts and record names.
- *     num	   The number of metrics to be collected.
+ * config name=hadoop_namenode producer_id=<producer_id> instance_name=<instance_name>
+ *		port=<port> file=<file>
+ *     producer_id       The producer id value.
+ *     instance_name     The set name.
+ *     port	         The listener port which the LDMS sink sends data to
+ *     file	         The file that contains metric names and their ldms_metric_types.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *attr;
 
-	attr = "component_id";
+	attr = "producer_id";
 	value = av_value(avl, attr);
 	if (value)
-		comp_id = strtoull(value, NULL, 0);
+		producer_id = strtoull(value, NULL, 0);
 	else
 		goto enoent;
 
@@ -116,7 +115,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 	metric_name_file = strdup(value);
 
-	attr = "set";
+	attr = "instance_name";
 	value = av_value(avl, attr);
 	if (value)
 		namenode_set.setname = strdup(value);
@@ -126,14 +125,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	namenode_set.daemon = "namenode";
 	namenode_set.msglog = msglog;
 
-	int rc;
-	if (rc = setup_datagram(port, &namenode_set.sockfd)) {
+	int rc = setup_datagram(port, &namenode_set.sockfd);
+	if (rc) {
 		msglog("hadoop_namenode: failed to setup "
 				"datagram between ldmsd and hadoop.\n");
 		goto err_1;
 	}
 
-	if (rc = create_hadoop_set(metric_name_file, &namenode_set, comp_id))
+	rc = create_hadoop_set(metric_name_file, &namenode_set, producer_id);
+	if (rc)
 		goto err_2;
 	rc = pthread_create(&thread, NULL, recv_metrics, &namenode_set);
 	if (rc) {
