@@ -1391,6 +1391,7 @@ struct ldms_mvec* _create_mvec(struct hostset *hset)
 	struct ldms_iterator i;
 	int count = ldms_get_cardinality(hset->set);
 	int c = 0;
+	assert(count);
 	mvec = ldms_mvec_create(count);
 	if (!mvec)
 		return NULL;
@@ -2222,6 +2223,14 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		hset->state = LDMSD_SET_CONFIGURED;
 		goto out1;
 	}
+
+	/*
+	 * In the case that the remote peer is an aggregator, the set is
+	 * created in lookup_cb and may not get updated yet. This condition
+	 * prevents the local ldmsd to not process the not-quite-ready data.
+	 */
+	if (ldms_get_meta_gn(hset->set) == 0)
+		goto out;
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
