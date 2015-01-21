@@ -881,36 +881,11 @@ int process_ldmsd_aggregator_verb_add(ocmd_plugin_t p,
 			goto err;
 		}
 
-		if (strcmp(a, "interval") == 0) {
-			interval = strtoull(v, NULL, 10);
-			free(v);
-			ocm_value_set(ov, OCM_VALUE_UINT64, interval);
-			rc = ocm_cfg_buff_add_av(buff, "interval", ov);
-			if (rc)
-				goto err;
-
-		} else if (strcmp(a, "offset") == 0) {
-			offset = strtoull(v, NULL, 10);
-			free(v);
-			ocm_value_set(ov, OCM_VALUE_INT64, offset);
-			rc = ocm_cfg_buff_add_av(buff, "offset", ov);
-			if (rc)
-				goto err;
-		} else if (strcmp(a, "port") == 0) {
-			port = atoi(v);
-			free(v);
-			ocm_value_set(ov, OCM_VALUE_UINT16, port);
-			rc = ocm_cfg_buff_add_av(buff, "port", ov);
-			if (rc)
-				goto err;
-		} else {
-			ocm_value_set_s(ov, v);
-			free(v);
-			rc = ocm_cfg_buff_add_av(buff, a, ov);
-			if (rc)
-				goto err;
-		}
-
+		ocm_value_set_s(ov, v);
+		free(v);
+		rc = ocm_cfg_buff_add_av(buff, a, ov);
+		if (rc)
+			goto err;
 		av = strtok_r(NULL, ";", &_ptr);
 	}
 	free(_buff);

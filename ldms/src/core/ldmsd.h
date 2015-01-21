@@ -322,4 +322,9 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 
+/*
+ * Max length of error strings while ldmsd is being configured.
+ */
+#define LEN_ERRSTR 128
+
 #endif
