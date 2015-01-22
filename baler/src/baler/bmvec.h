@@ -172,7 +172,7 @@ int bmvec_u64_set(struct bmvec_u64 *vec, uint32_t idx, uint64_t x)
  * \param idx The index.
  * \param elm The pointer to an element to be inserted.
  */
-static
+static inline
 int bmvec_generic_set(void *_vec, uint32_t idx,
 		void* elm, uint32_t elm_size)
 {
@@ -196,6 +196,17 @@ int bmvec_generic_set(void *_vec, uint32_t idx,
 	pthread_mutex_unlock(&vec->mutex);
 	return 0;
 
+}
+
+static inline
+void *bmvec_generic_get(void *_vec, uint32_t idx, uint32_t elm_size)
+{
+	void *ptr;
+	struct bmvec_char *vec = (typeof(vec)) _vec;
+	struct bvec_char *v = vec->bvec;
+	if (idx >= v->len)
+		return NULL;
+	return v->data + elm_size*idx;
 }
 
 /**
