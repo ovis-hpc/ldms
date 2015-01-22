@@ -17,3 +17,7 @@ bin_PROGRAMS += bset_test
 bstr_dist_u32_test_SOURCES = bstr_dist_u32_test.c
 bstr_dist_u32_test_LDADD = ../baler/libbutils.la
 bin_PROGRAMS += bstr_dist_u32_test
+
+bhash_test_SOURCES = bhash_test.c
+bhash_test_LDADD = ../baler/libbaler.la
+bin_PROGRAMS += bhash_test
