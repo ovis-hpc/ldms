@@ -33,7 +33,7 @@ lib_LTLIBRARIES += libbset.la
 # dependent libraries so that the build on Ubuntu is easier (no need to specify
 # all libraries).
 libbaler_la_SOURCES = bwqueue.c btkn.c bptn.c binput.c boutput.c \
-		      bmapper.c bset.c bmvec.c bmem.c butils.c
+		      bmapper.c bset.c bmvec.c bmem.c butils.c bhash.c
 libbaler_la_LDFLAGS = $(AM_LDFLAGS) -lpthread
 lib_LTLIBRARIES += libbaler.la
 
@@ -57,4 +57,20 @@ bmap_dump_SOURCES = bmap_dump.c
 bmap_dump_LDADD = libbaler.la
 bin_PROGRAMS += bmap_dump
 
-pkginclude_HEADERS = bmem.h bmapper.h butils.h bmlist.h
+pkginclude_HEADERS = barray.h \
+		     bcommon.h \
+		     bhash.h \
+		     binput.h \
+		     bmapper.h \
+		     bmem.h \
+		     bmeta.h \
+		     bmlist.h \
+		     bmvec.h \
+		     boutput.h \
+		     bplugin.h \
+		     bptn.h \
+		     bset.h \
+		     btkn.h \
+		     btypes.h \
+		     butils.h \
+		     bwqueue.h
