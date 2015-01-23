@@ -70,7 +70,7 @@ typedef void (*ocm_cfg_cmd_handle_fn)(ocm_cfg_cmd_t cmd);
 
 int ocm_req_cb(struct ocm_event *e)
 {
-	/* ldmsd shall not serve configuration for anyone */
+	/* ldmsd shall not serve configuration  for anyone */
 	const char *key = ocm_cfg_req_key(e->req);
 	ocm_event_resp_err(e, ENOSYS, key, "Not implemented.");
 	return 0;
@@ -137,12 +137,9 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	ocm_av_iter_init(&iter, mcmd);
 
 	while (ocm_av_iter_next(&iter, &attr, &v) == 0) {
-		ldms_metric_t m = ldms_get_metric(set, attr);
-		if (m) {
-			ldms_set_user_data(m, v->u64);
-		} else {
-			ldms_log("ocm: error, cannot find metric %s.\n", attr);
-		}
+		rc = _ldmsd_set_udata(set, attr, v->u64, err_str);
+		if (rc)
+			ldms_log("ocm: error, %s\n", err_str);
 	}
 }
 
