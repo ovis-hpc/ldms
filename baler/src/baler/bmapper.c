@@ -221,7 +221,7 @@ int bmap_init(struct bmap *map, int nmemb)
 
 	/* Initialize map header */
 	int64_t hdr_off = bmem_alloc(map->mhdr, sizeof(struct bmap_hdr));
-	if (hdr_off == -1) {
+	if (!hdr_off) {
 		berr("cannot allocate from bmem\n");
 		errno = ENOMEM;
 		return -1;
@@ -379,7 +379,7 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 	pthread_mutex_lock(&bm->mutex);
 	/* If s does not exist, allocate space for new bstr, and copy it */
 	int64_t str_off = bmem_alloc(bm->mstr, sizeof(*s)+s->blen);
-	if (str_off == -1) {
+	if (!str_off) {
 		berror("bmem_alloc");
 		id = BMAP_ID_ERR;
 		goto out;
@@ -404,7 +404,7 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 	struct bmlnode_u32 *node;
 	struct bmem *mlist = bm->mlist;
 	int64_t node_off = bmem_alloc(mlist, sizeof(*node));
-	if (node_off == -1) {
+	if (!node_off) {
 		berror("bmem_alloc");
 		id = BMAP_ID_ERR;
 		goto out;

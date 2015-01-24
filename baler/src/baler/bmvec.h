@@ -112,7 +112,7 @@ int bmvec_u64_append(struct bmvec_u64 *vec, uint64_t x)
 	struct bvec_u64 *v = vec->bvec;
 	if (v->len == v->alloc_len) {
 		/* Used len == allocated len, allocate more */
-		if (bmem_alloc(vec->mem, sizeof(x)*BMVEC_INC) == -1) {
+		if (!bmem_alloc(vec->mem, sizeof(x)*BMVEC_INC)) {
 			berror("Cannot append");
 			return -1;
 		}
@@ -150,7 +150,7 @@ int bmvec_u64_set(struct bmvec_u64 *vec, uint32_t idx, uint64_t x)
 	if (idx >= v->alloc_len) {
 		uint64_t alen = ((idx - v->alloc_len) | (2*BMVEC_INC-1))+1;
 		/* Used len == allocated len, allocate more */
-		if (bmem_alloc(vec->mem, sizeof(x)*alen) == -1) {
+		if (!bmem_alloc(vec->mem, sizeof(x)*alen)) {
 			berror("bmem_alloc");
 			return -1;
 		}
@@ -182,7 +182,7 @@ int bmvec_generic_set(void *_vec, uint32_t idx,
 	if (idx >= v->alloc_len) {
 		uint64_t alen = ((idx - v->alloc_len) | (2*BMVEC_INC-1))+1;
 		/* Used len == allocated len, allocate more */
-		if (bmem_alloc(vec->mem, elm_size*alen) == -1) {
+		if (!bmem_alloc(vec->mem, elm_size*alen)) {
 			berror("bmem_alloc");
 			return -1;
 		}
@@ -231,7 +231,7 @@ int bmvec_generic_append(struct bmvec_char *vec, void *elm, uint32_t elm_size)
 	struct bvec_char *v = vec->bvec;
 	if (v->len == v->alloc_len) {
 		/* Used len == allocated len, allocate more */
-		if (bmem_alloc(vec->mem, elm_size*BMVEC_INC) == -1) {
+		if (!bmem_alloc(vec->mem, elm_size*BMVEC_INC)) {
 			berror("Cannot append");
 			return -1;
 		}

@@ -102,7 +102,7 @@ int bmvec_u64_init(struct bmvec_u64 *vec, uint32_t size, uint64_t value)
 	int __size = (size|(BMVEC_INC-1))+1;
 	int init_size = sizeof(vec->bvec)+__size*sizeof(uint64_t);
 	int64_t off = bmem_alloc(vec->mem, init_size);
-	if (off == -1) {
+	if (!off) {
 		berror("bmem_alloc");
 		return -1;
 	}
@@ -123,7 +123,7 @@ int bmvec_generic_init(void *_vec, uint32_t size, void *elm, uint32_t elm_size)
 	int __size = (size|(BMVEC_INC-1))+1;
 	int init_size = sizeof(vec->bvec)+__size*elm_size;
 	int64_t off = bmem_alloc(vec->mem, init_size);
-	if (off == -1) {
+	if (!off) {
 		berror("bmem_alloc");
 		return -1;
 	}

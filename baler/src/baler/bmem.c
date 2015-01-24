@@ -156,7 +156,7 @@ int64_t bmem_alloc(struct bmem *b, uint64_t size)
 {
 	if (!b->fd) {
 		errno = EBADF;
-		return -1;
+		return 0;
 	}
 	uint64_t nulen = b->hdr->ulen + size; // new used len
 	if (nulen > b->hdr->flen) {
@@ -169,16 +169,16 @@ int64_t bmem_alloc(struct bmem *b, uint64_t size)
 		if (lseek(b->fd, nflen-1, SEEK_SET) == -1) {
 			// errno has already been set with lseek
 			berror("lseek");
-			return -1;
+			return 0;
 		}
 		if (write(b->fd, "", 1) == -1) {
 			berror("write");
-			return -1;
+			return 0;
 		}
 		if ((b->hdr=mremap(b->hdr, b->hdr->flen, nflen, MREMAP_MAYMOVE))
 				== MAP_FAILED) {
 			berror("mremap");
-			return -1;
+			return 0;
 		}
 		b->hdr->flen = nflen;
 		b->ptr = b->hdr + 1;
