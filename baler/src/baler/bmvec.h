@@ -210,6 +210,15 @@ void *bmvec_generic_get(void *_vec, uint32_t idx, uint32_t elm_size)
 }
 
 /**
+ * Element pointer to index in the vector.
+ */
+static inline
+uint32_t bmvec_generic_get_index(void *_vec, void *elm, uint32_t elm_size)
+{
+	return (elm - (void*)((struct bmvec_char*)_vec)->bvec->data)/elm_size;
+}
+
+/**
  * Similar to ::bmvec_generic_set, but this one does only appending.
  * \param vec The pointer to the generic bmvec structure (::bmvec_char).
  * \param elm The pointer to element to be inserted.
