@@ -99,24 +99,6 @@ struct rdma_buffer {
 	LIST_ENTRY(rdma_buffer) link; /* linked list entry */
 };
 
-struct rdma_buf_remote_data {
-	uint64_t meta_buf;
-	uint32_t meta_rkey;
-	uint32_t meta_size;
-	uint64_t data_buf;
-	uint32_t data_rkey;
-	uint32_t data_size;
-};
-
-struct rdma_buf_local_data {
-	void *meta;
-	size_t meta_size;
-	struct ibv_mr *meta_mr;
-	void *data;
-	size_t data_size;
-	struct ibv_mr *data_mr;
-};
-
 enum rdma_conn_status {
 	CONN_IDLE = 0,
 	CONN_CONNECTING,
