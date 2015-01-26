@@ -193,7 +193,7 @@ void bstr_cpy(struct bstr *dest, const struct bstr *src)
 #define bstr_alloc(blen) ((struct bstr*) malloc(sizeof(struct bstr)+blen))
 
 static inline
-struct bstr* bstr_alloc_init_cstr(char *cstr)
+struct bstr* bstr_alloc_init_cstr(const char *cstr)
 {
 	int len = strlen(cstr);
 	struct bstr *bs = bstr_alloc(len);
