@@ -66,6 +66,7 @@
 
 FILE *blog_file;
 pthread_mutex_t __blog_mutex = PTHREAD_MUTEX_INITIALIZER;
+int __blog_level;
 
 void __attribute__ ((constructor)) butils_init();
 void butils_init()
@@ -75,6 +76,11 @@ void butils_init()
 		return;
 	visited = 1;
 	blog_file = stdout;
+}
+
+void blog_set_level(int level)
+{
+	__blog_level = level;
 }
 
 void blog_set_file(FILE *f)

@@ -74,15 +74,19 @@
 
 /* *** LOGGING *** */
 extern FILE *blog_file;
+extern int __blog_level;
 
 extern void __blog(const char *fmt, ...);
-
-#define blog(lv, fmt, ...) __blog(#lv ": " fmt "\n", ##__VA_ARGS__);
 
 #define BLOG_LV_DEBUG	0
 #define BLOG_LV_INFO	1
 #define BLOG_LV_WARN	2
 #define BLOG_LV_ERR	3
+
+#define blog(lv, fmt, ...) do {\
+	if (BLOG_LV_ ## lv >= __blog_level) \
+		__blog(#lv ": " fmt "\n", ##__VA_ARGS__);\
+} while(0)
 
 #ifndef BLOG_LEVEL
 # define BLOG_LEVEL BLOG_LV_DEBUG
@@ -91,38 +95,22 @@ extern void __blog(const char *fmt, ...);
 /**
  * \brief Print *DEBUG* message to a default log.
  */
-#if BLOG_LEVEL <= BLOG_LV_DEBUG
-# define bdebug(fmt, ...) blog(DEBUG, fmt, ##__VA_ARGS__)
-#else
-# define bdebug(fmt, ...)
-#endif
+#define bdebug(fmt, ...) blog(DEBUG, fmt, ##__VA_ARGS__)
 
 /**
  * \brief Print *INFO* message to a default log.
  */
-#if BLOG_LEVEL <= BLOG_LV_INFO
-# define binfo(fmt, ...) blog(INFO, fmt, ##__VA_ARGS__)
-#else
-# define binfo(fmt, ...)
-#endif
+#define binfo(fmt, ...) blog(INFO, fmt, ##__VA_ARGS__)
 
 /**
  * \brief Print *WARN* message to a default log.
  */
-#if BLOG_LEVEL <= BLOG_LV_WARN
-# define bwarn(fmt, ...) blog(WARN, fmt, ##__VA_ARGS__)
-#else
-# define bwarn(fmt, ...)
-#endif
+#define bwarn(fmt, ...) blog(WARN, fmt, ##__VA_ARGS__)
 
 /**
  * \brief Print *ERR* message to a default log.
  */
-#if BLOG_LEVEL <= BLOG_LV_ERR
-# define berr(fmt, ...) blog(ERR, fmt, ##__VA_ARGS__)
-#else
-# define berr(fmt, ...)
-#endif
+#define berr(fmt, ...) blog(ERR, fmt, ##__VA_ARGS__)
 
 /**
  * \brief Similar to perror(str), but print stuffs to Baler log instead.
@@ -130,6 +118,13 @@ extern void __blog(const char *fmt, ...);
 #define berror(str) berr("%s:%d, %s, %s: errno: %d, msg: %s\n", \
 				__FILE__, __LINE__, __func__, \
 				str, errno, sys_errlist[errno])
+
+/**
+ * \brief Set log level.
+ * \param level One of the
+ */
+void blog_set_level(int level);
+
 /**
  * \brief Set \a f as a log file.
  * \param f The log file. \a f should be opened.
