@@ -240,5 +240,15 @@ int bstr_lcs_u32(const struct bstr *a, const struct bstr *b, void *buff,
 int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
 								size_t buffsz);
 
+/**
+ * Utility to parse URL query into key,value pairs.
+ *
+ * This function also parse %XX encoding and '+' to ' '.
+ *
+ * \retval 0 if success.
+ * \retval errno if error.
+ */
+int bparse_http_query(const char *query, struct bpair_str_head *head);
+
 #endif // _BUTILS_H
 /**\}*/

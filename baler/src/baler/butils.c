@@ -336,4 +336,93 @@ int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
 	return na + nb - 2*lcs_len;
 }
 
+int bparse_http_query(const char *query, struct bpair_str_head *head)
+{
+	int rc = 0;
+	char *p, *pp;
+	const char *c = query;
+	struct bpair_str *kv, *last_kv;
+	char *key, *value;
+	size_t len;
+	char hex[3] = {0};
+
+	last_kv = NULL;
+
+loop:
+	key = value = NULL;
+
+	if (!*c)
+		goto out;
+
+	/* key */
+	len = strcspn(c, "=");
+	key = strndup(c, len);
+	if (!key) {
+		rc = ENOMEM;
+		goto err;
+	}
+	c += len;
+	if (!*c) {
+		rc = EINVAL;
+		goto err;
+	}
+	c++; /* skip the delim */
+
+	/* value */
+	len = strcspn(c, "&#");
+	value = strndup(c, len);
+	if (!value) {
+		rc = ENOMEM;
+		goto err;
+	}
+	c += len;
+	if (*c) {
+		c++; /* skip the delim */
+	}
+	pp = p = value;
+	while (*p) {
+		switch (*p) {
+		case '+':
+			*pp++ = ' ';
+			p++;
+			break;
+		case '%':
+			hex[0] = p[1];
+			hex[1] = p[2];
+			*pp++ = strtol(hex, NULL, 16);
+			p += 3;
+			break;
+		default:
+			*pp++ = *p++;
+		}
+	}
+	*pp = 0;
+	kv = bpair_str_alloc(key, value);
+	if (!kv) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	/* put it in the list */
+	if (last_kv) {
+		LIST_INSERT_AFTER(last_kv, kv, link);
+	} else {
+		LIST_INSERT_HEAD(head, kv, link);
+	}
+	last_kv = kv;
+
+	goto loop;
+
+err:
+	if (key)
+		free(key);
+	if (value)
+		free(value);
+
+	bpair_str_list_free(head);
+
+out:
+	return rc;
+}
+
 /* END OF FILE */
