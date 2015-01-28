@@ -56,12 +56,6 @@ balerd_LDFLAGS += @OCM_LIBDIR_FLAG@
 endif
 bin_PROGRAMS += balerd
 
-bmetad_SOURCES = bmeta.c
-bmetad_LDADD = libbaler.la -lpthread -levent -lzap
-bmetad_LDFLAGS = $(AM_LDFLAGS) @OVIS_LIB_LIBDIR_FLAG@ @EVENTLIBS@
-bmetad_CFLAGS = -DBIN $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@ @EVENTINC@
-bin_PROGRAMS += bmetad
-
 bmap_dump_SOURCES = bmap_dump.c
 bmap_dump_LDADD = libbaler.la
 bin_PROGRAMS += bmap_dump
