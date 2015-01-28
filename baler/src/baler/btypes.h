@@ -121,6 +121,16 @@ void bpair_str_free(struct bpair_str *pstr)
 	free(pstr);
 }
 
+static inline
+void bpair_str_list_free(struct bpair_str_head *lh)
+{
+	struct bpair_str *s;
+	while ((s = LIST_FIRST(lh))) {
+		LIST_REMOVE(s, link);
+		bpair_str_free(s);
+	}
+}
+
 /**
  * Search (\a s0, \a s1) in the list.
  * If \a s0 is null, only \a s1 will be used for matching in the search.
