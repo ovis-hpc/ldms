@@ -34,7 +34,8 @@ lib_LTLIBRARIES += libbset.la
 # all libraries).
 libbaler_la_SOURCES = bwqueue.c btkn.c bptn.c binput.c boutput.c \
 		      bmapper.c bset.c bmvec.c bmem.c butils.c bhash.c \
-		      bmhash.c
+		      bmhash.c \
+		      bqueue.c
 libbaler_la_LDFLAGS = $(AM_LDFLAGS) -lpthread
 lib_LTLIBRARIES += libbaler.la
 
@@ -71,6 +72,7 @@ pkginclude_HEADERS = barray.h \
 		     boutput.h \
 		     bplugin.h \
 		     bptn.h \
+		     bqueue.h \
 		     bset.h \
 		     btkn.h \
 		     btypes.h \
