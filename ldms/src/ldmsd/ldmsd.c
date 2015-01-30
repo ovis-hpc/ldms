@@ -1347,17 +1347,6 @@ struct ldmsd_store_policy *get_store_policy(const char *container,
 {
 	TF();
 	struct ldmsd_store_policy *sp;
-	int found = 0;
-	pthread_mutex_lock(&sp_list_lock);
-	LIST_FOREACH(sp, &sp_list, link)
-		if (0 == strcmp(sp->container, container)) {
-			found = 1;
-			break;
-		}
-	pthread_mutex_unlock(&sp_list_lock);
-	if (found)
-		return sp;
-
 	sp = calloc(1, sizeof(*sp));
 	if (!sp)
 		goto err0;
@@ -1619,7 +1608,6 @@ int process_store(int fd,
 		  char *command)
 {
 	TF();
-	char *err_str;
 	char *set_name;
 	char *store_name;
 	char *comp_type;
@@ -1627,10 +1615,10 @@ int process_store(int fd,
 	char *metrics;
 	char *hosts;
 	char *container;
-	char err_s[128];
 	struct hostspec *hs;
 	struct plugin *store;
 	char *saveptr;
+	int rc;
 
 	chk_replybuf();
 	if (LIST_EMPTY(&host_list)) {
@@ -1662,21 +1650,29 @@ int process_store(int fd,
 	metrics = av_value(av_list, attr);
 
 	store = get_plugin(store_name);
-	if (!store) {
-		err_str = "The storage plugin was not found.";
+	if (!store)
 		goto enoent;
-	}
 
 	hosts = av_value(av_list, "hosts");
 
-	struct ldmsd_store_policy *sp = get_store_policy(container,
-					set_name, comp_type);
-	if (!sp) {
-		sprintf(err_s, "store policy");
+	struct ldmsd_store_policy *sp;
+	pthread_mutex_lock(&sp_list_lock);
+	LIST_FOREACH(sp, &sp_list, link)
+		if (0 == strcmp(sp->container, container)) {
+			bdstr_set_int(&replybuf,-EINVAL);
+			cat("The container '");
+			cat(container);
+			cat("' already exists.");
+			send_reply(fd, sa, sa_len, bdstr,
+					bdlen+1);
+			pthread_mutex_unlock(&sp_list_lock);
+			return EINVAL;
+		}
+	pthread_mutex_unlock(&sp_list_lock);
+	sp = get_store_policy(container, set_name, comp_type);
+	if (!sp)
 		goto enomem;
-	}
 
-	int rc;
 	/* Creating the hostset_ref_list for the store policy */
 	if (!hosts) {
 		/* No given hosts */
