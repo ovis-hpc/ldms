@@ -1,6 +1,6 @@
 .\" Manpage for LDMS_Authentication
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "12 Sep 2014" "1.2" "LDMS_Authentication man page"
+.TH man 7 "30 Jan 2015" "1.3" "LDMS_Authentication man page"
 
 .SH NAME
 LDMS_Authentication \- Authentication in LDMS
