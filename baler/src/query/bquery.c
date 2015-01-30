@@ -82,11 +82,14 @@
  */
 
 #include "bquery.h"
+#include "bquery_priv.h"
 #include <getopt.h>
 #include <errno.h>
 
 #include <time.h>
 #include <dirent.h>
+
+#include <sos/obj_idx.h>
 
 /********** Global Variables **********/
 /**
@@ -912,6 +915,27 @@ int bq_get_host_id(struct bq_store *store, const char *hostname)
 	if (id < BMAP_ID_BEGIN)
 		return 0;
 	return id - (BMAP_ID_BEGIN - 1);
+}
+
+struct bsos_wrap* bsos_wrap_find(struct bsos_wrap_head *head,
+				 const char *store_name)
+{
+	struct bsos_wrap *bsw;
+	LIST_FOREACH(bsw, head, link) {
+		if (strcmp(bsw->store_name, store_name) == 0)
+			return bsw;
+	}
+	return NULL;
+}
+
+struct btkn_store *bq_get_tkn_store(struct bq_store *store)
+{
+	return store->tkn_store;
+}
+
+struct bptn_store *bq_get_ptn_store(struct bq_store *store)
+{
+	return store->ptn_store;
 }
 
 #ifdef BIN

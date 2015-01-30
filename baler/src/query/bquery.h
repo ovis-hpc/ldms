@@ -80,60 +80,10 @@
 #include <string.h>
 #include <strings.h>
 #include <fcntl.h>
-#include <sos/sos.h>
-#include "baler/bset.h"
-#include "baler/btkn.h"
-#include "baler/bptn.h"
-
-#include "plugins/sos_img_class_def.h"
-#include "plugins/sos_msg_class_def.h"
 
 #define MASK_HSIZE 131071
 
-LIST_HEAD(bsos_wrap_head, bsos_wrap);
-
-typedef struct bsos_wrap {
-	sos_t sos;
-	char *store_name;
-	char *path;
-	LIST_ENTRY(bsos_wrap) link;
-} *bsos_wrap_t;
-
-/**
- * Open sos and put it into the wrapper.
- * \param path The path to sos.
- * \returns A pointer to ::bsos_wrap on success.
- * \returns NULL on failure.
- */
-struct bsos_wrap* bsos_wrap_open(const char *path);
-
-/**
- * Close sos and free related resources used by \c bsw.
- * \param bsw The wrapper handle.
- */
-void bsos_wrap_close_free(struct bsos_wrap *bsw);
-
-/**
- * Find the bsos_wrap by \c store_name.
- */
-static
-struct bsos_wrap* bsos_wrap_find(struct bsos_wrap_head *head,
-				 const char *store_name)
-{
-	struct bsos_wrap *bsw;
-	LIST_FOREACH(bsw, head, link) {
-		if (strcmp(bsw->store_name, store_name) == 0)
-			return bsw;
-	}
-	return NULL;
-}
-
-struct bq_store {
-	char *path;
-	struct bptn_store *ptn_store;
-	struct btkn_store *tkn_store;
-	struct btkn_store *cmp_store;
-};
+typedef struct bsos_wrap *bsos_wrap_t;
 
 /**
  * Open Baler Query Store.
@@ -149,47 +99,6 @@ typedef enum bquery_status {
 	BQ_STAT_DONE,
 	BQ_STAT_LAST,
 } bq_stat_t;
-
-/**
- * Query structure for Baler query library.
- *
- * All of the query fields in this structure can set to be NULL or 0 to
- * disable the condition in that particular category. For example, if \c hst_ids
- * is NULL, then the query will obtain messages with on all hosts. If \c ts_0 is
- * set but \c ts_1 is 0, then the output would be all messages that occurred
- * after \c ts_0. Similarly, with \c ts_1 set and \c ts_0 unset, the query is
- * all messages before \c ts_1.
- *
- * \c store is a pointer to the store handle for this query.
- * \c itr Is the message iterator from the store which will be re-used in the
- * case of long query that cannot get all of the results in the single query
- * call.
- */
-struct bquery {
-	struct bq_store *store; /**< Store handle */
-	sos_iter_t itr; /**< Iterator handle */
-	struct bset_u32 *hst_ids; /**< Host IDs (for filtering) */
-	struct bset_u32 *ptn_ids; /**< Pattern IDs (for filtering) */
-	time_t ts_0; /**< The begin time stamp */
-	time_t ts_1; /**< The end time stamp */
-	bq_stat_t stat; /**< Query status */
-	sos_obj_t obj; /**< Current sos object */
-	int text_flag; /**< Non-zero if the query wants text in date-time and
-			    host field */
-	char sep; /**< Field separator for output */
-	bsos_wrap_t bsos; /**< SOS wrap for the query */
-	char sos_prefix[PATH_MAX]; /**< SOS prefix. Prefix is also used as a
-					     path buffer.*/
-	char *sos_prefix_end; /**< Point to the end of the original prefix */
-	int sos_number; /**< The current number of SOS store (for rotation) */
-};
-
-struct bimgquery {
-	struct bquery base;
-	char *store_name;
-	LIST_HEAD(, brange_u32) *hst_rngs; /**< Ranges of hosts */
-	struct brange_u32 *crng; /**< Current range */
-};
 
 /**
  * Create query handle with given query conditions.
@@ -341,6 +250,16 @@ char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
  * \returns 0 if \c hostname is not found.
  */
 int bq_get_host_id(struct bq_store *store, const char *hostname);
+
+/**
+ * ::tkn_store getter.
+ */
+struct btkn_store *bq_get_tkn_store(struct bq_store *store);
+
+/**
+ * ::ptn_store getter.
+ */
+struct bptn_store *bq_get_ptn_store(struct bq_store *store);
 
 #endif
 
