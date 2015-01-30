@@ -34,7 +34,7 @@ where $HOME is taken from
 .I /etc/password
 and $SYSCONFDIR is determined at ldms compile time. If the LDMS_AUTH_FILE is not set or does not point to a good secret, the search continues with the next location.
 
-To provide security, the secret file permissions should be set so that only the file owner can read it.
+The secret file permissions must be set to 600.
 
 .SH ENVIRONMENT
 LDMS_AUTH_FILE is a full file path for a secretword file. It is not necessary, if the file is in one of the other checked locations.
