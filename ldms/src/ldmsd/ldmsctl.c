@@ -215,14 +215,12 @@ int handle_help(char *kw, char *err_str)
 	       "   - adjusts the loglevel for this ldmsd\n"
 	       "     <levelflag>  Options are: DEBUG, INFO, ERROR, CRITICAL, and QUIET\n"
 	       "\n"
+	       "version\n"
+	       "   - Returns version information\n"
+	       "\n"
 	       "quit\n"
 	       "   - Exit.\n", LDMS_DEFAULT_PORT);
 	return 0;
-
-//TEMPORARILY disable remote version query thru ldmsctl
-//	       "version\n"
-//	       "   - Returns version information\n"
-//	       "\n"
 
 }
 
