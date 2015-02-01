@@ -6,7 +6,7 @@
 ldmsd \- Start an ldms daemon
 
 .SH SYNOPSIS
-ldmsd [OPTION...] 
+ldmsd [OPTION...]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), the ldmsd command is used
@@ -31,21 +31,28 @@ path to the unix domain socket for the ldmsd. Default is /var/run. If you want t
 PATH
 include path to ovis/sbin
 
-.SS Additional PTAG-Related Enviroment variables for ldms: Cray XE/XK
-.TP
-LDMS_UGNI_PTAG 
-the PTag value as given by apstat -P
-.TP
-LDMS_UGNI_COOKIE
-the Cookie value corresponding to the PTag value as given by apstat -P
-
-.SS Additional PTAG-Related Enviroment variables for ldms: Cray XC
-.TP
-LDMS_UGNI_PTAG 
-the value does not matter for XC, but the environment variable must be set.
+.SS Additional Enviroment variables for ugni transport
+LDMS_UGNI_PTAG
+For XE/XK, the PTag value as given by apstat -P.
+For XC, The value does not matter but the environment variable must be set.
 .TP
 LDMS_UGNI_COOKIE
-the Cookie value (not Cookie2) as given by apstat -P
+For XE/XK, the Cookie value corresponding to the PTag value as given by apstat -P
+For XC, the Cookie value (not Cookie2) as given by apstat -P
+.TP
+LDMS_UGNI_CQ_DEPTH
+Optional value for the CQ depth. Default is 2048.
+.TP
+LDMS_UGNI_STATE_INTERVAL
+Optional. If set, then ldmsd will check all nodes' states via rca interface.
+States for all nodes are checked and stored at intervals determined by this environment variable. The stored
+values are checked against before contacting a node. If you choose to use this option, then the rule of
+thumb is to set LDMS_UGNI_STATE_INTERVAL and LDMS_UGNI_STATE_OFFSET such that the node states are checked
+before the metric set update occurs (see interval and offset in ldmsctl).
+.TP
+LDMS_UGNI_STATE_OFFSET
+Optional. Only relevant if LDMS_UGNI_STATE_INTERVAL is set. Defaults to zero. Offset from zero for
+checking the nodes state (see LDMS_UGNI_STATE_INTERVAL, above).
 
 .SH OPTIONS
 .TP
@@ -53,7 +60,7 @@ the Cookie value (not Cookie2) as given by apstat -P
 .br
 NUM is the number of bytes of the dirty threshold used for store rollover.
 .TP
-.BR -F 
+.BR -F
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
 .BI -f " COUNT"
@@ -81,7 +88,7 @@ THR_COUNT is the number of event threads to start.
 .BI -q " LOG_LEVEL"
 .br
 LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
-The default level is ERROR. QUIET produces no output. 
+The default level is ERROR. QUIET produces no output.
 (Note: this has changed from the previous release where q designated no (QUIET) logging).
 .TP
 .BI -S " SOCKNAME"
