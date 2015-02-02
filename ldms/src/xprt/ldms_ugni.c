@@ -182,7 +182,7 @@ int get_node_state()
 		assert(i < UGNI_MAX_NUM_NODE);
 		node_id = nodelist.na_ids[i].rs_node_s._node_id;
 		node_state[node_id] =
-				nodelist.na_ids[i].rs_node_s._node_state;
+			nodelist.na_ids[i].rs_node_s._node_state;
 	}
 	free(nodelist.na_ids);
 	state_ready = 1;
@@ -200,6 +200,7 @@ int get_nodeid(struct sockaddr *sa, socklen_t sa_len,
 		ugni_log(LDMS_LERROR, "ugni: %s\n", gai_strerror(rc));
 		return rc;
 	}
+
 	char *ptr = strstr(host, UGNI_NODE_PREFIX);
 	if (!ptr) {
 		ugni_log(LDMS_LINFO, "ugni: '%s', unexpected "
@@ -232,9 +233,11 @@ int check_node_state(struct ldms_ugni_xprt *gxp)
 		}
 	}
 
-	if (gxp->node_id != -1)
+	if (gxp->node_id != -1){
+		assert(gxp->node_id < UGNI_MAX_NUM_NODE);
 		if (node_state[gxp->node_id] != UGNI_NODE_GOOD)
 			return 1; /* not good */
+	}
 
 	return 0; /* good */
 }
@@ -571,17 +574,19 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	struct epoll_event event;
 
 	if (check_state) {
-		if (gxp->node_id == -1)
-			if (get_nodeid(sa, sa_len, gxp))
-				return -1;
+		if (gxp->node_id == -1) 
+			get_nodeid(sa, sa_len, gxp);
 
-		if (check_node_state(gxp)) {
-			x->log(LDMS_LINFO, "Node %d is in a bad state.\n",
-							gxp->node_id);
-			assert(x->connected == 0);
-			assert(gxp->sock == -1);
-			return -1;
-		}
+		if (gxp->node_id != -1){
+			if (check_node_state(gxp)) {
+				x->log(LDMS_LINFO, "Node %d is in a bad state.\n",
+				       gxp->node_id);
+				assert(x->connected == 0);
+				assert(gxp->sock == -1);
+				return -1;
+			}
+		} 
+		//If you ask for a node w/o a valid id, go ahead and try to connect
 	}
 
 	gxp->sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -931,10 +936,6 @@ setup_connection(struct ldms_ugni_xprt *p, int sockfd,
 		return NULL;
 	}
 
-	if (get_nodeid(remote_addr, sa_len, r)) {
-		ugni_xprt_error_handling(r);
-		return NULL;
-	}
 	return r;
 }
 
@@ -1029,12 +1030,6 @@ static void ugni_xprt_destroy(struct ldms_xprt *x)
 static int ugni_xprt_send(struct ldms_xprt *x, void *buf, size_t len)
 {
 	struct ldms_ugni_xprt *r = ugni_from_xprt(x);
-//	if (check_state && (check_node_state(r))) {
-//		x->log(LDMS_LERROR, "node %d is in a bad state.\n",
-//						r->node_id);
-//		return -1;
-//	}
-
 
 	int rc;
 
@@ -1172,12 +1167,6 @@ static int ugni_read_start(struct ldms_ugni_xprt *gxp,
 			   uint64_t raddr, gni_mem_handle_t remote_mh,
 			   uint32_t len, void *context)
 {
-//	if (check_state && (check_node_state(gxp))) {
-//		ugni_log(LDMS_LERROR, "node %d is in a bad state.\n",
-//							gxp->node_id);
-//		return -1;
-//	}
-
 	gni_return_t grc;
 	struct ugni_desc *desc = alloc_desc(gxp);
 	if (!desc)
