@@ -215,7 +215,7 @@ int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz);
  * responsible for freeing it.
  * \return NULL on error, and errno will be set properly.
  */
-char* bq_get_ptns(struct bq_store *store);
+char* bq_get_all_ptns(struct bq_store *store);
 
 /**
  * Similar to ::get_patterns(), but the result will be stored in \c buf instead
@@ -229,7 +229,7 @@ char* bq_get_ptns(struct bq_store *store);
  * \returns 0 on success.
  * \returns Error code on error.
  */
-int bq_get_ptns_r(struct bq_store *store, char *buf, size_t buflen);
+int bq_get_all_ptns_r(struct bq_store *store, char *buf, size_t buflen);
 
 /**
  * Get all tokens of \c ptn_id at the '*' position \c arg_idx.

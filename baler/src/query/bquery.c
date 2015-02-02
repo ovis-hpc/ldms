@@ -597,6 +597,8 @@ loop:
 		ksz = 8;
 		p = &imgkey;
 		break;
+	default:
+		/* do nothing */ ;
 	}
 	obj_key_t key = obj_key_new(ksz);
 	if (!key) {
@@ -700,7 +702,7 @@ next:
 	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
 		goto next;
 	sos_blob_obj_t blob = sos_obj_attr_get(msg_sos, SOS_MSG_MSG, obj);
-	msg = blob->data;
+	msg = (void*)blob->data;
 	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, msg->ptn_id))
 		goto next;
 	if (q->text_flag) {
@@ -785,7 +787,7 @@ err:
 	return ENOMEM;
 }
 
-char* bq_get_ptns(struct bq_store *s)
+char* bq_get_all_ptns(struct bq_store *s)
 {
 	uint32_t id = bptn_store_first_id(s->ptn_store);
 	uint32_t last_id = bptn_store_last_id(s->ptn_store);
@@ -843,7 +845,7 @@ err:
 	return NULL;
 }
 
-int bq_get_ptns_r(struct bq_store *s, char *buf, size_t buflen)
+int bq_get_all_ptns_r(struct bq_store *s, char *buf, size_t buflen)
 {
 	uint32_t id = bptn_store_first_id(s->ptn_store);
 	uint32_t last_id = bptn_store_last_id(s->ptn_store);
