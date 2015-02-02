@@ -61,40 +61,12 @@
 #define __BTKN_H
 
 #include "bcommon.h"
+#include "btkn_types.h"
 #include "btypes.h"
 #include "bmapper.h"
 #include "bmvec.h"
 #include <sys/mman.h>
 #include <linux/limits.h>
-
-#define BTKN_TYPE__LIST(P, CMD) \
-	CMD(P, STAR), /**< Wild card (*) token */ \
-	CMD(P, ENG),  /**< English word */ \
-	CMD(P, SYM),  /**< Symbol */ \
-	CMD(P, SPC),  /**< White spaces */ \
-	CMD(P, NAME), /**< Names, such as service name */ \
-	CMD(P, HOST), /**< Host name */ \
-	CMD(P, OTHER) /**< Other type */
-
-/**
- * Types of a token.
- */
-typedef enum {
-	BTKN_TYPE__LIST(BTKN_TYPE_, BENUM),
-	BTKN_TYPE_LAST
-} btkn_type_t;
-
-extern
-const char *btkn_type_str[];
-
-btkn_type_t btkn_type(const char *str);
-
-/**
- * Baler's Token Attributes, containing attributes of a token.
- */
-struct btkn_attr {
-	btkn_type_t type;
-};
 
 /**
  * bvec definition for ::btkn_attr.

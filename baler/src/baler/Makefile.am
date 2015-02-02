@@ -75,6 +75,7 @@ pkginclude_HEADERS = barray.h \
 		     bqueue.h \
 		     bset.h \
 		     btkn.h \
+		     btkn_types.h \
 		     btypes.h \
 		     butils.h \
 		     bwqueue.h
