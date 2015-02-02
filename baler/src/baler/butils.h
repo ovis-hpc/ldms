@@ -204,6 +204,11 @@ int bdstr_expand(struct bdstr *bs, size_t new_size);
 int bdstr_append(struct bdstr *bs, const char *str);
 
 /**
+ * Same as ::bdstr_append(), but with ::bstr.
+ */
+int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr);
+
+/**
  * Baler log rotate utility.
  *
  * \returns 0 if success.

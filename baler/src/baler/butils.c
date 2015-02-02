@@ -227,12 +227,28 @@ int bdstr_append(struct bdstr *bs, const char *str)
 	int len = strlen(str);
 	int rc;
 	if (bs->str_len + len + 1 > bs->alloc_len) {
-		rc = bdstr_expand(bs, bs->alloc_len + 65536);
+		int exp_len = (len | 65535) + 1;
+		rc = bdstr_expand(bs, bs->alloc_len + exp_len);
 		if (rc)
 			return rc;
 	}
 	strcat(bs->str + bs->str_len, str);
 	bs->str_len += len;
+	return 0;
+}
+
+int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr)
+{
+	int rc;
+	if (bdstr->str_len + bstr->blen + 1 > bdstr->alloc_len) {
+		int exp_len = (bstr->blen | 65535) + 1;
+		rc = bdstr_expand(bdstr, bdstr->alloc_len + exp_len);
+		if (rc)
+			return rc;
+	}
+	strncpy(bdstr->str + bdstr->str_len, bstr->cstr, bstr->blen);
+	bdstr->str_len += bstr->blen;
+	bdstr->str[bdstr->str_len] = 0;
 	return 0;
 }
 
