@@ -122,6 +122,7 @@ struct bquery {
 					     path buffer.*/
 	char *sos_prefix_end; /**< Point to the end of the original prefix */
 	int sos_number; /**< The current number of SOS store (for rotation) */
+	struct bq_formatter *formatter; /**< Formatter */
 };
 
 struct bimgquery {

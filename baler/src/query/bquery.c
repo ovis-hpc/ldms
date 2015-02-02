@@ -364,6 +364,62 @@ void bimgquery_destroy(struct bimgquery *q)
 	bquery_destroy((void*)q);
 }
 
+int __default_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	/* do nothing */
+	return 0;
+}
+
+int __default_ptn_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	/* do nothing */
+	return 0;
+}
+
+int __default_msg_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	/* do nothign */
+	return 0;
+}
+
+int __msg_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	/* do nothing */
+	return 0;
+}
+
+int __default_tkn_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
+			const struct bstr *tkn, struct btkn_attr *attr)
+{
+	return bdstr_append_bstr(bdstr, tkn);
+}
+
+int __default_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, time_t ts)
+{
+	char buff[64];
+	struct tm tm;
+	localtime_r(&ts, &tm);
+	strftime(buff, sizeof(buff), "%Y-%m-%d %T", &tm);
+	return bdstr_append(bdstr, buff);
+}
+
+int __default_host_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, const struct bstr *bstr)
+{
+	return bdstr_append_bstr(bdstr, bstr);
+}
+
+static struct bq_formatter default_formatter;
+
+struct bq_formatter *bquery_default_formatter()
+{
+	return &default_formatter;
+}
+
+void bq_set_formatter(struct bquery *bq, struct bq_formatter *fmt)
+{
+	bq->formatter = fmt;
+}
+
 struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 			     const char *ptn_ids, const char *ts0,
 			     const char *ts1, int is_text, char sep, int *rc)
@@ -685,6 +741,8 @@ int bq_query_r(struct bquery *q, char *buff, size_t bufsz)
 
 	buff[0] = 0;
 
+	/* XXX COME BACK HERE */
+
 next:
 	rc = __bq_next_entry(q);
 	if (rc)
@@ -898,8 +956,8 @@ char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx)
 			goto err;
 	}
 	/* Keep only the string in bdstr, and throw away the wrapper */
-	char *str = bdstr->str;
-	free(bdstr);
+	char *str = bdstr_detach_buffer(bdstr);
+	bdstr_free(bdstr);
 	return str;
 err:
 	free(bdstr->str);

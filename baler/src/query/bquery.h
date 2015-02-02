@@ -81,6 +81,8 @@
 #include <strings.h>
 #include <fcntl.h>
 
+#include "baler/btkn_types.h"
+
 #define MASK_HSIZE 131071
 
 typedef struct bsos_wrap *bsos_wrap_t;
@@ -99,6 +101,24 @@ typedef enum bquery_status {
 	BQ_STAT_DONE,
 	BQ_STAT_LAST,
 } bq_stat_t;
+
+/*
+ * Structure name declaration to supress compilation warnings.
+ */
+struct bdstr;
+
+struct bq_formatter {
+	int (*ptn_prefix)(struct bq_formatter *fmt, struct bdstr *bdstr);
+	int (*ptn_suffix)(struct bq_formatter *fmt, struct bdstr *bdstr);
+	int (*msg_prefix)(struct bq_formatter *fmt, struct bdstr *bdstr);
+	int (*msg_suffix)(struct bq_formatter *fmt, struct bdstr *bdstr);
+	int (*tkn_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
+			const struct bstr *bstr, struct btkn_attr *attr);
+	int (*date_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
+			time_t ts);
+	int (*host_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
+			const struct bstr *bstr);
+};
 
 /**
  * Create query handle with given query conditions.
@@ -120,6 +140,16 @@ typedef enum bquery_status {
 struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 			     const char *ptn_ids, const char *ts0,
 			     const char *ts1, int is_text, char sep, int *rc);
+
+/**
+ * Get default formatter.
+ */
+struct bq_formatter *bquery_default_formatter();
+
+/**
+ * Formatter setter.
+ */
+void bq_set_formatter(struct bquery *bq, struct bq_formatter *fmt);
 
 /**
  * Create image query handle with given query conditions.
