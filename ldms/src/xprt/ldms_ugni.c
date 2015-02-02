@@ -680,7 +680,7 @@ int process_ugni_hello_req(struct ldms_ugni_xprt *x, struct ugni_hello_req *req)
 	pthread_mutex_lock(&ugni_lock);
 	rc = GNI_EpBind(x->ugni_ep, x->rem_pe_addr, x->rem_inst_id);
 	pthread_mutex_unlock(&ugni_lock);
-#ifdef _its_all_your_fault
+#ifdef tt_connect_test
 	if (rc == GNI_RC_SUCCESS)
 		x->xprt->connected = 1;
 #endif
