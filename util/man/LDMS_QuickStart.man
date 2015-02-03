@@ -1,6 +1,6 @@
 .\" Manpage for LDMS_QuickStart
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "12 Sep 2014" "1.2" "LDMS_QuickStart man page"
+.TH man 7 "12 Sep 2014" "v2.2/RC1.2" "LDMS_QuickStart man page"
 
 .SH NAME
 LDMS_QuickStart - man page for Quick Start of LDMS

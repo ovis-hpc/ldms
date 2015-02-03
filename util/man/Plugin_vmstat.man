@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_vmstat
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Sep 2014" "1.2" "LDMS Plugin vmstat man page"
+.TH man 7 "11 Sep 2014" "v2.2/RC1.2" "LDMS Plugin vmstat man page"
 
 .SH NAME
 Plugin_vmstat - man page for the LDMS vmstat plugin

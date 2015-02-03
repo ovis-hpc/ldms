@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_derived_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "12 Sep 2014" "1.2" "LDMS Plugin store_derived_csv man page"
+.TH man 7 "13 Jan 2015" "v2.3/RC1.3" "LDMS Plugin store_derived_csv man page"
 
 .SH NAME
 Plugin_store_derived_csv - man page for the LDMS store_derived_csv plugin

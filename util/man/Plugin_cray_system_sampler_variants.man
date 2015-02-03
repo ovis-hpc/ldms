@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_cray_system_sampler_variants
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "13 Jan 2015" "1.3" "LDMS Plugin for all variants of the cray_system_sampler man page"
+.TH man 7 "13 Jan 2015" "v2.3/RC1.3" "LDMS Plugin for all variants of the cray_system_sampler man page"
 
 .SH NAME
 Plugin_cray_system_sampler_variants - man page for all variants of the LDMS cray_system_sampler plugin

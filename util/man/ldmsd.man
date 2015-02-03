@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "30 Jan 2015" "1.3" "ldmsd man page"
+.TH man 8 "30 Jan 2015" "v2.3/RC1.3" "ldmsd man page"
 
 .SH NAME
 ldmsd \- Start an ldms daemon

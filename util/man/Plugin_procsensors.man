@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_procsensors
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Sep 2014" "1.2" "LDMS Plugin procsensors man page"
+.TH man 7 "11 Sep 2014" "v2.2/RC1.2" "LDMS Plugin procsensors man page"
 
 .SH NAME
 Plugin_procsensors - man page for the LDMS procsensors plugin
