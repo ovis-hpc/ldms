@@ -216,6 +216,14 @@ int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr);
 char *bdstr_detach_buffer(struct bdstr *bdstr);
 
 /**
+ * Reset \c bdstr to empty string.
+ *
+ * \retval 0 if success.
+ * \retval errno if error.
+ */
+int bdstr_reset(struct bdstr *bdstr);
+
+/**
  * Free \c bdstr and its buffer.
  */
 void bdstr_free(struct bdstr *bdstr);

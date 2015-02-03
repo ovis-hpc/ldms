@@ -261,6 +261,18 @@ char *bdstr_detach_buffer(struct bdstr *bdstr)
 	return str;
 }
 
+int bdstr_reset(struct bdstr *bdstr)
+{
+	bdstr->str_len = 0;
+	if (!bdstr->str) {
+		bdstr->str = malloc(4096);
+		if (!bdstr->str)
+			return ENOMEM;
+	}
+	bdstr->str[0] = 0;
+	return 0;
+}
+
 void bdstr_free(struct bdstr *bdstr)
 {
 	if (bdstr->str)
