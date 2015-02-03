@@ -209,6 +209,18 @@ int bdstr_append(struct bdstr *bs, const char *str);
 int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr);
 
 /**
+ * Detach \c char* buffer to the caller.
+ * \note The caller owns the \c char* buffer after this function returns.
+ * \note The input \c bdstr contains no data, but still usable.
+ */
+char *bdstr_detach_buffer(struct bdstr *bdstr);
+
+/**
+ * Free \c bdstr and its buffer.
+ */
+void bdstr_free(struct bdstr *bdstr);
+
+/**
  * Baler log rotate utility.
  *
  * \returns 0 if success.

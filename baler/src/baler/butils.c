@@ -227,7 +227,7 @@ int bdstr_append(struct bdstr *bs, const char *str)
 	int len = strlen(str);
 	int rc;
 	if (bs->str_len + len + 1 > bs->alloc_len) {
-		int exp_len = (len | 65535) + 1;
+		int exp_len = (len | 0xFFF) + 1;
 		rc = bdstr_expand(bs, bs->alloc_len + exp_len);
 		if (rc)
 			return rc;
@@ -241,7 +241,7 @@ int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr)
 {
 	int rc;
 	if (bdstr->str_len + bstr->blen + 1 > bdstr->alloc_len) {
-		int exp_len = (bstr->blen | 65535) + 1;
+		int exp_len = (bstr->blen | 0xFFF) + 1;
 		rc = bdstr_expand(bdstr, bdstr->alloc_len + exp_len);
 		if (rc)
 			return rc;
@@ -250,6 +250,22 @@ int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr)
 	bdstr->str_len += bstr->blen;
 	bdstr->str[bdstr->str_len] = 0;
 	return 0;
+}
+
+char *bdstr_detach_buffer(struct bdstr *bdstr)
+{
+	char *str = bdstr->str;
+	bdstr->str_len = 0;
+	bdstr->alloc_len = 0;
+	bdstr->str = NULL;
+	return str;
+}
+
+void bdstr_free(struct bdstr *bdstr)
+{
+	if (bdstr->str)
+		free(bdstr->str);
+	free(bdstr);
 }
 
 int bstr_lev_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
