@@ -126,7 +126,7 @@ sys,0,1
 
 MemTotal,0,10
 snx11024.stats.lockless_write_bytes,0,1
-Z+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x10e6),0,20
+Z+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x1e6),0,20
 .RE
 .fi
 
