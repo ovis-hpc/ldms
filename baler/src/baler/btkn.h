@@ -197,6 +197,12 @@ uint32_t btkn_store_get_id(struct btkn_store *store, struct bstr *bstr)
 	return bmap_get_id(store->map, bstr);
 }
 
+static inline
+const struct bstr *btkn_store_get_bstr(struct btkn_store *store, uint32_t id)
+{
+	return bmap_get_bstr(store->map, id);
+}
+
 /**
  * Convenient function for inserting C string with token type into the store.
  * \returns Token ID on success.
