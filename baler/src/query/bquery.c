@@ -91,7 +91,88 @@
 
 #include <sos/obj_idx.h>
 
+#include "baler/butils.h"
+#include "baler/btkn.h"
+
+#include "assert.h"
+
 /********** Global Variables **********/
+static inline
+int fmt_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr,
+			uint32_t ptn_id)
+{
+	if (fmt->ptn_prefix)
+		return fmt->ptn_prefix(fmt, bdstr, ptn_id);
+	return 0;
+}
+
+static inline
+int fmt_ptn_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	if (fmt->ptn_suffix)
+		return fmt->ptn_suffix(fmt, bdstr);
+	return 0;
+}
+
+static inline
+int fmt_msg_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	if (fmt->msg_prefix)
+		return fmt->msg_prefix(fmt, bdstr);
+	return 0;
+}
+
+static inline
+int fmt_msg_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	if (fmt->msg_suffix)
+		return fmt->msg_suffix(fmt, bdstr);
+	return 0;
+}
+
+static inline
+int fmt_tkn_begin(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	if (fmt->tkn_begin)
+		return fmt->tkn_begin(fmt, bdstr);
+	return 0;
+}
+
+static inline
+int fmt_tkn_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
+		const struct bstr *bstr, struct btkn_attr *attr,
+		uint32_t tkn_id)
+{
+	if (fmt->tkn_fmt)
+		return fmt->tkn_fmt(fmt, bdstr, bstr, attr, tkn_id);
+	return 0;
+}
+
+static inline
+int fmt_tkn_end(struct bq_formatter *fmt, struct bdstr *bdstr)
+{
+	if (fmt->tkn_end)
+		return fmt->tkn_end(fmt, bdstr);
+	return 0;
+}
+
+static inline
+int fmt_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, time_t ts)
+{
+	if (fmt->date_fmt)
+		return fmt->date_fmt(fmt, bdstr, ts);
+	return 0;
+}
+
+static inline
+int fmt_host_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
+		const struct bstr *bstr)
+{
+	if (fmt->host_fmt)
+		return fmt->host_fmt(fmt, bdstr, bstr);
+	return 0;
+}
+
 /**
  * \param[in] num_list List of numbers (e.g. "1,2,5-7")
  * \param[out] _set Pointer to pointer to ::bset_u32. \c (*_set) will point to
@@ -309,11 +390,13 @@ struct bqprint {
  * \return 0 on success.
  * \return Error code on error.
  */
-int bq_print_msg(struct bq_store *s,  char *buff, int buff_len,
+int bq_print_msg(struct bquery *q, struct bdstr *bdstr,
 		 struct bmsg *msg)
 {
 	int rc = 0;
 	const struct bstr *ptn;
+	const struct bstr *bstr;
+	struct bq_store *s = q->store;
 	struct bptn_store *ptn_store = s->ptn_store;
 	struct btkn_store *tkn_store = s->tkn_store;
 	ptn = bmap_get_bstr(ptn_store->map, msg->ptn_id);
@@ -323,18 +406,24 @@ int bq_print_msg(struct bq_store *s,  char *buff, int buff_len,
 	const uint32_t *ptn_tkn = ptn->u32str;
 	int len = ptn->blen;
 	int blen;
+	fmt_tkn_begin(q->formatter, bdstr);
 	while (len) {
+		struct btkn_attr attr;
 		uint32_t tkn_id = *ptn_tkn++;
 		if (tkn_id == BMAP_ID_STAR)
 			tkn_id = *msg_arg++;
-		rc = btkn_store_id2str(tkn_store, tkn_id, buff, buff_len);
+		bstr = btkn_store_get_bstr(tkn_store, tkn_id);
+		if (!bstr) {
+			rc = ENOENT;
+			goto out;
+		}
+		attr = btkn_store_get_attr(tkn_store, tkn_id);
+		fmt_tkn_fmt(q->formatter, bdstr, bstr, &attr, tkn_id);
 		if (rc)
 			goto out;
-		len -= sizeof(uint32_t);
-		blen = strlen(buff);
-		buff += blen;
-		buff_len -= blen;
+		len -= sizeof(*ptn_tkn);
 	}
+	fmt_tkn_end(q->formatter, bdstr);
 out:
 	return rc;
 }
@@ -364,32 +453,9 @@ void bimgquery_destroy(struct bimgquery *q)
 	bquery_destroy((void*)q);
 }
 
-int __default_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
-{
-	/* do nothing */
-	return 0;
-}
-
-int __default_ptn_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
-{
-	/* do nothing */
-	return 0;
-}
-
-int __default_msg_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
-{
-	/* do nothign */
-	return 0;
-}
-
-int __msg_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
-{
-	/* do nothing */
-	return 0;
-}
-
 int __default_tkn_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
-			const struct bstr *tkn, struct btkn_attr *attr)
+			const struct bstr *tkn, struct btkn_attr *attr,
+			uint32_t tkn_id)
 {
 	return bdstr_append_bstr(bdstr, tkn);
 }
@@ -399,16 +465,24 @@ int __default_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, time_t ts)
 	char buff[64];
 	struct tm tm;
 	localtime_r(&ts, &tm);
-	strftime(buff, sizeof(buff), "%Y-%m-%d %T", &tm);
+	strftime(buff, sizeof(buff), "%Y-%m-%d %T ", &tm);
 	return bdstr_append(bdstr, buff);
 }
 
 int __default_host_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, const struct bstr *bstr)
 {
-	return bdstr_append_bstr(bdstr, bstr);
+	int rc;
+	rc = bdstr_append_bstr(bdstr, bstr);
+	if (rc)
+		return rc;
+	return bdstr_append(bdstr, " ");
 }
 
-static struct bq_formatter default_formatter;
+static struct bq_formatter default_formatter = {
+	.tkn_fmt = __default_tkn_fmt,
+	.date_fmt = __default_date_fmt,
+	.host_fmt = __default_host_fmt,
+};
 
 struct bq_formatter *bquery_default_formatter()
 {
@@ -478,6 +552,7 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 
 	q->text_flag = is_text;
         q->sep = (sep)?(sep):(' ');
+	q->formatter = bquery_default_formatter();
 
 	len = snprintf(q->sos_prefix, PATH_MAX, "%s/msg_store/msg", store->path);
 	q->sos_prefix_end = q->sos_prefix + len;
@@ -555,7 +630,20 @@ out:
 
 char* bq_query(struct bquery *q, int *rc)
 {
-	return bq_query_generic(q, rc, 1024, (void*)bq_query_r);
+	int _rc;
+	char *buff;
+	struct bdstr *bdstr = bdstr_new(4096);
+	if (!bdstr)
+		return NULL;
+	_rc = bq_query_r(q, bdstr);
+	if (rc)
+		*rc = _rc;
+	if (_rc)
+		buff = NULL;
+	else
+		buff = bdstr_detach_buffer(bdstr);
+	bdstr_free(bdstr);
+	return buff;
 }
 
 char* bq_imgquery(struct bimgquery *q, int *rc)
@@ -728,21 +816,20 @@ out:
 	return rc;
 }
 
-int bq_query_r(struct bquery *q, char *buff, size_t bufsz)
+int bq_query_r(struct bquery *q, struct bdstr *bdstr)
 {
 	int rc = 0;
 	uint32_t comp_id;
 	uint32_t sec;
 	uint32_t usec;
 	struct bmsg *msg;
+	const struct bstr *bstr;
 	sos_obj_t obj;
 	int len;
 	sos_t msg_sos;
 
-	buff[0] = 0;
-
 	/* XXX COME BACK HERE */
-
+	bdstr_reset(bdstr);
 next:
 	rc = __bq_next_entry(q);
 	if (rc)
@@ -763,26 +850,24 @@ next:
 	msg = (void*)blob->data;
 	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, msg->ptn_id))
 		goto next;
-	if (q->text_flag) {
-		struct tm tm;
-		time_t t = sec;
-		localtime_r(&t, &tm);
-		strftime(buff, 64, "%Y-%m-%d %T", &tm);
-		len = strlen(buff);
-		const struct bstr *bstr = bmap_get_bstr(
-						q->store->cmp_store->map,
-						comp_id + BMAP_ID_BEGIN - 1);
-		if (bstr)
-			len += sprintf(buff+len, ".%06d%c%.*s%c", usec, q->sep,
-                                        bstr->blen, bstr->cstr, q->sep);
-		else
-                        len += sprintf(buff+len, ".%06d%cNULL%c", usec, q->sep,
-                                        q->sep);
-	} else {
-                len = sprintf(buff, "%u.%06u%c%u%c", sec, usec, q->sep, comp_id,
-                                q->sep);
+	rc = fmt_msg_prefix(q->formatter, bdstr);
+	if (rc)
+		goto out;
+	rc = fmt_date_fmt(q->formatter, bdstr, sec);
+	if (rc)
+		goto out;
+	bstr = btkn_store_get_bstr(q->store->cmp_store, comp_id + BMAP_ID_BEGIN - 1);
+	if (!bstr)  {
+		rc = ENOENT;
+		goto out;
 	}
-	rc = bq_print_msg(q->store, buff+len, bufsz-len, msg);
+	rc = fmt_host_fmt(q->formatter, bdstr, bstr);
+	if (rc)
+		goto out;
+	rc = bq_print_msg(q, bdstr, msg);
+	if (rc)
+		goto out;
+	fmt_msg_suffix(q->formatter, bdstr);
 out:
 	return rc;
 }
@@ -996,6 +1081,45 @@ struct btkn_store *bq_get_tkn_store(struct bq_store *store)
 struct bptn_store *bq_get_ptn_store(struct bq_store *store)
 {
 	return store->ptn_store;
+}
+
+int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out)
+{
+	int rc = 0;
+	uint32_t i;
+	uint32_t n;
+	struct bptn_store *ptn_store = q->store->ptn_store;
+	struct btkn_store *tkn_store = q->store->tkn_store;
+	const struct bstr *ptn = bptn_store_get_ptn(ptn_store, ptn_id);
+	const struct bstr *tkn;
+	struct btkn_attr attr;
+	if (!ptn)
+		return ENOENT;
+	rc = bdstr_reset(out);
+	if (rc)
+		return rc;
+	rc = fmt_ptn_prefix(q->formatter, out, ptn_id);
+	if (rc)
+		return rc;
+	rc = fmt_tkn_begin(q->formatter, out);
+	if (rc)
+		return rc;
+	n = ptn->blen / sizeof(*ptn->u32str);
+	for (i = 0; i < n; i++) {
+		attr = btkn_store_get_attr(tkn_store, ptn->u32str[i]);
+		tkn = btkn_store_get_bstr(tkn_store, ptn->u32str[i]);
+		assert(tkn);
+		rc = fmt_tkn_fmt(q->formatter, out, tkn, &attr, ptn->u32str[i]);
+		if (rc)
+			return rc;
+	}
+	rc = fmt_tkn_end(q->formatter, out);
+	if (rc)
+		return rc;
+	rc = fmt_ptn_suffix(q->formatter, out);
+	if (rc)
+		return rc;
+	return rc;
 }
 
 #ifdef BIN
@@ -1285,12 +1409,11 @@ int bq_local_msg_routine(struct bq_store *s)
 	int rc = 0;
 	struct bquery *q = bquery_create(s, hst_ids, ptn_ids, ts_begin, ts_end,
 					 1, 0, &rc);
-	const static int N = 4096;
-	char buff[N];
+	struct bdstr *bdstr = bdstr_new(4096);
 	if (rc)
 		goto out;
 loop:
-	rc = bq_query_r(q, buff, N);
+	rc = bq_query_r(q, bdstr);
 	if (rc)
 		goto out;
 	if (verbose) {
@@ -1300,7 +1423,7 @@ loop:
 		ptn_id = ((struct bmsg*)blob->data)->ptn_id;
 		printf("[%d] ", ptn_id);
 	}
-	printf("%s\n", buff);
+	printf("%s\n", bdstr->str);
 	goto loop;
 out:
 	if (rc == ENOENT)

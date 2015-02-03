@@ -106,14 +106,19 @@ typedef enum bquery_status {
  * Structure name declaration to supress compilation warnings.
  */
 struct bdstr;
+struct bstr;
 
 struct bq_formatter {
-	int (*ptn_prefix)(struct bq_formatter *fmt, struct bdstr *bdstr);
+	int (*ptn_prefix)(struct bq_formatter *fmt, struct bdstr *bdstr,
+			uint32_t ptn_id);
 	int (*ptn_suffix)(struct bq_formatter *fmt, struct bdstr *bdstr);
 	int (*msg_prefix)(struct bq_formatter *fmt, struct bdstr *bdstr);
 	int (*msg_suffix)(struct bq_formatter *fmt, struct bdstr *bdstr);
+	int (*tkn_begin)(struct bq_formatter *fmt, struct bdstr *bdstr);
 	int (*tkn_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
-			const struct bstr *bstr, struct btkn_attr *attr);
+			const struct bstr *bstr, struct btkn_attr *attr,
+			uint32_t tkn_id);
+	int (*tkn_end)(struct bq_formatter *fmt, struct bdstr *bdstr);
 	int (*date_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
 			time_t ts);
 	int (*host_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
@@ -234,7 +239,7 @@ char* bq_imgquery(struct bimgquery *q, int *rc);
  * \return \c ENOENT on no more results.
  * \return error code on other errors.
  */
-int bq_query_r(struct bquery *q, char *buff, size_t bufsz);
+int bq_query_r(struct bquery *q, struct bdstr *bdstr);
 
 int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz);
 
@@ -271,6 +276,18 @@ int bq_get_all_ptns_r(struct bq_store *store, char *buf, size_t buflen);
  * it.
  */
 char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
+
+/**
+ * Get formatted pattern from the store.
+ *
+ * \param store The store handle.
+ * \param ptn_id Pattern ID.
+ * \param[out] out Output formatted string of the pattern.
+ *
+ * \retval 0 OK.
+ * \retval errno Error.
+ */
+int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out);
 
 /**
  * Get host ID.
