@@ -79,8 +79,6 @@ char* bq_query(struct bquery *q, int *rc);
 
 char* bq_imgquery(struct bimgquery *q, int *rc);
 
-int bq_query_r(struct bquery *q, char *buff, size_t bufsz);
-
 char* bq_get_all_ptns(struct bq_store *store);
 
 int bq_get_all_ptns_r(struct bq_store *store, char *buf, size_t buflen);
