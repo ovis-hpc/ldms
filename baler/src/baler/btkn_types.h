@@ -86,4 +86,12 @@ struct btkn_attr {
 	btkn_type_t type;
 };
 
+static
+const char *btkn_attr_type_str(btkn_type_t t)
+{
+	if (t <= BTKN_TYPE_OTHER)
+		return btkn_type_str[t];
+	return "BTKN_TYPE_UNKNOWN";
+}
+
 #endif
