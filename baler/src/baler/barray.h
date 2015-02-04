@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -174,15 +174,12 @@ int barray_set(struct barray *a, uint32_t idx, void *data)
 	if (chunk >= a->ptr_len) {
 		/* expand ptr as necessary */
 		uint32_t new_len = (chunk|(BARRAY_DEFAULT_PTR_LEN-1))+1;
-		void **new_ptr = (void**) realloc(a->ptr,
-				a->ptr_len * sizeof(void*));
+		void **new_ptr = (void**) realloc(a->ptr, new_len * sizeof(void*));
 		if (!new_ptr)
 			return -1; /* errno = ENOMEM should be set already */
 		/* Initialize the new part of the memory. */
 		bzero(new_ptr+a->ptr_len, (new_len-a->ptr_len)*sizeof(void*));
-		memcpy(new_ptr, a->ptr, a->ptr_len*sizeof(void*));
 
-		free(a->ptr);
 		a->ptr = new_ptr;
 		a->ptr_len = new_len;
 	}
