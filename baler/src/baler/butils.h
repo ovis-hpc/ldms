@@ -209,6 +209,11 @@ int bdstr_append(struct bdstr *bs, const char *str);
 int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr);
 
 /**
+ * Same as ::bdstr_append(), but with printf() format.
+ */
+int bdstr_append_printf(struct bdstr *bdstr, const char *fmt, ...);
+
+/**
  * Detach \c char* buffer to the caller.
  * \note The caller owns the \c char* buffer after this function returns.
  * \note The input \c bdstr contains no data, but still usable.

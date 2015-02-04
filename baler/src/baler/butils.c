@@ -252,6 +252,33 @@ int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr)
 	return 0;
 }
 
+int bdstr_append_printf(struct bdstr *bdstr, const char *fmt, ...)
+{
+	int rc = 0;
+	va_list ap;
+	char *str;
+	size_t sz;
+	int n;
+again:
+	str = bdstr->str + bdstr->str_len;
+	sz = bdstr->alloc_len - bdstr->str_len;
+	va_start(ap, fmt);
+	n = vsnprintf(str, sz, fmt, ap);
+	va_end(ap);
+	if (n >= sz) {
+		int exp_len = bdstr->str_len + n + 1;
+		exp_len = (exp_len | 0xFFF) + 1;
+		bdstr->str[bdstr->str_len] = 0; /* recover old string */
+		rc = bdstr_expand(bdstr, exp_len);
+		if (rc)
+			goto out;
+		goto again;
+	}
+	bdstr->str_len += n;
+out:
+	return rc;
+}
+
 char *bdstr_detach_buffer(struct bdstr *bdstr)
 {
 	char *str = bdstr->str;
