@@ -407,7 +407,7 @@ void __ocm_reconnect_cb(evutil_socket_t fd, short what, void *arg)
 	zerr = zap_connect(ep, &ctxt->sa, ctxt->sa_len);
 	if (zerr)
 		goto err1;
-
+	ctxt->ep = ep;
 	return ;
 
 err1:
@@ -446,7 +446,7 @@ void __ocm_recv_complete(zap_ep_t ep, struct ocm_msg_hdr *hdr, struct ocm_ep_ctx
 		obj = str_map_get(ocm->cb_map, key->str);
 		if (obj) {
 			rcb = (void*)obj;
-			rcb->is_called = 1;
+			rcb->is_called++;
 			cb = rcb->cb;
 		}
 		break;
@@ -486,9 +486,16 @@ void __ocm_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_REJECTED:
 	case ZAP_EVENT_DISCONNECTED:
-		if (ctxt->is_active)
+		if (ctxt->is_active) {
+			pthread_mutex_lock(&ctxt->mutex);
+			ctxt->ep = NULL;
+			pthread_mutex_unlock(&ctxt->mutex);
+			zap_close(zep);
 			__ocm_reconnect(ctxt);
-		zap_close(zep);
+		} else {
+			zap_close(zep);
+		}
+
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		__ocm_recv_complete(zep, ev->data, ctxt);
@@ -519,6 +526,7 @@ ocm_t ocm_create(const char *xprt, uint16_t port, ocm_cb_fn_t request_cb,
 	if (!log_fn)
 		log_fn = __ocm_default_log;
 	ocm->log_fn = log_fn;
+	pthread_mutex_init(&ocm->mutex, NULL);
 	zap_err_t zerr = zap_get(xprt, &ocm->zap, log_fn, map_info_fn);
 	if (zerr) {
 		log_fn("OCM ERROR: cannot get xprt: %s\n", xprt);
@@ -560,9 +568,11 @@ int ocm_add_receiver(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len)
 	ctxt->sa = *sa;
 	ctxt->sa_len = sa_len;
 	ctxt->ocm = ocm;
+	ctxt->ep = ep;
 	ctxt->reconn_event = evtimer_new(__ocm_evbase, __ocm_reconnect_cb, ctxt);
 	if (!ctxt->reconn_event)
 		goto err2;
+	pthread_mutex_init(&ctxt->mutex, NULL);
 	rc = idx_add(ocm->active_idx, sa, sa_len, ctxt);
 	if (rc)
 		goto err3;
@@ -651,6 +661,7 @@ int ocm_enable(ocm_t ocm)
 
 	ctxt->ocm = ocm;
 	ctxt->is_active = 0;
+	pthread_mutex_init(&ctxt->mutex, NULL);
 	if (zerr) {
 		ocm->log_fn("OCM ERROR: cannot create endpoint, zap_err: %d\n",
 				zerr);
@@ -715,6 +726,24 @@ int ocm_event_resp_cfg(struct ocm_event *e, struct ocm_cfg *cfg)
 	cfg->hdr.type = OCM_MSG_CFG;
 	rc = zap_send(e->ep, cfg, cfg->len);
 	free(e);
+	return rc;
+}
+
+int ocm_notify_cfg(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len,
+							ocm_cfg_t cfg)
+{
+	int rc = 0;
+	struct ocm_ep_ctxt *ctxt = idx_find(ocm->active_idx, sa, sa_len);
+	if (!ctxt)
+		return ENOENT;
+	cfg->hdr.type = OCM_MSG_CFG;
+	pthread_mutex_lock(&ctxt->mutex);
+	if (!ctxt->ep) {
+		pthread_mutex_unlock(&ctxt->mutex);
+		return EPERM;
+	}
+	rc = zap_send(ctxt->ep, cfg, cfg->len);
+	pthread_mutex_unlock(&ctxt->mutex);
 	return rc;
 }
 

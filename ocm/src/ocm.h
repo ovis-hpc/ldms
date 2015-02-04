@@ -447,6 +447,20 @@ int ocm_event_resp_err(struct ocm_event *e, int code, const char *key,
 int ocm_event_resp_cfg(struct ocm_event *e, ocm_cfg_t cfg);
 
 /**
+ * Notify the receiver about new configuration
+ *
+ * Provider application calls this function to send configuration \c cfg
+ * to the receiver address \c sa without any request.
+ *
+ * \returns 0 on success.
+ * \returns ENOENT if the given \c sa is not in the receiver list,
+ *          EPERM if the receiver is disconnected,
+ *          or zap error code if ocm fails to send \c cfg.
+ */
+int ocm_notify_cfg(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len,
+							ocm_cfg_t cfg);
+
+/**
  * Close and destroy the OCM handle.
  * ::ocm_close() should be called when nobody uses it anymore.
  */
