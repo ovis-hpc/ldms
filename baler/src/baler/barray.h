@@ -190,7 +190,16 @@ int barray_set(struct barray *a, uint32_t idx, void *data)
 	}
 	memcpy(a->ptr[chunk] + (idx & BARRAY_CHUNK_MASK) * a->elm_size,
 		data, a->elm_size);
+	if (a->len <= idx) {
+		a->len = idx + 1;
+	}
 	return 0;
+}
+
+static inline
+size_t barray_get_len(struct barray *a)
+{
+	return a->len;
 }
 
 #endif
