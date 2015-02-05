@@ -879,7 +879,9 @@ __setup_connection(struct z_sock_ep *sep)
 #endif
 	/* Initialize send and recv I/O events */
 	sep->buf_event = bufferevent_socket_new(io_event_loop, sep->sock,
-						BEV_OPT_THREADSAFE);
+						BEV_OPT_THREADSAFE|
+						BEV_OPT_DEFER_CALLBACKS|
+						BEV_OPT_UNLOCK_CALLBACKS);
 	if(!sep->buf_event) {
 		LOG_(sep, "Error initializing buffered I/O event for "
 		     "fd %d.\n", sep->sock);
