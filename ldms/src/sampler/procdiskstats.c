@@ -48,7 +48,7 @@ static char *fieldname[NFIELD] = {
 static ldms_set_t set;
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
-static uint64_t producer_id;
+static char *producer_name;
 
 static long USER_HZ; /* initialized in get_plugin() */
 static struct timeval _tv[2] = {0};
@@ -235,11 +235,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (!schema)
 		return ENOMEM;
 
-	attr = "producer_id";
-	value = av_value(avl, attr);
-	if (value)
-		producer_id = strtol(value, NULL, 0);
-	else
+	attr = "producer_name";
+	producer_name = av_value(avl, attr);
+	if (!producer_name)
 		goto enoent;
 
 	rc = config_add_disks(avl, schema);
@@ -256,7 +254,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("procdiskstats: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_id(set, producer_id);
+	ldms_set_producer_name(set, producer_name);
 	ldms_destroy_schema(schema);
 	return 0;
 enoent:
@@ -390,8 +388,8 @@ static void term(void)
 
 static const char *usage(void)
 {
-        return  "config name=procdiskstats producer_id=<producer_id> instance_name=<setname> device=<device>\n"
-                "    producer_id     The producer id value.\n"
+        return  "config name=procdiskstats producer_name=<producer_name> instance_name=<setname> device=<device>\n"
+                "    producer_name     The producer id value.\n"
                 "    setname         The set name.\n"
                 "    device	         The comma-separated list of devices\n";
 }

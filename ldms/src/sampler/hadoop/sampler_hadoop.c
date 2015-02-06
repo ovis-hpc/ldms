@@ -167,7 +167,8 @@ static struct hadoop_metric *create_hadoop_metric(struct hadoop_set *hdset,
 }
 
 
-int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t producer_id)
+int create_hadoop_set(char *fname, struct hadoop_set *hdset,
+				const char *producer_name)
 {
 	int rc = 0;
 	ldms_log_fn_t msglog = hdset->msglog;
@@ -240,7 +241,12 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t producer_i
 		hmetric = TAILQ_FIRST(&metric_queue);
 	}
 	fclose(f);
-	ldms_set_producer_id(hdset->set, producer_id);
+	rc = ldms_set_producer_name(hdset->set, producer_name);
+	if (rc) {
+		msglog("%s: producer_name is too long\n", hdset->daemon);
+		goto err_2;
+	}
+
 	return 0;
 
 err_2:

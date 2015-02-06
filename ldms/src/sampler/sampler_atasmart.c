@@ -99,7 +99,7 @@ struct atatsmart_set_size {
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static uint64_t producer_id;
+static char *producer_name;
 static char **disknames;
 static int num_disks;
 
@@ -259,9 +259,9 @@ err:
 
 static const char *usage(void)
 {
-	return  "config name=sampler_atasmart producer_id=<producer_id> \n"
+	return  "config name=sampler_atasmart producer_name=<producer_name> \n"
 		"	instance_name=<instance_name> disks=<disknames>\n"
-		"    producer_id       The producer id value.\n"
+		"    producer_name       The producer id value.\n"
 		"    instance_name     The set name.\n"
 		"    disknames         The comma-separated list of disk names,\n"
 		"		       e.g., /dev/sda,/dev/sda1.\n";
@@ -270,9 +270,9 @@ static const char *usage(void)
 /**
  * \brief Configuration
  *
- * config name=sampler_atasmart producer_id=<producer_id>
+ * config name=sampler_atasmart producer_name=<producer_name>
  * 	  instance_name=<instance_name> disks=<disknames>
- *     producer_id     The producer id value.
+ *     producer_name     The producer id value.
  *     instance_name     The set name.
  *     disknames   The comma-separated list of disk names,
  *     		   e.g., /dev/sda,/dev/sda1.
@@ -306,12 +306,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return -1;
 	}
 
-	value = av_value(avl, "producer_id");
-	if (!value) {
-		msglog("atasmart: missing producer_id.\n");
+	producer_name = av_value(avl, "producer_name");
+	if (!producer_name) {
+		msglog("atasmart: missing producer_name.\n");
 		return ENOENT;
 	}
-	producer_id = strtoull(value, NULL, 0);
 
 	value = av_value(avl, "instance_name");
 	if (!value) {
@@ -321,7 +320,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc = create_metric_set(value);
 	if (rc)
 		return rc;
-	ldms_set_producer_id(set, producer_id);
+	ldms_set_producer_name(set, producer_name);
 	return 0;
 }
 

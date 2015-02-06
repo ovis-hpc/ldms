@@ -72,7 +72,7 @@ static char *procfile = PROC_FILE;
 static ldms_set_t set;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static uint64_t producer_id;
+static uint64_t producer_name;
 
 static ldms_set_t get_set()
 {
@@ -145,7 +145,7 @@ static int create_metric_set(const char *path)
 	if (rc)
 		goto err;
 	for (rc = 0; rc < ldms_get_metric_count(schema); rc++)
-		ldms_set_midx_udata(set, rc, producer_id);
+		ldms_set_midx_udata(set, rc, producer_name);
 	ldms_destroy_schema(schema);
 	return 0;
 
@@ -158,9 +158,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
-	value = av_value(avl, "producer_id");
+	value = av_value(avl, "producer_name");
 	if (value)
-		producer_id = strtol(value, NULL, 0);
+		producer_name = strtol(value, NULL, 0);
 
 	value = av_value(avl, "instance_name");
 	if (value)
@@ -219,8 +219,8 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=geminfo producer_id=<producer_id> instance_name=<instance_name>\n"
-		"    producer_id     The producer id value.\n"
+	return  "config name=geminfo producer_name=<producer_name> instance_name=<instance_name>\n"
+		"    producer_name     The producer id value.\n"
 		"    instance_name     The set name.\n";
 }
 
