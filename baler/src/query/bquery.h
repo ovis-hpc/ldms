@@ -244,6 +244,53 @@ int bq_query_r(struct bquery *q, struct bdstr *bdstr);
 int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz);
 
 /**
+ * Move the query reference to the next entry.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_next_entry(struct bquery *q);
+
+/**
+ * Move the query reference to the previous entry.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_prev_entry(struct bquery *q);
+
+/**
+ * Go to the first entry for the query.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_first_entry(struct bquery *q);
+
+/**
+ * Go to the last entry for the query.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_last_entry(struct bquery *q);
+
+/**
+ * Print the entry to \c bdstr.
+ *
+ * If \c bdstr is NULL, a new ::bdstr is allocated.
+ *
+ * \retval str If \c bdstr is NULL, the caller owns the returned \c str (it is a
+ *             detached ::bdstr that is automatically allocated). If \c bdstr is
+ *             given, the returned \c str is the C-string inside ::bdstr
+ *             structure.
+ * \retval NULL If there is an error. In this case, errno is appropriately set
+ *              to describe the detail of the error.
+ *
+ */
+char *bq_entry_print(struct bquery *q, struct bdstr *bdstr);
+
+/**
  * \param store The store handle.
  * \returns on success, all patterns in the \c store. Patterns are separated
  * with '\\n'. The returned string is automatically allocated, and the caller is
@@ -308,6 +355,25 @@ struct btkn_store *bq_get_tkn_store(struct bq_store *store);
  */
 struct bptn_store *bq_get_ptn_store(struct bq_store *store);
 
+/**
+ * Get the field of second (time) of the current query entry.
+ */
+uint32_t bq_entry_get_sec(struct bquery *q);
+
+/**
+ * Get usec (micro-second) part of the current query entry.
+ */
+uint32_t bq_entry_get_usec(struct bquery *q);
+
+/**
+ * Get comp_id part of the current query entry.
+ */
+uint32_t bq_entry_get_comp_id(struct bquery *q);
+
+/**
+ * Get Baler-internal format message of the current query entry.
+ */
+const struct bmsg *bq_entry_get_msg(struct bquery *q);
 #endif
 
 /** \} */

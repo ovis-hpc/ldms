@@ -391,7 +391,7 @@ struct bqprint {
  * \return Error code on error.
  */
 int bq_print_msg(struct bquery *q, struct bdstr *bdstr,
-		 struct bmsg *msg)
+		 const struct bmsg *msg)
 {
 	int rc = 0;
 	const struct bstr *ptn;
@@ -402,7 +402,7 @@ int bq_print_msg(struct bquery *q, struct bdstr *bdstr,
 	ptn = bmap_get_bstr(ptn_store->map, msg->ptn_id);
 	if (!ptn)
 		return ENOENT;
-	uint32_t *msg_arg = msg->argv;
+	const uint32_t *msg_arg = msg->argv;
 	const uint32_t *ptn_tkn = ptn->u32str;
 	int len = ptn->blen;
 	int blen;
@@ -695,9 +695,27 @@ static int __bq_open_bsos(struct bquery *q)
 	return 0;
 }
 
+static int __bq_prev_store(struct bquery *q)
+{
+	int rc;
+	sos_iter_t old_itr = q->itr;
+	struct bsos_wrap *old_bsos = q->bsos;
+
+	q->sos_number++;
+	rc = __bq_open_bsos(q);
+
+	if (!rc) {
+		/* clean old stuff */
+		if (old_itr)
+			sos_iter_free(old_itr);
+		if (old_bsos)
+			bsos_wrap_close_free(old_bsos);
+	}
+	return rc;
+}
+
 static int __bq_next_store(struct bquery *q)
 {
-	/* destroy the old store's itr first */
 	int rc;
 	sos_iter_t old_itr = q->itr;
 	struct bsos_wrap *old_bsos = q->bsos;
@@ -714,6 +732,54 @@ static int __bq_next_store(struct bquery *q)
 		if (old_bsos)
 			bsos_wrap_close_free(old_bsos);
 	}
+	return rc;
+}
+
+static int __bq_last_entry(struct bquery *q)
+{
+	int rc = 0;
+
+loop:
+	if (!q->ts_1) {
+		rc = sos_iter_end(q->itr);
+		goto out;
+	}
+
+	sos_attr_t attr = sos_obj_attr_by_id(q->bsos->sos, 0);
+	size_t ksz = attr->attr_size_fn(attr, 0);
+	struct bout_sos_img_key imgkey = {q->ts_0, 0};
+	void *p;
+
+	switch (attr->type) {
+	case SOS_TYPE_UINT32:
+		ksz = 4;
+		p = &imgkey.ts;
+		break;
+	case SOS_TYPE_UINT64:
+		ksz = 8;
+		p = &imgkey;
+		break;
+	default:
+		/* do nothing */ ;
+	}
+	obj_key_t key = obj_key_new(ksz);
+	if (!key) {
+		rc = ENOMEM;
+		goto out;
+	}
+	obj_key_set(key, p, ksz);
+
+	if (0 != sos_iter_seek_inf(q->itr, key)) {
+		rc = ENOENT;
+	}
+	obj_key_delete(key);
+	if (rc == ENOENT) {
+		rc = __bq_next_store(q);
+		if (rc)
+			goto out;
+		goto loop;
+	}
+out:
 	return rc;
 }
 
@@ -784,7 +850,26 @@ static int __get_max_sos_number(const char *sos_path)
 }
 
 /**
- * Move the iterator to the next entry.
+ * Move the sos iterator to the previous entry.
+ */
+static int __bq_prev_entry(struct bquery *q)
+{
+	int rc = 0;
+
+	rc = sos_iter_prev(q->itr);
+	while (rc == ENOENT) {
+		/* try again with the prev store */
+		rc = __bq_prev_store(q);
+		if (rc)
+			goto out;
+		rc = sos_iter_end(q->itr);
+	}
+out:
+	return rc;
+}
+
+/**
+ * Move the sos iterator to the next entry.
  */
 static int __bq_next_entry(struct bquery *q)
 {
@@ -828,7 +913,6 @@ int bq_query_r(struct bquery *q, struct bdstr *bdstr)
 	int len;
 	sos_t msg_sos;
 
-	/* XXX COME BACK HERE */
 	bdstr_reset(bdstr);
 next:
 	rc = __bq_next_entry(q);
@@ -913,6 +997,154 @@ next:
 
 out:
 	return rc;
+}
+
+int bq_next_entry(struct bquery *q)
+{
+	int rc;
+	uint32_t sec, comp_id;
+	const struct bmsg *msg;
+next:
+	rc = __bq_next_entry(q);
+	if (rc)
+		return rc;
+	sec = bq_entry_get_sec(q);
+	if (q->ts_1 && q->ts_1 < sec)
+		return ENOENT;
+	comp_id = bq_entry_get_comp_id(q);
+	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
+		goto next;
+	msg = bq_entry_get_msg(q);
+	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, msg->ptn_id))
+		goto next;
+	return 0;
+}
+
+int bq_prev_entry(struct bquery *q)
+{
+	int rc;
+	uint32_t sec, comp_id;
+	const struct bmsg *msg;
+prev:
+	rc = __bq_prev_entry(q);
+	if (rc)
+		return rc;
+	sec = bq_entry_get_sec(q);
+	if (q->ts_0 &&  sec < q->ts_0)
+		return ENOENT;
+	comp_id = bq_entry_get_comp_id(q);
+	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
+		goto prev;
+	msg = bq_entry_get_msg(q);
+	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, msg->ptn_id))
+		goto prev;
+	return 0;
+}
+
+int bq_first_entry(struct bquery *q)
+{
+	int rc;
+	if (q->bsos) {
+		bsos_wrap_close_free(q->bsos);
+	}
+	q->sos_number = __get_max_sos_number(q->sos_prefix);
+	rc = __bq_open_bsos(q);
+	if (rc) {
+		if (!q->sos_number)
+			goto out;
+		rc = __bq_next_store(q);
+		if (rc)
+			goto out;
+	}
+	rc = __bq_first_entry(q);
+out:
+	return rc;
+}
+
+int bq_last_entry(struct bquery *q)
+{
+	int rc;
+	if (q->bsos) {
+		bsos_wrap_close_free(q->bsos);
+	}
+	q->sos_number = 0;
+	rc = __bq_open_bsos(q);
+	if (rc) {
+		goto out;
+	}
+	rc = __bq_last_entry(q);
+out:
+	return rc;
+}
+
+uint32_t bq_entry_get_sec(struct bquery *q)
+{
+	return sos_obj_attr_get_uint32(q->bsos->sos, SOS_MSG_SEC,
+							sos_iter_obj(q->itr));
+}
+
+uint32_t bq_entry_get_usec(struct bquery *q)
+{
+	return sos_obj_attr_get_uint32(q->bsos->sos, SOS_MSG_USEC,
+							sos_iter_obj(q->itr));
+}
+
+uint32_t bq_entry_get_comp_id(struct bquery *q)
+{
+	return sos_obj_attr_get_uint32(q->bsos->sos, SOS_MSG_COMP_ID,
+							sos_iter_obj(q->itr));
+}
+
+const struct bmsg *bq_entry_get_msg(struct bquery *q)
+{
+	sos_blob_obj_t blob = sos_obj_attr_get(q->bsos->sos, SOS_MSG_MSG,
+							sos_iter_obj(q->itr));
+	return (void*)blob->data;
+}
+
+char *bq_entry_print(struct bquery *q, struct bdstr *bdstr)
+{
+	int detach = 0;
+	int rc = 0;
+	char *ret = NULL;
+	const struct bstr *bstr;
+
+	if (!bdstr) {
+		bdstr = bdstr_new(256);
+		if (!bdstr)
+			return NULL;
+		detach = 1;
+	}
+
+	rc = fmt_msg_prefix(q->formatter, bdstr);
+	if (rc)
+		goto out;
+	rc = fmt_date_fmt(q->formatter, bdstr, bq_entry_get_sec(q));
+	if (rc)
+		goto out;
+	bstr = btkn_store_get_bstr(q->store->cmp_store,
+				bq_entry_get_comp_id(q) + BMAP_ID_BEGIN - 1);
+	if (!bstr)  {
+		rc = ENOENT;
+		goto out;
+	}
+	rc = fmt_host_fmt(q->formatter, bdstr, bstr);
+	if (rc)
+		goto out;
+	rc = bq_print_msg(q, bdstr, bq_entry_get_msg(q));
+	if (rc)
+		goto out;
+	fmt_msg_suffix(q->formatter, bdstr);
+
+	ret = bdstr->str;
+	if (detach) {
+		bdstr_detach_buffer(bdstr);
+		bdstr_free(bdstr);
+	}
+out:
+	if (rc)
+		errno = rc;
+	return ret;
 }
 
 #define STR_SZ 65536
