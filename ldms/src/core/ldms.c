@@ -510,16 +510,20 @@ const char *ldms_get_instance_name(ldms_set_t s)
 	return name->name;
 }
 
-uint64_t ldms_get_producer_id(ldms_set_t s)
+const char *ldms_get_producer_name(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	return sd->set->meta->producer_id;
+	return sd->set->meta->producer_name;
 }
 
-void ldms_set_producer_id(ldms_set_t s, uint64_t id)
+int ldms_set_producer_name(ldms_set_t s, const char *name)
 {
+	if (LDMS_PRODUCER_NAME_MAX < strlen(name))
+		return EINVAL;
+
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	sd->set->meta->producer_id = id;
+	snprintf(sd->set->meta->producer_name, LDMS_PRODUCER_NAME_MAX, name);
+	return 0;
 }
 
 int __ldms_create_set(const char *instance_name,
