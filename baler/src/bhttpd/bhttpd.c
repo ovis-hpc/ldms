@@ -157,6 +157,15 @@ struct bhttpd_work {
 	void *arg;
 };
 
+struct bhttpd_msg_query_session {
+	struct bquery *q;
+	struct event *event;
+	struct timeval last_use;
+	struct bq_formatter *fmt;
+	int first;
+	uint64_t ref;
+};
+
 /***** GLOBAL VARIABLES *****/
 
 char path_buff[PATH_MAX];
@@ -173,6 +182,10 @@ struct evhttp *evhttp;
 struct evhttp_bound_socket *evhttp_socket;
 
 struct bhash *handle_hash;
+pthread_mutex_t query_session_mutex = PTHREAD_MUTEX_INITIALIZER;
+struct bhash *query_session_hash;
+uint32_t query_session_gn;
+struct timeval query_session_timeout = {.tv_sec = 600, .tv_usec = 0};
 
 int N_worker_threads = 1;
 pthread_t *worker_threads;
@@ -469,10 +482,231 @@ cleanup:
 }
 
 static
+void bhttpd_query_expire_cb(evutil_socket_t fd, short what, void *arg);
+
+inline
+const char *bpair_str_value(struct bpair_str_head *head, const char *key)
+{
+	struct bpair_str *kv = bpair_str_search(head, key, NULL);
+	if (kv)
+		return kv->s1;
+	return NULL;
+}
+
+static
+void bhttpd_msg_query_session_destroy(struct bhttpd_msg_query_session *qs)
+{
+	bdebug("destroying session: %lu", (uint64_t)qs);
+	if (qs->event)
+		event_free(qs->event);
+	if (qs->q)
+		bquery_destroy(qs->q);
+	free(qs);
+}
+
+static
+struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_req_ctxt *ctxt)
+{
+	struct bhttpd_msg_query_session *qs;
+	const char *host_ids, *ptn_ids, *ts0, *ts1;
+	struct bpair_str *kv;
+	int rc;
+	qs = calloc(1, sizeof(*qs));
+	if (!qs)
+		return NULL;
+	qs->event = event_new(evbase, -1, EV_READ,
+			bhttpd_query_expire_cb, qs);
+	if (!qs->event) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Not enough memory.");
+		goto err;
+	}
+	host_ids = bpair_str_value(&ctxt->kvlist, "host_ids");
+	ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
+	ts0 = bpair_str_value(&ctxt->kvlist, "ts0");
+	ts1 = bpair_str_value(&ctxt->kvlist, "ts1");
+	qs->q = bquery_create(bq_store, host_ids, ptn_ids, ts0, ts1, 1, ' ', &rc);
+	if (!qs->q) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"msg query creation failed, rc: %d.", rc);
+		goto err;
+	}
+	qs->fmt = bqfmt_json_new();
+	if (!qs->fmt) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Cannot create bqfmt_json, errno: %d.", errno);
+		goto err;
+	}
+
+	bq_set_formatter(qs->q, qs->fmt);
+
+	return qs;
+err:
+
+	bhttpd_msg_query_session_destroy(qs);
+	return NULL;
+}
+
+static
+void bhttpd_query_expire_cb(evutil_socket_t fd, short what, void *arg)
+{
+	struct bhttpd_msg_query_session *qs = arg;
+	uint64_t key = (uint64_t)arg;
+	struct timeval tv, dtv;
+	struct bhash_entry *ent;
+	pthread_mutex_lock(&query_session_mutex);
+	gettimeofday(&tv, NULL);
+	timersub(&tv, &qs->last_use, &dtv);
+	dtv.tv_sec *= 2;
+	if (timercmp(&dtv, &query_session_timeout, <)) {
+		/* This is the case where the client access the query session
+		 * at the very last second. Just do nothing and wait for the
+		 * next timeout event. */
+		pthread_mutex_unlock(&query_session_mutex);
+		return;
+	}
+	ent = bhash_entry_get(query_session_hash, (void*)&key, sizeof(key));
+	if (!ent) {
+		bwarn("Cannot find hash entry %d, in function %s", key, __func__);
+		pthread_mutex_unlock(&query_session_mutex);
+		return;
+	}
+	bhash_entry_remove_free(query_session_hash, ent);
+	pthread_mutex_unlock(&query_session_mutex);
+	bhttpd_msg_query_session_destroy(qs);
+}
+
+static
+int bhttpd_msg_query_session_recover(struct bhttpd_msg_query_session *qs,
+								int is_fwd)
+{
+	int rc = 0;
+	uint64_t ref;
+	int (*begin)(struct bquery *q);
+	int (*step)(struct bquery *q);
+
+	if (is_fwd) {
+		begin = bq_last_entry;
+		step = bq_prev_entry;
+	} else {
+		begin = bq_first_entry;
+		step = bq_next_entry;
+	}
+
+	rc = begin(qs->q);
+	if (rc)
+		return rc;
+
+	while (rc == 0) {
+		ref = bq_entry_get_ref(qs->q);
+		if (ref == qs->ref)
+			break;
+		rc = step(qs->q);
+	}
+
+	return rc;
+}
+
+static
 void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 {
-	/* TODO IMPLEMENT ME */
-	bhttpd_req_ctxt_errprintf(ctxt, HTTP_NOTIMPLEMENTED, "Not implemented.");
+	struct bhttpd_msg_query_session *qs = NULL;
+	struct bdstr *bdstr;
+	struct bhash_entry *ent = NULL;
+	uint64_t session_id = 0;
+	const char *str;
+	int is_fwd = 1;
+	int i, n = 50;
+	int rc;
+
+	bdstr = bdstr_new(256);
+	if (!bdstr) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Out of memory");
+		return;
+	}
+	str = bpair_str_value(&ctxt->kvlist, "n");
+	if (str)
+		n = atoi(str);
+	str = bpair_str_value(&ctxt->kvlist, "dir");
+	if (str && strcmp(str, "bwd") == 0)
+		is_fwd = 0;
+
+	pthread_mutex_lock(&query_session_mutex);
+	str = bpair_str_value(&ctxt->kvlist, "session_id");
+	if (str) {
+		session_id = strtoull(str, NULL, 0);
+		ent = bhash_entry_get(query_session_hash, (void*)&session_id,
+				sizeof(session_id));
+		if (!ent) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Session %lu not found.", session_id);
+			goto out;
+		}
+		qs = (void*)ent->value;
+	}
+	if (!qs) {
+		qs = bhttpd_msg_query_session_create(ctxt);
+		if (!qs) {
+			/* bhttpd_msg_query_session_create() has already
+			 * set the error message. */
+			goto out;
+		}
+		session_id = (uint64_t)qs;
+		ent = bhash_entry_set(query_session_hash, (void*)&session_id,
+				sizeof(session_id), (uint64_t)(void*)qs);
+		if (!ent) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Hash insert failed, errno: %d",
+					errno);
+			goto out;
+		}
+	}
+	/* update last_use */
+	gettimeofday(&qs->last_use, NULL);
+	rc = event_add(qs->event, &query_session_timeout);
+	if (rc) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"event_add() rc: %d, errno: %d", rc, errno);
+		goto out;
+	}
+
+	evbuffer_add_printf(ctxt->evbuffer, "{");
+
+	evbuffer_add_printf(ctxt->evbuffer, "\"session_id\": %lu", session_id);
+
+	evbuffer_add_printf(ctxt->evbuffer, ", \"msgs\": [");
+	for (i = 0; i < n; i++) {
+		if (qs->first) {
+			rc = bq_first_entry(qs->q);
+		} else {
+			if (is_fwd)
+				rc = bq_next_entry(qs->q);
+			else
+				rc = bq_prev_entry(qs->q);
+		}
+		if (rc) {
+			rc = bhttpd_msg_query_session_recover(qs, is_fwd);
+			break;
+		}
+		qs->ref = bq_entry_get_ref(qs->q);
+		str = bq_entry_print(qs->q, bdstr);
+		if (!str) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"bq_entry_print() errno: %d", errno);
+			goto out;
+		}
+		if (i)
+			evbuffer_add_printf(ctxt->evbuffer, ",%s", str);
+		else
+			evbuffer_add_printf(ctxt->evbuffer, "%s", str);
+		bdstr_reset(bdstr);
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "]");
+	evbuffer_add_printf(ctxt->evbuffer, "}");
+
+out:
+	pthread_mutex_unlock(&query_session_mutex);
+	bdstr_free(bdstr);
 }
 
 static
@@ -731,6 +965,7 @@ static
 void init()
 {
 	int rc, i;
+	const char *s;
 
 	set_verbosity(verbosity);
 
@@ -750,6 +985,10 @@ void init()
 		}
 		binfo("Daemonized");
 	}
+
+	s = getenv("BHTTPD_QUERY_SESSION_TIMEOUT");
+	if (s)
+		query_session_timeout.tv_sec = atoi(s);
 
 	open_stores();
 
@@ -779,6 +1018,14 @@ void init()
 		berror("bhash_new()");
 		exit(-1);
 	}
+
+	query_session_hash = bhash_new(4099, 7, NULL);
+	if (!query_session_hash) {
+		berror("bhash_new()");
+		exit(-1);
+	}
+
+	query_session_gn = 0;
 
 	uri_handle_init();
 
