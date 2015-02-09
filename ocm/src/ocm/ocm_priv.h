@@ -118,6 +118,7 @@ struct ocm_msg_hdr {
 		OCM_MSG_UNKNOWN,
 		OCM_MSG_REQ,
 		OCM_MSG_CFG,
+		OCM_MSG_ACK,
 		OCM_MSG_ERR,
 		OCM_MSG_LAST
 	} type;
@@ -137,6 +138,17 @@ struct ocm_err {
 struct ocm_cfg_req {
 	struct ocm_msg_hdr hdr;
 	struct ocm_str key;
+};
+
+/**
+ * OCM receiver can send the acknowledgment upon receiving the configuration
+ * of a key to the OCM provider.
+ */
+struct ocm_cfg_ack {
+	struct ocm_msg_hdr hdr;
+	int code;
+	int len;
+	char data[0]; /**< Format: |key|msg|  */
 };
 
 /**

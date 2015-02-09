@@ -48,18 +48,19 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 #include <stdio.h>
 #include <unistd.h>
-#include <stdint.h>
-#include <stdlib.h>
+
 #include <getopt.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <netdb.h>
 #include <assert.h>
+#include <errno.h>
+
+#include <inttypes.h>
+#include <netdb.h>
 #include <semaphore.h>
 #include "ocm/ocm.h"
+#include "ocm/ocm_priv.h"
 
 const char *short_opt = "?h:p:P:x:";
 struct option long_opt[] = {
@@ -114,7 +115,7 @@ loop:
 	goto loop;
 }
 
-int req_cb(struct ocm_event *e)
+int __process_cfg_req(struct ocm_event *e)
 {
 	const char *key = ocm_cfg_req_key(e->req);
 	if (!host) {
@@ -179,8 +180,7 @@ int req_cb(struct ocm_event *e)
 		struct ocm_cfg_buff *buff2 = ocm_cfg_buff_new(4096, "");
 		ocm_cfg_buff_add_verb(buff2, ""); /* no real verb */
 
-//		for (i = 0; i < 65536; i++) {
-		for (i = 0; i < 10; i++) {
+		for (i = 0; i < 65536; i++) {
 			snprintf(name, sizeof(name), "name%d", i);
 			ocm_value_set(v, OCM_VALUE_UINT64, i);
 			ocm_cfg_buff_add_av(buff2, name, v);
@@ -241,9 +241,38 @@ int req_cb(struct ocm_event *e)
 	ocm_cfg_buff_free(buff);
 }
 
+int server_cb(struct ocm_event *e)
+{
+	const char *err;
+	int errcode;
+	switch (e->type) {
+		case OCM_EVENT_CFG_ACKNOWLEDGED:
+			errcode = ocm_ack_code(e->ack);
+			if (!errcode) {
+				printf("ACK: cfg key '%s' is received.\n",
+						ocm_ack_key(e->ack));
+			} else {
+				printf("ERROR: cfg key '%s': %s\n",
+						ocm_ack_key(e->ack),
+						ocm_ack_msg(e->ack));
+			}
+			break;
+		case OCM_EVENT_CFG_REQUESTED:
+			__process_cfg_req(e);
+			break;
+		case OCM_EVENT_ERROR:
+			err = ocm_err_msg(e->err);
+			printf("ERROR: %s\n", err);
+			break;
+		default:
+			printf("Invalid ocm_event type '%d'\n", e->type);
+			break;
+	}
+}
+
 int __send_update(struct sockaddr *sa, socklen_t sa_len, const char *key)
 {
-	printf("INFO: sending update\n");
+	printf("INFO: sending key '%s'\n", key);
 	struct ocm_cfg_buff *buff = ocm_cfg_buff_new(4096, key);
 	char _buff[4096];
 	char name[128];
@@ -347,17 +376,32 @@ void print_cmd(ocm_cfg_cmd_t cmd, int level)
 int cfg_cb(struct ocm_event *e);
 void cfg_received(struct ocm_event *e)
 {
-	printf("Receiving configuration: %s\n", ocm_cfg_key(e->cfg));
+	int rc;
+	static int is_updated = 0;
+	const char *key = ocm_cfg_key(e->cfg);
+	if (0 == strcmp(key, "update_me")) {
+		if (is_updated) {
+			ocm_event_ack_cfg(e, key, EINVAL, "Already updated.");
+			return;
+		}
+		is_updated = 1;
+	}
+	printf("Receiving configuration: %s\n", key);
 	struct ocm_cfg_cmd_iter cmd_iter;
 	ocm_cfg_cmd_iter_init(&cmd_iter, e->cfg);
 	ocm_cfg_cmd_t cmd;
 	while (ocm_cfg_cmd_iter_next(&cmd_iter, &cmd) == 0) {
 		print_cmd(cmd, 1);
 	}
-	printf("End of Configuration: %s\n", ocm_cfg_key(e->cfg));
-	if (0 == strcmp(ocm_cfg_key(e->cfg), "config_me")) {
+	rc = ocm_event_ack_cfg(e, key, 0, NULL);
+	if (rc) {
+		printf("Failed to acknowledge '%s'\n", key);
+		exit(rc);
+	}
+	printf("End of Configuration: %s\n", key);
+	if (0 == strcmp(key, "config_me")) {
 		printf("Waiting for update\n");
-		int rc = ocm_register(ocm, "update_me", cfg_cb);
+		rc = ocm_register(ocm, "update_me", cfg_cb);
 		assert(rc == 0);
 	}
 }
@@ -425,9 +469,6 @@ void server()
 
 	sleep(5);
 	__send_update(ai->ai_addr, ai->ai_addrlen, "update_me");
-	__send_update(ai->ai_addr, ai->ai_addrlen, "update_me");
-	sleep(5);
-	__send_update(ai->ai_addr, ai->ai_addrlen, "update_me");
 	freeaddrinfo(ai);
 
 	sem_wait(&done); /* run forever */
@@ -441,7 +482,7 @@ int main(int argc, char **argv)
 	sem_init(&done, 0, 0);
 
 	handle_arg(argc, argv);
-	ocm = ocm_create(xprt, PORT, req_cb, NULL);
+	ocm = ocm_create(xprt, PORT, server_cb, NULL);
 	if (!ocm) {
 		printf("Cannot create ocm.\n");
 		exit(-1);

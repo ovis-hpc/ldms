@@ -453,6 +453,12 @@ void __ocm_recv_complete(zap_ep_t ep, struct ocm_msg_hdr *hdr, struct ocm_ep_ctx
 			cb = rcb->cb;
 		}
 		break;
+	case OCM_MSG_ACK:
+		oev->type = OCM_EVENT_CFG_ACKNOWLEDGED;
+		oev->ack = (void *)hdr;
+		key = (void *) oev->ack->data;
+		cb = ocm->cb;
+		break;
 	case OCM_MSG_ERR:
 		oev->type = OCM_EVENT_ERROR;
 		oev->err = (void*)hdr;
@@ -711,7 +717,9 @@ int ocm_event_resp_err(struct ocm_event *e, int code, const char *key,
 				const char *emsg)
 {
 	zap_err_t zerr;
-	char buff[1024];
+	char *buff = malloc(OCM_MSG_MAX_LEN);
+	if (!buff)
+		return ENOMEM;
 	struct ocm_err *err = (void*)buff;
 	err->hdr.type = OCM_MSG_ERR;
 	err->code = code;
@@ -719,10 +727,11 @@ int ocm_event_resp_err(struct ocm_event *e, int code, const char *key,
 	__ocm_str_set(okey, key);
 	int key_sz = ocm_str_size(okey);
 	struct ocm_str *omsg = (void*)err->data + key_sz;
-	__ocm_strn_set(omsg, emsg, 1024 - ((void*)omsg - (void*)buff));
+	__ocm_strn_set(omsg, emsg, OCM_MSG_MAX_LEN - ((void*)omsg - (void*)buff));
 	err->len = sizeof(*err) + key_sz + ocm_str_size(omsg);
 	zerr = zap_send(e->ep, err, err->len);
 	free(e);
+	free(buff);
 	if (zerr)
 		return zerr;
 	return 0;
@@ -734,6 +743,34 @@ int ocm_event_resp_cfg(struct ocm_event *e, struct ocm_cfg *cfg)
 	cfg->hdr.type = OCM_MSG_CFG;
 	rc = zap_send(e->ep, cfg, cfg->len);
 	free(e);
+	return rc;
+}
+
+int ocm_event_ack_cfg(struct ocm_event *e, const char *key,
+				int code, const char *emsg)
+{
+	int rc = 0;
+	char *buff = malloc(OCM_MSG_MAX_LEN);
+	if (!buff)
+		return ENOMEM;
+	struct ocm_cfg_ack *ack = (void *) buff;
+	ack->hdr.type = OCM_MSG_ACK;
+	ack->code = code;
+	struct ocm_str *okey = (void *) ack->data;
+	__ocm_str_set(okey, key);
+	int key_sz = ocm_str_size(okey);
+	struct ocm_str *omsg = (void *) ack->data + key_sz;
+	if (emsg) {
+		__ocm_strn_set(omsg, emsg,
+				OCM_MSG_MAX_LEN - ((void*)omsg - (void*)buff));
+	} else {
+		__ocm_str_set(omsg, "\0");
+	}
+
+	ack->len = sizeof(*ack) + key_sz + ocm_str_size(omsg);
+	rc = zap_send(e->ep, ack, ack->len);
+	free(e);
+	free(buff);
 	return rc;
 }
 
@@ -770,6 +807,23 @@ const char *ocm_err_msg(const ocm_err_t e)
 int ocm_err_code(const ocm_err_t e)
 {
 	return e->code;
+}
+
+int ocm_ack_code(const ocm_cfg_ack_t ack)
+{
+	return ack->code;
+}
+
+const char *ocm_ack_key(const ocm_cfg_ack_t ack)
+{
+	return ((struct ocm_str *)ack->data)->str;
+}
+
+const char *ocm_ack_msg(const ocm_cfg_ack_t ack)
+{
+	struct ocm_str *key = (void *)ack->data;
+	int key_sz = ocm_str_size(key);
+	return ((struct ocm_str *)(ack->data + key_sz))->str;
 }
 
 const char *ocm_cfg_req_key(ocm_cfg_req_t req)

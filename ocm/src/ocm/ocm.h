@@ -95,12 +95,14 @@
 #include <errno.h>
 
 #define OCM_DEFAULT_PORT 54321
+#define OCM_MSG_MAX_LEN 1024
 
 typedef struct ocm * ocm_t;
 typedef struct ocm_err * ocm_err_t;
 typedef struct ocm_cfg_cmd * ocm_cfg_cmd_t;
 typedef struct ocm_cfg * ocm_cfg_t;
 typedef struct ocm_cfg_req * ocm_cfg_req_t;
+typedef struct ocm_cfg_ack *ocm_cfg_ack_t;
 
 /**
  * Get \c key from error \c e.
@@ -116,6 +118,31 @@ const char *ocm_err_msg(const ocm_err_t e);
  * Get error code from error \c e.
  */
 int ocm_err_code(const ocm_err_t e);
+
+/**
+ * Get the code from acknowledgment \c ack
+ *
+ * OCM provider could call this to get the code reported back by
+ * an OCM receiver upon receiving the configuration of a key.
+ *
+ */
+int ocm_ack_code(const ocm_cfg_ack_t ack);
+
+/**
+ * Get the key of the configuration acknowledged by an OCM receiver.
+ *
+ * OCM provider could call this to get the configuration key acknowledged by
+ * an OCM receiver.
+ */
+const char *ocm_ack_key(const ocm_cfg_ack_t ack);
+
+/**
+ * Get the acknowledgment message
+ *
+ * OCM provider could call this to get the message reported back
+ * by an OCM receiver upon receiving the configuration of a key.
+ */
+const char *ocm_ack_msg(const ocm_cfg_ack_t ack);
 
 /**
  * OCM String.
@@ -255,6 +282,7 @@ typedef enum ocm_event_type {
 	OCM_EVENT_ERROR,
 	OCM_EVENT_CFG_REQUESTED,
 	OCM_EVENT_CFG_RECEIVED,
+	OCM_EVENT_CFG_ACKNOWLEDGED,
 	OCM_EVENT_LAST
 } ocm_event_type_t;
 
@@ -268,6 +296,7 @@ struct ocm_event {
 	union {
 		ocm_cfg_req_t req;
 		ocm_cfg_t cfg;
+		ocm_cfg_ack_t ack;
 		ocm_err_t err;
 	};
 };
@@ -276,6 +305,11 @@ struct ocm_event {
  * Get the key of the request \c cfg.
  */
 const char *ocm_cfg_req_key(ocm_cfg_req_t req);
+
+/**
+ * Get the key of the acknowledgment \c ack.
+ */
+const char *ocm_cfg_ack_key(ocm_cfg_ack_t ack);
 
 /**
  * Get the key of the configuration \c cfg.
@@ -446,6 +480,16 @@ int ocm_event_resp_err(struct ocm_event *e, int code, const char *key,
  *
  */
 int ocm_event_resp_cfg(struct ocm_event *e, ocm_cfg_t cfg);
+
+/**
+ * Acknowledge the configuration of the key \c key in the OCM event \c e.
+ *
+ * OCM receiver calls this function to acknowledge the configuration of the key
+ * \c key sent with the OCM event \c e. It could give back the code \c code
+ * and the message \c msg to the OCM provider.
+ */
+int ocm_event_ack_cfg(struct ocm_event *e, const char *key,
+				int code, const char *msg);
 
 /**
  * Notify the receiver about new configuration
