@@ -1,5 +1,10 @@
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = src scripts swig
+SUBDIRS = src
+
+if ENABLE_SWIG
+SUBDIRS += swig
+endif
+
 if ENABLE_ETC
 SUBDIRS += etc
 endif
