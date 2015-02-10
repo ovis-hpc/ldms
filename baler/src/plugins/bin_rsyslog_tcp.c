@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -79,14 +79,24 @@
  * Pre-determined these values are quicker than repeatedly calling mktime().
  * This table is initialized in ::init_once().
  */
+static
 time_t ts_mdh[12][32][24];
+
+/**
+ * ts_ym[YEAR - 1900][MONTH - 1] contain timestamp of the beginning of the first
+ * day of MONTH, YEAR. This is good from 1970 through 2199.
+ */
+static
+time_t ts_ym[300][12] = {0};
 
 /**
  * This table determine if a characcter is a delimiter or not.
  * This is also initialized in ::init_once().
  */
+static
 char is_delim[256];
 
+static
 char *delim = " \t,.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?";
 
 typedef enum {
@@ -116,9 +126,16 @@ struct conn_ctxt {
  * Function for freeing connection context.
  * \param ctxt The context to be freed.
  */
+static
 void conn_ctxt_free(struct conn_ctxt *ctxt)
 {
 	free(ctxt);
+}
+
+static inline
+time_t __get_utc_ts(int yyyy, int mm, int dd, int HH, int MM, int SS)
+{
+	return ts_ym[yyyy-1900][mm-1] + (3600*24)*dd + 3600*HH + 60*MM + SS;
 }
 
 /**
@@ -189,7 +206,7 @@ int __month3(char *s)
  * \return 0 on success.
  * \return Error number on error.
  */
-inline
+static inline
 int get_int(char **sptr, int *iptr)
 {
 	char *s = *sptr;
@@ -216,6 +233,7 @@ int get_int(char **sptr, int *iptr)
  * \return A pointer to ::bstr containing the token, on success.
  * \return NULL on error.
  */
+static
 struct bstr* get_host(char **sptr)
 {
 	char *s = *sptr;
@@ -239,6 +257,7 @@ struct bstr* get_host(char **sptr)
  * \return The input parameter \a bstr (to keep it consistent to ::get_host()).
  * \return NULL if \a bstr->blen cannot hold the entire host token.
  */
+static
 struct bstr* get_host_r(char **sptr, struct bstr *bstr)
 {
 	char *s = *sptr;
@@ -254,29 +273,9 @@ struct bstr* get_host_r(char **sptr, struct bstr *bstr)
 	return bstr;
 }
 
-/**
- * Parse message header.
- * \param str The ::bstr that contain original message.
- * \param[out] d The ::binq_data structure to contain parsed header information.
- * \return -1 on error.
- * \return Index \a i of \a str->cstr such that \a str->cstr[0..i-1] contains
- * 	message header information (e.g. Date, Time and hostname). The rest
- * 	(\a str->cstr[i..n]) is the message part, which also includes a leading
- * 	white space. In other words, \a i is the index next to the last index
- * 	that this function processed.
- */
-int parse_msg_hdr(struct bstr *str, struct binq_data *d)
+static
+int parse_msg_hdr_0(struct bstr *str, char *s, struct binq_data *d)
 {
-	char *s = str->cstr;
-	/* Expecting '<###>' first. */
-	if (*(s++) != '<')
-		return -1;
-	while ('0'<=*s && *s<='9') {
-		s++;
-	}
-	if (*(s++) != '>')
-		return -1;
-
 	int M, D, hh, mm, ss;
 	/* Month */
 	M = __month3(s);
@@ -333,6 +332,100 @@ int parse_msg_hdr(struct bstr *str, struct binq_data *d)
 	return s - str->cstr;
 }
 
+static
+int parse_msg_hdr_1(struct bstr *str, char *s, struct binq_data *d)
+{
+	/*
+	 * s is expected to point at TIMESTAMP part of the rsyslog format
+	 * ver 1 (see RFC5424 https://tools.ietf.org/html/rfc5424#section-6).
+	 *
+	 * Eventhough the header part in RFC5424 has more than TIMESTAMP and
+	 * HOSTNAME, baler will care only TIMESTAMP and HOSTNAME. The rest of
+	 * the header is treated as a part of the message.
+	 */
+
+	/* FULL-DATE T TIME */
+	int dd,mm,yyyy;
+	int HH,MM,SS,US = 0, TZH, TZM;
+	int n, len;
+	n = sscanf(s, "%d-%d-%dT%d:%d:%d%n.%d%n", &yyyy, &mm, &dd, &HH, &MM,
+							&SS, &len, &US, &len);
+	if (n < 6) {
+		bwarn("Date-time parse error for message: %.*s", str->blen, str->cstr);
+		errno = EINVAL;
+		return -1;
+	}
+	/* Treat local wallclock as UTC wallclock, and adjust it later. */
+	d->tv.tv_sec = __get_utc_ts(yyyy, mm, dd, HH, MM, SS);
+	d->tv.tv_usec = US;
+	s += len;
+	switch (*s) {
+	case 'Z':
+		TZH = TZM = 0;
+		s++;
+		break;
+	case '+':
+	case '-':
+		n = sscanf(s, "%d:%d%n", &TZH, &TZM, &len);
+		if (n != 2) {
+			bwarn("timezone parse error, msg: %.*s", str->blen, str->cstr);
+		errno = EINVAL;
+			return -1;
+		}
+		s += len;
+		break;
+	default:
+		bwarn("timezone parse error, msg: %.*s", str->blen, str->cstr);
+		errno = EINVAL;
+		return -1;
+	}
+	/* adjust to UTC time */
+	d->tv.tv_sec -= 3600 * TZH;
+	d->tv.tv_sec -= 60 * TZM;
+
+	/* expecting space */
+	if (*s++ != ' ')
+		return -1;
+
+	/* hostname */
+	struct bstr *host;
+	host = get_host(&s);
+	if (!host)
+		return -1;
+	d->hostname = host;
+
+	return s - str->cstr;
+}
+
+/**
+ * Parse message header.
+ * \param str The ::bstr that contain original message.
+ * \param[out] d The ::binq_data structure to contain parsed header information.
+ * \return -1 on error.
+ * \return Index \a i of \a str->cstr such that \a str->cstr[0..i-1] contains
+ * 	message header information (e.g. Date, Time and hostname). The rest
+ * 	(\a str->cstr[i..n]) is the message part, which also includes a leading
+ * 	white space. In other words, \a i is the index next to the last index
+ * 	that this function processed.
+ */
+static
+int parse_msg_hdr(struct bstr *str, struct binq_data *d)
+{
+	char *s = str->cstr;
+	/* Expecting '<###>' first. */
+	if (*(s++) != '<')
+		return -1;
+	while ('0'<=*s && *s<='9') {
+		s++;
+	}
+	if (*(s++) != '>')
+		return -1;
+	if (*s == '1')
+		return parse_msg_hdr_1(str, s+2, d);
+	/* If not version 1, assumes old format */
+	return parse_msg_hdr_0(str, s, d);
+}
+
 /**
  * Extract the first token from \a *s. This function extract the first token and
  * create ::bstr_list_entry structure for the token and return it.
@@ -341,6 +434,7 @@ int parse_msg_hdr(struct bstr *str, struct binq_data *d)
  * \return A pointer to ::bstr_list_entry on success.
  * \return NULL on error.
  */
+static
 struct bstr_list_entry* get_token(char **s)
 {
 	struct bstr_list_entry *ent;
@@ -371,11 +465,13 @@ out:
  * \return NULL on error.
  * \return A pointer to ::bwq_entry on success.
  */
+static
 struct bwq_entry* prepare_bwq_entry(struct bstr *s)
 {
 	struct bwq_entry *qent = calloc(1, sizeof(*qent));
 	if (!qent)
 		goto err0;
+	bdebug("rsyslog: %.*s", s->blen, s->cstr);
 	struct binq_data *d = &qent->data.in;
 	/* First, handle the header part */
 	int midx = parse_msg_hdr(s, d);
@@ -420,6 +516,7 @@ err0:
  * \param bev The bufferevent object.
  * \param arg Pointer to ::conn_ctxt.
  */
+static
 void read_cb(struct bufferevent *bev, void *arg)
 {
 	struct conn_ctxt *cctxt = arg;
@@ -458,6 +555,7 @@ loop:
  * \param events The events.
  * \param arg The pointer to connection context ::conn_ctxt.
  */
+static
 void event_cb(struct bufferevent *bev, short events, void *arg)
 {
 	if (events & BEV_EVENT_ERROR) {
@@ -479,6 +577,7 @@ void event_cb(struct bufferevent *bev, short events, void *arg)
  * \param len Length of \a addr
  * \param arg Pointer to plugin instance.
  */
+static
 void conn_cb(struct evconnlistener *listener, evutil_socket_t sock,
 		struct sockaddr *addr, int len, void *arg)
 {
@@ -500,6 +599,7 @@ void conn_cb(struct evconnlistener *listener, evutil_socket_t sock,
  * \return (abuse) errno if there are some error.
  * \note This is a thread routine.
  */
+static
 void* rsyslog_tcp_listen(void *arg)
 {
 	int64_t rc = 0;
@@ -548,6 +648,7 @@ err0:
  * \return errno on error.
  * \note Now only accept 'port' for rsyslog_tcp plugin.
  */
+static
 int plugin_config(struct bplugin *this, struct bpair_str_head *arg_head)
 {
 	struct bpair_str *bpstr;
@@ -568,6 +669,7 @@ int plugin_config(struct bplugin *this, struct bpair_str_head *arg_head)
  * \return 0 on success.
  * \return errno on error.
  */
+static
 int plugin_start(struct bplugin *this)
 {
 	struct plugin_ctxt *ctxt = this->context;
@@ -583,6 +685,7 @@ int plugin_start(struct bplugin *this)
  * \return 0 on success.
  * \return errno on error.
  */
+static
 int plugin_stop(struct bplugin *this)
 {
 	struct plugin_ctxt *ctxt = this->context;
@@ -595,6 +698,7 @@ int plugin_stop(struct bplugin *this)
  * \return 0 on success.
  * \note Now only returns 0, but the errors will be logged.
  */
+static
 int plugin_free(struct bplugin *this)
 {
 	/* If context is not null, meaning that the plugin is running,
@@ -615,9 +719,34 @@ int plugin_free(struct bplugin *this)
 /**
  * Global variable flag for ::init_once() function.
  */
+static
 int __once = 0;
 
+static
 pthread_mutex_t __once_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/*
+ * This function populate ::ts_ym global variable.
+ */
+static
+void init_ts_ym()
+{
+	/* days of previous month */
+	static int dpm[12] = {31, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30};
+	int yyyy, mm, i;
+	int Y;
+	for (i = 70*12+1; i < (300*12); i++) {
+		mm = i % 12;
+		yyyy = i / 12;
+		Y = 1900 + yyyy;
+		ts_ym[yyyy][mm] = ts_ym[yyyy][mm-1] + dpm[mm]*24*60*60;
+		if (mm == 2 && (Y % 4 == 0) &&
+				((Y % 100 != 0) || (Y % 400 == 0))) {
+			/* leap year: add Feb 29 before Mar 1. */
+			ts_ym[yyyy][mm] += 24*60*60;
+		}
+	}
+}
 
 /**
  * This function will initialize global variable (but local to the plugin),
@@ -625,6 +754,7 @@ pthread_mutex_t __once_mutex = PTHREAD_MUTEX_INITIALIZER;
  * \return -1 on error.
  * \return 0 on success.
  */
+static
 int init_once()
 {
 	int rc = 0;
@@ -657,6 +787,8 @@ int init_once()
 			}
 		}
 	}
+
+	init_ts_ym();
 
 	bzero(is_delim, 256);
 	int i;
@@ -692,6 +824,7 @@ struct bplugin* create_plugin_instance()
 	return p;
 }
 
+static
 char* ver()
 {
 	binfo("%s", "1.1.1.1");
