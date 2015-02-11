@@ -117,6 +117,7 @@ static inline int ods_bkt(ods_t ods, size_t sz)
 	size_t bkt_sz;
 	int bkt = 0;
 	for (bkt_sz = ODS_GRAIN_SIZE; sz > bkt_sz; bkt_sz <<= 1, bkt++);
+	assert(bkt < (ODS_PAGE_SHIFT - ODS_GRAIN_SHIFT));
 	return bkt;
 }
 
@@ -546,7 +547,7 @@ static void *alloc_blk(ods_t ods, size_t sz)
 
 void *ods_alloc(ods_t ods, size_t sz)
 {
-	if (sz < ODS_PAGE_SIZE)
+	if (sz < (ODS_PAGE_SIZE >> 1))
 		return alloc_blk(ods, sz);
 	return alloc_pages(ods, sz, -1);
 }
