@@ -1,0 +1,327 @@
+#!/bin/bash 
+#
+# ldmsd		Start up the ldms server daemon
+#
+# chkconfig: 2345 98 98
+# description: ldmsd is a daemon for data collection using plugins
+#              and ldmsd to ldmsd communication 
+#
+# processname: ldmsd
+# pidfile: /var/run/ldmsd.pid
+
+### BEGIN INIT INFO
+# Provides: ldmsd
+# Required-Start: $local_fs $network $syslog
+# Required-Stop: $local_fs $syslog
+# Should-Start: $syslog
+# Should-Stop: $network $syslog
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 2 6
+# Short-Description: Start up the local ldmsd daemon
+# Description: ldmsd is a daemon for data collection using plugins
+#              and ldmsd to ldmsd communication      
+### END INIT INFO
+
+# source function library
+. /etc/init.d/functions
+if [ -f /etc/sysconfig/ldmsd.conf ]; then
+    . /etc/sysconfig/ldmsd.conf
+else
+    echo -n $"No /etc/sysconfig/ldmsd.conf found:"
+    failure
+    echo
+    exit
+fi
+
+if [ -z $LDMSD ]; then
+    echo -n >&2 "$0: "LDMSD" not defined. Exiting"
+    failure
+    echo
+    exit
+fi
+[ -x $LDMSD ] || (echo daemon $LDMSD is missing ; exit 5 )
+
+RETVAL=0
+prog="ldmsd"
+pidfile=/var/run/ldmsd.pid
+lockfile=/var/lock/subsys/$prog
+
+# Define how much memory to allocate to aggregator metric sets
+AGG_MEM=1000M
+
+# Define how many threads to allocate to data collection
+AGG_NUM_PROCS=12
+
+# Define how many threads to allocate to connection setup
+AGG_CONN_THREADS=1
+
+# Define name of directory for ldmsctl sockets (used for ldmsd configuration)
+PROGCTL=ldmsctl
+
+# Initialize flags
+AGG_FLAGS=
+VERBOSE=
+HOWKILL=
+AGGREGATOR=
+AGG_STORE=
+TARGET=
+
+ARG=$1
+
+initusage()
+{
+	echo $"Usage: $0 {start|stop|restart|status} [flags]
+        Additional flags: "
+        cat << EOT >&2 
+[-v] [-A] [-a] [-S] [-p monitored_platform_name] [-m aggregator_megabytes] [-n aggregator_num_procs] [-s socket] [-t target_aggregator]
+-v  verbose
+-a  flag for killing everything with matching names, not just pidfiles (not fully implemented)
+-A  daemon is an aggregator also
+-S  daemon is a store also
+-t  this aggregator targets one particular aggregator (default is all)
+EOT
+echo change seen
+}
+
+arg1=$1
+shift
+while getopts "vAaSp:m:n:s:t:" opt
+do
+    case "$opt" in
+      v)  VERBOSE="-v";;
+      A)  AGGREGATOR="-A";;
+      a)  HOWKILL="-a";;
+      m)  AGG_MEM="$OPTARG";;
+      n)  AGG_NUM_PROCS="$OPTARG";;
+      S)  AGG_STORE="-S";;
+      p)  PLATNAME=$OPTARG ;;
+      s)  SOCKET=$OPTARG ;;
+      t)  TARGET=$OPTARG ;;
+      :)  echo "Option -$OPTARG requires an argument" ;;
+      \?)       # unknown flag
+        initusage
+        exit 1;;
+    esac
+done
+shift `expr $OPTIND - 1`
+#AGG_FLAGS="-m $AGG_MEM -P $AGG_NUM_PROCS";;
+
+PROGCTL=ldmsctl
+
+echoq()
+{
+        if [[ $VERBOSE != "-v" ]]; then
+                return;
+        fi
+        echo $@;
+}
+
+runlevel=$(set -- $(runlevel); eval "echo \$$#" )
+
+start()
+{
+        export LD_LIBRARY_PATH=$LDMS_LIB_PATH:$LIBEVENT_LIB_PATH:$LD_LIBRARY_PATH
+        export LDMS_XPRT_LIBPATH=$LDMS_PLUGIN_PATH
+        export LDMSD_PLUGIN_LIBPATH=$LDMS_PLUGIN_PATH
+        export RDMAV_FORK_SAFE=1
+
+	[ -x $LDMSD ] || exit 5
+	ulimit -n $NUM_OPEN_FD
+
+        if [[ !(-z $LDMSD_LOCAL_SOCK_DIR) ]]; then
+                test -d $LDMSD_LOCAL_SOCK_DIR || mkdir -p $LDMSD_LOCAL_SOCK_DIR
+                rm -f $LDMSD_LOCAL_SOCK_DIR/*
+		sleep 1
+        else
+                echo -n >&2 "$0: \"$LDMSD_LOCAL_SOCK_DIR\" not defined. Exiting"
+                failure
+                echo
+                exit
+        fi
+
+	if [[ -z $COMPONENT_ID ]]; then
+		echo "No COMPONENT_ID defined... Exiting"
+		failure
+		echo
+		exit
+	fi
+
+	# Close file descriptor for standard input. If not pdsh will hang
+	exec 0>&- # close stdin
+
+	echo -n $"Starting $prog: "
+	if [[ $AGGREGATOR != "-A" ]]; then
+	        if [[ -z $NODE_LDMSD_LOG_PATH ]]; then
+			echoq "$LDMSD -x $NODE_LDMSD_TRANSPORT:$NODE_SOCKET -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -q QUIET  > /dev/null 2>&1"
+			$LDMSD -x $NODE_LDMSD_TRANSPORT:$NODE_SOCKET -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -q QUIET > /dev/null 2>&1
+		else
+			echoq "$LDMSD -x $NODE_LDMSD_TRANSPORT:$NODE_SOCKET -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -l $NODE_LDMSD_LOG_PATH/${COMPONENT_ID}_${PLATNAME} > /dev/null 2>&1"
+			test -d $NODE_LDMSD_LOG_PATH || echoq "Error: Logfile directory $NODE_LDMSD_LOG_PATH does not exist or is not a directory"
+			$LDMSD -x $NODE_LDMSD_TRANSPORT:$NODE_SOCKET -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -l $NODE_LDMSD_LOG_PATH/${COMPONENT_ID}_${PLATNAME} > /dev/null 2>&1
+#			valgrind -v --log-file=/ascldap/users/brandt/Source/vg --trace-children=yes $LDMSD -F -x $NODE_LDMSD_TRANSPORT:$NODE_SOCKET -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -l $NODE_LDMSD_LOG_PATH/${COMPONENT_ID}_${PLATNAME} > /dev/null 2>&1
+		fi
+	else
+		if [[ -z $AGG_LDMSD_LOG_PATH ]]; then
+			echoq "$LDMSD -x $AGG_LDMSD_TRANSPORT:$AGG_SOCKET -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -q QUIET  > /dev/null 2>&1"
+			$LDMSD -x $AGG_LDMSD_TRANSPORT:$AGG_SOCKET -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -q QUIET  > /dev/null 2>&1
+		else
+			echoq "$LDMSD -x $AGG_LDMSD_TRANSPORT:$AGG_SOCKET -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -l $AGG_LDMSD_LOG_PATH/${COMPONENT_ID}_${PLATNAME} > /dev/null 2>&1"
+			test -d $AGG_LDMSD_LOG_PATH || echo "Error: Logfile directory $AGG_LDMSD_LOG_PATH does not exist or is not a directory"
+			$LDMSD -x $AGG_LDMSD_TRANSPORT:$AGG_SOCKET -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME} -l $AGG_LDMSD_LOG_PATH/${COMPONENT_ID}_${PLATNAME} > /dev/null 2>&1
+		fi
+	fi
+        RETVAL=$?
+
+        [ $RETVAL -eq 0 ] && touch $lockfile
+        RETVAL=$?
+
+        if [ $RETVAL -eq 0 ]; then
+		sleep 2
+                echoq "chmod 660 $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME}"
+                chmod 660 $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}.${PLATNAME}
+                success
+                echo
+                sleep 1
+	        echo -n $"Starting ldms plugins: "
+		start_ldms_plugins
+		if [[ "X$AGGREGATOR" = "X-A" ]]; then
+			sleep 1
+		        echo -n $"Starting add hosts: "
+	                start_add_hosts
+		fi
+		RETVAL=$?
+        	if [ $RETVAL -ne 0 ]; then
+	                failure
+			echo
+	        else
+			echo
+		fi
+		if [[ "X$AGG_STORE" = "X-S" ]]; then
+			echo -n $"Starting stores: "
+			start_stores
+		fi
+		RETVAL=$?
+        fi
+
+        if [ $RETVAL -ne 0 ]; then
+                failure
+                echo
+        else
+		pidof -o %PPID $PROG > $pidfile
+                RETVAL=$?
+                if [ $RETVAL -ne 0 ]; then
+                         failure
+                         echo
+                else
+                         success
+                         echo
+                fi
+        fi
+
+}
+
+stop()
+{
+	echo -n $"Stopping $prog: "
+	echoq "PID of $LDMSD is: <`pidofproc $LDMSD`>"
+	if [ -n "`pidofproc $LDMSD`" ] ; then
+		echoq "Killing $LDMSD"
+                killproc $LDMSD
+                cleanup_ldmsctl
+                cleanup_files
+	else
+	    failure $"Stopping $prog"
+	fi
+	RETVAL=$?
+	# if we are in halt or reboot runlevel kill all running sessions
+	# so the TCP connections are closed cleanly
+	if [ "x$runlevel" = x0 -o "x$runlevel" = x6 ] ; then
+	    trap '' TERM
+	    killall $prog 2>/dev/null
+	    trap TERM
+	fi
+	[ $RETVAL -eq 0 ] && rm -f $pidfile
+	[ $RETVAL -eq 0 ] && rm -f $lockfile
+	echo
+}
+
+cleanup_ldmsctl()
+{
+        echoq "Cleaning up any leftover ldmsctl processes..."
+        if [ -n "`pgrep $PROGCTL`" ] ; then
+            echoq "/usr/bin/killall -q $PROGCTL"
+            killall -q $PROGCTL
+            RETVAL=$?
+            if [ $RETVAL -eq 1 ]; then echoq "No leftover $PROGCTL to kill.";
+            elif [ $RETVAL -eq 0 ]; then echoq "$PROGCTL processes were killed."; fi
+        fi
+}
+
+cleanup_files()
+{
+        echoq "Cleaning up leftover files if they exist..."
+        [[ -n $PIDFILE ]] && rm -f $PIDFILE
+        [[ -n $LOCKFILE ]] && rm -f $LOCKFILE
+        sleep 1
+        [[ -n $LDMSD_LOCAL_SOCK_DIR ]] && test -d $LDMSD_LOCAL_SOCK_DIR && rm_ldmsd_sock_dir
+        [[ -n $LDMSCTL_SOCK_DIR ]] && test -d $LDMSCTL_SOCK_DIR && rm_ldmsctl_sock_dir
+}
+
+restart() {
+	stop
+	start
+}
+
+rh_status() {
+	echoq "status -p $pidfile ldmsd"
+	status -p $pidfile ldmsd 
+}
+
+rh_status_q() {
+        rh_status >/dev/null 2>&1
+}
+
+rm_ldmsd_sock_dir() {
+        if [ "$(ls -A $LDMSD_LOCAL_SOCK_DIR)" ]; then
+                rm -f $LDMSD_LOCAL_SOCK_DIR/*
+        fi
+        rmdir $LDMSD_LOCAL_SOCK_DIR
+}
+
+rm_ldmsctl_sock_dir() {
+        if [ "$(ls -A $LDMSCTL_SOCK_DIR)" ]; then
+                rm -f $LDMSCTL_SOCK_DIR/*
+        fi
+        rmdir $LDMSCTL_SOCK_DIR
+}
+
+
+case "$arg1" in
+	start)
+		rh_status_q 
+		start
+		;;
+	stop)
+		stop
+		if ! rh_status_q; then
+                        cleanup_ldmsctl
+                        cleanup_files
+			exit 0
+		fi
+		;;
+	restart)
+		restart
+		;;
+	status)
+		rh_status
+		RETVAL=$?
+		if [ $RETVAL -eq 3 -a -f $lockfile ] ; then
+			RETVAL=2
+		fi
+		;;
+	*)
+		initusage
+		RETVAL=2
+	;;
+esac
+exit $RETVAL

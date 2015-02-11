@@ -1,0 +1,160 @@
+.\" Manpage for ldmsd
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "30 Jan 2015" "v2.3/RC1.3" "ldmsd man page"
+
+.SH NAME
+ldmsd \- Start an ldms daemon
+
+.SH SYNOPSIS
+ldmsd [OPTION...]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldmsd command is used
+to start an ldms daemon. Plugin configuration of the ldmsd can be done via the
+ldmsctl command.
+
+.SH ENVIRONMENT
+The following environment variables must be set:
+.TP
+LD_LIBRARY_PATH
+include path to ovis/lib64
+.TP
+LDMS_XPRT_LIBPATH
+path to ovis/lib64/
+.TP
+LDMSD_PLUGIN_LIBPATH
+path to ovis/lib64/
+.TP
+LDMSD_SOCKPATH
+path to the unix domain socket for the ldmsd. Default is /var/run. If you want to change the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
+.TP
+PATH
+include path to ovis/sbin
+
+.SS Additional Enviroment variables for ugni transport
+LDMS_UGNI_PTAG
+For XE/XK, the PTag value as given by apstat -P.
+For XC, The value does not matter but the environment variable must be set.
+.TP
+LDMS_UGNI_COOKIE
+For XE/XK, the Cookie value corresponding to the PTag value as given by apstat -P
+For XC, the Cookie value (not Cookie2) as given by apstat -P
+.TP
+LDMS_UGNI_CQ_DEPTH
+Optional value for the CQ depth. Default is 2048.
+.TP
+LDMS_UGNI_STATE_INTERVAL
+Optional. If set, then ldmsd will check all nodes' states via rca interface.
+States for all nodes are checked and stored at intervals determined by this environment variable. The stored
+values are checked against before contacting a node. If you choose to use this option, then the rule of
+thumb is to set LDMS_UGNI_STATE_INTERVAL and LDMS_UGNI_STATE_OFFSET such that the node states are checked
+before the metric set update occurs (see interval and offset in ldmsctl).
+.TP
+LDMS_UGNI_STATE_OFFSET
+Optional. Only relevant if LDMS_UGNI_STATE_INTERVAL is set. Defaults to zero. Offset from zero for
+checking the nodes state (see LDMS_UGNI_STATE_INTERVAL, above).
+
+.SH OPTIONS
+.TP
+.BI -D " NUM"
+.br
+NUM is the number of bytes of the dirty threshold used for store rollover.
+.TP
+.BR -F
+Run in foreground mode; don't daemonize the program. Default is false.
+.TP
+.BI -f " COUNT"
+.br
+COUNT is the number of flush threads.
+.TP
+.BI -I " INSTANCE"
+.br
+INSTANCE is the instance number.
+.TP
+.BI -l " LOGFILE"
+.br
+LOGFILE is the path to the log file for status messages. Default is LDMSD_LOGFILE.
+.TP
+.BI -m " MEMORY_SIZE"
+.br
+MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
+The given size must be less than 1 petabytes.
+For example, 20M or 20mb are 20 megabytes.
+.TP
+.BI -P " THR_COUNT"
+.br
+THR_COUNT is the number of event threads to start.
+.TP
+.BI -q " LOG_LEVEL"
+.br
+LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
+The default level is ERROR. QUIET produces no output.
+(Note: this has changed from the previous release where q designated no (QUIET) logging).
+.TP
+.BI -S " SOCKNAME"
+.br
+SOCKNAME is the unix domain socket name to use for ldmsctl access.
+.TP
+.BR -V
+Display LDMS version information and then exit.
+.TP
+.BI -x " XPRT:PORT"
+.br
+Specifies the transport type to listen on. May be specified more than once for
+multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC).
+A transport specific port number is optionally specified following a ':', e.g. rdma:50000.
+.TP
+.BI -Z " CONN_COUNT"
+.br
+CONN_COUNT is the number of connection threads to start.
+
+.SH RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
+.PP
+ldsmd can be run as either a user or as root using the appropriate PTag and cookie.
+.PP
+Check (or set) the PTag and cookie.
+.RS
+Cray XE/XK Systems:
+.nf
+> apstat -P
+PDomainID           Type    Uid   PTag     Cookie
+LDMS              system      0     84 0xa9380000
+foo               user    22398    243  0x2bb0000
+
+Cray XC Systems:
+> apstat -P
+PDomainID   Type   Uid     Cookie    Cookie2
+LDMS      system     0 0x86b80000          0
+foo         user 20596 0x86bb0000 0x86bc0000
+.RE
+.fi
+.PP
+Set the environment variables LDMS_UGNI_PTAG and LDMS_UGNI_COOKIE with the appropriate ptag and cookie.
+.PP
+Run ldmsd directly or as part of a script launched from aprun. In either case, Use aprun with the correct -p <ptag> when running.
+
+NOTE: LDMS is not supported on XC in this release.
+
+.SH NOTES
+LDMS is not supported on XC in this release.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+.nf
+$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
+.br
+.PP
+.nf
+Same but sending stdout and stderr to /dev/null
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
+.br
+.fi
+
+
+.SH SEE ALSO
+LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldms_ls(1),
+Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)

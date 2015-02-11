@@ -1,0 +1,94 @@
+#!/bin/sh
+#
+#   Copyright 2011 Open Grid Computing, Inc.
+#
+. /etc/init.d/functions
+
+DAEMON=ldmsd
+
+prog=ldmsd
+LOCKFILE=/var/lock/${prog}
+SOCKET=/var/run/${prog}/metric_socket
+LOGFILE=/var/log/${prog}.log
+PORT=@LDMSDPORT@
+
+start () {
+	echo -n $"Starting $prog: "
+
+	# remove socket file
+	rm -f ${SOCKET}
+
+	# load the kernel modules
+	modprobe rdma_ucm
+	modprobe kldms
+	modprobe kldms_vmstat
+
+	# Create run files
+	if [ ! -d /var/run/ldms ]; then
+	    # in case it's a file, remove it
+	    rm -f /var/run/ldms
+	    mkdir /var/run/ldms
+	fi
+	if [ ! -d /var/run/ldmsd ]; then
+	    rm -f /var/run/ldmsd
+	    mkdir /var/run/ldmsd
+	fi
+	# start daemon
+	> ${LOGFILE}
+	daemon $DAEMON -x rdma:$PORT -x sock:$PORT -l ${LOGFILE}
+        RETVAL=$?
+	echo
+	[ $RETVAL = 0 ] && touch ${LOCKFILE}
+	return $RETVAL
+}
+
+stop () {
+	# stop daemon
+	echo -n $"Stopping $prog: "
+	killproc $DAEMON
+	RETVAL=$?
+	echo
+	[ $RETVAL = 0 ] && rm -f ${LOCKFILE}
+	# remove the socket
+	rm -f ${SOCKET}
+}
+
+restart() {
+	stop
+	start
+}
+
+case $1 in
+	start)
+		start
+	;;
+	stop)
+		stop
+	;;
+	restart)
+		restart
+	;;
+	condrestart)
+		[ -f ${LOCKFILE} ] && restart || :
+	;;	
+	reload)
+		echo -n $"Reloading $prog: "
+		killproc $DAEMON -HUP
+		RETVAL=$?
+		echo
+	;;
+	status)
+		status $DAEMON
+		RETVAL=$?
+	;;
+	restartlog)
+		stop
+		start
+	;;
+	*)
+
+	echo $"Usage: $prog {start|stop|restart|condrestart|reload|status}"
+	exit 3
+esac
+
+exit $RETVAL

@@ -1,0 +1,19 @@
+#!/bin/bash
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+BUILDDIR=@prefix@
+export PATH=${BUILDDIR}/sbin:$PATH
+export LD_LIBRARY_PATH=@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=@pkglibdir@
+export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+
+set -x
+TESTDIR=/tmp/$USER/ldmstest/$$
+STOREDIR=$TESTDIR/store
+SOCKDIR=$TESTDIR/run/ldmsd
+LOGDIR=$TESTDIR/logs
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+echo "logs and data stored under $TESTDIR"
+

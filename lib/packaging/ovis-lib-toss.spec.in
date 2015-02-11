@@ -1,0 +1,83 @@
+# Set topdir to be builddir/rpm
+# note this is intentionally ignored by rpmbuild. must use
+# commandline syntax in makefile.am to get this effect.
+#% define _topdir %(echo $PWD)/centos
+# do not set unfascist build
+#% define _unpackaged_files_terminate_build 0
+#% define _missing_doc_files_terminate_build 0
+
+%define ovis_lib_grp System Environment/Libraries
+
+# Main package
+Summary: OVIS Libraries
+Name: ovis-lib
+Version: @VERSION@
+Release: 1%{?dist}
+License: GPLv2 or BSD
+Group: System Environment/Libraries
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: %{name}-%{version}.tar.gz
+Requires: rpm >= 4.8.0
+BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel libevent2-devel
+Url: http://ovis.ca.sandia.gov/
+
+Prefix: /opt/ovis
+
+%description
+This package provides OVIS apis and transport libraries.
+
+%prep
+%setup -q
+
+%build
+echo bTMPPATH %{_tmppath}
+echo bBUILDROOT $RPM_BUILD_ROOT
+%configure @ac_configure_args@
+make
+
+%install
+echo TMPPATH %{_tmppath}
+echo BUILDROOT $RPM_BUILD_ROOT
+rm -rf $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} install
+# remove unpackaged files from the buildroot
+rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+%{_libdir}/*
+%{_sbindir}/*
+
+%package doc
+Summary: Documentation files for %{name}
+Group: %{ovis_lib_grp}
+Requires: %{name}-devel = %{version}-%{release}
+%description doc
+Doxygen files for ovis-lib package.
+%files doc
+%defattr(-,root,root)
+%{_datadir}/doc/%{name}-%{version}
+%docdir %{_defaultdocdir}
+# note the rpm doc directive is not properly relocatable by default
+#end doc
+
+# ovis-lib-devel
+%package devel
+Summary: Development files for ovis-lib.
+Group: %{ovis_lib_grp}
+Requires: ovis-lib = @VERSION@
+%description devel
+Development files for ovis-lib package.
+
+%files devel
+%defattr(-,root,root)
+%{_includedir}/*
+
+
+
+%changelog
+* Mon Oct 14 2013 Benjamin Allan <baallan@sandia.gov>
+- Relocatable packaging of OVIS libraries.

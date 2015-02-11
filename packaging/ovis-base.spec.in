@@ -1,0 +1,98 @@
+# Set topdir to be builddir/rpm
+# note this is intentionally ignored by rpmbuild. must use
+# commandline syntax in makefile.am to get this effect.
+#% define _topdir %(echo $PWD)/toss
+# do not set unfascist build
+#%-define _unpackaged_files_terminate_build 0
+#%-define _missing_doc_files_terminate_build 0
+
+%define ldms_all System Environment/Libraries
+
+# Main package
+Summary: OVIS LDMS Commands and Libraries
+Name: ldms-all
+Version: @VERSION@
+Release: ovis1%{?dist}
+License: GPLv2 or BSD
+Group: %{ldms_all}
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: %{name}-%{version}.tar.gz
+Requires: rpm >= 4.8.0
+BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel
+Url: http://ovis.ca.sandia.gov/
+
+Prefix: /usr
+
+
+%description
+This package provides the LDMS commands and libraries, OVIS apis and transport libraries, and scalable object store libraries.
+Configured with @ac_configure_args@.
+* ldmsd: the LDMS daemon, which can run as sampler or aggregator (or both).
+* ldms_ls: the tool to list metric information of an ldmsd.
+* ldmsctl: the tool to control an ldmsd.
+* libevent2 installed privately to ldms plugin directory.
+
+%prep
+%setup -q
+
+%build
+echo bTMPPATH %{_tmppath}
+rm -rf $RPM_BUILD_ROOT
+echo bBUILDROOT $RPM_BUILD_ROOT
+%configure @ac_configure_args@ LIBEVENT_BUILD=1 --disable-sos
+make
+
+%install
+echo TMPPATH %{_tmppath}
+echo BUILDROOT $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} install
+# remove unpackaged files from the buildroot
+rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-ldms/lib*.la
+rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-libevent/lib*.la
+rm $RPM_BUILD_ROOT%{_bindir}/test_*
+rm $RPM_BUILD_ROOT%{_bindir}/ldms_ban.sh
+mv $RPM_BUILD_ROOT%{_docdir}/ovis-ldms-*/* $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+%{_libdir}/*
+%{_bindir}/*
+%{_sbindir}/*
+%{_docdir}/%{name}-%{version}/COPYING
+%{_docdir}/%{name}-%{version}/ChangeLog
+%{_docdir}/%{name}-%{version}/AUTHORS 
+#end core
+
+# devel
+%package devel
+Summary: LDMS devel package
+Group: %{ldms_grp}
+Requires: ldms-all = @VERSION@
+%description devel
+This is a development package of Lightweight Distributed Metric System (LDMS).
+Users who want to implement their own sampler or store must install this
+package.
+
+%files devel
+%defattr(-,root,root)
+%{_includedir}/*/*.h
+#end devel
+
+%package doc
+Summary: Documentation files for %{name}
+Group: %{ldms_all}
+## Requires: %{name}-devel = %{version}-%{release}
+%description doc
+Doxygen files for ldms-all package.
+%files doc
+%defattr(-,root,root)
+%{_mandir}/*/*
+%{_datadir}/doc/%{name}-%{version}
+%docdir %{_defaultdocdir}
+%changelog
+* Mon Sep 15 2014 Ben Allan <baallan@sandia.gov> 2.2.0-1
+all-in-one packaging w/libevent

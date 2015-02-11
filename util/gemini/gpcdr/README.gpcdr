@@ -1,0 +1,11 @@
+# As root:
+#Set environment variable GPCDRINIT_CONF to point to desired gpcdr config file
+
+export GPCDRINIT_CONF=/u/vendor/SNL/brandt/Source/OVIS/util/gemini/gpcdr/gpcdr-init_ldms.conf
+
+# Remove nic and link metrics
+/opt/cray/gni-gpcdr-utils/1.0-1.0402.7841.4.25.gem/sbin/gpcdr-ctl -M nic -D
+/opt/cray/gni-gpcdr-utils/1.0-1.0402.7841.4.25.gem/sbin/gpcdr-ctl -M links -D
+
+# Instantiate metrics as per gpcdr-init_ldms.conf
+/opt/cray/gni-gpcdr-utils/1.0-1.0402.7841.4.25.gem/sbin/gpcdr-init

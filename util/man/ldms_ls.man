@@ -1,0 +1,116 @@
+.\" Manpage for ldms_ls
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "11 Sep 2014" "v2.2/RC1.2" "ldms_ls man page"
+
+.SH NAME
+ldms_ls \- Query an ldmsd for metric set values
+
+.SH SYNOPSIS
+ldms_ls [OPTION...] [SETNAME]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldms_ls command is used to query an ldmsd (ldms daemon) for metric set values.
+
+.SH ENVIRONMENT
+The following environment variables must be set:
+.TP
+LD_LIBRARY_PATH
+include path to ovis/lib64
+.TP
+LDMS_XPRT_LIBPATH
+path to ovis/lib64/
+.TP
+LDMSD_PLUGIN_LIBPATH
+path to ovis/lib64/
+.TP
+PATH
+include path to ovis/sbin
+
+.SH OPTIONS
+.TP
+If the SETNAME is specified on the command line, only information for that set is displayed.
+.TP
+.BI -h " HOST"
+.br
+HOST to query. Default is localhost.
+.TP
+.BI -x " TRANSPORT"
+TRANSPORT to use for the query. values are sock, rdma, or ugni (Cray XE/XK/XC). Default is sock.
+.TP
+.BI -p " PORT"
+PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
+.TP
+.BR -l
+Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
+.TP
+.BI -m  " MEMORY_SIZE"
+.br
+MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
+The given size must be less than 1 petabytes.
+For example, 20M or 20mb are 20 megabytes.
+.TP
+.BR -u
+Display the user data for the metrics. (Usually compid)
+.TP
+.BR -v
+Display metadata information. Specifying this option multiple times increases the verbosity.
+.TP
+.BR -V
+Display LDMS version information and then exit.
+.TP
+.BI -w " WAIT_SEC"
+WAIT_SEC is the time to wait before giving up on the server. Default is 10 sec.
+
+.SH DEFAULTS
+.BR ldms_ls
+with no arguments defaults to
+.BR ldms_ls -p
+.I
+XXX
+.BR -h
+.I
+localhost
+.BR -x
+.I
+sock
+where XXX is the LDMS_DEFAULT_PORT.
+
+.SH NOTES
+LDMS is not supported on XC in this release.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+.nf
+$ldms_ls -h vm1 -x sock -p 60000
+vm1_1/meminfo
+vm1_1/vmstat
+.br
+.PP
+.nf
+$ldms_ls -h vm1 -x sock -p 60000 -l
+vm1_1/meminfo: consistent, last update: Wed Jul 31 21:51:08 2013 [246540us]
+U64 33084652         MemTotal
+U64 32092964         MemFree
+U64 0                Buffers
+U64 49244            Cached
+U64 0                SwapCached
+U64 13536            Active
+U64 39844            Inactive
+U64 5664             Active(anon)
+...
+.br
+.PP
+.nf
+For a non-existent set:
+$ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
+ldms_ls: No such file or directory
+ldms_ls: lookup failed for set 'vm1_1/foo'
+.fi
+
+.SH SEE ALSO
+LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)

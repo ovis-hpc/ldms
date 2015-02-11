@@ -1,0 +1,159 @@
+.\" Manpage for Plugin_store_derived_csv
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "13 Jan 2015" "v2.3/RC1.3" "LDMS Plugin store_derived_csv man page"
+
+.SH NAME
+Plugin_store_derived_csv - man page for the LDMS store_derived_csv plugin
+
+.SH SYNOPSIS
+Within ldmsctl:
+.br
+ldmsctl> config name=store_derived_csv [ <attr> = <value> ]
+.br
+ldmsctl> store name=store_derived_csv [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The store_derived_csv plugin is a CSV store.
+
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> path=<path> derivedconf=<confname>[ alt_header=<altheader> idpos=<idpos> agesec=<agesec> rolltype=<rolltype> rollover=<rollover> ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_derived_csv.
+.TP
+path=<path>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_derived_csv/node/meminfo. If you choose a rollover option, then the filename will also be postpended by "-" followed by the epochtime e.g., XXX/store_csv/node/meminfo-123456789.
+.TP
+derivedconf=<confname>
+.br
+Path to the derived configuration file. Format: metricname,Raw/Rate=(0/1),multiplier. Metricname must be exact match as in the set. No extraneous whitespace (if the metric name has an internal whitespace, that whitespace needs to match exactly). One metric per line.
+.TP
+alt_header=<altheader>
+.br
+The default output writes the header to the same file as the data file. alt_header=1 will write the header to an alternate file (e.g., if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER"). If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written at each rollover. Default is alt_header=0.
+.TP
+idpos=<idpos>
+.br
+The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node as described above and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+.TP
+agesec=<agesec>
+.br
+Set output data field Flag = 1 if the interval between two successive data reports for the same host's same metric set is greater than agesec.
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are:
+.RS
+.TP
+1
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.RE
+
+.SH LDMSCTL STORE ATTRIBUTE SYNTAX
+
+.TP
+.BR store
+name=<plugin_name> set=<set_name> comp_type=<type>  container=<container>
+.br
+ldmsctl store line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_derived_csv.
+.TP
+set=<set_name>
+.br
+The set parameter here is the base name of the sets, independent of the host name. For example, if you have configured samplers with parameter set=<hostname>/meminfo, then use the store parameter set=meminfo and all datasets for all combinations of <hostname>/meminfo will be stored.
+.TP
+comp_type=<type>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/node/meminfo.
+.TP
+container=<container>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_derived_csv/node/meminfo.
+
+Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
+
+If you are using multiple store Plugins, use unique container names for each even if they are going into different subdirectories. For example, if you are running both the store_csv and the store_derived_csv plugins do NOT use meminfo for both, perhaps use meminfo_der for the derived container.
+
+
+.RE
+
+.SH STORE_DERIVED_CSV CONFIGURATION FILE
+Derived Configration file format: metricname,Raw/Rate=(0/1),multiplier.
+.PP
+Example:
+.nf
+.RS
+$more /XXX/storeder.conf
+sys#1,0,1
+idle#0,1,1000000
+Active,0,1
+user#0,1,1000000
+junk,0,1
+#this is a comment
+idle,0,1
+user,0,1
+sys,0,1
+
+MemTotal,0,10
+snx11024.stats.lockless_write_bytes,0,1
+Z+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x1e6),0,20
+.RE
+.fi
+
+.PP
+Blank lines are allowed in the file as shown
+.PP
+Any metric can only be in the file once.
+
+.SH NOTES
+If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator
+with a store plugin only.
+
+.SH BUGS
+No known bugs.
+
+
+.SH EXAMPLES
+ldmsctl lines for configuring store_derived_csv:
+.nf
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl> load name=store_derived_csv
+ldmsctl> config name=store_derived_csv alt_header=1 id_pos=1 derivedconf=/XXX/der.conf path=/XXX/storedir
+ldmsctl> store name=store_derived_csv comp_type=node set=meminfo container=meminfo_store
+ldmsctl> quit
+.if
+
+.SH SEE ALSO
+LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_procsensors(7), Plugin_store_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)

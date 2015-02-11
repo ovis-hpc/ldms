@@ -1,0 +1,45 @@
+#!/bin/sh
+# you can build libevent2 (if you are not on a recent fedora or ubuntu system)
+# with this script or one very like it.
+# This unpacks the libevent tar in pwd and installs it in the
+# prefix given when invoking this script.
+libname=libevent-2.0.21-stable
+# replace wget here with curl if you prefer.
+#wget https://github.com/downloads/libevent/libevent/$libname.tar.gz
+
+# edit the settings below to suit your tastes.
+# under no circumstance should prefix be /usr on ubuntu/debian/redhat/centos
+# as this will foul up the system-wide libevent.
+iprefix=$1
+if test "$iprefix" = ""; then
+	echo need prefix argument given
+	exit 1
+fi
+if ! test -d $1; then
+	echo dir $1 must exist
+	exit 1
+fi
+if test -d $libname; then
+	cd $libname
+	if test -f libevent_extra.la; then
+		make install
+		echo "reinstalled old build"
+		exit 0
+	fi
+fi
+
+if tar xzf $libname.tar.gz ; then
+	cd $libname && \
+	./configure \
+	CFLAGS="-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -march=native -fsanitize=thread -fno-omit-frame-pointer -pie -fPIC" \
+	--prefix=${iprefix} \
+	--datadir=${iprefix}/share \
+	--includedir=${iprefix}/include \
+	--libdir=${iprefix}/lib \
+	--libexecdir=${iprefix}/libexec \
+	--mandir=${iprefix}/share/man \
+	--infodir=${iprefix}/share/info \
+	--disable-dependency-tracking \
+	--disable-static &&
+	make install
+fi

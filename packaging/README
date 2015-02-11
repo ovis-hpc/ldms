@@ -1,0 +1,33 @@
+INTENT
+
+All the packages live in the "ovis-" prefix space, as there are prior
+Linux packages for ldms, sos, and possibly others.
+
+This packaging scheme aims to produce relocatable RPMS, in violation of
+Redhat/Fedora packaging standards.
+Linux dynamic libraries are not normally relocatable once installed, so
+to make relocation work the environment MUST specify LD_LIBRARY_PATH at
+runtime.
+
+The rpm packaging scripts (.spec.in) files in the source tree may need
+adjustments for other platforms, but will work on rhel6.4/centos6.4/toss.
+
+
+BUILDING ldms 2.2 RPMs (expected to change in future release)
+
+libevent2 must be built and accessible before ldms can be configured.
+Because RHEL 6.x does not support libevent2, we install libevent
+as part of this rpm build in an LDMS-specific location. 
+
+Packaging is done by:
+	- checking out the source tree.
+	- ./autogen.sh at the top of the source tree.
+	- putting a copy of libevent-2.0.21-stable.tar.gz in the top of the source.
+	- running ./packaging/pack-toss.sh from the top of the source.
+
+The result (if all is well and the needed devel packages for ssl, rdma, etc
+are installed) will be a set of rpms in centos-* directories at the top of the
+source tree. Only ldms-all-2.2.0-ovis1.ch5.1.x86_64.rpm must be installed to
+use ldms. The man pages for login and admin nodes are in the corresponding
+doc rpm.
+
