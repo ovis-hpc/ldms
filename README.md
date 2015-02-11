@@ -1,7 +1,7 @@
 # The OVIS High Performance Computing Monitoring, Analysis, and Visualization Project
 
 ----
-## what is OVIS?
+## What is OVIS?
 See [OVIS wiki](ovis.ca.sandia.gov)
 
 > OVIS is a collection of sub-projects that, as an aggregate, provide HPC targeted capabilities for lightweight monitoring and high performance analysis and visualization of monitored information and events.
