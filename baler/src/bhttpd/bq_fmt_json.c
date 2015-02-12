@@ -14,6 +14,7 @@ struct bqfmt_json {
 	int first_tkn;
 	int ptn_label;
 	int ptn_id;
+	uint64_t msg_ref;
 };
 
 void bqfmt_json_set_label(struct bq_formatter *fmt, int label)
@@ -24,6 +25,11 @@ void bqfmt_json_set_label(struct bq_formatter *fmt, int label)
 void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id)
 {
 	((struct bqfmt_json*)fmt)->ptn_id = ptn_id;
+}
+
+void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, uint64_t msg_ref)
+{
+	((struct bqfmt_json*)fmt)->msg_ref = msg_ref;
 }
 
 int __bqfmt_json_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr, uint32_t ptn_id)
@@ -42,7 +48,8 @@ int __bqfmt_json_ptn_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
 
 int __bqfmt_json_msg_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
 {
-	return bdstr_append(bdstr, "{ \"type\": \"MSG\"");
+	return bdstr_append_printf(bdstr, "{ \"type\": \"MSG\", "
+			"\"ref\": %lu", ((struct bqfmt_json*)fmt)->msg_ref);
 }
 
 int __bqfmt_json_msg_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)

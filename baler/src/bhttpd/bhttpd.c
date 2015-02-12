@@ -423,6 +423,7 @@ struct bq_formatter *bqfmt_json_new();
 void bqfmt_json_free(struct bq_formatter *fmt);
 void bqfmt_json_set_label(struct bq_formatter *fmt, int label);
 void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id);
+void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, uint64_t msg_ref);
 
 static
 void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
@@ -689,6 +690,7 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 			break;
 		}
 		qs->ref = bq_entry_get_ref(qs->q);
+		bqfmt_json_set_msg_ref(qs->fmt, qs->ref);
 		str = bq_entry_print(qs->q, bdstr);
 		if (!str) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
