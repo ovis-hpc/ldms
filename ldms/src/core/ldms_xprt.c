@@ -544,6 +544,7 @@ static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
 	struct ldms_context *ctxt = malloc(sizeof *ctxt);
 	TF();
 
+	ctxt->type = LDMS_CONTEXT_UPDATE;
 	ctxt->rc = 0;
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
@@ -565,6 +566,7 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 	zap_map_t rmap = sd->rbd->rmap;
 	zap_map_t lmap = sd->rbd->lmap;
 	TF();
+	ctxt->type = LDMS_CONTEXT_UPDATE;
 	ctxt->rc = 0;
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
@@ -635,14 +637,12 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			  struct ldms_context *ctxt)
 {
 	int rc = ntohl(reply->hdr.rc);
-
 	if (!rc) {
 		/* A peer should only receive error in lookup_reply.
 		 * A successful lookup is handled by rendezvous. */
 		x->log("WARNING: Receive lookup reply error with rc: 0\n");
 		goto out;
 	}
-
 	if (ctxt->lookup.cb)
 		ctxt->lookup.cb(x, rc, NULL, ctxt->lookup.cb_arg);
 
@@ -817,16 +817,26 @@ err0:
 	zap_close(zep);
 }
 
-/**
- * This replaces read_complete_cb()
- */
 void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_context *ctxt = ev->context;
-	if (ctxt->update.cb) {
-		struct ldms_xprt *x = zap_get_ucontext(zep);
-		ctxt->update.cb((ldms_t)x, ctxt->update.s, ev->status,
-				ctxt->update.arg);
+	switch (ctxt->type) {
+	case LDMS_CONTEXT_UPDATE:
+		if (ctxt->update.cb) {
+			struct ldms_xprt *x = zap_get_ucontext(zep);
+			ctxt->update.cb((ldms_t)x, ctxt->update.s, ev->status,
+					ctxt->update.arg);
+		}
+		break;
+	case LDMS_CONTEXT_LOOKUP:
+		if (ctxt->lookup.cb) {
+			struct ldms_xprt *x = zap_get_ucontext(zep);
+			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.s,
+					ctxt->lookup.cb_arg);
+		}
+		break;
+	default:
+		assert(0 == "Invalid context type in zap read completion.");
 	}
 	free(ctxt);
 }
@@ -865,8 +875,16 @@ void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	rbd->rmap = ev->map;
 
 	sd->rbd = rbd;
-	rc = 0;
-	goto out;
+	ctxt->lookup.s = sd;
+	if (zap_read(zep,
+		     sd->rbd->rmap, zap_map_addr(sd->rbd->rmap),
+		     sd->rbd->lmap, zap_map_addr(sd->rbd->lmap),
+		     sd->set->meta->meta_sz,
+		     ctxt)) {
+		rc = EIO;
+		goto out;
+	}
+	return;
 
  out_1:
 	ldms_destroy_set(sd);
@@ -1071,7 +1089,9 @@ size_t format_cancel_notify_req(struct ldms_request *req, uint64_t xid)
  * contain one structure. When the context is freed, the associated
  * request buffer is freed as well.
  */
-static int alloc_req_ctxt(struct ldms_request **req, struct ldms_context **ctxt)
+static int alloc_req_ctxt(struct ldms_request **req,
+			  struct ldms_context **ctxt,
+			  ldms_context_type_t type)
 {
 	struct ldms_context *ctxt_;
 	void *buf = malloc(sizeof(struct ldms_request) + sizeof(struct ldms_context));
@@ -1079,6 +1099,7 @@ static int alloc_req_ctxt(struct ldms_request **req, struct ldms_context **ctxt)
 		return 1;
 	*ctxt = ctxt_ = buf;
 	*req = (struct ldms_request *)(ctxt_+1);
+	ctxt_->type = type;
 	return 0;
 }
 
@@ -1089,7 +1110,7 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	struct ldms_context *ctxt;
 	size_t len;
 
-	if (alloc_req_ctxt(&req, &ctxt))
+	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_DIR))
 		return ENOMEM;
 
 	pthread_mutex_lock(&x->lock);
@@ -1117,7 +1138,7 @@ void __ldms_remote_dir_cancel(ldms_t _x)
 	struct ldms_context *ctxt;
 	size_t len;
 
-	if (alloc_req_ctxt(&req, &ctxt))
+	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_DIR_CANCEL))
 		return;
 
 	pthread_mutex_lock(&x->lock);
@@ -1146,12 +1167,11 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 		return EEXIST;
 	}
 
-	if (alloc_req_ctxt(&req, &ctxt))
+	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_LOOKUP))
 		return ENOMEM;
 
 	len = format_lookup_req(req, path, (uint64_t)(unsigned long)ctxt);
-	// ctxt->lookup.set = ldms_find_local_set(path);
-	ctxt->lookup.set = NULL;
+	ctxt->lookup.s = NULL;
 	ctxt->lookup.cb = cb;
 	ctxt->lookup.cb_arg = arg;
 	ctxt->lookup.path = strdup(path);
@@ -1172,7 +1192,7 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 	struct ldms_context *ctxt;
 	size_t len;
 
-	if (alloc_req_ctxt(&req, &ctxt))
+	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_REQ_NOTIFY))
 		return ENOMEM;
 
 	if (r->local_notify_xid) {

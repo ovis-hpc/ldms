@@ -180,6 +180,7 @@ struct ldms_reply {
 
 typedef enum ldms_context_type {
 	LDMS_CONTEXT_DIR,
+	LDMS_CONTEXT_DIR_CANCEL,
 	LDMS_CONTEXT_LOOKUP,
 	LDMS_CONTEXT_UPDATE,
 	LDMS_CONTEXT_REQ_NOTIFY
@@ -189,6 +190,7 @@ struct ldms_context {
 	sem_t sem;
 	sem_t *sem_p;
 	int rc;
+	ldms_context_type_t type;
 	union {
 		struct {
 			int set_count;
@@ -202,7 +204,7 @@ struct ldms_context {
 			char *path;
 			ldms_lookup_cb_t cb;
 			void *cb_arg;
-			struct ldms_set *set;
+			ldms_set_t s;
 			zap_map_t remote_map;
 		} lookup;
 		struct {
