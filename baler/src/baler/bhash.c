@@ -105,18 +105,27 @@ int bhash_entry_del(struct bhash *h, const char *key, size_t keylen)
 	struct bhash_entry *ent = __bhash_entry_find(h, key, keylen, NULL);
 	if (!ent)
 		return ENOENT;
-	LIST_REMOVE(ent, link);
-	free(ent);
-	h->count--;
+	bhash_entry_remove_free(h, ent);
+	return 0;
+}
+
+int bhash_entry_remove_free(struct bhash *h, struct bhash_entry *ent)
+{
+	bhash_entry_remove(h, ent);
+	bhash_entry_free(ent);
 	return 0;
 }
 
 int bhash_entry_remove(struct bhash *h, struct bhash_entry *ent)
 {
 	LIST_REMOVE(ent, link);
-	free((void*)ent);
 	h->count--;
 	return 0;
+}
+
+void bhash_entry_free(struct bhash_entry *ent)
+{
+	free(ent);
 }
 
 struct bhash_entry *bhash_entry_get(struct bhash *h, const char *key,

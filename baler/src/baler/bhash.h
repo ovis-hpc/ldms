@@ -117,6 +117,11 @@ int bhash_entry_del(struct bhash *h, const char *key, size_t keylen);
  * \retval 0 OK.
  * \retval errno Error.
  */
+int bhash_entry_remove_free(struct bhash *h, struct bhash_entry *ent);
+
+/**
+ * Remove entry from the hash container (but not freeing it).
+ */
 int bhash_entry_remove(struct bhash *h, struct bhash_entry *ent);
 
 /**
@@ -131,6 +136,8 @@ int bhash_entry_remove(struct bhash *h, struct bhash_entry *ent);
  */
 struct bhash_entry *bhash_entry_get(struct bhash *h, const char *key,
 								size_t keylen);
+
+void bhash_entry_free(struct bhash_entry *ent);
 
 /**
  * Create new iterator of the hash \c h.
