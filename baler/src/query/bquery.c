@@ -1102,6 +1102,11 @@ const struct bmsg *bq_entry_get_msg(struct bquery *q)
 	return (void*)blob->data;
 }
 
+uint64_t bq_entry_get_ref(struct bquery *q)
+{
+	return sos_iter_ref(q->itr);
+}
+
 char *bq_entry_print(struct bquery *q, struct bdstr *bdstr)
 {
 	int detach = 0;

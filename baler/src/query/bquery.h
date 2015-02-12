@@ -374,6 +374,11 @@ uint32_t bq_entry_get_comp_id(struct bquery *q);
  * Get Baler-internal format message of the current query entry.
  */
 const struct bmsg *bq_entry_get_msg(struct bquery *q);
+
+/**
+ * Get message reference of the current entry.
+ */
+uint64_t bq_entry_get_ref(struct bquery *q);
 #endif
 
 /** \} */
