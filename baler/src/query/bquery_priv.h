@@ -123,6 +123,11 @@ struct bquery {
 	char *sos_prefix_end; /**< Point to the end of the original prefix */
 	int sos_number; /**< The current number of SOS store (for rotation) */
 	struct bq_formatter *formatter; /**< Formatter */
+
+	uint32_t (*get_sec)(struct bquery*);
+	uint32_t (*get_usec)(struct bquery*);
+	uint32_t (*get_comp_id)(struct bquery*);
+	uint32_t (*get_ptn_id)(struct bquery*);
 };
 
 struct bimgquery {

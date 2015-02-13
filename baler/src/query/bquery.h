@@ -102,6 +102,13 @@ typedef enum bquery_status {
 	BQ_STAT_LAST,
 } bq_stat_t;
 
+struct bpixel {
+	uint32_t sec;
+	uint32_t comp_id;
+	uint32_t ptn_id;
+	uint32_t count;
+};
+
 /*
  * Structure name declaration to supress compilation warnings.
  */
@@ -370,6 +377,8 @@ uint32_t bq_entry_get_usec(struct bquery *q);
  */
 uint32_t bq_entry_get_comp_id(struct bquery *q);
 
+uint32_t bq_entry_get_ptn_id(struct bquery *q);
+
 /**
  * Get Baler-internal format message of the current query entry.
  */
@@ -379,6 +388,11 @@ const struct bmsg *bq_entry_get_msg(struct bquery *q);
  * Get message reference of the current entry.
  */
 uint64_t bq_entry_get_ref(struct bquery *q);
+
+uint32_t bq_img_entry_get_count(struct bimgquery *q);
+
+int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p);
+
 #endif
 
 /** \} */
