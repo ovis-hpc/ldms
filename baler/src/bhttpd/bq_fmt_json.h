@@ -48,62 +48,20 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 /**
- * \file bhttpd.h
  * \author Narate Taerat (narate at ogc dot us)
+ * \file bq_fmt_json.h
  */
-#ifndef __BHTTPD_H
-#define __BHTTPD_H
 
-#include <event2/event.h>
-#include <event2/buffer.h>
-#include <event2/http.h>
+#ifndef __BQ_FMT_JSON_H
+#define __BQ_FMT_JSON_H
 
-#include "baler/btypes.h"
-#include "baler/butils.h"
-#include "baler/bqueue.h"
+#include <stdint.h>
 
-/***** GLOBAL VARIABLES *****/
-extern struct bq_store *bq_store;
-extern struct bmptn_store *mptn_store;
-extern struct event_base *evbase;
-
-/***** TYPES *****/
-struct bhttpd_req_ctxt {
-	struct evhttp_request *req;
-	const struct evhttp_uri *uri;
-	struct bpair_str_head kvlist;
-	int httprc;
-	struct evbuffer *evbuffer;
-	char errstr[1024];
-};
-
-typedef void (*bhttpd_req_handle_fn_t)(struct bhttpd_req_ctxt *ctxt);
-
-typedef void (*bhttpd_work_routine_fn_t)(void *arg);
-
-struct bhttpd_work {
-	struct bqueue_entry qent;
-	bhttpd_work_routine_fn_t routine;
-	void *arg;
-};
-
-struct bhttpd_msg_query_session {
-	struct bquery *q;
-	struct event *event;
-	struct timeval last_use;
-	struct bq_formatter *fmt;
-	int first;
-	uint64_t ref;
-};
-
-void set_uri_handle(const char *uri, bhttpd_req_handle_fn_t fn);
-
-void *get_uri_handle(const char *uri);
-
-int submit_work(bhttpd_work_routine_fn_t routine, void *arg);
-
-void bhttpd_req_ctxt_errprintf(struct bhttpd_req_ctxt *ctxt, int httprc, const char *fmt, ...);
+struct bq_formatter *bqfmt_json_new();
+void bqfmt_json_free(struct bq_formatter *fmt);
+void bqfmt_json_set_label(struct bq_formatter *fmt, int label);
+void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id);
+void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, uint64_t msg_ref);
 
 #endif
