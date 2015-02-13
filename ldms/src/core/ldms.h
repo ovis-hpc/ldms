@@ -422,7 +422,6 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_LOCAL	0x0004
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_COHERENT	0x0010
-#define LDMS_SET_F_DIRTY	0x1000
 #define LDMS_SET_ID_DATA	0x1000000
 
 struct ldms_set {

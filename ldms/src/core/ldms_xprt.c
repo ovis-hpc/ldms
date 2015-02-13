@@ -592,8 +592,7 @@ int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	int rc;
 
-	if (set->flags & LDMS_SET_F_DIRTY || set->meta->meta_gn == 0 ||
-	    set->meta->meta_gn != set->data->meta_gn) {
+	if (set->meta->meta_gn == 0 || set->meta->meta_gn != set->data->meta_gn) {
 		/* Update the metadata along with the data */
 		rc = do_read_all(t, s, set->meta->meta_sz +
 				set->meta->data_sz, cb, arg);
@@ -859,7 +858,7 @@ void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	rc = __ldms_create_set(ctxt->lookup.path,
 			lm,
 			&set_t,
-			LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY);
+			LDMS_SET_F_REMOTE);
 	if (rc)
 		goto out;
 	sd = (struct ldms_set_desc *)set_t;
