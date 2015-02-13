@@ -58,6 +58,7 @@
 #include "bhttpd.h"
 #include "bq_fmt_json.h"
 
+#include "baler/btypes.h"
 #include "baler/bptn.h"
 #include "baler/bhash.h"
 #include "baler/bmeta.h"
@@ -69,6 +70,15 @@ pthread_mutex_t query_session_mutex = PTHREAD_MUTEX_INITIALIZER;
 struct bhash *query_session_hash;
 uint32_t query_session_gn;
 struct timeval query_session_timeout = {.tv_sec = 600, .tv_usec = 0};
+
+inline
+const char *bpair_str_value(struct bpair_str_head *head, const char *key)
+{
+	struct bpair_str *kv = bpair_str_search(head, key, NULL);
+	if (kv)
+		return kv->s1;
+	return NULL;
+}
 
 static
 void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
@@ -129,15 +139,6 @@ cleanup:
 
 static
 void bhttpd_msg_query_expire_cb(evutil_socket_t fd, short what, void *arg);
-
-inline
-const char *bpair_str_value(struct bpair_str_head *head, const char *key)
-{
-	struct bpair_str *kv = bpair_str_search(head, key, NULL);
-	if (kv)
-		return kv->s1;
-	return NULL;
-}
 
 static
 void bhttpd_msg_query_session_destroy(struct bhttpd_msg_query_session *qs)
@@ -390,54 +391,86 @@ void bhttpd_handle_query_meta(struct bhttpd_req_ctxt *ctxt)
 }
 
 static
+void bhttpd_handle_query_img(struct bhttpd_req_ctxt *ctxt)
+{
+	int rc;
+	int first = 1;
+	struct bpixel p;
+	const char *ts0 = bpair_str_value(&ctxt->kvlist, "ts0");
+	const char *ts1 = bpair_str_value(&ctxt->kvlist, "ts1");;
+	const char *host_ids = bpair_str_value(&ctxt->kvlist, "host_ids");
+	const char *ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
+	const char *img_store = bpair_str_value(&ctxt->kvlist, "img_store");
+	struct bimgquery *q = bimgquery_create(bq_store, host_ids,
+			ptn_ids, ts0, ts1, img_store, &rc);
+
+	if (!q) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bimgquery_create() error, errno: %d", errno);
+		return;
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "{\"pixels\": [");
+	rc = bq_first_entry((void*)q);
+	while (rc == 0) {
+		rc = bq_img_entry_get_pixel(q, &p);
+		if (rc)
+			break;
+		if (first)
+			first = 0;
+		else
+			evbuffer_add_printf(ctxt->evbuffer, ",");
+		evbuffer_add_printf(ctxt->evbuffer, "[%d, %d, %d, %d]",
+					p.sec, p.comp_id, p.ptn_id, p.count);
+		rc = bq_next_entry((void*)q);
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "]}");
+	bimgquery_destroy(q);
+}
+
+struct bhttpd_handle_fn_entry {
+	const char *key;
+	void (*fn)(struct bhttpd_req_ctxt*);
+};
+
+struct bhttpd_handle_fn_entry query_handle_entry[] = {
+	{  "PTN",   bhttpd_handle_query_ptn   },
+	{  "MSG",   bhttpd_handle_query_msg   },
+	{  "META",  bhttpd_handle_query_meta  },
+	{  "IMG",   bhttpd_handle_query_img   },
+};
+
+static
 void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 {
 	struct bpair_str *kv;
-	int i;
-	enum {
-		QTYPE_FIRST,
-		QTYPE_PTN = QTYPE_FIRST,
-		QTYPE_MSG,
-		QTYPE_META,
-		QTYPE_LAST,
-	} type;
-	static const char *TYPE[] = {
-		[QTYPE_PTN] = "PTN",
-		[QTYPE_MSG] = "MSG",
-		[QTYPE_META] = "META",
-	};
-
+	int i, n;
 	kv = bpair_str_search(&ctxt->kvlist, "type", NULL);
 	if (!kv) {
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Query type not specified");
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+						"Query type not specified");
 		return;
 	}
-	for (type = QTYPE_FIRST; type < QTYPE_LAST; type++) {
-		if (0 == strcasecmp(TYPE[type], kv->s1)) {
-			break;
-		}
-	}
+
 	struct evkeyvalq *ohdr = evhttp_request_get_output_headers(ctxt->req);
 	evhttp_add_header(ohdr, "content-type", "application/json");
-	switch (type) {
-	case QTYPE_PTN:
-		bhttpd_handle_query_ptn(ctxt);
-		break;
-	case QTYPE_MSG:
-		bhttpd_handle_query_msg(ctxt);
-		break;
-	case QTYPE_META:
-		bhttpd_handle_query_meta(ctxt);
-		break;
-	default:
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Unknown query type: %s", kv->s1);
+
+	n = sizeof(query_handle_entry)/sizeof(query_handle_entry[0]);
+	for (i = 0; i < n; i++) {
+		if (strcasecmp(query_handle_entry[i].key, kv->s1) == 0)
+			break;
 	}
+	if (i < n)
+		query_handle_entry[i].fn(ctxt);
+	else
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Unknown query type: %s", kv->s1);
 }
 
 static __attribute__((constructor))
 void __init()
 {
 	const char *s;
+	int i, n;
 	bdebug("Adding /query handler");
 	set_uri_handle("/query", bhttpd_handle_query);
 	query_session_hash = bhash_new(4099, 7, NULL);
@@ -448,5 +481,4 @@ void __init()
 	s = getenv("BHTTPD_QUERY_SESSION_TIMEOUT");
 	if (s)
 		query_session_timeout.tv_sec = atoi(s);
-
 }
