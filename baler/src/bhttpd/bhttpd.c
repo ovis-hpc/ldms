@@ -73,6 +73,8 @@
 #include "baler/butils.h"
 #include "query/bquery.h"
 
+#include "bhttpd.h"
+
 /**
  * \page bhttpd Baler HTTP service.
  *
@@ -137,35 +139,6 @@ void usage()
 	       "For more information, please see man page bhttpd(3)\n");
 }
 
-/***** TYPES *****/
-struct bhttpd_req_ctxt {
-	struct evhttp_request *req;
-	const struct evhttp_uri *uri;
-	struct bpair_str_head kvlist;
-	int httprc;
-	struct evbuffer *evbuffer;
-	char errstr[1024];
-};
-
-typedef void (*bhttpd_req_handle_fn_t)(struct bhttpd_req_ctxt *ctxt);
-
-typedef void (*bhttpd_work_routine_fn_t)(void *arg);
-
-struct bhttpd_work {
-	struct bqueue_entry qent;
-	bhttpd_work_routine_fn_t routine;
-	void *arg;
-};
-
-struct bhttpd_msg_query_session {
-	struct bquery *q;
-	struct event *event;
-	struct timeval last_use;
-	struct bq_formatter *fmt;
-	int first;
-	uint64_t ref;
-};
-
 /***** GLOBAL VARIABLES *****/
 
 char path_buff[PATH_MAX];
@@ -194,9 +167,6 @@ struct bqueue *workq;
 
 struct bq_store *bq_store;
 struct bmptn_store *mptn_store;
-int meta_cluster_in_progress = 0;
-
-pthread_mutex_t bhttpd_mutex = PTHREAD_MUTEX_INITIALIZER; /* Generic mutex for bhttpd */
 
 /***** FUNCTIONS *****/
 
@@ -276,7 +246,6 @@ out:
 	/* EMPTY */;
 }
 
-static
 void *get_uri_handle(const char *uri)
 {
 	struct bhash_entry *ent = bhash_entry_get(handle_hash, uri, strlen(uri)+1);
@@ -285,18 +254,27 @@ void *get_uri_handle(const char *uri)
 	return NULL;
 }
 
-static
 void set_uri_handle(const char *uri, bhttpd_req_handle_fn_t fn)
 {
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+	pthread_mutex_lock(&mutex);
+	if (!handle_hash) {
+		handle_hash = bhash_new(4099, 7, NULL);
+		if (!handle_hash) {
+			berror("bhash_new()");
+			exit(-1);
+		}
+	}
+
 	int len = strlen(uri) + 1;
 	struct bhash_entry *ent = bhash_entry_set(handle_hash, uri, len, (uint64_t)fn);
 	if (!ent) {
 		berr("Cannot add handle for uri: %s\n", uri);
 		exit(-1);
 	}
+	pthread_mutex_unlock(&mutex);
 }
 
-static
 int submit_work(bhttpd_work_routine_fn_t routine, void *arg)
 {
 	struct bhttpd_work *w = malloc(sizeof(*w));
@@ -312,49 +290,6 @@ static
 struct bhttpd_work *acquire_work()
 {
 	return (void*)bqueue_dq(workq);
-}
-
-static
-void meta_cluster_work_routine(void *arg)
-{
-	int rc;
-	bmptn_store_state_e state = bmptn_store_get_state(mptn_store);
-	switch (state) {
-	case BMPTN_STORE_STATE_NA:
-	case BMPTN_STORE_STATE_ERROR:
-	case BMPTN_STORE_STATE_DONE:
-		/* In these states, reinit before clustering */
-		rc = bmptn_store_reinit(mptn_store);
-		if (rc) {
-			berr("meta_cluster_work_routine(),"
-				" bmptn_store_reinit() error, rc: %d\n", rc);
-			return;
-		}
-
-		/* intentionally let-through */
-
-	case BMPTN_STORE_STATE_INITIALIZED:
-		rc = bmptn_cluster(mptn_store);
-		if (rc) {
-			berr("meta_cluster_work_routine(),"
-				" bmptn_cluster() error, rc: %d\n", rc);
-			return;
-		}
-		break;
-
-	case BMPTN_STORE_STATE_META_1:
-	case BMPTN_STORE_STATE_META_2:
-	case BMPTN_STORE_STATE_REFINING:
-	case BMPTN_STORE_STATE_LAST:
-		/* this should not happen */
-		berr("meta_cluster_work_routine() bad state ...");
-		break;
-	}
-
-out:
-	pthread_mutex_lock(&bhttpd_mutex);
-	meta_cluster_in_progress = 0;
-	pthread_mutex_unlock(&bhttpd_mutex);
 }
 
 static
@@ -378,44 +313,6 @@ void bhttpd_handle_test(struct bhttpd_req_ctxt *ctxt)
 	evhttp_send_reply(ctxt->req, 200, NULL, evb);
 	if (evb)
 		evbuffer_free(evb);
-}
-
-static
-void bhttpd_handle_meta_cluster_op_run(struct bhttpd_req_ctxt *ctxt)
-{
-	int rc;
-	pthread_mutex_lock(&bhttpd_mutex);
-	if (meta_cluster_in_progress) {
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-						"Operation in progress...");
-	} else {
-		meta_cluster_in_progress = 1;
-		rc = submit_work(meta_cluster_work_routine, NULL);
-		if (rc) {
-			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-							"rc: %d", rc);
-		}
-	}
-	pthread_mutex_unlock(&bhttpd_mutex);
-}
-
-static
-void bhttpd_handle_meta_cluster_op_get_status(struct bhttpd_req_ctxt *ctxt)
-{
-	const char *state = bmptn_store_get_state_str(mptn_store);
-	uint32_t percent = bmptn_store_get_percent(mptn_store);
-	struct evkeyvalq *hdr = evhttp_request_get_output_headers(ctxt->req);
-	evhttp_add_header(hdr, "Content-Type", "application/json");
-	evbuffer_add_printf(ctxt->evbuffer,
-				"{\"state\": \"%s\", \"percent\": %d}",
-				state, percent);
-}
-
-static
-void bhttpd_handle_meta_cluster_op_update(struct bhttpd_req_ctxt *ctxt)
-{
-	/* TODO IMPLEMENT ME */
-	bhttpd_req_ctxt_errprintf(ctxt, HTTP_NOTIMPLEMENTED, "Not implemented.");
 }
 
 /* JSON formatter stuff */
@@ -790,52 +687,6 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 }
 
 static
-void bhttpd_handle_meta_cluster(struct bhttpd_req_ctxt *ctxt)
-{
-	int i, rc;
-	static const char *meta_op_table[] = {
-		"get_status",
-		"run",
-		"update",
-	};
-
-	enum {
-		META_OP_GET_STATUS,
-		META_OP_RUN,
-		META_OP_UPDATE,
-		META_OP_LAST,
-	} ope;
-
-	struct bpair_str *op = bpair_str_search(&ctxt->kvlist, "op", NULL);
-	const char *_op;
-	if (!op) {
-		_op = "get_status";
-	} else {
-		_op = op->s1;
-	}
-
-	for (ope = 0; ope < META_OP_LAST; ope++) {
-		if (0 == strcmp(meta_op_table[ope], _op)) {
-			break;
-		}
-	}
-
-	switch (ope) {
-	case META_OP_GET_STATUS:
-		bhttpd_handle_meta_cluster_op_get_status(ctxt);
-		break;
-	case META_OP_RUN:
-		bhttpd_handle_meta_cluster_op_run(ctxt);
-		break;
-	case META_OP_UPDATE:
-		bhttpd_handle_meta_cluster_op_update(ctxt);
-		break;
-	default:
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_BADREQUEST, "Unknown op: %s", _op);
-	}
-}
-
-static
 void print_uri_handles()
 {
 	struct bhash_iter *iter = bhash_iter_new(handle_hash);
@@ -927,7 +778,6 @@ static
 void uri_handle_init()
 {
 	/* URI HANDLES */
-	set_uri_handle("/meta_cluster", bhttpd_handle_meta_cluster);
 	set_uri_handle("/query", bhttpd_handle_query);
 	set_uri_handle("/test", bhttpd_handle_test);
 }
@@ -1013,12 +863,6 @@ void init()
 			berr("pthread_create() error, rc: %d", rc);
 			exit(-1);
 		}
-	}
-
-	handle_hash = bhash_new(4099, 7, NULL);
-	if (!handle_hash) {
-		berror("bhash_new()");
-		exit(-1);
 	}
 
 	query_session_hash = bhash_new(4099, 7, NULL);
