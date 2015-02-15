@@ -135,6 +135,14 @@ void rbn_init(struct rbn *n, void *key)
 }
 
 /**
+ * \brief Return TRUE if the tree is empty
+ */
+int rbt_empty(struct rbt *t)
+{
+	return t->root == NULL;
+}
+
+/**
  * \brief Insert a new node into the RBT.
  *
  * Insert a new node into a RBT. The node is allocated by the user and

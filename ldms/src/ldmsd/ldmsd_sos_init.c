@@ -64,7 +64,7 @@
 
 #include "ldmsd.h"
 #include <sos/sos.h>
-
+#if 0
 #include "../store/store_sos.h"
 
 const char *short_options = "s:t:u:g:m:f?";
@@ -231,9 +231,11 @@ void chown_file(const char *path, void *arg)
 				path, errno);
 	}
 }
+#endif
 
 int main(int argc, char **argv)
 {
+#if 0
 	char c;
 	int rc;
 	struct passwd passwd;
@@ -355,6 +357,6 @@ arg_out:
 	foreach_file(chown_file, &own_arg);
 	if (own_arg.rc)
 		return -1;
-
+#endif
 	return 0;
 }

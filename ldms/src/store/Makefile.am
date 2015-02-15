@@ -6,8 +6,8 @@ STORE_LIBADD = $(CORE)/libldms.la -lcoll -lovis_util \
 
 if ENABLE_SOS
 libstore_sos_la_SOURCES = store_sos.c
-libstore_sos_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
-libstore_sos_la_LIBADD = $(STORE_LIBADD) -lsos @SOS_LIBDIR_FLAG@
+libstore_sos_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
+libstore_sos_la_LIBADD = -lsos @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libstore_sos.la
 endif
 

@@ -117,19 +117,26 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * \li \b ldms_connect() Request a connection with a remote peer.
  * \li \b ldms_close() Close a connection with a remote peer.
  *
+ * \section schema Defining Metric Set Schema
+ * A Schema defines the metrics and attributes that comprise a metric set.
+ * Once a Schema is defined, it can be used to create one or more metric sets
+ * of this same type. The principle functions for managing schema are the
+ * following:
+ *
+ * \li \b ldms_create_schema() Create a Schema
+ * \li \b ldms_destroy_schema() Destroy a Schema
+ * \li \b ldms_add_metric() Add a metric to the Schema
+ * \li \b ldms_get_metric_count() Return the number of Metrics in the Schema
+ *
+ *
  * \section metric_sets Creating Metric Sets
  *
- * A Metric Set is defined and maintained by a compute node
- * server. Metric Sets are created and updated in local memory. The
+ * Metric Sets are created with a schema and updated in local memory. The
  * principle functions for creating and destroying local metric sets are the
  * following:
  *
- * \li \b ldms_create_set() Create a new metric set of the specified
- * size.
- * \li \b ldms_mmap_set() Use the memory specified as the contents of a
- * metric set.
+ * \li \b ldms_create_set() Create a new metric set from a Scheam
  * \li \b ldms_destroy_set() Destroy a metric set.
- * \li \b ldms_add_metric() Add a metric to a metric set.
  *
  * \section query Querying Metric Sets
  *
@@ -146,13 +153,14 @@ typedef struct ldms_schema_s *ldms_schema_t;
  *
  * A Metric Set producer sets the values of the metrics after creating
  * the metric set and periodically thereafter as required. The client
- * updates the metric set and gets the values of the metrics as
- * required. The functions for doing this are as follows:
+ * updates the metric set and gets the values of the metrics.
+ * The functions for doing this are as follows:
  *
  * \li \b ldms_get_metric() Get a metric handle.
  * \li \b ldms_set_metric() Set the value of a metric.
  * \li \b ldms_get_XXX() Get the value of a metric where the XXX
  * specifies the data type
+ * \li \b ldms_metric_release() Release the memory associated with a metric
  *
  * \section notification Push Notifications
  *
@@ -434,48 +442,8 @@ struct ldms_metric {
 	struct ldms_set *set;
 	struct ldms_value_desc *desc;
 	union ldms_value *value;
+	int idx;
 };
-
-struct ldms_mvec {
-	int count;
-	ldms_metric_t v[];
-};
-
-typedef struct ldms_mvec *ldms_mvec_t;
-
-/**
- * \brief Create ::ldms_mvec.
- * \param count The number of metrics in the vector.
- * \return NULL on error.
- * \return A pointer to ::ldms_mvec on success.
- */
-ldms_mvec_t ldms_mvec_create(int count);
-
-/**
- * \brief Equivalent to \c free(mvec).
- * \param mvec The pointer to the ::ldms_mvec.
- */
-void ldms_mvec_destroy(ldms_mvec_t mvec);
-
-/**
- * \brief Get the number of metrics in \c mvec
- * \param mvec The pointer to the ::ldms_mvec_t.
- * \return The number of metrics in mvec
- */
-static inline int ldms_mvec_get_count(ldms_mvec_t mvec)
-{
-	return mvec->count;
-}
-
-/**
- * \brief Get the array of the metrics in \c mvec
- * \param mvec The pointer to the ::ldms_mvec_t.
- * \return The array of the metrics in \c mvec.
- */
-static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
-{
-	return mvec->v;
-}
 
 /**
  * \addtogroup ldms_conn_mgmt LDMS Connection Management
@@ -1079,7 +1047,7 @@ extern int ldms_is_set_consistent(ldms_set_t s);
 extern int ldms_add_metric(ldms_schema_t s, const char *name, enum ldms_value_type t);
 
 /**
- * \brief Return the storage needed for metric
+ * \brief Return the storage needed for metric [DEPRECATED]
  *
  * Given a metric name and a metric type, return the number of bytes
  * the metric would consume in a metric set. This function is provided
@@ -1095,7 +1063,7 @@ extern void ldms_get_metric_size(const char *name, enum ldms_value_type t,
 				 size_t *meta_sz, size_t *data_sz);
 
 /**
- * \brief Build a metric object given an index
+ * \brief Initialize a metric object given an index
  *
  * Build a metric handle for the specified metric. The handle is used
  * to set and get values from the associated metric.
@@ -1105,7 +1073,7 @@ extern void ldms_get_metric_size(const char *name, enum ldms_value_type t,
  * \retval !0	Pointer to the prepared metric handle
  * \retval 0	The specified index is not present in the set
  */
-extern ldms_metric_t ldms_metric_get(ldms_set_t s, int idx, struct ldms_metric *metric);
+extern ldms_metric_t ldms_metric_init(ldms_set_t s, int idx, struct ldms_metric *metric);
 
 /**
  * \brief Get the metric handle for a metric
@@ -1118,20 +1086,7 @@ extern ldms_metric_t ldms_metric_get(ldms_set_t s, int idx, struct ldms_metric *
  * \param name	The name of the metric.
  * \returns	The metric set handle or 0 if there is none was found.
  */
-extern ldms_metric_t ldms_get_metric(ldms_set_t s, const char *name);
-
-/**
- * \brief Create a metric handle from a value descriptor.
- *
- * Returns the metric handle for the metric with the specified
- * name. This handle can then be used with the ldms_get_XXX functions
- * to return the value of the metric.
- *
- * \param s	The metric set handle
- * \param vd	The value descriptor.
- * \returns	A new metric handle or NULL if memory was not available.
- */
-extern ldms_metric_t ldms_make_metric(ldms_set_t s, struct ldms_value_desc *vd);
+extern ldms_metric_t ldms_get_metric_by_name(ldms_set_t s, const char *name);
 
 /**
  * \brief Release a reference on the metric.
@@ -1156,7 +1111,9 @@ extern const char *ldms_get_metric_name(ldms_metric_t m);
  * \param m	The metric handle
  * \returns	The metric's dictionary index
  */
-extern int ldms_get_metric_idx(ldms_metric_t m);
+static inline int ldms_get_metric_idx(ldms_metric_t m) {
+	return m->idx;
+}
 
 /**
  * \brief Returns the type of a metric.
@@ -1219,7 +1176,7 @@ typedef void (*ldms_visit_cb_t)(struct ldms_value_desc *vd, union ldms_value *v,
 extern void ldms_visit_metrics(ldms_set_t s, ldms_visit_cb_t cb, void *arg);
 
 /**
- * \brief Get the first metric in the metric set.
+ * \brief Get the first metric descriptor in the metric set.
  *
  * These functions are used to iterate over the metrics in a metric
  * set. The struct ldms_iterator is used to keep track of the current
@@ -1257,13 +1214,12 @@ extern struct ldms_value_desc *ldms_next(struct ldms_iterator *i);
  */
 static inline void ldms_set_user_data(ldms_metric_t m, uint64_t u)
 {
-	struct ldms_metric *_m = (struct ldms_metric *)m;
-	_m->desc->user_data = u;
+	m->desc->user_data = u;
 }
 static inline void ldms_set_midx_udata(ldms_set_t set, int idx, uint64_t u)
 {
 	struct ldms_metric _m;
-	ldms_metric_t m = ldms_metric_get(set, idx, &_m);
+	ldms_metric_t m = ldms_metric_init(set, idx, &_m);
 	m->desc->user_data = u;
 }
 
@@ -1278,8 +1234,13 @@ static inline void ldms_set_midx_udata(ldms_set_t set, int idx, uint64_t u)
  */
 static inline uint64_t ldms_get_user_data(ldms_metric_t m)
 {
-	struct ldms_metric *_m = (struct ldms_metric *)m;
-	return _m->desc->user_data;
+	return m->desc->user_data;
+}
+static inline uint64_t ldms_get_midx_udata(ldms_set_t set, int idx)
+{
+	struct ldms_metric _m;
+	ldms_metric_t m = ldms_metric_init(set, idx, &_m);
+	return m->desc->user_data;
 }
 
 /**
@@ -1293,10 +1254,8 @@ static inline uint64_t ldms_get_user_data(ldms_metric_t m)
  * \param _m	The metric handle.
  * \param v	An ldms_value union specifying the value.
  */
-static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
+static inline void ldms_set_metric(ldms_metric_t m, union ldms_value *v)
 {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
-
 	switch (m->desc->type) {
 	case LDMS_V_U8:
 	case LDMS_V_S8:
@@ -1331,7 +1290,7 @@ static inline void ldms_set_metric(ldms_metric_t _m, union ldms_value *v)
 static inline void ldms_set_midx(ldms_set_t set, int idx, union ldms_value *v)
 {
 	struct ldms_metric _m;
-	ldms_metric_t m = ldms_metric_get(set, idx, &_m);
+	ldms_metric_t m = ldms_metric_init(set, idx, &_m);
 	ldms_set_metric(m, v);
 }
 
@@ -1344,14 +1303,13 @@ static inline void ldms_set_midx(ldms_set_t set, int idx, union ldms_value *v)
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_u8(ldms_metric_t _m, uint8_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_u8(ldms_metric_t m, uint8_t v) {
 	m->value->v_u8 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_u8(ldms_set_t set, int idx, uint8_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_u8 = v;
 	m->set->data->gn++;
 }
@@ -1365,14 +1323,13 @@ static inline void ldms_set_midx_u8(ldms_set_t set, int idx, uint8_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_u16(ldms_metric_t _m, uint16_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_u16(ldms_metric_t m, uint16_t v) {
 	m->value->v_u16 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_u16(ldms_set_t set, int idx, uint16_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_u16 = v;
 	m->set->data->gn++;
 }
@@ -1386,14 +1343,13 @@ static inline void ldms_set_midx_u16(ldms_set_t set, int idx, uint16_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_u32(ldms_metric_t _m, uint32_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_u32(ldms_metric_t m, uint32_t v) {
 	m->value->v_u32 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_u32(ldms_set_t set, int idx, uint32_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_u32 = v;
 	m->set->data->gn++;
 }
@@ -1407,14 +1363,13 @@ static inline void ldms_set_midx_u32(ldms_set_t set, int idx, uint32_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_u64(ldms_metric_t _m, uint64_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_u64(ldms_metric_t m, uint64_t v) {
 	m->value->v_u64 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_u64(ldms_set_t set, int idx, uint64_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_u64 = v;
 	m->set->data->gn++;
 }
@@ -1428,14 +1383,13 @@ static inline void ldms_set_midx_u64(ldms_set_t set, int idx, uint64_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_s8(ldms_metric_t _m, int8_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_s8(ldms_metric_t m, int8_t v) {
 	m->value->v_s8 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_s8(ldms_set_t set, int idx, int8_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_s8 = v;
 	m->set->data->gn++;
 }
@@ -1449,14 +1403,13 @@ static inline void ldms_set_midx_s8(ldms_set_t set, int idx, int8_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_s16(ldms_metric_t _m, int16_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_s16(ldms_metric_t m, int16_t v) {
 	m->value->v_s16 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_s16(ldms_set_t set, int idx, int16_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_s16 = v;
 	m->set->data->gn++;
 }
@@ -1470,14 +1423,13 @@ static inline void ldms_set_midx_s16(ldms_set_t set, int idx, int16_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_s32(ldms_metric_t _m, int32_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_s32(ldms_metric_t m, int32_t v) {
 	m->value->v_s32 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_s32(ldms_set_t set, int idx, int32_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_s32 = v;
 	m->set->data->gn++;
 }
@@ -1491,14 +1443,13 @@ static inline void ldms_set_midx_s32(ldms_set_t set, int idx, int32_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_s64(ldms_metric_t _m, int64_t v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_s64(ldms_metric_t m, int64_t v) {
 	m->value->v_s64 = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_s64(ldms_set_t set, int idx, int64_t v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_s64 = v;
 	m->set->data->gn++;
 }
@@ -1512,14 +1463,13 @@ static inline void ldms_set_midx_s64(ldms_set_t set, int idx, int64_t v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_float(ldms_metric_t _m, float v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_float(ldms_metric_t m, float v) {
 	m->value->v_f = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_float(ldms_set_t set, int idx, float v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_f = v;
 	m->set->data->gn++;
 }
@@ -1533,14 +1483,13 @@ static inline void ldms_set_midx_float(ldms_set_t set, int idx, float v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_double(ldms_metric_t _m, double v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_double(ldms_metric_t m, double v) {
 	m->value->v_d = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_double(ldms_set_t set, int idx, double v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_d = v;
 	m->set->data->gn++;
 }
@@ -1554,14 +1503,13 @@ static inline void ldms_set_midx_double(ldms_set_t set, int idx, double v) {
  * \param _m	The metric handle.
  * \param v	The value.
  */
-static inline void ldms_set_long_double(ldms_metric_t _m, long double v) {
-	struct ldms_metric *m = (struct ldms_metric *)_m;
+static inline void ldms_set_long_double(ldms_metric_t m, long double v) {
 	m->value->v_ld = v;
 	m->set->data->gn++;
 }
 static inline void ldms_set_midx_long_double(ldms_set_t set, int idx, long double v) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	m->value->v_ld = v;
 	m->set->data->gn++;
 }
@@ -1591,7 +1539,7 @@ static inline uint8_t ldms_get_u8(ldms_metric_t _m) {
 }
 static inline uint8_t ldms_get_midx_u8(ldms_set_t set, int idx) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	return m->value->v_u8;
 }
 
@@ -1608,7 +1556,7 @@ static inline uint16_t ldms_get_u16(ldms_metric_t _m) {
 }
 static inline uint16_t ldms_get_midx_u16(ldms_set_t set, int idx) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	return m->value->v_u16;
 }
 
@@ -1625,7 +1573,7 @@ static inline uint32_t ldms_get_u32(ldms_metric_t _m) {
 }
 static inline uint32_t ldms_get_midx_u32(ldms_set_t set, int idx) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	return m->value->v_u32;
 }
 
@@ -1642,7 +1590,7 @@ static inline uint64_t ldms_get_u64(ldms_metric_t _m) {
 }
 static inline uint64_t ldms_get_midx_u64(ldms_set_t set, int idx) {
 	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_get(set, idx, &m_);
+	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
 	return m->value->v_u64;
 }
 

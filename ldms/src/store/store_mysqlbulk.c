@@ -545,7 +545,7 @@ err1:
 
 static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
-	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
+	  struct ldmsd_store_metric_list *metric_list, void *ucontext)
 {
 
 	msglog("New store mysqlbulk\n");
@@ -553,7 +553,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 
 	struct mysqlbulk_store_instance *si;
 	struct mysqlbulk_metric_store *ms;
-	struct ldmsd_store_metric_index *x;
+	struct ldmsd_store_metric *x;
 	int metric_count;
 	int rc = 0;
 

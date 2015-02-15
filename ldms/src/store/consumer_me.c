@@ -298,7 +298,7 @@ err:
 
 static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
-		struct ldmsd_store_metric_index_list *mlist, void *ucontext)
+		struct ldmsd_store_metric_list *mlist, void *ucontext)
 {
 	struct me_store_instance *si;
 	struct me_metric_store *ms;

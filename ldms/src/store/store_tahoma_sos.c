@@ -258,7 +258,7 @@ static int store_sos_open_sos(struct sos_tahoma_metric_store *ms,
 
 static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
-	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
+	  struct ldmsd_store_metric_list *metric_list, void *ucontext)
 {
 	struct sos_tahoma_store_instance *si;
 	struct sos_tahoma_metric_store *ms;
@@ -275,7 +275,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		 * First, count the metric.
 		 */
 		metric_count = 0;
-		struct ldmsd_store_metric_index *x;
+		struct ldmsd_store_metric *x;
 		LIST_FOREACH(x, metric_list, entry) {
 			metric_count++;
 		}

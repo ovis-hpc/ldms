@@ -67,12 +67,6 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-
-#define TV_SEC_COL	0
-#define TV_USEC_COL	1
-#define GROUP_COL	2
-#define VALUE_COL	3
-
 /**
  * NOTE: One database for all. There is a separate mysql connection per table.
  * Increment your max_connections in your /etc/my.cnf accordingly.
@@ -102,7 +96,7 @@ struct mysql_metric_store {
 struct mysql_store_instance {
 	struct ldmsd_store *store;
 	char *container;
-	char *comp_type;
+	char *schema;
 	void *ucontext;
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, mysql_metric_store) ms_list;
@@ -252,7 +246,7 @@ static const char *usage(void)
 "	dbschema	The name of the database \n"
 "	dbuser		The username of the database \n"
 "	dbpasswd	The passwd for the user of the database (optional)\n"
-"	ovistables	Create and populate supporting tables for use with\n"
+"	createovistables	Create and populate supporting tables for use with\n"
 "			OVIS (0/1) (optional. 0 default)\n"
 		;
 }
@@ -277,7 +271,7 @@ static void *get_ucontext(ldmsd_store_handle_t sh)
 static int createTable(MYSQL* conn, char* tablename)
 {
 	/* will create a table (but not supporting OVIS tables)
-NOTE: this is locked from the surrounding function */
+	   NOTE: this is locked from the surrounding function */
 
 	int mysqlerrx;
 	char query1[4096];
@@ -291,15 +285,17 @@ NOTE: this is locked from the surrounding function */
 
 	/* create table if required */
 	snprintf(query1, 4095,"%s%s%s%s%s%s%s%s%s",
-			"CREATE TABLE IF NOT EXISTS ",
-			tablename,
-			" (`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, `CompId`  INT(32) NOT NULL, `Value` ",
-			mysqlstoragestring,
-			" NOT NULL, `Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, `Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), KEY ",
-			tablename,
-			"_Time (`Time` ), KEY ",
-			tablename,
-			"_Level (`CompId` ,`Level` ,`Time` ))");
+		 "CREATE TABLE IF NOT EXISTS ",
+		 tablename,
+		 " (`TableKey`  INT NOT NULL AUTO_INCREMENT NOT NULL, "
+		 "`CompId`  INT(32) NOT NULL, "
+		 "`Value` ", mysqlstoragestring, " NOT NULL, "
+		 "`Time`  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+		 "`Level`  INT(32) NOT NULL DEFAULT 0, PRIMARY KEY  (`TableKey` ), KEY ",
+		 tablename,
+		 "_Time (`Time` ), KEY ",
+		 tablename,
+		 "_Level (`CompId` ,`Level` ,`Time` ))");
 
 	mysqlerrx = mysql_query(conn, query1);
 	if (mysqlerrx != 0){
@@ -357,7 +353,12 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 
 	/* create the MetricValueType Table if necessary */
 	char* query2 =
-		"CREATE TABLE IF NOT EXISTS `MetricValueTypes` (`ValueType` int(11) NOT NULL AUTO_INCREMENT,  `Name` tinytext NOT NULL,  `Units` tinytext NOT NULL,  `Storage` tinytext NOT NULL,  `Constant` int(32) NOT NULL DEFAULT '0',  PRIMARY KEY (`ValueType`))";
+		"CREATE TABLE IF NOT EXISTS `MetricValueTypes` "
+		"(`ValueType` int(11) NOT NULL AUTO_INCREMENT, "
+		"`Name` tinytext NOT NULL,  "
+		"`Units` tinytext NOT NULL, "
+		"`Storage` tinytext NOT NULL, "
+		"`Constant` int(32) NOT NULL DEFAULT '0',  PRIMARY KEY (`ValueType`))";
 	if (mysql_query(conn, query2) != 0){
 		msglog("Err: Cannot check for the MetricValueTypeTable\n");
 		return -1;
@@ -365,8 +366,9 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 
 	/* create and retain the MetricValueType */
 	snprintf(query1, 4095,
-			"SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
-			ovisMetricName, ovisstoragestring);
+		 "SELECT ValueType from MetricValueTypes "
+		 "WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
+		 ovisMetricName, ovisstoragestring);
 	if (mysql_query(conn, query1) != 0){
 		msglog("Err: Cannot query for MetricValueType for '%s'\n",
 				ovisMetricName);
@@ -386,8 +388,9 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 	} else {
 		mysql_free_result(result);
 		snprintf(query1, 4095,
-				"INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('%s', '1', '%s', 0)",
-				ovisMetricName, ovisstoragestring);
+			 "INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) "
+			 "VALUES ('%s', '1', '%s', 0)",
+			 ovisMetricName, ovisstoragestring);
 		if (mysql_query(conn, query1) !=0){
 			msglog("Cannot insert MetricValueType for '%s'\n",
 					ovisMetricName);
@@ -395,8 +398,9 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 		}
 
 		snprintf(query1, 4095,
-				"SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
-				ovisMetricName, ovisstoragestring );
+			 "SELECT ValueType from MetricValueTypes "
+			 "WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
+			 ovisMetricName, ovisstoragestring );
 		if (mysql_query(conn, query1) != 0){
 			msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
 			return -1;
@@ -416,7 +420,12 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 	}
 
 	/* create the MetricValueTableIndex if necessary */
-	query2 =  "CREATE TABLE IF NOT EXISTS `MetricValueTableIndex` (`TableId` int(11) NOT NULL AUTO_INCREMENT,  `TableName` tinytext NOT NULL,  `CompType` int(32) NOT NULL,  `ValueType` int(32) NOT NULL,  `MinDeltaTime` float NOT NULL DEFAULT '1',  PRIMARY KEY (`TableId`))";
+	query2 =  "CREATE TABLE IF NOT EXISTS `MetricValueTableIndex` "
+		"(`TableId` int(11) NOT NULL AUTO_INCREMENT, "
+		"`TableName` tinytext NOT NULL, "
+		"`CompType` int(32) NOT NULL, "
+		"`ValueType` int(32) NOT NULL, "
+		"`MinDeltaTime` float NOT NULL DEFAULT '1',  PRIMARY KEY (`TableId`))";
 	if (mysql_query(conn,query2) != 0){
 		msglog("Err: Cannot check for the MetricValueTableIndex\n");
 		return -1;
@@ -424,8 +433,9 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 
 	/* create the TableId if necessary */
 	snprintf(query1, 4095,
-			"SELECT TableId from MetricValueTableIndex WHERE TableName='%s' AND CompType=%d AND ValueType=%d",
-			tableName, ctype, metrictype);
+		 "SELECT TableId from MetricValueTableIndex "
+		 "WHERE TableName='%s' AND CompType=%d AND ValueType=%d",
+		 tableName, ctype, metrictype);
 	if (mysql_query(conn, query1) != 0){
 		msglog("Cannot query for table id for '%s'\n", tableName);
 		return -1;
@@ -435,8 +445,9 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 	if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
 		mysql_free_result(result);
 		snprintf(query1, 4095,
-				"INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType, MinDeltaTime ) VALUES ('%s', %d, %d, 0)",
-				tableName, ctype, metrictype);
+			 "INSERT INTO MetricValueTableIndex "
+			 "( TableName, CompType, ValueType, MinDeltaTime ) VALUES ('%s', %d, %d, 0)",
+			 tableName, ctype, metrictype);
 		if (mysql_query(conn, query1) != 0){
 			msglog("Cannot insert into MetricValueTableIndex for tableName '%s'\n",
 					tableName);
@@ -450,12 +461,12 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 }
 
 int
-new_metric_store(struct mysql_metric_store *msm, const char *comp_type,
+new_metric_store(struct mysql_metric_store *msm, const char *schema,
 		 const char *metric_name)
 {
 	char* cleansedmetricname;
 	char* tempmetricname;
-	char* cleansedcompname;
+	char* cleansedschemaname;
 	int rc;
 
 	/* Create a table for this comptype and metric name
@@ -479,16 +490,16 @@ new_metric_store(struct mysql_metric_store *msm, const char *comp_type,
 	}
 
 	tempmetricname[0] = toupper(tempmetricname[0]);
-	cleansedcompname = strdup(comp_type);
-	if (!cleansedcompname){
+	cleansedschemaname = strdup(schema);
+	if (!cleansedschemaname){
 		goto err3;
 	}
 
-	cleanse_string(cleansedcompname);
-	cleansedcompname[0] = toupper(cleansedcompname[0]);
+	cleanse_string(cleansedschemaname);
+	cleansedschemaname[0] = toupper(cleansedschemaname[0]);
 
 	sz = strlen(tempmetricname) +
-		strlen(cleansedcompname) +
+		strlen(cleansedschemaname) +
 		strlen("MetricValues");
 
 	msm->tablename = (char*)malloc((sz+5)*sizeof(char));
@@ -496,9 +507,9 @@ new_metric_store(struct mysql_metric_store *msm, const char *comp_type,
 		goto err4;
 	}
 	snprintf(msm->tablename, (sz+5),"Metric%s%sValues",
-			cleansedcompname,
+			cleansedschemaname,
 			tempmetricname);
-	/* will need to retain the compname and metricname temporarily
+	/* will need to retain the schemaname and metricname temporarily
 	   if need to build the OVIS supporting tables */
 
 	rc = init_conn(&(msm->conn));
@@ -514,7 +525,7 @@ new_metric_store(struct mysql_metric_store *msm, const char *comp_type,
 	if (createovistables){
 		rc = create_OVIS_supporting_tables(msm->conn,
 				msm->tablename,
-				cleansedcompname,
+				cleansedschemaname,
 				tempmetricname);
 		if (rc != 0){
 			goto err6;
@@ -524,8 +535,8 @@ new_metric_store(struct mysql_metric_store *msm, const char *comp_type,
 	if (tempmetricname)
 		free(tempmetricname);
 
-	if (cleansedcompname)
-		free(cleansedcompname);
+	if (cleansedschemaname)
+		free(cleansedschemaname);
 
 	return 0;
 err6:
@@ -533,7 +544,7 @@ err6:
 err5:
 	free(msm->tablename);
 err4:
-	free(cleansedcompname);
+	free(cleansedschemaname);
 err3:
 	free(tempmetricname);
 err2:
@@ -543,8 +554,8 @@ err1:
 }
 
 static ldmsd_store_handle_t
-new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
-	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
+open_store(struct ldmsd_store *s, const char *container, const char *schema,
+	   struct ldmsd_store_metric_list *metric_list, void *ucontext)
 {
 
 	msglog("New store mysql\n");
@@ -552,7 +563,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 
 	struct mysql_store_instance *si;
 	struct mysql_metric_store *ms;
-	struct ldmsd_store_metric_index *x;
+	struct ldmsd_store_metric *x;
 	int metric_count;
 	int rc = 0;
 
@@ -580,8 +591,8 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 	si->container = strdup(container);
 	if (!si->container)
 		goto err2;
-	si->comp_type = strdup(comp_type);
-	if (!si->comp_type)
+	si->schema = strdup(schema);
+	if (!si->schema)
 		goto err3;
 
 	/* for each metric, do msm initialization */
@@ -606,7 +617,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		ms = calloc(1, sizeof(*ms));
 		if (!ms)
 			goto err4;
-		rc = new_metric_store(ms, si->comp_type, name);
+		rc = new_metric_store(ms, si->schema, name);
 		if (rc)
 			goto err4;
 		idx_add(si->ms_idx, name, strlen(name), ms);
@@ -643,23 +654,20 @@ out:
 
 
 static int
-store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
+store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
-	/* NOTE: ldmsd_store invokes the lock on the whole si */
+	struct mysql_store_instance *si = _sh;
 
-	struct mysql_store_instance *si;
-
-	si = sh;
-	if (!sh)
+	if (!si)
 		return EINVAL;
 
 	int i;
-	const struct ldms_timestamp *ts = ldms_get_tranasaction_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 
-	for (i=0; i<mvec->count; i++) {
+	for (i = 0; i < metric_count; i++) {
 		struct mysql_metric_store *msm = si->ms[i];
-		uint64_t comp_id = ldms_get_user_data(mvec->v[i]);
-		uint64_t val = ldms_get_u64(mvec->v[i]);
+		uint64_t comp_id = ldms_get_midx_udata(set, metric_arry[i]);
+		uint64_t val = ldms_get_midx_u64(set, metric_arry[i]);
 		long int level = lround( -log2( drand48())); //residual OVIS-ism
 		char insertStatement[1024];
 		int mysqlerrx;
@@ -671,7 +679,7 @@ store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 			return EPERM;
 		}
 
-		snprintf(insertStatement,1023,
+		snprintf(insertStatement, sizeof(insertStatement) - 1,
 			 "INSERT INTO %s VALUES( NULL, %"PRIu64", %"PRIu64
 			 ", FROM_UNIXTIME(%d), %ld )",
 			 msm->tablename, comp_id,
@@ -732,8 +740,12 @@ static int refresh_store(ldmsd_store_handle_t sh)
 	return 0;
 }
 
-
-static void destroy_store(ldmsd_store_handle_t sh)
+/**
+ * Closing the store, closes the mysql conns, but does not destroy the store.
+ * This is because the filehandles are kept in the params of the metrics, so they
+ * could not be reestablished if destroyed without calling add_metric again.
+ */
+static void close_store(ldmsd_store_handle_t sh)
 {
 	pthread_mutex_lock(&cfg_lock);
 	struct mysql_metric_store *msm;
@@ -759,8 +771,8 @@ static void destroy_store(ldmsd_store_handle_t sh)
 		free(msm);
 	}
 
-	if (si->comp_type)
-		free(si->comp_type);
+	if (si->schema)
+		free(si->schema);
 	idx_delete(store_idx, (void*)si->container, strlen(si->container));
 	if (si->container)
 		free(si->container);
@@ -770,17 +782,6 @@ static void destroy_store(ldmsd_store_handle_t sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-/**
- * Closing the store, closes the mysql conns, but does not destroy the store.
- * This is because the filehandles are kept in the params of the metrics, so they
- * could not be reestablished if destroyed without calling add_metric again.
- */
-static void close_store(ldmsd_store_handle_t sh)
-{
-	/* Currently close is close and destroy */
-	destroy_store(sh);
-}
-
 static struct ldmsd_store store_mysql = {
 	.base = {
 		.name = "mysql",
@@ -788,9 +789,7 @@ static struct ldmsd_store store_mysql = {
 		.config = config,
 		.usage = usage,
 	},
-	.get = get_store,
-	.new = new_store,
-	.destroy = destroy_store,
+	.open = open_store,
 	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,

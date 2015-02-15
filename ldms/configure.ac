@@ -175,21 +175,24 @@ fi
 
 if test -z "$ENABLE_SOS_TRUE"
 then
-AC_CHECK_LIB( sos, sos_open,
+OCFLAGS=$CFLAGS
+CFLAGS=-I$SOS_INCDIR
+AC_CHECK_HEADERS(sos/sos.h,
+	[],
 	[
-		AC_CHECK_HEADERS($SOS_INCDIR/sos/sos.h,
-		[],
-		[
-			AC_MSG_FAILURE([sos/sos.h not found])
-		],
-		)
+		AC_MSG_FAILURE([sos/sos.h not found])
+	],
+)
+AC_CHECK_LIB( sos, sos_container_open,
+	[
 	],
 	[
 		AC_MSG_FAILURE(libsos not found)
 	],
-	$SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG
+	[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
 )
 dnl Reset LIBS variable.
+CFLAGS=$OCFLAGS
 LIBS=""
 fi
 

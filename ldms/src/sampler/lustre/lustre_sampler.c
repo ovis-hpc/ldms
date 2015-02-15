@@ -276,7 +276,7 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 	union ldms_value value;
 	struct str_map *id_map = lss->key_id_map;
 	/* The first line is timestamp, we can ignore that */
-	fgets(lbuf, __LBUF_SIZ, lss->lms.f);
+	char *s = fgets(lbuf, __LBUF_SIZ, lss->lms.f);
 
 	gettimeofday(lss->tv_cur, 0);
 	struct timeval dtv;

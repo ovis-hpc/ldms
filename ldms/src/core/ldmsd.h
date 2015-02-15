@@ -63,35 +63,34 @@ struct ldmsd_store_policy_ref {
 	struct ldmsd_store_policy *lsp;
 	LIST_ENTRY(ldmsd_store_policy_ref) entry;
 };
+LIST_HEAD(ldmsd_lsp_list, ldmsd_store_policy_ref);
 
-LIST_HEAD(ldmsd_store_policy_ref_list, ldmsd_store_policy_ref);
 struct hostset
 {
 	struct hostspec *host;
 	char *name;
-	struct ldmsd_store_policy_ref_list lsp_list; /**< Store policy list that
-						       is related to this
-						       hostset. */
+
+	/** List of storage policies to call on update_complete. */
+	struct ldmsd_lsp_list lsp_list;
+
 	enum {
 		LDMSD_SET_CONFIGURED,
 		LDMSD_SET_LOOKUP,
 		LDMSD_SET_BUSY, /* updating & storing */
 		LDMSD_SET_READY
 	} state;
+
 	pthread_mutex_t state_lock;
 	ldms_set_t set;
 	uint64_t gn;
 	int refcount;
 	pthread_mutex_t refcount_lock;
 	LIST_ENTRY(hostset) entry;
-	struct ldms_mvec *mvec; /**< Metric vector */
 	uint64_t curr_busy_count; /**< The count of current busy access */
 	uint64_t total_busy_count; /**< The count of total busy access */
 };
 
 struct hostset_ref {
-	char *hostname; /**< The hostname is here as a part of the
-			     configuration. */
 	struct hostset *hset;
 	LIST_ENTRY(hostset_ref) entry;
 };
@@ -124,12 +123,6 @@ struct hostspec
 	LIST_ENTRY(hostspec) link;
 };
 
-typedef struct ldmsd_store_tuple_s {
-	struct timeval tv;
-	uint32_t comp_id;
-	ldms_metric_t value;
-} *ldmsd_store_tuple_t;
-
 extern char *skip_space(char *s);
 extern int parse_cfg(const char *config_file);
 extern struct hostspec *host_first(void);
@@ -158,11 +151,7 @@ struct ldmsd_sampler {
 
 typedef void *ldmsd_store_handle_t;
 
-enum ldmsd_store_flags {
-	LDMSD_STORE_UPDATE_COMPLETE = 0x1,
-};
-
-struct ldmsd_store_metric_index_list;
+struct ldmsd_store_metric_list;
 /**
  * \brief ldms_store
  *
@@ -182,24 +171,22 @@ struct ldmsd_store_metric_index_list;
 struct ldmsd_store {
 	struct ldmsd_plugin base;
 	void *ucontext;
-	ldmsd_store_handle_t (*get)(const char *container);
-	ldmsd_store_handle_t (*new)(struct ldmsd_store *s, const char
-			*comp_type, const char *container, struct
-			ldmsd_store_metric_index_list *metric_list, void *ucontext);
-	void (*destroy)(ldmsd_store_handle_t sh);
-	int (*flush)(ldmsd_store_handle_t sh);
+	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
+				    const char *container, const char *schema,
+				    struct ldmsd_store_metric_list *metric_list,
+				    void *ucontext);
 	void (*close)(ldmsd_store_handle_t sh);
+	int (*flush)(ldmsd_store_handle_t sh);
 	void *(*get_context)(ldmsd_store_handle_t sh);
-	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set,
-		     ldms_mvec_t mvec, int flags);
+	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
 };
 
 struct store_instance;
 typedef void (*io_work_fn)(struct store_instance *);
 struct store_instance {
-	struct ldmsd_store *store_engine; /**< The store plugin. */
+	struct ldmsd_store *plugin; /**< The store plugin. */
 	ldmsd_store_handle_t store_handle; /**< The store handle from store->new
-					     	or store->get */
+						or store->get */
 	struct flush_thread *ft; /**< The pointer to the assigned
 				      flush_thread */
 	enum {
@@ -216,30 +203,36 @@ struct store_instance {
 	int work_pending;
 };
 
-struct ldmsd_store_metric_index {
-	char *name; /**< For configuration */
-	int index; /**< The index */
-	LIST_ENTRY(ldmsd_store_metric_index) entry;
+struct ldmsd_store_metric {
+	char *name;
+	enum ldms_value_type type;
+	LIST_ENTRY(ldmsd_store_metric) entry;
 };
 
-LIST_HEAD(ldmsd_store_metric_index_list, ldmsd_store_metric_index);
+struct ldmsd_store_host {
+	char *name;
+	struct rbn rbn;
+};
+
+LIST_HEAD(ldmsd_store_metric_list, ldmsd_store_metric);
 
 struct ldmsd_store_policy {
-	struct hostset_ref_list hset_ref_list;
-	char *container; /**< This is store policy ID. */
-	char *setname; /**< It is here for configuration. */
-	int metric_count; /**< The number of metrics. */
-	struct ldmsd_store_metric_index_list metric_list; /**< List of the indices. */
-	char *comp_type;
-	struct ldmsd_store *store_engine; /**< The store plugin. */
-	struct store_instance *si; /**< Store instance. */
+	char *name;
+	char *container;
+	char *schema;
+	int metric_count;
+	int *metric_arry;
+	struct ldmsd_store_metric_list metric_list;
+	struct rbt host_tree;
+	struct ldmsd_store *plugin;
+	struct store_instance *si;
 
 	enum {
 		STORE_POLICY_CONFIGURING=0, /* Need metric index list */
 		STORE_POLICY_READY,
-		STORE_POLICY_WRONG_CONFIG
+		STORE_POLICY_ERROR
 	} state;
-	pthread_mutex_t idx_create_lock;
+	pthread_mutex_t cfg_lock;
 	LIST_ENTRY(ldmsd_store_policy) link;
 };
 
@@ -253,38 +246,25 @@ void ldms_log(const char *fmt, ...);
  * \returns Error code on failure.
  */
 int ldmsd_store_init(int __flush_N);
-int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
-		ldms_set_t set, struct ldms_mvec *mvec, int flags);
+int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set);
 
 struct store_instance *
 ldmsd_store_instance_get(struct ldmsd_store *store,
-			struct ldmsd_store_policy *sp);
+			 struct ldmsd_store_policy *sp);
 
 static inline ldmsd_store_handle_t
-ldmsd_store_new(struct ldmsd_store *store,
-		const char *comp_type, const char *container,
-		struct ldmsd_store_metric_index_list *metric_list,
+ldmsd_store_open(struct ldmsd_store *store,
+		const char *container, const char *schema,
+		struct ldmsd_store_metric_list *metric_list,
 		void *ucontext)
 {
-	return store->new(store, comp_type, container, metric_list, ucontext);
+	return store->open(store, container, schema, metric_list, ucontext);
 }
 
 static inline void *ldmsd_store_get_context(struct ldmsd_store *store,
 					    ldmsd_store_handle_t sh)
 {
 	return store->get_context(sh);
-}
-
-static inline ldmsd_store_handle_t
-ldmsd_store_get(struct ldmsd_store *store, const char *container)
-{
-	return store->get(container);
-}
-
-static inline void
-ldmsd_store_destroy(struct ldmsd_store *store, ldmsd_store_handle_t sh)
-{
-	store->destroy(sh);
 }
 
 static inline void

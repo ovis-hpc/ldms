@@ -125,7 +125,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static void term(void)
 {
-	//should this close the filehandles as well?
+	/*
+	 * TODO: Iterate through all unclosed stores and cleanup resources
+	 * and close any open files.
+	 */
 }
 
 static const char *usage(void)
@@ -136,21 +139,6 @@ static const char *usage(void)
 "              path      The path to the root of the flatfile directory\n";
 }
 
-static ldmsd_store_handle_t
-get_store(const char *container)
-{
-	ldmsd_store_handle_t sh;
-
-	pthread_mutex_lock(&cfg_lock);
-	/*
-	 * Add a component type directory if one does not
-	 * already exist
-	 */
-	sh = idx_find(store_idx, (void *)container, strlen(container));
-	pthread_mutex_unlock(&cfg_lock);
-	return sh;
-}
-
 static void *get_ucontext(ldmsd_store_handle_t _sh)
 {
 	struct flatfile_store_instance *si = _sh;
@@ -158,8 +146,8 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 }
 
 static ldmsd_store_handle_t
-new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
-	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
+open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
+	  struct ldmsd_store_metric_list *metric_list, void *ucontext)
 {
 	struct flatfile_store_instance *si;
 	struct flatfile_metric_store *ms;
@@ -176,7 +164,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		 * First, count the metric.
 		 */
 		int metric_count = 0;
-		struct ldmsd_store_metric_index *x;
+		struct ldmsd_store_metric *x;
 		LIST_FOREACH(x, metric_list, entry) {
 			metric_count++;
 		}
@@ -261,7 +249,7 @@ out:
 }
 
 static int
-store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
+store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
 	struct flatfile_store_instance *si;
 	int i;
@@ -276,13 +264,13 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 	uint64_t comp_id;
 
-	for (i=0; i<mvec->count; i++) {
+	for (i=0; i<metric_count; i++) {
 		pthread_mutex_lock(&si->ms[i]->lock);
-		comp_id = ldms_get_user_data(mvec->v[i]);
+		comp_id = ldms_get_midx_udata(set, metric_arry[i]);
 		rc = fprintf(si->ms[i]->file, "%"PRIu32".%"PRIu32" %"PRIu64
 				" %"PRIu64"\n", ts->sec,
 				ts->usec, comp_id,
-				ldms_get_u64(mvec->v[i]));
+			     ldms_get_midx_u64(set, metric_arry[i]));
 		if (rc < 0) {
 			last_errno = errno;
 			last_rc = rc;
@@ -350,11 +338,6 @@ static void close_store(ldmsd_store_handle_t _sh)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static void destroy_store(ldmsd_store_handle_t _sh)
-{
-	close_store(_sh);
-}
-
 static struct ldmsd_store store_flatfile = {
 	.base = {
 		.name = "flatfile",
@@ -362,13 +345,11 @@ static struct ldmsd_store store_flatfile = {
 		.config = config,
 		.usage = usage,
 	},
-	.get = get_store,
-	.new = new_store,
-	.destroy = destroy_store,
-	.get_context = get_ucontext,
-	.store = store,
-	.flush = flush_store,
+	.open = open_store,
 	.close = close_store,
+	.store = store,
+	.get_context = get_ucontext,
+	.flush = flush_store,
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)

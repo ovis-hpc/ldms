@@ -496,13 +496,6 @@ char *_create_path(const char *set_name)
 	return __set_path;
 }
 
-const char *ldms_get_schema_name(ldms_set_t s)
-{
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	ldms_name_t name = get_schema_name(sd->set->meta);
-	return name->name;
-}
-
 const char *ldms_get_instance_name(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
@@ -882,7 +875,7 @@ enum ldms_value_type ldms_get_metric_type(ldms_metric_t _m)
 	return m->desc->type;
 }
 
-ldms_metric_t ldms_get_metric(ldms_set_t _set, const char *name)
+ldms_metric_t ldms_get_metric_by_name(ldms_set_t _set, const char *name)
 {
 	struct ldms_value_desc *vd;
 	struct ldms_iterator i;
@@ -901,7 +894,7 @@ ldms_metric_t ldms_get_metric(ldms_set_t _set, const char *name)
 	return NULL;
 }
 
-ldms_metric_t ldms_metric_get(ldms_set_t _set, int idx, struct ldms_metric *metric)
+ldms_metric_t ldms_metric_init(ldms_set_t _set, int idx, struct ldms_metric *metric)
 {
 	struct ldms_value_desc *vd;
 	union ldms_value *v;
@@ -916,21 +909,8 @@ ldms_metric_t ldms_metric_get(ldms_set_t _set, int idx, struct ldms_metric *metr
 	metric->set = s;
 	metric->desc = vd;
 	metric->value = v;
-
+	metric->idx = idx;
 	return metric;
-}
-
-ldms_metric_t ldms_make_metric(ldms_set_t _set, struct ldms_value_desc *vd)
-{
-	struct ldms_data_hdr *dh;
-	struct ldms_metric *m = malloc(sizeof *m);
-	if (!m)
-		return NULL;
-	m->desc = vd;
-	m->set = ((struct ldms_set_desc *)_set)->set;
-	dh = m->set->data;
-	m->value = ldms_ptr_(union ldms_value, dh, vd->data_offset);
-	return m;
 }
 
 void ldms_metric_release(ldms_metric_t m)
@@ -1064,20 +1044,5 @@ int ldms_is_set_consistent(ldms_set_t s)
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
-}
-
-ldms_mvec_t ldms_mvec_create(int count)
-{
-	ldms_mvec_t mvec = malloc(sizeof(*mvec) + count *
-				  sizeof(ldms_metric_t));
-	if (!mvec)
-		return NULL;
-	mvec->count = count;
-	return mvec;
-}
-
-void ldms_mvec_destroy(ldms_mvec_t mvec)
-{
-	free(mvec);
 }
 

@@ -12,7 +12,7 @@ ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lpthread
 ldmsd_SOURCES = ldmsd.c ldmsd_store.c
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ \
-		-levent -lpthread -levent_pthreads -lovis_util -ldl
+		-levent -lpthread -levent_pthreads -lovis_util -lcoll -ldl
 ldmsd_CFLAGS = $(AM_CFLAGS) @EVENTINC@
 if ENABLE_YAML
 ldmsd_LDFLAGS += -lyaml
@@ -31,5 +31,6 @@ ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lreadline -lovis_ctrl -lovis_util \
 		  @LDFLAGS_READLINE@
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
-ldmsd_sos_init_LDADD = -lsos -lpthread
+ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
+ldmsd_sos_init_LDADD = -lsos -lpthread @SOS_LIBDIR_FLAG@
 ldmsd_sos_init_LDFLAGS = $(AM_LDFLAGS)

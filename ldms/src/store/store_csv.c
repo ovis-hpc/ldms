@@ -157,25 +157,25 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 	return s_handle->ucontext;
 }
 
-static int print_header(struct csv_store_handle *s_handle,
-			ldms_mvec_t mvec)
+static int print_header(struct csv_store_handle *s_handle, ldms_set_t set,
+			int *metric_arry, size_t metric_count)
 {
-
 	/* Only called from Store which already has the lock */
 	FILE* fp = s_handle->headerfile;
 
 	s_handle->printheader = 0;
-	if (!fp){
+	if (!fp) {
 		msglog("Cannot print header for store_csv. No headerfile\n");
 		return EINVAL;
 	}
 
 	fprintf(fp, "%s", "#Time");
 
-	int num_metrics = ldms_mvec_get_count(mvec);
 	int i, rc;
-	for (i = 0; i < num_metrics; i++) {
-		const char* name = ldms_get_metric_name(mvec->v[i]);
+	for (i = 0; i < metric_count; i++) {
+		struct ldms_metric m_;
+		ldms_metric_t m = ldms_metric_init(set, metric_arry[i], &m_);
+		const char* name = ldms_get_metric_name(m);
 		fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 	}
@@ -191,39 +191,45 @@ static int print_header(struct csv_store_handle *s_handle,
 }
 
 static ldmsd_store_handle_t
-new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
-		struct ldmsd_store_metric_index_list *list, void *ucontext)
+open_store(struct ldmsd_store *s, const char* container, const char *schema,
+	   struct ldmsd_store_metric_list *list, void *ucontext)
 {
+	int rc;
 	struct csv_store_handle *s_handle;
 	int add_handle = 0;
+	char *path;
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
 	if (!s_handle) {
-		char tmp_path[PATH_MAX];
+		size_t pathlen = strlen(root_path) +
+			strlen(schema) +
+			strlen(container) + 8;
+		path = malloc(pathlen);
+		if (!path)
+			goto out;
 
-		//append or create
-		sprintf(tmp_path, "%s/%s", root_path, comp_type);
-		mkdir(tmp_path, 0777);
-		sprintf(tmp_path, "%s/%s/%s", root_path, comp_type,
-				container);
-
+		sprintf(path, "%s/%s", root_path, container);
+		rc = mkdir(path, 0777);
+		if (rc && rc != EEXIST) {
+			msglog("%s: Error %d creating directory %s.\n",
+			       __FILE__, rc, path);
+			goto err0;
+		}
+		sprintf(path, "%s/%s/%s", root_path, container, schema);
 		s_handle = calloc(1, sizeof *s_handle);
 		if (!s_handle)
-			goto out;
+			goto err0;
+
 		s_handle->ucontext = ucontext;
 		s_handle->store = s;
 		add_handle = 1;
 
 		pthread_mutex_init(&s_handle->lock, NULL);
-
-		s_handle->path = strdup(tmp_path);
-		if (!s_handle->path)
-			goto err1;
-
+		s_handle->path = path;
 		s_handle->store_key = strdup(container);
 		if (!s_handle->store_key)
-			goto err2;
+			goto err1;
 
 		s_handle->printheader = 1;
 	}
@@ -234,11 +240,14 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	/* For both actual new store and reopened store, open the data file */
 	if (!s_handle->file)
 		s_handle->file = fopen(s_handle->path, "a+");
-	if (!s_handle->file)
-		goto err3;
+	if (!s_handle->file) {
+		msglog("%s: Error %d opening the file %s.\n",
+		       __FILE__, errno, s_handle->path);
+		goto err2;
+	}
 
 	/* Only bother to open the headerfile if we have to print the header */
-	if (s_handle->printheader && !s_handle->headerfile){
+	if (s_handle->printheader && !s_handle->headerfile) {
 		char tmp_headerpath[PATH_MAX];
 
 		if (altheader) {
@@ -250,7 +259,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		}
 
 		if (!s_handle->headerfile)
-			goto err4;
+			goto err3;
 	}
 
 	if (add_handle)
@@ -259,32 +268,26 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 	pthread_mutex_unlock(&s_handle->lock);
 	goto out;
-
-err4:
+ err3:
 	fclose(s_handle->file);
 	s_handle->file = NULL;
-err3:
+ err2:
 	free(s_handle->store_key);
-err2:
-	free(s_handle->path);
-err1:
+ err1:
 	pthread_mutex_unlock(&s_handle->lock);
 	pthread_mutex_destroy(&s_handle->lock);
 	free(s_handle);
 	s_handle = NULL;
-out:
+ err0:
+	free(path);
+ out:
 	pthread_mutex_unlock(&cfg_lock);
 	return s_handle;
 }
 
 static int
-store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec,
-		int flags)
+store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
-	/* Do not store if data update is not complete */
-	if (!(flags & LDMSD_STORE_UPDATE_COMPLETE))
-		return 0;
-
 	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 	uint64_t comp_id;
 	struct csv_store_handle *s_handle;
@@ -301,16 +304,15 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec,
 	pthread_mutex_lock(&s_handle->lock);
 
 	if (s_handle->printheader)
-		print_header(s_handle, mvec);
+		print_header(s_handle, set, metric_arry, metric_count);
 
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32, ts->sec, ts->usec);
 
-	int num_metrics = ldms_mvec_get_count(mvec);
 	int i, rc;
-	for (i = 0; i < num_metrics; i++) {
-		comp_id = ldms_get_user_data(mvec->v[i]);
+	for (i = 0; i < metric_count; i++) {
+		comp_id = ldms_get_midx_udata(set, metric_arry[i]);
 		rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
-				comp_id, ldms_get_u64(mvec->v[i]));
+			     comp_id, ldms_get_midx_u64(set, metric_arry[i]));
 		if (rc < 0)
 			msglog("store_csv: Error %d writing to '%s'\n",
 					rc, s_handle->path);
@@ -337,22 +339,6 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 
 static void close_store(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_store_handle *s_handle = _s_handle;
-	if (!s_handle)
-		return;
-
-	pthread_mutex_lock(&s_handle->lock);
-	if (s_handle->file)
-		fclose(s_handle->file);
-	s_handle->file = NULL;
-	if (s_handle->headerfile)
-		fclose(s_handle->headerfile);
-	s_handle->headerfile = NULL;
-	pthread_mutex_unlock(&s_handle->lock);
-}
-
-static void destroy_store(ldmsd_store_handle_t _s_handle)
-{
 
 	pthread_mutex_lock(&cfg_lock);
 	struct csv_store_handle *s_handle = _s_handle;
@@ -362,7 +348,7 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog("Destroying store_csv with path <%s>\n", s_handle->path);
+	msglog("Closing store_csv with path <%s>\n", s_handle->path);
 	fflush(s_handle->file);
 	s_handle->store = NULL;
 	if (s_handle->path)
@@ -394,9 +380,7 @@ static struct ldmsd_store store_csv = {
 			.config = config,
 			.usage = usage,
 	},
-	.get = get_store,
-	.new = new_store,
-	.destroy = destroy_store,
+	.open = open_store,
 	.get_context = get_ucontext,
 	.store = store,
 	.flush = flush_store,

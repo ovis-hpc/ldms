@@ -244,9 +244,9 @@ void ocm_handle_cfg_cmd_add_host(ocm_cfg_cmd_t cmd)
 void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 {
 	char err_str[LEN_ERRSTR];
-	const char *set_name;
 	const char *store_name;
-	const char *comp_type;
+	const char *policy_name;
+	const char *schema;
 	const char *attr;
 	char *metrics = NULL;
 	char *hosts = NULL;
@@ -259,23 +259,23 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 		goto einval;
 	store_name = v->s.str;
 
-	attr = "comp_type";
+	attr = "policy";
 	v = ocm_av_get_value(cmd, attr);
 	if (!v)
 		goto einval;
-	comp_type = v->s.str;
-
-	attr = "set";
-	v = ocm_av_get_value(cmd, attr);
-	if (!v)
-		goto einval;
-	set_name = v->s.str;
+	policy_name = v->s.str;
 
 	attr = "container";
 	v = ocm_av_get_value(cmd, attr);
 	if (!v)
 		goto einval;
 	container = v->s.str;
+
+	attr = "schema";
+	v = ocm_av_get_value(cmd, attr);
+	if (!v)
+		goto einval;
+	schema = v->s.str;
 
 	v = ocm_av_get_value(cmd, "metrics");
 	if (v)
@@ -285,11 +285,11 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 	if (v)
 		hosts = (char*)v->s.str;
 
-	int rc = ldmsd_store(store_name, comp_type, set_name, container,
-						metrics, hosts, err_str);
+	int rc = config_store_policy(store_name, policy_name, container,
+					schema, metrics, hosts, err_str);
 	if (rc) {
-		ldms_log("ocm: failed to start the store container '%s': %s\n",
-							container, err_str);
+		ldms_log("ocm: failed to config the store '%s': %s\n",
+							policy_name, err_str);
 	}
 	return;
 einval:

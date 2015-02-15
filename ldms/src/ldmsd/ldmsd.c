@@ -73,6 +73,7 @@
 #include <assert.h>
 #include <libgen.h>
 #include <event2/thread.h>
+#include <coll/rbt.h>
 #include <coll/str_map.h>
 #include "event.h"
 #include "ldms.h"
@@ -207,8 +208,10 @@ void cleanup(int x)
 
 	if (muxr_s >= 0)
 		close(muxr_s);
-	if (sockname && bind_succeeded)
+	if (sockname && bind_succeeded) {
+		ldms_log("LDMS Daemon deleting socket file %s\n", sockname);
 		unlink(sockname);
+	}
 	if (ldms) {
 		ldms_xprt_close(ldms);
 		ldms = NULL;
@@ -219,7 +222,7 @@ void cleanup(int x)
 	pthread_mutex_lock(&sp_list_lock);
 	LIST_FOREACH(sp, &sp_list, link) {
 		if (sp->si) {
-			sp->si->store_engine->destroy(sp->si->store_handle);
+			sp->si->plugin->close(sp->si->store_handle);
 			sp->si = NULL;
 		}
 	}
@@ -600,6 +603,7 @@ void destroy_plugin(struct plugin *p)
  * flush_thread information are in ldmsd_store.c. */
 extern void process_info_flush_thread(void);
 
+
 /**
  * Return information about the state of the daemon
  */
@@ -635,8 +639,6 @@ int process_info(int fd,
 	ldms_log("%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
-	char *metric_name;
-	char *container;
 	pthread_mutex_lock(&host_list_lock);
 	uint64_t total_curr_busy = 0;
 	uint64_t grand_total_busy = 0;
@@ -664,6 +666,23 @@ int process_info(int fd,
 	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
 	ldms_log("Grand Total Busy Count: %Lu\n", grand_total_busy);
 	pthread_mutex_unlock(&host_list_lock);
+
+	pthread_mutex_lock(&sp_list_lock);
+	struct ldmsd_store_policy *sp;
+	LIST_FOREACH(sp, &sp_list, link) {
+		ldms_log("%-12s %-12s -%12s %d ",
+			  sp->name, sp->container, sp->schema,  sp->metric_count);
+		struct ldmsd_store_metric *m;
+		i = 0;
+		LIST_FOREACH(m, &sp->metric_list, entry) {
+			if (i > 0)
+				ldms_log(",");
+			i++;
+			ldms_log("%s", m->name);
+		}
+	}
+	pthread_mutex_unlock(&sp_list_lock);
+
 	sprintf(replybuf, "0");
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
@@ -751,7 +770,7 @@ int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
 						char err_str[LEN_ERRSTR])
 {
 	ldms_metric_t m;
-	m = ldms_get_metric(set, metric_name);
+	m = ldms_get_metric_by_name(set, metric_name);
 	if (!m) {
 		snprintf(err_str, LEN_ERRSTR, "Metric '%s' not found.",
 							metric_name);
@@ -1131,139 +1150,43 @@ err:
 }
 
 
-struct ldmsd_store_policy *get_store_policy(const char *container,
-			const char *set_name, const char *comp_type)
+struct ldmsd_store_policy *alloc_store_policy(const char *policy_name,
+					      const char *container,
+					      const char *schema)
 {
 	struct ldmsd_store_policy *sp;
-	int found = 0;
-	pthread_mutex_lock(&sp_list_lock);
-	LIST_FOREACH(sp, &sp_list, link) {
-		if (0 == strcmp(sp->container, container)) {
-			found = 1;
-			break;
-		}
-	}
-	pthread_mutex_unlock(&sp_list_lock);
-	if (found)
-		return sp;
-
 	sp = calloc(1, sizeof(*sp));
 	if (!sp)
 		goto err0;
+	sp->name = strdup(policy_name);
+	if (!sp->name)
+		goto err1;
 	sp->container = strdup(container);
 	if (!sp->container)
-		goto err1;
-	sp->setname = strdup(set_name);
-	if (!sp->setname)
 		goto err2;
-	sp->comp_type = strdup(comp_type);
-	if (!sp->comp_type)
+	sp->schema = strdup(schema);
+	if (!sp->schema)
 		goto err3;
 	sp->metric_count = 0;
 	sp->state = STORE_POLICY_CONFIGURING;
-	pthread_mutex_init(&sp->idx_create_lock, NULL);
+	pthread_mutex_init(&sp->cfg_lock, NULL);
 	return sp;
-err3:
-	free(sp->setname);
-err2:
+ err3:
 	free(sp->container);
-err1:
+ err2:
+	free(sp->name);
+ err1:
 	free(sp);
-err0:
-	return NULL;
-}
-
-struct ldms_mvec* _create_mvec(struct hostset *hset)
-{
-	struct ldms_value_desc *vd;
-	struct ldms_mvec *mvec;
-	struct ldms_iterator i;
-	int count = ldms_get_cardinality(hset->set);
-	int c = 0;
-	mvec = ldms_mvec_create(count);
-	if (!mvec)
-		return NULL;
-	for (vd = ldms_first(&i, hset->set); vd; vd = ldms_next(&i)) {
-		ldms_metric_t m = ldms_make_metric(hset->set, vd);
-		mvec->v[c++] = m;
-	}
-	if (c != count) {
-		ldms_log("%s:%s(): c(%d) != count(%d)\n", __FILE__, __func__, c, count);
-		ldms_mvec_destroy(mvec);
-		mvec = NULL;
-	}
-	return mvec;
+ err0:
+	return sp;
 }
 
 void hset_ref_get(struct hostset *hset);
 void hset_ref_put(struct hostset *hset);
-/*
- * Set the handle to the correct hset for hset_ref.
- * \param hs	the hostspec that has the same hostname as hset_ref
- * \param hset_ref	Need the handle to hostset
- */
-int sp_create_hset_ref_list(struct hostspec *hs,
-			   struct ldmsd_store_policy *sp,
-			   const char *hostname,
-			   const char *_metrics)
-{
-	int rc, found_count;
-	struct hostset *hset;
-	char *set_name = sp->setname;
-	char *tmp;
-	struct ldmsd_store_policy_ref *sp_ref;
-	struct hostset_ref *hset_ref;
-	found_count = 0;
-	pthread_mutex_lock(&hs->set_list_lock);
-	LIST_FOREACH(hset, &hs->set_list, entry) {
-		char *hset_name;
-		tmp = strdup(hset->name);
-		hset_name = basename(tmp);
-		if (0 == strcmp(set_name, hset_name)) {
-			/* Found a set with the given set name. */
-			hset_ref = malloc(sizeof(*hset_ref));
-			if (!hset_ref) {
-				sprintf(replybuf, "%d Could not create "
-					"hostset ref for set '%s' on "
-					"host '%s'.", -ENOMEM,
-					hset_name, hostname);
-				rc = ENOMEM;
-				goto err;
-			}
-			hset_ref->hostname = strdup(hostname);
-			if (!hset_ref->hostname) {
-				sprintf(replybuf, "%d Could not create "
-					"hostset ref for set '%s' on "
-					"host '%s'.", -ENOMEM,
-					hset_name, hostname);
-				rc = ENOMEM;
-				goto err1;
-			}
-			/* Get a reference on the hostset for this store policy. */
-			hset_ref_get(hset);
-			hset_ref->hset = hset;
-			LIST_INSERT_HEAD(&sp->hset_ref_list, hset_ref, entry);
-			found_count++;
-		}
-		free(tmp);
-	}
-	pthread_mutex_unlock(&hs->set_list_lock);
-	if (found_count == 0) {
-		ldms_log("WARNING: Could not find the set '%s' in host '%s'\n",
-						sp->setname, hostname);
-	}
-	return 0;
-err1:
-	free(hset_ref);
-err:
-	free(tmp);
-	pthread_mutex_unlock(&hs->set_list_lock);
-	return rc;
-}
 
-void destroy_metric_idx_list(struct ldmsd_store_metric_index_list *list)
+void destroy_metric_list(struct ldmsd_store_metric_list *list)
 {
-	struct ldmsd_store_metric_index *smi;
+	struct ldmsd_store_metric *smi;
 	while (smi = LIST_FIRST(list)) {
 		LIST_REMOVE(smi, entry);
 		free(smi->name);
@@ -1271,350 +1194,235 @@ void destroy_metric_idx_list(struct ldmsd_store_metric_index_list *list)
 	}
 }
 
-int _mvec_find_metric(ldms_mvec_t mvec, const char *name, int start_index)
+int policy_add_metrics(struct ldmsd_store_policy *sp, char *metric_list,
+		       char *err_str)
 {
-	int i = start_index;
-	const char *metric_name;
-	const char *tmp = name;
+	int rc;
+	LIST_INIT(&sp->metric_list);
+	sp->metric_count = 0;
+	if (!metric_list || 0 == strlen(metric_list))
+		/* None specified, all metrics in set will be used */
+		return 0;
 
-	while (i < mvec->count) {
-		metric_name = ldms_get_metric_name(mvec->v[i]);
-
-		while ((*tmp != 0) && (*metric_name != 0)) {
-
-			if (*tmp != *metric_name) {
-				/*
-				 * This metric_name is not the one we are
-				 *  looking for, then go to the next one.
-				 */
-				goto next_metric_name;
-			}
-
-			tmp++;
-			metric_name++;
-		}
-
-		if ((*tmp == '\0') && (*metric_name == '\0'))
-			return i;
-
-		/*
-		 * This is the case that the given name is only the first path
-		 * of the whole metric name (before the '#').
-		 */
-		if ((*tmp == '\0') && (*metric_name == '#'))
-			return i;
-next_metric_name:
-		i++;
-		tmp = name;
+	char *metric_name, *ptr;
+	metric_name = strtok_r(metric_list, ",", &ptr);
+	while (metric_name) {
+		rc = new_store_metric(sp, metric_name);
+		if (rc)
+			goto err;
+		metric_name = strtok_r(NULL, ",", &ptr);
 	}
-
-	return -1;
+	return 0;
+err:
+	return ENOMEM;
 }
 
-int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics,
-				ldms_mvec_t mvec, char err_str[LEN_ERRSTR])
+/*
+ * Parse the host_list string and add each hostname to the storage
+ * policy host tree.
+ */
+int str_cmp(void *a, void *b)
 {
-	int rc = 0;
-	struct ldmsd_store_metric_index *smi;
-	if (!_metrics) {
-		const char *mname;
-		int i;
-		for (i = 0; i < mvec->count; i++) {
-			mname = ldms_get_metric_name(mvec->v[i]);
-			smi = malloc(sizeof(*smi));
-			if (!smi) {
-				goto enomem;
-			}
+	return strcmp((char *)a, (char *)b);
+}
+int policy_add_hosts(struct ldmsd_store_policy *sp, char *host_list,
+		     char *err_str)
+{
+	char *ptr;
+	struct ldmsd_store_host *host;
+	char *name;
 
-			smi->name = strdup(mname);
-			if (!smi->name) {
-				free(smi);
-				goto enomem;
-			}
-			smi->index = i;
-			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
-			sp->metric_count++;
+	rbt_init(&sp->host_tree, str_cmp);
+	if (!host_list || 0 == strlen(host_list))
+		return 0;
+	for (name = strtok_r(host_list, ",", &ptr); name;
+	     name = strtok_r(NULL, ",", &ptr)) {
+		host = malloc(sizeof *host);
+		if (!host)
+			goto err;
+		host->name = strdup(name);
+		if (!host->name) {
+			free(host);
+			goto err;
 		}
-	} else {
-		char *metrics = strdup(_metrics);
-		char *metric, *ptr;
-		int index, found;
-		found = 0;
-		uint32_t count = ldms_mvec_get_count(mvec);
-
-		metric = strtok_r(metrics, ",", &ptr);
-		while (metric) {
-			index = _mvec_find_metric(mvec, metric, 0);
-			while (index >= 0) {
-				found = 1;
-				rc = new_store_metric_idx(sp, mvec, index);
-				if (rc)
-					goto err;
-				index = _mvec_find_metric(mvec, metric, index + 1);
-			}
-			if (!found) {
-				snprintf(err_str, LEN_ERRSTR, "Could not find the "
-					"metric '%s'.", metric);
-				ldms_log("error %d: Could not find the "
-					"metric '%s'.", ENOENT, metric);
-				destroy_metric_idx_list(&sp->metric_list);
-				sp->metric_count = 0;
-				free(metrics);
-				return ENOENT;
-			}
-			metric = strtok_r(NULL, ",", &ptr);
-		}
-
+		rbn_init(&host->rbn, host->name);
+		rbt_ins(&sp->host_tree, &host->rbn);
 	}
-	sp->state = STORE_POLICY_READY;
 	return 0;
-enomem:
-	destroy_metric_idx_list(&sp->metric_list);
-	sp->metric_count = 0;
-	snprintf(err_str, LEN_ERRSTR, "Could not create metric index list.");
-	ldms_log("error %d: Could not create metric index list.", ENOMEM);
+ err:
 	return ENOMEM;
-err:
-	destroy_metric_idx_list(&sp->metric_list);
-	sp->metric_count = 0;
-	snprintf(err_str, LEN_ERRSTR, "Could not create metric index list.");
-	ldms_log("error %d: Could not create metric index list.", rc);
+}
+
+
+/*
+ * Apply the storage policy to the hostset if the schema and hostname
+ * match
+ */
+int apply_store_policy(struct hostset *hset, struct ldmsd_store_policy *sp)
+{
+	struct rbn *rbn;
+	struct ldmsd_store_policy_ref *ref;
+
+	/* Check if the policy is for this schema */
+	if (strcmp(ldms_get_set_schema_name(hset->set), sp->schema))
+		return 0;
+
+	/* Check if the policy is for this host */
+	if (!rbt_empty(&sp->host_tree)) {
+		rbn = rbt_find(&sp->host_tree, hset->host->hostname);
+		if (!rbn)
+			return 0;
+	}
+
+	/* This policy is for us, add it to our list */
+	ref = calloc(1, sizeof *ref);
+	if (!ref)
+		return ENOMEM;
+
+	ref->lsp = sp;
+	LIST_INSERT_HEAD(&hset->lsp_list, ref, entry);
+
+	/*
+	 * If we are the first hostset for the policy, update
+	 * the policy's metric indices
+	 */
+	pthread_mutex_lock(&sp->cfg_lock);
+	if (sp->state == STORE_POLICY_CONFIGURING)
+		if (update_policy_metrics(sp, hset))
+			ldms_log("Error updating policy metrics for "
+				 "policy %s.\n", sp->name);
+	pthread_mutex_unlock(&sp->cfg_lock);
+	return 0;
+}
+
+/*
+ * Apply all matching storage policies to the hset
+ */
+int apply_store_policies(struct hostset *hset)
+{
+	int rc;
+	struct ldmsd_store_policy *sp;
+	/*
+	 * Search the storage policy list for policies that
+	 * apply to this host set.
+	 */
+	pthread_mutex_lock(&sp_list_lock);
+	rc = 0;
+	LIST_FOREACH(sp, &sp_list, link) {
+		rc = apply_store_policy(hset, sp);
+		if (rc)
+			break;
+	}
+	pthread_mutex_unlock(&sp_list_lock);
 	return rc;
 }
 
-void destroy_hset_ref(struct hostset_ref *hset_ref, struct ldmsd_store_policy *sp)
+/*
+ * Apply the storage policy to all matching host sets
+ */
+int update_hsets_with_policy(struct ldmsd_store_policy *sp)
 {
-	struct hostset *hset;
-	struct ldmsd_store_policy_ref *spr;
-	if (hset_ref->hset) {
-		hset = hset_ref->hset;
-		/* Find the reference to the store policy */
-		LIST_FOREACH(spr, &hset->lsp_list, entry) {
-			if (spr->lsp == sp) {
-				LIST_REMOVE(spr, entry);
-				free(spr);
-				break;
-			}
+	int rc;
+	struct hostspec *hs;
+	rc = 0;
+	pthread_mutex_lock(&host_list_lock);
+	LIST_FOREACH(hs, &host_list, link) {
+		struct hostset *hset;
+		LIST_FOREACH(hset, &hs->set_list, entry) {
+			rc = apply_store_policy(hset, sp);
+			if (rc)
+				ldms_log("The storage policy %s could not be applied "
+					 "to hostset %s:%s\n",
+					 hs->hostname, hset->name);
 		}
-		/* Put back the reference for the store policy 'sp' */
-		hset_ref_put(hset);
 	}
-	free(hset_ref->hostname);
-	free(hset_ref);
+	pthread_mutex_unlock(&host_list_lock);
+	return rc;
 }
 
 void destroy_store_policy(struct ldmsd_store_policy *sp)
 {
-	free(sp->comp_type);
+	free(sp->schema);
 	free(sp->container);
-	free(sp->setname);
-	destroy_metric_idx_list(&sp->metric_list);
-	struct hostset_ref *hset_ref;
-	while (hset_ref = LIST_FIRST(&sp->hset_ref_list)) {
-		LIST_REMOVE(hset_ref, entry);
-		destroy_hset_ref(hset_ref, sp);
+	free(sp->name);
+	destroy_metric_list(&sp->metric_list);
+	if (sp->metric_arry)
+		free(sp->metric_arry);
+	struct rbn *rbn;
+	while (rbn = rbt_min(&sp->host_tree)) {
+		struct ldmsd_store_host *h =
+			container_of(rbn, struct ldmsd_store_host, rbn);
+		rbt_del(&sp->host_tree, rbn);
+		free(h->name);
+		free(h);
 	}
 	free(sp);
 }
 
 /*
- * Start a store
+ * Configure a new storage policy
  */
-int ldmsd_store(char *plugin_name, char *comp_type, char *set_name,
-		char *container, char *metrics, char *hosts,
-		char err_str[LEN_ERRSTR])
+int config_store_policy(char *plugin_name, char *policy_name,
+			char *container, char *schema, char *metrics, char *hosts,
+			char err_str[LEN_ERRSTR])
 {
+	struct ldmsd_store_policy *sp;
 	struct hostspec *hs;
 	struct plugin *store;
+	int rc;
+
 	err_str[0] = '\0';
-	if (LIST_EMPTY(&host_list)) {
-		snprintf(err_str, LEN_ERRSTR, "No hosts were added. No metrics "
-						"to be stored. Aborted!");
-		return ENOENT;
-	}
-
-	store = get_plugin(plugin_name);
-	if (!store) {
-		snprintf(err_str, LEN_ERRSTR, "The storage plugin was not found.");
-		goto enoent;
-	}
-
-
-	struct ldmsd_store_policy *sp = get_store_policy(container,
-					set_name, comp_type);
-	if (!sp) {
-		snprintf(err_str, LEN_ERRSTR, "store policy");
-		goto enomem;
-	}
-
-	sp->store_engine = store->store;
-
-	int rc, found_count;
-	found_count = 0;
-	/* Creating the hostset_ref_list for the store policy */
-	if (!hosts) {
-		/* No given hosts */
-		pthread_mutex_lock(&host_list_lock);
-		LIST_FOREACH(hs, &host_list, link) {
-			rc = sp_create_hset_ref_list(hs, sp, hs->hostname,
-							metrics);
-			if (rc == 0) {
-				found_count++;
-				continue;
-			} else {
-				pthread_mutex_unlock(&host_list_lock);
-				goto destroy_store_policy;
-			}
-		}
-		pthread_mutex_unlock(&host_list_lock);
-	} else {
-		/* Given hosts */
-		char *hostname = strtok(hosts, ",");
-		int found_host_count;
-		while (hostname) {
-			found_host_count = 0;
-			pthread_mutex_lock(&host_list_lock);
-			/*
-			 * Find the given hosts
-			 */
-			LIST_FOREACH(hs, &host_list, link) {
-				if (0 != strcmp(hs->hostname, hostname))
-					continue;
-
-				found_host_count++;
-				rc = sp_create_hset_ref_list(hs, sp, hostname,
-								metrics);
-				if (rc == 0) {
-					found_count++;
-					continue;
-				} else {
-					pthread_mutex_unlock(&host_list_lock);
-					goto destroy_store_policy;
-				}
-			}
-			pthread_mutex_unlock(&host_list_lock);
-			/* Host not found */
-			if (found_host_count == 0) {
-				snprintf(err_str, LEN_ERRSTR, "Could not find "
-						"the host '%s'.", hostname);
-				rc = ENOENT;
-				goto destroy_store_policy;
-			}
-			hostname = strtok(NULL, ",");
-		}
-	}
-	if (found_count == 0) {
-		snprintf(err_str, LEN_ERRSTR, "Count not find the set '%s' "
-				"in any hosts", set_name);
-		rc = ENOENT;
-		goto destroy_store_policy;
-	}
-	/* Done creating the hostset_ref_list for the store policy */
-
-	/* Try to create the metric index list */
-	struct hostset_ref *hset_ref;
-	ldms_mvec_t mvec;
-	LIST_FOREACH(hset_ref, &sp->hset_ref_list, entry) {
-		mvec = hset_ref->hset->mvec;
-		if (mvec) {
-			rc = create_metric_idx_list(sp, metrics, mvec, err_str);
-			if (rc)
-				goto destroy_store_policy;
-		} else {
-			continue;
-		}
-		if (sp->state == STORE_POLICY_READY)
-			break;
-	}
-
-	/*
-	 * If the above loop fails to create the metric list,
-	 * and, if metrics are given, create a blank metric list.
-	 */
-	if (sp->state != STORE_POLICY_READY && metrics) {
-		char *metric = strtok(metrics, ",");
-		struct ldmsd_store_metric_index *smi;
-		while (metric) {
-			smi = malloc(sizeof(*smi));
-			if (!smi) {
-				snprintf(err_str, LEN_ERRSTR,
-					"Memory allocation failed.");
-				rc = ENOMEM;
-				goto destroy_store_policy;
-			}
-
-			smi->name = strdup(metric);
-			if (!smi->name) {
-				free(smi);
-				snprintf(err_str, LEN_ERRSTR,
-					"Memory allocation failed.");
-				rc = ENOMEM;
-				goto destroy_store_policy;
-			}
-			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
-			sp->metric_count++;
-			metric = strtok(NULL, ",");
-		}
-	}
-
-	struct store_instance *si = NULL;
-	if (sp->state == STORE_POLICY_READY) {
-		si = ldmsd_store_instance_get(store->store, sp);
-		if (!si) {
-			destroy_store_policy(sp);
-			goto enomem;
-		}
-	}
-
-	sp->si = si;
-
-	struct ldmsd_store_policy_ref *sp_ref;
-	struct ldmsd_store_policy_ref_list fake_list;
-	LIST_INIT(&fake_list);
-	/* allocate first */
-	LIST_FOREACH(hset_ref, &sp->hset_ref_list, entry) {
-		sp_ref = malloc(sizeof(*sp_ref));
-		if (!sp_ref) {
-			snprintf(err_str, LEN_ERRSTR, "Memory allocation failed.");
-			if (sp->si) {
-				free(sp->si);
-				sp->si = NULL;
-			}
-			rc = ENOMEM;
-			goto clean_fake_list;
-		}
-		LIST_INSERT_HEAD(&fake_list, sp_ref, entry);
-	}
-
-	/* Hand the store policy handle to all hostsets */
-	LIST_FOREACH(hset_ref, &sp->hset_ref_list, entry) {
-		sp_ref = LIST_FIRST(&fake_list);
-		sp_ref->lsp = sp;
-		LIST_REMOVE(sp_ref, entry);
-		LIST_INSERT_HEAD(&hset_ref->hset->lsp_list, sp_ref, entry);
-	}
 
 	pthread_mutex_lock(&sp_list_lock);
+	LIST_FOREACH(sp, &sp_list, link) {
+		if (0 == strcmp(sp->name, policy_name)) {
+			pthread_mutex_unlock(&sp_list_lock);
+			snprintf(err_str, LEN_ERRSTR,
+				 "A policy with this name already exists.");
+			return EEXIST;
+		}
+	}
+	sp = alloc_store_policy(policy_name, container, schema);
+	if (!sp) {
+		snprintf(err_str, LEN_ERRSTR,
+			 "Insufficient resources to allocate the policy");
+		return ENOMEM;
+	}
+	store = get_plugin(plugin_name);
+	if (!store) {
+		snprintf(err_str, LEN_ERRSTR,
+			 "The storage plugin '%s' was not found.", plugin_name);
+		goto err;
+	}
+	sp->plugin = store->store;
+	rc = policy_add_metrics(sp, metrics, err_str);
+	if (rc) {
+		snprintf(err_str, LEN_ERRSTR,
+			 "Could not parse the metric list.");
+		goto err;
+	}
+	rc = policy_add_hosts(sp, hosts, err_str);
+	if (rc) {
+		snprintf(err_str, LEN_ERRSTR,
+			 "Could not parse the hosts list.");
+		goto err;
+	}
+	rc = update_hsets_with_policy(sp);
+	if (rc) {
+		snprintf(err_str, LEN_ERRSTR,
+			 "Could not apply the storage policy.");
+		goto err;
+	}
 	LIST_INSERT_HEAD(&sp_list, sp, link);
 	pthread_mutex_unlock(&sp_list_lock);
 
-	ldms_log("Added the store '%s' successfully.\n", container);
+	ldms_log("Added the store policy '%s' successfully.\n", policy_name);
 	return 0;
 
-clean_fake_list:
-	while ((sp_ref = LIST_FIRST(&fake_list))) {
-		LIST_REMOVE(sp_ref, entry);
-		free(sp_ref);
-	}
-destroy_store_policy:
+ err:
+	pthread_mutex_unlock(&sp_list_lock);
 	destroy_store_policy(sp);
 	return rc;
-enomem:
-	snprintf(err_str, LEN_ERRSTR, "Memory allocation failed.");
-	return ENOMEM;
-enoent:
-	snprintf(err_str, LEN_ERRSTR, "The plugin was not found.");
-	return ENOENT;
 }
 
 /*
@@ -1831,7 +1639,9 @@ einval:
 /*
  * Start a store instance
  * name=      The storage plugin name.
- * comp_type= The component type of the metric set.
+ * policy=    The storage policy name
+ * container= The container name
+ * schema=    The schema name of the storage record
  * set=       The set name containing the desired metric(s).
  * metrics=   A comma separated list of metric names. If not specified,
  *            all metrics in the metric set will be saved.
@@ -1844,32 +1654,33 @@ int process_store(int fd,
 		  struct sockaddr *sa, ssize_t sa_len,
 		  char *command)
 {
+	int rc;
 	char *attr;
-	char *plugin_name, *comp_type, *set_name, *container, *metrics, *hosts;
+	char *plugin_name, *policy_name, *schema_name, *container_name, *metrics, *hosts;
 	char err_str[LEN_ERRSTR];
 
 	attr = "name";
 	plugin_name = av_value(av_list, attr);
 	if (!plugin_name)
 		goto einval;
-	attr = "comp_type";
-	comp_type = av_value(av_list, attr);
-	if (!comp_type)
-		goto einval;
-	attr = "set";
-	set_name = av_value(av_list, attr);
-	if (!set_name)
+	attr = "policy";
+	policy_name = av_value(av_list, attr);
+	if (!policy_name)
 		goto einval;
 	attr = "container";
-	container = av_value(av_list, attr);
-	if (!container)
+	container_name = av_value(av_list, attr);
+	if (!container_name)
+		goto einval;
+	attr = "schema";
+	schema_name = av_value(av_list, attr);
+	if (!schema_name)
 		goto einval;
 
 	metrics = av_value(av_list, "metrics");
 	hosts = av_value(av_list, "hosts");
 
-	int rc = ldmsd_store(plugin_name, comp_type, set_name, container,
-				metrics, hosts, err_str);
+	rc = config_store_policy(plugin_name, policy_name, container_name, schema_name,
+				 metrics, hosts, err_str);
 
 	sprintf(replybuf, "%d%s", -rc, err_str);
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
@@ -1992,18 +1803,31 @@ void hset_ref_put(struct hostset *hset)
 		pthread_mutex_lock(&hset->host->set_list_lock);
 		LIST_REMOVE(hset, entry);
 		pthread_mutex_unlock(&hset->host->set_list_lock);
-		int i;
-		for (i=0; i<hset->mvec->count; i++) {
-			ldms_metric_release(hset->mvec->v[i]);
-		}
 		struct ldmsd_store_policy_ref *lsp_ref;
 		while (lsp_ref = LIST_FIRST(&hset->lsp_list)) {
 			LIST_REMOVE(lsp_ref, entry);
 			free(lsp_ref);
 		}
-		ldms_mvec_destroy(hset->mvec);
 		free(hset->name);
 		free(hset);
+	}
+}
+
+/*
+ * Release the ldms set, metrics and storage policy from a hostset record.
+ */
+void reset_hostset(struct hostset *hset)
+{
+	struct ldmsd_store_policy_ref *ref;
+	struct hset_metric *hsm;
+	if (hset->set) {
+		ldms_destroy_set(hset->set);
+		hset->set = NULL;
+	}
+	while (!LIST_EMPTY(&hset->lsp_list)) {
+		ref = LIST_FIRST(&hset->lsp_list);
+		LIST_REMOVE(ref, entry);
+		free(ref);
 	}
 }
 
@@ -2012,7 +1836,7 @@ void hset_ref_put(struct hostset *hset)
  *
  * 'active' -
  *    - ldms_connect to a specified peer
- *    - ldms_dir and ldms_lookup the peer's metric sets
+ *    - ldms_lookup the peer's metric sets
  *    - periodically performs an ldms_update of the peer's metric data
  *
  * 'bridging' - Designed to 'hop over' fire walls by initiating the connection
@@ -2022,7 +1846,7 @@ void hset_ref_put(struct hostset *hset)
  *    - searches list of incoming connections (connections it
  *      ldms_accepted) to find the matching peer (the bridging host
  *      that connected to it)
- *    - ldms_dir and ldms_lookup of the peer's metric data
+ *    - ldms_lookup of the peer's metric data
  *    - periodically performs an ldms_update of the peer's metric data
  */
 
@@ -2030,31 +1854,28 @@ int sample_interval = 2000000;
 void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 		void *arg)
 {
-	struct hset_metric *hsm;
+	int rc;
 	struct hostset *hset = arg;
+
 	pthread_mutex_lock(&hset->state_lock);
 	if (status != LDMS_LOOKUP_OK){
 		hset->state = LDMSD_SET_CONFIGURED;
 		ldms_log("Error doing lookup for set '%s'\n",
 				hset->name);
 		hset->set = NULL;
-		goto out;
+		goto err;
 	}
 	hset->set = s;
-	/*
-	 * If there is a cached mvec for this set, destroy it.
-	 */
-	if (hset->mvec) {
-		int i;
-		for (i = 0; i < hset->mvec->count; i++) {
-			if (hset->mvec->v[i])
-				ldms_metric_release(hset->mvec->v[i]);
-		}
-		free(hset->mvec);
-		hset->mvec = NULL;
-	}
+	rc = apply_store_policies(hset);
+	if (rc)
+		goto err;
 	hset->state = LDMSD_SET_READY;
-out:
+ out:
+	pthread_mutex_unlock(&hset->state_lock);
+	return;
+ err:
+	reset_hostset(hset);
+	hset->state = LDMSD_SET_CONFIGURED;
 	pthread_mutex_unlock(&hset->state_lock);
 	hset_ref_put(hset);
 }
@@ -2108,26 +1929,6 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 }
 
 /*
- * Release the ldms set and metrics from a hostset record.
- */
-void reset_set_metrics(struct hostset *hset)
-{
-	struct hset_metric *hsm;
-	if (hset->mvec) {
-		int i;
-		for (i = 0; i < hset->mvec->count; i++) {
-			ldms_metric_release(hset->mvec->v[i]);
-		}
-		ldms_mvec_destroy(hset->mvec);
-		hset->mvec = NULL;
-	}
-	if (hset->set) {
-		ldms_destroy_set(hset->set);
-		hset->set = NULL;
-	}
-}
-
-/*
  * Destroy the set and metrics associated with the set named in the
  * directory update.
  */
@@ -2136,7 +1937,7 @@ void _dir_cb_del(ldms_t t, struct hostspec *hs, const char *set_name)
 	struct hostset *hset = find_host_set(hs, set_name);
 	ldms_log("%s removing set '%s'\n", __FUNCTION__, set_name);
 	if (hset) {
-		reset_set_metrics(hset);
+		reset_hostset(hset);
 		hset_ref_put(hset);
 	}
 }
@@ -2152,7 +1953,7 @@ void reset_host(struct hostspec *hs)
 	struct hostset *hset;
 	LIST_FOREACH(hset, &hs->set_list, entry) {
 		pthread_mutex_lock(&hset->state_lock);
-		reset_set_metrics(hset);
+		reset_hostset(hset);
 		/*
 		 * Do the lookup again after the reconnection is successful.
 		 */
@@ -2160,7 +1961,7 @@ void reset_host(struct hostspec *hs)
 		pthread_mutex_unlock(&hset->state_lock);
 	}
 }
-
+#if 0
 /*
  * Process the directory list and add or restore specified sets.
  */
@@ -2222,7 +2023,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 	}
 	ldms_dir_release(t, dir);
 }
-
+#endif
 void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
 	struct hostspec *hs = cb_arg;
@@ -2271,78 +2072,87 @@ int do_connect(struct hostspec *hs)
 	return 0;
 }
 
-int new_store_metric_idx(struct ldmsd_store_policy *sp, ldms_mvec_t mvec,
-								int index)
+int new_store_metric(struct ldmsd_store_policy *sp, const char *name)
 {
-	struct ldmsd_store_metric_index *smi;
+	struct ldmsd_store_metric *smi;
 	smi = malloc(sizeof(*smi));
 	if (!smi)
 		return ENOMEM;
 
-	const char *metric = ldms_get_metric_name(mvec->v[index]);
-	smi->name = strdup(metric);
+	smi->name = strdup(name);
 	if (!smi->name) {
 		free(smi);
 		return ENOMEM;
 	}
-	smi->index = index;
 	LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
 	sp->metric_count++;
 	return 0;
 }
 
-int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)
+int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 {
-	if (sp->state != STORE_POLICY_CONFIGURING)
-		return 0;
-
-	struct ldmsd_store_metric_index *smi;
+	struct ldmsd_store_metric *smi;
+	struct ldms_metric m_;
+	ldms_metric_t m;
 	const char *metric;
 	int i, rc;
+	const char *name;
+
+	if (sp->metric_arry)
+		free(sp->metric_arry);
+	sp->metric_count = 0;
+	sp->metric_arry = calloc(ldms_get_cardinality(hset->set), sizeof(int *));
+	name = NULL;
 	if (LIST_EMPTY(&sp->metric_list)) {
-		/* No metric is given. */
-		for (i = 0; i < mvec->count; i++) {
-			rc = new_store_metric_idx(sp, mvec, i);
+		/* No metric list was given. Add all metrics in the set */
+		for (i = 0; i < ldms_get_cardinality(hset->set); i++) {
+			m = ldms_metric_init(hset->set, i, &m_);
+			name = ldms_get_metric_name(m);
+			assert(name);
+			rc = new_store_metric(sp, name);
 			if (rc)
 				goto err;
+			sp->metric_arry[i] = i;
 		}
 	} else {
-		struct ldmsd_store_metric_index *tmp_smi;
-		int found = 0;
+		i = 0;
 		smi = LIST_FIRST(&sp->metric_list);
 		while (smi) {
-			i = _mvec_find_metric(mvec, smi->name, 0);
-			while (i >= 0) {
-				found = 1;
-				rc = new_store_metric_idx(sp, mvec, i);
-				if (rc)
-					goto err;
-				i = _mvec_find_metric(mvec, smi->name, i + 1);
-			}
-			if (!found) {
-				ldms_log("Store '%s': Could not find metric "
-						"'%s'.\n", sp->container,
-						smi->name);
-				sp->state = STORE_POLICY_WRONG_CONFIG;
-				rc = ENOENT;
+			ldms_metric_t m;
+			name = smi->name;
+			m = ldms_get_metric_by_name(hset->set, name);
+			if (!m)
 				goto err;
-			}
-			tmp_smi = smi;
-			LIST_REMOVE(smi, entry);
-			smi = LIST_NEXT(tmp_smi, entry);
-			sp->metric_count--;
+			smi->type = ldms_get_metric_type(m);
+			sp->metric_arry[i++] = ldms_get_metric_idx(m);
+			ldms_metric_release(m);
+			smi = LIST_NEXT(smi, entry);
 		}
+	}
+	/* NB: The storage instance can only be created after the
+	 * metrics have been retrieved from the metric set dictionary
+	 * above.
+	 */
+	sp->si = ldmsd_store_instance_get(sp->plugin, sp);
+	if (!sp->si) {
+		ldms_log("Could not allocate the store instance");
+		goto err;
 	}
 	sp->state = STORE_POLICY_READY;
 	return 0;
 err:
+	ldms_log("Store '%s': Could not configure storage policy for "
+		 "'%s'.\n", sp->container, (name ? name : "NULL"));
+	sp->state = STORE_POLICY_ERROR;
+	if (sp->metric_arry)
+		free(sp->metric_arry);
 	while (smi = LIST_FIRST(&sp->metric_list)) {
 		LIST_REMOVE(smi, entry);
 		free(smi->name);
 		free(smi);
 	}
 	sp->metric_count = 0;
-	return rc;
+	return ENOENT;
 }
 
 void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
@@ -2351,100 +2161,45 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	uint64_t gn;
 	pthread_mutex_lock(&hset->state_lock);
 	if (status) {
-		/* ldms_log("Update failed for set.\n"); Removed by Brandt 7-2-2014 */
-		reset_set_metrics(hset);
+		reset_hostset(hset);
 		hset->state = LDMSD_SET_CONFIGURED;
 		goto out1;
 	}
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
-		ldms_log("Set %s with Generation# <%d> Stale.\n",
-					hset->name, hset->gn);
+		ldms_log("Over-sampled set %s with generation# %d.\n",
+			 hset->name, hset->gn);
 		goto out;
 	}
 
 	if (!ldms_is_set_consistent(hset->set)) {
-		ldms_log("Set %s with Generation# <%d> Inconsistent.\n",
-						hset->name, hset->gn);
+		ldms_log("Set %s with generation# %d is inconsistent.\n",
+			 hset->name, hset->gn);
 		goto out;
 	}
-
 	hset->gn = gn;
 
 	struct ldmsd_store_policy_ref *lsp_ref;
-	struct timeval tv;
-	struct ldms_mvec *mvec;
-	if (!hset->mvec) {
-		/* Recreate mvec here if it doesn't exist.  It can be destroyed
-		 * in the disconnect path. */
-		hset->mvec = _create_mvec(hset);
-		if (!hset->mvec)
-			goto out;
-		/* The indices should stay the same. */
-	}
 	LIST_FOREACH(lsp_ref, &hset->lsp_list, entry) {
 		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
 
-		/*
-		 * TODO: The store policy should be removed
-		 * if the state is STORE_POLICY_WRONG_CONFIG
-		 */
-		if (lsp->state == STORE_POLICY_WRONG_CONFIG)
-			continue;
-
-		if (lsp->state == STORE_POLICY_CONFIGURING) {
-			pthread_mutex_lock(&lsp->idx_create_lock);
-			assign_metric_index_list(lsp, hset->mvec);
-			pthread_mutex_unlock(&lsp_ref->lsp->idx_create_lock);
-			if (lsp->state == STORE_POLICY_READY) {
-				lsp->si = ldmsd_store_instance_get(lsp->store_engine, lsp);
-				if (!lsp->si) {
-					ldms_log("ENOMEM: Could not create the store instance of "
-							"'%s'\n", lsp->container);
-					destroy_store_policy(lsp);
-					continue;
-				}
-			} else {
-				continue;
-			}
+		pthread_mutex_lock(&lsp->cfg_lock);
+		switch (lsp->state) {
+		case STORE_POLICY_CONFIGURING:
+			if (update_policy_metrics(lsp, hset))
+				break;
+			/* fall through to add data */
+		default:
+			ldmsd_store_data_add(lsp, hset->set);
 		}
-
-		if (lsp->metric_count > hset->mvec->count) {
-			ldms_log("store %s: Expected number of metrics (%d) > "
-				"number of existing metrics (%d). "
-				"Possible mis-configuration\n",
-				lsp->container, lsp->metric_count,
-				hset->mvec->count);
-			continue;
-		}
-
-		struct store_instance *si = lsp->si;
-
-
-		mvec = ldms_mvec_create(lsp->metric_count);
-		if (!mvec) {
-			/* Warning ENOMEM */
-			ldms_log("cannot allocate mvec at %s:%d\n", __FILE__,
-					__LINE__);
-			continue;
-		}
-
-		int i = 0;
-		struct ldmsd_store_metric_index *idx;
-		LIST_FOREACH(idx, &lsp->metric_list, entry) {
-			mvec->v[i] = hset->mvec->v[idx->index];
-			i++;
-		}
-
-		ldmsd_store_data_add(lsp, hset->set, mvec, LDMSD_STORE_UPDATE_COMPLETE);
-		ldms_mvec_destroy(mvec);
+		pthread_mutex_unlock(&lsp->cfg_lock);
 	}
-out:
-	/* Put the reference taken at the call to ldms_update() */
+ out:
 	hset->state = LDMSD_SET_READY;
  out1:
 	pthread_mutex_unlock(&hset->state_lock);
+	/* Put the reference taken at the call to ldms_update() */
 	hset_ref_put(hset);
 }
 
@@ -2713,7 +2468,7 @@ void ev_log_cb(int sev, const char *msg)
 	ldms_log("%s: %s\n", sev_s[sev], msg);
 }
 
-int setup_control(char *sockname)
+int setup_control()
 {
 	struct sockaddr_un sun;
 	int ret;
@@ -2750,37 +2505,6 @@ int setup_control(char *sockname)
 	ret = pthread_create(&ctrl_thread, NULL, ctrl_thread_proc, 0);
 	if (ret) {
 		ldms_log("Error %d creating the control pthread'.\n");
-		return -1;
-	}
-	return 0;
-}
-
-int setup_inet_control(void)
-{
-	struct sockaddr_in sin;
-	int ret;
-	/* Create listener */
-	muxr_s = socket(AF_UNIX, SOCK_DGRAM, 0);
-	if (muxr_s < 0) {
-		ldms_log("Error %d creating muxr socket.\n", muxr_s);
-		return -1;
-	}
-
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = 0;
-	sin.sin_port = 31415;
-
-	/* Bind to our public name */
-	ret = bind(muxr_s, (struct sockaddr *)&sin, sizeof(sin));
-	if (ret < 0) {
-		ldms_log("Error %d binding control socket.\n", errno);
-		return -1;
-	}
-	bind_succeeded = 1;
-
-	ret = pthread_create(&ctrl_thread, NULL, inet_ctrl_thread_proc, 0);
-	if (ret) {
-		ldms_log("Error %d creating the control thread.\n");
 		return -1;
 	}
 	return 0;
@@ -3676,7 +3400,7 @@ int main(int argc, char *argv[])
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 
-	if (setup_control(sockname))
+	if (setup_control())
 		cleanup(4);
 
 	if (ldmsd_store_init(flush_N)) {

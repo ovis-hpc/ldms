@@ -182,14 +182,14 @@ int flush_check(struct flush_thread *ft)
 void flush_store_instance(struct store_instance *si)
 {
 	flush_count++;
-	ldmsd_store_flush(si->store_engine, si->store_handle);
+	ldmsd_store_flush(si->plugin, si->store_handle);
 	si->dirty_count = 0;
 }
 
 /* XXX FIXME: check close vs destroy */
 void ldmsd_close_store_instance(struct store_instance *si)
 {
-	ldmsd_store_close(si->store_engine, si->store_handle);
+	ldmsd_store_close(si->plugin, si->store_handle);
 	si->store_handle = NULL;
 	si->state = STORE_STATE_CLOSED;
 	si->dirty_count = 0;
@@ -299,8 +299,7 @@ int assign_flush_thread(struct store_instance *si)
 
 struct timeval tv0, tv1, tvres, tvsum;
 
-int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
-			ldms_set_t set, struct ldms_mvec *mvec, int flags)
+int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set)
 {
 	int rc;
 	struct store_instance *si = lsp->si;
@@ -317,30 +316,30 @@ int ldmsd_store_data_add(struct ldmsd_store_policy *lsp,
 		break;
 
 	case STORE_STATE_CLOSED:
-		si->store_handle = ldmsd_store_new(si->store_engine,
-					  lsp->comp_type, lsp->container,
-					  &lsp->metric_list, si);
+		si->store_handle =
+			ldmsd_store_open(si->plugin,
+					 lsp->container, lsp->schema,
+					 &lsp->metric_list, si);
 		if (!si->store_handle) {
 			si->state = STORE_STATE_ERROR;
 			errno = EIO;
 			rc = -1;
 			break;
 		}
-
 		si->state = STORE_STATE_OPEN;
-
 		rc = assign_flush_thread(si);
 		if (rc)
 			break;
 		/* If no error, treat it as STORE_STATE_OPEN case */
 		/* Intentionally NO break here */
 	case STORE_STATE_OPEN:
-		rc = si->store_engine->store(si->store_handle, set, mvec, flags);
+		rc = si->plugin->store(si->store_handle, set,
+					     lsp->metric_arry, lsp->metric_count);
 		/* If error, don't do dirty counting and flush checking */
 		if (rc)
 			break;
 		pthread_mutex_lock(&si->ft->dmutex);
-		si->ft->dirty_count += mvec->count;
+		si->ft->dirty_count += lsp->metric_count;
 		pthread_mutex_unlock(&si->ft->dmutex);
 		flush_check(si->ft);
 		break;
@@ -401,10 +400,10 @@ new_store_instance(struct ldmsd_store *store, struct ldmsd_store_policy *sp)
 		goto out;
 	pthread_mutex_init(&s_inst->lock, 0);
 retry:
-	s_inst->store_engine = store;
-	s_inst->store_handle = ldmsd_store_new(store, sp->comp_type,
-					sp->container, &sp->metric_list,
-					s_inst);
+	s_inst->plugin = store;
+	s_inst->store_handle =
+		ldmsd_store_open(store, sp->container, sp->schema,
+				 &sp->metric_list, s_inst);
 	if (s_inst->store_handle) {
 		s_inst->state = STORE_STATE_OPEN;
 		int rc = assign_flush_thread(s_inst);
@@ -444,11 +443,7 @@ ldmsd_store_instance_get(struct ldmsd_store *store,
 	ldmsd_store_handle_t sh;
 	struct store_instance *s_inst;
 	pthread_mutex_lock(&cfg_lock);
-	sh = ldmsd_store_get(store, sp->container);
-	if (!sh)
-		s_inst = new_store_instance(store, sp);
-	else
-		s_inst = ldmsd_store_get_context(store, sh);
+	s_inst = new_store_instance(store, sp);
 	pthread_mutex_unlock(&cfg_lock);
 	return s_inst;
 }
