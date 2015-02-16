@@ -53,20 +53,40 @@
 
 int bout_sos_img_config(struct bplugin *this, struct bpair_str_head *cfg_head)
 {
-	int rc = bout_sos_config(this, cfg_head);
-	if (rc)
-		return rc;
 	struct bout_sos_img_plugin *_this = (void*)this;
+	int rc = 0;
+	char *tmp = NULL;
+	char buff[64];
+	struct bpair_str KV = {.s0 = "store_name", .s1 = buff};
+	struct bpair_str *kv;
 	_this->delta_node = 1;
 	_this->delta_ts = 3600;
-	struct bpair_str *bps;
-	if ((bps = bpair_str_search(cfg_head, "delta_ts", NULL))) {
-		_this->delta_ts = strtoul(bps->s1, NULL, 0);
+	if ((kv = bpair_str_search(cfg_head, "delta_ts", NULL))) {
+		_this->delta_ts = strtoul(kv->s1, NULL, 0);
 	}
-	if ((bps = bpair_str_search(cfg_head, "delta_node", NULL))) {
-		_this->delta_node = strtoul(bps->s1, NULL, 0);
+	if ((kv = bpair_str_search(cfg_head, "delta_node", NULL))) {
+		_this->delta_node = strtoul(kv->s1, NULL, 0);
 	}
-	return 0;
+	snprintf(buff, sizeof(buff), "%d-%d", _this->delta_ts, _this->delta_node);
+	kv = bpair_str_search(cfg_head, "store_name", NULL);
+	if (kv) {
+		/* store_name should be <delta_ts>-<delta_node> */
+		bwarn("bout_sos_img should not have store_name option set, "
+				"forcing following name convention: %s", buff);
+		tmp = kv->s1;
+		kv->s1 = buff;
+	} else {
+		kv = &KV;
+		LIST_INSERT_HEAD(cfg_head, kv, link);
+	}
+	rc = bout_sos_config(this, cfg_head);
+
+cleanup:
+	if (tmp)
+		kv->s1 = tmp;
+	else
+		LIST_REMOVE(kv, link);
+	return rc;
 }
 
 int bout_sos_img_start(struct bplugin *this)
