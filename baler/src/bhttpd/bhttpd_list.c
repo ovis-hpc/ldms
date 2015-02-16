@@ -48,63 +48,53 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 /**
- * \file bhttpd.h
  * \author Narate Taerat (narate at ogc dot us)
+ * \file bhttpd_list.c
  */
-#ifndef __BHTTPD_H
-#define __BHTTPD_H
 
-#include <event2/event.h>
-#include <event2/buffer.h>
-#include <event2/http.h>
+#include "bhttpd.h"
+#include "bq_fmt_json.h"
 
-#include "baler/btypes.h"
-#include "baler/butils.h"
-#include "baler/bqueue.h"
+#include "query/bquery.h"
 
-/***** GLOBAL VARIABLES *****/
-extern struct bq_store *bq_store;
-extern struct bmptn_store *mptn_store;
-extern struct event_base *evbase;
-extern const char *store_path;
+#include <wordexp.h>
 
-/***** TYPES *****/
-struct bhttpd_req_ctxt {
-	struct evhttp_request *req;
-	const struct evhttp_uri *uri;
-	struct bpair_str_head kvlist;
-	int httprc;
-	struct evbuffer *evbuffer;
-	char errstr[1024];
-};
+static
+void bhttpd_handle_list(struct bhttpd_req_ctxt *ctxt)
+{
+	wordexp_t p;
+	int first = 1;
+	int rc, i, len;
+	const char *str;
+	struct bdstr *bdstr = bdstr_new(512);
+	if (!bdstr) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Not enough memory.");
+		goto cleanup;
+	}
+	bdstr_append_printf(bdstr, "%s/img_store/*_sos.OBJ", store_path);
+	evbuffer_add_printf(ctxt->evbuffer, "{\"img_stores\": [");
+	rc = wordexp(bdstr->str, &p, 0);
+	if (rc)
+		goto end;
+	for (i = 0; i < p.we_wordc; i++) {
+		if (first)
+			first = 0;
+		else
+			evbuffer_add_printf(ctxt->evbuffer, ", ");
+		str = strrchr(p.we_wordv[i], '/') + 1;
+		len = strstr(str, "_sos.OBJ") - str;
+		evbuffer_add_printf(ctxt->evbuffer, "\"%.*s\"", len, str);
+	}
+end:
+	evbuffer_add_printf(ctxt->evbuffer, "]}");
+cleanup:
+	bdstr_free(bdstr);
+}
 
-typedef void (*bhttpd_req_handle_fn_t)(struct bhttpd_req_ctxt *ctxt);
-
-typedef void (*bhttpd_work_routine_fn_t)(void *arg);
-
-struct bhttpd_work {
-	struct bqueue_entry qent;
-	bhttpd_work_routine_fn_t routine;
-	void *arg;
-};
-
-struct bhttpd_msg_query_session {
-	struct bquery *q;
-	struct event *event;
-	struct timeval last_use;
-	struct bq_formatter *fmt;
-	int first;
-	uint64_t ref;
-};
-
-void set_uri_handle(const char *uri, bhttpd_req_handle_fn_t fn);
-
-void *get_uri_handle(const char *uri);
-
-int submit_work(bhttpd_work_routine_fn_t routine, void *arg);
-
-void bhttpd_req_ctxt_errprintf(struct bhttpd_req_ctxt *ctxt, int httprc, const char *fmt, ...);
-
-#endif
+static __attribute__((constructor))
+void __init()
+{
+	set_uri_handle("/list_img_store", bhttpd_handle_list);
+}
