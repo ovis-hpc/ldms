@@ -453,6 +453,7 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 
 	struct evkeyvalq *ohdr = evhttp_request_get_output_headers(ctxt->req);
 	evhttp_add_header(ohdr, "content-type", "application/json");
+	evhttp_add_header(ohdr, "Access-Control-Allow-Origin", "*");
 
 	n = sizeof(query_handle_entry)/sizeof(query_handle_entry[0]);
 	for (i = 0; i < n; i++) {
