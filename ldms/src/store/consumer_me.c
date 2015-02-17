@@ -89,7 +89,7 @@ struct me_msg {
 
 struct me_store_instance {
 	struct ldmsd_store *store;
-	char *container;
+	char *key;
 	void *ucontext;
 };
 
@@ -145,21 +145,11 @@ static void term(void)
 
 static const char *usage()
 {
-	return  "	config name=consumer_me host=<host> porot=<port> xprt=<xprt>\n"
+	return  "	config name=consumer_me host=<host> port=<port> xprt=<xprt>\n"
 		"	   - Set the host and port of the M.E. and choose the transport.\n"
 		"	   host     Host name that M.E. runs on.\n"
 		"	   port     Listener port of M.E.\n"
 		"	   xprt     A Zap transport (sock,rdma,ugni)\n";
-}
-
-static ldmsd_store_handle_t
-get_store(const char *container)
-{
-	ldmsd_store_handle_t sh;
-	pthread_mutex_lock(&cfg_lock);
-	sh = idx_find(me_idx, (void *)container, strlen(container));
-	pthread_mutex_unlock(&cfg_lock);
-	return sh;
 }
 
 static void *get_ucontext(ldmsd_store_handle_t _sh)
@@ -297,21 +287,21 @@ err:
 }
 
 static ldmsd_store_handle_t
-new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
+new_store(struct ldmsd_store *s, const char *container, const char *schema,
 		struct ldmsd_store_metric_list *mlist, void *ucontext)
 {
 	struct me_store_instance *si;
 	struct me_metric_store *ms;
-
 	zap_err_t zerr;
 	int rc;
+	size_t key_len = strlen(container);
 
 	pthread_mutex_lock(&cfg_lock);
 
 	if (state == CSM_ME_DISCONNECTED)
 		connect_me();
 
-	si = idx_find(me_idx, (void *)container, strlen(container));
+	si = idx_find(me_idx, (void *)container, key_len);
 	if (!si) {
 		si = calloc(1, sizeof(*si));
 		if (!si)
@@ -319,11 +309,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 
 		si->ucontext = ucontext;
 		si->store = s;
-		si->container = strdup(container);
-		if (!si->container)
+		si->key = strdup(container);
+		if (!si->key)
 			goto err1;
 
-		idx_add(me_idx, (void *)container, strlen(container), si);
+		idx_add(me_idx, (void *)si->key, key_len, si);
 	}
 	pthread_mutex_unlock(&cfg_lock);
 	return si;
@@ -334,7 +324,7 @@ err:
 	return NULL;
 }
 
-static int me_get_ldsm_metric_value(ldms_metric_t m, double *v)
+static int me_get_ldms_metric_value(ldms_metric_t m, double *v)
 {
 	enum ldms_value_type type = ldms_get_metric_type(m);
 	switch (type) {
@@ -377,8 +367,8 @@ static int me_get_ldsm_metric_value(ldms_metric_t m, double *v)
 }
 
 static int
-send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
-{
+send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_array,
+							size_t metric_count){
 	int rc = 0;
 	zap_err_t zerr;
 	struct me_store_instance *si;
@@ -396,21 +386,22 @@ send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags
 		return 0;
 
 	struct me_msg msg;
-	int has_data = flags & LDMSD_STORE_UPDATE_COMPLETE;
-	if (has_data)
-		msg.tag = htonl(ME_INPUT_DATA);
-	else
-		msg.tag = htonl(ME_NO_DATA);
-
+	struct ldms_metric _m;
+	ldms_metric_t m;
 	msg.timestamp.tv_sec = htonl(ts->sec);
 	msg.timestamp.tv_usec = htonl(ts->usec);
 	int i;
-	for (i = 0; i < mvec->count; i++) {
-		msg.metric_id = htobe64(ldms_get_user_data(mvec->v[i]));
-		if (has_data) {
-			if (me_get_ldsm_metric_value(mvec->v[i], &msg.value))
-				continue;
-		}
+	/*
+	 * TODO: Improvement
+	 *
+	 * Send a vector of metrics instead of per metric.
+	 * This requires modification in the ME infrastructure
+	 */
+	for (i = 0; i < metric_count; i++) {
+		m = ldms_metric_init(set, metric_array[i], &_m);
+		msg.metric_id = htobe64(ldms_get_midx_udata(set, metric_array[i]));
+		if (me_get_ldms_metric_value(m, &msg.value))
+			continue;
 		zerr = zap_send(zep, (void *)&msg, sizeof(msg));
 		if (zerr) {
 			msglog("me: zap_send error '%d': %s.\n", zerr,
@@ -429,14 +420,9 @@ static int flush_store(ldmsd_store_handle_t _sh)
 
 static void close_store(ldmsd_store_handle_t _sh)
 {
-	/* do nothing */
-}
-
-static void destroy_store(ldmsd_store_handle_t _sh)
-{
 	struct me_store_instance *si = _sh;
-	idx_delete(me_idx, (void *)si->container, strlen(si->container));
-	free(si->container);
+	idx_delete(me_idx, (void *)si->key, strlen(si->key));
+	free(si->key);
 	free(si);
 }
 
@@ -447,9 +433,7 @@ static struct ldmsd_store consumer_me = {
 			.config = config,
 			.usage = usage,
 	},
-	.get = get_store,
-	.new = new_store,
-	.destroy = destroy_store,
+	.open = new_store,
 	.get_context = get_ucontext,
 	.store = send_to_me,
 	.flush = flush_store,
