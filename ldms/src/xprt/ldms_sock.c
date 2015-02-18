@@ -550,8 +550,8 @@ struct ldms_rbuf_desc *sock_rbuf_alloc(struct ldms_xprt *x,
 	} else {
 		xd->meta.rbuf = (uint64_t)(unsigned long)set->meta;
 		xd->data.rbuf = (uint64_t)(unsigned long)set->data;
-		xd->meta.size = htonl(set->meta->meta_size);
-		xd->data.size = htonl(set->meta->data_size);
+		xd->meta.size = htonl(set->meta->meta_sz);
+		xd->data.size = htonl(set->meta->data_sz);
 		desc->xprt_data = xd;
 		desc->xprt_data_len = sizeof(*xd);
 	}

@@ -71,7 +71,7 @@ static char *procfile = PROC_FILE;
 
 ldms_set_t set;
 FILE *mf;
-ldms_metric_t *metric_table;
+int *metric_table;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
 
@@ -95,11 +95,13 @@ char *replace_space(char *s)
 	return s;
 }
 
+struct geminfo_metric {
+	int idx;
+	uint64_t udata;
+};
 static int create_metric_set(const char *path)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, metric_count;
+	int rc;
 	uint64_t metric_value;
 	char *s;
 	char lbuf[256];
@@ -111,49 +113,10 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-
-	/* Process the file once first to determine the metric set size.
-	 */
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
-
-	metric_count = 0;
-	fseek(mf, 0, SEEK_SET);
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-		char* end = strchr(s, ':');
-		if ( end ) {
-			if ( *end ) {
-				*end = '\0';
-				replace_space(s);
-				if ( sscanf( end + 1, " %" PRIu64 "\n", &metric_value ) == 1 ) {
-					rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-					if (rc)
-						return rc;
-
-					tot_meta_sz += meta_sz;
-					tot_data_sz += data_sz;
-					metric_count++;
-				}
-			}
-		} else {
-			fprintf( stderr, "Error: string \"%s\" had no colon\n", s );
-		}
-
-	} while (s);
-
-
 	/* Create the metric set */
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		return rc;
-
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!metric_table)
-		goto err;
-
+	ldms_schema_t schema = ldms_create_schema("geminfo");
+	if (schema)
+		return ENOMEM;
 
 	/* Process the file again to define all the metrics.
 	 */
@@ -171,13 +134,11 @@ static int create_metric_set(const char *path)
 				*end = '\0';
 				replace_space(s);
 				if ( sscanf( end + 1, " %" PRIu64 "\n", &metric_value ) == 1 ) {
-					metric_table[metric_no] = ldms_add_metric(set, s, LDMS_V_U64);
-					if (!metric_table[metric_no]) {
+					rc = ldms_add_metric(schema, s, LDMS_V_U64);
+					if (rc < 0) {
 						rc = ENOMEM;
 						goto err;
 					}
-					ldms_set_user_data(metric_table[metric_no], comp_id);
-					metric_no++;
 				}
 			}
 		} else {
@@ -186,6 +147,11 @@ static int create_metric_set(const char *path)
 			goto err;
 		}
 	} while (s);
+	rc = ldms_create_set(path, schema, &set);
+	if (rc)
+		goto err;
+	for (rc = 0; rc < ldms_get_metric_count(schema); rc++)
+		ldms_set_midx_udata(set, rc, comp_id);
 	return 0;
 
  err:
@@ -234,7 +200,7 @@ static int sample(void)
 				*end = '\0';
 				replace_space(s);
 				if ( sscanf( end + 1, " %" PRIu64 "\n", &v.v_u64 ) == 1 ) {
-					ldms_set_metric(metric_table[metric_no], &v);
+					ldms_set_midx(set, metric_table[metric_no], &v);
 					metric_no++;
 				}
 			}

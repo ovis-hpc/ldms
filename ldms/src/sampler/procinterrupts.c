@@ -67,13 +67,14 @@
 #define PROC_FILE "/proc/interrupts"
 static char *procfile = PROC_FILE;
 
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
-int nprocs;
-uint64_t comp_id;
+static ldms_set_t set;
+static FILE *mf;
+static ldms_metric_t *metric_table;
+static ldmsd_msg_log_f msglog;
+static int nprocs;
+static uint64_t comp_id;
 static uint64_t counter;
+static ldms_schema_t schema;
 
 static ldms_set_t get_set()
 {
@@ -101,9 +102,7 @@ static int getNProcs(char buf[]){
 
 static int create_metric_set(const char *path)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, i, metric_count;
+	int rc, i;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
@@ -117,69 +116,14 @@ static int create_metric_set(const char *path)
 
 	char beg_name[128];
 
-	/*
-	 * Process the file once first to determine the metric set size.
-	 */
-
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
-
-	metric_count = 0;
-	fseek(mf, 0, SEEK_SET);
-
-	//first line is the cpu list
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	nprocs = getNProcs(lbuf);
-	if (nprocs <= 0){
-		msglog("Bad number of CPU. Exiting\n");
-		return EINVAL;
-	}
-
-	//the rest are data lines
-	while(s) {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-		int currcol = 0;
-		char* pch = strtok (lbuf," ");
-		while (pch != NULL && currcol <= nprocs){
-			if (pch[0] == '\n'){
-				break;
-			}
-			if (currcol == 0){
-				/* Strip the colon from metric name if present */
-				i = strlen(pch);
-				if (i && pch[i-1] == ':')
-					pch[i-1] = '\0';
-				strcpy(beg_name, pch);
-			} else {
-				/* the metric name will be irq.<name>#CPU_NUMBER
-				 */
-				snprintf(metric_name, 128, "irq.%s#%d",
-						beg_name, (currcol-1));
-				rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
-				tot_meta_sz += meta_sz;
-				tot_data_sz += data_sz;
-				metric_count++;
-			}
-			currcol++;
-			pch = strtok(NULL," ");
-		} // while (strtok)
-	} //while(s)
-
 	/* Create a metric set of the required size */
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		return rc;
-
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!metric_table)
-		goto err;
+	schema = ldms_create_schema("procinterrupts");
+	if (!schema)
+		return ENOMEM;
 
 	/*
-	 * Process the file again to define all the metrics.
+	 * Process the file to define all the metrics.
 	 */
-	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	//first line is the cpu list
 	s = fgets(lbuf, sizeof(lbuf), mf);
@@ -203,25 +147,28 @@ static int create_metric_set(const char *path)
 			} else {
 				snprintf(metric_name, 128, "irq.%s#%d",
 						beg_name, (currcol-1));
-				metric_table[metric_no] =
-					ldms_add_metric(set, metric_name,
+				rc = ldms_add_metric(schema, metric_name,
 							LDMS_V_U64);
-				if (!metric_table[metric_no]){
+				if (rc < 0) {
 					rc = ENOMEM;
 					goto err;
 				}
-				ldms_set_user_data(metric_table[metric_no],
-						comp_id);
-				metric_no++;
 			}
 			currcol++;
 			pch = strtok(NULL," ");
 		} // while (strtok)
 	} //while(s)
+	rc = ldms_create_set(path, schema, &set);
+	if (rc)
+		goto err;
+
+	for (i = 0; i < ldms_metric_count(schema); i++)
+		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
-	ldms_destroy_set(set);
+	ldms_destroy_schema(schema);
+	schema = NULL;
 	return rc;
 }
 
@@ -273,19 +220,17 @@ static int sample(void)
 		int currcol = 0;
 		char* pch = strtok(lbuf, " ");
 		while (pch != NULL && currcol <= nprocs){
-			if (pch[0] == '\n'){
+			if (pch[0] == '\n') {
 				break;
 			}
-			if (pch[0] != ' '){
+			if (pch[0] != ' ') {
 				if (currcol != 0){
 					char* endptr;
 					unsigned long long int l1;
 					l1 = strtoull(pch,&endptr,10);
 					if (endptr != pch){
 						v.v_u64 = l1;
-						ldms_set_metric(
-							metric_table[metric_no],
-							&v);
+						ldms_set_midx(set, metric_no, &v);
 						metric_no++;
 					} else {
 						msglog("bad val <%s>\n",pch);

@@ -117,6 +117,7 @@ static char* varnames[MAXOPTS][21] = {
 static int numvars[MAXOPTS] = { 2, 21 };
 
 ldms_set_t set;
+ldms_schema_t schema;
 FILE *mf;
 ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
@@ -130,9 +131,7 @@ static ldms_set_t get_set()
 
 static int create_metric_set(const char *path)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, metric_count;
+	int rc;
 	int i, j;
 	char metric_name[128];
 
@@ -143,56 +142,32 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	/*
-	 * Determine the metric set size.
-	 */
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
-
-	/* Don't need to look at the file since we have all the name info
-	 * NOTE: make sure these are added in the order they will appear in the file
-	 */
-	metric_count = 0;
-	for (i = 0; i < MAXOPTS; i++) {
-		for (j = 0; j < numvars[i]; j++) {
-			snprintf(metric_name,127,"%s",varnames[i][j]);
-			rc = ldms_get_metric_size(metric_name, LDMS_V_U64,
-					&meta_sz, &data_sz);
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
-			metric_count++;
-		}
-	}
-
 	/* Create a metric set of the required size */
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		return rc;
-
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!metric_table)
-		goto err;
+	schema = ldms_create_schema("procnfs");
+	if (!schema)
+		return ENOMEM;
 
 	/* Make sure these are added in the order they will appear in the file */
-	metric_count = 0;
 	for (i = 0; i < MAXOPTS; i++) {
 		for (j = 0; j < numvars[i]; j++) {
 			snprintf(metric_name,127,"%s", varnames[i][j]);
-			metric_table[metric_count] =
-				ldms_add_metric(set, metric_name, LDMS_V_U64);
-			if (!metric_table[metric_count]) {
+			rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+			if (rc < 0) {
 				rc = ENOMEM;
 				goto err;
 			}
-			ldms_set_user_data(metric_table[metric_count], comp_id);
-			metric_count++;
 		}
 	}
-
+	rc = ldms_create_set(path, schema, &set);
+	if (rc)
+		goto err;
+	for (i = 0; i < ldms_metric_count(schema); i++)
+		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
-	ldms_destroy_set(set);
+	ldms_destroy_schema(schema);
+	schema = NULL;
 	return rc;
 }
 
@@ -267,8 +242,8 @@ static int sample(void)
 					rc = EINVAL;
 					goto out;
 				}
-				ldms_set_metric(metric_table[0], &v[0]);
-				ldms_set_metric(metric_table[1], &v[1]);
+				ldms_set_midx(set, 0, &v[0]);
+				ldms_set_midx(set, 1, &v[1]);
 				break;
 			case 3:
 				rc = sscanf(lbuf, LINE_FMT,
@@ -285,7 +260,7 @@ static int sample(void)
 					goto out;
 				}
 				for (i = 2; i < 23; i++)
-					ldms_set_metric(metric_table[i], &v[i]);
+					ldms_set_midx(set, i, &v[i]);
 				break;
 			default:
 				break;

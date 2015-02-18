@@ -175,7 +175,7 @@ static int print_header(struct csv_store_handle *s_handle,
 	int num_metrics = ldms_mvec_get_count(mvec);
 	int i, rc;
 	for (i = 0; i < num_metrics; i++) {
-		char* name = ldms_get_metric_name(mvec->v[i]);
+		const char* name = ldms_get_metric_name(mvec->v[i]);
 		fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 	}
@@ -285,7 +285,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec,
 	if (!(flags & LDMSD_STORE_UPDATE_COMPLETE))
 		return 0;
 
-	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 	uint64_t comp_id;
 	struct csv_store_handle *s_handle;
 	s_handle = _s_handle;

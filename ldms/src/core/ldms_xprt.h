@@ -255,6 +255,7 @@ typedef struct ldms_xprt *(*ldms_xprt_get_t)
 	 );
 
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]
+#define ldms_off_(_m, _p) (((char *)_p) - ((char *)_m))
 
 extern void ldms_free_rbd(struct ldms_set *set);
 extern struct ldms_set *ldms_find_local_set(const char *path);

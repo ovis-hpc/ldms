@@ -224,11 +224,11 @@ struct scib_port {
 	/**
 	 * Metric handles for raw metric counters of the port.
 	 */
-	ldms_metric_t handle[ARRAY_SIZE(all_metric_names)];
+	int handle[ARRAY_SIZE(all_metric_names)];
 	/**
 	 * Metric handles for rate metrics of the port.
 	 */
-	ldms_metric_t rate[ARRAY_SIZE(all_metric_names)];
+	int rate[ARRAY_SIZE(all_metric_names)];
 };
 
 LIST_HEAD(scib_port_list, scib_port);
@@ -236,6 +236,7 @@ struct scib_port_list scib_port_list = {0};
 char rcvbuf[BUFSIZ] = {0};
 
 ldms_set_t set = NULL;
+ldms_schema_t schema;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
 
@@ -248,9 +249,7 @@ struct timeval *tv_prev = &tv[1];
  */
 static int create_metric_set(const char *setname)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, i, j, metric_count;
+	int rc, i, j;
 	char metric_name[128];
 	struct scib_port *port;
 
@@ -258,10 +257,10 @@ static int create_metric_set(const char *setname)
 		msglog("sysclassib: Double create set: %s\n", setname);
 		return EEXIST;
 	}
+	schema = ldms_create_schema("sysclassib");
+	if (!schema)
+		return ENOMEM;
 
-	/* calculate total metric set size */
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 			/* counters */
@@ -269,49 +268,28 @@ static int create_metric_set(const char *setname)
 					all_metric_names[i],
 					port->ca,
 					port->portno);
-			ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz,
-					&data_sz);
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
+			port->handle[i] = ldms_add_metric(schema, metric_name,
+							  LDMS_V_U64);
 			/* rates */
 			snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
 					all_metric_names[i],
 					port->ca,
 					port->portno);
-			ldms_get_metric_size(metric_name, LDMS_V_F, &meta_sz,
-					&data_sz);
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
+			port->rate[i] = ldms_add_metric(schema, metric_name,
+							LDMS_V_F32);
 		}
 	}
-
 	/* create set and metrics */
-	rc = ldms_create_set(setname, tot_meta_sz, tot_data_sz, &set);
+	rc = ldms_create_set(setname, schema, &set);
 	if (rc) {
 		msglog("sysclassib: ldms_create_set failed, rc: %d\n", rc);
 		return rc;
 	}
-
-	LIST_FOREACH(port, &scib_port_list, entry) {
-		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
-			/* counters */
-			snprintf(metric_name, 128, "ib.%s#%s.%d",
-					all_metric_names[i],
-					port->ca,
-					port->portno);
-			port->handle[i] = ldms_add_metric(set, metric_name,
-					LDMS_V_U64);
-			ldms_set_user_data(port->handle[i], comp_id);
-			/* rates */
-			snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
-					all_metric_names[i],
-					port->ca,
-					port->portno);
-			port->rate[i] = ldms_add_metric(set, metric_name,
-					LDMS_V_F);
-			ldms_set_user_data(port->rate[i], comp_id);
-		}
+	for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
+		ldms_set_midx_udata(set, port->handle[i], comp_id);
+		ldms_set_midx_udata(set, port->rate[i], comp_id);
 	}
+	return 0;
 }
 
 static const char *usage(void)
@@ -576,11 +554,11 @@ static ldms_set_t get_set()
 inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
 			float dt)
 {
-	uint64_t old_v = ldms_get_u64(port->handle[idx]);
+	uint64_t old_v = ldms_get_midx_u64(set, port->handle[idx]);
 	if (!port->ext)
 		new_v += old_v;
-	ldms_set_u64(port->handle[idx], new_v);
-	ldms_set_float(port->rate[idx], (new_v - old_v) / dt);
+	ldms_set_midx_u64(set, port->handle[idx], new_v);
+	ldms_set_midx_float(set, port->rate[idx], (new_v - old_v) / dt);
 }
 
 /**
