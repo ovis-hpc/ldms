@@ -119,7 +119,8 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define FMT "H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:qz:o:"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
-/* YAML needs instance number to differentiate configuration for an instnace
+
+/* YAML needs instance number to differentiate configuration for an instance
  * from other instances' configuration in the same configuration file
  */
 int instance_number = 1;
@@ -530,7 +531,7 @@ int calculate_timeout(int thread_id, unsigned long interval_us,
 }
 
 static char library_name[PATH_MAX];
-struct plugin *new_plugin(char *plugin_name, char *err_str)
+struct plugin *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 {
 	struct ldmsd_plugin *lpi;
 	struct plugin *pi = NULL;
@@ -573,9 +574,9 @@ struct plugin *new_plugin(char *plugin_name, char *err_str)
 	pi->synchronous = 0;
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
 	return pi;
- enomem:
+enomem:
 	sprintf(err_str, "No memory");
- err:
+err:
 	if (pi) {
 		if (pi->name)
 			free(pi->name);
@@ -671,109 +672,79 @@ int process_info(int fd,
 /*
  * Load a plugin
  */
-int process_load_plugin(int fd,
-			struct sockaddr *sa, ssize_t sa_len,
-			char *command)
+int ldmsd_load_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 {
-	char *plugin_name;
-	char err_str[128];
-	char reply[128];
-	int rc = 0;
 
+	int rc = 0;
 	err_str[0] = '\0';
 
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		sprintf(err_str, "The plugin name was not specified\n");
-		rc = EINVAL;
-		goto out;
-	}
 	struct plugin *pi = get_plugin(plugin_name);
 	if (pi) {
-		sprintf(err_str, "Plugin already loaded");
+		snprintf(err_str, LEN_ERRSTR, "Plugin already loaded");
 		rc = EEXIST;
 		goto out;
 	}
 	pi = new_plugin(plugin_name, err_str);
- out:
-	sprintf(reply, "%d%s", -rc, err_str);
-	send_reply(fd, sa, sa_len, reply, strlen(reply)+1);
-	return 0;
+	if (!pi)
+		rc = 1;
+out:
+	return rc;
 }
 
 /*
  * Destroy and unload the plugin
  */
-int process_term_plugin(int fd,
-			struct sockaddr *sa, ssize_t sa_len,
-			char *command)
+int ldmsd_term_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 {
-	char *plugin_name;
-	char *err_str = "";
 	int rc = 0;
 	struct plugin *pi;
+	err_str[0] = '\0';
 
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		err_str = "The plugin name must be specified.";
-		rc = EINVAL;
-		goto out;
-	}
 	pi = get_plugin(plugin_name);
 	if (!pi) {
 		rc = ENOENT;
-		err_str = "Plugin not found.";
-		goto out;
+		snprintf(err_str, LEN_ERRSTR, "plugin not found.");
+		return rc;
 	}
 	pthread_mutex_lock(&pi->lock);
 	if (pi->ref_count) {
-		err_str = "The specified plugin has active users "
-			"and cannot be terminated.\n";
+		snprintf(err_str, LEN_ERRSTR, "The specified plugin has "
+				"active users and cannot be terminated.");
+		rc = EINVAL;
 		goto out;
 	}
 	pi->plugin->term();
 	pthread_mutex_unlock(&pi->lock);
 	destroy_plugin(pi);
-	rc = 0;
- out:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	return 0;
+out:
+	return rc;
 }
 
 /*
  * Configure a plugin
  */
-int process_config_plugin(int fd,
-			  struct sockaddr *sa, ssize_t sa_len,
-			  char *command)
+int ldmsd_config_plugin(char *plugin_name,
+			struct attr_value_list *_av_list,
+			struct attr_value_list *_kw_list,
+			char err_str[LEN_ERRSTR])
 {
-	char *plugin_name;
-	char *err_str = "";
 	int rc = 0;
 	struct plugin *pi;
+	err_str[0] = '\0';
 
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		err_str = "The plugin name must be specified.";
-		rc = EINVAL;
-		goto out;
-	}
 	pi = get_plugin(plugin_name);
 	if (!pi) {
 		rc = ENOENT;
-		err_str = "The plugin was not found.";
+		snprintf(err_str, LEN_ERRSTR, "The plugin was not found.");
 		goto out;
 	}
 	pthread_mutex_lock(&pi->lock);
-	rc = pi->plugin->config(kw_list, av_list);
+	rc = pi->plugin->config(_kw_list, _av_list);
 	if (rc)
-		err_str = "Plugin configuration error.";
+		snprintf(err_str, LEN_ERRSTR, "Plugin configuration error.");
 	pthread_mutex_unlock(&pi->lock);
- out:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	return 0;
+out:
+	return rc;
 }
 
 void plugin_sampler_cb(int fd, short sig, void *arg)
@@ -794,55 +765,44 @@ void plugin_sampler_cb(int fd, short sig, void *arg)
 /*
  * Start the sampler
  */
-int process_start_sampler(int fd,
-			 struct sockaddr *sa, ssize_t sa_len,
-			 char *command)
+int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
+			char err_str[LEN_ERRSTR])
 {
 	char *attr;
-	char *err_str = "";
 	int rc = 0;
 	unsigned long sample_interval;
 	long sample_offset = 0;
 	int synchronous = 0;
 	struct plugin *pi;
+	err_str[0] = '\0';
 
-	attr = av_value(av_list, "name");
-	if (!attr) {
-		err_str = "Invalid request syntax";
-		rc = EINVAL;
-		goto out_nolock;
-	}
-	pi = get_plugin(attr);
+	sample_interval = strtoul(interval, NULL, 0);
+
+	pi = get_plugin((char *)plugin_name);
 	if (!pi) {
 		rc = ENOENT;
-		err_str = "Sampler not found.";
-		goto out_nolock;
+		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
+		return rc;
 	}
 	pthread_mutex_lock(&pi->lock);
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
-		err_str = "The specified plugin is not a sampler.";
+		snprintf(err_str, LEN_ERRSTR,
+				"The specified plugin is not a sampler.");
 		goto out;
 	}
 	if (pi->thread_id >= 0) {
 		rc = EBUSY;
-		err_str = "Sampler is already running.";
+		snprintf(err_str, LEN_ERRSTR, "Sampler is already running.");
 		goto out;
 	}
-	attr = av_value(av_list, "interval");
-	if (!attr) {
-		rc = EINVAL;
-		err_str = "The sample interval must be specified.";
-		goto out;
-	}
-	sample_interval = strtoul(attr, NULL, 0);
 
-	attr = av_value(av_list, "offset");
-	if (attr) {
+	if (offset) {
 		sample_offset = strtol(attr, NULL, 0);
 		if ( !((sample_interval >= 10) &&
 		       (sample_interval >= labs(sample_offset)*2)) ){
-			err_str = "Sampler parameters interval and offset are incompatible.";
+			snprintf(err_str, LEN_ERRSTR, "Sampler parameters "
+				"interval and offset are incompatible.");
 			goto out;
 		}
 		synchronous = 1;
@@ -864,43 +824,32 @@ int process_start_sampler(int fd,
 		pi->timeout.tv_usec = sample_interval % 1000000;
 	}
 	rc = evtimer_add(pi->event, &pi->timeout);
- out:
+out:
 	pthread_mutex_unlock(&pi->lock);
- out_nolock:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	return 0;
+	return rc;
 }
 
 /*
  * Stop the sampler
  */
-int process_stop_sampler(int fd,
-			 struct sockaddr *sa, ssize_t sa_len,
-			 char *command)
+int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR])
 {
-	char *plugin_name;
-	char *err_str = "";
 	int rc = 0;
 	struct plugin *pi;
+	err_str[0] = '\0';
 
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		err_str = "The plugin name must be specified.";
-		rc = EINVAL;
-		goto out_nolock;
-	}
 	pi = get_plugin(plugin_name);
 	if (!pi) {
 		rc = ENOENT;
-		err_str = "Sampler not found.";
+		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
 		goto out_nolock;
 	}
 	pthread_mutex_lock(&pi->lock);
 	/* Ensure this is a sampler */
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
-		err_str = "The specified plugin is not a sampler.";
+		snprintf(err_str, LEN_ERRSTR,
+				"The specified plugin is not a sampler.");
 		goto out;
 	}
 	if (pi->event) {
@@ -910,30 +859,14 @@ int process_stop_sampler(int fd,
 		release_ev_base(pi->thread_id);
 		pi->thread_id = -1;
 		pi->ref_count--;
-	} else
-		err_str = "The sampler is not running.";
- out:
-	pthread_mutex_unlock(&pi->lock);
- out_nolock:
-	sprintf(replybuf, "%d%s", rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	return 0;
-}
-
-int process_ls_plugins(int fd,
-		       struct sockaddr *sa, ssize_t sa_len,
-		       char *command)
-{
-	struct plugin *p;
-	sprintf(replybuf, "0");
-	LIST_FOREACH(p, &plugin_list, entry) {
-		strcat(replybuf, p->name);
-		strcat(replybuf, "\n");
-		if (p->plugin->usage)
-			strcat(replybuf, p->plugin->usage());
+	} else {
+		rc = EINVAL;
+		snprintf(err_str, LEN_ERRSTR, "The sampler is not running.");
 	}
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	return 0;
+out:
+	pthread_mutex_unlock(&pi->lock);
+out_nolock:
+	return rc;
 }
 
 int resolve(const char *hostname, struct sockaddr_in *sin)
@@ -993,43 +926,27 @@ void host_sampler_cb(int fd, short sig, void *arg)
 
 struct hostset *find_host_set(struct hostspec *hs, const char *set_name);
 struct hostset *hset_new();
-int process_add_host(int fd,
-		     struct sockaddr *sa, ssize_t sa_len,
-		     char *command)
+/*
+ * Add a host
+ */
+int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
+		char *interval_s, char *offset_s, char err_str[LEN_ERRSTR])
 {
 	int rc;
 	struct sockaddr_in sin;
 	struct hostspec *hs;
-	char *attr;
-	char *type;
-	char *host;
-	char *xprt;
-	char *sets;
 	int host_type;
 	unsigned long interval = LDMSD_DEFAULT_GATHER_INTERVAL;
 	long offset = 0;
+	char *xprt;
 	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
+	err_str[0] = '\0';
 
-	/* Handle all the EINVAL cases first */
-	attr = "type";
-	type = av_value(av_list, attr);
-	if (!type)
-		goto einval;
 	host_type = str_to_host_type(type);
 	if (host_type < 0) {
-		sprintf(replybuf, "%d '%s' is an invalid host type.\n",
-			-EINVAL, type);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-		return EINVAL;
-	}
-	attr = "host";
-	host = av_value(av_list, attr);
-	if (!host) {
-einval:
-		sprintf(replybuf, "%d The %s attribute must be specified\n",
-			-EINVAL, attr);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		snprintf(err_str, LEN_ERRSTR, "'%s' is an invalid host type.",
+									type);
 		return EINVAL;
 	}
 
@@ -1037,17 +954,16 @@ einval:
 	 * If the connection type is either active or passive,
 	 * need a set list to create hostsets.
 	 */
-	attr = "sets";
-	sets = av_value(av_list, attr);
 	if (host_type != BRIDGING) {
-		if (!sets)
-			goto einval;
+		if (!sets) {
+			snprintf(err_str, LEN_ERRSTR, "The attribute 'sets' "
+								"is required.");
+			return EINVAL;
+		}
 	} else {
 		if (sets) {
-			sprintf(replybuf, "%d Aborted!. Use type=ACTIVE to "
-					"collect the sets.", -EPERM);
-			send_reply(fd, sa, sa_len, replybuf,
-					strlen(replybuf) + 1);
+			snprintf(err_str, LEN_ERRSTR, "Aborted!. "
+				"Use type=ACTIVE to collect the sets.");
 			return EPERM;
 		}
 	}
@@ -1061,39 +977,32 @@ einval:
 
 	rc = resolve(hs->hostname, &sin);
 	if (rc) {
-		sprintf(replybuf,
-			"%d The host '%s' could not be resolved "
-			"due to error %d.\n", -rc, hs->hostname, rc);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-		rc = EINVAL;
+		snprintf(err_str, LEN_ERRSTR,
+			"The host '%s' could not be resolved "
+			"due to error %d.\n", hs->hostname, rc);
 		goto err;
 	}
 
-	attr = av_value(av_list, "interval");
-	if (attr)
-		interval = strtoul(attr, NULL, 0);
+	if (interval_s)
+		interval = strtoul(interval_s, NULL, 0);
 
-	attr = av_value(av_list, "offset");
-	if (attr) {
-		offset = strtol(attr, NULL, 0);
+	if (offset_s) {
+		offset = strtol(offset_s, NULL, 0);
 		if ( !((interval >= 10) && (interval >= labs(offset)*2)) ){
-			sprintf(replybuf,
+			snprintf(err_str, LEN_ERRSTR,
 				"Parameters interval and offset are incompatible.");
-			send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 			rc = EINVAL;
 			goto err;
 		}
 		synchronous = 1;
 	}
 
-	attr = av_value(av_list, "port");
-	if (attr)
-		port_no = strtol(attr, NULL, 0);
+	if (port)
+		port_no = strtol(port, NULL, 0);
 	sin.sin_port = port_no;
 
-	xprt = av_value(av_list, "xprt");
-	if (xprt)
-		xprt = strdup(xprt);
+	if (xprt_s)
+		xprt = strdup(xprt_s);
 	else
 		xprt = strdup("sock");
 	if (!xprt)
@@ -1151,20 +1060,16 @@ add_timeout:
 	pthread_mutex_lock(&host_list_lock);
 	LIST_INSERT_HEAD(&host_list, hs, link);
 	pthread_mutex_unlock(&host_list_lock);
-
-	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 clean_set_list:
-	while (hset = LIST_FIRST(&hs->set_list)) {
+	while ((hset = LIST_FIRST(&hs->set_list))) {
 		LIST_REMOVE(hset, entry);
 		free(hset->name);
 		free(hset);
 	}
 enomem:
 	rc = ENOMEM;
-	sprintf(replybuf, "%dMemory allocation failure.", -ENOMEM);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	snprintf(err_str, LEN_ERRSTR, "Memory allocation failure.");
 err:
 	if (hs->hostname)
 		free(hs->hostname);
@@ -1173,6 +1078,7 @@ err:
 	free(hs);
 	return rc;
 }
+
 
 struct ldmsd_store_policy *get_store_policy(const char *container,
 			const char *set_name, const char *comp_type)
@@ -1354,8 +1260,8 @@ next_metric_name:
 	return -1;
 }
 
-int create_metric_idx_list(struct ldmsd_store_policy *sp,
-			const char *_metrics, ldms_mvec_t mvec)
+int create_metric_idx_list(struct ldmsd_store_policy *sp, const char *_metrics,
+				ldms_mvec_t mvec, char err_str[LEN_ERRSTR])
 {
 	int rc = 0;
 	struct ldmsd_store_metric_index *smi;
@@ -1396,8 +1302,8 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp,
 				index = _mvec_find_metric(mvec, metric, index + 1);
 			}
 			if (!found) {
-				sprintf(replybuf, "%d Could not find the "
-					"metric '%s'.", -ENOENT, metric);
+				snprintf(err_str, LEN_ERRSTR, "Could not find the "
+					"metric '%s'.", metric);
 				ldms_log("error %d: Could not find the "
 					"metric '%s'.", ENOENT, metric);
 				destroy_metric_idx_list(&sp->metric_list);
@@ -1414,13 +1320,13 @@ int create_metric_idx_list(struct ldmsd_store_policy *sp,
 enomem:
 	destroy_metric_idx_list(&sp->metric_list);
 	sp->metric_count = 0;
-	sprintf(replybuf, "%d Could not create metric index list.", -ENOMEM);
+	snprintf(err_str, LEN_ERRSTR, "Could not create metric index list.");
 	ldms_log("error %d: Could not create metric index list.", ENOMEM);
 	return ENOMEM;
 err:
 	destroy_metric_idx_list(&sp->metric_list);
 	sp->metric_count = 0;
-	sprintf(replybuf, "%d Could not create metric index list.", -rc);
+	snprintf(err_str, LEN_ERRSTR, "Could not create metric index list.");
 	ldms_log("error %d: Could not create metric index list.", rc);
 	return rc;
 }
@@ -1461,72 +1367,32 @@ void destroy_store_policy(struct ldmsd_store_policy *sp)
 }
 
 /*
- * store [attribute=value ...]
- * name=      The storage plugin name.
- * comp_type= The component type of the metric set.
- * set=       The set name containing the desired metric(s).
- * metrics=   A comma separated list of metric names. If not specified,
- *            all metrics in the metric set will be saved.
- * hosts=     The set of hosts whose data will be stoerd. If hosts is not
- *            specified, the metric will be saved for all hosts. If
- *            specified, the value should be a comma separated list of
- *            host names.
+ * Start a store
  */
-int process_store(int fd,
-		  struct sockaddr *sa, ssize_t sa_len,
-		  char *command)
+int ldmsd_store(char *plugin_name, char *comp_type, char *set_name,
+		char *container, char *metrics, char *hosts,
+		char err_str[LEN_ERRSTR])
 {
-	char *err_str;
-	char *set_name;
-	char *store_name;
-	char *comp_type;
-	char *attr;
-	char *metrics;
-	char *hosts;
-	char *container;
-	char err_s[128];
 	struct hostspec *hs;
 	struct plugin *store;
-
+	err_str[0] = '\0';
 	if (LIST_EMPTY(&host_list)) {
-		sprintf(replybuf, "%d No hosts were added. No metrics to "
-				"be stored. Aborted!\n", -ENOENT);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		snprintf(err_str, LEN_ERRSTR, "No hosts were added. No metrics "
+						"to be stored. Aborted!");
 		return ENOENT;
 	}
 
-	attr = "name";
-	store_name = av_value(av_list, attr);
-	if (!store_name)
-		goto einval;
-	attr = "comp_type";
-	comp_type = av_value(av_list, attr);
-	if (!comp_type)
-		goto einval;
-	attr = "set";
-	set_name = av_value(av_list, attr);
-	if (!set_name)
-		goto einval;
-	attr = "container";
-	container = av_value(av_list, attr);
-	if (!container)
-		goto einval;
-
-	attr = "metrics";
-	metrics = av_value(av_list, attr);
-
-	store = get_plugin(store_name);
+	store = get_plugin(plugin_name);
 	if (!store) {
-		err_str = "The storage plugin was not found.";
+		snprintf(err_str, LEN_ERRSTR, "The storage plugin was not found.");
 		goto enoent;
 	}
 
-	hosts = av_value(av_list, "hosts");
 
 	struct ldmsd_store_policy *sp = get_store_policy(container,
 					set_name, comp_type);
 	if (!sp) {
-		sprintf(err_s, "store policy");
+		snprintf(err_str, LEN_ERRSTR, "store policy");
 		goto enomem;
 	}
 
@@ -1578,20 +1444,18 @@ int process_store(int fd,
 			pthread_mutex_unlock(&host_list_lock);
 			/* Host not found */
 			if (found_host_count == 0) {
-				sprintf(replybuf, "%d Could not find the host "
-					"'%s'.", -ENOENT, hostname);
-				send_reply(fd, sa, sa_len, replybuf,
-						strlen(replybuf) + 1);
+				snprintf(err_str, LEN_ERRSTR, "Could not find "
+						"the host '%s'.", hostname);
+				rc = ENOENT;
 				goto destroy_store_policy;
-				return ENOENT;
 			}
 			hostname = strtok(NULL, ",");
 		}
 	}
 	if (found_count == 0) {
-		sprintf(replybuf, "%d Count not find the set '%s' in any hosts",
-			-ENOENT, set_name);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
+		snprintf(err_str, LEN_ERRSTR, "Count not find the set '%s' "
+				"in any hosts", set_name);
+		rc = ENOENT;
 		goto destroy_store_policy;
 	}
 	/* Done creating the hostset_ref_list for the store policy */
@@ -1602,7 +1466,7 @@ int process_store(int fd,
 	LIST_FOREACH(hset_ref, &sp->hset_ref_list, entry) {
 		mvec = hset_ref->hset->mvec;
 		if (mvec) {
-			rc = create_metric_idx_list(sp, metrics, mvec);
+			rc = create_metric_idx_list(sp, metrics, mvec, err_str);
 			if (rc)
 				goto destroy_store_policy;
 		} else {
@@ -1622,18 +1486,18 @@ int process_store(int fd,
 		while (metric) {
 			smi = malloc(sizeof(*smi));
 			if (!smi) {
-				sprintf(replybuf,
-					"%d Memory allocation failed.\n",
-					-ENOMEM);
+				snprintf(err_str, LEN_ERRSTR,
+					"Memory allocation failed.");
+				rc = ENOMEM;
 				goto destroy_store_policy;
 			}
 
 			smi->name = strdup(metric);
 			if (!smi->name) {
 				free(smi);
-				sprintf(replybuf,
-					"%d Memory allocation failed.\n",
-					-ENOMEM);
+				snprintf(err_str, LEN_ERRSTR,
+					"Memory allocation failed.");
+				rc = ENOMEM;
 				goto destroy_store_policy;
 			}
 			LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
@@ -1646,7 +1510,6 @@ int process_store(int fd,
 	if (sp->state == STORE_POLICY_READY) {
 		si = ldmsd_store_instance_get(store->store, sp);
 		if (!si) {
-			sprintf(replybuf, "%d Memory allocation failed.\n", -ENOMEM);
 			destroy_store_policy(sp);
 			goto enomem;
 		}
@@ -1661,12 +1524,12 @@ int process_store(int fd,
 	LIST_FOREACH(hset_ref, &sp->hset_ref_list, entry) {
 		sp_ref = malloc(sizeof(*sp_ref));
 		if (!sp_ref) {
-			sprintf(replybuf, "%d Memory allocation failed.", -ENOMEM);
+			snprintf(err_str, LEN_ERRSTR, "Memory allocation failed.");
 			if (sp->si) {
 				free(sp->si);
 				sp->si = NULL;
 			}
-
+			rc = ENOMEM;
 			goto clean_fake_list;
 		}
 		LIST_INSERT_HEAD(&fake_list, sp_ref, entry);
@@ -1685,31 +1548,250 @@ int process_store(int fd,
 	pthread_mutex_unlock(&sp_list_lock);
 
 	ldms_log("Added the store '%s' successfully.\n", container);
-	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 
 clean_fake_list:
-	while (sp_ref = LIST_FIRST(&fake_list)) {
+	while ((sp_ref = LIST_FIRST(&fake_list))) {
 		LIST_REMOVE(sp_ref, entry);
 		free(sp_ref);
 	}
 destroy_store_policy:
 	destroy_store_policy(sp);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return rc;
 enomem:
-	sprintf(replybuf, "%d Memory allocation failed.", -ENOMEM);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	return EINVAL;
-einval:
-	sprintf(replybuf, "-22 The '%s' attribute must be specified.", attr);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	return EINVAL;
+	snprintf(err_str, LEN_ERRSTR, "Memory allocation failed.");
+	return ENOMEM;
 enoent:
-	sprintf(replybuf, "%d The plugin was not found.", -ENOENT);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	snprintf(err_str, LEN_ERRSTR, "The plugin was not found.");
 	return ENOENT;
+}
+
+/*
+ * Functions to process ldmsctl commands
+ */
+/* load plugin */
+int process_load_plugin(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+	char *plugin_name;
+	char err_str[LEN_ERRSTR];
+
+	plugin_name = av_value(av_list, "name");
+	if (!plugin_name) {
+		sprintf(replybuf, "%d The plugin name was not specified\n",
+								-EINVAL);
+		goto out;
+	}
+
+	int rc = ldmsd_load_plugin(plugin_name, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+out:
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+/* terminate a plugin */
+int process_term_plugin(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+	char *plugin_name;
+	char err_str[LEN_ERRSTR];
+
+	plugin_name = av_value(av_list, "name");
+	if (!plugin_name) {
+		sprintf(replybuf, "%d The plugin name must be specified.",
+								-EINVAL);
+		goto out;
+	}
+
+	int rc = ldmsd_term_plugin(plugin_name, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+out:
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+/* configure a plugin */
+int process_config_plugin(int fd,
+			  struct sockaddr *sa, ssize_t sa_len,
+			  char *command)
+{
+	char *plugin_name;
+	char err_str[LEN_ERRSTR];
+
+	plugin_name = av_value(av_list, "name");
+	if (!plugin_name) {
+		sprintf(replybuf, "%d The plugin name must be specified.",
+								-EINVAL);
+		goto out;
+	}
+
+	int rc = ldmsd_config_plugin(plugin_name, av_list, kw_list, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+out:
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+/* Start a sampler */
+int process_start_sampler(int fd,
+			 struct sockaddr *sa, ssize_t sa_len,
+			 char *command)
+{
+	char *plugin_name, *interval, *offset;
+	char err_str[LEN_ERRSTR];
+	char *attr;
+
+	attr = "name";
+	plugin_name = av_value(av_list, "name");
+	if (!plugin_name)
+		goto einval;
+
+	attr = "interval";
+	interval = av_value(av_list, attr);
+	if (!interval)
+		goto einval;
+
+	attr = "offset";
+	offset = av_value(av_list, attr);
+
+	int rc = ldmsd_start_sampler(plugin_name, interval, offset, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+einval:
+	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+/* stop a sampler */
+int process_stop_sampler(int fd,
+			 struct sockaddr *sa, ssize_t sa_len,
+			 char *command)
+{
+	char *plugin_name;
+	char err_str[LEN_ERRSTR];
+
+	plugin_name = av_value(av_list, "name");
+	if (!plugin_name) {
+		sprintf(replybuf, "%d The plugin name must be specified.",
+								-EINVAL);
+		goto out;
+	}
+
+	int rc = ldmsd_stop_sampler(plugin_name, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+out:
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+int process_ls_plugins(int fd,
+		       struct sockaddr *sa, ssize_t sa_len,
+		       char *command)
+{
+	struct plugin *p;
+	sprintf(replybuf, "0");
+	LIST_FOREACH(p, &plugin_list, entry) {
+		strcat(replybuf, p->name);
+		strcat(replybuf, "\n");
+		if (p->plugin->usage)
+			strcat(replybuf, p->plugin->usage());
+	}
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+/* add a host */
+int process_add_host(int fd,
+		     struct sockaddr *sa, ssize_t sa_len,
+		     char *command)
+{
+	char *host, *type, *xprt, *port, *sets, *interval_s, *offset_s;
+	char err_str[LEN_ERRSTR];
+	char *attr;
+
+	attr = "type";
+	type = av_value(av_list, attr);
+	if (!type)
+		goto einval;
+
+	attr = "host";
+	host = av_value(av_list, attr);
+	if (!host)
+		goto einval;
+
+	sets = av_value(av_list, "sets");
+	interval_s = av_value(av_list, "interval");
+	offset_s = av_value(av_list, "offset");
+	port = av_value(av_list, "port");
+	xprt = av_value(av_list, "xprt");
+
+	int rc = ldmsd_add_host(host, type, xprt, port, sets,
+				interval_s, offset_s, err_str);
+
+	sprintf(replybuf, "%d%s", -rc, err_str);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+einval:
+	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+/*
+ * Start a store instance
+ * name=      The storage plugin name.
+ * comp_type= The component type of the metric set.
+ * set=       The set name containing the desired metric(s).
+ * metrics=   A comma separated list of metric names. If not specified,
+ *            all metrics in the metric set will be saved.
+ * hosts=     The set of hosts whose data will be stored. If hosts is not
+ *            specified, the metric will be saved for all hosts. If
+ *            specified, the value should be a comma separated list of
+ *            host names.
+ */
+int process_store(int fd,
+		  struct sockaddr *sa, ssize_t sa_len,
+		  char *command)
+{
+	char *attr;
+	char *plugin_name, *comp_type, *set_name, *container, *metrics, *hosts;
+	char err_str[LEN_ERRSTR];
+
+	attr = "name";
+	plugin_name = av_value(av_list, attr);
+	if (!plugin_name)
+		goto einval;
+	attr = "comp_type";
+	comp_type = av_value(av_list, attr);
+	if (!comp_type)
+		goto einval;
+	attr = "set";
+	set_name = av_value(av_list, attr);
+	if (!set_name)
+		goto einval;
+	attr = "container";
+	container = av_value(av_list, attr);
+	if (!container)
+		goto einval;
+
+	metrics = av_value(av_list, "metrics");
+	hosts = av_value(av_list, "hosts");
+
+	int rc = ldmsd_store(plugin_name, comp_type, set_name, container,
+				metrics, hosts, err_str);
+
+	sprintf(replybuf, "%d%s", -rc, err_str);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+einval:
+	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
 }
 
 int process_remove_host(int fd,
