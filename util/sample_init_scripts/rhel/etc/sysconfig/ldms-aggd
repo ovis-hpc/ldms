@@ -1,0 +1,135 @@
+#
+# Paths to executables and libs and boot functions for samplers.
+# This is where the customization launch is done manually.
+# see sysconfig/ldmsd.conf for the machine generated data, if any, needed.
+# DAEMON defined by init.d script
+
+PLATNAME="chama"
+BUILDTYPE="sandia"
+
+case $BUILDTYPE in
+sandia)
+	prefix="/projects/ovis/$PLATNAME/Build"
+	exec_prefix="$prefix"
+	sbindir="$prefix/sbin"
+	sysconfdir="/etc"
+	localstatedir="/var"
+	libdir="$prefix/lib64"
+;;
+rhel)
+	prefix="/usr"
+	exec_prefix="/usr"
+	sbindir="/usr/sbin"
+	sysconfdir="/etc"
+	localstatedir="/var"
+	libdir="/usr/lib64"
+;;
+esac
+
+PATH="$sbindir:$PATH"
+LDMSCTL="ldmsctl"
+
+LIBEVENT_LIB_PATH="$libdir/ovis-libevent"
+LDMS_LIB_PATH="$libdir/ovis-ldms"
+LDMS_PLUGIN_PATH="$LDMS_LIB_PATH"
+
+# socket that ldms listens on
+NODE_SOCKET=411
+AGG_SOCKET=411
+
+# Transports being used (one of sock, rdma, ugni)
+NODE_LDMSD_TRANSPORT=rdma
+AGG_LDMSD_TRANSPORT=sock
+
+LDMSD_LOG_PATH=$localstatedir/log/ldms_logs
+#LDMSD_LOG_PATH=/projects/ovis/$PLATNAME/ldms_logs
+
+# Path to dir with agg node listS
+AGGFILE="$sysconfdir/sysconfig/$DAEMON.conf"
+# not in use right now. fix start_stores, add ldms-stored
+#STOREFILE="$sysconfdir/sysconfig/$DAEMON.conf.x"
+#SERVICEFILE="$sysconfdir/sysconfig/$DAEMON.conf.y"
+
+#Paths to unix domain socket used by ldmsctl to communicate with ldmsd
+LDMSD_LOCAL_SOCK_DIR="$localstatedir/run/$DAEMON"
+LDMSCTL_SOCK_DIR="$localstatedir/run/ldmsctl"
+
+
+# Set comma separated list (e.g. OSTLIST="snx11024,snx11025,..." ) of OSTs for lustre samplers (e.g. lustre_client, ncsa_unified)
+OSTLIST=scratch1,scratch2
+
+# Comma separated list of network interfaces used by procnetdev sampler
+IFACES="eth0,eth1,eth2,eth3,ib0,ib1"
+
+# ports list for sysclassib sampler
+SCIB_PORTS="qib0.1"
+
+# MYHOSTNAME is a hostname that doesn't contain the domain name
+MYHOSTNAME="$( echo $HOSTNAME | cut -d "." -f1 )"
+
+# Derive component IDs from hostnames. Use node number for regular nodes.
+#
+# This is the place where we might have to import a file defining a 
+# manual mapping of hostname/compid pairs for tricky cases. For TLCC, we
+# may get away without the map.
+#
+# Set the minimum id for each node type so that there is no overlap
+MIN_RPS_ID=11000
+MIN_LOGIN_ID=12000
+MIN_GW_ID=13000
+# The computation of hostnumber assume HOSTNAME never includes suffixes lik -ib0
+hostnumber="$(echo $HOSTNAME | sed 's/[a-z\-]//g')"
+if [ -z $hostnumber ]; then
+	echoq "ERROR: Component ID unknown for $HOSTNAME (no digits in hostname?). Exiting..."
+	failure
+	echo
+	exit
+fi
+
+if [[ "$(echo $HOSTNAME | grep "\-rps")" ]]; then
+        COMPONENT_ID="$(( $MIN_RPS_ID + $hostnumber ))"
+elif [[ "$(echo $HOSTNAME | grep "\-login")" ]]; then
+        COMPONENT_ID="$(( $MIN_LOGIN_ID + $hostnumber ))"
+elif [[ "$(echo $HOSTNAME | grep "\-gw")" ]]; then
+        COMPONENT_ID="$(( $MIN_GW_ID + $hostnumber ))"
+else
+        COMPONENT_ID="$hostnumber"
+fi
+
+if [ $COMPONENT_ID -lt 0 ]; then
+	echoq "ERROR: Component ID for $HOSTNAME is $COMPONENT_ID. Exiting..."
+	failure
+	echo
+	exit
+fi
+
+# Define name of Unix domain socket for communication with ldmsd
+LDMSD_LOCAL_SOCK=metric_socket
+
+# Space/comma separated list of metric sets to load at startup
+METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib"
+#METRIC_SETS=""
+
+# Sample intervals to be used on a per-sampler basis else the DEFAULT_COLLECTION_INTERVAL will be used
+# Intervals are in micro-seconds (e.g. 5000000 = 5 sec sampling interval)        
+#meminfo_INTERVAL=1000000
+#vmstat_INTERVAL=
+#procnfs_INTERVAL=
+#lustre2_client_INTERVAL=
+#procstatutil_INTERVAL=
+#procnetdev_INTERVAL=
+#sysclassib_INTERVAL=
+
+DEFAULT_COLLECTION_INTERVAL=20000000
+NODE_COLLECTION_OFFSET=0
+METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib"
+
+# Aggregator collection interval (using same for all nodes)
+AGG_COLLECTION_INTERVAL=20000000
+AGG_COLLECTION_OFFSET=250000
+
+# resource parameters
+AGG_MEM=1000M
+AGG_NUM_PROCS=16
+AGG_CONN_THREADS=1
+

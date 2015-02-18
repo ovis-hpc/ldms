@@ -2,9 +2,10 @@ ldms/src/sampler/sedc.c
 ldms/src/store/store_sos.c
 ldms/src/store/store_mysql.c
 ldms/src/store/store_mysqlbulk.c
+ldms/ldms_utils
 sos
 lib/src/zap
-util/release_tarball.sh
+util/release_tarball*
 scratch
 ldms_release
 sedcutils

@@ -1,0 +1,35 @@
+#
+# make-based ldms aggregator daemon config file generator
+#
+# make -f makeldmsconf <target>
+# where aggconf is a good target
+# make help for more.
+#
+# this demonstrates the usage of /etc/ldms/ldms-two-level-config
+#
+
+SHELL=/bin/bash
+# prefix should be empty or the root of an image
+
+help:
+	@echo makeldmsconf:
+	@echo "make -f makeldmsconf <target>"
+	@echo "If target is 'aggconf', Sandia defaults are used."
+	@echo "Add new targets to customize for your site."
+	@echo "Default output location is /etc/sysconfig/ldms-aggd.conf"
+	@echo "Define prefix to change it:"
+	@echo "       make prefix=`pwd` -f makeldmsconf aggconf"
+	@echo "Note: $prefix/etc/sysconfig must exist already."
+	@echo ""
+
+platform:
+	@echo "writing to $(prefix)/etc/sysconfig/ldms-aggd.conf"
+	env PLAT=$(SNLCLUSTER) \
+		TOPHOST=aries \
+		NODESUFFIX=-ib0 \
+		SKIPGW=1 \
+		METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib" \
+		$(prefix)/etc/ldms/ldms-two-level-config >  $(prefix)/etc/sysconfig/ldms-aggd.conf
+
+
+aggconf: platform

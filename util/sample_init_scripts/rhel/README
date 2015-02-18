@@ -1,0 +1,24 @@
+To test,  copy the etc/ layout here into your /etc or imageroot/etc/
+and then cd to imageroot (or / if no imageroot) and:
+
+make prefix=`pwd` -f etc/ldms/makeldmsconf
+to generate ldms-aggd.conf
+
+The plan here is to set up a rhel-like set of init scripts for:
+	$PREFIX/sbin/ldmsd - the sampler service
+	$PREFIX/sbin/ldms-aggd - the aggregation service, a symlink to ldmsd in 1.3
+
+where each (X=ldms-aggd ldmsd) has:
+	init.d/X service script
+	sysconfig/X service configuration scalar values list
+	sysconfig/X.conf service node data generated with 
+		/etc/ldms/makeldmsconf.
+and jointly they have init.d/ldms-functions
+
+We will need corresponding man pages:
+	X(5)
+	X.conf(5)
+	X(8)	
+	makeldmsconf(8)
+	ldms-two-level-config
+

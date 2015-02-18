@@ -1,0 +1,16 @@
+2/6/2015
+* Split sampler (ldmsd) from aggregator (ldms-aggd)
+* Split common support functions to /etc/init.d/ldms-functions
+* Qualified kill statements by $USER, as restarting root daemons should not kill user daemons.
+* Moved LDMS_RDMAV_FORK_SAFE to conf file
+* tab indent everywhere
+* got rid of agg vs node prefix on vars which never meet.
+* minimized diff of init.d/ldms*
+
+Init process for each daemon X is:
+/etc/init.d/$X
+	load stock functions 
+	load /etc/sysconfig/$X
+then at point of starting, function in init.d/ldms-functions handle
+parse /etc/sysconfig/$X.conf which is a generated file for aggs primarily.
+

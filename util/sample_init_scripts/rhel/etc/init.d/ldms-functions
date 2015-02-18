@@ -1,0 +1,183 @@
+#
+# functions for ldmsd and ldms-aggd
+# These may depend on variables defined in the respective $DAEMON.conf files
+
+initusage()
+{
+	echo $"Usage: $0 {start|stop|restart|status} [flags]
+        Additional flags: "
+        cat << EOT >&2 
+	-v  verbose
+EOT
+}
+
+echoq()
+{
+        if [[ $VERBOSE != "-v" ]]; then
+                return;
+        fi
+        echo $@;
+}
+
+cleanup_ldmsctl()
+{
+        echoq "Cleaning up any leftover ldmsctl processes owned by $USER..."
+        if [ -n "`pgrep -u $USER $LDMSCTL`" ] ; then
+            echoq "/usr/bin/killall -u $USER -q $LDMSCTL"
+            killall -u $USER -q $LDMSCTL
+            RETVAL=$?
+            if [ $RETVAL -eq 1 ]; then echoq "No leftover $LDMSCTL to kill.";
+            elif [ $RETVAL -eq 0 ]; then echoq "$LDMSCTL processes were killed."; fi
+        fi
+}
+
+cleanup_files()
+{
+        echoq "Cleaning up PID and LOCK files..."
+        [[ -n $pidfile ]] && rm -f $pidfile
+        [[ -n $lockfile ]] && rm -f $lockfile
+        sleep 1
+        [[ -n $LDMSD_LOCAL_SOCK_DIR ]] && test -d $LDMSD_LOCAL_SOCK_DIR && rm_ldmsd_sock_dir
+        [[ -n $LDMSCTL_SOCK_DIR ]] && test -d $LDMSCTL_SOCK_DIR && rm_ldmsctl_sock_dir
+}
+
+rh_status() {
+	echoq "status -p $pidfile $DAEMON"
+	[[ -n $pidfile ]] && status -p $pidfile $DAEMON || return 2
+	RETVAL=$?
+	echoq "In rh_status: status returned $RETVAL"
+	return $RETVAL
+}
+
+rh_status_q() {
+        rh_status >/dev/null 2>&1
+	RETVAL=$?
+	echoq "rh_status returned $RETVAL"
+	return $RETVAL
+}
+
+rm_ldmsd_sock_dir() {
+        if [ "$(ls -A $LDMSD_LOCAL_SOCK_DIR)" ]; then
+                rm -f $LDMSD_LOCAL_SOCK_DIR/*
+        fi
+        rmdir $LDMSD_LOCAL_SOCK_DIR
+}
+
+rm_ldmsctl_sock_dir() {
+        if [ "$(ls -A $LDMSCTL_SOCK_DIR)" ]; then
+                rm -f $LDMSCTL_SOCK_DIR/*
+        fi
+        rmdir $LDMSCTL_SOCK_DIR
+}
+
+
+# Start sampler plugins, using the same set of samplers on
+# all hosts. This will need revision if component based selection
+# of samplers is needed. in particular, it will need to parse
+# a config file like start_add_hosts
+start_ldms_plugins () {
+	echoq "In start_ldms_plugins"
+	if [[ -z $LDMSCTL ]]; then
+		echoq "Failed. no LDMSCTL defined."
+		return 1;
+	fi
+#	sleep 30
+	DO_CTL="${LDMSCTL} -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
+	for metric_set in $(eval echo ${METRIC_SETS} | sed 's/,/ /g')
+	do
+		interval="${metric_set}_INTERVAL"
+		if [[ -z "${!interval}" ]]; then
+			interval="DEFAULT_COLLECTION_INTERVAL"
+		fi
+		ARGS_CONFIG="name=${metric_set} component_id=${COMPONENT_ID} set=${HOSTNAME}/${metric_set}"
+		ARGS_START="name=${metric_set} interval=${!interval} offset=${NODE_COLLECTION_OFFSET}"
+		echoq "Loading <${metric_set}>"
+		case $metric_set in
+		lustre2_client) 
+			echoq "In lustre2_client: load name=$metric_set | $DO_CTL"
+			{ echo load name=$metric_set | $DO_CTL ; } && 
+			{ echo config $ARGS_CONFIG llite=${OSTLIST} | $DO_CTL ; } &&
+			{ echo start $ARGS_START | $DO_CTL ; }
+		;;
+		procnetdev)
+			echoq "In procnetdev: load name=$metric_set | $DO_CTL"
+			{ echo load name=$metric_set | $DO_CTL ; } &&
+			{ echo config $ARGS_CONFIG ifaces=${IFACES} | $DO_CTL ; } &&
+			{ echo start $ARGS_START | $DO_CTL ; }
+		;;
+		sysclassib)
+			echoq "In sysclassib: load name=$metric_set | $DO_CTL"
+			{ echo load name=$metric_set | $DO_CTL ; } && 
+			{ echo config $ARGS_CONFIG ports=${SCIB_PORTS} metric_type=0 | $DO_CTL ; } &&
+			{ echo start $ARGS_START | $DO_CTL ; }
+		;;
+		procstatutil)
+			echoq "In procstatutil: load name=$metric_set | $DO_CTL"
+			{ echo load name=$metric_set | $DO_CTL ; } && 
+			{ echo config $ARGS_CONFIG metrics_type=1 | $DO_CTL ; } &&
+			{ echo start $ARGS_START | $DO_CTL ; }
+		else
+		# This handles cases without extra config args: meminfo, vmstat, procnfs
+			echoq "In general: load name=$metric_set | $DO_CTL"
+			{ echo load name=$metric_set | $DO_CTL ; } && 
+			{ echo config $ARGS_CONFIG | $DO_CTL ; } &&
+			{ echo start $ARGS_START | $DO_CTL ; }
+		fi
+	done
+	return $?
+}
+
+# for aggregators, set lists to monitor
+start_add_hosts () {
+        if ! test -f ${AGGFILE}; then
+                echo "${AGGFILE} does not exist... Exiting"
+                exit 2
+        fi
+        while read MYHOST SET TARGETHOST
+        do
+		short=${MYHOST:0:1}
+                if [[ $shore = "#" ]]; then
+			continue
+		fi
+                if [[ $MYHOST = $MYHOSTNAME ]]; then
+                CMD="echo add host=${TARGETHOST} type=active interval=${AGG_COLLECTION_INTERVAL} offset=${AGG_COLLECTION_OFFSET} xprt=${NODE_LDMSD_TRANSPORT} port=${NODE_SOCKET} sets=${SET}";
+		echoq $CMD;
+                eval $CMD |  ${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK};
+                fi
+        done < ${AGGFILE}
+
+}
+
+# start stores, for aggregators.
+# this needs work. in particular, ${METRIC_SOCKET} is from
+# some prior userspace work and we need to move the choice of
+# stores into the data files as with add_hosts
+start_stores () {
+	if [[ -z $LDMSCTL ]]; then
+		return 1;
+	else
+		DO_CTL="${LDMSCTL} -S ${LDMSD_LOCAL_SOCK_DIR}/${LDMSD_LOCAL_SOCK}"
+        	NODELIST=(`cat $STOREFILE`)
+        	SERVICELIST=(`cat $SERVICEFILE`)
+        	# Make directory to store into (store will fail if this doesn't exist)
+	        mkdir -p $STORE_PATH
+	        echo load name=store_csv | $DO_CTL
+	        echo config name=store_csv path=$STORE_PATH | ${DOCTL}${METRIC_SOCKET}
+
+		for metric_set in $(eval echo ${METRIC_SETS} | sed 's/,/ /g')
+		do
+
+		        # Set up a csv store for all samplers in all collectors that is picked up by this aggregator
+			if [[ $metric_set = "procnetdev" || $metric_set = "sysclassib" ]]; then
+			        echo store name=store_csv comp_type=node host=${NODELIST} set=$metric_set container=${metric_set}_nodes | $DO_CTL
+			        echo store name=store_csv comp_type=node host=${SERVICELIST} set=$metric_set container=${metric_set}_service | $DO_CTL
+			else
+			        echo store name=store_csv comp_type=node set=$metric_set container=$metric_set | $DO_CTL
+			fi
+		done
+	fi
+}
+
+#export -f start_ldms_plugins start_add_hosts start_stores
+export start_ldms_plugins start_add_hosts start_stores
+

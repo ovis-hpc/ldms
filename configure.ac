@@ -61,5 +61,11 @@ AC_CONFIG_FILES([Makefile
 util/Makefile
 util/man/Makefile
 util/sample_init_scripts/Makefile
+util/sample_init_scripts/hackable/Makefile
+util/sample_init_scripts/rhel/Makefile
+util/sample_init_scripts/rhel/etc/Makefile
+util/sample_init_scripts/rhel/etc/init.d/Makefile
+util/sample_init_scripts/rhel/etc/ldms/Makefile
+util/sample_init_scripts/rhel/etc/sysconfig/Makefile
 packaging/ovis-base.spec])
 AC_OUTPUT

@@ -17,8 +17,8 @@ License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
-Requires: rpm >= 4.8.0
-BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel
+Requires: rpm >= 4.8.0 ovis-libevent2
+BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel gcc46 ovis-libevent2-devel glib2-devel libibmad-devel
 Url: http://ovis.ca.sandia.gov/
 
 Prefix: /usr
@@ -30,7 +30,7 @@ Configured with @ac_configure_args@.
 * ldmsd: the LDMS daemon, which can run as sampler or aggregator (or both).
 * ldms_ls: the tool to list metric information of an ldmsd.
 * ldmsctl: the tool to control an ldmsd.
-* libevent2 installed privately to ldms plugin directory.
+
 
 %prep
 %setup -q
@@ -39,7 +39,7 @@ Configured with @ac_configure_args@.
 echo bTMPPATH %{_tmppath}
 rm -rf $RPM_BUILD_ROOT
 echo bBUILDROOT $RPM_BUILD_ROOT
-%configure @ac_configure_args@ LIBEVENT_BUILD=1 --disable-sos
+%configure @ac_configure_args@ --disable-sos
 make
 
 %install
@@ -49,7 +49,6 @@ make DESTDIR=${RPM_BUILD_ROOT} install
 # remove unpackaged files from the buildroot
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-ldms/lib*.la
-rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-libevent/lib*.la
 rm $RPM_BUILD_ROOT%{_bindir}/test_*
 rm $RPM_BUILD_ROOT%{_bindir}/ldms_ban.sh
 mv $RPM_BUILD_ROOT%{_docdir}/ovis-ldms-*/* $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/
@@ -94,5 +93,7 @@ Doxygen files for ldms-all package.
 %{_datadir}/doc/%{name}-%{version}
 %docdir %{_defaultdocdir}
 %changelog
+* Wed Feb 18 2015 Ben Allan <baallan@sandia.gov> 2.4.0-1
+packaging with separate libevent
 * Mon Sep 15 2014 Ben Allan <baallan@sandia.gov> 2.2.0-1
 all-in-one packaging w/libevent

@@ -1,8 +1,8 @@
 ACLOCAL_AMFLAGS = -I m4
 
 EXTRA_DIST= \
-libevent-2.0.21-stable.tar.gz \
 m4/Ovis-top.m4 \
+packaging/firerpms \
 SHA.txt \
 TAG.txt
 
