@@ -141,7 +141,7 @@ static struct lustre_metric_src_list lms_list = {0};
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static uint64_t producer_id;
+static char *producer_name;
 
 static char tmp_path[PATH_MAX];
 
@@ -192,7 +192,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		sprintf(tmp_path, "/proc/fs/lustre/mds/MDS/%s/stats",
 				mds_services[i]);
 		sprintf(suffix, "#mds.%s", mds_services[i]);
-		rc = stats_construct_routine(schema, producer_id, tmp_path,
+		rc = stats_construct_routine(schema, producer_name, tmp_path,
 					     "mds.lstats.", suffix,
 					     &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
@@ -204,7 +204,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/stats", sl->str);
 		sprintf(suffix, "#mdt.%s", sl->str);
-		rc = stats_construct_routine(schema, producer_id, tmp_path,
+		rc = stats_construct_routine(schema, producer_name, tmp_path,
 					     "mds.lstats.",
 					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
@@ -213,7 +213,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		/* For md_stats */
 		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/md_stats", sl->str);
 		sprintf(suffix, "#mdt.%s", sl->str);
-		rc = stats_construct_routine(schema, producer_id, tmp_path,
+		rc = stats_construct_routine(schema, producer_name, tmp_path,
 					     "md_stats.", suffix, &lms_list,
 					     md_stats_key, MD_STATS_KEY_LEN,
 					     md_stats_key_id);
@@ -252,8 +252,8 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_mds producer_id=<producer_id> instance_name=<instance_name> mdts=<MDT1>,...
- *     producer_id       The producer id value.
+ * config name=lustre_mds producer_name=<producer_name> instance_name=<instance_name> mdts=<MDT1>,...
+ *     producer_name       The producer id value.
  *     instance_name     The set name.
  *     mdts              The comma-separated list of the MDTs to sample from.
  * </code>
@@ -264,12 +264,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *mdts;
 
-	value = av_value(avl, "producer_id");
-	if (!value) {
-		msglog("lustre2_mds: missing producer_id\n");
+	producer_name = av_value(avl, "producer_name");
+	if (!producer_name) {
+		msglog("lustre2_mds: missing producer_name\n");
 		return ENOENT;
 	}
-	producer_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "instance_name");
 	if (!value) {
@@ -280,15 +279,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc = create_metric_set(value, mdts);
 	if (rc)
 		return rc;
-	ldms_set_producer_id(set, producer_id);
+	ldms_set_producer_name(set, producer_name);
 	return 0;
 }
 
 static const char *usage(void)
 {
 	return
-"config name=lustre_mds producer_id=<producer_id> instance_name=<instance_name> mdts=MDT1,...\n"
-"	producer_id	The producer id value.\n"
+"config name=lustre_mds producer_name=<producer_name> instance_name=<instance_name> mdts=MDT1,...\n"
+"	producer_name	The producer id value.\n"
 "	instance_name	The set name.\n"
 "	mdts		The list of MDTs.\n"
 "For mdts: if not specified, all of the\n"

@@ -59,7 +59,7 @@
 #include "sampler_hadoop.h"
 #include "coll/str_map.h"
 
-static uint64_t producer_id;
+static char *producer_name;
 static char *metric_name_file;
 static int port;
 
@@ -69,9 +69,9 @@ static ldmsd_msg_log_f msglog;
 
 static const char *usage(void)
 {
-	return  "config name=hadoop_jobhistoryserver producer_id=<producer_id> instance_name=<instance_name>\n"
+	return  "config name=hadoop_jobhistoryserver producer_name=<producer_name> instance_name=<instance_name>\n"
 		"	port=<port> file=<file> \n"
-		"    producer_id       The producer id value.\n"
+		"    producer_name       The producer id value.\n"
 		"    instance_name     The set name.\n"
 		"    port	       The listener port which the LDMS sink sends data to.\n"
 		"    file	       The file that contains metric names and their ldms_metric_types.\n"
@@ -88,9 +88,9 @@ static ldms_set_t get_set()
 /**
  * \brief Configuration
  *
- * config name=hadoop_jobhistoryserver producer_id=<producer_id> instance_name=<instance_name>
+ * config name=hadoop_jobhistoryserver producer_name=<producer_name> instance_name=<instance_name>
  *		port=<port> file=<file>
- *     producer_id       The producer id value.
+ *     producer_name       The producer id value.
  *     instance_name     The set name.
  *     port	         The listener port which the LDMS sink sends data to
  *     file	         The file that contains metric names and their ldms_metric_types.
@@ -100,11 +100,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	char *attr;
 
-	attr = "producer_id";
-	value = av_value(avl, attr);
-	if (value)
-		producer_id = strtoull(value, NULL, 0);
-	else
+	attr = "producer_name";
+	producer_name = av_value(avl, attr);
+	if (!producer_name)
 		goto enoent;
 
 	attr = "port";
@@ -138,7 +136,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto err_1;
 	}
 
-	rc = create_hadoop_set(metric_name_file, &jobhistoryserver_set, producer_id);
+	rc = create_hadoop_set(metric_name_file, &jobhistoryserver_set, producer_name);
 	if (rc)
 		goto err_2;
 	rc = pthread_create(&thread, NULL, recv_metrics, &jobhistoryserver_set);

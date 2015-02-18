@@ -71,7 +71,7 @@ static ldms_set_t set;
 static FILE *mf;
 static ldmsd_msg_log_f msglog;
 static int nprocs;
-static uint64_t producer_id;
+static char *producer_name;
 static ldms_schema_t schema;
 
 static ldms_set_t get_set()
@@ -180,19 +180,18 @@ err:
 /**
  * \brief Configuration
  *
- * - config name=procinterrupts producer_id=<producer_id> instance_name=<instance_name>
+ * - config name=procinterrupts producer_name=<producer_name> instance_name=<instance_name>
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 	char *value;
 
-	value = av_value(avl, "producer_id");
-	if (!value) {
-		msglog("procinterrupts: missing producer_id.\n");
+	producer_name = av_value(avl, "producer_name");
+	if (!producer_name) {
+		msglog("procinterrupts: missing producer_name.\n");
 		return ENOENT;
 	}
-	producer_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "instance_name");
 	if (!value) {
@@ -204,7 +203,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("procinterrupts: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_id(set, producer_id);
+	ldms_set_producer_name(set, producer_name);
 
 	return rc;
 }
@@ -281,8 +280,8 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procinterrupts producer_id=<producer_id> instance_name=<instance_name>\n"
-		"    producer_id       The producer id value.\n"
+	return  "config name=procinterrupts producer_name=<producer_name> instance_name=<instance_name>\n"
+		"    producer_name       The producer id value.\n"
 		"    instance_name     The set name.\n";
 }
 

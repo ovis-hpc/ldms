@@ -73,7 +73,7 @@ static uint64_t *prev_value;
 static ldmsd_msg_log_f msglog;
 static int column_count;
 static int cpu_count;
-static uint64_t producer_id;
+static char *producer_name;
 
 static long USER_HZ; /* initialized in get_plugin() */
 static struct timeval _tv[2] = {0};
@@ -236,12 +236,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	int rc = EINVAL;
 
-	value = av_value(avl, "producer_id");
-	if (!value) {
-		msglog("procstatutil: missing producer_id\n");
+	producer_name = av_value(avl, "producer_name");
+	if (!producer_name) {
+		msglog("procstatutil: missing producer_name\n");
 		return ENOENT;
 	}
-	producer_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "instance_name");
 	if (!value) {
@@ -253,7 +252,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("procstatutil: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_id(set, producer_id);
+	ldms_set_producer_name(set, producer_name);
  out:
 	return rc;
 }
@@ -383,8 +382,8 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procstatutil producer_id=<producer_id> instance_name=<instance_name>\n"
-		"    producer_id       The producer id value\n"
+	return  "config name=procstatutil producer_name=<producer_name> instance_name=<instance_name>\n"
+		"    producer_name       The producer id value\n"
 		"    instance_name     The set name\n";
 }
 

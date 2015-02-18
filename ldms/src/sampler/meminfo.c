@@ -72,7 +72,7 @@ static char *procfile = PROC_FILE;
 static ldms_set_t set;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static uint64_t producer_id = 0;
+static char *producer_name;
 static ldms_schema_t schema;
 
 static int create_metric_set(const char *instance_name)
@@ -131,18 +131,16 @@ static int create_metric_set(const char *instance_name)
 /**
  * \brief Configuration
  *
- * config name=meminfo producer_id=<comp_id> instance_name=<instance_name>
- *     producer_id      The producer id value.
+ * config name=meminfo producer_name=<comp_id> instance_name=<instance_name>
+ *     producer_name      The producer id value.
  *     instance_name    The set name.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
-	value = av_value(avl, "producer_id");
-	if (value) {
-		producer_id = strtoull(value, NULL, 0);
-	} else {
-		msglog("meminfo: missing producer_id\n");
+	producer_name = av_value(avl, "producer_name");
+	if (!producer_name) {
+		msglog("meminfo: missing producer_name\n");
 		return ENOENT;
 	}
 
@@ -157,7 +155,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("meminfo: failed to create a metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_id(set, producer_id);
+	ldms_set_producer_name(set, producer_name);
 	return 0;
 }
 
@@ -216,8 +214,8 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=meminfo producer_id=<producer_id> instance_name=<setname>\n"
-		"    producer_id     The producer id value.\n"
+	return  "config name=meminfo producer_name=<producer_name> instance_name=<setname>\n"
+		"    producer_name     The producer id value.\n"
 		"    setname         The set name.\n";
 }
 

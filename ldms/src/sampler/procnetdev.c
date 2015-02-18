@@ -87,7 +87,7 @@ static ldms_set_t set;
 static ldms_schema_t schema;
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
-static uint64_t producer_id;
+static char *producer_name;
 static struct timeval tv[2];
 static struct timeval *tv_cur = &tv[0];
 static struct timeval *tv_prev = &tv[1];
@@ -96,14 +96,6 @@ struct kw {
 	char *token;
 	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
 };
-
-static int kw_comparator(const void *a, const void *b)
-{
-	struct kw *_a = (struct kw *)a;
-	struct kw *_b = (struct kw *)b;
-	return strcmp(_a->token, _b->token);
-}
-
 
 static ldms_set_t get_set()
 {
@@ -237,9 +229,9 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
 static const char *usage(void)
 {
 	return
-"config name=procnetdev iface=<ifaces> producer_id=<producer_id> instance_name=<instance_name>\n"
+"config name=procnetdev iface=<ifaces> producer_name=<producer_name> instance_name=<instance_name>\n"
 "    iface           Comma-separated interface names (e.g. eth0,eth1)\n"
-"    producer_id     The producer id value.\n"
+"    producer_name     The producer id value.\n"
 "    instance_name         The set name.\n";
 }
 
@@ -267,12 +259,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return rc;
 
 	/* Set the compid and create the metric set */
-	value = av_value(avl, "producer_id");
-	if (!value) {
-		msglog("procnetdev: missing producer_id.\n");
+	producer_name = av_value(avl, "producer_name");
+	if (!producer_name) {
+		msglog("procnetdev: missing producer_name.\n");
 		return ENOENT;
 	}
-	producer_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "instance_name");
 	if (!value)
@@ -281,7 +272,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	rc = create_metric_set(value);
 	if (rc)
 		return rc;
-	ldms_set_producer_id(set, producer_id);
+	ldms_set_producer_name(set, producer_name);
 
 	return 0;
 }

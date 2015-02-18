@@ -182,7 +182,7 @@ void print_detail(ldms_set_t s)
 	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
 
 	printf("  METADATA --------\n");
-	printf("      Producer ID : %lx\n", ldms_get_producer_id(s));
+	printf("    Producer Name : %s\n", ldms_get_producer_name(s));
 	printf("    Instance Name : %s\n", ldms_get_set_name(s));
 	printf("      Schema Name : %s\n", ldms_get_set_schema_name(s));
 	printf("             Size : %" PRIu32 "\n", sd->set->meta->meta_sz);
