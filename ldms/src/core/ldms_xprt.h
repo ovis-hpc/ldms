@@ -147,6 +147,7 @@ struct ldms_lookup_msg {
 	uint64_t xid;
 	uint32_t meta_len;
 	uint32_t data_len;
+	uint32_t card; /* set cardinality */
 };
 
 struct ldms_dir_reply {

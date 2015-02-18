@@ -523,7 +523,7 @@ void ldms_set_producer_id(ldms_set_t s, uint64_t id)
 }
 
 int __ldms_create_set(const char *instance_name,
-		      size_t meta_sz, size_t data_sz,
+		      struct ldms_lookup_msg *lm,
 		      ldms_set_t *s, uint32_t flags)
 {
 	struct ldms_data_hdr *data;
@@ -532,17 +532,17 @@ int __ldms_create_set(const char *instance_name,
 	ldms_mdef_t m;
 	int rc;
 
-	meta = mm_alloc(meta_sz + data_sz);
+	meta = mm_alloc(lm->meta_len + lm->data_len);
 	if (!meta) {
 		rc = ENOMEM;
 		goto out_0;
 	}
 	meta->version = LDMS_VERSION;
-	meta->meta_sz = meta_sz;
+	meta->meta_sz = lm->meta_len;
 
-	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_sz);
-	meta->data_sz = data_sz;
-	data->size = data_sz;
+	data = (struct ldms_data_hdr *)((unsigned char*)meta + lm->meta_len);
+	meta->data_sz = lm->data_len;
+	data->size = lm->data_len;
 
 	/* Initialize the metric set header */
 	if (flags & LDMS_SET_F_LOCAL)
@@ -551,7 +551,7 @@ int __ldms_create_set(const char *instance_name,
 		/* This tells ldms_update that we've never received
 		 * the remote meta data */
 		meta->meta_gn = 0;
-	meta->card = 0;
+	meta->card = lm->card;
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 
 	ldms_name_t lname = get_instance_name(meta);

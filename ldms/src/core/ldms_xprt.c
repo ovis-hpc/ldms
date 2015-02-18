@@ -516,7 +516,8 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	struct ldms_lookup_msg lmsg = {
 		.xid = req->hdr.xid,
 		.data_len = set->meta->data_sz,
-		.meta_len = set->meta->meta_sz
+		.meta_len = set->meta->meta_sz,
+		.card = set->meta->card,
 	};
 
 	hton_ldms_lookup_msg(&lmsg);
@@ -846,8 +847,7 @@ void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	 * exists. The application should destroy existing set before lookup.
 	 */
 	rc = __ldms_create_set(ctxt->lookup.path,
-			lm->meta_len,
-			lm->data_len,
+			lm,
 			&set_t,
 			LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY);
 	if (rc)
