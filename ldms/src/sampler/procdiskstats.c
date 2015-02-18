@@ -48,7 +48,7 @@ static char *fieldname[NFIELD] = {
 static ldms_set_t set;
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id;
 
 static long USER_HZ; /* initialized in get_plugin() */
 static struct timeval _tv[2] = {0};
@@ -59,8 +59,7 @@ struct proc_disk_s {
 	char *name;
 	size_t sect_sz;
 	int monitored;
-	int metric_idx[NFIELD * 2]; /* raw + rate metrics */
-	int comp_id;
+	int midx[NFIELD * 2]; /* raw + rate metrics */
 	uint64_t prev_value[NFIELD];
 	TAILQ_ENTRY(proc_disk_s) entry;
 };
@@ -77,14 +76,14 @@ static int add_disk_metrics(ldms_schema_t schema, struct proc_disk_s *disk)
 		rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
 		if (rc < 0)
 			return ENOMEM;
-		disk->metric_idx[2 * i] = rc;
+		disk->midx[2 * i] = rc;
 
 		/* rate metric */
 		snprintf(metric_name, 128, "%s.rate#%s", fieldname[i], disk->name);
 		rc = ldms_add_metric(schema, metric_name, LDMS_V_F32);
 		if (rc < 0)
 			return ENOMEM;
-		disk->metric_idx[2 * i + 1] = rc;
+		disk->midx[2 * i + 1] = rc;
 	}
 	return 0;
 }
@@ -135,15 +134,13 @@ static int scan_line(char *lbuf, char *name, uint64_t *v)
 	return (rc == 14);
 }
 
-static struct proc_disk_s *add_disk(char *name, int *next_comp_id)
+static struct proc_disk_s *add_disk(char *name)
 {
 	struct proc_disk_s *disk = calloc(1, sizeof *disk);
 	if (!disk)
 		goto out;
 	disk->name = strdup(name);
 	disk->sect_sz = get_sector_sz(disk->name);
-	disk->comp_id = *next_comp_id;
-	(*next_comp_id)++;
 	TAILQ_INSERT_TAIL(&disk_list, disk, entry);
  out:
 	return disk;
@@ -152,7 +149,7 @@ static struct proc_disk_s *add_disk(char *name, int *next_comp_id)
 /*
  * Parse the /proc/diskstats file and collect all the devices names
  */
-static int get_disks(int next_comp_id)
+static int get_disks()
 {
 	uint64_t v[NFIELD];
 	int rc;
@@ -174,22 +171,21 @@ static int get_disks(int next_comp_id)
 		rc = scan_line(s, name, v);
 		if (!rc)
 			break;
-		disk = add_disk(name, &next_comp_id);
+		disk = add_disk(name);
 	} while (1);
 
 	fclose(pf);
 	return 0;
 }
 
-static int config_add_disks(struct attr_value_list *avl, int comp_id,
-		     ldms_schema_t schema)
+static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 {
 	int rc = 0;
 	int next_comp_id = 0;
 	struct proc_disk_s *disk;
 	char *value = av_value(avl, "device");
 
-	rc = get_disks(comp_id);
+	rc = get_disks();
 	if (rc)
 		goto err;
 
@@ -228,49 +224,39 @@ static int config_add_disks(struct attr_value_list *avl, int comp_id,
 err:
 	msglog("%s Error %d adding metrics.\n", __FILE__, rc);
 	return rc;
-
 }
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *attr;
-	int rc;
+	int rc = 0;
 	ldms_schema_t schema = ldms_create_schema("procdiskstats");
 	if (!schema)
 		return ENOMEM;
 
-	attr = "component_id";
+	attr = "producer_id";
 	value = av_value(avl, attr);
 	if (value)
-		comp_id = strtol(value, NULL, 0);
+		producer_id = strtol(value, NULL, 0);
 	else
 		goto enoent;
 
-	rc = config_add_disks(avl, comp_id, schema);
+	rc = config_add_disks(avl, schema);
 	if (rc)
 		return rc;
 
-	attr = "set";
+	attr = "instance_name";
 	value = av_value(avl, attr);
-	if (value)
-		rc = ldms_create_set(value, schema, &set);
-	else
+	if (!value)
 		goto enoent;
 
-	/* Run through the metrics and set their component id in their udata */
-	struct proc_disk_s *disk;
-
-	TAILQ_FOREACH(disk, &disk_list, entry) {
-		if (!disk->monitored)
-			continue;
-		int i;
-		for (i = 0; i < (NFIELD * 2); i++) {
-			ldms_set_midx_udata(set, disk->metric_idx[i],
-							disk->comp_id);
-		}
+	rc = ldms_create_set(value, schema, &set);
+	if (rc) {
+		msglog("procdiskstats: failed to create the metric set.\n");
+		return rc;
 	}
-
+	ldms_set_producer_id(set, producer_id);
 	ldms_destroy_schema(schema);
 	return 0;
 enoent:
@@ -298,29 +284,29 @@ static void set_disk_metrics(struct proc_disk_s *disk,
 			/* Calculate sect_read in bytes */
 			/* sect_read's been updated already. */
 			f = values[SECT_READ_IDX] * disk->sect_sz;
-			ldms_set_midx_float(set, disk->metric_idx[idx], f);
+			ldms_set_midx_float(set, disk->midx[idx], f);
 
 			rate = calculate_rate(disk->prev_value[i], f, dt);
-			ldms_set_midx_float(set, disk->metric_idx[idx + 1], rate);
+			ldms_set_midx_float(set, disk->midx[idx + 1], rate);
 
 			disk->prev_value[SECT_READ_BYTES_IDX] = (uint64_t)f;
 		} else if (i == SECT_WRITTEN_BYTES_IDX) {
 			/* Calculate sect_written in bytes */
 			/* sect_written's been updated already */
 			f = values[SECT_WRITTEN_IDX] * disk->sect_sz;
-			ldms_set_midx_float(set, disk->metric_idx[idx], f);
+			ldms_set_midx_float(set, disk->midx[idx], f);
 
 			rate = calculate_rate(disk->prev_value[i], f, dt);
-			ldms_set_midx_float(set, disk->metric_idx[idx + 1], rate);
+			ldms_set_midx_float(set, disk->midx[idx + 1], rate);
 
 			disk->prev_value[SECT_WRITTEN_BYTES_IDX] = (uint64_t)f;
 		} else {
 			/* raw */
-			ldms_set_midx_u64(set, disk->metric_idx[idx], values[i]);
+			ldms_set_midx_u64(set, disk->midx[idx], values[i]);
 
 			/* rate */
 			rate = calculate_rate(disk->prev_value[i], values[i], dt);
-			ldms_set_midx_float(set, disk->metric_idx[idx + 1], rate);
+			ldms_set_midx_float(set, disk->midx[idx + 1], rate);
 
 			disk->prev_value[i] = values[i];
 		}
@@ -404,10 +390,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-        return  "config name=procdiskstats component_id=<comp_id> set=<setname> device=<device>\n"
-                "    comp_id     The component id value.\n"
-                "    setname     The set name.\n"
-                "    device	 The comma-separated list of devices\n";
+        return  "config name=procdiskstats producer_id=<producer_id> instance_name=<setname> device=<device>\n"
+                "    producer_id     The producer id value.\n"
+                "    setname         The set name.\n"
+                "    device	         The comma-separated list of devices\n";
 }
 
 static struct ldmsd_sampler procdiskstats_plugin = {

@@ -221,7 +221,7 @@ struct lustre_metric_src_list lms_list = {0};
 static ldms_set_t set;
 FILE *mf;
 ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+uint64_t producer_id;
 
 char tmp_path[PATH_MAX];
 
@@ -275,7 +275,7 @@ static int create_metric_set(const char *path, const char *osts)
 		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
 				oss_services[i]);
 		sprintf(suffix, "#oss.%s", oss_services[i]);
-		rc = stats_construct_routine(schema, comp_id, tmp_path, "oss.lstats.",
+		rc = stats_construct_routine(schema, producer_id, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
@@ -286,7 +286,7 @@ static int create_metric_set(const char *path, const char *osts)
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
 		sprintf(suffix, "#ost.%s", sl->str);
-		rc = stats_construct_routine(schema, comp_id, tmp_path, "oss.lstats.",
+		rc = stats_construct_routine(schema, producer_id, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, obdf_key,
 					     OBDF_KEY_LEN, obdf_key_id);
 		if (rc)
@@ -294,7 +294,7 @@ static int create_metric_set(const char *path, const char *osts)
 		for (j = 0; j < OST_SINGLE_ATTR_LEN; j++) {
 			sprintf(tmp_path, "/proc/fs/lustre/osd-ldiskfs/%s/%s",
 						sl->str, ost_single_attr[j]);
-			rc = single_construct_routine(schema, comp_id, tmp_path,
+			rc = single_construct_routine(schema, producer_id, tmp_path,
 					"oss.lustre.", suffix, &lms_list);
 			if (rc)
 				goto err2;
@@ -332,10 +332,10 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_oss component_id=<comp_id> set=<setname> osts=<OST1>,...
- *     comp_id     The component id value.
- *     setname     The set name.
- *     osts        The comma-separated list of the OSTs to sample from.
+ * config name=lustre_oss producer_id=<producer_id> instance_name=<instance_name> osts=<OST1>,...
+ *     producer_id       The producer id value.
+ *     instnace_name     The set name.
+ *     osts              The comma-separated list of the OSTs to sample from.
  * </code>
  * If osts is not given, the plugin will create ldms_set according to the
  * available OSTs at the time.
@@ -344,24 +344,32 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *osts;
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("lustre2_oss: missing producer_id\n");
+		return ENOENT;
+	}
+	producer_id = strtol(value, NULL, 0);
 
 	value = av_value(avl, "set");
-	osts = av_value(avl, "osts");
-	if (!value)
+	if (!value) {
+		msglog("lustre2_oss: missing instance_name\n");
 		return EINVAL;
+	}
+	osts = av_value(avl, "osts");
 
-	return create_metric_set(value, osts);
+	int rc = create_metric_set(value, osts);
+	if (rc)
+		return rc;
+	ldms_set_producer_id(set, producer_id);
 }
 
 static const char *usage(void)
 {
 	return
-"config name=lustre_oss component_id=<comp_id> set=<setname> osts=OST1,...\n"
-"	component_id	The component id value.\n"
-"	set		The set name.\n"
+"config name=lustre_oss producer_id=<producer_id> instance_name=<instance_name> osts=OST1,...\n"
+"	producer_id	The producer id value.\n"
+"	instance_name	The set name.\n"
 "	osts		The list of OSTs.\n"
 "For osts: if not specified, all of the\n"
 "currently available OSTs will be added.\n";

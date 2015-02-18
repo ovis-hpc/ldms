@@ -120,7 +120,7 @@ static ldms_set_t set;
 static ldms_schema_t schema;
 static FILE *mf;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id;
 
 static ldms_set_t get_set()
 {
@@ -161,8 +161,6 @@ static int create_metric_set(const char *path)
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
 		goto err;
-	for (i = 0; i < ldms_get_metric_count(schema); i++)
-		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
@@ -174,9 +172,9 @@ err:
 
 static const char *usage(void)
 {
-	return  "config name=procnfs component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
+	return  "config name=procnfs producer_id=<comp_id> instance_name=<instance_name>\n"
+		"    producer_id     The producer id value.\n"
+		"    instance_name     The set name.\n";
 }
 
 
@@ -191,14 +189,24 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	char *value;
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("procnfs: missing producer_id\n");
+		return ENOENT;
+	}
+	producer_id = strtol(value, NULL, 0);
 
-	value = av_value(avl, "set");
-	if (value)
-		create_metric_set(value);
-
+	value = av_value(avl, "instance_name");
+	if (!value) {
+		msglog("procnfs: missing instance_name\n");
+		return ENOENT;
+	}
+	int rc = create_metric_set(value);
+	if (rc) {
+		msglog("procnfs: failed to create the metric set.\n");
+		return rc;
+	}
+	ldms_set_producer_id(set, producer_id);
 	return 0;
 
 }

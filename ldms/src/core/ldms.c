@@ -708,6 +708,7 @@ int ldms_create_set(const char *instance_name, ldms_schema_t schema, ldms_set_t 
 
  out_1:
 	mm_free(meta);
+	return rc;
 }
 
 const char *ldms_get_set_name(ldms_set_t _set)

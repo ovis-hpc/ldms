@@ -171,11 +171,6 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 		av_list->list[count].value = (char*)v->s.str;
 		count++;
 	}
-	/* This is not a real component ID. It is needed just for backward
-	 * compatibility. */
-	av_list->list[count].name = "component_id";
-	av_list->list[count].value = "0";
-	count++;
 
 	av_list->count = count;
 
@@ -196,7 +191,7 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 		goto out; /* this is not a sampler */
 	ocm_cfg_cmd_t mcmd = v->cmd;
 
-	v = ocm_av_get_value(cmd, "set");
+	v = ocm_av_get_value(cmd, "instance_name");
 	ldms_set_t set = ldms_get_set(v->s.str);
 
 	ocm_av_iter_init(&iter, mcmd);

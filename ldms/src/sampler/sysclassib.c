@@ -238,7 +238,7 @@ char rcvbuf[BUFSIZ] = {0};
 static ldms_set_t set = NULL;
 static ldms_schema_t schema = NULL;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id;
 
 struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
@@ -288,21 +288,17 @@ static int create_metric_set(const char *setname)
 		schema = NULL;
 		return rc;
 	}
-	for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
-		ldms_set_midx_udata(set, port->handle[i], comp_id);
-		ldms_set_midx_udata(set, port->rate[i], comp_id);
-	}
 	return 0;
 }
 
 static const char *usage(void)
 {
 	return
-"config name=sysclassib component_id=<comp_id> set=<setname> ports=CA.PRT,...\n"
-"    comp_id     The component id value.\n"
-"    setname     The set name.\n"
-"    ports       A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
-"                a * for all IB ports. If not given, '*' is assumed.\n"
+"config name=sysclassib producer_id=<producer_id> instance_name=<instance_name> ports=CA.PRT,...\n"
+"    producer_id       The producer id value.\n"
+"    instance_name     The set name.\n"
+"    ports             A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
+"                      a * for all IB ports. If not given, '*' is assumed.\n"
 ;
 }
 
@@ -521,15 +517,16 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *setstr;
 	char *ports;
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtoull(value, NULL, 0);
-	else
-		comp_id = 0;
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("sysclassib: missing producer_id\n");
+		return ENOENT;
+	}
+	producer_id = strtoull(value, NULL, 0);
 
-	setstr = av_value(avl, "set");
+	setstr = av_value(avl, "instance_name");
 	if (!setstr)
-		return EINVAL;
+		return ENOENT;
 
 	ports = av_value(avl, "ports");
 	if (!ports)
@@ -543,7 +540,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (rc)
 		return rc;
 
-	return create_metric_set(setstr);
+	rc = create_metric_set(setstr);
+	if (rc)
+		return rc;
+	ldms_set_producer_id(set, producer_id);
+	return 0;
 }
 
 static ldms_set_t get_set()

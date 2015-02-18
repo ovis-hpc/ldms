@@ -73,7 +73,7 @@ static uint64_t *prev_value;
 static ldmsd_msg_log_f msglog;
 static int column_count;
 static int cpu_count;
-static uint64_t comp_id;
+static uint64_t producer_id;
 
 static long USER_HZ; /* initialized in get_plugin() */
 static struct timeval _tv[2] = {0};
@@ -129,7 +129,7 @@ static char *rate_metric_name_fmt[] = {
 	"guest_nice.rate#%d",
 };
 
-static int create_metric_set(const char *path)
+static int create_metric_set(const char *instance_name)
 {
 	int rc;
 	char *s;
@@ -204,22 +204,13 @@ static int create_metric_set(const char *path)
 	  goto err0;
 #endif
 
-	rc = ldms_create_set(path, schema, &set);;
+	rc = ldms_create_set(instance_name, schema, &set);;
 	if (rc)
 		goto err0;
 
-	int i, j, idx;
-	for (i = 0; i < cpu_count; i++) {
-		for (j = 0; j < column_count * 2; j++) {
-			idx = i * (column_count * 2) + j;
-			ldms_set_midx_udata(set, idx, comp_id + i);
-		}
-	}
-
 	prev_value = calloc(column_count * cpu_count, sizeof(*prev_value));
-	if (!prev_value) {
+	if (!prev_value)
 		goto err1;
-	}
 
         fclose(mf);
 	return 0;
@@ -245,15 +236,24 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	int rc = EINVAL;
 
-	value = av_value(avl, "component_id");
-	if (!value)
-		goto out;
-	comp_id = strtol(value, NULL, 0);
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("procstatutil: missing producer_id\n");
+		return ENOENT;
+	}
+	producer_id = strtol(value, NULL, 0);
 
-	value = av_value(avl, "set");
-	if (!value)
-		goto out;
+	value = av_value(avl, "instance_name");
+	if (!value) {
+		msglog("procstatutil: missing instance_name\n");
+		return ENOENT;
+	}
 	rc = create_metric_set(value);
+	if (rc) {
+		msglog("procstatutil: failed to create the metric set.\n");
+		return rc;
+	}
+	ldms_set_producer_id(set, producer_id);
  out:
 	return rc;
 }
@@ -383,9 +383,9 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procstatutil component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value\n"
-		"    setname     The set name\n";
+	return  "config name=procstatutil producer_id=<producer_id> instance_name=<instance_name>\n"
+		"    producer_id       The producer id value\n"
+		"    instance_name     The set name\n";
 }
 
 static struct ldmsd_sampler procstatutil_plugin = {

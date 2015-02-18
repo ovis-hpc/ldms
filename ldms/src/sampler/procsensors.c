@@ -89,7 +89,7 @@ static uint64_t* metric_values;
 static uint64_t* metric_times;
 static int num_metric_times;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static uint64_t producer_id;
 
 #undef CHECK_SENSORS_TIMING
 #ifdef CHECK_SENSORS_TIMING
@@ -102,7 +102,7 @@ int tv_nsec_metric_handle3;
 int tv_dnwrite_metric_handle;
 #endif
 
-static int create_metric_set(const char *path)
+static int create_metric_set(const char *instance_name)
 {
 	int rc, i, j;
 	char metric_name[128];
@@ -176,12 +176,10 @@ static int create_metric_set(const char *path)
 	if (!metric_times)
 		goto err;
 
-	rc = ldms_create_set(path, schema, &set);
+	rc = ldms_create_set(instance_name, schema, &set);
 	if (rc)
 		goto err;
 
-	for (i = 0; i < ldms_get_metric_count(schema); i++)
-		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
@@ -194,21 +192,32 @@ err:
  * \brief Configuration
  *
  * Usage:
- * config name=procsensors component_id=<comp_id> set=<setname>
- *     comp_id     The component id value.
- *     setname     The set name.
+ * config name=procsensors producer_id=<producer_id> instance_name=<instance_name>
+ *     producer_id       The producer id value.
+ *     instance_name     The set name.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	int rc;
+	value = av_value(avl, "producer_id");
+	if (!value) {
+		msglog("procsensors: missing producer_id\n");
+		return ENOENT;
+	}
+	producer_id = strtol(value, NULL, 0);
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
-
-	value = av_value(avl, "set");
-	if (value)
-		create_metric_set(value);
+	value = av_value(avl, "instance_name");
+	if (!value) {
+		msglog("procsensors: missing instance_name\n");
+		return ENOENT;
+	}
+	rc = create_metric_set(value);
+	if (rc) {
+		msglog("procsensors: failed to create the metric set.\n");
+		return rc;
+	}
+	ldms_set_producer_id(set, producer_id);
 
 	return 0;
 }
@@ -318,9 +327,9 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procsensors component_id=<comp_id> set=<set>\n"
-		"    comp_id    The component id.\n"
-		"    set        The set name.\n";
+	return  "config name=procsensors producer_id=<producer_id> instance_name=<instance_name>\n"
+		"    producer_id      The producer id.\n"
+		"    instance_name    The set name.\n";
 }
 
 static struct ldmsd_sampler procsensors_plugin = {

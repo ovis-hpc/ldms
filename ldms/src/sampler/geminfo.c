@@ -71,9 +71,8 @@ static char *procfile = PROC_FILE;
 
 static ldms_set_t set;
 static FILE *mf = 0;
-int *metric_table;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldmsd_msg_log_f msglog;
+static uint64_t producer_id;
 
 static ldms_set_t get_set()
 {
@@ -146,7 +145,7 @@ static int create_metric_set(const char *path)
 	if (rc)
 		goto err;
 	for (rc = 0; rc < ldms_get_metric_count(schema); rc++)
-		ldms_set_midx_udata(set, rc, comp_id);
+		ldms_set_midx_udata(set, rc, producer_id);
 	ldms_destroy_schema(schema);
 	return 0;
 
@@ -159,11 +158,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
-	value = av_value(avl, "component_id");
+	value = av_value(avl, "producer_id");
 	if (value)
-		comp_id = strtol(value, NULL, 0);
+		producer_id = strtol(value, NULL, 0);
 
-	value = av_value(avl, "set");
+	value = av_value(avl, "instance_name");
 	if (value)
 		create_metric_set(value);
 
@@ -220,9 +219,9 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=geminfo component_id=<comp_id> set=<setname>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n";
+	return  "config name=geminfo producer_id=<producer_id> instance_name=<instance_name>\n"
+		"    producer_id     The producer id value.\n"
+		"    instance_name     The set name.\n";
 }
 
 

@@ -613,8 +613,52 @@ out:
 	return rc;
 }
 
-int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
-		struct ocm_cfg_buff *buff)
+char *ocmdsqlite3_query_comp_id_from_name(sqlite3 *db, ocmd_plugin_t p,
+							const char *name)
+{
+	int rc = 0;
+	int count = 0;
+	struct ocmsqlite3 *s = (void *)p;
+	char *comp_id = NULL;
+	char *tmp;
+	char sql[1024];
+	const char *tail;
+	struct sqlite3_stmt *stmt;
+	sprintf(sql, "SELECT comp_id FROM components WHERE name='%s';",
+			name);
+	rc = sqlite3_prepare_v2(db, sql, 1024, &stmt, &tail);
+	if (rc != SQLITE_OK && rc != SQLITE_DONE) {
+		LOG(p, "sqlite3_prepare_v2 error: %s\n", sqlite3_errmsg(db));
+		errno = rc;
+		goto err_0;
+	}
+	rc = sqlite3_step(stmt);
+	while (rc == SQLITE_ROW) {
+		count++;
+		tmp = (char *) sqlite3_column_text(stmt, 0);
+		rc = sqlite3_step(stmt);
+	}
+	if (rc == SQLITE_DONE) {
+		if (count == 0) {
+			errno = ENOENT;
+			goto err;
+		} else if (count > 1) {
+			errno = EINVAL;
+			goto err;
+		}
+	}
+	sqlite3_finalize(stmt);
+	comp_id = strdup(tmp);
+	return comp_id;
+err:
+	sqlite3_finalize(stmt);
+err_0:
+	return NULL;
+}
+
+int query_sampler_cfg(ocmd_plugin_t p, sqlite3 *db,
+			struct sqlite3_stmt *stmt,
+			struct ocm_cfg_buff *buff)
 {
 	char *_buff = malloc(OCMSQL_BUFFER_SIZE);
 	if (!_buff) {
@@ -630,13 +674,20 @@ int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
 	int idx_metrics = 4;
 
 	char *key, *value, *tmp_buf, *interval_s, *offset_s;
-	char *ldmsd_set, *cfg_s, *metrics, *host;
-	char set_name[128];
+	char *ldmsd_set, *cfg_s, *metrics, *host, *producer_id_s;
+	char instance_name[128];
 
 	cfg_s = (char*) sqlite3_column_text(stmt, idx_cfg);
 	ldmsd_set = (char *) sqlite3_column_text(stmt, idx_ldmsd_set);
 	host = (char *) sqlite3_column_text(stmt, idx_apply_on);
 	interval_s = offset_s = NULL;
+
+	producer_id_s = ocmdsqlite3_query_comp_id_from_name(db, p, host);
+	if (!producer_id_s) {
+		LOG(p, "sampler: Failed to get producer_id for host '%s'\n",
+									host);
+		goto err;
+	}
 
 	/* process config string */
 	ocm_cfg_buff_add_verb(buff, "config");
@@ -647,7 +698,7 @@ int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
 	ocm_value_set_s(v, ldmsd_set);
 	ocm_cfg_buff_add_av(buff, "name", v);
 	/* default set name */
-	sprintf(set_name, "%s/%s", host, ldmsd_set);
+	sprintf(instance_name, "%s/%s", host, ldmsd_set);
 
 	key = strtok_r(cfg_s, ":", &tmp_buf);
 	while (key) {
@@ -655,8 +706,8 @@ int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
 			interval_s = strtok_r(NULL, ";", &tmp_buf);
 		} else if (strcmp(key, "offset_s") == 0) {
 			offset_s = strtok_r(NULL, ";", &tmp_buf);
-		} else if (strcmp(key, "set_name") == 0) {
-			/* rename the setname if needed */
+		} else if (strcmp(key, "instance_name") == 0) {
+			/* rename the instance_name if needed */
 			char *_p = strtok_r(NULL, ";", &tmp_buf);
 			char *_s = strstr(_p, "$(apply_on)");
 			if (!_s) {
@@ -666,7 +717,7 @@ int query_sampler_cfg(ocmd_plugin_t p, struct sqlite3_stmt *stmt,
 			}
 			int len = _s - _p;
 			_s = _s + strlen("$(apply_on)");
-			sprintf(set_name, "%.*s%s%s", len, _p, host, _s);
+			sprintf(instance_name, "%.*s%s%s", len, _p, host, _s);
 		} else {
 			value = strtok_r(NULL, ";", &tmp_buf);
 			char *tmp = sub_env_var(p, value);
@@ -681,9 +732,10 @@ skip:
 		key = strtok_r(NULL, ":", &tmp_buf);
 	}
 
-	ocm_value_set_s(v, set_name);
-	ocm_cfg_buff_add_av(buff, "set", v);
-
+	ocm_value_set_s(v, instance_name);
+	ocm_cfg_buff_add_av(buff, "instance_name", v);
+	ocm_value_set_s(v, producer_id_s);
+	ocm_cfg_buff_add_av(buff, "producer_id", v);
 	/* prepare the nested attribute-value for attribute name 'metric_id' */
 	metrics = (char *) sqlite3_column_text(stmt, idx_metrics);
 
@@ -758,7 +810,7 @@ int ocmsqlite3_query_sampler_cfg(struct ocm_cfg_buff *buff, sqlite3 *db,
 			rc = EINVAL;
 			goto err;
 		}
-		rc = query_sampler_cfg(p, stmt, buff);
+		rc = query_sampler_cfg(p, db, stmt, buff);
 		if (rc)
 			goto err;
 		rc = sqlite3_step(stmt);
