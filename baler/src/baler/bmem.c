@@ -175,13 +175,9 @@ int64_t bmem_alloc(struct bmem *b, uint64_t size)
 			berror("write");
 			return 0;
 		}
-		if ((b->hdr=mremap(b->hdr, b->hdr->flen, nflen, MREMAP_MAYMOVE))
-				== MAP_FAILED) {
-			berror("mremap");
-			return 0;
-		}
 		b->hdr->flen = nflen;
-		b->ptr = b->hdr + 1;
+		if (bmem_refresh(b) != 0)
+			return 0;
 	}
 	int64_t off = b->hdr->ulen;
 
@@ -198,3 +194,27 @@ int bmem_unlink(const char *path)
 		rc = errno;
 	return rc;
 }
+
+int bmem_refresh(struct bmem *b)
+{
+	void *new_mem;
+	uint64_t flen = b->hdr->flen;
+	if (b->flen == flen)
+		/* Nothing to do */
+		return 0;
+
+	/* Need remap */
+	new_mem = mremap(b->hdr, b->flen, flen, MREMAP_MAYMOVE);
+	if (new_mem == MAP_FAILED) {
+		berror("mremap");
+		return errno;
+	}
+
+	/* Update */
+	b->flen = flen;
+	b->hdr = new_mem;
+	b->ptr = b->hdr + 1;
+
+	return 0;
+}
+/* EOF */

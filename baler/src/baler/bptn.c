@@ -327,3 +327,17 @@ uint32_t bptn_store_first_id(struct bptn_store *ptns)
 	return BMAP_ID_BEGIN;
 }
 
+int bptn_store_refresh(struct bptn_store *ptns)
+{
+	int rc;
+	rc = bmap_refresh(ptns->map);
+	if (rc)
+		return rc;
+	rc = bmem_refresh(ptns->mattr);
+	if (rc)
+		return rc;
+	rc = bmem_refresh(ptns->marg);
+	if (rc)
+		return rc;
+	return rc;
+}

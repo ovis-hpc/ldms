@@ -293,5 +293,13 @@ void bmap_set_event_cb(struct bmap *bmap, bmap_ev_cb_fn ev_cb);
  */
 int bmap_unlink(const char *path);
 
+/**
+ * \brief Refreshing all bmem owned by \c bmap.
+ *
+ * \retval 0 if OK.
+ * \retval errno if error.
+ */
+int bmap_refresh(struct bmap *bmap);
+
 #endif // _BMAPPER_H
 /**\}*/

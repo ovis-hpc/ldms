@@ -218,5 +218,13 @@ uint32_t btkn_store_insert_cstr(struct btkn_store *store, const char *str,
 int btkn_store_char_insert(struct btkn_store *store, const char *cstr,
 							btkn_type_t type);
 
+/**
+ * Refresh the underlying ::bmap.
+ *
+ * \retval 0 if OK.
+ * \retval errno if error.
+ */
+int btkn_store_refresh(struct btkn_store *store);
+
 #endif /* __BTKN_H */
 /**\}*/

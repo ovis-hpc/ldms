@@ -166,3 +166,13 @@ int btkn_store_char_insert(struct btkn_store *store, const char *cstr,
 	}
 	return 0;
 }
+
+int btkn_store_refresh(struct btkn_store *store)
+{
+	int rc;
+	rc = bmvec_generic_refresh((void*)store->attr);
+	if (rc)
+		return rc;
+	rc = bmap_refresh(store->map);
+	return rc;
+}

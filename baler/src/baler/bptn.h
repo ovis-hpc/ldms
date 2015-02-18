@@ -230,6 +230,14 @@ const struct bstr *bptn_store_get_ptn(struct bptn_store *ptns, uint32_t id)
 {
 	return bmap_get_bstr(ptns->map, id);
 }
+
+/**
+ * Refresh all underlying bmem.
+ *
+ * \retval 0 OK.
+ * \retval errno Error.
+ */
+int bptn_store_refresh(struct bptn_store *ptns);
 #endif
 
 /**\}*/

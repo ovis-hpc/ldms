@@ -90,6 +90,7 @@ struct __attribute__((packed)) bmem {
 	int fd; /**< File descriptor for \a path. */
 	struct bmem_hdr *hdr; /**< Header part of the mapped memory. */
 	void *ptr; /**< Mapped memory after the header part. */
+	uint64_t flen; /**< flen, for remap checking. */
 };
 
 /**
@@ -143,5 +144,11 @@ int64_t bmem_alloc(struct bmem *b, uint64_t size);
  * \retval errno if error.
  */
 int bmem_unlink(const char *path);
+
+/**
+ * \brief Refresh bmem, mremap() if necessary.
+ */
+int bmem_refresh(struct bmem *b);
+
 #endif // _BMEM_H
 /**\}*/ // bmem

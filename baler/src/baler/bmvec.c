@@ -155,3 +155,12 @@ int bmvec_unlink(const char *path)
 {
 	return bmem_unlink(path);
 }
+
+int bmvec_generic_refresh(struct bmvec_char *vec)
+{
+	int rc = bmem_refresh(vec->mem);
+	if (rc)
+		return rc;
+	vec->bvec = vec->mem->ptr;
+	return 0;
+}

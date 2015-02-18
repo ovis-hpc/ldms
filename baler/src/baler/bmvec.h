@@ -306,6 +306,9 @@ void bmvec_generic_close_free(void *_vec);
  * \retval errno if error.
  */
 int bmvec_unlink(const char *path);
+
+int bmvec_generic_refresh(struct bmvec_char *vec);
+
 /**\}*/ // bmvec
 
 #endif /* __BMVEC_H */

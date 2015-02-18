@@ -490,3 +490,34 @@ out:
 	free(buff);
 	return 0;
 }
+
+int bmap_refresh(struct bmap *bmap)
+{
+	int rc;
+	int i, n;
+	struct bmem *_bmem[] = {
+		bmap->mhdr,
+		bmap->mstr,
+		bmap->mlist,
+	};
+	struct bmvec_u64 *_bmvec[] = {
+		bmap->bmhash,
+		bmap->bmstr_idx,
+	};
+
+	n = sizeof(_bmem)/sizeof(*_bmem);
+	for (i = 0; i < n; i++) {
+		rc = bmem_refresh(_bmem[i]);
+		if (rc)
+			return rc;
+	}
+
+	n = sizeof(_bmvec)/sizeof(*_bmvec);
+	for (i = 0; i < n; i++) {
+		rc = bmvec_generic_refresh((void*)_bmvec[i]);
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
