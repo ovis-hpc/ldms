@@ -273,7 +273,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 		return EINVAL;
 
 	si = _sh;
-	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 	uint64_t comp_id;
 
 	for (i=0; i<mvec->count; i++) {

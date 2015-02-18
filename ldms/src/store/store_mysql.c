@@ -654,7 +654,7 @@ store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 		return EINVAL;
 
 	int i;
-	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_tranasaction_timestamp(set);
 
 	for (i=0; i<mvec->count; i++) {
 		struct mysql_metric_store *msm = si->ms[i];

@@ -464,7 +464,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 	int64_t v64;
 	uint64_t vu64;
 	double vd;
-	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
 
 	for (i = 0; i < mvec->count; i++) {
 		pthread_mutex_lock(&si->ms[i]->lock);

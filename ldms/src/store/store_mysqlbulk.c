@@ -694,7 +694,7 @@ store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 	if (!sh)
 		return EINVAL;
 
-	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_get_transacation_timestamp(set);
 
 	for (i=0; i<si->metric_count; i++) {
 		struct mysqlbulk_metric_store *msm = &si->ms[i];
