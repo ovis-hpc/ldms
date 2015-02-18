@@ -59,57 +59,64 @@ btkn_type_t btkn_type(const char *str)
 	return bget_str_idx(btkn_type_str, BTKN_TYPE_LAST, str);
 }
 
-struct btkn_store* btkn_store_open(char *path)
+struct btkn_store* btkn_store_open(char *path, int flag)
 {
-	char tmp[PATH_MAX];
-	int __errno = 0; /* global errno might get reset in error handling path
-			    */
+	int create = flag & O_CREAT;
+	int acc_mode = flag & O_ACCMODE;
+	char *tmp = malloc(PATH_MAX);
+	if (!tmp)
+		return NULL;
 	if (!bfile_exists(path)) {
-		if (bmkdir_p(path, 0755) == -1)
+		if (!create) {
+			errno = ENOENT;
 			goto err0;
+		}
+		if (bmkdir_p(path, 0755) == -1) {
+			goto err0;
+		}
 	}
 	if (!bis_dir(path)) {
-		__errno = EINVAL;
+		errno = EINVAL;
 		goto err0;
 	}
-	struct btkn_store *ts = (typeof(ts)) malloc(sizeof(*ts));
+	struct btkn_store *ts = calloc(1, sizeof(*ts));
 	if (!ts) {
-		__errno = errno;
 		goto err0;
 	}
 	ts->path = strdup(path);
 	if (!ts->path) {
-		__errno = errno;
 		goto err1;
 	}
-	sprintf(tmp, "%s/tkn_attr.bmvec", path);
+	snprintf(tmp, PATH_MAX, "%s/tkn_attr.bmvec", path);
 	ts->attr = bmvec_generic_open(tmp);
 	if (!ts->attr) {
-		__errno = errno;
-		goto err2;
+		goto err1;
 	}
-	sprintf(tmp, "%s/tkn.map", path);
+	snprintf(tmp, PATH_MAX, "%s/tkn.map", path);
 	ts->map = bmap_open(tmp);
 	if (!ts->map) {
-		__errno = errno;
-		goto err3;
+		goto err1;
 	}
-	return ts;
-err3:
-	bmvec_generic_close_free(ts->attr);
-err2:
-	free(ts->path);
+	goto cleanup;
+
 err1:
-	free(ts);
+	btkn_store_close_free(ts);
+	ts = NULL;
 err0:
-	errno = __errno;
-	return NULL;
+cleanup:
+	free(tmp);
+	return ts;
 }
 
 void btkn_store_close_free(struct btkn_store *s)
 {
-	bmvec_generic_close_free(s->attr);
-	bmap_close_free(s->map);
+	if (s->path)
+		free(s->path);
+	if (s->attr)
+		bmvec_generic_close_free(s->attr);
+	if (s->map)
+		bmap_close_free(s->map);
+	free(s);
 }
 
 int btkn_store_id2str(struct btkn_store *store, uint32_t id,

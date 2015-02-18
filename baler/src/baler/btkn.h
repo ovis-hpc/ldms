@@ -67,6 +67,7 @@
 #include "bmvec.h"
 #include <sys/mman.h>
 #include <linux/limits.h>
+#include <sys/fcntl.h>
 
 /**
  * bvec definition for ::btkn_attr.
@@ -94,7 +95,7 @@ struct btkn_store {
  * \returns NULL on error.
  * \returns A pointer to the store on success.
  */
-struct btkn_store* btkn_store_open(char *path);
+struct btkn_store* btkn_store_open(char *path, int flag);
 
 /**
  * Close and free the given ::btkn_store \c s.

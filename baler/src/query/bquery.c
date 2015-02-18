@@ -342,7 +342,7 @@ struct bq_store* bq_open_store(const char *path)
 				" not exist", path);
 		goto err0;
 	}
-	s->cmp_store = btkn_store_open(spath);
+	s->cmp_store = btkn_store_open(spath, O_CREAT|O_RDONLY);
 	if (!s->cmp_store)
 		goto err0;
 
@@ -354,7 +354,7 @@ struct bq_store* bq_open_store(const char *path)
 				" not exist", path);
 		goto err1;
 	}
-	s->tkn_store = btkn_store_open(spath);
+	s->tkn_store = btkn_store_open(spath, O_CREAT|O_RDONLY);
 	if (!s->tkn_store)
 		goto err1;
 

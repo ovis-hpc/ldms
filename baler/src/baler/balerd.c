@@ -932,7 +932,7 @@ void initialize_daemon()
 	char tmp[PATH_MAX];
 	const char *store_path = bget_store_path();
 	sprintf(tmp, "%s/tkn_store", store_path);
-	token_store = btkn_store_open(tmp);
+	token_store = btkn_store_open(tmp, O_CREAT|O_RDWR);
 	if (!token_store) {
 		berror("btkn_store_open");
 		berr("Cannot open token store: %s", tmp);
@@ -953,7 +953,7 @@ void initialize_daemon()
 	/* Comp store for comp<->comp_id */
 	binfo("Opening Component Store.");
 	sprintf(tmp, "%s/comp_store", store_path);
-	comp_store = btkn_store_open(tmp);
+	comp_store = btkn_store_open(tmp, O_CREAT|O_RDWR);
 	if (!comp_store) {
 		berror("btkn_store_open");
 		berr("Cannot open token store: %s", tmp);
