@@ -76,18 +76,14 @@ struct btkn_store;
 
 /**
  * \param path store path.
- * \param ptn_store the pattern store handle.
- * \param tkn_store the token store handle.
  * \param create If this is true, the new store will be created if it does not
  *               exist. If the store existed, it won't be re-initialized.
  *
  * \retval ptr The pointer to the store handle if success.
  * \retval NULL If failed. errno is also set appropriately.
  */
-struct bmptn_store *bmptn_store_open(const char *path,
-				struct bptn_store *ptn_store,
-				struct btkn_store *tkn_store,
-				int create);
+struct bmptn_store *bmptn_store_open(const char *path, const char *bstore_path,
+					int create);
 
 /**
  * Purge the data in the store (of given \c path).

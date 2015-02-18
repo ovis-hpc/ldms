@@ -116,6 +116,10 @@ void __bmptn_store_close(struct bmptn_store *store)
 void bmptn_store_close_free(struct bmptn_store *store)
 {
 	__bmptn_store_close(store);
+	if (store->tkn_store)
+		btkn_store_close_free(store->tkn_store);
+	if (store->ptn_store)
+		bptn_store_close_free(store->ptn_store);
 	free(store);
 }
 
@@ -297,14 +301,13 @@ out:
 	return rc;
 }
 
-struct bmptn_store *bmptn_store_open(const char *path,
-				struct bptn_store *ptn_store,
-				struct btkn_store *tkn_store,
-				int create)
+struct bmptn_store *bmptn_store_open(const char *path, const char *bstore_path,
+					int create)
 {
 	struct bmptn_store *store;
 	struct stat st;
-	size_t path_len;
+	int path_len = 0;
+	int plen, psize;
 	int rc;
 
 	if (!bis_dir(path)) {
@@ -326,7 +329,38 @@ struct bmptn_store *bmptn_store_open(const char *path,
 	store->engsig_hash = NULL;
 	store->engsig_array = NULL;
 
-	snprintf(store->path, sizeof(store->path), "%s", path);
+	path_len = snprintf(store->path, sizeof(store->path), "%s", bstore_path);
+	if (path_len >= sizeof(store->path)) {
+		errno = EINVAL;
+		goto err1;
+	}
+
+	psize = sizeof(store->path) - path_len;
+
+	plen = snprintf(store->path + path_len, psize, "/ptn_store");
+	if (plen >= psize) {
+		errno = EINVAL;
+		goto err1;
+	}
+	store->ptn_store = bptn_store_open(store->path, O_RDONLY);
+	if (!store->ptn_store)
+		goto err1;
+
+	plen = snprintf(store->path + path_len, psize, "/tkn_store");
+	if (plen >= psize) {
+		errno = EINVAL;
+		goto err1;
+	}
+	store->tkn_store = btkn_store_open(store->path, O_RDONLY);
+	if (!store->tkn_store)
+		goto err1;
+
+	/* restore store path */
+	path_len = snprintf(store->path, sizeof(store->path), "%s", path);
+	if (path_len >= sizeof(store->path)) {
+		errno = EINVAL;
+		goto err1;
+	}
 
 	rc = __bmptn_store_open(store);
 	if (rc)
@@ -337,9 +371,6 @@ struct bmptn_store *bmptn_store_open(const char *path,
 		if (rc)
 			goto err1;
 	}
-
-	store->ptn_store = ptn_store;
-	store->tkn_store = tkn_store;
 
 	return store;
 

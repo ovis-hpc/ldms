@@ -427,8 +427,7 @@ void open_stores()
 	}
 
 	snprintf(p, max_len, "/mptn_store");
-	mptn_store = bmptn_store_open(path_buff, bq_get_ptn_store(bq_store),
-						bq_get_tkn_store(bq_store), 1);
+	mptn_store = bmptn_store_open(path_buff, store_path, 1);
 	if (!mptn_store) {
 		berr("bmptn_store_open() failed: %m, path: %s", path_buff);
 		exit(-1);
