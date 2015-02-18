@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -279,7 +279,11 @@ zap_err_t zap_close(zap_ep_t ep)
 
 zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz)
 {
-	return ep->z->send(ep, buf, sz);
+	zap_err_t zerr;
+	zap_get_ep(ep);
+	zerr = ep->z->send(ep, buf, sz);
+	zap_put_ep(ep);
+	return zerr;
 }
 
 zap_err_t zap_write(zap_ep_t ep,
@@ -288,7 +292,11 @@ zap_err_t zap_write(zap_ep_t ep,
 		    size_t sz,
 		    void *context)
 {
-	return ep->z->write(ep, src_map, src, dst_map, dst, sz, context);
+	zap_err_t zerr;
+	zap_get_ep(ep);
+	zerr = ep->z->write(ep, src_map, src, dst_map, dst, sz, context);
+	zap_put_ep(ep);
+	return zerr;
 }
 
 zap_err_t zap_get_name(zap_ep_t ep, struct sockaddr *local_sa,
@@ -341,12 +349,16 @@ zap_err_t zap_read(zap_ep_t ep,
 		   size_t sz,
 		   void *context)
 {
+	zap_err_t zerr;
+	zap_get_ep(ep);
 	if (dst_map->type != ZAP_MAP_LOCAL)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 	if (src_map->type != ZAP_MAP_REMOTE)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 
-	return ep->z->read(ep, src_map, src, dst_map, dst, sz, context);
+	zerr = ep->z->read(ep, src_map, src, dst_map, dst, sz, context);
+	zap_put_ep(ep);
+	return zerr;
 }
 
 
@@ -412,7 +424,11 @@ zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
 
 zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 {
-	return ep->z->share(ep, m, msg, msg_len);
+	zap_err_t zerr;
+	zap_get_ep(ep);
+	zerr = ep->z->share(ep, m, msg, msg_len);
+	zap_put_ep(ep);
+	return zerr;
 }
 
 zap_err_t zap_reject(zap_ep_t ep)
