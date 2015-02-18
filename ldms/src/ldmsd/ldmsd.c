@@ -2054,6 +2054,27 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 	ldms_dir_release(t, dir);
 }
 
+void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+{
+	struct hostspec *hs = cb_arg;
+	pthread_mutex_lock(&hs->conn_state_lock);
+
+	switch (e) {
+	case LDMS_CONN_EVENT_CONNECTED:
+		hs->conn_state = HOST_CONNECTED;
+		break;
+	case LDMS_CONN_EVENT_ERROR:
+	case LDMS_CONN_EVENT_DISCONNECTED:
+		ldms_release_xprt(hs->x);
+		if (hs->type != PASSIVE)
+			ldms_xprt_close(hs->x);
+		hs->x = 0;
+		hs->conn_state = HOST_DISCONNECTED;
+		break;
+	}
+	pthread_mutex_unlock(&hs->conn_state_lock);
+}
+
 int do_connect(struct hostspec *hs)
 {
 	int ret;
@@ -2069,7 +2090,7 @@ int do_connect(struct hostspec *hs)
 	}
 	ldms_xprt_get(hs->x);
 	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
-			    sizeof(hs->sin));
+			    sizeof(hs->sin), ldms_connect_cb, hs);
 	if (ret) {
 		/* Release the connect reference */
 		ldms_release_xprt(hs->x);
@@ -2357,25 +2378,15 @@ void do_host(struct hostspec *hs)
 		else
 			rc = do_passive_connect(hs);
 
-		if (rc)
-			hs->conn_state = HOST_DISCONNECTED;
-		else
-			hs->conn_state = HOST_CONNECTED;
+		if (rc == 0)
+			hs->conn_state = HOST_CONNECTING;
 		break;
 	case HOST_CONNECTED:
-		if (!hs->x || !ldms_xprt_connected(hs->x)) {
-			if (hs->x) {
-				if (hs->type != PASSIVE)
-					ldms_xprt_close(hs->x);
-				/* pair with get in do_connect */
-				ldms_release_xprt(hs->x);
-				hs->x = 0;
-			}
-			/* The bad hs->x shall be destroyed automatically when
-			 * the refcount is 0. Resetting hs->x here is OK. */
-			hs->conn_state = HOST_DISCONNECTED;
-		} else if (hs->type != BRIDGING)
+		if (hs->type != BRIDGING)
 			update_data(hs);
+		break;
+	case HOST_CONNECTING:
+		/* do nothing */
 		break;
 	default:
 		ldms_log("Host connection state '%d' is invalid.\n",

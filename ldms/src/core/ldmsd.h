@@ -108,6 +108,7 @@ struct hostspec
 	int synchronous;         /* 1 if synchronous */
 	enum {
 		HOST_DISCONNECTED=0,
+		HOST_CONNECTING,
 		HOST_CONNECTED
 	} conn_state;
 	pthread_mutex_t conn_state_lock;

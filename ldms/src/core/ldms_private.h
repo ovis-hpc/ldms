@@ -108,4 +108,9 @@ void __ldms_dir_del_set(const char *set_name);
 int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
 size_t __ldms_xprt_max_msg(struct ldms_xprt *x);
 
+uint32_t _get_max_size(struct ldms_set *s);
+
+void ldms_release_local_set(struct ldms_set *set);
+
+
 #endif

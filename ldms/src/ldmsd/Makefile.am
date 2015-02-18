@@ -7,7 +7,7 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 
 ldms_ls_SOURCES = ldms_ls.c
-ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util
+ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lpthread
 
 ldmsd_SOURCES = ldmsd.c ldmsd_store.c
 ldmsd_LDADD = $(CORE)/libldms.la

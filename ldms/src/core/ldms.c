@@ -64,7 +64,7 @@
 #include <netinet/in.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
-#include <coll/rbt.h>
+#include "coll/rbt.h"
 #include <limits.h>
 #include <assert.h>
 #include <mmalloc/mmalloc.h>
@@ -146,8 +146,12 @@ uint32_t ldms_get_size(ldms_set_t s)
 	return s->set->meta->meta_sz + s->set->meta->data_sz;
 }
 
+uint32_t __ldms_get_size(struct ldms_set *set)
+{
+	return set->meta->meta_sz + set->meta->data_sz;
+}
 
-static uint32_t _get_max_size(struct ldms_set *s)
+uint32_t _get_max_size(struct ldms_set *s)
 {
 	return s->meta->data_sz;
 }
@@ -386,16 +390,39 @@ int ldms_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	return 0;
 }
 
+void _release_set(struct ldms_set *set)
+{
+	rem_local_set(set);
+
+	if (set->flags & (LDMS_SET_F_MEMMAP | LDMS_SET_F_FILEMAP)) {
+		munmap(set->meta, set->meta->meta_sz);
+		munmap(set->data, set->meta->data_sz);
+	}
+	free(set);
+}
+
+void ldms_set_release(ldms_set_t set_p)
+{
+	struct ldms_set_desc *sd = (struct ldms_set_desc *)set_p;
+	if (sd->rbd)
+		ldms_free_rbd(sd->rbd);
+	if (LIST_EMPTY(&sd->set->rbd_list))
+		_release_set(sd->set);
+	free(sd);
+}
+
 void ldms_destroy_set(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
-	struct ldms_xprt *x;
 
 	__ldms_dir_del_set(get_instance_name(set->meta)->name);
 
-	ldms_free_rbd(set);
+	while (!LIST_EMPTY(&set->rbd_list)) {
+		rbd = LIST_FIRST(&set->rbd_list);
+		ldms_free_rbd(rbd);
+	}
 
 	if (set->flags & LDMS_SET_F_FILEMAP) {
 		unlink(_create_path(get_instance_name(sd->set->meta)->name));
@@ -417,24 +444,7 @@ int ldms_lookup(ldms_t _x, const char *path,
 	if (strlen(path) > LDMS_LOOKUP_PATH_MAX)
 		return EINVAL;
 
-	if (strcmp(x->name, "local"))
-		return __ldms_remote_lookup(_x, path, cb, cb_arg);
-
-	/* See if it's in my process */
-	set = ldms_find_local_set(path);
-	if (set) {
-		struct ldms_set_desc *sd = malloc(sizeof *sd);
-		if (!sd) {
-			ldms_release_local_set(set);
-			return ENOMEM;
-		}
-
-		sd->set = set;
-		s = sd;
-		ldms_release_local_set(set);
-		return 0;
-	}
-	return ENODEV;
+	return __ldms_remote_lookup(_x, path, cb, cb_arg);
 }
 
 int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
@@ -449,8 +459,6 @@ void ldms_dir_cancel(ldms_t x)
 
 char *_create_path(const char *set_name)
 {
-	if (!set_name)
-		return NULL;
 	char *dirc = strdup(set_name);
 	char *basec = strdup(set_name);
 	char *dname = dirname(dirc);
@@ -459,17 +467,14 @@ char *_create_path(const char *set_name)
 	int tail, rc = 0;
 
 	/* Create each node in the dir. __set_dir is presumed to exist */
-	char *ptr;
 	snprintf(__set_path, PATH_MAX, "%s/", __set_dir);
 	tail = strlen(__set_path) - 1;
-	for (p = strtok_r(dname, "/", &ptr); p; p = strtok_r(NULL, "/", &ptr)) {
+	for (p = strtok(dname, "/"); p; p = strtok(NULL, "/")) {
 		/* remove duplicate '/'s */
 		if (*p == '/')
 			p++;
-		if (*p == '\0') {
-			rc = 1;
-			goto out;
-		}
+		if (*p == '\0')
+			return NULL;
 		tail += strlen(p);
 		strcat(__set_path, p);
 		rc = mkdir(__set_path, 0755);

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-14 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-14 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -55,6 +55,13 @@
 #include <semaphore.h>
 #include <sys/queue.h>
 
+#include <zap/zap.h>
+
+#include "ldms.h"
+
+//#include "ldms_config.h"
+#include "config.h"
+
 #pragma pack(4)
 struct ldms_rbuf_desc {
 	struct ldms_xprt *xprt;
@@ -70,6 +77,8 @@ struct ldms_rbuf_desc {
 	uint32_t xprt_data_len;	/* The length of the transport private data in bytes */
 	void *xprt_data;	/* The transport private data section */
 	void *lcl_data;		/* Pointer to the local buffer. */
+	struct zap_map *rmap;	/* remote map */
+	struct zap_map *lmap;	/* local map */
 };
 
 enum ldms_request_cmd {
@@ -134,6 +143,12 @@ struct ldms_lookup_reply {
 	char xprt_data[0];
 };
 
+struct ldms_lookup_msg {
+	uint64_t xid;
+	uint32_t meta_len;
+	uint32_t data_len;
+};
+
 struct ldms_dir_reply {
 	uint32_t type;
 	uint32_t more;
@@ -162,6 +177,13 @@ struct ldms_reply {
 };
 #pragma pack()
 
+typedef enum ldms_context_type {
+	LDMS_CONTEXT_DIR,
+	LDMS_CONTEXT_LOOKUP,
+	LDMS_CONTEXT_UPDATE,
+	LDMS_CONTEXT_REQ_NOTIFY
+} ldms_context_type_t;
+
 struct ldms_context {
 	sem_t sem;
 	sem_t *sem_p;
@@ -180,6 +202,7 @@ struct ldms_context {
 			ldms_lookup_cb_t cb;
 			void *cb_arg;
 			struct ldms_set *set;
+			zap_map_t remote_map;
 		} lookup;
 		struct {
 			ldms_set_t s;
@@ -204,32 +227,25 @@ struct ldms_xprt {
 	socklen_t ss_len;
 	pthread_mutex_t lock;
 	int connected;
+	int closed;
 	int max_msg;		/* max send message size */
 	uint64_t local_dir_xid;
 	uint64_t remote_dir_xid;
 
+	ldms_connect_cb_t connect_cb;
+	void *connect_cb_arg;
+
+	zap_t zap; /* zap engine handle */
+	zap_ep_t zap_ep; /* Endpoint handle */
+
 	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
 	LIST_ENTRY(ldms_xprt) xprt_link;
 
-	/** Request a connection with a server */
-	int (*connect)(struct ldms_xprt *, struct sockaddr *sa, socklen_t sa_len);
-	/** Listen for incoming connection requests */
-	int (*listen)(struct ldms_xprt *, struct sockaddr *sa, socklen_t sa_len);
-	/** Close the connection */
-	void (*close)(struct ldms_xprt *);
-	/** Destroy the transport instance */
-	void (*destroy)(struct ldms_xprt *);
-	/** Send a request/reply */
-	int (*send)(struct ldms_xprt *, void *, size_t);
 	/** Read remote data buffer */
 	int (*read_data_start)(struct ldms_xprt *, ldms_set_t, size_t, void *);
 	/** Read remote metadata buffer */
 	int (*read_meta_start)(struct ldms_xprt *, ldms_set_t, size_t, void *);
 
-	/** User callback routine invoked when the read completes. */
-	int (*read_complete_cb)(struct ldms_xprt *, void *);
-	/** User callback routine called when data arrives on the transport. */
-	int (*recv_cb)(struct ldms_xprt *, void *);
 	/** User callback invoked when ldms_dir completes */
 	ldms_dir_cb_t *dir_cb;
 	void *dir_cb_arg;
@@ -247,21 +263,17 @@ struct ldms_xprt {
 	/** Pointer to the transport's private data */
 	void *private;
 };
-typedef struct ldms_xprt *(*ldms_xprt_get_t)
-	(
-	 int (*recv_cb)(struct ldms_xprt *, void *),
-	 int (*read_complete_cb)(struct ldms_xprt *, void *),
-	 ldms_log_fn_t log_fn
-	 );
 
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]
 #define ldms_off_(_m, _p) (((char *)_p) - ((char *)_m))
 
-extern void ldms_free_rbd(struct ldms_set *set);
+extern struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *,
+					     struct ldms_set *s);
+
+extern void ldms_free_rbd(struct ldms_rbuf_desc *);
+
+extern struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
+
 extern struct ldms_set *ldms_find_local_set(const char *path);
-extern void ldms_release_local_set(struct ldms_set *set);
-
-extern int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
-
 
 #endif
