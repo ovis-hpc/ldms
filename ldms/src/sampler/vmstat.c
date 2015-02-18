@@ -70,13 +70,11 @@
 
 static char *procfile = PROC_FILE;
 
-ldms_set_t set;
-ldms_schema_t schema;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
-static uint64_t counter;
+static ldms_set_t set;
+static ldms_schema_t schema;
+static FILE *mf;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
 static ldms_set_t get_set()
 {
@@ -98,8 +96,11 @@ static int create_metric_set(const char *path)
 	}
 
 	schema = ldms_create_schema("vmstat");
-	if (!schema)
+	if (!schema) {
+		fclose(mf);
 		return ENOMEM;
+	}
+
 
 	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -114,12 +115,27 @@ static int create_metric_set(const char *path)
 		if (rc < 0)
 			goto err;
 	} while (s);
+
+	rc = ldms_create_set(path, schema, &set);
+	if (rc)
+		goto err;
+
+	int i;
+	for (i = 0; i < ldms_get_metric_count(schema); i++)
+		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
  err:
 	ldms_destroy_schema(schema);
 	schema = NULL;
 	return ENOMEM;
+}
+
+static int usage()
+{
+	return  "config name=vmstat component_id=<comp_id> set=<setname>\n"
+		"    comp_id     The component id value.\n"
+		"    setname     The set name.\n";
 }
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -187,6 +203,7 @@ static struct ldmsd_sampler vmstat_plugin = {
 		.name = "vmstat",
 		.term = term,
 		.config = config,
+		.usage = usage
 	},
 	.get_set = get_set,
 	.sample = sample,

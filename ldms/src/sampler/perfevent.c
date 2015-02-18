@@ -73,7 +73,7 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #endif
 
-#ifndef __linux__ // modern linux provides either bitness in asm/unistd.h as needed
+#ifndef __linux__ /* modern linux provides either bitness in asm/unistd.h as needed */
 #if defined(__i386__)
 #include "/usr/include/asm/unistd.h"
 #endif
@@ -81,9 +81,9 @@
 #if defined(__x86_64__)
 #include "/usr/include/asm-x86_64/unistd.h"
 #endif
-#else // __linux__
+#else /* __linux__ */
 #include <asm/unistd.h>
-#endif // __linux__
+#endif /* __linux__ */
 
 struct pe_sample {
 	uint64_t value;
@@ -444,7 +444,12 @@ static int sample(void)
 
 static void term(void)
 {
-	ldms_destroy_set(set);
+	if (schema)
+		ldms_destroy_schema(schema);
+	schema = NULL;
+	if (set)
+		ldms_destroy_set(set);
+	set = NULL;
 }
 
 static struct ldmsd_sampler pe_plugin = {

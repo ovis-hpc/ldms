@@ -218,7 +218,6 @@ const char *ost_single_attr[] = {
 
 struct lustre_metric_src_list lms_list = {0};
 
-static uint64_t counter;
 static ldms_set_t set;
 FILE *mf;
 ldmsd_msg_log_f msglog;
@@ -269,7 +268,7 @@ static int create_metric_set(const char *path, const char *osts)
 
 	/* Done calculating, now it is time to construct set */
 	ldms_schema_t schema = ldms_create_schema("Lustre_OSS");
-	if (rc)
+	if (schema)
 		goto err1;
 	char suffix[128];
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
@@ -304,11 +303,12 @@ static int create_metric_set(const char *path, const char *osts)
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
 		goto err2;
+	ldms_destroy_schema(schema);
 	return 0;
 err2:
 	msglog("lustre_oss.c:create_metric_set@err2\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_destroy_set(set);
+	ldms_destroy_schema(schema);
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err1:

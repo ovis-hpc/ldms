@@ -80,22 +80,20 @@
 static char* procsensorsfiledir = "/sys/devices/pci0000:00/0000:00:01.1/i2c-1/1-002f/";
 const static int vartypes = 3;
 const static char* varnames[] = {"in", "fan", "temp"};
-const static int varbounds[] = {0,9,1,9,1,6};
+const static int varbounds[] = {0, 9, 1, 9, 1, 6};
 static uint64_t counter;
-ldms_set_t set;
-ldms_schema_t schema;
-FILE *mf;
-ldms_metric_t *metric_table;
-int metric_count; //now global
-uint64_t* metric_values;
-uint64_t* metric_times;
-int num_metric_times;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldms_set_t set;
+static ldms_schema_t schema;
+static int metric_count; /* now global */
+static uint64_t* metric_values;
+static uint64_t* metric_times;
+static int num_metric_times;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
 #undef CHECK_SENSORS_TIMING
 #ifdef CHECK_SENSORS_TIMING
-//Some temporary for testing x ref with metric_times
+/* Some temporary for testing x ref with metric_times */
 int tv_sec_metric_handle2;
 int tv_nsec_metric_handle2;
 int tv_dnsec_metric_handle;
@@ -120,7 +118,7 @@ static int create_metric_set(const char *path)
 
 	int metric_no = 0;
 	for (i = 0; i < vartypes; i++){
-		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
+		for (j = varbounds[2 * i]; j <= varbounds[2 * i + 1]; j++){
 			snprintf(metric_name, 127,
 					"%s%d_input",varnames[i],j);
 			rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
@@ -175,14 +173,14 @@ static int create_metric_set(const char *path)
 		goto err;
 
 	metric_times = calloc(num_metric_times, sizeof(uint64_t));
-	if (!metric_values)
+	if (!metric_times)
 		goto err;
 
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
 		goto err;
 
-	for (i = 0; i < ldms_metric_count(schema); i++)
+	for (i = 0; i < ldms_get_metric_count(schema); i++)
 		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
@@ -230,6 +228,7 @@ static int sample(void)
 	union ldms_value v;
 	struct timespec time1;
 	int i, j;
+	FILE *mf;
 
 	//set the counter
 	uint64_t counterval = ++counter;
@@ -242,29 +241,31 @@ static int sample(void)
 	metric_no = 0;
 	for (i = 0; i < vartypes; i++){
 		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
-			snprintf(procfile, 255, "%s/%s%d_input",procsensorsfiledir,varnames[i],j);
+			snprintf(procfile, 255, "%s/%s%d_input",
+					procsensorsfiledir, varnames[i],j);
 
 			//FIXME: do we really want to open and close each one?
 			mf = fopen(procfile, "r");
 			if (!mf) {
-				msglog("Could not open the procsensors file '%s'...exiting\n", procfile);
+				msglog("Could not open the procsensors file "
+						"'%s'...exiting\n", procfile);
 				rc = ENOENT;
 				goto out;
 			}
 			s = fgets(lbuf, sizeof(lbuf), mf);
 			if (!s){
-				if (mf) fclose(mf);
+				fclose(mf);
 				break;
 			}
 			rc = sscanf(lbuf, "%"PRIu64 "\n", &metric_values[metric_no]);
 			if (rc != 1){
-				if (mf) fclose(mf);
+				fclose(mf);
 				rc = EINVAL;
 				goto out;
 			}
 
 			metric_no++;
-			if (mf) fclose(mf);
+			fclose(mf);
 		}
 	}
 
@@ -274,9 +275,9 @@ static int sample(void)
 	metric_times[metric_time_no++] = time1.tv_nsec;
 #endif
 
-	//now do the writeout
+	/* now do the writeout */
 
-	//metrics
+	/* metrics */
 	metric_no = 0;
 	for (i = 0; i < metric_count; i++){
 		v.v_u64 = metric_values[i];
@@ -310,7 +311,7 @@ out:
 static void term(void)
 {
 	if (schema)
-		ldms_destory_schema(schema);
+		ldms_destroy_schema(schema);
 	if (set)
 		ldms_destroy_set(set);
 }

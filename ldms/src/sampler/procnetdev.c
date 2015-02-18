@@ -83,15 +83,14 @@ int niface = 0;
 #define MAXIFACE 5
 static char iface[MAXIFACE][20];
 
-ldms_set_t set;
-ldms_schema_t schema;
-FILE *mf;
-ldmsd_msg_log_f msglog;
-static uint64_t counter;
-uint64_t comp_id;
-struct timeval tv[2];
-struct timeval *tv_cur = &tv[0];
-struct timeval *tv_prev = &tv[1];
+static ldms_set_t set;
+static ldms_schema_t schema;
+static FILE *mf = NULL;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
+static struct timeval tv[2];
+static struct timeval *tv_cur = &tv[0];
+static struct timeval *tv_prev = &tv[1];
 
 struct kw {
 	char *token;
@@ -156,7 +155,16 @@ static int create_metric_set(const char *path)
 			*pch = ' ';
 		}
 
-		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface, &v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
+		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 "\n", curriface, &v[0].v_u64,
+				&v[1].v_u64, &v[2].v_u64, &v[3].v_u64,
+				&v[4].v_u64, &v[5].v_u64, &v[6].v_u64,
+				&v[7].v_u64, &v[8].v_u64, &v[9].v_u64,
+				&v[10].v_u64, &v[11].v_u64, &v[12].v_u64,
+				&v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
 		if (rc != 17){
 			msglog("Procnetdev: wrong number of fields in sscanf\n");
 			continue;
@@ -183,17 +191,19 @@ static int create_metric_set(const char *path)
 				}
 				usedifaces++;
 				break;
-			} //if
-		} //for
+			} /* end if */
+		} /* end for */
 	} while (s);
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
 		goto err;
-	for (i = 0; i < ldms_metric_count(schema); i++)
+	for (i = 0; i < ldms_get_metric_count(schema); i++)
 		ldms_set_midx_udata(set, i, comp_id);
 	return 0;
 
 err:
+	fclose(mf);
+	mf = NULL;
 	ldms_destroy_schema(schema);
 	schema = NULL;
 	return rc;
@@ -231,7 +241,7 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
 static const char *usage(void)
 {
 	return
-"config name=procnetdev action=add iface=<ifaces> component_id=<comp_id> set=<setname>\n"
+"config name=procnetdev iface=<ifaces> component_id=<comp_id> set=<setname>\n"
 "    iface       Comma-separated interface names (e.g. eth0,eth1)\n"
 "    comp_id     The component id value.\n"
 "    setname     The set name.\n";
@@ -271,6 +281,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (!value)
 		return EINVAL;
 
+	rc = create_metric_set(value);
+	if (rc)
+		return rc;
+
 	return 0;
 }
 
@@ -290,19 +304,17 @@ static int sample(void)
 	}
 
 	metric_no = 0;
-	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
-
-	if (mf) fclose(mf);
-	mf = fopen(procfile, "r");
+	if (!mf)
+		mf = fopen(procfile, "r");
 	if (!mf) {
 		msglog("Could not open /proc/net/dev file '%s'...exiting\n", procfile);
 		return ENOENT;
 	}
-
+	fseek(mf, 0, SEEK_SET);
 	int usedifaces = 0;
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	s = fgets(lbuf, sizeof(lbuf), mf);
-	//data
+	/* data */
 	ldms_begin_transaction(set);
 	gettimeofday(tv_cur, 0);
 	timersub(tv_cur, tv_prev, &dtv);
@@ -314,23 +326,35 @@ static int sample(void)
 			break;
 
 		if (usedifaces == niface)
-			continue; //must get to EOF for seek to work
+			continue; /* must get to EOF for seek to work */
 
 		char *pch = strchr(lbuf, ':');
 		if (pch != NULL){
 			*pch = ' ';
 		}
 
-		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n", curriface, &v[0].v_u64, &v[1].v_u64, &v[2].v_u64, &v[3].v_u64, &v[4].v_u64, &v[5].v_u64, &v[6].v_u64, &v[7].v_u64, &v[8].v_u64, &v[9].v_u64, &v[10].v_u64, &v[11].v_u64, &v[12].v_u64, &v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
+		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
+				" %" PRIu64 "\n", curriface, &v[0].v_u64,
+				&v[1].v_u64, &v[2].v_u64, &v[3].v_u64,
+				&v[4].v_u64, &v[5].v_u64, &v[6].v_u64,
+				&v[7].v_u64, &v[8].v_u64, &v[9].v_u64,
+				&v[10].v_u64, &v[11].v_u64, &v[12].v_u64,
+				&v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
 		if (rc != 17){
 			msglog("Procnetdev: wrong number of fields in sscanf\n");
 			continue;
 		}
 
-		//note: ifaces will be in the same order each time
-		//so we can just include/skip w/o have to keep track of which on we are on
+		/*
+		 * note: ifaces will be in the same order each time
+		 * so we can just include/skip w/o have to keep track of
+		 * which on we are on
+		 */
 		for (j = 0; j < niface; j++){
-			if (strcmp(curriface,iface[j]) == 0){ //NOTE: small number so no conflicts (eg., eth1 and eth10)
+			if (strcmp(curriface, iface[j]) == 0){ /* NOTE: small number so no conflicts (eg., eth1 and eth10) */
 				for (i = 0; i < NVARS; i++){
 					uint64_t prev = ldms_get_midx_u64(set, metric_no);
 					union ldms_value rate;
@@ -340,8 +364,8 @@ static int sample(void)
 				}
 				usedifaces++;
 				break;
-			} //if
-		} //for
+			} /* end if */
+		} /* end for*/
 	} while (s);
 	ldms_end_transaction(set);
 
@@ -359,6 +383,9 @@ static void term(void)
 	if (mf)
 		fclose(mf);
 	mf = 0;
+	if (schema)
+		ldms_destroy_schema(schema);
+	schema = NULL;
 
 	if (set)
 		ldms_destroy_set(set);

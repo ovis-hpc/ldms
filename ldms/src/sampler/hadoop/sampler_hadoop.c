@@ -71,26 +71,25 @@
 #include "sampler_hadoop.h"
 
 #define MAX_BUF_LEN 1024
-#define MAX_LEN_HADOOP_MNAME 248
-#define MAX_LEN_HADOOP_TYPE 8
 
 struct record_metrics *parse_record(char *record){
 	struct record_metrics *metrics = calloc(1, sizeof(*metrics));
 	metrics->count = 0;
-	char *context, *name;
-	metrics->context = strtok(record, ".");
-	metrics->name = strtok(NULL, ":");
+	char *context, *name, *ptr;
+	metrics->context = strtok_r(record, ".", &ptr);
+	metrics->name = strtok_r(NULL, ":", &ptr);
 	if (!metrics->name)
 		return NULL;
 
-	struct metric_name *metric_name;
+	struct hadoop_metric *metric_name;
 
-	char *m_name;
-	while (m_name = strtok(NULL, ",")) {
+	char *m_name = strtok_r(NULL, ",", &ptr);
+	while (m_name) {
 		metric_name = malloc(sizeof(*metric_name));
-		metric_name->name = strdup(m_name);
-		LIST_INSERT_HEAD(&metrics->list, metric_name, entry);
+		snprintf(metric_name->name, MAX_LEN_HADOOP_MNAME, "%s", m_name);
+		TAILQ_INSERT_HEAD(&metrics->queue, metric_name, entry);
 		metrics->count++;
+		m_name = strtok_r(NULL, ",", &ptr);
 	}
 	return metrics;
 }
@@ -100,8 +99,8 @@ struct record_list *parse_given_metrics(char *metrics, int *count)
 	*count = 0;
 	struct record_list *record_list = calloc(1, sizeof(*record_list));
 	struct record_metrics *r_metrics;
-
-	char *record = strtok(metrics, ";");
+	char *ptr;
+	char *record = strtok_r(metrics, ";", &ptr);
 	do {
 		r_metrics = parse_record(record);
 		if (!r_metrics) {
@@ -109,7 +108,8 @@ struct record_list *parse_given_metrics(char *metrics, int *count)
 		}
 		LIST_INSERT_HEAD(record_list, r_metrics, entry);
 		*count += r_metrics->count;
-	} while (record = strtok(NULL, ";"));
+		record = strtok_r(NULL, ";", &ptr);
+	} while (record);
 
 	return record_list;
 }
@@ -123,29 +123,78 @@ void _substitute_char(char *s, char old_c, char new_c)
 	}
 }
 
+static struct hadoop_metric *create_hadoop_metric(struct hadoop_set *hdset,
+							char *buf)
+{
+	char *ptr;
+	size_t total_mname_len;
+	int rc;
+	size_t dlen = strlen(hdset->daemon);
+
+	ptr = strrchr(buf, '\t');
+	if (!ptr) {
+		hdset->msglog("hadoop_%s: Invalid format: %s\n",
+					hdset->setname, buf);
+		errno = EINVAL;
+		return NULL;
+	}
+	*ptr = '\0';
+	total_mname_len = dlen + (ptr - buf);
+
+	if (total_mname_len > MAX_LEN_HADOOP_MNAME) {
+		hdset->msglog("hadoop_%s: %s: metric name exceeds %d\n",
+				hdset->setname, buf, MAX_LEN_HADOOP_MNAME);
+		errno = EPERM;
+		return NULL;
+	}
+
+	_substitute_char(buf, ':', '.');
+	_substitute_char(buf, '\t', '_');
+
+	struct hadoop_metric *hmetric = calloc(1, sizeof(*hmetric));
+	if (!hmetric) {
+		hdset->msglog("hadoop_%s: Failed to create metric\n",
+				hdset->setname);
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	snprintf(hmetric->name, total_mname_len + 2, "%s#%s", buf, hdset->daemon);
+	char type[MAX_LEN_HADOOP_TYPE];
+	snprintf(type, strlen(ptr + 1), "%s", ptr + 1); /* Don't copy the newline character */
+	hmetric->type = ldms_str_to_type(type);
+	return hmetric;
+}
+
+
 int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 {
+	int rc = 0;
 	ldms_log_fn_t msglog = hdset->msglog;
+	hdset->schema = ldms_create_schema(hdset->daemon);
+	if (!hdset->schema) {
+		msglog("%s: Failed to create schema\n", hdset->daemon);
+		return ENOMEM;
+	}
+
 	FILE *f = fopen(fname, "r");
 	if (!f) {
 		msglog("hadoop_namenode: Failed to open file '%s'.\n",
 				fname);
-		return errno;
+		rc = errno;
+		goto err;
 	}
 
 	char *s, *ptr;
 	char buf[MAX_LEN_HADOOP_MNAME + MAX_LEN_HADOOP_TYPE];
 	char metricname[MAX_LEN_HADOOP_MNAME], short_mname[MAX_LEN_HADOOP_MNAME];
 	char type[MAX_LEN_HADOOP_TYPE];
-	size_t dlen = strlen(hdset->daemon);
-
-	int rc;
-	size_t meta_sz, data_sz, tot_meta_sz, tot_data_sz;
-	tot_meta_sz = tot_data_sz = meta_sz = data_sz = 0;
 	int num_metrics = 0;
 
-	size_t total_mname_len;
 
+	struct hadoop_metric *hmetric;
+	struct hadoop_metric_queue metric_queue;
+	TAILQ_INIT(&metric_queue);
 	fseek(f, 0, SEEK_SET);
 	do {
 		s = fgets(buf, sizeof(buf), f);
@@ -156,124 +205,76 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset, uint64_t udata)
 		if (buf[0] == '#')
 			continue;
 
-		ptr = strrchr(buf, '\t');
-		if (!ptr) {
-			msglog("hadoop_%s: Invalid format: %s\n",
-						hdset->setname, buf);
-			return EINVAL;
+		hmetric = create_hadoop_metric(hdset, buf);
+		if (!hmetric) {
+			rc = errno;
+			goto err_0;
 		}
-		*ptr = '\0';
-		total_mname_len = dlen + (ptr - buf);
+		TAILQ_INSERT_TAIL(&metric_queue, hmetric, entry);
 
-		if (total_mname_len > MAX_LEN_HADOOP_MNAME) {
-			msglog("hadoop_%s: %s: metric name exceeds %d\n",
-					hdset->setname, buf, MAX_LEN_HADOOP_MNAME);
-			return EPERM;
-		}
-
-		_substitute_char(buf, ':', '.');
-		_substitute_char(buf, '\t', '_');
-		snprintf(metricname, total_mname_len + 2, "%s#%s", buf, hdset->daemon);
-		snprintf(type, strlen(ptr + 1), "%s", ptr + 1); /* Don't copy the newline character */
-
-		rc = ldms_get_metric_size(metricname,
-				ldms_str_to_type(type),
-				&meta_sz, &data_sz);
-		if (rc)
-			return rc;
-
-		tot_meta_sz += meta_sz;
-		tot_data_sz += data_sz;
+		rc = ldms_add_metric(hdset->schema, hmetric->name,
+							hmetric->type);
+		if (rc < 0)
+			goto err_0;
+		hmetric->metric_idx = rc;
 		num_metrics++;
 	} while (s);
-
-
-	/* Create the metric set */
-	rc = ldms_create_set(hdset->setname, tot_meta_sz,
-				tot_data_sz, &(hdset->set));
-	if (rc)
-		goto err;
 
 	hdset->map = str_map_create(num_metrics);
 	if (!hdset->map) {
 		rc = ENOMEM;
-		goto err_1;
+		goto err_0;
 	}
 
-	ldms_metric_t m;
-	fseek(f, 0, SEEK_SET);
-	do {
-		s = fgets(buf, sizeof(buf), f);
-		if (!s)
-			break;
+	/* Create the metric set */
+	rc = ldms_create_set(hdset->setname, hdset->schema, &hdset->set);
+	if (rc)
+		goto err_1;
 
-		/* Ignore the commented line */
-		if (buf[0] == '#')
-			continue;
-
-		ptr = strrchr(buf, '\t');
-		if (!ptr) {
-			msglog("hadoop_%s: Invalid format: %s\n",
-						hdset->setname, buf);
-			return EINVAL;
-		}
-		*ptr = '\0';
-		total_mname_len = dlen + (ptr - buf);
-
-		if (total_mname_len > MAX_LEN_HADOOP_MNAME) {
-			msglog("hadoop_%s: %s: metric name exceeds %d\n",
-					hdset->setname, buf, MAX_LEN_HADOOP_MNAME);
-			return EPERM;
-		}
-
-		_substitute_char(buf, ':', '.');
-		_substitute_char(buf, '\t', '_');
-		snprintf(metricname, total_mname_len + 2, "%s#%s", buf, hdset->daemon);
-		snprintf(type, strlen(ptr + 1), "%s", ptr + 1); /* Don't copy the newline character */
-
-		m = ldms_add_metric(hdset->set, metricname,
-					ldms_str_to_type(type));
-		if (!m) {
-			rc = ENOMEM;
-			goto err_2;
-		}
-
-		ldms_set_user_data(m, udata);
-
-		/*
-		 * Re-use the metricname variable.
-		 *
-		 * Unlike the metric names in the metric set, the metric names
-		 * in the str_map exclude the daemon name. For example,
-		 * In metric set: 'namenode.jvm.JvmMetrics: MemNonHeapUsedM'
-		 * In str_map: 'jvm.JvmMetrics: MemNonHeapUsedM'
-		 */
-		snprintf(metricname, ptr - buf + 1, "%s", buf);
-		rc = str_map_insert(hdset->map, metricname,
-				(uint64_t)(unsigned char *)m);
+	hmetric = TAILQ_FIRST(&metric_queue);
+	while (hmetric) {
+		rc = str_map_insert(hdset->map, hmetric->name,
+					(uint64_t) (void *)hmetric);
 		if (rc)
 			goto err_2;
-	} while (s);
-
+		ldms_set_midx_udata(hdset->set, hmetric->metric_idx, udata);
+		TAILQ_REMOVE(&metric_queue, hmetric, entry);
+		hmetric = TAILQ_FIRST(&metric_queue);
+	}
 	fclose(f);
 	return 0;
 
 err_2:
-	str_map_free(hdset->map);
-err_1:
 	ldms_destroy_set(hdset->set);
-err:
-	msglog("hadoop_%s: failed to create the set.\n", hdset->setname);
+err_1:
+	str_map_free(hdset->map);
+err_0:
+	hmetric = TAILQ_FIRST(&metric_queue);
+	while (hmetric) {
+		TAILQ_REMOVE(&metric_queue, hmetric, entry);
+		free(hmetric);
+		hmetric = TAILQ_FIRST(&metric_queue);
+	}
 	fclose(f);
+err:
+	ldms_destroy_schema(hdset->schema);
+	hdset->schema = NULL;
+	msglog("hadoop_%s: failed to create the set.\n", hdset->setname);
 	return rc;
 }
 
 void destroy_hadoop_set(struct hadoop_set *hdset)
 {
-	close(hdset->sockfd);
-	str_map_free(hdset->map);
-	ldms_destroy_set(hdset->set);
-	free(hdset->setname);
+	if (hdset->sockfd)
+		close(hdset->sockfd);
+	if (hdset->map)
+		str_map_free(hdset->map);
+	if (hdset->schema)
+		ldms_destroy_schema(hdset->schema);
+	if (hdset->set)
+		ldms_destroy_set(hdset->set);
+	if (hdset->setname)
+		free(hdset->setname);
 }
 
 void _recv_metrics(char *data, struct hadoop_set *hdset)
@@ -281,7 +282,6 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 	char *daemon_name, *rctxt_name, *metric_name;
 	char buf[256];
 	char *s, *tmp, *ptr;
-	ldms_metric_t m;
 	enum ldms_value_type type;
 	union ldms_value value;
 	ldms_log_fn_t msglog = hdset->msglog;
@@ -291,15 +291,16 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 	char *value_s;
 
 	size_t base_len = strlen(rctxt_name);
-
-	while (metric_name = strtok_r(NULL, "=", &ptr)) {
+	struct hadoop_metric *hmetric;
+	metric_name = strtok_r(NULL, "=", &ptr);
+	while (metric_name) {
 		snprintf(buf, base_len + strlen(metric_name) + 2,  "%s.%s",
 						rctxt_name, metric_name);
 		_substitute_char(buf, '\t', '_');
-		m = str_map_get(hdset->map, buf);
-		if (!m)
+		hmetric = (struct hadoop_metric *)(void *)str_map_get(hdset->map, buf);
+		if (!hmetric)
 			continue;
-		type = ldms_get_metric_type(m);
+		type = hmetric->type;
 		value_s = strtok_r(NULL, ",", &ptr);
 		switch (type) {
 		case LDMS_V_S32:
@@ -308,10 +309,10 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 		case LDMS_V_S64:
 			value.v_s64 = strtoll(value_s, NULL, 10);
 			break;
-		case LDMS_V_F:
+		case LDMS_V_F32:
 			value.v_f = strtof(value_s, NULL);
 			break;
-		case LDMS_V_D:
+		case LDMS_V_D64:
 			value.v_d = strtod(value_s, NULL);
 			break;
 		default:
@@ -319,7 +320,7 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 					ldms_type_to_str(type));
 			continue;
 		}
-		ldms_set_metric(m, &value);
+		ldms_set_midx(hdset->set, hmetric->metric_idx, &value);
 	}
 }
 

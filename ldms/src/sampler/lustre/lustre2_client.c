@@ -87,22 +87,20 @@
 /**
  * This will holds IDs for stats_key.
  */
-struct str_map *stats_key_id = NULL;
+static struct str_map *stats_key_id = NULL;
 
 /**
  * ID map for llite metrics.
  */
-struct str_map *llite_key_id = NULL;
+static struct str_map *llite_key_id = NULL;
 
-struct lustre_metric_src_list lms_list = {0};
+static struct lustre_metric_src_list lms_list = {0};
 
-static uint64_t counter;
 static ldms_set_t set;
-FILE *mf;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
 
-char tmp_path[PATH_MAX];
+static char tmp_path[PATH_MAX];
 
 char *llite_key[] = {
 	/* metric source status (sampler induced) */
@@ -251,11 +249,12 @@ static int create_metric_set(const char *path, const char *oscs,
 	rc = ldms_create_set(path, schema, &set);
 	if (rc)
 		goto err1;
+	ldms_destroy_schema(schema);
 	return 0;
 err1:
 	msglog("lustre_oss.c:create_metric_set@err1\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_destroy_set(set);
+	ldms_destroy_schema(schema);
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err0:

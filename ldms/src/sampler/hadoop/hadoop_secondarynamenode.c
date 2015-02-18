@@ -57,6 +57,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include "sampler_hadoop.h"
+#include "coll/str_map.h"
 
 uint64_t comp_id;
 char *metric_name_file;
@@ -65,7 +66,7 @@ int port;
 int num_metrics;
 struct hadoop_set secondarynamenode_set;
 pthread_t thread;
-ldms_log_fn_t msglog;
+ldmsd_msg_log_f msglog;
 
 static const char *usage(void)
 {
@@ -166,14 +167,7 @@ static int sample(void)
 
 static void term(void)
 {
-	if (secondarynamenode_set.set)
-		ldms_destroy_set(secondarynamenode_set.set);
-	secondarynamenode_set.set = NULL;
-	if (secondarynamenode_set.map)
-		str_map_free(secondarynamenode_set.map);
-	secondarynamenode_set.map = NULL;
-	if (secondarynamenode_set.sockfd)
-		close(secondarynamenode_set.sockfd);
+	destroy_hadoop_set(&secondarynamenode_set);
 }
 
 static struct ldmsd_sampler hadoop_secondarynamenode = {

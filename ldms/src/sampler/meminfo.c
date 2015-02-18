@@ -69,12 +69,11 @@
 #define PROC_FILE "/proc/meminfo"
 
 static char *procfile = PROC_FILE;
-static uint64_t counter;
-ldms_set_t set;
-FILE *mf;
-ldms_metric_t *metric_table;
-ldmsd_msg_log_f msglog;
-uint64_t comp_id;
+static ldms_set_t set;
+static FILE *mf = 0;
+static ldmsd_msg_log_f msglog;
+static uint64_t comp_id;
+static ldms_schema_t schema;
 
 static int create_metric_set(const char *path)
 {
@@ -88,7 +87,7 @@ static int create_metric_set(const char *path)
 	if (!mf)
 		return ENOENT;
 
-	ldms_schema_t schema = ldms_create_schema("meminfo");
+	schema = ldms_create_schema("meminfo");
 	if (!schema)
 		return ENOMEM;
 
@@ -197,6 +196,11 @@ static int sample(void)
 
 static void term(void)
 {
+	if (mf)
+		fclose(mf);
+	if (schema)
+		ldms_destroy_schema(schema);
+	schema = NULL;
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;

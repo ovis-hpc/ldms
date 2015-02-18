@@ -289,7 +289,7 @@ int stats_construct_routine(ldms_schema_t schema,
  * \returns 0 on success.
  * \returns Error code on erorr.
  */
-int single_construct_routine(ldms_schema_t set,
+int single_construct_routine(ldms_schema_t schema,
 			    uint64_t comp_id,
 			    const char *metric_path,
 			    const char *prefix,
