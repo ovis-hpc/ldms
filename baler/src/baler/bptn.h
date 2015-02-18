@@ -80,6 +80,8 @@
 #include "bmapper.h"
 #include "btkn.h"
 
+#include <sys/fcntl.h>
+
 /**
  * Attributes for a Baler Pattern (stored in ::bptn_store::mattr).
  */
@@ -133,10 +135,18 @@ struct bptn_store {
 /**
  * Open ::bptn_store at path \a path, or initialize a new store
  * if it does not exist.
+ *
+ * \param path The path to the store
+ * \param flag The OR combination of O_CREAT and one of the O_RDWR and O_RDONLY.
+ *             If O_CREAT is not set, this function will try to open, but not
+ *             create the store. If access mode is O_RDONLY, the in-memory sets
+ *             of pattern STARs will not be created (they are needed only at
+ *             insertion).
+ *
  * \return NULL on error.
  * \return The pointer to the opened ::bptn_store on success.
  */
-struct bptn_store* bptn_store_open(const char *path);
+struct bptn_store* bptn_store_open(const char *path, int flag);
 
 /**
  * Close the \a store and free the structure (together with all data owned

@@ -366,7 +366,7 @@ struct bq_store* bq_open_store(const char *path)
 				" not exist", path);
 		goto err2;
 	}
-	s->ptn_store = bptn_store_open(spath);
+	s->ptn_store = bptn_store_open(spath, O_RDONLY);
 	if (!s->ptn_store)
 		goto err2;
 

@@ -59,6 +59,7 @@
 #include "string.h"
 #include "bmlist.h"
 #include <linux/limits.h>
+#include <sys/fcntl.h>
 
 void battrarray_free(struct barray *a)
 {
@@ -103,9 +104,15 @@ void bptn_attr_free(struct bptn_attr *attr)
 	free(attr);
 }
 
-struct bptn_store* bptn_store_open(const char *path)
+struct bptn_store* bptn_store_open(const char *path, int flag)
 {
+	int create = flag & O_CREAT;
+	int acc_mode = flag & O_ACCMODE;
 	if (!bfile_exists(path)) {
+		if (!create) {
+			errno = ENOENT;
+			goto err0;
+		}
 		if (bmkdir_p(path, 0755) == -1)
 			goto err0;
 	}
@@ -114,37 +121,46 @@ struct bptn_store* bptn_store_open(const char *path)
 		goto err0;
 	}
 	char tmp[PATH_MAX];
-	struct bptn_store *store = (typeof(store)) calloc(1, sizeof(*store));
+	struct bptn_store *store = calloc(1, sizeof(*store));
 	pthread_mutex_init(&store->mutex, NULL);
 	if (!store)
 		goto err0;
 	store->path = strdup(path);
 	if (!store->path)
 		goto err1;
+	sprintf(tmp, "%s/map.map", path);
+	store->map = bmap_open(tmp);
+	if (!store->map)
+		goto err1;
 	sprintf(tmp, "%s/marg.map", path);
 	store->marg = bmem_open(tmp);
 	if (!store->marg)
-		goto err2;
+		goto err1;
 	sprintf(tmp, "%s/mattr.map", path);
 	store->mattr = bmem_open(tmp);
 	if (!store->mattr)
-		goto err3;
+		goto err1;
 	sprintf(tmp, "%s/attr_idx.map", path);
 	store->attr_idx = bmvec_u64_open(tmp);
 	if (!store->attr_idx)
-		goto err4;
+		goto err1;
 	uint32_t ptn_len = store->attr_idx->bvec->len;
 	if (!ptn_len) {
 		/* This store is just created, it needs initialization */
 		int rc = bmvec_u64_init(store->attr_idx, 65536, 0);
 		if (rc) {
 			errno = rc;
-			goto err5;
+			goto err1;
 		}
 	}
+
+	if (acc_mode == O_RDONLY)
+		/* skip internal attr sets if O_RDONLY */
+		goto out;
+
 	store->aattr = barray_alloc(sizeof(void*), ptn_len);
 	if (!store->aattr)
-		goto err5;
+		goto err1;
 	int i, j;
 	struct bvec_u64 *attr_bvec = store->attr_idx->bvec;
 	int len = store->attr_idx->bvec->len;
@@ -157,7 +173,7 @@ struct bptn_store* bptn_store_open(const char *path)
 		struct bptn_attr *attr;
 		attr = bptn_attr_alloc(attrM->argc);
 		if (!attr)
-			goto err6;
+			goto err1;
 		barray_set(store->aattr, i, &attr);
 		for (j=0; j<attrM->argc; j++) {
 			/* For each argument set (implemented as list
@@ -168,27 +184,15 @@ struct bptn_store* bptn_store_open(const char *path)
 				/* Add element into the in-memory set. */
 				if (bset_u32_insert(&attr->arg[j], node->data)
 						== BSET_INSERT_ERR)
-					goto err6;
+					goto err1;
 			}
 		}
 	}
-	sprintf(tmp, "%s/map.map", path);
-	store->map = bmap_open(tmp);
-	if (!store->map)
-		goto err6;
+out:
 	return store;
-err6:
-	battrarray_free(store->aattr);
-err5:
-	bmvec_generic_close_free(store->attr_idx);
-err4:
-	bmem_close_free(store->mattr);
-err3:
-	bmem_close_free(store->marg);
-err2:
-	free(store->path);
+
 err1:
-	free(store);
+	bptn_store_close_free(store);
 err0:
 	return NULL;
 }
@@ -196,12 +200,17 @@ err0:
 void bptn_store_close_free(struct bptn_store *store)
 {
 	/* Clear the in-memory stuffs first. */
-	barray_free(store->aattr);
-	free(store->path);
+	if (store->aattr)
+		barray_free(store->aattr);
+	if (store->path)
+		free(store->path);
 	/* Then clear the mmapped stuffs. */
-	bmvec_u64_close_free(store->attr_idx);
-	bmem_close_free(store->mattr);
-	bmem_close_free(store->marg);
+	if (store->attr_idx)
+		bmvec_u64_close_free(store->attr_idx);
+	if (store->mattr)
+		bmem_close_free(store->mattr);
+	if (store->marg)
+		bmem_close_free(store->marg);
 	free(store);
 }
 

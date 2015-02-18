@@ -943,7 +943,7 @@ void initialize_daemon()
 	btkn_store_char_insert(token_store, BTKN_SYMBOL_STR, BTKN_TYPE_SYM);
 
 	sprintf(tmp, "%s/ptn_store", store_path);
-	pattern_store = bptn_store_open(tmp);
+	pattern_store = bptn_store_open(tmp, O_CREAT|O_RDWR);
 	if (!pattern_store) {
 		berror("bptn_store_open");
 		berr("Cannot open pattern store: %s", tmp);
