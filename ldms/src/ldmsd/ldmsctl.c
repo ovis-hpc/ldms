@@ -105,6 +105,12 @@ int handle_help(char *kw, char *err_str)
 	       "     <attr>       An attribute name.\n"
 	       "     <value>      An attribute value.\n"
 	       "\n"
+               "udata set=<set_name> metric=<metric_name> udata=<user_data>\n"
+               "   - Set the user data of the specified metric in the given set\n"
+               "     <set_name>      The metric set name\n"
+               "     <metric_name>   The metric name\n"
+               "     <user_data>     The user data value\n"
+               "\n"
 	       "start name=<name> interval=<interval> [ offset=<offset>]\n"
 	       "   - Begins calling the sampler's 'sample' method at the\n"
 	       "     sample interval.\n"
@@ -206,6 +212,11 @@ int handle_plugin_config(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_CFG_PLUGIN, av_list, err_str);
 }
 
+int handle_set_udata(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_SET_UDATA, av_list, err_str);
+}
+
 int handle_sampler_start(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_START_SAMPLER, av_list, err_str);
@@ -255,6 +266,7 @@ struct kw keyword_tbl[] = {
 	{ "stop", handle_sampler_stop },
 	{ "store", handle_store },
 	{ "term", handle_plugin_term },
+	{ "udata", handle_set_udata },
 	{ "usage", handle_usage },
 };
 

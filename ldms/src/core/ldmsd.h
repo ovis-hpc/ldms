@@ -318,7 +318,8 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_STORE		8    /* Store Metrics */
 #define LDMSCTL_INFO_DAEMON	9   /* Query daemon status */
 #define LDMSCTL_EXIT_DAEMON	10   /* Shut down ldmsd */
-#define LDMSCTL_LAST_COMMAND	10
+#define LDMSCTL_SET_UDATA	11   /* Set user data of a metric */
+#define LDMSCTL_LAST_COMMAND	11
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 

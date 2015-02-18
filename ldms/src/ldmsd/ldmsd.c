@@ -747,6 +747,45 @@ out:
 	return rc;
 }
 
+int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
+						char err_str[LEN_ERRSTR])
+{
+	ldms_metric_t m;
+	m = ldms_get_metric(set, metric_name);
+	if (!m) {
+		snprintf(err_str, LEN_ERRSTR, "Metric '%s' not found.",
+							metric_name);
+		return ENOENT;
+	}
+
+	ldms_set_user_data(m, udata);
+	return 0;
+}
+
+/*
+ * Assign user data to a metric
+ */
+int ldmsd_set_udata(char *set_name, char *metric_name,
+		char *udata_s, char err_str[LEN_ERRSTR])
+{
+	ldms_set_t set;
+	err_str[0] = '\0';
+	set = ldms_get_set(set_name);
+	if (!set) {
+		snprintf(err_str, LEN_ERRSTR, "Set '%s' not found.", set_name);
+		return ENOENT;
+	}
+
+	char *endptr;
+	uint64_t udata = strtoull(udata_s, &endptr, 0);
+	if (endptr[0] != '\0') {
+		snprintf(err_str, LEN_ERRSTR, "User data '%s' invalid.",
+								udata_s);
+		return EINVAL;
+	}
+	return _ldmsd_set_udata(set, metric_name, udata, err_str);
+}
+
 void plugin_sampler_cb(int fd, short sig, void *arg)
 {
 	struct timeval tv;
@@ -768,7 +807,7 @@ void plugin_sampler_cb(int fd, short sig, void *arg)
 int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 			char err_str[LEN_ERRSTR])
 {
-	char *attr;
+	char *attr, *endptr;
 	int rc = 0;
 	unsigned long sample_interval;
 	long sample_offset = 0;
@@ -776,7 +815,11 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 	struct plugin *pi;
 	err_str[0] = '\0';
 
-	sample_interval = strtoul(interval, NULL, 0);
+	sample_interval = strtoul(interval, &endptr, 0);
+	if (endptr[0] != '\0') {
+		snprintf(err_str, LEN_ERRSTR, "interval '%s' invalid", interval);
+		return EINVAL;
+	}
 
 	pi = get_plugin((char *)plugin_name);
 	if (!pi) {
@@ -939,6 +982,7 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
 	unsigned long interval = LDMSD_DEFAULT_GATHER_INTERVAL;
 	long offset = 0;
 	char *xprt;
+	char *endptr;
 	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
 	err_str[0] = '\0';
@@ -983,8 +1027,15 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
 		goto err;
 	}
 
-	if (interval_s)
-		interval = strtoul(interval_s, NULL, 0);
+	if (interval_s) {
+		interval = strtoul(interval_s, &endptr, 0);
+		if (!endptr) {
+			snprintf(err_str, LEN_ERRSTR, "Interval '%s' invalid",
+								interval_s);
+			goto err;
+		}
+	}
+
 
 	if (offset_s) {
 		offset = strtol(offset_s, NULL, 0);
@@ -1635,6 +1686,41 @@ out:
 	return 0;
 }
 
+/* Assign user data to a metric */
+int process_set_udata(int fd,
+			struct sockaddr *sa, ssize_t sa_len,
+			char *command)
+{
+	char *set_name, *metric_name, *udata;
+	char err_str[LEN_ERRSTR];
+	char *attr;
+	int rc = 0;
+
+	attr = "set";
+	set_name = av_value(av_list, attr);
+	if (!set_name)
+		goto einval;
+
+	attr = "metric";
+	metric_name = av_value(av_list, attr);
+	if (!metric_name)
+		goto einval;
+
+	attr = "udata";
+	udata = av_value(av_list, attr);
+	if (!udata)
+		goto einval;
+
+	rc = ldmsd_set_udata(set_name, metric_name, udata, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+	einval:
+		sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+		return 0;
+}
+
 /* Start a sampler */
 int process_start_sampler(int fd,
 			 struct sockaddr *sa, ssize_t sa_len,
@@ -1821,6 +1907,7 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_STORE] = process_store,
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
+	[LDMSCTL_SET_UDATA] = process_set_udata,
 };
 
 int process_record(int fd,
