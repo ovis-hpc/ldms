@@ -8,6 +8,10 @@ if ENABLE_SOCK
 SUBDIRS += sock
 endif
 
+if ENABLE_UGNI
+SUBDIRS += ugni
+endif
+
 if ENABLE_ZAPTEST
 SUBDIRS += test
 endif

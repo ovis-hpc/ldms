@@ -267,10 +267,13 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 	printf("%s: event %s\n", __func__, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		if (reject)
+		if (reject) {
+			printf("  ... REJECTING\n");
 			err = zap_reject(ep);
-		else
+		} else {
+			printf("  ... ACCEPTING\n");
 			err = zap_accept(ep, server_cb);
+		}
 		/* alternating between reject and accept */
 		reject = !reject;
 		break;
@@ -298,6 +301,7 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		handle_rendezvous(ep, ev);
 		break;
 	}
+	printf("--- end event ---\n");
 }
 
 void do_rendezvous(zap_ep_t ep)
@@ -442,6 +446,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		do_read_and_verify_write(ep, ev);
 		break;
 	}
+	printf("--- end event ---\n");
 }
 
 void test_log(const char *fmt, ...)
