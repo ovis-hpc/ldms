@@ -69,7 +69,7 @@ struct mm_prefix {
 	struct rbn addr_node;
 	struct rbn size_node;
 	size_t count;
-	uint64_t addr;
+	struct mm_prefix *pfx;
 };
 
 typedef struct mm_region {
@@ -83,7 +83,7 @@ typedef struct mm_region {
 
 static int compare_count(void *node_key, void *val_key)
 {
-	return (int)(*(uint64_t *)node_key) - (*(uint64_t *)val_key);
+	return (int)(*(size_t *)node_key) - (*(size_t *)val_key);
 }
 
 static int compare_addr(void *node_key, void *val_key)
@@ -135,9 +135,9 @@ int mm_init(size_t size, size_t grain)
 	/* Initialize the prefix */
 	struct mm_prefix *pfx = mmr->start;
 	pfx->count = size / mmr->grain;
-	pfx->addr = (unsigned long)pfx;
+	pfx->pfx = pfx;
 	rbn_init(&pfx->size_node, &pfx->count);
-	rbn_init(&pfx->addr_node, &pfx->addr);
+	rbn_init(&pfx->addr_node, &pfx->pfx);
 
 	/* Insert the chunk into the r-b trees */
 	rbt_ins(&mmr->size_tree, &pfx->size_node);
@@ -175,15 +175,15 @@ void *mm_alloc(size_t size)
 		n = (struct mm_prefix *)
 			((unsigned char *)p + (count << mmr->grain_bits));
 		n->count = remainder;
-		n->addr = (unsigned long)n;
+		n->pfx = n;
 		rbn_init(&n->size_node, &n->count);
-		rbn_init(&n->addr_node, &n->addr);
+		rbn_init(&n->addr_node, &n->pfx);
 
 		rbt_ins(&mmr->size_tree, &n->size_node);
 		rbt_ins(&mmr->addr_tree, &n->addr_node);
 	}
 	p->count = count;
-	p->addr = (unsigned long)p;
+	p->pfx = p;
 	return ++p;
 }
 
@@ -195,7 +195,7 @@ void mm_free(void *d)
 	p --;
 
 	/* See if we can coalesce with our lesser sibling */
-	rbn = rbt_find_greatest_lt_or_eq(&mmr->addr_tree, &p->addr);
+	rbn = rbt_find_greatest_lt_or_eq(&mmr->addr_tree, &p->pfx);
 	if (rbn) {
 		q = container_of(rbn, struct mm_prefix, addr_node);
 
@@ -213,7 +213,7 @@ void mm_free(void *d)
 	}
 
 	/* See if we can coalesce with our greater sibling */
-	rbn = rbt_find_least_gt_or_eq(&mmr->addr_tree, &p->addr);
+	rbn = rbt_find_least_gt_or_eq(&mmr->addr_tree, &p->pfx);
 	if (rbn) {
 		q = container_of(rbn, struct mm_prefix, addr_node);
 
@@ -229,9 +229,9 @@ void mm_free(void *d)
 		}
 	}
 	/* Fix-up our nodes' key in case we coelesced */
-	p->addr = (unsigned long)p;
+	p->pfx = p;
 	rbn_init(&p->size_node, &p->count);
-	rbn_init(&p->addr_node, &p->addr);
+	rbn_init(&p->addr_node, &p->pfx);
 
 	/* Put 'p' back in the trees */
 	rbt_ins(&mmr->size_tree, &p->size_node);
