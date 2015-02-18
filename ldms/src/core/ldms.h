@@ -342,8 +342,10 @@ static inline struct ldms_value_desc *ldms_iter_desc(struct ldms_iterator *i)
 
 #define LDMS_VERSION 0x03010000	/* 3.1.0.0 */
 #define LDMS_SET_NAME_MAX 256
+#define LDMS_PRODUCER_NAME_MAX 64 /* including the terminating null byte */
 struct ldms_set_hdr {
-	uint64_t producer_id;	/* The unique metric set producer ID */
+	/* The unique metric set producer name */
+	char producer_name[LDMS_PRODUCER_NAME_MAX];
 	uint64_t meta_gn;	/* Meta-data generation number */
 	uint32_t version;	/* LDMS version number */
 	uint32_t flags;		/* Set format flags */
@@ -834,20 +836,25 @@ extern const char *ldms_get_schema_name(ldms_set_t s);
 extern const char *ldms_get_instance_name(ldms_set_t s);
 
 /**
- * \brief Get the producer id for the set
+ * \brief Get the producer name for the set
  *
  * \param s	The set handle
- * \returns	The producer id for the set.
+ * \returns	The producer name for the set.
  */
-extern uint64_t ldms_get_producer_id(ldms_set_t s);
+extern const char *ldms_get_producer_name(ldms_set_t s);
 
 /**
- * \brief Get the producer id for the set
+ * \brief Get the producer name for the set
  *
  * \param s	The set handle
- * \parm id	The producer id for the set.
+ * \param id	The producer name for the set.
+ *
+ * \returns	0 on success
+ * \returns	EINVAL if the given name including
+ * 		the terminating null byte is longer
+ * 		than the LDMS_PRODUCER_NAME_MAX.
  */
-extern void ldms_set_producer_id(ldms_set_t s, uint64_t id);
+extern int ldms_set_producer_name(ldms_set_t s, const char *name);
 
 /**
  * \brief Map a metric set for remote access
