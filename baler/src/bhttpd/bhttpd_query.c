@@ -83,7 +83,8 @@ const char *bpair_str_value(struct bpair_str_head *head, const char *key)
 static
 void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
 {
-	int n = bptn_store_last_id(bq_get_ptn_store(bq_store));
+	struct bptn_store *ptn_store = bq_get_ptn_store(bq_store);
+	int n = bptn_store_last_id(ptn_store);
 	int rc = 0;
 	int i;
 	int first = 1;
@@ -278,7 +279,6 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 	if (str && strcmp(str, "bwd") == 0)
 		is_fwd = 0;
 
-	pthread_mutex_lock(&query_session_mutex);
 	str = bpair_str_value(&ctxt->kvlist, "session_id");
 	if (str) {
 		session_id = strtoull(str, NULL, 0);
@@ -353,7 +353,6 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 	evbuffer_add_printf(ctxt->evbuffer, "}");
 
 out:
-	pthread_mutex_unlock(&query_session_mutex);
 	bdstr_free(bdstr);
 }
 
@@ -443,7 +442,7 @@ static
 void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 {
 	struct bpair_str *kv;
-	int i, n;
+	int i, n, rc;
 	kv = bpair_str_search(&ctxt->kvlist, "type", NULL);
 	if (!kv) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
@@ -460,11 +459,20 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 		if (strcasecmp(query_handle_entry[i].key, kv->s1) == 0)
 			break;
 	}
-	if (i < n)
-		query_handle_entry[i].fn(ctxt);
-	else
+	if (i < n) {
+		pthread_mutex_lock(&query_session_mutex);
+		rc = bq_store_refresh(bq_store);
+		if (rc) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bq_store_refresh() error, rc: %d", rc);
+		} else {
+			query_handle_entry[i].fn(ctxt);
+		}
+		pthread_mutex_unlock(&query_session_mutex);
+	} else {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"Unknown query type: %s", kv->s1);
+	}
 }
 
 static __attribute__((constructor))
