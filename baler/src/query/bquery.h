@@ -393,6 +393,7 @@ uint32_t bq_img_entry_get_count(struct bimgquery *q);
 
 int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p);
 
+int bq_store_refresh(struct bq_store *store);
 #endif
 
 /** \} */

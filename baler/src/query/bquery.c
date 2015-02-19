@@ -1450,6 +1450,21 @@ int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out)
 	return rc;
 }
 
+int bq_store_refresh(struct bq_store *store)
+{
+	int rc;
+	rc = bptn_store_refresh(store->ptn_store);
+	if (rc)
+		return rc;
+	rc = btkn_store_refresh(store->tkn_store);
+	if (rc)
+		return rc;
+	rc = btkn_store_refresh(store->cmp_store);
+	if (rc)
+		return rc;
+	return 0;
+}
+
 #ifdef BIN
 
 enum BQ_TYPE {
