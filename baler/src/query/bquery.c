@@ -975,6 +975,8 @@ enum {
 	BQ_MODE_REMOTE,  /* remotely query once */
 } running_mode = BQ_MODE_LOCAL;
 
+int verbose = 0;
+
 void show_help()
 {
 	printf(
@@ -1038,6 +1040,8 @@ void show_help()
 "				option. The list of numbers specify\n"
 "				Pattern IDs to be queried. If ptn_id-mask is\n"
 "				is not specified, all patterns are included.\n"
+"    --verbose,-v		Verbose mode. For '-t MSG', this will print\n"
+"				[PTN_ID] before the actual message\n"
 "\n"
 #if 0
 "Other OPTIONS:\n"
@@ -1058,7 +1062,7 @@ void show_help()
 }
 
 /********** Options **********/
-char *short_opt = "hs:dr:x:p:t:H:B:E:P:";
+char *short_opt = "hs:dr:x:p:t:H:B:E:P:v";
 struct option long_opt[] = {
 	{"help",         no_argument,        0,  'h'},
 	{"store-path",   required_argument,  0,  's'},
@@ -1071,6 +1075,7 @@ struct option long_opt[] = {
 	{"begin",        required_argument,  0,  'B'},
 	{"end",          required_argument,  0,  'E'},
 	{"ptn_id-mask",  required_argument,  0,  'P'},
+	{"verbose",      required_argument,  0,  'v'},
 #if 0
 	/* This part of code shall be enabled when image query support is
 	 * available */
@@ -1180,6 +1185,9 @@ next_arg:
 			exit(-1);
 		}
 		break;
+	case 'v':
+		verbose = 1;
+		break;
 	default:
 		fprintf(stderr, "Unknown argument %s\n", argv[optind - 1]);
 	}
@@ -1201,6 +1209,13 @@ loop:
 	rc = bq_query_r(q, buff, N);
 	if (rc)
 		goto out;
+	if (verbose) {
+		uint32_t ptn_id;
+		sos_blob_obj_t blob = sos_obj_attr_get(q->bsos->sos,
+					SOS_MSG_MSG, sos_iter_obj(q->itr));
+		ptn_id = ((struct bmsg*)blob->data)->ptn_id;
+		printf("[%d] ", ptn_id);
+	}
 	printf("%s\n", buff);
 	goto loop;
 out:
