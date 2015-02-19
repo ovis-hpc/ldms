@@ -391,7 +391,16 @@ void bhttpd_handle_query_img(struct bhttpd_req_ctxt *ctxt)
 	const char *host_ids = bpair_str_value(&ctxt->kvlist, "host_ids");
 	const char *ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
 	const char *img_store = bpair_str_value(&ctxt->kvlist, "img_store");
-	struct bimgquery *q = bimgquery_create(bq_store, host_ids,
+	struct bimgquery *q;
+
+	if (!img_store) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Please specify 'img_store'"
+				" (see /list_img_store)");
+		return;
+	}
+
+	q = bimgquery_create(bq_store, host_ids,
 			ptn_ids, ts0, ts1, img_store, &rc);
 
 	if (!q) {
