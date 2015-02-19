@@ -107,4 +107,13 @@ int submit_work(bhttpd_work_routine_fn_t routine, void *arg);
 
 void bhttpd_req_ctxt_errprintf(struct bhttpd_req_ctxt *ctxt, int httprc, const char *fmt, ...);
 
+static inline
+const char *bpair_str_value(struct bpair_str_head *head, const char *key)
+{
+	struct bpair_str *kv = bpair_str_search(head, key, NULL);
+	if (kv)
+		return kv->s1;
+	return NULL;
+}
+
 #endif

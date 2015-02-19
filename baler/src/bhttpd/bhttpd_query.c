@@ -71,15 +71,6 @@ struct bhash *query_session_hash;
 uint32_t query_session_gn;
 struct timeval query_session_timeout = {.tv_sec = 600, .tv_usec = 0};
 
-inline
-const char *bpair_str_value(struct bpair_str_head *head, const char *key)
-{
-	struct bpair_str *kv = bpair_str_search(head, key, NULL);
-	if (kv)
-		return kv->s1;
-	return NULL;
-}
-
 static
 void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
 {

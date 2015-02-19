@@ -53,6 +53,8 @@
  * \file bhttpd_meta.c
  */
 
+#include <float.h>
+
 #include "bhttpd.h"
 #include "baler/bmeta.h"
 
@@ -79,7 +81,7 @@ void meta_cluster_work_routine(void *arg)
 		/* intentionally let-through */
 
 	case BMPTN_STORE_STATE_INITIALIZED:
-		rc = bmptn_cluster(mptn_store);
+		rc = bmptn_cluster(mptn_store, arg);
 		if (rc) {
 			berr("meta_cluster_work_routine(),"
 				" bmptn_cluster() error, rc: %d\n", rc);
@@ -100,6 +102,48 @@ out:
 	pthread_mutex_lock(&meta_mutex);
 	meta_cluster_in_progress = 0;
 	pthread_mutex_unlock(&meta_mutex);
+	free(arg);
+}
+
+static
+struct bmeta_cluster_param *__get_meta_cluster_param(struct bhttpd_req_ctxt *ctxt)
+{
+	struct bmeta_cluster_param *p = calloc(1, sizeof(*p));
+	float f;
+	const char *str;
+	int i;
+	if (!p) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Out of memory");
+		goto err;
+	}
+	struct {
+		float *var;
+		float dfault;
+		const char *key;
+		float min;
+		float max;
+	} table[] = {
+		{&p->refinement_speed,  2.0,  "refinement_speed",  1.0,  FLT_MAX},
+		{&p->looseness,         0.3,  "looseness",         0.0,  1.0},
+		{&p->diff_ratio,        0.3,  "diff_ratio",        0.0,  1.0},
+		{0, 0, 0, 0, 0},
+	};
+	for (i = 0; table[i].var; i++) {
+		str = bpair_str_value(&ctxt->kvlist, table[i].key);
+		f = (str)?(atof(str)):(table[i].dfault);
+		if (f < table[i].min || table[i].max < f) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Invalid value of '%s': %f",
+					table[i].key, f);
+			goto err;
+		}
+		*(table[i].var) = f;
+	}
+	return p;
+err:
+	free(p);
+	return NULL;
 }
 
 static
@@ -112,12 +156,16 @@ void bhttpd_handle_meta_cluster_op_run(struct bhttpd_req_ctxt *ctxt)
 						"Operation in progress...");
 	} else {
 		meta_cluster_in_progress = 1;
-		rc = submit_work(meta_cluster_work_routine, NULL);
+		struct bmeta_cluster_param *p = __get_meta_cluster_param(ctxt);
+		if (!p)
+			goto out;
+		rc = submit_work(meta_cluster_work_routine, p);
 		if (rc) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 							"rc: %d", rc);
 		}
 	}
+out:
 	pthread_mutex_unlock(&meta_mutex);
 }
 
