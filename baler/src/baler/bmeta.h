@@ -69,6 +69,12 @@ typedef enum {
 	BMPTN_STORE_STATE_LAST,
 } bmptn_store_state_e;
 
+struct bmeta_cluster_param {
+	float diff_ratio;
+	float looseness;
+	float refinement_speed;
+};
+
 /* Declaring structure names to suppress compilation warnings */
 struct bmptn_store;
 struct bptn_store;
@@ -114,7 +120,7 @@ int bmptn_store_initialized(struct bmptn_store *store);
 /**
  * Perform a meta-pattern clustering.
  */
-int bmptn_cluster(struct bmptn_store *store);
+int bmptn_cluster(struct bmptn_store *store, struct bmeta_cluster_param *param);
 
 /**
  * An interface to get the state of the store.

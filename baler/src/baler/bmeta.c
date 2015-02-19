@@ -507,6 +507,7 @@ int __bmptn_cluster_2(struct bmptn_store *store)
 	int i, c, j, l, idx;
 	struct bhash_entry **cls1_entries = store->engsig_array;
 	uint32_t n = store->engsig_hash->count;
+	int N = bmptn_store_gethdr(store)->last_ptn_id;
 	float *dist = NULL;
 	void *buff = NULL;
 	int *stack = NULL;
@@ -579,7 +580,7 @@ loop:
 			dist[j*n+i] = dist[idx];
 		}
 
-		if (dist[idx] < thr && !cls1_entries[j]) {
+		if (dist[idx] < thr && !cls1_entries[j]->value) {
 			cls1_entries[j]->value = l;
 			bmptn_store_gethdr(store)->percent = ((float)(++labelled)/n)*100;
 			stack[++tos] = j;
@@ -593,7 +594,7 @@ relabel:
 	if (rc)
 		goto cleanup;
 
-	for (i = BMAP_ID_BEGIN; i <= n; i++) {
+	for (i = BMAP_ID_BEGIN; i <= N; i++) {
 		struct bmptn_node *node = bmvec_generic_get(store->nodes, i,
 								sizeof(*node));
 		node->label = cls1_entries[node->label]->value;
@@ -868,7 +869,7 @@ uint32_t bmptn_store_get_percent(struct bmptn_store *store)
 	return ret;
 }
 
-int bmptn_cluster(struct bmptn_store *store)
+int bmptn_cluster(struct bmptn_store *store, struct bmeta_cluster_param *param)
 {
 	int rc = 0;
 	char *dist_buff;
@@ -892,6 +893,9 @@ int bmptn_cluster(struct bmptn_store *store)
 		return rc;
 	}
 	hdr->state = BMPTN_STORE_STATE_META_1;
+	hdr->diff_ratio = param->diff_ratio;
+	hdr->looseness = param->looseness;
+	hdr->refinement_speed = param->refinement_speed;
 	pthread_mutex_unlock(&store->mutex);
 	hdr->last_ptn_id = bptn_store_last_id(store->ptn_store);
 	rc = __bmptn_cluster_1(store);
