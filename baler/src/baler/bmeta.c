@@ -881,6 +881,16 @@ int bmptn_cluster(struct bmptn_store *store)
 		pthread_mutex_unlock(&store->mutex);
 		return EINVAL;
 	}
+	rc = btkn_store_refresh(store->tkn_store);
+	if (rc) {
+		pthread_mutex_unlock(&store->mutex);
+		return rc;
+	}
+	rc = bptn_store_refresh(store->ptn_store);
+	if (rc) {
+		pthread_mutex_unlock(&store->mutex);
+		return rc;
+	}
 	hdr->state = BMPTN_STORE_STATE_META_1;
 	pthread_mutex_unlock(&store->mutex);
 	hdr->last_ptn_id = bptn_store_last_id(store->ptn_store);
