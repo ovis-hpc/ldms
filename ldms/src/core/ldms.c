@@ -515,7 +515,7 @@ int ldms_set_producer_name(ldms_set_t s, const char *name)
 		return EINVAL;
 
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	snprintf(sd->set->meta->producer_name, LDMS_PRODUCER_NAME_MAX, name);
+	strncpy(sd->set->meta->producer_name, name, LDMS_PRODUCER_NAME_MAX);
 	return 0;
 }
 
