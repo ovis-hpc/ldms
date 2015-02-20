@@ -1,0 +1,48 @@
+.baler_STAR {
+	color: gray;
+}
+
+.baler_HOST {
+	color: red;
+}
+
+.baler_ENG {
+	color: blue;
+}
+
+.PtnTable, .PtnTable ul {
+	list-style: none;
+	margin-left: 0;
+	padding: 0;
+}
+
+.PtnTable {
+	width: 50%;
+}
+
+.GrpLstEnt_Name {
+	background-color: cadetblue;
+	color: white;
+}
+
+.GrpLstEnt_Name:hover {
+	background-color: red;
+}
+
+.GrpLstEnt {
+	border: solid;
+	border-color: white;
+	border-width: 1px;
+}
+
+.PtnLstEnt {
+	background-color: white;
+}
+
+.PtnLstEnt:hover {
+	background-color: lightgray;
+}
+
+.NewRow {
+	background-color: lightpink;
+}
