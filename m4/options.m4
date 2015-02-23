@@ -33,9 +33,7 @@ AC_ARG_WITH(
 		[--with-$1@<:@=path@:>@],
 		[Specify $1 path @<:@default=/usr/local@:>@]
 	),
-	[WITH_$2=$withval
-	 AM_CONDITIONAL([ENABLE_$2], [true])
-	],
+	[WITH_$2=$withval],
 	[WITH_$2=/usr/local]
 )
 
