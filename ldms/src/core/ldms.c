@@ -879,6 +879,7 @@ ldms_metric_t ldms_get_metric_by_name(ldms_set_t _set, const char *name)
 {
 	struct ldms_value_desc *vd;
 	struct ldms_iterator i;
+	int metric_idx = 0;
 
 	for (vd = ldms_first(&i, _set); vd; vd = ldms_next(&i)) {
 		if (0 == strcmp(vd->name, name)) {
@@ -888,8 +889,10 @@ ldms_metric_t ldms_get_metric_by_name(ldms_set_t _set, const char *name)
 			m->desc = ldms_iter_desc(&i);
 			m->value = ldms_iter_value(&i);
 			m->set = ((struct ldms_set_desc *)_set)->set;
+			m->idx = metric_idx;
 			return (ldms_metric_t)m;
 		}
+		metric_idx++;
 	}
 	return NULL;
 }
