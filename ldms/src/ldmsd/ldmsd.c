@@ -860,7 +860,7 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 	}
 
 	if (offset) {
-		sample_offset = strtol(attr, NULL, 0);
+		sample_offset = strtol(offset, NULL, 0);
 		if ( !((sample_interval >= 10) &&
 		       (sample_interval >= labs(sample_offset)*2)) ){
 			snprintf(err_str, LEN_ERRSTR, "Sampler parameters "
