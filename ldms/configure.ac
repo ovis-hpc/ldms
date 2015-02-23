@@ -145,16 +145,11 @@ OCFLAGS=$CFLAGS
 CFLAGS=-I$SOS_INCDIR
 AC_CHECK_HEADERS(sos/sos.h,
 	[],
-	[
-		AC_MSG_FAILURE([sos/sos.h not found])
-	],
+	AC_MSG_FAILURE([sos/sos.h not found])
 )
 AC_CHECK_LIB( sos, sos_container_open,
-	[
-	],
-	[
-		AC_MSG_FAILURE(libsos not found)
-	],
+	[],
+	AC_MSG_FAILURE(libsos not found),
 	[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
 )
 dnl Reset LIBS variable.
