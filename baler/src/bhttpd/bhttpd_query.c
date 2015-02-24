@@ -153,6 +153,7 @@ struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_r
 	qs = calloc(1, sizeof(*qs));
 	if (!qs)
 		return NULL;
+	qs->first = 1;
 	qs->event = event_new(evbase, -1, EV_READ,
 			bhttpd_msg_query_expire_cb, qs);
 	if (!qs->event) {
@@ -315,7 +316,11 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 	evbuffer_add_printf(ctxt->evbuffer, ", \"msgs\": [");
 	for (i = 0; i < n; i++) {
 		if (qs->first) {
-			rc = bq_first_entry(qs->q);
+			qs->first = 0;
+			if (is_fwd)
+				rc = bq_first_entry(qs->q);
+			else
+				rc = bq_last_entry(qs->q);
 		} else {
 			if (is_fwd)
 				rc = bq_next_entry(qs->q);
