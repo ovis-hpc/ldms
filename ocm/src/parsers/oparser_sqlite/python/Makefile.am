@@ -1,3 +1,4 @@
+ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = oconf_sqlite
 
 if ENABLE_OCSQLITE_TESTS
