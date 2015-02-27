@@ -294,7 +294,7 @@ void bhttpd_handle_test(struct bhttpd_req_ctxt *ctxt)
 	struct bpair_str *kv;
 	struct evbuffer *evb = evbuffer_new();
 	if (!evb) {
-		evhttp_send_error(ctxt->req, 500, "ENOMEM");
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "ENOMEM");
 		return;
 	}
 	evbuffer_add_printf(evb, "<html><head><title>Test</title></head><body>Test Page.<BR>");
@@ -329,13 +329,16 @@ void bhttpd_evhttp_cb(struct evhttp_request *req, void *arg)
 	const struct evhttp_uri *uri = evhttp_request_get_evhttp_uri(req);
 	const char *path = evhttp_uri_get_path(uri);
 	const char *query = evhttp_uri_get_query(uri);
+	struct evkeyvalq *ohdr = evhttp_request_get_output_headers(req);
 	struct bhttpd_req_ctxt *ctxt;
 	int rc;
 
 	bdebug("GET path: %s", path);
+	evhttp_add_header(ohdr, "content-type", "application/json");
+	evhttp_add_header(ohdr, "Access-Control-Allow-Origin", "*");
 
 	if (evhttp_request_get_command(req) != EVHTTP_REQ_GET) {
-		evhttp_send_error(req, HTTP_BADMETHOD, NULL);
+		evhttp_send_reply(req, HTTP_BADMETHOD, NULL, NULL);
 		return;
 	}
 
@@ -344,13 +347,13 @@ void bhttpd_evhttp_cb(struct evhttp_request *req, void *arg)
 	fn = get_uri_handle(path);
 
 	if (!fn) {
-		evhttp_send_error(req, HTTP_NOTFOUND, NULL);
+		evhttp_send_reply(req, HTTP_NOTFOUND, NULL, NULL);
 		return;
 	}
 
 	ctxt = malloc(sizeof(*ctxt));
 	if (!ctxt) {
-		evhttp_send_error(req, HTTP_INTERNAL, "Out of memory.");
+		evhttp_send_reply(req, HTTP_INTERNAL, "Out of memory.", NULL);
 		return;
 	}
 
@@ -364,22 +367,25 @@ void bhttpd_evhttp_cb(struct evhttp_request *req, void *arg)
 		rc = bparse_http_query(query, &ctxt->kvlist);
 		if (rc) {
 			berr("bparse_http_query() error, rc: %d\n", rc);
-			evhttp_send_error(req, HTTP_INTERNAL, "Query parse error.");
+			evhttp_send_reply(req, HTTP_INTERNAL,
+						"Query parse error.", NULL);
 			goto cleanup;
 		}
 	}
 
 	ctxt->evbuffer = evbuffer_new();
 	if (!ctxt->evbuffer) {
-		evhttp_send_error(req, HTTP_INTERNAL, "Out of memory.");
+		evhttp_send_reply(req, HTTP_INTERNAL, "Out of memory.", NULL);
 		goto cleanup;
 	}
 
+	/* Call handling function */
 	fn(ctxt);
+
 	if (ctxt->httprc == HTTP_OK) {
 		evhttp_send_reply(req, ctxt->httprc, NULL, ctxt->evbuffer);
 	} else {
-		evhttp_send_error(req, ctxt->httprc, ctxt->errstr);
+		evhttp_send_reply(req, ctxt->httprc, ctxt->errstr, NULL);
 	}
 
 cleanup:

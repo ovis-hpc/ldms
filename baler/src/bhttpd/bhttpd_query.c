@@ -441,9 +441,6 @@ void bhttpd_handle_query_destroy_session(struct bhttpd_req_ctxt *ctxt)
 	uint64_t session_id;
 	struct bhttpd_msg_query_session *qs;
 	struct bhash_entry *ent;
-	struct evkeyvalq *ohdr = evhttp_request_get_output_headers(ctxt->req);
-	evhttp_add_header(ohdr, "content-type", "application/json");
-	evhttp_add_header(ohdr, "Access-Control-Allow-Origin", "*");
 	if (!session_id) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"session_id is not set");
@@ -489,10 +486,6 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 						"Query type not specified");
 		return;
 	}
-
-	struct evkeyvalq *ohdr = evhttp_request_get_output_headers(ctxt->req);
-	evhttp_add_header(ohdr, "content-type", "application/json");
-	evhttp_add_header(ohdr, "Access-Control-Allow-Origin", "*");
 
 	n = sizeof(query_handle_entry)/sizeof(query_handle_entry[0]);
 	for (i = 0; i < n; i++) {
