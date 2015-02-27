@@ -1112,6 +1112,7 @@ prev:
 int bq_first_entry(struct bquery *q)
 {
 	int rc;
+	uint32_t sec, comp_id, ptn_id;
 	if (q->bsos) {
 		bsos_wrap_close_free(q->bsos);
 	}
@@ -1124,7 +1125,27 @@ int bq_first_entry(struct bquery *q)
 		if (rc)
 			goto out;
 	}
+
 	rc = __bq_first_entry(q);
+	if (rc)
+		return rc;
+loop:
+	sec = bq_entry_get_sec(q);
+	if (q->ts_1 && q->ts_1 < sec)
+		return ENOENT;
+	comp_id = bq_entry_get_comp_id(q);
+	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
+		goto next;
+	ptn_id = bq_entry_get_ptn_id(q);
+	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, ptn_id))
+		goto next;
+	/* good condition */
+	goto out;
+next:
+	rc = __bq_next_entry(q);
+	if (rc)
+		return rc;
+	goto loop;
 out:
 	return rc;
 }
@@ -1132,6 +1153,7 @@ out:
 int bq_last_entry(struct bquery *q)
 {
 	int rc;
+	uint32_t sec, comp_id, ptn_id;
 	if (q->bsos) {
 		bsos_wrap_close_free(q->bsos);
 	}
@@ -1140,7 +1162,30 @@ int bq_last_entry(struct bquery *q)
 	if (rc) {
 		goto out;
 	}
+
 	rc = __bq_last_entry(q);
+	if (rc)
+		goto out;
+
+loop:
+	sec = bq_entry_get_sec(q);
+	if (q->ts_0 &&  sec < q->ts_0)
+		return ENOENT;
+	comp_id = bq_entry_get_comp_id(q);
+	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
+		goto prev;
+	ptn_id = bq_entry_get_ptn_id(q);
+	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, ptn_id))
+		goto prev;
+	/* good condition */
+	goto out;
+
+prev:
+	rc = __bq_prev_entry(q);
+	if (rc)
+		return rc;
+	goto loop;
+
 out:
 	return rc;
 }
