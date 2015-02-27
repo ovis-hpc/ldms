@@ -153,6 +153,9 @@ struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_r
 	qs = calloc(1, sizeof(*qs));
 	if (!qs)
 		return NULL;
+
+	bdebug("creating session: %lu", (uint64_t)qs);
+
 	qs->first = 1;
 	qs->event = event_new(evbase, -1, EV_READ,
 			bhttpd_msg_query_expire_cb, qs);
@@ -431,16 +434,45 @@ void bhttpd_handle_query_img(struct bhttpd_req_ctxt *ctxt)
 	bimgquery_destroy(q);
 }
 
+static
+void bhttpd_handle_query_destroy_session(struct bhttpd_req_ctxt *ctxt)
+{
+	const char *_session_id = bpair_str_value(&ctxt->kvlist, "session_id");
+	uint64_t session_id;
+	struct bhttpd_msg_query_session *qs;
+	struct bhash_entry *ent;
+	if (!session_id) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"session_id is not set");
+		return;
+	}
+	session_id = strtoul(_session_id, NULL, 0);
+
+	pthread_mutex_lock(&query_session_mutex);
+	ent = bhash_entry_get(query_session_hash, (void*)&session_id,
+			sizeof(session_id));
+	if (!ent) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"session_id %ul not found", session_id);
+		pthread_mutex_unlock(&query_session_mutex);
+		return;
+	}
+	bhash_entry_remove_free(query_session_hash, ent);
+	pthread_mutex_unlock(&query_session_mutex);
+	qs = (void*)session_id;
+	bhttpd_msg_query_session_destroy(qs);
+}
+
 struct bhttpd_handle_fn_entry {
 	const char *key;
 	void (*fn)(struct bhttpd_req_ctxt*);
 };
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{  "PTN",   bhttpd_handle_query_ptn   },
-	{  "MSG",   bhttpd_handle_query_msg   },
-	{  "META",  bhttpd_handle_query_meta  },
-	{  "IMG",   bhttpd_handle_query_img   },
+	{  "PTN",   bhttpd_handle_query_ptn      },
+	{  "MSG",   bhttpd_handle_query_msg      },
+	{  "META",  bhttpd_handle_query_meta     },
+	{  "IMG",   bhttpd_handle_query_img      },
 };
 
 static
@@ -487,6 +519,8 @@ void __init()
 	int i, n;
 	bdebug("Adding /query handler");
 	set_uri_handle("/query", bhttpd_handle_query);
+	set_uri_handle("/query/destroy_session",
+			bhttpd_handle_query_destroy_session);
 	query_session_hash = bhash_new(4099, 7, NULL);
 	if (!query_session_hash) {
 		berror("bhash_new()");
