@@ -16,7 +16,7 @@ define () ->
             @addChildren(e, children)
             return e
 
-    tags = [ "span", "li", "ul", "input", "div", "button" ]
+    tags = [ "span", "li", "ul", "input", "div", "button", "canvas"]
 
     for tag in tags
         do (tag) ->
