@@ -46,3 +46,9 @@
 .NewRow {
 	background-color: lightpink;
 }
+
+.HeatMapDisp {
+	border: solid;
+	border-color: grey;
+	border-width: 1px;
+}
