@@ -145,8 +145,8 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	}
 
 	struct bout_sos_img_key bk = {
+		.comp_id = odata->comp_id,
 		.ts = (odata->tv.tv_sec / _this->delta_ts) * _this->delta_ts,
-		.comp_id = odata->comp_id
 	};
 	uint64_t bk_u64 = *(uint64_t*)(void*)&bk;
 	obj_key_t ok = obj_key_new(sizeof(bk));

@@ -68,8 +68,8 @@ SOS_OBJ_BEGIN(sos_img_class, "BalerSOSImageClass")
 SOS_OBJ_END(3);
 
 struct bout_sos_img_key {
-	uint32_t ts;
 	uint32_t comp_id;
+	uint32_t ts;
 };
 
 
