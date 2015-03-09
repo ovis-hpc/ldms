@@ -865,7 +865,7 @@ loop:
 
 	sos_attr_t attr = sos_obj_attr_by_id(q->bsos->sos, 0);
 	size_t ksz = attr->attr_size_fn(attr, 0);
-	struct bout_sos_img_key imgkey = {q->ts_0, 0};
+	struct bout_sos_img_key imgkey = {.ts = q->ts_0, .comp_id = 0};
 	void *p;
 
 	switch (attr->type) {
