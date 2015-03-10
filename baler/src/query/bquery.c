@@ -553,6 +553,25 @@ void bq_set_formatter(struct bquery *bq, struct bq_formatter *fmt)
 	bq->formatter = fmt;
 }
 
+static
+time_t parse_ts(const char *ts)
+{
+	struct tm tm = {0};
+	char *ts_ret;
+	time_t t;
+	ts_ret = strptime(ts, "%F %T", &tm);
+	if (ts_ret != NULL) {
+		tm.tm_isdst = -1;
+		t = mktime(&tm);
+	} else {
+		/* try seconds since Epoch instead */
+		t = strtol(ts, &ts_ret, 0);
+		if (*ts_ret != '\0')
+			return -1;
+	}
+	return t;
+}
+
 struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 			     const char *ptn_ids, const char *ts0,
 			     const char *ts1, int is_text, char sep, int *rc)
@@ -593,25 +612,18 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 	struct tm tm;
 	char *ts_ret;
 	if (ts0) {
-		bzero(&tm, sizeof(tm));
-		ts_ret = strptime(ts0, "%F %T", &tm);
-		if (ts_ret == NULL) {
+		q->ts_0 = parse_ts(ts0);
+		if (q->ts_0 == -1) {
 			_rc = EINVAL;
 			goto err;
 		}
-		tm.tm_isdst = -1;
-		q->ts_0 = mktime(&tm);
 	}
-
 	if (ts1) {
-		bzero(&tm, sizeof(tm));
-		ts_ret = strptime(ts1, "%F %T", &tm);
-		if (ts_ret == NULL) {
+		q->ts_1 = parse_ts(ts1);
+		if (q->ts_1 == -1) {
 			_rc = EINVAL;
 			goto err;
 		}
-		tm.tm_isdst = -1;
-		q->ts_1 = mktime(&tm);
 	}
 
 	q->text_flag = is_text;
