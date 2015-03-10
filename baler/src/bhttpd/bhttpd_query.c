@@ -389,6 +389,109 @@ void bhttpd_handle_query_meta(struct bhttpd_req_ctxt *ctxt)
 }
 
 static
+float __get_url_param_float(struct bhttpd_req_ctxt *ctxt, const char *key,
+							float default_value)
+{
+	const char *str = bpair_str_value(&ctxt->kvlist, key);
+	if (!str)
+		return default_value;
+	return strtof(str, NULL);
+}
+
+static
+int __get_url_param_int(struct bhttpd_req_ctxt *ctxt, const char *key,
+							int default_value)
+{
+	const char *str = bpair_str_value(&ctxt->kvlist, key);
+	if (!str)
+		return default_value;
+	return atoi(str);
+}
+
+static
+void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
+{
+	int rc;
+	int first = 1;
+	struct bpixel p;
+	char ts0[16];
+	char ts1[16];
+	char host_ids[32];
+	const char *ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
+	const char *img_store = bpair_str_value(&ctxt->kvlist, "img_store");
+
+	float spp = __get_url_param_float(ctxt, "spp", 0);
+	float npp = __get_url_param_float(ctxt, "npp", 0);
+	int width = __get_url_param_int(ctxt, "width", 0);
+	int height = __get_url_param_int(ctxt, "height", 0);
+	int ts_begin = __get_url_param_int(ctxt, "ts_begin", 0);
+	int host_begin = __get_url_param_int(ctxt, "host_begin", 0);
+	int ts_end = ts_begin + width*spp;
+	int host_end = host_begin + height*npp;
+
+	int *data = NULL;
+
+	struct bimgquery *q;
+
+	if (!img_store) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Please specify 'img_store'"
+				" (see /list_img_store)");
+		return;
+	}
+
+	if (!width || !height) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Please specify width and height");
+		return;
+	}
+
+	if (spp < 0.000001 || npp < 0.000001) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Please specify spp and npp");
+		return;
+	}
+
+	snprintf(ts0, sizeof(ts0), "%d", ts_begin);
+	snprintf(ts1, sizeof(ts0), "%d", ts_end);
+	snprintf(host_ids, sizeof(host_ids), "%d-%d", host_begin, host_end);
+
+	data = calloc(sizeof(int),  width * height);
+
+	if (!data) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Out of memory.");
+		return;
+	}
+
+	q = bimgquery_create(bq_store, host_ids,
+			ptn_ids, ts0, ts1, img_store, &rc);
+
+	if (!q) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bimgquery_create() error, errno: %d", errno);
+		return;
+	}
+	rc = bq_first_entry((void*)q);
+	while (rc == 0) {
+		rc = bq_img_entry_get_pixel(q, &p);
+		if (rc)
+			break;
+		int x = (p.sec - ts_begin) / spp;
+		int y = (p.comp_id - host_begin) / npp;
+		if (x >= width || y >= height)
+			goto next;
+		int idx = y*width + x;
+		data[idx] += p.count;
+	next:
+		rc = bq_next_entry((void*)q);
+	}
+	evbuffer_add(ctxt->evbuffer, data, sizeof(int)*width*height);
+	bimgquery_destroy(q);
+	bdebug("sending data, size: %d", sizeof(int)*width*height);
+	free(data);
+}
+
+static
 void bhttpd_handle_query_img(struct bhttpd_req_ctxt *ctxt)
 {
 	int rc;
@@ -472,10 +575,11 @@ struct bhttpd_handle_fn_entry {
 };
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{  "PTN",   bhttpd_handle_query_ptn      },
-	{  "MSG",   bhttpd_handle_query_msg      },
-	{  "META",  bhttpd_handle_query_meta     },
-	{  "IMG",   bhttpd_handle_query_img      },
+	{  "PTN",   bhttpd_handle_query_ptn   },
+	{  "MSG",   bhttpd_handle_query_msg   },
+	{  "META",  bhttpd_handle_query_meta  },
+	{  "IMG",   bhttpd_handle_query_img   },
+	{  "IMG2",  bhttpd_handle_query_img2  },
 };
 
 static
@@ -502,7 +606,7 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"bq_store_refresh() error, rc: %d", rc);
 		} else {
-			if (i != 3)
+			if (i != 3 || i != 4)
 				evhttp_add_header(ctxt->hdr, "content-type",
 							"application/json");
 			else
