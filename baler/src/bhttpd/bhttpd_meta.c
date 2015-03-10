@@ -205,6 +205,8 @@ void bhttpd_handle_meta_cluster(struct bhttpd_req_ctxt *ctxt)
 		META_OP_LAST,
 	} ope;
 
+	evhttp_add_header(ctxt->hdr, "content-type", "application/json");
+
 	struct bpair_str *op = bpair_str_search(&ctxt->kvlist, "op", NULL);
 	const char *_op;
 	if (!op) {

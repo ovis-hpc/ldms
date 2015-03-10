@@ -416,21 +416,24 @@ void bhttpd_handle_query_img(struct bhttpd_req_ctxt *ctxt)
 				"bimgquery_create() error, errno: %d", errno);
 		return;
 	}
-	evbuffer_add_printf(ctxt->evbuffer, "{\"pixels\": [");
+	// evbuffer_add_printf(ctxt->evbuffer, "{\"pixels\": [");
 	rc = bq_first_entry((void*)q);
 	while (rc == 0) {
 		rc = bq_img_entry_get_pixel(q, &p);
 		if (rc)
 			break;
+		evbuffer_add(ctxt->evbuffer, &p, sizeof(p));
+		/*
 		if (first)
 			first = 0;
 		else
 			evbuffer_add_printf(ctxt->evbuffer, ",");
 		evbuffer_add_printf(ctxt->evbuffer, "[%d, %d, %d, %d]",
 					p.sec, p.comp_id, p.ptn_id, p.count);
+		*/
 		rc = bq_next_entry((void*)q);
 	}
-	evbuffer_add_printf(ctxt->evbuffer, "]}");
+	// evbuffer_add_printf(ctxt->evbuffer, "]}");
 	bimgquery_destroy(q);
 }
 
@@ -499,6 +502,12 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"bq_store_refresh() error, rc: %d", rc);
 		} else {
+			if (i != 3)
+				evhttp_add_header(ctxt->hdr, "content-type",
+							"application/json");
+			else
+				evhttp_add_header(ctxt->hdr, "content-type",
+						"application/octet-stream");
 			query_handle_entry[i].fn(ctxt);
 		}
 		pthread_mutex_unlock(&query_session_mutex);

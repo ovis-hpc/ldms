@@ -77,6 +77,7 @@ struct bhttpd_req_ctxt {
 	struct bpair_str_head kvlist;
 	int httprc;
 	struct evbuffer *evbuffer;
+	struct evkeyvalq *hdr;
 	char errstr[1024];
 };
 

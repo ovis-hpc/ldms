@@ -334,7 +334,6 @@ void bhttpd_evhttp_cb(struct evhttp_request *req, void *arg)
 	int rc;
 
 	bdebug("GET path: %s", path);
-	evhttp_add_header(ohdr, "content-type", "application/json");
 	evhttp_add_header(ohdr, "Access-Control-Allow-Origin", "*");
 
 	if (evhttp_request_get_command(req) != EVHTTP_REQ_GET) {
@@ -357,6 +356,7 @@ void bhttpd_evhttp_cb(struct evhttp_request *req, void *arg)
 		return;
 	}
 
+	ctxt->hdr = ohdr;
 	ctxt->req = req;
 	ctxt->uri = uri;
 	LIST_INIT(&ctxt->kvlist);

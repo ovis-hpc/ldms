@@ -68,6 +68,9 @@ void bhttpd_handle_list(struct bhttpd_req_ctxt *ctxt)
 	int rc, i, len;
 	const char *str;
 	struct bdstr *bdstr = bdstr_new(512);
+
+	evhttp_add_header(ctxt->hdr, "content-type", "application/json");
+
 	if (!bdstr) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"Not enough memory.");
