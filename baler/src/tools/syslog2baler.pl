@@ -29,7 +29,12 @@ connect(SOCK, $paddr) || die "connect: $!";
 
 while (my $line = <STDIN>) {
 	chomp $line;
-	print SOCK "<1>$line\n";
+
+	# This is for new syslog format
+	print SOCK "<1>1 $line\n";
+
+	# This is for old syslog format
+	#print SOCK "<1>$line\n";
 }
 
 close(SOCK);
