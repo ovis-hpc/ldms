@@ -183,6 +183,15 @@ int bset_u32_insert(struct bset_u32 *set, uint32_t val);
  */
 int bset_u32_remove(struct bset_u32 *set, uint32_t val);
 
+/**
+ * Create ::bset_u32 from \c num_list.
+ * \param[in] num_list List of numbers (e.g. "1,2,5-7")
+ * \param hsize The hash size for the ::bset_u32.
+ * \retval NULL on error.
+ * \retval ptr Pointer to ::bset_u32 containing numbers in the given \c num_lst.
+ */
+struct bset_u32 *bset_u32_from_numlist(const char *num_lst, int hsize);
+
 /********* Range **********/
 /**
  * A ::brange_u32 representing a range <tt>[a, b]</tt>

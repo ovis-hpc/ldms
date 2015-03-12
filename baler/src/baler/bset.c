@@ -259,3 +259,46 @@ err0:
 	return NULL;
 }
 
+struct bset_u32 *bset_u32_from_numlist(const char *num_lst, int hsize)
+{
+	int rc = 0;
+	int tn, sn;
+	int a, b, i;
+	const char *s = num_lst;
+	struct bset_u32 *set = bset_u32_alloc(hsize);
+	if (!set) {
+		goto err0;
+	}
+
+	while (*s) {
+		tn = sscanf(s, "%d%n - %d%n", &a, &sn, &b, &sn);
+		switch (tn) {
+		case 1:
+			b = a;
+			break;
+		case 2:
+			/* do nothing */
+			break;
+		default:
+			/* Parse error */
+			errno = EINVAL;
+			goto err1;
+		}
+		s += sn;
+		for (i = a; i <= b; i++) {
+			rc = bset_u32_insert(set, i);
+			if (rc && rc != EEXIST) {
+				errno = rc;
+				goto err1;
+			}
+		}
+		while (*s && *s == ',')
+			s++;
+	}
+
+	return set;
+err1:
+	bset_u32_free(set);
+err0:
+	return NULL;
+}
