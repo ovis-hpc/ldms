@@ -232,54 +232,6 @@ int fmt_host_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
 	return 0;
 }
 
-/**
- * \param[in] num_list List of numbers (e.g. "1,2,5-7")
- * \param[out] _set Pointer to pointer to ::bset_u32. \c (*_set) will point to
- * 	the newly created ::bset_u32.
- * \returns 0 on success.
- * \returns Error code on error.
- */
-int strnumlist2set(const char *num_lst, struct bset_u32 **_set)
-{
-	int rc = 0;
-	char *buff = strdup(num_lst);
-	if (!buff) {
-		rc = errno;
-		goto err0;
-	}
-	struct bset_u32 *set = bset_u32_alloc(MASK_HSIZE);
-	if (!set) {
-		rc = errno;
-		goto err1;
-	}
-	*_set = set;
-	char *tok = strtok(buff, ",");
-	while (tok) {
-		int a, b, i;
-		a = atoi(tok);
-		b = a;
-		char *tok2 = strchr(tok, '-');
-		if (tok2)
-			b = atoi(tok2 + 1);
-		for (i=a; i<=b; i++) {
-			int _rc;
-			_rc = bset_u32_insert(set, i);
-			if (_rc && _rc != EEXIST) {
-				rc = _rc;
-				goto err2;
-			}
-		}
-		tok = strtok(NULL, ",");
-	}
-	return 0;
-err2:
-	bset_u32_free(set);
-err1:
-	free(buff);
-err0:
-	return rc;
-}
-
 struct bsos_wrap* bsos_wrap_open(const char *path)
 {
 	struct bsos_wrap *bsw = calloc(1, sizeof(*bsw));
@@ -598,15 +550,19 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 	q->get_comp_id = __bq_entry_get_comp_id;
 
 	if (hst_ids) {
-		_rc = strnumlist2set(hst_ids, &q->hst_ids);
-		if (_rc)
+		q->hst_ids = bset_u32_from_numlist(hst_ids, MASK_HSIZE);
+		if (!q->hst_ids) {
+			_rc = errno;
 			goto err;
+		}
 	}
 
 	if (ptn_ids) {
-		_rc = strnumlist2set(ptn_ids, &q->ptn_ids);
-		if (_rc)
+		q->ptn_ids = bset_u32_from_numlist(hst_ids, MASK_HSIZE);
+		if (!q->hst_ids) {
+			_rc = errno;
 			goto err;
+		}
 	}
 
 	struct tm tm;
