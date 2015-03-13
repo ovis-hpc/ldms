@@ -332,6 +332,15 @@ int bq_get_all_ptns_r(struct bq_store *store, char *buf, size_t buflen);
 char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
 
 /**
+ * Get component name from ::bq_store \c store.
+ *
+ * \param store The store handle
+ * \param cmp_id The component ID (starts from 1)
+ * \param[out] out The output ::bdstr.
+ */
+int bq_get_cmp(struct bq_store *store, int cmp_id, struct bdstr *out);
+
+/**
  * Get formatted pattern from the store.
  *
  * \param store The store handle.
@@ -351,6 +360,11 @@ int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out);
  * \returns 0 if \c hostname is not found.
  */
 int bq_get_host_id(struct bq_store *store, const char *hostname);
+
+/**
+ * Get component (token) store from \c store.
+ */
+struct btkn_store *bq_get_cmp_store(struct bq_store *store);
 
 /**
  * ::tkn_store getter.

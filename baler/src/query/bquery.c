@@ -558,8 +558,8 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 	}
 
 	if (ptn_ids) {
-		q->ptn_ids = bset_u32_from_numlist(hst_ids, MASK_HSIZE);
-		if (!q->hst_ids) {
+		q->ptn_ids = bset_u32_from_numlist(ptn_ids, MASK_HSIZE);
+		if (!q->ptn_ids) {
 			_rc = errno;
 			goto err;
 		}
@@ -785,7 +785,7 @@ loop:
 
 	sos_attr_t attr = sos_obj_attr_by_id(q->bsos->sos, 0);
 	size_t ksz = attr->attr_size_fn(attr, 0);
-	struct bout_sos_img_key imgkey = {q->ts_1, 0};
+	struct bout_sos_img_key imgkey = {.ts = q->ts_1};
 	void *p;
 
 	switch (attr->type) {
@@ -1414,6 +1414,11 @@ struct bsos_wrap* bsos_wrap_find(struct bsos_wrap_head *head,
 	return NULL;
 }
 
+struct btkn_store *bq_get_cmp_store(struct bq_store *store)
+{
+	return store->cmp_store;
+}
+
 struct btkn_store *bq_get_tkn_store(struct bq_store *store)
 {
 	return store->tkn_store;
@@ -1422,6 +1427,21 @@ struct btkn_store *bq_get_tkn_store(struct bq_store *store)
 struct bptn_store *bq_get_ptn_store(struct bq_store *store)
 {
 	return store->ptn_store;
+}
+
+int bq_get_cmp(struct bq_store *store, int cmp_id, struct bdstr *out)
+{
+	int rc = 0;
+	const struct bstr *cmp = btkn_store_get_bstr(store->cmp_store,
+							cmp_id + BMAP_ID_BEGIN);
+	if (!cmp) {
+		rc = ENOENT;
+		goto out;
+	}
+	bdstr_reset(out);
+	rc = bdstr_append_printf(out, "%.*s", cmp->blen, cmp->cstr);
+out:
+	return rc;
 }
 
 int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out)
