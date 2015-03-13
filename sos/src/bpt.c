@@ -302,6 +302,14 @@ static int __find_glb(obj_idx_t idx, obj_key_t key, obj_ref_t *node_ref, int *en
 	}
 	*ent = leaf->count - 1;
  found:
+	if (*ent == -1) {
+		/* The glb is in the left leaf */
+		bpt_node_t left_leaf = leaf_left(t, leaf_ref);
+		if (!left_leaf)
+			return 0;
+		*node_ref = ods_obj_ptr_to_ref(t->ods, left_leaf);
+		*ent = left_leaf->count - 1;
+	}
 	return 1;
 }
 
