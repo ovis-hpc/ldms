@@ -569,17 +569,42 @@ void bhttpd_handle_query_destroy_session(struct bhttpd_req_ctxt *ctxt)
 	bhttpd_msg_query_session_destroy(qs);
 }
 
+static
+void bhttpd_handle_query_host(struct bhttpd_req_ctxt *ctxt)
+{
+	const struct bstr *bstr;
+	struct btkn_store *cmp_store = bq_get_cmp_store(bq_store);
+	int id = 1;
+	int first = 1;
+	evbuffer_add_printf(ctxt->evbuffer, "{ \"host_ids\": {");
+	while (1) {
+		bstr = btkn_store_get_bstr(cmp_store, id + BMAP_ID_BEGIN - 1);
+		if (!bstr)
+			break;
+		if (first)
+			first = 0;
+		else
+			evbuffer_add_printf(ctxt->evbuffer, ", ");
+		evbuffer_add_printf(ctxt->evbuffer, "\"%d\": \"%.*s\"",
+						id, bstr->blen, bstr->cstr);
+		id++;
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "}}");
+}
+
 struct bhttpd_handle_fn_entry {
 	const char *key;
+	const char *content_type;
 	void (*fn)(struct bhttpd_req_ctxt*);
 };
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{  "PTN",   bhttpd_handle_query_ptn   },
-	{  "MSG",   bhttpd_handle_query_msg   },
-	{  "META",  bhttpd_handle_query_meta  },
-	{  "IMG",   bhttpd_handle_query_img   },
-	{  "IMG2",  bhttpd_handle_query_img2  },
+	{  "PTN",   "application/json",          bhttpd_handle_query_ptn   },
+	{  "MSG",   "application/json",          bhttpd_handle_query_msg   },
+	{  "META",  "application/json",          bhttpd_handle_query_meta  },
+	{  "IMG",   "application/octet-stream",  bhttpd_handle_query_img   },
+	{  "IMG2",  "application/octet-stream",  bhttpd_handle_query_img2  },
+	{  "HOST",  "application/json",          bhttpd_handle_query_host  },
 };
 
 static
@@ -606,12 +631,8 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"bq_store_refresh() error, rc: %d", rc);
 		} else {
-			if (i != 3 || i != 4)
-				evhttp_add_header(ctxt->hdr, "content-type",
-							"application/json");
-			else
-				evhttp_add_header(ctxt->hdr, "content-type",
-						"application/octet-stream");
+			evhttp_add_header(ctxt->hdr, "content-type",
+					query_handle_entry[i].content_type);
 			query_handle_entry[i].fn(ctxt);
 		}
 		pthread_mutex_unlock(&query_session_mutex);
