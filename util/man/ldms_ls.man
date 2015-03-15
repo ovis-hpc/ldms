@@ -1,6 +1,6 @@
 .\" Manpage for ldms_ls
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "11 Sep 2014" "v2.2/RC1.2" "ldms_ls man page"
+.TH man 8 "14 Mar 2015" "v2.4" "ldms_ls man page"
 
 .SH NAME
 ldms_ls \- Query an ldmsd for metric set values
@@ -76,7 +76,7 @@ sock
 where XXX is the LDMS_DEFAULT_PORT.
 
 .SH NOTES
-LDMS is not supported on XC in this release.
+None.
 
 .SH BUGS
 No known bugs.

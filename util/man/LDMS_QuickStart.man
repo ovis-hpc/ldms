@@ -709,7 +709,7 @@ Tue Sep 24 08:42:42 2013: cq_thread_proc: Error 11  monitoring the CQ.
 .fi
 
 .SH NOTES
-LDMS is not supported on XC in this release.
+None.
 
 .SH BUGS
 No known bugs.

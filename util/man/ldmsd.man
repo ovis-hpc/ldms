@@ -133,10 +133,8 @@ Set the environment variables LDMS_UGNI_PTAG and LDMS_UGNI_COOKIE with the appro
 .PP
 Run ldmsd directly or as part of a script launched from aprun. In either case, Use aprun with the correct -p <ptag> when running.
 
-NOTE: LDMS is not supported on XC in this release.
-
 .SH NOTES
-LDMS is not supported on XC in this release.
+None.
 
 .SH BUGS
 No known bugs.
