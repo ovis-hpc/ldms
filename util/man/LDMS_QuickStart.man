@@ -30,7 +30,7 @@ sets can be collected at different frequencies. Once started, the aggregation sc
 be altered without restarting the aggregator. Fan-in refers to
 the number of hosts collected from by a single aggregator.
 Maximum fan-in varies by transport but is roughly
-9,000:1 for the socket transport and for the RDMA
+10,000:1 for the socket transport and for the RDMA
 transport over Infiniband. It is > 15000:1 for RDMA over
 the Cray Gemini transport. Daisy chaining  is not limited to two levels;
 multiple aggregators may aggregate from the same sampler or aggregator ldmsd.
@@ -103,12 +103,13 @@ export LDMSD_SOCKPATH=/tmp/run/ldmsd  #(non-root. Change -S arguments accordingl
 .RE
 .fi
 .PP
-A script can be made to start ldmsd and collectors on a host where that script contains the information to execute the command below. Sample are scripts included in your ~/ldms_scripts/ directory.
+A script can be made to start ldmsd and collectors on a host where that script contains the information to execute the command below. Sample scripts are included in your ~/ldms_scripts/ directory.
 .RE
 .SS Run ldmsd:
 .nf
 .RS
-<path to executable>/ldmsd -x <transport>:<listen port> -P <# worker threads to start> -S <unix domain socket path/name> -l <log file path/name>
+<path to executable>/ldmsd -x <transport>:<listen port> -P <# worker threads to start>
+	 -S <unix domain socket path/name> -l <log file path/name>
 .RE
 .fi
 .PP
@@ -202,7 +203,10 @@ Notes:
 .br
 * You can use stop name=meminfo followed by start name=meminfo interval=xxx to change collection intervals.
 .br
-* For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy). This will cause the sampler to target interval + yyy aligned to the second and micro second (e.g. every 5 seconds with an offset of 0 usec would ideally result in collections at 00:00:00, 00:00:05, 00:00:10, etc. whereas with an offset of 100,000 usec it would be 00:00:00.1, 00:00:05.1, 00:00:10.1, etc)
+* For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy). This will cause 
+the sampler to target interval + yyy aligned to the second and micro second (e.g. every 5 seconds with an offset of 0 usec would ideally
+result in collections at 00:00:00, 00:00:05, 00:00:10, etc. whereas with an offset of 100,000 usec it would be 00:00:00.1, 00:00:05.1,
+00:00:10.1, etc)
 .br
 * Different plugins may have additional configuration parameters. Use help within ldmsctl to see these.
 .br
@@ -319,10 +323,14 @@ Notes:
 .br
 * Sets must be specified on the "add host" line; you can add hosts with sets to an aggregator even if those sets are not yet present on the host.
 .br
-* There is currently no "remove" so if a host should be dropped from the list or have its parameters changed it requires stopping, restarting, and adding with appropriate parameters
+* There is currently no "remove" so if a host should be dropped from the list or have its parameters changed it requires stopping, restarting,
+and adding with appropriate parameters
 .br
 * There is no requirement that aggregator intervals match collection intervals
-* Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed samples. The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss in fidelity (if collecting counter data) or a loss of data points here and there (if collecting differences of counter values or non counter values). This can be handled using the synchronous option on both collector and aggregator but is not covered here.
+* Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed
+samples. The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss
+in fidelity (if collecting counter data) or a loss of data points here and there (if collecting differences of counter values or non counter
+values). This can be handled using the synchronous option on both collector and aggregator but is not covered here.
 .RE
 .fi
 
