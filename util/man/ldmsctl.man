@@ -267,8 +267,8 @@ ldmsctl>
 
 .PP
 .nf
-2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second. Note: interval=<# usec> e.g interval=1000000 defines a one second
-interval.
+2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second.
+Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
 ldmsctl> load name=meminfo
 ldmsctl> config name=meminfo component_id=1 set=vm1_1/meminfo
 ldmsctl> start name=meminfo interval=1000000
@@ -297,7 +297,8 @@ echo start name=vmstat interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_sock
 Make collect.sh executable
 chmod +x collect.sh
 
-Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes in parallel)
+Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes
+in parallel)
 ./collect.sh
 .fi
 
