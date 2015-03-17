@@ -52,6 +52,8 @@
 #include "butils.h"
 #include <stdlib.h>
 
+#include "fnv_hash.h"
+
 struct bset_u32* bset_u32_alloc(int hsize)
 {
 	struct bset_u32 *set = (typeof(set)) calloc(1, sizeof(*set));

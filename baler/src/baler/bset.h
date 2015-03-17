@@ -64,8 +64,6 @@
 #include <sys/types.h>
 #include <sys/queue.h>
 
-#include "fnv_hash.h"
-
 /** Default hash table size (it is a prime number). */
 #define BSET_DEFAULT_HSIZE 4999
 
