@@ -121,6 +121,14 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
+/* The max and min of standby aggregator counts */
+#define STANDBY_MAX 64
+#define STANDBY_MIN 1
+/* Verify if x is a valid standby number */
+#define VALID_STANDBY_NO(x) (x >= STANDBY_MIN && x <= STANDBY_MAX)
+/* Verify if x is a valid standby state. */
+#define VALID_STANDBY_STATE(x) (x == 0 || x == 1)
+
 /* YAML needs instance number to differentiate configuration for an instance
  * from other instances' configuration in the same configuration file
  */
@@ -143,6 +151,13 @@ char *logfile;
 char *sockname = NULL;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
+/*
+ * aggregator mask
+ * If the value of bit 'i' is 1,
+ * all added hosts with the standby aggregator no of 'i + 1'
+ * will be aggregated by this aggregator.
+ */
+unsigned long saggs_mask = 0;
 ldms_t ldms;
 FILE *log_fp;
 struct attr_value_list *av_list;
@@ -992,8 +1007,9 @@ struct hostset *hset_new();
 /*
  * Add a host
  */
-int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
-		char *interval_s, char *offset_s, char err_str[LEN_ERRSTR])
+int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port,
+				char *sets, char *interval_s, char *offset_s,
+				char *standby_no_s, char err_str[LEN_ERRSTR])
 {
 	int rc;
 	struct sockaddr_in sin;
@@ -1005,6 +1021,7 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
 	char *endptr;
 	int synchronous = 0;
 	long port_no = LDMS_DEFAULT_PORT;
+	unsigned long standby_no = 0;
 	err_str[0] = '\0';
 
 	host_type = str_to_host_type(type);
@@ -1032,6 +1049,49 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
 		}
 	}
 
+	if (interval_s) {
+		interval = strtoul(interval_s, &endptr, 0);
+		if (!endptr) {
+			snprintf(err_str, LEN_ERRSTR, "Interval '%s' invalid",
+								interval_s);
+			return EINVAL;
+		}
+	}
+
+	if (offset_s) {
+		offset = strtol(offset_s, &endptr, 0);
+		if (!endptr) {
+			snprintf(err_str, LEN_ERRSTR, "Interval '%s' invalid",
+								interval_s);
+			return EINVAL;
+		}
+		if ( !((interval >= 10) && (interval >= labs(offset)*2)) ){
+			snprintf(err_str, LEN_ERRSTR,
+				"Parameters interval and offset are incompatible.");
+			return EINVAL;
+		}
+		synchronous = 1;
+	}
+
+	if (standby_no_s) {
+		standby_no = strtoul(standby_no_s, &endptr, 0);
+		if (!endptr) {
+			snprintf(err_str, LEN_ERRSTR,
+					"Parameter for standby '%s' "
+					"is invalid.", standby_no_s);
+			return EINVAL;
+		}
+		if (!VALID_STANDBY_NO(standby_no)) {
+			snprintf(err_str, LEN_ERRSTR,
+					"Parameter for standby needs to be "
+					"between %d and %d inclusive.",
+					STANDBY_MIN, STANDBY_MAX);
+			return EINVAL;
+		} else {
+			standby_no |= 1 << (standby_no - 1);
+		}
+	}
+
 	hs = calloc(1, sizeof(*hs));
 	if (!hs)
 		goto enomem;
@@ -1045,27 +1105,6 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
 			"The host '%s' could not be resolved "
 			"due to error %d.\n", hs->hostname, rc);
 		goto err;
-	}
-
-	if (interval_s) {
-		interval = strtoul(interval_s, &endptr, 0);
-		if (!endptr) {
-			snprintf(err_str, LEN_ERRSTR, "Interval '%s' invalid",
-								interval_s);
-			goto err;
-		}
-	}
-
-
-	if (offset_s) {
-		offset = strtol(offset_s, NULL, 0);
-		if ( !((interval >= 10) && (interval >= labs(offset)*2)) ){
-			snprintf(err_str, LEN_ERRSTR,
-				"Parameters interval and offset are incompatible.");
-			rc = EINVAL;
-			goto err;
-		}
-		synchronous = 1;
 	}
 
 	if (port)
@@ -1086,6 +1125,7 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port, char *sets,
 	hs->sample_interval = interval;
 	hs->sample_offset = offset;
 	hs->synchronous = synchronous;
+	hs->standby = standby_no;
 	hs->connect_interval = 20000000; /* twenty seconds */
 	hs->conn_state = HOST_DISCONNECTED;
 	pthread_mutex_init(&hs->set_list_lock, 0);
@@ -1605,7 +1645,7 @@ int process_add_host(int fd,
 		     struct sockaddr *sa, ssize_t sa_len,
 		     char *command)
 {
-	char *host, *type, *xprt, *port, *sets, *interval_s, *offset_s;
+	char *host, *type, *xprt, *port, *sets, *interval_s, *offset_s, *agg_no;
 	char err_str[LEN_ERRSTR];
 	char *attr;
 
@@ -1624,9 +1664,10 @@ int process_add_host(int fd,
 	offset_s = av_value(av_list, "offset");
 	port = av_value(av_list, "port");
 	xprt = av_value(av_list, "xprt");
+	agg_no = av_value(av_list, "standby");
 
 	int rc = ldmsd_add_host(host, type, xprt, port, sets,
-				interval_s, offset_s, err_str);
+				interval_s, offset_s, agg_no, err_str);
 
 	sprintf(replybuf, "%d%s", -rc, err_str);
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
@@ -1634,6 +1675,50 @@ int process_add_host(int fd,
 einval:
 	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
+int process_update_standby(int fd,
+				struct sockaddr *sa, ssize_t sa_len,
+				char *command)
+{
+	char *attr, *value;
+	int agg_no;
+	int active;
+
+	attr = "agg_no";
+	value = av_value(av_list, attr);
+	if (!value)
+		goto enoent;
+
+	agg_no = atoi(value);
+	if (!VALID_STANDBY_NO(agg_no))
+		goto einval;
+
+	attr = "state";
+	value = av_value(av_list, attr);
+	if (!value)
+		goto enoent;
+	active = atoi(value);
+	if (!VALID_STANDBY_STATE(active))
+		goto einval;
+
+	if (active == 1)
+		saggs_mask |= 1 << (agg_no - 1);
+	else
+		saggs_mask &= ~(1 << (agg_no -1));
+
+	sprintf(replybuf, "0");
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
+	return 0;
+einval:
+	sprintf(replybuf, "%dThe value '%s' for '%s' is invalid.",
+						-EINVAL, value, attr);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
+	return 0;
+enoent:
+	sprintf(replybuf, "%dThe attribute '%s' is required.", -EINVAL, attr);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
 	return 0;
 }
 
@@ -1718,8 +1803,10 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_REM_HOST] = process_remove_host,
 	[LDMSCTL_STORE] = process_store,
 	[LDMSCTL_INFO_DAEMON] = process_info,
-	[LDMSCTL_EXIT_DAEMON] = process_exit,
 	[LDMSCTL_SET_UDATA] = process_set_udata,
+	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
+	[LDMSCTL_EXIT_DAEMON] = process_exit,
+
 };
 
 int process_record(int fd,
@@ -2308,7 +2395,8 @@ void do_host(struct hostspec *hs)
 		break;
 	case HOST_CONNECTED:
 		if (hs->type != BRIDGING)
-			update_data(hs);
+			if ((hs->standby == 0) || (hs->standby & saggs_mask))
+				update_data(hs);
 		break;
 	case HOST_CONNECTING:
 		/* do nothing */

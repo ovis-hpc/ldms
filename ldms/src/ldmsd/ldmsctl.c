@@ -130,6 +130,7 @@ int handle_help(char *kw, char *err_str)
 	       "add host=<host> type=<type> sets=<set names>\n"
 	       "                [ interval=<interval> ] [ offset=<offset>]\n"
 	       "                [ xprt=<xprt> ] [ port=<port> ]\n"
+	       "                [ standby=<agg_no> ]\n"
 	       "   - Adds a host to the list of hosts monitored by this ldmsd.\n"
 	       "     <host>       The hostname. This can be an IP address or DNS\n"
 	       "                  hostname.\n"
@@ -156,19 +157,27 @@ int handle_help(char *kw, char *err_str)
 	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
 	       "         ugni     The Cray Gemini transport.\n"
 	       "     <port>       The port number to connect on, defaults to 50000.\n"
+	       "     <agg_no>     The number of the aggregator that this is standby for.\n"
+	       "                  Defaults to 0 which means this is an active aggregator.\n"
 	       "\n"
 	       "store name=<plugin> policy=<policy> container=<container> schema=<schema>\n"
 	       "      [hosts=<hosts>] [metric=<metric>,<metric>,...]\n"
 	       "   - Saves a metrics from one or more hosts to persistent storage.\n"
-	       "      <policy>      The storage policy name. This must be unique."
-               "      <container>   The container name used by the plugin to name data."
-	       "      <schema>      A name used to name the set of metrics stored together."
-	       "      <metrics>     A comma separated list of metric names. If not specified,"
-	       "                    all metrics in the metric set will be saved. "
-	       "      <hosts>       The set of hosts whose data will be stored. If hosts is not"
-	       "                    specified, the metric set will be saved for all hosts. If"
-	       "                    specified, the value should be a comma separated list of"
-	       "                    host names."
+	       "      <policy>      The storage policy name. This must be unique.\n"
+               "      <container>   The container name used by the plugin to name data.\n"
+	       "      <schema>      A name used to name the set of metrics stored together.\n"
+	       "      <metrics>     A comma separated list of metric names. If not specified,\n"
+	       "                    all metrics in the metric set will be saved.\n"
+	       "      <hosts>       The set of hosts whose data will be stored. If hosts is not\n"
+	       "                    specified, the metric set will be saved for all hosts. If\n"
+	       "                    specified, the value should be a comma separated list of\n"
+	       "                    host names.\n"
+	       "\n"
+	       "standby agg_no=<agg_no> state=<0/1>\n"
+	       "   - ldmsd will update the standby state (standby/active) of\n"
+	       "     the given aggregator number.\n"
+	       "    <agg_no>    Unique integer id for an aggregator from 1 to 64\n"
+	       "    <state>     0/1 - standby/active\n"
 	       "\n"
 	       "info\n"
 	       "   - Causes the ldmsd to dump out information about plugins,\n"
@@ -230,6 +239,11 @@ int handle_host_add(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_ADD_HOST, av_list, err_str);
 }
 
+int handle_update_standby(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_UPDATE_STANDBY, av_list, err_str);
+}
+
 int handle_store(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_STORE, av_list, err_str);
@@ -260,6 +274,7 @@ struct kw keyword_tbl[] = {
 	{ "info", handle_info },
 	{ "load", handle_plugin_load },
 	{ "quit", handle_quit },
+	{ "standby", handle_update_standby },
 	{ "start", handle_sampler_start },
 	{ "stop", handle_sampler_stop },
 	{ "store", handle_store },
