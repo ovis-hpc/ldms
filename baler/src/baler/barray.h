@@ -148,7 +148,7 @@ void barray_free(struct barray *a)
  * 	mean that the element has been set before).
  */
 static
-void* barray_get(struct barray *a, uint32_t idx, void *var)
+const void* barray_get(struct barray *a, uint32_t idx, void *var)
 {
 	uint32_t chunk = idx >> BARRAY_CHUNK_BITS;
 	if (chunk >= a->ptr_len || !a->ptr[chunk])
