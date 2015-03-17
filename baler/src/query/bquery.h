@@ -408,6 +408,20 @@ uint32_t bq_img_entry_get_count(struct bimgquery *q);
 int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p);
 
 int bq_store_refresh(struct bq_store *store);
+
+/**
+ * \brief Iterate through available image store.
+ * The callback function will be called for each available baler image store.
+ *
+ * \param store The ::bq_store handle.
+ * \param cb The call-back function.
+ * \param ctxt The context to supply to \c cb function.
+ *
+ * \retval 0 If no error.
+ * \retval errno if error.
+ */
+int bq_imgstore_iterate(struct bq_store *store,
+		void (*cb)(const char *imgstore_name, void *ctxt), void *ctxt);
 #endif
 
 /** \} */

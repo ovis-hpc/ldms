@@ -138,7 +138,7 @@ struct bimgquery {
 };
 
 struct bq_store {
-	char *path;
+	char path[PATH_MAX];
 	struct bptn_store *ptn_store;
 	struct btkn_store *tkn_store;
 	struct btkn_store *cmp_store;

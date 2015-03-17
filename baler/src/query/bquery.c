@@ -85,6 +85,8 @@
 #include "bquery_priv.h"
 #include <getopt.h>
 #include <errno.h>
+#include <wordexp.h>
+#include <ctype.h>
 
 #include <time.h>
 #include <dirent.h>
@@ -263,6 +265,23 @@ void bsos_wrap_close_free(struct bsos_wrap *bsw)
 	free(bsw);
 }
 
+void bq_store_close_free(struct bq_store *store)
+{
+	if (store->cmp_store) {
+		btkn_store_close_free(store->cmp_store);
+	}
+
+	if (store->tkn_store) {
+		btkn_store_close_free(store->tkn_store);
+	}
+
+	if (store->ptn_store) {
+		bptn_store_close_free(store->ptn_store);
+	}
+
+	free(store);
+}
+
 /**
  * Open baler store.
  *
@@ -281,59 +300,53 @@ struct bq_store* bq_open_store(const char *path)
 	struct bq_store *s = calloc(1, sizeof(*s));
 	if (!s)
 		return NULL;
-	s->path = strdup(path);
-	char spath[PATH_MAX];
 	struct stat st;
 	int rc;
 
 	/* comp_store */
-	sprintf(spath, "%s/comp_store", path);
-	rc = stat(spath, &st);
+	snprintf(s->path, sizeof(s->path), "%s/comp_store", path);
+	rc = stat(s->path, &st);
 	if (rc || !S_ISDIR(st.st_mode)) {
 		berr("Invalid store '%s': comp_store subdirectory does"
 				" not exist", path);
-		goto err0;
+		goto err;
 	}
-	s->cmp_store = btkn_store_open(spath, O_CREAT|O_RDONLY);
+	s->cmp_store = btkn_store_open(s->path, O_CREAT|O_RDONLY);
 	if (!s->cmp_store)
-		goto err0;
+		goto err;
 
 	/* tkn_store */
-	sprintf(spath, "%s/tkn_store", path);
-	rc = stat(spath, &st);
+	snprintf(s->path, sizeof(s->path), "%s/tkn_store", path);
+	rc = stat(s->path, &st);
 	if (rc || !S_ISDIR(st.st_mode)) {
 		berr("Invalid store '%s': tkn_store subdirectory does"
 				" not exist", path);
-		goto err1;
+		goto err;
 	}
-	s->tkn_store = btkn_store_open(spath, O_CREAT|O_RDONLY);
+	s->tkn_store = btkn_store_open(s->path, O_CREAT|O_RDONLY);
 	if (!s->tkn_store)
-		goto err1;
+		goto err;
 
 	/* ptn_store */
-	sprintf(spath, "%s/ptn_store", path);
-	rc = stat(spath, &st);
+	snprintf(s->path, sizeof(s->path), "%s/ptn_store", path);
+	rc = stat(s->path, &st);
 	if (rc || !S_ISDIR(st.st_mode)) {
 		berr("Invalid store '%s': ptn_store subdirectory does"
 				" not exist", path);
-		goto err2;
+		goto err;
 	}
-	s->ptn_store = bptn_store_open(spath, O_RDONLY);
+	s->ptn_store = bptn_store_open(s->path, O_RDONLY);
 	if (!s->ptn_store)
-		goto err2;
+		goto err;
+
+	snprintf(s->path, sizeof(s->path), "%s", path);
 
 	/* msg_store and img_store will be opened at query time */
-
-out:
 	return s;
 
-err2:
-	btkn_store_close_free(s->tkn_store);
-err1:
-	btkn_store_close_free(s->cmp_store);
-err0:
-	berr("Cannot open %s", spath);
-	free(s);
+err:
+	bq_store_close_free(s);
+	berr("Cannot open %s", s->path);
 	return NULL;
 }
 
@@ -1498,6 +1511,47 @@ int bq_store_refresh(struct bq_store *store)
 	return 0;
 }
 
+int bq_imgstore_iterate(struct bq_store *store, void (*cb)(const char *imgstore_name, void *ctxt), void *ctxt)
+{
+	int rc = 0;
+	int len = 0;
+	int sz;
+	int i;
+	wordexp_t wexp = {0};
+	len = strlen(store->path);
+	sz = sizeof(store->path) - len;
+	snprintf(store->path + len, sz, "/img_store/*_sos.PG");
+	rc = wordexp(store->path, &wexp, 0);
+	if (rc) {
+		berr("wordexp() error, rc: %d (%s:%d)", rc, __FILE__, __LINE__);
+		goto out;
+	}
+
+	for (i = 0; i < wexp.we_wordc; i++) {
+		const char *name = strrchr(wexp.we_wordv[i], '/') + 1;
+		char *term = strrchr(name, '_');
+		const char *dot;
+		*term = 0;
+		/* check format */
+		sscanf(name, "%*d-%*d%n", &sz);
+		if (sz != strlen(name))
+			goto next;
+		cb(name, ctxt);
+	next:
+		/* recover */
+		*term = '_';
+	}
+
+out:
+	/* recover path */
+	if (len)
+		store->path[len] = 0;
+	/* destroy wordexp */
+	if (wexp.we_wordv)
+		wordfree(&wexp);
+	return rc;
+}
+
 #ifdef BIN
 
 enum BQ_TYPE {
@@ -1877,4 +1931,3 @@ int main(int argc, char **argv)
 	return 0;
 }
 #endif /*BIN*/
-
