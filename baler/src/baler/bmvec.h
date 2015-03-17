@@ -76,7 +76,7 @@
  * \brief Baler Memory-mapped Vector increment size.
  * This value is used in bvec appending.
  */
-#define BMVEC_INC 1024
+#define BMVEC_INC 128*1024
 
 /**
  * A macro for defining a new bmvec type.
