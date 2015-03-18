@@ -730,6 +730,7 @@ int ldmsd_term_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 		snprintf(err_str, LEN_ERRSTR, "The specified plugin has "
 				"active users and cannot be terminated.");
 		rc = EINVAL;
+		pthread_mutex_unlock(&pi->lock);
 		goto out;
 	}
 	pi->plugin->term();
