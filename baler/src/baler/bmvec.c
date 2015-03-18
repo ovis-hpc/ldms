@@ -51,7 +51,7 @@
 
 #include "bmvec.h"
 
-struct bmvec_u64* bmvec_u64_open(char *path)
+struct bmvec_u64* bmvec_u64_open(const char *path)
 {
 	struct bmvec_u64 *vec = (typeof(vec)) malloc(sizeof(*vec));
 	if (!vec) {
@@ -74,7 +74,7 @@ err0:
 	return NULL;
 }
 
-void* bmvec_generic_open(char *path)
+void* bmvec_generic_open(const char *path)
 {
 	struct bmvec_char *vec = (typeof(vec)) malloc(sizeof(*vec));
 	if (!vec) {

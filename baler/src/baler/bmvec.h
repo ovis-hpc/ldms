@@ -256,7 +256,7 @@ int bmvec_generic_append(struct bmvec_char *vec, void *elm, uint32_t elm_size)
  * \return A pointer to ::bmvec_u64, if success.
  * \return NULL, if not success.
  */
-struct bmvec_u64* bmvec_u64_open(char *path);
+struct bmvec_u64* bmvec_u64_open(const char *path);
 
 /**
  * Open \a path and map into ::bmvec_char structure, which can later be
@@ -264,7 +264,7 @@ struct bmvec_u64* bmvec_u64_open(char *path);
  * \return NULL on error.
  * \return A void pointer to ::bmvec_char structure (can be cast to any bmvec*).
  */
-void* bmvec_generic_open(char *path);
+void* bmvec_generic_open(const char *path);
 
 /**
  * Initialize \a vec.
