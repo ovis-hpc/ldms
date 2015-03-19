@@ -979,6 +979,8 @@ int str_to_host_type(char *type)
 		return PASSIVE;
 	if (0 == strcmp(type, "bridging"))
 		return BRIDGING;
+	if (0 == strcmp(type, "local"))
+		return LOCAL;
 	return -1;
 }
 
@@ -1099,35 +1101,41 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port,
 	if (!hs->hostname)
 		goto enomem;
 
-	rc = resolve(hs->hostname, &sin);
-	if (rc) {
-		snprintf(err_str, LEN_ERRSTR,
-			"The host '%s' could not be resolved "
-			"due to error %d.\n", hs->hostname, rc);
-		goto err;
+	if (host_type != LOCAL) {
+		rc = resolve(hs->hostname, &sin);
+		if (rc) {
+			snprintf(err_str, LEN_ERRSTR,
+				"The host '%s' could not be resolved "
+				"due to error %d.\n", hs->hostname, rc);
+			goto err;
+		}
+		if (port)
+			port_no = strtol(port, NULL, 0);
+		sin.sin_port = port_no;
+
+		if (xprt_s)
+			xprt = strdup(xprt_s);
+		else
+			xprt = strdup("sock");
+		if (!xprt)
+			goto enomem;
+
+		sin.sin_port = htons(port_no);
+		hs->sin = sin;
+		hs->xprt_name = xprt;
+		hs->conn_state = HOST_DISCONNECTED;
+	} else {
+		/* local host always connected */
+		hs->conn_state = HOST_CONNECTED;
 	}
 
-	if (port)
-		port_no = strtol(port, NULL, 0);
-	sin.sin_port = port_no;
-
-	if (xprt_s)
-		xprt = strdup(xprt_s);
-	else
-		xprt = strdup("sock");
-	if (!xprt)
-		goto enomem;
-
-	sin.sin_port = htons(port_no);
 	hs->type = host_type;
-	hs->sin = sin;
-	hs->xprt_name = xprt;
 	hs->sample_interval = interval;
 	hs->sample_offset = offset;
 	hs->synchronous = synchronous;
 	hs->standby = standby_no;
 	hs->connect_interval = 20000000; /* twenty seconds */
-	hs->conn_state = HOST_DISCONNECTED;
+
 	pthread_mutex_init(&hs->set_list_lock, 0);
 	pthread_mutex_init(&hs->conn_state_lock, NULL);
 
@@ -2296,13 +2304,47 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	hset_ref_put(hset);
 }
 
+int do_lookup(struct hostspec *hs, struct hostset *hset)
+{
+	if (hs->type != LOCAL)
+		return ldms_lookup(hs->x, hset->name, lookup_cb, hset);
+
+	/* local host */
+	int status = LDMS_LOOKUP_OK;
+	ldms_set_t set = ldms_get_set(hset->name);
+	if (!set)
+		status = LDMS_LOOKUP_ERROR;
+	pthread_mutex_unlock(&hset->state_lock);
+	lookup_cb(NULL, status, set, hset);
+	/* To match the unlock() in update_data */
+	pthread_mutex_lock(&hset->state_lock);
+	return 0;
+}
+
+int do_update(struct hostspec *hs, struct hostset *hset)
+{
+	if (hs->type != LOCAL)
+		return ldms_update(hset->set, update_complete_cb, hset);
+
+	/* local host */
+	int status = 0;
+	hset->set = ldms_get_set(hset->name);
+	if (!hset->set)
+		status = ENOENT;
+	pthread_mutex_unlock(&hset->state_lock);
+	update_complete_cb(NULL, hset->set, status, hset);
+	/* To match the unlock() in update_data */
+	pthread_mutex_lock(&hset->state_lock);
+	return 0;
+}
+
 void update_data(struct hostspec *hs)
 {
 	int ret;
 	struct hostset *hset;
 	int host_error = 0;
 
-	if (!hs->x)
+	if ((hs->type != LOCAL) && !hs->x)
 		return;
 
 	/* Take the host lock to protect the set_list */
@@ -2314,7 +2356,7 @@ void update_data(struct hostspec *hs)
 			hset->state = LDMSD_SET_LOOKUP;
 			/* Get a lookup reference */
 			hset_ref_get(hset);
-			ret = ldms_lookup(hs->x, hset->name, lookup_cb, hset);
+			ret = do_lookup(hs, hset);
 			if (ret) {
 				hset->state = LDMSD_SET_CONFIGURED;
 				ldms_xprt_close(hs->x);
@@ -2333,7 +2375,7 @@ void update_data(struct hostspec *hs)
 			}
 			/* Get reference for update */
 			hset_ref_get(hset);
-			ret = ldms_update(hset->set, update_complete_cb, hset);
+			ret = do_update(hs, hset);
 			if (ret) {
 				hset->state = LDMSD_SET_READY;
 				ldms_xprt_close(hs->x);

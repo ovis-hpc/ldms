@@ -118,7 +118,7 @@ struct hostspec
 	} conn_state;
 	pthread_mutex_t conn_state_lock;
 	enum {
-		ACTIVE, PASSIVE, BRIDGING
+		ACTIVE, PASSIVE, BRIDGING, LOCAL
 	} type;
 	int thread_id;
 	struct event *event;
