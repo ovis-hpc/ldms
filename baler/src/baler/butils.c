@@ -63,6 +63,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 FILE *blog_file;
 pthread_mutex_t __blog_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -502,4 +503,70 @@ out:
 	return rc;
 }
 
+int bprocess_file_by_line(const char *path, bprocess_file_by_line_cb_t cb,
+								void *ctxt)
+{
+	int rc = 0;
+	FILE *fin = NULL;
+	char *buff = NULL;
+	size_t sz = 4096;
+
+	fin = fopen(path, "r");
+	if (!fin) {
+		bwarn("Cannot open file: %s", path);
+		rc = errno;
+		goto out;
+	}
+
+	buff = malloc(sz);
+	if (!buff) {
+		rc = errno;
+		goto out;
+	}
+
+	while (fgets(buff, sz, fin)) {
+		rc = cb(buff, ctxt);
+		if (rc)
+			goto out;
+	}
+
+out:
+	if (fin)
+		fclose(fin);
+	if (buff)
+		free(buff);
+	return rc;
+}
+
+struct __ctxt {
+	bprocess_file_by_line_cb_t cb;
+	void *ctxt;
+};
+
+static
+int __bprocess_file_by_line_w_comment_cb(char *line, void *ctxt)
+{
+	struct __ctxt *c = ctxt;
+	char *s = strchr(line, '#');
+	if (s) {
+		*s = 0;
+	}
+	if (s == line)
+		return 0;
+	s = line + strlen(line) - 1;
+	while (s >= line && isspace(*s)) {
+		*s = 0;
+		s--;
+	}
+	if (s < line)
+		return 0;
+	return c->cb(line, c->ctxt);
+}
+
+int bprocess_file_by_line_w_comment(const char *path,
+				bprocess_file_by_line_cb_t cb, void *ctxt)
+{
+	struct __ctxt c = {.cb = cb, .ctxt = ctxt};
+	return bprocess_file_by_line(path, __bprocess_file_by_line_w_comment_cb, &c);
+}
 /* END OF FILE */

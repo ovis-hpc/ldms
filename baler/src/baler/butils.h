@@ -275,5 +275,47 @@ int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
  */
 int bparse_http_query(const char *query, struct bpair_str_head *head);
 
+/**** Line-by-line file processing ****/
+
+/**
+ * This is a call-back interface for bprocess_file_by_line() function.  The
+ * call-back function can return 0 for no error. bprocess_file_by_line() will
+ * continue processing the file, line-by-line, until EOF.  Other return values
+ * will be treated as an error, and the process_file_by_line() function will
+ * stop processing file and return with the received return code.
+ *
+ * The \c line is owned by bprocess_file_by_line(). The callback function may
+ * change it, but the change will be discarded after the callback function
+ * returned.
+ *
+ * \param line The read line from the file.
+ * \param ctxt The context provided at the process_file_by_line() function call.
+ *
+ * \retval 0 will be treat as no error.
+ * \retval other will be treat as error, and the process_file_by_line() will
+ *               stop processing.
+ */
+typedef int (*bprocess_file_by_line_cb_t)(char *line, void *ctxt);
+
+/**
+ * Process the given \c file, line-by-line with \c cb function.
+ *
+ * \warning The supported line length is 4095 (including '\n').
+ *
+ * \param path The path to the file.
+ * \param ctxt The context to pass on to \c cb function.
+ * \param cb The callback function, which will be called to process each line of
+ *           the input.
+ */
+int bprocess_file_by_line(const char *path, bprocess_file_by_line_cb_t cb,
+								void *ctxt);
+
+/**
+ * The same as bprocess_file_by_line(), but with a pre-process of removing '#'
+ * comment style lines.
+ */
+int bprocess_file_by_line_w_comment(const char *path,
+				bprocess_file_by_line_cb_t cb, void *ctxt);
+
 #endif // _BUTILS_H
 /**\}*/
