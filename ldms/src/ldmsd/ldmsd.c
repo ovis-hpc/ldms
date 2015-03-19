@@ -1370,11 +1370,16 @@ int update_hsets_with_policy(struct ldmsd_store_policy *sp)
 	LIST_FOREACH(hs, &host_list, link) {
 		struct hostset *hset;
 		LIST_FOREACH(hset, &hs->set_list, entry) {
-			rc = apply_store_policy(hset, sp);
-			if (rc)
-				ldms_log("The storage policy %s could not be applied "
-					 "to hostset %s:%s\n",
-					 hs->hostname, hset->name);
+			pthread_mutex_lock(&hset->state_lock);
+			if (hset->state == LDMSD_SET_READY) {
+				rc = apply_store_policy(hset, sp);
+				if (rc)
+					ldms_log("The storage policy %s could "
+						"not be applied to hostset "
+						"%s:%s\n", sp->name,
+						hs->hostname, hset->name);
+			}
+			pthread_mutex_unlock(&hset->state_lock);
 		}
 	}
 	pthread_mutex_unlock(&host_list_lock);
