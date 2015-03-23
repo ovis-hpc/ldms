@@ -209,6 +209,14 @@ int bdstr_append(struct bdstr *bs, const char *str);
 int bdstr_append_bstr(struct bdstr *bdstr, const struct bstr *bstr);
 
 /**
+ * Append content pointed by \c mem, for \c len bytes, to \c bdstr.
+ *
+ * \retval 0 if no error.
+ * \retval errno if error.
+ */
+int bdstr_append_mem(struct bdstr *bdstr, void *mem, size_t len);
+
+/**
  * Same as ::bdstr_append(), but with printf() format.
  */
 int bdstr_append_printf(struct bdstr *bdstr, const char *fmt, ...);

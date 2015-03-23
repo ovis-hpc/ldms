@@ -280,6 +280,21 @@ out:
 	return rc;
 }
 
+int bdstr_append_mem(struct bdstr *bdstr, void *mem, size_t len)
+{
+	int rc;
+	if (bdstr->str_len + len + 1 > bdstr->alloc_len) {
+		int exp_len = (len | 0xFFF) + 1;
+		rc = bdstr_expand(bdstr, bdstr->alloc_len + exp_len);
+		if (rc)
+			return rc;
+	}
+	memcpy(bdstr->str + bdstr->str_len, mem, len);
+	bdstr->str_len += len;
+	bdstr->str[bdstr->str_len] = 0;
+	return 0;
+}
+
 char *bdstr_detach_buffer(struct bdstr *bdstr)
 {
 	char *str = bdstr->str;
