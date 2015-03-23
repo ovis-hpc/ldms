@@ -113,7 +113,7 @@ struct bptn_store* bptn_store_open(const char *path, int flag)
 			errno = ENOENT;
 			goto err0;
 		}
-		if (bmkdir_p(path, 0755) == -1)
+		if (bmkdir_p(path, 0755) != 0)
 			goto err0;
 	}
 	if (!bis_dir(path)) {

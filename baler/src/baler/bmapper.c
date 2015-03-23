@@ -118,7 +118,7 @@ struct bmap* bmap_open(const char *path)
 	pthread_mutex_init(&b->mutex, NULL);
 
 	if (!bfile_exists(path)) {
-		if (bmkdir_p(path, 0755) == -1) {
+		if (bmkdir_p(path, 0755) != 0) {
 			_errno = errno;
 			goto err0;
 		}

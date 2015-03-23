@@ -71,7 +71,7 @@ struct btkn_store* btkn_store_open(char *path, int flag)
 			errno = ENOENT;
 			goto err0;
 		}
-		if (bmkdir_p(path, 0755) == -1) {
+		if (bmkdir_p(path, 0755) != 0) {
 			goto err0;
 		}
 	}

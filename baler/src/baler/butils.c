@@ -170,6 +170,7 @@ int bmkdir_p(const char *path, __mode_t mode)
 {
 	static char str[PATH_MAX];
 	static char *_str;
+	int rc = 0;
 	strcpy(str, path);
 	_str = str;
 	int len = strlen(str);
@@ -192,7 +193,10 @@ int bmkdir_p(const char *path, __mode_t mode)
 		*_str = '/';
 		_str++;
 	}
-	return mkdir(str, 0755);
+	rc = mkdir(str, 0755);
+	if (rc)
+		rc = errno;
+	return rc;
 }
 
 struct bdstr* bdstr_new(size_t len)
