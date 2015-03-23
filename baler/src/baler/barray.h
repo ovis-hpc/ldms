@@ -202,5 +202,11 @@ size_t barray_get_len(struct barray *a)
 	return a->len;
 }
 
+static inline
+int barray_append(struct barray *a, void *data)
+{
+	return barray_set(a, barray_get_len(a), data);
+}
+
 #endif
 /**\}*/
