@@ -14,10 +14,6 @@ ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ \
 		-levent -lpthread -levent_pthreads -lovis_util -lcoll -ldl
 ldmsd_CFLAGS = $(AM_CFLAGS) @EVENTINC@
-if ENABLE_YAML
-ldmsd_LDFLAGS += -lyaml
-ldmsd_CFLAGS += -DENABLE_YAML
-endif
 
 if ENABLE_OCM
 ldmsd_SOURCES += ldmsd_ocm.c
