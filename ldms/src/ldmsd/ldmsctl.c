@@ -183,6 +183,13 @@ int handle_help(char *kw, char *err_str)
 	       "    <agg_no>    Unique integer id for an aggregator from 1 to 64\n"
 	       "    <state>     0/1 - standby/active\n"
 	       "\n"
+	       "oneshot name=<name> time=<time>\n"
+	       "   - Schedule a one-shot sample event\n"
+	       "     <name>       The sampler name.\n"
+	       "     <time>       A Unix timestamp or a special keyword 'now+<second>'\n"
+	       "                  The sample will occur at the specified timestamp or at\n"
+	       "                  the <second> from now.\n"
+	       "\n"
 	       "info\n"
 	       "   - Causes the ldmsd to dump out information about plugins,\n"
 	       "     work queue utilization, hosts and object stores.\n"
@@ -211,6 +218,11 @@ int handle_usage(char *kw, char *err_str)
 int handle_plugin_load(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_LOAD_PLUGIN, av_list, err_str);
+}
+
+int handle_oneshot_sample(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_ONESHOT_SAMPLE, av_list, err_str);
 }
 
 int handle_plugin_term(char *kw, char *err_str)
@@ -277,6 +289,7 @@ struct kw keyword_tbl[] = {
 	{ "help", handle_help },
 	{ "info", handle_info },
 	{ "load", handle_plugin_load },
+	{ "oneshot", handle_oneshot_sample },
 	{ "quit", handle_quit },
 	{ "standby", handle_update_standby },
 	{ "start", handle_sampler_start },

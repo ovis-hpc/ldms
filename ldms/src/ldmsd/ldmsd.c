@@ -72,6 +72,7 @@
 #include <dlfcn.h>
 #include <assert.h>
 #include <libgen.h>
+#include <time.h>
 #include <event2/thread.h>
 #include <coll/rbt.h>
 #include <coll/str_map.h>
@@ -907,6 +908,103 @@ out:
 	return rc;
 }
 
+struct oneshot {
+	struct plugin *pi;
+	struct event *event;
+};
+
+void oneshot_sample_cb(int fd, short sig, void *arg)
+{
+	struct timeval tv;
+	struct oneshot *os = arg;
+	struct plugin *pi = os->pi;
+	pthread_mutex_lock(&pi->lock);
+	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
+	pi->sampler->sample();
+	pi->ref_count--;
+	evtimer_del(os->event);
+	free(os);
+	release_ev_base(pi->thread_id);
+	pthread_mutex_unlock(&pi->lock);
+}
+
+int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
+{
+	char *attr, *endptr;
+	int rc = 0;
+	struct plugin *pi;
+	err_str[0] = '\0';
+	time_t now, sched;
+	struct timeval tv;
+
+	if (0 == strncmp(ts, "now", 3)) {
+		ts = ts + 4;
+		tv.tv_sec = strtoul(ts, NULL, 10);
+	} else {
+		sched = strtoul(ts, NULL, 10);
+		now = time(NULL);
+		if (now < 0) {
+			snprintf(err_str, LEN_ERRSTR, "Failed to get "
+						"the current time.");
+			rc = errno;
+			return rc;
+		}
+		double diff = difftime(sched, now);
+		if (diff < 0) {
+			snprintf(err_str, LEN_ERRSTR, "The schedule time '%s' "
+					"is ahead of the current time %ul.",
+								ts, now);
+			rc = EINVAL;
+			return rc;
+		}
+		tv.tv_sec = diff;
+	}
+	tv.tv_usec = 0;
+
+	struct oneshot *ossample = malloc(sizeof(ossample));
+	if (!ossample) {
+		snprintf(err_str, LEN_ERRSTR, "Out of Memory");
+		rc = ENOMEM;
+		return rc;
+	}
+
+	pi = get_plugin((char *)plugin_name);
+	if (!pi) {
+		rc = ENOENT;
+		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
+		free(ossample);
+		return rc;
+	}
+	pthread_mutex_lock(&pi->lock);
+	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
+		rc = EINVAL;
+		snprintf(err_str, LEN_ERRSTR,
+				"The specified plugin is not a sampler.");
+		goto err;
+	}
+	pi->ref_count++;
+	ossample->pi = pi;
+	if (pi->thread_id < 0) {
+		snprintf(err_str, LEN_ERRSTR, "Sampler '%s' not started yet.",
+								plugin_name);
+		rc = EPERM;
+		goto err;
+	}
+	ossample->event = evtimer_new(get_ev_base(pi->thread_id),
+						oneshot_sample_cb, ossample);
+
+	rc = evtimer_add(ossample->event, &tv);
+	if (rc)
+		goto err;
+	goto out;
+err:
+	free(ossample);
+out:
+	pthread_mutex_unlock(&pi->lock);
+	return rc;
+
+}
+
 /*
  * Stop the sampler
  */
@@ -1615,6 +1713,35 @@ einval:
 	return 0;
 }
 
+int process_oneshot_sample(int fd,
+		struct sockaddr *sa, ssize_t sa_len,
+		char *command)
+{
+	char *attr;
+	char *plugin_name, *ts;
+	char err_str[LEN_ERRSTR];
+
+	attr = "name";
+	plugin_name = av_value(av_list, attr);
+	if (!plugin_name)
+		goto einval;
+
+	attr = "time";
+	ts = av_value(av_list, attr);
+	if (!ts)
+		goto einval;
+
+	int rc = ldmsd_oneshot_sample(plugin_name, ts, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+	goto out;
+
+einval:
+	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+out:
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	return 0;
+}
+
 /* stop a sampler */
 int process_stop_sampler(int fd,
 			 struct sockaddr *sa, ssize_t sa_len,
@@ -1817,9 +1944,9 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_STORE] = process_store,
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_SET_UDATA] = process_set_udata,
-	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
-
+	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
+	[LDMSCTL_ONESHOT_SAMPLE] = process_oneshot_sample,
 };
 
 int process_record(int fd,

@@ -302,11 +302,12 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_ADD_HOST	6    /* Add a Host */
 #define LDMSCTL_REM_HOST	7    /* Remove a Host */
 #define LDMSCTL_STORE		8    /* Store Metrics */
-#define LDMSCTL_INFO_DAEMON	9    /* Query daemon status */
+#define LDMSCTL_INFO_DAEMON	9   /* Query daemon status */
 #define LDMSCTL_SET_UDATA	10   /* Set user data of a metric */
-#define LDMSCTL_UPDATE_STANDBY	11   /* Update the standby state */
-#define LDMSCTL_EXIT_DAEMON	12   /* Shut down ldmsd */
-#define LDMSCTL_LAST_COMMAND	12
+#define LDMSCTL_EXIT_DAEMON	11   /* Shut down ldmsd */
+#define LDMSCTL_UPDATE_STANDBY	12   /* Update the standby state */
+#define LDMSCTL_ONESHOT_SAMPLE	13   /* Sample a set at a specific timestamp once */
+#define LDMSCTL_LAST_COMMAND	13
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 
