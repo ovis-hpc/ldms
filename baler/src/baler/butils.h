@@ -78,10 +78,14 @@ extern int __blog_level;
 
 extern void __blog(const char *fmt, ...);
 
-#define BLOG_LV_DEBUG	0
-#define BLOG_LV_INFO	1
-#define BLOG_LV_WARN	2
-#define BLOG_LV_ERR	3
+enum blog_level {
+	BLOG_LV_DEBUG = 0,
+	BLOG_LV_INFO,
+	BLOG_LV_WARN,
+	BLOG_LV_ERR,
+	BLOG_LV_QUIET,
+	BLOG_LV_LAST,
+};
 
 #define blog(lv, fmt, ...) do {\
 	if (BLOG_LV_ ## lv >= __blog_level) \
@@ -115,15 +119,47 @@ extern void __blog(const char *fmt, ...);
 /**
  * \brief Similar to perror(str), but print stuffs to Baler log instead.
  */
-#define berror(str) berr("%s:%d, %s, %s: errno: %d, msg: %s\n", \
+#define berror(str) berr("%s:%d, %s(), %s: errno: %d, msg: %m\n", \
 				__FILE__, __LINE__, __func__, \
-				str, errno, sys_errlist[errno])
+				str, errno)
 
 /**
  * \brief Set log level.
- * \param level One of the
+ * \param level One of the enumeration ::blog_level.
  */
 void blog_set_level(int level);
+
+/**
+ * \brief Same as blog_set_level(), but with string option instead.
+ *
+ * Valid values of \c level include:
+ *   - "DEBUG"
+ *   - "INFO"
+ *   - "WARN"
+ *   - "ERROR"
+ *   - "QUIET"
+ *   - "0"
+ *   - "1"
+ *   - "2"
+ *   - "3"
+ *   - "4"
+ *   - "D"
+ *   - "I"
+ *   - "W"
+ *   - "E"
+ *   - "Q"
+ *
+ * \retval 0 if OK.
+ * \retval EINVAL if the input \c level is invalid.
+ */
+int blog_set_level_str(const char *level);
+
+/**
+ * Get blog level.
+ *
+ * \retval LVL The current log level.
+ */
+int blog_get_level();
 
 /**
  * \brief Set \a f as a log file.

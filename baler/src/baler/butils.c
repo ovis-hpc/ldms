@@ -76,12 +76,47 @@ void butils_init()
 	if (visited)
 		return;
 	visited = 1;
-	blog_file = stdout;
+	blog_file = stderr;
 }
 
 void blog_set_level(int level)
 {
 	__blog_level = level;
+}
+
+const char *__level_lbl[] = {
+	[BLOG_LV_DEBUG] = "DEBUG",
+	[BLOG_LV_INFO] = "INFO",
+	[BLOG_LV_WARN] = "WARN",
+	[BLOG_LV_ERR] = "ERROR",
+	[BLOG_LV_QUIET] = "QUIET",
+};
+
+int blog_set_level_str(const char *level)
+{
+	int i, rc;
+	int n, len;
+	/* Check if level is pure number */
+	n = 0;
+	sscanf(level, "%d%n", &i, &n);
+	len = strlen(level);
+	if (n == len) {
+		blog_set_level(i);
+		return 0;
+	}
+	for (i = 0; i < BLOG_LV_LAST; i++) {
+		rc = strncmp(level, __level_lbl[i], len);
+		if (rc == 0) {
+			blog_set_level(i);
+			return 0;
+		}
+	}
+	return EINVAL;
+}
+
+int blog_get_level()
+{
+	return __blog_level;
 }
 
 void blog_set_file(FILE *f)
