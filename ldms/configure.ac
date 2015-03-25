@@ -57,7 +57,7 @@ OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
 OPTION_DEFAULT_DISABLE([sedc], [ENABLE_SEDC])
-OPTION_DEFAULT_ENABLE([sysclassib], [ENABLE_SYSCLASSIB])
+OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([ncsa_unified], [ENABLE_NCSA_UNIFIED])
@@ -137,40 +137,6 @@ LIBS=""
 AC_CHECK_HEADER(infiniband/umad.h, [],
     AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
 		  libibumad-devel installed?]))
-fi
-
-dnl Checks for libraries
-if test -z "$ENABLE_RDMA_TRUE"
-then
-AC_CHECK_LIB(ibverbs, ibv_get_device_list, [],
-    AC_MSG_ERROR([ibv_get_device_list() not found.  ldms-utils requires libibverbs.]))
-dnl Reset LIBS variable.
-LIBS=""
-
-dnl Checks for header files.
-AC_CHECK_HEADER(infiniband/driver.h, [],
-    AC_MSG_ERROR([<infiniband/driver.h> not found.  Is libibverbs installed?]))
-AC_HEADER_STDC
-
-dnl Checks for library functions
-AC_CHECK_FUNCS(ibv_read_sysfs_file)
-
-dnl Check for glib
-PKG_CONFIG=`which pkg-config`
-PKG_CHECK_MODULES([GLIB20], [glib-2.0 >= 2.0.0])
-
-dnl Now check if for libibverbs device library extension
-dummy=if$$
-cat <<IBV_VERSION > $dummy.c
-#include <infiniband/driver.h>
-IBV_DEVICE_LIBRARY_EXTENSION
-IBV_VERSION
-IBV_DEVICE_LIBRARY_EXTENSION=`$CC $CPPFLAGS -E $dummy.c 2> /dev/null | tail -1`
-rm -f $dummy.c
-if test $IBV_DEVICE_LIBRARY_EXTENSION = IBV_DEVICE_LIBRARY_EXTENSION; then
-    AC_MSG_ERROR([IBV_DEVICE_LIBRARY_EXTENSION not defined.  Is libibverbs new enough?])
-fi
-AC_SUBST(IBV_DEVICE_LIBRARY_EXTENSION)
 fi
 
 if test -z "$ENABLE_SOS_TRUE"
