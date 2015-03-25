@@ -27,6 +27,20 @@ libmeminfo_la_LIBADD = $(COMMON_LIBADD)
 lib_LTLIBRARIES += libmeminfo.la
 endif
 
+if ENABLE_SWITCHX
+libswitchx_la_SOURCES = switchx.c
+libswitchx_la_LIBADD = $(COMMON_LIBADD) \
+	$(SWITCHX_LIBDIR)/libsxapi.a \
+	$(SWITCHX_LIBDIR)/libsxutils.a \
+	$(SWITCHX_LIBDIR)/libsxdemadparser.a \
+	$(SWITCHX_LIBDIR)/libsxcomp.a \
+	$(SWITCHX_LIBDIR)/libsxdev.a \
+	$(SWITCHX_LIBDIR)/libsxlog.a
+libswitchx_la_CFLAGS = $(AM_CFLAGS) \
+	-I$(SWITCHX_LIBDIR)/../usr/include
+lib_LTLIBRARIES += libswitchx.la
+endif
+
 if ENABLE_PERFEVENT
 libperfevent_la_SOURCES = perfevent.c
 libperfevent_la_LIBADD = $(COMMON_LIBADD) -lm
