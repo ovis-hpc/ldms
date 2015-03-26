@@ -203,10 +203,11 @@ int bis_dir(const char *path)
 
 int bmkdir_p(const char *path, __mode_t mode)
 {
-	static char str[PATH_MAX];
-	static char *_str;
+	char *str = strdup(path);
+	char *_str;
 	int rc = 0;
-	strcpy(str, path);
+	if (!str)
+		return ENOMEM;
 	_str = str;
 	int len = strlen(str);
 	if (str[len-1] == '/') {
@@ -218,12 +219,15 @@ int bmkdir_p(const char *path, __mode_t mode)
 	while ((_str = strstr(_str, "/"))) {
 		*_str = 0;
 		if (!bfile_exists(str)) {
-			if (mkdir(str, mode) == -1)
-				return -1;
+			if (mkdir(str, mode) == -1) {
+				rc = errno;
+				goto cleanup;
+			}
 		}
 		if (!bis_dir(str)) {
-			errno = ENOENT;
-			return -1;
+			errno = ENOTDIR;
+			rc = ENOTDIR;
+			goto cleanup;
 		}
 		*_str = '/';
 		_str++;
@@ -231,6 +235,8 @@ int bmkdir_p(const char *path, __mode_t mode)
 	rc = mkdir(str, 0755);
 	if (rc)
 		rc = errno;
+cleanup:
+	free(str);
 	return rc;
 }
 
