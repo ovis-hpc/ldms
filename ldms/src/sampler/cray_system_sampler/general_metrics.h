@@ -77,14 +77,26 @@
 #define VMSTAT_FILE "/proc/vmstat"
 #define LOADAVG_FILE "/proc/loadavg"
 #define CURRENT_FREEMEM_FILE "/proc/current_freemem"
-#define ENERGY_FILE "/sys/cray/pm_counters/energy"
 #define KGNILND_FILE  "/proc/kgnilnd/stats"
 #define PROCNETDEV_FILE "/proc/net/dev"
 
 /* ENERGY Specific */
-FILE *ene_f;
-static char* ENERGY_METRICS[] = {"energy(J)"};
+static char* ENERGY_METRICS[] = {"energy(J)",
+				 "freshness",
+				 "generation",
+				 "power(W)",
+				 "power_cap(W)",
+				 "startup",
+				 "version"};
+static char* ENERGY_FILES[] = {"/sys/cray/pm_counters/energy",
+			       "/sys/cray/pm_counters/freshness",
+			       "/sys/cray/pm_counters/generation",
+			       "/sys/cray/pm_counters/power",
+			       "/sys/cray/pm_counters/power_cap",
+			       "/sys/cray/pm_counters/startup",
+			       "/sys/cray/pm_counters/version"};
 #define NUM_ENERGY_METRICS (sizeof(ENERGY_METRICS)/sizeof(ENERGY_METRICS[0]))
+FILE* ene_f[NUM_ENERGY_METRICS];
 ldms_metric_t* metric_table_energy;
 
 /* CURRENT_FREEMEM Specific */
