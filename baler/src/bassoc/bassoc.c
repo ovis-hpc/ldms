@@ -390,14 +390,21 @@ struct bhash *images_hash = NULL;
 struct barray *target_images = NULL;
 struct bhash *target_images_hash = NULL;
 
-struct bassoc_rule_q {
+struct bassoc_rule_subq {
 	TAILQ_HEAD(, bassoc_rule) head;
+	uint64_t refcount;
+};
+
+struct bassoc_rule_q {
+	struct bassoc_rule_subq subq[2];
+	struct bassoc_rule_subq *current_subq;
+	struct bassoc_rule_subq *next_subq;
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;
-	uint64_t refcount;
 	enum {
 		BASSOC_RULE_Q_STATE_ACTIVE = 0,
 		BASSOC_RULE_Q_STATE_DONE,
+		BASSOC_RULE_Q_STATE_LVL_DONE, /* done within level */
 	} state;
 };
 
@@ -1517,11 +1524,30 @@ struct bassoc_rule *bassoc_rule_new()
 	return rule;
 }
 
+int bassoc_rule_q_init(struct bassoc_rule_q *q)
+{
+	int rc;
+	rc = pthread_mutex_init(&q->mutex, NULL);
+	if (rc)
+		return rc;
+	rc = pthread_cond_init(&q->cond, NULL);
+	if (rc)
+		return rc;
+	TAILQ_INIT(&q->subq[0].head);
+	TAILQ_INIT(&q->subq[1].head);
+	q->subq[0].refcount = 0;
+	q->subq[1].refcount = 0;
+	q->current_subq = &q->subq[0];
+	q->next_subq = &q->subq[1];
+	q->state = BASSOC_RULE_Q_STATE_ACTIVE;
+	return rc;
+}
+
 void bassoc_rule_add(struct bassoc_rule_q *q, struct bassoc_rule *r)
 {
 	pthread_mutex_lock(&q->mutex);
-	TAILQ_INSERT_TAIL(&q->head, r, entry);
-	q->refcount++;
+	TAILQ_INSERT_TAIL(&q->next_subq->head, r, entry);
+	q->next_subq->refcount++;
 	pthread_cond_signal(&q->cond);
 	pthread_mutex_unlock(&q->mutex);
 }
@@ -1530,10 +1556,10 @@ void bassoc_rule_put(struct bassoc_rule_q *q, struct bassoc_rule *rule)
 {
 	pthread_mutex_lock(&q->mutex);
 	bassoc_rule_free(rule);
-	q->refcount--;
-	if (!q->refcount) {
-		/* DONE */
-		q->state = BASSOC_RULE_Q_STATE_DONE;
+	q->current_subq->refcount--;
+	if (!q->current_subq->refcount) {
+		/* Done for that level */
+		q->state = BASSOC_RULE_Q_STATE_LVL_DONE;
 		pthread_cond_broadcast(&q->cond);
 	}
 	pthread_mutex_unlock(&q->mutex);
@@ -1542,23 +1568,67 @@ void bassoc_rule_put(struct bassoc_rule_q *q, struct bassoc_rule *rule)
 struct bassoc_rule *bassoc_rule_get(struct bassoc_rule_q *q)
 {
 	struct bassoc_rule *r;
+	void *tmp;
+	uint64_t refcount_tmp;
 	pthread_mutex_lock(&q->mutex);
 	if (q->state == BASSOC_RULE_Q_STATE_DONE) {
 		r = NULL;
 		goto out;
 	}
-	while (TAILQ_EMPTY(&q->head)) {
+	while (TAILQ_EMPTY(&q->current_subq->head)) {
 		pthread_cond_wait(&q->cond, &q->mutex);
-		if (q->state == BASSOC_RULE_Q_STATE_DONE) {
+		switch (q->state) {
+		case BASSOC_RULE_Q_STATE_DONE:
 			r = NULL;
 			goto out;
+		case BASSOC_RULE_Q_STATE_LVL_DONE:
+			tmp = q->next_subq;
+			q->next_subq = q->current_subq;
+			q->current_subq = tmp;
+			if (TAILQ_EMPTY(&q->current_subq->head)) {
+				r = NULL;
+				q->state = BASSOC_RULE_Q_STATE_DONE;
+				pthread_cond_broadcast(&q->cond);
+				goto out;
+			} else {
+				q->state = BASSOC_RULE_Q_STATE_ACTIVE;
+				pthread_cond_broadcast(&q->cond);
+			}
+			break;
+		case BASSOC_RULE_Q_STATE_ACTIVE:
+			/* do nothing */
+			break;
 		}
 	}
-	r = TAILQ_FIRST(&q->head);
-	TAILQ_REMOVE(&q->head, r, entry);
+
+	r = TAILQ_FIRST(&q->current_subq->head);
+	TAILQ_REMOVE(&q->current_subq->head, r, entry);
 out:
 	pthread_mutex_unlock(&q->mutex);
 	return r;
+}
+
+int bassoc_rule_q_start(struct bassoc_rule_q *q)
+{
+	void *tmp;
+	int rc = 0;
+	pthread_mutex_lock(&q->mutex);
+	if (q->current_subq->refcount) {
+		rc = 0;
+		goto out;
+	}
+	if (!q->next_subq->refcount) {
+		rc = ENOENT;
+		goto out;
+	}
+
+	tmp = q->current_subq;
+	q->current_subq = q->next_subq;
+	q->next_subq = tmp;
+
+out:
+	pthread_mutex_unlock(&q->mutex);
+	return 0;
 }
 
 void bassoc_rule_print(struct bassoc_rule *rule, const char *prefix)
@@ -2208,11 +2278,11 @@ void mine_routine()
 {
 	int i, rc;
 	/* Initialize rule mining queue */
-	TAILQ_INIT(&rule_q.head);
-	pthread_mutex_init(&rule_q.mutex, NULL);
-	pthread_cond_init(&rule_q.cond, NULL);
-	rule_q.refcount = 0;
-	rule_q.state = BASSOC_RULE_Q_STATE_ACTIVE;
+	rc = bassoc_rule_q_init(&rule_q);
+	if (rc) {
+		berr("bassoc_rule_q_init() error, rc: %d", rc);
+		exit(-1);
+	}
 
 	init_images_routine();
 	init_target_images_routine();
@@ -2230,6 +2300,9 @@ void mine_routine()
 		berr("Out of memory");
 		exit(-1);
 	}
+
+	/* start the queue before starting the threads */
+	bassoc_rule_q_start(&rule_q);
 
 	binfo("Mining ...");
 
