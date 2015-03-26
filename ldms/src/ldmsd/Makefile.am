@@ -9,7 +9,7 @@ AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 ldms_ls_SOURCES = ldms_ls.c
 ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lpthread
 
-ldmsd_SOURCES = ldmsd.c ldmsd_store.c
+ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ \
 		-levent -lpthread -levent_pthreads -lovis_util -lcoll -ldl

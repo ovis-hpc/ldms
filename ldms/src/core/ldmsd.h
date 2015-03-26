@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -154,6 +154,35 @@ struct ldmsd_sampler {
 	ldms_set_t (*get_set)();
 	int (*sample)(void);
 };
+
+struct ldmsd_plugin_cfg {
+	void *handle;
+	char *name;
+	char *libpath;
+	unsigned long sample_interval_us;
+	long sample_offset_us;
+	int synchronous;
+	int thread_id;
+	int ref_count;
+	union {
+		struct ldmsd_plugin *plugin;
+		struct ldmsd_sampler *sampler;
+		struct ldmsd_store *store;
+	};
+	struct timeval timeout;
+	struct event *event;
+	pthread_mutex_t lock;
+	LIST_ENTRY(ldmsd_plugin_cfg) entry;
+};
+
+#define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
+
+extern void ldmsd_config_cleanup(void);
+extern int ldmsd_config_init(char *name);
+struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
+
+extern void hset_ref_get(struct hostset *hset);
+extern void hset_ref_put(struct hostset *hset);
 
 typedef void *ldmsd_store_handle_t;
 
@@ -315,5 +344,10 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
  * Max length of error strings while ldmsd is being configured.
  */
 #define LEN_ERRSTR 128
+
+int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
+int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
+void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
+void ldmsd_msg_logger(const char *fmt, ...);
 
 #endif
