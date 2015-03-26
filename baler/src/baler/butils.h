@@ -361,5 +361,26 @@ int bprocess_file_by_line(const char *path, bprocess_file_by_line_cb_t cb,
 int bprocess_file_by_line_w_comment(const char *path,
 				bprocess_file_by_line_cb_t cb, void *ctxt);
 
+/**
+ * Get a cell of CSV from \c str.
+ * \c end will pointed at the end of the cell + 1.
+ *
+ * \example
+ * \code{.c}
+ * int rc;
+ * char *end;
+ * rc = bcsv_get_cell("abc,def", &end);
+ * \endcode
+ *
+ * From the example, \c end will point at ','.
+ *
+ * \param[in] str
+ * \param[out] end
+ *
+ * \retval 0 if OK
+ * \retval ENOENT if the input is incomplete, or no more cell.
+ */
+int bcsv_get_cell(const char *str, const char **end);
+
 #endif // _BUTILS_H
 /**\}*/

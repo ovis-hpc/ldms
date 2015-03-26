@@ -623,4 +623,39 @@ int bprocess_file_by_line_w_comment(const char *path,
 	struct __ctxt c = {.cb = cb, .ctxt = ctxt};
 	return bprocess_file_by_line(path, __bprocess_file_by_line_w_comment_cb, &c);
 }
+
+int bcsv_get_cell(const char *str, const char **end)
+{
+	int in_quote = 0;
+	const char *s = str;
+	static const char delim[256] = {
+		['\n'] = 1,
+		['\r'] = 1,
+		[','] = 1,
+	};
+
+	while (*s && (in_quote || !delim[*s])) {
+		if (*s == '"') {
+			if (in_quote) {
+				if (*(s+1) == '"') {
+					/* "" in the quote, stays in_quote */
+					s++;
+				} else {
+					/* end quote */
+					in_quote = 0;
+				}
+			} else {
+				in_quote = 1;
+			}
+		}
+		s++;
+	}
+
+	*end = s;
+
+	if (in_quote)
+		return ENOENT;
+
+	return 0;
+}
 /* END OF FILE */
