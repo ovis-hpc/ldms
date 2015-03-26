@@ -56,6 +56,7 @@
 #define __BASSOC_H
 
 #include <sys/queue.h>
+#include <math.h>
 
 #include "baler/btypes.h"
 #include "baler/bset.h"
@@ -64,6 +65,7 @@
 #include "baler/butils.h"
 
 #include "bassocimg.h"
+#include "baler/barray.h"
 
 struct bassoc_conf {
 	/* Image granularity */
@@ -101,6 +103,22 @@ LIST_HEAD(bassoc_rule_index_list, bassoc_rule_index_entry);
 struct bassoc_rule_index {
 	pthread_mutex_t mutex;
 	struct bhash *hash;
+};
+
+struct bassocimgbin {
+	char metric_name[256];
+	int alloc_bin_len;
+	int bin_len;
+	struct {
+		double lower_bound;
+		struct bassocimg *img;
+		struct barray *count_buff;
+	} bin[0];
+	/*
+	 * NOTE: for bin[x].img is an image for [bin[x].lower_bound,
+	 * bin[x+1].upper_bound). For x == 0, bin[0].lower_bound is -inf.
+	 * The last bin, bin[bin_len - 1], will have lower_bound == inf.
+	 */
 };
 
 #endif
