@@ -189,10 +189,12 @@ struct ocm_cfg {
  */
 struct ocm_ep_ctxt {
 	ocm_t ocm; /**< OCM handle. */
+	zap_ep_t ep; /**< The zap end point that owns the context */
 	int is_active; /**< True if this is the active side. */
 	struct sockaddr sa; /**< Socket address to connect to */
 	socklen_t sa_len; /**< Length of the \c sa */
 	struct event *reconn_event; /**< Reconnect event */
+	pthread_mutex_t mutex; /**< mutex lock for the context */
 };
 
 

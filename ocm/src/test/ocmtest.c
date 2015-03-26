@@ -75,6 +75,8 @@ uint16_t port = 0;
 uint16_t PORT = 54321;
 char *xprt = "sock";
 
+ocm_t ocm;
+
 sem_t done;
 
 void print_usage()
@@ -177,7 +179,8 @@ int req_cb(struct ocm_event *e)
 		struct ocm_cfg_buff *buff2 = ocm_cfg_buff_new(4096, "");
 		ocm_cfg_buff_add_verb(buff2, ""); /* no real verb */
 
-		for (i = 0; i < 65536; i++) {
+//		for (i = 0; i < 65536; i++) {
+		for (i = 0; i < 10; i++) {
 			snprintf(name, sizeof(name), "name%d", i);
 			ocm_value_set(v, OCM_VALUE_UINT64, i);
 			ocm_cfg_buff_add_av(buff2, name, v);
@@ -234,6 +237,38 @@ int req_cb(struct ocm_event *e)
 #endif
 
 	ocm_event_resp_cfg(e, buff->buff);
+
+	ocm_cfg_buff_free(buff);
+}
+
+int __send_update(struct sockaddr *sa, socklen_t sa_len, const char *key)
+{
+	printf("INFO: sending update\n");
+	struct ocm_cfg_buff *buff = ocm_cfg_buff_new(4096, key);
+	char _buff[4096];
+	char name[128];
+	int rc = 0;
+	struct ocm_value *v = (void*)_buff;
+
+	/* first test */
+	ocm_cfg_buff_add_verb(buff, "update_host");
+
+	ocm_value_set_s(v, "abc.def.ghi");
+	ocm_cfg_buff_add_av(buff, "host", v);
+
+	v->type = OCM_VALUE_UINT16;
+	v->u16 = 12345;
+	ocm_cfg_buff_add_av(buff, "port", v);
+
+	/* another test */
+	ocm_cfg_buff_add_verb(buff, "test_values");
+
+	ocm_value_set(v, OCM_VALUE_STR, "update update update");
+	ocm_cfg_buff_add_av(buff, "str", v);
+
+	rc = ocm_notify_cfg(ocm, sa, sa_len, buff->buff);
+	if (rc == EPERM)
+		printf("ERROR: client is disconnected\n");
 
 	ocm_cfg_buff_free(buff);
 }
@@ -309,6 +344,7 @@ void print_cmd(ocm_cfg_cmd_t cmd, int level)
 	}
 }
 
+int cfg_cb(struct ocm_event *e);
 void cfg_received(struct ocm_event *e)
 {
 	printf("Receiving configuration: %s\n", ocm_cfg_key(e->cfg));
@@ -319,6 +355,11 @@ void cfg_received(struct ocm_event *e)
 		print_cmd(cmd, 1);
 	}
 	printf("End of Configuration: %s\n", ocm_cfg_key(e->cfg));
+	if (0 == strcmp(ocm_cfg_key(e->cfg), "config_me")) {
+		printf("Waiting for update\n");
+		int rc = ocm_register(ocm, "update_me", cfg_cb);
+		assert(rc == 0);
+	}
 }
 
 void err_received(struct ocm_event *e) {
@@ -341,44 +382,13 @@ int cfg_cb(struct ocm_event *e)
 	sem_post(&done);
 }
 
-int main(int argc, char **argv)
+void client()
 {
-	int rc;
-	struct addrinfo *ai;
-	char p[16];
-
-	sem_init(&done, 0, 0);
-
-	handle_arg(argc, argv);
-	ocm_t ocm = ocm_create(xprt, PORT, req_cb, NULL);
-	if (!ocm) {
-		printf("Cannot create ocm.\n");
-		exit(-1);
-	}
-
-	if (host && port)
-		goto server;
-client:
+	int rc = 0;
 	rc = ocm_register(ocm, "config_me", cfg_cb);
 	assert(rc == 0);
 	rc = ocm_register(ocm, "reject_me", cfg_cb);
 	assert(rc == 0);
-
-	goto wait_done;
-
-server:
-	sprintf(p, "%u", port);
-	rc = getaddrinfo(host, p, NULL, &ai);
-	if (rc) {
-		printf("getaddrinfo error %d\n", rc);
-		exit(-1);
-	}
-	rc = ocm_add_receiver(ocm, ai->ai_addr, ai->ai_addrlen);
-	assert(rc == 0);
-	freeaddrinfo(ai);
-	printf("INFO: Server will forever run. Ctrl-C to terminate it.\n");
-
-wait_done:
 
 	rc = ocm_enable(ocm);
 	if (rc) {
@@ -388,7 +398,59 @@ wait_done:
 
 	sem_wait(&done); /* one for config_me */
 	sem_wait(&done); /* another one for reject_me */
-	/* server will forever run */
+	sem_wait(&done); /* last one for update_me */
+}
+
+void server()
+{
+	int rc = 0;
+	char p[16];
+	struct addrinfo *ai;
+
+	sprintf(p, "%u", port);
+	rc = getaddrinfo(host, p, NULL, &ai);
+	if (rc) {
+		printf("getaddrinfo error %d\n", rc);
+		exit(-1);
+	}
+	rc = ocm_add_receiver(ocm, ai->ai_addr, ai->ai_addrlen);
+	assert(rc == 0);
+	printf("INFO: Server will forever run. Ctrl-C to terminate it.\n");
+
+	rc = ocm_enable(ocm);
+	if (rc) {
+		printf("ocm_enable failed: %d\n", rc);
+		exit(-1);
+	}
+
+	sleep(5);
+	__send_update(ai->ai_addr, ai->ai_addrlen, "update_me");
+	__send_update(ai->ai_addr, ai->ai_addrlen, "update_me");
+	sleep(5);
+	__send_update(ai->ai_addr, ai->ai_addrlen, "update_me");
+	freeaddrinfo(ai);
+
+	sem_wait(&done); /* run forever */
+}
+
+int main(int argc, char **argv)
+{
+	int rc;
+	struct addrinfo *ai;
+
+	sem_init(&done, 0, 0);
+
+	handle_arg(argc, argv);
+	ocm = ocm_create(xprt, PORT, req_cb, NULL);
+	if (!ocm) {
+		printf("Cannot create ocm.\n");
+		exit(-1);
+	}
+
+	if (host && port)
+		server();
+	else
+		client();
 
 	return 0;
 }
