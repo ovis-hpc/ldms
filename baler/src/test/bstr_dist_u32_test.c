@@ -14,6 +14,24 @@ void test(struct bstr *x, struct bstr *y)
 			bstr_lcs_dist_u32(x, y, (void*)buff, sizeof(buff)));
 	printf("lcs_len(%.*s, %.*s) = %d\n", x->blen, x->cstr, y->blen, y->cstr,
 			bstr_lcs_u32(x, y, (void*)buff, sizeof(buff)));
+
+	int idx[32];
+	int len = sizeof(idx)/sizeof(*idx);
+	int rc;
+	int i;
+
+	rc = bstr_lcsX_u32(x, y, idx, &len, (void*)buff, sizeof(buff));
+	if (rc) {
+		printf("lcsX_len error ..., rc: %d\n", rc);
+		return;
+	}
+	printf("lcsX_len(%.*s, %.*s) = %d\n", x->blen, x->cstr,
+						y->blen, y->cstr, len);
+	printf("\tlcs: ");
+	for (i = 0; i < len; i++) {
+		printf("%.4s", (char*)&x->u32str[idx[i]]);
+	}
+	printf("\n");
 }
 
 int main(int argc, char **argv)

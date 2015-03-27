@@ -304,6 +304,25 @@ int bstr_lcs_u32(const struct bstr *a, const struct bstr *b, void *buff,
 								size_t buffsz);
 
 /**
+ * Longest common subsequence extraction.
+ *
+ * \param a The first string.
+ * \param b The second string.
+ * \param[out] idx The index of the first string elements (\c a) being a part of
+ *                 LCS to \c a and \c b
+ * \param[in,out] idx_len As an input, it tells the allocated length of \c idx;
+ *                        as an output, it tells the the length of the LCS
+ *                        result.
+ * \param buff Buffer to hold LCS calculation and back tracking.
+ * \param buffsz The size of \c buffer.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bstr_lcsX_u32(const struct bstr *a, const struct bstr *b, int *idx,
+					int *idx_len, void *buff, size_t buffsz);
+
+/**
  * LCS distance between two given bstr (u32 variant)
  */
 int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,

@@ -64,6 +64,7 @@
 #include <time.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <assert.h>
 
 FILE *blog_file;
 pthread_mutex_t __blog_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -460,6 +461,69 @@ int bstr_lcs_u32(const struct bstr *a, const struct bstr *b, void *buff,
 	}
 
 	return x0[na-1];
+}
+
+int bstr_lcsX_u32(const struct bstr *a, const struct bstr *b, int *idx,
+					int *idx_len, void *buff, size_t buffsz)
+{
+	uint32_t *lcs = buff;
+	int len_a = a->blen / sizeof(uint32_t);
+	int len_b = b->blen / sizeof(uint32_t);
+	int i, j, k;
+	uint32_t max;
+	int rc;
+
+#define _LCS(x_a,y_b) lcs[(x_a) + (y_b)*len_a]
+
+	if (buffsz < (len_a*len_b*sizeof(uint32_t)))
+		return ENOMEM;
+
+	if (*idx_len < len_a)
+		return ENOMEM;
+
+	_LCS(0, 0) = a->u32str[0] == b->u32str[0];
+	for (i = 1; i < len_a; i++) {
+		_LCS(i, 0) = (a->u32str[i] == b->u32str[0])?(1):(_LCS(i-1,0));
+	}
+	for (j = 1; j < len_b; j++) {
+		_LCS(0, j) = (a->u32str[0] == b->u32str[j])?(1):(_LCS(0,j-1));
+	}
+
+	for (j = 1; j < len_b; j++) {
+		for (i = 1; i < len_a; i++) {
+			_LCS(i, j) = BMAX(_LCS(i-1,j), _LCS(i,j-1));
+			if (a->u32str[i] == b->u32str[j])
+				_LCS(i, j) = BMAX(1+_LCS(i-1,j-1), _LCS(i,j));
+		}
+	}
+
+	i = len_a - 1;
+	j = len_b - 1;
+	k = _LCS(i, j);
+	*idx_len = k;
+
+	while (k) {
+		if (i && _LCS(i, j) == (_LCS(i - 1, j))) {
+			i--;
+			continue;
+		}
+
+		if (j && _LCS(i, j) == (_LCS(i, j - 1))) {
+			j--;
+			continue;
+		}
+
+		idx[k - 1] = i;
+		i--;
+		j--;
+		k--;
+	}
+
+	assert(i >= -1);
+	assert(j >= -1);
+
+#undef _LCS
+	return rc;
 }
 
 int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
