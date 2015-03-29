@@ -103,10 +103,10 @@ typedef struct{
 /** NOTE: the enum isnt x-refed. Just iterate thru while < ENDLINKS */
 /** FIXME: what are the actual paths ? */
 aries_linksmetrics_info_t linksinfo[] = {
-        {TRAFFIC, "traffic.txt", NULL, "traffic", "(B)", 1, "SAMPLE_traffic", "(B/s)"},
-        {STALLED, "stalled.txt", NULL, "stalled", "(ns)", 0, NULL, NULL},
-        {SENDLINKSTATUS, "sendlinkstatus.txt", NULL, "sendlinkstatus", "(1)", 0, NULL, NULL},
-        {RECVLINKSTATUS, "recvlinkstatus.txt", NULL, "recvlinkstatus", "(1)", 0, NULL, NULL}
+        {TRAFFIC, "/sys/devices/virtual/gni/gpcdr0/metricsets/linktraffic/metrics", NULL, "traffic", "(B)", 1, "SAMPLE_traffic", "(B/s)"},
+        {STALLED, "/sys/devices/virtual/gni/gpcdr0/metricsets/linkstalled/metrics", NULL, "stalled", "(ns)", 0, NULL, NULL},
+        {SENDLINKSTATUS, "/sys/devices/virtual/gni/gpcdr0/metricsets/linksendstatus/metrics", NULL, "sendlinkstatus", "(1)", 0, NULL, NULL},
+        {RECVLINKSTATUS, "/sys/devices/virtual/gni/gpcdr0/metricsets/linkrecvstatus/metrics", NULL, "recvlinkstatus", "(1)", 0, NULL, NULL}
 };
 
 #define NICMETRICS_BASE_LIST(WRAP) \
