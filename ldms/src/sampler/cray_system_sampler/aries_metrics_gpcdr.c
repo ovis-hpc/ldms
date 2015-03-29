@@ -101,6 +101,7 @@ typedef struct{
 } aries_linksmetrics_info_t;
 
 /** NOTE: the enum isnt x-refed. Just iterate thru while < ENDLINKS */
+/** FIXME: what are the actual paths ? */
 aries_linksmetrics_info_t linksinfo[] = {
         {TRAFFIC, "traffic.txt", NULL, "traffic", "(B)", 1, "SAMPLE_traffic", "(B/s)"},
         {STALLED, "stalled.txt", NULL, "stalled", "(ns)", 0, NULL, NULL},
