@@ -80,7 +80,7 @@ Default is counter data only. (NOTE: Formerly called gemini_metrics_type)
 llite=<llite>
 .br
 CSV separated ost list. Non-existent values will be populated with 0's.
-Only relevant if you have built with --enable-lustre
+Only relevant if you have built with --enable-lustre. This must be specified if built and not turned off.
 .TP
 rtrfile=<rtrfile>
 .br
