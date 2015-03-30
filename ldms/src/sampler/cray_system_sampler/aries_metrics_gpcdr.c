@@ -92,7 +92,7 @@ typedef enum{
 typedef struct{
         aries_linksmetrics_type_t enumtype;
         char* fname;
-	FILE* lm;
+	FILE* lm_f;
         char* basename;
         char* baseunit;
         int doderived;
@@ -135,9 +135,9 @@ static uint64_t linksmetrics_prev_time[ENDLINKS];
 static int linksmetrics_time_multiplier[ENDLINKS];
 static ldms_metric_t* linksmetrics_base_metric_table[ENDLINKS];
 static ldms_metric_t* linksmetrics_derived_metric_table[ENDLINKS];
-static uint64_t*** linksmetrics_base_values[ENDLINKS]; /**< holds curr & prev raw module
+static uint64_t** linksmetrics_base_values[ENDLINKS]; /**< holds curr & prev raw module
 					   data for derived computation */
-static uint64_t** linksmetrics_base_diff[ENDLINKS]; /**< holds diffs for the module values */
+static uint64_t* linksmetrics_base_diff[ENDLINKS]; /**< holds diffs for the module values */
 static int linksmetrics_values_idx[ENDLINKS];
 static int linksmetrics_valid;
 
@@ -158,22 +158,21 @@ static int hsn_metrics_type = HSN_METRICS_DEFAULT;
 
 /** internal calculations */
 static uint64_t __linksmetrics_derived_metric_calc(
-	int i, int j, uint64_t** diff, uint64_t time_delta);
-static int __links_metric_name(int, int, int, char[]);
+	int i, uint64_t* diff, uint64_t time_delta);
 
 
 //diridx is now the tile
 static int __links_metric_name(int infoidx, int isbase, int tile,
-			       int diridx, char newname[]){
+			       char newname[]){
 	if (isbase == 1) {
 		sprintf(newname, "%s_%03d %s",
 			linksinfo[infoidx].basename,
-			diridx,
+			tile,
 			linksinfo[infoidx].baseunit);
 	} else {
 		sprintf(newname, "%s_%03d %s",
 			linksinfo[infoidx].derivedname,
-			diridx,
+			tile,
 			linksinfo[infoidx].derivedunit);
 	}
 
@@ -222,19 +221,18 @@ int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 					return rc;
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
-				count++;
 			}
 		}
 
 		linksmetrics_base_metric_table[i] =
-			calloc(ARIES_NUM_TILES, sizeof(ldms_metric_t));
+			calloc(ARIES_MAX_TILES, sizeof(ldms_metric_t));
 		if (!linksmetrics_base_metric_table[i])
 			return ENOMEM;
 
 
 		if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)) &&
-		    linkinfo[i].doderived){
+		    linksinfo[i].doderived){
 			for (j = 0; j < ARIES_MAX_TILES; j++) {
 				__links_metric_name(i, 0, j, newname);
 				rc = ldms_get_metric_size(newname,
@@ -245,15 +243,14 @@ int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 					return rc;
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
-				count++;
 			}
 
 			linksmetrics_derived_metric_table[i] =
-				calloc(ARIES_NUM_TILES, sizeof(ldms_metric_t));
+				calloc(ARIES_MAX_TILES, sizeof(ldms_metric_t));
 			if (!linksmetrics_derived_metric_table[i])
 				return ENOMEM;
 		} else {
-			linkmetrics_derived_metric_table[i] = NULL;
+			linksmetrics_derived_metric_table[i] = NULL;
 		}
 	}
 
@@ -403,7 +400,7 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 		count = 0;
 		do {
 			int dir = -1;
-			s = fgets(lbuf, sizeof(lbuf), lm_f);
+			s = fgets(lbuf, sizeof(lbuf), linksinfo[k].lm_f);
 			if (!s)
 				break;
 			rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &val,
@@ -419,12 +416,12 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 			if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 			     (hsn_metrics_type == HSN_METRICS_BOTH)) &&
 			    linksinfo[k].doderived){
-				linksmetrics_base_values[k][linkmetrics_values_idx][dir] = val;
+				linksmetrics_base_values[k][linksmetrics_values_idx[k]][dir] = val;
 			}
 			count++;
 		} while (s);
 
-		if (count != ARIES_NUM_LINKS){
+		if (count != ARIES_NUM_TILES){
 			msglog(LDMS_LERROR, "ERR: wrong number of metrics in file '%s'\n",
 			       linksinfo[k].fname);
 			rc = EINVAL;
@@ -559,7 +556,7 @@ int add_metrics_aries_linksmetrics(ldms_set_t set, int comp_id,
 
 		if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)) &&
-		    linkinfo[i].doderived){
+		    linksinfo[i].doderived){
 			for (j = 0; j < ARIES_MAX_TILES; j++) {
 				__links_metric_name(i, 0, j, newname);
 				linksmetrics_derived_metric_table[i][j] =
@@ -637,7 +634,7 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 	if (!linksmetrics_valid)
 		return 0;
 
-	for (i = 0; i < ENDLINKS: i++){
+	for (i = 0; i < ENDLINKS; i++){
 		FILE* lm_f = linksinfo[i].lm_f;
 		idx = linksmetrics_values_idx[i];
 
@@ -688,16 +685,16 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 			    linksinfo[i].doderived){
 				linksmetrics_base_values[i][idx][dir] = v.v_u64;
 
-				if ( linksmetrics_base_values[i][idx][idir] <
-				     linksmetrics_base_values[i][!idx][idir]) {
+				if ( linksmetrics_base_values[i][idx][dir] <
+				     linksmetrics_base_values[i][!idx][dir]) {
 					/* the gpcdr values are 64 bit */
-					linksmetrics_base_diff[i][idir] =
-						(ULONG_MAX - linksmetrics_base_values[i][!idx][idir]) +
-						linksmetrics_base_values[i][idx][idir];
+					linksmetrics_base_diff[i][dir] =
+						(ULONG_MAX - linksmetrics_base_values[i][!idx][dir]) +
+						linksmetrics_base_values[i][idx][dir];
 				} else {
-					linksmetrics_base_diff[i][idir] =
-						linksmetrics_base_values[i][idx][idir] -
-						linksmetrics_base_values[i][!idx][idir];
+					linksmetrics_base_diff[i][dir] =
+						linksmetrics_base_values[i][idx][dir] -
+						linksmetrics_base_values[i][!idx][dir];
 				}
 			}
 			count++;
@@ -706,7 +703,7 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 
 		if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)) && 
-		    linkmetrics[i].doderived){
+		    linksinfo[i].doderived){
 			for (j = 0; j < ARIES_MAX_TILES; j++) {
 				/** there are 8 that wont need to be done, but those will ret 0 (base_diff = 0) */
 				v.v_u64 = __linksmetrics_derived_metric_calc(
@@ -717,7 +714,7 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 			}
 		}
 
-		if (count != num_linksmetrics_exists) {
+		if (count != ARIES_NUM_TILES){
 			msglog(LDMS_LERROR, "linksmetrics: in sample wrong num values for '%s'\n",
 			       linksinfo[i].fname);
 			linksmetrics_valid = 0;
@@ -833,8 +830,9 @@ static uint64_t __linksmetrics_derived_metric_calc(int i, uint64_t* diff,
 		if ((timedelta > 0) && (diff != 0)){
 			return (uint64_t)
 				((double)(linksmetrics_time_multiplier[i] * (*diff))/(double) timedelta);
-		else
+		} else {
 			return 0;
+		}
 		break;
 	default:
 		return 0;
