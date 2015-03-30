@@ -257,6 +257,7 @@ int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 	*m_sz = tot_meta_sz;
 	*d_sz = tot_data_sz;
 
+
 	return 0;
 
 }
@@ -340,18 +341,18 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 		     (hsn_metrics_type == HSN_METRICS_BOTH)) &&
 		    linksinfo[k].doderived){
 
-			linksmetrics_base_values[k] = calloc(2, sizeof(uint64_t**));
+			linksmetrics_base_values[k] = calloc(2, sizeof(uint64_t*));
 			if (!linksmetrics_base_values[k])
 				return ENOMEM;
 
 			linksmetrics_base_diff[k] = calloc(ARIES_MAX_TILES,
-							   sizeof(uint64_t*));
+							   sizeof(uint64_t));
 			if (!linksmetrics_base_diff[k])
 				return ENOMEM;
 
 			for (i = 0; i < 2; i++){
 				linksmetrics_base_values[k][i] =
-					calloc(ARIES_MAX_TILES, sizeof(uint64_t*));
+					calloc(ARIES_MAX_TILES, sizeof(uint64_t));
 				if (!linksmetrics_base_values[k][i])
 					return ENOMEM;
 			}
