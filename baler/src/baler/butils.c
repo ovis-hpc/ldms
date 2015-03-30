@@ -471,7 +471,6 @@ int bstr_lcsX_u32(const struct bstr *a, const struct bstr *b, int *idx,
 	int len_b = b->blen / sizeof(uint32_t);
 	int i, j, k;
 	uint32_t max;
-	int rc;
 
 #define _LCS(x_a,y_b) lcs[(x_a) + (y_b)*len_a]
 
@@ -523,7 +522,7 @@ int bstr_lcsX_u32(const struct bstr *a, const struct bstr *b, int *idx,
 	assert(j >= -1);
 
 #undef _LCS
-	return rc;
+	return 0;
 }
 
 int bstr_lcs_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,
