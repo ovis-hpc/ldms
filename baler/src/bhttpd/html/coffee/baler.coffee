@@ -149,7 +149,7 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
         ptns_ent: [] # ptns_dom[ptn_id] is PtnLstEnt of ptn_id
         groups_ent: [] # groups_dom[gid] is GrpLstEnt of gid
 
-        constructor: (__ptns__, @groups) ->
+        constructor: (__ptns__, @groups, @group_names) ->
             @domobj = _.ul({class: "PtnTable"})
 
             @ptns = []
@@ -165,7 +165,10 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
                     gid = 0
                 g = @groups_ent[gid]
                 if not g
-                    g = @groups_ent[gid] = new GrpLstEnt("#{gid}", gid)
+                    gname = "#{gid}.)"
+                    if group_names and group_names[gid]
+                        gname += "  " + group_names[gid]
+                    g = @groups_ent[gid] = new GrpLstEnt(gname, gid)
                     @domobj.appendChild(g.domobj)
                 g.addPtnLstEnt(p)
 

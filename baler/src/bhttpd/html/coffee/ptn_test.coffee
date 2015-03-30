@@ -17,7 +17,7 @@ define (reqire) ->
             for p in data.map
                 grp[p[0]] = p[1]
             window.grp = grp
-            p = new baler.PtnTable(window.patterns, grp)
+            p = new baler.PtnTable(window.patterns, grp, data.cluster_names)
             p.sort()
             t.appendChild(p.domobj)
             window.p = p
