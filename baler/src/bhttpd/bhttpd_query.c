@@ -72,6 +72,32 @@ uint32_t query_session_gn;
 struct timeval query_session_timeout = {.tv_sec = 600, .tv_usec = 0};
 
 static
+int __evbuffer_add_json_bstr(struct evbuffer *evb, const struct bstr *bstr)
+{
+	int rc = 0;
+	int i;
+	evbuffer_add_printf(evb, "\"");
+	if (rc < 0)
+		return errno;
+	for (i = 0; i < bstr->blen; i++) {
+		switch (bstr->cstr[i]) {
+		case '"':
+		case '\\':
+			rc = evbuffer_add_printf(evb, "%c", '\\');
+			if (rc < 0)
+				return errno;
+		}
+		rc = evbuffer_add_printf(evb, "%c", bstr->cstr[i]);
+		if (rc < 0)
+			return errno;
+	}
+	rc = evbuffer_add_printf(evb, "\"");
+	if (rc < 0)
+		return errno;
+	return 0;
+}
+
+static
 void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
 {
 	struct bptn_store *ptn_store = bq_get_ptn_store(bq_store);
@@ -385,7 +411,22 @@ void bhttpd_handle_query_meta(struct bhttpd_req_ctxt *ctxt)
 			evbuffer_add_printf(ctxt->evbuffer, ", [%d, %d]", i, x);
 		}
 	}
-	evbuffer_add_printf(ctxt->evbuffer, "]}");
+	evbuffer_add_printf(ctxt->evbuffer, "], ");
+	n = bmptn_store_get_last_cls_id(mptn_store);
+	evbuffer_add_printf(ctxt->evbuffer, "\"cluster_names\": {");
+	first = 1;
+	for (i = 1; i <= n; i++) {
+		const struct bstr *bstr = bmptn_get_cluster_name(mptn_store, i);
+		if (!bstr)
+			continue;
+		if (first)
+			first = 0;
+		else
+			evbuffer_add_printf(ctxt->evbuffer, ",");
+		evbuffer_add_printf(ctxt->evbuffer, "\"%d\": ", i);
+		__evbuffer_add_json_bstr(ctxt->evbuffer, bstr);
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "}}");
 }
 
 static
