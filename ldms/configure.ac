@@ -380,6 +380,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 scripts/ldms_local_rollperiod_test.sh
 		 scripts/ldms_local_rollrecords_test.sh
 		 scripts/ldms_local_rolltime_test.sh
+		 scripts/ldms_local_dertest.sh
+		 scripts/ldms_local_dertest_big.sh
 		 ldms.spec],[
 		if test -f scripts/ldms_ban.sh.in; then chmod a+x scripts/ldms_ban.sh.in; fi
 		if test -f scripts/ldms_ctltest.sh; then chmod a+x scripts/ldms_ctltest.sh; fi
@@ -394,6 +396,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		if test -f scripts/ldms_local_rollperiod_test.sh; then chmod a+x scripts/ldms_local_rollperiod_test.sh; fi
 		if test -f scripts/ldms_local_rollrecords_test.sh; then chmod a+x scripts/ldms_local_rollrecords_test.sh; fi
 		if test -f scripts/ldms_local_rolltime_test.sh; then chmod a+x scripts/ldms_local_rolltime_test.sh; fi
+		if test -f scripts/ldms_local_dertest.sh; then chmod a+x scripts/ldms_local_dertest.sh; fi
+		if test -f scripts/ldms_local_dertest_big.sh; then chmod a+x scripts/ldms_local_dertest_big.sh; fi
 		])
 AC_OUTPUT
 

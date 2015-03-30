@@ -130,7 +130,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen("/proc/stat", "r");
 	if (!mf) {
-		msglog(LDMS_LDEBUG,"Could not open the /proc/stat file.\n");
+		msglog(LDMS_LERROR,"Could not open the /proc/stat file.\n");
 		return ENOENT;
 	}
 

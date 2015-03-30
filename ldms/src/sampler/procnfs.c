@@ -138,7 +138,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMS_LDEBUG,"Could not open /proc/net/rpc/nfs file '%s'...exiting\n",
+		msglog(LDMS_LERROR,"Could not open /proc/net/rpc/nfs file '%s'\n",
 				procfile);
 		return ENOENT;
 	}

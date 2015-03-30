@@ -118,7 +118,7 @@ static int parse_conf_file(const char* ffile)
 
 	FILE *fp = fopen(ffile,"r");
 	if (!fp) {
-		msglog(LDMS_LDEBUG,"Could not open the procsensors config file '%s'...returning\n",
+		msglog(LDMS_LERROR,"Could not open the procsensors config file '%s'...returning\n",
 		       ffile);
 		return EINVAL;
 	}
@@ -136,7 +136,7 @@ static int parse_conf_file(const char* ffile)
 	} while (s);
 
 	if (lm_nentries == 0){
-		msglog(LDMS_LDEBUG,"No entries in the procsensors config file '%s'...returning\n",
+		msglog(LDMS_LERROR,"No entries in the procsensors config file '%s'...returning\n",
 		       ffile);
 		if (fp) fclose(fp);
 		return EINVAL;
@@ -168,7 +168,7 @@ static int parse_conf_file(const char* ffile)
 		rc = sscanf(lbuf, "%s %s %lf %lf",
 			    vname, mname, &multiplier, &offset);
 		if (rc != 4){
-			msglog(LDMS_LDEBUG,"Bad format line in the procsensors config file '%s' '%s'...returning\n",
+			msglog(LDMS_LERROR,"Bad format line in the procsensors config file '%s' '%s'...returning\n",
 			       lbuf, ffile);
 			rc = EINVAL;
 			break;

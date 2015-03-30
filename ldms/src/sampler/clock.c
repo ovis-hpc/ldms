@@ -156,7 +156,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMS_LDEBUG,"clock: plugin not initialized\n");
+		msglog(LDMS_LERROR,"clock: plugin not initialized\n");
 		return EINVAL;
 	}
 

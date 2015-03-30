@@ -118,12 +118,16 @@ static int create_metric_set(const char *path)
 	int i,j;
 
 
+	msglog(LDMS_LDEBUG,"Trying to open /proc/net/dev file '%s'\n",
+			procfile);
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMS_LDEBUG,"Could not open /proc/net/dev file '%s'...exiting\n",
+		msglog(LDMS_LERROR,"Could not open /proc/net/dev file '%s'\n",
 				procfile);
 		return ENOENT;
 	}
+	msglog(LDMS_LDEBUG,"Did open /proc/net/dev file '%s'\n",
+			procfile);
 
 	/* Use all specified ifaces whether they exist or not. These will be
 	   populated with 0 values for non existent ifaces. The metrics will appear
@@ -198,9 +202,9 @@ static const char *usage(void)
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char* value;
-	char* ifacelist;
-	char* pch;
+	char* value = NULL;
+	char* ifacelist = NULL;
+	char* pch = NULL;
 	char *saveptr = NULL;
 
 	value = av_value(avl, "component_id");
@@ -208,6 +212,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		comp_id = strtoull(value, NULL, 0);
 
 	value = av_value(avl, "ifaces");
+	if (!value) {
+		msglog(LDMS_LDEBUG,"procnetdev: config missing argument ifaces=namelist\n");
+		goto err;
+	}
 	ifacelist = strdup(value);
 	pch = strtok_r(ifacelist, ",", &saveptr);
 	while (pch != NULL){
