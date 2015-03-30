@@ -420,6 +420,16 @@ int calculate_timeout(int thread_id, unsigned long interval_us,
 	return 0;
 }
 
+static void stop_sampler(struct ldmsd_plugin_cfg *pi)
+{
+	evtimer_del(pi->event);
+	event_free(pi->event);
+	pi->event = NULL;
+	release_ev_base(pi->thread_id);
+	pi->thread_id = -1;
+	pi->ref_count--;
+}
+
 void plugin_sampler_cb(int fd, short sig, void *arg)
 {
 	struct timeval tv;
@@ -430,8 +440,19 @@ void plugin_sampler_cb(int fd, short sig, void *arg)
 		calculate_timeout(pi->thread_id, pi->sample_interval_us,
 				  pi->sample_offset_us, &pi->timeout);
 	}
-	pi->sampler->sample();
-	(void)evtimer_add(pi->event, &pi->timeout);
+	int rc = pi->sampler->sample();
+	if (!rc) {
+		(void)evtimer_add(pi->event, &pi->timeout);
+	} else {
+		/*
+		 * If the sampler reports an error don't reschedule
+		 * the timeout. This is an indication of a configuration
+		 * error that needs to be corrected.
+		*/
+		msg_log("'%s': failed to sample. Stopping the plug-in.\n",
+				pi->name);
+		stop_sampler(pi);
+	}
 	pthread_mutex_unlock(&pi->lock);
 }
 
@@ -600,7 +621,6 @@ err:
 out:
 	pthread_mutex_unlock(&pi->lock);
 	return rc;
-
 }
 
 /*
