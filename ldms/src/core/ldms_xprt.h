@@ -59,7 +59,6 @@
 
 #include "ldms.h"
 
-//#include "ldms_config.h"
 #include "config.h"
 
 #pragma pack(4)
@@ -70,13 +69,8 @@ struct ldms_rbuf_desc {
 	uint64_t local_notify_xid;  /* Value sent in reg_notify */
 	uint64_t remote_notify_xid; /* Value received in req_notify */
 	uint32_t notify_flags;	    /* What events are notified  */
-	uint32_t flags;
-	uint64_t xid;
 	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
 	LIST_ENTRY(ldms_rbuf_desc) xprt_link; /* list of RBD for a transport */
-	uint32_t xprt_data_len;	/* The length of the transport private data in bytes */
-	void *xprt_data;	/* The transport private data section */
-	void *lcl_data;		/* Pointer to the local buffer. */
 	struct zap_map *rmap;	/* remote map */
 	struct zap_map *lmap;	/* local map */
 };
@@ -135,14 +129,6 @@ struct ldms_request {
 	};
 };
 
-struct ldms_lookup_reply {
-	uint64_t set_id;	/*! server handle for set */
-	uint32_t meta_len;
-	uint32_t data_len;
-	uint32_t xprt_data_len;
-	char xprt_data[0];
-};
-
 struct ldms_lookup_msg {
 	uint64_t xid;
 	uint32_t meta_len;
@@ -171,7 +157,6 @@ struct ldms_reply_hdr {
 struct ldms_reply {
 	struct ldms_reply_hdr hdr;
 	union {
-		struct ldms_lookup_reply lookup;
 		struct ldms_dir_reply dir;
 		struct ldms_req_notify_reply req_notify;
 	};
@@ -246,27 +231,8 @@ struct ldms_xprt {
 	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
 	LIST_ENTRY(ldms_xprt) xprt_link;
 
-	/** Read remote data buffer */
-	int (*read_data_start)(struct ldms_xprt *, ldms_set_t, size_t, void *);
-	/** Read remote metadata buffer */
-	int (*read_meta_start)(struct ldms_xprt *, ldms_set_t, size_t, void *);
-
-	/** User callback invoked when ldms_dir completes */
-	ldms_dir_cb_t *dir_cb;
-	void *dir_cb_arg;
-
-	/** Allocate a remote buffer */
-	struct ldms_rbuf_desc *(*alloc)(struct ldms_xprt *,
-					struct ldms_set *s,
-					void *xprt_data, size_t xprt_data_len);
-	/** Free a remote buffer */
-	void (*free)(struct ldms_xprt *, struct ldms_rbuf_desc *);
-
 	/** Transport message logging callback */
 	ldms_log_fn_t log;
-
-	/** Pointer to the transport's private data */
-	void *private;
 };
 
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]

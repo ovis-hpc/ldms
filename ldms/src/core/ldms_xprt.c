@@ -494,7 +494,6 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 			hdr.rc = htonl(ENOMEM);
 			goto err_out;
 		}
-		rbd->xid = req->hdr.xid;
 	}
 
 	struct ldms_lookup_msg lmsg = {
