@@ -200,4 +200,9 @@ struct bmptn_store {
 	struct bhash_entry **engsig_array;
 };
 
+struct bmptn_cluster_name {
+	uint32_t alloc_len;
+	struct bstr bstr;
+};
+
 #endif /* __BMETA_PRIV_H */

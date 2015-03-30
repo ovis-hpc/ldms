@@ -65,6 +65,7 @@ typedef enum {
 	BMPTN_STORE_STATE_META_1,
 	BMPTN_STORE_STATE_META_2,
 	BMPTN_STORE_STATE_REFINING,
+	BMPTN_STORE_STATE_NAMING,
 	BMPTN_STORE_STATE_DONE,
 	BMPTN_STORE_STATE_LAST,
 } bmptn_store_state_e;
@@ -167,5 +168,21 @@ int bmptn_store_get_class_id(struct bmptn_store *store, uint32_t ptn_id);
  * \retval errno Error.
  */
 int bmptn_store_get_class_id_array(struct bmptn_store *store, struct barray *array);
+
+/**
+ * \brief Set meta cluster name.
+ */
+int bmptn_set_cluster_name(struct bmptn_store *store,
+			   uint32_t cluster_id, const char *name, int name_len);
+
+/**
+ * \brief Compute and set meta cluster name from its members (patterns).
+ */
+int bmptn_compute_cluster_name(struct bmptn_store *store, uint32_t cluster_id);
+
+/**
+ * Get cluster name.
+ */
+const struct bstr *bmptn_get_cluster_name(struct bmptn_store *store, int cid);
 
 #endif /* __BMETA_H */

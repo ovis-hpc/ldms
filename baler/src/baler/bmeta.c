@@ -55,6 +55,7 @@
  * \brief Baler meta clustering library.
  */
 #include <errno.h>
+#include <assert.h>
 
 #include "bmeta.h"
 #include "bmeta_priv.h"
@@ -818,7 +819,8 @@ bmptn_store_state_e bmptn_store_get_state(struct bmptn_store *store)
 {
 	bmptn_store_state_e ret;
 	pthread_mutex_lock(&store->mutex);
-	ret = (bmptn_store_gethdr(store))->state;
+	struct bmptn_store_header *hdr = bmptn_store_gethdr(store);
+	ret = hdr->state;
 	pthread_mutex_unlock(&store->mutex);
 	return ret;
 }
@@ -832,6 +834,7 @@ const char *bmptn_store_get_state_str(struct bmptn_store *store)
 		"BMPTN_STORE_STATE_META_1",
 		"BMPTN_STORE_STATE_META_2",
 		"BMPTN_STORE_STATE_REFINING",
+		"BMPTN_STORE_STATE_NAMING",
 		"BMPTN_STORE_STATE_DONE",
 		"BMPTN_STORE_STATE_LAST",
 	};
@@ -867,6 +870,190 @@ uint32_t bmptn_store_get_percent(struct bmptn_store *store)
 	ret = (bmptn_store_gethdr(store))->percent;
 	pthread_mutex_unlock(&store->mutex);
 	return ret;
+}
+
+int bmptn_set_cluster_name(struct bmptn_store *store,
+			   uint32_t cluster_id, const char *name, int name_len)
+{
+	int rc = 0;
+	uint64_t off;
+	struct bmptn_cluster_name *cname;
+	struct bmc_handle *bmc = bmvec_generic_get(
+			store->bmc_handle_vec, cluster_id, sizeof(*bmc));
+	if (!name_len)
+		name_len = strlen(name);
+	if (!bmc) {
+		return ENOENT;
+	}
+	cname = BMPTR(store->mem, bmc->bmstr_off);
+	if (!cname || cname->alloc_len < name_len) {
+		/* need new mem */
+		off = bmem_alloc(store->mem, sizeof(*cname) + name_len);
+		if (!off) {
+			return ENOMEM;
+		}
+		bmc->bmstr_off = off;
+		cname = BMPTR(store->mem, off);
+		cname->alloc_len = name_len;
+	}
+	memcpy(cname->bstr.cstr, name, name_len);
+	cname->bstr.blen = name_len;
+	return 0;
+}
+
+int bmptn_compute_cluster_name(struct bmptn_store *store, uint32_t cluster_id)
+{
+	int rc = 0;
+	struct bdstr *bdstr = NULL;
+	struct bmc_handle *bmc = bmvec_generic_get(store->bmc_handle_vec,
+						cluster_id, sizeof(*bmc));
+
+	const struct bstr *bstr;
+	const struct bstr *ptn;
+	struct bstr *ptnx = NULL;
+	struct bstr *ptny = NULL;
+	struct bstr *ptntmp;
+	struct bstr *ptn_buff = NULL;
+	struct bmptn_node *node;
+	int idx_len;
+	int __idx_len;
+	int *idx = NULL;
+	int max_blen = 0;
+
+	int i, j, m, n;
+
+	void *buff = NULL;
+	int buffsz;
+
+	int first = 1;
+
+	if (!bmc) {
+		rc = ENOENT;
+		goto cleanup;
+	}
+
+	bdstr = bdstr_new(1024);
+	if (!bdstr) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+
+	BMLIST_FOREACH(node, bmc->bmlist_off, link, store->nodes->mem) {
+		ptn = bptn_store_get_ptn(store->ptn_store, node->ptn_id);
+		if (ptn->blen > max_blen)
+			max_blen = ptn->blen;
+	}
+
+	buffsz = max_blen / sizeof(uint32_t);
+	buffsz *= buffsz;
+	buffsz *= sizeof(uint32_t);
+
+	buff = malloc(buffsz);
+	if (!buff) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+
+	__idx_len = max_blen / sizeof(uint32_t);
+	idx = malloc(__idx_len * sizeof(*idx));
+	if (!idx) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+
+	ptn_buff = malloc(2*(sizeof(*ptn) + max_blen));
+	if (!ptn_buff) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+
+	ptnx = ptn_buff;
+	ptny = ((void*)ptnx) + (sizeof(*ptn) + max_blen);
+
+	BMLIST_FOREACH(node, bmc->bmlist_off, link, store->nodes->mem) {
+		ptn = bptn_store_get_ptn(store->ptn_store, node->ptn_id);
+
+		if (first) {
+			memcpy(ptnx, ptn, bstr_len(ptn));
+			first = 0;
+			idx_len = ptn->blen / sizeof(uint32_t);
+			for (i = 0; i < idx_len; i++) {
+				idx[i] = i;
+			}
+			continue;
+		}
+
+		/* lcs ... */
+		idx_len = __idx_len;
+		rc = bstr_lcsX_u32(ptn, ptnx, idx, &idx_len, buff, buffsz);
+		assert(rc == 0);
+		ptny->blen = idx_len * sizeof(uint32_t);
+		for (i = 0; i < idx_len; i++) {
+			ptny->u32str[i] = ptn->u32str[idx[i]];
+		}
+
+		ptntmp = ptnx;
+		ptnx = ptny;
+		ptny = ptntmp;
+	}
+
+	i = j = 0;
+	n = ptn->blen / sizeof(uint32_t);
+	while (i < n) {
+		if (j < idx_len && i == idx[j]) {
+			bstr = btkn_store_get_bstr(store->tkn_store,
+							ptn->u32str[i]);
+			assert(bstr);
+			rc = bdstr_append_printf(bdstr, "%.*s",
+						bstr->blen, bstr->cstr);
+			assert(rc == 0);
+			j++;
+		} else {
+			rc = bdstr_append_printf(bdstr, "*");
+			assert(rc == 0);
+		}
+		i++;
+	}
+
+	rc = bmptn_set_cluster_name(store, cluster_id,
+					bdstr->str, bdstr->str_len);
+
+cleanup:
+	if (ptn_buff) {
+		free(ptn_buff);
+	}
+
+	if (bdstr) {
+		bdstr_free(bdstr);
+	}
+
+	if (idx) {
+		free(idx);
+	}
+
+	if (buff) {
+		free(buff);
+	}
+
+	return rc;
+}
+
+const struct bstr *bmptn_get_cluster_name(struct bmptn_store *store, int cid)
+{
+	struct bmptn_store_header *hdr = bmptn_store_gethdr(store);
+	int n = hdr->last_cls_id;
+	if (cid > n) {
+		errno = ENOENT;
+		return NULL;
+	}
+	struct bmc_handle *bmc = bmvec_generic_get(store->bmc_handle_vec,
+							cid, sizeof(*bmc));
+	struct bmptn_cluster_name *cname = BMPTR(store->mem, bmc->bmstr_off);
+
+	if (cname)
+		return &cname->bstr;
+
+	return NULL;
 }
 
 int bmptn_cluster(struct bmptn_store *store, struct bmeta_cluster_param *param)
@@ -910,6 +1097,7 @@ int bmptn_cluster(struct bmptn_store *store, struct bmeta_cluster_param *param)
 	while (i <= bmptn_store_gethdr(store)->last_cls_id) {
 		struct bmc_handle *bmc = bmvec_generic_get(
 					store->bmc_handle_vec, i, sizeof(*bmc));
+		bmc->bmstr_off = 0;
 		if (bmc->avg_dist < 0) {
 			bmc->avg_dist = __avg_dist(store, i);
 		}
@@ -929,6 +1117,15 @@ int bmptn_cluster(struct bmptn_store *store, struct bmeta_cluster_param *param)
 		}
 		hdr = bmptn_store_gethdr(store);
 		hdr->percent = ((float)i/hdr->last_cls_id) * 100;
+		i++;
+	}
+	i = 1;
+	while (i <= bmptn_store_gethdr(store)->last_cls_id) {
+		rc = bmptn_compute_cluster_name(store, i);
+		if (rc) {
+			__bmptn_store_set_state(store, BMPTN_STORE_STATE_ERROR);
+			return rc;
+		}
 		i++;
 	}
 	__bmptn_store_set_state(store, BMPTN_STORE_STATE_DONE);
