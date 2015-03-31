@@ -73,15 +73,13 @@ static const char *get_doc(void)
 
 static int blob_comparator(obj_key_t a, obj_key_t b)
 {
-	sos_blob_obj_t ba = (void*)a;
-	sos_blob_obj_t bb = (void*)b;
 	int res;
-	int cmp_len = ba->len;
-	if (cmp_len > bb->len)
-		cmp_len = bb->len;
-	res = memcmp(ba->data, bb->data, cmp_len);
+	int cmp_len = a->len;
+	if (cmp_len > b->len)
+		cmp_len = b->len;
+	res = memcmp(a->value, b->value, cmp_len);
 	if (res == 0)
-		return ba->len - bb->len;
+		return a->len - b->len;
 	return res;
 }
 
