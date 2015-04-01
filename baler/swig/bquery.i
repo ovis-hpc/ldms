@@ -54,35 +54,6 @@
 #include "query/bquery.h"
 %}
 
-struct bq_store* bq_open_store(const char *path);
-
-typedef enum bquery_status {
-	BQ_STAT_INIT,
-	BQ_STAT_QUERYING,
-	BQ_STAT_DONE,
-} bq_stat_t;
-
-struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
-			     const char *ptn_ids, const char *ts0,
-			     const char *ts1, int is_text, char sep, int *rc);
-
-struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
-				const char *ptn_ids, const char *ts0,
-				const char *ts1, const char *img_store_name,
-				int *rc);
-
-void bquery_destroy(struct bquery *q);
-
-bq_stat_t bq_get_stat(struct bquery *q);
-
-char* bq_query(struct bquery *q, int *rc);
-
-char* bq_imgquery(struct bimgquery *q, int *rc);
-
-char* bq_get_all_ptns(struct bq_store *store);
-
-int bq_get_all_ptns_r(struct bq_store *store, char *buf, size_t buflen);
-
-char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
-
-int bq_get_host_id(struct bq_store *store, const char *hostname);
+/*
+ * REVISE THIS PYTHON INTERFACE LATER WHEN NEEDED.
+ */
