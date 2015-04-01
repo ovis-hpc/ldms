@@ -71,6 +71,10 @@
  * Baler Input Queue entry data.
  */
 struct binq_data {
+	enum {
+		BINQ_DATA_MSG = 0,
+		BINQ_DATA_METRIC,
+	} type;
 	struct bstr *hostname; /**< Hostname. */
 	struct timeval tv; /**< Time value. */
 	uint32_t tok_count; /**< Token count, for convenient ptn allocation.*/

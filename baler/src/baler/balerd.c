@@ -1612,6 +1612,32 @@ cleanup:
 	return rc;
 }
 
+void process_input_extract_ptn(struct binq_data *in_data, struct bmsg *msg, struct bstr *str)
+{
+	int tkn_idx = 0;
+	int attr_count = 0;
+
+	if (in_data->type == BINQ_DATA_MSG) {
+		msg->argc = 0;
+		return;
+	}
+
+	/* Otherwise, we need to mark some of the token in 'str' as '*' */
+	attr_count = 0;
+	for (tkn_idx = 0; tkn_idx < in_data->tok_count; tkn_idx++) {
+		int tid = str->u32str[tkn_idx];
+		struct btkn_attr attr = btkn_store_get_attr(token_store, tid);
+		/* REMARK: The default type of a token is '*' */
+		if (attr.type == BTKN_TYPE_STAR) {
+			/* This will be marked as '*' and put into arg list. */
+			str->u32str[tkn_idx] = BMAP_ID_STAR;
+			msg->argv[attr_count++] = tid;
+		}
+		/* else, do nothing */
+	}
+	msg->argc = attr_count;
+}
+
 int slave_process_input_entry_step2(struct bwq_entry *ent)
 {
 	int rc = 0;
@@ -1626,21 +1652,9 @@ int slave_process_input_entry_step2(struct bwq_entry *ent)
 
 	ctxt->next_fn = slave_process_input_entry_step3;
 
-	for (tkn_idx = 0; tkn_idx < in_data->tok_count; tkn_idx++) {
-		int tid = ctxt->ptn_str.u32str[tkn_idx];
-		struct btkn_attr attr = btkn_store_get_attr(token_store, tid);
-		/* REMARK: The default type of a token is '*' */
-		if (attr.type == BTKN_TYPE_STAR) {
-			/* This will be marked as '*' and put into arg list. */
-			str->u32str[tkn_idx] = BMAP_ID_STAR;
-			msg->argv[attr_count++] = tid;
-		}
-		/* else, do nothing */
-	}
-	msg->argc = attr_count;
+	process_input_extract_ptn(in_data, msg, str);
 
 	/* Now str is the pattern string, with arguments in msg->argv */
-	/* pid stands for pattern id */
 
 	msg->ptn_id = bptn_store_get_id(pattern_store, str);
 	if (msg->ptn_id >= BMAP_ID_BEGIN)
@@ -1674,14 +1688,19 @@ int slave_process_input_entry_step1(struct bwq_entry *ent, struct bin_wkr_ctxt *
 {
 	int rc = 0;
 	struct binq_data *in_data = &ent->data.in;
-	uint32_t comp_id = bmap_get_id(comp_store->map, in_data->hostname);
+	uint32_t comp_id;
 	int unresolved_count = 0;
 
-	if (comp_id < BMAP_ID_BEGIN) {
-		comp_id = -1; /* all 0xFF */
-		unresolved_count++;
+	if (in_data->type == BINQ_DATA_MSG) {
+		comp_id = bmap_get_id(comp_store->map, in_data->hostname);
+		if (comp_id < BMAP_ID_BEGIN) {
+			comp_id = -1; /* all 0xFF */
+			unresolved_count++;
+		} else {
+			comp_id -= (BMAP_ID_BEGIN - 1);
+		}
 	} else {
-		comp_id -= (BMAP_ID_BEGIN - 1);
+		comp_id = in_data->hostname->u32str[0];
 	}
 
 	struct bin_wkr_ctxt *ctxt = malloc(sizeof(*ctxt));
@@ -1773,11 +1792,16 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 {
 	int rc = 0;
 	struct binq_data *in_data = &ent->data.in;
-	uint32_t comp_id = bmap_get_id(comp_store->map, in_data->hostname);
-	if (comp_id < BMAP_ID_BEGIN) {
-		/* Error, cannot find the comp_id */
-		rc = ENOENT;
-		goto cleanup;
+	uint32_t comp_id;
+	if (in_data->type == BINQ_DATA_MSG) {
+		comp_id = bmap_get_id(comp_store->map, in_data->hostname);
+		if (comp_id < BMAP_ID_BEGIN) {
+			/* Error, cannot find the comp_id */
+			rc = ENOENT;
+			goto cleanup;
+		}
+	} else {
+		comp_id = in_data->hostname->u32str[0];
 	}
 	comp_id -= (BMAP_ID_BEGIN - 1);
 	struct bstr_list_entry *str_ent;
@@ -1785,7 +1809,6 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	struct bstr *str = &ctxt->ptn_str;
 	/* msg->agrv will hold the pattern arguments. */
 	struct bmsg *msg = &ctxt->msg;
-	uint32_t attr_count = 0;
 	uint32_t tkn_idx = 0;
 	LIST_FOREACH(str_ent, in_data->tokens, link) {
 		int tid = btkn_store_insert(token_store, &str_ent->str);
@@ -1794,19 +1817,13 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 			goto cleanup;
 		}
 		struct btkn_attr attr = btkn_store_get_attr(token_store, tid);
-		/* REMARK: The default type of a token is '*' */
-		if (attr.type == BTKN_TYPE_STAR) {
-			/* This will be marked as '*' and put into arg list. */
-			str->u32str[tkn_idx] = BMAP_ID_STAR;
-			msg->argv[attr_count++] = tid;
-		} else {
-			/* otherwise, just put it into the string. */
-			str->u32str[tkn_idx] = tid;
-		}
+		str->u32str[tkn_idx] = tid;
 		tkn_idx++;
 	}
-	msg->argc = attr_count;
 	str->blen = tkn_idx * sizeof(uint32_t);
+
+	process_input_extract_ptn(in_data, msg, str);
+
 	/* Now str is the pattern string, with arguments in msg->argv */
 	/* pid stands for pattern id */
 	uint32_t pid = bptn_store_addptn(pattern_store, str);
