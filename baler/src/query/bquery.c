@@ -1082,7 +1082,6 @@ check:
 		bsi_key->ptn_id = bq_entry_get_ptn_id(q);
 		bsi_key->ts = bq_entry_get_sec(q);
 		bsi_key->comp_id = bq_entry_get_comp_id(q) + 1;
-		bout_sos_img_key_convert(bsi_key);
 		rc = brange_u32_iter_fwd_seek(imgq->hst_rng_itr, &bsi_key->comp_id);
 		if (rc == ENOENT) {
 			/* use next timestamp */
@@ -1101,11 +1100,11 @@ check:
 		assert(rc == 0);
 		brange_u32_iter_begin(imgq->hst_rng_itr, &bsi_key->comp_id);
 		bsi_key->ts = q->ts_0;
-		bout_sos_img_key_convert(bsi_key);
 		break;
 	}
 
 seek:
+	bout_sos_img_key_convert(bsi_key);
 	rc = sos_iter_seek_sup(q->itr, obj_key);
 	goto check;
 
@@ -1116,7 +1115,6 @@ next_store:
 	brange_u32_iter_begin(imgq->ptn_rng_itr, &bsi_key->ptn_id);
 	brange_u32_iter_begin(imgq->hst_rng_itr, &bsi_key->comp_id);
 	bsi_key->ts = q->ts_0;
-	bout_sos_img_key_convert(bsi_key);
 	goto seek;
 
 out:
@@ -1382,7 +1380,7 @@ int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p)
 	if (!obj)
 		return EINVAL;
 	p->ptn_id = bq_entry_get_ptn_id(&q->base);
-	p->count = sos_obj_attr_get_uint32(sos, SOS_IMG_COUNT, obj);
+	p->count = bq_img_entry_get_count(q);
 	p->sec = bq_entry_get_sec(&q->base);
 	p->comp_id = bq_entry_get_comp_id(&q->base);
 	return 0;
