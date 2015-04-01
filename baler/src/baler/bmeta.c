@@ -422,6 +422,9 @@ int __bmptn_cluster_1(struct bmptn_store *store)
 	struct bmptn_node *node;
 	uint32_t label = 0;
 	struct bmptn_node NODE = {0};
+	uint32_t metric_lead = 0;
+
+	metric_lead = btkn_store_get_id(store->tkn_store, BMETRIC_LEAD_TKN_BSTR);
 
 	store->engsig_hash = NULL;
 	store->engsig_array = NULL;
@@ -452,6 +455,8 @@ int __bmptn_cluster_1(struct bmptn_store *store)
 
 	for (i = BMAP_ID_BEGIN; i <= n; i++) {
 		const struct bstr *ptn = bptn_store_get_ptn(store->ptn_store, i);
+		if (ptn->u32str[0] == metric_lead)
+			continue;
 		rc = bmptn_get_eng_signature(store, ptn, buff);
 		if (rc)
 			goto cleanup;
@@ -598,6 +603,9 @@ relabel:
 	for (i = BMAP_ID_BEGIN; i <= N; i++) {
 		struct bmptn_node *node = bmvec_generic_get(store->nodes, i,
 								sizeof(*node));
+		if (!cls1_entries[node->label])
+			/* skip mertic stuff */
+			continue;
 		node->label = cls1_entries[node->label]->value;
 		struct bmc_handle *bmc = bmvec_generic_get(
 					store->bmc_handle_vec, node->label,

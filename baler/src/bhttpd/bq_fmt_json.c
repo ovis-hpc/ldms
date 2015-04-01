@@ -8,6 +8,7 @@
 #include "baler/butils.h"
 
 #include <time.h>
+#include <ctype.h>
 
 struct bqfmt_json {
 	struct bq_formatter base;
@@ -67,6 +68,16 @@ int __bqfmt_json_tkn_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
 		const struct bstr *bstr, struct btkn_attr *attr,
 		uint32_t tkn_id)
 {
+	static const char __map[256] = {
+		['\\'] = '\\',
+		['"'] = '"',
+		['/'] = '/',
+		['\b'] = 'b',
+		['\f'] = 'f',
+		['\n'] = 'n',
+		['\r'] = 'r',
+		['\t'] = 't',
+	};
 	int rc;
 	char buff[128];
 	const int lim = sizeof(buff) - 2;
@@ -98,8 +109,12 @@ loop:
 		case '\t':
 			/* These are the characters that need to be escaped. */
 			buff[j++] = '\\';
+			buff[j++] = __map[bstr->cstr[i]];
+			break;
 		default:
-			buff[j++] = bstr->cstr[i++];
+			if (isprint(bstr->cstr[i]))
+				buff[j++] = bstr->cstr[i];
+			i++;
 		}
 	}
 	rc = bdstr_append_printf(bdstr, "%.*s", j, buff);

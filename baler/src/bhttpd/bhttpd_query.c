@@ -98,7 +98,7 @@ int __evbuffer_add_json_bstr(struct evbuffer *evb, const struct bstr *bstr)
 }
 
 static
-void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
+void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 {
 	struct bptn_store *ptn_store = bq_get_ptn_store(bq_store);
 	int n = bptn_store_last_id(ptn_store);
@@ -131,6 +131,8 @@ void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
 
 	evbuffer_add_printf(ctxt->evbuffer, "{\"result\": [");
 	for (i=BMAP_ID_BEGIN; i<=n; i++) {
+		if (bq_is_metric_pattern(bq_store, i) != is_metric)
+			continue;
 		rc = bq_get_ptn(q, i, bdstr);
 		if (rc) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "pattern query internal"
@@ -153,6 +155,18 @@ cleanup:
 		bquery_destroy(q);
 	if (bdstr)
 		bdstr_free(bdstr);
+}
+
+static
+void bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt)
+{
+	__bhttpd_handle_query_ptn(ctxt, 0);
+}
+
+static
+void bhttpd_handle_query_metric_ptn(struct bhttpd_req_ctxt *ctxt)
+{
+	__bhttpd_handle_query_ptn(ctxt, 1);
 }
 
 static
@@ -403,6 +417,8 @@ void bhttpd_handle_query_meta(struct bhttpd_req_ctxt *ctxt)
 	first = 1;
 	evbuffer_add_printf(ctxt->evbuffer, "{\"map\": [");
 	for (i = BMAP_ID_BEGIN; i < n; i++) {
+		if (bq_is_metric_pattern(bq_store, i))
+			continue;
 		barray_get(array, i, &x);
 		if (first) {
 			evbuffer_add_printf(ctxt->evbuffer, "[%d, %d]", i, x);
@@ -427,6 +443,75 @@ void bhttpd_handle_query_meta(struct bhttpd_req_ctxt *ctxt)
 		__evbuffer_add_json_bstr(ctxt->evbuffer, bstr);
 	}
 	evbuffer_add_printf(ctxt->evbuffer, "}}");
+}
+
+static
+void bhttpd_handle_query_metric_meta(struct bhttpd_req_ctxt *ctxt)
+{
+	int n = bptn_store_last_id(bq_get_ptn_store(bq_store));
+	int rc;
+	int i, x, first;
+	const struct bstr *ptn;
+	struct bhash *idhash = NULL;
+	struct bhash_iter *itr = NULL;
+
+	idhash = bhash_new(65521, 11, NULL);
+	if (!idhash) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Not enough memory");
+		goto cleanup;
+	}
+	first = 1;
+	evbuffer_add_printf(ctxt->evbuffer, "{\"map\": [");
+	for (i = BMAP_ID_BEGIN; i < n; i++) {
+		if (!bq_is_metric_pattern(bq_store, i))
+			continue;
+		ptn = bptn_store_get_ptn(bq_get_ptn_store(bq_store), i);
+		if (!ptn) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Cannot get pattern id: %d", i);
+			goto cleanup;
+		}
+		if (first) {
+			evbuffer_add_printf(ctxt->evbuffer, "[%d, %d]", i,
+								ptn->u32str[1]);
+			first = 0;
+		} else {
+			evbuffer_add_printf(ctxt->evbuffer, ", [%d, %d]", i,
+								ptn->u32str[1]);
+		}
+		bhash_entry_set(idhash, (void*)&ptn->u32str[1],
+					sizeof(uint32_t), ptn->u32str[1]);
+	}
+
+	evbuffer_add_printf(ctxt->evbuffer, "], ");
+
+	first = 1;
+	evbuffer_add_printf(ctxt->evbuffer, "\"cluster_names\": {");
+
+	itr = bhash_iter_new(idhash);
+	rc = bhash_iter_begin(itr);
+	while (rc == 0) {
+		struct bhash_entry *ent = bhash_iter_entry(itr);
+		if (first)
+			first = 0;
+		else
+			evbuffer_add_printf(ctxt->evbuffer, ",");
+		evbuffer_add_printf(ctxt->evbuffer, "\"%d\": ", (uint32_t)ent->value);
+		const struct bstr *name = btkn_store_get_bstr(bq_get_tkn_store(bq_store), ent->value);
+		if (!name) {
+			evbuffer_add_printf(ctxt->evbuffer, "\"!!!ERROR!!!\"");
+		} else {
+			__evbuffer_add_json_bstr(ctxt->evbuffer, name);
+		}
+		rc = bhash_iter_next(itr);
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "}}");
+
+cleanup:
+	if (itr)
+		bhash_iter_free(itr);
+	if (idhash)
+		bhash_free(idhash);
 }
 
 static
@@ -641,8 +726,10 @@ struct bhttpd_handle_fn_entry {
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
 	{  "PTN",   "application/json",          bhttpd_handle_query_ptn   },
+	{  "METRIC_PTN",   "application/json",          bhttpd_handle_query_metric_ptn   },
 	{  "MSG",   "application/json",          bhttpd_handle_query_msg   },
 	{  "META",  "application/json",          bhttpd_handle_query_meta  },
+	{  "METRIC_META",  "application/json",          bhttpd_handle_query_metric_meta  },
 	{  "IMG",   "application/octet-stream",  bhttpd_handle_query_img   },
 	{  "IMG2",  "application/octet-stream",  bhttpd_handle_query_img2  },
 	{  "HOST",  "application/json",          bhttpd_handle_query_host  },

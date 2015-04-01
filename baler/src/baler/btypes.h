@@ -169,6 +169,16 @@ struct __attribute__((packed)) bstr {
 	};
 };
 
+#define BMETRIC_LEAD_TKN "\001\001\001\001"
+
+static struct bstr *BMETRIC_LEAD_TKN_BSTR =
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	(void*)"\004\000\000\000" BMETRIC_LEAD_TKN
+#else
+	(void*)"\000\000\000\004" BMETRIC_LEAD_TKN
+#endif
+	;
+
 /**
  * Convenient function to assign cstr to bstr.
  *

@@ -316,6 +316,14 @@ int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out);
 int bq_get_host_id(struct bq_store *store, const char *hostname);
 
 /**
+ * Check if the given \c ptn_id is a metric pattern.
+ *
+ * \retval 1 if the pattern is a metric pattern.
+ * \retval 0 if it is not.
+ */
+int bq_is_metric_pattern(struct bq_store *store, int ptn_id);
+
+/**
  * Get component (token) store from \c store.
  */
 struct btkn_store *bq_get_cmp_store(struct bq_store *store);

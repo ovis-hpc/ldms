@@ -1468,6 +1468,20 @@ int bq_get_all_ptns_r(struct bq_store *s, char *buf, size_t buflen)
 	return rc;
 }
 
+int bq_is_metric_pattern(struct bq_store *store, int ptn_id)
+{
+	const struct bstr *ptn = bptn_store_get_ptn(store->ptn_store, ptn_id);
+	if (!ptn)
+		return 0;
+	const struct bstr *lead = btkn_store_get_bstr(store->tkn_store, ptn->u32str[0]);
+	if (!lead)
+		return 0;
+	if (0 == bstr_cmp(lead, BMETRIC_LEAD_TKN_BSTR)) {
+		return 1;
+	}
+	return 0;
+}
+
 char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx)
 {
 	struct btkn_store *tkn_store = store->tkn_store;
