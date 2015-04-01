@@ -380,6 +380,9 @@ void bhttpd_evhttp_cb(struct evhttp_request *req, void *arg)
 	}
 
 	/* Call handling function */
+	evhttp_add_header(ctxt->hdr, "Cache-Control", "no-cache, no-store, must-revalidate");
+	evhttp_add_header(ctxt->hdr, "Pragma", "no-cache");
+	evhttp_add_header(ctxt->hdr, "Expires", "0");
 	fn(ctxt);
 
 	if (ctxt->httprc == HTTP_OK) {
