@@ -78,7 +78,7 @@ struct binq_data {
 	struct bstr *hostname; /**< Hostname. */
 	struct timeval tv; /**< Time value. */
 	uint32_t tok_count; /**< Token count, for convenient ptn allocation.*/
-	struct bstr_list_head *tokens; /**< Pointer to message tokens. */
+	struct bstr_list_head tokens; /**< Pointer to message tokens. */
 };
 
 /**
@@ -114,8 +114,7 @@ struct bwq_entry {
 static
 void binq_entry_free(struct bwq_entry *ent)
 {
-	if (ent->data.in.tokens)
-		bstr_list_free(ent->data.in.tokens);
+	bstr_list_free_entries(&ent->data.in.tokens);
 	free(ent->data.in.hostname);
 	free(ent);
 }

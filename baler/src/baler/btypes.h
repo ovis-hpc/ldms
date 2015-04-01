@@ -357,13 +357,19 @@ struct bstr_list_entry* bstr_list_entry_alloci(int str_blen, char *s)
 }
 
 static inline
-void bstr_list_free(struct bstr_list_head *head)
+void bstr_list_free_entries(struct bstr_list_head *head)
 {
 	struct bstr_list_entry *x;
 	while ((x = LIST_FIRST(head))) {
 		LIST_REMOVE(x, link);
 		free(x);
 	}
+}
+
+static inline
+void bstr_list_free(struct bstr_list_head *head)
+{
+	bstr_list_free_entries(head);
 	free(head);
 }
 

@@ -479,9 +479,7 @@ struct bwq_entry* prepare_bwq_entry(struct bstr *s)
 		goto err1;
 
 	/* Then, handle the rest of the tokens */
-	struct bstr_list_head *tok_head = malloc(sizeof(*tok_head));
-	if (!tok_head)
-		goto err1;
+	struct bstr_list_head *tok_head = &d->tokens;
 	LIST_INIT(tok_head);
 	struct bstr_list_entry *tok_tail = NULL;
 	/* Start tokenizing */
@@ -501,7 +499,6 @@ struct bwq_entry* prepare_bwq_entry(struct bstr *s)
 		/* Break out of the loop because lent == NULL ==> error */
 		goto err1;
 
-	d->tokens = tok_head;
 	d->tok_count = count;
 	return qent;
 err1:

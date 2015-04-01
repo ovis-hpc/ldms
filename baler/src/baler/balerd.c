@@ -1554,7 +1554,7 @@ void binq_data_print(struct binq_data *d)
 	printf("binq: %.*s %ld (%d): ", d->hostname->blen, d->hostname->cstr,
 			d->tv.tv_sec, d->tok_count);
 	struct bstr_list_entry *e;
-	LIST_FOREACH(e, d->tokens, link) {
+	LIST_FOREACH(e, &d->tokens, link) {
 		printf(" '%.*s'", e->str.blen, e->str.cstr);
 	}
 	printf("\n");
@@ -1723,7 +1723,7 @@ int slave_process_input_entry_step1(struct bwq_entry *ent, struct bin_wkr_ctxt *
 	uint32_t attr_count = 0;
 	uint32_t tkn_idx = 0;
 	/* resolving token IDs, use ctxt->ptn_str to temporarily hold tok IDs */
-	LIST_FOREACH(str_ent, in_data->tokens, link) {
+	LIST_FOREACH(str_ent, &in_data->tokens, link) {
 		struct btkn_attr attr;
 		int tid = btkn_store_get_id(token_store, &str_ent->str);
 		if (tid == BMAP_ID_NOTFOUND)
@@ -1756,7 +1756,7 @@ int slave_process_input_entry_step1(struct bwq_entry *ent, struct bin_wkr_ctxt *
 	}
 
 	tkn_idx = 0;
-	LIST_FOREACH(str_ent, in_data->tokens, link) {
+	LIST_FOREACH(str_ent, &in_data->tokens, link) {
 		if (str->u32str[tkn_idx] != BMAP_ID_NOTFOUND)
 			goto next;
 		bzmsg->ctxt = ent;
@@ -1810,7 +1810,7 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	/* msg->agrv will hold the pattern arguments. */
 	struct bmsg *msg = &ctxt->msg;
 	uint32_t tkn_idx = 0;
-	LIST_FOREACH(str_ent, in_data->tokens, link) {
+	LIST_FOREACH(str_ent, &in_data->tokens, link) {
 		int tid = btkn_store_insert(token_store, &str_ent->str);
 		if (tid == BMAP_ID_ERR) {
 			rc = errno;
