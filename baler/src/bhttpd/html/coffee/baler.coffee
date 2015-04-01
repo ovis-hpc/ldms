@@ -7,7 +7,7 @@ Baler Web GUI widgets.
 
 ###
 
-define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
+window.baler =
     balerd:
         addr: (()->
             host = window.location.hostname
@@ -85,32 +85,32 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
         domobj: undefined
         element_type: undefined
         constructor: (@element_type) ->
-            @domobj = _.tag(@element_type)
+            @domobj = LZH.tag(@element_type)
 
     TokDisp: class TokDisp extends Disp
         tok: undefined
         constructor: (@tok) ->
-            @domobj = _.span({class: "baler_#{@tok.tok_type}"}, @tok.text)
+            @domobj = LZH.span({class: "baler_#{@tok.tok_type}"}, @tok.text)
 
     MsgDisp: class MsgDisp extends Disp
         msg: undefined
         constructor: (@msg) ->
-            @domobj = _.span(null, t.domobj for t in \
+            @domobj = LZH.span(null, t.domobj for t in \
                                 (new TokDisp(tok) for tok in @msg))
 
     MsgLstEnt: class MsgLstEnt extends Disp
         msg: undefined
         constructor: (@msg) ->
             m = new MsgDisp(@msg.msg)
-            ts = _.span({class: "timestamp"}, @msg.ts)
-            host = _.span({class: "host"}, @msg.host)
-            @domobj = _.li({class: "MsgLstEnt"}, ts, " ", host, " ", m.domobj)
+            ts = LZH.span({class: "timestamp"}, @msg.ts)
+            host = LZH.span({class: "host"}, @msg.host)
+            @domobj = LZH.li({class: "MsgLstEnt"}, ts, " ", host, " ", m.domobj)
 
     PtnLstEnt: class PtnLstEnt extends Disp
         ptn: undefined
         constructor: (@ptn) ->
             m = new MsgDisp(@ptn.msg)
-            @domobj = _.li({class: "PtnLstEnt"}, "[#{@ptn.ptn_id}]:", m.domobj)
+            @domobj = LZH.li({class: "PtnLstEnt"}, "[#{@ptn.ptn_id}]:", m.domobj)
 
     GrpLstEnt: class GrpLstEnt extends Disp
         subdom: undefined
@@ -129,9 +129,9 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
             _this_.toggleExpanded()
 
         constructor: (@name, @gid) ->
-            @namedom = _.div({class: "GrpLstEnt_name"}, @name)
-            @subdom = _.ul()
-            @domobj = _.li({class: "GrpLstEnt"}, @namedom, @subdom)
+            @namedom = LZH.div({class: "GrpLstEnt_name"}, @name)
+            @subdom = LZH.ul()
+            @domobj = LZH.li({class: "GrpLstEnt"}, @namedom, @subdom)
 
             fn = @namedom_onClick
             obj = this
@@ -150,7 +150,7 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
         groups_ent: [] # groups_dom[gid] is GrpLstEnt of gid
 
         constructor: (__ptns__, @groups, @group_names) ->
-            @domobj = _.ul({class: "PtnTable"})
+            @domobj = LZH.ul({class: "PtnTable"})
 
             @ptns = []
             for p in __ptns__
@@ -225,18 +225,18 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
 
         constructor: (@msgTable) ->
             _this_ = this
-            ul = _.ul({style: "list-style: none"})
+            ul = LZH.ul({style: "list-style: none"})
             for k, [lbl, plc] of @dom_input_label_placeholder
-                input = @dom.input[k] = _.input()
+                input = @dom.input[k] = LZH.input()
                 input.placeholder = plc
-                li = _.li(null, _.span(null, lbl), input)
+                li = LZH.li(null, LZH.span(null, lbl), input)
                 ul.appendChild(li)
             btns = [
-                @dom.apply_btn = _.button(null, "apply"),
-                @dom.uup_btn = _.button(null, "\u21c8"),
-                @dom.up_btn = _.button(null, "\u21bf"),
-                @dom.down_btn = _.button(null, "\u21c2"),
-                @dom.ddown_btn = _.button(null, "\u21ca")
+                @dom.apply_btn = LZH.button(null, "apply"),
+                @dom.uup_btn = LZH.button(null, "\u21c8"),
+                @dom.up_btn = LZH.button(null, "\u21bf"),
+                @dom.down_btn = LZH.button(null, "\u21c2"),
+                @dom.ddown_btn = LZH.button(null, "\u21ca")
             ]
 
             @dom.apply_btn.onclick = (event) -> _this_.on_apply_btn_click(event)
@@ -245,7 +245,7 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
             @dom.down_btn.onclick = (event) -> _this_.msgTable.fetchNewer(1)
             @dom.ddown_btn.onclick = (event) -> _this_.msgTable.fetchNewer(5)
 
-            @dom.root = _.div({class: "MsgTableControl"}, ul, btns)
+            @dom.root = LZH.div({class: "MsgTableControl"}, ul, btns)
             @domobj = @dom.root
 
     # -- end MsgTableControl class -- #
@@ -275,8 +275,8 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
         constructor: (tableSize) ->
             if tableSize
                 @tableSize = tableSize
-            @dom.ul = _.ul({style: "list-style: none"})
-            @domobj = @dom.root = _.div(null, @dom.ul)
+            @dom.ul = LZH.ul({style: "list-style: none"})
+            @domobj = @dom.root = LZH.div(null, @dom.ul)
 
         clearTable: () ->
             ul = @dom.ul
@@ -345,7 +345,7 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
                     continue
                 ent = new MsgLstEnt(msg)
                 # ent.domobj.classList.add("NewRow")
-                # _.addChildren(ent.domobj, " ##{count}")
+                # LZH.addChildren(ent.domobj, " ##{count}")
                 count++
                 @__addFn(ent, msg.ref)
 
@@ -421,7 +421,7 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
 
         constructor: (@width, @height) ->
             _this_ = this
-            @domobj = _.canvas({width: width, height: height})
+            @domobj = LZH.canvas({width: width, height: height})
             @domobj.style.position = "absolute"
             @domobj.style.pointerEvents = "none"
             @ctxt = @domobj.getContext("2d")
@@ -516,7 +516,7 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
 
         constructor: (@width=400, @height=400) ->
             _this_ = this
-            @domobj = _.div({class: "HeatMapDisp"})
+            @domobj = LZH.div({class: "HeatMapDisp"})
             @domobj.style.position = "relative"
             @domobj.style.width = @width
             @domobj.style.height = @height
@@ -613,16 +613,16 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
         constructor: (@hmap) ->
             _this_ = this
             @dom_input = {}
-            @domobj = _.div({class: "HeatMapDispCtrl"})
-            ul = _.ul({style: "list-style: none"})
+            @domobj = LZH.div({class: "HeatMapDispCtrl"})
+            ul = LZH.ul({style: "list-style: none"})
             for k,[lbl,plc] of @dom_input_label_placeholder
-                inp = @dom_input[k] = _.input()
+                inp = @dom_input[k] = LZH.input()
                 inp.placeholder = plc
-                li = _.li(null, lbl, inp)
+                li = LZH.li(null, lbl, inp)
                 ul.appendChild(li)
-            @dom_add_btn = _.button(null, "add")
+            @dom_add_btn = LZH.button(null, "add")
             @dom_add_btn.onclick = () -> _this_.onAddBtnClick()
-            @dom_layer_list = _.ul({style: "list-style: none"})
+            @dom_layer_list = LZH.ul({style: "list-style: none"})
 
             # Laying out the component
             @domobj.appendChild(ul)
@@ -638,16 +638,16 @@ define ["jquery", "baler_config", "lazy_html"], ($, bcfg, _) -> baler =
             @dom_input["name"].value = ""
             @dom_input["ptn_ids"].value = ""
 
-            chk = _.input({type: "checkbox"})
+            chk = LZH.input({type: "checkbox"})
             chk.checked = 1
             chk.layer = @hmap.layers[idx]
             chk.onchange = () -> _this_.onLayerCheckChange(chk)
 
-            rmbtn = _.button(null, "x")
+            rmbtn = LZH.button(null, "x")
             rmbtn.layer = @hmap.layers[idx]
             rmbtn.onclick = () -> _this_.onRmBtnClicked(rmbtn)
 
-            li = _.li(null, chk, name, ":", ptn_ids, " ", rmbtn)
+            li = LZH.li(null, chk, name, ":", ptn_ids, " ", rmbtn)
 
             rmbtn.li = li
             @dom_layer_list.appendChild(li)
