@@ -188,6 +188,7 @@ int bset_u32_iter_reset(struct bset_u32_iter *iter)
 {
 	iter->next_idx = 0;
 	iter->elem = NULL;
+	return 0;
 }
 
 int uint32_t_cmp(const void *p1, const void *p2)
@@ -200,17 +201,19 @@ int uint32_t_cmp(const void *p1, const void *p2)
 	return 0;
 }
 
-void* bset_u32_to_brange_u32(struct bset_u32 *set)
+int bset_u32_to_brange_u32(struct bset_u32 *set, struct brange_u32_head *head)
 {
-	LIST_HEAD(, brange_u32) *head = calloc(1, sizeof(*head));
-	if (!head)
-		goto err0;
+	int rc = 0;
 	uint32_t *data = malloc(sizeof(*data) * set->count);
-	if (!data)
+	if (!data) {
+		rc = ENOENT;
 		goto err1;
+	}
 	struct bset_u32_iter *iter = bset_u32_iter_new(set);
-	if (!iter)
+	if (!iter) {
+		rc = errno;
 		goto err2;
+	}
 	uint32_t v;
 	int i = 0;
 	while (bset_u32_iter_next(iter, &v) == 0) {
@@ -223,8 +226,10 @@ void* bset_u32_to_brange_u32(struct bset_u32 *set)
 	struct brange_u32 *r; /* current range */
 	/* init the first range */
 	r = calloc(1, sizeof(*r));
-	if (!r)
+	if (!r) {
+		rc = errno;
 		goto err3;
+	}
 	r->a = r->b = data[0];
 	LIST_INSERT_HEAD(head, r, link);
 
@@ -236,18 +241,20 @@ void* bset_u32_to_brange_u32(struct bset_u32 *set)
 		/* else create new range */
 		pr = r;
 		r = calloc(1, sizeof(*r));
-		if (!r)
+		if (!r) {
+			rc = errno;
 			goto err4;
+		}
 		r->a = r->b = data[i];
 		LIST_INSERT_AFTER(pr, r, link);
 	}
 	free(data);
 	data = NULL;
 
-	return head;
+	return 0;
 
 err4:
-	while (r = LIST_FIRST(head)) {
+	while ((r = LIST_FIRST(head))) {
 		LIST_REMOVE(r, link);
 		free(r);
 	}
@@ -258,7 +265,7 @@ err2:
 err1:
 	free(head);
 err0:
-	return NULL;
+	return rc;
 }
 
 struct bset_u32 *bset_u32_from_numlist(const char *num_lst, int hsize)
@@ -303,4 +310,82 @@ err1:
 	bset_u32_free(set);
 err0:
 	return NULL;
+}
+
+struct brange_u32_iter *brange_u32_iter_new(struct brange_u32 *first)
+{
+        struct brange_u32_iter *itr = calloc(1, sizeof(*itr));
+        if (!itr)
+                return NULL;
+        itr->first_range = first;
+        itr->current_range = first;
+        itr->current_value = first->a;
+        return itr;
+}
+
+void brange_u32_iter_free(struct brange_u32_iter *itr)
+{
+	free(itr);
+}
+
+int brange_u32_iter_get_value(struct brange_u32_iter *itr, uint32_t *v)
+{
+	if (itr->current_range) {
+		*v = itr->current_value;
+		return 0;
+	}
+	return ENOENT;
+}
+
+int brange_u32_iter_next(struct brange_u32_iter *itr, uint32_t *v)
+{
+again:
+	if (!itr->current_range)
+		return ENOENT;
+	if (itr->current_value == itr->current_range->b) {
+		itr->current_range = LIST_NEXT(itr->current_range, link);
+		goto again;
+	}
+
+	if (itr->current_value < itr->current_range->a) {
+		*v = itr->current_value = itr->current_range->a;
+		return 0;
+	}
+
+	*v = ++itr->current_value;
+
+	return 0;
+}
+
+int brange_u32_iter_begin(struct brange_u32_iter *itr, uint32_t *v)
+{
+	if (!itr) {
+		*v = 0;
+		return 0;
+	}
+	itr->current_range = itr->first_range;
+	*v = itr->current_value = itr->current_range->a;
+	return 0;
+}
+
+int brange_u32_iter_fwd_seek(struct brange_u32_iter *itr, uint32_t *v)
+{
+	struct brange_u32 *r;
+	int rc;
+	if (*v < itr->current_value)
+		return EINVAL;
+	r = itr->current_range;
+	while (r) {
+		rc = brange_u32_cmp(r, *v);
+		if (rc > 0)
+			goto next;
+		/* found a valid range */
+		itr->current_range = r;
+		itr->current_value = (rc)?(r->a):(*v);
+		*v = itr->current_value;
+		return 0;
+	next:
+		r = LIST_NEXT(r, link);
+	}
+	return ENOENT;
 }

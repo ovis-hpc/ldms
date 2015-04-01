@@ -200,6 +200,14 @@ struct brange_u32 {
 	LIST_ENTRY(brange_u32) link;
 };
 
+LIST_HEAD(brange_u32_head, brange_u32);
+
+struct brange_u32_iter {
+	struct brange_u32 *first_range;
+	struct brange_u32 *current_range;
+	uint32_t current_value;
+};
+
 /**
  * Compare \c x to \c range.
  * \return 0 if \c x is in \c range.
@@ -217,11 +225,79 @@ int brange_u32_cmp(struct brange_u32 *range, uint32_t x)
 }
 
 /**
- * Create a list of ranges from the given set \c set.
- * \return a list of ranges.
- * \return empty list on error.
+ * Create a list of ranges from the given set \c set, and append them to
+ * \c * head.
+ *
+ * \param set The set handle.
+ * \param head The list head to append the ranges to.
+ *
+ * \retval 0 if OK
+ * \retval errno if error.
  */
-void* bset_u32_to_brange_u32(struct bset_u32 *set);
+int bset_u32_to_brange_u32(struct bset_u32 *set, struct brange_u32_head *head);
+
+/**
+ * Create a value iterator for ranges.
+ *
+ * \param first The first range in the range list.
+ *
+ * \retval NULL if error.
+ * \retval ptr ponter to the iterator handle, if success.
+ */
+struct brange_u32_iter *brange_u32_iter_new(struct brange_u32 *first);
+
+/**
+ * Get current value from the iterator.
+ *
+ * \param itr The iterator.
+ * \param[out] v The output value.
+ *
+ * \retval 0 if OK.
+ * \retval ENOENT if there is no more entry.
+ */
+int brange_u32_iter_get_value(struct brange_u32_iter *itr, uint32_t *v);
+
+/**
+ * Move the iterator to the beginning position; also set \c *v to the first
+ * value of the ranges.
+ *
+ * \param itr The iterator handle.
+ * \param[out] v The output value.
+ *
+ * \retval 0 if OK
+ * \retval errno if error.
+ */
+int brange_u32_iter_begin(struct brange_u32_iter *itr, uint32_t *v);
+
+/**
+ * Free the iterator.
+ */
+void brange_u32_iter_free(struct brange_u32_iter *itr);
+
+/**
+ * Move iterator to the next entry, and assign the value to \c *v.
+ *
+ * \param itr The iterator.
+ * \param[out] v The output value.
+ *
+ * \retval 0 if OK.
+ * \retval ENOENT if there is no more entry.
+ */
+int brange_u32_iter_next(struct brange_u32_iter *itr, uint32_t *v);
+
+/**
+ * Move the iterator, in a forward direction, to the position greater than or
+ * equal to \c v.
+ *
+ * \param itr The iterator.
+ * \param[in,out] v The value to seek to, also will be set to current position
+ *                  as an output (if success).
+ *
+ * \retval 0 if success.
+ * \retval EINVAL if \c v is less than the current position.
+ * \retval ENOENT if there is no range that contained or positioned beyond \c v.
+ */
+int brange_u32_iter_fwd_seek(struct brange_u32_iter *itr, uint32_t *v);
 
 #endif
 /**\}*/
