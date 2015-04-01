@@ -69,6 +69,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "btypes.h"
 
@@ -400,6 +401,33 @@ int bprocess_file_by_line_w_comment(const char *path,
  * \retval ENOENT if the input is incomplete, or no more cell.
  */
 int bcsv_get_cell(const char *str, const char **end);
+
+/*** BIN utility ***/
+
+/**
+ * Metric bin structure.
+ */
+struct bmetricbin {
+	char metric_name[256];
+	int alloc_bin_len;
+	int bin_len;
+	struct {
+		double lower_bound;
+		void *ctxt;
+	} bin[0];
+	/*
+	 * NOTE: for bin[x].img is for [bin[x].lower_bound,
+	 * bin[x+1].upper_bound). For x == 0, bin[0].lower_bound is -inf.  The
+	 * last bin, bin[bin_len - 1], will have lower_bound == inf.
+	 */
+};
+
+struct bmetricbin *bmetricbin_create(const char *recipe);
+struct bmetricbin *bmetricbin_new(int alloc_bin_len);
+void bmetricbin_free(struct bmetricbin *bin);
+int bmetricbin_addbin(struct bmetricbin *bin, double value);
+struct bmetricbin *bmetricbin_expand(struct bmetricbin *bin, int inc_bin_len);
+int bmetricbin_getbinidx(struct bmetricbin *bin, double value);
 
 #endif // _BUTILS_H
 /**\}*/

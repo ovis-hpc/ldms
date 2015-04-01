@@ -727,4 +727,131 @@ int bcsv_get_cell(const char *str, const char **end)
 
 	return 0;
 }
+
+struct bmetricbin *bmetricbin_create(const char *recipe)
+{
+	struct bmetricbin *bin = NULL;
+	const char *s, *t;
+	double x;
+	int n, rc;
+
+	/* skip white spaces */
+	while (*recipe && isspace(*recipe)) recipe++;
+
+	s = strchr(recipe, ':');
+	if (!s) {
+		errno = EINVAL;
+		goto err;
+	}
+
+	n = 0;
+	t = s + 1; /* s pointed at ':' */
+	while (*t) {
+		if (*t == ',')
+			n++;
+		t++;
+	}
+	n += 3;
+
+	bin = bmetricbin_new(n);
+	n = snprintf(bin->metric_name, sizeof(bin->metric_name), "%.*s",
+						(int)(s - recipe), recipe);
+	if (n >= sizeof(bin->metric_name)) {
+		errno = ENAMETOOLONG;
+		goto err;
+	}
+
+	t = s + 1; /* s pointed at ':' */
+	while (*t) {
+		n = 0;
+		sscanf(t, "%lf%n", &x, &n);
+		if (!n) {
+			errno = EINVAL;
+			goto err;
+		}
+		rc = bmetricbin_addbin(bin, x);
+		if (rc) {
+			errno = rc;
+			goto err;
+		}
+		/* next token */
+		t += n;
+		while (isspace(*t) || *t == ',')
+			t++;
+	}
+
+	return bin;
+
+err:
+	if (bin) {
+		bmetricbin_free(bin);
+	}
+	return NULL;
+}
+
+struct bmetricbin *bmetricbin_new(int alloc_bin_len)
+{
+	struct bmetricbin *bin = calloc(1, sizeof(*bin) +
+				alloc_bin_len * sizeof(*bin->bin));
+	if (!bin)
+		return NULL;
+	bin->alloc_bin_len = alloc_bin_len;
+	bin->bin_len = 2;
+	bin->bin[0].lower_bound = -INFINITY;
+	bin->bin[1].lower_bound = INFINITY;
+	return bin;
+}
+
+void bmetricbin_free(struct bmetricbin *bin)
+{
+	free(bin);
+}
+
+int bmetricbin_addbin(struct bmetricbin *bin, double value)
+{
+	if (bin->bin_len == bin->alloc_bin_len) {
+		return ENOMEM;
+	}
+	if (bin->bin[bin->bin_len - 2].lower_bound > value) {
+		return EINVAL;
+	}
+	bin->bin[bin->bin_len - 1].lower_bound = value;
+	bin->bin[bin->bin_len].lower_bound = INFINITY;
+	bin->bin_len++;
+	return 0;
+}
+
+struct bmetricbin *bmetricbin_expand(struct bmetricbin *bin, int inc_bin_len)
+{
+	int new_alloc_len = bin->alloc_bin_len + inc_bin_len;
+	bin = realloc(bin, sizeof(*bin) + new_alloc_len * sizeof(*bin->bin));
+	if (!bin)
+		return NULL;
+	bin->alloc_bin_len = new_alloc_len;
+	return bin;
+}
+
+int bmetricbin_getbinidx(struct bmetricbin *bin, double value)
+{
+	int l = 0, r = bin->bin_len - 1;
+	int c;
+	while (l < r) {
+		c = (l+r)/2;
+		if (value < bin->bin[c].lower_bound) {
+			/* go to the left */
+			r = c - 1;
+			continue;
+		}
+		if (bin->bin[c+1].lower_bound <= value) {
+			/* go to the right */
+			l = c + 1;
+			continue;
+		}
+		return c;
+	}
+	if (l == r)
+		return l;
+	return -1;
+}
+
 /* END OF FILE */
