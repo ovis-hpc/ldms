@@ -67,6 +67,8 @@
 #include "bplugin.h"
 #include "bwqueue.h"
 
+extern struct bwq *boutq;
+
 /*
  * Real definition is defined afterwards.
  */
@@ -110,6 +112,11 @@ const char *bget_store_path();
  * \return Error code on error.
  */
 int bset_store_path(const char *path);
+
+/**
+ * Posting output work queue entry to the balerd's output queue.
+ */
+void boutq_post(struct bwq_entry *ent);
 
 #endif /* __BOUTPUT_H */
 

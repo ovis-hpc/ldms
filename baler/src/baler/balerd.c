@@ -332,11 +332,6 @@ struct bplugin_head bip_head_s = {NULL};
 struct bplugin_head bop_head_s = {NULL};
 
 /**
- * A pointer to Baler Output Queue.
- */
-struct bwq *boutq;
-
-/**
  * Output queue workers
  */
 pthread_t *boutqwkr;

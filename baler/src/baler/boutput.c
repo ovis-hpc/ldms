@@ -52,6 +52,16 @@
 #include <string.h>
 
 /**
+ * A pointer to Baler Output Queue.
+ */
+struct bwq *boutq;
+
+void boutq_post(struct bwq_entry *ent)
+{
+	bwq_nq(boutq, ent);
+}
+
+/**
  * metric_ids[comp_id] mapping for ME output.
  */
 uint64_t *metric_ids;
