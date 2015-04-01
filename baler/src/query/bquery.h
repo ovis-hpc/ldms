@@ -205,52 +205,6 @@ void bimgquery_destroy(struct bimgquery *q);
 bq_stat_t bq_get_stat(struct bquery *q);
 
 /**
- * Perform the query and return a single result.
- *
- * The result will be in the following format: DATE-TIME HOST MESSAGE.
- * If \c is_text flag is set in \c bquery_create, DATE-TIME will be "YYYY-mm-dd
- * HH:MM:SS.uuuuuu" and HOST will be hostname. If \c is_text flag is not set,
- * DATE-TIME will be "(secons since Epoc).(microsecond)" and HOST will be just a
- * number (host_id).
- *
- * If this function is called repeatedly on the same query handle \c q, it will
- * return the next result until there are no more results.
- *
- * ***REMARK*** This function will automatically allocate a buffer for the
- * result. The caller is responsible to free it.
- *
- * \param q The query handle.
- * \param rc The return code. 0 for successful query. \c ENOENT for no more
- * results and other error code for other errors.
- *
- * \return Result string.
- * \return NULL if there are no more results or error. \c *rc will be set
- * 	accordingly.
- */
-char* bq_query(struct bquery *q, int *rc);
-
-char* bq_imgquery(struct bimgquery *q, int *rc);
-
-/**
- * Perform the query and put a single result into \c buff.
- *
- * Similar to ::bq_query, this function can be called repeatedly to get the next
- * result. If there are no more result, \c *buff is set to "" and the function
- * returns \c ENOENT.
- *
- * \param q The query handle.
- * \param buff The buffer.
- * \param bufsz The buffer size.
- *
- * \return 0 on success.
- * \return \c ENOENT on no more results.
- * \return error code on other errors.
- */
-int bq_query_r(struct bquery *q, struct bdstr *bdstr);
-
-int bq_imgquery_r(struct bimgquery *q, char *buff, size_t bufsz);
-
-/**
  * Move the query reference to the next entry.
  *
  * \retval 0 OK

@@ -51,6 +51,14 @@
 #ifndef __SOS_IMG_CLASS_DEF_H
 #define __SOS_IMG_CLASS_DEF_H
 
+#include "endian.h"
+#include "sos/sos.h"
+
+enum {
+	SOS_IMG_KEY = 0,
+	SOS_IMG_COUNT,
+};
+
 /**
  * SOS Object definition for Image SOS.
  *
@@ -62,15 +70,25 @@
  */
 static
 SOS_OBJ_BEGIN(sos_img_class, "BalerSOSImageClass")
-	SOS_OBJ_ATTR_WITH_KEY("time_comp_id", SOS_TYPE_UINT64),
-	SOS_OBJ_ATTR_WITH_KEY("ptn_id", SOS_TYPE_UINT32),
+	SOS_OBJ_ATTR_WITH_KEY("ptn_id_time_comp_id", SOS_TYPE_BLOB),
 	SOS_OBJ_ATTR("count", SOS_TYPE_UINT32),
-SOS_OBJ_END(3);
+SOS_OBJ_END(2);
 
-struct bout_sos_img_key {
-	uint32_t comp_id;
+struct __attribute__ ((__packed__)) bout_sos_img_key {
+	struct sos_blob_obj_s sos_blob;
+	/* lower bytes */
+	uint32_t ptn_id;
 	uint32_t ts;
+	uint32_t comp_id;
+	/* higher bytes */
 };
 
+static inline
+void bout_sos_img_key_convert(struct bout_sos_img_key *k)
+{
+	k->ptn_id = htobe32(k->ptn_id);;
+	k->ts = htobe32(k->ts);;
+	k->comp_id = htobe32(k->comp_id);;
+}
 
 #endif

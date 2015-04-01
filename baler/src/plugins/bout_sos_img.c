@@ -120,6 +120,8 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	struct bout_sos_plugin *_base = (void*)this;
 	struct bout_sos_img_plugin *_this = (typeof(_this))this;
 	uint32_t *tmp;
+	obj_key_t ok = NULL;
+	obj_ref_t ref;
 	pthread_mutex_lock(&_base->sos_mutex);
 	sos_iter_t iter;
 	sos_t sos;
@@ -145,59 +147,49 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	}
 
 	struct bout_sos_img_key bk = {
+		.sos_blob = {.len = sizeof(bk) - sizeof(bk.sos_blob)},
 		.comp_id = odata->comp_id,
 		.ts = (odata->tv.tv_sec / _this->delta_ts) * _this->delta_ts,
+		.ptn_id = odata->msg->ptn_id,
 	};
-	uint64_t bk_u64 = *(uint64_t*)(void*)&bk;
-	obj_key_t ok = obj_key_new(sizeof(bk));
+	bout_sos_img_key_convert(&bk);
+	ok = obj_key_new(sizeof(bk));
 	if (!ok) {
 		rc = ENOMEM;
 		goto err0;
 	}
 	obj_key_set(ok, &bk, sizeof(bk));
-	sos_obj_t obj;
 	uint32_t count = 1;
-	if (0 != sos_iter_seek(iter, ok))
-		goto not_found;
-	/* found key, look for correct pattern_id */
-
-	/* TODO Expand SOS Key size and change img key to <ts,comp,ptnid> */
-
-	/* Current code is inefficient, but we have to live with it for now
-	 * until maximum sos key length is changed. */
-	while ((0 == sos_iter_next(iter))) {
-		obj = sos_iter_obj(iter);
-		uint64_t v = sos_obj_attr_get_uint64(sos, 0, obj);
-		if (bk_u64 != v)
-			break;
-		uint32_t ptn = sos_obj_attr_get_uint32(sos, 1, obj);
-		if (odata->msg->ptn_id == ptn)
-			goto found;
+	if (0 == sos_iter_seek(iter, ok)) {
+		/* found, increment the couter */
+		tmp = sos_obj_attr_get(sos, SOS_IMG_COUNT, sos_iter_obj(iter));
+		(*tmp)++;
+		goto out;
 	}
-
-	/* reaching here means not found */
-
-not_found:
-	/* not found, add new data */
+	/* reaching here means not found, add new data */
+	sos_obj_t obj;
 	obj = sos_obj_new(sos);
-	sos_obj_attr_set(sos, 0, obj, &bk);
-	sos_obj_attr_set(sos, 1, obj, &odata->msg->ptn_id);
-	sos_obj_attr_set(sos, 2, obj, &count);
-	rc = sos_obj_add(sos, obj);
-	if (rc)
+	if (!obj) {
+		bwarn("bout_sos_img: cannot alloce new sos obj,"
+						" errno(%d): %m", errno);
+		goto err0;
+	}
+	ref = sos_obj_to_ref(sos, obj);
+	sos_obj_attr_set(sos, SOS_IMG_KEY, sos_ref_to_obj(sos, ref), &bk);
+	sos_obj_attr_set(sos, SOS_IMG_COUNT, sos_ref_to_obj(sos, ref), &count);
+	rc = sos_obj_add(sos, sos_ref_to_obj(sos, ref));
+	if (rc) {
+		bwarn("bout_sos_img: sos_obj_add() failed, rc: %d", rc);
 		goto err1;
-	goto out;
-
-found:
-	/* found, increment the couter */
-	tmp = sos_obj_attr_get(sos, 2, obj);
-	(*tmp)++;
+	}
 	goto out;
 
 err1:
 	sos_obj_delete(sos, obj);
 err0:
 out:
+	if (ok)
+		obj_key_delete(ok);
 	pthread_mutex_unlock(&_base->sos_mutex);
 	return rc;
 }

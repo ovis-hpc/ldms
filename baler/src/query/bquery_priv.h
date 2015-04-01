@@ -128,13 +128,20 @@ struct bquery {
 	uint32_t (*get_usec)(struct bquery*);
 	uint32_t (*get_comp_id)(struct bquery*);
 	uint32_t (*get_ptn_id)(struct bquery*);
+
+	int (*first_entry)(struct bquery*);
+	int (*next_entry)(struct bquery*);
+	int (*prev_entry)(struct bquery*);
+	int (*last_entry)(struct bquery*);
 };
 
 struct bimgquery {
 	struct bquery base;
 	char *store_name;
-	LIST_HEAD(, brange_u32) *hst_rngs; /**< Ranges of hosts */
-	struct brange_u32 *crng; /**< Current range */
+	struct brange_u32_head hst_rngs; /**< Ranges of hosts */
+	struct brange_u32_iter *hst_rng_itr;
+	struct brange_u32_head ptn_rngs; /**< Ranges of patterns */
+	struct brange_u32_iter *ptn_rng_itr;
 };
 
 struct bq_store {
