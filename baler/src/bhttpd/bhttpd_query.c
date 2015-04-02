@@ -462,7 +462,7 @@ void bhttpd_handle_query_metric_meta(struct bhttpd_req_ctxt *ctxt)
 	}
 	first = 1;
 	evbuffer_add_printf(ctxt->evbuffer, "{\"map\": [");
-	for (i = BMAP_ID_BEGIN; i < n; i++) {
+	for (i = BMAP_ID_BEGIN; i <= n; i++) {
 		if (!bq_is_metric_pattern(bq_store, i))
 			continue;
 		ptn = bptn_store_get_ptn(bq_get_ptn_store(bq_store), i);
