@@ -88,24 +88,19 @@ window.baler =
         return 1
 
     Disp: class Disp
-        domobj: undefined
-        element_type: undefined
         constructor: (@element_type) ->
             @domobj = LZH.tag(@element_type)
 
     TokDisp: class TokDisp extends Disp
-        tok: undefined
         constructor: (@tok) ->
             @domobj = LZH.span({class: "baler_#{@tok.tok_type}"}, @tok.text)
 
     MsgDisp: class MsgDisp extends Disp
-        msg: undefined
         constructor: (@msg) ->
             @domobj = LZH.span(null, t.domobj for t in \
                                 (new TokDisp(tok) for tok in @msg))
 
     MsgLstEnt: class MsgLstEnt extends Disp
-        msg: undefined
         constructor: (@msg) ->
             m = new MsgDisp(@msg.msg)
             ts = LZH.span({class: "timestamp"}, @msg.ts)
@@ -113,17 +108,11 @@ window.baler =
             @domobj = LZH.li({class: "MsgLstEnt"}, ts, " ", host, " ", m.domobj)
 
     PtnLstEnt: class PtnLstEnt extends Disp
-        ptn: undefined
         constructor: (@ptn) ->
             m = new MsgDisp(@ptn.msg)
             @domobj = LZH.li({class: "PtnLstEnt"}, "[#{@ptn.ptn_id}]:", m.domobj)
 
     GrpLstEnt: class GrpLstEnt extends Disp
-        subdom: undefined
-        namedom: undefined
-        name: undefined
-        gid: undefined
-        expanded: true
         toggleExpanded: () ->
             @expanded = !@expanded
             if @expanded
@@ -135,6 +124,7 @@ window.baler =
             _this_.toggleExpanded()
 
         constructor: (@name, @gid) ->
+            @expanded = true
             @namedom = LZH.div({class: "GrpLstEnt_name"}, @name)
             @subdom = LZH.ul()
             @domobj = LZH.li({class: "GrpLstEnt"}, @namedom, @subdom)
@@ -150,13 +140,10 @@ window.baler =
 
 
     PtnTable: class PtnTable extends Disp
-        ptns: undefined
-        groups: undefined
-        ptns_ent: [] # ptns_dom[ptn_id] is PtnLstEnt of ptn_id
-        groups_ent: [] # groups_dom[gid] is GrpLstEnt of gid
-
         constructor: (__ptns__, @groups, @group_names) ->
             @domobj = LZH.ul({class: "PtnTable"})
+            @ptns_ent = [] # ptns_dom[ptn_id] is PtnLstEnt of ptn_id
+            @groups_ent = [] # groups_dom[gid] is GrpLstEnt of gid
 
             @ptns = []
             for p in __ptns__
@@ -193,27 +180,6 @@ window.baler =
 
 
     MsgTableControl: class MsgTableControl extends Disp
-        dom:
-            root: null
-            input:
-                ts0: null
-                ts1: null
-                host_ids: null
-                ptn_ids: null
-            apply_btn: null
-            up_btn: null
-            down_btn: null
-            uup_btn: null
-            ddown_btn: null
-
-        dom_input_label_placeholder:
-            ts0: ["Timestamp begin: ", "yyyy-mm-dd HH:MM:SS"]
-            ts1: ["Timestamp end: ", "yyyy-mm-dd HH:MM:SS"]
-            host_ids: ["Host list: ", "example: 1,2,5-10"]
-            ptn_ids: ["Pattern ID list: ", "example: 1,2,5-10"]
-
-        msgTable: undefined
-
         getQueryInput: () ->
             q = {}
             for k,obj of @dom.input when obj.value
@@ -230,6 +196,25 @@ window.baler =
             @msgTable.fetchOlder(n)
 
         constructor: (@msgTable) ->
+            @dom =
+                root: null
+                input:
+                    ts0: null
+                    ts1: null
+                    host_ids: null
+                    ptn_ids: null
+                apply_btn: null
+                up_btn: null
+                down_btn: null
+                uup_btn: null
+                ddown_btn: null
+
+            @dom_input_label_placeholder =
+                ts0: ["Timestamp begin: ", "yyyy-mm-dd HH:MM:SS"]
+                ts1: ["Timestamp end: ", "yyyy-mm-dd HH:MM:SS"]
+                host_ids: ["Host list: ", "example: 1,2,5-10"]
+                ptn_ids: ["Pattern ID list: ", "example: 1,2,5-10"]
+
             _this_ = this
             ul = LZH.ul({style: "list-style: none"})
             for k, [lbl, plc] of @dom_input_label_placeholder
@@ -258,29 +243,25 @@ window.baler =
 
 
     MsgTable: class MsgTable extends Disp
-        query_param:
-            type: "msg"
-            ts0: undefined
-            ts1: undefined
-            host_ids: undefined
-            ptn_ids: undefined
-            session_id: undefined
-            n: 10
-            dir: "bwd"
+        constructor: (@tableSize = 15) ->
+            @query_param =
+                type: "msg"
+                ts0: undefined
+                ts1: undefined
+                host_ids: undefined
+                ptn_ids: undefined
+                session_id: undefined
+                n: 10
+                dir: "bwd"
 
-        tableSize: 15
+            @dom =
+                root: null
+                ul: null
 
-        dom:
-            root: null
-            ul: null
+            @msgent_list = [] # Current list of MsgLstEnt's  .. use msg.ref as key
+            @msgent_first = undefined
+            @msgent_last = undefined
 
-        msgent_list: [] # Current list of MsgLstEnt's  .. use msg.ref as key
-        msgent_first: undefined
-        msgent_last: undefined
-
-        constructor: (tableSize) ->
-            if tableSize
-                @tableSize = tableSize
             @dom.ul = LZH.ul({style: "list-style: none"})
             @domobj = @dom.root = LZH.div(null, @dom.ul)
 
@@ -402,31 +383,31 @@ window.baler =
 
 
     HeatMapLayer: class HeatMapLayer extends Disp
-        name: "Layer"
-        color: "red"
-        ts_begin: 1425963600
-        node_begin: 1
-        ctxt: undefined
-        pxl: undefined
-        npp: 1 # Node per pixel
-        spp: 3600 # seconds per pixel
-        mouseDown: false
-        mouseDownPos:
-            x: undefined
-            y: undefined
-        oldImg: undefined
-        ptn_ids: undefined
-        bound:
-            node:
-                min: null
-                max: null
-            ts:
-                min: null
-                max: null
-        base_color: [255, 0, 0]
-
         constructor: (@width, @height) ->
             _this_ = this
+            @name = "Layer"
+            @color = "red"
+            @ts_begin = 1425963600
+            @node_begin = 1
+            @ctxt = undefined
+            @pxl = undefined
+            @npp = 1 # Node per pixel
+            @spp = 3600 # seconds per pixel
+            @mouseDown = false
+            @mouseDownPos =
+                x: undefined
+                y: undefined
+            @oldImg = undefined
+            @ptn_ids = undefined
+            @bound =
+                node:
+                    min: null
+                    max: null
+                ts:
+                    min: null
+                    max: null
+            @base_color = [255, 0, 0]
+
             @domobj = LZH.canvas({width: width, height: height})
             @domobj.style.position = "absolute"
             @domobj.style.pointerEvents = "none"
@@ -512,15 +493,13 @@ window.baler =
                 @updateImage(0, fy, @width, fh)
 
     HeatMapDisp: class HeatMapDisp extends Disp
-        width: 0
-        height: 0
-        ts_begin: 1425963600
-        node_begin: 1
-        npp: 1
-        spp: 3600
-        layers: undefined
-
         constructor: (@width=400, @height=400) ->
+            @ts_begin = 1425963600
+            @node_begin = 1
+            @npp = 1
+            @spp = 3600
+            @layers = undefined
+
             _this_ = this
             @domobj = LZH.div({class: "HeatMapDisp"})
             @domobj.style.position = "relative"
@@ -606,17 +585,15 @@ window.baler =
             return 0
 
     HeatMapDispCtrl: class HeatMapDispCtrl extends Disp
-        hmap: undefined
-
-        dom_input_label_placeholder:
-            name: ["Layer name: ", "Any name ..."]
-            ptn_ids: ["Pattern ID list: ", "example: 1,2,5-10"]
-
-        dom_input: undefined
-        dom_add_btn: undefined
-        dom_layer_list: undefined
-
         constructor: (@hmap) ->
+            @dom_input_label_placeholder =
+                name: ["Layer name: ", "Any name ..."]
+                ptn_ids: ["Pattern ID list: ", "example: 1,2,5-10"]
+
+            @dom_input = undefined
+            @dom_add_btn = undefined
+            @dom_layer_list = undefined
+
             _this_ = this
             @dom_input = {}
             @domobj = LZH.div({class: "HeatMapDispCtrl"})
