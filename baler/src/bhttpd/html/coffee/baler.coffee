@@ -67,8 +67,14 @@ window.baler =
     get_ptns : (cb) ->
         baler.query({"type": "ptn"}, cb)
 
+    get_metric_ptns: (cb) ->
+        baler.query({"type": "metric_ptn"}, cb)
+
     get_meta : (cb) ->
         baler.query({"type": "meta"}, cb)
+
+    get_metric_meta : (cb) ->
+        baler.query({"type": "metric_meta"}, cb)
 
     msg_cmp: (msg0, msg1) ->
         if msg0.ts == msg1.ts
