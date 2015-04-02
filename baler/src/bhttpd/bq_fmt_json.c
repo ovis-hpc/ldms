@@ -109,7 +109,7 @@ loop:
 		case '\t':
 			/* These are the characters that need to be escaped. */
 			buff[j++] = '\\';
-			buff[j++] = __map[bstr->cstr[i]];
+			buff[j++] = __map[bstr->cstr[i++]];
 			break;
 		default:
 			if (isprint(bstr->cstr[i]))
