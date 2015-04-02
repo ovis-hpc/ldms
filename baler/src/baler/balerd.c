@@ -194,9 +194,9 @@ struct bzap_ctxt {
 
 /***** Command line arguments ****/
 #ifdef ENABLE_OCM
-const char *optstring = "FC:l:s:z:m:x:h:p:?";
+const char *optstring = "FC:l:s:z:m:x:h:p:v:?";
 #else
-const char *optstring = "FC:l:s:m:x:h:p:?";
+const char *optstring = "FC:l:s:m:x:h:p:v:?";
 #endif
 const char *config_path = NULL;
 const char *log_path = NULL;
@@ -218,6 +218,8 @@ void display_help_msg()
 #ifdef ENABLE_OCM
 "	-z <port>	ocm port for balerd (default: 20005).\n"
 #endif
+"	-v <LEVEL>	Set verbosity level (DEBUG, INFO, WARN, ERROR).\n"
+"			The default value is WARN.\n"
 "	-?		Show help message\n"
 "\n"
 "For more information see balerd(3) manpage.\n"
@@ -1496,6 +1498,9 @@ void args_handling(int argc, char **argv)
 	bset_store_path("./store");
 	int c;
 	int len;
+	int rc;
+
+	blog_set_level(BLOG_LV_WARN);
 
 next_arg:
 	c = getopt(argc, argv, optstring);
@@ -1536,6 +1541,13 @@ next_arg:
 		break;
 	case 'p':
 		m_port = atoi(optarg);
+		break;
+	case 'v':
+		rc = blog_set_level_str(optarg);
+		if (rc) {
+			berr("Invalid verbosity level: %s", optarg);
+			exit(-1);
+		}
 		break;
 	case '?':
 		display_help_msg();
