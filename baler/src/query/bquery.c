@@ -1124,74 +1124,15 @@ out:
 int bq_img_prev_entry(struct bquery *q)
 {
 	struct bimgquery *imgq = (void*)q;
-
-	/* TODO XXX COMPLETE ME */
-
+	berr("bimgquery only supports forward iterator (for now)");
 	return ENOSYS;
 }
 
 int bq_img_last_entry(struct bquery *q)
 {
 	struct bimgquery *imgq = (void*)q;
-
-	/* TODO XXX COMPLETE ME */
-
+	berr("bimgquery only supports forward iterator (for now)");
 	return ENOSYS;
-}
-
-int bq_query_r(struct bquery *q, struct bdstr *bdstr)
-{
-	int rc = 0;
-	uint32_t comp_id;
-	uint32_t sec;
-	uint32_t usec;
-	struct bmsg *msg;
-	const struct bstr *bstr;
-	sos_obj_t obj;
-	int len;
-	sos_t msg_sos;
-
-	bdstr_reset(bdstr);
-next:
-	rc = __bq_next_entry(q);
-	if (rc)
-		goto out;
-	obj = sos_iter_obj(q->itr);
-	msg_sos = q->bsos->sos;
-	SOS_OBJ_ATTR_GET(sec, msg_sos, SOS_MSG_SEC, obj);
-	if (q->ts_1 && sec > q->ts_1) {
-		/* Out of time window, no need to continue */
-		rc = ENOENT;
-		goto out;
-	}
-	SOS_OBJ_ATTR_GET(usec, msg_sos, SOS_MSG_USEC, obj);
-	SOS_OBJ_ATTR_GET(comp_id, msg_sos, SOS_MSG_COMP_ID, obj);
-	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
-		goto next;
-	sos_blob_obj_t blob = sos_obj_attr_get(msg_sos, SOS_MSG_MSG, obj);
-	msg = (void*)blob->data;
-	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, msg->ptn_id))
-		goto next;
-	rc = fmt_msg_prefix(q->formatter, bdstr);
-	if (rc)
-		goto out;
-	rc = fmt_date_fmt(q->formatter, bdstr, sec);
-	if (rc)
-		goto out;
-	bstr = btkn_store_get_bstr(q->store->cmp_store, comp_id + BMAP_ID_BEGIN - 1);
-	if (!bstr)  {
-		rc = ENOENT;
-		goto out;
-	}
-	rc = fmt_host_fmt(q->formatter, bdstr, bstr);
-	if (rc)
-		goto out;
-	rc = bq_print_msg(q, bdstr, msg);
-	if (rc)
-		goto out;
-	fmt_msg_suffix(q->formatter, bdstr);
-out:
-	return rc;
 }
 
 int bq_msg_next_entry(struct bquery *q)
@@ -2004,10 +1945,11 @@ int bq_local_msg_routine(struct bq_store *s)
 	struct bquery *q = bquery_create(s, hst_ids, ptn_ids, ts_begin, ts_end,
 					 1, 0, &rc);
 	struct bdstr *bdstr = bdstr_new(4096);
+	const struct bmsg *bmsg;
 	if (rc)
 		goto out;
+	rc = bq_first_entry(q);
 loop:
-	rc = bq_query_r(q, bdstr);
 	if (rc)
 		goto out;
 	if (verbose) {
@@ -2017,7 +1959,11 @@ loop:
 		ptn_id = ((struct bmsg*)blob->data)->ptn_id;
 		printf("[%d] ", ptn_id);
 	}
+	bmsg = bq_entry_get_msg(q);
+	bdstr_reset(bdstr);
+	bq_print_msg(q, bdstr, bmsg);
 	printf("%s\n", bdstr->str);
+	rc = bq_next_entry(q);
 	goto loop;
 out:
 	if (rc == ENOENT)
