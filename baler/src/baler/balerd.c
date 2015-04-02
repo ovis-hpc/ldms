@@ -1812,10 +1812,10 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 			rc = ENOENT;
 			goto cleanup;
 		}
+		comp_id -= (BMAP_ID_BEGIN - 1);
 	} else {
 		comp_id = in_data->hostname->u32str[0];
 	}
-	comp_id -= (BMAP_ID_BEGIN - 1);
 	struct bstr_list_entry *str_ent;
 	/* NOTE: ptn and msg is meant to be a uint32_t string */
 	struct bstr *str = &ctxt->ptn_str;
