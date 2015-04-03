@@ -1629,7 +1629,7 @@ void process_input_extract_ptn(struct binq_data *in_data, struct bmsg *msg, stru
 	int tkn_idx = 0;
 	int attr_count = 0;
 
-	if (in_data->type == BINQ_DATA_MSG) {
+	if (in_data->type == BINQ_DATA_METRIC) {
 		msg->argc = 0;
 		return;
 	}
