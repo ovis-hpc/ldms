@@ -565,6 +565,10 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 {
 	int _rc = 0;
 	ssize_t len = 0;
+
+	/* Call tzset first for correct localtime_r() result in the program. */
+	tzset();
+
 	if (!store) {
 		_rc = EINVAL;
 		goto out;
@@ -1975,8 +1979,8 @@ loop:
 	}
 	bmsg = bq_entry_get_msg(q);
 	bdstr_reset(bdstr);
-	bq_print_msg(q, bdstr, bmsg);
-	printf("%s\n", bdstr->str);
+	bq_entry_print(q, bdstr);
+	printf("%.*s\n", (int)bdstr->str_len, bdstr->str);
 	rc = bq_next_entry(q);
 	goto loop;
 out:
