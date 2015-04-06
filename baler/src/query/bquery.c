@@ -506,7 +506,7 @@ int __default_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, time_t ts)
 	char buff[64];
 	struct tm tm;
 	localtime_r(&ts, &tm);
-	strftime(buff, sizeof(buff), "%Y-%m-%d %T ", &tm);
+	strftime(buff, sizeof(buff), "%FT%T%z ", &tm);
 	return bdstr_append(bdstr, buff);
 }
 
