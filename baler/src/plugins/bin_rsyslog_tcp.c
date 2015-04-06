@@ -504,6 +504,7 @@ struct bwq_entry* prepare_bwq_entry(struct bstr *s)
 err1:
 	binq_entry_free(qent);
 err0:
+	berr("INPUT ERROR: %.*s", s->blen, s->cstr);
 	return NULL;
 }
 
