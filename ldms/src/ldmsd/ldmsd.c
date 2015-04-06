@@ -2630,7 +2630,8 @@ void listen_on_transport(char *transport_str)
 	char *tmp;
 	char *saveptr = NULL;
 
-	ldms_log(LDMS_LCRITICAL,"Listening on transport %s\n", transport_str);
+	pid_t mypid = getpid();
+	ldms_log(LDMS_LCRITICAL,"Process %d listening on transport %s\n", mypid, transport_str);
 	tmp = strdup(transport_str);
 	name = strtok_r(tmp, ":", &saveptr);
 	port_s = strtok_r(NULL, ":", &saveptr);

@@ -650,7 +650,7 @@ Possible options:
 .nf
 .RS
 Tue Sep 24 08:36:54 2013: Started LDMS Daemon version 2.1.0
-Tue Sep 24 08:36:54 2013: Listening on transport ugni:60020
+Tue Sep 24 08:36:54 2013: Process 123456 listening on transport ugni:60020
 Tue Sep 24 08:36:54 2013: EV_WARN: Can't change condition callbacks once they have been initialized.
 Tue Sep 24 08:36:54 2013: Error 12 listening on the 'ugni' transport.
 Tue Sep 24 08:36:54 2013: LDMS Daemon exiting...status 7
