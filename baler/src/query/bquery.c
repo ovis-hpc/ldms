@@ -1742,6 +1742,8 @@ enum {
 
 int verbose = 0;
 
+const char *ts_format = "%FT%T%z";
+
 void show_help()
 {
 	printf(
@@ -1813,6 +1815,12 @@ void show_help()
 "				option. The list of numbers specify\n"
 "				Pattern IDs to be queried. If ptn_id-mask is\n"
 "				is not specified, all patterns are included.\n"
+"    --ts-format,-F FMT		Time stamp output format for '-t MSG'.\n"
+"				The default is \"%%FT%%T%%z\". Another\n"
+"				frequently used format is \"%%s\", or the \n"
+"				number of seconds since epoch.\n"
+"				Please see strftime(3) man page for format\n"
+"				information.\n"
 "    --verbose,-v		Verbose mode. For '-t MSG', this will print\n"
 "				[PTN_ID] before the actual message\n"
 "\n"
@@ -1835,7 +1843,7 @@ void show_help()
 }
 
 /********** Options **********/
-char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:";
+char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:F:";
 struct option long_opt[] = {
 	{"help",              no_argument,        0,  'h'},
 	{"store-path",        required_argument,  0,  's'},
@@ -1849,7 +1857,8 @@ struct option long_opt[] = {
 	{"end",               required_argument,  0,  'E'},
 	{"ptn_id-mask",       required_argument,  0,  'P'},
 	{"image-store-name",  required_argument,  0,  'I'},
-	{"verbose",           required_argument,  0,  'v'},
+	{"ts-format",         required_argument,  0,  'F'},
+	{"verbose",           no_argument,        0,  'v'},
 	{0,              0,                  0,  0}
 };
 
@@ -1959,6 +1968,9 @@ next_arg:
 	case 'v':
 		verbose = 1;
 		break;
+	case 'F':
+		ts_format = optarg;
+		break;
 	default:
 		fprintf(stderr, "Unknown argument %s\n", argv[optind - 1]);
 	}
@@ -1967,15 +1979,38 @@ out:
 	return;
 }
 
+static
+struct bq_msg_fmt {
+	struct bq_formatter base;
+	const char *ts_fmt;
+} __bq_msg_fmt;
+
+static
+int __bq_msg_fmt_ts(struct bq_formatter *_fmt, struct bdstr *bdstr, time_t ts)
+{
+	struct bq_msg_fmt *fmt = (void*)_fmt;
+	char buff[256];
+	struct tm tm;
+	localtime_r(&ts, &tm);
+	strftime(buff, sizeof(buff), fmt->ts_fmt, &tm);
+	return bdstr_append_printf(bdstr, "%s ", buff);
+}
+
 int bq_local_msg_routine(struct bq_store *s)
 {
 	int rc = 0;
+
+	const struct bmsg *bmsg;
+	__bq_msg_fmt.base = *bquery_default_formatter();
+	__bq_msg_fmt.base.date_fmt = __bq_msg_fmt_ts;
+	__bq_msg_fmt.ts_fmt = ts_format;
+
 	struct bquery *q = bquery_create(s, hst_ids, ptn_ids, ts_begin, ts_end,
 					 1, 0, &rc);
 	struct bdstr *bdstr = bdstr_new(4096);
-	const struct bmsg *bmsg;
 	if (rc)
 		goto out;
+	bq_set_formatter(q, &__bq_msg_fmt.base);
 	rc = bq_first_entry(q);
 loop:
 	if (rc)
