@@ -135,7 +135,7 @@ void conn_ctxt_free(struct conn_ctxt *ctxt)
 static inline
 time_t __get_utc_ts(int yyyy, int mm, int dd, int HH, int MM, int SS)
 {
-	return ts_ym[yyyy-1900][mm-1] + (3600*24)*dd + 3600*HH + 60*MM + SS;
+	return ts_ym[yyyy-1900][mm-1] + (3600*24)*(dd-1) + 3600*HH + 60*MM + SS;
 }
 
 /**
