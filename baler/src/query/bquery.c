@@ -1681,16 +1681,18 @@ enum BQ_TYPE {
 	BQ_TYPE_PTN,
 	BQ_TYPE_HOST,
 	BQ_TYPE_IMG,
+	BQ_TYPE_LIST_IMG,
 	BQ_TYPE_LAST
 };
 
 const char *BQ_TYPE_STR[] = {
-	[BQ_TYPE_UNKNOWN]  =  "BQ_TYPE_UNKNOWN",
-	[BQ_TYPE_MSG]      =  "MSG",
-	[BQ_TYPE_PTN]      =  "PTN",
-	[BQ_TYPE_HOST]     =  "HOST",
-	[BQ_TYPE_IMG]      =  "IMG",
-	[BQ_TYPE_LAST]     =  "BQ_TYPE_LAST"
+	[BQ_TYPE_UNKNOWN]   =  "BQ_TYPE_UNKNOWN",
+	[BQ_TYPE_MSG]       =  "MSG",
+	[BQ_TYPE_PTN]       =  "PTN",
+	[BQ_TYPE_HOST]      =  "HOST",
+	[BQ_TYPE_IMG]       =  "IMG",
+	[BQ_TYPE_LIST_IMG]  =  "LIST_IMG",
+	[BQ_TYPE_LAST]      =  "BQ_TYPE_LAST"
 };
 
 const char* bq_type_str(enum BQ_TYPE type)
@@ -1725,7 +1727,7 @@ char *ptn_ids = NULL;
 char *ts_begin = NULL;
 char *ts_end = NULL;
 
-char *img_store_name = NULL;
+char *img_store_name = "3600-1";
 
 struct btkn_store *tkn_store = NULL;
 struct btkn_store *comp_store = NULL;
@@ -1784,6 +1786,14 @@ void show_help()
 "                                 * MSG will query messages from the store.\n"
 "                                   Users can give host-mask, begin, end, \n"
 "                                   ptn_id-mask to filter the message query.\n"
+"                                 * LIST_IMG will list all available image\n"
+"                                   stores.\n"
+"                                 * IMG will query image information from\n"
+"                                   image store (specified by '-I' option).\n"
+"                                   The pattern/host/time filtering conditions\n"
+"                                   are also applied.\n"
+"    --image-store-name,-I IMG_STORE_NAME\n"
+"				The image store to query against.\n"
 "    --host-mask,-H NUMBER,...	The comma-separated list of numbers of\n"
 "				required hosts. The NUMBER can be in X-Y\n"
 "				format. (example: -H 1-10,20,30-50)\n"
@@ -1989,12 +1999,26 @@ out:
 	return rc;
 }
 
+static
+void img_store_list_cb(const char *name, void *arg)
+{
+	printf("\t%s\n", name);
+}
+
+static
+void __bq_list_available_img(struct bq_store *s)
+{
+	printf("Available Image Store:\n");
+	bq_imgstore_iterate(s, img_store_list_cb, NULL);
+}
+
 int bq_local_img_routine(struct bq_store *s)
 {
 	int rc = 0;
 	struct bimgquery *imgq = bimgquery_create(s, hst_ids, ptn_ids,
 					ts_begin, ts_end, img_store_name, &rc);
 	struct bpixel p;
+	uint64_t count = 0;
 
 	if (!imgq) {
 		berr("Cannot create imqge query, rc: %d", rc);
@@ -2009,11 +2033,16 @@ loop:
 
 	bq_img_entry_get_pixel(imgq, &p);
 	printf("%u, %u, %u, %u\n", p.ptn_id, p.sec, p.comp_id, p.count);
+	count++;
 
 	rc = bq_next_entry(&imgq->base);
 	goto loop;
 
 out:
+	if (count == 0) {
+		bwarn("No data matching the query.");
+	}
+	bdebug("Matched pixels: %lu", count);
 	if (rc == ENOENT)
 		rc = 0;
 	return 0;
@@ -2049,6 +2078,9 @@ int bq_local_routine()
 		break;
 	case BQ_TYPE_IMG:
 		rc = bq_local_img_routine(s);
+		break;
+	case BQ_TYPE_LIST_IMG:
+		__bq_list_available_img(s);
 		break;
 	default:
 		rc = EINVAL;
