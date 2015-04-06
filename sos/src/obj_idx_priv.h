@@ -46,6 +46,7 @@
 #ifndef _OBJ_IDX_PRIV_H_
 #define _OBJ_IDX_PRIV_H_
 #include <coll/rbt.h>
+#include <stdarg.h>
 #include "ods.h"
 
 struct obj_idx_provider {
