@@ -1809,6 +1809,8 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 		comp_id = bmap_get_id(comp_store->map, in_data->hostname);
 		if (comp_id < BMAP_ID_BEGIN) {
 			/* Error, cannot find the comp_id */
+			berr("host not found: %.*s", in_data->hostname->blen,
+					in_data->hostname->cstr);
 			rc = ENOENT;
 			goto cleanup;
 		}
