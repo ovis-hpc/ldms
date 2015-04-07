@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2012 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -662,12 +663,12 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		return EINVAL;
 
 	int i;
-	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_transaction_timestamp_get(set);
 
 	for (i = 0; i < metric_count; i++) {
 		struct mysql_metric_store *msm = si->ms[i];
-		uint64_t comp_id = ldms_get_midx_udata(set, metric_arry[i]);
-		uint64_t val = ldms_get_midx_u64(set, metric_arry[i]);
+		uint64_t comp_id = ldms_metric_user_data_get(set, metric_arry[i]);
+		uint64_t val = ldms_metric_get_u64(set, metric_arry[i]);
 		long int level = lround( -log2( drand48())); //residual OVIS-ism
 		char insertStatement[1024];
 		int mysqlerrx;

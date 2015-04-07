@@ -1,3 +1,53 @@
+/* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2012-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-2015 Sandia Corporation. All rights reserved.
+ * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+ * license for use of this work by or on behalf of the U.S. Government.
+ * Export of this program may require a license from the United States
+ * Government.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the BSD-type
+ * license below:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *      Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *      Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *      Neither the name of Sandia nor the names of any contributors may
+ *      be used to endorse or promote products derived from this software
+ *      without specific prior written permission.
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission.
+ *
+ *      Modified source versions must be plainly marked as such, and
+ *      must not be misrepresented as being the original software.
+ *
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
 #include <inttypes.h>
 #include <unistd.h>
 #include <sys/errno.h>
@@ -73,14 +123,14 @@ static int add_disk_metrics(ldms_schema_t schema, struct proc_disk_s *disk)
 	for (i = 0; i < NFIELD; i++) {
 		/* raw metric */
 		snprintf(metric_name, 128, "%s#%s", fieldname[i], disk->name);
-		rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 		if (rc < 0)
 			return ENOMEM;
 		disk->midx[2 * i] = rc;
 
 		/* rate metric */
 		snprintf(metric_name, 128, "%s.rate#%s", fieldname[i], disk->name);
-		rc = ldms_add_metric(schema, metric_name, LDMS_V_F32);
+		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_F32);
 		if (rc < 0)
 			return ENOMEM;
 		disk->midx[2 * i + 1] = rc;
@@ -231,11 +281,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	char *attr;
 	int rc = 0;
-	ldms_schema_t schema = ldms_create_schema("procdiskstats");
+	ldms_schema_t schema = ldms_schema_new("procdiskstats");
 	if (!schema)
 		return ENOMEM;
 
-	attr = "producer_name";
+	attr = "producer";
 	producer_name = av_value(avl, attr);
 	if (!producer_name)
 		goto enoent;
@@ -244,22 +294,23 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (rc)
 		return rc;
 
-	attr = "instance_name";
+	attr = "instance";
 	value = av_value(avl, attr);
 	if (!value)
 		goto enoent;
 
-	rc = ldms_create_set(value, schema, &set);
-	if (rc) {
+	set = ldms_set_new(value, schema);
+	if (!set) {
+		rc = errno;
 		msglog("procdiskstats: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_name(set, producer_name);
-	ldms_destroy_schema(schema);
+	ldms_set_producer_name_set(set, producer_name);
+	ldms_schema_delete(schema);
 	return 0;
 enoent:
 	msglog("procdiskstat: requires '%s'\n", attr);
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	return ENOENT;
 }
 
@@ -282,29 +333,29 @@ static void set_disk_metrics(struct proc_disk_s *disk,
 			/* Calculate sect_read in bytes */
 			/* sect_read's been updated already. */
 			f = values[SECT_READ_IDX] * disk->sect_sz;
-			ldms_set_midx_float(set, disk->midx[idx], f);
+			ldms_metric_set_float(set, disk->midx[idx], f);
 
 			rate = calculate_rate(disk->prev_value[i], f, dt);
-			ldms_set_midx_float(set, disk->midx[idx + 1], rate);
+			ldms_metric_set_float(set, disk->midx[idx + 1], rate);
 
 			disk->prev_value[SECT_READ_BYTES_IDX] = (uint64_t)f;
 		} else if (i == SECT_WRITTEN_BYTES_IDX) {
 			/* Calculate sect_written in bytes */
 			/* sect_written's been updated already */
 			f = values[SECT_WRITTEN_IDX] * disk->sect_sz;
-			ldms_set_midx_float(set, disk->midx[idx], f);
+			ldms_metric_set_float(set, disk->midx[idx], f);
 
 			rate = calculate_rate(disk->prev_value[i], f, dt);
-			ldms_set_midx_float(set, disk->midx[idx + 1], rate);
+			ldms_metric_set_float(set, disk->midx[idx + 1], rate);
 
 			disk->prev_value[SECT_WRITTEN_BYTES_IDX] = (uint64_t)f;
 		} else {
 			/* raw */
-			ldms_set_midx_u64(set, disk->midx[idx], values[i]);
+			ldms_metric_set_u64(set, disk->midx[idx], values[i]);
 
 			/* rate */
 			rate = calculate_rate(disk->prev_value[i], values[i], dt);
-			ldms_set_midx_float(set, disk->midx[idx + 1], rate);
+			ldms_metric_set_float(set, disk->midx[idx + 1], rate);
 
 			disk->prev_value[i] = values[i];
 		}
@@ -332,7 +383,7 @@ static int sample(void)
 		mf = fopen(procfile, "r");
 	if (!mf)
 		return ENOENT;
-	ldms_begin_transaction(set);
+	ldms_transaction_end(set);
 	gettimeofday(curr_tv, NULL);
 	timersub(curr_tv, prev_tv, &diff_tv);
 	dt = diff_tv.tv_sec + diff_tv.tv_usec / 1e06;
@@ -361,7 +412,7 @@ out:
 	tmp_tv = curr_tv;
 	curr_tv = prev_tv;
 	prev_tv = tmp_tv;
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return rc;
 }
 
@@ -377,7 +428,7 @@ static void term(void)
 	mf = 0;
 
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 	while (!TAILQ_EMPTY(&disk_list)) {
 		struct proc_disk_s *disk = TAILQ_FIRST(&disk_list);
@@ -388,10 +439,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-        return  "config name=procdiskstats producer_name=<producer_name> instance_name=<setname> device=<device>\n"
-                "    producer_name     The producer id value.\n"
-                "    setname         The set name.\n"
-                "    device	         The comma-separated list of devices\n";
+        return  "config name=procdiskstats producer=<prod_name> instance=<inst_name> device=<devices>\n"
+                "    <prod_name>     The producer name value\n"
+                "    <inst_name>     The instance name\n"
+                "    <devices>       A comma-separated list of devices\n";
 }
 
 static struct ldmsd_sampler procdiskstats_plugin = {

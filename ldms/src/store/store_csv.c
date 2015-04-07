@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -173,9 +174,7 @@ static int print_header(struct csv_store_handle *s_handle, ldms_set_t set,
 
 	int i, rc;
 	for (i = 0; i < metric_count; i++) {
-		struct ldms_metric m_;
-		ldms_metric_t m = ldms_metric_init(set, metric_arry[i], &m_);
-		const char* name = ldms_get_metric_name(m);
+		const char* name = ldms_metric_name_get(set, i);
 		fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 	}
@@ -288,7 +287,7 @@ open_store(struct ldmsd_store *s, const char* container, const char *schema,
 static int
 store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
-	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_transaction_timestamp_get(set);
 	uint64_t comp_id;
 	struct csv_store_handle *s_handle;
 	s_handle = _s_handle;
@@ -310,9 +309,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 	int i, rc;
 	for (i = 0; i < metric_count; i++) {
-		comp_id = ldms_get_midx_udata(set, metric_arry[i]);
+		comp_id = ldms_metric_user_data_get(set, metric_arry[i]);
 		rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
-			     comp_id, ldms_get_midx_u64(set, metric_arry[i]));
+			     comp_id, ldms_metric_get_u64(set, metric_arry[i]));
 		if (rc < 0)
 			msglog("store_csv: Error %d writing to '%s'\n",
 					rc, s_handle->path);

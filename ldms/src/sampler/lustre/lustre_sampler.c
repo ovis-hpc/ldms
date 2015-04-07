@@ -158,7 +158,7 @@ int __add_lss_metric_routine(ldms_schema_t schema, uint64_t udata,
 	enum ldms_value_type vt = LDMS_V_U64;
 	if (strstr(key, ".rate"))
 		vt = LDMS_V_F32;
-	lss->mctxt[id].metric_idx = ldms_add_metric(schema, metric_name, vt);
+	lss->mctxt[id].metric_idx = ldms_schema_metric_add(schema, metric_name, vt);
 	lss->mctxt[id].rate_ref = id_rate;
 	lss->mctxt[id].udata = udata;
 	return 0;
@@ -244,7 +244,7 @@ int single_construct_routine(ldms_schema_t schema,
 	if (!ls)
 		goto err0;
 	snprintf(metric_name, 128, "%s%s%s", prefix, name, suffix);
-	ls->sctxt.metric_idx = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+	ls->sctxt.metric_idx = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 	if (ls->sctxt.metric_idx < 0)
 		goto err1;
 	LIST_INSERT_HEAD(list, &ls->lms, link);
@@ -261,12 +261,12 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 {
 	int rc = 0;
 	if (!lss->lms.f) {
-		ldms_set_midx_u64(set, lss->mh_status_idx, 0);
+		ldms_metric_set_u64(set, lss->mh_status_idx, 0);
 		rc = lms_open_file(&lss->lms);
 		if (rc)
 			goto out;
 	}
-	ldms_set_midx_u64(set, lss->mh_status_idx, 1);
+	ldms_metric_set_u64(set, lss->mh_status_idx, 1);
 
 	fseek(lss->lms.f, 0, SEEK_SET);
 	char lbuf[__LBUF_SIZ];
@@ -302,12 +302,12 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 
 		if (rate_id) {
 			uint64_t prev_counter =
-				ldms_get_midx_u64(set, lss->mctxt[id].metric_idx);
+				ldms_metric_get_u64(set, lss->mctxt[id].metric_idx);
 			union ldms_value rate;
 			rate.v_f = (value.v_u64 - prev_counter) / dt;
-			ldms_set_midx(set, lss->mctxt[rate_id].metric_idx, &rate);
+			ldms_metric_set(set, lss->mctxt[rate_id].metric_idx, &rate);
 		}
-		ldms_set_midx(set, lss->mctxt[id].metric_idx, &value);
+		ldms_metric_set(set, lss->mctxt[id].metric_idx, &value);
 	}
 
 	struct timeval *tmp = lss->tv_cur;
@@ -350,7 +350,7 @@ int __single_sample(ldms_set_t set, struct lustre_single *ls)
 out:
 	if (ls->lms.f)
 		lms_close_file(&ls->lms);
-	ldms_set_midx(set, ls->sctxt.metric_idx, &v);
+	ldms_metric_set(set, ls->sctxt.metric_idx, &v);
 	return rc;
 }
 
@@ -438,5 +438,3 @@ err1:
 err0:
 	return NULL;
 }
-
-/* EOF */

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -98,11 +98,11 @@ static int getNProcs(char buf[]){
 }
 
 
+static char lbuf[4096];		/* NB: Some machines have many cores */
 static int create_metric_set(const char *instance_name)
 {
 	int rc, i;
 	char *s;
-	char lbuf[256];
 	char metric_name[128];
 
 	mf = fopen(procfile, "r");
@@ -115,7 +115,7 @@ static int create_metric_set(const char *instance_name)
 	char beg_name[128];
 
 	/* Create a metric set of the required size */
-	schema = ldms_create_schema("procinterrupts");
+	schema = ldms_schema_new("procinterrupts");
 	if (!schema) {
 		fclose(mf);
 		return ENOMEM;
@@ -153,8 +153,8 @@ static int create_metric_set(const char *instance_name)
 			} else {
 				snprintf(metric_name, 128, "irq.%s#%d",
 						beg_name, (currcol-1));
-				rc = ldms_add_metric(schema, metric_name,
-							LDMS_V_U64);
+				rc = ldms_schema_metric_add(schema, metric_name,
+							    LDMS_V_U64);
 				if (rc < 0) {
 					rc = ENOMEM;
 					goto err;
@@ -162,17 +162,19 @@ static int create_metric_set(const char *instance_name)
 			}
 			currcol++;
 			pch = strtok(NULL," ");
-		} /* end while (strtok) */
-	} /* end while(s) */
-	rc = ldms_create_set(instance_name, schema, &set);
-	if (rc)
+		}
+	}
+	set = ldms_set_new(instance_name, schema);
+	if (!set) {
+		rc = errno;
 		goto err;
+	}
 
 	return 0;
 
 err:
 	fclose(mf);
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	schema = NULL;
 	return rc;
 }
@@ -180,22 +182,22 @@ err:
 /**
  * \brief Configuration
  *
- * - config name=procinterrupts producer_name=<producer_name> instance_name=<instance_name>
+ * - config name=procinterrupts producer=<prod_name> instance=<inst_name>
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 	char *value;
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procinterrupts: missing producer_name.\n");
+		msglog("procinterrupts: missing 'producer'.\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procinterrupts: missing instance_name.\n");
+		msglog("procinterrupts: missing 'instance'.\n");
 		return ENOENT;
 	}
 	rc = create_metric_set(value);
@@ -203,7 +205,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("procinterrupts: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 
 	return rc;
 }
@@ -213,14 +215,13 @@ static int sample(void)
 	int rc;
 	int metric_no;
 	char *s;
-	char lbuf[256];
 	union ldms_value v;
 
 	if (!set){
 		msglog("procinterrupts: plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -245,7 +246,7 @@ static int sample(void)
 					l1 = strtoull(pch,&endptr,10);
 					if (endptr != pch){
 						v.v_u64 = l1;
-						ldms_set_midx(set, metric_no, &v);
+						ldms_metric_set(set, metric_no, &v);
 						metric_no++;
 					} else {
 						msglog("bad val <%s>\n",pch);
@@ -260,7 +261,7 @@ static int sample(void)
 	} while (s);
 	rc = 0;
 out:
-	ldms_end_transaction(set);
+	ldms_transaction_begin(set);
 	return rc;
 }
 
@@ -271,18 +272,18 @@ static void term(void)
 		fclose(mf);
 	mf = 0;
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	schema = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
 static const char *usage(void)
 {
-	return  "config name=procinterrupts producer_name=<producer_name> instance_name=<instance_name>\n"
-		"    producer_name       The producer id value.\n"
-		"    instance_name     The set name.\n";
+	return  "config name=procinterrupts producer=<prod_name> instance=<inst_name>\n"
+		"    <prod_name>     The producer name\n"
+		"    <inst_name>     The instance name\n";
 }
 
 static struct ldmsd_sampler procinterrupts_plugin = {

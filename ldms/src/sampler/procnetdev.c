@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -120,7 +120,7 @@ static int create_metric_set(const char *instance_name)
 	}
 
 	/* Create a metric set of the required size */
-	schema = ldms_create_schema("procnetdev");
+	schema = ldms_schema_new("procnetdev");
 	if (!schema)
 		return ENOMEM;
 
@@ -166,7 +166,7 @@ static int create_metric_set(const char *instance_name)
 					/* raw */
 					snprintf(metric_name, 128, "%s#%s",
 							varname[i], curriface);
-					rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+					rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 					if (rc < 0) {
 						rc = ENOMEM;
 						goto err;
@@ -174,7 +174,7 @@ static int create_metric_set(const char *instance_name)
 					/* rate */
 					snprintf(metric_name, 128, "%s.rate#%s",
 							varname[i], curriface);
-					rc = ldms_add_metric(schema, metric_name, LDMS_V_F32);
+					rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_F32);
 					if (rc < 0) {
 						rc = ENOMEM;
 						goto err;
@@ -185,15 +185,17 @@ static int create_metric_set(const char *instance_name)
 			} /* end if */
 		} /* end for */
 	} while (s);
-	rc = ldms_create_set(instance_name, schema, &set);
-	if (rc)
+	set = ldms_set_new(instance_name, schema);
+	if (!set) {
+		rc = errno;
 		goto err;
+	}
 	return 0;
 
 err:
 	fclose(mf);
 	mf = NULL;
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	schema = NULL;
 	return rc;
 }
@@ -229,10 +231,10 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
 static const char *usage(void)
 {
 	return
-"config name=procnetdev iface=<ifaces> producer_name=<producer_name> instance_name=<instance_name>\n"
-"    iface           Comma-separated interface names (e.g. eth0,eth1)\n"
-"    producer_name     The producer id value.\n"
-"    instance_name         The set name.\n";
+"config name=procnetdev iface=<ifaces> producer=<prod_name> instance=<inst_name>\n"
+"    <iface>         A comma-separated list of interface names (e.g. eth0,eth1)\n"
+"    <prod_name>     The producer name\n"
+"    <inst_name>     The instance name\n";
 }
 
 
@@ -259,20 +261,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return rc;
 
 	/* Set the compid and create the metric set */
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procnetdev: missing producer_name.\n");
+		msglog("procnetdev: missing 'producer'.\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
-	if (!value)
+	value = av_value(avl, "instance");
+	if (!value) {
+		msglog("procnetdev: missing 'instance'.\n");
 		return ENOENT;
+	}
 
 	rc = create_metric_set(value);
 	if (rc)
 		return rc;
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 
 	return 0;
 }
@@ -304,7 +308,7 @@ static int sample(void)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	/* data */
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 	gettimeofday(tv_cur, 0);
 	timersub(tv_cur, tv_prev, &dtv);
 	dt = dtv.tv_sec + dtv.tv_usec / 1e06;
@@ -345,18 +349,18 @@ static int sample(void)
 		for (j = 0; j < niface; j++){
 			if (strcmp(curriface, iface[j]) == 0){ /* NOTE: small number so no conflicts (eg., eth1 and eth10) */
 				for (i = 0; i < NVARS; i++){
-					uint64_t prev = ldms_get_midx_u64(set, metric_no);
+					uint64_t prev = ldms_metric_get_u64(set, metric_no);
 					union ldms_value rate;
 					rate.v_f = (v[i].v_u64 - prev)/dt;
-					ldms_set_midx(set, metric_no++, &v[i]);
-					ldms_set_midx(set, metric_no++, &rate);
+					ldms_metric_set(set, metric_no++, &v[i]);
+					ldms_metric_set(set, metric_no++, &rate);
 				}
 				usedifaces++;
 				break;
 			} /* end if */
 		} /* end for*/
 	} while (s);
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 
 	struct timeval *tv_tmp;
 	tv_tmp = tv_prev;
@@ -373,11 +377,11 @@ static void term(void)
 		fclose(mf);
 	mf = 0;
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	schema = NULL;
 
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 

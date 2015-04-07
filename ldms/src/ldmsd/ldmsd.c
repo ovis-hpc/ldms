@@ -550,8 +550,8 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 		double diff = difftime(sched, now);
 		if (diff < 0) {
 			snprintf(err_str, LEN_ERRSTR, "The schedule time '%s' "
-					"is ahead of the current time %ul.",
-								ts, now);
+				 "is ahead of the current time %ul.",
+				 ts, now);
 			rc = EINVAL;
 			return rc;
 		}
@@ -650,7 +650,7 @@ void ldmsd_host_sampler_cb(int fd, short sig, void *arg)
 
 	do_host(hs);
 
-	if (!hs->x || !ldms_xprt_connected(hs->x)) {
+	if (!hs->x) {
 		hs->timeout.tv_sec = hs->connect_interval / 1000000;
 		hs->timeout.tv_usec = hs->connect_interval % 1000000;
 	} else if (hs->synchronous){
@@ -671,7 +671,7 @@ void reset_hostset(struct hostset *hset)
 	struct ldmsd_store_policy_ref *ref;
 	struct hset_metric *hsm;
 	if (hset->set) {
-		ldms_destroy_set(hset->set);
+		ldms_set_delete(hset->set);
 		hset->set = NULL;
 	}
 	while (!LIST_EMPTY(&hset->lsp_list)) {
@@ -685,12 +685,12 @@ void reset_hostset(struct hostset *hset)
  * Host Type Descriptions:
  *
  * 'active' -
- *    - ldms_connect to a specified peer
- *    - ldms_lookup the peer's metric sets
+ *    - ldms_xprt_connect() to a specified peer
+ *    - ldms_xprt_lookup() the peer's metric sets
  *    - periodically performs an ldms_update of the peer's metric data
  *
  * 'bridging' - Designed to 'hop over' fire walls by initiating the connection
- *    - ldms_connect to a specified peer
+ *    - ldms_xprt_connect to a specified peer
  *
  * 'passive' - Designed as target side of 'bridging' host
  *    - searches list of incoming connections (connections it
@@ -857,7 +857,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 		dir_cb_del(t, dir, hs);
 		break;
 	}
-	ldms_dir_release(t, dir);
+	ldms_xprt_dir_free(t, dir);
 }
 #endif
 
@@ -872,7 +872,7 @@ void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 		break;
 	case LDMS_CONN_EVENT_ERROR:
 	case LDMS_CONN_EVENT_DISCONNECTED:
-		ldms_release_xprt(hs->x);
+		ldms_xprt_put(hs->x);
 		if (hs->type != PASSIVE)
 			ldms_xprt_close(hs->x);
 		hs->x = 0;
@@ -889,20 +889,20 @@ int do_connect(struct hostspec *hs)
 	if (hs->x)
 		ldms_xprt_close(hs->x);
 
-	hs->x = ldms_create_xprt(hs->xprt_name, ldms_log);
+	hs->x = ldms_xprt_new(hs->xprt_name, ldms_log);
 
 	if (!hs->x) {
 		ldms_log("Error creating transport '%s'.\n", hs->xprt_name);
 		return -1;
 	}
 	ldms_xprt_get(hs->x);
-	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
+	ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
 			    sizeof(hs->sin), ldms_connect_cb, hs);
 	if (ret) {
 		/* Release the connect reference */
-		ldms_release_xprt(hs->x);
+		ldms_xprt_put(hs->x);
 		/* Release the create reference */
-		ldms_release_xprt(hs->x);
+		ldms_xprt_put(hs->x);
 		hs->x = NULL;
 		return -1;
 	}
@@ -920,14 +920,14 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		goto out1;
 	}
 
-	gn = ldms_get_data_gn(hset->set);
+	gn = ldms_set_data_gn_get(hset->set);
 	if (hset->gn == gn) {
 		ldms_log("Over-sampled set %s with generation# %d.\n",
 			 hset->name, hset->gn);
 		goto out;
 	}
 
-	if (!ldms_is_set_consistent(hset->set)) {
+	if (!ldms_set_is_consistent(hset->set)) {
 		ldms_log("Set %s with generation# %d is inconsistent.\n",
 			 hset->name, hset->gn);
 		goto out;
@@ -960,11 +960,11 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 int do_lookup(struct hostspec *hs, struct hostset *hset)
 {
 	if (hs->type != LOCAL)
-		return ldms_lookup(hs->x, hset->name, lookup_cb, hset);
+		return ldms_xprt_lookup(hs->x, hset->name, lookup_cb, hset);
 
 	/* local host */
 	int status = LDMS_LOOKUP_OK;
-	ldms_set_t set = ldms_get_set(hset->name);
+	ldms_set_t set = ldms_set_by_name(hset->name);
 	if (!set)
 		status = LDMS_LOOKUP_ERROR;
 	pthread_mutex_unlock(&hset->state_lock);
@@ -977,11 +977,11 @@ int do_lookup(struct hostspec *hs, struct hostset *hset)
 int do_update(struct hostspec *hs, struct hostset *hset)
 {
 	if (hs->type != LOCAL)
-		return ldms_update(hset->set, update_complete_cb, hset);
+		return ldms_xprt_update(hset->set, update_complete_cb, hset);
 
 	/* local host */
 	int status = 0;
-	hset->set = ldms_get_set(hset->name);
+	hset->set = ldms_set_by_name(hset->name);
 	if (!hset->set)
 		status = ENOENT;
 	pthread_mutex_unlock(&hset->state_lock);
@@ -1115,7 +1115,7 @@ void do_host(struct hostspec *hs)
 
 int do_passive_connect(struct hostspec *hs)
 {
-	ldms_t l = ldms_xprt_find(&hs->sin);
+	ldms_t l = ldms_xprt_by_remote_sin(&hs->sin);
 	if (!l)
 		return -1;
 
@@ -1170,7 +1170,7 @@ void listen_on_transport(char *transport_str)
 	else
 		port_no = atoi(port_s);
 
-	l = ldms_create_xprt(name, ldms_log);
+	l = ldms_xprt_new(name, ldms_log);
 	if (!l) {
 		ldms_log("The transport specified, '%s', is invalid.\n", name);
 		cleanup(6);
@@ -1179,7 +1179,7 @@ void listen_on_transport(char *transport_str)
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(port_no);
-	ret = ldms_listen(l, (struct sockaddr *)&sin, sizeof(sin));
+	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret) {
 		ldms_log("Error %d listening on the '%s' transport.\n",
 			 ret, name);
@@ -1385,23 +1385,23 @@ int main(int argc, char *argv[])
 		int rc, set_no, j;
 		char metric_name[32];
 		static char test_set_name_no[1024];
-		ldms_schema_t schema = ldms_create_schema("test_set");
+		ldms_schema_t schema = ldms_schema_new("test_set");
 		if (!schema)
 			cleanup(11);
-		rc = ldms_add_metric(schema, "component_id", LDMS_V_U64);
+		rc = ldms_schema_metric_add(schema, "component_id", LDMS_V_U64);
 		if (rc < 0)
 			cleanup(12);
 		for (j = 1; j <= test_metric_count; j++) {
 			sprintf(metric_name, "metric_no_%d", j);
-			rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+			rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 			if (rc < 0)
 				cleanup(13);
 		}
 		for (set_no = 1; set_no <= test_set_count; set_no++) {
 			sprintf(test_set_name_no, "%s/%s_%d",
 				myhostname, test_set_name, set_no);
-			rc = ldms_create_set(test_set_name_no, schema, &test_set);
-			if (rc)
+			test_set = ldms_set_new(test_set_name_no, schema);
+			if (!test_set)
 				cleanup(14);
 			test_sets[set_no-1] = test_set;
 
@@ -1443,9 +1443,9 @@ int main(int argc, char *argv[])
 	do {
 		int set_no;
 		for (set_no = 0; set_no < test_set_count; set_no++) {
-			ldms_begin_transaction(test_sets[set_no]);
-			ldms_set_midx_u64(test_sets[set_no], 0, count);
-			ldms_end_transaction(test_sets[set_no]);
+			ldms_transaction_begin(test_sets[set_no]);
+			ldms_metric_set_u64(test_sets[set_no], 0, count);
+			ldms_transaction_end(test_sets[set_no]);
 			if (notify) {
 				struct ldms_notify_event_s event;
 				ldms_init_notify_modified(&event);

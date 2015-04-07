@@ -229,6 +229,8 @@ struct ldms_xprt {
 	struct sockaddr_storage remote_ss;
 	socklen_t ss_len;
 	pthread_mutex_t lock;
+	sem_t sem;
+	int sem_rc;
 	int connected;
 	int closed;
 	int max_msg;		/* max send message size */
@@ -270,13 +272,8 @@ struct ldms_xprt {
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]
 #define ldms_off_(_m, _p) (((char *)_p) - ((char *)_m))
 
-extern struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *,
-					     struct ldms_set *s);
-
-extern void ldms_free_rbd(struct ldms_rbuf_desc *);
-
-extern struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
-
-extern struct ldms_set *ldms_find_local_set(const char *path);
+extern void __ldms_free_rbd(struct ldms_rbuf_desc *);
+static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *, struct ldms_set *s);
+static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
 
 #endif

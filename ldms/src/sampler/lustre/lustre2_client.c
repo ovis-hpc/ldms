@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -223,7 +223,7 @@ static int create_metric_set(const char *path, const char *oscs,
 		goto err0;
 	heads[2] = lh_llite;
 
-	ldms_schema_t schema = ldms_create_schema("Lustre_Client");
+	ldms_schema_t schema = ldms_schema_new("Lustre_Client");
 	if (!schema)
 		goto err0;
 
@@ -246,15 +246,17 @@ static int create_metric_set(const char *path, const char *oscs,
 	}
 
 	/* Done calculating, now it is time to construct set */
-	rc = ldms_create_set(path, schema, &set);
-	if (rc)
+	set = ldms_set_new(path, schema);
+	if (!set) {
+		rc = errno;
 		goto err1;
-	ldms_destroy_schema(schema);
+	}
+	ldms_schema_delete(schema);
 	return 0;
 err1:
 	msglog("lustre_oss.c:create_metric_set@err1\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err0:
@@ -269,7 +271,7 @@ err0:
 static void term(void)
 {
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
@@ -290,15 +292,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *oscs, *mdcs, *llites;
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("lustre2_client: missing producer_name\n");
+		msglog("lustre2_client: missing producer\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("lustre2_client: missing instance_name\n");
+		msglog("lustre2_client: missing instance\n");
 		return EINVAL;
 	}
 	oscs = av_value(avl, "osc");
@@ -308,7 +310,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc = create_metric_set(value, oscs, mdcs, llites);
 	if (rc)
 		return rc;
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
@@ -317,11 +319,11 @@ static const char *usage(void)
 	return
 "config name=lustre2_client [OPTIONS]\n"
 "    OPTIONS:\n"
-"	producer_name=NUMBER       The producer id value.\n"
-"	instance_name=STRING     The set name.\n"
-"	osc=STR,STR,...	         The list of OCSs.\n"
-"	mdc=STR,STR,...	         The list of MDCs.\n"
-"	llite=STR,STR,...	 The list of llites.\n"
+"	producer=STRING       The producer name.\n"
+"	instance=STRING       The set name.\n"
+"	osc=STR,STR,...	      The list of OCSs.\n"
+"	mdc=STR,STR,...	      The list of MDCs.\n"
+"	llite=STR,STR,...     The list of llites.\n"
 "For oscs,mdcs and llites: if not specified, NONE of the\n"
 "oscs/mdcs/llites will be added. If {oscs,mdcs,llites} is set to *, all\n"
 "of the available {oscs,mdcs,llites} at the time will be added.\n"
@@ -342,7 +344,7 @@ static int sample(void)
 {
 	if (!set)
 		return EINVAL;
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	struct lustre_metric_src *lms;
 
@@ -352,7 +354,7 @@ static int sample(void)
 	}
 
  out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 }
 

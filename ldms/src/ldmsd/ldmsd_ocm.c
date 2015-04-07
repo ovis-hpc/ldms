@@ -132,7 +132,7 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	ocm_cfg_cmd_t mcmd = v->cmd;
 
 	v = ocm_av_get_value(cmd, "instance_name");
-	ldms_set_t set = ldms_get_set(v->s.str);
+	ldms_set_t set = ldms_set_by_name(v->s.str);
 
 	ocm_av_iter_init(&iter, mcmd);
 

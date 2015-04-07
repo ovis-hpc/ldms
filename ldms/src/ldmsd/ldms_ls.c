@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -122,13 +122,15 @@ void server_timeout(void)
 }
 
 static int user_data = 0;
-void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
+void metric_printer(ldms_set_t s, int i)
 {
+	enum ldms_value_type type = ldms_metric_type_get(s, i);
+	ldms_mval_t v = ldms_metric_get(s, i);
 	char value_str[64];
 	char name_str[256];
-	printf("%4s ", ldms_type_to_str(vd->type));
+	printf("%4s ", ldms_metric_type_to_str(type));
 
-	switch (vd->type) {
+	switch (type) {
 	case LDMS_V_U8:
 		sprintf(value_str, "%hhu", v->v_u8);
 		break;
@@ -159,22 +161,21 @@ void metric_printer(struct ldms_value_desc *vd, union ldms_value *v, void *arg)
 	case LDMS_V_D64:
 		sprintf(value_str, "%f", v->v_d);
 		break;
-	case LDMS_V_LD128:
-		sprintf(value_str, "%Lf", v->v_ld);
-		break;
 	}
 	if (user_data)
-		sprintf(name_str, "%-42s 0x%" PRIx64, vd->name, vd->user_data);
+		sprintf(name_str, "%-42s 0x%" PRIx64,
+			ldms_metric_name_get(s, i),
+			ldms_metric_user_data_get(s, i));
 	else
-		strcpy(name_str, vd->name);
+		strcpy(name_str, ldms_metric_name_get(s, i));
 	printf("%-16s %s\n", value_str, name_str);
 }
 void print_detail(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
-	struct ldms_timestamp const *ts = ldms_get_transaction_timestamp(s);
-	struct ldms_timestamp const *dur = ldms_get_transaction_duration(s);
-	int consistent = ldms_is_set_consistent(s);
+	struct ldms_timestamp const *ts = ldms_transaction_timestamp_get(s);
+	struct ldms_timestamp const *dur = ldms_transaction_duration_get(s);
+	int consistent = ldms_set_is_consistent(s);
 	struct tm *tm;
 	char dtsz[200];
 	time_t t = ts->sec;
@@ -182,18 +183,18 @@ void print_detail(ldms_set_t s)
 	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
 
 	printf("  METADATA --------\n");
-	printf("    Producer Name : %s\n", ldms_get_producer_name(s));
-	printf("    Instance Name : %s\n", ldms_get_set_name(s));
-	printf("      Schema Name : %s\n", ldms_get_set_schema_name(s));
-	printf("             Size : %" PRIu32 "\n", sd->set->meta->meta_sz);
-	printf("     Metric Count : %" PRIu32 "\n", ldms_get_set_card(s));
-	printf("               GN : %" PRIu64 "\n", ldms_get_meta_gn(s));
+	printf("    Producer Name : %s\n", ldms_set_producer_name_get(s));
+	printf("    Instance Name : %s\n", ldms_set_instance_name_get(s));
+	printf("      Schema Name : %s\n", ldms_set_schema_name_get(s));
+	printf("             Size : %" PRIu32 "\n", ldms_set_meta_sz_get(sd));
+	printf("     Metric Count : %" PRIu32 "\n", ldms_set_card_get(s));
+	printf("               GN : %" PRIu64 "\n", ldms_set_meta_gn_get(s));
 	printf("  DATA ------------\n");
 	printf("        Timestamp : %s [%dus]\n", dtsz, ts->usec);
 	printf("         Duration : [%d.%06ds]\n", dur->sec, dur->usec);
 	printf("       Consistent : %s\n", (consistent?"TRUE":"FALSE"));
-	printf("             Size : %" PRIu32 "\n", sd->set->meta->data_sz);
-	printf("               GN : %" PRIu64 "\n", ldms_get_data_gn(s));
+	printf("             Size : %" PRIu32 "\n", ldms_set_data_sz_get(sd));
+	printf("               GN : %" PRIu64 "\n", ldms_set_data_gn_get(s));
 	printf("  -----------------\n");
 }
 
@@ -203,8 +204,8 @@ static int long_format = 0;
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
-	struct ldms_timestamp const *ts = ldms_get_transaction_timestamp(s);
-	int consistent = ldms_is_set_consistent(s);
+	struct ldms_timestamp const *ts = ldms_transaction_timestamp_get(s);
+	int consistent = ldms_set_is_consistent(s);
 	struct tm *tm;
 	char dtsz[200];
 	time_t ti = ts->sec;
@@ -212,7 +213,7 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
 
 	printf("%s: %s, last update: %s [%dus]\n",
-	       ldms_get_set_name(s),
+	       ldms_set_instance_name_get(s),
 	       (consistent?"consistent":"inconsistent"), dtsz, ts->usec);
 	if (rc) {
 		printf("    Error %d updating metric set.\n", rc);
@@ -220,10 +221,12 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	}
 	if (verbose)
 		print_detail(s);
-	if (long_format)
-		ldms_visit_metrics(s, metric_printer, NULL);
-
-	ldms_destroy_set(s);
+	if (long_format) {
+		int i;
+		for (i = 0; i < ldms_set_card_get(s); i++)
+			metric_printer(s, i);
+	}
+	ldms_set_delete(s);
  out:
 	printf("\n");
 	pthread_mutex_lock(&print_lock);
@@ -248,7 +251,7 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 		pthread_mutex_unlock(&print_lock);
 		goto err;
 	}
-	ldms_update(s, print_cb, (void *)last);
+	ldms_xprt_update(s, print_cb, (void *)last);
 	return;
  err:
 	printf("ldms_ls: Error %d looking up metric set.\n", status);
@@ -289,7 +292,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	}
 	more = _dir->more;
 	add_set_list(t, _dir);
-	ldms_dir_release(t, _dir);
+	ldms_xprt_dir_free(t, _dir);
 	if (more)
 		return;
 
@@ -307,8 +310,6 @@ void null_log(const char *fmt, ...)
 	va_start(ap, fmt);
 	vfprintf(stdout, fmt, ap);
 	fflush(stdout);
-
-	// print nothing at all!!!!
 }
 
 void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
@@ -330,7 +331,6 @@ int main(int argc, char *argv[])
 	ldms_t ldms;
 	int ret;
 	struct hostent *h;
-	u_char *oc;
 	char *hostname = "localhost";
 	short port_no = LDMS_DEFAULT_PORT;
 	int op;
@@ -391,7 +391,6 @@ int main(int argc, char *argv[])
 
 	if (h->h_addrtype != AF_INET)
 		usage(argv);
-	oc = (u_char *)h->h_addr_list[0];
 
 	/* Initialize LDMS */
 	size_t max_mem = LDMS_LS_MAX_MEM_SIZE;
@@ -401,7 +400,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	ldms = ldms_create_xprt(xprt, null_log);
+	ldms = ldms_xprt_new(xprt, null_log);
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);
@@ -417,10 +416,10 @@ int main(int argc, char *argv[])
 		printf("Port        : %hu\n", port_no);
 		printf("Transport   : %s\n", xprt);
 	}
-	ret  = ldms_connect(ldms, (struct sockaddr *)&sin, sizeof(sin),
-				ldms_connect_cb, NULL);
+	ret  = ldms_xprt_connect(ldms, (struct sockaddr *)&sin, sizeof(sin),
+				 ldms_connect_cb, NULL);
 	if (ret) {
-		perror("ldms_connect");
+		perror("ldms_xprt_connect");
 		exit(2);
 	}
 
@@ -434,7 +433,7 @@ int main(int argc, char *argv[])
 	pthread_cond_init(&print_cv, NULL);
 
 	if (optind == argc) {
-		ret = ldms_dir(ldms, dir_cb, NULL, 0);
+		ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
 		if (ret) {
 			printf("ldms_dir returned synchronous error %d\n",
 			      ret);
@@ -493,11 +492,11 @@ int main(int argc, char *argv[])
 			pthread_mutex_lock(&print_lock);
 			print_done = 0;
 			pthread_mutex_unlock(&print_lock);
-			ret = ldms_lookup(ldms, lss->name, lookup_cb,
+			ret = ldms_xprt_lookup(ldms, lss->name, lookup_cb,
 					  (void *)(unsigned long)
 					  LIST_EMPTY(&set_list));
 			if (ret) {
-				printf("ldms_lookup returned %d for set '%s'\n",
+				printf("ldms_xprt_lookup returned %d for set '%s'\n",
 				       ret, lss->name);
 			}
 			pthread_mutex_lock(&print_lock);

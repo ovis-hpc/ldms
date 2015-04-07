@@ -69,6 +69,34 @@ struct ldms_schema_s {
 	LIST_ENTRY(ldms_schema_s) entry;
 };
 
+struct ldms_data_hdr {
+	struct ldms_transaction trans;
+	uint32_t pad;
+	uint64_t gn;		/* Metric-value generation number */
+	uint64_t size;		/* Max size of data */
+	uint64_t meta_gn;	/* Meta-data generation number */
+};
+
+struct ldms_set_hdr {
+	/* The unique metric set producer name */
+	char producer_name[LDMS_PRODUCER_NAME_MAX];
+	uint64_t meta_gn;	/* Meta-data generation number */
+	uint32_t version;	/* LDMS version number */
+	uint32_t flags;		/* Set format flags */
+	uint32_t card;		/* Size of dictionary (i.e. metric count). */
+	uint32_t meta_sz;	/* size of meta data in bytes */
+	uint32_t data_sz;	/* size of metric values in bytes */
+	uint32_t dict[0];	/* The metric dictionary */
+};
+
+struct ldms_set {
+	unsigned long flags;
+	struct ldms_set_hdr *meta;
+	struct ldms_data_hdr *data;
+	struct rbn rb_node;
+	LIST_HEAD(rbd_list, ldms_rbuf_desc) rbd_list;
+};
+
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
 
@@ -103,14 +131,15 @@ extern int __ldms_create_set(const char *instance_name,
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
 				     int *set_count, int *set_list_size);
-void __ldms_dir_add_set(const char *set_name);
-void __ldms_dir_del_set(const char *set_name);
-int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
-size_t __ldms_xprt_max_msg(struct ldms_xprt *x);
+extern void __ldms_dir_add_set(const char *set_name);
+extern void __ldms_dir_del_set(const char *set_name);
+extern int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
+extern size_t __ldms_xprt_max_msg(struct ldms_xprt *x);
 
-uint32_t _get_max_size(struct ldms_set *s);
+extern uint32_t __ldms_set_size_get(struct ldms_set *s);
+extern void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
+			    size_t *meta_sz, size_t *data_sz);
 
-void ldms_release_local_set(struct ldms_set *set);
-
+extern struct ldms_set *__ldms_find_local_set(const char *path);
 
 #endif

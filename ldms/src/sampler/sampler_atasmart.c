@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -150,23 +150,23 @@ void atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 		case 0: /* current value */
 		case 1: /* worst value */
 		case 2: /* threshold */
-			ldms_add_metric(smarts->schema, metric_name, LDMS_V_S16);
+			ldms_schema_metric_add(smarts->schema, metric_name, LDMS_V_S16);
 			break;
 		case 3: /* Pretty value */
-			ldms_add_metric(smarts->schema, metric_name, LDMS_V_U64);
+			ldms_schema_metric_add(smarts->schema, metric_name, LDMS_V_U64);
 			break;
 		/* the value is 1, 0. */
 		case 4: /* prefail/old-age */
 		case 5: /* online/offline */
-			ldms_add_metric(smarts->schema, metric_name, LDMS_V_U8);
+			ldms_schema_metric_add(smarts->schema, metric_name, LDMS_V_U8);
 			break;
 		/* the value is 1, 0, -1 for invalid */
 		case 6: /* good now */
 		case 7: /* good in the past */
-			ldms_add_metric(smarts->schema, metric_name, LDMS_V_S8);
+			ldms_schema_metric_add(smarts->schema, metric_name, LDMS_V_S8);
 			break;
 		case 8: /* flag */
-			ldms_add_metric(smarts->schema, metric_name, LDMS_V_U16);
+			ldms_schema_metric_add(smarts->schema, metric_name, LDMS_V_U16);
 			break;
 		default:
 			assert(0);
@@ -191,7 +191,7 @@ static int create_metric_set(char *setname)
 		goto err;
 	}
 
-	smarts->schema = ldms_create_schema("atasmart");
+	smarts->schema = ldms_schema_new("atasmart");
 	if (!smarts->schema) {
 		msglog("atasmart: Failed to create schema.\n");
 		goto err0;
@@ -235,8 +235,9 @@ static int create_metric_set(char *setname)
 		}
 	}
 
-	rc = ldms_create_set(setname, smarts->schema, &set);
-	if (rc) {
+	set = ldms_set_new(setname, smarts->schema);
+	if (!set) {
+		rc = errno;
 		msglog("atasmart: Failed to create metric set.\n");
 		goto err1;
 	}
@@ -259,23 +260,16 @@ err:
 
 static const char *usage(void)
 {
-	return  "config name=sampler_atasmart producer_name=<producer_name> \n"
-		"	instance_name=<instance_name> disks=<disknames>\n"
-		"    producer_name       The producer id value.\n"
-		"    instance_name     The set name.\n"
-		"    disknames         The comma-separated list of disk names,\n"
+	return  "config name=sampler_atasmart producer=<prod_name> \n"
+		"	instance=<inst_name> disks=<disknames>\n"
+		"    <prod_name>    The producer name\n"
+		"    <inst_name>    The instance name\n"
+		"    <disks>        A comma-separated list of disk names,\n"
 		"		       e.g., /dev/sda,/dev/sda1.\n";
 }
 
 /**
  * \brief Configuration
- *
- * config name=sampler_atasmart producer_name=<producer_name>
- * 	  instance_name=<instance_name> disks=<disknames>
- *     producer_name     The producer id value.
- *     instance_name     The set name.
- *     disknames   The comma-separated list of disk names,
- *     		   e.g., /dev/sda,/dev/sda1.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -306,21 +300,21 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return -1;
 	}
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("atasmart: missing producer_name.\n");
+		msglog("atasmart: missing 'producer'.\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("atasmart: missing instance_name\n");
+		msglog("atasmart: missing 'instance'\n");
 		return ENOENT;
 	}
 	int rc = create_metric_set(value);
 	if (rc)
 		return rc;
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
@@ -373,7 +367,7 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 		default:
 			assert(0);
 		}
-		ldms_set_midx(set, *metric_no, &v);
+		ldms_metric_set(set, *metric_no, &v);
 		(*metric_no)++;
 	}
 	return 0;
@@ -388,7 +382,7 @@ static int sample(void)
 		msglog("meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	metric_no = 0;
 	int i;
@@ -403,16 +397,16 @@ static int sample(void)
 		}
 	}
 
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 err:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return ret;
 }
 
 static void term(void)
 {
-	ldms_destroy_schema(smarts->schema);
+	ldms_schema_delete(smarts->schema);
 	int i;
 	for (i = 0; i < num_disks; i++) {
 		sk_disk_free(smarts->d[i]);
@@ -422,7 +416,7 @@ static void term(void)
 	free(disknames);
 	smarts = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 

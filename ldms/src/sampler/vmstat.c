@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -95,7 +96,7 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	schema = ldms_create_schema("vmstat");
+	schema = ldms_schema_new("vmstat");
 	if (!schema) {
 		fclose(mf);
 		return ENOMEM;
@@ -110,49 +111,51 @@ static int create_metric_set(const char *path)
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &metric_value);
 		if (rc < 2)
 			goto err;
-		rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 		if (rc < 0)
 			goto err;
 	} while (s);
 
-	rc = ldms_create_set(path, schema, &set);
-	if (rc)
+	set = ldms_set_new(path, schema);
+	if (!set) {
+		rc = errno;
 		goto err;
+	}
 
 	return 0;
 
  err:
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	schema = NULL;
 	return ENOMEM;
 }
 
 static const char *usage()
 {
-	return  "config name=vmstat producer_name=<producer_name> instance_name=<instance_name>\n"
-		"    producer_name       The producer id value.\n"
-		"    instance_name     The set name.\n";
+	return  "config name=vmstat producer=<prod_name> instance=<inst_name>\n"
+		"    <prod_name>   The producer name\n"
+		"    <inst_name>   The instance name\n";
 }
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("vmstat: missing producer_name\n");
+		msglog("vmstat: missing 'producer'\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("vmstat: missing instance_name\n");
+		msglog("vmstat: missing 'instance'\n");
 		return ENOENT;
 	}
 	int rc = create_metric_set(value);
 	if (rc)
 		return rc;
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
@@ -169,7 +172,7 @@ static int sample(void)
 		msglog("vmstat: plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -182,21 +185,21 @@ static int sample(void)
 			rc = EINVAL;
 			goto out;
 		}
-		ldms_set_midx(set, metric_no, &v);
+		ldms_metric_set(set, metric_no, &v);
 		metric_no++;
 	} while (s);
 	rc = 0;
  out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return rc;
 }
 
 static void term(void)
 {
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 

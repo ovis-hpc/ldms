@@ -261,16 +261,16 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		return EINVAL;
 
 	si = _sh;
-	const struct ldms_timestamp *ts = ldms_get_transaction_timestamp(set);
+	const struct ldms_timestamp *ts = ldms_transaction_timestamp_get(set);
 	uint64_t comp_id;
 
 	for (i=0; i<metric_count; i++) {
 		pthread_mutex_lock(&si->ms[i]->lock);
-		comp_id = ldms_get_midx_udata(set, metric_arry[i]);
+		comp_id = ldms_metric_user_data_get(set, metric_arry[i]);
 		rc = fprintf(si->ms[i]->file, "%"PRIu32".%"PRIu32" %"PRIu64
 				" %"PRIu64"\n", ts->sec,
 				ts->usec, comp_id,
-			     ldms_get_midx_u64(set, metric_arry[i]));
+			     ldms_metric_get_u64(set, metric_arry[i]));
 		if (rc < 0) {
 			last_errno = errno;
 			last_rc = rc;

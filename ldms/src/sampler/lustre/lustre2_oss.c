@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -266,7 +266,7 @@ static int create_metric_set(const char *path, const char *osts)
 		goto err0;
 
 	/* Done calculating, now it is time to construct set */
-	ldms_schema_t schema = ldms_create_schema("Lustre_OSS");
+	ldms_schema_t schema = ldms_schema_new("Lustre_OSS");
 	if (schema)
 		goto err1;
 	char suffix[128];
@@ -299,15 +299,17 @@ static int create_metric_set(const char *path, const char *osts)
 				goto err2;
 		}
 	}
-	rc = ldms_create_set(path, schema, &set);
-	if (rc)
+	set = ldms_set_new(path, schema);
+	if (!set) {
+		rc = errno;
 		goto err2;
-	ldms_destroy_schema(schema);
+	}
+	ldms_schema_delete(schema);
 	return 0;
 err2:
 	msglog("lustre_oss.c:create_metric_set@err2\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	msglog("WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err1:
@@ -322,7 +324,7 @@ err0:
 static void term(void)
 {
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
@@ -331,9 +333,9 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_oss producer_name=<producer_name> instance_name=<instance_name> osts=<OST1>,...
- *     producer_name       The producer id value.
- *     instnace_name     The set name.
+ * config name=lustre_oss producer=<prod_name> instance=<inst_name> osts=<OST1>,...
+ *     prod_name       The producer id value.
+ *     inst_name     The set name.
  *     osts              The comma-separated list of the OSTs to sample from.
  * </code>
  * If osts is not given, the plugin will create ldms_set according to the
@@ -343,15 +345,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *osts;
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("lustre2_oss: missing producer_name\n");
+		msglog("lustre2_oss: missing 'producer'\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "set");
 	if (!value) {
-		msglog("lustre2_oss: missing instance_name\n");
+		msglog("lustre2_oss: missing 'instance'\n");
 		return EINVAL;
 	}
 	osts = av_value(avl, "osts");
@@ -359,16 +361,16 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc = create_metric_set(value, osts);
 	if (rc)
 		return rc;
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 }
 
 static const char *usage(void)
 {
 	return
-"config name=lustre_oss producer_name=<producer_name> instance_name=<instance_name> osts=OST1,...\n"
-"	producer_name	The producer id value.\n"
-"	instance_name	The set name.\n"
-"	osts		The list of OSTs.\n"
+"config name=lustre_oss producer=<prod_name> instance=<inst_name> osts=<ost_list>\n"
+"	<prod_name>	The producer name\n"
+"	<inst_name>	The instance name\n"
+"	<osts>		A comma separated list of OSTs\n"
 "For osts: if not specified, all of the\n"
 "currently available OSTs will be added.\n";
 }
@@ -382,7 +384,7 @@ static int sample(void)
 {
 	if (!set)
 		return EINVAL;
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	struct lustre_metric_src *lms;
 
@@ -392,7 +394,7 @@ static int sample(void)
 	}
 
 out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 }
 

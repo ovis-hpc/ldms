@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2011 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2011-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2011-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -87,7 +87,7 @@ static int create_metric_set(const char *instance_name)
 	if (!mf)
 		return ENOENT;
 
-	schema = ldms_create_schema("meminfo");
+	schema = ldms_schema_new("meminfo");
 	if (!schema)
 		return ENOMEM;
 
@@ -111,20 +111,22 @@ static int create_metric_set(const char *instance_name)
 		if (i && metric_name[i-1] == ':')
 			metric_name[i-1] = '\0';
 
-		rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 		if (rc < 0) {
 			rc = ENOMEM;
 			goto err;
 		}
 	} while (s);
 
-	rc = ldms_create_set(instance_name, schema, &set);
-	if (rc)
+	set = ldms_set_new(instance_name, schema);
+	if (!set) {
+		rc = errno;
 		goto err;
+	}
 
 	return 0;
  err:
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	return rc;
 }
 
@@ -138,15 +140,15 @@ static int create_metric_set(const char *instance_name)
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("meminfo: missing producer_name\n");
+		msglog("meminfo: missing producer\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("meminfo: missing instance name.\n");
+		msglog("meminfo: missing instance.\n");
 		return ENOENT;
 	}
 
@@ -155,7 +157,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("meminfo: failed to create a metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
@@ -177,12 +179,11 @@ static int sample(void)
 		msglog("meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
-		struct ldms_metric m;
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
@@ -192,11 +193,11 @@ static int sample(void)
 			goto out;
 		}
 
-		ldms_set_midx(set, metric_no, &v);
+		ldms_metric_set(set, metric_no, &v);
 		metric_no++;
 	} while (s);
  out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 }
 
@@ -205,18 +206,18 @@ static void term(void)
 	if (mf)
 		fclose(mf);
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	schema = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
 static const char *usage(void)
 {
-	return  "config name=meminfo producer_name=<producer_name> instance_name=<setname>\n"
-		"    producer_name     The producer id value.\n"
-		"    setname         The set name.\n";
+	return  "config name=meminfo producer=<prod_name> instance=<inst_name>\n"
+		"    <prod_name>  The producer name\n"
+		"    <inst_name>  The instance name\n";
 }
 
 static struct ldmsd_sampler meminfo_plugin = {

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2012 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -108,7 +108,7 @@ static int create_metric_set(const char *instance_name)
 	char metric_name[128];
 
 	/* Create the metric set */
-	schema = ldms_create_schema("procsensors");
+	schema = ldms_schema_new("procsensors");
 	if (!schema)
 		return ENOMEM;
 
@@ -121,7 +121,7 @@ static int create_metric_set(const char *instance_name)
 		for (j = varbounds[2 * i]; j <= varbounds[2 * i + 1]; j++){
 			snprintf(metric_name, 127,
 					"%s%d_input",varnames[i],j);
-			rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+			rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 			if (rc < 0) {
 				rc = ENOMEM;
 				goto err;
@@ -131,37 +131,37 @@ static int create_metric_set(const char *instance_name)
 
 #ifdef CHECK_SENSORS_TIMING
 	num_metric_times = 4;
-	tv_sec_metric_handle2 = ldms_add_metric(schema, "procsensors_tv_sec2", LDMS_V_U64);
+	tv_sec_metric_handle2 = ldms_schema_metric_add(schema, "procsensors_tv_sec2", LDMS_V_U64);
 	if (tv_sec_metric_handle2 < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	tv_nsec_metric_handle2 = ldms_add_metric(schema, "procsensors_tv_nsec2", LDMS_V_U64);
+	tv_nsec_metric_handle2 = ldms_schema_metric_add(schema, "procsensors_tv_nsec2", LDMS_V_U64);
 	if (tv_nsec_metric_handle2 < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	tv_dnsec_metric_handle = ldms_add_metric(schema, "procsensors_tv_dnsec", LDMS_V_U64);
+	tv_dnsec_metric_handle = ldms_schema_metric_add(schema, "procsensors_tv_dnsec", LDMS_V_U64);
 	if (tv_dnsec_metric_handle < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	tv_sec_metric_handle3 = ldms_add_metric(schema, "procsensors_tv_sec3", LDMS_V_U64);
+	tv_sec_metric_handle3 = ldms_schema_metric_add(schema, "procsensors_tv_sec3", LDMS_V_U64);
 	if (tv_sec_metric_handle3 < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	tv_nsec_metric_handle3 = ldms_add_metric(schema, "procsensors_tv_nsec3", LDMS_V_U64);
+	tv_nsec_metric_handle3 = ldms_schema_metric_add(schema, "procsensors_tv_nsec3", LDMS_V_U64);
 	if (tv_nsec_metric_handle3 < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	tv_dnwrite_metric_handle = ldms_add_metric(schema, "procsensors_tv_dnwrite", LDMS_V_U64);
+	tv_dnwrite_metric_handle = ldms_schema_metric_add(schema, "procsensors_tv_dnwrite", LDMS_V_U64);
 	if (tv_dnwrite_metric_handle < 0) {
 		rc = ENOMEM;
 		goto err;
@@ -176,14 +176,16 @@ static int create_metric_set(const char *instance_name)
 	if (!metric_times)
 		goto err;
 
-	rc = ldms_create_set(instance_name, schema, &set);
-	if (rc)
+	set = ldms_set_new(instance_name, schema);
+	if (!set) {
+		rc = errno;
 		goto err;
+	}
 
 	return 0;
 
 err:
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	schema = NULL;
 	return rc;
 }
@@ -192,23 +194,23 @@ err:
  * \brief Configuration
  *
  * Usage:
- * config name=procsensors producer_name=<producer_name> instance_name=<instance_name>
- *     producer_name       The producer id value.
- *     instance_name     The set name.
+ * config name=procsensors producer=<prod_name> instance=<inst_name>
+ *     <prod_name>       The producer name
+ *     <inst_name>       The instance name
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procsensors: missing producer_name\n");
+		msglog("procsensors: missing 'producer'\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procsensors: missing instance_name\n");
+		msglog("procsensors: missing 'instance'\n");
 		return ENOENT;
 	}
 	rc = create_metric_set(value);
@@ -216,7 +218,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("procsensors: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 
 	return 0;
 }
@@ -245,7 +247,7 @@ static int sample(void)
 	clock_gettime(CLOCK_REALTIME, &time1);
 	metric_times[metric_time_no++] = time1.tv_sec;
 	metric_times[metric_time_no++] = time1.tv_nsec;
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 	metric_no = 0;
 	for (i = 0; i < vartypes; i++){
 		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
@@ -289,46 +291,46 @@ static int sample(void)
 	metric_no = 0;
 	for (i = 0; i < metric_count; i++){
 		v.v_u64 = metric_values[i];
-		ldms_set_midx(set , i, &v);
+		ldms_metric_set(set , i, &v);
 	}
 
 #ifdef CHECK_SENSORS_TIMING
 	//second set of times
 	v.v_u64 = metric_times[2];
-	ldms_set_midx(set, tv_sec_metric_handle2, &v);
+	ldms_metric_set(set, tv_sec_metric_handle2, &v);
 	v.v_u64 = metric_times[3];
-	ldms_set_midx(set, tv_nsec_metric_handle2, &v);
+	ldms_metric_set(set, tv_nsec_metric_handle2, &v);
 	v.v_u64 = metric_times[3]-metric_times[1];  //sub start of writeout nsec
-	ldms_set_midx(set, tv_dnsec_metric_handle, &v);
+	ldms_metric_set(set, tv_dnsec_metric_handle, &v);
 
 	//and get the last write times. array storage for these is unused
 	clock_gettime(CLOCK_REALTIME, &time1);
 	v.v_u64 = time1.tv_sec;
-	ldms_set_midx(set, tv_sec_metric_handle3, &v);
+	ldms_metric_set(set, tv_sec_metric_handle3, &v);
 	v.v_u64 = time1.tv_nsec;
-	ldms_set_midx(set, tv_nsec_metric_handle3, &v);
+	ldms_metric_set(set, tv_nsec_metric_handle3, &v);
 	v.v_u64 = time1.tv_nsec-metric_times[3];  //sub start of writeout nsec
-	ldms_set_midx(set, tv_dnwrite_metric_handle, &v);
+	ldms_metric_set(set, tv_dnwrite_metric_handle, &v);
 #endif
 	rc = 0;
 out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return rc;
 }
 
 static void term(void)
 {
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 }
 
 static const char *usage(void)
 {
-	return  "config name=procsensors producer_name=<producer_name> instance_name=<instance_name>\n"
-		"    producer_name      The producer id.\n"
-		"    instance_name    The set name.\n";
+	return  "config name=procsensors producer=<prod_name> instance=<inst_name>\n"
+		"    <prod_name>    The producer name\n"
+		"    <inst_name>    The instance name\n";
 }
 
 static struct ldmsd_sampler procsensors_plugin = {

@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -183,7 +183,7 @@ static int create_metric_set(const char *path, const char *mdts)
 	if (!lh)
 		goto err0;
 
-	ldms_schema_t schema = ldms_create_schema("Lustre_MDS");
+	ldms_schema_t schema = ldms_schema_new("Lustre_MDS");
 	if (!schema)
 		goto err1;
 
@@ -220,16 +220,18 @@ static int create_metric_set(const char *path, const char *mdts)
 		if (rc)
 			goto err2;
 	}
-	rc = ldms_create_set(path, schema, &set);
-	if (rc)
+	set = ldms_set_new(path, schema);
+	if (!set) {
+		rc = errno;
 		goto err2;
+	}
 
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	return 0;
 err2:
 	msglog("lustre_mds.c:create_metric_set@err2\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	msglog("WARNING: lustre_mds set DESTROYED\n");
 	set = 0;
 err1:
@@ -243,7 +245,7 @@ err0:
 static void term(void)
 {
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
@@ -252,9 +254,9 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_mds producer_name=<producer_name> instance_name=<instance_name> mdts=<MDT1>,...
- *     producer_name       The producer id value.
- *     instance_name     The set name.
+ * config name=lustre_mds producer=<prod_name> instance=<inst_name> mdts=<MDT1>,...
+ *     prod_name       The producer id value.
+ *     inst_name     The set name.
  *     mdts              The comma-separated list of the MDTs to sample from.
  * </code>
  * If mdts is not given, the plugin will create ldms_set according to the
@@ -264,31 +266,31 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *mdts;
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("lustre2_mds: missing producer_name\n");
+		msglog("lustre2_mds: missing producer\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("lustre2_mds: missing instance_name\n");
+		msglog("lustre2_mds: missing instance\n");
 		return EINVAL;
 	}
 	mdts = av_value(avl, "mdts");
 	int rc = create_metric_set(value, mdts);
 	if (rc)
 		return rc;
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
 static const char *usage(void)
 {
 	return
-"config name=lustre_mds producer_name=<producer_name> instance_name=<instance_name> mdts=MDT1,...\n"
-"	producer_name	The producer id value.\n"
-"	instance_name	The set name.\n"
+"config name=lustre_mds producer=<prod_name> instance=<inst_name> mdts=MDT1,...\n"
+"	prod_name	The producer id value.\n"
+"	inst_name	The set name.\n"
 "	mdts		The list of MDTs.\n"
 "For mdts: if not specified, all of the\n"
 "currently available MDTs will be added.\n";
@@ -303,7 +305,7 @@ static int sample(void)
 {
 	if (!set)
 		return EINVAL;
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	struct lustre_metric_src *lms;
 
@@ -313,7 +315,7 @@ static int sample(void)
 	}
 
  out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 }
 

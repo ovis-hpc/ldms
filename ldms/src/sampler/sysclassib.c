@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2012 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2012 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -258,7 +258,7 @@ static int create_metric_set(const char *setname)
 		return EEXIST;
 	}
 
-	schema = ldms_create_schema("sysclassib");
+	schema = ldms_schema_new("sysclassib");
 	if (!schema)
 		return ENOMEM;
 
@@ -269,24 +269,24 @@ static int create_metric_set(const char *setname)
 					all_metric_names[i],
 					port->ca,
 					port->portno);
-			port->handle[i] = ldms_add_metric(schema, metric_name,
+			port->handle[i] = ldms_schema_metric_add(schema, metric_name,
 							  LDMS_V_U64);
 			/* rates */
 			snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
 					all_metric_names[i],
 					port->ca,
 					port->portno);
-			port->rate[i] = ldms_add_metric(schema, metric_name,
+			port->rate[i] = ldms_schema_metric_add(schema, metric_name,
 							LDMS_V_F32);
 		}
 	}
 	/* create set and metrics */
-	rc = ldms_create_set(setname, schema, &set);
-	if (rc) {
-		msglog("sysclassib: ldms_create_set failed, rc: %d\n", rc);
-		ldms_destroy_schema(schema);
+	set = ldms_set_new(setname, schema);
+	if (!set) {
+		msglog("sysclassib: ldms_set_new failed, rc: %d\n", rc);
+		ldms_schema_delete(schema);
 		schema = NULL;
-		return rc;
+		return errno;
 	}
 	return 0;
 }
@@ -294,11 +294,11 @@ static int create_metric_set(const char *setname)
 static const char *usage(void)
 {
 	return
-"config name=sysclassib producer_name=<producer_name> instance_name=<instance_name> ports=CA.PRT,...\n"
-"    producer_name       The producer id value.\n"
-"    instance_name     The set name.\n"
-"    ports             A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
-"                      a * for all IB ports. If not given, '*' is assumed.\n"
+"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports>\n"
+"    <prod_name>     The producer name\n"
+"    <inst_name>     The instance name\n"
+"    <ports>         A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
+"                    a * for all IB ports. If not given, '*' is assumed.\n"
 ;
 }
 
@@ -517,15 +517,17 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *setstr;
 	char *ports;
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("sysclassib: missing producer_name\n");
+		msglog("sysclassib: missing 'producer'\n");
 		return ENOENT;
 	}
 
-	setstr = av_value(avl, "instance_name");
-	if (!setstr)
+	setstr = av_value(avl, "instance");
+	if (!setstr) {
+		msglog("sysclassib: missing 'instance'\n");
 		return ENOENT;
+	}
 
 	ports = av_value(avl, "ports");
 	if (!ports)
@@ -542,7 +544,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	rc = create_metric_set(setstr);
 	if (rc)
 		return rc;
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
@@ -557,11 +559,11 @@ static ldms_set_t get_set()
 inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
 			float dt)
 {
-	uint64_t old_v = ldms_get_midx_u64(set, port->handle[idx]);
+	uint64_t old_v = ldms_metric_get_u64(set, port->handle[idx]);
 	if (!port->ext)
 		new_v += old_v;
-	ldms_set_midx_u64(set, port->handle[idx], new_v);
-	ldms_set_midx_float(set, port->rate[idx], (new_v - old_v) / dt);
+	ldms_metric_set_u64(set, port->handle[idx], new_v);
+	ldms_metric_set_float(set, port->rate[idx], (new_v - old_v) / dt);
 }
 
 /**
@@ -656,12 +658,12 @@ static int sample(void)
 	timersub(tv_now, tv_prev, &tv_diff);
 	dt = tv_diff.tv_sec + tv_diff.tv_usec / 1e06f;
 
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		/* query errors are handled in query_port() function */
 		query_port(port, dt);
 	}
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 
 	tmp = tv_now;
 	tv_now = tv_prev;
@@ -679,10 +681,10 @@ static void term(void){
 		free(port);
 	}
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	schema = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 

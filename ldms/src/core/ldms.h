@@ -64,12 +64,10 @@ extern "C" {
 #if 0
 }
 #endif
-typedef void *ldms_t;
-
+typedef struct ldms_xprt *ldms_t;
 typedef struct ldms_rbuf_desc *ldms_rbuf_t;
 typedef struct ldms_set_desc *ldms_set_t;
 typedef struct ldms_value_s *ldms_value_t;
-typedef struct ldms_metric *ldms_metric_t;
 typedef struct ldms_schema_s *ldms_schema_t;
 
 /**
@@ -111,11 +109,11 @@ typedef struct ldms_schema_s *ldms_schema_t;
  *
  * The connection management API consists of the following functions:
  *
- * \li \b ldms_create_xprt() Create a transport instance.
- * \li \b ldms_listen() Create a listening endpoint and respond to
+ * \li \b ldms_xprt_create() Create a transport instance.
+ * \li \b ldms_xprt_listen() Create a listening endpoint and respond to
  * queries from peers.
- * \li \b ldms_connect() Request a connection with a remote peer.
- * \li \b ldms_close() Close a connection with a remote peer.
+ * \li \b ldms_xprt_connect() Request a connection with a remote peer.
+ * \li \b ldms_xprt_close() Close a connection with a remote peer.
  *
  * \section schema Defining Metric Set Schema
  * A Schema defines the metrics and attributes that comprise a metric set.
@@ -123,10 +121,10 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * of this same type. The principle functions for managing schema are the
  * following:
  *
- * \li \b ldms_create_schema() Create a Schema
- * \li \b ldms_destroy_schema() Destroy a Schema
- * \li \b ldms_add_metric() Add a metric to the Schema
- * \li \b ldms_get_metric_count() Return the number of Metrics in the Schema
+ * \li \b ldms_schema_new() Create a Schema
+ * \li \b ldms_schema_delete() Destroy a Schema
+ * \li \b ldms_schema_metric_add() Add a metric to the Schema
+ * \li \b ldms_schema_metric_count_get() Return the number of Metrics in the Schema
  *
  *
  * \section metric_sets Creating Metric Sets
@@ -135,18 +133,18 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * principle functions for creating and destroying local metric sets are the
  * following:
  *
- * \li \b ldms_create_set() Create a new metric set from a Scheam
- * \li \b ldms_destroy_set() Destroy a metric set.
+ * \li \b ldms_set_new() Create a new metric set from a Scheam
+ * \li \b ldms_set_delete() Destroy a metric set.
  *
  * \section query Querying Metric Sets
  *
  * A Metric Set consumer uses these function to query the server for
  * the publisehd Metric Sets:
  *
- * \li \b ldms_dir() Return a list of published metric set names.''
- * \li \b ldms_lookup() Lookup and gather the detail of a particular
+ * \li \b ldms_xprt_dir() Return a list of published metric set names.''
+ * \li \b ldms_xprt_lookup() Lookup and gather the detail of a particular
  * metric set.
- * \li \b ldms_update() Update the contents of a previously looked-up
+ * \li \b ldms_xprt_update() Update the contents of a previously looked-up
  * metric set.
  *
  * \section metrics Setting and Getting Metric Values.
@@ -156,11 +154,12 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * updates the metric set and gets the values of the metrics.
  * The functions for doing this are as follows:
  *
- * \li \b ldms_get_metric() Get a metric handle.
- * \li \b ldms_set_metric() Set the value of a metric.
- * \li \b ldms_get_XXX() Get the value of a metric where the XXX
+ * \li \b ldms_metric_by_name() Find the index for a metric
+ * \li \b ldms_metric_set() Set the value of a metric.
+ * \li \b ldms_metric_get_X() Get the value of a metric where the X
  * specifies the data type
- * \li \b ldms_metric_release() Release the memory associated with a metric
+ * \li \b ldms_metric_set_S() Set the value of a metric where the X
+ * specifies the data type
  *
  * \section notification Push Notifications
  *
@@ -185,14 +184,14 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * are self describing. Value descriptors are aligned on 64 bit boundaries.
  */
 #pragma pack(4)
-struct ldms_value_desc {
-	uint64_t user_data;	/*! User defined meta-data */
+typedef struct ldms_value_desc {
+	uint64_t vd_user_data;	/*! User defined meta-data */
 	// uint32_t next_offset;/*! Offset of next descriptor */
-	uint32_t data_offset;	/*! Offset of the value in ldms_data_hdr */
-	uint8_t type;		/*! The type of the value, enum ldms_value_type */
-	uint8_t name_len;	/*! The length of the metric name in bytes*/
-	char name[0];		/*! The metric name */
-};
+	uint32_t vd_data_offset;	/*! Offset of the value in ldms_data_hdr */
+	uint8_t vd_type;		/*! The type of the value, enum ldms_value_type */
+	uint8_t vd_name_len;	/*! The length of the metric name in bytes*/
+	char vd_name[0];		/*! The metric name */
+} *ldms_mdesc_t;
 #pragma pack()
 
 /**
@@ -200,7 +199,7 @@ struct ldms_value_desc {
  *
  * A generic union that encapsulates all of the LDMS value types.
  */
-union ldms_value {
+typedef union ldms_value {
 	uint8_t v_u8;
 	int8_t v_s8;
 	uint16_t v_u16;
@@ -211,8 +210,7 @@ union ldms_value {
 	int64_t v_s64;
 	float v_f;
 	double v_d;
-	long double v_ld;
-};
+} *ldms_mval_t;
 
 /**
  * \brief LDMS value type enumeration
@@ -229,18 +227,7 @@ enum ldms_value_type {
 	LDMS_V_S64,
 	LDMS_V_F32,
 	LDMS_V_D64,
-	LDMS_V_LD128,
-	LDMS_V_LAST = LDMS_V_LD128
-};
-
-/**
- * \brief Metric value iterator
- */
-struct ldms_iterator {
-	struct ldms_set *set;
-	struct ldms_value_desc *curr_desc;
-	union ldms_value *curr_value;
-	int curr_idx;
+	LDMS_V_LAST = LDMS_V_D64
 };
 
 /**
@@ -259,6 +246,7 @@ int ldms_init(size_t max_size);
  * \returns	The transport handle
  */
 ldms_t ldms_xprt_get(ldms_t x);
+void ldms_xprt_put(ldms_t x);
 
 /**
  * \brief Find a transport that matches the specified address.
@@ -266,7 +254,7 @@ ldms_t ldms_xprt_get(ldms_t x);
  * \param sin 	Specifies the address that should match the remote peer's ip address.
  * \returns	The matching transport endpoint or NULL if no match was found.
  */
-ldms_t ldms_xprt_find(struct sockaddr_in *sin);
+ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin);
 
 /**
  * \brief Returns the 'first' transport endpoint
@@ -294,51 +282,6 @@ ldms_t ldms_xprt_first();
  */
 ldms_t ldms_xprt_next(ldms_t);
 
-/**
- * \brief Check if an endpoint is connected.
- *
- * \param l	The endpoint handle.
- * \returns	!0 if the endpoint is connected.
- */
-int ldms_xprt_connected(ldms_t);
-
-/**
- * \brief Check if an endpoint is closed.
- *
- * \param l	The endpoint handle.
- * \returns	!0 if the endpoint is closed.
- */
-int ldms_xprt_closed(ldms_t);
-
-/**
- * \brief Close a connecttion
- *
- * \param l	The endpoint handle.
- */
-void ldms_xprt_close(ldms_t);
-
-/**
- * \brief Return value at iterator
- *
- * \param i	Pointer to the iterator.
- * \returns	Pointer to the ldms_value at the current position.
- */
-static inline union ldms_value *ldms_iter_value(struct ldms_iterator *i)
-{
-	return i->curr_value;
-}
-
-/**
- * \brief Return description of value at the iterator
- *
- * \param i	Pointer to the iterator.
- * \returns	Pointer to the ldms_value_desc structure describing the metric value.
- */
-static inline struct ldms_value_desc *ldms_iter_desc(struct ldms_iterator *i)
-{
-	return i->curr_desc;
-}
-
 #define LDMS_SETH_F_BE		0x0001
 #define LDMS_SETH_F_LE		0x0002
 
@@ -351,17 +294,6 @@ static inline struct ldms_value_desc *ldms_iter_desc(struct ldms_iterator *i)
 #define LDMS_VERSION 0x03010000	/* 3.1.0.0 */
 #define LDMS_SET_NAME_MAX 256
 #define LDMS_PRODUCER_NAME_MAX 64 /* including the terminating null byte */
-struct ldms_set_hdr {
-	/* The unique metric set producer name */
-	char producer_name[LDMS_PRODUCER_NAME_MAX];
-	uint64_t meta_gn;	/* Meta-data generation number */
-	uint32_t version;	/* LDMS version number */
-	uint32_t flags;		/* Set format flags */
-	uint32_t card;		/* Size of dictionary (i.e. metric count). */
-	uint32_t meta_sz;	/* size of meta data in bytes */
-	uint32_t data_sz;	/* size of metric values in bytes */
-	uint32_t dict[0];	/* The metric dictionary */
-};
 
 typedef struct ldms_name {
 	uint8_t len;
@@ -383,14 +315,6 @@ struct ldms_transaction {
 	struct ldms_timestamp ts;
 	struct ldms_timestamp dur;
 	uint32_t flags;
-};
-
-struct ldms_data_hdr {
-	struct ldms_transaction trans;
-	uint32_t pad;
-	uint64_t gn;		/* Metric-value generation number */
-	uint64_t size;		/* Max size of data */
-	uint64_t meta_gn;	/* Meta-data generation number */
 };
 
 enum ldms_lookup_status {
@@ -424,24 +348,10 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_COHERENT	0x0010
 #define LDMS_SET_ID_DATA	0x1000000
 
-struct ldms_set {
-	unsigned long flags;
-	struct ldms_set_hdr *meta;
-	struct ldms_data_hdr *data;
-	struct rbn rb_node;
-	LIST_HEAD(rbd_list, ldms_rbuf_desc) rbd_list;
-};
-
+struct ldms_set;
 struct ldms_set_desc {
 	struct ldms_rbuf_desc *rbd;
 	struct ldms_set *set;
-};
-
-struct ldms_metric {
-	struct ldms_set *set;
-	struct ldms_value_desc *desc;
-	union ldms_value *value;
-	int idx;
 };
 
 /**
@@ -472,17 +382,7 @@ typedef void (*ldms_log_fn_t)(const char *fmt, ...);
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
-extern ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn);
-
-/**
- * \brief Release a reference on a transport handle
- *
- * Drop a reference on the transport handle. When all references have been
- * dropped, free all the resources associated with the transport.
- *
- * \param x	The transport handle to free.
- */
-extern void ldms_release_xprt(ldms_t x);
+extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
 
 typedef enum ldms_conn_event {
 	LDMS_CONN_EVENT_CONNECTED,
@@ -492,34 +392,73 @@ typedef enum ldms_conn_event {
 } ldms_conn_event_t;
 
 /**
- * Definition of callback function for ldms_connect.
+ * Definition of callback function for ldms_xprt_connect.
  *
- * Because ldms_connect is asynchronous, the caller that request a connection
- * will be notified through a callback function whether the connection is a
- * success (\c e=LDMS_CONN_EVENT_CONNECTED) or a failure (\c
- * e=LDMS_CONN_EVENT_ERROR).
+ * The caller that requests a connection will be notified through a
+ * callback function if the connection is successful. The event
+ * parameter <tt>e</tt> parameter indicates success or failure as
+ * follows:
+ * - LDMS_CONN_EVENT_CONNECTED The transport is now connected, or
+ * - LDMS_CONN_EVENT_ERROR The connection attempt failed
  *
- * \param x The ldms transport handle.
- * \param e The connection event flag.
- * \param cb_arg The \c cb_arg specified when ::ldms_connect() is called.
+ * \param x The ldms transport handle
+ * \param e The connection event
+ * \param cb_arg The \c cb_arg specified when ::ldms_xprt_connect() was called
  */
 typedef void (*ldms_connect_cb_t)(ldms_t x, ldms_conn_event_t e, void *cb_arg);
 
 /**
- * \brief Asynchronously request a connection to an LDMS host.
+ * \brief Request a connection to an LDMS host.
+ *
+ * Connect to the remote peer specified by it's host
+ * name and service address (port number). If the <tt>cb</tt> function
+ * is not NULL, the function will return immediately and call the
+ * <tt>cb</tt> function when the connection completes with the provided
+ * cb_arg as an argument. See the ldms_connect_cb_t() function for more
+ * details.
+ *
+ * If <tt>cb</tt> is NULL, the function waits until the connection
+ * completes before returning and the returned value indicates the
+ * success or failure of the connection.
  *
  * \param x	The transport handle
  * \param sa	Socket address specifying the host address and port.
  * \param sa_len The length of the socket address.
  * \param cb	The callback function.
  * \param cb_arg An argument to be passed to \c cb when it is called.
- * \returns	0 if the request is posted successfully. Please note that this
+ * \retval	0 if the request is posted successfully. Please note that this
  *		doesn't mean that the transport is connected.
- * \returns	An error indicating why the request failed.
+ * \retval	An error indicating why the request failed.
  */
-extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
-			ldms_connect_cb_t cb, void *cb_arg);
+extern int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
+			     ldms_connect_cb_t cb, void *cb_arg);
 
+/**
+ * \brief Connect to a hostname and service
+ *
+ * Connect to the remote peer specified by it's host
+ * name and service address (port number). If the <tt>cb</tt> function
+ * is not NULL, the function will return immediately and call the
+ * <tt>cb</tt> function when the connection completes with the provided
+ * cb_arg as an argument. See the ldms_connect_cb_t() function for more
+ * details.
+ *
+ * If <tt>cb</tt> is NULL, the function waits until the connection
+ * completes before returning and the returned value indicates the
+ * success or failure of the connection.
+ *
+ * \param x	The transport handle
+ * \param host  The hostname
+ * \param port	The port number (service) as a string
+ * \param cb    The function to call when the connection completes.
+ * \param cb_arg A user-supplied argument to pass to the callback function.
+ *
+ * \retval 0            The connection succeeded
+ * \retval ENETRESET    The peer responsed with a reset (no listener)
+ * \retval EHOSTUNREACH No route to host
+ */
+int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
+			      ldms_connect_cb_t cb, void *cb_arg);
 /**
  * \brief Listen for connection requests from LDMS peers.
  *
@@ -529,16 +468,15 @@ extern int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
  * \returns	0 if a listening endpoint was successfully created.
  * \returns	An error indicating why the listen failed.
  */
-extern int ldms_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
+extern int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
+extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port);
 
 /**
  * \brief Close a connection to an LDMS host.
  *
  * \param x	The transport handle
- * \returns	0 if the connection was closed.
- * \returns	!0 if the transport handle is not valid or not connected.
  */
-extern int ldms_close(ldms_t x);
+extern void ldms_xprt_close(ldms_t x);
 
 /** \} */
 
@@ -552,12 +490,11 @@ extern int ldms_close(ldms_t x);
 /**
  * \brief ldms_dir callback function
  *
- * This function is called in response to a call to ldms_dir and
- * thereafter whenever there is an update to the set directory. That
- * is, this function may be called repeatedly until the transport is
- * closed.
+ * This function is called in response to a call to ldms_xprt_dir()
+ * and, if requested, thereafter whenever there is an update to the
+ * set directory.
  *
- * The application should call \c ldms_dir_release when it is finished
+ * The application should call \c ldms_xprt_dir_free() when it is finished
  * processing the directory to free the associated resources.
  *
  * There are three different types of directory updates:
@@ -607,22 +544,10 @@ typedef struct ldms_dir_s {
 	char *set_names[0];
 } *ldms_dir_t;
 
-/**
- * \brief The \c ldms_dir callback function
- *
- * This function is called when the directory request has been
- * returned by the queried host.
- *
- * \param t		The transport handle
- * \param status	The status of the request
- * \param dir		Pointer to the returned directory data
- * \param cb_arg	The callback argument specified to the ldms_dir
- *			function.
- */
 typedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg);
 
 /**
- * \brief Release the resources consumed by a directory
+ * \brief Free the resources consumed by a directory
  *
  * This function is called by the application to release the resources
  * used by an ldms_dir_t.
@@ -630,28 +555,36 @@ typedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg
  * \param t	 The transport handle
  * \param dir	 Pointer to an ldms_dir_s structure to be released.
  */
-void ldms_dir_release(ldms_t t, ldms_dir_t dir);
+void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir);
 
 /**
  * \brief Cancel LDMS directory updates
  *
  * This function cancels updates to the LDMS directory initiated by a
- * call to ldms_dir.
+ * call to ldms_xprt_dir().
  *
  * \param t	 The transport handle
  */
-void ldms_dir_cancel(ldms_t t);
+void ldms_xprt_dir_cancel(ldms_t t);
 
 /**
  * \brief Query the sets published by a host.
  *
  * This function queries the peer for the set of published metric sets.
- * The caller specifies the callback function to invoke when the
- * directory has been returned by the peer. If the caller specifies
- * the \c LDMS_DIR_F_NOTIFY flag, the callback function will be
- * invoked whenever the peer updates its set of published metrics.
  *
- * See the ldms_dir_cancel function to cancel directory updates.
+ * If the <tt>cb</tt> function is not NULL, the function will return
+ * immediately and call the <tt>cb</tt> function when the connection
+ * completes with the provided cb_arg as an argument.  If the
+ * <tt>LDMS_DIR_F_NOTIFY</tt> flag is specified, the callback function
+ * will be invoked whenever the peer updates its set of published
+ * metrics. See the ldms_connect_cb_t() function for more details.
+ *
+ * If <tt>cb</tt> is NULL, the function waits until the query
+ * completes before returning and the returned value indicates the
+ * success or failure of the query. Note that the <tt>flags</tt>
+ * parameter is ignored if the <tt>cb</tt> parameter is NULL.
+ *
+ * See the ldms_xprt_dir_cancel() function to cancel directory updates.
  *
  * \param x	 The transport handle
  * \param cb	 The callback function to invoke when the directory is
@@ -664,7 +597,7 @@ void ldms_dir_cancel(ldms_t t);
  * \returns	0 if the query was submitted successfully
  */
 #define LDMS_DIR_F_NOTIFY	1
-extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
+extern int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
 #define LDMS_XPRT_LIBPATH_DEFAULT "/usr/local/lib/"
 #define LDMS_DEFAULT_PORT	50000
@@ -676,13 +609,17 @@ extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
  *
  * This function queries the peer for the detail of the metric set \c
  * path. If the query is successful, the function puts the set handle
- * in the pointer provided by the \c s parameter. This function takes
- * a reference on the metric set. The memory for the metric set will
- * not be released until all references have been removed. The
- * ldms_release() function should be called when this metric set is no
- * longer needed.
+ * in the pointer provided by the \c s parameter.
  *
- * See the ldms_dir() function for detail on how to query a host for
+ * f the <tt>cb</tt> function is not NULL, the function will return
+ * immediately and call the <tt>cb</tt> function when the lookup
+ * completes. See the ldms_lookup_cb_t() function for more details.
+ *
+ * If <tt>cb</tt> is NULL, the function waits until the lookup
+ * completes before returning and the returned value indicates the
+ * success or failure of the lookup.
+ *
+ * See the ldms_xprt_dir() function for detail on how to query a host for
  * the list of published metric sets.
  *
  * \param t	 The transport handle
@@ -693,7 +630,7 @@ extern int ldms_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
  *		 to the \c cb function.
  * \returns	 0 if the query was submitted successfully.
  */
-extern int ldms_lookup(ldms_t t, const char *name,
+extern int ldms_xprt_lookup(ldms_t t, const char *name,
 		       ldms_lookup_cb_t cb, void *cb_arg);
 
 /** \} */
@@ -705,16 +642,6 @@ extern int ldms_lookup(ldms_t t, const char *name,
  * and to update the contents of remote metric sets.
  * \{
  */
-
-/**
- * \brief Release a reference on the metric set.
- *
- * Releases the reference obtained by ldms_lookup(). The specified set
- * handle \c s should not be used after calling this function.
- *
- * \param s	The metric set handle.
- */
-extern void ldms_set_release(ldms_set_t s);
 
 /**
  * \brief Prototype for the function called when update completes.
@@ -740,7 +667,7 @@ typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int status, void *arg);
  * \param cb_arg A user defined context value to provide to the update_cb function.
  * \returns	0 on success or a non-zero value to indicate an error.
  */
-extern int ldms_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg);
+extern int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg);
 
 /**
  * \brief Create a metric set schema
@@ -752,8 +679,8 @@ extern int ldms_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg);
  * \retval !0 The schema handle.
  * \retval ENOMEM There were insufficient resources to create the schema
  */
-extern ldms_schema_t ldms_create_schema(const char *schema_name);
-extern void ldms_destroy_schema(ldms_schema_t schema);
+extern ldms_schema_t ldms_schema_new(const char *schema_name);
+extern void ldms_schema_delete(ldms_schema_t schema);
 
 /**
  * \brief Return the number of metrics in the schema
@@ -761,7 +688,7 @@ extern void ldms_destroy_schema(ldms_schema_t schema);
  * \param schema
  * \returns The number of metrics in the schema
  */
-extern int ldms_get_metric_count(ldms_schema_t schema);
+extern int ldms_schema_metric_count_get(ldms_schema_t schema);
 
 /**
  * \brief Create a Metric set
@@ -777,12 +704,23 @@ extern int ldms_get_metric_count(ldms_schema_t schema);
  * \param instance_name	The metric set instance name.
  * \param schema	The metric set schema being created.
  * \param s		Pointer to ldms_set_t handle that will be set to the new handle.
- * \retval 0 Success
- * \retval ENOMEM Insufficient resources
- * \retval EEXIST The specified instance name is already used.
- * \retval EINVAL A parameter or the schema itself is invalid
+ * \returns Pointer to the new metric set or NULL if there is an error. Errno will be set
+ * as appropriate as follows:
+ * - ENOMEM Insufficient resources
+ * - EEXIST The specified instance name is already used.
+ * - EINVAL A parameter or the schema itself is invalid
  */
-extern int ldms_create_set(const char *instance_name, ldms_schema_t schema, ldms_set_t *s);
+extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
+/**
+ * \brief Delete the specified metric set
+ *
+ * Releases the reference obtained by ldms_xprt_lookup() or
+ * ldms_set_by_name(). The specified set handle \c s should not be
+ * used after calling this function.
+ *
+ * \param s	The metric set handle.
+ */
+extern void ldms_set_delete(ldms_set_t s);
 
 /**
  * \brief Get the schema name for the set
@@ -791,7 +729,7 @@ extern int ldms_create_set(const char *instance_name, ldms_schema_t schema, ldms
  * \retval !0	Pointer to a string containing the schema name
  * \retval 0	The set handle invalid
  */
-extern const char *ldms_get_schema_name(ldms_set_t s);
+extern const char *ldms_set_schema_name_get(ldms_set_t s);
 
 /**
  * \brief Get the instance name for the set
@@ -800,7 +738,7 @@ extern const char *ldms_get_schema_name(ldms_set_t s);
  * \retval !0	Pointer to a string containing the instance name
  * \retval 0	The set handle invalid
  */
-extern const char *ldms_get_instance_name(ldms_set_t s);
+extern const char *ldms_set_instance_name_get(ldms_set_t s);
 
 /**
  * \brief Get the producer name for the set
@@ -808,10 +746,10 @@ extern const char *ldms_get_instance_name(ldms_set_t s);
  * \param s	The set handle
  * \returns	The producer name for the set.
  */
-extern const char *ldms_get_producer_name(ldms_set_t s);
+extern const char *ldms_set_producer_name_get(ldms_set_t s);
 
 /**
- * \brief Get the producer name for the set
+ * \brief Set the producer name for the set
  *
  * \param s	The set handle
  * \param id	The producer name for the set.
@@ -821,7 +759,7 @@ extern const char *ldms_get_producer_name(ldms_set_t s);
  * 		the terminating null byte is longer
  * 		than the LDMS_PRODUCER_NAME_MAX.
  */
-extern int ldms_set_producer_name(ldms_set_t s, const char *name);
+extern int ldms_set_producer_name_set(ldms_set_t s, const char *name);
 
 /**
  * \brief Map a metric set for remote access
@@ -839,52 +777,36 @@ extern int ldms_set_producer_name(ldms_set_t s, const char *name);
 extern int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s);
 
 /**
- * \brief Destroy a Metric set
- *
- * Called to destroy a local metric set created with
- * ldms_create_set. This also invalidates any handles that remote
- * users may have to this metric set.
- *
- * \param s		The ldms_set_t handle to destroy.
- */
-extern void ldms_destroy_set(ldms_set_t s);
-
-/**
- * \brief Get the set name.
- *
- * Return the name of the metric set.
- *
- * \param s	The ldms_set_t handle.
- * \returns	The metric set name as a character string.
- */
-extern const char *ldms_get_set_name(ldms_set_t s);
-
-/**
- * \brief Get the set's schema name.
- *
- * Return the schema name of the metric set.
- *
- * \param s	The ldms_set_t handle.
- * \returns	The metric set name as a character string.
- */
-extern const char *ldms_get_set_schema_name(ldms_set_t s);
-
-/**
  * \brief Get the number of metrics in the metric set.
  * \param s	The ldms_set_t handle.
  * \return The number of metrics in the metric set. -1 otherwise.
  */
-extern uint32_t ldms_get_set_card(ldms_set_t s);
+extern uint32_t ldms_set_card_get(ldms_set_t s);
+
+/**
+ * \brief Get the size in bytes of the set's meta data
+ * \param s	The ldms_set_t handle.
+ * \return The size of the meta-data in bytes
+ */
+extern uint32_t ldms_set_meta_sz_get(ldms_set_t s);
+
+/**
+ * \brief Get the size in bytes of the set's data
+ * \param s	The ldms_set_t handle.
+ * \return The size of the set's data in bytes.
+ */
+extern uint32_t ldms_set_data_sz_get(ldms_set_t s);
 
 /**
  * \brief Get a set by name.
  *
- * Find a local metric set by name.
+ * Find a local metric set by name. A local set is one that is in
+ * local memory either through ldms_xprt_lookup() or ldms_set_new().
  *
  * \param set_name	The set name.
  * \returns		The ldms_set_t handle or 0 if not found.
  */
-extern ldms_set_t ldms_get_set(const char *set_name);
+extern ldms_set_t ldms_set_by_name(const char *set_name);
 
 /**
  * \brief Get the metric schema generation number.
@@ -895,7 +817,7 @@ extern ldms_set_t ldms_get_set(const char *set_name);
  * \param s	The ldms_set_t handle.
  * \returns	The 64bit meta data generation number.
  */
-uint64_t ldms_get_meta_gn(ldms_set_t s);
+uint64_t ldms_set_meta_gn_get(ldms_set_t s);
 
 /**
  * \brief Get the metric data generation number.
@@ -906,41 +828,7 @@ uint64_t ldms_get_meta_gn(ldms_set_t s);
  * \param s	The ldms_set_t handle.
  * \returns	The 64bit data generation number.
  */
-uint64_t ldms_get_data_gn(ldms_set_t s);
-
-/**
- * \brief Return the maxmimum size of the metric set
- *
- * The maximum size of a metric set is specified when it is
- * creates. The library may make this larger, but will never make it
- * smaller than specified. The size of the metric set determines how
- * many metrics the set can hold.
- *
- * \param s	The ldms_set_t handle.
- * \returns	The maximum size of the metric set.
- */
-extern uint32_t ldms_get_max_size(ldms_set_t s);
-
-/**
- * \brief Return the current size of the metric set
- *
- * The current size of a metric set depends on how many metrics have
- * been created in the set.
- *
- * \param s	The ldms_set_t handle.
- * \returns	The current size of the metric set.
- */
-extern uint32_t ldms_get_size(ldms_set_t s);
-
-/**
- * \brief Return the number of metrics in the set
- *
- * Returns the number of metrics in the set.
- *
- * \param s	The ldms_set_t handle.
- * \returns	The number of metrics in the set.
- */
-extern uint32_t ldms_get_cardinality(ldms_set_t s);
+uint64_t ldms_set_data_gn_get(ldms_set_t s);
 /** \} */
 
 /**
@@ -952,38 +840,21 @@ extern uint32_t ldms_get_cardinality(ldms_set_t s);
  */
 
 /**
- * \brief Start an LDMS transaction
- *
- * Metric sets are updated one metric at a time. A metric set provider
- * may provide information to the peer that the metric set is
- * consistent by updating metrics inside a transaction. In this way,
- * the peer can determine if the metric set updated was in the middle
- * of a transaction and therefore contains potentially inconsistent
- * data.
- *
- * \param s     The ldms_set_t handle.
- * \returns 0   If the transaction was started.
- * \returns !0  If the specified metric set is invalid.
- */
-extern int ldms_start_transaction(ldms_set_t s);
-
-/**
  * \brief Begin an LDMS transaction
  *
- * A metric set provider may provide information to the peer that the
- * metric set is consistent by updating metrics inside a
- * transaction. In this way, the peer can determine if the metric set
- * updated was in the middle of a transaction and therefore contains
- * potentially inconsistent data.
+ * Start a metric set update transaction. This marks the set as
+ * inconsistent. A remote peer that fetches a metric set can use the
+ * ldms_set_is_consistent() function to determine if the metric was in
+ * the process of being updated when it was fetched.
  *
  * \param s     The ldms_set_t handle.
  * \returns 0   If the transaction was started.
  * \returns !0  If the specified metric set is invalid.
  */
-extern int ldms_begin_transaction(ldms_set_t s);
+extern int ldms_transaction_begin(ldms_set_t s);
 
 /**
- * \brief End an LDMS transaction
+ * \brief Complete an LDMS transaction
  *
  * Marks the metric set as consistent and time-stamps the data.
  *
@@ -991,33 +862,33 @@ extern int ldms_begin_transaction(ldms_set_t s);
  * \returns 0   If the transaction was started.
  * \returns !0  If the specified metric set is invalid.
  */
-extern int ldms_end_transaction(ldms_set_t s);
+extern int ldms_transaction_end(ldms_set_t s);
 
 /**
  * \brief Get the time the transaction ended
  *
  * Returns an ldms_timestamp structure that specifies when
- * ldms_end_transaction() was last called by the metric set provider. If
+ * ldms_transaction_end() was last called by the metric set provider. If
  * the metric set provider does not update it's metric sets inside
  * transactions, then this value is invalid. This value is undefined
- * if the metric set is not consistent, see ldms_is_set_consistent().
+ * if the metric set is not consistent, see ldms_set_is_consistent().
  *
  * \param s     The metric set handle
  * \returns ts  A pointer to a timestamp structure.
  */
-extern struct ldms_timestamp const *ldms_get_transaction_timestamp(ldms_set_t s);
+extern struct ldms_timestamp const *ldms_transaction_timestamp_get(ldms_set_t s);
 
 /**
  * \brief Get the duration of the last transaction
  *
  * Returns an ldms_timestamp structure that specifies the time between
- * ldms_begin_transaction() and ldms_end_transaction(). This
+ * ldms_transaction_begin() and ldms_transaction_end(). This
  * measures how long the sampler took to update the metric set.
  *
  * \param s     The metric set handle
  * \returns ts  A pointer to a timestamp structure.
  */
-extern struct ldms_timestamp const *ldms_get_transaction_duration(ldms_set_t s);
+extern struct ldms_timestamp const *ldms_transaction_duration_get(ldms_set_t s);
 
 /**
  * \brief Returns TRUE if the metric set is consistent.
@@ -1029,7 +900,7 @@ extern struct ldms_timestamp const *ldms_get_transaction_duration(ldms_set_t s);
  * transactions to update metric sets is computatationaly inexpensive,
  * but optional.
  */
-extern int ldms_is_set_consistent(ldms_set_t s);
+extern int ldms_set_is_consistent(ldms_set_t s);
 
 /**
  * \brief Add a metric to schema
@@ -1043,96 +914,52 @@ extern int ldms_is_set_consistent(ldms_set_t s);
  * \retval >=0  The metric index.
  * \retval <0	Insufficient resources or duplicate name
  */
-extern int ldms_add_metric(ldms_schema_t s, const char *name, enum ldms_value_type t);
+extern int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type t);
 
 /**
- * \brief Return the storage needed for metric [DEPRECATED]
+ * \brief Get the metric index given a name
  *
- * Given a metric name and a metric type, return the number of bytes
- * the metric would consume in a metric set. This function is provided
- * as a means to estimate the required size of the containing metric
- * set given the names and types of the metrics it will contain.
- *
- * \param name	The name of the metric.
- * \param t	The LDMS metric type.
- * \param meta_sz Pointer to the variable to receive the meta data size
- * \param data_sz Pointer to the variable to receive the data size
- */
-extern void ldms_get_metric_size(const char *name, enum ldms_value_type t,
-				 size_t *meta_sz, size_t *data_sz);
-
-/**
- * \brief Initialize a metric object given an index
- *
- * Build a metric handle for the specified metric. The handle is used
- * to set and get values from the associated metric.
- *
- * \param s	The metric set handle
- * \param int	The metric index
- * \retval !0	Pointer to the prepared metric handle
- * \retval 0	The specified index is not present in the set
- */
-extern ldms_metric_t ldms_metric_init(ldms_set_t s, int idx, struct ldms_metric *metric);
-
-/**
- * \brief Get the metric handle for a metric
- *
- * Returns the metric handle for the metric with the specified
- * name. This handle can then be used with the ldms_get_XXX functions
+ * Returns the metric index  for the metric with the specified
+ * name. This index can then be used with the ldms_metric_get_type() functions
  * to return the value of the metric.
  *
  * \param s	The metric set handle
  * \param name	The name of the metric.
  * \returns	The metric set handle or 0 if there is none was found.
  */
-extern ldms_metric_t ldms_get_metric_by_name(ldms_set_t s, const char *name);
-
-/**
- * \brief Release a reference on the metric.
- *
- * \param m	The metric set handle
- */
-extern void ldms_metric_release(ldms_metric_t m);
+extern int ldms_metric_by_name(ldms_set_t s, const char *name);
 
 /**
  * \brief Returns the name of a metric.
  *
  * Returns the name of the metric specified by the handle.
  *
- * \param m	The metric handle
+ * \param s	The set handle
+ * \param i	The metric index
  * \returns	A character string containing the name of the metric.
  */
-extern const char *ldms_get_metric_name(ldms_metric_t m);
-
-/**
- * \brief Returns the dictionary index of a metric.
- *
- * \param m	The metric handle
- * \returns	The metric's dictionary index
- */
-static inline int ldms_get_metric_idx(ldms_metric_t m) {
-	return m->idx;
-}
+extern const char *ldms_metric_name_get(ldms_set_t s, int i);
 
 /**
  * \brief Returns the type of a metric.
  *
  * Returns the type of the metric specified by the handle.
  *
- * \param m	The metric handle
+ * \param s	The set handle
+ * \param i	The metric index
  * \returns	The ldms_value_type for the metric.
  */
-extern enum ldms_value_type ldms_get_metric_type(ldms_metric_t m);
+extern enum ldms_value_type ldms_metric_type_get(ldms_set_t s, int i);
 
 /**
- * \brief Get a metric set type as a string.
+ * \brief Get a metric type as a string.
  *
  * Returns a string representing the data type.
  *
  * \param t	The metric value type.
  * \returns	A character string representing the metric value type.
  */
-extern const char *ldms_type_to_str(enum ldms_value_type t);
+extern const char *ldms_metric_type_to_str(enum ldms_value_type t);
 
 /**
  * \brief Convert a string to an ldms_value_type
@@ -1140,87 +967,18 @@ extern const char *ldms_type_to_str(enum ldms_value_type t);
  * \param name	Character string representing the type name.
  * \returns	The associated ldms_value_type.
  */
-extern enum ldms_value_type ldms_str_to_type(const char *name);
-
-/**
- * \brief LDMS Visit Callback Function
- *
- * A function of the type ldms_vist_cb_t is passed as an argument to
- * ldms_visit_metrics(). The ldms_vist_metrics() function calls the
- * specified \c cb function once for each metric in the set.
- *
- * The parameters to the callback function are a pointer to an
- * ldms_value_desc structure, a pointer ot the value itself, and a
- * pointer to a callback parameter argument specified in teh
- * ldms_visit_metrics() call.
- *
- * \param vd	Pointer to an ldms_value_desc structure containing the
- * name and type of the metric.
- * \param v	Pointer to an ldms_value union.
- * \param arg	Callback argument provided to the ldms_visit_metrics() function.
- */
-typedef void (*ldms_visit_cb_t)(struct ldms_value_desc *vd, union ldms_value *v, void *arg);
-
-/**
- * \brief Iterate over the Metric Values in a Metric set.
- *
- * The function of the type ldms_vist_cb_t is passed as an argument to
- * ldms_visit_metrics(). The ldms_vist_metrics() function calls the
- * specified \c cb function once for each metric in the set.
- *
- * \param s	The metric set handle.
- * \param cb	The callback function to call.
- * \param arg	The \c arg parameter to provide to the callback function.
- */
-extern void ldms_visit_metrics(ldms_set_t s, ldms_visit_cb_t cb, void *arg);
-
-/**
- * \brief Get the first metric descriptor in the metric set.
- *
- * These functions are used to iterate over the metrics in a metric
- * set. The struct ldms_iterator is used to keep track of the current
- * position in the set and must be provided in the call the
- * ldms_next().
- *
- * \param i	Pointer to ldms_iterator structure.
- * \param set	The metric set handle.
- * \returns	An ldms_value_desc for the first metric in the metric
- * set.
- * \returns	Null if the set is empty or invalid.
- */
-extern struct ldms_value_desc *ldms_first(struct ldms_iterator *i, ldms_set_t set);
-
-/**
- * \brief Get the next metric in the metric set.
- *
- * Returns the ldms_value_desc for the next metric in the metric
- * set.
- *
- * \param i	Pointer to ldms_iterator structure.
- * \returns	An ldms_value_desc for the next metric in the metric
- * set.
- * \returns	Null if the set is empty or invalid.
- */
-extern struct ldms_value_desc *ldms_next(struct ldms_iterator *i);
+extern enum ldms_value_type ldms_metric_str_to_type(const char *name);
 
 /**
  * \brief Set the user-data associated with a metric
  *
  * Sets the user-defined meta data associated with a metric.
  *
- * \param m     The metric handle.
+ * \param s     The set handle.
+ * \param i	The metric index
  * \param u     An 8B user-data value.
  */
-static inline void ldms_set_user_data(ldms_metric_t m, uint64_t u)
-{
-	m->desc->user_data = u;
-}
-static inline void ldms_set_midx_udata(ldms_set_t set, int idx, uint64_t u)
-{
-	struct ldms_metric _m;
-	ldms_metric_t m = ldms_metric_init(set, idx, &_m);
-	m->desc->user_data = u;
-}
+void ldms_metric_user_data_set(ldms_set_t s, int i, uint64_t u);
 
 /**
  * \brief Get the user-data associated with a metric
@@ -1228,19 +986,11 @@ static inline void ldms_set_midx_udata(ldms_set_t set, int idx, uint64_t u)
  * Returns the user-defined metric meta-data set with
  * \c ldms_set_user_data.
  *
- * \param m     The metric handle.
+ * \param s     The set handle
+ * \param i	The metric index
  * \returns u   The user-defined metric meta data value.
  */
-static inline uint64_t ldms_get_user_data(ldms_metric_t m)
-{
-	return m->desc->user_data;
-}
-static inline uint64_t ldms_get_midx_udata(ldms_set_t set, int idx)
-{
-	struct ldms_metric _m;
-	ldms_metric_t m = ldms_metric_init(set, idx, &_m);
-	return m->desc->user_data;
-}
+uint64_t ldms_metric_user_data_get(ldms_set_t s, int i);
 
 /**
  * \brief Set the value of a metric.
@@ -1250,432 +1000,54 @@ static inline uint64_t ldms_get_midx_udata(ldms_set_t set, int idx)
  * create the metric. See the ldms_get_metric_type() for information
  * on how to discover the type of a metric.
  *
- * \param _m	The metric handle.
+ * \param s	The set handle.
+ * \param i	The metric index
  * \param v	An ldms_value union specifying the value.
  */
-static inline void ldms_set_metric(ldms_metric_t m, union ldms_value *v)
-{
-	switch (m->desc->type) {
-	case LDMS_V_U8:
-	case LDMS_V_S8:
-		m->value->v_u8 = v->v_u8;
-		break;
-	case LDMS_V_U16:
-	case LDMS_V_S16:
-		m->value->v_u16 = v->v_u16;
-		break;
-	case LDMS_V_U32:
-	case LDMS_V_S32:
-		m->value->v_u32 = v->v_u32;
-		break;
-	case LDMS_V_U64:
-	case LDMS_V_S64:
-		m->value->v_u64 = v->v_u64;
-		break;
-	case LDMS_V_F32:
-		m->value->v_f = v->v_f;
-		break;
-	case LDMS_V_D64:
-		m->value->v_d = v->v_d;
-		break;
-	case LDMS_V_LD128:
-		m->value->v_ld = v->v_ld;
-		break;
-	default:
-		return;
-	}
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx(ldms_set_t set, int idx, union ldms_value *v)
-{
-	struct ldms_metric _m;
-	ldms_metric_t m = ldms_metric_init(set, idx, &_m);
-	ldms_set_metric(m, v);
-}
+void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v);
+
+ldms_mval_t ldms_metric_get(ldms_set_t s, int i);
 
 /**
  * \brief Set the value of a metric.
  *
- * Set the specified metric \c m to the unsigned char value specified
+ * Set the specified metric \c m to the value specified
  * by \c v.
  *
- * \param _m	The metric handle.
+ * \param s	The set handle.
+ * \param i	The metric index
  * \param v	The value.
  */
-static inline void ldms_set_u8(ldms_metric_t m, uint8_t v) {
-	m->value->v_u8 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_u8(ldms_set_t set, int idx, uint8_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_u8 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the unsigned short value specified
- * by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_u16(ldms_metric_t m, uint16_t v) {
-	m->value->v_u16 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_u16(ldms_set_t set, int idx, uint16_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_u16 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the unsigned int value specified
- * by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_u32(ldms_metric_t m, uint32_t v) {
-	m->value->v_u32 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_u32(ldms_set_t set, int idx, uint32_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_u32 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the unsigned 64b value specified
- * by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_u64(ldms_metric_t m, uint64_t v) {
-	m->value->v_u64 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_u64(ldms_set_t set, int idx, uint64_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_u64 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the signed char value specified
- * by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_s8(ldms_metric_t m, int8_t v) {
-	m->value->v_s8 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_s8(ldms_set_t set, int idx, int8_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_s8 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the signed short value specified
- * by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_s16(ldms_metric_t m, int16_t v) {
-	m->value->v_s16 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_s16(ldms_set_t set, int idx, int16_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_s16 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the signed int value specified
- * by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_s32(ldms_metric_t m, int32_t v) {
-	m->value->v_s32 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_s32(ldms_set_t set, int idx, int32_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_s32 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the signed 64b value specified
- * by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_s64(ldms_metric_t m, int64_t v) {
-	m->value->v_s64 = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_s64(ldms_set_t set, int idx, int64_t v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_s64 = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the single precision floating
- * point value specified by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_float(ldms_metric_t m, float v) {
-	m->value->v_f = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_float(ldms_set_t set, int idx, float v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_f = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the double precision floating
- * point value specified by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_double(ldms_metric_t m, double v) {
-	m->value->v_d = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_double(ldms_set_t set, int idx, double v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_d = v;
-	m->set->data->gn++;
-}
-
-/**
- * \brief Set the value of a metric.
- *
- * Set the specified metric \c m to the long double precision floating
- * point value specified by \c v.
- *
- * \param _m	The metric handle.
- * \param v	The value.
- */
-static inline void ldms_set_long_double(ldms_metric_t m, long double v) {
-	m->value->v_ld = v;
-	m->set->data->gn++;
-}
-static inline void ldms_set_midx_long_double(ldms_set_t set, int idx, long double v) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	m->value->v_ld = v;
-	m->set->data->gn++;
-}
+void ldms_metric_set_u8(ldms_set_t s, int i, uint8_t v);
+void ldms_metric_set_u16(ldms_set_t s, int i, uint16_t v);
+void ldms_metric_set_u32(ldms_set_t s, int i, uint32_t v);
+void ldms_metric_set_u64(ldms_set_t s, int i, uint64_t v);
+void ldms_metric_set_s8(ldms_set_t s, int i, int8_t v);
+void ldms_metric_set_s16(ldms_set_t s, int i, int16_t v);
+void ldms_metric_set_s32(ldms_set_t s, int i, int32_t v);
+void ldms_metric_set_s64(ldms_set_t s, int i, int64_t v);
+void ldms_metric_set_float(ldms_set_t s, int i, float v);
+void ldms_metric_set_double(ldms_set_t s, int i, double v);
 
 /**
  * \brief Get the value of a metric.
  *
- * Get the specified metric \c m as a void pointer to the value
+ * Get the specified metric \c m
  *
- * \param _m	The metric handle.
+ * \param s	The set handle.
+ * \param i	The metric index
  * \returns	Unsigned byte value from the metric.
  */
-static inline void *ldms_get_value_ptr(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as an unsigned byte.
- *
- * \param _m	The metric handle.
- * \returns	Unsigned byte value from the metric.
- */
-static inline uint8_t ldms_get_u8(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_u8;
-}
-static inline uint8_t ldms_get_midx_u8(ldms_set_t set, int idx) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	return m->value->v_u8;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as an unsigned byte.
- *
- * \param _m	The metric handle.
- * \returns	Unsigned byte value from the metric.
- */
-static inline uint16_t ldms_get_u16(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_u16;
-}
-static inline uint16_t ldms_get_midx_u16(ldms_set_t set, int idx) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	return m->value->v_u16;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as an unsigned byte.
- *
- * \param _m	The metric handle.
- * \returns	Unsigned byte value from the metric.
- */
-static inline uint32_t ldms_get_u32(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_u32;
-}
-static inline uint32_t ldms_get_midx_u32(ldms_set_t set, int idx) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	return m->value->v_u32;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as an unsigned byte.
- *
- * \param _m	The metric handle.
- * \returns	Unsigned byte value from the metric.
- */
-static inline uint64_t ldms_get_u64(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_u64;
-}
-static inline uint64_t ldms_get_midx_u64(ldms_set_t set, int idx) {
-	struct ldms_metric m_;
-	ldms_metric_t m = ldms_metric_init(set, idx, &m_);
-	return m->value->v_u64;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as an signed byte.
- *
- * \param _m	The metric handle.
- * \returns	Unsigned byte value from the metric.
- */
-static inline int8_t ldms_get_s8(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_s8;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as an signed short.
- *
- * \param _m	The metric handle.
- * \returns	Signed 16b value from the metric.
- */
-static inline int16_t ldms_get_s16(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_s16;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as a signed int.
- *
- * \param _m	The metric handle.
- * \returns	Signed 32b value from the metric.
- */
-static inline int32_t ldms_get_s32(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_s32;
-}
-
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as an signed 64b value.
- *
- * \param _m	The metric handle.
- * \returns	Signed 64b value from the metric.
- */
-static inline int64_t ldms_get_s64(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_s64;
-}
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as a single precision floating point value.
- *
- * \param _m	The metric handle.
- * \returns	Float value from the metric.
- */
-static inline float ldms_get_float(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_f;
-}
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as double precision floating point
- * value.
- *
- * \param _m	The metric handle.
- * \returns	Double value from the metric.
- */
-static inline double ldms_get_double(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_d;
-}
-/**
- * \brief Get the value of a metric.
- *
- * Get the specified metric \c m as long double precision floating
- * point value.
- *
- * \param _m	The metric handle.
- * \returns	Double value from the metric.
- */
-static inline double ldms_get_long_double(ldms_metric_t _m) {
-	return ((struct ldms_metric *)_m)->value->v_ld;
-}
-extern void ldms_print_set_metrics(ldms_set_t _set);
+uint8_t ldms_metric_get_u8(ldms_set_t s, int i);
+uint16_t ldms_metric_get_u16(ldms_set_t s, int i);
+uint32_t ldms_metric_get_u32(ldms_set_t s, int i);
+uint64_t ldms_metric_get_u64(ldms_set_t s, int i);
+int8_t ldms_metric_get_s8(ldms_set_t s, int i);
+int16_t ldms_metric_get_s16(ldms_set_t s, int i);
+int32_t ldms_metric_get_s32(ldms_set_t s, int i);
+int64_t ldms_metric_get_s64(ldms_set_t s, int i);
+float ldms_metric_get_float(ldms_set_t s, int i);
+double ldms_metric_get_double(ldms_set_t s, int i);
 /** \} */
 
 /**
@@ -1696,16 +1068,15 @@ extern void ldms_print_set_metrics(ldms_set_t _set);
  * * ldms_init_notify_user_data
  *
  */
-typedef struct ldms_notify_event_s {
-	enum ldms_notify_event_type {
+typedef enum ldms_notify_event_type {
 		LDMS_SET_MODIFIED = 1,
 		LDMS_USER_DATA = 2,
-	} type;			/*! Specifies the type of event  */
+} ldms_notify_event_type_t;
+typedef struct ldms_notify_event_s {
+	ldms_notify_event_type_t type;
 	size_t len;		/*! The size of the event in bytes */
-	union {
-		unsigned char u_data[0];/*! User-data for the LDMS_USER_DATA
-					  type */
-	};
+	unsigned char u_data[0];/*! User-data for the LDMS_USER_DATA
+				  type */
 } *ldms_notify_event_t;
 
 /**

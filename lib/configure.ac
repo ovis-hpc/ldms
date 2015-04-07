@@ -63,15 +63,15 @@ OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
 OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 
-dnl Swig stuffs
+dnl Swig stuff
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
 if test -z "$ENABLE_SWIG_TRUE"
 then
-AM_PATH_PYTHON(2.6)
-AC_PROG_SWIG
-SWIG_PYTHON
-pkgpythondir="${pythondir}/ovis_lib"
-pkgpyexecdir="${pkgpythondir}"
+	AM_PATH_PYTHON(2.6)
+	AC_PROG_SWIG
+	SWIG_PYTHON
+	pkgpythondir="${pythondir}/ovis_lib"
+	pkgpyexecdir="${pkgpythondir}"
 fi
 
 AC_SUBST(ac_configure_args)

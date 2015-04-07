@@ -122,47 +122,43 @@ sos_type_t sos_type_map[] = {
 	[LDMS_V_S64] = SOS_TYPE_INT64,
 	[LDMS_V_F32] = SOS_TYPE_FLOAT,
 	[LDMS_V_D64] = SOS_TYPE_DOUBLE,
-	[LDMS_V_LD128] = SOS_TYPE_LONG_DOUBLE,
 };
 
-static void set_none_fn(sos_value_t v, ldms_metric_t m) {
+static void set_none_fn(sos_value_t v, ldms_set_t set, int i) {
 	assert(0 == "Invalid LDMS metric type");
 }
-static void set_u8_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.uint32_ = ldms_get_u8(m);
+static void set_u8_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.uint32_ = ldms_metric_get_u8(s, i);
 }
-static void set_s8_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.int32_ = ldms_get_s8(m);
+static void set_s8_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.int32_ = ldms_metric_get_s8(s, i);
 }
-static void set_u16_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.uint32_ = ldms_get_u16(m);
+static void set_u16_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.uint32_ = ldms_metric_get_u16(s, i);
 }
-static void set_s16_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.int32_ = ldms_get_s16(m);
+static void set_s16_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.int32_ = ldms_metric_get_s16(s, i);
 }
-static void set_u32_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.uint32_ = ldms_get_u32(m);
+static void set_u32_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.uint32_ = ldms_metric_get_u32(s, i);
 }
-static void set_s32_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.int32_ = ldms_get_s32(m);
+static void set_s32_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.int32_ = ldms_metric_get_s32(s, i);
 }
-static void set_u64_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.uint64_ = ldms_get_u64(m);
+static void set_u64_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.uint64_ = ldms_metric_get_u64(s, i);
 }
-static void set_s64_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.int64_ = ldms_get_s64(m);
+static void set_s64_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.int64_ = ldms_metric_get_s64(s, i);
 }
-static void set_float_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.float_ = ldms_get_float(m);
+static void set_float_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.float_ = ldms_metric_get_float(s, i);
 }
-static void set_double_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.double_ = ldms_get_double(m);
-}
-static void set_long_double_fn(sos_value_t v, ldms_metric_t m) {
-	v->data->prim.long_double_ = ldms_get_long_double(m);
+static void set_double_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.double_ = ldms_metric_get_double(s, i);
 }
 
-typedef void (*sos_value_set_fn)(sos_value_t v, ldms_metric_t m);
+typedef void (*sos_value_set_fn)(sos_value_t v, ldms_set_t set, int i);
 sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_NONE] = set_none_fn,
 	[LDMS_V_U8] = set_u8_fn,
@@ -175,7 +171,6 @@ sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_S64] = set_s64_fn,
 	[LDMS_V_F32] = set_float_fn,
 	[LDMS_V_D64] = set_double_fn,
-	[LDMS_V_LD128] = set_long_double_fn
 };
 
 static int store_sos_change_owner(char *path)
@@ -345,12 +340,9 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	if (rc)
 		goto err_1;
 	for (i = 0; i < metric_count; i++) {
-		struct ldms_metric m_;
-		ldms_metric_t m;
-		m = ldms_metric_init(set, metric_arry[i], &m_);
 		rc = sos_schema_attr_add(schema,
-					 ldms_get_metric_name(m),
-					 sos_type_map[ldms_get_metric_type(m)]);
+					 ldms_metric_name_get(set, i),
+					 sos_type_map[ldms_metric_type_get(set, i)]);
 		if (rc)
 			goto err_1;
 	}
@@ -372,7 +364,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 
 	rc = sos_container_open(si->path, SOS_PERM_RW, &si->sos);
 	if (!rc) {
-		schema = sos_schema_find(si->sos, si->schema_name);
+		schema = sos_schema_by_name(si->sos, si->schema_name);
 		if (!schema)
 			goto add_schema;
 		si->sos_schema = schema;
@@ -414,8 +406,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 {
 	struct sos_instance *si = _sh;
 	const struct ldms_timestamp *timestamp;
-	struct ldms_metric m_;
-	ldms_metric_t m;
 	sos_attr_t attr;
 	struct sos_value_s value_;
 	sos_value_t value;
@@ -447,7 +437,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		errno = ENOMEM;
 		return -1;
 	}
-	timestamp = ldms_get_transaction_timestamp(set);
+	timestamp = ldms_transaction_timestamp_get(set);
 	if (!si->last_rotate)
 		si->last_rotate = timestamp->sec;
 #if 0
@@ -471,17 +461,16 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 
 	/* The second attribute is the component id, that we extract
 	 * from the udata for the first LDMS metric */
-	uint64_t udata = ldms_get_midx_udata(set, 0);
+	uint64_t udata = ldms_metric_user_data_get(set, 0);
 	attr = sos_schema_attr_next(attr);
 	value = sos_value_init(value, obj, attr);
 	value->data->prim.uint32_ = udata >> 32;
 	sos_value_put(value);
 
 	for (i = 0; i < metric_count; i++) {
-		m = ldms_metric_init(set, metric_arry[i], &m_);
 		attr = sos_schema_attr_next(attr); assert(attr);
 		value = sos_value_init(value, obj, attr);
-		sos_value_set[ldms_get_metric_type(m)](value, m);
+		sos_value_set[ldms_metric_type_get(set, i)](value, set, i);
 		sos_value_put(value);
 	}
 	rc = sos_obj_index(obj);

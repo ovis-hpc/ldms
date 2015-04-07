@@ -386,15 +386,14 @@ out:
 int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
 						char err_str[LEN_ERRSTR])
 {
-	ldms_metric_t m;
-	m = ldms_get_metric_by_name(set, metric_name);
-	if (!m) {
+	int i = ldms_metric_by_name(set, metric_name);
+	if (i < 0) {
 		snprintf(err_str, LEN_ERRSTR, "Metric '%s' not found.",
-							metric_name);
+			 metric_name);
 		return ENOENT;
 	}
 
-	ldms_set_user_data(m, udata);
+	ldms_metric_user_data_set(set, i, udata);
 	return 0;
 }
 
@@ -406,7 +405,7 @@ int ldmsd_set_udata(char *set_name, char *metric_name,
 {
 	ldms_set_t set;
 	err_str[0] = '\0';
-	set = ldms_get_set(set_name);
+	set = ldms_set_by_name(set_name);
 	if (!set) {
 		snprintf(err_str, LEN_ERRSTR, "Set '%s' not found.", set_name);
 		return ENOENT;
@@ -827,7 +826,7 @@ int apply_store_policy(struct hostset *hset, struct ldmsd_store_policy *sp)
 	struct ldmsd_store_policy_ref *ref;
 
 	/* Check if the policy is for this schema */
-	if (strcmp(ldms_get_set_schema_name(hset->set), sp->schema))
+	if (strcmp(ldms_set_schema_name_get(hset->set), sp->schema))
 		return 0;
 
 	/* Check if the policy is for this host */
@@ -1446,8 +1445,6 @@ int new_store_metric(struct ldmsd_store_policy *sp, const char *name)
 int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 {
 	struct ldmsd_store_metric *smi;
-	struct ldms_metric m_;
-	ldms_metric_t m;
 	const char *metric;
 	int i, rc;
 	const char *name;
@@ -1455,14 +1452,12 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 	if (sp->metric_arry)
 		free(sp->metric_arry);
 	sp->metric_count = 0;
-	sp->metric_arry = calloc(ldms_get_cardinality(hset->set), sizeof(int *));
+	sp->metric_arry = calloc(ldms_set_card_get(hset->set), sizeof(int *));
 	name = NULL;
 	if (LIST_EMPTY(&sp->metric_list)) {
 		/* No metric list was given. Add all metrics in the set */
-		for (i = 0; i < ldms_get_cardinality(hset->set); i++) {
-			m = ldms_metric_init(hset->set, i, &m_);
-			name = ldms_get_metric_name(m);
-			assert(name);
+		for (i = 0; i < ldms_set_card_get(hset->set); i++) {
+			name = ldms_metric_name_get(hset->set, i);
 			rc = new_store_metric(sp, name);
 			if (rc)
 				goto err;
@@ -1472,14 +1467,13 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 		i = 0;
 		smi = LIST_FIRST(&sp->metric_list);
 		while (smi) {
-			ldms_metric_t m;
+			int idx;
 			name = smi->name;
-			m = ldms_get_metric_by_name(hset->set, name);
-			if (!m)
+			idx = ldms_metric_by_name(hset->set, name);
+			if (idx < 0)
 				goto err;
-			smi->type = ldms_get_metric_type(m);
-			sp->metric_arry[i++] = ldms_get_metric_idx(m);
-			ldms_metric_release(m);
+			smi->type = ldms_metric_type_get(hset->set, idx);
+			sp->metric_arry[i++] = idx;
 			smi = LIST_NEXT(smi, entry);
 		}
 	}

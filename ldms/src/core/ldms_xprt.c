@@ -140,7 +140,7 @@ ldms_t ldms_xprt_next(ldms_t _x)
 	return _x;
 }
 
-ldms_t ldms_xprt_find(struct sockaddr_in *sin)
+ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 {
 	ldms_t l;
 	for (l = ldms_xprt_first(); l; l = ldms_xprt_next(l)) {
@@ -148,7 +148,7 @@ ldms_t ldms_xprt_find(struct sockaddr_in *sin)
 		struct sockaddr_in *s = (struct sockaddr_in *)&x->remote_ss;
 		if (s->sin_addr.s_addr == sin->sin_addr.s_addr)
 			return l;
-		ldms_release_xprt(l);
+		ldms_xprt_put(l);
 	}
 	return 0;
 }
@@ -263,13 +263,9 @@ static void dir_update(const char *set_name, enum ldms_dir_type t)
 	struct ldms_xprt *x;
 	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
 	     x = (struct ldms_xprt *)ldms_xprt_next(x)) {
-		if (ldms_xprt_closed(x)) {
-			ldms_release_xprt(x);
-			continue;
-		}
 		if (x->remote_dir_xid)
 			send_dir_update(x, t, set_name);
-		ldms_release_xprt(x);
+		ldms_xprt_put(x);
 	}
 }
 
@@ -283,41 +279,28 @@ void __ldms_dir_del_set(const char *set_name)
 	dir_update(set_name, LDMS_DIR_DEL);
 }
 
-int ldms_xprt_connected(ldms_t _x)
-{
-	return ((struct ldms_xprt *)_x)->connected;
-}
-
 void ldms_xprt_close(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	x->remote_dir_xid = x->local_dir_xid = 0;
 	zap_close(x->zap_ep);
 	x->closed = 1;
-	ldms_release_xprt(x);
+	ldms_xprt_put(x);
 }
 
-int ldms_xprt_closed(ldms_t _x)
+void __release_xprt(ldms_t x)
 {
-	struct ldms_xprt *x = _x;
-	if (x)
-		return x->closed;
-	return 1;
-}
-
-void __release_xprt(ldms_t _x)
-{
-	struct ldms_xprt *x = _x;
 	struct ldms_rbuf_desc *rb;
 
+	sem_destroy(&x->sem);
 	while (!LIST_EMPTY(&x->rbd_list)) {
 		rb = LIST_FIRST(&x->rbd_list);
-		ldms_free_rbd(rb);
+		__ldms_free_rbd(rb);
 	}
 	free(x);
 }
 
-void ldms_release_xprt(ldms_t _x)
+void ldms_xprt_put(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	int destroy = 0;
@@ -491,11 +474,13 @@ process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
  */
 static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req)
 {
-	struct ldms_set *set = ldms_find_local_set(req->lookup.path);
+	struct ldms_set *set = __ldms_find_local_set(req->lookup.path);
 	struct ldms_rbuf_desc *rbd = ldms_lookup_rbd(x, set);
 	struct ldms_reply_hdr hdr;
 	struct ldms_reply *reply;
 	size_t len;
+
+	__ldms_release_local_set(set);
 
 	if (!set) {
 		/* not found */
@@ -507,7 +492,6 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 		rbd = ldms_alloc_rbd(x, set);
 		if (!rbd) {
 			hdr.rc = htonl(ENOMEM);
-			ldms_release_local_set(set);
 			goto err_out;
 		}
 		rbd->xid = req->hdr.xid;
@@ -522,8 +506,6 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 
 	hton_ldms_lookup_msg(&lmsg);
 	zap_share(x->zap_ep, rbd->lmap, (void*)&lmsg, sizeof(lmsg));
-	ldms_release_local_set(set);
-
 	return;
 
  err_out:
@@ -539,7 +521,7 @@ static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
 	struct ldms_set_desc *sd = s;
 
 	if (!len)
-		len = ldms_get_size(s);
+		len = __ldms_set_size_get(s->set);
 	struct ldms_xprt *x = t;
 	struct ldms_context *ctxt = malloc(sizeof *ctxt);
 	TF();
@@ -714,7 +696,7 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				    event, ctxt->dir.cb_arg);
 }
 
-void ldms_dir_release(ldms_t t, ldms_dir_t d)
+void ldms_xprt_dir_free(ldms_t t, ldms_dir_t d)
 {
 	free(d);
 }
@@ -886,7 +868,7 @@ void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	return;
 
  out_1:
-	ldms_destroy_set(sd);
+	ldms_set_delete(sd);
 	free(sd);
 	sd = NULL;
  out:
@@ -967,7 +949,7 @@ void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
-ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
+ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
 {
 	int ret = 0;
 	char *libdir;
@@ -1007,6 +989,7 @@ ldms_t ldms_create_xprt(const char *name, ldms_log_fn_t log_fn)
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
 	x->log = log_fn;
+	sem_init(&x->sem, 0, 0);
 	pthread_mutex_init(&x->lock, NULL);
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
@@ -1160,11 +1143,10 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	size_t len;
 	int rc;
 
-	struct ldms_set *set = ldms_find_local_set(path);
-	if (set) {
-		ldms_release_local_set(set);
+	struct ldms_set *set = __ldms_find_local_set(path);
+	__ldms_release_local_set(set);
+	if (set)
 		return EEXIST;
-	}
 
 	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_LOOKUP))
 		return ENOMEM;
@@ -1260,8 +1242,6 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 		return;
 
 	LIST_FOREACH(r, &set->rbd_list, set_link) {
-		if (ldms_xprt_closed(r->xprt))
-			continue;
 		if (r->remote_notify_xid)
 			send_req_notify_reply(r->xprt,
 					      set, r->remote_notify_xid,
@@ -1269,7 +1249,7 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 	}
 }
 
-int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
+int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 			ldms_connect_cb_t cb, void *cb_arg)
 {
 	struct ldms_xprt *_x = x;
@@ -1278,29 +1258,78 @@ int ldms_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	return zap_connect(_x->zap_ep, sa, sa_len);
 }
 
-int ldms_close(ldms_t _x)
+static void sync_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
-	int rc;
-	struct ldms_xprt *x = _x;
-	x->closed = 1;
-	rc = zap_close(x->zap_ep);
-	ldms_release_xprt(x);
+	switch (e) {
+	case LDMS_CONN_EVENT_CONNECTED:
+		x->sem_rc = 0;
+		break;
+	case LDMS_CONN_EVENT_ERROR:
+	case LDMS_CONN_EVENT_DISCONNECTED:
+		x->sem_rc = ECONNREFUSED;
+		break;
+	}
+	sem_post(&x->sem);
+}
+
+int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
+			      ldms_connect_cb_t cb, void *cb_arg)
+{
+	struct addrinfo *ai;
+	struct addrinfo hints = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+	int rc = getaddrinfo(host, port, &hints, &ai);
+	if (rc)
+		return EHOSTUNREACH;
+	if (!cb) {
+		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, sync_connect_cb, cb_arg);
+		if (rc)
+			return rc;
+		sem_wait(&x->sem);
+		rc = x->sem_rc;
+	} else
+		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
+ out:
+	freeaddrinfo(ai);
 	return rc;
 }
 
-int ldms_listen(ldms_t _x, struct sockaddr *sa, socklen_t sa_len)
+int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len)
 {
-	struct ldms_xprt *x = _x;
 	memcpy(&x->local_ss, sa, sa_len);
 	x->ss_len = sa_len;
 	return zap_listen(x->zap_ep, sa, sa_len);
 }
 
-extern
-uint32_t __ldms_get_size(struct ldms_set*);
+int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
+{
+	int rc;
+	struct sockaddr_in sin;
+	struct addrinfo *ai;
+	struct addrinfo hints = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+	if (host) {
+		int rc = getaddrinfo(host, port_no, &hints, &ai);
+		if (rc)
+			return EHOSTUNREACH;
+		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen);
+	} else {
+		short port = atoi(port_no);
+		memset(&sin, 0, sizeof(sin));
+		sin.sin_family = AF_INET;
+		sin.sin_addr.s_addr = 0;
+		sin.sin_port = htons(port);
+		rc = ldms_xprt_listen(x, (struct sockaddr *)&sin, sizeof(sin));
+	}
+	return rc;
+}
 
-struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *x,
-				      struct ldms_set *s)
+static struct ldms_rbuf_desc *
+ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s)
 {
 	struct ldms_rbuf_desc *rbd = calloc(1, sizeof(*rbd));
 	if (!rbd)
@@ -1308,7 +1337,7 @@ struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *x,
 
 	rbd->xprt = x;
 	rbd->set = s;
-	size_t set_sz = __ldms_get_size(s);
+	size_t set_sz = __ldms_set_size_get(s);
 	zap_err_t zerr = zap_map(x->zap_ep, &rbd->lmap, s->meta, set_sz,
 							ZAP_ACCESS_READ);
 	if (zerr)
@@ -1328,7 +1357,7 @@ out:
 	return rbd;
 }
 
-void ldms_free_rbd(struct ldms_rbuf_desc *rbd)
+void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 {
 	LIST_REMOVE(rbd, xprt_link);
 	LIST_REMOVE(rbd, set_link);
@@ -1341,7 +1370,7 @@ void ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 	free(rbd);
 }
 
-struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set)
+static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set)
 {
 	struct ldms_rbuf_desc *r;
 	if (!set)

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2014 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2014 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2014-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -137,18 +137,19 @@ static void gs_metric_free(gs_metric_t gs_metric)
 static const char *usage(void)
 {
 	return
-"config name=generic_sampler component_id=<comp_id> set=<setname> path=<path>\n"
-"       mx=M1:T1,M2:T2,...\n"
-"    comp_id     The component id value.\n"
-"    setname     The set name.\n"
-"    path        The path to the metric file (default: /tmp/metrics).\n"
-"    mx          The comma-separated list of metric name (M#) and type (T#).\n"
-"                The type can be one of the I,U and D (for int, uint and\n"
-"                double respectively)\n"
-;
+"config name=generic_sampler component_id=<comp_id>  path=<path>\n"
+"                            producer=<prod_name> instance=<inst_name>\n"
+"                            mx=M1:T1,M2:T2,...\n"
+"    <comp_id>     The component id value.\n"
+"    <path>        The path to the metric file (default: /tmp/metrics).\n"
+"    <mx>          The comma-separated list of metric name (M#) and type (T#).\n"
+"                    The type can be one of the I,U and D (for int, uint and\n"
+"                    double respectively)\n"
+"    <inst_name>   The instance name.\n"
+"    <prod_name>   The producer name.\n";
 }
 
-static int create_metric_set(const char *set_name)
+static int create_metric_set(const char *inst_name, const char *prod_name)
 {
 	int rc, i;
 	char *s;
@@ -156,16 +157,20 @@ static int create_metric_set(const char *set_name)
 	char metric_name[128];
 	gs_metric_t gs_metric;
 
-	schema = ldms_create_schema("generic_sampler");
+	schema = ldms_schema_new("generic_sampler");
 	if (!schema)
 		return ENOMEM;
 
 	TAILQ_FOREACH(gs_metric, &gs_list, entry) {
-		gs_metric->mh = ldms_add_metric(schema, gs_metric->name,
-						gs_metric->type);
+		gs_metric->mh = ldms_schema_metric_add(schema, gs_metric->name,
+						       gs_metric->type);
 	}
 
-	rc = ldms_create_set(set_name, schema, &set);
+	set = ldms_set_new(inst_name, schema);
+	if (set)
+		ldms_set_producer_name_set(set, prod_name);
+	else
+		rc = errno;
 	return rc;
 }
 
@@ -304,14 +309,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 		tok = strtok_r(NULL, ",", &ptr);
 	}
-
-	value = av_value(avl, "set");
+	value = av_value(avl, "instance");
 	if (!value) {
 		msglog("generic_sampler config: 'set' is not specified\n");
 		return EINVAL;
 	}
-
-	return create_metric_set(value);
+	char *prod_name = av_value(avl, "producer");
+	return create_metric_set(value, prod_name);
 }
 
 static ldms_set_t get_set()
@@ -322,10 +326,10 @@ static ldms_set_t get_set()
 static void term(void)
 {
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	schema = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
@@ -337,7 +341,7 @@ static int sample(void)
 	off_t offset;
 	union ldms_value value;
 	char *tok, *m, *v, *ptr;
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 	if (gs_fd == -1) {
 		gs_fd = open(path, O_RDONLY);
 		if (gs_fd < 0) {
@@ -388,7 +392,7 @@ static int sample(void)
 			value.v_d = strtod(v, NULL);
 			break;
 		}
-		ldms_set_midx(set, gs_metric->mh, &value);
+		ldms_metric_set(set, gs_metric->mh, &value);
 skip:
 		tok = strchr(v, '\n');
 		while (tok && *tok && isspace(*tok)) {
@@ -396,7 +400,7 @@ skip:
 		}
 	}
 out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return rc;
 }
 

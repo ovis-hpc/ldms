@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -137,7 +137,7 @@ static int create_metric_set(const char *instance_name)
 	char metric_name[128];
 	FILE *mf;
 
-	schema = ldms_create_schema("procstatutil");
+	schema = ldms_schema_new("procstatutil");
 	if (!schema)
 		return ENOMEM;
 
@@ -174,14 +174,14 @@ static int create_metric_set(const char *instance_name)
 			/* raw counter */
 			sprintf(metric_name, metric_name_fmt[column_count],
 								cpu_count);
-			rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+			rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 			if (rc < 0)
 				goto err0;
 
 			/* rate */
 			sprintf(metric_name, rate_metric_name_fmt[column_count],
 								cpu_count);
-			rc = ldms_add_metric(schema, metric_name, LDMS_V_F32);
+			rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_F32);
 			if (rc < 0)
 				goto err0;
 			column_count++;
@@ -191,22 +191,24 @@ static int create_metric_set(const char *instance_name)
 	}
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
-	tv_sec_metric_handle2 = ldms_add_metric(set, "procstatutil_tv_sec2", LDMS_V_U64);
+	tv_sec_metric_handle2 = ldms_schema_metric_add(set, "procstatutil_tv_sec2", LDMS_V_U64);
         if (!tv_sec_metric_handle2)
 	  goto err0;
 
-        tv_nsec_metric_handle2 = ldms_add_metric(set, "procstatutil_tv_nsec2", LDMS_V_U64);
+        tv_nsec_metric_handle2 = ldms_schema_metric_add(set, "procstatutil_tv_nsec2", LDMS_V_U64);
         if (!tv_nsec_metric_handle2)
 	  goto err0;
 
-        tv_dnsec_metric_handle = ldms_add_metric(set, "procstatutil_tv_dnsec", LDMS_V_U64);
+        tv_dnsec_metric_handle = ldms_schema_metric_add(set, "procstatutil_tv_dnsec", LDMS_V_U64);
         if (!tv_nsec_metric_handle2)
 	  goto err0;
 #endif
 
-	rc = ldms_create_set(instance_name, schema, &set);;
-	if (rc)
+	set = ldms_set_new(instance_name, schema);
+	if (!set) {
+		rc = errno;
 		goto err0;
+	}
 
 	prev_value = calloc(column_count * cpu_count, sizeof(*prev_value));
 	if (!prev_value)
@@ -215,36 +217,33 @@ static int create_metric_set(const char *instance_name)
         fclose(mf);
 	return 0;
 err1:
-	ldms_destroy_set(set);
+	ldms_set_delete(set);
 	set = NULL;
 err0:
 	fclose(mf);
 err:
-	ldms_destroy_schema(schema);
+	ldms_schema_delete(schema);
 	schema = NULL;
 	return rc ;
 }
 
 /**
  * \brief Configuration
- *
- * Usage:
- * - config name=procstatutil component_id=<value> set=<value>
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc = EINVAL;
 
-	producer_name = av_value(avl, "producer_name");
+	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procstatutil: missing producer_name\n");
+		msglog("procstatutil: missing 'producer'\n");
 		return ENOENT;
 	}
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procstatutil: missing instance_name\n");
+		msglog("procstatutil: missing 'instance'\n");
 		return ENOENT;
 	}
 	rc = create_metric_set(value);
@@ -252,7 +251,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog("procstatutil: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_name(set, producer_name);
+	ldms_set_producer_name_set(set, producer_name);
  out:
 	return rc;
 }
@@ -280,7 +279,7 @@ static int sample(void)
 		return EINVAL;
 	}
 
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 	gettimeofday(curr_tv, NULL);
 	timersub(curr_tv, prev_tv, &diff_tv);
 	dt = diff_tv.tv_sec + diff_tv.tv_usec / 1e06;
@@ -319,7 +318,7 @@ static int sample(void)
 				token = strtok(NULL, " \t\n")) {
 			uint64_t v = strtoul(token, NULL, 0);
 			/* raw data */
-			ldms_set_midx_u64(set, metric_idx++, v);
+			ldms_metric_set_u64(set, metric_idx++, v);
 
 			/* rate data */
 			uint64_t dv;
@@ -330,7 +329,7 @@ static int sample(void)
 			else
 				dv = v - prev_value[raw_metric_no];
 			float rate = (dv * 1.0 / USER_HZ) / dt * 100.0;
-			ldms_set_midx_float(set, metric_idx++, rate);
+			ldms_metric_set_float(set, metric_idx++, rate);
 			prev_value[raw_metric_no] = v;
 			raw_metric_no++;
 			column++;
@@ -341,16 +340,16 @@ static int sample(void)
 #ifdef CHECK_PROCSTATUTIL_TIMING
 	clock_gettime(CLOCK_REALTIME, &time1);
         vv.v_u64 = time1.tv_sec;
-	ldms_set_midx(set, tv_sec_metric_handle2, &vv);
+	ldms_metric_set(set, tv_sec_metric_handle2, &vv);
         vv.v_u64 = time1.tv_nsec;
-	ldms_set_midx(set, tv_nsec_metric_handle2, &vv);
+	ldms_metric_set(set, tv_nsec_metric_handle2, &vv);
         vv.v_u64 = time1.tv_nsec - beg_nsec;
-	ldms_set_midx(set, tv_dnsec_metric_handle, &vv);
+	ldms_metric_set(set, tv_dnsec_metric_handle, &vv);
 #endif
 	tmp_tv = curr_tv;
 	curr_tv = prev_tv;
 	prev_tv = tmp_tv;
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 
 reset_to_0:
@@ -359,8 +358,8 @@ reset_to_0:
 		fclose(mf);
 	metric_idx = 0;
 	for (raw_metric_no = 0; raw_metric_no < cpu_count * column_count; raw_metric_no++) {
-		ldms_set_midx_u64(set, metric_idx++, 0);
-		ldms_set_midx_float(set, metric_idx++, 0);
+		ldms_metric_set_u64(set, metric_idx++, 0);
+		ldms_metric_set_float(set, metric_idx++, 0);
 		prev_value[raw_metric_no] = 0;
 	}
 	tmp_tv = curr_tv;
@@ -372,19 +371,19 @@ reset_to_0:
 static void term(void)
 {
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	schema = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
 
 static const char *usage(void)
 {
-	return  "config name=procstatutil producer_name=<producer_name> instance_name=<instance_name>\n"
-		"    producer_name       The producer id value\n"
-		"    instance_name     The set name\n";
+	return  "config name=procstatutil producer=<prod_name> instance=<inst_name>\n"
+		"    <prod_name>     The producer name\n"
+		"    <inst_name>     The instance name\n";
 }
 
 static struct ldmsd_sampler procstatutil_plugin = {

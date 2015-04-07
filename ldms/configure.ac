@@ -187,10 +187,22 @@ AC_CHECK_LIB(coll, idx_create, [],
 dnl Reset LIBS variable.
 LIBS=""
 
+dnl LDMS Swig
+OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
+if test -z "$ENABLE_SWIG_TRUE"
+then
+	AM_PATH_PYTHON(2.6)
+	AC_PROG_SWIG
+	SWIG_PYTHON
+	pkgpythondir="${pythondir}/ovis_lib"
+	pkgpyexecdir="${pkgpythondir}"
+fi
+
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
+		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/hadoop/Makefile
