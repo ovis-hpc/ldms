@@ -66,7 +66,10 @@ if test -z "$DOXYGEN"; then
 fi
 
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
-AM_COND_IF([HAVE_DOXYGEN], [AC_CONFIG_FILES([docs/Doxyfile])])
+if test -z "$ENABLE_DOC_TRUE"
+then
+	AC_CONFIG_FILES([docs/Doxyfile])
+fi
 
 AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
 	scripts/Makefile src/baler/Makefile src/plugins/Makefile
