@@ -202,7 +202,6 @@ char *stats_key[] = {
 
 struct lustre_metric_ctxt {
 	int metric_idx;		/* The metric index */
-	uint64_t udata;
 	uint64_t rate_ref;	/**< ID of the rate metric derivative */
 };
 
@@ -275,7 +274,6 @@ void lustre_metric_src_list_free(struct lustre_metric_src_list *h);
  * \returns Error code on error.
  */
 int stats_construct_routine(ldms_schema_t schema,
-			    uint64_t comp_id,
 			    const char *stats_path,
 			    const char *prefix,
 			    const char *suffix,
@@ -290,7 +288,6 @@ int stats_construct_routine(ldms_schema_t schema,
  * \returns Error code on erorr.
  */
 int single_construct_routine(ldms_schema_t schema,
-			    uint64_t comp_id,
 			    const char *metric_path,
 			    const char *prefix,
 			    const char *suffix,

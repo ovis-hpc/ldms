@@ -192,7 +192,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		sprintf(tmp_path, "/proc/fs/lustre/mds/MDS/%s/stats",
 				mds_services[i]);
 		sprintf(suffix, "#mds.%s", mds_services[i]);
-		rc = stats_construct_routine(schema, producer_name, tmp_path,
+		rc = stats_construct_routine(schema, tmp_path,
 					     "mds.lstats.", suffix,
 					     &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
@@ -204,7 +204,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/stats", sl->str);
 		sprintf(suffix, "#mdt.%s", sl->str);
-		rc = stats_construct_routine(schema, producer_name, tmp_path,
+		rc = stats_construct_routine(schema, tmp_path,
 					     "mds.lstats.",
 					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
@@ -213,7 +213,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		/* For md_stats */
 		sprintf(tmp_path, "/proc/fs/lustre/mdt/%s/md_stats", sl->str);
 		sprintf(suffix, "#mdt.%s", sl->str);
-		rc = stats_construct_routine(schema, producer_name, tmp_path,
+		rc = stats_construct_routine(schema, tmp_path,
 					     "md_stats.", suffix, &lms_list,
 					     md_stats_key, MD_STATS_KEY_LEN,
 					     md_stats_key_id);
@@ -289,7 +289,7 @@ static const char *usage(void)
 {
 	return
 "config name=lustre_mds producer=<prod_name> instance=<inst_name> mdts=MDT1,...\n"
-"	prod_name	The producer id value.\n"
+"	prod_name	The producer name.\n"
 "	inst_name	The set name.\n"
 "	mdts		The list of MDTs.\n"
 "For mdts: if not specified, all of the\n"

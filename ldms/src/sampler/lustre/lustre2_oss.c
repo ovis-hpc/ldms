@@ -274,7 +274,7 @@ static int create_metric_set(const char *path, const char *osts)
 		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
 				oss_services[i]);
 		sprintf(suffix, "#oss.%s", oss_services[i]);
-		rc = stats_construct_routine(schema, producer_name, tmp_path, "oss.lstats.",
+		rc = stats_construct_routine(schema, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, stats_key,
 					     STATS_KEY_LEN, stats_key_id);
 		if (rc)
@@ -285,7 +285,7 @@ static int create_metric_set(const char *path, const char *osts)
 		/* For general stats */
 		sprintf(tmp_path, "/proc/fs/lustre/obdfilter/%s/stats", sl->str);
 		sprintf(suffix, "#ost.%s", sl->str);
-		rc = stats_construct_routine(schema, producer_name, tmp_path, "oss.lstats.",
+		rc = stats_construct_routine(schema, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, obdf_key,
 					     OBDF_KEY_LEN, obdf_key_id);
 		if (rc)
@@ -293,7 +293,7 @@ static int create_metric_set(const char *path, const char *osts)
 		for (j = 0; j < OST_SINGLE_ATTR_LEN; j++) {
 			sprintf(tmp_path, "/proc/fs/lustre/osd-ldiskfs/%s/%s",
 						sl->str, ost_single_attr[j]);
-			rc = single_construct_routine(schema, producer_name, tmp_path,
+			rc = single_construct_routine(schema, tmp_path,
 					"oss.lustre.", suffix, &lms_list);
 			if (rc)
 				goto err2;

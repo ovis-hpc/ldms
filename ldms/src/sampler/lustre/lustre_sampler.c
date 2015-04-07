@@ -142,7 +142,7 @@ void lustre_metric_src_list_free(struct lustre_metric_src_list *list)
  * \returns 0 on success.
  * \returns Error code on error.
  */
-int __add_lss_metric_routine(ldms_schema_t schema, uint64_t udata,
+int __add_lss_metric_routine(ldms_schema_t schema,
 			 const char *metric_name, struct str_map *id_map,
 			 const char *key, struct lustre_svc_stats *lss)
 {
@@ -160,7 +160,6 @@ int __add_lss_metric_routine(ldms_schema_t schema, uint64_t udata,
 		vt = LDMS_V_F32;
 	lss->mctxt[id].metric_idx = ldms_schema_metric_add(schema, metric_name, vt);
 	lss->mctxt[id].rate_ref = id_rate;
-	lss->mctxt[id].udata = udata;
 	return 0;
 }
 
@@ -197,7 +196,6 @@ void lms_close_file(struct lustre_metric_src *lms)
 }
 
 int stats_construct_routine(ldms_schema_t schema,
-			    uint64_t comp_id,
 			    const char *stats_path,
 			    const char *prefix,
 			    const char *suffix,
@@ -216,9 +214,8 @@ int stats_construct_routine(ldms_schema_t schema,
 	int j;
 	for (j = 0; j < nkeys; j++) {
 		sprintf(metric_name, "%s%s%s", prefix, keys[j], suffix);
-		rc = __add_lss_metric_routine(schema, comp_id, metric_name,
-				key_id_map, keys[j],
-				lss);
+		rc = __add_lss_metric_routine(schema, metric_name,
+				key_id_map, keys[j], lss);
 		if (rc)
 			return rc;
 	}
@@ -229,7 +226,6 @@ int stats_construct_routine(ldms_schema_t schema,
 }
 
 int single_construct_routine(ldms_schema_t schema,
-			     uint64_t comp_id,
 			     const char *metric_path,
 			     const char *prefix,
 			     const char *suffix,
@@ -248,7 +244,6 @@ int single_construct_routine(ldms_schema_t schema,
 	if (ls->sctxt.metric_idx < 0)
 		goto err1;
 	LIST_INSERT_HEAD(list, &ls->lms, link);
-	ls->sctxt.udata = comp_id;
 	return 0;
 err1:
 	lustre_single_free(ls);

@@ -237,7 +237,7 @@ static int create_metric_set(const char *path, const char *oscs,
 			sprintf(tmp_path, "/proc/fs/lustre/%s/%s*/stats",
 					namebase[i], sl->str);
 			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
-			rc = stats_construct_routine(schema, producer_name, tmp_path,
+			rc = stats_construct_routine(schema, tmp_path,
 					"client.lstats.", suffix, &lms_list, keys[i],
 					keylen[i], maps[i]);
 			if (rc)
@@ -317,10 +317,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 static const char *usage(void)
 {
 	return
-"config name=lustre2_client [OPTIONS]\n"
+"config name=lustre2_client producer=<prod_name> instance=<inst_name> [OPTIONS]\n"
+"    	prod_name             The producer name\n"
+"       inst_name             The instance name\n"
 "    OPTIONS:\n"
-"	producer=STRING       The producer name.\n"
-"	instance=STRING       The set name.\n"
 "	osc=STR,STR,...	      The list of OCSs.\n"
 "	mdc=STR,STR,...	      The list of MDCs.\n"
 "	llite=STR,STR,...     The list of llites.\n"
