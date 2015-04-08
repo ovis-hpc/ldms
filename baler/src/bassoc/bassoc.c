@@ -102,6 +102,9 @@
  * \par -i,--info
  * Show information of the workspace.
  *
+ * \par -v,--verbose DEBUG|INFO|WARN|ERROR
+ * Verbosity level of the program. The default value is 'INFO'.
+ *
  * \par -c,--create
  * Create and initialize workspace (-w). If the workspace existed, the program
  * will exit with error.
@@ -121,6 +124,9 @@
  *
  * \par -x,--extract
  * This option will make bassoc run in image extraction mode.
+ *
+ * \par -X,--metric-stream
+ * Same as '-x', but with metric input stream enabled.
  *
  * \par -s,--store STOR_DIR
  * This is a path to balerd's store. This option is needed for image extraction
@@ -164,6 +170,22 @@
  * Mine the association rules that have target in the TARGET_FILE. The
  * TARGET_FILE is a text file each line of which contains target image name. The
  * line begins with '#' will be ignored.
+ *
+ * \par -K,--confidence-threshold NUMBER (0.0 - 1.0)
+ * Confidence threshold for the miner to accept a rule candidate as a rule.
+ * A rule candidate will is a rule if it satisfies both confidence and
+ * significance.
+ *
+ * \par -S,--significance-threshold NUMBER (0.0 - 1.0)
+ * Significance threshold for the miner to accept a rule candidate as a rule.
+ * A rule candidate will is a rule if it satisfies both confidence and
+ * significance.
+ *
+ * \par -D,--difference-threshold NUMBER (0.0 - 1.0)
+ * A threshold to help miner bound the search branch. If the antecedence in the
+ * new rule candidate does not differ (in occurrences) to the antecedence in the
+ * current active rule candidate, then the search of the new rule candidate
+ * branch will be bounded.
  *
  * \section recipe RECIPE
  * There are two kinds of recipes, message pattern recipes and metric bin
@@ -259,10 +281,12 @@
  *     ev1: 128,129
  *     ev2: 150
  *     ev3: 151
+ *     +MemFree: 1e+06,1e+07,1e+08,1e+09
  * \endcode
  *
  * In the above recipe example, the image 'ev1' is created from patterns 128 and
- * 129, while the rest are straighforwardly defined by a single pattern.
+ * 129, while the rest are straighforwardly defined by a single pattern. The
+ * 'MemFree' is a metric, so the recipe is actually a binning definition.
  *
  * To extract more images from balerd's store that are not specified in the
  * recipe file:
@@ -275,18 +299,48 @@
  * The above example will create ev4 and ev5 images from pattern IDs 200 and 600
  * respectively (under the same time constrain as recipe file example).
  *
- * To mine rules with ev3 and ev5 being targets, with time-axis shifting to the
- * left by 1 pixel:
+ * To extract metric images, just pipe CSV metric data to bassoc, with the same
+ * recipe file, as following:
  * \par
  * \code{.sh}
- *     bassoc -w workspace -m ev3,ev5 -o -1
+ *     cat metric.csv | bassoc -w workspace -X -R recipe
+ * \endcode
+ *
+ * \warning bassoc expects the first row to be the header row, containing column
+ * names (metric names). The first column is expected to be unix timestamp, and
+ * the second column is expected to be node id. The names of the first two
+ * columns are not important.
+ *
+ * You can also extract the message occurrences and metric binning altogether
+ * as follows:
+ * \par
+ * \code{.sh]
+ *     cat metric.csv | bassoc -w workspace -X -s balerd_store \\
+ *                             -B '2015-01-01 00:00:00' -R recipe
+ *     # Notice the captial 'X', not lower-case 'x'.
+ * \endcode
+ *
+ * To mine rules with ev3 and ev5 being targets, with time-axis of the target
+ * shifting to the right by 1 pixel, significance theshold 0.01, confidence
+ * threshold 0.75:
+ * \par
+ * \code{.sh}
+ *     bassoc -w workspace -m ev3,ev5 -o 1 -S 0.01 -K 0.75
  * \endcode
  *
  * or:
  * \par
  * \code{.sh}
- *     bassoc -w workspace -M target_file
+ *     bassoc -w workspace -M target_file -o 1 -S 0.01 -K 0.75
  * \endcode
+ *
+ * \note A rule (X->Y) of 0.1 significance means that XY co-occurrences
+ * contribute 10% of the occurrences of Y. The significance threshold will
+ * filter out the rules that has lesser significance.
+ *
+ * \note A rule (X->Y) of 0.9 confidence menas that 90% of the occurrences of X,
+ * Y also occur. The confidence threshold will be used to accept rule candidates
+ * that has greater confidence as rules.
  *
  * where \e target_file contains the following content:
  * \par
@@ -315,30 +369,31 @@
 #include "../query/bquery.h"
 
 /***** OPTIONS *****/
-const char *short_opt = "hicw:t:n:xs:B:E:H:r:R:o:m:M:z:K:S:D:v:?";
+const char *short_opt = "hicw:t:n:xXs:B:E:H:r:R:o:m:M:z:K:S:D:v:?";
 struct option long_opt[] = {
-	{"help",                   0,  0,  'h'},
-	{"info",                   0,  0,  'i'},
-	{"create",                 0,  0,  'c'},
-	{"workspace",              1,  0,  'w'},
-	{"sec-per-pixel",          1,  0,  't'},
-	{"node-per-pixel",         1,  0,  'n'},
-	{"extract",                0,  0,  'x'},
-	{"store",                  1,  0,  's'},
-	{"ts-begin",               1,  0,  'B'},
-	{"ts-end",                 1,  0,  'E'},
-	{"host-ids",               1,  0,  'H'},
-	{"recipe",                 1,  0,  'r'},
-	{"recipe-file",            1,  0,  'R'},
-	{"offset",                 1,  0,  'o'},
-	{"mine-target",            1,  0,  'm'},
-	{"mine-target-file",       1,  0,  'M'},
-	{"threads",                1,  0,  'z'},
-	{"confident-threshold",    1,  0,  'K'},
-	{"significant-threshold",  1,  0,  'S'},
-	{"different-threshold",    1,  0,  'D'},
-	{"verbose",                1,  0,  'v'},
-	{0,                        0,  0,  0},
+	{"help",                    0,  0,  'h'},
+	{"info",                    0,  0,  'i'},
+	{"create",                  0,  0,  'c'},
+	{"workspace",               1,  0,  'w'},
+	{"sec-per-pixel",           1,  0,  't'},
+	{"node-per-pixel",          1,  0,  'n'},
+	{"extract",                 0,  0,  'x'},
+	{"extract-w-metric",        0,  0,  'X'},
+	{"store",                   1,  0,  's'},
+	{"ts-begin",                1,  0,  'B'},
+	{"ts-end",                  1,  0,  'E'},
+	{"host-ids",                1,  0,  'H'},
+	{"recipe",                  1,  0,  'r'},
+	{"recipe-file",             1,  0,  'R'},
+	{"offset",                  1,  0,  'o'},
+	{"mine-target",             1,  0,  'm'},
+	{"mine-target-file",        1,  0,  'M'},
+	{"threads",                 1,  0,  'z'},
+	{"confidence-threshold",    1,  0,  'K'},
+	{"significance-threshold",  1,  0,  'S'},
+	{"difference-threshold",    1,  0,  'D'},
+	{"verbose",                 1,  0,  'v'},
+	{0,                         0,  0,  0},
 };
 
 /***** GLOBAL VARIABLES *****/
@@ -369,6 +424,8 @@ double significance = 0.10;
 double difference = 0.15;
 int offset = 0;
 const char *mine_target_file_path = NULL;
+
+int enable_metric_stream = 0;
 
 struct bassoc_conf_handle *conf_handle;
 
@@ -420,7 +477,7 @@ void usage()
 	printf(
 "SYNOPSIS: \n"
 "	creating a workspace: \n"
-"		bassoc -w WORKSPACE -c [-t NUMBER] [-s NUMBER]\n"
+"		bassoc -w WORKSPACE -c [-t NUMBER] [-n NUMBER]\n"
 "\n"
 "	extracting images: \n"
 "		bassoc -w WORKSPACE -x -s BALERD_STORE [-B TS] [-E TS]\n"
@@ -787,6 +844,10 @@ loop:
 		break;
 	case 'x':
 		run_mode_flag |= RUN_MODE_EXTRACT;
+		break;
+	case 'X':
+		run_mode_flag |= RUN_MODE_EXTRACT;
+		enable_metric_stream = 1;
 		break;
 	case 's':
 		store_path = optarg;
@@ -1465,10 +1526,11 @@ void extract_routine()
 
 	process_recpies_routine();
 
-	if (store_path) {
+	if (store_path)
 		extract_bq_store_routine();
-	}
-	extract_metric_routine();
+
+	if (enable_metric_stream)
+		extract_metric_routine();
 }
 
 void info_routine()
@@ -1575,33 +1637,34 @@ struct bassoc_rule *bassoc_rule_get(struct bassoc_rule_q *q)
 		r = NULL;
 		goto out;
 	}
-	while (TAILQ_EMPTY(&q->current_subq->head)) {
-		pthread_cond_wait(&q->cond, &q->mutex);
-		switch (q->state) {
-		case BASSOC_RULE_Q_STATE_DONE:
+
+loop:
+	switch (q->state) {
+	case BASSOC_RULE_Q_STATE_DONE:
+		r = NULL;
+		goto out;
+	case BASSOC_RULE_Q_STATE_LVL_DONE:
+		tmp = q->next_subq;
+		q->next_subq = q->current_subq;
+		q->current_subq = tmp;
+		if (TAILQ_EMPTY(&q->current_subq->head)) {
 			r = NULL;
+			q->state = BASSOC_RULE_Q_STATE_DONE;
+			pthread_cond_broadcast(&q->cond);
 			goto out;
-		case BASSOC_RULE_Q_STATE_LVL_DONE:
-			tmp = q->next_subq;
-			q->next_subq = q->current_subq;
-			q->current_subq = tmp;
-			if (TAILQ_EMPTY(&q->current_subq->head)) {
-				r = NULL;
-				q->state = BASSOC_RULE_Q_STATE_DONE;
-				pthread_cond_broadcast(&q->cond);
-				goto out;
-			} else {
-				q->state = BASSOC_RULE_Q_STATE_ACTIVE;
-				pthread_cond_broadcast(&q->cond);
-			}
-			break;
-		case BASSOC_RULE_Q_STATE_ACTIVE:
-			/* do nothing */
-			break;
 		}
+		q->state = BASSOC_RULE_Q_STATE_ACTIVE;
+		pthread_cond_broadcast(&q->cond);
+		/* The queue is active, going through */
+	case BASSOC_RULE_Q_STATE_ACTIVE:
+		r = TAILQ_FIRST(&q->current_subq->head);
+		if (!r) {
+			pthread_cond_wait(&q->cond, &q->mutex);
+			goto loop;
+		}
+		break;
 	}
 
-	r = TAILQ_FIRST(&q->current_subq->head);
 	TAILQ_REMOVE(&q->current_subq->head, r, entry);
 out:
 	pthread_mutex_unlock(&q->mutex);
@@ -2135,6 +2198,8 @@ void *miner_proc(void *arg)
 		return 0;
 	}
 
+	bdebug("miner %d: beginning ...", thread_number);
+
 	n = barray_get_len(images);
 
 	cimg = ctxt->img[MINER_CTXT_STACK_SZ + 1];
@@ -2270,6 +2335,7 @@ end:
 	goto loop;
 
 out:
+	bdebug("miner %d: exiting ...", thread_number);
 	return NULL;
 }
 
@@ -2332,6 +2398,7 @@ void init() {
 		berr("Out of memory");
 		exit(-1);
 	}
+	blog_set_level_str("INFO");
 }
 
 int main(int argc, char **argv)
