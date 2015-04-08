@@ -22,6 +22,10 @@ bhash_test_SOURCES = bhash_test.c
 bhash_test_LDADD = ../baler/libbaler.la
 bin_PROGRAMS += bhash_test
 
+bheap_test_SOURCES = bheap_test.c
+bheap_test_LDADD = ../baler/libbaler.la
+bin_PROGRAMS += bheap_test
+
 bmhash_test_SOURCES = bmhash_test.c
 bmhash_test_LDADD = ../baler/libbaler.la
 bin_PROGRAMS += bmhash_test

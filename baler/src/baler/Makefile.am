@@ -35,6 +35,7 @@ lib_LTLIBRARIES += libbset.la
 libbaler_la_SOURCES = bwqueue.c btkn.c bptn.c binput.c boutput.c \
 		      bmapper.c bset.c bmvec.c bmem.c butils.c bhash.c \
 		      bmhash.c \
+		      bheap.c \
 		      bmeta.c \
 		      bqueue.c
 libbaler_la_LDFLAGS = $(AM_LDFLAGS) -lpthread
