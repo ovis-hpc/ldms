@@ -76,6 +76,7 @@
 
 const char* loglevels_names[] = {
 	LOGLEVELS(LDMS_STR_WRAP)
+	NULL
 };
 
 #if USE_TF

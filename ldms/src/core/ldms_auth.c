@@ -94,12 +94,12 @@ static int try_password_file(const char *filepath, char *secretword,
 				filepath);
 			return 2;
 		case ENOENT:
-			x->log(LDMS_LERROR,
+			x->log(LDMS_LDEBUG,
 				"File of secret word not found: %s\n",
 				filepath);
 			return 1;
 		default:
-			x->log(LDMS_LERROR,
+			x->log(LDMS_LDEBUG,
 				"Bad secret word filename: %s\n",
 				filepath);
 			return 1;
@@ -203,8 +203,12 @@ char *ldms_get_auth_string(uint64_t n, ldms_t x_)
 	
 	}
 	if (fc) {
-		x->log(LDMS_LERROR,"%s: unable to find a usable secret\n",
-			__FILE__);
+		x->log(LDMS_LERROR,"%s: unable to find a usable secret in"
+			"%s/%s or %s/%s or from LDMS_AUTH_FILE shell "
+			"variable.\n",
+			__FILE__,
+			 pwent->pw_dir,CONFNAME,
+			 SYSCONFDIR,SYSCONFNAME);
 		return NULL;
 	}
 

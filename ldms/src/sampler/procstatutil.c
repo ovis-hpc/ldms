@@ -257,6 +257,9 @@ static int create_metric_set(const char *path)
         if (!tv_nsec_metric_handle2)
 	  goto err;
 #endif
+	if (cpu_count >0) {
+		msglog(LDMS_LINFO,"procstatutil: Monitoring %d cpus.\n",cpu_count);
+	}
 
 	return 0;
  err:

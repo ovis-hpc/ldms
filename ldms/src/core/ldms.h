@@ -498,7 +498,7 @@ typedef enum {
 	LOGLEVELS(LDMS_LWRAP)
 } loglevels_t;
 
-/* array of strings matching the loglevels enum */
+/* array of strings matching the loglevels enum. null terminated. */
 extern const char* loglevels_names[];
 
 int ldms_str_to_level(const char *level_s);

@@ -159,6 +159,7 @@ static int create_metric_set(const char *path)
 
 	v.v_u64 = 0;
 	for (i = 0; i < niface; i++){
+		msglog(LDMS_LINFO,"procnetdev: Monitoring %s\n",iface[i]);
 		for (j = 0; j < NVARS; j++){
 			snprintf(metric_name, 128, "%s#%s", varname[j], iface[i]);
 			metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
@@ -213,7 +214,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "ifaces");
 	if (!value) {
-		msglog(LDMS_LDEBUG,"procnetdev: config missing argument ifaces=namelist\n");
+		msglog(LDMS_LERROR,"procnetdev: config missing argument ifaces=namelist\n");
 		goto err;
 	}
 	ifacelist = strdup(value);
