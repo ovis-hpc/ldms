@@ -449,7 +449,7 @@ void plugin_sampler_cb(int fd, short sig, void *arg)
 		 * the timeout. This is an indication of a configuration
 		 * error that needs to be corrected.
 		*/
-		msg_log("'%s': failed to sample. Stopping the plug-in.\n",
+		ldms_log("'%s': failed to sample. Stopping the plug-in.\n",
 				pi->name);
 		stop_sampler(pi);
 	}
@@ -570,9 +570,8 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 		}
 		double diff = difftime(sched, now);
 		if (diff < 0) {
-			snprintf(err_str, LEN_ERRSTR, "The schedule time '%s' "
-				 "is ahead of the current time %ul.",
-				 ts, now);
+			snprintf(err_str, LEN_ERRSTR, "The current time "
+				 "is ahead of the scheduled time.");
 			rc = EINVAL;
 			return rc;
 		}

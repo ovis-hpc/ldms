@@ -113,7 +113,7 @@ static int create_metric_set(const char *path)
 	}
 
 	/* Create the metric set */
-	ldms_schema_t schema = ldms_create_schema("geminfo");
+	ldms_schema_t schema = ldms_schema_new("geminfo");
 	if (schema)
 		return ENOMEM;
 
@@ -130,7 +130,7 @@ static int create_metric_set(const char *path)
 			*end = '\0';
 			replace_space(s);
 			if (sscanf(end + 1, " %" PRIu64 "\n", &metric_value) == 1) {
-				rc = ldms_add_metric(schema, s, LDMS_V_U64);
+				rc = ldms_schema_metric_add(schema, s, LDMS_V_U64);
 				if (rc < 0) {
 					rc = ENOMEM;
 					goto err;
@@ -141,16 +141,16 @@ static int create_metric_set(const char *path)
 			goto err;
 		}
 	} while (s);
-	rc = ldms_create_set(path, schema, &set);
-	if (rc)
+	set = ldms_set_new(path, schema);
+	if (!set) {
+		rc = errno;
 		goto err;
-	for (rc = 0; rc < ldms_get_metric_count(schema); rc++)
-		ldms_set_midx_udata(set, rc, producer_name);
-	ldms_destroy_schema(schema);
+	}
+	ldms_schema_delete(schema);
 	return 0;
 
  err:
-	ldms_destroy_set(set);
+	ldms_set_delete(set);
 	return rc;
 }
 
@@ -158,11 +158,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
-	value = av_value(avl, "producer_name");
+	value = av_value(avl, "producer");
 	if (value)
 		producer_name = strtol(value, NULL, 0);
 
-	value = av_value(avl, "instance_name");
+	value = av_value(avl, "instance");
 	if (value)
 		create_metric_set(value);
 
@@ -180,7 +180,7 @@ static int sample(void)
 	  msglog("geminfo: plugin not initialized\n");
 	  return EINVAL;
 	}
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
@@ -194,7 +194,7 @@ static int sample(void)
 			*end = '\0';
 			replace_space(s);
 			if (sscanf(end + 1, " %" PRIu64 "\n", &v.v_u64) == 1) {
-				ldms_set_midx(set, metric_no, &v);
+				ldms_metric_set(set, metric_no, &v);
 				metric_no++;
 			}
 		} else {
@@ -204,7 +204,7 @@ static int sample(void)
 	} while (s);
 	rc = 0;
 out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 }
 
@@ -213,15 +213,15 @@ static void term(void)
 	if (mf)
 		fclose(mf);
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
 static const char *usage(void)
 {
-	return  "config name=geminfo producer_name=<producer_name> instance_name=<instance_name>\n"
-		"    producer_name     The producer id value.\n"
-		"    instance_name     The set name.\n";
+	return  "config name=geminfo producer=<prod_name> instance=<inst_name>\n"
+		"    prod_name     The producer name.\n"
+		"    inst_name     The set name.\n";
 }
 
 
