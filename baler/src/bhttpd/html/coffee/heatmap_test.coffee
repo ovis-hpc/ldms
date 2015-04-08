@@ -1,16 +1,12 @@
 t = $("#test")[0]
 t.style.position = "relative"
 
-hmap = window.hmap = new baler.HeatMapDisp()
+hmap = window.hmap = new baler.HeatMapDisp(400,400,3600,1)
+
 ###
 hmap.createLayer("L1", "128", [255, 0, 0])
 hmap.createLayer("L2", "129", [0, 0, 255])
 ###
-
-
-# Changing npp (node/pixel) and spp (sec/pixel) for zoom level
-hmap.npp = 2
-hmap.spp = 3600*2
 
 hmapCtrl = new baler.HeatMapDispCtrl(hmap)
 
@@ -42,10 +38,6 @@ window.hmap.updateImage()
 window.hmap2.updateImage()
 
 ###
-
-t.style.border = "solid"
-t.style.borderWidth = "1px"
-t.style.borderColor = "grey"
 
 t.appendChild(hmapCtrl.domobj)
 t.appendChild(hmap.domobj)

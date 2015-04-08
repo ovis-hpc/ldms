@@ -492,22 +492,87 @@ window.baler =
             if fh
                 @updateImage(0, fy, @width, fh)
 
+    Labels: class Labels extends Disp
+        constructor: (@width, @height, @nlabels = 4, @labelGetText) ->
+            console.log("width: #{@width}")
+            console.log("height: #{@height}")
+            @domobj = LZH.div({class: "baler_Labels"})
+            @domobj.style.width = @width
+            @domobj.style.height = @height
+            @labels = []
+            @innerHeight = @height - 20
+            for i in [1..@nlabels]
+                label = LZH.span({}, "test #{i} -")
+                top = (i - 1)/(@nlabels) * (@innerHeight)
+                label.style.top = top
+                label.style.right = 5
+                @labels.push(label)
+                @domobj.appendChild(label)
+                if @labelGetText
+                    label.innerHTML = @labelGetText(top)
+            console.log("width: #{@width}")
+            console.log("height: #{@height}")
+
+            @onLabelFlip = null
+
+        move: (displacement) ->
+            for p in @domobj.children
+                _top = parseInt(p.style.top) + displacement
+                switch
+                    when _top < 0
+                        _top = @innerHeight + _top
+                        if @labelGetText
+                            p.innerHTML = @labelGetText(_top)
+                    when @innerHeight < _top
+                        _top = _top % @innerHeight
+                        if @labelGetText
+                            p.innerHTML = @labelGetText(_top)
+                p.style.top = _top
+
+
     HeatMapDisp: class HeatMapDisp extends Disp
-        constructor: (@width=400, @height=400) ->
+        constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
             @ts_begin = 1425963600
             @node_begin = 1
-            @npp = 1
-            @spp = 3600
             @layers = undefined
 
             _this_ = this
-            @domobj = LZH.div({class: "HeatMapDisp"})
-            @domobj.style.position = "relative"
-            @domobj.style.width = @width
-            @domobj.style.height = @height
-            @domobj.onmousedown = (event) -> _this_.onMouseDown(event)
-            @domobj.onmouseup = (event) -> _this_.onMouseUp(event)
-            @domobj.onmousemove = (event) -> _this_.onMouseMove(event)
+
+            ### Layout construction ###
+            textWH = 150
+
+            @layerDiv = LZH.div({class: "HeatMapDisp"})
+
+            lblyfn = (top) ->
+                node = _this_.node_begin + top * _this_.npp
+                return "node: #{node} -"
+            lblxfn = (top) ->
+                ts = _this_.ts_begin + top * _this_.spp
+                return "ts: #{ts} -"
+
+            @xlabel = new Labels(textWH, @width, 4, lblxfn)
+            @xlabelDiv = @xlabel.domobj
+            @xlabelDiv.style.transform = "rotate(-90deg)"
+            @xlabelDiv.style.transformOrigin = "0 0 0"
+            @xlabelDiv.style.marginTop = textWH
+
+            @ylabel = new Labels(textWH, @height, 4, lblyfn)
+            @ylabelDiv = @ylabel.domobj
+
+            @fillerDiv = LZH.div({class: "HeatMapFillerDiv"})
+            @fillerDiv.style.width = textWH
+            @fillerDiv.style.height = textWH
+
+            # The div for layers
+            @layerDiv.style.position = "relative"
+            @layerDiv.style.width = @width
+            @layerDiv.style.height = @height
+            @layerDiv.onmousedown = (event) -> _this_.onMouseDown(event)
+            @layerDiv.onmouseup = (event) -> _this_.onMouseUp(event)
+            @layerDiv.onmousemove = (event) -> _this_.onMouseMove(event)
+
+            @domobj = LZH.div(null , @ylabelDiv, @layerDiv, @fillerDiv, @xlabelDiv)
+
             @layerDescList = []
             @layers = []
             @mouseDown = 0
@@ -526,7 +591,7 @@ window.baler =
             layer.updateImage()
 
             @layers.push(layer)
-            @domobj.appendChild(layer.domobj)
+            @layerDiv.appendChild(layer.domobj)
             # for debugging
             layer.domobj.setAttribute("name", name)
             return @layers.length - 1
@@ -552,12 +617,14 @@ window.baler =
             if not @mouseDown
                 return
             @mouseDown = false
+            ###
             dx = event.pageX - @mouseDownPos.x
             dy = event.pageY - @mouseDownPos.y
             ts_begin = @ts_begin - @spp*dx
             node_begin = @node_begin - @npp*dy
             @ts_begin = ts_begin
             @node_begin = node_begin
+            ###
             for l in @layers when !l.domobj.hidden
                 l.onMouseUp(event)
             return 0
@@ -565,6 +632,7 @@ window.baler =
         onMouseDown: (event) ->
             if @mouseDown
                 return
+            @MM = {x: event.pageX, y: event.pageY}
             @mouseDown = true
             @mouseDownPos.x = event.pageX
             @mouseDownPos.y = event.pageY
@@ -575,8 +643,18 @@ window.baler =
         onMouseMove: (event) ->
             if not @mouseDown
                 return 0
+            newMM = {x: event.pageX, y: event.pageY}
             for l in @layers when !l.domobj.hidden
                 l.onMouseMove(event)
+            dx = newMM.x - @MM.x
+            dy = newMM.y - @MM.y
+            ts_begin = @ts_begin - @spp*dx
+            node_begin = @node_begin - @npp*dy
+            @ts_begin = ts_begin
+            @node_begin = node_begin
+            @ylabel.move(dy)
+            @xlabel.move(dx)
+            @MM = newMM
             return 0
 
         updateLayers: (x=0, y=0, width=@width, height=@height) ->
@@ -587,8 +665,8 @@ window.baler =
     HeatMapDispCtrl: class HeatMapDispCtrl extends Disp
         constructor: (@hmap) ->
             @dom_input_label_placeholder =
-                name: ["Layer name: ", "Any name ..."]
-                ptn_ids: ["Pattern ID list: ", "example: 1,2,5-10"]
+                name: ["Layer name: ", "Any name ...", "layer_name"]
+                ptn_ids: ["Pattern ID list: ", "example: 1,2,5-10", "ptn_list"]
 
             @dom_input = undefined
             @dom_add_btn = undefined
@@ -598,8 +676,8 @@ window.baler =
             @dom_input = {}
             @domobj = LZH.div({class: "HeatMapDispCtrl"})
             ul = LZH.ul({style: "list-style: none"})
-            for k,[lbl,plc] of @dom_input_label_placeholder
-                inp = @dom_input[k] = LZH.input()
+            for k,[lbl,plc, id] of @dom_input_label_placeholder
+                inp = @dom_input[k] = LZH.input({id: id})
                 inp.placeholder = plc
                 li = LZH.li(null, lbl, inp)
                 ul.appendChild(li)

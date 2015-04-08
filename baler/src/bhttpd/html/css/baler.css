@@ -48,7 +48,32 @@
 }
 
 .HeatMapDisp {
+	float: left;
 	border: solid;
 	border-color: grey;
 	border-width: 1px;
+}
+
+.HeatMapFillerDiv {
+	clear: left;
+	float: left;
+	/* -- DEBUG --
+	border: solid;
+	border-color: green;
+	border-width: 1px;
+	/**/
+}
+
+.baler_Labels {
+	position: relative;
+	float: left;
+	/* -- DEBUG --
+	border: solid;
+	border-color: red;
+	border-width: 1px;
+	/**/
+}
+
+.baler_Labels span {
+	position: absolute;
 }
