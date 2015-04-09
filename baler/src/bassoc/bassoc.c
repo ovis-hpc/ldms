@@ -364,6 +364,7 @@
 
 #include "bassoc.h"
 #include "../baler/bhash.h"
+#include "../baler/bheap.h"
 #include "../baler/butils.h"
 #include "../baler/barray.h"
 #include "../query/bquery.h"
@@ -1155,6 +1156,116 @@ void extract_routine_by_msg(struct bq_store *bq_store)
 }
 
 static
+int __bq_cmp(struct bimgquery *bq0, struct bimgquery *bq1)
+{
+	struct bpixel p0;
+	struct bpixel p1;
+	bq_img_entry_get_pixel(bq0, &p0);
+	bq_img_entry_get_pixel(bq1, &p1);
+	if (p0.sec < p1.sec)
+		return -1;
+	if (p0.sec > p1.sec)
+		return 1;
+	if (p0.comp_id < p1.comp_id)
+		return -1;
+	if (p0.comp_id > p1.comp_id)
+		return 1;
+	return 0;
+}
+
+static
+struct bheap *__heap_init(struct bq_store *bq_store, const char *img_store_name)
+{
+	char buff[128];
+	struct bhash_iter *hiter = bhash_iter_new(ptn2imglist);
+	if (!hiter) {
+		berror("bhash_iter_new()");
+		exit(-1);
+	}
+	struct bheap *h = bheap_new(65536, (void*)__bq_cmp);
+	if (!h) {
+		berror("bheap_new()");
+		exit(-1);
+	}
+
+	struct bimgquery *bq;
+	struct bhash_entry *hent;
+	uint32_t ptn_id;
+	int rc;
+
+	rc = bhash_iter_begin(hiter);
+	if (rc) {
+		berror("bhash_iter_begin()");
+		exit(-1);
+	}
+	while (rc == 0) {
+		hent = bhash_iter_entry(hiter);
+		ptn_id = *(uint32_t*)hent->key;
+		snprintf(buff, sizeof(buff), "%u", ptn_id);
+		bq = bimgquery_create(bq_store, host_ids, buff,
+					ts_begin, ts_end, img_store_name, &rc);
+		if (!bq) {
+			berror("bimgquery_create()");
+			exit(-1);
+		}
+		rc = bq_first_entry((void*)bq);
+		if (rc == ENOENT) {
+			goto skip;
+		}
+
+		if (rc) {
+			berror("bq_first_entry()");
+			exit(-1);
+		}
+
+		rc = bheap_insert(h, bq);
+		if (rc) {
+			berror("bheap_insert()");
+			exit(-1);
+		}
+	skip:
+		rc = bhash_iter_next(hiter);
+	}
+
+	return h;
+}
+
+static
+int __heap_get_pixel(struct bheap *bheap, struct bpixel *pixel)
+{
+	struct bimgquery *bq = bheap_get_top(bheap);
+	return bq_img_entry_get_pixel(bq, pixel);
+}
+
+static
+int __heap_next_entry(struct bheap *bheap)
+{
+	int rc;
+	struct bimgquery *bq = bheap_get_top(bheap);
+	if (!bq)
+		return ENOENT;
+
+	rc = bq_next_entry((void*)bq);
+	switch (rc) {
+	case 0:
+		/* bq is still good, just percolate it */
+		bheap_percolate_top(bheap);
+		return 0;
+	case ENOENT:
+		/* end of this bq --> destroy */
+		bheap_remove_top(bheap);
+		bimgquery_destroy(bq);
+		if (bheap_get_top(bheap) == NULL)
+			/* no more bq in the heap */
+			return ENOENT;
+		return 0;
+	/* For other rc, just return it as-is */
+	}
+
+	return rc;
+}
+
+static
 void extract_routine_by_img(struct bq_store *bq_store, const char *img_store_name)
 {
 	int i, n, rc;
@@ -1164,20 +1275,11 @@ void extract_routine_by_img(struct bq_store *bq_store, const char *img_store_nam
 	struct bhash_entry *hent;
 	struct ptrlist *list;
 	struct ptrlistentry *lent;
-	bq = bimgquery_create(bq_store, host_ids, NULL, ts_begin, ts_end,
-							img_store_name, &rc);
-	if (!bq) {
-		berr("cannot create bquery, rc: %d", rc);
-		exit(-1);
-	}
-	rc = bq_first_entry((void*)bq);
-	if (rc) {
-		berr("bq_first_entry() error, rc: %d", rc);
-		exit(-1);
-	}
+	struct bheap *bheap;
+	bheap = __heap_init(bq_store, img_store_name);
 
 loop:
-	bq_img_entry_get_pixel(bq, &pixel);
+	rc = __heap_get_pixel(bheap, &pixel);
 	hent = bhash_entry_get(ptn2imglist, (void*)&pixel.ptn_id, sizeof(pixel.ptn_id));
 	if (!hent)
 		goto next;
@@ -1195,14 +1297,14 @@ loop:
 
 next:
 	/* next entry */
-	rc = bq_next_entry((void*)bq);
+	rc = __heap_next_entry(bheap);
 	switch (rc) {
 	case 0:
 		goto loop;
 	case ENOENT:
 		break;
 	default:
-		berr("bq_next_entry() error, rc: %d", rc);
+		berr("__heap_next_entry() error, rc: %d", rc);
 	}
 }
 
