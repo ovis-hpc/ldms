@@ -1276,6 +1276,9 @@ void extract_routine_by_img(struct bq_store *bq_store, const char *img_store_nam
 	struct ptrlist *list;
 	struct ptrlistentry *lent;
 	struct bheap *bheap;
+	uint32_t npp = conf_handle->conf->npp;
+	uint32_t spp = conf_handle->conf->spp;
+
 	bheap = __heap_init(bq_store, img_store_name);
 
 loop:
@@ -1285,8 +1288,8 @@ loop:
 		goto next;
 	list = (void*)hent->value;
 	LIST_FOREACH(lent, list, entry) {
-		bassoc_pixel.sec = pixel.sec;
-		bassoc_pixel.comp_id = pixel.comp_id;
+		bassoc_pixel.sec = (pixel.sec / spp) * spp;
+		bassoc_pixel.comp_id = (pixel.comp_id / npp) * npp;
 		bassoc_pixel.count = pixel.count;
 		rc = bassocimg_add_count(lent->ptr, &bassoc_pixel);
 		if (rc) {
@@ -1481,6 +1484,8 @@ void extract_metric_routine()
 	struct bassocimg *img;
 	struct bdstr *bdstr;
 	struct barray *count_buff;
+	uint32_t spp = conf_handle->conf->spp;
+	uint32_t npp = conf_handle->conf->npp;
 
 	bdstr = bdstr_new(256);
 	if (!bdstr) {
@@ -1530,6 +1535,8 @@ void extract_metric_routine()
 			/* time stamp */
 			ts = pxl.sec;
 			sscanf(str, "%u%n", &pxl.sec, &len);
+			pxl.sec /= spp;
+			pxl.sec *= spp;
 			if (ts != pxl.sec) {
 				/* time changed, flush pixels here. */
 				n = barray_get_len(bin_array);
@@ -1546,6 +1553,8 @@ void extract_metric_routine()
 		case 1:
 			/* comp_id */
 			sscanf(str, "%u%n", &pxl.comp_id, &len);
+			pxl.comp_id /= npp;
+			pxl.comp_id *= npp;
 			break;
 		default:
 			sscanf(str, "%lf%n", &value, &len);
