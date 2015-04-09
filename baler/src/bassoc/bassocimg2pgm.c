@@ -6,7 +6,7 @@
 
 void usage()
 {
-	printf("Usage: bassocimg INPUT_FILE OUTPUT_FILE\n");
+	printf("Usage: bassocimg2pgm INPUT_FILE OUTPUT_FILE\n");
 }
 
 struct rgba {
