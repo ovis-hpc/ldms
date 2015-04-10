@@ -594,7 +594,9 @@ window.baler =
             @layerDiv.style.position = "absolute"
 
             @dispDiv = LZH.div({class: "HeatMapDisp"}, @layerDiv, @gridCanvas.domobj)
-            # @dispDiv.style.position = "relative"
+            @dispDiv.style.position = "relative"
+            @dispDiv.style.width = @width + 1
+            @dispDiv.style.height = @height + 1
             @dispDiv.onmousedown = (event) -> _this_.onMouseDown(event)
             @dispDiv.onmouseup = (event) -> _this_.onMouseUp(event)
             @dispDiv.onmousemove = (event) -> _this_.onMouseMove(event)
@@ -757,7 +759,9 @@ window.baler =
             _this_ = this
             name = @dom_input["name"].value
             ptn_ids = @dom_input["ptn_ids"].value
-            idx = @hmap.createLayer(name, ptn_ids, [255, 0, 0])
+            base_color = [255, 0, 0]
+            cv = "#FF0000"
+            idx = @hmap.createLayer(name, ptn_ids, base_color)
             @dom_input["name"].value = ""
             @dom_input["ptn_ids"].value = ""
 
@@ -770,7 +774,11 @@ window.baler =
             rmbtn.layer = @hmap.layers[idx]
             rmbtn.onclick = () -> _this_.onRmBtnClicked(rmbtn)
 
-            li = LZH.li(null, chk, name, ":", ptn_ids, " ", rmbtn)
+            clrbtn = LZH.button(null, "c")
+            clrbtn.layer = @hmap.layers[idx]
+            clrbtn.style.background = cv
+
+            li = LZH.li(null, chk, clrbtn, name, ":", ptn_ids, " ", rmbtn)
 
             rmbtn.li = li
             @dom_layer_list.appendChild(li)

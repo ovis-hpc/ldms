@@ -1,7 +1,7 @@
 t = $("#test")[0]
 t.style.position = "relative"
 
-hmap = window.hmap = new baler.HeatMapDisp(400,400,3600*4,1)
+hmap = window.hmap = new baler.HeatMapDisp(400,400,3600*2,2)
 
 ###
 hmap.createLayer("L1", "128", [255, 0, 0])
@@ -39,8 +39,12 @@ window.hmap2.updateImage()
 
 ###
 
-t.appendChild(hmapCtrl.domobj)
+hmapCtrl.domobj.style.float = "left"
+hmap.domobj.style.float = "left"
+
 t.appendChild(hmap.domobj)
+t.appendChild(hmapCtrl.domobj)
+
 hmap.updateLayers()
 
 0

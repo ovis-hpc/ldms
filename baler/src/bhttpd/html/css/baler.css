@@ -49,9 +49,6 @@
 
 .HeatMapDisp {
 	float: left;
-	border: solid;
-	border-color: grey;
-	border-width: 1px;
 }
 
 .HeatMapFillerDiv {
@@ -62,6 +59,10 @@
 	border-color: green;
 	border-width: 1px;
 	/**/
+}
+
+.HeatMapDispCtrl {
+	padding: 10px;
 }
 
 .baler_Labels {
