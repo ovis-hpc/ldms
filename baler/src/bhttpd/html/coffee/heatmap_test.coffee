@@ -1,7 +1,7 @@
 t = $("#test")[0]
 t.style.position = "relative"
 
-hmap = window.hmap = new baler.HeatMapDisp(400,400,3600*4,1*4)
+hmap = window.hmap = new baler.HeatMapDisp(400,400,3600*2,1*2)
 
 ###
 hmap.createLayer("L1", "128", [255, 0, 0])

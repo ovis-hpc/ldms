@@ -568,6 +568,19 @@ window.baler =
             @offset = offset
             @update()
 
+    GridCanvas: class GridCanvas extends Disp
+        constructor: (@width=400, @height=400, @pxlFactor=10) ->
+            @domobj = LZH.canvas({width: @width+1, height: @height+1})
+            @domobj.style.position = "absolute"
+
+            @ctxt = @domobj.getContext("2d")
+            @ctxt.beginPath()
+            for x in [0..(@width+1)] by @pxlFactor
+                @ctxt.moveTo(x+0.5, 0)
+                @ctxt.lineTo(x+0.5, @height+1)
+                @ctxt.moveTo(0, x+0.5)
+                @ctxt.lineTo(@width+1, x+0.5)
+            @ctxt.stroke()
 
 
     HeatMapDisp: class HeatMapDisp extends Disp
@@ -585,9 +598,8 @@ window.baler =
             ### Layout construction ###
             textWH = 150
 
-            @gridCanvas = LZH.canvas({width: @width, height: @height})
-            @gridCanvas.style.position = "absolute"
-            @layerDiv = LZH.div({class: "HeatMapDisp"}, @gridCanvas)
+            @gridCanvas = new GridCanvas(@width, @height, @pxlFactor)
+            @layerDiv = LZH.div({class: "HeatMapDisp"}, @gridCanvas.domobj)
 
             lblyfn = (y) ->
                 text = "node: #{parseInt(y)}"
