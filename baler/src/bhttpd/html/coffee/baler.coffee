@@ -383,7 +383,7 @@ window.baler =
 
 
     HeatMapLayer: class HeatMapLayer extends Disp
-        constructor: (@width, @height) ->
+        constructor: (@width, @height, @pxlFactor = 10) ->
             _this_ = this
             @name = "Layer"
             @color = "red"
@@ -411,6 +411,8 @@ window.baler =
             @domobj = LZH.canvas({width: width, height: height})
             @domobj.style.position = "absolute"
             @domobj.style.pointerEvents = "none"
+            @domobj.style.width = parseInt(@width * @pxlFactor)
+            @domobj.style.height = parseInt(@height * @pxlFactor)
             @ctxt = @domobj.getContext("2d")
             @pxl = @ctxt.createImageData(1, 1)
             @ptn_ids = ""
@@ -462,23 +464,29 @@ window.baler =
         onMouseMove: (event) ->
             if ! @mouseDown
                 return 0
-            dx = event.pageX - @mouseDownPos.x
-            dy = event.pageY - @mouseDownPos.y
+            x = parseInt(event.pageX / @pxlFactor)
+            y = parseInt(event.pageY / @pxlFactor)
+            dx = x - @mouseDownPos.x
+            dy = y - @mouseDownPos.y
 
             @ctxt.clearRect(0, 0, @width, @height)
             @ctxt.putImageData(@oldImg, dx, dy)
             return 0
 
         onMouseDown: (event) ->
-            @mouseDownPos.x = event.pageX
-            @mouseDownPos.y = event.pageY
+            x = parseInt(event.pageX / @pxlFactor)
+            y = parseInt(event.pageY / @pxlFactor)
+            @mouseDownPos = {x: x, y: y}
             @oldImg = @ctxt.getImageData(0, 0, @width, @height)
             @mouseDown = true
 
         onMouseUp: (event) ->
+            @onMouseMove(event)
             @mouseDown = false
-            dx = event.pageX - @mouseDownPos.x
-            dy = event.pageY - @mouseDownPos.y
+            x = parseInt(event.pageX / @pxlFactor)
+            y = parseInt(event.pageY / @pxlFactor)
+            dx = x - @mouseDownPos.x
+            dy = y - @mouseDownPos.y
             fx = if dx < 0 then @width + dx else 0
             fy = if dy < 0 then @height + dy else 0
             fw = Math.abs(dx)
@@ -494,8 +502,6 @@ window.baler =
 
     Labels: class Labels extends Disp
         constructor: (@width, @height, @nlabels = 4, @labelGetText) ->
-            console.log("width: #{@width}")
-            console.log("height: #{@height}")
             @domobj = LZH.div({class: "baler_Labels"})
             @domobj.style.width = @width
             @domobj.style.height = @height
@@ -510,8 +516,6 @@ window.baler =
                 @domobj.appendChild(label)
                 if @labelGetText
                     label.innerHTML = @labelGetText(top)
-            console.log("width: #{@width}")
-            console.log("height: #{@height}")
 
             @onLabelFlip = null
 
@@ -529,34 +533,78 @@ window.baler =
                             p.innerHTML = @labelGetText(_top)
                 p.style.top = _top
 
+    CanvasLabelV: class CanvasLabelV extends Disp
+        constructor: (@width, @height, @inc, @pxlFactor, @labelTextCb) ->
+            @domobj = LZH.canvas({
+                            class: "baler_Labels",
+                            width: @width,
+                            height: @height})
+            # canvas pixel = logical pixel * pxlFactor
+            # offset is logical
+            @offset = 0
+            @ctxt = @domobj.getContext("2d")
+            @update()
+
+        update: () ->
+            @ctxt.setTransform(1, 0, 0, 1, 0, 0)
+            @ctxt.clearRect(0, 0, @width, @height)
+            coff = parseInt(@offset * @pxlFactor)
+            @ctxt.translate(0, - coff)
+            start = parseInt(@offset / @inc) * @inc
+            h = parseInt(@height / @inc)
+            for y in [0 .. h] by @inc
+                lbl = @labelTextCb(start + y)
+                m = @ctxt.measureText(lbl)
+                yy = start + y
+                x = @width - 20 - m.width
+                cyy = yy * @pxlFactor
+                @ctxt.fillText(lbl, x, cyy + 5)
+                @ctxt.beginPath()
+                @ctxt.moveTo(@width - 15, cyy)
+                @ctxt.lineTo(@width - 5, cyy)
+                @ctxt.stroke()
+
+        setOffset: (offset) ->
+            @offset = offset
+            @update()
+
+
 
     HeatMapDisp: class HeatMapDisp extends Disp
         constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
             @ts_begin = 1425963600
             @node_begin = 1
             @layers = undefined
+            @pxlFactor = 10
+
+            @mouseDown = 0
+            @mouseDownPos = {x: 0, y: 0, ts_begin: @ts_begin}
 
             _this_ = this
 
             ### Layout construction ###
             textWH = 150
 
-            @layerDiv = LZH.div({class: "HeatMapDisp"})
+            @gridCanvas = LZH.canvas({width: @width, height: @height})
+            @gridCanvas.style.position = "absolute"
+            @layerDiv = LZH.div({class: "HeatMapDisp"}, @gridCanvas)
 
-            lblyfn = (top) ->
-                node = _this_.node_begin + top * _this_.npp
-                return "node: #{node} -"
-            lblxfn = (top) ->
-                ts = _this_.ts_begin + top * _this_.spp
-                return "ts: #{ts} -"
+            lblyfn = (y) ->
+                text = "node: #{parseInt(y)}"
+                return text
+            lblxfn = (x) ->
+                ts = x * _this_.spp
+                text = "ts: #{ts}"
+                return text
 
-            @xlabel = new Labels(textWH, @width, 4, lblxfn)
+            @xlabel = new CanvasLabelV(textWH, @width, 10, @pxlFactor, lblxfn)
             @xlabelDiv = @xlabel.domobj
             @xlabelDiv.style.transform = "rotate(-90deg)"
             @xlabelDiv.style.transformOrigin = "0 0 0"
             @xlabelDiv.style.marginTop = textWH
+            @xlabel.setOffset(parseInt(@ts_begin / @spp))
 
-            @ylabel = new Labels(textWH, @height, 4, lblyfn)
+            @ylabel = new CanvasLabelV(textWH, @height, 10, @pxlFactor, lblyfn)
             @ylabelDiv = @ylabel.domobj
 
             @fillerDiv = LZH.div({class: "HeatMapFillerDiv"})
@@ -575,11 +623,11 @@ window.baler =
 
             @layerDescList = []
             @layers = []
-            @mouseDown = 0
-            @mouseDownPos = {x: 0, y: 0}
 
         createLayer: (name, ptn_ids, base_color = [255, 0, 0]) ->
-            layer = new HeatMapLayer(@width, @height)
+            width = parseInt(@width / @pxlFactor)
+            height = parseInt(@height / @pxlFactor)
+            layer = new HeatMapLayer(width, height, @pxlFactor)
             layer.name = name
             layer.base_color = base_color
             layer.ptn_ids = ptn_ids
@@ -600,7 +648,7 @@ window.baler =
             layer = @layers.splice(idx, 1)
             if (!layer)
                 return
-            @domobj.removeChild(layer[0].domobj)
+            @layerDiv.removeChild(layer[0].domobj)
 
         disableLayer: (idx) ->
             @layers[idx].domobj.hidden = 1
@@ -636,6 +684,12 @@ window.baler =
             @mouseDown = true
             @mouseDownPos.x = event.pageX
             @mouseDownPos.y = event.pageY
+            @mouseDownPos.lx = parseInt(event.pageX / @pxlFactor)
+            @mouseDownPos.ly = parseInt(event.pageY / @pxlFactor)
+            @mouseDownPos.ts_begin = @ts_begin
+            @mouseDownPos.node_begin = @node_begin
+            @mouseDownPos.yoffset = @ylabel.offset
+            @mouseDownPos.xoffset = @xlabel.offset
             for l in @layers when !l.domobj.hidden
                 l.onMouseDown(event)
             return 0
@@ -646,14 +700,18 @@ window.baler =
             newMM = {x: event.pageX, y: event.pageY}
             for l in @layers when !l.domobj.hidden
                 l.onMouseMove(event)
-            dx = newMM.x - @MM.x
-            dy = newMM.y - @MM.y
-            ts_begin = @ts_begin - @spp*dx
-            node_begin = @node_begin - @npp*dy
-            @ts_begin = ts_begin
-            @node_begin = node_begin
-            @ylabel.move(dy)
-            @xlabel.move(dx)
+            lx = parseInt(event.pageX / @pxlFactor)
+            ly = parseInt(event.pageY / @pxlFactor)
+            dx = newMM.x - @mouseDownPos.x
+            dy = newMM.y - @mouseDownPos.y
+            dlx = lx - @mouseDownPos.lx
+            dly = ly - @mouseDownPos.ly
+            @ts_begin = @mouseDownPos.ts_begin - @spp*dlx
+            @node_begin = @mouseDownPos.node_begin - @npp*dly
+            xoffset = parseInt(@ts_begin / @spp)
+            yoffset = parseInt(@node_begin / @npp)
+            @xlabel.setOffset(xoffset)
+            @ylabel.setOffset(yoffset)
             @MM = newMM
             return 0
 
@@ -724,7 +782,6 @@ window.baler =
             idx = @hmap.layers.indexOf(btn.layer)
             @dom_layer_list.removeChild(btn.li)
             @hmap.destroyLayer(idx)
-            console.log("idx: #{idx}")
 
 
     Parent: class Parent
