@@ -394,9 +394,6 @@ window.baler =
             @npp = 1 # Node per pixel
             @spp = 3600 # seconds per pixel
             @mouseDown = false
-            @mouseDownPos =
-                x: undefined
-                y: undefined
             @oldImg = undefined
             @ptn_ids = undefined
             @bound =
@@ -461,38 +458,32 @@ window.baler =
             )
             return 0
 
-        onMouseMove: (event) ->
+        onMouseMove: (lx, ly) ->
             if ! @mouseDown
                 return 0
-            x = parseInt(event.pageX / @pxlFactor)
-            y = parseInt(event.pageY / @pxlFactor)
-            dx = x - @mouseDownPos.x
-            dy = y - @mouseDownPos.y
+            dlx = lx - @mouseDownPos.lx
+            dly = ly - @mouseDownPos.ly
 
             @ctxt.clearRect(0, 0, @width, @height)
-            @ctxt.putImageData(@oldImg, dx, dy)
+            @ctxt.putImageData(@oldImg, dlx, dly)
             return 0
 
-        onMouseDown: (event) ->
-            x = parseInt(event.pageX / @pxlFactor)
-            y = parseInt(event.pageY / @pxlFactor)
-            @mouseDownPos = {x: x, y: y}
+        onMouseDown: (lx, ly) ->
+            @mouseDownPos = {lx: lx, ly: ly}
             @oldImg = @ctxt.getImageData(0, 0, @width, @height)
             @mouseDown = true
 
-        onMouseUp: (event) ->
-            @onMouseMove(event)
+        onMouseUp: (lx, ly) ->
+            @onMouseMove(lx, ly)
             @mouseDown = false
-            x = parseInt(event.pageX / @pxlFactor)
-            y = parseInt(event.pageY / @pxlFactor)
-            dx = x - @mouseDownPos.x
-            dy = y - @mouseDownPos.y
-            fx = if dx < 0 then @width + dx else 0
-            fy = if dy < 0 then @height + dy else 0
-            fw = Math.abs(dx)
-            fh = Math.abs(dy)
-            ts_begin = @ts_begin - @spp*dx
-            node_begin = @node_begin - @npp*dy
+            dlx = lx - @mouseDownPos.lx
+            dly = ly - @mouseDownPos.ly
+            fx = if dlx < 0 then @width + dlx else 0
+            fy = if dly < 0 then @height + dly else 0
+            fw = Math.abs(dlx)
+            fh = Math.abs(dly)
+            ts_begin = @ts_begin - @spp*dlx
+            node_begin = @node_begin - @npp*dly
             @ts_begin = ts_begin
             @node_begin = node_begin
             if fw
@@ -558,10 +549,10 @@ window.baler =
                 yy = start + y
                 x = @width - 20 - m.width
                 cyy = yy * @pxlFactor
-                @ctxt.fillText(lbl, x, cyy + 5)
+                @ctxt.fillText(lbl, x, cyy)
                 @ctxt.beginPath()
-                @ctxt.moveTo(@width - 15, cyy)
-                @ctxt.lineTo(@width - 5, cyy)
+                @ctxt.moveTo(@width - 15, cyy - 5)
+                @ctxt.lineTo(@width - 5, cyy - 5)
                 @ctxt.stroke()
 
         setOffset: (offset) ->
@@ -599,7 +590,14 @@ window.baler =
             textWH = 150
 
             @gridCanvas = new GridCanvas(@width, @height, @pxlFactor)
-            @layerDiv = LZH.div({class: "HeatMapDisp"}, @gridCanvas.domobj)
+            @layerDiv = LZH.div()
+            @layerDiv.style.position = "absolute"
+
+            @dispDiv = LZH.div({class: "HeatMapDisp"}, @layerDiv, @gridCanvas.domobj)
+            # @dispDiv.style.position = "relative"
+            @dispDiv.onmousedown = (event) -> _this_.onMouseDown(event)
+            @dispDiv.onmouseup = (event) -> _this_.onMouseUp(event)
+            @dispDiv.onmousemove = (event) -> _this_.onMouseMove(event)
 
             lblyfn = (y) ->
                 text = "node: #{parseInt(y)}"
@@ -623,15 +621,7 @@ window.baler =
             @fillerDiv.style.width = textWH
             @fillerDiv.style.height = textWH
 
-            # The div for layers
-            @layerDiv.style.position = "relative"
-            @layerDiv.style.width = @width
-            @layerDiv.style.height = @height
-            @layerDiv.onmousedown = (event) -> _this_.onMouseDown(event)
-            @layerDiv.onmouseup = (event) -> _this_.onMouseUp(event)
-            @layerDiv.onmousemove = (event) -> _this_.onMouseMove(event)
-
-            @domobj = LZH.div(null , @ylabelDiv, @layerDiv, @fillerDiv, @xlabelDiv)
+            @domobj = LZH.div(null , @ylabelDiv, @dispDiv, @fillerDiv, @xlabelDiv)
 
             @layerDescList = []
             @layers = []
@@ -676,7 +666,10 @@ window.baler =
         onMouseUp: (event) ->
             if not @mouseDown
                 return
+            @onMouseMove(event)
             @mouseDown = false
+            lx = parseInt(event.pageX / @pxlFactor)
+            ly = parseInt(event.pageY / @pxlFactor)
             ###
             dx = event.pageX - @mouseDownPos.x
             dy = event.pageY - @mouseDownPos.y
@@ -686,45 +679,44 @@ window.baler =
             @node_begin = node_begin
             ###
             for l in @layers when !l.domobj.hidden
-                l.onMouseUp(event)
+                l.onMouseUp(lx, ly)
             return 0
 
         onMouseDown: (event) ->
             if @mouseDown
                 return
-            @MM = {x: event.pageX, y: event.pageY}
             @mouseDown = true
+            lx = parseInt(event.pageX / @pxlFactor)
+            ly = parseInt(event.pageY / @pxlFactor)
             @mouseDownPos.x = event.pageX
             @mouseDownPos.y = event.pageY
-            @mouseDownPos.lx = parseInt(event.pageX / @pxlFactor)
-            @mouseDownPos.ly = parseInt(event.pageY / @pxlFactor)
+            @mouseDownPos.lx = lx
+            @mouseDownPos.ly = ly
             @mouseDownPos.ts_begin = @ts_begin
             @mouseDownPos.node_begin = @node_begin
             @mouseDownPos.yoffset = @ylabel.offset
             @mouseDownPos.xoffset = @xlabel.offset
             for l in @layers when !l.domobj.hidden
-                l.onMouseDown(event)
+                l.onMouseDown(lx, ly)
             return 0
 
         onMouseMove: (event) ->
             if not @mouseDown
                 return 0
-            newMM = {x: event.pageX, y: event.pageY}
-            for l in @layers when !l.domobj.hidden
-                l.onMouseMove(event)
             lx = parseInt(event.pageX / @pxlFactor)
             ly = parseInt(event.pageY / @pxlFactor)
-            dx = newMM.x - @mouseDownPos.x
-            dy = newMM.y - @mouseDownPos.y
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
+            for l in @layers when !l.domobj.hidden
+                l.onMouseMove(lx, ly)
             @ts_begin = @mouseDownPos.ts_begin - @spp*dlx
             @node_begin = @mouseDownPos.node_begin - @npp*dly
             xoffset = parseInt(@ts_begin / @spp)
             yoffset = parseInt(@node_begin / @npp)
+            yoffset -= (@node_begin < 0)
+
             @xlabel.setOffset(xoffset)
             @ylabel.setOffset(yoffset)
-            @MM = newMM
             return 0
 
         updateLayers: (x=0, y=0, width=@width, height=@height) ->
