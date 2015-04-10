@@ -65,6 +65,13 @@
 	padding: 10px;
 }
 
+.HeatMapLayer {
+    /* image-rendering: optimizeSpeed; */
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    /* image-rendering: optimize-contrast; */
+}
+
 .baler_Labels {
 	position: relative;
 	float: left;
@@ -77,4 +84,38 @@
 
 .baler_Labels span {
 	position: absolute;
+}
+
+.ColorPicker input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: -webkit-gradient(linear, left top, right top,
+        color-stop(0%, rgba(255, 0, 0, 1)),
+        color-stop(16%, rgba(255, 255, 0, 1)),
+        color-stop(32%, rgba(0, 255, 0, 1)),
+        color-stop(48%, rgba(0, 255, 255, 1)),
+        color-stop(64%, rgba(0, 0, 255, 1)),
+        color-stop(80%, rgba(255, 0, 255, 1)),
+        color-stop(96%, rgba(255, 0, 0, 1))
+    );
+    vertical-align: middle;
+}
+
+.ColorBox {
+	padding-right: 1em;
+}
+
+.ColorPicker input[type=range]::-moz-range-track {
+    height: 3px;
+    background: -moz-linear-gradient(0deg,
+        rgba(255, 0, 0, 1) 0%,
+        rgba(255, 255, 0, 1) 16%,
+        rgba(0, 255, 0, 1) 32%,
+        rgba(0, 255, 255, 1) 48%,
+        rgba(0, 0, 255, 1) 64%,
+        rgba(255, 0, 255, 1) 80%,
+        rgba(255, 0, 0, 1) 96%
+    );
+    vertical-align: middle;
 }

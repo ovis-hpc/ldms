@@ -405,7 +405,7 @@ window.baler =
                     max: null
             @base_color = [255, 0, 0]
 
-            @domobj = LZH.canvas({width: width, height: height})
+            @domobj = LZH.canvas({class: "HeatMapLayer", width: width, height: height})
             @domobj.style.position = "absolute"
             @domobj.style.pointerEvents = "none"
             @domobj.style.width = parseInt(@width * @pxlFactor)
@@ -413,6 +413,11 @@ window.baler =
             @ctxt = @domobj.getContext("2d")
             @pxl = @ctxt.createImageData(1, 1)
             @ptn_ids = ""
+
+        setHue: (hue) ->
+            @base_color = baler.hue2rgb(hue)
+            @clearImage()
+            @updateImage()
 
         updateImageCb: (_data, textStatus, jqXHR, ts0, n0, _w, _h) ->
             img = @ctxt.createImageData(_w, _h)
@@ -648,6 +653,10 @@ window.baler =
             layer.domobj.setAttribute("name", name)
             return @layers.length - 1
 
+        setLayerHue: (idx, hue) ->
+            layer = @layers[idx]
+            layer.setHue(hue)
+
         destroyLayer: (idx) ->
             layer = @layers.splice(idx, 1)
             if (!layer)
@@ -759,9 +768,8 @@ window.baler =
             _this_ = this
             name = @dom_input["name"].value
             ptn_ids = @dom_input["ptn_ids"].value
-            base_color = [255, 0, 0]
-            cv = "#FF0000"
-            idx = @hmap.createLayer(name, ptn_ids, base_color)
+            hue = 0
+            idx = @hmap.createLayer(name, ptn_ids, baler.hue2rgb(hue))
             @dom_input["name"].value = ""
             @dom_input["ptn_ids"].value = ""
 
@@ -774,14 +782,15 @@ window.baler =
             rmbtn.layer = @hmap.layers[idx]
             rmbtn.onclick = () -> _this_.onRmBtnClicked(rmbtn)
 
-            clrbtn = LZH.button(null, "c")
-            clrbtn.layer = @hmap.layers[idx]
-            clrbtn.style.background = cv
+            cpick = new ColorPicker(hue, (hue) -> _this_.onPickerHueChange(hue, idx))
 
-            li = LZH.li(null, chk, clrbtn, name, ":", ptn_ids, " ", rmbtn)
+            li = LZH.li(null, chk, cpick.domobj, name, ":", ptn_ids, " ", rmbtn)
 
             rmbtn.li = li
             @dom_layer_list.appendChild(li)
+
+        onPickerHueChange: (hue, idx) ->
+            @hmap.setLayerHue(idx, hue)
 
         onLayerCheckChange: (chk) ->
             idx = @hmap.layers.indexOf(chk.layer)
@@ -795,6 +804,61 @@ window.baler =
             @dom_layer_list.removeChild(btn.li)
             @hmap.destroyLayer(idx)
 
+    hue2rgb: (hue) ->
+        hue %= 360
+        h = hue/60
+        c = 255
+        x = (1 - Math.abs(h%2-1))*255
+        i = Math.floor(h)
+        return switch (i)
+            when 0
+                return [c, x, 0]
+            when 1
+                return [x, c, 0]
+            when 2
+                return [0, c, x]
+            when 3
+                return [0, x, c]
+            when 4
+                return [x, 0, c]
+            when 5
+                return [c, 0, x]
+
+    hue2hex: (hue) ->
+        return baler.rgb2hex(baler.hue2rgb(hue))
+
+    rgb2hex: (rgb) ->
+        s = (("0#{parseInt(x).toString(16)}").slice(-2) for x in rgb)
+        str = "##{s[0]}#{s[1]}#{s[2]}"
+        return str
+
+    ColorPicker: class ColorPicker extends Disp
+        constructor: (@hue, @colorSetCb) ->
+            _this_ = this
+            @box = LZH.span({class: "ColorBox"}, " ")
+            @input = LZH.input({type: "range", value: "0", min: "0", max: "100"})
+            @domobj = LZH.span({class: "ColorPicker"}, @box, LZH.span({}, @input))
+            @setBoxColor(@hue)
+            @input.oninput = () -> _this_.oninput()
+            @input.onchange = () -> _this_.onchange()
+
+        oninput: () ->
+            v = @input.value
+            hue = parseInt(360 * (v / 96))
+            @setBoxColor(hue)
+
+        onchange: () ->
+            window.ccb = @colorSetCb
+            if not @colorSetCb
+                return
+            v = @input.value
+            hue = parseInt(360 * (v / 96))
+            @colorSetCb(hue)
+
+        setBoxColor: (hue) ->
+            @hue = hue
+            color = baler.hue2hex(hue)
+            @box.style.backgroundColor = color
 
     Parent: class Parent
         constructor: (@name) ->
