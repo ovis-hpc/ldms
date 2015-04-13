@@ -383,12 +383,10 @@ window.baler =
 
 
     HeatMapLayer: class HeatMapLayer extends Disp
-        constructor: (@width, @height, @pxlFactor = 10) ->
+        constructor: (@width, @height, @pxlFactor = 10, @ts_begin, @node_begin) ->
             _this_ = this
             @name = "Layer"
             @color = "red"
-            @ts_begin = 1425963600
-            @node_begin = 1
             @ctxt = undefined
             @pxl = undefined
             @npp = 1 # Node per pixel
@@ -416,7 +414,6 @@ window.baler =
 
         setHue: (hue) ->
             @base_color = baler.hue2rgb(hue)
-            @clearImage()
             @updateImage()
 
         updateImageCb: (_data, textStatus, jqXHR, ts0, n0, _w, _h) ->
@@ -440,10 +437,11 @@ window.baler =
 
         updateImage: (_x = 0, _y = 0, _width = @width, _height = @height) ->
             _this_ = this
+            @clearImage(_x, _y, _width, _height)
             ts0 = @ts_begin + @spp*_x
             ts1 = ts0 + @spp*_width
             n0 = @node_begin + @npp*_y
-            n0 = 1 if n0 < 1
+            n0 = 0 if n0 < 0
             n1 = n0 + @npp*_height
             baler.query_img({
                     type: "img2",
@@ -554,10 +552,10 @@ window.baler =
                 yy = start + y
                 x = @width - 20 - m.width
                 cyy = yy * @pxlFactor
-                @ctxt.fillText(lbl, x, cyy)
+                @ctxt.fillText(lbl, x, cyy + 10)
                 @ctxt.beginPath()
-                @ctxt.moveTo(@width - 15, cyy - 5)
-                @ctxt.lineTo(@width - 5, cyy - 5)
+                @ctxt.moveTo(@width - 15, cyy + 5)
+                @ctxt.lineTo(@width - 5, cyy + 5)
                 @ctxt.stroke()
 
         setOffset: (offset) ->
@@ -576,15 +574,18 @@ window.baler =
                 @ctxt.lineTo(x+0.5, @height+1)
                 @ctxt.moveTo(0, x+0.5)
                 @ctxt.lineTo(@width+1, x+0.5)
+            @ctxt.strokeStyle = "#AAA"
             @ctxt.stroke()
 
 
     HeatMapDisp: class HeatMapDisp extends Disp
         constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
-            @ts_begin = 1425963600
-            @node_begin = 1
+            @ts_begin = parseInt(1425963600 / @spp) * @spp
+            @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
             @pxlFactor = 10
+
+            @offsetChangeCb = []
 
             @mouseDown = 0
             @mouseDownPos = {x: 0, y: 0, ts_begin: @ts_begin}
@@ -607,7 +608,7 @@ window.baler =
             @dispDiv.onmousemove = (event) -> _this_.onMouseMove(event)
 
             lblyfn = (y) ->
-                text = "node: #{parseInt(y)}"
+                text = "node: #{parseInt(y*_this_.npp)}"
                 return text
             lblxfn = (x) ->
                 ts = x * _this_.spp
@@ -636,7 +637,7 @@ window.baler =
         createLayer: (name, ptn_ids, base_color = [255, 0, 0]) ->
             width = parseInt(@width / @pxlFactor)
             height = parseInt(@height / @pxlFactor)
-            layer = new HeatMapLayer(width, height, @pxlFactor)
+            layer = new HeatMapLayer(width, height, @pxlFactor, @ts_begin, @node_begin)
             layer.name = name
             layer.base_color = base_color
             layer.ptn_ids = ptn_ids
@@ -668,9 +669,10 @@ window.baler =
 
         enableLayer: (idx) ->
             layer = @layers[idx]
-            layer.clearImage()
             layer.ts_begin = @ts_begin
             layer.node_begin = @node_begin
+            layer.npp = @npp
+            layer.spp = @spp
             layer.updateImage()
             layer.domobj.hidden = false
 
@@ -724,18 +726,94 @@ window.baler =
             @node_begin = @mouseDownPos.node_begin - @npp*dly
             xoffset = parseInt(@ts_begin / @spp)
             yoffset = parseInt(@node_begin / @npp)
-            yoffset -= (@node_begin < 0)
+            #yoffset -= (@node_begin < 0)
 
             @xlabel.setOffset(xoffset)
             @ylabel.setOffset(yoffset)
+
+            @fireOffsetChange()
             return 0
+
+        # Fire offset change event
+        fireOffsetChange: () ->
+            for cb in @offsetChangeCb
+                cb(@ts_begin, @node_begin)
+
+        registerOffsetChangeCb: (cb) ->
+            @offsetChangeCb.push(cb)
 
         updateLayers: (x=0, y=0, width=@width, height=@height) ->
             for l in @layers when !l.domobj.hidden
                 l.updateImage(x, y, width, height)
             return 0
 
+        setNavParam: (@ts_begin, @node_begin, @spp, @npp) ->
+            for l in @layers
+                l.ts_begin = ts_begin
+                l.node_begin = node_begin
+                l.spp = spp
+                l.npp = npp
+
+            xoffset = parseInt(@ts_begin / @spp)
+            yoffset = parseInt(@node_begin / @npp)
+            @xlabel.setOffset(xoffset)
+            @ylabel.setOffset(yoffset)
+
+            @updateLayers()
+
     HeatMapDispCtrl: class HeatMapDispCtrl extends Disp
+        constructor: (@hmap) ->
+            @navCtrl = new HeatMapNavCtrl(@hmap)
+            @layerCtrl = new HeatMapLayerCtrl(@hmap)
+            @domobj = LZH.div({class: "HeatMapDispCtrl"}, @navCtrl.domobj, @layerCtrl.domobj)
+
+    HeatMapNavCtrl: class HeatMapNavCtrl extends Disp
+        constructor: (@hmap) ->
+            @dom_input_template =
+                nav_ts: ["ts: ", "Secons since epoch (e.g. 1428942308)", "baler_nav_ts"]
+                nav_node: ["comp_id: ", "component id (e.g. 2)", "baler_nav_node"]
+                spp: ["sec-per-pixel: ", "Number of seconds/pixel (default: 3600)", "baler_nav_spp"]
+                npp: ["node-per-pixel: ", "Number of nodes/pixel (default: 1)", "baler_nav_npp"]
+
+            _this_ = this
+            ul = LZH.ul({style: "list-style: none"})
+            @dom_input = {}
+            for k, [lbl, plc, id] of @dom_input_template
+                inp = @dom_input[k] = LZH.input({id: id})
+                inp.placeholder = plc
+                li = LZH.li(null, LZH.span(class: "HeatMapNavCtrlLabel", lbl), inp)
+                ul.appendChild(li)
+
+            @dom_input.nav_ts.value = @hmap.ts_begin
+            @dom_input.nav_node.value = @hmap.node_begin
+            @dom_input.spp.value = @hmap.spp
+            @dom_input.npp.value = @hmap.npp
+
+            @nav_btn = LZH.button(null, "nav-apply")
+            ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @nav_btn))
+            @domobj = LZH.div({class: "HeatMapNavCtrl"}, ul)
+            @nav_btn.onclick = (e) ->
+                _this_.onNavApply()
+            @hmap.registerOffsetChangeCb((ts, comp) -> _this_.onOffsetChange(ts, comp))
+
+        onNavApply: (ts, comp_id, spp,npp) ->
+            input = @dom_input
+            ts = input.nav_ts.value
+            comp_id = input.nav_node.value
+            spp = input.spp.value
+            npp = input.npp.value
+            ts = parseInt(ts/spp)*spp
+            comp_id = parseInt(comp_id/npp)*npp
+            input.nav_ts.value = ts
+            input.nav_node.value = comp_id
+            @hmap.setNavParam(ts, comp_id, spp, npp)
+
+        onOffsetChange: (ts_begin, node_begin) ->
+            @dom_input.nav_ts.value = ts_begin
+            @dom_input.nav_node.value = node_begin
+
+
+    HeatMapLayerCtrl: class HeatMapLayerCtrl extends Disp
         constructor: (@hmap) ->
             @dom_input_label_placeholder =
                 name: ["Layer name: ", "Any name ...", "layer_name"]
@@ -747,20 +825,21 @@ window.baler =
 
             _this_ = this
             @dom_input = {}
-            @domobj = LZH.div({class: "HeatMapDispCtrl"})
+            @domobj = LZH.div({class: "HeatMapLayerCtrl"})
             ul = LZH.ul({style: "list-style: none"})
             for k,[lbl,plc, id] of @dom_input_label_placeholder
                 inp = @dom_input[k] = LZH.input({id: id})
                 inp.placeholder = plc
-                li = LZH.li(null, lbl, inp)
+                li = LZH.li(null, LZH.span(class: "HeatMapLayerCtrlLabel", lbl), inp)
                 ul.appendChild(li)
             @dom_add_btn = LZH.button(null, "add")
             @dom_add_btn.onclick = () -> _this_.onAddBtnClick()
+            ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapLayerCtrlLabel"}), @dom_add_btn))
+
             @dom_layer_list = LZH.ul({style: "list-style: none"})
 
             # Laying out the component
             @domobj.appendChild(ul)
-            @domobj.appendChild(@dom_add_btn)
             @domobj.appendChild(@dom_layer_list)
             return this
 

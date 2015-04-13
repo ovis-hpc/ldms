@@ -119,3 +119,17 @@
     );
     vertical-align: middle;
 }
+
+.HeatMapNavCtrl input, .HeatMapLayerCtrl input {
+	border-top: none;
+	border-left: none;
+	border-right: none;
+}
+
+.HeatMapNavCtrlLabel, .HeatMapLayerCtrlLabel {
+	/* float: left; */
+	display: inline-block;
+	width: 7em;
+	text-align: right;
+	padding-right: 0.5em;
+}

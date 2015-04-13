@@ -8,7 +8,7 @@ hmap.createLayer("L1", "128", [255, 0, 0])
 hmap.createLayer("L2", "129", [0, 0, 255])
 ###
 
-hmapCtrl = new baler.HeatMapDispCtrl(hmap)
+window.hmapCtrl = new baler.HeatMapDispCtrl(hmap)
 
 ###
 hmap = window.hmap = new baler.HeatMapDisp(400, 400)
