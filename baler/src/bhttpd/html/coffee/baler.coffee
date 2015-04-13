@@ -406,8 +406,8 @@ window.baler =
             @domobj = LZH.canvas({class: "HeatMapLayer", width: width, height: height})
             @domobj.style.position = "absolute"
             @domobj.style.pointerEvents = "none"
-            @domobj.style.width = parseInt(@width * @pxlFactor)
-            @domobj.style.height = parseInt(@height * @pxlFactor)
+            @domobj.style.width = "#{parseInt(@width * @pxlFactor)}px"
+            @domobj.style.height = "#{parseInt(@height * @pxlFactor)}px"
             @ctxt = @domobj.getContext("2d")
             @pxl = @ctxt.createImageData(1, 1)
             @ptn_ids = ""
@@ -494,39 +494,6 @@ window.baler =
             if fh
                 @updateImage(0, fy, @width, fh)
 
-    Labels: class Labels extends Disp
-        constructor: (@width, @height, @nlabels = 4, @labelGetText) ->
-            @domobj = LZH.div({class: "baler_Labels"})
-            @domobj.style.width = @width
-            @domobj.style.height = @height
-            @labels = []
-            @innerHeight = @height - 20
-            for i in [1..@nlabels]
-                label = LZH.span({}, "test #{i} -")
-                top = (i - 1)/(@nlabels) * (@innerHeight)
-                label.style.top = top
-                label.style.right = 5
-                @labels.push(label)
-                @domobj.appendChild(label)
-                if @labelGetText
-                    label.innerHTML = @labelGetText(top)
-
-            @onLabelFlip = null
-
-        move: (displacement) ->
-            for p in @domobj.children
-                _top = parseInt(p.style.top) + displacement
-                switch
-                    when _top < 0
-                        _top = @innerHeight + _top
-                        if @labelGetText
-                            p.innerHTML = @labelGetText(_top)
-                    when @innerHeight < _top
-                        _top = _top % @innerHeight
-                        if @labelGetText
-                            p.innerHTML = @labelGetText(_top)
-                p.style.top = _top
-
     CanvasLabelV: class CanvasLabelV extends Disp
         constructor: (@width, @height, @inc, @pxlFactor, @labelTextCb) ->
             @domobj = LZH.canvas({
@@ -601,8 +568,8 @@ window.baler =
 
             @dispDiv = LZH.div({class: "HeatMapDisp"}, @layerDiv, @gridCanvas.domobj)
             @dispDiv.style.position = "relative"
-            @dispDiv.style.width = @width + 1
-            @dispDiv.style.height = @height + 1
+            @dispDiv.style.width = "#{@width + 1}px"
+            @dispDiv.style.height = "#{@height + 1}px"
             @dispDiv.onmousedown = (event) -> _this_.onMouseDown(event)
             @dispDiv.onmouseup = (event) -> _this_.onMouseUp(event)
             @dispDiv.onmousemove = (event) -> _this_.onMouseMove(event)
@@ -619,15 +586,15 @@ window.baler =
             @xlabelDiv = @xlabel.domobj
             @xlabelDiv.style.transform = "rotate(-90deg)"
             @xlabelDiv.style.transformOrigin = "0 0 0"
-            @xlabelDiv.style.marginTop = textWH
+            @xlabelDiv.style.marginTop = "#{textWH}px"
             @xlabel.setOffset(parseInt(@ts_begin / @spp))
 
             @ylabel = new CanvasLabelV(textWH, @height, 10, @pxlFactor, lblyfn)
             @ylabelDiv = @ylabel.domobj
 
             @fillerDiv = LZH.div({class: "HeatMapFillerDiv"})
-            @fillerDiv.style.width = textWH
-            @fillerDiv.style.height = textWH
+            @fillerDiv.style.width = "#{textWH}px"
+            @fillerDiv.style.height = "#{textWH}px"
 
             @domobj = LZH.div(null , @ylabelDiv, @dispDiv, @fillerDiv, @xlabelDiv)
 
