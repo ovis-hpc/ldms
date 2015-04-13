@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2008 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2008-2015 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -74,7 +74,7 @@ struct rbn {
 void rbn_init(struct rbn *n, void *key);
 
 /* Comparator callback provided for insert and search operations */
-typedef int (*rbn_comparator_t)(void *tree_key, void *key);
+typedef int (*rbn_comparator_t)(void *tree_key, const void *key);
 
 /* Processor for each node during traversal. */
 typedef int (*rbn_node_fn)(struct rbn *, void *, int);
@@ -88,11 +88,13 @@ void rbt_init(struct rbt *t, rbn_comparator_t c);
 int rbt_empty(struct rbt *t);
 struct rbn *rbt_least_gt_or_eq(struct rbn *n);
 struct rbn *rbt_greatest_lt_or_eq(struct rbn *n);
-struct rbn *rbt_find_least_gt_or_eq(struct rbt *rbt, void *key);
-struct rbn *rbt_find_greatest_lt_or_eq(struct rbt *rbt, void *key);
-struct rbn *rbt_find(struct rbt *t, void *k);
+struct rbn *rbt_find_lub(struct rbt *rbt, const void *key);
+struct rbn *rbt_find_glb(struct rbt *rbt, const void *key);
+struct rbn *rbt_find(struct rbt *t, const void *k);
 struct rbn *rbt_min(struct rbt *t);
 struct rbn *rbt_max(struct rbt *t);
+struct rbn *rbn_succ(struct rbn *n);
+struct rbn *rbn_pred(struct rbn *n);
 void rbt_ins(struct rbt *t, struct rbn *n);
 void rbt_del(struct rbt *t, struct rbn *n);
 int rbt_traverse(struct rbt *t, rbn_node_fn f, void *fn_data);
@@ -101,12 +103,10 @@ int rbt_is_leaf(struct rbn *n);
 /* C standard since c89 */
 #define offsetof(type,member) ((size_t) &((type *)0)->member)
 #endif
-
-#ifndef container_of
+/* from linux kernel */
 #define container_of(ptr, type, member) ({ \
 	const __typeof__(((type *)0)->member ) *__mptr = (ptr); \
 	(type *)((char *)__mptr - offsetof(type,member));})
-#endif
 
 #ifdef __cplusplus
 }

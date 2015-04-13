@@ -81,12 +81,12 @@ typedef struct mm_region {
 	struct rbt addr_tree;
 } *mm_region_t;
 
-static int compare_count(void *node_key, void *val_key)
+static int compare_count(void *node_key, const void *val_key)
 {
 	return (int)(*(size_t *)node_key) - (*(size_t *)val_key);
 }
 
-static int compare_addr(void *node_key, void *val_key)
+static int compare_addr(void *node_key, const void *val_key)
 {
 	return (int)(*(char **)node_key - *(char **)val_key);
 }
@@ -159,7 +159,7 @@ void *mm_alloc(size_t size)
 	size = MMR_ROUNDUP(size, mmr->grain);
 	count = size >> mmr->grain_bits;
 
-	rbn = rbt_find_least_gt_or_eq(&mmr->size_tree, &count);
+	rbn = rbt_find_lub(&mmr->size_tree, &count);
 	if (!rbn)
 		return NULL;
 
@@ -195,7 +195,7 @@ void mm_free(void *d)
 	p --;
 
 	/* See if we can coalesce with our lesser sibling */
-	rbn = rbt_find_greatest_lt_or_eq(&mmr->addr_tree, &p->pfx);
+	rbn = rbt_find_glb(&mmr->addr_tree, &p->pfx);
 	if (rbn) {
 		q = container_of(rbn, struct mm_prefix, addr_node);
 
@@ -213,7 +213,7 @@ void mm_free(void *d)
 	}
 
 	/* See if we can coalesce with our greater sibling */
-	rbn = rbt_find_least_gt_or_eq(&mmr->addr_tree, &p->pfx);
+	rbn = rbt_find_lub(&mmr->addr_tree, &p->pfx);
 	if (rbn) {
 		q = container_of(rbn, struct mm_prefix, addr_node);
 
