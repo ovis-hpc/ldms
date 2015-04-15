@@ -255,6 +255,18 @@ struct bstr *bstr_dup(const struct bstr *b)
 }
 
 /**
+ * A macro for defining new BVEC type.
+ * \param name The name of the newly define BVEC type.
+ * \param type The type of the data.
+ */
+#define BVEC_DEF(name, type) \
+	struct __attribute__((packed)) name { \
+		uint64_t alloc_len; \
+		uint64_t len; \
+		type data[0]; \
+	}
+
+/**
  * Generic bvec structure (using char[] as data array).
  *
  * \note len and alloc_len are in "number of elements" not "bytes".
@@ -263,33 +275,21 @@ struct bstr *bstr_dup(const struct bstr *b)
  * \note bvec_* are meant to use with bmvec_* as data can grow deliberately
  * 	in a file. To use in-memory dynamic array, please use ::barray.
  */
-struct __attribute__((packed)) bvec_generic {
-	uint32_t alloc_len;
-	uint32_t len;
-	char data[0];
-};
+BVEC_DEF(bvec_generic, char);
 
 /**
  * \brief Baler vector structure for u32.
  * \note bvec_* are meant to use with bmvec_* as data can grow deliberately
  * 	in a file. To use in-memory dynamic array, please use ::barray.
  */
-struct __attribute__((packed)) bvec_u32 {
-	uint32_t alloc_len; ///< The number of allocated cells.
-	uint32_t len; ///< The number of occupied cells.
-	uint32_t data[0];
-};
+BVEC_DEF(bvec_u32, uint32_t);
 
 /**
  * \brief Baler vector structure for u64.
  * \note bvec_* are meant to use with bmvec_* as data can grow deliberately
  * 	in a file. To use in-memory dynamic array, please use ::barray.
  */
-struct __attribute__((packed)) bvec_u64 {
-	uint32_t alloc_len; ///< The number of allocated cells.
-	uint32_t len; ///< The number of occupied cells.
-	uint64_t data[0];
-};
+BVEC_DEF(bvec_u64, uint64_t);
 
 /**
  * Convenient function for bvec allocation.
@@ -300,18 +300,6 @@ static inline
 void* bvec_generic_alloc(uint32_t alloc_len, uint32_t elm_size) {
 	return malloc(sizeof(struct bvec_generic) + alloc_len*elm_size);
 }
-
-/**
- * A macro for defining new BVEC type.
- * \param name The name of the newly define BVEC type.
- * \param type The type of the data.
- */
-#define BVEC_DEF(name, type) \
-	struct __attribute((packed)) name { \
-		uint32_t alloc_len; \
-		uint32_t len; \
-		type data[0]; \
-	};
 
 /**
  * \brief Baler vector structure for char.
