@@ -57,6 +57,7 @@ dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_ENABLE([kgnilnd], [ENABLE_KGNILND])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
+OPTION_DEFAULT_ENABLE([slurmjobid], [ENABLE_SLURMJOBID])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_ENABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
@@ -371,6 +372,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 scripts/ldms_ban.sh
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh
+		 scripts/ldms_local_slurmtest.sh
 		 scripts/ldms_local_valgrind.sh
 		 scripts/ldms_local_clocktest.sh
 		 scripts/ldms_local_inspxe.sh
@@ -386,6 +388,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		if test -f scripts/ldms_ban.sh.in; then chmod a+x scripts/ldms_ban.sh.in; fi
 		if test -f scripts/ldms_ctltest.sh; then chmod a+x scripts/ldms_ctltest.sh; fi
 		if test -f scripts/ldms_usertest.sh; then chmod a+x scripts/ldms_usertest.sh; fi
+		if test -f scripts/ldms_local_slurmtest.sh; then chmod a+x scripts/ldms_local_slurmtest.sh; fi
 		if test -f scripts/ldms_local_usertest.sh; then chmod a+x scripts/ldms_local_usertest.sh; fi
 		if test -f scripts/ldms_local_valgrind.sh; then chmod a+x scripts/ldms_local_valgrind.sh; fi
 		if test -f scripts/ldms_local_clocktest.sh; then chmod a+x scripts/ldms_local_clocktest.sh; fi

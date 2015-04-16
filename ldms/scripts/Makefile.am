@@ -14,6 +14,7 @@ CLEANFILES = $(bin_SCRIPTS)
 bin_SCRIPTS+= ldms_ban.sh
 
 bin_SCRIPTS+=  ldms_ctltest.sh
+bin_SCRIPTS+=  ldms_local_slurmtest.sh
 
 bin_SCRIPTS+= \
 ldms_local_rollbytes_test.sh \

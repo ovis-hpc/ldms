@@ -29,6 +29,12 @@ if ENABLE_HADOOP
 SUBDIRS += hadoop
 endif
 
+if ENABLE_SLURMJOBID
+libslurmjobid_la_SOURCES = slurmjobid.c
+libslurmjobid_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libslurmjobid.la
+endif
+
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD)

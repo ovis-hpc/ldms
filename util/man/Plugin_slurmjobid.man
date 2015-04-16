@@ -1,0 +1,86 @@
+.\" Manpage for Plugin_slurmjobid
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "09 Apr 2015" "v2.4" "LDMS Plugin slurmjobid man page"
+
+.SH NAME
+Plugin_slurmjobid - man page for the LDMS slurmjobid plugin
+
+.SH SYNOPSIS
+Within ldmsctl
+.br
+ldmsctl> config name=slurmjobid [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The slurmjobid plugin provides jobid info from /var/run/ldms.slurm.jobid or similar files replaced periodically by resource managers. When files are missing, the value 0 is reported.
+
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> component_id=<comp_id> set=<set_name> colname=<metric_name> file=<filepath>
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be slurmjobid.
+.TP
+component_id=<comp_id>
+.br
+The component id numerical value.
+.TP
+file=<filepath>
+.br
+Optional. The full path to an ASCII file containing only an unsigned integer.
+Default value is /var/run/ldms.slurm.jobid.
+The integer may be decimal, octal (starting with 0) or hex (starting with 0x)
+as parsed by strtoull(input,endptr,0).
+.TP
+colname=<metric_name>
+.br
+Optional. The metric name by which to report the value in the file.
+Default value is slurm.jobid.
+.TP
+set=<set_name>
+.br
+The name of the metric set.
+.RE
+
+.SH BUGS
+No known implementation bugs. Design features you may not like:
+Relies on site-specific resource manager configuration to produce the file read.
+Does not query local or remote manager daemons.
+May be slow to sample and generate undesirable filesystem events if filepath is on a networked filesystem instead of a node-local RAM partition as is usual in clusters.
+
+.SH EXAMPLES
+.PP
+.nf
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl> load name=slurmjobid
+ldmsctl> config name=slurmjobid component_id=1 set=vm1_1/slurmjobid
+ldmsctl> start name=slurmjobid interval=1000000
+ldmsctl> quit
+
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl> load name=slurmjobid
+ldmsctl> config name=slurmjobid component_id=1 set=vm1_1/jobid file=/var/run/rman/node/jobid colname=rman_jobid
+ldmsctl> start name=slurmjobid interval=1000000
+ldmsctl> quit
+.fi
+
+Slurm 2.x installations can populate /var/run/ldms.slurm.jobid by adding
+the following lines to slurm.epilog and slurm.prolog, respectively.
+.PP
+.nf
+echo "0" > /var/run/ldms.slurm.jobid
+and
+echo $SLURM_JOBID > /var/run/ldms.slurm.jobid
+.fi
+These slurm files might be found in /etc/nodestate/bin/.
+
+.SH SEE ALSO
+LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
+Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
+Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil(7), Plugin_vmstat(7)
