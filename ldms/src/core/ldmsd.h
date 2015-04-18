@@ -114,7 +114,8 @@ struct hostspec
 	enum {
 		HOST_DISCONNECTED=0,
 		HOST_CONNECTING,
-		HOST_CONNECTED
+		HOST_CONNECTED,
+		HOST_DISABLED
 	} conn_state;
 	pthread_mutex_t conn_state_lock;
 	enum {
@@ -339,6 +340,9 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_LAST_COMMAND	13
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
+
+#define LDMSD_CONNECT_TIMEOUT		20000000 /* 20 Seconds */
+#define LDMSD_INITIAL_CONNECT_TIMEOUT	500000  /* 1/2 second */
 
 /*
  * Max length of error strings while ldmsd is being configured.

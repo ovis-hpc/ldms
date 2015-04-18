@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -69,10 +70,11 @@ struct ldms_rbuf_desc {
 	uint64_t local_notify_xid;  /* Value sent in reg_notify */
 	uint64_t remote_notify_xid; /* Value received in req_notify */
 	uint32_t notify_flags;	    /* What events are notified  */
-	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
-	LIST_ENTRY(ldms_rbuf_desc) xprt_link; /* list of RBD for a transport */
 	struct zap_map *rmap;	/* remote map */
 	struct zap_map *lmap;	/* local map */
+
+	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
+	LIST_ENTRY(ldms_rbuf_desc) xprt_link; /* list of RBD for a transport */
 };
 
 enum ldms_request_cmd {
@@ -209,36 +211,37 @@ struct ldms_context {
 
 struct ldms_xprt {
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
-	int ref_count;
-	struct sockaddr_storage local_ss;
-	struct sockaddr_storage remote_ss;
-	socklen_t ss_len;
+	uint32_t ref_count;
 	pthread_mutex_t lock;
+
+	/* Semaphore and return code for synchronous xprt calls */
 	sem_t sem;
 	int sem_rc;
-	int connected;
-	int closed;
-	int max_msg;		/* max send message size */
+
+	/* Maximum size of a send/recv message */
+	int max_msg;
+	/* Points to local ctxt expected when dir updates returned to this endpoint */
 	uint64_t local_dir_xid;
+	/* This is the peers local_dir_xid that we provide when providing dir updates */
 	uint64_t remote_dir_xid;
 
+	/* Callback that implements xprt state machine on the active side */
 	ldms_connect_cb_t connect_cb;
 	void *connect_cb_arg;
 
-	zap_t zap; /* zap engine handle */
-	zap_ep_t zap_ep; /* Endpoint handle */
-
-	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
-	LIST_ENTRY(ldms_xprt) xprt_link;
+	zap_t zap;
+	zap_ep_t zap_ep;
 
 	/** Transport message logging callback */
 	ldms_log_fn_t log;
+
+	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
+	LIST_ENTRY(ldms_xprt) xprt_link;
 };
 
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]
 #define ldms_off_(_m, _p) (((char *)_p) - ((char *)_m))
 
-extern void __ldms_free_rbd(struct ldms_rbuf_desc *);
 static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *, struct ldms_set *s);
 static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
 

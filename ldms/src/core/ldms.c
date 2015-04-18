@@ -78,10 +78,10 @@ static char __set_path[PATH_MAX];
 
 char *_create_path(const char *set_name);
 
-static int set_comparator(void *a, void *b)
+static int set_comparator(void *a, const void *b)
 {
 	char *x = a;
-	char *y = b;
+	char *y = (char *)b;
 
 	return strcmp(x, y);
 }
@@ -348,48 +348,23 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 	sem_post(&x->sem);
 }
 
-extern int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
 int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	if (set->flags & LDMS_SET_F_REMOTE){
 		ldms_t x = __get_xprt(s);
 		if (!cb) {
-			int rc = ldms_remote_update(x, s, sync_update_cb, arg);
+			int rc = __ldms_remote_update(x, s, sync_update_cb, arg);
 			if (rc)
 				return rc;
 			sem_wait(&x->sem);
 			return x->sem_rc;
 		}
-		return ldms_remote_update(x, s, cb, arg);
+		return __ldms_remote_update(x, s, cb, arg);
 	}
 	if (cb)
 		cb(__get_xprt(s), s, 0, arg);
 	return 0;
-}
-
-void _release_set(struct ldms_set *set)
-{
-	rem_local_set(set);
-
-	if (set->flags & (LDMS_SET_F_MEMMAP | LDMS_SET_F_FILEMAP)) {
-		munmap(set->meta, set->meta->meta_sz);
-		munmap(set->data, set->meta->data_sz);
-	}
-	free(set);
-}
-
-void ldms_set_release(ldms_set_t set_p)
-{
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)set_p;
-	if (!set_p)
-		return;
-
-	if (sd->rbd)
-		__ldms_free_rbd(sd->rbd);
-	if (LIST_EMPTY(&sd->set->rbd_list))
-		_release_set(sd->set);
-	free(sd);
 }
 
 void ldms_set_delete(ldms_set_t s)

@@ -604,7 +604,7 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port,
 	hs->sample_offset = offset;
 	hs->synchronous = synchronous;
 	hs->standby = standby_no;
-	hs->connect_interval = 20000000; /* twenty seconds */
+	hs->connect_interval = LDMSD_CONNECT_TIMEOUT;
 
 	pthread_mutex_init(&hs->set_list_lock, 0);
 	pthread_mutex_init(&hs->conn_state_lock, NULL);
@@ -613,8 +613,8 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port,
 	hs->event = evtimer_new(get_ev_base(hs->thread_id),
 				ldmsd_host_sampler_cb, hs);
 	/* First connection attempt happens 'right away' */
-	hs->timeout.tv_sec = 0; // hs->connect_interval / 1000000;
-	hs->timeout.tv_usec = 500000; // hs->connect_interval % 1000000;
+	hs->timeout.tv_sec = LDMSD_INITIAL_CONNECT_TIMEOUT / 1000000;
+	hs->timeout.tv_usec = LDMSD_INITIAL_CONNECT_TIMEOUT % 1000000;
 
 	/* No hostsets will be created if the connection type is bridging. */
 	if (host_type == BRIDGING)
@@ -783,7 +783,7 @@ err:
  * Parse the host_list string and add each hostname to the storage
  * policy host tree.
  */
-int str_cmp(void *a, void *b)
+int str_cmp(void *a, const void *b)
 {
 	return strcmp((char *)a, (char *)b);
 }

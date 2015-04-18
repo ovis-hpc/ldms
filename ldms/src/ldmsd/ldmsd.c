@@ -116,6 +116,9 @@ FILE *log_fp;
 extern int dirty_threshold;
 extern size_t calculate_total_dirty_threshold(size_t mem_total,
 					      size_t dirty_ratio);
+void do_connect(struct hostspec *hs);
+int update_data(struct hostspec *hs);
+void disconnect_hostspec(struct hostspec *hs);
 
 int do_kernel = 0;
 char *setfile = NULL;
@@ -570,8 +573,9 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 		}
 		double diff = difftime(sched, now);
 		if (diff < 0) {
-			snprintf(err_str, LEN_ERRSTR, "The current time "
-				 "is ahead of the scheduled time.");
+			snprintf(err_str, LEN_ERRSTR, "The schedule time '%s' "
+				 "is ahead of the current time %jd",
+				 ts, (intmax_t)now);
 			rc = EINVAL;
 			return rc;
 		}
@@ -609,7 +613,7 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 		goto err;
 	}
 	ossample->event = evtimer_new(get_ev_base(pi->thread_id),
-						oneshot_sample_cb, ossample);
+				      oneshot_sample_cb, ossample);
 
 	rc = evtimer_add(ossample->event, &tv);
 	if (rc)
@@ -662,24 +666,32 @@ out_nolock:
 	return rc;
 }
 
-void do_host(struct hostspec *hs);
 void ldmsd_host_sampler_cb(int fd, short sig, void *arg)
 {
 	struct hostspec *hs = arg;
+	int rc;
 
-	do_host(hs);
-
-	if (!hs->x) {
-		hs->timeout.tv_sec = hs->connect_interval / 1000000;
-		hs->timeout.tv_usec = hs->connect_interval % 1000000;
-	} else if (hs->synchronous){
-		calculate_timeout(hs->thread_id, hs->sample_interval,
-				  hs->sample_offset, &hs->timeout);
-	} else {
-		hs->timeout.tv_sec = hs->sample_interval / 1000000;
-		hs->timeout.tv_usec = hs->sample_interval % 1000000;
+	pthread_mutex_lock(&hs->conn_state_lock);
+	switch (hs->conn_state) {
+	case HOST_DISCONNECTED:
+		do_connect(hs);
+		break;
+	case HOST_CONNECTED:
+		if (update_data(hs))
+			hs->conn_state = HOST_DISCONNECTED;
+		break;
+	case HOST_CONNECTING:
+		ldms_log("Connection stall on '%s[%s]'.\n", hs->hostname, hs->xprt_name);
+		break;
+	case HOST_DISABLED:
+		ldms_log("Host %s[%s] is disabled.\n", hs->hostname, hs->xprt_name);
+		break;
+	default:
+		ldms_log("Host connection state '%d' is invalid.\n",
+			 hs->conn_state);
+		assert(0);
 	}
-	evtimer_add(hs->event, &hs->timeout);
+	pthread_mutex_unlock(&hs->conn_state_lock);
 }
 
 /*
@@ -728,7 +740,6 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 
 	pthread_mutex_lock(&hset->state_lock);
 	if (status != LDMS_LOOKUP_OK){
-		hset->state = LDMSD_SET_CONFIGURED;
 		ldms_log("Error doing lookup for set '%s'\n",
 				hset->name);
 		hset->set = NULL;
@@ -750,14 +761,18 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 }
 
 /*
- * Release all existing sets for the host. This is done when the
- * connection to the host has been lost. The hostset record is
- * retained, but the set and metrics are released. When the host comes
- * back, the set and metrics will be rebuilt.
+ * Must be called with the hostpec conn_state_lock held.
+ *
+ * Closes the transport, cleans up all hostset state.
  */
-void reset_host(struct hostspec *hs)
+void disconnect_hostspec(struct hostspec *hs)
 {
 	struct hostset *hset;
+
+	ldms_xprt_close(hs->x);
+	hs->x = NULL;
+	hs->conn_state = HOST_DISCONNECTED;
+
 	LIST_FOREACH(hset, &hs->set_list, entry) {
 		pthread_mutex_lock(&hset->state_lock);
 		reset_hostset(hset);
@@ -880,52 +895,80 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 }
 #endif
 
+void __ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+{
+	struct hostspec *hs = cb_arg;
+	switch (e) {
+	case LDMS_CONN_EVENT_CONNECTED:
+		hs->conn_state = HOST_CONNECTED;
+		if (hs->synchronous){
+			calculate_timeout(hs->thread_id, hs->sample_interval,
+					  hs->sample_offset, &hs->timeout);
+		} else {
+			hs->timeout.tv_sec = hs->sample_interval / 1000000;
+			hs->timeout.tv_usec = hs->sample_interval % 1000000;
+		}
+		evtimer_add(hs->event, &hs->timeout);
+		break;
+	case LDMS_CONN_EVENT_DISCONNECTED:
+	case LDMS_CONN_EVENT_ERROR:
+		/* Put the reference taken in ldms_xprt_connect() or accept() */
+		ldms_xprt_put(hs->x);
+		disconnect_hostspec(hs);
+		hs->timeout.tv_sec = hs->connect_interval / 1000000;
+		hs->timeout.tv_usec = hs->connect_interval % 1000000;
+		evtimer_add(hs->event, &hs->timeout);
+		break;
+	default:
+		assert(0);
+	}
+}
+
 void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
 	struct hostspec *hs = cb_arg;
 	pthread_mutex_lock(&hs->conn_state_lock);
-
-	switch (e) {
-	case LDMS_CONN_EVENT_CONNECTED:
-		hs->conn_state = HOST_CONNECTED;
-		break;
-	case LDMS_CONN_EVENT_ERROR:
-	case LDMS_CONN_EVENT_DISCONNECTED:
-		ldms_xprt_put(hs->x);
-		if (hs->type != PASSIVE)
-			ldms_xprt_close(hs->x);
-		hs->x = 0;
-		hs->conn_state = HOST_DISCONNECTED;
-		break;
-	}
+	__ldms_connect_cb(x, e, cb_arg);
 	pthread_mutex_unlock(&hs->conn_state_lock);
 }
 
-int do_connect(struct hostspec *hs)
+void do_connect(struct hostspec *hs)
 {
 	int ret;
 
-	if (hs->x)
-		ldms_xprt_close(hs->x);
-
-	hs->x = ldms_xprt_new(hs->xprt_name, ldms_log);
-
-	if (!hs->x) {
-		ldms_log("Error creating transport '%s'.\n", hs->xprt_name);
-		return -1;
+	assert(hs->x == NULL);
+	switch (hs->type) {
+	case ACTIVE:
+	case BRIDGING:
+		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log);
+		if (hs->x) {
+			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
+						 sizeof(hs->sin), ldms_connect_cb, hs);
+			if (ret) {
+				ldms_xprt_put(hs->x);
+				hs->x = NULL;
+			} else
+				hs->conn_state = HOST_CONNECTING;
+		} else {
+			ldms_log("%s Error creating endpoint on transport '%s'.\n",
+				 __func__, hs->xprt_name);
+			hs->conn_state = HOST_DISABLED;
+		}
+		break;
+	case PASSIVE:
+		hs->x = ldms_xprt_by_remote_sin(&hs->sin);
+		/* Call connect callback to advance state and update timers*/
+		if (hs->x) {
+			__ldms_connect_cb(hs->x, LDMS_CONN_EVENT_CONNECTED, hs);
+		} else {
+			hs->timeout.tv_sec = hs->connect_interval / 1000000;
+			hs->timeout.tv_usec = hs->connect_interval % 1000000;
+			evtimer_add(hs->event, &hs->timeout);
+		}
+		break;
+	case LOCAL:
+		assert(0);
 	}
-	ldms_xprt_get(hs->x);
-	ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
-			    sizeof(hs->sin), ldms_connect_cb, hs);
-	if (ret) {
-		/* Release the connect reference */
-		ldms_xprt_put(hs->x);
-		/* Release the create reference */
-		ldms_xprt_put(hs->x);
-		hs->x = NULL;
-		return -1;
-	}
-	return 0;
 }
 
 void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
@@ -1010,15 +1053,29 @@ int do_update(struct hostspec *hs, struct hostset *hset)
 	return 0;
 }
 
-void update_data(struct hostspec *hs)
+/*
+ * hostspec conn_state_lock must be held.
+ */
+int update_data(struct hostspec *hs)
 {
 	int ret;
 	struct hostset *hset;
 	int host_error = 0;
 
-	if ((hs->type != LOCAL) && !hs->x)
-		return;
+	if (hs->type == LOCAL) {
+		ldms_log("Sample callback on local host %s.\n", hs->hostname);
+		assert(NULL == hs->x);
+		return 0;
+	}
+	if (hs->type == BRIDGING) {
+		ldms_log("Sample callback on host %s in bridging mode.\n", hs->hostname);
+		return 0;
+	}
 
+	if (hs->standby && (0 == (hs->standby & saggs_mask))) {
+		ldms_log("Sample callback on unowned failover host %s.\n", hs->hostname);
+		return 0;
+	}
 	/* Take the host lock to protect the set_list */
 	pthread_mutex_lock(&hs->set_list_lock);
 	LIST_FOREACH(hset, &hs->set_list, entry) {
@@ -1031,8 +1088,6 @@ void update_data(struct hostspec *hs)
 			ret = do_lookup(hs, hset);
 			if (ret) {
 				hset->state = LDMSD_SET_CONFIGURED;
-				ldms_xprt_close(hs->x);
-				hs->x = NULL;
 				host_error = 1;
 				ldms_log("Synchronous error %d "
 					"from ldms_lookup\n", ret);
@@ -1049,9 +1104,7 @@ void update_data(struct hostspec *hs)
 			hset_ref_get(hset);
 			ret = do_update(hs, hset);
 			if (ret) {
-				hset->state = LDMSD_SET_READY;
-				ldms_xprt_close(hs->x);
-				hs->x = NULL;
+				hset->state = LDMSD_SET_CONFIGURED;
 				host_error = 1;
 				ldms_log("Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
@@ -1075,76 +1128,22 @@ void update_data(struct hostspec *hs)
 		if (host_error)
 			break;
 	}
-	pthread_mutex_unlock(&hs->set_list_lock);
-}
-
-void update_disconnected(struct hostspec *hs)
-{
-	struct hostset *hset;
-	pthread_mutex_lock(&hs->set_list_lock);
-	LIST_FOREACH(hset, &hs->set_list, entry) {
-		pthread_mutex_lock(&hset->state_lock);
-		if (hset->state != LDMSD_SET_READY) {
-			pthread_mutex_unlock(&hset->state_lock);
-			continue;
+	if (host_error) {
+		disconnect_hostspec(hs);
+		hs->timeout.tv_sec = hs->connect_interval / 1000000;
+		hs->timeout.tv_usec = hs->connect_interval % 1000000;
+	} else {
+		if (hs->synchronous){
+			calculate_timeout(hs->thread_id, hs->sample_interval,
+					  hs->sample_offset, &hs->timeout);
+		} else {
+			hs->timeout.tv_sec = hs->sample_interval / 1000000;
+			hs->timeout.tv_usec = hs->sample_interval % 1000000;
 		}
-		pthread_mutex_unlock(&hset->state_lock);
-
-		/* Take a reference to update the disconnected event */
-		hset_ref_get(hset);
-		update_complete_cb(hs->x, hset->set, 0, hset);
 	}
+	evtimer_add(hs->event, &hs->timeout);
 	pthread_mutex_unlock(&hs->set_list_lock);
-}
-
-void do_host(struct hostspec *hs)
-{
-	int rc;
-	pthread_mutex_lock(&hs->conn_state_lock);
-	switch (hs->conn_state) {
-	case HOST_DISCONNECTED:
-		update_disconnected(hs);
-		if (hs->type != PASSIVE)
-			rc = do_connect(hs);
-		else
-			rc = do_passive_connect(hs);
-
-		if (rc == 0)
-			hs->conn_state = HOST_CONNECTING;
-		break;
-	case HOST_CONNECTED:
-		if (hs->type != BRIDGING)
-			if ((hs->standby == 0) || (hs->standby & saggs_mask))
-				update_data(hs);
-		break;
-	case HOST_CONNECTING:
-		/* do nothing */
-		break;
-	default:
-		ldms_log("Host connection state '%d' is invalid.\n",
-							hs->conn_state);
-		assert(0);
-	}
-
-	if (hs->conn_state != HOST_CONNECTED) {
-		reset_host(hs);
-	}
-	pthread_mutex_unlock(&hs->conn_state_lock);
-}
-
-int do_passive_connect(struct hostspec *hs)
-{
-	ldms_t l = ldms_xprt_by_remote_sin(&hs->sin);
-	if (!l)
-		return -1;
-
-	/*
-	 * ldms_xprt_find takes a reference on the transport so we can
-	 * cache it here.
-	 */
-	hs->x = l;
-
-	return 0;
+	return host_error;
 }
 
 void keepalive_cb(int fd, short sig, void *arg)

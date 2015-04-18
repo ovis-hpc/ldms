@@ -141,5 +141,6 @@ extern void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
 			    size_t *meta_sz, size_t *data_sz);
 
 extern struct ldms_set *__ldms_find_local_set(const char *path);
+extern int __ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
 
 #endif

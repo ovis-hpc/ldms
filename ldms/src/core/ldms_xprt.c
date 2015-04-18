@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -70,15 +71,15 @@
 /**
  * zap callback function.
  */
-void ldms_zap_cb(zap_ep_t zep, zap_event_t ev);
+static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev);
 
 /**
  * zap callback function for endpoints that automatically created from accepting
  * connection requests.
  */
-void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev);
+static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev);
 
-void default_log(const char *fmt, ...)
+static void default_log(const char *fmt, ...)
 {
 	va_list ap;
 
@@ -95,58 +96,58 @@ void default_log(const char *fmt, ...)
 
 pthread_mutex_t xprt_list_lock;
 
-static inline struct ldms_xprt *ldms_xprt_get_(struct ldms_xprt *x)
+ldms_t ldms_xprt_get(ldms_t x)
 {
-	x->ref_count++;
-	return x;
-}
-ldms_t ldms_xprt_get(ldms_t _x)
-{
-	struct ldms_xprt *x;
-	pthread_mutex_lock(&xprt_list_lock);
-	x = (ldms_t)ldms_xprt_get_((struct ldms_xprt *)_x);
-	pthread_mutex_unlock(&xprt_list_lock);
+	assert(x->ref_count > 0);
+	__sync_add_and_fetch(&x->ref_count, 1);
 	return x;
 }
 
 LIST_HEAD(xprt_list, ldms_xprt) xprt_list;
 ldms_t ldms_xprt_first()
 {
-	struct ldms_xprt *x;
-	ldms_t x_ = NULL;
+	struct ldms_xprt *x = NULL;
 	pthread_mutex_lock(&xprt_list_lock);
 	x = LIST_FIRST(&xprt_list);
 	if (!x)
 		goto out;
-	x_ = (ldms_t)ldms_xprt_get_(x);
+	x = ldms_xprt_get(x);
  out:
 	pthread_mutex_unlock(&xprt_list_lock);
-	return x_;
+	return x;
 }
 
-ldms_t ldms_xprt_next(ldms_t _x)
+ldms_t ldms_xprt_next(ldms_t x)
 {
-	struct ldms_xprt *x = _x;
-	_x = NULL;
 	pthread_mutex_lock(&xprt_list_lock);
 	if (x->xprt_link.le_next == xprt_list.lh_first)
 		goto out;
 	x = x->xprt_link.le_next;
 	if (!x)
 		goto out;
-	_x = (ldms_t)ldms_xprt_get_(x);
+	x = ldms_xprt_get(x);
  out:
 	pthread_mutex_unlock(&xprt_list_lock);
-	return _x;
+	return x;
 }
 
 ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 {
+	struct sockaddr_storage ss_local, ss_remote;
+	socklen_t socklen;
+
 	ldms_t l;
 	for (l = ldms_xprt_first(); l; l = ldms_xprt_next(l)) {
-		struct ldms_xprt *x = (struct ldms_xprt *)l;
-		struct sockaddr_in *s = (struct sockaddr_in *)&x->remote_ss;
-		if (s->sin_addr.s_addr == sin->sin_addr.s_addr)
+		int rc = zap_get_name(l->zap_ep,
+				      (struct sockaddr *)&ss_local,
+				      (struct sockaddr *)&ss_remote,
+				      &socklen);
+		if (rc)
+			continue;
+		struct sockaddr_in *s = (struct sockaddr_in *)&ss_remote;
+		if (s->sin_addr.s_addr == sin->sin_addr.s_addr
+		    && ((sin->sin_port == 0xffff) ||
+			(s->sin_port == sin->sin_port)))
 			return l;
 		ldms_xprt_put(l);
 	}
@@ -279,42 +280,34 @@ void __ldms_dir_del_set(const char *set_name)
 	dir_update(set_name, LDMS_DIR_DEL);
 }
 
-void ldms_xprt_close(ldms_t _x)
+void ldms_xprt_close(ldms_t x)
 {
-	struct ldms_xprt *x = _x;
 	x->remote_dir_xid = x->local_dir_xid = 0;
+
+	pthread_mutex_lock(&xprt_list_lock);
+	LIST_REMOVE(x, xprt_link);
+	pthread_mutex_unlock(&xprt_list_lock);
+
 	zap_close(x->zap_ep);
-	x->closed = 1;
+	while (!LIST_EMPTY(&x->rbd_list)) {
+		struct ldms_rbuf_desc *rbd;
+		rbd = LIST_FIRST(&x->rbd_list);
+		__ldms_free_rbd(rbd);
+	}
+
+	zap_free(x->zap_ep);
+	x->zap_ep = NULL;
 	ldms_xprt_put(x);
 }
 
-void __release_xprt(ldms_t x)
+void ldms_xprt_put(ldms_t x)
 {
-	struct ldms_rbuf_desc *rb;
-
-	sem_destroy(&x->sem);
-	while (!LIST_EMPTY(&x->rbd_list)) {
-		rb = LIST_FIRST(&x->rbd_list);
-		__ldms_free_rbd(rb);
-	}
-	free(x);
-}
-
-void ldms_xprt_put(ldms_t _x)
-{
-	struct ldms_xprt *x = _x;
-	int destroy = 0;
-
-	pthread_mutex_lock(&xprt_list_lock);
 	assert(x->ref_count);
-	x->ref_count--;
-	if (!x->ref_count) {
-		destroy = 1;
-		LIST_REMOVE(x, xprt_link);
+	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
+		assert(0 == x->zap_ep);
+		sem_destroy(&x->sem);
+		free(x);
 	}
-	pthread_mutex_unlock(&xprt_list_lock);
-	if (destroy)
-		__release_xprt(x);
 }
 
 struct make_dir_arg {
@@ -568,19 +561,21 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
  * they don't match, then the meta data is fetched and then the data
  * is fetched again.
  */
-int ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg)
+int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	int rc;
 
+	zap_get_ep(x->zap_ep);	/* Released in handle_zap_read_complete() */
 	if (set->meta->meta_gn == 0 || set->meta->meta_gn != set->data->meta_gn) {
 		/* Update the metadata along with the data */
-		rc = do_read_all(t, s, set->meta->meta_sz +
-				set->meta->data_sz, cb, arg);
+		rc = do_read_all(x, s, set->meta->meta_sz +
+				 set->meta->data_sz, cb, arg);
 	} else {
-		rc = do_read_data(t, s, set->meta->data_sz, cb, arg);
+		rc = do_read_data(x, s, set->meta->data_sz, cb, arg);
 	}
-
+	if (rc)
+		zap_put_ep(x->zap_ep);
 	return rc;
 }
 
@@ -627,6 +622,7 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		ctxt->lookup.cb(x, rc, NULL, ctxt->lookup.cb_arg);
 
 out:
+	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 	free(ctxt->lookup.path);
 	free(ctxt);
 }
@@ -670,6 +666,7 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (!x->local_dir_xid && !more)
 		free(ctxt);
 	pthread_mutex_unlock(&x->lock);
+	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_dir() */
 }
 
 void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
@@ -751,7 +748,20 @@ zap_mem_info_t ldms_zap_mem_info()
 	return NULL;
 }
 
-void ldms_zap_handle_conn_req(zap_ep_t zep)
+void __ldms_passive_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+{
+	switch (e) {
+	case LDMS_CONN_EVENT_ERROR:
+		assert(0);
+	case LDMS_CONN_EVENT_CONNECTED:
+		assert(0);
+	case LDMS_CONN_EVENT_DISCONNECTED:
+		ldms_xprt_close(x);
+		break;
+	}
+}
+
+static void ldms_zap_handle_conn_req(zap_ep_t zep)
 {
 	struct sockaddr lcl, rmt;
 	socklen_t xlen;
@@ -762,17 +772,10 @@ void ldms_zap_handle_conn_req(zap_ep_t zep)
 
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	/*
-	 * Accepting zep inherit ucontext from the listening endpoin.
+	 * Accepting zep inherit ucontext from the listening endpoint.
 	 * Hence, x is of listening endpoint, not of accepting zep,
 	 * and we have to create new ldms_xprt for the accepting zep.
 	 */
-
-	zerr = zap_accept(zep, ldms_zap_auto_cb);
-	if (zerr) {
-		x->log("ERROR: cannot accept connection from %s.\n", rmt_name);
-		goto err0;
-	}
-
 	struct ldms_xprt *_x = calloc(1, sizeof(*_x));
 	if (!_x) {
 		x->log("ERROR: Cannot create new ldms_xprt for connection"
@@ -783,11 +786,21 @@ void ldms_zap_handle_conn_req(zap_ep_t zep)
 	*_x = *x; /* copy shared info from x, and just set the private ones */
 	_x->zap = x->zap;
 	_x->zap_ep = zep;
-	_x->connected = 1;
 	_x->ref_count = 1;
 	_x->remote_dir_xid = _x->local_dir_xid = 0;
+	_x->connect_cb = __ldms_passive_connect_cb;
 	zap_set_ucontext(zep, _x);
 	pthread_mutex_init(&_x->lock, NULL);
+
+	zerr = zap_accept(zep, ldms_zap_auto_cb);
+	if (zerr) {
+		x->log("ERROR: cannot accept connection from %s.\n", rmt_name);
+		goto err0;
+	}
+
+	/* Take a 'connect' reference. Dropped in ldms_xprt_close() */
+	ldms_xprt_get(_x);
+
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, _x, xprt_link);
 	pthread_mutex_unlock(&xprt_list_lock);
@@ -797,7 +810,7 @@ err0:
 	zap_close(zep);
 }
 
-void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
+static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_context *ctxt = ev->context;
 	switch (ctxt->type) {
@@ -806,6 +819,7 @@ void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 			struct ldms_xprt *x = zap_get_ucontext(zep);
 			ctxt->update.cb((ldms_t)x, ctxt->update.s, ev->status,
 					ctxt->update.arg);
+			zap_put_ep(x->zap_ep); /* Taken in ldms_remote_update() */
 		}
 		break;
 	case LDMS_CONTEXT_LOOKUP:
@@ -813,6 +827,7 @@ void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 			struct ldms_xprt *x = zap_get_ucontext(zep);
 			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.s,
 					ctxt->lookup.cb_arg);
+			zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 		}
 		break;
 	default:
@@ -821,10 +836,10 @@ void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 	free(ctxt);
 }
 
-void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
+static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_xprt *x = zap_get_ucontext(zep);
-	struct ldms_lookup_msg *lm = ev->data;
+	struct ldms_lookup_msg *lm = (struct ldms_lookup_msg *)ev->data;
 	ntoh_ldms_lookup_msg(lm);
 	struct ldms_context *ctxt = (void*)lm->xid;
 	struct ldms_set_desc *sd = NULL;
@@ -873,6 +888,7 @@ void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
  out:
 	if (ctxt->lookup.cb)
 		ctxt->lookup.cb(x, rc, (ldms_set_t)sd, ctxt->lookup.cb_arg);
+	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 	free(ctxt->lookup.path);
 	free(ctxt);
 }
@@ -880,7 +896,7 @@ void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 /**
  * ldms-zap event handling function.
  */
-void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
+static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
 	zap_err_t zerr;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
@@ -892,19 +908,17 @@ void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_REJECTED:
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_ERROR,
-							x->connect_cb_arg);
+				      x->connect_cb_arg);
 		break;
 	case ZAP_EVENT_CONNECTED:
-		x->connected = 1;
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
-							x->connect_cb_arg);
+				      x->connect_cb_arg);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		x->connected = 0;
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_DISCONNECTED,
-							x->connect_cb_arg);
+				      x->connect_cb_arg);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		recv_cb(x, ev->data);
@@ -923,7 +937,7 @@ void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
-void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
+static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 {
 	zap_err_t zerr;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
@@ -937,8 +951,6 @@ void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_REJECTED:
 	case ZAP_EVENT_DISCONNECTED:
-		ldms_xprt_close(x);
-		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
@@ -965,25 +977,22 @@ ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
 		log_fn = default_log;
 
 	zap_err_t zerr;
-	zerr = zap_get(name, &x->zap, log_fn, ldms_zap_mem_info);
-	if (zerr) {
+	x->zap = zap_get(name, log_fn, ldms_zap_mem_info);
+	if (!x->zap) {
 		log_fn("ERROR: Cannot get zap plugin: %s\n", name);
 		ret = ENOENT;
 		goto err1;
 	}
 
-	zerr = zap_new(x->zap, &x->zap_ep, ldms_zap_cb);
-	if (zerr) {
-		log_fn("ERROR: Cannot create zap endpoint, zap_error %d: %s\n",
-				zerr, zap_err_str(zerr));
+	x->zap_ep = zap_new(x->zap, ldms_zap_cb);
+	if (!x->zap_ep) {
+		log_fn("ERROR: Cannot create zap endpoint.\n");
 		ret = ENOMEM;
 		goto err2;
 	}
-
 	zap_set_ucontext(x->zap_ep, x);
 
 	strncpy(x->name, name, LDMS_MAX_TRANSPORT_NAME_LEN);
-	x->connected = 0;
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
@@ -1087,7 +1096,7 @@ static int alloc_req_ctxt(struct ldms_request **req,
 int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 {
 	struct ldms_xprt *x = _x;
- 	struct ldms_request *req;
+	struct ldms_request *req;
 	struct ldms_context *ctxt;
 	size_t len;
 
@@ -1108,14 +1117,18 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 		x->local_dir_xid = (uint64_t)ctxt;
 	pthread_mutex_unlock(&x->lock);
 
-	return zap_send(x->zap_ep, req, len);
+	zap_get_ep(x->zap_ep);	/* Released in process_dir_reply() */
+	int rc = zap_send(x->zap_ep, req, len);
+	if (rc)
+		zap_put_ep(x->zap_ep);
+	return rc;
 }
 
 /* This request has no reply */
 void __ldms_remote_dir_cancel(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
- 	struct ldms_request *req;
+	struct ldms_request *req;
 	struct ldms_context *ctxt;
 	size_t len;
 
@@ -1155,9 +1168,10 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	ctxt->lookup.cb = cb;
 	ctxt->lookup.cb_arg = arg;
 	ctxt->lookup.path = strdup(path);
+	zap_get_ep(x->zap_ep);	/* Relased in either ...lookup_reply() or ..rendezvous() */
 	rc = zap_send(x->zap_ep, req, len);
 	if (rc)
-		ldms_xprt_close(x);
+		zap_put_ep(x->zap_ep);
 	return rc;
 }
 
@@ -1206,7 +1220,7 @@ static int send_cancel_notify(ldms_t _x, ldms_set_t s)
 		(struct ldms_rbuf_desc *)
 		((struct ldms_set_desc *)s)->rbd;
 	struct ldms_xprt *x = _x;
- 	struct ldms_request req;
+	struct ldms_request req;
 	size_t len;
 
 	len = format_cancel_notify_req
@@ -1251,10 +1265,15 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 			ldms_connect_cb_t cb, void *cb_arg)
 {
+	int rc;
 	struct ldms_xprt *_x = x;
 	_x->connect_cb = cb;
 	_x->connect_cb_arg = cb_arg;
-	return zap_connect(_x->zap_ep, sa, sa_len);
+	ldms_xprt_get(x);
+	rc = zap_connect(_x->zap_ep, sa, sa_len);
+	if (rc)
+		ldms_xprt_put(x);
+	return rc;
 }
 
 static void sync_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
@@ -1297,8 +1316,6 @@ int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 
 int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len)
 {
-	memcpy(&x->local_ss, sa, sa_len);
-	x->ss_len = sa_len;
 	return zap_listen(x->zap_ep, sa, sa_len);
 }
 
@@ -1312,7 +1329,7 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
 		.ai_socktype = SOCK_STREAM
 	};
 	if (host) {
-		int rc = getaddrinfo(host, port_no, &hints, &ai);
+		rc = getaddrinfo(host, port_no, &hints, &ai);
 		if (rc)
 			return EHOSTUNREACH;
 		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen);
@@ -1360,12 +1377,6 @@ void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 {
 	LIST_REMOVE(rbd, xprt_link);
 	LIST_REMOVE(rbd, set_link);
-	if (rbd->lmap)
-		zap_unmap(rbd->xprt->zap_ep, rbd->lmap);
-	/*
-	if (rbd->rmap)
-		zap_unmap(rbd->xprt->zap_ep, rbd->rmap);
-	*/
 	free(rbd);
 }
 
@@ -1386,11 +1397,11 @@ static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_s
 	return NULL;
 }
 
-void __attribute__ ((constructor)) cs_init(void)
+static void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_mutex_init(&xprt_list_lock, 0);
 }
 
-void __attribute__ ((destructor)) cs_term(void)
+static void __attribute__ ((destructor)) cs_term(void)
 {
 }
