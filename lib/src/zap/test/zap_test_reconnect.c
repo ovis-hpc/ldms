@@ -1,3 +1,99 @@
+/* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+ * license for use of this work by or on behalf of the U.S. Government.
+ * Export of this program may require a license from the United States
+ * Government.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the BSD-type
+ * license below:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *      Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *      Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *      Neither the name of Sandia nor the names of any contributors may
+ *      be used to endorse or promote products derived from this software
+ *      without specific prior written permission.
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission.
+ *
+ *      Modified source versions must be plainly marked as such, and
+ *      must not be misrepresented as being the original software.
+ *
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * \file zap_test_reconnect.c
+ * \brief Zap test for reconnecting scenario
+ */
+
+/**
+ * \page zap_test_reconnect zap_test_reconnect
+ *
+ * \section summary SUMMARY
+ *
+ * Zap test for the case that the client keeps reconnecting to the server.
+ *
+ * \section synopsis SYNOPSIS
+ *
+ * \code{.sh}
+ * # Server #
+ * zap_test_reconnect -x XPRT -p PORT -s
+ *
+ * # Client #
+ * zap_test_reconnect -x XPRT -p PORT -h HOST [-f,--forever]
+ *
+ * \endcode
+ *
+ * \section desc DESCRIPTION
+ *
+ * This test program, like other zap_test*, can run in two modes: server and
+ * client. The test scheme is the following:
+ *
+ * Server:
+ *   After the server starts, it will listen and wait for messages from a client.
+ * Upon receiving a message, it will send the client back the messages. The server
+ * runs indefinitely. The server should be started/stopped repeatedly in order
+ * to test the robustness of the reconnect scenario.
+ *
+ * Client:
+ *   The client will try to connect/re-connect to the server. In the case that
+ * the server does not exist, the client will free the endpoint and create a new
+ * one to reconnect to the server. While the connection is connected, the client
+ * will send ten consecutive messages to the server and then sleep for 2 seconds.
+ * If the --forever/-f option is not given, the client will close the connection
+ * and exit. On the other hand, it will send the ten consecutive messages every
+ * 2 second interval as long as the connection is connected. When the connection
+ * is disconnected, it will try to reconnect again.
+ */
+
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -10,6 +106,7 @@
 #include <netinet/ip.h>
 #include <sys/time.h>
 #include <netdb.h>
+#include <errno.h>
 #include "zap/zap.h"
 
 char *short_opt = "h:x:p:sf?";
@@ -28,10 +125,13 @@ void usage()
 	printf(
 "Usage: test [-x <XPRT>] [-p <PORT>] [-h <HOST>] [--forever] [-s]\n"
 "\n"
-"	The default XPRT is sock, and the default PORT is 55555.\n"
-"	The default HOST is localhost. -s indicates server mode.\n"
-"	With '--forever' (or -f), the client will keep sending messages to\n"
-"	the server forever.\n"
+"OPTIONS:\n"
+"	-x XPRT		Transport. The default is sock.\n"
+"	-p PORT		Port to listen/connect. The default is 55555\n"
+"	-h HOST		(client mode only) Host to connect to. The default is localhost.\n"
+"	-s		Indicates server mode.\n"
+"	-f,--forever	(client mode only) the client will keep sending messages to\n"
+"			the server forever.\n"
 	);
 }
 
@@ -114,18 +214,12 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 		zap_accept(zep, server_cb);
 		break;
 	case ZAP_EVENT_CONNECTED:
-		pthread_mutex_lock(&flag_lock);
-		flag = CONNECTED;
-		pthread_mutex_unlock(&flag_lock);
 		printf("connected\n");
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		pthread_mutex_lock(&flag_lock);
-		flag = DISCONNECTED;
-		pthread_mutex_unlock(&flag_lock);
 		zap_get_name(zep, (void*)&lsin, (void*)&rsin, &slen);
 		printf("%X disconnected\n", rsin.sin_addr.s_addr);
-		zap_close(zep);
+		zap_free(zep);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		data = (char *)ev->data;
@@ -133,6 +227,9 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 		printf("echoing: %s\n", data);
 		zap_send(zep, ev->data, ev->data_len);
 		break;
+	default:
+		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
+		exit(-1);
 	}
 }
 
@@ -146,34 +243,44 @@ void client_cb(zap_ep_t zep, zap_event_t ev)
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 
+	pthread_mutex_lock(&flag_lock);
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECTED:
 		flag = CONNECTED;
-		printf("connected\n");
+		printf("%s\n", zap_event_str(ev->type));
 		break;
-	case ZAP_EVENT_REJECTED:
 	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_DISCONNECTED:
+		printf("%s\n", zap_event_str(ev->type));
 		pthread_mutex_lock(&exiting_mutex);
 		if (!exiting) {
-			/* try reconnecting */
-			printf("%s\n", zap_event_str(ev->type));
 			flag = DISCONNECTED;
 			zap_close(zep);
 		}
 		pthread_mutex_unlock(&exiting_mutex);
+		zap_free(zep);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		printf("recv: %s\n", (char*)ev->data);
 		break;
+	case ZAP_EVENT_REJECTED:
+		printf("Error: Server never reject the connection request\n");
+		exit(-1);
+		break;
+	default:
+		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
+		exit(-1);
 	}
+	pthread_mutex_unlock(&flag_lock);
 }
 
 void do_server(struct sockaddr_in *sin)
 {
 	zap_ep_t ep;
-	zap_err_t zerr = zap_new(zap, &ep, server_cb);
-	if (zerr) {
+	int zerr;
+	ep = zap_new(zap, server_cb);
+	if (!ep) {
+		zerr = errno;
 		printf("zap_new error: %d\n", zerr);
 		exit(-1);
 	}
@@ -184,10 +291,11 @@ void do_server(struct sockaddr_in *sin)
 		exit(-1);
 	}
 	printf("Listening on port %hu\n", port);
-	/* look for ^D to terminate the server */
+	/* Run forever */
 	char c;
-	while (read(0, &c, 1) > 0) {
+	while (1) {
 		/* do nothing */
+		sleep(60);
 	}
 }
 
@@ -213,9 +321,10 @@ void *send_msg(void *arg)
 				continue;
 			}
 
-			printf("reconnecting...\n");
-			zerr = zap_new(zap, &ep, client_cb);
-			if (zerr) {
+			printf("connecting...\n");
+			ep = zap_new(zap, client_cb);
+			if (!ep) {
+				zerr = errno;
 				printf("zap_new error: %d\n", zerr);
 				exit(-1);
 			}
@@ -240,9 +349,15 @@ void *send_msg(void *arg)
 				rsin.sin_addr.s_addr);
 			sprintf(data, "%d: %d.%d", i, (int)tv.tv_sec,
 					(int)tv.tv_usec);
-			zerr = zap_send(ep, data, strlen(data));
-			if (zerr)
-				printf("Error %d in zap_send.\n", zerr);
+			pthread_mutex_lock(&flag_lock);
+			if (flag == CONNECTED) {
+				zerr = zap_send(ep, data, strlen(data));
+				if (zerr)
+					printf("Error %d in zap_send.\n", zerr);
+			} else {
+				break;
+			}
+			pthread_mutex_unlock(&flag_lock);
 		}
 
 		sleep(2);
@@ -250,9 +365,11 @@ void *send_msg(void *arg)
 			pthread_mutex_lock(&exiting_mutex);
 			exiting = 1;
 			pthread_mutex_unlock(&exiting_mutex);
-			zerr = zap_close(ep);
-			if (zerr)
-				printf("Error %d in zap_close.\n", zerr);
+			if (flag == CONNECTED) {
+				zerr = zap_close(ep);
+				if (zerr)
+					printf("Error %d in zap_close.\n", zerr);
+			}
 			break;
 		}
 	}
@@ -286,8 +403,9 @@ int main(int argc, char **argv)
 {
 	zap_err_t zerr;
 	handle_args(argc, argv);
-	zerr = zap_get(xprt, &zap, zap_log, zap_mem_info);
-	if (zerr) {
+	zap = zap_get(xprt, zap_log, zap_mem_info);
+	if (!zap) {
+		zerr = errno;
 		printf("zap_get error: %d\n", zerr);
 		exit(-1);
 	}

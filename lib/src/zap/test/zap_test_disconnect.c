@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -52,9 +52,40 @@
 /**
  * \file zap_test_disconnect.c
  * \brief Zap test for simultaneous disconnect.
+ */
+
+/**
+ * \page zap_test_disconnect zap_test_disconnect
  *
- * This program will fork 2 more processes, wait for them to be connected and
- * signal both of them at the same time to send data and disconnect.
+ * \section summary SUMMARY
+ *
+ * Zap test for simultaneous disconnect.
+ *
+ * \section synopsis SYNOPSIS
+ *
+ * \code{.sh}
+ * # Server #
+ * zap_test_disconnect -x XPRT -p PORT -s [-w TIME]
+ *
+ *
+ * # Client #
+ * zap_test_disconnect -x XPRT -p PORT -h HOST [-w TIME]
+ *
+ * \endcode
+ *
+ * \section desc DESCRIPTION
+ *
+ * This test program, like other zap_test*, can run in two modes: server and
+ * client. The test scheme is the following:
+ *
+ *   - server program starts, listening to a port
+ *   - client program starts, connecting to the server
+ *   - both client and server exchange a message
+ *   - after a given time in seconds has passed (with '-w' option), the server
+ *     and the client both call zap_close() -- trying to create a simultaneous
+ *     close event.
+ *   - after receiving a disconnect event from zap, both client and server wait
+ *     for additional 1 second then exit.
  */
 
 #include <unistd.h>
@@ -199,18 +230,21 @@ zap_mem_info_t mem_fn(void)
 void init_zap(zap_ep_t *epp, zap_cb_fn_t cb)
 {
 	zap_err_t zerr;
-	zerr = zap_get(xprt, &zap, log_fn, mem_fn);
-	if (zerr) {
+	zap_ep_t ep;
+	zap = zap_get(xprt, log_fn, mem_fn);
+	if (!zap) {
+		zerr = errno;
 		LOG("zap_get err %d: %s\n", zerr, zap_err_str(zerr));
 		exit(-1);
 	}
-	zerr = zap_new(zap, epp, cb);
-	if (zerr) {
+	ep = zap_new(zap, cb);
+	if (!epp) {
+		zerr = errno;
 		LOG("zap_new err %d: %s\n", zerr, zap_err_str(zerr));
 		exit(-1);
 	}
+	*epp = ep;
 
-	/* sem = sem_open(NULL, O_CREAT|O_RDWR, 0600, 1); */
 	int rc = sem_init(sem, 0, 0);
 	if (rc) {
 		LOG("sem_init error: %m\n");
@@ -275,6 +309,7 @@ void do_mutual()
 
 	/* wait for close completion */
 	sem_wait(sem);
+	zap_free(ep);
 }
 
 void do_server()
@@ -294,8 +329,9 @@ void do_server()
 	LOG("listening ...\n");
 
 	do_mutual();
+
 	LOG("closing listening ep ...\n");
-	zap_close(listen_ep);
+	zap_free(listen_ep);
 }
 
 void do_client()

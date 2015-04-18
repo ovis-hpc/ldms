@@ -57,32 +57,8 @@
 #define SWIG_FILE_WITH_INIT
 #include "zap/zap.h"
 
-inline
-struct zap *zap_GET(char *name)
-{
-	zap_t z;
-	zap_err_t zerr = zap_get(name, &z, NULL, NULL);
-	if (zerr)
-		return NULL;
-	return z;
-}
-
-inline
-struct zap_ep *zap_NEW(struct zap *z)
-{
-	zap_ep_t ep;
-	zap_err_t zerr = zap_new(z, &ep, NULL);
-	if (zerr)
-		return NULL;
-	return ep;
-}
-
 %}
 
-
-struct zap *zap_GET(char *name);
-struct zap_ep *zap_NEW(struct zap *z);
-int zap_connect_ez(struct zap_ep *ep, const char *host_port);
 %pybuffer_mutable_string(void *BUF);
 int zap_send(struct zap_ep *ep, void *BUF, size_t sz);
 int zap_close(struct zap_ep *ep);

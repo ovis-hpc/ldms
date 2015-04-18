@@ -103,22 +103,26 @@ struct z_sock_key {
 	struct zap_sock_map *map; /**< reference to zap_map */
 };
 
-#define SOCK_MSG_TYPE_LIST(ZAP_WRAP) \
-	ZAP_WRAP(SOCK_MSG_REGULAR),     /*  Regular     send-receive  */  \
-	ZAP_WRAP(SOCK_MSG_RENDEZVOUS),  /*  Share       zap_map       */  \
-	ZAP_WRAP(SOCK_MSG_READ_REQ),    /*  Read        request       */  \
-	ZAP_WRAP(SOCK_MSG_READ_RESP),   /*  Read        response      */  \
-	ZAP_WRAP(SOCK_MSG_WRITE_REQ),   /*  Write       request       */  \
-	ZAP_WRAP(SOCK_MSG_WRITE_RESP),  /*  Write       response      */  \
-	ZAP_WRAP(SOCK_MSG_ACCEPTED),    /*  Connection  accepted      */  \
-	ZAP_WRAP(SOCK_MSG_TYPE_LAST)
+typedef enum sock_msg_type {
+	SOCK_MSG_SENDRECV = 1,/*  send-receive  */
+	SOCK_MSG_RENDEZVOUS,  /*  Share       zap_map       */
+	SOCK_MSG_READ_REQ,    /*  Read        request       */
+	SOCK_MSG_READ_RESP,   /*  Read        response      */
+	SOCK_MSG_WRITE_REQ,   /*  Write       request       */
+	SOCK_MSG_WRITE_RESP,  /*  Write       response      */
+	SOCK_MSG_ACCEPTED,    /*  Connection  accepted      */
+	SOCK_MSG_TYPE_LAST
+} sock_msg_type_t;;
 
 static const char *__sock_msg_type_str[] = {
-	SOCK_MSG_TYPE_LIST(ZAP_STR_WRAP)
-};
-
-enum sock_msg_type {
-	SOCK_MSG_TYPE_LIST(ZAP_ENUM_WRAP)
+	"SOCK_MSG_INVALID",
+	"SOCK_MSG_SENDRECV",
+	"SOCK_MSG_RENDEZVOUS",
+	"SOCK_MSG_READ_REQ",
+	"SOCK_MSG_READ_RESP",
+	"SOCK_MSG_WRITE_REQ",
+	"SOCK_MSG_WRITE_RESP",
+	"SOCK_MSG_ACCEPTED"
 };
 
 #pragma pack(4)
@@ -129,14 +133,16 @@ enum sock_msg_type {
  * Each of the sock_msg's is an extension to ::sock_msg_hdr.
  */
 struct sock_msg_hdr {
-	uint16_t msg_type;
-	uint32_t msg_len; /** Length of the entire message, header included. */
+	uint16_t msg_type; /**< The request type */
+	uint32_t msg_len;  /**< Length of the entire message, header included. */
+	uint32_t xid;	   /**< Transaction Id to check against reply */
+	uint64_t ctxt;	   /**< User context to be returned in reply */
 };
 
 /**
  * Regular message.
  */
-struct sock_msg_regular {
+struct sock_msg_sendrecv {
 	struct sock_msg_hdr hdr;
 	uint32_t data_len;
 	char data[0];
@@ -147,11 +153,8 @@ struct sock_msg_regular {
  */
 struct sock_msg_read_req {
 	struct sock_msg_hdr hdr;
-	uint64_t ctxt; /**< User context */
 	uint32_t src_map_key; /**< Source map reference (on non-initiator) */
 	uint64_t src_ptr; /**< Source memory */
-	uint64_t dst_map_ref; /**< Source map reference (on non-initiator) */
-	uint64_t dst_ptr; /**< Destination memory addr (on initiator) */
 	uint32_t data_len; /**< Data length */
 };
 
@@ -161,7 +164,6 @@ struct sock_msg_read_req {
 struct sock_msg_read_resp {
 	struct sock_msg_hdr hdr;
 	uint16_t status; /**< Return status */
-	uint64_t ctxt; /**< User context */
 	uint64_t dst_ptr; /**< Destination memory addr (on initiator) */
 	uint32_t data_len; /**< Response data length */
 	char data[0]; /**< Response data */
@@ -172,7 +174,6 @@ struct sock_msg_read_resp {
  */
 struct sock_msg_write_req {
 	struct sock_msg_hdr hdr;
-	uint64_t ctxt; /**< User context */
 	uint32_t dst_map_key; /**< Destination map key */
 	uint64_t dst_ptr; /**< Destination address */
 	uint32_t data_len; /**< Data length */
@@ -184,7 +185,6 @@ struct sock_msg_write_req {
  */
 struct sock_msg_write_resp {
 	struct sock_msg_hdr hdr;
-	uint64_t ctxt; /**< User context */
 	uint16_t status; /**< Return status */
 };
 
@@ -207,6 +207,22 @@ struct sock_msg_accepted {
 	struct sock_msg_hdr hdr;
 };
 
+/**
+ * Keeps track of outstanding I/O so that it can be cleaned up when
+ * the endpoint shuts down. A z_sock_io is either on the free_q or the
+ * io_q for the endpoint.
+ */
+struct z_sock_io {
+	TAILQ_ENTRY(z_sock_io) q_link;
+	zap_map_t dst_map; /**< Destination map for RDMA_READ */
+	char *dst_ptr; /**< Destination address for RDMA_READ */
+	union {
+		struct sock_msg_hdr hdr;
+		struct sock_msg_read_req read;
+		struct sock_msg_write_req write;
+	};
+};
+
 #pragma pack()
 
 struct z_sock_ep {
@@ -216,6 +232,9 @@ struct z_sock_ep {
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;
 
+	pthread_mutex_t q_lock;
+	TAILQ_HEAD(z_sock_free_q, z_sock_io) free_q;
+	TAILQ_HEAD(z_sock_io_q, z_sock_io) io_q;
 	LIST_ENTRY(z_sock_ep) link;
 };
 

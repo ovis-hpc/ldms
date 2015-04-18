@@ -616,7 +616,7 @@ static void handle_recv(struct z_rdma_ep *rep,
 	memset(&zev, 0, sizeof zev);
 	zev.type = ZAP_EVENT_RECV_COMPLETE;
 	zev.status = ZAP_ERR_OK;
-	zev.data = msg + 1;
+	zev.data = (char *)(msg + 1);
 	zev.data_len = len - sizeof(*msg);
 	rep->ep.cb(&rep->ep, &zev);
 }
@@ -994,13 +994,15 @@ static void *cq_thread_proc(void *arg)
 	return NULL;
 }
 
-static zap_err_t z_rdma_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
+static zap_ep_t z_rdma_new(zap_t z, zap_cb_fn_t cb)
 {
 	struct z_rdma_ep *rep;
 
 	rep = calloc(1, sizeof *rep);
-	if (!rep)
-		return ZAP_ERR_RESOURCE;
+	if (!rep) {
+		errno = ZAP_ERR_RESOURCE;
+		return NULL;
+	}
 
 	rep->rem_rq_credits = RQ_DEPTH;
 	rep->lcl_rq_credits = 0;
@@ -1008,8 +1010,7 @@ static zap_err_t z_rdma_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
 
 	TAILQ_INIT(&rep->io_q);
 	pthread_mutex_init(&rep->credit_lock, NULL);
-	*pep = &rep->ep;
-	return ZAP_ERR_OK;
+	return (zap_ep_t)&rep->ep;
 }
 
 static void z_rdma_destroy(zap_ep_t zep)
@@ -1161,8 +1162,8 @@ handle_connect_request(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 	assert(rep->ep.state == ZAP_EP_LISTENING);
 	zev.type = ZAP_EVENT_CONNECT_REQUEST;
 	zev.status = ZAP_ERR_OK;
-	zerr = zap_new(rep->ep.z, &new_ep, rep->ep.cb);
-	if (zerr) {
+	new_ep = zap_new(rep->ep.z, rep->ep.cb);
+	if (!new_ep) {
 		LOG_(rep, "RDMA: could not create a new"
 		     "endpoint for a connection request.\n");
 		return;
@@ -1504,7 +1505,7 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 	return ZAP_ERR_OK;
 }
 
-static zap_err_t z_rdma_send(zap_ep_t ep, void *buf, size_t len)
+static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct rdma_message_hdr *hdr;
@@ -1610,8 +1611,8 @@ static zap_err_t z_rdma_unmap(zap_ep_t ep, zap_map_t map)
 }
 
 static zap_err_t z_rdma_write(zap_ep_t ep,
-			      zap_map_t src_map, void *src,
-			      zap_map_t dst_map, void *dst,
+			      zap_map_t src_map, char *src,
+			      zap_map_t dst_map, char *dst,
 			      size_t sz,
 			      void *context)
 {
@@ -1652,8 +1653,8 @@ static zap_err_t z_rdma_write(zap_ep_t ep,
 }
 
 static zap_err_t z_rdma_read(zap_ep_t ep,
-			     zap_map_t src_map, void *src,
-			     zap_map_t dst_map, void *dst,
+			     zap_map_t src_map, char *src,
+			     zap_map_t dst_map, char *dst,
 			     size_t sz,
 			     void *context)
 {

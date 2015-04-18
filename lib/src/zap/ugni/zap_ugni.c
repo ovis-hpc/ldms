@@ -427,7 +427,7 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 		goto err;
 	return ZAP_ERR_OK;
  err:
-	return errno2zaperr(errno);
+	return zap_errno2zerr(errno);
 }
 
 static int __set_keep_alive(struct z_ugni_ep *uep)
@@ -1215,13 +1215,15 @@ int init_once()
 	return 0;
 }
 
-zap_err_t z_ugni_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
+zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 {
 	gni_return_t grc;
 	struct z_ugni_ep *uep = calloc(1, sizeof(*uep));
 	DLOG("Creating ep: %p\n", uep);
-	if (!uep)
-		return ZAP_ERR_RESOURCE;
+	if (!uep) {
+		errno = ZAP_ERR_RESOURCE;
+		return NULL;
+	}
 	uep->sock = -1;
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	LIST_INSERT_HEAD(&z_ugni_list, uep, link);
@@ -1230,13 +1232,11 @@ zap_err_t z_ugni_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
 	if (grc) {
 		LOG("GNI_EpCreate() failed: %s\n", gni_ret_str(grc));
 		free(uep);
-		return ZAP_ERR_RESOURCE;
+		errno = ZAP_ERR_RESOURCE;
+		return NULL;
 	}
 	DLOG_(uep, "Created gni_ep: %p\n", uep->gni_ep);
-	*pep = (void*)uep;
-	/* buf_event, listen_ev and sock will be created in connect, listen
-	 * or accept. */
-	return 0;
+	return (zap_ep_t)uep;
 }
 
 static void z_ugni_destroy(zap_ep_t ep)

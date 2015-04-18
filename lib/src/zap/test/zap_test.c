@@ -285,6 +285,7 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		assert(0);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		zap_free(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
 		break;
@@ -412,8 +413,8 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		printf("REJECTED! try again ...\n");
 		sin = zap_get_ucontext(ep);
 		zap_close(ep);
-		err = zap_new(zap, &ep, client_cb);
-		if (err) {
+		ep = zap_new(zap, client_cb);
+		if (!ep) {
 			printf("zap_new failed.\n");
 			return;
 		}
@@ -424,7 +425,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		}
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		zap_close(ep);
+		zap_free(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
 		break;
@@ -467,8 +468,8 @@ void do_server(zap_t zap, struct sockaddr_in *sin)
 	zap_err_t err;
 	zap_ep_t ep;
 
-	err = zap_new(zap, &ep, server_cb);
-	if (err) {
+	ep = zap_new(zap, server_cb);
+	if (!ep) {
 		printf("Could not create the zap endpoint.\n");
 		return;
 	}
@@ -476,7 +477,7 @@ void do_server(zap_t zap, struct sockaddr_in *sin)
 	err = zap_listen(ep, (struct sockaddr *)sin, sizeof(*sin));
 	if (err) {
 		printf("zap_listen failed.\n");
-		zap_close(ep);
+		zap_free(ep);
 		return;
 	}
 
@@ -491,8 +492,8 @@ void do_client(zap_t zap, struct sockaddr_in *sin)
 	zap_err_t err;
 	zap_ep_t ep;
 
-	err = zap_new(zap, &ep, client_cb);
-	if (err) {
+	ep = zap_new(zap, client_cb);
+	if (!ep) {
 		printf("Could not create the zap endpoing.\n");
 		return;
 	}
@@ -589,12 +590,13 @@ int main(int argc, char *argv[])
 		sin.sin_family = AF_INET;
 	sin.sin_port = htons(port_no);
 
-	err = zap_get(transport, &zap, test_log, test_meminfo);
-	if (err) {
+	zap = zap_get(transport, test_log, test_meminfo);
+	if (!zap) {
 		printf("%s: could not load the '%s' transport.\n",
 		       __func__, transport);
 		exit(1);
 	}
+	free(transport);
 	if (is_server)
 		do_server(zap, &sin);
 	else

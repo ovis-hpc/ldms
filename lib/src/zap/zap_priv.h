@@ -86,7 +86,7 @@ static const char *zap_ep_state_str(zap_ep_state_t state)
 
 struct zap_ep {
 	zap_t z;
-	int ref_count;
+	uint32_t ref_count;
 	pthread_mutex_t lock;
 	zap_ep_state_t state;
 	void *ucontext;
@@ -106,7 +106,7 @@ struct zap {
 	LIST_ENTRY(zap) zap_link;
 
 	/** Create a new endpoint */
-	zap_err_t (*new)(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb);
+	zap_ep_t (*new)(zap_t z, zap_cb_fn_t cb);
 
 	/** Destroy an endpoint. */
 	void (*destroy)(zap_ep_t ep);
@@ -127,18 +127,18 @@ struct zap {
 	zap_err_t (*close)(zap_ep_t ep);
 
 	/** Send a message */
-	zap_err_t (*send)(zap_ep_t ep, void *buf, size_t sz);
+	zap_err_t (*send)(zap_ep_t ep, char *buf, size_t sz);
 
 	/** RDMA write data to a remote buffer */
 	zap_err_t (*write)(zap_ep_t ep,
-			   zap_map_t src_map, void *src,
-			   zap_map_t dst_map, void *dst, size_t sz,
+			   zap_map_t src_map, char *src,
+			   zap_map_t dst_map, char *dst, size_t sz,
 			   void *context);
 
 	/**  RDMA read data from a remote buffer */
 	zap_err_t (*read)(zap_ep_t ep,
-			  zap_map_t src_map, void *src,
-			  zap_map_t dst_map, void *dst, size_t sz,
+			  zap_map_t src_map, char *src,
+			  zap_map_t dst_map, char *dst, size_t sz,
 			  void *context);
 
 	/** Allocate a remote buffer */
@@ -189,7 +189,7 @@ struct zap_map {
 	zap_map_type_t type;	  /*! Is this a local or remote map  */
 	zap_ep_t ep;		  /*! The endpoint */
 	zap_access_t acc;	  /*! Access rights */
-	void *addr;		  /*! Address of buffer. */
+	char *addr;		  /*! Address of buffer. */
 	size_t len;		  /*! Length of the buffer */
 };
 

@@ -1,6 +1,7 @@
-/* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
+ /* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -103,6 +104,47 @@ pthread_mutex_t zap_list_lock;
 #define _SO_EXT ".so"
 static char _libdir[PATH_MAX];
 
+static char *__zap_event_str[] = {
+	"ZAP_EVENT_ILLEGAL",
+	"ZAP_EVENT_CONNECT_REQUEST",
+	"ZAP_EVENT_CONNECT_ERROR",
+	"ZAP_EVENT_CONNECTED",
+	"ZAP_EVENT_REJECTED",
+	"ZAP_EVENT_DISCONNECTED",
+	"ZAP_EVENT_RECV_COMPLETE",
+	"ZAP_EVENT_READ_COMPLETE",
+	"ZAP_EVENT_WRITE_COMPLETE",
+	"ZAP_EVENT_RENDEZVOUS",
+	"ZAP_EVENT_LAST"
+};
+
+enum zap_err_e zap_errno2zerr(int e)
+{
+	switch (e) {
+	case ENOTCONN:
+		return ZAP_ERR_NOT_CONNECTED;
+	case ENOMEM:
+	case ENOBUFS:
+		return ZAP_ERR_RESOURCE;
+	case ECONNREFUSED:
+		return ZAP_ERR_CONNECT;
+	case EISCONN:
+		return ZAP_ERR_BUSY;
+	case EFAULT:
+	case EINVAL:
+		return ZAP_ERR_PARAMETER;
+	default:
+		return ZAP_ERR_ENDPOINT;
+	}
+}
+
+const char* zap_event_str(enum zap_event_type e)
+{
+	if (e < 0 || e > ZAP_EVENT_LAST)
+		return "ZAP_EVENT_UNKNOWN";
+	return __zap_event_str[e];
+}
+
 void *zap_get_ucontext(zap_ep_t ep)
 {
 	return ep->ucontext;
@@ -118,14 +160,13 @@ zap_mem_info_t default_zap_mem_info(void)
 	return NULL;
 }
 
-zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
-		  zap_mem_info_fn_t mem_info_fn)
+zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_fn)
 {
-	zap_err_t ret = 0;
 	char *libdir;
 	zap_t z = NULL;
 	char *errstr;
 	int len;
+	int ret;
 
 	if (!log_fn)
 		log_fn = default_log;
@@ -150,7 +191,6 @@ zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
 	if (!d) {
 		/* The library doesn't exist */
 		log_fn("dlopen: %s\n", dlerror());
-		ret = ZAP_ERR_TRANSPORT;
 		goto err;
 	}
 	dlerror();
@@ -160,13 +200,12 @@ zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
 		log_fn("dlsym: %s\n", errstr);
 		/* The library exists but doesn't export the correct
 		 * symbol and is therefore likely the wrong library type */
-		ret = ZAP_ERR_TRANSPORT;
-		goto err;
+		goto err1;
 	}
-	ret = get(pz, log_fn, mem_info_fn);
+	ret = get(&z, log_fn, mem_info_fn);
 	if (ret)
-		goto err;
-	z = *pz;
+		goto err1;
+
 	strcpy(z->name, name);
 	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
@@ -175,11 +214,16 @@ zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
 	LIST_INSERT_HEAD(&zap_list, z, zap_link);
 	pthread_mutex_unlock(&zap_list_lock);
 
-	return ZAP_ERR_OK;
- err:
-	if (z)
-		free(z);
-	return ret;
+	return z;
+err1:
+	dlerror();
+	ret = dlclose(d);
+	if (ret) {
+		errstr = dlerror();
+		log_fn("dlclose: %s\n", errstr);
+	}
+err:
+	return NULL;
 }
 
 size_t zap_max_msg(zap_t z)
@@ -210,20 +254,21 @@ void blocking_zap_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
-zap_err_t zap_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb)
+zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 {
+	zap_ep_t zep = NULL;
 	if (!cb)
 		cb = blocking_zap_cb;
-	zap_err_t zerr = z->new(z, pep, cb);
-	if (!zerr) {
-		(*pep)->z = z;
-		(*pep)->cb = cb;
-		(*pep)->ref_count = 1;
-		(*pep)->state = ZAP_EP_INIT;
-		pthread_mutex_init(&(*pep)->lock, NULL);
-		sem_init(&(*pep)->block_sem, 0, 0);
+	zep = z->new(z, cb);
+	if (zep) {
+		zep->z = z;
+		zep->cb = cb;
+		zep->ref_count = 1;
+		zep->state = ZAP_EP_INIT;
+		pthread_mutex_init(&zep->lock, NULL);
+		sem_init(&zep->block_sem, 0, 0);
 	}
-	return zerr;
+	return zep;
 }
 
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb)
@@ -231,27 +276,18 @@ zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb)
 	return ep->z->accept(ep, cb);
 }
 
-zap_err_t zap_connect_ez(zap_ep_t ep, const char *host_port)
+zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host, const char *port)
 {
-	char buff[256];
-	strncpy(buff, host_port, 256);
-	char *host, *port;
-	host = buff;
-	port = strchr(buff, ':');
-	if (port) {
-		*port = '\0';
-		port++;
-	}
 	struct addrinfo *ai;
 	int rc = getaddrinfo(host, port, NULL, &ai);
 	if (rc)
 		return ZAP_ERR_RESOURCE;
-	zap_err_t zerr = zap_connect_block(ep, ai->ai_addr, ai->ai_addrlen);
+	zap_err_t zerr = zap_connect_sync(ep, ai->ai_addr, ai->ai_addrlen);
 	freeaddrinfo(ai);
 	return zerr;
 }
 
-zap_err_t zap_connect_block(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
+zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
 {
 	zap_err_t zerr = zap_connect(ep, sa, sa_len);
 	if (zerr)
@@ -274,7 +310,16 @@ zap_err_t zap_listen(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
 
 zap_err_t zap_close(zap_ep_t ep)
 {
-	return ep->z->close(ep);
+	zap_err_t zerr = ep->z->close(ep);
+	pthread_mutex_lock(&ep->lock);
+	while (!LIST_EMPTY(&ep->map_list)) {
+		zap_map_t map = LIST_FIRST(&ep->map_list);
+		LIST_REMOVE(map, link);
+		zap_err_t zerr = ep->z->unmap(ep, map);
+		zap_put_ep(ep);
+	}
+	pthread_mutex_unlock(&ep->lock);
+	return zerr;
 }
 
 zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz)
@@ -307,57 +352,36 @@ zap_err_t zap_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 
 void zap_get_ep(zap_ep_t ep)
 {
-	pthread_mutex_lock(&ep->lock);
-	ep->ref_count++;
-	pthread_mutex_unlock(&ep->lock);
+	(void)__sync_fetch_and_add(&ep->ref_count, 1);
 }
 
-zap_err_t zap_free(zap_ep_t ep)
+void zap_free(zap_ep_t ep)
 {
-	DLOG(ep, "zap_free: freeing 0x%016x\n", ep);
-	/* Unmap the zap_map first */
-	zap_map_t map;
-	pthread_mutex_lock(&ep->lock);
-	while ((map = LIST_FIRST(&ep->map_list))) {
-		LIST_REMOVE(map, link);
-		ep->z->unmap(ep, map);
-	}
-	pthread_mutex_unlock(&ep->lock);
-
-	/* Then, destroy the endpoint */
-	ep->z->destroy(ep);
+	/* Drop the zap_new() reference */
+	assert(ep->ref_count);
+	zap_put_ep(ep);
 }
 
 void zap_put_ep(zap_ep_t ep)
 {
-	int destroy = 0;
-
-	pthread_mutex_lock(&ep->lock);
 	assert(ep->ref_count);
-	ep->ref_count--;
-	if (!ep->ref_count)
-		destroy = 1;
-	pthread_mutex_unlock(&ep->lock);
-
-	if (destroy)
-		zap_free(ep);
+	if (0 == __sync_sub_and_fetch(&ep->ref_count, 1))
+		ep->z->destroy(ep);
 }
 
 zap_err_t zap_read(zap_ep_t ep,
-		   zap_map_t src_map, void *src,
-		   zap_map_t dst_map, void *dst,
+		   zap_map_t src_map, char *src,
+		   zap_map_t dst_map, char *dst,
 		   size_t sz,
 		   void *context)
 {
 	zap_err_t zerr;
-	zap_get_ep(ep);
 	if (dst_map->type != ZAP_MAP_LOCAL)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 	if (src_map->type != ZAP_MAP_REMOTE)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 
 	zerr = ep->z->read(ep, src_map, src, dst_map, dst, sz, context);
-	zap_put_ep(ep);
 	return zerr;
 }
 
@@ -367,7 +391,7 @@ size_t zap_map_len(zap_map_t map)
 	return map->len;
 }
 
-void* zap_map_addr(zap_map_t map)
+char *zap_map_addr(zap_map_t map)
 {
 	return map->addr;
 }
@@ -382,6 +406,7 @@ zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
 
 	map = *pm;
 	map->type = ZAP_MAP_LOCAL;
+	zap_get_ep(ep);
 	map->ep = ep;
 	map->addr = addr;
 	map->len = len;
@@ -393,41 +418,23 @@ zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
 	return err;
 }
 
-enum zap_err_e errno2zaperr(int e)
-{
-	switch (e) {
-	case ENOTCONN:
-		return ZAP_ERR_NOT_CONNECTED;
-	case ENOMEM:
-	case ENOBUFS:
-		return ZAP_ERR_RESOURCE;
-	case ECONNREFUSED:
-		return ZAP_ERR_CONNECT;
-	case EISCONN:
-		return ZAP_ERR_BUSY;
-	case EFAULT:
-	case EINVAL:
-		return ZAP_ERR_PARAMETER;
-	default:
-		return ZAP_ERR_ENDPOINT;
-	}
-}
-
 zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
 {
+	zap_err_t zerr;
+
 	pthread_mutex_lock(&ep->lock);
 	LIST_REMOVE(map, link);
 	pthread_mutex_unlock(&ep->lock);
 
-	return ep->z->unmap(ep, map);
+	zerr = ep->z->unmap(ep, map);
+	zap_put_ep(ep);
+	return zerr;
 }
 
 zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 {
 	zap_err_t zerr;
-	zap_get_ep(ep);
 	zerr = ep->z->share(ep, m, msg, msg_len);
-	zap_put_ep(ep);
 	return zerr;
 }
 

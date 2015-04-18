@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -83,9 +84,6 @@
 
 #define ZAP_MAX_TRANSPORT_NAME_LEN 16
 
-#define ZAP_ENUM_WRAP(X) X
-#define ZAP_STR_WRAP(X) #X
-
 typedef struct zap_ep *zap_ep_t;
 typedef struct zap *zap_t;
 typedef void (*zap_log_fn_t)(const char *fmt, ...);
@@ -93,7 +91,7 @@ typedef struct zap_map *zap_map_t;
 
 typedef enum zap_event_type {
 	/*! An incoming connect request is ready to be accepted or rejected. */
-	ZAP_EVENT_CONNECT_REQUEST,
+	ZAP_EVENT_CONNECT_REQUEST = 1,
 	/*! A connect request failed due to a network error. */
 	ZAP_EVENT_CONNECT_ERROR,
 	/*! An active request initiated with \c zap_connect() was accepted. */
@@ -113,27 +111,6 @@ typedef enum zap_event_type {
 	/*! Last event (dummy) */
 	ZAP_EVENT_LAST
 } zap_event_type_t;
-
-static char *__zap_event_str[] = {
-	"ZAP_EVENT_CONNECT_REQUEST",
-	"ZAP_EVENT_CONNECT_ERROR",
-	"ZAP_EVENT_CONNECTED",
-	"ZAP_EVENT_REJECTED",
-	"ZAP_EVENT_DISCONNECTED",
-	"ZAP_EVENT_RECV_COMPLETE",
-	"ZAP_EVENT_READ_COMPLETE",
-	"ZAP_EVENT_WRITE_COMPLETE",
-	"ZAP_EVENT_RENDEZVOUS",
-	"ZAP_EVENT_LAST"
-};
-
-static inline
-const char* zap_event_str(enum zap_event_type e)
-{
-	if (e < 0 || e > ZAP_EVENT_LAST)
-		return "ZAP_EVENT_UNKNOWN";
-	return __zap_event_str[e];
-}
 
 typedef enum zap_err_e {
 	/*! No error. */
@@ -171,20 +148,20 @@ typedef enum zap_err_e {
 	ZAP_ERR_LOCAL_OPERATION,
 	/*! Mapping access error due to local-side mapping permission. */
 	ZAP_ERR_LOCAL_PERMISSION,
+	/*! Remote-side map handle is invalid. */
+	ZAP_ERR_REMOTE_MAP,
 	/*! Mapping access error due to the length of remote-side mapping. */
 	ZAP_ERR_REMOTE_LEN,
-	/*! Miscellaneous operation error on remote-side memory mapping. */
-	ZAP_ERR_REMOTE_OPERATION,
 	/*! Mapping access error due to remote-side mapping permission. */
 	ZAP_ERR_REMOTE_PERMISSION,
+	/*! Miscellaneous operation error on remote-side memory mapping. */
+	ZAP_ERR_REMOTE_OPERATION,
 	/*! Retry exceed error. */
 	ZAP_ERR_RETRY_EXCEEDED,
 	/*! Connection time out error. */
 	ZAP_ERR_TIMEOUT,
 	/*! Transport flush error. */
 	ZAP_ERR_FLUSH,
-	/*! Remote-side mapping access error due to no requested entry. */
-	ZAP_ERR_REMOTE_NOENTRY,
 	/*! Last error (dummy). */
 	ZAP_ERR_LAST
 } zap_err_t;
@@ -213,7 +190,7 @@ static char *__zap_err_str[] = {
 	"ZAP_ERR_RETRY_EXCEEDED",
 	"ZAP_ERR_TIMEOUT",
 	"ZAP_ERR_FLUSH",
-	"ZAP_ERR_REMOTE_NOENTRY",
+	"ZAP_ERR_REMOTE_MAP",
 	"ZAP_ERR_LAST"
 };
 
@@ -230,7 +207,7 @@ const char* zap_err_str(enum zap_err_e e)
  * \param e The errno.
  * \returns ::zap_err_e.
  */
-enum zap_err_e errno2zaperr(int e);
+enum zap_err_e zap_errno2zerr(int e);
 
 typedef struct zap_event {
 	/*! Event type */
@@ -251,7 +228,7 @@ typedef struct zap_event {
 	 * \b ***REMARK*** \c data is owned by zap. Application can only read.
 	 * zap manages data and data buffer internally.
 	 */
-	void *data;
+	unsigned char *data;
 	/*! The length of the \c #data */
 	size_t data_len;
 	/*! Application-provided context of the operation. */
@@ -328,19 +305,16 @@ void zap_set_ucontext(zap_ep_t ep, void *context);
  *
  * \param name	The transport name, e.g. 'rdma', 'sock', etc...
  * \param log_fn Pointer to the function to uuse for logging errors or status
- * \param pz	Pointer to the handle where the new transport handle should
- *		be stored.
  * \param mfn	Pointer to a function that returns the mapped memory info
- * \return 0	The transport was created successfully
- * \return ZAP_ERR_TRANSPORT	The transport name was not found.
- * \return ZAP_ERR_RESOURCE	There were insufficient resources to complete the request
+ * \return Pointer to the transport or NULL if the transport does not exist.
  */
-zap_err_t zap_get(const char *name, zap_t *pz, zap_log_fn_t log_fn,
-		  zap_mem_info_fn_t map_info_fn);
+zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t map_info_fn);
 
 /** \brief Returns the max send message size.
  *
- * Returns the max message size supported by the transport.
+ * Returns the max message size supported by the transport. Messages larger
+ * than the returned value cannot be sent using zap_send or received from the
+ * remote peer.
  *
  * \param t	The transport handle.
  * \return !0	The max message size. A zero value indicates a bad transport handle.
@@ -349,26 +323,28 @@ size_t zap_max_msg(zap_t z);
 
 /** \brief Create a new endpoint on a transport.
  *
+ * Create an endpoint and initialize the reference count to 1. The
+ * application should call zap_free() when it is finished with the
+ * endpoint.
+ *
  * \param z	The Zap transport handle
- * \param pep	Pointer to the handle where the new endpoint should be stored.
  * \param cb	Ponter to a function to receive asynchronous events on the endpoint.
- * \return 0	The endpoint was created successfully
- * \return ZAP_ERR_TRANSPORT	The transport handle is invalid.
- * \return ZAP_ERR_RESOURCE	There were insufficient resources to complete the request.
+ * \return Pointer to the new endpoint or NULL if there was an error
  */
-zap_err_t zap_new(zap_t z, zap_ep_t *pep, zap_cb_fn_t cb);
+zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb);
 
-/** \brief Release an endpoing.
+/** \brief Release an endpoint
  *
- * Relase all resources associated with the endpoint including all
- * active buffer mappings.
+ * Drop the implicit zap_new() reference. This is functionally
+ * equivalent to zap_put_ep().
  *
- * \param ep	The endpoint handle to free
- * \return 0	Success.
- * \return ZAP_ERR_ENDPOINT	An invalid endpoint handle was specified
- * \return ZAP_ERR_BUSY		The endpoint is in-use
+ * Note that outstanding I/O may hold references on the endpoint and
+ * this does not initiate a disconnect. See the zap_close() function
+ * for initiating a disconnect on an endpoint.
+ *
+ * \param ep	The endpoint handle
  */
-zap_err_t zap_free(zap_ep_t ep);
+void zap_free(zap_ep_t ep);
 
 /** \brief Request a connection with a remote peer.
  *
@@ -382,7 +358,7 @@ zap_err_t zap_free(zap_ep_t ep);
 zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
 
 /**
- * The blocking version of ::zap_connect()
+ * A syncrhonous version of ::zap_connect()
  *
  * \param ep	The transport handle.
  * \param sa	Pointer to a sockaddr containing the address of the
@@ -391,18 +367,19 @@ zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
-zap_err_t zap_connect_block(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
+zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
 
 /**
- * The blocking and easier version of ::zap_connect()
+ * Synchronous connect by name
  *
  * \param ep	The transport handle.
- * \param host_port A string in the form of "host:port"
+ * \param host  The host name
+ * \param port  The service/port number
  *
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
-zap_err_t zap_connect_ez(zap_ep_t ep, const char *host_port);
+zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host_port, const char *port);
 
 /** \brief Accept a connection request from a remote peer.
  *
@@ -422,10 +399,32 @@ zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb);
 zap_err_t zap_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 		       struct sockaddr *remote_sa, socklen_t *sa_len);
 
+/**
+ * \brief Take a reference on the endpoint
+ *
+ * Increment the endpoint's internal reference count. The transport
+ * cannot be destroyed while the reference count is non-zero.
+ *
+ * \param ep	The endpoint handle
+ */
 void zap_get_ep(zap_ep_t ep);
+
+/**
+ * \brief Drop a reference on the endpoint
+ *
+ * Decrement the endpoint's internal reference count. If the
+ * transport's internal reference count goes to zero, the endpoint
+ * will be destroyed.
+ *
+ * \param ep	The endpoint handle
+ */
 void zap_put_ep(zap_ep_t ep);
 
 /** \brief Reject a connection request from a remote peer.
+ *
+ * Disconnect from the peer and drop the implicit reference created by
+ * the transport when this endpoint was created in response to the
+ * peer's connection request.
  *
  * \param ep	The transport handle.
  * \return 0	Success
@@ -433,10 +432,34 @@ void zap_put_ep(zap_ep_t ep);
  */
 zap_err_t zap_reject(zap_ep_t ep);
 
-/** \brief Listen for incoming connection requests */
+/** \brief Listen for incoming connection requests
+ *
+ * \param ep	The endpoint handle
+ * \param sa	The sockaddr for the local interface on which to
+ *		listen. Note that a zero for s_addr implies listen on all
+ *		interfaces.
+ * \param ep	The size of the sockaddr in bytes
+ * \retval 0	Success
+ * \retval EINVAL The specified endpoint or address was invalid
+ * \retval EINUSE The specified port number is in use
+*/
 zap_err_t zap_listen(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
 
-/** Close the connection */
+/** Close the connection
+ *
+ * Initiate a close of a connection with the remote peer. Any
+ * outstanding, incomplete I/O will be completed with ZAP_EVENT_FLUSH.
+ * If the endpoint was connected, the application will receive a
+ * ZAP_EVENT_DISCONNECTED event when the close is complete.
+ *
+ * The zap_close() function will release all outstanding mappings all
+ * outstanding active mappings associated with the endpoint. After
+ * calling this function, the application must not touch any mappings
+ * that were created directly via zap_map() or indirectly through the
+ * receipt of a rendezvous from a remote peer on this endpoint.
+ *
+ * \param ep	The endpoint handle
+ */
 zap_err_t zap_close(zap_ep_t ep);
 
 /** \brief Send data to the peer
@@ -457,8 +480,8 @@ zap_err_t zap_write(zap_ep_t t,
 
 /** \brief RDMA read data from a remote buffer */
 zap_err_t zap_read(zap_ep_t z,
-		   zap_map_t src_map, void *src,
-		   zap_map_t dst_map, void *dst, size_t sz,
+		   zap_map_t src_map, char *src,
+		   zap_map_t dst_map, char *dst, size_t sz,
 		   void *context);
 
 /** \brief Zap buffer mapping access rights. */
@@ -514,7 +537,7 @@ size_t zap_map_len(zap_map_t map);
  * \returns !0	Pointer to the start of the mapped buffer.
  * \returns NULL The map is invalid.
  */
-void* zap_map_addr(zap_map_t map);
+char *zap_map_addr(zap_map_t map);
 
 /** \brief Unmap a buffer previously mapped with \c zap_map_buf
  *
@@ -545,5 +568,7 @@ zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map);
  * \returns zap_error_code on error.
  */
 zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len);
+
+const char* zap_event_str(enum zap_event_type e);
 
 #endif
