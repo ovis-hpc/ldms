@@ -314,7 +314,7 @@
  * You can also extract the message occurrences and metric binning altogether
  * as follows:
  * \par
- * \code{.sh]
+ * \code{.sh}
  *     cat metric.csv | bassoc -w workspace -X -s balerd_store \\
  *                             -B '2015-01-01 00:00:00' -R recipe
  *     # Notice the captial 'X', not lower-case 'x'.
