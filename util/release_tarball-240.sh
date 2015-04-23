@@ -6,7 +6,7 @@ if ! test -f m4/Ovis-top.m4; then
 fi
 REPO_DIR=`pwd`
 OUTPUT_DIR=`pwd`/Release
-BRANCH_NAME=master
+BRANCH_NAME=v.2.5.0
 # Will get this from git in the future
 VERSION=2.5.0
 
