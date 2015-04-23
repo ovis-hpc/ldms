@@ -76,6 +76,7 @@ AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
 	src/query/Makefile src/test/Makefile
 	src/bhttpd/Makefile
 	src/bassoc/Makefile
+	src/tools/Makefile
 	src/plugins/test/Makefile swig/Makefile etc/Makefile
 	etc/init.d/Makefile etc/init.d/balerd
 	etc/logrotate.d/Makefile
