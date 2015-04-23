@@ -67,9 +67,9 @@
 static ldms_set_t set;
 static FILE *mf;
 static ldms_metric_t *metric_table;
+static size_t metric_table_sz = 0;
 static ldmsd_msg_log_f msglog;
 
-static int numcpu_plusone;
 static uint64_t comp_id = UINT64_MAX;
 
 #undef CHECK_PROCSTATUTIL_TIMING
@@ -100,9 +100,9 @@ static ldms_set_t get_set()
 /*
  * Depending on the kernel version, not all of the rows will
  * necessarily be used. Since new columns are added at the end of the
- * line, this should work across all kernels up to 3.5.
+ * line, this should work across all kernels up to at least 3.5.
  */
-static int ncoresuffix = 3; //used for getting sum names from per core names (below)
+static int ncoresuffix = 3; //used for getting sum names from per core names (#%d)
 static char *metric_name_fmt[] = {
 	"user#%d",
 	"nice#%d",
@@ -212,6 +212,7 @@ static int create_metric_set(const char *path)
 	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
+	metric_table_sz = metric_count;
 
 	int cpu_no;
 	ldms_metric_t m;
@@ -355,6 +356,11 @@ static int sample(void)
 		for (token = strtok_r(NULL, " \t\n", &saveptr); token;
 				token = strtok_r(NULL, " \t\n", &saveptr)) {
 			uint64_t v = strtoul(token, NULL, 0);
+			if (metric_table_sz <= metric_no) {
+				msglog(LDMS_LERROR,"procstatutil: /proc/stat "
+					"format grew. Crashing soon. new core?"
+					"\n");
+			}
 			ldms_set_u64(metric_table[metric_no], v);
 			metric_no++;
 		}

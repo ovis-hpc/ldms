@@ -335,3 +335,11 @@ AC_DEFINE_UNQUOTED([LDMS_COMPILE_HOST_OS],["$LDMS_COMPILE_HOST_OS"],[os where co
 AC_DEFINE_UNQUOTED([LDMS_CONFIG_ARGS],["$ac_configure_args"],[configure input])
 ])
 
+AC_DEFUN([OVIS_EXEC_SCRIPTS], [
+	ovis_exec_scripts=""
+	for i in "$@"; do
+		ovis_exec_scripts="$ovis_exec_scripts $i"
+		AC_CONFIG_FILES([$i],[chmod a+x $i])
+	done
+])
+

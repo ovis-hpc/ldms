@@ -2,6 +2,7 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS =
 pkglib_LTLIBRARIES =
 CORE = ../core
+BUILT_SOURCES = 
 
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
@@ -77,6 +78,13 @@ libprocstatutil_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocstatutil.la
 endif
 
+if ENABLE_PROCSTATUTIL2
+libprocstatutil2_la_SOURCES = procstatutil2.c
+libprocstatutil2_la_LIBADD = $(COMMON_LIBADD)
+libprocstatutil2_la_CFLAGS = -I$(builddir) $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libprocstatutil2.la
+endif
+
 ## if ENABLE_GLIB
 ## if ENABLE_SEDC
 ## libsedc_la_SOURCES = sedc.c
@@ -103,5 +111,4 @@ libsampler_atasmart_la_SOURCES = sampler_atasmart.c
 libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
 pkglib_LTLIBRARIES += libsampler_atasmart.la
 endif
-
 

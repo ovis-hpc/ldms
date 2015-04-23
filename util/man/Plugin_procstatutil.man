@@ -3,7 +3,7 @@
 .TH man 7 "11 Sep 2014" "v2.2/RC1.2" "LDMS Plugin procstatutil man page"
 
 .SH NAME
-Plugin_procstatutil - man page for the LDMS procstatutil plugin
+Plugin_procstatutil - man page for the LDMS deprecated procstatutil plugin
 
 .SH SYNOPSIS
 Within ldmsctl
