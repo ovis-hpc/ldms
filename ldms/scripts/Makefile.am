@@ -1,5 +1,6 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
+EXTRA_DIST=@OVIS_EXTRA_DIST@
 bin_SCRIPTS= envldms.sh \
 	ldms_local_clocktest.sh \
 	ldms_local_usertest.sh \

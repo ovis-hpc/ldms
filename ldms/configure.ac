@@ -404,6 +404,7 @@ for i in $ovis_exec_scripts; do
 done
 ],[
 	ovis_exec_scripts="$ovis_exec_scripts"
+	ovis_extra_dist="$ovis_extra_dist"
 	ovis_exec_scripts_objdir="$ac_pwd"
 ])
 AC_OUTPUT
