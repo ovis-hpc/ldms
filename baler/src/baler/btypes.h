@@ -344,7 +344,7 @@ struct bstr_list_entry* bstr_list_entry_alloc(int str_blen)
  * \param s The initialization string.
  */
 static inline
-struct bstr_list_entry* bstr_list_entry_alloci(int str_blen, char *s)
+struct bstr_list_entry* bstr_list_entry_alloci(int str_blen, const char *s)
 {
 	struct bstr_list_entry *e = (typeof(e)) malloc(sizeof(*e) + str_blen);
 	if (!e)
