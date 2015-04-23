@@ -326,6 +326,19 @@ out:
 	return rc;
 }
 
+int bdstr_append_char(struct bdstr *bdstr, const char c)
+{
+	int rc = 0;
+	if (bdstr->str_len + 1 + 1 >  bdstr->alloc_len) {
+		rc = bdstr_expand(bdstr, bdstr->alloc_len + 4096);
+		if (rc)
+			return rc;
+	}
+	bdstr->str[bdstr->str_len++] = c;
+	bdstr->str[bdstr->str_len] = 0;
+	return rc;
+}
+
 int bdstr_append_mem(struct bdstr *bdstr, void *mem, size_t len)
 {
 	int rc;
@@ -626,13 +639,47 @@ out:
 	return rc;
 }
 
+int bgetline(FILE *f, struct bdstr *bdstr)
+{
+	char c;
+	int rc = 0;
+	bdstr_reset(bdstr);
+loop:
+	c = fgetc(f);
+	if (c == EOF)
+		goto out;
+	rc = bdstr_append_char(bdstr, c);
+	if (rc)
+		goto out;
+	if (c == '\r' || c == '\n')
+		goto eol;
+	goto loop;
+eol:
+	c = fgetc(f);
+	switch (c) {
+	case EOF:
+		break;
+	case '\n':
+	case '\r':
+		rc = bdstr_append_char(bdstr, c);
+		break;
+	default:
+		if (ungetc(c, f) != c)
+			rc = errno;
+	}
+out:
+	if (!bdstr->str_len)
+		rc = ENOENT;
+	return rc;
+}
+
 int bprocess_file_by_line(const char *path, bprocess_file_by_line_cb_t cb,
 								void *ctxt)
 {
 	int rc = 0;
 	FILE *fin = NULL;
 	char *buff = NULL;
-	size_t sz = 4096;
+	size_t sz = 65536;
 
 	fin = fopen(path, "r");
 	if (!fin) {
@@ -721,6 +768,9 @@ int bcsv_get_cell(const char *str, const char **end)
 	}
 
 	*end = s;
+
+	if (s == str)
+		return ENOENT;
 
 	if (in_quote)
 		return ENOENT;
@@ -854,4 +904,148 @@ int bmetricbin_getbinidx(struct bmetricbin *bin, double value)
 	return -1;
 }
 
+const char *brcstr(int rc)
+{
+	static const char *str[] = {
+		[EPERM]            =  "EPERM",
+		[ENOENT]           =  "ENOENT",
+		[ESRCH]            =  "ESRCH",
+		[EINTR]            =  "EINTR",
+		[EIO]              =  "EIO",
+		[ENXIO]            =  "ENXIO",
+		[E2BIG]            =  "E2BIG",
+		[ENOEXEC]          =  "ENOEXEC",
+		[EBADF]            =  "EBADF",
+		[ECHILD]           =  "ECHILD",
+		[EAGAIN]           =  "EAGAIN",
+		[ENOMEM]           =  "ENOMEM",
+		[EACCES]           =  "EACCES",
+		[EFAULT]           =  "EFAULT",
+		[ENOTBLK]          =  "ENOTBLK",
+		[EBUSY]            =  "EBUSY",
+		[EEXIST]           =  "EEXIST",
+		[EXDEV]            =  "EXDEV",
+		[ENODEV]           =  "ENODEV",
+		[ENOTDIR]          =  "ENOTDIR",
+		[EISDIR]           =  "EISDIR",
+		[EINVAL]           =  "EINVAL",
+		[ENFILE]           =  "ENFILE",
+		[EMFILE]           =  "EMFILE",
+		[ENOTTY]           =  "ENOTTY",
+		[ETXTBSY]          =  "ETXTBSY",
+		[EFBIG]            =  "EFBIG",
+		[ENOSPC]           =  "ENOSPC",
+		[ESPIPE]           =  "ESPIPE",
+		[EROFS]            =  "EROFS",
+		[EMLINK]           =  "EMLINK",
+		[EPIPE]            =  "EPIPE",
+		[EDOM]             =  "EDOM",
+		[ERANGE]           =  "ERANGE",
+		[EDEADLK]          =  "EDEADLK",
+		[ENAMETOOLONG]     =  "ENAMETOOLONG",
+		[ENOLCK]           =  "ENOLCK",
+		[ENOSYS]           =  "ENOSYS",
+		[ENOTEMPTY]        =  "ENOTEMPTY",
+		[ELOOP]            =  "ELOOP",
+		[ENOMSG]           =  "ENOMSG",
+		[EIDRM]            =  "EIDRM",
+		[ECHRNG]           =  "ECHRNG",
+		[EL2NSYNC]         =  "EL2NSYNC",
+		[EL3HLT]           =  "EL3HLT",
+		[EL3RST]           =  "EL3RST",
+		[ELNRNG]           =  "ELNRNG",
+		[EUNATCH]          =  "EUNATCH",
+		[ENOCSI]           =  "ENOCSI",
+		[EL2HLT]           =  "EL2HLT",
+		[EBADE]            =  "EBADE",
+		[EBADR]            =  "EBADR",
+		[EXFULL]           =  "EXFULL",
+		[ENOANO]           =  "ENOANO",
+		[EBADRQC]          =  "EBADRQC",
+		[EBADSLT]          =  "EBADSLT",
+		[EBFONT]           =  "EBFONT",
+		[ENOSTR]           =  "ENOSTR",
+		[ENODATA]          =  "ENODATA",
+		[ETIME]            =  "ETIME",
+		[ENOSR]            =  "ENOSR",
+		[ENONET]           =  "ENONET",
+		[ENOPKG]           =  "ENOPKG",
+		[EREMOTE]          =  "EREMOTE",
+		[ENOLINK]          =  "ENOLINK",
+		[EADV]             =  "EADV",
+		[ESRMNT]           =  "ESRMNT",
+		[ECOMM]            =  "ECOMM",
+		[EPROTO]           =  "EPROTO",
+		[EMULTIHOP]        =  "EMULTIHOP",
+		[EDOTDOT]          =  "EDOTDOT",
+		[EBADMSG]          =  "EBADMSG",
+		[EOVERFLOW]        =  "EOVERFLOW",
+		[ENOTUNIQ]         =  "ENOTUNIQ",
+		[EBADFD]           =  "EBADFD",
+		[EREMCHG]          =  "EREMCHG",
+		[ELIBACC]          =  "ELIBACC",
+		[ELIBBAD]          =  "ELIBBAD",
+		[ELIBSCN]          =  "ELIBSCN",
+		[ELIBMAX]          =  "ELIBMAX",
+		[ELIBEXEC]         =  "ELIBEXEC",
+		[EILSEQ]           =  "EILSEQ",
+		[ERESTART]         =  "ERESTART",
+		[ESTRPIPE]         =  "ESTRPIPE",
+		[EUSERS]           =  "EUSERS",
+		[ENOTSOCK]         =  "ENOTSOCK",
+		[EDESTADDRREQ]     =  "EDESTADDRREQ",
+		[EMSGSIZE]         =  "EMSGSIZE",
+		[EPROTOTYPE]       =  "EPROTOTYPE",
+		[ENOPROTOOPT]      =  "ENOPROTOOPT",
+		[EPROTONOSUPPORT]  =  "EPROTONOSUPPORT",
+		[ESOCKTNOSUPPORT]  =  "ESOCKTNOSUPPORT",
+		[EOPNOTSUPP]       =  "EOPNOTSUPP",
+		[EPFNOSUPPORT]     =  "EPFNOSUPPORT",
+		[EAFNOSUPPORT]     =  "EAFNOSUPPORT",
+		[EADDRINUSE]       =  "EADDRINUSE",
+		[EADDRNOTAVAIL]    =  "EADDRNOTAVAIL",
+		[ENETDOWN]         =  "ENETDOWN",
+		[ENETUNREACH]      =  "ENETUNREACH",
+		[ENETRESET]        =  "ENETRESET",
+		[ECONNABORTED]     =  "ECONNABORTED",
+		[ECONNRESET]       =  "ECONNRESET",
+		[ENOBUFS]          =  "ENOBUFS",
+		[EISCONN]          =  "EISCONN",
+		[ENOTCONN]         =  "ENOTCONN",
+		[ESHUTDOWN]        =  "ESHUTDOWN",
+		[ETOOMANYREFS]     =  "ETOOMANYREFS",
+		[ETIMEDOUT]        =  "ETIMEDOUT",
+		[ECONNREFUSED]     =  "ECONNREFUSED",
+		[EHOSTDOWN]        =  "EHOSTDOWN",
+		[EHOSTUNREACH]     =  "EHOSTUNREACH",
+		[EALREADY]         =  "EALREADY",
+		[EINPROGRESS]      =  "EINPROGRESS",
+		[ESTALE]           =  "ESTALE",
+		[EUCLEAN]          =  "EUCLEAN",
+		[ENOTNAM]          =  "ENOTNAM",
+		[ENAVAIL]          =  "ENAVAIL",
+		[EISNAM]           =  "EISNAM",
+		[EREMOTEIO]        =  "EREMOTEIO",
+		[EDQUOT]           =  "EDQUOT",
+		[ENOMEDIUM]        =  "ENOMEDIUM",
+		[EMEDIUMTYPE]      =  "EMEDIUMTYPE",
+		[ECANCELED]        =  "ECANCELED",
+		[ENOKEY]           =  "ENOKEY",
+		[EKEYEXPIRED]      =  "EKEYEXPIRED",
+		[EKEYREVOKED]      =  "EKEYREVOKED",
+		[EKEYREJECTED]     =  "EKEYREJECTED",
+		[EOWNERDEAD]       =  "EOWNERDEAD",
+		[ENOTRECOVERABLE]  =  "ENOTRECOVERABLE",
+	};
+	static const int len = sizeof(str)/sizeof(*str);
+	if (rc < 0 || len <= rc || !str[rc]) {
+		return "UNKNOWN";
+	}
+	return str[rc];
+}
+
+const char *berrnostr(int _errno)
+{
+	return brcstr(_errno);
+}
 /* END OF FILE */

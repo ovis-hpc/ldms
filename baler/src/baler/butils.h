@@ -124,6 +124,10 @@ enum blog_level {
 				__FILE__, __LINE__, __func__, \
 				str, errno)
 
+#define berrorrc(str, _rc) berr("%s:%d, %s(), %s: errno(%d): %s\n", \
+				__FILE__, __LINE__, __func__, \
+				str, (_rc), brcstr(_rc))
+
 /**
  * \brief Set log level.
  * \param level One of the enumeration ::blog_level.
@@ -257,6 +261,11 @@ int bdstr_append_mem(struct bdstr *bdstr, void *mem, size_t len);
  * Same as ::bdstr_append(), but with printf() format.
  */
 int bdstr_append_printf(struct bdstr *bdstr, const char *fmt, ...);
+
+/**
+ * Append \c c to \c bdstr.
+ */
+int bdstr_append_char(struct bdstr *bdstr, const char c);
 
 /**
  * Detach \c char* buffer to the caller.
@@ -402,6 +411,16 @@ int bprocess_file_by_line_w_comment(const char *path,
  */
 int bcsv_get_cell(const char *str, const char **end);
 
+/**
+ * Get a line from the file \c f; the \c bdstr is dynamically expanded to
+ * contain the whole line.
+ *
+ * \retval 0 if success.
+ * \retval ERRNO if there is no more line to read.
+ * \retval errno for other errors.
+ */
+int bgetline(FILE *f, struct bdstr *bdstr);
+
 /*** BIN utility ***/
 
 /**
@@ -428,6 +447,9 @@ void bmetricbin_free(struct bmetricbin *bin);
 int bmetricbin_addbin(struct bmetricbin *bin, double value);
 struct bmetricbin *bmetricbin_expand(struct bmetricbin *bin, int inc_bin_len);
 int bmetricbin_getbinidx(struct bmetricbin *bin, double value);
+
+const char *brcstr(int rc);
+const char *berrnostr(int _errno);
 
 #endif // _BUTILS_H
 /**\}*/
