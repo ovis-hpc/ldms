@@ -30,6 +30,10 @@ my $line = <STDIN>;
 chomp $line;
 my @mname = split /,/, $line;
 
+for (my $i = 2; $i < scalar @mname; $i++) {
+	$mname[$i] =~ s/^\s+|\s+$//g;
+}
+
 while (my $line = <STDIN>) {
 	chomp $line;
 	my @values = split /,/, $line;
