@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 2.4.0, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 2.5.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -65,6 +65,7 @@ OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
+OPTION_DEFAULT_ENABLE([procstatutil2], [ENABLE_PROCSTATUTIL2])
 dnl OPTION_DEFAULT_DISABLE([sedc], [ENABLE_SEDC])
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
@@ -356,19 +357,11 @@ OPTION_HOSTINFO
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
-AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
-		 src/store/Makefile src/sampler/Makefile
-		 src/sampler/lustre/Makefile
-		 src/sampler/hadoop/Makefile
-		 src/sampler/hadoop/hadoop-sinks/LdmsSink.java
-		 src/sampler/cray_system_sampler/Makefile
-		 src/ldmsd/Makefile
-		 scripts/Makefile
-		 packaging/ovis-ldms.spec
-		 Doxyfile
-		 scripts/ldmsd
+# test scripts to be generated and chmod before install go here.
+# no longer have to chmod explicitly in list
+
+OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_ctltest.sh
-		 scripts/envldms.sh
 		 scripts/ldms_ban.sh
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh
@@ -384,24 +377,35 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 scripts/ldms_local_rolltime_test.sh
 		 scripts/ldms_local_dertest.sh
 		 scripts/ldms_local_dertest_big.sh
-		 ldms.spec],[
-		if test -f scripts/ldms_ban.sh.in; then chmod a+x scripts/ldms_ban.sh.in; fi
-		if test -f scripts/ldms_ctltest.sh; then chmod a+x scripts/ldms_ctltest.sh; fi
-		if test -f scripts/ldms_usertest.sh; then chmod a+x scripts/ldms_usertest.sh; fi
-		if test -f scripts/ldms_local_slurmtest.sh; then chmod a+x scripts/ldms_local_slurmtest.sh; fi
-		if test -f scripts/ldms_local_usertest.sh; then chmod a+x scripts/ldms_local_usertest.sh; fi
-		if test -f scripts/ldms_local_valgrind.sh; then chmod a+x scripts/ldms_local_valgrind.sh; fi
-		if test -f scripts/ldms_local_clocktest.sh; then chmod a+x scripts/ldms_local_clocktest.sh; fi
-		if test -f scripts/ldms_local_inspxe.sh ; then chmod a+x scripts/ldms_local_inspxe.sh; fi;
-		if test -f scripts/ldms_local_inspxe_rdma.sh ; then chmod a+x scripts/ldms_local_inspxe_rdma.sh; fi
-		if test -f scripts/ldms_local_rdmatest.sh; then chmod a+x scripts/ldms_local_rdmatest.sh; fi
-		if test -f scripts/ldms_local_rollbytes_test.sh; then chmod a+x scripts/ldms_local_rollbytes_test.sh; fi
-		if test -f scripts/ldms_local_rollperiod_test.sh; then chmod a+x scripts/ldms_local_rollperiod_test.sh; fi
-		if test -f scripts/ldms_local_rollrecords_test.sh; then chmod a+x scripts/ldms_local_rollrecords_test.sh; fi
-		if test -f scripts/ldms_local_rolltime_test.sh; then chmod a+x scripts/ldms_local_rolltime_test.sh; fi
-		if test -f scripts/ldms_local_dertest.sh; then chmod a+x scripts/ldms_local_dertest.sh; fi
-		if test -f scripts/ldms_local_dertest_big.sh; then chmod a+x scripts/ldms_local_dertest_big.sh; fi
+		 scripts/ldms_local_procstatutil.sh
+)
+
+AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
+		 src/store/Makefile src/sampler/Makefile
+		 src/sampler/lustre/Makefile
+		 src/sampler/hadoop/Makefile
+		 src/sampler/hadoop/hadoop-sinks/LdmsSink.java
+		 src/sampler/cray_system_sampler/Makefile
+		 src/ldmsd/Makefile
+		 scripts/Makefile
+		 packaging/ovis-ldms.spec
+		 Doxyfile
+		 scripts/ldmsd
+		 scripts/envldms.sh
+		 ldms.spec
 		])
+AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.
+for i in $ovis_exec_scripts; do
+	if test -f $ovis_exec_scripts_objdir/$i; then 
+		chmod a+x $ovis_exec_scripts_objdir/$i; 
+	else
+		echo failing chmod on missing $ovis_exec_scripts_objdir/$i;
+	fi
+done
+],[
+	ovis_exec_scripts="$ovis_exec_scripts"
+	ovis_exec_scripts_objdir="$ac_pwd"
+])
 AC_OUTPUT
 
 if test "x$enable_rpath" != "xyes"; then

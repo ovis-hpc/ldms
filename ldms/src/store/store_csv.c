@@ -261,34 +261,37 @@ static void* rolloverThreadInit(void* m){
 		int tsleep;
 		switch (rolltype) {
 		case 1:
-		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
-		  break;
+			tsleep = (rollover < MIN_ROLL_1) ?
+				 MIN_ROLL_1 : rollover;
+			break;
 		case 2: {
-		  time_t rawtime;
-		  struct tm *info;
+				time_t rawtime;
+				struct tm *info;
 
-		  time( &rawtime );
-		  info = localtime( &rawtime );
-		  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
-		  tsleep = 86400 - secSinceMidnight + rollover;
-		  if (tsleep < MIN_ROLL_1){
-		    /* if we just did a roll then skip this one */
-		    tsleep+=86400;
-		  }
-		}
-		  break;
+				time( &rawtime );
+				info = localtime( &rawtime );
+				int secSinceMidnight = info->tm_hour*3600 + 
+					info->tm_min*60 + info->tm_sec;
+				tsleep = 86400 - secSinceMidnight + rollover;
+				if (tsleep < MIN_ROLL_1){
+				/* if we just did a roll then skip this one */
+					tsleep+=86400;
+				}
+			}
+			break;
 		case 3:
-		  if (rollover < MIN_ROLL_RECORDS)
-		    rollover = MIN_ROLL_RECORDS;
-		  tsleep = ROLL_LIMIT_INTERVAL;
-		  break;
+			if (rollover < MIN_ROLL_RECORDS)
+				rollover = MIN_ROLL_RECORDS;
+			tsleep = ROLL_LIMIT_INTERVAL;
+			break;
 		case 4:
-		  if (rollover < MIN_ROLL_BYTES)
-		    rollover = MIN_ROLL_BYTES;
-		  tsleep = ROLL_LIMIT_INTERVAL;
-		  break;
+			if (rollover < MIN_ROLL_BYTES)
+				rollover = MIN_ROLL_BYTES;
+			tsleep = ROLL_LIMIT_INTERVAL;
+			break;
 		default:
-		  break;
+			tsleep = 60;
+			break;
 		}
 		sleep(tsleep);
 		handleRollover();
@@ -425,14 +428,14 @@ static int print_header(struct csv_store_handle *s_handle,
 	int num_metrics = ldms_mvec_get_count(mvec);
 
 	if (id_pos < 0) {
-		for (i = 0; i < num_metrics; i++) {
+		for (i = num_metrics-1; i > -1; i--) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 		}
 	} else {
 		fprintf(fp, ", CompId");
-		for (i = 0; i < num_metrics; i++) {
+		for (i = num_metrics-1; i > -1; i--) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s", name);
 		}
@@ -600,7 +603,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 	int num_metrics = ldms_mvec_get_count(mvec);
 	if (id_pos < 0){
 		int i, rc;
-		for (i = 0; i < num_metrics; i++) {
+		for (i = num_metrics-1; i > -1; i--) {
 			comp_id = ldms_get_user_data(mvec->v[i]);
 			rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 				     comp_id, ldms_get_u64(mvec->v[i]));
@@ -625,7 +628,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			else
 				s_handle->byte_count += rc;
 		}
-		for (i = 0; i < num_metrics; i++) {
+		for (i = num_metrics -1; i > -1; i--) {
 			rc = fprintf(s_handle->file, ", %" PRIu64, ldms_get_u64(mvec->v[i]));
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",

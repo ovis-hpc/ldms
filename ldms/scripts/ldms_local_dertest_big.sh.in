@@ -236,7 +236,7 @@ sleep 1
 
 echo Starting plugins on daemon1
 pluglist="meminfo procstatutil procdiskstats procnetdev"
-pluglist="meminfo vmstat procstatutil procnfs procdiskstats procnetdev"
+pluglist="meminfo vmstat procstatutil2 procnfs procdiskstats procnetdev"
 for container in $pluglist; do
 	echo -n "$container ..." 
 echo "load name=$container" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
@@ -252,7 +252,7 @@ for container in $pluglist; do
 done
 
 echo Adding host1 to aggregator3
-#echo "add host=localhost type=active xprt=sock interval=1000000 offset=200000 port=$port1 sets=localhost1/meminfo,localhost1/vmstat,localhost1/procstatutil,localhost1/procnetdev,localhost1/procnfs,localhost1/procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+#echo "add host=localhost type=active xprt=sock interval=1000000 offset=200000 port=$port1 sets=localhost1/meminfo,localhost1/vmstat,localhost1/procstatutil2,localhost1/procnetdev,localhost1/procnfs,localhost1/procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 echo "add host=localhost type=active xprt=sock interval=1000000 offset=200000 port=$port1 sets=$SETS" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
 sleep 5

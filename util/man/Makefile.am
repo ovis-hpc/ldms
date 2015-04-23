@@ -15,6 +15,7 @@ Plugin_procnetdev.man \
 Plugin_procnfs.man \
 Plugin_procsensors.man \
 Plugin_procstatutil.man \
+Plugin_procstatutil2.man \
 Plugin_store_csv.man \
 Plugin_store_derived_csv.man \
 Plugin_sysclassib.man \
