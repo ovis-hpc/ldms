@@ -7,6 +7,7 @@
 #include <getopt.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 
 #include "baler/btypes.h"
 #include "baler/butils.h"
@@ -298,9 +299,149 @@ void op_proc_sort()
 	}
 }
 
+struct bnum *bnumvec_select_nth(struct bmvec_char *vec, uint64_t lidx,
+				uint64_t ridx, uint64_t nth)
+{
+	uint64_t pidx = lidx;
+
+	while (lidx < ridx) {
+		pidx = bnumvec_partition(vec, lidx, ridx);
+
+		if (nth == pidx)
+			/* pivot is the nth element */
+			break;
+
+		/* recursive, excluding the pivot */
+		if (nth < pidx) {
+			ridx = pidx-1;
+		} else {
+			lidx = pidx+1;
+		}
+	}
+
+	assert(lidx <= ridx);
+	return bmvec_generic_get(vec, pidx, sizeof(struct bnum));
+}
+
+/**
+ * Kahan summation algorithm.
+ */
+double bnumvec_kahan_sum(struct bmvec_char *vec,
+			 double (*fn)(struct bnum*, void*), void *arg)
+{
+	struct bnum *num;
+	double sum = 0;
+	double x;
+	double tmp;
+	double comp = 0.0; /* error compensation */
+	uint64_t i, n;
+	n = vec->bvec->len;
+	for (i = 0; i < n; i++) {
+		num = bmvec_generic_get(vec, i, sizeof(*num));
+		if (fn)
+			x = fn(num, arg) - comp;
+		else
+			x = num->d - comp;
+		tmp = sum + x;
+		comp = (tmp - sum) - x;
+		sum = tmp;
+	}
+	return sum;
+}
+
+static
+double bnum_diff(struct bnum *num, void *arg)
+{
+	return num->d - *(double*)arg;
+}
+
+static
+double bnum_abs_diff(struct bnum *num, void *arg)
+{
+	return fabs(num->d - *(double*)arg);
+}
+
+static
+double bnum_square_diff(struct bnum *num, void *arg)
+{
+	double tmp = num->d - *(double*)arg;
+	return tmp*tmp;
+}
+
 void op_proc_stat()
 {
-	berr("Not implemented");
+	uint64_t i;
+	uint64_t len = bnumvec->bvec->len;
+	struct bnum *x, *_mad;
+	struct bnum tmp;
+	struct bnum q1, med, q3;
+	struct bnum min, max;
+	double mean;
+	double sd;
+	double sse;
+	double sum;
+	uint64_t len1, len2, len3;
+
+	struct bmvec_char *bmvec_mad;
+
+	struct bdstr *bdstr = bdstr_new(4096);
+
+	if (!bdstr) {
+		berror("bdstr_new()");
+		exit(-1);
+	}
+
+	bdstr_reset(bdstr);
+	bdstr_append_printf(bdstr, "%s.bmad", bmvec_generic_get_path(bnumvec));
+
+	bmvec_mad = bmvec_generic_open(bdstr->str);
+	if (!bmvec_mad) {
+		berror("bmvec_generic_open()");
+		exit(-1);
+	}
+
+	bmvec_generic_reset(bmvec_mad);
+
+	len1 = (len-1)/4;
+	len2 = (len-1)/2;
+	len3 = ((len-1)/4.0) * 3.0;
+
+	med = *bnumvec_select_nth(bnumvec, 0, len-1, len2);
+	q1 = *bnumvec_select_nth(bnumvec, 0, len2-1, len1);
+	q3 = *bnumvec_select_nth(bnumvec, len2+1, len-1, len3);
+	min = *bnumvec_select_nth(bnumvec, 0, len1-1, 0);
+	max = *bnumvec_select_nth(bnumvec, len3+1, len-1, len-1);
+
+	printf("min: %ld (%lf)\n", min.i64, min.d);
+	printf("q1: %ld (%lf)\n", q1.i64, q1.d);
+	printf("median: %ld (%lf)\n", med.i64, med.d);
+	printf("q3: %ld (%lf)\n", q3.i64, q3.d);
+	printf("max: %ld (%lf)\n", max.i64, max.d);
+
+	/* populate absolute deviation vector */
+	for (i = 0; i < len; i++) {
+		x = bmvec_generic_get(bnumvec, i, sizeof(*x));
+		tmp.d = fabs(x->d - med.d);
+		tmp.i64 = x->i64 - med.i64;
+		if (tmp.i64 < 0)
+			tmp.i64 = -tmp.i64;
+		bmvec_generic_append(bmvec_mad, &tmp, sizeof(tmp));
+	}
+
+	/* pick Median of Absolute Deviation (MAD) */
+	_mad = bnumvec_select_nth(bmvec_mad, 0, len-1, (len-1)/2);
+
+	printf("MAD: %lf\n", _mad->d);
+
+	sum = bnumvec_kahan_sum(bnumvec, NULL, NULL);
+	mean = sum / len;
+	printf("mean: %lf\n", mean);
+
+	sse = bnumvec_kahan_sum(bnumvec, bnum_square_diff, &mean);
+	printf("sse: %lf\n", sse);
+
+	sd = sqrt(sse/(len-1));
+	printf("sd: %lf\n", sd);
 }
 
 int main(int argc, char **argv)
