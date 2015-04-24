@@ -13,4 +13,28 @@ struct bnum {
 	};
 	double d;
 };
+
+static inline
+void bnum_swap(struct bnum *n0, struct bnum *n1)
+{
+	struct bnum tmp;
+	tmp = *n0;
+	*n0 = *n1;
+	*n1 = tmp;
+}
+
+static inline
+int bnum_cmp(struct bnum *n0, struct bnum *n1)
+{
+	if (n0->i64 < n1->i64)
+		return -1;
+	if (n0->i64 > n1->i64)
+		return 1;
+	if (n0->d < n1->d)
+		return -1;
+	if (n0->d > n1->d)
+		return 1;
+	return 0;
+}
+
 #endif

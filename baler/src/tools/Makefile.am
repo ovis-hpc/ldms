@@ -8,5 +8,5 @@ bcsv2bnumvec_LDADD = ../baler/libbaler.la
 bin_PROGRAMS += bcsv2bnumvec
 
 bnumvec_SOURCES = bnumvec.c
-bnumvec_LDADD = ../baler/libbaler.la
+bnumvec_LDADD = ../baler/libbaler.la -lpthread
 bin_PROGRAMS += bnumvec
