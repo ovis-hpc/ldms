@@ -78,6 +78,10 @@ struct bqueue {
 	TAILQ_HEAD(, bqueue_entry) head;
 	pthread_mutex_t mutex;
 	pthread_cond_t cond;
+	enum {
+		BQUEUE_STATE_ACTIVE,
+		BQUEUE_STATE_TERM,
+	} state;
 };
 
 /**
@@ -111,5 +115,10 @@ void bqueue_nq(struct bqueue *q, struct bqueue_entry *ent);
  * \retval ent The dequeued entry.
  */
 struct bqueue_entry  *bqueue_dq(struct bqueue *q);
+
+/**
+ * Terminate the queue, causing blocking ::bqueue_dq() to return with \c NULL.
+ */
+void bqueue_term(struct bqueue *q);
 
 #endif
