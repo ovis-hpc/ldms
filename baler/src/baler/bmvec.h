@@ -307,6 +307,16 @@ void bmvec_generic_close_free(void *_vec);
  */
 int bmvec_unlink(const char *path);
 
+/**
+ * \brief Refresh \c vec to realize the extended memory.
+ *
+ * bmvec relies on mmap() for memory mapping. Calling this function will cause
+ * bmvec to call mremap() to update the mapping, realizing the extended part
+ * from the other process.
+ *
+ * \retval 0 if OK.
+ * \retval errno if error.
+ */
 int bmvec_generic_refresh(struct bmvec_char *vec);
 
 /**\}*/ // bmvec
