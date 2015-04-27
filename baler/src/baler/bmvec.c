@@ -164,3 +164,8 @@ int bmvec_generic_refresh(struct bmvec_char *vec)
 	vec->bvec = vec->mem->ptr;
 	return 0;
 }
+
+const char *bmvec_generic_get_path(struct bmvec_char *bmvec)
+{
+	return bmvec->mem->path;
+}

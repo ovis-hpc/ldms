@@ -319,6 +319,13 @@ int bmvec_unlink(const char *path);
  */
 int bmvec_generic_refresh(struct bmvec_char *vec);
 
+/**
+ * \brief Get the path of \c bmvec.
+ *
+ * \retval ptr <code>const char*</code> to \c bmvec path.
+ */
+const char *bmvec_generic_get_path(struct bmvec_char *bmvec);
+
 /**\}*/ // bmvec
 
 #endif /* __BMVEC_H */
