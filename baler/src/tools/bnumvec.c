@@ -126,18 +126,24 @@ void op_proc_dump()
 	printf("-----------------------\n");
 }
 
+struct __bpivot_idx {
+	uint64_t pidx0;
+	uint64_t pidx1;
+};
+
 /**
  * Partition <code>vec[lidx..ridx]</code> into two partitions with a pivot in
  * the range.
  *
  * \retval pivot_idx the index to the partition pivot.
  */
-uint64_t bnumvec_partition(struct bmvec_char *vec, uint64_t lidx, uint64_t ridx)
+struct __bpivot_idx bnumvec_partition(struct bmvec_char *vec, uint64_t lidx, uint64_t ridx)
 {
 	struct bnum *p;
 	struct bnum *q;
 	struct bnum *x;
-	uint64_t i, r;
+	uint64_t i, r, l;
+	struct __bpivot_idx pidx;
 	int c;
 
 	q = bmvec_generic_get(vec, (lidx+ridx)/2, sizeof(*p));
@@ -146,26 +152,45 @@ uint64_t bnumvec_partition(struct bmvec_char *vec, uint64_t lidx, uint64_t ridx)
 	/* now p is the pivot for partitioning */
 
 	i = lidx+1;
+	l = i;
 	r = ridx;
+
+	/*
+	 * In the while loop:
+	 * [lidx] is pivot
+	 * [lidx+1 .. l-1] contains left partition
+	 * [r+1 .. ridx] contain right partition
+	 */
 
 	q = bmvec_generic_get(vec, i, sizeof(*q));
 	/* q will always point to vec[i] */
 	while (i <= r) {
 		c = bnum_cmp(p, q);
 		switch (c) {
-		case 0:
 		case 1:
-			/* p <= q */
+			/* p > q */
+			/* put q to the left partition */
+			if (i != l) {
+				x = bmvec_generic_get(vec, l, sizeof(*x));
+				bnum_swap(q, x);
+			}
+			l++;
+			/* let through */
+		case 0:
+			/* p == q */
+			/* just go to next entry */
 			i++;
 			q = bmvec_generic_get(vec, i, sizeof(*q));
 			break;
 		case -1:
-			/* p > q */
+			/* p < q */
+			/* put q to the right partition */
 			if (i != r) {
 				x = bmvec_generic_get(vec, r, sizeof(*x));
 				bnum_swap(q, x);
 			}
 			r--;
+			/* q is now pointed to the new element (b/c of swapping) */
 			break;
 		}
 	}
@@ -178,7 +203,13 @@ uint64_t bnumvec_partition(struct bmvec_char *vec, uint64_t lidx, uint64_t ridx)
 		p = x;
 	}
 
-	return r;
+	/* [lidx .. l-1] is the left partition */
+	/* [l .. r] is the elements equal to pivot */
+	/* [r+1 .. ridx] is the right partition */
+	pidx.pidx0 = l;
+	pidx.pidx1 = r;
+
+	return pidx;
 }
 
 struct bnumvec_sort_qentry {
@@ -212,31 +243,31 @@ void put_qref()
 void *sort_thread_proc(void *arg)
 {
 	struct bnumvec_sort_qentry *qent, *qent_r, *qent_l;
-	uint64_t pidx;
+	struct __bpivot_idx pidx;
 loop:
 	qent_r = NULL;
 	qent = (void*)bqueue_dq(sort_queue);
 	if (!qent)
 		goto out;
 	pidx = bnumvec_partition(bnumvec, qent->lidx, qent->ridx);
-	if (pidx && qent->lidx < (pidx-1)) {
+	if (pidx.pidx0 && qent->lidx < (pidx.pidx0-1)) {
 		qent_l = malloc(sizeof(*qent_l));
 		if (!qent_l) {
 			berror("malloc()");
 			exit(-1);
 		}
 		qent_l->lidx = qent->lidx;
-		qent_l->ridx = pidx-1;
+		qent_l->ridx = pidx.pidx0-1;
 		bqueue_nq(sort_queue, (void*)qent_l);
 		get_qref();
 	}
-	if ((pidx+1) < qent->ridx) {
+	if ((pidx.pidx1+1) < qent->ridx) {
 		qent_r = malloc(sizeof(*qent_r));
 		if (!qent_r) {
 			berror("malloc()");
 			exit(-1);
 		}
-		qent_r->lidx = pidx+1;
+		qent_r->lidx = pidx.pidx1+1;
 		qent_r->ridx = qent->ridx;
 		bqueue_nq(sort_queue, (void*)qent_r);
 		get_qref();
@@ -302,25 +333,25 @@ void op_proc_sort()
 struct bnum *bnumvec_select_nth(struct bmvec_char *vec, uint64_t lidx,
 				uint64_t ridx, uint64_t nth)
 {
-	uint64_t pidx = lidx;
+	struct __bpivot_idx pidx = {lidx, lidx};
 
 	while (lidx < ridx) {
 		pidx = bnumvec_partition(vec, lidx, ridx);
 
-		if (nth == pidx)
+		if (pidx.pidx0 <= nth && nth <= pidx.pidx1)
 			/* pivot is the nth element */
 			break;
 
 		/* recursive, excluding the pivot */
-		if (nth < pidx) {
-			ridx = pidx-1;
+		if (nth < pidx.pidx0) {
+			ridx = pidx.pidx0-1;
 		} else {
-			lidx = pidx+1;
+			lidx = pidx.pidx1+1;
 		}
 	}
 
 	assert(lidx <= ridx);
-	return bmvec_generic_get(vec, pidx, sizeof(struct bnum));
+	return bmvec_generic_get(vec, nth, sizeof(struct bnum));
 }
 
 /**
