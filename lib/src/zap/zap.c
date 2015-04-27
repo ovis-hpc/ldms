@@ -271,25 +271,28 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	return zep;
 }
 
-zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb)
+zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
 {
-	return ep->z->accept(ep, cb);
+	return ep->z->accept(ep, cb, data, data_len);
 }
 
-zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host, const char *port)
+zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host, const char *port,
+			      char *data, size_t data_len)
 {
 	struct addrinfo *ai;
 	int rc = getaddrinfo(host, port, NULL, &ai);
 	if (rc)
 		return ZAP_ERR_RESOURCE;
-	zap_err_t zerr = zap_connect_sync(ep, ai->ai_addr, ai->ai_addrlen);
+	zap_err_t zerr = zap_connect_sync(ep, ai->ai_addr, ai->ai_addrlen,
+					  data, data_len);
 	freeaddrinfo(ai);
 	return zerr;
 }
 
-zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
+zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
+			   char *data, size_t data_len)
 {
-	zap_err_t zerr = zap_connect(ep, sa, sa_len);
+	zap_err_t zerr = zap_connect(ep, sa, sa_len, data, data_len);
 	if (zerr)
 		return zerr;
 	sem_wait(&ep->block_sem);
@@ -298,9 +301,10 @@ zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
 	return ZAP_ERR_OK;
 }
 
-zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
+zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
+		      char *data, size_t data_len)
 {
-	return ep->z->connect(ep, sa, sa_len);
+	return ep->z->connect(ep, sa, sa_len, data, data_len);
 }
 
 zap_err_t zap_listen(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)

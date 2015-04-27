@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -1488,7 +1489,7 @@ void k_zap_cb(zap_ep_t ep, zap_event_t ev)
 	zap_err_t zerr;
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		zerr = zap_accept(ep, k_zap_cb);
+		zerr = zap_accept(ep, k_zap_cb, NULL, 0);
 		if (zerr != ZAP_ERR_OK) {
 			k_log("zap_accept error: %s\n", zap_err_str(zerr));
 		}

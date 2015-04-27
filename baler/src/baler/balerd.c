@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -639,7 +640,7 @@ void master_zap_cb(zap_ep_t ep, zap_event_t ev)
 	socklen_t slen;
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		zap_accept(ep, master_zap_cb);
+		zap_accept(ep, master_zap_cb, NULL, 0);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		zap_get_name(ep, &lsock, &rsock, &slen);
@@ -706,7 +707,7 @@ void slave_connect(int sock, short which, void *arg)
 			(addr>>24) & 0xFF,
 			be16toh(prt));
 
-	zerr = zap_connect(zap_ep, ai->ai_addr, ai->ai_addrlen);
+	zerr = zap_connect(zap_ep, ai->ai_addr, ai->ai_addrlen, NULL, 0);
 	if (zerr != ZAP_ERR_OK) {
 		zap_close(zap_ep);
 		berr("zap_connect() error: %s", zap_err_str(zerr));

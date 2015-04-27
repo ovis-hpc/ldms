@@ -217,21 +217,13 @@ typedef struct zap_event {
 	/*! Mapping information for \c ::ZAP_EVENT_RENDEZVOUS event */
 	zap_map_t map;
 	/**
-	 * Pointer to the data associated with the event.
-	 *
-	 * For \c ::ZAP_EVENT_RENDEZVOUS, data contains the message attached to
-	 * \c zap_share() operation.
-	 *
-	 * For \c ::ZAP_EVENT_RECV_COMPLETE, data contains read data from the
-	 * other peer.
-	 *
-	 * \b ***REMARK*** \c data is owned by zap. Application can only read.
-	 * zap manages data and data buffer internally.
+	 * Pointer to message data. This buffer is owned by Zap and
+	 * may be freed when the callback returns.
 	 */
 	unsigned char *data;
-	/*! The length of the \c #data */
+	/*! The length of \c #data in bytes */
 	size_t data_len;
-	/*! Application-provided context of the operation. */
+	/*! Application provided context */
 	void *context;
 } *zap_event_t;
 
@@ -352,10 +344,13 @@ void zap_free(zap_ep_t ep);
  * \param sa	Pointer to a sockaddr containing the address of the
  *		remote peer.
  * \param sa_len Size of the sockaddr in bytes.
+ * \param data	Buffer containing connect data for peer.
+ * \param data_len Size of message in bytes.
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
-zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
+zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
+		      char *data, size_t data_len);
 
 /**
  * A syncrhonous version of ::zap_connect()
@@ -364,10 +359,13 @@ zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
  * \param sa	Pointer to a sockaddr containing the address of the
  *		remote peer.
  * \param sa_len Size of the sockaddr in bytes.
+ * \param data  Connect data.
+ * \param data_len Connect data length in bytes.
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
-zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
+zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
+			   char *data, size_t data_len);
 
 /**
  * Synchronous connect by name
@@ -375,20 +373,25 @@ zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
  * \param ep	The transport handle.
  * \param host  The host name
  * \param port  The service/port number
+ * \param data  Connect data.
+ * \param data_len Connect data length in bytes.
  *
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
-zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host_port, const char *port);
+zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host_port, const char *port,
+			      char *data, size_t data_len);
 
 /** \brief Accept a connection request from a remote peer.
  *
  * \param ep	The endpoint handle.
- * \param cb	Ponter to a function to receive asynchronous events on the endpoint.
+ * \param cb	Pointer to a function to receive asynchronous events on the endpoint.
+ * \param data	Pointer to connection data.
+ * \param data_len The size of the connection data in bytes.
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
-zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb);
+zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len);
 
 /** \brief Return the local and remote addresses for an endpoint.
  *

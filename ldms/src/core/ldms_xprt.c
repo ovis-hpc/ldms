@@ -792,7 +792,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	zap_set_ucontext(zep, _x);
 	pthread_mutex_init(&_x->lock, NULL);
 
-	zerr = zap_accept(zep, ldms_zap_auto_cb);
+	zerr = zap_accept(zep, ldms_zap_auto_cb, NULL, 0);
 	if (zerr) {
 		x->log("ERROR: cannot accept connection from %s.\n", rmt_name);
 		goto err0;
@@ -1270,7 +1270,7 @@ int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	_x->connect_cb = cb;
 	_x->connect_cb_arg = cb_arg;
 	ldms_xprt_get(x);
-	rc = zap_connect(_x->zap_ep, sa, sa_len);
+	rc = zap_connect(_x->zap_ep, sa, sa_len, NULL, 0);
 	if (rc)
 		ldms_xprt_put(x);
 	return rc;

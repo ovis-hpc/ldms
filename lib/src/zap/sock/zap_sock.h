@@ -110,6 +110,7 @@ typedef enum sock_msg_type {
 	SOCK_MSG_READ_RESP,   /*  Read        response      */
 	SOCK_MSG_WRITE_REQ,   /*  Write       request       */
 	SOCK_MSG_WRITE_RESP,  /*  Write       response      */
+	SOCK_MSG_CONNECT,     /*  Connect     data          */
 	SOCK_MSG_ACCEPTED,    /*  Connection  accepted      */
 	SOCK_MSG_TYPE_LAST
 } sock_msg_type_t;;
@@ -122,6 +123,7 @@ static const char *__sock_msg_type_str[] = {
 	"SOCK_MSG_READ_RESP",
 	"SOCK_MSG_WRITE_REQ",
 	"SOCK_MSG_WRITE_RESP",
+	"SOCK_MSG_ACCEPTED",
 	"SOCK_MSG_ACCEPTED"
 };
 
@@ -140,7 +142,7 @@ struct sock_msg_hdr {
 };
 
 /**
- * Regular message.
+ * Send/Recv message.
  */
 struct sock_msg_sendrecv {
 	struct sock_msg_hdr hdr;
@@ -201,13 +203,6 @@ struct sock_msg_rendezvous {
 };
 
 /**
- * Message for connection accepted.
- */
-struct sock_msg_accepted {
-	struct sock_msg_hdr hdr;
-};
-
-/**
  * Keeps track of outstanding I/O so that it can be cleaned up when
  * the endpoint shuts down. A z_sock_io is either on the free_q or the
  * io_q for the endpoint.
@@ -231,6 +226,8 @@ struct z_sock_ep {
 	int sock;
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;
+	char *conn_data;
+	size_t conn_data_len;
 
 	pthread_mutex_t q_lock;
 	TAILQ_HEAD(z_sock_free_q, z_sock_io) free_q;

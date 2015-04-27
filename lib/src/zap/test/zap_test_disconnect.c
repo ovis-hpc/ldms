@@ -268,7 +268,7 @@ void mutual_cb(zap_ep_t _ep, zap_event_t ev)
 	case ZAP_EVENT_CONNECT_REQUEST:
 		LOG("Accepting connection ...\n");
 		ep = _ep;
-		zerr = zap_accept(_ep, mutual_cb);
+		zerr = zap_accept(_ep, mutual_cb, ev->data, ev->data_len);
 		if (zerr) {
 			LOG("zap_accept error %d: %s\n", zerr,
 							zap_err_str(zerr));
@@ -349,7 +349,7 @@ void do_client()
 	}
 
 	LOG("connecting ...\n");
-	zerr = zap_connect(ep, ai->ai_addr, ai->ai_addrlen);
+	zerr = zap_connect(ep, ai->ai_addr, ai->ai_addrlen, NULL, 0);
 	if (zerr) {
 		LOG("zap_connect error %d: %s\n", zerr, zap_err_str(zerr));
 		exit(-1);

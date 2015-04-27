@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -404,7 +405,7 @@ void __ocm_reconnect_cb(evutil_socket_t fd, short what, void *arg)
 	if (zerr)
 		goto err0;
 	zap_set_ucontext(ep, ctxt);
-	zerr = zap_connect(ep, &ctxt->sa, ctxt->sa_len);
+	zerr = zap_connect(ep, &ctxt->sa, ctxt->sa_len, NULL, 0);
 	if (zerr)
 		goto err1;
 	ctxt->ep = ep;
@@ -478,7 +479,7 @@ void __ocm_zap_cb(zap_ep_t zep, zap_event_t ev)
 	struct ocm_ep_ctxt *ctxt = zap_get_ucontext(zep);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		zap_accept(zep, __ocm_zap_cb);
+		zap_accept(zep, __ocm_zap_cb, NULL, 0);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		__ocm_send_all_requests(ctxt->ocm, zep);

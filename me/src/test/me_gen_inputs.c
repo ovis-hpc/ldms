@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -180,7 +181,7 @@ static void connect_me(zap_t zap, zap_ep_t *zep)
 	memcpy(&sa, servinfo->ai_addr, servinfo->ai_addrlen);
 	freeaddrinfo(servinfo);
 
-	zerr = zap_connect(*zep, (void *)&sa, sa_len);
+	zerr = zap_connect(*zep, (void *)&sa, sa_len, NULL, 0);
 	if (zerr) {
 		fprintf(stderr, "zap_connect: %s\n", zap_err_str(zerr));
 		exit(zerr);

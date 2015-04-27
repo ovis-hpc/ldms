@@ -211,7 +211,7 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		zap_accept(zep, server_cb);
+		zap_accept(zep, server_cb, ev->data, ev->data_len);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		printf("connected\n");
@@ -330,7 +330,7 @@ void *send_msg(void *arg)
 			}
 			printf("Connecting to %s:%hu\n", host, port);
 			flag = CONNECTING;
-			zerr = zap_connect(ep, (void*)sin, sizeof(*sin));
+			zerr = zap_connect(ep, (void*)sin, sizeof(*sin), NULL, 0);
 			if (zerr) {
 				printf("zap_connect error: %d\n", zerr);
 				exit(-1);

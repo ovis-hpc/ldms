@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -228,7 +229,7 @@ static int connect_kmd(struct me_consumer_KMD *kmdi)
 		return rc;
 	}
 
-	zerr = zap_connect(kmdi->zep, ai->ai_addr, ai->ai_addrlen);
+	zerr = zap_connect(kmdi->zep, ai->ai_addr, ai->ai_addrlen, NULL, 0);
 	if (zerr) {
 		if (!is_failed)
 			msglog("kmd: Failed to connect to Komondor. "

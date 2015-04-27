@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -229,7 +230,7 @@ int main(int argc, char **argv)
 	sin.sin_family = AF_INET;
 	sin.sin_addr = *(struct in_addr*)he->h_addr_list[0];
 	sin.sin_port = htons(port);
-	zerr = zap_connect(zep, (void*)&sin, sizeof(sin));
+	zerr = zap_connect(zep, (void*)&sin, sizeof(sin), NULL, 0);
 	__assert_zerr(zerr, "zap_connect");
 	sem_wait(&conn_sem);
 	send_messages(zep);

@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2014-2015 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2014-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -281,7 +282,8 @@ static int __set_keep_alive(struct z_sock_ep *sep)
 }
 
 static zap_err_t z_sock_connect(zap_ep_t ep,
-				struct sockaddr *sa, socklen_t sa_len)
+				struct sockaddr *sa, socklen_t sa_len,
+				char *data, size_t data_len)
 {
 	int rc;
 	zap_err_t zerr;
@@ -308,6 +310,16 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 	if (zerr)
 		goto out;
 
+	if (data_len) {
+		sep->conn_data = malloc(data_len);
+		if (sep->conn_data)
+			memcpy(sep->conn_data, data, data_len);
+		else {
+			zerr = ZAP_ERR_RESOURCE;
+			goto out;
+		}
+		sep->conn_data_len = data_len;
+	}
 	zap_get_ep(&sep->ep);
 	if (bufferevent_socket_connect(sep->buf_event, sa, sa_len)) {
 		/* Error starting connection */
@@ -315,7 +327,6 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 		sep->buf_event = NULL;
 		zerr = ZAP_ERR_CONNECT;
 		zap_put_ep(&sep->ep);
-		goto out;
 	}
 
  out:
@@ -330,7 +341,7 @@ static void sock_write(struct bufferevent *buf_event, void *arg)
 /**
  * Process an unknown message in the end point.
  */
-static void process_sep_msg_unknown(struct z_sock_ep *sep)
+static void process_sep_msg_unknown(struct z_sock_ep *sep, size_t reqlen)
 {
 	/* Decide what to do and IMPLEMENT ME */
 	LOG_(sep, "zap_sock: WARNING: Unknown zap message.\n");
@@ -340,39 +351,96 @@ static void process_sep_msg_unknown(struct z_sock_ep *sep)
 	sep->ep.cb((void*)sep, &ev);
 }
 
-/**
- * Receiving a regular message.
- */
-static void process_sep_msg_sendrecv(struct z_sock_ep *sep)
+static zap_err_t __sock_recv(struct z_sock_ep *sep, size_t reqlen,
+			     struct sock_msg_sendrecv **pmsg)
 {
-	struct sock_msg_sendrecv msg;
-	size_t data_len;
+	int rc;
+	zap_err_t zerr;
+	struct sock_msg_sendrecv *msg;
 
-	bufferevent_read(sep->buf_event, &msg, sizeof(msg));
+	msg = malloc(reqlen);
+	if (!msg)
+		return ZAP_ERR_RESOURCE;
 
-	data_len = htonl(msg.data_len);
-
-	char *data = malloc(data_len);
-	if (!data) {
-		LOG_(sep, "ENOMEM at %s in %s:%d\n",
-		     __func__, __FILE__, __LINE__);
-		return;
+	rc = bufferevent_read(sep->buf_event, msg, reqlen);
+	if (rc < reqlen) {
+		LOG_(sep, "Expected %d bytes but read %d bytes.\n", reqlen, rc);
+		free(msg);
+		return ZAP_ERR_TRANSPORT;
 	}
-	if (data_len)
-		bufferevent_read(sep->buf_event, data, data_len);
+	*pmsg = msg;
+	return ZAP_ERR_OK;
+}
+
+/**
+ * Process connect message.
+ */
+static void process_sep_msg_connect(struct z_sock_ep *sep, size_t reqlen)
+{
+	struct sock_msg_sendrecv *msg;
+	zap_err_t zerr;
+
+	zerr = __sock_recv(sep, reqlen, &msg);
+	if (zerr)
+		return;
+
+	struct zap_event ev = {
+		.type = ZAP_EVENT_CONNECT_REQUEST,
+		.data = msg->data,
+		.data_len = ntohl(msg->data_len),
+	};
+
+	sep->ep.cb(&sep->ep, &ev);
+	free(msg);
+}
+
+/**
+ * Process accept msg
+ */
+static void process_sep_msg_accepted(struct z_sock_ep *sep, size_t reqlen)
+{
+	struct sock_msg_sendrecv *msg;
+	zap_err_t zerr = __sock_recv(sep, reqlen, &msg);
+	if (zerr)
+		return;
+
+	struct zap_event ev = {
+		.type = ZAP_EVENT_CONNECTED,
+		.data = msg->data,
+		.data_len = ntohl(msg->data_len),
+	};
+	if (!zap_ep_change_state(&sep->ep, ZAP_EP_CONNECTING, ZAP_EP_CONNECTED))
+		sep->ep.cb((void*)sep, &ev);
+	else
+		LOG_(sep, "'Accept' message received in unexpected state %d.\n",
+		     sep->ep.state);
+	free(msg);
+}
+
+/**
+ * Process send/recv message.
+ */
+static void process_sep_msg_sendrecv(struct z_sock_ep *sep, size_t reqlen)
+{
+	struct sock_msg_sendrecv *msg;
+	zap_err_t zerr = __sock_recv(sep, reqlen, &msg);
+	if (zerr)
+		return;
+
 	struct zap_event ev = {
 		.type = ZAP_EVENT_RECV_COMPLETE,
-		.data = data,
-		.data_len = data_len,
+		.data = msg->data,
+		.data_len = ntohl(msg->data_len),
 	};
-	sep->ep.cb((void*)sep, &ev);
-	free(data);
+
+	sep->ep.cb(&sep->ep, &ev);
+	free(msg);
 }
 
 /**
  * Receiving a read request message.
  */
-static void process_sep_msg_read_req(struct z_sock_ep *sep)
+static void process_sep_msg_read_req(struct z_sock_ep *sep, size_t reqlen)
 {
 	/* unpack received message */
 	struct sock_msg_read_req msg;
@@ -463,7 +531,7 @@ void z_io_free(struct z_sock_ep *sep, struct z_sock_io *io)
 /**
  * Receiving a read response message.
  */
-static void process_sep_msg_read_resp(struct z_sock_ep *sep)
+static void process_sep_msg_read_resp(struct z_sock_ep *sep, size_t reqlen)
 {
 	struct z_sock_io *io;
 	struct sock_msg_read_resp msg;
@@ -535,7 +603,7 @@ z_hdr_init(struct sock_msg_hdr *hdr, uint32_t xid,
 /**
  * Receiving a write request message.
  */
-static void process_sep_msg_write_req(struct z_sock_ep *sep)
+static void process_sep_msg_write_req(struct z_sock_ep *sep, size_t reqlen)
 {
 	char *dst;
 	uint32_t data_len;
@@ -587,7 +655,7 @@ static void process_sep_msg_write_req(struct z_sock_ep *sep)
 /**
  * Receiving a write response message.
  */
-static void process_sep_msg_write_resp(struct z_sock_ep *sep)
+static void process_sep_msg_write_resp(struct z_sock_ep *sep, size_t reqlen)
 {
 	struct z_sock_io *io;
 	struct sock_msg_write_resp msg;
@@ -615,7 +683,7 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep)
 /**
  * Receiving a rendezvous (share) message.
  */
-static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
+static void process_sep_msg_rendezvous(struct z_sock_ep *sep, size_t reqlen)
 {
 	struct sock_msg_rendezvous msg;
 	bufferevent_read(sep->buf_event, &msg, sizeof(msg));
@@ -673,22 +741,7 @@ err0:
 	return;
 }
 
-static void process_sep_msg_accepted(struct z_sock_ep *sep)
-{
-	struct sock_msg_accepted msg;
-	struct zap_event ev = {
-		.type = ZAP_EVENT_CONNECTED
-	};
-	bufferevent_read(sep->buf_event, &msg, sizeof(msg));
-	assert(sep->ep.state == ZAP_EP_CONNECTING);
-	if (!zap_ep_change_state(&sep->ep, ZAP_EP_CONNECTING, ZAP_EP_CONNECTED))
-		sep->ep.cb((void*)sep, &ev);
-	else
-		LOG_(sep, "'Accept' message received in unexpected state %d.\n",
-		     sep->ep.state);
-}
-
-typedef void(*process_sep_msg_fn_t)(struct z_sock_ep*);
+typedef void(*process_sep_msg_fn_t)(struct z_sock_ep*, size_t reqlen);
 static process_sep_msg_fn_t process_sep_msg_fns[] = {
 	[SOCK_MSG_SENDRECV] = process_sep_msg_sendrecv,
 	[SOCK_MSG_READ_REQ] = process_sep_msg_read_req,
@@ -696,6 +749,7 @@ static process_sep_msg_fn_t process_sep_msg_fns[] = {
 	[SOCK_MSG_WRITE_REQ] = process_sep_msg_write_req,
 	[SOCK_MSG_WRITE_RESP] = process_sep_msg_write_resp,
 	[SOCK_MSG_RENDEZVOUS] = process_sep_msg_rendezvous,
+	[SOCK_MSG_CONNECT] = process_sep_msg_connect,
 	[SOCK_MSG_ACCEPTED] = process_sep_msg_accepted,
 };
 
@@ -721,9 +775,9 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 			break;
 		msg_type = ntohs(hdr.msg_type);
 		if (msg_type < SOCK_MSG_TYPE_LAST)
-			process_sep_msg_fns[msg_type](sep);
+			process_sep_msg_fns[msg_type](sep, reqlen);
 		else /* unknown type */
-			process_sep_msg_unknown(sep);
+			process_sep_msg_unknown(sep, reqlen);
 	} while (1);
 }
 
@@ -770,32 +824,53 @@ zap_event_type_t ev_type_cvt[] = {
 	[SOCK_MSG_ACCEPTED] = -1
 };
 
+static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type, char *buf, size_t len)
+{
+	struct sock_msg_sendrecv msg;
+	struct evbuffer *ebuf = evbuffer_new();
+	if (!ebuf)
+		return ZAP_ERR_RESOURCE;
+
+	z_hdr_init(&msg.hdr, 0, msg_type, (uint32_t)(sizeof(msg) + len), 0);
+	msg.data_len = htonl(len);
+
+	if (evbuffer_add(ebuf, &msg, sizeof(msg)) != 0)
+		goto err;
+	if (evbuffer_add(ebuf, buf, len) != 0)
+		goto err;
+
+	/* This write will drain ebuf, appending data to sep->buf_event
+	 * without unnecessary memory copying. */
+	if (bufferevent_write_buffer(sep->buf_event, ebuf) != 0)
+		goto err;
+
+	/* we don't need ebuf anymore */
+	evbuffer_free(ebuf);
+	return ZAP_ERR_OK;
+err:
+	evbuffer_free(ebuf);
+	return ZAP_ERR_RESOURCE;
+}
+
 static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 {
-
+	zap_err_t zerr;
 	struct z_sock_ep *sep = arg;
 	static const short bev_mask = BEV_EVENT_EOF | BEV_EVENT_ERROR |
 				     BEV_EVENT_TIMEOUT;
-	if (!(bev & bev_mask)) {
+	if (bev & BEV_EVENT_CONNECTED) {
 		/*
-		 * This is BEV_EVENT_CONNECTED on initiator side.
-		 *
-		 * The underlying socket is connected, but we won't call it
-		 * zap-connected yet. The other end can choose to either
-		 * zap-accept the connection by sending an ACCEPT message or
-		 * reject this connection by immediately close it (see case
-		 * ZAP_EP_CONNECTING above). Zap_socket active-side endpoint is
-		 * zap-connected when it receives ACCEPT message.
-		 *
-		 * Hence, we just ignore this BEV_EVENT_CONNECTED and wait for
-		 * next event (ACCEPT or REJECT) to occur. Thus, no callback
-		 * function call in this case, just notify libevent that the
-		 * underlying socket is ready to work.
+		 * This is BEV_EVENT_CONNECTED on initiator side. Send
+		 * connect data
 		 */
 		if (bufferevent_enable(sep->buf_event, EV_READ | EV_WRITE)) {
 			LOG_(sep, "Error enabling buffered I/O event for fd %d.\n",
 					sep->sock);
 		}
+		zerr = __sock_send(sep, SOCK_MSG_CONNECT, sep->conn_data, sep->conn_data_len);
+		if (sep->conn_data)
+			free(sep->conn_data);
+		sep->conn_data = NULL;
 		return;
 	}
 
@@ -827,24 +902,24 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 
 	pthread_mutex_lock(&sep->ep.lock);
 	switch (sep->ep.state) {
-		case ZAP_EP_CONNECTING:
-			if ((bev & bev_mask) == BEV_EVENT_EOF)
-				ev.type = ZAP_EVENT_REJECTED;
-			else
-				ev.type = ZAP_EVENT_CONNECT_ERROR;
-			sep->ep.state = ZAP_EP_ERROR;
-			break;
-		case ZAP_EP_CONNECTED:	/* Peer closed. */
-			sep->ep.state = ZAP_EP_PEER_CLOSE;
-			shutdown(sep->sock, SHUT_RDWR); /* disallow further i/o from our side */
-		case ZAP_EP_CLOSE:	/* App called close. */
-			ev.type = ZAP_EVENT_DISCONNECTED;
-			break;
-		default:
-			LOG_(sep, "Unexpected state for EOF %d.\n",
-					sep->ep.state);
-			sep->ep.state = ZAP_EP_ERROR;
-			break;
+	case ZAP_EP_CONNECTING:
+		if ((bev & bev_mask) == BEV_EVENT_EOF)
+			ev.type = ZAP_EVENT_REJECTED;
+		else
+			ev.type = ZAP_EVENT_CONNECT_ERROR;
+		sep->ep.state = ZAP_EP_ERROR;
+		break;
+	case ZAP_EP_CONNECTED:	/* Peer closed. */
+		sep->ep.state = ZAP_EP_PEER_CLOSE;
+		shutdown(sep->sock, SHUT_RDWR); /* disallow further i/o from our side */
+	case ZAP_EP_CLOSE:	/* App called close. */
+		ev.type = ZAP_EVENT_DISCONNECTED;
+		break;
+	default:
+		LOG_(sep, "Unexpected state for EOF %d.\n",
+		     sep->ep.state);
+		sep->ep.state = ZAP_EP_ERROR;
+		break;
 	}
 	pthread_mutex_unlock(&sep->ep.lock);
 	sep->ep.cb((void*)sep, &ev);
@@ -897,14 +972,12 @@ static void __z_sock_conn_request(struct evconnlistener *listener,
 	new_sep = (void*) new_ep;
 	new_sep->sock = sockfd;
 	new_sep->ep.state = ZAP_EP_CONNECTING;
-	/* new_sep->buf_event will be set in accept */
-	struct zap_event zev;
-	memset(&zev, 0, sizeof(zev));
-	zev.type = ZAP_EVENT_CONNECT_REQUEST;
-	/* The callback will decide whether it should accept this connection */
-	zap_get_ep(new_ep);
-	new_ep->cb(new_ep, &zev);
-	zap_put_ep(new_ep);
+
+	zerr = __setup_connection(new_sep);
+	if (zerr || bufferevent_enable(new_sep->buf_event, EV_READ | EV_WRITE)) {
+		LOG_(sep, "Error setting up new endpoint on fd %d.\n", new_sep->sock);
+		zap_put_ep(new_ep);
+	}
 }
 
 static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
@@ -936,36 +1009,9 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 static zap_err_t z_sock_send(zap_ep_t ep, char *buf, size_t len)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
-	int rc;
-
 	if (ep->state != ZAP_EP_CONNECTED)
 		return ZAP_ERR_NOT_CONNECTED;
-
-	/* create ebuf for message */
-	struct evbuffer *ebuf = evbuffer_new();
-	if (!ebuf)
-		return ZAP_ERR_RESOURCE;
-
-	struct sock_msg_sendrecv msg;
-	z_hdr_init(&msg.hdr, 0, SOCK_MSG_SENDRECV, (uint32_t)(sizeof(msg) + len), 0);
-	msg.data_len = htonl(len);
-
-	if (evbuffer_add(ebuf, &msg, sizeof(msg)) != 0)
-		goto err;
-	if (evbuffer_add(ebuf, buf, len) != 0)
-		goto err;
-
-	/* this write will drain ebuf, appending data to sep->buf_event
-	 * without unnecessary memory copying. */
-	if (bufferevent_write_buffer(sep->buf_event, ebuf) != 0)
-		goto err;
-
-	/* we don't need ebuf anymore */
-	evbuffer_free(ebuf);
-	return ZAP_ERR_OK;
-err:
-	evbuffer_free(ebuf);
-	return ZAP_ERR_RESOURCE;
+	return __sock_send(sep, SOCK_MSG_SENDRECV, buf, len);
 }
 
 static struct timeval to;
@@ -1036,6 +1082,8 @@ static void z_sock_destroy(zap_ep_t ep)
 #ifdef DEBUG
 	ep->z->log_fn("SOCK: destroying endpoint %p\n", ep);
 #endif
+	if (sep->conn_data)
+		free(sep->conn_data);
 	release_buf_event(sep);
 	assert(TAILQ_EMPTY(&sep->io_q)); /* all pending I/O should have been flushed */
 	while (!TAILQ_EMPTY(&sep->free_q)) {
@@ -1049,13 +1097,15 @@ static void z_sock_destroy(zap_ep_t ep)
 	free(ep);
 }
 
-zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb)
+zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
 {
 	/* ep is the newly created ep from __z_sock_conn_request */
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
-	int rc;
 	zap_err_t zerr;
-	struct sock_msg_accepted msg;
+
+	struct evbuffer *ebuf = evbuffer_new();
+	if (!ebuf)
+		return ZAP_ERR_RESOURCE;
 
 	pthread_mutex_lock(&sep->ep.lock);
 	if (sep->ep.state != ZAP_EP_CONNECTING) {
@@ -1063,32 +1113,14 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb)
 		goto err_0;
 	}
 
-	sep->ep.cb = cb;
-	zerr = __setup_connection(sep);
+	sep->ep.state = ZAP_EP_CONNECTED;
+	zerr = __sock_send(sep, SOCK_MSG_ACCEPTED, data, data_len);
 	if (zerr)
 		goto err_1;
-
-	if (bufferevent_enable(sep->buf_event, EV_READ | EV_WRITE)) {
-		LOG_(sep, "Error enabling buffered I/O event for fd %d.\n",
-		     sep->sock);
-		goto err_1;
-	}
-
-	z_hdr_init(&msg.hdr, 0, SOCK_MSG_ACCEPTED, sizeof(msg), 0);
-
-	sep->ep.state = ZAP_EP_CONNECTED;
-	rc = bufferevent_write(sep->buf_event, &msg, sizeof(msg));
-	if (rc) {
-		LOG_(sep, "Cannot send SOCK_MSG_ACCEPTED to peer.");
-		zerr = ZAP_ERR_CONNECT;
-		goto err_1;
-	}
-
 	pthread_mutex_unlock(&sep->ep.lock);
 	zap_get_ep(&sep->ep);	/* Released in sock_event() */
 	struct zap_event ev = {
 		.type = ZAP_EVENT_CONNECTED,
-		.status = 0
 	};
 	cb(ep, &ev);
 	return ZAP_ERR_OK;
@@ -1097,6 +1129,7 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb)
 	sep->ep.state = ZAP_EP_ERROR;
 	pthread_mutex_unlock(&sep->ep.lock);
  err_0:
+	evbuffer_free(ebuf);
 	return zerr;
 }
 

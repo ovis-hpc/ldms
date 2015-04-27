@@ -112,13 +112,14 @@ struct zap {
 	void (*destroy)(zap_ep_t ep);
 
 	/** Request a connection with a server */
-	zap_err_t (*connect)(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
+	zap_err_t (*connect)(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
+			     char *data, size_t data_len);
 
 	/** Listen for incoming connection requests */
 	zap_err_t (*listen)(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len);
 
 	/** Accept a connection request */
-	zap_err_t (*accept)(zap_ep_t ep, zap_cb_fn_t cb);
+	zap_err_t (*accept)(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len);
 
 	/** Reject a connection request */
 	zap_err_t (*reject)(zap_ep_t ep);

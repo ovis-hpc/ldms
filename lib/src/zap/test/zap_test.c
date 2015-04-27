@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -231,7 +232,7 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 	printf("Write map is %p.\n", src_write_map);
 
 	/* Create a map for our peer to read from */
-	strcpy(read_buf, "This is the data source for the RDMA_READ.\n");
+	strcpy(read_buf, "This is the data source for the RDMA_READ.");
 	err = zap_map(ep, &read_map, read_buf, sizeof read_buf, ZAP_ACCESS_READ);
 	if (err) {
 		printf("Error %d for map of RDMA_READ memory.\n", err);
@@ -259,20 +260,22 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 	}
 }
 
+#define ACCEPT_DATA "Accepted!"
 void server_cb(zap_ep_t ep, zap_event_t ev)
 {
 	static int reject = 1;
 	zap_err_t err;
 
-	printf("%s: event %s\n", __func__, ev_str[ev->type]);
+	printf("%s: ep %p event %s\n", __func__, ep, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		if (reject) {
 			printf("  ... REJECTING\n");
 			err = zap_reject(ep);
 		} else {
-			printf("  ... ACCEPTING\n");
-			err = zap_accept(ep, server_cb);
+			printf("  ... ACCEPTING data: '%s' data_len: %jd\n",
+			       ev->data, ev->data_len);
+			err = zap_accept(ep, server_cb, ev->data, ev->data_len);
 		}
 		/* alternating between reject and accept */
 		reject = !reject;
@@ -393,11 +396,13 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	do_send(ep, dare);
 }
 
+#define CONN_DATA "Hello, world!"
+
 void client_cb(zap_ep_t ep, zap_event_t ev)
 {
 	struct sockaddr_in *sin;
 	zap_err_t err;
-	printf("%s: event %s\n", __func__, ev_str[ev->type]);
+	printf("%s: ep %p event %s\n", __func__, ep, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		assert(0);
@@ -407,10 +412,11 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		pthread_cond_broadcast(&done_cv);
 		break;
 	case ZAP_EVENT_CONNECTED:
+		printf("CONNECTED data: '%s' data_len: %jd\n", ev->data, ev->data_len);
 		do_send(ep, "Hello there!");
 		break;
 	case ZAP_EVENT_REJECTED:
-		printf("REJECTED! try again ...\n");
+		printf("REJECTED!\n");
 		sin = zap_get_ucontext(ep);
 		zap_close(ep);
 		ep = zap_new(zap, client_cb);
@@ -418,7 +424,8 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 			printf("zap_new failed.\n");
 			return;
 		}
-		err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin));
+		err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin),
+				  CONN_DATA, sizeof(CONN_DATA));
 		if (err) {
 			printf("zap_connect failed.\n");
 			return;
@@ -498,7 +505,8 @@ void do_client(zap_t zap, struct sockaddr_in *sin)
 		return;
 	}
 	zap_set_ucontext(ep, sin);
-	err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin));
+	err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin),
+			  CONN_DATA, sizeof(CONN_DATA));
 	if (err) {
 		printf("zap_connect failed.\n");
 		return;
