@@ -326,6 +326,17 @@ int bmvec_generic_refresh(struct bmvec_char *vec);
  */
 const char *bmvec_generic_get_path(struct bmvec_char *bmvec);
 
+/**
+ * \brief Reset the length of \c bmvec to 0 (allocated length is unchanged).
+ */
+static inline
+void bmvec_generic_reset(struct bmvec_char *bmvec)
+{
+	pthread_mutex_lock(&bmvec->mutex);
+	bmvec->bvec->len = 0;
+	pthread_mutex_unlock(&bmvec->mutex);
+}
+
 /**\}*/ // bmvec
 
 #endif /* __BMVEC_H */
