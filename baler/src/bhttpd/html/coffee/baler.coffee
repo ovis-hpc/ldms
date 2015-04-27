@@ -385,6 +385,8 @@ window.baler =
     HeatMapLayer: class HeatMapLayer extends Disp
         constructor: (@width, @height, @pxlFactor = 10, @ts_begin, @node_begin) ->
             _this_ = this
+            @min_alpha = 40
+            @max_alpha = 200
             @name = "Layer"
             @color = "red"
             @ctxt = undefined
@@ -424,7 +426,12 @@ window.baler =
                 img.data[i*4] = @base_color[0]
                 img.data[i*4+1] = @base_color[1]
                 img.data[i*4+2] = @base_color[2]
-                img.data[i*4+3] = data[i]
+                # img.data[i*4+3] = data[i]
+                img.data[i*4+3] = switch
+                    when data[i] == 0 then 0
+                    when data[i] < @min_alpha then @min_alpha
+                    when data[i] > @max_alpha then @max_alpha
+                    else data[i]
                 i++
 
             _x = (ts0 - @ts_begin) / @spp
