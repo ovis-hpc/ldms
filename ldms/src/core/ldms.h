@@ -486,6 +486,7 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
 #define LDMS_STR_WRAP(NAME) #NAME,
 #define LDMS_LWRAP(NAME) LDMS_L ## NAME,
 
+/* a command line alias of always is QUIET for back compatibility. */
 #define LOGLEVELS(WRAP) \
 	WRAP (DEBUG) \
 	WRAP (INFO) \

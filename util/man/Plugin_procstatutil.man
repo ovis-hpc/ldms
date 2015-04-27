@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_procstatutil
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Apr 2015" "v2.5.0" "Deprecated LDMS Plugin procstatutil man page"
+.TH man 7 "11 Apr 2015" "v2.4.1" "Deprecated LDMS Plugin procstatutil man page"
 
 .SH NAME
 Plugin_procstatutil - man page for the LDMS deprecated procstatutil plugin

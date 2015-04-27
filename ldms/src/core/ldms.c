@@ -106,6 +106,9 @@ int ldms_str_to_level(const char *level_s)
 			return i;
 		}
 	}
+	if (strcmp(level_s,"QUIET") == 0) {
+		return LDMS_LALWAYS; /* old usage support */
+	}
 
 	return -1;
 }

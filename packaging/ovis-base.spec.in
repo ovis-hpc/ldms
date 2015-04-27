@@ -93,7 +93,7 @@ Doxygen files for ldms-all package.
 %{_datadir}/doc/%{name}-%{version}
 %docdir %{_defaultdocdir}
 %changelog
-* Thu Apr 23 2015 Ben Allan <baallan@sandia.gov> 2.5.0-1
+* Thu Apr 23 2015 Ben Allan <baallan@sandia.gov> 2.4.1-1
 packaging with sysclassib and procstatutil2 enabled.
 * Wed Feb 18 2015 Ben Allan <baallan@sandia.gov> 2.4.0-1
 packaging with separate libevent

@@ -3,7 +3,7 @@
 ./configure '--enable-ssl' '--enable-rdma' '--enable-ncsa-unified' '--disable-zap' '--disable-zaptest' '--with-libevent=/usr/lib64/ovis-libevent2' '--disable-rpath' '--enable-authentication' '--disable-readline' '--enable-sysclassib' 'CC=gcc46' 'CXX=g++' --disable-sos 
 ./util/release_tarball-240.sh
 cd Release
-tar zxf ldms-2.5.0.tar.gz
-cd ldms-2.5.0
+tar zxf ldms-2.4.1.tar.gz
+cd ldms-2.4.1
 ./configure '--enable-ssl' '--enable-rdma' '--enable-ncsa-unified' '--disable-zap' '--disable-zaptest' '--with-libevent=/usr/lib64/ovis-libevent2' '--disable-rpath' '--enable-authentication' '--disable-readline' '--enable-sysclassib' 'CC=gcc46' 'CXX=g++' --disable-sos 
 make toss
