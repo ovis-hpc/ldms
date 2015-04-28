@@ -87,6 +87,10 @@ window.baler =
             return -1
         return 1
 
+    meta_cluster: (param, cb) ->
+        url = "http://#{baler.balerd.addr}/meta_cluster"
+        $.getJSON(url, param, cb)
+
     Disp: class Disp
         constructor: (@element_type) ->
             @domobj = LZH.tag(@element_type)
