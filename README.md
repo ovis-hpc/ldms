@@ -2,7 +2,7 @@
 
 ----
 ## What is OVIS?
-See [OVIS wiki](ovis.ca.sandia.gov)
+See [OVIS wiki](https://ovis.ca.sandia.gov/mediawiki/index.php)
 
 > OVIS is a collection of sub-projects that, as an aggregate, provide HPC targeted capabilities for lightweight monitoring and high performance analysis and visualization of monitored information and events.
 
