@@ -15,7 +15,7 @@ lazy_html =
         @addChildren(e, children)
         return e
 
-tags = [ "span", "li", "ul", "input", "div", "button", "canvas"]
+tags = [ "span", "li", "ul", "input", "div", "button", "canvas", "progress"]
 
 for tag in tags
     do (tag) ->
