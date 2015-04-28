@@ -64,6 +64,7 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <regex.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_private.h"
@@ -157,20 +158,6 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 size_t __ldms_xprt_max_msg(struct ldms_xprt *x)
 {
 	return zap_max_msg(x->zap);
-}
-
-void hton_ldms_lookup_msg(struct ldms_lookup_msg *msg)
-{
-	msg->xid = htobe64(msg->xid);
-	msg->data_len = htonl(msg->data_len);
-	msg->meta_len = htonl(msg->meta_len);
-}
-
-void ntoh_ldms_lookup_msg(struct ldms_lookup_msg *msg)
-{
-	msg->xid = be64toh(msg->xid);
-	msg->data_len = ntohl(msg->data_len);
-	msg->meta_len = ntohl(msg->meta_len);
 }
 
 static void send_dir_update(struct ldms_xprt *x,
@@ -459,52 +446,135 @@ process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 	r->remote_notify_xid = 0;
 }
 
+static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
+			       uint64_t xid, int more)
+{
+	struct ldms_reply_hdr hdr;
+	struct ldms_rbuf_desc *rbd;
+	int rc = ENOENT;
+	if (!set)
+		goto err_0;
+	rbd = ldms_lookup_rbd(x, set);
+	if (!rbd) {
+		rc = ENOMEM;
+		rbd = ldms_alloc_rbd(x, set);
+		if (!rbd)
+			goto err_0;
+	}
+	ldms_name_t name = get_instance_name(set->meta);
+	size_t msg_len = sizeof(struct ldms_lookup_msg) + name->len;
+	struct ldms_lookup_msg *msg = malloc(msg_len);
+	if (!msg)
+		goto err_0;
+
+	strcpy(msg->inst_name, name->name);
+	msg->inst_name_len = name->len;
+	msg->xid = xid;
+	msg->more = htonl(more);
+	msg->data_len = htonl(set->meta->data_sz);
+	msg->meta_len = htonl(set->meta->meta_sz);
+	msg->card = htonl(set->meta->card);
+
+	zap_share(x->zap_ep, rbd->lmap, (const char *)msg, msg_len);
+	free(msg);
+	return 0;
+ err_0:
+	hdr.rc = htonl(rc);
+	hdr.xid = xid;
+	hdr.cmd = htonl(LDMS_CMD_LOOKUP_REPLY);
+	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
+	zap_send(x->zap_ep, &hdr, sizeof(hdr));
+	return 1;
+}
+
+static int __re_match(struct ldms_set *set, regex_t *regex, int inst_n_schema)
+{
+	regmatch_t regmatch;
+	ldms_name_t name;
+
+	if (inst_n_schema)
+		name = get_instance_name(set->meta);
+	else
+		name = get_schema_name(set->meta);
+
+	int rc = regexec(regex, name->name, 0, NULL, 0);
+	return (rc ? 0 : 1);
+}
+
+static struct ldms_set *__next_re_match(struct ldms_set *set, regex_t *regex, int inst_n_schema)
+{
+	for (; set; set = __ldms_local_set_next(set)) {
+		if (__re_match(set, regex, inst_n_schema))
+			break;
+	}
+	return set;
+}
+
+static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *req, uint32_t flags)
+{
+	regex_t regex;
+	struct ldms_reply_hdr hdr;
+	struct ldms_set *set, *nxt_set;
+	int inst_n_schema = !(flags & LDMS_LOOKUP_BY_SCHEMA);
+	int rc, more;
+
+	rc = regcomp(&regex, req->lookup.path, REG_EXTENDED | REG_NOSUB);
+	if (rc) {
+		char errstr[512];
+		size_t sz = regerror(rc, &regex, errstr, sizeof(errstr));
+		x->log(errstr);
+		rc = EINVAL;
+		goto err_0;
+	}
+
+	/* Get the first match */
+	set = __ldms_local_set_first();
+	set = __next_re_match(set, &regex, inst_n_schema);
+	if (!set) {
+		rc = ENOENT;
+		goto err_1;
+	}
+	while (set) {
+		/* Get the next match if any */
+		nxt_set = __next_re_match(__ldms_local_set_next(set), &regex, inst_n_schema);
+		if (nxt_set)
+			more = 1;
+		else
+			more = 0;
+		rc = __send_lookup_reply(x, set, req->hdr.xid, more);
+		set = nxt_set;
+	}
+	regfree(&regex);
+	return;
+ err_1:
+	regfree(&regex);
+ err_0:
+	hdr.rc = htonl(rc);
+	hdr.xid = req->hdr.xid;
+	hdr.cmd = htonl(LDMS_CMD_LOOKUP_REPLY);
+	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
+	zap_send(x->zap_ep, &hdr, sizeof(hdr));
+}
+
 /**
- * This function process the lookup request from another peer.
+ * This function processes the lookup request from another peer.
  *
  * In the case of lookup OK, do ::zap_share().
  * In the case of lookup error, reply lookup error message.
  */
 static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req)
 {
-	struct ldms_set *set = __ldms_find_local_set(req->lookup.path);
-	struct ldms_rbuf_desc *rbd = ldms_lookup_rbd(x, set);
-	struct ldms_reply_hdr hdr;
-	struct ldms_reply *reply;
-	size_t len;
+	uint32_t flags = ntohl(req->lookup.flags);
+	int rc;
+	struct ldms_set *set;
 
-	__ldms_release_local_set(set);
-
-	if (!set) {
-		/* not found */
-		hdr.rc = htonl(ENOENT);
-		goto err_out;
+	if (flags & LDMS_LOOKUP_RE || LDMS_LOOKUP_BY_SCHEMA) {
+		process_lookup_request_re(x, req, flags);
+	} else {
+		set = __ldms_find_local_set(req->lookup.path);
+		rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
+		__ldms_release_local_set(set);
 	}
-
-	if (!rbd) {
-		rbd = ldms_alloc_rbd(x, set);
-		if (!rbd) {
-			hdr.rc = htonl(ENOMEM);
-			goto err_out;
-		}
-	}
-
-	struct ldms_lookup_msg lmsg = {
-		.xid = req->hdr.xid,
-		.data_len = set->meta->data_sz,
-		.meta_len = set->meta->meta_sz,
-		.card = set->meta->card,
-	};
-
-	hton_ldms_lookup_msg(&lmsg);
-	zap_share(x->zap_ep, rbd->lmap, (void*)&lmsg, sizeof(lmsg));
-	return;
-
- err_out:
-	hdr.xid = req->hdr.xid;
-	hdr.cmd = htonl(LDMS_CMD_LOOKUP_REPLY);
-	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
-	zap_send(x->zap_ep, &hdr, sizeof(hdr));
 }
 
 static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
@@ -619,7 +689,7 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		goto out;
 	}
 	if (ctxt->lookup.cb)
-		ctxt->lookup.cb(x, rc, NULL, ctxt->lookup.cb_arg);
+		ctxt->lookup.cb(x, rc, 0, NULL, ctxt->lookup.cb_arg);
 
 out:
 	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
@@ -825,9 +895,10 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 	case LDMS_CONTEXT_LOOKUP:
 		if (ctxt->lookup.cb) {
 			struct ldms_xprt *x = zap_get_ucontext(zep);
-			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.s,
+			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.more, ctxt->lookup.s,
 					ctxt->lookup.cb_arg);
-			zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+			if (!ctxt->lookup.more)
+				zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 		}
 		break;
 	default:
@@ -840,7 +911,6 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	struct ldms_lookup_msg *lm = (struct ldms_lookup_msg *)ev->data;
-	ntoh_ldms_lookup_msg(lm);
 	struct ldms_context *ctxt = (void*)lm->xid;
 	struct ldms_set_desc *sd = NULL;
 	struct ldms_rbuf_desc *rbd;
@@ -848,13 +918,14 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	ldms_set_t set_t;
 
 	/*
-	 * Create a local instance of this remote metric set. The set should not
+	 * Create a local instance of this remote metric set. The set must not
 	 * exists. The application should destroy existing set before lookup.
 	 */
-	rc = __ldms_create_set(ctxt->lookup.path,
-			lm,
-			&set_t,
-			LDMS_SET_F_REMOTE);
+	rc = __ldms_create_set(lm->inst_name,
+			       ntohl(lm->meta_len), ntohl(lm->data_len),
+			       ntohl(lm->card),
+			       &set_t,
+			       LDMS_SET_F_REMOTE);
 	if (rc)
 		goto out;
 	sd = (struct ldms_set_desc *)set_t;
@@ -870,24 +941,31 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	rbd->rmap = ev->map;
 
 	sd->rbd = rbd;
-	ctxt->lookup.s = sd;
+	struct ldms_context *rd_ctxt;
+	if (lm->more) {
+		rd_ctxt = malloc(sizeof *rd_ctxt);
+		*rd_ctxt = *ctxt;
+	} else {
+		rd_ctxt = ctxt;
+	}
+	rd_ctxt->lookup.s = sd;
+	rd_ctxt->lookup.more = ntohl(lm->more);
 	if (zap_read(zep,
 		     sd->rbd->rmap, zap_map_addr(sd->rbd->rmap),
 		     sd->rbd->lmap, zap_map_addr(sd->rbd->lmap),
 		     sd->set->meta->meta_sz,
-		     ctxt)) {
+		     rd_ctxt)) {
 		rc = EIO;
 		goto out;
 	}
 	return;
-
  out_1:
 	ldms_set_delete(sd);
 	free(sd);
 	sd = NULL;
  out:
 	if (ctxt->lookup.cb)
-		ctxt->lookup.cb(x, rc, (ldms_set_t)sd, ctxt->lookup.cb_arg);
+		ctxt->lookup.cb(x, rc, 0, (ldms_set_t)sd, ctxt->lookup.cb_arg);
 	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 	free(ctxt->lookup.path);
 	free(ctxt);
@@ -1012,15 +1090,16 @@ err0:
 	return NULL;
 }
 
-size_t format_lookup_req(struct ldms_request *req, const char *path,
-			 uint64_t xid)
+size_t format_lookup_req(struct ldms_request *req, enum ldms_lookup_flags flags,
+			 const char *path, uint64_t xid)
 {
 	size_t len = strlen(path) + 1;
 	strcpy(req->lookup.path, path);
 	req->lookup.path_len = htonl(len);
+	req->lookup.flags = htonl(flags);
 	req->hdr.xid = xid;
 	req->hdr.cmd = htonl(LDMS_CMD_LOOKUP);
-	len += sizeof(uint32_t) + sizeof(struct ldms_request_hdr);
+	len += sizeof(uint32_t) + sizeof(uint32_t) + sizeof(struct ldms_request_hdr);
 	req->hdr.len = htonl(len);
 	return len;
 }
@@ -1147,6 +1226,7 @@ void __ldms_remote_dir_cancel(ldms_t _x)
 }
 
 int __ldms_remote_lookup(ldms_t _x, const char *path,
+			 enum ldms_lookup_flags flags,
 			 ldms_lookup_cb_t cb, void *arg)
 {
 	struct ldms_xprt *x = _x;
@@ -1163,10 +1243,11 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_LOOKUP))
 		return ENOMEM;
 
-	len = format_lookup_req(req, path, (uint64_t)(unsigned long)ctxt);
+	len = format_lookup_req(req, flags, path, (uint64_t)(unsigned long)ctxt);
 	ctxt->lookup.s = NULL;
 	ctxt->lookup.cb = cb;
 	ctxt->lookup.cb_arg = arg;
+	ctxt->lookup.flags = flags;
 	ctxt->lookup.path = strdup(path);
 	zap_get_ep(x->zap_ep);	/* Relased in either ...lookup_reply() or ..rendezvous() */
 	rc = zap_send(x->zap_ep, req, len);

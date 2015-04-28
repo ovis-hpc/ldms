@@ -122,11 +122,12 @@ static inline struct ldms_value_desc *get_first_metric_desc(struct ldms_set_hdr 
 
 extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,
+				enum ldms_lookup_flags flags,
 				ldms_lookup_cb_t cb, void *cb_arg);
 extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 extern void __ldms_remote_dir_cancel(ldms_t x);
 extern int __ldms_create_set(const char *instance_name,
-			     struct ldms_lookup_msg *lm,
+			     size_t meta_len, size_t data_len, size_t card,
 			     ldms_set_t *s, uint32_t flags);
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
@@ -141,6 +142,9 @@ extern void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
 			    size_t *meta_sz, size_t *data_sz);
 
 extern struct ldms_set *__ldms_find_local_set(const char *path);
+extern struct ldms_set *__ldms_local_set_first(void);
+extern struct ldms_set *__ldms_local_set_next(struct ldms_set *);
+
 extern int __ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
 
 #endif

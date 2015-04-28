@@ -50,10 +50,10 @@
 #include <semaphore.h>
 #include "ldms.h"
 
-ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name)
+ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags)
 {
 	ldms_set_t set;
-	int rc = ldms_xprt_lookup(x, name, NULL, &set);
+	int rc = ldms_xprt_lookup(x, name, flags, NULL, &set);
 	if (!rc)
 		return set;
 	return NULL;
@@ -174,7 +174,7 @@ typedef long int64_t;
 
 %include "ldms.h"
 
-ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name);
+ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
 PyObject *LDMS_xprt_dir(ldms_t x);
 
 %extend ldms_value {

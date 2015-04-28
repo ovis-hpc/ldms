@@ -732,7 +732,7 @@ void reset_hostset(struct hostset *hset)
  */
 
 int sample_interval = 2000000;
-void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
+void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more, ldms_set_t s,
 		void *arg)
 {
 	int rc;
@@ -1022,7 +1022,9 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 int do_lookup(struct hostspec *hs, struct hostset *hset)
 {
 	if (hs->type != LOCAL)
-		return ldms_xprt_lookup(hs->x, hset->name, lookup_cb, hset);
+		return ldms_xprt_lookup(hs->x, hset->name,
+					LDMS_LOOKUP_BY_INSTANCE,
+					lookup_cb, hset);
 
 	/* local host */
 	int status = LDMS_LOOKUP_OK;
@@ -1030,7 +1032,7 @@ int do_lookup(struct hostspec *hs, struct hostset *hset)
 	if (!set)
 		status = LDMS_LOOKUP_ERROR;
 	pthread_mutex_unlock(&hset->state_lock);
-	lookup_cb(NULL, status, set, hset);
+	lookup_cb(NULL, status, 0, set, hset);
 	/* To match the unlock() in update_data */
 	pthread_mutex_lock(&hset->state_lock);
 	return 0;

@@ -98,6 +98,7 @@ struct ldms_hello_cmd_param {
 };
 
 struct ldms_lookup_cmd_param {
+	uint32_t flags;
 	uint32_t path_len;
 	char path[LDMS_LOOKUP_PATH_MAX+1];
 };
@@ -133,9 +134,12 @@ struct ldms_request {
 
 struct ldms_lookup_msg {
 	uint64_t xid;
+	uint32_t more;
 	uint32_t meta_len;
 	uint32_t data_len;
-	uint32_t card; /* set cardinality */
+	uint32_t card;
+	uint32_t inst_name_len;
+	char inst_name[0];
 };
 
 struct ldms_dir_reply {
@@ -191,6 +195,8 @@ struct ldms_context {
 			char *path;
 			ldms_lookup_cb_t cb;
 			void *cb_arg;
+			int more;
+			enum ldms_lookup_flags flags;
 			ldms_set_t s;
 			zap_map_t remote_map;
 		} lookup;

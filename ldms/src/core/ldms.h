@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-14 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-14 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -332,11 +333,13 @@ enum ldms_lookup_status {
  * \param status LDMS_LOOKUP_0 if the lookup was successful, ENOENT if the
  *		 specified set does not exist, ENOMEM if there is insufficient
  *		 memory to instantiate the set locally.
+ * \param more   If the more parameter is non-zero, additional lookup
+ *               results are outstanding for the request.
  * \param s	 The metric set handle.
  * \param cb_arg The callback argument specified in the call to \c ldms_lookup.
  */
 typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
-				 ldms_set_t s, void *arg);
+				 int more, ldms_set_t s, void *arg);
 
 /*
  * Values for the flags field in the ldms_set structure below.
@@ -611,7 +614,7 @@ extern int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flag
  * path. If the query is successful, the function puts the set handle
  * in the pointer provided by the \c s parameter.
  *
- * f the <tt>cb</tt> function is not NULL, the function will return
+ * If the <tt>cb</tt> function is not NULL, the function will return
  * immediately and call the <tt>cb</tt> function when the lookup
  * completes. See the ldms_lookup_cb_t() function for more details.
  *
@@ -619,18 +622,35 @@ extern int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flag
  * completes before returning and the returned value indicates the
  * success or failure of the lookup.
  *
+ * The <tt>flags</tt> parameter specifies if the <tt>name</tt> is a
+ * regular expression. If <tt>name</tt> is an RE, then the <tt>cb</tt> function
+ * will be called for every matching metric set on the peer. The
+ * <tt>cb</tt> parameter cannot be NULL if LDMS_LOOKUP_RE is set in
+ * <tt>flags.</tt>
+ *
+ * <tt>flags</tt> is a combination of the following values:
+ * - LDMS_LOOKUP_RE The name parameter is a regular expression
+ * - LDMS_LOOKUP_BY_INSTANCE The <tt>name</tt> refers to the set instance
+ * - LDMS_LOOKUP_BY_SCHEMA The <tt>name</tt> refers to the set schema
+ *
  * See the ldms_xprt_dir() function for detail on how to query a host for
  * the list of published metric sets.
  *
  * \param t	 The transport handle
- * \param name   The set name.
+ * \param name   The name to look up. The name refers to either the schema or instance name based on the value of <tt>flags</tt>
+ * \param flags  The lookup options
  * \param cb	 The callback function to invoke when the lookup has
  *		 completed.
  * \param cb_arg A user context that will be provided as a parameter
  *		 to the \c cb function.
  * \returns	 0 if the query was submitted successfully.
  */
-extern int ldms_xprt_lookup(ldms_t t, const char *name,
+enum ldms_lookup_flags {
+	LDMS_LOOKUP_BY_INSTANCE = 0,
+	LDMS_LOOKUP_BY_SCHEMA = 1,
+	LDMS_LOOKUP_RE = 2,
+};
+extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags flags,
 		       ldms_lookup_cb_t cb, void *cb_arg);
 
 /** \} */

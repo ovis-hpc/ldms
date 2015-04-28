@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -92,10 +93,10 @@ struct ls_set {
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:x:w:m:lvu"
+#define FMT "h:p:x:w:m:ESIlvu"
 void usage(char *argv[])
 {
-	printf("%s -h <hostname> -x <transport> [ set_name ... ]\n"
+	printf("%s -h <hostname> -x <transport> [ name ... ]\n"
 	       "\n    -h <hostname>    The name of the host to query. Default is localhost.\n"
 	       "\n    -p <port_num>    The port number. The default is 50000.\n"
 	       "\n    -l               Show the values of the metrics in each metric set.\n"
@@ -105,10 +106,13 @@ void usage(char *argv[])
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
 	       "                       The default is 10 seconds.\n"
 	       "\n    -v               Show detail information about the metric set. Specifying\n"
-	       "                     this option multiple times increases the verbosity.\n"
-	       "\n    -m <memory size>   Maximum size of pre-allocated memory for metric sets.\n"
-	       "                         The given size must be less than 1 petabytes.\n"
-	       "                         For example, 20M or 20mb are 20 megabytes.\n",
+	       "                       this option multiple times increases the verbosity.\n"
+	       "\n    -E               The <name> arguments are regular expressions.\n"
+	       "\n    -S               The <name>s refers to the schema name.\n"
+	       "\n    -I               The <name>s refer to the instance name (default).\n"
+	       "\n    -m <memory size> Maximum size of pre-allocated memory for metric sets.\n"
+	       "                       The given size must be less than 1 petabytes.\n"
+	       "                       For example, 20M or 20mb are 20 megabytes.\n",
 	       argv[0]);
 	exit(1);
 }
@@ -240,6 +244,7 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 }
 
 void lookup_cb(ldms_t t, enum ldms_lookup_status status,
+	       int more,
 	       ldms_set_t s, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
@@ -251,11 +256,11 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 		pthread_mutex_unlock(&print_lock);
 		goto err;
 	}
-	ldms_xprt_update(s, print_cb, (void *)last);
+	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(last && !more));
 	return;
  err:
 	printf("ldms_ls: Error %d looking up metric set.\n", status);
-	if (last) {
+	if (last && !more) {
 		pthread_mutex_lock(&done_lock);
 		done = 1;
 		pthread_cond_signal(&done_cv);
@@ -337,6 +342,8 @@ int main(int argc, char *argv[])
 	int i;
 	char *xprt = "sock";
 	int waitsecs = 10;
+	int regex = 0;
+	int schema = 0;
 	struct timespec ts;
 
 	/* If no arguments are given, print usage. */
@@ -351,6 +358,15 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
+		case 'E':
+			regex = 1;
+			break;
+		case 'S':
+			schema = 1;
+			break;
+		case 'I':
+			schema = 0;
+			break;
 		case 'h':
 			hostname = strdup(optarg);
 			break;
@@ -484,7 +500,11 @@ int main(int argc, char *argv[])
 		goto done;
 	}
 	while (!LIST_EMPTY(&set_list)) {
-
+		enum ldms_lookup_flags flags = 0;
+		if (regex)
+			flags |= LDMS_LOOKUP_RE;
+		if (schema)
+			flags |= LDMS_LOOKUP_BY_SCHEMA;
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
 
@@ -492,9 +512,10 @@ int main(int argc, char *argv[])
 			pthread_mutex_lock(&print_lock);
 			print_done = 0;
 			pthread_mutex_unlock(&print_lock);
-			ret = ldms_xprt_lookup(ldms, lss->name, lookup_cb,
-					  (void *)(unsigned long)
-					  LIST_EMPTY(&set_list));
+			ret = ldms_xprt_lookup(ldms, lss->name, flags,
+					       lookup_cb,
+					       (void *)(unsigned long)
+					       LIST_EMPTY(&set_list));
 			if (ret) {
 				printf("ldms_xprt_lookup returned %d for set '%s'\n",
 				       ret, lss->name);

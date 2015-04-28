@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -106,6 +107,28 @@ struct ldms_set *__ldms_find_local_set(const char *set_name)
 	if (z)
 		s = container_of(z, struct ldms_set, rb_node);
 	return s;
+}
+
+struct ldms_set *__ldms_local_set_first()
+{
+	struct rbn *z;
+	struct ldms_set *s = NULL;
+
+	pthread_mutex_lock(&set_tree_lock);
+	z = rbt_min(&set_tree);
+	if (z)
+		s = container_of(z, struct ldms_set, rb_node);
+	pthread_mutex_unlock(&set_tree_lock);
+	return s;
+}
+
+struct ldms_set *__ldms_local_set_next(struct ldms_set *s)
+{
+	struct rbn *z;
+	z = rbn_succ(&s->rb_node);
+	if (z)
+		return container_of(z, struct ldms_set, rb_node);
+	return NULL;
 }
 
 void __ldms_release_local_set(struct ldms_set *set)
@@ -394,7 +417,7 @@ void ldms_set_delete(ldms_set_t s)
 	free(sd);
 }
 
-static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status,
+static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
 			    ldms_set_t s, void *arg)
 {
 	ldms_set_t *ps = arg;
@@ -404,21 +427,23 @@ static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 	sem_post(&x->sem);
 }
 
-int ldms_xprt_lookup(ldms_t x, const char *path, ldms_lookup_cb_t cb, void *cb_arg)
+int ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
+		     ldms_lookup_cb_t cb, void *cb_arg)
 {
 	struct ldms_set *set;
 	ldms_set_t s;
 	int rc;
-	if (strlen(path) > LDMS_LOOKUP_PATH_MAX)
+	if ((flags & !cb)
+	    || strlen(path) > LDMS_LOOKUP_PATH_MAX)
 		return EINVAL;
 	if (!cb) {
-		rc = __ldms_remote_lookup(x, path, sync_lookup_cb, cb_arg);
+		rc = __ldms_remote_lookup(x, path, flags, sync_lookup_cb, cb_arg);
 		if (rc)
 			return rc;
 		sem_wait(&x->sem);
 		rc = x->sem_rc;
 	} else
-		rc = __ldms_remote_lookup(x, path, cb, cb_arg);
+		rc = __ldms_remote_lookup(x, path, flags, cb, cb_arg);
 	return rc;
 }
 
@@ -495,7 +520,7 @@ int ldms_set_producer_name_set(ldms_set_t s, const char *name)
 }
 
 int __ldms_create_set(const char *instance_name,
-		      struct ldms_lookup_msg *lm,
+		      size_t meta_len, size_t data_len, size_t card,
 		      ldms_set_t *s, uint32_t flags)
 {
 	struct ldms_data_hdr *data;
@@ -504,17 +529,17 @@ int __ldms_create_set(const char *instance_name,
 	ldms_mdef_t m;
 	int rc;
 
-	meta = mm_alloc(lm->meta_len + lm->data_len);
+	meta = mm_alloc(meta_len + data_len);
 	if (!meta) {
 		rc = ENOMEM;
 		goto out_0;
 	}
 	meta->version = LDMS_VERSION;
-	meta->meta_sz = lm->meta_len;
+	meta->meta_sz = meta_len;
 
-	data = (struct ldms_data_hdr *)((unsigned char*)meta + lm->meta_len);
-	meta->data_sz = lm->data_len;
-	data->size = lm->data_len;
+	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_len);
+	meta->data_sz = data_len;
+	data->size = data_len;
 
 	/* Initialize the metric set header */
 	if (flags & LDMS_SET_F_LOCAL)
@@ -523,7 +548,7 @@ int __ldms_create_set(const char *instance_name,
 		/* This tells ldms_update that we've never received
 		 * the remote meta data */
 		meta->meta_gn = 0;
-	meta->card = lm->card;
+	meta->card = card;
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 
 	ldms_name_t lname = get_instance_name(meta);
