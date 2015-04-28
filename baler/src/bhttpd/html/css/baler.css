@@ -120,16 +120,22 @@
     vertical-align: middle;
 }
 
-.HeatMapNavCtrl input, .HeatMapLayerCtrl input {
+.HeatMapNavCtrl input, .HeatMapLayerCtrl input, .MetaClusterCtrl input {
 	border-top: none;
 	border-left: none;
 	border-right: none;
 }
 
 .HeatMapNavCtrlLabel, .HeatMapLayerCtrlLabel {
-	/* float: left; */
 	display: inline-block;
 	width: 7em;
+	text-align: right;
+	padding-right: 0.5em;
+}
+
+.MetaClusterCtrlLabel, .MetaClusterStatLabel {
+	display: inline-block;
+	width: 8em;
 	text-align: right;
 	padding-right: 0.5em;
 }

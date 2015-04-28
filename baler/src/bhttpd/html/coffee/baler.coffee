@@ -917,6 +917,109 @@ window.baler =
             color = baler.hue2hex(hue)
             @box.style.backgroundColor = color
 
+    MetaClusterStat: class MetaClusterStat extends Disp
+        # state <--> text mapping is static
+        stateMap: {
+            BMPTN_STORE_STATE_NA: "N/A State",
+            BMPTN_STORE_STATE_ERROR: "ERROR!",
+            BMPTN_STORE_STATE_INITIALIZED: "Initialized",
+            BMPTN_STORE_STATE_META_1: "Clustering lv 1",
+            BMPTN_STORE_STATE_META_2: "Clustering lv 2",
+            BMPTN_STORE_STATE_REFINING: "Refining",
+            BMPTN_STORE_STATE_NAMING: "Naming",
+            BMPTN_STORE_STATE_DONE: "Complete"
+        }
+
+        constructor: () ->
+            @stat = LZH.span({class:"MetaClusterStatLabel"}, "")
+            @progress = LZH.progress({max: "100"})
+            @domobj = LZH.div({class: "MetaClusterStat"}, @stat, @progress)
+            @doneCb = null
+
+        updateTilDone: () ->
+            _this_ = this
+            @domobj.hidden = false
+            baler.meta_cluster(null, (data, status, jqXHR) -> _this_.updateTilDoneCb(data, status, jqXHR))
+
+        updateTilDoneCb: (data, status, jqXHR) ->
+            _this_ = this
+            @stat.innerText = @stateMap[data.state]
+            @progress.value = data.percent
+            switch data.state
+                when "BMPTN_STORE_STATE_INITIALIZED", \
+                    "BMPTN_STORE_STATE_META_1", \
+                    "BMPTN_STORE_STATE_META_2", \
+                    "BMPTN_STORE_STATE_REFINING", \
+                    "BMPTN_STORE_STATE_NAMING"
+                        console.log("updateTilDoneCb")
+                        window.setTimeout((() -> _this_.updateTilDone()), 500)
+                else
+                    if @doneCb
+                        @doneCb(data)
+
+        update: () ->
+            _this_ = this
+            baler.meta_cluster(null, (data, status, jqXHR)-> _this_.updateCb(data, status, jqXHR))
+
+        updateCb: (data, status, jqXHR) ->
+            @stat.innerText = @stateMap[data.state]
+            @progress.value = data.percent
+
+    MetaClusterCtrl: class MetaPtnCtrl extends Disp
+        constructor: () ->
+            _this_ = this
+            @domobj = LZH.div({class: "MetaClusterCtrl"})
+
+            # Parameter control
+            @param_lbl = {
+                # [label, placeholder]
+                refinement_speed: ["Refinement Speed", "value > 1.0, e.g. 2.0", "baler_refinement_speed"],
+                looseness: ["Looseness", "value in (0.0 - 1.0)", "baler_looseness"],
+                diff_ratio: ["Difference Ratio", "value in (0.0 - 1.0)", "baler_diff_ratio"]
+            }
+            @param_input = {}
+            ul = LZH.ul({style: "list-style: none"})
+
+            # Clustering Status
+            @stat = new MetaClusterStat()
+            @stat.domobj.hidden = 1
+            @stat.doneCb = (data) -> _this_.onStatDone(data)
+            li = LZH.li(null, @stat.domobj)
+            ul.appendChild(li)
+
+            # Paremeter input
+            for k, [lbl, plc, id] of @param_lbl
+                inp = @param_input[k] = LZH.input({id: id})
+                inp.placeholder = plc
+                inp.onblur = () -> @value = @value.replace(/^\s+|\s+$/g, '')
+                li = LZH.li(null, LZH.span(class: "MetaClusterCtrlLabel", lbl), inp)
+                ul.appendChild(li)
+
+            # button setup
+            @btn = LZH.button(null, "run meta cluster")
+            ul.appendChild(LZH.li(null, LZH.span({class: "MetaClusterCtrlLabel"}), @btn))
+            @btn.onclick = () -> _this_.onBtnClick()
+
+            @domobj.appendChild(ul)
+            @doneCb = null
+
+        setDoneCb: (fn) ->
+            @doneCb = fn
+
+        onBtnClick: () ->
+            param = {op: "run"}
+            for k, inp of @param_input
+                str = inp.value
+                param[k] = str if str
+            console.log(param)
+            baler.meta_cluster(param)
+            @stat.updateTilDone()
+
+        onStatDone: (data) ->
+            _this_ = this
+            window.setTimeout((()-> _this_.stat.domobj.hidden = 1), 1000)
+            @doneCb(data) if @doneCb
+
     Parent: class Parent
         constructor: (@name) ->
             console.log("parent constructor")
