@@ -615,7 +615,7 @@ int rbt_traverse(struct rbt *t, rbn_node_fn f, void *p)
  *
  * \param n	Pointer to the current node
  */
-struct rbn *rbt_succ(struct rbn *n)
+struct rbn *rbn_succ(struct rbn *n)
 {
 	if (n->right)
 		return __rbn_min(n->right);
@@ -636,7 +636,7 @@ struct rbn *rbt_succ(struct rbn *n)
  *
  * \param n	Pointer to the current node
  */
-struct rbn *rbt_pred(struct rbn *n)
+struct rbn *rbn_pred(struct rbn *n)
 {
 	if (n->left)
 		return __rbn_max(n->left);
@@ -710,13 +710,13 @@ int main(int argc, char *argv[])
 	}
 	struct rbn *n;
 	x = 0;
-	for (n = rbt_min(&rbtB); n; n = rbt_succ(n)) {
+	for (n = rbt_min(&rbtB); n; n = rbn_succ(n)) {
 		struct test_key *k = container_of(n, struct test_key, n);
 		TEST_ASSERT(k->ord == x, "k->ord(%d) == %d\n", k->ord, x);
 		x++;
 	}
 	x = 9;
-	for (n = rbt_max(&rbtB); n; n = rbt_pred(n)) {
+	for (n = rbt_max(&rbtB); n; n = rbn_pred(n)) {
 		struct test_key *k = container_of(n, struct test_key, n);
 		TEST_ASSERT(k->ord == x, "k->ord(%d) == %d\n", k->ord, x);
 		x--;
