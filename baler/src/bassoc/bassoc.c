@@ -81,15 +81,24 @@
  * extract images from metric input stream:
  * \par
  * \code{.sh}
- *     bassoc -x -w WORKSPACE -R RECIPE_FILE
+ *     cat hdr.csv metric.csv | bassoc -X -w WORKSPACE -R RECIPE_FILE
+ * \endcode
+ *
+ * extract from both baler store and metric input stream:
+ * \par
+ * \code{.sh}
+ *     cat hdr.csv metric.csv | bassoc -X -w WORKSPACE -s BALERD_STORE -R RECIPE_FILE
  * \endcode
  *
  * mine for associations:
  * \par
  * \code{.sh}
- *     bassoc -w WORKSPACE [-o NUMBER] -m TARGET_LIST
+ *     # provide target list via CLI argument
+ *     bassoc -w WORKSPACE [-o PIXEL_OFFSET] -m TARGET_LIST
  *
- *     bassoc -w WORKSPACE [-o NUMBER] -M TARGET_FILE
+ *     # provide target list via TARGET_FILE
+ *     bassoc -w WORKSPACE [-o PIXEL_OFFSET] -M TARGET_FILE
+ *
  * \endcode
  *
  * \section options OPTIONS
@@ -160,7 +169,8 @@
  * create an image. Please see \ref recipe_file for more information.
  *
  * \par -o,--offset NUMBER
- * The number of PIXEL to be offset when comparing the causes to the effect.
+ * The number of PIXEL to be offset when comparing the causes to the effect. See
+ * \ref offset for more information.
  *
  * \par -m,--mine-target TARGET_LIST
  * Mine the association rules that have target in the TARGET_LIST. TARGET_LIST
@@ -260,6 +270,35 @@
  * The images will be created according to sec/pixel and node/pixel information
  * in the workspace.
  *
+ * \section img IMAGE
+ * This section explains about Images that represent occurrences of events.  An
+ * image \c A is a set of tri-tuple (x, y, count), representing the number of
+ * occurreces (count) of event \c A at time slot \c x and component slot \c y.
+ * <tt>A[x,y]</tt> is a short hand for the count of \c A at <tt>(x,y)</tt>.
+ *
+ * <code>Idx(A)</code> is a set of index of pixels of \c A, described as
+ * \code{.unparsed}
+ *     Idx(A) := { (x, y) | all (x, y, z) in A }
+ * \endcode
+ *
+ * \subsection imgintersect IMAGE INTERSECTION and CO-OCCURRENCES
+ * Image intersection is defined as the following.
+ * \code{.unparsed}
+ *    I(A, B) := { (x, y, min(A[x,y], B[x,y])) | all (x,y) in (Idx(A)^Idx(B)) }
+ * \endcode
+ * In other words, the intersection of \c A and \c B is the pixel-wise minimum
+ * of the two image. The intersection is also used to represent the
+ * co-occurrences of the two events.
+ *
+ * \subsection offset PIXEL OFFSET
+ * Target image (the right-hand-side of the association rule) can be shifted, so
+ * that association to the future or past event can be done. If the offset
+ * (option -o or --offset) is given as a positive number \c X, the target image
+ * will be shifted to the right by \c X pixel in the rule evaluation. If \c X is
+ * negative number, the target image will be shifted to the left by \c X pixel.
+ *
+ * REMARK: Negative \c X means associating current cause to FUTURE effect.
+ *
  * \section example EXAMPLES
  *
  * To initialize workspace that works with 1-hour-1-node pixel images:
@@ -321,17 +360,17 @@
  * \endcode
  *
  * To mine rules with ev3 and ev5 being targets, with time-axis of the target
- * shifting to the right by 1 pixel, significance theshold 0.01, confidence
- * threshold 0.75:
+ * shifting to the right by -1 pixel (so that we can use the rule for future
+ * prediction), significance theshold 0.01, confidence threshold 0.75:
  * \par
  * \code{.sh}
- *     bassoc -w workspace -m ev3,ev5 -o 1 -S 0.01 -K 0.75
+ *     bassoc -w workspace -m ev3,ev5 -o -1 -S 0.01 -K 0.75
  * \endcode
  *
  * or:
  * \par
  * \code{.sh}
- *     bassoc -w workspace -M target_file -o 1 -S 0.01 -K 0.75
+ *     bassoc -w workspace -M target_file -o -1 -S 0.01 -K 0.75
  * \endcode
  *
  * \note A rule (X->Y) of 0.1 significance means that XY co-occurrences
