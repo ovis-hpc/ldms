@@ -392,11 +392,20 @@
  * \code{.sh}
  *     bassoc -w workspace -M target_file -o -1 -S 0.01 -K 0.75
  * \endcode
+ * where \e target_file contains the following content:
+ * \par
+ * \code{.sh}
+ *     ev3
+ *     # Comment is OK
+ *     ev5
+ * \endcode
  *
  * For black/white evaluation, just add '-b' flag.
  * \par
  * \code{.sh}
- *     bassoc -w workspace -b -M target_file -o -1 -S 0.01 -K 0.75
+ *     bassoc -w workspace -m ev3,ev5 -b -o -1 -S 0.01 -K 0.75
+ *     # or
+ *     bassoc -w workspace -M target_file -b -o -1 -S 0.01 -K 0.75
  * \endcode
  *
  * \note A rule (X->Y) of 0.1 significance means that XY co-occurrences
@@ -406,14 +415,6 @@
  * \note A rule (X->Y) of 0.9 confidence menas that 90% of the occurrences of X,
  * Y also occur. The confidence threshold will be used to accept rule candidates
  * that has greater confidence as rules.
- *
- * where \e target_file contains the following content:
- * \par
- * \code{.sh}
- *     ev3
- *     # Comment is OK
- *     ev5
- * \endcode
  */
 
 #include <stdio.h>
