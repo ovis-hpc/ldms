@@ -337,6 +337,12 @@ void bmvec_generic_reset(struct bmvec_char *bmvec)
 	pthread_mutex_unlock(&bmvec->mutex);
 }
 
+static inline
+uint64_t bmvec_generic_get_len(struct bmvec_char *bmvec)
+{
+	return bmvec->bvec->len;
+}
+
 /**\}*/ // bmvec
 
 #endif /* __BMVEC_H */
