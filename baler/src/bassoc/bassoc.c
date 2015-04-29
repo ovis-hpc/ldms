@@ -99,6 +99,9 @@
  *     # provide target list via TARGET_FILE
  *     bassoc -w WORKSPACE [-o PIXEL_OFFSET] -M TARGET_FILE
  *
+ *     # Use black-white co-occurrence evaluation
+ *     bassoc -w WORKSPACE -b [-o PIXEL_OFFSET] -m TARGET_LIST
+ *     bassoc -w WORKSPACE -b [-o PIXEL_OFFSET] -M TARGET_FILE
  * \endcode
  *
  * \section options OPTIONS
@@ -171,6 +174,9 @@
  * \par -o,--offset NUMBER
  * The number of PIXEL to be offset when comparing the causes to the effect. See
  * \ref offset for more information.
+ *
+ * \par -b,--black-white
+ * A flag to use black-white image evaluation. See \ref blackwhite below.
  *
  * \par -m,--mine-target TARGET_LIST
  * Mine the association rules that have target in the TARGET_LIST. TARGET_LIST
@@ -290,6 +296,20 @@
  * of the two image. The intersection is also used to represent the
  * co-occurrences of the two events.
  *
+ * \subsection blackwhite BLACK-WHITE IMAGE
+ * Black-white co-occurrences discard 'count' information in the image pixels.
+ * The count information can be seen as intensity in gray-scale image. Hence,
+ * the image with count being 0 or 1 (discarding the count) can be seen as
+ * black-white image, and is defined as follow:
+ * \code{.unparsed}
+ *    bw(A) := { (x, y, 1) | all (x, y, z) in A }
+ * \endcode
+ * Black-white images are useful in the situation of event count imbalance. For
+ * example, we might have repetitive overheat value from metric data, but have
+ * only single overheat message. With count, the high metric value will not be
+ * associated with the overheat message. Discarding count will make them equals
+ * (in terms of exist or not exist in the spatio-temporal space).
+ *
  * \subsection offset PIXEL OFFSET
  * Target image (the right-hand-side of the association rule) can be shifted, so
  * that association to the future or past event can be done. If the offset
@@ -373,6 +393,12 @@
  *     bassoc -w workspace -M target_file -o -1 -S 0.01 -K 0.75
  * \endcode
  *
+ * For black/white evaluation, just add '-b' flag.
+ * \par
+ * \code{.sh}
+ *     bassoc -w workspace -b -M target_file -o -1 -S 0.01 -K 0.75
+ * \endcode
+ *
  * \note A rule (X->Y) of 0.1 significance means that XY co-occurrences
  * contribute 10% of the occurrences of Y. The significance threshold will
  * filter out the rules that has lesser significance.
@@ -409,7 +435,7 @@
 #include "../query/bquery.h"
 
 /***** OPTIONS *****/
-const char *short_opt = "hicw:t:n:xXs:B:E:H:r:R:o:m:M:z:K:S:D:v:?";
+const char *short_opt = "hicw:t:n:xXs:B:E:H:r:R:o:m:M:z:K:S:D:v:b?";
 struct option long_opt[] = {
 	{"help",                    0,  0,  'h'},
 	{"info",                    0,  0,  'i'},
@@ -432,6 +458,7 @@ struct option long_opt[] = {
 	{"confidence-threshold",    1,  0,  'K'},
 	{"significance-threshold",  1,  0,  'S'},
 	{"difference-threshold",    1,  0,  'D'},
+	{"black-white",             0,  0,  'b'},
 	{"verbose",                 1,  0,  'v'},
 	{0,                         0,  0,  0},
 };
@@ -464,6 +491,8 @@ double significance = 0.10;
 double difference = 0.15;
 int offset = 0;
 const char *mine_target_file_path = NULL;
+
+int blackwhite = 0;
 
 int enable_metric_stream = 0;
 
@@ -937,6 +966,9 @@ loop:
 		break;
 	case 'D':
 		difference = atof(optarg);
+		break;
+	case 'b':
+		blackwhite = 1;
 		break;
 	case 'v':
 		rc = blog_set_level_str(optarg);
@@ -2388,13 +2420,15 @@ loop:
 		rc = miner_add_stack_img(ctxt, img, formula[fidx]);
 		fidx++;
 	}
-	/* Now, the top-of-stack is the antecedent image */
+	/* Now, the top-of-stack is the antecedent image, denoted by (B) */
 
 	bimg = (ctxt->stack_sz)?(ctxt->img[ctxt->stack_sz - 1]):(NULL);
 	aimg = ctxt->img[MINER_CTXT_STACK_SZ];
 
 	for (i = rule->last_idx + 1; i < n; i++) {
 		/* Expanding rule candidates to discover rules */
+		/* i.e., considering (B)(i)->(t) */
+		/* note: (A) = (B)(i) */
 		struct bassoc_rule *r = bassoc_rule_new();
 		if (!r) {
 			berr("Cannot allocate memory for a new rule ...");
@@ -2435,9 +2469,17 @@ loop:
 		} else {
 			aimg = img;
 		}
+		/* Now, (A) = (B)(i) */
+
+		/* note: (C) = (A)(t) = (B)(i)(t) */
 		rc = bassocimg_intersect(aimg, timg, cimg);
 		assert(rc == 0);
 
+		/* Recall:
+		 *   we're considering rule (B)(i)->(t)
+		 *     (A) = (B)(i)
+		 *     (C) = (B)(i)(t)
+		 */
 		struct bassocimg_hdr *ahdr, *bhdr, *chdr, *thdr;
 		ahdr = bassocimg_get_hdr(aimg);
 		if (bimg)
@@ -2445,9 +2487,23 @@ loop:
 		chdr = bassocimg_get_hdr(cimg);
 		thdr = bassocimg_get_hdr(timg);
 
+		uint64_t count_a, count_b, count_c, count_t;
+
+		if (blackwhite) {
+			count_a = bmvec_generic_get_len(&aimg->bmvec);
+			count_b = (bimg)?(bmvec_generic_get_len(&bimg->bmvec)):(0);
+			count_c = bmvec_generic_get_len(&cimg->bmvec);
+			count_t = bmvec_generic_get_len(&timg->bmvec);
+		} else {
+			count_a = ahdr->count;
+			count_b = (bimg)?(bhdr->count):(0);
+			count_c = chdr->count;
+			count_t = thdr->count;
+		}
+
 		/* calculate confidence, significance */
-		r->conf = chdr->count / (double)ahdr->count;
-		r->sig = chdr->count / (double)thdr->count;
+		r->conf = count_c / (double)count_a;
+		r->sig = count_c / (double)count_t;
 
 		if (r->sig < significance) {
 			/* Significance bound */
@@ -2462,7 +2518,7 @@ loop:
 			goto term;
 		}
 
-		if (bimg && (bhdr->count - ahdr->count) / (double)(bhdr->count) < difference) {
+		if (bimg && (count_b - count_a) / (double)(count_b) < difference) {
 			/* Difference bound */
 			bassoc_rule_debug(r, "difference bounded");
 			goto bound;
