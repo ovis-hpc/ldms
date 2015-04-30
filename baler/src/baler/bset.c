@@ -368,6 +368,23 @@ int brange_u32_iter_begin(struct brange_u32_iter *itr, uint32_t *v)
 	return 0;
 }
 
+int brange_u32_iter_end(struct brange_u32_iter *itr, uint32_t *v)
+{
+	if (!itr) {
+		*v = 0xFFFFFFFF;
+		return 0;
+	}
+	if (!itr->current_range) {
+		itr->current_range = itr->first_range;
+	}
+	struct brange_u32 *next;
+	while ((next = TAILQ_NEXT(itr->current_range, link))) {
+		itr->current_range = next;
+	}
+	*v = itr->current_value = itr->current_range->b;
+	return 0;
+}
+
 int brange_u32_iter_fwd_seek(struct brange_u32_iter *itr, uint32_t *v)
 {
 	struct brange_u32 *r;
@@ -386,6 +403,28 @@ int brange_u32_iter_fwd_seek(struct brange_u32_iter *itr, uint32_t *v)
 		return 0;
 	next:
 		r = TAILQ_NEXT(r, link);
+	}
+	return ENOENT;
+}
+
+int brange_u32_iter_bwd_seek(struct brange_u32_iter *itr, uint32_t *v)
+{
+	struct brange_u32 *r;
+	int rc;
+	if (*v > itr->current_value)
+		return EINVAL;
+	r = itr->current_range;
+	while (r) {
+		rc = brange_u32_cmp(r, *v);
+		if (rc < 0)
+			goto next;
+		/* found a valid range */
+		itr->current_range = r;
+		itr->current_value = (rc)?(r->b):(*v);
+		*v = itr->current_value;
+		return 0;
+	next:
+		r = TAILQ_PREV(r, brange_u32_head, link);
 	}
 	return ENOENT;
 }

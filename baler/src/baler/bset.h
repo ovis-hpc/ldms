@@ -270,6 +270,18 @@ int brange_u32_iter_get_value(struct brange_u32_iter *itr, uint32_t *v);
 int brange_u32_iter_begin(struct brange_u32_iter *itr, uint32_t *v);
 
 /**
+ * Move the iterator to the beginning position; also set \c *v to the last
+ * value of the ranges.
+ *
+ * \param itr The iterator handle.
+ * \param[out] v The output value.
+ *
+ * \retval 0 if OK
+ * \retval errno if error.
+ */
+int brange_u32_iter_end(struct brange_u32_iter *itr, uint32_t *v);
+
+/**
  * Free the iterator.
  */
 void brange_u32_iter_free(struct brange_u32_iter *itr);
@@ -298,6 +310,20 @@ int brange_u32_iter_next(struct brange_u32_iter *itr, uint32_t *v);
  * \retval ENOENT if there is no range that contained or positioned beyond \c v.
  */
 int brange_u32_iter_fwd_seek(struct brange_u32_iter *itr, uint32_t *v);
+
+/**
+ * Move the iterator, in a backward direction, to the position less than or
+ * equal to \c *v.
+ *
+ * \param itr The iterator.
+ * \param[in,out] v The value to seek to, also will be set to current position
+ *                  as an output (if success).
+ *
+ * \retval 0 if success.
+ * \retval EINVAL if \c v is greater than the current position.
+ * \retval ENOENT if there is no range that contained or positioned before \c v.
+ */
+int brange_u32_iter_bwd_seek(struct brange_u32_iter *itr, uint32_t *v);
 
 #endif
 /**\}*/
