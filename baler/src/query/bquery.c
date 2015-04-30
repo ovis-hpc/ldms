@@ -479,14 +479,14 @@ void bimgquery_destroy(struct bimgquery *q)
 {
 	free(q->store_name);
 	struct brange_u32 *r;
-	while ((r = LIST_FIRST(&q->hst_rngs))) {
-		LIST_REMOVE(r, link);
+	while ((r = TAILQ_FIRST(&q->hst_rngs))) {
+		TAILQ_REMOVE(&q->hst_rngs, r, link);
 		free(r);
 	}
 	if (q->hst_rng_itr)
 		brange_u32_iter_free(q->hst_rng_itr);
-	while ((r = LIST_FIRST(&q->ptn_rngs))) {
-		LIST_REMOVE(r, link);
+	while ((r = TAILQ_FIRST(&q->ptn_rngs))) {
+		TAILQ_REMOVE(&q->ptn_rngs, r, link);
 		free(r);
 	}
 	if (q->ptn_rng_itr)
@@ -687,7 +687,7 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 		_rc = bset_u32_to_brange_u32(bi->base.hst_ids, &bi->hst_rngs);
 		if (_rc)
 			goto err;
-		bi->hst_rng_itr = brange_u32_iter_new(LIST_FIRST(&bi->hst_rngs));
+		bi->hst_rng_itr = brange_u32_iter_new(TAILQ_FIRST(&bi->hst_rngs));
 		if (!bi->hst_rng_itr)
 			goto err;
 	}
@@ -696,7 +696,7 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 		_rc = bset_u32_to_brange_u32(bi->base.ptn_ids, &bi->ptn_rngs);
 		if (_rc)
 			goto err;
-		bi->ptn_rng_itr = brange_u32_iter_new(LIST_FIRST(&bi->ptn_rngs));
+		bi->ptn_rng_itr = brange_u32_iter_new(TAILQ_FIRST(&bi->ptn_rngs));
 		if (!bi->ptn_rng_itr)
 			goto err;
 	}

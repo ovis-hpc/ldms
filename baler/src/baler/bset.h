@@ -197,10 +197,10 @@ struct bset_u32 *bset_u32_from_numlist(const char *num_lst, int hsize);
 struct brange_u32 {
 	uint32_t a;
 	uint32_t b;
-	LIST_ENTRY(brange_u32) link;
+	TAILQ_ENTRY(brange_u32) link;
 };
 
-LIST_HEAD(brange_u32_head, brange_u32);
+TAILQ_HEAD(brange_u32_head, brange_u32);
 
 struct brange_u32_iter {
 	struct brange_u32 *first_range;
@@ -287,7 +287,7 @@ int brange_u32_iter_next(struct brange_u32_iter *itr, uint32_t *v);
 
 /**
  * Move the iterator, in a forward direction, to the position greater than or
- * equal to \c v.
+ * equal to \c *v.
  *
  * \param itr The iterator.
  * \param[in,out] v The value to seek to, also will be set to current position

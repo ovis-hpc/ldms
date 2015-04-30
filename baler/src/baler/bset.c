@@ -231,7 +231,7 @@ int bset_u32_to_brange_u32(struct bset_u32 *set, struct brange_u32_head *head)
 		goto err3;
 	}
 	r->a = r->b = data[0];
-	LIST_INSERT_HEAD(head, r, link);
+	TAILQ_INSERT_HEAD(head, r, link);
 
 	for (i=1; i<set->count; i++) {
 		if (data[i] - r->b == 1) {
@@ -246,7 +246,7 @@ int bset_u32_to_brange_u32(struct bset_u32 *set, struct brange_u32_head *head)
 			goto err4;
 		}
 		r->a = r->b = data[i];
-		LIST_INSERT_AFTER(pr, r, link);
+		TAILQ_INSERT_AFTER(head, pr, r, link);
 	}
 	free(data);
 	data = NULL;
@@ -254,8 +254,8 @@ int bset_u32_to_brange_u32(struct bset_u32 *set, struct brange_u32_head *head)
 	return 0;
 
 err4:
-	while ((r = LIST_FIRST(head))) {
-		LIST_REMOVE(r, link);
+	while ((r = TAILQ_FIRST(head))) {
+		TAILQ_REMOVE(head, r, link);
 		free(r);
 	}
 err3:
@@ -343,7 +343,7 @@ again:
 	if (!itr->current_range)
 		return ENOENT;
 	if (itr->current_value == itr->current_range->b) {
-		itr->current_range = LIST_NEXT(itr->current_range, link);
+		itr->current_range = TAILQ_NEXT(itr->current_range, link);
 		goto again;
 	}
 
@@ -385,7 +385,7 @@ int brange_u32_iter_fwd_seek(struct brange_u32_iter *itr, uint32_t *v)
 		*v = itr->current_value;
 		return 0;
 	next:
-		r = LIST_NEXT(r, link);
+		r = TAILQ_NEXT(r, link);
 	}
 	return ENOENT;
 }
