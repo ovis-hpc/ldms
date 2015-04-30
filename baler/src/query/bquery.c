@@ -721,13 +721,17 @@ char* __str_combine(const char *str0, const char *str1)
 	return str;
 }
 
-static int __bq_init(struct bquery *q)
+static void __bq_reset(struct bquery *q)
 {
-	q->bsos = bsos_wrap_open(q->sos_prefix);
-	if (!q->bsos) {
-		return errno;
+	if (q->itr) {
+		sos_iter_free(q->itr);
+		q->itr = NULL;
 	}
-	return 0;
+	if (q->bsos) {
+		bsos_wrap_close_free(q->bsos);
+		q->bsos = NULL;
+	}
+	q->sos_number = 0;
 }
 
 static int __bq_open_bsos(struct bquery *q)
@@ -750,6 +754,12 @@ static int __bq_open_bsos(struct bquery *q)
 		bsos_wrap_close_free(bsos);
 		return ENOMEM;
 	}
+	/* clean up old stuff */
+	if (q->itr)
+		sos_iter_free(q->itr);
+	if (q->bsos)
+		bsos_wrap_close_free(q->bsos);
+
 	q->bsos = bsos;
 	q->itr = iter;
 	return 0;
@@ -757,42 +767,16 @@ static int __bq_open_bsos(struct bquery *q)
 
 static int __bq_prev_store(struct bquery *q)
 {
-	int rc;
-	sos_iter_t old_itr = q->itr;
-	struct bsos_wrap *old_bsos = q->bsos;
-
 	q->sos_number++;
-	rc = __bq_open_bsos(q);
-
-	if (!rc) {
-		/* clean old stuff */
-		if (old_itr)
-			sos_iter_free(old_itr);
-		if (old_bsos)
-			bsos_wrap_close_free(old_bsos);
-	}
-	return rc;
+	return __bq_open_bsos(q);
 }
 
 static int __bq_next_store(struct bquery *q)
 {
-	int rc;
-	sos_iter_t old_itr = q->itr;
-	struct bsos_wrap *old_bsos = q->bsos;
 	if (!q->sos_number)
 		return ENOENT;
-
 	q->sos_number--;
-	rc = __bq_open_bsos(q);
-
-	if (!rc) {
-		/* clean old stuff */
-		if (old_itr)
-			sos_iter_free(old_itr);
-		if (old_bsos)
-			bsos_wrap_close_free(old_bsos);
-	}
-	return rc;
+	return __bq_open_bsos(q);
 }
 
 static int __bq_last_entry(struct bquery *q)
@@ -995,14 +979,11 @@ int bq_img_first_entry(struct bquery *q)
 	char buff[sizeof(struct bout_sos_img_key) + sizeof(struct obj_key)];
 	obj_key_t obj_key = (void*)buff;
 	struct bout_sos_img_key *bsi_key = (void*)obj_key->value;
-	const struct bout_sos_img_key *cbsi_key;
 
 	obj_key->len = sizeof(*bsi_key);
 	bsi_key->sos_blob.len = sizeof(*bsi_key) - sizeof(bsi_key->sos_blob);
 
-	if (q->bsos) {
-		bsos_wrap_close_free(q->bsos);
-	}
+	__bq_reset(q);
 	q->sos_number = __get_max_sos_number(q->sos_prefix);
 	rc = __bq_open_bsos(q);
 	if (rc) {
@@ -1043,8 +1024,6 @@ again:
 		goto again;
 	}
 
-	cbsi_key = __bq_img_entry_get_key(imgq);
-
 	if (bq_check_cond(q) != BQ_CHECK_COND_OK)
 		rc = bq_next_entry(q);
 
@@ -1055,7 +1034,6 @@ out:
 int bq_img_next_entry(struct bquery *q)
 {
 	struct bimgquery *imgq = (void*)q;
-	const struct bout_sos_img_key *cbsi_key;
 	char key_buff[sizeof(struct bout_sos_img_key) + sizeof(struct obj_key)];
 	struct obj_key *obj_key = (void*)key_buff;
 	struct bout_sos_img_key *bsi_key = (void*)obj_key->value;
@@ -1072,7 +1050,6 @@ check:
 		goto next_store;
 	}
 
-	cbsi_key = __bq_img_entry_get_key(imgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
 	case BQ_CHECK_COND_OK:
@@ -1198,9 +1175,7 @@ int bq_msg_first_entry(struct bquery *q)
 {
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
-	if (q->bsos) {
-		bsos_wrap_close_free(q->bsos);
-	}
+	__bq_reset(q);
 	q->sos_number = __get_max_sos_number(q->sos_prefix);
 	rc = __bq_open_bsos(q);
 	if (rc) {
@@ -1244,9 +1219,7 @@ int bq_msg_last_entry(struct bquery *q)
 {
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
-	if (q->bsos) {
-		bsos_wrap_close_free(q->bsos);
-	}
+	__bq_reset(q);
 	q->sos_number = 0;
 	rc = __bq_open_bsos(q);
 	if (rc) {
