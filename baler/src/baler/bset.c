@@ -89,7 +89,7 @@ void bset_u32_clear(struct bset_u32 *set)
 	int i;
 	for (i=0; i<set->hsize; i++) {
 		struct blist_u32 *elm;
-		while (elm = LIST_FIRST(&set->hash[i])) {
+		while ((elm = LIST_FIRST(&set->hash[i]))) {
 			LIST_REMOVE(elm, link);
 			free(elm);
 		}
@@ -135,7 +135,7 @@ int bset_u32_exist_idx(struct bset_u32 *set, uint32_t val, uint32_t *idx)
 
 int bset_u32_insert(struct bset_u32 *set, uint32_t val)
 {
-	int idx;
+	uint32_t idx;
 	if (bset_u32_exist_idx(set, val, &idx))
 		return EEXIST;
 	struct blist_u32 *elm = (typeof(elm)) malloc(sizeof(*elm));
