@@ -2491,10 +2491,10 @@ loop:
 		uint64_t count_a, count_b, count_c, count_t;
 
 		if (blackwhite) {
-			count_a = bmvec_generic_get_len(&aimg->bmvec);
-			count_b = (bimg)?(bmvec_generic_get_len(&bimg->bmvec)):(0);
-			count_c = bmvec_generic_get_len(&cimg->bmvec);
-			count_t = bmvec_generic_get_len(&timg->bmvec);
+			count_a = bassocimg_get_pixel_len(aimg);
+			count_b = (bimg)?(bassocimg_get_pixel_len(bimg)):(0);
+			count_c = bassocimg_get_pixel_len(cimg);
+			count_t = bassocimg_get_pixel_len(timg);
 		} else {
 			count_a = ahdr->count;
 			count_b = (bimg)?(bhdr->count):(0);
