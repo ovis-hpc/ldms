@@ -718,6 +718,54 @@ void bhttpd_handle_query_host(struct bhttpd_req_ctxt *ctxt)
 	evbuffer_add_printf(ctxt->evbuffer, "}}");
 }
 
+static
+void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
+{
+	struct btkn_store *cmp_store = bq_get_cmp_store(bq_store);
+	const char *ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
+	struct bquery *q;
+	int rc;
+	uint32_t min_ts, max_ts;
+	uint32_t min_node, max_node;
+
+	q = bquery_create(bq_store, NULL, ptn_ids, NULL, NULL, 0, ',', &rc);
+	if (!q) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bquery_create() error, rc: %d", rc);
+		return;
+	}
+
+	rc = bq_first_entry(q);
+	if (rc) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bq_first_entry() error, rc: %d", rc);
+		return;
+	}
+	min_ts = bq_entry_get_sec(q);
+
+	rc = bq_last_entry(q);
+	if (rc) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bq_first_entry() error, rc: %d", rc);
+		return;
+	}
+	max_ts = bq_entry_get_sec(q);
+
+	min_node = 1;
+	max_node = bmvec_generic_get_len((void*)cmp_store->attr)
+			- BMAP_ID_BEGIN;
+
+	evbuffer_add_printf(ctxt->evbuffer,
+			"{ \"data\": {"
+				"\"min_ts\": %u,"
+				"\"max_ts\": %u,"
+				"\"min_comp_id\": %u,"
+				"\"max_comp_id\": %u"
+			"}}",
+			min_ts, max_ts, min_node, max_node
+			);
+}
+
 struct bhttpd_handle_fn_entry {
 	const char *key;
 	const char *content_type;
@@ -736,6 +784,7 @@ struct bhttpd_handle_fn_entry query_handle_entry[] = {
 	{ "IMG",         HTTP_CONT_STREAM, bhttpd_handle_query_img         },
 	{ "IMG2",        HTTP_CONT_STREAM, bhttpd_handle_query_img2        },
 	{ "HOST",        HTTP_CONT_JSON,   bhttpd_handle_query_host        },
+	{ "BIG_PIC",     HTTP_CONT_JSON,   bhttpd_handle_query_big_pic     },
 };
 
 static
