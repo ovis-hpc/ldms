@@ -258,6 +258,9 @@ static int create_metric_set(const char *path)
         if (!tv_nsec_metric_handle2)
 	  goto err;
 #endif
+	if (cpu_count >0) {
+		msglog(LDMS_LINFO,"procstatutil: Monitoring %d cpus.\n",cpu_count);
+	}
 
 	return 0;
  err:
@@ -275,6 +278,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc = EINVAL;
+	msglog(LDMS_LERROR,"=======================================\n");
+	msglog(LDMS_LERROR,"procstatutil plugin is deprecated.\n"
+			" Use procstatutil2 plugin instead.\n");
+	msglog(LDMS_LERROR,"=======================================\n");
 
 	value = av_value(avl, "component_id");
 	if (!value)

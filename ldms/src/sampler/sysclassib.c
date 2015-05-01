@@ -275,6 +275,8 @@ static int create_metric_set(const char *setname)
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 	LIST_FOREACH(port, &scib_port_list, entry) {
+		msglog(LDMS_LINFO,"sysclassib: Monitoring port: %s.%d\n",
+			port->ca, port->portno);
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 			/* counters */
 			snprintf(metric_name, 128, "ib.%s#%s.%d",
@@ -417,6 +419,8 @@ int populate_ports(struct scib_port_list *list, char *ports)
 	while (*s) {
 		rc = sscanf(s, "%63[^.].%d%n", ca, &port_no, &n);
 		if (rc != 2) {
+			msglog(LDMS_LERROR,"sysclassib: Cannot parse ports:%s."
+				"Need list of NAME.NUM, e.g. qib0.1,qib.1\n",s);
 			rc = EINVAL;  /* invalid format */
 			goto err;
 		}

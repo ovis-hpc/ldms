@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_procstatutil
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Sep 2014" "v2.2/RC1.2" "LDMS Plugin procstatutil man page"
+.TH man 7 "11 Apr 2015" "v2.4.1" "Deprecated LDMS Plugin procstatutil man page"
 
 .SH NAME
 Plugin_procstatutil - man page for the LDMS deprecated procstatutil plugin
@@ -57,4 +57,4 @@ ldmsctl> quit
 .SH SEE ALSO
 LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
 Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
-Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_vmstat(7)
+Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_vmstat(7), Plugin_procstatutil2(7).

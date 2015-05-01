@@ -1,5 +1,6 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
+EXTRA_DIST=@OVIS_EXTRA_DIST@
 bin_SCRIPTS= envldms.sh \
 	ldms_local_clocktest.sh \
 	ldms_local_usertest.sh \
@@ -14,6 +15,7 @@ CLEANFILES = $(bin_SCRIPTS)
 bin_SCRIPTS+= ldms_ban.sh
 
 bin_SCRIPTS+=  ldms_ctltest.sh
+bin_SCRIPTS+=  ldms_local_slurmtest.sh
 
 bin_SCRIPTS+= \
 ldms_local_rollbytes_test.sh \

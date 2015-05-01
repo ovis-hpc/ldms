@@ -486,6 +486,7 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
 #define LDMS_STR_WRAP(NAME) #NAME,
 #define LDMS_LWRAP(NAME) LDMS_L ## NAME,
 
+/* a command line alias of always is QUIET for back compatibility. */
 #define LOGLEVELS(WRAP) \
 	WRAP (DEBUG) \
 	WRAP (INFO) \
@@ -498,7 +499,7 @@ typedef enum {
 	LOGLEVELS(LDMS_LWRAP)
 } loglevels_t;
 
-/* array of strings matching the loglevels enum */
+/* array of strings matching the loglevels enum. null terminated. */
 extern const char* loglevels_names[];
 
 int ldms_str_to_level(const char *level_s);

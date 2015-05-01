@@ -42,9 +42,11 @@ function mysleep() {
 TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
+SLURMFILE=$TESTDIR/run/ldms.slurm.jobid
+SLURMCOL=slurm.jobid
 LOGDIR=$TESTDIR/logs
-#export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
-#export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
+export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
 export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
 echo "logs and data stored under $TESTDIR"
@@ -71,49 +73,56 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -q DEBUG
-ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -q DEBUG
-ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt
+ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt
 mysleep 1
 
 
-echo Starting plugins on daemon1
-echo "load name=procstatutil" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "config name=procstatutil set=localhost1/procstatutil component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "start name=procstatutil interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-mysleep 1
-
-echo Starting plugins on daemon2
-echo "load name=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "config name=procstatutil2 set=localhost2/procstatutil2 maxcpu=8 metrics_type=1 component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "start name=procstatutil2 interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+for i in 1 2; do
+	echo Starting plugins on daemon$i
+	echo 1000$i > $SLURMFILE.$i
+	echo "load name=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+	echo "config name=slurmjobid set=localhost$i/slurmjobid component_id=$i file=$SLURMFILE.$i colname=$SLURMCOL" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+	echo "start name=slurmjobid interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+done
 mysleep 2
 
-echo Adding host2 to aggregator3
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-mysleep 1
-echo Adding host1 to aggregator3
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/procstatutil" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+for i in 1 2; do
+	echo Adding host$i to aggregator3
+	echo "add host=localhost type=active xprt=sock interval=1000000 port=6110$i sets=localhost$i/slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+	mysleep 1
+done
 
 mysleep 5
 echo Adding store_csv to aggregator3
 echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 echo "config name=store_csv path=${STOREDIR} altheader=1 id_pos=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=procstatutil container=procstatutil" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=procstatutil2 container=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_csv comp_type=node set=slurmjobid container=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 #
-
-mysleep 5
-echo ldms_ls on host 1:
-ldms_ls -h localhost -x sock -p $port1 -l
-mysleep 1
-echo ldms_ls on host 2:
-ldms_ls -h localhost -x sock -p $port2 -l
-mysleep 1
 echo ldms_ls on host 3:
 ldms_ls -h localhost -x sock -p $port3 
 
+echo rescheduling jobs
+for i in 1 2; do
+	echo 0 > $SLURMFILE.$i
+	mysleep 2
+	echo 2000$i > $SLURMFILE.$i
+done
+sleep 3
+for i in 1 2; do
+	echo 0 > $SLURMFILE.$i
+	mysleep 2
+	echo 3000$i > $SLURMFILE.$i
+done
+mysleep 3
+pkill ldmsd
+mysleep 2
+echo data from ${STOREDIR}/node/slurmjobid sorted by node id
+cat ${STOREDIR}/node/slurmjobid | grep ' 1, '
+cat ${STOREDIR}/node/slurmjobid | grep ' 2, '
+
+
 echo done;
-echo "logs and data stored under $TESTDIR"

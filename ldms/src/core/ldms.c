@@ -76,6 +76,7 @@
 
 const char* loglevels_names[] = {
 	LOGLEVELS(LDMS_STR_WRAP)
+	NULL
 };
 
 #if USE_TF
@@ -104,6 +105,9 @@ int ldms_str_to_level(const char *level_s)
 		if (0 == strcasecmp(level_s, loglevels_names[i])){
 			return i;
 		}
+	}
+	if (strcmp(level_s,"QUIET") == 0) {
+		return LDMS_LALWAYS; /* old usage support */
 	}
 
 	return -1;

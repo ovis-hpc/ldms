@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 2.4.0, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 2.4.1, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -57,6 +57,7 @@ dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_ENABLE([kgnilnd], [ENABLE_KGNILND])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
+OPTION_DEFAULT_ENABLE([slurmjobid], [ENABLE_SLURMJOBID])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_ENABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
@@ -360,22 +361,23 @@ AC_SUBST(configure_input)
 # no longer have to chmod explicitly in list
 
 OVIS_EXEC_SCRIPTS(
-	 scripts/ldms_ctltest.sh
-	 scripts/ldms_ban.sh
-	 scripts/ldms_usertest.sh
-	 scripts/ldms_local_usertest.sh
-	 scripts/ldms_local_valgrind.sh
-	 scripts/ldms_local_clocktest.sh
-	 scripts/ldms_local_inspxe.sh
-	 scripts/ldms_local_inspxe_rdma.sh
-	 scripts/ldms_local_rdmatest.sh
-	 scripts/ldms_local_rollbytes_test.sh
-	 scripts/ldms_local_rollperiod_test.sh
-	 scripts/ldms_local_rollrecords_test.sh
-	 scripts/ldms_local_rolltime_test.sh
-	 scripts/ldms_local_dertest.sh
-	 scripts/ldms_local_dertest_big.sh
-	 scripts/ldms_local_procstatutil.sh
+		 scripts/ldms_ctltest.sh
+		 scripts/ldms_ban.sh
+		 scripts/ldms_usertest.sh
+		 scripts/ldms_local_usertest.sh
+		 scripts/ldms_local_slurmtest.sh
+		 scripts/ldms_local_valgrind.sh
+		 scripts/ldms_local_clocktest.sh
+		 scripts/ldms_local_inspxe.sh
+		 scripts/ldms_local_inspxe_rdma.sh
+		 scripts/ldms_local_rdmatest.sh
+		 scripts/ldms_local_rollbytes_test.sh
+		 scripts/ldms_local_rollperiod_test.sh
+		 scripts/ldms_local_rollrecords_test.sh
+		 scripts/ldms_local_rolltime_test.sh
+		 scripts/ldms_local_dertest.sh
+		 scripts/ldms_local_dertest_big.sh
+		 scripts/ldms_local_procstatutil.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
@@ -391,8 +393,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		 scripts/ldmsd
 		 scripts/envldms.sh
 		 ldms.spec
-])
-
+		])
 AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.
 for i in $ovis_exec_scripts; do
 	if test -f $ovis_exec_scripts_objdir/$i; then 
@@ -403,9 +404,9 @@ for i in $ovis_exec_scripts; do
 done
 ],[
 	ovis_exec_scripts="$ovis_exec_scripts"
+	ovis_extra_dist="$ovis_extra_dist"
 	ovis_exec_scripts_objdir="$ac_pwd"
 ])
-
 AC_OUTPUT
 
 if test "x$enable_rpath" != "xyes"; then
@@ -413,5 +414,4 @@ echo "TURNING libtool rpath into no-ops"
 sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
 sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
 fi
-
 

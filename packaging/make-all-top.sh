@@ -4,10 +4,10 @@ export LOCALEVENT=0 ; # else expect /usr to be a good libevent2
 # we build libevent once, then reinstall it as first built if
 # it goes missing from the install tree.
 
-export CC=gcc49; # on chama, gcc46 is in default path. 
+export CC=gcc-4.6; # on chama, gcc46 is in default path. 
 # If using module gnu/4.7.x, change CC above to CC=gcc. gcc 4.4 is not good enough.
 
-export CXX=g++49 ; # needed for configure. not used anywhere in build yet.
+export CXX=g++-4.6 ; # needed for configure. not used anywhere in build yet.
 
 export CFLAGS="-O2 -g -pipe -Wall -Wp,-D_FORTIFY_SOURCE=2 -fexceptions -fstack-protector --param=ssp-buffer-size=4 -m64 -march=native" ; # cflags common to us, libevent2
 

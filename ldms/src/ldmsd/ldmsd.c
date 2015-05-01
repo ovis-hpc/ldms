@@ -316,11 +316,13 @@ int ev_thread_count = 1;
 struct event_base **ev_base;	/* event bases */
 pthread_t *ev_thread;		/* sampler threads */
 int *ev_count;			/* number of hosts/samplers assigned to each thread */
+pthread_mutex_t ev_count_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int find_least_busy_thread()
 {
 	int i;
 	int idx = 0;
+	pthread_mutex_lock(&ev_count_lock);
 	int count = ev_count[0];
 	for (i = 1; i < ev_thread_count; i++) {
 		if (ev_count[i] < count) {
@@ -328,24 +330,31 @@ int find_least_busy_thread()
 			count = ev_count[i];
 		}
 	}
+	pthread_mutex_unlock(&ev_count_lock);
 	return idx;
 }
 
 struct event_base *get_ev_base(int idx)
 {
+	pthread_mutex_lock(&ev_count_lock);
 	ev_count[idx] = ev_count[idx] + 1;
+	pthread_mutex_unlock(&ev_count_lock);
 	return ev_base[idx];
 }
 
 void release_ev_base(int idx)
 {
+	pthread_mutex_lock(&ev_count_lock);
 	ev_count[idx] = ev_count[idx] - 1;
+	pthread_mutex_unlock(&ev_count_lock);
 }
 
+#if 0
 pthread_t get_thread(int idx)
 {
 	return ev_thread[idx];
 }
+#endif
 
 /*
  * This function opens the device file specified by 'devname' and
@@ -2263,6 +2272,14 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
 		struct store_instance *si = lsp->si;
 
+		if (lsp->metric_count > hset->mvec->count) {
+			ldms_log(LDMS_LERROR,"store %s: Expected number of metrics (%d) > "
+				"number of existing metrics (%d). "
+				"Possible mis-configuration. Check %s.\n",
+				lsp->container, lsp->metric_count,
+				hset->mvec->count, hset->name);
+			continue;
+		}
 		ts = ldms_get_timestamp(hset->set);
 		tv.tv_sec = ts->sec;
 		tv.tv_usec = ts->usec;
@@ -3459,6 +3476,16 @@ int main(int argc, char *argv[])
 			break;
 		case 'q':
 			log_level = ldms_str_to_level(optarg);
+			if (log_level <0 ) {
+				printf("Invalid logging level '%s'. Valid are:\n", optarg);
+				int i = 0;
+				while (loglevels_names[i] != NULL) {
+					printf("%s ", loglevels_names[i]);
+					i++;
+				}
+				printf("\n");
+				exit(1);
+			}
 			has_arg[LDMS_QUIET] = 1;
 			break;
 		case 'C':
@@ -3512,7 +3539,7 @@ int main(int argc, char *argv[])
 			dirty_threshold = atoi(optarg);
 			break;
 		case 'V':
-            printf("%s", ldms_pedigree());
+			printf("%s", ldms_pedigree());
 			exit(1);
 		default:
 			usage(argv);

@@ -111,8 +111,8 @@ start_ldms_plugins () {
 			{ echo config $ARGS_CONFIG ports=${SCIB_PORTS} metric_type=0 | $DO_CTL ; } &&
 			{ echo start $ARGS_START | $DO_CTL ; }
 		;;
-		procstatutil)
-			echoq "In procstatutil: load name=$metric_set | $DO_CTL"
+		procstatutil2)
+			echoq "In procstatutil2: load name=$metric_set | $DO_CTL"
 			{ echo load name=$metric_set | $DO_CTL ; } && 
 			{ echo config $ARGS_CONFIG metrics_type=1 | $DO_CTL ; } &&
 			{ echo start $ARGS_START | $DO_CTL ; }
