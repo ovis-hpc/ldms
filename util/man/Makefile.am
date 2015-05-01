@@ -19,4 +19,5 @@ Plugin_procstatutil2.man \
 Plugin_store_csv.man \
 Plugin_store_derived_csv.man \
 Plugin_sysclassib.man \
-Plugin_vmstat.man
+Plugin_vmstat.man \
+ldms-genders.man
