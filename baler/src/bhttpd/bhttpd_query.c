@@ -756,12 +756,12 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 			- BMAP_ID_BEGIN;
 
 	evbuffer_add_printf(ctxt->evbuffer,
-			"{ \"data\": {"
+			"{"
 				"\"min_ts\": %u,"
 				"\"max_ts\": %u,"
 				"\"min_comp_id\": %u,"
 				"\"max_comp_id\": %u"
-			"}}",
+			"}",
 			min_ts, max_ts, min_node, max_node
 			);
 }
