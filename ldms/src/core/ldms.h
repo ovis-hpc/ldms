@@ -502,6 +502,10 @@ typedef enum {
 /* array of strings matching the loglevels enum. null terminated. */
 extern const char* loglevels_names[];
 
+/* convert strings to array index value. QUIET is
+  accepted as an alias of ALWAYS for documentation back compatibility.
+  \returns the log level, or -1 if unrecognized string given.
+*/
 int ldms_str_to_level(const char *level_s);
 
 typedef void (*ldms_log_fn_t)(int level, const char *fmt, ...);

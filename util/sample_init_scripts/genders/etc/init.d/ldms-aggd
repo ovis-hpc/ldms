@@ -1,0 +1,249 @@
+#!/bin/bash 
+#
+# ldms-aggd		Start up the ldms aggregator daemon
+#
+# chkconfig: 2345 98 96
+# description: ldms-aggd aggregates results from ldmsd (sampler) instances. 
+
+# processname: ldms-aggd
+# pidfile: $localstatedir/run/ldms-aggd.pid
+
+### BEGIN INIT INFO
+# Provides: ldms-aggd
+# Required-Start: $local_fs $network $syslog
+# Required-Stop: $local_fs $syslog
+# Should-Start: $syslog
+# Should-Stop: $network $syslog
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 2 6
+# Short-Description: Start up the local ldms-aggd daemon
+# Description: ldms-aggd aggregates results from ldmsd (samplers) instances.
+### END INIT INFO
+
+# hack definition for ubuntu init setup test
+#sysconfdir="/etc"
+
+# source function library
+. $sysconfdir/init.d/functions
+
+DAEMON=ldms-aggd
+
+if [ -z $DAEMON ]; then
+	echo -n >&2 "$0: "DAEMON" not defined. Exiting"
+	failure
+	echo
+	exit
+fi
+
+# Load utility functions for parsing and handling specification
+# at each node based on hostname and genders.
+# Must come before sysconfig/$DAEMON is loaded to support genders.
+if [ -f $sysconfdir/init.d/ldms-functions ]; then
+	. $sysconfdir/init.d/ldms-functions
+else
+	echo -n $"No $sysconfdir/init.d/ldms-functions found:"
+	failure
+	echo
+	exit
+fi
+
+# read variables including path/lib info
+# must also pull in ldmsd configs to know what to aggregate
+if [ -f $sysconfdir/sysconfig/$DAEMON ]; then
+	. $sysconfdir/sysconfig/$DAEMON
+else
+	echo -n $"No $sysconfdir/sysconfig/$DAEMON found:"
+	failure
+	echo
+	exit
+fi
+
+# check binary
+[ -x $DAEMON ] || (echo daemon $DAEMON is missing ; exit 5 )
+
+
+RETVAL=0
+prog="$DAEMON"
+pidfile=$localstatedir/run/$prog.pid
+lockfile=$localstatedir/lock/subsys/$prog
+
+VERBOSE=
+
+ARG=$1
+
+
+
+arg1=$1
+shift
+while getopts "v" opt
+do
+	case "$opt" in
+	v) VERBOSE="-v";;
+	:) echo "Option -$OPTARG requires an argument" ;;
+	\?) # unknown flag
+		initusage
+		exit 1;;
+	esac
+done
+shift `expr $OPTIND - 1`
+
+runlevel=$(set -- $(runlevel); eval "echo \$$#" )
+
+start()
+{
+	export LD_LIBRARY_PATH=$LDMS_LIB_PATH:$LIBEVENT_LIB_PATH:$LD_LIBRARY_PATH
+	export LDMS_XPRT_LIBPATH=$LDMS_PLUGIN_PATH
+	export LDMSD_PLUGIN_LIBPATH=$LDMS_PLUGIN_PATH
+	export RDMAV_FORK_SAFE=$LDMS_RDMAV_FORK_SAFE
+
+	[ -x $DAEMON ] || exit 5
+
+	if [[ !(-z $LDMSAGGD_LOCAL_SOCK_DIR) ]]; then
+		test -d $LDMSAGGD_LOCAL_SOCK_DIR || mkdir -p $LDMSAGGD_LOCAL_SOCK_DIR
+		rm -f $LDMSAGGD_LOCAL_SOCK_DIR/*
+		sleep 1
+	else
+		echo -n >&2 "$0: \"$LDMSAGGD_LOCAL_SOCK_DIR\" not defined. Exiting"
+		failure
+		echo
+		exit
+	fi
+
+	if [[ -z $COMPONENT_ID ]]; then
+		echo "No COMPONENT_ID defined... Exiting"
+		failure
+		echo
+		exit
+	fi
+
+	# Close file descriptor for standard input. If not pdsh will hang
+	exec 0>&- # close stdin
+
+	DAEMON_ARGS="-x $AGG_LDMSD_TRANSPORT:$AGG_PORT -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK -q $AGG_DEBUG"
+	echo -n $"Starting $prog: "
+	if test "x$LDMSD_LOG_PATH" = "xNONE"; then
+		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"
+		$DAEMON $DAEMON_ARGS > /dev/null 2>&1
+	else
+		LOG_ARGS="-l $LDMSD_LOG_PATH/agg.$COMPONENT_ID"
+		echoq "$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1"
+		test -d $LDMSD_LOG_PATH || echoq "Error: Logfile directory $LDMSD_LOG_PATH does not exist or is not a directory"
+		$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1
+	fi
+	RETVAL=$?
+
+	[ $RETVAL -eq 0 ] && touch $lockfile
+	RETVAL=$?
+
+	if [ $RETVAL -eq 0 ]; then
+		sleep 2
+		echoq "chmod 660 $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
+		chmod 660 $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK
+		success
+		echo
+		sleep 1
+		echo -n $"Starting store plugins: "
+		start_stores
+		success
+		echo
+		sleep 1
+		echo -n $"Starting add hosts: "
+		start_add_hosts
+		RETVAL=$?
+	fi
+
+	if [ $RETVAL -ne 0 ]; then
+		failure
+		echo
+	else
+		pgrep -u $USER $prog > $pidfile
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+			 failure
+			 echo
+		else
+			 success
+			 echo
+		fi
+	fi
+
+}
+
+stop()
+{
+	echo -n $"Stopping $prog: "
+	if [ -n "`pidfileofproc $DAEMON`" ] ; then
+		echoq "In stop: killproc $DAEMON"
+		killproc $DAEMON
+		RETVAL=$?
+	else
+		failure $"Stopping $prog"
+		RETVAL=1
+	fi
+	# if we are in halt or reboot runlevel kill all running sessions
+	# so the TCP connections are closed cleanly.
+	# If this is a concern, we should be looking at a shutdown sequence 2 maybe, not 98.
+	if [ "x$runlevel" = x0 -o "x$runlevel" = x6 ] ; then
+		trap '' TERM
+		killall $prog 2>/dev/null
+		trap TERM
+	fi
+	echoq " "
+	echoq "Before rm pidfile and lockfile RETVAL = $RETVAL"
+	[ $RETVAL -eq 0 ] && rm -f $pidfile
+	[ $RETVAL -eq 0 ] && rm -f $lockfile
+	echo
+}
+
+
+restart() {
+	stop
+	start
+}
+
+case "$arg1" in
+	start)
+		echoq "In start checking for daemon..."
+		rh_status_q 
+		RETVAL=$?
+		if [ $RETVAL -eq 0 ]; then
+			echoq "$DAEMON process still running... No action taken."
+			exit 1
+		else
+			echoq "No $DAEMON process running... Call start."
+			start
+		fi
+		;;
+	stop)
+		echoq "In stop checking for daemon..."
+		rh_status_q
+		RETVAL=$?
+		if [ $RETVAL -eq 0 ]; then
+			echoq "$DAEMON process still running... Calling stop."
+			stop
+			cleanup_ldmsaggctl
+			cleanup_aggfiles
+			exit 0
+		else
+			echoq "No $DAEMON process running... Call cleanup."
+			cleanup_ldmsaggctl
+			cleanup_aggfiles
+			exit 1
+		fi
+		;;
+	restart)
+		restart
+		;;
+	status)
+		rh_status
+		RETVAL=$?
+		if [ $RETVAL -eq 3 -a -f $lockfile ] ; then
+			RETVAL=2
+		fi
+		;;
+	*)
+		initusage
+		RETVAL=2
+	;;
+esac
+exit $RETVAL
