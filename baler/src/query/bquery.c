@@ -402,7 +402,7 @@ int bq_local_host_routine(struct bq_store *s)
 	printf("-------- --------------\n");
 	while (count) {
 		rc = btkn_store_id2str(s->cmp_store, id, buff, sizeof(buff));
-		printf("%8d %s\n", id - (BMAP_ID_BEGIN - 1), buff);
+		printf("%8d %s\n", bmapid2compid(id), buff);
 		id++;
 		count--;
 	}
@@ -1432,7 +1432,7 @@ char *bq_entry_print(struct bquery *q, struct bdstr *bdstr)
 	if (rc)
 		goto out;
 	bstr = btkn_store_get_bstr(q->store->cmp_store,
-				bq_entry_get_comp_id(q) + BMAP_ID_BEGIN - 1);
+				bcompid2mapid(bq_entry_get_comp_id(q)));
 	if (!bstr)  {
 		rc = ENOENT;
 		goto out;
@@ -1612,9 +1612,7 @@ int bq_get_host_id(struct bq_store *store, const char *hostname)
 	struct bstr *str = (void*)buff;
 	bstr_set_cstr(str, (char*)hostname, 0);
 	uint32_t id = bmap_get_id(store->cmp_store->map, str);
-	if (id < BMAP_ID_BEGIN)
-		return 0;
-	return id - (BMAP_ID_BEGIN - 1);
+	return bmapid2compid(id);
 }
 
 struct bsos_wrap* bsos_wrap_find(struct bsos_wrap_head *head,
@@ -1647,7 +1645,7 @@ int bq_get_cmp(struct bq_store *store, int cmp_id, struct bdstr *out)
 {
 	int rc = 0;
 	const struct bstr *cmp = btkn_store_get_bstr(store->cmp_store,
-							cmp_id + BMAP_ID_BEGIN);
+							bcompid2mapid(cmp_id));
 	if (!cmp) {
 		rc = ENOENT;
 		goto out;

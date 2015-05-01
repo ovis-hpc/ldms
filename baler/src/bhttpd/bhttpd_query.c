@@ -700,11 +700,11 @@ void bhttpd_handle_query_host(struct bhttpd_req_ctxt *ctxt)
 {
 	const struct bstr *bstr;
 	struct btkn_store *cmp_store = bq_get_cmp_store(bq_store);
-	int id = 1;
+	int id = 0;
 	int first = 1;
 	evbuffer_add_printf(ctxt->evbuffer, "{ \"host_ids\": {");
 	while (1) {
-		bstr = btkn_store_get_bstr(cmp_store, id + BMAP_ID_BEGIN - 1);
+		bstr = btkn_store_get_bstr(cmp_store, bcompid2mapid(id));
 		if (!bstr)
 			break;
 		if (first)
@@ -752,8 +752,8 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 	max_ts = bq_entry_get_sec(q);
 
 	min_node = 1;
-	max_node = bmvec_generic_get_len((void*)cmp_store->attr)
-			- BMAP_ID_BEGIN;
+	max_node = bmvec_generic_get_len((void*)cmp_store->attr) - 1;
+	max_node = bmapid2compid(max_node);
 
 	evbuffer_add_printf(ctxt->evbuffer,
 			"{"

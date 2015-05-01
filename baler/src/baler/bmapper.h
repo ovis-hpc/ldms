@@ -301,5 +301,27 @@ int bmap_unlink(const char *path);
  */
 int bmap_refresh(struct bmap *bmap);
 
+/**
+ * \brief Convert \c comp_id to \c map_id.
+ *
+ * \retval map_id
+ */
+static inline
+uint32_t bcompid2mapid(uint32_t comp_id)
+{
+	return comp_id + BMAP_ID_BEGIN;
+}
+
+/**
+ * \brief Convert baler \c map_id to \c comp_id.
+ *
+ * \retval comp_id
+ */
+static inline
+uint32_t bmapid2compid(uint32_t map_id)
+{
+	return map_id - BMAP_ID_BEGIN;
+}
+
 #endif // _BMAPPER_H
 /**\}*/

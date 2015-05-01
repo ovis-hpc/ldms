@@ -739,7 +739,7 @@ void slave_handle_insert_rep(struct bzmsg *bzmsg)
 	/* Handle by map type */
 	switch (bzmsg->mapidx) {
 	case BMAP_IDX_HST:
-		ctxt->comp_id = bzmsg->id - (BMAP_ID_BEGIN - 1);
+		ctxt->comp_id = bmapid2compid(bzmsg->id);
 		ins_fn = (void*)btkn_store_insert_with_id;
 		has_attr = 1;
 		store = comp_store;
@@ -1309,7 +1309,7 @@ int process_cmd_hosts(struct bconfig_list *bl)
 					cid);
 			return EINVAL;
 		}
-		cid -= (BMAP_ID_BEGIN - 1);
+		cid = bmapid2compid(cid);
 		metric_ids[cid] = mid;
 	}
 	return 0;
@@ -1709,7 +1709,7 @@ int slave_process_input_entry_step1(struct bwq_entry *ent, struct bin_wkr_ctxt *
 			comp_id = -1; /* all 0xFF */
 			unresolved_count++;
 		} else {
-			comp_id -= (BMAP_ID_BEGIN - 1);
+			comp_id = bmapid2compid(comp_id);
 		}
 	} else {
 		comp_id = in_data->hostname->u32str[0];
@@ -1814,7 +1814,7 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 			rc = ENOENT;
 			goto cleanup;
 		}
-		comp_id -= (BMAP_ID_BEGIN - 1);
+		comp_id = bmapid2compid(comp_id);
 	} else {
 		comp_id = in_data->hostname->u32str[0];
 	}
