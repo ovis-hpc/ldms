@@ -724,15 +724,18 @@ struct bhttpd_handle_fn_entry {
 	void (*fn)(struct bhttpd_req_ctxt*);
 };
 
+#define  HTTP_CONT_JSON    "application/json"
+#define  HTTP_CONT_STREAM  "application/octet-stream"
+
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{  "PTN",   "application/json",          bhttpd_handle_query_ptn   },
-	{  "METRIC_PTN",   "application/json",          bhttpd_handle_query_metric_ptn   },
-	{  "MSG",   "application/json",          bhttpd_handle_query_msg   },
-	{  "META",  "application/json",          bhttpd_handle_query_meta  },
-	{  "METRIC_META",  "application/json",          bhttpd_handle_query_metric_meta  },
-	{  "IMG",   "application/octet-stream",  bhttpd_handle_query_img   },
-	{  "IMG2",  "application/octet-stream",  bhttpd_handle_query_img2  },
-	{  "HOST",  "application/json",          bhttpd_handle_query_host  },
+	{ "PTN",         HTTP_CONT_JSON,   bhttpd_handle_query_ptn         },
+	{ "METRIC_PTN",  HTTP_CONT_JSON,   bhttpd_handle_query_metric_ptn  },
+	{ "MSG",         HTTP_CONT_JSON,   bhttpd_handle_query_msg         },
+	{ "META",        HTTP_CONT_JSON,   bhttpd_handle_query_meta        },
+	{ "METRIC_META", HTTP_CONT_JSON,   bhttpd_handle_query_metric_meta },
+	{ "IMG",         HTTP_CONT_STREAM, bhttpd_handle_query_img         },
+	{ "IMG2",        HTTP_CONT_STREAM, bhttpd_handle_query_img2        },
+	{ "HOST",        HTTP_CONT_JSON,   bhttpd_handle_query_host        },
 };
 
 static
