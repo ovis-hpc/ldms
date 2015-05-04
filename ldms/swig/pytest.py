@@ -39,7 +39,7 @@ def show_schema(set):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Query a host's metric sets.")
     parser.add_argument("--mem", type=int, default=1024*1024, help="Specify the memory used by metric sets.")
-    parser.add_argument("--xprt", default="sock", help="Spedcify the transport type [sock,rdma,ugni].")
+    parser.add_argument("--xprt", default="sock", help="Specify the transport type [sock,rdma,ugni].")
     parser.add_argument("--host", default='localhost', help="Specify the host name to query.")
     parser.add_argument("--port", default='9862', help="Specify the port number on the host.")
     parser.add_argument("--meta", action="store_true",
@@ -52,18 +52,16 @@ if __name__ == "__main__":
 
     ldms_init(args.mem)
     x = ldms_xprt_new(args.xprt, None)
-    if x == None:
-        print("Error creating a transport of type {0}.".format(args.xprt))
-        exit
+    if x is None:
+        raise Exception("Error creating a transport of type {0}.".format(args.xprt))
 
     rc = ldms_xprt_connect_by_name(x, args.host, args.port, None, None)
-    if rc:
-        print("Error connecting to {0}:{1}.".format(args.host, args.port))
-        exit
+    if rc != 0:
+        raise Exception("Error connecting to {0}:{1}.".format(args.host, args.port))
 
     dir = LDMS_xprt_dir(x)
-    if not dir:
-        print("Error getting the directory for {0}:{1}.".format(args.host, args.port))
+    if dir is None:
+        raise Exception("Error getting the directory for {0}:{1}.".format(args.host, args.port))
 
     for name in dir:
         if args.verbose or args.schema:
