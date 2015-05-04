@@ -194,7 +194,7 @@ then
 	AM_PATH_PYTHON(2.6)
 	AC_PROG_SWIG
 	SWIG_PYTHON
-	pkgpythondir="${pythondir}/ovis_lib"
+	pkgpythondir="${pythondir}/ovis_ldms"
 	pkgpyexecdir="${pkgpythondir}"
 fi
 

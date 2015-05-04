@@ -1,6 +1,6 @@
 BUILT_SOURCES = ldms.c ldms.py
 SWIG_SOURCES = ldms.i $(top_srcdir)/src/core/ldms.h
-pkgpython_PYTHON = ldms.py
+pkgpython_PYTHON = ldms.py __init__.py
 pkgpyexec_LTLIBRARIES = _ldms.la
 _ldms_la_SOURCES = ldms.c $(SWIG_SOURCES)
 _ldms_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src/core \

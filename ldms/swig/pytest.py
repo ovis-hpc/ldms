@@ -1,6 +1,6 @@
 #!/usr/bin/python
 import argparse
-from ldms import *
+from ovis_ldms.ldms import *
 
 def show_meta(set):
     print("  METADATA --------");
