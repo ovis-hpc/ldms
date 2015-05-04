@@ -124,7 +124,7 @@ PyObject *LDMS_xprt_dir(ldms_t x)
 
 PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 {
-	int int_n_float = 1;
+	int is_int = 1;
 	long l = 0;
 	double d = 0.0;
 	switch (type) {
@@ -132,31 +132,39 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		/* TODO Exception */
 		break;
 	case LDMS_V_U8:
-	case LDMS_V_S8:
 		l = (long)mv->v_u8;
 		break;
+	case LDMS_V_S8:
+		l = (long)mv->v_s8;
+		break;
 	case LDMS_V_U16:
-	case LDMS_V_S16:
 		l = (long)mv->v_u16;
 		break;
+	case LDMS_V_S16:
+		l = (long)mv->v_s16;
+		break;
 	case LDMS_V_U32:
-	case LDMS_V_S32:
 		l = (long)mv->v_u32;
 		break;
+	case LDMS_V_S32:
+		l = (long)mv->v_s32;
+		break;
 	case LDMS_V_U64:
-	case LDMS_V_S64:
 		l = (long)mv->v_u64;
 		break;
+	case LDMS_V_S64:
+		l = (long)mv->v_s64;
+		break;
 	case LDMS_V_F32:
-		int_n_float = 0;
+		is_int = 0;
 		d = (double)mv->v_f;
 		break;
 	case LDMS_V_D64:
-		int_n_float = 0;
+		is_int = 0;
 		d = mv->v_d;
 		break;
 	}
-	if (int_n_float)
+	if (is_int)
 		return PyLong_FromLong(l);
 	return PyFloat_FromDouble(d);
 }
@@ -191,8 +199,11 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 	inline enum ldms_value_type metric_type_get(size_t i) {
 		return ldms_metric_type_get(self, i);
 	}
-	inline enum ldms_value_type metric_user_data_get(size_t i) {
-		return ldms_metric_type_get(self, i);
+	inline uint64_t metric_user_data_get(size_t i) {
+		return ldms_metric_user_data_get(self, i);
+	}
+	inline void metric_user_data_set(size_t i, long udata) {
+		ldms_metric_user_data_set(self, i, (uint64_t)udata);
 	}
 	inline const char *metric_type_as_str(size_t i) {
 		return ldms_metric_type_to_str(ldms_metric_type_get(self, i));
@@ -204,8 +215,30 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		union ldms_value *v = ldms_metric_get(self, i);
 		return PyObject_FromMetricValue(v, ldms_metric_type_get(self, i));
 	}
-	inline void metric_value_set(size_t i, ldms_mval_t v) {
-		ldms_metric_set(self, i, v);
+	inline void metric_value_set(size_t i, PyObject *o) {
+		enum ldms_value_type t = ldms_metric_type_get(self, i);
+		union ldms_value v;
+		switch (t) {
+		case LDMS_V_U8:
+		case LDMS_V_U16:
+		case LDMS_V_U32:
+		case LDMS_V_U64:
+			v.v_u64 = PyLong_AsLong(o);
+			break;
+		case LDMS_V_S8:
+		case LDMS_V_S16:
+		case LDMS_V_S32:
+		case LDMS_V_S64:
+			v.v_s64 = PyLong_AsLong(o);
+			break;
+		case LDMS_V_F32:
+			v.v_f = PyFloat_AsDouble(o);
+			break;
+		case LDMS_V_D64:
+			v.v_d = PyFloat_AsDouble(o);
+			break;
+		}
+		ldms_metric_set(self, i, &v);
 	}
 	inline const char *instance_name_get() {
 		return ldms_set_instance_name_get(self);
@@ -215,6 +248,9 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 	}
 	inline const char *producer_name_get() {
 		return ldms_set_producer_name_get(self);
+	}
+	inline void producer_name_set(const char *name) {
+		ldms_set_producer_name_set(self, name);
 	}
 	inline PyObject *is_consistent() {
 		if (ldms_set_is_consistent(self))
