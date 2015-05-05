@@ -146,9 +146,9 @@ int bout_me_config(struct bplugin *this, struct bpair_str_head *arg_head)
 		xprt = bp->s1;
 	}
 	zap_mem_info_fn_t x;
-	zerr = zap_get(xprt, &m->zap, bout_me_zap_log, bout_me_zap_mem_info);
-	if (zerr) {
-		berr("zap_get error: %s\n", zap_err_str(zerr));
+	m->zap = zap_get(xprt, bout_me_zap_log, bout_me_zap_mem_info);
+	if (!m->zap) {
+		berror("zap_get()");
 		return ENOENT; /* consider new return code */
 	}
 
@@ -294,8 +294,8 @@ void bout_me_conn_cb(evutil_socket_t sd, short e, void *arg)
 		freeaddrinfo(ai_head);
 	}
 
-	zerr = zap_new(m->zap, &m->ep, bout_me_zap_cb);
-	if (zerr) {
+	m->ep = zap_new(m->zap, bout_me_zap_cb);
+	if (!m->ep) {
 		berr("zap_new error: %s\n", zap_err_str(zerr));
 		goto err;
 	}

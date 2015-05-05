@@ -683,9 +683,9 @@ void slave_connect(int sock, short which, void *arg)
 	int rc;
 	pthread_mutex_lock(&slave_zap_ctxt.mutex);
 	bdebug("connecting to master ...");
-	zerr = zap_new(zap, &zap_ep, slave_zap_cb);
-	if (zerr != ZAP_ERR_OK) {
-		berr("%s: zap_new() error: %s", __func__, zap_err_str(zerr));
+	zap_ep = zap_new(zap, slave_zap_cb);
+	if (!zap_ep) {
+		berror("zap_new()");
 		slave_schedule_reconnect();
 		goto out;
 	}
@@ -865,9 +865,9 @@ void master_init()
 
 	bmap_set_event_cb(pattern_store->map, master_pattern_bmap_ev_cb);
 
-	zerr = zap_new(zap, &zap_ep, master_zap_cb);
-	if (zerr) {
-		berr("zap_new() error: %s", zap_err_str(zerr));
+	zap_ep = zap_new(zap, master_zap_cb);
+	if (!zap_ep) {
+		berror("zap_new()");
 		exit(-1);
 	}
 
@@ -1031,9 +1031,9 @@ void initialize_daemon()
 #endif
 	/* slave/master network init */
 	zap_err_t zerr;
-	zerr = zap_get(sm_xprt, &zap, zap_log_fn, bzap_mem_info);
-	if (zerr) {
-		berr("zap_get() error: %s", zap_err_str(zerr));
+	zap = zap_get(sm_xprt, zap_log_fn, bzap_mem_info);
+	if (!zap) {
+		berror("zap_get()");
 		exit(-1);
 	}
 	zap_cb_fn_t cb;

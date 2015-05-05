@@ -57,6 +57,7 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <stdarg.h>
+#include <assert.h>
 
 #include "zap/zap.h"
 
@@ -192,6 +193,8 @@ void callback(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_RECV_COMPLETE:
 		handle_recv(zep, ev);
 		break;
+	default:
+		printf("Unexpected Event: %s", zap_event_str(ev->type));
 	}
 }
 
@@ -199,10 +202,10 @@ int main(int argc, char **argv)
 {
 	zap_err_t zerr;
 	handle_args(argc, argv);
-	zerr = zap_get(xprt, &zap, zap_log, zap_meminfo);
-	zerr_assert(zerr, "zap_get");
-	zerr = zap_new(zap, &ep, callback);
-	zerr_assert(zerr, "zap_new");
+	zap = zap_get(xprt, zap_log, zap_meminfo);
+	assert(zap);
+	ep = zap_new(zap, callback);
+	assert(ep);
 	struct sockaddr_in sin = {0};
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(port);
