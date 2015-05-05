@@ -164,7 +164,7 @@ void handle_recv(zap_ep_t zep, zap_event_t ev)
 				ev->data_len);
 		return;
 	}
-	msg = ev->data;
+	msg = (void*)ev->data;
 	msg->metric_type_id = ntohl(msg->metric_type_id);
 	msg->comp_id = ntohl(msg->comp_id);
 	msg->tag = ntohl(msg->tag);

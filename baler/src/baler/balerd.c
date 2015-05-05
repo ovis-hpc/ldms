@@ -520,7 +520,7 @@ bzmsg_type_e bzmsg_type_inverse(bzmsg_type_e type)
 
 void master_handle_recv(zap_ep_t ep, zap_event_t ev)
 {
-	struct bzmsg *m = ev->data;
+	struct bzmsg *m = (void*)ev->data;
 	struct bzmsg simple_rep;
 	struct bzmsg *rep;
 	struct bmap *map = NULL;
@@ -794,7 +794,7 @@ void slave_handle_insert_rep(struct bzmsg *bzmsg)
 
 void slave_handle_recv(zap_ep_t ep, zap_event_t ev)
 {
-	struct bzmsg *bzmsg = ev->data;
+	struct bzmsg *bzmsg = (void*)ev->data;
 	ntoh_bzmsg(bzmsg);
 	switch (bzmsg->type) {
 	case BZMSG_INSERT_REP:
