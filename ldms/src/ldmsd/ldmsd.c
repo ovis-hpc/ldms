@@ -70,6 +70,7 @@
 #include <netdb.h>
 #include <dlfcn.h>
 #include <assert.h>
+#include <syslog.h>
 #include <libgen.h>
 #include <event2/thread.h>
 #include <coll/str_map.h>
@@ -121,7 +122,8 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "Z:H:i:l:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:V"
+#define LDMSD_PIDFILE "/var/run/ldmsd.pid"
+#define FMT "Z:H:i:l:r:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:V"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -166,11 +168,13 @@ int test_metric_count=1;
 int notify=0;
 int muxr_s = -1;
 char *logfile;
+char *pidfile;
 char *sockname = NULL;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 unsigned long saggs_mask = 0;
 ldms_t ldms;
 FILE *log_fp;
+#define LDMS_LOG_SYSLOG (FILE*)0x7 /* known bad file pointer */
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
 
@@ -215,14 +219,16 @@ void ldms_log(int level, const char *fmt, ...)
 	if (level < log_level)
 		return;
 	va_list ap;
-	pthread_mutex_lock(&mutex);
+	if (log_fp != LDMS_LOG_SYSLOG)
+		pthread_mutex_lock(&mutex);
 #ifdef LOGRTC
 	struct timespec ts;
 	if (clock_gettime(CLOCK_REALTIME,&ts) != 0) {
 		ts.tv_sec= 0;
 		ts.tv_nsec=0;
 	}
-	fprintf(log_fp,"%lu:%9lu: ",ts.tv_sec, ts.tv_nsec);
+	if (log_fp != LDMS_LOG_SYSLOG)
+		fprintf(log_fp,"%lu:%9lu: ",ts.tv_sec, ts.tv_nsec);
 #else
 	time_t t;
 	struct tm *tm;
@@ -231,16 +237,23 @@ void ldms_log(int level, const char *fmt, ...)
 
 	t = time(NULL);
 	tm = localtime(&t);
-	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
-		fprintf(log_fp, "%s: ", dtsz);
+	if (log_fp != LDMS_LOG_SYSLOG)
+		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+			fprintf(log_fp, "%s: ", dtsz);
 #endif
-	if ((level >= 0) && (level < LDMS_LENDLEVEL)){
-		fprintf(log_fp, "%-10s: ", loglevels_names[level]);
+	if (log_fp != LDMS_LOG_SYSLOG) {
+		if ((level >= 0) && (level < LDMS_LENDLEVEL)){
+			fprintf(log_fp, "%-10s: ", loglevels_names[level]);
+		}
+		va_start(ap, fmt);
+		vfprintf(log_fp, fmt, ap);
+		fflush(log_fp);
+		pthread_mutex_unlock(&mutex);
+	} else {
+		va_start(ap,fmt);
+		vsyslog(ldms_level_to_syslog(level),fmt,ap);
 	}
-	va_start(ap, fmt);
-	vfprintf(log_fp, fmt, ap);
-	fflush(log_fp);
-	pthread_mutex_unlock(&mutex);
+	
 }
 
 void cleanup(int x)
@@ -259,6 +272,13 @@ void cleanup(int x)
 	if (ldms)
 		ldms_release_xprt(ldms);
 
+	if (!foreground && pidfile) {
+		unlink(pidfile);
+		free(pidfile);
+		pidfile = NULL;
+	}
+	if (log_fp == LDMS_LOG_SYSLOG)
+		closelog();
 	exit(x);
 }
 
@@ -283,6 +303,8 @@ void usage(char *argv[])
 #endif /* DEBUG */
 	printf("    -l log_file    The path to the log file for status messages.\n"
 	       "                   [" LDMSD_LOGFILE "]\n");
+	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
+	       "                   [" LDMSD_PIDFILE "]\n");
 	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
 	       "                     The given size must be less than 1 petabytes.\n"
 	       "                     For example, 20M or 20mb are 20 megabytes.\n");
@@ -2781,6 +2803,7 @@ typedef enum {
 	LDMS_TRANSPORT,
 	LDMS_SOCKNAME,
 	LDMS_LOGFILE,
+	LDMS_PIDFILE,
 	LDMS_QUIET,
 	LDMS_FOREGROUND,
 	LDMS_CONFIG,
@@ -3470,6 +3493,10 @@ int main(int argc, char *argv[])
 			logfile = strdup(optarg);
 			has_arg[LDMS_LOGFILE] = 1;
 			break;
+		case 'r':
+			pidfile = strdup(optarg);
+			has_arg[LDMS_PIDFILE] = 1;
+			break;
 		case 's':
 			setfile = strdup(optarg);
 			has_arg[LDMS_KERNEL_METRIC_SET] = 1;
@@ -3542,6 +3569,7 @@ int main(int argc, char *argv[])
 			printf("%s", ldms_pedigree());
 			exit(1);
 		default:
+			printf("options problem at %d: %s\n", optind-1, argv[optind-1]);
 			usage(argv);
 		}
 	}
@@ -3568,14 +3596,22 @@ int main(int argc, char *argv[])
 			cleanup(8);
 		}
 	}
+
+
 	if (logfile) {
-		log_fp = fopen(logfile, "a");
+		if (strcmp(logfile,"syslog")==0) {
+			log_fp = LDMS_LOG_SYSLOG;
+			openlog(argv[0], LOG_NDELAY|LOG_PID, LOG_DAEMON);
+		} else {
+			log_fp = fopen(logfile, "a");
+		}
 		if (!log_fp) {
 			log_fp = stdout;
 			ldms_log(LDMS_LERROR, "Could not open the log file named '%s'\n", logfile);
 			cleanup(9);
 		}
-		stdout = log_fp;
+		if (log_fp != LDMS_LOG_SYSLOG)
+			stdout = log_fp;
 	}
 
 	/* Initialize LDMS */
@@ -3583,6 +3619,33 @@ int main(int argc, char *argv[])
 		ldms_log(LDMS_LERROR, "LDMS could not pre-allocate the memory of size %lu.\n",
 								max_mem_size);
 		exit(1);
+	}
+
+	if (!foreground) {
+		/* need pidfile for daemon */
+		/* user arg, then env, then default to get pidfile name */
+		if (!pidfile) {
+			char *pidpath = getenv("LDMSD_PIDFILE");
+			if (!pidpath) {
+				pidfile = strdup(LDMSD_PIDFILE);
+			} else {
+				pidfile = strdup(pidpath);
+			}
+		}
+		if( !access( pidfile, F_OK ) ) {
+			ldms_log(LDMS_LERROR, "Existing pid file named '%s': %s\n", pidfile, "overwritten if writable");     
+		}
+		FILE *pfile = fopen(pidfile,"w");
+		if (!pfile) {
+			int piderr = errno;
+			ldms_log(LDMS_LERROR, "Could not open the pid file named '%s': %s\n", pidfile, strerror(piderr));     
+			free(pidfile);
+			pidfile = NULL;
+		} else {
+			pid_t mypid = getpid();
+			fprintf(pfile,"%ld\n",(long)mypid);
+			fclose(pfile);
+		}
 	}
 
 	evthread_use_pthreads();
@@ -3679,8 +3742,6 @@ int main(int argc, char *argv[])
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
 
-	if (!logfile)
-		logfile = LDMSD_LOGFILE;
 
 	ldms_log(LDMS_LCRITICAL,"Started LDMS Daemon version " VERSION "\n");
 	ldms_log(LDMS_LCRITICAL, "git tag " LDMS_GIT_LONG " " LDMS_GIT_SHORT "\n");
