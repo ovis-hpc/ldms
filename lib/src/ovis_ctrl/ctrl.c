@@ -215,21 +215,27 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 	struct sockaddr_un my_un;
 	char *mn = strdup(my_name);
 	char *sockpath;
+	char *_sockname = NULL;
 	struct ctrlsock *sock;
 
 	sock = calloc(1, sizeof *sock);
 	if (!sock)
 		return NULL;
 
-	sockpath = getenv(sock_envpath);
-	if (!sockpath)
-		sockpath = "/var/run";
-
 	sock->rem_sun.sun_family = AF_UNIX;
-	if (sockname[0] == '/')
+
+	if (sockname[0] == '/') {
+		_sockname = strdup(sockname);
+		if (!_sockname)
+			goto err;
+		sockpath = dirname(_sockname);
 		strcpy(my_un.sun_path, sockname);
-	else
+	} else {
+		sockpath = getenv(sock_envpath);
+		if (!sockpath)
+			sockpath = "/var/run";
 		sprintf(my_un.sun_path, "%s/%s", sockpath, sockname);
+	}
 
 	strncpy(sock->rem_sun.sun_path, my_un.sun_path,
 		sizeof(struct sockaddr_un) - sizeof(short));
@@ -268,8 +274,12 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 	}
 	sock->sa = (struct sockaddr *)&sock->rem_sun;
 	sock->sa_len = sizeof(sock->rem_sun);
+	if (_sockname)
+		free(_sockname);
 	return sock;
  err:
 	free(sock);
+	if (_sockname)
+		free(_sockname);
 	return NULL;
 }
