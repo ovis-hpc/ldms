@@ -280,9 +280,10 @@ void mutual_cb(zap_ep_t _ep, zap_event_t ev)
 		sem_post(sem);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		LOG("ZAP_EVENT_DISCONNECTED\n");
 		if (_ep->state == ZAP_EP_PEER_CLOSE)
 			LOG("Passively Disconnected %p\n", _ep);
-		if (_ep->state == ZAP_EP_ERROR)
+		if (_ep->state == ZAP_EP_CLOSE)
 			LOG("Actively Disconnected %p\n", _ep);
 		sem_post(sem);
 		break;
