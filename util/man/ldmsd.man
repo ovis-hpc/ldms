@@ -14,10 +14,10 @@ to start an ldms daemon. Plugin configuration of the ldmsd can be done via the
 ldmsctl command.
 
 .SH ENVIRONMENT
-The following environment variables must be set:
+The following environment variables must usually be set:
 .TP
 LD_LIBRARY_PATH
-include path to ovis/lib64
+include path to ovis/lib64 and libevent2, if they are not in standard system paths.
 .TP
 LDMS_XPRT_LIBPATH
 path to ovis/lib64/
@@ -25,11 +25,14 @@ path to ovis/lib64/
 LDMSD_PLUGIN_LIBPATH
 path to ovis/lib64/
 .TP
+LDMSD_PIDFILE
+optional full path name of pidfile overriding the default /var/run/ldmsd.pid. The command line argument -r in turn overrides env(LDMSD_PIDFILE).
+.TP
 LDMSD_SOCKPATH
 path to the unix domain socket for the ldmsd. Default is /var/run. If you want to change the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
 .TP
 PATH
-include path to ovis/sbin
+include path to sbin directory containing ldmsd and ldmsctl.
 
 .SS Additional Enviroment variables for ugni transport
 LDMS_UGNI_PTAG
