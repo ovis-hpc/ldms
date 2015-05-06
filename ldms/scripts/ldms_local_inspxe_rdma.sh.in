@@ -38,6 +38,7 @@ esac
 TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
+export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
 LOGDIR=$TESTDIR/logs
 export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH

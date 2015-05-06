@@ -75,6 +75,10 @@ INSTANCE is the instance number.
 .br
 LOGFILE is the path to the log file for status messages. Default is LDMSD_LOGFILE.
 .TP
+.BI -r " PIDFILE"
+.br
+PIDFILE is the path to the pid file for daemon mode. Default is /var/run/ldmsd.pid.
+.TP
 .BI -m " MEMORY_SIZE"
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
