@@ -944,6 +944,14 @@ err_1:
 	z_ugni_destroy(new_ep);
 }
 
+static void __z_ugni_listener_err_cb(struct evconnlistener *listen_ev, void *args)
+{
+#ifdef DEBUG
+	struct z_sock_ep *sep = (struct z_sock_ep *)args;
+	sep->ep.z->log_fn("UGNI: libevent error '%s'\n", strerror(errno));
+#endif
+}
+
 static zap_err_t z_ugni_listen(zap_ep_t ep, struct sockaddr *sa,
 				socklen_t sa_len)
 {
@@ -962,6 +970,8 @@ static zap_err_t z_ugni_listen(zap_ep_t ep, struct sockaddr *sa,
 					       sa_len);
 	if (!uep->listen_ev)
 		goto err_0;
+
+	evconnlistener_set_error_cb(uep->listen_ev, __z_ugni_listener_err_cb);
 
 	uep->sock = evconnlistener_get_fd(uep->listen_ev);
 	return ZAP_ERR_OK;
