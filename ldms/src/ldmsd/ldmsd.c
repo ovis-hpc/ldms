@@ -70,6 +70,7 @@
 #include <netdb.h>
 #include <dlfcn.h>
 #include <assert.h>
+#include <syslog.h>
 #include <libgen.h>
 #include <event2/thread.h>
 #include <coll/str_map.h>
@@ -173,6 +174,7 @@ size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 unsigned long saggs_mask = 0;
 ldms_t ldms;
 FILE *log_fp;
+#define LDMS_LOG_SYSLOG (FILE*)0x7 /* known bad file pointer */
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
 
@@ -217,14 +219,16 @@ void ldms_log(int level, const char *fmt, ...)
 	if (level < log_level)
 		return;
 	va_list ap;
-	pthread_mutex_lock(&mutex);
+	if (log_fp != LDMS_LOG_SYSLOG)
+		pthread_mutex_lock(&mutex);
 #ifdef LOGRTC
 	struct timespec ts;
 	if (clock_gettime(CLOCK_REALTIME,&ts) != 0) {
 		ts.tv_sec= 0;
 		ts.tv_nsec=0;
 	}
-	fprintf(log_fp,"%lu:%9lu: ",ts.tv_sec, ts.tv_nsec);
+	if (log_fp != LDMS_LOG_SYSLOG)
+		fprintf(log_fp,"%lu:%9lu: ",ts.tv_sec, ts.tv_nsec);
 #else
 	time_t t;
 	struct tm *tm;
@@ -233,16 +237,23 @@ void ldms_log(int level, const char *fmt, ...)
 
 	t = time(NULL);
 	tm = localtime(&t);
-	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
-		fprintf(log_fp, "%s: ", dtsz);
+	if (log_fp != LDMS_LOG_SYSLOG)
+		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+			fprintf(log_fp, "%s: ", dtsz);
 #endif
-	if ((level >= 0) && (level < LDMS_LENDLEVEL)){
-		fprintf(log_fp, "%-10s: ", loglevels_names[level]);
+	if (log_fp != LDMS_LOG_SYSLOG) {
+		if ((level >= 0) && (level < LDMS_LENDLEVEL)){
+			fprintf(log_fp, "%-10s: ", loglevels_names[level]);
+		}
+		va_start(ap, fmt);
+		vfprintf(log_fp, fmt, ap);
+		fflush(log_fp);
+		pthread_mutex_unlock(&mutex);
+	} else {
+		va_start(ap,fmt);
+		vsyslog(ldms_level_to_syslog(level),fmt,ap);
 	}
-	va_start(ap, fmt);
-	vfprintf(log_fp, fmt, ap);
-	fflush(log_fp);
-	pthread_mutex_unlock(&mutex);
+	
 }
 
 void cleanup(int x)
@@ -266,6 +277,8 @@ void cleanup(int x)
 		free(pidfile);
 		pidfile = NULL;
 	}
+	if (log_fp == LDMS_LOG_SYSLOG)
+		closelog();
 	exit(x);
 }
 
@@ -3556,6 +3569,7 @@ int main(int argc, char *argv[])
 			printf("%s", ldms_pedigree());
 			exit(1);
 		default:
+			printf("options problem at %d: %s\n", optind-1, argv[optind-1]);
 			usage(argv);
 		}
 	}
@@ -3585,13 +3599,19 @@ int main(int argc, char *argv[])
 
 
 	if (logfile) {
-		log_fp = fopen(logfile, "a");
+		if (strcmp(logfile,"syslog")==0) {
+			log_fp = LDMS_LOG_SYSLOG;
+			openlog(argv[0], LOG_NDELAY|LOG_PID, LOG_DAEMON);
+		} else {
+			log_fp = fopen(logfile, "a");
+		}
 		if (!log_fp) {
 			log_fp = stdout;
 			ldms_log(LDMS_LERROR, "Could not open the log file named '%s'\n", logfile);
 			cleanup(9);
 		}
-		stdout = log_fp;
+		if (log_fp != LDMS_LOG_SYSLOG)
+			stdout = log_fp;
 	}
 
 	/* Initialize LDMS */
