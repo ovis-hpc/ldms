@@ -652,7 +652,8 @@ ldms_ls: Cannot allocate memory
 Possible options:
 .IP \[bu] 2
 Check for exsiting /var/run/ldms/metric_socket or similar
-.RS
+.IP \[bu]
+Start ldmsd with the -q DEBUG option to provide more information.
 .IP \[bu]
 Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
 .RE
