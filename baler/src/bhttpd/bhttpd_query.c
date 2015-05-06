@@ -751,7 +751,7 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 	}
 	max_ts = bq_entry_get_sec(q);
 
-	min_node = 1;
+	min_node = 0;
 	max_node = bmvec_generic_get_len((void*)cmp_store->attr) - 1;
 	max_node = bmapid2compid(max_node);
 
