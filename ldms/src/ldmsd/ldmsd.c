@@ -3632,8 +3632,8 @@ int main(int argc, char *argv[])
 				pidfile = strdup(pidpath);
 			}
 		}
-		if( access( pidfile, F_OK ) != -1 ) {
-			ldms_log(LDMS_LERROR, "Existing pid file named '%s': %s\n", pidfile, "overwritten");     
+		if( !access( pidfile, F_OK ) ) {
+			ldms_log(LDMS_LERROR, "Existing pid file named '%s': %s\n", pidfile, "overwritten if writable");     
 		}
 		FILE *pfile = fopen(pidfile,"w");
 		if (!pfile) {
