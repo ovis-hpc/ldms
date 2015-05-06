@@ -24,15 +24,30 @@ window.baler =
             return hostport
         )()
 
+    ###
+    left-zero-padding string format for number
+    ###
+    lzpad: (x, n) ->
+        s = ""
+        a = x
+        while a and n
+            a = parseInt(a/10)
+            n--
+        while n
+            s += "0"
+            n--
+        if x
+            s += x
+        return s
+
     ts2datetime: (ts) ->
         date = new Date(ts*1000)
         y = date.getYear() + 1900
-        m = date.getMonth() + 1
-        d = date.getDate()
-        hh = date.getHours()
-        mm = date.getMinutes()
-        ss = date.getSeconds()
-        return "#{y}-#{m}-#{d} #{hh}:#{mm}:#{ss}"
+        m = baler.lzpad(date.getMonth() + 1, 2)
+        d = baler.lzpad(date.getDate(), 2)
+        hh = baler.lzpad(date.getHours(), 2)
+        mm = baler.lzpad(date.getMinutes(), 2)
+        return "#{m}/#{d}/#{y} #{hh}:#{mm}"
 
     tkn2html : (tok) -> "<span class='baler_#{tok.tok_type}'>#{tok.text}</span>"
 
@@ -75,6 +90,19 @@ window.baler =
 
     get_metric_meta : (cb) ->
         baler.query({"type": "metric_meta"}, cb)
+
+    get_big_pic : () ->
+        url = "http://#{baler.balerd.addr}/query"
+        $.getJSON(url, {"type":"big_pic"}, (data)->
+            baler.totalNodes = data.max_comp_id
+        )
+
+    calcNpp: (npp_p) ->
+        #totalNodes = metaD.responseJSON['max_comp_id']
+        totalNodes = baler.totalNodes
+        calc_npp = totalNodes * npp_p
+        calc_npp = calc_npp/40
+        return calc_npp
 
     msg_cmp: (msg0, msg1) ->
         if msg0.ts == msg1.ts
@@ -395,7 +423,7 @@ window.baler =
             @color = "red"
             @ctxt = undefined
             @pxl = undefined
-            @npp = 1 # Node per pixel
+            @npp = 1.43 # Node per pixel
             @spp = 3600 # seconds per pixel
             @mouseDown = false
             @oldImg = undefined
@@ -557,7 +585,7 @@ window.baler =
 
 
     HeatMapDisp: class HeatMapDisp extends Disp
-        constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
+        constructor: (@width=400, @height=400, @spp=7200, @npp=1.43) ->
             @ts_begin = parseInt(1425963600 / @spp) * @spp
             @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
@@ -589,9 +617,7 @@ window.baler =
                 text = "node: #{parseInt(y*_this_.npp)}"
                 return text
             lblxfn = (x) ->
-                ts = x * _this_.spp
-                text = "ts: #{ts}"
-                return text
+                return baler.ts2datetime(x*_this_.spp)
 
             @xlabel = new CanvasLabelV(textWH, @width, 10, @pxlFactor, lblxfn)
             @xlabelDiv = @xlabel.domobj
@@ -607,7 +633,7 @@ window.baler =
             @fillerDiv.style.width = "#{textWH}px"
             @fillerDiv.style.height = "#{textWH}px"
 
-            @domobj = LZH.div(null , @ylabelDiv, @dispDiv, @fillerDiv, @xlabelDiv)
+            @domobj = LZH.div({"id":"heat_graph"} , @ylabelDiv, @dispDiv, @fillerDiv, @xlabelDiv)
 
             @layerDescList = []
             @layers = []
@@ -748,11 +774,14 @@ window.baler =
     HeatMapNavCtrl: class HeatMapNavCtrl extends Disp
         constructor: (@hmap) ->
             @dom_input_template =
-                nav_ts: ["ts: ", "Secons since epoch (e.g. 1428942308)", "baler_nav_ts"]
-                nav_node: ["comp_id: ", "component id (e.g. 2)", "baler_nav_node"]
-                spp: ["sec-per-pixel: ", "Number of seconds/pixel (default: 3600)", "baler_nav_spp"]
-                npp: ["node-per-pixel: ", "Number of nodes/pixel (default: 1)", "baler_nav_npp"]
-
+                nav_ts: ["Date/Time: ", "Secons since epoch (e.g. 1428942308)", "baler_nav_ts"]
+                nav_node: ["Component ID: ", "component id (e.g. 2)", "baler_nav_node"]
+            @dom_select_template =
+                spp: ["Bin Width Scale: ", "Number of seconds/pixel (default: 2 hours)", "baler_nav_spp"]
+                npp: ["Bin Height Scale: ", "Number of nodes/pixel (default: 1)", "baler_nav_npp"]
+            @wScale = 
+                spp : { "3.3 days":180, "2 hours":180, "12 hours":1080, "1 day":2160, "3 days":6480, "1 week":15120}
+                npp:{"25%":.25, "50%":.5, "75%":.75, "100%":1}
             _this_ = this
             ul = LZH.ul({style: "list-style: none"})
             @dom_input = {}
@@ -761,11 +790,23 @@ window.baler =
                 inp.placeholder = plc
                 li = LZH.li(null, LZH.span(class: "HeatMapNavCtrlLabel", lbl), inp)
                 ul.appendChild(li)
-
-            @dom_input.nav_ts.value = @hmap.ts_begin
+            for i, [lbl, plc, id] of @dom_select_template
+                sel = @dom_input[i] = LZH.select({id: id})
+                sel.placeholder = plc
+                for z, y of @wScale[i]
+                    opt = LZH.option()
+                    opt.text = z
+                    opt.value = y
+                    sel.appendChild(opt)
+                li = LZH.li(null, LZH.span(class: "HeatMapNavCtrlLabel", lbl), sel)
+                ul.appendChild(li)
+            ts_text = baler.ts2datetime(@hmap.ts_begin)
+            npp_p = @dom_input.npp.options[@dom_input.npp.selectedIndex].value
+            npp = baler.calcNpp(npp_p)
+            @dom_input.nav_ts.value = ts_text
             @dom_input.nav_node.value = @hmap.node_begin
-            @dom_input.spp.value = @hmap.spp
-            @dom_input.npp.value = @hmap.npp
+            @dom_input.spp.options[@dom_input.spp.selectedIndex].value = @hmap.spp
+            #calc_npp = @hmap.npp
 
             @nav_btn = LZH.button(null, "nav-apply")
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @nav_btn))
@@ -776,18 +817,19 @@ window.baler =
 
         onNavApply: (ts, comp_id, spp,npp) ->
             input = @dom_input
-            ts = input.nav_ts.value
+            ts = new Date(input.nav_ts.value).getTime()/1000
             comp_id = input.nav_node.value
-            spp = input.spp.value
-            npp = input.npp.value
+            spp = input.spp.options[input.spp.selectedIndex].value
+            npp_p = input.npp.options[input.npp.selectedIndex].value
+            npp = baler.calcNpp(npp_p)
             ts = parseInt(ts/spp)*spp
             comp_id = parseInt(comp_id/npp)*npp
-            input.nav_ts.value = ts
             input.nav_node.value = comp_id
             @hmap.setNavParam(ts, comp_id, spp, npp)
 
         onOffsetChange: (ts_begin, node_begin) ->
-            @dom_input.nav_ts.value = ts_begin
+            ts_text = baler.ts2datetime(ts_begin)
+            @dom_input.nav_ts.value = ts_text
             @dom_input.nav_node.value = node_begin
 
 
@@ -841,7 +883,7 @@ window.baler =
 
             cpick = new ColorPicker(hue, (hue) -> _this_.onPickerHueChange(hue, idx))
 
-            li = LZH.li(null, chk, cpick.domobj, name, ":", ptn_ids, " ", rmbtn)
+            li = LZH.li({"style":"width:250px;overflow:auto;"}, chk, cpick.domobj, name, ":", ptn_ids, " ", rmbtn)
 
             rmbtn.li = li
             @dom_layer_list.appendChild(li)
