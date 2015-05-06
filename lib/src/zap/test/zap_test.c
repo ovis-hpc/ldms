@@ -418,7 +418,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_REJECTED:
 		printf("REJECTED!\n");
 		sin = zap_get_ucontext(ep);
-		zap_close(ep);
+		zap_free(ep);
 		ep = zap_new(zap, client_cb);
 		if (!ep) {
 			printf("zap_new failed.\n");
