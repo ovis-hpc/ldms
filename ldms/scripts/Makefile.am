@@ -28,3 +28,5 @@ ldms_local_dertest.sh \
 ldms_local_dertest_big.sh
 
 bin_SCRIPTS += ldms_local_procstatutil.sh
+
+bin_SCRIPTS += ldms_local_syslog.sh

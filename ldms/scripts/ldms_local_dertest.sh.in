@@ -41,6 +41,7 @@ TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
 LOGDIR=$TESTDIR/logs
+export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
 export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
 echo "logs and data stored under $TESTDIR"
