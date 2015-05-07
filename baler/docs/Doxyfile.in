@@ -1287,7 +1287,7 @@ USE_PDFLATEX           = YES
 # running if errors occur, instead of asking the user for help.
 # This option is also used when generating formulas in HTML.
 
-LATEX_BATCHMODE        = NO
+LATEX_BATCHMODE        = YES
 
 # If LATEX_HIDE_INDICES is set to YES then doxygen will not
 # include the index chapters (such as File Index, Compound Index, etc.)
@@ -1376,7 +1376,7 @@ MAN_EXTENSION          = .3
 # only source the real man page, but without them the man command
 # would be unable to find the correct page. The default is NO.
 
-MAN_LINKS              = YES
+MAN_LINKS              = NO
 
 #---------------------------------------------------------------------------
 # configuration options related to the XML output
