@@ -65,6 +65,7 @@ pthread_t __ocm_evthread;
 struct timeval reconnect_tv = {20, 0}; /* default: 20 sec */
 
 void __ocm_init();
+int ocm_cfg_buff_resize(struct ocm_cfg_buff *buff, size_t new_size);
 
 void ocm_set_reconnect_interval(int sec, int usec)
 {
@@ -79,7 +80,7 @@ void *ocm_cfg_buff_curr_ptr(struct ocm_cfg_buff *buff)
 
 struct ocm_cfg_cmd *ocm_cfg_buff_curr_cmd(struct ocm_cfg_buff *buff)
 {
-	return (char*)buff->buff + buff->cmd_offset;
+	return (void*) ((char*)buff->buff + buff->cmd_offset);
 }
 
 /**
@@ -348,7 +349,7 @@ int ocm_cfg_buff_add_cmd_as_av(struct ocm_cfg_buff *buff, const char *attr,
 	_cmd->len += buff->current_offset - prev_off;
 	return 0;
 err:
-	buff->current_offset = __OCM_PTR(buff->buff, prev_off);
+	buff->current_offset = (uint64_t) __OCM_PTR(buff->buff, prev_off);
 	return rc;
 }
 
@@ -500,8 +501,12 @@ void __ocm_zap_cb(zap_ep_t zep, zap_event_t ev)
 
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
-		__ocm_recv_complete(zep, ev->data, ctxt);
+		__ocm_recv_complete(zep, (void*)ev->data, ctxt);
 		break;
+	default:
+		/* unexpected event */
+		ctxt->ocm->log_fn("Unexpected zap event: %s\n",
+						zap_event_str(ev->type));
 	}
 }
 
@@ -831,6 +836,7 @@ int ocm_close(ocm_t ocm)
 {
 	zap_close(ocm->ep);
 	str_map_free(ocm->cb_map);
+	return 0;
 }
 
 void *__ocm_evthread_proc(void *arg)
@@ -842,11 +848,12 @@ void *__ocm_evthread_proc(void *arg)
 	assert(rc == 0 && "__ocm_evthread_proc() pthread_sigmask() error.");
 	event_base_dispatch(__ocm_evbase);
 	fprintf(stderr, "OCM: evthread exit.\n");
+	return NULL;
 }
 
 void __ocm_init()
 {
-	static visited = 0;
+	static int visited = 0;
 	if (visited)
 		return;
 	visited = 1;
