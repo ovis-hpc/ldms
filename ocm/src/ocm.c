@@ -401,8 +401,9 @@ void __ocm_reconnect_cb(evutil_socket_t fd, short what, void *arg)
 {
 	struct ocm_ep_ctxt *ctxt = arg;
 	zap_ep_t ep;
-	zap_err_t zerr = zap_new(ctxt->ocm->zap, &ep, __ocm_zap_cb);
-	if (zerr)
+	zap_err_t zerr;
+	ep = zap_new(ctxt->ocm->zap, __ocm_zap_cb);
+	if (!ep)
 		goto err0;
 	zap_set_ucontext(ep, ctxt);
 	zerr = zap_connect(ep, &ctxt->sa, ctxt->sa_len, NULL, 0);
@@ -412,7 +413,7 @@ void __ocm_reconnect_cb(evutil_socket_t fd, short what, void *arg)
 	return ;
 
 err1:
-	zap_close(ep);
+	zap_free(ep);
 err0:
 	__ocm_reconnect(ctxt);
 }
@@ -491,10 +492,10 @@ void __ocm_zap_cb(zap_ep_t zep, zap_event_t ev)
 			pthread_mutex_lock(&ctxt->mutex);
 			ctxt->ep = NULL;
 			pthread_mutex_unlock(&ctxt->mutex);
-			zap_close(zep);
+			zap_free(zep);
 			__ocm_reconnect(ctxt);
 		} else {
-			zap_close(zep);
+			zap_free(zep);
 		}
 
 		break;
@@ -528,8 +529,8 @@ ocm_t ocm_create(const char *xprt, uint16_t port, ocm_cb_fn_t request_cb,
 		log_fn = __ocm_default_log;
 	ocm->log_fn = log_fn;
 	pthread_mutex_init(&ocm->mutex, NULL);
-	zap_err_t zerr = zap_get(xprt, &ocm->zap, log_fn, map_info_fn);
-	if (zerr) {
+	ocm->zap = zap_get(xprt, log_fn, map_info_fn);
+	if (!ocm->zap) {
 		log_fn("OCM ERROR: cannot get xprt: %s\n", xprt);
 		goto err3;
 	}
@@ -552,9 +553,9 @@ int ocm_add_receiver(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len)
 	int rc = -1;
 	zap_err_t zerr;
 	zap_ep_t ep;
-	zerr = zap_new(ocm->zap, &ep, __ocm_zap_cb);
-	if (zerr) {
-		ocm->log_fn("OCM ERROR: zap_new failed: %s\n", zap_err_str(zerr));
+	ep = zap_new(ocm->zap, __ocm_zap_cb);
+	if (!ep) {
+		ocm->log_fn("OCM ERROR: zap_new failed, errno: %d\n", errno);
 		rc = zerr;
 		goto err0;
 	}
@@ -578,7 +579,7 @@ int ocm_add_receiver(ocm_t ocm, struct sockaddr *sa, socklen_t sa_len)
 	if (rc)
 		goto err3;
 	zap_set_ucontext(ep, ctxt);
-	zerr = zap_connect(ep, sa, sa_len);
+	zerr = zap_connect(ep, sa, sa_len, NULL, 0);
 	if (zerr) {
 		ocm->log_fn("OCM ERROR: zap_connect failed: %s\n", zap_err_str(zerr));
 		rc = zerr;
@@ -593,7 +594,7 @@ err3:
 err2:
 	free(ctxt);
 err1:
-	zap_close(ep);
+	zap_free(ep);
 err0:
 out:
 	pthread_mutex_unlock(&ocm->mutex);
@@ -652,7 +653,7 @@ int ocm_enable(ocm_t ocm)
 {
 	__ocm_init();
 
-	zap_err_t zerr = zap_new(ocm->zap, &ocm->ep, __ocm_zap_cb);
+	zap_err_t zerr;
 	int rc = 0;
 	struct ocm_ep_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 	if (!ctxt) {
@@ -663,10 +664,11 @@ int ocm_enable(ocm_t ocm)
 	ctxt->ocm = ocm;
 	ctxt->is_active = 0;
 	pthread_mutex_init(&ctxt->mutex, NULL);
-	if (zerr) {
-		ocm->log_fn("OCM ERROR: cannot create endpoint, zap_err: %d\n",
-				zerr);
-		rc = zerr;
+	ocm->ep = zap_new(ocm->zap, __ocm_zap_cb);
+	if (!ocm->ep) {
+		ocm->log_fn("OCM ERROR: cannot create endpoint, errno: %d\n",
+				errno);
+		rc = errno;
 		goto err1;
 	}
 	zap_set_ucontext(ocm->ep, ctxt);
