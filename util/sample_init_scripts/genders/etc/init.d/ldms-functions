@@ -126,9 +126,9 @@ start_ldmsd_plugins () {
 			offset=$NODE_COLLECTION_OFFSET
 		fi
 		eval extraconfig='$'"NODE_CONFIG_${i}"
-		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$MYHOSTNAME/$i $extraconfig"
+		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$LDMSD_HOST/$i $extraconfig"
 		ARGS_START="name=$i interval=$interval offset=$offset"
-		echoq "Loading <${i}>"
+		echoq "Loading <${i}> with $ARGS_CONFIG"
 		{ echo load name=$i | $DO_CTL ; } && 
 		{ echo config $ARGS_CONFIG | $DO_CTL ; } &&
 		{ echo start $ARGS_START | $DO_CTL ; }
@@ -160,6 +160,7 @@ start_add_hosts () {
 		if test -z $nSETS; then
 			nSETS=$METRIC_SETS
 		fi
+		stmp=""
 		for i in $(eval echo $nSETS | tr ":" "\n"); do
 			stmp="$nHOST/$i,$stmp"
 		done

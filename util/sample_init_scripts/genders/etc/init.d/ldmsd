@@ -122,6 +122,7 @@ start()
 	if test "x$LDMSD_LOG_PATH" = "xNONE"; then
 		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"
 		$DAEMON $DAEMON_ARGS > /dev/null 2>&1
+		RETVAL=$?
 	else
 		if test "x$LDMSD_LOG_PATH" = "xsyslog"; then
 			LOG_ARGS="-l $LDMSD_LOG_PATH"
@@ -131,9 +132,21 @@ start()
 		fi
 		echoq "$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1"
 		$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1
+		RETVAL=$?
 	fi
-	RETVAL=$?
 
+
+	sleep 1
+	if ! test -f $pidfile; then
+		failure
+		echo missing pidfile
+		exit 1
+	fi
+	if ! test -S $AGGSOCK_PATH; then
+		failure
+		echo missing ctl socket
+		exit 1
+	fi
 	[ $RETVAL -eq 0 ] && touch $lockfile
 	RETVAL=$?
 
@@ -141,8 +154,15 @@ start()
 		sleep 2
 		echoq "chmod 660 $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK"
 		chmod 660 $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK
-		success
-		echo
+		if test $? -eq 0; then
+			success
+			echo
+		else
+			failure
+			echo
+			# need to cleanup and exit here.
+		fi
+
 		sleep 1
 		echo -n $"Starting ldms plugins: "
 		start_ldmsd_plugins

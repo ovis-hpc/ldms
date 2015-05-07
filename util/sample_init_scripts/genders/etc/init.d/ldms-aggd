@@ -131,8 +131,7 @@ start()
                 fi
 
 		echoq "$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1"
-		#$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1
-		$DAEMON $DAEMON_ARGS $LOG_ARGS 
+		$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1
 		RETVAL=$?
 	fi
 	sleep 1
@@ -151,7 +150,6 @@ start()
 
 	if [ $RETVAL -eq 0 ]; then
 		sleep 2
-		ls -l $AGGSOCK_PATH
 		echoq "chmod 660 $AGGSOCK_PATH"
 		chmod 660 $AGGSOCK_PATH
 		if test $? -eq 0; then
@@ -160,13 +158,13 @@ start()
 		else
 			failure
 			echo
+			# need to cleanup and exit here.
 		fi
 			
 		sleep 1
 		echo -n $"Adding hosts: "
 		start_add_hosts
 
-		sleep 1
 		echo -n $"Starting store plugins: "
 		start_stores
 		RETVAL=$?

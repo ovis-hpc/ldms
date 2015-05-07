@@ -122,7 +122,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define LDMSD_PIDFILE "/var/run/ldmsd.pid"
+#define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 #define FMT "Z:H:i:l:r:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:V"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
@@ -304,7 +304,7 @@ void usage(char *argv[])
 	printf("    -l log_file    The path to the log file for status messages.\n"
 	       "                   [" LDMSD_LOGFILE "]\n");
 	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
-	       "                   [" LDMSD_PIDFILE "]\n");
+	       "                   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
 	       "                     The given size must be less than 1 petabytes.\n"
 	       "                     For example, 20M or 20mb are 20 megabytes.\n");
@@ -630,6 +630,7 @@ struct plugin *new_plugin(char *plugin_name, char *err_str)
 	pi->sample_offset_us = 0;
 	pi->synchronous = 0;
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
+	ldms_log(LDMS_LINFO, "Plugin '%s' loaded from %s.\n", plugin_name,library_name);
 	return pi;
  enomem:
 	sprintf(err_str, "No memory");
@@ -3686,7 +3687,8 @@ int main(int argc, char *argv[])
 		if (!pidfile) {
 			char *pidpath = getenv("LDMSD_PIDFILE");
 			if (!pidpath) {
-				pidfile = strdup(LDMSD_PIDFILE);
+				pidfile = malloc(strlen(LDMSD_PIDFILE_FMT)+strlen(basename(argv[0])+1));
+				sprintf(pidfile,LDMSD_PIDFILE_FMT,basename(argv[0]));
 			} else {
 				pidfile = strdup(pidpath);
 			}
