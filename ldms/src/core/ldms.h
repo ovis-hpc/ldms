@@ -507,6 +507,7 @@ extern const char* loglevels_names[];
   \returns the log level, or -1 if unrecognized string given.
 */
 int ldms_str_to_level(const char *level_s);
+int ldms_level_to_syslog(int level);
 
 typedef void (*ldms_log_fn_t)(int level, const char *fmt, ...);
 
