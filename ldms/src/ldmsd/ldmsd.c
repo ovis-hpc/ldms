@@ -3428,6 +3428,47 @@ void config_file_routine(yaml_document_t *yaml_document)
 }
 #endif /* ENABLE_YAML */
 
+enum ldms_opttype {
+	lo_path, // possibly including /, but not leading -
+	lo_uint, // digits only
+	lo_int,  // sign or digit
+	lo_name, // alnum, but not - or / leading
+};
+
+#define CHECKARG(ch,ot) if (check_arg(#ch,optarg,lo_##ot)) return 1
+int check_arg(char *c, char *optarg, enum ldms_opttype t)
+{
+	if (!optarg)
+		return 1;
+	switch (t) {
+	case lo_path:
+		if ( optarg[0] == '-'  ) {
+			printf("option -%s expected path name, not %s\n",c,optarg);
+			return 1;
+		}
+		break;
+	case lo_uint:
+		if ( optarg[0] == '-' || !isdigit(optarg[0]) ) {
+			printf("option -%s expected number, not %s\n",c,optarg);
+			return 1;
+		}
+		break;
+	case lo_int:
+		if ( optarg[0] == '-' && !isdigit(optarg[1]) ) {
+			printf("option -%s expected number, not %s\n",c,optarg);
+			return 1;
+		}
+		break;
+	case lo_name:
+		if ( !isalnum(optarg[0]) ) {
+			printf("option -%s expected name, not %s\n",c,optarg);
+			return 1;
+		}
+		break;
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	int ret;
@@ -3462,17 +3503,20 @@ int main(int argc, char *argv[])
 		switch (op) {
 		case 'I':
 			// Assigned instance number
+			CHECKARG(I,uint);
 			instance_number = atoi(optarg);
 			if (!instance_number)
 				instance_number = 1;
 			has_arg[LDMS_INSTANCE] = 1;
 			break;
 		case 'H':
+			CHECKARG(H,name);
 			LDMS_ASSERT( (strlen(optarg) <= HOST_NAME_MAX) );
 			strcpy(myhostname, optarg);
 			has_arg[LDMS_HOSTNAME] = 1;
 			break;
 		case 'i':
+			CHECKARG(i,uint);
 			sample_interval = atoi(optarg);
 			has_arg[LDMS_INTERVAL] = 1;
 			break;
@@ -3481,27 +3525,33 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_KERNEL_METRIC] = 1;
 			break;
 		case 'x':
+			CHECKARG(x,name);
 			listen_arg = strdup(optarg);
 			has_arg[LDMS_TRANSPORT] = 1;
 			break;
 		case 'S':
 			/* Set the SOCKNAME to listen on */
+			CHECKARG(S,path);
 			sockname = strdup(optarg);
 			has_arg[LDMS_SOCKNAME] = 1;
 			break;
 		case 'l':
+			CHECKARG(l,path);
 			logfile = strdup(optarg);
 			has_arg[LDMS_LOGFILE] = 1;
 			break;
 		case 'r':
+			CHECKARG(r,path);
 			pidfile = strdup(optarg);
 			has_arg[LDMS_PIDFILE] = 1;
 			break;
 		case 's':
+			CHECKARG(r,path);
 			setfile = strdup(optarg);
 			has_arg[LDMS_KERNEL_METRIC_SET] = 1;
 			break;
 		case 'q':
+			CHECKARG(q,name);
 			log_level = ldms_str_to_level(optarg);
 			if (log_level <0 ) {
 				printf("Invalid logging level '%s'. Valid are:\n", optarg);
@@ -3517,6 +3567,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'C':
 		#ifdef ENABLE_YAML
+			CHECKARG(C,path);
 			cfg_file = strdup(optarg);
 			has_arg[LDMS_CONFIG] = 1;
 		#else
@@ -3530,18 +3581,22 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_FOREGROUND] = 1;
 			break;
 		case 'T':
+			CHECKARG(T,name);
 			test_set_name = strdup(optarg);
 			has_arg[LDMS_TEST_SET_PREFIX] = 1;
 			break;
 		case 't':
+			CHECKARG(t,uint);
 			test_set_count = atoi(optarg);
 			has_arg[LDMS_TEST_SET_COUNT] = 1;
 			break;
 		case 'P':
+			CHECKARG(P,uint);
 			ev_thread_count = atoi(optarg);
 			has_arg[LDMS_THREAD_COUNT] = 1;
 			break;
 		case 'Z':
+			CHECKARG(Z,uint);
 			conn_thread_count = atoi(optarg);
 			has_arg[LDMS_CONN_THREAD_COUNT] = 1;
 			break;
@@ -3550,19 +3605,23 @@ int main(int argc, char *argv[])
 			has_arg[LDMS_NOTIFY] = 1;
 			break;
 		case 'M':
+			CHECKARG(M,uint);
 			test_metric_count = atoi(optarg);
 			has_arg[LDMS_TEST_METRIC_COUNT] = 1;
 			break;
 		case 'm':
+			CHECKARG(m,uint);
 			if ((max_mem_size = ovis_get_mem_size(optarg)) == 0) {
 				printf("Invalid memory size '%s'\n", optarg);
 				usage(argv);
 			}
 			break;
 		case 'f':
+			CHECKARG(f,uint);
 			flush_N = atoi(optarg);
 			break;
 		case 'D':
+			CHECKARG(f,uint);
 			dirty_threshold = atoi(optarg);
 			break;
 		case 'V':
