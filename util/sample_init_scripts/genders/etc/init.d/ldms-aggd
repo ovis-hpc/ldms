@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 #
 # ldms-aggd		Start up the ldms aggregator daemon
 #
@@ -20,24 +20,16 @@
 # Description: ldms-aggd aggregates results from ldmsd (samplers) instances.
 ### END INIT INFO
 
-# hack definition for ubuntu init setup test
-#sysconfdir="/etc"
-
 # source function library
-. $sysconfdir/init.d/functions
+. /etc/init.d/functions
 
 DAEMON=ldms-aggd
 
-if [ -z $DAEMON ]; then
-	echo -n >&2 "$0: "DAEMON" not defined. Exiting"
-	failure
-	echo
-	exit
-fi
 
 # Load utility functions for parsing and handling specification
 # at each node based on hostname and genders.
 # Must come before sysconfig/$DAEMON is loaded to support genders.
+sysconfdir=/etc
 if [ -f $sysconfdir/init.d/ldms-functions ]; then
 	. $sysconfdir/init.d/ldms-functions
 else
@@ -58,8 +50,15 @@ else
 	exit
 fi
 
+if [ -z $DAEMON ]; then
+	echo -n >&2 "$0: "DAEMON" not defined. Exiting"
+	failure
+	echo
+	exit
+fi
+
 # check binary
-[ -x $DAEMON ] || (echo daemon $DAEMON is missing ; exit 5 )
+[ -x $sbindir/$DAEMON ] || (echo daemon $DAEMON is missing in $PATH ; exit 5 )
 
 
 RETVAL=0
@@ -70,8 +69,6 @@ lockfile=$localstatedir/lock/subsys/$prog
 VERBOSE=
 
 ARG=$1
-
-
 
 arg1=$1
 shift
@@ -96,7 +93,7 @@ start()
 	export LDMSD_PLUGIN_LIBPATH=$LDMS_PLUGIN_PATH
 	export RDMAV_FORK_SAFE=$LDMS_RDMAV_FORK_SAFE
 
-	[ -x $DAEMON ] || exit 5
+	# [ -x $DAEMON ] || exit 5 ;done at front of script
 
 	if [[ !(-z $LDMSAGGD_LOCAL_SOCK_DIR) ]]; then
 		test -d $LDMSAGGD_LOCAL_SOCK_DIR || mkdir -p $LDMSAGGD_LOCAL_SOCK_DIR
@@ -119,36 +116,59 @@ start()
 	# Close file descriptor for standard input. If not pdsh will hang
 	exec 0>&- # close stdin
 
-	DAEMON_ARGS="-x $AGG_LDMSD_TRANSPORT:$AGG_PORT -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK -q $AGG_DEBUG"
+	DAEMON_ARGS="-x $AGG_LDMSD_TRANSPORT:$AGG_PORT -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $AGGSOCK_PATH -q $AGG_DEBUG"
 	echo -n $"Starting $prog: "
 	if test "x$LDMSD_LOG_PATH" = "xNONE"; then
 		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"
 		$DAEMON $DAEMON_ARGS > /dev/null 2>&1
+		RETVAL=$?
 	else
-		LOG_ARGS="-l $LDMSD_LOG_PATH/agg.$COMPONENT_ID"
-		echoq "$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1"
-		test -d $LDMSD_LOG_PATH || echoq "Error: Logfile directory $LDMSD_LOG_PATH does not exist or is not a directory"
-		$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1
-	fi
-	RETVAL=$?
+               if test "x$LDMSD_LOG_PATH" = "xsyslog"; then
+                        LOG_ARGS="-l $LDMSD_LOG_PATH"
+                else
+                        LOG_ARGS="-l $LDMSD_LOG_PATH/agg.$COMPONENT_ID"
+                        test -d $LDMSD_LOG_PATH || echoq "Error: Logfile directory $LDMSD_LOG_PATH does not exist or is not a directory"
+                fi
 
+		echoq "$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1"
+		#$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1
+		$DAEMON $DAEMON_ARGS $LOG_ARGS 
+		RETVAL=$?
+	fi
+	sleep 1
+	if ! test -f $pidfile; then
+		failure
+		echo missing pidfile
+		exit 1
+	fi
+	if ! test -S $AGGSOCK_PATH; then
+		failure
+		echo missing ctl socket
+		exit 1
+	fi
 	[ $RETVAL -eq 0 ] && touch $lockfile
 	RETVAL=$?
 
 	if [ $RETVAL -eq 0 ]; then
 		sleep 2
-		echoq "chmod 660 $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
-		chmod 660 $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK
-		success
-		echo
+		ls -l $AGGSOCK_PATH
+		echoq "chmod 660 $AGGSOCK_PATH"
+		chmod 660 $AGGSOCK_PATH
+		if test $? -eq 0; then
+			success
+			echo
+		else
+			failure
+			echo
+		fi
+			
+		sleep 1
+		echo -n $"Adding hosts: "
+		start_add_hosts
+
 		sleep 1
 		echo -n $"Starting store plugins: "
 		start_stores
-		success
-		echo
-		sleep 1
-		echo -n $"Starting add hosts: "
-		start_add_hosts
 		RETVAL=$?
 	fi
 
@@ -156,15 +176,8 @@ start()
 		failure
 		echo
 	else
-		pgrep -u $USER $prog > $pidfile
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-			 failure
-			 echo
-		else
-			 success
-			 echo
-		fi
+		success
+		echo
 	fi
 
 }
@@ -222,12 +235,12 @@ case "$arg1" in
 			echoq "$DAEMON process still running... Calling stop."
 			stop
 			cleanup_ldmsaggctl
-			cleanup_aggfiles
+			cleanup_agg_files
 			exit 0
 		else
 			echoq "No $DAEMON process running... Call cleanup."
 			cleanup_ldmsaggctl
-			cleanup_aggfiles
+			cleanup_agg_files
 			exit 1
 		fi
 		;;

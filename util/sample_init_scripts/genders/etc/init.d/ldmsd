@@ -21,24 +21,15 @@
 # Description: ldmsd is a daemon for data collection and transport using plugins
 ### END INIT INFO
 
-# hack definition for ubuntu init setup
-#sysconfdir="/etc"
-
 # source function library
-. $sysconfdir/init.d/functions
+. /etc/init.d/functions
 
 DAEMON=ldmsd
-
-if [ -z $DAEMON ]; then
-	echo -n >&2 "$0: "DAEMON" not defined. Exiting"
-	failure
-	echo
-	exit
-fi
 
 # Load utility functions for parsing and handling specification
 # at each node based on hostname and genders.
 # Must come before sysconfig/$DAEMON is loaded to support genders.
+sysconfdir=/etc
 if [ -f $sysconfdir/init.d/ldms-functions ]; then
 	. $sysconfdir/init.d/ldms-functions
 else
@@ -58,8 +49,15 @@ else
 	exit
 fi
 
+if [ -z $DAEMON ]; then
+	echo -n >&2 "$0: "DAEMON" not defined. Exiting"
+	failure
+	echo
+	exit
+fi
+
 # check binary
-[ -x $DAEMON ] || (echo daemon $DAEMON is missing ; exit 5 )
+[ -x $sbindir/$DAEMON ] || (echo daemon $DAEMON is missing in $PATH ; exit 5 )
 
 
 RETVAL=0
@@ -96,7 +94,7 @@ start()
 	export LDMSD_PLUGIN_LIBPATH=$LDMS_PLUGIN_PATH
 	export RDMAV_FORK_SAFE=$LDMS_RDMAV_FORK_SAFE
 
-	[ -x $DAEMON ] || exit 5
+	# [ -x $DAEMON ] || exit 5; done for all functions at top of script
 
 	if [[ !(-z $LDMSD_LOCAL_SOCK_DIR) ]]; then
 		test -d $LDMSD_LOCAL_SOCK_DIR || mkdir -p $LDMSD_LOCAL_SOCK_DIR
@@ -125,9 +123,13 @@ start()
 		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"
 		$DAEMON $DAEMON_ARGS > /dev/null 2>&1
 	else
-		LOG_ARGS="-l $LDMSD_LOG_PATH/$COMPONENT_ID"
+		if test "x$LDMSD_LOG_PATH" = "xsyslog"; then
+			LOG_ARGS="-l $LDMSD_LOG_PATH"
+		else
+			LOG_ARGS="-l $LDMSD_LOG_PATH/$COMPONENT_ID"
+			test -d $LDMSD_LOG_PATH || echoq "Error: Logfile directory $LDMSD_LOG_PATH does not exist or is not a directory"
+		fi
 		echoq "$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1"
-		test -d $LDMSD_LOG_PATH || echoq "Error: Logfile directory $LDMSD_LOG_PATH does not exist or is not a directory"
 		$DAEMON $DAEMON_ARGS $LOG_ARGS > /dev/null 2>&1
 	fi
 	RETVAL=$?
@@ -151,15 +153,8 @@ start()
 		failure
 		echo
 	else
-		pgrep -u $USER $prog > $pidfile
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-			 failure
-			 echo
-		else
-			 success
-			 echo
-		fi
+		 success
+		 echo
 	fi
 
 }

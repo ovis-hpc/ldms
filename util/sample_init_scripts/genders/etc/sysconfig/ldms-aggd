@@ -128,7 +128,7 @@ if test -z $NODELIST; then
 	NLIST=`echo $LDMSAGGD_LIST |sed -e "s/BOOTNODELIST/$BOOTNODE_LIST/"`
 	NLIST=`echo $NLIST |sed -e "s/CLIENTOFLIST/$CLIENTOF_LIST/"`
 	NLIST=`echo $NLIST |sed -e "s/AGGCLIENTOFLIST/$AGGCLIENTOF_LIST/"`
-	NODELIST=`echo $NLIST |sed -e 's/,/:/'`
+	NODELIST=`echo $NLIST |sed -e 's/,/:/g'`
 	if test -z $NODELIST; then
 		echoq "Aggregator $host has nothing to aggregate. Exiting."
 		failure
@@ -149,18 +149,27 @@ fi
 if test -z $LDMSAGGD_LOCAL_SOCK_DIR; then
 	LDMSAGGD_LOCAL_SOCK_DIR="$localstatedir/run/$DAEMON"
 fi
+if ! test -d $LDMSAGGD_LOCAL_SOCK_DIR; then
+	mkdir -p $LDMSAGGD_LOCAL_SOCK_DIR
+fi
 
-if test -z $LDMSCTL_SOCK_DIR; then
+if test -z $LDMSAGGCTL_SOCK_DIR; then
 	LDMSAGGCTL_SOCK_DIR="$localstatedir/run/ldmsaggctl"
 fi
+if ! test -d $LDMSAGGCTL_SOCK_DIR; then
+	mkdir -p $LDMSAGGCTL_SOCK_DIR
+fi
+
+# full path of agg unix socket
+AGGSOCK_PATH="$LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
 
 # misc resource parameters
 if test -z $AGG_MEM; then
 	AGG_MEM=1000M
 fi
 if test -z $AGG_NUM_PROCS; then
-	AGG_NUM_PROCS=16
+	AGG_NUM_PROCS=8
 fi
-if test -z AGG_CONN_THREADS; then
-	AGG_CONN_THREAD=4
+if test -z $AGG_CONN_THREADS; then
+	AGG_CONN_THREADS=4
 fi

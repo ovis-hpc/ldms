@@ -18,7 +18,7 @@ if ! test -z DEBUG_INITD; then
 # see if we're running genders and if ldmsd is forced
 # If no genders, someone should use a different set of
 # init scripts entirely
-	if ! nodeattr $NODEATTRFILE -k > /dev/null ; then
+	if ! nodeattr $NODEATTRFILE -k > /dev/null 2>&1; then
 		echoq problem with $NODEATTRFILE
 		failure
 		echo
@@ -173,7 +173,11 @@ fi
 # Note the LDMSD_LOG_PATH may become a problem if
 # on a shared file system that goes down and daemon debugging is enabled.
 if test -z $LDMSD_LOG_PATH; then
-	LDMSD_LOG_PATH=$localstatedir/log/ldms_logs
+	LDMSD_LOG_PATH=syslog
+else
+	if ! test -d $LDMSD_LOG_PATH; then
+		mkdir $LDMSD_LOG_PATH
+	fi
 fi
 
 #Paths to unix domain socket used by ldmsctl to communicate with ldmsd
@@ -182,4 +186,10 @@ if test -z $LDMSD_LOCAL_SOCK_DIR; then
 fi
 if test -z $LDMSCTL_SOCK_DIR; then
 	LDMSCTL_SOCK_DIR="$localstatedir/run/ldmsctl"
+fi
+if ! test -d $LDMSD_LOCAL_SOCK_DIR; then
+	mkdir $LDMSD_LOCAL_SOCK_DIR
+fi
+if ! test -d $LDMSCTL_SOCK_DIR; then
+	mkdir $LDMSCTL_SOCK_DIR
 fi
