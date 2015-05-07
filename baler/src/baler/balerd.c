@@ -648,6 +648,7 @@ void master_zap_cb(zap_ep_t ep, zap_event_t ev)
 		zap_get_name(ep, &lsock, &rsock, &slen);
 		snprint_sockaddr(tmp, sizeof(tmp), &rsock);
 		binfo("disconnected from slave-mode balerd: %s", tmp);
+		zap_free(ep);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		master_handle_recv(ep, ev);
@@ -706,7 +707,7 @@ void slave_connect(int sock, short which, void *arg)
 
 	zerr = zap_connect(zap_ep, ai->ai_addr, ai->ai_addrlen, NULL, 0);
 	if (zerr != ZAP_ERR_OK) {
-		zap_close(zap_ep);
+		zap_free(zap_ep);
 		berr("zap_connect() error: %s", zap_err_str(zerr));
 		slave_schedule_reconnect();
 		goto out;
@@ -823,7 +824,7 @@ void slave_zap_cb(zap_ep_t ep, zap_event_t ev)
 		ctxt->is_ready = 0;
 		bdebug("master disconnected!!!");
 		pthread_mutex_unlock(&ctxt->mutex);
-		zap_close(ep);
+		zap_free(ep);
 		slave_schedule_reconnect();
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
