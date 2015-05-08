@@ -50,7 +50,7 @@
  */
 /**
  * \file bout_sos_msg.h
- * \defgroup bout_sos_msg {
+ * \defgroup bout_sos_msg SOS Message Output
  * \ingroup bout_sos
  *
  * \brief An extension of ::bout_sos for Image data storage.

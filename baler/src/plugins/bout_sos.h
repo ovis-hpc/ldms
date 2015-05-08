@@ -50,9 +50,9 @@
  */
 /**
  * \file bout_sos.h
- * \author Narate Taerat.
+ * \author Narate Taerat
  *
- * \defgroup bout_sos Baler Output to SOS.
+ * \defgroup bout_sos Baler Output to SOS
  * \{
  * Baler Output to SOS implements Baler Output Plugin Interface (::boutplugin).
  *
