@@ -30,6 +30,10 @@ ldmsd_LDFLAGS += -lcoll -locm @OCM_LIBDIR_FLAG@
 ldmsd_CFLAGS += -DENABLE_OCM @OCM_INCDIR_FLAG@
 endif
 
+if ENABLE_LDMSD_TEST
+ldmsd_CFLAGS += -DENABLE_LDMSD_TEST
+endif
+
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lreadline -lovis_ctrl -lovis_util \

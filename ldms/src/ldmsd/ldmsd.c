@@ -97,7 +97,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:m:FkNf:D:qz:o:a"
+#define FMT "H:i:l:S:s:x:T:M:t:P:m:FkNf:D:qz:o:r:a"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -268,7 +268,10 @@ void usage(char *argv[])
 	       "		   %d < word length < %d", LDMSD_AUTH_ENV,
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 #endif /* ENABLE_AUTH */
+#ifdef ENABLE_LDMSD_TEST
+	printf("    -r port        The listener port for configuration.\n");
 	cleanup(1);
+#endif /* ENABLE_LDMSD_TEST */
 }
 
 int ev_thread_count = 1;
@@ -1264,6 +1267,7 @@ int ldmsd_get_secretword()
 int main(int argc, char *argv[])
 {
 	char *sockname = NULL;
+	char *config_port = NULL;
 	int ret;
 	int op;
 	ldms_set_t test_set;
@@ -1311,6 +1315,10 @@ int main(int argc, char *argv[])
 		case 'S':
 			/* Set the SOCKNAME to listen on */
 			sockname = strdup(optarg);
+			break;
+		case 'r':
+			/* Set the port to listen on configuration */
+			config_port = strdup(optarg);
 			break;
 		case 'l':
 			logfile = strdup(optarg);
@@ -1498,6 +1506,12 @@ int main(int argc, char *argv[])
 
 	if (ldmsd_config_init(sockname))
 		cleanup(4);
+
+#ifdef ENABLE_LDMSD_TEST
+	if (config_port)
+		if (ldmsd_inet_config_init(config_port))
+			cleanup(4);
+#endif /* ENABLE_LDMSD_TEST */
 
 	if (ldmsd_store_init(flush_N)) {
 		ldms_log("Could not initialize the storage subsystem.\n");

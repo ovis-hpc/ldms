@@ -84,6 +84,7 @@
 char myhostname[HOST_NAME_MAX+1];
 pthread_t ctrl_thread = (pthread_t)-1;
 int muxr_s = -1;
+int listener_sock = -1;
 char *sockname = NULL;
 struct attr_value_list *av_list;
 struct attr_value_list *kw_list;
@@ -114,6 +115,9 @@ void ldmsd_config_cleanup()
 		ldms_log("LDMS Daemon deleting socket file %s\n", sockname);
 		unlink(sockname);
 	}
+
+	if (listener_sock >= 0)
+		close(listener_sock);
 }
 
 static char replybuf[4096];
@@ -1393,7 +1397,7 @@ int process_record(int fd,
 
 	sprintf(replybuf, "-22Invalid command Id %ld\n", cmd_id);
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
- out:
+out:
 	return rc;
 }
 
@@ -1536,13 +1540,22 @@ void *ctrl_thread_proc(void *v)
 	return NULL;
 }
 
-void *inet_ctrl_thread_proc(void *v)
+void *inet_ctrl_thread_proc(void *args)
 {
 	struct msghdr msg;
 	struct iovec iov;
 	static unsigned char lbuf[256];
 	struct sockaddr_in sin;
 	iov.iov_base = lbuf;
+	struct sockaddr rem_sin;
+	socklen_t addrlen;
+loop:
+	muxr_s = accept(listener_sock, &rem_sin, &addrlen);
+	if (muxr_s < 0) {
+		ldms_log("Error %d failed to setting up the config "
+				"listener.\n", muxr_s);
+		goto loop;
+	}
 	do {
 		ssize_t msglen;
 		sin.sin_family = AF_INET;
@@ -1559,6 +1572,7 @@ void *inet_ctrl_thread_proc(void *v)
 			break;
 		process_message(muxr_s, &msg, msglen);
 	} while (1);
+	goto loop;
 	return NULL;
 }
 
@@ -1611,3 +1625,56 @@ int ldmsd_config_init(char *name)
 	}
 	return 0;
 }
+
+#ifdef ENABLE_LDMSD_TEST
+int ldmsd_inet_config_init(const char *port)
+{
+	int rc;
+	/* Create the control socket parsing structures */
+	av_list = av_new(128);
+	kw_list = av_new(128);
+	if (!av_list || !kw_list)
+		return ENOMEM;
+
+	struct sockaddr_in sin;
+	int sockfd, new_fd;
+	socklen_t sin_size;
+	struct sockaddr_storage their_addr;
+	char s[INET_ADDRSTRLEN];
+
+	memset(&sin, 0, sizeof(sin));
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(atoi(port));
+
+	listener_sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (listener_sock < 0) {
+		ldms_log("Error %d creating socket on port '%s'\n", errno, port);
+		return errno;
+	}
+
+	/* Bind to our public name */
+	rc = bind(listener_sock, (struct sockaddr *)&sin, sizeof(sin));
+	if (rc < 0) {
+		ldms_log("Error %d binding to socket on port '%s'.\n",
+						errno, port);
+		goto err;
+	}
+
+	rc = listen(listener_sock, 10);
+	if (rc) {
+		ldms_log("Error %d failed to setting up the config "
+				"listener.\n", rc);
+		goto err;
+	}
+
+	rc = pthread_create(&ctrl_thread, NULL, inet_ctrl_thread_proc, 0);
+	if (rc) {
+		ldms_log("Error %d creating the control pthread'.\n");
+		goto err;
+	}
+	return 0;
+err:
+	close(listener_sock);
+	return rc;
+}
+#endif /* ENABLE_LDMSD_TEST */
