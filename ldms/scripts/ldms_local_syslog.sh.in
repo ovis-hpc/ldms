@@ -43,7 +43,7 @@ TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
 LOGDIR=$TESTDIR/logs
-export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+#export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
 export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
 export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
 export LDMSD_SOCKPATH=${TESTDIR}/run
@@ -72,9 +72,9 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt
-ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt
-ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l syslog -r $TESTDIR/run/ldmsd.pid.1 -q DEBUG
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -r $TESTDIR/run/ldmsd.pid.2 -l syslog
+ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -r $TESTDIR/run/ldmsd.pid.3 -q INFO
 mysleep 1
 
 
@@ -104,16 +104,22 @@ echo Adding host1 to aggregator3
 echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
 mysleep 5
-echo Adding store_csv_rollover to aggregator3
-echo "load name=store_csv_rollover" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo Adding store_csv to aggregator3
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
-echo "config name=store_csv_rollover path=${STOREDIR} altheader=0 rollover=2048 rolltype=4" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv_rollover comp_type=node set=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=store_csv path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_csv comp_type=node set=clock container=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 #
 
-mysleep 2
-#echo ldms_ls on host 3:
-#ldms_ls -h localhost -x sock -p $port3 
+mysleep 5
+echo ldms_ls on host 1:
+ldms_ls -h localhost -x sock -p $port1 -l
+mysleep 1
+echo ldms_ls on host 2:
+ldms_ls -h localhost -x sock -p $port2 -l
+mysleep 1
+echo ldms_ls on host 3:
+ldms_ls -h localhost -x sock -p $port3 
 
 echo done;

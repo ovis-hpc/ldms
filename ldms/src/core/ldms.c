@@ -67,6 +67,7 @@
 #include <coll/rbt.h>
 #include <limits.h>
 #include <assert.h>
+#include <syslog.h>
 #ifdef ENABLE_MMAP
 #include <ftw.h>
 #endif
@@ -111,6 +112,21 @@ int ldms_str_to_level(const char *level_s)
 	}
 
 	return -1;
+}
+
+int ldms_level_to_syslog(int level)
+{
+	switch(level) {
+#define MAPLOG(X,Y) case LDMS_L##X: return LOG_##Y
+	MAPLOG(DEBUG,DEBUG);
+	MAPLOG(INFO,INFO);
+	MAPLOG(ERROR,ERR);
+	MAPLOG(CRITICAL,CRIT);
+	MAPLOG(ALWAYS,ALERT);
+	default:
+		return LOG_ERR;
+	}
+#undef MAPLOG	
 }
 
 static int set_comparator(void *a, void *b)

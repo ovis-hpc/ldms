@@ -12,13 +12,13 @@
 Summary: OVIS LDMS Commands and Libraries
 Name: ldms-all
 Version: @VERSION@
-Release: ovis1%{?dist}
+Release: ovis1genders%{?dist}
 License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
 Requires: rpm >= 4.8.0 ovis-libevent2
-BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel gcc46 ovis-libevent2-devel glib2-devel libibmad-devel
+BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel gcc ovis-libevent2-devel glib2-devel libibmad-devel
 Url: http://ovis.ca.sandia.gov/
 
 Prefix: /usr

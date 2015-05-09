@@ -368,6 +368,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_slurmtest.sh
 		 scripts/ldms_local_valgrind.sh
 		 scripts/ldms_local_clocktest.sh
+		 scripts/ldms_local_syslog.sh
 		 scripts/ldms_local_inspxe.sh
 		 scripts/ldms_local_inspxe_rdma.sh
 		 scripts/ldms_local_rdmatest.sh

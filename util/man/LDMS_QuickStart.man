@@ -144,6 +144,14 @@ Same but sending stdout and stderr to /dev/null
 .fi
 
 .IP \[bu]
+Same but using syslog instead of log file. Syslog messages include host and pid to differentiate daemon instances.
+.nf
+.RS
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l syslog  > /dev/null 2>&1
+.RE
+.fi
+
+.IP \[bu]
 Start 2 instances of ldmsd on your vm
 .nf
 .RS
