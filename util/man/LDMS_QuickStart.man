@@ -85,7 +85,6 @@ with the --help directive, this document describes the flags and parameters requ
 There are no run scripts provided in the current release; the commands here can be used in the creation of such.
 
 .SH START AN LDMSD ON YOUR HOST
-.PP
 Currently must be run be run as root if using the default path of /var/run/ for the unix domain socket. This can be changed using the environment variable LDMSD_SOCKPATH as described below.
 .SS
 Set environment variables:
@@ -103,14 +102,13 @@ export LDMSD_SOCKPATH=/tmp/run/ldmsd  #(non-root. Change -S arguments accordingl
 Run ldmsd:
 .nf
 .RS
-<path to executable>/ldmsd -x <transport>:<listen port> -P <# worker threads to start>
-	 -S <unix domain socket path/name> -l <log file path/name>
+<path to executable>/ldmsd -x <transport>:<listen port> -P <# worker threads to start> -S <unix domain socket path/name> -l <log file path/name>
 .RE
 .fi
-.PP
+
 Notes:
 .IP \[bu]
-transport is one of: sock, rdma, ugni (ugni is Cray specific for using RDMA over the Gemini/Aries network)
+Transport is one of: sock, rdma, ugni (ugni is Cray specific for using RDMA over the Gemini/Aries network)
 .IP \[bu]
 Number of worker threads defaults to 1 if not specified by -P and should not exceed the core count
 .IP \[bu] 2
@@ -183,8 +181,6 @@ ldmsctl>
 
 .SS Configure a collector with ldmsctl
 Now configure "meminfo" collector plugin to collect every second.
-.br
-Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
 .nf
 .RS
 ldmsctl> load name=meminfo
@@ -199,12 +195,14 @@ Notes:
 .IP \[bu]
 At the ldmsctl> prompt typing "help" will print out info about the ldmsctl commands and options.
 .IP \[bu]
+interval=<# usec> e.g interval=1000000 defines a one second interval.
+.IP \[bu]
 You can use stop name=meminfo followed by start name=meminfo interval=xxx to change collection intervals.
 .IP \[bu]
-For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy). This will cause 
-the sampler to target interval + yyy aligned to the second and micro second (e.g. every 5 seconds with an offset of 0 usec would ideally
-result in collections at 00:00:00, 00:00:05, 00:00:10, etc. whereas with an offset of 100,000 usec it would be 00:00:00.1, 00:00:05.1,
-00:00:10.1, etc)
+For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy).
+This will cause the sampler to target interval + yyy aligned to the second and micro second 
+(e.g. every 5 seconds with an offset of 0 usec would ideally result in collections at 00:00:00, 00:00:05, 00:00:10, etc.
+whereas with an offset of 100,000 usec it would be 00:00:00.1, 00:00:05.1, 00:00:10.1, etc)
 .IP \[bu]
 Different plugins may have additional configuration parameters. Use help within ldmsctl to see these.
 .IP \[bu]
@@ -325,8 +323,8 @@ and adding with appropriate parameters
 .IP \[bu]
 There is no requirement that aggregator intervals match collection intervals
 .IP \[bu]
-Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed
-samples. The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss
+Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed samples.
+The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss
 in fidelity (if collecting counter data) or a loss of data points here and there (if collecting differences of counter values or non counter
 values). This can be handled using the synchronous option on both collector and aggregator but is not covered here.
 .fi
@@ -382,10 +380,7 @@ ldmsctl> quit
 .fi
 
 .PP
-Notes:
-.IP \[bu]
-You can optionally use "hosts" and "metrics" in the store command to down select what is stored.
-.PP
+Note: You can optionally use "hosts" and "metrics" in the store command to down select what is stored.
 
 .SS Verify the store
 Go to data store and verify files have been created and are being written to
@@ -642,12 +637,8 @@ ldms_ls: Cannot allocate memory
 .SS Why doesn't my ldmsd start?
 .PP
 Possible options:
-.IP \[bu] 2
-Check for exsiting /var/run/ldms/metric_socket or similar
-.RS
 .IP \[bu]
-Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
-.RE
+Check for existing /var/run/ldms/metric_socket or similar. Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
 .IP \[bu]
 The port you are trying to use may already be in use on the node. The following shows the logfile output of such a case:
 .nf
@@ -678,7 +669,7 @@ netstat -abno
 .SS Why arent all my hosts/sets adding to the aggregator?
 Possible options:
 .IP \[bu]
-running multiples on the same host from a script -- note that sometimes multiple ldmsctls running concurrently may collide in creating ports. They should clean up after themselves and this usually isnt an issue. Are they supposed to be retrying after a fail?
+Running multiples on the same host from a script. Sometimes multiple ldmsctls running concurrently may collide in creating ports. They should clean up after themselves and this usually isn't an issue.
 .IP \[bu]
 use -m flag on the aggregator to use more memory when adding a lot of hosts
 .IP \[bu]
