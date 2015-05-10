@@ -1,5 +1,6 @@
 #!/usr/bin/perl
 use FileHandle;
+use Pod::Usage;
 use Getopt::Long;
 use IO::Handle;
 
@@ -25,6 +26,7 @@ $tempdir = '';
 $var = '';
 $beg = '';
 $end = '';
+my $help;
 
 %compidList;
 $compid_title = "CompId";
@@ -62,8 +64,10 @@ GetOptions ('titles=i' => \$usetitles,
 	    'compids=s' => \$compids,
 	    'beg=i' => \$beg,
 	    'end=i' => \$end,
-   ) or die "Usage: $0 --file FILE --tempdir TEMPDIR --var VARNAME --header HEADER --compids SLURMFORMAT --titles 1/0 --beg BEGTIME --end ENDTIME --ofile OUTFILE --tempdir TEMPDIR\n\tOptional: titles, beg, end.\n\tNOTE: if no file but with tempdir, will read from tempdir instead of writing to it\n";
+	    "help" =>\$help
+    ) || pod2usage(1);
 
+pod2usage(1) if $help;
 
 
 if ($oname eq ''){
@@ -210,3 +214,25 @@ foreach $id (sort(keys %compidList)){
 say {$GP} "$cmd";
 
 close $GP;
+
+__END__
+
+=head1 NAME
+
+gnuplotter.pl - Plot csv output data with gnuplot.
+
+=head1 SYNOPSIS
+
+gnuplotter.pl [options]
+
+ Options:
+    --file       Datafile.
+    --tempdir    Directory of temporary per-compid intermediate files. User has to delete these.
+    --var        Variable to plot (from HEADER).
+    --header     Header file. 1st line has variable names.
+    --compids    CompIds to plot (e.g., 1,3-5,7,9).
+    --titles     Print titles (1) or not (0). Optional.
+    --beg        Time to begin. Optional.
+    --end        Time to end. Optional.
+    --ofile      Output png file.
+ If no file but with tempdir, it will plot the data from tempdir, instead of writing to it.
