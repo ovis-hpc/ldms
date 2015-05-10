@@ -226,10 +226,10 @@ gnuplotter.pl - Plot csv output data with gnuplot.
 gnuplotter.pl [options]
 
  Options:
-    --file       Datafile.
+    --file       Datafile. CSV.
     --tempdir    Directory of temporary per-compid intermediate files. User has to delete these.
     --var        Variable to plot (from HEADER).
-    --header     Header file. 1st line has variable names.
+    --header     Header file. 1st # line has variable names. Comma separated w CompId as a field.
     --compids    CompIds to plot (e.g., 1,3-5,7,9).
     --titles     Print titles (1) or not (0). Optional.
     --beg        Time to begin. Optional.
