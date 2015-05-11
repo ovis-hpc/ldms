@@ -80,6 +80,7 @@
 #include <string.h>
 #include <strings.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include "baler/btkn_types.h"
 
@@ -127,7 +128,7 @@ struct bq_formatter {
 			uint32_t tkn_id);
 	int (*tkn_end)(struct bq_formatter *fmt, struct bdstr *bdstr);
 	int (*date_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
-			time_t ts);
+			const struct timeval *tv);
 	int (*host_fmt)(struct bq_formatter *fmt, struct bdstr *bdstr,
 			const struct bstr *bstr);
 };

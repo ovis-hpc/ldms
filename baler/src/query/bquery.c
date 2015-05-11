@@ -228,10 +228,11 @@ int fmt_tkn_end(struct bq_formatter *fmt, struct bdstr *bdstr)
 }
 
 static inline
-int fmt_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, time_t ts)
+int fmt_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
+		 struct timeval *tv)
 {
 	if (fmt->date_fmt)
-		return fmt->date_fmt(fmt, bdstr, ts);
+		return fmt->date_fmt(fmt, bdstr, tv);
 	return 0;
 }
 
@@ -501,16 +502,17 @@ int __default_tkn_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
 	return bdstr_append_bstr(bdstr, tkn);
 }
 
-int __default_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, time_t ts)
+int __default_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, const struct timeval *tv)
 {
 	char buff[64];
 	int len;
 	char *tmp;
 	struct tm tm;
-	localtime_r(&ts, &tm);
-	len = strftime(buff, sizeof(buff), "%FT%T.000000", &tm);
+	localtime_r(&tv->tv_sec, &tm);
+	len = strftime(buff, sizeof(buff), "%FT%T", &tm);
 	tmp = buff + len;
-	snprintf(buff+len, sizeof(buff)-len, "%+03d:%02d ",
+	snprintf(buff+len, sizeof(buff)-len, ".%06d%+03d:%02d ",
+					(int)tv->tv_usec,
 					(int)tm.tm_gmtoff / 3600,
 					(int) (tm.tm_gmtoff % 3600)/60);
 	return bdstr_append(bdstr, buff);
@@ -1434,7 +1436,11 @@ char *bq_entry_print(struct bquery *q, struct bdstr *bdstr)
 	rc = fmt_msg_prefix(q->formatter, bdstr);
 	if (rc)
 		goto out;
-	rc = fmt_date_fmt(q->formatter, bdstr, bq_entry_get_sec(q));
+	struct timeval tv = {
+		.tv_sec = bq_entry_get_sec(q),
+		.tv_usec = bq_entry_get_usec(q)
+	};
+	rc = fmt_date_fmt(q->formatter, bdstr, &tv);
 	if (rc)
 		goto out;
 	bstr = btkn_store_get_bstr(q->store->cmp_store,
@@ -2077,12 +2083,12 @@ struct bq_msg_fmt {
 } __bq_msg_fmt;
 
 static
-int __bq_msg_fmt_ts(struct bq_formatter *_fmt, struct bdstr *bdstr, time_t ts)
+int __bq_msg_fmt_ts(struct bq_formatter *_fmt, struct bdstr *bdstr, const struct timeval *tv)
 {
 	struct bq_msg_fmt *fmt = (void*)_fmt;
 	char buff[256];
 	struct tm tm;
-	localtime_r(&ts, &tm);
+	localtime_r(&tv->tv_sec, &tm);
 	strftime(buff, sizeof(buff), fmt->ts_fmt, &tm);
 	return bdstr_append_printf(bdstr, "%s ", buff);
 }
