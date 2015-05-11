@@ -316,7 +316,7 @@ uint32_t bmap_get_id_plus64(struct bmap *map,
 		struct bstr *_str = BMPTR(mstr, str_idx->data[node->data]);
 		if (_str->blen != str->blen)
 			continue;
-		if (strncmp(_str->cstr, str->cstr, str->blen) == 0) {
+		if (memcmp(_str->cstr, str->cstr, str->blen) == 0) {
 			id = node->data;
 			break;
 		}
