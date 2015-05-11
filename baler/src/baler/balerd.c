@@ -1842,7 +1842,12 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	/* Now str is the pattern string, with arguments in msg->argv */
 	/* pid stands for pattern id */
 	uint32_t pid = bptn_store_addptn(pattern_store, str);
-	if (pid == BMAP_ID_ERR) {
+	if (pid < BMAP_ID_BEGIN) {
+		char *tmp = malloc(65536);
+		assert(tmp);
+		bptn_store_ptn2str(pattern_store, token_store, str, tmp, 65536);
+		berr("bptn_store_addptn() failed for '%s', errno: %d", tmp, errno);
+		free(tmp);
 		rc = errno;
 		goto cleanup;
 	}

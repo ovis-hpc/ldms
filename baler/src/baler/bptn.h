@@ -168,7 +168,18 @@ void bptn_store_close_free(struct bptn_store *store);
 static
 uint32_t bptn_store_addptn(struct bptn_store *store, struct bstr *ptn)
 {
-	return bmap_insert(store->map, ptn);
+	uint32_t ptn_id;
+	void *attr = NULL;
+	int rc;
+	ptn_id = bmap_insert(store->map, ptn);
+	if (ptn_id < BMAP_ID_BEGIN) {
+		return ptn_id;
+	}
+	rc = barray_set(store->aattr, ptn_id, &attr);
+	if (rc) {
+		return BMAP_ID_ERR;
+	}
+	return ptn_id;
 }
 
 /**
@@ -209,6 +220,20 @@ int bptn_store_addmsg(struct bptn_store *store, struct bmsg *msg);
 int bptn_store_id2str(struct bptn_store *ptns, struct btkn_store *tkns,
 		      uint32_t ptn_id, char *dest, int len);
 
+/**
+ * Print \c ptn to destination \c dest string.
+ *
+ * \param ptns The pattern store handle.
+ * \param tkns The token store handle.
+ * \param ptn The pattern to be printed.
+ * \param[out] dest The output parameter.
+ * \param len The size of the \c dest buffer.
+ *
+ * \retval 0 if OK.
+ * \retval errno if error.
+ */
+int bptn_store_ptn2str(struct bptn_store *ptns, struct btkn_store *tkns,
+			const struct bstr *ptn, char *dest, int len);
 /**
  * Last ID.
  * \param ptns The pattern store.

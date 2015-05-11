@@ -326,6 +326,25 @@ int bptn_store_id2str(struct bptn_store *ptns, struct btkn_store *tkns,
 	return 0;
 }
 
+int bptn_store_ptn2str(struct bptn_store *ptns, struct btkn_store *tkns,
+			const struct bstr *ptn, char *dest, int len)
+{
+	int slen = len;
+	int l;
+	int i, rc;
+	char *s;
+	const uint32_t *c;
+	for (i=0,c=ptn->u32str; i<ptn->blen; c++,i+=sizeof(*c)) {
+		rc = btkn_store_id2str(tkns, *c, s, slen);
+		if (rc)
+			return rc;
+		l = strlen(s);
+		s += l;
+		slen -= l;
+	}
+	return 0;
+}
+
 uint32_t bptn_store_last_id(struct bptn_store *ptns)
 {
 	return ptns->map->hdr->next_id - 1;
