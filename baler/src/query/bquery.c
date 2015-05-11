@@ -504,9 +504,15 @@ int __default_tkn_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
 int __default_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr, time_t ts)
 {
 	char buff[64];
+	int len;
+	char *tmp;
 	struct tm tm;
 	localtime_r(&ts, &tm);
-	strftime(buff, sizeof(buff), "%FT%T%z ", &tm);
+	len = strftime(buff, sizeof(buff), "%FT%T.000000", &tm);
+	tmp = buff + len;
+	snprintf(buff+len, sizeof(buff)-len, "%+03d:%02d ",
+					(int)tm.tm_gmtoff / 3600,
+					(int) (tm.tm_gmtoff % 3600)/60);
 	return bdstr_append(bdstr, buff);
 }
 
@@ -1821,7 +1827,7 @@ enum {
 int verbose = 0;
 int reverse = 0;
 
-const char *ts_format = "%FT%T%z";
+const char *ts_format = NULL;
 
 void show_help()
 {
@@ -1854,55 +1860,57 @@ void show_help()
 "				connect to (query through daemon).\n"
 "\n"
 #endif
-"QUERY_OPTIONS:\n"
-"    --type,-t TYPE             The TYPE of the query, can be MSG, PTN or HOST.\n"
-"                                 * PTN will list all log patterns with their\n"
-"                                   pattern_ids. These pattern_ids are to be \n"
-"                                   used in ptn_id-mask option when querying\n"
-"                                   for MSG.\n"
-"                                 * HOST will list all hostnames with their\n"
-"                                   host_ids. These host_ids are to be used\n"
-"                                   with host-mask option when querying for\n"
-"                                   MSG.\n"
-"                                 * MSG will query messages from the store.\n"
-"                                   Users can give host-mask, begin, end, \n"
-"                                   ptn_id-mask to filter the message query.\n"
-"                                 * LIST_IMG will list all available image\n"
-"                                   stores.\n"
-"                                 * IMG will query image information from\n"
-"                                   image store (specified by '-I' option).\n"
-"                                   The pattern/host/time filtering conditions\n"
-"                                   are also applied.\n"
-"    --image-store-name,-I IMG_STORE_NAME\n"
-"				The image store to query against.\n"
-"    --host-mask,-H NUMBER,...	The comma-separated list of numbers of\n"
-"				required hosts. The NUMBER can be in X-Y\n"
-"				format. (example: -H 1-10,20,30-50)\n"
-"				If --host-mask is not specified, all hosts\n"
-"				are included in the query.\n"
-"    --begin,-B T1		T1 is the beginning of the time window.\n"
-"    --end,-E T2		T2 is the ending of the time window.\n"
-"				If T1 is empty, bquery will obtain all data\n"
-"				up until T2. Likewise, if T2 is empty, bquery\n"
-"				obtains all data from T1 onward. Example:\n"
-"				-B \"2012-01-01 00:00:00\" \n"
-"				-E \"2012-12-31 23:59:59\" \n"
-"				If --begin and --end are not specified,\n"
-"				there is no time window condition.\n"
-"    --ptn_id-mask,-P NUMBER,...\n"
-"				The number format is similar to --host-mask\n"
-"				option. The list of numbers specify\n"
-"				Pattern IDs to be queried. If ptn_id-mask is\n"
-"				is not specified, all patterns are included.\n"
-"    --ts-format,-F FMT		Time stamp output format for '-t MSG'.\n"
-"				The default is \"%%FT%%T%%z\". Another\n"
-"				frequently used format is \"%%s\", or the \n"
-"				number of seconds since epoch.\n"
-"				Please see strftime(3) man page for format\n"
-"				information.\n"
-"    --verbose,-v		Verbose mode. For '-t MSG', this will print\n"
-"				[PTN_ID] before the actual message\n"
-"\n"
+"QUERY_OPTIONS:\n\
+    --type,-t TYPE             The TYPE of the query, can be MSG, PTN or HOST.\n\
+                                 * PTN will list all log patterns with their\n\
+                                   pattern_ids. These pattern_ids are to be \n\
+                                   used in ptn_id-mask option when querying\n\
+                                   for MSG.\n\
+                                 * HOST will list all hostnames with their\n\
+                                   host_ids. These host_ids are to be used\n\
+                                   with host-mask option when querying for\n\
+                                   MSG.\n\
+                                 * MSG will query messages from the store.\n\
+                                   Users can give host-mask, begin, end, \n\
+                                   ptn_id-mask to filter the message query.\n\
+                                 * LIST_IMG will list all available image\n\
+                                   stores.\n\
+                                 * IMG will query image information from\n\
+                                   image store (specified by '-I' option).\n\
+                                   The pattern/host/time filtering conditions\n\
+                                   are also applied.\n\
+    --image-store-name,-I IMG_STORE_NAME\n\
+				The image store to query against.\n\
+    --host-mask,-H NUMBER,...	The comma-separated list of numbers of\n\
+				required hosts. The NUMBER can be in X-Y\n\
+				format. (example: -H 1-10,20,30-50)\n\
+				If --host-mask is not specified, all hosts\n\
+				are included in the query.\n\
+    --begin,-B T1		T1 is the beginning of the time window.\n\
+    --end,-E T2			T2 is the ending of the time window.\n\
+				If T1 is empty, bquery will obtain all data\n\
+				up until T2. Likewise, if T2 is empty, bquery\n\
+				obtains all data from T1 onward. Example:\n\
+				-B \"2012-01-01 00:00:00\" \n\
+				-E \"2012-12-31 23:59:59\" \n\
+				If --begin and --end are not specified,\n\
+				there is no time window condition.\n\
+    --ptn_id-mask,-P NUMBER,...\n\
+				The number format is similar to --host-mask\n\
+				option. The list of numbers specify\n\
+				Pattern IDs to be queried. If ptn_id-mask is\n\
+				is not specified, all patterns are included.\n\
+    --ts-format,-F FMT		Time stamp output format for '-t MSG'.\n\
+				The default is the new syslog time format\n\
+				with microseconds information (see RFC5424\n\
+				section 6.2.3.1 example 4). Another\n\
+				frequently used format is \"%%s\", or the \n\
+				number of seconds since epoch.\n\
+				Please see strftime(3) man page for format\n\
+				information.\n\
+    --verbose,-v		Verbose mode. For '-t MSG', this will print\n\
+				[PTN_ID] before the actual message\n\
+\n"
 #if 0
 "Other OPTIONS:\n"
 "    --store-path,s PATH	The path to the baler store. Using this\n"
@@ -2085,8 +2093,10 @@ int bq_local_msg_routine(struct bq_store *s)
 
 	const struct bmsg *bmsg;
 	__bq_msg_fmt.base = *bquery_default_formatter();
-	__bq_msg_fmt.base.date_fmt = __bq_msg_fmt_ts;
-	__bq_msg_fmt.ts_fmt = ts_format;
+	if (ts_format) {
+		__bq_msg_fmt.base.date_fmt = __bq_msg_fmt_ts;
+		__bq_msg_fmt.ts_fmt = ts_format;
+	}
 
 	struct bquery *q = bquery_create(s, hst_ids, ptn_ids, ts_begin, ts_end,
 					 1, 0, &rc);
