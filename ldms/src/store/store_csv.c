@@ -108,6 +108,18 @@ static int rolltype;
 /** Interval to check for passing the record or byte count limits. */
 #define ROLL_LIMIT_INTERVAL 60
 
+static struct column_step {
+	int begin;
+	int end;
+	int step;
+} cs = {0,0,0};
+
+
+/* help for column output orders */
+#define ORDERTYPES \
+"                     forward: metric columns ordered as added in sampler.\n" \
+"                     reverse: columns reverse of order added in sampler.\n" \
+"                     alnum: sorted per man page (not implemented)\n"
 
 static ldmsd_msg_log_f msglog;
 static pthread_t rothread;
@@ -345,6 +357,30 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			return EINVAL;
 	}
 
+	rvalue = av_value(avl, "sequence");
+	if (rvalue){
+		switch (rvalue[0]) {
+		case 'f':
+			if (strcmp(rvalue,"forward")==0) {
+				cs.step = -1;
+			}
+			break;
+		case 'a':
+			if (strcmp(rvalue,"alnum")==0) {
+				msglog(LDMS_LERROR,"store_csv sequence alnum"
+					" unsupported. using reverse.\n");
+			}
+			/* fallthru */
+		default:
+			cs.step = 1;
+			if (strcmp(rvalue,"reverse")!=0) {
+				msglog(LDMS_LERROR,"store_csv sequence=reverse"
+					" assumed. %s unknown\n",rvalue);
+			}
+			break;
+		}
+	}
+
 	pthread_mutex_lock(&cfg_lock);
 	if (root_path)
 		free(root_path);
@@ -384,7 +420,10 @@ static const char *usage(void)
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
 		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
-		"                     (Optional default use all compid)\n";
+		"                     (Optional default use all compid)\n"
+		"         - sequence  Determine the metric column ordering:\n"
+		ORDERTYPES
+		;
 }
 
 /*
@@ -404,6 +443,26 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	return s_handle->ucontext;
+}
+
+static
+void get_loop_limits(int num_metrics) {
+	switch (cs.step) {
+	case 1:
+		cs.begin = 0;
+		cs.end = num_metrics;
+		break;
+	case -1:
+		cs.begin = num_metrics - 1;
+		cs.end = -1;
+		break;
+	default:
+		msglog(LDMS_LERROR, "store_csv sequence bug in loop (%d)\n",
+			cs.step);
+		cs.begin = 0;
+		cs.end = -1;
+		cs.step = 1;
+	}
 }
 
 static int print_header(struct csv_store_handle *s_handle,
@@ -426,16 +485,17 @@ static int print_header(struct csv_store_handle *s_handle,
 	fprintf(fp, "#Time, Time_usec");
 
 	int num_metrics = ldms_mvec_get_count(mvec);
+	get_loop_limits(num_metrics);
 
 	if (id_pos < 0) {
-		for (i = num_metrics-1; i > -1; i--) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 		}
 	} else {
 		fprintf(fp, ", CompId");
-		for (i = num_metrics-1; i > -1; i--) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s", name);
 		}
@@ -601,9 +661,10 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 		ts->sec, ts->usec, ts->usec);
 
 	int num_metrics = ldms_mvec_get_count(mvec);
+	get_loop_limits(num_metrics);
 	if (id_pos < 0){
 		int i, rc;
-		for (i = num_metrics-1; i > -1; i--) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			comp_id = ldms_get_user_data(mvec->v[i]);
 			rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 				     comp_id, ldms_get_u64(mvec->v[i]));
@@ -628,7 +689,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			else
 				s_handle->byte_count += rc;
 		}
-		for (i = num_metrics -1; i > -1; i--) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			rc = fprintf(s_handle->file, ", %" PRIu64, ldms_get_u64(mvec->v[i]));
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
