@@ -109,7 +109,7 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 	struct bquery *q = NULL;
 	struct bdstr *bdstr = NULL;
 
-	fmt = bqfmt_json_new();
+	fmt = bqfmt_json_new(bq_store);
 	if (!fmt) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Not enough memory");
 		goto cleanup;
