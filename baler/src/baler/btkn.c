@@ -59,7 +59,7 @@ btkn_type_t btkn_type(const char *str)
 	return bget_str_idx(btkn_type_str, BTKN_TYPE_LAST, str);
 }
 
-struct btkn_store* btkn_store_open(char *path, int flag)
+struct btkn_store* btkn_store_open(const char *path, int flag)
 {
 	int create = flag & O_CREAT;
 	int acc_mode = flag & O_ACCMODE;
@@ -182,4 +182,24 @@ int btkn_store_refresh(struct btkn_store *store)
 		return rc;
 	rc = bmap_refresh(store->map);
 	return rc;
+}
+
+void btkn_store_iterate(struct btkn_store *btkn_store,
+			int (*cb)(uint32_t id, const struct bstr *bstr,
+					const struct btkn_attr *attr))
+{
+	uint32_t last = btkn_store->map->hdr->next_id - 1;
+	uint32_t i;
+	int rc;
+	for (i = BMAP_ID_BEGIN; i <= last; i++) {
+		struct btkn_attr attr;
+		const struct bstr *bstr;
+		attr = btkn_store_get_attr(btkn_store, i);
+		bstr = btkn_store_get_bstr(btkn_store, i);
+		if (!bstr)
+			continue;
+		rc = cb(i, bstr, &attr);
+		if (rc)
+			break;
+	}
 }

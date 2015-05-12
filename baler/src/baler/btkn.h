@@ -95,7 +95,7 @@ struct btkn_store {
  * \returns NULL on error.
  * \returns A pointer to the store on success.
  */
-struct btkn_store* btkn_store_open(char *path, int flag);
+struct btkn_store* btkn_store_open(const char *path, int flag);
 
 /**
  * Close and free the given ::btkn_store \c s.
@@ -227,5 +227,17 @@ int btkn_store_char_insert(struct btkn_store *store, const char *cstr,
  */
 int btkn_store_refresh(struct btkn_store *store);
 
+/**
+ * Iterate through the \c btkn_store, calling the \c cb function on each token
+ * in the store.
+ *
+ * \note The iteration stopped when the \c cb function return non-zero value.
+ *
+ * \param btkn_store The store handle.
+ * \param cb The callback function.
+ */
+void btkn_store_iterate(struct btkn_store *btkn_store,
+			int (*cb)(uint32_t id, const struct bstr *bstr,
+					const struct btkn_attr *attr));
 #endif /* __BTKN_H */
 /**\}*/
