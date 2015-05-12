@@ -52,3 +52,8 @@ libbout_me_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
 		       -lpthread -lzap @EVENTLIBS@ @OVIS_LIB_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_me.la
 
+libbin_test_la_SOURCES = bin_test.c
+libbin_test_la_CFLAGS = $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@
+libbin_test_la_LIBADD = ../baler/libbaler.la \
+			-lpthread @OVIS_LIB_LIBDIR_FLAG@
+lib_LTLIBRARIES += libbin_test.la
