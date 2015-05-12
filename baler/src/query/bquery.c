@@ -2181,7 +2181,7 @@ int bq_local_ptn_routine(struct bq_store *s)
 
 	while (id <= last_id) {
 		bdstr_reset(bdstr);
-		bdstr_append_printf(bdstr, "%*d", col_width[0], id);
+		bdstr_append_printf(bdstr, "%*d ", col_width[0], id);
 
 		if (verbose) {
 			const struct bptn_attrM *attrM =
@@ -2189,7 +2189,7 @@ int bq_local_ptn_routine(struct bq_store *s)
 			if (!attrM)
 				goto skip;
 
-			bdstr_append_printf(bdstr, " %*lu ",
+			bdstr_append_printf(bdstr, "%*lu ",
 						col_width[1], attrM->count);
 			__default_date_fmt(NULL, bdstr, &attrM->first_seen);
 			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
