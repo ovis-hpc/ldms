@@ -60,6 +60,7 @@
 #include "bmlist.h"
 #include <linux/limits.h>
 #include <sys/fcntl.h>
+#include <assert.h>
 
 void battrarray_free(struct barray *a)
 {
@@ -214,7 +215,8 @@ void bptn_store_close_free(struct bptn_store *store)
 	free(store);
 }
 
-int bptn_store_addmsg(struct bptn_store *store, struct bmsg *msg)
+int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
+					uint32_t comp_id, struct bmsg *msg)
 {
 	int rc = 0;
 	pthread_mutex_lock(&store->mutex);
@@ -246,15 +248,21 @@ int bptn_store_addmsg(struct bptn_store *store, struct bmsg *msg)
 			goto err2;
 		}
 		attrM = BMPTR(store->mattr, attrM_off);
+		attrM->count = 0;
+		attrM->first_seen = attrM->last_seen = *tv;
 		attrM->argc = msg->argc;
 		bmvec_u64_set(store->attr_idx, msg->ptn_id, attrM_off);
 	}
 
 	/* should not happen, but better safe than sorry */
-	if (attr->argc != msg->argc || attrM->argc != msg->argc) {
-		rc = EINVAL;
-		goto out;
-	}
+	assert(attr->argc == msg->argc && attrM->argc == msg->argc);
+
+	attrM->count++;
+	if (timercmp(tv, &attrM->first_seen, <))
+		attrM->first_seen = *tv;
+	if (timercmp(tv, &attrM->last_seen, >))
+		attrM->last_seen = *tv;
+
 	int i;
 	struct bmlnode_u32 *elm;
 	uint64_t elm_off;
@@ -368,4 +376,11 @@ int bptn_store_refresh(struct bptn_store *ptns)
 	if (rc)
 		return rc;
 	return rc;
+}
+
+const struct bptn_attrM *bptn_store_get_attrM(struct bptn_store *ptns, uint32_t id)
+{
+	uint64_t off = bmvec_u64_get(ptns->attr_idx, id);
+	struct bptn_attrM *attrM = BMPTR(ptns->mattr, off);
+	return attrM;
 }

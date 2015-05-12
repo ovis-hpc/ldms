@@ -81,12 +81,16 @@
 #include "btkn.h"
 
 #include <sys/fcntl.h>
+#include <sys/time.h>
 
 /**
  * Attributes for a Baler Pattern (stored in ::bptn_store::mattr).
  */
 struct bptn_attrM {
 	uint32_t argc; /**< Number of arguments. */
+	uint64_t count; /**< count */
+	struct timeval first_seen; /**< first seen */
+	struct timeval last_seen; /**< last seen */
 	uint64_t arg_off[0]; /**< Offset to the argument list in
 			   	  ::bptn_store::marg */
 };
@@ -200,11 +204,14 @@ uint32_t bptn_store_addptn_with_id(struct bptn_store *store, struct bstr *ptn,
 /**
  * Add \a msg (which is pattern + args) into \a store.
  * \param store The store.
+ * \param tv The timestamp of the message.
+ * \param comp_id the comp ID of the message.
  * \param msg The message.
- * \return 0 on success.
- * \return Error code on failure.
+ * \retval 0 on success.
+ * \retval errno error code on failure.
  */
-int bptn_store_addmsg(struct bptn_store *store, struct bmsg *msg);
+int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
+					uint32_t comp_id, struct bmsg *msg);
 
 /**
  * Convert \c ptn_id to C string.
@@ -273,6 +280,16 @@ const struct bstr *bptn_store_get_ptn(struct bptn_store *ptns, uint32_t id)
  * \retval errno Error.
  */
 int bptn_store_refresh(struct bptn_store *ptns);
+
+/**
+ * Get attribute of the pattern, with ID \c id.
+ *
+ * \param ptns The pattern store.
+ * \param id The pattern ID.
+ *
+ * \retval attrM Attribute of the pattern.
+ */
+const struct bptn_attrM *bptn_store_get_attrM(struct bptn_store *ptns, uint32_t id);
 #endif
 
 /**\}*/
