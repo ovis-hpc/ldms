@@ -30,6 +30,7 @@ OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 OPTION_WITH([ovis-lib], [OVIS_LIB])
 
+OPTION_DEFAULT_ENABLE([ovis_rctrl], [ENABLE_OVIS_RCTRL])
 OPTION_DEFAULT_DISABLE([ocmd], [ENABLE_OCMD])
 OPTION_DEFAULT_DISABLE([parsers], [ENABLE_PARSERS])
 
@@ -64,6 +65,7 @@ LIBS=""
 AC_CONFIG_FILES([Makefile
 		src/Makefile
 		src/test/Makefile
+		src/ovis_rctrl/Makefile
 		src/plugins/Makefile
 		src/parsers/Makefile
 		src/parsers/oparser_sqlite/Makefile
