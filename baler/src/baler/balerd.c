@@ -1275,7 +1275,7 @@ int process_cmd_tokens(struct bconfig_list *cfg)
 			return errno;
 		}
 		struct btkn_attr attr = {tkn_type};
-		btkn_store_set_attr(token_store, tkn_id, attr);
+		btkn_store_set_attr(store, tkn_id, attr);
 	}
 	return 0;
 }
