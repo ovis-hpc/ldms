@@ -222,8 +222,7 @@ int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
 	pthread_mutex_lock(&store->mutex);
 	struct bptn_attr *attr;
 	if (!barray_get(store->aattr, msg->ptn_id, &attr)) {
-		rc = ENOKEY;
-		goto out;
+		attr = NULL;
 	}
 	if (!attr) {
 		/* First message for the pattern */

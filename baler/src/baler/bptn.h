@@ -172,18 +172,7 @@ void bptn_store_close_free(struct bptn_store *store);
 static
 uint32_t bptn_store_addptn(struct bptn_store *store, struct bstr *ptn)
 {
-	uint32_t ptn_id;
-	void *attr = NULL;
-	int rc;
-	ptn_id = bmap_insert(store->map, ptn);
-	if (ptn_id < BMAP_ID_BEGIN) {
-		return ptn_id;
-	}
-	rc = barray_set(store->aattr, ptn_id, &attr);
-	if (rc) {
-		return BMAP_ID_ERR;
-	}
-	return ptn_id;
+	return bmap_insert(store->map, ptn);
 }
 
 /**
