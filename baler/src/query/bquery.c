@@ -361,37 +361,6 @@ err:
 	return NULL;
 }
 
-int bq_local_ptn_routine(struct bq_store *s)
-{
-	char buff[4096];
-	uint32_t id = bptn_store_first_id(s->ptn_store);
-	uint32_t last_id = bptn_store_last_id(s->ptn_store);
-	int rc = 0;
-	printf("-------- --------------\n");
-	printf("  ptn_id pattern\n");
-	printf("-------- --------------\n");
-	while (id <= last_id) {
-		rc = bptn_store_id2str(s->ptn_store, s->tkn_store, id, buff,
-									4096);
-		switch (rc) {
-		case 0:
-			/* do nothing, just continue the execution. */
-			break;
-		case ENOENT:
-			/* skip a loop for no entry */
-			goto skip;
-		default:
-			return rc;
-		}
-
-		printf("%8d %s\n", id, buff);
-	skip:
-		id++;
-	}
-	printf("-------- --------------\n");
-	return rc;
-}
-
 int bq_local_host_routine(struct bq_store *s)
 {
 	int rc = 0;
@@ -1915,7 +1884,9 @@ void show_help()
 				Please see strftime(3) man page for format\n\
 				information.\n\
     --verbose,-v		Verbose mode. For '-t MSG', this will print\n\
-				[PTN_ID] before the actual message\n\
+				[PTN_ID] before the actual message.\n\
+				For '-t PTN', this will also print pattern \n\
+				statistics (count, first seen, last seen).\n\
 \n"
 #if 0
 "Other OPTIONS:\n"
@@ -2139,6 +2110,123 @@ loop:
 out:
 	if (rc == ENOENT)
 		rc = 0;
+	return rc;
+}
+
+int bq_local_ptn_routine(struct bq_store *s)
+{
+	struct bdstr *bdstr;
+	uint32_t id = bptn_store_first_id(s->ptn_store);
+	uint32_t last_id = bptn_store_last_id(s->ptn_store);
+	int rc = 0;
+
+	int col_width[] = {
+		8, 20, 32, 32, 10
+	};
+
+	int need_verbose[] = {
+		0, 1, 1, 1, 0
+	};
+
+	const char *col_hdr[] = {
+		"ptn_id",
+		"count",
+		"first-seen",
+		"last-seen",
+		"pattern"
+	};
+	int col_width_len = sizeof(col_width)/sizeof(col_width[0]);
+	int i, j;
+
+	bdstr = bdstr_new(4096);
+	if (!bdstr) {
+		berror("bdstr_new()");
+		return errno;
+	}
+
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		for (j = 0; j < col_width[i]; j++) {
+			printf("-");
+		}
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		printf("%-*s", col_width[i], col_hdr[i]);
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		for (j = 0; j < col_width[i]; j++) {
+			printf("-");
+		}
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+
+	while (id <= last_id) {
+		bdstr_reset(bdstr);
+		bdstr_append_printf(bdstr, "%*d", col_width[0], id);
+
+		if (verbose) {
+			const struct bptn_attrM *attrM =
+					bptn_store_get_attrM(s->ptn_store, id);
+			if (!attrM)
+				goto skip;
+
+			bdstr_append_printf(bdstr, " %*lu ",
+						col_width[1], attrM->count);
+			__default_date_fmt(NULL, bdstr, &attrM->first_seen);
+			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
+		}
+
+		rc = bptn_store_id2str(s->ptn_store, s->tkn_store, id,
+					bdstr->str + bdstr->str_len,
+					bdstr->alloc_len - bdstr->str_len);
+		switch (rc) {
+		case 0:
+			/* do nothing, just continue the execution. */
+			break;
+		case ENOENT:
+			/* skip a loop for no entry */
+			goto skip;
+		default:
+			return rc;
+		}
+
+		printf("%s\n", bdstr->str);
+	skip:
+		id++;
+	}
+
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		for (j = 0; j < col_width[i]; j++) {
+			printf("-");
+		}
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+
 	return rc;
 }
 
