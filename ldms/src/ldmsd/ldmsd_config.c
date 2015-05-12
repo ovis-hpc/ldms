@@ -75,6 +75,7 @@
 #include <event2/thread.h>
 #include <coll/rbt.h>
 #include <coll/str_map.h>
+#include <ovis_util/util.h>
 #include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
@@ -86,8 +87,6 @@ pthread_t ctrl_thread = (pthread_t)-1;
 int muxr_s = -1;
 int listener_sock = -1;
 char *sockname = NULL;
-struct attr_value_list *av_list;
-struct attr_value_list *kw_list;
 
 int bind_succeeded;
 
@@ -224,9 +223,8 @@ extern void process_info_flush_thread(void);
 /**
  * Return information about the state of the daemon
  */
-int process_info(int fd,
-		 struct sockaddr *sa, ssize_t sa_len,
-		 char *command)
+int process_info(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	extern int ev_thread_count;
 	extern pthread_t *ev_thread;
@@ -304,7 +302,6 @@ int process_info(int fd,
 	pthread_mutex_unlock(&sp_list_lock);
 
 	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
@@ -1000,9 +997,8 @@ int config_store_policy(char *plugin_name, char *policy_name,
  * Functions to process ldmsctl commands
  */
 /* load plugin */
-int process_load_plugin(int fd,
-			struct sockaddr *sa, ssize_t sa_len,
-			char *command)
+int process_load_plugin(char *replybuf, struct attr_value_list *av_list,
+				struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1017,14 +1013,12 @@ int process_load_plugin(int fd,
 	int rc = ldmsd_load_plugin(plugin_name, err_str);
 	sprintf(replybuf, "%d%s", -rc, err_str);
 out:
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
 /* terminate a plugin */
-int process_term_plugin(int fd,
-			struct sockaddr *sa, ssize_t sa_len,
-			char *command)
+int process_term_plugin(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1039,14 +1033,12 @@ int process_term_plugin(int fd,
 	int rc = ldmsd_term_plugin(plugin_name, err_str);
 	sprintf(replybuf, "%d%s", -rc, err_str);
 out:
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
 /* configure a plugin */
-int process_config_plugin(int fd,
-			  struct sockaddr *sa, ssize_t sa_len,
-			  char *command)
+int process_config_plugin(char *replybuf, struct attr_value_list *av_list,
+				struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1061,14 +1053,12 @@ int process_config_plugin(int fd,
 	int rc = ldmsd_config_plugin(plugin_name, av_list, kw_list, err_str);
 	sprintf(replybuf, "%d%s", -rc, err_str);
 out:
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
 /* Assign user data to a metric */
-int process_set_udata(int fd,
-			struct sockaddr *sa, ssize_t sa_len,
-			char *command)
+int process_set_udata(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	char *set_name, *metric_name, *udata;
 	char err_str[LEN_ERRSTR];
@@ -1092,18 +1082,15 @@ int process_set_udata(int fd,
 
 	rc = ldmsd_set_udata(set_name, metric_name, udata, err_str);
 	sprintf(replybuf, "%d%s", -rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
-	einval:
-		sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-		return 0;
+einval:
+	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	return 0;
 }
 
 /* Start a sampler */
-int process_start_sampler(int fd,
-			 struct sockaddr *sa, ssize_t sa_len,
-			 char *command)
+int process_start_sampler(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	char *plugin_name, *interval, *offset;
 	char err_str[LEN_ERRSTR];
@@ -1124,17 +1111,14 @@ int process_start_sampler(int fd,
 
 	int rc = ldmsd_start_sampler(plugin_name, interval, offset, err_str);
 	sprintf(replybuf, "%d%s", -rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 einval:
 	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
-int process_oneshot_sample(int fd,
-		struct sockaddr *sa, ssize_t sa_len,
-		char *command)
+int process_oneshot_sample(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	char *attr;
 	char *plugin_name, *ts;
@@ -1157,14 +1141,12 @@ int process_oneshot_sample(int fd,
 einval:
 	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
 out:
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
 /* stop a sampler */
-int process_stop_sampler(int fd,
-			 struct sockaddr *sa, ssize_t sa_len,
-			 char *command)
+int process_stop_sampler(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1179,13 +1161,11 @@ int process_stop_sampler(int fd,
 	int rc = ldmsd_stop_sampler(plugin_name, err_str);
 	sprintf(replybuf, "%d%s", -rc, err_str);
 out:
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
-int process_ls_plugins(int fd,
-		       struct sockaddr *sa, ssize_t sa_len,
-		       char *command)
+int process_ls_plugins(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	struct ldmsd_plugin_cfg *p;
 	sprintf(replybuf, "0");
@@ -1195,14 +1175,12 @@ int process_ls_plugins(int fd,
 		if (p->plugin->usage)
 			strcat(replybuf, p->plugin->usage());
 	}
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
 /* add a host */
-int process_add_host(int fd,
-		     struct sockaddr *sa, ssize_t sa_len,
-		     char *command)
+int process_add_host(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	char *host, *type, *xprt, *port, *sets, *interval_s, *offset_s, *agg_no;
 	char err_str[LEN_ERRSTR];
@@ -1229,17 +1207,14 @@ int process_add_host(int fd,
 				interval_s, offset_s, agg_no, err_str);
 
 	sprintf(replybuf, "%d%s", -rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 einval:
 	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
-int process_update_standby(int fd,
-				struct sockaddr *sa, ssize_t sa_len,
-				char *command)
+int process_update_standby(char *replybuf, struct attr_value_list *av_list,
+					struct attr_value_list *kw_list)
 {
 	char *attr, *value;
 	int agg_no;
@@ -1268,16 +1243,13 @@ int process_update_standby(int fd,
 		saggs_mask &= ~(1 << (agg_no -1));
 
 	sprintf(replybuf, "0");
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
 	return 0;
 einval:
 	sprintf(replybuf, "%dThe value '%s' for '%s' is invalid.",
 						-EINVAL, value, attr);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
 	return 0;
 enoent:
 	sprintf(replybuf, "%dThe attribute '%s' is required.", -EINVAL, attr);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf) + 1);
 	return 0;
 }
 
@@ -1295,9 +1267,8 @@ enoent:
  *            specified, the value should be a comma separated list of
  *            host names.
  */
-int process_store(int fd,
-		  struct sockaddr *sa, ssize_t sa_len,
-		  char *command)
+int process_store(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
 {
 	int rc;
 	char *attr;
@@ -1328,24 +1299,20 @@ int process_store(int fd,
 				 metrics, hosts, err_str);
 
 	sprintf(replybuf, "%d%s", -rc, err_str);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 einval:
 	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return 0;
 }
 
-int process_remove_host(int fd,
-			 struct sockaddr *sa, ssize_t sa_len,
-			 char *command)
+int process_remove_host(char *replybuf, struct attr_value_list *av_list,
+					struct attr_value_list *kw_list)
 {
 	return -1;
 }
 
-int process_exit(int fd,
-		 struct sockaddr *sa, ssize_t sa_len,
-		 char *command)
+int process_exit(char *replybuf, struct attr_value_list *av_list,
+					struct attr_value_list *kw_list)
 {
 	cleanup(0);
 	return 0;
@@ -1374,6 +1341,8 @@ int process_record(int fd,
 {
 	char *cmd_s;
 	long cmd_id;
+	struct attr_value_list *av_list = av_new(128);
+	struct attr_value_list *kw_list = av_new(128);
 	int rc = tokenize(command, kw_list, av_list);
 	if (rc) {
 		ldms_log("Memory allocation failure processing '%s'\n",
@@ -1391,13 +1360,15 @@ int process_record(int fd,
 
 	cmd_id = strtoul(cmd_s, NULL, 0);
 	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND) {
-		rc = cmd_table[cmd_id](fd, sa, sa_len, cmd_s);
+		rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
 		goto out;
 	}
 
 	sprintf(replybuf, "-22Invalid command Id %ld\n", cmd_id);
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 out:
+	free(av_list);
+	free(kw_list);
+	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	return rc;
 }
 
@@ -1540,53 +1511,12 @@ void *ctrl_thread_proc(void *v)
 	return NULL;
 }
 
-void *inet_ctrl_thread_proc(void *args)
-{
-	struct msghdr msg;
-	struct iovec iov;
-	static unsigned char lbuf[256];
-	struct sockaddr_in sin;
-	iov.iov_base = lbuf;
-	struct sockaddr rem_sin;
-	socklen_t addrlen;
-loop:
-	muxr_s = accept(listener_sock, &rem_sin, &addrlen);
-	if (muxr_s < 0) {
-		ldms_log("Error %d failed to setting up the config "
-				"listener.\n", muxr_s);
-		goto loop;
-	}
-	do {
-		ssize_t msglen;
-		sin.sin_family = AF_INET;
-		msg.msg_name = &sin;
-		msg.msg_namelen = sizeof(sin);
-		iov.iov_len = sizeof(lbuf);
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		msg.msg_control = NULL;
-		msg.msg_controllen = 0;
-		msg.msg_flags = 0;
-		msglen = recvmsg(muxr_s, &msg, 0);
-		if (msglen <= 0)
-			break;
-		process_message(muxr_s, &msg, msglen);
-	} while (1);
-	goto loop;
-	return NULL;
-}
-
 int ldmsd_config_init(char *name)
 {
 	struct sockaddr_un sun;
 	int ret;
 
 	/* Create the control socket parsing structures */
-	av_list = av_new(128);
-	kw_list = av_new(128);
-	if (!av_list || !kw_list)
-		return ENOMEM;
-
 	if (!name) {
 		char *sockpath = getenv("LDMSD_SOCKPATH");
 		if (!sockpath)
@@ -1627,6 +1557,42 @@ int ldmsd_config_init(char *name)
 }
 
 #ifdef ENABLE_LDMSD_TEST
+void *inet_ctrl_thread_proc(void *args)
+{
+	struct msghdr msg;
+	struct iovec iov;
+	static unsigned char lbuf[256];
+	struct sockaddr_in sin;
+	iov.iov_base = lbuf;
+	struct sockaddr rem_sin;
+	socklen_t addrlen;
+loop:
+	muxr_s = accept(listener_sock, &rem_sin, &addrlen);
+	if (muxr_s < 0) {
+		ldms_log("Error %d failed to setting up the config "
+				"listener.\n", muxr_s);
+		goto loop;
+	}
+	do {
+		ssize_t msglen;
+		sin.sin_family = AF_INET;
+		msg.msg_name = &sin;
+		msg.msg_namelen = sizeof(sin);
+		iov.iov_len = sizeof(lbuf);
+		msg.msg_iov = &iov;
+		msg.msg_iovlen = 1;
+		msg.msg_control = NULL;
+		msg.msg_controllen = 0;
+		msg.msg_flags = 0;
+		msglen = recvmsg(muxr_s, &msg, 0);
+		if (msglen <= 0)
+			break;
+		process_message(muxr_s, &msg, msglen);
+	} while (1);
+	goto loop;
+	return NULL;
+}
+
 int ldmsd_inet_config_init(const char *port)
 {
 	int rc;
@@ -1677,4 +1643,5 @@ err:
 	close(listener_sock);
 	return rc;
 }
+
 #endif /* ENABLE_LDMSD_TEST */

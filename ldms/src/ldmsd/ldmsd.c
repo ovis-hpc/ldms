@@ -97,7 +97,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:m:FkNf:D:qz:o:r:a"
+#define FMT "H:i:l:S:s:x:T:M:t:P:m:FkNf:D:qz:o:r:p:a"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -269,9 +269,14 @@ void usage(char *argv[])
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 #endif /* ENABLE_AUTH */
 #ifdef ENABLE_LDMSD_TEST
-	printf("    -r port        The listener port for configuration.\n");
+	printf("    -r port        The listener port for receiving configuration.\n"
+	       "                   via socket\n");
 	cleanup(1);
 #endif /* ENABLE_LDMSD_TEST */
+#ifdef ENABLE_LDMSD_RCTRL
+	printf("    -p port        The listener port for receiving configuration\n"
+	       "                   from the ldmsd_rctl program\n");
+#endif
 }
 
 int ev_thread_count = 1;
@@ -1267,7 +1272,12 @@ int ldmsd_get_secretword()
 int main(int argc, char *argv[])
 {
 	char *sockname = NULL;
+#ifdef ENABLE_LDMSD_TEST
 	char *config_port = NULL;
+#endif /* ENABLE_LDMSD_TEST */
+#ifdef ENABLE_LDMSD_RCTRL
+	char *rctrl_port = NULL;
+#endif /* ENABLE_LDMSD_CTRL */
 	int ret;
 	int op;
 	ldms_set_t test_set;
@@ -1316,10 +1326,17 @@ int main(int argc, char *argv[])
 			/* Set the SOCKNAME to listen on */
 			sockname = strdup(optarg);
 			break;
+#ifdef ENABLE_LDMSD_TEST
 		case 'r':
 			/* Set the port to listen on configuration */
 			config_port = strdup(optarg);
 			break;
+#endif /* ENABLE_LDMSD_TEST */
+#ifdef ENABLE_LDMSD_RCTRL
+		case 'p':
+			rctrl_port = strdup(optarg);
+			break;
+#endif /* ENABLE_LDMSD_RCTRL */
 		case 'l':
 			logfile = strdup(optarg);
 			break;
@@ -1513,6 +1530,11 @@ int main(int argc, char *argv[])
 			cleanup(4);
 #endif /* ENABLE_LDMSD_TEST */
 
+#ifdef ENABLE_LDMSD_RCTRL
+	if (rctrl_port)
+		if (ldmsd_rctrl_init(rctrl_port))
+			cleanup(4);
+#endif /* ENABLE_LDMSD_RCTRL */
 	if (ldmsd_store_init(flush_N)) {
 		ldms_log("Could not initialize the storage subsystem.\n");
 		cleanup(7);

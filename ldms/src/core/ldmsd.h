@@ -319,9 +319,8 @@ typedef void (*ldmsd_msg_log_f)(const char *fmt, ...);
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
 
 /* ldmsctl command callback function definition */
-typedef int (*ldmsctl_cmd_fn)(int fd,
-			      struct sockaddr *sa, ssize_t sa_len,
-			      char *command);
+typedef int (*ldmsctl_cmd_fn)(char *replybuf, struct attr_value_list *av_list,
+			struct attr_value_list *kw_list);
 
 #define LDMSCTL_LIST_PLUGINS	0    /* List Plugins */
 #define LDMSCTL_LOAD_PLUGIN	1    /* Load Plugin */
@@ -338,6 +337,8 @@ typedef int (*ldmsctl_cmd_fn)(int fd,
 #define LDMSCTL_UPDATE_STANDBY	12   /* Update the standby state */
 #define LDMSCTL_ONESHOT_SAMPLE	13   /* Sample a set at a specific timestamp once */
 #define LDMSCTL_LAST_COMMAND	13
+
+extern ldmsctl_cmd_fn cmd_table[LDMSCTL_LAST_COMMAND + 1];
 
 #define LDMSD_CONTROL_SOCKNAME "ldmsd/control"
 
