@@ -310,11 +310,11 @@ int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out);
 /**
  * Get host ID.
  * \param store The store handle.
- * \param hostname The hostname.
+ * \param name The name of the component (host).
  * \returns Host ID if \c hostname is found.
- * \returns 0 if \c hostname is not found.
+ * \returns -1 if \c hostname is not found.
  */
-int bq_get_host_id(struct bq_store *store, const char *hostname);
+int bq_get_comp_id(struct bq_store *store, const char *name);
 
 /**
  * Check if the given \c ptn_id is a metric pattern.

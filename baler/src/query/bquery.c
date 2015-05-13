@@ -1587,12 +1587,14 @@ err:
 	return NULL;
 }
 
-int bq_get_host_id(struct bq_store *store, const char *hostname)
+int bq_get_comp_id(struct bq_store *store, const char *hostname)
 {
 	char buff[128];
 	struct bstr *str = (void*)buff;
 	bstr_set_cstr(str, (char*)hostname, 0);
 	uint32_t id = bmap_get_id(store->cmp_store->map, str);
+	if (id < BMAP_ID_BEGIN)
+		return -1;
 	return bmapid2compid(id);
 }
 
