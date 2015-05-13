@@ -37,6 +37,10 @@ set=<set_name>
 .br
 The name of the metric set.
 .TP
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
+.TP
 conffile=<conffile>
 .br
 Location of the configuration file. Format of file file is full_path_to_sysfs_var metricname multiplier offset (e.g., /home/xxx/temp tempA 1 0).

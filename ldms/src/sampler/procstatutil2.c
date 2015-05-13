@@ -65,6 +65,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 static const size_t PROCSTATUTIL_NAME_MAX=256;
 static const int NCORESUFFIX = 3; //used for getting sum names from per core names (#%d)
@@ -102,6 +103,8 @@ struct sampler_data {
 	.comp_id = UINT64_MAX,
 };
 // global instance, to become per instance later.
+
+LDMS_JOBID_GLOBALS;
 
 // scratch list element. v3 schemas will do more, but this
 // give the minimum to stay sane for now in create_set
@@ -322,7 +325,7 @@ int count_cpu( struct metric_tmp_list *lp,
 			- NCORESUFFIX + 1;
 		int len = itmp < PROCSTATUTIL_NAME_MAX ?
 			itmp : PROCSTATUTIL_NAME_MAX;
-		snprintf(metric_name, len, default_metric_name_fmt[column]);
+		snprintf(metric_name, len, default_metric_name_fmt[column],0);
 	} else {
 		snprintf(metric_name, PROCSTATUTIL_NAME_MAX,
 			 default_metric_name_fmt[column], *cpu_count);
@@ -353,7 +356,7 @@ int count_cpu( struct metric_tmp_list *lp,
 			int len = itmp < PROCSTATUTIL_NAME_MAX ?
 				itmp : PROCSTATUTIL_NAME_MAX;
 			snprintf(metric_name, len,
-				default_metric_name_fmt[column]);
+				default_metric_name_fmt[column],0);
 		} else {
 			snprintf(metric_name, PROCSTATUTIL_NAME_MAX,
 				 default_metric_name_fmt[column], *cpu_count);
@@ -402,6 +405,10 @@ static int create_metric_set(const char *path)
 	fseek(g.mf, 0, SEEK_SET);
 
 	metric_count = 0;
+
+	LDMS_SIZE_JOBID_METRIC(procstatutil2,meta_sz,total_meta_sz,
+		data_sz,total_data_sz,metric_count,rc,g.msglog);
+
 	cpu_count = -1;
 	do {
 		char *token;
@@ -563,6 +570,8 @@ if (strcmp(token,X)==0) { \
 	ldms_metric_t m;
 	int metric_no = 0;
 
+	LDMS_ADD_JOBID_METRIC(g.metric_table,metric_no,g.set,rc,err,g.comp_id);
+
 	struct metric_tmp *mt = mtl.head;
 	for ( ; mt != NULL; mt = mt->next) {
 		g.msglog(LDMS_LDEBUG,"admet: %s, %"PRIu64"\n",mt->name, mt->type);
@@ -632,6 +641,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		g.maxcpu = utmp;
 	}
 
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
+
 	value = av_value(avl, "set");
 	if (!value) {
 		g.msglog(LDMS_LERROR,"procstatutil2: config: set value required\n");
@@ -649,13 +660,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static int sample(void)
 {
-	int metric_no;
+	int metric_no = 0;
 	int rc = 0;
 	struct timespec time1;
 	char *saveptr = NULL;
 	int column_count = 0;
 	int cpu_count;
 	char metric_name[PROCSTATUTIL_NAME_MAX]; // used per-row for cpu match
+	union ldms_value v;
 
 #ifdef CHECK_PROCSTATUTIL_TIMING
 	uint64_t beg_nsec; //testing
@@ -674,6 +686,7 @@ static int sample(void)
 	beg_nsec = time1.tv_nsec;
 #endif
 
+	LDMS_JOBID_SAMPLE(v,g.metric_table,metric_no);
 
 	fseek(g.mf, 0, SEEK_SET);
 	metric_no = 0;
@@ -823,6 +836,7 @@ static void term(void)
 	g.set = NULL;
 	g.metric_table = NULL;
 	g.line = NULL;
+	LDMS_JOBID_TERM;
 }
 
 
@@ -832,6 +846,7 @@ static const char *usage(void)
 		"    comp_id     The component id value\n"
 		"    setname     The set name\n"
 		"    maxcpu      The number of cpus to record.\n"
+		LDMS_JOBID_DESC
 		"                If fewer exist, report 0s; if more ignore.\n"
 	;
 }

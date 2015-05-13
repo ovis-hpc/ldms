@@ -829,11 +829,17 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 
 #define LDMS_GRAIN_MMALLOC 1024
 
+/* shared singleton repository for named items in all threads */
+static resource_info_manager ldms_rim = NULL;
+
 int ldms_init(size_t max_size)
 {
 	TF();
 	size_t grain = LDMS_GRAIN_MMALLOC;
 	if (mm_init(max_size, grain))
+		return -1;
+	ldms_rim = create_resource_info_manager();
+	if (!ldms_rim)
 		return -1;
 	return 0;
 }
@@ -854,6 +860,11 @@ ldms_pedigree()
 	"configure args: " LDMS_CONFIG_ARGS "\n";
 	return pedigree;
 
+}
+
+resource_info_manager ldms_get_rim()
+{
+	return ldms_rim;
 }
 
 int ldms_create_set(const char *set_name,

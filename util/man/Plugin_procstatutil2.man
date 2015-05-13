@@ -28,6 +28,10 @@ name=<plugin_name>
 .br
 This MUST be procstatutil2.
 .TP
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
+.TP
 component_id=<comp_id>
 .br
 The component id numerical value.

@@ -18,7 +18,7 @@ The sysclassib plugin provides IB metric information.
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> metrics_type=<num> ports=<ports>
+name=<plugin_name> component_id=<comp_id> set=<set_name> metrics_type=<num> ports=<ports> with_jobid=<bool>
 .br
 ldmsctl configuration line
 .RS
@@ -38,11 +38,15 @@ The name of the metric set.
 metrics_type=<metrics_type>
 .br
 Values are 0 or 1. 0 = counter data only. 1 = include rate data in addtion.
-Default is both.
+Default is 0.
 .TP
 ports=<ports>
 .br
 CSV list of the form CARD1.PORT1,CARD2.PORT2. Default is all discovered values.
+.TP 
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
 .RE
 
 .SH BUGS
