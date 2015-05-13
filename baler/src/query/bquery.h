@@ -296,16 +296,19 @@ char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
 int bq_get_cmp(struct bq_store *store, int cmp_id, struct bdstr *out);
 
 /**
- * Get formatted pattern from the store.
+ * Print formatted pattern from the store.
  *
  * \param store The store handle.
+ * \param formatter The string formatter. If \c NULL, the default formatter will
+ *                  be used.
  * \param ptn_id Pattern ID.
  * \param[out] out Output formatted string of the pattern.
  *
  * \retval 0 OK.
  * \retval errno Error.
  */
-int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out);
+int bq_print_ptn(struct bq_store *store, struct bq_formatter *formatter,
+						int ptn_id, struct bdstr *out);
 
 /**
  * Get host ID.

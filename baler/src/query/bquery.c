@@ -1639,25 +1639,27 @@ out:
 	return rc;
 }
 
-int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out)
+int bq_print_ptn(struct bq_store *store, struct bq_formatter *formatter, int ptn_id, struct bdstr *out)
 {
 	int rc = 0;
 	uint32_t i;
 	uint32_t n;
-	struct bptn_store *ptn_store = q->store->ptn_store;
-	struct btkn_store *tkn_store = q->store->tkn_store;
+	struct bptn_store *ptn_store = store->ptn_store;
+	struct btkn_store *tkn_store = store->tkn_store;
 	const struct bstr *ptn = bptn_store_get_ptn(ptn_store, ptn_id);
 	const struct bstr *tkn;
 	struct btkn_attr attr;
 	if (!ptn)
 		return ENOENT;
+	if (!formatter)
+		formatter = &default_formatter;
 	rc = bdstr_reset(out);
 	if (rc)
 		return rc;
-	rc = fmt_ptn_prefix(q->formatter, out, ptn_id);
+	rc = fmt_ptn_prefix(formatter, out, ptn_id);
 	if (rc)
 		return rc;
-	rc = fmt_tkn_begin(q->formatter, out);
+	rc = fmt_tkn_begin(formatter, out);
 	if (rc)
 		return rc;
 	n = ptn->blen / sizeof(*ptn->u32str);
@@ -1665,14 +1667,14 @@ int bq_get_ptn(struct bquery *q, int ptn_id, struct bdstr *out)
 		attr = btkn_store_get_attr(tkn_store, ptn->u32str[i]);
 		tkn = btkn_store_get_bstr(tkn_store, ptn->u32str[i]);
 		assert(tkn);
-		rc = fmt_tkn_fmt(q->formatter, out, tkn, &attr, ptn->u32str[i]);
+		rc = fmt_tkn_fmt(formatter, out, tkn, &attr, ptn->u32str[i]);
 		if (rc)
 			return rc;
 	}
-	rc = fmt_tkn_end(q->formatter, out);
+	rc = fmt_tkn_end(formatter, out);
 	if (rc)
 		return rc;
-	rc = fmt_ptn_suffix(q->formatter, out);
+	rc = fmt_ptn_suffix(formatter, out);
 	if (rc)
 		return rc;
 	return rc;

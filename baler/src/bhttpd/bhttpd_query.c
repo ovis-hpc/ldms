@@ -106,7 +106,6 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 	int i;
 	int first = 1;
 	struct bq_formatter *fmt = NULL;
-	struct bquery *q = NULL;
 	struct bdstr *bdstr = NULL;
 
 	fmt = bqfmt_json_new(bq_store);
@@ -114,14 +113,6 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Not enough memory");
 		goto cleanup;
 	}
-
-	q = bquery_create(bq_store, NULL, NULL, NULL, NULL, 1, ' ', &rc);
-	if (!q) {
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Cannot create query, rc: %d", rc);
-		goto cleanup;
-	}
-
-	bq_set_formatter(q, fmt);
 
 	bdstr = bdstr_new(1024);
 	if (!bdstr) {
@@ -133,7 +124,7 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 	for (i=BMAP_ID_BEGIN; i<=n; i++) {
 		if (bq_is_metric_pattern(bq_store, i) != is_metric)
 			continue;
-		rc = bq_get_ptn(q, i, bdstr);
+		rc = bq_print_ptn(bq_store, fmt, i, bdstr);
 		if (rc) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "pattern query internal"
 					" error, rc: %d", rc);
@@ -151,8 +142,6 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 cleanup:
 	if (fmt)
 		bqfmt_json_free(fmt);
-	if (q)
-		bquery_destroy(q);
 	if (bdstr)
 		bdstr_free(bdstr);
 }
