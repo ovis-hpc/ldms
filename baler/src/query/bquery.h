@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -52,18 +52,39 @@
  * \file bquery.h
  * \brief Baler Query header.
  *
- * \defgroup bquery
+ * \defgroup libbquery libbquery
  * \{
- * \brief Query information from Baler store.
+ * \brief Library for querying information from Baler store.
  *
- * The following is the brief usage of message querying:
- * <pre>
- * 0. open baler store with bq_open_store()
- * 1. create query handle with bquery_create() with query constrains
- * 2. call bq_query() to get a message from the query.
- * 3. keep calling bq_query() until it returns NULL
- * </pre>
- * Please see bquery_create() and bq_query() for more information.
+ * libbquery provides the access to the following information:
+ * - messages (in given node-time window)
+ * - image pixels (in given node-time window in various granularity)
+ *
+ * The following is the brief usage for message and image querying:
+ * -# open baler store with bq_open_store()
+ * -# create message query handle with bquery_create() with query constrains.
+ *    For image querying, use bimgquery_create(). Please note that ::bimgquery
+ *    extends ::bquery, and \ref bq_entry_access can be used on ::bimgquery.
+ * -# call bq_first_entry() (or bq_last_entry()) move the query iterator to the
+ *    desired position.
+ * -# call bq_entry_print() to print the message, or one of the function in the
+ *    \ref bq_entry_access to get the data.
+ * -# call bq_next_entry() to move the iterator to the next matched entry, or
+ *    bq_prev_entry() to go to the previous matched entry. The return code from
+ *    the functions will tell if the iteration comes to an end.
+ *
+ * bquery requires balerd to use bout_sos_img for image pixel query and
+ * bout_sos_msg for message query. The sos files for img's and msg's are assumed
+ * to be in the store path as well.
+ *
+ * Other storage format for various output plugins are not supported.
+ *
+ * \note Store can contain several images of various granularity. Users
+ * can configure multiple bout_sos_img to store multiple images as they pleased.
+ * However, bquery does not know about those configuration. Users need to supply
+ * the image store (e.g. -I 3600-1) to query against. The image stores
+ * inside balerd store are named by SEC_PER_PIXEL-NODE_PER_PIXEL.
+ *
  */
 #ifndef __BQUERY_H
 #define __BQUERY_H
@@ -206,23 +227,13 @@ void bimgquery_destroy(struct bimgquery *q);
 bq_stat_t bq_get_stat(struct bquery *q);
 
 /**
- * Move the query reference to the next entry.
- *
- * \retval 0 OK
- * \retval errno if error.
+ * \defgroup bq_entry_nav bquery entry navigation
+ * \{
+ * \brief Functions to navigate throught entries that matched the query.
  */
-int bq_next_entry(struct bquery *q);
 
 /**
- * Move the query reference to the previous entry.
- *
- * \retval 0 OK
- * \retval errno if error.
- */
-int bq_prev_entry(struct bquery *q);
-
-/**
- * Go to the first entry for the query.
+ * Go to the first entry that matches the query.
  *
  * \retval 0 OK
  * \retval errno if error.
@@ -230,12 +241,32 @@ int bq_prev_entry(struct bquery *q);
 int bq_first_entry(struct bquery *q);
 
 /**
- * Go to the last entry for the query.
+ * Move the query reference to the next matched entry.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_next_entry(struct bquery *q);
+
+/**
+ * Move the query reference to the previously matched entry.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_prev_entry(struct bquery *q);
+
+/**
+ * Go to the last entry that matches the query.
  *
  * \retval 0 OK
  * \retval errno if error.
  */
 int bq_last_entry(struct bquery *q);
+
+/**
+ * \}
+ */
 
 /**
  * Print the entry to \c bdstr.
@@ -251,6 +282,11 @@ int bq_last_entry(struct bquery *q);
  *
  */
 char *bq_entry_print(struct bquery *q, struct bdstr *bdstr);
+
+/**
+ * \defgroup bq_ptn Pattern-related query.
+ * \{
+ */
 
 /**
  * \param store The store handle.
@@ -287,15 +323,6 @@ int bq_get_all_ptns_r(struct bq_store *store, char *buf, size_t buflen);
 char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
 
 /**
- * Get component name from ::bq_store \c store.
- *
- * \param store The store handle
- * \param cmp_id The component ID (starts from 1)
- * \param[out] out The output ::bdstr.
- */
-int bq_get_cmp(struct bq_store *store, int cmp_id, struct bdstr *out);
-
-/**
  * Print formatted pattern from the store.
  *
  * \param store The store handle.
@@ -311,6 +338,27 @@ int bq_print_ptn(struct bq_store *store, struct bq_formatter *formatter,
 						int ptn_id, struct bdstr *out);
 
 /**
+ * Check if the given \c ptn_id is a metric pattern.
+ *
+ * \retval 1 if the pattern is a metric pattern.
+ * \retval 0 if it is not.
+ */
+int bq_is_metric_pattern(struct bq_store *store, int ptn_id);
+
+/**
+ * \}
+ */
+
+/**
+ * Get component name from ::bq_store \c store.
+ *
+ * \param store The store handle
+ * \param cmp_id The component ID (starts from 1)
+ * \param[out] out The output ::bdstr.
+ */
+int bq_get_cmp(struct bq_store *store, int cmp_id, struct bdstr *out);
+
+/**
  * Get host ID.
  * \param store The store handle.
  * \param name The name of the component (host).
@@ -320,12 +368,10 @@ int bq_print_ptn(struct bq_store *store, struct bq_formatter *formatter,
 int bq_get_comp_id(struct bq_store *store, const char *name);
 
 /**
- * Check if the given \c ptn_id is a metric pattern.
- *
- * \retval 1 if the pattern is a metric pattern.
- * \retval 0 if it is not.
+ * \defgroup bq_sub_store sub store access.
+ * \{
+ * \brief functions to access sub stores (comp store, token store and pattern store).
  */
-int bq_is_metric_pattern(struct bq_store *store, int ptn_id);
 
 /**
  * Get component (token) store from \c store.
@@ -343,6 +389,16 @@ struct btkn_store *bq_get_tkn_store(struct bq_store *store);
 struct bptn_store *bq_get_ptn_store(struct bq_store *store);
 
 /**
+ * \}
+ */
+
+/**
+ * \defgroup bq_entry_access bquery entry data access functions
+ * \{
+ * \brief A group of bquery entry data access functions.
+ */
+
+/**
  * Get the field of second (time) of the current query entry.
  */
 uint32_t bq_entry_get_sec(struct bquery *q);
@@ -357,21 +413,45 @@ uint32_t bq_entry_get_usec(struct bquery *q);
  */
 uint32_t bq_entry_get_comp_id(struct bquery *q);
 
+/**
+ * Get pattern ID of the current query entry.
+ */
 uint32_t bq_entry_get_ptn_id(struct bquery *q);
 
 /**
- * Get Baler-internal format message of the current query entry.
+ * Get Baler-internal strucured message of the current query entry.
+ *
+ * \note Unlike others, this function cannot be used with ::bimgquery.
  */
 const struct bmsg *bq_entry_get_msg(struct bquery *q);
 
 /**
  * Get message reference of the current entry.
+ *
+ * \note Unlike others, this function cannot be used with ::bimgquery.
  */
 uint64_t bq_entry_get_ref(struct bquery *q);
 
+/**
+ * Get the counting value from the current image query entry (pixel).
+ *
+ * \param q the image query handle.
+ *
+ * \retval count The count value of current pixel.
+ */
 uint32_t bq_img_entry_get_count(struct bimgquery *q);
 
+/**
+ * Get current pixel information from the query \c q.
+ *
+ * \param[out] p the pixel output parameter.
+ *
+ * \retval 0 if OK.
+ * \retval errno if error.
+ */
 int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p);
+
+/** \} */
 
 int bq_store_refresh(struct bq_store *store);
 
