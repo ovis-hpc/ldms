@@ -53,22 +53,85 @@
  * \file balerd.c
  * \author Narate Taerat (narate@ogc.us)
  * \date Mar 19, 2013
+ */
+
+/**
+ * \mainpage Baler - a log processing system.
  *
- * \page balerd Baler Daemon
+ * Baler is a set of software for log processing. <tt>balerd</tt> (\ref balerd)
+ * listens for forwarded logs from various sources (one of which is rsyslogd),
+ * then it extracts a pattern and stores the message (in a reduced form -- see
+ * \ref balerd for more information). <tt>balerd</tt> also supports distributed
+ * log processing -- having more than one <tt>balerd</tt> working together to
+ * process large number of logs (e.g. from different node/rack).
+ *
+ * \c bquery (\ref bquery) is a program to query patterns, messages and other
+ * information from the data processed by \c balerd. The query can be performed
+ * live, i.e. \c bquery can query the data while \c balerd is running. Please
+ * see \ref bquery page for more information about querying.
+ *
+ * \c bhttpd (\ref bhttpd) is an HTTP server providing Baler data access similar
+ * to \c bquery. Please note that \c bhttpd serves only the back-end data (in
+ * JSON format). The front-end elements are not included.
+ *
+ * For the front-end GUI, Baler comes with a set of basic GUI widgets and query
+ * library (to communicate with \c bhttpd) implemented in JavaScript. Please see
+ * baler/src/bhttpd/html/ in the source tree for more information.
+ *
+ * \par links
+ * - \ref balerd
+ * - \ref bquery
+ * - \ref bhttpd
+ * - \ref bassoc
+ */
+
+/**
+ * \page balerd Baler daemon
  *
  * \section synopsis SYNOPSIS
- *   balerd [OPTIONS]
+ * \b balerd [\b OPTIONS]
  *
  * \section description DESCRIPTION
- * TODO More about balerd here.
  *
- * In master mode, balerd manages its own token and pattern maps.  It won't ask
- * other balerd when it found a new token or pattern. Master-mode balerd also
- * serves token/pattern operations requested by client-mode balerd.
+ * \b balerd (Baler Daemon) is the core program that process input messages
+ * (prepared by various input plugins -- see more in \ref binput). The process
+ * starts by an input plugin prepares an input entry and post it to the \b
+ * balerd's input queue. In an input entry, a message is decomposed roughly into
+ * three fields: timestamp, host or component name, and a list tokens composing
+ * the message.
  *
- * Client-mode balerd always ask its master when it finds a new token or
- * pattern. The information received from the master will also be stored locally
- * to reduce further network traffic.
+ * \b balerd process an input entry by transforming the host name and tokens
+ * into numbers (IDs). The message at this stage will be described as a sequence
+ * of token IDs instead of a sequence of tokens. The mapping (token_ID <-->
+ * token) is stored in \b balerd internal store.
+ *
+ * Next, \b balerd extracts a pattern out of a message by preserving static
+ * tokens in the message and replacing the variable tokens by a special token
+ * '*'. Right now, the heuristic to determine a static token is to check whether
+ * it is an English word--if so, it is a static token. The extracted pattern is
+ * checked against or inserted into a pattern mapping (pattern_ID <--> pattern)
+ * to obtain a pattern_ID. The pattern mapping is also stored inside \b balerd's
+ * internal store.  Then, the message is reduced into the form of <pattern_ID,
+ * token_ID0, token_ID1, ...>, where token_ID#'s are the corresponding
+ * token_ID's in the variable positions.
+ *
+ * The processed (reduced) message is then forwarded to Baler Output Plugins
+ * (see \ref boutput) for further processing and message storage.
+ *
+ * \b balerd input and output plugins can be configured via Baler Configuration
+ * file. Please see \ref configuration section below.
+ *
+ * To support large-scale system, multiple \b balerd's are needed to parallelly
+ * process the large amount of input. One can run multiple \b balerd's
+ * independently, but this can be problematic because the same pattern (or
+ * token) that appear in two different \b balerd's can be assigned to a
+ * different ID. To solve this problem, \b balerd can run in two mode: \b master
+ * and \b slave (see <b>-m</b> OPTION). There should only be one master, and
+ * multiple slaves. The master \b balerd is the one who knows all of the
+ * mapping. The slave \b balerd's know only by the need-to-know basis. When a
+ * slave \b balerd encountered a new token (or pattern), it asks the master to
+ * assign the ID.  When the ID is assigned, the slave also stores that ID
+ * mapping locally to reduce further network traffic.
  *
  * \section options OPTIONS
  *
@@ -92,13 +155,13 @@
  * Zap transport to be used in slave-master communication (default: sock).
  *
  * \par -h M_HOST
- * For slave-mode balerd, this option specifies master hostname or IP address to
+ * For \b slave balerd, this option specifies master hostname or IP address to
  * connect to. This option is ignored in master-mode. This option is required in
  * slave-mode balerd and has no default value.
  *
  * \par -p M_PORT
- * For slave-mode balerd, this specifies the port of the master to connect to.
- * For master-mode balerd, this specifies the port number to listen to.
+ * For \b slave balerd, this specifies the port of the master to connect to.
+ * For \b master balerd, this specifies the port number to listen to.
  * (default: ':30003').
  *
  * \par -z OCM_PORT
@@ -109,11 +172,60 @@
  * Display help message.
  *
  * \section configuration CONFIGURATION
- * Baler configuration file
+ *
+ * Baler configuration file (OPTION \b -C) contains a sequence of \b balerd
+ * config commands to configure \b balerd. The available commands are documented
+ * as follows.
+ *
+ * \subsection config_command CONFIGURATION COMMANDS
+ *
+ * \par tokens type=(ENG|HOST) path=PATH
+ * Load ENG or HOST tokens from PATH.
+ *
+ * \par plugin name=PLUGIN_NAME [PLUGIN-SPECIFIC-OPTIONS]
+ * Load the plugin \b PLUGIN_NAME and configure the plugin with \b
+ * PLUGIN-SPECIFIC-OPTIONS. The specified plugin can either be input or output
+ * plugins (or both ... if the developer wants to). Conventionally, the input
+ * plugin names start with 'bin_' and the output plugin names start with
+ * 'bout_'. It is advisable to load output plugins BEFORE the input plugins to
+ * prevent lost output data as \b balerd could finish processing some of the
+ * input before the output plugins finish loading. Please see each plugin
+ * documentation for its specific options.
+ *
+ * \par # comment
+ * The '#' comment at the beginning of each line is supported. However, the
+ * in-line trailing '#' comment is not supported. For example:
+ * \code{.conf}
+ * # This is a good comment.
+ * tokens type=ENG path=my_dict # This is a bad comment.
+ * \endcode
  *
  * \section conf_example CONFIGURATION_EXAMPLE
- * TODO Configuration example here
+ * \code{.conf}
+ * tokens type=ENG path=/path/to/word.list
+ * tokens type=HOST path=/path/to/host.list
  *
+ * # Image output with 3600 seconds (1 hour) pixel granularity.
+ * plugin name=bout_sos_img delta_ts=3600
+ *
+ * # Another image output with 60 seconds (1 minute) pixel granularity.
+ * plugin name=bout_sos_img delta_ts=60
+ *
+ * # Message output
+ * plugin name=bout_sos_msg
+ *
+ * # Input plugin for rsyslog, don't forget to configure rsyslog in each
+ * # node to forward messages to balerd host, port 11111.
+ * plugin name=bin_rsyslog_tcp port=11111
+ *
+ * # Input processing plugin for metric data. The metric data will be converted
+ * # into message-based event data (metricX is in range [A, B]) to feed to
+ * # balerd.
+ * plugin name=bin_metric port=22222 bin_file=METRIC_BIN_FILE
+ * \endcode
+ */
+
+/**
  * \defgroup balerd_dev Baler Daemon Development Documentation
  * \{
  * \brief Baler daemon implementation.
