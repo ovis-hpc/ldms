@@ -1103,6 +1103,9 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
 	zap_err_t zerr;
 
+	/* Replace the callback with the one provided by the caller */
+	sep->ep.cb = cb;
+
 	struct evbuffer *ebuf = evbuffer_new();
 	if (!ebuf)
 		return ZAP_ERR_RESOURCE;
