@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-14 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-14 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -51,34 +51,6 @@
 /**
  * \file bquery.c
  * \author Narate Taerat (narate at ogc dot us)
- * \brief Baler storage query.
- *
- * bquery queries Baler database for:
- * 	- token
- * 	- patterns (in given node-time window)
- * 	- messages (in given node-time window)
- * 	- image pixels (in given node-time window in various granularity)
- *
- * tokens and patterns information are obtained from baler store (specified by
- * store path).
- *
- * bquery requires balerd to use bout_sos_img for image pixel query and
- * bout_sos_msg for message query. The sos files for img's and msg's are assumed
- * to be in the store path as well.
- *
- * Other storage format for various output plugins are not supported.
- *
- * bqeury can also run in daemon mode to eliminate the open-file overhead before
- * every query. A client can stay connected to bquery daemon and query
- * information repeatedly.
- *
- * XXX Issue: store should contain several images of various granularity. Users
- * can configure multiple bout_sos_img to store multiple images as they pleased.
- * However, bquery does not know about those configuration. I need to solve
- * this, either with baler_store configuration or other things. But, for now, I
- * will only support message query to test the balerd. Image query support shall
- * be revisited soon.
- *
  */
 
 #include "bquery.h"
@@ -1735,6 +1707,187 @@ out:
 		wordfree(&wexp);
 	return rc;
 }
+
+/**
+ * \page bquery Baler query command-line interface
+ *
+ * \section synopsis SYNOPSIS
+ *
+ * \b bquery \b -t PTN \b -s STORE [\b -v]
+ *
+ * \b bquery \b -t HOST \b -s STORE
+ *
+ * \b bquery \b -t MSG \b -s STORE [\b -B TS ] [\b -E TS]
+ *          [\b -H NUM_LIST] [\b -P NUM_LIST] [\b -v]
+ *
+ * \b bquery \b -t LIST_IMG \b -s STORE
+ *
+ * \b bquery \b -t IMG \b -s STORE \b -I IMG_STORE [\b -B TS ] [\b -E TS]
+ *          [\b -H NUM_LIST] [\b -P NUM_LIST]
+ *
+ * \section description DESCRIPTION
+ *
+ * \b bquery is a command-line interface to query data from balerd store. It
+ * supports the following query types:
+ *
+ * \subsection bquery_ptn PTN - Pattern listing
+ *
+ * With option <b>-t PTN</b>, bquery will list all patterns in the store. With
+ * additional <b>-v</b> option, the occurence count, first-seen and last seen
+ * statistics of the patterns will also be printed.
+ *
+ * \subsection bquery_host HOST - Host listing
+ *
+ * With option <b>-t HOST</b>, bquery will list all hosts.
+ *
+ * \subsection bquery_msg MSG - Message querying
+ *
+ * With option <b>-t MSG</b>, bquery will list all messages matching the given
+ * query criteria. The criteria include begin timestamp (\b -B), end timestamp
+ * (\b -E), list of host IDs (\b -H), and list of pattern IDs (\b -P). Should
+ * any criterion is omitted, it will not be used in the criteria test. For
+ * example, if host IDs criterion is not given, bquery will list all messages
+ * from all hosts that match the other specified criteria. If no criterion is
+ * specified, bquery will list all messages in the store.
+ *
+ * The format of the <b>timestamp</b> can either be Unix timestamp (the number
+ * of seconds since Epoch) or "yyyy-mm-dd HH:MM:SS".
+ *
+ * The format for both the list of <b>pattern IDs</b> and the list of
+ * <b>host IDs</b> is comma-separated ranges and single numbers. For example
+ * "1,3-9,20-30,100".
+ *
+ * \subsection bquery_list_img LIST_IMG - Image store listing
+ *
+ * With option <b>-t LIST_IMG</b>, bquery will list all available image stores.
+ * Image store is needed in order to query image pixels (see \ref bquery_img).
+ *
+ * \subsection bquery_img IMG - Image querying
+ *
+ * With option <b>-t IMG</b>, bquery will list image pixels that matched the
+ * query criteria. The criteria for image query is the same as the criteria for
+ * message querying above. The image store option <b>-I IMG_STORE</b> is needed.
+ * To list all available image store, please see section \ref bquery_list_img.
+ *
+ * \section options OPTIONS
+ *
+ * \par -t,--type QUERY_TYPE
+ * Specify the type of the query. The QUERY_TYPE can be one of the following
+ * (case INsensitive): PTN, HOST, MSG, LIST_IMG, and IMG.
+ *
+ * \par -I,--image-store-name IMG_STORE
+ * Specify the image store name. IMG_STORE must be one of the image stores
+ * listed by bquery with option <b>-t LIST_IMG</b>.
+ *
+ * \par -H,--host-mask NUM_LIST
+ * Specify the list of hosts for the query. This option only applies to <b>-t
+ * IMG</b> and <b>-t MSG</b>. When the host mask is specified, only the entries
+ * matching the hosts in the list will be reported.
+ *
+ * <b>NUM_LIST</b> is the comma-separated list of numbers or ranges, e.g.
+ * 1,3-5,7-10,12. No space is allowed in the list.
+ *
+ * \par -P,--ptn_id-mask NUM_LIST
+ * Specify the list of pattern IDs for the query. This option only applies to
+ * <b>-t IMG</b> and <b>-t MSG</b>. When the pattern ID mask is specified, only
+ * the entries matching the pattern IDs in the list wil be reported.
+ *
+ * <b>NUM_LIST</b> is the comma-separated list of numbers or ranges, e.g.
+ * 1,3-5,7-10,12. No space is allowed in the list.
+ *
+ * \par -B,--begin TS
+ * Specify the begin time stamp for the query. This option only applies to
+ * <b>-t IMG</b> and <b>-t MSG</b>. This option will filter out the entries
+ * having the time stamp before the specified beginning timestamp.
+ *
+ * <b>TS</b> can be Unix timestamp (the number of seconds since the Epoch) or
+ * "yyyy-mm-dd HH:MM:SS".
+ *
+ * \par -E,--end TS
+ * Specify the end time stamp for the query. This option only applies to
+ * <b>-t IMG</b> and <b>-t MSG</b>. This option will filter out the entries
+ * having the time stamp after the specified beginning timestamp.
+ *
+ * <b>TS</b> can be Unix timestamp (the number of seconds since the Epoch) or
+ * "yyyy-mm-dd HH:MM:SS".
+ *
+ * \par -F,--ts-format FORMAT
+ * OUTPUT format of the timestamp field for <b>-t MSG</b> option. The default
+ * format is to follow the new syslog timestamp format (see RFC5424 section
+ * 6.2.3.1 example 4) to the micro-second.
+ *
+ * The <b>FORMAT</b> string must comply the format string in <b>strftime</b>(3).
+ * One frequently used format is '%s' (the number of seconds since Epoch).
+ *
+ * \par -v,--verbose
+ * The verbose flag, which only applies to only <b>-t MSG</b> and <b>-t PTN</b>.
+ *
+ * For <b>-t MSG</b>, the verbose flag will cause <b>bquery</b> to print pattern
+ * ID in the front of each output message.
+ *
+ * For <b>-t PTN</b>, the verbose flag will cause <b>bquery</b> to print count,
+ * first-seen, and last-seen statistics of each pattern.
+ *
+ * \section examples EXAMPLES
+ *
+ * Get a list of hosts (or components):
+ * \par
+ * \code{.sh}
+ * bquery -s store/ -t HOST
+ * \endcode
+ *
+ * Get a list of patterns:
+ * \par
+ * \code{.sh}
+ * # No statistics
+ * bquery -s store/ -t PTN
+ *
+ * # With pattern statistics
+ * bquery -s store/ -t PTN -v
+ * \endcode
+ *
+ * Message query examples:
+ * \par
+ * \code{.sh}
+ * # All messages from host 10, 12, 13, 14, and 15
+ * bquery -s store/ -t MSG -H 10,12-15
+ *
+ * # All messages from all hosts from a specific time window
+ * bquery -s store/ -t MSG -B "2014-12-31 08:00:00" -E "2014-12-31 18:00:00"
+ *
+ * # Get all messages from some specific patterns
+ * bquery -s store/ -t MSG -P 128,130-135
+ *
+ * # Mixed criteria
+ * bquery -s store/ -t MSG -P 128,130-135 -H 10,12-15 \\
+ *                  -B "2014-12-31 08:00:00" -E "2014-12-31 18:00:00"
+ * \endcode
+ *
+ * List available image stores:
+ * \par
+ * \code{.sh}
+ * bquery -s store/ -t LIST_IMG
+ * \endcode
+ *
+ * Image pixel query examples:
+ * \par
+ * \code{.sh}
+ * # All image pixels from image store "3600-1" matching host 10, and 12-15
+ * bquery -s store/ -t IMG -I 3600-1 -H 10,12-15
+ *
+ * # All image pixels from image store "3600-1" matching a specific time window
+ * bquery -s store/ -t IMG -I 3600-1 -B "2014-12-31 08:00:00" \\
+ *                  -E "2014-12-31 18:00:00"
+ *
+ * # Get all image pixels from the image store 3600-1 matching some
+ * # specific patterns
+ * bquery -s store/ -t IMG -I 3600-1 -P 128,130-135
+ *
+ * # Mixed criteria (from the image store 3600-1)
+ * bquery -s store/ -t IMG -I 3600-1 -P 128,130-135 -H 10,12-15 \\
+ *                  -B "2014-12-31 08:00:00" -E "2014-12-31 18:00:00"
+ * \endcode
+ */
 
 #ifdef BIN
 
