@@ -49,6 +49,13 @@ window.baler =
         mm = baler.lzpad(date.getMinutes(), 2)
         return "#{m}/#{d}/#{y} #{hh}:#{mm}"
 
+    ts2date: (ts) ->
+        date = new Date(ts*1000)
+        y = date.getYear() + 1900
+        m = baler.lzpad(date.getMonth() + 1, 2)
+        d = baler.lzpad(date.getDate(), 2)
+        return "#{y}/#{m}/#{d}"
+
     tkn2html : (tok) -> "<span class='baler_#{tok.tok_type}'>#{tok.text}</span>"
 
     msg2html : (msg) ->
@@ -95,6 +102,8 @@ window.baler =
         url = "http://#{baler.balerd.addr}/query"
         $.getJSON(url, {"type":"big_pic"}, (data)->
             baler.totalNodes = data.max_comp_id
+            baler.min_ts = data.min_ts
+            baler.max_ts = data.max_ts
         )
 
     calcNpp: (npp_p) ->
@@ -424,7 +433,7 @@ window.baler =
             @ctxt = undefined
             @pxl = undefined
             @npp = 1.43 # Node per pixel
-            @spp = 3600 # seconds per pixel
+            @spp = 7200 # seconds per pixel
             @mouseDown = false
             @oldImg = undefined
             @ptn_ids = undefined
