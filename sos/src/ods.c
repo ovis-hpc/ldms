@@ -147,13 +147,15 @@ uint64_t ods_obj_ptr_to_ref(ods_t ods, void *p)
 
 static int extend_file(int fd, size_t sz)
 {
-	int rc = lseek(fd, sz - 1, SEEK_SET);
-	if (rc < 0)
-		return rc;
-	rc = 0;
-	rc = write(fd, &rc, 1);
-	if (rc < 0)
-		return -1;
+	char tmp = 0;
+	off_t off;
+	ssize_t bytes;
+	off = lseek(fd, sz - 1, SEEK_SET);
+	if (off < 0)
+		return errno;
+	bytes = write(fd, &tmp, 1);
+	if (bytes < 0)
+		return errno;
 	return 0;
 }
 
