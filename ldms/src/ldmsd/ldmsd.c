@@ -89,9 +89,15 @@ uint16_t ocm_port = OCM_DEFAULT_PORT;
 int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #endif
 
+#ifdef ENABLE_AUTH
+#include "ovis_auth/auth.h"
+#endif /* ENABLE_AUTH */
+
+#define LDMSD_AUTH_ENV "LDMSD_AUTH_FILE"
+
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:m:FkNf:D:qz:o:"
+#define FMT "H:i:l:S:s:x:T:M:t:P:m:FkNf:D:qz:o:a"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -105,6 +111,8 @@ int test_set_count=1;
 int test_metric_count=1;
 int notify=0;
 char *logfile;
+const char *secretword;
+int authenticate;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 
@@ -118,7 +126,7 @@ extern size_t calculate_total_dirty_threshold(size_t mem_total,
 					      size_t dirty_ratio);
 void do_connect(struct hostspec *hs);
 int update_data(struct hostspec *hs);
-void disconnect_hostspec(struct hostspec *hs);
+void reset_hostspec(struct hostspec *hs);
 
 int do_kernel = 0;
 char *setfile = NULL;
@@ -253,6 +261,13 @@ void usage(char *argv[])
 	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
 	printf("    -z ldmsd_mode  ldmsd mode (either 'ldmsd_sampler' or 'ldmsd_aggregator'\n");
 #endif
+#ifdef ENABLE_AUTH
+	printf("    -a		   Authentication is required. The environment variable\n"
+	       "		   %s must be set to the full path to the file storing\n"
+	       "		   the shared secret word, e.g., secretword=<word>, where\n"
+	       "		   %d < word length < %d", LDMSD_AUTH_ENV,
+				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
+#endif /* ENABLE_AUTH */
 	cleanup(1);
 }
 
@@ -765,11 +780,10 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more, ldms_set_t s,
  *
  * Closes the transport, cleans up all hostset state.
  */
-void disconnect_hostspec(struct hostspec *hs)
+void reset_hostspec(struct hostspec *hs)
 {
 	struct hostset *hset;
 
-	ldms_xprt_close(hs->x);
 	hs->x = NULL;
 	hs->conn_state = HOST_DISCONNECTED;
 
@@ -910,18 +924,26 @@ void __ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 		}
 		evtimer_add(hs->event, &hs->timeout);
 		break;
+	case LDMS_CONN_EVENT_REJECTED:
 	case LDMS_CONN_EVENT_DISCONNECTED:
+		/* Destroy the ldms xprt. */
+		ldms_xprt_delete(hs->x);
+		goto schedule_reconnect;
+		break;
 	case LDMS_CONN_EVENT_ERROR:
-		/* Put the reference taken in ldms_xprt_connect() or accept() */
-		ldms_xprt_put(hs->x);
-		disconnect_hostspec(hs);
-		hs->timeout.tv_sec = hs->connect_interval / 1000000;
-		hs->timeout.tv_usec = hs->connect_interval % 1000000;
-		evtimer_add(hs->event, &hs->timeout);
+		/* Disconnect the connection */
+		ldms_xprt_close(hs->x);
+		goto schedule_reconnect;
 		break;
 	default:
 		assert(0);
 	}
+	return;
+schedule_reconnect:
+	reset_hostspec(hs);
+	hs->timeout.tv_sec = hs->connect_interval / 1000000;
+	hs->timeout.tv_usec = hs->connect_interval % 1000000;
+	evtimer_add(hs->event, &hs->timeout);
 }
 
 void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
@@ -940,7 +962,7 @@ void do_connect(struct hostspec *hs)
 	switch (hs->type) {
 	case ACTIVE:
 	case BRIDGING:
-		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log);
+		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log, secretword);
 		if (hs->x) {
 			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
 						 sizeof(hs->sin), ldms_connect_cb, hs);
@@ -1131,7 +1153,7 @@ int update_data(struct hostspec *hs)
 			break;
 	}
 	if (host_error) {
-		disconnect_hostspec(hs);
+		reset_hostspec(hs);
 		hs->timeout.tv_sec = hs->connect_interval / 1000000;
 		hs->timeout.tv_usec = hs->connect_interval % 1000000;
 	} else {
@@ -1190,7 +1212,7 @@ void listen_on_transport(char *transport_str)
 	else
 		port_no = atoi(port_s);
 
-	l = ldms_xprt_new(name, ldms_log);
+	l = ldms_xprt_new(name, ldms_log, secretword);
 	if (!l) {
 		ldms_log("The transport specified, '%s', is invalid.\n", name);
 		cleanup(6);
@@ -1217,6 +1239,27 @@ void ev_log_cb(int sev, const char *msg)
 	};
 	ldms_log("%s: %s\n", sev_s[sev], msg);
 }
+
+#ifdef ENABLE_AUTH
+int ldmsd_get_secretword()
+{
+	int rc;
+
+	/* Get path from the environment variable */
+	char *path = getenv(LDMSD_AUTH_ENV);
+	if (!path) {
+		ldms_log("ldmsd auth: Failed to get the auth file path "
+				"from %s.\n", LDMSD_AUTH_ENV);
+		return EINVAL;
+	}
+	secretword = ovis_auth_get_secretword(path, ldms_log);
+	if (!secretword) {
+		rc = errno;
+		return rc;
+	}
+	return 0;
+}
+#endif /* ENABLE_AUTH */
 
 int main(int argc, char *argv[])
 {
@@ -1329,6 +1372,11 @@ int main(int argc, char *argv[])
 			printf("Error: -o options requires OCM support.\n");
 #endif
 			break;
+#ifdef ENABLE_AUTH
+		case 'a':
+			authenticate = 1;
+			break;
+#endif /* ENABLE_AUTH */
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
 		default:
@@ -1436,6 +1484,15 @@ int main(int argc, char *argv[])
 		logfile = LDMSD_LOGFILE;
 
 	ldms_log("Started LDMS Daemon version " VERSION "\n");
+
+#ifdef ENABLE_AUTH
+	if (authenticate) {
+		secretword = NULL;
+		if (ldmsd_get_secretword())
+			cleanup(15);
+	}
+
+#endif /* ENABLE_AUTH */
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 

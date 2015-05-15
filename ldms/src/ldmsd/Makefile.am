@@ -8,12 +8,21 @@ AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 
 ldms_ls_SOURCES = ldms_ls.c
 ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lpthread
+ldms_ls_CFLAGS = $(AM_CFLAGS)
 
 ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ \
 		-levent -lpthread -levent_pthreads -lovis_util -lcoll -ldl
 ldmsd_CFLAGS = $(AM_CFLAGS) @EVENTINC@
+
+if ENABLE_AUTH
+ldmsd_CFLAGS += -DENABLE_AUTH
+ldmsd_LDFLAGS += -lovis_auth
+
+ldms_ls_CFLAGS += -DENABLE_AUTH
+ldms_ls_LDADD += -lovis_auth
+endif
 
 if ENABLE_OCM
 ldmsd_SOURCES += ldmsd_ocm.c

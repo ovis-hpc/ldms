@@ -93,7 +93,34 @@ struct ls_set {
 };
 LIST_HEAD(set_list, ls_set) set_list;
 
-#define FMT "h:p:x:w:m:ESIlvu"
+void null_log(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	fflush(stdout);
+}
+
+#ifdef ENABLE_AUTH
+#include "ovis_auth/auth.h"
+
+#define LDMS_LS_AUTH_ENV "LDMS_LS_AUTH_FILE"
+char *ldms_ls_get_secretword(const char *path)
+{
+	int rc;
+	if (!path) {
+		/* Get path from the environment variable */
+		path = getenv(LDMS_LS_AUTH_ENV);
+			if (!path)
+				return NULL;
+	}
+
+	return ovis_auth_get_secretword(path, null_log);
+}
+#endif /* ENABLE_AUTH */
+
+#define FMT "h:p:x:w:m:ESIlvua:"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ name ... ]\n"
@@ -114,6 +141,13 @@ void usage(char *argv[])
 	       "                       The given size must be less than 1 petabytes.\n"
 	       "                       For example, 20M or 20mb are 20 megabytes.\n",
 	       argv[0]);
+#ifdef ENABLE_AUTH
+	printf("\n    -a <path>        The full Path to the file containing the shared secret word.\n"
+	       "		       Set the environment variable %s to the full path\n"
+	       "		       to avoid giving it at command-line every time.\n",
+	       LDMS_LS_AUTH_ENV);
+#endif /* ENABLE_AUTH */
+
 	exit(1);
 }
 
@@ -308,19 +342,10 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	pthread_cond_signal(&dir_cv);
 }
 
-void null_log(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stdout, fmt, ap);
-	fflush(stdout);
-}
-
 void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
-	if (e == LDMS_CONN_EVENT_ERROR) {
-		printf("Connection failed.\n");
+	if ((e == LDMS_CONN_EVENT_ERROR) || (e == LDMS_CONN_EVENT_REJECTED)) {
+		printf("Connection failed/rejected.\n");
 		exit(2);
 	}
 
@@ -345,6 +370,8 @@ int main(int argc, char *argv[])
 	int regex = 0;
 	int schema = 0;
 	struct timespec ts;
+	char *auth_path = 0;
+	char *secretword = 0;
 
 	/* If no arguments are given, print usage. */
 	if (argc == 1)
@@ -394,6 +421,9 @@ int main(int argc, char *argv[])
 				usage(argv);
 			}
 			break;
+		case 'a':
+			auth_path = strdup(optarg);
+			break;
 		default:
 			usage(argv);
 		}
@@ -416,7 +446,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	ldms = ldms_xprt_new(xprt, null_log);
+#ifdef ENABLE_AUTH
+	secretword = ldms_ls_get_secretword(auth_path);
+#endif /* ENABLE_AUTH */
+
+	ldms = ldms_xprt_new(xprt, null_log, secretword);
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);
