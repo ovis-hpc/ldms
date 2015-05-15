@@ -27,19 +27,26 @@ my $proto = getprotobyname("tcp");
 socket(SOCK, PF_INET, SOCK_STREAM, $proto) || die "socket: $!";
 connect(SOCK, $paddr) || die "connect: $!";
 
-while (my $line = <STDIN>) {
-	chomp $line;
+my $line = <STDIN>;
+chomp $line;
+my $prefix;
 
-	if ($line =~ m/^</) {
-		print SOCK "$line\n";
-	} else {
-		# This is for new syslog format
-		print SOCK "<1>1 $line\n";
-		# This is for old syslog format
-		#print SOCK "<1>$line\n";
-	}
+die "Empty input ..." if (!$line);
 
+if ($line =~ m/^</) {
+	$prefix = "";
+} elsif ($line =~ m/^\d/) {
+	# new rsyslog format
+	$prefix = "<1>1 ";
+} else {
+	# old rsyslog format
+	$prefix = "<1>";
 }
+
+do {
+	chomp $line;
+	print SOCK "$prefix$line\n";
+} while ($line = <STDIN>);
 
 close(SOCK);
 
