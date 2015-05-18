@@ -25,6 +25,7 @@ OPTION_DEFAULT_ENABLE([coll], [ENABLE_COLL])
 OPTION_DEFAULT_ENABLE([mmalloc], [ENABLE_MMALLOC])
 OPTION_DEFAULT_ENABLE([ovis_ctrl], [ENABLE_OVIS_CTRL])
 OPTION_DEFAULT_ENABLE([ovis_util], [ENABLE_OVIS_UTIL])
+OPTION_DEFAULT_DISABLE([ovis_auth], [ENABLE_OVIS_AUTH])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
@@ -57,6 +58,12 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
   fi
 fi
 
+if test -z "$ENABLE_OVIS_AUTH"
+then
+dnl Check for OpenSSL
+AX_CHECK_OPENSSL
+fi
+
 OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
@@ -84,6 +91,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		src/mmalloc/Makefile
 		src/ovis_ctrl/Makefile
 		src/ovis_util/Makefile
+		src/ovis_auth/Makefile
 		src/zap/Makefile
 		src/zap/rdma/Makefile
 		src/zap/sock/Makefile

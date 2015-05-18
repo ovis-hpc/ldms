@@ -1,6 +1,6 @@
 nobase_include_HEADERS = ovis-test/test.h
 
-SUBDIRS = 
+SUBDIRS =
 
 if ENABLE_COLL
 SUBDIRS += coll
@@ -16,6 +16,10 @@ endif
 
 if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util
+endif
+
+if ENABLE_OVIS_AUTH
+SUBDIRS += ovis_auth
 endif
 
 if ENABLE_ZAP
