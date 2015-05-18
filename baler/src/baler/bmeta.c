@@ -512,7 +512,7 @@ int __bmptn_cluster_2(struct bmptn_store *store)
 	int rc = 0;
 	int i, c, j, l, idx;
 	struct bhash_entry **cls1_entries = store->engsig_array;
-	uint32_t n = store->engsig_hash->count;
+	size_t n = store->engsig_hash->count;
 	int N = bmptn_store_gethdr(store)->last_ptn_id;
 	float *dist = NULL;
 	void *buff = NULL;
