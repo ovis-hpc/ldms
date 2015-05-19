@@ -53,6 +53,367 @@
  * \file bhttpd_query.c
  */
 
+/**
+ * \page bhttpd_uri
+ *
+ * \section bhttpd_uri_query query
+ *
+ * <b>query</b> serves several baler information query requests. The 'type'
+ * parameter determines query type. Each type has its own specific set of
+ * parameters as described in the following sub sections.
+ *
+ * \subsection bhttpd_uri_query_ptn type=ptn
+ * Get all available patterns from \c bhttpd.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query?type=ptn</code>
+ *
+ * \par Response
+ * If there is <b>no error</b>, pattern query returns JSON objects describing
+ * each pattern:
+ * \code{.json}
+ * {
+ *     "result": [
+ *         {   // pattern object
+ *             "type": "PTN",
+ *             "ptn_id": <PTN_ID>,
+ *             "count": <OCCURRENCE COUNT>,
+ *             "first_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             "last_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             // pattern description is disguised in a message form --
+ *             // a sequence of tokens.
+ *             "msg": [
+ *                 {
+ *                     "tok_type": <TOK_TYPE>,
+ *                     "text": <TEXT>
+ *                 },
+ *                 // more token objects describing the pattern messgae.
+ *                 ...
+ *             ]
+ *         },
+ *         ... // more pattern objects
+ *     ]
+ * }
+ * \endcode
+ *
+ * \par
+ * Please see msg2html() and tkn2html() methods in baler.coffee for the message
+ * display utility functions.
+ *
+ * \par
+ * The pattern objects returned in this query are only those derived from
+ * messages. For metric patterns, please see query \ref
+ * bhttpd_uri_query_metric_pattern.
+ *
+ * \par
+ * <b>On error</b>, \b bhttpd response with an appropriate HTTP error code and a
+ * message describing the error.
+ *
+ * \subsection bhttpd_uri_query_metric_pattern type=metric_pattern
+ * Query metric patterns -- the patterns that represent metric-in-range events.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query?type=metric_pattern</code>
+ *
+ * \par Response
+ * This query returns objects similar to query \ref bhttpd_uri_query_ptn, except
+ * that the returned objects are of metric pattern type. If there is no error,
+ * the following JSON objects are returned:
+ * \code{.json}
+ *     "result": [
+ *         {   // pattern object
+ *             "type": "PTN",
+ *             "ptn_id": <PTN_ID>,
+ *             "count": <OCCURRENCE COUNT>,
+ *             "first_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             "last_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             // pattern description is disguised in a message form --
+ *             // a sequence of tokens.
+ *             "msg": [
+ *                 {
+ *                     "tok_type": <TOK_TYPE>,
+ *                     "text": <TEXT>
+ *                 },
+ *                 // more token objects describing the pattern messgae.
+ *                 ...
+ *             ]
+ *         },
+ *         ... // more pattern objects
+ *     ]
+ * \endcode
+ *
+ * \par
+ * Please see msg2html() and tkn2html() methods in baler.coffee for the message
+ * display utility functions.
+ *
+ * \par
+ * <b>On error</b>, \b bhttpd response with an appropriate HTTP error code and a
+ * message describing the error.
+ *
+ * \subsection bhttpd_uri_query_msg type=msg
+ * Query messages from the \c bhttpd. Because there can be a lot of messages
+ * that matched the query, returning all messages in a single HTTP response is
+ * impossible. So, message querying usage follows create-then-fetch scheme.
+ *
+ * \par usage
+ *
+ * -# request an initial query with some query criteria (\c ptn_ids, \c host_ids,
+ *   \c ts0 and \c ts1).
+ *   - the return objects will contain an initial result, along with \c
+ *     session_id for the next data fetching. The number of returned messages
+ *     can be controlled with parameter \c n. The direction parameter (\c dir)
+ *     conrols the direction of the query.
+ * -# Use \c session_id, \c n and \c dir to fetch the next, or previous, results.
+ * -# Use URI \ref bhttpd_uri_query_destroy_session to destroy the session.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query?type=msg
+ *                        [&n=<NUMBER>]
+ *                        [&dir=DIRECTION]
+ *                        [&session_id=SID]
+ *                        [&host_ids=NUM_LIST]
+ *                        [&ptn_ids=NUM_LIST]
+ *                        [&ts0=UNIX_TS]
+ *                        [&ts1=UNIX_TS]
+ *                        </code>
+ *
+ * The parameters are described as follows:
+ * - \b n: The maximum number of messages to retreive.
+ * - \b dir: The direction of the fetch (\c fwd or \c bwd).
+ * - \b session_id: The session ID (for fetching). Do not set this option for
+ *   the first call of query.
+ * - \b host_ids: The comma-separated numbers and ranges of numbers list of host
+ *   IDs for the query. If this parameter is specified, only the results that
+ *   match the hosts listed in the parameter are returned. If it is not
+ *   specified, host IDs are not used in the result filtering.
+ * - \b ptn_ids: The comma-separated list of numbers and ranges of numbers of
+ *   pattern IDs for the query. If the parameter is specified, only the results
+ *   that match the listed pattern IDs are returned. If not specified, pattern
+ *   IDs are not used in the result filtering.
+ * - \b ts0: The begin timestamp for the query. If specified, the records that
+ *   have timestamp less than \c ts0 will be excluded.
+ * - \b ts1: The end timestamp for the query. If specified, the records that
+ *   have timestamp greater than \c ts1 will be excluded.
+ *
+ * \subsection bhttpd_uri_query_destroy_session /destroy_session
+ * This is the request to destroy unused message query (\ref
+ * bhttpd_uri_query_msg) session.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query/destroy_session?session_id=SID</code>
+ *
+ * \par Response
+ *
+ * - If there is no error, \c bhttpd will reply an empty
+ *   content with HTTP OK status (200).
+ * - If there is an error, \c bhttpd response with an appropriate HTTP error
+ *   code and a message describing the error.
+ *
+ * \subsection bhttpd_uri_query_meta type=meta
+ * Meta pattern mapping query for the regular message patterns. For metric
+ * patterns, please see \ref bhttpd_uri_query_metric_meta.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query/meta</code>
+ *
+ * \par Response
+ * If there is no error, \c bhttpd response with HTTP status OK (200) with the
+ * following contents:
+ * \code{.json}
+ * {
+ *     "map": [
+ *         [<PTN_ID>, <CLUSTER_ID>],
+ *         ...
+ *     ],
+ *     "cluster_name": {
+ *         <CLUSTER_ID>: <CLUSTER_NAME_TEXT>
+ *     }
+ * }
+ * \endcode
+ *
+ * \par
+ * If there is an error, \c bhttpd response with an appropriate HTTP error code
+ * and a message describing the error.
+ *
+ * \subsection bhttpd_uri_query_metric_meta type=metric_meta
+ * This is similar to \ref bhttpd_uri_query_meta, but for metric patterns.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query/metric_meta</code>
+ *
+ * \par Response
+ * If there is no error, \c bhttpd response with HTTP status OK (200) with the
+ * following contents:
+ * \code{.json}
+ * {
+ *     "map": [
+ *         [<PTN_ID>, <CLUSTER_ID>],
+ *         ...
+ *     ],
+ *     "cluster_name": {
+ *         <CLUSTER_ID>: <CLUSTER_NAME_TEXT>
+ *     }
+ * }
+ * \endcode
+ *
+ * \par
+ * If there is an error, \c bhttpd response with an appropriate HTTP error code
+ * and a message describing the error.
+ *
+ * \subsection bhttpd_uri_query_img type=img
+ * Query pixels according to the given query criteria. The criteria is similar
+ * to \ref bhttpd_uri_query_msg.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query?type=img
+ *                        &img_store=IMG_STORE
+ *                        [&host_ids=NUM_LIST]
+ *                        [&ptn_ids=NUM_LIST]
+ *                        [&ts0=UNIX_TS]
+ *                        [&ts1=UNIX_TS]
+ *                        </code>
+ *
+ * \par
+ * The following is the explanation of the parameters:
+ * - \b img_store <b>(required)</b>: The image store to query against (see \ref
+ *   bhttpd_uri_list_img_store for image store listing).
+ * - \b host_ids: The comma-separated numbers and ranges of numbers list of host
+ *   IDs for the query. If this parameter is specified, only the results that
+ *   match the hosts listed in the parameter are returned. If it is not
+ *   specified, host IDs are not used in the result filtering.
+ * - \b ptn_ids: The comma-separated list of numbers and ranges of numbers of
+ *   pattern IDs for the query. If the parameter is specified, only the results
+ *   that match the listed pattern IDs are returned. If not specified, pattern
+ *   IDs are not used in the result filtering.
+ * - \b ts0: The begin timestamp for the query. If specified, the records that
+ *   have timestamp less than \c ts0 will be excluded.
+ * - \b ts1: The end timestamp for the query. If specified, the records that
+ *   have timestamp greater than \c ts1 will be excluded.
+ *
+ * \par Response
+ * If there is no error, \c bhttpd response with HTTP OK status (200). The
+ * content of this query however is not in JSON format. It is a binary data
+ * containing an array of pixels--each of which contai the number of occurrences
+ * (COUNT) of the PTN_ID pattern at HOST_ID host in the time range TS ..
+ * TS+DELTA. The DELTA is determined from the name of the \b img_store (e.g.
+ * 3600-1 means DELTA = 3600). The format of the binary response is as the
+ * following.
+ * \code{.json}
+ * [<TS(4byte)>, <HOST_ID(4byte)>, <PTN_ID(4byte)>, <COUNT(4byte)>]...
+ * \endcode
+ *
+ * \par
+ * If there is an error, \c bhttpd response with an appropriate HTTP error code
+ * and a message describing the error.
+ *
+ * \subsection bhttpd_uri_query_img2 type=img2
+ * This is similar to \ref bhttpd_uri_query_img, but \c bhttpd compose the image
+ * in the given time-node ranges. The pixels returned to the requester are the
+ * aggregated pixels, not pixel records by pattern IDs. The horizontal axis of
+ * the image represents time (UNIX time - seconds since the Epoch), ascending
+ * from left to right. The vertical axis ofthe image represents host IDs,
+ * ascending from top to bottom.
+ *
+ * \see \ref bhttpd_uri_query_big_pic for the area in the time-node plane that
+ * has some data.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query?type=img2
+ *                        &img_store=IMG_STORE
+ *                        &ts_begin=UNIX_TS
+ *                        &host_begin=UNIX_TS
+ *                        &spp=SEC_PER_PIXEL
+ *                        &npp=NODE_PER_PIXEL
+ *                        &width=IMAGE_WIDTH
+ *                        &height=IMAGE_HEIGHT
+ *                        [&ptn_ids=NUM_LIST]
+ *                        </code>
+ *
+ * \par
+ * The following is the explanatino for each parameter
+ * - \b img_store <b>(required)</b>: The image store to query against (see \ref
+ *   bhttpd_uri_list_img_store for image store listing).
+ * - \b ts_begin <b>(required)</b>: The timestamp of the left edge of the image.
+ * - \b host_begin <b>(required)</b>: The host ID of the top edge of the image.
+ * - \b spp <b>(required)</b>: Seconds per pixel for image composition.
+ * - \b npp <b>(required)</b>: Nodes per pixel for image composition.
+ * - \b width <b>(required)</b>: The width of the composing image.
+ * - \b height <b>(required)</b>: The height of hte composing image.
+ * - \b ptn_ids: The comma-separated list of numbers and ranges of numbers of
+ *   pattern IDs for the query. If the parameter is specified, only the
+ *   specified patterns are used to compose the image. If not specified, all
+ *   patterns will be used to compose the image.
+ *
+ * \par Response
+ * If there is no error, \c bhttpd response with HTTP OK (200) and the binary
+ * array containing the aggregated count by pixels (TS-HOST_ID).
+ * \code{.json}
+ * [AGGREGATED_COUNT(4byte)]...
+ * \endcode
+ * The ordering of the array is as follows:
+ * \code{.json}
+ * // For simplicity, assuming x and y start at 0 in this discussion.
+ * [(x=0,y=0),(x=1,y=0),(x=2,y=0),...,(x=0,y=1),(x=1,y=1),...,(x=width-1,y=height-1)]
+ * \endcode
+ *
+ * \par
+ * If there is an \b error, \c bhttpd response with an appropriate HTTP error
+ * code and a message describing the error.
+ *
+ * \subsection bhttpd_uri_query_host type=host
+ * Get the mapping of <code>host_id :-> host_name</code>.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query/host</code>
+ *
+ * \par Response
+ *
+ * If there is no error, \c bhttpd response with HTTP OK (200) and the following
+ * JSON objects in the content:
+ * \code{.json}
+ * {
+ *     "host_ids": {
+ *         <HOST_ID>: <HOST_NAME>,
+ *         ...
+ *     }
+ * }
+ * \endcode
+ *
+ * \par
+ * If there is an \b error, \c bhttpd response with an appropriate HTTP error
+ * code and a message describing the error.
+ *
+ * \subsection bhttpd_uri_query_big_pic type=big_pic
+ * Big picture query returns the min/max of timestamp and component IDs for the
+ * given pattern IDs. If no pattern ID is given, the min/max are from the entire
+ * database.
+ *
+ * \note Due to internal database complication, currently the min/max of the
+ * component IDs will always be min/max component IDs in the database. Min/max
+ * timestamps is the real min/max timestamps for the given pattern ID(s).
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/query/big_pic</code>
+ *
+ * \par Response
+ * If there is no error, \c bhttpd responses with HTTP OK (200) and the
+ * following JSON objects in the content:
+ * \code{.json}
+ * {
+ *     "min_ts": <MIN_TIMESTAMP>,
+ *     "max_ts": <MAX_TIMESTAMP>,
+ *     "min_comp_id": <MIN_COMPONENT_ID>,
+ *     "max_comp_id": <MAX_COMPONENT_ID>
+ * }
+ * \endcode
+ *
+ * \par
+ * If there is an \b error, \c bhttpd response with an appropriate HTTP error
+ * code and a message describing the error.
+ *
+ * \tableofcontents
+ */
+
 #include <event2/event.h>
 
 #include "bhttpd.h"

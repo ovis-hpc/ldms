@@ -53,6 +53,67 @@
  * \file bhttpd_meta.c
  */
 
+/**
+ * \page bhttpd_uri
+ *
+ * \section bhttpd_uri_meta_cluster meta_cluster
+ *
+ * <b>bhttpd</b> meta clustering services. There are two operations for meta
+ * clustering service over HTTP: run and get status. The details for each
+ * operation are as the following.
+ *
+ * \subsection bhttpd_uri_meta_cluster_run op=run
+ * Issue a request to \b bhttpd to start meta-clustering processing.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/meta_cluster?op=run
+ *                      [&refinement_speed=XXX]
+ *                      [&looseness=YYY]
+ *                      [&diff_ratio=ZZZ]</code>
+ *
+ * The \b refinement_speed, \b looseness, and \b diff_ratio are optional. The
+ * default values are used for the unspecified parameters. The default, and
+ * valid ranges for each parameter is as follows:
+ *
+ * - \b refinement_speed: default 2.0, ranges [1.0, INF)
+ * - \b looseness: default 0.3, ranges (0, 1)
+ * - \b diff_ratio: default 0.3 ranges (0, 1)
+ *
+ * \par Response
+ *
+ * - If the request is posted successfully, \c bhttpd will reply an empty
+ *   content with HTTP OK status (200).
+ * - If there is an error, \c bhttpd response with an appropriate HTTP error
+ *   code and a message describing the error.
+ *
+ * \subsection bhttpd_uri_meta_cluster_status op=get_status
+ * Get status of the store. If the meta-clustering is in progress, also report
+ * the completion percentage in each state of the clustering.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/meta_cluster[?op=get_status]</code>
+ *
+ * By default, \c meta_cluster has \c op=get_status, but can be specified for
+ * clarity.
+ *
+ * \par Response
+ *
+ * - If there is no error, the following object is returned in the response
+ *   content:
+ * \code{.json}
+ * {
+ * 	"state": STATE,
+ * 	"percent": PERCENT_NUMBER (0-100)
+ * }
+ * \endcode
+ * - If there is an error, \b bhttpd response with an appropriate HTTP error
+ *   code and a message describing the error.
+ *
+ * Please see \ref bmptn_store_state_e for the available states.
+ *
+ * \tableofcontents
+ */
+
 #include <float.h>
 
 #include "bhttpd.h"

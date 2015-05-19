@@ -53,6 +53,29 @@
  * \file bhttpd_list.c
  */
 
+/**
+ * \page bhttpd_uri
+ *
+ * \section bhttpd_uri_list_img_store list_img_store
+ * List available image stores in \b balerd store.
+ *
+ * \par URI
+ * <code>BHTTPD_LOCATION/list_img_store</code>
+ *
+ * \par Response
+ *
+ * - If there is no error, the content in the response is the following object:
+ * \code{.json}
+ * {
+ * 	"img_stores": [ IMG_STORE0, IMG_STORE1, ...]
+ * }
+ * \endcode
+ * - If there is an error, \c bhttpd response with an appropriate HTTP error
+ *   code and a message describing the error.
+ *
+ * \tableofcontents
+ */
+
 #include "bhttpd.h"
 #include "bq_fmt_json.h"
 

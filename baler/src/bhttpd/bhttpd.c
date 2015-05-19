@@ -76,17 +76,18 @@
 #include "bhttpd.h"
 
 /**
- * \page bhttpd Baler HTTP service.
+ * \page bhttpd Baler HTTP service daemon
  *
  * \section synopsis SYNOPSIS
  *
  * \b bhttpd [\b -F] [\b -l \a logpath] [\b -p \a port] [\b -s \a storepath]
- *      [\b -v verbosity]
+ *      [\b -v \a verbosity]
  *
  * \section desc DESCRIPTION
- * \b bhttpd is an HTTP service for Baler data (e.g. pattern query).
- *
- * TODO WRITE MORE DETAILS
+ * \b bhttpd is an HTTP service for Baler data accessing (e.g. pattern query),
+ * and some Baler data processing (e.g. issuing meat-clustering).  This manual
+ * page is about running and configuring \b bhttpd. The detail about each URI
+ * can be found in \ref bhttpd_uri.
  *
  * \section options OPTIONS
  *
@@ -113,6 +114,13 @@
  * print everything. INFO will print everything but DEBUG. WARN prints only WARN
  * and ERROR. ERROR prints nothing but ERROR. QUIET prints nothing. (the default
  * value is: WARN).
+ *
+ */
+
+/**
+ * \page bhttpd_uri URIs served by bhttpd
+ *
+ * \brief This is the main page for URIs served by \b bhttpd.
  *
  */
 
