@@ -84,10 +84,14 @@ enum ldms_request_cmd {
 	LDMS_CMD_UPDATE,
 	LDMS_CMD_REQ_NOTIFY,
 	LDMS_CMD_CANCEL_NOTIFY,
+	LDMS_CMD_AUTH_PASSWORD,
 	LDMS_CMD_REPLY,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_LOOKUP_REPLY,
 	LDMS_CMD_REQ_NOTIFY_REPLY,
+	LDMS_CMD_AUTH,
+	LDMS_CMD_AUTH_CHALLENGE_REPLY,
+	LDMS_CMD_AUTH_APPROVAL_REPLY,
 	/* Transport private requests set bit 32 */
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
 };
@@ -116,6 +120,11 @@ struct ldms_cancel_notify_cmd_param {
 	uint64_t set_id;	/*! The set we want to cancel notifications for  */
 };
 
+struct ldms_auth_password_cmd_param {
+	uint32_t lo;
+	uint32_t hi;
+};
+
 struct ldms_request_hdr {
 	uint64_t xid;		/*! Transaction id returned in reply */
 	uint32_t cmd;		/*! The operation being requested  */
@@ -129,8 +138,16 @@ struct ldms_request {
 		struct ldms_lookup_cmd_param lookup;
 		struct ldms_req_notify_cmd_param req_notify;
 		struct ldms_cancel_notify_cmd_param cancel_notify;
+		struct ldms_auth_password_cmd_param auth_password;
 	};
 };
+
+#ifdef ENABLE_AUTH
+struct ldms_xprt_auth_challenge {
+	uint32_t lo; 		/*! The last 32 bits */
+	uint32_t hi;		/*! The first 32 bits */
+};
+#endif /* ENABLE_AUTH */
 
 struct ldms_lookup_msg {
 	uint64_t xid;
@@ -154,6 +171,10 @@ struct ldms_req_notify_reply {
 	struct ldms_notify_event_s event;
 };
 
+struct ldms_auth_challenge_reply {
+	char s[0];
+};
+
 struct ldms_reply_hdr {
 	uint64_t xid;
 	uint32_t cmd;
@@ -165,6 +186,7 @@ struct ldms_reply {
 	union {
 		struct ldms_dir_reply dir;
 		struct ldms_req_notify_reply req_notify;
+		struct ldms_auth_challenge_reply auth_challenge;
 	};
 };
 #pragma pack()
@@ -237,6 +259,16 @@ struct ldms_xprt {
 
 	zap_t zap;
 	zap_ep_t zap_ep;
+
+	/* Authentication */
+	const char *password;
+	enum {
+		LDMS_XPRT_AUTH_FAILED = -1, /* authentication failed */
+		LDMS_XPRT_AUTH_DISABLE = 0, /* authentication not is used */
+		LDMS_XPRT_AUTH_INIT = 1, /* Use authentication */
+		LDMS_XPRT_AUTH_PASSWORD = 2, /* Sent password to server */
+		LDMS_XPRT_AUTH_APPROVED = 3 /* authentication approved */
+	} auth_approved;
 
 	/** Transport message logging callback */
 	ldms_log_fn_t log;

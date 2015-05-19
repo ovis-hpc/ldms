@@ -69,6 +69,10 @@
 #include "ldms_xprt.h"
 #include "ldms_private.h"
 
+#ifdef ENABLE_AUTH
+#include "ovis_auth/auth.h"
+#endif /* ENABLE_AUTH */
+
 /**
  * zap callback function.
  */
@@ -265,6 +269,25 @@ void __ldms_dir_add_set(const char *set_name)
 void __ldms_dir_del_set(const char *set_name)
 {
 	dir_update(set_name, LDMS_DIR_DEL);
+}
+
+void ldms_xprt_delete(ldms_t x)
+{
+	x->remote_dir_xid = x->local_dir_xid = 0;
+
+	pthread_mutex_lock(&xprt_list_lock);
+	LIST_REMOVE(x, xprt_link);
+	pthread_mutex_unlock(&xprt_list_lock);
+
+	while (!LIST_EMPTY(&x->rbd_list)) {
+		struct ldms_rbuf_desc *rbd;
+		rbd = LIST_FIRST(&x->rbd_list);
+		__ldms_free_rbd(rbd);
+	}
+
+	zap_free(x->zap_ep);
+	x->zap_ep = NULL;
+	ldms_xprt_put(x);
 }
 
 void ldms_xprt_close(ldms_t x)
@@ -762,6 +785,61 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				    event, ctxt->dir.cb_arg);
 }
 
+#ifdef ENABLE_AUTH
+static int send_auth_approval(struct ldms_xprt *x)
+{
+	size_t len;
+	int rc = 0;
+	struct ldms_reply *reply;
+
+	len = sizeof(struct ldms_reply_hdr);
+	reply = malloc(len);
+	if (!reply) {
+		x->log("Memory allocation failure "
+		       "in notify of peer.\n");
+		return ENOMEM;
+	}
+	reply->hdr.xid = 0;
+	reply->hdr.cmd = htonl(LDMS_CMD_AUTH_APPROVAL_REPLY);
+	reply->hdr.rc = 0;
+	reply->hdr.len = htonl(len);
+	zap_err_t zerr = zap_send(x->zap_ep, reply, len);
+	if (zerr) {
+		x->log("Auth error: Failed to send the approval. %s\n",
+						zap_err_str(rc));
+	}
+	free(reply);
+	return zerr;
+}
+
+void process_auth_challenge_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+					struct ldms_context *ctxt)
+{
+	int rc;
+	if (0 != strcmp(x->password, reply->auth_challenge.s)) {
+		/* Reject the authentication and disconnect the connection. */
+		goto err_n_reject;
+	}
+	x->auth_approved = LDMS_XPRT_AUTH_APPROVED;
+	rc = send_auth_approval(x);
+	if (rc)
+		goto err_n_reject;
+	return;
+err_n_reject:
+	zap_close(x->zap_ep);
+}
+
+void process_auth_approval_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+		struct ldms_context *ctxt)
+{
+	ldms_xprt_put(x); /* Match when sending the password */
+	x->auth_approved = LDMS_XPRT_AUTH_APPROVED;
+	if (x->connect_cb)
+		x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
+					x->connect_cb_arg);
+}
+#endif /* ENABLE_AUTH */
+
 void ldms_xprt_dir_free(ldms_t t, ldms_dir_t d)
 {
 	free(d);
@@ -788,6 +866,14 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 	case LDMS_CMD_REQ_NOTIFY_REPLY:
 		process_req_notify_reply(x, reply, ctxt);
 		break;
+#ifdef ENABLE_AUTH
+	case LDMS_CMD_AUTH_CHALLENGE_REPLY:
+		process_auth_challenge_reply(x, reply, ctxt);
+		break;
+	case LDMS_CMD_AUTH_APPROVAL_REPLY:
+		process_auth_approval_reply(x, reply, ctxt);
+		break;
+#endif /* ENABLE_AUTH */
 	default:
 		x->log("Unrecognized reply %d\n", cmd);
 	}
@@ -826,7 +912,7 @@ void __ldms_passive_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	case LDMS_CONN_EVENT_CONNECTED:
 		assert(0);
 	case LDMS_CONN_EVENT_DISCONNECTED:
-		ldms_xprt_close(x);
+		ldms_xprt_delete(x);
 		break;
 	}
 }
@@ -862,7 +948,40 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	zap_set_ucontext(zep, _x);
 	pthread_mutex_init(&_x->lock, NULL);
 
-	zerr = zap_accept(zep, ldms_zap_auto_cb, NULL, 0);
+	char *data = 0;
+	size_t datalen = 0;
+#ifdef ENABLE_AUTH
+	uint64_t challenge;
+	struct ovis_auth_challenge chl;
+	if (x->password) {
+		/*
+		 * Do the authentication.
+		 *
+		 * The application sets the environment variable for
+		 * authentication file.
+		 *
+		 * If x->auth_envpath is NULL, the state machine
+		 * will be the state machine without authentication.
+		 */
+		challenge = ovis_auth_gen_challenge();
+		_x->password = ovis_auth_encrypt_password(challenge, x->password);
+		if (!_x->password) {
+			x->log("Auth Error: Failed to encrypt the password.");
+			zerr = zap_reject(zep);
+			if (zerr) {
+				x->log("Auth Error: Failed to reject the"
+						"conn_request from %s\n",
+						rmt_name);
+				goto err0;
+			}
+		} else {
+			data = (void *)ovis_auth_pack_challenge(challenge, &chl);
+			datalen = sizeof(chl);
+		}
+	}
+#endif /* ENABLE_AUTH */
+
+	zerr = zap_accept(zep, ldms_zap_auto_cb, data, datalen);
 	if (zerr) {
 		x->log("ERROR: cannot accept connection from %s.\n", rmt_name);
 		goto err0;
@@ -874,11 +993,77 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, _x, xprt_link);
 	pthread_mutex_unlock(&xprt_list_lock);
-
+out:
 	return;
 err0:
 	zap_close(zep);
 }
+
+#ifdef ENABLE_AUTH
+int send_auth_password(struct ldms_xprt *x, const char *password)
+{
+	size_t len;
+	int rc = 0;
+	struct ldms_reply *reply;
+
+	len = sizeof(struct ldms_reply_hdr)
+			+ sizeof(struct ldms_auth_challenge_reply)
+			+ strlen(password) + 1;
+	reply = malloc(len);
+	if (!reply) {
+		x->log("Memory allocation failure "
+		       "in notify of peer.\n");
+		return ENOMEM;
+	}
+	reply->hdr.xid = 0;
+	reply->hdr.cmd = htonl(LDMS_CMD_AUTH_CHALLENGE_REPLY);
+	reply->hdr.rc = 0;
+	reply->hdr.len = htonl(len);
+	strncpy(reply->auth_challenge.s, password, strlen(password));
+	/* Release in process...approval_reply/disconnected */
+	ldms_xprt_get(x);
+	zap_err_t zerr = zap_send(x->zap_ep, reply, len);
+	if (zerr) {
+		x->log("Auth error: Failed to send the password. %s\n",
+						zap_err_str(rc));
+		ldms_xprt_put(x);
+		x->auth_approved = LDMS_XPRT_AUTH_FAILED;
+	}
+	x->auth_approved = LDMS_XPRT_AUTH_PASSWORD;
+	free(reply);
+	return zerr;
+}
+
+static void ldms_xprt_auth_handle_challenge(struct ldms_xprt *x, void *r)
+{
+	int rc;
+	if (!x->password) {
+		x->log("Auth error: the server requires authentication.\n");
+		goto err;
+	}
+	struct ovis_auth_challenge *chl;
+	chl = (struct ovis_auth_challenge *)r;
+	uint64_t challenge = ovis_auth_unpack_challenge(chl);
+	char *psswd = ovis_auth_encrypt_password(challenge, x->password);
+	if (!psswd) {
+		x->log("Auth error: Failed to get the password\n");
+		goto err;
+	} else {
+		rc = send_auth_password(x, psswd);
+		free(psswd);
+		if (rc)
+			goto err;
+	}
+	return;
+err:
+	/*
+	 * Close the zap_connection. Both active and passive sides will receive
+	 * DISCONNECTED event. See more in ldms_zap_cb().
+	 */
+	x->auth_approved = LDMS_XPRT_AUTH_FAILED;
+	zap_close(x->zap_ep);
+}
+#endif /* ENABLE_AUTH */
 
 static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 {
@@ -977,26 +1162,68 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
 	zap_err_t zerr;
+	int ldms_conn_event;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		ldms_zap_handle_conn_req(zep);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
-	case ZAP_EVENT_REJECTED:
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_ERROR,
 				      x->connect_cb_arg);
 		break;
+	case ZAP_EVENT_REJECTED:
+		/* Put the reference taken in ldms_xprt_connect() */
+		ldms_xprt_put(x);
+		if (x->connect_cb)
+			x->connect_cb(x, LDMS_CONN_EVENT_REJECTED,
+					x->connect_cb_arg);
+		break;
 	case ZAP_EVENT_CONNECTED:
+#ifdef ENABLE_AUTH
+		if (ev->data_len) {
+			/*
+			 * The server sent a challenge for
+			 * authentication.
+			 */
+			ldms_xprt_auth_handle_challenge(x, ev->data);
+			break;
+		}
+		/*
+		 * The server doesn't do authentication.
+		 * Fall to the state machine without authentication.
+		 */
+#endif /* ENABLE_AUTH */
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
 				      x->connect_cb_arg);
+
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		/* Put the reference taken in ldms_xprt_connect() or accept() */
+		ldms_xprt_put(x);
+		ldms_conn_event = LDMS_CONN_EVENT_DISCONNECTED;
+#ifdef ENABLE_AUTH
+		if ((x->auth_approved != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_approved != LDMS_XPRT_AUTH_APPROVED)) {
+			if (x->auth_approved == LDMS_XPRT_AUTH_PASSWORD) {
+				/* Put the ref taken when sent the password */
+				ldms_xprt_put(x);
+			}
+			/*
+			 * The active side to receive DISCONNECTED before
+			 * the authentication is approved because
+			 *  - the server rejected the authentication, or
+			 *  - the client fails to respond the server's challenge.
+			 *
+			 *  Send the LDMS_CONN_EVENT_REJECTED to the application.
+			 */
+			ldms_conn_event = LDMS_CONN_EVENT_REJECTED;
+		}
+#endif /* ENABLE_AUTH */
 		if (x->connect_cb)
-			x->connect_cb(x, LDMS_CONN_EVENT_DISCONNECTED,
-				      x->connect_cb_arg);
+			x->connect_cb(x, ldms_conn_event, x->connect_cb_arg);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		recv_cb(x, ev->data);
@@ -1024,21 +1251,30 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 		assert(0 == "Illegal connect request.");
 		break;
 	case ZAP_EVENT_CONNECTED:
-		/* do nothing */
 		break;
+	case ZAP_EVENT_DISCONNECTED:
+#ifdef ENABLE_AUTH
+		ldms_xprt_put(x);
+		if (x->connect_cb)
+			x->connect_cb(x, LDMS_CONN_EVENT_DISCONNECTED,
+						x->connect_cb_arg);
+		break;
+#endif /* ENABLE_AUTH */
 	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_REJECTED:
-	case ZAP_EVENT_DISCONNECTED:
 	case ZAP_EVENT_RECV_COMPLETE:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
 	case ZAP_EVENT_RENDEZVOUS:
 		ldms_zap_cb(zep, ev);
 		break;
+	default:
+		assert(0);
 	}
 }
 
-ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
+ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn,
+					const char *secretword)
 {
 	int ret = 0;
 	char *libdir;
@@ -1053,6 +1289,17 @@ ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
 
 	if (!log_fn)
 		log_fn = default_log;
+
+#ifdef ENABLE_AUTH
+	if (secretword) {
+		x->password = strdup(secretword);
+		if (!x->password) {
+			ret = errno;
+			goto err1;
+		}
+		x->auth_approved = LDMS_XPRT_AUTH_INIT;
+	}
+#endif /* ENABLE_AUTH */
 
 	zap_err_t zerr;
 	x->zap = zap_get(name, log_fn, ldms_zap_mem_info);
@@ -1084,6 +1331,8 @@ ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
 err2:
 	free(x->zap);
 err1:
+	if (x->password)
+		free((void *)x->password);
 	free(x);
 err0:
 	errno = ret;

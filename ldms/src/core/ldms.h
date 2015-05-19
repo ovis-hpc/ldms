@@ -70,6 +70,7 @@ typedef struct ldms_rbuf_desc *ldms_rbuf_t;
 typedef struct ldms_set_desc *ldms_set_t;
 typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
+typedef struct ldms_xprt_auth_challenge *ldms_xprt_auth_chl_t;
 
 /**
  * \mainpage LDMS
@@ -374,6 +375,9 @@ struct ldms_set_desc {
  */
 typedef void (*ldms_log_fn_t)(const char *fmt, ...);
 
+#define MAX_SECRET_WORD_LEN 50 /*! The maximum length of the secret word */
+#define MIN_SECRET_WORD_LEN 3  /*! The minimum length of the secret word */
+
 /**
  * \brief Create a transport handle
  *
@@ -382,13 +386,17 @@ typedef void (*ldms_log_fn_t)(const char *fmt, ...);
  *
  * \param name	The name of the transport type to create.
  * \param log_fn An optional function to call when logging transport messages
+ * \param auth_path  The full path to the file storing the shared secret word.
+ *
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
-extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
+extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn,
+					const char *auth_path);
 
 typedef enum ldms_conn_event {
 	LDMS_CONN_EVENT_CONNECTED,
+	LDMS_CONN_EVENT_REJECTED,
 	LDMS_CONN_EVENT_ERROR,
 	LDMS_CONN_EVENT_DISCONNECTED,
 	LDMS_CONN_EVENT_LAST
@@ -477,9 +485,27 @@ extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port
 /**
  * \brief Close a connection to an LDMS host.
  *
+ * The function will disconnect the connection and free the allocated memory
+ * for the transport \c x.
+ *
  * \param x	The transport handle
+ *
+ * \see ldms_xprt_delete
  */
 extern void ldms_xprt_close(ldms_t x);
+
+/**
+ * \brief Destroy the ldms transport
+ *
+ * The function destroys and frees the allocated memory for the transport
+ * \c x. Unlike the ldms_xprt_close(), ldms_xprt_delete() should be called
+ * on the transport \c x that is not connected.
+ *
+ * \param x    The transport handle
+ *
+ * \see ldms_xprt_close
+ */
+extern void ldms_xprt_delete(ldms_t x);
 
 /** \} */
 
@@ -1206,6 +1232,21 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e);
 /**
  * \}
  */
+
+#ifdef ENABLE_AUTH
+extern uint64_t ldms_auth_gen_challenge();
+
+extern ldms_xprt_auth_chl_t ldms_auth_pack_challenge(uint64_t challenge,
+				ldms_xprt_auth_chl_t chl);
+
+extern uint64_t ldms_auth_unpack_challenge(ldms_xprt_auth_chl_t chl);
+
+extern char *ldms_auth_get_secretword(const char *path, ldms_log_fn_t log);
+
+extern char *ldms_auth_encrypt_password(const uint64_t challenge,
+					const char *secretword);
+
+#endif /* ENABLE_AUTH */
 
 #ifdef __cplusplus
 }

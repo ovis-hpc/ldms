@@ -9,6 +9,12 @@ libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h
 libldms_la_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
 libldms_la_LIBADD = -ldl -lpthread -lcoll @OVIS_LIB_LIBDIR_FLAG@ \
 		    -lmmalloc -lzap
+
+if ENABLE_AUTH
+libldms_la_CFLAGS += -DENABLE_AUTH
+libldms_la_LIBADD += @OVIS_LIB_LIBDIR_FLAG@ -lovis_auth
+endif
+
 lib_LTLIBRARIES += libldms.la
 
 install-data-hook:

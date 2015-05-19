@@ -29,6 +29,7 @@ OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
 OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
 OPTION_DEFAULT_ENABLE([glib], [ENABLE_GLIB])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
+OPTION_DEFAULT_DISABLE([auth], [ENABLE_AUTH])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
@@ -179,6 +180,12 @@ AC_CHECK_LIB(mmalloc, mm_init, [],
 	     $OVIS_LIB_LIBDIR_FLAG )
 dnl Reset LIBS variable.
 LIBS=""
+
+if test -z "$ENABLE_AUTH"
+then
+dnl Check for OpenSSL
+AX_CHECK_OPENSSL
+fi
 
 AC_CHECK_LIB(coll, idx_create, [],
 	     AC_MSG_ERROR([libcoll not found. Please install libcoll from
