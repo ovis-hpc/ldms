@@ -89,10 +89,7 @@ void meta_cluster_work_routine(void *arg)
 		}
 		break;
 
-	case BMPTN_STORE_STATE_META_1:
-	case BMPTN_STORE_STATE_META_2:
-	case BMPTN_STORE_STATE_REFINING:
-	case BMPTN_STORE_STATE_LAST:
+	default:
 		/* this should not happen */
 		berr("meta_cluster_work_routine() bad state ...");
 		break;
