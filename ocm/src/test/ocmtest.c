@@ -59,7 +59,7 @@
 #include <netdb.h>
 #include <assert.h>
 #include <semaphore.h>
-#include "ocm.h"
+#include "ocm/ocm.h"
 
 const char *short_opt = "?h:p:P:x:";
 struct option long_opt[] = {

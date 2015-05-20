@@ -73,7 +73,7 @@
 #include "ocmd_plugin.h"
 #include "ovis_util/util.h"
 
-#include "ocm.h"
+#include "../ocm/ocm.h"
 
 void ocmd_log(const char *fmt, ...);
 

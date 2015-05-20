@@ -891,5 +891,3 @@ void __ocm_destroy()
 		event_base_free(__ocm_evbase);
 	pthread_cancel(__ocm_evthread);
 }
-
-
