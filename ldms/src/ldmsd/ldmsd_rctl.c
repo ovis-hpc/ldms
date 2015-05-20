@@ -70,7 +70,12 @@
 #include "ocm/ocm.h"
 #include "ovis_rctrl/rctrl.h"
 
-#define FMT "h:p:"
+#ifdef ENABLE_AUTH
+#include "ovis_auth/auth.h"
+#define LDMSD_RCTRL_AUTH_ENV "LDMSD_RCTRL_AUTH_FILE"
+#endif /* ENABLE_AUTH */
+
+#define FMT "h:p:a:"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
 static char linebuf[8192];
@@ -78,8 +83,9 @@ static char *buff = 0;
 static struct ocm_cfg_buff *cfg = 0;
 static sem_t conn_sem;
 static sem_t recv_sem;
-static char *host;
-static char *port;
+static char *host = 0;
+static char *port = 0;
+static char *secretword_path = 0;
 
 void cleanup()
 {
@@ -102,8 +108,14 @@ void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
                "    -h <hostname>   The hostname of the ldmsd.\n"
-               "    -p <port>       The listener port of ldmsd, specified with -p.\n",
+               "    -p <port>       The listener port of ldmsd.\n",
                argv[0], FMT);
+#ifdef ENABLE_AUTH
+	printf("    -a <path>       The full Path to the file containing the shared secret word.\n"
+	       "		    Set the environment variable %s to the full path\n"
+	       "		    to avoid giving it at command-line every time.\n",
+	       LDMSD_RCTRL_AUTH_ENV);
+#endif /* ENABLE_AUTH */
 	exit(1);
 }
 
@@ -268,7 +280,7 @@ void __recv_resp(rctrl_t ctrl)
 		int errcode;
 		int cnt;
 		sscanf(v->s.str, "%d%n", &errcode, &cnt);
-		if (0 != errcode)
+		if (0 != strlen(&v->s.str[cnt]))
 			printf("%s\n", &v->s.str[cnt]);
 	}
 	sem_post(&recv_sem);
@@ -280,8 +292,13 @@ void rctrl_cb(enum rctrl_event ev, rctrl_t ctrl)
 	case RCTRL_EV_CONNECTED:
 		sem_post(&conn_sem);
 		break;
+	case RCTRL_EV_REJECTED:
+		printf("Connection to %s at %s is rejected.\n",
+							host, port);
+		exit(1);
+		break;
 	case RCTRL_EV_DISCONNECTED:
-	case RCTRL_EV_ERROR:
+	case RCTRL_EV_CONN_ERROR:
 		printf("Connection to %s at %s is disconnected/error.\n",
 							host, port);
 		exit(1);
@@ -333,6 +350,22 @@ static void null_log(const char *fmt, ...)
 	fflush(stdout);
 }
 
+#ifdef ENABLE_AUTH
+
+#include "ovis_auth/auth.h"
+
+const char *ldmsd_rctrl_get_secretword(const char *path)
+{
+	int rc;
+	if (!path) {
+		path = getenv(LDMSD_RCTRL_AUTH_ENV);
+		if (!path)
+			return NULL;
+	}
+	return ovis_auth_get_secretword(path, null_log);
+}
+#endif /* ENABLE_AUTH */
+
 int main(int argc, char *argv[])
 {
 	int op;
@@ -348,9 +381,22 @@ int main(int argc, char *argv[])
 		case 'p':
 			port = strdup(optarg);
 			break;
+		case 'a':
+			secretword_path = strdup(optarg);
+			break;
 		default:
 			usage(argv);
 		}
+	}
+
+	if (!host) {
+		printf("hostname is required.\n");
+		usage(argv);
+	}
+
+	if (!port) {
+		printf("port is required.\n");
+		usage(argv);
 	}
 
 	rc = sem_init(&conn_sem, 0, 0);
@@ -365,12 +411,18 @@ int main(int argc, char *argv[])
 		exit(rc);
 	}
 
-	rctrl_t ctrl = rctrl_setup_controller("sock", rctrl_cb, null_log);
+	const char *word = 0;
+#ifdef ENABLE_AUTH
+	word = ldmsd_rctrl_get_secretword(secretword_path);
+#endif /* ENABLE_AUTH */
+
+	rctrl_t ctrl = rctrl_setup_controller("sock", rctrl_cb, word, null_log);
 	if (!ctrl) {
 		printf("Error setting up connection with ldmsd.\n");
 		exit(1);
 	}
-
+	if (word)
+		free((void *)word);
 	printf("Connecting to %s at %s\n", host, port);
 	rc = rctrl_connect(host, port, ctrl);
 	if (rc)

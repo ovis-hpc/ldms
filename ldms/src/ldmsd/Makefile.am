@@ -17,7 +17,6 @@ ldmsd_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ \
 		-lovis_ctrl
 ldmsd_CFLAGS = $(AM_CFLAGS) @EVENTINC@
 
-<<<<<<< HEAD
 if ENABLE_AUTH
 ldmsd_CFLAGS += -DENABLE_AUTH
 ldmsd_LDFLAGS += -lovis_auth
@@ -52,6 +51,10 @@ ldmsd_rctl_LDADD = $(CORE)/libldms.la
 ldmsd_rctl_LDFLAGS = $(AM_LDFLAGS) -lreadline -lovis_rctrl -locm -lpthread \
 		      @OCM_LIBDIR_FLAG@ @LDFLAGS_READLINE@
 ldmsd_rctl_CFLAGS = $(AM_CFLAGS) @OCM_INCDIR_FLAG@
+if ENABLE_AUTH
+ldmsd_rctl_CFLAGS += -DENABLE_AUTH
+ldmsd_rctl_LDADD += -lovis_auth
+endif
 endif
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c

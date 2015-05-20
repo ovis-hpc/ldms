@@ -111,7 +111,7 @@ int test_set_count=1;
 int test_metric_count=1;
 int notify=0;
 char *logfile;
-const char *secretword;
+const char *secretword = 0;
 int authenticate;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
@@ -265,18 +265,18 @@ void usage(char *argv[])
 	printf("    -a		   Authentication is required. The environment variable\n"
 	       "		   %s must be set to the full path to the file storing\n"
 	       "		   the shared secret word, e.g., secretword=<word>, where\n"
-	       "		   %d < word length < %d", LDMSD_AUTH_ENV,
+	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 #endif /* ENABLE_AUTH */
 #ifdef ENABLE_LDMSD_TEST
 	printf("    -r port        The listener port for receiving configuration.\n"
 	       "                   via socket\n");
-	cleanup(1);
 #endif /* ENABLE_LDMSD_TEST */
 #ifdef ENABLE_LDMSD_RCTRL
 	printf("    -p port        The listener port for receiving configuration\n"
 	       "                   from the ldmsd_rctl program\n");
 #endif
+	cleanup(1);
 }
 
 int ev_thread_count = 1;
@@ -1532,7 +1532,7 @@ int main(int argc, char *argv[])
 
 #ifdef ENABLE_LDMSD_RCTRL
 	if (rctrl_port)
-		if (ldmsd_rctrl_init(rctrl_port))
+		if (ldmsd_rctrl_init(rctrl_port, secretword))
 			cleanup(4);
 #endif /* ENABLE_LDMSD_RCTRL */
 	if (ldmsd_store_init(flush_N)) {

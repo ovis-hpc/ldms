@@ -171,16 +171,16 @@ void rctrl_recv_cb(enum rctrl_event ev, rctrl_t ctrl)
 		__rctrl_recv_cb(ctrl);
 		break;
 	default:
-		assert(0 == "Illegal rctrl callback");
+		assert(0 == "Illegal rctrl event");
 		break;
 	}
 }
 
-int ldmsd_rctrl_init(const char *port)
+int ldmsd_rctrl_init(const char *port, const char *secretword)
 {
 	int rc = 0;
 	rctrl_t ctrl = rctrl_listener_setup("sock", port, rctrl_recv_cb,
-						ldms_log);
+						secretword, ldms_log);
 	if (!ctrl)
 		rc = errno;
 	return rc;
