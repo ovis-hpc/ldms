@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
     for name in dir:
         if args.verbose or args.schema:
-            set = LDMS_xprt_lookup(x, name)
+            set = LDMS_xprt_lookup(x, name, 0)
             if args.schema:
                 show_schema(set)
             else:
