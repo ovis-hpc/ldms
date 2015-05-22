@@ -151,7 +151,7 @@ static int create_metric_set(const char *path)
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
-	LDMS_SIZE_JOBID_METRIC(meminfo,meta_sz,tot_meta_sz,
+	LDMS_SIZE_JOBID_METRIC(procnfs,meta_sz,tot_meta_sz,
 		data_sz,tot_data_sz,metric_count,rc,msglog);
 
 	/* Don't need to look at the file since we have all the name info

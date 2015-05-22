@@ -279,7 +279,7 @@ static int create_metric_set(const char *setname)
 	tot_data_sz = 0;
 
 	int metric_count = 0;
-	LDMS_SIZE_JOBID_METRIC(meminfo,meta_sz,tot_meta_sz,
+	LDMS_SIZE_JOBID_METRIC(sysclassib,meta_sz,tot_meta_sz,
 		data_sz,tot_data_sz,metric_count,rc,msglog);
 
 	LIST_FOREACH(port, &scib_port_list, entry) {

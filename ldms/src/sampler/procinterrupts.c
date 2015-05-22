@@ -127,7 +127,7 @@ static int create_metric_set(const char *path)
 	tot_data_sz = 0;
 
 	metric_count = 0;
-	LDMS_SIZE_JOBID_METRIC(meminfo,meta_sz,tot_meta_sz,
+	LDMS_SIZE_JOBID_METRIC(procinterrupts,meta_sz,tot_meta_sz,
 		data_sz,tot_data_sz,metric_count,rc,msglog);
 	fseek(mf, 0, SEEK_SET);
 

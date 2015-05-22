@@ -103,7 +103,7 @@ static int create_metric_set(const char *path)
 	tot_data_sz = 0;
 	tot_meta_sz = 0;
 
-	LDMS_SIZE_JOBID_METRIC(meminfo,meta_sz,tot_meta_sz,
+	LDMS_SIZE_JOBID_METRIC(vmstat,meta_sz,tot_meta_sz,
 		data_sz,tot_data_sz,metric_count,rc,msglog);
 	/*
 	 * Process the file once first to determine the metric set size.
@@ -243,7 +243,7 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return "config name=meminfo component_id=<comp_id> set=<setname> "
+	return "config name=vmstat component_id=<comp_id> set=<setname> "
 			"    comp_id     The component id value.\n"
 			"    setname     The set name.\n"
 			LDMS_JOBID_DESC
