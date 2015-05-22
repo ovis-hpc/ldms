@@ -1,0 +1,84 @@
+=head1 NAME
+
+ldms - The Lightweight Distributed Metric Service
+
+=head1 SYNOPSIS
+
+LDMS is a set of utilities, plugins, and daemons for extracting performance metrics from distributed systems. The design of LDMS is targetted at high performance computing system users with low tolerance for interference from measurement tools.
+
+This page indexes the available man pages.
+
+=head1 GETTING HELP
+
+You can get more documentation, tutorials and community support
+online at the wiki: L<https://ovis.ca.sandia.gov>.
+
+If you're new to LDMS, you should start at the Downloads and documentation
+page of the wiki.
+
+The LDMS manual has several sections.
+
+=head2 The daemon
+
+    ldmsd, ldms-aggd	The daemon 
+    ldmsctl, ldmsaggctl	The text-based control interface
+    ldms_ls		The data query client interface
+    LDMS_Authentication	How to manage control and query authentication
+
+=head2 Tutorials
+
+    LDMS_QuickStart	LDMS short introduction
+    Sampler_tutorial	Need to fix this line.
+
+=head2 Data collection plugins
+
+    Plugin_cray_system_sampler_variants
+    Plugin_kgnilnd		Cray /proc/kgnilnd metrics
+    Plugin_lustre2_client	Lustre FS metrics
+    Plugin_meminfo		/proc/meminfo metrics
+    Plugin_procnetdev		/proc/net/dev metrics
+    Plugin_procnfs		/proc/net/rpc/nfs nfs client metrics
+    Plugin_procstatutil2	/proc/stat CPU time other CPU stats
+    Plugin_sysclassib		/sys/class/infiniband/*/ports/*/counters
+    Plugin_vmstat		/proc/vmstat metrics
+
+=head2 Data storage plugins
+
+    Plugin_store_csv		Output to comma-separated-value (CSV) formats
+    Plugin_store_derived_csv	Output of simple derived metrics to CSV formats
+
+=head2 Experimental and deprecated data collection plugins
+
+    Plugin_procsensors		Experimental: requires lmsensors support
+    Plugin_slurmjobid		Experimental: requires slurm prolog support
+    Plugin_procstatutil		Deprecated: use Plugin_procstatutil2
+
+=head2 Internals and C Language Interface
+
+In LDMS v2 the C API for applications is in development.
+
+In LDMS v2 the C API for plugins is also in development.
+
+LDMS v3 is in early development; stay tuned for possible development of stable C APIs.
+
+
+=head1 DESCRIPTION
+
+ldmsd is a single daemon which (under multiple names) acts as a scheduler of metric collection plugins (ldmsd), a mover of data sets (ldms-aggd) over high performance networks, and a scheduler of data storage plugins (ldms-aggd).
+
+LDMS samplers may collect data from out-of-band sources (OOB) as well as in the compute node runtime environment. At present no OOB samplers are available for public release.
+
+=head1 AVAILABILITY
+
+LDMS is portable to most Unix-like operating systems.
+Currently supported platforms are Ubuntu and Redhat Linux variants
+running kernels with complete network stacks.
+
+=head1 SEE ALSO
+
+ https://ovis.ca.sandia.gov	LDMS Wiki
+ LDMS Sampler Tutorial from Ed.
+
+=head1 NOTES
+
+The low overhead design of LDMS precludes scalable automated discover of the machines and metrics to be monitored. In particular, an informed administrator must select the network location of every daemon, data link, and metric set to be collected. Further, metric sets of the same kind must be specified to have the same sized (and named and sequenced) data on every node in order for aggregation to function efficiently and robustly. Consult ovis-help@sandia.gov for assistance in this regard.

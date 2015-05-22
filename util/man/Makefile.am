@@ -5,6 +5,7 @@ ldmsd.man \
 ldms_ls.man
 
 dist_man7_MANS= \
+ldms.man \
 LDMS_Authentication.man \
 LDMS_QuickStart.man \
 Plugin_cray_system_sampler_variants.man \
@@ -20,3 +21,7 @@ Plugin_store_csv.man \
 Plugin_store_derived_csv.man \
 Plugin_sysclassib.man \
 Plugin_vmstat.man
+
+ldms.man: ldms.pod
+	pod2man -n ldms --section=7 --release=2.4.2 -c "LDMS Manual Index" < $(srcdir)/ldms.pod > ldms.man
+
