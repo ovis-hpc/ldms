@@ -131,9 +131,11 @@ static pthread_t rothread;
 
 /*
  * store_csv - csv compid, value pairs UNLESS id_pos is specified.
- * In that case, either only the first/last (0/1) metric's comp id
- * will be used. First/last is determined by order in the store,
- * not the order in ldms_ls (probably reversed).
+ * In that case, two options for which metric's comp id
+ * will be used. 0 = last metric added to the sampler,
+ * 1 = first metric added to the sampler (order because of the inverse mvec).
+ * Interpretation has slightly changed becuase of the sequence options but
+ * the values of 0/1  and which metric have not.
  */
 
 struct csv_store_handle {
@@ -358,7 +360,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	rvalue = av_value(avl, "sequence");
-	cs.step = 1;
+	cs.step = 1; //reverse is the default for historical reasons (mvec causes the metrics to be reversed)
 	if (rvalue){
 		switch (rvalue[0]) {
 		case 'f':
@@ -419,7 +421,7 @@ static const char *usage(void)
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
-		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
+		"         - id_pos    Use only one comp_id either first metric added to the sampler (1) or last added (0)\n"
 		"                     (Optional default use all compid)\n"
 		"         - sequence  Determine the metric column ordering:\n"
 		ORDERTYPES
@@ -483,7 +485,7 @@ static int print_header(struct csv_store_handle *s_handle,
 	   retaining usec as a separate field */
 	fprintf(fp, "#Time, Time_usec");
 
-	int num_metrics = ldms_mvec_get_count(mvec);
+	int num_metrics = ldms_mvec_get_count(mvec); 
 	get_loop_limits(num_metrics);
 
 	if (id_pos < 0) {
@@ -659,7 +661,8 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
 		ts->sec, ts->usec, ts->usec);
 
-	int num_metrics = ldms_mvec_get_count(mvec);
+	/* mvec comes to the store as the inverse of how they added to the sampler which is also the inverse of ldms_ls -l display */
+	int num_metrics = ldms_mvec_get_count(mvec); 
 	get_loop_limits(num_metrics);
 	if (id_pos < 0){
 		int i, rc;
