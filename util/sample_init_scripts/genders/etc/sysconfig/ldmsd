@@ -1,0 +1,185 @@
+#
+# loaded from init.d/ldmsd
+# Defines Paths to executables and libs and boot functions for samplers.
+# This is where the configuration is extracted from genders information.
+# Edit sysconfig/ldmsd.conf for manual exception data, if any, needed.
+# DAEMON defined by init.d script.
+#
+# Path to tailoring variables that override genders.
+NODEFILE=/etc/sysconfig/ldmsd.conf
+
+# load localizations
+. $NODEFILE
+
+
+if ! test -z DEBUG_INITD; then
+
+	DEBUG_INITD=/bin/true
+# see if we're running genders and if ldmsd is forced
+# If no genders, someone should use a different set of
+# init scripts entirely
+	if ! nodeattr $NODEATTRFILE -k > /dev/null ; then
+		echoq problem with $NODEATTRFILE
+		failure
+		echo
+		exit
+	fi
+else
+	DEBUG_INITD=/bin/true
+fi
+# if we are the top (ldmsd use, not ldmsaggd use) check for being wanted on this node
+if test "x$INCLUDES_LDMSD" = "x"; then
+	if test -z $LDMSD; then
+		if ! nodeattr $NODEATTRFILE $host ldmsd ; then
+			echoq "$host is is not an LDMSD host. Exiting."
+			failure
+			echo
+			exit
+		fi
+		LDMSD=1
+	fi
+fi
+# now check localizations and define from genders anything that's missing.
+
+PATH="$sbindir:$PATH"
+if test -z $LDMSCTL; then
+	LDMSCTL="ldmsctl"
+fi
+if test -z $LIBEVENT_LIB_PATH; then
+	LIBEVENT_LIB_PATH="$libdir/ovis-libevent"
+fi
+if test -z $LDMS_LIB_PATH; then
+	LDMS_LIB_PATH="$libdir/ovis-ldms"
+fi
+# never override LDMS_PLUGIN_PATH independently
+LDMS_PLUGIN_PATH="$LDMS_LIB_PATH"
+
+# load up genders values, then process missing values and overrides
+LDMSD_PORT=`nodeattr $NODEATTRFILE -v $host ldmsd_port`
+LDMSD_XPRT=`nodeattr $NODEATTRFILE -v $host ldmsd_xprt`
+LDMSD_HOST=`nodeattr $NODEATTRFILE -v $host ldmsd_host`
+LDMSD_DBG=`nodeattr $NODEATTRFILE -v $host ldmsd_dbg`
+LDMSD_IDBASE=`nodeattr $NODEATTRFILE -v $host ldmsd_idbase`
+LDMSD_METRIC_SETS=`nodeattr $NODEATTRFILE -v $host ldmsd_metric_sets`
+LDMSD_INTERVAL_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsd_interval_default`
+LDMSD_OFFSET_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsd_offset_default`
+
+if test -z $NODE_PORT; then
+	NODE_PORT=$LDMSD_PORT
+	if test -z $NODE_PORT; then
+		NODE_PORT=411
+	fi
+fi
+
+if test -z $NODE_LDMSD_TRANSPORT; then
+	NODE_LDMSD_TRANSPORT=$LDMSD_XPRT
+	if test -z $NODE_LDMSD_TRANSPORT; then
+		NODE_LDMSD_TRANSPORT=sock
+	fi
+fi
+
+if test -z $NODE_COLLECTION_INTERVAL; then
+	NODE_COLLECTION_INTERVAL=$LDMSD_INTERVAL_DEFAULT
+	if test -z $NODE_COLLECTION_INTERVAL; then
+		NODE_COLLECTION_INTERVAL=10000000
+		# 10 sec
+	fi
+fi
+
+if test -z $NODE_COLLECTION_OFFSET; then
+	NODE_COLLECTION_OFFSET=$LDMSD_OFFSET_DEFAULT
+	if test -z $NODE_COLLECTION_OFFSET; then
+		NODE_COLLECTION_OFFSET=0
+	fi
+fi
+
+if test -z $NODE_DEBUG; then
+	NODE_DEBUG=$LDMSD_DBG
+	if test -z $NODE_DEBUG; then
+		NODE_DEBUG=ERROR
+	fi
+fi
+
+if test -z $NODE_ID_BASE; then
+	NODE_ID_BASE=$LDMSD_IDBASE
+	if test -z $NODE_ID_BASE; then
+		NODE_ID_BASE=1
+	fi
+fi
+	
+# : separated list of metric sets to load at startup
+if test -z $METRIC_SETS; then
+	METRIC_SETS=$LDMSD_METRIC_SETS
+	if test -z $METRIC_SETS; then
+		METRIC_SETS="meminfo:vmstat:procnfs:procstatutil2:procnetdev:sysclassib"
+	fi
+fi
+
+# Now parse out set-specific args if existing, in a posix shell way.
+# note chars other than : appears in the tr set only to prevent evil in eval
+# of arbitrary NODE_CONFIG_* values.
+for i in $(echo $METRIC_SETS | tr ":;'\`" "\n"); do
+	configtmp=`nodeattr $NODEATTRFILE -v $host ldmsd_${i}`
+	grok="`config_from_gender $configtmp`"
+	eval configuser=\"'$'NODE_CONFIG_$i\"
+	if test -z $configuser; then
+		eval NODE_CONFIG_$i='$grok'
+	fi
+
+	intervaltmp=`nodeattr $NODEATTRFILE -v $host ldmsd_interval_${i}`
+	if test -z $intervaltmp; then
+		intervaltmp=$NODE_COLLECTION_INTERVAL
+	fi
+	eval intervaluser=\"'$'NODE_INTERVAL_$i\"
+	if test -z $intervaluser; then
+		eval NODE_INTERVAL_$i=$intervaltmp
+	fi
+
+	offsettmp=`nodeattr $NODEATTRFILE -v $host ldmsd_offset_${i}`
+	if test -z $offsettmp; then
+		offsettmp=$NODE_COLLECTION_OFFSET
+	fi
+	eval offsetuser=\"'$'NODE_OFFSET_$i\"
+	if test -z $offsetuser; then
+		eval NODE_OFFSET_$i=$offsettmp
+	fi
+done
+
+# MYHOSTNAME is a hostname that doesn't contain the domain name
+MYHOSTNAME="$( echo $host | cut -d "." -f1 )"
+
+# Derive component IDs from hostname embedded numbers.
+hostnumber="$(echo $MYHOSTNAME | sed 's/[a-z\-]//g')"
+if [ -z $hostnumber ]; then
+	echoq "WARNING: $host (no digits in hostname?)"
+fi
+if test -z $COMPONENT_ID; then
+	COMPONENT_ID="$(( $NODE_ID_BASE + $hostnumber ))"
+fi
+
+if [ $COMPONENT_ID -lt 1 ]; then
+	echoq "ERROR: Component ID for $host is $COMPONENT_ID. Exiting..."
+	failure
+	echo
+	exit
+fi
+
+
+# Define name of Unix domain socket for communication with ldmsd
+if test -z $LDMSD_LOCAL_SOCK; then
+	LDMSD_LOCAL_SOCK=metric_socket
+fi
+
+# Note the LDMSD_LOG_PATH may become a problem if
+# on a shared file system that goes down and daemon debugging is enabled.
+if test -z $LDMSD_LOG_PATH; then
+	LDMSD_LOG_PATH=$localstatedir/log/ldms_logs
+fi
+
+#Paths to unix domain socket used by ldmsctl to communicate with ldmsd
+if test -z $LDMSD_LOCAL_SOCK_DIR; then
+	LDMSD_LOCAL_SOCK_DIR="$localstatedir/run/$DAEMON"
+fi
+if test -z $LDMSCTL_SOCK_DIR; then
+	LDMSCTL_SOCK_DIR="$localstatedir/run/ldmsctl"
+fi

@@ -1,4 +1,10 @@
-For TOSS deployment, see rhel/.
+For irregular centos/rhel6 clusters, see rhel/
+	This uses tedious lists to manage daemon config consistency.
+
+For TOSS deployment, see genders/.
+	This uses a cluster-wide genders file to manage 
+	daemon config consistency.
+
 
 For cluster hacking, see hackable/.
 * ldmsd.example is an init script that may need local modifications depending on where the associated configuration file (ldmsd.conf), pid files, etc. should be placed. When running as a user these files will need to be placed in a user read/write-able location. The normal place to put this file when running as root is /etc/init.d/ldmsd

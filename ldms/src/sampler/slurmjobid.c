@@ -49,7 +49,7 @@
  */
 /**
  * \file slurmjobid.c
- * \brief /var/run/ldms.slurm.jobid data provider.
+ * \brief /var/run/ldms.slurm.jobid shared data provider.
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -66,9 +66,9 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 
-const char * JOBID_COLNAME="slurm.jobid";
 /* This sampler relies on the resource manager to
 leave a note in JOBID_FILE about the current job, or 0 if the
 node is not reserved. If this file is absent, the sampler
@@ -88,6 +88,7 @@ The functionality is generic to files containing a single
 integer in ascii encoding.
 */
 static const char *JOBID_FILE="/var/run/ldms.slurm.jobid";
+static const char *JOBID_COLNAME = SLURM_JOBID_METRIC_NAME;
 #define JOBID_LINE_MAX 64  //max # of chars in lbuf
 
 static char *procfile = NULL;
@@ -98,11 +99,19 @@ static ldms_metric_t *metric_table;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id = UINT64_MAX;
 static char *qc_dir = NULL;
+// data for resource_manager users
+// update at every sample.
+static resource_info_manager rim = NULL;
+static uint64_t last_jobid = 0;
+static uint64_t last_generation = 0;
 
 #ifdef HAVE_QC_SAMPLER
 static int qc_file = -1;
 static int get_qc_file(const char *qc_dir, int *qc_file);
 #endif
+
+static
+int slurm_rim_update(struct resource_info *self, enum rim_task t, void * tinfo);
 
 static int create_metric_set(const char *path)
 {
@@ -207,6 +216,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		}
 	}
 
+	int err;
+	err = register_resource_info(rim, JOBID_COLNAME, "node", NULL,
+		slurm_rim_update, NULL);
+	if (err) {
+		msglog(LDMS_LERROR,"Exporting '%s' failed\n", 
+			JOBID_COLNAME);
+		return err;
+	}
+
 	/* open a qc data file to store this sample.          */
 	/* if user does not specify qc_log_dir, then it's ok. */
 #ifdef HAVE_QC_SAMPLER
@@ -233,6 +251,7 @@ static ldms_set_t get_set()
 {
 	return set;
 }
+
 
 /* as a policy matter, the missing file has the value 0, not an error. */
 static int sample(void)
@@ -317,6 +336,8 @@ static int sample(void)
 
 	v.v_u64 = metric_value;
 	ldms_set_metric(metric_table[metric_no], &v);
+	last_jobid = metric_value;
+	last_generation++;
 
 #ifdef HAVE_QC_SAMPLER
 	/* write a metric to the qc data file */
@@ -340,6 +361,33 @@ static int sample(void)
 
 	ldms_end_transaction(set);
 	return 0;
+}
+
+/*&
+ Value change is driven by daemon, not by shared data requests.
+ No configuration or private data is needed for this case.
+*/
+static
+int slurm_rim_update(struct resource_info *self, enum rim_task t,
+	void * tinfo)
+{
+	(void)tinfo;
+        switch (t) {
+        case rim_init:
+                self->v.u64 = last_jobid;
+                self->generation = last_generation;
+                return 0;
+        case rim_update: {
+                self->v.u64 = last_jobid;
+                self->generation = last_generation;
+                return 0;
+        }
+        case rim_final:
+                break;
+        default:
+                return EINVAL;
+        }
+        return 0;
 }
 
 static void term(void)
@@ -381,9 +429,12 @@ static struct ldmsd_sampler slurmjobid_plugin = {
 	.sample = sample,
 };
 
+
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	rim = ldms_get_rim();
+	
 	return &slurmjobid_plugin.base;
 }
 

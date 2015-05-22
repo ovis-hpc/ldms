@@ -169,7 +169,7 @@ static int create_metric_set(const char *path)
 			    (procstatutil_metrics_type == PROCSTATUTIL_METRICS_BOTH)){
 				int len = (strlen(metric_name_fmt[column]) - ncoresuffix + 1) < PROCSTATUTIL_NAME_MAX ?
 					(strlen(metric_name_fmt[column]) - ncoresuffix + 1) : PROCSTATUTIL_NAME_MAX;
-				snprintf(metric_name, len, metric_name_fmt[column++]);
+				snprintf(metric_name, len, metric_name_fmt[column++],0);
 			} else {
 				snprintf(metric_name, PROCSTATUTIL_NAME_MAX,
 					 metric_name_fmt[column++], cpu_count);
@@ -223,7 +223,7 @@ static int create_metric_set(const char *path)
 		for (column = 0; column < column_count; column++) {
 			int len = (strlen(metric_name_fmt[column]) - ncoresuffix + 1) < PROCSTATUTIL_NAME_MAX ?
 				(strlen(metric_name_fmt[column]) - ncoresuffix + 1) : PROCSTATUTIL_NAME_MAX;
-			snprintf(metric_name, len, metric_name_fmt[column]);
+			snprintf(metric_name, len, metric_name_fmt[column],0);
 			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!m)
 				goto err;

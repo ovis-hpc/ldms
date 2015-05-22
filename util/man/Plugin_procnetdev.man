@@ -38,6 +38,10 @@ The name of the metric set.
 ifaces=<ifaces>
 .br
 CSV list of ifaces. Metric values for non-existent ifaces will be set to 0.
+.TP
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
 .RE
 
 .SH BUGS

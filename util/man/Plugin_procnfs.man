@@ -18,7 +18,7 @@ The procnfs plugin provides cpu utilization info from /proc/net/rpc/nfs
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name>
+name=<plugin_name> component_id=<comp_id> set=<set_name> with_jobid=<bool>
 .br
 ldmsctl configuration line
 .RS
@@ -34,6 +34,10 @@ The component id numerical value.
 set=<set_name>
 .br
 The name of the metric set.
+.TP
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
 .RE
 
 .SH BUGS

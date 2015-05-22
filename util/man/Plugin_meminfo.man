@@ -34,6 +34,10 @@ The component id numerical value.
 set=<set_name>
 .br
 The name of the metric set.
+.TP
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
 .RE
 
 .SH BUGS

@@ -1,0 +1,150 @@
+
+LDMS genders
+
+For transport efficiency LDMS requires a globally coherent
+definition of the data sets collected; this makes genders
+the single place to manage the configuration.
+
+For maximum data utility and minimum data contention, sampling must be
+scheduled globally and aggregation must be similarly scheduled with
+an offsetting delay.
+
+*** Daemon Network Layout ***
+ 
+Gender			What it does if defined for a node
+--------------		----------------------------------------------
+ldmsd			enables ldmsd sampling daemon
+ldmsd_host=H		defines hostname for sampling daemon's data server
+ldmsd_port=P		defines port for sampling daemon's data server
+ldmsd_xprt=X		defines protocol for contacting daemon's data server.
+			for legal protocol X values see ldmsd docs.
+ldmsd_metric_sets=LIST	defines data plugins to load as a : separated list;
+			may vary for node types or nodes
+ldmsd_idbase=IDMIN	defines the minimum component_id for a node type.
+			For a set of node names differing only in an integer
+			isuffix, component_id will be IDMIN+isuffix.
+			component_id of 0 is reserved; ensure IDMIN+isuffix>0.
+ldmsd_dbg=LEVEL		defines daemon internal logging level (DEBUG,INFO,ERROR
+			CRITICAL,QUIET).
+
+ldmsaggd=LIST		enables ldmsaggd, pulling from nodes in LIST
+			LIST is : separated, containing hostnames, BOOTNODELIST,
+			or CLIENTOFLIST or AGGCLIENTOFLIST. Below see 
+			"Node Lists" for details.
+ldmsaggd_port=N		defines port for aggregating daemon's data server
+ldmsaggd_host=H		defines hostname for aggregating daemon's data server
+ldmsaggd_xprt=X		defines protocol for aggregating daemon's data server.
+ldmsaggd_dbg=LEVEL	defines daemon internal logging level (DEBUG,INFO,ERROR
+			CRITICAL,QUIET).
+ldmsaggd_fail=H		defines aggregation host to take over if this
+			node fails.
+ldmsaggd_clientof=H	defines n-th level aggregation host.
+
+
+Below are sampler plugin parameters needed for data set uniformity regardless
+of host hardware in order for aggregation to work scalably.
+
+
+*** Data Sampler Configuration ***
+
+These control what exactly is collected by defining key parts of the
+config command sent to the individual samplers. See "Plugin Config" below
+for the definition of PARAMLIST.
+
+Gender				What it does if defined for a node
+--------------			----------------------------------------------
+ldmsd_SUFFIX=PARAMLIST		defines config flags for plugin named SUFFIX
+# for example:
+ldmsd_procnetdev=PARAMLIST	defines config flags for procnetdev plugin
+ldmsd_sysclassib=PARAMLIST	defines config flags for sysclassib plugin
+
+
+*** Sampler and Transport Scheduling ***
+
+These control when data is collected/moved. Defaults are applied to any sampler
+that is not more specifically defined with one of the SUFFIX forms.
+Times are in microseconds.
+
+Gender				What it does if defined for a node
+--------------			----------------------------------------------
+ldmsd_interval_default=ISAMP	defines sampling interval in microseconds.
+ldmsd_offset_default=OSAMP	defines offset from the nearest time which
+				is a whole number multiple of interval.
+ldmsd_interval_SUFFIX=IPLUG	as ISAMP, but for sample sets named by SUFFIX
+ldmsd_offset_SUFFIX=OPLUG	as OSAMP, but for sample sets named by SUFFIX
+ldmsaggd_interval_default=IAGG	as ISAMP, but for aggregator pulling samples
+ldmsaggd_offset_default=OAGG	as OSAMP, but for aggregator pulling samples
+## not yet supported
+#ldmsaggd_interval_SUFFIX=IAGGS	as ISAMP, but for aggregating set named SUFFIX
+#ldmsaggd_offset_SUFFIX=OAGGS	as OSAMP, but for aggregating set named SUFFIX
+
+
+*** Storage Plugin Configuration ***
+
+These control how storage is done with config commands.
+# See "Plugin Config" below for the definition of PARAMLIST.
+
+Gender				What it does if defined for a node
+--------------			----------------------------------------------
+ldmsaggd_stores=LIST		defines store plugins to load as a : separated 
+				list.
+ldmsaggd_SUFFIX=PARAMLIST	defines config flags for store named SUFFIX
+# for example:
+ldmsaggd_store_csv=PARAMLIST	defines config flags for store_csv plugin
+
+
+=== Plugin Config ===
+
+The general gender file ldmsd plugin configuration syntax is: 
+	ldmsd_$S=$C/value[:$C/value]*
+where: 
+	$S is the plugin name.
+	$C is the name of a plugin parameter.
+	: separates additional parameter assignments.
+	The first / after the = or a : separates parameter name from its value.
+	An & is used to separate list values rather than comma.
+
+This syntax reconciles the genders file comma/=/whitespace rules with the
+LDMS key=comma-separated-value configuration parameter syntax.
+Parameters become :-separated keys with &-separated-values lists.
+Any / preceding a : except the first is taken as a literal character.
+
+This translation mode is used for  sampler, storage, and transport
+plugin configuration where needed.
+
+
+=== Node Lists ===
+
+There are 3 special values for managing groups of LDMS data sources:
+BOOTNODELIST, CLIENTOFLIST, and AGGCLIENTOFLIST.
+
+
+The keyword BOOTNODELIST is replaced with the list of nodes with the gender
+'bootnode' having a value matching the name of the host processing the 
+BOOTNODELIST directive. If there are no nodes at all defined to have the
+'bootnode' gender, then BOOTNODELIST is taken as the set of all nodes with the
+gender 'ldmsd'.
+
+
+If something other than boot nodes is the basis of aggregation,
+the layout can be specified. E.G., a set of mon nodes:
+	mon[1-4]: ldmsaggd=CLIENTOFLIST,ldmsaggd_port=411,ldmsaggd_host=%n,ldmsaggd_xprt=sock
+	compute[1-300] ldmsd_clientof=mon1
+	compute[301-600] ldmsd_clientof=mon2
+	compute[601-900] ldmsd_clientof=mon3
+	compute[901-1200] ldmsd_clientof=mon4
+
+CLIENTOFLIST is computed as:
+	nodeattr -c ldmsd_clientof=H
+on each mon host H.
+
+
+To run 2nd and higher level aggregators, if we wanted that in-platform data
+for applications seeking a global performance view:
+	montop ldmsaggd=AGGCLIENTOFLIST,ldmsd_host=%n-ib0,ldmsd_port=411,ldmsd_xprt=rdma
+	mon[1-4] ldmsaggd_clientof=montop
+
+AGGCLIENTOFLIST is computed as:
+	nodeattr -c ldmsaggd_clientof=montop on the montop host.
+
+

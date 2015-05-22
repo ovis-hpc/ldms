@@ -91,6 +91,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 #define MAXSENSORFILENAME 512
 
@@ -109,6 +110,7 @@ static int lm_nentries;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
 
+LDMS_JOBID_GLOBALS;
 
 static int parse_conf_file(const char* ffile)
 {
@@ -199,10 +201,13 @@ static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
-	int rc, i;
+	int rc, i, metric_count = 0;
 
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
+
+	LDMS_SIZE_JOBID_METRIC(procsensors, meta_sz, tot_meta_sz,
+		data_sz, tot_data_sz, metric_count, rc, msglog);
 
 	for (i = 0 ; i < lm_nentries; i++){
 		rc = ldms_get_metric_size(lm_srcs[i]->mname, LDMS_V_U64, &meta_sz, &data_sz);
@@ -211,6 +216,7 @@ static int create_metric_set(const char *path)
 
 		tot_meta_sz += meta_sz;
 		tot_data_sz += data_sz;
+		metric_count++;
 	}
 
 	/* Create the metric set */
@@ -218,20 +224,24 @@ static int create_metric_set(const char *path)
 	if (rc)
 		return rc;
 
-	metric_table = calloc(lm_nentries, sizeof(ldms_metric_t));
+	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
 
+	int metric_no = 0;
+
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
 	/*
 	 * Process again to define all the metrics.
 	 */
 	for (i = 0; i < lm_nentries; i++){
-		metric_table[i] = ldms_add_metric(set, lm_srcs[i]->mname, LDMS_V_U64);
-		if (!metric_table[i]) {
+		metric_table[metric_no] = ldms_add_metric(set, lm_srcs[i]->mname, LDMS_V_U64);
+		if (!metric_table[metric_no]) {
 			rc = ENOMEM;
 			goto err;
 		}
-		ldms_set_user_data(metric_table[i], comp_id);
+		ldms_set_user_data(metric_table[metric_no], comp_id);
+		metric_no++;
 	}
 
 	return 0;
@@ -256,9 +266,10 @@ err:
  * \brief Configuration
  *
  * Usage:
- * config name=procsensors component_id=<comp_id> set=<setname> conffile=<conf>
+ * config name=procsensors component_id=<comp_id> set=<setname> conffile=<conf> with_jobid=<bool>
  *     comp_id     The component id value.
  *     setname     The set name.
+ *     bool        include jobid in set or not.
  *     conf        The full pathname for the config file
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -275,6 +286,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		parse_conf_file(value);
 	else
 		return -1;
+
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
 	value = av_value(avl, "set");
 	if (value)
@@ -301,6 +314,9 @@ static int sample(void)
 	retrc = 0;
 
 	ldms_begin_transaction(set);
+	int metric_no = 0;
+	LDMS_JOBID_SAMPLE(v,metric_table,metric_no);
+
 	for (i = 0; i < lm_nentries; i++){
 		//FIXME: do we really want to open and close each one?
 		mf = fopen(lm_srcs[i]->vname, "r");
@@ -318,7 +334,7 @@ static int sample(void)
 				} else {
 					/* assume since sensors can cast w/o overflow */
 					v.v_u64 = (uint64_t)((double)tempval*lm_srcs[i]->multiplier + lm_srcs[i]->offset);
-					ldms_set_metric(metric_table[i], &v);
+					ldms_set_metric(metric_table[metric_no], &v);
 				}
 			} else {
 				/* do not go to out */
@@ -326,6 +342,7 @@ static int sample(void)
 			}
 			if (mf) fclose(mf);
 		}
+		metric_no++;
 	}
 
 	ldms_end_transaction(set);
@@ -346,12 +363,14 @@ static void term(void)
 	}
 	if (lm_srcs)
 		free(lm_srcs);
+	LDMS_JOBID_TERM;
 }
 
 static const char *usage(void)
 {
 	return  "config name=procsensors component_id=<comp_id> set=<set> config\n"
 		"    comp_id    The component id.\n"
+		LDMS_JOBID_DESC
 		"    set        The set name.\n";
 }
 

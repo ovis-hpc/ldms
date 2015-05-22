@@ -1,0 +1,166 @@
+#
+# loaded from init.d/ldms-aggd
+# 
+# This is where the configuration is extracted from genders information.
+# Edit sysconfig/ldms-aggd.conf for manual exception data, if any, needed
+# and for node-independent variables.
+# DAEMON defined by init.d script.
+#
+# Path to tailoring variables that override genders.
+CONFFILE=/etc/sysconfig/$DAEMON.conf
+
+INCLUDES_LDMSD=yes
+export INCLUDES_LDMSD
+# load localizations; this also pulls in the sysconfig/ldmsd and ldmsd.conf
+. $CONFFILE
+
+if test -z $LDMSAGGD; then
+	if ! nodeattr $NODEATTRFILE $host ldmsaggd ; then
+		echoq "$host is is not an LDMS-AGGD host. Exiting."
+		failure
+		echo
+		exit
+	fi
+	LDMSAGGD=1
+fi
+
+PATH="$sbindir:$PATH"
+if test -z $LDMSAGGCTL; then
+	LDMSAGGCTL="ldmsaggctl"
+fi
+
+# never override LDMS_PLUGIN_PATH independently
+LDMS_PLUGIN_PATH="$LDMS_LIB_PATH"
+
+# load up genders values, then process missing values and overrides
+LDMSAGGD_PORT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_port`
+LDMSAGGD_XPRT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_xprt`
+LDMSAGGD_HOST=`nodeattr $NODEATTRFILE -v $host ldmsaggd_host`
+LDMSAGGD_DBG=`nodeattr $NODEATTRFILE -v $host ldmsaggd_dbg`
+LDMSAGGD_STORES=`nodeattr $NODEATTRFILE -v $host ldmsd_stores`
+LDMSAGGD_INTERVAL_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_interval_default`
+LDMSAGGD_OFFSET_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_offset_default`
+
+if test -z $AGG_PORT; then
+	AGG_PORT=$LDMSAGGD_PORT
+	if test -z $AGG_PORT; then
+		AGG_PORT=412
+	fi
+fi
+
+if test -z $AGG_LDMSD_TRANSPORT; then
+	AGG_LDMSD_TRANSPORT=$LDMSAGGD_XPRT
+	if test -z $AGG_LDMSD_TRANSPORT; then
+		AGG_LDMSD_TRANSPORT=sock
+	fi
+fi
+
+if test -z $AGG_COLLECTION_INTERVAL; then
+	AGG_COLLECTION_INTERVAL=$LDMSAGGD_INTERVAL_DEFAULT
+	if test -z $AGG_COLLECTION_INTERVAL; then
+		AGG_COLLECTION_INTERVAL=$NODE_COLLECTION_INTERVAL
+		# 10 sec
+	fi
+fi
+
+if test -z $AGG_COLLECTION_OFFSET; then
+	AGG_COLLECTION_OFFSET=$LDMSAGGD_OFFSET_DEFAULT
+	if test -z $AGG_COLLECTION_OFFSET; then
+		AGG_COLLECTION_OFFSET=`expr $NODE_COLLECTION_OFFSET + 20000`
+	fi
+fi
+
+if test -z $AGG_DEBUG; then
+	AGG_DEBUG=$LDMSAGGD_DBG
+	if test -z $AGG_DEBUG; then
+		AGG_DEBUG=ERROR
+	fi
+fi
+
+
+# : separated list of stores to load at startup
+if test -z $STORES; then
+	STORES=$LDMSAGGD_STORES
+	if test -z $STORES; then
+		STORES="store_csv"
+	fi
+fi
+
+# Now parse out store and set-specific args if existing, in a posix shell way.
+# note chars other than : appears in the tr set only to prevent evil in eval
+# of arbitrary AGG_CONFIG_* values.
+for i in $(echo $STORES | tr ":;'\`" "\n"); do
+	configtmp=`nodeattr $NODEATTRFILE -v $host ldmsaggd_${i}`
+	grok="`config_from_gender $configtmp`"
+	eval configuser=\"'$'AGG_CONFIG_$i\"
+	if test -z $configuser; then
+		eval AGG_CONFIG_$i='$grok'
+	fi
+
+	intervaltmp=`nodeattr $NODEATTRFILE -v $host ldmsaggd_interval_${i}`
+	if test -z $intervaltmp; then
+		intervaltmp=$AGG_COLLECTION_INTERVAL
+	fi
+	eval intervaluser=\"'$'AGG_INTERVAL_$i\"
+	if test -z $intervaluser; then
+		eval AGG_INTERVAL_$i=$intervaltmp
+	fi
+
+	offsettmp=`nodeattr $NODEATTRFILE -v $host ldmsaggd_offset_${i}`
+	if test -z $offsettmp; then
+		offsettmp=$AGG_COLLECTION_OFFSET
+	fi
+	eval offsetuser=\"'$'AGG_OFFSET_$i\"
+	if test -z $offsetuser; then
+		eval AGG_OFFSET_$i=$offsettmp
+	fi
+done
+
+if test -z $NODELIST; then
+	LDMSAGGD_LIST=`nodeattr $NODEATTRFILE -v $host ldmsaggd`
+	BOOTNODE_LIST=`nodeattr $NODEATTRFILE -c bootnode=$host`
+	if test -z $BOOTNODE_LIST; then
+		BOOTNODE_LIST=`nodeattr $NODEATTRFILE -c ldmsd`
+	fi
+	CLIENTOF_LIST=`nodeattr $NODEATTRFILE -c ldmsd_clientof=$host`
+	AGGCLIENTOF_LIST=`nodeattr $NODEATTRFILE -c ldmsaggd_clientof=$host`
+
+	NLIST=`echo $LDMSAGGD_LIST |sed -e "s/BOOTNODELIST/$BOOTNODE_LIST/"`
+	NLIST=`echo $NLIST |sed -e "s/CLIENTOFLIST/$CLIENTOF_LIST/"`
+	NLIST=`echo $NLIST |sed -e "s/AGGCLIENTOFLIST/$AGGCLIENTOF_LIST/"`
+	NODELIST=`echo $NLIST |sed -e 's/,/:/'`
+	if test -z $NODELIST; then
+		echoq "Aggregator $host has nothing to aggregate. Exiting."
+		failure
+		echo
+		exit
+	fi
+	METRIC_SETS_LIST=`nodeattr $NODEATTRFILE -U -V ldmsd_metric_sets`
+	# union of sets on all nodes.
+	ALL_METRIC_SETS=`echo $METRIC_SETS_LIST $METRIC_SETS| tr ": " "\n" | sort -u`
+fi
+
+# Define name of Unix domain socket for communication with ldmsaggd
+if test -z $LDMSAGGD_LOCAL_SOCK; then
+	LDMSAGGD_LOCAL_SOCK=agg_socket
+fi
+
+#Paths to unix domain socket used by ldmsctl to communicate with ldmsaggd
+if test -z $LDMSAGGD_LOCAL_SOCK_DIR; then
+	LDMSAGGD_LOCAL_SOCK_DIR="$localstatedir/run/$DAEMON"
+fi
+
+if test -z $LDMSCTL_SOCK_DIR; then
+	LDMSAGGCTL_SOCK_DIR="$localstatedir/run/ldmsaggctl"
+fi
+
+# misc resource parameters
+if test -z $AGG_MEM; then
+	AGG_MEM=1000M
+fi
+if test -z $AGG_NUM_PROCS; then
+	AGG_NUM_PROCS=16
+fi
+if test -z AGG_CONN_THREADS; then
+	AGG_CONN_THREAD=4
+fi
