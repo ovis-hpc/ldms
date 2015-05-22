@@ -17,6 +17,8 @@ port1=`expr $portbase + 1`
 port2=`expr $portbase + 2`
 port3=`expr $portbase + 3`
 port4=`expr $portbase + 4`
+port5=`expr $portbase + 5`
+port6=`expr $portbase + 6`
 if test ! -x $BUILDDIR/sbin/ldmsd; then
 	echo "can't find ldmsd binary. set destdir in $0 before testing?"
 	exit 1
@@ -68,6 +70,8 @@ rm -f ${LOGDIR}/1.txt
 rm -f ${LOGDIR}/2.txt
 rm -f ${LOGDIR}/3.txt
 rm -f ${LOGDIR}/4.txt
+rm -f ${LOGDIR}/5.txt
+rm -f ${LOGDIR}/6.txt
 
 echo removing old output
 rm -rf ${STOREDIR}/node
@@ -78,6 +82,8 @@ ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -q DEBUG
 ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -q DEBUG
 ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG
 ldmsd -x sock:$port4 -S $SOCKDIR/metric_socket_4  -l ${LOGDIR}/4.txt -q DEBUG
+ldmsd -x sock:$port5 -S $SOCKDIR/metric_socket_5  -l ${LOGDIR}/5.txt -q DEBUG
+ldmsd -x sock:$port6 -S $SOCKDIR/metric_socket_6  -l ${LOGDIR}/6.txt -q DEBUG
 mysleep 1
 
 
@@ -85,38 +91,49 @@ echo Starting plugins on daemon1
 echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
 echo "config name=meminfo set=localhost1/meminfo component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
 echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-mysleep 1
 
 echo Starting plugins on daemon2
 echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
 echo "config name=meminfo set=localhost2/meminfo component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
 echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo Starting plugins on daemon3
+echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=meminfo set=localhost3/meminfo component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 
-echo Adding host2 to aggregator4
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_4
-mysleep 1
-echo Adding host1 to aggregator3
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo Adding host1 to aggregator4
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_4
+echo Adding host2 to aggregator5
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_5
+echo Adding host3 to aggregator6
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port3 sets=localhost3/meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_6
 
-mysleep 5
-echo Adding store_csv to aggregator3
-echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+mysleep 2
 echo Adding store_csv to aggregator4
 echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_4
+echo Adding store_csv to aggregator5
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_5
+echo Adding store_csv to aggregator6
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_6
 mysleep 2
-echo "config name=store_csv path=${STOREDIR} altheader=1 id_pos=1 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=meminfo container=fmeminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "config name=store_csv path=${STOREDIR} altheader=1 id_pos=1 sequence=reverse" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_4
-echo "store name=store_csv comp_type=node set=meminfo container=rmeminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_4
+echo "config name=store_csv path=${STOREDIR} altheader=1 id_pos=1 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_4
+echo "config name=store_csv path=${STOREDIR} altheader=1 id_pos=1 sequence=reverse" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_5
+echo "config name=store_csv path=${STOREDIR} altheader=1 id_pos=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_6
+echo "store name=store_csv comp_type=node set=meminfo container=rmeminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_5
+echo "store name=store_csv comp_type=node set=meminfo container=fmeminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_4
+echo "store name=store_csv comp_type=node set=meminfo container=dmeminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_6
 mysleep 2
 #
 
-echo ldms_ls on host 3:
-ldms_ls -h localhost -x sock -p $port3 
 
 echo ldms_ls on host 4:
 ldms_ls -h localhost -x sock -p $port4 
+echo ldms_ls on host 5:
+ldms_ls -h localhost -x sock -p $port5 
+
+echo ldms_ls on host 6:
+ldms_ls -h localhost -x sock -p $port6 
 
 echo done;
 echo "logs and data stored under $TESTDIR"

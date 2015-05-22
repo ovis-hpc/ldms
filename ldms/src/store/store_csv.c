@@ -358,6 +358,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	rvalue = av_value(avl, "sequence");
+	cs.step = 1;
 	if (rvalue){
 		switch (rvalue[0]) {
 		case 'f':
@@ -372,7 +373,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			}
 			/* fallthru */
 		default:
-			cs.step = 1;
 			if (strcmp(rvalue,"reverse")!=0) {
 				msglog(LDMS_LERROR,"store_csv sequence=reverse"
 					" assumed. %s unknown\n",rvalue);
@@ -460,8 +460,7 @@ void get_loop_limits(int num_metrics) {
 		msglog(LDMS_LERROR, "store_csv sequence bug in loop (%d)\n",
 			cs.step);
 		cs.begin = 0;
-		cs.end = -1;
-		cs.step = 1;
+		cs.end = 0;
 	}
 }
 
