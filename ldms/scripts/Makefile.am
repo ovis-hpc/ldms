@@ -16,6 +16,7 @@ bin_SCRIPTS+= ldms_ban.sh
 
 bin_SCRIPTS+=  ldms_ctltest.sh
 bin_SCRIPTS+=  ldms_local_slurmtest.sh
+bin_SCRIPTS+=  ldms_local_csvorder.sh
 
 bin_SCRIPTS+= \
 ldms_local_rollbytes_test.sh \
@@ -30,3 +31,4 @@ ldms_local_dertest_big.sh
 bin_SCRIPTS += ldms_local_procstatutil.sh
 
 bin_SCRIPTS += ldms_local_syslog.sh
+
