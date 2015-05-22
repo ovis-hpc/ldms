@@ -842,7 +842,7 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procstatutil component_id=<comp_id> set=<setname> maxcpu=<ncpu> maxnumbered=<nni> maxsoftnumbered inumbered=<1/0> isoftnumbered=<1/0>\n"
+	return  "config name=procstatutil2 component_id=<comp_id> set=<setname> maxcpu=<ncpu>\n"
 		"    comp_id     The component id value\n"
 		"    setname     The set name\n"
 		"    maxcpu      The number of cpus to record.\n"

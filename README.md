@@ -17,4 +17,5 @@ See [OVIS wiki](ovis.ca.sandia.gov)
 ----
 ## Build quick reference
 ### The current distribution includes only the *LDMS* monitoring, transport, and storage components.
-Information on building, configuration, and deployment can be found at [LDMS FAQ](https://ovis.ca.sandia.gov/mediawiki/index.php/LDMS_FAQ)
+The LDMS distribution comes with a complete set of man pages for each of the commands and plugins, as well as a Quick Start guide.
+Information on building, configuration, and deployment can also be found at [LDMS FAQ](https://ovis.ca.sandia.gov/mediawiki/index.php/LDMS_FAQ)

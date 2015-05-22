@@ -1,6 +1,6 @@
 .\" Manpage for LDMS_QuickStart
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "02 Feb 2015" "v2.3/RC1.3" "LDMS_QuickStart man page"
+.TH man 7 "03 May 2015" "v2.3/RC1.3" "LDMS_QuickStart man page"
 
 .SH NAME
 LDMS_QuickStart - man page for Quick Start of LDMS
@@ -59,26 +59,22 @@ storage and on configuring aggregation of data from other host daemons.
 Quick Start instructions for LDMS (Lightweight Distributed Metric Service).
 .PP
 This man page describes how to configure and run LDMS daemons (ldmsd) to perform the following tasks:
-.RS
-.TP
+.IP \[bu]
 collect data
-.TP
+.IP \[bu]
 aggregate data from multiple ldmsds
-.TP
+.IP \[bu]
 store collected data to files.
-.RE
 .PP
 There are four basic configurations that will be addressed:
-.RS
-.TP
+.IP \[bu]
 configuring ldmsd
-.TP
+.IP \[bu]
 configuring a collector plugin on a running ldmsd
-.TP
+.IP \[bu]
 configuring a ldmsd to aggregate information from other ldmsds
-.TP
+.IP \[bu]
 configuring a store_csv storage plugin on an ldmsd.
-.RE
 .PP
 The order in which these configurations should be performed does not matter with respect to collectors and aggregators.
 .PP
@@ -89,10 +85,9 @@ with the --help directive, this document describes the flags and parameters requ
 There are no run scripts provided in the current release; the commands here can be used in the creation of such.
 
 .SH START AN LDMSD ON YOUR HOST
-.PP
 Currently must be run be run as root if using the default path of /var/run/ for the unix domain socket. This can be changed using the environment variable LDMSD_SOCKPATH as described below.
-
-.SS Set environment variables:
+.SS
+Set environment variables:
 .nf
 .RS
 export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
@@ -102,55 +97,64 @@ export PATH=/tmp/opt/ovis/sbin/:$PATH
 export LDMSD_SOCKPATH=/tmp/run/ldmsd  #(non-root. Change -S arguments accordingly)
 .RE
 .fi
-.PP
-A script can be made to start ldmsd and collectors on a host where that script contains the information to execute the command below. Sample scripts are included in your ~/ldms_scripts/ directory.
-.RE
-.SS Run ldmsd:
+
+.SS
+Run ldmsd:
 .nf
 .RS
-<path to executable>/ldmsd -x <transport>:<listen port> -P <# worker threads to start>
-	 -S <unix domain socket path/name> -l <log file path/name>
+<path to executable>/ldmsd -x <transport>:<listen port> -P <# worker threads to start> -S <unix domain socket path/name> -l <log file path/name>
 .RE
 .fi
-.PP
+
 Notes:
+.IP \[bu]
+Transport is one of: sock, rdma, ugni (ugni is Cray specific for using RDMA over the Gemini/Aries network)
+.IP \[bu]
+Number of worker threads defaults to 1 if not specified by -P and should not exceed the core count
+.IP \[bu] 2
+The unix domain socket is used by ldmsctl to communicate configuration information to an ldmsd.
 .RS
-.br
-* transport is one of: sock, rdma, ugni (ugni is Cray specific for using RDMA over the Gemini/Aries network)
-.br
-* # worker threads defaults to 1 if not specified by -P and should not exceed the core count
-.br
-* The unix domain socket is used by ldmsctl to communicate configuration information to an ldmsd.
-.RS
-** The default path for this is /var/run/ldmsd/. To change this the environment variable LDMSD_SOCKPATH must be set to the desired path (e.g. export LDMSD_SOCKPATH=/tmp/run/ldmsd)
-.br
-** Instead of specifying the log file path using the "-l" flag you can use the "-q" flag and not write to a log file. This is typically used on compute nodes for production.
+.IP \[bu]
+The default path for this is /var/run/ldmsd/. To change this the environment variable LDMSD_SOCKPATH must be set to the desired path (e.g. export LDMSD_SOCKPATH=/tmp/run/ldmsd)
+.IP \[bu]
+Instead of specifying the log file path using the "-l" flag you can use the "-q" flag and not write to a log file. This is typically used on compute nodes for production.
 .RE
-.br
-* The default is to run as a background process but the -F flag can be specified for foreground
-.RE
+.IP \[bu]
+The default is to run as a background process but the -F flag can be specified for foreground
+.IP \[bu]
+A script can be made to start ldmsd and collectors on a host where that script contains the information to execute the command. Sample scripts are included in your ~/ldms_scripts/ directory.
+
 .PP
 .SS Examples for running ldmsd:
 
-.PP
+.IP \[bu]
+Start an ldmsd on the socket transport with a log file
 .nf
 .RS
 /tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
 .RE
 .ni
 
-.PP
+.IP \[bu]
+Same but sending stdout and stderr to /dev/null
 .nf
 .RS
-Same but sending stdout and stderr to /dev/null
 /tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
 .RE
 .fi
 
-.PP
+.IP \[bu]
+Same but using syslog instead of log file. Syslog messages include host and pid to differentiate daemon instances.
 .nf
 .RS
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l syslog  > /dev/null 2>&1
+.RE
+.fi
+
+.IP \[bu]
 Start 2 instances of ldmsd on your vm
+.nf
+.RS
 Note: Make sure to use different socket names and listen on different ports.
 /tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket_vm1_1 -l /tmp/opt/ovis/logs/vm_1  > /dev/null 2>&1
 /tmp/opt/ovis/sbin/ldmsd -x sock:60001 -S /var/run/ldmsd/metric_socket_vm1_2 -l /tmp/opt/ovis/logs/vm_2  > /dev/null 2>&1
@@ -185,8 +189,6 @@ ldmsctl>
 
 .SS Configure a collector with ldmsctl
 Now configure "meminfo" collector plugin to collect every second.
-.br
-Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
 .nf
 .RS
 ldmsctl> load name=meminfo
@@ -198,20 +200,22 @@ ldmsctl> quit
 
 .PP
 Notes:
-.RS
-* At the ldmsctl> prompt typing "help" will print out info about the ldmsctl commands and options.
-.br
-* You can use stop name=meminfo followed by start name=meminfo interval=xxx to change collection intervals.
-.br
-* For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy). This will cause 
-the sampler to target interval + yyy aligned to the second and micro second (e.g. every 5 seconds with an offset of 0 usec would ideally
-result in collections at 00:00:00, 00:00:05, 00:00:10, etc. whereas with an offset of 100,000 usec it would be 00:00:00.1, 00:00:05.1,
-00:00:10.1, etc)
-.br
-* Different plugins may have additional configuration parameters. Use help within ldmsctl to see these.
-.br
-* At the ldmsctl> prompt typing "info" will output all config information to that ldmsd's log file.
-.RE
+.IP \[bu]
+At the ldmsctl> prompt typing "help" will print out info about the ldmsctl commands and options.
+.IP \[bu]
+interval=<# usec> e.g interval=1000000 defines a one second interval.
+.IP \[bu]
+You can use stop name=meminfo followed by start name=meminfo interval=xxx to change collection intervals.
+.IP \[bu]
+For synchronous operation include "offset=<#usec>" in start line (e.g. start name=meminfo interval=xxx offset=yyy).
+This will cause the sampler to target interval + yyy aligned to the second and micro second 
+(e.g. every 5 seconds with an offset of 0 usec would ideally result in collections at 00:00:00, 00:00:05, 00:00:10, etc.
+whereas with an offset of 100,000 usec it would be 00:00:00.1, 00:00:05.1, 00:00:10.1, etc)
+.IP \[bu]
+Different plugins may have additional configuration parameters. Use help within ldmsctl to see these.
+.IP \[bu]
+At the ldmsctl> prompt typing "info" will output all config information to that ldmsd's log file.
+.PP
 
 .SS Example configuring a collector:
 .nf
@@ -319,19 +323,18 @@ ldmsctl> quit
 .ni
 .PP
 Notes:
-.RS
-.br
-* Sets must be specified on the "add host" line; you can add hosts with sets to an aggregator even if those sets are not yet present on the host.
-.br
-* There is currently no "remove" so if a host should be dropped from the list or have its parameters changed it requires stopping, restarting,
+.IP \[bu]
+Sets must be specified on the "add host" line; you can add hosts with sets to an aggregator even if those sets are not yet present on the host.
+.IP \[bu]
+There is currently no "remove" so if a host should be dropped from the list or have its parameters changed it requires stopping, restarting,
 and adding with appropriate parameters
-.br
-* There is no requirement that aggregator intervals match collection intervals
-* Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed
-samples. The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss
+.IP \[bu]
+There is no requirement that aggregator intervals match collection intervals
+.IP \[bu]
+Because the collection and aggregation processes operate asynchronously there is the potential for duplicate data collection as well as missed samples.
+The first is handled by the storage plugins by comparing generation numbers and not storing duplicates. The second implies either a loss
 in fidelity (if collecting counter data) or a loss of data points here and there (if collecting differences of counter values or non counter
 values). This can be handled using the synchronous option on both collector and aggregator but is not covered here.
-.RE
 .fi
 
 .PP
@@ -385,14 +388,7 @@ ldmsctl> quit
 .fi
 
 .PP
-NOTES:
-.RS
-* You can optionally use "hosts" and "metrics" in the store command to down select what is stored.
-.RE
-
-.PP
-If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator with a store plugin only.
-
+Note: You can optionally use "hosts" and "metrics" in the store command to down select what is stored.
 
 .SS Verify the store
 Go to data store and verify files have been created and are being written to
@@ -408,6 +404,11 @@ Data will flush to the store when the OS flushes data unless an advanced flag is
 in a default configuration, if you have a small number of nodes and/or a long interval,
 you may not see data appear in the store for a few minutes.
 
+.SS Notes:
+.IP \[bu]
+If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator with a store plugin only.
+.PP
+
 .SH USING LDMS_LS TO DISPLAY SETS/METRICS FROM AN LDMSD
 
 .SS Set environment variables
@@ -422,6 +423,7 @@ export PATH=/tmp/opt/ovis/sbin:$PATH
 .ni
 
 .SS Examples for running ldms_ls
+.IP \[bu]
 Query ldmsd on host vm1 listening on port 60000 using the sock transport for metric sets being served by that ldmsd
 .nf
 .RS
@@ -432,7 +434,7 @@ vm1_1/vmstat
 .RE
 .fi
 
-.PP
+.IP \[bu]
 Query ldmsd on host vm1 listening on port 60000 using the sock transport for the names and contents of metric sets being served by that ldmsd.
 Should return: Set names (vm1_1/meminfo and vm1_1/vmstat in this case) as well as all names and values associated with each set respectively.
 Only vm1_1/meminfo shown here.
@@ -484,7 +486,7 @@ U64 27262976         DirectMap1G
 .RE
 .nf
 
-.PP
+.IP \[bu]
 For a non-existent set
 .nf
 .RS
@@ -494,7 +496,7 @@ ldms_ls: lookup failed for set 'vm1_1/foo'
 .RE
 .fi
 
-.PP
+.IP \[bu]
 Display metadata about sets contained by vm1 ldmsd listening on port 60000
 .nf
 .RS
@@ -502,13 +504,15 @@ ldms_ls -h vm1 -x sock -p 60000 -v will output metadata information
 .RE
 .fi
 .PP
-Note: A script can be utilized for starting and stopping the collectors, aggregators, and store ldmsds as presented above
 
 .SH STOP AN LDMSD
+.SS
 To kill all ldmsd on a host
+.nf
 .RS
 killall ldmsd
 .RE
+.ni
 
 .SH PROTECTION DOMAIN TAGS (Cray XE/XK)
 If you are going to be using the "ugni" transport (RDMA over Gemini) you will need to run with either system (as root) or user (as user) ptags. While root CAN run using any ptag the fact that its use is unknown to ALPS could cause collisions with applications.
@@ -641,12 +645,10 @@ ldms_ls: Cannot allocate memory
 .SS Why doesn't my ldmsd start?
 .PP
 Possible options:
-.RS
-* Check for exsiting /var/run/ldms/metric_socket or similar
-.RS
-* Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
-.RE
-* The port you are trying to use may already be in use on the node. The following shows the logfile output of such a case:
+.IP \[bu]
+Check for existing /var/run/ldms/metric_socket or similar. Sockets can be left if an ldmsd did not clean up upon termination. kill -9 may leave the socket hanging around.
+.IP \[bu]
+The port you are trying to use may already be in use on the node. The following shows the logfile output of such a case:
 .nf
 .RS
 Tue Sep 24 08:36:54 2013: Started LDMS Daemon version 2.1.0
@@ -655,12 +657,13 @@ Tue Sep 24 08:36:54 2013: EV_WARN: Can't change condition callbacks once they ha
 Tue Sep 24 08:36:54 2013: Error 12 listening on the 'ugni' transport.
 Tue Sep 24 08:36:54 2013: LDMS Daemon exiting...status 7
 .RE
-.fi
-* If using the -l flag make sure that your log directory exists prior to running
-.br
-* If writing to a store with this particular lmdsd make sure that your store directory exists prior to running
-.br
-* If you are running on a Cray with transport ugni using a user space PTag, check that you called aprun with the -p flag
+.ni
+.IP \[bu]
+If using the -l flag make sure that your log directory exists prior to running
+.IP \[bu]
+If writing to a store with this particular lmdsd make sure that your store directory exists prior to running
+.IP \[bu]
+If you are running on a Cray with transport ugni using a user space PTag, check that you called aprun with the -p flag
 .RS
 aprun -N 1 -n <number of nodes> -p <ptag name> run_my_ldmsd.sh
 .RE
@@ -673,14 +676,13 @@ netstat -abno
 
 .SS Why arent all my hosts/sets adding to the aggregator?
 Possible options:
-.RS
-* running multiples on the same host from a script -- note that sometimes multiple ldmsctls running concurrently may collide in creating ports. They should clean up after themselves and this usually isnt an issue. Are they supposed to be retrying after a fail?
-.br
-* use -m flag on the aggregator to use more memory when adding a lot of hosts
-.br
-* use -p on the aggregator to use more processors
-.RE
-
+.IP \[bu]
+Running multiples on the same host from a script. Sometimes multiple ldmsctls running concurrently may collide in creating ports. They should clean up after themselves and this usually isn't an issue.
+.IP \[bu]
+use -m flag on the aggregator to use more memory when adding a lot of hosts
+.IP \[bu]
+use -p on the aggregator to use more processors
+.SE
 
 .SS What is the syntax for chaining aggregators and storing?
 .nf
@@ -695,17 +697,19 @@ store name=store_store_csv comp_type=node set=meminfo container=meminfo
 .fi
 .PP
 NOTES:
-.RS
-* you can do the add host more than once, but only for different prefix on the sets (foo vs bar)
-.br
-* syntax for add host is sets plural with comma separation
-.br
-* syntax for store is only 1 set at a time
-.br
-* csv file will be <path>/<comp_type>/<container>
-* do not mix containers across sets
-* cannot put all the foo and bar in the same line.
-.RE
+.IP \[bu]
+you can do the add host more than once, but only for different prefix on the sets (foo vs bar)
+.IP \[bu]
+syntax for add host is sets plural with comma separation
+.IP \[bu]
+syntax for store is only 1 set at a time
+.IP \[bu]
+csv file will be <path>/<comp_type>/<container>
+.IP \[bu]
+do not mix containers across sets
+.IP \[bu]
+cannot put all the foo and bar in the same line.
+.PP
 
 .SS Why is my aggregator not responding (CRAY XE/XK)?
 Running a ldmsd aggregator as a user but trying to aggregate from a ldmsd that uses a system ptag can result in the aggregator hanging (alive but not responding and not writing to the store). The following is the logfile output of such an aggregator:
