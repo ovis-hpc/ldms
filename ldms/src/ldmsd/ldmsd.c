@@ -98,7 +98,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:qz:o:r:p:a"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:qz:o:r:p:av:"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -139,12 +139,16 @@ extern LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 extern pthread_mutex_t sp_list_lock;
 
 int passive = 0;
-int quiet = 0; /* by default ldmsd should not be quiet */
-void ldms_log(const char *fmt, ...)
+int log_level_thr = LDMSD_LERROR;  /* log level threshold */
+
+const char* ldmsd_loglevel_names[] = {
+	LOGLEVELS(LDMSD_STR_WRAP)
+};
+
+void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
-	if (quiet) /* Don't say a word when quiet */
+	if ((0 <= level) && (level < log_level_thr))
 		return;
-	va_list ap;
 	time_t t;
 	struct tm *tm;
 	char dtsz[200];
@@ -154,10 +158,49 @@ void ldms_log(const char *fmt, ...)
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 		fprintf(log_fp, "%s: ", dtsz);
-	va_start(ap, fmt);
+
+	if (level < LDMSD_LSUPREME) {
+		fprintf(log_fp, "%-10s: ", ldmsd_loglevel_names[level]);
+	}
+
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
 	pthread_mutex_unlock(&log_lock);
+}
+
+void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	__ldmsd_log(level, fmt, ap);
+	va_end(ap);
+}
+
+void ldmsd_error_log(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	/* All messages from the ldms library are of ERROR level.*/
+	__ldmsd_log(LDMSD_LERROR, fmt, ap);
+	va_end(ap);
+}
+
+static char msg_buf[4096];
+void ldmsd_msg_logger(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vsnprintf(msg_buf, sizeof(msg_buf), fmt, ap);
+	ldmsd_log(LDMSD_LERROR, msg_buf);
+}
+
+enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s)
+{
+	int i;
+	for (i = 0; i < LDMSD_LLASTLEVEL; i++)
+		if (0 == strcasecmp(level_s, ldmsd_loglevel_names[i]))
+			return i;
+	return -1;
 }
 
 const char *ldmsd_secret_get(void)
@@ -167,7 +210,7 @@ const char *ldmsd_secret_get(void)
 
 void cleanup(int x)
 {
-	ldms_log("LDMS Daemon exiting...status %d\n", x);
+	ldmsd_log(LDMSD_LCRITICAL, "LDMSD_ LDMS Daemon exiting...status %d\n", x);
 	ldmsd_config_cleanup();
 	if (ldms) {
 		ldms_xprt_close(ldms);
@@ -192,18 +235,18 @@ FILE *ldmsd_open_log()
 	FILE *f;
 	f = fopen(logfile, "a");
 	if (!f) {
-		ldms_log("Could not open the log file named '%s'\n",
+		ldmsd_log(LDMSD_LCRITICAL, "Could not open the log file named '%s'\n",
 							logfile);
 		cleanup(9);
 	} else {
 		int fd = fileno(f);
 		if (dup2(fd, 1) < 0) {
-			ldms_log("Cannot redirect log to %s\n",
+			ldmsd_log(LDMSD_LCRITICAL, "Cannot redirect log to %s\n",
 							logfile);
 			cleanup(10);
 		}
 		if (dup2(fd, 2) < 0) {
-			ldms_log("Cannot redirect log to %s\n",
+			ldmsd_log(LDMSD_LCRITICAL, "Cannot redirect log to %s\n",
 							logfile);
 			cleanup(11);
 		}
@@ -248,6 +291,12 @@ void usage(char *argv[])
 	       "                   The given size must be less than 1 petabytes.\n"
 	       "                   For example, 20M or 20mb are 20 megabytes.\n");
 	printf("    -H host_name   The host/producer name for metric sets.\n");
+	printf("  Log Verbosity Options\n");
+	printf("    -l log_file    The path to the log file for status messages.\n"
+	       "                   [" LDMSD_LOGFILE "]\n");
+	printf("    -v level       The available verbosity levels, in order of decreasing verbosity,\n"
+	       "                   are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
+	       "                   The default level is ERROR.\n");
 	printf("  Communication Options\n");
 	printf("    -S sockname    Specifies the unix domain socket name to\n"
 	       "                   use for ldmsctl access.\n");
@@ -350,20 +399,20 @@ int publish_kernel(const char *setfile)
 
 	fp = fopen(setfile, "r");
 	if (!fp) {
-		ldms_log("The specified kernel metric set file '%s' could not be opened.\n",
+		ldmsd_log(LDMSD_LERROR, "The specified kernel metric set file '%s' could not be opened.\n",
 			 setfile);
 		return 0;
 	}
 
 	map_fd = open("/dev/kldms0", O_RDWR);
 	if (map_fd < 0) {
-		ldms_log("Error %d opening the KLDMS device file '/dev/kldms0'\n", map_fd);
+		ldmsd_log(LDMSD_LERROR, "Error %d opening the KLDMS device file '/dev/kldms0'\n", map_fd);
 		return map_fd;
 	}
 
 	while (3 == fscanf(fp, "%d %d %s", &set_no, &set_size, set_name)) {
 		int id = set_no << 13;
-		ldms_log("Mapping set %d name %s\n", set_no, set_name);
+		ldmsd_log(LDMSD_LERROR, "Mapping set %d name %s\n", set_no, set_name);
 		meta_addr = mmap((void *)0, 8192, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
 		if (meta_addr == MAP_FAILED)
 			return -ENOMEM;
@@ -381,27 +430,27 @@ int publish_kernel(const char *setfile)
 		}
 		rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
 		if (rc) {
-			ldms_log("Error encountered mmaping the set '%s', rc %d\n",
+			ldmsd_log(LDMSD_LERROR, "Error encountered mmaping the set '%s', rc %d\n",
 				 set_name, rc);
 			return rc;
 		}
 		sh = meta_addr;
 		p = meta_addr;
-		ldms_log("addr: %p\n", meta_addr);
+		ldmsd_log(LDMSD_LERROR, "addr: %p\n", meta_addr);
 		for (i = 0; i < 256; i = i + j) {
 			for (j = 0; j < 16; j++)
-				ldms_log("%02x ", p[i+j]);
-			ldms_log("\n");
+				ldmsd_log(LDMSD_LERROR, "%02x ", p[i+j]);
+			ldmsd_log(LDMSD_LERROR, "\n");
 			for (j = 0; j < 16; j++) {
 				if (isalnum(p[i+j]))
-					ldms_log("%2c ", p[i+j]);
+					ldmsd_log(LDMSD_LERROR, "%2c ", p[i+j]);
 				else
-					ldms_log("%2s ", ".");
+					ldmsd_log(LDMSD_LERROR, "%2s ", ".");
 			}
-			ldms_log("\n");
+			ldmsd_log(LDMSD_LERROR, "\n");
 		}
-		ldms_log("name: '%s'\n", sh->instance_name);
-		ldms_log("size: %d\n", __le32_to_cpu(sh->meta_sz));
+		ldmsd_log(LDMSD_LERROR, "name: '%s'\n", sh->instance_name);
+		ldmsd_log(LDMSD_LERROR, "size: %d\n", __le32_to_cpu(sh->meta_sz));
 	}
 	return 0;
 #endif
@@ -414,15 +463,6 @@ char *skip_space(char *s)
 	if (*s == '\0')
 		return NULL;
 	return s;
-}
-
-static char msg_buf[4096];
-void ldmsd_msg_logger(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(msg_buf, sizeof(msg_buf), fmt, ap);
-	ldms_log(msg_buf);
 }
 
 int calculate_timeout(int thread_id, unsigned long interval_us,
@@ -487,8 +527,8 @@ void plugin_sampler_cb(int fd, short sig, void *arg)
 		 * the timeout. This is an indication of a configuration
 		 * error that needs to be corrected.
 		*/
-		ldms_log("'%s': failed to sample. Stopping the plug-in.\n",
-				pi->name);
+		ldmsd_log(LDMSD_LERROR, "'%s': failed to sample. Stopping "
+				"the plug-in.\n", pi->name);
 		stop_sampler(pi);
 	}
 	pthread_mutex_unlock(&pi->lock);
@@ -846,13 +886,13 @@ void ldmsd_host_sampler_cb(int fd, short sig, void *arg)
 			hs->conn_state = HOST_DISCONNECTED;
 		break;
 	case HOST_CONNECTING:
-		ldms_log("Connection stall on '%s[%s]'.\n", hs->hostname, hs->xprt_name);
+		ldmsd_log(LDMSD_LINFO, "Connection stall on '%s[%s]'.\n", hs->hostname, hs->xprt_name);
 		break;
 	case HOST_DISABLED:
-		ldms_log("Host %s[%s] is disabled.\n", hs->hostname, hs->xprt_name);
+		ldmsd_log(LDMSD_LINFO, "Host %s[%s] is disabled.\n", hs->hostname, hs->xprt_name);
 		break;
 	default:
-		ldms_log("Host connection state '%d' is invalid.\n",
+		ldmsd_log(LDMSD_LERROR, "Host connection state '%d' is invalid.\n",
 			 hs->conn_state);
 		assert(0);
 	}
@@ -905,7 +945,7 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more, ldms_set_t s,
 
 	pthread_mutex_lock(&hset->state_lock);
 	if (status != LDMS_LOOKUP_OK){
-		ldms_log("Error doing lookup for set '%s'\n",
+		ldmsd_log(LDMSD_LERROR, "Error doing lookup for set '%s'\n",
 				hset->name);
 		hset->set = NULL;
 		goto err;
@@ -954,15 +994,16 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 	struct hostset *hset;
 	int rc;
 
-	ldms_log("Adding the metric set '%s'\n", set_name);
+	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", set_name);
 
 	/* Check to see if it's already there */
 	hset = find_host_set(hs, set_name);
 	if (!hset) {
 		hset = hset_new();
 		if (!hset) {
-			ldms_log("Memory allocation failure in %s for set_name %s\n",
-				 __FUNCTION__, set_name);
+			ldmsd_log(LDMSD_LERROR, "Memory allocation failure in "
+					"%s for set_name %s\n",
+					__FUNCTION__, set_name);
 			return;
 		}
 		hset->name = strdup(set_name);
@@ -979,7 +1020,8 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 	/* Refresh the set with a lookup */
 	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
 	if (rc)
-		ldms_log("Synchronous error %d from ldms_lookup\n", rc);
+		ldmsd_log(LDMSD_LERROR, "Synchronous error %d from ldms_lookup\n",
+				rc);
 }
 
 /*
@@ -989,7 +1031,7 @@ void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
 void _dir_cb_del(ldms_t t, struct hostspec *hs, const char *set_name)
 {
 	struct hostset *hset = find_host_set(hs, set_name);
-	ldms_log("%s removing set '%s'\n", __FUNCTION__, set_name);
+	ldmsd_log(LDMSD_LINFO, "%s removing set '%s'\n", __FUNCTION__, set_name);
 	if (hset) {
 		reset_hostset(hset);
 		hset_ref_put(hset);
@@ -1040,7 +1082,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
 {
 	struct hostspec *hs = arg;
 	if (status) {
-		ldms_log("Error %d in lookup on host %s.\n",
+		ldmsd_log(LDMSD_LERROR, "Error %d in lookup on host %s.\n",
 		       status, hs->hostname);
 		return;
 	}
@@ -1113,9 +1155,10 @@ void do_connect(struct hostspec *hs)
 	case ACTIVE:
 	case BRIDGING:
 #ifdef ENABLE_AUTH
-		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldms_log, secretword);
+		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldmsd_error_log,
+				secretword);
 #else
-		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log);
+		hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_error_log);
 #endif /* ENABLE_AUTH */
 		if (hs->x) {
 			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
@@ -1126,8 +1169,9 @@ void do_connect(struct hostspec *hs)
 			} else
 				hs->conn_state = HOST_CONNECTING;
 		} else {
-			ldms_log("%s Error creating endpoint on transport '%s'.\n",
-				 __func__, hs->xprt_name);
+			ldmsd_log(LDMSD_LERROR, "%s Error creating endpoint on "
+					"transport '%s'.\n",
+					__func__, hs->xprt_name);
 			hs->conn_state = HOST_DISABLED;
 		}
 		break;
@@ -1160,13 +1204,13 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 
 	gn = ldms_set_data_gn_get(hset->set);
 	if (hset->gn == gn) {
-		ldms_log("Over-sampled set %s with generation# %d.\n",
+		ldmsd_log(LDMSD_LINFO, "Over-sampled set %s with generation# %d.\n",
 			 hset->name, hset->gn);
 		goto out;
 	}
 
 	if (!ldms_set_is_consistent(hset->set)) {
-		ldms_log("Set %s with generation# %d is inconsistent.\n",
+		ldmsd_log(LDMSD_LINFO, "Set %s with generation# %d is inconsistent.\n",
 			 hset->name, hset->gn);
 		goto out;
 	}
@@ -1241,17 +1285,20 @@ int update_data(struct hostspec *hs)
 	int host_error = 0;
 
 	if (hs->type == LOCAL) {
-		ldms_log("Sample callback on local host %s.\n", hs->hostname);
+		ldmsd_log(LDMSD_LINFO, "Sample callback on local host %s.\n",
+				hs->hostname);
 		assert(NULL == hs->x);
 		return 0;
 	}
 	if (hs->type == BRIDGING) {
-		ldms_log("Sample callback on host %s in bridging mode.\n", hs->hostname);
+		ldmsd_log(LDMSD_LINFO, "Sample callback on host %s in "
+				"bridging mode.\n", hs->hostname);
 		return 0;
 	}
 
 	if (hs->standby && (0 == (hs->standby & saggs_mask))) {
-		ldms_log("Sample callback on unowned failover host %s.\n", hs->hostname);
+		ldmsd_log(LDMSD_LINFO, "Sample callback on unowned failover "
+				"host %s.\n", hs->hostname);
 		return 0;
 	}
 	/* Take the host lock to protect the set_list */
@@ -1267,7 +1314,7 @@ int update_data(struct hostspec *hs)
 			if (ret) {
 				hset->state = LDMSD_SET_CONFIGURED;
 				host_error = 1;
-				ldms_log("Synchronous error %d "
+				ldmsd_log(LDMSD_LERROR, "Synchronous error %d "
 					"from ldms_lookup\n", ret);
 				hset_ref_put(hset);
 			}
@@ -1284,7 +1331,7 @@ int update_data(struct hostspec *hs)
 			if (ret) {
 				hset->state = LDMSD_SET_CONFIGURED;
 				host_error = 1;
-				ldms_log("Error %d updating metric set "
+				ldmsd_log(LDMSD_LERROR, "Error %d updating metric set "
 					"on host %s:%d[%s].\n", ret,
 					hs->hostname, ntohs(hs->sin.sin_port),
 					hs->xprt_name);
@@ -1298,7 +1345,8 @@ int update_data(struct hostspec *hs)
 			hset->curr_busy_count++;
 			break;
 		default:
-			ldms_log("Invalid hostset state '%d'\n", hset->state);
+			ldmsd_log(LDMSD_LCRITICAL, "Invalid hostset state '%d'\n",
+					hset->state);
 			assert(0);
 			break;
 		}
@@ -1345,7 +1393,7 @@ void *event_proc(void *v)
 	evtimer_assign(keepalive, sampler_base, keepalive_cb, keepalive);
 	evtimer_add(keepalive, &keepalive_to);
 	event_base_loop(sampler_base, 0);
-	ldms_log("Exiting the sampler thread.\n");
+	ldmsd_log(LDMSD_LINFO, "Exiting the sampler thread.\n");
 	return NULL;
 }
 
@@ -1356,18 +1404,18 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	int ret;
 	struct sockaddr_in sin;
 
-	ldms_log("Listening on transport %s:%s\n", xprt_str, port_str);
 	if (!port_str || port_str[0] == '\0')
 		port_no = LDMS_DEFAULT_PORT;
 	else
 		port_no = atoi(port_str);
 #ifdef ENABLE_AUTH
-	l = ldms_xprt_with_auth_new(xprt_str, ldms_log, secretword);
+	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_error_log, secretword);
 #else /* ENABLE_AUTH */
-	l = ldms_xprt_new(xprt_str, ldms_log);
+	l = ldms_xprt_new(xprt_str, ldmsd_error_log);
 #endif /* ENABLE_AUTH */
 	if (!l) {
-		ldms_log("The transport specified, '%s', is invalid.\n", xprt_str);
+		ldmsd_log(LDMSD_LERROR, "The transport specified, "
+				"'%s', is invalid.\n", xprt_str);
 		cleanup(6);
 	}
 	ldms = l;
@@ -1376,10 +1424,12 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	sin.sin_port = htons(port_no);
 	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret) {
-		ldms_log("Error %d listening on the '%s' transport.\n",
-			 ret, xprt_str);
+		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
+				"transport.\n", ret, xprt_str);
 		cleanup(7);
 	}
+	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
+			xprt_str, port_str);
 }
 
 void ev_log_cb(int sev, const char *msg)
@@ -1390,7 +1440,7 @@ void ev_log_cb(int sev, const char *msg)
 		"EV_WARN",
 		"EV_ERR"
 	};
-	ldms_log("%s: %s\n", sev_s[sev], msg);
+	ldmsd_log(LDMSD_LERROR, "%s: %s\n", sev_s[sev], msg);
 }
 
 #ifdef ENABLE_AUTH
@@ -1401,11 +1451,11 @@ int ldmsd_get_secretword()
 	/* Get path from the environment variable */
 	char *path = getenv(LDMSD_AUTH_ENV);
 	if (!path) {
-		ldms_log("ldmsd auth: Failed to get the auth file path "
+		ldmsd_log(LDMSD_LERROR, "ldmsd auth: Failed to get the auth file path "
 				"from %s.\n", LDMSD_AUTH_ENV);
 		return EINVAL;
 	}
-	secretword = ovis_auth_get_secretword(path, ldms_log);
+	secretword = ovis_auth_get_secretword(path, ldmsd_error_log);
 	if (!secretword) {
 		rc = errno;
 		return rc;
@@ -1487,8 +1537,13 @@ int main(int argc, char *argv[])
 		case 's':
 			setfile = strdup(optarg);
 			break;
-		case 'q':
-			quiet = 1;
+		case 'v':
+			log_level_thr = ldmsd_str_to_loglevel(optarg);
+			if (log_level_thr < 0) {
+				printf("Invalid verbosity levels '%s'. "
+						"See -v option.\n", optarg);
+				usage(argv);
+			}
 			break;
 		case 'F':
 			foreground = 1;
@@ -1577,8 +1632,8 @@ int main(int argc, char *argv[])
 	/* Initialize LDMS */
 	umask(0);
 	if (ldms_init(max_mem_size)) {
-		ldms_log("LDMS could not pre-allocate the memory of size %lu.\n",
-								max_mem_size);
+		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
+				"the memory of size %lu.\n", max_mem_size);
 		exit(1);
 	}
 
@@ -1587,28 +1642,29 @@ int main(int argc, char *argv[])
 
 	ev_count = calloc(ev_thread_count, sizeof(int));
 	if (!ev_count) {
-		ldms_log("Memory allocation failure.\n");
+		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
 		exit(1);
 	}
 	ev_base = calloc(ev_thread_count, sizeof(struct event_base *));
 	if (!ev_base) {
-		ldms_log("Memory allocation failure.\n");
+		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
 		exit(1);
 	}
 	ev_thread = calloc(ev_thread_count, sizeof(pthread_t));
 	if (!ev_thread) {
-		ldms_log("Memory allocation failure.\n");
+		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
 		exit(1);
 	}
 	for (op = 0; op < ev_thread_count; op++) {
 		ev_base[op] = event_init();
 		if (!ev_base[op]) {
-			ldms_log("Error creating an event base.\n");
+			ldmsd_log(LDMSD_LCRITICAL, "Error creating an event base.\n");
 			cleanup(6);
 		}
 		ret = pthread_create(&ev_thread[op], NULL, event_proc, ev_base[op]);
 		if (ret) {
-			ldms_log("Error %d creating the event thread.\n", ret);
+			ldmsd_log(LDMSD_LCRITICAL, "Error %d creating the event "
+					"thread.\n", ret);
 			cleanup(7);
 		}
 	}
@@ -1658,7 +1714,7 @@ int main(int argc, char *argv[])
 	if (!logfile)
 		logfile = LDMSD_LOGFILE;
 
-	ldms_log("Started LDMS Daemon version " VERSION "\n");
+	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon version " VERSION "\n");
 
 #ifdef ENABLE_AUTH
 	if (authenticate) {
@@ -1686,7 +1742,7 @@ int main(int argc, char *argv[])
 			cleanup(4);
 #endif /* ENABLE_LDMSD_RCTRL */
 	if (ldmsd_store_init(flush_N)) {
-		ldms_log("Could not initialize the storage subsystem.\n");
+		ldmsd_log(LDMSD_LCRITICAL, "Could not initialize the storage subsystem.\n");
 		cleanup(7);
 	}
 
@@ -1695,7 +1751,7 @@ int main(int argc, char *argv[])
 #ifdef ENABLE_OCM
 	int ocm_rc = ldmsd_ocm_init(ldmsd_svc_type, ocm_port);
 	if (ocm_rc) {
-		ldms_log("Error: cannot initialize OCM, rc: %d\n",
+		ldmsd_log(LDMSD_LCRITICAL, "Error: cannot initialize OCM, rc: %d\n",
 				ocm_rc);
 		cleanup(ocm_rc);
 	}

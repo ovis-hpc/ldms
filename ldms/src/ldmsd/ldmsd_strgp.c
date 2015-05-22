@@ -162,7 +162,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 			ldmsd_task_start(&strgp->task, strgp_task_cb, strgp, 0,
 					 sched_sec * 1000000, 0);
 		} else
-			ldms_log("Error opening rotate container, "
+			ldmsd_log(LDMSD_LERROR, "Error opening rotate container, "
 				 "using existing container %s/%08jX",
 				 strgp->container, strgp->container_time);
 	}

@@ -486,7 +486,40 @@ struct ldmsd_store_policy {
 	LIST_ENTRY(ldmsd_store_policy) link;
 };
 
-void ldms_log(const char *fmt, ...);
+#define LDMSD_STR_WRAP(NAME) #NAME
+#define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
+/**
+ * \brief ldmsd log levels
+ *
+ * The ldmsd log levels, in order of increasing importance, are
+ *  - DEBUG
+ *  - INFO
+ *  - ERROR
+ *  - CRITICAL
+ *  - ALWAYS
+ *
+ * ALWAYS is for messages printed to the log file per users requests,
+ * e.g, messages printed from the 'info' command.
+ */
+#define LOGLEVELS(WRAP) \
+	WRAP (DEBUG), \
+	WRAP (INFO), \
+	WRAP (ERROR), \
+	WRAP (CRITICAL), \
+	WRAP (SUPREME), \
+	WRAP (LASTLEVEL)
+
+enum ldmsd_loglevel {
+	LOGLEVELS(LDMSD_LWRAP)
+};
+
+extern const char *ldmsd_loglevel_names[];
+
+void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
+
+void ldmsd_error_log(const char *fmt, ...);
+
+enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
 
 /**
  * Initialize the ldmsd_store.

@@ -87,8 +87,8 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	int rc = 0;
 	const struct ocm_value *v = ocm_av_get_value(cmd, "name");
 	if (!v) {
-		ldms_log("ocm: error, attribute 'name' not found for 'load'"
-				" command.\n");
+		ldmsd_log(LDMSD_LERROR, "ocm: error, attribute 'name' not "
+				"found for 'load' command.\n");
 		return;
 	}
 	plugin_name = (char*)v->s.str;
@@ -96,7 +96,7 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	/* load */
 	rc = ldmsd_load_plugin(plugin_name, err_str);
 	if (rc) {
-		ldms_log("%s\n", err_str);
+		ldmsd_log(LDMSD_LERROR, "%s\n", err_str);
 		return;
 	}
 
@@ -121,7 +121,7 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	av_list->count = count;
 	rc = ldmsd_config_plugin(plugin_name, av_list, kw_list, err_str);
 	if (rc) {
-		ldms_log("%s\n", err_str);
+		ldmsd_log(LDMSD_LERROR, "%s\n", err_str);
 		return;
 	}
 
@@ -139,7 +139,7 @@ void ocm_handle_cfg_cmd_config(ocm_cfg_cmd_t cmd)
 	while (ocm_av_iter_next(&iter, &attr, &v) == 0) {
 		rc = _ldmsd_set_udata(set, attr, v->u64, err_str);
 		if (rc)
-			ldms_log("ocm: error, %s\n", err_str);
+			ldmsd_log(LDMSD_LERROR, "ocm: error, %s\n", err_str);
 	}
 }
 
@@ -155,7 +155,7 @@ void ocm_handle_cfg_cmd_start(ocm_cfg_cmd_t cmd)
 	attr = "name";
 	v = ocm_av_get_value(cmd, attr);
 	if (!v) {
-		ldms_log("ocm: failed to start a sampler. "
+		ldmsd_log(LDMSD_LERROR, "ocm: failed to start a sampler. "
 				"the attribute 'name' not found\n");
 		return;
 	}
@@ -164,8 +164,8 @@ void ocm_handle_cfg_cmd_start(ocm_cfg_cmd_t cmd)
 	attr = "interval";
 	v = ocm_av_get_value(cmd, attr);
 	if (!v) {
-		ldms_log("ocm: attribute '%s' not found for plugin '%s'\n",
-							attr, plugin_name);
+		ldmsd_log(LDMSD_LERROR, "ocm: attribute '%s' not found "
+				"for plugin '%s'\n", attr, plugin_name);
 		return;
 	}
 	interval = v->s.str;
@@ -197,14 +197,16 @@ void ocm_handle_cfg_cmd_add_host(ocm_cfg_cmd_t cmd)
 	/* Handle all the EINVAL cases first */
 	v = ocm_av_get_value(cmd, "type");
 	if (!v || v->type != OCM_VALUE_STR) {
-		ldms_log("ocm: error, 'type' is not specified in 'add_host'.\n");
+		ldmsd_log(LDMSD_LERROR, "ocm: error, 'type' is not specified "
+				"in 'add_host'.\n");
 		return;
 	}
 	type = v->s.str;
 
 	v = ocm_av_get_value(cmd, "host");
 	if (!v || v->type != OCM_VALUE_STR) {
-		ldms_log("ocm: error, 'host' is not specified in 'add_host'.\n");
+		ldmsd_log(LDMSD_LERROR, "ocm: error, 'host' is not specified "
+				"in 'add_host'.\n");
 		return;
 	}
 	host = v->s.str;
@@ -232,8 +234,8 @@ void ocm_handle_cfg_cmd_add_host(ocm_cfg_cmd_t cmd)
 	rc = ldmsd_add_host(host, type, xprt, port, sets, interval,
 						offset, err_str);
 	if (rc) {
-		ldms_log("ocm: failed to add the host '%s': %s\n",
-							host, err_str);
+		ldmsd_log(LDMSD_LERROR, "ocm: failed to add the host "
+				"'%s': %s\n", host, err_str);
 	}
 	return;
 }
@@ -288,12 +290,13 @@ void ocm_handle_cfg_cmd_store(ocm_cfg_cmd_t cmd)
 	int rc = config_store_policy(store_name, policy_name, container,
 					schema, metrics, hosts, err_str);
 	if (rc) {
-		ldms_log("ocm: failed to config the store '%s': %s\n",
-							policy_name, err_str);
+		ldmsd_log(LDMSD_LERROR, "ocm: failed to config the store "
+				"'%s': %s\n", policy_name, err_str);
 	}
 	return;
 einval:
-	ldms_log("ocm: error, the '%s' attribute is not specified.\n", attr);
+	ldmsd_log(LDMSD_LERROR, "ocm: error, the '%s' attribute is "
+			"not specified.\n", attr);
 	return;
 }
 
@@ -306,7 +309,7 @@ void ocm_handle_cfg(ocm_cfg_t cfg)
 		const char *verb = ocm_cfg_cmd_verb(cmd);
 		ocm_cfg_cmd_handle_fn fn = (void*)str_map_get(ocm_verb_fn, verb);
 		if (!fn) {
-			ldms_log("ocm: error: unknown verb \"%s\""
+			ldmsd_log(LDMSD_LERROR, "ocm: error: unknown verb \"%s\""
 					" (cfg_key: %s)\n",
 					verb, ocm_cfg_key(cfg));
 			continue;
@@ -322,15 +325,16 @@ int ocm_cfg_cb(struct ocm_event *e)
 		ocm_handle_cfg(e->cfg);
 		break;
 	case OCM_EVENT_ERROR:
-		ldms_log("ocm: error key: %s, msg: %s\n", ocm_err_key(e->err),
-				ocm_err_msg(e->err));
+		ldmsd_log(LDMSD_LERROR, "ocm: error key: %s, msg: %s\n",
+				ocm_err_key(e->err), ocm_err_msg(e->err));
 		break;
 	case OCM_EVENT_CFG_REQUESTED:
 		ocm_event_resp_err(e, ENOSYS, ocm_cfg_req_key(e->req),
 				"Not implemented.");
 		break;
 	default:
-		ldms_log("ocm: error, unknown ocm_event: %d\n", e->type);
+		ldmsd_log(LDMSD_LERROR, "ocm: error, unknown ocm_event: %d\n",
+				e->type);
 	}
 	return 0;
 }
@@ -339,7 +343,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port)
 {
 	int rc;
 	ocm_cb_fn_t cb;
-	ocm = ocm_create("sock", port, ocm_req_cb, ldms_log);
+	ocm = ocm_create("sock", port, ocm_req_cb, ldmsd_log);
 	if (!ocm)
 		return errno;
 	char key[1024];

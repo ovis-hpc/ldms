@@ -233,15 +233,15 @@ void *flush_proc(void *arg)
 void process_info_flush_thread(void)
 {
 	int i;
-	ldms_log("Flush Thread Info:\n");
-	ldms_log("%-16s %-16s %-16s\n", "----------------", "----------------",
+	ldmsd_log(LDMSD_LSUPREME, "Flush Thread Info:\n");
+	ldmsd_log(LDMSD_LSUPREME, "%-16s %-16s %-16s\n", "----------------", "----------------",
 					"----------------");
-	ldms_log("%-16s %-16s %-16s\n", "Thread", "Store Count",
+	ldmsd_log(LDMSD_LSUPREME, "%-16s %-16s %-16s\n", "Thread", "Store Count",
 					"Flush Time (sec.)");
-	ldms_log("%-16s %-16s %-16s\n", "----------------", "----------------",
+	ldmsd_log(LDMSD_LSUPREME, "%-16s %-16s %-16s\n", "----------------", "----------------",
 					"----------------");
 	for (i = 0; i < flush_N; i++) {
-		ldms_log("%-16p %-16d % 10d.%06d\n", flush_thread[i].thread,
+		ldmsd_log(LDMSD_LSUPREME, "%-16p %-16d % 10d.%06d\n", flush_thread[i].thread,
 				flush_thread[i].store_count,
 				flush_thread[i].tvsum.tv_sec,
 				flush_thread[i].tvsum.tv_usec);
@@ -256,7 +256,7 @@ int assign_flush_thread(struct store_instance *si)
 	int rc = 0;
 	rc = pthread_mutex_lock(&flush_smutex);
 	if (rc) {
-		ldms_log("assign_flush_thread::"
+		ldmsd_log(LDMSD_LERROR, "assign_flush_thread::"
 				"pthread_mutex_lock(&flush_smutex)"
 				" error %d: %s\n", rc, strerror(rc));
 		return rc;
@@ -274,7 +274,7 @@ int assign_flush_thread(struct store_instance *si)
 	si->ft = ft;
 	rc = pthread_mutex_lock(&ft->mutex);
 	if (rc) {
-		ldms_log("assign_flush_thread::"
+		ldmsd_log(LDMSD_LERROR, "assign_flush_thread::"
 				"pthread_mutex_lock(&ft->mutex)"
 				" error %d: %s\n", rc, strerror(rc));
 		return rc;
@@ -282,14 +282,14 @@ int assign_flush_thread(struct store_instance *si)
 	LIST_INSERT_HEAD(&ft->store_list, si, flush_entry);
 	rc = pthread_mutex_unlock(&ft->mutex);
 	if (rc) {
-		ldms_log("assign_flush_thread::"
+		ldmsd_log(LDMSD_LERROR, "assign_flush_thread::"
 				"pthread_mutex_unlock(&ft->mutex)"
 				" error %d: %s\n", rc, strerror(rc));
 		return rc;
 	}
 	rc = pthread_mutex_unlock(&flush_smutex);
 	if (rc) {
-		ldms_log("assign_flush_thread::"
+		ldmsd_log(LDMSD_LERROR, "assign_flush_thread::"
 				"pthread_mutex_lock(&flush_smutex)"
 				" error %d: %s\n", rc, strerror(rc));
 		return rc;
@@ -413,7 +413,7 @@ retry:
 		}
 	}
 	else {
-		ldms_log("Could not create new store_handle. "
+		ldmsd_log(LDMSD_LERROR, "Could not create new store_handle. "
 			 "Closing LRU and retrying.\n");
 		/*
 		 * Close the LRU mds to recoup its

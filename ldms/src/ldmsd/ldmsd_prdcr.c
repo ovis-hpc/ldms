@@ -159,7 +159,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK){
-		ldms_log("Error doing lookup for set '%s'\n", prd_set->inst_name);
+		ldmsd_log(LDMSD_LERROR, "Error doing lookup for set '%s'\n", prd_set->inst_name);
 		prd_set->set = NULL;
 		goto err;
 	}
@@ -168,7 +168,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	 * name. If it doesn't, we write a warning to the log file
 	 */
 	if (strcmp(prd_set->prdcr->obj.name, ldms_set_producer_name_get(set)))
-		ldms_log("Warning: The producer name '%s' in the configuration\n"
+		ldmsd_log(LDMSD_LERROR, "Warning: The producer name '%s' in the configuration\n"
 			 "does not match the producer name '%s' in the '%s' metric set.\n",
 			 prd_set->prdcr->obj.name, ldms_set_producer_name_get(set),
 			 ldms_set_instance_name_get(set));
@@ -188,14 +188,14 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 	ldmsd_prdcr_set_t set;
 	int rc;
 
-	ldms_log("Adding the metric set '%s'\n", inst_name);
+	ldmsd_log(LDMSD_LERROR, "Adding the metric set '%s'\n", inst_name);
 
 	/* Check to see if it's already there */
 	set = _find_set(prdcr, inst_name);
 	if (!set) {
 		set = prdcr_set_new(inst_name);
 		if (!set) {
-			ldms_log("Memory allocation failure in %s "
+			ldmsd_log(LDMSD_LERROR, "Memory allocation failure in %s "
 				 "for set_name %s\n",
 				 __FUNCTION__, inst_name);
 			return;
@@ -208,7 +208,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 			      LDMS_LOOKUP_BY_INSTANCE,
 			      prdcr_lookup_cb, set);
 	if (rc)
-		ldms_log("Synchronous error %d from ldms_lookup\n", rc);
+		ldmsd_log(LDMSD_LERROR, "Synchronous error %d from ldms_lookup\n", rc);
 }
 
 /*
@@ -252,7 +252,7 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 {
 	ldmsd_prdcr_t prdcr = arg;
 	if (status) {
-		ldms_log("Error %d in lookup on producer %s host %s.\n",
+		ldmsd_log(LDMSD_LERROR, "Error %d in lookup on producer %s host %s.\n",
 			 status, prdcr->obj.name, prdcr->host_name);
 		return;
 	}
@@ -312,9 +312,9 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 #ifdef ENABLE_AUTH
 		prdcr->xprt = ldms_xprt_with_auth_new(prdcr->xprt_name,
-				ldms_log, ldmsd_secret_get());
+				ldmsd_error_log, ldmsd_secret_get());
 #else
-		prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldms_log);
+		prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldmsd_error_log);
 #endif /* ENABLE_AUTH */
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
@@ -327,7 +327,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 				prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 			}
 		} else {
-			ldms_log("%s Error creating endpoint on transport '%s'.\n",
+			ldmsd_log(LDMSD_LERROR, "%s Error creating endpoint on transport '%s'.\n",
 				 __func__, prdcr->xprt_name);
 			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 		}

@@ -112,7 +112,8 @@ void ldmsd_config_cleanup()
 	if (muxr_s >= 0)
 		close(muxr_s);
 	if (sockname && bind_succeeded) {
-		ldms_log("LDMS Daemon deleting socket file %s\n", sockname);
+		ldmsd_log(LDMSD_LCRITICAL, "LDMS Daemon deleting socket "
+						"file %s\n", sockname);
 		unlink(sockname);
 	}
 
@@ -253,6 +254,7 @@ const char *match_selector_str(enum ldmsd_name_match_sel sel)
  */
 int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
+	int llevel = LDMSD_LSUPREME;
 	extern int ev_thread_count;
 	extern pthread_t *ev_thread;
 	extern int *ev_count;
@@ -264,24 +266,24 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 			strcasecmp(vb, "t") == 0))
 		verbose = 1;
 
-	ldms_log("Event Thread Info:\n");
-	ldms_log("%-16s %s\n", "----------------", "------------");
-	ldms_log("%-16s %s\n", "Thread", "Task Count");
-	ldms_log("%-16s %s\n", "----------------", "------------");
+	ldmsd_log(llevel, "Event Thread Info:\n");
+	ldmsd_log(llevel, "%-16s %s\n", "----------------", "------------");
+	ldmsd_log(llevel, "%-16s %s\n", "Thread", "Task Count");
+	ldmsd_log(llevel, "%-16s %s\n", "----------------", "------------");
 	for (i = 0; i < ev_thread_count; i++) {
-		ldms_log("%-16p %d\n",
+		ldmsd_log(llevel, "%-16p %d\n",
 			 (void *)ev_thread[i], ev_count[i]);
 	}
 	/* For flush_thread information */
 	process_info_flush_thread();
 
-	ldms_log("Host List Info:\n");
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldmsd_log(llevel, "Host List Info:\n");
+	ldmsd_log(llevel, "%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldmsd_log(llevel, "%-12s %-12s %-12s %-12s\n",
 			"Hostname", "Transport", "Set", "Stat");
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldmsd_log(llevel, "%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
 	pthread_mutex_lock(&host_list_lock);
@@ -289,15 +291,15 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 	uint64_t grand_total_busy = 0;
 	LIST_FOREACH(hs, &host_list, link) {
 		struct hostset *hset;
-		ldms_log("%-12s %-12s\n", hs->hostname, hs->xprt_name);
+		ldmsd_log(llevel, "%-12s %-12s\n", hs->hostname, hs->xprt_name);
 		LIST_FOREACH(hset, &hs->set_list, entry) {
-			ldms_log("%-12s %-12s %-12s\n",
+			ldmsd_log(llevel, "%-12s %-12s %-12s\n",
 				 "", "", hset->name);
 			if (verbose) {
-				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
+				ldmsd_log(llevel, "%-12s %-12s %-12s %.12s %-12Lu\n",
 						"", "", "", "curr_busy_count",
 						hset->curr_busy_count);
-				ldms_log("%-12s %-12s %-12s %.12s %-12Lu\n",
+				ldmsd_log(llevel, "%-12s %-12s %-12s %.12s %-12Lu\n",
 						"", "", "", "total_busy_count",
 						hset->total_busy_count);
 			}
@@ -305,48 +307,48 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 			grand_total_busy += hset->total_busy_count;
 		}
 	}
-	ldms_log("%-12s %-12s %-12s %-12s\n",
+	ldmsd_log(llevel, "%-12s %-12s %-12s %-12s\n",
 		 "------------", "------------", "------------",
 		 "------------");
-	ldms_log("Total Current Busy Count: %Lu\n", total_curr_busy);
-	ldms_log("Grand Total Busy Count: %Lu\n", grand_total_busy);
+	ldmsd_log(llevel, "Total Current Busy Count: %Lu\n", total_curr_busy);
+	ldmsd_log(llevel, "Grand Total Busy Count: %Lu\n", grand_total_busy);
 	pthread_mutex_unlock(&host_list_lock);
 
 	pthread_mutex_lock(&sp_list_lock);
 	struct ldmsd_store_policy *sp;
 	LIST_FOREACH(sp, &sp_list, link) {
-		ldms_log("%-12s %-12s -%12s %d ",
+		ldmsd_log(llevel, "%-12s %-12s -%12s %d ",
 			  sp->name, sp->container, sp->schema,  sp->metric_count);
 		struct ldmsd_store_metric *m;
 		i = 0;
 		LIST_FOREACH(m, &sp->metric_list, entry) {
 			if (i > 0)
-				ldms_log(",");
+				ldmsd_log(llevel, ",");
 			i++;
-			ldms_log("%s", m->name);
+			ldmsd_log(llevel, "%s", m->name);
 		}
 	}
 	pthread_mutex_unlock(&sp_list_lock);
 
-	ldms_log("========================================================================\n");
+	ldmsd_log(llevel, "========================================================================\n");
 	ldmsd_prdcr_t prdcr;
-	ldms_log("%s\n", "Producers");
-	ldms_log("%-20s %-20s %-8s %-12s %s\n",
+	ldmsd_log(llevel, "%s\n", "Producers");
+	ldmsd_log(llevel, "%-20s %-20s %-8s %-12s %s\n",
 		 "Name", "Host", "Port", "ConnIntrvl", "State");
-	ldms_log("-------------------- -------------------- ---------- ---------- ----------\n");
+	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		ldms_log("%-20s %-20s %-8d %-12d %s\n",
+		ldmsd_log(llevel, "%-20s %-20s %-8d %-12d %s\n",
 			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
 			 prdcr->conn_intrvl_us,
 			 prdcr_state_str(prdcr->conn_state));
 		ldmsd_prdcr_lock(prdcr);
 		ldmsd_prdcr_set_t prv_set;
-		ldms_log("    %-32s %-20s %s\n",
+		ldmsd_log(llevel, "    %-32s %-20s %s\n",
 			 "Instance Name", "Schema Name", "State");
 		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
 		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
-			ldms_log("    %-32s %-20s %s\n",
+			ldmsd_log(llevel, "    %-32s %-20s %s\n",
 				 prv_set->inst_name,
 				 prv_set->schema_name,
 				 ldmsd_prdcr_set_state_str(prv_set->state));
@@ -354,87 +356,87 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	ldms_log("-------------------- -------------------- ---------- ---------- ----------\n");
+	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
 
 	ldmsd_updtr_t updtr;
-	ldms_log("\n");
-	ldms_log("%s\n", "Updaters");
-	ldms_log("%-20s %-14s %s\n",
+	ldmsd_log(llevel, "\n");
+	ldmsd_log(llevel, "%s\n", "Updaters");
+	ldmsd_log(llevel, "%-20s %-14s %s\n",
 		 "Name", "Update Intrvl", "State");
-	ldms_log("-------------------- -------------- ----------\n");
+	ldmsd_log(llevel, "-------------------- -------------- ----------\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-		ldms_log("%-20s %-14d %s\n",
+		ldmsd_log(llevel, "%-20s %-14d %s\n",
 			 updtr->obj.name, updtr->updt_intrvl_us,
 			 ldmsd_updtr_state_str(updtr->state));
 		ldmsd_updtr_lock(updtr);
 		ldmsd_name_match_t match;
-		ldms_log("    Metric Set Match Specifications (empty == All)\n");
-		ldms_log("    %-10s %s\n", "Compare To", "Value");
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    Metric Set Match Specifications (empty == All)\n");
+		ldmsd_log(llevel, "    %-10s %s\n", "Compare To", "Value");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 		for (match = ldmsd_updtr_match_first(updtr); match;
 		     match = ldmsd_updtr_match_next(match)) {
-			ldms_log("    %-10s %s\n",
+			ldmsd_log(llevel, "    %-10s %s\n",
 				 match_selector_str(match->selector),
 				 match->regex_str);
 		}
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 		ldmsd_prdcr_ref_t ref;
 		ldmsd_prdcr_t prdcr;
-		ldms_log("    Producers (empty == None)\n");
-		ldms_log("    %-10s %-10s %-10s %s\n", "Name", "Transport", "Host", "Port");
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    Producers (empty == None)\n");
+		ldmsd_log(llevel, "    %-10s %-10s %-10s %s\n", "Name", "Transport", "Host", "Port");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
 		     ref = ldmsd_updtr_prdcr_next(ref)) {
 			prdcr = ref->prdcr;
-			ldms_log("    %-10s %-10s %-10s %hd\n",
+			ldmsd_log(llevel, "    %-10s %-10s %-10s %hd\n",
 				 prdcr->obj.name,
 				 prdcr->xprt_name,
 				 prdcr->host_name,
 				 prdcr->port_no);
 		}
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 		ldmsd_updtr_unlock(updtr);
 	}
-	ldms_log("-------------------- -------------- ----------\n");
+	ldmsd_log(llevel, "-------------------- -------------- ----------\n");
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 
 	ldmsd_strgp_t strgp;
-	ldms_log("\n");
-	ldms_log("%s\n", "Storage Policies");
-	ldms_log("%-15s %-15s %-15s %-15s %-8s %-12s\n",
+	ldmsd_log(llevel, "\n");
+	ldmsd_log(llevel, "%s\n", "Storage Policies");
+	ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-8s %-12s\n",
 		 "Name", "Container", "Schema", "Back End", "State", "Rotate");
-	ldms_log("--------------- --------------- --------------- --------------- -------- ------------\n");
+	ldmsd_log(llevel, "--------------- --------------- --------------- --------------- -------- ------------\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
 	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
-		ldms_log("%-15s %-15s %-15s %-15s %-8s %11ds\n",
+		ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-8s %11ds\n",
 			 strgp->obj.name,
 			 strgp->container, strgp->schema, strgp->plugin_name,
 			 ldmsd_strgp_state_str(strgp->state),
 			 strgp->rotate_interval);
 		ldmsd_strgp_lock(strgp);
 		ldmsd_name_match_t match;
-		ldms_log("    Producer Match Specifications (empty == All)\n");
-		ldms_log("    %s\n", "Name");
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    Producer Match Specifications (empty == All)\n");
+		ldmsd_log(llevel, "    %s\n", "Name");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 		for (match = ldmsd_strgp_prdcr_first(strgp); match;
 		     match = ldmsd_strgp_prdcr_next(match)) {
-			ldms_log("    %s\n", match->regex_str);
+			ldmsd_log(llevel, "    %s\n", match->regex_str);
 		}
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 
-		ldms_log("    Metrics (empty == All)\n");
-		ldms_log("    %s\n", "Name");
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    Metrics (empty == All)\n");
+		ldmsd_log(llevel, "    %s\n", "Name");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 		ldmsd_strgp_metric_t metric;
 		for (metric = ldmsd_strgp_metric_first(strgp); metric;
 		     metric = ldmsd_strgp_metric_next(metric)) {
-			ldms_log("    %s\n", metric->name);
+			ldmsd_log(llevel, "    %s\n", metric->name);
 		}
-		ldms_log("    ----------------------------------------\n");
+		ldmsd_log(llevel, "    ----------------------------------------\n");
 		ldmsd_strgp_unlock(strgp);
 	}
-	ldms_log("--------------- --------------- --------------- --------------- ---------------\n");
+	ldmsd_log(llevel, "--------------- --------------- --------------- --------------- ---------------\n");
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 
 	sprintf(replybuf, "0");
@@ -880,7 +882,7 @@ void hset_ref_put(struct hostset *hset)
 	pthread_mutex_unlock(&hset->refcount_lock);
 
 	if (destroy) {
-		ldms_log("Destroying hostset '%s'.\n", hset->name);
+		ldmsd_log(LDMSD_LERROR, "Destroying hostset '%s'.\n", hset->name);
 		/*
 		 * Take the host set_list_lock since we are modifying the host
 		 * set_list
@@ -1003,7 +1005,7 @@ int apply_store_policy(struct hostset *hset, struct ldmsd_store_policy *sp)
 	pthread_mutex_lock(&sp->cfg_lock);
 	if (sp->state == STORE_POLICY_CONFIGURING)
 		if (update_policy_metrics(sp, hset))
-			ldms_log("Error updating policy metrics for "
+			ldmsd_log(LDMSD_LERROR, "Updating policy metrics for "
 				 "policy %s.\n", sp->name);
 	pthread_mutex_unlock(&sp->cfg_lock);
 	return 0;
@@ -1046,11 +1048,13 @@ int update_hsets_with_policy(struct ldmsd_store_policy *sp)
 			pthread_mutex_lock(&hset->state_lock);
 			if (hset->state == LDMSD_SET_READY) {
 				rc = apply_store_policy(hset, sp);
-				if (rc)
-					ldms_log("The storage policy %s could "
+				if (rc) {
+					ldmsd_log(LDMSD_LERROR, "The storage "
+						"policy %s could "
 						"not be applied to hostset "
 						"%s:%s\n", sp->name,
 						hs->hostname, hset->name);
+				}
 			}
 			pthread_mutex_unlock(&hset->state_lock);
 		}
@@ -1135,7 +1139,8 @@ int config_store_policy(char *plugin_name, char *policy_name,
 	LIST_INSERT_HEAD(&sp_list, sp, link);
 	pthread_mutex_unlock(&sp_list_lock);
 
-	ldms_log("Added the store policy '%s' successfully.\n", policy_name);
+	ldmsd_log(LDMSD_LINFO, "Added the store policy '%s' successfully.\n",
+			policy_name);
 	return 0;
 
  err:
@@ -1563,15 +1568,15 @@ int process_record(int fd,
 		goto out;
 	rc = tokenize(command, kw_list, av_list);
 	if (rc) {
-		ldms_log("Memory allocation failure processing '%s'\n",
-			 command);
+		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
+				"processing '%s'\n", command);
 		rc = ENOMEM;
 		goto out;
 	}
 
 	cmd_s = av_name(kw_list, 0);
 	if (!cmd_s) {
-		ldms_log("Request is missing Id '%s'\n", command);
+		ldmsd_log(LDMSD_LERROR, "Request is missing Id '%s'\n", command);
 		rc = EINVAL;
 		goto out;
 	}
@@ -1679,13 +1684,13 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 	 */
 	sp->si = ldmsd_store_instance_get(sp->plugin, sp);
 	if (!sp->si) {
-		ldms_log("Could not allocate the store instance");
+		ldmsd_log(LDMSD_LERROR, "Could not allocate the store instance");
 		goto err;
 	}
 	sp->state = STORE_POLICY_READY;
 	return 0;
 err:
-	ldms_log("Store '%s': Could not configure storage policy for "
+	ldmsd_log(LDMSD_LERROR, "Store '%s': Could not configure storage policy for "
 		 "'%s'.\n", sp->container, (name ? name : "NULL"));
 	sp->state = STORE_POLICY_ERROR;
 	if (sp->metric_arry)
@@ -1756,22 +1761,24 @@ int ldmsd_config_init(char *name)
 	/* Create listener */
 	muxr_s = socket(AF_UNIX, SOCK_DGRAM, 0);
 	if (muxr_s < 0) {
-		ldms_log("Error %d creating muxr socket.\n", muxr_s);
+		ldmsd_log(LDMSD_LERROR, "Error %d creating muxr socket.\n",
+				muxr_s);
 		return -1;
 	}
 
 	/* Bind to our public name */
 	ret = bind(muxr_s, (struct sockaddr *)&sun, sizeof(struct sockaddr_un));
 	if (ret < 0) {
-		ldms_log("Error %d binding to socket named '%s'.\n",
-						errno, sockname);
+		ldmsd_log(LDMSD_LERROR, "Error %d binding to socket "
+				"named '%s'.\n", errno, sockname);
 		return -1;
 	}
 	bind_succeeded = 1;
 
 	ret = pthread_create(&ctrl_thread, NULL, ctrl_thread_proc, 0);
 	if (ret) {
-		ldms_log("Error %d creating the control pthread'.\n");
+		ldmsd_log(LDMSD_LERROR, "Error %d creating "
+				"the control pthread'.\n");
 		return -1;
 	}
 	return 0;
@@ -1790,7 +1797,7 @@ void *inet_ctrl_thread_proc(void *args)
 loop:
 	muxr_s = accept(listener_sock, &rem_sin, &addrlen);
 	if (muxr_s < 0) {
-		ldms_log("Error %d failed to setting up the config "
+		ldmsd_log(LDMSD_LERROR, "Error %d failed to setting up the config "
 				"listener.\n", muxr_s);
 		goto loop;
 	}
@@ -1825,28 +1832,29 @@ int ldmsd_inet_config_init(const char *port)
 
 	listener_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (listener_sock < 0) {
-		ldms_log("Error %d creating socket on port '%s'\n", errno, port);
+		ldmsd_log(LDMSD_LERROR, "Error %d creating socket on port "
+				"'%s'\n", errno, port);
 		return errno;
 	}
 
 	/* Bind to our public name */
 	rc = bind(listener_sock, (struct sockaddr *)&sin, sizeof(sin));
 	if (rc < 0) {
-		ldms_log("Error %d binding to socket on port '%s'.\n",
+		ldmsd_log(LDMSD_LERROR, "Error %d binding to socket on port '%s'.\n",
 						errno, port);
 		goto err;
 	}
 
 	rc = listen(listener_sock, 10);
 	if (rc) {
-		ldms_log("Error %d failed to setting up the config "
+		ldmsd_log(LDMSD_LERROR, "Error %d failed to setting up the config "
 				"listener.\n", rc);
 		goto err;
 	}
 
 	rc = pthread_create(&ctrl_thread, NULL, inet_ctrl_thread_proc, 0);
 	if (rc) {
-		ldms_log("Error %d creating the control pthread'.\n");
+		ldmsd_log(LDMSD_LERROR, "Error %d creating the control pthread'.\n");
 		goto err;
 	}
 	return 0;

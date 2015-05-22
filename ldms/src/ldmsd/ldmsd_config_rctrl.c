@@ -89,14 +89,16 @@ void __rctrl_recv_cb(rctrl_t ctrl)
 	rctrl_replybuf[0] = '\0';
 	struct ocm_cfg_buff *reply_msg = ocm_cfg_buff_new(1024 * 512, "");
 	if (!reply_msg) {
-		ldms_log("ldmsd_config: Error %d: Failed to create a message "
-				"sent back to the control.\n", ENOMEM);
+		ldmsd_log(LDMSD_LERROR, "ldmsd_config: Error %d: Failed to "
+				"create a message sent back to the control.\n",
+				ENOMEM);
 		return;
 	}
 	char *buff = malloc(1024 * 256);
 	if (!buff) {
-		ldms_log("ldmsd_config: Error %d: Failed to create a message "
-				"sent back to the control.\n", ENOMEM);
+		ldmsd_log(LDMSD_LERROR, "ldmsd_config: Error %d: Failed "
+				"to create a message sent back to the control.\n",
+				ENOMEM);
 		return;
 	}
 
@@ -117,24 +119,27 @@ void __rctrl_recv_cb(rctrl_t ctrl)
 	while (0 == ocm_cfg_cmd_iter_next(&cmd_iter, &cmd)) {
 		v = ocm_av_get_value(cmd, "cmd");
 		if (!v) {
-			ldms_log("Request is cmd.\n");
-			sprintf(rctrl_replybuf, "-%dRequest is cmd.\n", EINVAL);
+			ldmsd_log(LDMSD_LERROR, "ldmsd_config: The request "
+					"is missing 'cmd'.\n");
+			sprintf(rctrl_replybuf, "-%dThe request is missing "
+					"'cmd'.\n", EINVAL);
 			goto out;
 		}
 		_command = v->s.str;
 		command = strdup(_command);
 		v = ocm_av_get_value(cmd, "cmd_id");
 		if (!v) {
-			ldms_log("Request is missing Id '%s'\n", command);
-			sprintf(rctrl_replybuf, "-%dRequest is missing Id '%s'\n",
-					EINVAL, command);
+			ldmsd_log(LDMSD_LERROR, "ldmsd_config: The request is "
+					"missing cmd ID. '%s'\n", command);
+			sprintf(rctrl_replybuf, "-%dThe request is missing cmd ID.\n",
+					EINVAL);
 			goto out;
 		}
 		long cmd_id = v->i32;
 		ret = tokenize(command, kw_list, av_list);
 		if (ret) {
-			ldms_log("Memory allocation failure processing '%s'\n",
-				 command);
+			ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
+					"processing '%s'\n", command);
 			sprintf(rctrl_replybuf, "-%dMemory allocation failure processing "
 					"'%s'\n", ret, command);
 			goto out;
@@ -180,7 +185,7 @@ int ldmsd_rctrl_init(const char *port, const char *secretword)
 {
 	int rc = 0;
 	rctrl_t ctrl = rctrl_listener_setup("sock", port, rctrl_recv_cb,
-						secretword, ldms_log);
+						secretword, ldmsd_error_log);
 	if (!ctrl)
 		rc = errno;
 	return rc;
