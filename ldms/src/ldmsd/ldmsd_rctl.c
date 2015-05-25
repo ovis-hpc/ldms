@@ -315,6 +315,7 @@ void rctrl_cb(enum rctrl_event ev, rctrl_t ctrl)
 void __handle_cmd(char *cmd, rctrl_t ctrl)
 {
 	struct ocm_value *v = (void *)buff;
+	ocm_cfg_buff_reset(cfg, "");
 	ocm_cfg_buff_add_verb(cfg, "");
 	ocm_value_set_s(v, cmd);
 	ocm_cfg_buff_add_av(cfg, "cmd", v);
@@ -332,7 +333,6 @@ void __handle_cmd(char *cmd, rctrl_t ctrl)
 			(void)kw->action(key.token);
 		} else {
 			rctrl_send_request(ctrl, cfg);
-			ocm_cfg_buff_reset(cfg, "");
 			sem_wait(&recv_sem);
 		}
 	} else {
