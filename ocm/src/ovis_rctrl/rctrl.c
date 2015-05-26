@@ -169,6 +169,7 @@ err:
 	zap_close(zep);
 }
 
+#ifdef ENABLE_AUTH
 int rctrl_send_request(rctrl_t ctrl, struct ocm_cfg_buff *cfg);
 int __send_auth_password(zap_ep_t zep, rctrl_t ctrl, const char *password)
 {
@@ -196,6 +197,7 @@ err0:
 	free(buff);
 	return rc;
 }
+#endif /* ENABLE_AUTH */
 
 static void handle_zap_connected(zap_ep_t zep, rctrl_t ctrl, zap_event_t zev)
 {
@@ -302,6 +304,7 @@ static void rctrl_active_zap_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
+#ifdef ENABLE_AUTH
 static int __send_auth_approval(zap_ep_t zep, rctrl_t ctrl)
 {
 	int rc = 0;
@@ -334,6 +337,7 @@ reject_or_error:
 	ctrl->auth_state = RCTRL_AUTH_FAILED;
 	zap_close(zep);
 }
+#endif /* ENABLE_AUTH */
 
 static void rctrl_passive_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
