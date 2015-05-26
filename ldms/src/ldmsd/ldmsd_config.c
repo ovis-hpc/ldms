@@ -1596,17 +1596,7 @@ loop:
 int ldmsd_inet_config_init(const char *port)
 {
 	int rc;
-	/* Create the control socket parsing structures */
-	av_list = av_new(128);
-	kw_list = av_new(128);
-	if (!av_list || !kw_list)
-		return ENOMEM;
-
 	struct sockaddr_in sin;
-	int sockfd, new_fd;
-	socklen_t sin_size;
-	struct sockaddr_storage their_addr;
-	char s[INET_ADDRSTRLEN];
 
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
