@@ -108,11 +108,11 @@ window.baler =
                 done_cb(data)
         )
 
-    calcNpp: (npp_p) ->
-        #totalNodes = metaD.responseJSON['max_comp_id']
-        totalNodes = baler.totalNodes
+    calcNpp: (npp_p, totalNodes, height) ->
         calc_npp = totalNodes * npp_p
-        calc_npp = calc_npp/40
+        calc_npp = window.parseInt((calc_npp + height)/height)
+        if (!calc_npp)
+            calc_npp = 1
         return calc_npp
 
     msg_cmp: (msg0, msg1) ->
@@ -426,7 +426,7 @@ window.baler =
 
 
     HeatMapLayer: class HeatMapLayer extends Disp
-        constructor: (@width, @height, @pxlFactor = 10, @ts_begin, @node_begin) ->
+        constructor: (@width, @height, @pxlFactor = 10, @ts_begin, @node_begin, @spp, @npp) ->
             _this_ = this
             @min_alpha = 40
             @max_alpha = 200
@@ -434,8 +434,6 @@ window.baler =
             @color = "red"
             @ctxt = undefined
             @pxl = undefined
-            @npp = 1.43 # Node per pixel
-            @spp = 7200 # seconds per pixel
             @mouseDown = false
             @oldImg = undefined
             @ptn_ids = undefined
@@ -596,7 +594,7 @@ window.baler =
 
 
     HeatMapDisp: class HeatMapDisp extends Disp
-        constructor: (@width=400, @height=400, @spp=7200, @npp=1.43) ->
+        constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
             @ts_begin = parseInt(1425963600 / @spp) * @spp
             @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
@@ -652,7 +650,7 @@ window.baler =
         createLayer: (name, ptn_ids, base_color = [255, 0, 0]) ->
             width = parseInt(@width / @pxlFactor)
             height = parseInt(@height / @pxlFactor)
-            layer = new HeatMapLayer(width, height, @pxlFactor, @ts_begin, @node_begin)
+            layer = new HeatMapLayer(width, height, @pxlFactor, @ts_begin, @node_begin, @spp, @npp)
             layer.name = name
             layer.base_color = base_color
             layer.ptn_ids = ptn_ids
@@ -777,22 +775,53 @@ window.baler =
             @updateLayers()
 
     HeatMapDispCtrl: class HeatMapDispCtrl extends Disp
-        constructor: (@hmap) ->
-            @navCtrl = new HeatMapNavCtrl(@hmap)
+        constructor: (@hmap, @totalNodes) ->
+            @navCtrl = new HeatMapNavCtrl(@hmap, @totalNodes)
             @layerCtrl = new HeatMapLayerCtrl(@hmap)
             @domobj = LZH.div({class: "HeatMapDispCtrl"}, @navCtrl.domobj, @layerCtrl.domobj)
 
     HeatMapNavCtrl: class HeatMapNavCtrl extends Disp
-        constructor: (@hmap) ->
+        constructor: (@hmap, @totalNodes) ->
             @dom_input_template =
-                nav_ts: ["Date/Time: ", "Secons since epoch (e.g. 1428942308)", "baler_nav_ts"]
-                nav_node: ["Component ID: ", "component id (e.g. 2)", "baler_nav_node"]
+                nav_ts: [
+                    "Date/Time: ",
+                    "Secons since epoch (e.g. 1428942308)",
+                    "baler_nav_ts"
+                ]
+                nav_node: [
+                    "Component ID: ",
+                    "component id (e.g. 2)",
+                    "baler_nav_node"
+                ]
             @dom_select_template =
-                spp: ["Bin Width Scale: ", "Number of seconds/pixel (default: 2 hours)", "baler_nav_spp"]
-                npp: ["Bin Height Scale: ", "Number of nodes/pixel (default: 1)", "baler_nav_npp"]
-            @wScale = 
-                spp : { "3.3 days":180, "2 hours":180, "12 hours":1080, "1 day":2160, "3 days":6480, "1 week":15120}
-                npp:{"25%":.25, "50%":.5, "75%":.75, "100%":1}
+                spp: [
+                    "Bin Width Scale: ",
+                    "Number of seconds/pixel (default: 2 hours)",
+                    "baler_nav_spp"
+                ]
+                npp: [
+                    "Bin Height Scale: ",
+                    "Number of nodes/pixel (default: 1)",
+                    "baler_nav_npp"
+                ]
+            @wScale =
+                spp : {
+                    # For the small spp(s), they should be the multiple of 60
+                    "hour": 60,
+                    "2 hours": 180,
+                    "12 hours":1800,
+                    # For the large spp(s), they should be the multiple of 3600
+                    "day<default>":3600,
+                    "3 days":6480,
+                    "week": 14400,
+                }
+                npp:{
+                    "smallest": 0,
+                    "25%":.25,
+                    "50%":.5,
+                    "75%":.75,
+                    "100%<default>":1,
+                }
             _this_ = this
             ul = LZH.ul({style: "list-style: none"})
             @dom_input = {}
@@ -806,18 +835,16 @@ window.baler =
                 sel.placeholder = plc
                 for z, y of @wScale[i]
                     opt = LZH.option()
-                    opt.text = z
+                    opt.innerHTML = z
+                    if (z.match(/<default>/))
+                        opt.selected = 1
                     opt.value = y
                     sel.appendChild(opt)
                 li = LZH.li(null, LZH.span(class: "HeatMapNavCtrlLabel", lbl), sel)
                 ul.appendChild(li)
             ts_text = baler.ts2datetime(@hmap.ts_begin)
-            npp_p = @dom_input.npp.options[@dom_input.npp.selectedIndex].value
-            npp = baler.calcNpp(npp_p)
             @dom_input.nav_ts.value = ts_text
             @dom_input.nav_node.value = @hmap.node_begin
-            @dom_input.spp.options[@dom_input.spp.selectedIndex].value = @hmap.spp
-            #calc_npp = @hmap.npp
 
             @nav_btn = LZH.button(null, "nav-apply")
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @nav_btn))
@@ -826,13 +853,13 @@ window.baler =
                 _this_.onNavApply()
             @hmap.registerOffsetChangeCb((ts, comp) -> _this_.onOffsetChange(ts, comp))
 
-        onNavApply: (ts, comp_id, spp,npp) ->
+        onNavApply: () ->
             input = @dom_input
             ts = new Date(input.nav_ts.value).getTime()/1000
             comp_id = input.nav_node.value
             spp = input.spp.options[input.spp.selectedIndex].value
             npp_p = input.npp.options[input.npp.selectedIndex].value
-            npp = baler.calcNpp(npp_p)
+            npp = baler.calcNpp(npp_p, @totalNodes, @hmap.height/@hmap.pxlFactor)
             ts = parseInt(ts/spp)*spp
             comp_id = parseInt(comp_id/npp)*npp
             input.nav_node.value = comp_id
