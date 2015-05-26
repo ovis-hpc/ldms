@@ -269,11 +269,11 @@ void usage(char *argv[])
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 #endif /* ENABLE_AUTH */
 #ifdef ENABLE_LDMSD_TEST
-	printf("    -r port        The listener port for receiving configuration.\n"
+	printf("    -p port        The listener port for receiving configuration.\n"
 	       "                   via socket\n");
 #endif /* ENABLE_LDMSD_TEST */
 #ifdef ENABLE_LDMSD_RCTRL
-	printf("    -p port        The listener port for receiving configuration\n"
+	printf("    -r port        The listener port for receiving configuration\n"
 	       "                   from the ldmsd_rctl program\n");
 #endif
 	cleanup(1);
@@ -1327,13 +1327,13 @@ int main(int argc, char *argv[])
 			sockname = strdup(optarg);
 			break;
 #ifdef ENABLE_LDMSD_TEST
-		case 'r':
+		case 'p':
 			/* Set the port to listen on configuration */
 			config_port = strdup(optarg);
 			break;
 #endif /* ENABLE_LDMSD_TEST */
 #ifdef ENABLE_LDMSD_RCTRL
-		case 'p':
+		case 'r':
 			rctrl_port = strdup(optarg);
 			break;
 #endif /* ENABLE_LDMSD_RCTRL */
