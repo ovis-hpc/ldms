@@ -70,6 +70,8 @@ window.baler =
         url = "http://#{baler.balerd.addr}/query"
         first = 1
         for k,v of param
+            if (v == undefined)
+                continue # skip undefined value
             if first
                 c = '?'
                 first = 0
@@ -905,6 +907,8 @@ window.baler =
             _this_ = this
             name = @dom_input["name"].value
             ptn_ids = @dom_input["ptn_ids"].value
+            if (! ptn_ids)
+                ptn_ids = undefined
             hue = 0
             idx = @hmap.createLayer(name, ptn_ids, baler.hue2rgb(hue))
             @dom_input["name"].value = ""
