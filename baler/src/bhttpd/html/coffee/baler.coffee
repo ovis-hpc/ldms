@@ -98,12 +98,14 @@ window.baler =
     get_metric_meta : (cb) ->
         baler.query({"type": "metric_meta"}, cb)
 
-    get_big_pic : () ->
+    get_big_pic : (done_cb) ->
         url = "http://#{baler.balerd.addr}/query"
         $.getJSON(url, {"type":"big_pic"}, (data)->
-            baler.totalNodes = data.max_comp_id
+            baler.totalNodes = data.max_comp_id + 1
             baler.min_ts = data.min_ts
             baler.max_ts = data.max_ts
+            if (done_cb)
+                done_cb(data)
         )
 
     calcNpp: (npp_p) ->
