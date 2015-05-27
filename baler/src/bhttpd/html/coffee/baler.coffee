@@ -857,7 +857,7 @@ window.baler =
             @dom_input.nav_ts.value = ts_text
             @dom_input.nav_node.value = @hmap.node_begin
 
-            @nav_btn = LZH.button(null, "nav-apply")
+            @nav_btn = LZH.button({"id":"nav-apply"}, "nav-apply")
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @nav_btn))
             @domobj = LZH.div({class: "HeatMapNavCtrl"}, ul)
             @nav_btn.onclick = (e) ->
@@ -901,7 +901,7 @@ window.baler =
                 inp.placeholder = plc
                 li = LZH.li(null, LZH.span(class: "HeatMapLayerCtrlLabel", lbl), inp)
                 ul.appendChild(li)
-            @dom_add_btn = LZH.button(null, "add")
+            @dom_add_btn = LZH.button({"id":"add_map"}, "add")
             @dom_add_btn.onclick = () -> _this_.onAddBtnClick()
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapLayerCtrlLabel"}), @dom_add_btn))
 
