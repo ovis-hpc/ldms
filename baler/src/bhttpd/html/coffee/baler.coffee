@@ -105,7 +105,7 @@ window.baler =
 
     calcNpp: (npp_p, totalNodes, height) ->
         calc_npp = totalNodes * npp_p
-        calc_npp = window.parseInt((calc_npp + height)/height)
+        calc_npp = Math.ceil(calc_npp/height)
         if (!calc_npp)
             calc_npp = 1
         return calc_npp
@@ -504,12 +504,23 @@ window.baler =
             )
             return 0
 
+        nodeSanity: (dly) ->
+           nbx = Math.ceil(@node_begin / @npp)
+           if nbx<=0 && dly>0
+               dly = 0
+               return dly
+           else if (nbx - dly) < 0
+               dly = nbx
+               return dly
+           else
+               return dly
+
         onMouseMove: (lx, ly) ->
             if ! @mouseDown
                 return 0
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
-
+            dly = @nodeSanity(dly)
             @ctxt.clearRect(0, 0, @width, @height)
             @ctxt.putImageData(@oldImg, dlx, dly)
             return 0
@@ -524,12 +535,15 @@ window.baler =
             @mouseDown = false
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
+            dly = @nodeSanity(dly)
             fx = if dlx < 0 then @width + dlx else 0
             fy = if dly < 0 then @height + dly else 0
             fw = Math.abs(dlx)
             fh = Math.abs(dly)
             ts_begin = @ts_begin - @spp*dlx
             node_begin = @node_begin - @npp*dly
+            if node_begin < 0
+                node_begin = 0
             @ts_begin = ts_begin
             @node_begin = node_begin
             if fw
@@ -590,7 +604,7 @@ window.baler =
 
     HeatMapDisp: class HeatMapDisp extends Disp
         constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
-            @ts_begin = parseInt(1425963600 / @spp) * @spp
+            @ts_begin = parseInt(1427729931/ @spp) * @spp
             @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
             @pxlFactor = 10
@@ -732,6 +746,8 @@ window.baler =
                 l.onMouseMove(lx, ly)
             @ts_begin = @mouseDownPos.ts_begin - @spp*dlx
             @node_begin = @mouseDownPos.node_begin - @npp*dly
+            if @node_begin < 0
+                @node_begin = 0
             xoffset = parseInt(@ts_begin / @spp)
             yoffset = parseInt(@node_begin / @npp)
             #yoffset -= (@node_begin < 0)
