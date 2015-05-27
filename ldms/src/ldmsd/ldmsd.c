@@ -970,7 +970,11 @@ void do_connect(struct hostspec *hs)
 	switch (hs->type) {
 	case ACTIVE:
 	case BRIDGING:
-		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log, secretword);
+#ifdef ENABLE_AUTH
+		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldms_log, secretword);
+#else
+		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log);
+#endif /* ENABLE_AUTH */
 		if (hs->x) {
 			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
 						 sizeof(hs->sin), ldms_connect_cb, hs);
@@ -1219,8 +1223,11 @@ void listen_on_transport(char *transport_str)
 		port_no = LDMS_DEFAULT_PORT;
 	else
 		port_no = atoi(port_s);
-
-	l = ldms_xprt_new(name, ldms_log, secretword);
+#ifdef ENABLE_AUTH
+	l = ldms_xprt_with_auth_new(name, ldms_log, secretword);
+#else /* ENABLE_AUTH */
+	l = ldms_xprt_new(name, ldms_log);
+#endif /* ENABLE_AUTH */
 	if (!l) {
 		ldms_log("The transport specified, '%s', is invalid.\n", name);
 		cleanup(6);

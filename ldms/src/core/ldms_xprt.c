@@ -1273,8 +1273,70 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
-ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn,
-					const char *secretword)
+int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
+					ldms_log_fn_t log_fn)
+{
+	int ret = 0;
+	x->zap = zap_get(name, log_fn, ldms_zap_mem_info);
+	if (!x->zap) {
+		log_fn("ERROR: Cannot get zap plugin: %s\n", name);
+		ret = ENOENT;
+		goto err0;
+	}
+
+	x->zap_ep = zap_new(x->zap, ldms_zap_cb);
+	if (!x->zap_ep) {
+		log_fn("ERROR: Cannot create zap endpoint.\n");
+		ret = ENOMEM;
+		goto err1;
+	}
+	zap_set_ucontext(x->zap_ep, x);
+
+	strncpy(x->name, name, LDMS_MAX_TRANSPORT_NAME_LEN);
+	x->ref_count = 1;
+	x->remote_dir_xid = x->local_dir_xid = 0;
+
+	x->log = log_fn;
+	sem_init(&x->sem, 0, 0);
+	pthread_mutex_init(&x->lock, NULL);
+	pthread_mutex_lock(&xprt_list_lock);
+	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
+	pthread_mutex_unlock(&xprt_list_lock);
+	return 0;
+err1:
+	free(x->zap);
+err0:
+	return ret;
+}
+
+ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
+{
+	int ret = 0;
+	char *libdir;
+	struct ldms_xprt *x = calloc(1, sizeof(*x));
+	if (!x) {
+		ret = ENOMEM;
+		goto err0;
+	}
+
+	if (!log_fn)
+		log_fn = default_log;
+
+	ret = __ldms_xprt_zap_new(x, name, log_fn);
+	if (ret)
+		goto err1;
+
+	return x;
+err1:
+	free(x);
+err0:
+	errno = ret;
+	return NULL;
+}
+
+#ifdef ENABLE_AUTH
+ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
+				const char *secretword)
 {
 	int ret = 0;
 	char *libdir;
@@ -1290,7 +1352,6 @@ ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn,
 	if (!log_fn)
 		log_fn = default_log;
 
-#ifdef ENABLE_AUTH
 	if (secretword) {
 		x->password = strdup(secretword);
 		if (!x->password) {
@@ -1299,37 +1360,12 @@ ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn,
 		}
 		x->auth_approved = LDMS_XPRT_AUTH_INIT;
 	}
-#endif /* ENABLE_AUTH */
 
-	zap_err_t zerr;
-	x->zap = zap_get(name, log_fn, ldms_zap_mem_info);
-	if (!x->zap) {
-		log_fn("ERROR: Cannot get zap plugin: %s\n", name);
-		ret = ENOENT;
+	ret = __ldms_xprt_zap_new(x, name, log_fn);
+	if (ret)
 		goto err1;
-	}
 
-	x->zap_ep = zap_new(x->zap, ldms_zap_cb);
-	if (!x->zap_ep) {
-		log_fn("ERROR: Cannot create zap endpoint.\n");
-		ret = ENOMEM;
-		goto err2;
-	}
-	zap_set_ucontext(x->zap_ep, x);
-
-	strncpy(x->name, name, LDMS_MAX_TRANSPORT_NAME_LEN);
-	x->ref_count = 1;
-	x->remote_dir_xid = x->local_dir_xid = 0;
-
-	x->log = log_fn;
-	sem_init(&x->sem, 0, 0);
-	pthread_mutex_init(&x->lock, NULL);
-	pthread_mutex_lock(&xprt_list_lock);
-	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
-	pthread_mutex_unlock(&xprt_list_lock);
 	return x;
-err2:
-	free(x->zap);
 err1:
 	if (x->password)
 		free((void *)x->password);
@@ -1338,6 +1374,7 @@ err0:
 	errno = ret;
 	return NULL;
 }
+#endif /* ENABLE_AUTH */
 
 size_t format_lookup_req(struct ldms_request *req, enum ldms_lookup_flags flags,
 			 const char *path, uint64_t xid)

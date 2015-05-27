@@ -70,7 +70,6 @@ typedef struct ldms_rbuf_desc *ldms_rbuf_t;
 typedef struct ldms_set_desc *ldms_set_t;
 typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
-typedef struct ldms_xprt_auth_challenge *ldms_xprt_auth_chl_t;
 
 /**
  * \mainpage LDMS
@@ -386,13 +385,30 @@ typedef void (*ldms_log_fn_t)(const char *fmt, ...);
  *
  * \param name	The name of the transport type to create.
  * \param log_fn An optional function to call when logging transport messages
- * \param auth_path  The full path to the file storing the shared secret word.
  *
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
-extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn,
-					const char *auth_path);
+extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
+
+#ifdef ENABLE_AUTH
+/**
+ * \brief Create a transport handle with or without authentication
+ *
+ * Metric sets are exported on the network through a transport. A
+ * transport handle is required to communicate on the network.
+ *
+ * \param name	The name of the transport type to create.
+ * \param log_fn An optional function to call when logging transport messages
+ * \param secretword  The shared secret word used for authentication.
+ *                    If NULL is given, there is no authentication performed.
+ *
+ * \returns	A transport handle on success.
+ * \returns	0 If the transport could not be created.
+ */
+extern ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
+					const char *secretword);
+#endif /* ENABLE_AUTH */
 
 typedef enum ldms_conn_event {
 	LDMS_CONN_EVENT_CONNECTED,
@@ -1232,21 +1248,6 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e);
 /**
  * \}
  */
-
-#ifdef ENABLE_AUTH
-extern uint64_t ldms_auth_gen_challenge();
-
-extern ldms_xprt_auth_chl_t ldms_auth_pack_challenge(uint64_t challenge,
-				ldms_xprt_auth_chl_t chl);
-
-extern uint64_t ldms_auth_unpack_challenge(ldms_xprt_auth_chl_t chl);
-
-extern char *ldms_auth_get_secretword(const char *path, ldms_log_fn_t log);
-
-extern char *ldms_auth_encrypt_password(const uint64_t challenge,
-					const char *secretword);
-
-#endif /* ENABLE_AUTH */
 
 #ifdef __cplusplus
 }
