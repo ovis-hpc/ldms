@@ -49,13 +49,6 @@ window.baler =
         mm = baler.lzpad(date.getMinutes(), 2)
         return "#{m}/#{d}/#{y} #{hh}:#{mm}"
 
-    ts2date: (ts) ->
-        date = new Date(ts*1000)
-        y = date.getYear() + 1900
-        m = baler.lzpad(date.getMonth() + 1, 2)
-        d = baler.lzpad(date.getDate(), 2)
-        return "#{y}/#{m}/#{d}"
-
     tkn2html : (tok) -> "<span class='baler_#{tok.tok_type}'>#{tok.text}</span>"
 
     msg2html : (msg) ->
