@@ -49,13 +49,6 @@ window.baler =
         mm = baler.lzpad(date.getMinutes(), 2)
         return "#{m}/#{d}/#{y} #{hh}:#{mm}"
 
-    ts2date: (ts) ->
-        date = new Date(ts*1000)
-        y = date.getYear() + 1900
-        m = baler.lzpad(date.getMonth() + 1, 2)
-        d = baler.lzpad(date.getDate(), 2)
-        return "#{y}/#{m}/#{d}"
-
     tkn2html : (tok) -> "<span class='baler_#{tok.tok_type}'>#{tok.text}</span>"
 
     msg2html : (msg) ->
@@ -112,7 +105,7 @@ window.baler =
 
     calcNpp: (npp_p, totalNodes, height) ->
         calc_npp = totalNodes * npp_p
-        calc_npp = window.parseInt((calc_npp + height)/height)
+        calc_npp = Math.ceil(calc_npp/height)
         if (!calc_npp)
             calc_npp = 1
         return calc_npp
@@ -511,12 +504,23 @@ window.baler =
             )
             return 0
 
+        nodeSanity: (dly) ->
+           nbx = Math.ceil(@node_begin / @npp)
+           if nbx<=0 && dly>0
+               dly = 0
+               return dly
+           else if (nbx - dly) < 0
+               dly = nbx
+               return dly
+           else
+               return dly
+
         onMouseMove: (lx, ly) ->
             if ! @mouseDown
                 return 0
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
-
+            dly = @nodeSanity(dly)
             @ctxt.clearRect(0, 0, @width, @height)
             @ctxt.putImageData(@oldImg, dlx, dly)
             return 0
@@ -531,12 +535,15 @@ window.baler =
             @mouseDown = false
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
+            dly = @nodeSanity(dly)
             fx = if dlx < 0 then @width + dlx else 0
             fy = if dly < 0 then @height + dly else 0
             fw = Math.abs(dlx)
             fh = Math.abs(dly)
             ts_begin = @ts_begin - @spp*dlx
             node_begin = @node_begin - @npp*dly
+            if node_begin < 0
+                node_begin = 0
             @ts_begin = ts_begin
             @node_begin = node_begin
             if fw
@@ -597,7 +604,7 @@ window.baler =
 
     HeatMapDisp: class HeatMapDisp extends Disp
         constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
-            @ts_begin = parseInt(1425963600 / @spp) * @spp
+            @ts_begin = parseInt(1427729931/ @spp) * @spp
             @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
             @pxlFactor = 10
@@ -739,6 +746,8 @@ window.baler =
                 l.onMouseMove(lx, ly)
             @ts_begin = @mouseDownPos.ts_begin - @spp*dlx
             @node_begin = @mouseDownPos.node_begin - @npp*dly
+            if @node_begin < 0
+                @node_begin = 0
             xoffset = parseInt(@ts_begin / @spp)
             yoffset = parseInt(@node_begin / @npp)
             #yoffset -= (@node_begin < 0)
@@ -809,13 +818,13 @@ window.baler =
             @wScale =
                 spp : {
                     # For the small spp(s), they should be the multiple of 60
-                    "hour": 60,
-                    "2 hours": 180,
-                    "12 hours":1800,
+                    "Half Hour": 60,
+                    "2 Hours": 180,
+                    "12 Hours":1800,
                     # For the large spp(s), they should be the multiple of 3600
-                    "day<default>":3600,
+                    "40 Hours<default>":3600,
                     "3 days":6480,
-                    "week": 14400,
+                    "Week": 14400,
                 }
                 npp:{
                     "smallest": 0,
@@ -848,7 +857,7 @@ window.baler =
             @dom_input.nav_ts.value = ts_text
             @dom_input.nav_node.value = @hmap.node_begin
 
-            @nav_btn = LZH.button(null, "nav-apply")
+            @nav_btn = LZH.button({"id":"nav-apply"}, "nav-apply")
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @nav_btn))
             @domobj = LZH.div({class: "HeatMapNavCtrl"}, ul)
             @nav_btn.onclick = (e) ->
@@ -892,7 +901,7 @@ window.baler =
                 inp.placeholder = plc
                 li = LZH.li(null, LZH.span(class: "HeatMapLayerCtrlLabel", lbl), inp)
                 ul.appendChild(li)
-            @dom_add_btn = LZH.button(null, "add")
+            @dom_add_btn = LZH.button({"id":"add_map"}, "add")
             @dom_add_btn.onclick = () -> _this_.onAddBtnClick()
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapLayerCtrlLabel"}), @dom_add_btn))
 
