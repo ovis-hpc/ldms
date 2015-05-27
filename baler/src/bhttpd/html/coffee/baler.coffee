@@ -818,13 +818,13 @@ window.baler =
             @wScale =
                 spp : {
                     # For the small spp(s), they should be the multiple of 60
-                    "hour": 60,
-                    "2 hours": 180,
-                    "12 hours":1800,
+                    "Half Hour": 60,
+                    "2 Hours": 180,
+                    "12 Hours":1800,
                     # For the large spp(s), they should be the multiple of 3600
-                    "day<default>":3600,
+                    "40 Hours<default>":3600,
                     "3 days":6480,
-                    "week": 14400,
+                    "Week": 14400,
                 }
                 npp:{
                     "smallest": 0,
