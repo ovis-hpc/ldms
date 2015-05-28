@@ -1,3 +1,4 @@
+EXTRA_DIST=ldms.pod
 
 dist_man8_MANS= \
 ldmsctl.man \
@@ -23,5 +24,5 @@ Plugin_sysclassib.man \
 Plugin_vmstat.man
 
 ldms.man: ldms.pod
-	pod2man -n ldms --section=7 --release=2.4.2 -c "LDMS Manual Index" < $(srcdir)/ldms.pod > ldms.man
+	pod2man -n ldms --section=7 --release=@VERSION@ -c "LDMS Manual Index" < $(srcdir)/ldms.pod > ldms.man
 
