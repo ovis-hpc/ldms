@@ -345,7 +345,8 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
 	if ((e == LDMS_CONN_EVENT_ERROR) || (e == LDMS_CONN_EVENT_REJECTED)) {
-		printf("Connection failed/rejected.\n");
+		printf("Connection failed/rejected. This might cause by "
+			"an authentication failure. See the -a option.\n");
 		exit(2);
 	}
 
@@ -421,9 +422,11 @@ int main(int argc, char *argv[])
 				usage(argv);
 			}
 			break;
+#ifdef ENABLE_AUTH
 		case 'a':
 			auth_path = strdup(optarg);
 			break;
+#endif /* ENABLE_AUTH */
 		default:
 			usage(argv);
 		}
@@ -448,9 +451,10 @@ int main(int argc, char *argv[])
 
 #ifdef ENABLE_AUTH
 	secretword = ldms_ls_get_secretword(auth_path);
+	ldms = ldms_xprt_with_auth_new(xprt, null_log, secretword);
+#else /* ENABLE_AUTH */
+	ldms = ldms_xprt_new(xprt, null_log);
 #endif /* ENABLE_AUTH */
-
-	ldms = ldms_xprt_new(xprt, null_log, secretword);
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);

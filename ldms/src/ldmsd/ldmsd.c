@@ -269,11 +269,11 @@ void usage(char *argv[])
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 #endif /* ENABLE_AUTH */
 #ifdef ENABLE_LDMSD_TEST
-	printf("    -r port        The listener port for receiving configuration.\n"
+	printf("    -p port        The listener port for receiving configuration.\n"
 	       "                   via socket\n");
 #endif /* ENABLE_LDMSD_TEST */
 #ifdef ENABLE_LDMSD_RCTRL
-	printf("    -p port        The listener port for receiving configuration\n"
+	printf("    -r port        The listener port for receiving configuration\n"
 	       "                   from the ldmsd_rctl program\n");
 #endif
 	cleanup(1);
@@ -970,7 +970,11 @@ void do_connect(struct hostspec *hs)
 	switch (hs->type) {
 	case ACTIVE:
 	case BRIDGING:
-		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log, secretword);
+#ifdef ENABLE_AUTH
+		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldms_log, secretword);
+#else
+		hs->x = ldms_xprt_new(hs->xprt_name, ldms_log);
+#endif /* ENABLE_AUTH */
 		if (hs->x) {
 			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
 						 sizeof(hs->sin), ldms_connect_cb, hs);
@@ -1219,8 +1223,11 @@ void listen_on_transport(char *transport_str)
 		port_no = LDMS_DEFAULT_PORT;
 	else
 		port_no = atoi(port_s);
-
-	l = ldms_xprt_new(name, ldms_log, secretword);
+#ifdef ENABLE_AUTH
+	l = ldms_xprt_with_auth_new(name, ldms_log, secretword);
+#else /* ENABLE_AUTH */
+	l = ldms_xprt_new(name, ldms_log);
+#endif /* ENABLE_AUTH */
 	if (!l) {
 		ldms_log("The transport specified, '%s', is invalid.\n", name);
 		cleanup(6);
@@ -1327,13 +1334,13 @@ int main(int argc, char *argv[])
 			sockname = strdup(optarg);
 			break;
 #ifdef ENABLE_LDMSD_TEST
-		case 'r':
+		case 'p':
 			/* Set the port to listen on configuration */
 			config_port = strdup(optarg);
 			break;
 #endif /* ENABLE_LDMSD_TEST */
 #ifdef ENABLE_LDMSD_RCTRL
-		case 'p':
+		case 'r':
 			rctrl_port = strdup(optarg);
 			break;
 #endif /* ENABLE_LDMSD_RCTRL */
