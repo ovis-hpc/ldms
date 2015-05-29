@@ -3,6 +3,7 @@ t.style.position = "relative"
 
 baler.get_big_pic( (data) ->
     hmap = window.hmap = new baler.HeatMapDisp(400,400,3600*2,2)
+    hmap.setLimits(data)
     window.hmapCtrl = new baler.HeatMapDispCtrl(hmap, data.max_comp_id + 1)
     hmapCtrl.domobj.style.float = "left"
     hmap.domobj.style.float = "left"

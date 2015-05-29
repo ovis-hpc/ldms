@@ -520,7 +520,6 @@ window.baler =
                 return 0
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
-            dly = @nodeSanity(dly)
             @ctxt.clearRect(0, 0, @width, @height)
             @ctxt.putImageData(@oldImg, dlx, dly)
             return 0
@@ -535,15 +534,12 @@ window.baler =
             @mouseDown = false
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
-            dly = @nodeSanity(dly)
             fx = if dlx < 0 then @width + dlx else 0
             fy = if dly < 0 then @height + dly else 0
             fw = Math.abs(dlx)
             fh = Math.abs(dly)
             ts_begin = @ts_begin - @spp*dlx
             node_begin = @node_begin - @npp*dly
-            if node_begin < 0
-                node_begin = 0
             @ts_begin = ts_begin
             @node_begin = node_begin
             if fw
@@ -608,6 +604,12 @@ window.baler =
             @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
             @pxlFactor = 10
+            @limits = {
+                min_ts: undefined,
+                max_ts: undefined,
+                max_comp_id: undefined,
+                min_comp_id: undefined,
+            }
 
             @offsetChangeCb = []
 
@@ -656,6 +658,14 @@ window.baler =
             @layerDescList = []
             @layers = []
 
+        # limits should contain min_ts, max_ts, min_comp_id, max_comp_id
+        # undefined parameter means no limit for that parameter
+        setLimits: (limits) ->
+            @limits = {}
+            for k, v of limits
+                @limits[k] = v
+            0
+
         createLayer: (name, ptn_ids, base_color = [255, 0, 0]) ->
             width = parseInt(@width / @pxlFactor)
             height = parseInt(@height / @pxlFactor)
@@ -703,16 +713,7 @@ window.baler =
                 return
             @onMouseMove(event)
             @mouseDown = false
-            lx = parseInt(event.pageX / @pxlFactor)
-            ly = parseInt(event.pageY / @pxlFactor)
-            ###
-            dx = event.pageX - @mouseDownPos.x
-            dy = event.pageY - @mouseDownPos.y
-            ts_begin = @ts_begin - @spp*dx
-            node_begin = @node_begin - @npp*dy
-            @ts_begin = ts_begin
-            @node_begin = node_begin
-            ###
+            [lx, ly, dlx, dly] = @getMoveVector(event)
             for l in @layers when !l.domobj.hidden
                 l.onMouseUp(lx, ly)
             return 0
@@ -731,26 +732,59 @@ window.baler =
             @mouseDownPos.node_begin = @node_begin
             @mouseDownPos.yoffset = @ylabel.offset
             @mouseDownPos.xoffset = @xlabel.offset
+            @mouseDownPos.reflx = parseInt(@ts_begin / @spp)
+            @mouseDownPos.refly = parseInt(@node_begin / @npp)
             for l in @layers when !l.domobj.hidden
                 l.onMouseDown(lx, ly)
             return 0
 
-        onMouseMove: (event) ->
-            if not @mouseDown
-                return 0
+        sanity: (min, max, current, diff) ->
+            neu = current + diff
+            if neu < min
+                neu = min
+                diff = min - current
+            if neu > max
+                neu = max
+                diff = max - current
+            if max < min
+                diff = 0
+            return diff
+
+        getMoveVector: (event) ->
             lx = parseInt(event.pageX / @pxlFactor)
             ly = parseInt(event.pageY / @pxlFactor)
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
+
+            # Adjust lx, ly, dlx, dly
+            min_lts = parseInt(@limits.min_ts / @spp)
+            max_lts = parseInt(@limits.max_ts / @spp)
+            min_lcid = parseInt(@limits.min_comp_id / @npp)
+            max_lcid = parseInt(@limits.max_comp_id / @npp)
+            lwidth = parseInt(@width / @pxlFactor)
+            lheight = parseInt(@height / @pxlFactor)
+
+            dlx = -@sanity(min_lts, max_lts - lwidth, @mouseDownPos.reflx, -dlx)
+            dly = -@sanity(min_lcid, max_lcid - lheight, @mouseDownPos.refly, -dly)
+            lx = @mouseDownPos.lx + dlx
+            ly = @mouseDownPos.ly + dly
+
+            ret = [lx, ly, dlx, dly]
+            return ret
+
+        onMouseMove: (event) ->
+            if not @mouseDown
+                return 0
+
+            [lx, ly, dlx, dly] = @getMoveVector(event)
+
             for l in @layers when !l.domobj.hidden
                 l.onMouseMove(lx, ly)
+
             @ts_begin = @mouseDownPos.ts_begin - @spp*dlx
             @node_begin = @mouseDownPos.node_begin - @npp*dly
-            if @node_begin < 0
-                @node_begin = 0
             xoffset = parseInt(@ts_begin / @spp)
             yoffset = parseInt(@node_begin / @npp)
-            #yoffset -= (@node_begin < 0)
 
             @xlabel.setOffset(xoffset)
             @ylabel.setOffset(yoffset)
