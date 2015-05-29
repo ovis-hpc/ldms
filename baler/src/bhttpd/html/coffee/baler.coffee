@@ -1078,7 +1078,6 @@ window.baler =
                     "BMPTN_STORE_STATE_META_2", \
                     "BMPTN_STORE_STATE_REFINING", \
                     "BMPTN_STORE_STATE_NAMING"
-                        console.log("updateTilDoneCb")
                         window.setTimeout((() -> _this_.updateTilDone()), 500)
                 else
                     if @doneCb
@@ -1138,7 +1137,6 @@ window.baler =
             for k, inp of @param_input
                 str = inp.value
                 param[k] = str if str
-            console.log(param)
             baler.meta_cluster(param)
             @stat.updateTilDone()
 
