@@ -439,6 +439,9 @@ window.baler =
                 ts:
                     min: null
                     max: null
+            @stores =
+                60: "60-1",
+                3600: "3600-1"
             @base_color = [255, 0, 0]
 
             @domobj = LZH.canvas({class: "HeatMapLayer", width: width, height: height})
@@ -449,6 +452,15 @@ window.baler =
             @ctxt = @domobj.getContext("2d")
             @pxl = @ctxt.createImageData(1, 1)
             @ptn_ids = ""
+
+        getStore: () ->
+            str = "60-1"
+            for k, v of @stores
+                if parseInt(@spp) >= parseInt(k)
+                    str = v
+                else
+                    break
+            return str
 
         setHue: (hue) ->
             @base_color = baler.hue2rgb(hue)
@@ -492,7 +504,7 @@ window.baler =
                     host_begin: n0,
                     #ptn_ids: _this_.ptn_ids.join(","),
                     ptn_ids: @ptn_ids,
-                    img_store: "3600-1",
+                    img_store: _this_.getStore(),
                     width: _width,
                     height: _height,
                     spp: @spp,
