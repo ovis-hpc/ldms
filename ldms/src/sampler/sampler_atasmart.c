@@ -205,7 +205,7 @@ static int create_metric_set(char *setname)
 	struct atatsmart_set_size size;
 	size.metric_count = size.tot_data_sz = size.tot_meta_sz = 0;
 
-	int meta_sz = 0, data_sz = 0;
+	size_t meta_sz = 0, data_sz = 0;
 	LDMS_SIZE_JOBID_METRIC(sampler_atasmart,meta_sz,size.tot_meta_sz,
 		data_sz,size.tot_data_sz,size.metric_count,ret,msglog);
 
@@ -217,20 +217,23 @@ static int create_metric_set(char *setname)
 	/* Get the total meta and data sizes */
 	int i = 0;
 	for (i = 0; i < num_disks; i++) {
-		if (ret = sk_disk_open(disknames[i], &smarts[i].d)) {
+		ret = sk_disk_open(disknames[i], &smarts[i].d);
+		if (ret) {
 			msglog(LDMS_LDEBUG,"atasmart: Failed to create SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err0;
 		}
 
-		if (ret = sk_disk_smart_read_data(smarts[i].d)) {
+		ret = sk_disk_smart_read_data(smarts[i].d);
+		if (ret) {
 			msglog(LDMS_LDEBUG,"atasmart: Failed to read data SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err0;
 		}
 
 		ret = sk_disk_smart_parse_attributes(smarts[i].d,
-				atasmart_get_disk_info, (void *) &size);
+			(SkSmartAttributeParseCallback)atasmart_get_disk_info,
+			(void *) &size);
 		if (ret) {
 			msglog(LDMS_LDEBUG,"atasmart: Failed to get size of SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
@@ -401,8 +404,9 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 
 static int sample(void)
 {
-	int ret;
+	int ret = 0;
 	int metric_no;
+	union ldms_value v;
 
 	if (!set) {
 		msglog(LDMS_LDEBUG,"atasmart: plugin not initialized\n");
@@ -427,9 +431,6 @@ static int sample(void)
 err:
 	ldms_end_transaction(set);
 	return ret;
-out:
-	ldms_end_transaction(set);
-	return 0;
 }
 
 static void term(void)
