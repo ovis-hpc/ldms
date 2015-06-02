@@ -14,8 +14,7 @@ PREFIX=/opt/ovis
 
 # add --enable-FEATURE here
 ENABLE="--enable-swig --enable-ocmd --enable-parsers \
-	--enable-sos --enable-ocm --enable-me --enable-debug\
-	--enable-ocm-test --enable-etc"
+	--enable-sos --enable-ocm --enable-me --enable-debug"
 
 # add --disable-FEATURE here
 DISABLE="--disable-rdma --disable-sysclassib"
