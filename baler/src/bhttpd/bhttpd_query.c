@@ -902,8 +902,8 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 	int height = __get_url_param_int(ctxt, "height", 0);
 	int ts_begin = __get_url_param_int(ctxt, "ts_begin", 0);
 	int host_begin = __get_url_param_int(ctxt, "host_begin", 0);
-	int ts_end = ts_begin + width*spp;
-	int host_end = host_begin + height*npp;
+	int ts_end = ts_begin + (int)(width*spp);
+	int host_end = host_begin + (int)(height*npp);
 
 	int *data = NULL;
 
