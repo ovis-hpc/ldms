@@ -206,7 +206,7 @@ static int sx_add_metric(ldms_schema_t schema, const char *names[], int count)
 	for (i = 0; i < count; i++) {
 		metric_name = names[i];
 
-		rc = ldms_add_metric(schema, metric_name, LDMS_V_U64);
+		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 		if (rc < 0) {
 			return ENOMEM;
 		}
@@ -274,9 +274,11 @@ static int sx_create_metric_set(const char *path)
 	}
 
 	/* Create the metric set */
-	rc = ldms_create_set(path, sx_schema, &set);
-	if (rc)
+	set = ldms_set_new(path, sx_schema);
+	if (!set) {
+		rc = errno;
 		goto err;
+	}
 
 	sx_ldms_sets[port].sx_set = set;
 
@@ -313,7 +315,6 @@ static int sx_config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "set");
 	if (value)
 		sx_create_metric_set(value);
-
 	return 0;
 }
 
@@ -361,12 +362,12 @@ static int sx_sample_set(int log_port)
 	metric_count = sizeof(sx_stats)/sizeof(sx_port_cntr_t);
 	stats = (sx_port_cntr_t *)&sx_stats;
 
-	ldms_begin_transaction(sx_set->sx_set);
+	ldms_transaction_begin(sx_set->sx_set);
 
 	off = 0;
 	for (i = 0; i < metric_count; i++) {
 		v.v_u64 = stats[i];
-		ldms_set_midx(sx_set->sx_set, off+i, &v);
+		ldms_metric_set(sx_set->sx_set, off + i, &v);
 	}
 
 	/*
@@ -385,7 +386,7 @@ static int sx_sample_set(int log_port)
 
 	for (i = 0; i < metric_count; i++) {
 		v.v_u64 = stats[i];
-		ldms_set_midx(sx_set->sx_set, off+i, &v);
+		ldms_metric_set(sx_set->sx_set, off + i, &v);
 	}
 
 	/*
@@ -404,7 +405,7 @@ static int sx_sample_set(int log_port)
 
 	for (i = 0; i < metric_count; i++) {
 		v.v_u64 = stats[i];
-		ldms_set_midx(sx_set->sx_set, off+i, &v);
+		ldms_metric_set(sx_set->sx_set, off + i, &v);
 	}
 
 	/*
@@ -423,12 +424,11 @@ static int sx_sample_set(int log_port)
 
 	for (i = 0; i < metric_count; i++) {
 		v.v_u64 = stats[i];
-		ldms_set_midx(sx_set->sx_set, off+i, &v);
+		ldms_metric_set(sx_set->sx_set, off + i, &v);
 	}
 
 err:
-
-	ldms_end_transaction(sx_set->sx_set);
+	ldms_transaction_end(sx_set->sx_set);
 	return rc;
 }
 
@@ -457,12 +457,12 @@ static void sx_term(void)
 
 	for (port = 1; port < SX_NUM_PORTS; port++) {
 		if (sx_ldms_sets[port].sx_set)
-			ldms_destroy_set(sx_ldms_sets[port].sx_set);
+			ldms_set_delete(sx_ldms_sets[port].sx_set);
 		sx_ldms_sets[port].sx_set = NULL;
 	}
 
 	if (sx_schema != NULL) {
-		ldms_destroy_schema(sx_schema);
+		ldms_schema_delete(sx_schema);
 		sx_schema = NULL;
 	}
 }
