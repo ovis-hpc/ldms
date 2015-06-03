@@ -124,6 +124,11 @@ PyObject *LDMS_xprt_dir(ldms_t x)
 
 PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 {
+        /*
+         * NOTE: Assuming that the 'mv' is in an LDMS set--implying
+         *       little-endian data format. Native Python code
+         *       is very likely NOT to create an ldms_mval object.
+         */
 	int is_int = 1;
 	long l = 0;
 	double d = 0.0;
@@ -138,30 +143,30 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		l = (long)mv->v_s8;
 		break;
 	case LDMS_V_U16:
-		l = (long)mv->v_u16;
+		l = (uint16_t)__le16_to_cpu(mv->v_u16);
 		break;
 	case LDMS_V_S16:
-		l = (long)mv->v_s16;
+		l = (int16_t)__le16_to_cpu(mv->v_s16);
 		break;
 	case LDMS_V_U32:
-		l = (long)mv->v_u32;
+		l = (uint32_t)__le32_to_cpu(mv->v_u32);
 		break;
 	case LDMS_V_S32:
-		l = (long)mv->v_s32;
+		l = (int32_t)__le32_to_cpu(mv->v_s32);
 		break;
 	case LDMS_V_U64:
-		l = (long)mv->v_u64;
+		l = (uint64_t)__le64_to_cpu(mv->v_u64);
 		break;
 	case LDMS_V_S64:
-		l = (long)mv->v_s64;
+		l = (int64_t)__le64_to_cpu(mv->v_s64);
 		break;
 	case LDMS_V_F32:
 		is_int = 0;
-		d = (double)mv->v_f;
+		d = (float)__le32_to_cpu(mv->v_f);
 		break;
 	case LDMS_V_D64:
 		is_int = 0;
-		d = mv->v_d;
+		d = (double)__le64_to_cpu(mv->v_d);
 		break;
 	}
 	if (is_int)
@@ -270,7 +275,8 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		return ldms_set_data_gn_get(self);
 	}
 	inline PyObject *timestamp_get() {
-		struct ldms_timestamp const *ts = ldms_transaction_timestamp_get(self);
+		struct ldms_timestamp const _ts = ldms_transaction_timestamp_get(self);
+		struct ldms_timestamp const *ts = &_ts;
 		struct tm *tm;
 		char dtsz[200];
 		char usecs[16];
@@ -282,7 +288,8 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		return PyString_FromString(dtsz);
 	}
 	inline PyObject *transaction_duration_get() {
-		struct ldms_timestamp const *ts = ldms_transaction_duration_get(self);
+		struct ldms_timestamp const _ts = ldms_transaction_duration_get(self);
+		struct ldms_timestamp const *ts = &_ts;
 		char dtsz[200];
 		sprintf(dtsz, "%d.%06d(s)", ts->sec, ts->usec);
 		return PyString_FromString(dtsz);
