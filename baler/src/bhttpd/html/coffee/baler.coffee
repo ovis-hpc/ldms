@@ -888,12 +888,12 @@ window.baler =
                 ]
             @dom_select_template =
                 spp: [
-                    "Bin Width Scale: ",
+                    "Image Width: ",
                     "Number of seconds/pixel (default: 2 hours)",
                     "baler_nav_spp"
                 ]
                 npp: [
-                    "Bin Height Scale: ",
+                    "Image Height Scale: ",
                     "Number of nodes/pixel (default: 1)",
                     "baler_nav_npp"
                 ]
