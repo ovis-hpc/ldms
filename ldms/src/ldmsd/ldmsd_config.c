@@ -1,6 +1,7 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-15 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-15 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015 Sandia Corporation. All rights reserved.
+ *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -220,11 +221,37 @@ void destroy_plugin(struct ldmsd_plugin_cfg *p)
 extern void process_info_flush_thread(void);
 
 
+const char *prdcr_state_str(enum ldmsd_prdcr_state state)
+{
+	switch (state) {
+	case LDMSD_PRDCR_STATE_STOPPED:
+		return "STOPPED";
+	case LDMSD_PRDCR_STATE_DISCONNECTED:
+		return "DISCONNECTED";
+	case LDMSD_PRDCR_STATE_CONNECTING:
+		return "CONNECTING";
+	case LDMSD_PRDCR_STATE_CONNECTED:
+		return "CONNECTED";
+	}
+	return "BAD STATE";
+}
+
+
+const char *match_selector_str(enum ldmsd_name_match_sel sel)
+{
+	switch (sel) {
+	case LDMSD_NAME_MATCH_INST_NAME:
+		return "INST_NAME";
+	case LDMSD_NAME_MATCH_SCHEMA_NAME:
+		return "SCHEMA_NAME";
+	}
+	return "BAD SELECTOR";
+}
+
 /**
  * Return information about the state of the daemon
  */
-int process_info(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
 	extern int ev_thread_count;
 	extern pthread_t *ev_thread;
@@ -232,7 +259,7 @@ int process_info(char *replybuf, struct attr_value_list *av_list,
 	int i;
 	struct hostspec *hs;
 	int verbose = 0;
-	char *vb = av_value(av_list, "verbose");
+	char *vb = av_value(avl, "verbose");
 	if (vb && (strcasecmp(vb, "true") == 0 ||
 			strcasecmp(vb, "t") == 0))
 		verbose = 1;
@@ -301,8 +328,132 @@ int process_info(char *replybuf, struct attr_value_list *av_list,
 	}
 	pthread_mutex_unlock(&sp_list_lock);
 
+	ldms_log("========================================================================\n");
+	ldmsd_prdcr_t prdcr;
+	ldms_log("%s\n", "Producers");
+	ldms_log("%-20s %-20s %-8s %-12s %s\n",
+		 "Name", "Host", "Port", "ConnIntrvl", "State");
+	ldms_log("-------------------- -------------------- ---------- ---------- ----------\n");
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		ldms_log("%-20s %-20s %-8d %-12d %s\n",
+			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
+			 prdcr->conn_intrvl_us,
+			 prdcr_state_str(prdcr->conn_state));
+		ldmsd_prdcr_lock(prdcr);
+		ldmsd_prdcr_set_t prv_set;
+		ldms_log("    %-32s %-20s %s\n",
+			 "Instance Name", "Schema Name", "State");
+		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
+		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
+			ldms_log("    %-32s %-20s %s\n",
+				 prv_set->inst_name,
+				 prv_set->schema_name,
+				 ldmsd_prdcr_set_state_str(prv_set->state));
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	ldms_log("-------------------- -------------------- ---------- ---------- ----------\n");
+
+	ldmsd_updtr_t updtr;
+	ldms_log("\n");
+	ldms_log("%s\n", "Updaters");
+	ldms_log("%-20s %-14s %s\n",
+		 "Name", "Update Intrvl", "State");
+	ldms_log("-------------------- -------------- ----------\n");
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
+		ldms_log("%-20s %-14d %s\n",
+			 updtr->obj.name, updtr->updt_intrvl_us,
+			 ldmsd_updtr_state_str(updtr->state));
+		ldmsd_updtr_lock(updtr);
+		ldmsd_name_match_t match;
+		ldms_log("    Metric Set Match Specifications (empty == All)\n");
+		ldms_log("    %-10s %s\n", "Compare To", "Value");
+		ldms_log("    ----------------------------------------\n");
+		for (match = ldmsd_updtr_match_first(updtr); match;
+		     match = ldmsd_updtr_match_next(match)) {
+			ldms_log("    %-10s %s\n",
+				 match_selector_str(match->selector),
+				 match->regex_str);
+		}
+		ldms_log("    ----------------------------------------\n");
+		ldmsd_prdcr_ref_t ref;
+		ldmsd_prdcr_t prdcr;
+		ldms_log("    Producers (empty == None)\n");
+		ldms_log("    %-10s %-10s %-10s %s\n", "Name", "Transport", "Host", "Port");
+		ldms_log("    ----------------------------------------\n");
+		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
+		     ref = ldmsd_updtr_prdcr_next(ref)) {
+			prdcr = ref->prdcr;
+			ldms_log("    %-10s %-10s %-10s %hd\n",
+				 prdcr->obj.name,
+				 prdcr->xprt_name,
+				 prdcr->host_name,
+				 prdcr->port_no);
+		}
+		ldms_log("    ----------------------------------------\n");
+		ldmsd_updtr_unlock(updtr);
+	}
+	ldms_log("-------------------- -------------- ----------\n");
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+
+	ldmsd_strgp_t strgp;
+	ldms_log("\n");
+	ldms_log("%s\n", "Storage Policies");
+	ldms_log("%-15s %-15s %-15s %-15s %-8s %-12s\n",
+		 "Name", "Container", "Schema", "Back End", "State", "Rotate");
+	ldms_log("--------------- --------------- --------------- --------------- -------- ------------\n");
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
+		ldms_log("%-15s %-15s %-15s %-15s %-8s %11ds\n",
+			 strgp->obj.name,
+			 strgp->container, strgp->schema, strgp->plugin_name,
+			 ldmsd_strgp_state_str(strgp->state),
+			 strgp->rotate_interval);
+		ldmsd_strgp_lock(strgp);
+		ldmsd_name_match_t match;
+		ldms_log("    Producer Match Specifications (empty == All)\n");
+		ldms_log("    %s\n", "Name");
+		ldms_log("    ----------------------------------------\n");
+		for (match = ldmsd_strgp_prdcr_first(strgp); match;
+		     match = ldmsd_strgp_prdcr_next(match)) {
+			ldms_log("    %s\n", match->regex_str);
+		}
+		ldms_log("    ----------------------------------------\n");
+
+		ldms_log("    Metrics (empty == All)\n");
+		ldms_log("    %s\n", "Name");
+		ldms_log("    ----------------------------------------\n");
+		ldmsd_strgp_metric_t metric;
+		for (metric = ldmsd_strgp_metric_first(strgp); metric;
+		     metric = ldmsd_strgp_metric_next(metric)) {
+			ldms_log("    %s\n", metric->name);
+		}
+		ldms_log("    ----------------------------------------\n");
+		ldmsd_strgp_unlock(strgp);
+	}
+	ldms_log("--------------- --------------- --------------- --------------- ---------------\n");
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+
 	sprintf(replybuf, "0");
 	return 0;
+}
+
+int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, size_t errsz)
+{
+	memset(regex, 0, sizeof *regex);
+	int rc = regcomp(regex, regex_str, REG_NOSUB);
+	if (rc) {
+		sprintf(errbuf, "22");
+		size_t sz = regerror(rc,
+				     regex,
+				     &errbuf[2],
+				     errsz - 2);
+		strcat(errbuf, "\n");
+	}
+	return rc;
 }
 
 /*
@@ -998,7 +1149,7 @@ int config_store_policy(char *plugin_name, char *policy_name,
  */
 /* load plugin */
 int process_load_plugin(char *replybuf, struct attr_value_list *av_list,
-				struct attr_value_list *kw_list)
+			struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1018,7 +1169,7 @@ out:
 
 /* terminate a plugin */
 int process_term_plugin(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+			struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1038,7 +1189,7 @@ out:
 
 /* configure a plugin */
 int process_config_plugin(char *replybuf, struct attr_value_list *av_list,
-				struct attr_value_list *kw_list)
+			  struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1090,7 +1241,7 @@ einval:
 
 /* Start a sampler */
 int process_start_sampler(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+			  struct attr_value_list *kw_list)
 {
 	char *plugin_name, *interval, *offset;
 	char err_str[LEN_ERRSTR];
@@ -1118,7 +1269,7 @@ einval:
 }
 
 int process_oneshot_sample(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+			   struct attr_value_list *kw_list)
 {
 	char *attr;
 	char *plugin_name, *ts;
@@ -1146,7 +1297,7 @@ out:
 
 /* stop a sampler */
 int process_stop_sampler(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+			 struct attr_value_list *kw_list)
 {
 	char *plugin_name;
 	char err_str[LEN_ERRSTR];
@@ -1165,7 +1316,7 @@ out:
 }
 
 int process_ls_plugins(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+		       struct attr_value_list *kw_list)
 {
 	struct ldmsd_plugin_cfg *p;
 	sprintf(replybuf, "0");
@@ -1180,7 +1331,7 @@ int process_ls_plugins(char *replybuf, struct attr_value_list *av_list,
 
 /* add a host */
 int process_add_host(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+		     struct attr_value_list *kw_list)
 {
 	char *host, *type, *xprt, *port, *sets, *interval_s, *offset_s, *agg_no;
 	char err_str[LEN_ERRSTR];
@@ -1201,7 +1352,7 @@ int process_add_host(char *replybuf, struct attr_value_list *av_list,
 	offset_s = av_value(av_list, "offset");
 	port = av_value(av_list, "port");
 	xprt = av_value(av_list, "xprt");
-	agg_no = av_value(av_list, "standby");
+	agg_no = av_value(av_list, "agg_no");
 
 	int rc = ldmsd_add_host(host, type, xprt, port, sets,
 				interval_s, offset_s, agg_no, err_str);
@@ -1214,7 +1365,7 @@ einval:
 }
 
 int process_update_standby(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list *kw_list)
+			   struct attr_value_list *kw_list)
 {
 	char *attr, *value;
 	int agg_no;
@@ -1268,7 +1419,7 @@ enoent:
  *            host names.
  */
 int process_store(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
+		  struct attr_value_list *kw_list)
 {
 	int rc;
 	char *attr;
@@ -1306,7 +1457,7 @@ einval:
 }
 
 int process_remove_host(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list *kw_list)
+			struct attr_value_list *kw_list)
 {
 	return -1;
 }
@@ -1318,7 +1469,32 @@ int process_exit(char *replybuf, struct attr_value_list *av_list,
 	return 0;
 }
 
-ldmsctl_cmd_fn cmd_table[] = {
+extern int cmd_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_prdcr_start(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_prdcr_stop(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_prdcr_start_regex(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_prdcr_stop_regex(char *, struct attr_value_list *, struct attr_value_list *);
+
+extern int cmd_updtr_add(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_updtr_del(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_updtr_match_add(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_updtr_match_del(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_updtr_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_updtr_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_updtr_start(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_updtr_stop(char *, struct attr_value_list *, struct attr_value_list *);
+
+extern int cmd_strgp_add(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_strgp_del(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_strgp_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_strgp_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_strgp_metric_add(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_strgp_metric_del(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_strgp_start(char *, struct attr_value_list *, struct attr_value_list *);
+extern int cmd_strgp_stop(char *, struct attr_value_list *, struct attr_value_list *);
+
+ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
 	[LDMSCTL_LIST_PLUGINS] = process_ls_plugins,
 	[LDMSCTL_LOAD_PLUGIN] =	process_load_plugin,
 	[LDMSCTL_TERM_PLUGIN] =	process_term_plugin,
@@ -1333,6 +1509,28 @@ ldmsctl_cmd_fn cmd_table[] = {
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
 	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
 	[LDMSCTL_ONESHOT_SAMPLE] = process_oneshot_sample,
+	[LDMSCTL_PRDCR_ADD] = cmd_prdcr_add,
+	[LDMSCTL_PRDCR_DEL] = cmd_prdcr_del,
+	[LDMSCTL_PRDCR_START] = cmd_prdcr_start,
+	[LDMSCTL_PRDCR_STOP] = cmd_prdcr_stop,
+	[LDMSCTL_PRDCR_START_REGEX] = cmd_prdcr_start_regex,
+	[LDMSCTL_PRDCR_STOP_REGEX] = cmd_prdcr_stop_regex,
+	[LDMSCTL_UPDTR_ADD] = cmd_updtr_add,
+	[LDMSCTL_UPDTR_DEL] = cmd_updtr_del,
+	[LDMSCTL_UPDTR_MATCH_ADD] = cmd_updtr_match_add,
+	[LDMSCTL_UPDTR_MATCH_DEL] = cmd_updtr_match_del,
+	[LDMSCTL_UPDTR_PRDCR_ADD] = cmd_updtr_prdcr_add,
+	[LDMSCTL_UPDTR_PRDCR_DEL] = cmd_updtr_prdcr_del,
+	[LDMSCTL_UPDTR_START] = cmd_updtr_start,
+	[LDMSCTL_UPDTR_STOP] = cmd_updtr_stop,
+	[LDMSCTL_STRGP_ADD] = cmd_strgp_add,
+	[LDMSCTL_STRGP_DEL] = cmd_strgp_del,
+	[LDMSCTL_STRGP_PRDCR_ADD] = cmd_strgp_prdcr_add,
+	[LDMSCTL_STRGP_PRDCR_DEL] = cmd_strgp_prdcr_del,
+	[LDMSCTL_STRGP_METRIC_ADD] = cmd_strgp_metric_add,
+	[LDMSCTL_STRGP_METRIC_DEL] = cmd_strgp_metric_del,
+	[LDMSCTL_STRGP_START] = cmd_strgp_start,
+	[LDMSCTL_STRGP_STOP] = cmd_strgp_stop,
 };
 
 int process_record(int fd,
@@ -1341,9 +1539,29 @@ int process_record(int fd,
 {
 	char *cmd_s;
 	long cmd_id;
-	struct attr_value_list *av_list = av_new(128);
-	struct attr_value_list *kw_list = av_new(128);
-	int rc = tokenize(command, kw_list, av_list);
+	struct attr_value_list *av_list;
+	struct attr_value_list *kw_list;
+	int tokens, rc;
+
+	/*
+	 * Count the number of spaces. That's the maximum number of
+	 * tokens that could be present
+	 */
+	for (tokens = 0, cmd_s = command; cmd_s[0] != '\0';) {
+		tokens++;
+		/* find whitespace */
+		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
+			cmd_s++;
+		/* Now skip whitepace to next token */
+		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
+			cmd_s++;
+	}
+	rc = ENOMEM;
+	av_list = av_new(tokens);
+	kw_list = av_new(tokens);
+	if (!av_list || !kw_list)
+		goto out;
+	rc = tokenize(command, kw_list, av_list);
 	if (rc) {
 		ldms_log("Memory allocation failure processing '%s'\n",
 			 command);
@@ -1360,15 +1578,18 @@ int process_record(int fd,
 
 	cmd_id = strtoul(cmd_s, NULL, 0);
 	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND) {
-		rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
-		goto out;
+		if (cmd_table[cmd_id]) {
+			rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
+			goto out;
+		}
 	}
-
-	sprintf(replybuf, "-22Invalid command Id %ld\n", cmd_id);
-out:
-	free(av_list);
-	free(kw_list);
+	sprintf(replybuf, "22Invalid command id %ld\n", cmd_id);
+ out:
 	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	if (kw_list)
+		free(kw_list);
+	if (av_list)
+		free(av_list);
 	return rc;
 }
 

@@ -969,8 +969,11 @@ const char *ldms_metric_type_to_str(enum ldms_value_type t)
 void ldms_metric_user_data_set(ldms_set_t s, int i, uint64_t u)
 {
 	ldms_mdesc_t desc = __desc_get(s, i);
-	if (desc)
+	if (desc) {
 		desc->vd_user_data = __cpu_to_le64(u);
+		LDMS_GN_INCREMENT(s->set->meta->meta_gn);
+		s->set->data->meta_gn = s->set->meta->meta_gn;
+	}
 }
 
 uint64_t ldms_metric_user_data_get(ldms_set_t s, int i)

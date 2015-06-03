@@ -316,7 +316,8 @@ void ldms_xprt_put(ldms_t x)
 {
 	assert(x->ref_count);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
-		assert(0 == x->zap_ep);
+		if (x->zap_ep)
+			zap_free(x->zap_ep);
 		sem_destroy(&x->sem);
 		free(x);
 	}

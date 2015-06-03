@@ -10,7 +10,8 @@ ldms_ls_SOURCES = ldms_ls.c
 ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lpthread
 ldms_ls_CFLAGS = $(AM_CFLAGS)
 
-ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c
+ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c \
+	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ \
 		-levent -lpthread -levent_pthreads -lovis_util -lcoll -ldl \

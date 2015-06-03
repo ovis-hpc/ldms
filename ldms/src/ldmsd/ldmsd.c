@@ -97,7 +97,8 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define FMT "H:i:l:S:s:x:T:M:t:P:m:FkNf:D:qz:o:r:p:a"
+
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:qz:o:r:p:a"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -111,7 +112,7 @@ int test_set_count=1;
 int test_metric_count=1;
 int notify=0;
 char *logfile;
-const char *secretword = 0;
+char *secretword;
 int authenticate;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
@@ -157,6 +158,11 @@ void ldms_log(const char *fmt, ...)
 	vfprintf(log_fp, fmt, ap);
 	fflush(log_fp);
 	pthread_mutex_unlock(&log_lock);
+}
+
+const char *ldmsd_secret_get(void)
+{
+	return secretword;
 }
 
 void cleanup(int x)
@@ -232,32 +238,38 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 void usage(char *argv[])
 {
 	printf("%s: [%s]\n", argv[0], FMT);
-	printf("    -P thr_count   Count of event threads to start.\n");
-	printf("    -i             Test metric set sample interval.\n");
-	printf("    -k             Publish publish kernel metrics.\n");
-	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
-	       "                   [" LDMSD_SETFILE "]\n");
+	printf("  General Options\n");
+	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
+	printf("    -l log_file    The path to the log file for status messages.\n"
+	       "                   [" LDMSD_LOGFILE "]\n");
+	printf("    -q             Quiet mode. All the logging messages will be suppressed.\n"
+	       "                   [false].\n");
+	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
+	       "                   The given size must be less than 1 petabytes.\n"
+	       "                   For example, 20M or 20mb are 20 megabytes.\n");
+	printf("    -H host_name   The host/producer name for metric sets.\n");
+	printf("  Communication Options\n");
 	printf("    -S sockname    Specifies the unix domain socket name to\n"
 	       "                   use for ldmsctl access.\n");
 	printf("    -x xprt:port   Specifies the transport type to listen on. May be specified\n"
 	       "                   more than once for multiple transports. The transport string\n"
 	       "                   is one of 'rdma', or 'sock'. A transport specific port number\n"
 	       "                   is optionally specified following a ':', e.g. rdma:50000.\n");
-	printf("    -l log_file    The path to the log file for status messages.\n"
-	       "                   [" LDMSD_LOGFILE "]\n");
-	printf("    -q             Quiet mode. All the logging messages will be suppressed.\n"
-	       "                   [false].\n");
-	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
+	printf("  Kernel Metric Options\n");
+	printf("    -k             Publish publish kernel metrics.\n");
+	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
+	       "                   [" LDMSD_SETFILE "]\n");
+	printf("  Thread Options\n");
+	printf("    -P thr_count   Count of event threads to start.\n");
+	printf("    -f count       The number of flush threads.\n");
+	printf("    -D num         The dirty threshold.\n");
+	printf("  Test Options\n");
+	printf("    -i             Test metric set sample interval.\n");
 	printf("    -t count       Number of test sets to create.\n");
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N             Notify registered monitors of the test metric sets\n");
-	printf("    -t set_count   Create set_count instances of set_name.\n");
-	printf("    -m memory size   Maximum size of pre-allocated memory for metric sets.\n"
-	       "                     The given size must be less than 1 petabytes.\n"
-	       "                     For example, 20M or 20mb are 20 megabytes.\n");
-	printf("    -f count       The number of flush threads.\n");
-	printf("    -D num         The dirty threshold.\n");
 #ifdef ENABLE_OCM
+	printf("  OCM Options\n");
 	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
 	printf("    -z ldmsd_mode  ldmsd mode (either 'ldmsd_sampler' or 'ldmsd_aggregator'\n");
 #endif
@@ -480,6 +492,136 @@ void plugin_sampler_cb(int fd, short sig, void *arg)
 		stop_sampler(pi);
 	}
 	pthread_mutex_unlock(&pi->lock);
+}
+
+static void resched_task(ldmsd_task_t task)
+{
+	struct timeval new_tv;
+	long adj_interval, epoch_us;
+
+	if (task->flags & LDMSD_TASK_F_IMMEDIATE) {
+		adj_interval = random() % 1000000;
+		task->flags &= ~LDMSD_TASK_F_IMMEDIATE;
+	} else if (task->flags & LDMSD_TASK_F_SYNCHRONOUS) {
+		event_base_gettimeofday_cached(get_ev_base(task->thread_id), &new_tv);
+		epoch_us = (1000000 * (long)new_tv.tv_sec) + (long)new_tv.tv_usec;
+		adj_interval = task->sched_us -
+			(epoch_us % task->sched_us) + task->offset_us;
+		if (adj_interval <= 0)
+			adj_interval += task->sched_us; /* Guaranteed to be positive */
+	} else {
+		adj_interval = task->sched_us;
+	}
+	task->timeout.tv_sec = adj_interval / 1000000;
+	task->timeout.tv_usec = adj_interval % 1000000;
+}
+
+static int start_task(ldmsd_task_t task)
+{
+	int rc = evtimer_add(task->event, &task->timeout);
+	if (!rc)
+		return LDMSD_TASK_STATE_STARTED;
+	return LDMSD_TASK_STATE_STOPPED;
+}
+
+static void task_cleanup(ldmsd_task_t task)
+{
+	if (task->event) {
+		event_del(task->event);
+		event_free(task->event);
+		task->event = NULL;
+	}
+}
+
+static void task_cb_fn(int fd, short sig, void *arg)
+{
+	ldmsd_task_t task = arg;
+	enum ldmsd_task_state next_state;
+	pthread_mutex_lock(&task->lock);
+	if (task->flags & LDMSD_TASK_F_STOP) {
+		task->state = LDMSD_TASK_STATE_STOPPED;
+		task_cleanup(task);
+		goto out;
+	}
+	resched_task(task);
+	next_state = start_task(task);
+	task->state = LDMSD_TASK_STATE_RUNNING;
+	pthread_mutex_unlock(&task->lock);
+
+	task->fn(task, task->fn_arg);
+
+	pthread_mutex_lock(&task->lock);
+	if (task->flags & LDMSD_TASK_F_STOP) {
+		task->state = LDMSD_TASK_STATE_STOPPED;
+		task_cleanup(task);
+	} else
+		task->state = next_state;
+ out:
+	if (task->state == LDMSD_TASK_STATE_STOPPED)
+		pthread_cond_signal(&task->join_cv);
+	pthread_mutex_unlock(&task->lock);
+}
+
+void ldmsd_task_init(ldmsd_task_t task)
+{
+	memset(task, 0, sizeof *task);
+	task->state = LDMSD_TASK_STATE_STOPPED;
+	pthread_mutex_init(&task->lock, NULL);
+	pthread_cond_init(&task->join_cv, NULL);
+}
+
+void ldmsd_task_stop(ldmsd_task_t task)
+{
+
+	pthread_mutex_lock(&task->lock);
+	if (task->state == LDMSD_TASK_STATE_STOPPED)
+		goto out;
+	task->flags |= LDMSD_TASK_F_STOP;
+	if (task->state != LDMSD_TASK_STATE_RUNNING) {
+		event_del(task->event);
+		event_free(task->event);
+		task->event = NULL;
+		task->state = LDMSD_TASK_STATE_STOPPED;
+		pthread_cond_signal(&task->join_cv);
+	}
+out:
+	pthread_mutex_unlock(&task->lock);
+}
+
+int ldmsd_task_start(ldmsd_task_t task,
+		     ldmsd_task_fn_t task_fn, void *task_arg,
+		     int flags, int sched_us, int offset_us)
+{
+	int rc;
+	pthread_mutex_lock(&task->lock);
+	if (task->state != LDMSD_TASK_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out;
+	}
+	task->thread_id = find_least_busy_thread();
+	task->event = evtimer_new(get_ev_base(task->thread_id), task_cb_fn, task);
+	if (!task->event) {
+		rc = ENOMEM;
+		goto out;
+	}
+	task->fn = task_fn;
+	task->fn_arg = task_arg;
+	task->flags = flags;
+	task->sched_us = sched_us;
+	task->offset_us = offset_us;
+	resched_task(task);
+	rc = start_task(task);
+ out:
+	pthread_mutex_unlock(&task->lock);
+	return rc;
+}
+
+void ldmsd_task_join(ldmsd_task_t task)
+{
+	pthread_mutex_lock(&task->lock);
+	while (task->state != LDMSD_TASK_STATE_STOPPED)
+		pthread_cond_wait(&task->join_cv, &task->lock);
+	pthread_mutex_unlock(&task->lock);
 }
 
 /*
@@ -1207,29 +1349,25 @@ void *event_proc(void *v)
 	return NULL;
 }
 
-void listen_on_transport(char *transport_str)
+void listen_on_transport(char *xprt_str, char *port_str)
 {
-	char *name;
-	char *port_s;
 	int port_no;
 	ldms_t l;
 	int ret;
 	struct sockaddr_in sin;
 
-	ldms_log("Listening on transport %s\n", transport_str);
-	name = strtok(transport_str, ":");
-	port_s = strtok(NULL, ":");
-	if (!port_s)
+	ldms_log("Listening on transport %s:%s\n", xprt_str, port_str);
+	if (!port_str || port_str[0] == '\0')
 		port_no = LDMS_DEFAULT_PORT;
 	else
-		port_no = atoi(port_s);
+		port_no = atoi(port_str);
 #ifdef ENABLE_AUTH
-	l = ldms_xprt_with_auth_new(name, ldms_log, secretword);
+	l = ldms_xprt_with_auth_new(xprt_str, ldms_log, secretword);
 #else /* ENABLE_AUTH */
-	l = ldms_xprt_new(name, ldms_log);
+	l = ldms_xprt_new(xprt_str, ldms_log);
 #endif /* ENABLE_AUTH */
 	if (!l) {
-		ldms_log("The transport specified, '%s', is invalid.\n", name);
+		ldms_log("The transport specified, '%s', is invalid.\n", xprt_str);
 		cleanup(6);
 	}
 	ldms = l;
@@ -1239,7 +1377,7 @@ void listen_on_transport(char *transport_str)
 	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin));
 	if (ret) {
 		ldms_log("Error %d listening on the '%s' transport.\n",
-			 ret, name);
+			 ret, xprt_str);
 		cleanup(7);
 	}
 }
@@ -1414,7 +1552,10 @@ int main(int argc, char *argv[])
 			usage(argv);
 		}
 	}
-
+	if (!listen_arg) {
+		printf("The -x option is required.\n");
+		usage(argv);
+	}
 	if (!dirty_threshold)
 		/* default total dirty threshold is calculated based on popular
 		 * 4 GB RAM setting with Linux's default 10% dirty_ratio */
@@ -1472,12 +1613,15 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	char *xprt_str = strtok(listen_arg, ":");
+	char *port_str = strtok(NULL, ":");
 	if (myhostname[0] == '\0') {
 		ret = gethostname(myhostname, sizeof(myhostname));
 		if (ret)
 			myhostname[0] = '\0';
+		size_t len = strlen(myhostname);
+		sprintf(&myhostname[len], "_%s_%s", xprt_str, port_str);
 	}
-
 	/* Create the test sets */
 	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
 	if (test_set_name) {
@@ -1497,13 +1641,13 @@ int main(int argc, char *argv[])
 				cleanup(13);
 		}
 		for (set_no = 1; set_no <= test_set_count; set_no++) {
-			sprintf(test_set_name_no, "%s/%s_%d",
-				myhostname, test_set_name, set_no);
+			sprintf(test_set_name_no, "%s/%s_%d", myhostname,
+				test_set_name, set_no);
 			test_set = ldms_set_new(test_set_name_no, schema);
 			if (!test_set)
 				cleanup(14);
+			ldms_set_producer_name_set(test_set, myhostname);
 			test_sets[set_no-1] = test_set;
-
 		}
 	} else
 		test_set_count = 0;
@@ -1533,7 +1677,7 @@ int main(int argc, char *argv[])
 #ifdef ENABLE_LDMSD_TEST
 	if (config_port)
 		if (ldmsd_inet_config_init(config_port))
-			cleanup(4);
+			cleanup(104);
 #endif /* ENABLE_LDMSD_TEST */
 
 #ifdef ENABLE_LDMSD_RCTRL
@@ -1546,8 +1690,7 @@ int main(int argc, char *argv[])
 		cleanup(7);
 	}
 
-	if (listen_arg)
-		listen_on_transport(listen_arg);
+	listen_on_transport(xprt_str, port_str);
 
 #ifdef ENABLE_OCM
 	int ocm_rc = ldmsd_ocm_init(ldmsd_svc_type, ocm_port);

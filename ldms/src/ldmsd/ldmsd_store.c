@@ -69,7 +69,7 @@
  * Calculation of dirty threshold.
  * \param mem_total The total memory size (in bytes).
  * \param dirty_ratio The threshold of dirty page ratio before flushing (as in
- * 	/proc/sys/vm/dirty_ratio)
+ *	/proc/sys/vm/dirty_ratio)
  * \return Dirty threshold based on given \c mem_total.
  */
 size_t calculate_total_dirty_threshold(size_t mem_total, size_t dirty_ratio)

@@ -333,7 +333,7 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	rc = sos_schema_index_add(schema, "Timestamp");
 	if (rc)
 		goto err_1;
-	rc = sos_schema_attr_add(schema, "CompId", SOS_TYPE_UINT32);
+	rc = sos_schema_attr_add(schema, "CompId", SOS_TYPE_UINT64);
 	if (rc)
 		goto err_1;
 	rc = sos_schema_index_add(schema, "CompId");
@@ -466,7 +466,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	uint64_t udata = ldms_metric_user_data_get(set, 0);
 	attr = sos_schema_attr_next(attr);
 	value = sos_value_init(value, obj, attr);
-	value->data->prim.uint32_ = udata >> 32;
+	value->data->prim.uint64_ = udata;
 	sos_value_put(value);
 
 	for (i = 0; i < metric_count; i++) {

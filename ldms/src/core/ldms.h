@@ -247,7 +247,7 @@ int ldms_init(size_t max_size);
 /**
  * \brief Take a reference on a transport
  *
- * \param x 	The transport handle
+ * \param x	The transport handle
  * \returns	The transport handle
  */
 ldms_t ldms_xprt_get(ldms_t x);
@@ -256,7 +256,7 @@ void ldms_xprt_put(ldms_t x);
 /**
  * \brief Find a transport that matches the specified address.
  *
- * \param sin 	Specifies the address that should match the remote peer's ip address.
+ * \param sin	Specifies the address that should match the remote peer's ip address.
  * \returns	The matching transport endpoint or NULL if no match was found.
  */
 ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin);
@@ -821,8 +821,8 @@ extern const char *ldms_set_producer_name_get(ldms_set_t s);
  *
  * \returns	0 on success
  * \returns	EINVAL if the given name including
- * 		the terminating null byte is longer
- * 		than the LDMS_PRODUCER_NAME_MAX.
+ *		the terminating null byte is longer
+ *		than the LDMS_PRODUCER_NAME_MAX.
  */
 extern int ldms_set_producer_name_set(ldms_set_t s, const char *name);
 

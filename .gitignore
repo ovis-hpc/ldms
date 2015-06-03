@@ -5,7 +5,10 @@
 cscope*
 *.la
 autom4te.cache*
-src/.libs/*
+.libs
+config.h
+config.log
+Makefile
 config/*
 Makefile.in
 config

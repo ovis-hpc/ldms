@@ -85,6 +85,8 @@ struct rbt {
 };
 
 void rbt_init(struct rbt *t, rbn_comparator_t c);
+#define RBT_INITIALIZER(_c_) { .comparator = _c_ }
+
 int rbt_empty(struct rbt *t);
 struct rbn *rbt_least_gt_or_eq(struct rbn *n);
 struct rbn *rbt_greatest_lt_or_eq(struct rbn *n);

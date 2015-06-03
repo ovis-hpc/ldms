@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2011 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -107,9 +107,9 @@ struct kw {
 void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
-               "    -h <hostname>   The hostname of the ldmsd.\n"
-               "    -p <port>       The listener port of ldmsd.\n",
-               argv[0], FMT);
+	       "    -h <hostname>   The hostname of the ldmsd.\n"
+	       "    -p <port>       The listener port of ldmsd.\n",
+	       argv[0], FMT);
 #ifdef ENABLE_AUTH
 	printf("    -a <path>       The full Path to the file containing the shared secret word.\n"
 	       "		    Set the environment variable %s to the full path\n"
@@ -140,12 +140,12 @@ int handle_help(char *kw)
 	       "     <attr>       An attribute name.\n"
 	       "     <value>      An attribute value.\n"
 	       "\n"
-               "udata set=<set_name> metric=<metric_name> udata=<user_data>\n"
-               "   - Set the user data of the specified metric in the given set\n"
-               "     <set_name>      The metric set name\n"
-               "     <metric_name>   The metric name\n"
-               "     <user_data>     The user data value\n"
-               "\n"
+	       "udata set=<set_name> metric=<metric_name> udata=<user_data>\n"
+	       "   - Set the user data of the specified metric in the given set\n"
+	       "     <set_name>      The metric set name\n"
+	       "     <metric_name>   The metric name\n"
+	       "     <user_data>     The user data value\n"
+	       "\n"
 	       "start name=<name> interval=<interval> [ offset=<offset>]\n"
 	       "   - Begins calling the sampler's 'sample' method at the\n"
 	       "     sample interval.\n"
@@ -182,8 +182,8 @@ int handle_help(char *kw)
 	       "                  set name(s) must be the name(s) of local set(s).\n"
 	       "                  This option is used so that ldmsd can store\n"
 	       "                  the given local set(s) if it is configured to do so.\n"
-               "     <set names>  The list of metric set names to be queried.\n"
-               "		  The list is comma separated.\n"
+	       "     <set names>  The list of metric set names to be queried.\n"
+	       "		  The list is comma separated.\n"
 	       "     <interval>   An optional sampling interval in microseconds,\n"
 	       "                  defaults to 1000000.\n"
 	       "     <offset>     An optional offset (shift) from the sample mark\n"
@@ -203,7 +203,7 @@ int handle_help(char *kw)
 	       "      [hosts=<hosts>] [metric=<metric>,<metric>,...]\n"
 	       "   - Saves a metrics from one or more hosts to persistent storage.\n"
 	       "      <policy>      The storage policy name. This must be unique.\n"
-               "      <container>   The container name used by the plugin to name data.\n"
+	       "      <container>   The container name used by the plugin to name data.\n"
 	       "      <schema>      A name used to name the set of metrics stored together.\n"
 	       "      <metrics>     A comma separated list of metric names. If not specified,\n"
 	       "                    all metrics in the metric set will be saved.\n"
