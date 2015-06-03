@@ -405,6 +405,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	struct sos_instance *si = _sh;
+	struct ldms_timestamp _timestamp;
 	const struct ldms_timestamp *timestamp;
 	sos_attr_t attr;
 	struct sos_value_s value_;
@@ -437,7 +438,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		errno = ENOMEM;
 		return -1;
 	}
-	timestamp = ldms_transaction_timestamp_get(set);
+	_timestamp = ldms_transaction_timestamp_get(set);
+	timestamp = &_timestamp;
 	if (!si->last_rotate)
 		si->last_rotate = timestamp->sec;
 #if 0

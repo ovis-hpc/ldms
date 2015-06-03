@@ -65,6 +65,8 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <regex.h>
+
+#include "ovis_util/os_util.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldms_private.h"
@@ -494,9 +496,9 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	msg->inst_name_len = name->len;
 	msg->xid = xid;
 	msg->more = htonl(more);
-	msg->data_len = htonl(set->meta->data_sz);
-	msg->meta_len = htonl(set->meta->meta_sz);
-	msg->card = htonl(set->meta->card);
+	msg->data_len = htonl(__le32_to_cpu(set->meta->data_sz));
+	msg->meta_len = htonl(__le32_to_cpu(set->meta->meta_sz));
+	msg->card = htonl(__le32_to_cpu(set->meta->card));
 
 	zap_share(x->zap_ep, rbd->lmap, (const char *)msg, msg_len);
 	free(msg);
@@ -659,13 +661,18 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	int rc;
 
+	uint32_t meta_meta_gn = __le32_to_cpu(set->meta->meta_gn);
+	uint32_t data_meta_gn = __le32_to_cpu(set->data->meta_gn);
+	uint32_t meta_meta_sz = __le32_to_cpu(set->meta->meta_sz);
+	uint32_t meta_data_sz = __le32_to_cpu(set->meta->data_sz);
+
 	zap_get_ep(x->zap_ep);	/* Released in handle_zap_read_complete() */
-	if (set->meta->meta_gn == 0 || set->meta->meta_gn != set->data->meta_gn) {
+	if (meta_meta_gn == 0 || meta_meta_gn != data_meta_gn) {
 		/* Update the metadata along with the data */
-		rc = do_read_all(x, s, set->meta->meta_sz +
-				 set->meta->data_sz, cb, arg);
+		rc = do_read_all(x, s, meta_meta_sz +
+				 meta_data_sz, cb, arg);
 	} else {
-		rc = do_read_data(x, s, set->meta->data_sz, cb, arg);
+		rc = do_read_data(x, s, meta_data_sz, cb, arg);
 	}
 	if (rc)
 		zap_put_ep(x->zap_ep);
@@ -1138,7 +1145,7 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	if (zap_read(zep,
 		     sd->rbd->rmap, zap_map_addr(sd->rbd->rmap),
 		     sd->rbd->lmap, zap_map_addr(sd->rbd->lmap),
-		     sd->set->meta->meta_sz,
+		     __le32_to_cpu(sd->set->meta->meta_sz),
 		     rd_ctxt)) {
 		rc = EIO;
 		goto out;

@@ -176,28 +176,28 @@ void metric_printer(ldms_set_t s, int i)
 		sprintf(value_str, "%hhd", v->v_s8);
 		break;
 	case LDMS_V_U16:
-		sprintf(value_str, "%hu", v->v_u16);
+		sprintf(value_str, "%hu", __le16_to_cpu(v->v_u16));
 		break;
 	case LDMS_V_S16:
-		sprintf(value_str, "%hd", v->v_s16);
+		sprintf(value_str, "%hd", __le16_to_cpu(v->v_s16));
 		break;
 	case LDMS_V_U32:
-		sprintf(value_str, "%8u", v->v_u32);
+		sprintf(value_str, "%8u", __le32_to_cpu(v->v_u32));
 		break;
 	case LDMS_V_S32:
-		sprintf(value_str, "%d", v->v_s32);
+		sprintf(value_str, "%d", __le32_to_cpu(v->v_s32));
 		break;
 	case LDMS_V_U64:
-		sprintf(value_str, "%" PRIu64, v->v_u64);
+		sprintf(value_str, "%" PRIu64, (uint64_t)__le64_to_cpu(v->v_u64));
 		break;
 	case LDMS_V_S64:
-		sprintf(value_str, "%" PRId64, v->v_s64);
+		sprintf(value_str, "%" PRId64, (int64_t)__le64_to_cpu(v->v_s64));
 		break;
 	case LDMS_V_F32:
-		sprintf(value_str, "%f", v->v_f);
+		sprintf(value_str, "%f", (float)__le32_to_cpu(v->v_f));
 		break;
 	case LDMS_V_D64:
-		sprintf(value_str, "%f", v->v_d);
+		sprintf(value_str, "%f", (double)__le64_to_cpu(v->v_d));
 		break;
 	}
 	if (user_data)
@@ -211,8 +211,10 @@ void metric_printer(ldms_set_t s, int i)
 void print_detail(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
-	struct ldms_timestamp const *ts = ldms_transaction_timestamp_get(s);
-	struct ldms_timestamp const *dur = ldms_transaction_duration_get(s);
+	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
+	struct ldms_timestamp _dur = ldms_transaction_duration_get(s);
+	struct ldms_timestamp const *ts = &_ts;
+	struct ldms_timestamp const *dur = &_dur;
 	int consistent = ldms_set_is_consistent(s);
 	struct tm *tm;
 	char dtsz[200];
@@ -242,7 +244,8 @@ static int long_format = 0;
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
-	struct ldms_timestamp const *ts = ldms_transaction_timestamp_get(s);
+	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
+	struct ldms_timestamp const *ts = &_ts;
 	int consistent = ldms_set_is_consistent(s);
 	struct tm *tm;
 	char dtsz[200];
