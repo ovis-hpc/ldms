@@ -752,14 +752,16 @@ window.baler =
 
         sanity: (min, max, current, diff) ->
             neu = current + diff
-            if neu < min
+            if current < min && diff < 0
+                return 0
+            if current > max && diff > 0
+                return 0
+            if neu < min && diff < 0
                 neu = min
                 diff = min - current
-            if neu > max
+            if neu > max && diff > 0
                 neu = max
                 diff = max - current
-            if max < min
-                diff = 0
             return diff
 
         getMoveVector: (event) ->
@@ -776,8 +778,18 @@ window.baler =
             lwidth = parseInt(@width / @pxlFactor)
             lheight = parseInt(@height / @pxlFactor)
 
-            dlx = -@sanity(min_lts, max_lts - lwidth, @mouseDownPos.reflx, -dlx)
-            dly = -@sanity(min_lcid, max_lcid - lheight, @mouseDownPos.refly, -dly)
+            # Adjust actual max to be the max of top-left pixel
+            max_lts -= lwidth
+            max_lcid -= lheight
+
+            # max should be at least min
+            if (max_lts < min_lts)
+                max_lts = min_lts
+            if (max_lcid < min_lcid)
+                max_lcid = min_lcid
+
+            dlx = -@sanity(min_lts, max_lts, @mouseDownPos.reflx, -dlx)
+            dly = -@sanity(min_lcid, max_lcid, @mouseDownPos.refly, -dly)
             lx = @mouseDownPos.lx + dlx
             ly = @mouseDownPos.ly + dly
 
