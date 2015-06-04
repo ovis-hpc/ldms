@@ -57,6 +57,32 @@
 
 #include "config.h"
 
+struct zap_version {
+	uint8_t major;
+	uint8_t minor;
+	uint8_t patch;
+	uint8_t flags;
+};
+
+#define ZAP_VERSION_MAJOR 0x01
+#define ZAP_VERSION_MINOR 0x01
+#define ZAP_VERSION_PATCH 0x00
+#define ZAP_VERSION_FLAGS 0x00
+
+#define ZAP_VERSION_SET(v) do { \
+	(v).major = ZAP_VERSION_MAJOR; \
+	(v).minor = ZAP_VERSION_MINOR; \
+	(v).patch = ZAP_VERSION_PATCH; \
+	(v).flags = ZAP_VERSION_FLAGS; \
+} while (0)
+
+#define ZAP_VERSION_EQUAL(v) ( \
+	((v).major == ZAP_VERSION_MAJOR) && \
+	((v).minor == ZAP_VERSION_MINOR) && \
+	((v).patch == ZAP_VERSION_PATCH) && \
+	((v).flags == ZAP_VERSION_FLAGS) \
+)
+
 typedef enum zap_ep_state {
 	ZAP_EP_INIT = 0,
 	ZAP_EP_LISTENING,
