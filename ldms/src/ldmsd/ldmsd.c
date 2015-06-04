@@ -1303,7 +1303,6 @@ int main(int argc, char *argv[])
 	sigaction(SIGHUP, &action, NULL);
 	sigaction(SIGINT, &action, NULL);
 	sigaction(SIGTERM, &action, NULL);
-	sigaction(SIGABRT, &action, NULL);
 
 	sigaddset(&sigset, SIGHUP);
 	sigaddset(&sigset, SIGINT);
