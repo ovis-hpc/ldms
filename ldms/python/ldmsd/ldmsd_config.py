@@ -49,11 +49,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #######################################################################
-'''
-Created on Apr 28, 2015
 
-@author: nichamon
-'''
 from abc import ABCMeta, abstractmethod
 from os.path import basename, dirname
 """
@@ -64,20 +60,93 @@ from os.path import basename, dirname
 import os
 import socket
 
-LDMSCTL_CMD_ID_MAP = {'list_pi': {'id': 0, 'verb': "usage"},
-                      'load_pi': {'id': 1, 'verb': "load"},
-                      'term_pi': {'id': 2, 'verb': "term"},
-                      'cfg_pi': {'id': 3, 'verb': "config"},
-                      'start_sampler': {'id': 4, 'verb': "start"},
-                      'stop_sampler': {'id': 5, 'verb': "stop"},
-                      'add_host': {'id': 6, 'verb': "add"},
-                      'rem_host': {'id': 7, 'verb': "remove"},
-                      'store': {'id': 8, 'verb': "store"},
-                      'info_daemon': {'id': 9, 'verb': "info"},
-                      'set_udata': {'id': 10, 'verb': "udata"},
-                      'exit_daemon': {'id': 11, 'verb': "exit"},
-                      'update_standby': {'id': 12, 'verb': "standby"},
-                      'oneshot_sampler': {'id': 13, 'verb': "oneshot"}}
+LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'attr': []},
+                      'load': {'id': 1,
+                               'attr': ['name']},
+                      'term': {'id': 2,
+                               'attr': ['name']},
+                      'config': {'id': 3,
+                                 'attr': ['name', 'producer', 'instance']},
+                      'start': {'id': 4,
+                                'attr': ['name', 'interval'],
+                                'opt': ['offset']},
+                      'stop': {'id': 5,
+                               'attr': ['name']},
+                      'add': {'id': 6,
+                              'attr': ['host', 'type'],
+                              'opt': ['xprt', 'port', 'sets', 'interval',
+                                      'offset', 'agg_no']},
+                      'remove': {'id': 7,
+                                 'attr': ['host']},
+                      'store': {'id': 8,
+                                'attr': ['name', 'policy', 'container', 'schema'],
+                                'opt': ['metric', 'hosts']},
+                      'info': {'id': 9, 'attr': []},
+                      'udata': {'id': 10,
+                                'attr': ['set', 'metric', 'udata']},
+                      'exit': {'id': 11, 'attr': []},
+                      'standby': {'id': 12,
+                                  'attr': ['agg_no', 'state']},
+                      'oneshot': {'id': 13,
+                                  'attr': ['name', 'time']},
+                      ###############################
+                      # LDMSD command version 2
+                      ###############################
+                      ##### Producer Policy #####
+                      'prdcr_add': {'id': 20,
+                                    'attr': ['name', 'type', 'xprt', 'host',
+                                             'port', 'interval']},
+                      'prdcr_del': {'id': 21,
+                                    'attr': ['name']},
+                      'prdcr_start': {'id': 22,
+                                      'attr': ['name'],
+                                      'opt': ['interval']},
+                      'prdcr_stop': {'id': 23,
+                                     'attr': ['name']},
+                      'prdcr_start_regex': {'id': 24,
+                                            'attr': ['regex'],
+                                            'opt': ['interval']},
+                      'prdcr_stop_regex': {'id': 25,
+                                           'attr': ['regex']},
+                      ##### Updater Policy #####
+                      'updtr_add': {'id': 30,
+                                     'attr': ['name', 'interval'],
+                                     'opt': ['offset']},
+                      'updtr_del': {'id': 31,
+                                     'attr': ['name']},
+                      'updtr_match_add': {'id': 32,
+                                          'attr': ['name', 'regex', 'match']},
+                      'updtr_match_del': {'id': 33,
+                                          'attr': ['name', 'regex', 'match']},
+                      'updtr_prdcr_add': {'id': 34,
+                                          'attr': ['name', 'regex']},
+                      'updtr_prdcr_del': {'id': 35,
+                                          'attr': ['name', 'regex']},
+                      'updtr_start': {'id': 36,
+                                      'attr': ['name'],
+                                      'opt': ['interval', 'offset']},
+                      'updtr_stop': {'id': 37,
+                                     'attr': ['name']},
+                      ##### Storage Policy #####
+                      'strgp_add': {'id': 40,
+                                     'attr': ['name', 'plugin', 'container',
+                                              'schema'],
+                                    'opt': ['rotate']},
+                      'strgp_del': {'id': 41,
+                                    'attr': ['name']},
+                      'strgp_prdcr_add': {'id': 42,
+                                          'attr': ['name', 'regex']},
+                      'strgp_prdcr_del': {'id': 43,
+                                          'attr': ['name', 'regex']},
+                      'strgp_metric_add': {'id': 44,
+                                           'attr': ['name', 'metric']},
+                      'strgp_metric_del': {'id': 45,
+                                           'attr': ['name', 'metric']},
+                      'strgp_start': {'id': 48,
+                                      'attr': ['name']},
+                      'strgp_stop': {'id': 49,
+                                     'attr': ['name']},
+                      }
 
 """@var MAX_RECV_LEN
   The maximum length of the message received back from ldmsd. The default is 4096.
@@ -119,13 +188,20 @@ class ldmsdConfig(object):
         """
         self.socket.close()
 
+    def get_cmd_id(self, cmd_verb):
+        return LDMSD_CTRL_CMD_MAP[cmd_verb]['id']
+
+    def get_cmd_attr_list(self, cmd_verb):
+        return {'req': LDMSD_CTRL_CMD_MAP[cmd_verb]['attr'],
+                'opt': LDMSD_CTRL_CMD_MAP[cmd_verb]['opt']}
+
     def talk(self, cmd):
         self.send_command(cmd + "\0")
         return self.receive_response()
 
     def __format_cmd(self, cmd_key, attr_value_dict):
-        cmd = LDMSCTL_CMD_ID_MAP[cmd_key]
-        s = "{0}{1}".format(cmd['id'], cmd['verb'])
+        cmd_id = LDMSD_CTRL_CMD_MAP[cmd_key]['id']
+        s = "{0}{1}".format(cmd_id, cmd_key)
         if attr_value_dict is None:
             return s
 
@@ -135,27 +211,27 @@ class ldmsdConfig(object):
 
     def load(self, name):
         attr_value_dict = {'name': name}
-        cmd = self.__format_cmd('load_pi', attr_value_dict)
+        cmd = self.__format_cmd('load', attr_value_dict)
         return self.talk(cmd)
 
     def usage(self):
-        return self.talk(self.__format_cmd('list_pi', {}))
+        return self.talk(self.__format_cmd('usage', {}))
 
     def term(self, name):
-        return self.talk(self.__format_cmd('term_pi', {'name': name}))
+        return self.talk(self.__format_cmd('term', {'name': name}))
 
     def config(self, name, **kwargs):
         kwargs.update({'name': name})
-        cmd = self.__format_cmd('cfg_pi', kwargs)
+        cmd = self.__format_cmd('config', kwargs)
         return self.talk(cmd)
 
     def start(self, name, interval):
-        cmd = self.__format_cmd('start_sampler', {'name': name,
+        cmd = self.__format_cmd('start', {'name': name,
                                                   'interval': interval})
         return self.talk(cmd)
 
     def stop(self, name):
-        cmd = self.__format_cmd('stop_sampler', {'name': name})
+        cmd = self.__format_cmd('stop', {'name': name})
         return self.talk(cmd)
 
     def add(self, host, host_type, xprt = None, port = None,
@@ -171,7 +247,7 @@ class ldmsdConfig(object):
 
         if standby:
             attr_values['standby'] = standby
-        return self.talk(self.__format_cmd('add_host', attr_values))
+        return self.talk(self.__format_cmd('add', attr_values))
 
     def store(self, store_pi, policy, container, schema, metrics = None, hosts = None):
         attr_values = {'name': store_pi, 'policy': policy, 'container': container,
@@ -185,27 +261,121 @@ class ldmsdConfig(object):
         return self.talk(self.__format_cmd('store', attr_values))
 
     def info(self):
-        return self.talk(self.__format_cmd('info_daemon', {}))
+        return self.talk(self.__format_cmd('info', {}))
 
     def set_udata(self, set, metric, udata):
-        cmd = self.__format_cmd('set_udata', {'set': set, 'metric': metric,
+        cmd = self.__format_cmd('udata', {'set': set, 'metric': metric,
                                               'udata': udata})
         return self.talk(cmd)
 
     def exit_daemon(self):
-        return self.talk(self.__format_cmd('exit_daemon', {}))
+        return self.talk(self.__format_cmd('exit', {}))
 
     def update_standby(self, aggregator_id, state):
         attr_values = {'agg_no': aggregator_id,
                        'state': state}
-        return self.talk(self.__format_cmd('update_standby', attr_values))
+        return self.talk(self.__format_cmd('standby', attr_values))
 
     def oneshot(self, sampler_name, time):
         attr_values = {'name': sampler_name, 'time': time}
         return self.talk(self.__format_cmd('oneshot', attr_values))
 
+    #############################################
+    # LDMSD command version 2
+    #############################################
+
+    def prdcr_add(self, name, xprt, host, port, type, interval):
+        attr_values = {'name': name,
+                       'xprt': xprt,
+                       'host': host,
+                       'port': port,
+                       'type': type,
+                       'interval': interval}
+        return self.talk(self.__format_cmd('prdcr_add', attr_values))
+
+    def prdcr_del(self, name):
+        return self.talk(self.__format_cmd('prdcr_del', {'name': name}))
+
+    def prdcr_start(self, name, interval):
+        attr_values = {'name': name, 'interval': interval}
+        return self.talk(self.__format_cmd('prdcr_start', attr_values))
+
+    def prdcr_start_regex(self, regex, interval):
+        attr_values = {'regex': regex, 'interval': interval}
+        return self.talk(self.__format_cmd('prdcr_start_regex', attr_values))
+
+    def prdcr_stop(self, name):
+        return self.talk(self.__format_cmd('prdcr_stop', {'name': name}))
+
+    def prdcr_stop_regex(self, regex):
+        return self.talk(self.__format_cmd('prdcr_stop_regex', {'regex': regex}))
+
+    def updtr_add(self, name, interval, offset):
+        attr_values = {'name': name, 'interval': interval, 'offset': offset}
+        return self.talk(self.__format_cmd('updtr_add', attr_values))
+
+    def updtr_del(self, name):
+        return self.talk(self.__format_cmd('updtr_del', {'name': name}))
+
+    def updtr_start(self, name):
+        return self.talk(self.__format_cmd('updtr_start', {'name': name}))
+
+    def updtr_stop(self, name):
+        return self.talk(self.__format_cmd('updtr_stop', {'name': name}))
+
+    def updtr_match_add(self, name, match, regex):
+        attr_values = {'name': name, 'match': match, 'regex': regex}
+        return self.talk(self.__format_cmd('updtr_match_add', attr_values))
+
+    def updtr_match_del(self, name, match, regex):
+        attr_values = {'name': name, 'match': match, 'regex': regex}
+        return self.talk(self.__format_cmd('updtr_match_del', attr_values))
+
+    def updtr_prdcr_add(self, name, regex):
+        attr_values = {'name': name, 'regex': regex}
+        return self.talk(self.__format_cmd('updtr_prdcr_add', attr_values))
+
+    def updtr_prdcr_del(self, name, regex):
+        attr_values = {'name': name, 'regex': regex}
+        return self.talk(self.__format_cmd('updtr_prdcr_del', attr_values))
+
+    def strgp_add(self, name, plugin, container, schema):
+        attr_values = {'name': name, 'plugin': plugin,
+                       'container': container, 'schema': schema}
+        return self.talk(self.__format_cmd('strgp_add', attr_values))
+
+    def strgp_del(self, name):
+        return self.talk(self.__format_cmd('strgp_del', {'name': name}))
+
+    def strgp_prdcr_add(self, name, regex):
+        attr_values = {'name': name, 'regex': regex}
+        return self.talk(self.__format_cmd('strgp_prdcr_add', attr_values))
+
+    def strgp_prdcr_del(self, name, regex):
+        attr_values = {'name': name, 'regex': regex}
+        return self.talk(self.__format_cmd('strgp_prdcr_add', attr_values))
+
+    def strgp_metric_add(self, name, metric):
+        attr_values = {'name': name, 'metric': metric}
+        return self.talk(self.__format_cmd('strgp_metric_add', attr_values))
+
+    def strgp_metric_del(self, name, metric):
+        attr_values = {'name': name, 'metric': metric}
+        return self.talk(self.__format_cmd('strgp_metric_del', attr_values))
+
+    def strgp_start(self, name):
+        return self.talk(self.__format_cmd('strgp_start', {'name': name}))
+
+    def strgp_stop(self, name):
+        return self.talk(self.__format_cmd('strgp_stop', {'name': name}))
+
 class ldmsdUSocketConfig(ldmsdConfig):
     def __init__(self, ldmsd_sockpath, sockpath = None, max_recv_len = None):
+        if not os.path.exists(ldmsd_sockpath):
+            self.socket = None
+            self.sockpath = None
+            raise ValueError("{0} doesn't exist.".format(ldmsd_sockpath))
+
         if sockpath is None:
             name = basename(ldmsd_sockpath)
             tmp = name.split(".")
@@ -223,8 +393,10 @@ class ldmsdUSocketConfig(ldmsdConfig):
         self.ldmsd_sockpath = ldmsd_sockpath
 
     def __del__(self):
-        self.socket.close()
-        os.unlink(self.sockpath)
+        if self.socket is not None:
+            self.socket.close()
+        if self.sockpath is not None:
+            os.unlink(self.sockpath)
 
     def setMaxRecvLen(self, max_recv_len):
         self.max_recv_len = max_recv_len
@@ -255,6 +427,7 @@ class ldmsdUSocketConfig(ldmsdConfig):
 
 class ldmsdInetConfig(ldmsdConfig):
     def __init__(self, host, port, max_recv_len = MAX_RECV_LEN):
+        self.socket = None
         self.host = host
         self.port = port
         self.max_recv_len = max_recv_len
@@ -262,7 +435,8 @@ class ldmsdInetConfig(ldmsdConfig):
         self.socket.connect((host, port))
 
     def __del__(self):
-        self.socket.close()
+        if self.socket is not None:
+            self.socket.close()
 
     def setMaxRecvLen(self, max_recv_len):
         self.max_recv_len = max_recv_len
