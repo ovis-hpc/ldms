@@ -377,12 +377,26 @@ static zap_err_t __sock_recv(struct z_sock_ep *sep, size_t reqlen,
  */
 static void process_sep_msg_connect(struct z_sock_ep *sep, size_t reqlen)
 {
-	struct sock_msg_sendrecv *msg;
+	struct sock_msg_connect *msg;
+	int rc;
 	zap_err_t zerr;
 
-	zerr = __sock_recv(sep, reqlen, &msg);
-	if (zerr)
+	msg = malloc(reqlen);
+	if (!msg) {
+		LOG_(sep, "Not enough memory in %s\n", __func__);
 		return;
+	}
+
+	rc = bufferevent_read(sep->buf_event, msg, reqlen);
+	if (rc < reqlen) {
+		LOG_(sep, "Expected %d bytes but read %d bytes.\n", reqlen, rc);
+		goto cleanup;
+	}
+
+	if (!ZAP_VERSION_EQUAL(msg->ver)) {
+		zap_reject(&sep->ep);
+		goto cleanup;
+	}
 
 	struct zap_event ev = {
 		.type = ZAP_EVENT_CONNECT_REQUEST,
@@ -391,6 +405,8 @@ static void process_sep_msg_connect(struct z_sock_ep *sep, size_t reqlen)
 	};
 
 	sep->ep.cb(&sep->ep, &ev);
+
+cleanup:
 	free(msg);
 }
 
@@ -824,6 +840,34 @@ zap_event_type_t ev_type_cvt[] = {
 	[SOCK_MSG_ACCEPTED] = -1
 };
 
+static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t len)
+{
+	struct sock_msg_connect msg;
+	struct evbuffer *ebuf = evbuffer_new();
+	if (!ebuf)
+		return ZAP_ERR_RESOURCE;
+	z_hdr_init(&msg.hdr, 0, SOCK_MSG_CONNECT, (uint32_t)(sizeof(msg) + len), 0);
+	msg.data_len = htonl(len);
+	ZAP_VERSION_SET(msg.ver);
+
+	if (evbuffer_add(ebuf, &msg, sizeof(msg)) != 0)
+		goto err;
+	if (evbuffer_add(ebuf, buf, len) != 0)
+		goto err;
+
+	/* This write will drain ebuf, appending data to sep->buf_event
+	 * without unnecessary memory copying. */
+	if (bufferevent_write_buffer(sep->buf_event, ebuf) != 0)
+		goto err;
+
+	/* we don't need ebuf anymore */
+	evbuffer_free(ebuf);
+	return ZAP_ERR_OK;
+err:
+	evbuffer_free(ebuf);
+	return ZAP_ERR_RESOURCE;
+}
+
 static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type, char *buf, size_t len)
 {
 	struct sock_msg_sendrecv msg;
@@ -867,7 +911,7 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 			LOG_(sep, "Error enabling buffered I/O event for fd %d.\n",
 					sep->sock);
 		}
-		zerr = __sock_send(sep, SOCK_MSG_CONNECT, sep->conn_data, sep->conn_data_len);
+		zerr = __sock_send_connect(sep, sep->conn_data, sep->conn_data_len);
 		if (sep->conn_data)
 			free(sep->conn_data);
 		sep->conn_data = NULL;
