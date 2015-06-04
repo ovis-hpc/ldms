@@ -145,6 +145,7 @@ static void handle_zap_conn_req(zap_ep_t zep)
 	__rctrl_ref_get(new_ctrl);
 	zerr = zap_accept(zep, rctrl_passive_zap_cb, data, datalen);
 	if (zerr) {
+		__rctrl_ref_put(new_ctrl);
 		ctrl->log("rctrl: conn_req: Failed to accept the connect "
 				"request from %s.\n", rmt_name);
 		goto err;
@@ -170,7 +171,7 @@ err:
 }
 
 #ifdef ENABLE_AUTH
-int rctrl_send_request(rctrl_t ctrl, struct ocm_cfg_buff *cfg);
+int rctrl_send(rctrl_t ctrl, struct ocm_cfg_buff *data);
 int __send_auth_password(zap_ep_t zep, rctrl_t ctrl, const char *password)
 {
 	int rc = 0;
@@ -183,17 +184,20 @@ int __send_auth_password(zap_ep_t zep, rctrl_t ctrl, const char *password)
 	struct ocm_cfg_buff *cfg = ocm_cfg_buff_new(len, AUTH_PASSWORD_KEY);
 	if (!cfg) {
 		rc = ENOMEM;
-		goto err0;
+		goto out;
 	}
 
 	struct ocm_value *v = (void *)buff;
 	ocm_value_set_s(v, password);
 	ocm_cfg_buff_add_verb(cfg, "");
 	ocm_cfg_buff_add_av(cfg, AUTH_CMD, v);
-	rc = rctrl_send_request(ctrl, cfg);
+
+	__rctrl_ref_get(ctrl);
+	rc = rctrl_send(ctrl, cfg);
+	if (rc)
+		__rctrl_ref_put(ctrl);
 	ocm_cfg_buff_free(cfg);
-	return rc;
-err0:
+out:
 	free(buff);
 	return rc;
 }
@@ -313,7 +317,7 @@ static int __send_auth_approval(zap_ep_t zep, rctrl_t ctrl)
 	if (!cfg) {
 		return ENOMEM;
 	}
-	rc = rctrl_send_request(ctrl, cfg);
+	rc = rctrl_send(ctrl, cfg);
 	ocm_cfg_buff_free(cfg);
 	return rc;
 }
@@ -372,7 +376,6 @@ static void rctrl_passive_zap_cb(zap_ep_t zep, zap_event_t ev)
 			break;
 		}
 #endif /* ENABLE_AUTH */
-		__rctrl_ref_get(ctrl);
 		ctrl->cb(RCTRL_EV_RECV_COMPLETE, ctrl);
 		break;
 	case ZAP_EVENT_READ_COMPLETE:
@@ -469,19 +472,17 @@ int rctrl_connect(const char *host, const char *port, rctrl_t ctrl)
 	zap_err_t zerr = zap_connect(ctrl->zep, ldmsdinfo->ai_addr,
 					ldmsdinfo->ai_addrlen, NULL, 0);
 	if (zerr) {
+		__rctrl_ref_put(ctrl);
 		ctrl->log("rctrl: %s: failed to connect to %s at %s\n",
 				zap_err_str(zerr), host, port);
 	}
 	return rc;
 }
 
-int rctrl_send_request(rctrl_t ctrl, struct ocm_cfg_buff *cfg)
+int rctrl_send(rctrl_t ctrl, struct ocm_cfg_buff *data)
 {
 	/* Put when disconnect or receive a disconnected/error event */
-	__rctrl_ref_get(ctrl);
-	zap_err_t zerr = zap_send(ctrl->zep, cfg->buff, cfg->buff_len);
-	if (zerr)
-		__rctrl_ref_put(ctrl);
+	zap_err_t zerr = zap_send(ctrl->zep, data->buff, data->buff_len);
 	return zerr;
 }
 

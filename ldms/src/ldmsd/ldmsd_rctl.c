@@ -639,7 +639,7 @@ void __handle_cmd(char *cmd, rctrl_t ctrl)
 		if (command->action) {
 			(void)command->action(args);
 		} else {
-			rctrl_send_request(ctrl, cfg);
+			rctrl_send(ctrl, cfg);
 			sem_wait(&recv_sem);
 		}
 	} else {

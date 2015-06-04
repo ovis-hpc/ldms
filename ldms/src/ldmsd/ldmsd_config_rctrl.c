@@ -161,7 +161,7 @@ out:
 		ocm_value_set_s(ov, (const char *)rctrl_replybuf);
 		ocm_cfg_buff_add_av(reply_msg, "msg", ov);
 	}
-	rctrl_send_request(ctrl, reply_msg);
+	rctrl_send(ctrl, reply_msg);
 	free(av_list);
 	free(kw_list);
 	ocm_cfg_buff_free(reply_msg);

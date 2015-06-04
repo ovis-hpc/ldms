@@ -82,6 +82,11 @@ rctrl_t rctrl_setup_controller(const char *xprt, rctrl_cb_fn cb,
  */
 void rctrl_free(rctrl_t ctrl);
 
+/**
+ * \brief Connect to a peer
+ *
+ * Controller uses this function to connect to a peer.
+ */
 int rctrl_connect(const char *host, const char *port, rctrl_t ctrl);
 
 /**
@@ -91,6 +96,14 @@ int rctrl_connect(const char *host, const char *port, rctrl_t ctrl);
  */
 void rctrl_disconnect(rctrl_t ctrl);
 
-int rctrl_send_request();
+/**
+ * \brief Send data to the other side
+ *
+ * \param ctrl  an rctrl handle
+ * \param data  data to be sent. It must be in the ocm format.
+ *              verb: (attr, value), (attr, value)
+ *
+ */
+int rctrl_send(rctrl_t ctrl, struct ocm_cfg_buff *data);
 
 #endif /* RCTRL_H_ */
