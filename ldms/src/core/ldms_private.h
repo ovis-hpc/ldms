@@ -83,34 +83,36 @@ struct ldms_data_hdr {
 	uint64_t meta_gn;	/* Meta-data generation number */
 };
 
+struct ldms_version {
+	uint8_t major;	/* major number */
+	uint8_t minor;	/* minor number */
+	uint8_t patch;	/* patch number */
+	uint8_t flags;	/* version flags */
+};
+
 /* 3.1.0.0 */
 #define LDMS_VERSION_MAJOR	 0x03
 #define LDMS_VERSION_MINOR	 0x01
-#define LDMS_VERSION_FIX	 0x00
+#define LDMS_VERSION_PATCH	 0x00
 #define LDMS_VERSION_FLAGS	 0x00
 #define LDMS_VERSION_SET(version) do {				\
-	(version).v_major = LDMS_VERSION_MAJOR;			\
-	(version).v_minor = LDMS_VERSION_MINOR;			\
-	(version).v_fix = LDMS_VERSION_FIX;			\
-	(version).v_flags = LDMS_VERSION_FLAGS;			\
+	(version).major = LDMS_VERSION_MAJOR;			\
+	(version).minor = LDMS_VERSION_MINOR;			\
+	(version).patch = LDMS_VERSION_PATCH;			\
+	(version).flags = LDMS_VERSION_FLAGS;			\
 } while (0)
 
-#define LDMS_VERSION_EQUAL(version)				\
-	((version).v_major == LDMS_VERSION_MAJOR) &&		\
-	((version).v_minor == LDMS_VERSION_MINOR) &&		\
-	((version).v_fix == LDMS_VERSION_FIX) &&		\
-	((version).v_flags == LDMS_VERSION_FLAGS)
+#define LDMS_VERSION_EQUAL(version) (				\
+	((version).major == LDMS_VERSION_MAJOR) &&		\
+	((version).minor == LDMS_VERSION_MINOR) &&		\
+	((version).patch == LDMS_VERSION_PATCH) &&		\
+	((version).flags == LDMS_VERSION_FLAGS) )
 
 struct ldms_set_hdr {
 	/* The unique metric set producer name */
 	char producer_name[LDMS_PRODUCER_NAME_MAX];
 	uint64_t meta_gn;	/* Meta-data generation number */
-	struct {
-		uint8_t v_major;	/* major number */
-		uint8_t v_minor;	/* minor number */
-		uint8_t v_fix;		/* fix number */
-		uint8_t v_flags;	/* version flags */
-	} version;		/* LDMS version */
+	struct ldms_version version;	/* LDMS version */
 	uint8_t flags;	/* Set format flags */
 	uint8_t pad1;	/* data pad */
 	uint8_t pad2;	/* data pad */

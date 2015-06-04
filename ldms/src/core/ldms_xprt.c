@@ -1170,9 +1170,15 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
 	zap_err_t zerr;
 	int ldms_conn_event;
+	struct ldms_version *ver;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
+		ver = (void*)ev->data;
+		if (!ev->data_len || !LDMS_VERSION_EQUAL(*ver)) {
+			zap_reject(zep);
+			break;
+		}
 		ldms_zap_handle_conn_req(zep);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
@@ -1641,10 +1647,12 @@ int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 {
 	int rc;
 	struct ldms_xprt *_x = x;
+	struct ldms_version ver;
+	LDMS_VERSION_SET(ver);
 	_x->connect_cb = cb;
 	_x->connect_cb_arg = cb_arg;
 	ldms_xprt_get(x);
-	rc = zap_connect(_x->zap_ep, sa, sa_len, NULL, 0);
+	rc = zap_connect(_x->zap_ep, sa, sa_len, (void*)&ver, sizeof(ver));
 	if (rc)
 		ldms_xprt_put(x);
 	return rc;
