@@ -1,0 +1,632 @@
+#######################################################################
+# -*- c-basic-offset: 8 -*-
+# Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2015 Sandia Corporation. All rights reserved.
+# Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+# license for use of this work by or on behalf of the U.S. Government.
+# Export of this program may require a license from the United States
+# Government.
+#
+# This software is available to you under a choice of one of two
+# licenses.  You may choose to be licensed under the terms of the GNU
+# General Public License (GPL) Version 2, available from the file
+# COPYING in the main directory of this source tree, or the BSD-type
+# license below:
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions
+# are met:
+#
+#      Redistributions of source code must retain the above copyright
+#      notice, this list of conditions and the following disclaimer.
+#
+#      Redistributions in binary form must reproduce the above
+#      copyright notice, this list of conditions and the following
+#      disclaimer in the documentation and/or other materials provided
+#      with the distribution.
+#
+#      Neither the name of Sandia nor the names of any contributors may
+#      be used to endorse or promote products derived from this software
+#      without specific prior written permission.
+#
+#      Neither the name of Open Grid Computing nor the names of any
+#      contributors may be used to endorse or promote products derived
+#      from this software without specific prior written permission.
+#
+#      Modified source versions must be plainly marked as such, and
+#      must not be misrepresented as being the original software.
+#
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+# LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+# A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+# OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+# SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+# DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+# THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#######################################################################
+
+import cmd
+import argparse
+import sys
+import os
+import traceback
+
+from ldmsd import ldmsd_config
+
+class LdmsdCmdParser(cmd.Cmd):
+    def __init__(self, sockname = None, host_port = None, infile=None):
+        if (sockname is None) and (host_port is None):
+            raise ValueError("Expecting either sockname or host_port. None is given")
+
+        if sockname is not None:
+            self.ctrl = ldmsd_config.ldmsdUSocketConfig(ldmsd_sockpath = sockname)
+            self.prompt = "{0}> ".format(os.path.basename(sockname))
+        else:
+            self.ctrl = ldmsd_config.ldmsdInetConfig(host = host_port['host'],
+                                                     port = host_port['port'])
+            self.prompt = "{0}:{1}> ".format(host_port['host'], host_port['port'])
+
+        if infile:
+            cmd.Cmd.__init__(self, stdin=infile)
+        else:
+            cmd.Cmd.__init__(self)
+
+    def __complete_attr_list(self, verb, text):
+        req_opt_attr = self.ctrl.get_cmd_attr_list(verb)
+        attr_list = []
+        if req_opt_attr['req'] is not None:
+            attr_list = req_opt_attr['req']
+        if req_opt_attr['opt'] is not None:
+            attr_list += req_opt_attr['opt']
+        return ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
+
+    def emptyline(self):
+        pass
+
+    def do_shell(self, args):
+        """
+        Execute a shell command
+        """
+        os.system(args)
+
+    def do_say(self, args):
+        """
+        Print a message to the console
+        """
+        print(args)
+
+    def precmd(self, line):
+        if line[0:1] == '#':
+            return ''
+        return line
+
+    def handle(self, verb, args):
+        cmd_id = self.ctrl.get_cmd_id(verb)
+        cmd = "{0}{1} {2}".format(cmd_id, verb, args)
+        resp = self.ctrl.talk(cmd)
+        import re
+        g = re.match(r"(-*)(\d+)(.*)", resp)
+        if len(g.group(3)) > 0:
+                print g.group(3)
+
+    def do_source(self, arg):
+        """
+        Parse commands from the specified file as if they were entered
+        on the console.
+        """
+        script = open(arg, 'r')
+        for cmd in script:
+            self.onecmd(cmd)
+        script.close()
+
+    def do_usage(self, arg):
+        """List the usage of the plugins loaded on the server.
+        """
+        self.handle('usage', arg)
+
+    def complete_usage(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('usage', text)
+
+    def do_load(self, arg):
+        """
+        Load a plugin at the Aggregator/Producer
+        Parameters:
+        name=     The plugin name
+        """
+        self.handle('load', arg)
+
+    def complete_load(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('load', text)
+
+    def do_prdcr_add(self, arg):
+        """
+        Add an LDMS Producer to the Aggregator
+        Parameters:
+        name=     A unique name for this Producer
+        xprt=     The transport name [sock, rdma, ugni]
+        host=     The hostname of the host
+        port=     The port number on which the LDMS is listening
+        type=     The connection type [active, passive]
+        interval= The connection retry interval (us)
+        """
+        self.handle('prdcr_add', arg)
+
+    def complete_prdcr_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_add', text)
+
+    def do_prdcr_del(self, arg):
+        """
+        Delete an LDMS Producer from the Aggregator. The producer
+        cannot be in use or running.
+        Parameters:
+        name=    The Producer name
+        """
+        self.handle('prdcr_del', arg)
+
+    def complete_prdcr_del(self, text, line, begidx, endidx):
+        return [ name for name in self.prdcr_add_kw if name.startswith(text) ]
+
+    def do_prdcr_start(self, arg):
+        """
+        Start the specified producer.
+        Parameters:
+        name=     The name of the producer
+        [interval=] The connection retry interval in micro-seconds. If this is not
+                  specified, the previously configured value will be used.
+        """
+        self.handle('prdcr_start', arg);
+
+    def complete_prdcr_start(self, text, line, begidx, endidx):
+        return [ name for name in self.prdcr_start_kw if name.startswith(text) ]
+
+    def do_prdcr_start_regex(self, arg):
+        """
+        Start all producers matching a regular expression.
+        Parameters:
+        regex=     A regular expression
+        [interval=]  The connection retry interval in micro-seconds. If this is not
+                   specified, the previously configured value will be used.
+        """
+        self.handle('prdcr_start_regex', arg);
+
+    def complete_prdcr_start_regex(self, text, line, begidx, endidx):
+        return [ name for name in self.prdcr_start_regex_kw if name.startswith(text) ]
+
+    def do_prdcr_stop(self, arg):
+        """
+        Stop the specified Producer.
+        Parameters:
+        name=  The producer name
+        """
+        self.handle('prdcr_stop', arg);
+
+    def complete_prdcr_stop(self, text, line, begidx, endidx):
+        return [ name for name in self.prdcr_stop_kw if name.startswith(text) ]
+
+    def do_prdcr_stop_regex(self, arg):
+        """
+        Stop all producers matching a regular expression.
+        Parameters:
+        regex=   The regular expression
+        """
+        self.handle('prdcr_stop_regex', arg);
+
+    def complete_prdcr_stop_regex(self, text, line, begidx, endidx):
+        return [ name for name in self.prdcr_stop_regex_kw if name.startswith(text) ]
+
+    def do_updtr_add(self, arg):
+        """
+        Add an updater process that will periodically sample
+        Producer metric sets
+        Parameters:
+        name=     The update policy name
+        interval= The update/collect interval
+        [offset=]   Offset for synchronized aggregation
+        """
+        self.handle('updtr_add', arg)
+
+    def complete_updtr_add(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_add_kw if name.startswith(text) ]
+
+    def do_updtr_del(self, arg):
+        """
+        Remove an updater from the configuration
+        Parameter:
+        name=     The update policy name
+        """
+        self.handle('updtr_del', arg)
+
+    def complete_updtr_del(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_del_kw if name.startswith(text) ]
+
+    def do_updtr_match_add(self, arg):
+        """
+        Add a match condition that specifies the sets to update.
+        Parameters::
+        name=   The update policy name
+        regex=  The regular expression string
+        match=  The value with which to compare; if match=inst,
+                the expression will match the set's instance name, if
+                match=schema, the expression will match the set's
+                schema name.
+        """
+        self.handle('updtr_match_add', arg)
+
+    def complete_updtr_match_add(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_match_add_kw if name.startswith(text) ]
+
+    def do_updtr_match_del(self, arg):
+        """
+        Remove a match condition from the Updater. The
+        parameters are as follows:
+        name=   The update policy name
+        regex=  The regular expression string
+        match=  The value with which to compare; if match=inst,
+                the expression will match the set's instance name, if
+                match=schema, the expression will match the set's
+                schema name.
+        """
+        self.handle('updtr_match_del', arg)
+
+    def complete_updtr_match_del(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_match_del_kw if name.startswith(text) ]
+
+    def do_updtr_prdcr_add(self, arg):
+        """
+        Add matching Producers to an Updater policy. The parameters are as
+        follows:
+        name=   The update policy name
+        regex=  A regular expression matching zero or more producers
+        """
+        self.handle('updtr_prdcr_add', arg)
+
+    def complete_updtr_prdcr_add(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_prdcr_add_kw if name.startswith(text) ]
+
+    def do_updtr_prdcr_del(self, arg):
+        """
+        Remove matching Producers from an Updater policy. The parameters are as
+        follows:
+        name=    The update policy name
+        regex=   A regular expression matching zero or more producers
+        """
+        self.handle('updtr_prdcr_del', arg)
+
+    def complete_updtr_prdcr_del(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_prdcr_del_kw if name.startswith(text) ]
+
+    def do_updtr_start(self, arg):
+        """
+        Start updaters. The parameters to the commands are as
+        follows:
+        name=     The update policy name
+        [interval=] The update interval in micro-seconds. If this is not
+                  specified, the previously configured value will be used.
+        [offset=]   Offset for synchronization
+        """
+        self.handle('updtr_start', arg);
+
+    def complete_updtr_start(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_start_kw if name.startswith(text) ]
+
+    def do_updtr_stop(self, arg):
+        """
+        Stop the Updater. The Updater must be stopped in order to
+        change it's configuration.
+        Paramaeters:
+        name=   The update policy name
+        """
+        self.handle('updtr_stop', arg);
+
+    def complete_updtr_stop(self, text, line, begidx, endidx):
+        return [ name for name in self.updtr_stop_kw if name.startswith(text) ]
+
+    def do_strgp_add(self, arg):
+        """
+        Create a Storage Policy and open/create the storage instance.
+        Parameters:
+        name=      The unique storage policy name.
+        plugin=    The name of the storage backend.
+        container= The storage backend container name.
+        schema=    The schema name of the metric set to store.
+        [rotate=]    The time period stored in a single container. The format is
+                   <number><units> where <units> is one of 'h' or 'd', for
+                   hours and days respectively. For example "rotate=2d",
+                   means that a container will contain two days of data before
+                   rotation to a new container. If rotate is omitted, container
+                   rotation is disabled.
+        """
+        self.handle('strgp_add', arg)
+
+    def complete_strgp_add(self, text, line, begidx, endidx):
+        return [ name for name in self.strgp_add_kw if name.startswith(text) ]
+
+    def do_strgp_del(self, arg):
+        """
+        Remove a Storage Policy. All updaters must be stopped in order for
+        a storage policy to be deleted.
+        Parameters:
+        name=   The storage policy name
+        """
+        self.handle('strgp_del', arg)
+
+    def complete_strgp_del(self, text, line, begidx, endidx):
+        return [ name for name in self.strgp_del_kw if name.startswith(text) ]
+
+    def do_strgp_prdcr_add(self, arg):
+        """
+        Add a regular expression used to identify the producers this
+        storage policy will apply to.
+        Parameters:
+        name=   The storage policy name
+        regex=  A regular expression matching metric set producers
+        """
+        self.handle('strgp_prdcr_add', arg)
+
+    def complete_strgp_prdcr_add(self, text, line, begidx, endidx):
+        return [ name for name in self.strgp_prdcr_add_kw if name.startswith(text) ]
+
+    def do_strgp_prdcr_del(self, arg):
+        """
+        Remove a regular expression from the producer match list.
+        Parameters:
+        name=   The storage policy name
+        regex=  The regular expression to remove
+        """
+        self.handle('strgp_prdcr_del', arg)
+
+    def complete_strgp_prdcr_del(self, text, line, begidx, endidx):
+        return [ name for name in self.strgp_prdcr_del_kw if name.startswith(text) ]
+
+    def do_strgp_metric_add(self, arg):
+        """
+        Add the name of a metric to store. If the metric list is NULL,
+        all metrics in the metric set will be stored.
+        Parameters:
+        name=   The storage policy name
+        metric= The metric name
+        """
+        self.handle('strgp_metric_add', arg)
+
+    def complete_strgp_metric_add(self, text, line, begidx, endidx):
+        return [ name for name in self.strgp_metric_add_kw if name.startswith(text) ]
+
+    def do_strgp_metric_del(self, arg):
+        """
+        Remove a metric from the set of stored metrics.
+        Parameters:
+        name=   The storage policy name
+        metric= The metric to remove
+        """
+        self.handle('strgp_metric_del', arg)
+
+    def complete_strgp_set_del(self, text, line, begidx, endidx):
+        return [ name for name in self.strgp_set_del_kw if name.startswith(text) ]
+
+    def do_strgp_start(self, arg):
+        """
+        Start storage policy.
+        name=    The storage policy name
+        """
+        self.handle('strgp_start', arg);
+
+    def complete_strgp_start(self, text, line, begidx, endidx):
+        return [ name for name in self.strgp_start_kw if name.startswith(text) ]
+
+    def do_strgp_stop(self, arg):
+        """
+        Stop storage policies. A storage policy must be stopped in order to
+        change its configuration.
+        Paramaeters:
+        name=    The storage policy name
+        """
+        self.handle('strgp_stop', arg);
+
+    #
+    # Backward compatibility commands
+    #
+    def do_info(self, arg):
+        """
+        Tell the daemon to dump it's internal state to the log file.
+        """
+        self.handle('info', arg)
+
+    def do_term(self, arg):
+        """
+        Unload the plugin
+        Parameters:
+        name=   The plugin name
+        """
+        self.handle('term', arg)
+
+    def complete_term(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('term', text)
+
+    def do_config(self, arg):
+        """
+        Send a configuration command to the specified plugin.
+        Parameters:
+        name=   The plugin name
+        ...     Plugin specific attr=value tuples
+        """
+        self.handle('config', arg)
+
+    def complete_config(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('config', text)
+
+    def do_start(self, arg):
+        """
+        Start a sampler plugin
+        Parameters:
+        name=     The plugin name
+        interval= The sample interval in microseconds
+        [offset=] Optional offset (shift) from the sample mark in microseconds.
+                  Offset can be positive or negative with magnitude up to 1/2
+                  the sample interval. If this offset is specified, including 0,
+                  collection will be synchronous; if the offset is not specified,
+                  collection will be asynchronous.
+        """
+        self.handle('start', arg)
+
+    def complete_start(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('start', text)
+
+    def do_stop(self, arg):
+        """
+        Stop a sampler plugin
+        Parameters:
+        name=     The plugin name
+        """
+        self.handle('stop', arg)
+
+    def complete_stop(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stop', text)
+
+    def do_add(self, arg):
+        """
+        Adds a host to the list of hosts monitored by this ldmsd.
+        Parameters:
+        host=       The hostname. This can be an IP address or DNS hostname.
+        type=       One of the following host types:
+            active   An connection is initiated with the peer and
+                     it's metric sets will be periodically queried.
+            passive  A connect request is expected from the specified host.
+                     After this request is received, the peer's metric sets
+                     will be queried periodically.
+            bridging A connect request is initiated to the remote peer,
+                     but it's metric sets are not queried. This is the active
+                     side of the passive host above.
+            local    The to-be-added host is the local host. The given
+                     set name(s) must be the name(s) of local set(s).
+                     This option is used so that ldmsd can store
+                     the given local set(s) if it is configured to do so.
+        [xprt=]     The transport type, defaults to 'sock'
+           sock      The sockets transport.
+           rdma      The OFA Verbs Transport for Infiniband or iWARP.
+           ugni      The Cray Gemini transport.
+        [port=]     The port number to connect on, defaults to 50000.
+        sets=       The list of metric set names to be queried.
+                    The list is comma separated. If the type is bridging,
+                    no set names should be specified.
+        [interval=] An optional sampling interval in microseconds,
+                    defaults to 1000000.
+        [offset=]   An optional offset (shift) from the sample mark
+                    in microseconds. If this offset is specified,
+                    including 0, the collection will be synchronous;
+                    if the offset is not specified, the collection
+                    will be asychronous
+        [agg_no=]   The number of the aggregator that this is standby for.
+                    Defaults to 0 which means this is an active aggregator.
+        """
+        return self.handle('add', args)
+
+    def complete_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('add', text)
+
+    def do_store(self, arg):
+        """
+        Saves a metrics from one or more hosts to persistent storage.
+        Parameters:
+        policy=      The storage policy name. This must be unique.
+        container=   The container name used by the plugin to name data.
+        schema=      A name used to name the set of metrics stored together.
+        [metrics=]   A comma separated list of metric names. If not specified,
+                     all metrics in the metric set will be saved.
+        [hosts=]     The set of hosts whose data will be stored. If hosts is not
+                     specified, the metric set will be saved for all hosts. If
+                     specified, the value should be a comma separated list of
+                     host names.
+        """
+        return self.handle('store', args)
+
+    def complete_store(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('store', text)
+
+    def do_set_udata(self, arg):
+        """
+        Set the user data value for a metric in a metric set. This is typically used to
+        convey the Component Id to the Aggregator.
+        Parameters:
+        name=   The sampler plugin name
+        metric= The metric name
+        udata=  The desired user-data. This is a 64b unsigned integer.
+        """
+        self.handle('udata', arg)
+
+    def complete_set_udata(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('udata', text)
+
+    def do_standby(self, arg):
+        """
+        ldmsd will update the standby state (standby/active) of
+        the given aggregator number
+        Parameters:
+        agg_no=    Unique integer id for an aggregator from 1 to 64
+        state=     0/1 - standby/active
+        """
+        self.handle('standby', args)
+
+    def complete_standby(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('standby', text)
+
+    def do_EOF(self, arg):
+        """
+        Ctrl-D will exit the shell
+        """
+        return True
+
+    def do_quit(self, arg):
+        """
+        Quit the LDMSD shell
+        """
+        return True
+
+if __name__ == "__main__":
+    is_debug = True
+    try:
+        parser = argparse.ArgumentParser(description="Configure an LDMS Daemon. " \
+                                         "To connect to an ldmsd, either give " \
+                                         "the socket path of the ldmsd or " \
+                                         "give both hostname and inet control port. " \
+                                         "If all are given, the sockname takes the priority.")
+        parser.add_argument("--sockname",
+                            default="/var/ldmsd/control",
+                            help="Specify the UNIX socket used to communicate with LDMSD.")
+        parser.add_argument('--host',
+                            default = "localhost",
+                            help = "Hostname of ldmsd to connect to")
+        parser.add_argument('--port',
+                            default = 12345,
+                            help = "Inet ctrl listener port of ldmsd")
+        parser.add_argument('--debug', action = "store_true",
+                            help = argparse.SUPPRESS)
+
+        args = parser.parse_args()
+
+        is_debug = args.debug
+
+        if (args.sockname is None) and (args.host is None or args.port is None):
+            print "Please give either --sockname or both of --host and --port."
+            sys.exit(1)
+
+        if args.sockname is not None:
+            cmdParser = LdmsdCmdParser(sockname = args.sockname)
+        else:
+            cmdParser = LdmsdCmdParser(host_port = {'host': args.host,
+                                                    'port': args.port})
+
+        cmdParser.cmdloop("Welcome to the LDMSD control processor")
+    except KeyboardInterrupt:
+        sys.exit(0)
+    except Exception as e:
+        if is_debug:
+            print is_debug
+            traceback.print_exc()
+            sys.exit(2)
+        else:
+            print e

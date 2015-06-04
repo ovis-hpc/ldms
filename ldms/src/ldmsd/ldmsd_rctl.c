@@ -95,11 +95,19 @@ void cleanup()
 		ocm_cfg_buff_free(cfg);
 }
 
-struct kw {
+struct command {
 	char *token;
 	int cmd_id;
-	int (*action)(char *kw);
+	int (*action)(char *args);
+	void (*help)();
 };
+
+static int command_comparator(const void *a, const void *b)
+{
+	struct command *_a = (struct command *)a;
+	struct command *_b = (struct command *)b;
+	return strcmp(_a->token, _b->token);
+}
 
 #define LDMSCTL_HELP LDMSCTL_LAST_COMMAND + 1
 #define LDMSCTL_QUIT LDMSCTL_LAST_COMMAND + 2
@@ -119,121 +127,6 @@ void usage(char *argv[])
 	exit(1);
 }
 
-int handle_help(char *kw)
-{
-	printf("help\n"
-	       "   - Print this menu.\n"
-	       "\n"
-	       "usage\n"
-	       "   - Show loaded plugin usage information.\n"
-	       "\n"
-	       "load name=<name>\n"
-	       "   - Loads the specified plugin. The library that implements\n"
-	       "     the plugin should be in the directory specified by the\n"
-	       "     LDMSD_PLUGIN_LIBPATH environment variable.\n"
-	       "     <name>       The plugin name, this is used to locate a loadable\n"
-	       "                  library named \"lib<name>.so\"\n"
-	       "\n"
-	       "config name=<name> [ <attr>=<value> ... ]\n"
-	       "   - Provides a mechanism to specify configuration options\n"
-	       "     <name>       The plugin name.\n"
-	       "     <attr>       An attribute name.\n"
-	       "     <value>      An attribute value.\n"
-	       "\n"
-	       "udata set=<set_name> metric=<metric_name> udata=<user_data>\n"
-	       "   - Set the user data of the specified metric in the given set\n"
-	       "     <set_name>      The metric set name\n"
-	       "     <metric_name>   The metric name\n"
-	       "     <user_data>     The user data value\n"
-	       "\n"
-	       "start name=<name> interval=<interval> [ offset=<offset>]\n"
-	       "   - Begins calling the sampler's 'sample' method at the\n"
-	       "     sample interval.\n"
-	       "     <name>       The sampler name.\n"
-	       "     <interval>   The sample interval in microseconds.\n"
-	       "     <offset>     Optional offset (shift) from the sample mark\n"
-	       "                  in microseconds. Offset can be positive or\n"
-	       "                  negative with magnitude up to 1/2 the sample interval.\n"
-	       "                  If this offset is specified, including 0, \n"
-	       "                  collection will be synchronous; if the offset\n"
-	       "                  is not specified, collection will be asychronous.\n"
-	       "\n"
-	       "stop name=<name>\n"
-	       "   - Cancels sampling on the specified plugin.\n"
-	       "     <name>       The sampler name.\n"
-	       "\n"
-	       "add host=<host> type=<type> sets=<set names>\n"
-	       "                [ interval=<interval> ] [ offset=<offset>]\n"
-	       "                [ xprt=<xprt> ] [ port=<port> ]\n"
-	       "                [ standby=<agg_no> ]\n"
-	       "   - Adds a host to the list of hosts monitored by this ldmsd.\n"
-	       "     <host>       The hostname. This can be an IP address or DNS\n"
-	       "                  hostname.\n"
-	       "     <type>       One of the following host types: \n"
-	       "         active   An connection is initiated with the peer and\n"
-	       "                  it's metric sets will be periodically queried.\n"
-	       "         passive  A connect request is expected from the specified host.\n"
-	       "                  After this request is received, the peer's metric sets\n"
-	       "                  will be queried periodically.\n"
-	       "         bridging A connect request is initiated to the remote peer,\n"
-	       "                  but it's metric sets are not queried. This is the active\n"
-	       "                  side of the passive host above.\n"
-	       "         local    The to-be-added host is the local host. The given\n"
-	       "                  set name(s) must be the name(s) of local set(s).\n"
-	       "                  This option is used so that ldmsd can store\n"
-	       "                  the given local set(s) if it is configured to do so.\n"
-	       "     <set names>  The list of metric set names to be queried.\n"
-	       "		  The list is comma separated.\n"
-	       "     <interval>   An optional sampling interval in microseconds,\n"
-	       "                  defaults to 1000000.\n"
-	       "     <offset>     An optional offset (shift) from the sample mark\n"
-	       "                  in microseconds. If this offset is specified,\n "
-	       "                  including 0, the collection will be synchronous;\n"
-	       "                  if the offset is not specified, the collection\n"
-	       "                  will be asychronous\n"
-	       "     <xprt>       The transport type, defaults to 'sock'\n"
-	       "         sock     The sockets transport.\n"
-	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
-	       "         ugni     The Cray Gemini transport.\n"
-	       "     <port>       The port number to connect on, defaults to 50000.\n"
-	       "     <agg_no>     The number of the aggregator that this is standby for.\n"
-	       "                  Defaults to 0 which means this is an active aggregator.\n"
-	       "\n"
-	       "store name=<plugin> policy=<policy> container=<container> schema=<schema>\n"
-	       "      [hosts=<hosts>] [metric=<metric>,<metric>,...]\n"
-	       "   - Saves a metrics from one or more hosts to persistent storage.\n"
-	       "      <policy>      The storage policy name. This must be unique.\n"
-	       "      <container>   The container name used by the plugin to name data.\n"
-	       "      <schema>      A name used to name the set of metrics stored together.\n"
-	       "      <metrics>     A comma separated list of metric names. If not specified,\n"
-	       "                    all metrics in the metric set will be saved.\n"
-	       "      <hosts>       The set of hosts whose data will be stored. If hosts is not\n"
-	       "                    specified, the metric set will be saved for all hosts. If\n"
-	       "                    specified, the value should be a comma separated list of\n"
-	       "                    host names.\n"
-	       "\n"
-	       "standby agg_no=<agg_no> state=<0/1>\n"
-	       "   - ldmsd will update the standby state (standby/active) of\n"
-	       "     the given aggregator number.\n"
-	       "    <agg_no>    Unique integer id for an aggregator from 1 to 64\n"
-	       "    <state>     0/1 - standby/active\n"
-	       "\n"
-	       "oneshot name=<name> time=<time>\n"
-	       "   - Schedule a one-shot sample event\n"
-	       "     <name>       The sampler name.\n"
-	       "     <time>       A Unix timestamp or a special keyword 'now+<second>'\n"
-	       "                  The sample will occur at the specified timestamp or at\n"
-	       "                  the <second> from now.\n"
-	       "\n"
-	       "info\n"
-	       "   - Causes the ldmsd to dump out information about plugins,\n"
-	       "     work queue utilization, hosts and object stores.\n"
-	       "\n"
-	       "quit\n"
-	       "   - Exit.\n");
-	return 0;
-}
-
 int handle_quit(char *kw)
 {
 	printf("bye ... :)\n");
@@ -241,32 +134,445 @@ int handle_quit(char *kw)
 	return 0;
 }
 
-struct kw keyword_tbl[] = {
-	{ "?", LDMSCTL_HELP, handle_help },
-	{ "add", LDMSCTL_ADD_HOST, NULL },
-	{ "config", LDMSCTL_CFG_PLUGIN, NULL },
-	{ "help", LDMSCTL_HELP, handle_help },
-	{ "info", LDMSCTL_INFO_DAEMON, NULL },
-	{ "load", LDMSCTL_LOAD_PLUGIN, NULL },
-	{ "oneshot", LDMSCTL_ONESHOT_SAMPLE, NULL },
-	{ "quit", LDMSCTL_QUIT, handle_quit },
-	{ "standby", LDMSCTL_UPDATE_STANDBY, NULL },
-	{ "start", LDMSCTL_START_SAMPLER, NULL },
-	{ "stop", LDMSCTL_STOP_SAMPLER, NULL },
-	{ "store", LDMSCTL_STORE, NULL },
-	{ "term", LDMSCTL_TERM_PLUGIN, NULL },
-	{ "udata", LDMSCTL_SET_UDATA, NULL },
-	{ "usage", LDMSCTL_LIST_PLUGINS, NULL },
-};
-
-static int kw_comparator(const void *a, const void *b)
+void help_usage()
 {
-	struct kw *_a = (struct kw *)a;
-	struct kw *_b = (struct kw *)b;
-	return strcmp(_a->token, _b->token);
+	printf( "usage\n"
+		"   - Show loaded plugin usage information.\n");
 }
 
-int connected = 0;
+void help_load()
+{
+	printf(	"\nLoads the specified plugin. The library that implements\n"
+		"the plugin should be in the directory specified by the\n"
+		"LDMSD_PLUGIN_LIBPATH environment variable.\n\n"
+		"Parameters:\n"
+		"     name=       The plugin name, this is used to locate a loadable\n"
+		"                 library named \"lib<name>.so\"\n");
+}
+
+void help_term()
+{
+	printf(	"\nUnload the specified plugin.\n\n"
+		"Parameters:\n"
+		"     name=       The plugin name.\n");
+}
+
+void help_config()
+{
+	printf(	"Provides a mechanism to specify configuration options\n\n"
+		"Parameters:\n"
+		"     name=       The plugin name.\n"
+		"     <attr>=     Plugin specific attr=value tuples.\n");
+}
+
+void help_start()
+{
+	printf(	"Begins calling the sampler's 'sample' method at the\n"
+		"sample interval.\n\n"
+		"Parameters:\n"
+		"     name=       The sampler name.\n"
+		"     interval=   The sample interval in microseconds.\n"
+		"     [offset=]     Optional offset (shift) from the sample mark\n"
+		"                 in microseconds. Offset can be positive or\n"
+		"                 negative with magnitude up to 1/2 the sample interval.\n"
+		"                 If this offset is specified, including 0, \n"
+		"                 collection will be synchronous; if the offset\n"
+		"                 is not specified, collection will be asychronous.\n");
+}
+
+void help_stop()
+{
+	printf( "\nCancels sampling on the specified plugin.\n\n"
+		"Parameters:\n"
+		"     name=       The sampler name.\n");
+}
+
+void help_add()
+{
+	printf( "\nAdds a host to the list of hosts monitored by this ldmsd.\n\n"
+		"Parameters:\n"
+		"     host=        The hostname. This can be an IP address or DNS\n"
+		"                  hostname.\n"
+		"     type=        One of the following host types: \n"
+		"         active   An connection is initiated with the peer and\n"
+		"                  it's metric sets will be periodically queried.\n"
+		"         passive  A connect request is expected from the specified host.\n"
+		"                  After this request is received, the peer's metric sets\n"
+		"                  will be queried periodically.\n"
+		"         bridging A connect request is initiated to the remote peer,\n"
+		"                  but it's metric sets are not queried. This is the active\n"
+		"                  side of the passive host above.\n"
+		"         local    The to-be-added host is the local host. The given\n"
+		"                  set name(s) must be the name(s) of local set(s).\n"
+		"                  This option is used so that ldmsd can store\n"
+		"                  the given local set(s) if it is configured to do so.\n"
+		"     sets=        The list of metric set names to be queried.\n"
+		"		   The list is comma separated. If the type is bridging\n"
+		"                  no set names should be specified\n"
+		"     [xprt=]      The transport type, defaults to 'sock'\n"
+		"         sock     The sockets transport.\n"
+		"         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
+		"         ugni     The Cray Gemini transport.\n"
+		"     [port=]        The port number to connect on, defaults to 50000.\n"
+		"     [interval=]  An optional sampling interval in microseconds,\n"
+		"                  defaults to 1000000.\n"
+		"     [offset=]    An optional offset (shift) from the sample mark\n"
+		"                  in microseconds. If this offset is specified,\n "
+		"                  including 0, the collection will be synchronous;\n"
+		"                  if the offset is not specified, the collection\n"
+		"                  will be asychronous\n"
+		"     [agg_no=]    The number of the aggregator that this is standby for.\n"
+		"                  Defaults to 0 which means this is an active aggregator.\n");
+}
+
+void help_store()
+{
+	printf( "\nSaves metrics from one or more hosts to persistent storage.\n\n"
+		"Parameters:\n"
+		"      policy=      The storage policy name. This must be unique.\n"
+		"      container=   The container name used by the plugin to name data.\n"
+		"      schema=      A name used to name the set of metrics stored together.\n"
+		"      [metrics=]   A comma separated list of metric names. If not specified,\n"
+		"                   all metrics in the metric set will be saved.\n"
+		"      [hosts=]     The set of hosts whose data will be stored. If hosts is not\n"
+		"                   specified, the metric set will be saved for all hosts. If\n"
+		"                   specified, the value should be a comma separated list of\n"
+		"                   host names.\n");
+}
+
+void help_info()
+{
+	printf( "\nCauses the ldmsd to dump out information about plugins,\n"
+		"work queue utilization, hosts and object stores.\n");
+}
+
+void help_udata()
+{
+	printf( "\nSet the user data of the specified metric in the given set\n\n"
+		"Parameters:\n"
+		"     name=          The metric set name\n"
+		"     metric_name=   The metric name\n"
+		"     user_data=     The user data value\n");
+}
+
+void help_standby()
+{
+	printf( "\nldmsd will update the standby state (standby/active) of\n"
+		"the given aggregator number.\n\n"
+		"Parameters:\n"
+		"    agg_no=    Unique integer id for an aggregator from 1 to 64\n"
+		"    state=     0/1 - standby/active\n");
+}
+
+void help_oneshot()
+{
+	printf( "\nSchedule a one-shot sample event\n\n"
+		"Parameters:\n"
+		"     name=       The sampler name.\n"
+		"     time=       A Unix timestamp or a special keyword 'now+<second>'\n"
+		"                 The sample will occur at the specified timestamp or at\n"
+		"                 the second= from now.\n");
+}
+
+void help_quit()
+{
+	printf( "\nquit\n"
+		"   - Exit.\n");
+}
+
+void help_prdcr_add()
+{
+	printf( "\nAdd an LDMS Producer to the Aggregator\n\n"
+		"Parameters:\n"
+		"     name=     A unique name for this Producer\n"
+		"     xprt=     The transport name [sock, rdma, ugni]\n"
+		"     host=     The hostname of the host\n"
+		"     port=     The port number on which the LDMS is listening\n"
+		"     type=     The connection type [active, passive]\n"
+		"     interval= The connection retry interval (us)\n");
+}
+
+void help_prdcr_del()
+{
+	printf( "\nDelete an LDMS Producer from the Aggregator. The producer\n"
+		"cannot be in use or running.\n\n"
+		"Parameters:\n"
+		"     name=    The Producer name\n");
+}
+
+void help_prdcr_start()
+{
+	printf( "\nStart the specified producer.\n\n"
+		"Parameters:\n"
+		"     name=       The name of the producer\n"
+		"     [interval=] The connection retry interval in micro-seconds.\n"
+		"                 If this is not specified, the previously\n"
+		"                 configured value will be used.\n");
+}
+
+void help_prdcr_stop()
+{
+	printf( "\nStop the specified producer.\n\n"
+		"Parameters:\n"
+		"     name=     THe producer name\n");
+}
+
+void help_prdcr_start_regex()
+{
+	printf( "\nStart all producers matching a regular expression.\n\n"
+		"Parameters:\n\n"
+		"     regex=        A regular expression\n"
+		"     [interval=]   The connection retry interval in micro-seconds.\n"
+		"                   If this is not specified, the previously configured\n"
+		"                   value will be used.\n");
+}
+
+void help_prdcr_stop_regex()
+{
+	printf( "\nStop all producers matching a regular expression.\n\n"
+		"Parameters:\n"
+		"     regex=        A regular expression\n");
+}
+
+void help_updtr_add()
+{
+	printf( "\nAdd an updater process that will periodically sample\n"
+		"Producer metric sets\n\n"
+		"Parameters:\n"
+		"     name=       The update policy name\n"
+		"     interval=   The update/collect interval\n"
+		"     [offset=]   Offset for synchronized aggregation\n");
+}
+
+void help_updtr_del()
+{
+	printf( "\nRemove an updater from the configuration\n\n"
+		"Parameters:\n"
+		"     name=     The update policy name\n");
+}
+
+void help_updtr_match_add()
+{
+	printf( "\nAdd a match condition that specifies the sets to an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  The regular expression string\n"
+		"     match=  The value with which to compare; if match=inst,\n"
+		"     	      the expression will match the set's instance name, if\n"
+		"     	      match=schema, the expression will match the set's\n"
+		"     	      schema name.\n");
+}
+
+void help_updtr_match_del()
+{
+	printf( "\nRemove a match condition that specifies the sets from an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  The regular expression string\n"
+		"     match=  The value with which to compare; if match=inst,\n"
+		"     	      the expression will match the set's instance name, if\n"
+		"     	      match=schema, the expression will match the set's\n"
+		"     	      schema name.\n");
+}
+
+void help_updtr_prdcr_add()
+{
+	printf( "\nAdd matching Producers to an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  A regular expression matching zero or more producers\n");
+}
+
+void help_updtr_prdcr_del()
+{
+	printf( "\nRemove matching Producers from an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  A regular expression matching zero or more producers\n");
+}
+
+void help_updtr_start()
+{
+	printf( "\nStart an update policy.\n\n"
+		"Parameters:\n"
+		"     name=       The update policy name\n"
+		"     [interval=] The update interval in micro-seconds.\n"
+		"                 If this is not specified, the previously\n"
+		"                 configured value will be used.\n"
+		"     [offset=]   Offset for synchronization\n");
+}
+
+void help_updtr_stop()
+{
+	printf( "\nStop an update policy. The Updater must be stopped in order to\n"
+		"change it's configuration.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n");
+}
+
+void help_strgp_add()
+{
+	printf( "\nCreate a Storage Policy and open/create the storage instance.\n"
+		"The store plugin must be configured via the command 'config'\n\n"
+		"Parameters:\n"
+		"     name=        The unique storage policy name.\n"
+		"     plugin=      The name of the storage backend.\n"
+		"     container=   The storage backend container name.\n"
+		"     schema=      The schema name of the metric set to store.\n"
+		"     [rotate=]    The time period stored in a single container. The format is\n"
+		"     	           <number><units> where <units> is one of 'h' or 'd', for\n"
+		"     	           hours and days respectively. For example \"rotate=2d\",\n"
+		"     	           means that a container will contain two days of data before\n"
+		"     	           rotation to a new container. If rotate is omitted, container\n"
+		"     	           rotation is disabled.\n");
+}
+
+void help_strgp_del()
+{
+	printf( "\nRemove a Storage Policy. All updaters must be stopped in order for\n"
+		"a storage policy to be deleted.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n");
+}
+
+void help_strgp_prdcr_add()
+{
+	printf( "\nAdd a regular expression used to identify the producers this\n"
+		"storage policy will apply to.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     regex=  A regular expression matching metric set producers\n");
+}
+
+void help_strgp_prdcr_del()
+{
+	printf( "\nRemove a regular expression from the producer match list.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     regex=  The regular expression to remove\n");
+}
+
+void help_strgp_metric_add()
+{
+	printf( "\nAdd the name of a metric to store. If the metric list is NULL,\n"
+		"all metrics in the metric set will be stored.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     metric= The metric name\n");
+}
+
+void help_strgp_metric_del()
+{
+	printf( "\nRemove a metric from the set of stored metrics\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     metric= The metric name\n");
+}
+
+void help_strgp_start()
+{
+	printf( "\nStart an storage policy\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n");
+}
+
+void help_strgp_stop()
+{
+	printf( "\nStop an storage policy. A storage policy must be stopped\n"
+		"in order to change its configuration.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n");
+}
+
+int handle_help(char *args);
+
+static struct command command_tbl[] = {
+	{ "?", LDMSCTL_HELP, handle_help, NULL },
+	{ "add", LDMSCTL_ADD_HOST, NULL, help_add },
+	{ "config", LDMSCTL_CFG_PLUGIN, NULL, help_config },
+	{ "help", LDMSCTL_HELP, handle_help, NULL },
+	{ "info", LDMSCTL_INFO_DAEMON, NULL, help_info },
+	{ "load", LDMSCTL_LOAD_PLUGIN, NULL, help_load },
+	{ "oneshot", LDMSCTL_ONESHOT_SAMPLE, NULL, help_oneshot },
+	{ "prdcr_add", LDMSCTL_PRDCR_ADD, NULL, help_prdcr_add },
+	{ "prdcr_del", LDMSCTL_PRDCR_DEL, NULL, help_prdcr_del },
+	{ "prdcr_start", LDMSCTL_PRDCR_START, NULL, help_prdcr_start },
+	{ "prdcr_start_regex", LDMSCTL_PRDCR_START_REGEX, NULL, help_prdcr_start_regex },
+	{ "prdcr_stop", LDMSCTL_PRDCR_STOP, NULL, help_prdcr_stop },
+	{ "prdcr_stop_regex", LDMSCTL_PRDCR_STOP_REGEX, NULL, help_prdcr_stop_regex },
+	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit },
+	{ "standby", LDMSCTL_UPDATE_STANDBY, NULL, help_standby },
+	{ "start", LDMSCTL_START_SAMPLER, NULL, help_start },
+	{ "stop", LDMSCTL_STOP_SAMPLER, NULL, help_stop },
+	{ "store", LDMSCTL_STORE, NULL, help_store },
+	{ "strgp_add", LDMSCTL_STRGP_ADD, NULL, help_strgp_add },
+	{ "strgp_del", LDMSCTL_STRGP_DEL, NULL, help_strgp_del },
+	{ "strgp_metric_add", LDMSCTL_STRGP_METRIC_ADD, NULL, help_strgp_metric_add },
+	{ "strgp_metric_del", LDMSCTL_STRGP_METRIC_DEL, NULL, help_strgp_metric_del },
+	{ "strgp_prdcr_add", LDMSCTL_STRGP_PRDCR_ADD, NULL, help_strgp_prdcr_add },
+	{ "strgp_prdcr_del", LDMSCTL_STRGP_PRDCR_DEL, NULL, help_strgp_prdcr_del },
+	{ "strgp_start", LDMSCTL_STRGP_START, NULL, help_strgp_start },
+	{ "strgp_stop", LDMSCTL_STRGP_STOP, NULL, help_strgp_stop },
+	{ "term", LDMSCTL_TERM_PLUGIN, NULL, help_term },
+	{ "udata", LDMSCTL_SET_UDATA, NULL, help_udata },
+	{ "updtr_add", LDMSCTL_UPDTR_ADD, NULL, help_updtr_add },
+	{ "updtr_del", LDMSCTL_UPDTR_DEL, NULL, help_updtr_del },
+	{ "updtr_match_add", LDMSCTL_UPDTR_MATCH_ADD, NULL, help_updtr_match_add },
+	{ "updtr_match_del", LDMSCTL_UPDTR_MATCH_DEL, NULL, help_updtr_match_del },
+	{ "updtr_prdcr_add", LDMSCTL_UPDTR_PRDCR_ADD, NULL, help_updtr_prdcr_add },
+	{ "updtr_prdcr_del", LDMSCTL_UPDTR_PRDCR_DEL, NULL, help_updtr_prdcr_del },
+	{ "updtr_start", LDMSCTL_UPDTR_START, NULL, help_updtr_start },
+	{ "updtr_stop", LDMSCTL_UPDTR_STOP, NULL, help_updtr_stop },
+	{ "usage", LDMSCTL_LIST_PLUGINS, NULL, help_usage },
+};
+
+void __print_all_command()
+{
+	printf( "The available commands are as follows. To see help for\n"
+		"a command, do 'help <command>'\n\n");
+	size_t tbl_len = sizeof(command_tbl)/sizeof(command_tbl[0]);
+
+	int max_width = 20;
+	int i = 0;
+	printf("%-*s", max_width, command_tbl[i].token);
+	for (i = 1; i < tbl_len; i++) {
+		printf("%-*s", max_width, command_tbl[i].token);
+		if (i % 5 == 4)
+			printf("\n");
+	}
+	printf("\n");
+}
+
+int handle_help(char *args)
+{
+	if (!args) {
+		__print_all_command();
+	} else {
+		char *_args, *ptr;
+		_args = strtok_r(args, " \t\n", &ptr);
+		if (!_args) {
+			__print_all_command();
+			return 0;
+		}
+
+		struct command *command;
+		command = bsearch(&_args, command_tbl, ARRAY_SIZE(command_tbl),
+			     sizeof(*command), command_comparator);
+		if (!command) {
+			printf("Unrecognized command '%s'.\n", _args);
+			return EINVAL;
+		}
+		if (command->help) {
+			command->help();
+		} else {
+			printf("No help found for the command '%s'.\n",
+					command->token);
+		}
+		return 0;
+	}
+
+	return 0;
+}
 
 void __recv_resp(rctrl_t ctrl)
 {
@@ -319,18 +625,19 @@ void __handle_cmd(char *cmd, rctrl_t ctrl)
 	ocm_cfg_buff_add_verb(cfg, "");
 	ocm_value_set_s(v, cmd);
 	ocm_cfg_buff_add_av(cfg, "cmd", v);
-	char *ptr;
-	struct kw key;
-	struct kw *kw;
+	char *args, *ptr;
+	struct command key;
+	struct command *command;
 
 	key.token = strtok_r(cmd, " \t\n", &ptr);
-	kw = bsearch(&key, keyword_tbl, ARRAY_SIZE(keyword_tbl),
-		     sizeof(*kw), kw_comparator);
-	if (kw) {
-		ocm_value_set(v, OCM_VALUE_INT32, kw->cmd_id);
+	args = strtok_r(NULL, "\n", &ptr);
+	command = bsearch(&key, command_tbl, ARRAY_SIZE(command_tbl),
+		     sizeof(struct command), command_comparator);
+	if (command) {
+		ocm_value_set(v, OCM_VALUE_INT32, command->cmd_id);
 		ocm_cfg_buff_add_av(cfg, "cmd_id", v);
-		if (kw->action) {
-			(void)kw->action(key.token);
+		if (command->action) {
+			(void)command->action(args);
 		} else {
 			rctrl_send_request(ctrl, cfg);
 			sem_wait(&recv_sem);
