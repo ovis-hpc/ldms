@@ -261,7 +261,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		return EINVAL;
 
 	si = _sh;
-	const struct ldms_timestamp *ts = ldms_transaction_timestamp_get(set);
+	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
+	const struct ldms_timestamp *ts = &_ts;
 	uint64_t comp_id;
 
 	for (i=0; i<metric_count; i++) {

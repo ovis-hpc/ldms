@@ -62,6 +62,7 @@
 #include <event2/listener.h>
 #include <event2/thread.h>
 
+#include "coll/rbt.h"
 #include "zap.h"
 #include "zap_priv.h"
 
@@ -139,6 +140,16 @@ struct sock_msg_hdr {
 	uint32_t msg_len;  /**< Length of the entire message, header included. */
 	uint32_t xid;	   /**< Transaction Id to check against reply */
 	uint64_t ctxt;	   /**< User context to be returned in reply */
+};
+
+/**
+ * Connect message.
+ */
+struct sock_msg_connect {
+	struct sock_msg_hdr hdr;
+	struct zap_version ver;
+	uint32_t data_len;
+	char data[0];
 };
 
 /**

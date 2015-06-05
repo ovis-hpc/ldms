@@ -57,7 +57,11 @@
 #include <sys/queue.h>
 #include <string.h>
 #include <netinet/in.h>
+#include <byteswap.h>
+#include <asm/byteorder.h>
 #include "coll/rbt.h"
+#include "ovis_util/os_util.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -292,7 +296,6 @@ ldms_t ldms_xprt_next(ldms_t);
 #define LDMS_SETH_F_LCLBYTEORDER	LDMS_SETH_F_LE
 #endif
 
-#define LDMS_VERSION 0x03010000	/* 3.1.0.0 */
 #define LDMS_SET_NAME_MAX 256
 #define LDMS_PRODUCER_NAME_MAX 64 /* including the terminating null byte */
 
@@ -938,7 +941,7 @@ extern int ldms_transaction_end(ldms_set_t s);
  * \param s     The metric set handle
  * \returns ts  A pointer to a timestamp structure.
  */
-extern struct ldms_timestamp const *ldms_transaction_timestamp_get(ldms_set_t s);
+extern struct ldms_timestamp ldms_transaction_timestamp_get(ldms_set_t s);
 
 /**
  * \brief Get the duration of the last transaction
@@ -950,7 +953,7 @@ extern struct ldms_timestamp const *ldms_transaction_timestamp_get(ldms_set_t s)
  * \param s     The metric set handle
  * \returns ts  A pointer to a timestamp structure.
  */
-extern struct ldms_timestamp const *ldms_transaction_duration_get(ldms_set_t s);
+extern struct ldms_timestamp ldms_transaction_duration_get(ldms_set_t s);
 
 /**
  * \brief Returns TRUE if the metric set is consistent.

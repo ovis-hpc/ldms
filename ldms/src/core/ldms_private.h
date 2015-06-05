@@ -52,6 +52,12 @@
 #define _LDMS_PRIVATE_H
 #include <sys/queue.h>
 #include <ldms_xprt.h>
+#include "ovis_util/os_util.h"
+
+#define LDMS_GN_INCREMENT(_gn) do { \
+	(_gn) = __cpu_to_le64(__le64_to_cpu((_gn)) + 1); \
+} while (0)
+
 typedef struct ldms_mdef_s {
 	char *name;
 	enum ldms_value_type type;
@@ -73,16 +79,44 @@ struct ldms_data_hdr {
 	struct ldms_transaction trans;
 	uint32_t pad;
 	uint64_t gn;		/* Metric-value generation number */
-	uint64_t size;		/* Max size of data */
+	uint64_t size;		/* Max size of data */	/* FIXME: unused */
 	uint64_t meta_gn;	/* Meta-data generation number */
 };
+
+struct ldms_version {
+	uint8_t major;	/* major number */
+	uint8_t minor;	/* minor number */
+	uint8_t patch;	/* patch number */
+	uint8_t flags;	/* version flags */
+};
+
+/* 3.1.0.0 */
+#define LDMS_VERSION_MAJOR	 0x03
+#define LDMS_VERSION_MINOR	 0x01
+#define LDMS_VERSION_PATCH	 0x00
+#define LDMS_VERSION_FLAGS	 0x00
+#define LDMS_VERSION_SET(version) do {				\
+	(version).major = LDMS_VERSION_MAJOR;			\
+	(version).minor = LDMS_VERSION_MINOR;			\
+	(version).patch = LDMS_VERSION_PATCH;			\
+	(version).flags = LDMS_VERSION_FLAGS;			\
+} while (0)
+
+#define LDMS_VERSION_EQUAL(version) (				\
+	((version).major == LDMS_VERSION_MAJOR) &&		\
+	((version).minor == LDMS_VERSION_MINOR) &&		\
+	((version).patch == LDMS_VERSION_PATCH) &&		\
+	((version).flags == LDMS_VERSION_FLAGS) )
 
 struct ldms_set_hdr {
 	/* The unique metric set producer name */
 	char producer_name[LDMS_PRODUCER_NAME_MAX];
 	uint64_t meta_gn;	/* Meta-data generation number */
-	uint32_t version;	/* LDMS version number */
-	uint32_t flags;		/* Set format flags */
+	struct ldms_version version;	/* LDMS version */
+	uint8_t flags;	/* Set format flags */
+	uint8_t pad1;	/* data pad */
+	uint8_t pad2;	/* data pad */
+	uint8_t pad3;	/* data pad */
 	uint32_t card;		/* Size of dictionary (i.e. metric count). */
 	uint32_t meta_sz;	/* size of meta data in bytes */
 	uint32_t data_sz;	/* size of metric values in bytes */
@@ -102,7 +136,7 @@ struct ldms_set {
 
 static inline ldms_name_t get_instance_name(struct ldms_set_hdr *meta)
 {
-	ldms_name_t name  = (ldms_name_t)(&meta->dict[meta->card]);
+	ldms_name_t name  = (ldms_name_t)(&meta->dict[__le32_to_cpu(meta->card)]);
 	return name;
 }
 

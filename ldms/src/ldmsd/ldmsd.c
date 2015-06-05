@@ -389,7 +389,7 @@ int publish_kernel(const char *setfile)
 			ldms_log("\n");
 		}
 		ldms_log("name: '%s'\n", sh->instance_name);
-		ldms_log("size: %d\n", sh->meta_sz);
+		ldms_log("size: %d\n", __le32_to_cpu(sh->meta_sz));
 	}
 	return 0;
 #endif
@@ -1303,7 +1303,6 @@ int main(int argc, char *argv[])
 	sigaction(SIGHUP, &action, NULL);
 	sigaction(SIGINT, &action, NULL);
 	sigaction(SIGTERM, &action, NULL);
-	sigaction(SIGABRT, &action, NULL);
 
 	sigaddset(&sigset, SIGHUP);
 	sigaddset(&sigset, SIGINT);

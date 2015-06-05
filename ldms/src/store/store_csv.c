@@ -287,7 +287,8 @@ open_store(struct ldmsd_store *s, const char* container, const char *schema,
 static int
 store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
-	const struct ldms_timestamp *ts = ldms_transaction_timestamp_get(set);
+	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
+	const struct ldms_timestamp *ts = &_ts;
 	uint64_t comp_id;
 	struct csv_store_handle *s_handle;
 	s_handle = _s_handle;

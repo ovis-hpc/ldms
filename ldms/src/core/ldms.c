@@ -63,14 +63,17 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <netinet/in.h>
-#include "ldms.h"
-#include "ldms_xprt.h"
-#include "coll/rbt.h"
 #include <limits.h>
 #include <assert.h>
 #include <mmalloc/mmalloc.h>
-#include "ldms_private.h"
 #include <pthread.h>
+#include <asm/byteorder.h>
+
+#include "ovis_util/os_util.h"
+#include "ldms_private.h"
+#include "ldms.h"
+#include "ldms_xprt.h"
+#include "coll/rbt.h"
 
 #define SET_DIR_PATH "/var/run/ldms"
 static char *__set_dir = SET_DIR_PATH;
@@ -94,7 +97,7 @@ pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void __ldms_data_gn_inc(struct ldms_set *set)
 {
-	__sync_fetch_and_add(&set->data->gn, 1);
+	LDMS_GN_INCREMENT(set->data->gn);
 }
 
 struct ldms_set *__ldms_find_local_set(const char *set_name)
@@ -156,13 +159,13 @@ extern ldms_set_t ldms_set_by_name(const char *set_name)
 uint64_t ldms_set_meta_gn_get(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = _set;
-	return sd->set->meta->meta_gn;
+	return __le64_to_cpu(sd->set->meta->meta_gn);
 }
 
 uint64_t ldms_set_data_gn_get(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = _set;
-	return sd->set->data->gn;
+	return __le64_to_cpu(sd->set->data->gn);
 }
 
 static void rem_local_set(struct ldms_set *s)
@@ -534,21 +537,21 @@ int __ldms_create_set(const char *instance_name,
 		rc = ENOMEM;
 		goto out_0;
 	}
-	meta->version = LDMS_VERSION;
-	meta->meta_sz = meta_len;
+	LDMS_VERSION_SET(meta->version);
+	meta->meta_sz = __cpu_to_le32(meta_len);
 
 	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_len);
-	meta->data_sz = data_len;
-	data->size = data_len;
+	meta->data_sz = __cpu_to_le32(data_len);
+	data->size = __cpu_to_le64(data_len);
 
 	/* Initialize the metric set header */
 	if (flags & LDMS_SET_F_LOCAL)
-		meta->meta_gn = 1;
+		meta->meta_gn = __cpu_to_le64(1);
 	else
 		/* This tells ldms_update that we've never received
 		 * the remote meta data */
 		meta->meta_gn = 0;
-	meta->card = card;
+	meta->card = __cpu_to_le32(card);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 
 	ldms_name_t lname = get_instance_name(meta);
@@ -571,7 +574,7 @@ int __ldms_create_set(const char *instance_name,
 
 uint32_t __ldms_set_size_get(struct ldms_set *s)
 {
-	return s->meta->meta_sz + s->meta->data_sz;
+	return __le32_to_cpu(s->meta->meta_sz) + __le32_to_cpu(s->meta->data_sz);
 }
 
 #define LDMS_GRAIN_MMALLOC 1024
@@ -670,16 +673,16 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 		return NULL;
 	}
 
-	meta->version = LDMS_VERSION;
-	meta->card = schema->metric_count;
-	meta->meta_sz = meta_sz;
+	LDMS_VERSION_SET(meta->version);
+	meta->card = __cpu_to_le32(schema->metric_count);
+	meta->meta_sz = __cpu_to_le32(meta_sz);
 
 	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_sz);
-	meta->data_sz = schema->data_sz;
-	data->size = schema->data_sz;
+	meta->data_sz = __cpu_to_le32(schema->data_sz);
+	data->size = __cpu_to_le64(schema->data_sz);
 
 	/* Initialize the metric set header */
-	meta->meta_gn = 1;
+	meta->meta_gn = __cpu_to_le64(1);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 
 	/*
@@ -705,13 +708,13 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	size_t vd_size = 0;
 	STAILQ_FOREACH(md, &schema->metric_list, entry) {
 		/* Add descriptor to dictionary */
-		meta->dict[metric_idx] = ldms_off_(meta, vd);
+		meta->dict[metric_idx] = __cpu_to_le32(ldms_off_(meta, vd));
 
 		/* Build the descriptor */
 		vd->vd_type = md->type;
 		vd->vd_name_len = strlen(md->name) + 1;
 		strncpy(vd->vd_name, md->name, vd->vd_name_len);
-		vd->vd_data_offset = value_off;
+		vd->vd_data_offset = __cpu_to_le32(value_off);
 
 		/* Advance to next descriptor */
 		metric_idx++;
@@ -748,19 +751,19 @@ const char *ldms_set_schema_name_get(ldms_set_t _set)
 uint32_t ldms_set_card_get(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	return sd->set->meta->card;
+	return __le32_to_cpu(sd->set->meta->card);
 }
 
 extern uint32_t ldms_set_meta_sz_get(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	return sd->set->meta->meta_sz;
+	return __le32_to_cpu(sd->set->meta->meta_sz);
 }
 
 extern uint32_t ldms_set_data_sz_get(ldms_set_t _set)
 {
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	return sd->set->meta->data_sz;
+	return __le32_to_cpu(sd->set->meta->data_sz);
 }
 
 int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s)
@@ -790,15 +793,18 @@ static char *type_names[] = {
 
 static inline ldms_mdesc_t __desc_get(ldms_set_t s, int idx)
 {
-	if (idx >= 0 && idx < s->set->meta->card)
-		return ldms_ptr_(struct ldms_value_desc, s->set->meta, s->set->meta->dict[idx]);
+	if (idx >= 0 && idx < __le32_to_cpu(s->set->meta->card))
+		return ldms_ptr_(struct ldms_value_desc, s->set->meta,
+				__le32_to_cpu(s->set->meta->dict[idx]));
 	return NULL;
 }
 
 static ldms_mval_t __value_get(struct ldms_set *s, int idx)
 {
-	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta, s->meta->dict[idx]);
-	return ldms_ptr_(union ldms_value, s->data, desc->vd_data_offset);
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,
+			__le32_to_cpu(s->meta->dict[idx]));
+	return ldms_ptr_(union ldms_value, s->data,
+			__le32_to_cpu(desc->vd_data_offset));
 }
 
 void ldms_print_set_metrics(ldms_set_t _set)
@@ -811,13 +817,18 @@ void ldms_print_set_metrics(ldms_set_t _set)
 	printf("--------------------------------\n");
 	printf("schema: '%s'\n", get_schema_name(sd->set->meta)->name);
 	printf("instance: '%s'\n", get_instance_name(sd->set->meta)->name);
-	printf("metadata size : %" PRIu32 "\n", sd->set->meta->meta_sz);
-	printf("    data size : %" PRIu32 "\n", sd->set->meta->data_sz);
-	printf("  metadata gn : %" PRIu64 "\n", sd->set->meta->meta_gn);
-	printf("      data gn : %" PRIu64 "\n", sd->set->data->gn);
-	printf("         card : %" PRIu32 "\n", sd->set->meta->card);
+	printf("metadata size : %" PRIu32 "\n",
+		__le32_to_cpu(sd->set->meta->meta_sz));
+	printf("    data size : %" PRIu32 "\n",
+		__le32_to_cpu(sd->set->meta->data_sz));
+	printf("  metadata gn : %" PRIu64 "\n",
+		(uint64_t)__le64_to_cpu(sd->set->meta->meta_gn));
+	printf("      data gn : %" PRIu64 "\n",
+		(uint64_t)__le64_to_cpu(sd->set->data->gn));
+	printf("         card : %" PRIu32 "\n",
+		__le32_to_cpu(sd->set->meta->card));
 	printf("--------------------------------\n");
-	for (i = 0; i < sd->set->meta->card; i++) {
+	for (i = 0; i < __le32_to_cpu(sd->set->meta->card); i++) {
 		vd = __desc_get(sd, i);
 		v = __value_get(sd->set, i);
 		printf("  %32s[%4s] = ", vd->vd_name, type_names[vd->vd_type]);
@@ -829,28 +840,28 @@ void ldms_print_set_metrics(ldms_set_t _set)
 			printf("%hhd\n", v->v_s8);
 			break;
 		case LDMS_V_U16:
-			printf("%4hu\n", v->v_u16);
+			printf("%4hu\n", __le16_to_cpu(v->v_u16));
 			break;
 		case LDMS_V_S16:
-			printf("%hd\n", v->v_s16);
+			printf("%hd\n", __le16_to_cpu(v->v_s16));
 			break;
 		case LDMS_V_U32:
-			printf("%8u\n", v->v_u32);
+			printf("%8u\n", __le32_to_cpu(v->v_u32));
 			break;
 		case LDMS_V_S32:
-			printf("%d\n", v->v_s32);
+			printf("%d\n", __le32_to_cpu(v->v_s32));
 			break;
 		case LDMS_V_U64:
-			printf("%" PRIu64 "\n", v->v_u64);
+			printf("%" PRIu64 "\n", (uint64_t)__le64_to_cpu(v->v_u64));
 			break;
 		case LDMS_V_S64:
-			printf("%" PRId64 "\n", v->v_s64);
+			printf("%" PRId64 "\n", (int64_t)__le64_to_cpu(v->v_s64));
 			break;
 		case LDMS_V_F32:
-			printf("%.2f", v->v_f);
+			printf("%.2f", (float)__le32_to_cpu(v->v_f));
 			break;
 		case LDMS_V_D64:
-			printf("%.2f", v->v_d);
+			printf("%.2f", (double)__le64_to_cpu(v->v_d));
 			break;
 		}
 	}
@@ -959,27 +970,31 @@ void ldms_metric_user_data_set(ldms_set_t s, int i, uint64_t u)
 {
 	ldms_mdesc_t desc = __desc_get(s, i);
 	if (desc)
-		desc->vd_user_data = u;
+		desc->vd_user_data = __cpu_to_le64(u);
 }
 
 uint64_t ldms_metric_user_data_get(ldms_set_t s, int i)
 {
 	ldms_mdesc_t desc = __desc_get(s, i);
 	if (desc)
-		return desc->vd_user_data;
+		return __le64_to_cpu(desc->vd_user_data);
 	return (uint64_t)-1;
 }
 
 ldms_mval_t ldms_metric_get(ldms_set_t s, int i)
 {
-	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta, s->set->meta->dict[i]);
-	return ldms_ptr_(union ldms_value, s->set->data, desc->vd_data_offset);
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
+			__le32_to_cpu(s->set->meta->dict[i]));
+	return ldms_ptr_(union ldms_value, s->set->data,
+			__le32_to_cpu(desc->vd_data_offset));
 }
 
 void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
 {
-	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta, s->set->meta->dict[i]);
-	ldms_mval_t mv = ldms_ptr_(union ldms_value, s->set->data, desc->vd_data_offset);
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
+			__le32_to_cpu(s->set->meta->dict[i]));
+	ldms_mval_t mv = ldms_ptr_(union ldms_value, s->set->data,
+			__le32_to_cpu(desc->vd_data_offset));
 
 	switch (desc->vd_type) {
 	case LDMS_V_U8:
@@ -988,21 +1003,21 @@ void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
 		break;
 	case LDMS_V_U16:
 	case LDMS_V_S16:
-		mv->v_u16 = v->v_u16;
+		mv->v_u16 = __cpu_to_le16(v->v_u16);
 		break;
 	case LDMS_V_U32:
 	case LDMS_V_S32:
-		mv->v_u32 = v->v_u32;
+		mv->v_u32 = __cpu_to_le32(v->v_u32);
 		break;
 	case LDMS_V_U64:
 	case LDMS_V_S64:
-		mv->v_u64 = v->v_u64;
+		mv->v_u64 = __cpu_to_le64(v->v_u64);
 		break;
 	case LDMS_V_F32:
-		mv->v_f = v->v_f;
+		mv->v_f = __cpu_to_le32(v->v_f);
 		break;
 	case LDMS_V_D64:
-		mv->v_d = v->v_d;
+		mv->v_d = __cpu_to_le64(v->v_d);
 		break;
 	default:
 		return;
@@ -1032,7 +1047,7 @@ void ldms_metric_set_u16(ldms_set_t s, int i, uint16_t v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_u16 = v;
+		mv->v_u16 = __cpu_to_le16(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1041,7 +1056,7 @@ void ldms_metric_set_s16(ldms_set_t s, int i, int16_t v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_s16 = v;
+		mv->v_s16 = __cpu_to_le16(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1050,7 +1065,7 @@ void ldms_metric_set_u32(ldms_set_t s, int i, uint32_t v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_u32 = v;
+		mv->v_u32 = __cpu_to_le32(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1059,7 +1074,7 @@ void ldms_metric_set_s32(ldms_set_t s, int i, int32_t v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_s32 = v;
+		mv->v_s32 = __cpu_to_le32(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1068,7 +1083,7 @@ void ldms_metric_set_u64(ldms_set_t s, int i, uint64_t v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_u64 = v;
+		mv->v_u64 = __cpu_to_le64(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1077,7 +1092,7 @@ void ldms_metric_set_s64(ldms_set_t s, int i, int64_t v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_s64 = v;
+		mv->v_s64 = __cpu_to_le64(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1086,7 +1101,7 @@ void ldms_metric_set_float(ldms_set_t s, int i, float v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_f = v;
+		mv->v_f = __cpu_to_le32(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1095,7 +1110,7 @@ void ldms_metric_set_double(ldms_set_t s, int i, double v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_d = v;
+		mv->v_d = __cpu_to_le64(v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1118,56 +1133,56 @@ uint16_t ldms_metric_get_u16(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_u16;
+		return __le16_to_cpu(mv->v_u16);
 }
 
 int16_t ldms_metric_get_s16(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_s16;
+		return __le16_to_cpu(mv->v_s16);
 }
 
 uint32_t ldms_metric_get_u32(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_u32;
+		return __le32_to_cpu(mv->v_u32);
 }
 
 int32_t ldms_metric_get_s32(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_s32;
+		return __le32_to_cpu(mv->v_s32);
 }
 
 uint64_t ldms_metric_get_u64(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_u64;
+		return __le64_to_cpu(mv->v_u64);
 }
 
 int64_t ldms_metric_get_s64(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_s64;
+		return __le64_to_cpu(mv->v_s64);
 }
 
 float ldms_metric_get_float(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_f;
+		return __le32_to_cpu(mv->v_f);
 }
 
 double ldms_metric_get_double(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
-		return mv->v_d;
+		return __le64_to_cpu(mv->v_d);
 }
 
 int ldms_transaction_begin(ldms_set_t s)
@@ -1177,8 +1192,8 @@ int ldms_transaction_begin(ldms_set_t s)
 	struct timeval tv;
 	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
 	(void)gettimeofday(&tv, NULL);
-	dh->trans.ts.sec = tv.tv_sec;
-	dh->trans.ts.usec = tv.tv_usec;
+	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
+	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
 	return 0;
 }
 
@@ -1188,26 +1203,34 @@ int ldms_transaction_end(ldms_set_t s)
 	struct ldms_data_hdr *dh = sd->set->data;
 	struct timeval tv;
 	(void)gettimeofday(&tv, NULL);
-	dh->trans.dur.sec = tv.tv_sec - dh->trans.ts.sec;
-	dh->trans.dur.usec = tv.tv_usec - dh->trans.ts.usec;
-	dh->trans.ts.sec = tv.tv_sec;
-	dh->trans.ts.usec = tv.tv_usec;
+	dh->trans.dur.sec = __cpu_to_le32(tv.tv_sec - __le32_to_cpu(dh->trans.ts.sec));
+	dh->trans.dur.usec = __cpu_to_le32(tv.tv_usec - __le32_to_cpu(dh->trans.ts.usec));
+	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
+	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
 	dh->trans.flags = LDMS_TRANSACTION_END;
 	return 0;
 }
 
-struct ldms_timestamp const *ldms_transaction_timestamp_get(ldms_set_t s)
+struct ldms_timestamp ldms_transaction_timestamp_get(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
-	return &dh->trans.ts;
+	struct ldms_timestamp ts = {
+		.sec = __le32_to_cpu(dh->trans.ts.sec),
+		.usec = __le32_to_cpu(dh->trans.ts.usec),
+	};
+	return ts;
 }
 
-struct ldms_timestamp const *ldms_transaction_duration_get(ldms_set_t s)
+struct ldms_timestamp ldms_transaction_duration_get(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
 	struct ldms_data_hdr *dh = sd->set->data;
-	return &dh->trans.dur;
+	struct ldms_timestamp ts = {
+		.sec = __le32_to_cpu(dh->trans.dur.sec),
+		.usec = __le32_to_cpu(dh->trans.dur.usec),
+	};
+	return ts;
 }
 
 int ldms_set_is_consistent(ldms_set_t s)
