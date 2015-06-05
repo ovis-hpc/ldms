@@ -104,7 +104,7 @@ fi
 LDMSD_LOCAL_SOCK=metric_socket
 
 # Space/comma separated list of metric sets to load at startup
-METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib"
+METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil2,procnetdev,sysclassib"
 #METRIC_SETS=""
 
 # Sample intervals to be used on a per-sampler basis else the DEFAULT_COLLECTION_INTERVAL will be used
@@ -119,7 +119,7 @@ METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,syscl
 
 DEFAULT_COLLECTION_INTERVAL=20000000
 NODE_COLLECTION_OFFSET=0
-METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib"
+METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil2,procnetdev,sysclassib"
 
 
 

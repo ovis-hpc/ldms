@@ -63,6 +63,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 #define PROC_FILE "/proc/interrupts"
 static char *procfile = PROC_FILE;
@@ -73,13 +74,13 @@ static ldms_metric_t *metric_table;
 static ldmsd_msg_log_f msglog;
 static int nprocs;
 static uint64_t comp_id;
-static uint64_t counter;
 
 static ldms_set_t get_set()
 {
 	return set;
 }
 
+LDMS_JOBID_GLOBALS;
 
 static int getNProcs(char buf[]){
 	int nproc = 0;
@@ -111,7 +112,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMS_LDEBUG,"Could not open the interrupts file '%s'...exiting\n",
+		msglog(LDMS_LERROR,"Could not open the interrupts file '%s'\n",
 				procfile);
 		return ENOENT;
 	}
@@ -126,6 +127,8 @@ static int create_metric_set(const char *path)
 	tot_data_sz = 0;
 
 	metric_count = 0;
+	LDMS_SIZE_JOBID_METRIC(procinterrupts,meta_sz,tot_meta_sz,
+		data_sz,tot_data_sz,metric_count,rc,msglog);
 	fseek(mf, 0, SEEK_SET);
 
 	//first line is the cpu list
@@ -181,6 +184,7 @@ static int create_metric_set(const char *path)
 	 * Process the file again to define all the metrics.
 	 */
 	int metric_no = 0;
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
 	fseek(mf, 0, SEEK_SET);
 	//first line is the cpu list
 	s = fgets(lbuf, sizeof(lbuf), mf);
@@ -229,7 +233,10 @@ err:
 /**
  * \brief Configuration
  *
- * - config procinterrupts component_id <value>
+ * - config procinterrupts component_id <value> set=<setname> with_jobid=<bool>
+ *     setname     The set name.
+ *     bool        include jobid in set or not.
+ 
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -239,6 +246,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id = strtol(value, NULL, 0);
+
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
 	value = av_value(avl, "set");
 	if (value)
@@ -263,9 +272,11 @@ static int sample(void)
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
+
+	LDMS_JOBID_SAMPLE(v,metric_table,metric_no);
+
 	//first line is the cpu list
 	s = fgets(lbuf, sizeof(lbuf), mf);
-
 	while(s){
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -311,6 +322,8 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+
+	LDMS_JOBID_TERM;
 }
 
 
@@ -318,6 +331,7 @@ static const char *usage(void)
 {
 	return  "config name=procinterrupts component_id=<comp_id> set=<setname>\n"
 		"    comp_id     The component id value.\n"
+		LDMS_JOBID_DESC
 		"    setname     The set name.\n";
 }
 

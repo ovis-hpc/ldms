@@ -108,6 +108,18 @@ static int rolltype;
 /** Interval to check for passing the record or byte count limits. */
 #define ROLL_LIMIT_INTERVAL 60
 
+static struct column_step {
+	int begin;
+	int end;
+	int step;
+} cs = {0,0,0};
+
+
+/* help for column output orders */
+#define ORDERTYPES \
+"                     forward: metric columns ordered as added in sampler.\n" \
+"                     reverse: columns reverse of order added in sampler.\n" \
+"                     alnum: sorted per man page (not implemented)\n"
 
 static ldmsd_msg_log_f msglog;
 static pthread_t rothread;
@@ -119,9 +131,11 @@ static pthread_t rothread;
 
 /*
  * store_csv - csv compid, value pairs UNLESS id_pos is specified.
- * In that case, either only the first/last (0/1) metric's comp id
- * will be used. First/last is determined by order in the store,
- * not the order in ldms_ls (probably reversed).
+ * In that case, two options for which metric's comp id
+ * will be used. 0 = last metric added to the sampler,
+ * 1 = first metric added to the sampler (order because of the inverse mvec).
+ * Interpretation has slightly changed becuase of the sequence options but
+ * the values of 0/1  and which metric have not.
  */
 
 struct csv_store_handle {
@@ -261,34 +275,37 @@ static void* rolloverThreadInit(void* m){
 		int tsleep;
 		switch (rolltype) {
 		case 1:
-		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
-		  break;
+			tsleep = (rollover < MIN_ROLL_1) ?
+				 MIN_ROLL_1 : rollover;
+			break;
 		case 2: {
-		  time_t rawtime;
-		  struct tm *info;
+				time_t rawtime;
+				struct tm *info;
 
-		  time( &rawtime );
-		  info = localtime( &rawtime );
-		  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
-		  tsleep = 86400 - secSinceMidnight + rollover;
-		  if (tsleep < MIN_ROLL_1){
-		    /* if we just did a roll then skip this one */
-		    tsleep+=86400;
-		  }
-		}
-		  break;
+				time( &rawtime );
+				info = localtime( &rawtime );
+				int secSinceMidnight = info->tm_hour*3600 + 
+					info->tm_min*60 + info->tm_sec;
+				tsleep = 86400 - secSinceMidnight + rollover;
+				if (tsleep < MIN_ROLL_1){
+				/* if we just did a roll then skip this one */
+					tsleep+=86400;
+				}
+			}
+			break;
 		case 3:
-		  if (rollover < MIN_ROLL_RECORDS)
-		    rollover = MIN_ROLL_RECORDS;
-		  tsleep = ROLL_LIMIT_INTERVAL;
-		  break;
+			if (rollover < MIN_ROLL_RECORDS)
+				rollover = MIN_ROLL_RECORDS;
+			tsleep = ROLL_LIMIT_INTERVAL;
+			break;
 		case 4:
-		  if (rollover < MIN_ROLL_BYTES)
-		    rollover = MIN_ROLL_BYTES;
-		  tsleep = ROLL_LIMIT_INTERVAL;
-		  break;
+			if (rollover < MIN_ROLL_BYTES)
+				rollover = MIN_ROLL_BYTES;
+			tsleep = ROLL_LIMIT_INTERVAL;
+			break;
 		default:
-		  break;
+			tsleep = 60;
+			break;
 		}
 		sleep(tsleep);
 		handleRollover();
@@ -342,6 +359,30 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			return EINVAL;
 	}
 
+	rvalue = av_value(avl, "sequence");
+	cs.step = 1; //reverse is the default for historical reasons (mvec causes the metrics to be reversed)
+	if (rvalue){
+		switch (rvalue[0]) {
+		case 'f':
+			if (strcmp(rvalue,"forward")==0) {
+				cs.step = -1;
+			}
+			break;
+		case 'a':
+			if (strcmp(rvalue,"alnum")==0) {
+				msglog(LDMS_LERROR,"store_csv sequence alnum"
+					" unsupported. using reverse.\n");
+			}
+			/* fallthru */
+		default:
+			if (strcmp(rvalue,"reverse")!=0) {
+				msglog(LDMS_LERROR,"store_csv sequence=reverse"
+					" assumed. %s unknown\n",rvalue);
+			}
+			break;
+		}
+	}
+
 	pthread_mutex_lock(&cfg_lock);
 	if (root_path)
 		free(root_path);
@@ -380,8 +421,11 @@ static const char *usage(void)
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
-		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
-		"                     (Optional default use all compid)\n";
+		"         - id_pos    Use only one comp_id either first metric added to the sampler (1) or last added (0)\n"
+		"                     (Optional default use all compid)\n"
+		"         - sequence  Determine the metric column ordering:\n"
+		ORDERTYPES
+		;
 }
 
 /*
@@ -403,6 +447,25 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 	return s_handle->ucontext;
 }
 
+static
+void get_loop_limits(int num_metrics) {
+	switch (cs.step) {
+	case 1:
+		cs.begin = 0;
+		cs.end = num_metrics;
+		break;
+	case -1:
+		cs.begin = num_metrics - 1;
+		cs.end = -1;
+		break;
+	default:
+		msglog(LDMS_LERROR, "store_csv sequence bug in loop (%d)\n",
+			cs.step);
+		cs.begin = 0;
+		cs.end = 0;
+	}
+}
+
 static int print_header(struct csv_store_handle *s_handle,
 			ldms_mvec_t mvec)
 {
@@ -422,17 +485,18 @@ static int print_header(struct csv_store_handle *s_handle,
 	   retaining usec as a separate field */
 	fprintf(fp, "#Time, Time_usec");
 
-	int num_metrics = ldms_mvec_get_count(mvec);
+	int num_metrics = ldms_mvec_get_count(mvec); 
+	get_loop_limits(num_metrics);
 
 	if (id_pos < 0) {
-		for (i = 0; i < num_metrics; i++) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 		}
 	} else {
 		fprintf(fp, ", CompId");
-		for (i = 0; i < num_metrics; i++) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s", name);
 		}
@@ -597,10 +661,12 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
 		ts->sec, ts->usec, ts->usec);
 
-	int num_metrics = ldms_mvec_get_count(mvec);
+	/* mvec comes to the store as the inverse of how they added to the sampler which is also the inverse of ldms_ls -l display */
+	int num_metrics = ldms_mvec_get_count(mvec); 
+	get_loop_limits(num_metrics);
 	if (id_pos < 0){
 		int i, rc;
-		for (i = 0; i < num_metrics; i++) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			comp_id = ldms_get_user_data(mvec->v[i]);
 			rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 				     comp_id, ldms_get_u64(mvec->v[i]));
@@ -625,7 +691,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			else
 				s_handle->byte_count += rc;
 		}
-		for (i = 0; i < num_metrics; i++) {
+		for (i = cs.begin; i != cs.end; i += cs.step) {
 			rc = fprintf(s_handle->file, ", %" PRIu64, ldms_get_u64(mvec->v[i]));
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",

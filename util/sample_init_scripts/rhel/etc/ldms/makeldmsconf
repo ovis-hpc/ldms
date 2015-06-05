@@ -28,7 +28,7 @@ platform:
 		TOPHOST=aries \
 		NODESUFFIX=-ib0 \
 		SKIPGW=1 \
-		METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib" \
+		METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil2,procnetdev,sysclassib" \
 		$(prefix)/etc/ldms/ldms-two-level-config >  $(prefix)/etc/sysconfig/ldms-aggd.conf
 
 

@@ -29,6 +29,11 @@ ldmsd_LDFLAGS = $(AM_LDFLAGS) @LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
 		-ldl
 ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@ $(SSL_INCLUDES)
 
+# make sym links for aggd scripting support
+install-exec-hook:
+	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsd ldms-aggd
+	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsctl ldmsaggctl
+
 if ENABLE_YAML
 ldmsd_LDFLAGS += -lyaml
 ldmsd_CFLAGS += -DENABLE_YAML

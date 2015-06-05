@@ -56,6 +56,7 @@
 #include <sys/queue.h>
 #include <netinet/in.h>
 #include <coll/rbt.h>
+#include <ovis_util/rmaninfo.h>
 #include "config.h"
 
 #ifdef __cplusplus
@@ -249,6 +250,12 @@ int ldms_init(size_t max_size);
  *  \return 0 on success
  */
 const char * ldms_pedigree();
+
+/*
+ * Get the ldmsd resource manager singleton instance.
+ * This instance is NULL until ldms_init succeeds.
+ */
+extern resource_info_manager ldms_get_rim();
 
 /**
  * \brief Take a reference on a transport
@@ -486,6 +493,7 @@ static inline ldms_metric_t *ldms_mvec_get_metrics(ldms_mvec_t mvec)
 #define LDMS_STR_WRAP(NAME) #NAME,
 #define LDMS_LWRAP(NAME) LDMS_L ## NAME,
 
+/* a command line alias of always is QUIET for back compatibility. */
 #define LOGLEVELS(WRAP) \
 	WRAP (DEBUG) \
 	WRAP (INFO) \
@@ -498,10 +506,15 @@ typedef enum {
 	LOGLEVELS(LDMS_LWRAP)
 } loglevels_t;
 
-/* array of strings matching the loglevels enum */
+/* array of strings matching the loglevels enum. null terminated. */
 extern const char* loglevels_names[];
 
+/* convert strings to array index value. QUIET is
+  accepted as an alias of ALWAYS for documentation back compatibility.
+  \returns the log level, or -1 if unrecognized string given.
+*/
 int ldms_str_to_level(const char *level_s);
+int ldms_level_to_syslog(int level);
 
 typedef void (*ldms_log_fn_t)(int level, const char *fmt, ...);
 

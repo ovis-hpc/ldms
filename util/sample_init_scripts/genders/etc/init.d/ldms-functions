@@ -1,0 +1,223 @@
+#
+# functions for ldmsd and ldms-aggd
+# These may depend on variables defined in the respective $DAEMON.conf files
+
+
+config_from_gender() {
+	# reformat : -> spc; 1st / to =; & to , .
+	oldIFS=$IFS
+	IFS=:
+	for i in $1; do
+		x="$x `echo $i |sed -e 's%/%=%' -e 's%&%,%g'`"
+	done
+	if ! test -z $oldIFS; then
+		IFS=$oldIFS
+	else
+		unset IFS
+		# unset and the empty string for ifs are not the same
+	fi
+	echo $x
+}
+
+initusage()
+{
+	echo $"Usage: $0 {start|stop|restart|status} [flags]
+        Additional flags: "
+        cat << EOT >&2 
+	-v  verbose
+EOT
+}
+
+echoq()
+{
+        if [[ $VERBOSE != "-v" ]]; then
+                return;
+        fi
+        echo $@;
+}
+
+cleanup_ldmsctl()
+{
+        echoq "Cleaning up any leftover ldmsctl processes owned by $USER..."
+        if [ -n "`pgrep -u $USER $LDMSCTL`" ] ; then
+            echoq "/usr/bin/killall -u $USER -q $LDMSCTL"
+            killall -u $USER -q $LDMSCTL
+            RETVAL=$?
+            if [ $RETVAL -eq 1 ]; then echoq "No leftover $LDMSCTL to kill.";
+            elif [ $RETVAL -eq 0 ]; then echoq "$LDMSCTL processes were killed."; fi
+        fi
+}
+
+cleanup_ldmsaggctl()
+{
+        echoq "Cleaning up any leftover ldmsaggctl processes owned by $USER..."
+        if [ -n "`pgrep -u $USER $LDMSAGGCTL`" ] ; then
+            echoq "/usr/bin/killall -u $USER -q $LDMSAGGCTL"
+            killall -u $USER -q $LDMSAGGCTL
+            RETVAL=$?
+            if [ $RETVAL -eq 1 ]; then echoq "No leftover $LDMSAGGCTL to kill.";
+            elif [ $RETVAL -eq 0 ]; then echoq "$LDMSAGGCTL processes were killed."; fi
+        fi
+}
+
+cleanup_files()
+{
+        echoq "Cleaning up PID and LOCK files..."
+        [[ -n $pidfile ]] && rm -f $pidfile
+        [[ -n $lockfile ]] && rm -f $lockfile
+        sleep 1
+        [[ -n $LDMSD_LOCAL_SOCK_DIR ]] && test -d $LDMSD_LOCAL_SOCK_DIR && rm_sock_dir $LDMSD_LOCAL_SOCK_DIR
+        [[ -n $LDMSCTL_SOCK_DIR ]] && test -d $LDMSCTL_SOCK_DIR && rm_sock_dir $LDMSCTL_SOCK_DIR
+}
+
+cleanup_agg_files()
+{
+        echoq "Cleaning up aggregator PID and LOCK files..."
+        [[ -n $pidfile ]] && rm -f $pidfile
+        [[ -n $lockfile ]] && rm -f $lockfile
+        sleep 1
+        [[ -n $LDMSAGGD_LOCAL_SOCK_DIR ]] && test -d $LDMSAGGD_LOCAL_SOCK_DIR && rm_sock_dir $LDMSAGGD_LOCAL_SOCK_DIR
+        [[ -n $LDMSAGGCTL_SOCK_DIR ]] && test -d $LDMSAGGCTL_SOCK_DIR && rm_sock_dir $LDMSAGGCTL_SOCK_DIR
+}
+
+rh_status() {
+	echoq "status -p $pidfile $DAEMON"
+	[[ -n $pidfile ]] && status -p $pidfile $DAEMON || return 2
+	RETVAL=$?
+	echoq "In rh_status: status returned $RETVAL"
+	return $RETVAL
+}
+
+rh_status_q() {
+        rh_status >/dev/null 2>&1
+	RETVAL=$?
+	echoq "rh_status returned $RETVAL"
+	return $RETVAL
+}
+
+rm_sock_dir() {
+	# arg 1 should be the dir to clean up and remove
+        if [ "$(ls -A $$1)" ]; then
+                rm -f $1/*
+        fi
+        rmdir $1
+}
+
+# rm_ldmsctl_sock_dir() {
+#         if [ "$(ls -A $LDMSCTL_SOCK_DIR)" ]; then
+#                 rm -f $LDMSCTL_SOCK_DIR/*
+#         fi
+#         rmdir $LDMSCTL_SOCK_DIR
+# }
+
+
+# Start sampler plugins, using the set of samplers from genders
+# on each host. nt based selection
+start_ldmsd_plugins () {
+	echoq "In start_ldms_plugins"
+	if [[ -z $LDMSCTL ]]; then
+		echoq "Failed. no LDMSCTL defined."
+		return 1;
+	fi
+#	sleep 30
+	DO_CTL="$LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK"
+	for i in $(eval echo ${METRIC_SETS} | tr ":;'\`" "\n"); do
+		eval interval='$'"NODE_INTERVAL_${metric_set}"
+		if test -z $interval ; then
+			interval=$NODE_COLLECTION_INTERVAL
+		fi
+		eval offset='$'"NODE_OFFSET_${metric_set}"
+		if test -z $offset ; then
+			offset=$NODE_COLLECTION_OFFSET
+		fi
+		eval extraconfig='$'"NODE_CONFIG_${i}"
+		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$MYHOSTNAME/$i $extraconfig"
+		ARGS_START="name=$i interval=$interval offset=$offset"
+		echoq "Loading <${i}>"
+		{ echo load name=$metric_set | $DO_CTL ; } && 
+		{ echo config $ARGS_CONFIG | $DO_CTL ; } &&
+		{ echo start $ARGS_START | $DO_CTL ; }
+	done
+	return $?
+}
+
+start_add_hosts () {
+	# This isn't quite right if someone makes a node-name based
+	# exception, but we don't want to reparse the whole ldmsd.conf
+	# file for each host. If the user leaves genders undefined
+	# and uses global settings in the .conf, this works right.
+	# Node-specific exceptions should be coded in genders.
+	DO_CTL="$LDMSAGGCTL -S $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
+	for n in $NODELIST; do
+		nPORT=`nodeattr $NODEATTRFILE -v $n ldmsd_port`
+		if test -z $nPORT; then
+			nPORT=$NODE_PORT
+		fi
+		nXPRT=`nodeattr $NODEATTRFILE -v $n ldmsd_xprt`
+		if test -z $nXPRT; then
+			nXPRT=$NODE_LDMSD_TRANSPORT
+		fi
+		nHOST=`nodeattr $NODEATTRFILE -v $n ldmsd_host`
+		if test -z $nHOST; then
+			nHOST=$n
+		fi
+		nSETS=`nodeattr $NODEATTRFILE -v $n ldmsd_metric_sets`
+		if test -z $nSETS; then
+			nSETS=$METRIC_SETS
+		fi
+		for i in $(eval echo $nSETS | tr ":" "\n"); do
+			stmp="$nHOST/$i,$stmp"
+		done
+		SETS=`echo $stmp | sed -e 's/,$//'`
+
+                CMD="echo add host=$nHOST type=active interval=$AGG_COLLECTION_INTERVAL offset=$AGG_COLLECTION_OFFSET xprt=$nXPRT port=$nPORT sets=$SETS";
+		echoq $CMD;
+                eval $CMD |  $DO_CTL
+        done
+
+}
+
+# start stores, for aggregators.
+# this needs work. in particular, ${METRIC_SOCKET} is from
+# some prior userspace work and we need to move the choice of
+# stores into the data files as with add_hosts
+start_stores () {
+	if test -z $LDMSCTL ; then
+			echo "No ldmsctl defined... Exiting"
+			failure
+			echo
+			exit
+	fi
+	DO_CTL="$LDMSAGGCTL -S $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
+	if test -z $NODELIST; then
+		echo "No nodes defined... Exiting"
+		failure
+		echo
+		exit
+	fi
+	if test -z $STORES; then
+		echo "No stores defined... Exiting"
+		failure
+		echo
+		exit
+	fi
+
+	# Make directory to store into (store will fail if this doesn't exist)
+	# then add all metric sets to all stores.
+	mkdir -p $STORE_PATH
+	for i in $(eval echo $STORES | tr ":;'\`" "\n"); do
+		eval extraconfig='$'"AGG_CONFIG_${i}"
+		ARGS_CONFIG="name=$i path=$STORE_PATH $extraconfig"
+		echo load name=$i | $DO_CTL
+		echo config $ARGS_CONFIG | $DO_CTL
+		for i in $ALL_METRIC_SETS ; do
+			ARGS_STORE="name=$i comp_type=node set=$i container=$i"
+			echo store $ARGS_STORE | $DO_CTL
+		done
+
+	done
+}
+
+#export -f start_ldms_plugins start_add_hosts start_stores
+export start_ldmsd_plugins start_add_hosts start_stores
+

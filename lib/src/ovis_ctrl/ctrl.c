@@ -170,13 +170,14 @@ void ctrl_close(struct ctrlsock *sock)
 }
 
 #define BUFFER_OVERFLOWS_ALLOWED 0
+#define MAXBUF 512 /* max error strerror output we want */
 
 #if BUFFER_OVERFLOWS_ALLOWED
 static char msg_buf[LDMS_MSG_MAX]; // Brandt changed from 4096 to support large adds
 static char arg[LDMS_MSG_MAX]; // Brandt changed from 1024 to support large adds
 
 int ctrl_request(struct ctrlsock *sock, int cmd_id,
-		 struct attr_value_list *avl, char *err_str)
+		 struct attr_value_list *avl, char *err_str, size_t err_str_sz)
 {
 	TF();
 	int rc;
@@ -190,14 +191,31 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 		strcat(msg_buf, arg);
 	}
 	strcat(msg_buf, "\n");
+	char buf[MAXBUF];
 	rc = send_req(sock, msg_buf, strlen(msg_buf)+1);
 	if (rc < 0) {
-		sprintf(err_str, "Error %d sending request.\n", rc);
+		int emine = errno;
+#ifdef _GNU_SOURCE
+		const char *emsg = strerror_r(emine,buf,MAXBUF);
+#else
+		const char *emsg = buf;
+		strerror_r(emine,buf,MAXBUF);
+#endif
+		snprintf(err_str, err_str_sz,
+			 "Error %d sending request. %s\n", emine, emsg);
 		return -1;
 	}
 	rc = recv_rsp(sock, msg_buf, sizeof(msg_buf));
 	if (rc <= 0) {
-		sprintf(err_str, "Error %d receiving reply.\n", rc);
+		int emine = errno;
+#ifdef _GNU_SOURCE
+		const char *emsg = strerror_r(emine,buf,MAXBUF);
+#else
+		const char *emsg = buf;
+		strerror_r(emine,buf,MAXBUF);
+#endif
+		snprintf(err_str, err_str_sz,
+			 "Error %d receiving reply. %s\n", emine, emsg);
 		return -1;
 	}
 	err_str[0] = '\0';
@@ -219,7 +237,7 @@ big_dstring_t msg_buf;
 #define cat(x) bdstrcat(&msg_buf,x,DSTRING_ALL)
 
 int ctrl_request(struct ctrlsock *sock, int cmd_id,
-		 struct attr_value_list *avl, char *err_str)
+		 struct attr_value_list *avl, char *err_str, size_t err_str_sz)
 {
 	TF();
 	int rc;
@@ -241,14 +259,30 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 	}
 	cat("\n");
 	/* cast safe since passing len also */
+	char buf[MAXBUF];
 	rc = send_req(sock, (char *)bdstrval(&msg_buf), bdstrlen(&msg_buf)+1);
 	if (rc < 0) {
-		sprintf(err_str, "Error %d sending request.\n", rc);
+		int emine = errno;
+#ifdef _GNU_SOURCE
+		const char *emsg = strerror_r(emine,buf,MAXBUF);
+#else
+		const char *emsg = buf;
+		strerror_r(emine,buf,MAXBUF);
+#endif
+		snprintf(err_str, err_str_sz, "Error %d sending request. %s from %s\n",
+			 emine, emsg, (char *)bdstrval(&msg_buf));
 		return -1;
 	}
 	rc = recv_rsp(sock, (char *)bdstrval(&msg_buf), bdstrcurmaxlen(&msg_buf));
 	if (rc <= 0) {
-		sprintf(err_str, "Error %d receiving reply.\n", rc);
+		int emine = errno;
+#ifdef _GNU_SOURCE
+		const char *emsg = strerror_r(emine,buf,MAXBUF);
+#else
+		const char *emsg = buf;
+		strerror_r(emine,buf,MAXBUF);
+#endif
+		snprintf(err_str, err_str_sz, "Error %d receiving reply. %s\n", emine, emsg);
 		return -1;
 	}
 	err_str[0] = '\0';

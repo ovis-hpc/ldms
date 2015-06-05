@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ldms-all, 2.4.0, ovis-help@sandia.gov)
+AC_INIT(ldms-all, 2.4.2, ovis-help@sandia.gov)
 #fixme=--subdir
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
@@ -67,5 +67,10 @@ util/sample_init_scripts/rhel/etc/Makefile
 util/sample_init_scripts/rhel/etc/init.d/Makefile
 util/sample_init_scripts/rhel/etc/ldms/Makefile
 util/sample_init_scripts/rhel/etc/sysconfig/Makefile
+util/sample_init_scripts/genders/Makefile
+util/sample_init_scripts/genders/etc/sysconfig/Makefile
+util/sample_init_scripts/genders/etc/Makefile
+util/sample_init_scripts/genders/etc/init.d/Makefile
+
 packaging/ovis-base.spec])
 AC_OUTPUT

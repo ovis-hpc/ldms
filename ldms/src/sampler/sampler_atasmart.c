@@ -75,6 +75,7 @@
 #include <atasmart.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 #define NFIELD 8
 static char *fieldname[NFIELD] = {
@@ -98,6 +99,8 @@ static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
 static char **disknames;
 static int num_disks;
+
+LDMS_JOBID_GLOBALS;
 
 struct ldms_atasmart *smarts;
 
@@ -201,6 +204,11 @@ static int create_metric_set(char *setname)
 	int ret;
 	struct atatsmart_set_size size;
 	size.metric_count = size.tot_data_sz = size.tot_meta_sz = 0;
+
+	size_t meta_sz = 0, data_sz = 0;
+	LDMS_SIZE_JOBID_METRIC(sampler_atasmart,meta_sz,size.tot_meta_sz,
+		data_sz,size.tot_data_sz,size.metric_count,ret,msglog);
+
 	/* Create the array of SkDisks */
 	smarts = calloc(num_disks, sizeof(struct ldms_atasmart));
 	if (!smarts)
@@ -209,20 +217,23 @@ static int create_metric_set(char *setname)
 	/* Get the total meta and data sizes */
 	int i = 0;
 	for (i = 0; i < num_disks; i++) {
-		if (ret = sk_disk_open(disknames[i], &smarts[i].d)) {
+		ret = sk_disk_open(disknames[i], &smarts[i].d);
+		if (ret) {
 			msglog(LDMS_LDEBUG,"atasmart: Failed to create SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err0;
 		}
 
-		if (ret = sk_disk_smart_read_data(smarts[i].d)) {
+		ret = sk_disk_smart_read_data(smarts[i].d);
+		if (ret) {
 			msglog(LDMS_LDEBUG,"atasmart: Failed to read data SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
 			goto err0;
 		}
 
 		ret = sk_disk_smart_parse_attributes(smarts[i].d,
-				atasmart_get_disk_info, (void *) &size);
+			(SkSmartAttributeParseCallback)atasmart_get_disk_info,
+			(void *) &size);
 		if (ret) {
 			msglog(LDMS_LDEBUG,"atasmart: Failed to get size of SkDisk '%s'."
 					"Error %d.\n", disknames[i], ret);
@@ -244,6 +255,8 @@ static int create_metric_set(char *setname)
 
 	/* Add metrics to the set */
 	int metric_no = 0;
+	LDMS_ADD_JOBID_METRIC(metric_table, metric_no, set, ret, err2, comp_id);
+
 	for (i = 0; i < num_disks; i++) {
 		ret = sk_disk_smart_parse_attributes(smarts[i].d,
 			(SkSmartAttributeParseCallback)atasmart_add_metric,
@@ -275,6 +288,7 @@ static const char *usage(void)
 	return  "config name=sampler_atasmart component_id=<comp_id> \n"
 		"	set=<setname> disks=<disknames>\n"
 		"    comp_id     The component id value.\n"
+		LDMS_JOBID_DESC
 		"    setname     The set name.\n"
 		"    disknames   The comma-separated list of disk names,\n"
 		"		 e.g., /dev/sda,/dev/sda1.\n";
@@ -324,6 +338,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		comp_id = strtoull(value, NULL, 0);
 	else
 		return -1;
+
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
 	value = av_value(avl, "set");
 	if (value)
@@ -388,8 +404,9 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 
 static int sample(void)
 {
-	int ret;
+	int ret = 0;
 	int metric_no;
+	union ldms_value v;
 
 	if (!set) {
 		msglog(LDMS_LDEBUG,"atasmart: plugin not initialized\n");
@@ -398,6 +415,7 @@ static int sample(void)
 	ldms_begin_transaction(set);
 
 	metric_no = 0;
+	LDMS_JOBID_SAMPLE(v, metric_table, metric_no);
 	int i;
 	for (i = 0; i < num_disks; i++) {
 		ret = sk_disk_smart_parse_attributes(smarts[i].d,
@@ -413,9 +431,6 @@ static int sample(void)
 err:
 	ldms_end_transaction(set);
 	return ret;
-out:
-	ldms_end_transaction(set);
-	return 0;
 }
 
 static void term(void)
@@ -432,6 +447,8 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+
+	LDMS_JOBID_TERM;
 }
 
 

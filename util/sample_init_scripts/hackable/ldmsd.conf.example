@@ -62,14 +62,14 @@ fi
 LDMSD_LOCAL_SOCK=metric_socket
 
 # Space/comma seperated list of metric sets to load at startup
-DEFAULT_METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil,procnetdev,sysclassib"
+DEFAULT_METRIC_SETS="meminfo,vmstat,procnfs,lustre2_client,procstatutil2,procnetdev,sysclassib"
 
 # Sample intervals to be used on a per-sampler basis else the DEFAULT_COLLECTION_INTERVAL will be used
 # Intervals are in micro-seconds (e.g. 5000000 = 5 sec sampling interval)        
 #meminfo_INTERVAL=1000000
 #vmstat_INTERVAL=1000000
 #procnfs_INTERVAL=1000000
-#procstatutil_INTERVAL=1000000
+#procstatutil2_INTERVAL=1000000
 #procnetdev_INTERVAL=1000000
 #lustre2_client_INTERVAL=1000000
 #sysclassib_INTERVAL=1000000
@@ -112,8 +112,8 @@ start_ldms_plugins () {
                                 echo load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}
                                 echo config name=$metric_set component_id=$COMPONENT_ID set=$HOSTNAME/$metric_set ports=qib0.1 metric_type=0 | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}
                                 echo start name=$metric_set interval="${!interval}" offset=${NODE_COLLECTION_OFFSET} | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}
-                        elif [[ $metric_set = "procstatutil" ]]; then
-                                echoq "In procstatutil: load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
+                        elif [[ $metric_set = "procstatutil2" ]]; then
+                                echoq "In procstatutil2: load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK}"
                                 { echo load name=$metric_set | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
                                 { echo config name=${metric_set} component_id=${COMPONENT_ID} set=${HOSTNAME}/${metric_set} metrics_type=1 | $LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; } &&
                                 { echo start name=${metric_set} interval="${!interval}" offset=${NODE_COLLECTION_OFFSET} | ${LDMSCTL} -S $LDMSD_LOCAL_SOCK_DIR/${LDMSD_LOCAL_SOCK} ; }

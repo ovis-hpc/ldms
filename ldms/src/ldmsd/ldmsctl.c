@@ -117,7 +117,7 @@ void usage(char *argv[])
 	exit(1);
 }
 
-int handle_help(char *kw, char *err_str)
+int handle_help(char *kw, char *err_str, size_t err_str_sz)
 {
 	printf("help\n"
 	       "   - Print this menu.\n"
@@ -235,80 +235,81 @@ void cleanup()
 		ctrl_close(ctrl_sock);
 }
 
-int handle_usage(char *kw, char *err_str)
+int handle_usage(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_LIST_PLUGINS, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_LIST_PLUGINS, av_list, err_str, err_str_sz);
 }
 
-int handle_plugin_load(char *kw, char *err_str)
+int handle_plugin_load(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_LOAD_PLUGIN, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_LOAD_PLUGIN, av_list, err_str, err_str_sz);
 }
 
-int handle_loglevel(char *kw, char *err_str)
+int handle_loglevel(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_LOGLEVEL, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_LOGLEVEL, av_list, err_str, err_str_sz);
 }
 
-int handle_plugin_term(char *kw, char *err_str)
+int handle_plugin_term(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_TERM_PLUGIN, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_TERM_PLUGIN, av_list, err_str, err_str_sz);
 }
 
-int handle_plugin_config(char *kw, char *err_str)
+int handle_plugin_config(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_CFG_PLUGIN, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_CFG_PLUGIN, av_list, err_str, err_str_sz);
 }
 
-int handle_sampler_start(char *kw, char *err_str)
+int handle_sampler_start(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_START_SAMPLER, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_START_SAMPLER, av_list, err_str, err_str_sz);
 }
 
-int handle_sampler_stop(char *kw, char *err_str)
+int handle_sampler_stop(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_STOP_SAMPLER, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_STOP_SAMPLER, av_list, err_str, err_str_sz);
 }
 
-int handle_host_add(char *kw, char *err_str)
+int handle_host_add(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_ADD_HOST, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_ADD_HOST, av_list, err_str, err_str_sz);
 }
 
-int handle_update_standby(char *kw, char *err_str)
+int handle_update_standby(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_UPDATE_STANDBY, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_UPDATE_STANDBY, av_list, err_str, err_str_sz);
 }
 
-int handle_store(char *kw, char *err_str)
+int handle_store(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_STORE, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_STORE, av_list, err_str, err_str_sz);
 }
 
-int handle_info(char *kw, char *err_str)
+int handle_info(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_INFO_DAEMON, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_INFO_DAEMON, av_list, err_str, err_str_sz);
 }
 
-int handle_version(char *kw, char *err_str)
+int handle_version(char *kw, char *err_str, size_t err_str_sz)
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
+	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str, err_str_sz);
 }
 
-int handle_quit(char *kw, char *err_str)
+int handle_quit(char *kw, char *err_str, size_t err_str_sz)
 {
 	(void) kw;
 	(void) err_str;
+	(void) err_str_sz;
 	exit(0);
 	return 0;
 }
 
 struct kw {
 	char *token;
-	int (*action)(char *kw, char *err_str);
+	int (*action)(char *kw, char *err_str, size_t err_str_sz);
 };
 
-int handle_nxt_token(char *kw, char *err_str);
+int handle_nxt_token(char *kw, char *err_str, size_t err_str_sz);
 struct kw keyword_tbl[] = {
 	{ "?", handle_help },
 	{ "add", handle_host_add },
@@ -336,7 +337,7 @@ static int kw_comparator(const void *a, const void *b)
 }
 
 int nxt_kw;
-int handle_nxt_token(char *word, char *err_str)
+int handle_nxt_token(char *word, char *err_str, size_t err_str_sz)
 {
 	struct kw key;
 	struct kw *kw;
@@ -346,7 +347,7 @@ int handle_nxt_token(char *word, char *err_str)
 		     sizeof(*kw), kw_comparator);
 	if (kw) {
 		nxt_kw++;
-		return kw->action(key.token, err_str);
+		return kw->action(key.token, err_str, err_str_sz);
 	}
 	printf("Uncrecognized keyword '%s'.", key.token);
 	return EINVAL;
@@ -417,7 +418,7 @@ int main(int argc, char *argv[])
 		kw = bsearch(&key, keyword_tbl, ARRAY_SIZE(keyword_tbl),
 			     sizeof(*kw), kw_comparator);
 		if (kw)
-			(void)kw->action(key.token, err_str);
+			(void)kw->action(key.token, err_str, sizeof(err_str));
 		else
 			printf("Unrecognized keyword '%s'.\n", key.token);
 		if (err_str[0] != '\0')

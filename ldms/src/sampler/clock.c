@@ -59,14 +59,10 @@
 #include <sys/errno.h>
 // extra stuff not needed.
 #include <stdlib.h> // needed for strtoull processing of comp_id
-//#include <stdio.h>
-//#include <stdarg.h>
-//#include <sys/types.h>
-//#include <time.h>
-//#include <pthread.h>
 #include <string.h> // needed for memcpy in ldms.h unused feature
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 static uint64_t counter = 0;
 ldms_set_t set = NULL;
@@ -74,6 +70,8 @@ ldms_metric_t *metric_table;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
 const char *metric_name = "null_tick";
+
+LDMS_JOBID_GLOBALS;
 
 static int create_metric_set(const char *path)
 {
@@ -84,6 +82,9 @@ static int create_metric_set(const char *path)
 	metric_count = 0;
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
+
+	LDMS_SIZE_JOBID_METRIC(clock,meta_sz,tot_meta_sz,
+		data_sz,tot_data_sz,metric_count,rc,msglog);
 
 	/* set size calculation. */
 	rc = ldms_get_metric_size(metric_name, LDMS_V_U64, &meta_sz, &data_sz);
@@ -108,6 +109,9 @@ static int create_metric_set(const char *path)
 	 */
 
 	int metric_no = 0;
+
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
+
 	metric_table[metric_no] =
 		ldms_add_metric(set, metric_name, LDMS_V_U64);
 	if (!metric_table[metric_no]) {
@@ -125,9 +129,10 @@ static int create_metric_set(const char *path)
 /**
  * \brief Configuration
  *
- * config name=clock component_id=<comp_id> set=<setname>
+ * config name=clock component_id=<comp_id> set=<setname> with_jobid=<bool>
  *     comp_id     The component id value.
  *     setname     The set name.
+ *	bool		include jobid in set or not.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -136,6 +141,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id = strtoull(value, NULL, 0);
+
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
 	value = av_value(avl, "set");
 	if (value)
@@ -156,7 +163,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMS_LDEBUG,"clock: plugin not initialized\n");
+		msglog(LDMS_LERROR,"clock: plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -164,6 +171,9 @@ static int sample(void)
 	v.v_u64 = counter;
 	counter++;
 	rc = ldms_begin_transaction(set);
+
+	LDMS_JOBID_SAMPLE(v,metric_table,metric_no);
+
 	if (rc)
 		return rc;
 	ldms_set_metric(metric_table[metric_no], &v);
@@ -178,12 +188,15 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+
+	LDMS_JOBID_TERM;
 }
 
 static const char *usage(void)
 {
 	return  "config name=clock component_id=<comp_id> set=<setname>\n"
 		"    comp_id     The component id value.\n"
+		LDMS_JOBID_DESC
 		"    setname     The set name.\n";
 }
 

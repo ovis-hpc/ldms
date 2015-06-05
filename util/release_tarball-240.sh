@@ -6,9 +6,11 @@ if ! test -f m4/Ovis-top.m4; then
 fi
 REPO_DIR=`pwd`
 OUTPUT_DIR=`pwd`/Release
-BRANCH_NAME=master
+
+BRANCH_NAME=TOSS-v2.4.2
+
 # Will get this from git in the future
-VERSION=2.4.0
+VERSION=2.4.2
 
 if ! test -f libevent-2.0.21-stable.tar.gz; then
 	echo "do not need a copy of libevent-2.0.21-stable.tar.gz in $REPO_DIR"

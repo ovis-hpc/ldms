@@ -1,2 +1,11 @@
+2015-05-24 Benjamin A. Allan <baallan@sandia.gov>
+* Cleanup of man pages.
+	See new 'man ldms' for more.
+* Addition of  jobid sampler for and with_jobid metric option for other samplers.
+* Addition of option for ordering csv columns as declared in sampler instead of reversed.
+	Default order remains reversed.
+* Better argument checking for ldmsd misconfiguration cases.
+* Support for syslog reporting in addition to log files.
+
 2014-07-15 Benjamin A. Allan <baallan@sandia.gov>
 	* starting changelog: really need one to keep track of cherries picked.

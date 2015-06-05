@@ -67,9 +67,9 @@
 static ldms_set_t set;
 static FILE *mf;
 static ldms_metric_t *metric_table;
+static size_t metric_table_sz = 0;
 static ldmsd_msg_log_f msglog;
 
-static int numcpu_plusone;
 static uint64_t comp_id = UINT64_MAX;
 
 #undef CHECK_PROCSTATUTIL_TIMING
@@ -100,9 +100,9 @@ static ldms_set_t get_set()
 /*
  * Depending on the kernel version, not all of the rows will
  * necessarily be used. Since new columns are added at the end of the
- * line, this should work across all kernels up to 3.5.
+ * line, this should work across all kernels up to at least 3.5.
  */
-static int ncoresuffix = 3; //used for getting sum names from per core names (below)
+static int ncoresuffix = 3; //used for getting sum names from per core names (#%d)
 static char *metric_name_fmt[] = {
 	"user#%d",
 	"nice#%d",
@@ -130,7 +130,7 @@ static int create_metric_set(const char *path)
 
 	mf = fopen("/proc/stat", "r");
 	if (!mf) {
-		msglog(LDMS_LDEBUG,"Could not open the /proc/stat file.\n");
+		msglog(LDMS_LERROR,"Could not open the /proc/stat file.\n");
 		return ENOENT;
 	}
 
@@ -169,7 +169,7 @@ static int create_metric_set(const char *path)
 			    (procstatutil_metrics_type == PROCSTATUTIL_METRICS_BOTH)){
 				int len = (strlen(metric_name_fmt[column]) - ncoresuffix + 1) < PROCSTATUTIL_NAME_MAX ?
 					(strlen(metric_name_fmt[column]) - ncoresuffix + 1) : PROCSTATUTIL_NAME_MAX;
-				snprintf(metric_name, len, metric_name_fmt[column++]);
+				snprintf(metric_name, len, metric_name_fmt[column++],0);
 			} else {
 				snprintf(metric_name, PROCSTATUTIL_NAME_MAX,
 					 metric_name_fmt[column++], cpu_count);
@@ -212,6 +212,7 @@ static int create_metric_set(const char *path)
 	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
+	metric_table_sz = metric_count;
 
 	int cpu_no;
 	ldms_metric_t m;
@@ -222,7 +223,7 @@ static int create_metric_set(const char *path)
 		for (column = 0; column < column_count; column++) {
 			int len = (strlen(metric_name_fmt[column]) - ncoresuffix + 1) < PROCSTATUTIL_NAME_MAX ?
 				(strlen(metric_name_fmt[column]) - ncoresuffix + 1) : PROCSTATUTIL_NAME_MAX;
-			snprintf(metric_name, len, metric_name_fmt[column]);
+			snprintf(metric_name, len, metric_name_fmt[column],0);
 			m = ldms_add_metric(set, metric_name, LDMS_V_U64);
 			if (!m)
 				goto err;
@@ -257,6 +258,9 @@ static int create_metric_set(const char *path)
         if (!tv_nsec_metric_handle2)
 	  goto err;
 #endif
+	if (cpu_count >0) {
+		msglog(LDMS_LINFO,"procstatutil: Monitoring %d cpus.\n",cpu_count);
+	}
 
 	return 0;
  err:
@@ -274,6 +278,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc = EINVAL;
+	msglog(LDMS_LERROR,"=======================================\n");
+	msglog(LDMS_LERROR,"procstatutil plugin is deprecated.\n"
+			" Use procstatutil2 plugin instead.\n");
+	msglog(LDMS_LERROR,"=======================================\n");
 
 	value = av_value(avl, "component_id");
 	if (!value)
@@ -355,6 +363,11 @@ static int sample(void)
 		for (token = strtok_r(NULL, " \t\n", &saveptr); token;
 				token = strtok_r(NULL, " \t\n", &saveptr)) {
 			uint64_t v = strtoul(token, NULL, 0);
+			if (metric_table_sz <= metric_no) {
+				msglog(LDMS_LERROR,"procstatutil: /proc/stat "
+					"format grew. Crashing soon. new core?"
+					"\n");
+			}
 			ldms_set_u64(metric_table[metric_no], v);
 			metric_no++;
 		}

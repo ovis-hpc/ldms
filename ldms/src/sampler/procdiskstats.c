@@ -5,10 +5,12 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 
 
@@ -26,6 +28,7 @@ static FILE *mf;
 static ldms_metric_t *metric_table;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
+LDMS_JOBID_GLOBALS;
 
 static int create_metric_set(const char *path)
 {
@@ -38,13 +41,12 @@ static int create_metric_set(const char *path)
 	char metric_name[128];
 	char name[64];
 	int i, junk1, junk2;
-	int num_device = 0;
 	ldms_metric_t m;
 
 	mf = fopen(procfile, "r");
 
 	if(!mf) {
-		msglog(LDMS_LDEBUG,"Could not open the diskstats file '%s'...exiting\n",
+		msglog(LDMS_LERROR,"Could not open the diskstats file '%s'\n",
 			 procfile);
 		return ENOENT;
 	}
@@ -53,6 +55,7 @@ static int create_metric_set(const char *path)
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
+	LDMS_SIZE_JOBID_METRIC(procdiskstats,meta_sz,tot_meta_sz,data_sz,tot_data_sz,metric_count,rc,msglog);
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -96,6 +99,9 @@ static int create_metric_set(const char *path)
 	 */
 	metric_no = 0;
 
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
+
+
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -134,17 +140,19 @@ static int create_metric_set(const char *path)
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        char *value;
+	char *value;
 
-        value = av_value(avl, "component_id");
-        if (value)
-                comp_id = strtol(value, NULL, 0);
+	value = av_value(avl, "component_id");
+	if (value)
+		comp_id = strtol(value, NULL, 0);
 
-        value = av_value(avl, "set");
-        if (value)
-                create_metric_set(value);
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
-        return 0;
+	value = av_value(avl, "set");
+	if (value)
+		create_metric_set(value);
+
+	return 0;
 }
 
 
@@ -155,7 +163,6 @@ static int sample(void)
 	char *s;
 	char name[64];
 	char lbuf[256];
-	char metric_name[128];
 	int junk1, junk2;
 	union ldms_value v[NFIELD];
 
@@ -166,6 +173,10 @@ static int sample(void)
 	ldms_begin_transaction(set);
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
+
+	union ldms_value jv;
+	LDMS_JOBID_SAMPLE(jv,metric_table,metric_no);
+
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -208,13 +219,15 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+	LDMS_JOBID_TERM;
 }
 
 static const char *usage(void)
 {
         return  "config name=procdiskstats component_id=<comp_id> set=<setname>\n"
-                "    comp_id     The component id value.\n"
-                "    setname     The set name.\n";
+			"    comp_id     The component id value.\n"
+			LDMS_JOBID_DESC
+			"    setname     The set name.\n";
 }
 
 static struct ldmsd_sampler procdiskstats_plugin = {

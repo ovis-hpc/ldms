@@ -67,6 +67,7 @@
 #include <coll/rbt.h>
 #include <limits.h>
 #include <assert.h>
+#include <syslog.h>
 #ifdef ENABLE_MMAP
 #include <ftw.h>
 #endif
@@ -76,6 +77,7 @@
 
 const char* loglevels_names[] = {
 	LOGLEVELS(LDMS_STR_WRAP)
+	NULL
 };
 
 #if USE_TF
@@ -105,8 +107,26 @@ int ldms_str_to_level(const char *level_s)
 			return i;
 		}
 	}
+	if (strcmp(level_s,"QUIET") == 0) {
+		return LDMS_LALWAYS; /* old usage support */
+	}
 
 	return -1;
+}
+
+int ldms_level_to_syslog(int level)
+{
+	switch(level) {
+#define MAPLOG(X,Y) case LDMS_L##X: return LOG_##Y
+	MAPLOG(DEBUG,DEBUG);
+	MAPLOG(INFO,INFO);
+	MAPLOG(ERROR,ERR);
+	MAPLOG(CRITICAL,CRIT);
+	MAPLOG(ALWAYS,ALERT);
+	default:
+		return LOG_ERR;
+	}
+#undef MAPLOG	
 }
 
 static int set_comparator(void *a, void *b)
@@ -825,11 +845,17 @@ int __ldms_create_set(const char *set_name, size_t meta_sz, size_t data_sz,
 
 #define LDMS_GRAIN_MMALLOC 1024
 
+/* shared singleton repository for named items in all threads */
+static resource_info_manager ldms_rim = NULL;
+
 int ldms_init(size_t max_size)
 {
 	TF();
 	size_t grain = LDMS_GRAIN_MMALLOC;
 	if (mm_init(max_size, grain))
+		return -1;
+	ldms_rim = create_resource_info_manager();
+	if (!ldms_rim)
 		return -1;
 	return 0;
 }
@@ -850,6 +876,11 @@ ldms_pedigree()
 	"configure args: " LDMS_CONFIG_ARGS "\n";
 	return pedigree;
 
+}
+
+resource_info_manager ldms_get_rim()
+{
+	return ldms_rim;
 }
 
 int ldms_create_set(const char *set_name,

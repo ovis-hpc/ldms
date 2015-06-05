@@ -1,0 +1,296 @@
+.\" Manpage for LDMS genders entries
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "1 May 2015" "v2.4.2" "LDMS genders-based daemon configuration man page"
+
+.SH NAME
+ldms-genders - gender definitions for the LDMS genders-based boot scripts
+
+.SH DESCRIPTION
+To provide flexible yet coherent data, scheduling, and connection data across an LDMS daemon hierarchy, the genders facility is supported. Genders provides LDMS with whole-cluster configuration from a single file shared by all cluster nodes. The genders options are applied at daemon startup; ldmsd and ldms-aggd must be restarted before changes to /etc/genders will be applied.
+
+When init.d/ldmsd is started, the configuration files are read in the following order:
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 1.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  1." 4.2
+.\}
+/etc/sysconfig/ldmsd.conf
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 2.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  2." 4.2
+.\}
+libgenders database (normally /etc/genders)
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 3.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  3." 4.2
+.\}
+/etc/sysconfig/ldmsd
+.RE
+
+When init.d/ldms-aggd is started, the two additional configuration files are read after those for ldmsd:
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 4.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  4." 4.2
+.\}
+/etc/sysconfig/ldms-aggd.conf
+.RE
+.sp
+.RS 4
+.ie n \{\
+\h'-04' 5.\h'+01'\c
+.\}
+.el \{\
+.sp -1
+.IP "  5." 4.2
+.\}
+/etc/sysconfig/ldms-aggd
+.RE
+
+The sysconfig/ldms*.conf files specify overriding values for most LDMS daemon parameters in
+experimental or diagnostic situations.  In most cases it is less error prone to update the genders
+file instead. If a value is not specified in sysconfig/ldms*.conf, it is taken from the genders database.
+If a necessary value is also not specified in the genders database, sysconfig/ldmsd and sysconfig/ldms-aggd provide defaults.
+.PP
+
+.SH LDMS daemon network layout
+
+LDMS does not provide network discovery based configuration, as it is not scalable. The following genders allow specification of where to start data collection and how arbitrarily deep aggregation hierarchies are structured.
+
+.PP
+.nf
+
+Gender                  What it does if defined for a node
+--------------          ----------------------------------------
+ldmsd                   enables ldmsd sampling daemon
+ldmsd_host=H            defines host for the daemon's data server:
+                        typically, the name of the node on a fast net.
+ldmsd_port=P            defines port number for the data server
+ldmsd_xprt=X            defines protocol for data server connections.
+                        typically, one of sock, rdma, ugni.
+ldmsd_metric_sets=LIST  defines data plugins to load : separated list;
+                        may vary for node types or individual nodes.
+ldmsd_idbase=IDMIN      defines the least component_id for a node type.
+                        For a class of node names differing only in an 
+                        integer ISUFFIX, component_id is IDMIN+ISUFFIX.
+                        component_id of 0 is reserved;
+                        ensure IDMIN+ISUFFIX>0.
+ldmsd_dbg=LEVEL         defines daemon internal logging level, among
+                        DEBUG,INFO,ERROR,CRITICAL,QUIET.
+
+ldmsaggd=LIST           enables ldmsaggd, gathering from nodes in LIST.
+                        LIST is : separated, containing hostnames, or
+                        literals BOOTNODELIST, or CLIENTOFLIST or 
+                        AGGCLIENTOFLIST. Below see "Node Lists" below.
+ldmsaggd_port=N         defines port for aggregator's data server.
+ldmsaggd_host=H         defines hostname for aggregator's data server.
+ldmsaggd_xprt=X         defines protocol for aggregators data server.
+ldmsaggd_dbg=LEVEL      defines daemon internal logging level among
+                        DEBUG,INFO,ERROR CRITICAL,QUIET.
+ldmsaggd_clientof=H     defines n-th level aggregation host.
+## not yet supported:
+ldmsaggd_fail=H         defines aggregation host to take over if this
+                        node fails.
+
+.br
+.PP
+.fi
+
+.SH  Data Sampler Configuration
+
+These control what exactly is collected by defining key parts of the config command sent to the individual samplers. See "Plugin Config" below for the definition of PARAMLIST.
+
+
+.PP
+.nf
+Gender                          What it does if defined for a node
+--------------                  ----------------------------------------
+ldmsd_SUFFIX=PARAMLIST          defines SUFFIX plugin config arguments
+# for example:
+ldmsd_procnetdev=PARAMLIST      defines config flags of procnetdev 
+ldmsd_sysclassib=PARAMLIST      defines config flags of sysclassib
+
+.br
+.PP
+.fi
+
+.SH   Sampler and Transport Scheduling
+
+These control when data is collected/moved. Defaults are applied to any sampler that is not more specifically defined with one of the SUFFIX forms.  Times are in microseconds. If default and offset are not coordinated across the cluster, data loss and network contention may result.
+
+.PP
+.nf
+
+Gender                          What it does if defined for a node
+--------------                  ---------------------------------------
+ldmsd_interval_default=ISAMP    defines sampling interval time
+ldmsd_offset_default=OSAMP      defines offset from the time nearest
+                                a whole number multiple of interval.
+ldmsd_interval_SUFFIX=IPLUG     as ISAMP, but for sets named by SUFFIX
+ldmsd_offset_SUFFIX=OPLUG       as OSAMP, but for sets named by SUFFIX
+ldmsaggd_interval_default=IAGG  as ISAMP, but for aggregator schedule.
+ldmsaggd_offset_default=OAGG    as OSAMP, but for aggregator schedule.
+## not yet supported
+#ldmsaggd_interval_SUFFIX=IAGGS as ISAMP, but for aggregating set SUFFIX
+#ldmsaggd_offset_SUFFIX=OAGGS   as OSAMP, but for aggregating set SUFFIX
+
+.br
+.PP
+.fi
+
+.SH Storage Plugin Configuration
+.PP
+.nf
+
+These control how storage is done with config commands.
+See "Plugin Config" below for the definition of PARAMLIST.
+
+Gender                          What it does if defined for a node
+--------------                  -----------------------------------
+ldmsaggd_stores=LIST            defines store plugins to load as a :
+                                separated list.
+ldmsaggd_SUFFIX=PARAMLIST       defines config for store SUFFIX.
+# for example:
+ldmsaggd_store_csv=PARAMLIST    defines config flags for store_csv.
+
+.br
+.PP
+.fi
+
+.SH Plugin Config
+.PP
+The normal gender attribute syntax is:
+.BR
+key1=value,key2=value
+where value may not contain whitespace, = or comma characters.
+.PP
+The ldms configuration list syntax is "key=value key=value ..."
+where value may contain commas.
+.PP
+The ldmsd plugin configuration syntax mapped to gender attribute
+syntax is:
+.BR
+ldmsd_$S=$C/value[:$C/value]*
+.PP
+where:
+.nf
+$S is the plugin name.
+$C is the name of a plugin parameter.
+: separates additional parameter assignments.
+The first / after the = or a : separates a parameter name
+from its value.
+The & is used to separate list values rather than commas.
+.fi
+
+.PP
+This syntax reconciles the genders file comma/=/whitespace rules with the
+LDMS key=comma-separated-value configuration parameter syntax.
+Parameters become :-separated keys with &-separated-values lists.
+Any / preceding a : except the first is taken as a literal character.
+
+This translation mode is used for  sampler, storage, and transport
+plugin configuration where needed.
+
+.SH Node Lists
+.PP
+There are 3 special values for managing groups of LDMS data sources:
+BOOTNODELIST, CLIENTOFLIST, and AGGCLIENTOFLIST.
+.PP
+The keyword BOOTNODELIST is replaced with the list of nodes with the gender "bootnode" having a value matching the name of the aggregator host.  If there are no nodes at all defined to have the "bootnode" gender, then BOOTNODELIST is taken as the set of all nodes with the
+gender "ldmsd".
+
+.PP
+If something other than boot nodes is the basis of aggregation, the layout can be specified. E.g., a set of mon nodes aggregating subsets of compute nodes:
+.nf
+   mon[1-4]: ldmsaggd=CLIENTOFLIST
+   compute[1-300] ldmsd_clientof=mon1
+   compute[301-600] ldmsd_clientof=mon2
+   compute[601-900] ldmsd_clientof=mon3
+   compute[901-1200] ldmsd_clientof=mon4
+.fi
+.PP
+CLIENTOFLIST is computed as:
+.BR
+   nodeattr -c ldmsd_clientof=H
+.PP
+on each mon host H.
+.PP
+To run 2nd and higher level aggregators, if we wanted that in-platform data
+for applications seeking a global performance view:
+.nf
+   montop ldmsaggd=AGGCLIENTOFLIST
+   mon[1-4] ldmsaggd_clientof=montop
+.fi
+.PP
+AGGCLIENTOFLIST is computed as:
+.nf
+   nodeattr -c ldmsaggd_clientof=montop
+.fi
+.PP
+on the montop host.
+
+
+.SH NOTES
+In the current implementation, only one ldms-aggd per node is managed. Second elvel aggregators cannot occupy the same node as first level aggregators.
+
+
+.SH BUGS
+.PP
+Some features listed not yet supported, as marked.
+.PP
+Hand-made entries in ldmsd.conf and ldms-aggd.conf are likely to yield silently surprising results.
+
+.SH EXAMPLES
+.PP
+Here is a small test cluster, ataco, in ldmsd genders, with a single aggregator running on atacologin4.
+.nf
+
+# ldmsd on 411 over rdma at 1Hz
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd,ldmsd_port=411,ldmsd_xprt=rdma,ldmsd_interval_default=1000000,ldmsd_offset_default=0,ldmsd_dbg=ERROR
+# hostname on fast net is $HOSTNAME-ib0
+atacoadmin1,ataco[1-4],ataco-login[1-4] ldmsd_host=%n-ib0
+# gateway node hostname on fast net is $HOSTNAME-ib2
+atacogw[1-2] ldmsd_host=%n-ib2
+# aggregator, on same port 411 because using 
+# slow net, not fast net. Enable log INFO level
+ataco-login4 ldmsaggd=BOOTNODELIST,ldmsaggd_port=411,ldmsaggd_host=%n,ldmsaggd_xprt=sock,ldmsaggd_interval_default=1000000,ldmsaggd_offset_default=200000,ldmsaggd_dbg=INFO
+# compute nodes have component_id 1-4
+ataco[1-4] ldmsd_idbase=0
+# login nodes have component_id 101-104
+ataco-login[1-4] ldmsd_idbase=100
+# gateway nodes have component_id 201-204
+ataco-gw[1-2] ldmsd_idbase=200
+# head node has component_id 301
+atacoadmin1 ldmsd_idbase=300
+# collect the works
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_metric_sets=meminfo:vmstat:procnfs:procstatutil2:procnetdev:sysclassib
+# extra config options for procstatutil2
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procstatutil2=maxcpu/16
+# extra config options for procnetdev
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procnetdev=ifaces/eth0&eth1&eth3&eth4&ib0&ib2
+
+.fi
+
+.SH SEE ALSO
+libgenders(3), ldmsd(1)
+
