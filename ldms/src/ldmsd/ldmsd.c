@@ -1467,9 +1467,7 @@ int ldmsd_get_secretword()
 int main(int argc, char *argv[])
 {
 	char *sockname = NULL;
-#ifdef ENABLE_LDMSD_TEST
-	char *config_port = NULL;
-#endif /* ENABLE_LDMSD_TEST */
+	char *inet_listener_port = NULL;
 #ifdef ENABLE_LDMSD_RCTRL
 	char *rctrl_port = NULL;
 #endif /* ENABLE_LDMSD_CTRL */
@@ -1520,12 +1518,10 @@ int main(int argc, char *argv[])
 			/* Set the SOCKNAME to listen on */
 			sockname = strdup(optarg);
 			break;
-#ifdef ENABLE_LDMSD_TEST
 		case 'p':
 			/* Set the port to listen on configuration */
-			config_port = strdup(optarg);
+			inet_listener_port = strdup(optarg);
 			break;
-#endif /* ENABLE_LDMSD_TEST */
 #ifdef ENABLE_LDMSD_RCTRL
 		case 'r':
 			rctrl_port = strdup(optarg);
@@ -1730,11 +1726,9 @@ int main(int argc, char *argv[])
 	if (ldmsd_config_init(sockname))
 		cleanup(4);
 
-#ifdef ENABLE_LDMSD_TEST
-	if (config_port)
-		if (ldmsd_inet_config_init(config_port))
+	if (inet_listener_port)
+		if (ldmsd_inet_config_init(inet_listener_port))
 			cleanup(104);
-#endif /* ENABLE_LDMSD_TEST */
 
 #ifdef ENABLE_LDMSD_RCTRL
 	if (rctrl_port)

@@ -26,10 +26,6 @@ ldms_ls_CFLAGS += -DENABLE_AUTH
 ldms_ls_LDADD += -lovis_auth
 endif
 
-if ENABLE_LDMSD_TEST
-ldmsd_CFLAGS += -DENABLE_LDMSD_TEST
-endif
-
 if ENABLE_OCM
 ldmsd_SOURCES += ldmsd_ocm.c
 ldmsd_LDFLAGS += -lcoll -locm @OCM_LIBDIR_FLAG@

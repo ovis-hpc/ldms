@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #######################################################################
 # -*- c-basic-offset: 8 -*-
 # Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
@@ -110,9 +112,9 @@ class LdmsdCmdParser(cmd.Cmd):
         cmd = "{0}{1} {2}".format(cmd_id, verb, args)
         resp = self.ctrl.talk(cmd)
         import re
-        g = re.match(r"(-*)(\d+)(.*)", resp)
-        if len(g.group(3)) > 0:
-                print g.group(3)
+        g = re.match(r"(-*)(\d+)", resp)
+        if len(resp[g.end():]) > 0:
+            print resp[g.end():]
 
     def do_source(self, arg):
         """
@@ -595,13 +597,10 @@ if __name__ == "__main__":
                                          "give both hostname and inet control port. " \
                                          "If all are given, the sockname takes the priority.")
         parser.add_argument("--sockname",
-                            default="/var/ldmsd/control",
                             help="Specify the UNIX socket used to communicate with LDMSD.")
         parser.add_argument('--host',
-                            default = "localhost",
                             help = "Hostname of ldmsd to connect to")
         parser.add_argument('--port',
-                            default = 12345,
                             help = "Inet ctrl listener port of ldmsd")
         parser.add_argument('--debug', action = "store_true",
                             help = argparse.SUPPRESS)
@@ -618,7 +617,7 @@ if __name__ == "__main__":
             cmdParser = LdmsdCmdParser(sockname = args.sockname)
         else:
             cmdParser = LdmsdCmdParser(host_port = {'host': args.host,
-                                                    'port': args.port})
+                                                    'port': int(args.port)})
 
         cmdParser.cmdloop("Welcome to the LDMSD control processor")
     except KeyboardInterrupt:

@@ -6,6 +6,11 @@ endif
 if ENABLE_ETC
 SUBDIRS += etc
 endif
+
+if ENABLE_LDMS_PYTHON
+SUBDIRS += python
+endif
+
 LDMS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 LDMS_TARBALL = $(LDMS).tar.gz
 OPV=-$(PACKAGE_VERSION)

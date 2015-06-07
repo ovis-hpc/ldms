@@ -86,7 +86,8 @@
 char myhostname[HOST_NAME_MAX+1];
 pthread_t ctrl_thread = (pthread_t)-1;
 int muxr_s = -1;
-int listener_sock = -1;
+int inet_sock = -1;
+int inet_listener = -1;
 char *sockname = NULL;
 
 int bind_succeeded;
@@ -117,8 +118,10 @@ void ldmsd_config_cleanup()
 		unlink(sockname);
 	}
 
-	if (listener_sock >= 0)
-		close(listener_sock);
+	if (inet_listener >= 0)
+		close(inet_listener);
+	if (inet_sock >= 0)
+		close(inet_sock);
 }
 
 static char replybuf[4096];
@@ -1784,7 +1787,6 @@ int ldmsd_config_init(char *name)
 	return 0;
 }
 
-#ifdef ENABLE_LDMSD_TEST
 void *inet_ctrl_thread_proc(void *args)
 {
 	struct msghdr msg;
@@ -1795,10 +1797,10 @@ void *inet_ctrl_thread_proc(void *args)
 	struct sockaddr rem_sin;
 	socklen_t addrlen;
 loop:
-	muxr_s = accept(listener_sock, &rem_sin, &addrlen);
-	if (muxr_s < 0) {
+	inet_sock = accept(inet_listener, &rem_sin, &addrlen);
+	if (inet_sock < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d failed to setting up the config "
-				"listener.\n", muxr_s);
+				"listener.\n", inet_sock);
 		goto loop;
 	}
 	do {
@@ -1812,10 +1814,10 @@ loop:
 		msg.msg_control = NULL;
 		msg.msg_controllen = 0;
 		msg.msg_flags = 0;
-		msglen = recvmsg(muxr_s, &msg, 0);
+		msglen = recvmsg(inet_sock, &msg, 0);
 		if (msglen <= 0)
 			break;
-		process_message(muxr_s, &msg, msglen);
+		process_message(inet_sock, &msg, msglen);
 	} while (1);
 	goto loop;
 	return NULL;
@@ -1830,22 +1832,22 @@ int ldmsd_inet_config_init(const char *port)
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons(atoi(port));
 
-	listener_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (listener_sock < 0) {
+	inet_listener = socket(AF_INET, SOCK_STREAM, 0);
+	if (inet_listener < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d creating socket on port "
 				"'%s'\n", errno, port);
 		return errno;
 	}
 
 	/* Bind to our public name */
-	rc = bind(listener_sock, (struct sockaddr *)&sin, sizeof(sin));
+	rc = bind(inet_listener, (struct sockaddr *)&sin, sizeof(sin));
 	if (rc < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d binding to socket on port '%s'.\n",
 						errno, port);
 		goto err;
 	}
 
-	rc = listen(listener_sock, 10);
+	rc = listen(inet_listener, 10);
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Error %d failed to setting up the config "
 				"listener.\n", rc);
@@ -1859,8 +1861,6 @@ int ldmsd_inet_config_init(const char *port)
 	}
 	return 0;
 err:
-	close(listener_sock);
+	close(inet_listener);
 	return rc;
 }
-
-#endif /* ENABLE_LDMSD_TEST */

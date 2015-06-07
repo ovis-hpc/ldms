@@ -91,8 +91,8 @@ OPTION_WITH([libevent], [LIBEVENT])
 OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])
 OPTION_WITH([ocm], [OCM])
 
-OPTION_DEFAULT_DISABLE([ldmsd-test], [ENABLE_LDMSD_TEST])
 OPTION_DEFAULT_DISABLE([ldmsd-rctrl], [ENABLE_LDMSD_RCTRL])
+OPTION_DEFAULT_ENABLE([ldms-python], [ENABLE_LDMS_PYTHON])
 
 if test -z "$ENABLE_MYSQL_TRUE"
 then
@@ -224,6 +224,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 etc/init.d/ldmsd_aggregator
 		 etc/init.d/ldmsd_sampler
 		 etc/logrotate.d/Makefile
+		 python/Makefile
+		 python/ldmsd/Makefile
 		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 ldms.spec])
