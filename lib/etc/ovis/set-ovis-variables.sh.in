@@ -1,6 +1,7 @@
 #!/bin/bash
+prefix=@prefix@
 export OVIS_HOME=@prefix@
-export OVIS_RUN_CONF=/etc/ovis/conf/ovis_conf.db
+export OVIS_RUN_CONF=@sysconfdir@/ovis/conf/ovis_conf.db
 export OVIS_WEB_ROOT=/var/www/tahoma-test/
 export OVIS_DATA=/home/ovis-data
 export OVIS_LOG=/var/log/ovis
@@ -25,7 +26,7 @@ export LDMSD_SAMPLER_PORT_LISTEN=10001
 
 export OCMD_XPORT=sock
 export OCMD_PORT=12345
-export OCMD_PEER_LIST=/etc/ovis/ocmd_peer_list
+export OCMD_PEER_LIST=$(sysconfdir)/ovis/ocmd_peer_list
 export OCMD_RECONNECT_INTERVAL=20.00
 
 export ME_XPORT=sock

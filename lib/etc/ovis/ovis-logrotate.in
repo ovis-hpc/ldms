@@ -12,7 +12,8 @@ clean_logrotate_status() {
 	mv $C $F
 }
 
-. /etc/profile.d/set-ovis-variables.sh
+prefix=@prefix@
+. @sysconfigdir@/profile.d/set-ovis-variables.sh
 
 current=`pwd`
 # Clean non existent log file entries from status file
@@ -28,7 +29,8 @@ test -x /usr/sbin/logrotate || exit 0
 cd $OVIS_LOG
 for X in ldmsd_aggregator ldmsd_sampler balerd me komondor ocmd; do
 	if [ -e $X.log ]; then
-		/usr/sbin/logrotate /etc/ovis/logrotate.d/$X
+		# sysconfdir uses prefix
+		/usr/sbin/logrotate @sysconfdir@/ovis/logrotate.d/$X
 	fi
 done
 cd $current

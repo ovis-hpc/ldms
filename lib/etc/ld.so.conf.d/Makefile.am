@@ -1,6 +1,6 @@
 install-data-local:
-	$(MKDIR_P) $(DESTDIR)/etc/ld.so.conf.d/
-	$(INSTALL_DATA) $(builddir)/ovis-ld-so.conf $(DESTDIR)/etc/ld.so.conf.d/
+	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/ld.so.conf.d/
+	$(INSTALL_DATA) $(builddir)/ovis-ld-so.conf $(DESTDIR)/$(sysconfdir)/ld.so.conf.d/
 
 uninstall-local:
-	rm -f $(DESTDIR)/etc/ld.so.conf.d/ovis-ld-so.conf
+	rm -f $(DESTDIR)/$(sysconfdir)/ovis-ld-so.conf

@@ -33,8 +33,9 @@ else
 	}
 fi
 
-. /etc/profile.d/set-ovis-variables.sh
-. /etc/ovis/ovis-functions.sh
+prefix=@prefix@
+. $(sysconfdir)/profile.d/set-ovis-variables.sh
+. $(sysconfdir)/ovis/ovis-functions.sh
 
 if [ -z $OVIS_HOME ]; then
 	OVIS_HOME=@prefix@
