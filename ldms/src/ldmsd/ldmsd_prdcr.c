@@ -312,9 +312,9 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 #ifdef ENABLE_AUTH
 		prdcr->xprt = ldms_xprt_with_auth_new(prdcr->xprt_name,
-				ldmsd_error_log, ldmsd_secret_get());
+				ldmsd_lcritical, ldmsd_secret_get());
 #else
-		prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldmsd_error_log);
+		prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldmsd_lcritical);
 #endif /* ENABLE_AUTH */
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,

@@ -95,13 +95,13 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		return;
 
 	if (!ldms_set_is_consistent(set)) {
-		ldmsd_log(LDMSD_LERROR, "Set %s is inconsistent.\n", prd_set->inst_name);
+		ldmsd_log(LDMSD_LINFO, "Set %s is inconsistent.\n", prd_set->inst_name);
 		return;
 	}
 
 	gn = ldms_set_data_gn_get(set);
 	if (prd_set->last_gn == gn) {
-		ldmsd_log(LDMSD_LERROR, "Set %s oversampled.\n", prd_set->inst_name, prd_set->last_gn);
+		ldmsd_log(LDMSD_LINFO, "Set %s oversampled.\n", prd_set->inst_name, prd_set->last_gn);
 		return;
 	}
 	prd_set->last_gn = gn;

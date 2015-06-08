@@ -113,7 +113,7 @@ void ldmsd_config_cleanup()
 	if (muxr_s >= 0)
 		close(muxr_s);
 	if (sockname && bind_succeeded) {
-		ldmsd_log(LDMSD_LCRITICAL, "LDMS Daemon deleting socket "
+		ldmsd_log(LDMSD_LINFO, "LDMS Daemon deleting socket "
 						"file %s\n", sockname);
 		unlink(sockname);
 	}

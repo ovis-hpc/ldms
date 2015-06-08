@@ -185,7 +185,7 @@ int ldmsd_rctrl_init(const char *port, const char *secretword)
 {
 	int rc = 0;
 	rctrl_t ctrl = rctrl_listener_setup("sock", port, rctrl_recv_cb,
-						secretword, ldmsd_error_log);
+						secretword, ldmsd_lerror);
 	if (!ctrl)
 		rc = errno;
 	return rc;

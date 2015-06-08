@@ -176,12 +176,21 @@ void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
 	va_end(ap);
 }
 
-void ldmsd_error_log(const char *fmt, ...)
+void ldmsd_lerror(const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
 	/* All messages from the ldms library are of ERROR level.*/
 	__ldmsd_log(LDMSD_LERROR, fmt, ap);
+	va_end(ap);
+}
+
+void ldmsd_lcritical(const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	/* All messages from the ldms library are of ERROR level.*/
+	__ldmsd_log(LDMSD_LCRITICAL, fmt, ap);
 	va_end(ap);
 }
 
@@ -210,7 +219,10 @@ const char *ldmsd_secret_get(void)
 
 void cleanup(int x)
 {
-	ldmsd_log(LDMSD_LCRITICAL, "LDMSD_ LDMS Daemon exiting...status %d\n", x);
+	int llevel = LDMSD_LINFO;
+	if (x)
+		llevel = LDMSD_LCRITICAL;
+	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d\n", x);
 	ldmsd_config_cleanup();
 	if (ldms) {
 		ldms_xprt_close(ldms);
@@ -235,18 +247,18 @@ FILE *ldmsd_open_log()
 	FILE *f;
 	f = fopen(logfile, "a");
 	if (!f) {
-		ldmsd_log(LDMSD_LCRITICAL, "Could not open the log file named '%s'\n",
+		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
 							logfile);
 		cleanup(9);
 	} else {
 		int fd = fileno(f);
 		if (dup2(fd, 1) < 0) {
-			ldmsd_log(LDMSD_LCRITICAL, "Cannot redirect log to %s\n",
+			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 							logfile);
 			cleanup(10);
 		}
 		if (dup2(fd, 2) < 0) {
-			ldmsd_log(LDMSD_LCRITICAL, "Cannot redirect log to %s\n",
+			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 							logfile);
 			cleanup(11);
 		}
@@ -1155,10 +1167,10 @@ void do_connect(struct hostspec *hs)
 	case ACTIVE:
 	case BRIDGING:
 #ifdef ENABLE_AUTH
-		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldmsd_error_log,
+		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldmsd_lcritical,
 				secretword);
 #else
-		hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_error_log);
+		hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_lcritical);
 #endif /* ENABLE_AUTH */
 		if (hs->x) {
 			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
@@ -1409,9 +1421,9 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	else
 		port_no = atoi(port_str);
 #ifdef ENABLE_AUTH
-	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_error_log, secretword);
+	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical, secretword);
 #else /* ENABLE_AUTH */
-	l = ldms_xprt_new(xprt_str, ldmsd_error_log);
+	l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
 #endif /* ENABLE_AUTH */
 	if (!l) {
 		ldmsd_log(LDMSD_LERROR, "The transport specified, "
@@ -1455,7 +1467,7 @@ int ldmsd_get_secretword()
 				"from %s.\n", LDMSD_AUTH_ENV);
 		return EINVAL;
 	}
-	secretword = ovis_auth_get_secretword(path, ldmsd_error_log);
+	secretword = ovis_auth_get_secretword(path, ldmsd_lerror);
 	if (!secretword) {
 		rc = errno;
 		return rc;
@@ -1654,12 +1666,12 @@ int main(int argc, char *argv[])
 	for (op = 0; op < ev_thread_count; op++) {
 		ev_base[op] = event_init();
 		if (!ev_base[op]) {
-			ldmsd_log(LDMSD_LCRITICAL, "Error creating an event base.\n");
+			ldmsd_log(LDMSD_LERROR, "Error creating an event base.\n");
 			cleanup(6);
 		}
 		ret = pthread_create(&ev_thread[op], NULL, event_proc, ev_base[op]);
 		if (ret) {
-			ldmsd_log(LDMSD_LCRITICAL, "Error %d creating the event "
+			ldmsd_log(LDMSD_LERROR, "Error %d creating the event "
 					"thread.\n", ret);
 			cleanup(7);
 		}
@@ -1710,7 +1722,7 @@ int main(int argc, char *argv[])
 	if (!logfile)
 		logfile = LDMSD_LOGFILE;
 
-	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon version " VERSION "\n");
+	ldmsd_log(LDMSD_LINFO, "Started LDMS Daemon version " VERSION "\n");
 
 #ifdef ENABLE_AUTH
 	if (authenticate) {
@@ -1736,7 +1748,7 @@ int main(int argc, char *argv[])
 			cleanup(4);
 #endif /* ENABLE_LDMSD_RCTRL */
 	if (ldmsd_store_init(flush_N)) {
-		ldmsd_log(LDMSD_LCRITICAL, "Could not initialize the storage subsystem.\n");
+		ldmsd_log(LDMSD_LERROR, "Could not initialize the storage subsystem.\n");
 		cleanup(7);
 	}
 
@@ -1745,7 +1757,7 @@ int main(int argc, char *argv[])
 #ifdef ENABLE_OCM
 	int ocm_rc = ldmsd_ocm_init(ldmsd_svc_type, ocm_port);
 	if (ocm_rc) {
-		ldmsd_log(LDMSD_LCRITICAL, "Error: cannot initialize OCM, rc: %d\n",
+		ldmsd_log(LDMSD_LERROR, "Error: cannot initialize OCM, rc: %d\n",
 				ocm_rc);
 		cleanup(ocm_rc);
 	}

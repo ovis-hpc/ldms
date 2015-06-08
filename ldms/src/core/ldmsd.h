@@ -517,9 +517,11 @@ extern const char *ldmsd_loglevel_names[];
 
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
 
-void ldmsd_error_log(const char *fmt, ...);
-
 enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
+
+void ldmsd_lerror(const char *fmt, ...);
+
+void ldmsd_lcritical(const char *fmt, ...);
 
 /**
  * Initialize the ldmsd_store.

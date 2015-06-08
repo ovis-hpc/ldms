@@ -1356,6 +1356,9 @@ err0:
 ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 				const char *secretword)
 {
+#ifdef DEBUG
+	log_fn("ldms_xprt [DEBUG]: Creating transport with authentication\n");
+#endif /* DEBUG */
 	int ret = 0;
 	char *libdir;
 	struct ldms_xprt *x = calloc(1, sizeof(*x));

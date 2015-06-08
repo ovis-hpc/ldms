@@ -348,8 +348,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
 	if ((e == LDMS_CONN_EVENT_ERROR) || (e == LDMS_CONN_EVENT_REJECTED)) {
-		printf("Connection failed/rejected. This might cause by "
-			"an authentication failure. See the -a option.\n");
+		printf("Connection failed/rejected.\n");
 		exit(2);
 	}
 
