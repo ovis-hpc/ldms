@@ -1831,7 +1831,7 @@ out:
  * Specify the list of hosts for the query. This option only applies to <b>-t
  * IMG</b> and <b>-t MSG</b>. When the host mask is specified, only the entries
  * matching the hosts in the list will be reported.
- *
+ * \par
  * <b>NUM_LIST</b> is the comma-separated list of numbers or ranges, e.g.
  * 1,3-5,7-10,12. No space is allowed in the list.
  *
@@ -1839,7 +1839,7 @@ out:
  * Specify the list of pattern IDs for the query. This option only applies to
  * <b>-t IMG</b> and <b>-t MSG</b>. When the pattern ID mask is specified, only
  * the entries matching the pattern IDs in the list wil be reported.
- *
+ * \par
  * <b>NUM_LIST</b> is the comma-separated list of numbers or ranges, e.g.
  * 1,3-5,7-10,12. No space is allowed in the list.
  *
@@ -1847,7 +1847,7 @@ out:
  * Specify the begin time stamp for the query. This option only applies to
  * <b>-t IMG</b> and <b>-t MSG</b>. This option will filter out the entries
  * having the time stamp before the specified beginning timestamp.
- *
+ * \par
  * <b>TS</b> can be Unix timestamp (the number of seconds since the Epoch) or
  * "yyyy-mm-dd HH:MM:SS".
  *
@@ -1855,7 +1855,7 @@ out:
  * Specify the end time stamp for the query. This option only applies to
  * <b>-t IMG</b> and <b>-t MSG</b>. This option will filter out the entries
  * having the time stamp after the specified beginning timestamp.
- *
+ * \par
  * <b>TS</b> can be Unix timestamp (the number of seconds since the Epoch) or
  * "yyyy-mm-dd HH:MM:SS".
  *
@@ -1863,16 +1863,16 @@ out:
  * OUTPUT format of the timestamp field for <b>-t MSG</b> option. The default
  * format is to follow the new syslog timestamp format (see RFC5424 section
  * 6.2.3.1 example 4) to the micro-second.
- *
+ * \par
  * The <b>FORMAT</b> string must comply the format string in <b>strftime</b>(3).
  * One frequently used format is '%s' (the number of seconds since Epoch).
  *
  * \par -v,--verbose
  * The verbose flag, which only applies to only <b>-t MSG</b> and <b>-t PTN</b>.
- *
+ * \par
  * For <b>-t MSG</b>, the verbose flag will cause <b>bquery</b> to print pattern
  * ID in the front of each output message.
- *
+ * \par
  * For <b>-t PTN</b>, the verbose flag will cause <b>bquery</b> to print count,
  * first-seen, and last-seen statistics of each pattern.
  *
