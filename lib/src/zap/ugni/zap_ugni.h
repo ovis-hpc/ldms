@@ -109,7 +109,6 @@
 #define ZAP_UGNI_MAX_BTE 8192
 
 struct zap_ugni_map {
-	/* TODO add GNI memory map here */
 	struct zap_map map;
 	gni_mem_handle_t gni_mh; /**< GNI memory handle */
 };
@@ -127,16 +126,17 @@ typedef enum zap_ugni_msg_type {
 	ZAP_UGNI_MSG_REGULAR,     /**< Regular send-receive */
 	ZAP_UGNI_MSG_RENDEZVOUS,  /**< Share zap_map */
 	ZAP_UGNI_MSG_ACCEPTED,    /**< Connection accepted */
-	ZAP_UGNI_MSG_CONN_REQ,    /**< Connection request message */
+	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
 	ZAP_UGNI_MSG_TYPE_LAST    /**< Dummy last type (for type count) */
 } zap_ugni_msg_type_t;
+
 
 static const char *__zap_ugni_msg_type_str[] = {
 	[ZAP_UGNI_MSG_NONE]        =  "ZAP_UGNI_MSG_NONE",
 	[ZAP_UGNI_MSG_REGULAR]     =  "ZAP_UGNI_MSG_REGULAR",
 	[ZAP_UGNI_MSG_RENDEZVOUS]  =  "ZAP_UGNI_MSG_RENDEZVOUS",
 	[ZAP_UGNI_MSG_ACCEPTED]    =  "ZAP_UGNI_MSG_ACCEPTED",
-	[ZAP_UGNI_MSG_CONN_REQ]    =  "ZAP_UGNI_MSG_CONN_REQ",
+	[ZAP_UGNI_MSG_CONNECT]    =  "ZAP_UGNI_MSG_CONNECT",
 	[ZAP_UGNI_MSG_TYPE_LAST]   =  "ZAP_UGNI_MSG_TYPE_LAST"
 };
 
@@ -232,15 +232,20 @@ struct zap_ugni_msg_accepted {
 	struct zap_ugni_msg_hdr hdr;
 	uint32_t inst_id; /**< inst_id of the accepter (passive side). */
 	uint32_t pe_addr; /**< peer address of the accepter (passive side). */
+	uint32_t data_len;
+	char data[0];
 };
 
 /**
- * Message for zap connection request.
+ * Message for zap connection.
  */
-struct zap_ugni_msg_conn_req {
+struct zap_ugni_msg_connect {
 	struct zap_ugni_msg_hdr hdr;
+	struct zap_version ver;
 	uint32_t inst_id; /**< inst_id of the requester (active side). */
 	uint32_t pe_addr; /**< peer address of the requester (active side). */
+	uint32_t data_len; /**< Connection data*/
+	char data[0];      /**< Size of connection data */
 };
 
 #pragma pack()
@@ -249,9 +254,11 @@ struct z_ugni_ep {
 	struct zap_ep ep;
 
 	int sock;
+	int node_id;
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;
-
+	char *conn_data;
+	size_t conn_data_len;
 	gni_ep_handle_t gni_ep;
 
 	LIST_ENTRY(z_ugni_ep) link;
