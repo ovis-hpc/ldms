@@ -69,6 +69,7 @@
 #include <endian.h>
 #include <signal.h>
 #include "coll/rbt.h"
+#include "ovis_util/os_util.h"
 
 #include "zap_sock.h"
 

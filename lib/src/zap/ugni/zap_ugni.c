@@ -70,6 +70,7 @@
 #include <errno.h>
 #include <stdarg.h>
 
+#include "ovis_util/os_util.h"
 #include "coll/rbt.h"
 
 #include "zap_ugni.h"
