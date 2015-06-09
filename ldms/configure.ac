@@ -92,7 +92,7 @@ OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])
 OPTION_WITH([ocm], [OCM])
 
 OPTION_DEFAULT_DISABLE([ldmsd-rctrl], [ENABLE_LDMSD_RCTRL])
-OPTION_DEFAULT_ENABLE([ldms-python], [ENABLE_LDMS_PYTHON])
+OPTION_DEFAULT_DISABLE([ldms-python], [ENABLE_LDMS_PYTHON])
 
 if test -z "$ENABLE_MYSQL_TRUE"
 then
@@ -199,15 +199,19 @@ AC_CHECK_LIB(coll, idx_create, [],
 dnl Reset LIBS variable.
 LIBS=""
 
+if test -z "$ENABLE_SWIG_TRUE" || test -z "$ENABLE_LDMS_PYTHON_TRUE"
+then
+	AM_PATH_PYTHON(2.6)
+	pkgpythondir="${pythondir}/ovis_ldms"
+	pkgpyexecdir="${pkgpythondir}"
+fi
+
 dnl LDMS Swig
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
 if test -z "$ENABLE_SWIG_TRUE"
 then
-	AM_PATH_PYTHON(2.6)
 	AC_PROG_SWIG
 	SWIG_PYTHON
-	pkgpythondir="${pythondir}/ovis_ldms"
-	pkgpyexecdir="${pkgpythondir}"
 fi
 
 AC_SUBST(ac_configure_args)
