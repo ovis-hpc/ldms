@@ -423,7 +423,7 @@ uint32_t bq_entry_get_ptn_id(struct bquery *q);
  *
  * \note Unlike others, this function cannot be used with ::bimgquery.
  */
-const struct bmsg *bq_entry_get_msg(struct bquery *q);
+struct bmsg *bq_entry_get_msg(struct bquery *q);
 
 /**
  * Get message reference of the current entry.

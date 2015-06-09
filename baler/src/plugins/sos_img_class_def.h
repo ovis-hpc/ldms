@@ -54,11 +54,6 @@
 #include "endian.h"
 #include "sos/sos.h"
 
-enum {
-	SOS_IMG_KEY = 0,
-	SOS_IMG_COUNT,
-};
-
 /**
  * SOS Object definition for Image SOS.
  *
@@ -68,14 +63,12 @@ enum {
  * occurrences of such pattern at timestamp x component. The fields that marked
  * with '*' are indexed.
  */
-static
-SOS_OBJ_BEGIN(sos_img_class, "BalerSOSImageClass")
-	SOS_OBJ_ATTR_WITH_KEY("ptn_id_time_comp_id", SOS_TYPE_BLOB),
-	SOS_OBJ_ATTR("count", SOS_TYPE_UINT32),
-SOS_OBJ_END(2);
+enum {
+	SOS_IMG_KEY = 0,
+	SOS_IMG_COUNT,
+};
 
 struct __attribute__ ((__packed__)) bout_sos_img_key {
-	struct sos_blob_obj_s sos_blob;
 	/* lower bytes */
 	uint32_t ptn_id;
 	uint32_t ts;

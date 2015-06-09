@@ -63,6 +63,8 @@
 
 struct bsos_wrap {
 	sos_t sos;
+	sos_schema_t schema;
+	sos_attr_t attr;
 	char *store_name;
 	char *path;
 	LIST_ENTRY(bsos_wrap) link;

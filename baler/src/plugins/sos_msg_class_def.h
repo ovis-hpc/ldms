@@ -60,51 +60,10 @@
 
 #include <sos/sos.h>
 #include "baler/btypes.h"
-
-/**
- * Get key from the message.
- */
-static
-void sos_msg_get_key(sos_attr_t attr, sos_obj_t obj, obj_key_t key)
-{
-	struct bmsg *b = SOS_TYPE_BLOB__get_fn(attr, obj);
-	obj_key_set(key, &b->ptn_id, sizeof(b->ptn_id));
-}
-
-/**
- * Set \c key corresponding to the given \c value.
- */
-static
-void sos_msg_set_key(sos_attr_t attr, void *value, obj_key_t key)
-{
-	/*
-	 * According to sos code, this function seems unnecessary.
-	 */
-	struct bmsg *b = value;
-	obj_key_set(key, &b->ptn_id, sizeof(b->ptn_id));
-}
-
 typedef enum {
-	SOS_MSG_SEC=0,
-	SOS_MSG_USEC,
+	SOS_MSG_TIMESTAMP = 0,
 	SOS_MSG_COMP_ID,
-	SOS_MSG_MSG,
+	SOS_MSG_PTN_ID,
+	SOS_MSG_ARGV,
 } sos_msg_class_attr_id_t;
-
-/**
- * SOS Object definition for messages.
- *
- * sec - second
- * usec - microsecond
- * comp_id - component id
- * msg - the message (::bmsg)
- */
-static
-SOS_OBJ_BEGIN(sos_msg_class, "BalerSOSMessageClass")
-	SOS_OBJ_ATTR_WITH_KEY("sec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR("usec", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR("comp_id", SOS_TYPE_UINT32),
-	SOS_OBJ_ATTR("msg", SOS_TYPE_BLOB),
-SOS_OBJ_END(4);
-
 #endif

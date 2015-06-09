@@ -51,10 +51,34 @@
 #include "bout_sos_msg.h"
 #include "sos_msg_class_def.h"
 
-/*
- * This is a hack to prevent stale obj.
- */
-#include "../../../sos/src/sos_priv.h"
+static sos_schema_t create_msg_schema(sos_t sos)
+{
+	sos_schema_t schema;
+	int rc;
+
+	schema = sos_schema_new("Message");
+	if (!schema)
+		return NULL;
+	rc = sos_schema_attr_add(schema, "timestamp", SOS_TYPE_TIMESTAMP);
+	if (rc)
+		goto err;
+	rc = sos_schema_index_add(schema, "timestamp");
+	if (rc)
+		goto err;
+	rc = sos_schema_attr_add(schema, "comp_id", SOS_TYPE_UINT32);
+	if (rc)
+		goto err;
+	rc = sos_schema_attr_add(schema, "ptn_id", SOS_TYPE_UINT32);
+	if (rc)
+		goto err;
+	rc = sos_schema_attr_add(schema, "argv", SOS_TYPE_UINT32_ARRAY);
+	if (rc)
+		goto err;
+	return schema;
+ err:
+	sos_schema_put(schema);
+	return NULL;
+}
 
 /**
  * \brief process_output for SOS.
@@ -84,43 +108,75 @@ int bout_sos_msg_process_output(struct boutplugin *this,
 	bout_sos_rotate(sp, odata->tv.tv_sec, NULL);
 	sos = sp->sos;
 
-	sos_obj_t obj = sos_obj_new(sos);
+	sos_obj_t obj = sos_obj_new(mp->sos_schema);
 	if (!obj) {
 		rc = ENOMEM;
 		goto err0;
 	}
+	struct sos_value_s val;
+	sos_value_t value = sos_value_init(&val, obj, mp->time_attr);
 
-	obj_ref_t objref = ods_obj_ptr_to_ref(sos->ods, obj);
-	sos_obj_attr_set(sos, SOS_MSG_SEC, obj, &odata->tv.tv_sec);
-	sos_obj_attr_set(sos, SOS_MSG_USEC, obj, &odata->tv.tv_usec);
-	sos_obj_attr_set(sos, SOS_MSG_COMP_ID, obj, &odata->comp_id);
-	len = BMSG_SZ(odata->msg);
-	req_len = len + sizeof(struct sos_blob_obj_s);
-	if (mp->blob_sz < req_len) {
-		size_t new_size = (req_len | 0xFFFF) + 1;
-		void *new_blob = malloc(new_size);
-		if (!new_blob) {
-			rc = ENOMEM;
-			goto err1;
-		}
-		free(mp->blob);
-		mp->blob = new_blob;
-		mp->blob_sz = new_size;
+	value->data->prim.timestamp_.fine.secs = odata->tv.tv_sec;
+	value->data->prim.timestamp_.fine.usecs = odata->tv.tv_usec;
+
+	value = sos_value_init(value, obj, mp->comp_id_attr);
+	value->data->prim.uint32_ = odata->comp_id;
+
+	value = sos_value_init(value, obj, mp->ptn_id_attr);
+	value->data->prim.uint32_ = odata->msg->ptn_id;
+
+	sos_value_put(value);
+	sos_value_put(value);
+	sos_value_put(value);
+
+	value = sos_array_new(&val, mp->argv_attr, obj, odata->msg->argc);
+	if (!value) {
+		rc = ENOMEM;
+		goto err1;
 	}
-	mp->blob->len = len;
-	memcpy(mp->blob->data, odata->msg, len);
-	sos_obj_attr_set(sos, SOS_MSG_MSG, obj, mp->blob);
-	obj = ods_obj_ref_to_ptr(sos->ods, objref);
-	rc = sos_obj_add(sos, obj);
+	sos_value_memset(value, odata->msg->argv,
+			 odata->msg->argc * sizeof(uint32_t));
+
+	rc = sos_obj_index(obj);
 	if (rc)
 		goto err1;
+	sos_obj_put(obj);
 	pthread_mutex_unlock(&sp->sos_mutex);
 	return 0;
 err1:
-	sos_obj_delete(sos, obj);
+	sos_obj_delete(obj);
+	sos_obj_put(obj);
 	pthread_mutex_unlock(&sp->sos_mutex);
 err0:
 	return rc;
+}
+
+int bout_sos_msg_start(struct bplugin *this)
+{
+	struct bout_sos_msg_plugin *_this = (void*)this;
+	sos_t sos;
+	int rc;
+	if ((rc = bout_sos_start(this)))
+		return rc;
+	sos = _this->base.sos;
+	if (!_this->sos_schema) {
+		sos_schema_t schema;
+		schema = sos_schema_by_name(sos, "Message");
+		if (!schema) {
+			schema = create_msg_schema(sos);
+			if (!schema)
+				return ENOENT;
+			rc = sos_schema_add(sos, schema);
+			if (rc)
+				return EINVAL;
+		}
+		_this->sos_schema = schema;
+		_this->time_attr = sos_schema_attr_by_id(schema, SOS_MSG_TIMESTAMP);
+		_this->comp_id_attr = sos_schema_attr_by_id(schema, SOS_MSG_COMP_ID);
+		_this->ptn_id_attr = sos_schema_attr_by_id(schema, SOS_MSG_PTN_ID);
+		_this->argv_attr = sos_schema_attr_by_id(schema, SOS_MSG_ARGV);
+	}
+	return 0;
 }
 
 struct bplugin *create_plugin_instance()
@@ -128,15 +184,9 @@ struct bplugin *create_plugin_instance()
 	struct bout_sos_msg_plugin *_p = calloc(1, sizeof(*_p));
 	if (!_p)
 		return NULL;
-	_p->base.sos_class = &sos_msg_class;
-	_p->blob_sz = 65536;
-	_p->blob = malloc(_p->blob_sz);
-	if (!_p->blob) {
-		free(_p);
-		return NULL;
-	}
 	struct boutplugin *p = (typeof(p)) _p;
 	bout_sos_init((void*)_p, "bout_sos_msg");
+	p->base.start = bout_sos_msg_start;
 	p->process_output = bout_sos_msg_process_output;
 	return (void*)p;
 }

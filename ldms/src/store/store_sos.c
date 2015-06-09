@@ -362,8 +362,8 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 	struct sos_metric_store *ms;
 	sos_schema_t schema;
 
-	rc = sos_container_open(si->path, SOS_PERM_RW, &si->sos);
-	if (!rc) {
+	si->sos = sos_container_open(si->path, SOS_PERM_RW);
+	if (si->sos) {
 		schema = sos_schema_by_name(si->sos, si->schema_name);
 		if (!schema)
 			goto add_schema;
@@ -371,18 +371,14 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 		return 0;
 	}
 
-	/* If the error is something other than 'does not exist', return the error */
-	if (rc != ENOENT)
-		return rc;
-
 	/* Create the SOS container */
 	rc = sos_container_new(si->path, 0660);
 	if (rc)
 		return rc;
 	store_sos_change_owner(si->path);
-	rc = sos_container_open(si->path, SOS_PERM_RW, &si->sos);
-	if (rc)
-		return rc;
+	si->sos = sos_container_open(si->path, SOS_PERM_RW);
+	if (!si->sos)
+		return errno;
  add_schema:
 	schema = create_schema(si, set, metric_arry, metric_count);
 	if (!schema)

@@ -61,6 +61,7 @@ btkn_type_t btkn_type(const char *str)
 
 struct btkn_store* btkn_store_open(const char *path, int flag)
 {
+	struct btkn_store *ts = NULL;
 	int create = flag & O_CREAT;
 	int acc_mode = flag & O_ACCMODE;
 	char *tmp = malloc(PATH_MAX);
@@ -79,7 +80,7 @@ struct btkn_store* btkn_store_open(const char *path, int flag)
 		errno = EINVAL;
 		goto err0;
 	}
-	struct btkn_store *ts = calloc(1, sizeof(*ts));
+	ts = calloc(1, sizeof(*ts));
 	if (!ts) {
 		goto err0;
 	}
@@ -101,7 +102,6 @@ struct btkn_store* btkn_store_open(const char *path, int flag)
 
 err1:
 	btkn_store_close_free(ts);
-	ts = NULL;
 err0:
 cleanup:
 	free(tmp);

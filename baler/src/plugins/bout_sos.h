@@ -91,7 +91,6 @@ struct bout_sos_plugin {
 	sos_t sos; /**< SOS object. */
 	char *sos_path; /**< SOS path, for reference. */
 	pthread_mutex_t sos_mutex; /**< Mutex for sos. */
-	struct sos_class_s *sos_class; /**< class describing sos objects */
 	int time_limit; /**< time limit (for store rotation) */
 	int max_copy; /**< Max copy of rotated stores */
 	int last_rotate; /**< Last rotation timestamp */

@@ -68,11 +68,14 @@
 
 struct bout_sos_msg_plugin {
 	struct bout_sos_plugin base; /**< base structure. */
+	sos_schema_t sos_schema;
 	sos_iter_t sos_iter; /**< Iterator for seeking objects. */
+	sos_attr_t time_attr;
+	sos_attr_t comp_id_attr;
+	sos_attr_t ptn_id_attr;
+	sos_attr_t argv_attr;
 	uint32_t delta_ts; /**< ts granularity */
 	uint32_t delta_node; /**< node granularity */
-	sos_blob_obj_t blob; /**< blob buffer */
-	size_t blob_sz; /**< size of pre-allocated blob buffer */
 };
 
 /**

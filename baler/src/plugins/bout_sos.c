@@ -113,6 +113,7 @@ int bout_sos_config(struct bplugin *this, struct bpair_str_head *arg_head)
 int bout_sos_rotate(struct bout_sos_plugin *_this, int ts,
 						bout_sos_rotate_cb_fn cb)
 {
+#if 0
 	if (!_this->time_limit)
 		return 0;
 	if (!_this->last_rotate) {
@@ -130,6 +131,7 @@ int bout_sos_rotate(struct bout_sos_plugin *_this, int ts,
 	if (cb)
 		cb(_this);
 	sos_post_rotation(new_sos, "BALER_STORE_POSTROTATE");
+#endif
 	return 0;
 }
 
@@ -150,8 +152,8 @@ int bout_sos_stop(struct bplugin *this)
 	if (!_this->sos)
 		return EINVAL;
 	pthread_mutex_lock(&_this->sos_mutex);
-	sos_close(_this->sos, ODS_COMMIT_SYNC);
-	_this->sos = 0;
+	sos_container_close(_this->sos, SOS_COMMIT_SYNC);
+	_this->sos = NULL;
 	pthread_mutex_unlock(&_this->sos_mutex);
 	return 0;
 }
@@ -159,8 +161,13 @@ int bout_sos_stop(struct bplugin *this)
 int bout_sos_start(struct bplugin *this)
 {
 	struct bout_sos_plugin *_this = (typeof(_this))this;
-	_this->sos = sos_open(_this->sos_path, O_RDWR|O_CREAT, 0660,
-			_this->sos_class);
+	_this->sos = sos_container_open(_this->sos_path, SOS_PERM_RW);
+	if (!_this->sos) {
+		int rc = sos_container_new(_this->sos_path, 0660);
+		if (rc)
+			return rc;
+		_this->sos = sos_container_open(_this->sos_path, SOS_PERM_RW);
+	}
 	if (!_this->sos)
 		return errno;
 	return 0;

@@ -68,7 +68,10 @@
 
 struct bout_sos_img_plugin {
 	struct bout_sos_plugin base; /** base structure. */
+	sos_schema_t sos_schema; /**< Image data schema */
 	sos_iter_t sos_iter; /** Iterator for seeking objects. */
+	sos_attr_t key_attr;
+	sos_attr_t count_attr;
 	uint32_t delta_ts; /** ts granularity */
 	uint32_t delta_node; /** node granularity */
 };
