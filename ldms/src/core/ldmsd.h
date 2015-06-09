@@ -243,7 +243,7 @@ typedef struct ldmsd_strgp_metric {
 } *ldmsd_strgp_metric_t;
 
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
-typedef struct ldmsd_strgp {
+struct ldmsd_strgp {
 	struct ldmsd_cfgobj obj;
 
 	/** A set of match strings to select a subset of all producers */
@@ -279,7 +279,7 @@ typedef struct ldmsd_strgp {
 
 	/** Update function */
 	strgp_update_fn_t update_fn;
-} *ldmsd_strgp_t;
+};
 
 struct hostset
 {
