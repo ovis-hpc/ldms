@@ -140,7 +140,7 @@ static struct z_sock_key *__z_key_find(uint32_t key)
 	return container_of(krbn, struct z_sock_key, rb_node);
 }
 
-static struct z_sock_key *z_key_find(uint32_t key)
+static struct z_sock_key *z_sock_key_find(uint32_t key)
 {
 	struct z_sock_key *k;
 	pthread_mutex_lock(&z_key_tree_mutex);
@@ -163,27 +163,6 @@ out:
 }
 
 /**
- * validate map access.
- *
- * \param map The map.
- * \param p The start of the accessing memory.
- * \param sz The size of the accessing memory.
- * \param acc Access flags.
- *
- * \returns 0 for valid access.
- * \returns ERANGE For invalid range access.
- * \returns EACCES For invalid access permission.
- */
-static int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
-{
-	if (p < map->addr || (map->addr + map->len) < (p + sz))
-		return ERANGE;
-	if ((map->acc & acc) != acc)
-		return EACCES;
-	return 0;
-}
-
-/**
  * Validate access by map key.
  *
  * \param key The map key.
@@ -191,10 +170,10 @@ static int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t
  * \param sz The size of the accessing memory.
  * \param acc Access flags.
  */
-static int z_map_key_access_validate(uint32_t key, char *p, size_t sz,
+static int z_sock_map_key_access_validate(uint32_t key, char *p, size_t sz,
 				zap_access_t acc)
 {
-	struct z_sock_key *k = z_key_find(key);
+	struct z_sock_key *k = z_sock_key_find(key);
 	if (!k)
 		return ENOENT;
 	return z_map_access_validate((zap_map_t)k->map, p, sz, acc);
@@ -221,6 +200,7 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 	pthread_mutex_lock(&sep->ep.lock);
 	switch (sep->ep.state) {
 	case ZAP_EP_PEER_CLOSE:
+	case ZAP_EP_CONNECTING:
 	case ZAP_EP_CONNECTED:
 	case ZAP_EP_LISTENING:
 	case ZAP_EP_ERROR:
@@ -477,7 +457,7 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep, size_t reqlen)
 	rmsg.hdr.ctxt = msg.hdr.ctxt;
 
 	int rc = 0;
-	rc = z_map_key_access_validate(msg.src_map_key, src, data_len,
+	rc = z_sock_map_key_access_validate(msg.src_map_key, src, data_len,
 				       ZAP_ACCESS_READ);
 	switch (rc) {
 	case 0:
@@ -605,7 +585,7 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep, size_t reqlen)
 
 static uint32_t g_xid = 0;
 static void
-z_hdr_init(struct sock_msg_hdr *hdr, uint32_t xid,
+z_sock_hdr_init(struct sock_msg_hdr *hdr, uint32_t xid,
 	   uint16_t type, uint32_t len, uint64_t ctxt)
 {
 	if (!xid)
@@ -632,11 +612,11 @@ static void process_sep_msg_write_req(struct z_sock_ep *sep, size_t reqlen)
 
 	/* Prepare the response message */
 	struct sock_msg_write_resp rmsg;
-	z_hdr_init(&rmsg.hdr, msg.hdr.xid, SOCK_MSG_WRITE_RESP, sizeof(rmsg),
+	z_sock_hdr_init(&rmsg.hdr, msg.hdr.xid, SOCK_MSG_WRITE_RESP, sizeof(rmsg),
 		   msg.hdr.ctxt);
 
 	/* Validate */
-	int rc = z_map_key_access_validate(msg.dst_map_key, dst, data_len,
+	int rc = z_sock_map_key_access_validate(msg.dst_map_key, dst, data_len,
 					     ZAP_ACCESS_WRITE);
 	size_t lsz = data_len;
 	size_t sz;
@@ -776,7 +756,6 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 	struct z_sock_ep *sep = (struct z_sock_ep *)arg;
 	struct evbuffer *evb;
 	struct sock_msg_hdr hdr;
-	struct ldms_request *req;
 	size_t len;
 	size_t reqlen;
 	size_t buflen;
@@ -847,7 +826,7 @@ static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t le
 	struct evbuffer *ebuf = evbuffer_new();
 	if (!ebuf)
 		return ZAP_ERR_RESOURCE;
-	z_hdr_init(&msg.hdr, 0, SOCK_MSG_CONNECT, (uint32_t)(sizeof(msg) + len), 0);
+	z_sock_hdr_init(&msg.hdr, 0, SOCK_MSG_CONNECT, (uint32_t)(sizeof(msg) + len), 0);
 	msg.data_len = htonl(len);
 	ZAP_VERSION_SET(msg.ver);
 
@@ -876,7 +855,7 @@ static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type, char *buf
 	if (!ebuf)
 		return ZAP_ERR_RESOURCE;
 
-	z_hdr_init(&msg.hdr, 0, msg_type, (uint32_t)(sizeof(msg) + len), 0);
+	z_sock_hdr_init(&msg.hdr, 0, msg_type, (uint32_t)(sizeof(msg) + len), 0);
 	msg.data_len = htonl(len);
 
 	if (evbuffer_add(ebuf, &msg, sizeof(msg)) != 0)
@@ -1158,18 +1137,14 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
 	zap_err_t zerr;
 
-	/* Replace the callback with the one provided by the caller */
-	sep->ep.cb = cb;
-
-	struct evbuffer *ebuf = evbuffer_new();
-	if (!ebuf)
-		return ZAP_ERR_RESOURCE;
-
 	pthread_mutex_lock(&sep->ep.lock);
 	if (sep->ep.state != ZAP_EP_CONNECTING) {
 		zerr = ZAP_ERR_ENDPOINT;
 		goto err_0;
 	}
+
+	/* Replace the callback with the one provided by the caller */
+	sep->ep.cb = cb;
 
 	sep->ep.state = ZAP_EP_CONNECTED;
 	zerr = __sock_send(sep, SOCK_MSG_ACCEPTED, data, data_len);
@@ -1187,7 +1162,6 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 	sep->ep.state = ZAP_EP_ERROR;
 	pthread_mutex_unlock(&sep->ep.lock);
  err_0:
-	evbuffer_free(ebuf);
 	return zerr;
 }
 
@@ -1290,7 +1264,7 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 		return ZAP_ERR_LOCAL_LEN;
 
 	/* prepare message */
-	z_hdr_init(&io->read.hdr, 0, SOCK_MSG_READ_REQ,
+	z_sock_hdr_init(&io->read.hdr, 0, SOCK_MSG_READ_REQ,
 		   sizeof(io->read), (uint64_t)context);
 	struct zap_sock_map *src_smap = (void*) src_map;
 	io->read.src_map_key = src_smap->key;
@@ -1332,7 +1306,7 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	struct evbuffer *ebuf = evbuffer_new();
 	if (!ebuf)
 		return ZAP_ERR_RESOURCE;
-	z_hdr_init(&io->write.hdr, 0, SOCK_MSG_WRITE_REQ,
+	z_sock_hdr_init(&io->write.hdr, 0, SOCK_MSG_WRITE_REQ,
 		   sizeof(io->write) + sz, (uint64_t)context);
 	struct zap_sock_map *sdst_map = (void*)dst_map;
 	io->write.dst_map_key = sdst_map->key;

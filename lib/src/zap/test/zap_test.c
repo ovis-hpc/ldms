@@ -260,22 +260,32 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 	}
 }
 
+#define CONN_DATA "Hello, world!"
 #define ACCEPT_DATA "Accepted!"
 void server_cb(zap_ep_t ep, zap_event_t ev)
 {
 	static int reject = 1;
 	zap_err_t err;
 
-	printf("%s: ep %p event %s\n", __func__, ep, ev_str[ev->type]);
+	printf("---- %s: BEGIN: ep %p event %s -----\n", __func__, ep, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		if (reject) {
 			printf("  ... REJECTING\n");
 			err = zap_reject(ep);
 		} else {
-			printf("  ... ACCEPTING data: '%s' data_len: %jd\n",
-			       ev->data, ev->data_len);
-			err = zap_accept(ep, server_cb, ev->data, ev->data_len);
+			if (!ev->data) {
+				printf("Error: No connect data is received.\n");
+				exit(1);
+			} else if (0 != strcmp(ev->data, CONN_DATA)) {
+				printf("Error: received wrong connect data. Expected: %s. Received: %s\n",
+					CONN_DATA, ev->data);
+				exit(1);
+			} else {
+				printf("  ... ACCEPTING data: '%s' data_len: %jd\n",
+				       ev->data, ev->data_len);
+				err = zap_accept(ep, server_cb, ACCEPT_DATA, strlen(ACCEPT_DATA));
+			}
 		}
 		/* alternating between reject and accept */
 		reject = !reject;
@@ -305,7 +315,7 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		handle_rendezvous(ep, ev);
 		break;
 	}
-	printf("--- end event ---\n");
+	printf("---- %s: END: ep %p event %s -----\n", __func__, ep, ev_str[ev->type]);
 }
 
 void do_rendezvous(zap_ep_t ep)
@@ -396,13 +406,12 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	do_send(ep, dare);
 }
 
-#define CONN_DATA "Hello, world!"
 
 void client_cb(zap_ep_t ep, zap_event_t ev)
 {
 	struct sockaddr_in *sin;
 	zap_err_t err;
-	printf("%s: ep %p event %s\n", __func__, ep, ev_str[ev->type]);
+	printf("---- %s: BEGIN: ep %p event %s ----\n", __func__, ep, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		assert(0);
@@ -412,6 +421,15 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		pthread_cond_broadcast(&done_cv);
 		break;
 	case ZAP_EVENT_CONNECTED:
+		if (!ev->data) {
+			printf("Error: No accepted data is received.\n");
+			exit(1);
+		}
+		if (0 != strcmp(ev->data, ACCEPT_DATA)) {
+			printf("Error: received wrong accepted data. Expected: %s. Received: %s\n",
+				ACCEPT_DATA, ev->data);
+			exit(1);
+		}
 		printf("CONNECTED data: '%s' data_len: %jd\n", ev->data, ev->data_len);
 		do_send(ep, "Hello there!");
 		break;
@@ -424,6 +442,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 			printf("zap_new failed.\n");
 			return;
 		}
+		zap_set_ucontext(ep, sin);
 		err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin),
 				  CONN_DATA, sizeof(CONN_DATA));
 		if (err) {
@@ -454,7 +473,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		do_read_and_verify_write(ep, ev);
 		break;
 	}
-	printf("--- end event ---\n");
+	printf("---- %s: END: ep %p event %s ----\n", __func__, ep, ev_str[ev->type]);
 }
 
 void test_log(const char *fmt, ...)

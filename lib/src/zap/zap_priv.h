@@ -223,4 +223,18 @@ struct zap_map {
 typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_log_fn_t log_fn,
 				  zap_mem_info_fn_t map_info_fn);
 
+/**
+ * validate map access.
+ *
+ * \param map The map.
+ * \param p The start of the accessing memory.
+ * \param sz The size of the accessing memory.
+ * \param acc Access flags.
+ *
+ * \returns 0 for valid access.
+ * \returns ERANGE For invalid range access.
+ * \returns EACCES For invalid access permission.
+ */
+int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc);
+
 #endif

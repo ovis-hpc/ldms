@@ -447,6 +447,15 @@ zap_err_t zap_reject(zap_ep_t ep)
 	return ep->z->reject(ep);
 }
 
+int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
+{
+	if (p < map->addr || (map->addr + map->len) < (p + sz))
+		return ERANGE;
+	if ((map->acc & acc) != acc)
+		return EACCES;
+	return 0;
+}
+
 static void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_mutex_init(&zap_list_lock, 0);
