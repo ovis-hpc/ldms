@@ -55,12 +55,12 @@ window.baler =
         baler.tkn2html(tok) for tok in msg
 
     query: (param, cb) ->
-        url = "http://#{baler.balerd.addr}/query"
+        url = "#{bcfg.bhttpd.master_uri}/query"
         $.getJSON(url, param, cb)
 
-    query_img: (param, cb) ->
+    query_img_single: (uri, param, cb) ->
         req = new XMLHttpRequest()
-        url = "http://#{baler.balerd.addr}/query"
+        url = "#{uri}/query"
         first = 1
         for k,v of param
             if (v == undefined)
@@ -77,8 +77,32 @@ window.baler =
         req.send()
         return 0
 
+    query_img: (param, cb) ->
+        n = 1
+        if bcfg.bhttpd.other_uris
+            n += bcfg.bhttpd.other_uris.length
+        data = null
+
+        local_cb = (resp_data, str, req) ->
+            n--
+            _data = new Uint32Array(resp_data)
+            # aggregate data
+            if !data
+                data = _data
+            else
+                for i in [0.._data.length-1]
+                    data[i] += _data[i]
+            if !n
+                cb(data, "", req)
+
+        baler.query_img_single(bcfg.bhttpd.master_uri, param, local_cb)
+        if bcfg.bhttpd.other_uris
+            for uri in bcfg.bhttpd.other_uris
+                baler.query_img_single(uri, param, local_cb)
+
+
     get_test: (param, cb) ->
-        url = "http://#{baler.balerd.addr}/test"
+        url = "#{bcfg.bhttpd.master_uri}/test"
         $.getJSON(url, param, cb)
 
     get_ptns : (cb) ->
@@ -94,7 +118,7 @@ window.baler =
         baler.query({"type": "metric_meta"}, cb)
 
     get_big_pic : (done_cb) ->
-        url = "http://#{baler.balerd.addr}/query"
+        url = "#{bcfg.bhttpd.master_uri}/query"
         $.getJSON(url, {"type":"big_pic"}, (data)->
             baler.totalNodes = data.max_comp_id + 1
             baler.min_ts = data.min_ts
@@ -122,7 +146,7 @@ window.baler =
         return 1
 
     meta_cluster: (param, cb) ->
-        url = "http://#{baler.balerd.addr}/meta_cluster"
+        url = "#{bcfg.bhttpd.master_uri}/meta_cluster"
         $.getJSON(url, param, cb)
 
     Disp: class Disp
@@ -393,7 +417,7 @@ window.baler =
             if param
                 # Destroy old session_id
                 if @query_param.session_id
-                    url = "http://#{baler.balerd.addr}/query/destroy_session?"+
+                    url = "#{bcfg.bhttpd.master_uri}/query/destroy_session?"+
                         "session_id=#{@query_param.session_id}"
                     $.ajax(url, {})
                 @query_param = param

@@ -4,7 +4,12 @@
 window.bcfg = {
 	/* Put configurations here. */
 	bhttpd: {
-		host: undefined, /* use same host */
-		port: 18888,
+		/* URI to bhttpd that corresponds to master balerd store */
+		master_uri: "http://"+window.location.hostname+":18888",
+
+		/* URIs to other bhttpd in the case that we have multiple
+		 * stores managed my multiple balerd. This list can be empty. */
+		other_uris: [
+		]
 	}
 };
