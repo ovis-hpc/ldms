@@ -65,6 +65,8 @@
 
 #include "baler/butils.h"
 #include "baler/btkn.h"
+#include "baler/bhash.h"
+#include "baler/bset.h"
 
 #include "assert.h"
 
@@ -1758,6 +1760,9 @@ out:
  * \b bquery \b -t IMG \b -s STORE \b -I IMG_STORE [\b -B TS ] [\b -E TS]
  *          [\b -H NUM_LIST] [\b -P NUM_LIST]
  *
+ * \b bquery \b -t PTN_STAT \b -s STORE [\b -B TS ] [\b -E TS]
+ *          [\b -H NUM_LIST] [\b -P NUM_LIST]
+ *
  * \section description DESCRIPTION
  *
  * \b bquery is a command-line interface to query data from balerd store. It
@@ -1801,6 +1806,16 @@ out:
  * query criteria. The criteria for image query is the same as the criteria for
  * message querying above. The image store option <b>-I IMG_STORE</b> is needed.
  * To list all available image store, please see section \ref bquery_list_img.
+ *
+ * \subsection bquery_ptn_stat PTN_STAT - Pattern statistics
+ *
+ * With option <b>-t PTN_STAT</b>, bquery will list pattern statistics by
+ * comp_id. The statistics calculation can be limited by criteria of <b>-B, -E,
+ * -H, -P</b> options. The output is in CSV format. Time stamp format (\b -F)
+ * can be given and bquery will format the timestamp accordingly.
+ *
+ * \b PTN_STAT uses '3600-1' image store to quickly calculate the statistics
+ * with a little sacrifice of timestamp granularity (to the hour level).
  *
  * \section options OPTIONS
  *
@@ -1931,6 +1946,7 @@ enum BQ_TYPE {
 	BQ_TYPE_HOST,
 	BQ_TYPE_IMG,
 	BQ_TYPE_LIST_IMG,
+	BQ_TYPE_PTN_STAT,
 	BQ_TYPE_LAST
 };
 
@@ -1941,6 +1957,7 @@ const char *BQ_TYPE_STR[] = {
 	[BQ_TYPE_HOST]      =  "HOST",
 	[BQ_TYPE_IMG]       =  "IMG",
 	[BQ_TYPE_LIST_IMG]  =  "LIST_IMG",
+	[BQ_TYPE_PTN_STAT]  =  "PTN_STAT",
 	[BQ_TYPE_LAST]      =  "BQ_TYPE_LAST"
 };
 
@@ -2026,24 +2043,28 @@ void show_help()
 "\n"
 #endif
 "QUERY_OPTIONS:\n\
-    --type,-t TYPE             The TYPE of the query, can be MSG, PTN or HOST.\n\
-                                 * PTN will list all log patterns with their\n\
-                                   pattern_ids. These pattern_ids are to be \n\
-                                   used in ptn_id-mask option when querying\n\
-                                   for MSG.\n\
-                                 * HOST will list all hostnames with their\n\
-                                   host_ids. These host_ids are to be used\n\
-                                   with host-mask option when querying for\n\
-                                   MSG.\n\
-                                 * MSG will query messages from the store.\n\
-                                   Users can give host-mask, begin, end, \n\
-                                   ptn_id-mask to filter the message query.\n\
-                                 * LIST_IMG will list all available image\n\
-                                   stores.\n\
-                                 * IMG will query image information from\n\
-                                   image store (specified by '-I' option).\n\
-                                   The pattern/host/time filtering conditions\n\
-                                   are also applied.\n\
+    --type,-t TYPE		The TYPE of the query.\n\
+				* PTN will list all log patterns with their\n\
+				  pattern_ids. These pattern_ids are to be \n\
+				  used in ptn_id-mask option when querying\n\
+				  for MSG.\n\
+				* HOST will list all hostnames with their\n\
+				  host_ids. These host_ids are to be used\n\
+				  with host-mask option when querying for\n\
+				  MSG.\n\
+				* MSG will query messages from the store.\n\
+				  Users can give host-mask, begin, end, \n\
+				  ptn_id-mask to filter the message query.\n\
+				* LIST_IMG will list all available image\n\
+				  stores.\n\
+				* IMG will query image information from\n\
+				  image store (specified by '-I' option).\n\
+				  The pattern/host/time filtering conditions\n\
+				  are also applied.\n\
+				* PTN_STAT will list pattern statistics \n\
+				  by component ID. Statistic calculation\n\
+				  can be limited by option -B,-E,-H,-P\n\
+				  similar to MSG query.\n\
     --image-store-name,-I IMG_STORE_NAME\n\
 				The image store to query against.\n\
     --host-mask,-H NUMBER,...	The comma-separated list of numbers of\n\
@@ -2474,6 +2495,163 @@ out:
 	return 0;
 }
 
+struct __ptn_stat_key {
+	uint32_t ptn_id;
+	uint32_t comp_id;
+};
+
+struct __ptn_stat_value {
+	struct __ptn_stat_key k;
+	uint32_t min_ts;
+	uint32_t max_ts;
+	uint64_t count;
+};
+
+int __ptn_stat_value_cmp(const void *a, const void *b)
+{
+	const struct __ptn_stat_value *va = *(const struct __ptn_stat_value**)a;
+	const struct __ptn_stat_value *vb = *(const struct __ptn_stat_value**)b;
+	if (va->k.ptn_id > vb->k.ptn_id)
+		return 1;
+	if (va->k.ptn_id < vb->k.ptn_id)
+		return -1;
+	if (va->k.comp_id > vb->k.comp_id)
+		return 1;
+	if (va->k.comp_id < vb->k.comp_id)
+		return -1;
+	return 0;
+}
+
+int bq_local_ptn_stat_routine(struct bq_store *s)
+{
+	struct __ptn_stat_key k;
+	struct __ptn_stat_value **varray = NULL;
+	int i, _rc, rc = 0;
+	struct bhash *bhash = NULL;
+	struct bimgquery *imgq = NULL;
+	struct bpixel p;
+	uint64_t count = 0;
+	uint32_t comp_id, ptn_id;
+
+	imgq = bimgquery_create(s, hst_ids, ptn_ids, ts_begin, ts_end,
+							img_store_name, &rc);
+	if (!imgq) {
+		berr("Cannot create imqge query, rc: %d", rc);
+		return rc;
+	}
+
+	bhash = bhash_new(65539, 11, NULL);
+	if (!bhash) {
+		berror("bhash_new()");
+		rc = errno;
+		goto cleanup;
+	}
+
+	rc = bq_first_entry(&imgq->base);
+
+loop:
+	if (rc)
+		goto out;
+
+	bq_img_entry_get_pixel(imgq, &p);
+	k.ptn_id = p.ptn_id;
+	k.comp_id = p.comp_id;
+	struct bhash_entry *hent = bhash_entry_get(bhash, (void*)&k, sizeof(k));
+	if (hent) {
+		struct __ptn_stat_value *v = (void*)hent->value;
+		if (p.sec < v->min_ts)
+			v->min_ts = p.sec;
+		if (p.sec > v->max_ts)
+			v->max_ts = p.sec;
+		v->count += p.count;
+	} else {
+		struct __ptn_stat_value *v = malloc(sizeof(*v));
+		if (!v) {
+			goto cleanup;
+		}
+		v->k.ptn_id = p.ptn_id;
+		v->k.comp_id = p.comp_id;
+		v->min_ts = v->max_ts = p.sec;
+		v->count = p.count;
+		hent = bhash_entry_set(bhash, (void*)&v->k,
+					sizeof(v->k), (uint64_t)v);
+		if (!hent) {
+			berror("bhash_entry_set()");
+			rc = errno;
+			goto cleanup;
+		}
+		count++;
+	}
+
+	rc = bq_next_entry(&imgq->base);
+	goto loop;
+
+out:
+	if (count == 0) {
+		bwarn("No data matching the query.");
+		goto cleanup;
+	}
+	if (rc == ENOENT)
+		rc = 0;
+	varray = malloc(sizeof(varray[0]) * count);
+	if (!varray) {
+		berror("malloc()");
+		goto cleanup;
+	}
+	i = 0;
+	struct bhash_iter *itr = bhash_iter_new(bhash);
+	_rc = bhash_iter_begin(itr);
+	while (!_rc) {
+		varray[i++] = (void*)bhash_iter_entry(itr)->value;
+		_rc = bhash_iter_next(itr);
+	}
+
+	qsort(varray, count, sizeof(*varray), __ptn_stat_value_cmp);
+
+	const char *fmt = "%F %T";
+	if (ts_format) {
+		fmt = ts_format;
+	}
+
+	printf("ptn_id,comp_id,min_ts,max_ts,count\n");
+	for (i = 0; i < count; i++) {
+		struct tm tm;
+		char buff0[128], buff1[128];
+		int len;
+		time_t ts0, ts1;
+		ts0 = varray[i]->min_ts;
+		ts1 = varray[i]->max_ts;
+		bzero(&tm, sizeof(tm));
+		localtime_r(&ts0, &tm);
+		len = strftime(buff0, sizeof(buff0), fmt, &tm);
+		bzero(&tm, sizeof(tm));
+		localtime_r(&ts1, &tm);
+		len = strftime(buff1, sizeof(buff1), fmt, &tm);
+		printf("%u,%u,%s,%s,%lu\n", varray[i]->k.ptn_id,
+					  varray[i]->k.comp_id,
+					  buff0, buff1, varray[i]->count);
+	}
+
+cleanup:
+	if (varray) {
+		free(varray);
+	}
+	if (imgq)
+		bimgquery_destroy(imgq);
+	if (bhash) {
+		struct bhash_iter *itr = bhash_iter_new(bhash);
+		int _rc;
+		_rc = bhash_iter_begin(itr);
+		while (_rc == 0) {
+			struct bhash_entry *hent = bhash_iter_entry(itr);
+			free((void*)hent->value);
+			_rc = bhash_iter_next(itr);
+		}
+		bhash_free(bhash);
+	}
+	return rc;
+}
+
 int bq_local_routine()
 {
 	int rc = 0;
@@ -2507,6 +2685,9 @@ int bq_local_routine()
 		break;
 	case BQ_TYPE_LIST_IMG:
 		__bq_list_available_img(s);
+		break;
+	case BQ_TYPE_PTN_STAT:
+		rc = bq_local_ptn_stat_routine(s);
 		break;
 	default:
 		rc = EINVAL;
