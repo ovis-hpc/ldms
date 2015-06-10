@@ -39,11 +39,13 @@ AC_ARG_WITH(
 
 if test -d $WITH_$2/lib64; then
 	$2_LIB64DIR=$WITH_$2/lib64
-	$2_LIBDIR_FLAG="-Wl,-rpath,$WITH_$2/lib64 -L$WITH_$2/lib64"
+	$2_LIBDIR_FLAG="-L$WITH_$2/lib64"
+	LDFLAGS="$LDFLAGS -Wl,-rpath-link,$WITH_$2/lib64"
 fi
 if test -d $WITH_$2/lib; then
 	$2_LIBDIR=$WITH_$2/lib
-	$2_LIBDIR_FLAG="$$2_LIBDIR_FLAG -Wl,-rpath,$WITH_$2/lib -L$WITH_$2/lib"
+	$2_LIBDIR_FLAG="$$2_LIBDIR_FLAG -L$WITH_$2/lib"
+	LDFLAGS="$LDFLAGS -Wl,-rpath-link,$WITH_$2/lib"
 fi
 if test -d $WITH_$2/include; then
 	$2_INCDIR=$WITH_$2/include
