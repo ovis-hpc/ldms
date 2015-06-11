@@ -584,7 +584,7 @@ window.baler =
                 @updateImage(0, fy, @width, fh)
 
     CanvasLabelV: class CanvasLabelV extends Disp
-        constructor: (@width, @height, @inc, @pxlFactor, @labelTextCb) ->
+        constructor: (@width, @height, @inc, @pxlFactor, @labelTextCb, @axis) ->
             @domobj = LZH.canvas({
                             class: "baler_Labels",
                             width: @width,
@@ -599,23 +599,42 @@ window.baler =
             @ctxt.setTransform(1, 0, 0, 1, 0, 0)
             @ctxt.clearRect(0, 0, @width, @height)
             coff = parseInt(@offset * @pxlFactor)
-            @ctxt.translate(0, - coff)
-            start = parseInt(@offset / @inc) * @inc
-            h = parseInt(@height / @inc)
-            for y in [0 .. h] by @inc
-                lbl = @labelTextCb(start + y)
-                m = @ctxt.measureText(lbl)
-                yy = start + y
-                x = @width - 20 - m.width
-                cyy = yy * @pxlFactor
-                @ctxt.fillText(lbl, x, cyy + 10)
-                @ctxt.beginPath()
-                @ctxt.moveTo(@width - 15, cyy + 5)
-                @ctxt.lineTo(@width - 5, cyy + 5)
-                @ctxt.stroke()
+            if @axis == 'y'
+                @ctxt.translate(0, @height - coff)
+                start = parseInt(@offset/@inc) * @inc
+                h = parseInt(@height / @inc)
+                for y in [0 .. h] by @inc
+                    lbl = @labelTextCb(Math.abs(start-y))
+                    m = @ctxt.measureText(lbl)
+                    yy = start - y
+                    x = @width - 20 - m.width
+                    cyy = yy * @pxlFactor
+                    @ctxt.fillText(lbl, x, cyy + 10)
+                    @ctxt.beginPath()
+                    @ctxt.moveTo(@width - 15, cyy + 5)
+                    @ctxt.lineTo(@width - 5, cyy + 5)
+                    stroke = @ctxt.stroke()
+            else
+                @ctxt.translate(0, - coff)
+                start = parseInt(@offset / @inc) * @inc
+                h = parseInt(@height / @inc)
+                for y in [0 .. h] by @inc
+                    lbl = @labelTextCb(start + y)
+                    m = @ctxt.measureText(lbl)
+                    yy = start + y
+                    x = @width - 20 - m.width
+                    cyy = yy * @pxlFactor
+                    @ctxt.fillText(lbl, x, cyy + 10)
+                    @ctxt.beginPath()
+                    @ctxt.moveTo(@width - 15, cyy + 5)
+                    @ctxt.lineTo(@width - 5, cyy + 5)
+                    stroke = @ctxt.stroke()
 
         setOffset: (offset) ->
-            @offset = offset
+            if @axis = 'y'
+                @offset = -offset
+            else
+                @offset = offset
             @update()
 
     GridCanvas: class GridCanvas extends Disp
@@ -675,14 +694,14 @@ window.baler =
             lblxfn = (x) ->
                 return baler.ts2datetime(x*_this_.spp)
 
-            @xlabel = new CanvasLabelV(textWH, @width, 10, @pxlFactor, lblxfn)
+            @xlabel = new CanvasLabelV(textWH, @width, 10, @pxlFactor, lblxfn, 'x')
             @xlabelDiv = @xlabel.domobj
             @xlabelDiv.style.transform = "rotate(-90deg)"
             @xlabelDiv.style.transformOrigin = "0 0 0"
             @xlabelDiv.style.marginTop = "#{textWH}px"
             @xlabel.setOffset(parseInt(@ts_begin / @spp))
 
-            @ylabel = new CanvasLabelV(textWH, @height, 10, @pxlFactor, lblyfn)
+            @ylabel = new CanvasLabelV(textWH, @height, 10, @pxlFactor, lblyfn, 'y')
             @ylabelDiv = @ylabel.domobj
 
             @fillerDiv = LZH.div({class: "HeatMapFillerDiv"})
@@ -813,7 +832,7 @@ window.baler =
                 max_lcid = min_lcid
 
             dlx = -@sanity(min_lts, max_lts, @mouseDownPos.reflx, -dlx)
-            dly = -@sanity(min_lcid, max_lcid, @mouseDownPos.refly, -dly)
+            dly = -@sanity(min_lcid, max_lcid, Math.abs(@mouseDownPos.refly), -dly)
             lx = @mouseDownPos.lx + dlx
             ly = @mouseDownPos.ly + dly
 
@@ -893,7 +912,7 @@ window.baler =
                     "baler_nav_spp"
                 ]
                 npp: [
-                    "Image Height Scale: ",
+                    "Image Height: ",
                     "Number of nodes/pixel (default: 1)",
                     "baler_nav_npp"
                 ]
@@ -1010,7 +1029,7 @@ window.baler =
             chk.layer = @hmap.layers[idx]
             chk.onchange = () -> _this_.onLayerCheckChange(chk)
 
-            rmbtn = LZH.button(null, "x")
+            rmbtn = LZH.button({class: "remove_ptn"}, "x")
             rmbtn.layer = @hmap.layers[idx]
             rmbtn.onclick = () -> _this_.onRmBtnClicked(rmbtn)
 
