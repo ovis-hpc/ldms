@@ -126,6 +126,9 @@ class LdmsdCmdParser(cmd.Cmd):
             self.onecmd(cmd)
         script.close()
 
+    def do_try(self, arg):
+        print self.__complete_attr_list(arg, "")
+
     def do_usage(self, arg):
         """List the usage of the plugins loaded on the server.
         """
@@ -171,7 +174,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('prdcr_del', arg)
 
     def complete_prdcr_del(self, text, line, begidx, endidx):
-        return [ name for name in self.prdcr_add_kw if name.startswith(text) ]
+        return self.__complete_attr_list('prdcr_del', text)
 
     def do_prdcr_start(self, arg):
         """
@@ -184,7 +187,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('prdcr_start', arg);
 
     def complete_prdcr_start(self, text, line, begidx, endidx):
-        return [ name for name in self.prdcr_start_kw if name.startswith(text) ]
+        return self.__complete_attr_list('prdcr_start', text)
 
     def do_prdcr_start_regex(self, arg):
         """
@@ -197,7 +200,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('prdcr_start_regex', arg);
 
     def complete_prdcr_start_regex(self, text, line, begidx, endidx):
-        return [ name for name in self.prdcr_start_regex_kw if name.startswith(text) ]
+        return self.__complete_attr_list('prdcr_start_regex', text)
 
     def do_prdcr_stop(self, arg):
         """
@@ -208,7 +211,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('prdcr_stop', arg);
 
     def complete_prdcr_stop(self, text, line, begidx, endidx):
-        return [ name for name in self.prdcr_stop_kw if name.startswith(text) ]
+        return self.__complete_attr_list('prdcr_stop', text)
 
     def do_prdcr_stop_regex(self, arg):
         """
@@ -219,7 +222,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('prdcr_stop_regex', arg);
 
     def complete_prdcr_stop_regex(self, text, line, begidx, endidx):
-        return [ name for name in self.prdcr_stop_regex_kw if name.startswith(text) ]
+        return self.__complete_attr_list('prdcr_stop_regex', text)
 
     def do_updtr_add(self, arg):
         """
@@ -233,7 +236,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_add', arg)
 
     def complete_updtr_add(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_add_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_add', text)
 
     def do_updtr_del(self, arg):
         """
@@ -244,7 +247,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_del', arg)
 
     def complete_updtr_del(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_del_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_del', text)
 
     def do_updtr_match_add(self, arg):
         """
@@ -260,7 +263,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_match_add', arg)
 
     def complete_updtr_match_add(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_match_add_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_match_add', text)
 
     def do_updtr_match_del(self, arg):
         """
@@ -276,7 +279,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_match_del', arg)
 
     def complete_updtr_match_del(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_match_del_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_match_del', text)
 
     def do_updtr_prdcr_add(self, arg):
         """
@@ -288,7 +291,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_prdcr_add', arg)
 
     def complete_updtr_prdcr_add(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_prdcr_add_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_prdcr_add', text)
 
     def do_updtr_prdcr_del(self, arg):
         """
@@ -300,7 +303,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_prdcr_del', arg)
 
     def complete_updtr_prdcr_del(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_prdcr_del_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_prdcr_del', text)
 
     def do_updtr_start(self, arg):
         """
@@ -314,7 +317,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_start', arg);
 
     def complete_updtr_start(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_start_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_prdcr_start', text)
 
     def do_updtr_stop(self, arg):
         """
@@ -326,7 +329,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_stop', arg);
 
     def complete_updtr_stop(self, text, line, begidx, endidx):
-        return [ name for name in self.updtr_stop_kw if name.startswith(text) ]
+        return self.__complete_attr_list('updtr_prdcr_stop', text)
 
     def do_strgp_add(self, arg):
         """
@@ -346,7 +349,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('strgp_add', arg)
 
     def complete_strgp_add(self, text, line, begidx, endidx):
-        return [ name for name in self.strgp_add_kw if name.startswith(text) ]
+        return self.__complete_attr_list('strgp_add', text)
 
     def do_strgp_del(self, arg):
         """
@@ -358,7 +361,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('strgp_del', arg)
 
     def complete_strgp_del(self, text, line, begidx, endidx):
-        return [ name for name in self.strgp_del_kw if name.startswith(text) ]
+        return self.__complete_attr_list('strgp_del', text)
 
     def do_strgp_prdcr_add(self, arg):
         """
@@ -371,7 +374,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('strgp_prdcr_add', arg)
 
     def complete_strgp_prdcr_add(self, text, line, begidx, endidx):
-        return [ name for name in self.strgp_prdcr_add_kw if name.startswith(text) ]
+        return self.__complete_attr_list('strgp_prdcr_add', text)
 
     def do_strgp_prdcr_del(self, arg):
         """
@@ -383,7 +386,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('strgp_prdcr_del', arg)
 
     def complete_strgp_prdcr_del(self, text, line, begidx, endidx):
-        return [ name for name in self.strgp_prdcr_del_kw if name.startswith(text) ]
+        return self.__complete_attr_list('strgp_prdcr_del', text)
 
     def do_strgp_metric_add(self, arg):
         """
@@ -396,7 +399,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('strgp_metric_add', arg)
 
     def complete_strgp_metric_add(self, text, line, begidx, endidx):
-        return [ name for name in self.strgp_metric_add_kw if name.startswith(text) ]
+        return self.__complete_attr_list('strgp_metric_add', text)
 
     def do_strgp_metric_del(self, arg):
         """
@@ -408,7 +411,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('strgp_metric_del', arg)
 
     def complete_strgp_set_del(self, text, line, begidx, endidx):
-        return [ name for name in self.strgp_set_del_kw if name.startswith(text) ]
+        return self.__complete_attr_list('strgp_metric_del', text)
 
     def do_strgp_start(self, arg):
         """
@@ -418,7 +421,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('strgp_start', arg);
 
     def complete_strgp_start(self, text, line, begidx, endidx):
-        return [ name for name in self.strgp_start_kw if name.startswith(text) ]
+        return self.__complete_attr_list('strgp_start', text)
 
     def do_strgp_stop(self, arg):
         """
@@ -428,6 +431,9 @@ class LdmsdCmdParser(cmd.Cmd):
         name=    The storage policy name
         """
         self.handle('strgp_stop', arg);
+
+    def complete_strgp_stop(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('strgp_stop', text)
 
     #
     # Backward compatibility commands

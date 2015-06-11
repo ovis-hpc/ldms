@@ -53,99 +53,107 @@
 from abc import ABCMeta, abstractmethod
 from os.path import basename, dirname
 """
-@module ldmsd_test_ctrl
+@module ldmsd_config
 
 """
 
 import os
 import socket
 
-LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'attr': []},
+
+#:Dictionary contains the cmd_id, required attribute list
+#:and optional attribute list of each ldmsd commands. For example,
+#:LDMSD_CTRL_CMD_MAP['load']['id'] is the command id of the load command
+#:LDMSD_CTRL_CMD_MAP['load']['req_attr'] is the list of the required attributes
+#:of the load command.
+#:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
+#:of the load command.
+LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                       'load': {'id': 1,
-                               'attr': ['name']},
+                               'req_attr': ['name']},
                       'term': {'id': 2,
-                               'attr': ['name']},
+                               'req_attr': ['name']},
                       'config': {'id': 3,
-                                 'attr': ['name', 'producer', 'instance']},
+                                 'req_attr': ['name', 'producer', 'instance']},
                       'start': {'id': 4,
-                                'attr': ['name', 'interval'],
-                                'opt': ['offset']},
+                                'req_attr': ['name', 'interval'],
+                                'opt_attr': ['offset']},
                       'stop': {'id': 5,
-                               'attr': ['name']},
+                               'req_attr': ['name']},
                       'add': {'id': 6,
-                              'attr': ['host', 'type'],
-                              'opt': ['xprt', 'port', 'sets', 'interval',
+                              'req_attr': ['host', 'type'],
+                              'opt_attr': ['xprt', 'port', 'sets', 'interval',
                                       'offset', 'agg_no']},
                       'remove': {'id': 7,
-                                 'attr': ['host']},
+                                 'req_attr': ['host']},
                       'store': {'id': 8,
-                                'attr': ['name', 'policy', 'container', 'schema'],
-                                'opt': ['metric', 'hosts']},
-                      'info': {'id': 9, 'attr': []},
+                                'req_attr': ['name', 'policy', 'container', 'schema'],
+                                'opt_attr': ['metric', 'hosts']},
+                      'info': {'id': 9, 'req_attr': []},
                       'udata': {'id': 10,
-                                'attr': ['set', 'metric', 'udata']},
-                      'exit': {'id': 11, 'attr': []},
+                                'req_attr': ['set', 'metric', 'udata']},
+                      'exit': {'id': 11, 'req_attr': []},
                       'standby': {'id': 12,
-                                  'attr': ['agg_no', 'state']},
+                                  'req_attr': ['agg_no', 'state']},
                       'oneshot': {'id': 13,
-                                  'attr': ['name', 'time']},
+                                  'req_attr': ['name', 'time']},
                       ###############################
                       # LDMSD command version 2
                       ###############################
                       ##### Producer Policy #####
                       'prdcr_add': {'id': 20,
-                                    'attr': ['name', 'type', 'xprt', 'host',
+                                    'req_attr': ['name', 'type', 'xprt', 'host',
                                              'port', 'interval']},
                       'prdcr_del': {'id': 21,
-                                    'attr': ['name']},
+                                    'req_attr': ['name']},
                       'prdcr_start': {'id': 22,
-                                      'attr': ['name'],
-                                      'opt': ['interval']},
+                                      'req_attr': ['name'],
+                                      'opt_attr': ['interval']},
                       'prdcr_stop': {'id': 23,
-                                     'attr': ['name']},
+                                     'req_attr': ['name']},
                       'prdcr_start_regex': {'id': 24,
-                                            'attr': ['regex'],
-                                            'opt': ['interval']},
+                                            'req_attr': ['regex'],
+                                            'opt_attr': ['interval']},
                       'prdcr_stop_regex': {'id': 25,
-                                           'attr': ['regex']},
+                                           'req_attr': ['regex']},
                       ##### Updater Policy #####
                       'updtr_add': {'id': 30,
-                                     'attr': ['name', 'interval'],
-                                     'opt': ['offset']},
+                                     'req_attr': ['name', 'interval'],
+                                     'opt_attr': ['offset']},
                       'updtr_del': {'id': 31,
-                                     'attr': ['name']},
+                                     'req_attr': ['name']},
                       'updtr_match_add': {'id': 32,
-                                          'attr': ['name', 'regex', 'match']},
+                                          'req_attr': ['name', 'regex', 'match']},
                       'updtr_match_del': {'id': 33,
-                                          'attr': ['name', 'regex', 'match']},
+                                          'req_attr': ['name', 'regex', 'match']},
                       'updtr_prdcr_add': {'id': 34,
-                                          'attr': ['name', 'regex']},
+                                          'req_attr': ['name', 'regex']},
                       'updtr_prdcr_del': {'id': 35,
-                                          'attr': ['name', 'regex']},
+                                          'req_attr': ['name', 'regex']},
                       'updtr_start': {'id': 38,
-                                      'attr': ['name'],
-                                      'opt': ['interval', 'offset']},
+                                      'req_attr': ['name'],
+                                      'opt_attr': ['interval', 'offset']},
                       'updtr_stop': {'id': 39,
-                                     'attr': ['name']},
+                                     'req_attr': ['name']},
                       ##### Storage Policy #####
                       'strgp_add': {'id': 40,
-                                     'attr': ['name', 'plugin', 'container',
+                                     'req_attr': ['name', 'plugin', 'container',
                                               'schema'],
-                                    'opt': ['rotate']},
+                                    'opt_attr': ['rotate']},
                       'strgp_del': {'id': 41,
-                                    'attr': ['name']},
+                                    'req_attr': ['name']},
                       'strgp_prdcr_add': {'id': 42,
-                                          'attr': ['name', 'regex']},
+                                          'req_attr': ['name', 'regex']},
                       'strgp_prdcr_del': {'id': 43,
-                                          'attr': ['name', 'regex']},
+                                          'req_attr': ['name', 'regex']},
                       'strgp_metric_add': {'id': 44,
-                                           'attr': ['name', 'metric']},
+                                           'req_attr': ['name', 'metric']},
                       'strgp_metric_del': {'id': 45,
-                                           'attr': ['name', 'metric']},
+                                           'req_attr': ['name', 'metric']},
                       'strgp_start': {'id': 48,
-                                      'attr': ['name']},
+                                      'req_attr': ['name']},
                       'strgp_stop': {'id': 49,
-                                     'attr': ['name']},
+                                     'req_attr': ['name']},
                       }
 
 """@var MAX_RECV_LEN
@@ -189,13 +197,31 @@ class ldmsdConfig(object):
         self.socket.close()
 
     def get_cmd_id(self, cmd_verb):
+        """Return the command ID of the given command
+        """
         return LDMSD_CTRL_CMD_MAP[cmd_verb]['id']
 
     def get_cmd_attr_list(self, cmd_verb):
-        return {'req': LDMSD_CTRL_CMD_MAP[cmd_verb]['attr'],
-                'opt': LDMSD_CTRL_CMD_MAP[cmd_verb]['opt']}
+        """Return the dictionary of command attributes
+
+        If there are no required/optional attributes, the value of the
+        'req'/'opt' key is None. Otherweise, the value is a list of attribute
+        names.
+
+        @return: {'req': [], 'opt': []}
+        """
+        attr_dict = {'req': None, 'opt': None}
+        if 'req_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
+            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']) > 0:
+                attr_dict['req'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']
+        if 'opt_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
+            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']) > 0:
+                attr_dict['opt'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']
+        return attr_dict
 
     def talk(self, cmd):
+        """Send command and receive response to and from ldmsd
+        """
         self.send_command(cmd + "\0")
         return self.receive_response()
 
