@@ -137,6 +137,7 @@ int bout_sos_msg_process_output(struct boutplugin *this,
 	sos_value_memset(value, odata->msg->argv,
 			 odata->msg->argc * sizeof(uint32_t));
 
+	sos_value_put(value);
 	rc = sos_obj_index(obj);
 	if (rc)
 		goto err1;
