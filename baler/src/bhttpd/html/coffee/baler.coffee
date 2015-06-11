@@ -553,12 +553,12 @@ window.baler =
 
         onMouseMove: (lx, ly) ->
             if ! @mouseDown
-                return 0
+                return [0, 0]
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
             @ctxt.clearRect(0, 0, @width, @height)
             @ctxt.putImageData(@oldImg, dlx, dly)
-            return 0
+            return [dlx, dly]
 
         onMouseDown: (lx, ly) ->
             @mouseDownPos = {lx: lx, ly: ly}
@@ -566,10 +566,8 @@ window.baler =
             @mouseDown = true
 
         onMouseUp: (lx, ly) ->
-            @onMouseMove(lx, ly)
+            [dlx, dly] = @onMouseMove(lx, ly)
             @mouseDown = false
-            dlx = lx - @mouseDownPos.lx
-            dly = ly - @mouseDownPos.ly
             fx = if dlx < 0 then @width + dlx else 0
             fy = if dly < 0 then @height + dly else 0
             fw = Math.abs(dlx)
@@ -595,43 +593,38 @@ window.baler =
             @ctxt = @domobj.getContext("2d")
             @update()
 
+        yy: (start, y) ->
+            if @axis == "y"
+                return start - y
+            return start + y
+
+        getTranslate: () ->
+            coff = parseInt(@offset * @pxlFactor)
+            if @axis == "y"
+                return [0, @height - coff]
+            return [0, -coff]
+
         update: () ->
             @ctxt.setTransform(1, 0, 0, 1, 0, 0)
             @ctxt.clearRect(0, 0, @width, @height)
-            coff = parseInt(@offset * @pxlFactor)
-            if @axis == 'y'
-                @ctxt.translate(0, @height - coff)
-                start = parseInt(@offset/@inc) * @inc
-                h = parseInt(@height / @inc)
-                for y in [0 .. h] by @inc
-                    lbl = @labelTextCb(Math.abs(start-y))
-                    m = @ctxt.measureText(lbl)
-                    yy = start - y
-                    x = @width - 20 - m.width
-                    cyy = yy * @pxlFactor
-                    @ctxt.fillText(lbl, x, cyy + 10)
-                    @ctxt.beginPath()
-                    @ctxt.moveTo(@width - 15, cyy + 5)
-                    @ctxt.lineTo(@width - 5, cyy + 5)
-                    stroke = @ctxt.stroke()
-            else
-                @ctxt.translate(0, - coff)
-                start = parseInt(@offset / @inc) * @inc
-                h = parseInt(@height / @inc)
-                for y in [0 .. h] by @inc
-                    lbl = @labelTextCb(start + y)
-                    m = @ctxt.measureText(lbl)
-                    yy = start + y
-                    x = @width - 20 - m.width
-                    cyy = yy * @pxlFactor
-                    @ctxt.fillText(lbl, x, cyy + 10)
-                    @ctxt.beginPath()
-                    @ctxt.moveTo(@width - 15, cyy + 5)
-                    @ctxt.lineTo(@width - 5, cyy + 5)
-                    stroke = @ctxt.stroke()
+            [tx, ty] = @getTranslate()
+            @ctxt.translate(tx, ty)
+            start = parseInt(@offset/@inc) * @inc
+            h = parseInt(@height / @inc)
+            for y in [0 .. h] by @inc
+                lbl = @labelTextCb(Math.abs(@yy(start, y)))
+                m = @ctxt.measureText(lbl)
+                yy = @yy(start, y)
+                x = @width - 20 - m.width
+                cyy = yy * @pxlFactor
+                @ctxt.fillText(lbl, x, cyy + 10)
+                @ctxt.beginPath()
+                @ctxt.moveTo(@width - 15, cyy + 5)
+                @ctxt.lineTo(@width - 5, cyy + 5)
+                stroke = @ctxt.stroke()
 
         setOffset: (offset) ->
-            if @axis = 'y'
+            if @axis == 'y'
                 @offset = -offset
             else
                 @offset = offset
@@ -684,12 +677,13 @@ window.baler =
             @dispDiv.style.position = "relative"
             @dispDiv.style.width = "#{@width + 1}px"
             @dispDiv.style.height = "#{@height + 1}px"
+            @dispDiv.style.transform = "scaleY(-1)"
             @dispDiv.onmousedown = (event) -> _this_.onMouseDown(event)
             @dispDiv.onmouseup = (event) -> _this_.onMouseUp(event)
             @dispDiv.onmousemove = (event) -> _this_.onMouseMove(event)
 
             lblyfn = (y) ->
-                text = "node: #{parseInt(y*_this_.npp)}"
+                text = "node: #{parseInt((y-1)*_this_.npp)}"
                 return text
             lblxfn = (x) ->
                 return baler.ts2datetime(x*_this_.spp)
@@ -813,13 +807,17 @@ window.baler =
             dlx = lx - @mouseDownPos.lx
             dly = ly - @mouseDownPos.ly
 
+            # invert y movement
+            dly = -dly
+            ly = @mouseDownPos.ly + dly
+
             # Adjust lx, ly, dlx, dly
             min_lts = parseInt(@limits.min_ts / @spp)
             max_lts = parseInt(@limits.max_ts / @spp)
             min_lcid = parseInt(@limits.min_comp_id / @npp)
             max_lcid = parseInt(@limits.max_comp_id / @npp)
-            lwidth = parseInt(@width / @pxlFactor)
-            lheight = parseInt(@height / @pxlFactor)
+            lwidth = parseInt(@width / @pxlFactor) - 1
+            lheight = parseInt(@height / @pxlFactor) - 1
 
             # Adjust actual max to be the max of top-left pixel
             max_lts -= lwidth
