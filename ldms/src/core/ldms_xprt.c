@@ -513,24 +513,30 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	return 1;
 }
 
-static int __re_match(struct ldms_set *set, regex_t *regex, int inst_n_schema)
+static int __re_match(struct ldms_set *set, regex_t *regex, const char *regex_str, int flags)
 {
 	regmatch_t regmatch;
 	ldms_name_t name;
+	int rc;
 
-	if (inst_n_schema)
-		name = get_instance_name(set->meta);
-	else
+	if (flags & LDMS_LOOKUP_BY_SCHEMA)
 		name = get_schema_name(set->meta);
+	else
+		name = get_instance_name(set->meta);
 
-	int rc = regexec(regex, name->name, 0, NULL, 0);
-	return (rc ? 0 : 1);
+	if (flags & LDMS_LOOKUP_RE)
+		rc = regexec(regex, name->name, 0, NULL, 0);
+	else
+		rc = strcmp(regex_str, name->name);
+
+	return (rc == 0);
 }
 
-static struct ldms_set *__next_re_match(struct ldms_set *set, regex_t *regex, int inst_n_schema)
+static struct ldms_set *__next_re_match(struct ldms_set *set,
+					regex_t *regex, const char *regex_str, int flags)
 {
 	for (; set; set = __ldms_local_set_next(set)) {
-		if (__re_match(set, regex, inst_n_schema))
+		if (__re_match(set, regex, regex_str, flags))
 			break;
 	}
 	return set;
@@ -541,28 +547,30 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 	regex_t regex;
 	struct ldms_reply_hdr hdr;
 	struct ldms_set *set, *nxt_set;
-	int inst_n_schema = !(flags & LDMS_LOOKUP_BY_SCHEMA);
 	int rc, more;
 
-	rc = regcomp(&regex, req->lookup.path, REG_EXTENDED | REG_NOSUB);
-	if (rc) {
-		char errstr[512];
-		size_t sz = regerror(rc, &regex, errstr, sizeof(errstr));
-		x->log(errstr);
-		rc = EINVAL;
-		goto err_0;
+	if (flags & LDMS_LOOKUP_RE) {
+		rc = regcomp(&regex, req->lookup.path, REG_EXTENDED | REG_NOSUB);
+		if (rc) {
+			char errstr[512];
+			size_t sz = regerror(rc, &regex, errstr, sizeof(errstr));
+			x->log(errstr);
+			rc = EINVAL;
+			goto err_0;
+		}
 	}
 
 	/* Get the first match */
 	set = __ldms_local_set_first();
-	set = __next_re_match(set, &regex, inst_n_schema);
+	set = __next_re_match(set, &regex, req->lookup.path, flags);
 	if (!set) {
 		rc = ENOENT;
 		goto err_1;
 	}
 	while (set) {
 		/* Get the next match if any */
-		nxt_set = __next_re_match(__ldms_local_set_next(set), &regex, inst_n_schema);
+		nxt_set = __next_re_match(__ldms_local_set_next(set),
+					  &regex, req->lookup.path, flags);
 		if (nxt_set)
 			more = 1;
 		else
@@ -570,10 +578,12 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 		rc = __send_lookup_reply(x, set, req->hdr.xid, more);
 		set = nxt_set;
 	}
-	regfree(&regex);
+	if (flags & LDMS_LOOKUP_RE)
+		regfree(&regex);
 	return;
  err_1:
-	regfree(&regex);
+	if (flags & LDMS_LOOKUP_RE)
+		regfree(&regex);
  err_0:
 	hdr.rc = htonl(rc);
 	hdr.xid = req->hdr.xid;
@@ -594,13 +604,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	int rc;
 	struct ldms_set *set;
 
-	if (flags & LDMS_LOOKUP_RE || LDMS_LOOKUP_BY_SCHEMA) {
-		process_lookup_request_re(x, req, flags);
-	} else {
-		set = __ldms_find_local_set(req->lookup.path);
-		rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
-		__ldms_release_local_set(set);
-	}
+	process_lookup_request_re(x, req, flags);
 }
 
 static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
