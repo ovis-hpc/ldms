@@ -1,6 +1,6 @@
 .\" Manpage for ldmsctl_args
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "14 Jun 2015" "v2.4.3" "ldmsctl_args man page"
+.TH man 1 "14 Jun 2015" "v2.4.3" "ldmsctl_args man page"
 
 .SH NAME
 ldmsctl_args \- Query for ldmsctl command lines based on configuration file.

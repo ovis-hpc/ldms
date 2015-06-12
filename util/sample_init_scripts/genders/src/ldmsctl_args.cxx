@@ -434,17 +434,17 @@ public:
 		
 		po::options_description desc("Allowed options");
 		desc.add_options()
-		("help,h", "produce help message")
-		("verbose,v", po::value < int >(&log_level),
-		 "enable verbosity (higher is louder; default 0)")
 		("genders,g", po::value <  string  >(&genders),
 		 "genders input file name (default env(LDMS_GENDERS) else /etc/genders)")
 		("node,n", po::value <  string  >(&hostname),
 		 "network node the query will describe (default from gethostname())")
-		("output,o", po::value <  string  >(&outname),
-		 "where to send output (default stdout)")
 		("task,t", po::value <  string  >(&task),
 		 "the type of output wanted (default add host lines)")
+		("output,o", po::value <  string  >(&outname),
+		 "where to send output (default stdout)")
+		("verbose,v", po::value < int >(&log_level),
+		 "enable verbosity (higher is louder; default 0)")
+		("help,h", "produce help message")
 		;
 		po::variables_map vm;
 		po::store(parse_command_line(argc,argv,desc),vm);

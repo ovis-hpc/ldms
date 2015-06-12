@@ -1,3 +1,5 @@
+dist_man1_MANS= \
+ldmsctl_args.man
 
 dist_man8_MANS= \
 ldmsctl.man \
