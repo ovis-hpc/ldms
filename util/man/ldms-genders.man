@@ -108,6 +108,8 @@ ldmsaggd_xprt=X         defines protocol for aggregators data server.
 ldmsaggd_dbg=LEVEL      defines daemon internal logging level among
                         DEBUG,INFO,ERROR CRITICAL,QUIET.
 ldmsaggd_clientof=H     defines n-th level aggregation host.
+ldmsaggd_exclude_sets=S defines sets to exclude from aggregation.
+
 ## not yet supported:
 ldmsaggd_fail=H         defines aggregation host to take over if this
                         node fails.
@@ -150,6 +152,7 @@ ldmsd_interval_SUFFIX=IPLUG     as ISAMP, but for sets named by SUFFIX
 ldmsd_offset_SUFFIX=OPLUG       as OSAMP, but for sets named by SUFFIX
 ldmsaggd_interval_default=IAGG  as ISAMP, but for aggregator schedule.
 ldmsaggd_offset_default=OAGG    as OSAMP, but for aggregator schedule.
+
 ## not yet supported
 #ldmsaggd_interval_SUFFIX=IAGGS as ISAMP, but for aggregating set SUFFIX
 #ldmsaggd_offset_SUFFIX=OAGGS   as OSAMP, but for aggregating set SUFFIX
@@ -213,14 +216,18 @@ plugin configuration where needed.
 
 .SH Node Lists
 .PP
-There are 3 special values for managing groups of LDMS data sources:
-BOOTNODELIST, CLIENTOFLIST, and AGGCLIENTOFLIST.
-.PP
-The keyword BOOTNODELIST is replaced with the list of nodes with the gender "bootnode" having a value matching the name of the aggregator host.  If there are no nodes at all defined to have the "bootnode" gender, then BOOTNODELIST is taken as the set of all nodes with the
-gender "ldmsd".
+There are several special values for managing groups of LDMS data sources:
+BOOTNODELIST, LDMSDALL, CLIENTOFLIST, and AGGCLIENTOFLIST. Explicitly
+naming individual nodes in a node list is rarely desirable.
 
 .PP
-If something other than boot nodes is the basis of aggregation, the layout can be specified. E.g., a set of mon nodes aggregating subsets of compute nodes:
+The keyword BOOTNODELIST is replaced with the list of nodes with the gender "bootnode" having a value matching the name of the aggregator host. 
+
+.PP
+The keyword LDMSDALL is replaced with the list of all nodes with the gender "ldmsd".
+
+.PP
+If something other than boot nodes is the basis of aggregation, the layout can be specified. E.g., a set of monitoring nodes prefixed mon aggregating subsets of compute nodes:
 .nf
    mon[1-4]: ldmsaggd=CLIENTOFLIST
    compute[1-300] ldmsd_clientof=mon1
@@ -235,8 +242,10 @@ CLIENTOFLIST is computed as:
 .PP
 on each mon host H.
 .PP
-To run 2nd and higher level aggregators, if we wanted that in-platform data
-for applications seeking a global performance view:
+Data is expected from ldmsd running on all explicitly named nodes and nodes appearing in the BOOTNODELIST, LDMSDALL, or CLIENTOFLIST expansions.
+.PP
+To run 2nd and higher level aggregators, aggregator hierarchy relationships must be specified. If we need in-platform data for applications seeking 
+a global performance views, a top level aggregator pulling from other aggregators can be defined with AGGCLIENTOFLIST thus:
 .nf
    montop ldmsaggd=AGGCLIENTOFLIST
    mon[1-4] ldmsaggd_clientof=montop
@@ -247,11 +256,15 @@ AGGCLIENTOFLIST is computed as:
    nodeattr -c ldmsaggd_clientof=montop
 .fi
 .PP
-on the montop host.
+on the montop host. 
 
+If nodes mon[1-4] are themselves to be monitored by montop, then they must have both ldmsaggd and ldmsd gender values and two daemons (ldmsd and ldms-aggd) will run on these nodes. In this case, both special list variables are used:
+.nf
+   montop ldmsaggd=AGGCLIENTOFLIST:CLIENTOFLIST
+.fi
 
 .SH NOTES
-In the current implementation, only one ldms-aggd per node is managed. Second elvel aggregators cannot occupy the same node as first level aggregators.
+In the current implementation, only one ldms-aggd per node is managed via init scripts. Second level aggregators cannot occupy the same node as first level aggregators unless additional configuration scripts are created. This is a scripting limitation, not a limitation of the daemons.
 
 
 .SH BUGS

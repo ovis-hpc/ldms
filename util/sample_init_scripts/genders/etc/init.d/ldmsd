@@ -1,4 +1,4 @@
-#!/bin/bash 
+#!/bin/bash
 #
 # ldmsd		Start up the ldms sampler/collector daemon
 #
@@ -39,6 +39,22 @@ else
 	exit
 fi
 
+VERBOSE=
+ARG=$1
+arg1=$1
+shift
+while getopts "v" opt
+do
+	case "$opt" in
+	v) VERBOSE="-v";;
+	:) echo "Option -$OPTARG requires an argument" ;;
+	\?) # unknown flag
+		initusage
+		exit 1;;
+	esac
+done
+shift `expr $OPTIND - 1`
+
 # read basic variables including path/lib info
 if [ -f $sysconfdir/sysconfig/$DAEMON ]; then
 	. $sysconfdir/sysconfig/$DAEMON
@@ -65,25 +81,10 @@ prog="$DAEMON"
 pidfile=$localstatedir/run/$prog.pid
 lockfile=$localstatedir/lock/subsys/$prog
 
-VERBOSE=
-
-ARG=$1
 
 
 
-arg1=$1
-shift
-while getopts "v" opt
-do
-	case "$opt" in
-	v) VERBOSE="-v";;
-	:) echo "Option -$OPTARG requires an argument" ;;
-	\?) # unknown flag
-		initusage
-		exit 1;;
-	esac
-done
-shift `expr $OPTIND - 1`
+
 
 runlevel=$(set -- $(runlevel); eval "echo \$$#" )
 

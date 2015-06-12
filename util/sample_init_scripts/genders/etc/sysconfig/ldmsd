@@ -12,21 +12,13 @@ NODEFILE=/etc/sysconfig/ldmsd.conf
 . $NODEFILE
 
 
-if ! test -z DEBUG_INITD; then
-
-	DEBUG_INITD=/bin/true
-# see if we're running genders and if ldmsd is forced
-# If no genders, someone should use a different set of
-# init scripts entirely
-	if ! nodeattr $NODEATTRFILE -k > /dev/null 2>&1; then
-		echoq problem with $NODEATTRFILE
-		failure
-		echo
-		exit
-	fi
-else
-	DEBUG_INITD=/bin/true
+if ! nodeattr $NODEATTRFILE -k > /dev/null 2>&1; then
+	echoq "problem with $NODEATTRFILE"
+	failure
+	echo BAD GENDERS $NODEATTRFILE
+	exit 1
 fi
+
 # if we are the top (ldmsd use, not ldmsaggd use) check for being wanted on this node
 if test "x$INCLUDES_LDMSD" = "x"; then
 	if test -z $LDMSD; then
@@ -34,7 +26,7 @@ if test "x$INCLUDES_LDMSD" = "x"; then
 			echoq "$host is is not an LDMSD host. Exiting."
 			failure
 			echo
-			exit
+			exit 1
 		fi
 		LDMSD=1
 	fi
@@ -145,16 +137,19 @@ for i in $(echo $METRIC_SETS | tr ":;'\`" "\n"); do
 	fi
 done
 
-# MYHOSTNAME is a hostname that doesn't contain the domain name
-MYHOSTNAME="$( echo $host | cut -d "." -f1 )"
 
 # Derive component IDs from hostname embedded numbers.
 hostnumber="$(echo $MYHOSTNAME | sed 's/[a-z\-]//g')"
 if [ -z $hostnumber ]; then
 	echoq "WARNING: $host (no digits in hostname?)"
+	hostnumber=0
 fi
-if test -z $COMPONENT_ID; then
-	COMPONENT_ID="$(( $NODE_ID_BASE + $hostnumber ))"
+if test "x$INCLUDES_LDMSD" = "x"; then
+	if test -z $COMPONENT_ID; then
+		COMPONENT_ID="$(( $NODE_ID_BASE + $hostnumber ))"
+	fi
+else
+	COMPONENT_ID="$(( $AGG_ID_BASE + $hostnumber ))"
 fi
 
 if [ $COMPONENT_ID -lt 1 ]; then

@@ -1,19 +1,22 @@
-#!/bin/bash -x
+#!/bin/bash 
+echo "$0 `date`" >> .last-make
 echo BUILDING FOR UBUNTU 12.04
-if test -x /usr/bin/colorgcc; then
-	export CC=colorgcc
-else
-export CC=gcc
-fi
+export CC=gcc49
+export CXX=g++49
+
 export LD_LIBRARY_PATH=$HOME/opt/ovis/lib:$LD_LIBRARY_PATH
+
+# local path of scratch ldms files
+build_subdir=LDMS_object
+
 if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	prefix=$HOME/opt/ovis
 	expected_event2_prefix=/usr
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=$prefix
 
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --disable-zap  --with-ovis-lib=$expected_ovislib_prefix --disable-sos   --enable-authentication "
-CFLAGS='-Wall -g'
+#CFLAGS='-Wall -g'
+#CXXFLAGS='-Wall -g -I/ovis/init-2015/include'
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
 		echo "Found $expected_event2_prefix/include/event2/event.h. Good."
@@ -29,13 +32,20 @@ CFLAGS='-Wall -g'
 		exit 1
 	fi
 
-	echo "reinitializing .build-all"
-	rm -rf .build-all
-	mkdir .build-all
-	cd .build-all
-	mkdir lib ldms sos
-	(cd lib; ../../lib/configure CFLAGS="$CFLAGS" $allconfig  && make   && make install) && \
-	cd ldms && LDFLAGS="-L$HOME/opt/ovis/lib" ../../ldms/configure CFLAGS="$CFLAGS" $allconfig && make  && make install
+	srctop=`pwd`
+	prefix=$srctop/LDMS_install
+	echo "reinitializing build subdirectory $build_subdir" 
+	rm -rf $build_subdir
+	mkdir $build_subdir
+	cd $build_subdir
+	expected_ovislib_prefix=$prefix
+	expected_sos_prefix=/badsos
+	#allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 LDFLAGS=-fsanitize=address "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication LDFLAGS=-fsanitize=address  --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 "
+	../configure $allconfig && \
+	make && \
+	make install && \
+	../packaging/nola.sh $prefix
 else
 	echo "this must be run from the top of ovis source tree"
 	exit 1

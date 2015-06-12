@@ -47,6 +47,23 @@ dnl Check for libevent
 OPTION_WITH_EVENT
 # LIBEVENT-done
 
+OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS])
+
+if test -z "$ENABLE_LIBGENDERS_TRUE"
+then
+	OPTION_WITH([libgenders], [LIBGENDERS])
+	AC_LANG_PUSH([C++])
+	BOOST_REQUIRE( ,[AC_MSG_ERROR([Genders enabled but boost not found.])])
+	BOOST_STRING_ALGO
+	save_LDFLAGS=$LDFLAGS
+	LDFLAGS=$LIBGENDERS_LIBDIR_FLAG
+	AX_CXX_CHECK_LIB(gendersplusplus,[Gendersplusplus::GendersException], [],
+		AC_MSG_ERROR([libgendersplusplus not found. ]))
+	LDFLAGS=$save_LDFLAGS
+	AC_LANG_POP([C++])
+	LIBS=""
+fi
+
 OPTION_GITINFO
 OPTION_HOSTINFO
 
@@ -70,6 +87,7 @@ util/sample_init_scripts/rhel/etc/sysconfig/Makefile
 util/sample_init_scripts/genders/Makefile
 util/sample_init_scripts/genders/etc/sysconfig/Makefile
 util/sample_init_scripts/genders/etc/Makefile
+util/sample_init_scripts/genders/src/Makefile
 util/sample_init_scripts/genders/etc/init.d/Makefile
 
 packaging/ovis-base.spec])

@@ -1,0 +1,68 @@
+.\" Manpage for ldmsctl_args
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "14 Jun 2015" "v2.4.3" "ldmsctl_args man page"
+
+.SH NAME
+ldmsctl_args \- Query for ldmsctl command lines based on configuration file.
+
+.SH SYNOPSIS
+ldmsctl_args [OPTION...]
+
+.SH DESCRIPTION
+ldmsctl_args composes information from configuration files into the strings ldmsctl needs. In the current version, the ldms libgenders file format is supported
+and output options support configuring aggregators and stores.
+
+.SH ENVIRONMENT
+The following environment variables may be set:
+.TP
+LDMS_GENDERS
+override the default location /etc/genders.
+
+.SH OPTIONS
+.TP
+.BI -g|--genders " FILE"
+Configuration FILE to use for the query. Default /etc/genders, overridden by env(LDMS_GENDERS) if present.
+.TP
+.BI -n|--node " HOST"
+.br
+HOST configuration to lookup. Default is the result of gethostname().
+.TP
+.BI -t|--task  " TASK"
+TASK is one of: host-list or store-list. Default is host-list
+.TP
+.BI -o|--output " SCRIPT"
+File named SCRIPT to send the output. The default is the standard output.
+.TP
+.BI -v|--verbose " LEVEL"
+Integer LEVEL of noise to make. Default is 0 (minimal).
+.TP
+.BR -h|--help
+Dump the options list.
+
+
+.SH NOTES
+This is experimental, and more task types are expected.
+
+.SH BUGS
+-o is ignored; use shell redirects until this is fixed.
+
+.SH EXAMPLES
+.PP
+.nf
+$ ldmsctl_args -g genders.ldms -n b1 -t host-list
+add host=c3n5-ib0 type=active interval=1000000 offset=10000 xprt=rdma port=411 sets=c3n5/r,c3n5/s
+add host=c3n6-ib0 type=active interval=1000000 offset=10000 xprt=rdma port=411 sets=c3n6/r,c3n6/s
+.br
+.PP
+.nf
+$ldmsctl_args -g genders.ldms -n top -t store-list
+r,s
+.br
+.PP
+.nf
+For a non-existent node, output is empty.
+$ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
+.fi
+
+.SH SEE ALSO
+ldmsctl(1), gethostname(2), ldms-genders(7)

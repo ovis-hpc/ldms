@@ -39,6 +39,24 @@ else
 	exit
 fi
 
+VERBOSE=
+
+ARG=$1
+
+arg1=$1
+shift
+while getopts "v" opt
+do
+	case "$opt" in
+	v) VERBOSE="-v";;
+	:) echo "Option -$OPTARG requires an argument" ;;
+	\?) # unknown flag
+		initusage
+		exit 1;;
+	esac
+done
+shift `expr $OPTIND - 1`
+
 # read variables including path/lib info
 # must also pull in ldmsd configs to know what to aggregate
 if [ -f $sysconfdir/sysconfig/$DAEMON ]; then
@@ -66,23 +84,6 @@ prog="$DAEMON"
 pidfile=$localstatedir/run/$prog.pid
 lockfile=$localstatedir/lock/subsys/$prog
 
-VERBOSE=
-
-ARG=$1
-
-arg1=$1
-shift
-while getopts "v" opt
-do
-	case "$opt" in
-	v) VERBOSE="-v";;
-	:) echo "Option -$OPTARG requires an argument" ;;
-	\?) # unknown flag
-		initusage
-		exit 1;;
-	esac
-done
-shift `expr $OPTIND - 1`
 
 runlevel=$(set -- $(runlevel); eval "echo \$$#" )
 
@@ -107,7 +108,7 @@ start()
 	fi
 
 	if [[ -z $COMPONENT_ID ]]; then
-		echo "No COMPONENT_ID defined... Exiting"
+		echoq "No COMPONENT_ID defined... Exiting"
 		failure
 		echo
 		exit

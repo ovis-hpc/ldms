@@ -11,6 +11,7 @@ CONFFILE=/etc/sysconfig/$DAEMON.conf
 
 INCLUDES_LDMSD=yes
 export INCLUDES_LDMSD
+AGG_ID_BASE=1000000
 # load localizations; this also pulls in the sysconfig/ldmsd and ldmsd.conf
 . $CONFFILE
 
@@ -126,8 +127,8 @@ if test -z $NODELIST; then
 	AGGCLIENTOF_LIST=`nodeattr $NODEATTRFILE -c ldmsaggd_clientof=$host`
 
 	NLIST=`echo $LDMSAGGD_LIST |sed -e "s/BOOTNODELIST/$BOOTNODE_LIST/"`
-	NLIST=`echo $NLIST |sed -e "s/CLIENTOFLIST/$CLIENTOF_LIST/"`
 	NLIST=`echo $NLIST |sed -e "s/AGGCLIENTOFLIST/$AGGCLIENTOF_LIST/"`
+	NLIST=`echo $NLIST |sed -e "s/CLIENTOFLIST/$CLIENTOF_LIST/"`
 	NODELIST=`echo $NLIST |sed -e 's/,/:/g'`
 	if test -z $NODELIST; then
 		echoq "Aggregator $host has nothing to aggregate. Exiting."
