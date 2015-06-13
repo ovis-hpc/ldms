@@ -815,7 +815,7 @@ struct bplugin* create_plugin_instance()
 	p->start = plugin_start;
 	p->stop = plugin_stop;
 	p->free = plugin_free;
-	struct plugin_ctxt *ctxt = calloc(1, sizeof(*p->context));
+	struct plugin_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 	ctxt->status = PSTATUS_STOPPED;
 	ctxt->port = PLUGIN_DEFAULT_PORT;
 	p->context = ctxt;

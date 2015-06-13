@@ -166,6 +166,8 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	struct bout_sos_plugin *_base = (void*)this;
 	struct bout_sos_img_plugin *_this = (typeof(_this))this;
 	uint32_t *tmp;
+	struct sos_value_s val;
+	sos_value_t value;
 	SOS_KEY(ok);
 	pthread_mutex_lock(&_base->sos_mutex);
 	sos_iter_t iter;
@@ -193,13 +195,12 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	bout_sos_img_key_convert(&bk);
 	sos_key_set(ok, &bk, sizeof(bk));
 
-	uint32_t count = 1;
 	if (0 == sos_iter_find(iter, ok)) {
 		sos_obj_t obj = sos_iter_obj(iter);
-		sos_value_t count = sos_value(obj, _this->count_attr);
+		value = sos_value_init(&val, obj, _this->count_attr);
 		/* found, increment the counter */
-		count->data->prim.uint32_++;
-		sos_value_put(count);
+		value->data->prim.uint32_++;
+		sos_value_put(value);
 		sos_obj_put(obj);
 		goto out;
 	}
@@ -211,8 +212,7 @@ int bout_sos_img_process_output(struct boutplugin *this,
 						" errno(%d): %m", errno);
 		goto out;
 	}
-	struct sos_value_s val;
-	sos_value_t value = sos_array_new(&val, _this->key_attr, obj, 3);
+	value = sos_array_new(&val, _this->key_attr, obj, 3);
 	if (!value) {
 		rc = ENOMEM;
 		goto out_1;
