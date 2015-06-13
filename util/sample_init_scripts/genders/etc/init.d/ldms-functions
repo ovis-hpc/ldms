@@ -196,40 +196,14 @@ get_sets() {
 }
 
 start_add_hosts () {
-	# This isn't quite right if someone makes a node-name based
-	# exception, but we don't want to reparse the whole ldmsd.conf
-	# file for each host. If the user leaves genders undefined
-	# and uses global settings in the .conf, this works right.
-	# Node-specific exceptions should be coded in genders.
-#
-# fixme: need to track whether pulling d or aggd and use correct host:iface:port
-#
+	# this generates and sends lines like the next to local aggregator.
+	# CMD="echo add host=$nHOST type=active interval=$AGG_COLLECTION_INTERVAL offset=$AGG_COLLECTION_OFFSET xprt=$nXPRT port=$nPORT sets=$SETS";
+
 	DO_CTL="$LDMSAGGCTL -S $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
-	mylist=$(eval echo $NODELIST | tr ":;'\`," "\n")
-	echoq mylisthosts: $mylist
-	for n in $(eval echo $NODELIST | tr ":;'\`," "\n"); do
-		echoq Examining $n
-		set -x
-		nPORT=`nodeattr $NODEATTRFILE -v $n ldmsd_port`
-		if test -z $nPORT; then
-			nPORT=$NODE_PORT
-		fi
-		nXPRT=`nodeattr $NODEATTRFILE -v $n ldmsd_xprt`
-		if test -z $nXPRT; then
-			nXPRT=$NODE_LDMSD_TRANSPORT
-		fi
-		nHOST=`nodeattr $NODEATTRFILE -v $n ldmsd_host`
-		if test -z $nHOST; then
-			nHOST=$n
-		fi
-		set +x
-		get_sets $n
-
-                CMD="echo add host=$nHOST type=active interval=$AGG_COLLECTION_INTERVAL offset=$AGG_COLLECTION_OFFSET xprt=$nXPRT port=$nPORT sets=$SETS";
-		echoq $CMD;
-                eval $CMD |  $DO_CTL
-        done
-
+	# debugging to syslog
+	ldmsctl_args -n $MYHOSTNAME | logger -p user.debug -t ldmsctl_args
+	# actually do it.
+	ldmsctl_args -n $MYHOSTNAME | $DO_CTL
 }
 
 # start stores, for aggregators.
@@ -244,12 +218,6 @@ start_stores () {
 			exit 1
 	fi
 	DO_CTL="$LDMSAGGCTL -S $AGGSOCK_PATH"
-	if test -z $NODELIST; then
-		echo "No nodes defined... Exiting"
-		failure
-		echo
-		exit 1
-	fi
 	if test -z $STORES; then
 		echo "No stores defined... Exiting"
 		failure
@@ -258,7 +226,7 @@ start_stores () {
 	fi
 
 	# Make directory to store into (store will fail if this doesn't exist)
-	# then add all metric sets to all stores.
+	# then add all metric sets to all stores. Likely this needs more flexibility
 	if ! test -d $STORE_PATH; then
 		mkdir -p $STORE_PATH
 	fi

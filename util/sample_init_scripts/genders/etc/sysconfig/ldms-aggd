@@ -136,9 +136,9 @@ if test -z $NODELIST; then
 		echo
 		exit
 	fi
-	METRIC_SETS_LIST=`nodeattr $NODEATTRFILE -U -V ldmsd_metric_sets`
-	# union of sets on all nodes.
-	ALL_METRIC_SETS=`echo $METRIC_SETS_LIST $METRIC_SETS| tr ": " "\n" | sort -u`
+	METRIC_SETS_LIST=`ldmsctl_args -n $MYHOSTNAME -t store-list`
+	# union of sets on all nodes and user input
+	ALL_METRIC_SETS=`echo $METRIC_SETS_LIST $METRIC_SETS| tr ",: " "\n" | sort -u`
 fi
 
 # Define name of Unix domain socket for communication with ldmsaggd
