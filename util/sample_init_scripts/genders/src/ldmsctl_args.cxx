@@ -30,13 +30,6 @@ using namespace boost;
 using namespace Gendersplusplus;
 namespace po = boost::program_options;
 
-
-void usage(const char *ex)
-{
-	std::cerr << ex << ": usage: " <<
-		ex << " <genders file> <host name> <task>" <<endl;
-}
-
 void printvec( const vector< pair< string, string > >& all)
 {
 	for (int i = 0; i < all.size(); i++) {
@@ -94,6 +87,8 @@ public:
 	string host;	// ldms[agg]d_host
 	string xprt;	// ldms[agg]d_xprt
 	string port;	// ldms[agg]d_port
+	string interval;// ldms[aggd]_interval_default
+	string offset; 	// ldms[aggd]_offset_default
 };
 // may soon want to wrap this around some other database.
 class ldms_config_info {
@@ -165,6 +160,8 @@ public:
 		string ports = prefix + "_port";
 		string hosts = prefix + "_host";
 		string xprts = prefix + "_xprt";
+		string intervals = prefix + "_interval_default";
+		string offsets = prefix + "_offset_default";
 		string tmp;
 		if (has_property(host, ports, tmp)) {
 			istringstream ss(tmp);
@@ -183,6 +180,12 @@ public:
 		}
 		if (! has_property(host, xprts, t.xprt) ) {
 			t.xprt = "sock"; 
+		}
+		if (! has_property(host, intervals, t.interval) ) { 
+			t.interval = "10000000"; // 10 sec
+		}
+		if (! has_property(host, offsets, t.offset) ) { 
+			t.offset = "100000"; // 0.1 sec
 		}
 	}
 	virtual bool has_backup(const string& host, string& val) {
@@ -216,14 +219,17 @@ public:
 		isaggd = in->is_aggd(hostname,ldmsaggd);
 		hasbackup = in->has_backup(host,aggbackup);
 		in->get_trans(host, dt,"ldmsd");
-		in->get_trans(host, aggdt,"ldmsaggd");
+		in->get_trans(host, dt,"ldmsd");
 		in->get_metric_sets(host,metricsets);
 		in->get_exclude_sets(host,excludesets);
 	}
 
-	void set_schedule(const string& interval, const string& offset) {
-		agg_collection_interval = interval;
-		agg_collection_offset = offset;
+	void set_offset(const string& offset) {
+		aggdt.offset = offset;
+	}
+
+	void set_interval(const string& interval) {
+		aggdt.interval = interval;
 	}
 
 	string hostname;	// genders/default hostname
@@ -232,15 +238,12 @@ public:
 	string ldmsaggd;	// ldmsaggd
 	bool hasbackup;		// ldmsaggd_fail defined
 	string aggbackup;	// ldmsaggd_fail
-	trans dt;		// ldmsd_host/xprt/port
-	trans aggdt;		// ldmsaggd_host/xprt/port
+	trans dt;		// ldmsd_host/xprt/port/interval/offset
+	trans aggdt;		// ldmsaggd_host/xprt/port/interval/offset
 	string metricsets;	// ldmsd_metric_sets
 	string excludesets;	// ldmsaggd_exclude_sets
 
 private:
-	// only topmost agg needs these; use set_schedule before calling get_sets
-	string agg_collection_interval;
-	string agg_collection_offset;
 	vector<string> adds;	// add host lines computed for topmost hdata only.
 
 	// append local sets of client to out as elements "clienthame/setname".
@@ -274,18 +277,13 @@ private:
 				in->get_trans(node_list[j], t, "ldmsd");
 				string sets = join(collsets,",");
 				ostringstream oss;
-				oss <<
-				"add host=" << t.host <<
-				" type=active";
-				if (agg_collection_interval.size() > 0) {
-					oss << " interval=" << agg_collection_interval;
-				}
-				if (agg_collection_offset.size() > 0) {
-					oss << " offset=" << agg_collection_offset;
-				}
-				oss << " xprt=" << t.xprt <<
-				" port=" << t.port <<
-				" sets=" << sets;
+				oss << "add host=" << t.host;
+				oss << " type=active";
+				oss << " interval=" << aggdt.interval;
+				oss << " offset=" << aggdt.offset;
+				oss << " xprt=" << t.xprt;
+				oss << " port=" << t.port <<
+				oss << " sets=" << sets;
 				adds.push_back(oss.str());
 			}
 		}
@@ -367,18 +365,13 @@ public:
 						in->get_trans(aggclientof_list[j], t, "ldmsaggd");
 						string sets = join(aggsets,",");
 						ostringstream oss;
-						oss <<
-						"add host=" << t.host <<
-						" type=active";
-						if (agg_collection_interval.size() > 0) {
-							oss << " interval=" << agg_collection_interval;
-						}
-						if (agg_collection_offset.size() > 0) {
-							oss << " offset=" << agg_collection_offset;
-						}
-						oss << " xprt=" << t.xprt <<
-						" port=" << t.port <<
-						" sets=" << sets;
+						oss << "add host=" << t.host;
+						oss << " type=active";
+						oss << " interval=" << aggdt.interval;
+						oss << " offset=" << aggdt.offset;
+						oss << " xprt=" << t.xprt;
+						oss << " port=" << t.port;
+						oss << " sets=" << sets;
 						adds.push_back(oss.str());
 					}
 				}
@@ -410,6 +403,10 @@ public:
 	string hostname; 
 	string outname; 
 	bool useoutname;
+	string interval; 
+	bool useinterval;
+	string offset; 
+	bool useoffset;
 
 	ctloptions(int argc, char **argv) :
 		ok(true),
@@ -440,7 +437,11 @@ public:
 		 "network node the query will describe (default from gethostname())")
 		("task,t", po::value <  string  >(&task),
 		 "the type of output wanted (default add host lines)")
-		("output,o", po::value <  string  >(&outname),
+		("interval,i", po::value <  string  >(&interval),
+		 "value overriding interval_default gender")
+		("offset,o", po::value <  string  >(&offset),
+		 "value overriding offset_default gender")
+		("output,O", po::value <  string  >(&outname),
 		 "where to send output (default stdout)")
 		("verbose,v", po::value < int >(&log_level),
 		 "enable verbosity (higher is louder; default 0)")
@@ -451,9 +452,16 @@ public:
 		po::notify(vm);
 		if (vm.count("help")) {
 			cout << desc << "\n";
+			ok = false;
 		}
 		if (vm.count("output")) {
 			useoutname = true;
+		}
+		if (vm.count("offset")) {
+			useoffset = true;
+		}
+		if (vm.count("interval")) {
+			useinterval = true;
 		}
 #endif
 	}
@@ -462,15 +470,8 @@ public:
 
 int main(int argc, char **argv)
 {
-
-#if 0
-	string filename(argv[1]);
-	string hostname(argv[2]);
-	string task(argv[3]);
-#endif
 	ctloptions opt(argc,argv);
 	if (!opt.ok) {
-		usage(argv[0]);
 		return 1;
 	}
 
@@ -482,17 +483,26 @@ int main(int argc, char **argv)
 		set<string> ban, hosts_seen, sets_seen;
 		vector<string> out;
 		hdata top(opt.hostname, info);
-		top.set_schedule("1000000","10000");
+		
+		if (opt.useinterval)
+			top.set_interval(opt.interval);
+
+		if (opt.useoffset)
+			top.set_offset(opt.offset);
 
 		top.get_sets(0, out, ban, hosts_seen, sets_seen);
 
 		string storesets = join(sets_seen,",");
 		if (opt.task == "store-list") {
 			cout << storesets << endl;
+			return 0;
 		}
 		if (opt.task == "host-list") {
 			top.print_add_hosts("");
+			return 0;
 		}
+		cerr << argv[0] << ": unexpected task " << opt.task << endl;
+		return 1;
 	} catch ( GendersException ge) {
 		cerr << argv[0] << ": Error parsing " << opt.genders <<
 			": " << ge.errormsg() << endl;
