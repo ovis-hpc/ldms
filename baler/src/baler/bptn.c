@@ -212,6 +212,8 @@ void bptn_store_close_free(struct bptn_store *store)
 		bmem_close_free(store->mattr);
 	if (store->marg)
 		bmem_close_free(store->marg);
+	if (store->map)
+		bmap_close_free(store->map);
 	free(store);
 }
 
