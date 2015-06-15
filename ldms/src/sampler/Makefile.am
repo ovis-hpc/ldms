@@ -35,7 +35,11 @@ libswitchx_la_LIBADD = $(COMMON_LIBADD) \
 	$(SWITCHX_LIBDIR)/libsxdemadparser.a \
 	$(SWITCHX_LIBDIR)/libsxcomp.a \
 	$(SWITCHX_LIBDIR)/libsxdev.a \
-	$(SWITCHX_LIBDIR)/libsxlog.a
+	$(SWITCHX_LIBDIR)/libcommon.a \
+	$(SWITCHX_LIBDIR)/libsxlog.a \
+	$(SWITCHX_LIBDIR)/libibmad.a \
+	$(SWITCHX_LIBDIR)/libibumad.a \
+	$(SWITCHX_LIBDIR)/libosmcomp.a
 libswitchx_la_CFLAGS = $(AM_CFLAGS) \
 	-I$(SWITCHX_LIBDIR)/../usr/include
 lib_LTLIBRARIES += libswitchx.la
