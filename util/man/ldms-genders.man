@@ -102,12 +102,15 @@ ldmsaggd=LIST           enables ldmsaggd, gathering from nodes in LIST.
                         LIST is : separated, containing hostnames, or
                         literals BOOTNODELIST, or CLIENTOFLIST or 
                         AGGCLIENTOFLIST. Below see "Node Lists" below.
+ldmsaggd_clientof=H     defines n-th level aggregation host.
 ldmsaggd_port=N         defines port for aggregator's data server.
 ldmsaggd_host=H         defines hostname for aggregator's data server.
 ldmsaggd_xprt=X         defines protocol for aggregators data server.
 ldmsaggd_dbg=LEVEL      defines daemon internal logging level among
                         DEBUG,INFO,ERROR CRITICAL,QUIET.
-ldmsaggd_clientof=H     defines n-th level aggregation host.
+ldmsaggd_num_procs	defines thread count for event processing.
+ldmsaggd_conn_thds      defines thread count used to manage connection pool.
+ldmsaggd_mem_res        defines DMA reservation size.
 ldmsaggd_exclude_sets=S defines sets to exclude from aggregation.
 
 ## not yet supported:

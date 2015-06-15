@@ -30,6 +30,8 @@ using namespace boost;
 using namespace Gendersplusplus;
 namespace po = boost::program_options;
 
+static int dbg = 0;
+
 void printvec( const vector< pair< string, string > >& all)
 {
 	for (int i = 0; i < all.size(); i++) {
@@ -164,16 +166,25 @@ public:
 		string offsets = prefix + "_offset_default";
 		string tmp;
 		if (has_property(host, ports, tmp)) {
+			if (dbg > 0) {
+				cerr << "For port of " << prefix << " parsed " << tmp << endl;
+			}
 			istringstream ss(tmp);
 			int chk;
 			ss >> chk;
 			if (chk < 1) {
 				cerr << ports << " of " << tmp << " bogus for " << host <<endl;
 			} else {
+				if (dbg > 0) {
+					cerr << "For port of " << prefix << " parsed " << tmp << endl;
+				}
 				t.port = tmp;
 			}
 		} else {
 			t.port = LDMS_PORT_DEFAULT;
+			if (dbg > 0) {
+				cerr << "Using port default " << t.port <<  endl;
+			}
 		}
 		if (! has_property(host, hosts, t.host) ) {
 			t.host = host;
@@ -219,7 +230,7 @@ public:
 		isaggd = in->is_aggd(hostname,ldmsaggd);
 		hasbackup = in->has_backup(host,aggbackup);
 		in->get_trans(host, dt,"ldmsd");
-		in->get_trans(host, dt,"ldmsd");
+		in->get_trans(host, aggdt,"ldmsaggd");
 		in->get_metric_sets(host,metricsets);
 		in->get_exclude_sets(host,excludesets);
 	}
@@ -282,7 +293,7 @@ private:
 				oss << " interval=" << aggdt.interval;
 				oss << " offset=" << aggdt.offset;
 				oss << " xprt=" << t.xprt;
-				oss << " port=" << t.port <<
+				oss << " port=" << t.port;
 				oss << " sets=" << sets;
 				adds.push_back(oss.str());
 			}
@@ -362,6 +373,9 @@ public:
 						vector<string> aggsets;
 						sub.get_sets(level+1, aggsets, ban, aggs_seen, sets_seen);
 						trans t;
+						if (dbg) {
+							cerr << "Pulling from aggregator " << aggclientof_list[j] << endl;
+						}
 						in->get_trans(aggclientof_list[j], t, "ldmsaggd");
 						string sets = join(aggsets,",");
 						ostringstream oss;
@@ -408,12 +422,28 @@ public:
 	string offset; 
 	bool useoffset;
 
+	void dump() {
+		#define DUMP(x) cerr << #x << " is " << x << endl
+		DUMP(log_level);
+		DUMP(genders);
+		DUMP(task);
+		DUMP(hostname);
+		DUMP(outname);
+		DUMP(useoutname);
+		DUMP(interval);
+		DUMP(useinterval);
+		DUMP(offset);
+		DUMP(useoffset);
+	}
+
 	ctloptions(int argc, char **argv) :
 		ok(true),
 		log_level(0),
 		genders("/etc/genders") ,
 		task("host-list"),
-		useoutname(false)
+		useoutname(false),
+		useinterval(false),
+		useoffset(false)
 	{
 #if 1
 		char hostbuf[HOST_NAME_MAX+1];
@@ -473,6 +503,10 @@ int main(int argc, char **argv)
 	ctloptions opt(argc,argv);
 	if (!opt.ok) {
 		return 1;
+	}
+	if (opt.log_level > 0) {
+		opt.dump();
+		dbg = opt.log_level;
 	}
 
 	try {
