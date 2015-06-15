@@ -108,12 +108,12 @@ ldmsaggd_host=H         defines hostname for aggregator's data server.
 ldmsaggd_xprt=X         defines protocol for aggregators data server.
 ldmsaggd_dbg=LEVEL      defines daemon internal logging level among
                         DEBUG,INFO,ERROR CRITICAL,QUIET.
-ldmsaggd_num_procs	defines thread count for event processing.
-ldmsaggd_conn_thds      defines thread count used to manage connection pool.
-ldmsaggd_mem_res        defines DMA reservation size.
+ldmsaggd_num_procs=NP   defines thread count for event processing.
+ldmsaggd_conn_thds=NC   defines thread count used to manage connection pool.
+ldmsaggd_mem_res=M      defines DMA reservation size.
 ldmsaggd_exclude_sets=S defines sets to exclude from aggregation.
 
-## not yet supported:
+## not yet supported by init scripts:
 ldmsaggd_fail=H         defines aggregation host to take over if this
                         node fails.
 
@@ -153,10 +153,11 @@ ldmsd_offset_default=OSAMP      defines offset from the time nearest
                                 a whole number multiple of interval.
 ldmsd_interval_SUFFIX=IPLUG     as ISAMP, but for sets named by SUFFIX
 ldmsd_offset_SUFFIX=OPLUG       as OSAMP, but for sets named by SUFFIX
+
 ldmsaggd_interval_default=IAGG  as ISAMP, but for aggregator schedule.
 ldmsaggd_offset_default=OAGG    as OSAMP, but for aggregator schedule.
 
-## not yet supported
+## not yet supported by daemon logic
 #ldmsaggd_interval_SUFFIX=IAGGS as ISAMP, but for aggregating set SUFFIX
 #ldmsaggd_offset_SUFFIX=OAGGS   as OSAMP, but for aggregating set SUFFIX
 
@@ -227,7 +228,7 @@ naming individual nodes in a node list is rarely desirable.
 The keyword BOOTNODELIST is replaced with the list of nodes with the gender "bootnode" having a value matching the name of the aggregator host. 
 
 .PP
-The keyword LDMSDALL is replaced with the list of all nodes with the gender "ldmsd".
+The keyword LDMSDALL is replaced with the list of all nodes with the gender "ldmsd". Useable in small clusters with a single aggregator.
 
 .PP
 If something other than boot nodes is the basis of aggregation, the layout can be specified. E.g., a set of monitoring nodes prefixed mon aggregating subsets of compute nodes:
@@ -274,7 +275,7 @@ In the current implementation, only one ldms-aggd per node is managed via init s
 .PP
 Some features listed not yet supported, as marked.
 .PP
-Hand-made entries in ldmsd.conf and ldms-aggd.conf are likely to yield silently surprising results.
+Typos in the ldms genders keywords may lead to silent application of defaults.
 
 .SH EXAMPLES
 .PP

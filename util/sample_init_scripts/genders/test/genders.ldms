@@ -1,45 +1,7 @@
-
-# ldms genders by node selfreported hostname needed for init.d control
-
-# monitoring data collectors are ldmsd
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd,ldmsd_port=411,ldmsd_xprt=rdma
-atacoadmin1,ataco[1-4] ldmsd_host=%n-ib0
-#irregular naming in 'hostname' make this needed.
-ataco-login1 ldmsd_host=atacologin1-ib0
-ataco-login2 ldmsd_host=atacologin2-ib0
-ataco-login3 ldmsd_host=atacologin3-ib0
-ataco-login4 ldmsd_host=atacologin4-ib0
-atacogw[1-2] ldmsd_host=%n-ib2
-
-# aggregator 1st level
-# bootnodelist is expanded to match bootnode values. See man page for alternatives.
-# port 411 cannot be used for both ldms_aggd and ldmsd if xprt is the same.
-ataco-login[1-4],atacogw[1-2],ataco[1-4] ldmsd_clientof=atacoadmin1
-atacoadmin1 ldmsaggd=CLIENTOFLIST,ldmsaggd_port=411,ldmsaggd_host=ataco-admin1,ldmsaggd_xprt=sock,ldmsaggd_clientof=aries
-
-aries ldmsaggd=AGGCLIENTOFLIST
-aries ldmsaggd_port=411
-aries ldmsaggd_host=aries.sandia.gov
-aries ldmsaggd_xprt=sock
-# future viz pipeline
-aries ldmsaggd_clientof=perf1.sandia.gov
-aries ldmsaggd_stores=store_csv
-aries ldmsaggd_store_csv=altheader/1:rollover/3600:rolltype/1:id_pos/1
-aries ldmsaggd_interval_default=1000000,ldmsaggd_offset_default=100000
-
-# metric sets
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_metric_sets=meminfo:vmstat:procnfs:procstatutil2:procnetdev:sysclassib
-
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procstatutil2=maxcpu/16
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procnetdev=ifaces/eth0&eth1&eth3&eth4&ib0&ib2
-
-#atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_sysclassib=ports/qib0.1
-#atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_sysclassib=ports/mlx4_0.1
-#atacoadmin1,ataco[1-4],ataco-login[1-4] ldmsd_sysclassib=ports/mlx4_1.1
-
-# make test agg hierarchy like so, then find sets. (d) indicates 
-# collector on node that also hosts aggregator.
-# (sock)|(-----------rdma-----------)
+# this is maihly for testing ldmsctl_args, as no such cluster exists.
+# define test agg hierarchy like so, then find sets.
+# # suffix (d) indicates collector on node that also hosts aggregator.
+# (-sock-)|(-----------rdma/ib-------)
 # top <- a2 <-----+ c2n3,pqv
 #     | \a2(d)pqv |
 #     |           + c2n4,pqv

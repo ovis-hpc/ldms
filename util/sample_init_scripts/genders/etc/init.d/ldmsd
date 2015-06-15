@@ -82,10 +82,6 @@ pidfile=$localstatedir/run/$prog.pid
 lockfile=$localstatedir/lock/subsys/$prog
 
 
-
-
-
-
 runlevel=$(set -- $(runlevel); eval "echo \$$#" )
 
 start()
@@ -118,7 +114,7 @@ start()
 	# Close file descriptor for standard input. If not pdsh will hang
 	exec 0>&- # close stdin
 
-	DAEMON_ARGS="-x $NODE_LDMSD_TRANSPORT:$NODE_PORT -S $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK -q $NODE_DEBUG" 
+	DAEMON_ARGS="-x $LDMSD_XPRT:$LDMSD_PORT -S $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK -q $LDMSD_DBG" 
 	echo -n $"Starting $prog: "
 	if test "x$LDMSD_LOG_PATH" = "xNONE"; then
 		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"
@@ -140,7 +136,7 @@ start()
 	sleep 1
 	if ! test -f $pidfile; then
 		failure
-		echo missing pidfile
+		echo missing pidfile $pidfile
 		exit 1
 	fi
 	if ! test -S $AGGSOCK_PATH; then

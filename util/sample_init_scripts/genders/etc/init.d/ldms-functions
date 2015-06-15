@@ -3,6 +3,7 @@
 # These may depend on variables defined in the respective $DAEMON.conf files
 
 
+#translate genders encoded ldmsctl args to ldmsctl args.
 config_from_gender() {
 	# reformat : -> spc; 1st / to =; & to , .
 	oldIFS=$IFS
@@ -106,110 +107,68 @@ rm_sock_dir() {
 
 
 # Start sampler plugins, using the set of samplers from genders
-# on each host. nt based selection
+# on each host. This could be flattened into a new task for
+# ldmsctl_args, but so far is not a performance problem.
+# Also, if flattened, an error configuring one plugin may stop
+# another plugin from starting, unlike now.
+# 
 start_ldmsd_plugins () {
 	echoq "In start_ldms_plugins"
 	if [[ -z $LDMSCTL ]]; then
 		echoq "Failed. no LDMSCTL defined."
 		return 1;
 	fi
-#	sleep 30
 	DO_CTL="$LDMSCTL -S $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK"
-	echoq $METRIC_SETS
-	for i in $(eval echo ${METRIC_SETS} | tr ":;'\`" "\n"); do
-		eval interval='$'"NODE_INTERVAL_${i}"
-		if test -z $interval ; then
-			interval=$NODE_COLLECTION_INTERVAL
+	echoq $LDMSD_METRIC_SETS
+
+	for i in $(eval echo ${LDMSD_METRIC_SETS} | tr ":;'\`" "\n"); do
+
+		configtmp=`nodeattr $NODEATTRFILE -v $host ldmsd_${i}`
+		grok="`config_from_gender $configtmp`"
+
+		interval=`nodeattr $NODEATTRFILE -v $host ldmsd_interval_${i}`
+		if test -z $interval; then
+			interval=$LDMSD_INTERVAL_DEFAULT
 		fi
-		eval offset='$'"NODE_OFFSET_${i}"
-		if test -z $offset ; then
-			offset=$NODE_COLLECTION_OFFSET
+
+		offset=`nodeattr $NODEATTRFILE -v $host ldmsd_offset_${i}`
+		if test -z $offset; then
+			offset=$LDMSD_OFFSET_DEFAULT
 		fi
-		eval extraconfig='$'"NODE_CONFIG_${i}"
-		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$LDMSD_HOST/$i $extraconfig"
+
+		eval extraconfig='$grok'
+		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$LDMSD_HOST/$i $grok"
 		ARGS_START="name=$i interval=$interval offset=$offset"
 		echoq "Loading <${i}> with $ARGS_CONFIG"
 		{ echo load name=$i | $DO_CTL ; } && 
 		{ echo config $ARGS_CONFIG | $DO_CTL ; } &&
 		{ echo start $ARGS_START | $DO_CTL ; }
 	done
+
 	return $?
 }
 
-get_sets() {
-	# get_sets <agghost>
-	# which may be loopy
-	# NODELIST must be expanded/defined before this is called
-	set -x
-	oldlist=$NODELIST
-	nodes=""
-	newlist=""
-	expanded=",$1,"
-	while /bin/true; do
-		for n in $(eval echo $oldlist | tr ":;'\`," "\n"); do
-			if nodeattr $NODEATTRFILE $n ldmsd; then
-				nodes="$nodes:$n"
-			fi
-			if nodeattr $NODEATTRFILE $n ldmsaggd; then
-				if test "${expanded#*,$n,}" != "$expanded" ;then
-					continue
-				fi
-				expanded="$expanded${n},"
-				nextlist=`nodeattr $NODEATTRFILE -v $n ldmsaggd`
-				nextbootlist=`nodeattr $NODEATTRFILE -c bootnode=$n`
-				nextclientoflist=`nodeattr $NODEATTRFILE -c ldmsd_clientof=$n`
-				nextaggclientoflist=`nodeattr $NODEATTRFILE -c ldmsaggd_clientof=$n`
-
-				NLIST=`echo $nextlist |sed -e "s/BOOTNODELIST/$nextbootlist/"`
-				NLIST=`echo $NLIST |sed -e "s/AGGCLIENTOFLIST/$nextaggclientoflist/"`
-				NLIST=`echo $NLIST |sed -e "s/CLIENTOFLIST/$nextclientoflist/"`
-				nextnodelist=`echo $NLIST |sed -e 's/,/:/g'`
-				newlist="$newlist:$nextnodelist"
-			fi
-		done
-		if test -z "$newlist"; then
-			break;
-		else
-			oldlist=$newlist
-		fi
-	done
-	stmp=""
-	mylist=$(eval echo $nodes | tr ": " "\n" | sort -u -n )
-	echoq list is $mylist
-	for n in $(eval echo $nodes | tr ": " "\n" | sort -u -n ); do
-		echoq lookups for $n
-		nSETS=`nodeattr $NODEATTRFILE -v $n ldmsd_metric_sets`
-		if test -z $nSETS; then
-			nSETS=$METRIC_SETS
-		fi
-		nHOST=`nodeattr $NODEATTRFILE -v $n ldmsd_host`
-		if test -z $nHOST; then
-			nHOST=$n
-		fi
-		for i in $(eval echo $nSETS | tr ":" "\n"); do
-			stmp="$nHOST/$i,$stmp"
-		done
-	done
-	SETS=`echo $stmp | sed -e 's/,$//'`
-	set +x
-	echoq "get_sets $1 computed $SETS"
-}
 
 start_add_hosts () {
-	# this generates and sends lines like the next to local aggregator.
-	# CMD="echo add host=$nHOST type=active interval=$AGG_COLLECTION_INTERVAL offset=$AGG_COLLECTION_OFFSET xprt=$nXPRT port=$nPORT sets=$SETS";
-
+	# This function generates and sends lines like the next to local aggregator.
+	# add host=$nHOST type=active interval=$LDMSAGGD_INTERVAL offset=$LDMSAGGD_OFFSET xprt=$LDMSD_XPRT port=$LDMSD_PORT sets=$SETS
+	# where each line is tailored to the remote host collected from.
+	# This potentially requires 1000s of nodeattr calls if done in shell
+	# rather than C/C++, so a C++ wrapper on libgenders  is used.
+	
 	DO_CTL="$LDMSAGGCTL -S $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
-	# debugging to syslog
-	ldmsctl_args -n $MYHOSTNAME | logger -p user.debug -t ldmsctl_args
+
+	# debugging ldmsctl_args to syslog looks like this; default debug is to screen.
+	#ldmsctl_args -n $MYHOSTNAME -g $LDMS_GENDERS | logger -p user.debug -t ldmsctl_args
+
+	if test "$DEBUG" = "yes"; then
+		ldmsctl_args -n $MYHOSTNAME -g $LDMS_GENDERS -v 1
+	fi
 	# actually do it.
-	ldmsctl_args -n $MYHOSTNAME | $DO_CTL
+	ldmsctl_args -n $MYHOSTNAME -g $LDMS_GENDERS | $DO_CTL
 }
 
 # start stores, for aggregators.
-# this needs work. in particular, ${METRIC_SOCKET} is from
-# some prior userspace work and we need to move the choice of
-# stores into the data files as with add_hosts
 start_stores () {
 	if test -z $LDMSAGGCTL ; then
 			echoq "No ldmsaggctl defined... Exiting"
@@ -218,7 +177,7 @@ start_stores () {
 			exit 1
 	fi
 	DO_CTL="$LDMSAGGCTL -S $AGGSOCK_PATH"
-	if test -z $STORES; then
+	if test -z $LDMSAGGD_STORES; then
 		echo "No stores defined... Exiting"
 		failure
 		echo
@@ -230,7 +189,11 @@ start_stores () {
 	if ! test -d $STORE_PATH; then
 		mkdir -p $STORE_PATH
 	fi
-	for i in $(eval echo $STORES | tr ":;'\`" "\n"); do
+	for i in $(eval echo $LDMSAGGD_STORES | tr ":;'\`" "\n"); do
+		config=`nodeattr $NODEATTRFILE -v $host ldmsaggd_${i}`
+		grok="`config_from_gender $config`"
+		eval AGG_CONFIG_$i='$grok'
+	
 		eval extraconfig='$'"AGG_CONFIG_${i}"
 		ARGS_CONFIG="name=$i path=$STORE_PATH $extraconfig"
 		echo load name=$i | $DO_CTL

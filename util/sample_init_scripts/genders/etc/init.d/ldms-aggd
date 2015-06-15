@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -x
 #
 # ldms-aggd		Start up the ldms aggregator daemon
 #
@@ -49,6 +49,7 @@ while getopts "v" opt
 do
 	case "$opt" in
 	v) VERBOSE="-v";;
+	d) DEBUG="yes";;
 	:) echo "Option -$OPTARG requires an argument" ;;
 	\?) # unknown flag
 		initusage
@@ -117,7 +118,7 @@ start()
 	# Close file descriptor for standard input. If not pdsh will hang
 	exec 0>&- # close stdin
 
-	DAEMON_ARGS="-x $AGG_LDMSD_TRANSPORT:$AGG_PORT -m $AGG_MEM -P $AGG_NUM_PROCS -Z $AGG_CONN_THREADS -S $AGGSOCK_PATH -q $AGG_DEBUG"
+	DAEMON_ARGS="-x $LDMSAGGD_XPRT:$LDMSAGGD_PORT -m $LDMSAGGD_MEM_RES -P $LDMSAGGD_NUM_PROCS -Z $LDMSAGGD_CONN_THDS -S $AGGSOCK_PATH -q $LDMSAGGD_DBG"
 	echo -n $"Starting $prog: "
 	if test "x$LDMSD_LOG_PATH" = "xNONE"; then
 		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"
@@ -138,7 +139,7 @@ start()
 	sleep 1
 	if ! test -f $pidfile; then
 		failure
-		echo missing pidfile
+		echo missing pidfile $pidfile
 		exit 1
 	fi
 	if ! test -S $AGGSOCK_PATH; then
