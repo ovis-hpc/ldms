@@ -202,7 +202,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	if (set) {
-		msg(LDMSD_LERROR, "procinterrupts: Set already created.\n");
+		msglog(LDMSD_LERROR, "procinterrupts: Set already created.\n");
 		return EINVAL;
 	}
 

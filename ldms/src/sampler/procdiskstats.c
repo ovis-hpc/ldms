@@ -300,7 +300,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		goto enoent;
 
 	if (set) {
-		msg(LDMSD_LERROR, "procdiskstat: Set already created.\n");
+		msglog(LDMSD_LERROR, "procdiskstat: Set already created.\n");
 		return EINVAL;
 	}
 	set = ldms_set_new(value, schema);

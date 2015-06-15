@@ -359,7 +359,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	osts = av_value(avl, "osts");
 
 	if (set) {
-		msg(LDMSD_LERROR, "lustre2_oss: Set already created.\n");
+		msglog(LDMSD_LERROR, "lustre2_oss: Set already created.\n");
 		return EINVAL;
 	}
 	int rc = create_metric_set(value, osts);

@@ -206,7 +206,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 
 	if (set) {
-		msg(LDMSD_LERROR, "procnfs: Set already created.\n");
+		msglog(LDMSD_LERROR, "procnfs: Set already created.\n");
 		return EINVAL;
 	}
 	int rc = create_metric_set(value);

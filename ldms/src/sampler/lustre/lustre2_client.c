@@ -308,7 +308,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	llites = av_value(avl, "llite");
 
 	if (set) {
-		msg(LDMSD_LERROR, "lustre2_client: Set already created.\n");
+		msglog(LDMSD_LERROR, "lustre2_client: Set already created.\n");
 		return EINVAL;
 	}
 	int rc = create_metric_set(value, oscs, mdcs, llites);

@@ -544,7 +544,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return rc;
 
 	if (set) {
-		msg(LDMSD_LERROR, "procsysclassib: Set already created.\n");
+		msglog(LDMSD_LERROR, "procsysclassib: Set already created.\n");
 		return EINVAL;
 	}
 	rc = create_metric_set(setstr);
