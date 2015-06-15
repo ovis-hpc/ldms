@@ -299,6 +299,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (!value)
 		goto enoent;
 
+	if (set) {
+		msg(LDMSD_LERROR, "procdiskstat: Set already created.\n");
+		return EINVAL;
+	}
 	set = ldms_set_new(value, schema);
 	if (!set) {
 		rc = errno;
@@ -460,6 +464,7 @@ static struct ldmsd_sampler procdiskstats_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	USER_HZ = sysconf(_SC_CLK_TCK);
 	return &procdiskstats_plugin.base;
 }

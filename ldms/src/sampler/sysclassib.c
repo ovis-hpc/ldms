@@ -543,6 +543,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (rc)
 		return rc;
 
+	if (set) {
+		msg(LDMSD_LERROR, "procsysclassib: Set already created.\n");
+		return EINVAL;
+	}
 	rc = create_metric_set(setstr);
 	if (rc)
 		return rc;
@@ -704,5 +708,6 @@ static struct ldmsd_sampler sysclassib_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	return &sysclassib_plugin.base;
 }

@@ -201,6 +201,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	if (set) {
+		msg(LDMSD_LERROR, "procinterrupts: Set already created.\n");
+		return EINVAL;
+	}
+
 	rc = create_metric_set(value);
 	if (rc) {
 		msglog(LDMSD_LERROR, "procinterrupts: failed to create the metric set.\n");
@@ -302,5 +307,6 @@ static struct ldmsd_sampler procinterrupts_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	return &procinterrupts_plugin.base;
 }

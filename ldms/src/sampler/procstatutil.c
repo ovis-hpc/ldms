@@ -248,6 +248,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	if (set) {
+		msg(LDMSD_LERROR, "procstatutil: Set already created.\n");
+		return EINVAL;
+	}
 	rc = create_metric_set(value);
 	if (rc) {
 		msglog(LDMSD_LERROR, "procstatutil: failed to create the metric set.\n");
@@ -402,6 +406,7 @@ static struct ldmsd_sampler procstatutil_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	USER_HZ = sysconf(_SC_CLK_TCK);
 	return &procstatutil_plugin.base;
 }

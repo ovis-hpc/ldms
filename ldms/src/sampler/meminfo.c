@@ -152,6 +152,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	if (set) {
+		msg(LDMSD_LERROR, "meminfo: Set already created.\n");
+		return EINVAL;
+	}
+
 	int rc = create_metric_set(value);
 	if (rc) {
 		msglog(LDMSD_LERROR, "meminfo: failed to create a metric set.\n");
@@ -234,5 +239,6 @@ static struct ldmsd_sampler meminfo_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	return &meminfo_plugin.base;
 }

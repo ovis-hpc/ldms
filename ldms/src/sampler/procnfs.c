@@ -204,6 +204,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+
+	if (set) {
+		msg(LDMSD_LERROR, "procnfs: Set already created.\n");
+		return EINVAL;
+	}
 	int rc = create_metric_set(value);
 	if (rc) {
 		msglog(LDMSD_LERROR, "procnfs: failed to create the metric set.\n");
@@ -315,5 +320,6 @@ static struct ldmsd_sampler procnfs_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	return &procnfs_plugin.base;
 }

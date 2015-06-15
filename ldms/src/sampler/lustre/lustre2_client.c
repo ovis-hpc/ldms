@@ -307,6 +307,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	mdcs = av_value(avl, "mdc");
 	llites = av_value(avl, "llite");
 
+	if (set) {
+		msg(LDMSD_LERROR, "lustre2_client: Set already created.\n");
+		return EINVAL;
+	}
 	int rc = create_metric_set(value, oscs, mdcs, llites);
 	if (rc)
 		return rc;
@@ -375,6 +379,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	if (init_complete)
 		goto out;
 	msglog = pf;
+	set = NULL;
 	lustre_sampler_set_msglog(pf);
 	stats_key_id = str_map_create(STR_MAP_SIZE);
 	if (!stats_key_id) {

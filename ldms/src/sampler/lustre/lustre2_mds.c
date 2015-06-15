@@ -279,6 +279,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 	mdts = av_value(avl, "mdts");
 
+	if (set) {
+		msg(LDMSD_LERROR, "lustre2_mds: Set already created.\n");
+		return EINVAL;
+	}
 	int rc = create_metric_set(value, mdts);
 	if (rc)
 		return rc;
@@ -334,6 +338,7 @@ static struct ldmsd_sampler lustre_mds_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	lustre_sampler_set_msglog(pf);
 	stats_key_id = str_map_create(STR_MAP_SIZE);
 	if (!stats_key_id) {

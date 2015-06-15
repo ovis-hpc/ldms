@@ -154,6 +154,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	if (set) {
+		msg(LDMSD_LERROR, "procvmstat: Set already created.\n");
+		return EINVAL;
+	}
 	int rc = create_metric_set(value);
 	if (rc)
 		return rc;
@@ -220,5 +224,6 @@ static struct ldmsd_sampler vmstat_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	set = NULL;
 	return &vmstat_plugin.base;
 }
