@@ -58,7 +58,7 @@ import sys
 import os
 import traceback
 
-from ldmsd import ldmsd_config
+from ldmsd import ldmsd_config, ldmsd_util
 
 class LdmsdCmdParser(cmd.Cmd):
     def __init__(self, sockname = None, host_port = None, infile=None):
@@ -90,6 +90,13 @@ class LdmsdCmdParser(cmd.Cmd):
     def emptyline(self):
         pass
 
+    def __check_command_syntax(self, attr_value):
+        tokens = attr_value.split(" ")
+        for tk in tokens:
+            if tk.endswith("="):
+                return False
+        return True
+
     def do_shell(self, args):
         """
         Execute a shell command
@@ -108,9 +115,14 @@ class LdmsdCmdParser(cmd.Cmd):
         return line
 
     def handle(self, verb, args):
+        if not self.__check_command_syntax(args):
+            print "Wrong syntax. There are attributes that no values are given."
+            return
+
         cmd_id = self.ctrl.get_cmd_id(verb)
         cmd = "{0}{1} {2}".format(cmd_id, verb, args)
         resp = self.ctrl.talk(cmd)
+        resp = resp.rstrip()
         import re
         g = re.match(r"(-*)(\d+)", resp)
         if len(resp[g.end():]) > 0:
@@ -125,6 +137,15 @@ class LdmsdCmdParser(cmd.Cmd):
         for cmd in script:
             self.onecmd(cmd)
         script.close()
+
+    def do_script(self, arg):
+        exit_code, out, err = ldmsd_util.sh_exec(arg)
+        if exit_code != 0:
+            print "Script exited with code {0} and error: {1}".format(exit_code, err)
+            return
+        cfg = out.split("\n")
+        for cmd in cfg:
+            self.onecmd(cmd)
 
     def do_try(self, arg):
         print self.__complete_attr_list(arg, "")
@@ -531,7 +552,7 @@ class LdmsdCmdParser(cmd.Cmd):
         [agg_no=]   The number of the aggregator that this is standby for.
                     Defaults to 0 which means this is an active aggregator.
         """
-        return self.handle('add', args)
+        return self.handle('add', arg)
 
     def complete_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('add', text)
@@ -608,6 +629,11 @@ if __name__ == "__main__":
                             help = "Hostname of ldmsd to connect to")
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
+        parser.add_argument('--source',
+                            help = "Path to the config file")
+        parser.add_argument('--script',
+                            help = "Execute the script and send the output \
+                            commands to the connected ldmsd")
         parser.add_argument('--debug', action = "store_true",
                             help = argparse.SUPPRESS)
 
@@ -625,7 +651,12 @@ if __name__ == "__main__":
             cmdParser = LdmsdCmdParser(host_port = {'host': args.host,
                                                     'port': int(args.port)})
 
-        cmdParser.cmdloop("Welcome to the LDMSD control processor")
+        if args.source is not None:
+            cmdParser.do_source(args.source)
+        elif args.script is not None:
+            cmdParser.do_script(args.script)
+        else:
+            cmdParser.cmdloop("Welcome to the LDMSD control processor")
     except KeyboardInterrupt:
         sys.exit(0)
     except Exception as e:
