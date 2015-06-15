@@ -149,7 +149,7 @@ static int get_sector_sz(char *device)
 
 	f = fopen(filename, "r");
 	if (!f) {
-		msglog("Failed to open %s\n", filename);
+		msglog(LDMSD_LERROR, "Failed to open %s\n", filename);
 		return DEFAULT_SECTOR_SZ;
 	}
 
@@ -162,7 +162,7 @@ static int get_sector_sz(char *device)
 		rc = sscanf(filename, "%d", &result);
 
 		if (rc != 1) {
-			msglog("Failed to get the sector size of %s. "
+			msglog(LDMSD_LINFO, "Failed to get the sector size of %s. "
 					"The size is set to 512.\n", device);
 			result = DEFAULT_SECTOR_SZ;
 		}
@@ -272,7 +272,7 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 	return rc;
 
 err:
-	msglog("%s Error %d adding metrics.\n", __FILE__, rc);
+	msglog(LDMSD_LERROR, "%s Error %d adding metrics.\n", __FILE__, rc);
 	return rc;
 }
 
@@ -302,14 +302,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	set = ldms_set_new(value, schema);
 	if (!set) {
 		rc = errno;
-		msglog("procdiskstats: failed to create the metric set.\n");
+		msglog(LDMSD_LERROR, "procdiskstats: failed to create "
+				"the metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
 	ldms_schema_delete(schema);
 	return 0;
 enoent:
-	msglog("procdiskstat: requires '%s'\n", attr);
+	msglog(LDMSD_LERROR, "procdiskstat: requires '%s'\n", attr);
 	ldms_schema_delete(schema);
 	return ENOENT;
 }
@@ -375,7 +376,7 @@ static int sample(void)
 	struct proc_disk_s *disk;
 
 	if (!set) {
-		msglog("diskstats: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "diskstats: plugin not initialized\n");
 		return EINVAL;
 	}
 

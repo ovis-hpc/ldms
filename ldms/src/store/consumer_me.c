@@ -125,7 +125,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	zap_err_t zerr = 0;
 	zerr = zap_get(xprt, &zap, msglog, get_zap_mem_info);
 	if (zerr) {
-		msglog("me: failed to create a zap. Error '%d'\n",
+		msglog(LDMSD_LERROR, "me: failed to create a zap. Error '%d'\n",
 							zerr);
 		free(host);
 		free(xprt);
@@ -167,7 +167,7 @@ static void me_zap_cb(zap_ep_t zep, zap_event_t ev)
 	switch (ev->type) {
 	case ZAP_EVENT_DISCONNECTED:
 		if (is_failed_before != ZAP_EVENT_DISCONNECTED) {
-			msglog("Disconnected from ME.\n");
+			msglog(LDMSD_LDEBUG, "Disconnected from ME.\n");
 			is_failed_before = ZAP_EVENT_DISCONNECTED;
 		}
 		zap_close(zep);
@@ -175,7 +175,7 @@ static void me_zap_cb(zap_ep_t zep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
 		if (is_failed_before != ZAP_EVENT_CONNECT_ERROR) {
-			msglog("Connect to ME error\n");
+			msglog(LDMSD_LDEBUG, "Connect to ME error\n");
 			is_failed_before = ZAP_EVENT_CONNECT_ERROR;
 		}
 		zap_close(zep);
@@ -183,7 +183,7 @@ static void me_zap_cb(zap_ep_t zep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_REJECTED:
 		if (is_failed_before != ZAP_EVENT_REJECTED) {
-			msglog("Connect to ME error. '%s'\n",
+			msglog(LDMSD_LDEBUG, "Connect to ME error. '%s'\n",
 					zap_err_str(ev->status));
 			is_failed_before = ZAP_EVENT_REJECTED;
 		}
@@ -193,7 +193,7 @@ static void me_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECTED:
 		is_failed_before = ZAP_EVENT_CONNECTED;
 		state = CSM_ME_CONNECTED;
-		msglog("Connected to ME\n");
+		msglog(LDMSD_LDEBUG, "Connected to ME\n");
 		break;
 	default:
 		break;
@@ -229,7 +229,8 @@ static int connect_me()
 	rc = getaddrinfo(host, p, &hints, &ai);
 	if (rc) {
 		if (is_failed_before != ME_GETADDR) {
-			msglog("me: getaddrinfo(%d): %s\n", rc, gai_strerror(rc));
+			msglog(LDMSD_LERROR, "me: getaddrinfo(%d): %s\n", rc,
+					gai_strerror(rc));
 			is_failed_before = ME_GETADDR;
 		}
 		goto err;
@@ -239,18 +240,20 @@ static int connect_me()
 			if (NULL == inet_ntop(ai->ai_family,
 				&((struct sockaddr_in *)ai->ai_addr)->sin_addr,
 					resolved, HOST_NAME_MAX)) {
-				msglog("me: resolving host %s\n", host);
+				msglog(LDMSD_LERROR, "me: resolving host %s\n",
+						host);
 				perror("inet_ntop");
 			}
 			else {
 #ifdef DEBUG
-				msglog("me: Added host %s:%s\n", resolved, p);
+				msglog(LDMSD_LDEBUG, "me: Added host %s:%s\n",
+						resolved, p);
 #endif // DEBUG
 				break; /* successs */
 			}
 		}
 		else {
-			msglog("ignoring host %s\n", resolved);
+			msglog(LDMSD_LINFO, "ignoring host %s\n", resolved);
 		}
 		ai = ai->ai_next;
 	}
@@ -260,7 +263,7 @@ static int connect_me()
 	zerr = zap_new(zap, &zep, me_zap_cb);
 	if (zerr) {
 		if (is_failed_before != ME_ZAPNEW) {
-			msglog("me: failed to create a zap endpoint. "
+			msglog(LDMSD_LERROR, "me: failed to create a zap endpoint. "
 						"'%s'\n", zap_err_str(zerr));
 			is_failed_before = ME_ZAPNEW;
 		}
@@ -271,7 +274,7 @@ static int connect_me()
 	zerr = zap_connect(zep, ai->ai_addr, ai->ai_addrlen, NULL, 0);
 	if (zerr) {
 		if (is_failed_before != ME_ZAPCONNECT) {
-			msglog("me: zap_connect error %d: %s\n", zerr,
+			msglog(LDMSD_LERROR, "me: zap_connect error. %s\n",
 					zap_err_str(zerr));
 			is_failed_before = ME_ZAPCONNECT;
 		}
@@ -360,7 +363,8 @@ static int me_get_ldms_metric_value(ldms_metric_t m, double *v)
 		*v = ldms_get_double(m);
 		break;
 	default:
-		msglog("me: not support ldms_value_type '%s'\n", ldms_type_to_str(type));
+		msglog(LDMSD_LERROR, "me: not support ldms_value_type '%s'\n",
+				ldms_type_to_str(type));
 		return -1;
 	}
 	return 0;
@@ -405,7 +409,7 @@ send_to_me(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_array,
 			continue;
 		zerr = zap_send(zep, (void *)&msg, sizeof(msg));
 		if (zerr) {
-			msglog("me: zap_send error '%d': %s.\n", zerr,
+			msglog(LDMSD_LERROR, "me: zap_send error '%d': %s.\n", zerr,
 						zap_err_str(zerr));
 			return zerr;
 		}

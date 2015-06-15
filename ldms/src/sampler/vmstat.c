@@ -92,7 +92,8 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the vmstat file '%s'...exiting\n", procfile);
+		msglog(LDMSD_LERROR, "Could not open the vmstat file "
+				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 
@@ -143,15 +144,16 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("vmstat: missing 'producer'\n");
+		msglog(LDMSD_LERROR, "vmstat: missing 'producer'\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("vmstat: missing 'instance'\n");
+		msglog(LDMSD_LERROR, "vmstat: missing 'instance'\n");
 		return ENOENT;
 	}
+
 	int rc = create_metric_set(value);
 	if (rc)
 		return rc;
@@ -169,7 +171,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set) {
-		msglog("vmstat: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "vmstat: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);

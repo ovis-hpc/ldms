@@ -108,7 +108,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	attr = "file";
 	value = av_value(avl, attr);
 	if (!value) {
-		msglog("hadoop_datanode: no file is given.\n");
+		msglog(LDMSD_LERROR, "hadoop_datanode: no file is given.\n");
 		goto enoent;
 	}
 	metric_name_file = strdup(value);
@@ -125,7 +125,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc;
 	rc = setup_datagram(port, &datanode_set.sockfd);
 	if (rc) {
-		msglog("hadoop_datanode: failed to setup "
+		msglog(LDMSD_LERROR, "hadoop_datanode: failed to setup "
 				"datagram between ldmsd and hadoop.\n");
 		goto err_1;
 	}
@@ -146,7 +146,7 @@ err_1:
 err_0:
 	return rc;
 enoent:
-	msglog("hadoop_datanode: need %s. Error %d\n", attr, ENOENT);
+	msglog(LDMSD_LERROR, "hadoop_datanode: need %s. Error %d\n", attr, ENOENT);
 	return ENOENT;
 }
 

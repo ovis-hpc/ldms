@@ -146,7 +146,8 @@ static int create_metric_set(const char *instance_name)
 
 	mf = fopen(fname, "r");
 	if (!mf) {
-		msglog("procstatutil: Could not open the %s file.\n", fname);
+		msglog(LDMSD_LERROR, "procstatutil: Could not open "
+				"the %s file.\n", fname);
 		goto err;
 	}
 
@@ -163,7 +164,7 @@ static int create_metric_set(const char *instance_name)
 		/* Throw away the first column which is the CPU 'name' */
 		token = strtok_r(lbuf, " \t\n", &ptr);
 		if (!token) {
-			msglog("procstatutil: Failed to start. "
+			msglog(LDMSD_LERROR, "procstatutil: Failed to start. "
 					"Unexpected format.\n");
 			rc = EPERM;
 			goto err0;
@@ -237,18 +238,19 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procstatutil: missing 'producer'\n");
+		msglog(LDMSD_LERROR, "procstatutil: missing 'producer'\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procstatutil: missing 'instance'\n");
+		msglog(LDMSD_LERROR, "procstatutil: missing 'instance'\n");
 		return ENOENT;
 	}
+
 	rc = create_metric_set(value);
 	if (rc) {
-		msglog("procstatutil: failed to create the metric set.\n");
+		msglog(LDMSD_LERROR, "procstatutil: failed to create the metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -275,7 +277,7 @@ static int sample(void)
 #endif
 
 	if (!set ){
-		msglog("procstatutil: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "procstatutil: plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -291,8 +293,8 @@ static int sample(void)
 
 	mf = fopen(fname, "r");
 	if (!mf) {
-		msglog("procstatutil: Error %d: Couldn't open the file %s\n",
-							errno, fname);
+		msglog(LDMSD_LERROR, "procstatutil: Error %d: Couldn't "
+				"open the file %s\n", errno, fname);
 		goto reset_to_0;
 	}
 

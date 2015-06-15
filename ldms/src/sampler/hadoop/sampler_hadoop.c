@@ -133,7 +133,7 @@ static struct hadoop_metric *create_hadoop_metric(struct hadoop_set *hdset,
 
 	ptr = strrchr(buf, '\t');
 	if (!ptr) {
-		hdset->msglog("hadoop_%s: Invalid format: %s\n",
+		hdset->msglog(LDMSD_LERROR, "hadoop_%s: Invalid format: %s\n",
 					hdset->setname, buf);
 		errno = EINVAL;
 		return NULL;
@@ -142,7 +142,7 @@ static struct hadoop_metric *create_hadoop_metric(struct hadoop_set *hdset,
 	total_mname_len = dlen + (ptr - buf);
 
 	if (total_mname_len > MAX_LEN_HADOOP_MNAME) {
-		hdset->msglog("hadoop_%s: %s: metric name exceeds %d\n",
+		hdset->msglog(LDMSD_LERROR, "hadoop_%s: %s: metric name exceeds %d\n",
 				hdset->setname, buf, MAX_LEN_HADOOP_MNAME);
 		errno = EPERM;
 		return NULL;
@@ -153,7 +153,7 @@ static struct hadoop_metric *create_hadoop_metric(struct hadoop_set *hdset,
 
 	struct hadoop_metric *hmetric = calloc(1, sizeof(*hmetric));
 	if (!hmetric) {
-		hdset->msglog("hadoop_%s: Failed to create metric\n",
+		hdset->msglog(LDMSD_LERROR, "hadoop_%s: Failed to create metric\n",
 				hdset->setname);
 		errno = ENOMEM;
 		return NULL;
@@ -174,13 +174,13 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset,
 	ldms_log_fn_t msglog = hdset->msglog;
 	hdset->schema = ldms_create_schema(hdset->daemon);
 	if (!hdset->schema) {
-		msglog("%s: Failed to create schema\n", hdset->daemon);
+		msglog(LDMSD_LERROR, "%s: Failed to create schema\n", hdset->daemon);
 		return ENOMEM;
 	}
 
 	FILE *f = fopen(fname, "r");
 	if (!f) {
-		msglog("hadoop_namenode: Failed to open file '%s'.\n",
+		msglog(LDMSD_LERROR, "hadoop_namenode: Failed to open file '%s'.\n",
 				fname);
 		rc = errno;
 		goto err;
@@ -243,7 +243,7 @@ int create_hadoop_set(char *fname, struct hadoop_set *hdset,
 	fclose(f);
 	rc = ldms_set_producer_name(hdset->set, producer_name);
 	if (rc) {
-		msglog("%s: producer_name is too long\n", hdset->daemon);
+		msglog(LDMSD_LERROR, "%s: producer_name is too long\n", hdset->daemon);
 		goto err_2;
 	}
 
@@ -264,7 +264,7 @@ err_0:
 err:
 	ldms_destroy_schema(hdset->schema);
 	hdset->schema = NULL;
-	msglog("hadoop_%s: failed to create the set.\n", hdset->setname);
+	msglog(LDMSD_LERROR, "hadoop_%s: failed to create the set.\n", hdset->setname);
 	return rc;
 }
 
@@ -321,7 +321,7 @@ void _recv_metrics(char *data, struct hadoop_set *hdset)
 			value.v_d = strtod(value_s, NULL);
 			break;
 		default:
-			msglog("hadoop_namenode: Not support type '%s'.\n",
+			msglog(LDMSD_LERROR, "hadoop_namenode: Not support type '%s'.\n",
 					ldms_type_to_str(type));
 			continue;
 		}
@@ -344,7 +344,7 @@ void *recv_metrics(void *_hdset)
 		rc = recvfrom(hdset->sockfd, buffer, (size_t)MAX_BUF_LEN,
 							0, NULL, NULL);
 		if (rc < 0) {
-			hdset->msglog("%s: failed to receive hadoop "
+			hdset->msglog(LDMSD_LERROR, "%s: failed to receive hadoop "
 						"metrics. Error %d\n",
 						hdset->setname, rc);
 			return NULL;

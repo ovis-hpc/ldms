@@ -200,12 +200,14 @@ void permute_metrics(char *name, enum ldms_value_type type)
 	*v1 = 0;
 	range = strdup(v0+1);
 	if (!range) {
-		msglog("generic_sampler: %s: range strdup: ENOMEM\n", __func__);
+		msglog(LDMSD_LERROR, "generic_sampler: %s: range strdup: "
+				"ENOMEM\n", __func__);
 		return;
 	}
 	suffix = strdup(v1+1);
 	if (!suffix) {
-		msglog("generic_sampler: %s: suffix strdup: ENOMEM\n", __func__);
+		msglog(LDMSD_LDEBUG, "generic_sampler: %s: suffix strdup: "
+				"ENOMEM\n", __func__);
 		return;
 	}
 
@@ -217,8 +219,9 @@ void permute_metrics(char *name, enum ldms_value_type type)
 			lz = 0;
 			rc = sscanf(tok, "%d%n", &a, &c);
 			if (rc != 1) {
-				msglog("generic_sampler: %s: Expecting a number"
-					" but got: %s\n", __func__, tok);
+				msglog(LDMSD_LDEBUG, "generic_sampler: %s: "
+					"Expecting a number but got: %s\n",
+					__func__, tok);
 				return;
 			}
 			break;
@@ -230,7 +233,8 @@ void permute_metrics(char *name, enum ldms_value_type type)
 		if (*tok == '.') {
 			rc = sscanf(tok, "%*[.]%d%n", &b, &c);
 			if (rc != 1) {
-				msglog("generic_sampler: %s: Expecting a number"
+				msglog(LDMSD_LDEBUG, "generic_sampler: %s: "
+					"Expecting a number"
 					" after '..', but got: %s\n", __func__,
 					tok);
 				return;
@@ -275,7 +279,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "mx");
 	if (!value) {
-		msglog("generic_sampler: No 'mx' is given.\n");
+		msglog(LDMSD_LERROR, "generic_sampler: No 'mx' is given.\n");
 		return EINVAL;
 	}
 
@@ -300,7 +304,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			type = LDMS_V_D64;
 			break;
 		default:
-			msglog("generic_sampler config: unknown type %c\n", *t);
+			msglog(LDMSD_LERROR, "generic_sampler config: "
+					"unknown type %c\n", *t);
 			return EINVAL;
 		}
 		permute_metrics(tok, type);
@@ -311,7 +316,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("generic_sampler config: 'set' is not specified\n");
+		msglog(LDMSD_LERROR, "generic_sampler config: 'set' is "
+				"not specified\n");
 		return EINVAL;
 	}
 	char *prod_name = av_value(avl, "producer");
@@ -345,14 +351,16 @@ static int sample(void)
 	if (gs_fd == -1) {
 		gs_fd = open(path, O_RDONLY);
 		if (gs_fd < 0) {
-			msglog("generic_sampler: Cannot open file: %s\n", path);
+			msglog(LDMSD_LERROR, "generic_sampler: Cannot open file:"
+					" %s\n", path);
 			rc = ENOENT;
 			goto out;
 		}
 	}
 	offset = lseek(gs_fd, 0, SEEK_SET);
 	if (offset < 0) {
-		msglog("generic_sampler: lseek fail, errno: %d\n", errno);
+		msglog(LDMSD_LERROR, "generic_sampler: lseek fail, errno: %d\n",
+				errno);
 		close(gs_fd);
 		gs_fd = -1;
 		rc = EIO;
@@ -360,7 +368,7 @@ static int sample(void)
 	}
 	sz = read(gs_fd, buff, sizeof(buff) - 1);
 	if (sz < 0) {
-		msglog("generic_sampler: cannot read %s, errno: %d\n", path,
+		msglog(LDMSD_LERROR, "generic_sampler: cannot read %s, errno: %d\n", path,
 				errno);
 		close(gs_fd);
 		gs_fd = -1;

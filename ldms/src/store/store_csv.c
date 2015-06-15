@@ -166,7 +166,8 @@ static int print_header(struct csv_store_handle *s_handle, ldms_set_t set,
 
 	s_handle->printheader = 0;
 	if (!fp) {
-		msglog("Cannot print header for store_csv. No headerfile\n");
+		msglog(LDMSD_LERROR, "Cannot print header for store_csv. "
+				"No headerfile\n");
 		return EINVAL;
 	}
 
@@ -211,7 +212,7 @@ open_store(struct ldmsd_store *s, const char* container, const char *schema,
 		sprintf(path, "%s/%s", root_path, container);
 		rc = mkdir(path, 0777);
 		if (rc && rc != EEXIST) {
-			msglog("%s: Error %d creating directory %s.\n",
+			msglog(LDMSD_LERROR, "%s: Error %d creating directory %s.\n",
 			       __FILE__, rc, path);
 			goto err0;
 		}
@@ -240,7 +241,7 @@ open_store(struct ldmsd_store *s, const char* container, const char *schema,
 	if (!s_handle->file)
 		s_handle->file = fopen(s_handle->path, "a+");
 	if (!s_handle->file) {
-		msglog("%s: Error %d opening the file %s.\n",
+		msglog(LDMSD_LERROR, "%s: Error %d opening the file %s.\n",
 		       __FILE__, errno, s_handle->path);
 		goto err2;
 	}
@@ -296,8 +297,8 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		return EINVAL;
 
 	if (!s_handle->file){
-		msglog("Cannot insert values for <%s>: file is closed\n",
-				s_handle->path);
+		msglog(LDMSD_LERROR, "Cannot insert values for <%s>: "
+				"file is closed\n", s_handle->path);
 		return EPERM;
 	}
 
@@ -314,7 +315,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 			     comp_id, ldms_metric_get_u64(set, metric_arry[i]));
 		if (rc < 0)
-			msglog("store_csv: Error %d writing to '%s'\n",
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 					rc, s_handle->path);
 	}
 	fprintf(s_handle->file,"\n");
@@ -328,7 +329,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog("store_csv: flush error.\n");
+		msglog(LDMSD_LERROR, "store_csv: flush error.\n");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -348,7 +349,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog("Closing store_csv with path <%s>\n", s_handle->path);
+	msglog(LDMSD_LERROR, "Closing store_csv with path <%s>\n", s_handle->path);
 	fflush(s_handle->file);
 	s_handle->store = NULL;
 	if (s_handle->path)

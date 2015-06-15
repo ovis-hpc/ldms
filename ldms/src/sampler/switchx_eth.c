@@ -479,8 +479,8 @@ static int sx_sample(void)
 		rc = sx_sample_set(port);
 		if (rc != 0) {
 			if (rc != EEXIST) {
-				msglog("sx_sample: failed sampling port %d\n",
-					port);
+				msglog(LDMSD_LERROR, "sx_sample: "
+					"failed sampling port %d\n", port);
 			}
 		}
 	}

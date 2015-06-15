@@ -132,20 +132,22 @@ static int init_conn(MYSQL **conn){
 
 	if ((strlen(db_host) == 0) || (strlen(db_schema) == 0) ||
 			(strlen(db_user) == 0)){
-		msglog("Invalid parameters for database");
+		msglog(LDMSD_LERROR, "Invalid parameters for database");
 		return EINVAL;
 	}
 
 	*conn = mysql_init(NULL);
 	if (*conn == NULL){
-		msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
+		msglog(LDMSD_LERROR, "Error %u: %s\n", mysql_errno(*conn),
+				mysql_error(*conn));
 		return EPERM;
 	}
 
 	/* passwd can be null.... */
 	if (!mysql_real_connect(*conn, db_host, db_user,
 				db_passwd, db_schema, 0, NULL, 0)){
-		msglog("Error %u: %s\n", mysql_errno(*conn), mysql_error(*conn));
+		msglog(LDMSD_LERROR, "Error %u: %s\n", mysql_errno(*conn),
+				mysql_error(*conn));
 		return EPERM;
 	}
 
@@ -304,7 +306,7 @@ NOTE: this is locked from the surrounding function */
 
 	mysqlerrx = mysql_query(conn, query1);
 	if (mysqlerrx != 0){
-		msglog("Cannot query to create table '%s'. Error: %d\n",
+		msglog(LDMSD_LERROR, "Cannot query to create table '%s'. Error: %d\n",
 				tablename, mysqlerrx);
 		return mysqlerrx;
 	}
@@ -360,7 +362,7 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 	char* query2 =
 		"CREATE TABLE IF NOT EXISTS `MetricValueTypes` (`ValueType` int(11) NOT NULL AUTO_INCREMENT,  `Name` tinytext NOT NULL,  `Units` tinytext NOT NULL,  `Storage` tinytext NOT NULL,  `Constant` int(32) NOT NULL DEFAULT '0',  PRIMARY KEY (`ValueType`))";
 	if (mysql_query(conn, query2) != 0){
-		msglog("Err: Cannot check for the MetricValueTypeTable\n");
+		msglog(LDMSD_LERROR, "Err: Cannot check for the MetricValueTypeTable\n");
 		return -1;
 	}
 
@@ -369,7 +371,7 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 			"SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
 			ovisMetricName, ovisstoragestring);
 	if (mysql_query(conn, query1) != 0){
-		msglog("Err: Cannot query for MetricValueType for '%s'\n",
+		msglog(LDMSD_LERROR, "Err: Cannot query for MetricValueType for '%s'\n",
 				ovisMetricName);
 		return -1;
 	}
@@ -390,7 +392,7 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 				"INSERT INTO MetricValueTypes(Name, Units, Storage, Constant) VALUES ('%s', '1', '%s', 0)",
 				ovisMetricName, ovisstoragestring);
 		if (mysql_query(conn, query1) !=0){
-			msglog("Cannot insert MetricValueType for '%s'\n",
+			msglog(LDMSD_LERROR, "Cannot insert MetricValueType for '%s'\n",
 					ovisMetricName);
 			return -1;
 		}
@@ -399,13 +401,13 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 				"SELECT ValueType from MetricValueTypes WHERE Name='%s' AND Units='1' AND Constant=0 AND Storage='%s'",
 				ovisMetricName, ovisstoragestring );
 		if (mysql_query(conn, query1) != 0){
-			msglog("Cannot query for MetricValueType for '%s'\n", ovisMetricName);
+			msglog(LDMSD_LERROR, "Cannot query for MetricValueType for '%s'\n", ovisMetricName);
 			return -1;
 		}
 		result = mysql_store_result(conn);
 		num_fields = mysql_num_fields(result);
 		if ((num_fields != 1) || (mysql_num_rows(result) != 1)){
-			msglog("No MetricValueType for '%s'\n",
+			msglog(LDMSD_LERROR, "No MetricValueType for '%s'\n",
 					ovisMetricName);
 			mysql_free_result(result);
 			return -1;
@@ -419,7 +421,7 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 	/* create the MetricValueTableIndex if necessary */
 	query2 =  "CREATE TABLE IF NOT EXISTS `MetricValueTableIndex` (`TableId` int(11) NOT NULL AUTO_INCREMENT,  `TableName` tinytext NOT NULL,  `CompType` int(32) NOT NULL,  `ValueType` int(32) NOT NULL,  `MinDeltaTime` float NOT NULL DEFAULT '1',  PRIMARY KEY (`TableId`))";
 	if (mysql_query(conn,query2) != 0){
-		msglog("Err: Cannot check for the MetricValueTableIndex\n");
+		msglog(LDMSD_LERROR, "Err: Cannot check for the MetricValueTableIndex\n");
 		return -1;
 	}
 
@@ -428,7 +430,7 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 			"SELECT TableId from MetricValueTableIndex WHERE TableName='%s' AND CompType=%d AND ValueType=%d",
 			tableName, ctype, metrictype);
 	if (mysql_query(conn, query1) != 0){
-		msglog("Cannot query for table id for '%s'\n", tableName);
+		msglog(LDMSD_LERROR, "Cannot query for table id for '%s'\n", tableName);
 		return -1;
 	}
 	result = mysql_store_result(conn);
@@ -439,7 +441,7 @@ static int create_OVIS_supporting_tables(MYSQL* conn, char *tableName,
 				"INSERT INTO MetricValueTableIndex ( TableName, CompType, ValueType, MinDeltaTime ) VALUES ('%s', %d, %d, 0)",
 				tableName, ctype, metrictype);
 		if (mysql_query(conn, query1) != 0){
-			msglog("Cannot insert into MetricValueTableIndex for tableName '%s'\n",
+			msglog(LDMSD_LERROR, "Cannot insert into MetricValueTableIndex for tableName '%s'\n",
 					tableName);
 			return -1;
 		}
@@ -548,7 +550,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 	  struct ldmsd_store_metric_list *metric_list, void *ucontext)
 {
 
-	msglog("New store mysqlbulk\n");
+	msglog(LDMSD_LDEBUG, "New store mysqlbulk\n");
 	pthread_mutex_lock(&cfg_lock);
 
 	struct mysqlbulk_store_instance *si;
@@ -616,7 +618,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 	}
 
 	idx_add(store_idx, (void*)container, strlen(container), si);
-	msglog("New store mysqlbulk successful\n");
+	msglog(LDMSD_LDEBUG, "New store mysqlbulk successful\n");
 
 	goto out;
 
@@ -651,7 +653,7 @@ static int flush_metricstore(struct mysqlbulk_metric_store *msm)
 		return 0;
 
 	if (msm->conn == NULL){
-		msglog("Cannot insert value for <%s>: Connection to mysql is closed\n",
+		msglog(LDMSD_LERROR, "Cannot insert value for <%s>: Connection to mysql is closed\n",
 				msm->tablename);
 		return EPERM;
 	}
@@ -673,7 +675,8 @@ static int flush_metricstore(struct mysqlbulk_metric_store *msm)
 
 	int mysqlerrx = mysql_query(msm->conn, insertStatement);
 	if (mysqlerrx != 0){
-		msglog("Failed to perform query <%s>. Error: %d\n", mysqlerrx);
+		msglog(LDMSD_LERROR, "Failed to perform query <%s>. Error: %d\n",
+				mysqlerrx);
 		free(insertStatement);
 		return EPERM;
 	}
@@ -705,7 +708,8 @@ store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 		int mysqlerrx;
 
 		if (msm->conn == NULL){
-			msglog("Cannot insert value for <%s>: Connection to"
+			msglog(LDMSD_LERROR, "Cannot insert value for <%s>: "
+					"Connection to"
 					" mysql is closed\n", msm->tablename);
 			return EPERM;
 		}
@@ -714,8 +718,8 @@ store(ldmsd_store_handle_t sh, ldms_set_t set, ldms_mvec_t mvec, int flags)
 		if (msm->insertcount == NUM_BULK_INSERT){
 			int rc = flush_metricstore(msm);
 			if (rc != 0){
-				msglog("Can't flush store for %s. Not"
-						" accepting new data\n",
+				msglog(LDMSD_LERROR, "Can't flush store for %s. "
+						"Not accepting new data\n",
 						msm->tablename);
 				continue;
 			}
@@ -794,7 +798,7 @@ static void destroy_store(ldmsd_store_handle_t sh)
 	if (!si)
 		return;
 
-	msglog("Destroying store_mysql for <%s>\n", si->container);
+	msglog(LDMSD_LERROR, "Destroying store_mysql for <%s>\n", si->container);
 
 	flush_store(si);
 

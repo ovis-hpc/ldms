@@ -142,19 +142,19 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("meminfo: missing producer\n");
+		msglog(LDMSD_LERROR, "meminfo: missing producer\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("meminfo: missing instance.\n");
+		msglog(LDMSD_LERROR, "meminfo: missing instance.\n");
 		return ENOENT;
 	}
 
 	int rc = create_metric_set(value);
 	if (rc) {
-		msglog("meminfo: failed to create a metric set.\n");
+		msglog(LDMSD_LERROR, "meminfo: failed to create a metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -176,7 +176,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set) {
-		msglog("meminfo: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);

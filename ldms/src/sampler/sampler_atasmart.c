@@ -139,8 +139,9 @@ void atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 	for (i = 0; i < NFIELD; i++) {
 		rc = get_metric_name(metric_name, fieldname[i], name_base, dname);
 		if (rc) {
-			msglog("atasmart: metric_name '%s_%s#%s' longer than "
-				"the max length %d.\n", fieldname[i], name_base,
+			msglog(LDMSD_LERROR, "atasmart: metric_name '%s_%s#%s' "
+					"longer than the max length %d.\n",
+					fieldname[i], name_base,
 				dname, MAX_METRIC_NAME_LEN);
 			errno = rc;
 			break;
@@ -181,19 +182,19 @@ static int create_metric_set(char *setname)
 	int num_skipped_disks = 0;
 	smarts = calloc(1, sizeof(struct ldms_atasmart));
 	if (!smarts) {
-		msglog("atasmart: Failed to create set.\n");
+		msglog(LDMSD_LERROR, "atasmart: Failed to create set.\n");
 		return ENOMEM;
 	}
 
 	smarts->d = calloc(num_disks, sizeof(SkDisk *));
 	if (!smarts->d) {
-		msglog("atasmart: Failed to create set.\n");
+		msglog(LDMSD_LERROR, "atasmart: Failed to create set.\n");
 		goto err;
 	}
 
 	smarts->schema = ldms_schema_new("atasmart");
 	if (!smarts->schema) {
-		msglog("atasmart: Failed to create schema.\n");
+		msglog(LDMSD_LERROR, "atasmart: Failed to create schema.\n");
 		goto err0;
 	}
 
@@ -211,8 +212,8 @@ static int create_metric_set(char *setname)
 
 		rc = sk_disk_smart_read_data(smarts->d[i]);
 		if (rc) {
-			msglog("atasmart: Read data SkDisk '%s'. Error %d\n",
-					disknames[i], rc);
+			msglog(LDMSD_LERROR, "atasmart: Read data SkDisk '%s'. "
+					"Error %d\n", disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
 			sk_disk_free(smarts->d[i]);
@@ -224,8 +225,8 @@ static int create_metric_set(char *setname)
 		rc = sk_disk_smart_parse_attributes(smarts->d[i],
 				atasmart_get_disk_info, (void *) smarts);
 		if (rc) {
-			msglog("atasmart: Get size of SkDisk '%s'. Error %d\n",
-					disknames[i], rc);
+			msglog(LDMSD_LERROR, "atasmart: Get size of SkDisk '%s'. "
+					"Error %d\n", disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
 			sk_disk_free(smarts->d[i]);
@@ -238,7 +239,7 @@ static int create_metric_set(char *setname)
 	set = ldms_set_new(setname, smarts->schema);
 	if (!set) {
 		rc = errno;
-		msglog("atasmart: Failed to create metric set.\n");
+		msglog(LDMSD_LERROR, "atasmart: Failed to create metric set.\n");
 		goto err1;
 	}
 
@@ -296,21 +297,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			i++;
 		}
 	} else {
-		msglog("atasmart: failed to parse the disk names\n");
+		msglog(LDMSD_LERROR, "atasmart: failed to parse the disk names\n");
 		return -1;
 	}
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("atasmart: missing 'producer'.\n");
+		msglog(LDMSD_LERROR, "atasmart: missing 'producer'.\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("atasmart: missing 'instance'\n");
+		msglog(LDMSD_LERROR, "atasmart: missing 'instance'\n");
 		return ENOENT;
 	}
+
 	int rc = create_metric_set(value);
 	if (rc)
 		return rc;
@@ -379,7 +381,7 @@ static int sample(void)
 	int metric_no;
 
 	if (!set) {
-		msglog("meminfo: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "meminfo: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);
@@ -391,7 +393,8 @@ static int sample(void)
 			(SkSmartAttributeParseCallback)atasmart_set_metric,
 			(void *) &metric_no);
 		if (ret) {
-			msglog("atasmart: Failed to get metric. SkDisk '%s'."
+			msglog(LDMSD_LDEBUG, "atasmart: Failed to get metric. "
+					"SkDisk '%s'."
 					" Error %d\n", disknames[i], ret);
 			goto err;
 		}

@@ -564,7 +564,7 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 	store->close(sh);
 }
 
-typedef void (*ldmsd_msg_log_f)(const char *fmt, ...);
+typedef void (*ldmsd_msg_log_f)(enum ldmsd_loglevel level, const char *fmt, ...);
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
 
 /* ldmsctl command callback function definition */
@@ -627,7 +627,7 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
 int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
-void ldmsd_msg_logger(const char *fmt, ...);
+void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 
 /** Configuration object management */
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj);

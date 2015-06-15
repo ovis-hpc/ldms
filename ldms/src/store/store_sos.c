@@ -182,7 +182,7 @@ static int store_sos_change_owner(char *path)
 		sprintf(cmd_s, "chown -R %s %s", owner, root_path);
 		rc = system(cmd_s);
 		if (rc) {
-			msglog("store_sos: Error %d: Changing owner "
+			msglog(LDMSD_LERROR, "store_sos: Error %d: Changing owner "
 					"%s to %s\n", errno, owner);
 			return -1;
 		}
@@ -218,7 +218,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "owner");
 	if (value) {
 		if (strlen(value) > MAX_OWNER) {
-			msglog("store_sos: 'owner' (%s) exceeds %d "
+			msglog(LDMSD_LERROR, "store_sos: 'owner' (%s) exceeds %d "
 					"characters.\n", value, MAX_OWNER);
 			goto einval;
 		}
@@ -420,7 +420,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		rc = _open_store(si, set, metric_arry, metric_count);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			msglog("store_sos: Failed to create store "
+			msglog(LDMSD_LERROR, "store_sos: Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			return -1;
@@ -429,7 +429,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
 		pthread_mutex_unlock(&si->lock);
-		msglog("Error %d: %s at %s:%d\n", errno,
+		msglog(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       strerror(errno), __FILE__, __LINE__);
 		errno = ENOMEM;
 		return -1;
@@ -446,7 +446,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			si->last_rotate = ts->sec;
 			sos_post_rotation(new_sos, LDMSD_SOS_POSTROT);
 		} else {
-			msglog("WARN: sos_rotate failed: %s\n", si->path);
+			msglog(LDMSD_LINFO, "WARN: sos_rotate failed: %s\n",
+					si->path);
 		}
 	}
 #endif
@@ -476,7 +477,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	if (rc) {
 		last_errno = errno;
 		last_rc = rc;
-		msglog("Error %d: %s at %s:%d\n", errno,
+		msglog(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       strerror(errno), __FILE__, __LINE__);
 	}
 	if (last_errno)

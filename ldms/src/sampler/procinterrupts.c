@@ -107,7 +107,7 @@ static int create_metric_set(const char *instance_name)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the interrupts file '%s'...exiting\n",
+		msglog(LDMSD_LERROR, "Could not open the interrupts file '%s'...exiting\n",
 				procfile);
 		return ENOENT;
 	}
@@ -129,7 +129,7 @@ static int create_metric_set(const char *instance_name)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	nprocs = getNProcs(lbuf);
 	if (nprocs <= 0) {
-		msglog("Bad number of CPU.\n");
+		msglog(LDMSD_LINFO, "Bad number of CPU.\n");
 		fclose(mf);
 		return EINVAL;
 	}
@@ -191,18 +191,19 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procinterrupts: missing 'producer'.\n");
+		msglog(LDMSD_LERROR, "procinterrupts: missing 'producer'.\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procinterrupts: missing 'instance'.\n");
+		msglog(LDMSD_LERROR, "procinterrupts: missing 'instance'.\n");
 		return ENOENT;
 	}
+
 	rc = create_metric_set(value);
 	if (rc) {
-		msglog("procinterrupts: failed to create the metric set.\n");
+		msglog(LDMSD_LERROR, "procinterrupts: failed to create the metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -218,7 +219,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set){
-		msglog("procinterrupts: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "procinterrupts: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);
@@ -249,7 +250,8 @@ static int sample(void)
 						ldms_metric_set(set, metric_no, &v);
 						metric_no++;
 					} else {
-						msglog("bad val <%s>\n",pch);
+						msglog(LDMSD_LERROR,
+							"bad val <%s>\n",pch);
 						rc = EINVAL;
 						goto out;
 					}

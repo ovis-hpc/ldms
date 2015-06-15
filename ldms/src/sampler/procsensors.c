@@ -204,18 +204,19 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc;
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procsensors: missing 'producer'\n");
+		msglog(LDMSD_LERROR, "procsensors: missing 'producer'\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procsensors: missing 'instance'\n");
+		msglog(LDMSD_LERROR, "procsensors: missing 'instance'\n");
 		return ENOENT;
 	}
+
 	rc = create_metric_set(value);
 	if (rc) {
-		msglog("procsensors: failed to create the metric set.\n");
+		msglog(LDMSD_LERROR, "procsensors: failed to create the metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -257,7 +258,8 @@ static int sample(void)
 			//FIXME: do we really want to open and close each one?
 			mf = fopen(procfile, "r");
 			if (!mf) {
-				msglog("Could not open the procsensors file "
+				msglog(LDMSD_LERROR, "Could not open "
+						"the procsensors file "
 						"'%s'...exiting\n", procfile);
 				rc = ENOENT;
 				goto out;

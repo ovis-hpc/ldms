@@ -307,17 +307,17 @@ static int create_metric_set(const char *path, const char *osts)
 	ldms_schema_delete(schema);
 	return 0;
 err2:
-	msglog("lustre_oss.c:create_metric_set@err2\n");
+	msglog(LDMSD_LINFO, "lustre_oss.c:create_metric_set@err2\n");
 	lustre_metric_src_list_free(&lms_list);
 	ldms_schema_delete(schema);
-	msglog("WARNING: lustre_oss set DESTROYED\n");
+	msglog(LDMSD_LINFO, "WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err1:
-	msglog("lustre_oss.c:create_metric_set@err1\n");
+	msglog(LDMSD_LINFO, "lustre_oss.c:create_metric_set@err1\n");
 	free_str_list(lh);
 err0:
-	msglog("%s:%s@err0\n", __FILE__, __func__);
-	msglog("%s:%s: osts: %s\n", __FILE__, __func__, osts);
+	msglog(LDMSD_LDEBUG, "%s:%s@err0\n", __FILE__, __func__);
+	msglog(LDMSD_LDEBUG, "%s:%s: osts: %s\n", __FILE__, __func__, osts);
 	return errno;
 }
 
@@ -347,13 +347,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("lustre2_oss: missing 'producer'\n");
+		msglog(LDMSD_LERROR, "lustre2_oss: missing 'producer'\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "set");
 	if (!value) {
-		msglog("lustre2_oss: missing 'instance'\n");
+		msglog(LDMSD_LERROR, "lustre2_oss: missing 'instance'\n");
 		return EINVAL;
 	}
 	osts = av_value(avl, "osts");
@@ -418,14 +418,14 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	lustre_sampler_set_msglog(pf);
 	stats_key_id = str_map_create(STR_MAP_SIZE);
 	if (!stats_key_id) {
-		msglog("stats_key_id map create error!\n");
+		msglog(LDMSD_LERROR, "stats_key_id map create error!\n");
 		goto err_nomem;
 	}
 	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
 
 	obdf_key_id = str_map_create(STR_MAP_SIZE);
 	if (!obdf_key_id) {
-		msglog("obdf_key_id map create error!\n");
+		msglog(LDMSD_LERROR, "obdf_key_id map create error!\n");
 		goto err_nomem;
 	}
 	str_map_id_init(obdf_key_id, obdf_key, OBDF_KEY_LEN, 1);

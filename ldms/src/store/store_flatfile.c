@@ -275,7 +275,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		if (rc < 0) {
 			last_errno = errno;
 			last_rc = rc;
-			msglog("Error %d: %s at %s:%d\n", last_errno,
+			msglog(LDMSD_LERROR, "Error %d: %s at %s:%d\n", last_errno,
 					strerror(last_errno), __FILE__,
 					__LINE__);
 		}
@@ -302,7 +302,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 		if (lrc) {
 			rc = lrc;
 			eno = errno;
-			msglog("Errro %d: %s at %s:%d\n", eno, strerror(eno),
+			msglog(LDMSD_LERROR, "Errro %d: %s at %s:%d\n", eno, strerror(eno),
 					__FILE__, __LINE__);
 		}
 		pthread_mutex_unlock(&ms->lock);

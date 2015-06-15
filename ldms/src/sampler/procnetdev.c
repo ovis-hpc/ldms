@@ -114,7 +114,8 @@ static int create_metric_set(const char *instance_name)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open /proc/net/dev file '%s'...exiting\n",
+		msglog(LDMSD_LERROR, "Could not open /proc/net/dev file "
+				"'%s'...exiting\n",
 				procfile);
 		return ENOENT;
 	}
@@ -157,7 +158,8 @@ static int create_metric_set(const char *instance_name)
 				&v[10].v_u64, &v[11].v_u64, &v[12].v_u64,
 				&v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
 		if (rc != 17){
-			msglog("Procnetdev: wrong number of fields in sscanf\n");
+			msglog(LDMSD_LERROR, "Procnetdev: wrong number of "
+					"fields in sscanf\n");
 			continue;
 		}
 		for (j = 0; j < niface; j++){
@@ -166,7 +168,8 @@ static int create_metric_set(const char *instance_name)
 					/* raw */
 					snprintf(metric_name, 128, "%s#%s",
 							varname[i], curriface);
-					rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
+					rc = ldms_schema_metric_add(schema,
+							metric_name, LDMS_V_U64);
 					if (rc < 0) {
 						rc = ENOMEM;
 						goto err;
@@ -174,7 +177,8 @@ static int create_metric_set(const char *instance_name)
 					/* rate */
 					snprintf(metric_name, 128, "%s.rate#%s",
 							varname[i], curriface);
-					rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_F32);
+					rc = ldms_schema_metric_add(schema,
+							metric_name, LDMS_V_F32);
 					if (rc < 0) {
 						rc = ENOMEM;
 						goto err;
@@ -206,7 +210,7 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "iface");
 	if (!value) {
-		msglog("Please specify ifaces.\n");
+		msglog(LDMSD_LERROR, "Please specify ifaces.\n");
 		return EINVAL;
 	}
 
@@ -221,7 +225,8 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	if (tok && niface == (MAXIFACE-1)){
-		msglog("Procnetdev too many ifaces -- increase array size\n");
+		msglog(LDMSD_LERROR, "Procnetdev too many ifaces -- "
+				"increase array size\n");
 		return EINVAL;
 	}
 
@@ -263,13 +268,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	/* Set the compid and create the metric set */
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procnetdev: missing 'producer'.\n");
+		msglog(LDMSD_LERROR, "procnetdev: missing 'producer'.\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procnetdev: missing 'instance'.\n");
+		msglog(LDMSD_LERROR, "procnetdev: missing 'instance'.\n");
 		return ENOENT;
 	}
 
@@ -292,7 +297,7 @@ static int sample(void)
 	float dt;
 
 	if (!set){
-		msglog("procnetdev: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "procnetdev: plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -300,7 +305,8 @@ static int sample(void)
 	if (!mf)
 		mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open /proc/net/dev file '%s'...exiting\n", procfile);
+		msglog(LDMSD_LERROR, "Could not open /proc/net/dev file "
+				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 	fseek(mf, 0, SEEK_SET);
@@ -337,7 +343,8 @@ static int sample(void)
 				&v[10].v_u64, &v[11].v_u64, &v[12].v_u64,
 				&v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
 		if (rc != 17){
-			msglog("Procnetdev: wrong number of fields in sscanf\n");
+			msglog(LDMSD_LINFO, "Procnetdev: wrong number of "
+					"fields in sscanf\n");
 			continue;
 		}
 

@@ -108,7 +108,8 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open the geminfo file '%s'...exiting\n", procfile);
+		msglog(LDMSD_LERROR, "Could not open the geminfo file "
+				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 
@@ -177,7 +178,7 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set){
-	  msglog("geminfo: plugin not initialized\n");
+	  msglog(LDMSD_LDEBUG, "geminfo: plugin not initialized\n");
 	  return EINVAL;
 	}
 	ldms_transaction_begin(set);

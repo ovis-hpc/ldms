@@ -135,7 +135,8 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog("Could not open /proc/net/rpc/nfs file '%s'...exiting\n",
+		msglog(LDMSD_LERROR, "Could not open /proc/net/rpc/nfs file "
+				"'%s'...exiting\n",
 				procfile);
 		return ENOENT;
 	}
@@ -193,18 +194,19 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog("procnfs: missing 'producer'\n");
+		msglog(LDMSD_LERROR, "procnfs: missing 'producer'\n");
 		return ENOENT;
 	}
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog("procnfs: missing 'instance'\n");
+		msglog(LDMSD_LERROR, "procnfs: missing 'instance'\n");
 		return ENOENT;
 	}
+
 	int rc = create_metric_set(value);
 	if (rc) {
-		msglog("procnfs: failed to create the metric set.\n");
+		msglog(LDMSD_LERROR, "procnfs: failed to create the metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -226,7 +228,7 @@ static int sample(void)
 	union ldms_value v[23],vtemp;
 
 	if (!set) {
-		msglog("procnfs: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, "procnfs: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);
