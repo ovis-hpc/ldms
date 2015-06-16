@@ -1,4 +1,4 @@
-#!/bin/bash -x
+#!/bin/bash
 #
 # ldms-aggd		Start up the ldms aggregator daemon
 #
@@ -45,7 +45,7 @@ ARG=$1
 
 arg1=$1
 shift
-while getopts "v" opt
+while getopts "vd" opt
 do
 	case "$opt" in
 	v) VERBOSE="-v";;

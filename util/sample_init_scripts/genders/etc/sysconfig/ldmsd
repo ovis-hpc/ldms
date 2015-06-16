@@ -72,8 +72,10 @@ if test -z $LDMSD_OFFSET_DEFAULT; then
 	LDMSD_OFFSET_DEFAULT=0
 fi
 
-if test -z LDMSD_DBG; then
+if test -z $LDMSD_DBG; then
 	LDMSD_DBG=ERROR
+else
+	echoq LDMSD_DBG IS $LDMSD_DBG
 fi
 
 if test -z $NODE_ID_BASE; then

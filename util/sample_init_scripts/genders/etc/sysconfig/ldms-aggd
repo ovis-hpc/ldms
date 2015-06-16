@@ -84,6 +84,9 @@ if test -z $LDMSAGGD_CONN_THDS; then
 fi
 
 
+if test "$DEBUG" = "yes"; then
+	ldmsctl_args -n $MYHOSTNAME -t store-list -v 1
+fi
 METRIC_SETS_LIST=`ldmsctl_args -n $MYHOSTNAME -t store-list`
 ALL_METRIC_SETS=`echo $METRIC_SETS_LIST | tr ",: " "\n" | sort -u`
 

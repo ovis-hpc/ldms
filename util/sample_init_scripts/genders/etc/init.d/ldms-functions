@@ -137,7 +137,7 @@ start_ldmsd_plugins () {
 		fi
 
 		eval extraconfig='$grok'
-		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$LDMSD_HOST/$i $grok"
+		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$host/$i $grok"
 		ARGS_START="name=$i interval=$interval offset=$offset"
 		echoq "Loading <${i}> with $ARGS_CONFIG"
 		{ echo load name=$i | $DO_CTL ; } && 
@@ -198,8 +198,10 @@ start_stores () {
 		ARGS_CONFIG="name=$i path=$STORE_PATH $extraconfig"
 		echo load name=$i | $DO_CTL
 		echo config $ARGS_CONFIG | $DO_CTL
+		echoq "Configuring <${i}> with $ARGS_CONFIG"
 		for j in $ALL_METRIC_SETS ; do
 			ARGS_STORE="name=$i comp_type=node set=$j container=$j"
+			echoq "Adding <${j}> to $ARGS_STORE"
 			echo store $ARGS_STORE | $DO_CTL
 		done
 

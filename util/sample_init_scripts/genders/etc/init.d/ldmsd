@@ -43,10 +43,11 @@ VERBOSE=
 ARG=$1
 arg1=$1
 shift
-while getopts "v" opt
+while getopts "vd" opt
 do
 	case "$opt" in
 	v) VERBOSE="-v";;
+	d) DEBUG="yes";;
 	:) echo "Option -$OPTARG requires an argument" ;;
 	\?) # unknown flag
 		initusage
