@@ -496,9 +496,9 @@ struct ldmsd_store_policy {
  *  - INFO
  *  - ERROR
  *  - CRITICAL
- *  - ALWAYS
+ *  - SUPREME
  *
- * ALWAYS is for messages printed to the log file per users requests,
+ * SUPREME is for messages printed to the log file per users requests,
  * e.g, messages printed from the 'info' command.
  */
 #define LOGLEVELS(WRAP) \

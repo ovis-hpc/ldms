@@ -140,6 +140,7 @@ extern pthread_mutex_t sp_list_lock;
 
 int passive = 0;
 int log_level_thr = LDMSD_LERROR;  /* log level threshold */
+int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
@@ -147,7 +148,8 @@ const char* ldmsd_loglevel_names[] = {
 
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
-	if ((0 <= level) && (level < log_level_thr))
+	if ((level != LDMSD_LSUPREME) &&
+			(quiet || ((0 <= level) && (level < log_level_thr))))
 		return;
 	time_t t;
 	struct tm *tm;
@@ -1544,11 +1546,16 @@ int main(int argc, char *argv[])
 			setfile = strdup(optarg);
 			break;
 		case 'v':
-			log_level_thr = ldmsd_str_to_loglevel(optarg);
+			if (0 == strcmp(optarg, "QUIET")) {
+				quiet = 1;
+				log_level_thr = LDMSD_LLASTLEVEL;
+			} else {
+				log_level_thr = ldmsd_str_to_loglevel(optarg);
+			}
 			if (log_level_thr < 0) {
-				printf("Invalid verbosity levels '%s'. "
-						"See -v option.\n", optarg);
 				usage(argv);
+				printf("Invalid verbosity levels '%s'. "
+					"See -v option.\n", optarg);
 			}
 			break;
 		case 'F':
