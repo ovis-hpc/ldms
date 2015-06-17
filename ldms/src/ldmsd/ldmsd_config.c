@@ -622,6 +622,48 @@ int ldmsd_set_udata(char *set_name, char *metric_name,
 	return _ldmsd_set_udata(set, metric_name, udata, err_str);
 }
 
+int ldmsd_set_udata_regex(char *set_name, char *regex_str,
+		char *base_s, char *inc_s, char err_str[LEN_ERRSTR])
+{
+	int rc = 0;
+	ldms_set_t set;
+	err_str[0] = '\0';
+	set = ldms_set_by_name(set_name);
+	if (!set) {
+		snprintf(err_str, LEN_ERRSTR, "Set '%s' not found.", set_name);
+		return ENOENT;
+	}
+
+	char *endptr;
+	uint64_t base = strtoull(base_s, &endptr, 0);
+	if (endptr[0] != '\0') {
+		snprintf(err_str, LEN_ERRSTR, "User data base '%s' invalid.",
+								base_s);
+		return EINVAL;
+	}
+
+	int inc = 0;
+	if (inc_s)
+		inc = atoi(inc_s);
+
+	regex_t regex;
+	rc = ldmsd_compile_regex(&regex, regex_str, err_str, LEN_ERRSTR);
+	if (rc)
+		return rc;
+
+	int i;
+	uint64_t udata = base;
+	char *mname;
+	for (i = 0; i < ldms_set_card_get(set); i++) {
+		mname = (char *)ldms_metric_name_get(set, i);
+		if (0 == regexec(&regex, mname, 0, NULL, 0)) {
+			ldms_metric_user_data_set(set, i, udata);
+			udata += inc;
+		}
+	}
+	return 0;
+}
+
 #define LDMSD_DEFAULT_GATHER_INTERVAL 1000000
 
 int str_to_host_type(char *type)
@@ -1291,6 +1333,41 @@ einval:
 	return 0;
 }
 
+int process_set_udata_regex(char *replybuf, struct attr_value_list *av_list,
+		struct attr_value_list *kw_list)
+{
+	char *set_name, *regex, *base_s, *inc_s;
+	char err_str[LEN_ERRSTR];
+	char *attr;
+	int rc = 0;
+
+	attr = "set";
+	set_name = av_value(av_list, attr);
+	if (!set_name)
+		goto einval;
+
+	attr = "regex";
+	regex = av_value(av_list, attr);
+	if (!regex)
+		goto einval;
+
+	attr = "base";
+	base_s = av_value(av_list, attr);
+	if (!base_s)
+		goto einval;
+
+	attr = "incr";
+	inc_s = av_value(av_list, attr);
+
+	rc = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s, err_str);
+	sprintf(replybuf, "%d%s", -rc, err_str);
+	return 0;
+
+einval:
+	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	return 0;
+}
+
 /* Start a sampler */
 int process_start_sampler(char *replybuf, struct attr_value_list *av_list,
 			  struct attr_value_list *kw_list)
@@ -1558,6 +1635,7 @@ ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
 	[LDMSCTL_STORE] = process_store,
 	[LDMSCTL_INFO_DAEMON] = process_info,
 	[LDMSCTL_SET_UDATA] = process_set_udata,
+	[LDMSCTL_SET_UDATA_REGEX] = process_set_udata_regex,
 	[LDMSCTL_EXIT_DAEMON] = process_exit,
 	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
 	[LDMSCTL_ONESHOT_SAMPLE] = process_oneshot_sample,

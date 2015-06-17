@@ -585,19 +585,38 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_store(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store', text)
 
-    def do_set_udata(self, arg):
+    def do_udata(self, arg):
         """
         Set the user data value for a metric in a metric set. This is typically used to
         convey the Component Id to the Aggregator.
         Parameters:
-        name=   The sampler plugin name
+        set=   The sampler plugin name
         metric= The metric name
         udata=  The desired user-data. This is a 64b unsigned integer.
         """
         self.handle('udata', arg)
 
-    def complete_set_udata(self, text, line, begidx, endidx):
+    def complete_udata(self, text, line, begidx, endidx):
         return self.__complete_attr_list('udata', text)
+
+    def do_udata_regex(self, arg):
+        """
+        Set the user data of multiple metrics using regular expression.
+        The user data of the first matched metric is set to the base value.
+        The base value is incremented by the given 'incr' value and then
+        sets to the user data of the consecutive matched metric and so on.
+        Parameters:
+             set=           The metric set name
+             regex=         A regular expression to match metric names to be set
+             base=          The base value of user data (uint64)
+             [incr=]        Increment value (int). The default is 0. If incr is 0,
+                            the user data of all matched metrics are set
+                            to the base value.
+        """
+        self.handle('udata_regex', arg)
+
+    def complete_udata_regex(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('udata_regex', text)
 
     def do_standby(self, arg):
         """

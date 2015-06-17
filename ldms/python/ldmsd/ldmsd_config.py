@@ -98,6 +98,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                   'req_attr': ['agg_no', 'state']},
                       'oneshot': {'id': 13,
                                   'req_attr': ['name', 'time']},
+                      'udata_regex': {'id': 14,
+                                      'req_attr': ['set', 'regex', 'base'],
+                                      'opt_attr': ['incr']},
                       ###############################
                       # LDMSD command version 2
                       ###############################
@@ -297,6 +300,13 @@ class ldmsdConfig(object):
     def set_udata(self, set, metric, udata):
         cmd = self.__format_cmd('udata', {'set': set, 'metric': metric,
                                               'udata': udata})
+        return self.talk(cmd)
+
+    def set_udata_regex(self, set, regex, base, incr = None):
+        cmd = self.__format_cmd('udata_regex', {'set': set,
+                                                'regex': regex,
+                                                'base': base,
+                                                'incr': incr})
         return self.talk(cmd)
 
     def exit_daemon(self):

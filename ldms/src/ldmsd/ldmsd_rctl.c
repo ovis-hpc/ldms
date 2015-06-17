@@ -280,9 +280,24 @@ void help_udata()
 {
 	printf( "\nSet the user data of the specified metric in the given set\n\n"
 		"Parameters:\n"
-		"     name=          The metric set name\n"
+		"     set=           The metric set name\n"
 		"     metric_name=   The metric name\n"
 		"     user_data=     The user data value\n");
+}
+
+void help_udata_regex()
+{
+	printf( "\nSet the user data of multiple metrics using regular expression.\n"
+		"The user data of the first matched metric is set to the base value.\n"
+		"The base value is incremented by the given 'incr' value and then\n"
+		"sets to the user data of the consecutive matched metric and so on.\n"
+		"Parameters:\n"
+		"     set=           The metric set name\n"
+		"     regex=         A regular expression to match metric names to be set\n"
+		"     base=          The base value of user data (uint64).\n"
+		"     [incr=]        Increment value (int). The default is 0. If incr is 0,\n"
+		"                    the user data of all matched metrics are set\n"
+		"                    to the base value.\n");
 }
 
 void help_standby()
@@ -545,6 +560,7 @@ static struct command command_tbl[] = {
 	{ "strgp_stop", LDMSCTL_STRGP_STOP, NULL, help_strgp_stop },
 	{ "term", LDMSCTL_TERM_PLUGIN, NULL, help_term },
 	{ "udata", LDMSCTL_SET_UDATA, NULL, help_udata },
+	{ "udata_regex", LDMSCTL_SET_UDATA_REGEX, NULL, help_udata_regex },
 	{ "updtr_add", LDMSCTL_UPDTR_ADD, NULL, help_updtr_add },
 	{ "updtr_del", LDMSCTL_UPDTR_DEL, NULL, help_updtr_del },
 	{ "updtr_match_add", LDMSCTL_UPDTR_MATCH_ADD, NULL, help_updtr_match_add },

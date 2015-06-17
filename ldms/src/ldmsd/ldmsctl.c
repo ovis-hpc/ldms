@@ -140,6 +140,18 @@ int handle_help(char *kw, char *err_str)
                "     <metric_name>   The metric name\n"
                "     <user_data>     The user data value\n"
                "\n"
+               "udata_regex set=<set_name> regex=<regex> base=<base> [incr=<incr>]\n"
+               "   - Set the user data of multiple metrics using regular expression.\n"
+               "     The user data of the first matched metric is set to the base value.\n"
+               "     The base value is incremented by the given 'incr' value and then\n"
+               "     sets to the user data of the consecutive matched metric and so on.\n"
+               "     <set_name>      The metric set name\n"
+               "     <regex>         A regular expression to match metric names to be set\n"
+               "     <base>          The base value of user data (uint64).\n"
+               "     <incr>          Increment value (int). The default is 0. If incr is 0,\n"
+               "                     the user data of all matched metrics are set\n"
+               "                     to the base value.\n"
+               "\n"
 	       "start name=<name> interval=<interval> [ offset=<offset>]\n"
 	       "   - Begins calling the sampler's 'sample' method at the\n"
 	       "     sample interval.\n"
@@ -269,6 +281,11 @@ int handle_set_udata(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_SET_UDATA, av_list, err_str);
 }
 
+int handle_set_udata_regex(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_SET_UDATA_REGEX, av_list, err_str);
+}
+
 int handle_sampler_start(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_START_SAMPLER, av_list, err_str);
@@ -326,6 +343,7 @@ struct kw keyword_tbl[] = {
 	{ "store", handle_store },
 	{ "term", handle_plugin_term },
 	{ "udata", handle_set_udata },
+	{ "udata_regex", handle_set_udata_regex },
 	{ "usage", handle_usage },
 };
 
@@ -349,7 +367,7 @@ int handle_nxt_token(char *word, char *err_str)
 		nxt_kw++;
 		return kw->action(key.token, err_str);
 	}
-	printf("Uncrecognized keyword '%s'.", key.token);
+	printf("Unrecognized keyword '%s'.", key.token);
 	return EINVAL;
 }
 
