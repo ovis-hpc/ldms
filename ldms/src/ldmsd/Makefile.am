@@ -38,10 +38,10 @@ ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lovis_ctrl -lovis_util \
 		  @READLINE_LDFLAGS@
 ldmsctl_CFLAGS = $(AM_CFLAGS) @READLINE_CFLAGS@
 
-if ENABLE_LDMSD_RCTRL
+if ENABLE_LDMSD_RCTL
 ldmsd_SOURCES += ldmsd_config_rctrl.c
 ldmsd_LDFLAGS += -locm -lovis_rctrl @OCM_LIBDIR_FLAG@
-ldmsd_CFLAGS += -DENABLE_LDMSD_RCTRL  @OCM_INCDIR_FLAG@
+ldmsd_CFLAGS += -DENABLE_LDMSD_RCTL  @OCM_INCDIR_FLAG@
 
 sbin_PROGRAMS += ldmsd_rctl
 ldmsd_rctl_SOURCES = ldmsd_rctl.c
