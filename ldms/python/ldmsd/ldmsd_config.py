@@ -89,7 +89,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                       'store': {'id': 8,
                                 'req_attr': ['name', 'policy', 'container', 'schema'],
                                 'opt_attr': ['metric', 'hosts']},
-                      'info': {'id': 9, 'req_attr': []},
+                      'info': {'id': 9, 'req_attr': [],
+                               'opt_attr': ['name']},
                       'udata': {'id': 10,
                                 'req_attr': ['set', 'metric', 'udata']},
                       'exit': {'id': 11, 'req_attr': []},
@@ -287,8 +288,11 @@ class ldmsdConfig(object):
             attr_values['hosts'] = hosts
         return self.talk(self.__format_cmd('store', attr_values))
 
-    def info(self):
-        return self.talk(self.__format_cmd('info', {}))
+    def info(self, name = None):
+        attr_values = {}
+        if name:
+            attr_values['name'] = name
+        return self.talk(self.__format_cmd('info', attr_values))
 
     def set_udata(self, set, metric, udata):
         cmd = self.__format_cmd('udata', {'set': set, 'metric': metric,
