@@ -329,6 +329,7 @@ void usage(char *argv[])
 	printf("    -t count       Number of test sets to create.\n");
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N             Notify registered monitors of the test metric sets\n");
+	printf("  Configuration Options\n");
 #ifdef ENABLE_OCM
 	printf("  OCM Options\n");
 	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
@@ -341,11 +342,8 @@ void usage(char *argv[])
 	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 #endif /* ENABLE_AUTH */
-#ifdef ENABLE_LDMSD_TEST
-	printf("    -p port        The listener port for receiving configuration.\n"
-	       "                   via socket\n");
-#endif /* ENABLE_LDMSD_TEST */
-#ifdef ENABLE_LDMSD_RCTRL
+	printf("    -p port        The inet control listener port for receiving configuration\n");
+#ifdef ENABLE_LDMSD_RCTL
 	printf("    -r port        The listener port for receiving configuration\n"
 	       "                   from the ldmsd_rctl program\n");
 #endif
@@ -1480,7 +1478,7 @@ int main(int argc, char *argv[])
 {
 	char *sockname = NULL;
 	char *inet_listener_port = NULL;
-#ifdef ENABLE_LDMSD_RCTRL
+#ifdef ENABLE_LDMSD_RCTL
 	char *rctrl_port = NULL;
 #endif /* ENABLE_LDMSD_CTRL */
 	int ret;
@@ -1534,11 +1532,11 @@ int main(int argc, char *argv[])
 			/* Set the port to listen on configuration */
 			inet_listener_port = strdup(optarg);
 			break;
-#ifdef ENABLE_LDMSD_RCTRL
+#ifdef ENABLE_LDMSD_RCTL
 		case 'r':
 			rctrl_port = strdup(optarg);
 			break;
-#endif /* ENABLE_LDMSD_RCTRL */
+#endif /* ENABLE_LDMSD_RCTL */
 		case 'l':
 			logfile = strdup(optarg);
 			break;
@@ -1742,11 +1740,11 @@ int main(int argc, char *argv[])
 		if (ldmsd_inet_config_init(inet_listener_port))
 			cleanup(104);
 
-#ifdef ENABLE_LDMSD_RCTRL
+#ifdef ENABLE_LDMSD_RCTL
 	if (rctrl_port)
 		if (ldmsd_rctrl_init(rctrl_port, secretword))
 			cleanup(4);
-#endif /* ENABLE_LDMSD_RCTRL */
+#endif /* ENABLE_LDMSD_RCTL */
 	if (ldmsd_store_init(flush_N)) {
 		ldmsd_log(LDMSD_LERROR, "Could not initialize the storage subsystem.\n");
 		cleanup(7);
