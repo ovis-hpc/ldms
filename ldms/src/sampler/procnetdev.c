@@ -63,6 +63,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 
 #ifndef ARRAY_SIZE
@@ -86,7 +87,6 @@ static ldms_set_t set;
 static FILE *mf;
 static ldms_metric_t *metric_table;
 static ldmsd_msg_log_f msglog;
-static uint64_t counter;
 static uint64_t comp_id;
 
 struct kw {
@@ -94,13 +94,16 @@ struct kw {
 	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
 };
 
+#if 0
 static int kw_comparator(const void *a, const void *b)
 {
 	struct kw *_a = (struct kw *)a;
 	struct kw *_b = (struct kw *)b;
 	return strcmp(_a->token, _b->token);
 }
+#endif
 
+LDMS_JOBID_GLOBALS;
 
 static ldms_set_t get_set()
 {
@@ -114,7 +117,6 @@ static int create_metric_set(const char *path)
 	union ldms_value v;
 	int rc, metric_count, metric_no = 0; /* fixed memory corruption */
 	char metric_name[128];
-	char curriface[20];
 	int i,j;
 
 
@@ -137,6 +139,9 @@ static int create_metric_set(const char *path)
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
+	LDMS_SIZE_JOBID_METRIC(procnetdev,meta_sz,tot_meta_sz,
+		data_sz,tot_data_sz,metric_count,rc,msglog);
+
 	for (i = 0; i < niface; i++){
 		for (j = 0; j < NVARS; j++){
 			snprintf(metric_name, 128, "%s#%s", varname[j], iface[i]);
@@ -156,6 +161,8 @@ static int create_metric_set(const char *path)
 	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
+
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
 
 	v.v_u64 = 0;
 	for (i = 0; i < niface; i++){
@@ -182,14 +189,7 @@ err:
 }
 
 
-static const char *usage(void)
-{
-	return
-		"config name=procnetdev component_id=<comp_id> set=<setname> ifaces=<ifaces>\n"
-		"    comp_id     The component id value.\n"
-		"    setname     The set name.\n"
-		"    ifaces      CSV list of ifaces. Order matters.\n";
-}
+
 
 
 /**
@@ -232,6 +232,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (niface == 0)
 		goto err;
 
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
+
 	value = av_value(avl, "set");
 	if (value)
 		create_metric_set(value);
@@ -249,7 +251,8 @@ static int sample(void)
 	char *s;
 	char lbuf[256];
 	char curriface[20];
-	union ldms_value  v[NVARS];
+	union ldms_value v[NVARS];
+	union ldms_value jv;
 
 	int i, j, metric_no;
 
@@ -266,6 +269,9 @@ static int sample(void)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	//data
 	ldms_begin_transaction(set);
+
+	LDMS_JOBID_SAMPLE(jv,metric_table,metric_no);
+
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -313,8 +319,20 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+
+	LDMS_JOBID_TERM;
+
 }
 
+static const char *usage(void)
+{
+	return
+		"config name=procnetdev component_id=<comp_id> set=<setname> ifaces=<ifaces>\n"
+		"    comp_id     The component id value.\n"
+		"    setname     The set name.\n"
+		LDMS_JOBID_DESC
+		"    ifaces      CSV list of ifaces. Order matters.\n";
+}
 
 static struct ldmsd_sampler procnetdev_plugin = {
 	.base = {

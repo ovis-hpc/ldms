@@ -19,9 +19,11 @@ The store_csv plugin is a CSV store.
 
 .SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
+The configuration parameters altheader, id_pos, rolltype, rollover, and sequence are applied to all metric sets alike.
+
 .TP
 .BR config
-name=<plugin_name> path=<path> [ altheader=<altheader> id_pos=<idpos> rolltype=<rolltype> rollover=<rollover> ]
+name=<plugin_name> path=<path> [ altheader=<altheader> id_pos=<idpos> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> ]
 .br
 ldmsctl configuration line
 .RS
@@ -40,7 +42,10 @@ The default output writes the header to the same file as the data file. altheade
 .TP
 id_pos=<idpos>
 .br
-The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id. 
+.HP 
+.br
+The value of id_pos determines which metric in the set provides the component_id for the entire set. Setting id_pos=0 selects the last metric defined by the sampler as the component_id source; setting id_pos=1 selects the first metric defined by the sampler as the component_id source. All metrics in the set must have the same component_id for this to make sense, and individual metric component_id assignments may be determined by the sampler implementations.
 .TP
 rolltype=<rolltype>
 .br
@@ -66,7 +71,12 @@ roll after approximately rollover bytes are written.
 rollover=<rollover>
 .br
 Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+sequence=<seqname>
+.br
+Controls the ordering of metric data column. See STORE COLUMN ORDERING for details.
 .RE
+
 
 .SH LDMSCTL STORE ATTRIBUTE SYNTAX
 
@@ -99,23 +109,63 @@ Use an unique container parameter for different metric sets coming from differen
 If you are using multiple store Plugins, use unique container names for each even if they are going into different subdirectories. For example, if you are running both the store_csv and the store_derived_csv plugins do NOT use meminfo for both, perhaps use meminfo_der for the derived container.
 .RE
 
+.SH STORE COLUMN ORDERING
+
+This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
+.PP
+.RS
+Time, Time_usec, [CompId,] <sampled metric >*
+.RE
+.PP
+where [CompId,] is present if id_pos was specified, and
+where each <sampled metric> is either 
+.PP
+.RS
+<metric_name>.CompId, <metric_name>
+.RE
+.PP
+or if id_pos has been specified just:
+.PP
+.RS
+<metric_name>
+.RE
+.PP
+.PP
+The default column sequence of <sampled metrics> is the reverse of the order in which the metrics are added into the metric set by the sampler. 
+.QP
+Note that the sampler's number and order of metric additions may vary with the kind and number of hardware features enabled on a host at runtime or with the version of kernel. Because of this potential for variation, down-stream tools consuming the CSV files should always determine column names or column number of a specific metric by parsing the header line or .HEADER file. At the very least, a tool with a hardwired assumption of the column ordering should make a string comparison of the entire header line with a string containing the expected column naming and fail loudly when a mismatch is detected.
+.PP
+Valid sequence options are:
+.RS
+.TP
+forward
+.br
+List metrics in the order added in the sampler definition. This order is intuitive to humans comparing sampler input (e.g. /proc/meminfo) with LDMS CSV output, and it facilitates validation/bug checking during sampler development.
+.TP
+reverse
+.br
+List metrics in the reverse of the order added in the sampler definition (the default for back-compatibility reasons). This order is an artifact of implementation that we discovered down-stream tools are relying upon.
+.TP
+alnum
+.br
+(reserved) Not implemented. Sort the columns by name and name-embedded numeric values.
+.RE
+
 .SH NOTES
 If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator with a store plugin only.
 
 .SH BUGS
-No known bugs.
+No known bugs. In LDMS version 2.x, alnum is not expected to be implemented.
 
 .SH EXAMPLES
 .PP
 .nf
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_csv
-ldmsctl> config name=store_csv altheader=1 id_pos=1 path=/XXX/storedir
+ldmsctl> config name=store_csv altheader=1 id_pos=1 sequence=forward path=/XXX/storedir
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo_store
 ldmsctl> quit
 .fi
 
 .SH SEE ALSO
-LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
-Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
-Plugin_procsensors(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil2(7), Plugin_vmstat(7)
+ldms(7), Plugin_store_derived_csv(7)

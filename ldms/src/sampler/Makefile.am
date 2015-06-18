@@ -33,6 +33,8 @@ endif
 if ENABLE_SLURMJOBID
 libslurmjobid_la_SOURCES = slurmjobid.c
 libslurmjobid_la_LIBADD = $(COMMON_LIBADD)
+libslurmjobidincludedir = $(includedir)/ovis_util
+libslurmjobidinclude_HEADERS = ldms_slurmjobid.h
 pkglib_LTLIBRARIES += libslurmjobid.la
 endif
 

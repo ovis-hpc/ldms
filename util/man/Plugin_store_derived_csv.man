@@ -104,8 +104,33 @@ Use an unique container parameter for different metric sets coming from differen
 
 If you are using multiple store Plugins, use unique container names for each even if they are going into different subdirectories. For example, if you are running both the store_csv and the store_derived_csv plugins do NOT use meminfo for both, perhaps use meminfo_der for the derived container.
 
-
 .RE
+
+.SH STORE COLUMN ORDERING
+
+This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
+.PP
+.RS
+Time, Time_usec, DT, DT_usec, [CompId,] <sampled metric >*, Flag
+.RE
+.PP
+where [CompId,] is present if id_pos was specified, Flag is as described for option agesec, and
+where each <sampled metric> is either 
+.PP
+.RS
+<metric_name>.CompId, <metric_name>
+.RE
+.PP
+or if id_pos has been specified just:
+.PP
+.RS
+<metric_name>
+.RE
+.PP
+.PP
+The column sequence of <sampled metrics> is the order in which the metrics are added into the metric set by the derived csv store configuration file. 
+.PP
+There is no option to reverse the sampled metric order.
 
 .SH STORE_DERIVED_CSV CONFIGURATION FILE
 Derived Configration file format: metricname,Raw/Rate=(0/1),multiplier.
@@ -139,6 +164,7 @@ Any metric can only be in the file once.
 If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator
 with a store plugin only.
 
+
 .SH BUGS
 No known bugs.
 
@@ -148,12 +174,10 @@ ldmsctl lines for configuring store_derived_csv:
 .nf
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_derived_csv
-ldmsctl> config name=store_derived_csv alt_header=1 id_pos=1 derivedconf=/XXX/der.conf path=/XXX/storedir
+ldmsctl> config name=store_derived_csv alt_header=1 id_pos=1 derivedconf=/XXX/der.conf sequence=forward path=/XXX/storedir
 ldmsctl> store name=store_derived_csv comp_type=node set=meminfo container=meminfo_store
 ldmsctl> quit
 .if
 
 .SH SEE ALSO
-LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldmsd(1), ldms_ls(1),
-Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
-Plugin_procsensors(7), Plugin_store_csv(7), Plugin_sysclassib(7), Plugin_procstatutil2(7), Plugin_vmstat(7)
+ldms(7), Plugin_store_csv(7)

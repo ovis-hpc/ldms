@@ -12,7 +12,7 @@
 Summary: OVIS LDMS Commands and Libraries
 Name: ldms-all
 Version: @VERSION@
-Release: ovis1genders%{?dist}
+Release: ovis1%{?dist}
 License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -98,7 +98,6 @@ to make these scripts operate. They are required to fail out of the box.
 %defattr(-,root,root)
 %{_sysconfdir}/*/*
 #end initscripts
-
 %package doc
 Summary: Documentation files for %{name}
 Group: %{ldms_all}
@@ -111,8 +110,10 @@ Doxygen files for ldms-all package.
 %{_datadir}/doc/%{name}-%{version}
 %docdir %{_defaultdocdir}
 %changelog
-* Thu Jun 18 2015 Ben Allan <baallan@sandia.gov> 2.4.1-3-genders
-packaging of beta genders build
+* Thu Jun 18 2015 Ben Allan <baallan@sandia.gov> 2.4.3-1
+packaging of initscripts for ldmsd/ldms-aggd.
+* Thu May 23 2015 Ben Allan <baallan@sandia.gov> 2.4.2-1
+update to latest upstream.
 * Thu Apr 23 2015 Ben Allan <baallan@sandia.gov> 2.4.1-1
 packaging with sysclassib and procstatutil2 enabled.
 * Wed Feb 18 2015 Ben Allan <baallan@sandia.gov> 2.4.0-1

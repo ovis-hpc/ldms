@@ -26,7 +26,12 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 		echo "You forgot to autogen.sh at the top or you need to edit $0 or you need to use a released tarred version."
 		exit 1
 	fi
-	expected_event2_prefix=/usr/lib64/ovis-libevent2
+	if test -f /usr/lib/libevent-2.0.so.5; then
+		# ubuntu/debian recent
+		expected_event2_prefix=/usr
+	else
+		expected_event2_prefix=/usr/lib64/ovis-libevent2
+	fi
 	# clean out old build headers if reinstalling. prevents build confusion.
 	oldinc="coll ldms mmalloc ovis_ctrl ovis-test ovis_util sos zap"
 	for i in $oldinc; do

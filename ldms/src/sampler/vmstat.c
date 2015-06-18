@@ -65,6 +65,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 #define PROC_FILE "/proc/vmstat"
 
@@ -75,12 +76,13 @@ static FILE *mf;
 static ldms_metric_t *metric_table;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
-static uint64_t counter;
 
 static ldms_set_t get_set()
 {
 	return set;
 }
+
+LDMS_JOBID_GLOBALS;
 
 static int create_metric_set(const char *path)
 {
@@ -101,6 +103,8 @@ static int create_metric_set(const char *path)
 	tot_data_sz = 0;
 	tot_meta_sz = 0;
 
+	LDMS_SIZE_JOBID_METRIC(vmstat,meta_sz,tot_meta_sz,
+		data_sz,tot_data_sz,metric_count,rc,msglog);
 	/*
 	 * Process the file once first to determine the metric set size.
 	 */
@@ -139,6 +143,9 @@ static int create_metric_set(const char *path)
 	rc = ENOMEM;
 
 	int metric_no = 0;
+
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
+
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -177,6 +184,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (value)
 		comp_id = strtol(value, NULL, 0);
 
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
+
 	value = av_value(avl, "set");
 	if (value)
 		create_metric_set(value);
@@ -200,6 +209,8 @@ static int sample(void)
 	ldms_begin_transaction(set);
 
 	metric_no = 0;
+
+	LDMS_JOBID_SAMPLE(v,metric_table,metric_no);
 
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -225,14 +236,26 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+
+	LDMS_JOBID_TERM;
+
 }
 
+static const char *usage(void)
+{
+	return "config name=vmstat component_id=<comp_id> set=<setname> "
+			"    comp_id     The component id value.\n"
+			"    setname     The set name.\n"
+			LDMS_JOBID_DESC
+			;
+}
 
 static struct ldmsd_sampler vmstat_plugin = {
 	.base = {
 		.name = "vmstat",
 		.term = term,
 		.config = config,
+		.usage = usage,
 	},
 	.get_set = get_set,
 	.sample = sample,

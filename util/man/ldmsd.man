@@ -19,7 +19,7 @@ separate process management distinction of data samplers and aggregators.
 The following environment variables must usually be set:
 .TP
 LD_LIBRARY_PATH
-include path to ovis/lib64 and libevent2, if they are not in standard system paths.
+include path to ovis/lib64 (or ovis/lib, depending on OS) and libevent2, if not in a system default path.
 .TP
 LDMS_XPRT_LIBPATH
 path to ovis/lib64/ovis-ldms
@@ -162,6 +162,4 @@ Same but sending stdout and stderr to /dev/null
 
 
 .SH SEE ALSO
-LDMS_Authentication(7), LDMS_QuickStart(7), ldms-genders(7), ldmsctl(1), ldms_ls(1),
-Plugin_cray_system_sampler(7), Plugin_kgnilnd(7), Plugin_lustre2_client(7), Plugin_meminfo(7), Plugin_procnetdev(7), Plugin_procnfs(7),
-Plugin_procsensors(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_sysclassib(7), Plugin_procstatutil2(7), Plugin_vmstat(7)
+LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldms_ls(1), ldms(7), ldms-genders(7)

@@ -124,6 +124,7 @@ typedef enum {
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -242,6 +243,7 @@ static struct scib_port_list scib_port_list = {0};
 static char rcvbuf[BUFSIZ] = {0};
 
 static ldms_set_t set = NULL;
+static ldms_metric_t metric_table[1]; /* one for jobid, if configured */
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id;
 
@@ -254,6 +256,7 @@ struct timeval *tv_prev = &tv[1];
  */
 static sysclassib_metrics_type_t sysclassib_metrics_type;
 
+LDMS_JOBID_GLOBALS;
 
 /**
  * \param setname The set name (e.g. nid00001/sysclassib)
@@ -274,6 +277,11 @@ static int create_metric_set(const char *setname)
 	/* calculate total metric set size */
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
+
+	int metric_count = 0;
+	LDMS_SIZE_JOBID_METRIC(sysclassib,meta_sz,tot_meta_sz,
+		data_sz,tot_data_sz,metric_count,rc,msglog);
+
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		msglog(LDMS_LINFO,"sysclassib: Monitoring port: %s.%d\n",
 			port->ca, port->portno);
@@ -308,6 +316,9 @@ static int create_metric_set(const char *setname)
 		return rc;
 	}
 
+	metric_count = 0;
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_count,set,rc,err,comp_id);
+
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 			/* counters */
@@ -331,6 +342,8 @@ static int create_metric_set(const char *setname)
 		}
 	}
 	return 0; /* FIXED: missing return that could cause random failures. */
+err:
+	return 1;
 }
 
 static const char *usage(void)
@@ -339,6 +352,7 @@ static const char *usage(void)
 "config name=sysclassib component_id=<comp_id> set=<setname> metrics_type=<0/1> ports=CA.PRT,...\n"
 "    comp_id      The component id value.\n"
 "    setname      The set name.\n"
+LDMS_JOBID_DESC
 "    metrics_type 0=counters only, 1=both (Optional - default=both)\n"
 "    ports        A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
 "                 a * for all IB ports. If not given, '*' is assumed.\n"
@@ -572,6 +586,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (!setstr)
 		return EINVAL;
 
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
 	value = av_value(avl,"metrics_type");
 	if (value) {
@@ -581,7 +596,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			return EINVAL;
 		}
 	} else {
-		sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH;
+		/* long standing bug here changed the default behavior to SYSCLASSIB_METRICS_COUNTER
+		fixing bug and making default the historical one since noone complained.
+		*/
+		sysclassib_metrics_type = SYSCLASSIB_METRICS_COUNTER;
 	}
 
 
@@ -700,6 +718,7 @@ static int sample(void)
 
 	struct timeval *tmp;
 	struct timeval tv_diff;
+	
 	float dt;
 	struct scib_port *port;
 
@@ -713,6 +732,10 @@ static int sample(void)
 	dt = tv_diff.tv_sec + tv_diff.tv_usec / 1e06f;
 
 	ldms_begin_transaction(set);
+	int metric_no = 0;
+        union ldms_value v;
+
+	LDMS_JOBID_SAMPLE(v,metric_table,metric_no);
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		/* query errors are handled in query_port() function */
 		query_port(port, dt);
@@ -737,6 +760,7 @@ static void term(void){
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+	LDMS_JOBID_TERM;
 }
 
 static struct ldmsd_sampler sysclassib_plugin = {

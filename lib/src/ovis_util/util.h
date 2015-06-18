@@ -84,13 +84,17 @@ char *av_value_at_idx(struct attr_value_list *av_list, int idx);
 
 /**
  * \brief Tokenize the string \c cmd into the keyword list \c kwl
- * and the attribute list \c avl
+ * and the attribute list \c avl.
+ * Writes into cmd ala strtok, so cmd should not be a piece of
+ * read-only memory as may be the case with string literals.
+ * Stores pieces of cmd int kwl,avl, so cmd must outlast kwl and avl.
  */
 int tokenize(char *cmd, struct attr_value_list *kwl,
 	     struct attr_value_list *avl);
 
 /**
  * \brief Allocate memory for a new attribute list of size \c size
+ * Free the result when done with it (and before freeing input to tokenize).
  */
 struct attr_value_list *av_new(size_t size);
 

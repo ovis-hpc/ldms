@@ -100,8 +100,8 @@ static int try_password_file(const char *filepath, char *secretword,
 			return 1;
 		default:
 			x->log(LDMS_LDEBUG,
-				"Bad secret word filename: %s\n",
-				filepath);
+				"Bad secret word filename: %s (%d:%s)\n",
+				filepath,errno,strerror(errno));
 			return 1;
 		}
 	}

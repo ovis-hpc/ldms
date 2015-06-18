@@ -56,6 +56,7 @@
 #include <sys/queue.h>
 #include <netinet/in.h>
 #include <coll/rbt.h>
+#include <ovis_util/rmaninfo.h>
 #include "config.h"
 
 #ifdef __cplusplus
@@ -249,6 +250,12 @@ int ldms_init(size_t max_size);
  *  \return 0 on success
  */
 const char * ldms_pedigree();
+
+/*
+ * Get the ldmsd resource manager singleton instance.
+ * This instance is NULL until ldms_init succeeds.
+ */
+extern resource_info_manager ldms_get_rim();
 
 /**
  * \brief Take a reference on a transport

@@ -60,6 +60,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdbool.h>
 #include <time.h>
 #include <pthread.h>
 #include <sys/types.h>
@@ -67,6 +68,7 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 
 #define PROC_FILE "/proc/meminfo"
@@ -74,7 +76,6 @@
 #define MEMINFO_NAME_MAX 256  //max # of chars in metric_name
 
 static char *procfile = PROC_FILE;
-static uint64_t counter;
 static ldms_set_t set;
 static FILE *mf;
 static ldms_metric_t *metric_table;
@@ -86,6 +87,8 @@ static char *qc_dir = NULL;
 static int qc_file = -1;
 static int get_qc_file(const char *qc_dir, int *qc_file);
 #endif
+
+LDMS_JOBID_GLOBALS;
 
 static int create_metric_set(const char *path)
 {
@@ -106,6 +109,9 @@ static int create_metric_set(const char *path)
 	metric_count = 0;
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
+
+	LDMS_SIZE_JOBID_METRIC(meminfo,meta_sz,tot_meta_sz,
+		data_sz,tot_data_sz,metric_count,rc,msglog);
 
 	/* First iteration for set size calculation. */
 	fseek(mf, 0, SEEK_SET);
@@ -144,8 +150,10 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process the file again to define all the metrics.
 	 */
-
 	int metric_no = 0;
+
+	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
+
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -180,9 +188,10 @@ static int create_metric_set(const char *path)
  * \brief Configuration
  *
  * config name=meminfo component_id=<comp_id> set=<setname>
- *        qc_log_dir=<qc_log_directory>
+ *        qc_log_dir=<qc_log_directory> with_jobid=<bool>
  *     comp_id     The component id value.
  *     setname     The set name.
+ *     bool        include jobid in set or not.
  *     qc_log_dir  The QC data file directory.
  *                 This option is only relevant if --enable-qc-sampler
  */
@@ -208,6 +217,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			return(ec);
 	}
 #endif
+
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
 	value = av_value(avl, "set");
 	if (value)
@@ -273,7 +284,7 @@ static int sample(void)
 		write(qc_file,	qc_buffer, strlen(qc_buffer));
 	}
 #endif
-
+	LDMS_JOBID_SAMPLE(v,metric_table,metric_no);
 
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -324,14 +335,17 @@ static void term(void)
 		free(qc_dir);
 	qc_dir = NULL;
 
+	LDMS_JOBID_TERM;
+
 }
 
 static const char *usage(void)
 {
 	return "config name=meminfo component_id=<comp_id> set=<setname> "
-			"qc_log_dir=<qc_log_directory>\n"
+			"qc_log_dir=<qc_log_directory> with_jobid=<id>\n"
 			"    comp_id     The component id value.\n"
 			"    setname     The set name.\n"
+			LDMS_JOBID_DESC
 			"    qc_log_dir  The QC data file directory.\n";
 }
 
