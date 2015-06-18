@@ -188,7 +188,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 	ldmsd_prdcr_set_t set;
 	int rc;
 
-	ldmsd_log(LDMSD_LERROR, "Adding the metric set '%s'\n", inst_name);
+	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", inst_name);
 
 	/* Check to see if it's already there */
 	set = _find_set(prdcr, inst_name);
