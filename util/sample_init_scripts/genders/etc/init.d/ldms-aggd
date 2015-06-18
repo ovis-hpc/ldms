@@ -119,6 +119,7 @@ start()
 	exec 0>&- # close stdin
 
 	DAEMON_ARGS="-x $LDMSAGGD_XPRT:$LDMSAGGD_PORT -m $LDMSAGGD_MEM_RES -P $LDMSAGGD_NUM_PROCS -Z $LDMSAGGD_CONN_THDS -S $AGGSOCK_PATH -q $LDMSAGGD_DBG"
+	echoq $LDMSD_LOG_PATH
 	echo -n $"Starting $prog: "
 	if test "x$LDMSD_LOG_PATH" = "xNONE"; then
 		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"

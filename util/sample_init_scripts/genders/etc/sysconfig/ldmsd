@@ -23,7 +23,7 @@ fi
 
 # if we are the top config file (ldmsd use, not ldmsaggd use) check for being wanted on this node
 if test "x$INCLUDES_LDMSD" = "x"; then
-	if ! nodeattr $NODEATTRFILE $host ldmsd ; then
+	if ! nodeattr $NODEATTRFILE $host ldmsd >/dev/null 2>&1; then
 		echoq "$host is is not an LDMSD host. Exiting."
 		failure
 		echo
@@ -46,14 +46,14 @@ fi
 LDMS_PLUGIN_PATH="$LDMS_LIB_PATH"
 
 # load up daemon genders values, then process missing values
-LDMSD_PORT=`nodeattr $NODEATTRFILE -v $host ldmsd_port`
-LDMSD_XPRT=`nodeattr $NODEATTRFILE -v $host ldmsd_xprt`
-LDMSD_HOST=`nodeattr $NODEATTRFILE -v $host ldmsd_host`
-LDMSD_DBG=`nodeattr $NODEATTRFILE -v $host ldmsd_dbg`
-LDMSD_IDBASE=`nodeattr $NODEATTRFILE -v $host ldmsd_idbase`
-LDMSD_METRIC_SETS=`nodeattr $NODEATTRFILE -v $host ldmsd_metric_sets`
-LDMSD_INTERVAL_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsd_interval_default`
-LDMSD_OFFSET_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsd_offset_default`
+LDMSD_PORT=`nodeattr $NODEATTRFILE -v $host ldmsd_port 2>/dev/null`
+LDMSD_XPRT=`nodeattr $NODEATTRFILE -v $host ldmsd_xprt 2>/dev/null`
+LDMSD_HOST=`nodeattr $NODEATTRFILE -v $host ldmsd_host 2>/dev/null`
+LDMSD_DBG=`nodeattr $NODEATTRFILE -v $host ldmsd_dbg 2>/dev/null`
+LDMSD_IDBASE=`nodeattr $NODEATTRFILE -v $host ldmsd_idbase 2>/dev/null`
+LDMSD_METRIC_SETS=`nodeattr $NODEATTRFILE -v $host ldmsd_metric_sets 2>/dev/null`
+LDMSD_INTERVAL_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsd_interval_default 2>/dev/null`
+LDMSD_OFFSET_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsd_offset_default 2>/dev/null`
 
 if test -z $LDMSD_PORT; then
 	LDMSD_PORT=411

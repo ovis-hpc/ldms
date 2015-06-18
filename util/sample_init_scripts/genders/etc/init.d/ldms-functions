@@ -178,10 +178,8 @@ start_stores () {
 	fi
 	DO_CTL="$LDMSAGGCTL -S $AGGSOCK_PATH"
 	if test -z $LDMSAGGD_STORES; then
-		echo "No stores defined... Exiting"
-		failure
-		echo
-		exit
+		echo "No stores required."
+		return;
 	fi
 
 	# Make directory to store into (store will fail if this doesn't exist)
