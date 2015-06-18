@@ -34,14 +34,14 @@ static int dbg = 0;
 
 void printvec( const vector< pair< string, string > >& all)
 {
-	for (int i = 0; i < all.size(); i++) {
+	for (vector< pair< string, string > >::size_type i = 0; i < all.size(); i++) {
 		cerr << i<< ": " << all[i].first << " = " <<  all[i].second <<endl;
 	}
 }
 
 void printvec1( const vector<  string >& all)
 {
-	for (int i = 0; i < all.size(); i++) {
+	for (vector< string >::size_type i = 0; i < all.size(); i++) {
 		cerr << i<< ": " << all[i] <<endl;
 	}
 }
@@ -263,7 +263,7 @@ private:
 		in->get_metric_sets(client,lsets);
 		vector<string> names;
 		split(names,lsets,is_any_of(":"), boost::token_compress_on);
-		for (int i = 0; i < names.size(); i++) {
+		for (vector<string>::size_type i = 0; i < names.size(); i++) {
 			if (ban.find(names[i]) == ban.end()) {
 				out.push_back(client+"/"+names[i]);
 				if (sets_seen.find(names[i]) == sets_seen.end()) {
@@ -332,7 +332,7 @@ public:
 		split(parts,ldmsaggd,is_any_of(":"), boost::token_compress_on);
 		bool didbootnode, didclientof, didaggclientof, didldmsdall;
 		didbootnode = didclientof = didaggclientof = didldmsdall = false;
-		for (int i = 0; i < parts.size(); i++) {
+		for (vector<string>::size_type i = 0; i < parts.size(); i++) {
 			if (parts[i] == "BOOTNODELIST" && ! didbootnode) {
 				didbootnode = true;
 				vector<string> bootnode_list;
@@ -357,7 +357,7 @@ public:
 			if (parts[i] == "AGGCLIENTOFLIST" && !didaggclientof) {
 				vector<string> aggclientof_list;
 				in->get_aggclientof(hostname,aggclientof_list);
-				for (int j = 0; j < aggclientof_list.size(); j++) {
+				for (vector<string>::size_type j = 0; j < aggclientof_list.size(); j++) {
 					hdata sub(aggclientof_list[j],in);
 					if (! sub.isaggd) {
 						cerr << "Ignoring ldmsaggd_clientof=" <<
@@ -400,10 +400,9 @@ public:
 
 	// 
 	void print_add_hosts(string NODELIST) {
-		for(int i = 0; i < adds.size(); i++) {
+		for(vector<string>::size_type i = 0; i < adds.size(); i++) {
 			cout << adds[i] << endl;
 		}
-
 	}
 };	
 
