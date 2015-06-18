@@ -922,7 +922,7 @@ bq_check_cond_e bq_check_cond(struct bquery *q)
 {
 	uint32_t ts = bq_entry_get_sec(q);
 	uint32_t comp_id = bq_entry_get_comp_id(q);
-	uint32_t ptn_id = bq_entry_get_ptn_id(q);;
+	uint32_t ptn_id = bq_entry_get_ptn_id(q);
 
 	if (q->ts_0 && ts < q->ts_0)
 		return BQ_CHECK_COND_TS0;
@@ -974,7 +974,6 @@ int bq_img_first_entry(struct bquery *q)
 	bsi_key.comp_id = 0;
 	bsi_key.ts = 0;
 	bsi_key.ptn_id = 0;
-	sos_key_set(key, &bsi_key, sizeof(bsi_key));
 
 	if (imgq->ptn_rng_itr) {
 		brange_u32_iter_begin(imgq->ptn_rng_itr, &bsi_key.ptn_id);
@@ -991,6 +990,7 @@ int bq_img_first_entry(struct bquery *q)
 	bout_sos_img_key_convert(&bsi_key);
 
 again:
+	sos_key_set(key, &bsi_key, sizeof(bsi_key));
 	rc = sos_iter_sup(q->itr, key);
 	if (rc) {
 		if (rc != ENOENT)

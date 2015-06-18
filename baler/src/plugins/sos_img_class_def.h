@@ -79,9 +79,9 @@ struct __attribute__ ((__packed__)) bout_sos_img_key {
 static inline
 void bout_sos_img_key_convert(struct bout_sos_img_key *k)
 {
-	k->ptn_id = htobe32(k->ptn_id);;
-	k->ts = htobe32(k->ts);;
-	k->comp_id = htobe32(k->comp_id);;
+	k->ptn_id = htobe32(k->ptn_id);
+	k->ts = htobe32(k->ts);
+	k->comp_id = htobe32(k->comp_id);
 }
 
 #endif
