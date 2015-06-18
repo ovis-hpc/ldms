@@ -232,7 +232,8 @@ class ldmsdConfig(object):
             return s
 
         for attr in attr_value_dict:
-            s += " {0}={1}".format(attr, attr_value_dict[attr])
+            if attr_value_dict[attr] is not None:
+                s += " {0}={1}".format(attr, attr_value_dict[attr])
         return s
 
     def load(self, name):
@@ -322,11 +323,11 @@ class ldmsdConfig(object):
     def prdcr_del(self, name):
         return self.talk(self.__format_cmd('prdcr_del', {'name': name}))
 
-    def prdcr_start(self, name, interval):
+    def prdcr_start(self, name, interval = None):
         attr_values = {'name': name, 'interval': interval}
         return self.talk(self.__format_cmd('prdcr_start', attr_values))
 
-    def prdcr_start_regex(self, regex, interval):
+    def prdcr_start_regex(self, regex, interval = None):
         attr_values = {'regex': regex, 'interval': interval}
         return self.talk(self.__format_cmd('prdcr_start_regex', attr_values))
 
@@ -336,15 +337,16 @@ class ldmsdConfig(object):
     def prdcr_stop_regex(self, regex):
         return self.talk(self.__format_cmd('prdcr_stop_regex', {'regex': regex}))
 
-    def updtr_add(self, name, interval, offset):
+    def updtr_add(self, name, interval, offset = None):
         attr_values = {'name': name, 'interval': interval, 'offset': offset}
         return self.talk(self.__format_cmd('updtr_add', attr_values))
 
     def updtr_del(self, name):
         return self.talk(self.__format_cmd('updtr_del', {'name': name}))
 
-    def updtr_start(self, name):
-        return self.talk(self.__format_cmd('updtr_start', {'name': name}))
+    def updtr_start(self, name, interval = None, offset = None):
+        attr_values = {'name': name, 'interval': interval, 'offset': offset}
+        return self.talk(self.__format_cmd('updtr_start', attr_values))
 
     def updtr_stop(self, name):
         return self.talk(self.__format_cmd('updtr_stop', {'name': name}))

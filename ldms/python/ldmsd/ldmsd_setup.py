@@ -87,22 +87,22 @@ NOTE: Most features provided in the module come with three APIs: *_local_<featur
 from ldmsd.ldmsd_util import add_cmd_line_arg, sh_exec, pdsh_exec, parse_pdsh_exec_output
 
 
-def get_test_instance_name(hostname, prefix_name, set_no):
+def get_test_instance_name(hostname, xprt, port, prefix_name, set_no):
     if hostname == "localhost":
         hostname = socket.gethostname()
-    return "{0}/{1}_{2}".format(hostname, prefix_name, set_no)
+    return "{0}_{1}_{2}/{3}_{4}".format(hostname, xprt, port, prefix_name, set_no)
 
 """@var ldmsd_arg_map
   The map between the package specific arguments and the ldmsd command line options.
 """
 ldmsd_arg_map = {'xprt_port' : "-x",
                   'log' : "-l",
-                  'sockname' : "-S",
+                  'sock' : "-S",
                   'ocm_port' : "-o",
                   'mem_size' : "-m",
                   'ldmsd_mode' : "-z",
                   'foreground' : "-F",
-                  'quiet' : "-q",
+                  'verbose' : "-v",
                   'num_ethreads' : "-P",
                   'num_fthreads' : "-f",
                   'dirty_threshold' : "-D",
@@ -113,20 +113,20 @@ ldmsd_arg_map = {'xprt_port' : "-x",
                   'test_set_name' : "-T",
                   'test_metric_count': "-M",
                   'test_notify' : "-N",
-                  'test_inet_ctrl_port': "-p",
+                  'inet_ctrl_port': "-p",
                   'rctrl_listener_port': "-r"}
 
 def start_ldmsd_cmd(xprt, port, log = None,
-                    sockname = None, ocm_port = None,
+                    sock = None, ocm_port = None,
                     mem_size = None, ldmsd_mode = None,
-                    foreground = False, quiet = False,
+                    foreground = False, verbose = None,
                     num_ethreads = None, num_fthreads = None,
                     dirty_threshold = None,
                     publish_kernel_metrics = False, setfile = None,
                     test_sample_interval = None, test_set_count = None,
                     test_set_name = None, test_metric_count = None,
                     test_notify = None,
-                    test_inet_ctrl_port = None,
+                    inet_ctrl_port = None,
                     rctrl_listener_port = None):
     """ Return the command line to start an ldmsd process according to the given options.
 
@@ -148,16 +148,16 @@ def start_ldmsd_cmd(xprt, port, log = None,
                                     "{0}:{1}".format(xprt, port))
     if (log):
         cmd += add_cmd_line_arg(ldmsd_arg_map['log'], log)
-    if (sockname):
-        cmd += add_cmd_line_arg(ldmsd_arg_map['sockname'], sockname)
+    if (sock):
+        cmd += add_cmd_line_arg(ldmsd_arg_map['sock'], sock)
     if (mem_size):
         cmd += add_cmd_line_arg(ldmsd_arg_map['mem_size'], mem_size)
     if (ocm_port):
         cmd += add_cmd_line_arg(ldmsd_arg_map['ocm_port'], ocm_port)
     if (foreground):
         cmd += add_cmd_line_arg(ldmsd_arg_map['foreground'])
-    if (quiet):
-        cmd += add_cmd_line_arg(ldmsd_arg_map['quiet'])
+    if (verbose):
+        cmd += add_cmd_line_arg(ldmsd_arg_map['verbose'], verbose)
     if (num_ethreads):
         cmd += add_cmd_line_arg(ldmsd_arg_map['num_ethreads'], num_ethreads)
     if (num_fthreads):
@@ -180,8 +180,8 @@ def start_ldmsd_cmd(xprt, port, log = None,
         cmd += add_cmd_line_arg(ldmsd_arg_map['test_set_count'], test_set_count)
     if test_metric_count:
         cmd += add_cmd_line_arg(ldmsd_arg_map['test_metric_count'], test_metric_count)
-    if (test_inet_ctrl_port):
-        cmd += add_cmd_line_arg(ldmsd_arg_map['test_inet_ctrl_port'], test_inet_ctrl_port)
+    if (inet_ctrl_port):
+        cmd += add_cmd_line_arg(ldmsd_arg_map['inet_ctrl_port'], inet_ctrl_port)
     if (rctrl_listener_port):
         cmd += add_cmd_line_arg(ldmsd_arg_map['rctrl_listener_port'], rctrl_listener_port)
     return cmd
@@ -350,16 +350,16 @@ def is_ldmsd_running(hosts, xprt, port):
         return ret
 
 def start_local_ldmsd(xprt, port, log = None,
-                    sockname = None, ocm_port = None,
+                    sock = None, ocm_port = None,
                     mem_size = None, ldmsd_mode = None,
-                    foreground = False, quiet = False,
+                    foreground = False, verbose = None,
                     num_ethreads = None, num_fthreads = None,
                     dirty_threshold = None,
                     publish_kernel_metrics = False, setfile = None,
                     test_sample_interval = None, test_set_count = None,
                     test_set_name = None, test_metric_count = None,
                     test_notify = None,
-                    test_inet_ctrl_port = None,
+                    inet_ctrl_port = None,
                     rctrl_listener_port = None):
     """ Start an ldmsd on the localhost
 
@@ -372,11 +372,11 @@ def start_local_ldmsd(xprt, port, log = None,
     @see: start_remote_ldmsd, start_ldmsd
     """
     start_cmd = start_ldmsd_cmd(xprt = xprt, port = port,
-                                log = log, sockname = sockname,
+                                log = log, sock = sock,
                                 ocm_port = ocm_port, mem_size = mem_size,
                                 ldmsd_mode = ldmsd_mode,
                                 foreground = foreground,
-                                quiet = quiet, num_ethreads = num_ethreads,
+                                verbose = verbose, num_ethreads = num_ethreads,
                                 num_fthreads = num_fthreads,
                                 dirty_threshold = dirty_threshold,
                                 publish_kernel_metrics = publish_kernel_metrics,
@@ -385,21 +385,21 @@ def start_local_ldmsd(xprt, port, log = None,
                                 test_set_count = test_set_count,
                                 test_set_name = test_set_name,
                                 test_notify = test_notify,
-                                test_inet_ctrl_port = test_inet_ctrl_port,
+                                inet_ctrl_port = inet_ctrl_port,
                                 rctrl_listener_port = rctrl_listener_port)
     return bash_exec(start_cmd)
 
 def start_remote_ldmsd(hosts, xprt, port, log = None,
-                    sockname = None, ocm_port = None,
+                    sock = None, ocm_port = None,
                     mem_size = None, ldmsd_mode = None,
-                    foreground = False, quiet = False,
+                    foreground = False, verbose = None,
                     num_ethreads = None, num_fthreads = None,
                     dirty_threshold = None,
                     publish_kernel_metrics = False, setfile = None,
                     test_sample_interval = None, test_set_count = None,
                     test_set_name = None, test_metric_count = None,
                     test_notify = None,
-                    test_inet_ctrl_port = None,
+                    inet_ctrl_port = None,
                     rctrl_listener_port = None):
     """ Start an ldmsd on the hosts
 
@@ -413,11 +413,11 @@ def start_remote_ldmsd(hosts, xprt, port, log = None,
     @see: start_local_ldmsd, start_ldmsd, parse_pdsh_exec_output
     """
     start_cmd = start_ldmsd_cmd(xprt = xprt, port = port,
-                                log = log, sockname = sockname,
+                                log = log, sock = sock,
                                 ocm_port = ocm_port, mem_size = mem_size,
                                 ldmsd_mode = ldmsd_mode,
                                 foreground = foreground,
-                                quiet = quiet, num_ethreads = num_ethreads,
+                                verbose = verbose, num_ethreads = num_ethreads,
                                 num_fthreads = num_fthreads,
                                 dirty_threshold = dirty_threshold,
                                 publish_kernel_metrics = publish_kernel_metrics,
@@ -427,22 +427,22 @@ def start_remote_ldmsd(hosts, xprt, port, log = None,
                                 test_set_name = test_set_name,
                                 test_metric_count = test_metric_count,
                                 test_notify = test_notify,
-                                test_inet_ctrl_port = test_inet_ctrl_port,
+                                inet_ctrl_port = inet_ctrl_port,
                                 rctrl_listener_port = rctrl_listener_port)
     output = pdsh_exec(",".join(hosts), start_cmd, len(hosts), pdsh_options = {'-S': None})
     return output[0]
 
 def start_ldmsd(hosts, xprt, port, log = None,
-                    sockname = None, ocm_port = None,
+                    sock = None, ocm_port = None,
                     mem_size = None, ldmsd_mode = None,
-                    foreground = False, quiet = False,
+                    foreground = False, verbose = None,
                     num_ethreads = None, num_fthreads = None,
                     dirty_threshold = None,
                     publish_kernel_metrics = False, setfile = None,
                     test_sample_interval = None, test_set_count = None,
                     test_set_name = None, test_metric_count = None,
                     test_notify = None,
-                    test_inet_ctrl_port = None,
+                    inet_ctrl_port = None,
                     rctrl_listener_port = None):
     """ Start an ldmsd process on the localhost or remote hosts
 
@@ -468,11 +468,11 @@ def start_ldmsd(hosts, xprt, port, log = None,
 
     if hosts is None:
         return start_local_ldmsd(xprt = xprt, port = port,
-                                log = log, sockname = sockname,
+                                log = log, sock = sock,
                                 ocm_port = ocm_port, mem_size = mem_size,
                                 ldmsd_mode = ldmsd_mode,
                                 foreground = foreground,
-                                quiet = quiet, num_ethreads = num_ethreads,
+                                verbose = verbose, num_ethreads = num_ethreads,
                                 num_fthreads = num_fthreads,
                                 dirty_threshold = dirty_threshold,
                                 publish_kernel_metrics = publish_kernel_metrics,
@@ -482,7 +482,7 @@ def start_ldmsd(hosts, xprt, port, log = None,
                                 test_set_name = test_set_name,
                                 test_metric_count = test_metric_count,
                                 test_notify = test_notify,
-                                test_inet_ctrl_port = test_inet_ctrl_port,
+                                inet_ctrl_port = inet_ctrl_port,
                                 rctrl_listener_port = rctrl_listener_port)
     else:
         ret = 0
@@ -490,11 +490,11 @@ def start_ldmsd(hosts, xprt, port, log = None,
         if "localhost" in remote_hosts:
             remote_hosts.remove("localhost")
             ret = start_local_ldmsd(xprt = xprt, port = port,
-                                log = log, sockname = sockname,
+                                log = log, sock = sock,
                                 ocm_port = ocm_port, mem_size = mem_size,
                                 ldmsd_mode = ldmsd_mode,
                                 foreground = foreground,
-                                quiet = quiet, num_ethreads = num_ethreads,
+                                verbose = verbose, num_ethreads = num_ethreads,
                                 num_fthreads = num_fthreads,
                                 dirty_threshold = dirty_threshold,
                                 publish_kernel_metrics = publish_kernel_metrics,
@@ -504,16 +504,16 @@ def start_ldmsd(hosts, xprt, port, log = None,
                                 test_set_name = test_set_name,
                                 test_metric_count = test_metric_count,
                                 test_notify = test_notify,
-                                test_inet_ctrl_port = test_inet_ctrl_port,
+                                inet_ctrl_port = inet_ctrl_port,
                                 rctrl_listener_port = rctrl_listener_port)
             if len(remote_hosts) == 0:
                 return ret
         ret_ = start_remote_ldmsd(hosts = remote_hosts, xprt = xprt, port = port,
-                                log = log, sockname = sockname,
+                                log = log, sock = sock,
                                 ocm_port = ocm_port, mem_size = mem_size,
                                 ldmsd_mode = ldmsd_mode,
                                 foreground = foreground,
-                                quiet = quiet, num_ethreads = num_ethreads,
+                                verbose = verbose, num_ethreads = num_ethreads,
                                 num_fthreads = num_fthreads,
                                 dirty_threshold = dirty_threshold,
                                 publish_kernel_metrics = publish_kernel_metrics,
@@ -523,7 +523,7 @@ def start_ldmsd(hosts, xprt, port, log = None,
                                 test_set_name = test_set_name,
                                 test_metric_count = test_metric_count,
                                 test_notify = test_notify,
-                                test_inet_ctrl_port = test_inet_ctrl_port,
+                                inet_ctrl_port = inet_ctrl_port,
                                 rctrl_listener_port = rctrl_listener_port)
         ret = max([ret, ret_])
         return ret
