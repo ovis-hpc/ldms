@@ -63,8 +63,33 @@
 #include <libgen.h>
 #include <signal.h>
 #include <search.h>
-#include <readline/readline.h>
-#include <readline/history.h>
+#include "config.h"
+
+#ifdef HAVE_LIBREADLINE
+#  if defined(HAVE_READLINE_READLINE_H)
+#    include <readline/readline.h>
+#  elif defined(HAVE_READLINE_H)
+#    include <readline.h>
+#  else /* !defined(HAVE_READLINE_H) */
+extern char *readline ();
+#  endif /* !defined(HAVE_READLINE_H) */
+#else /* !defined(HAVE_READLINE_READLINE_H) */
+  /* no readline */
+#endif /* HAVE_LIBREADLINE */
+
+#ifdef HAVE_READLINE_HISTORY
+#  if defined(HAVE_READLINE_HISTORY_H)
+#    include <readline/history.h>
+#  elif defined(HAVE_HISTORY_H)
+#    include <history.h>
+#  else /* !defined(HAVE_HISTORY_H) */
+extern void add_history ();
+extern int write_history ();
+extern int read_history ();
+#  endif /* defined(HAVE_READLINE_HISTORY_H) */
+  /* no history */
+#endif /* HAVE_READLINE_HISTORY */
+
 #include "ldms.h"
 #include "ldmsd.h"
 #include <ovis_ctrl/ctrl.h>
@@ -331,7 +356,7 @@ int handle_nxt_token(char *word, char *err_str)
 int main(int argc, char *argv[])
 {
 	int op;
-	char *s;
+	char *s = NULL;
 	int rc;
 
 	opterr = 0;
@@ -355,13 +380,26 @@ int main(int argc, char *argv[])
 	}
 	atexit(cleanup);
 	do {
-		if (isatty(0))
+
+#ifdef HAVE_LIBREADLINE
+#ifndef HAVE_READLINE_HISTORY
+		if (s != NULL)
+			free(s); /* previous readline output must be freed if not in history */
+#endif /* HAVE_READLINE_HISTORY */
+		if (isatty(0) ) {
 			s = readline("ldmsctl> ");
-		else
+		} else {
 			s = fgets(linebuf, sizeof linebuf, stdin);
+		}
+#else /* HAVE_LIBREADLINE */
+		s = fgets(linebuf, sizeof linebuf, stdin);
+#endif /* HAVE_LIBREADLINE */
 		if (!s)
 			break;
+#ifdef HAVE_READLINE_HISTORY
 		add_history(s);
+#endif /* HAVE_READLINE_HISTORY */
+
 		err_str[0] = '\0';
 		rc = tokenize(s, kw_list, av_list);
 		if (rc) {

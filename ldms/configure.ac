@@ -113,12 +113,10 @@ dnl Reset LIBS variable.
 LIBS=""
 
 dnl Check for libreadline
-AC_ARG_WITH([ldflags-readline],[AS_HELP_STRING([--with-ldflags-readline],[link flags needed for deficient readline libraries, eg needing -ltermcap.])],[LDFLAGS_READLINE=$with_ldflags_readline],[])
-AC_MSG_NOTICE([User gave $LDFLAGS_READLINE for readline support])
-AC_SUBST([LDFLAGS_READLINE])
-AC_CHECK_LIB(readline, readline, [],
-    AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]),[$LDFLAGS_READLINE])
-dnl Reset LIBS variable.
+AX_LIB_READLINE
+READLINE_LDFLAGS=$READLINE_LIBS
+AC_SUBST([READLINE_LDFLAGS])
+AC_SUBST([READLINE_CFLAGS])
 LIBS=""
 
 dnl Checks for libraries

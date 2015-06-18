@@ -34,8 +34,9 @@ endif
 
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la
-ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lreadline -lovis_ctrl -lovis_util \
-		  @LDFLAGS_READLINE@
+ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lovis_ctrl -lovis_util \
+		  @READLINE_LDFLAGS@
+ldmsctl_CFLAGS = $(AM_CFLAGS) @READLINE_CFLAGS@
 
 if ENABLE_LDMSD_RCTRL
 ldmsd_SOURCES += ldmsd_config_rctrl.c
@@ -45,9 +46,9 @@ ldmsd_CFLAGS += -DENABLE_LDMSD_RCTRL  @OCM_INCDIR_FLAG@
 sbin_PROGRAMS += ldmsd_rctl
 ldmsd_rctl_SOURCES = ldmsd_rctl.c
 ldmsd_rctl_LDADD = $(CORE)/libldms.la
-ldmsd_rctl_LDFLAGS = $(AM_LDFLAGS) -lreadline -lovis_rctrl -locm -lpthread \
-		      @OCM_LIBDIR_FLAG@ @LDFLAGS_READLINE@
-ldmsd_rctl_CFLAGS = $(AM_CFLAGS) @OCM_INCDIR_FLAG@
+ldmsd_rctl_LDFLAGS = $(AM_LDFLAGS) -lovis_rctrl -locm -lpthread \
+		      @OCM_LIBDIR_FLAG@ @READLINE_LDFLAGS@
+ldmsd_rctl_CFLAGS = $(AM_CFLAGS) @OCM_INCDIR_FLAG@ @READLINE_CFLAGS@
 if ENABLE_AUTH
 ldmsd_rctl_CFLAGS += -DENABLE_AUTH
 ldmsd_rctl_LDADD += -lovis_auth
