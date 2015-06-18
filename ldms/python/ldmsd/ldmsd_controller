@@ -462,8 +462,17 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_info(self, arg):
         """
         Tell the daemon to dump it's internal state to the log file.
+        Parameters:
+        [name=]   Reports only the specified objects. The choices are
+                  prdcr, updtr and strgp.
+                     'prdcr': list the state of all producers.
+                     'updtr': list the state of all update policies.
+                     'strgp': list the state of all storage policies.
         """
         self.handle('info', arg)
+
+    def complete_info(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('info', text)
 
     def do_term(self, arg):
         """

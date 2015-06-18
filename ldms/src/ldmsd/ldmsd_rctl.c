@@ -267,8 +267,13 @@ void help_store()
 
 void help_info()
 {
-	printf( "\nCauses the ldmsd to dump out information about plugins,\n"
-		"work queue utilization, hosts and object stores.\n");
+	printf( "\nCauses the ldmsd to dump out information about its internal state.\n"
+		"Parameters:\n"
+		"      [name=]     Dump the specified objects. The choices are\n"
+		"                  prdcr, updtr and strgp.\n"
+		"                     prdcr: List the states of all producers\n"
+		"                     updtr: List the states of all update policies\n"
+		"                     strgp: List the states of all storage policies.\n");
 }
 
 void help_udata()
