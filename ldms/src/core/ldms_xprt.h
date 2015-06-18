@@ -238,6 +238,9 @@ struct ldms_xprt {
 	/* This is the peers local_dir_xid that we provide when providing dir updates */
 	uint64_t remote_dir_xid;
 
+	int active_dir; /* Number of outstanding dir requests, excluding the dir_update request */
+	int active_lookup; /* Number of outstanding lookup requests */
+
 	/* Callback that implements xprt state machine on the active side */
 	ldms_connect_cb_t connect_cb;
 	void *connect_cb_arg;

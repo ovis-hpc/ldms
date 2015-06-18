@@ -513,19 +513,6 @@ extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port
  */
 extern void ldms_xprt_close(ldms_t x);
 
-/**
- * \brief Destroy the ldms transport
- *
- * The function destroys and frees the allocated memory for the transport
- * \c x. Unlike the ldms_xprt_close(), ldms_xprt_delete() should be called
- * on the transport \c x that is not connected.
- *
- * \param x    The transport handle
- *
- * \see ldms_xprt_close
- */
-extern void ldms_xprt_delete(ldms_t x);
-
 /** \} */
 
 /**
