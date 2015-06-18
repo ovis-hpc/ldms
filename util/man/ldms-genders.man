@@ -67,15 +67,17 @@ When init.d/ldms-aggd is started, the two additional configuration files are rea
 /etc/sysconfig/ldms-aggd
 .RE
 
-The sysconfig/ldms*.conf files specify overriding values for most LDMS daemon parameters in
-experimental or diagnostic situations.  In most cases it is less error prone to update the genders
-file instead. If a value is not specified in sysconfig/ldms*.conf, it is taken from the genders database.
+The sysconfig/ldms*.conf files specify overriding values for environment variables
+involved in daemon launch.
+For experimental or diagnostic situations where the collected data must be adjusted
+per node, specify an alternate LDMS_GENDERS file in ldmsd.conf.
 If a necessary value is also not specified in the genders database, sysconfig/ldmsd and sysconfig/ldms-aggd provide defaults.
 .PP
 
 .SH LDMS daemon network layout
 
-LDMS does not provide network discovery based configuration, as it is not scalable. The following genders allow specification of where to start data collection and how arbitrarily deep aggregation hierarchies are structured.
+The following genders allow specification of where to start data collection and how arbitrarily deep aggregation hierarchies are structured.
+LDMS does not provide network discovery based configuration, as it is not scalable. 
 
 .PP
 .nf
@@ -279,32 +281,14 @@ Typos in the ldms genders keywords may lead to silent application of defaults.
 
 .SH EXAMPLES
 .PP
-Here is a small test cluster, ataco, in ldmsd genders, with a single aggregator running on atacologin4.
+See $prefix/share/doc/ldms-all-$version/sample_init_scripts/genders/etc/genders.ldms.ataco.
+It presents a small test cluster, ataco, in ldmsd genders, with a single aggregator running on atacoadmin1. Subtleties handled in the example include:
 .nf
+Machines (atacoadmin1, login nodes) are known by different host ids outside the cluster.
 
-# ldmsd on 411 over rdma at 1Hz
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd,ldmsd_port=411,ldmsd_xprt=rdma,ldmsd_interval_default=1000000,ldmsd_offset_default=0,ldmsd_dbg=ERROR
-# hostname on fast net is $HOSTNAME-ib0
-atacoadmin1,ataco[1-4],ataco-login[1-4] ldmsd_host=%n-ib0
-# gateway node hostname on fast net is $HOSTNAME-ib2
-atacogw[1-2] ldmsd_host=%n-ib2
-# aggregator, on same port 411 because using 
-# slow net, not fast net. Enable log INFO level
-ataco-login4 ldmsaggd=BOOTNODELIST,ldmsaggd_port=411,ldmsaggd_host=%n,ldmsaggd_xprt=sock,ldmsaggd_interval_default=1000000,ldmsaggd_offset_default=200000,ldmsaggd_dbg=INFO
-# compute nodes have component_id 1-4
-ataco[1-4] ldmsd_idbase=0
-# login nodes have component_id 101-104
-ataco-login[1-4] ldmsd_idbase=100
-# gateway nodes have component_id 201-204
-ataco-gw[1-2] ldmsd_idbase=200
-# head node has component_id 301
-atacoadmin1 ldmsd_idbase=300
-# collect the works
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_metric_sets=meminfo:vmstat:procnfs:procstatutil2:procnetdev:sysclassib
-# extra config options for procstatutil2
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procstatutil2=maxcpu/16
-# extra config options for procnetdev
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procnetdev=ifaces/eth0&eth1&eth3&eth4&ib0&ib2
+The final aggregator/storage host is an external host named aries, not connected by IB.
+
+Aggregation within ataco uses Infiniband hostnames and ports.
 
 .fi
 
