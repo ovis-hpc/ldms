@@ -387,6 +387,13 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_reply reply_;
 	struct ldms_reply *reply = &reply_;
 
+	if (req->dir.flags)
+		/* Register for directory updates */
+		x->remote_dir_xid = req->hdr.xid;
+	else
+		/* Cancel any previous dir update */
+		x->remote_dir_xid = 0;
+
 	__ldms_get_local_set_list_sz(&set_count, &set_list_sz);
 	if (!set_count) {
 		rc = 0;
@@ -416,13 +423,6 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	arg.set_list = reply->dir.set_list;
 	arg.set_list_len = 0;
 	arg.set_count = set_count;
-
-	if (req->dir.flags)
-		/* Register for directory updates */
-		x->remote_dir_xid = req->hdr.xid;
-	else
-		/* Cancel any previous dir update */
-		x->remote_dir_xid = 0;
 
 	/* Initialize the reply header */
 	reply->hdr.xid = req->hdr.xid;
