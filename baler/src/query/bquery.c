@@ -732,6 +732,23 @@ static int __bq_next_store(struct bquery *q)
 	return __bq_open_bsos(q);
 }
 
+static void *__msg_obj_update(struct bquery *q)
+{
+	if (q->obj) {
+		sos_obj_put(q->obj);
+		q->obj = NULL;
+	}
+	if (q->array_value) {
+		sos_value_put(q->array_value);
+		q->array_value = NULL;
+	}
+	q->obj = sos_iter_obj(q->itr);
+	if (q->obj) {
+		q->msg = sos_obj_ptr(q->obj);
+		q->array_value = sos_value_by_id(&q->value, q->obj, SOS_MSG_ARGV);
+	}
+}
+
 static int __bq_last_entry(struct bquery *q)
 {
 	int rc = 0;
@@ -773,24 +790,8 @@ loop:
 		goto loop;
 	}
 out:
+	__msg_obj_update(q);
 	return rc;
-}
-
-static void *__msg_obj_update(struct bquery *q)
-{
-	if (q->obj) {
-		sos_obj_put(q->obj);
-		q->obj = NULL;
-	}
-	if (q->array_value) {
-		sos_value_put(q->array_value);
-		q->array_value = NULL;
-	}
-	q->obj = sos_iter_obj(q->itr);
-	if (q->obj) {
-		q->msg = sos_obj_ptr(q->obj);
-		q->array_value = sos_value_by_id(&q->value, q->obj, SOS_MSG_ARGV);
-	}
 }
 
 static int __bq_first_entry(struct bquery *q)
