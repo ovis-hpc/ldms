@@ -209,7 +209,7 @@ static void send_dir_update(struct ldms_xprt *x,
 	}
 
 	reply->hdr.xid = x->remote_dir_xid;
-	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
+	reply->hdr.cmd = htonl(LDMS_CMD_DIR_UPDATE_REPLY);
 	reply->hdr.rc = htonl(rc);
 	reply->dir.type = htonl(t);
 	reply->dir.set_count = htonl(set_count);
@@ -279,6 +279,8 @@ void ldms_xprt_close(ldms_t x)
 
 void __ldms_xprt_resource_free(struct ldms_xprt *x)
 {
+	if (x->local_dir_xid)
+		free((void *)(unsigned long)x->local_dir_xid);
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
 #ifdef DEBUG
@@ -449,6 +451,12 @@ static void
 process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	x->remote_dir_xid = 0;
+	struct ldms_reply_hdr hdr;
+	hdr.rc = 0;
+	hdr.xid = req->hdr.xid;
+	hdr.cmd = htonl(LDMS_CMD_DIR_CANCEL_REPLY);
+	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
+	zap_send(x->zap_ep, &hdr, sizeof(hdr));
 }
 
 static void
@@ -737,14 +745,24 @@ out:
 	free(ctxt);
 }
 
-void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
-		       struct ldms_context *ctxt)
+void process_dir_cancel_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+		struct ldms_context *ctxt)
+{
+	pthread_mutex_lock(&x->lock);
+	if (x->local_dir_xid)
+		free((void *)(unsigned long)x->local_dir_xid);
+	x->local_dir_xid = 0;
+	pthread_mutex_unlock(&x->lock);
+	zap_put_ep(x->zap_ep);
+}
+
+void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+		       struct ldms_context *ctxt, int more)
 {
 	int i;
 	char *src, *dst;
 	enum ldms_dir_type type = ntohl(reply->dir.type);
 	int rc = ntohl(reply->hdr.rc);
-	int more = ntohl(reply->dir.more);
 	size_t len = ntohl(reply->dir.set_list_len);
 	unsigned count = ntohl(reply->dir.set_count);
 	ldms_dir_t dir = NULL;
@@ -768,16 +786,23 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		dst += len;
 		src += len;
 	}
- out:
+out:
 	/* Don't touch dir after callback because the dir.cb may have freed it. */
 	if (ctxt->dir.cb)
 		ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
+}
+
+void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
+		       struct ldms_context *ctxt)
+{
+	int more = ntohl(reply->dir.more);
+	__process_dir_reply(x, reply, ctxt, more);
 	pthread_mutex_lock(&x->lock);
 	if (!x->local_dir_xid && !more)
 		free(ctxt);
 	if (!more) {
 		assert(x->active_dir);
-		x->active_dir--;
+		x->active_dir = 0;
 		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_dir() */
 #ifdef DEBUG
 		x->log("DEBUG: ..dir_reply: put ref %p. active_dir = %d.\n",
@@ -785,6 +810,12 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 #endif /* DEBUG */
 	}
 	pthread_mutex_unlock(&x->lock);
+}
+
+void process_dir_update(struct ldms_xprt *x, struct ldms_reply *reply,
+		       struct ldms_context *ctxt)
+{
+	__process_dir_reply(x, reply, ctxt, 0);
 }
 
 void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
@@ -887,6 +918,9 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 		break;
 	case LDMS_CMD_DIR_REPLY:
 		process_dir_reply(x, reply, ctxt);
+		break;
+	case LDMS_CMD_DIR_UPDATE_REPLY:
+		process_dir_update(x, reply, ctxt);
 		break;
 	case LDMS_CMD_REQ_NOTIFY_REPLY:
 		process_req_notify_reply(x, reply, ctxt);
@@ -1525,11 +1559,10 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 
 	pthread_mutex_lock(&x->lock);
 	/* If a dir has previously been done and updates were asked
-	 * for, free that cached context */
-	if (x->local_dir_xid) {
-		free((void *)(unsigned long)x->local_dir_xid);
-		x->local_dir_xid = 0;
-	}
+	 * for, return EBUSY. No need for application to do dir request again. */
+	if (x->local_dir_xid)
+		goto ebusy;
+
 	len = format_dir_req(req, (uint64_t)(unsigned long)ctxt, flags);
 	ctxt->dir.cb = cb;
 	ctxt->dir.cb_arg = cb_arg;
@@ -1538,7 +1571,7 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	pthread_mutex_unlock(&x->lock);
 
 	zap_get_ep(x->zap_ep);	/* Released in process_dir_reply() */
-	x->active_dir++; /* Increment number of active dir request */
+	x->active_dir = 1;
 #ifdef DEBUG
 	x->log("DEBUG: remote_dir. get ref %p. active_dir = %d.\n",
 			x->zap_ep, x->active_dir);
@@ -1550,7 +1583,7 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 			 * The active_dir could be decremented in the
 			 * DISCONNECTED path already.
 			 */
-			x->active_dir--;
+			x->active_dir = 0;
 			zap_put_ep(x->zap_ep);
 #ifdef DEBUG
 			x->log("DEBUG: remote_dir: error. put ref %p. "
@@ -1560,6 +1593,9 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 		}
 	}
 	return rc;
+ebusy:
+	pthread_mutex_unlock(&x->lock);
+	return EBUSY;
 }
 
 /* This request has no reply */
@@ -1573,15 +1609,13 @@ void __ldms_remote_dir_cancel(ldms_t _x)
 	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_DIR_CANCEL))
 		return;
 
-	pthread_mutex_lock(&x->lock);
-	if (x->local_dir_xid)
-		free((void *)(unsigned long)x->local_dir_xid);
-	x->local_dir_xid = 0;
-	pthread_mutex_unlock(&x->lock);
-
 	len = format_dir_cancel_req(req);
-	zap_send(x->zap_ep, req, len);
+	zap_get_ep(x->zap_ep);
+	int rc = zap_send(x->zap_ep, req, len);
+	if (rc)
+		zap_put_ep(x->zap_ep);
 	free(ctxt);
+
 }
 
 int __ldms_remote_lookup(ldms_t _x, const char *path,

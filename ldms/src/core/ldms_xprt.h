@@ -86,6 +86,8 @@ enum ldms_request_cmd {
 	LDMS_CMD_CANCEL_NOTIFY,
 	LDMS_CMD_REPLY,
 	LDMS_CMD_DIR_REPLY,
+	LDMS_CMD_DIR_CANCEL_REPLY,
+	LDMS_CMD_DIR_UPDATE_REPLY,
 	LDMS_CMD_LOOKUP_REPLY,
 	LDMS_CMD_REQ_NOTIFY_REPLY,
 	LDMS_CMD_AUTH_CHALLENGE_REPLY,
@@ -238,7 +240,7 @@ struct ldms_xprt {
 	/* This is the peers local_dir_xid that we provide when providing dir updates */
 	uint64_t remote_dir_xid;
 
-	int active_dir; /* Number of outstanding dir requests, excluding the dir_update request */
+	int active_dir; /* 1 if there is an active dir request. 0 if there is none. */
 	int active_lookup; /* Number of outstanding lookup requests */
 
 	/* Callback that implements xprt state machine on the active side */
