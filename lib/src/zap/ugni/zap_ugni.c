@@ -453,6 +453,11 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep, size_t msglen)
 	map->map.len = msg.data_len;
 	map->gni_mh = msg.gni_mh;
 
+	zap_get_ep(&uep->ep);
+	pthread_mutex_lock(&uep->ep.lock);
+	LIST_INSERT_HEAD(&uep->ep.map_list, &map->map, link);
+	pthread_mutex_unlock(&uep->ep.lock);
+
 	struct zap_event ev = {
 		.type = ZAP_EVENT_RENDEZVOUS,
 		.map = (void*)map,
