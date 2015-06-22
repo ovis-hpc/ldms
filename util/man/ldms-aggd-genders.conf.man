@@ -1,0 +1,35 @@
+.\" Manpage for ldms-aggd.conf used with genders
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 5 "21 Jun 2015" "v2.4.3" "ldms-aggd.conf man page"
+
+.SH NAME
+ldms-aggd.conf \- global settings for genders based ldms-aggd configuration.
+
+.SH DESCRIPTION
+The genders based ldms-aggd configuration includes a few variables that are
+node independent. The ldmsd configuration file is included in ldms-aggd.conf for consistency.
+
+The following script variables must usually be set in ldms-aggd.conf:
+.TP
+STORE_PATH
+The full path name of the data logging directory root. Each store configured will use a 
+unique subdirectory of this root.
+.TP
+AGG_ID_BASE
+The number to start 'compid' of aggregators for use in file system
+name computations. Should be larger than highest real compid in cluster.
+The default is 1000000.
+
+.SS Additional script variables for experimental work
+.TP
+LDMSAGGD_LOCAL_SOCK
+The name of the UNIX socket for local control of the daemon.
+.TP
+LDMSAGGD_LOCAL_SOCK_DIR
+The directory of the UNIX sockets for local control of the daemon.
+
+.SH NOTES
+None.
+
+.SH SEE ALSO
+ldmsctl(1), ldms_ls(1), ldms(7), ldms-genders(7)

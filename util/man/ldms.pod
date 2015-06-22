@@ -25,6 +25,11 @@ The LDMS manual has several sections.
     ldms_ls		The data query client interface
     LDMS_Authentication	How to manage control and query authentication
 
+=head2 Libgenders based daemon boot scripts
+    ldms-genders
+    ldms-aggd-genders.conf
+    ldmsd-genders.conf.man
+
 =head2 Tutorials
 
     LDMS_QuickStart	LDMS short introduction

@@ -1,0 +1,46 @@
+.\" Manpage for ldmsd.conf used with genders
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 5 "21 Jun 2015" "v2.4.3" "ldmsd.conf man page"
+
+.SH NAME
+ldmsd.conf \- global settings for genders based ldmsd configuration.
+
+.SH DESCRIPTION
+The genders based ldmsd configuration includes a few variable that are
+node independent.
+
+The following environment variables must usually be set in ldmsd.conf:
+.TP
+LDMS_GENDERS
+The full path name of the genders file to use. May be set to /etc/genders or to an LDMS specific value used for both ldmsd and ldms-aggd.
+.TP
+LD_LIBRARY_PATH
+The library search path to ovis/lib64 (or ovis/lib, depending on OS) and libevent2, if not in a system default path.
+.TP
+LDMSD_LOG_PATH
+Path to logs for daemon instances. Special value 'syslog' sends ldmsd log messages to syslog rather than files.
+.TP
+MYHOSTNAME
+The recipe for computing an unqualified host name (valid with the cluster)
+must be supplied. The default works in most instances.
+.TP
+LDMSD_RDMAV_FORK_SAFE
+Should normally be set to 1 to ensure correct thread behavior.
+.TP
+BUILDTYPE,prefix,exec_prefix,sbindir,sysconfdir,localstatedir,libdir,libevent2_libdir
+Definitions of the standard package path variables, unless BUILDTYPE == experimental. These may need adjustment for systems without Redhat-like file layouts.
+
+.SS Additional script variables for experimental work
+.TP
+LDMSD_LOCAL_SOCK
+The name of the UNIX socket for local control of the daemon.
+.TP
+LDMSD_LOCAL_SOCK_DIR
+The directory of the UNIX sockets for local control of the daemon.
+
+
+.SH NOTES
+None.
+
+.SH SEE ALSO
+ldmsctl(1), ldms_ls(1), ldms(7), ldms-genders(7)

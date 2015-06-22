@@ -23,8 +23,13 @@ Plugin_slurmjobid.man \
 Plugin_store_csv.man \
 Plugin_store_derived_csv.man \
 Plugin_sysclassib.man \
-Plugin_vmstat.man \
-ldms-genders.man
+Plugin_vmstat.man
+
+dist_man5_MANS= \
+ldms-genders.man \
+ldmsd-genders.conf.man \
+ldms-aggd-genders.conf.man
+
 
 ldms.man: ldms.pod
 	pod2man -n ldms --section=7 --release=@VERSION@ -c "LDMS Manual Index" < $(srcdir)/ldms.pod > ldms.man

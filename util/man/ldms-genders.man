@@ -1,6 +1,6 @@
 .\" Manpage for LDMS genders entries
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "1 May 2015" "v2.4.2" "LDMS genders-based daemon configuration man page"
+.TH man 5 "1 May 2015" "v2.4.2" "LDMS genders-based daemon configuration man page"
 
 .SH NAME
 ldms-genders - gender definitions for the LDMS genders-based boot scripts
@@ -293,5 +293,5 @@ Aggregation within ataco uses Infiniband hostnames and ports.
 .fi
 
 .SH SEE ALSO
-libgenders(3), ldmsd(1)
+libgenders(3), ldmsd(1), ldmsd-genders.conf(5), ldms-aggd-genders.conf(5)
 

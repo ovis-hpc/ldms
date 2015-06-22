@@ -1,13 +1,13 @@
 #!/bin/bash 
 echo "$0 `date`" >> .last-make
 echo BUILDING FOR UBUNTU 12.04
-export CC=gcc49
-export CXX=g++49
+export CC=gcc
+export CXX=g++
 
 export LD_LIBRARY_PATH=$HOME/opt/ovis/lib:$LD_LIBRARY_PATH
 
 # local path of scratch ldms files
-build_subdir=LDMS_object
+build_subdir=LDMS_objdir
 
 if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	prefix=$HOME/opt/ovis
@@ -16,7 +16,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	expected_sos_prefix=$prefix
 
 #CFLAGS='-Wall -g'
-#CXXFLAGS='-Wall -g -I/ovis/init-2015/include'
+CXXFLAGS='-Wall -g -I/ovis/init-2015/include'
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
 		echo "Found $expected_event2_prefix/include/event2/event.h. Good."
@@ -41,7 +41,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
 	#allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 LDFLAGS=-fsanitize=address "
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication LDFLAGS=-fsanitize=address  --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 "
 	../configure $allconfig && \
 	make && \
 	make install && \

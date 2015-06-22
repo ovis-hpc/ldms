@@ -1,3 +1,6 @@
+2015-06-18 Benjamin A. Allan <baallan@sandia.gov>
+* Addition of libgenders-based init scripts for TOSS.
+	Requires C++/boost for initscripts, but not for LDMS.
 2015-05-24 Benjamin A. Allan <baallan@sandia.gov>
 * Cleanup of man pages.
 	See new 'man ldms' for more.
