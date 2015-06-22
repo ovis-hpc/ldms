@@ -286,15 +286,14 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 		break;
 	case LDMS_CONN_EVENT_DISCONNECTED:
 	case LDMS_CONN_EVENT_ERROR:
-		/* Put the reference taken in ldms_xprt_connect() or accept() */
-		ldms_xprt_put(prdcr->xprt);
-		prdcr->xprt = NULL;
 		prdcr_reset_sets(prdcr);
 		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
 			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
 					 0, prdcr->conn_intrvl_us, 0);
 		}
+		ldms_xprt_put(prdcr->xprt);
+		prdcr->xprt = NULL;
 		break;
 	default:
 		assert(0);

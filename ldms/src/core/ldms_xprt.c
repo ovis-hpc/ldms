@@ -127,9 +127,7 @@ ldms_t ldms_xprt_first()
 ldms_t ldms_xprt_next(ldms_t x)
 {
 	pthread_mutex_lock(&xprt_list_lock);
-	if (x->xprt_link.le_next == xprt_list.lh_first)
-		goto out;
-	x = x->xprt_link.le_next;
+	x = LIST_NEXT(x, xprt_link);
 	if (!x)
 		goto out;
 	x = ldms_xprt_get(x);
@@ -273,49 +271,49 @@ void __ldms_dir_del_set(const char *set_name)
 	dir_update(set_name, LDMS_DIR_DEL);
 }
 
-void ldms_xprt_delete(ldms_t x)
-{
-	x->remote_dir_xid = x->local_dir_xid = 0;
-
-	pthread_mutex_lock(&xprt_list_lock);
-	LIST_REMOVE(x, xprt_link);
-	pthread_mutex_unlock(&xprt_list_lock);
-
-	while (!LIST_EMPTY(&x->rbd_list)) {
-		struct ldms_rbuf_desc *rbd;
-		rbd = LIST_FIRST(&x->rbd_list);
-		__ldms_free_rbd(rbd);
-	}
-
-	zap_free(x->zap_ep);
-	x->zap_ep = NULL;
-	ldms_xprt_put(x);
-}
-
 void ldms_xprt_close(ldms_t x)
 {
 	x->remote_dir_xid = x->local_dir_xid = 0;
-
-	pthread_mutex_lock(&xprt_list_lock);
-	LIST_REMOVE(x, xprt_link);
-	pthread_mutex_unlock(&xprt_list_lock);
-
 	zap_close(x->zap_ep);
+}
+
+void __ldms_xprt_resource_free(struct ldms_xprt *x)
+{
+	x->remote_dir_xid = x->local_dir_xid = 0;
+
+#ifdef DEBUG
+		x->log("DEBUG: xprt_resource_free. zap %p: active_dir = %d.\n",
+			x->zap_ep, x->active_dir);
+		x->log("DEBUG: xprt_resource_free. zap %p: active_lookup = %d.\n",
+			x->zap_ep, x->active_lookup);
+#endif /* DEBUG */
+	while (x->active_dir > 0) {
+		x->active_dir--;
+		zap_put_ep(x->zap_ep);
+	}
+
+	while (x->active_lookup > 0) {
+		x->active_lookup--;
+		zap_put_ep(x->zap_ep);
+	}
+
 	while (!LIST_EMPTY(&x->rbd_list)) {
 		struct ldms_rbuf_desc *rbd;
 		rbd = LIST_FIRST(&x->rbd_list);
 		__ldms_free_rbd(rbd);
 	}
-
-	zap_free(x->zap_ep);
-	x->zap_ep = NULL;
-	ldms_xprt_put(x);
 }
 
 void ldms_xprt_put(ldms_t x)
 {
 	assert(x->ref_count);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
+		pthread_mutex_lock(&xprt_list_lock);
+		LIST_REMOVE(x, xprt_link);
+		pthread_mutex_unlock(&xprt_list_lock);
+
+		__ldms_xprt_resource_free(x);
+
 		if (x->zap_ep)
 			zap_free(x->zap_ep);
 		sem_destroy(&x->sem);
@@ -727,7 +725,14 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		ctxt->lookup.cb(x, rc, 0, NULL, ctxt->lookup.cb_arg);
 
 out:
+	assert(x->active_lookup);
+	x->active_lookup--;
 	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+#ifdef DEBUG
+	x->log("DEBUG: lookup_reply: put ref %p: active_lookup = %d\n",
+			x->zap_ep, x->active_lookup);
+#endif /* DEBUG */
+
 	free(ctxt->lookup.path);
 	free(ctxt);
 }
@@ -770,8 +775,16 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	pthread_mutex_lock(&x->lock);
 	if (!x->local_dir_xid && !more)
 		free(ctxt);
+	if (!more) {
+		assert(x->active_dir);
+		x->active_dir--;
+		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_dir() */
+#ifdef DEBUG
+		x->log("DEBUG: ..dir_reply: put ref %p. active_dir = %d.\n",
+				x->zap_ep, x->active_dir);
+#endif /* DEBUG */
+	}
 	pthread_mutex_unlock(&x->lock);
-	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_dir() */
 }
 
 void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
@@ -924,7 +937,7 @@ void __ldms_passive_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	case LDMS_CONN_EVENT_CONNECTED:
 		assert(0);
 	case LDMS_CONN_EVENT_DISCONNECTED:
-		ldms_xprt_delete(x);
+		ldms_xprt_put(x);
 		break;
 	}
 }
@@ -1094,8 +1107,17 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 			struct ldms_xprt *x = zap_get_ucontext(zep);
 			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.more, ctxt->lookup.s,
 					ctxt->lookup.cb_arg);
-			if (!ctxt->lookup.more)
+			if (!ctxt->lookup.more) {
+				assert(x->active_lookup > 0);
+				x->active_lookup--;
 				zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+#ifdef DEBUG
+				x->log("DEBUG: read_complete: put ref %p: "
+						"active_lookup = %d\n",
+						x->zap_ep, x->active_lookup);
+#endif /* DEBUG */
+			}
+
 		}
 		break;
 	default:
@@ -1163,7 +1185,16 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
  out:
 	if (ctxt->lookup.cb)
 		ctxt->lookup.cb(x, rc, 0, (ldms_set_t)sd, ctxt->lookup.cb_arg);
-	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+	if (!lm->more) {
+		assert(x->active_lookup);
+		x->active_lookup--;
+		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+#ifdef DEBUG
+		x->log("DEBUG: rendezvous error: put ref %p: "
+				"active_lookup = %d\n",
+				x->zap_ep, x->active_lookup);
+#endif /* DEBUG */
+	}
 	free(ctxt->lookup.path);
 	free(ctxt);
 }
@@ -1190,13 +1221,15 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_ERROR,
 				      x->connect_cb_arg);
-		break;
-	case ZAP_EVENT_REJECTED:
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
+		break;
+	case ZAP_EVENT_REJECTED:
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_REJECTED,
 					x->connect_cb_arg);
+		/* Put the reference taken in ldms_xprt_connect() */
+		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_CONNECTED:
 #ifdef ENABLE_AUTH
@@ -1219,8 +1252,6 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		/* Put the reference taken in ldms_xprt_connect() or accept() */
-		ldms_xprt_put(x);
 		ldms_conn_event = LDMS_CONN_EVENT_DISCONNECTED;
 #ifdef ENABLE_AUTH
 		if ((x->auth_approved != LDMS_XPRT_AUTH_DISABLE) &&
@@ -1242,6 +1273,8 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 #endif /* ENABLE_AUTH */
 		if (x->connect_cb)
 			x->connect_cb(x, ldms_conn_event, x->connect_cb_arg);
+		/* Put the reference taken in ldms_xprt_connect() or accept() */
+		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		recv_cb(x, ev->data);
@@ -1272,10 +1305,11 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 #ifdef ENABLE_AUTH
-		ldms_xprt_put(x);
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_DISCONNECTED,
 						x->connect_cb_arg);
+		/* Put back the reference taken when accept the connection */
+		ldms_xprt_put(x);
 		break;
 #endif /* ENABLE_AUTH */
 	case ZAP_EVENT_CONNECT_ERROR:
@@ -1504,9 +1538,27 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	pthread_mutex_unlock(&x->lock);
 
 	zap_get_ep(x->zap_ep);	/* Released in process_dir_reply() */
+	x->active_dir++; /* Increment number of active dir request */
+#ifdef DEBUG
+	x->log("DEBUG: remote_dir. get ref %p. active_dir = %d.\n",
+			x->zap_ep, x->active_dir);
+#endif /* DEBUG */
 	int rc = zap_send(x->zap_ep, req, len);
-	if (rc)
-		zap_put_ep(x->zap_ep);
+	if (rc) {
+		if (x->active_dir > 0) {
+			/*
+			 * The active_dir could be decremented in the
+			 * DISCONNECTED path already.
+			 */
+			x->active_dir--;
+			zap_put_ep(x->zap_ep);
+#ifdef DEBUG
+			x->log("DEBUG: remote_dir: error. put ref %p. "
+					"active_dir = %d.\n",
+					x->zap_ep, x->active_dir);
+#endif /* DEBUG */
+		}
+	}
 	return rc;
 }
 
@@ -1556,10 +1608,28 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	ctxt->lookup.cb_arg = arg;
 	ctxt->lookup.flags = flags;
 	ctxt->lookup.path = strdup(path);
-	zap_get_ep(x->zap_ep);	/* Relased in either ...lookup_reply() or ..rendezvous() */
+	zap_get_ep(x->zap_ep);	/* Released in either ...lookup_reply() or ..rendezvous() */
+	x->active_lookup++;
+#ifdef DEBUG
+	x->log("DEBUG: remote_lookup: get ref %p: active_lookup = %d\n",
+		x->zap_ep, x->active_lookup);
+#endif /* DEBUG */
 	rc = zap_send(x->zap_ep, req, len);
-	if (rc)
-		zap_put_ep(x->zap_ep);
+	if (rc) {
+		if (x->active_lookup > 0) {
+			/*
+			 * The active_lookup could be decremented in the
+			 * DISCONNECTED path already.
+			 */
+			x->active_lookup--;
+			zap_put_ep(x->zap_ep);
+#ifdef DEBUG
+			x->log("DEBUG: lookup_reply: error. put ref %p: "
+					"active_lookup = %d\n",
+					x->zap_ep, x->active_lookup);
+#endif /* DEBUG */
+		}
+	}
 	return rc;
 }
 
@@ -1767,6 +1837,21 @@ void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 {
 	LIST_REMOVE(rbd, xprt_link);
 	LIST_REMOVE(rbd, set_link);
+#ifdef DEBUG
+	if (rbd->lmap) {
+		rbd->xprt->log("DEBUG: zap %p: unmap local\n", rbd->xprt->zap_ep);
+		zap_unmap(rbd->xprt->zap_ep, rbd->lmap);
+	}
+	if (rbd->rmap) {
+		rbd->xprt->log("DEBUG: zap %p: unmap remote\n", rbd->xprt->zap_ep);
+		zap_unmap(rbd->xprt->zap_ep, rbd->rmap);
+	}
+#else
+	if (rbd->lmap)
+		zap_unmap(rbd->xprt->zap_ep, rbd->lmap);
+	if (rbd->rmap)
+		zap_unmap(rbd->xprt->zap_ep, rbd->rmap);
+#endif /* DEBUG */
 	free(rbd);
 }
 

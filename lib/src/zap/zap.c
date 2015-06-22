@@ -315,14 +315,6 @@ zap_err_t zap_listen(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
 zap_err_t zap_close(zap_ep_t ep)
 {
 	zap_err_t zerr = ep->z->close(ep);
-	pthread_mutex_lock(&ep->lock);
-	while (!LIST_EMPTY(&ep->map_list)) {
-		zap_map_t map = LIST_FIRST(&ep->map_list);
-		LIST_REMOVE(map, link);
-		zap_err_t zerr = ep->z->unmap(ep, map);
-		zap_put_ep(ep);
-	}
-	pthread_mutex_unlock(&ep->lock);
 	return zerr;
 }
 

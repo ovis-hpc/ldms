@@ -227,7 +227,8 @@ void cleanup(int x)
 	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d\n", x);
 	ldmsd_config_cleanup();
 	if (ldms) {
-		ldms_xprt_close(ldms);
+		/* No need to close the xprt. It has never been connected. */
+		ldms_xprt_put(ldms);
 		ldms = NULL;
 	}
 
@@ -1131,12 +1132,7 @@ void __ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	case LDMS_CONN_EVENT_REJECTED:
 	case LDMS_CONN_EVENT_DISCONNECTED:
 		/* Destroy the ldms xprt. */
-		ldms_xprt_delete(hs->x);
-		goto schedule_reconnect;
-		break;
-	case LDMS_CONN_EVENT_ERROR:
-		/* Disconnect the connection */
-		ldms_xprt_close(hs->x);
+		ldms_xprt_put(hs->x);
 		goto schedule_reconnect;
 		break;
 	default:
