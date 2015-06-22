@@ -49,6 +49,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #######################################################################
+from time import sleep
 '''
 Created on Jun 1, 2015
 
@@ -58,14 +59,27 @@ Created on Jun 1, 2015
 from ovis_ldms import ldms
 from ldmsd.ldmsd_setup import kill_ldmsd, is_ldmsd_running, kill_9_ldmsd,\
     start_ldmsd
-from ldmsd.ldmsd_util import remove_file
+from ldmsd.ldmsd_util import remove_file, get_var_from_file
+
+
+def sec2microsec(sec):
+    return sec * 1000000
+
+def microsec2sec(ms):
+    return ms / 1000000;
+
+def load_test_config(path):
+    cfg = get_var_from_file("cfg", path)
+    cfg.LDMSD_RECONNECT_INTERVAL = sec2microsec(cfg.LDMSD_RECONNECT_INTERVAL)
+    cfg.LDMSD_UPDATE_INTERVAL = sec2microsec(cfg.LDMSD_UPDATE_INTERVAL)
+    return cfg
 
 def ldms_connect(log, host, xprt, port):
     log.debug("---ldms_conn---")
     x = ldms.ldms_xprt_new(xprt, None)
     rc = ldms.ldms_xprt_connect_by_name(x, host, str(port), None, None)
     if rc != 0:
-        raise Exception("Failed to ldms-connect to {0}:{1}".format(host, port))
+        raise Exception("ldms_xprt_connect_by_name failed to {0}:{1}".format(host, port))
     log.debug("---ldms_conn DONE---")
     return x
 
@@ -84,6 +98,7 @@ def start_test_ldmsds(**kwargs):
     port = kwargs['port']
 
     start_ldmsd(**kwargs)
+    sleep(1)
     is_running = is_ldmsd_running(hosts = hosts, xprt = xprt, port = port)
     not_started = filter(lambda host: not is_running[host], is_running)
     if len(not_started) > 0:

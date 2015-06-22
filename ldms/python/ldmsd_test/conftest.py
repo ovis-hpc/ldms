@@ -49,6 +49,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #######################################################################
+from ldmsd_test.ldmsd_test_util import load_test_config
 '''
 Created on May 27, 2015
 
@@ -80,12 +81,11 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     path = config.getoption("--config-file")
-    cfg = get_var_from_file("cfg", path)
+    cfg = load_test_config(path)
     for host_list in [cfg.AGG_HOSTS, cfg.AGG2_HOSTS, cfg.STORED_HOSTS]:
         if "localhost" not in host_list:
             host_list += ["localhost"]
 
-    cfg.LDMSD_RECONNECT_INTERVAL = __second_2_microsecond(cfg.LDMSD_RECONNECT_INTERVAL)
     pytest.cfg = cfg
 
 def pytest_runtest_makereport(item, call):

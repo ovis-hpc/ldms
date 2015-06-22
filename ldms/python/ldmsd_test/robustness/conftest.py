@@ -95,12 +95,14 @@ def startup_ldmsd_processes(request, logger, cfg):
                     test_set_name = cfg.TEST_INSTANCE_PREFIX_NAME,
                     test_set_count = cfg.NUM_TEST_INSTANCES_PER_HOST,
                     test_metric_count = cfg.TEST_INSTANCE_NUM_METRICS,
-                    inet_ctrl_port = cfg.SAMPLERD_INET_CTRL_PORT)
+                    inet_ctrl_port = cfg.SAMPLERD_INET_CTRL_PORT,
+                    verbose = cfg.SAMPLERD_VERBOSE)
 
         start_test_ldmsds(hosts = cfg.AGG_HOSTS, xprt = cfg.AGG_XPRT,
                           port = cfg.AGG_PORT,
                           log = cfg.AGG_LOG, sock = cfg.AGG_SOCK,
-                          inet_ctrl_port = cfg.AGG_INET_CTRL_PORT)
+                          inet_ctrl_port = cfg.AGG_INET_CTRL_PORT,
+                          verbose = cfg.AGG_VERBOSE)
 
         logger.debug("------------ starting ... DONE")
     except:

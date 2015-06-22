@@ -63,7 +63,7 @@ from ldmsd.ldmsd_setup import get_test_instance_name, kill_ldmsd,\
 from time import sleep
 from ldmsd.ldmsd_util import remove_file
 from ldmsd_test.ldmsd_test_util import stop_test_ldmsds, start_test_ldmsds,\
-    ldms_connect
+    ldms_connect, microsec2sec
 
 @pytest.fixture(scope = "class")
 def start_2ndLevel_agg(request, logger, cfg):
@@ -165,13 +165,13 @@ class Test_2level_aggregation:
                                      xprt = cfg.SAMPLERD_XPRT,
                                      port = cfg.SAMPLERD_PORT,
                                      sets = obj['instance'],
-                                     interval = cfg.LDMSD_UPDATE_INTERVAL * 1000000)
+                                     interval = cfg.LDMSD_UPDATE_INTERVAL)
         ctrl.close()
         assert(result == "0")
 
     def test_1stLevel_agg_instance_existed(self, logger, cfg, obj, agg_1stLevel_conn):
         passed_sec = 0
-        timeout = 2 * cfg.LDMSD_UPDATE_INTERVAL # lookup + update. 2 times for safety
+        timeout = 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL) # lookup + update. 2 times for safety
         inst_dir = ldms.LDMS_xprt_dir(agg_1stLevel_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
@@ -186,17 +186,17 @@ class Test_2level_aggregation:
     def test_2ndLevel_agg_add_1stLevel_agg(self, logger, cfg, obj, agg_2ndLevel_conn):
         ctrl = ldmsdInetConfig(obj['agg_2ndLevel_host'], cfg.AGG2_INET_CTRL_PORT)
         result = ctrl.add(host = obj['agg_1stLevel_host'],
-                                              host_type = "active",
-                                              xprt = cfg.AGG2_XPRT,
-                                              port = cfg.AGG2_PORT,
-                                              sets = obj['instance'],
-                                              interval = cfg.LDMSD_UPDATE_INTERVAL * 1000000)
+                                        host_type = "active",
+                                        xprt = cfg.AGG_XPRT,
+                                        port = cfg.AGG_PORT,
+                                        sets = obj['instance'],
+                                        interval = cfg.LDMSD_UPDATE_INTERVAL)
         ctrl.close()
         assert(result == "0")
 
     def test_2ndLevel_agg_instance_existed(self, logger, cfg, obj, agg_2ndLevel_conn):
         passed_sec = 0
-        timeout = 2 * cfg.LDMSD_UPDATE_INTERVAL
+        timeout = 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_2ndLevel_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
@@ -230,7 +230,7 @@ class Test_2level_aggregation:
 
     def test_agg_1stLevel_instance_after_samplerd_die(self, logger, cfg, obj, agg_1stLevel_conn):
         passed_sec = 0
-        timeout = cfg.LDMSD_UPDATE_INTERVAL
+        timeout = microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_1stLevel_conn)
         assert(inst_dir is not None)
 
@@ -245,7 +245,7 @@ class Test_2level_aggregation:
 
     def test_agg_2ndLevel_instance_after_samplerd_die(self, logger, cfg, obj, agg_2ndLevel_conn):
         passed_sec = 0
-        timeout = cfg.LDMSD_UPDATE_INTERVAL
+        timeout = 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_2ndLevel_conn)
         assert(inst_dir is not None)
 
@@ -273,10 +273,15 @@ class Test_2level_aggregation:
                                                port = cfg.SAMPLERD_PORT)
         assert(is_samplerd_started[obj['samplerd_host']])
 
+        is_running = is_ldmsd_running(hosts = obj['agg_1stLevel_host'],
+                                      xprt = cfg.AGG_XPRT,
+                                      port = cfg.AGG_PORT)
+        assert(is_running[obj['agg_1stLevel_host']])
+
     def test_agg_1stLevel_after_samplerd_revived(self, logger, cfg, obj, agg_1stLevel_conn):
         passed_sec = 0
         # lookup + update. 2 times for safety
-        timeout = cfg.LDMSD_RECONNECT_INTERVAL + 2 * cfg.LDMSD_UPDATE_INTERVAL
+        timeout = 20 + 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_1stLevel_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
@@ -290,7 +295,7 @@ class Test_2level_aggregation:
 
     def test_agg_2ndLevel_after_samplerd_revived(self, logger, cfg, obj, agg_2ndLevel_conn):
         passed_sec = 0
-        timeout = cfg.LDMSD_RECONNECT_INTERVAL + 2 * cfg.LDMSD_UPDATE_INTERVAL # lookup + update. 2 times for safety
+        timeout = 20 + 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL) # lookup + update. 2 times for safety
         inst_dir = ldms.LDMS_xprt_dir(agg_2ndLevel_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
@@ -332,7 +337,7 @@ class Test_2level_aggregation:
 
     def test_2ndLevel_agg_after_1st_agg_die(self, logger, cfg, obj, agg_2ndLevel_conn):
         passed_sec = 0
-        timeout = cfg.LDMSD_UPDATE_INTERVAL
+        timeout = microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_2ndLevel_conn)
         assert(inst_dir is not None)
 
@@ -363,13 +368,13 @@ class Test_2level_aggregation:
                                      xprt = cfg.SAMPLERD_XPRT,
                                      port = cfg.SAMPLERD_PORT,
                                      sets = obj['instance'],
-                                     interval = cfg.LDMSD_UPDATE_INTERVAL * 1000000)
+                                     interval = cfg.LDMSD_UPDATE_INTERVAL)
         ctrl.close()
         assert(result == "0")
 
     def test_1stLevel_agg_after_revived(self, logger, cfg, obj, agg_1stLevel_conn):
         passed_sec = 0
-        timeout = 2 * cfg.LDMSD_UPDATE_INTERVAL # lookup + update. 2 times for safety
+        timeout = 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL) # lookup + update. 2 times for safety
         inst_dir = ldms.LDMS_xprt_dir(agg_1stLevel_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
@@ -384,7 +389,7 @@ class Test_2level_aggregation:
     def test_2ndLevel_agg_after_1stLevel_agg_revived(self, logger, cfg, obj, agg_2ndLevel_conn):
         passed_sec = 0
         # lookup + update. 2 times for safety
-        timeout = cfg.LDMSD_RECONNECT_INTERVAL + 2 * cfg.LDMSD_UPDATE_INTERVAL
+        timeout = 20 + 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_2ndLevel_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
