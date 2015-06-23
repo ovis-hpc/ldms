@@ -17,7 +17,7 @@ License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
-Requires: rpm >= 4.8.0 ovis-libevent2 boost-devel
+Requires: rpm >= 4.8.0 ovis-libevent2 boost-devel genders
 BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel gcc ovis-libevent2-devel glib2-devel libibmad-devel
 Url: http://ovis.ca.sandia.gov/
 
