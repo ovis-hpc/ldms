@@ -1937,8 +1937,11 @@ loop:
 		msg.msg_controllen = 0;
 		msg.msg_flags = 0;
 		msglen = recvmsg(inet_sock, &msg, 0);
-		if (msglen <= 0)
+		if (msglen <= 0) {
+			close(inet_sock);
+			inet_sock = -1;
 			break;
+		}
 		process_message(inet_sock, &msg, msglen);
 	} while (1);
 	goto loop;
