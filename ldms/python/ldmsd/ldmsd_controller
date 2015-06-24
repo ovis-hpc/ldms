@@ -641,6 +641,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Quit the LDMSD shell
         """
+        self.ctrl.close()
         return True
 
 if __name__ == "__main__":
@@ -681,8 +682,10 @@ if __name__ == "__main__":
 
         if args.source is not None:
             cmdParser.do_source(args.source)
+            cmdParser.do_quit(None)
         elif args.script is not None:
             cmdParser.do_script(args.script)
+            cmdParser.do_quit(None)
         else:
             cmdParser.cmdloop("Welcome to the LDMSD control processor")
     except KeyboardInterrupt:
