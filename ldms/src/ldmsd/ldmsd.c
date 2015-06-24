@@ -1131,6 +1131,7 @@ void __ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 		break;
 	case LDMS_CONN_EVENT_REJECTED:
 	case LDMS_CONN_EVENT_DISCONNECTED:
+	case LDMS_CONN_EVENT_ERROR:
 		/* Destroy the ldms xprt. */
 		ldms_xprt_put(hs->x);
 		goto schedule_reconnect;

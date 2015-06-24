@@ -117,11 +117,17 @@ err_0:
 
 static void prdcr_set_del(ldmsd_prdcr_set_t set)
 {
-	free(set->inst_name);
 	if (set->schema_name)
 		free(set->schema_name);
 	if (set->set)
 		ldms_set_delete(set->set);
+	else {
+		ldms_set_t lset = ldms_set_by_name(set->inst_name);
+		if (lset)
+			ldms_set_delete(lset);
+	}
+	free(set->inst_name);
+	free(set);
 }
 
 /**
@@ -158,8 +164,10 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	int rc;
 
 	pthread_mutex_lock(&prd_set->lock);
-	if (status != LDMS_LOOKUP_OK){
+	if (status != LDMS_LOOKUP_OK) {
 		ldmsd_log(LDMSD_LERROR, "Error doing lookup for set '%s'\n", prd_set->inst_name);
+		if (prd_set->set)
+			ldms_set_delete(prd_set->set);
 		prd_set->set = NULL;
 		goto err;
 	}
@@ -284,6 +292,9 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 			ldms_xprt_close(prdcr->xprt);
 		ldmsd_task_stop(&prdcr->task);
 		break;
+	case LDMS_CONN_EVENT_REJECTED:
+		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the"
+				"connection\n", prdcr->obj.name);
 	case LDMS_CONN_EVENT_DISCONNECTED:
 	case LDMS_CONN_EVENT_ERROR:
 		prdcr_reset_sets(prdcr);
