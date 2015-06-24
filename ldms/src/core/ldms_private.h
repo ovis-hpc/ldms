@@ -61,6 +61,7 @@
 typedef struct ldms_mdef_s {
 	char *name;
 	enum ldms_value_type type;
+	uint32_t count; /* Number of elements in the array if this is of an array type */
 	size_t meta_sz;
 	size_t data_sz;
 	STAILQ_ENTRY(ldms_mdef_s) entry;
@@ -173,7 +174,7 @@ extern size_t __ldms_xprt_max_msg(struct ldms_xprt *x);
 
 extern uint32_t __ldms_set_size_get(struct ldms_set *s);
 extern void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
-			    size_t *meta_sz, size_t *data_sz);
+			uint32_t count, size_t *meta_sz, size_t *data_sz);
 
 extern struct ldms_set *__ldms_find_local_set(const char *path);
 extern struct ldms_set *__ldms_local_set_first(void);
