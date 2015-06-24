@@ -1099,10 +1099,10 @@ void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
 		mv->v_u64 = __cpu_to_le64(v->v_u64);
 		break;
 	case LDMS_V_F32:
-		mv->v_f = __cpu_to_le32(v->v_f);
+		*(uint32_t*)&mv->v_f = __cpu_to_le32(*(uint32_t*)&v->v_f);
 		break;
 	case LDMS_V_D64:
-		mv->v_d = __cpu_to_le64(v->v_d);
+		*(uint64_t*)&mv->v_d = __cpu_to_le32(*(uint64_t*)&v->v_d);
 		break;
 	default:
 		assert(0 == "unexpected metric type");
@@ -1226,7 +1226,7 @@ void ldms_metric_set_float(ldms_set_t s, int i, float v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_f = __cpu_to_le32(v);
+		*(uint32_t*)&mv->v_f = __cpu_to_le32(*(uint32_t*)&v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1235,7 +1235,7 @@ void ldms_metric_set_double(ldms_set_t s, int i, double v)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv) {
-		mv->v_d = __cpu_to_le64(v);
+		*(uint64_t*)&mv->v_d = __cpu_to_le64(*(uint64_t*)&v);
 		__ldms_data_gn_inc(s->set);
 	}
 }
@@ -1433,15 +1433,23 @@ int64_t ldms_metric_get_s64(ldms_set_t s, int i)
 float ldms_metric_get_float(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
-	if (mv)
-		return __le32_to_cpu(mv->v_f);
+	uint32_t tmp;
+	if (mv) {
+		tmp = __le32_to_cpu(*(uint32_t*)&mv->v_f);
+		return *(float*)&tmp;
+	}
+	return 0;
 }
 
 double ldms_metric_get_double(ldms_set_t s, int i)
 {
 	ldms_mval_t mv = __value_get(s->set, i);
-	if (mv)
-		return __le64_to_cpu(mv->v_d);
+	uint64_t tmp;
+	if (mv) {
+		tmp = __le64_to_cpu(*(uint64_t*)&mv->v_d);
+		return *(double*)&tmp;
+	}
+	return 0;
 }
 
 uint8_t ldms_array_metric_get_u8(ldms_set_t s, int mid, int idx)

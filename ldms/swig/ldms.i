@@ -131,6 +131,8 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
          */
 	int is_int = 1;
 	long l = 0;
+        uint32_t tmp32;
+        uint64_t tmp64;
 	double d = 0.0;
 	switch (type) {
 	case LDMS_V_NONE:
@@ -162,11 +164,13 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		break;
 	case LDMS_V_F32:
 		is_int = 0;
-		d = (float)__le32_to_cpu(mv->v_f);
+		tmp32 = __le32_to_cpu(*(uint32_t*)&mv->v_f);
+                d = *(float*)&tmp32;
 		break;
 	case LDMS_V_D64:
 		is_int = 0;
-		d = (double)__le64_to_cpu(mv->v_d);
+		tmp64 = __le64_to_cpu(*(uint32_t*)&mv->v_d);
+                d = *(double*)&tmp64;
 		break;
 	}
 	if (is_int)
