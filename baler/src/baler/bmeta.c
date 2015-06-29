@@ -244,7 +244,7 @@ out:
 static
 int __bmptn_store_init(struct bmptn_store *store)
 {
-	int rc;
+	int rc = 0;
 	uint64_t off;
 	struct bmptn_store_header *hdr;
 	off = bmem_alloc(store->mem, sizeof(struct bmptn_store_header));
