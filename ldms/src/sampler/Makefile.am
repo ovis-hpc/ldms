@@ -21,6 +21,12 @@ if ENABLE_HADOOP
 SUBDIRS += hadoop
 endif
 
+if ENABLE_ARRAY_EXAMPLE
+libarray_example_la_SOURCES = array_example.c
+libarray_example_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += libarray_example.la
+endif
+
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD)

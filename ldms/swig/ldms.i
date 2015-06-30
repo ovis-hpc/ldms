@@ -220,6 +220,33 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		union ldms_value *v = ldms_metric_get(self, i);
 		return PyObject_FromMetricValue(v, ldms_metric_type_get(self, i));
 	}
+	inline PyObject *array_metric_value_get(size_t mid, size_t idx) {
+		char *v = ldms_array_metric_get(self, mid);
+                enum ldms_value_type t = ldms_metric_type_get(self, mid);
+                switch (t) {
+                case LDMS_V_U8_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_u8(self, mid, idx));
+                case LDMS_V_S8_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_s8(self, mid, idx));
+                case LDMS_V_U16_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_u16(self, mid, idx));
+                case LDMS_V_S16_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_s16(self, mid, idx));
+                case LDMS_V_U32_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_u32(self, mid, idx));
+                case LDMS_V_S32_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_s32(self, mid, idx));
+                case LDMS_V_U64_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_u64(self, mid, idx));
+                case LDMS_V_S64_ARRAY:
+                        return PyLong_FromLong(ldms_array_metric_get_s64(self, mid, idx));
+                case LDMS_V_F32_ARRAY:
+                        return PyFloat_FromDouble(ldms_array_metric_get_float(self, mid, idx));
+                case LDMS_V_D64_ARRAY:
+                        return PyFloat_FromDouble(ldms_array_metric_get_double(self, mid, idx));
+                }
+                return PyLong_FromLong(0);
+	}
 	inline void metric_value_set(size_t i, PyObject *o) {
 		enum ldms_value_type t = ldms_metric_type_get(self, i);
 		union ldms_value v;
@@ -245,6 +272,32 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		}
 		ldms_metric_set(self, i, &v);
 	}
+        inline
+        void array_metric_value_set(size_t mid, size_t idx, PyObject *o) {
+		enum ldms_value_type t = ldms_metric_type_get(self, mid);
+		union ldms_value v;
+		switch (t) {
+		case LDMS_V_U8_ARRAY:
+		case LDMS_V_U16_ARRAY:
+		case LDMS_V_U32_ARRAY:
+		case LDMS_V_U64_ARRAY:
+			v.v_u64 = PyLong_AsLong(o);
+			break;
+		case LDMS_V_S8_ARRAY:
+		case LDMS_V_S16_ARRAY:
+		case LDMS_V_S32_ARRAY:
+		case LDMS_V_S64_ARRAY:
+			v.v_s64 = PyLong_AsLong(o);
+			break;
+		case LDMS_V_F32_ARRAY:
+			v.v_f = PyFloat_AsDouble(o);
+			break;
+		case LDMS_V_D64_ARRAY:
+			v.v_d = PyFloat_AsDouble(o);
+			break;
+		}
+		ldms_array_metric_set(self, mid, idx, &v);
+        }
 	inline const char *instance_name_get() {
 		return ldms_set_instance_name_get(self);
 	}

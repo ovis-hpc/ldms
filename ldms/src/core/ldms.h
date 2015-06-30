@@ -191,9 +191,9 @@ typedef struct ldms_schema_s *ldms_schema_t;
 #pragma pack(4)
 typedef struct ldms_value_desc {
 	uint64_t vd_user_data;	/*! User defined meta-data */
-	// uint32_t next_offset;/*! Offset of next descriptor */
 	uint32_t vd_data_offset;	/*! Offset of the value in ldms_data_hdr */
 	uint8_t vd_type;		/*! The type of the value, enum ldms_value_type */
+	uint32_t array_count;	/*! Number of elements in the array if this is of an array type */
 	uint8_t vd_name_len;	/*! The length of the metric name in bytes*/
 	char vd_name[0];		/*! The metric name */
 } *ldms_mdesc_t;
@@ -232,7 +232,17 @@ enum ldms_value_type {
 	LDMS_V_S64,
 	LDMS_V_F32,
 	LDMS_V_D64,
-	LDMS_V_LAST = LDMS_V_D64
+	LDMS_V_U8_ARRAY,
+	LDMS_V_S8_ARRAY,
+	LDMS_V_U16_ARRAY,
+	LDMS_V_S16_ARRAY,
+	LDMS_V_U32_ARRAY,
+	LDMS_V_S32_ARRAY,
+	LDMS_V_U64_ARRAY,
+	LDMS_V_S64_ARRAY,
+	LDMS_V_F32_ARRAY,
+	LDMS_V_D64_ARRAY,
+	LDMS_V_LAST = LDMS_V_D64_ARRAY
 };
 
 /**
@@ -969,6 +979,23 @@ extern int ldms_set_is_consistent(ldms_set_t s);
 extern int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type t);
 
 /**
+ * \brief Add an array metric to schema
+ *
+ * Adds a metric of an array type to a metric set schema.
+ * The \c name of the metric must be
+ * unique within the metric set.
+ *
+ * \param s	The ldms_set_t handle.
+ * \param name	The name of the metric.
+ * \param t	The type of the metric.
+ * \param count The number of elements in the array
+ * \retval >=0  The metric index.
+ * \retval <0	Insufficient resources or duplicate name
+ */
+extern int ldms_schema_array_metric_add(ldms_schema_t s, const char *name,
+		enum ldms_value_type t, uint32_t count);
+
+/**
  * \brief Get the metric index given a name
  *
  * Returns the metric index  for the metric with the specified
@@ -1058,7 +1085,39 @@ uint64_t ldms_metric_user_data_get(ldms_set_t s, int i);
  */
 void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v);
 
+/**
+ * \brief Set the value of an element in the array metric
+ *
+ * \param s		The set handle.
+ * \param metric_idx	The metric index
+ * \param array_idx	The array index
+ * \param v		An ldms_value union specifying the value.
+ */
+void ldms_array_metric_set(ldms_set_t s, int metric_idx, int array_idx, ldms_mval_t v);
+
 ldms_mval_t ldms_metric_get(ldms_set_t s, int i);
+
+/**
+ * \brief Get the address of the array metric in ldms set \c s.
+ *
+ * \note ldms expects the elements in the array to be little-endian. Plese use
+ * with care. For per-element get/set please see ldms_aray_metric_get_*TYPE*()
+ * and ldms_array_metric_set_*TYPE*() functions.
+ *
+ * \param s The set handle.
+ * \param i The metric ID.
+ * \retval ptr The pointer to the array in the set.
+ */
+char *ldms_array_metric_get(ldms_set_t s, int i);
+
+/**
+ * \brief Get length of the array metric.
+ *
+ * \param s The set handle.
+ * \param i The metric ID.
+ * \retval len The length (number of elements) of the array.
+ */
+uint32_t ldms_array_metric_get_len(ldms_set_t s, int i);
 
 /**
  * \brief Set the value of a metric.
@@ -1081,6 +1140,34 @@ void ldms_metric_set_s64(ldms_set_t s, int i, int64_t v);
 void ldms_metric_set_float(ldms_set_t s, int i, float v);
 void ldms_metric_set_double(ldms_set_t s, int i, double v);
 
+void ldms_array_metric_set_u8(ldms_set_t s, int mid, int idx, uint8_t v);
+void ldms_array_metric_set_u16(ldms_set_t s, int mid, int idx, uint16_t v);
+void ldms_array_metric_set_u32(ldms_set_t s, int mid, int idx, uint32_t v);
+void ldms_array_metric_set_u64(ldms_set_t s, int mid, int idx, uint64_t v);
+void ldms_array_metric_set_s8(ldms_set_t s, int mid, int idx, int8_t v);
+void ldms_array_metric_set_s16(ldms_set_t s, int mid, int idx, int16_t v);
+void ldms_array_metric_set_s32(ldms_set_t s, int mid, int idx, int32_t v);
+void ldms_array_metric_set_s64(ldms_set_t s, int mid, int idx, int64_t v);
+void ldms_array_metric_set_float(ldms_set_t s, int mid, int idx, float v);
+void ldms_array_metric_set_double(ldms_set_t s, int mid, int idx, double v);
+
+/**
+ * \brief Set values of multiple array elements.
+ *
+ * This function will copy \c n elements (not bytes) of \c data into the array
+ * metric, started at \c idx_off. The function knows the size of an element by
+ * metric descriptor stored the set \c s. Byte conversion is also performed
+ * per-element as needed.
+ *
+ * \param s		The set handle.
+ * \param mid		The metric ID (metric index).
+ * \param idx_off	The index offset of the array.
+ * \param data		The data pointer.
+ * \param n		The number of elements to copy.
+ */
+void ldms_array_metric_set_array(ldms_set_t s, int mid, int idx_off,
+							void *data, int n);
+
 /**
  * \brief Get the value of a metric.
  *
@@ -1100,6 +1187,17 @@ int32_t ldms_metric_get_s32(ldms_set_t s, int i);
 int64_t ldms_metric_get_s64(ldms_set_t s, int i);
 float ldms_metric_get_float(ldms_set_t s, int i);
 double ldms_metric_get_double(ldms_set_t s, int i);
+
+uint8_t ldms_array_metric_get_u8(ldms_set_t s, int mid, int idx);
+uint16_t ldms_array_metric_get_u16(ldms_set_t s, int mid, int idx);
+uint32_t ldms_array_metric_get_u32(ldms_set_t s, int mid, int idx);
+uint64_t ldms_array_metric_get_u64(ldms_set_t s, int mid, int idx);
+int8_t ldms_array_metric_get_s8(ldms_set_t s, int mid, int idx);
+int16_t ldms_array_metric_get_s16(ldms_set_t s, int mid, int idx);
+int32_t ldms_array_metric_get_s32(ldms_set_t s, int mid, int idx);
+int64_t ldms_array_metric_get_s64(ldms_set_t s, int mid, int idx);
+float ldms_array_metric_get_float(ldms_set_t s, int mid, int idx);
+double ldms_array_metric_get_double(ldms_set_t s, int mid, int idx);
 /** \} */
 
 /**
