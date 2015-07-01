@@ -338,7 +338,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_start', arg);
 
     def complete_updtr_start(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('updtr_prdcr_start', text)
+        return self.__complete_attr_list('updtr_start', text)
 
     def do_updtr_stop(self, arg):
         """
@@ -350,7 +350,7 @@ class LdmsdCmdParser(cmd.Cmd):
         self.handle('updtr_stop', arg);
 
     def complete_updtr_stop(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('updtr_prdcr_stop', text)
+        return self.__complete_attr_list('updtr_stop', text)
 
     def do_strgp_add(self, arg):
         """
