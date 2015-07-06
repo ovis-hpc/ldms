@@ -170,9 +170,7 @@ uint64_t ldms_set_data_gn_get(ldms_set_t _set)
 
 static void rem_local_set(struct ldms_set *s)
 {
-	pthread_mutex_lock(&set_tree_lock);
 	rbt_del(&set_tree, &s->rb_node);
-	pthread_mutex_unlock(&set_tree_lock);
 }
 
 struct cb_arg {
@@ -398,24 +396,24 @@ void ldms_set_delete(ldms_set_t s)
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
-
-	if (!s)
+	if (!s) {
+		assert(NULL == "The metric set passed in is NULL"); // DEBUG
 		return;
-
+	}
+	pthread_mutex_lock(&set_tree_lock);
 	__ldms_dir_del_set(get_instance_name(set->meta)->name);
-
 	while (!LIST_EMPTY(&set->rbd_list)) {
 		rbd = LIST_FIRST(&set->rbd_list);
 		__ldms_free_rbd(rbd);
 	}
-
 	if (set->flags & LDMS_SET_F_FILEMAP) {
-		unlink(_create_path(get_instance_name(sd->set->meta)->name));
+		unlink(_create_path(get_instance_name(set->meta)->name));
 		strcat(__set_path, ".META");
 		unlink(__set_path);
 	}
 	mm_free(set->meta);
 	rem_local_set(set);
+	pthread_mutex_unlock(&set_tree_lock);
 	free(set);
 	free(sd);
 }

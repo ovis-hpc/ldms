@@ -250,6 +250,8 @@ struct zap_ugni_msg_connect {
 
 #pragma pack()
 
+struct zap_ugni_post_desc;
+
 struct z_ugni_ep {
 	struct zap_ep ep;
 
@@ -261,13 +263,18 @@ struct z_ugni_ep {
 	size_t conn_data_len;
 	gni_ep_handle_t gni_ep;
 
+	LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc) post_desc_list;
+	struct zap_event conn_ev;
+
 	LIST_ENTRY(z_ugni_ep) link;
+	LIST_ENTRY(z_ugni_ep) deferred_link;
 };
 
 struct zap_ugni_post_desc {
 	gni_post_descriptor_t post;
 	struct z_ugni_ep *uep;
 	void *context;
+	LIST_ENTRY(zap_ugni_post_desc) link;
 };
 
 static inline struct z_ugni_ep *z_sock_from_ep(zap_ep_t *ep)

@@ -309,10 +309,9 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 void ldms_xprt_put(ldms_t x)
 {
 	assert(x->ref_count);
+	pthread_mutex_lock(&xprt_list_lock);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
-		pthread_mutex_lock(&xprt_list_lock);
 		LIST_REMOVE(x, xprt_link);
-		pthread_mutex_unlock(&xprt_list_lock);
 
 		__ldms_xprt_resource_free(x);
 
@@ -321,6 +320,7 @@ void ldms_xprt_put(ldms_t x)
 		sem_destroy(&x->sem);
 		free(x);
 	}
+	pthread_mutex_unlock(&xprt_list_lock);
 }
 
 struct make_dir_arg {
@@ -1286,6 +1286,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+#ifdef DEBUG
+		x->log("DEBUG: ldms_zap_cb: receive DISCONNECTED %p: ref_count %d\n", x, x->ref_count);
+#endif /* DEBUG */
 		ldms_conn_event = LDMS_CONN_EVENT_DISCONNECTED;
 #ifdef ENABLE_AUTH
 		if ((x->auth_approved != LDMS_XPRT_AUTH_DISABLE) &&
@@ -1307,6 +1310,10 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 #endif /* ENABLE_AUTH */
 		if (x->connect_cb)
 			x->connect_cb(x, ldms_conn_event, x->connect_cb_arg);
+#ifdef DEBUG
+		x->log("DEBUG: ldms_zap_cb: DISCONNECTED %p: ref_count %d. after callback\n",
+			 x, x->ref_count);
+#endif /* DEBUG */
 		/* Put the reference taken in ldms_xprt_connect() or accept() */
 		ldms_xprt_put(x);
 		break;
