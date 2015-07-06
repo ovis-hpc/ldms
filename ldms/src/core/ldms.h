@@ -512,9 +512,11 @@ void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir);
  * This function cancels updates to the LDMS directory initiated by a
  * call to ldms_xprt_dir().
  *
- * \param t	 The transport handle
+ * \param t	The transport handle
+ *
+ * \returns	0 if the query was submitted successfully
  */
-void ldms_xprt_dir_cancel(ldms_t t);
+int ldms_xprt_dir_cancel(ldms_t t);
 
 /**
  * \brief Query the sets published by a host.

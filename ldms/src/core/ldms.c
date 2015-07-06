@@ -453,9 +453,9 @@ int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	return __ldms_remote_dir(x, cb, cb_arg, flags);
 }
 
-void ldms_xprt_dir_cancel(ldms_t x)
+int ldms_xprt_dir_cancel(ldms_t x)
 {
-	__ldms_remote_dir_cancel(x);
+	return __ldms_remote_dir_cancel(x);
 }
 
 char *_create_path(const char *set_name)

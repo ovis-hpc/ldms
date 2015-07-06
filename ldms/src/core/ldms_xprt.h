@@ -258,7 +258,7 @@ struct ldms_xprt {
 		LDMS_XPRT_AUTH_INIT = 1, /* Use authentication */
 		LDMS_XPRT_AUTH_PASSWORD = 2, /* Sent password to server */
 		LDMS_XPRT_AUTH_APPROVED = 3 /* authentication approved */
-	} auth_approved;
+	} auth_flag;
 
 	/** Transport message logging callback */
 	ldms_log_fn_t log;

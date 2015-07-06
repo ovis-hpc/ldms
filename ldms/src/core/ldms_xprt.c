@@ -676,6 +676,10 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
  */
 int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
+	if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
+		return EPERM;
+
 	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
 	int rc;
 
@@ -883,7 +887,7 @@ void process_auth_challenge_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		/* Reject the authentication and disconnect the connection. */
 		goto err_n_reject;
 	}
-	x->auth_approved = LDMS_XPRT_AUTH_APPROVED;
+	x->auth_flag = LDMS_XPRT_AUTH_APPROVED;
 	rc = send_auth_approval(x);
 	if (rc)
 		goto err_n_reject;
@@ -896,7 +900,7 @@ void process_auth_approval_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		struct ldms_context *ctxt)
 {
 	ldms_xprt_put(x); /* Match when sending the password */
-	x->auth_approved = LDMS_XPRT_AUTH_APPROVED;
+	x->auth_flag = LDMS_XPRT_AUTH_APPROVED;
 	if (x->connect_cb)
 		x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
 					x->connect_cb_arg);
@@ -1019,15 +1023,9 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 #ifdef ENABLE_AUTH
 	uint64_t challenge;
 	struct ovis_auth_challenge chl;
-	if (x->password) {
+	if (x->auth_flag == LDMS_XPRT_AUTH_INIT) {
 		/*
 		 * Do the authentication.
-		 *
-		 * The application sets the environment variable for
-		 * authentication file.
-		 *
-		 * If x->auth_envpath is NULL, the state machine
-		 * will be the state machine without authentication.
 		 */
 		challenge = ovis_auth_gen_challenge();
 		_x->password = ovis_auth_encrypt_password(challenge, x->password);
@@ -1040,6 +1038,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 						rmt_name);
 				goto err0;
 			}
+			return;
 		} else {
 			data = (void *)ovis_auth_pack_challenge(challenge, &chl);
 			datalen = sizeof(chl);
@@ -1093,9 +1092,9 @@ int send_auth_password(struct ldms_xprt *x, const char *password)
 		x->log("Auth error: Failed to send the password. %s\n",
 						zap_err_str(rc));
 		ldms_xprt_put(x);
-		x->auth_approved = LDMS_XPRT_AUTH_FAILED;
+		x->auth_flag = LDMS_XPRT_AUTH_FAILED;
 	}
-	x->auth_approved = LDMS_XPRT_AUTH_PASSWORD;
+	x->auth_flag = LDMS_XPRT_AUTH_PASSWORD;
 	free(reply);
 	return zerr;
 }
@@ -1126,7 +1125,7 @@ err:
 	 * Close the zap_connection. Both active and passive sides will receive
 	 * DISCONNECTED event. See more in ldms_zap_cb().
 	 */
-	x->auth_approved = LDMS_XPRT_AUTH_FAILED;
+	x->auth_flag = LDMS_XPRT_AUTH_FAILED;
 	zap_close(x->zap_ep);
 }
 #endif /* ENABLE_AUTH */
@@ -1170,6 +1169,11 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+
+	if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
+		return;
+
 	struct ldms_lookup_msg *lm = (struct ldms_lookup_msg *)ev->data;
 	struct ldms_context *ctxt = (void*)lm->xid;
 	struct ldms_set_desc *sd = NULL;
@@ -1298,9 +1302,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 #endif /* DEBUG */
 		ldms_conn_event = LDMS_CONN_EVENT_DISCONNECTED;
 #ifdef ENABLE_AUTH
-		if ((x->auth_approved != LDMS_XPRT_AUTH_DISABLE) &&
-			(x->auth_approved != LDMS_XPRT_AUTH_APPROVED)) {
-			if (x->auth_approved == LDMS_XPRT_AUTH_PASSWORD) {
+		if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED)) {
+			if (x->auth_flag == LDMS_XPRT_AUTH_PASSWORD) {
 				/* Put the ref taken when sent the password */
 				ldms_xprt_put(x);
 			}
@@ -1341,6 +1345,25 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
+/*
+ * return 0 if the auth is required but hasn't been approved yet.
+ * return 1 if the auth has been approved or the reply is a challenge reply.
+ */
+int __recv_complete_auth_check(struct ldms_xprt *x, void *r)
+{
+	struct ldms_request_hdr *h = r;
+	int cmd = ntohl(h->cmd);
+
+	if (cmd == LDMS_CMD_AUTH_CHALLENGE_REPLY)
+		return 1;
+
+	if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED)) {
+		return 0;
+	}
+	return 1;
+}
+
 static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 {
 	zap_err_t zerr;
@@ -1358,11 +1381,16 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 						x->connect_cb_arg);
 		/* Put back the reference taken when accept the connection */
 		ldms_xprt_put(x);
-		break;
+#else /* ENABLE_AUTH */
+		ldms_zap_cb(zep, ev);
 #endif /* ENABLE_AUTH */
-	case ZAP_EVENT_CONNECT_ERROR:
-	case ZAP_EVENT_REJECTED:
+		break;
 	case ZAP_EVENT_RECV_COMPLETE:
+		if (!__recv_complete_auth_check(x, ev->data))
+			break;
+		recv_cb(x, ev->data);
+		break;
+	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
 	case ZAP_EVENT_RENDEZVOUS:
@@ -1493,7 +1521,7 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 			ret = errno;
 			goto err1;
 		}
-		x->auth_approved = LDMS_XPRT_AUTH_INIT;
+		x->auth_flag = LDMS_XPRT_AUTH_INIT;
 	}
 
 	ret = __ldms_xprt_zap_new(x, name, log_fn);
@@ -1600,6 +1628,10 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	struct ldms_context *ctxt;
 	size_t len;
 
+	if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
+		return EPERM;
+
 	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_DIR))
 		return ENOMEM;
 
@@ -1647,15 +1679,19 @@ ebusy:
 }
 
 /* This request has no reply */
-void __ldms_remote_dir_cancel(ldms_t _x)
+int __ldms_remote_dir_cancel(ldms_t _x)
 {
 	struct ldms_xprt *x = _x;
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
 	size_t len;
 
+	if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
+		return EPERM;
+
 	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_DIR_CANCEL))
-		return;
+		return ENOMEM;
 
 	len = format_dir_cancel_req(req);
 	zap_get_ep(x->zap_ep);
@@ -1663,7 +1699,7 @@ void __ldms_remote_dir_cancel(ldms_t _x)
 	if (rc)
 		zap_put_ep(x->zap_ep);
 	free(ctxt);
-
+	return 0;
 }
 
 int __ldms_remote_lookup(ldms_t _x, const char *path,
@@ -1675,6 +1711,10 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	struct ldms_context *ctxt;
 	size_t len;
 	int rc;
+
+	if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
+		return EPERM;
 
 	struct ldms_set *set = __ldms_find_local_set(path);
 	__ldms_release_local_set(set);
