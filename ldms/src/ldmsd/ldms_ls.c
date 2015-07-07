@@ -120,7 +120,7 @@ char *ldms_ls_get_secretword(const char *path)
 }
 #endif /* ENABLE_AUTH */
 
-#define FMT "h:p:x:w:m:ESIlvua:"
+#define FMT "h:p:x:w:m:ESIlvua:V"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ name ... ]\n"
@@ -147,6 +147,7 @@ void usage(char *argv[])
 	       "		       to avoid giving it at command-line every time.\n",
 	       LDMS_LS_AUTH_ENV);
 #endif /* ENABLE_AUTH */
+	printf("\n    -V               Print LDMS version and exit.\n");
 
 	exit(1);
 }
@@ -410,6 +411,7 @@ size_t max_mem_size = LDMS_LS_MAX_MEM_SIZE;
 
 int main(int argc, char *argv[])
 {
+	struct ldms_version version;
 	struct sockaddr_in sin;
 	ldms_t ldms;
 	int ret;
@@ -479,6 +481,15 @@ int main(int argc, char *argv[])
 			auth_path = strdup(optarg);
 			break;
 #endif /* ENABLE_AUTH */
+		case 'V':
+			ldms_version_get(&version);
+			printf("LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
+							version.major,
+							version.minor,
+							version.patch,
+							version.flags);
+			exit(0);
+			break;
 		default:
 			usage(argv);
 		}

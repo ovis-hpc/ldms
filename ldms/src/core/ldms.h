@@ -246,6 +246,22 @@ enum ldms_value_type {
 };
 
 /**
+ * \brief LDMS Version structure
+ */
+struct ldms_version {
+	uint8_t major;	/* major number */
+	uint8_t minor;	/* minor number */
+	uint8_t patch;	/* patch number */
+	uint8_t flags;	/* version flags */
+};
+
+/**
+ * An interface to get LDMS version.
+ * \param[out] v A buffer to store LDMS version.
+ */
+void ldms_version_get(struct ldms_version *v);
+
+/**
  * \brief Initialize LDMS
  *
  *  Pre-allocate a memory region for metric sets

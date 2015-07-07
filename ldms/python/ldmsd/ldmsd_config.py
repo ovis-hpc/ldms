@@ -101,6 +101,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                       'udata_regex': {'id': 14,
                                       'req_attr': ['set', 'regex', 'base'],
                                       'opt_attr': ['incr']},
+                      'version': {'id': 15, 'req_attr': [], 'opt_attr': []},
                       ###############################
                       # LDMSD command version 2
                       ###############################
@@ -320,6 +321,9 @@ class ldmsdConfig(object):
     def oneshot(self, sampler_name, time):
         attr_values = {'name': sampler_name, 'time': time}
         return self.talk(self.__format_cmd('oneshot', attr_values))
+
+    def version(self):
+        return self.talk(self.__format_cmd('version', {}))
 
     #############################################
     # LDMSD command version 2

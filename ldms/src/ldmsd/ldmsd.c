@@ -98,7 +98,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:qz:o:r:p:av:"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:qz:o:r:p:av:V"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -350,6 +350,7 @@ void usage(char *argv[])
 	printf("    -r port        The listener port for receiving configuration\n"
 	       "                   from the ldmsd_rctl program\n");
 #endif
+	printf("    -V             Print LDMS version and exit\n.");
 	cleanup(1);
 }
 
@@ -1475,6 +1476,7 @@ int ldmsd_get_secretword()
 
 int main(int argc, char *argv[])
 {
+	struct ldms_version version;
 	char *sockname = NULL;
 	char *inet_listener_port = NULL;
 #ifdef ENABLE_LDMSD_RCTL
@@ -1611,6 +1613,15 @@ int main(int argc, char *argv[])
 			authenticate = 1;
 			break;
 #endif /* ENABLE_AUTH */
+		case 'V':
+			ldms_version_get(&version);
+			printf("LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
+							version.major,
+							version.minor,
+							version.patch,
+							version.flags);
+			exit(0);
+			break;
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
 		default:

@@ -631,6 +631,12 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_standby(self, text, line, begidx, endidx):
         return self.__complete_attr_list('standby', text)
 
+    def do_version(self, arg):
+        """
+        Get the LDMS version the running LDMSD bases on.
+        """
+        self.handle('version', arg)
+
     def do_EOF(self, arg):
         """
         Ctrl-D will exit the shell

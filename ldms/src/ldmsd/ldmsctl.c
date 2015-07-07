@@ -256,6 +256,11 @@ int handle_usage(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_LIST_PLUGINS, av_list, err_str);
 }
 
+int handle_version(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
+}
+
 int handle_plugin_load(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_LOAD_PLUGIN, av_list, err_str);
@@ -345,6 +350,7 @@ struct kw keyword_tbl[] = {
 	{ "udata", handle_set_udata },
 	{ "udata_regex", handle_set_udata_regex },
 	{ "usage", handle_usage },
+	{ "version", handle_version }
 };
 
 static int kw_comparator(const void *a, const void *b)

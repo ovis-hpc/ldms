@@ -529,6 +529,11 @@ void help_strgp_stop()
 		"     name=   The storage policy name\n");
 }
 
+void help_version()
+{
+	printf( "\nGet the LDMS version.\n");
+}
+
 int handle_help(char *args);
 
 static struct command command_tbl[] = {
@@ -570,6 +575,7 @@ static struct command command_tbl[] = {
 	{ "updtr_start", LDMSCTL_UPDTR_START, NULL, help_updtr_start },
 	{ "updtr_stop", LDMSCTL_UPDTR_STOP, NULL, help_updtr_stop },
 	{ "usage", LDMSCTL_LIST_PLUGINS, NULL, help_usage },
+	{ "version", LDMSCTL_VERSION },
 };
 
 void __print_all_command()

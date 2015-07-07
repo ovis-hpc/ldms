@@ -585,6 +585,7 @@ typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_val
 #define LDMSCTL_UPDATE_STANDBY	12   /* Update the standby state */
 #define LDMSCTL_ONESHOT_SAMPLE	13   /* Sample a set at a specific timestamp once */
 #define LDMSCTL_SET_UDATA_REGEX 14   /* Set user data of metrics using regex and increment */
+#define LDMSCTL_VERSION		15   /* Get LDMS version */
 
 #define LDMSCTL_PRDCR_ADD	20   /* Add a producer specification */
 #define LDMSCTL_PRDCR_DEL	21   /* Disable a producer specification */

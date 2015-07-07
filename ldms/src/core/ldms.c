@@ -1593,3 +1593,7 @@ int ldms_set_is_consistent(ldms_set_t s)
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
 }
 
+void ldms_version_get(struct ldms_version *v)
+{
+	LDMS_VERSION_SET(*v);
+}
