@@ -84,9 +84,9 @@ struct ldms_data_hdr {
 	uint64_t meta_gn;	/* Meta-data generation number */
 };
 
-/* 3.1.0.0 */
+/* 3.2.0.0 */
 #define LDMS_VERSION_MAJOR	 0x03
-#define LDMS_VERSION_MINOR	 0x01
+#define LDMS_VERSION_MINOR	 0x02
 #define LDMS_VERSION_PATCH	 0x00
 #define LDMS_VERSION_FLAGS	 0x00
 #define LDMS_VERSION_SET(version) do {				\
