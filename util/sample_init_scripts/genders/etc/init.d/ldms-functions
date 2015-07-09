@@ -194,6 +194,7 @@ start_stores () {
 	
 		eval extraconfig='$'"AGG_CONFIG_${i}"
 		ARGS_CONFIG="name=$i path=$STORE_PATH/$i $extraconfig"
+		mkdir -p $STORE_PATH/$i
 		echo load name=$i | $DO_CTL
 		echo config $ARGS_CONFIG | $DO_CTL
 		echoq "Configuring <${i}> with $ARGS_CONFIG"
