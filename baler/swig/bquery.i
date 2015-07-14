@@ -50,10 +50,171 @@
  */
 
 %module bquery
-%{
-#include "query/bquery.h"
-%}
 
-/*
- * REVISE THIS PYTHON INTERFACE LATER WHEN NEEDED.
- */
+%include "cpointer.i"
+%include "cstring.i"
+%include "carrays.i"
+%include "stdint.i"
+
+struct bpixel {
+	uint32_t sec;
+	uint32_t comp_id;
+	uint32_t ptn_id;
+	uint32_t count;
+};
+
+/* Store open/close interfaces */
+struct bq_store* bq_open_store(const char *path);
+void bq_store_close_free(struct bq_store *store);
+int bq_store_refresh(struct bq_store *store);
+
+
+/* Message query interfaces */
+struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
+			     const char *ptn_ids, const char *ts0,
+			     const char *ts1, int is_text, char sep, int *rc);
+void bquery_destroy(struct bquery *q);
+
+/* msg query navigation */
+int bq_first_entry(struct bquery *q);
+int bq_next_entry(struct bquery *q);
+int bq_prev_entry(struct bquery *q);
+int bq_last_entry(struct bquery *q);
+
+/* msg query data access */
+%newobject bq_entry_get_msg_str;
+char *bq_entry_get_msg_str(struct bquery *q);
+uint32_t bq_entry_get_sec(struct bquery *q);
+uint32_t bq_entry_get_usec(struct bquery *q);
+uint32_t bq_entry_get_comp_id(struct bquery *q);
+uint32_t bq_entry_get_ptn_id(struct bquery *q);
+
+/* msg query print utility */
+%newobject bq_entry_print;
+char *bq_entry_print(struct bquery *q, struct bdstr *bdstr);
+
+
+/* Image query interfaces */
+struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
+				const char *ptn_ids, const char *ts0,
+				const char *ts1, const char *img_store_name,
+				int *rc);
+void bimgquery_destroy(struct bimgquery *q);
+
+/* img query navigation */
+int biq_first_entry(struct bimgquery *q);
+int biq_next_entry(struct bimgquery *q);
+int biq_prev_entry(struct bimgquery *q);
+int biq_last_entry(struct bimgquery *q);
+
+/* img query data access */
+struct bpixel biq_entry_get_pixel(struct bimgquery *q);
+
+
+/* Other interfaces */
+%newobject bq_get_all_ptns;
+char* bq_get_all_ptns(struct bq_store *store);
+%newobject bq_get_ptn;
+char* bq_get_ptn(struct bq_store *store, uint32_t ptn_id);
+int bq_get_comp_id(struct bq_store *store, const char *name);
+%newobject bq_get_comp_name;
+char* bq_get_comp_name(struct bq_store *store, uint32_t comp_id);
+
+/* Additional Implementation */
+%{
+#include "baler/butils.h"
+#include "query/bquery.h"
+#include "query/bquery_priv.h"
+
+int bq_print_msg(struct bquery *q, struct bdstr *bdstr,
+		 const struct bmsg *msg);
+
+char *bq_entry_get_msg_str(struct bquery *q)
+{
+	struct bmsg *bmsg = NULL;
+	struct bdstr *bdstr = NULL;
+	char *s = NULL;
+	int rc = 0;
+
+	bmsg = bq_entry_get_msg(q);
+	if (!bmsg)
+		goto cleanup;
+	bdstr = bdstr_new(256);
+	if (!bdstr)
+		goto cleanup;
+	rc = bq_print_msg(q, bdstr, bmsg);
+	if (rc)
+		goto cleanup;
+	s = bdstr_detach_buffer(bdstr);
+cleanup:
+	if (bdstr)
+		bdstr_free(bdstr);
+	return s;
+}
+
+char* bq_get_ptn(struct bq_store *store, uint32_t ptn_id)
+{
+	struct bdstr *bdstr = NULL;
+	char *s = NULL;
+	int rc;
+
+	bdstr = bdstr_new(256);
+	if (!bdstr)
+		goto cleanup;
+	rc = bq_print_ptn(store, NULL, ptn_id, bdstr);
+	if (rc)
+		goto cleanup;
+	s = bdstr_detach_buffer(bdstr);
+cleanup:
+	if (bdstr)
+		bdstr_free(bdstr);
+	return s;
+}
+
+char* bq_get_comp_name(struct bq_store *store, uint32_t comp_id)
+{
+	struct bdstr *bdstr = NULL;
+	char *s = NULL;
+	int rc;
+
+	bdstr = bdstr_new(256);
+	if (!bdstr)
+		goto cleanup;
+	rc = bq_get_cmp(store, comp_id, bdstr);
+	if (rc)
+		goto cleanup;
+	s = bdstr_detach_buffer(bdstr);
+cleanup:
+	if (bdstr)
+		bdstr_free(bdstr);
+	return s;
+}
+
+struct bpixel biq_entry_get_pixel(struct bimgquery *q)
+{
+	struct bpixel bpx = {0};
+	bq_img_entry_get_pixel(q, &bpx);
+	return bpx;
+}
+
+int biq_first_entry(struct bimgquery *q)
+{
+	return bq_first_entry((void*)q);
+}
+
+int biq_next_entry(struct bimgquery *q)
+{
+	return bq_next_entry((void*)q);
+}
+
+int biq_prev_entry(struct bimgquery *q)
+{
+	return bq_prev_entry((void*)q);
+}
+
+int biq_last_entry(struct bimgquery *q)
+{
+	return bq_last_entry((void*)q);
+}
+
+%}
