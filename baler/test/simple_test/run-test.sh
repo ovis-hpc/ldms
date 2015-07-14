@@ -85,7 +85,7 @@ sleep 1
 check_balerd
 
 # Put query test cases here
-for X in check-*.{pl,sh}; do
+for X in check-*.{pl,sh,py}; do
 	__info "${BLD}${YLW}$X ..........................${NC}"
 	time -p ./$X
 	if (($?)); then
