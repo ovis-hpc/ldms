@@ -762,23 +762,10 @@ loop:
 
 	sos_attr_t attr = q->bsos->attr;
 	size_t ksz = sos_attr_size(attr);
-	struct bout_sos_img_key imgkey = {.ts = q->ts_1};
-	void *p;
+	union sos_timestamp_u tsu = {0};
+	tsu.fine.secs = q->ts_1;
 
-	switch (sos_attr_type(attr)) {
-	case SOS_TYPE_UINT32:
-		ksz = 4;
-		p = &imgkey.ts;
-		break;
-	case SOS_TYPE_UINT64:
-		ksz = 8;
-		p = &imgkey;
-		break;
-	default:
-		/* do nothing */ ;
-	}
-
-	sos_key_set(key, p, ksz);
+	sos_key_set(key, &tsu, ksz);
 
 	if (0 != sos_iter_inf(q->itr, key)) {
 		rc = ENOENT;
@@ -807,22 +794,10 @@ loop:
 
 	sos_attr_t attr = q->bsos->attr;
 	size_t ksz = sos_attr_size(attr);
-	struct bout_sos_img_key imgkey = {.ts = q->ts_0, .comp_id = 0};
-	void *p;
+	union sos_timestamp_u tsu = {0};
+	tsu.fine.secs = q->ts_0;
 
-	switch (sos_attr_type(attr)) {
-	case SOS_TYPE_UINT32:
-		ksz = 4;
-		p = &imgkey.ts;
-		break;
-	case SOS_TYPE_UINT64:
-		ksz = 8;
-		p = &imgkey;
-		break;
-	default:
-		/* do nothing */ ;
-	}
-	sos_key_set(key, p, ksz);
+	sos_key_set(key, (void*)&tsu, ksz);
 
 	if (0 != sos_iter_sup(q->itr, key)) {
 		rc = ENOENT;
