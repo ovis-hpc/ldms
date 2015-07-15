@@ -1351,12 +1351,17 @@ uint64_t bq_entry_get_ref(struct bquery *q)
 	sos_obj_t obj = sos_iter_obj(q->itr);
 	sos_ref_t ref = sos_obj_ref(obj);
 	sos_obj_put(obj);
-	return ref;
+	return ref.ref;
 }
 
 uint32_t bq_img_entry_get_count(struct bimgquery *q)
 {
-	return q->img->count;
+	SOS_VALUE(v);
+	uint32_t count;
+	sos_value_by_id(v, q->base.obj, 1);
+	count = v->data->prim.uint32_;
+	sos_value_put(v);
+	return count;
 }
 
 int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p)
