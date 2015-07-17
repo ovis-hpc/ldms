@@ -47,6 +47,8 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
     [AC_MSG_ERROR([Missing header. librdmacm-devel not installed?])])
   fi
   if test "$enable_ugni" = "yes"; then
+    m4_ifndef([PKG_CHECK_MODULES],
+              [m4_fatal([pkg.m4 not found. Please install pkg-confog (Ubuntu) or pkgconfig (RHEL) package])])
     PKG_CHECK_MODULES([UGNI], [cray-ugni],
 		      [],
 		      AC_MSG_ERROR([pkg-config cray-ugni failed])
