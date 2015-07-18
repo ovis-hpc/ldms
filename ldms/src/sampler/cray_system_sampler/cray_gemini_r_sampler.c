@@ -215,8 +215,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			if (rc)
 				goto out;
 		} else {
-			rc = EINVAL;
-			goto out;
+			/* if no llites, the treat as if off....
+                           this is consistent with the man page.
+                           why was this otherwise? 7/18/15 ACG */
+                        set_offns_generic(NS_LUSTRE);
+                        //                      rc = EINVAL;
+                        //                      goto out;     
 		}
 	}
 #endif
