@@ -343,50 +343,42 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 
 int sample_metrics_energy(ldmsd_msg_log_f msglog)
 {
-	/* only has 1 val, no label */
 	char lbuf[256];
 	char metric_name[128];
-	int found_metrics;
 	char* s;
 	union ldms_value v;
-	int j, rc;
+	int i, j, rc;
 
-
-	if (ene_f)
-		fclose(ene_f);
-	ene_f = fopen(ENERGY_FILE, "r");
-	if (!ene_f)
-		return 0;
-
-	found_metrics = 0;
-	fseek(ene_f, 0, SEEK_SET);
-	s = fgets(lbuf, sizeof(lbuf), ene_f);
-	if (s) {
-		//Ignore the unit
-		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
-		if (rc != 1) {
-			msglog(LDMS_LERROR,
-			       "ERR: Issue reading the source file '%s'\n",
-			       ENERGY_FILE);
-			rc = EINVAL;
-			return rc;
+	/** note - not counting how many found since these are all separate sources. */
+	rc = 0;
+	for (i = 0; i < NUM_ENERGY_METRICS; i++){
+		/** see if we have to open and close these each time. Keeping an array because I think we can */
+		if (ene_f[i])
+			fclose(ene_f[i]);
+		v.v_u64 = 0;
+		ene_f[i] = fopen(ENERGY_FILES[i], "r");
+		if (ene_f[i]){
+			fseek(ene_f[i], 0, SEEK_SET);
+			s = fgets(lbuf, sizeof(lbuf), ene_f[i]);
+			if (s) {
+				//Ignore the unit
+				rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
+				if (rc != 1) {
+					msglog(LDMS_LERROR,
+					       "ERR: Issue reading the source file '%s'\n",
+					       ENERGY_FILES[i]);
+					rc = EINVAL;
+				}
+			}
+			fclose(ene_f[i]);
+			ene_f[i] = NULL;
 		}
-		ldms_set_metric(metric_table_energy[0], &v);
-		found_metrics++;
+		ldms_set_metric(metric_table_energy[i], &v);
 	}
 
-	if (found_metrics != NUM_ENERGY_METRICS){
-		return EINVAL;
-	}
-
-	if (ene_f)
-		fclose(ene_f);
-	ene_f = 0;
-
-	return 0;
+	return rc;
 
 }
-
 
 int procnetdev_setup(ldmsd_msg_log_f msglog)
 {

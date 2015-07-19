@@ -419,17 +419,17 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 
 		break;
 	case NS_ENERGY:
+		for (i = 0; i < NUM_ENERGY_METRICS; i++){
+			ene_f[i] = NULL;
+		}
+		/* note this has an array of files that we will have to open and close each time */
 		rc = add_metrics_simple(set, ENERGY_METRICS,
 					NUM_ENERGY_METRICS,
 					&metric_table_energy,
-					&ENERGY_FILE, &ene_f,
+					NULL, NULL,
 					comp_id, msglog);
 		if (rc != 0)
 			return rc;
-		if (ene_f)
-			fclose(ene_f);
-		ene_f = NULL;
-		return 0;
 		break;
 	case NS_CURRENT_FREEMEM:
 		cf_m = 0;
@@ -532,6 +532,7 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 		break;
 	case NS_ENERGY:
 		rc = sample_metrics_energy(msglog);
+		//ok if any of these fail
 		break;
 	case NS_LOADAVG:
 		rc = sample_metrics_loadavg(msglog);

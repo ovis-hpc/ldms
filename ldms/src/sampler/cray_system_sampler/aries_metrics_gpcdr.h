@@ -74,7 +74,7 @@
 
 
 /* config */
-int hsn_metrics_config(int i);
+int hsn_metrics_config(int i, ldmsd_msg_log_f msglog);
 
 /* get metric_size */
 int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,

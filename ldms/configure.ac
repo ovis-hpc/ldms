@@ -273,23 +273,41 @@ then
 		AC_MSG_ERROR([Must enable at least one of gemini-gpcd, gemini-gpcdr, and aries-gpcdr.])
         fi
 
-        if (test -z "$ENABLE_GEMINI_GPCDR_TRUE") || (test -z "$ENABLE_ARIES_GPCDR_TRUE")
+        if test -z "$ENABLE_GEMINI_GPCDR_TRUE"
         then
         gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
         if ! test -f $gpcdrfile; then
            AC_MSG_WARN([
          ++++++++++++++++++++++++++++++++++++++++++++
-           gpcdr interface not available:
+	   GEMINI gpcdr interface not available:
            $gpcdrfile
            We hope your runtime environment has it.
          ++++++++++++++++++++++++++++++++++++++++++++
           ])
           fi
-          AC_MSG_RESULT([Building gpcdr interface for HSN metrics.])
+          AC_MSG_RESULT([Building gpcdr interface for GEMINI HSN metrics.])
+        fi
+	if test -z "$ENABLE_ARIES_GPCDR_TRUE"
+	then
+        gpcdrfile1="/sys/devices/virtual/gni/gpcdr0/metricsets/linktraffic/metrics"
+        gpcdrfile2="/sys/devices/virtual/gni/gpcdr0/metricsets/linkstalled/metrics"
+        gpcdrfile3="/sys/devices/virtual/gni/gpcdr0/metricsets/linksendstatus/metrics"
+        gpcdrfile4="/sys/devices/virtual/gni/gpcdr0/metricsets/linkrecvstatus/metrics"
+        if !(test -f $gpcdrfile1) || !(test -f $gpcdrfile2) || !(test -f $gpcdrfile3) || !(test -f $gpcdrfile4)
+	then
+           AC_MSG_WARN([
+         ++++++++++++++++++++++++++++++++++++++++++++
+           ARIES gpcdr interface not available:
+           $gpcdrfile1 $gpcdrfile2 $gpcdrfile3 $gpcdrfile4
+           We hope your runtime environment has it.
+         ++++++++++++++++++++++++++++++++++++++++++++
+          ])
+          fi
+          AC_MSG_RESULT([Building gpcdr interface for ARIES HSN metrics.])
         fi
         if test -z "$ENABLE_GEMINI_GPCD_TRUE"
 	then
-          AC_MSG_RESULT([Building gpcd interface for gemini metrics.])
+          AC_MSG_RESULT([Building gpcd interface for GEMINI HSN metrics.])
         fi
 
 	if test -z "$ENABLE_CRAY_NVIDIA_TRUE"
