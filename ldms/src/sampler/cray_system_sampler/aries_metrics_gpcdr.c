@@ -57,6 +57,10 @@
  */
 
 #include "aries_metrics_gpcdr.h"
+#define TIMER_ARIES
+#ifdef TIMER_ARIES
+#include <sys/time.h>
+#endif
 
 #define ARIES_MAX_TILES 48 
 #define ARIES_NUM_TILES 40
@@ -635,6 +639,12 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 	if (!linksmetrics_valid)
 		return 0;
 
+
+#ifdef TIMER_ARIES
+	struct timeval tv[3];
+	gettimeofday(&tv[0], 0);
+#endif
+
 	for (i = 0; i < ENDLINKS; i++){
 		FILE* lm_f = linksinfo[i].lm_f;
 		idx = linksmetrics_values_idx[i];
@@ -726,6 +736,13 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 		linksmetrics_prev_time[i] = curr_time;
 	}
 
+
+#ifdef TIMER_ARIES
+	gettimeofday(&tv[1], 0);
+	timersub(&tv[1], &tv[0], &tv[2]);
+	msglog(LDMS_LALWAYS, "linksmetrics: at %llu.%06llu dt = %llu.%06llu\n", tv[1].tv_sec, tv[1].tv_usec, tv[2].tv_sec, tv[2].tv_usec);
+#endif
+
 	return 0;
 
 }
@@ -745,6 +762,11 @@ int sample_metrics_aries_nicmetrics(ldmsd_msg_log_f msglog)
 
 	if (!nm_f || !nicmetrics_valid)
 		return 0;
+
+#ifdef TIMER_ARIES
+	struct timeval tv[3];
+	gettimeofday(&tv[0], 0);
+#endif
 
 	fseek(nm_f, 0, SEEK_SET);
 	/* timestamp */
@@ -817,6 +839,13 @@ int sample_metrics_aries_nicmetrics(ldmsd_msg_log_f msglog)
 
 	nicmetrics_values_idx = (nicmetrics_values_idx == 0? 1: 0);
 	nicmetrics_prev_time = curr_time;
+
+
+#ifdef TIMER_ARIES
+	gettimeofday(&tv[1], 0);
+	timersub(&tv[1], &tv[0], &tv[2]);
+	msglog(LDMS_LALWAYS, "nicsmetrics: at %llu.%06llu dt = %llu.%06llu\n", tv[1].tv_sec, tv[1].tv_usec, tv[2].tv_sec, tv[2].tv_usec);
+#endif
 	return 0;
 
 }
