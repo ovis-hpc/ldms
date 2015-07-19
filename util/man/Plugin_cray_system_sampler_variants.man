@@ -55,7 +55,7 @@ Path to libnvidia-ml.so library
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1
+name=<plugin_name> component_id=<comp_id> set=<set_name> hsn_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1
 .br
 ldmsctl configuration line
 .RS
