@@ -358,7 +358,7 @@ int sample_metrics_energy(ldmsd_msg_log_f msglog)
 		v.v_u64 = 0;
 		ene_f[i] = fopen(ENERGY_FILES[i], "r");
 		if (ene_f[i]){
-			fseek(ene_f, 0, SEEK_SET);
+			fseek(ene_f[i], 0, SEEK_SET);
 			s = fgets(lbuf, sizeof(lbuf), ene_f[i]);
 			if (s) {
 				//Ignore the unit
@@ -371,6 +371,7 @@ int sample_metrics_energy(ldmsd_msg_log_f msglog)
 				}
 			}
 			fclose(ene_f[i]);
+			ene_f[i] = NULL;
 		}
 		ldms_set_metric(metric_table_energy[i], &v);
 	}
