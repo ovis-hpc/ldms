@@ -57,7 +57,7 @@
  */
 
 #include "aries_metrics_gpcdr.h"
-#define TIMER_ARIES
+//#define TIMER_ARIES
 #ifdef TIMER_ARIES
 #include <sys/time.h>
 #endif
@@ -184,13 +184,30 @@ static int __links_metric_name(int infoidx, int isbase, int tile,
 }
 
 
-int hsn_metrics_config(int i){
+int hsn_metrics_config(int i, ldmsd_msg_log_f msglog){
+	int j;
+
 	if (i >= HSN_METRICS_END){
 		return EINVAL;
 	} else if (i < 0){
 		hsn_metrics_type = HSN_METRICS_DEFAULT;
 	} else {
 		hsn_metrics_type = i;
+	}
+
+	/* check for the existence of the files. NOTE: this is currently only done for the ARIES */
+	for (j = 0; j < ENDLINKS; j++){
+		FILE* junk = fopen(linksinfo[j].fname, "r");
+		if (!junk){
+			msglog(LDMS_LCRITICAL, "cray_aries_r_sampler: missing gpcdr file <%s>. Check that "
+			       "1) gpcdr is running: lsmod | grep gpcdr and "
+			       "2) the gpcdr configuration file (e.g., /etc/opt/cray/gni-gpcdr-utils/gpcdr-init.conf "
+			       "or if specified via GPCDRINIT_CONF) correctly specifies "
+			       "METRICSETS=\"linktraffic linkstalled linksendstatus linkrecvstatus nic\"\n",
+			       linksinfo[j].fname);
+			return ENOENT;
+		}
+		fclose(junk);
 	}
 
 	return 0;
