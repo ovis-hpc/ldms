@@ -60,10 +60,14 @@
 
 #include <sos/sos.h>
 #include "baler/btypes.h"
-typedef enum {
-	SOS_MSG_TIMESTAMP = 0,
-	SOS_MSG_COMP_ID,
-	SOS_MSG_PTN_ID,
-	SOS_MSG_ARGV,
-} sos_msg_class_attr_id_t;
+#define BOUT_MSG_USEC		0
+#define BOUT_MSG_SEC		1
+#define BOUT_MSG_COMP_ID	2
+#define BOUT_MSG_PTN_ID		3
+#define BOUT_MSG_ARGV_0		4
+
+#ifndef BOUT_SOS_IDX_NAME
+#define BOUT_SOS_IDX_NAME "Index"
+#endif
+
 #endif

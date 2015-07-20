@@ -61,19 +61,14 @@
  * store in the created SOS.
  */
 
-#ifndef __BOUT_SOS_IMG_H
-#define __BOUT_SOS_IMG_H
+#ifndef __BOUT_SOS_MSG_H
+#define __BOUT_SOS_MSG_H
 
 #include "bout_sos.h"
 
 struct bout_sos_msg_plugin {
 	struct bout_sos_plugin base; /**< base structure. */
-	sos_schema_t sos_schema;
-	sos_iter_t sos_iter; /**< Iterator for seeking objects. */
-	sos_attr_t time_attr;
-	sos_attr_t comp_id_attr;
-	sos_attr_t ptn_id_attr;
-	sos_attr_t argv_attr;
+	sos_index_t msg_index;
 	uint32_t delta_ts; /**< ts granularity */
 	uint32_t delta_node; /**< node granularity */
 };

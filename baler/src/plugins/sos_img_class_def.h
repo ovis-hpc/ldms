@@ -76,6 +76,11 @@ struct __attribute__ ((__packed__)) bout_sos_img_key {
 	/* higher bytes */
 };
 
+#define BOUT_IMG_PTN_ID		0
+#define BOUT_IMG_SEC		1
+#define BOUT_IMG_COMP_ID	2
+#define BOUT_IMG_COUNT		3
+
 static inline
 void bout_sos_img_key_convert(struct bout_sos_img_key *k)
 {
@@ -83,5 +88,9 @@ void bout_sos_img_key_convert(struct bout_sos_img_key *k)
 	k->ts = htobe32(k->ts);
 	k->comp_id = htobe32(k->comp_id);
 }
+
+#ifndef BOUT_SOS_IDX_NAME
+#define BOUT_SOS_IDX_NAME "Index"
+#endif
 
 #endif

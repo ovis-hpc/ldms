@@ -89,32 +89,6 @@ cleanup:
 	return rc;
 }
 
-static sos_schema_t create_img_schema(sos_t sos)
-{
-	sos_schema_t schema;
-	int rc;
-
-	schema = sos_schema_new("Occurance");
-	if (!schema)
-		return NULL;
-	rc = sos_schema_attr_add(schema, "key", SOS_TYPE_UINT32_ARRAY);
-	if (rc)
-		goto err;
-	rc = sos_schema_index_add(schema, "key");
-	if (rc)
-		goto err;
-	rc = sos_schema_index_modify(schema, "key", "BXTREE", "UINT96");
-	if (rc)
-		goto err;
-	rc = sos_schema_attr_add(schema, "count", SOS_TYPE_UINT32);
-	if (rc)
-		goto err;
-	return schema;
- err:
-	sos_schema_put(schema);
-	return NULL;
-}
-
 int bout_sos_img_start(struct bplugin *this)
 {
 	struct bout_sos_img_plugin *_this = (void*)this;
@@ -124,26 +98,14 @@ int bout_sos_img_start(struct bplugin *this)
 	if ((rc = bout_sos_start(this)))
 		return rc;
 	sos = _this->base.sos;
-	if (!_this->sos_schema) {
-		sos_schema_t schema;
-		schema = sos_schema_by_name(sos, "Occurance");
-		if (!schema) {
-			schema = create_img_schema(sos);
-			if (!schema)
-				return ENOENT;
-			rc = sos_schema_add(sos, schema);
-			if (rc)
-				return EINVAL;
-		}
-		_this->sos_schema = schema;
-		_this->key_attr = sos_schema_attr_by_id(schema, SOS_IMG_KEY);
-		_this->count_attr = sos_schema_attr_by_id(schema, SOS_IMG_COUNT);
-	}
-	_this->sos_iter = sos_iter_new(_this->key_attr);
-	if (!_this->sos_iter) {
-		rc = errno;
-		bout_sos_stop(this);
-		return rc;
+ retry:
+	_this->img_index = sos_index_open(sos, BOUT_SOS_IDX_NAME);
+	if (!_this->img_index) {
+		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT96", 5);
+		if (!rc)
+			goto retry;
+		else
+			return errno;
 	}
 	return 0;
 }
@@ -151,12 +113,6 @@ int bout_sos_img_start(struct bplugin *this)
 static
 void rotate_cb(struct bout_sos_plugin *p)
 {
-	struct bout_sos_img_plugin *_this = (void*)p;
-	if (_this->sos_iter)
-		sos_iter_free(_this->sos_iter);
-	_this->key_attr = sos_schema_attr_by_id(_this->sos_schema, SOS_IMG_KEY);
-	_this->sos_iter = sos_iter_new(_this->key_attr);
-	_this->count_attr = sos_schema_attr_by_id(_this->sos_schema, SOS_IMG_COUNT);
 }
 
 int bout_sos_img_process_output(struct boutplugin *this,
@@ -165,13 +121,12 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	int rc = 0;
 	struct bout_sos_plugin *_base = (void*)this;
 	struct bout_sos_img_plugin *_this = (typeof(_this))this;
-	uint32_t *tmp;
-	struct sos_value_s val;
-	sos_value_t value;
+	sos_obj_t obj;
+	sos_array_t img;
 	SOS_KEY(ok);
+
 	pthread_mutex_lock(&_base->sos_mutex);
-	sos_iter_t iter;
-	sos_t sos;
+
 	if (!_base->sos) {
 		rc = EBADF;
 		goto out;
@@ -179,13 +134,10 @@ int bout_sos_img_process_output(struct boutplugin *this,
 
 	bout_sos_rotate(_base, odata->tv.tv_sec, rotate_cb);
 
-	if (!_this->sos_iter) {
+	if (!_this->img_index) {
 		rc = EBADF;
 		goto out;
 	}
-
-	sos = _base->sos;
-	iter = _this->sos_iter;
 
 	struct bout_sos_img_key bk = {
 		.comp_id = odata->comp_id,
@@ -195,40 +147,32 @@ int bout_sos_img_process_output(struct boutplugin *this,
 	bout_sos_img_key_convert(&bk);
 	sos_key_set(ok, &bk, sizeof(bk));
 
-	if (0 == sos_iter_find(iter, ok)) {
-		sos_obj_t obj = sos_iter_obj(iter);
-		value = sos_value_init(&val, obj, _this->count_attr);
-		/* found, increment the counter */
-		value->data->prim.uint32_++;
-		sos_value_put(value);
+	obj = sos_index_find(_this->img_index, ok);
+	if (obj) {
+		img = sos_obj_ptr(obj);
+		img->data.uint32_[BOUT_IMG_COUNT] ++;
 		sos_obj_put(obj);
 		goto out;
 	}
 	/* reaching here means not found, add new data */
-	sos_obj_t obj;
-	obj = sos_obj_new(_this->sos_schema);
+	obj = sos_array_obj_new(_this->base.sos, SOS_TYPE_UINT32_ARRAY, 4);
 	if (!obj) {
 		bwarn("bout_sos_img: cannot alloce new sos obj,"
 						" errno(%d): %m", errno);
 		goto out;
 	}
-	value = sos_array_new(&val, _this->key_attr, obj, 3);
-	if (!value) {
-		rc = ENOMEM;
-		goto out_1;
-	}
-	value->data->array.data.uint32_[0] = bk.ptn_id;
-	value->data->array.data.uint32_[1] = bk.ts;
-	value->data->array.data.uint32_[2] = bk.comp_id;
-	sos_value_put(value);
-	value = sos_value_init(&val, obj, _this->count_attr);
-	value->data->prim.uint32_ = 1;
-	sos_value_put(value);
-	rc = sos_obj_index(obj);
+	img = sos_obj_ptr(obj);
+	img->data.uint32_[BOUT_IMG_PTN_ID]	= bk.ptn_id;
+	img->data.uint32_[BOUT_IMG_SEC]		= bk.ts;
+	img->data.uint32_[BOUT_IMG_COMP_ID]	= bk.comp_id;
+	img->data.uint32_[BOUT_IMG_COUNT]	= 1;
+
+	rc = sos_index_insert(_this->img_index, ok, obj);
 	if (rc) {
 		bwarn("bout_sos_img: sos_obj_add() failed, rc: %d", rc);
 		sos_obj_delete(obj);
 	}
+
 out_1:
 	sos_obj_put(obj);
 out:
@@ -240,8 +184,8 @@ int bout_sos_img_stop(struct bplugin *this)
 {
 	struct bout_sos_img_plugin *_this = (typeof(_this))this;
 	pthread_mutex_lock(&_this->base.sos_mutex);
-	sos_iter_free(_this->sos_iter);
-	_this->sos_iter = NULL;
+	sos_index_close(_this->img_index, SOS_COMMIT_SYNC);
+	_this->img_index = NULL;
 	pthread_mutex_unlock(&_this->base.sos_mutex);
 	return bout_sos_stop(this);
 }

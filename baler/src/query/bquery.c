@@ -73,44 +73,32 @@
 static
 uint32_t __bq_entry_get_sec(struct bquery *q)
 {
-	return q->msg->ts.fine.secs;
+	return q->msg->data.uint32_[BOUT_MSG_SEC];
 }
 
 static
 uint32_t __bq_entry_get_usec(struct bquery *q)
 {
-	return q->msg->ts.fine.usecs;
+	return q->msg->data.uint32_[BOUT_MSG_USEC];
 }
 
 static
 uint32_t __bq_entry_get_comp_id(struct bquery *q)
 {
-	return q->msg->comp_id;
+	return q->msg->data.uint32_[BOUT_MSG_COMP_ID];
 }
 
 static
 uint32_t __bq_entry_get_ptn_id(struct bquery *q)
 {
-	return q->msg->ptn_id;
-}
-
-static inline
-const struct bout_sos_img_key* __bq_img_entry_get_key(struct bimgquery *q)
-{
-#if 0
-	sos_obj_t obj = sos_iter_obj(q->base.itr);
-	if (!obj)
-		return NULL;
-	return sos_obj_attr_get(q->base.bsos->sos, SOS_IMG_KEY, obj);
-#else
-	return NULL;
-#endif
+	return q->msg->data.uint32_[BOUT_MSG_PTN_ID];
 }
 
 static
 uint32_t __bq_img_entry_get_sec(struct bquery *q)
 {
-	return be32toh(q->array_value->data->array.data.uint32_[1]);
+	struct bimgquery *iq = (struct bimgquery *)q;
+	return be32toh(iq->img->data.uint32_[BOUT_IMG_SEC]);
 }
 
 static
@@ -122,13 +110,15 @@ uint32_t __bq_img_entry_get_usec(struct bquery *q)
 static
 uint32_t __bq_img_entry_get_comp_id(struct bquery *q)
 {
-	return be32toh(q->array_value->data->array.data.uint32_[2]);
+	struct bimgquery *iq = (struct bimgquery *)q;
+	return be32toh(iq->img->data.uint32_[BOUT_IMG_COMP_ID]);
 }
 
 static
 uint32_t __bq_img_entry_get_ptn_id(struct bquery *q)
 {
-	return be32toh(q->array_value->data->array.data.uint32_[0]);
+	struct bimgquery *iq = (struct bimgquery *)q;
+	return be32toh(iq->img->data.uint32_[BOUT_IMG_PTN_ID]);
 }
 
 static inline
@@ -216,12 +206,7 @@ struct bsos_wrap* bsos_wrap_open(const char *path)
 	bsw->sos = sos_container_open(path, O_RDWR);
 	if (!bsw->sos)
 		goto err1;
-	bsw->schema = sos_schema_first(bsw->sos);
-	if (!bsw->schema)
-		goto err2;
-	bsw->attr = sos_schema_attr_by_id(bsw->schema, 0);
-	if (!bsw->attr)
-		goto err2;
+	bsw->index = sos_index_open(bsw->sos, BOUT_SOS_IDX_NAME);
 	char *bname = basename(path);
 	if (!bname)
 		goto err2;
@@ -239,7 +224,6 @@ err0:
 
 void bsos_wrap_close_free(struct bsos_wrap *bsw)
 {
-	sos_schema_put(bsw->schema);
 	sos_container_close(bsw->sos, SOS_COMMIT_ASYNC);
 	free(bsw->store_name);
 	free(bsw);
@@ -405,8 +389,6 @@ void bquery_destroy(struct bquery *q)
 {
 	if (q->obj)
 		sos_obj_put(q->obj);
-	if (q->array_value)
-		sos_value_put(q->array_value);
 	if (q->itr)
 		sos_iter_free(q->itr);
 	if (q->hst_ids)
@@ -581,7 +563,6 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
 	q->formatter = bquery_default_formatter();
 
 	len = snprintf(q->sos_prefix, PATH_MAX, "%s/msg_store/msg", store->path);
-	q->sos_prefix_end = q->sos_prefix + len;
 
 	goto out;
 
@@ -629,7 +610,6 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 
 	len = snprintf(bi->base.sos_prefix, PATH_MAX, "%s/img_store/%s",
 						store->path, img_store_name);
-	bi->base.sos_prefix_end = bi->base.sos_prefix + len;
 	bi->store_name = strdup(img_store_name);
 	if (!bi->store_name)
 		goto err;
@@ -681,27 +661,17 @@ static void __bq_reset(struct bquery *q)
 		bsos_wrap_close_free(q->bsos);
 		q->bsos = NULL;
 	}
-	q->sos_number = 0;
 }
 
 static int __bq_open_bsos(struct bquery *q)
 {
-	sos_attr_t iter_attr;
 	struct bsos_wrap *bsos;
 	sos_iter_t iter;
-	if (q->sos_number) {
-		snprintf(q->sos_prefix_end,
-			PATH_MAX - (q->sos_prefix_end - q->sos_prefix),
-			".%d", q->sos_number);
-
-	} else {
-		*q->sos_prefix_end = 0;
-	}
 	bsos = bsos_wrap_open(q->sos_prefix);
 	if (!bsos)
 		return errno;
 
-	iter = sos_iter_new(bsos->attr);
+	iter = sos_index_iter_new(bsos->index);
 	if (!iter) {
 		bsos_wrap_close_free(bsos);
 		return ENOMEM;
@@ -718,34 +688,15 @@ static int __bq_open_bsos(struct bquery *q)
 	return 0;
 }
 
-static int __bq_prev_store(struct bquery *q)
-{
-	q->sos_number++;
-	return __bq_open_bsos(q);
-}
-
-static int __bq_next_store(struct bquery *q)
-{
-	if (!q->sos_number)
-		return ENOENT;
-	q->sos_number--;
-	return __bq_open_bsos(q);
-}
-
 static void *__msg_obj_update(struct bquery *q)
 {
 	if (q->obj) {
 		sos_obj_put(q->obj);
 		q->obj = NULL;
 	}
-	if (q->array_value) {
-		sos_value_put(q->array_value);
-		q->array_value = NULL;
-	}
 	q->obj = sos_iter_obj(q->itr);
 	if (q->obj) {
 		q->msg = sos_obj_ptr(q->obj);
-		q->array_value = sos_value_by_id(&q->value, q->obj, SOS_MSG_ARGV);
 	}
 }
 
@@ -754,30 +705,17 @@ static int __bq_last_entry(struct bquery *q)
 	int rc = 0;
 	SOS_KEY(key);
 
-loop:
 	if (!q->ts_1) {
 		rc = sos_iter_end(q->itr);
-		goto out;
+	} else {
+		union sos_timestamp_u ts;
+		ts.fine.secs = q->ts_1;
+		ts.fine.usecs = 0;
+		sos_key_set(key, &ts, sizeof(&ts));
+		rc = sos_iter_inf(q->itr, key);
 	}
-
-	sos_attr_t attr = q->bsos->attr;
-	size_t ksz = sos_attr_size(attr);
-	union sos_timestamp_u tsu = {0};
-	tsu.fine.secs = q->ts_1;
-
-	sos_key_set(key, &tsu, ksz);
-
-	if (0 != sos_iter_inf(q->itr, key)) {
-		rc = ENOENT;
-	}
-	if (rc == ENOENT) {
-		rc = __bq_next_store(q);
-		if (rc)
-			goto out;
-		goto loop;
-	}
-out:
-	__msg_obj_update(q);
+	if (!rc)
+		__msg_obj_update(q);
 	return rc;
 }
 
@@ -785,50 +723,18 @@ static int __bq_first_entry(struct bquery *q)
 {
 	int rc = 0;
 	SOS_KEY(key);
-
-loop:
 	if (!q->ts_0) {
 		rc = sos_iter_begin(q->itr);
-		goto out;
+	} else {
+		union sos_timestamp_u ts;
+		ts.fine.secs = q->ts_0;
+		ts.fine.usecs = 0;
+		sos_key_set(key, &ts, sizeof(ts));
+		rc = sos_iter_sup(q->itr, key);
 	}
-
-	sos_attr_t attr = q->bsos->attr;
-	size_t ksz = sos_attr_size(attr);
-	union sos_timestamp_u tsu = {0};
-	tsu.fine.secs = q->ts_0;
-
-	sos_key_set(key, (void*)&tsu, ksz);
-
-	if (0 != sos_iter_sup(q->itr, key)) {
-		rc = ENOENT;
-	}
-	if (rc == ENOENT) {
-		rc = __bq_next_store(q);
-		if (rc)
-			goto out;
-		goto loop;
-	}
-out:
-	__msg_obj_update(q);
+	if (!rc)
+		__msg_obj_update(q);
 	return rc;
-}
-
-static int __get_max_sos_number(const char *sos_path)
-{
-	int i;
-	struct stat _st;
-	int rc;
-	char *path = malloc(PATH_MAX);
-	if (!path)
-		return 0;
-	for (i = 1; i < 65536; i++) {
-		snprintf(path, PATH_MAX, "%s.%d_sos.PG", sos_path, i);
-		rc = stat(path, &_st);
-		if (rc)
-			break;
-	}
-	free(path);
-	return i - 1;
 }
 
 /**
@@ -839,15 +745,8 @@ static int __bq_prev_entry(struct bquery *q)
 	int rc = 0;
 
 	rc = sos_iter_prev(q->itr);
-	while (rc == ENOENT) {
-		/* try again with the prev store */
-		rc = __bq_prev_store(q);
-		if (rc)
-			goto out;
-		rc = sos_iter_end(q->itr);
-	}
-	__msg_obj_update(q);
-out:
+	if (!rc)
+		__msg_obj_update(q);
 	return rc;
 }
 
@@ -858,29 +757,16 @@ static int __bq_next_entry(struct bquery *q)
 {
 	int rc = 0;
 	if (!q->bsos) {
-		q->sos_number = __get_max_sos_number(q->sos_prefix);
 		rc = __bq_open_bsos(q);
-		if (rc) {
-			if (!q->sos_number)
-				goto out;
-			rc = __bq_next_store(q);
-			if (rc)
-				goto out;
-		}
+		if (rc)
+			goto out;
 		/* first call */
 		rc = __bq_first_entry(q);
 		goto out;
 	}
-
 	rc = sos_iter_next(q->itr);
-	while (rc == ENOENT) {
-		/* try again with the next store */
-		rc = __bq_next_store(q);
-		if (rc)
-			goto out;
-		rc = sos_iter_begin(q->itr);
-	}
-	__msg_obj_update(q);
+	if (!rc)
+		__msg_obj_update(q);
 out:
 	return rc;
 }
@@ -917,14 +803,9 @@ static void __img_obj_update(struct bimgquery *q)
 		sos_obj_put(q->base.obj);
 		q->base.obj = NULL;
 	}
-	if (q->base.array_value) {
-		sos_value_put(q->base.array_value);
-		q->base.array_value = NULL;
-	}
 	q->base.obj = sos_iter_obj(q->base.itr);
 	if (q->base.obj) {
 		q->img = sos_obj_ptr(q->base.obj);
-		q->base.array_value = sos_value_by_id(&q->base.value, q->base.obj, SOS_IMG_KEY);
 	}
 }
 
@@ -937,15 +818,9 @@ int bq_img_first_entry(struct bquery *q)
 	struct bout_sos_img_key bsi_key;
 
 	__bq_reset(q);
-	q->sos_number = __get_max_sos_number(q->sos_prefix);
 	rc = __bq_open_bsos(q);
-	if (rc) {
-		if (!q->sos_number)
-			goto out;
-		rc = __bq_next_store(q);
-		if (rc)
-			goto out;
-	}
+	if (rc)
+		goto out;
 
 	bsi_key.comp_id = 0;
 	bsi_key.ts = 0;
@@ -964,18 +839,10 @@ int bq_img_first_entry(struct bquery *q)
 	}
 
 	bout_sos_img_key_convert(&bsi_key);
-
-again:
 	sos_key_set(key, &bsi_key, sizeof(bsi_key));
 	rc = sos_iter_sup(q->itr, key);
-	if (rc) {
-		if (rc != ENOENT)
-			goto out;
-		rc = __bq_next_store(q);
-		if (rc)
-			goto out;
-		goto again;
-	}
+	if (rc)
+		goto out;
 	__img_obj_update(imgq);
 	if (bq_check_cond(q) != BQ_CHECK_COND_OK)
 		rc = bq_next_entry(q);
@@ -992,12 +859,8 @@ int bq_img_next_entry(struct bquery *q)
 	int rc;
 
 	rc = sos_iter_next(q->itr);
-
-check:
-	if (rc) {
-		/* end of current sos store */
-		goto next_store;
-	}
+	if (rc)
+		goto out;
 	__img_obj_update(imgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
@@ -1026,31 +889,14 @@ check:
 		if (imgq->ptn_rng_itr) {
 			rc = brange_u32_iter_fwd_seek(imgq->ptn_rng_itr,
 							&bsi_key.ptn_id);
-			if (rc == ENOENT) {
-				goto next_store;
-			}
+			if (rc == ENOENT)
+				goto out;
 			assert(rc == 0);
 		}
 		brange_u32_iter_begin(imgq->hst_rng_itr, &bsi_key.comp_id);
 		bsi_key.ts = q->ts_0;
 		break;
 	}
-
-seek:
-	bout_sos_img_key_convert(&bsi_key);
-	sos_key_set(key, &bsi_key, sizeof(bsi_key));
-	rc = sos_iter_sup(q->itr, key);
-	goto check;
-
-next_store:
-	rc = __bq_next_store(q);
-	if (rc)
-		goto out;
-	brange_u32_iter_begin(imgq->ptn_rng_itr, &bsi_key.ptn_id);
-	brange_u32_iter_begin(imgq->hst_rng_itr, &bsi_key.comp_id);
-	bsi_key.ts = q->ts_0;
-	goto seek;
-
 out:
 	return rc;
 }
@@ -1063,12 +909,9 @@ int bq_img_prev_entry(struct bquery *q)
 	int rc;
 
 	rc = sos_iter_prev(q->itr);
-
 check:
-	if (rc) {
-		/* end of current sos store */
-		goto prev_store;
-	}
+	if (rc)
+		goto out;
 	__img_obj_update(imgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
@@ -1095,32 +938,14 @@ check:
 		/* End of current PTN, continue with next PTN */
 		bsi_key.ptn_id = bq_entry_get_ptn_id(q) - 1;
 		rc = brange_u32_iter_bwd_seek(imgq->ptn_rng_itr, &bsi_key.ptn_id);
-		if (rc) {
-			goto prev_store;
-		}
+		if (rc)
+			goto out;
 		assert(rc == 0);
 		brange_u32_iter_end(imgq->hst_rng_itr, &bsi_key.comp_id);
 		bsi_key.ts = q->ts_1;
 		break;
 	}
-
-seek:
-	bout_sos_img_key_convert(&bsi_key);
-	sos_key_set(key, &bsi_key, sizeof(bsi_key));
-	rc = sos_iter_inf(q->itr, key);
-	goto check;
-
-prev_store:
-	rc = __bq_prev_store(q);
-	if (rc)
-		goto out;
-	brange_u32_iter_end(imgq->ptn_rng_itr, &bsi_key.ptn_id);
-	brange_u32_iter_end(imgq->hst_rng_itr, &bsi_key.comp_id);
-	bsi_key.ts = q->ts_1;
-	goto seek;
-
 out:
-	/* COMPLETE ME */
 	return rc;
 }
 
@@ -1133,7 +958,6 @@ int bq_img_last_entry(struct bquery *q)
 	struct bout_sos_img_key bsi_key;
 
 	__bq_reset(q);
-	q->sos_number = 0;
 	rc = __bq_open_bsos(q);
 	if (rc)
 		goto out;
@@ -1229,16 +1053,9 @@ int bq_msg_first_entry(struct bquery *q)
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
 	__bq_reset(q);
-	q->sos_number = __get_max_sos_number(q->sos_prefix);
 	rc = __bq_open_bsos(q);
-	if (rc) {
-		if (!q->sos_number)
-			goto out;
-		rc = __bq_next_store(q);
-		if (rc)
-			goto out;
-	}
-
+	if (rc)
+		goto out;
 	rc = __bq_first_entry(q);
 	if (rc)
 		return rc;
@@ -1273,16 +1090,12 @@ int bq_msg_last_entry(struct bquery *q)
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
 	__bq_reset(q);
-	q->sos_number = 0;
 	rc = __bq_open_bsos(q);
-	if (rc) {
+	if (rc)
 		goto out;
-	}
-
 	rc = __bq_last_entry(q);
 	if (rc)
 		goto out;
-
 loop:
 	sec = bq_entry_get_sec(q);
 	if (q->ts_0 &&  sec < q->ts_0)
@@ -1328,20 +1141,15 @@ uint32_t bq_entry_get_ptn_id(struct bquery *q)
 
 struct bmsg *bq_entry_get_msg(struct bquery *q)
 {
-	struct sos_value_s stack_v;
-	sos_value_t value;
 	struct bmsg *bmsg;
 	size_t bmsg_sz;
 
-	value = sos_value_by_id(&stack_v, q->obj, SOS_MSG_ARGV);
-	bmsg_sz = sizeof(*bmsg) + sos_value_size(value);
+	bmsg_sz = sizeof(*bmsg) + ((q->msg->count - BOUT_MSG_ARGV_0) << 3);
 	bmsg = malloc(bmsg_sz);
 
 	bmsg->ptn_id = bq_entry_get_ptn_id(q);
-	bmsg->argc = sos_array_count(value);
-	sos_value_put(value);
-
-	memcpy(bmsg->argv, &value->data->array.data.uint32_[0], sos_value_size(value));
+	bmsg->argc = q->msg->count - BOUT_MSG_ARGV_0;
+	memcpy(bmsg->argv, &q->msg->data.uint32_[BOUT_MSG_ARGV_0], bmsg->argc << 3);
 
 	return bmsg;
 }
@@ -1356,12 +1164,7 @@ uint64_t bq_entry_get_ref(struct bquery *q)
 
 uint32_t bq_img_entry_get_count(struct bimgquery *q)
 {
-	SOS_VALUE(v);
-	uint32_t count;
-	sos_value_by_id(v, q->base.obj, 1);
-	count = v->data->prim.uint32_;
-	sos_value_put(v);
-	return count;
+	return q->img->data.uint32_[BOUT_IMG_COUNT];
 }
 
 int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p)
