@@ -63,8 +63,7 @@
 
 struct bsos_wrap {
 	sos_t sos;
-	sos_schema_t schema;
-	sos_attr_t attr;
+	sos_index_t index;
 	char *store_name;
 	char *path;
 	LIST_ENTRY(bsos_wrap) link;
@@ -107,18 +106,6 @@ struct bsos_wrap* bsos_wrap_find(struct bsos_wrap_head *head,
  * case of long query that cannot get all of the results in the single query
  * call.
  */
-struct bquery_msg {
-	union sos_timestamp_u ts;
-	uint32_t comp_id;
-	uint32_t ptn_id;
-	sos_ref_t argv;
-};
-
-struct bquery_img {
-	sos_ref_t key;
-	uint32_t count;
-};
-
 struct bquery {
 	struct bq_store *store; /**< Store handle */
 	sos_iter_t itr; /**< Iterator handle */
@@ -128,17 +115,13 @@ struct bquery {
 	time_t ts_1; /**< The end time stamp */
 	bq_stat_t stat; /**< Query status */
 	sos_obj_t obj; /**< Current sos object */
-	struct bquery_msg *msg; /**< Current msg object */
-	struct sos_value_s value;
-	sos_value_t array_value;
+	sos_array_t msg; /**< Current msg object */
 	int text_flag; /**< Non-zero if the query wants text in date-time and
 			    host field */
 	char sep; /**< Field separator for output */
 	bsos_wrap_t bsos; /**< SOS wrap for the query */
 	char sos_prefix[PATH_MAX]; /**< SOS prefix. Prefix is also used as a
 					     path buffer.*/
-	char *sos_prefix_end; /**< Point to the end of the original prefix */
-	int sos_number; /**< The current number of SOS store (for rotation) */
 	struct bq_formatter *formatter; /**< Formatter */
 
 	uint32_t (*get_sec)(struct bquery*);
@@ -155,7 +138,7 @@ struct bquery {
 struct bimgquery {
 	struct bquery base;
 	char *store_name;
-	struct bquery_img *img;	/**< Current img object  */
+	sos_array_t img;	/**< Current img object  */
 	struct brange_u32_head hst_rngs; /**< Ranges of hosts */
 	struct brange_u32_iter *hst_rng_itr;
 	struct brange_u32_head ptn_rngs; /**< Ranges of patterns */

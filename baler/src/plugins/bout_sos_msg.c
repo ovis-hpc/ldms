@@ -51,34 +51,7 @@
 #include "bout_sos_msg.h"
 #include "sos_msg_class_def.h"
 
-static sos_schema_t create_msg_schema(sos_t sos)
-{
-	sos_schema_t schema;
-	int rc;
-
-	schema = sos_schema_new("Message");
-	if (!schema)
-		return NULL;
-	rc = sos_schema_attr_add(schema, "timestamp", SOS_TYPE_TIMESTAMP);
-	if (rc)
-		goto err;
-	rc = sos_schema_index_add(schema, "timestamp");
-	if (rc)
-		goto err;
-	rc = sos_schema_attr_add(schema, "comp_id", SOS_TYPE_UINT32);
-	if (rc)
-		goto err;
-	rc = sos_schema_attr_add(schema, "ptn_id", SOS_TYPE_UINT32);
-	if (rc)
-		goto err;
-	rc = sos_schema_attr_add(schema, "argv", SOS_TYPE_UINT32_ARRAY);
-	if (rc)
-		goto err;
-	return schema;
- err:
-	sos_schema_put(schema);
-	return NULL;
-}
+#define BOUT_MSG_LEN(_msg_) ((_msg_)->argc + 4)
 
 /**
  * \brief process_output for SOS.
@@ -96,10 +69,15 @@ int bout_sos_msg_process_output(struct boutplugin *this,
 	int rc;
 	struct bout_sos_plugin *sp = (typeof(sp))this;
 	struct bout_sos_msg_plugin *mp = (typeof(mp))this;
-	pthread_mutex_lock(&sp->sos_mutex);
 	sos_t sos;
 	size_t len;
 	size_t req_len;
+	sos_array_t msg;
+	sos_obj_t obj;
+	int arg;
+	SOS_KEY(msg_key);
+
+	pthread_mutex_lock(&sp->sos_mutex);
 	if (!sp->sos) {
 		rc = EBADFD;
 		goto err0;
@@ -108,37 +86,22 @@ int bout_sos_msg_process_output(struct boutplugin *this,
 	bout_sos_rotate(sp, odata->tv.tv_sec, NULL);
 	sos = sp->sos;
 
-	sos_obj_t obj = sos_obj_new(mp->sos_schema);
+	obj = sos_array_obj_new(sp->sos, SOS_TYPE_UINT32_ARRAY,
+				BOUT_MSG_LEN(odata->msg));
 	if (!obj) {
 		rc = ENOMEM;
 		goto err0;
 	}
-	struct sos_value_s val;
-	sos_value_t value = sos_value_init(&val, obj, mp->time_attr);
+	msg = sos_obj_ptr(obj);
+	msg->data.uint32_[BOUT_MSG_SEC] = odata->tv.tv_sec;
+	msg->data.uint32_[BOUT_MSG_USEC] = odata->tv.tv_usec;
+	msg->data.uint32_[BOUT_MSG_COMP_ID] = odata->comp_id;
+	msg->data.uint32_[BOUT_MSG_PTN_ID] = odata->msg->ptn_id;
+	for (arg = 0; arg < odata->msg->argc; arg++)
+		msg->data.uint32_[arg + BOUT_MSG_ARGV_0] = odata->msg->argv[arg];
 
-	value->data->prim.timestamp_.fine.secs = odata->tv.tv_sec;
-	value->data->prim.timestamp_.fine.usecs = odata->tv.tv_usec;
-
-	value = sos_value_init(value, obj, mp->comp_id_attr);
-	value->data->prim.uint32_ = odata->comp_id;
-
-	value = sos_value_init(value, obj, mp->ptn_id_attr);
-	value->data->prim.uint32_ = odata->msg->ptn_id;
-
-	sos_value_put(value);
-	sos_value_put(value);
-	sos_value_put(value);
-
-	value = sos_array_new(&val, mp->argv_attr, obj, odata->msg->argc);
-	if (!value) {
-		rc = ENOMEM;
-		goto err1;
-	}
-	sos_value_memset(value, odata->msg->argv,
-			 odata->msg->argc * sizeof(uint32_t));
-
-	sos_value_put(value);
-	rc = sos_obj_index(obj);
+	sos_key_set(msg_key, &msg->data.uint32_[0], 8);
+	rc = sos_index_insert(mp->msg_index, msg_key, obj);
 	if (rc)
 		goto err1;
 	sos_obj_put(obj);
@@ -160,22 +123,14 @@ int bout_sos_msg_start(struct bplugin *this)
 	if ((rc = bout_sos_start(this)))
 		return rc;
 	sos = _this->base.sos;
-	if (!_this->sos_schema) {
-		sos_schema_t schema;
-		schema = sos_schema_by_name(sos, "Message");
-		if (!schema) {
-			schema = create_msg_schema(sos);
-			if (!schema)
-				return ENOENT;
-			rc = sos_schema_add(sos, schema);
-			if (rc)
-				return EINVAL;
-		}
-		_this->sos_schema = schema;
-		_this->time_attr = sos_schema_attr_by_id(schema, SOS_MSG_TIMESTAMP);
-		_this->comp_id_attr = sos_schema_attr_by_id(schema, SOS_MSG_COMP_ID);
-		_this->ptn_id_attr = sos_schema_attr_by_id(schema, SOS_MSG_PTN_ID);
-		_this->argv_attr = sos_schema_attr_by_id(schema, SOS_MSG_ARGV);
+ retry:
+	_this->msg_index = sos_index_open(sos, BOUT_SOS_IDX_NAME);
+	if (!_this->msg_index) {
+		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT64", 5);
+		if (!rc)
+			goto retry;
+		else
+			return errno;
 	}
 	return 0;
 }
