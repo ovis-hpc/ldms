@@ -895,6 +895,7 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 		if (sep->conn_data)
 			free(sep->conn_data);
 		sep->conn_data = NULL;
+		sep->conn_data_len = 0;
 		return;
 	}
 
@@ -1160,8 +1161,8 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 
  err_1:
 	sep->ep.state = ZAP_EP_ERROR;
-	pthread_mutex_unlock(&sep->ep.lock);
  err_0:
+	pthread_mutex_unlock(&sep->ep.lock);
 	return zerr;
 }
 
@@ -1320,8 +1321,11 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 
 	pthread_mutex_lock(&sep->q_lock);
 	/* write message */
-	if (bufferevent_write_buffer(sep->buf_event, ebuf) != 0)
+	if (bufferevent_write_buffer(sep->buf_event, ebuf) != 0) {
+		pthread_mutex_unlock(&sep->q_lock);
 		goto err;
+	}
+
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	evbuffer_free(ebuf);
 	pthread_mutex_unlock(&sep->q_lock);

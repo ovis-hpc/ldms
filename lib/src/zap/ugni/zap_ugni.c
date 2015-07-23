@@ -700,7 +700,9 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 					     desc->post.type, uep);
 		}
 		pthread_mutex_unlock(&uep->ep.lock);
+
 		uep->ep.cb(&uep->ep, &zev);
+
 		pthread_mutex_lock(&uep->ep.lock);
 		__free_post_desc(desc);
 		pthread_mutex_unlock(&uep->ep.lock);
@@ -888,6 +890,7 @@ static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
 		if (uep->conn_data)
 			free(uep->conn_data);
 		uep->conn_data = NULL;
+		uep->conn_data_len = 0;
 		return;
 	}
 
@@ -1359,13 +1362,15 @@ static int z_ugni_init()
 	if (fd < 0) {
 		LOG("ERROR: Cannot open version file: %s\n",
 				VERSION_FILE);
-		return errno;
+		rc = errno;
+		goto out;
 	}
 	rdsz = read(fd, buff, sizeof(buff) - 1);
 	if (rdsz < 0) {
 		LOG("version file read error (errno %d): %m\n", errno);
 		close(fd);
-		return errno;
+		rc = errno;
+		goto out;
 	}
 	buff[rdsz] = 0;
 	close(fd);
@@ -1380,7 +1385,8 @@ static int z_ugni_init()
 
 	if (_dom.type == ZAP_UGNI_TYPE_NONE) {
 		LOG("ERROR: cannot determine ugni type\n");
-		return EINVAL;
+		rc = EINVAL;
+		goto out;
 	}
 
 	_dom.euid = geteuid();
@@ -1396,22 +1402,23 @@ static int z_ugni_init()
 
 	switch (_dom.type) {
 	case ZAP_UGNI_TYPE_ARIES:
-		#ifdef GNI_FIND_ALLOC_PTAG
+#ifdef GNI_FIND_ALLOC_PTAG
 		_dom.ptag = GNI_FIND_ALLOC_PTAG;
 		DLOG("ugni_type: aries\n");
-		#else
+#else
 		DLOG("ERROR: This library has not been compiled"
 			" with ARIES support\n");
 		rc = EINVAL;
 		goto out;
-		#endif
+#endif
 		break;
 	case ZAP_UGNI_TYPE_GEMINI:
 		_dom.ptag = __get_ptag();
 		DLOG("ugni_type: gemini\n");
 		break;
 	default:
-		return EINVAL;
+		rc = EINVAL;
+		goto out;
 	}
 
 	DLOG("ptag: %#hhx\n", _dom.ptag);
@@ -1645,8 +1652,8 @@ zap_err_t z_ugni_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 
 err_1:
 	uep->ep.state = ZAP_EP_ERROR;
-	pthread_mutex_unlock(&uep->ep.lock);
 err_0:
+	pthread_mutex_unlock(&uep->ep.lock);
 	return zerr;
 }
 
@@ -1764,13 +1771,17 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	struct zap_ugni_map *dmap = (struct zap_ugni_map *)dst_map;
 
 	pthread_mutex_lock(&ep->lock);
-	if (ep->state != ZAP_EP_CONNECTED)
-		goto err;
+	if (ep->state != ZAP_EP_CONNECTED) {
+		pthread_mutex_unlock(&ep->lock);
+		return ZAP_ERR_ENDPOINT;
+	}
 
 	gni_return_t grc;
 	struct zap_ugni_post_desc *desc = __alloc_post_desc(uep);
-	if (!desc)
-		goto err;
+	if (!desc) {
+		pthread_mutex_unlock(&ep->lock);
+		return ZAP_ERR_RESOURCE;
+	}
 
 	desc->post.type = GNI_POST_RDMA_GET;
 	desc->post.cq_mode = GNI_CQMODE_GLOBAL_EVENT;
@@ -1782,7 +1793,6 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	desc->post.length = sz;
 	desc->post.post_id = (uint64_t)(unsigned long)desc;
 	desc->context = context;
-
 	pthread_mutex_unlock(&ep->lock);
 
 	pthread_mutex_lock(&ugni_lock);
@@ -1799,13 +1809,11 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
 		__free_post_desc(desc);
-		goto err;
+		pthread_mutex_unlock(&ugni_lock);
+		return ZAP_ERR_RESOURCE;
 	}
 	pthread_mutex_unlock(&ugni_lock);
 	return ZAP_ERR_OK;
- err:
-	pthread_mutex_unlock(&ep->lock);
-	return ZAP_ERR_RESOURCE;
 }
 
 static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
@@ -1836,8 +1844,10 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	}
 
 	struct zap_ugni_post_desc *desc = __alloc_post_desc(uep);
-	if (!desc)
-		return ZAP_ERR_RESOURCE;
+	if (!desc) {
+		pthread_mutex_unlock(&ep->lock);
+		return ZAP_ERR_ENDPOINT;
+	}
 
 	desc->post.type = GNI_POST_RDMA_PUT;
 	desc->post.cq_mode = GNI_CQMODE_GLOBAL_EVENT;
@@ -1849,6 +1859,8 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	desc->post.length = sz;
 	desc->post.post_id = (uint64_t)(unsigned long)desc;
 	desc->context = context;
+	pthread_mutex_unlock(&ep->lock);
+
 	pthread_mutex_lock(&ugni_lock);
 #ifdef DEBUG
 	__sync_fetch_and_add(&ugni_io_count, 1);
@@ -1863,10 +1875,10 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
 		__free_post_desc(desc);
-		pthread_mutex_unlock(&ep->lock);
+		pthread_mutex_unlock(&ugni_lock);
 		return ZAP_ERR_RESOURCE;
 	}
-	pthread_mutex_unlock(&ep->lock);
+	pthread_mutex_unlock(&ugni_lock);
 	return ZAP_ERR_OK;
 }
 
