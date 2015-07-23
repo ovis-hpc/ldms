@@ -227,6 +227,10 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 		printf("echoing: %s\n", data);
 		zap_send(zep, ev->data, ev->data_len);
 		break;
+	case ZAP_EVENT_REJECTED:
+	case ZAP_EVENT_CONNECT_ERROR:
+		printf("Unexpected Zap event %s\n", zap_event_str(ev->type));
+		assert(0);
 	default:
 		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
 		exit(-1);
@@ -265,10 +269,12 @@ void client_cb(zap_ep_t zep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_REJECTED:
 		printf("Error: Server never reject the connection request\n");
+		pthread_mutex_unlock(&flag_lock);
 		exit(-1);
 		break;
 	default:
 		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
+		pthread_mutex_unlock(&flag_lock);
 		exit(-1);
 	}
 	pthread_mutex_unlock(&flag_lock);
