@@ -14,4 +14,8 @@ export BTEST_TS_INC=600
 export BTEST_NODE_BEGIN=0
 export BTEST_NODE_LEN=64
 
+export BOUT_THREADS=1
+export BIN_THREADS=1
+export BLOG_LEVEL=INFO
+
 source ./env.sh

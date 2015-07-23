@@ -296,6 +296,7 @@ int bmap_rehash(struct bmap *map, int nmemb)
 uint32_t bmap_get_id_plus64(struct bmap *map,
 		const struct bstr *str, uint64_t *ohidx)
 {
+	pthread_mutex_lock(&map->mutex);
 	struct bvec_u64 *hvec = map->bmhash->bvec;
 	uint64_t key = bhash(str->cstr, str->blen, 0);
 	uint64_t hidx = key % hvec->len;
@@ -311,7 +312,8 @@ uint32_t bmap_get_id_plus64(struct bmap *map,
 		if (!node->data) {
 			/* This is not supposed to happen */
 			berr("node->data is NULL");
-			goto err;
+			id = BMAP_ID_ERR;
+			goto out;
 		}
 		struct bstr *_str = BMPTR(mstr, str_idx->data[node->data]);
 		if (_str->blen != str->blen)
@@ -323,9 +325,9 @@ uint32_t bmap_get_id_plus64(struct bmap *map,
 	}
 	if (ohidx)
 		*ohidx = hidx;
+out:
+	pthread_mutex_unlock(&map->mutex);
 	return id;
-err:
-	return BMAP_ID_ERR;
 }
 
 uint32_t bmap_get_id(struct bmap *map, const struct bstr *s)
@@ -336,14 +338,21 @@ uint32_t bmap_get_id(struct bmap *map, const struct bstr *s)
 
 const struct bstr* bmap_get_bstr(struct bmap *map, uint32_t id)
 {
+	pthread_mutex_lock(&map->mutex);
+	const struct bstr *bstr = NULL;
 	struct bvec_u64 *str_idx = map->bmstr_idx->bvec;
 	if (str_idx->len <= id) /* out of range */
-		return NULL;
-	if (id < BMAP_ID_BEGIN) /* special ID */
-		return special_bstr[id];
+		goto out;
+	if (id < BMAP_ID_BEGIN) { /* special ID */
+		bstr = special_bstr[id];
+		goto out;
+	}
 	/* Normal ID */
 	int64_t str_off = str_idx->data[id];
-	return BMPTR(map->mstr, str_off);
+	bstr = BMPTR(map->mstr, str_off);
+out:
+	pthread_mutex_unlock(&map->mutex);
+	return bstr;
 }
 
 /**

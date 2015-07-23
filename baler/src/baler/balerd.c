@@ -168,6 +168,12 @@
  * Specifying a port for receiving OCM connection and configuration (default:
  * 20005).
  *
+ * \par -I NUMBER
+ * Specify the number of input worker threads (default: 1).
+ *
+ * \par -O NUMBER
+ * Specify the number of output worker threads (default: 1).
+ *
  * \par -?
  * Display help message.
  *
@@ -305,10 +311,11 @@ struct bzap_ctxt {
 };
 
 /***** Command line arguments ****/
+#define BALER_OPT_STR "FC:l:s:m:x:h:p:v:I:O:?";
 #ifdef ENABLE_OCM
-const char *optstring = "FC:l:s:z:m:x:h:p:v:?";
+const char *optstring = BALER_OPT_STR "z:";
 #else
-const char *optstring = "FC:l:s:m:x:h:p:v:?";
+const char *optstring = BALER_OPT_STR;
 #endif
 const char *config_path = NULL;
 const char *log_path = NULL;
@@ -332,6 +339,8 @@ void display_help_msg()
 #endif
 "	-v <LEVEL>	Set verbosity level (DEBUG, INFO, WARN, ERROR).\n"
 "			The default value is WARN.\n"
+"	-I <number>	The number of input queue worker.\n"
+"	-O <number>	The number of output queue worker.\n"
 "	-?		Show help message\n"
 "\n"
 "For more information see balerd(3) manpage.\n"
@@ -1662,6 +1671,12 @@ next_arg:
 			exit(-1);
 		}
 		break;
+	case 'I':
+		binqwkrN = atoi(optarg);
+		break;
+	case 'O':
+		boutqwkrN = atoi(optarg);
+		break;
 	case '?':
 		display_help_msg();
 		exit(0);
@@ -1943,7 +1958,6 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 			rc = errno;
 			goto cleanup;
 		}
-		struct btkn_attr attr = btkn_store_get_attr(token_store, tid);
 		str->u32str[tkn_idx] = tid;
 		tkn_idx++;
 	}

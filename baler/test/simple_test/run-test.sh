@@ -10,6 +10,11 @@ BCONFIG=./balerd.cfg
 BTEST_ENG_DICT="../eng-dictionary"
 BTEST_HOST_LIST="../host.list"
 BTEST_BIN_RSYSLOG_PORT=33333
+BPROF=balerd.prof
+
+BOUT_THREADS=1
+BIN_THREADS=1
+BLOG_LEVEL=INFO
 
 source ./common.sh
 
@@ -26,7 +31,12 @@ plugin name=bin_rsyslog_tcp port=$BTEST_BIN_RSYSLOG_PORT
 EOF
 } > $BCONFIG
 
-BALERD_CMD="balerd -s $BSTORE -l $BLOG -C $BCONFIG -m master -v INFO -F"
+OPERF_OPTIONS="-g -d $BPROF"
+BALERD_OPTS="-s $BSTORE -l $BLOG -C $BCONFIG -m master -v $BLOG_LEVEL -I $BIN_THREADS -O $BOUT_THREADS"
+BALERD_CMD="balerd -F $BALERD_OPTS"
+if __has_operf; then
+	BALERD_CMD="operf $OPERF_OPTIONS $BALERD_CMD"
+fi
 
 check_balerd() {
 	jobs '%$BALERD_CMD' > /dev/null 2>&1 || \
@@ -58,9 +68,13 @@ if [[ -d $BSTORE ]]; then
 fi
 
 # Hook to kill all jobs at exit
-trap 'kill $(jobs -p)' EXIT
+trap 'kill -SIGINT $(jobs -p)' EXIT
 
 ./clean.sh
+
+if __has_operf; then
+	mkdir -p $BPROF
+fi
 
 __info "starting balerd, cmd: $BALERD_CMD"
 $BALERD_CMD &
