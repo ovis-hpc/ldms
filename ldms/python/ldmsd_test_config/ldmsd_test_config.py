@@ -135,27 +135,7 @@ LDMSD_RECONNECT_OFFSET = 0 # microseconds
 NUM_SAMPELRD_PER_AGG = [10000]
 
 #=========== List of store plugins and their configuration
-STORE_PI = {'sos': {'path': AGG_OVIS + STORE_HOME}}
-
-#=========== List of store policies
-STORE_POLICY = [
-                {'store_pi': "sos",
-                 'policy': "sos_all",
-                 'container': "test_set_all",
-                 'schema': "test_set",
-                 'metrics': None,
-                 'hosts': None
-                 },
-                {'store_pi': "sos",
-                 'policy': "sos_some",
-                 'container': "test_set_some",
-                 'schema': "test_set",
-                 'metrics': ["metric_0", "metric_1"],
-                 'hosts': None
-                 }
-                ]
-
-
+STORE_PATH = AGG_OVIS + STORE_HOME
 
 #-------------------------------------------
 # BEGIN: Variables related to ldmsd commands

@@ -62,7 +62,8 @@ from ldmsd.ldmsd_setup import get_test_instance_name, kill_ldmsd,\
     is_ldmsd_running, kill_9_ldmsd, start_ldmsd
 from time import sleep
 from ldmsd.ldmsd_util import remove_file
-from ldmsd_test.ldmsd_test_util import ldms_connect
+from ldmsd_test.ldmsd_test_util import ldms_connect, microsec2sec
+from sos import SOS
 
 @pytest.fixture(scope = "module")
 def obj(request, logger, cfg):
@@ -71,9 +72,6 @@ def obj(request, logger, cfg):
     instance = get_test_instance_name(samplerd_host, cfg.SAMPLERD_XPRT,
                                       cfg.SAMPLERD_PORT,
                                       cfg.TEST_INSTANCE_PREFIX_NAME, 1)
-    store_pi = cfg.STORE_PI.keys()[0]
-    store_cfg = cfg.STORE_PI[store_pi]
-    store_policies = filter(lambda x: x['store_pi'] == store_pi, cfg.STORE_POLICY)
 
     logger.info("Aggregator -- host:xprt:port:inet_port = {0}:{1}:{2}:{3}".format(
                                         agg_host,cfg.AGG_XPRT,
@@ -86,9 +84,9 @@ def obj(request, logger, cfg):
     return {'agg_host': agg_host,
             'samplerd_host': samplerd_host,
             'instance': instance,
-            'store_pi': store_pi,
-            'store_cfg': store_cfg,
-            'store_policies': store_policies}
+            'store_pi': "store_sos",
+            'container': "test_set",
+            'schema': "test_set"}
 
 @pytest.fixture()
 def agg_conn(request, logger, cfg, obj):
@@ -126,13 +124,13 @@ class Test_one_agg_one_samplerd():
                                      xprt = cfg.SAMPLERD_XPRT,
                                      port = cfg.SAMPLERD_PORT,
                                      sets = obj['instance'],
-                                     interval = cfg.LDMSD_UPDATE_INTERVAL * 1000000)
+                                     interval = cfg.LDMSD_UPDATE_INTERVAL)
         ctrl.close()
         assert(result == "0")
 
     def test_agg_instance_existence(self, logger, cfg, obj, agg_conn):
         passed_sec = 0
-        timeout = 2 * cfg.LDMSD_UPDATE_INTERVAL # lookup + update. 2 times for safety
+        timeout = 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL) # lookup + update. 2 times for safety
         inst_dir = ldms.LDMS_xprt_dir(agg_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
@@ -163,7 +161,7 @@ class Test_one_agg_one_samplerd():
         passed_sec = 0
         # the latest aggregator recognize that the samplerd is gone
         # would be at the update time.
-        timeout = cfg.LDMSD_UPDATE_INTERVAL
+        timeout = microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) > 0) and (passed_sec < timeout):
@@ -192,9 +190,45 @@ class Test_one_agg_one_samplerd():
 
     def test_agg_after_samplerd_revived(self, logger, obj, cfg, agg_conn):
         passed_sec = 0
-        # aggregator is trying to reconnect every RECONNECT_INTERVAL
-        # when it connects it does lookup and update.
-        timeout = cfg.LDMSD_RECONNECT_INTERVAL + 2 * cfg.LDMSD_UPDATE_INTERVAL
+        # The default reconnect time is 20 seconds. There is no
+        # way to change this from the static configuration
+        timeout = 20 + 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
+        inst_dir = ldms.LDMS_xprt_dir(agg_conn)
+        assert(inst_dir is not None)
+        while (len(inst_dir) == 0) and (passed_sec < timeout):
+            passed_sec += 1
+            sleep(1)
+            inst_dir = ldms.LDMS_xprt_dir(agg_conn)
+            assert(inst_dir is not None)
+
+        logger.info("Wait time: {0}".format(passed_sec))
+        assert(obj['instance'] in inst_dir)
+
+@pytest.mark.usefixtures("startup_ldmsd_processes", "obj")
+@pytest.mark.incremental
+class Test_one_agg_one_samplerd_with_store_sos():
+    def test_samplerd_instance_existence(self, logger, cfg, obj, samplerd_conn):
+        logger.debug("--- before ldms_xprt_dir")
+        inst_dir = ldms.LDMS_xprt_dir(samplerd_conn)
+        logger.debug("--- after ldms_xprt_dir")
+        assert(inst_dir is not None)
+        assert(len(inst_dir) == cfg.NUM_TEST_INSTANCES_PER_HOST)
+        assert(obj['instance'] in inst_dir)
+
+    def test_add_host_cmd(self, cfg, obj):
+        ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
+        result = ctrl.add(host = obj['samplerd_host'],
+                                     host_type = "active",
+                                     xprt = cfg.SAMPLERD_XPRT,
+                                     port = cfg.SAMPLERD_PORT,
+                                     sets = obj['instance'],
+                                     interval = cfg.LDMSD_UPDATE_INTERVAL)
+        ctrl.close()
+        assert(result == "0")
+
+    def test_agg_instance_existence(self, logger, cfg, obj, agg_conn):
+        passed_sec = 0
+        timeout = 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL) # lookup + update. 2 times for safety
         inst_dir = ldms.LDMS_xprt_dir(agg_conn)
         assert(inst_dir is not None)
         while (len(inst_dir) == 0) and (passed_sec < timeout):
@@ -207,7 +241,6 @@ class Test_one_agg_one_samplerd():
         assert(obj['instance'] in inst_dir)
 
     def test_agg_load_store_cmd(self, logger, obj, cfg):
-        assert(len(cfg.STORE_PI) > 0)
         ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
         result = ctrl.load(name = obj['store_pi'])
         ctrl.close()
@@ -215,19 +248,139 @@ class Test_one_agg_one_samplerd():
 
     def test_agg_store_config_cmd(self, logger, obj, cfg):
         ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
-        result = ctrl.config(obj['store_pi'], **obj['store_cfg'])
+        result = ctrl.config(obj['store_pi'], path = cfg.STORE_PATH)
         ctrl.close()
         assert(result == "0")
 
     def test_agg_store_cmd(self, logger, obj, cfg):
-        store_policy = obj['store_policies'][0]
         ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
-        result = ctrl.store(**store_policy)
+        result = ctrl.store(store_pi = obj['store_pi'],
+                            policy = "all",
+                            container = "test_set",
+                            schema = "test_set")
         ctrl.close()
         assert(result == "0")
 
-    def test_agg_running_after_store(self, logger, obj, cfg):
-        is_agg_running = is_ldmsd_running(hosts = [obj['agg_host']],
+    def test_agg_running_after_store(self, cfg, obj):
+        nap = 5
+        sleep(nap)
+        t = nap
+        while (t <= 60):
+            is_running = is_ldmsd_running(hosts = obj['agg_host'],
                                           xprt = cfg.AGG_XPRT,
                                           port = cfg.AGG_PORT)
+            assert(is_running[obj['agg_host']])
+            sleep(nap)
+            t += nap
+
+    def test_agg_store(self, logger, cfg, obj):
+        sosc = SOS.Container("{0}/{1}".format(cfg.STORE_PATH, obj['container']))
+        for schema_name, schema in sosc.schemas.iteritems():
+            if schema_name == obj['schema']:
+                break
+            schema = None
+
+        # Not a test point
+        assert(schema is not None,
+               "The testing sos schema does not exist. Check the test code")
+
+        tstp_attr = schema.attr("Timestamp")
+        tstp_iter = tstp_attr.iterator()
+
+        last_record_time = tstp_iter.end().values['Timestamp'].__int__()
+        logger.debug("last timestamp: {0}".format(last_record_time))
+        assert(last_record_time is not None)
+        assert(last_record_time != "")
+
+        prev_last_record_time = last_record_time
+        sleep(20 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL))
+        last_record_time = tstp_iter.end().values['Timestamp'].__int__()
+        logger.debug("last timestamp: {0}".format(last_record_time))
+        assert(last_record_time > prev_last_record_time)
+
+    def test_samplerd_die(self, logger, cfg, obj):
+        kill_ldmsd(hosts = obj['samplerd_host'], xprt = cfg.SAMPLERD_XPRT,
+                    port = cfg.SAMPLERD_PORT)
+        is_running = is_ldmsd_running(hosts = obj['samplerd_host'],
+                                    xprt = cfg.SAMPLERD_XPRT,
+                                    port = cfg.SAMPLERD_PORT)
+        if is_running[obj['samplerd_host']]:
+            kill_9_ldmsd(hosts = obj['samplerd_host'], xprt = cfg.SAMPLERD_XPRT,
+                    port = cfg.SAMPLERD_PORT)
+            remove_file(hosts = obj['samplerd_host'], filepath = cfg.SAMPLERD_SOCK)
+
+        is_agg_running = is_ldmsd_running(hosts = obj['agg_host'],
+                                      xprt = cfg.AGG_XPRT, port = cfg.AGG_PORT)
         assert(is_agg_running[obj['agg_host']])
+
+    def test_agg_after_samplerd_die(self, logger, cfg, obj, agg_conn):
+        passed_sec = 0
+        # the latest aggregator recognize that the samplerd is gone
+        # would be at the update time.
+        timeout = microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
+        inst_dir = ldms.LDMS_xprt_dir(agg_conn)
+        assert(inst_dir is not None)
+        while (len(inst_dir) > 0) and (passed_sec < timeout):
+            passed_sec += 1
+            sleep(1)
+            inst_dir = ldms.LDMS_xprt_dir(agg_conn)
+            assert(inst_dir is not None)
+        logger.info("Wait time: {0}".format(passed_sec))
+        assert(obj['instance'] not in inst_dir)
+
+
+    def test_samplerd_comeback(self, obj, cfg):
+        start_ldmsd(hosts = obj['samplerd_host'],
+                    xprt = cfg.SAMPLERD_XPRT,
+                    port = cfg.SAMPLERD_PORT,
+                    log = cfg.SAMPLERD_LOG,
+                    sock = cfg.SAMPLERD_SOCK,
+                    test_set_name = cfg.TEST_INSTANCE_PREFIX_NAME,
+                    test_set_count = cfg.NUM_TEST_INSTANCES_PER_HOST,
+                    test_metric_count = cfg.TEST_INSTANCE_NUM_METRICS,
+                    inet_ctrl_port = cfg.SAMPLERD_INET_CTRL_PORT)
+        is_samplerd_started = is_ldmsd_running(hosts = [obj['samplerd_host']],
+                                               xprt = cfg.SAMPLERD_XPRT,
+                                               port = cfg.SAMPLERD_PORT)
+        assert(is_samplerd_started[obj['samplerd_host']])
+
+    def test_agg_after_samplerd_revived(self, logger, obj, cfg, agg_conn):
+        passed_sec = 0
+        # The default reconnect time is 20 seconds. There is no
+        # way to change this from the static configuration
+        timeout = 20 + 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
+        inst_dir = ldms.LDMS_xprt_dir(agg_conn)
+        assert(inst_dir is not None)
+        while (len(inst_dir) == 0) and (passed_sec < timeout):
+            passed_sec += 1
+            sleep(1)
+            inst_dir = ldms.LDMS_xprt_dir(agg_conn)
+            assert(inst_dir is not None)
+
+        logger.info("Wait time: {0}".format(passed_sec))
+        assert(obj['instance'] in inst_dir)
+
+    def test_agg_store_after_samplerd_revived(self, logger, cfg, obj):
+        sosc = SOS.Container("{0}/{1}".format(cfg.STORE_PATH, obj['container']))
+        for schema_name, schema in sosc.schemas.iteritems():
+            if schema_name == obj['schema']:
+                break
+            schema = None
+
+        # Not a test point
+        assert(schema is not None,
+               "The testing sos schema does not exist. Check the test code")
+
+        tstp_attr = schema.attr("Timestamp")
+        tstp_iter = tstp_attr.iterator()
+
+        last_record_time = tstp_iter.end().values['Timestamp'].__int__()
+        logger.debug("last timestamp: {0}".format(last_record_time))
+        assert(last_record_time is not None)
+        assert(last_record_time != "")
+
+        prev_last_record_time = last_record_time
+        sleep(20 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL))
+        last_record_time = tstp_iter.end().values['Timestamp'].__int__()
+        logger.debug("last timestamp: {0}".format(last_record_time))
+        assert(last_record_time > prev_last_record_time)
