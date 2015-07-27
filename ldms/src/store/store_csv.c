@@ -175,7 +175,7 @@ static int print_header(struct csv_store_handle *s_handle, ldms_set_t set,
 
 	int i, rc;
 	for (i = 0; i < metric_count; i++) {
-		const char* name = ldms_metric_name_get(set, i);
+		const char* name = ldms_metric_name_get(set, metric_arry[i]);
 		fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 	}
