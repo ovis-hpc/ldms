@@ -2,6 +2,8 @@ EXTRA_DIST=ldms.pod
 
 dist_man1_MANS= \
 ldmsctl_args.man
+EXTRA_DIST=ldms.pod
+
 
 dist_man8_MANS= \
 ldmsctl.man \
