@@ -55,7 +55,7 @@ Path to libnvidia-ml.so library
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> gemini_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1
+name=<plugin_name> component_id=<comp_id> set=<set_name> hsn_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1
 .br
 ldmsctl configuration line
 .RS
@@ -194,6 +194,8 @@ The only difference in output information in the two cases is that currently the
 
 .SH ARIES PERFORMANCE COUNTER INFORMATION
 The aries performance counter information will be accessed via the gpcdr module, if the hsn metrics are turned on.
+.B NOTE: Prior to CLE 5.2 UP05, the default gpcdr configuration erroneously wrote all the aries metrics to the same file within /sys/devices. Due to the number and size of the values, this file would exceed the supported file sizes within /sys. If you have CLE version < 5.2 UP05, replace your gpcdr-init.config file with one that splits up the locations of these values into separate files consistent with how they are handled in CLE 5.2 UP05. This configuration file and instructions for using it can be found in util/aries. The plugin will FAIL if you do not have the expected files for the split metrics.
+.br
 
 .SH DATA DIFFERENCES AMONG THE VARIANTS
 .TP
@@ -675,4 +677,6 @@ ldms(7), Plugin_kgnilnd(7)
 
 .SH BUGS
 No known bugs.
+
+The aries gpcdr file is not yet included in util/aries.
 

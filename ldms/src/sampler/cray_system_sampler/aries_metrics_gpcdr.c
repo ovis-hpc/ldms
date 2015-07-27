@@ -57,8 +57,13 @@
  */
 
 #include "aries_metrics_gpcdr.h"
+//#define TIMER_ARIES
+#ifdef TIMER_ARIES
+#include <sys/time.h>
+#endif
 
-#define ARIES_NUM_TILES 48
+#define ARIES_MAX_TILES 48 
+#define ARIES_NUM_TILES 40
 
 typedef enum {
 	HSN_METRICS_COUNTER,
@@ -68,47 +73,45 @@ typedef enum {
 } hsn_metrics_type_t;
 #define HSN_METRICS_DEFAULT HSN_METRICS_COUNTER
 
+
+
 #define STR_WRAP(NAME) #NAME
 #define PREFIX_ENUM_M(NAME) M_ ## NAME
 #define PREFIX_ENUM_LB(NAME) LB_ ## NAME
 #define PREFIX_ENUM_LD(NAME) LD_ ## NAME
 
-#define LINKSMETRICS_BASE_LIST(WRAP)\
-	WRAP(traffic), \
-	WRAP(stalled),	      \
-	WRAP(sendlinkstatus), \
-	WRAP(recvlinkstatus)
+/**
+ * For the XC, a single gpcdr file becomes too large for sys. It
+ * must be split up. We require that it be split into four separate files,
+ * one for each type
+ */
+typedef enum{
+	TRAFFIC,
+	STALLED,
+	SENDLINKSTATUS,
+	RECVLINKSTATUS,
+	ENDLINKS,
+} aries_linksmetrics_type_t;
+	
+typedef struct{
+        aries_linksmetrics_type_t enumtype;
+        char* fname;
+	FILE* lm_f;
+        char* basename;
+        char* baseunit;
+        int doderived;
+        char* derivedname;
+        char* derivedunit;
+} aries_linksmetrics_info_t;
 
-//THESE HAVE NOT BEEN FIXED YET
-#define LINKSMETRICS_DERIVED_LIST(WRAP) \
-	WRAP(SAMPLE_ARIES_TRAFFIC)
-
-static char* linksmetrics_basename[] = {
-	LINKSMETRICS_BASE_LIST(STR_WRAP)
+/** NOTE: the enum isnt x-refed. Just iterate thru while < ENDLINKS */
+/** FIXME: what are the actual paths ? */
+aries_linksmetrics_info_t linksinfo[] = {
+        {TRAFFIC, "/sys/devices/virtual/gni/gpcdr0/metricsets/linktraffic/metrics", NULL, "traffic", "(B)", 1, "SAMPLE_traffic", "(B/s)"},
+        {STALLED, "/sys/devices/virtual/gni/gpcdr0/metricsets/linkstalled/metrics", NULL, "stalled", "(ns)", 0, NULL, NULL},
+        {SENDLINKSTATUS, "/sys/devices/virtual/gni/gpcdr0/metricsets/linksendstatus/metrics", NULL, "sendlinkstatus", "(1)", 0, NULL, NULL},
+        {RECVLINKSTATUS, "/sys/devices/virtual/gni/gpcdr0/metricsets/linkrecvstatus/metrics", NULL, "recvlinkstatus", "(1)", 0, NULL, NULL}
 };
-static char* linksmetrics_derivedname[] = {
-	LINKSMETRICS_DERIVED_LIST(STR_WRAP)
-};
-typedef enum {
-	LINKSMETRICS_BASE_LIST(PREFIX_ENUM_LB)
-} linksmetrics_base_metric_t;
-typedef enum {
-	LINKSMETRICS_DERIVED_LIST(PREFIX_ENUM_LD)
-} linksmetrics_derived_metric_t;
-
-static char* linksmetrics_baseunit[] = {
-	"(B)",
-	"(ns)",
-	"(1)",
-	"(1)"
-	};
-
-static char* linksmetrics_derivedunit[] = {
-	"(B/s)",
-	};
-#define NUM_LINKSMETRICS_DIR (sizeof(linksmetrics_dir)/sizeof(linksmetrics_dir[0]))
-#define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
-#define NUM_LINKSMETRICS_DERIVEDNAME (sizeof(linksmetrics_derivedname)/sizeof(linksmetrics_derivedname[0]))
 
 #define NICMETRICS_BASE_LIST(WRAP) \
         WRAP(totaloutput), \
@@ -128,25 +131,18 @@ typedef enum {
 } nicmetrics_metric_t;
 #define NUM_NICMETRICS (sizeof(nicmetrics_basename)/sizeof(nicmetrics_basename[0]))
 
-#define LINKSMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
 #define NICMETRICS_FILE  "/sys/devices/virtual/gni/gpcdr0/metricsets/nic/metrics"
 
 
 /* LINKSMETRICS Specific */
-static FILE *lm_f;
-static uint64_t linksmetrics_prev_time;
-static int linksmetrics_time_multiplier;
-static ldms_metric_t* linksmetrics_base_metric_table;
-static ldms_metric_t* linksmetrics_derived_metric_table;
-static uint64_t*** linksmetrics_base_values; /**< holds curr & prev raw module
+static uint64_t linksmetrics_prev_time[ENDLINKS];
+static int linksmetrics_time_multiplier[ENDLINKS];
+static ldms_metric_t* linksmetrics_base_metric_table[ENDLINKS];
+static ldms_metric_t* linksmetrics_derived_metric_table[ENDLINKS];
+static uint64_t** linksmetrics_base_values[ENDLINKS]; /**< holds curr & prev raw module
 					   data for derived computation */
-static uint64_t** linksmetrics_base_diff; /**< holds diffs for the module values */
-
-static int linksmetrics_values_idx; /**< index of the curr values for the above */
-static int num_linksmetrics_exists;
-static int* linksmetrics_indicies; /**< track metric table index in
-			       which to store the raw data */
-
+static uint64_t* linksmetrics_base_diff[ENDLINKS]; /**< holds diffs for the module values */
+static int linksmetrics_values_idx[ENDLINKS];
 static int linksmetrics_valid;
 
 /* NICMETRICS Specific */
@@ -166,36 +162,52 @@ static int hsn_metrics_type = HSN_METRICS_DEFAULT;
 
 /** internal calculations */
 static uint64_t __linksmetrics_derived_metric_calc(
-	int i, int j, uint64_t** diff, uint64_t time_delta);
-static int __links_metric_name(int, int, int, char[]);
+	int i, uint64_t* diff, uint64_t time_delta);
 
 
 //diridx is now the tile
-static int __links_metric_name(int isbase, int nameidx,
-				   int diridx, char newname[]){
-
-	if (isbase == 1)
+static int __links_metric_name(int infoidx, int isbase, int tile,
+			       char newname[]){
+	if (isbase == 1) {
 		sprintf(newname, "%s_%03d %s",
-			linksmetrics_basename[nameidx],
-			diridx,
-			linksmetrics_baseunit[nameidx]);
-	else
+			linksinfo[infoidx].basename,
+			tile,
+			linksinfo[infoidx].baseunit);
+	} else {
 		sprintf(newname, "%s_%03d %s",
-			linksmetrics_derivedname[nameidx],
-			diridx,
-			linksmetrics_derivedunit[nameidx]);
+			linksinfo[infoidx].derivedname,
+			tile,
+			linksinfo[infoidx].derivedunit);
+	}
 
 	return 0;
 }
 
 
-int hsn_metrics_config(int i){
+int hsn_metrics_config(int i, ldmsd_msg_log_f msglog){
+	int j;
+
 	if (i >= HSN_METRICS_END){
 		return EINVAL;
 	} else if (i < 0){
 		hsn_metrics_type = HSN_METRICS_DEFAULT;
 	} else {
 		hsn_metrics_type = i;
+	}
+
+	/* check for the existence of the files. NOTE: this is currently only done for the ARIES */
+	for (j = 0; j < ENDLINKS; j++){
+		FILE* junk = fopen(linksinfo[j].fname, "r");
+		if (!junk){
+			msglog(LDMS_LCRITICAL, "cray_aries_r_sampler: missing gpcdr file <%s>. Check that "
+			       "1) gpcdr is running: lsmod | grep gpcdr and "
+			       "2) the gpcdr configuration file (e.g., /etc/opt/cray/gni-gpcdr-utils/gpcdr-init.conf "
+			       "or if specified via GPCDRINIT_CONF) correctly specifies "
+			       "METRICSETS=\"linktraffic linkstalled linksendstatus linkrecvstatus nic\"\n",
+			       linksinfo[j].fname);
+			return ENOENT;
+		}
+		fclose(junk);
 	}
 
 	return 0;
@@ -211,17 +223,17 @@ int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 	size_t meta_sz = 0;
 	size_t data_sz = 0;
 	char newname[96];
-	int count;
-	int num_possible_base_names = 0;
 	int i, j;
 	int rc;
 
-	count = 0;
-	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_LINKSMETRICS_BASENAME; i++){
-			for (j = 0; j < ARIES_NUM_TILES; j++){
-				__links_metric_name(1, i, j, newname);
+
+	/** NOTE: add all 48, even if they arent used */
+
+	for (i = 0; i < ENDLINKS; i++){
+		if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+		    (hsn_metrics_type == HSN_METRICS_BOTH)){
+			for (j = 0; j < ARIES_MAX_TILES; j++){
+				__links_metric_name(i, 1, j, newname);
 				rc = ldms_get_metric_size(newname,
 							  LDMS_V_U64,
 							  &meta_sz,
@@ -230,27 +242,20 @@ int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 					return rc;
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
-				count++;
 			}
 		}
 
-		linksmetrics_base_metric_table =
-			calloc(count, sizeof(ldms_metric_t));
-		if (!linksmetrics_base_metric_table)
+		linksmetrics_base_metric_table[i] =
+			calloc(ARIES_MAX_TILES, sizeof(ldms_metric_t));
+		if (!linksmetrics_base_metric_table[i])
 			return ENOMEM;
 
-		/* keep track of the next possible index to use */
-		linksmetrics_indicies = calloc(count, sizeof(int));
-		if (!linksmetrics_indicies)
-			return ENOMEM;
-	}
 
-	count = 0;
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
-			for (j = 0; j < ARIES_NUM_TILES; j++) {
-				__links_metric_name(0, i, j, newname);
+		if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+		    (hsn_metrics_type == HSN_METRICS_BOTH)) &&
+		    linksinfo[i].doderived){
+			for (j = 0; j < ARIES_MAX_TILES; j++) {
+				__links_metric_name(i, 0, j, newname);
 				rc = ldms_get_metric_size(newname,
 							  LDMS_V_U64,
 							  &meta_sz,
@@ -259,19 +264,20 @@ int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
 					return rc;
 				tot_meta_sz += meta_sz;
 				tot_data_sz += data_sz;
-				count++;
 			}
+
+			linksmetrics_derived_metric_table[i] =
+				calloc(ARIES_MAX_TILES, sizeof(ldms_metric_t));
+			if (!linksmetrics_derived_metric_table[i])
+				return ENOMEM;
+		} else {
+			linksmetrics_derived_metric_table[i] = NULL;
 		}
-
-		linksmetrics_derived_metric_table =
-			calloc(count, sizeof(ldms_metric_t));
-		if (!linksmetrics_derived_metric_table)
-			return ENOMEM;
-
 	}
 
 	*m_sz = tot_meta_sz;
 	*d_sz = tot_data_sz;
+
 
 	return 0;
 
@@ -345,129 +351,111 @@ int aries_linksmetrics_setup(ldmsd_msg_log_f msglog)
 	uint64_t val;
 	int metric_no = 0;
 	int count = 0;
-	int i, j, rc;
-	int lastbase = 0;
+	int i, j, k, rc;
 
 	rc = 0;
-	num_linksmetrics_exists = 0;
 	linksmetrics_valid = 0;
 
-	lm_f = fopen(LINKSMETRICS_FILE, "r");
-	if (!lm_f) {
-		msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
-		       LINKSMETRICS_FILE);
-		return EINVAL;
+	/** storage for derived computations if necessary */
+	for (k = 0; k < ENDLINKS; k++){
+		if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+		     (hsn_metrics_type == HSN_METRICS_BOTH)) &&
+		    linksinfo[k].doderived){
 
-	}
-
-
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-
-		/** storage for metrics for computations in terms of the ones
-		 * gpcdr can possibly have */
-
-		linksmetrics_base_values = calloc(2, sizeof(uint64_t**));
-		if (!linksmetrics_base_values)
-			return ENOMEM;
-
-		linksmetrics_base_diff = calloc(NUM_LINKSMETRICS_BASENAME,
-						sizeof(uint64_t*));
-		if (!linksmetrics_base_diff)
-			return ENOMEM;
-
-		for (i = 0; i < 2; i++){
-			linksmetrics_base_values[i] =
-				calloc(NUM_LINKSMETRICS_BASENAME,
-				       sizeof(uint64_t*));
-			if (!linksmetrics_base_values[i])
+			linksmetrics_base_values[k] = calloc(2, sizeof(uint64_t*));
+			if (!linksmetrics_base_values[k])
 				return ENOMEM;
 
-			for (j = 0; j < NUM_LINKSMETRICS_BASENAME; j++){
-				linksmetrics_base_values[i][j] =
-					calloc(ARIES_NUM_TILES,
-					       sizeof(uint64_t));
-				if (!linksmetrics_base_values[i][j])
-					return ENOMEM;
+			linksmetrics_base_diff[k] = calloc(ARIES_MAX_TILES,
+							   sizeof(uint64_t));
+			if (!linksmetrics_base_diff[k])
+				return ENOMEM;
 
-				if (i == 0){
-					linksmetrics_base_diff[j] =
-						calloc(ARIES_NUM_TILES,
-						       sizeof(uint64_t));
-					if (!linksmetrics_base_diff[j])
-						return ENOMEM;
-				}
+			for (i = 0; i < 2; i++){
+				linksmetrics_base_values[k][i] =
+					calloc(ARIES_MAX_TILES, sizeof(uint64_t));
+				if (!linksmetrics_base_values[k][i])
+					return ENOMEM;
 			}
 		}
-
-		linksmetrics_values_idx = 0;
 	}
 
-	/* Open the file now and determine which metrics are there */
+	/**
+	 * Make sure files are there and all have metrics. 
+	 * Also store the prev vals if need them 
+	 */
+	for (k = 0; k < ENDLINKS; k++){
+		linksmetrics_values_idx[k] = 0;
 
-	fseek(lm_f, 0, SEEK_SET);
-	/* timestamp */
-	s = fgets(lbuf, sizeof(lbuf), lm_f);
-	if (!s)
-		return EINVAL;
-	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
-		    &linksmetrics_prev_time, units);
-	if (rc != 3) {
-		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
-		       LINKSMETRICS_FILE);
-		rc = EINVAL;
-		return rc;
-	}
-	if (strcmp(units,"ms") == 0){
-		linksmetrics_time_multiplier = 1000;
-	} else if (strcmp(units,"seconds") == 0){
-		linksmetrics_time_multiplier = 1;
-	} else {
-		msglog(LDMS_LERROR,"linksmetrics: wrong gpcdr interface (time units)\n");
-		rc = EINVAL;
-		return rc;
-	}
-
-	do {
-		int dir = -1;
-		s = fgets(lbuf, sizeof(lbuf), lm_f);
+		linksinfo[k].lm_f = fopen(linksinfo[k].fname, "r");
+		if (!linksinfo[k].lm_f) {
+			msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
+			       linksinfo[k].fname);
+			return EINVAL;
+		}
+		
+		fseek(linksinfo[k].lm_f, 0, SEEK_SET);
+		/* timestamp */
+		s = fgets(lbuf, sizeof(lbuf), linksinfo[k].lm_f);
 		if (!s)
-			break;
-		rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &val,
-			    units);
-		if (rc != 4) {
+			return EINVAL;
+
+		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
+			    &linksmetrics_prev_time[k], units);
+
+		if (rc != 3) {
 			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
-			       LINKSMETRICS_FILE);
+			       linksinfo[k].fname);
+			rc = EINVAL;
+			return rc;
+		}
+		if (strcmp(units,"ms") == 0){
+			linksmetrics_time_multiplier[k] = 1000;
+		} else if (strcmp(units,"seconds") == 0){
+			linksmetrics_time_multiplier[k] = 1;
+		} else {
+			msglog(LDMS_LERROR,"linksmetrics: wrong gpcdr interface (time units)\n");
 			rc = EINVAL;
 			return rc;
 		}
 
-		while((lastbase < NUM_LINKSMETRICS_BASENAME) &&
-		      !strstr(metric_name, linksmetrics_basename[lastbase])){
-			lastbase++;
+		count = 0;
+		do {
+			int dir = -1;
+			s = fgets(lbuf, sizeof(lbuf), linksinfo[k].lm_f);
+			if (!s)
+				break;
+			rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &val,
+				    units);
+			if (rc != 4) {
+				msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+				       linksinfo[k].fname);
+				rc = EINVAL;
+				return rc;
+			}
+
+			/* store the val for the first calculation */
+			if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+			     (hsn_metrics_type == HSN_METRICS_BOTH)) &&
+			    linksinfo[k].doderived){
+				linksmetrics_base_values[k][linksmetrics_values_idx[k]][dir] = val;
+			}
+			count++;
+		} while (s);
+
+		if (count != ARIES_NUM_TILES){
+			msglog(LDMS_LERROR, "ERR: wrong number of metrics in file '%s'\n",
+			       linksinfo[k].fname);
+			rc = EINVAL;
+			return rc;
 		}
 
-		if ( (dir < 0) || (lastbase == NUM_LINKSMETRICS_BASENAME)){
-			msglog(LDMS_LERROR,"cray_system_sampler: linksmetric bad metric\n");
-			return EINVAL;
-		}
+		linksmetrics_values_idx[k] = 1;
 
-		/* metric_no in terms of the ones gpcdr can possibly have */
-		metric_no = lastbase*ARIES_NUM_TILES+dir;
-		linksmetrics_indicies[num_linksmetrics_exists++] =  metric_no;
+		//NOTE: leaving the filehandles open
+	} /* ENDLINKS */
 
-		/* store the val for the first calculation */
-		if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-		    (hsn_metrics_type == HSN_METRICS_BOTH)){
-			linksmetrics_base_values[
-				linksmetrics_values_idx][lastbase][dir] = val;
-		}
-	} while (s);
-
-
-	linksmetrics_values_idx = 1;
 	linksmetrics_valid = 1;
-
 	return 0;
 
 }
@@ -569,51 +557,42 @@ int add_metrics_aries_linksmetrics(ldms_set_t set, int comp_id,
 	int i, j;
 	int rc = 0;
 
+	/** NOTE: add all 48, even if they arent used */
 
-	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		metric_no = 0;
-		for (i = 0; i < NUM_LINKSMETRICS_BASENAME; i++){
-			for (j = 0; j < ARIES_NUM_TILES; j++){
-				__links_metric_name(1, i, j, newname);
-				linksmetrics_base_metric_table[metric_no] =
+	for (i = 0; i < ENDLINKS; i++){
+		if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+		    (hsn_metrics_type == HSN_METRICS_BOTH)){
+			for (j = 0; j < ARIES_MAX_TILES; j++){
+				__links_metric_name(i, 1, j, newname);
+				linksmetrics_base_metric_table[i][j] =
 					ldms_add_metric(set, newname,
 							LDMS_V_U64);
-				if (!linksmetrics_base_metric_table[metric_no])
+				if (!linksmetrics_base_metric_table[i][j])
 					return ENOMEM;
 				/* XXX comp_id */
-				ldms_set_user_data(
-					linksmetrics_base_metric_table[
-						metric_no++],
-					comp_id);
+				ldms_set_user_data(linksmetrics_base_metric_table[i][j],
+						   comp_id);
+			}
+		}
+
+
+		if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+		    (hsn_metrics_type == HSN_METRICS_BOTH)) &&
+		    linksinfo[i].doderived){
+			for (j = 0; j < ARIES_MAX_TILES; j++) {
+				__links_metric_name(i, 0, j, newname);
+				linksmetrics_derived_metric_table[i][j] =
+					ldms_add_metric(set, newname,
+							LDMS_V_U64);
+				if (!linksmetrics_derived_metric_table[i][j])
+					return ENOMEM;
+				/* XXX comp_id */
+				ldms_set_user_data(linksmetrics_derived_metric_table[i][j],
+						   comp_id);
 			}
 		}
 	}
 
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		metric_no = 0;
-		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
-			for (j = 0; j < ARIES_NUM_TILES; j++) {
-				__links_metric_name(0, i, j, newname);
-				linksmetrics_derived_metric_table[metric_no] =
-					ldms_add_metric(set, newname,
-							LDMS_V_U64);
-				if (!linksmetrics_derived_metric_table[
-					    metric_no])
-					return ENOMEM;
-				/* XXX comp_id */
-				ldms_set_user_data(
-					linksmetrics_derived_metric_table[
-						metric_no++],
-					comp_id);
-			}
-		}
-	}
-
-
- err:
-	return rc;
 }
 
 
@@ -674,104 +653,112 @@ int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog)
 	int idx = 0;
 	int i, j, rc;
 
-	if (!lm_f || !linksmetrics_valid)
+	if (!linksmetrics_valid)
 		return 0;
 
 
-	fseek(lm_f, 0, SEEK_SET);
+#ifdef TIMER_ARIES
+	struct timeval tv[3];
+	gettimeofday(&tv[0], 0);
+#endif
 
-	/* read the timestamp */
-	s = fgets(lbuf, sizeof(lbuf), lm_f);
-	if (!s) {
-		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
-		       LINKSMETRICS_FILE);
-		return EINVAL;
-	}
-	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
-		    units);
-	if (rc != 3) {
-		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
-		       LINKSMETRICS_FILE);
-		rc = EINVAL;
-		return rc;
-	}
+	for (i = 0; i < ENDLINKS; i++){
+		FILE* lm_f = linksinfo[i].lm_f;
+		idx = linksmetrics_values_idx[i];
 
-	count = 0;
-	idx = linksmetrics_values_idx;
-	time_delta = curr_time - linksmetrics_prev_time;
-	do {
+		if (lm_f == NULL){
+			continue;
+		}
+
+		fseek(lm_f, 0, SEEK_SET);
+
+		/* read the timestamp */
 		s = fgets(lbuf, sizeof(lbuf), lm_f);
-		if (!s)
-			break;
-		rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &v.v_u64,
-			    units);
-		if (rc != 4) {
+		if (!s) {
 			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
-			       LINKSMETRICS_FILE);
+			       linksinfo[i].fname);
+			return EINVAL;
+		}
+		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
+			    units);
+		if (rc != 3) {
+			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+			       linksinfo[i].fname);
 			rc = EINVAL;
 			return rc;
 		}
 
-		if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
-		    (hsn_metrics_type == HSN_METRICS_BOTH)){
-
-			ldms_set_metric(
-				linksmetrics_base_metric_table[
-					linksmetrics_indicies[count]], &v);
-		}
-
-		if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-		    (hsn_metrics_type == HSN_METRICS_BOTH)){
-			int ibase, idir;
-			ibase = (int)(linksmetrics_indicies[count]/
-				      ARIES_NUM_TILES);
-			idir = dir;
-
-			linksmetrics_base_values[idx][ibase][idir] = v.v_u64;
-
-			if ( linksmetrics_base_values[idx][ibase][idir] <
-			     linksmetrics_base_values[!idx][ibase][idir]) {
-				/* the gpcdr values are 64 bit */
-				linksmetrics_base_diff[ibase][idir] =
-					(ULONG_MAX -
-					 linksmetrics_base_values[!idx][ibase][
-						 idir]) +
-					linksmetrics_base_values[idx][ibase][
-						idir];
-			} else {
-				linksmetrics_base_diff[ibase][idir] =
-					linksmetrics_base_values[idx][ibase][
-						idir] -
-					linksmetrics_base_values[!idx][ibase][
-						idir];
+		count = 0;
+		time_delta = curr_time - linksmetrics_prev_time[i];
+		do {
+			s = fgets(lbuf, sizeof(lbuf), lm_f);
+			if (!s)
+				break;
+			rc = sscanf(lbuf, "%[^:]:%d %" PRIu64 " %s\n", metric_name, &dir, &v.v_u64,
+				    units);
+			if (rc != 4) {
+				msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+				       linksinfo[i].fname);
+				rc = EINVAL;
+				return rc;
 			}
-		}
-		count++;
 
-	} while (s);
+			if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+			    (hsn_metrics_type == HSN_METRICS_BOTH)){
+				ldms_set_metric(linksmetrics_base_metric_table[i][dir], &v);
+			}
 
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		metric_no = 0;
-		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
-			for (j = 0; j < ARIES_NUM_TILES; j++) {
+			if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+			    (hsn_metrics_type == HSN_METRICS_BOTH)) &&
+			    linksinfo[i].doderived){
+				linksmetrics_base_values[i][idx][dir] = v.v_u64;
+
+				if ( linksmetrics_base_values[i][idx][dir] <
+				     linksmetrics_base_values[i][!idx][dir]) {
+					/* the gpcdr values are 64 bit */
+					linksmetrics_base_diff[i][dir] =
+						(ULONG_MAX - linksmetrics_base_values[i][!idx][dir]) +
+						linksmetrics_base_values[i][idx][dir];
+				} else {
+					linksmetrics_base_diff[i][dir] =
+						linksmetrics_base_values[i][idx][dir] -
+						linksmetrics_base_values[i][!idx][dir];
+				}
+			}
+			count++;
+
+		} while (s); /** read whole file */
+
+		if (((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+		    (hsn_metrics_type == HSN_METRICS_BOTH)) && 
+		    linksinfo[i].doderived){
+			for (j = 0; j < ARIES_MAX_TILES; j++) {
+				/** there are 8 that wont need to be done, but those will ret 0 (base_diff = 0) */
 				v.v_u64 = __linksmetrics_derived_metric_calc(
-					i, j, linksmetrics_base_diff,
-					time_delta);
+				     i, &(linksmetrics_base_diff[i][j]),
+				     time_delta);
 				ldms_set_metric(
-					linksmetrics_derived_metric_table[
-						metric_no++], &v);
+					linksmetrics_derived_metric_table[i][j], &v);
 			}
 		}
+
+		if (count != ARIES_NUM_TILES){
+			msglog(LDMS_LERROR, "linksmetrics: in sample wrong num values for '%s'\n",
+			       linksinfo[i].fname);
+			linksmetrics_valid = 0;
+			return EINVAL;
+		}
+
+		linksmetrics_values_idx[i] = (linksmetrics_values_idx[i] == 0? 1 : 0);
+		linksmetrics_prev_time[i] = curr_time;
 	}
 
-	if (count != num_linksmetrics_exists) {
-		linksmetrics_valid = 0;
-		return EINVAL;
-	}
 
-	linksmetrics_values_idx = (linksmetrics_values_idx == 0? 1 : 0);
-	linksmetrics_prev_time = curr_time;
+#ifdef TIMER_ARIES
+	gettimeofday(&tv[1], 0);
+	timersub(&tv[1], &tv[0], &tv[2]);
+	msglog(LDMS_LALWAYS, "linksmetrics: at %llu.%06llu dt = %llu.%06llu\n", tv[1].tv_sec, tv[1].tv_usec, tv[2].tv_sec, tv[2].tv_usec);
+#endif
 
 	return 0;
 
@@ -792,6 +779,11 @@ int sample_metrics_aries_nicmetrics(ldmsd_msg_log_f msglog)
 
 	if (!nm_f || !nicmetrics_valid)
 		return 0;
+
+#ifdef TIMER_ARIES
+	struct timeval tv[3];
+	gettimeofday(&tv[0], 0);
+#endif
 
 	fseek(nm_f, 0, SEEK_SET);
 	/* timestamp */
@@ -864,22 +856,30 @@ int sample_metrics_aries_nicmetrics(ldmsd_msg_log_f msglog)
 
 	nicmetrics_values_idx = (nicmetrics_values_idx == 0? 1: 0);
 	nicmetrics_prev_time = curr_time;
+
+
+#ifdef TIMER_ARIES
+	gettimeofday(&tv[1], 0);
+	timersub(&tv[1], &tv[0], &tv[2]);
+	msglog(LDMS_LALWAYS, "nicsmetrics: at %llu.%06llu dt = %llu.%06llu\n", tv[1].tv_sec, tv[1].tv_usec, tv[2].tv_sec, tv[2].tv_usec);
+#endif
 	return 0;
 
 }
 
-static uint64_t __linksmetrics_derived_metric_calc(int i, int j,
-						   uint64_t** diff,
+static uint64_t __linksmetrics_derived_metric_calc(int i, uint64_t* diff,
 						   uint64_t timedelta){
 	int rc = 0;
 
+
 	switch (i) {
-	case LD_SAMPLE_ARIES_TRAFFIC:
-		if (timedelta > 0)
+	case TRAFFIC:
+		if ((timedelta > 0) && (diff != 0)){
 			return (uint64_t)
-				((double)(linksmetrics_time_multiplier * diff[LB_traffic][j])/(double) timedelta);
-		else
+				((double)(linksmetrics_time_multiplier[i] * (*diff))/(double) timedelta);
+		} else {
 			return 0;
+		}
 		break;
 	default:
 		return 0;

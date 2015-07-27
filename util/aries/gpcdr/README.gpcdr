@@ -1,0 +1,34 @@
+# System default location for gpcdr configuration file is:
+** /etc/opt/cray/gni-gpcdr-utils/gpcdr-init.conf
+
+METRICSETS is incorrectly defined if:
+METRICSETS="links nic"
+
+METRICSETS should be defined as:
+METRICSETS="linktraffic linkstalled linksendstatus linkrecvstatus nic"
+
+#!/bin/bash
+
+#Set environment variable GPCDRINIT_CONF to point to desired gpcdr config file
+export GPCDRINIT_CONF=<path>/gpcdr-init_split.conf
+
+# Remove nic and link metrics if running "CORRECT" version as defined above
+#/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-ctl -M linktraffic -D
+#/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-ctl -M linkstalled -D
+#/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-ctl -M linksendstatus -D
+#/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-ctl -M linkrecvstatus -D
+#/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-ctl -M nic -D
+
+# Remove nic and link metrics if running "INCORRECT" version as defined above
+#/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-ctl -M nic -D
+#/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-ctl -M links -D
+
+# NOTE that the REMOVE above must match what is currently running
+# and if changed must match what it has been changed to or it will fail!!!
+
+# Instantiate metrics as per gpcdr-init_ldms.conf
+/opt/cray/gni-gpcdr-utils/default/sbin/gpcdr-init
+
+
+#NOTE: For this to be correct on reboot, you will have to put the correct
+#version in the default location.
