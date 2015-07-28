@@ -81,12 +81,21 @@ def obj(request, logger, cfg):
                                 cfg.SAMPLERD_PORT, cfg.SAMPLERD_INET_CTRL_PORT))
     logger.info("Instance name is {0}".format(instance))
 
+    if cfg.SECRETWORD_FILE is None or cfg.SECRETWORD_FILE == "":
+        secretword = None
+        logger.info("No secret word")
+    else:
+        from ovis_lib import ovis_auth
+        secretword = ovis_auth.ovis_auth_get_secretword(cfg.SECRETWORD_FILE, None)
+        logger.info("Secret word is '{0}'".format(secretword))
+
     return {'agg_host': agg_host,
             'samplerd_host': samplerd_host,
             'instance': instance,
             'store_pi': "store_sos",
             'container': "test_set",
-            'schema': "test_set"}
+            'schema': "test_set",
+            'secretword': secretword}
 
 @pytest.fixture()
 def agg_conn(request, logger, cfg, obj):
@@ -118,7 +127,8 @@ class Test_one_agg_one_samplerd():
         assert(obj['instance'] in inst_dir)
 
     def test_add_host_cmd(self, cfg, obj):
-        ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_host'],
+                               cfg.AGG_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.add(host = obj['samplerd_host'],
                                      host_type = "active",
                                      xprt = cfg.SAMPLERD_XPRT,
@@ -152,6 +162,8 @@ class Test_one_agg_one_samplerd():
             kill_9_ldmsd(hosts = obj['samplerd_host'], xprt = cfg.SAMPLERD_XPRT,
                     port = cfg.SAMPLERD_PORT)
             remove_file(hosts = obj['samplerd_host'], filepath = cfg.SAMPLERD_SOCK)
+
+        sleep(3)
 
         is_agg_running = is_ldmsd_running(hosts = obj['agg_host'],
                                       xprt = cfg.AGG_XPRT, port = cfg.AGG_PORT)
@@ -216,7 +228,8 @@ class Test_one_agg_one_samplerd_with_store_sos():
         assert(obj['instance'] in inst_dir)
 
     def test_add_host_cmd(self, cfg, obj):
-        ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_host'],
+                               cfg.AGG_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.add(host = obj['samplerd_host'],
                                      host_type = "active",
                                      xprt = cfg.SAMPLERD_XPRT,
@@ -241,19 +254,22 @@ class Test_one_agg_one_samplerd_with_store_sos():
         assert(obj['instance'] in inst_dir)
 
     def test_agg_load_store_cmd(self, logger, obj, cfg):
-        ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_host'],
+                               cfg.AGG_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.load(name = obj['store_pi'])
         ctrl.close()
         assert(result == "0")
 
     def test_agg_store_config_cmd(self, logger, obj, cfg):
-        ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_host'],
+                               cfg.AGG_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.config(obj['store_pi'], path = cfg.STORE_PATH)
         ctrl.close()
         assert(result == "0")
 
     def test_agg_store_cmd(self, logger, obj, cfg):
-        ctrl = ldmsdInetConfig(obj['agg_host'], cfg.AGG_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_host'],
+                               cfg.AGG_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.store(store_pi = obj['store_pi'],
                             policy = "all",
                             container = "test_set",
@@ -308,6 +324,8 @@ class Test_one_agg_one_samplerd_with_store_sos():
             kill_9_ldmsd(hosts = obj['samplerd_host'], xprt = cfg.SAMPLERD_XPRT,
                     port = cfg.SAMPLERD_PORT)
             remove_file(hosts = obj['samplerd_host'], filepath = cfg.SAMPLERD_SOCK)
+
+        sleep(3)
 
         is_agg_running = is_ldmsd_running(hosts = obj['agg_host'],
                                       xprt = cfg.AGG_XPRT, port = cfg.AGG_PORT)

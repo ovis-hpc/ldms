@@ -3,8 +3,8 @@
 This file contains the required variables in the tests.
 """
 
-SAMPLERD_OVIS = "/home/nichamon/${HOSTNAME}"
-AGG_OVIS = "/home/nichamon/${HOSTNAME}"
+SAMPLERD_OVIS = "/${HOME}/${HOSTNAME}"
+AGG_OVIS = "/${HOME}/${HOSTNAME}"
 
 LOG_HOME = "/var/log/ovis"
 SOCK_HOME = "/var/run/ovis"
@@ -20,8 +20,11 @@ STORE_HOME = "/etc/store/"
 # BEGIN: Test environment-specific variables
 #-------------------------------------------
 
+#=========== Path to the secret word for authentication test
+SECRETWORD_FILE = ""
+
 #=========== List of hosts that will run samplerd(s)
-SAMPLERD_HOSTS = map(lambda i: "orion-0{0}".format(i), [5, 6]) + ['localhost']
+SAMPLERD_HOSTS = ["localhost"]
 
 #=========== Transport used by the samplerd(s)
 SAMPLERD_XPRT = "sock"
@@ -40,8 +43,7 @@ SAMPLERD_INET_CTRL_PORT = 20001
 
 #===========hostnames of aggregators
 # "localhost" must be in the list.
-AGG_HOSTS = ["localhost", "orion-05"]
-#AGG_HOSTS = ["localhost"]
+AGG_HOSTS = ["localhost"]
 
 #===========Transport used by the aggregators
 AGG_XPRT = "sock"
@@ -60,7 +62,7 @@ AGG_INET_CTRL_PORT = 20002
 
 #===========hostnames of the 2nd-level aggregators
 # "localhost" must be in the list.
-AGG2_HOSTS = ["orion-05"]
+AGG2_HOSTS = ["localhost"]
 
 #===========Transport used by the 2nd-level aggregators
 AGG2_XPRT = "sock"

@@ -105,10 +105,19 @@ def obj(request, logger, cfg):
                                 cfg.SAMPLERD_PORT, cfg.SAMPLERD_INET_CTRL_PORT))
     logger.info("Instance name is {0}".format(instance))
 
+    if cfg.SECRETWORD_FILE is None or cfg.SECRETWORD_FILE == "":
+        secretword = None
+        logger.info("No secret word")
+    else:
+        from ovis_lib import ovis_auth
+        secretword = ovis_auth.ovis_auth_get_secretword(cfg.SECRETWORD_FILE, None)
+        logger.info("Secret word is '{0}'".format(secretword))
+
     return {'agg_2ndLevel_host': agg_2ndLevel_host,
             'agg_1stLevel_host': agg_1stLevel_host,
             'samplerd_host': samplerd_host,
-            'instance': instance}
+            'instance': instance,
+            'secretword': secretword}
 
 @pytest.fixture()
 def agg_2ndLevel_conn(request, logger, cfg, obj):
@@ -159,7 +168,8 @@ class Test_2level_aggregation:
         assert(obj['instance'] in inst_dir)
 
     def test_add_host_cmd(self, cfg, obj):
-        ctrl = ldmsdInetConfig(obj['agg_1stLevel_host'], cfg.AGG_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_1stLevel_host'],
+                               cfg.AGG_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.add(host = obj['samplerd_host'],
                                      host_type = "active",
                                      xprt = cfg.SAMPLERD_XPRT,
@@ -184,7 +194,8 @@ class Test_2level_aggregation:
         assert obj['instance'] in inst_dir
 
     def test_2ndLevel_agg_add_1stLevel_agg(self, logger, cfg, obj, agg_2ndLevel_conn):
-        ctrl = ldmsdInetConfig(obj['agg_2ndLevel_host'], cfg.AGG2_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_2ndLevel_host'],
+                               cfg.AGG2_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.add(host = obj['agg_1stLevel_host'],
                                         host_type = "active",
                                         xprt = cfg.AGG_XPRT,
@@ -219,6 +230,9 @@ class Test_2level_aggregation:
                                       xprt = cfg.SAMPLERD_XPRT,
                                       port = cfg.SAMPLERD_PORT)
             remove_file(hosts = [obj['samplerd_host']], filepath = cfg.SAMPLERD_SOCK)
+
+        sleep(3)
+
         is_agg_running = is_ldmsd_running(hosts = [obj['agg_1stLevel_host']],
                                       xprt = cfg.AGG_XPRT,
                                       port = cfg.AGG_PORT)
@@ -245,7 +259,7 @@ class Test_2level_aggregation:
 
     def test_agg_2ndLevel_instance_after_samplerd_die(self, logger, cfg, obj, agg_2ndLevel_conn):
         passed_sec = 0
-        timeout = 2 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
+        timeout = 4 * microsec2sec(cfg.LDMSD_UPDATE_INTERVAL)
         inst_dir = ldms.LDMS_xprt_dir(agg_2ndLevel_conn)
         assert(inst_dir is not None)
 
@@ -272,6 +286,8 @@ class Test_2level_aggregation:
                                                xprt = cfg.SAMPLERD_XPRT,
                                                port = cfg.SAMPLERD_PORT)
         assert(is_samplerd_started[obj['samplerd_host']])
+
+        sleep(3)
 
         is_running = is_ldmsd_running(hosts = obj['agg_1stLevel_host'],
                                       xprt = cfg.AGG_XPRT,
@@ -323,12 +339,12 @@ class Test_2level_aggregation:
         is_samplerd_running = is_ldmsd_running(hosts = [obj['samplerd_host']],
                                                xprt = cfg.SAMPLERD_XPRT,
                                                port = cfg.SAMPLERD_PORT)
-        assert(not is_samplerd_running[obj['samplerd_host']])
+        assert(is_samplerd_running[obj['samplerd_host']])
 
         is_2ndLevel_agg_running = is_ldmsd_running(hosts = [obj['agg_2ndLevel_host']],
                                                    xprt = cfg.AGG2_XPRT,
                                                    port = cfg.AGG2_PORT)
-        assert(not is_2ndLevel_agg_running[obj['agg_2ndLevel_host']])
+        assert(is_2ndLevel_agg_running[obj['agg_2ndLevel_host']])
 
     def test_samplerd_after_1st_agg_die(self, logger, cfg, obj, samplerd_conn):
         inst_dir = ldms.LDMS_xprt_dir(samplerd_conn)
@@ -362,7 +378,8 @@ class Test_2level_aggregation:
         assert(is_1st_agg_started[obj['agg_1stLevel_host']])
 
     def test_add_host_1stLevel_after_revived(self, logger, cfg, obj):
-        ctrl = ldmsdInetConfig(obj['agg_1stLevel_host'], cfg.AGG_INET_CTRL_PORT)
+        ctrl = ldmsdInetConfig(obj['agg_1stLevel_host'],
+                               cfg.AGG_INET_CTRL_PORT, obj['secretword'])
         result = ctrl.add(host = obj['samplerd_host'],
                                      host_type = "active",
                                      xprt = cfg.SAMPLERD_XPRT,
