@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010,2014-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010,2014-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -50,8 +50,8 @@
  */
 
 /**
- * \file geminfo.c
- * \brief /proc/geminfo data provider
+ * \file kgnilnd.c
+ * \brief /proc/kgnilnd data provider
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -94,7 +94,7 @@ char *replace_space(char *s)
 	return s;
 }
 
-struct geminfo_metric {
+struct kgnilnd_metric {
 	int idx;
 	uint64_t udata;
 };
@@ -108,15 +108,17 @@ static int create_metric_set(const char *path)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the geminfo file "
+		msglog(LDMSD_LERROR, "Could not open the kgnilnd file "
 				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 
 	/* Create the metric set */
-	ldms_schema_t schema = ldms_schema_new("geminfo");
-	if (schema)
-		return ENOMEM;
+	ldms_schema_t schema = ldms_schema_new("kgnilnd");
+	if (!schema) {
+		rc = ENOMEM;
+		goto err;
+	}
 
 	/* Process the file again to define all the metrics.*/
 
@@ -151,7 +153,10 @@ static int create_metric_set(const char *path)
 	return 0;
 
  err:
-	ldms_set_delete(set);
+	if (schema)
+		ldms_schema_delete(schema);
+	fclose(mf);
+	mf = NULL;
 	return rc;
 }
 
@@ -177,8 +182,8 @@ static int sample(void)
 	char lbuf[256];
 	union ldms_value v;
 
-	if (!set){
-	  msglog(LDMSD_LDEBUG, "geminfo: plugin not initialized\n");
+	if (!set || !mf){
+	  msglog(LDMSD_LDEBUG, "kgnilnd: plugin not initialized\n");
 	  return EINVAL;
 	}
 	ldms_transaction_begin(set);
@@ -215,20 +220,21 @@ static void term(void)
 		fclose(mf);
 	if (set)
 		ldms_set_delete(set);
+	mf = NULL;
 	set = NULL;
 }
 
 static const char *usage(void)
 {
-	return  "config name=geminfo producer=<prod_name> instance=<inst_name>\n"
+	return  "config name=kgnilnd producer=<prod_name> instance=<inst_name>\n"
 		"    prod_name     The producer name.\n"
 		"    inst_name     The set name.\n";
 }
 
 
-static struct ldmsd_sampler geminfo_plugin = {
+static struct ldmsd_sampler kgnilnd_plugin = {
 	.base = {
-		.name = "geminfo",
+		.name = "kgnilnd",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -240,5 +246,5 @@ static struct ldmsd_sampler geminfo_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &geminfo_plugin.base;
+	return &kgnilnd_plugin.base;
 }

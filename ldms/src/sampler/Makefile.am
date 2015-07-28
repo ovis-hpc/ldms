@@ -7,10 +7,10 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 
-if ENABLE_GEMINFO
-libgeminfo_la_SOURCES = geminfo.c
-libgeminfo_la_LIBADD = $(COMMON_LIBADD)
-lib_LTLIBRARIES += libgeminfo.la
+if ENABLE_KGNILND
+libkgnilnd_la_SOURCES = kgnilnd.c
+libkgnilnd_la_LIBADD = $(COMMON_LIBADD)
+lib_LTLIBRARIES += libkgnilnd.la
 endif
 
 if ENABLE_LUSTRE
