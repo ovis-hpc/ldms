@@ -217,9 +217,9 @@ static const char *usage(void)
 		"    <inst_name>  The instance name\n";
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
+static struct ldmsd_sampler array_example_plugin = {
 	.base = {
-		.name = "meminfo",
+		.name = "array_example",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -232,5 +232,5 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	set = NULL;
-	return &meminfo_plugin.base;
+	return &array_example_plugin.base;
 }
