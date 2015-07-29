@@ -110,6 +110,8 @@ Doxygen files for ldms-all package.
 %{_datadir}/doc/%{name}-%{version}
 %docdir %{_defaultdocdir}
 %changelog
+* Thu Jul 29 2015 Ben Allan <baallan@sandia.gov> 2.4.4-1
+update to latest upstream.
 * Thu Jun 18 2015 Ben Allan <baallan@sandia.gov> 2.4.3-1
 packaging of initscripts for ldmsd/ldms-aggd.
 * Thu May 23 2015 Ben Allan <baallan@sandia.gov> 2.4.2-1

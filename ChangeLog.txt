@@ -1,3 +1,7 @@
+2015-07-28 Benjamin A. Allan <baallan@sandia.gov>
+* Update of Cray gpcdr handling.
+* Bug fix for init.d example script (missing mkdir, misleading conf prototype)
+
 2015-06-18 Benjamin A. Allan <baallan@sandia.gov>
 * Addition of libgenders-based init scripts for TOSS.
 	Requires C++/boost for initscripts, but not for LDMS.
