@@ -434,9 +434,9 @@ zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 	return zerr;
 }
 
-zap_err_t zap_reject(zap_ep_t ep)
+zap_err_t zap_reject(zap_ep_t ep, char *data, size_t data_len)
 {
-	return ep->z->reject(ep);
+	return ep->z->reject(ep, data, data_len);
 }
 
 int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)

@@ -262,6 +262,7 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 
 #define CONN_DATA "Hello, world!"
 #define ACCEPT_DATA "Accepted!"
+#define REJECT_DATA "Rejected ... try again"
 void server_cb(zap_ep_t ep, zap_event_t ev)
 {
 	static int reject = 1;
@@ -272,19 +273,31 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_CONNECT_REQUEST:
 		if (reject) {
 			printf("  ... REJECTING\n");
-			err = zap_reject(ep);
+			err = zap_reject(ep, REJECT_DATA, strlen(REJECT_DATA) + 1);
+			if (err) {
+				/* Zap will cleanup the endpoint */
+				printf("Error: zap_reject fails. %s\n",
+						zap_err_str(err));
+			}
 		} else {
 			if (!ev->data) {
 				printf("Error: No connect data is received.\n");
 				exit(1);
 			} else if (0 != strcmp(ev->data, CONN_DATA)) {
-				printf("Error: received wrong connect data. Expected: %s. Received: %s\n",
+				printf("Error: received wrong connect data. "
+					"Expected: %s. Received: %s\n",
 					CONN_DATA, ev->data);
 				exit(1);
 			} else {
 				printf("  ... ACCEPTING data: '%s' data_len: %jd\n",
 				       ev->data, ev->data_len);
-				err = zap_accept(ep, server_cb, ACCEPT_DATA, strlen(ACCEPT_DATA));
+				err = zap_accept(ep, server_cb, ACCEPT_DATA,
+						strlen(ACCEPT_DATA) + 1);
+				if (err) {
+					/* Zap will cleanup the endpoint */
+					printf("Error: zap_accept fails %s\n",
+							zap_err_str(err));
+				}
 			}
 		}
 		/* alternating between reject and accept */
@@ -315,6 +328,7 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		handle_recv(ep, ev);
 		break;
 	case ZAP_EVENT_READ_COMPLETE:
+		printf("Unexpected Zap event %s\n", zap_event_str(ev->type));
 		assert(0);
 		break;
 	case ZAP_EVENT_WRITE_COMPLETE:
@@ -430,6 +444,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		assert(0);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
+		zap_free(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
 		break;
@@ -447,7 +462,17 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		do_send(ep, "Hello there!");
 		break;
 	case ZAP_EVENT_REJECTED:
-		printf("REJECTED!\n");
+		if (!ev->data) {
+			printf("Error: No rejected data is received.\n");
+			exit(1);
+		}
+		if (0 != strcmp(ev->data, REJECT_DATA)) {
+			printf("Error: received wrong rejected data. "
+					"Expected: %s. Received %s\n",
+					REJECT_DATA, ev->data);
+			exit(1);
+		}
+		printf("REJECTED data: '%s'. data_len: %jd\n", ev->data, ev->data_len);
 		sin = zap_get_ucontext(ep);
 		zap_free(ep);
 
@@ -547,7 +572,7 @@ void do_client(zap_t zap, struct sockaddr_in *sin)
 	}
 	zap_set_ucontext(ep, sin);
 	err = zap_connect(ep, (struct sockaddr *)sin, sizeof(*sin),
-			  CONN_DATA, sizeof(CONN_DATA));
+			  CONN_DATA, sizeof(CONN_DATA) + 1);
 	if (err) {
 		printf("zap_connect failed.\n");
 		return;

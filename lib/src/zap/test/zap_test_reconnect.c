@@ -354,7 +354,7 @@ void *send_msg(void *arg)
 					(int)tv.tv_usec);
 			pthread_mutex_lock(&flag_lock);
 			if (flag == CONNECTED) {
-				zerr = zap_send(ep, data, strlen(data));
+				zerr = zap_send(ep, data, strlen(data) + 1);
 				if (zerr)
 					printf("Error %d in zap_send.\n", zerr);
 			} else {

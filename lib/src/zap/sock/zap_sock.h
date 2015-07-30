@@ -113,6 +113,7 @@ typedef enum sock_msg_type {
 	SOCK_MSG_WRITE_REQ,   /*  Write       request       */
 	SOCK_MSG_WRITE_RESP,  /*  Write       response      */
 	SOCK_MSG_ACCEPTED,    /*  Connection  accepted      */
+	SOCK_MSG_REJECTED,    /*  Reject      data */
 	SOCK_MSG_TYPE_LAST
 } sock_msg_type_t;;
 
@@ -242,6 +243,7 @@ struct z_sock_ep {
 	struct evconnlistener *listen_ev;
 	char *conn_data;
 	size_t conn_data_len;
+	uint8_t rejecting;
 
 	pthread_mutex_t q_lock;
 	TAILQ_HEAD(z_sock_free_q, z_sock_io) free_q;

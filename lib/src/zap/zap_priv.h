@@ -65,7 +65,7 @@ struct zap_version {
 };
 
 #define ZAP_VERSION_MAJOR 0x01
-#define ZAP_VERSION_MINOR 0x02
+#define ZAP_VERSION_MINOR 0x03
 #define ZAP_VERSION_PATCH 0x00
 #define ZAP_VERSION_FLAGS 0x00
 
@@ -83,9 +83,47 @@ struct zap_version {
 	((v).flags == ZAP_VERSION_FLAGS) \
 )
 
+/*
+ * State definitions
+ *
+ * ZAP_EP_INIT		The first state when an endpoint is created.
+ * ZAP_EP_LISTENING	The state of the listener endpoints. An endpoint state
+ * 			becomes LISTENING when application calls zap_listen().
+ * 			INIT --> LISTENING
+ * ZAP_EP_ACCEPTING	Passive side state. When transport receives
+ * 			a connect request, it creates a new endpoint.
+ * 			The new endpoint is in the ACCEPTING state until
+ * 			the transport delivers a zap CONN_REQUEST event
+ * 			to application upon receiving a connecting message
+ * 			from the peer.
+ * 			INIT --> ACCEPTING
+ * ZAP_EP_CONNECTING	Active side state. An endpoint is in the CONNECTING state
+ * 			when application calls zap_connect() until an accepting
+ * 			or rejecting message is received.
+ * 			INIT --> CONNECTING
+ * ZAP_EP_CONNECTED	On the passive side, the state moves from ACCEPTING to
+ * 			CONNECTED when application calls zap_accept().
+ * 			On the active side, the state moves from CONNECTING to
+ * 			CONNECTED when it receives the accepting message.
+ * 			passive: ACCEPTING --> CONNECTED
+ * 			active: CONNECTING --> CONNECTED
+ * ZAP_EP_PEER_CLOSE	PEER_CLOSE state means the peer has intentionally
+ * 			or unintentionally closed the connection.
+ * 			An endpoint is in the PEER_CLOSE state if transport
+ * 			receives a disconnect event while its state is
+ * 			in CONNECTED.
+ * 			CONNECTED --> PEER_CLOSE
+ * ZAP_EP_CLOSE		An endpoint is in the CLOSE state when application
+ * 			intentionally calls zap_close().
+ * 			CONNECTED --> CLOSE
+ * ZAP_EP_ERROR		An endpoint is in the ERROR state if an error occurs
+ * 			on the transport.
+ * 			* --> ERROR, where * can be any states except INIT.
+ */
 typedef enum zap_ep_state {
 	ZAP_EP_INIT = 0,
 	ZAP_EP_LISTENING,
+	ZAP_EP_ACCEPTING,
 	ZAP_EP_CONNECTING,
 	ZAP_EP_CONNECTED,
 	ZAP_EP_PEER_CLOSE,
@@ -96,6 +134,7 @@ typedef enum zap_ep_state {
 static const char *__zap_ep_state_str[] = {
 	[ZAP_EP_INIT]        =  "ZAP_EP_INIT",
 	[ZAP_EP_LISTENING]   =  "ZAP_EP_LISTENING",
+	[ZAP_EP_ACCEPTING]   =  "ZAP_EP_ACCEPTING",
 	[ZAP_EP_CONNECTING]  =  "ZAP_EP_CONNECTING",
 	[ZAP_EP_CONNECTED]   =  "ZAP_EP_CONNECTED",
 	[ZAP_EP_PEER_CLOSE]  =  "ZAP_EP_PEER_CLOSE",
@@ -148,7 +187,7 @@ struct zap {
 	zap_err_t (*accept)(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len);
 
 	/** Reject a connection request */
-	zap_err_t (*reject)(zap_ep_t ep);
+	zap_err_t (*reject)(zap_ep_t ep, char *data, size_t data_len);
 
 	/** Close the connection */
 	zap_err_t (*close)(zap_ep_t ep);

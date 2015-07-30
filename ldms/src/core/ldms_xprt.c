@@ -1031,7 +1031,9 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 		_x->password = ovis_auth_encrypt_password(challenge, x->password);
 		if (!_x->password) {
 			x->log("Auth Error: Failed to encrypt the password.");
-			zerr = zap_reject(zep);
+			char rej[32];
+			snprintf(rej, 32, "Authentication error");
+			zerr = zap_reject(zep, rej, strlen(rej) + 1);
 			if (zerr) {
 				x->log("Auth Error: Failed to reject the"
 						"conn_request from %s\n",
@@ -1257,7 +1259,15 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECT_REQUEST:
 		ver = (void*)ev->data;
 		if (!ev->data_len || !LDMS_VERSION_EQUAL(*ver)) {
-			zap_reject(zep);
+			struct ldms_version v;
+			LDMS_VERSION_SET(v);
+			char rej[32];
+			snprintf(rej, 32, "Wrong version: %hhu.%hhu.%hhu.%hhu\n",
+							v.major,
+							v.minor,
+							v.patch,
+							v.flags);
+			zap_reject(zep, rej, strlen(rej) + 1);
 			break;
 		}
 		ldms_zap_handle_conn_req(zep);

@@ -184,13 +184,13 @@ static char *__zap_err_str[] = {
 	"ZAP_ERR_LOCAL_LEN",
 	"ZAP_ERR_LOCAL_OPERATION",
 	"ZAP_ERR_LOCAL_PERMISSION",
+	"ZAP_ERR_REMOTE_MAP",
 	"ZAP_ERR_REMOTE_LEN",
 	"ZAP_ERR_REMOTE_OPERATION",
 	"ZAP_ERR_REMOTE_PERMISSION",
 	"ZAP_ERR_RETRY_EXCEEDED",
 	"ZAP_ERR_TIMEOUT",
 	"ZAP_ERR_FLUSH",
-	"ZAP_ERR_REMOTE_MAP",
 	"ZAP_ERR_LAST"
 };
 
@@ -384,10 +384,14 @@ zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host_port, const char *po
 
 /** \brief Accept a connection request from a remote peer.
  *
+ * In case of an error, zap will cleanup the endpoint. Application doesn't
+ * need to do anything.
+ *
  * \param ep	The endpoint handle.
  * \param cb	Pointer to a function to receive asynchronous events on the endpoint.
  * \param data	Pointer to connection data.
  * \param data_len The size of the connection data in bytes.
+ *
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
@@ -429,11 +433,17 @@ void zap_put_ep(zap_ep_t ep);
  * the transport when this endpoint was created in response to the
  * peer's connection request.
  *
+ * In case of an error, Zap will cleanup the endpoint. Application doesn't
+ * need to do anything.
+ *
  * \param ep	The transport handle.
+ * \param data	Pointer to connection data.
+ * \param data_len The size of the connection data in bytes.
+ *
  * \return 0	Success
  * \return !0	A Zap error code. See zap_err_t.
  */
-zap_err_t zap_reject(zap_ep_t ep);
+zap_err_t zap_reject(zap_ep_t ep, char *data, size_t data_len);
 
 /** \brief Listen for incoming connection requests
  *
