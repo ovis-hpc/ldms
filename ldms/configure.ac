@@ -130,14 +130,6 @@ TMPLIBS="$LIBS"
 
 AX_LIB_READLINE
 
-dnl Check for libreadline
-dnl AC_ARG_WITH([ldflags-readline],[AS_HELP_STRING([--with-ldflags-readline],[link flags needed for deficient readline libraries, eg needing -ltermcap.])],[LDFLAGS_READLINE=$with_ldflags_readline],[])
-dnl AC_MSG_NOTICE([User gave $LDFLAGS_READLINE for readline support])
-dnl AC_SUBST([LDFLAGS_READLINE])
-dnl AC_CHECK_LIB(readline, readline, [],
-dnl     AC_MSG_ERROR([libreadline not found. ldms requires libreadline.]),[$LDFLAGS_READLINE])
-dnl Reset LIBS variable.
-dnl LIBS=""
 LDFLAGS_READLINE=$LIBS
 LIBS=$TMPLIBS
 AC_SUBST([LDFLAGS_READLINE])
