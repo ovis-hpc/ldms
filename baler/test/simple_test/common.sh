@@ -53,3 +53,12 @@ __check_config() {
 		__err_exit "config file not found, CONFIG: $CONFIG"
 	fi
 }
+
+__has_operf() {
+	if which operf >/dev/null 2>&1; then
+		# not found
+		return -1
+	else
+		return 0
+	fi
+}

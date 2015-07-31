@@ -10,30 +10,55 @@ my @cmp_hour = ();
 my @cmp_min = ();
 my @cmp_sum = ();
 
+
 my $nts = int(($BTEST_TS_LEN + $BTEST_TS_INC - 1) / $BTEST_TS_INC);
 
-$cmp_sum[128] = $BTEST_NODE_LEN * $nts;
-$cmp_sum[129] = 0;
-$cmp_sum[130] = 0;
+my %ptn_to_iid = (
+	"This is * test message from *, *: *" => 1,
+	"* see fire!" => 2,
+	"* is * sheep." => 3,
+);
+
+my @iid_to_ptnid = ();
+
+open my $bqptn, "bquery -s $BSTORE -t ptn |";
+
+while (my $line = <$bqptn>) {
+	chomp $line;
+	if ($line !~ m/^ +(\d+) (.*)/) {
+		next;
+	}
+	my $ptn_id = int($1);
+	my $ptn = $2;
+	my $iid = $ptn_to_iid{$ptn};
+	if (! defined $iid) {
+		die "Unknown pattern: $line";
+	}
+	$iid_to_ptnid[$iid] = $ptn_id;
+}
+
+$cmp_sum[$iid_to_ptnid[1]] = $BTEST_NODE_LEN * $nts;
+$cmp_sum[$iid_to_ptnid[2]] = 0;
+$cmp_sum[$iid_to_ptnid[3]] = 0;
 
 for (my $n = 0; $n < $BTEST_NODE_LEN; $n++) {
 	my $node = $BTEST_NODE_BEGIN + $n;
-	$cmp_hour[128][$node] = $hour_count;
-	$cmp_min[128][$node] = $minute_count;
+	$cmp_hour[$iid_to_ptnid[1]][$node] = $hour_count;
+	$cmp_min[$iid_to_ptnid[1]][$node] = $minute_count;
 	if ($node % 10 == 0) {
-		$cmp_hour[129][$node] = $hour_count;
-		$cmp_min[129][$node] = $minute_count;
-		$cmp_sum[129]++;
+		$cmp_hour[$iid_to_ptnid[2]][$node] = $hour_count;
+		$cmp_min[$iid_to_ptnid[2]][$node] = $minute_count;
+		$cmp_sum[$iid_to_ptnid[2]]++;
 	}
 	if ($node % 10 == 1) {
-		$cmp_hour[130][$node] = $hour_count;
-		$cmp_min[130][$node] = $minute_count;
-		$cmp_sum[130]++;
+		$cmp_hour[$iid_to_ptnid[3]][$node] = $hour_count;
+		$cmp_min[$iid_to_ptnid[3]][$node] = $minute_count;
+		$cmp_sum[$iid_to_ptnid[3]]++;
 	}
 }
 
-$cmp_sum[129] *= $nts;
-$cmp_sum[130] *= $nts;
+$cmp_sum[$iid_to_ptnid[2]] *= $nts;
+$cmp_sum[$iid_to_ptnid[3]] *= $nts;
 
 print "Checking 3600-1 image .......\n";
 check_image("3600-1", @cmp_hour);

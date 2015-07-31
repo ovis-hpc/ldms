@@ -12,14 +12,70 @@ EOS
 open my $BQUERY, "bquery -s $BSTORE |";
 open my $GEN_LOG, "./gen-log.pl |";
 
+my %llog;
+my @blog;
+my $current_ts;
+my $bts;
+my $lts;
+
+my $bline = <$BQUERY>;
+my $lline = <$GEN_LOG>;
+chomp $bline;
+chomp $lline;
+
+$bts = get_ts($bline);
+$lts = get_ts($lline);
+
+if ($bts ne $lts) {
+	err_exit("Timestamp mismatch");
+}
+
+$current_ts = $bts;
+$llog{$lline}++;
+push @blog, $bline;
+
 while (!eof($GEN_LOG) && !eof($BQUERY)) {
-	my $bline = <$BQUERY>;
-	my $lline = <$GEN_LOG>;
+	$bline = <$BQUERY>;
+	$lline = <$GEN_LOG>;
+	if (!$bline || !$lline) {
+		next;
+	}
 	chomp $bline;
 	chomp $lline;
-	if (not $bline eq $lline) {
-		err_exit("result mismatch");
+	$bts = get_ts($bline);
+	$lts = get_ts($lline);
+
+	if ($bts ne $lts) {
+		err_exit("Timestamp mismatch: baler ts: '$bts', log ts: '$lts'");
 	}
+
+	if ($bts ne $current_ts) {
+		# Cross-checking blog and llog
+		for my $x (@blog) {
+			my $tmp = $llog{$x};
+			if (!$tmp) {
+				err_exit("'$x' not found in original messages");
+			}
+			if ($tmp == 1) {
+				delete $llog{$x};
+			} else {
+				$llog{$x}--;
+			}
+		}
+		my @keys = keys %llog;
+		my $leftover = scalar keys %llog;
+		if (@keys) {
+			my $msg = $keys[0];
+			err_exit("'$msg' not found in baler messages");
+		}
+
+		# Initialize blog for the next round
+		@blog = ();
+	}
+
+	$current_ts = $bts;
+	push @blog, $bline;
+	$llog{$lline}++;
 }
 
 if (!eof($GEN_LOG)) {
@@ -30,7 +86,38 @@ if (!eof($BQUERY)) {
 	err_exit("input log has fewer messages than bquery");
 }
 
+# Cross-checking blog and llog (last chunk)
+for my $x (@blog) {
+	my $tmp = $llog{$x};
+	if (!$tmp) {
+		err_exit("'$x' not found in original messages");
+	}
+	if ($tmp == 1) {
+		delete $llog{$x};
+	} else {
+		$llog{$x}--;
+	}
+}
+my @keys = keys %llog;
+my $leftover = scalar keys %llog;
+if (@keys) {
+	my $msg = $keys[0];
+	err_exit("'$msg' not found in baler messages");
+}
+
 good_exit();
+
+sub cross_check {
+	my (%llog, @blog) = @_;
+}
+
+sub get_ts {
+	my ($msg) = @_;
+	if ($msg =~ m/^([^.]*)/) {
+		return $1;
+	}
+	return "";
+}
 
 sub err_exit {
 	my @param = @_;
