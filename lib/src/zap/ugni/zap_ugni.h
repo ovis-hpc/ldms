@@ -124,9 +124,10 @@ struct z_ugni_key {
 typedef enum zap_ugni_msg_type {
 	ZAP_UGNI_MSG_NONE,        /**< Dummy first type */
 	ZAP_UGNI_MSG_REGULAR,     /**< Regular send-receive */
-	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
 	ZAP_UGNI_MSG_RENDEZVOUS,  /**< Share zap_map */
 	ZAP_UGNI_MSG_ACCEPTED,    /**< Connection accepted */
+	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
+	ZAP_UGNI_MSG_REJECTED,    /**< Connection rejected */
 	ZAP_UGNI_MSG_TYPE_LAST    /**< Dummy last type (for type count) */
 } zap_ugni_msg_type_t;
 
@@ -136,7 +137,8 @@ static const char *__zap_ugni_msg_type_str[] = {
 	[ZAP_UGNI_MSG_REGULAR]     =  "ZAP_UGNI_MSG_REGULAR",
 	[ZAP_UGNI_MSG_RENDEZVOUS]  =  "ZAP_UGNI_MSG_RENDEZVOUS",
 	[ZAP_UGNI_MSG_ACCEPTED]    =  "ZAP_UGNI_MSG_ACCEPTED",
-	[ZAP_UGNI_MSG_CONNECT]    =  "ZAP_UGNI_MSG_CONNECT",
+	[ZAP_UGNI_MSG_CONNECT]     =  "ZAP_UGNI_MSG_CONNECT",
+	[ZAP_UGNI_MSG_REJECTED]    =  "ZAP_UGNI_MSG_REJECTED",
 	[ZAP_UGNI_MSG_TYPE_LAST]   =  "ZAP_UGNI_MSG_TYPE_LAST"
 };
 
@@ -265,6 +267,7 @@ struct z_ugni_ep {
 	struct evconnlistener *listen_ev;
 	char *conn_data;
 	size_t conn_data_len;
+	uint8_t rejecting;
 	gni_ep_handle_t gni_ep;
 
 	LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc) post_desc_list;
