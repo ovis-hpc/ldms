@@ -430,7 +430,14 @@ struct bmsg *bq_entry_get_msg(struct bquery *q);
  *
  * \note Unlike others, this function cannot be used with ::bimgquery.
  */
-uint64_t bq_entry_get_ref(struct bquery *q);
+typedef struct bq_msg_ref_s {
+	uint64_t ref[2];
+} bq_msg_ref_t;
+bq_msg_ref_t bq_entry_get_ref(struct bquery *q);
+static inline int bq_msg_ref_equal(bq_msg_ref_t *a, bq_msg_ref_t *b)
+{
+	return ((a->ref[0] == b->ref[0]) && (a->ref[1] == b->ref[1]));
+}
 
 /**
  * Get the counting value from the current image query entry (pixel).

@@ -1154,12 +1154,15 @@ struct bmsg *bq_entry_get_msg(struct bquery *q)
 	return bmsg;
 }
 
-uint64_t bq_entry_get_ref(struct bquery *q)
+bq_msg_ref_t bq_entry_get_ref(struct bquery *q)
 {
+	bq_msg_ref_t bq_ref;
 	sos_obj_t obj = sos_iter_obj(q->itr);
-	sos_ref_t ref = sos_obj_ref(obj);
+	sos_obj_ref_t ref = sos_obj_ref(obj);
 	sos_obj_put(obj);
-	return ref.ref;
+	bq_ref.ref[0] = ref.ref.ods;
+	bq_ref.ref[1] = ref.ref.obj;
+	return bq_ref;
 }
 
 uint32_t bq_img_entry_get_count(struct bimgquery *q)

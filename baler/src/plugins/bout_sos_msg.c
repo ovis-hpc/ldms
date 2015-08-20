@@ -126,7 +126,7 @@ int bout_sos_msg_start(struct bplugin *this)
  retry:
 	_this->msg_index = sos_index_open(sos, BOUT_SOS_IDX_NAME);
 	if (!_this->msg_index) {
-		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT64", 5);
+		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT64", "ORDER=5");
 		if (!rc)
 			goto retry;
 		else

@@ -63,6 +63,7 @@
 #include "baler/btypes.h"
 #include "baler/butils.h"
 #include "baler/bqueue.h"
+#include "query/bquery.h"
 
 /***** GLOBAL VARIABLES *****/
 extern struct bq_store *bq_store;
@@ -97,7 +98,7 @@ struct bhttpd_msg_query_session {
 	struct timeval last_use;
 	struct bq_formatter *fmt;
 	int first;
-	uint64_t ref;
+	bq_msg_ref_t ref;
 };
 
 void set_uri_handle(const char *uri, bhttpd_req_handle_fn_t fn);

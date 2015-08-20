@@ -101,7 +101,7 @@ int bout_sos_img_start(struct bplugin *this)
  retry:
 	_this->img_index = sos_index_open(sos, BOUT_SOS_IDX_NAME);
 	if (!_this->img_index) {
-		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT96", 5);
+		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT96", "ORDER=5");
 		if (!rc)
 			goto retry;
 		else

@@ -614,7 +614,7 @@ int bhttpd_msg_query_session_recover(struct bhttpd_msg_query_session *qs,
 								int is_fwd)
 {
 	int rc = 0;
-	uint64_t ref;
+	bq_msg_ref_t ref;
 	int (*begin)(struct bquery *q);
 	int (*step)(struct bquery *q);
 
@@ -632,7 +632,7 @@ int bhttpd_msg_query_session_recover(struct bhttpd_msg_query_session *qs,
 
 	while (rc == 0) {
 		ref = bq_entry_get_ref(qs->q);
-		if (ref == qs->ref)
+		if (bq_msg_ref_equal(&ref, &qs->ref))
 			break;
 		rc = step(qs->q);
 	}

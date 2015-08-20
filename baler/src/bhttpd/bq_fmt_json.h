@@ -62,6 +62,6 @@ struct bq_formatter *bqfmt_json_new();
 void bqfmt_json_free(struct bq_formatter *fmt);
 void bqfmt_json_set_label(struct bq_formatter *fmt, int label);
 void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id);
-void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, uint64_t msg_ref);
+void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, bq_msg_ref_t msg_ref);
 
 #endif

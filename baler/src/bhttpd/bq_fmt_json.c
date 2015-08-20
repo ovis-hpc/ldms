@@ -16,7 +16,7 @@ struct bqfmt_json {
 	int first_tkn;
 	int ptn_label;
 	int ptn_id;
-	uint64_t msg_ref;
+	bq_msg_ref_t msg_ref;
 	struct bq_store *bq_store;
 };
 
@@ -30,7 +30,7 @@ void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id)
 	((struct bqfmt_json*)fmt)->ptn_id = ptn_id;
 }
 
-void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, uint64_t msg_ref)
+void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, bq_msg_ref_t msg_ref)
 {
 	((struct bqfmt_json*)fmt)->msg_ref = msg_ref;
 }
