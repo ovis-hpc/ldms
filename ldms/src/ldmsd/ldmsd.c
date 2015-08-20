@@ -1737,9 +1737,9 @@ int main(int argc, char *argv[])
 
 	ldmsd_log(LDMSD_LINFO, "Started LDMS Daemon version " VERSION "\n");
 
+	secretword = NULL;
 #ifdef ENABLE_AUTH
 	if (authenticate) {
-		secretword = NULL;
 		if (ldmsd_get_secretword())
 			cleanup(15);
 	}
@@ -1752,7 +1752,7 @@ int main(int argc, char *argv[])
 		cleanup(4);
 
 	if (inet_listener_port)
-		if (ldmsd_inet_config_init(inet_listener_port))
+		if (ldmsd_inet_config_init(inet_listener_port, secretword))
 			cleanup(104);
 
 #ifdef ENABLE_LDMSD_RCTL

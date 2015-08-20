@@ -65,10 +65,20 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdio.h>
 #include "auth.h"
 
 #define _str(x) #x
 #define str(x) _str(x)
+
+static void default_log(const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	vfprintf(stdout, fmt, ap);
+	fflush(stdout);
+}
 
 uint64_t ovis_auth_gen_challenge()
 {
@@ -125,6 +135,9 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 	 */
 	if (!path || path[0] != '/')
 		return NULL;
+
+	if (!log)
+		log = default_log;
 
 	struct stat pstat;
 	if (stat(path, &pstat)) {
@@ -243,7 +256,7 @@ char *ovis_auth_encrypt_password(const uint64_t challenge,
 
 	int i;
 	for (i = 0; i < md_len; i++) {
-		snprintf(&psswd[2 * i], 2, "%02x", md_value[i]);
+		snprintf(&psswd[2 * i], 3, "%02x", md_value[i]);
 	}
 	return psswd;
 err1:

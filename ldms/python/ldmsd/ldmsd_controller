@@ -59,18 +59,27 @@ import os
 import traceback
 
 from ldmsd import ldmsd_config, ldmsd_util
+from ovis_lib import ovis_auth
 
 class LdmsdCmdParser(cmd.Cmd):
-    def __init__(self, sockname = None, host_port = None, infile=None):
+    def __init__(self, sockname = None, host_port = None, secretPath = None, infile=None):
         if (sockname is None) and (host_port is None):
             raise ValueError("Expecting either sockname or host_port. None is given")
 
         if sockname is not None:
             self.ctrl = ldmsd_config.ldmsdUSocketConfig(ldmsd_sockpath = sockname)
             self.prompt = "{0}> ".format(os.path.basename(sockname))
+            if secretPath is not None:
+                print "Unix domain socket is in used. Ignore the path to the secret word"
         else:
+            try:
+                self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
+            except:
+                raise Exception("Failed to get the secretword from {0}.".format(secretPath))
+
             self.ctrl = ldmsd_config.ldmsdInetConfig(host = host_port['host'],
-                                                     port = host_port['port'])
+                                                     port = host_port['port'],
+                                                     secretword = self.secretword)
             self.prompt = "{0}:{1}> ".format(host_port['host'], host_port['port'])
 
         if infile:
@@ -664,6 +673,8 @@ if __name__ == "__main__":
                             help = "Hostname of ldmsd to connect to")
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
+        parser.add_argument('--auth_file',
+                            help = "Path to the file containing the secretword")
         parser.add_argument('--source',
                             help = "Path to the config file")
         parser.add_argument('--script',
@@ -684,7 +695,8 @@ if __name__ == "__main__":
             cmdParser = LdmsdCmdParser(sockname = args.sockname)
         else:
             cmdParser = LdmsdCmdParser(host_port = {'host': args.host,
-                                                    'port': int(args.port)})
+                                                    'port': int(args.port)},
+                                       secretPath = args.auth_file)
 
         if args.source is not None:
             cmdParser.do_source(args.source)

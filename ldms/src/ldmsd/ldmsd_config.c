@@ -1924,6 +1924,7 @@ int ldmsd_config_init(char *name)
 
 void *inet_ctrl_thread_proc(void *args)
 {
+	const char *secretword = (const char *)args;
 	struct msghdr msg;
 	struct iovec iov;
 	static unsigned char lbuf[256];
@@ -1938,6 +1939,91 @@ loop:
 				"listener.\n", inet_sock);
 		goto loop;
 	}
+
+#ifdef ENABLE_AUTH
+
+#include <string.h>
+#include "ovis_auth/auth.h"
+
+#define _str(x) #x
+#define str(x) _str(x)
+	struct ovis_auth_challenge auth_ch;
+	int rc;
+	if (secretword && secretword[0] != '\0') {
+		uint64_t ch = ovis_auth_gen_challenge();
+		char *psswd = ovis_auth_encrypt_password(ch, secretword);
+		if (!psswd) {
+			ldmsd_log(LDMSD_LERROR, "Failed to generate "
+					"the password for the controller\n");
+			goto loop;
+		}
+		size_t len = strlen(psswd) + 1;
+		char *psswd_buf = malloc(len);
+		if (!psswd_buf) {
+			ldmsd_log(LDMSD_LERROR, "Failed to authenticate "
+					"the controller. Out of memory");
+			free(psswd);
+			goto loop;
+		}
+
+		ovis_auth_pack_challenge(ch, &auth_ch);
+		rc = send(inet_sock, (char *)&auth_ch, sizeof(auth_ch), 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
+					"the challenge to the controller.\n",
+					errno);
+			free(psswd_buf);
+			free(psswd);
+			goto loop;
+		}
+		rc = recv(inet_sock, psswd_buf, len - 1, 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d. Failed to receive "
+					"the password from the controller.\n",
+					errno);
+			free(psswd_buf);
+			free(psswd);
+			goto loop;
+		}
+		psswd_buf[rc] = '\0';
+		if (0 != strcmp(psswd, psswd_buf)) {
+			shutdown(inet_sock, SHUT_RDWR);
+			close(inet_sock);
+			free(psswd_buf);
+			free(psswd);
+			goto loop;
+		}
+		free(psswd);
+		free(psswd_buf);
+		int approved = 1;
+		rc = send(inet_sock, (void *)&approved, sizeof(int), 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
+				"the init message to the controller.\n", errno);
+			goto loop;
+		}
+	} else {
+		/* Don't do authetication */
+		auth_ch.hi = auth_ch.lo = 0;
+		rc = send(inet_sock, (char *)&auth_ch, sizeof(auth_ch), 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
+					"the greeting to the controller.\n",
+					errno);
+			goto loop;
+		}
+	}
+#else /* ENABLE_AUTH */
+	uint64_t greeting = 0;
+	int rc = send(inet_sock, (char *)&greeting, sizeof(uint64_t), 0);
+	if (rc == -1) {
+		ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
+				"the greeting to the controller.\n",
+				errno);
+		goto loop;
+	}
+#endif /* ENABLE_AUTH */
+
 	do {
 		ssize_t msglen;
 		sin.sin_family = AF_INET;
@@ -1961,7 +2047,7 @@ loop:
 	return NULL;
 }
 
-int ldmsd_inet_config_init(const char *port)
+int ldmsd_inet_config_init(const char *port, const char *secretword)
 {
 	int rc;
 	struct sockaddr_in sin;
@@ -1992,7 +2078,8 @@ int ldmsd_inet_config_init(const char *port)
 		goto err;
 	}
 
-	rc = pthread_create(&ctrl_thread, NULL, inet_ctrl_thread_proc, 0);
+	rc = pthread_create(&ctrl_thread, NULL, inet_ctrl_thread_proc,
+			(void *)secretword);
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Error %d creating the control pthread'.\n");
 		goto err;

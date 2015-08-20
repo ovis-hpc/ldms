@@ -52,6 +52,8 @@
 
 from abc import ABCMeta, abstractmethod
 from os.path import basename, dirname
+from ovis_lib import ovis_auth
+import struct
 """
 @module ldmsd_config
 
@@ -472,13 +474,31 @@ class ldmsdUSocketConfig(ldmsdConfig):
         os.unlink(self.sockpath)
 
 class ldmsdInetConfig(ldmsdConfig):
-    def __init__(self, host, port, max_recv_len = MAX_RECV_LEN):
+    def __init__(self, host, port, secretword, max_recv_len = MAX_RECV_LEN):
         self.socket = None
         self.host = host
         self.port = port
         self.max_recv_len = max_recv_len
+        self.secretword = secretword
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((host, port))
+        buf = self.socket.recv(self.max_recv_len)
+        _chl = struct.unpack('II', buf)
+        auth_chl = ovis_auth.ovis_auth_challenge()
+        auth_chl.lo = _chl[0]
+        auth_chl.hi = _chl[1]
+        if auth_chl.hi != 0 or auth_chl.lo != 0:
+            # Do authentication
+            if self.secretword is None:
+                self.socket.close()
+                raise Exception("The server requires authentication")
+            chl = ovis_auth.ovis_auth_unpack_challenge(auth_chl)
+            auth_psswd = ovis_auth.ovis_auth_encrypt_password(chl, self.secretword)
+            self.socket.send(auth_psswd)
+            s = self.socket.recv(self.max_recv_len)
+            if len(s) == 0:
+                self.socket.close()
+                raise Exception("The server closes the connection")
 
     def __del__(self):
         if self.socket is not None:
