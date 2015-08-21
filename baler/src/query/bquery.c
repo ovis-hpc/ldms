@@ -224,6 +224,7 @@ err0:
 
 void bsos_wrap_close_free(struct bsos_wrap *bsw)
 {
+	sos_index_close(bsw->index, SOS_COMMIT_ASYNC);
 	sos_container_close(bsw->sos, SOS_COMMIT_ASYNC);
 	free(bsw->store_name);
 	free(bsw);
