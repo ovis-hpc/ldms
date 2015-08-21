@@ -146,6 +146,14 @@ const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 };
 
+void ldmsd_version_get(struct ldmsd_version *v)
+{
+	v->major = LDMSD_VERSION_MAJOR;
+	v->minor = LDMSD_VERSION_MINOR;
+	v->patch = LDMSD_VERSION_PATCH;
+	v->flags = LDMSD_VERSION_FLAGS;
+}
+
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
 	if ((level != LDMSD_LSUPREME) &&
@@ -1467,7 +1475,8 @@ int ldmsd_get_secretword()
 
 int main(int argc, char *argv[])
 {
-	struct ldms_version version;
+	struct ldms_version ldms_version;
+	struct ldmsd_version ldmsd_version;
 	char *sockname = NULL;
 	char *inet_listener_port = NULL;
 #ifdef ENABLE_LDMSD_RCTL
@@ -1605,12 +1614,18 @@ int main(int argc, char *argv[])
 			break;
 #endif /* ENABLE_AUTH */
 		case 'V':
-			ldms_version_get(&version);
+			ldms_version_get(&ldms_version);
+			ldmsd_version_get(&ldmsd_version);
 			printf("LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
-							version.major,
-							version.minor,
-							version.patch,
-							version.flags);
+							ldms_version.major,
+							ldms_version.minor,
+							ldms_version.patch,
+							ldms_version.flags);
+			printf("LDMSD Version: %hhu.%hhu.%hhu.%hhu\n",
+							ldmsd_version.major,
+							ldmsd_version.minor,
+							ldmsd_version.patch,
+							ldmsd_version.flags);
 			exit(0);
 			break;
 		case '?':

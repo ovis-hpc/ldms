@@ -1597,3 +1597,8 @@ void ldms_version_get(struct ldms_version *v)
 {
 	LDMS_VERSION_SET(*v);
 }
+
+int ldms_version_check(struct ldms_version *v)
+{
+	return LDMS_VERSION_EQUAL(*v);
+}

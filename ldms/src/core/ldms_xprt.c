@@ -1257,16 +1257,17 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		ver = (void*)ev->data;
-		if (!ev->data_len || !LDMS_VERSION_EQUAL(*ver)) {
+		if (!ev->data_len || !ldms_version_check(ver)) {
 			struct ldms_version v;
-			LDMS_VERSION_SET(v);
-			char rej[32];
-			snprintf(rej, 32, "Wrong version: %hhu.%hhu.%hhu.%hhu\n",
-							v.major,
-							v.minor,
-							v.patch,
-							v.flags);
-			zap_reject(zep, rej, strlen(rej) + 1);
+			ldms_version_get(&v);
+			char rej_msg[32];
+			snprintf(rej_msg, 32, "Unsupported version.");
+			x->log("Connection request from "
+				"an unsupported LDMS version "
+				"%hhu.%hhu.%hhu.%hhu\n",
+				ver->major, ver->minor,
+				ver->patch, ver->flags);
+			zap_reject(zep, rej_msg, strlen(rej_msg) + 1);
 			break;
 		}
 		ldms_zap_handle_conn_req(zep);
@@ -1508,7 +1509,8 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 				const char *secretword)
 {
 #ifdef DEBUG
-	log_fn("ldms_xprt [DEBUG]: Creating transport with authentication\n");
+	log_fn("ldms_xprt [DEBUG]: Creating transport "
+			"using ldms_xprt_with_auth_new.\n");
 #endif /* DEBUG */
 	int ret = 0;
 	char *libdir;
@@ -1525,6 +1527,10 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 		log_fn = default_log;
 
 	if (secretword) {
+#ifdef DEBUG
+		log_fn("ldms_xprt [DEBUG]: Creating transport "
+				"with authentication\n");
+#endif /* DEBUG */
 		x->password = strdup(secretword);
 		if (!x->password) {
 			ret = errno;

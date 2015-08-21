@@ -398,9 +398,9 @@ static void process_sep_msg_connect(struct z_sock_ep *sep, size_t reqlen)
 
 	bufferevent_read(sep->buf_event, msg, reqlen);
 
-	if (!ZAP_VERSION_EQUAL(msg->ver)) {
-		LOG_(sep, "zap_sock: Connection request from an unsupported version"
-				" %hhu.%hhu.%hhu.%hhu\n",
+	if (!zap_version_check(&msg->ver)) {
+		LOG_(sep, "Connection request from an unsupported Zap version "
+				"%hhu.%hhu.%hhu.%hhu\n",
 				msg->ver.major, msg->ver.minor,
 				msg->ver.patch, msg->ver.flags);
 		free(msg);

@@ -78,9 +78,7 @@ struct zap_version {
 
 #define ZAP_VERSION_EQUAL(v) ( \
 	((v).major == ZAP_VERSION_MAJOR) && \
-	((v).minor == ZAP_VERSION_MINOR) && \
-	((v).patch == ZAP_VERSION_PATCH) && \
-	((v).flags == ZAP_VERSION_FLAGS) \
+	((v).minor == ZAP_VERSION_MINOR) \
 )
 
 /*
@@ -120,6 +118,13 @@ struct zap_version {
  * 			on the transport.
  * 			* --> ERROR, where * can be any states except INIT.
  */
+/** Return 1 if it is compatible. Otherwise, 0 is returned. */
+
+int zap_version_check(struct zap_version *v)
+{
+	return ZAP_VERSION_EQUAL(*v);
+}
+
 typedef enum zap_ep_state {
 	ZAP_EP_INIT = 0,
 	ZAP_EP_LISTENING,

@@ -58,6 +58,21 @@
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"
 
+#define LDMSD_VERSION_MAJOR	0x03
+#define LDMSD_VERSION_MINOR	0x01
+#define LDMSD_VERSION_PATCH	0x00
+#define LDMSD_VERSION_FLAGS	0x00
+
+struct ldmsd_version {
+	uint8_t major;
+	uint8_t minor;
+	uint8_t patch;
+	uint8_t flags;
+};
+
+/** Get the ldmsd version  */
+void ldmsd_version_get(struct ldmsd_version *v);
+
 struct hostspec;
 struct ldmsd_store_policy;
 struct ldmsd_store_policy_ref {

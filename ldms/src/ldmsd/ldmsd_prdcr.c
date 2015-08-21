@@ -293,7 +293,7 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 		ldmsd_task_stop(&prdcr->task);
 		break;
 	case LDMS_CONN_EVENT_REJECTED:
-		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the"
+		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
 				"connection\n", prdcr->obj.name);
 	case LDMS_CONN_EVENT_DISCONNECTED:
 	case LDMS_CONN_EVENT_ERROR:
