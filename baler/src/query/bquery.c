@@ -876,6 +876,7 @@ int bq_img_next_entry(struct bquery *q)
 	rc = sos_iter_next(q->itr);
 	if (rc)
 		goto out;
+again:
 	__img_obj_update(imgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
@@ -912,6 +913,12 @@ int bq_img_next_entry(struct bquery *q)
 		bsi_key.ts = q->ts_0;
 		break;
 	}
+
+	bout_sos_img_key_convert(&bsi_key);
+	sos_key_set(key, &bsi_key, sizeof(bsi_key));
+	rc = sos_iter_sup(q->itr, key); /* this will already be the first dup */
+	if (!rc)
+		goto again;
 out:
 	return rc;
 }
@@ -920,13 +927,14 @@ int bq_img_prev_entry(struct bquery *q)
 {
 	struct bimgquery *imgq = (void*)q;
 	SOS_KEY(key);
+	sos_key_t sos_key;
 	struct bout_sos_img_key bsi_key;
 	int rc;
 
 	rc = sos_iter_prev(q->itr);
-check:
 	if (rc)
 		goto out;
+again:
 	__img_obj_update(imgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
@@ -960,6 +968,21 @@ check:
 		bsi_key.ts = q->ts_1;
 		break;
 	}
+
+	bout_sos_img_key_convert(&bsi_key);
+	sos_key_set(key, &bsi_key, sizeof(bsi_key));
+	rc = sos_iter_inf(q->itr, key); /* this point to the first dup */
+	if (rc)
+		goto out;
+
+	/* we have to point to the last dup */
+
+	sos_key = sos_iter_key(q->itr);
+	rc = sos_iter_find_last(q->itr, sos_key);
+	sos_key_put(sos_key);
+	if (!rc)
+		goto again;
+
 out:
 	return rc;
 }
