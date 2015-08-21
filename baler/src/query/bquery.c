@@ -714,9 +714,16 @@ static int __bq_last_entry(struct bquery *q)
 		ts.fine.usecs = 0;
 		sos_key_set(key, &ts, sizeof(&ts));
 		rc = sos_iter_inf(q->itr, key);
+		if (rc)
+			goto out;
+		sos_key_t k;
+		k = sos_iter_key(q->itr);
+		rc = sos_iter_find_last(q->itr, k);
+		sos_key_put(k);
 	}
 	if (!rc)
 		__msg_obj_update(q);
+out:
 	return rc;
 }
 
@@ -732,9 +739,16 @@ static int __bq_first_entry(struct bquery *q)
 		ts.fine.usecs = 0;
 		sos_key_set(key, &ts, sizeof(ts));
 		rc = sos_iter_sup(q->itr, key);
+		if (rc)
+			goto out;
+		/* get the first dup */
+		sos_key_t k = sos_iter_key(q->itr);
+		rc = sos_iter_find_first(q->itr, k);
+		sos_key_put(k);
 	}
 	if (!rc)
 		__msg_obj_update(q);
+out:
 	return rc;
 }
 
