@@ -140,8 +140,8 @@ char *ev_str[] = {
 /* Data src/sink for RDMA_WRITE */
 char write_buf[1024];
 
-zap_map_t write_map; /* exporting write map */
-zap_map_t read_map; /* exporting read map */
+zap_map_t write_map = NULL; /* exporting write map */
+zap_map_t read_map = NULL; /* exporting read map */
 
 /* Data src/sink for RDMA_READ */
 char read_buf[1024];
@@ -290,14 +290,23 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		/* alternating between reject and accept */
 		reject = !reject;
 		break;
-	case ZAP_EVENT_CONNECT_ERROR:
-		break;
 	case ZAP_EVENT_CONNECTED:
 		break;
+	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_REJECTED:
+		printf("Unexpected Zap event %s\n", zap_event_str(ev->type));
 		assert(0);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		if (remote_map) {
+			zap_unmap(ep, remote_map);
+			remote_map = NULL;
+		}
+		if (read_map) {
+			zap_unmap(ep, read_map);
+			read_map = NULL;
+		}
+
 		zap_free(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
@@ -314,6 +323,9 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_RENDEZVOUS:
 		handle_rendezvous(ep, ev);
 		break;
+	default:
+		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
+		exit(-1);
 	}
 	printf("---- %s: END: ep %p event %s -----\n", __func__, ep, ev_str[ev->type]);
 }
@@ -414,6 +426,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 	printf("---- %s: BEGIN: ep %p event %s ----\n", __func__, ep, ev_str[ev->type]);
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
+		printf("Unexpected Zap event %s\n", zap_event_str(ev->type));
 		assert(0);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
@@ -437,6 +450,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		printf("REJECTED!\n");
 		sin = zap_get_ucontext(ep);
 		zap_free(ep);
+
 		ep = zap_new(zap, client_cb);
 		if (!ep) {
 			printf("zap_new failed.\n");
@@ -451,6 +465,11 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		}
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		if (remote_map) {
+			zap_unmap(ep, remote_map);
+			remote_map = NULL;
+		}
+
 		zap_free(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
@@ -472,6 +491,9 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_RENDEZVOUS:
 		do_read_and_verify_write(ep, ev);
 		break;
+	default:
+		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
+		exit(-1);
 	}
 	printf("---- %s: END: ep %p event %s ----\n", __func__, ep, ev_str[ev->type]);
 }
