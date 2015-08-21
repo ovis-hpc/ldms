@@ -1082,14 +1082,14 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 	if (!q) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"bquery_create() error, rc: %d", rc);
-		return;
+		goto cleanup;
 	}
 
 	rc = bq_first_entry(q);
 	if (rc) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"bq_first_entry() error, rc: %d", rc);
-		return;
+		goto cleanup;
 	}
 	min_ts = bq_entry_get_sec(q);
 
@@ -1097,7 +1097,7 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 	if (rc) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"bq_first_entry() error, rc: %d", rc);
-		return;
+		goto cleanup;
 	}
 	max_ts = bq_entry_get_sec(q);
 
@@ -1114,6 +1114,9 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 			"}",
 			min_ts, max_ts, min_node, max_node
 			);
+cleanup:
+	if (q)
+		bquery_destroy(q);
 }
 
 struct bhttpd_handle_fn_entry {

@@ -224,6 +224,7 @@ err0:
 
 void bsos_wrap_close_free(struct bsos_wrap *bsw)
 {
+	sos_index_close(bsw->index, SOS_COMMIT_ASYNC);
 	sos_container_close(bsw->sos, SOS_COMMIT_ASYNC);
 	free(bsw->store_name);
 	free(bsw);
@@ -713,9 +714,16 @@ static int __bq_last_entry(struct bquery *q)
 		ts.fine.usecs = 0;
 		sos_key_set(key, &ts, sizeof(&ts));
 		rc = sos_iter_inf(q->itr, key);
+		if (rc)
+			goto out;
+		sos_key_t k;
+		k = sos_iter_key(q->itr);
+		rc = sos_iter_find_last(q->itr, k);
+		sos_key_put(k);
 	}
 	if (!rc)
 		__msg_obj_update(q);
+out:
 	return rc;
 }
 
@@ -731,9 +739,16 @@ static int __bq_first_entry(struct bquery *q)
 		ts.fine.usecs = 0;
 		sos_key_set(key, &ts, sizeof(ts));
 		rc = sos_iter_sup(q->itr, key);
+		if (rc)
+			goto out;
+		/* get the first dup */
+		sos_key_t k = sos_iter_key(q->itr);
+		rc = sos_iter_find_first(q->itr, k);
+		sos_key_put(k);
 	}
 	if (!rc)
 		__msg_obj_update(q);
+out:
 	return rc;
 }
 
@@ -861,6 +876,7 @@ int bq_img_next_entry(struct bquery *q)
 	rc = sos_iter_next(q->itr);
 	if (rc)
 		goto out;
+again:
 	__img_obj_update(imgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
@@ -897,6 +913,12 @@ int bq_img_next_entry(struct bquery *q)
 		bsi_key.ts = q->ts_0;
 		break;
 	}
+
+	bout_sos_img_key_convert(&bsi_key);
+	sos_key_set(key, &bsi_key, sizeof(bsi_key));
+	rc = sos_iter_sup(q->itr, key); /* this will already be the first dup */
+	if (!rc)
+		goto again;
 out:
 	return rc;
 }
@@ -905,13 +927,14 @@ int bq_img_prev_entry(struct bquery *q)
 {
 	struct bimgquery *imgq = (void*)q;
 	SOS_KEY(key);
+	sos_key_t sos_key;
 	struct bout_sos_img_key bsi_key;
 	int rc;
 
 	rc = sos_iter_prev(q->itr);
-check:
 	if (rc)
 		goto out;
+again:
 	__img_obj_update(imgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
@@ -945,6 +968,21 @@ check:
 		bsi_key.ts = q->ts_1;
 		break;
 	}
+
+	bout_sos_img_key_convert(&bsi_key);
+	sos_key_set(key, &bsi_key, sizeof(bsi_key));
+	rc = sos_iter_inf(q->itr, key); /* this point to the first dup */
+	if (rc)
+		goto out;
+
+	/* we have to point to the last dup */
+
+	sos_key = sos_iter_key(q->itr);
+	rc = sos_iter_find_last(q->itr, sos_key);
+	sos_key_put(sos_key);
+	if (!rc)
+		goto again;
+
 out:
 	return rc;
 }
