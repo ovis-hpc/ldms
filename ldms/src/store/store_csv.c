@@ -134,9 +134,9 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "    config name=store_csv path=<path> altheader=<0/1>\n"
-		"         - Set the root path for the storage of csvs.\n"
-		"           path      The path to the root of the csv directory\n"
-		"         - altheader Header in a separate file (optional, default 0)\n";
+		"	 - Set the root path for the storage of csvs.\n"
+		"	   path      The path to the root of the csv directory\n"
+		"	 - altheader Header in a separate file (optional, default 0)\n";
 }
 
 /*
@@ -161,7 +161,8 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 static int print_header(struct csv_store_handle *s_handle, ldms_set_t set,
 			int *metric_arry, size_t metric_count) {
 
-        int i, j, rc;
+	int i, j, rc;
+	uint32_t len;
 
 	/* Only called from Store which already has the lock */
 	FILE* fp = s_handle->headerfile;
@@ -192,18 +193,15 @@ static int print_header(struct csv_store_handle *s_handle, ldms_set_t set,
 		case LDMS_V_S64_ARRAY:
 		case LDMS_V_F32_ARRAY:
 		case LDMS_V_D64_ARRAY:
-		  {
-			  uint32_t len = ldms_array_metric_get_len(set, metric_arry[i]);
-			  for (j = 0; j < len; j++){ //there is only 1 name for all of them.
-				  fprintf(fp, ", %s%d.userdata, %s%d.value",
-					  name, j, name);
-			  }
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){ //there is only 1 name for all of them.
+				fprintf(fp, ", %s%d.userdata, %s%d.value",
+						name, j, name, j);
+			}
+			break;
 		default:
-			fprintf(fp, ", %s.userdata, %s.value",
-				name, name);
-		  break;
+			fprintf(fp, ", %s.userdata, %s.value", name, name);
+			break;
 		}
 	}
 
@@ -238,7 +236,7 @@ open_store(struct ldmsd_store *s, const char* container, const char *schema,
 
 		sprintf(path, "%s/%s", root_path, container);
 		rc = mkdir(path, 0777);
-		if (rc && rc != EEXIST) {
+		if (rc && errno != EEXIST) {
 			msglog(LDMSD_LERROR, "%s: Error %d creating directory %s.\n",
 			       __FILE__, rc, path);
 			goto err0;
@@ -317,7 +315,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 {
 	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
 	const struct ldms_timestamp *ts = &_ts;
-	char* pname;
+	const char* pname;
 	uint64_t comp_id;
 	struct csv_store_handle *s_handle;
 	s_handle = _s_handle;
@@ -338,9 +336,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32, ts->sec, ts->usec);
 	pname = ldms_set_producer_name_get(set);
 	if (pname != NULL){
-	  fprintf(s_handle->file, ",%s", pname);
+		fprintf(s_handle->file, ",%s", pname);
 	} else {
-	  fprintf(s_handle->file, ", ");
+		fprintf(s_handle->file, ", ");
 	}
 
 
@@ -353,175 +351,176 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		//use same formats as ldms_ls
 		switch (metric_type){
 		case LDMS_V_U8_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %hhu",
-				 comp_id, ldms_array_metric_get_u8(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %hhu",
+						comp_id, ldms_array_metric_get_u8(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_U8:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %hhu",
-			       comp_id, ldms_metric_get_u8(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %hhu",
+					comp_id, ldms_metric_get_u8(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_S8_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %hhd",
-				 comp_id, ldms_array_metric_get_s8(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %hhd",
+						comp_id, ldms_array_metric_get_s8(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_S8:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %hhd",
-			       comp_id, ldms_metric_get_s8(set, metric_arry[i]));
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %hhd",
+					comp_id, ldms_metric_get_s8(set, metric_arry[i]));
+			break;
 		case LDMS_V_U16_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %hu",
-				 comp_id, ldms_array_metric_get_u16(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %hu",
+						comp_id, ldms_array_metric_get_u16(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_U16:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %hu",
-			       comp_id, ldms_metric_get_u16(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %hu",
+					comp_id, ldms_metric_get_u16(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_S16_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %hd",
-				 comp_id, ldms_array_metric_get_s16(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %hd",
+						comp_id, ldms_array_metric_get_s16(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_S16:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %hd",
-			       comp_id, ldms_metric_get_s16(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %hd",
+					comp_id, ldms_metric_get_s16(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_U32_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu32,
-				 comp_id, ldms_array_metric_get_u32(set, metric_arry[i], j));
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu32,
+						comp_id, ldms_array_metric_get_u32(set, metric_arry[i], j));
+			}
+			break;
 		case LDMS_V_U32:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu32,
-			       comp_id, ldms_metric_get_u32(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu32,
+					comp_id, ldms_metric_get_u32(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_S32_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId32,
-				 comp_id, ldms_array_metric_get_s32(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId32,
+						comp_id, ldms_array_metric_get_s32(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_S32:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId32,
-			       comp_id, ldms_metric_get_s32(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId32,
+					comp_id, ldms_metric_get_s32(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_U64_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu64,
-				 comp_id, ldms_array_metric_get_u64(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu64,
+						comp_id, ldms_array_metric_get_u64(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_U64:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu64,
-			       comp_id, ldms_metric_get_u64(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %" PRIu64,
+					comp_id, ldms_metric_get_u64(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_S64_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId64,
-				 comp_id, ldms_array_metric_get_s64(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId64,
+						comp_id, ldms_array_metric_get_s64(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_S64:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId64,
-			       comp_id, ldms_metric_get_s64(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId64,
+					comp_id, ldms_metric_get_s64(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_F32_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %f",
-				 comp_id, ldms_array_metric_get_float(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %f",
+						comp_id, ldms_array_metric_get_float(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_F32:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %f",
-			       comp_id, ldms_metric_get_float(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %f",
+					comp_id, ldms_metric_get_float(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		case LDMS_V_D64_ARRAY:
-		  len = ldms_array_metric_get_len(set, metric_arry[i]);
-		  for (j = 0; j < len; j++){
-		    rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId64,
-				 comp_id, ldms_array_metric_get_double(set, metric_arry[i], j));
-		    if (rc < 0)
-		      msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			     rc, s_handle->path);
-		  }
-		  break;
+			len = ldms_array_metric_get_len(set, metric_arry[i]);
+			for (j = 0; j < len; j++){
+				rc = fprintf(s_handle->file, ", %"PRIu64", %lf",
+						comp_id, ldms_array_metric_get_double(set, metric_arry[i], j));
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+							rc, s_handle->path);
+			}
+			break;
 		case LDMS_V_D64:
-		  rc = fprintf(s_handle->file, ", %"PRIu64", %" PRId64,
-			       comp_id, ldms_metric_get_double(set, metric_arry[i]));
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			rc = fprintf(s_handle->file, ", %"PRIu64", %lf",
+					comp_id, ldms_metric_get_double(set, metric_arry[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		default:
-		  // print no value
-		  rc = fprintf(s_handle->file, ", %"PRIu64", ", comp_id);
-		  if (rc < 0)
-		    msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
-			   rc, s_handle->path);
-		  break;
+			// print no value
+			rc = fprintf(s_handle->file, ", %"PRIu64", ", comp_id);
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						rc, s_handle->path);
+			break;
 		}
 	}
 	fprintf(s_handle->file,"\n");
