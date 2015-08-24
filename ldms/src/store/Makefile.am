@@ -19,20 +19,12 @@ libstore_flatfile_la_LIBADD = $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_flatfile.la
 endif
 
-## if ENABLE_MYSQL
-## libstore_mysql_la_SOURCES = store_mysql.c
-## libstore_mysql_la_CFLAGS = $(AM_CFLAGS) @MYSQL_INCLUDE@
-## libstore_mysql_la_LIBADD = $(STORE_LIBADD) -lmysqlclient @MYSQL_LIBS@
-## pkglib_LTLIBRARIES += libstore_mysql.la
-## endif
-
-## if ENABLE_MYSQLBULK
-## libstore_mysqlbulk_la_SOURCES = store_mysqlbulk.c
-## libstore_mysqlbulk_la_CFLAGS = $(AM_CFLAGS) @MYSQL_INCLUDE@
-## libstore_mysqlbulk_la_LIBADD = $(STORE_LIBADD) -lmysqlclient \
-## 			       @MYSQL_LIBS@
-## pkglib_LTLIBRARIES += libstore_mysqlbulk.la
-## endif
+if ENABLE_MSR
+libstore_msr_csv_la_SOURCES = store_msr_csv.c
+libstore_msr_csv_la_CFLAGS = $(AM_CFLAGS)
+libstore_msr_csv_la_LIBADD = $(STORE_LIBADD)
+pkglib_LTLIBRARIES += libstore_msr_csv.la
+endif
 
 if ENABLE_CSV
 libstore_csv_la_SOURCES = store_csv.c

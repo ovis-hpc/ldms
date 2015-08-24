@@ -48,25 +48,23 @@ OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
-dnl OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
-OPTION_DEFAULT_DISABLE([mysqlbulk], [ENABLE_MYSQLBULK])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
-OPTION_DEFAULT_ENABLE([kgnilnd], [ENABLE_KGNILND])
+OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
 OPTION_DEFAULT_ENABLE([slurmjobid], [ENABLE_SLURMJOBID])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
-OPTION_DEFAULT_ENABLE([perfevent], [ENABLE_PERFEVENT])
+OPTION_DEFAULT_DISABLE([msr], [ENABLE_MSR])
+OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
 OPTION_DEFAULT_ENABLE([procstatutil2], [ENABLE_PROCSTATUTIL2])
-dnl OPTION_DEFAULT_DISABLE([sedc], [ENABLE_SEDC])
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
@@ -109,15 +107,6 @@ OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[../lib/src/mmalloc ../lib/src/coll
 dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 OPTION_WITH([libevent], [LIBEVENT])
-
-dnl if test -z "$ENABLE_MYSQL_TRUE"
-dnl then
-dnl OPTION_WITH_MYSQL dnl MYSQL is special.
-dnl fi
-dnl if test -z "$ENABLE_GLIB_TRUE"
-dnl then
-dnl PKG_CHECK_MODULES([GLIB20], [glib-2.0])
-dnl fi
 
 dnl Check for libevent
 OPTION_WITH_EVENT
@@ -408,8 +397,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		])
 AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.
 for i in $ovis_exec_scripts; do
-	if test -f $ovis_exec_scripts_objdir/$i; then 
-		chmod a+x $ovis_exec_scripts_objdir/$i; 
+	if test -f $ovis_exec_scripts_objdir/$i; then
+		chmod a+x $ovis_exec_scripts_objdir/$i;
 	else
 		echo failing chmod on missing $ovis_exec_scripts_objdir/$i;
 	fi
