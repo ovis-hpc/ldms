@@ -1,0 +1,142 @@
+#!/bin/bash
+# NOTE: replace the two vars below with your paths
+# NOTE: change ports, intervals if you like
+DESTDIR=
+allowroot=0
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+BUILDDIR=@prefix@
+# Manually redefine portbase to avoid collisions.
+# Base should be above the maximum in :
+#  cat /proc/sys/net/ipv4/ip_local_port_range
+# and below 65530 or below the minimum and above 1024
+portbase=61100
+declare -a port
+for i in `seq 1 1 8` ; do
+	port[$i]=`expr $portbase + $i`
+done
+if test ! -x $BUILDDIR/sbin/ldmsd; then
+	echo "can't find ldmsd binary. set destdir in $0 before testing?"
+	exit 1
+fi
+case "x$USER" in
+	x)
+	echo "must be run in user environment. USER not set"
+	exit 1
+	;;
+	xroot)
+	echo "must be run in user environment. root detected."
+	echo "killing other folks ldmsd might be a bad idea"
+	echo "change allowroot in $0 to override this check."
+	exit 1
+	;;
+esac
+
+function mysleep() {
+        echo -n sleep $1 ... 
+        sleep $1
+        echo done
+}
+# use our pid in dirname to prevent collisions in dir & file naming
+TESTDIR=/tmp/$USER/ldmstest/$$
+STOREDIR=$TESTDIR/store
+SOCKDIR=$TESTDIR/run/ldmsd
+pidfile=$SOCKDIR.pid
+LOGDIR=$TESTDIR/logs
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+# how to use ramdisk for data
+## STORERAM=/run/shm/ldms/store/$$
+## mkdir -p $STORERAM
+## pushd $TESTDIR
+## ln -s $STORERAM store
+## popd
+mkdir -p $STOREDIR
+echo "logs and data stored under $TESTDIR"
+
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=@pkglibdir@
+export PATH=${BUILDDIR}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+
+export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
+
+# whack the daemons we own
+pkill ldmsd
+pkill ldms-aggd
+mysleep 1
+echo "Listing ldmsd's still running:"
+pgrep ldmsd
+echo "Done."
+
+echo removing old logs
+rm -f ${LOGDIR}/1.txt
+rm -f ${LOGDIR}/2.txt
+rm -f ${LOGDIR}/3.txt
+rm -f ${LOGDIR}/4.txt
+rm -f ${LOGDIR}/5.txt
+rm -f ${LOGDIR}/6.txt
+rm -f ${LOGDIR}/7.txt
+rm -f ${LOGDIR}/8.txt
+
+echo removing old output
+rm -rf ${STOREDIR}/node
+rm -f ${STOREDIR}/*
+
+echo Starting daemons
+dtop=7
+#dtop=1
+dlist=`seq 1 1 $dtop`
+for i in $dlist; do
+	ldmsd -x sock:${port[$i]} -S $SOCKDIR/metric_socket_$i  -l ${LOGDIR}/$i.txt -r $pidfile.$i -q INFO
+done
+
+# /home/baallan/vg/inst49/bin/valgrind -v --suppressions=fred --gen-suppressions=all --log-file=vg.agg.log --track-origins=yes  ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -D 2
+#valgrind -v --suppressions=fred --track-origins=yes --log-file=vg.agg.log ldmsd -x sock:${port[8]} -S $SOCKDIR/metric_socket_8  -l ${LOGDIR}/8.txt -q DEBUG
+ldms-aggd -x sock:${port[8]} -S $SOCKDIR/metric_socket_8  -l ${LOGDIR}/8.txt -q DEBUG -r $pidfile.8
+sleep 1
+
+dstep=7
+dstep=1
+dlist=`seq 1 $dstep $dtop`
+origin=`date +%s`
+for k in $dlist; do
+echo Starting plugins on daemon$k
+echo "load name=synthetic" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$k
+echo "config name=synthetic set=localhost$k/synthetic component_id=$k period=20 height=10 origin=$origin" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$k
+echo "start name=synthetic interval=1000000 offset=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$k
+done
+
+
+dlist=`seq 1 1 $dtop`
+
+for k in $dlist; do
+echo Adding host$k to aggregator8
+echo "add host=localhost type=active xprt=sock interval=1000000 offset=500000 port=${port[$k]} sets=localhost$k/synthetic" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+mysleep 1
+done
+
+mysleep 5
+echo Adding store_csv to aggregator8
+echo "loglevel level=DEBUG" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+mysleep 1
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+mysleep 2
+echo add config
+echo "config name=store_csv path=${STOREDIR} id_pos=1 altheader=0 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+echo add synthetic
+echo "store name=store_csv comp_type=node set=synthetic container=synthetic" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+mysleep 50
+echo stopping samplers...
+pkill ldmsd
+#pkill -SIGTERM valgrind
+#echo stop name=daemon | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+# we can overload plugin stop with cleanup() by reserving plugin name daemon.
+echo pause then stop agg.
+#
+mysleep 5
+pkill ldms-aggd
+
+echo done;

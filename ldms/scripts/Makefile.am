@@ -32,3 +32,4 @@ bin_SCRIPTS += ldms_local_procstatutil.sh
 
 bin_SCRIPTS += ldms_local_syslog.sh
 
+bin_SCRIPTS += ldms_local_synthetic_test.sh

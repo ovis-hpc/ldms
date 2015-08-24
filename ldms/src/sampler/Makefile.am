@@ -12,6 +12,10 @@ libclock_la_SOURCES = clock.c
 libclock_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libclock.la
 
+libsynthetic_la_SOURCES = synthetic.c
+libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm
+pkglib_LTLIBRARIES += libsynthetic.la
+
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
 libkgnilnd_la_LIBADD = $(COMMON_LIBADD)

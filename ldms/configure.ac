@@ -379,6 +379,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_dertest_big.sh
 		 scripts/ldms_local_procstatutil.sh
 		 scripts/ldms_local_csvorder.sh
+		 scripts/ldms_local_synthetic_test.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
