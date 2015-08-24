@@ -25,7 +25,7 @@ OPTION_DEFAULT_ENABLE([coll], [ENABLE_COLL])
 OPTION_DEFAULT_ENABLE([mmalloc], [ENABLE_MMALLOC])
 OPTION_DEFAULT_ENABLE([ovis_ctrl], [ENABLE_OVIS_CTRL])
 OPTION_DEFAULT_ENABLE([ovis_util], [ENABLE_OVIS_UTIL])
-OPTION_DEFAULT_DISABLE([ovis_auth], [ENABLE_OVIS_AUTH])
+OPTION_DEFAULT_ENABLE([ovis_auth], [ENABLE_OVIS_AUTH])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
@@ -101,6 +101,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		src/zap/test/Makefile
 		swig/Makefile
 		swig/zap/Makefile
+		swig/ovis_auth/Makefile
 		etc/Makefile
 		etc/ovis/Makefile
 		etc/ovis/set-ovis-variables.sh
