@@ -55,11 +55,12 @@ OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
-OPTION_DEFAULT_ENABLE([kgnilnd], [ENABLE_KGNILND])
+OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
 OPTION_DEFAULT_ENABLE([slurmjobid], [ENABLE_SLURMJOBID])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
-OPTION_DEFAULT_ENABLE([perfevent], [ENABLE_PERFEVENT])
+OPTION_DEFAULT_DISABLE([msr], [ENABLE_MSR])
+OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
@@ -408,8 +409,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile src/xprt/Makefile
 		])
 AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.
 for i in $ovis_exec_scripts; do
-	if test -f $ovis_exec_scripts_objdir/$i; then 
-		chmod a+x $ovis_exec_scripts_objdir/$i; 
+	if test -f $ovis_exec_scripts_objdir/$i; then
+		chmod a+x $ovis_exec_scripts_objdir/$i;
 	else
 		echo failing chmod on missing $ovis_exec_scripts_objdir/$i;
 	fi
