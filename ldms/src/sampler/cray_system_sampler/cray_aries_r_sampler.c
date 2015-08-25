@@ -238,7 +238,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			mvalue = atoi(value);
 		}
 
-		rc = hsn_metrics_config(mvalue);
+		rc = hsn_metrics_config(mvalue, msglog);
 		if (rc != 0)
 			goto out;
 	}
