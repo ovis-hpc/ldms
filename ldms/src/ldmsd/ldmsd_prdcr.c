@@ -181,8 +181,8 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			 prd_set->prdcr->obj.name, ldms_set_producer_name_get(set),
 			 ldms_set_instance_name_get(set));
 	prd_set->set = set;
-	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
+	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	ldmsd_strgp_update(prd_set);
 	pthread_mutex_unlock(&prd_set->lock);
 	return;
@@ -554,6 +554,8 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 		ldmsd_prdcr_set_t prd_set;
 		for (prd_set = ldmsd_prdcr_set_first(prdcr);
 		     prd_set; prd_set = ldmsd_prdcr_set_next(prd_set)) {
+			if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
+				continue;
 			ldmsd_strgp_update_prdcr_set(strgp, prd_set);
 		}
 		ldmsd_prdcr_unlock(prdcr);
