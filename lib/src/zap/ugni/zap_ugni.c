@@ -558,6 +558,14 @@ static void process_uep_msg_connect(struct z_ugni_ep *uep, size_t msglen)
 		goto err;
 	}
 
+	if (memcmp(msg->sig, ZAP_UGNI_SIG, sizeof(msg->sig))) {
+		LOG_(uep, "Expecting sig '%s', but got '%.*s'.\n",
+				ZAP_UGNI_SIG, sizeof(msg->sig), msg->sig);
+		zap_reject(&uep->ep);
+		goto err;
+
+	}
+
 	msg->hdr.msg_len = ntohl(msg->hdr.msg_len);
 	msg->hdr.msg_type = ntohs(msg->hdr.msg_type);
 	msg->data_len = ntohl(msg->data_len);
@@ -802,6 +810,7 @@ static zap_err_t __ugni_send_connect(struct z_ugni_ep *uep, char *buf, size_t le
 	msg.pe_addr = htonl(_dom.pe_addr);
 
 	ZAP_VERSION_SET(msg.ver);
+	memcpy(&msg.sig, ZAP_UGNI_SIG, sizeof(msg.sig));
 
 	if (evbuffer_add(ebuf, &msg, sizeof(msg)) != 0)
 		goto err;

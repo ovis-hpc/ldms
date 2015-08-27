@@ -124,9 +124,9 @@ struct z_ugni_key {
 typedef enum zap_ugni_msg_type {
 	ZAP_UGNI_MSG_NONE,        /**< Dummy first type */
 	ZAP_UGNI_MSG_REGULAR,     /**< Regular send-receive */
+	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
 	ZAP_UGNI_MSG_RENDEZVOUS,  /**< Share zap_map */
 	ZAP_UGNI_MSG_ACCEPTED,    /**< Connection accepted */
-	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
 	ZAP_UGNI_MSG_TYPE_LAST    /**< Dummy last type (for type count) */
 } zap_ugni_msg_type_t;
 
@@ -236,12 +236,16 @@ struct zap_ugni_msg_accepted {
 	char data[0];
 };
 
+static char ZAP_UGNI_SIG[8] = "UGNI";
+
 /**
  * Message for zap connection.
  */
 struct zap_ugni_msg_connect {
 	struct zap_ugni_msg_hdr hdr;
+	char pad[12];  /**< padding so that ugni ver,xprt are aligned with sock ver,xprt */
 	struct zap_version ver;
+	char sig[8];     /**< transport type signature. */
 	uint32_t inst_id; /**< inst_id of the requester (active side). */
 	uint32_t pe_addr; /**< peer address of the requester (active side). */
 	uint32_t data_len; /**< Connection data*/

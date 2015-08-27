@@ -106,26 +106,26 @@ struct z_sock_key {
 
 typedef enum sock_msg_type {
 	SOCK_MSG_SENDRECV = 1,/*  send-receive  */
+	SOCK_MSG_CONNECT,     /*  Connect     data          */
 	SOCK_MSG_RENDEZVOUS,  /*  Share       zap_map       */
 	SOCK_MSG_READ_REQ,    /*  Read        request       */
 	SOCK_MSG_READ_RESP,   /*  Read        response      */
 	SOCK_MSG_WRITE_REQ,   /*  Write       request       */
 	SOCK_MSG_WRITE_RESP,  /*  Write       response      */
-	SOCK_MSG_CONNECT,     /*  Connect     data          */
 	SOCK_MSG_ACCEPTED,    /*  Connection  accepted      */
 	SOCK_MSG_TYPE_LAST
 } sock_msg_type_t;;
 
 static const char *__sock_msg_type_str[] = {
-	"SOCK_MSG_INVALID",
-	"SOCK_MSG_SENDRECV",
-	"SOCK_MSG_RENDEZVOUS",
-	"SOCK_MSG_READ_REQ",
-	"SOCK_MSG_READ_RESP",
-	"SOCK_MSG_WRITE_REQ",
-	"SOCK_MSG_WRITE_RESP",
-	"SOCK_MSG_ACCEPTED",
-	"SOCK_MSG_ACCEPTED"
+	[0]     =  "SOCK_MSG_INVALID",
+	[SOCK_MSG_SENDRECV]    =  "SOCK_MSG_SENDRECV",
+	[SOCK_MSG_CONNECT]     =  "SOCK_MSG_CONNECT",
+	[SOCK_MSG_RENDEZVOUS]  =  "SOCK_MSG_RENDEZVOUS",
+	[SOCK_MSG_READ_REQ]    =  "SOCK_MSG_READ_REQ",
+	[SOCK_MSG_READ_RESP]   =  "SOCK_MSG_READ_RESP",
+	[SOCK_MSG_WRITE_REQ]   =  "SOCK_MSG_WRITE_REQ",
+	[SOCK_MSG_WRITE_RESP]  =  "SOCK_MSG_WRITE_RESP",
+	[SOCK_MSG_ACCEPTED]    =  "SOCK_MSG_ACCEPTED",
 };
 
 #pragma pack(4)
@@ -142,12 +142,15 @@ struct sock_msg_hdr {
 	uint64_t ctxt;	   /**< User context to be returned in reply */
 };
 
+static char ZAP_SOCK_SIG[8] = "SOCKET";
+
 /**
  * Connect message.
  */
 struct sock_msg_connect {
 	struct sock_msg_hdr hdr;
 	struct zap_version ver;
+	char sig[8];
 	uint32_t data_len;
 	char data[0];
 };

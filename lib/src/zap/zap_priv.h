@@ -65,7 +65,7 @@ struct zap_version {
 };
 
 #define ZAP_VERSION_MAJOR 0x01
-#define ZAP_VERSION_MINOR 0x01
+#define ZAP_VERSION_MINOR 0x02
 #define ZAP_VERSION_PATCH 0x00
 #define ZAP_VERSION_FLAGS 0x00
 

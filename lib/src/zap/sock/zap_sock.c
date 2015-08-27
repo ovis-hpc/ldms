@@ -379,6 +379,14 @@ static void process_sep_msg_connect(struct z_sock_ep *sep, size_t reqlen)
 		goto cleanup;
 	}
 
+	if (memcmp(msg->sig, ZAP_SOCK_SIG, sizeof(msg->sig))) {
+		LOG_(sep, "Expecting sig '%s', but got '%.*s'.\n",
+				ZAP_SOCK_SIG, sizeof(msg->sig), msg->sig);
+		zap_reject(&sep->ep);
+		goto cleanup;
+
+	}
+
 	struct zap_event ev = {
 		.type = ZAP_EVENT_CONNECT_REQUEST,
 		.data = msg->data,
@@ -829,6 +837,7 @@ static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t le
 	z_sock_hdr_init(&msg.hdr, 0, SOCK_MSG_CONNECT, (uint32_t)(sizeof(msg) + len), 0);
 	msg.data_len = htonl(len);
 	ZAP_VERSION_SET(msg.ver);
+	memcpy(&msg.sig, ZAP_SOCK_SIG, sizeof(msg.sig));
 
 	if (evbuffer_add(ebuf, &msg, sizeof(msg)) != 0)
 		goto err;
