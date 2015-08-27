@@ -52,7 +52,6 @@
 
 from abc import ABCMeta, abstractmethod
 from os.path import basename, dirname
-from ovis_lib import ovis_auth
 import struct
 """
 @module ldmsd_config
@@ -484,11 +483,13 @@ class ldmsdInetConfig(ldmsdConfig):
         self.socket.connect((host, port))
         buf = self.socket.recv(self.max_recv_len)
         _chl = struct.unpack('II', buf)
-        auth_chl = ovis_auth.ovis_auth_challenge()
-        auth_chl.lo = _chl[0]
-        auth_chl.hi = _chl[1]
-        if auth_chl.hi != 0 or auth_chl.lo != 0:
+        if _chl[0] != 0 or _chl[1] != 0:
+            from ovis_lib import ovis_auth
             # Do authentication
+            auth_chl = ovis_auth.ovis_auth_challenge()
+            auth_chl.lo = _chl[0]
+            auth_chl.hi = _chl[1]
+
             if self.secretword is None:
                 self.socket.close()
                 raise Exception("The server requires authentication")

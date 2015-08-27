@@ -59,7 +59,6 @@ import os
 import traceback
 
 from ldmsd import ldmsd_config, ldmsd_util
-from ovis_lib import ovis_auth
 
 class LdmsdCmdParser(cmd.Cmd):
     def __init__(self, sockname = None, host_port = None, secretPath = None, infile=None):
@@ -73,9 +72,12 @@ class LdmsdCmdParser(cmd.Cmd):
                 print "Unix domain socket is in used. Ignore the path to the secret word"
         else:
             try:
-                self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
+                self.secretword = None
+                if secretPath is not None:
+                    from ovis_lib import ovis_auth
+                    self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
             except:
-                raise Exception("Failed to get the secretword from {0}.".format(secretPath))
+                raise
 
             self.ctrl = ldmsd_config.ldmsdInetConfig(host = host_port['host'],
                                                      port = host_port['port'],
