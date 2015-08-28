@@ -470,7 +470,9 @@ class ldmsdUSocketConfig(ldmsdConfig):
 
     def close(self):
         self.socket.close()
+        self.socket = None
         os.unlink(self.sockpath)
+        self.sockpath = None
 
 class ldmsdInetConfig(ldmsdConfig):
     def __init__(self, host, port, secretword, max_recv_len = MAX_RECV_LEN):
@@ -525,3 +527,4 @@ class ldmsdInetConfig(ldmsdConfig):
 
     def close(self):
         self.socket.close()
+        self.socket = None
