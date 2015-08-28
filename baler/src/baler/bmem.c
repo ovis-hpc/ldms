@@ -112,22 +112,22 @@ struct bmem* bmem_open(const char *path)
 	}
 
 	/* Do the mapping for the header first. */
+	b->flen = BPGSZ;
 	b->hdr = mmap(NULL, BPGSZ, PROT_READ|PROT_WRITE, MAP_SHARED, b->fd, 0);
 	if (b->hdr == MAP_FAILED) {
 		berror("mmap");
 		goto err1;
 	}
-	/* Then, do the rest. */
-	b->hdr = mmap(NULL, b->hdr->flen, PROT_READ|PROT_WRITE, MAP_SHARED,
-			b->fd, 0);
-	if (b->hdr == MAP_FAILED) {
-		berror("mmap");
-		goto err1;
-	}
 	b->ptr = b->hdr + 1;
+
+	/* Then, do the rest. */
+	if (bmem_refresh(b))
+		goto err2;
 out:
 	return b;
 
+err2:
+	munmap(b->hdr, BPGSZ);
 err1:
 	close(b->fd);
 err0:
@@ -138,7 +138,7 @@ err0:
 
 void bmem_close(struct bmem *b)
 {
-	if (munmap(b->hdr, b->hdr->flen) == -1) {
+	if (munmap(b->hdr, b->flen) == -1) {
 		berror("munmap");
 	}
 	if (close(b->fd) == -1) {
@@ -197,6 +197,7 @@ int bmem_unlink(const char *path)
 
 int bmem_refresh(struct bmem *b)
 {
+	int rc;
 	void *new_mem;
 	uint64_t flen = b->hdr->flen;
 	if (b->flen == flen)
@@ -204,10 +205,16 @@ int bmem_refresh(struct bmem *b)
 		return 0;
 
 	/* Need remap */
-	new_mem = mremap(b->hdr, b->flen, flen, MREMAP_MAYMOVE);
+	new_mem = mmap(NULL, flen, PROT_READ|PROT_WRITE, MAP_SHARED, b->fd, 0);
 	if (new_mem == MAP_FAILED) {
-		berror("mremap");
+		berror("bmem_refresh(): mmap");
 		return errno;
+	}
+
+	/* unmap the old map */
+	rc = munmap(b->hdr, b->flen);
+	if (rc) {
+		berror("bmem_refresh(): munmap");
 	}
 
 	/* Update */

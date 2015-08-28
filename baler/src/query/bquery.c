@@ -689,7 +689,7 @@ static int __bq_open_bsos(struct bquery *q)
 	return 0;
 }
 
-static void *__msg_obj_update(struct bquery *q)
+static void __msg_obj_update(struct bquery *q)
 {
 	if (q->obj) {
 		sos_obj_put(q->obj);
