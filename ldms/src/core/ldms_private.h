@@ -76,47 +76,6 @@ struct ldms_schema_s {
 	LIST_ENTRY(ldms_schema_s) entry;
 };
 
-struct ldms_data_hdr {
-	struct ldms_transaction trans;
-	uint32_t pad;
-	uint64_t gn;		/* Metric-value generation number */
-	uint64_t size;		/* Max size of data */	/* FIXME: unused */
-	uint64_t meta_gn;	/* Meta-data generation number */
-};
-
-/* 3.2.0.0 */
-#define LDMS_VERSION_MAJOR	 0x03
-#define LDMS_VERSION_MINOR	 0x02
-#define LDMS_VERSION_PATCH	 0x00
-#define LDMS_VERSION_FLAGS	 0x00
-#define LDMS_VERSION_SET(version) do {				\
-	(version).major = LDMS_VERSION_MAJOR;			\
-	(version).minor = LDMS_VERSION_MINOR;			\
-	(version).patch = LDMS_VERSION_PATCH;			\
-	(version).flags = LDMS_VERSION_FLAGS;			\
-} while (0)
-
-#define LDMS_VERSION_EQUAL(version) (				\
-	((version).major == LDMS_VERSION_MAJOR) &&		\
-	((version).minor == LDMS_VERSION_MINOR) &&		\
-	((version).patch == LDMS_VERSION_PATCH) &&		\
-	((version).flags == LDMS_VERSION_FLAGS) )
-
-struct ldms_set_hdr {
-	/* The unique metric set producer name */
-	char producer_name[LDMS_PRODUCER_NAME_MAX];
-	uint64_t meta_gn;	/* Meta-data generation number */
-	struct ldms_version version;	/* LDMS version */
-	uint8_t flags;	/* Set format flags */
-	uint8_t pad1;	/* data pad */
-	uint8_t pad2;	/* data pad */
-	uint8_t pad3;	/* data pad */
-	uint32_t card;		/* Size of dictionary (i.e. metric count). */
-	uint32_t meta_sz;	/* size of meta data in bytes */
-	uint32_t data_sz;	/* size of metric values in bytes */
-	uint32_t dict[0];	/* The metric dictionary */
-};
-
 struct ldms_set {
 	unsigned long flags;
 	struct ldms_set_hdr *meta;
@@ -127,26 +86,6 @@ struct ldms_set {
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
-
-static inline ldms_name_t get_instance_name(struct ldms_set_hdr *meta)
-{
-	ldms_name_t name  = (ldms_name_t)(&meta->dict[__le32_to_cpu(meta->card)]);
-	return name;
-}
-
-static inline ldms_name_t get_schema_name(struct ldms_set_hdr *meta)
-{
-	ldms_name_t inst = get_instance_name(meta);
-	return (ldms_name_t)(&inst->name[inst->len+sizeof(*inst)]);
-}
-
-static inline struct ldms_value_desc *get_first_metric_desc(struct ldms_set_hdr *meta)
-{
-	ldms_name_t name = get_schema_name(meta);
-	char *p = &name->name[name->len+sizeof(*name)];
-	p = (char *)roundup((uint64_t)p, 8);
-	return (struct ldms_value_desc *)p;
-}
 
 extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,

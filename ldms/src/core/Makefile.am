@@ -3,7 +3,7 @@ lib_LTLIBRARIES =
 AM_CFLAGS = -Wall $(DBGFLAGS)
 
 ldmscoreincludedir = $(includedir)/ldms
-ldmscoreinclude_HEADERS = ldms.h ldmsd.h ldms_xprt.h
+ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldmsd.h ldms_xprt.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h
 libldms_la_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
