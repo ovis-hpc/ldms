@@ -416,6 +416,9 @@ int main(int argc, char *argv[])
 			s = fgets(linebuf, sizeof linebuf, stdin);
 		}
 #else /* HAVE_LIBREADLINE */
+		if (isatty(0) ) {
+			fputs("ldmsctl> ", stdout);
+		}
 		s = fgets(linebuf, sizeof linebuf, stdin);
 #endif /* HAVE_LIBREADLINE */
 		if (!s)
