@@ -253,24 +253,21 @@ void client_cb(zap_ep_t zep, zap_event_t ev)
 		flag = CONNECTED;
 		printf("%s\n", zap_event_str(ev->type));
 		break;
+	case ZAP_EVENT_REJECTED:
+		/* RDMA usually returns REJECTED event for unsuccessful
+		 * connection request */
 	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_DISCONNECTED:
 		printf("%s\n", zap_event_str(ev->type));
 		pthread_mutex_lock(&exiting_mutex);
 		if (!exiting) {
 			flag = DISCONNECTED;
-			zap_close(zep);
 		}
 		pthread_mutex_unlock(&exiting_mutex);
 		zap_free(zep);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		printf("recv: %s\n", (char*)ev->data);
-		break;
-	case ZAP_EVENT_REJECTED:
-		printf("Error: Server never reject the connection request\n");
-		pthread_mutex_unlock(&flag_lock);
-		exit(-1);
 		break;
 	default:
 		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
