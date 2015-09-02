@@ -2,7 +2,7 @@ lib_LTLIBRARIES =
 
 libovis_rctrl_la_SOURCES = rctrl.c rctrl.h
 libovis_rctrl_la_LIBADD = ../ocm/libocm.la -lovis_util @OVIS_LIB_LIBDIR_FLAG@ \
-			  -lpthread -lovis_util
+			  -lpthread -lovis_util -lzap
 libovis_rctrl_la_CFLAGS = -I$(srcdir)/../ @OVIS_LIB_INCDIR_FLAG@
 
 if ENABLE_AUTH
