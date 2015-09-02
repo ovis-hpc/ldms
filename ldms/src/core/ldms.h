@@ -59,6 +59,7 @@
 #include <netinet/in.h>
 #include <byteswap.h>
 #include <asm/byteorder.h>
+#include "ldms_core.h"
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
 
@@ -183,85 +184,6 @@ typedef struct ldms_schema_s *ldms_schema_t;
  */
 
 /**
- * \brief Metric value descriptor
- *
- * This structure describes a metric value in the metric set. Metrics
- * are self describing. Value descriptors are aligned on 64 bit boundaries.
- */
-#pragma pack(4)
-typedef struct ldms_value_desc {
-	uint64_t vd_user_data;	/*! User defined meta-data */
-	uint32_t vd_data_offset;	/*! Offset of the value in ldms_data_hdr */
-	uint8_t vd_type;		/*! The type of the value, enum ldms_value_type */
-	uint32_t array_count;	/*! Number of elements in the array if this is of an array type */
-	uint8_t vd_name_len;	/*! The length of the metric name in bytes*/
-	char vd_name[0];		/*! The metric name */
-} *ldms_mdesc_t;
-#pragma pack()
-
-/**
- * \brief Metric value union
- *
- * A generic union that encapsulates all of the LDMS value types.
- */
-typedef union ldms_value {
-	uint8_t v_u8;
-	int8_t v_s8;
-	uint16_t v_u16;
-	int16_t v_s16;
-	uint32_t v_u32;
-	int32_t v_s32;
-	uint64_t v_u64;
-	int64_t v_s64;
-	float v_f;
-	double v_d;
-} *ldms_mval_t;
-
-/**
- * \brief LDMS value type enumeration
- */
-enum ldms_value_type {
-	LDMS_V_NONE,
-	LDMS_V_U8,
-	LDMS_V_S8,
-	LDMS_V_U16,
-	LDMS_V_S16,
-	LDMS_V_U32,
-	LDMS_V_S32,
-	LDMS_V_U64,
-	LDMS_V_S64,
-	LDMS_V_F32,
-	LDMS_V_D64,
-	LDMS_V_U8_ARRAY,
-	LDMS_V_S8_ARRAY,
-	LDMS_V_U16_ARRAY,
-	LDMS_V_S16_ARRAY,
-	LDMS_V_U32_ARRAY,
-	LDMS_V_S32_ARRAY,
-	LDMS_V_U64_ARRAY,
-	LDMS_V_S64_ARRAY,
-	LDMS_V_F32_ARRAY,
-	LDMS_V_D64_ARRAY,
-	LDMS_V_LAST = LDMS_V_D64_ARRAY
-};
-
-/**
- * \brief LDMS Version structure
- */
-struct ldms_version {
-	uint8_t major;	/* major number */
-	uint8_t minor;	/* minor number */
-	uint8_t patch;	/* patch number */
-	uint8_t flags;	/* version flags */
-};
-
-/**
- * An interface to get LDMS version.
- * \param[out] v A buffer to store LDMS version.
- */
-void ldms_version_get(struct ldms_version *v);
-
-/**
  * \brief Initialize LDMS
  *
  *  Pre-allocate a memory region for metric sets
@@ -312,40 +234,6 @@ ldms_t ldms_xprt_first();
  * \returns The first transport endpoint or NULL if there are no open transports.
  */
 ldms_t ldms_xprt_next(ldms_t);
-
-#define LDMS_SETH_F_BE		0x0001
-#define LDMS_SETH_F_LE		0x0002
-
-#if __BYTE_ORDER__ == __BIG_ENDIAN
-#define LDMS_SETH_F_LCLBYTEORDER	LDMS_SETH_F_BE
-#else
-#define LDMS_SETH_F_LCLBYTEORDER	LDMS_SETH_F_LE
-#endif
-
-#define LDMS_SET_NAME_MAX 256
-#define LDMS_PRODUCER_NAME_MAX 64 /* including the terminating null byte */
-
-typedef struct ldms_name {
-	uint8_t len;
-	uint8_t name[0];
-} *ldms_name_t;
-
-enum ldms_transaction_flags {
-	LDMS_TRANSACTION_NONE = 0,
-	LDMS_TRANSACTION_BEGIN = 1,
-	LDMS_TRANSACTION_END = 2
-};
-
-struct ldms_timestamp  {
-	uint32_t sec;
-	uint32_t usec;
-};
-
-struct ldms_transaction {
-	struct ldms_timestamp ts;
-	struct ldms_timestamp dur;
-	uint32_t flags;
-};
 
 enum ldms_lookup_status {
 	LDMS_LOOKUP_ERROR = 1,

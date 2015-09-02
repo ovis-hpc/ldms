@@ -397,9 +397,6 @@ int map_fd;
 ldms_set_t map_set;
 int publish_kernel(const char *setfile)
 {
-#if 1
-	return ENOSYS;
-#else
 	int rc;
 	int i, j;
 	void *meta_addr;
@@ -427,21 +424,16 @@ int publish_kernel(const char *setfile)
 	while (3 == fscanf(fp, "%d %d %s", &set_no, &set_size, set_name)) {
 		int id = set_no << 13;
 		ldmsd_log(LDMSD_LERROR, "Mapping set %d name %s\n", set_no, set_name);
-		meta_addr = mmap((void *)0, 8192, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
+		meta_addr = mmap((void *)0, set_size, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
 		if (meta_addr == MAP_FAILED)
 			return -ENOMEM;
 		sh = meta_addr;
 		if (set_name[0] == '/')
-			sprintf(sh->instance_name, "%s%s", myhostname, set_name);
+			sprintf(sh->producer_name, "%s%s", myhostname, set_name);
 		else
-			sprintf(sh->instance_name, "%s/%s", myhostname, set_name);
-		data_addr = mmap((void *)0, 8192, PROT_READ|PROT_WRITE,
-				 MAP_SHARED, map_fd,
-				 id | LDMS_SET_ID_DATA);
-		if (data_addr == MAP_FAILED) {
-			munmap(meta_addr, 8192);
-			return -ENOMEM;
-		}
+			sprintf(sh->producer_name, "%s/%s", myhostname, set_name);
+		data_addr = (struct ldms_data_hdr *)((unsigned char*)meta_addr + sh->meta_sz);
+
 		rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR, "Error encountered mmaping the set '%s', rc %d\n",
@@ -463,11 +455,10 @@ int publish_kernel(const char *setfile)
 			}
 			ldmsd_log(LDMSD_LERROR, "\n");
 		}
-		ldmsd_log(LDMSD_LERROR, "name: '%s'\n", sh->instance_name);
+		ldmsd_log(LDMSD_LERROR, "name: '%s'\n", sh->producer_name);
 		ldmsd_log(LDMSD_LERROR, "size: %d\n", __le32_to_cpu(sh->meta_sz));
 	}
 	return 0;
-#endif
 }
 
 
