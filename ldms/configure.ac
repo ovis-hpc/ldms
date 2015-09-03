@@ -94,6 +94,7 @@ OPTION_WITH([ocm], [OCM])
 
 OPTION_DEFAULT_DISABLE([ldmsd-rctl], [ENABLE_LDMSD_RCTL])
 OPTION_DEFAULT_DISABLE([ldms-python], [ENABLE_LDMS_PYTHON])
+OPTION_DEFAULT_DISABLE([ldms-test], [ENABLE_LDMS_TEST])
 
 if test -z "$ENABLE_MYSQL_TRUE"
 then
@@ -222,6 +223,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/ldmsd/Makefile
+		 src/test/Makefile
 		 etc/Makefile
 		 etc/init.d/Makefile
 		 etc/init.d/ldmsd_aggregator
