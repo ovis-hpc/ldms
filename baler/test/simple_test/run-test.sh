@@ -38,6 +38,8 @@ if __has_operf; then
 	BALERD_CMD="operf $OPERF_OPTIONS $BALERD_CMD"
 fi
 
+BPID=0
+
 check_balerd() {
 	jobs '%$BALERD_CMD' > /dev/null 2>&1 || \
 		__err_exit "balerd is not running"
@@ -49,14 +51,30 @@ check_balerd() {
 
 wait_balerd() {
 	echo "waiting ..."
-	BPID=`jobs -p '%$BALERD_CMD'`
 	if (( ! BPID )); then
+		echo "wait_balerd -- WARN: BPID not set"
 		return
 	fi
 	P=`top -p $BPID -b -n 1 | grep 'balerd' | awk '{print $9}' | cut -f 1 -d .`
 	while (( P > 10 )); do
 		sleep 1
-		P=`top -p $BPID -b -n 1 | grep 'balerd' | awk '{print $9}' | cut -f 1 -d .`
+		X=($(top -p $BPID -b -n 1 | tail -n 1))
+		P=${X[8]%%.*}
+	done
+}
+
+stat_balerd() {
+	if (( ! BPID )); then
+		echo "stat_balerd -- WARN: BPID not set"
+		return
+	fi
+	while true; do
+		DT=$(date)
+		ST=$(cat /proc/$BPID/stat)
+		STM=$(cat /proc/$BPID/statm)
+		echo $DT $ST >> $BSTAT
+		echo $DT $STM >> $BSTATM
+		sleep 1;
 	done
 }
 
@@ -68,7 +86,7 @@ if [[ -d $BSTORE ]]; then
 fi
 
 # Hook to kill all jobs at exit
-trap 'kill -SIGINT $(jobs -p)' EXIT
+trap 'kill $(jobs -p)' EXIT
 
 ./clean.sh
 
@@ -83,7 +101,13 @@ sleep 1
 
 check_balerd
 
+BPID=`jobs -p '%$BALERD_CMD'`
+
+stat_balerd &
+
 __info "Start sending data to balerd"
+
+# stat_balerd &
 
 time -p ./gen-log.pl | ./syslog2baler.pl -p $BTEST_BIN_RSYSLOG_PORT
 

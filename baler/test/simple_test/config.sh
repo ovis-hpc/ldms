@@ -2,6 +2,8 @@
 
 export BLOG=./balerd.log
 export BSTORE=./store
+export BSTAT=./balerd.stat
+export BSTATM=./balerd.statm
 
 # Baler configuration file (balerd.cfg) will be automatically generated.
 
@@ -12,7 +14,7 @@ export BTEST_TS_BEGIN=1435294800
 export BTEST_TS_LEN=$((3600*24))
 export BTEST_TS_INC=600
 export BTEST_NODE_BEGIN=0
-export BTEST_NODE_LEN=64
+export BTEST_NODE_LEN=1024
 
 export BOUT_THREADS=1
 export BIN_THREADS=1
