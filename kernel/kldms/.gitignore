@@ -1,0 +1,10 @@
+*.mod.c
+*.ko.cmd
+*.o.cmd
+*.ko
+*.unsigned
+*.ko.unsigned.cmd
+.tmp_versions
+Module.*
+modules.*
+!Makefile
