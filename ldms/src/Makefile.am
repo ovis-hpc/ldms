@@ -17,3 +17,6 @@ if ENABLE_LDMSD
 SUBDIRS += ldmsd
 endif
 
+if ENABLE_LDMS_TEST
+SUBDIRS += test
+endif
