@@ -673,6 +673,7 @@ int ldmsd_set_udata_regex(char *set_name, char *regex_str,
 			udata += inc;
 		}
 	}
+	regfree(&regex);
 	return 0;
 }
 

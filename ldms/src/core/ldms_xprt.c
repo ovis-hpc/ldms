@@ -103,6 +103,12 @@ static void default_log(const char *fmt, ...)
 
 pthread_mutex_t xprt_list_lock;
 
+#define LDMS_ZAP_XPRT_SOCK 0;
+#define LDMS_ZAP_XPRT_RDMA 1;
+#define LDMS_ZAP_XPRT_UGNI 2;
+pthread_mutex_t ldms_zap_list_lock;
+static zap_t ldms_zap_list[3] = {0};
+
 ldms_t ldms_xprt_get(ldms_t x)
 {
 	assert(x->ref_count > 0);
@@ -444,6 +450,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.len = htonl(len);
 
 	zap_send(x->zap_ep, reply, len);
+	free(reply);
 	return;
 }
 
@@ -1366,14 +1373,46 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
+zap_t __ldms_zap_get(const char *xprt, ldms_log_fn_t log_fn)
+{
+	int zap_type = -1;
+	if (0 == strcmp(xprt, "sock")) {
+		zap_type = LDMS_ZAP_XPRT_SOCK;
+	} else if (0 == strcmp(xprt, "ugni")) {
+		zap_type = LDMS_ZAP_XPRT_UGNI;
+	} else if (0 == strcmp(xprt, "rdma")) {
+		zap_type = LDMS_ZAP_XPRT_RDMA;
+	} else {
+		log_fn("ldms: Unrecognized xprt '%s'\n", xprt);
+		errno = EINVAL;
+		return NULL;
+	}
+
+	pthread_mutex_lock(&ldms_zap_list_lock);
+	zap_t zap = ldms_zap_list[zap_type];
+	if (zap)
+		goto out;
+
+	zap = zap_get(xprt, log_fn, ldms_zap_mem_info);
+	if (!zap) {
+		log_fn("ldms: Cannot get zap plugin: %s\n", xprt);
+		errno = ENOENT;
+		goto out;
+	}
+	ldms_zap_list[zap_type] = zap;
+out:
+	pthread_mutex_unlock(&ldms_zap_list_lock);
+	return zap;
+}
+
 int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
 					ldms_log_fn_t log_fn)
 {
 	int ret = 0;
-	x->zap = zap_get(name, log_fn, ldms_zap_mem_info);
+	errno = 0;
+	x->zap = __ldms_zap_get(name, log_fn);
 	if (!x->zap) {
-		log_fn("ERROR: Cannot get zap plugin: %s\n", name);
-		ret = ENOENT;
+		ret = errno;
 		goto err0;
 	}
 
@@ -1587,11 +1626,12 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	if (rc) {
 		if (x->active_dir > 0) {
 			/*
-			 * The active_dir could be decremented in the
+			 * The active_dir might be decremented in the
 			 * DISCONNECTED path already.
 			 */
 			x->active_dir = 0;
 			zap_put_ep(x->zap_ep);
+			free(ctxt);
 #ifdef DEBUG
 			x->log("DEBUG: remote_dir: error. put ref %p. "
 					"active_dir = %d.\n",
@@ -1602,6 +1642,7 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	return rc;
 ebusy:
 	pthread_mutex_unlock(&x->lock);
+	free(ctxt);
 	return EBUSY;
 }
 
@@ -1916,6 +1957,7 @@ static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_s
 static void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_mutex_init(&xprt_list_lock, 0);
+	pthread_mutex_init(&ldms_zap_list_lock, 0);
 }
 
 static void __attribute__ ((destructor)) cs_term(void)

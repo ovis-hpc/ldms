@@ -661,6 +661,7 @@ int cmd_prdcr_start_regex(char *replybuf, struct attr_value_list *avl, struct at
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	regfree(&regex);
 	sprintf(replybuf, "0\n");
 out_0:
 	return 0;
@@ -696,6 +697,7 @@ int cmd_prdcr_stop_regex(char *replybuf, struct attr_value_list *avl, struct att
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	regfree(&regex);
 	sprintf(replybuf, "0\n");
 out_1:
 	ldmsd_prdcr_put(prdcr);
