@@ -450,7 +450,6 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.len = htonl(len);
 
 	zap_send(x->zap_ep, reply, len);
-	free(reply);
 	return;
 }
 
