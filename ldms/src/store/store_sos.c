@@ -348,7 +348,7 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	}
 	return schema;
  err_1:
-	sos_schema_put(schema);
+	sos_schema_free(schema);
 	schema = NULL;
  err_0:
 	return schema;
@@ -389,7 +389,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 	si->sos_schema = schema;
 	return 0;
  err_1:
-	sos_schema_put(schema);
+	sos_schema_free(schema);
  err_0:
 	sos_container_close(si->sos, SOS_COMMIT_ASYNC);
 	si->sos = NULL;
@@ -516,8 +516,6 @@ static void close_store(ldmsd_store_handle_t _sh)
 		sos_container_close(si->sos, SOS_COMMIT_ASYNC);
 	if (si->path)
 		free(si->path);
-	if (si->sos_schema)
-		sos_schema_put(si->sos_schema);
 	free(si->container);
 	free(si->schema_name);
 	free(si);
