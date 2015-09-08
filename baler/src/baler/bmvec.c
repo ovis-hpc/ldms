@@ -74,7 +74,7 @@ err0:
 	return NULL;
 }
 
-void* bmvec_generic_open(const char *path)
+struct bmvec_char *bmvec_generic_open(const char *path)
 {
 	struct bmvec_char *vec = (typeof(vec)) malloc(sizeof(*vec));
 	if (!vec) {
@@ -117,9 +117,8 @@ int bmvec_u64_init(struct bmvec_u64 *vec, uint32_t size, uint64_t value)
 	return 0;
 }
 
-int bmvec_generic_init(void *_vec, uint32_t size, void *elm, uint32_t elm_size)
+int bmvec_generic_init(struct bmvec_char *vec, uint32_t size, void *elm, uint32_t elm_size)
 {
-	struct bmvec_char *vec = (typeof(vec)) _vec;
 	int __size = (size|(BMVEC_INC-1))+1;
 	int init_size = sizeof(vec->bvec)+__size*elm_size;
 	int64_t off = bmem_alloc(vec->mem, init_size);
@@ -144,9 +143,8 @@ void bmvec_u64_close_free(struct bmvec_u64 *vec)
 	free(vec);
 }
 
-void bmvec_generic_close_free(void *_vec)
+void bmvec_generic_close_free(struct bmvec_char *vec)
 {
-	struct bmvec_char *vec = (typeof(vec)) _vec;
 	bmem_close_free(vec->mem);
 	free(vec);
 }
@@ -158,10 +156,14 @@ int bmvec_unlink(const char *path)
 
 int bmvec_generic_refresh(struct bmvec_char *vec)
 {
+	pthread_mutex_lock(&vec->mutex);
 	int rc = bmem_refresh(vec->mem);
-	if (rc)
+	if (rc) {
+		pthread_mutex_unlock(&vec->mutex);
 		return rc;
+	}
 	vec->bvec = vec->mem->ptr;
+	pthread_mutex_unlock(&vec->mutex);
 	return 0;
 }
 

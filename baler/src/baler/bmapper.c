@@ -198,10 +198,10 @@ errX:
 
 void bmap_close_free(struct bmap* m)
 {
-	bmvec_generic_close_free(m->bmstr_idx);
+	bmvec_generic_close_free((void*)m->bmstr_idx);
 	bmem_close_free(m->mstr);
 	bmem_close_free(m->mlist);
-	bmvec_generic_close_free(m->bmhash);
+	bmvec_generic_close_free((void*)m->bmhash);
 	bmem_close_free(m->mhdr);
 	free(m);
 }

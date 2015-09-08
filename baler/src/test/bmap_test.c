@@ -139,7 +139,5 @@ int main(int argc, char **argv)
 	/* clean up */
 	char tmp[1024];
 	sprintf(tmp, "rm -rf %s", path);
-	system(tmp);
-
-	return 0;
+	return system(tmp);
 }

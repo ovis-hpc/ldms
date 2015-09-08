@@ -671,7 +671,7 @@ float __avg_dist(struct bmptn_store *store, uint32_t cls_id)
 	float dist;
 	struct barray *array = NULL;
 	int i, j, n, rc;
-	uint32_t *x;
+	const uint32_t *x;
 	struct bmc_handle *bmc;
 	struct bmptn_node *node, *nodej;
 
@@ -726,7 +726,8 @@ int bmptn_refine_cluster(struct bmptn_store *store, uint32_t cls_id, float thr)
 {
 	int rc = 0;
 	struct barray *array = NULL;
-	uint32_t *x, l;
+	const uint32_t *x;
+	uint32_t l;
 	int i, j, n;
 	float dist;
 	struct bmc_handle *bmc, BMC;

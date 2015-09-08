@@ -133,7 +133,11 @@ int bmvec_u64_append(struct bmvec_u64 *vec, uint64_t x)
 static
 uint64_t bmvec_u64_get(struct bmvec_u64 *vec, uint32_t idx)
 {
-	return vec->bvec->data[idx];
+	uint64_t ret;
+	pthread_mutex_lock(&vec->mutex);
+	ret = vec->bvec->data[idx];
+	pthread_mutex_unlock(&vec->mutex);
+	return ret;
 }
 
 /**
@@ -173,10 +177,9 @@ int bmvec_u64_set(struct bmvec_u64 *vec, uint32_t idx, uint64_t x)
  * \param elm The pointer to an element to be inserted.
  */
 static inline
-int bmvec_generic_set(void *_vec, uint32_t idx,
+int bmvec_generic_set(struct bmvec_char *vec, uint32_t idx,
 		void* elm, uint32_t elm_size)
 {
-	struct bmvec_char *vec = (typeof(vec)) _vec;
 	pthread_mutex_lock(&vec->mutex);
 	struct bvec_char *v = vec->bvec;
 	if (idx >= v->alloc_len) {
@@ -199,23 +202,30 @@ int bmvec_generic_set(void *_vec, uint32_t idx,
 }
 
 static inline
-void *bmvec_generic_get(void *_vec, uint32_t idx, uint32_t elm_size)
+void *bmvec_generic_get(struct bmvec_char *vec, uint32_t idx, uint32_t elm_size)
 {
 	void *ptr;
-	struct bmvec_char *vec = (typeof(vec)) _vec;
+	pthread_mutex_lock(&vec->mutex);
 	struct bvec_char *v = vec->bvec;
 	if (idx >= v->len)
-		return NULL;
-	return v->data + elm_size*idx;
+		ptr = NULL;
+	else
+		ptr = v->data + elm_size*idx;
+	pthread_mutex_unlock(&vec->mutex);
+	return ptr;
 }
 
 /**
  * Element pointer to index in the vector.
  */
 static inline
-uint32_t bmvec_generic_get_index(void *_vec, void *elm, uint32_t elm_size)
+uint32_t bmvec_generic_get_index(struct bmvec_char *vec, void *elm, uint32_t elm_size)
 {
-	return (elm - (void*)((struct bmvec_char*)_vec)->bvec->data)/elm_size;
+	uint32_t ret;
+	pthread_mutex_lock(&vec->mutex);
+	ret = (elm - (void*)vec->bvec->data)/elm_size;
+	pthread_mutex_unlock(&vec->mutex);
+	return ret;
 }
 
 /**
@@ -264,7 +274,7 @@ struct bmvec_u64* bmvec_u64_open(const char *path);
  * \return NULL on error.
  * \return A void pointer to ::bmvec_char structure (can be cast to any bmvec*).
  */
-void* bmvec_generic_open(const char *path);
+struct bmvec_char* bmvec_generic_open(const char *path);
 
 /**
  * Initialize \a vec.
@@ -285,7 +295,7 @@ int bmvec_u64_init(struct bmvec_u64 *vec, uint32_t size, uint64_t value);
  * \return 0 on success.
  * \return -1 on error.
  */
-int bmvec_generic_init(void *vec, uint32_t size, void *elm, uint32_t elm_size);
+int bmvec_generic_init(struct bmvec_char *vec, uint32_t size, void *elm, uint32_t elm_size);
 
 /**
  * Close the mapped file and free \a vec (along with its objects).
@@ -297,7 +307,7 @@ void bmvec_u64_close_free(struct bmvec_u64 *vec);
  * Close the mapped file and free \a _vec.
  * \param _vec The generic bmvec structure.
  */
-void bmvec_generic_close_free(void *_vec);
+void bmvec_generic_close_free(struct bmvec_char *vec);
 
 /**
  * \brief Unlink the bmvec of given \c path from the file system.
@@ -340,7 +350,11 @@ void bmvec_generic_reset(struct bmvec_char *bmvec)
 static inline
 uint64_t bmvec_generic_get_len(struct bmvec_char *bmvec)
 {
-	return bmvec->bvec->len;
+	uint64_t len;
+	pthread_mutex_lock(&bmvec->mutex);
+	len = bmvec->bvec->len;
+	pthread_mutex_unlock(&bmvec->mutex);
+	return len;
 }
 
 /**\}*/ // bmvec

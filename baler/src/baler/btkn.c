@@ -89,7 +89,7 @@ struct btkn_store* btkn_store_open(const char *path, int flag)
 		goto err1;
 	}
 	snprintf(tmp, PATH_MAX, "%s/tkn_attr.bmvec", path);
-	ts->attr = bmvec_generic_open(tmp);
+	ts->attr = (void*)bmvec_generic_open(tmp);
 	if (!ts->attr) {
 		goto err1;
 	}
@@ -113,7 +113,7 @@ void btkn_store_close_free(struct btkn_store *s)
 	if (s->path)
 		free(s->path);
 	if (s->attr)
-		bmvec_generic_close_free(s->attr);
+		bmvec_generic_close_free((void*)s->attr);
 	if (s->map)
 		bmap_close_free(s->map);
 	free(s);

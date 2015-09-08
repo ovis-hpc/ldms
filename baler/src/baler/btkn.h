@@ -124,6 +124,7 @@ int btkn_store_id2str(struct btkn_store *store, uint32_t id, char *dest,
 static inline
 struct btkn_attr btkn_store_get_attr(struct btkn_store *store, uint32_t tkn_id)
 {
+	struct btkn_attr attr;
 	return store->attr->bvec->data[tkn_id];
 }
 
@@ -138,7 +139,7 @@ static inline
 void btkn_store_set_attr(struct btkn_store *store, uint32_t tkn_id,
 			 struct btkn_attr attr)
 {
-	bmvec_generic_set(store->attr, tkn_id, &attr, sizeof(attr));
+	bmvec_generic_set((void*)store->attr, tkn_id, &attr, sizeof(attr));
 }
 
 /**
@@ -162,7 +163,7 @@ uint32_t btkn_store_insert(struct btkn_store *store, struct bstr *str)
 
 	/* set attribute to '*' by default for new token */
 	struct btkn_attr attr;
-	if (store->attr->bvec->len <= id ) {
+	if (bmvec_generic_get_len((void*)store->attr) <= id ) {
 		attr.type = BTKN_TYPE_STAR;
 		btkn_store_set_attr(store, id, attr);
 	}
@@ -183,7 +184,7 @@ uint32_t btkn_store_insert_with_id(struct btkn_store *store, struct bstr *str, u
 
 	/* set attribute to '*' by default for new token */
 	struct btkn_attr attr;
-	if (store->attr->bvec->len <= id ) {
+	if (bmvec_generic_get_len((void*)store->attr) <= id ) {
 		attr.type = BTKN_TYPE_STAR;
 		btkn_store_set_attr(store, id, attr);
 	}

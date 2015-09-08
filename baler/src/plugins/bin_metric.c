@@ -183,7 +183,13 @@ struct bwq_entry* prepare_bwq_entry(struct bin_metric_msg *m)
 	LIST_INSERT_AFTER(tok_tail, lent, link);
 	tok_tail = lent;
 
-	lent->str.blen = snprintf(lent->str.cstr, 128, "[%e,%e)",
+	/* NOTE: If I snprintf directly to lent->str.cstr, gcc will somehow
+	 * think that the buffer is of size 0, and complain: "error: call to
+	 * __builtin___snprintf_chk will always overflow destination buffer
+	 * [-Werror]"
+	 */
+	struct bstr *str = &lent->str;
+	lent->str.blen = snprintf(str->cstr, 127, "[%e,%e)",
 						bin->bin[idx].lower_bound,
 						bin->bin[idx+1].lower_bound);
 	if (lent->str.blen >= 128) {
