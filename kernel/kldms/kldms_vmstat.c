@@ -46,6 +46,7 @@
 #include <linux/file.h>
 #include <linux/poll.h>
 #include <linux/mm.h>
+#include <linux/slab.h>
 #include <linux/vmstat.h>
 #include <linux/ctype.h>
 
@@ -61,8 +62,8 @@ static unsigned long sampler_status;
 static kldms_schema_t	vmstat_schema;
 static struct kldms_set	*vmstat_set;
 
-static char *vmstat_text_buf;
-static char ** vmstat_text;
+static char *vmstat_txt_buf;
+static char ** vmstat_txt;
 static int vmstat_count;
 
 static struct ctl_table_header *kldms_table_header;
@@ -165,10 +166,10 @@ void kldms_vmstat_cleanup(void)
 		kldms_set_delete(vmstat_set);
 	if (vmstat_schema)
 		kldms_schema_delete(vmstat_schema);
-	if (vmstat_text)
-		kfree(vmstat_text);
-	if (vmstat_text_buf)
-		kfree(vmstat_text_buf);
+	if (vmstat_txt)
+		kfree(vmstat_txt);
+	if (vmstat_txt_buf)
+		kfree(vmstat_txt_buf);
 }
 
 int component_id_metric;
@@ -228,7 +229,7 @@ static char *strtok(char *b, char *sep, int z)
 int parse_proc_vmstat(void)
 {
 	struct file *filp = NULL;
-	char *vmstat_text_buf = NULL;
+	char *vmstat_txt_buf = NULL;
 	ssize_t fsize = PAGE_SIZE;
 	loff_t pos = 0;
 	char *s;
@@ -243,30 +244,30 @@ int parse_proc_vmstat(void)
 	if (fsize <= 0)
 		goto err;
 
-	vmstat_text_buf = kmalloc(fsize, GFP_KERNEL);
-	if (!vmstat_text_buf)
+	vmstat_txt_buf = kmalloc(fsize, GFP_KERNEL);
+	if (!vmstat_txt_buf)
 		goto err;
 	set_fs(KERNEL_DS);
-	fsize = vfs_read(filp, vmstat_text_buf, fsize-1, &pos);
+	fsize = vfs_read(filp, vmstat_txt_buf, fsize-1, &pos);
 	set_fs(old_fs);
 	if (fsize <= 0)
 		goto err;
-	vmstat_text_buf[fsize] = '\0';
+	vmstat_txt_buf[fsize] = '\0';
 
 	/* Run through the list once and count the strings */
-	for (s = strtok(vmstat_text_buf, "\n", 0); s; s = strtok(NULL, "\n", 0))
+	for (s = strtok(vmstat_txt_buf, "\n", 0); s; s = strtok(NULL, "\n", 0))
 		vmstat_count++;
 	if (!vmstat_count)
 		goto err;
 
 	/* Allocate an array to contain the names */
-	vmstat_text = kzalloc(vmstat_count * sizeof(char *), GFP_KERNEL);
-	if (!vmstat_text)
+	vmstat_txt = kzalloc(vmstat_count * sizeof(char *), GFP_KERNEL);
+	if (!vmstat_txt)
 		goto err;
 	
 	/* Run through the list again and put the names into the array */
-	for (i = 0, s = strtok(vmstat_text_buf, "\n", 1); s; s = strtok(NULL, "\n", 1)) {
-		vmstat_text[i] = s;		
+	for (i = 0, s = strtok(vmstat_txt_buf, "\n", 1); s; s = strtok(NULL, "\n", 1)) {
+		vmstat_txt[i] = s;		
 		while (*s != '\0' && !isspace(*s))
 			s++;
 		*s = '\0';
@@ -277,10 +278,10 @@ int parse_proc_vmstat(void)
 
  err:
 	rc = -1;
-	if (vmstat_text)
-		kfree(vmstat_text);
-	if (vmstat_text_buf)
-		kfree(vmstat_text_buf);
+	if (vmstat_txt)
+		kfree(vmstat_txt);
+	if (vmstat_txt_buf)
+		kfree(vmstat_txt_buf);
 	if (filp)
 		filp_close(filp, current->files);
  out:
@@ -315,14 +316,14 @@ int kldms_vmstat_init(void)
 		goto err_2;
 	}
 
-	/* Add a metric for each element in the vmstat_text table */
+	/* Add a metric for each element in the vmstat_txt table */
 	for (i = 0; i < vmstat_count; i++) {
-		ret = kldms_schema_metric_add(vmstat_schema, vmstat_text[i], LDMS_V_U64);
+		ret = kldms_schema_metric_add(vmstat_schema, vmstat_txt[i], LDMS_V_U64);
 		if (ret < 0) {
 			printk(KERN_ERR
 			       "ldms_vmstat: Could not create '%s' "
 			       "metric value err %d\n",
-			       vmstat_text[i], -ENOMEM);
+			       vmstat_txt[i], -ENOMEM);
 			goto err_2;
 		}
 	}
@@ -340,8 +341,8 @@ int kldms_vmstat_init(void)
  err_2:
 	kldms_schema_delete(vmstat_schema);
  err_1:
-	kfree(vmstat_text_buf);
-	kfree(vmstat_text);
+	kfree(vmstat_txt_buf);
+	kfree(vmstat_txt);
  err_0:
 	return ret;
 }

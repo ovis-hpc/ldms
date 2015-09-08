@@ -44,6 +44,7 @@
 #include <linux/fs.h>
 #include <linux/poll.h>
 #include <linux/sched.h>
+#include <linux/slab.h>
 #include <linux/file.h>
 #include <linux/cdev.h>
 #include <linux/sysctl.h>
@@ -1044,7 +1045,9 @@ static ssize_t show_dev_abi_version(struct device *device,
 
 static DEVICE_ATTR(abi_version, S_IRUGO, show_dev_abi_version, NULL);
 #define KLDMS_ABI_VERSION 1
-static ssize_t show_abi_version(struct class *class, char *buf)
+static ssize_t show_abi_version(struct class *class,
+				struct class_attribute *attr,
+				char *buf)
 {
 	return sprintf(buf, "%d\n", KLDMS_ABI_VERSION);
 }
