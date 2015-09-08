@@ -1,0 +1,36 @@
+#
+# Lightweight Distributed Metric Service
+#
+
+menuconfig LDMS
+	tristate "Lightweight Distributed Metric Service (EXPERIMENTAL)"
+	depends on EXPERIMENTAL
+	default no
+	help
+	  This option enables support for the Lightweight Distributed Metric
+	  service (LDMS). LDMS consists of a set of API that allow for
+	  kernel metrics to be gathered into a memory region where they can
+	  be fetched by a remote service using a single RDMA I/O operation.
+	  This allows for a nearly zero-overhead metric distribution
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called kldms.
+
+	  If you are not sure, say N here.
+
+if LDMS
+
+config LDMS_VMSTAT
+	tristate "LDMS VMSTAT Collector (EXPERIMENTAL)"
+	depends on EXPERIMENTAL && LDMS
+	default yes
+	help
+	  This option enables support for the Lightweight Distributed Metric
+	  service (LDMS) VM Statistics Gatherer.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called kldms_vmstat.
+
+	  If you are not sure, say Y here.
+
+endif

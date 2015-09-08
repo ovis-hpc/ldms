@@ -61,11 +61,13 @@
 #ifdef	__KERNEL__
 #define	__BIG_ENDIAN		4321
 #define	__LITTLE_ENDIAN		1234
+#ifndef	__BYTE_ORDER__
 #ifdef	__LITTLE_ENDIAN_BITFIELD
 #define	__BYTE_ORDER__		__LITTLE_ENDIAN
 #else
 #define	__BYTE_ORDER__		__BIG_ENDIAN
 #endif
+#endif	/* __BYTE_ORDER__ */
 #endif	/* __KERNEL */
 
 #if __BYTE_ORDER__ == __BIG_ENDIAN
