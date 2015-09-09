@@ -677,6 +677,7 @@ int cmd_prdcr_start_regex(char *replybuf, struct attr_value_list *avl, struct at
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	ldmsd_prdcr_put(prdcr);
 	regfree(&regex);
 	sprintf(replybuf, "0\n");
 out_0:
