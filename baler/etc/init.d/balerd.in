@@ -48,7 +48,7 @@ if [ ! -d $OVIS_HOME ]; then
 fi
 
 if [ -z $OVIS_WEB_ROOT ]; then
-    export OVIS_WEB_ROOT=$OVIS_HOME/tahoma-www/
+    export OVIS_WEB_ROOT=$OVIS_HOME/ovis_web/
 fi
 
 ####

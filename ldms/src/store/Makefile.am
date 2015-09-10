@@ -47,11 +47,3 @@ libconsumer_me_la_LDFLAGS = $(AM_LDFLAGS)
 libconsumer_me_la_LIBADD = $(STORE_LIBADD) -lzap
 lib_LTLIBRARIES += libconsumer_me.la
 endif
-
-if ENABLE_TAHOMA_SOS
-libstore_tahoma_sos_la_SOURCES = store_tahoma_sos.c
-libstore_tahoma_sos_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
-libstore_tahoma_sos_la_LDFLAGS = $(AM_LDFLAGS)
-libstore_tahoma_sos_la_LIBADD = $(STORE_LIBADD) -lsos @SOS_LIBDIR_FLAG@
-lib_LTLIBRARIES += libstore_tahoma_sos.la
-endif

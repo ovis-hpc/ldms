@@ -2,8 +2,8 @@
 prefix=@prefix@
 export OVIS_HOME=@prefix@
 export OVIS_RUN_CONF=@sysconfdir@/ovis/conf/ovis_conf.db
-export OVIS_WEB_ROOT=/var/www/tahoma-test/
-export OVIS_DATA=/home/ovis-data
+export OVIS_WEB_ROOT=/var/www/ovis_web/
+export OVIS_DATA=/home/ovis_data
 export OVIS_LOG=/var/log/ovis
 export OVIS_SOCK=/var/run/ovis
 
