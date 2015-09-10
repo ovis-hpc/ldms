@@ -65,6 +65,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/queue.h>
 
 #include <event2/event.h>
 #include <event2/buffer.h>
@@ -120,7 +121,47 @@ struct plugin_ctxt {
  */
 struct conn_ctxt {
 	struct bplugin *plugin; /**< Plugin instance. */
+	struct sockaddr_in sin;
+	LIST_ENTRY(conn_ctxt) link;
 };
+
+LIST_HEAD(, conn_ctxt) conn_ctxt_list = LIST_HEAD_INITIALIZER();
+pthread_mutex_t conn_ctxt_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static
+void bin_rsyslog_tcp_print_conn_ctxt_list()
+{
+	struct conn_ctxt *ctxt;
+	union {uint8_t a[4]; uint32_t v;} addr;
+	uint16_t port;
+	pthread_mutex_lock(&conn_ctxt_list_mutex);
+	LIST_FOREACH(ctxt, &conn_ctxt_list, link) {
+		addr.v = ctxt->sin.sin_addr.s_addr;
+		port = be16toh(ctxt->sin.sin_port);
+		binfo("conn_ctxt, peer: %d.%d.%d.%d:%d",
+			(int)addr.a[0],
+			(int)addr.a[1],
+			(int)addr.a[2],
+			(int)addr.a[3],
+			(int)port);
+	}
+	pthread_mutex_unlock(&conn_ctxt_list_mutex);
+}
+
+static
+struct conn_ctxt *conn_ctxt_alloc(struct bplugin *bplugin,
+				  struct sockaddr_in *sin)
+{
+	struct conn_ctxt *ctxt = calloc(1, sizeof(*ctxt));
+	if (ctxt) {
+		pthread_mutex_lock(&conn_ctxt_list_mutex);
+		LIST_INSERT_HEAD(&conn_ctxt_list, ctxt, link);
+		pthread_mutex_unlock(&conn_ctxt_list_mutex);
+		ctxt->plugin = bplugin;
+		ctxt->sin = *sin;
+	}
+	return ctxt;
+}
 
 /**
  * Function for freeing connection context.
@@ -129,6 +170,9 @@ struct conn_ctxt {
 static
 void conn_ctxt_free(struct conn_ctxt *ctxt)
 {
+	pthread_mutex_lock(&conn_ctxt_list_mutex);
+	LIST_REMOVE(ctxt, link);
+	pthread_mutex_unlock(&conn_ctxt_list_mutex);
 	free(ctxt);
 }
 
@@ -560,6 +604,20 @@ void event_cb(struct bufferevent *bev, short events, void *arg)
 		berror("BEV_EVENT_ERROR");
 	}
 	if (events & (BEV_EVENT_ERROR | BEV_EVENT_EOF)) {
+		#if DEBUG_BALER_RSYSLOG_CONN
+		struct conn_ctxt *ctxt = arg;
+		union {uint8_t a[4]; uint32_t u32;} ipaddr;
+		uint16_t port;
+		ipaddr.u32 = ctxt->sin.sin_addr.s_addr;
+		port = be16toh(ctxt->sin.sin_port);
+		binfo("%d.%d.%d.%d:%d disconnected",
+			(int)ipaddr.a[0],
+			(int)ipaddr.a[1],
+			(int)ipaddr.a[2],
+			(int)ipaddr.a[3],
+			port
+			);
+		#endif
 		bufferevent_free(bev);
 		conn_ctxt_free(arg);
 	}
@@ -580,12 +638,38 @@ void conn_cb(struct evconnlistener *listener, evutil_socket_t sock,
 		struct sockaddr *addr, int len, void *arg)
 {
 	struct event_base *evbase = evconnlistener_get_base(listener);
-	struct bufferevent *bev = bufferevent_socket_new(evbase, sock,
+	struct conn_ctxt *cctxt = NULL;
+	struct bufferevent *bev = NULL;
+
+	cctxt = conn_ctxt_alloc(arg, (void*)addr);
+	if (!cctxt)
+		goto cleanup;
+
+	bev = bufferevent_socket_new(evbase, sock,
 			BEV_OPT_CLOSE_ON_FREE);
-	struct conn_ctxt *cctxt = malloc(sizeof(*cctxt));
-	cctxt->plugin = arg;
+	if (!bev)
+		goto cleanup;
+
 	bufferevent_setcb(bev, read_cb, NULL, event_cb, cctxt);
 	bufferevent_enable(bev, EV_READ);
+	#if DEBUG_BALER_RSYSLOG_CONN
+	union {uint8_t a[4]; uint32_t u32;} ipaddr;
+	uint16_t port;
+	struct sockaddr_in *sin = (void*)addr;
+	ipaddr.u32 = sin->sin_addr.s_addr;
+	port = be16toh(sin->sin_port);
+	binfo("connected from %d.%d.%d.%d:%d",
+		(int)ipaddr.a[0],
+		(int)ipaddr.a[1],
+		(int)ipaddr.a[2],
+		(int)ipaddr.a[3],
+		port
+		);
+	#endif
+	return;
+cleanup:
+	if (cctxt)
+		conn_ctxt_free(cctxt);
 }
 
 /**
