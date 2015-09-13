@@ -905,7 +905,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		}
 	}
 
-	corespernuma = 1;
+	int corespernuma = 1;
 	val = av_value(avl, "corespernuma");
 	if (val){
 		corespernuma = atoi(val);
@@ -916,10 +916,9 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 			return -1;
 		}
 	} else {
-		msglog(LDMS_LERROR, "msr: must specify corespernuma %d invalid\n",
-		       maxcore);
-			pthread_mutex_unlock(&cfglock);
-			return -1;
+		msglog(LDMS_LERROR, "msr: must specify corespernuma\n");
+		pthread_mutex_unlock(&cfglock);
+		return -1;
 	}
 
 
@@ -1109,7 +1108,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 		tot_data_sz += data_sz;
 
 		// get size for both the real data and the padded blanks
-		for (j = 0; j < pe->mctr->maxcores; j+=pe->mctr->offset){
+		for (j = 0; j < pe->mctr->maxcore; j+=pe->mctr->offset){
 			snprintf(name, MSR_MAXLEN, "Ctr%d_c%02d", i, j);
 			rc = ldms_get_metric_size(name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -1149,9 +1148,9 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 
 		//process the real ones and the padded ones
 		k = 0;
-		for (j = 0; j < pe->mctr->maxcores; j+=pe->mctr->offset){
+		for (j = 0; j < pe->mctr->maxcore; j+=pe->mctr->offset){
 			snprintf(name, MSR_MAXLEN, "Ctr%d_c%02d", i, j);
-			if (j < pe->mctr->numcores){
+			if (j < pe->mctr->numcore){
 				pe->metric_table[(k+CTR_TABLE_OFFSET)] = ldms_add_metric(set, name, LDMS_V_U64);
 				if (!(pe->metric_table[k+CTR_TABLE_OFFSET])){
 					msglog(LDMS_LDEBUG,"msr: Could not create the metric for event '%s'\n",
