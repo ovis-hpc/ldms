@@ -407,7 +407,8 @@ static int createDS(struct store_msr_csv_handle *s_handle,
 	int i;
 	int rc;
 
-	//well known format CtrX followed by CtrN_cYY, but probably in reverse order
+	//well known format CtrX followed by CtrN_cYY, but probably in reverse order.
+	//also cYY might have offsets in there (corespernuma)
 	s_handle->createDS = 0;
 	s_handle->numctr = 0;
 	num_metrics = ldms_mvec_get_count(mvec);
@@ -586,17 +587,21 @@ static int print_header(struct store_msr_csv_handle *s_handle,
 		}
 	}
 
-	//Now write the header from the datastruct
+	/* Have to write the header from the mvec since the corespernuma may offset some numbering */
 
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
 	   a separate field */
 	fprintf(fp, "#Time, Time_usec, DT, DT_usec");
 	/* output format: permetric:  name (num), name (string), compid, numvals, derived_value(s) */
 	for (i = 0; i < s_handle->numctr; i++){
-		fprintf(fp, ", Ctr%d, Ctr%d_string, Ctr%d_CompId, Ctr%d_numvals",
-			i, i, i, i);
+		int cidx = s_handle->ctr[i].nameidx;
+		name = ldms_get_metric_name(mvec->v[cidx]);
+		fprintf(fp, ", %s, %s_string, %s_CompId, %s_numvals",
+			name, name, name, name);
 		for (j = 0; j < s_handle->ctr[i].numvals; j++){
-			fprintf(fp, ", Ctr%d_c%02d_der", i, j);
+			cidx+=s_handle->step;
+			name = ldms_get_metric_name(mvec->v[cidx]);
+			fprintf(fp, ", %s_der", name);
 		}
 	}
 	fprintf(fp, "\n");
