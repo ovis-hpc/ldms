@@ -147,8 +147,6 @@ static struct MSRcounter counter_assignments[] = {
 	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, "", CTR_UNCORE, 0, 0, 0},
 	{"L3_CYC_CNT", 0xc0010242, 0x4EF, 0x00, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
 	{"L3_REQ_CNT", 0xc0010244, 0x4EF, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0}
-
-START HERE
 };
 
 static char* initnames[MSR_MAXOPTIONS];
