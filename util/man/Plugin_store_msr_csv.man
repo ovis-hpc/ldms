@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_derived_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "22 Aug 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
+.TH man 7 "13 Aug 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
 
 .SH NAME
 Plugin_store_msr_csv - man page for the LDMS store_msr_csv plugin. This is a derived store particular to the msr plugin.
@@ -20,7 +20,7 @@ This is a pre-release version of the store which goes with a particular version 
 of the Plugin msr.
 
 The msr plugin writes out in a well known format of a counter which indicates the general name of the msr counter,
-followed by 1 or more values, depending upon whether or not it is an uncore or core counter. The names of
+followed by multiple values, depending upon whether or not it is an uncore or core counter. The names of
 the counters which then appear in the header are generic, i.e., Ctr_X, CtrX_cYY. The values of the counters
 are rate values.
 
