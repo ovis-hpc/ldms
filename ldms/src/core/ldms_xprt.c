@@ -1212,6 +1212,8 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 		*rd_ctxt = *ctxt;
 	} else {
 		rd_ctxt = ctxt;
+		free(ctxt->lookup.path);
+		ctxt->lookup.path = NULL;
 	}
 	rd_ctxt->lookup.s = sd;
 	rd_ctxt->lookup.more = ntohl(lm->more);
