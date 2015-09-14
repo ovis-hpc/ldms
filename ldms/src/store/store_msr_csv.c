@@ -74,7 +74,7 @@
 #define STORE_CTR_NAME_MAX 20
 
 /** Fields for the name translation. These must match msr */
-#define MSR_MAXOPTIONS 8
+#define MSR_MAXOPTIONS 10
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
 #define MSR_INV 0
@@ -101,7 +101,9 @@ static struct MSRcounter_tr counter_assignments[] = {
 	{"DP_OPS",  0xc0010206, 0x003, 0xF0, 0xc0010207, 0b11, 0},
 	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, 0},
 	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, 0},
-	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, 0}
+	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, 0},
+	{"L3_CYC_CNT", 0xc0010242, 0x4EF, 0x00, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
+        {"L3_REQ_CNT", 0xc0010244, 0x4EF, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0}
 };
 
 
