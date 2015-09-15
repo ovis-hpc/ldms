@@ -73,7 +73,12 @@
 #include <event2/listener.h>
 #include <event2/thread.h>
 
+#include <unistd.h>
+#include <assert.h>
+
 #define PLUGIN_DEFAULT_PORT 54321u
+
+static struct event_base *io_evbase;
 
 /**
  * This table contains unix time stamp for each hour of the day in each month.
@@ -109,7 +114,8 @@ typedef enum {
  * This structure stores context of this input plugin.
  */
 struct plugin_ctxt {
-	pthread_t thread; /**< Thread. */
+	pthread_t io_thread; /**< Thread handling socket IO. */
+	pthread_t conn_req_thread; /**< Thread handling conn req. */
 	uint16_t port; /**< Port number to listen to. */
 	int status; /**< Status of the plugin. */
 };
@@ -634,22 +640,24 @@ void event_cb(struct bufferevent *bev, short events, void *arg)
  * \param arg Pointer to plugin instance.
  */
 static
-void conn_cb(struct evconnlistener *listener, evutil_socket_t sock,
+void conn_cb(struct event_base *evbase, int sock,
 		struct sockaddr *addr, int len, void *arg)
 {
-	struct event_base *evbase = evconnlistener_get_base(listener);
-	struct conn_ctxt *cctxt = NULL;
 	struct bufferevent *bev = NULL;
+	struct conn_ctxt *cctxt = NULL;
 
+	evutil_make_socket_nonblocking(sock);
+	bev = bufferevent_socket_new(evbase, sock, BEV_OPT_CLOSE_ON_FREE);
+	if (!bev) {
+		berr("conn_cb(): bufferevent_socket_new() error, errno: %d",
+			errno);
+		goto cleanup;
+	}
 	cctxt = conn_ctxt_alloc(arg, (void*)addr);
-	if (!cctxt)
-		goto cleanup;
-
-	bev = bufferevent_socket_new(evbase, sock,
-			BEV_OPT_CLOSE_ON_FREE);
-	if (!bev)
-		goto cleanup;
-
+	if (!cctxt) {
+		berr("conn_cb(): malloc() error, errno: %d", errno);
+	}
+	cctxt->plugin = arg;
 	bufferevent_setcb(bev, read_cb, NULL, event_cb, cctxt);
 	bufferevent_enable(bev, EV_READ);
 	#if DEBUG_BALER_RSYSLOG_CONN
@@ -667,9 +675,15 @@ void conn_cb(struct evconnlistener *listener, evutil_socket_t sock,
 		);
 	#endif
 	return;
+
 cleanup:
+	if (bev)
+		bufferevent_free(bev); /* this will also close sock */
 	if (cctxt)
 		conn_ctxt_free(cctxt);
+	if (!bev)
+		close(sock);
+	return;
 }
 
 /**
@@ -677,8 +691,8 @@ cleanup:
  * rsyslog over TCP. pthread_create() function in ::plugin_start() will call
  * this function.
  * \param arg A pointer to the ::bplugin of this thread.
- * \return (abuse) 0 if there is no error.
- * \return (abuse) errno if there are some error.
+ * \retval (abuse)0 if there is no error.
+ * \retval (abuse)errno if there are some error.
  * \note This is a thread routine.
  */
 static
@@ -692,32 +706,84 @@ void* rsyslog_tcp_listen(void *arg)
 		.sin_addr = { .s_addr = INADDR_ANY },
 		.sin_port = htons(ctxt->port)
 	};
-	struct event_base *evbase = event_base_new();
-	if (!evbase) {
+	struct sockaddr_in peer_addr;
+	socklen_t peer_addr_len = sizeof(peer_addr);
+	int peer_sd;
+	int sd = socket(AF_INET, SOCK_STREAM, 0);
+	if (sd < 0) {
+		rc = errno;
+		goto out;
+	}
+	rc = bind(sd, (void*)&addr, sizeof(addr));
+	if (rc) {
+		rc = errno;
+		goto out;
+	}
+
+	rc = listen(sd, 8192);
+	if (rc) {
+		rc = errno;
+		goto out;
+	}
+
+	while (0 <= (peer_sd = accept(sd, (void*)&peer_addr, &peer_addr_len))) {
+		conn_cb(io_evbase, peer_sd, (void*)&peer_sd, peer_addr_len, p);
+		peer_addr_len = sizeof(peer_addr); /* set for next accept() */
+	}
+
+	berr("rsyslog_tcp_listen(): accept() error, errno: %d", errno);
+	rc = errno;
+
+out:
+	return (void*)rc;
+}
+
+void __dummy_cb(int fd, short what, void *arg)
+{
+	/* This should not be called */
+	assert(0);
+}
+
+static
+void* rsyslog_tcp_io_ev_proc(void *arg)
+{
+	int rc = 0;
+	struct event *dummy;
+	io_evbase = event_base_new();
+	struct bplugin *this = arg;
+	struct plugin_ctxt *ctxt = this->context;
+	if (!io_evbase) {
 		rc = ENOMEM;
 		goto err0;
 	}
-	int evconn_flag = LEV_OPT_REUSEABLE | LEV_OPT_THREADSAFE;
-	struct evconnlistener *evconn = evconnlistener_new_bind( evbase,
-			conn_cb,
-			p,
-			evconn_flag,
-			SOMAXCONN,
-			(void*) &addr,
-			sizeof(addr));
-	if (!evconn) {
+
+	/* dummy event to prevent the termination of event_base_dispatch() */
+	dummy = event_new(io_evbase, -1, EV_READ, __dummy_cb, io_evbase);
+	if (!dummy) {
 		rc = ENOMEM;
 		goto err1;
 	}
+	rc = event_add(dummy, NULL);
+	if (rc) {
+		goto err1;
+	}
 
-	event_base_dispatch(evbase); /* This will loop + listen for new
-					connection. */
-	/* Clear resources on exit */
-	evconnlistener_free(evconn);
+	/* Dedicated thread for socket accept() */
+	rc = pthread_create(&ctxt->conn_req_thread, NULL, rsyslog_tcp_listen, this);
+	if (rc)
+		goto err2;
+
+	/* evbase will handle accepted socket IO */
+	event_base_dispatch(io_evbase);
+
+	/* clean up */
+err2:
+	event_free(dummy);
 err1:
-	event_base_free(evbase);
+	event_base_free(io_evbase);
 err0:
-	return (void*)rc;
+	berr("rsyslog_tcp_ev_proc() thread exit, rc: %d", rc);
+	return NULL; /* return code abuse */
 }
 
 /**
@@ -755,7 +821,7 @@ static
 int plugin_start(struct bplugin *this)
 {
 	struct plugin_ctxt *ctxt = this->context;
-	int rc = pthread_create(&ctxt->thread, NULL, rsyslog_tcp_listen, this);
+	int rc = pthread_create(&ctxt->io_thread, NULL, rsyslog_tcp_io_ev_proc, this);
 	if (rc)
 		return rc;
 	return 0;
@@ -771,7 +837,9 @@ static
 int plugin_stop(struct bplugin *this)
 {
 	struct plugin_ctxt *ctxt = this->context;
-	return pthread_cancel(ctxt->thread);
+	pthread_cancel(ctxt->conn_req_thread);
+	pthread_cancel(ctxt->io_thread);
+	return 0;
 }
 
 /**
