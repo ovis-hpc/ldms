@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_msr
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "13 Sep 2015" "v2.5" "LDMS Plugin msr man page"
+.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin msr man page"
 
 .SH NAME
 Plugin_msr - man page for the LDMS msr plugin
@@ -70,7 +70,7 @@ L3_REQ_CNT - Per numa node
 .PP
 These are the options for the metricname argument of the add command.
 
-NOTE: TOT_CYC and TOT_INS are mutually exclusive.
+NOTE: TOT_CYC and L2_DCM are mutually exclusive.
 
 
 

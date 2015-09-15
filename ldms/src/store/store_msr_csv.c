@@ -94,7 +94,7 @@ struct MSRcounter_tr{
 };
 
 static struct MSRcounter_tr counter_assignments[] = {
-	{"TOT_CYC", 0xc0010200, 0x076, 0x00, 0xc0010201, 0b11, 0},
+	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, 0},
 	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, 0},
 	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, 0},
 	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, 0},
