@@ -84,10 +84,12 @@ then
 fi
 
 AC_SUBST(ac_configure_args)
+AC_SUBST(prefix)
 
 AC_CONFIG_FILES([ovis-lib.spec
 		Doxyfile
 		packaging/ovis-lib-toss.spec
+		packaging/ovis-lib-rhel7.spec
 		Makefile
 		src/Makefile src/coll/Makefile
 		src/mmalloc/Makefile
