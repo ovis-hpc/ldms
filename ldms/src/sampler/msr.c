@@ -91,7 +91,7 @@
 
 
 #define MSR_MAXLEN 20
-#define MSR_MAXOPTIONS 10
+#define MSR_MAXOPTIONS 11
 #define MSR_ARGLEN 4
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
@@ -145,8 +145,9 @@ static struct MSRcounter counter_assignments[] = {
 	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
 	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
 	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, "", CTR_UNCORE, 0, 0, 0},
-	{"L3_CYC_CNT", 0xc0010242, 0x4EF, 0x00, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
-	{"L3_REQ_CNT", 0xc0010244, 0x4EF, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0}
+	{"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
+	{"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0},
+	{"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, "", CTR_UNCORE, 0, 0, 0}
 };
 
 static char* initnames[MSR_MAXOPTIONS];
