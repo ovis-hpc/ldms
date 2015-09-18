@@ -91,7 +91,7 @@
 
 
 #define MSR_MAXLEN 20
-#define MSR_MAXOPTIONS 10
+#define MSR_MAXOPTIONS 11
 #define MSR_ARGLEN 4
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
@@ -137,7 +137,7 @@ struct MSRcounter{
 
 
 static struct MSRcounter counter_assignments[] = {
-	{"TOT_CYC", 0xc0010200, 0x076, 0x00, 0xc0010201, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
 	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
 	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
 	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
@@ -145,8 +145,9 @@ static struct MSRcounter counter_assignments[] = {
 	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
 	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
 	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, "", CTR_UNCORE, 0, 0, 0},
-	{"L3_CYC_CNT", 0xc0010242, 0x4EF, 0x00, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
-	{"L3_REQ_CNT", 0xc0010244, 0x4EF, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0}
+	{"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
+	{"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0},
+	{"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, "", CTR_UNCORE, 0, 0, 0}
 };
 
 static char* initnames[MSR_MAXOPTIONS];
@@ -591,10 +592,10 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 	TAILQ_FOREACH(pe, &counter_list, entry){
 		if (pe != rpe){
 			if ((strcmp(rpe->mctr->name, "TOT_CYC") == 0) &&
-			    strcmp(pe->mctr->name, "TOT_INS") == 0){
+			    strcmp(pe->mctr->name, "L2_DCM") == 0){
 				return -1;
 			}
-			if ((strcmp(rpe->mctr->name, "TOT_INS") == 0) &&
+			if ((strcmp(rpe->mctr->name, "L2_DCM") == 0) &&
 			    strcmp(pe->mctr->name, "TOT_CYC") == 0){
 				return -1;
 			}
@@ -813,7 +814,7 @@ static int checkcountersinit(){
 	//check for conflicts. check no conflicting w_reg
 	int i, j;
 
-	//at the moment: no both TOT_CYC and TOT_INS. Duplicates are OK but warn. this lets you swap.
+	//at the moment: no both TOT_CYC and L2_DCM. Duplicates are OK but warn. this lets you swap.
 	for (i = 0; i < numinitnames; i++){
 		for (j = 0; j < numinitnames; j++){
 			if (i != j){
@@ -822,8 +823,8 @@ static int checkcountersinit(){
 					msglog(LDMS_LALWAYS,"msr: Duplicate assignments! <%s>\n", initnames[i]);
 				}
 				if ((strcmp(initnames[i], "TOT_CYC") == 0) &&
-				    (strcmp(initnames[j], "TOT_INS") == 0)){
-					msglog(LDMS_LERROR,"msr: Cannot have both TOT_CYC and TOT_INS\n");
+				    (strcmp(initnames[j], "L2_DCM") == 0)){
+					msglog(LDMS_LERROR,"msr: Cannot have both TOT_CYC and L2_DCM\n");
 					return -1;
 				}
 			}

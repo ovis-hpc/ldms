@@ -74,7 +74,7 @@
 #define STORE_CTR_NAME_MAX 20
 
 /** Fields for the name translation. These must match msr */
-#define MSR_MAXOPTIONS 10
+#define MSR_MAXOPTIONS 11
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
 #define MSR_INV 0
@@ -94,7 +94,7 @@ struct MSRcounter_tr{
 };
 
 static struct MSRcounter_tr counter_assignments[] = {
-	{"TOT_CYC", 0xc0010200, 0x076, 0x00, 0xc0010201, 0b11, 0},
+	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, 0},
 	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, 0},
 	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, 0},
 	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, 0},
@@ -102,8 +102,9 @@ static struct MSRcounter_tr counter_assignments[] = {
 	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, 0},
 	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, 0},
 	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, 0},
-	{"L3_CYC_CNT", 0xc0010242, 0x4EF, 0x00, 0xc0010243, 0b0, 0},
-        {"L3_REQ_CNT", 0xc0010244, 0x4EF, 0x01, 0xc0010245, 0b0, 0}
+        {"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, 0},
+        {"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, 0},
+        {"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, 0}
 };
 
 

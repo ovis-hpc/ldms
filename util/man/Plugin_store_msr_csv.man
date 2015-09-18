@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_derived_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "13 Aug 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
+.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
 
 .SH NAME
 Plugin_store_msr_csv - man page for the LDMS store_msr_csv plugin. This is a derived store particular to the msr plugin.
