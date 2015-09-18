@@ -1,0 +1,72 @@
+Name: @PACKAGE_NAME@
+Version: @PACKAGE_VERSION@
+Release: 1%{?dist}
+Summary: Baler - a lossless, deterministic log processing tool
+
+%define _app_grp Applications/System
+%define _dev_grp Development/System
+
+Group: %{_app_grp}
+License: GPLv2 or BSD
+URL: http://www.ogc.us
+Source0: %{name}-%{version}.tar.gz
+
+Requires: ovis-lib-zap >= 1.3.0, ovis-lib-zap-sock >= 1.3.0
+Prefix: @prefix@
+%define _prefix @prefix@
+
+%description
+Baler - a lossless, deterministic log processing tool.
+
+
+%prep
+%setup -q
+
+
+%build
+%configure @ac_configure_args@
+make %{?_smp_mflags}
+
+
+%install
+make install DESTDIR=%{buildroot}
+# remove unwanted .la files
+rm -f %{buildroot}%{_libdir}/*.la
+# remove python interface ... they're unmaintained
+rm -rf %{buildroot}%{_prefix}/lib/python*/
+
+%clean
+rm -rf %{buildroot}
+
+# files for main package
+%files
+%{_bindir}
+%{_libdir}
+%{_prefix}/etc
+
+
+# baler-devel package
+%package devel
+Summary: Development files for Baler
+Group: %{_grp}
+%description devel
+Development files for Baler
+%files devel
+%defattr(-,root,root)
+%{_includedir}
+
+
+%if "@ENABLE_DOC_TRUE@x" == "x"
+# baler-doc package
+%package doc
+Summary: Baler documentation
+Group: %{_grp}
+%description doc
+Documetnation for baler package.
+%files doc
+%defattr(-,root,root)
+%{_datadir}/doc
+%endif
+
+
+%changelog

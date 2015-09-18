@@ -10,31 +10,31 @@ libbin_rsyslog_tcp_la_LIBADD = @EVENTLIBS@ \
 			       ../baler/libbaler.la
 lib_LTLIBRARIES += libbin_rsyslog_tcp.la
 
-libbin_metric_la_SOURCES = bin_metric.c
+libbin_metric_la_SOURCES = bin_metric.c bin_metric.h
 libbin_metric_la_CFLAGS = $(AM_CFLAGS) @EVENTINC@
 libbin_metric_la_LIBADD = @EVENTLIBS@ \
 			  -lpthread \
 			  ../baler/libbaler.la
 lib_LTLIBRARIES += libbin_metric.la
 
-libbout_sos_la_SOURCES = bout_sos.c
+libbout_sos_la_SOURCES = bout_sos.c bout_sos.h
 libbout_sos_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
-libbout_sos_la_LIBADD = ../baler/libbutils.la -lsos ../baler/libbaler.la \
+libbout_sos_la_LIBADD = -lsos ../baler/libbaler.la \
 			-lpthread \
 			@SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos.la
 
-libbout_sos_img_la_SOURCES = bout_sos_img.c
+libbout_sos_img_la_SOURCES = bout_sos_img.c bout_sos_img.h sos_img_class_def.h
 libbout_sos_img_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
-libbout_sos_img_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
+libbout_sos_img_la_LIBADD = ../baler/libbaler.la \
 			    libbout_sos.la \
 			    -lpthread \
 			    -lsos @SOS_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_sos_img.la
 
-libbout_sos_msg_la_SOURCES = bout_sos_msg.c
+libbout_sos_msg_la_SOURCES = bout_sos_msg.c bout_sos_msg.h sos_msg_class_def.h
 libbout_sos_msg_la_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
-libbout_sos_msg_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
+libbout_sos_msg_la_LIBADD = ../baler/libbaler.la \
 			    libbout_sos.la \
 			    -lpthread \
 			    -lsos @SOS_LIBDIR_FLAG@
@@ -42,7 +42,7 @@ lib_LTLIBRARIES += libbout_sos_msg.la
 
 libbout_me_la_SOURCES = bout_me.c
 libbout_me_la_CFLAGS = $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@ @EVENTINC@
-libbout_me_la_LIBADD = ../baler/libbutils.la ../baler/libbaler.la \
+libbout_me_la_LIBADD = ../baler/libbaler.la \
 		       -lpthread -lzap @EVENTLIBS@ @OVIS_LIB_LIBDIR_FLAG@
 lib_LTLIBRARIES += libbout_me.la
 

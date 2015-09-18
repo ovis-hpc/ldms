@@ -65,6 +65,11 @@ if test -z "$DOXYGEN"; then
 	AC_MSG_WARN([Doxygen not found])
 fi
 
+distdir=${PACKAGE_NAME}-${PACKAGE_VERSION}
+AC_SUBST(ac_configure_args)
+AC_SUBST(prefix)
+AC_SUBST(distdir)
+
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 if test -z "$ENABLE_DOC_TRUE"
 then
@@ -72,7 +77,7 @@ then
 fi
 
 AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
-	scripts/Makefile src/baler/Makefile src/plugins/Makefile
+	src/baler/Makefile src/plugins/Makefile
 	src/query/Makefile src/test/Makefile
 	src/bhttpd/Makefile
 	src/bassoc/Makefile
@@ -81,6 +86,7 @@ AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
 	etc/init.d/Makefile etc/init.d/balerd
 	etc/logrotate.d/Makefile
 	dict/Makefile
+	rpm/rhel7.spec
 ])
 
 AC_OUTPUT

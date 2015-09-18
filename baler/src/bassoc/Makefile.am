@@ -3,13 +3,13 @@ bin_PROGRAMS =
 
 AM_CFLAGS = -I$(srcdir)/../
 
-libbassocimg_la_SOURCES = bassocimg.c
+libbassocimg_la_SOURCES = bassocimg.c bassocimg.h
 libbassocimg_la_LIBADD = ../baler/libbaler.la
 libbassocimg_la_LDFLAGS = $(AM_LDFLAGS) @OVIS_LIB_LIBDIR_FLAG@
 libbassocimg_la_CFLAGS = $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@
 lib_LTLIBRARIES += libbassocimg.la
 
-bassoc_SOURCES =  bassoc.c
+bassoc_SOURCES =  bassoc.c bassoc.h
 bassoc_LDADD = ../baler/libbaler.la \
 	       ../query/libbquery.la \
 	       libbassocimg.la \
