@@ -28,6 +28,16 @@ rpm-clean:
 	rm -rf rpm/ centos/
 	rm -f $(OVIS_LIB_TARBALL)
 
+.PHONY: rpm7 centos7 rhel7
+rpm7 centos7 rhel7: dist-gzip
+	mkdir -p rpm7/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	ln -f -s ../../automake rpm7/BUILD/automake
+	cp $(OVIS_LIB_TARBALL) rpm7/SOURCES
+	cp packaging/ovis-lib-rhel7.spec rpm7/SPECS
+	QA_RPATHS=0x0003 ; \
+	export QA_RPATHS ; \
+	rpmbuild --define "_topdir `pwd`/rpm7" -ba rpm7/SPECS/ovis-lib-rhel7.spec
+
 if ENABLE_DOC
 all: doc
 install-data-local: install-doc

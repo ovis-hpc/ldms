@@ -4,10 +4,11 @@ bin_PROGRAMS =
 AM_CFLAGS = -I$(srcdir)/../
 
 bhttpd_SOURCES = bq_fmt_json.c \
+		 bq_fmt_json.h \
 		 bhttpd_meta.c \
 		 bhttpd_query.c \
 		 bhttpd_list.c \
-		 bhttpd.c
+		 bhttpd.c bhttpd.h
 bhttpd_LDADD = ../baler/libbaler.la \
 	       ../query/libbquery.la \
 	       -lpthread -levent -lzap
