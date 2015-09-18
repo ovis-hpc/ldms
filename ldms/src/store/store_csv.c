@@ -72,11 +72,30 @@
 #define GROUP_COL    2
 #define VALUE_COL    3
 
+typedef enum{CSV_CFGMAIN_PRE, CSV_CFGMAIN_IN, CSV_CFGMAIN_DONE, CSV_CFGMAIN_FAILED} csvcfg_state;
 
+static struct column_step {
+	int begin;
+	int end;
+	int step;
+} cs = {0,0,0};
+
+
+/* override for special keys */
+struct storek{
+	char* key;
+	int altheader;
+	int id_pos;
+	struct column_step cs;
+};
+
+static csvcfg_state cfgstate = CSV_CFGMAIN_PRE;
 #define MAX_ROLLOVER_STORE_KEYS 20
 static idx_t store_idx; //NOTE: this doesnt have an iterator. Hence storekeys.
-static char* storekeys[MAX_ROLLOVER_STORE_KEYS]; //FIXME: make this variablesize
+static char* storekeys[MAX_ROLLOVER_STORE_KEYS]; //FIXME: make this variable size
 static int nstorekeys = 0;
+static struct storek specialkeys[MAX_ROLLOVER_STORE_KEYS]; //FIXME: make this variable size
+static int nspecialkeys = 0;
 static char *root_path;
 static int altheader;
 static int id_pos;
@@ -108,13 +127,6 @@ static int rolltype;
 /** Interval to check for passing the record or byte count limits. */
 #define ROLL_LIMIT_INTERVAL 60
 
-static struct column_step {
-	int begin;
-	int end;
-	int step;
-} cs = {0,0,0};
-
-
 /* help for column output orders */
 #define ORDERTYPES \
 "                     forward: metric columns ordered as added in sampler.\n" \
@@ -143,8 +155,11 @@ struct csv_store_handle {
 	char *path;
 	FILE *file;
 	FILE *headerfile;
+	int altheader;
 	int printheader;
+	int id_pos;
 	char *store_key;
+	struct column_step cs;
 	pthread_mutex_t lock;
 	void *ucontext;
 	int64_t store_count;
@@ -152,7 +167,19 @@ struct csv_store_handle {
 
 };
 
-static pthread_mutex_t cfg_lock ;
+static pthread_mutex_t cfg_lock;
+
+struct kw {
+	char *token;
+	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
+};
+
+static int kw_comparator(const void *a, const void *b)
+{
+	struct kw *_a = (struct kw *)a;
+	struct kw *_b = (struct kw *)b;
+	return strcmp(_a->token, _b->token);
+}
 
 /* Time-based rolltypes will always roll the files when this
 function is called.
@@ -172,7 +199,7 @@ static int handleRollover(){
 
 	for (i = 0; i < nstorekeys; i++){
 		if (storekeys[i] != NULL){
-			s_handle = idx_find(store_idx, (void *)storekeys[i], strlen(storekeys[i]));
+			s_handle = idx_find(store_idx, (void *)(storekeys[i]), strlen(storekeys[i]));
 			if (s_handle){
 				FILE* nhfp = NULL;
 				FILE* nfp = NULL;
@@ -224,7 +251,7 @@ static int handleRollover(){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
-				if (altheader){
+				if (s_handle->altheader){
 					//re name: if got here, then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
 						 "%s.HEADER.%d",
@@ -258,9 +285,9 @@ static int handleRollover(){
 				s_handle->headerfile = nhfp;
 				s_handle->printheader = 1;
 				pthread_mutex_unlock(&s_handle->lock);
-			}
-		}
-	}
+			} /* shandle */
+		} /* storekeys[i] */
+	} /* for */
 
 	pthread_mutex_unlock(&cfg_lock);
 
@@ -284,7 +311,7 @@ static void* rolloverThreadInit(void* m){
 
 				time( &rawtime );
 				info = localtime( &rawtime );
-				int secSinceMidnight = info->tm_hour*3600 + 
+				int secSinceMidnight = info->tm_hour*3600 +
 					info->tm_min*60 + info->tm_sec;
 				tsleep = 86400 - secSinceMidnight + rollover;
 				if (tsleep < MIN_ROLL_1){
@@ -314,11 +341,167 @@ static void* rolloverThreadInit(void* m){
 	return NULL;
 }
 
+struct kw kw_tbl[] = {
+	{ "container", config_container},
+	{ "main", config_main},
+};
+
 
 /**
  * \brief Configuration
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+	struct kw *kw;
+	struct kw key;
+	int bw = 0;
+	int rc;
+
+	if ((cfgstate != CSV_CFGMAIN_PRE) &&
+	    (cfgstate != CSV_CFGMAIN_DONE)) {
+		msglog(LDMS_LERROR, "Store_csv: wrong state for config %d\n",
+		       cfgstate);
+		return 0;
+	}
+
+	char* action = av(avl, "action");
+	if (!action){
+		/* treat it like it is main for backwards compatibility */
+		action = strdup("main");
+		bw = 1;
+	}
+
+	key.token = action;
+	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
+		     sizeof(*kw), kw_comparator);
+	if (!kw) {
+		msglog(LDMS_LERROR, "store_csv: Invalid configuration keyword '%s'\n", action);
+		if (bw){
+			free(action);
+		}
+		return 0;
+	}
+
+	rc = kw->action(kwl, avl, NULL);
+	if (bw)
+		free(action);
+
+	if (rc) {
+		msglog(LDMS_LERROR, "store_csv: error '%s'\n", action);
+		return rc;
+	}
+
+	return 0;
+}
+
+/**
+ * configurations for a container that can override the vals in config_main.
+ */
+static int config_container(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+	char *value;
+	char *ivalue;
+	char *rvalue;
+	int ipos = -1;
+	int idx;
+	int i;
+
+	pthread_mutex_lock(&cfg_lock);
+
+	//have to do this after main is configured
+	if (cfgstate != CSV_CFGMAIN_DONE){
+		msglog(LDMS_LERROR, "Error store_csv: wrong state for config_container %d\n",
+		       csvcfg_state);
+		pthread_mutex_unlock(&cfg_lock);
+		return EINVAL;
+	}
+
+	//get overrides for a particular container.
+
+	value = av_value(avl, "container");
+	if (!value){
+		msglog(LDMS_LERROR, "Error store_csv: config missing container name\n");
+		pthread_mutex_unlock(&cfg_lock);
+		return EINVAL;
+	}
+
+	//do we have this already. if so, then can update those values.
+	idx = -1;
+	for (i = 0; i < nspecialkeys; i++){
+		if (strcmp(value, specialkeys[i].key) == 0){
+			idx = i;
+			break;
+		}
+	}
+	if (idx < 0){
+		if (nspecialkeys > (MAX_ROLLOVER_STORE_KEYS-1)){
+			msglog(LDMS_LDEBUG, "Error store_csv: Exceeded max store keys\n");
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
+
+		idx = nspecialkeys;
+		specialkeys[idx].key = strdup(value);
+	}
+	//defaults to main
+	specialkeys[idx].id_pos = id_pos;
+	specialkeys[idx].altheader = altheader;
+	specialkeys[idx].cs.begin = cs.begin;
+	specialkeys[idx].cs.end = cs.end;
+	specialkeys[idx].cs.step = cs.step;
+	//increment nspecialkeys now. note that if the args are a problem, we will have incremented.
+	if (idx == nspecialkeys)
+		nspecialkeys++;
+
+	ivalue = av_value(avl, "id_pos");
+	if (ivalue){
+		ipos = atoi(ivalue);
+		if ((ipos < 0) || (ipos > 1)) {
+			msglog(LDMS_LDEBUG, "Error store_csv: Bad option for id_pos\n");
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
+		specialkeys[idx].id_pos = ipos;
+	}
+
+	altvalue = av_value(avl, "altheader");
+	if (altvalue) {
+		specialkeys[idx].altheader = atoi(altvalue);
+	}
+
+	rvalue = av_value(avl, "sequence");
+	if (rvalue){
+		switch (rvalue[0]) {
+		case 'f':
+			if (strcmp(rvalue,"forward")==0) {
+				specialkeys[idx].cs.step = -1;
+			}
+			break;
+		case 'a':
+			if (strcmp(rvalue,"alnum")==0) {
+				msglog(LDMS_LERROR,"store_csv sequence alnum"
+				       " unsupported. using default from main.\n");
+				specialkeys[idx].cs.step = -1;
+			}
+			/* fallthru */
+		default:
+			if (strcmp(rvalue,"reverse")!=0) {
+				msglog(LDMS_LERROR,"store_csv using default from main"
+				       "%s unknown\n",rvalue);
+			}
+			break;
+		}
+	}
+
+	pthread_mutex_unlock(&cfg_lock);
+	return 0;
+}
+
+/**
+ * configurations for the whole store. these will be defaults if not overridden.
+ * some implementation details are for backwards compatibility
+ */
+static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	char *value;
 	char *altvalue;
@@ -328,35 +511,65 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int ipos = -1;
 
-	value = av_value(avl, "path");
-	if (!value)
+	pthread_mutex_lock(&cfg_lock);
+
+	if ((cfgstate != CSV_CFGMAIN_PRE) &&
+	    (cfgstate != CSV_CFGMAIN_DONE)){
+		msglog(LDMS_LERROR, "store_csv: wrong state for config_main %d\n",
+		       csvcfg_state);
+		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
+	}
+
+	cfgstate = CSV_CFGMAIN_IN;
+
+	value = av_value(avl, "path");
+	if (!value) {
+		cfgstate = CSV_CFGMAIN_FAILED;
+		pthread_mutex_unlock(&cfg_lock);
+		return EINVAL;
+	}
 
 	altvalue = av_value(avl, "altheader");
 
 	ivalue = av_value(avl, "id_pos");
 	if (ivalue){
 		ipos = atoi(ivalue);
-		if ((ipos < 0) || (ipos > 1))
+		if ((ipos < 0) || (ipos > 1)) {
+			cfgstate = CSV_CFGMAIN_FAILED;
+			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
+		}
 	}
 
 	rvalue = av_value(avl, "rollover");
 	if (rvalue){
 		roll = atoi(rvalue);
-		if (roll < 0)
+		if (roll < 0) {
+			cfgstate = CSV_CFGMAIN_FAILED;
+			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
+		}
 	}
 
 	rvalue = av_value(avl, "rolltype");
 	if (rvalue){
-		if (roll < 0) /* rolltype not valid without rollover also */
+		if (roll < 0){
+			/* rolltype not valid without rollover also */
+			cfgstate = CSV_CFGMAIN_FAILED;
+			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
+		}
 		rollmethod = atoi(rvalue);
-		if (rollmethod < MINROLLTYPE )
+		if (rollmethod < MINROLLTYPE ){
+			cfgstate = CSV_CFGMAIN_FAILED;
+			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
-		if (rollmethod > MAXROLLTYPE)
+		}
+		if (rollmethod > MAXROLLTYPE){
+			cfgstate = CSV_CFGMAIN_FAILED;
 			return EINVAL;
+		}
 	}
 
 	rvalue = av_value(avl, "sequence");
@@ -383,7 +596,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		}
 	}
 
-	pthread_mutex_lock(&cfg_lock);
 	if (root_path)
 		free(root_path);
 
@@ -402,9 +614,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		altheader = 0;
 
-	pthread_mutex_unlock(&cfg_lock);
-	if (!root_path)
+	if (!root_path) {
+		cfgstate = CSV_CFGMAIN_FAILED;
+		pthread_mutex_unlock(&cfg_lock);
 		return ENOMEM;
+	}
+
+	cfgstate = CSV_CFGMAIN_DONE;
+	pthread_mutex_unlock(&cfg_lock);
+
 	return 0;
 }
 
@@ -414,16 +632,28 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_csv path=<path> altheader=<0/1> id_pos=<0/1>\n"
-		"         - Set the root path for the storage of csvs.\n"
-		"           path      The path to the root of the csv directory\n"
+	return  "    config name=store_csv [action=main] path=<path> rollover=<num> rolltype=<num>\n"
+		"           [id_pos=<0/1> sequence=<order> altheader=<0/1>]\n"
+		"         - Set the root path for the storage of csvs and some default parameters\n"
+		"         - action    When action = main or not specified can set the following parameters:\n"
+		"         - path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
-		"         - id_pos    Use only one comp_id either first metric added to the sampler (1) or last added (0)\n"
+		"         - id_pos    Use only one comp_id either first metric added to the\n"
+		"                     sampler (1) or last added (0)\n"
 		"                     (Optional default use all compid)\n"
 		"         - sequence  Determine the metric column ordering:\n"
+		ORDERTYPES
+                "    config name=store_csv [action=container] container=<name> \n"
+		"           [id_pos=<0/1> sequence=<order> altheader=<0/1>]\n"
+		"         - Override the default parameters set by action=main for particular containers\n"
+		"         - altheader Header in a separate file (optional, default to main)\n"
+		"         - id_pos    Use only one comp_id either first metric added to the\n"
+		"                     sampler (1) or last added (0)\n"
+		"                     (Optional default to main)\n"
+		"         - sequence  Determine the metric column ordering (default to main):\n"
 		ORDERTYPES
 		;
 }
@@ -448,21 +678,22 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 }
 
 static
-void get_loop_limits(int num_metrics) {
-	switch (cs.step) {
+void get_loop_limits(struct csv_store_handle *s_handle,
+		     int num_metrics) {
+	switch (s_handle->cs.step) {
 	case 1:
-		cs.begin = 0;
-		cs.end = num_metrics;
+		s_handle->cs.begin = 0;
+		s_handle->cs.end = num_metrics;
 		break;
 	case -1:
-		cs.begin = num_metrics - 1;
-		cs.end = -1;
+		s_handle->cs.begin = num_metrics - 1;
+		s_handle->cs.end = -1;
 		break;
 	default:
 		msglog(LDMS_LERROR, "store_csv sequence bug in loop (%d)\n",
 			cs.step);
-		cs.begin = 0;
-		cs.end = 0;
+		s_handle->cs.begin = 0;
+		s_handle->cs.end = 0;
 	}
 }
 
@@ -485,18 +716,18 @@ static int print_header(struct csv_store_handle *s_handle,
 	   retaining usec as a separate field */
 	fprintf(fp, "#Time, Time_usec");
 
-	int num_metrics = ldms_mvec_get_count(mvec); 
-	get_loop_limits(num_metrics);
+	int num_metrics = ldms_mvec_get_count(mvec);
+	get_loop_limits(s_handle, num_metrics);
 
-	if (id_pos < 0) {
-		for (i = cs.begin; i != cs.end; i += cs.step) {
+	if (s_handle->id_pos < 0) {
+		for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s.CompId, %s.value",
 				name, name);
 		}
 	} else {
 		fprintf(fp, ", CompId");
-		for (i = cs.begin; i != cs.end; i += cs.step) {
+		for (i = s->handle.cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s", name);
 		}
@@ -520,6 +751,8 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	struct csv_store_handle *s_handle;
 	int add_handle = 0;
 	int rc = 0;
+	int idx;
+	int i;
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
@@ -563,6 +796,27 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		s_handle->printheader = 1;
 		s_handle->store_count = 0;
 		s_handle->byte_count = 0;
+
+		idx = -1;
+		for (i = 0; i < nspecialkeys; i++){
+			if (strcmp(s_handle->store_key, specialkeys[i].key) == 0){
+				idx = i;
+				break;
+			}
+		}
+		if (idx > 0){
+			s_handle->altheader = specialkeys[idx].altheader;
+			s_handle->id_pos = specialkeys[idx].id_pos;
+			s_handle->cs.begin = specialkeys[idx].cs.begin;
+			s_handle->cs.end = specialkeys[idx].cs.end;
+			s_handle->cs.step = specialkeys[idx].cs.step;
+		} else {
+			s_handle->altheader = altheader;
+			s_handle->id_pos = id_pos;
+			s_handle->cs.begin = cs.begin;
+			s_handle->cs.end = cs.end;
+			s_handle->cs.step = cs.step;
+		}
 	}
 
 	/* Take the lock in case its a store that has been closed */
@@ -588,7 +842,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 	/* Only bother to open the headerfile if we have to print the header */
 	if (s_handle->printheader && !s_handle->headerfile){
-		if (altheader) {
+		if (s_handle->altheader) {
 			char tmp_headerpath[PATH_MAX];
 			if (rolltype >= MINROLLTYPE){
 				snprintf(tmp_headerpath, PATH_MAX,
@@ -662,11 +916,11 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 		ts->sec, ts->usec, ts->usec);
 
 	/* mvec comes to the store as the inverse of how they added to the sampler which is also the inverse of ldms_ls -l display */
-	int num_metrics = ldms_mvec_get_count(mvec); 
-	get_loop_limits(num_metrics);
-	if (id_pos < 0){
+	int num_metrics = ldms_mvec_get_count(mvec);
+	get_loop_limits(s_handle, num_metrics);
+	if (s_handle->id_pos < 0){
 		int i, rc;
-		for (i = cs.begin; i != cs.end; i += cs.step) {
+		for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			comp_id = ldms_get_user_data(mvec->v[i]);
 			rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
 				     comp_id, ldms_get_u64(mvec->v[i]));
@@ -682,7 +936,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 		int i, rc;
 
 		if (num_metrics > 0){
-			i = (id_pos == 0)? 0: (num_metrics-1);
+			i = (s_handle->id_pos == 0)? 0: (num_metrics-1);
 			rc = fprintf(s_handle->file, ", %" PRIu64,
 				ldms_get_user_data(mvec->v[i]));
 			if (rc < 0)
@@ -691,7 +945,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 			else
 				s_handle->byte_count += rc;
 		}
-		for (i = cs.begin; i != cs.end; i += cs.step) {
+		for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			rc = fprintf(s_handle->file, ", %" PRIu64, ldms_get_u64(mvec->v[i]));
 			if (rc < 0)
 				msglog(LDMS_LDEBUG,"store_csv: Error %d writing to '%s'\n",
@@ -768,6 +1022,11 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	s_handle->headerfile = NULL;
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
+
+	for (i = 0; i < nspecialkeys; i++){
+		free(specialkeys[i].key);
+		specialkeys[i].key = NULL;
+	}
 
 	for (i = 0; i < nstorekeys; i++){
 		if (strcmp(storekeys[i], s_handle->store_key) == 0){
