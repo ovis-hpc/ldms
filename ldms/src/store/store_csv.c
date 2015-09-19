@@ -72,6 +72,10 @@
 #define GROUP_COL    2
 #define VALUE_COL    3
 
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
+#endif
+
 typedef enum{CSV_CFGMAIN_PRE, CSV_CFGMAIN_IN, CSV_CFGMAIN_DONE, CSV_CFGMAIN_FAILED} csvcfg_state;
 
 static struct column_step {
@@ -341,65 +345,13 @@ static void* rolloverThreadInit(void* m){
 	return NULL;
 }
 
-struct kw kw_tbl[] = {
-	{ "container", config_container},
-	{ "main", config_main},
-};
-
-
-/**
- * \brief Configuration
- */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
-{
-	struct kw *kw;
-	struct kw key;
-	int bw = 0;
-	int rc;
-
-	if ((cfgstate != CSV_CFGMAIN_PRE) &&
-	    (cfgstate != CSV_CFGMAIN_DONE)) {
-		msglog(LDMS_LERROR, "Store_csv: wrong state for config %d\n",
-		       cfgstate);
-		return 0;
-	}
-
-	char* action = av(avl, "action");
-	if (!action){
-		/* treat it like it is main for backwards compatibility */
-		action = strdup("main");
-		bw = 1;
-	}
-
-	key.token = action;
-	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
-		     sizeof(*kw), kw_comparator);
-	if (!kw) {
-		msglog(LDMS_LERROR, "store_csv: Invalid configuration keyword '%s'\n", action);
-		if (bw){
-			free(action);
-		}
-		return 0;
-	}
-
-	rc = kw->action(kwl, avl, NULL);
-	if (bw)
-		free(action);
-
-	if (rc) {
-		msglog(LDMS_LERROR, "store_csv: error '%s'\n", action);
-		return rc;
-	}
-
-	return 0;
-}
-
 /**
  * configurations for a container that can override the vals in config_main.
  */
 static int config_container(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	char *value;
+	char *altvalue;
 	char *ivalue;
 	char *rvalue;
 	int ipos = -1;
@@ -411,7 +363,7 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 	//have to do this after main is configured
 	if (cfgstate != CSV_CFGMAIN_DONE){
 		msglog(LDMS_LERROR, "Error store_csv: wrong state for config_container %d\n",
-		       csvcfg_state);
+		       cfgstate);
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
 	}
@@ -516,7 +468,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	if ((cfgstate != CSV_CFGMAIN_PRE) &&
 	    (cfgstate != CSV_CFGMAIN_DONE)){
 		msglog(LDMS_LERROR, "store_csv: wrong state for config_main %d\n",
-		       csvcfg_state);
+		       cfgstate);
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
 	}
@@ -626,6 +578,61 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	return 0;
 }
 
+
+struct kw kw_tbl[] = {
+	{ "container", config_container},
+	{ "main", config_main},
+};
+
+
+/**
+ * \brief Configuration
+ */
+static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+	struct kw *kw;
+	struct kw key;
+	int bw = 0;
+	int rc;
+
+	if ((cfgstate != CSV_CFGMAIN_PRE) &&
+	    (cfgstate != CSV_CFGMAIN_DONE)) {
+		msglog(LDMS_LERROR, "Store_csv: wrong state for config %d\n",
+		       cfgstate);
+		return 0;
+	}
+
+	char* action = av_value(avl, "action");
+	if (!action){
+		/* treat it like it is main for backwards compatibility */
+		action = strdup("main");
+		bw = 1;
+	}
+
+	key.token = action;
+	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
+		     sizeof(*kw), kw_comparator);
+	if (!kw) {
+		msglog(LDMS_LERROR, "store_csv: Invalid configuration keyword '%s'\n", action);
+		if (bw){
+			free(action);
+		}
+		return 0;
+	}
+
+	rc = kw->action(kwl, avl, NULL);
+	if (bw)
+		free(action);
+
+	if (rc) {
+		msglog(LDMS_LERROR, "store_csv: error '%s'\n", action);
+		return rc;
+	}
+
+	return 0;
+}
+
+
 static void term(void)
 {
 }
@@ -727,7 +734,7 @@ static int print_header(struct csv_store_handle *s_handle,
 		}
 	} else {
 		fprintf(fp, ", CompId");
-		for (i = s->handle.cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
+		for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
 			fprintf(fp, ", %s", name);
 		}
