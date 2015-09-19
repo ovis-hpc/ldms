@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_derived_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
+.TH man 7 "19 Sep 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
 
 .SH NAME
 Plugin_store_msr_csv - man page for the LDMS store_msr_csv plugin. This is a derived store particular to the msr plugin.
@@ -37,6 +37,8 @@ not that expected by ldms (see Plugin_msr). In these instances, the name value o
 and the counter values will also be zero.
 
 Note that all raw values of the msr plugin can be stored with the normal Plugin store_csv.
+In that case, use the action=container option to set sequence=forward, so it will match the order in this store
+(writes the cores in numerically increasing order).
 
 
 .SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
@@ -146,6 +148,10 @@ This is a pre-release version of the sampler. It may change at any time.
 .IP \[bu]
 If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator
 with a store plugin only.
+.IP \[bu]
+Note that all raw values of the msr plugin can be stored with the normal Plugin store_csv.
+In that case, use the action=container option to set sequence=forward, so it will match the order in this store
+(writes the cores in numerically increasing order).
 .PP
 
 
@@ -160,4 +166,4 @@ ldmsctl> quit
 .if
 
 .SH SEE ALSO
-ldms(7), Plugin_store_derived_csv(7), Plugin_msr(7)
+ldms(7), Plugin_store_derived_csv(7), Plugin_msr(7), Plugin_store_csv(7)
