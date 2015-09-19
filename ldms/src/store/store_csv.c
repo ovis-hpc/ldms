@@ -811,7 +811,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 				break;
 			}
 		}
-		if (idx > 0){
+		if (idx >= 0){
 			s_handle->altheader = specialkeys[idx].altheader;
 			s_handle->id_pos = specialkeys[idx].id_pos;
 			s_handle->cs.begin = specialkeys[idx].cs.begin;
