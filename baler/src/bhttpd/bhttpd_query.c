@@ -483,6 +483,12 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 
 	evbuffer_add_printf(ctxt->evbuffer, "{\"result\": [");
 	for (i=BMAP_ID_BEGIN; i<=n; i++) {
+
+		const struct bstr *ptn = bptn_store_get_ptn(ptn_store, i);
+		if (!ptn)
+			/* It's OK to skip, slaves may not have all patterns */
+			continue;
+
 		if (bq_is_metric_pattern(bq_store, i) != is_metric)
 			continue;
 		rc = bq_print_ptn(bq_store, fmt, i, bdstr);

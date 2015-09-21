@@ -53,10 +53,14 @@ int __bqfmt_json_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr, uint3
 	struct bqfmt_json *jfmt = (void*)fmt;
 	const struct bptn_attrM *attrM =
 		bptn_store_get_attrM(bq_get_ptn_store(jfmt->bq_store), ptn_id);
+	static struct bptn_attrM _attrM = {0};
 
 	if (!attrM) {
-		berror("bptn_store_get_attrM()");
-		return ENOENT;
+		/*
+		 * The pattern inserted by a slave and its messages had never
+		 * locally appeared on master will not have attrM object.
+		 */
+		attrM = &_attrM;
 	}
 
 	rc = bdstr_append_printf(bdstr,
