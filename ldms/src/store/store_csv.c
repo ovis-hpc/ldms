@@ -429,18 +429,20 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 				specialkeys[idx].cs.step = -1;
 			}
 			break;
+		case 'r':
+			if (strcmp(rvalue,"reverse")==0) {
+				specialkeys[idx].cs.step = 1;
+			}
+			break;
 		case 'a':
 			if (strcmp(rvalue,"alnum")==0) {
 				msglog(LDMS_LERROR,"store_csv sequence alnum"
 				       " unsupported. using default from main.\n");
-				specialkeys[idx].cs.step = -1;
 			}
-			/* fallthru */
+			break;
 		default:
-			if (strcmp(rvalue,"reverse")!=0) {
-				msglog(LDMS_LERROR,"store_csv using default from main"
-				       "%s unknown\n",rvalue);
-			}
+			msglog(LDMS_LERROR,"store_csv using default from main"
+			       "%s unknown\n",rvalue);
 			break;
 		}
 	}
