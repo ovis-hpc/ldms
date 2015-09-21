@@ -852,6 +852,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		break;
 	default:
 		//ok to continue
+		break;
 	}
 
 
