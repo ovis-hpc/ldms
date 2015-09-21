@@ -165,8 +165,8 @@ struct setdatapoint {
 };
 
 typedef enum {
-	DONT_PRINTHEADER,
-	DO_PRINTHEADER,
+	DONT_PRINT_HEADER,
+	DO_PRINT_HEADER,
 	BAD_HEADER
 } printheader_t;
 
