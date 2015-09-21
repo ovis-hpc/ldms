@@ -164,6 +164,12 @@ struct setdatapoint {
 	//NOTE: not keeping the user data. have this in the mvec
 };
 
+typedef enum {
+	DONT_PRINTHEADER,
+	DO_PRINTHEADER,
+	BAD_HEADER
+} printheader_t;
+
 //If this is going to have the last dp, then a store_handle can only be for a particular sampler (not multiple samplers)
 struct csv_derived_store_handle {
 	struct ldmsd_store *store;
@@ -174,7 +180,7 @@ struct csv_derived_store_handle {
 	int numder;
 	idx_t sets_idx;
 	int numsets;
-	int printheader;
+	printheader_t printheader;
         int parseconfig;
 	char *store_key;
 	pthread_mutex_t lock;
@@ -287,7 +293,7 @@ static int handleRollover(){
 					fclose(s_handle->headerfile);
 				s_handle->file = nfp;
 				s_handle->headerfile = nhfp;
-				s_handle->printheader = 1;
+				s_handle->printheader = DO_PRINT_HEADER;
 				pthread_mutex_unlock(&s_handle->lock);
 			}
 		}
@@ -591,7 +597,7 @@ static int print_header(struct csv_derived_store_handle *s_handle,
 		msglog(LDMS_LDEBUG,"Cannot print header for store_derived_csv. No headerfile\n");
 		return EINVAL;
 	}
-	s_handle->printheader = 0;
+	s_handle->printheader = DONT_PRINT_HEADER;
 
 	if (s_handle->parseconfig){
 	  rc = derivedConfig(derivedconf,s_handle);
@@ -708,7 +714,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			goto err2;
 		}
 
-		s_handle->printheader = 1;
+		s_handle->printheader = DO_PRINT_HEADER;
 		s_handle->parseconfig = 1;
 	}
 
@@ -733,7 +739,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		goto err3;
 
 	/* Only bother to open the headerfile if we have to print the header(s) */
-	if (s_handle->printheader && !s_handle->headerfile){
+	if ((s_handle->printheader == DO_PRINT_HEADER) && !s_handle->headerfile){
 		if (altheader) {
 			char tmp_headerpath[PATH_MAX];
 			if (rolltype >= MINROLLTYPE){
@@ -831,13 +837,21 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		return EPERM;
 	}
 
-	if (s_handle->printheader) {
+	switch (s_handle->printheader){
+	case DO_PRINT_HEADER:
 		rc = print_header(s_handle, mvec);
 		if (rc != 0){
 			msglog(LDMS_LDEBUG,"store_derived_csv: Error in print_header: %d\n", rc);
+			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
 			return rc;
 		}
+		break;
+	case BAD_HEADER:
+		return EINVAL;
+		break;
+	default:
+		//ok to continue
 	}
 
 
