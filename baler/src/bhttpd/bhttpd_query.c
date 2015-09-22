@@ -66,11 +66,12 @@
  * Get all available patterns from \c bhttpd.
  *
  * \par URI
- * <code>BHTTPD_LOCATION/query?type=ptn</code>
+ * <code>BHTTPD_LOCATION/query?type=ptn[&use_ts_fmt=<0|1>]</code>
  *
  * \par Response
  * If there is <b>no error</b>, pattern query returns JSON objects describing
- * each pattern:
+ * each pattern. If <code>use_ts_fmt</code> is set to 0, the human-readable
+ * date-time is used as follow:
  * \code{.json}
  * {
  *     "result": [
@@ -78,8 +79,8 @@
  *             "type": "PTN",
  *             "ptn_id": <PTN_ID>,
  *             "count": <OCCURRENCE COUNT>,
- *             "first_seen": <yyyy-mm-dd HH:MM:SS>,
- *             "last_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             "first_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
+ *             "last_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
  *             // pattern description is disguised in a message form --
  *             // a sequence of tokens.
  *             "msg": [
@@ -95,6 +96,11 @@
  *     ]
  * }
  * \endcode
+ *
+ * \par
+ * If <code>use_ts_fmt</code> is set to 1, the timestamp fields (such as
+ * first_seen and last_seen) will be in Unix timestamp format (the number of
+ * seconds since Epoch).
  *
  * \par
  * Please see msg2html() and tkn2html() methods in baler.coffee for the message
@@ -113,20 +119,20 @@
  * Query metric patterns -- the patterns that represent metric-in-range events.
  *
  * \par URI
- * <code>BHTTPD_LOCATION/query?type=metric_pattern</code>
+ * <code>BHTTPD_LOCATION/query?type=metric_pattern[&use_ts_fmt=<0|1>]</code>
  *
  * \par Response
  * This query returns objects similar to query \ref bhttpd_uri_query_ptn, except
  * that the returned objects are of metric pattern type. If there is no error,
- * the following JSON objects are returned:
+ * and <code>use_ts_fmt</code> is 0, the following JSON objects are returned:
  * \code{.json}
  *     "result": [
  *         {   // pattern object
  *             "type": "PTN",
  *             "ptn_id": <PTN_ID>,
  *             "count": <OCCURRENCE COUNT>,
- *             "first_seen": <yyyy-mm-dd HH:MM:SS>,
- *             "last_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             "first_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
+ *             "last_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
  *             // pattern description is disguised in a message form --
  *             // a sequence of tokens.
  *             "msg": [
@@ -141,6 +147,11 @@
  *         ... // more pattern objects
  *     ]
  * \endcode
+ *
+ * \par
+ * If <code>use_ts_fmt</code> is set to 1, the timestamp fields (such as
+ * first_seen and last_seen) will be in Unix timestamp format (the number of
+ * seconds since Epoch).
  *
  * \par
  * Please see msg2html() and tkn2html() methods in baler.coffee for the message
@@ -175,6 +186,7 @@
  *                        [&ptn_ids=NUM_LIST]
  *                        [&ts0=UNIX_TS]
  *                        [&ts1=UNIX_TS]
+ *                        [&use_ts_fmt=<0|1>]
  *                        </code>
  *
  * The parameters are described as follows:
@@ -194,6 +206,9 @@
  *   have timestamp less than \c ts0 will be excluded.
  * - \b ts1: The end timestamp for the query. If specified, the records that
  *   have timestamp greater than \c ts1 will be excluded.
+ * - \b use_ts_fmt: If set to 1, the Unix timestamp output format is used. If
+ *   set to 0, the human readable date-time output format (yyyy-mm-dd
+ *   HH:MM:SS.uuuuuu) is used.
  *
  * \subsection bhttpd_uri_query_destroy_session /destroy_session
  * This is the request to destroy unused message query (\ref
@@ -468,11 +483,23 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 	int first = 1;
 	struct bq_formatter *fmt = NULL;
 	struct bdstr *bdstr = NULL;
+	const char *use_ts_str = bpair_str_value(&ctxt->kvlist, "use_ts_fmt");
+	int use_ts = 0;
+
+	if (use_ts_str) {
+		use_ts = atoi(use_ts_str);
+	}
 
 	fmt = bqfmt_json_new(bq_store);
 	if (!fmt) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Not enough memory");
 		goto cleanup;
+	}
+
+	if (use_ts) {
+		bqfmt_json_ts_use_ts(fmt);
+	} else {
+		bqfmt_json_ts_use_datetime(fmt);
 	}
 
 	bdstr = bdstr_new(1024);
@@ -570,7 +597,7 @@ struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_r
 				"msg query creation failed, rc: %d.", rc);
 		goto err;
 	}
-	qs->fmt = bqfmt_json_new();
+	qs->fmt = bqfmt_json_new(bq_store);
 	if (!qs->fmt) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"Cannot create bqfmt_json, errno: %d.", errno);

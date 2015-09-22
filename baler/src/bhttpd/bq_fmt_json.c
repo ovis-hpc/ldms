@@ -7,6 +7,7 @@
 #include "baler/btypes.h"
 #include "baler/butils.h"
 #include "baler/bptn.h"
+#include "bq_fmt_json.h"
 
 #include <time.h>
 #include <ctype.h>
@@ -18,6 +19,7 @@ struct bqfmt_json {
 	int ptn_id;
 	bq_msg_ref_t msg_ref;
 	struct bq_store *bq_store;
+	int (*ts_fmt)(struct bdstr *bdstr, const struct timeval *tv);
 };
 
 void bqfmt_json_set_label(struct bq_formatter *fmt, int label)
@@ -36,13 +38,19 @@ void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, bq_msg_ref_t msg_ref)
 }
 
 static
-int __date_fmt(struct bdstr *bdstr, const struct timeval *tv)
+int __datetime_fmt(struct bdstr *bdstr, const struct timeval *tv)
 {
 	struct tm tm;
 	char tmp[64];
 	localtime_r(&tv->tv_sec, &tm);
 	strftime(tmp, sizeof(tmp), "%F %T", &tm);
 	return bdstr_append_printf(bdstr, "\"%s.%06d\"", tmp, tv->tv_usec);
+}
+
+static
+int __ts_fmt(struct bdstr *bdstr, const struct timeval *tv)
+{
+	return bdstr_append_printf(bdstr, "%d.%06d", tv->tv_sec, tv->tv_usec);
 }
 
 int __bqfmt_json_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr, uint32_t ptn_id)
@@ -72,7 +80,7 @@ int __bqfmt_json_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr, uint3
 	if (rc)
 		return rc;
 
-	rc = __date_fmt(bdstr, &attrM->first_seen);
+	rc = jfmt->ts_fmt(bdstr, &attrM->first_seen);
 	if (rc)
 		return rc;
 
@@ -80,7 +88,7 @@ int __bqfmt_json_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr, uint3
 	if (rc)
 		return rc;
 
-	rc = __date_fmt(bdstr, &attrM->last_seen);
+	rc = jfmt->ts_fmt(bdstr, &attrM->last_seen);
 	if (rc)
 		return rc;
 	return 0;
@@ -181,7 +189,7 @@ int __bqfmt_json_date_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
 	int rc = bdstr_append_printf(bdstr, ", \"ts\": ");
 	if (rc)
 		return rc;
-	return __date_fmt(bdstr, tv);
+	return ((struct bqfmt_json *)fmt)->ts_fmt(bdstr, tv);
 }
 
 int __bqfmt_json_host_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
@@ -196,6 +204,18 @@ int __bqfmt_json_host_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
 		return ENOMEM;
 	rc = bdstr_append(bdstr, "\"");
 	return rc;
+}
+
+void bqfmt_json_ts_use_ts(struct bq_formatter *fmt)
+{
+	struct bqfmt_json *f = (void*)fmt;
+	f->ts_fmt = __ts_fmt;
+}
+
+void bqfmt_json_ts_use_datetime(struct bq_formatter *fmt)
+{
+	struct bqfmt_json *f = (void*)fmt;
+	f->ts_fmt = __datetime_fmt;
 }
 
 struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store)
@@ -213,6 +233,7 @@ struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store)
 	fmt->base.date_fmt = __bqfmt_json_date_fmt;
 	fmt->base.host_fmt = __bqfmt_json_host_fmt;
 	fmt->bq_store = bq_store;
+	fmt->ts_fmt = __ts_fmt;
 	return &fmt->base;
 }
 

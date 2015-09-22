@@ -56,9 +56,12 @@
 #ifndef __BQ_FMT_JSON_H
 #define __BQ_FMT_JSON_H
 
+#include "query/bquery.h"
 #include <stdint.h>
 
-struct bq_formatter *bqfmt_json_new();
+struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store);
+void bqfmt_json_ts_use_ts(struct bq_formatter *fmt);
+void bqfmt_json_ts_use_datetime(struct bq_formatter *fmt);
 void bqfmt_json_free(struct bq_formatter *fmt);
 void bqfmt_json_set_label(struct bq_formatter *fmt, int label);
 void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id);
