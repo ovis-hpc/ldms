@@ -74,7 +74,7 @@
 #define STORE_CTR_NAME_MAX 20
 
 /** Fields for the name translation. These must match msr */
-#define MSR_MAXOPTIONS 8
+#define MSR_MAXOPTIONS 11
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
 #define MSR_INV 0
@@ -94,14 +94,17 @@ struct MSRcounter_tr{
 };
 
 static struct MSRcounter_tr counter_assignments[] = {
-	{"TOT_CYC", 0xc0010200, 0x076, 0x00, 0xc0010201, 0b11, 0},
+	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, 0},
 	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, 0},
 	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, 0},
 	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, 0},
 	{"DP_OPS",  0xc0010206, 0x003, 0xF0, 0xc0010207, 0b11, 0},
 	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, 0},
 	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, 0},
-	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, 0}
+	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, 0},
+        {"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, 0},
+        {"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, 0},
+        {"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, 0}
 };
 
 
@@ -407,7 +410,8 @@ static int createDS(struct store_msr_csv_handle *s_handle,
 	int i;
 	int rc;
 
-	//well known format CtrX followed by CtrN_cYY, but probably in reverse order
+	//well known format CtrX followed by CtrN_cYY, but probably in reverse order.
+	//also cYY might have offsets in there (corespernuma)
 	s_handle->createDS = 0;
 	s_handle->numctr = 0;
 	num_metrics = ldms_mvec_get_count(mvec);
@@ -586,17 +590,21 @@ static int print_header(struct store_msr_csv_handle *s_handle,
 		}
 	}
 
-	//Now write the header from the datastruct
+	/* Have to write the header from the mvec since the corespernuma may offset some numbering */
 
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
 	   a separate field */
 	fprintf(fp, "#Time, Time_usec, DT, DT_usec");
 	/* output format: permetric:  name (num), name (string), compid, numvals, derived_value(s) */
 	for (i = 0; i < s_handle->numctr; i++){
-		fprintf(fp, ", Ctr%d, Ctr%d_string, Ctr%d_CompId, Ctr%d_numvals",
-			i, i, i, i);
+		int cidx = s_handle->ctr[i].nameidx;
+		name = ldms_get_metric_name(mvec->v[cidx]);
+		fprintf(fp, ", %s, %s_string, %s_CompId, %s_numvals",
+			name, name, name, name);
 		for (j = 0; j < s_handle->ctr[i].numvals; j++){
-			fprintf(fp, ", Ctr%d_c%02d_der", i, j);
+			cidx+=s_handle->step;
+			name = ldms_get_metric_name(mvec->v[cidx]);
+			fprintf(fp, ", %s_der", name);
 		}
 	}
 	fprintf(fp, "\n");

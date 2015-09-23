@@ -91,7 +91,7 @@
 
 
 #define MSR_MAXLEN 20
-#define MSR_MAXOPTIONS 8
+#define MSR_MAXOPTIONS 11
 #define MSR_ARGLEN 4
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
@@ -130,20 +130,24 @@ struct MSRcounter{
 	uint64_t os_user;
 	char core_flag[MSR_ARGLEN];
 	ctr_num_values numvalues_type;
-	int numvals;
-	int maxvals;
+	int numcore; /* max legit core vals will consider (was numvals) */
+	int offset; /* offsets for core and uncore counters */
+	int maxcore; /* allows for extra zeros */
 };
 
 
 static struct MSRcounter counter_assignments[] = {
-	{"TOT_CYC", 0xc0010200, 0x076, 0x00, 0xc0010201, 0b11, "-a", CTR_NUMCORE, 0, 0},
-	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, "-a", CTR_NUMCORE, 0, 0},
-	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0},
-	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, "-a", CTR_NUMCORE, 0, 0},
-	{"DP_OPS",  0xc0010206, 0x003, 0xF0, 0xc0010207, 0b11, "-a", CTR_NUMCORE, 0, 0},
-	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, "-a", CTR_NUMCORE, 0, 0},
-	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, "-a", CTR_NUMCORE, 0, 0},
-	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, "", CTR_UNCORE, 0, 0}
+	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"DP_OPS",  0xc0010206, 0x003, 0xF0, 0xc0010207, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
+	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, "", CTR_UNCORE, 0, 0, 0},
+	{"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
+	{"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0},
+	{"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, "", CTR_UNCORE, 0, 0, 0}
 };
 
 static char* initnames[MSR_MAXOPTIONS];
@@ -192,15 +196,16 @@ static ctrcfg_state cfgstate = CFG_PRE;
 
 static const char *usage(void)
 {
-	return  "    config name=msr action=initialize set=<setname> component_id=<comp_id> maxcore=<maxcore>\n"
+	return  "    config name=msr action=initialize set=<setname> component_id=<comp_id> maxcore=<maxcore> corespernuma=<corespernuma>\n"
 		"            - Sets the set name but does not create it.\n"
 		"            set             - The name of the set,\n"
 		"            component_id    - The default component_id. Also that for\n"
 		"                              the timermetric\n"
-		"            maxcore         - max cores that will be reported for all core counters.\n"
+		"            maxcore         - max cores that will be reported for all counters.\n"
 		"                              If unspecified, it will use the actual number of cores.\n"
 		"                              If specified N must be >= actual numcores. This will\n"
 		"                              report 0 as values any N > actual numcores\n"
+                "            corespernuma    - num cores per numa domain (used for uncore counters)\n"
 		"    config name=msr action=add metricname=<name>\n"
 		"            - Adds a metric. The order they are issued are the ordered they are added\n"
 		"            metricname      - The metric name for the event\n"
@@ -421,7 +426,7 @@ static int zerometricset( struct active_counter *pe){
 
 	v.v_u64 = 0;
 	ldms_set_metric(pe->metric_table[0], &v);
-	for (i = 0; i < pe->mctr->numvals; i++){
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		ldms_set_metric(pe->metric_table[(i+CTR_TABLE_OFFSET)], &v);
 	}
 	//the padded ones are always zero
@@ -433,26 +438,30 @@ static int zerometricset( struct active_counter *pe){
 
 static int readregisterguts( struct active_counter *pe){
 	union ldms_value v;
-	int i;
+	int i, j;
 	int rc;
 
 	if (pe == NULL){
 		return -1;
 	}
-	for (i = 0; i < pe->mctr->numvals; i++){
+	j = 0;
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		//NOTE: possible race condition if the register changes while reading through.
-		rc = readregistercpu(pe->mctr->r_reg, i, &(pe->data[i]));
+		rc = readregistercpu(pe->mctr->r_reg, i, &(pe->data[j]));
 		if (rc != 0){
 			//if any of them fail, invalidate all
 			zerometricset(pe);
 			return rc;
 		}
+		j++;
 	}
 	v.v_u64 = pe->wctl;
 	ldms_set_metric(pe->metric_table[0], &v);
-	for (i = 0; i < pe->mctr->numvals; i++){
-		v.v_u64 = pe->data[i];
-		ldms_set_metric(pe->metric_table[(i+CTR_TABLE_OFFSET)], &v);
+	j = 0;
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
+		v.v_u64 = pe->data[j];
+		ldms_set_metric(pe->metric_table[(j+CTR_TABLE_OFFSET)], &v);
+		j++;
 	}
 
 	pe->valid = 1;
@@ -472,7 +481,7 @@ static int checkregister( struct active_counter *pe){
 	}
 
 	//read the val(s) and make sure they match wctl
-	for (i = 0; i < pe->mctr->numvals; i++){
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		rc = readregistercpu(pe->mctr->w_reg, i, &val);
 		if (rc != 0){
 			msglog(LDMS_LERROR, "msr: <%s> readregistercpu bad %d\n", pe->mctr->name, rc);
@@ -547,21 +556,21 @@ static ctr_state writeregister(struct active_counter *pe){
 	pe->valid = 0;
 	pe->state = CTR_BROKEN;
 	//Zero the ctrl register
-	for (i = 0; i < pe->mctr->numvals; i++){
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		rc = writeregistercpu(pe->mctr->w_reg, i, 0);
 		if (rc != 0){
 			return pe->state;
 		}
 	}
 	//Zero the val register
-	for (i = 0; i < pe->mctr->numvals; i++){
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		rc = writeregistercpu(pe->mctr->r_reg, i, 0);
 		if (rc != 0){
 			return pe->state;
 		}
 	}
 	//Write the ctrl register
-	for (i = 0; i < pe->mctr->numvals; i++){
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		rc = writeregistercpu(pe->mctr->w_reg, i, pe->wctl);
 		if (rc != 0){
 			return pe->state;
@@ -571,7 +580,6 @@ static ctr_state writeregister(struct active_counter *pe){
 	pe->state = CTR_OK;
 	return pe->state;
 }
-
 
 static int checkreassigncounter(struct active_counter *rpe, int idx){
 	struct active_counter* pe;
@@ -584,10 +592,10 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 	TAILQ_FOREACH(pe, &counter_list, entry){
 		if (pe != rpe){
 			if ((strcmp(rpe->mctr->name, "TOT_CYC") == 0) &&
-			    strcmp(pe->mctr->name, "TOT_INS") == 0){
+			    strcmp(pe->mctr->name, "L2_DCM") == 0){
 				return -1;
 			}
-			if ((strcmp(rpe->mctr->name, "TOT_INS") == 0) &&
+			if ((strcmp(rpe->mctr->name, "L2_DCM") == 0) &&
 			    strcmp(pe->mctr->name, "TOT_CYC") == 0){
 				return -1;
 			}
@@ -599,7 +607,11 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 	}
 
 	//size check: can only reassign to a space of the same size
-	if (rpe->mctr->numvals != counter_assignments[idx].numvals){
+	if (rpe->mctr->numcore != counter_assignments[idx].numcore){
+		return -1;
+	}
+	//offset check: can only reassign to the same offset (for the data array)
+	if (rpe->mctr->offset != counter_assignments[idx].offset){
 		return -1;
 	}
 
@@ -802,7 +814,7 @@ static int checkcountersinit(){
 	//check for conflicts. check no conflicting w_reg
 	int i, j;
 
-	//at the moment: no both TOT_CYC and TOT_INS. Duplicates are OK but warn. this lets you swap.
+	//at the moment: no both TOT_CYC and L2_DCM. Duplicates are OK but warn. this lets you swap.
 	for (i = 0; i < numinitnames; i++){
 		for (j = 0; j < numinitnames; j++){
 			if (i != j){
@@ -811,8 +823,8 @@ static int checkcountersinit(){
 					msglog(LDMS_LALWAYS,"msr: Duplicate assignments! <%s>\n", initnames[i]);
 				}
 				if ((strcmp(initnames[i], "TOT_CYC") == 0) &&
-				    (strcmp(initnames[j], "TOT_INS") == 0)){
-					msglog(LDMS_LERROR,"msr: Cannot have both TOT_CYC and TOT_INS\n");
+				    (strcmp(initnames[j], "L2_DCM") == 0)){
+					msglog(LDMS_LERROR,"msr: Cannot have both TOT_CYC and L2_DCM\n");
 					return -1;
 				}
 			}
@@ -896,14 +908,30 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		}
 	}
 
+	int corespernuma = 1;
+	val = av_value(avl, "corespernuma");
+	if (val){
+		corespernuma = atoi(val);
+		if ((corespernuma < 1) || (corespernuma > MSR_TOOMANYMAX)){ //some big number. just a safety check.
+			msglog(LDMS_LERROR, "msr: corespernuma %d invalid\n",
+			       maxcore);
+			pthread_mutex_unlock(&cfglock);
+			return -1;
+		}
+	} else {
+		msglog(LDMS_LERROR, "msr: must specify corespernuma\n");
+		pthread_mutex_unlock(&cfglock);
+		return -1;
+	}
+
 
 	for (i = 0; i < MSR_MAXOPTIONS; i++){
+		counter_assignments[i].numcore = numcore;
+		counter_assignments[i].maxcore = maxcore;
 		if (counter_assignments[i].numvalues_type == CTR_NUMCORE){
-			counter_assignments[i].numvals = numcore;
-			counter_assignments[i].maxvals = maxcore;
+			counter_assignments[i].offset = 1;
 		} else {
-			counter_assignments[i].numvals = 1;
-			counter_assignments[i].maxvals = 1;
+			counter_assignments[i].offset = corespernuma;
 		}
 	}
 
@@ -934,19 +962,20 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 	}
 	pthread_mutex_lock(&(pe->lock));
 
+
 	pe->mctr = &counter_assignments[j];
 	pe->valid = 0;
 	if (init){
-		pe->data = calloc(pe->mctr->numvals, sizeof(junk));
+		int nval = (pe->mctr->numcore)/(pe->mctr->offset);
+		pe->data = calloc(nval, sizeof(junk));
 		if (!pe->data){
 			pthread_mutex_unlock(&(pe->lock));
 			return ENOMEM;
 		} //wont need to zero out otherwise since valid = 0;
-	}
-	if (init){
+
 		//allocate space for metrics + an identifier (decide if should do here or in the assgnment)
 		//numvals for this metric
-		pe->metric_table = calloc((pe->mctr->numvals+CTR_TABLE_OFFSET), sizeof(ldms_metric_t));
+		pe->metric_table = calloc((nval+CTR_TABLE_OFFSET), sizeof(ldms_metric_t));
 		if (!pe->metric_table){
 			pthread_mutex_unlock(&(pe->lock));
 			return ENOMEM;
@@ -965,13 +994,13 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 	//        printf("%s: 0x%llx, 0x%llx, 0x%llx 0x%llx\n",
 	//               pe->mctr->name, event_hi, event_low, umask, pe->wctl);
 
-	msglog(LDMS_LINFO, "WRITECMD: writeregister(0x%llx, %d, 0x%llx)\n", w_reg, pe->mctr->numvals, pe->wctl);
+	msglog(LDMS_LINFO, "WRITECMD: writeregister(0x%llx, %d, 0x%llx)\n", w_reg, (pe->mctr->numcore)/(pe->mctr->offset), pe->wctl);
 
 	//CHECK COMMAND
-	msglog(LDMS_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n", w_reg, pe->mctr->numvals);
+	msglog(LDMS_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n", w_reg, (pe->mctr->numcore)/(pe->mctr->offset));
 
 	//READ COMMAND
-	msglog(LDMS_LINFO, "READCMD: readregister(0x%llx, %d)\n", pe->mctr->r_reg, pe->mctr->numvals);
+	msglog(LDMS_LINFO, "READCMD: readregister(0x%llx, %d)\n", pe->mctr->r_reg, (pe->mctr->numcore)/(pe->mctr->offset));
 
 	pe->state = CTR_BROKEN; //until written
 
@@ -1025,7 +1054,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 	struct active_counter* pe;
 	char name[MSR_MAXLEN];
 	int rc;
-	int i, j;
+	int i, j, k;
 
 	pthread_mutex_lock(&cfglock);
 	msglog(LDMS_LDEBUG, "msr: finalizing\n");
@@ -1082,7 +1111,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 		tot_data_sz += data_sz;
 
 		// get size for both the real data and the padded blanks
-		for (j = 0; j < pe->mctr->maxvals; j++){
+		for (j = 0; j < pe->mctr->maxcore; j+=pe->mctr->offset){
 			snprintf(name, MSR_MAXLEN, "Ctr%d_c%02d", i, j);
 			rc = ldms_get_metric_size(name, LDMS_V_U64,
 						  &meta_sz, &data_sz);
@@ -1121,17 +1150,18 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 		ldms_set_user_data(pe->metric_table[0], default_comp_id);
 
 		//process the real ones and the padded ones
-		for (j = 0; j < pe->mctr->maxvals; j++){
+		k = 0;
+		for (j = 0; j < pe->mctr->maxcore; j+=pe->mctr->offset){
 			snprintf(name, MSR_MAXLEN, "Ctr%d_c%02d", i, j);
-			if (j < pe->mctr->numvals){
-				pe->metric_table[(j+CTR_TABLE_OFFSET)] = ldms_add_metric(set, name, LDMS_V_U64);
-				if (!(pe->metric_table[j+CTR_TABLE_OFFSET])){
+			if (j < pe->mctr->numcore){
+				pe->metric_table[(k+CTR_TABLE_OFFSET)] = ldms_add_metric(set, name, LDMS_V_U64);
+				if (!(pe->metric_table[k+CTR_TABLE_OFFSET])){
 					msglog(LDMS_LDEBUG,"msr: Could not create the metric for event '%s'\n",
 					       name);
 					rc = ENOMEM;
 					goto err;
 				}
-				ldms_set_user_data(pe->metric_table[(j+CTR_TABLE_OFFSET)], default_comp_id);
+				ldms_set_user_data(pe->metric_table[(k+CTR_TABLE_OFFSET)], default_comp_id);
 			} else {
 				//for the padded vals, we dont need to keep the metric,
 				ldms_metric_t* temp = ldms_add_metric(set, name, LDMS_V_U64);
@@ -1143,6 +1173,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 				}
 				ldms_set_user_data(temp, default_comp_id);
 			}
+			k++;
 			//FIXME: everything should have zero vals by default. can we count on this?
 		}
 		i++;

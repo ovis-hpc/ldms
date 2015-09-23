@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_msr
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "22 Aug 2015" "v2.5" "LDMS Plugin msr man page"
+.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin msr man page"
 
 .SH NAME
 Plugin_msr - man page for the LDMS msr plugin
@@ -21,7 +21,8 @@ The counters must be identified first via action=add; action=finalize then sets 
 how many are multicore vs single valued is then fixed. Counters can be changed at run time within these constraints.
 The metric names are reported as generic names since their actual identities may change. For any given counter the first
 value (e.g., CTR<NUM>) is the uint64 representation of the variable identifier used in the counter setup. The subsequent
-values (e.g., CTR<NUM>_<XY>) are the values for the counters (1 or num core values).
+values (e.g., CTR<NUM>_<XY>) are the values for the counters (1 per numa node or num core values (with optional additional
+zero values if maxcore specified (see more below)).
 
 The ldmsctl interface includes functions for manipulating the sampling state and counter identities as described below.
 
@@ -61,12 +62,17 @@ VEC_INS
 .IP \[bu]
 TLB_DM
 .IP \[bu]
-L3_CACHE_MISSES - This is the only single valued metric.
+L3_CACHE_MISSES - Per numa node
+.IP \[bu]
+DCT_PREFETCH - Per numa node
+.IP \[bu]
+DCT_RD_TOT - Per numa node
+.IP \[bu]
+DCT_WRT - Per numa node
 .PP
 These are the options for the metricname argument of the add command.
 
-NOTE: TOT_CYC and TOT_INS are mutually exclusive.
-
+NOTE: TOT_CYC and L2_DCM are mutually exclusive.
 
 
 
@@ -120,7 +126,7 @@ Options are initialize, add, finalize, halt, continue, reassign, rewrite, and ls
 .TP
 .TP
 .BR initialize
-set=<setname> component_id=<comp_id> [maxcore=<maxcore>]
+set=<setname> component_id=<comp_id> corespernuma=<cpnuma> [maxcore=<maxcore>]
 .br
 initialize the plugin
 .RS
@@ -133,9 +139,15 @@ component_id=<comp_id>
 .br
 The component id numerical value.
 .TP
+corespernuma=<corespernuma>
+.br
+Cores per numa node. Used to determine which and how many cores are used in setting
+counters that report per numa node.
+.TP
 maxcore=<maxcore>
 .br
-Maxcores that will be reported for all core counters. Must be >= actual number of cores.
+Maxcores that will be reported for all core counters and will also be used in
+counters that report per numa node. Must be >= actual number of cores.
 Any additional values will be reported with 0 values.
 .RE
 
@@ -235,7 +247,7 @@ will not be correct.
 
 .SH EXAMPLES
 .PP
-config name=msr action=initialize setname=nid00010_msr component_id=10
+config name=msr action=initialize setname=nid00010_msr component_id=10 corespernuma=8
 .br
 config name=msr action=add metricname=L3_CACHE_MISSES
 .br
