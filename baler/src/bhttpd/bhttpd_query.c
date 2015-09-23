@@ -563,11 +563,13 @@ void bhttpd_msg_query_session_destroy(struct bhttpd_msg_query_session *qs)
 		event_free(qs->event);
 	if (qs->q)
 		bquery_destroy(qs->q);
+	if (qs->fmt)
+		bqfmt_json_free(qs->fmt);
 	free(qs);
 }
 
 static
-struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_req_ctxt *ctxt)
+struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_req_ctxt *ctxt, int simple)
 {
 	struct bhttpd_msg_query_session *qs;
 	const char *host_ids, *ptn_ids, *ts0, *ts1;
@@ -597,14 +599,18 @@ struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_r
 				"msg query creation failed, rc: %d.", rc);
 		goto err;
 	}
-	qs->fmt = bqfmt_json_new(bq_store);
-	if (!qs->fmt) {
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-				"Cannot create bqfmt_json, errno: %d.", errno);
-		goto err;
-	}
 
-	bq_set_formatter(qs->q, qs->fmt);
+	if (simple) {
+		bq_set_formatter(qs->q, bquery_default_formatter());
+	} else {
+		qs->fmt = bqfmt_json_new(bq_store);
+		if (!qs->fmt) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Cannot create bqfmt_json, errno: %d.", errno);
+			goto err;
+		}
+		bq_set_formatter(qs->q, qs->fmt);
+	}
 
 	return qs;
 err:
@@ -710,7 +716,7 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 		qs = (void*)ent->value;
 	}
 	if (!qs) {
-		qs = bhttpd_msg_query_session_create(ctxt);
+		qs = bhttpd_msg_query_session_create(ctxt, 0);
 		if (!qs) {
 			/* bhttpd_msg_query_session_create() has already
 			 * set the error message. */
@@ -773,6 +779,99 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 	}
 	evbuffer_add_printf(ctxt->evbuffer, "]");
 	evbuffer_add_printf(ctxt->evbuffer, "}");
+
+out:
+	bdstr_free(bdstr);
+}
+
+static
+void bhttpd_handle_query_msg_simple(struct bhttpd_req_ctxt *ctxt)
+{
+	struct bhttpd_msg_query_session *qs = NULL;
+	struct bdstr *bdstr;
+	struct bhash_entry *ent = NULL;
+	uint64_t session_id = 0;
+	const char *str;
+	int is_fwd = 1;
+	int i, n = 50;
+	int rc;
+
+	bdstr = bdstr_new(256);
+	if (!bdstr) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Out of memory");
+		return;
+	}
+	str = bpair_str_value(&ctxt->kvlist, "n");
+	if (str)
+		n = atoi(str);
+	str = bpair_str_value(&ctxt->kvlist, "dir");
+	if (str && strcmp(str, "bwd") == 0)
+		is_fwd = 0;
+
+	str = bpair_str_value(&ctxt->kvlist, "session_id");
+	if (str) {
+		session_id = strtoull(str, NULL, 0);
+		ent = bhash_entry_get(query_session_hash, (void*)&session_id,
+				sizeof(session_id));
+		if (!ent) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Session %lu not found.", session_id);
+			goto out;
+		}
+		qs = (void*)ent->value;
+	}
+	if (!qs) {
+		qs = bhttpd_msg_query_session_create(ctxt, 1);
+		if (!qs) {
+			/* bhttpd_msg_query_session_create() has already
+			 * set the error message. */
+			goto out;
+		}
+		session_id = (uint64_t)qs;
+		ent = bhash_entry_set(query_session_hash, (void*)&session_id,
+				sizeof(session_id), (uint64_t)(void*)qs);
+		if (!ent) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Hash insert failed, errno: %d",
+					errno);
+			goto out;
+		}
+	}
+	/* update last_use */
+	gettimeofday(&qs->last_use, NULL);
+	rc = event_add(qs->event, &query_session_timeout);
+	if (rc) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"event_add() rc: %d, errno: %d", rc, errno);
+		goto out;
+	}
+
+	evbuffer_add_printf(ctxt->evbuffer, "session_id: %lu\n", session_id);
+	for (i = 0; i < n; i++) {
+		if (qs->first) {
+			qs->first = 0;
+			if (is_fwd)
+				rc = bq_first_entry(qs->q);
+			else
+				rc = bq_last_entry(qs->q);
+		} else {
+			if (is_fwd)
+				rc = bq_next_entry(qs->q);
+			else
+				rc = bq_prev_entry(qs->q);
+		}
+		if (rc) {
+			break;
+		}
+		str = bq_entry_print(qs->q, bdstr);
+		if (!str) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"bq_entry_print() errno: %d", errno);
+			goto out;
+		}
+		evbuffer_add_printf(ctxt->evbuffer, "%s\n", str);
+		bdstr_reset(bdstr);
+	}
 
 out:
 	bdstr_free(bdstr);
@@ -1162,15 +1261,16 @@ struct bhttpd_handle_fn_entry {
 #define  HTTP_CONT_STREAM  "application/octet-stream"
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{ "PTN",         HTTP_CONT_JSON,   bhttpd_handle_query_ptn         },
-	{ "METRIC_PTN",  HTTP_CONT_JSON,   bhttpd_handle_query_metric_ptn  },
-	{ "MSG",         HTTP_CONT_JSON,   bhttpd_handle_query_msg         },
-	{ "META",        HTTP_CONT_JSON,   bhttpd_handle_query_meta        },
-	{ "METRIC_META", HTTP_CONT_JSON,   bhttpd_handle_query_metric_meta },
-	{ "IMG",         HTTP_CONT_STREAM, bhttpd_handle_query_img         },
-	{ "IMG2",        HTTP_CONT_STREAM, bhttpd_handle_query_img2        },
-	{ "HOST",        HTTP_CONT_JSON,   bhttpd_handle_query_host        },
-	{ "BIG_PIC",     HTTP_CONT_JSON,   bhttpd_handle_query_big_pic     },
+	{  "PTN",          HTTP_CONT_JSON,    bhttpd_handle_query_ptn          },
+	{  "METRIC_PTN",   HTTP_CONT_JSON,    bhttpd_handle_query_metric_ptn   },
+	{  "MSG",          HTTP_CONT_JSON,    bhttpd_handle_query_msg          },
+	{  "MSG_SIMPLE",   HTTP_CONT_JSON,    bhttpd_handle_query_msg_simple   },
+	{  "META",         HTTP_CONT_JSON,    bhttpd_handle_query_meta         },
+	{  "METRIC_META",  HTTP_CONT_JSON,    bhttpd_handle_query_metric_meta  },
+	{  "IMG",          HTTP_CONT_STREAM,  bhttpd_handle_query_img          },
+	{  "IMG2",         HTTP_CONT_STREAM,  bhttpd_handle_query_img2         },
+	{  "HOST",         HTTP_CONT_JSON,    bhttpd_handle_query_host         },
+	{  "BIG_PIC",      HTTP_CONT_JSON,    bhttpd_handle_query_big_pic      },
 };
 
 static
