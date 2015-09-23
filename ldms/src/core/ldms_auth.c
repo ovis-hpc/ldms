@@ -154,6 +154,8 @@ static int try_password_file(const char *filepath, char *secretword,
 			 "Need secretword=X where X longer than 4 letters\n");
 		return 3;
 	}
+	x->log(LDMS_LDEBUG,"%s: read auth secret from %s\n",
+		__FILE__, filepath);
 	return 0;
 }
 
