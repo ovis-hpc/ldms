@@ -69,10 +69,12 @@
 
 static char *procfile = PROC_FILE;
 
-static ldms_set_t set;
+static ldms_set_t set = NULL;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static uint64_t producer_name;
+static char *producer_name;
+static ldms_schema_t schema;
+static char *default_schema_name = "kgnilnd";
 
 static ldms_set_t get_set()
 {
@@ -80,7 +82,7 @@ static ldms_set_t get_set()
 }
 
 
-char *replace_space(char *s)
+static char *replace_space(char *s)
 {
 	char *s1;
 
@@ -98,7 +100,8 @@ struct kgnilnd_metric {
 	int idx;
 	uint64_t udata;
 };
-static int create_metric_set(const char *path)
+
+static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	int rc;
 	uint64_t metric_value;
@@ -113,15 +116,13 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	/* Create the metric set */
-	ldms_schema_t schema = ldms_schema_new("kgnilnd");
+	schema = ldms_schema_new(schema_name);
 	if (!schema) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	/* Process the file again to define all the metrics.*/
-
+	/* Process the file to define all the metrics.*/
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -144,18 +145,19 @@ static int create_metric_set(const char *path)
 			goto err;
 		}
 	} while (s);
-	set = ldms_set_new(path, schema);
+
+	set = ldms_set_new(instance_name, schema);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
-	ldms_schema_delete(schema);
 	return 0;
 
  err:
 	if (schema)
 		ldms_schema_delete(schema);
-	fclose(mf);
+	if (mf)
+		fclose(mf);
 	mf = NULL;
 	return rc;
 }
@@ -163,16 +165,49 @@ static int create_metric_set(const char *path)
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	char *sname;
+	int rc = 0;
 
-	value = av_value(avl, "producer");
-	if (value)
-		producer_name = strtol(value, NULL, 0);
+	producer_name = av_value(avl, "producer");
+	if (!producer_name) {
+		msglog(LDMSD_LERROR, "%s: missing producer\n",
+		       __FILE__);
+		return ENOENT;
+	}
 
 	value = av_value(avl, "instance");
-	if (value)
-		create_metric_set(value);
+	if (!value) {
+		msglog(LDMSD_LERROR, "%s: missing instance.\n",
+		       __FILE__);
+		return ENOENT;
+	}
 
+	sname = av_value(avl, "schema");
+	if (!sname){
+		sname = default_schema_name;
+	}
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
+		       __FILE__);
+		return EINVAL;
+	}
+
+	if (set) {
+                msglog(LDMSD_LERROR, "%s: Set already created.\n",
+		       __FILE__);
+                return EINVAL;
+        }
+
+	int rc = create_metric_set(value, sname);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s: failed to create a metric set.\n",
+		       __FILE__);
+		return rc;
+	}
+
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
+
 }
 
 static int sample(void)
@@ -218,17 +253,21 @@ static void term(void)
 {
 	if (mf)
 		fclose(mf);
+	mf = NULL;
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
 	if (set)
 		ldms_set_delete(set);
-	mf = NULL;
 	set = NULL;
 }
 
 static const char *usage(void)
 {
-	return  "config name=kgnilnd producer=<prod_name> instance=<inst_name>\n"
+	return  "config name=kgnilnd producer=<prod_name> instance=<inst_name> [schema=<sname>]\n"
 		"    prod_name     The producer name.\n"
-		"    inst_name     The set name.\n";
+		"    inst_name     The set name.\n",
+		"    <sname>      Optional schema name. Defaults to 'kgnilnd'\n";
 }
 
 
