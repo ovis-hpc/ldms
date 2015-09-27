@@ -67,38 +67,39 @@
 #include "baler/btkn.h"
 #include "baler/bhash.h"
 #include "baler/bset.h"
+#include "baler/bheap.h"
 
 #include "assert.h"
 
 static
-uint32_t __bq_entry_get_sec(struct bquery *q)
+uint32_t __bq_msg_entry_get_sec(struct bquery *q)
 {
-	return q->msg->data.uint32_[BOUT_MSG_SEC];
+	return ((struct bmsgquery*)q)->msg->data.uint32_[BSOS_MSG_SEC];
 }
 
 static
-uint32_t __bq_entry_get_usec(struct bquery *q)
+uint32_t __bq_msg_entry_get_usec(struct bquery *q)
 {
-	return q->msg->data.uint32_[BOUT_MSG_USEC];
+	return ((struct bmsgquery*)q)->msg->data.uint32_[BSOS_MSG_USEC];
 }
 
 static
-uint32_t __bq_entry_get_comp_id(struct bquery *q)
+uint32_t __bq_msg_entry_get_comp_id(struct bquery *q)
 {
-	return q->msg->data.uint32_[BOUT_MSG_COMP_ID];
+	return ((struct bmsgquery*)q)->msg->data.uint32_[BSOS_MSG_COMP_ID];
 }
 
 static
-uint32_t __bq_entry_get_ptn_id(struct bquery *q)
+uint32_t __bq_msg_entry_get_ptn_id(struct bquery *q)
 {
-	return q->msg->data.uint32_[BOUT_MSG_PTN_ID];
+	return ((struct bmsgquery*)q)->msg->data.uint32_[BSOS_MSG_PTN_ID];
 }
 
 static
 uint32_t __bq_img_entry_get_sec(struct bquery *q)
 {
-	struct bimgquery *iq = (struct bimgquery *)q;
-	return be32toh(iq->img->data.uint32_[BOUT_IMG_SEC]);
+	struct bimgquery *imgq = (struct bimgquery *)q;
+	return be32toh(imgq->img->data.uint32_[BSOS_IMG_SEC]);
 }
 
 static
@@ -110,15 +111,29 @@ uint32_t __bq_img_entry_get_usec(struct bquery *q)
 static
 uint32_t __bq_img_entry_get_comp_id(struct bquery *q)
 {
-	struct bimgquery *iq = (struct bimgquery *)q;
-	return be32toh(iq->img->data.uint32_[BOUT_IMG_COMP_ID]);
+	struct bimgquery *imgq = (struct bimgquery *)q;
+	return be32toh(imgq->img->data.uint32_[BSOS_IMG_COMP_ID]);
 }
 
 static
 uint32_t __bq_img_entry_get_ptn_id(struct bquery *q)
 {
-	struct bimgquery *iq = (struct bimgquery *)q;
-	return be32toh(iq->img->data.uint32_[BOUT_IMG_PTN_ID]);
+	struct bimgquery *imgq = (struct bimgquery *)q;
+	return be32toh(imgq->img->data.uint32_[BSOS_IMG_PTN_ID]);
+}
+
+static
+int __sos_iter_inf_last(sos_iter_t iter, sos_key_t key)
+{
+	int rc;
+	sos_key_t sos_key;
+	rc = sos_iter_inf(iter, key);
+	if (rc)
+		return rc;
+	sos_key = sos_iter_key(iter);
+	rc = sos_iter_find_last(iter, sos_key);
+	sos_key_put(sos_key);
+	return rc;
 }
 
 static inline
@@ -196,30 +211,6 @@ int fmt_host_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
 	if (fmt->host_fmt)
 		return fmt->host_fmt(fmt, bdstr, bstr);
 	return 0;
-}
-
-struct bsos_wrap* bsos_wrap_open(const char *path)
-{
-	struct bsos_wrap *bsw = calloc(1, sizeof(*bsw));
-	if (!bsw)
-		goto err0;
-	bsw->sos = sos_container_open(path, O_RDWR);
-	if (!bsw->sos)
-		goto err1;
-	bsw->index = sos_index_open(bsw->sos, BOUT_SOS_IDX_NAME);
-	char *bname = basename(path);
-	if (!bname)
-		goto err2;
-	bsw->store_name = strdup(bname);
-	if (!bsw->store_name)
-		goto err2;
-	return bsw;
-err2:
-	sos_container_close(bsw->sos, ODS_COMMIT_ASYNC);
-err1:
-	free(bsw);
-err0:
-	return NULL;
 }
 
 void bsos_wrap_close_free(struct bsos_wrap *bsw)
@@ -386,24 +377,12 @@ out:
 	return rc;
 }
 
-void bquery_destroy(struct bquery *q)
+/*
+ * Clean-up resources
+ */
+static
+void bquery_cleanup(struct bquery *q)
 {
-	if (q->obj)
-		sos_obj_put(q->obj);
-	if (q->itr)
-		sos_iter_free(q->itr);
-	if (q->hst_ids)
-		bset_u32_free(q->hst_ids);
-	if (q->ptn_ids)
-		bset_u32_free(q->ptn_ids);
-	if (q->bsos)
-		bsos_wrap_close_free(q->bsos);
-	free(q);
-}
-
-void bimgquery_destroy(struct bimgquery *q)
-{
-	free(q->store_name);
 	struct brange_u32 *r;
 	while ((r = TAILQ_FIRST(&q->hst_rngs))) {
 		TAILQ_REMOVE(&q->hst_rngs, r, link);
@@ -417,7 +396,44 @@ void bimgquery_destroy(struct bimgquery *q)
 	}
 	if (q->ptn_rng_itr)
 		brange_u32_iter_free(q->ptn_rng_itr);
-	bquery_destroy((void*)q);
+	if (q->obj)
+		sos_obj_put(q->obj);
+	if (q->itr)
+		sos_iter_free(q->itr);
+	if (q->bsos)
+		q->bsos_close(q->bsos, SOS_COMMIT_ASYNC);
+	if (q->hst_ids)
+		bset_u32_free(q->hst_ids);
+	if (q->ptn_ids)
+		bset_u32_free(q->ptn_ids);
+}
+
+static
+void bquery_destroy(struct bquery *q)
+{
+	bquery_cleanup(q);
+	free(q);
+}
+
+void bmsgquery_destroy(struct bmsgquery *msgq)
+{
+	if (msgq->bheap) {
+		struct bq_msg_ptc_hent *hent;
+		int n = msgq->bheap->len;
+		int i;
+		for (i = 0; i < n; i++) {
+			hent = msgq->bheap->array[i];
+			bq_msg_ptc_hent_free(hent);
+		}
+		bheap_free(msgq->bheap);
+	}
+	bquery_destroy(&msgq->base);
+}
+
+void bimgquery_destroy(struct bimgquery *imgq)
+{
+	free(imgq->store_name);
+	bquery_destroy((void*)imgq);
 }
 
 int __default_tkn_fmt(struct bq_formatter *fmt, struct bdstr *bdstr,
@@ -487,74 +503,96 @@ time_t parse_ts(const char *ts)
 	return t;
 }
 
-int bq_msg_first_entry(struct bquery *q);
-int bq_msg_next_entry(struct bquery *q);
-int bq_msg_prev_entry(struct bquery *q);
-int bq_msg_last_entry(struct bquery *q);
-
-struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
-			     const char *ptn_ids, const char *ts0,
-			     const char *ts1, int is_text, char sep, int *rc)
+int bq_first_entry(struct bquery *q)
 {
-	int _rc = 0;
+	return q->first_entry(q);
+}
+
+int bq_next_entry(struct bquery *q)
+{
+	return q->next_entry(q);
+}
+
+int bq_prev_entry(struct bquery *q)
+{
+	return q->prev_entry(q);
+}
+
+int bq_last_entry(struct bquery *q)
+{
+	return q->last_entry(q);
+}
+
+int bq_msg_ptc_first_entry(struct bquery *q);
+int bq_msg_ptc_next_entry(struct bquery *q);
+int bq_msg_ptc_prev_entry(struct bquery *q);
+int bq_msg_ptc_last_entry(struct bquery *q);
+
+int bq_msg_tc_first_entry(struct bquery *q);
+int bq_msg_tc_next_entry(struct bquery *q);
+int bq_msg_tc_prev_entry(struct bquery *q);
+int bq_msg_tc_last_entry(struct bquery *q);
+
+int bquery_init(struct bquery *q, struct bq_store *store, const char *hst_ids,
+			     const char *ptn_ids, const char *ts0,
+			     const char *ts1, int is_text, char sep)
+{
+	int rc = 0;
 	ssize_t len = 0;
 
 	/* Call tzset first for correct localtime_r() result in the program. */
 	tzset();
 
-	if (!store) {
-		_rc = EINVAL;
-		goto out;
-	}
+	assert(q);
+	bzero(q, sizeof(*q));
 
-	struct bquery *q = calloc(1, sizeof(*q));
-	if (!q) {
-		_rc = errno;
+	if (!store) {
+		rc = EINVAL;
 		goto out;
 	}
 
 	q->store = store;
 	q->stat = BQ_STAT_INIT;
 
-	q->get_sec = __bq_entry_get_sec;
-	q->get_usec = __bq_entry_get_usec;
-	q->get_ptn_id = __bq_entry_get_ptn_id;
-	q->get_comp_id = __bq_entry_get_comp_id;
-
-	q->next_entry = bq_msg_next_entry;
-	q->prev_entry = bq_msg_prev_entry;
-	q->first_entry = bq_msg_first_entry;
-	q->last_entry = bq_msg_last_entry;
-
 	if (hst_ids) {
 		q->hst_ids = bset_u32_from_numlist(hst_ids, MASK_HSIZE);
 		if (!q->hst_ids) {
-			_rc = errno;
+			rc = errno;
 			goto err;
 		}
+		rc = bset_u32_to_brange_u32(q->hst_ids, &q->hst_rngs);
+		if (rc)
+			goto err;
+		q->hst_rng_itr = brange_u32_iter_new(TAILQ_FIRST(&q->hst_rngs));
+		if (!q->hst_rng_itr)
+			goto err;
 	}
 
 	if (ptn_ids) {
 		q->ptn_ids = bset_u32_from_numlist(ptn_ids, MASK_HSIZE);
 		if (!q->ptn_ids) {
-			_rc = errno;
+			rc = errno;
 			goto err;
 		}
+		rc = bset_u32_to_brange_u32(q->ptn_ids, &q->ptn_rngs);
+		if (rc)
+			goto err;
+		q->ptn_rng_itr = brange_u32_iter_new(TAILQ_FIRST(&q->ptn_rngs));
+		if (!q->ptn_rng_itr)
+			goto err;
 	}
 
-	struct tm tm;
-	char *ts_ret;
 	if (ts0) {
 		q->ts_0 = parse_ts(ts0);
 		if (q->ts_0 == -1) {
-			_rc = EINVAL;
+			rc = EINVAL;
 			goto err;
 		}
 	}
 	if (ts1) {
 		q->ts_1 = parse_ts(ts1);
 		if (q->ts_1 == -1) {
-			_rc = EINVAL;
+			rc = EINVAL;
 			goto err;
 		}
 	}
@@ -563,17 +601,463 @@ struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
         q->sep = (sep)?(sep):(' ');
 	q->formatter = bquery_default_formatter();
 
-	len = snprintf(q->sos_prefix, PATH_MAX, "%s/msg_store/msg", store->path);
-
 	goto out;
 
 err:
-	bquery_destroy(q);
-	q = NULL;
+	bquery_cleanup(q);
+
 out:
+	return rc;
+}
+
+void bq_msg_ptc_hent_free(struct bq_msg_ptc_hent *hent)
+{
+	if (hent->iter)
+		sos_iter_free(hent->iter);
+	if (hent->hst_rng_itr)
+		brange_u32_iter_free(hent->hst_rng_itr);
+	free(hent);
+}
+
+struct bq_msg_ptc_hent *bq_msg_ptc_hent_new(struct bmsgquery *msgq, uint32_t ptn_id)
+{
+	struct bq_msg_ptc_hent *hent = calloc(1, sizeof(*hent));
+	if (!hent)
+		return NULL;
+	hent->ptn_id = ptn_id;
+	hent->msgq = msgq;
+	if (msgq->base.hst_ids) {
+		hent->hst_rng_itr = brange_u32_iter_new(TAILQ_FIRST(&msgq->base.hst_rngs));
+		if (!hent->hst_rng_itr)
+			goto err0;
+	}
+	hent->iter = sos_index_iter_new(((struct bsos_msg *)msgq->base.bsos)->index_ptc);
+	if (!hent->iter)
+		goto err1;
+
+	return hent;
+err1:
+	brange_u32_iter_free(hent->hst_rng_itr);
+err0:
+	bq_msg_ptc_hent_free(hent);
+	return NULL;
+}
+
+int bq_msg_ptc_hent_cmp_inc(struct bq_msg_ptc_hent *a, struct bq_msg_ptc_hent *b)
+{
+	if (a->sec_comp_id < b->sec_comp_id)
+		return -1;
+	if (a->sec_comp_id > b->sec_comp_id)
+		return 1;
+	if (a->msg->data.uint32_[BSOS_MSG_USEC] < b->msg->data.uint32_[BSOS_MSG_USEC])
+		return -1;
+	if (a->msg->data.uint32_[BSOS_MSG_USEC] > b->msg->data.uint32_[BSOS_MSG_USEC])
+		return 1;
+	if (a->ptn_id < b->ptn_id)
+		return -1;
+	if (a->ptn_id > b->ptn_id)
+		return 1;
+	return 0;
+}
+
+int bq_msg_ptc_hent_cmp_dec(struct bq_msg_ptc_hent *a, struct bq_msg_ptc_hent *b)
+{
+	if (a->sec_comp_id > b->sec_comp_id)
+		return -1;
+	if (a->sec_comp_id < b->sec_comp_id)
+		return 1;
+	if (a->msg->data.uint32_[BSOS_MSG_USEC] > b->msg->data.uint32_[BSOS_MSG_USEC])
+		return -1;
+	if (a->msg->data.uint32_[BSOS_MSG_USEC] < b->msg->data.uint32_[BSOS_MSG_USEC])
+		return 1;
+	if (a->ptn_id > b->ptn_id)
+		return -1;
+	if (a->ptn_id < b->ptn_id)
+		return 1;
+	return 0;
+}
+
+static inline
+uint32_t bsos_msg_get_sec(sos_array_t msg)
+{
+	return msg->data.uint32_[BSOS_MSG_SEC];
+}
+
+static inline
+uint32_t bsos_msg_get_usec(sos_array_t msg)
+{
+	return msg->data.uint32_[BSOS_MSG_USEC];
+}
+
+static inline
+uint32_t bsos_msg_get_comp_id(sos_array_t msg)
+{
+	return msg->data.uint32_[BSOS_MSG_COMP_ID];
+}
+
+static inline
+uint32_t bsos_msg_get_ptn_id(sos_array_t msg)
+{
+	return msg->data.uint32_[BSOS_MSG_PTN_ID];
+}
+
+static void bq_msg_ptc_hent_obj_update(struct bq_msg_ptc_hent *hent)
+{
+	if (hent->obj) {
+		sos_obj_put(hent->obj);
+		hent->obj = NULL;
+		hent->msg = NULL;
+		hent->sec_comp_id = 0;
+	}
+	hent->obj = sos_iter_obj(hent->iter);
+	if (hent->obj) {
+		hent->msg = sos_obj_ptr(hent->obj);
+		hent->sec = bsos_msg_get_sec(hent->msg);
+		hent->comp_id = bsos_msg_get_comp_id(hent->msg);
+	}
+}
+
+static inline
+int bq_msg_ptc_hent_check_cond(struct bq_msg_ptc_hent *hent)
+{
+	uint32_t ts = hent->msg->data.uint32_[BSOS_MSG_SEC];
+	uint32_t comp_id = hent->msg->data.uint32_[BSOS_MSG_COMP_ID];
+	uint32_t ptn_id = hent->msg->data.uint32_[BSOS_MSG_PTN_ID];
+
+	if (hent->ptn_id != ptn_id)
+		return BQ_CHECK_COND_PTN;
+	if (hent->msgq->base.ts_0 && ts < hent->msgq->base.ts_0)
+		return BQ_CHECK_COND_TS0;
+	if (hent->msgq->base.ts_1 && hent->msgq->base.ts_1 < ts)
+		return BQ_CHECK_COND_TS1;
+	if (hent->msgq->base.hst_ids && !bset_u32_exist(hent->msgq->base.hst_ids, comp_id))
+		return BQ_CHECK_COND_HST;
+	return BQ_CHECK_COND_OK;
+}
+
+int bq_msg_ptc_hent_first(struct bq_msg_ptc_hent *hent)
+{
+	int rc;
+	uint32_t sec, comp_id, ptn_id;
+	SOS_KEY(key);
+	struct bsos_msg_key_ptc k = {0};
+
+	k.ptn_id = hent->ptn_id;
+
+	if (hent->hst_rng_itr) {
+		brange_u32_iter_begin(hent->hst_rng_itr, &k.comp_id);
+	}
+
+	if (hent->msgq->base.ts_0) {
+		k.sec = hent->msgq->base.ts_0;
+	}
+
+	bsos_msg_key_ptc_htobe(&k);
+	sos_key_set(key, &k, sizeof(k));
+	rc = sos_iter_sup(hent->iter, key);
+	if (rc)
+		goto out;
+	bq_msg_ptc_hent_obj_update(hent);
+	rc = bq_msg_ptc_hent_check_cond(hent);
+	if (rc)
+		rc = bq_msg_ptc_hent_next(hent);
+
+out:
+	return rc;
+}
+
+int bq_msg_ptc_hent_next(struct bq_msg_ptc_hent *hent)
+{
+	SOS_KEY(key);
+	struct bsos_msg_key_ptc k = {0};
+	int rc;
+
+	rc = sos_iter_next(hent->iter);
+	if (rc)
+		goto out;
+again:
+	bq_msg_ptc_hent_obj_update(hent);
+	rc = bq_msg_ptc_hent_check_cond(hent);
+	switch (rc) {
+	case BQ_CHECK_COND_OK:
+		goto out;
+	case BQ_CHECK_COND_TS0:
+		k.sec = hent->msgq->base.ts_0;
+		k.comp_id = 0;
+		break;
+	case BQ_CHECK_COND_HST:
+		k.sec = bsos_msg_get_sec(hent->msg);
+		k.comp_id = bsos_msg_get_comp_id(hent->msg) + 1;
+		if (!k.comp_id) {
+			/* overflow */
+			rc = ENOENT;
+		} else {
+			rc = brange_u32_iter_fwd_seek(hent->hst_rng_itr, &k.comp_id);
+		}
+		switch (rc) {
+		case ENOENT:
+			/* use next timestamp */
+			k.sec++;
+			brange_u32_iter_begin(hent->hst_rng_itr, &k.comp_id);
+			break;
+		case EINVAL:
+			k.comp_id = hent->hst_rng_itr->current_value;
+			break;
+		}
+		break;
+	case BQ_CHECK_COND_TS1:
+		/* Out of TS range, no need to continue */
+		rc = ENOENT;
+		goto out;
+	case BQ_CHECK_COND_PTN:
+		/* Out of PTN range, no need to continue */
+		rc = ENOENT;
+		goto out;
+	}
+
+	k.ptn_id = hent->ptn_id;
+	bsos_msg_key_ptc_htobe(&k);
+	sos_key_set(key, &k, sizeof(k));
+	rc = sos_iter_sup(hent->iter, key); /* this will already be the first dup */
+	if (!rc)
+		goto again;
+out:
+	return rc;
+}
+int bq_msg_ptc_hent_last(struct bq_msg_ptc_hent *hent)
+{
+	int rc;
+	uint32_t sec, comp_id, ptn_id;
+	SOS_KEY(key);
+	struct bsos_msg_key_ptc k = {0};
+
+	k.ptn_id = hent->ptn_id;
+
+	if (hent->hst_rng_itr) {
+		brange_u32_iter_end(hent->hst_rng_itr, &k.comp_id);
+	}
+
+	if (hent->msgq->base.ts_1) {
+		k.sec = hent->msgq->base.ts_1;
+	}
+
+	bsos_msg_key_ptc_htobe(&k);
+	sos_key_set(key, &k, sizeof(k));
+	rc = __sos_iter_inf_last(hent->iter, key);
+	if (rc)
+		goto out;
+	bq_msg_ptc_hent_obj_update(hent);
+	rc = bq_msg_ptc_hent_check_cond(hent);
+	if (rc)
+		rc = bq_msg_ptc_hent_prev(hent);
+
+out:
+	return rc;
+}
+
+int bq_msg_ptc_hent_prev(struct bq_msg_ptc_hent *hent)
+{
+	SOS_KEY(key);
+	struct bsos_msg_key_ptc k = {0};
+	int rc;
+
+	rc = sos_iter_prev(hent->iter);
+	if (rc)
+		goto out;
+again:
+	bq_msg_ptc_hent_obj_update(hent);
+	rc = bq_msg_ptc_hent_check_cond(hent);
+	switch (rc) {
+	case BQ_CHECK_COND_OK:
+		goto out;
+	case BQ_CHECK_COND_TS1:
+		k.sec = hent->msgq->base.ts_1;
+		k.comp_id = 0XFFFFFFFF;
+		break;
+	case BQ_CHECK_COND_HST:
+		k.sec = bsos_msg_get_sec(hent->msg);
+		k.comp_id = bsos_msg_get_comp_id(hent->msg) - 1;
+		if (k.comp_id == 0XFFFFFFFF) {
+			/* underflow */
+			rc = ENOENT;
+		} else {
+			rc = brange_u32_iter_bwd_seek(hent->hst_rng_itr, &k.comp_id);
+		}
+		switch (rc) {
+		case ENOENT:
+			/* use next timestamp */
+			k.sec--;
+			brange_u32_iter_end(hent->hst_rng_itr, &k.comp_id);
+			break;
+		case EINVAL:
+			k.comp_id = hent->hst_rng_itr->current_value;
+			break;
+		}
+		break;
+	case BQ_CHECK_COND_TS0:
+		/* Out of TS range, no need to continue */
+		rc = ENOENT;
+		goto out;
+	case BQ_CHECK_COND_PTN:
+		/* Out of PTN range, no need to continue */
+		rc = ENOENT;
+		goto out;
+	}
+
+	k.ptn_id = hent->ptn_id;
+	bsos_msg_key_ptc_htobe(&k);
+	sos_key_set(key, &k, sizeof(k));
+	rc = __sos_iter_inf_last(hent->iter, key); /* this will already be the first dup */
+	if (!rc)
+		goto again;
+out:
+	return rc;
+}
+
+static
+int __bq_msg_ptc_init(struct bmsgquery *msgq)
+{
+	int rc = 0;
+	int n = msgq->base.ptn_ids->count;
+	uint32_t ptn_id;
+	struct bset_u32_iter *ptnid_iter = NULL;
+	struct bq_msg_ptc_hent *hent;
+	struct bheap *bheap;
+	int i;
+
+	ptnid_iter = bset_u32_iter_new(msgq->base.ptn_ids);
+	if (!ptnid_iter) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	while (0 == (rc = bset_u32_iter_next(ptnid_iter, &ptn_id))) {
+		hent = bq_msg_ptc_hent_new(msgq, ptn_id);
+		if (!hent) {
+			goto err0;
+		}
+		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
+	}
+
+	bheap = bheap_new(n, (void*)bq_msg_ptc_hent_cmp_inc);
+
+	if (!bheap) {
+		rc = errno;
+		goto err0;
+	}
+
+	msgq->bheap = bheap;
+
+	rc = 0;
+
+	goto out;
+
+err0:
+	while (NULL != (hent = LIST_FIRST(&msgq->hent_list))) {
+		LIST_REMOVE(hent, link);
+		bq_msg_ptc_hent_free(hent);
+	}
+
+out:
+	/* clean-up */
+	if (ptnid_iter)
+		bset_u32_iter_free(ptnid_iter);
+	return rc;
+}
+
+static
+int __bq_msg_tc_init(struct bmsgquery *msgq)
+{
+	bsos_msg_t bsos_msg = msgq->base.bsos;
+	sos_iter_t itr = sos_index_iter_new(bsos_msg->index_tc);
+	if (!itr)
+		return errno;
+	msgq->base.itr = itr;
+	return 0;
+}
+
+static
+int __bq_msg_open_bsos(struct bmsgquery *msgq)
+{
+	int rc = 0;
+	bsos_msg_t bsos_msg = bsos_msg_open(msgq->base.sos_prefix, 0);
+	if (!bsos_msg)
+		return errno;
+	msgq->base.bsos = bsos_msg;
+	switch (msgq->idxtype) {
+	case BMSGIDX_PTC:
+		rc = __bq_msg_ptc_init(msgq);
+		break;
+	case BMSGIDX_TC:
+		rc = __bq_msg_tc_init(msgq);
+		break;
+	default:
+		assert(0 && "invalid msgq->idxtype");
+	}
+
+	if (rc) {
+		msgq->base.bsos = NULL;
+		bsos_msg_close(bsos_msg, SOS_COMMIT_ASYNC);
+		return rc;
+	}
+
+	return 0;
+}
+
+struct bmsgquery* bmsgquery_create(struct bq_store *store, const char *hst_ids,
+			     const char *ptn_ids, const char *ts0,
+			     const char *ts1, int is_text, char sep, int *rc)
+{
+	int _rc = 0;
+	ssize_t len;
+	struct bmsgquery *msgq = calloc(1, sizeof(*msgq));
+
+	if (!msgq) {
+		_rc = ENOMEM;
+		goto err;
+	}
+
+	_rc = bquery_init(&msgq->base, store, hst_ids, ptn_ids,
+						ts0, ts1, is_text, sep);
+	if (_rc)
+		goto err;
+
+	if (msgq->base.ptn_ids) {
+		msgq->idxtype = BMSGIDX_PTC;
+		msgq->base.next_entry = bq_msg_ptc_next_entry;
+		msgq->base.prev_entry = bq_msg_ptc_prev_entry;
+		msgq->base.first_entry = bq_msg_ptc_first_entry;
+		msgq->base.last_entry = bq_msg_ptc_last_entry;
+	} else {
+		msgq->idxtype = BMSGIDX_TC;
+		msgq->base.next_entry = bq_msg_tc_next_entry;
+		msgq->base.prev_entry = bq_msg_tc_prev_entry;
+		msgq->base.first_entry = bq_msg_tc_first_entry;
+		msgq->base.last_entry = bq_msg_tc_last_entry;
+	}
+
+	msgq->base.get_sec = __bq_msg_entry_get_sec;
+	msgq->base.get_usec = __bq_msg_entry_get_usec;
+	msgq->base.get_ptn_id = __bq_msg_entry_get_ptn_id;
+	msgq->base.get_comp_id = __bq_msg_entry_get_comp_id;
+
+	msgq->base.bsos_open = (void*)bsos_msg_open;
+	msgq->base.bsos_close = (void*)bsos_msg_close;
+
+	len = snprintf(msgq->base.sos_prefix, PATH_MAX,
+					"%s/msg_store/msg", store->path);
+
+	_rc = __bq_msg_open_bsos(msgq);
+	if (_rc)
+		goto err;
+
+	return msgq;
+
+err:
 	if (rc)
 		*rc = _rc;
-	return q;
+	bmsgquery_destroy(msgq);
+	return NULL;
 }
 
 int bq_img_first_entry(struct bquery *q);
@@ -581,59 +1065,73 @@ int bq_img_next_entry(struct bquery *q);
 int bq_img_prev_entry(struct bquery *q);
 int bq_img_last_entry(struct bquery *q);
 
+static
+int __bq_img_open_bsos(struct bimgquery *imgq)
+{
+	struct bquery *q = (void*)imgq;
+	sos_iter_t iter;
+	bsos_img_t bsos_img;
+	bsos_img = bsos_img_open(q->sos_prefix, 0);
+	if (!bsos_img)
+		return errno;
+	iter = sos_index_iter_new(bsos_img->index);
+	if (!iter) {
+		bsos_img_close(bsos_img, SOS_COMMIT_ASYNC);
+		return ENOMEM;
+	}
+
+	q->itr = iter;
+	q->bsos = bsos_img;
+	return 0;
+}
+
 struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 				const char *ptn_ids, const char *ts0,
 				const char *ts1, const char *img_store_name,
 				int *rc)
 {
-	int _rc;
+	int _rc = 0;
 	ssize_t len;
-        struct bquery *bq = bquery_create(store, hst_ids, ptn_ids, ts0, ts1, 0,
-                                                0, rc);
-	if (!bq)
+
+	struct bimgquery *imgq = calloc(1, sizeof(*imgq));
+	if (!imgq) {
+		_rc = ENOMEM;
 		return NULL;
-	struct bimgquery *bi = calloc(1, sizeof(*bi));
+	}
 
-	/* Transfer the contents of bq to bi, and free (not destroy) the unused
-	 * bq */
-	bi->base = *bq;
-	free(bq);
-
-	bi->base.get_sec = __bq_img_entry_get_sec;
-	bi->base.get_usec = __bq_img_entry_get_usec;
-	bi->base.get_comp_id = __bq_img_entry_get_comp_id;
-	bi->base.get_ptn_id = __bq_img_entry_get_ptn_id;
-
-	bi->base.first_entry = bq_img_first_entry;
-	bi->base.next_entry = bq_img_next_entry;
-	bi->base.prev_entry = bq_img_prev_entry;
-	bi->base.last_entry = bq_img_last_entry;
-
-	len = snprintf(bi->base.sos_prefix, PATH_MAX, "%s/img_store/%s",
-						store->path, img_store_name);
-	bi->store_name = strdup(img_store_name);
-	if (!bi->store_name)
+	_rc = bquery_init(&imgq->base, store, hst_ids, ptn_ids, ts0, ts1, 0, 0);
+	if (_rc)
 		goto err;
-	if (bi->base.hst_ids) {
-		_rc = bset_u32_to_brange_u32(bi->base.hst_ids, &bi->hst_rngs);
-		if (_rc)
-			goto err;
-		bi->hst_rng_itr = brange_u32_iter_new(TAILQ_FIRST(&bi->hst_rngs));
-		if (!bi->hst_rng_itr)
-			goto err;
-	}
 
-	if (bi->base.ptn_ids) {
-		_rc = bset_u32_to_brange_u32(bi->base.ptn_ids, &bi->ptn_rngs);
-		if (_rc)
-			goto err;
-		bi->ptn_rng_itr = brange_u32_iter_new(TAILQ_FIRST(&bi->ptn_rngs));
-		if (!bi->ptn_rng_itr)
-			goto err;
-	}
-	return bi;
+	imgq->base.get_sec = __bq_img_entry_get_sec;
+	imgq->base.get_usec = __bq_img_entry_get_usec;
+	imgq->base.get_comp_id = __bq_img_entry_get_comp_id;
+	imgq->base.get_ptn_id = __bq_img_entry_get_ptn_id;
+
+	imgq->base.first_entry = bq_img_first_entry;
+	imgq->base.next_entry = bq_img_next_entry;
+	imgq->base.prev_entry = bq_img_prev_entry;
+	imgq->base.last_entry = bq_img_last_entry;
+
+	imgq->base.bsos_open = (void*)bsos_img_open;
+	imgq->base.bsos_close = (void*)bsos_img_close;
+
+	len = snprintf(imgq->base.sos_prefix, PATH_MAX, "%s/img_store/%s",
+						store->path, img_store_name);
+	imgq->store_name = strdup(img_store_name);
+	if (!imgq->store_name)
+		goto err;
+
+	_rc = __bq_img_open_bsos(imgq);
+
+	if (_rc)
+		goto err;
+
+	return imgq;
 err:
-	bimgquery_destroy(bi);
+	if (rc)
+		*rc = _rc;
+	bimgquery_destroy(imgq);
 	return NULL;
 }
 
@@ -652,147 +1150,33 @@ char* __str_combine(const char *str0, const char *str1)
 	return str;
 }
 
-static void __bq_reset(struct bquery *q)
+
+static inline
+void __msg_ptc_obj_update(struct bmsgquery *msgq)
 {
-	if (q->itr) {
-		sos_iter_free(q->itr);
-		q->itr = NULL;
-	}
-	if (q->bsos) {
-		bsos_wrap_close_free(q->bsos);
-		q->bsos = NULL;
-	}
-}
-
-static int __bq_open_bsos(struct bquery *q)
-{
-	struct bsos_wrap *bsos;
-	sos_iter_t iter;
-	bsos = bsos_wrap_open(q->sos_prefix);
-	if (!bsos)
-		return errno;
-
-	iter = sos_index_iter_new(bsos->index);
-	if (!iter) {
-		bsos_wrap_close_free(bsos);
-		return ENOMEM;
-	}
-
-	/* clean up old stuff */
-	if (q->itr)
-		sos_iter_free(q->itr);
-	if (q->bsos)
-		bsos_wrap_close_free(q->bsos);
-
-	q->bsos = bsos;
-	q->itr = iter;
-	return 0;
-}
-
-static void __msg_obj_update(struct bquery *q)
-{
-	if (q->obj) {
-		sos_obj_put(q->obj);
-		q->obj = NULL;
-	}
-	q->obj = sos_iter_obj(q->itr);
-	if (q->obj) {
-		q->msg = sos_obj_ptr(q->obj);
-	}
-}
-
-static int __bq_last_entry(struct bquery *q)
-{
-	int rc = 0;
-	SOS_KEY(key);
-
-	if (!q->ts_1) {
-		rc = sos_iter_end(q->itr);
+	struct bq_msg_ptc_hent *hent = bheap_get_top(msgq->bheap);
+	if (hent) {
+		msgq->base.obj = hent->obj;
+		msgq->msg = hent->msg;
 	} else {
-		union sos_timestamp_u ts;
-		ts.fine.secs = q->ts_1;
-		ts.fine.usecs = 0;
-		sos_key_set(key, &ts, sizeof(&ts));
-		rc = sos_iter_inf(q->itr, key);
-		if (rc)
-			goto out;
-		sos_key_t k;
-		k = sos_iter_key(q->itr);
-		rc = sos_iter_find_last(q->itr, k);
-		sos_key_put(k);
+		msgq->base.obj = NULL;
+		msgq->msg = NULL;
 	}
-	if (!rc)
-		__msg_obj_update(q);
-out:
-	return rc;
 }
 
-static int __bq_first_entry(struct bquery *q)
+static inline
+void __msg_obj_update(struct bmsgquery *msgq)
 {
-	int rc = 0;
-	SOS_KEY(key);
-	if (!q->ts_0) {
-		rc = sos_iter_begin(q->itr);
-	} else {
-		union sos_timestamp_u ts;
-		ts.fine.secs = q->ts_0;
-		ts.fine.usecs = 0;
-		sos_key_set(key, &ts, sizeof(ts));
-		rc = sos_iter_sup(q->itr, key);
-		if (rc)
-			goto out;
-		/* get the first dup */
-		sos_key_t k = sos_iter_key(q->itr);
-		rc = sos_iter_find_first(q->itr, k);
-		sos_key_put(k);
+	if (msgq->base.obj) {
+		sos_obj_put(msgq->base.obj);
+		msgq->base.obj = NULL;
+		msgq->msg = NULL;
 	}
-	if (!rc)
-		__msg_obj_update(q);
-out:
-	return rc;
-}
-
-/**
- * Move the sos iterator to the previous entry.
- */
-static int __bq_prev_entry(struct bquery *q)
-{
-	int rc = 0;
-
-	rc = sos_iter_prev(q->itr);
-	if (!rc)
-		__msg_obj_update(q);
-	return rc;
-}
-
-/**
- * Move the sos iterator to the next entry.
- */
-static int __bq_next_entry(struct bquery *q)
-{
-	int rc = 0;
-	if (!q->bsos) {
-		rc = __bq_open_bsos(q);
-		if (rc)
-			goto out;
-		/* first call */
-		rc = __bq_first_entry(q);
-		goto out;
+	msgq->base.obj = sos_iter_obj(msgq->base.itr);
+	if (msgq->base.obj) {
+		msgq->msg = sos_obj_ptr(msgq->base.obj);
 	}
-	rc = sos_iter_next(q->itr);
-	if (!rc)
-		__msg_obj_update(q);
-out:
-	return rc;
 }
-
-typedef enum bq_check_cond {
-	BQ_CHECK_COND_OK    =  0x0,
-	BQ_CHECK_COND_TS0   =  0x1,
-	BQ_CHECK_COND_TS1   =  0x2,
-	BQ_CHECK_COND_HST  =  0x4,
-	BQ_CHECK_COND_PTN   =  0x8,
-} bq_check_cond_e;
 
 static inline
 bq_check_cond_e bq_check_cond(struct bquery *q)
@@ -812,15 +1196,16 @@ bq_check_cond_e bq_check_cond(struct bquery *q)
 	return BQ_CHECK_COND_OK;
 }
 
-static void __img_obj_update(struct bimgquery *q)
+static void __img_obj_update(struct bimgquery *imgq)
 {
-	if (q->base.obj) {
-		sos_obj_put(q->base.obj);
-		q->base.obj = NULL;
+	if (imgq->base.obj) {
+		sos_obj_put(imgq->base.obj);
+		imgq->base.obj = NULL;
+		imgq->img = NULL;
 	}
-	q->base.obj = sos_iter_obj(q->base.itr);
-	if (q->base.obj) {
-		q->img = sos_obj_ptr(q->base.obj);
+	imgq->base.obj = sos_iter_obj(imgq->base.itr);
+	if (imgq->base.obj) {
+		imgq->img = sos_obj_ptr(imgq->base.obj);
 	}
 }
 
@@ -830,30 +1215,25 @@ int bq_img_first_entry(struct bquery *q)
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
 	SOS_KEY(key);
-	struct bout_sos_img_key bsi_key;
-
-	__bq_reset(q);
-	rc = __bq_open_bsos(q);
-	if (rc)
-		goto out;
+	struct bsos_img_key bsi_key;
 
 	bsi_key.comp_id = 0;
 	bsi_key.ts = 0;
 	bsi_key.ptn_id = 0;
 
-	if (imgq->ptn_rng_itr) {
-		brange_u32_iter_begin(imgq->ptn_rng_itr, &bsi_key.ptn_id);
+	if (q->ptn_rng_itr) {
+		brange_u32_iter_begin(q->ptn_rng_itr, &bsi_key.ptn_id);
 	}
 
-	if (imgq->hst_rng_itr) {
-		brange_u32_iter_begin(imgq->hst_rng_itr, &bsi_key.comp_id);
+	if (q->hst_rng_itr) {
+		brange_u32_iter_begin(q->hst_rng_itr, &bsi_key.comp_id);
 	}
 
 	if (q->ts_0) {
 		bsi_key.ts = q->ts_0;
 	}
 
-	bout_sos_img_key_convert(&bsi_key);
+	bsos_img_key_htobe(&bsi_key);
 	sos_key_set(key, &bsi_key, sizeof(bsi_key));
 	rc = sos_iter_sup(q->itr, key);
 	if (rc)
@@ -870,7 +1250,7 @@ int bq_img_next_entry(struct bquery *q)
 {
 	struct bimgquery *imgq = (void*)q;
 	SOS_KEY(key);
-	struct bout_sos_img_key bsi_key;
+	struct bsos_img_key bsi_key;
 	int rc;
 
 	rc = sos_iter_next(q->itr);
@@ -891,30 +1271,30 @@ again:
 		bsi_key.ptn_id = bq_entry_get_ptn_id(q);
 		bsi_key.ts = bq_entry_get_sec(q);
 		bsi_key.comp_id = bq_entry_get_comp_id(q) + 1;
-		rc = brange_u32_iter_fwd_seek(imgq->hst_rng_itr, &bsi_key.comp_id);
-		if (rc == ENOENT) {
+		rc = brange_u32_iter_fwd_seek(q->hst_rng_itr, &bsi_key.comp_id);
+		if (rc) {
 			/* use next timestamp */
 			bsi_key.ts++;
-			brange_u32_iter_begin(imgq->hst_rng_itr, &bsi_key.comp_id);
+			brange_u32_iter_begin(q->hst_rng_itr, &bsi_key.comp_id);
 		}
 		break;
 	case BQ_CHECK_COND_TS1:
 	case BQ_CHECK_COND_PTN:
 		/* End of current PTN, continue with next PTN */
 		bsi_key.ptn_id = bq_entry_get_ptn_id(q) + 1;
-		if (imgq->ptn_rng_itr) {
-			rc = brange_u32_iter_fwd_seek(imgq->ptn_rng_itr,
+		if (q->ptn_rng_itr) {
+			rc = brange_u32_iter_fwd_seek(q->ptn_rng_itr,
 							&bsi_key.ptn_id);
 			if (rc == ENOENT)
 				goto out;
 			assert(rc == 0);
 		}
-		brange_u32_iter_begin(imgq->hst_rng_itr, &bsi_key.comp_id);
+		brange_u32_iter_begin(q->hst_rng_itr, &bsi_key.comp_id);
 		bsi_key.ts = q->ts_0;
 		break;
 	}
 
-	bout_sos_img_key_convert(&bsi_key);
+	bsos_img_key_htobe(&bsi_key);
 	sos_key_set(key, &bsi_key, sizeof(bsi_key));
 	rc = sos_iter_sup(q->itr, key); /* this will already be the first dup */
 	if (!rc)
@@ -928,7 +1308,7 @@ int bq_img_prev_entry(struct bquery *q)
 	struct bimgquery *imgq = (void*)q;
 	SOS_KEY(key);
 	sos_key_t sos_key;
-	struct bout_sos_img_key bsi_key;
+	struct bsos_img_key bsi_key;
 	int rc;
 
 	rc = sos_iter_prev(q->itr);
@@ -949,37 +1329,29 @@ again:
 		bsi_key.ptn_id = bq_entry_get_ptn_id(q);
 		bsi_key.ts = bq_entry_get_sec(q);
 		bsi_key.comp_id = bq_entry_get_comp_id(q) - 1;
-		rc = brange_u32_iter_bwd_seek(imgq->hst_rng_itr, &bsi_key.comp_id);
-		if (rc == ENOENT) {
+		rc = brange_u32_iter_bwd_seek(q->hst_rng_itr, &bsi_key.comp_id);
+		if (rc) {
 			/* use next timestamp */
 			bsi_key.ts--;
-			brange_u32_iter_end(imgq->hst_rng_itr, &bsi_key.comp_id);
+			brange_u32_iter_end(q->hst_rng_itr, &bsi_key.comp_id);
 		}
 		break;
 	case BQ_CHECK_COND_TS0:
 	case BQ_CHECK_COND_PTN:
 		/* End of current PTN, continue with next PTN */
 		bsi_key.ptn_id = bq_entry_get_ptn_id(q) - 1;
-		rc = brange_u32_iter_bwd_seek(imgq->ptn_rng_itr, &bsi_key.ptn_id);
+		rc = brange_u32_iter_bwd_seek(q->ptn_rng_itr, &bsi_key.ptn_id);
 		if (rc)
 			goto out;
 		assert(rc == 0);
-		brange_u32_iter_end(imgq->hst_rng_itr, &bsi_key.comp_id);
+		brange_u32_iter_end(q->hst_rng_itr, &bsi_key.comp_id);
 		bsi_key.ts = q->ts_1;
 		break;
 	}
 
-	bout_sos_img_key_convert(&bsi_key);
+	bsos_img_key_htobe(&bsi_key);
 	sos_key_set(key, &bsi_key, sizeof(bsi_key));
-	rc = sos_iter_inf(q->itr, key); /* this point to the first dup */
-	if (rc)
-		goto out;
-
-	/* we have to point to the last dup */
-
-	sos_key = sos_iter_key(q->itr);
-	rc = sos_iter_find_last(q->itr, sos_key);
-	sos_key_put(sos_key);
+	rc = __sos_iter_inf_last(q->itr, key); /* this point to the last dup */
 	if (!rc)
 		goto again;
 
@@ -993,34 +1365,29 @@ int bq_img_last_entry(struct bquery *q)
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
 	SOS_KEY(key);
-	struct bout_sos_img_key bsi_key;
-
-	__bq_reset(q);
-	rc = __bq_open_bsos(q);
-	if (rc)
-		goto out;
+	struct bsos_img_key bsi_key;
 
 	/* setup key */
 	bsi_key.comp_id = 0xFFFFFFFF;
 	bsi_key.ts = 0xFFFFFFFF;
 	bsi_key.ptn_id = 0xFFFFFFFF;
 
-	if (imgq->ptn_rng_itr) {
-		brange_u32_iter_end(imgq->ptn_rng_itr, &bsi_key.ptn_id);
+	if (q->ptn_rng_itr) {
+		brange_u32_iter_end(q->ptn_rng_itr, &bsi_key.ptn_id);
 	}
 
-	if (imgq->hst_rng_itr) {
-		brange_u32_iter_end(imgq->hst_rng_itr, &bsi_key.comp_id);
+	if (q->hst_rng_itr) {
+		brange_u32_iter_end(q->hst_rng_itr, &bsi_key.comp_id);
 	}
 
 	if (q->ts_1) {
 		bsi_key.ts = q->ts_1;
 	}
 
-	bout_sos_img_key_convert(&bsi_key);
+	bsos_img_key_htobe(&bsi_key);
 	sos_key_set(key, &bsi_key, sizeof(bsi_key));
 	/* seek */
-	rc = sos_iter_inf(q->itr, key);
+	rc = __sos_iter_inf_last(q->itr, key);
 	if (rc)
 		goto out;
 	__img_obj_update(imgq);
@@ -1031,128 +1398,384 @@ out:
 	return rc;
 }
 
-int bq_msg_next_entry(struct bquery *q)
+int bq_msg_tc_next_entry(struct bquery *q)
 {
+	SOS_KEY(key);
+	struct bsos_msg_key_tc k = {0};
 	int rc;
-	uint32_t sec, comp_id, ptn_id;
-next:
-	rc = __bq_next_entry(q);
-	if (rc)
-		return rc;
-	sec = bq_entry_get_sec(q);
-	if (q->ts_1 && q->ts_1 < sec)
-		return ENOENT;
-	comp_id = bq_entry_get_comp_id(q);
-	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
-		goto next;
-	ptn_id = bq_entry_get_ptn_id(q);
-	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, ptn_id))
-		goto next;
-	return 0;
-}
 
-int bq_next_entry(struct bquery *q)
-{
-	return q->next_entry(q);
-}
-
-int bq_msg_prev_entry(struct bquery *q)
-{
-	int rc;
-	uint32_t sec, comp_id, ptn_id;
-prev:
-	rc = __bq_prev_entry(q);
-	if (rc)
-		return rc;
-	sec = bq_entry_get_sec(q);
-	if (q->ts_0 &&  sec < q->ts_0)
-		return ENOENT;
-	comp_id = bq_entry_get_comp_id(q);
-	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
-		goto prev;
-	ptn_id = bq_entry_get_ptn_id(q);
-	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, ptn_id))
-		goto prev;
-	return 0;
-}
-
-int bq_prev_entry(struct bquery *q)
-{
-	return q->prev_entry(q);
-}
-
-int bq_first_entry(struct bquery *q)
-{
-	return q->first_entry(q);
-}
-
-int bq_msg_first_entry(struct bquery *q)
-{
-	int rc;
-	uint32_t sec, comp_id, ptn_id;
-	__bq_reset(q);
-	rc = __bq_open_bsos(q);
+	rc = sos_iter_next(q->itr);
 	if (rc)
 		goto out;
-	rc = __bq_first_entry(q);
-	if (rc)
-		return rc;
-loop:
-	sec = bq_entry_get_sec(q);
-	if (q->ts_1 && q->ts_1 < sec)
-		return ENOENT;
-	comp_id = bq_entry_get_comp_id(q);
-	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
-		goto next;
-	ptn_id = bq_entry_get_ptn_id(q);
-	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, ptn_id))
-		goto next;
-	/* good condition */
-	goto out;
-next:
-	rc = __bq_next_entry(q);
-	if (rc)
-		return rc;
-	goto loop;
+again:
+	__msg_obj_update((struct bmsgquery *)q);
+	rc = bq_check_cond(q);
+	switch (rc) {
+	case BQ_CHECK_COND_OK:
+		goto out;
+	case BQ_CHECK_COND_TS0:
+		k.sec = q->ts_0;
+		k.comp_id = 0;
+		break;
+	case BQ_CHECK_COND_HST:
+		k.sec = bq_entry_get_sec(q);
+		k.comp_id = bq_entry_get_comp_id(q) + 1;
+		if (!k.comp_id) {
+			/* overflow */
+			rc = ENOENT;
+		} else {
+			rc = brange_u32_iter_fwd_seek(q->hst_rng_itr, &k.comp_id);
+		}
+		switch (rc) {
+		case ENOENT:
+			/* use next timestamp */
+			k.sec++;
+			brange_u32_iter_begin(q->hst_rng_itr, &k.comp_id);
+			break;
+		case EINVAL:
+			k.comp_id = q->hst_rng_itr->current_value;
+			break;
+		}
+		break;
+	case BQ_CHECK_COND_TS1:
+		/* Out of TS range, no need to continue */
+		rc = ENOENT;
+		goto out;
+	case BQ_CHECK_COND_PTN:
+		assert(0 && "Unexpected BQ_CHECK_COND_PTN");
+	}
+
+	sos_key_set(key, &k, sizeof(k));
+	rc = sos_iter_sup(q->itr, key); /* this will already be the first dup */
+	if (!rc)
+		goto again;
 out:
 	return rc;
 }
 
-int bq_last_entry(struct bquery *q)
+int bq_msg_ptc_reverse_dir(struct bmsgquery *msgq)
 {
-	return q->last_entry(q);
+	int rc = 0;
+	int i;
+	struct bq_msg_ptc_hent *hent;
+	int (*hent_init)(struct bq_msg_ptc_hent *hent);
+	int (*hent_step)(struct bq_msg_ptc_hent *step);
+
+	switch (msgq->last_dir) {
+	case BMSGQDIR_FWD:
+		msgq->last_dir = BMSGQDIR_BWD;
+		hent_init = bq_msg_ptc_hent_last;
+		hent_step = bq_msg_ptc_hent_prev;
+		msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_dec;
+		break;
+	case BMSGQDIR_BWD:
+		msgq->last_dir = BMSGQDIR_FWD;
+		hent_init = bq_msg_ptc_hent_first;
+		hent_step = bq_msg_ptc_hent_next;
+		msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_inc;
+		break;
+	}
+	/* re-initialize entries in the used-up list first */
+	LIST_FOREACH(hent, &msgq->hent_list, link) {
+		rc = hent_init(hent);
+		if (rc)
+			goto out;
+	}
+
+	/* step the ones in the heap */
+	for (i = 0; i < msgq->bheap->len; i++) {
+		hent = msgq->bheap->array[i];
+		rc = hent_step(hent);
+		if (rc) {
+			/* try init if cannot step */
+			rc = hent_init(hent);
+			if (rc)
+				goto out;
+		}
+		/* also, put into the hent_list */
+		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
+	}
+	/* re-heap */
+	msgq->bheap->len = 0;
+	while ((hent = LIST_FIRST(&msgq->hent_list))) {
+		LIST_REMOVE(hent, link);
+		rc = bheap_insert(msgq->bheap, hent);
+		if (rc)
+			goto out;
+	}
+out:
+	__msg_ptc_obj_update(msgq);
+	return rc;
 }
 
-int bq_msg_last_entry(struct bquery *q)
+int bq_msg_ptc_next_entry(struct bquery *q)
+{
+	int rc = 0;
+	struct bmsgquery *msgq = (void*)q;
+	struct bq_msg_ptc_hent *hent;
+
+	if (msgq->last_dir != BMSGQDIR_FWD) {
+		rc = bq_msg_ptc_reverse_dir(msgq);
+		goto out;
+	}
+
+	hent = bheap_get_top(msgq->bheap);
+	if (!hent) {
+		rc = ENOENT;
+		goto out;
+	}
+
+	msgq->last_dir = BMSGQDIR_FWD;
+	rc = bq_msg_ptc_hent_next(hent);
+	switch (rc) {
+	case 0:
+		bheap_percolate_top(msgq->bheap);
+		break;
+	case ENOENT:
+		bheap_remove_top(msgq->bheap);
+		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
+		hent = bheap_get_top(msgq->bheap);
+		if (hent) {
+			rc = 0;
+		} else {
+			rc = ENOENT;
+		}
+		break;
+	default:
+		/* this is bad */
+		bwarn("Unexpexted rc from bq_msg_ptc_hent_next(): %d", rc);
+		goto out;
+	}
+	__msg_ptc_obj_update(msgq);
+out:
+	return rc;
+}
+
+int bq_msg_tc_prev_entry(struct bquery *q)
+{
+	SOS_KEY(key);
+	struct bsos_msg_key_tc k = {0};
+	int rc;
+
+	rc = sos_iter_prev(q->itr);
+	if (rc)
+		goto out;
+again:
+	__msg_obj_update((struct bmsgquery *)q);
+	rc = bq_check_cond(q);
+	switch (rc) {
+	case BQ_CHECK_COND_OK:
+		goto out;
+	case BQ_CHECK_COND_TS1:
+		k.sec = q->ts_1;
+		k.comp_id = 0xFFFFFFFF; /* max uint32_t */
+		break;
+	case BQ_CHECK_COND_HST:
+		k.sec = bq_entry_get_sec(q);
+		k.comp_id = bq_entry_get_comp_id(q) - 1;
+		if (k.comp_id == 0xFFFFFFFF) {
+			/* underflow */
+			rc = ENOENT;
+		} else {
+			rc = brange_u32_iter_bwd_seek(q->hst_rng_itr, &k.comp_id);
+		}
+		switch (rc) {
+		case ENOENT:
+			/* use next timestamp */
+			k.sec--;
+			brange_u32_iter_end(q->hst_rng_itr, &k.comp_id);
+			break;
+		case EINVAL:
+			k.comp_id = q->hst_rng_itr->current_value;
+			break;
+		}
+		break;
+	case BQ_CHECK_COND_TS0:
+		/* Out of TS range, no need to continue */
+		rc = ENOENT;
+		goto out;
+	case BQ_CHECK_COND_PTN:
+		assert(0 && "Unexpected BQ_CHECK_COND_PTN");
+	}
+
+	sos_key_set(key, &k, sizeof(k));
+	rc = __sos_iter_inf_last(q->itr, key); /* this is the last dup */
+	if (!rc)
+		goto again;
+out:
+	return rc;
+}
+
+int bq_msg_ptc_prev_entry(struct bquery *q)
+{
+	int rc = 0;
+	struct bmsgquery *msgq = (void*)q;
+	struct bq_msg_ptc_hent *hent;
+
+	if (msgq->last_dir != BMSGQDIR_BWD) {
+		rc = bq_msg_ptc_reverse_dir(msgq);
+		goto out;
+	}
+
+	hent = bheap_get_top(msgq->bheap);
+	if (!hent) {
+		rc = ENOENT;
+		goto out;
+	}
+
+	rc = bq_msg_ptc_hent_prev(hent);
+	switch (rc) {
+	case 0:
+		bheap_percolate_top(msgq->bheap);
+		break;
+	case ENOENT:
+		bheap_remove_top(msgq->bheap);
+		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
+		hent = bheap_get_top(msgq->bheap);
+		if (hent) {
+			rc = 0;
+		} else {
+			rc = ENOENT;
+		}
+		break;
+	default:
+		/* this is bad */
+		bwarn("Unexpexted rc from bq_msg_ptc_hent_next(): %d", rc);
+		goto out;
+	}
+	__msg_ptc_obj_update(msgq);
+out:
+	return rc;
+}
+
+int bq_msg_tc_first_entry(struct bquery *q)
 {
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
-	__bq_reset(q);
-	rc = __bq_open_bsos(q);
+	SOS_KEY(key);
+	struct bsos_msg_key_tc k = {0};
+
+	assert(!q->ptn_rng_itr);
+
+	if (q->hst_rng_itr) {
+		brange_u32_iter_begin(q->hst_rng_itr, &k.comp_id);
+	}
+
+	if (q->ts_0) {
+		k.sec = q->ts_0;
+	}
+
+	sos_key_set(key, &k, sizeof(k));
+	rc = sos_iter_sup(q->itr, key);
 	if (rc)
 		goto out;
-	rc = __bq_last_entry(q);
+	__msg_obj_update((struct bmsgquery *)q);
+	rc = bq_check_cond(q);
+	if (rc)
+		rc = bq_next_entry(q);
+
+out:
+	return rc;
+}
+
+int bq_msg_ptc_first_entry(struct bquery *q)
+{
+	/* unload fixed ptn_id iterators from heap */
+	struct bmsgquery *msgq = (void*)q;
+	struct bq_msg_ptc_hent *hent;
+	int i;
+	int rc = 0;
+
+	for (i = 0; i < msgq->bheap->len; i++) {
+		hent = msgq->bheap->array[i];
+		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
+	}
+	msgq->last_dir = BMSGQDIR_FWD;
+	msgq->bheap->len = 0;
+	msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_inc;
+	while ((hent = LIST_FIRST(&msgq->hent_list))) {
+		LIST_REMOVE(hent, link);
+		rc = bq_msg_ptc_hent_first(hent);
+		switch (rc) {
+		case ENOENT:
+			continue;
+		case 0:
+			break;
+		default:
+			goto out;
+		}
+
+		rc = bheap_insert(msgq->bheap, hent);
+		if (rc)
+			goto out;
+	}
+	__msg_ptc_obj_update(msgq);
+out:
+	return rc;
+}
+
+int bq_msg_tc_last_entry(struct bquery *q)
+{
+	int rc;
+	uint32_t sec, comp_id, ptn_id;
+	SOS_KEY(key);
+	struct bsos_msg_key_tc k = {.sec = -1, .comp_id = -1};
+
+	assert(!q->ptn_rng_itr);
+
+	if (q->hst_rng_itr) {
+		brange_u32_iter_end(q->hst_rng_itr, &k.comp_id);
+	}
+
+	if (q->ts_1) {
+		k.sec = q->ts_1;
+	}
+
+	sos_key_set(key, &k, sizeof(k));
+	rc = __sos_iter_inf_last(q->itr, key);
 	if (rc)
 		goto out;
-loop:
-	sec = bq_entry_get_sec(q);
-	if (q->ts_0 &&  sec < q->ts_0)
-		return ENOENT;
-	comp_id = bq_entry_get_comp_id(q);
-	if (q->hst_ids && !bset_u32_exist(q->hst_ids, comp_id))
-		goto prev;
-	ptn_id = bq_entry_get_ptn_id(q);
-	if (q->ptn_ids && !bset_u32_exist(q->ptn_ids, ptn_id))
-		goto prev;
-	/* good condition */
-	goto out;
-
-prev:
-	rc = __bq_prev_entry(q);
+	__msg_obj_update((struct bmsgquery *)q);
+	rc = bq_check_cond(q);
 	if (rc)
-		return rc;
-	goto loop;
+		rc = bq_prev_entry(q);
 
+out:
+	return rc;
+}
+
+int bq_msg_ptc_last_entry(struct bquery *q)
+{
+	/* unload fixed ptn_id iterators from heap */
+	struct bmsgquery *msgq = (void*)q;
+	struct bq_msg_ptc_hent *hent;
+	int i;
+	int rc = 0;
+
+	for (i = 0; i < msgq->bheap->len; i++) {
+		hent = msgq->bheap->array[i];
+		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
+	}
+	msgq->last_dir = BMSGQDIR_BWD;
+	msgq->bheap->len = 0;
+	msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_dec;
+	while ((hent = LIST_FIRST(&msgq->hent_list))) {
+		LIST_REMOVE(hent, link);
+		rc = bq_msg_ptc_hent_last(hent);
+		switch (rc) {
+		case ENOENT:
+			continue;
+		case 0:
+			break;
+		default:
+			goto out;
+		}
+
+		rc = bheap_insert(msgq->bheap, hent);
+		if (rc)
+			goto out;
+	}
+	__msg_ptc_obj_update(msgq);
 out:
 	return rc;
 }
@@ -1181,13 +1804,14 @@ struct bmsg *bq_entry_get_msg(struct bquery *q)
 {
 	struct bmsg *bmsg;
 	size_t bmsg_sz;
+	sos_array_t msg = ((struct bmsgquery *)q)->msg;
 
-	bmsg_sz = sizeof(*bmsg) + ((q->msg->count - BOUT_MSG_ARGV_0) << 3);
+	bmsg_sz = sizeof(*bmsg) + ((msg->count - BSOS_MSG_ARGV_0) << 3);
 	bmsg = malloc(bmsg_sz);
 
 	bmsg->ptn_id = bq_entry_get_ptn_id(q);
-	bmsg->argc = q->msg->count - BOUT_MSG_ARGV_0;
-	memcpy(bmsg->argv, &q->msg->data.uint32_[BOUT_MSG_ARGV_0], bmsg->argc << 3);
+	bmsg->argc = msg->count - BSOS_MSG_ARGV_0;
+	memcpy(bmsg->argv, &msg->data.uint32_[BSOS_MSG_ARGV_0], bmsg->argc << 3);
 
 	return bmsg;
 }
@@ -1195,9 +1819,7 @@ struct bmsg *bq_entry_get_msg(struct bquery *q)
 bq_msg_ref_t bq_entry_get_ref(struct bquery *q)
 {
 	bq_msg_ref_t bq_ref;
-	sos_obj_t obj = sos_iter_obj(q->itr);
-	sos_obj_ref_t ref = sos_obj_ref(obj);
-	sos_obj_put(obj);
+	sos_obj_ref_t ref = sos_obj_ref(q->obj);
 	bq_ref.ref[0] = ref.ref.ods;
 	bq_ref.ref[1] = ref.ref.obj;
 	return bq_ref;
@@ -1205,7 +1827,7 @@ bq_msg_ref_t bq_entry_get_ref(struct bquery *q)
 
 uint32_t bq_img_entry_get_count(struct bimgquery *q)
 {
-	return q->img->data.uint32_[BOUT_IMG_COUNT];
+	return q->img->data.uint32_[BSOS_IMG_COUNT];
 }
 
 int bq_img_entry_get_pixel(struct bimgquery *q, struct bpixel *p)
@@ -2110,8 +2732,8 @@ int bq_local_msg_routine(struct bq_store *s)
 		__bq_msg_fmt.ts_fmt = ts_format;
 	}
 
-	struct bquery *q = bquery_create(s, hst_ids, ptn_ids, ts_begin, ts_end,
-					 1, 0, &rc);
+	struct bquery *q = (void*)bmsgquery_create(s, hst_ids, ptn_ids,
+						ts_begin, ts_end, 1, 0, &rc);
 	struct bdstr *bdstr = bdstr_new(4096);
 	if (rc)
 		goto out;
@@ -2128,10 +2750,8 @@ loop:
 	if (verbose)
 		printf("[%d] ", bq_entry_get_ptn_id(q));
 
-	// bmsg = bq_entry_get_msg(q);
 	bdstr_reset(bdstr);
 	bq_entry_print(q, bdstr);
-	// free(bmsg);
 	printf("%.*s\n", (int)bdstr->str_len, bdstr->str);
 	if (reverse) {
 		rc = bq_prev_entry(q);

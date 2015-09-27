@@ -562,7 +562,7 @@ void bhttpd_msg_query_session_destroy(struct bhttpd_msg_query_session *qs)
 	if (qs->event)
 		event_free(qs->event);
 	if (qs->q)
-		bquery_destroy(qs->q);
+		bmsgquery_destroy((void*)qs->q);
 	if (qs->fmt)
 		bqfmt_json_free(qs->fmt);
 	free(qs);
@@ -593,7 +593,7 @@ struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_r
 	ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
 	ts0 = bpair_str_value(&ctxt->kvlist, "ts0");
 	ts1 = bpair_str_value(&ctxt->kvlist, "ts1");
-	qs->q = bquery_create(bq_store, host_ids, ptn_ids, ts0, ts1, 1, ' ', &rc);
+	qs->q = (void*)bmsgquery_create(bq_store, host_ids, ptn_ids, ts0, ts1, 1, ' ', &rc);
 	if (!qs->q) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"msg query creation failed, rc: %d.", rc);
@@ -645,6 +645,7 @@ void bhttpd_msg_query_expire_cb(evutil_socket_t fd, short what, void *arg)
 	}
 	bhash_entry_remove_free(query_session_hash, ent);
 	pthread_mutex_unlock(&query_session_mutex);
+	bdebug("session expired: %lu", (uint64_t) qs);
 	bhttpd_msg_query_session_destroy(qs);
 }
 
@@ -1210,10 +1211,10 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 	uint32_t min_ts, max_ts;
 	uint32_t min_node, max_node;
 
-	q = bquery_create(bq_store, NULL, ptn_ids, NULL, NULL, 0, ',', &rc);
+	q = (void*)bmsgquery_create(bq_store, NULL, ptn_ids, NULL, NULL, 0, ',', &rc);
 	if (!q) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-				"bquery_create() error, rc: %d", rc);
+				"bmsgquery_create() error, rc: %d", rc);
 		goto cleanup;
 	}
 
@@ -1248,7 +1249,7 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 			);
 cleanup:
 	if (q)
-		bquery_destroy(q);
+		bmsgquery_destroy((void*)q);
 }
 
 struct bhttpd_handle_fn_entry {

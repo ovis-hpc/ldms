@@ -70,10 +70,10 @@ int bq_store_refresh(struct bq_store *store);
 
 
 /* Message query interfaces */
-struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
+struct bmsgquery* bmsgquery_create(struct bq_store *store, const char *hst_ids,
 			     const char *ptn_ids, const char *ts0,
 			     const char *ts1, int is_text, char sep, int *rc);
-void bquery_destroy(struct bquery *q);
+void bmsgquery_destroy(struct bmsgquery *q);
 
 /* msg query navigation */
 int bq_first_entry(struct bquery *q);
@@ -100,6 +100,14 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 				const char *ts1, const char *img_store_name,
 				int *rc);
 void bimgquery_destroy(struct bimgquery *q);
+
+/* msg query navigation */
+int bmq_first_entry(struct bmsgquery *q);
+int bmq_next_entry(struct bmsgquery *q);
+int bmq_prev_entry(struct bmsgquery *q);
+int bmq_last_entry(struct bmsgquery *q);
+
+struct bquery *bmq_to_bq(struct bmsgquery *bmq);
 
 /* img query navigation */
 int biq_first_entry(struct bimgquery *q);
@@ -197,6 +205,26 @@ struct bpixel biq_entry_get_pixel(struct bimgquery *q)
 	return bpx;
 }
 
+int bmq_first_entry(struct bmsgquery *q)
+{
+	return bq_first_entry((void*)q);
+}
+
+int bmq_next_entry(struct bmsgquery *q)
+{
+	return bq_next_entry((void*)q);
+}
+
+int bmq_prev_entry(struct bmsgquery *q)
+{
+	return bq_prev_entry((void*)q);
+}
+
+int bmq_last_entry(struct bmsgquery *q)
+{
+	return bq_last_entry((void*)q);
+}
+
 int biq_first_entry(struct bimgquery *q)
 {
 	return bq_first_entry((void*)q);
@@ -215,6 +243,11 @@ int biq_prev_entry(struct bimgquery *q)
 int biq_last_entry(struct bimgquery *q)
 {
 	return bq_last_entry((void*)q);
+}
+
+struct bquery *bmq_to_bq(struct bmsgquery *bmq)
+{
+	return &bmq->base;
 }
 
 %}

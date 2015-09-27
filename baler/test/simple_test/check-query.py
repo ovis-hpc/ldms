@@ -24,9 +24,10 @@ def msg_query(node_range, ptn_range, ts0, ts1, exp_msg_per_ts, exp_msg):
         ts1 = None
     print "Checking MSG query | node_range: '%s', ptn_range: '%s', " \
             "ts0: '%s', ts1: '%s'" % (node_range, ptn_range, ts0, ts1)
-    bq = bquery.bquery_create(bstore, node_range, ptn_range,
+    bmq = bquery.bmsgquery_create(bstore, node_range, ptn_range,
                                         ts0, ts1, 0, ' ', None)
-    assert bq
+    assert bmq
+    bq = bquery.bmq_to_bq(bmq)
 
     bq_count = 0
     n = 0

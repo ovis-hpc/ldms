@@ -99,77 +99,43 @@ int bout_sos_config(struct bplugin *this, struct bpair_str_head *arg_head)
 			sprintf(sos_path + strlen(sos_path), "/%s", type);
 	}
 	_this->sos_path = sos_path;
-	bpstr = bpair_str_search(arg_head, "time_limit", NULL);
-	if (bpstr) {
-		_this->time_limit = atoi(bpstr->s1);
-	}
-	bpstr = bpair_str_search(arg_head, "max_copy", NULL);
-	if (bpstr) {
-		_this->max_copy = atoi(bpstr->s1);
-	}
-	return 0;
-}
-
-int bout_sos_rotate(struct bout_sos_plugin *_this, int ts,
-						bout_sos_rotate_cb_fn cb)
-{
-#if 0
-	if (!_this->time_limit)
-		return 0;
-	if (!_this->last_rotate) {
-		_this->last_rotate = ts;
-		return 0;
-	}
-	if (_this->last_rotate/_this->time_limit >= ts/_this->time_limit)
-		return 0;
-
-	sos_t new_sos = sos_rotate_i(_this->sos, _this->max_copy);
-	if (!new_sos)
-		return errno;
-	_this->sos = new_sos;
-	_this->last_rotate = ts;
-	if (cb)
-		cb(_this);
-	sos_post_rotation(new_sos, "BALER_STORE_POSTROTATE");
-#endif
 	return 0;
 }
 
 int bout_sos_free(struct bplugin *this)
 {
 	struct bout_sos_plugin *_this = (typeof(_this))this;
-	if (_this->sos)
+	if (_this->bsos_handle)
 		bout_sos_stop(this);
 	free(_this->sos_path);
 	bplugin_free(this);
 	return 0;
 }
 
+int bout_sos_start(struct bplugin *this)
+{
+	int rc = 0;
+	struct bout_sos_plugin *_this = (void*)this;
+
+	if (_this->bsos_handle)
+		return EINVAL;
+
+	_this->bsos_handle = _this->bsos_handle_open(_this->sos_path, SOS_PERM_RW);
+	if (!_this->bsos_handle)
+		rc = errno;
+	return rc;
+}
+
 int bout_sos_stop(struct bplugin *this)
 {
 	struct bout_sos_plugin *_this = (typeof(_this))this;
 
-	if (!_this->sos)
+	if (!_this->bsos_handle)
 		return EINVAL;
 	pthread_mutex_lock(&_this->sos_mutex);
-	sos_container_close(_this->sos, SOS_COMMIT_SYNC);
-	_this->sos = NULL;
+	_this->bsos_handle_close(_this->bsos_handle, SOS_COMMIT_SYNC);
+	_this->bsos_handle = NULL;
 	pthread_mutex_unlock(&_this->sos_mutex);
-	return 0;
-}
-
-int bout_sos_start(struct bplugin *this)
-{
-	struct bout_sos_plugin *_this = (typeof(_this))this;
-	_this->sos = sos_container_open(_this->sos_path, SOS_PERM_RW);
-	if (!_this->sos) {
-		int rc = sos_container_new(_this->sos_path, 0660);
-		if (rc)
-			return rc;
-		_this->sos = sos_container_open(_this->sos_path, SOS_PERM_RW);
-	}
-	if (!_this->sos)
-		return errno;
 	return 0;
 }
 
@@ -181,6 +147,7 @@ int bout_sos_init(struct bout_sos_plugin *this, const char *name)
 		return ENOMEM;
 	p->base.config = bout_sos_config;
 	p->base.start = bout_sos_start;
+	p->base.stop = bout_sos_stop;
 	p->base.free = bout_sos_free;
 	/* start, process_output, name and version should be initialized in the
 	 * child class's implementation */
