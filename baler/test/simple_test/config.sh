@@ -4,6 +4,7 @@ export BLOG=./balerd.log
 export BSTORE=./store
 export BSTAT=./balerd.stat
 export BSTATM=./balerd.statm
+export BCONFIG=./balerd.cfg
 
 # Baler configuration file (balerd.cfg) will be automatically generated.
 
