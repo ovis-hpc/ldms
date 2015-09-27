@@ -76,23 +76,18 @@
 /* config */
 int hsn_metrics_config(int i, char* filename);
 
-/* get metric_size */
-int get_metric_size_linksmetrics(size_t *m_sz, size_t *d_sz,
-				 ldmsd_msg_log_f msglog);
-int get_metric_size_nicmetrics(size_t *m_sz, size_t *d_sz,
-			       ldmsd_msg_log_f msglog);
 
 /* add metrics */
-int add_metrics_linksmetrics(ldms_set_t set, int comp_id,
+int add_metrics_linksmetrics(ldms_schema_t schema,
 			      ldmsd_msg_log_f msglog);
-int add_metrics_nicmetrics(ldms_set_t set, int comp_id,
+int add_metrics_nicmetrics(ldms_schema_t schema,
 			      ldmsd_msg_log_f msglog);
 
 /** setup after add before sampling */
 int linksmetrics_setup(ldmsd_msg_log_f msglog);
 
 /* sampling */
-int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog);
-int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog);
+int sample_metrics_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
+int sample_metrics_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
 
 #endif

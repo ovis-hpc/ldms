@@ -84,12 +84,12 @@ typedef struct {
 
 /* NETTOPO Specific */
 nettopo_coord_t nettopo_coord;
-ldms_metric_t* nettopo_metric_table;
+int* nettopo_metric_table;
 
 /** setup after add before sampling */
 int nettopo_setup(ldmsd_msg_log_f msglog);
 
 /** sample metrics */
-int sample_metrics_nettopo(ldmsd_msg_log_f msglog);
+int sample_metrics_nettopo(ldms_set_t set, ldmsd_msg_log_f msglog);
 
 #endif

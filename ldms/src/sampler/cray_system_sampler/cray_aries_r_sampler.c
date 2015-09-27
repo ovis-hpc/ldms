@@ -79,9 +79,11 @@
 
 
 /* General vars */
-static ldms_set_t set;
+static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id;
+static char *producer_name;
+static ldms_schema_t schema;
+static char *default_schema_name = "cray_aries_r";
 static int off_hsn = 0;
 
 
@@ -90,11 +92,8 @@ static ldms_set_t get_set()
 	return set;
 }
 
+static int create_metric_set(const char *instance_name, char* schema_name){
 
-static int create_metric_set(const char *path)
-{
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
 	int rc;
 	uint64_t metric_value;
 	char *s;
@@ -102,52 +101,13 @@ static int create_metric_set(const char *path)
 	char metric_name[128];
 	int i;
 
+
+	schema = ldms_schema_new(schema_name);
+        if (!schema)
+                return ENOMEM;
+
 	/*
-	 * Determine the metric set size.
 	 * Will create each metric in the set, even if the source does not exist
-	 */
-
-
-	tot_data_sz = 0;
-	tot_meta_sz = 0;
-
-	rc = 0;
-	for (i = 0; i < NS_NUM; i++){
-		switch(i){
-		case NS_LINKSMETRICS:
-			if (!off_hsn){
-				rc = get_metric_size_aries_linksmetrics(&meta_sz, &data_sz, msglog);
-			} else {
-				meta_sz = 0;
-				data_sz = 0;
-			}
-			break;
-		case NS_NICMETRICS:
-			if (!off_hsn){
-				rc = get_metric_size_aries_nicmetrics(&meta_sz, &data_sz, msglog);
-			} else {
-				meta_sz = 0;
-				data_sz = 0;
-			}
-			break;
-		default:
-			//returns zero vals if not in generic
-			rc = get_metric_size_generic(&meta_sz, &data_sz, i, msglog);
-		}
-		if (rc)
-			return rc;
-		tot_meta_sz += meta_sz;
-		tot_data_sz += data_sz;
-	}
-
-
-	/* Create the metric set */
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		return rc;
-
-	/*
-	 * Define all the metrics.
 	 */
 
 	rc = 0;
@@ -155,53 +115,93 @@ static int create_metric_set(const char *path)
 		switch(i){
 		case NS_LINKSMETRICS:
 			if (!off_hsn){
-				rc = add_metrics_aries_linksmetrics(set, comp_id, msglog);
+				rc = add_metrics_aries_linksmetrics(schema, msglog);
 				if (rc)
 					goto err;
 				rc = aries_linksmetrics_setup(msglog);
 				if (rc == ENOMEM)
 					goto err;
 				if (rc != 0) /*  Warn but OK to continue */
-					msglog(LDMS_LERROR,"cray_aries_r_sampler: linksmetrics invalid\n");
+					msglog(LDMSD_LERROR,"cray_aries_r_sampler: linksmetrics invalid\n");
 			}
 			break;
 		case NS_NICMETRICS:
 			if (!off_hsn){
-				rc = add_metrics_aries_nicmetrics(set, comp_id, msglog);
+				rc = add_metrics_aries_nicmetrics(schema, msglog);
 				if (rc)
 					goto err;
 				rc = aries_nicmetrics_setup(msglog);
 				if (rc == ENOMEM)
 					return rc;
 				if (rc != 0) /*  Warn but OK to continue */
-					msglog(LDMS_LERROR,"cray_aries_r_sampler: nicmetrics invalid\n");
+					msglog(LDMSD_LERROR,"cray_aries_r_sampler: nicmetrics invalid\n");
 			}
 			break;
 		default:
-			rc = add_metrics_generic(set, comp_id, i, msglog);
-			if (rc)
+			rc = add_metrics_generic(schema, i, msglog);
+			if (rc) {
+				msglog(LDMSD_LERROR, "%s: error in add_metrics_generic for NS %d\n",
+				       __FILE__, i);
 				goto err;
+			}
 		}
 	}
 
+
+	set = ldms_set_new(instance_name, schema);
+        if (!set){
+		msglog(LDMSD_LERROR, "%s: set null in create_metric_set\n",
+		       __FILE__);
+                rc = errno;
+                goto err;
+        }
+
 	return 0;
 
+
  err:
-	ldms_destroy_set(set);
+	ldms_schema_delete(schema);
 	return rc;
 }
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
+	char *value = NULL;
+	char *sname = NULL;
+	char *instancename = NULL;
+	char *rvalue = NULL;
 	int mvalue = -1;
 	int rc = 0;
 
 	off_hsn = 0;
 
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtol(value, NULL, 0);
+	producer_name = av_value(avl, "producer");
+	if (!producer_name){
+		msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing producer\n");
+                return ENOENT;
+	}
+
+        instancename = av_value(avl, "instance");
+	if (!instancename){
+                msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing instance\n");
+                return ENOENT;
+        }
+
+        sname = av_value(avl, "schema");
+	if (!sname){
+                sname = default_schema_name;
+        }
+        if (strlen(sname) == 0){
+                msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
+		       __FILE__);
+                return EINVAL;
+        }
+
+	if (set) {
+                msglog(LDMSD_LERROR, "%s: Set already created.\n",
+                       __FILE__);
+                return EINVAL;
+        }
 
 	//off nettopo for aries
 	set_offns_generic(NS_NETTOPO);
@@ -220,15 +220,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		} else {
 			/* if no llites, the treat as if off....
 			   this is consistent with the man page.
-			   why was this otherwise? 7/18/15 ACG */
+			   why was this otherwise? */
 			set_offns_generic(NS_LUSTRE);
-			//			rc = EINVAL;
-			//			goto out;
 		}
 	}
 #endif
 
-	value =av_value(avl, "off_hsn");
+	value = av_value(avl, "off_hsn");
 	if (value)
 		off_hsn= (atoi(value) == 1? 1:0);
 
@@ -243,9 +241,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			goto out;
 	}
 
-	value = av_value(avl, "set");
-	if (value)
-		rc = create_metric_set(value);
+
+	rc = create_metric_set(instancename, sname);
+        if (rc){
+                msglog(LDMSD_LERROR, "cray_aries_r_sampler: failed to create a metric set %d.\n", rc);
+                return rc;
+        }
+
+	ldms_set_producer_name_set(set, producer_name);
+        return 0;
 
 out:
 	return rc;
@@ -258,7 +262,6 @@ static uint64_t dt = 999999999;
 static int sample(void)
 {
 	int rc;
-	int retrc;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
@@ -272,39 +275,40 @@ static int sample(void)
 #endif
 
 	if (!set) {
-		msglog(LDMS_LDEBUG,"cray_aries_r_sampler: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG,"cray_aries_r_sampler: plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
-	retrc = 0;
-	rc = 0;
 	for (i = 0; i < NS_NUM; i++){
+		rc = 0;
 		switch(i){
 		case NS_LINKSMETRICS:
 			if (!off_hsn){
-				rc = sample_metrics_aries_linksmetrics(msglog);
+				rc = sample_metrics_aries_linksmetrics(set, msglog);
 			} else {
 				rc = 0;
 			}
 			break;
 		case NS_NICMETRICS:
 			if (!off_hsn){
-				rc = sample_metrics_aries_nicmetrics(msglog);
+				rc = sample_metrics_aries_nicmetrics(set, msglog);
 			} else {
 				rc = 0;
 			}
 			break;
 		default:
-			rc = sample_metrics_generic(i, msglog);
+			rc = sample_metrics_generic(set, i, msglog);
 		}
-		/* Continue if error, but eventually report an error code */
-		if (rc)
-			retrc = rc;
+		/* Continue if error, but report an error code */
+		if (rc) {
+			msglog(LDMSD_LDEBUG, "cray_aries_r_sampler: NS %d return error code %d\n",
+			       i, rc);
+		}
 	}
 
  out:
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 
 #if 0
 	clock_gettime(CLOCK_REALTIME, &time2);
@@ -312,30 +316,38 @@ static int sample(void)
 	uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
 	dt = end_nsec - beg_nsec;
 #endif
-	return retrc;
+
+	//always return 0 so it will continue even if there was an error in a subset of metrics
+	return 0;
 }
 
 static void term(void)
 {
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
 }
 
 static const char *usage(void)
 {
-	return  "config name=cray_aries_r_sampler component_id=<comp_id>"
-		" set=<setname> llite=<ostlist> gpu_devices=<gpulist>"
-		" off_<namespace>=1\n"
-		"    comp_id             The component id value.\n"
-		"    setname             The set name.\n",
-		"    ostlist             Lustre OSTs\n",
-		"    gpu_devices         GPU devices names\n",
-		"    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH\n",
-		"    off_<namespace>     Collection for variable classes\n",
-		"                        can be turned off: linksmetrics, nicmetrics\n",
-		"                        vmstat, loadavg, current_freemem, kgnilnd\n",
-		"                        lustre, procnetdev, nvidia\n";
+
+    return  "config name=cray_aries_r_sampler producer_name=<comp_id>"
+	    " instance_name=<instance_name> [schema=<sname>]"
+	    " set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist>"
+	    " gpu_devices=<gpulist> off_<namespace>=1\n"
+	    "    producer_name       The producer id value.\n"
+	    "    instance_name       The set name.\n",
+	    "    sname               Optional schema name. Defaults to 'cray_aries_r'\n"
+	    "    ostlist             Lustre OSTs\n",
+	    "    gpu_devices         GPU devices names\n",
+	    "    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n",
+	    "    off_<namespace>     Collection for variable classes\n",
+	    "                        can be turned off: hsn (both links and nics)\n",
+	    "                        vmstat, loadavg, current_freemem, kgnilnd\n",
+	    "                        lustre, procnetdev, nvidia\n";
 }
 
 

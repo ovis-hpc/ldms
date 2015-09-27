@@ -79,7 +79,7 @@ void free_str_list(struct str_list_head *h);
 
 #define __ALEN(x) (sizeof(x)/sizeof(*x))
 #define STATS_KEY_LEN (__ALEN(stats_key))
-char *stats_key[] = {
+static char *stats_key[] = {
 	/* metric source status (sampler induced) */
 	"status",
 

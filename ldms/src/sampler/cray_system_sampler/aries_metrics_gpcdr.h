@@ -76,24 +76,19 @@
 /* config */
 int hsn_metrics_config(int i, ldmsd_msg_log_f msglog);
 
-/* get metric_size */
-int get_metric_size_aries_linksmetrics(size_t *m_sz, size_t *d_sz,
-				 ldmsd_msg_log_f msglog);
-int get_metric_size_aries_nicmetrics(size_t *m_sz, size_t *d_sz,
-			       ldmsd_msg_log_f msglog);
 
 /* add metrics */
-int add_metrics_aries_linksmetrics(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
-int add_metrics_aries_nicmetrics(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
+int add_metrics_aries_linksmetrics(ldms_schema_t schema,
+				   ldmsd_msg_log_f msglog);
+int add_metrics_aries_nicmetrics(ldms_schema_t schema,
+				 ldmsd_msg_log_f msglog);
 
 /** setup after add before sampling */
 int aries_linksmetrics_setup(ldmsd_msg_log_f msglog);
 int aries_nicmetrics_setup(ldmsd_msg_log_f msglog);
 
 /* sampling */
-int sample_metrics_aries_linksmetrics(ldmsd_msg_log_f msglog);
-int sample_metrics_aries_nicmetrics(ldmsd_msg_log_f msglog);
+int sample_metrics_aries_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
+int sample_metrics_aries_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
 
 #endif

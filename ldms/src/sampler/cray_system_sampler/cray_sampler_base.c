@@ -202,118 +202,11 @@ int config_generic(struct attr_value_list* kwl,
 	return rc;
 };
 
-static int get_metric_size_simple(char** metric_names, int num_metrics,
-				  size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog)
-{
 
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int i, rc;
-
-	tot_data_sz = 0;
-	tot_meta_sz = 0;
-
-
-
-	for (i = 0; i < num_metrics; i++){
-		rc = ldms_get_metric_size(metric_names[i], LDMS_V_U64,
-							&meta_sz, &data_sz);
-		if (rc)
-			return rc;
-		tot_meta_sz+= meta_sz;
-		tot_data_sz+= data_sz;
-	}
-
-	*m_sz = tot_meta_sz;
-	*d_sz = tot_data_sz;
-
-	return 0;
-
-}
-
-int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
-			    cray_system_sampler_sources_t source_id,
-			    ldmsd_msg_log_f msglog)
-{
-
-	int i;
-	int rc = 0;
-
-	*m_sz = 0;
-	*d_sz = 0;
-
-	if (offns[source_id]){
-		//skip it
-		return 0;
-	}
-
-	switch (source_id){
-	case NS_NETTOPO:
-		return get_metric_size_simple(nettopo_meshcoord_metricname,
-					      NETTOPODIM,
-					      m_sz, d_sz, msglog);
-		break;
-	case NS_VMSTAT:
-		sample_metrics_vmstat_ptr = NULL;
-		return get_metric_size_simple(VMSTAT_METRICS,
-					      NUM_VMSTAT_METRICS,
-					      m_sz, d_sz, msglog);
-		break;
-	case NS_LOADAVG:
-		return get_metric_size_simple(LOADAVG_METRICS,
-					      NUM_LOADAVG_METRICS,
-					      m_sz, d_sz, msglog);
-		break;
-	case NS_ENERGY:
-		return get_metric_size_simple(ENERGY_METRICS,
-					      NUM_ENERGY_METRICS,
-					      m_sz, d_sz, msglog);
-	case NS_CURRENT_FREEMEM:
-		sample_metrics_cf_ptr = NULL;
-		return get_metric_size_simple(CURRENT_FREEMEM_METRICS,
-					      NUM_CURRENT_FREEMEM_METRICS,
-					      m_sz, d_sz, msglog);
-		break;
-	case NS_PROCNETDEV:
-		return get_metric_size_simple(PROCNETDEV_METRICS,
-					      NUM_PROCNETDEV_METRICS,
-					      m_sz, d_sz, msglog);
-		break;
-	case NS_KGNILND:
-		return get_metric_size_simple(KGNILND_METRICS,
-					      NUM_KGNILND_METRICS,
-					      m_sz, d_sz, msglog);
-		break;
-	case NS_LUSTRE:
-#ifdef HAVE_LUSTRE
-		return get_metric_size_lustre(m_sz, d_sz, msglog);
-#else
-		//unused
-		return 0;
-#endif
-		break;
-	case NS_NVIDIA:
-#ifdef HAVE_CRAY_NVIDIA
-		return get_metric_size_nvidia(m_sz, d_sz, msglog);
-#else
-		//unused
-		return 0;
-#endif
-		break;
-	default:
-		//will handle it elsewhere
-		break;
-	}
-
-	return 0;
-}
-
-
-static int add_metrics_simple(ldms_set_t set, char** metric_names,
-			      int num_metrics, ldms_metric_t** metric_table,
+static int add_metrics_simple(ldms_schema_t schema, char** metric_names,
+			      int num_metrics, int** metric_table,
 			      char (*fname)[], FILE** g_f,
-			      int comp_id, ldmsd_msg_log_f msglog)
+			      ldmsd_msg_log_f msglog)
 {
 	int i, rc;
 
@@ -321,9 +214,9 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 		return 0;
 	}
 
-	*metric_table = calloc(num_metrics, sizeof(ldms_metric_t));
+	*metric_table = calloc(num_metrics, sizeof(int));
 	if (! (*metric_table)){
-		msglog(LDMS_LERROR,"cray_system_sampler: cannot calloc metric_table\n");
+		msglog(LDMSD_LERROR,"cray_system_sampler: cannot calloc metric_table\n");
 		return ENOMEM;
 	}
 
@@ -331,7 +224,7 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 		*g_f = fopen(*fname, "r");
 		if (!(*g_f)) {
 			/* this is not necessarily an error */
-			msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
+			msglog(LDMSD_LERROR,"WARNING: Could not open the source file '%s'\n",
 			       *fname);
 		}
 	} else {
@@ -341,23 +234,22 @@ static int add_metrics_simple(ldms_set_t set, char** metric_names,
 
 
 	for (i = 0; i < num_metrics; i++){
-		(*metric_table)[i] = ldms_add_metric(set, metric_names[i],
-						     LDMS_V_U64);
-
-		if (!(*metric_table)[i]){
-			msglog(LDMS_LERROR,"cray_system_sampler: cannot add metric %d\n",
-			       i);
+		rc =  ldms_schema_metric_add(schema, metric_names[i],
+				      LDMS_V_U64);
+		if (rc < 0){
+			msglog(LDMSD_LERROR,"cray_system_sampler: cannot add metric %s\n",
+			       metric_names[i]);
 			rc = ENOMEM;
 			return rc;
 		}
-		ldms_set_user_data((*metric_table)[i], comp_id);
+		(*metric_table)[i] = rc; //this is the num used for the assignment
 	}
 
 	return 0;
 }
 
 
-int add_metrics_generic(ldms_set_t set, int comp_id,
+int add_metrics_generic(ldms_schema_t schema,
 			       cray_system_sampler_sources_t source_id,
 			       ldmsd_msg_log_f msglog)
 {
@@ -371,22 +263,24 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 
 	switch (source_id){
 	case NS_NETTOPO:
-		rc = add_metrics_simple(set,
+		rc = add_metrics_simple(schema,
 					nettopo_meshcoord_metricname,
 					NETTOPODIM,
 					&nettopo_metric_table,
 					NULL, NULL,
-					comp_id, msglog);
+					msglog);
 		if (rc != 0)
 			return rc;
 		nettopo_setup(msglog);
 		return 0;
+		break;
 	case NS_VMSTAT:
-		rc = add_metrics_simple(set, VMSTAT_METRICS,
+		sample_metrics_vmstat_ptr = NULL; //V3 CHECK
+		rc = add_metrics_simple(schema, VMSTAT_METRICS,
 					NUM_VMSTAT_METRICS,
 					&metric_table_vmstat,
 					&VMSTAT_FILE, &v_f,
-					comp_id, msglog);
+					msglog);
 		if (rc != 0) {
 			sample_metrics_vmstat_ptr == NULL;
 			return rc;
@@ -403,11 +297,11 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 
 		break;
 	case NS_LOADAVG:
-		rc = add_metrics_simple(set, LOADAVG_METRICS,
+		rc = add_metrics_simple(schema, LOADAVG_METRICS,
 					  NUM_LOADAVG_METRICS,
 					  &metric_table_loadavg,
 					  &LOADAVG_FILE, &l_f,
-					  comp_id, msglog);
+					  msglog);
 		if (rc != 0)
 			return rc;
 		if (l_f != NULL){
@@ -423,21 +317,22 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 			ene_f[i] = NULL;
 		}
 		/* note this has an array of files that we will have to open and close each time */
-		rc = add_metrics_simple(set, ENERGY_METRICS,
+		rc = add_metrics_simple(schema, ENERGY_METRICS,
 					NUM_ENERGY_METRICS,
 					&metric_table_energy,
 					NULL, NULL,
-					comp_id, msglog);
+					msglog);
 		if (rc != 0)
 			return rc;
 		break;
 	case NS_CURRENT_FREEMEM:
 		cf_m = 0;
-		rc = add_metrics_simple(set, CURRENT_FREEMEM_METRICS,
+		sample_metrics_cf_ptr = NULL; //V3 CHECK
+		rc = add_metrics_simple(schema, CURRENT_FREEMEM_METRICS,
 					NUM_CURRENT_FREEMEM_METRICS,
 					&metric_table_current_freemem,
 					&CURRENT_FREEMEM_FILE, &cf_f,
-					comp_id, msglog);
+					msglog);
 		if (rc != 0)
 			return rc; //This will NOT happen if the file DNE
 		if (cf_f != NULL) {
@@ -453,27 +348,30 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 
 		break;
 	case NS_PROCNETDEV:
-		rc = add_metrics_simple(set, PROCNETDEV_METRICS,
-					  NUM_PROCNETDEV_METRICS,
-					  &metric_table_procnetdev,
-					  &PROCNETDEV_FILE, &pnd_f,
-					  comp_id, msglog);
+		rc = add_metrics_simple(schema, PROCNETDEV_METRICS,
+					NUM_PROCNETDEV_METRICS,
+					&metric_table_procnetdev,
+					&PROCNETDEV_FILE, &pnd_f,
+					msglog);
 		if (rc != 0)
 			return rc;
 		rc = procnetdev_setup(msglog);
 		if (rc != 0) /* Warn but OK to continue */
-			msglog(LDMS_LERROR,"cray_system_sampler: procnetdev invalid\n");
+			msglog(LDMSD_LERROR,"cray_system_sampler: procnetdev invalid\n");
 		break;
 	case NS_KGNILND:
-		return add_metrics_simple(set, KGNILND_METRICS,
+		return add_metrics_simple(schema, KGNILND_METRICS,
 					  NUM_KGNILND_METRICS,
 					  &metric_table_kgnilnd,
 					  &KGNILND_FILE, &k_f,
-					  comp_id, msglog);
+					  msglog);
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
-		return add_metrics_lustre(set, comp_id, msglog);
+		//V3 CHECK - dont know whats in the get_metric_size that might set up something
+		//get_metric_size_lustre(m_sz, d_sz, msglog);
+		//FIXME TODO : Lustre will have to be fixed
+		return add_metrics_lustre(schema, msglog);
 #else
 		//default unused
 		return 0;
@@ -481,15 +379,15 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 		break;
 	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
-		rc = add_metrics_nvidia(set, comp_id, msglog);
+		rc = add_metrics_nvidia(schema, msglog);
 		if (rc != 0) {
-			msglog(LDMS_LERROR, "Error adding metrics nvidia\n");
+			msglog(LDMSD_LERROR, "Error adding metrics nvidia\n");
 			return rc;
 		}
 		// if this fails because cannot load the library will have nvidia_valid = 0
 		rc = nvidia_setup(msglog);
 		if (rc != 0) /* Warn but ok to continue...nvidia_valid may be 0 */
-			msglog(LDMS_LDEBUG, "cray_system_sampler: cray_nvidia invalid\n");
+			msglog(LDMSD_LDEBUG, "cray_system_sampler: cray_nvidia invalid\n");
 		return 0;
 #else
 		//default unused
@@ -504,7 +402,7 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 	return 0;
 }
 
-int sample_metrics_generic(cray_system_sampler_sources_t source_id,
+int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_id,
 			   ldmsd_msg_log_f msglog)
 {
 	int rc = 0;
@@ -514,38 +412,43 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 		return 0;
 	}
 
+	if (set == NULL){
+		//this shouldnt happen
+		return 0;
+	}
+
 	switch (source_id){
 	case NS_NETTOPO:
-		rc = sample_metrics_nettopo(msglog);
+		rc = sample_metrics_nettopo(set, msglog);
 		break;
 	case NS_VMSTAT:
 		if (sample_metrics_vmstat_ptr != NULL)
-			rc = sample_metrics_vmstat_ptr(msglog);
+			rc = sample_metrics_vmstat_ptr(set, msglog);
 		else
 			rc = 0;
 		break;
 	case NS_CURRENT_FREEMEM:
 		if (sample_metrics_cf_ptr != NULL)
-			rc = sample_metrics_cf_ptr(msglog);
+			rc = sample_metrics_cf_ptr(set, msglog);
 		else
 			rc = 0;
 		break;
 	case NS_ENERGY:
-		rc = sample_metrics_energy(msglog);
+		rc = sample_metrics_energy(set, msglog);
 		//ok if any of these fail
 		break;
 	case NS_LOADAVG:
-		rc = sample_metrics_loadavg(msglog);
+		rc = sample_metrics_loadavg(set, msglog);
 		break;
 	case NS_KGNILND:
-		rc = sample_metrics_kgnilnd(msglog);
+		rc = sample_metrics_kgnilnd(set, msglog);
 		break;
 	case NS_PROCNETDEV:
-		rc = sample_metrics_procnetdev(msglog);
+		rc = sample_metrics_procnetdev(set, msglog);
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
-		rc = sample_metrics_lustre(msglog);
+		rc = sample_metrics_lustre(set, msglog);
 #else
 		//do nothing
 		rc = 0;
@@ -553,7 +456,7 @@ int sample_metrics_generic(cray_system_sampler_sources_t source_id,
 		break;
 	case NS_NVIDIA:
 #ifdef HAVE_CRAY_NVIDIA
-		rc = sample_metrics_nvidia(msglog);
+		rc = sample_metrics_nvidia(set, msglog);
 #else
 		//do nothing
 		rc = 0;

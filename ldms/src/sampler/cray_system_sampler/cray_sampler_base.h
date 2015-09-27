@@ -124,15 +124,11 @@ int get_offns_generic(cray_system_sampler_sources_t i);
 int config_generic(struct attr_value_list *kwl,
 		   struct attr_value_list *avl,
 		   ldmsd_msg_log_f msglog);
-int get_metric_size_generic(size_t *m_sz, size_t *d_sz,
-			    cray_system_sampler_sources_t source_id,
-			    ldmsd_msg_log_f msglog);
-int add_metrics_generic(ldms_set_t set, int comp_id,
-			cray_system_sampler_sources_t source_id,
-			ldmsd_msg_log_f msglog);
-int sample_metrics_generic(cray_system_sampler_sources_t source_id,
+int add_metrics_generic(ldms_schema_t schema,
+		       cray_system_sampler_sources_t source_id,
+		       ldmsd_msg_log_f msglog);
+int sample_metrics_generic(ldms_set_t set,
+			   cray_system_sampler_sources_t source_id,
 			   ldmsd_msg_log_f msglog);
 
 #endif
-
-

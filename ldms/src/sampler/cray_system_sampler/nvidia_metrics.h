@@ -74,33 +74,11 @@
 int config_nvidia(struct attr_value_list* kwl,
 		  struct attr_value_list* avl,
 		  ldmsd_msg_log_f msglog);
-int get_metric_size_nvidia(size_t *m_sz, size_t *d_sz,
-			   ldmsd_msg_log_f msglog);
-int add_metrics_nvidia(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog);
+int add_metrics_nvidia(ldms_schema_t schema,
+		       ldmsd_msg_log_f msglog);
 int nvidia_setup(ldmsd_msg_log_f msglog);
 int nvidia_shutdown(ldmsd_msg_log_f msglog);
-int sample_metrics_nvidia(ldmsd_msg_log_f msglog);
+int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog);
 
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

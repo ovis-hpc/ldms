@@ -72,101 +72,56 @@
 
 /* LUSTRE SPECIFIC */
 struct str_map *lustre_idx_map = NULL;
-struct lustre_svc_stats_head lustre_svc_head = {0};
+struct str_list_head *llite_str_list = NULL;
+struct lustre_metric_src_list lms_list = {0};
 
-int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
-			   ldmsd_msg_log_f msglog)
+int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 {
 	struct lustre_svc_stats *lss;
-	size_t msize = 0;
-	size_t dsize = 0;
-	size_t m, d;
-	char name[CSS_LUSTRE_NAME_MAX];
+	struct lustre_metric_src *lms;
+	struct str_list *sl;
 	int i;
 	int rc;
-
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
-					, lss->name);
-			rc = ldms_get_metric_size(name, LDMS_V_U64, &m, &d);
-			if (rc)
-				return rc;
-			msize += m;
-			dsize += d;
-		}
-	}
-	*m_sz = msize;
-	*d_sz = dsize;
-	return 0;
-}
-
-
-int add_metrics_lustre(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog)
-{
-	struct lustre_svc_stats *lss;
-	int i;
 	int count = 0;
 	char name[CSS_LUSTRE_NAME_MAX];
+	static char path_tmp[4096];
+	static char suffix[128];
 
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		for (i=0; i<LUSTRE_METRICS_LEN; i++) {
-			snprintf(name, CSS_LUSTRE_NAME_MAX, "%s#stats.%s", LUSTRE_METRICS[i]
-							, lss->name);
-			ldms_metric_t m = ldms_add_metric(set, name,
-								LDMS_V_U64);
-			if (!m)
-				return ENOMEM;
-			lss->metrics[i+1] = m;
-			ldms_set_user_data(m, comp_id);
-			count++;
-		}
+	LIST_FOREACH(sl, llite_str_list, link) {
+		snprintf(path_tmp, sizeof(path_tmp), "/proc/fs/lustre/llite/%s-*/stats", sl->str);
+		snprintf(suffix, sizeof(suffix), "#llite.%s", sl->str);
+		rc = stats_construct_routine(schema, path_tmp,
+				"client.lstats.", suffix, &lms_list, LUSTRE_METRICS,
+				LUSTRE_METRICS_LEN, lustre_idx_map);
+		if (rc)
+			return rc;
 	}
+
 	return 0;
 }
-
-
 
 int handle_llite(const char *llite)
 {
-	char *_llite = strdup(llite);
-	if (!_llite)
-		return ENOMEM;
-	char *saveptr = NULL;
-	char *tok = strtok_r(_llite, ",", &saveptr);
-	struct lustre_svc_stats *lss;
-	char path[CSS_LUSTRE_PATH_MAX];
-	while (tok) {
-		snprintf(path, CSS_LUSTRE_PATH_MAX,"/proc/fs/lustre/llite/%s-*/stats",tok);
-		lss = lustre_svc_stats_alloc(path, LUSTRE_METRICS_LEN+1);
-		lss->name = strdup(tok);
-		if (!lss->name)
-			goto err;
-		lss->key_id_map = lustre_idx_map;
-		LIST_INSERT_HEAD(&lustre_svc_head, lss, link);
-		tok = strtok_r(NULL, ",", &saveptr);
-	}
-	free(_llite);
+	struct str_list_head *head = construct_str_list(llite);
+	llite_str_list = construct_str_list(llite);
+	if (!llite_str_list)
+		return errno;
 	return 0;
-err:
-	lustre_svc_stats_list_free(&lustre_svc_head);
-	return ENOMEM;
 }
 
-int sample_metrics_lustre(ldmsd_msg_log_f msglog)
+int sample_metrics_lustre(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
+	struct lustre_metric_src *lms;
 	struct lustre_svc_stats *lss;
 	int rc;
 	int count = 0;
 
-	LIST_FOREACH(lss, &lustre_svc_head, link) {
-		rc = lss_sample(lss);
+	LIST_FOREACH(lms, &lms_list, link) {
+		rc = lms_sample(set, lms);
 		if (rc && rc != ENOENT)
 			return rc;
 		count += LUSTRE_METRICS_LEN;
 	}
+
 	return 0;
 }
-
-

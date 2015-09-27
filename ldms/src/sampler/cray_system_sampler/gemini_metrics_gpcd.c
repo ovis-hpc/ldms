@@ -153,8 +153,8 @@ static gpcd_context_t *ns_glp_int_ctx;
 static gpcd_mmr_list_t *ns_glp_listp;
 static gpcd_mmr_list_t *ns_glp_plistp;
 static uint64_t* ns_glp_base_acc; /**< per base metric accumulator */
-static ldms_metric_t* ns_glp_base_metric_table;
-static ldms_metric_t* ns_glp_derived_metric_table;
+static int* ns_glp_base_metric_table;
+static int* ns_glp_derived_metric_table;
 static int ns_glp_valid;
 
 static double ns_glp_max_link_bw[GEMINI_NUM_LOGICAL_LINKS];
@@ -217,69 +217,6 @@ static int __links_metric_name(int isbase, int nameidx,
 	return 0;
 }
 
-int get_metric_size_nic_perf(size_t *m_sz, size_t *d_sz, ldmsd_msg_log_f msglog)
-{
-	size_t tot_meta_sz = 0;
-	size_t tot_data_sz = 0;
-	size_t meta_sz = 0;
-	size_t data_sz = 0;
-	char newname[96];
-	int i, j;
-	int rc;
-
-	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_NICMETRICS; i++){
-			sprintf(newname, "%s", nicmetrics_basename[i]);
-			rc = ldms_get_metric_size(newname, LDMS_V_U64,
-						  &meta_sz, &data_sz);
-			if (rc)
-				return rc;
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
-		}
-
-		ns_nic_base_metric_table =
-			calloc(NUM_NICMETRICS, sizeof(ldms_metric_t));
-		if (!ns_nic_base_metric_table)
-			return ENOMEM;
-
-		/* allocate accumulator memory here so metric_count aligns */
-		ns_nic_base_acc =
-			calloc(NUM_NICMETRICS, sizeof(uint64_t));
-		if (!ns_nic_base_acc)
-			return ENOMEM;
-	}
-
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_NICMETRICS; i++) {
-			sprintf(newname, "%s_%s %s",
-				nicmetrics_derivedprefix,
-				nicmetrics_basename[i],
-				nicmetrics_derivedunit);
-			rc = ldms_get_metric_size(newname, LDMS_V_U64,
-						  &meta_sz, &data_sz);
-			if (rc)
-				return rc;
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
-		}
-
-		ns_nic_derived_metric_table =
-			calloc(NUM_NICMETRICS, sizeof(ldms_metric_t));
-		if (!ns_nic_derived_metric_table)
-			return ENOMEM;
-
-	}
-
-	*m_sz = tot_meta_sz;
-	*d_sz = tot_data_sz;
-
-	return 0;
-
-}
-
 
 int hsn_metrics_config(int i, char* fname){
 	if (i >= HSN_METRICS_END){
@@ -305,46 +242,30 @@ int hsn_metrics_config(int i, char* fname){
 }
 
 
-int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
-				  ldmsd_msg_log_f msglog)
+
+
+
+int add_metrics_gem_link_perf(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
+
 	char newname[96];
-	int metric_count;
+	int metric_no;
 	int useme;
 	int i, j;
 	int rc;
 
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
-
 	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		metric_count = 0;
-		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
-			for (j = 0; j < NUM_NS_GLP_BASENAME; j++){
-				__links_metric_name(1, j, i, newname);
-				rc = ldms_get_metric_size(newname,
-							  LDMS_V_U64,
-							  &meta_sz,
-							  &data_sz);
-				if (rc)
-					return rc;
-				tot_meta_sz += meta_sz;
-				tot_data_sz += data_sz;
-				metric_count++;
-			}
-		}
+		metric_no = GEMINI_NUM_LOGICAL_LINKS * NUM_NS_GLP_BASENAME + 1;
 
 		ns_glp_base_metric_table =
-			calloc(metric_count, sizeof(ldms_metric_t));
+			calloc(metric_no, sizeof(int));
 		if (!ns_glp_base_metric_table)
 			return ENOMEM;
 
 		/* allocate accumulator memory here so metric_count aligns */
 		ns_glp_base_acc =
-			calloc(metric_count, sizeof(uint64_t));
+			calloc(metric_no, sizeof(uint64_t));
 		if (!ns_glp_base_acc)
 			return ENOMEM;
 	}
@@ -352,31 +273,54 @@ int get_metric_size_gem_link_perf(size_t *m_sz, size_t *d_sz,
 
 	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		metric_count = 0;
-		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
-			for (j = 0; j < NUM_NS_GLP_DERIVEDNAME; j++) {
-				__links_metric_name(0, j, i, newname);
-				rc = ldms_get_metric_size(newname,
-							  LDMS_V_U64,
-							  &meta_sz,
-							  &data_sz);
-				tot_meta_sz += meta_sz;
-				tot_data_sz += data_sz;
-				metric_count++;
-			}
-		}
+		metric_no = GEMINI_NUM_LOGICAL_LINKS * NUM_NS_GLP_DERIVEDNAME + 1;
 
 		ns_glp_derived_metric_table =
-			calloc(metric_count, sizeof(ldms_metric_t));
+			calloc(metric_no, sizeof(int));
 		if (!ns_glp_derived_metric_table)
 			return ENOMEM;
 	}
 
-	*m_sz = tot_meta_sz;
-	*d_sz = tot_data_sz;
+
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		metric_no = 0;
+		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
+			for (j = 0; j < NUM_NS_GLP_BASENAME; j++){
+				__links_metric_name(1, j, i, newname);
+				rc = ldms_schema_metric_add(schema, newname, LDMS_V_U64);
+				if (rc < 0){
+					msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+					       newname);
+					return ENOMEM;
+				}
+				ns_glp_base_metric_table[metric_no] = rc; //this is the num used for the assignment
+				metric_no++;
+			}
+		}
+	}
+
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		metric_no = 0;
+		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
+			for (j = 0; j < NUM_NS_GLP_DERIVEDNAME; j++) {
+				__links_metric_name(0, j, i, newname);
+				rc = ldms_schema_metric_add(schema, newname, LDMS_V_U64);
+				if (rc < 0){
+					msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+					       newname);
+					return ENOMEM;
+				}
+				ns_glp_derived_metric_table[metric_no] = rc; //this is the num used for the assignment
+				metric_no++;
+			}
+		}
+	}
 
 	return 0;
 }
+
 
 int nic_perf_setup(ldmsd_msg_log_f msglog)
 {
@@ -385,7 +329,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_nic_curr_ctx = nic_perf_create_context(&msglog);
 	if (!ns_nic_curr_ctx) {
-		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
+		msglog(LDMSD_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -393,7 +337,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_nic_prev_ctx = nic_perf_create_context(&msglog);
 	if (!ns_nic_prev_ctx) {
-		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
+		msglog(LDMSD_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -406,7 +350,7 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 	error = gpcd_context_read_mmr_vals(ns_nic_prev_ctx);
 
 	if (error) {
-		msglog(LDMS_LERROR,"nic_perf: Error in gpcd_context_read_mmr_vals\n");
+		msglog(LDMSD_LERROR,"nic_perf: Error in gpcd_context_read_mmr_vals\n");
 		ns_nic_valid = 0;
 		return EINVAL;
 	}
@@ -418,27 +362,46 @@ int nic_perf_setup(ldmsd_msg_log_f msglog)
 }
 
 
-int add_metrics_nic_perf(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
+int add_metrics_nic_perf(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 {
+
 	char newname[96];
 	int i, j;
-	int rc = 0;
+	int rc;
+
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		ns_nic_base_metric_table =
+			calloc(NUM_NICMETRICS, sizeof(int));
+		if (!ns_nic_base_metric_table)
+			return ENOMEM;
+
+		/* allocate accumulator memory here so metric_count aligns */
+		ns_nic_base_acc =
+			calloc(NUM_NICMETRICS, sizeof(uint64_t));
+		if (!ns_nic_base_acc)
+			return ENOMEM;
+	}
+
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		ns_nic_derived_metric_table =
+			calloc(NUM_NICMETRICS, sizeof(int));
+		if (!ns_nic_derived_metric_table)
+			return ENOMEM;
+	}
 
 
 	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_NICMETRICS; i++){
 			sprintf(newname, "%s", nicmetrics_basename[i]);
-			ns_nic_base_metric_table[i] =
-				ldms_add_metric(set, newname, LDMS_V_U64);
-			if (!ns_nic_base_metric_table[i]) {
-				msglog(LDMS_LERROR,"Bad add_metric %d\n",i);
-				rc = ENOMEM;
-				return rc;
+			rc = ldms_schema_metric_add(schema, newname, LDMS_V_U64);
+			if (rc < 0){
+				msglog(LDMSD_LERROR,"Failed to add metric <%s>\n",newname);
+				return ENOMEM;
 			}
-			/* XXX comp_id */
-			ldms_set_user_data(ns_nic_base_metric_table[i],
-					   comp_id);
+			ns_nic_base_metric_table[i] = rc; //this is the num used for the assignment
 		}
 	}
 
@@ -449,77 +412,18 @@ int add_metrics_nic_perf(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 				nicmetrics_derivedprefix,
 				nicmetrics_basename[i],
 				nicmetrics_derivedunit);
-			ns_nic_derived_metric_table[i] =
-				ldms_add_metric(set, newname, LDMS_V_U64);
-			if (!ns_nic_derived_metric_table[i]) {
-				msglog(LDMS_LERROR,"Bad add_metric %d\n", i);
-				rc = ENOMEM;
-				return rc;
+			rc = ldms_schema_metric_add(schema, newname, LDMS_V_U64);
+			if (rc < 0){
+				msglog(LDMSD_LERROR,"Failed to add metric <%s>\n",newname);
+				return ENOMEM;
 			}
-			/* XXX comp_id */
-			ldms_set_user_data(ns_nic_derived_metric_table[i],
-					   comp_id);
+			ns_nic_derived_metric_table[i] = rc; //this is the num used for the assignment
 		}
 	}
 
- err:
-	return rc;
+	return 0;
 }
 
-
-int add_metrics_gem_link_perf(ldms_set_t set, int comp_id,
-			      ldmsd_msg_log_f msglog)
-{
-
-	char newname[96];
-	int metric_no;
-	int i, j;
-	int rc = 0;
-
-	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		metric_no = 0;
-		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
-			for (j = 0; j < NUM_NS_GLP_BASENAME; j++){
-				__links_metric_name(1, j, i, newname);
-				ns_glp_base_metric_table[metric_no] =
-					ldms_add_metric(set, newname,
-							LDMS_V_U64);
-				if (!ns_glp_base_metric_table[metric_no])
-					return ENOMEM;
-
-				/* XXX comp_id */
-				ldms_set_user_data(
-					ns_glp_base_metric_table[metric_no++],
-					comp_id);
-			}
-		}
-	}
-
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		metric_no = 0;
-		for (i = 0; i < GEMINI_NUM_LOGICAL_LINKS; i++) {
-			for (j = 0; j < NUM_NS_GLP_DERIVEDNAME; j++) {
-				__links_metric_name(0, j, i, newname);
-				ns_glp_derived_metric_table[metric_no] =
-					ldms_add_metric(set, newname,
-							LDMS_V_U64);
-				if (!ns_glp_derived_metric_table[metric_no])
-					return ENOMEM;
-
-				/* XXX comp_id */
-				ldms_set_user_data(
-					ns_glp_derived_metric_table[
-						metric_no++],
-					comp_id);
-			}
-		}
-	}
-
- err:
-	return rc;
-}
 
 
 int gem_link_perf_setup(ldmsd_msg_log_f msglog)
@@ -537,14 +441,14 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 
 	ns_glp_curr_ctx = gem_link_perf_create_context(&msglog);
 	if (!ns_glp_curr_ctx) {
-		msglog(LDMS_LERROR,"ns_glp: gpcd_create_context failed");
+		msglog(LDMSD_LERROR,"ns_glp: gpcd_create_context failed");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
 
 	ns_glp_prev_ctx = gem_link_perf_create_context(&msglog);
 	if (!ns_glp_prev_ctx) {
-		msglog(LDMS_LERROR,"ns_nic: gpcd_create_context failed");
+		msglog(LDMSD_LERROR,"ns_nic: gpcd_create_context failed");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
@@ -552,7 +456,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 	/*  Allocate memory for struct state */
 	ns_glp_state = malloc(sizeof(gemini_state_t));
 	if (!ns_glp_state) {
-		msglog(LDMS_LERROR,"ns_glp: Error allocating memory for state\n");
+		msglog(LDMSD_LERROR,"ns_glp: Error allocating memory for state\n");
 		ns_glp_valid = 0;
 		return ENOMEM;
 	}
@@ -565,7 +469,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 						   &ns_glp_max_link_bw,
 						   &ns_glp_tiles_per_dir);
 	if (rc != 0){
-		msglog(LDMS_LERROR,"ns_glp: Error parsing interconnect file\n");
+		msglog(LDMSD_LERROR,"ns_glp: Error parsing interconnect file\n");
 		ns_glp_valid = 0;
 		return rc;
 	}
@@ -576,7 +480,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 			error = tcoord_to_tid(i, j,
 					      &(ns_glp_rc_to_tid[i][j]));
 			if (error) {
-				msglog(LDMS_LERROR,"ns_glp: Error converting r,c to"
+				msglog(LDMSD_LERROR,"ns_glp: Error converting r,c to"
 				       " tid\n");
 				ns_glp_valid = 0;
 				return error;
@@ -591,7 +495,7 @@ int gem_link_perf_setup(ldmsd_msg_log_f msglog)
 	error = gpcd_context_read_mmr_vals(ns_glp_prev_ctx);
 
 	if (error) {
-		msglog(LDMS_LERROR,"ns_glp: Error in gpcd_context_read_mmr_vals\n");
+		msglog(LDMSD_LERROR,"ns_glp: Error in gpcd_context_read_mmr_vals\n");
 		ns_glp_valid = 0;
 		return EINVAL;
 	}
@@ -655,7 +559,7 @@ static uint64_t __nic_perf_metric_calc(int metric, uint64_t vals[])
 }
 
 
-int sample_metrics_nic_perf(ldmsd_msg_log_f msglog)
+int sample_metrics_nic_perf(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 
 	int metric_no;
@@ -675,7 +579,7 @@ int sample_metrics_nic_perf(ldmsd_msg_log_f msglog)
 
 	error = gpcd_context_read_mmr_vals(ns_nic_curr_ctx);
 	if (error) {
-		msglog(LDMS_LERROR,"nic_perf: Error reading mmr_vals\n");
+		msglog(LDMSD_LERROR,"nic_perf: Error reading mmr_vals\n");
 		rc = EINVAL;
 		return rc;
 	} else {
@@ -724,13 +628,13 @@ int sample_metrics_nic_perf(ldmsd_msg_log_f msglog)
 			/* end user has to deal with "rollover" */
 			ns_nic_base_acc[i] += temp;
 			v.v_u64 = ns_nic_base_acc[i];
-			ldms_set_metric(ns_nic_base_metric_table[i], &v);
+			ldms_metric_set(set, ns_nic_base_metric_table[i], &v);
 		}
 		if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)){
 			v.v_u64 = (double)(temp)/
 				((double)time_delta/1000000000);
-			ldms_set_metric(ns_nic_derived_metric_table[i], &v);
+			ldms_metric_set(set, ns_nic_derived_metric_table[i], &v);
 		}
 	}
 
@@ -900,7 +804,7 @@ static uint64_t __gem_link_derived_metric_calc(
 	}
 }
 
-int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
+int sample_metrics_gem_link_perf(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	int metric_no;
 	int done = 0;
@@ -929,7 +833,7 @@ int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
 
 	error = gpcd_context_read_mmr_vals(ns_glp_curr_ctx);
 	if (error) {
-		msglog(LDMS_LERROR,"nic_perf: Error reading mmr_vals\n");
+		msglog(LDMSD_LERROR,"nic_perf: Error reading mmr_vals\n");
 		rc = EINVAL;
 		return rc;
 	} else {
@@ -1003,9 +907,9 @@ int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
 					__gem_link_base_metric_calc(
 						i, j, sample_link_ctrs);
 				v.v_u64 = ns_glp_base_acc[metric_no];
-				ldms_set_metric(
-					ns_glp_base_metric_table[metric_no++],
-					&v);
+				ldms_metric_set(set,
+						ns_glp_base_metric_table[metric_no++],
+						&v);
 			}
 		}
 	}
@@ -1022,9 +926,9 @@ int sample_metrics_gem_link_perf(ldmsd_msg_log_f msglog)
 			for (j = 0; j < NUM_NS_GLP_DERIVEDNAME; j++) {
 				v.v_u64 = __gem_link_derived_metric_calc(
 					i, j, sample_link_ctrs, time_delta);
-				ldms_set_metric(
-					ns_glp_derived_metric_table[metric_no],
-					&v);
+				ldms_metric_set(set,
+						ns_glp_derived_metric_table[metric_no],
+						&v);
 				metric_no++;
 			}
 		}

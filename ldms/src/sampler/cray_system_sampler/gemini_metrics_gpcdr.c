@@ -158,8 +158,8 @@ typedef enum {
 /* LINKSMETRICS Specific */
 static FILE *lm_f;
 static uint64_t linksmetrics_prev_time;
-static ldms_metric_t* linksmetrics_base_metric_table;
-static ldms_metric_t* linksmetrics_derived_metric_table;
+static int* linksmetrics_base_metric_table;
+static int* linksmetrics_derived_metric_table;
 static uint64_t*** linksmetrics_base_values; /**< holds curr & prev raw module
 					   data for derived computation */
 static uint64_t** linksmetrics_base_diff; /**< holds diffs for the module values */
@@ -179,8 +179,8 @@ static char* rtrfile = NULL; /**< needed for gpcd, but also used to get maxbw fo
 static FILE *nm_f;
 static uint64_t nicmetrics_prev_time;
 static int nicmetrics_time_multiplier;
-static ldms_metric_t* nicmetrics_base_metric_table;
-static ldms_metric_t* nicmetrics_derived_metric_table;
+static int* nicmetrics_base_metric_table;
+static int* nicmetrics_derived_metric_table;
 static uint64_t** nicmetrics_base_values; /**< holds curr & prev raw module data
 					for derived computation */
 static int nicmetrics_values_idx; /**< index of the curr values for the above */
@@ -236,7 +236,7 @@ static int bwhelper_maxbwperdir(ldmsd_msg_log_f msglog)
 						   &tiles_per_dir_junk);
 
 	if (rc != 0){
-		msglog(LDMS_LERROR,"linksmetrics: Error parsing interconnect file\n");
+		msglog(LDMSD_LERROR,"linksmetrics: Error parsing interconnect file\n");
 		return rc;
 	}
 
@@ -257,7 +257,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 
 	pipe = popen(RCAHELPER_CMD, "r");
 	if (!pipe) {
-		msglog(LDMS_LERROR,"gemini_metrics: rca-helper fail\n");
+		msglog(LDMSD_LERROR,"gemini_metrics: rca-helper fail\n");
 		rc = EINVAL;
 		goto err;
 	}
@@ -287,7 +287,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 				if (ntiles == -1) {
 					if (strcmp(linksmetrics_dir[i],
 						   pch) != 0){
-						msglog(LDMS_LERROR,"rca-helper: err %d <%s>\n",
+						msglog(LDMSD_LERROR,"rca-helper: err %d <%s>\n",
 						       i, pch);
 						rc = EINVAL;
 						goto err;
@@ -306,7 +306,7 @@ int rcahelper_tilesperdir(ldmsd_msg_log_f msglog)
 
 	/** NOTE: does not include the hostfacing dir */
 	if (i != NUM_LINKSMETRICS_DIR) {
-		msglog(LDMS_LERROR,"rca-helper: err (i = %d NUM_LINKSMETRICS_DIR = %d)\n",
+		msglog(LDMSD_LERROR,"rca-helper: err (i = %d NUM_LINKSMETRICS_DIR = %d)\n",
 		       i, NUM_LINKSMETRICS_DIR);
 		rc = EINVAL;
 		goto err;
@@ -352,140 +352,6 @@ int hsn_metrics_config(int i, char* fname){
 }
 
 
-int get_metric_size_linksmetrics(size_t *m_sz, size_t *d_sz,
-				 ldmsd_msg_log_f msglog)
-{
-	size_t tot_meta_sz = 0;
-	size_t tot_data_sz = 0;
-	size_t meta_sz = 0;
-	size_t data_sz = 0;
-	char newname[96];
-	int count;
-	int num_possible_base_names = 0;
-	int i, j;
-	int rc;
-
-	count = 0;
-	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_LINKSMETRICS_BASENAME; i++){
-			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++){
-				__links_metric_name(1, i, j, newname);
-				rc = ldms_get_metric_size(newname,
-							  LDMS_V_U64,
-							  &meta_sz,
-							  &data_sz);
-				if (rc)
-					return rc;
-				tot_meta_sz += meta_sz;
-				tot_data_sz += data_sz;
-				count++;
-			}
-		}
-
-		linksmetrics_base_metric_table =
-			calloc(count, sizeof(ldms_metric_t));
-		if (!linksmetrics_base_metric_table)
-			return ENOMEM;
-
-		/* keep track of the next possible index to use */
-		linksmetrics_indicies = calloc(count, sizeof(int));
-		if (!linksmetrics_indicies)
-			return ENOMEM;
-
-	}
-
-	count = 0;
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
-			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++) {
-				__links_metric_name(0, i, j, newname);
-				rc = ldms_get_metric_size(newname,
-							  LDMS_V_U64,
-							  &meta_sz,
-							  &data_sz);
-				if (rc)
-					return rc;
-				tot_meta_sz += meta_sz;
-				tot_data_sz += data_sz;
-				count++;
-			}
-		}
-
-		linksmetrics_derived_metric_table =
-			calloc(count, sizeof(ldms_metric_t));
-		if (!linksmetrics_derived_metric_table)
-			return ENOMEM;
-
-	}
-
-	*m_sz = tot_meta_sz;
-	*d_sz = tot_data_sz;
-
-	return 0;
-
-}
-
-int get_metric_size_nicmetrics(size_t *m_sz, size_t *d_sz,
-			       ldmsd_msg_log_f msglog)
-{
-	size_t tot_meta_sz = 0;
-	size_t tot_data_sz = 0;
-	size_t meta_sz = 0;
-	size_t data_sz = 0;
-	char newname[96];
-	int i, j;
-	int rc;
-
-	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_NICMETRICS; i++){
-			rc = ldms_get_metric_size(nicmetrics_basename[i],
-						  LDMS_V_U64,
-						  &meta_sz, &data_sz);
-			if (rc)
-				return rc;
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
-		}
-
-		nicmetrics_base_metric_table =
-			calloc(NUM_NICMETRICS, sizeof(ldms_metric_t));
-		if (!nicmetrics_base_metric_table)
-			return ENOMEM;
-	}
-
-	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
-	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		for (i = 0; i < NUM_NICMETRICS; i++) {
-			sprintf(newname, "%s_%s %s",
-				nicmetrics_derivedprefix,
-				nicmetrics_basename[i],
-				nicmetrics_derivedunit);
-			rc = ldms_get_metric_size(newname, LDMS_V_U64,
-						  &meta_sz, &data_sz);
-			if (rc)
-				return rc;
-			tot_meta_sz += meta_sz;
-			tot_data_sz += data_sz;
-		}
-
-		nicmetrics_derived_metric_table =
-			calloc(NUM_NICMETRICS, sizeof(ldms_metric_t));
-		if (!nicmetrics_derived_metric_table)
-			return ENOMEM;
-
-	}
-
-	*m_sz = tot_meta_sz;
-	*d_sz = tot_data_sz;
-
-	return 0;
-
-}
-
-
 int linksmetrics_setup(ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
@@ -504,7 +370,7 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 
 	lm_f = fopen(LINKSMETRICS_FILE, "r");
 	if (!lm_f) {
-		msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
+		msglog(LDMSD_LERROR,"WARNING: Could not open the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		return EINVAL;
 
@@ -571,13 +437,13 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
 		    &linksmetrics_prev_time, units);
 	if (rc != 3) {
-		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+		msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		rc = EINVAL;
 		return rc;
 	}
 	if (strcmp(units,"ms") != 0){
-		msglog(LDMS_LERROR,"linksmetrics: wrong gpcdr interface\n");
+		msglog(LDMSD_LERROR,"linksmetrics: wrong gpcdr interface\n");
 		rc = EINVAL;
 		return rc;
 	}
@@ -590,7 +456,7 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &val,
 			    units);
 		if (rc != 3) {
-			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 			       LINKSMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -607,7 +473,7 @@ int linksmetrics_setup(ldmsd_msg_log_f msglog)
 			}
 		}
 		if ( (dir < 0) || (lastbase == NUM_LINKSMETRICS_BASENAME)){
-			msglog(LDMS_LERROR,"cray_system_sampler: linksmetric bad metric\n");
+			msglog(LDMSD_LERROR,"cray_system_sampler: linksmetric bad metric\n");
 			return EINVAL;
 		}
 		/* metric_no in terms of the ones gpcdr can possibly have */
@@ -647,7 +513,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 
 	nm_f = fopen(NICMETRICS_FILE, "r");
 	if (!nm_f) {
-		msglog(LDMS_LERROR,"WARNING: Could not open the source file '%s'\n",
+		msglog(LDMSD_LERROR,"WARNING: Could not open the source file '%s'\n",
 		       NICMETRICS_FILE);
 		return EINVAL;
 	}
@@ -680,7 +546,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n",
 			    metric_name, &nicmetrics_prev_time, units);
 		if (rc != 3) {
-			msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
+			msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
 			       NICMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -688,7 +554,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 		if (strcmp(units,"ms") == 0){
 			nicmetrics_time_multiplier = 1000;
 		} else {
-			msglog(LDMS_LERROR,"nicmetrics: wrong gpcdr interface (time units)\n");
+			msglog(LDMSD_LERROR,"nicmetrics: wrong gpcdr interface (time units)\n");
 			rc = EINVAL;
 			return rc;
 		}
@@ -700,7 +566,7 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 			rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name,
 				    &val, units);
 			if (rc != 3) {
-				msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
+				msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
 				       NICMETRICS_FILE);
 				rc = EINVAL;
 				return rc;
@@ -718,13 +584,37 @@ int nicmetrics_setup(ldmsd_msg_log_f msglog)
 }
 
 
-int add_metrics_linksmetrics(ldms_set_t set, int comp_id,
-			     ldmsd_msg_log_f msglog)
-{
+int add_metrics_linksmetrics(ldms_schema_t schema,
+			     ldmsd_msg_log_f msglog){
 	char newname[96];
 	int metric_no;
 	int i, j;
 	int rc = 0;
+
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		metric_no = NUM_LINKSMETRICS_DIR * NUM_LINKSMETRICS_BASENAME + 1;
+
+		linksmetrics_base_metric_table =
+			calloc(metric_no, sizeof(int));
+		if (!linksmetrics_base_metric_table)
+			return ENOMEM;
+
+		/* keep track of the next possible index to use */
+		linksmetrics_indicies = calloc(metric_no, sizeof(int));
+		if (!linksmetrics_indicies)
+			return ENOMEM;
+	}
+
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		metric_no = NUM_LINKSMETRICS_DIR * NUM_LINKSMETRICS_DERIVEDNAME + 1;
+
+		linksmetrics_derived_metric_table =
+			calloc(metric_no, sizeof(int));
+		if (!linksmetrics_derived_metric_table)
+			return ENOMEM;
+	}
 
 
 	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
@@ -733,16 +623,19 @@ int add_metrics_linksmetrics(ldms_set_t set, int comp_id,
 		for (i = 0; i < NUM_LINKSMETRICS_BASENAME; i++){
 			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++){
 				__links_metric_name(1, i, j, newname);
-				linksmetrics_base_metric_table[metric_no] =
-					ldms_add_metric(set, newname,
-							LDMS_V_U64);
-				if (!linksmetrics_base_metric_table[metric_no])
+				rc = ldms_schema_metric_add(schema, newname,
+							    LDMS_V_U64);
+				if (rc < 0){
+					msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+					       newname);
 					return ENOMEM;
+				}
+				linksmetrics_base_metric_table[metric_no] = rc;
 				/* XXX comp_id */
-				ldms_set_user_data(
-					linksmetrics_base_metric_table[
-						metric_no++],
-					comp_id);
+				//				ldms_set_user_data(
+				//					linksmetrics_base_metric_table[
+				//						metric_no++],
+				//					comp_id);
 			}
 		}
 	}
@@ -753,45 +646,68 @@ int add_metrics_linksmetrics(ldms_set_t set, int comp_id,
 		for (i = 0; i < NUM_LINKSMETRICS_DERIVEDNAME; i++) {
 			for (j = 0; j < NUM_LINKSMETRICS_DIR; j++) {
 				__links_metric_name(0, i, j, newname);
-				linksmetrics_derived_metric_table[metric_no] =
-					ldms_add_metric(set, newname,
-							LDMS_V_U64);
-				if (!linksmetrics_derived_metric_table[
-					    metric_no])
+				rc = ldms_schema_metric_add(schema, newname,
+							    LDMS_V_U64);
+				if (rc < 0){
+					msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+					       newname);
 					return ENOMEM;
+				}
+				linksmetrics_derived_metric_table[metric_no] = rc;
 				/* XXX comp_id */
-				ldms_set_user_data(
-					linksmetrics_derived_metric_table[
-						metric_no++],
-					comp_id);
+				//				ldms_set_user_data(
+				//					linksmetrics_derived_metric_table[
+				//						metric_no++],
+				//					comp_id);
 			}
 		}
 	}
 
+	return 0;
 
  err:
 	return rc;
 }
 
 
-int add_metrics_nicmetrics(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
+int add_metrics_nicmetrics(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 {
 	char newname[96];
-	int i;
-	int rc = 0;
+	int i, j;
+	int rc;
+
+	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		nicmetrics_base_metric_table =
+			calloc(NUM_NICMETRICS, sizeof(int));
+		if (!nicmetrics_base_metric_table)
+			return ENOMEM;
+	}
+
+	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
+	    (hsn_metrics_type == HSN_METRICS_BOTH)){
+		nicmetrics_derived_metric_table =
+			calloc(NUM_NICMETRICS, sizeof(int));
+		if (!nicmetrics_derived_metric_table)
+			return ENOMEM;
+
+	}
 
 
 	if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_NICMETRICS; i++){
-			nicmetrics_base_metric_table[i] =
-				ldms_add_metric(set, nicmetrics_basename[i],
-						LDMS_V_U64);
-			if (!nicmetrics_base_metric_table[i])
+			rc = ldms_schema_metric_add(schema, nicmetrics_basename[i],
+						    LDMS_V_U64);
+			if (rc < 0){
+				msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+				       nicmetrics_basename[i]);
 				return ENOMEM;
+			}
+			nicmetrics_base_metric_table[i] = rc;
 			/* XXX comp_id */
-			ldms_set_user_data(nicmetrics_base_metric_table[i],
-					   comp_id);
+			//			ldms_set_user_data(nicmetrics_base_metric_table[i],
+			//					   comp_id);
 		}
 	}
 
@@ -802,21 +718,27 @@ int add_metrics_nicmetrics(ldms_set_t set, int comp_id, ldmsd_msg_log_f msglog)
 				nicmetrics_derivedprefix,
 				nicmetrics_basename[i],
 				nicmetrics_derivedunit);
-			nicmetrics_derived_metric_table[i] =
-				ldms_add_metric(set, newname, LDMS_V_U64);
-			if (!nicmetrics_derived_metric_table[i])
+			rc = ldms_schema_metric_add(schema, newname, LDMS_V_U64);
+			if (rc < 0){
+				msglog(LDMSD_LERROR, "Failed to add metric <%s>\n",
+				       newname);
 				return ENOMEM;
+			}
+			nicmetrics_derived_metric_table[i] = rc;
 			/* XXX comp_id */
-			ldms_set_user_data(nicmetrics_derived_metric_table[i],
-					   comp_id);
+			//			ldms_set_user_data(nicmetrics_derived_metric_table[i],
+			//					   comp_id);
 		}
 	}
+
+
+	return 0;
 
  err:
 	return rc;
 }
 
-int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
+int sample_metrics_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[64];
@@ -839,14 +761,14 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 	/* read the timestamp */
 	s = fgets(lbuf, sizeof(lbuf), lm_f);
 	if (!s) {
-		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+		msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		return EINVAL;
 	}
 	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
 		    units);
 	if (rc != 3) {
-		msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+		msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 		       LINKSMETRICS_FILE);
 		rc = EINVAL;
 		return rc;
@@ -862,7 +784,7 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &v.v_u64,
 			    units);
 		if (rc != 3) {
-			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 			       LINKSMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -871,9 +793,9 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 		if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)){
 
-			ldms_set_metric(
-				linksmetrics_base_metric_table[
-					linksmetrics_indicies[count]], &v);
+			ldms_metric_set(set,
+					linksmetrics_base_metric_table[linksmetrics_indicies[count]],
+					&v);
 		}
 
 		if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
@@ -915,9 +837,9 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 				v.v_u64 = __linksmetrics_derived_metric_calc(
 					i, j, linksmetrics_base_diff,
 					time_delta);
-				ldms_set_metric(
-					linksmetrics_derived_metric_table[
-						metric_no++], &v);
+				ldms_metric_set(set,
+						linksmetrics_derived_metric_table[metric_no++],
+						&v);
 			}
 		}
 	}
@@ -935,7 +857,7 @@ int sample_metrics_linksmetrics(ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
+int sample_metrics_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[64];
@@ -961,7 +883,7 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 	rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &curr_time,
 		    units);
 	if (rc != 3) {
-		msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
+		msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
 		       NICMETRICS_FILE);
 		rc = EINVAL;
 		return rc;
@@ -977,7 +899,7 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%s %" PRIu64 " %s\n", metric_name, &v.v_u64,
 			    units);
 		if (rc != 3) {
-			msglog(LDMS_LERROR,"ERR: Issue reading source file '%s'\n",
+			msglog(LDMSD_LERROR,"ERR: Issue reading source file '%s'\n",
 			       NICMETRICS_FILE);
 			rc = EINVAL;
 			return rc;
@@ -985,7 +907,7 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 
 		if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)){
-			ldms_set_metric(nicmetrics_base_metric_table[i], &v);
+			ldms_metric_set(set, nicmetrics_base_metric_table[i], &v);
 		}
 		if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)){
@@ -1016,7 +938,7 @@ int sample_metrics_nicmetrics(ldmsd_msg_log_f msglog)
 			else
 				v.v_u64 = 0;
 
-			ldms_set_metric(nicmetrics_derived_metric_table[i], &v);
+			ldms_metric_set(set, nicmetrics_derived_metric_table[i], &v);
 		}
 	}
 

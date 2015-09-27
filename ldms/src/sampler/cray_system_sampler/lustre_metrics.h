@@ -82,41 +82,41 @@
  * The real metrics will contain all llites.
  */
 static char *LUSTRE_METRICS[] = {
-        /* file operation */
-        "dirty_pages_hits",
-        "dirty_pages_misses",
-        "writeback_from_writepage",
-        "writeback_from_pressure",
-        "writeback_ok_pages",
+	/* file operation */
+	"dirty_pages_hits",
+	"dirty_pages_misses",
+	"writeback_from_writepage",
+	"writeback_from_pressure",
+	"writeback_ok_pages",
 	"writeback_failed_pages",
-        "read_bytes",
-        "write_bytes",
-        "brw_read",
-        "brw_write",
-        "ioctl",
-        "open",
-        "close",
-        "mmap",
-        "seek",
+	"read_bytes",
+	"write_bytes",
+	"brw_read",
+	"brw_write",
+	"ioctl",
+	"open",
+	"close",
+	"mmap",
+	"seek",
 	"fsync",
 	/* inode operation */
-        "setattr",
-        "truncate",
-        "lockless_truncate",
-        "flock",
-        "getattr",
-        /* special inode operation */
-        "statfs",
-        "alloc_inode",
-        "setxattr",
-        "getxattr",
-        "listxattr",
-        "removexattr",
-        "inode_permission",
-        "direct_read",
-        "direct_write",
-        "lockless_read_bytes",
-        "lockless_write_bytes",
+	"setattr",
+	"truncate",
+	"lockless_truncate",
+	"flock",
+	"getattr",
+	/* special inode operation */
+	"statfs",
+	"alloc_inode",
+	"setxattr",
+	"getxattr",
+	"listxattr",
+	"removexattr",
+	"inode_permission",
+	"direct_read",
+	"direct_write",
+	"lockless_read_bytes",
+	"lockless_write_bytes",
 };
 #define LUSTRE_METRICS_LEN (sizeof(LUSTRE_METRICS)/sizeof(LUSTRE_METRICS[0]))
 #define LLITE_PREFIX "/proc/fs/lustre/llite"
@@ -127,16 +127,15 @@ static char *LUSTRE_METRICS[] = {
 /**
  * str<->idx in LUSTRE_METRICS.
  */
-extern struct lustre_svc_stats_head lustre_svc_head;
 extern struct str_map *lustre_idx_map;
 
 /** get metric size */
 int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
-                           ldmsd_msg_log_f msglog);
+			   ldmsd_msg_log_f msglog);
 
 
 /** add metrics */
-int add_metrics_lustre(ldms_set_t set, int comp_id,
+int add_metrics_lustre(ldms_schema_t schema,
 		       ldmsd_msg_log_f msglog);
 
 /** helpers */
@@ -144,6 +143,6 @@ int handle_llite(const char *llite);
 
 
 /** sample */
-int sample_metrics_lustre(ldmsd_msg_log_f msglog);
+int sample_metrics_lustre(ldms_set_t set, ldmsd_msg_log_f msglog);
 
 #endif

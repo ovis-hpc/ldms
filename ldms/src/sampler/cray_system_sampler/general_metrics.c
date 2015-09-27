@@ -71,7 +71,7 @@
 #include "general_metrics.h"
 
 
-int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
+int sample_metrics_vmstat(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -98,7 +98,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -107,7 +107,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 		}
 		for (j = 0; j < NUM_VMSTAT_METRICS; j++){
 			if (!strcmp(metric_name, VMSTAT_METRICS[j])){
-				ldms_set_metric(metric_table_vmstat[j], &v);
+				ldms_metric_set(set, metric_table_vmstat[j], &v);
 				found_metrics++;
 				break;
 			}
@@ -126,7 +126,7 @@ int sample_metrics_vmstat(ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
+int sample_metrics_vmcf(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -156,7 +156,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 			break;
 		rc = sscanf(lbuf, "%s %" PRIu64 "\n", metric_name, &v.v_u64);
 		if (rc != 2) {
-			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 								VMSTAT_FILE);
 			fclose(v_f);
 			v_f = 0;
@@ -166,7 +166,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 		if (found_metrics < NUM_VMSTAT_METRICS){
 			for (j = 0; j < NUM_VMSTAT_METRICS; j++){
 				if (!strcmp(metric_name, VMSTAT_METRICS[j])){
-					ldms_set_metric(metric_table_vmstat[j], &v);
+					ldms_metric_set(set, metric_table_vmstat[j], &v);
 					found_metrics++;
 					if ((found_metrics == NUM_VMSTAT_METRICS) &&
 					    (found_submetrics == NUM_VMCF_METRICS)){
@@ -200,7 +200,7 @@ int sample_metrics_vmcf(ldmsd_msg_log_f msglog)
 		//treating the order like its well known
 		//	(nr_free_pages + nr_file_pages + nr_slab_reclaimable - nr_shmem) * 4
 		v.v_u64 = (vmcf[0] + vmcf[1] + vmcf[2] - vmcf[3]) * 4;
-		ldms_set_metric(metric_table_current_freemem[0], &v);
+		ldms_metric_set(set, metric_table_current_freemem[0], &v);
 	} else {
 		return EINVAL;
 	}
@@ -228,7 +228,7 @@ static char *replace_space(char *s)
 
 
 
-int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
+int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
@@ -261,7 +261,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 		replace_space(s);
 
 		if (sscanf(s, "%s", metric_name) != 1){
-			msglog(LDMS_LERROR,"ERR: Issue reading metric name from the source"
+			msglog(LDMSD_LERROR,"ERR: Issue reading metric name from the source"
 						" file '%s'\n", KGNILND_FILE);
 			rc = EINVAL;
 			return rc;
@@ -270,7 +270,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 			for (j = 0; j < NUM_KGNILND_METRICS; j++){
 				if (strcmp(metric_name, KGNILND_METRICS[j]))
 					continue;
-				ldms_set_metric(metric_table_kgnilnd[j], &v);
+				ldms_metric_set(set, metric_table_kgnilnd[j], &v);
 				found_metrics++;
 				break;
 			}
@@ -285,7 +285,7 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 
 }
 
-int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
+int sample_metrics_current_freemem(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	/* only has 1 val, no label */
 	char lbuf[256];
@@ -317,14 +317,14 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 	if (s) {
 		rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 		if (rc != 1) {
-			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'\n",
+			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'\n",
 							CURRENT_FREEMEM_FILE);
 			fclose(cf_f);
 			cf_f = 0;
 			rc = EINVAL;
 			return rc;
 		}
-		ldms_set_metric(metric_table_current_freemem[0], &v);
+		ldms_metric_set(set, metric_table_current_freemem[0], &v);
 		found_metrics++;
 	}
 
@@ -341,20 +341,21 @@ int sample_metrics_current_freemem(ldmsd_msg_log_f msglog)
 }
 
 
-int sample_metrics_energy(ldmsd_msg_log_f msglog)
+int sample_metrics_energy(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	char lbuf[256];
 	char metric_name[128];
 	char* s;
 	union ldms_value v;
-	int i, j, rc;
+	int i, j, rc, rcout;
 
 	/** note - not counting how many found since these are all separate sources. */
-	rc = 0;
+	rcout = 0;
 	for (i = 0; i < NUM_ENERGY_METRICS; i++){
 		/** see if we have to open and close these each time. Keeping an array because I think we can */
 		if (ene_f[i])
 			fclose(ene_f[i]);
+		ene_f[i] = 0;
 		v.v_u64 = 0;
 		ene_f[i] = fopen(ENERGY_FILES[i], "r");
 		if (ene_f[i]){
@@ -364,19 +365,21 @@ int sample_metrics_energy(ldmsd_msg_log_f msglog)
 				//Ignore the unit
 				rc = sscanf(lbuf, "%"PRIu64"\n", &v.v_u64);
 				if (rc != 1) {
-					msglog(LDMS_LERROR,
+					msglog(LDMSD_LERROR,
 					       "ERR: Issue reading the source file '%s'\n",
 					       ENERGY_FILES[i]);
 					rc = EINVAL;
+					rcout = rc;
 				}
+
 			}
 			fclose(ene_f[i]);
-			ene_f[i] = NULL;
+			ene_f[i] = 0;
 		}
-		ldms_set_metric(metric_table_energy[i], &v);
+		ldms_metric_set(set, metric_table_energy[i], &v);
 	}
 
-	return rc;
+	return rcout;
 
 }
 
@@ -386,7 +389,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	procnetdev_valid = 0;
 
 	if (!pnd_f) {
-		msglog(LDMS_LERROR,"procnetdev: filehandle NULL\n");
+		msglog(LDMSD_LERROR,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -406,7 +409,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	} while(s);
 
 	if (idx_iface == -1){
-		msglog(LDMS_LERROR,"procnetdev: cannot find iface <%s>\n", iface);
+		msglog(LDMSD_LERROR,"procnetdev: cannot find iface <%s>\n", iface);
 		return EINVAL;
 	}
 
@@ -414,7 +417,7 @@ int procnetdev_setup(ldmsd_msg_log_f msglog)
 	return 0;
 }
 
-int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
+int sample_metrics_procnetdev(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 
 	if (procnetdev_valid == 0) {
@@ -422,7 +425,7 @@ int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 	}
 
 	if (!pnd_f) {
-		msglog(LDMS_LERROR,"procnetdev: filehandle NULL\n");
+		msglog(LDMSD_LERROR,"procnetdev: filehandle NULL\n");
 		return EINVAL;
 	}
 
@@ -448,10 +451,12 @@ int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 					PRIu64 " %" PRIu64 "",
 					curriface, &v[0].v_u64, &v[1].v_u64);
 			if (strstr(curriface,iface) && (rc == 3)){
-				ldms_set_metric(
-					metric_table_procnetdev[0],&v[0]);
-				ldms_set_metric(
-					metric_table_procnetdev[1], &v[1]);
+				ldms_metric_set(set,
+						metric_table_procnetdev[0],
+						&v[0]);
+				ldms_metric_set(set,
+						metric_table_procnetdev[1],
+						&v[1]);
 				found++;
 			}
 		}
@@ -463,7 +468,7 @@ int sample_metrics_procnetdev(ldmsd_msg_log_f msglog)
 	return 0;
 }
 
-int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
+int sample_metrics_loadavg(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	/* 0.12 0.98 0.86 1/345 24593. well known: want fields 1, 2, and both of
 	 * 4 in that order.*/
@@ -497,7 +502,7 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		rc = sscanf(lbuf, "%f %f %f %d/%d %d\n",
 			    &vf[0], &vf[1], &vf[2], &vi[0], &vi[1], &vi[2]);
 		if (rc != 6) {
-			msglog(LDMS_LERROR,"ERR: Issue reading the source file '%s'"
+			msglog(LDMSD_LERROR,"ERR: Issue reading the source file '%s'"
 					" (rc=%d)\n", LOADAVG_FILE, rc);
 			fclose(l_f);
 			l_f = NULL;
@@ -509,7 +514,7 @@ int sample_metrics_loadavg(ldmsd_msg_log_f msglog)
 		v[2].v_u64 = vi[0];
 		v[3].v_u64 = vi[1];
 		for (i = 0; i < 4; i++){
-			ldms_set_metric(metric_table_loadavg[i], &v[i]);
+			ldms_metric_set(set, metric_table_loadavg[i], &v[i]);
 		}
 		found_metrics=4;
 	}

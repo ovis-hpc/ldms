@@ -134,7 +134,7 @@ static int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind
 	fd = fopen("/proc/cray_xt/cname", "r");
 	if (!fd) {
 		if (msglog)
-			msglog(LDMS_LERROR,"Could not open cnameprocfile\n");
+			msglog(LDMSD_LERROR, "Could not open cnameprocfile\n");
 		return ENOENT;
 	}
 	fseek(fd, 0, SEEK_SET);
@@ -219,7 +219,8 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 	fd = fopen(link_file, "r");
 	if (!fd) {
 		if (msglog)
-			msglog(LDMS_LERROR,"Could not open %s for read\n", link_file);
+			msglog(LDMSD_LERROR, "Could not open %s for read\n",
+					link_file);
 		return ENOENT;
 	}
 	fseek(fd, 0, SEEK_SET);
@@ -231,8 +232,8 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 			    &file_tile_type, &file_z_pattern);
 		if (rc < 3){
 			if (msglog)
-				msglog(LDMS_LERROR,"Failure reading line in linkfile %s\n",
-				       link_file);
+				msglog(LDMSD_LERROR, "Failure reading line in "
+						"linkfile %s\n", link_file);
 			fclose(fd);
 			return EINVAL;
 		}
@@ -257,8 +258,9 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 
 	if ( !found ) {
 	       if (msglog)
-		       msglog(LDMS_LDEBUG,"WARNING: Pattern %d not found in linkfile %s"
-			      "(this may be ok)\n", my_pattern, link_file);
+		       msglog(LDMSD_LERROR, "WARNING: Pattern %d not found in "
+				       "linkfile %s (this may be ok)\n",
+				       my_pattern, link_file);
 	       tile->type = GEMINI_LINK_TYPE_INVALID;
 		tile->dir ==  GEMINI_LINK_DIR_INVALID;
 	       return 0;
@@ -267,7 +269,8 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 	tile->dir = str_to_linkdir(dir_str);
 	if (tile->dir ==  GEMINI_LINK_DIR_INVALID) {
 	      if (msglog)
-		     msglog(LDMS_LDEBUG,"str_to_linkdir failed on %s", tile->dir);
+		     msglog(LDMSD_LERROR, "str_to_linkdir failed on %s",
+				     tile->dir);
 	      return EINVAL;
 	}
 	tile->type = file_tile_type;
@@ -311,7 +314,7 @@ static double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type)
 		return GEMINI_NIC_TILE_BW;
 	default:
 	  if (msglog)
-		msglog(LDMS_LDEBUG,"invalid tile type (%d)", tile_type);
+		msglog(LDMSD_LERROR, "invalid tile type (%d)", tile_type);
 	}
 
 	return -1.0;
@@ -370,14 +373,16 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 			tid = -1;
 			if (tcoord_to_tid(row, col, &tid) != 0) {
 				if (msglog)
-					msglog(LDMS_LDEBUG,"tcoord_to_tid(%u,%u) failed",
-					       row, col);
+					msglog(LDMSD_LERROR,
+						"tcoord_to_tid(%u,%u) failed",
+						row, col);
 				return EINVAL;
 			}
 			if (tid == -1) {
 				if (msglog)
-					msglog(LDMS_LDEBUG,"tcoord_to_tid failed on "
-					       " row %d, column %d", row, col);
+					msglog(LDMSD_LERROR,
+						"tcoord_to_tid failed on row %d,"
+						" column %d", row, col);
 				return EINVAL;
 			}
 			my_tmp_pattern = (my_pattern * 100) + ( row * 10) + col;
@@ -386,10 +391,11 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 					     filename, &tile[tid]);
 			if ( rc ) {
 				if (msglog)
-					msglog(LDMS_LDEBUG,"tile_to_linkdir failed on "
-					       "%d, %d, %s, %d",
-					       my_tmp_pattern, my_z_pattern,
-					       filename, tid);
+					msglog(LDMSD_LERROR,
+						"tile_to_linkdir failed on "
+						"%d, %d, %s, %d",
+						my_tmp_pattern, my_z_pattern,
+						filename, tid);
 				return EINVAL;
 			}
 			if (tile[tid].type != GEMINI_LINK_TYPE_INVALID){
@@ -406,7 +412,7 @@ int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
 
 	if (my_tiles != GEMINI_NUM_NET_TILES) {
 		if (msglog)
-			msglog(LDMS_LDEBUG,"src found %d tiles in "
+			msglog(LDMSD_LERROR, "src (%d,%d,%d) found %d tiles in "
 			       " interconnect file, expected %d",
 			       my_tiles, GEMINI_NUM_NET_TILES);
 		return EINVAL;

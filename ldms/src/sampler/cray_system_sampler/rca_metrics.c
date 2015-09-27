@@ -78,7 +78,7 @@ int nettopo_setup(ldmsd_msg_log_f msglog)
 	return 0;
 }
 
-int sample_metrics_nettopo(ldmsd_msg_log_f msglog)
+int sample_metrics_nettopo(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 
 	union ldms_value v;
@@ -86,11 +86,11 @@ int sample_metrics_nettopo(ldmsd_msg_log_f msglog)
 	/*  Fill in mesh coords (this is static and should be moved) */
 	/* will want these 3 to be LDMS_V_U8 */
 	v.v_u64 = (uint64_t) nettopo_coord.x;
-	ldms_set_metric(nettopo_metric_table[0], &v);
+	ldms_metric_set(set, nettopo_metric_table[0], &v);
 	v.v_u64 = (uint64_t) nettopo_coord.y;
-	ldms_set_metric(nettopo_metric_table[1], &v);
+	ldms_metric_set(set, nettopo_metric_table[1], &v);
 	v.v_u64 = (uint64_t) nettopo_coord.z;
-	ldms_set_metric(nettopo_metric_table[2], &v);
+	ldms_metric_set(set, nettopo_metric_table[2], &v);
 
 	return 0;
 }
