@@ -1,6 +1,7 @@
 #include "bsos_msg.h"
 #include <errno.h>
 #include <stdlib.h>
+#include <sys/time.h>
 
 #define BSOS_MSG_IDX_PTH_NAME "index_pth"
 #define BSOS_MSG_IDX_TH_NAME "index_th"
@@ -10,16 +11,48 @@ sos_t __sos_container_open(const char *path, int create)
 {
 	int rc;
 	sos_t sos;
+	sos_part_t part;
+	char buff[16];
+	struct timeval tv;
 retry:
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos && create) {
 		rc = sos_container_new(path, 0660);
 		if (!rc)
 			goto retry;
-		goto out;
+		errno = rc;
+		goto err0;
+	}
+	/* Create/set active partition */
+	rc = gettimeofday(&tv, NULL);
+	if (rc)
+		goto err1;
+	/* make tv_sec into day alignment */
+	tv.tv_sec /= (24*3600);
+	tv.tv_sec *= 24*3600;
+	snprintf(buff, sizeof(buff), "%ld", tv.tv_sec);
+part_retry:
+	part = sos_part_find(sos, buff);
+	if (!part) {
+		rc = sos_part_create(sos, buff, NULL);
+		if (rc) {
+			errno = rc;
+			goto err1;
+		}
+		goto part_retry;
+	}
+	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
+	sos_part_put(part);
+	if (rc) {
+		errno = rc;
+		goto err1;
 	}
 out:
 	return sos;
+err1:
+	sos_container_close(sos, SOS_COMMIT_ASYNC);
+err0:
+	return NULL;
 }
 
 static
