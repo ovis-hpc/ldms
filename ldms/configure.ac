@@ -231,6 +231,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
 		 packaging/ovis-ldms.spec
+		 packaging/rhel7.spec
 		 Doxyfile
 		 ldms.spec])
 
