@@ -1,19 +1,18 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -Wall $(DBGFLAGS)
+AM_CFLAGS = $(DBGFLAGS) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@ @LIBEVENT_INCDIR_FLAG@
+AM_CPPFLAGS = -DSYSCONFDIR='"$(sysconfdir)"' -DPLUGINDIR='"$(pkglibdir)"'
+AM_CFLAGS += \
+"-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \
+"-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmscoreincludedir = $(includedir)/ldms
 ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldmsd.h ldms_xprt.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h
-libldms_la_CFLAGS = @OVIS_LIB_INCDIR_FLAG@
-libldms_la_LIBADD = -ldl -lpthread -lcoll @OVIS_LIB_LIBDIR_FLAG@ \
-		    -lmmalloc -lzap
-
-if ENABLE_AUTH
-libldms_la_CFLAGS += -DENABLE_AUTH
-libldms_la_LIBADD += @OVIS_LIB_LIBDIR_FLAG@ -lovis_auth
-endif
+libldms_la_LIBADD = -ldl -lpthread -lcoll @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
+		    -lmmalloc -lzap \
+		    -lovis_auth
 
 lib_LTLIBRARIES += libldms.la
 

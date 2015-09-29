@@ -56,7 +56,7 @@
 #include <ovis_util/util.h>
 #include "ldms.h"
 
-#define LDMSD_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/"
+#define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
 #define LDMSD_VERSION_MAJOR	0x03
 #define LDMSD_VERSION_MINOR	0x01

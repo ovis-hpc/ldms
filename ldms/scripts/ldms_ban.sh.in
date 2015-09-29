@@ -1,0 +1,33 @@
+#!/bin/bash
+# This script reports any call to a banned function (or other
+# checked one-line syntax).
+# update the evil list as needed
+evil="
+strtok(
+"
+
+# below here should not change much
+if test "x$1" = "x"; then
+	echo $0 needs a directory to search
+	exit 1
+fi
+foundlist=""
+bad=0
+cd $1
+for i in $evil; do
+	if grep -rn $i */src/; then
+		foundlist="$foundlist $i"
+		((bad++))
+	fi
+done
+if test "x$bad" != "x0"; then
+cat << _EOF
+**************************
+Found banned functions in $bad places:
+$foundlist
+as located specifically above.
+These calls should not be used (may be thread unsafe).
+**************************
+_EOF
+fi
+exit 0

@@ -59,6 +59,7 @@
 #include <netinet/in.h>
 #include <byteswap.h>
 #include <asm/byteorder.h>
+#include "ovis-lib-config.h"
 #include "ldms_core.h"
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
@@ -326,7 +327,7 @@ typedef void (*ldms_log_fn_t)(const char *fmt, ...);
  */
 extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 /**
  * \brief Create a transport handle with or without authentication
  *
@@ -343,7 +344,7 @@ extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
  */
 extern ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 					const char *secretword);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 typedef enum ldms_conn_event {
 	LDMS_CONN_EVENT_CONNECTED,
@@ -568,8 +569,8 @@ int ldms_xprt_dir_cancel(ldms_t t);
 #define LDMS_DIR_F_NOTIFY	1
 extern int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
-#define LDMS_XPRT_LIBPATH_DEFAULT "/usr/local/lib/"
-#define LDMS_DEFAULT_PORT	50000
+#define LDMS_XPRT_LIBPATH_DEFAULT PLUGINDIR
+#define LDMS_DEFAULT_PORT	LDMSDPORT
 #define LDMS_LOOKUP_PATH_MAX	511
 
 

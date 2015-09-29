@@ -1,0 +1,117 @@
+#
+# loaded from init.d/ldms-aggd
+# 
+# This is where the configuration is extracted from genders information.
+# Edit sysconfig/ldms-aggd.conf for manual exception data, if any, needed
+# and for node-independent variables.
+# DAEMON defined by init.d script.
+#
+# Path to tailoring variables that override genders.
+CONFFILE=/etc/sysconfig/$DAEMON.conf
+
+# inform ldmsd conf files that they're being included.
+INCLUDES_LDMSD=yes
+export INCLUDES_LDMSD
+
+if test -z $AGG_ID_BASE; then
+	AGG_ID_BASE=1000000
+fi
+
+# load localizations; this also pulls in the sysconfig/ldmsd and ldmsd.conf
+. $CONFFILE
+
+if ! nodeattr $NODEATTRFILE $host ldmsaggd 2>/dev/null; then
+	echoq "$host is is not an LDMS-AGGD host. Exiting."
+	failure
+	echo
+	exit
+fi
+
+PATH="$sbindir:$PATH"
+if test -z $LDMSAGGCTL; then
+	LDMSAGGCTL="ldmsaggctl"
+fi
+
+# never override LDMS_PLUGIN_PATH independently
+LDMS_PLUGIN_PATH="$LDMS_LIB_PATH"
+
+# load up genders values, then process missing values and overrides
+LDMSAGGD_PORT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_port 2>/dev/null`
+LDMSAGGD_XPRT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_xprt 2>/dev/null`
+LDMSAGGD_HOST=`nodeattr $NODEATTRFILE -v $host ldmsaggd_host 2>/dev/null`
+LDMSAGGD_DBG=`nodeattr $NODEATTRFILE -v $host ldmsaggd_dbg 2>/dev/null`
+LDMSAGGD_STORES=`nodeattr $NODEATTRFILE -v $host ldmsaggd_stores 2>/dev/null`
+LDMSAGGD_INTERVAL_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_interval_default 2>/dev/null`
+LDMSAGGD_OFFSET_DEFAULT=`nodeattr $NODEATTRFILE -v $host ldmsaggd_offset_default 2>/dev/null`
+LDMSAGGD_NUM_PROCS=`nodeattr $NODEATTRFILE -v $host ldmsaggd_num_procs 2>/dev/null`
+LDMSAGGD_CONN_THDS=`nodeattr $NODEATTRFILE -v $host ldmsaggd_conn_thds 2>/dev/null`
+LDMSAGGD_MEM_RES=`nodeattr $NODEATTRFILE -v $host ldmsaggd_mem_res 2>/dev/null`
+
+if test -z $LDMSAGGD_PORT; then
+	LDMSAGGD_PORT=412
+fi
+
+if test -z $LDMSAGGD_XPRT; then
+	LDMSAGGD_XPRT=sock
+fi
+
+if test -z $LDMSAGGD_DBG; then
+	LDMSAGGD_DBG=ERROR
+fi
+
+if test -z $LDMSAGGD_STORES; then
+	LDMSAGGD_STORES=""
+	echoq "no stores configured."
+fi
+
+if test -z $LDMSAGGD_INTERVAL_DEFAULT; then
+	LDMSAGGD_INTERVAL_DEFAULT=10000000
+fi
+
+if test -z $LDMSAGGD_OFFSET_DEFAULT; then
+	LDMSAGGD_OFFSET_DEFAULT=200000
+fi
+
+if test -z $LDMSAGGD_NUM_PROCS; then
+	LDMSAGGD_NUM_PROCS=8
+fi
+
+if test -z $LDMSAGGD_MEM_RES; then
+	LDMSAGGD_MEM_RES=1000M
+fi
+
+if test -z $LDMSAGGD_CONN_THDS; then
+	LDMSAGGD_CONN_THDS=4
+fi
+
+
+if test "$DEBUG" = "yes"; then
+	ldmsctl_args -n $MYHOSTNAME -t store-list -v 1
+fi
+METRIC_SETS_LIST=`ldmsctl_args -n $MYHOSTNAME -t store-list`
+ALL_METRIC_SETS=`echo $METRIC_SETS_LIST | tr ",: " "\n" | sort -u`
+
+# Define name of Unix domain socket for communication with ldmsaggd
+if test -z $LDMSAGGD_LOCAL_SOCK; then
+	LDMSAGGD_LOCAL_SOCK=agg_socket
+fi
+
+#Paths to unix domain socket used by ldmsctl to communicate with ldmsaggd
+if test -z $LDMSAGGD_LOCAL_SOCK_DIR; then
+	LDMSAGGD_LOCAL_SOCK_DIR="$localstatedir/run/$DAEMON"
+fi
+if ! test -d $LDMSAGGD_LOCAL_SOCK_DIR; then
+	mkdir -p $LDMSAGGD_LOCAL_SOCK_DIR
+fi
+
+if test -z $LDMSAGGCTL_SOCK_DIR; then
+	LDMSAGGCTL_SOCK_DIR="$localstatedir/run/ldmsaggctl"
+fi
+if ! test -d $LDMSAGGCTL_SOCK_DIR; then
+	mkdir -p $LDMSAGGCTL_SOCK_DIR
+fi
+
+# full path of agg unix socket
+AGGSOCK_PATH="$LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
+
+

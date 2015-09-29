@@ -1,4 +1,4 @@
-AM_CFLAGS = -I$(srcdir)/../ @OVIS_LIB_INCDIR_FLAG@ @EVENTINC@
+AM_CFLAGS = -I$(srcdir)/../ @OVIS_LIB_INCDIR_FLAG@ @LIBEVENT_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ @EVENTLIBS@ -lpthread -lzap \
 	     -levent -levent_pthreads -lcoll
 

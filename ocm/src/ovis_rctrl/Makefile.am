@@ -5,10 +5,7 @@ libovis_rctrl_la_LIBADD = ../ocm/libocm.la -lovis_util @OVIS_LIB_LIBDIR_FLAG@ \
 			  -lpthread -lovis_util -lzap
 libovis_rctrl_la_CFLAGS = -I$(srcdir)/../ @OVIS_LIB_INCDIR_FLAG@
 
-if ENABLE_AUTH
-libovis_rctrl_la_CFLAGS += -DENABLE_AUTH
-libovis_rctrl_la_LIBADD += -lovis_auth
-endif
+libovis_rctrl_la_LIBADD += @OVIS_AUTH_LIBS@
 
 libovis_rctrlinclude_HEADERS =  rctrl.h
 libovis_rctrlincludedir = $(includedir)/ovis_rctrl

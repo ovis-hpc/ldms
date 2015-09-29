@@ -71,6 +71,7 @@
 #include <semaphore.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
+#include <event2/event.h>
 
 static pthread_mutex_t dir_lock;
 static pthread_cond_t dir_cv;
@@ -102,7 +103,7 @@ void null_log(const char *fmt, ...)
 	fflush(stdout);
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
 
 #define LDMS_LS_AUTH_ENV "LDMS_LS_AUTH_FILE"
@@ -117,7 +118,7 @@ char *ldms_ls_get_secretword(const char *path)
 
 	return ovis_auth_get_secretword(path, null_log);
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 #define FMT "h:p:x:w:m:ESIlvua:V"
 void usage(char *argv[])
@@ -140,12 +141,12 @@ void usage(char *argv[])
 	       "                       The given size must be less than 1 petabytes.\n"
 	       "                       For example, 20M or 20mb are 20 megabytes.\n",
 	       argv[0]);
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	printf("\n    -a <path>        The full Path to the file containing the shared secret word.\n"
 	       "		       Set the environment variable %s to the full path\n"
 	       "		       to avoid giving it at command-line every time.\n",
 	       LDMS_LS_AUTH_ENV);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	printf("\n    -V               Print LDMS version and exit.\n");
 
 	exit(1);
@@ -406,6 +407,15 @@ void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	sem_post(&conn_sem);
 }
 
+void link_libevent(const char *v)
+{
+	if (strcmp(v,"/")==0) {
+#ifdef _EVENT2_EVENT_H_
+		event_base_gettimeofday_cached(NULL,NULL);
+#endif
+	}
+}
+
 #define LDMS_LS_MAX_MEM_SIZE 512L * 1024L
 size_t max_mem_size = LDMS_LS_MAX_MEM_SIZE;
 
@@ -425,7 +435,7 @@ int main(int argc, char *argv[])
 	int regex = 0;
 	int schema = 0;
 	struct timespec ts;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	char *auth_path = 0;
 	char *secretword = 0;
 #endif
@@ -437,6 +447,8 @@ int main(int argc, char *argv[])
 		perror("sem_init");
 		_exit(-1);
 	}
+
+	link_libevent(argv[0]);
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -477,11 +489,11 @@ int main(int argc, char *argv[])
 				usage(argv);
 			}
 			break;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		case 'a':
 			auth_path = strdup(optarg);
 			break;
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		case 'V':
 			ldms_version_get(&version);
 			printf("LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
@@ -513,12 +525,12 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	secretword = ldms_ls_get_secretword(auth_path);
 	ldms = ldms_xprt_with_auth_new(xprt, null_log, secretword);
-#else /* ENABLE_AUTH */
+#else /* OVIS_LIB_HAVE_AUTH */
 	ldms = ldms_xprt_new(xprt, null_log);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);

@@ -1,0 +1,3 @@
+#!/bin/bash
+# what's needed to link, without going through install.
+OVIS_AUTH_LIBS="-lovis_auth -lrt @OPENSSL_LIBS@"

@@ -7,6 +7,10 @@ dnl AC_CONFIG_SRCDIR([src/me.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE([-Wno-portability])
+m4_ifdef([AM_SILENT_RULES],
+         [AM_SILENT_RULES([yes])
+])
+
 AM_PROG_LIBTOOL
 
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
@@ -21,10 +25,10 @@ AC_ARG_ENABLE(debug, [  --enable-debug    Enable debug mode],
 )
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-OPTION_WITH([ovis-lib], [OVIS_LIB])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[coll ovis_util zap])
 
 OPTION_DEFAULT_ENABLE([ocm], [ENABLE_OCM])
-OPTION_WITH([ocm], [OCM])
+OPTION_WITH_OR_BUILD([ocm],[../ocm/src],[ocm],[ocm-vars.sh],[ocm],[])
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([me], [ENABLE_ME])
@@ -52,7 +56,7 @@ OPTION_DEFAULT_ENABLE([stores], [ENABLE_STORES])
 OPTION_DEFAULT_ENABLE([store_example], [ENABLE_STORE_EXAMPLE])
 OPTION_DEFAULT_DISABLE([store_sos], [ENABLE_STORE_SOS])
 OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
-OPTION_WITH([sos], [SOS])
+OPTION_WITH_OR_BUILD([sos],[../sos/src],[])
 
 dnl Options for consumers
 OPTION_DEFAULT_ENABLE([consumers], [ENABLE_CONSUMERS])
@@ -75,35 +79,41 @@ AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  me-utils requires libpthread.]))
 LIBS=""
 
-dnl Checks for libraries
-AC_CHECK_LIB(zap, zap_new, [],
-	AC_MSG_ERROR([zap library not found. Baler requires libzap. libzap is
-		      one of the libraries in lib-ovis (please see OVIS/lib)]),
-	$OVIS_LIB_LIBDIR_FLAG)
+AC_SEARCH_LIBS([clock_gettime],[rt posix4],[LDFLAGS_GETTIME=$LIBS])
 LIBS=""
+AC_SUBST([LDFLAGS_GETTIME])
 
-if test -z "$ENABLE_OCM_TRUE"
-then
-AC_CHECK_LIB(ocm, ocm_create, [],
-	     AC_MSG_ERROR([ocm library not found. Please see OVIS/ocm.]),
-	     $OCM_LIBDIR_FLAG
-	     )
-LIBS=""
+dnl Checks for libraries
+if test "x$WITH_OVIS_LIB" != "xbuild"; then
+	AC_CHECK_LIB(zap, zap_new, [],
+		AC_MSG_ERROR([zap not found. Baler libzap from ovis-lib.]),
+		$OVIS_LIB_LIBDIR_FLAG)
+	LIBS=""
+	AC_CHECK_LIB(ovis_util, av_value, [],
+		     AC_MSG_ERROR([ovis_util library not found.
+				   Please install ovis_util from OVIS/lib. ]),
+		     $OVIS_LIB_LIBDIR_FLAG )
+	dnl Reset LIBS variable.
+	LIBS=""
+
+	AC_CHECK_LIB(coll, idx_create, [],
+		     AC_MSG_ERROR([coll library not found.
+				   Please install coll from OVIS/lib. ]),
+		     $OVIS_LIB_LIBDIR_FLAG )
+	dnl Reset LIBS variable.
+	LIBS=""
 fi
 
-AC_CHECK_LIB(ovis_util, av_value, [],
-	     AC_MSG_ERROR([ovis_util library not found.
-			   Please install ovis_util from OVIS/lib. ]),
-	     $OVIS_LIB_LIBDIR_FLAG )
-dnl Reset LIBS variable.
-LIBS=""
+if test -z "$ENABLE_OCM_TRUE"; then
+	if test "x$WITH_OCM" != "xbuild"; then
+	AC_CHECK_LIB(ocm, ocm_create, [],
+		     AC_MSG_ERROR([ocm library not found. Please see OVIS/ocm.]),
+		     $OCM_LIBDIR_FLAG
+		     )
+	LIBS=""
+	fi
+fi
 
-AC_CHECK_LIB(coll, idx_create, [],
-	     AC_MSG_ERROR([coll library not found.
-			   Please install coll from OVIS/lib. ]),
-	     $OVIS_LIB_LIBDIR_FLAG )
-dnl Reset LIBS variable.
-LIBS=""
 
 AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
     if test -n "`$LD --help < /dev/null 2>/dev/null | grep version-script`"; then
@@ -114,6 +124,8 @@ AC_CACHE_CHECK(whether ld accepts --version-script, ac_cv_version_script,
 
 dnl Reset LIBS variable
 LIBS=""
+
+OVIS_PKGLIBDIR
 
 AC_SUBST(ac_configure_args)
 AC_CONFIG_FILES([Makefile src/Makefile

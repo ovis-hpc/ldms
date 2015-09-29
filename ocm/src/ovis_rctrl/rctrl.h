@@ -11,6 +11,7 @@
 #include <netinet/in.h>
 #include <sys/un.h>
 #include <sys/queue.h>
+#include <ovis-lib-config.h>
 #include <ovis_util/util.h>
 #include <zap/zap.h>
 
@@ -27,12 +28,12 @@ typedef struct rctrl *rctrl_t;
 
 typedef void (*rctrl_cb_fn)(enum rctrl_event ev, rctrl_t ctrl);
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 #define AUTH_PASSWORD_KEY "RCTRL_AUTH_PASSWORD"
 #define AUTH_CMD "password"
 #define AUTH_APPROVAL_KEY "RCTRL_AUTH_APPROVAL"
 
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 enum rctrl_mode {
 	RCTRL_LISTENER = 0,

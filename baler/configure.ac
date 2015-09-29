@@ -5,12 +5,25 @@
 AC_PREREQ([2.63])
 AC_INIT([baler], 2.0, narate@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
-AM_INIT_AUTOMAKE
+AC_CONFIG_SRCDIR([src/baler/balerd.c])
+AC_CONFIG_AUX_DIR(config)
+AM_CONFIG_HEADER(config.h)
+dnl AM _INIT_AUTOMAKE([-Wno-portability])
+AM_INIT_AUTOMAKE([foreign])
+m4_ifdef([AM_SILENT_RULES],
+         [AM_SILENT_RULES([yes])
+])
+AX_PREFIX_CONFIG_H_G(src/baler-config.h)
+AM_PROG_LIBTOOL
+AC_LIB_RPATH
+
 LT_INIT
 
 AC_PROG_CC()
 AC_PROG_CXX()
 AM_PROG_CC_C_O()
+
+OVIS_PKGLIBDIR
 
 OPTION_DEFAULT_ENABLE([dict], [ENABLE_DICT])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
@@ -23,34 +36,62 @@ then
 	SWIG_PYTHON
 fi
 
+OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
+OPTION_WITH([libevent], [LIBEVENT],[/usr])
 OPTION_WITH_EVENT
 
-AM_CONDITIONAL([ENABLE_SOS], [true])
-AM_CONDITIONAL([ENABLE_OVIS_LIB], [true])
-OPTION_DEFAULT_ENABLE([ocm], [ENABLE_OCM])
-dnl OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
-OPTION_WITH([sos], [SOS])
-OPTION_WITH([ovis-lib], [OVIS_LIB])
-OPTION_WITH([ocm], [OCM])
+OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[coll zap ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
+AC_SUBST(OVIS_AUTH_LIBS)
+OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
+OPTION_WITH_OR_BUILD([sos], [../sos],[sos/src sos/include ods/src ods/include])
+OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])
+OPTION_WITH_OR_BUILD([ocm], [../ocm], [src src/ocm])
+
+if test -z "$ENABLE_OCM_TRUE"; then
+	AC_DEFINE_UNQUOTED([ENABLE_OCM],[1],
+		[configured with ocm (1) or not (undefined)])
+fi
+
+if test -z "$ENABLE_SOS_TRUE"; then
+	AC_DEFINE_UNQUOTED([ENABLE_SOS],[1],
+		[configured with sos (1) or not (undefined)])
+fi
 
 OPTION_DOC
 
-dnl Check for zap
-AC_CHECK_LIB(zap, zap_new, [],
-	AC_MSG_ERROR([zap library not found. Baler requires libzap. libzap is
-		      one of the libraries in lib-ovis (please see OVIS/lib)]),
-	$OVIS_LIB_LIBDIR_FLAG)
-dnl Reset LIBS variable.
-LIBS=""
+if test "x$WITH_OVIS_LIB" != "xbuild"; then
+	AC_MSG_NOTICE([WITH_OVIS_LIB=$WITH_OVIS_LIB])
+	dnl Check for zap
+	AC_CHECK_LIB(zap, zap_new, [],
+		AC_MSG_ERROR([zap not found. Baler requires zap from ovis-lib]),
+		$OVIS_LIB_LIBDIR_FLAG $OVIS_LIB_LIB64DIR_FLAG
+		)
+	dnl Reset LIBS variable.
+	LIBS=""
+fi
 
-dnl Check for ocm
-if test -z "$ENABLE_OCM_TRUE"
-then
-AC_CHECK_LIB(ocm, ocm_create, [],
-	     AC_MSG_ERROR([ocm library not found. Please see OVIS/ocm.]),
-	     $OCM_LIBDIR_FLAG
-	     )
-LIBS=""
+if test "x$WITH_OCM" != "xbuild"; then
+	dnl Check for ocm
+	if test -z "$ENABLE_OCM_TRUE"
+	then
+	AC_CHECK_LIB(ocm, ocm_create, [],
+		     AC_MSG_ERROR([ocm library not found. Please see OVIS/ocm.]),
+		     $OCM_LIBDIR_FLAG $OCM_LIB64DIR_FLAG
+		     )
+	LIBS=""
+	fi
+fi
+
+if test "x$WITH_SOS" != "xbuild"; then
+	AC_MSG_NOTICE([WITH_OVIS_LIB=$WITH_OVIS_LIB])
+	dnl Check for zap
+	AC_CHECK_LIB(sos, sos_container_open, [],
+		AC_MSG_ERROR([sos not found. Baler requires sos (please see OVIS/sos)]),
+		$SOS_LIBDIR_FLAG $SOS_LIB64DIR_FLAG
+		)
+	dnl Reset LIBS variable.
+	LIBS=""
 fi
 
 # Checks for header files.

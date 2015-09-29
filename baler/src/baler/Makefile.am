@@ -22,9 +22,9 @@ lib_LTLIBRARIES += libbaler.la
 
 balerd_SOURCES = balerd.c
 balerd_LDADD = libbaler.la \
-	       -lpthread -ldl -lcoll -levent -lzap
-balerd_CFLAGS = @OVIS_LIB_INCDIR_FLAG@ @EVENTINC@
-balerd_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ @EVENTLIBS@
+	       -lcoll -levent -levent_pthreads -lzap -lpthread -ldl
+balerd_CFLAGS = @OVIS_LIB_INCDIR_FLAG@ @LIBEVENT_INCDIR_FLAG@
+balerd_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@ @OVIS_LIB_LIB64DIR_FLAG@ @EVENTLIBS@
 
 if ENABLE_OCM
 balerd_LDADD += -locm

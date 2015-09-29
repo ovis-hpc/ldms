@@ -1,4 +1,4 @@
-INC = -I$(top_srcdir)/src -I@SOS_INCDIR@
+INC = -I$(top_srcdir)/src @SOS_INCDIR_FLAG@
 DEFS =
 
 BUILT_SOURCES = bquery.c bquery.py

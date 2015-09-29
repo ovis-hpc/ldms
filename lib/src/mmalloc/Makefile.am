@@ -1,6 +1,6 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -I$(srcdir)/../
+AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 
 if ENABLE_MMALLOC
 libmmalloc_la_SOURCES = mmalloc.c mmalloc.h

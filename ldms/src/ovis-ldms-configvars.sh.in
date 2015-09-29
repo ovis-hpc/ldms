@@ -1,0 +1,6 @@
+#!/bin/sh
+ovis_ldms_prefix=@prefix@
+ovis_ldms_exec_prefix=@exec_prefix@
+ovis_ldms_libdir=@libdir@
+ovis_ldms_pkglibdir=@pkglibdir@
+ovis_ldms_plugins=@pkglibdir@

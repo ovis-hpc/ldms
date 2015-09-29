@@ -9,7 +9,7 @@ ME_TARBALL = $(ME).tar.gz
 
 .PHONY: rpm
 rpm: dist-gzip
-	mkdir -p rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	$(MKDIR_P) rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(ME_TARBALL) rpm/SOURCES
 	rpmbuild -ba me.spec
 

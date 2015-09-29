@@ -19,7 +19,7 @@ endif
 
 # Make rule for RPM on RHEL7
 rpm7: dist-gzip
-	mkdir -p $@/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	$(MKDIR_P) $@/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	ln -f -s ../../automake rpm7/BUILD/automake
 	cp $(distdir).tar.gz $@/SOURCES
 	cp rpm/rhel7.spec $@/SPECS

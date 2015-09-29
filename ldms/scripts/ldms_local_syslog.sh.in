@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# NOTE: replace the two vars below with your paths
+# NOTE: change ports, intervals if you like
+DESTDIR=
+allowroot=0
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+BUILDDIR=@prefix@
+# Manually redefine portbase to avoid collisions.
+# Base should be above the maximum in :
+#  cat /proc/sys/net/ipv4/ip_local_port_range
+# and below 65530 or below the minimum and above 1024
+portbase=61100
+port1=`expr $portbase + 1`
+port2=`expr $portbase + 2`
+port3=`expr $portbase + 3`
+if test ! -x $BUILDDIR/sbin/ldmsd; then
+	echo "can't find ldmsd binary. set destdir in $0 before testing?"
+	exit 1
+fi
+case "x$USER" in
+	x)
+	echo "must be run in user environment. USER not set"
+	exit 1
+	;;
+	xroot)
+	echo "must be run in user environment. root detected."
+	echo "killing other folks ldmsd might be a bad idea"
+	echo "change allowroot in $0 to override this check."
+	exit 1
+	;;
+esac
+function mysleep() {
+	echo -n sleep $1 ... 
+	sleep $1
+	echo done
+}
+
+# use our pid in dirname to prevent collisions in dir & file naming
+TESTDIR=/tmp/$USER/ldmstest/$$
+STOREDIR=$TESTDIR/store
+SOCKDIR=$TESTDIR/run/ldmsd
+LOGDIR=$TESTDIR/logs
+#export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+echo "logs and data stored under $TESTDIR"
+
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=@pkglibdir@
+export PATH=${BUILDDIR}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+
+# whack the daemons we own
+pkill ldmsd
+mysleep 1
+echo "Listing ldmsd's still running:"
+pgrep ldmsd
+echo "Done."
+
+echo removing old logs
+rm -f ${LOGDIR}/1.txt
+rm -f ${LOGDIR}/2.txt
+rm -f ${LOGDIR}/3.txt
+
+echo removing old output
+rm -rf ${STOREDIR}/node
+rm -f ${STOREDIR}/*
+
+echo Starting daemons
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l syslog -r $TESTDIR/run/ldmsd.pid.1 -v DEBUG
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -r $TESTDIR/run/ldmsd.pid.2 -l syslog
+ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -r $TESTDIR/run/ldmsd.pid.3 -v INFO
+mysleep 1
+
+
+echo Starting plugins on daemon1
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "config name=clock producer=localhost1 instance=localhost1/clock schema=clock udata_default=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+mysleep 1
+mysleep 1
+
+echo Starting plugins on daemon2
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo "config name=clock name=clock producer=localhost2 instance=localhost2/clock schema=clock udata_default=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+mysleep 2
+
+echo Starting plugins on daemon3
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=clock producer=localhost3 instance=localhost3/clock schema=clock udata_default=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+mysleep 2
+
+echo Adding host2 to aggregator3
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+mysleep 1
+echo Adding host1 to aggregator3
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+
+mysleep 5
+echo Adding store_csv to aggregator3
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+mysleep 2
+echo "config name=store_csv action=init path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_csv action=custom schema=meminfo policy=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+mysleep 2
+#
+
+mysleep 5
+echo ldms_ls on host 1:
+ldms_ls -h localhost -x sock -p $port1 -l
+mysleep 1
+echo ldms_ls on host 2:
+ldms_ls -h localhost -x sock -p $port2 -l
+mysleep 1
+echo ldms_ls on host 3:
+ldms_ls -h localhost -x sock -p $port3 
+
+echo done;

@@ -1,0 +1,14 @@
+#!/bin/sh
+./autogen.sh
+./configure '--enable-ssl' '--enable-rdma' '--disable-ncsa-unified' '--with-libevent=/usr/lib64/ovis-libevent2' '--disable-rpath' '--enable-authentication' '--disable-readline' '--enable-sysclassib' 'CC=gcc' 'CXX=g++' --enable-libgenders --enable-sos --enable-baler --enable-swig
+mkdir -p Release
+rm -rf Release/*
+./util/release_tarball-300.sh
+cd Release
+echo "============================= bundle done ============="
+tar zxf ldms-3.0.0.tar.gz
+cd ldms-3.0.0
+echo "============================= configure for toss rpms ============="
+./configure '--enable-ssl' '--enable-rdma' --disable-ncsa-unified '--with-libevent=/usr/lib64/ovis-libevent2' '--disable-rpath' '--enable-authentication' '--disable-readline' '--enable-sysclassib' 'CC=gcc' 'CXX=g++' --enable-libgenders --enable-sos --enable-baler --enable-swig 
+echo "============================= make toss rpms ============="
+make toss

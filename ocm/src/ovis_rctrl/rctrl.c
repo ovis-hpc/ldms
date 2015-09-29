@@ -18,9 +18,9 @@
 #include "ocm/ocm.h"
 #include "rctrl.h"
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 pthread_mutex_t ctrl_list_lock;
 struct rctrl_list ctrl_list;
@@ -126,7 +126,7 @@ static void handle_zap_conn_req(zap_ep_t zep)
 
 	char *data = NULL;
 	size_t datalen = 0;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	if (ctrl->secretword) {
 		uint64_t ch = ovis_auth_gen_challenge();
 		new_ctrl->secretword = ovis_auth_encrypt_password(ch,
@@ -140,7 +140,7 @@ static void handle_zap_conn_req(zap_ep_t zep)
 			datalen = sizeof(och);
 		}
 	}
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	/* Take a connect reference. */
 	__rctrl_ref_get(new_ctrl);
 	zerr = zap_accept(zep, rctrl_passive_zap_cb, data, datalen);
@@ -156,7 +156,7 @@ static void handle_zap_conn_req(zap_ep_t zep)
 	pthread_mutex_unlock(&ctrl_list_lock);
 	return;
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 reject:
 	zerr = zap_reject(zep);
 	if (zerr) {
@@ -165,12 +165,12 @@ reject:
 		goto err;
 	}
 	return;
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 err:
 	zap_close(zep);
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 int rctrl_send(rctrl_t ctrl, struct ocm_cfg_buff *data);
 int __send_auth_password(zap_ep_t zep, rctrl_t ctrl, const char *password)
 {
@@ -201,13 +201,13 @@ out:
 	free(buff);
 	return rc;
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 static void handle_zap_connected(zap_ep_t zep, rctrl_t ctrl, zap_event_t zev)
 {
 	if (ctrl->mode == RCTRL_LISTENER)
 		return;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	if (zev->data_len) {
 		/* The server wants to authenticate. */
 		if (!ctrl->secretword) {
@@ -240,7 +240,7 @@ static void handle_zap_connected(zap_ep_t zep, rctrl_t ctrl, zap_event_t zev)
 		free(passwd);
 		return;
 	}
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	ctrl->cb(RCTRL_EV_CONNECTED, ctrl);
 	return;
 }
@@ -269,7 +269,7 @@ static void rctrl_active_zap_cb(zap_ep_t zep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		rev = RCTRL_EV_DISCONNECTED;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		if (ctrl->auth_state == RCTRL_AUTH_FAILED ||
 				ctrl->auth_state == RCTRL_AUTH_SENT_PASSWORD) {
 			rev = RCTRL_EV_REJECTED;
@@ -278,7 +278,7 @@ static void rctrl_active_zap_cb(zap_ep_t zep, zap_event_t ev)
 				__rctrl_ref_put(ctrl);
 			}
 		}
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		/* taken when connect */
 		__rctrl_ref_put(ctrl);
 		ctrl->cb(rev, ctrl);
@@ -286,11 +286,11 @@ static void rctrl_active_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_RECV_COMPLETE:
 		ctrl->cfg = (ocm_cfg_t)ev->data;
 		rev = RCTRL_EV_RECV_COMPLETE;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		key = ocm_cfg_key(ctrl->cfg);
 		if (key && 0 == strcmp(key, AUTH_APPROVAL_KEY))
 			rev = RCTRL_EV_CONNECTED;
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		ctrl->cb(rev, ctrl);
 		break;
 	case ZAP_EVENT_READ_COMPLETE:
@@ -308,7 +308,7 @@ static void rctrl_active_zap_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 static int __send_auth_approval(zap_ep_t zep, rctrl_t ctrl)
 {
 	int rc = 0;
@@ -341,7 +341,7 @@ reject_or_error:
 	ctrl->auth_state = RCTRL_AUTH_FAILED;
 	zap_close(zep);
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 static void rctrl_passive_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
@@ -369,13 +369,13 @@ static void rctrl_passive_zap_cb(zap_ep_t zep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		ctrl->cfg = (ocm_cfg_t)ev->data;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		key = ocm_cfg_key(ctrl->cfg);
 		if (key && 0 == strcmp(key, AUTH_PASSWORD_KEY)) {
 			handle_auth_challenge_reply(zep, ctrl);
 			break;
 		}
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		ctrl->cb(RCTRL_EV_RECV_COMPLETE, ctrl);
 		break;
 	case ZAP_EVENT_READ_COMPLETE:

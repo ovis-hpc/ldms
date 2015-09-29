@@ -1,0 +1,20 @@
+To test,  copy the etc/ layout here into your /etc or imageroot/etc/
+and then cd to imageroot (or / if no imageroot) and:
+
+Clone/Edit /etc/genders.ldms.ataco to define the LDMS genders describing the
+node roles, data collection network usage, metrics collected, and so forth.
+If desired, ldms genders can be kept together with regular genders in /etc/genders.
+This will facilitate starting/stopping data collection with
+	pdsh -g ldmsd service ldmsd start
+
+Edit /etc/sysconfig/ldmsd.conf to specify the correct name of the 
+genders file for your cluster (same gender file content must be visible from
+all nodes) in the LDMS_GENDERS variable.
+
+In /etc/sysconfig/ldms-aggd specify the correct directory location for
+STORE_PATH where data will be dumped.
+
+Edit /etc/sysconfig/ldmsd.conf to specify the correct log path
+LDMSD_LOG_PATH for your installation. 'syslog' will trigger use of syslog
+calls instead of log files. LDMSD_LOG_PATH is also where ldms-aggd will log.
+With debug genders other than ldms[agg]d_dbg=ERROR, the log can get a lot of traffic.

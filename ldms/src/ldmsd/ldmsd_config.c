@@ -1961,7 +1961,7 @@ int ldmsd_config_init(char *name)
 
 void *inet_ctrl_thread_proc(void *args)
 {
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	const char *secretword = (const char *)args;
 #endif
 	struct msghdr msg;
@@ -1979,7 +1979,7 @@ loop:
 		goto loop;
 	}
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 
 #include <string.h>
 #include "ovis_auth/auth.h"
@@ -2052,7 +2052,7 @@ loop:
 			goto loop;
 		}
 	}
-#else /* ENABLE_AUTH */
+#else /* OVIS_LIB_HAVE_AUTH */
 	uint64_t greeting = 0;
 	int rc = send(inet_sock, (char *)&greeting, sizeof(uint64_t), 0);
 	if (rc == -1) {
@@ -2061,7 +2061,7 @@ loop:
 				errno);
 		goto loop;
 	}
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 	do {
 		ssize_t msglen;

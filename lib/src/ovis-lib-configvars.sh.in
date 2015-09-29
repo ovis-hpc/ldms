@@ -1,0 +1,6 @@
+#!/bin/sh
+ovis_lib_prefix=@prefix@
+ovis_lib_exec_prefix=@exec_prefix@
+ovis_lib_libdir=@libdir@
+ovis_lib_pkglibdir=@pkglibdir@
+ovis_lib_plugins=@pkglibdir@

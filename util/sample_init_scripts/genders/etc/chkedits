@@ -1,0 +1,4 @@
+#!/bin/bash
+rm -rf DELTA/*
+find . -name 'ldm*' -exec ./compare.sh {} $1 \;
+chown -R baallan:baallan DELTA

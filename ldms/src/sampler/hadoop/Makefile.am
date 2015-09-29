@@ -6,10 +6,10 @@ AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 
 #hadoop sampler core
 libhadoop_sampler_la_SOURCES = sampler_hadoop.c sampler_hadoop.h
-libhadoop_sampler_la_LIBADD = $(CORE)/libldms.la -lovis_util -lrt -lcoll
+libhadoop_sampler_la_LIBADD = $(CORE)/libldms.la -lovis_util @LDFLAGS_GETTIME@ -lcoll
 lib_LTLIBRARIES += libhadoop_sampler.la
 
-COMMON_ADD = $(CORE)/libldms.la -lovis_util -lrt -lpthread -lcoll \
+COMMON_ADD = $(CORE)/libldms.la -lovis_util @LDFLAGS_GETTIME@ -lpthread -lcoll \
 		libhadoop_sampler.la
 
 #hadoop_namenode
@@ -65,7 +65,7 @@ lib_LTLIBRARIES += libhadoop_jobhistoryserver.la
 #hadoop metrics
 ovisconfdir = /etc/ovis/
 install-data-local:
-	mkdir -p $(ovisconfdir)
+	$(MKDIR_P) $(ovisconfdir)
 	cp -r $(srcdir)/hadoop-metrics $(ovisconfdir)
 
 uninstall-local:

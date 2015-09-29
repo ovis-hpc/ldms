@@ -15,12 +15,12 @@ OPV=-$(PACKAGE_VERSION)
 
 .PHONY: rpm rpm-old toss centos doxygen doc install-doc
 rpm-old: dist-gzip
-	mkdir -p rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	$(MKDIR_P) rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(OVIS_LIB_TARBALL) ovis-lib.spec rpm/SOURCES
 	rpmbuild --define "_topdir `pwd`/rpm" -ba ovis-lib.spec
 
 rpm toss centos: dist-gzip
-	mkdir -p centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	$(MKDIR_P) centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(OVIS_LIB_TARBALL) packaging/ovis-lib-toss.spec centos/SOURCES
 	rpmbuild --define "_topdir `pwd`/centos" -ba packaging/ovis-lib-toss.spec
 
@@ -30,7 +30,7 @@ rpm-clean:
 
 .PHONY: rpm7 centos7 rhel7
 rpm7 centos7 rhel7: dist-gzip
-	mkdir -p rpm7/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	$(MKDIR_P) rpm7/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	ln -f -s ../../automake rpm7/BUILD/automake
 	cp $(OVIS_LIB_TARBALL) rpm7/SOURCES
 	cp packaging/ovis-lib-rhel7.spec rpm7/SPECS
