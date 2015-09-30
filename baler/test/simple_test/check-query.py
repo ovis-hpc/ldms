@@ -9,6 +9,7 @@ BTEST_TS_LEN = int(os.environ['BTEST_TS_LEN'])
 BTEST_TS_INC = int(os.environ['BTEST_TS_INC'])
 BTEST_NODE_BEGIN = int(os.environ['BTEST_NODE_BEGIN'])
 BTEST_NODE_LEN = int(os.environ['BTEST_NODE_LEN'])
+BTEST_N_PATTERNS = int(os.environ['BTEST_N_PATTERNS'])
 
 bstore = bquery.bq_open_store(BSTORE)
 assert bstore
@@ -90,33 +91,60 @@ inc = BTEST_TS_INC
 if inc < 3600 :
     inc = 3600
 
+def expect_node(ptn_num):
+    ptn_num = int(ptn_num)
+    ptn_num -= 128
+    n = 0;
+    skip = 0
+    while (n < BTEST_NODE_LEN):
+        node = BTEST_NODE_BEGIN + n
+        if (node % BTEST_N_PATTERNS == ptn_num):
+            skip = skip + 1;
+        n = n + 1
+    return BTEST_NODE_LEN - skip
+
 # key existing case
 ts0 = (BTEST_TS_BEGIN) + (BTEST_TS_LEN) - 2 * inc
 ts1 = (BTEST_TS_BEGIN) + (BTEST_TS_LEN) - inc - 1
 node_range = None
-ptn_range = "128"
-mps = BTEST_NODE_LEN
+ptn_id = 128
+ptn_range = str(ptn_id)
+mps = expect_node(ptn_id)
 ts_n = int(inc / BTEST_TS_INC)
-img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), BTEST_NODE_LEN)
-msg_query(node_range, ptn_range, ts0, ts1, BTEST_NODE_LEN, mps * ts_n)
+img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), mps)
+msg_query(node_range, ptn_range, ts0, ts1, mps, mps * ts_n)
 
 # key not existing case
 ts0 = (BTEST_TS_BEGIN) + (BTEST_TS_LEN) - 2 * inc - 1
 ts1 = (BTEST_TS_BEGIN) + (BTEST_TS_LEN) - inc - 1
 node_range = None
-ptn_range = "128"
-mps = BTEST_NODE_LEN
+ptn_id = 128
+ptn_range = str(ptn_id)
+mps = expect_node(ptn_id)
 ts_n = int(inc / BTEST_TS_INC)
-img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), BTEST_NODE_LEN)
-msg_query(node_range, ptn_range, ts0, ts1, BTEST_NODE_LEN, mps * ts_n)
+img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), mps)
+msg_query(node_range, ptn_range, ts0, ts1, mps, mps * ts_n)
 
 # another key not existing case
 ts0 = 20
 ts1 = None
 node_range = None
-ptn_range = "128"
-mps = BTEST_NODE_LEN
+ptn_id = 128 + BTEST_N_PATTERNS - 1
+ptn_range = str(ptn_id)
+mps = expect_node(ptn_id)
 ts_n = int(BTEST_TS_LEN / BTEST_TS_INC)
 hr_n = int(BTEST_TS_LEN / 3600)
-img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), hr_n * BTEST_NODE_LEN)
-msg_query(node_range, ptn_range, ts0, ts1, BTEST_NODE_LEN, mps * ts_n)
+img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), hr_n * mps)
+msg_query(node_range, ptn_range, ts0, ts1, mps, mps * ts_n)
+
+# Multiple patterns
+ts0 = 20
+ts1 = None
+node_range = None
+ptn_ids = [128, 128 + BTEST_N_PATTERNS - 1]
+ptn_range = ','.join(str(p) for p in ptn_ids)
+mps = sum(expect_node(x) for x in ptn_ids)
+ts_n = int(BTEST_TS_LEN / BTEST_TS_INC)
+hr_n = int(BTEST_TS_LEN / 3600)
+img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), hr_n * mps)
+msg_query(node_range, ptn_range, ts0, ts1, mps, mps * ts_n)

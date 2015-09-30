@@ -5,6 +5,9 @@ use benv; # This will load baler environment variables into perl
 my $hour_count = int( (3600 + $BTEST_TS_INC - 1) / $BTEST_TS_INC );
 my $minute_count = int( (60 + $BTEST_TS_INC - 1) / $BTEST_TS_INC );
 
+open my $fin, "./gen-ptns.pl |" or die "Cannot run ./gen-ptns.pl script";
+my @PTNS = <$fin>;
+
 # Prep comparison array
 my @cmp_hour = ();
 my @cmp_min = ();
@@ -13,14 +16,15 @@ my @cmp_sum = ();
 
 my $nts = int(($BTEST_TS_LEN + $BTEST_TS_INC - 1) / $BTEST_TS_INC);
 
-my %ptn_to_iid = (
-	"This is * test message from *, *: *" => 1,
-	"* see fire!" => 2,
-	"* is * sheep." => 3,
-);
+my %ptn_to_iid = {};
+my $NP = 0;
+for my $P (@PTNS) {
+	chomp $P;
+	$ptn_to_iid{$P} = $NP;
+	$NP++;
+}
 
 my @iid_to_ptnid = ();
-
 open my $bqptn, "bquery -s $BSTORE -t ptn |";
 
 while (my $line = <$bqptn>) {
@@ -37,28 +41,23 @@ while (my $line = <$bqptn>) {
 	$iid_to_ptnid[$iid] = $ptn_id;
 }
 
-$cmp_sum[$iid_to_ptnid[1]] = $BTEST_NODE_LEN * $nts;
-$cmp_sum[$iid_to_ptnid[2]] = 0;
-$cmp_sum[$iid_to_ptnid[3]] = 0;
+for (my $i = 0; $i < $NP; $i++) {
+	$cmp_sum[$iid_to_ptnid[$i]] = 0;
+}
 
 for (my $n = 0; $n < $BTEST_NODE_LEN; $n++) {
 	my $node = $BTEST_NODE_BEGIN + $n;
-	$cmp_hour[$iid_to_ptnid[1]][$node] = $hour_count;
-	$cmp_min[$iid_to_ptnid[1]][$node] = $minute_count;
-	if ($node % 10 == 0) {
-		$cmp_hour[$iid_to_ptnid[2]][$node] = $hour_count;
-		$cmp_min[$iid_to_ptnid[2]][$node] = $minute_count;
-		$cmp_sum[$iid_to_ptnid[2]]++;
-	}
-	if ($node % 10 == 1) {
-		$cmp_hour[$iid_to_ptnid[3]][$node] = $hour_count;
-		$cmp_min[$iid_to_ptnid[3]][$node] = $minute_count;
-		$cmp_sum[$iid_to_ptnid[3]]++;
+	for (my $i = 0; $i < $NP; $i++) {
+		if ($node % $NP == $i) {
+			$cmp_hour[$iid_to_ptnid[$i]][$node] = 0;
+			$cmp_min[$iid_to_ptnid[$i]][$node] = 0;
+		} else {
+			$cmp_hour[$iid_to_ptnid[$i]][$node] = $hour_count;
+			$cmp_min[$iid_to_ptnid[$i]][$node] = $minute_count;
+			$cmp_sum[$iid_to_ptnid[$i]] += $nts;
+		}
 	}
 }
-
-$cmp_sum[$iid_to_ptnid[2]] *= $nts;
-$cmp_sum[$iid_to_ptnid[3]] *= $nts;
 
 print "Checking 3600-1 image .......\n";
 check_image("3600-1", @cmp_hour);
@@ -69,10 +68,11 @@ exit 0;
 
 sub check_image {
 	my ($I, @cmp_count) = @_;
+	glob $NP;
 	my @sum = ();
-	$sum[128] = 0;
-	$sum[129] = 0;
-	$sum[130] = 0;
+	for (my $i = 0; $i < $NP; $i++) {
+		$sum[128 + $i] = 0;
+	}
 
 	open my $BQUERY, "bquery -s $BSTORE -t img -I $I |"
 						or die "bquery error";
@@ -93,7 +93,7 @@ sub check_image {
 		$__ptn_id = $ptn_id;
 		$__ts = $ts;
 	}
-	for my $ptn_id ((128, 129, 130)) {
+	for my $ptn_id (128 .. (128+$NP-1)) {
 		if ($sum[$ptn_id] != $cmp_sum[$ptn_id]) {
 			die "ptn_id: $ptn_id, expecting sum: $cmp_sum[$ptn_id], but got $sum[$ptn_id]";
 		}
