@@ -57,9 +57,10 @@
 #include "baler/bset.h"
 #include "baler/btkn.h"
 #include "baler/bptn.h"
+#include "baler/bheap.h"
 
-#include "plugins/sos_img_class_def.h"
-#include "plugins/sos_msg_class_def.h"
+#include "plugins/bsos_img.h"
+#include "plugins/bsos_msg.h"
 
 struct bsos_wrap {
 	sos_t sos;
@@ -70,26 +71,6 @@ struct bsos_wrap {
 };
 
 LIST_HEAD(bsos_wrap_head, bsos_wrap);
-
-/**
- * Open sos and put it into the wrapper.
- * \param path The path to sos.
- * \returns A pointer to ::bsos_wrap on success.
- * \returns NULL on failure.
- */
-struct bsos_wrap* bsos_wrap_open(const char *path);
-
-/**
- * Close sos and free related resources used by \c bsw.
- * \param bsw The wrapper handle.
- */
-void bsos_wrap_close_free(struct bsos_wrap *bsw);
-
-/**
- * Find the bsos_wrap by \c store_name.
- */
-struct bsos_wrap* bsos_wrap_find(struct bsos_wrap_head *head,
-				 const char *store_name);
 
 /**
  * Query structure for Baler query library.
@@ -115,34 +96,58 @@ struct bquery {
 	time_t ts_1; /**< The end time stamp */
 	bq_stat_t stat; /**< Query status */
 	sos_obj_t obj; /**< Current sos object */
-	sos_array_t msg; /**< Current msg object */
 	int text_flag; /**< Non-zero if the query wants text in date-time and
 			    host field */
 	char sep; /**< Field separator for output */
-	bsos_wrap_t bsos; /**< SOS wrap for the query */
+	void *bsos; /**< bsos handle */
 	char sos_prefix[PATH_MAX]; /**< SOS prefix. Prefix is also used as a
 					     path buffer.*/
 	struct bq_formatter *formatter; /**< Formatter */
 
+	struct brange_u32_head hst_rngs; /**< Ranges of hosts */
+	struct brange_u32_iter *hst_rng_itr;
+	struct brange_u32_head ptn_rngs; /**< Ranges of patterns */
+	struct brange_u32_iter *ptn_rng_itr;
+
+	/* value getter interface */
 	uint32_t (*get_sec)(struct bquery*);
 	uint32_t (*get_usec)(struct bquery*);
 	uint32_t (*get_comp_id)(struct bquery*);
 	uint32_t (*get_ptn_id)(struct bquery*);
 
+	/* entry iteration interface */
 	int (*first_entry)(struct bquery*);
 	int (*next_entry)(struct bquery*);
 	int (*prev_entry)(struct bquery*);
 	int (*last_entry)(struct bquery*);
+
+	/* bsos open/close interface */
+	void *(*bsos_open)(const char *path, int create);
+	void (*bsos_close)(void *path, sos_commit_t commit);
+};
+
+struct bq_msg_ptc_hent;
+
+struct bmsgquery {
+	struct bquery base;
+	sos_array_t msg; /**< Current msg object */
+	enum {
+		BMSGIDX_PTC,
+		BMSGIDX_TC,
+	} idxtype;
+	enum {
+		BMSGQDIR_FWD,
+		BMSGQDIR_BWD,
+	} last_dir;
+	struct bheap *bheap;
+	LIST_HEAD(, bq_msg_ptc_hent) hent_list; /* store heap entries that are
+						 * not in the heap */
 };
 
 struct bimgquery {
 	struct bquery base;
 	char *store_name;
 	sos_array_t img;	/**< Current img object  */
-	struct brange_u32_head hst_rngs; /**< Ranges of hosts */
-	struct brange_u32_iter *hst_rng_itr;
-	struct brange_u32_head ptn_rngs; /**< Ranges of patterns */
-	struct brange_u32_iter *ptn_rng_itr;
 };
 
 struct bq_store {
@@ -151,5 +156,40 @@ struct bq_store {
 	struct btkn_store *tkn_store;
 	struct btkn_store *cmp_store;
 };
+
+struct bq_msg_ptc_hent {
+	sos_iter_t iter;
+	uint32_t ptn_id;
+	union {
+		struct __attribute__((__packed__)) {
+			uint32_t comp_id;
+			uint32_t sec;
+		};
+		uint64_t sec_comp_id;
+	};
+	struct brange_u32_iter *hst_rng_itr;
+	sos_array_t msg; /* current message */
+	sos_obj_t obj; /* current object */
+	struct bmsgquery *msgq; /* convenient reference */
+	LIST_ENTRY(bq_msg_ptc_hent) link;
+};
+
+struct bq_msg_ptc_hent *bq_msg_ptc_hent_new(struct bmsgquery *msgq, uint32_t ptn_id);
+void bq_msg_ptc_hent_free(struct bq_msg_ptc_hent *hent);
+
+int bq_msg_ptc_hent_first(struct bq_msg_ptc_hent *hent);
+int bq_msg_ptc_hent_next(struct bq_msg_ptc_hent *hent);
+int bq_msg_ptc_hent_last(struct bq_msg_ptc_hent *hent);
+int bq_msg_ptc_hent_prev(struct bq_msg_ptc_hent *hent);
+int bq_msg_ptc_hent_cmp_inc(struct bq_msg_ptc_hent *a, struct bq_msg_ptc_hent *b);
+int bq_msg_ptc_hent_cmp_dec(struct bq_msg_ptc_hent *a, struct bq_msg_ptc_hent *b);
+
+typedef enum bq_check_cond {
+	BQ_CHECK_COND_OK    =  0x0,
+	BQ_CHECK_COND_TS0   =  0x1,
+	BQ_CHECK_COND_TS1   =  0x2,
+	BQ_CHECK_COND_HST  =  0x4,
+	BQ_CHECK_COND_PTN   =  0x8,
+} bq_check_cond_e;
 
 #endif

@@ -105,6 +105,12 @@ struct bset_u32_iter {
 struct bset_u32_iter* bset_u32_iter_new(struct bset_u32 *set);
 
 /**
+ * Iterator destructor.
+ * \param iter The iterator created by bset_u32_iter_new().
+ */
+void bset_u32_iter_free(struct bset_u32_iter *iter);
+
+/**
  * Set \c *out with value of next element, and step the \c iter forward.
  * \param iter The iterator.
  * \param[out] out The output parameter.

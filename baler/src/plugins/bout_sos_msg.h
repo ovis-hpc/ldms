@@ -68,9 +68,6 @@
 
 struct bout_sos_msg_plugin {
 	struct bout_sos_plugin base; /**< base structure. */
-	sos_index_t msg_index;
-	uint32_t delta_ts; /**< ts granularity */
-	uint32_t delta_node; /**< node granularity */
 };
 
 /**

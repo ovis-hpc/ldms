@@ -32,8 +32,6 @@ make %{?_smp_mflags}
 make install DESTDIR=%{buildroot}
 # remove unwanted .la files
 rm -f %{buildroot}%{_libdir}/*.la
-# remove python interface ... they're unmaintained
-rm -rf %{buildroot}%{_prefix}/lib/python*/
 
 %clean
 rm -rf %{buildroot}
@@ -42,6 +40,7 @@ rm -rf %{buildroot}
 %files
 %{_bindir}
 %{_libdir}
+%{_prefix}/lib
 %{_prefix}/etc
 
 
