@@ -126,6 +126,14 @@ static void prdcr_set_del(ldmsd_prdcr_set_t set)
 		if (lset)
 			ldms_set_delete(lset);
 	}
+	ldmsd_strgp_ref_t strgp_ref;
+	strgp_ref = LIST_FIRST(&set->strgp_list);
+	while (strgp_ref) {
+		LIST_REMOVE(strgp_ref, entry);
+		ldmsd_strgp_put(strgp_ref->strgp);
+		free(strgp_ref);
+		strgp_ref = LIST_FIRST(&set->strgp_list);
+	}
 	free(set->inst_name);
 	free(set);
 }
