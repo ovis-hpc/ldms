@@ -274,9 +274,6 @@ struct ldmsd_strgp {
 
 	/** The container name in which the storage backend will place data */
 	char *container;
-	/** Container rotation interval/capacity */
-	time_t container_time;
-	time_t rotate_interval;
 
 	/** The storage backend plugin */
 	char *plugin_name;

@@ -96,49 +96,6 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj___del(obj);
 }
 
-static ldmsd_store_handle_t
-open_container(ldmsd_strgp_t strgp, time_t container_time)
-{
-	ldmsd_store_handle_t sh;
-	char *cstr;
-	size_t cstr_len = strlen(strgp->container) + 16;
-
-	cstr = malloc(cstr_len);
-	if (!cstr)
-		return NULL;
-
-	snprintf(cstr, cstr_len, "%s/%08jX", strgp->container, container_time);
-	sh = ldmsd_store_open(strgp->store, cstr, strgp->schema, NULL, strgp);
-	free(cstr);
-	return sh;
-}
-
-static void strgp_task_cb(ldmsd_task_t task, void *arg)
-{
-	ldmsd_strgp_t strgp = arg;
-	char *cstr;
-	size_t cstr_len;
-	int ret;
-
-	ldmsd_strgp_lock(strgp);
-	assert(strgp->next_store_handle == NULL);
-	switch (strgp->state) {
-	case LDMSD_STRGP_STATE_STOPPED:
-		ldmsd_task_stop(&strgp->task);
-		break;
-	case LDMSD_STRGP_STATE_RUNNING:
-		strgp->next_store_handle =
-			open_container(strgp,
-				       strgp->container_time + strgp->rotate_interval);
-		if (strgp->next_store_handle)
-			ldmsd_task_stop(&strgp->task);
-		break;
-	default:
-		assert(NULL == "Invalid storage policy state");
-	}
-	ldmsd_strgp_unlock(strgp);
-}
-
 static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
@@ -146,26 +103,6 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	struct ldms_timestamp *ts, _ts;
 	_ts = ldms_transaction_timestamp_get(prd_set->set);
 	ts = &_ts;
-	if (strgp->rotate_interval
-	    && ts->sec >= (strgp->container_time + strgp->rotate_interval)) {
-		/*
-		 * If for whatever reason, the next store could not be
-		 * opened, keep using the old store and log the
-		 * issue
-		 */
-		if (strgp->next_store_handle) {
-			ldmsd_store_close(strgp->store, strgp->store_handle);
-			strgp->store_handle = strgp->next_store_handle;
-			strgp->next_store_handle = NULL;
-			strgp->container_time += strgp->rotate_interval;
-			int sched_sec = random() % (strgp->rotate_interval / 5);
-			ldmsd_task_start(&strgp->task, strgp_task_cb, strgp, 0,
-					 sched_sec * 1000000, 0);
-		} else
-			ldmsd_log(LDMSD_LERROR, "Error opening rotate container, "
-				 "using existing container %s/%08jX",
-				 strgp->container, strgp->container_time);
-	}
 	strgp->store->store(strgp->store_handle, prd_set->set,
 			    strgp->metric_arry, strgp->metric_count);
 }
@@ -183,7 +120,6 @@ ldmsd_strgp_new(const char *name)
 
 	strgp->state = LDMSD_STRGP_STATE_STOPPED;
 	strgp->update_fn = strgp_update_fn;
-	strgp->rotate_interval = 0;
 	LIST_INIT(&strgp->prdcr_list);
 	LIST_INIT(&strgp->metric_list);
 	ldmsd_task_init(&strgp->task);
@@ -248,7 +184,6 @@ time_t convert_rotate_str(const char *rotate)
 int cmd_strgp_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
 	char *attr, *name, *plugin, *container, *schema, *rotate;
-	time_t rotate_interval = 0;
 	struct ldmsd_plugin_cfg *store;
 
 	attr = "name";
@@ -278,14 +213,6 @@ int cmd_strgp_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	if (!schema)
 		goto einval;
 
-	attr = "rotate";
-	rotate = av_value(avl, attr);
-	if (rotate) {
-		rotate_interval = convert_rotate_str(rotate);
-		if (!rotate_interval)
-			goto einval;
-	}
-
 	ldmsd_strgp_t strgp = ldmsd_strgp_new(name);
 	if (!strgp) {
 		if (errno == EEXIST)
@@ -299,7 +226,6 @@ int cmd_strgp_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 		goto enomem_1;
 
 	strgp->store = store->store;
-	strgp->rotate_interval = rotate_interval;
 
 	strgp->schema = strdup(schema);
 	if (!strgp->schema)
@@ -624,22 +550,8 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	}
 	strgp->metric_count = i;
 
-	if (!strgp->rotate_interval) {
-		strgp->store_handle = ldmsd_store_open(strgp->store, strgp->container,
-						       strgp->schema, NULL, strgp);
-	} else {
-		time_t now = time(NULL);
-
-		/* Back up to rotate boundary */
-		strgp->container_time = now - ((long)now % strgp->rotate_interval);
-
-		strgp->store_handle = open_container(strgp, strgp->container_time);
-
-		/* Schedule opening the next container. */
-		int sched_sec = random() % (strgp->rotate_interval / 5);
-		ldmsd_task_start(&strgp->task, strgp_task_cb, strgp, 0,
-				 sched_sec * 1000000, 0);
-	}
+	strgp->store_handle = ldmsd_store_open(strgp->store, strgp->container,
+			strgp->schema, NULL, strgp);
 	rc = EINVAL;
 	if (!strgp->store_handle)
 		goto err;

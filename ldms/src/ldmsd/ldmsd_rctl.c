@@ -463,13 +463,7 @@ void help_strgp_add()
 		"     name=        The unique storage policy name.\n"
 		"     plugin=      The name of the storage backend.\n"
 		"     container=   The storage backend container name.\n"
-		"     schema=      The schema name of the metric set to store.\n"
-		"     [rotate=]    The time period stored in a single container. The format is\n"
-		"     	           <number><units> where <units> is one of 'h' or 'd', for\n"
-		"     	           hours and days respectively. For example \"rotate=2d\",\n"
-		"     	           means that a container will contain two days of data before\n"
-		"     	           rotation to a new container. If rotate is omitted, container\n"
-		"     	           rotation is disabled.\n");
+		"     schema=      The schema name of the metric set to store.\n");
 }
 
 void help_strgp_del()

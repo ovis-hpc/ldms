@@ -344,15 +344,14 @@ void __process_info_strgp(enum ldmsd_loglevel llevel)
 	ldmsd_log(llevel, "========================================================================\n");
 	ldmsd_log(llevel, "%s\n", "Storage Policies");
 	ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-8s %-12s\n",
-		 "Name", "Container", "Schema", "Back End", "State", "Rotate");
+		 "Name", "Container", "Schema", "Back End", "State");
 	ldmsd_log(llevel, "--------------- --------------- --------------- --------------- -------- ------------\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
 	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
-		ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-8s %11ds\n",
+		ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-8s\n",
 			 strgp->obj.name,
 			 strgp->container, strgp->schema, strgp->plugin_name,
-			 ldmsd_strgp_state_str(strgp->state),
-			 strgp->rotate_interval);
+			 ldmsd_strgp_state_str(strgp->state));
 		ldmsd_strgp_lock(strgp);
 		ldmsd_name_match_t match;
 		ldmsd_log(llevel, "    Producer Match Specifications (empty == All)\n");
