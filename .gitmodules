@@ -1,6 +1,6 @@
 [submodule "util/libevent"]
 	path = util/libevent
-	url = https://github.com/libevent/libevent.git
+	url = gitlab@gitlab.ogc.us:ovis/libevent.git
 [submodule "sos"]
 	path = sos
 	url = gitlab@gitlab.ogc.us:tom/SOS.git
