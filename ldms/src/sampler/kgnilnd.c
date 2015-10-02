@@ -193,12 +193,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	if (set) {
-                msglog(LDMSD_LERROR, "%s: Set already created.\n",
+		msglog(LDMSD_LERROR, "%s: Set already created.\n",
 		       __FILE__);
-                return EINVAL;
-        }
+		return EINVAL;
+	}
 
-	int rc = create_metric_set(value, sname);
+	rc = create_metric_set(value, sname);
 	if (rc) {
 		msglog(LDMSD_LERROR, "%s: failed to create a metric set.\n",
 		       __FILE__);
