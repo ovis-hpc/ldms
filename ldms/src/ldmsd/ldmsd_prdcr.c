@@ -72,8 +72,10 @@ int prdcr_resolve(const char *hostname, short port_no,
 	struct hostent *h;
 
 	h = gethostbyname(hostname);
-	if (!h)
+	if (!h) {
 		printf("Error resolving hostname '%s'\n", hostname);
+		return -1;
+	}
 
 	if (h->h_addrtype != AF_INET)
 		return -1;
