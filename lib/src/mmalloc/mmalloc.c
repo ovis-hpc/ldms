@@ -61,6 +61,7 @@
 #include <limits.h>
 #include <time.h>
 #include <errno.h>
+#include <pthread.h>
 #include "mmalloc.h"
 #include "../coll/rbt.h"
 #include "ovis-test/test.h"
@@ -77,6 +78,7 @@ typedef struct mm_region {
 	size_t grain_bits;
 	size_t size;
 	void *start;
+	pthread_mutex_t lock;
 	struct rbt size_tree;
 	struct rbt addr_tree;
 } *mm_region_t;
@@ -118,7 +120,7 @@ int mm_init(size_t size, size_t grain)
 	mmr = calloc(1, sizeof (*mmr));
 	if (!mmr)
 		return ENOMEM;
-
+	pthread_mutex_init(&mmr->lock, NULL);
 	size = MMR_ROUNDUP(size, 4096);
 	mmr->start = mmap(NULL, size, PROT_READ | PROT_WRITE,
 			  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
@@ -159,9 +161,12 @@ void *mm_alloc(size_t size)
 	size = MMR_ROUNDUP(size, mmr->grain);
 	count = size >> mmr->grain_bits;
 
+	pthread_mutex_lock(&mmr->lock);
 	rbn = rbt_find_lub(&mmr->size_tree, &count);
-	if (!rbn)
+	if (!rbn) {
+		pthread_mutex_unlock(&mmr->lock);
 		return NULL;
+	}
 
 	p = container_of(rbn, struct mm_prefix, size_node);
 
@@ -184,6 +189,7 @@ void *mm_alloc(size_t size)
 	}
 	p->count = count;
 	p->pfx = p;
+	pthread_mutex_unlock(&mmr->lock);
 	return ++p;
 }
 
@@ -194,6 +200,7 @@ void mm_free(void *d)
 	struct rbn *rbn;
 	p --;
 
+	pthread_mutex_lock(&mmr->lock);
 	/* See if we can coalesce with our lesser sibling */
 	rbn = rbt_find_glb(&mmr->addr_tree, &p->pfx);
 	if (rbn) {
@@ -236,6 +243,7 @@ void mm_free(void *d)
 	/* Put 'p' back in the trees */
 	rbt_ins(&mmr->size_tree, &p->size_node);
 	rbt_ins(&mmr->addr_tree, &p->addr_node);
+	pthread_mutex_unlock(&mmr->lock);
 }
 
 #ifdef MMR_TEST
