@@ -27,10 +27,6 @@ AC_C_CONST
 dnl Check for libevent
 OPTION_WITH_EVENT
 
-dnl Check for glib
-PKG_CONFIG=`which pkg-config`
-PKG_CHECK_MODULES([GLIB20], [glib-2.0 >= 2.0.0])
-
 AC_SUBST(ac_configure_args)
 
 AC_CONFIG_FILES([Makefile])
