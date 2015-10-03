@@ -88,15 +88,15 @@ int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 	static char suffix[128];
 
 	LIST_FOREACH(sl, llite_str_list, link) {
-		msglog(LDMSD_LDEBUG, "%s: should be adding metrics for <%s>\n",
-		       __FILE__,sl->str);
+		msglog(LDMSD_LDEBUG, "cray_system_sampler: should be adding metrics for <%s>\n",
+		      sl->str);
 		snprintf(path_tmp, sizeof(path_tmp), "/proc/fs/lustre/llite/%s-*/stats", sl->str);
 		snprintf(suffix, sizeof(suffix), "#llite.%s", sl->str);
 		rc = stats_construct_routine(schema, path_tmp,
 				"client.lstats.", suffix, &lms_list, LUSTRE_METRICS,
 				LUSTRE_METRICS_LEN, lustre_idx_map);
 		if (rc) {
-			msglog(LDMSD_LDEBUG, "%s: returning error: %d from stats_construct_routine for %s|n",
+			msglog(LDMSD_LDEBUG, "cray_system_sampler/%s: returning error: %d from stats_construct_routine for %s\n",
 			       __FILE__, rc, path_tmp);
 			return rc;
 		}

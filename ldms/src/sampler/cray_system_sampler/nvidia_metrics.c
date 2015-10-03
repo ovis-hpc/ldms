@@ -126,8 +126,11 @@ int config_nvidia(struct attr_value_list* kwl,
 
 	value = av_value(avl, "gpu_devices");
 	if (value){
+		msglog(LDMSD_LDEBUG, "cray_system_sampler configuring for gpudevices <%s>\n",
+		       value);
 		gpudevicestr = strdup(value);
 	} else {
+		msglog(LDMSD_LDEBUG, "cray_system_sampler configuring no gpudevices\n",
 		gpudevicestr = NULL;
 	}
 
