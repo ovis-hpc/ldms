@@ -282,7 +282,7 @@ static int sample(void)
 	} while (s);
 	rc = 0;
 out:
-	ldms_transaction_begin(set);
+	ldms_transaction_end(set);
 	return rc;
 }
 
