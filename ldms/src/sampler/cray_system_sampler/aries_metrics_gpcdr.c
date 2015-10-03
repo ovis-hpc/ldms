@@ -101,7 +101,6 @@ typedef struct{
 } aries_linksmetrics_info_t;
 
 /** NOTE: the enum isnt x-refed. Just iterate thru while < ENDLINKS */
-/** FIXME: what are the actual paths ? */
 aries_linksmetrics_info_t linksinfo[] = {
 	{TRAFFIC, "/sys/devices/virtual/gni/gpcdr0/metricsets/linktraffic/metrics", NULL, "traffic", "(B)", 1, "SAMPLE_traffic", "(B/s)"},
 	{STALLED, "/sys/devices/virtual/gni/gpcdr0/metricsets/linkstalled/metrics", NULL, "stalled", "(ns)", 0, NULL, NULL},
@@ -424,9 +423,7 @@ int add_metrics_aries_linksmetrics(ldms_schema_t schema,
 
 
 	/** NOTE: add all 48, even if they arent used */
-
 	for (i = 0; i < ENDLINKS; i++){
-		//FIXME: check this the alloc had not been in the if before....
 		if ((hsn_metrics_type == HSN_METRICS_COUNTER) ||
 		    (hsn_metrics_type == HSN_METRICS_BOTH)){
 

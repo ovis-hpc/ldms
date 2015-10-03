@@ -368,9 +368,6 @@ int add_metrics_generic(ldms_schema_t schema,
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
-		//V3 CHECK - dont know whats in the get_metric_size that might set up something
-		//get_metric_size_lustre(m_sz, d_sz, msglog);
-		//FIXME TODO : Lustre will have to be fixed
 		return add_metrics_lustre(schema, msglog);
 #else
 		//default unused

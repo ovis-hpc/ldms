@@ -178,7 +178,7 @@ int  add_metrics_nvidia(ldms_schema_t schema,
 
 	//determine the devices...independent of whether they exist or not
 	count = 0;
-	pch = strtok_r(gpudevicestr, ",\n", &saveptr); //FIXME: free?
+	pch = strtok_r(gpudevicestr, ",\n", &saveptr); //NOTE: free?
 	while (pch != NULL){
 		if (count == NVIDIA_MAX_DEVICES){
 			msglog(LDMSD_LERROR, "NVML: Too many devices %d\n", count);
@@ -311,7 +311,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		return 0;
 	}
 
-	//FIXME: how to handle errs? keep going?
+	//NOTE: how to handle errs? keep going?
 	for (i = 0; i < nvidia_device_count; i++){
 		unsigned int ret;
 		unsigned long long retl;
@@ -505,7 +505,7 @@ int sample_metrics_nvidia(ldms_set_t set, ldmsd_msg_log_f msglog){
 		}
 		ldms_metric_set(set, metric_table_nvidia[metric_count++], &v2);
 
-		//FIXME: is there a way to get the raw counters and not use their diff?
+		//TODO: is there a way to get the raw counters and not use their diff?
 		if (nvmlDeviceGetUtilizationRatesPtr != NULL){
 			rc = (*nvmlDeviceGetUtilizationRatesPtr)(nvidia_device[i], &util);
 			if (rc !=  NVML_SUCCESS){
@@ -695,7 +695,7 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 		return EINVAL;
 	}
 
-	//FIXME: is there anywhere I can do shutdown? what happens if it isnt?
+	//TODO: is there anywhere I can do shutdown? what happens if it isnt?
 	result = (*nvmlInitPtr)();
 	if (result != NVML_SUCCESS){
 		msglog(LDMSD_LERROR, "NVML: Failed to initialize NVML: %s\n",
@@ -730,14 +730,14 @@ int nvidia_setup(ldmsd_msg_log_f msglog){
 
 		//is this a device we are interested in?
 		for (j = 0; j < nvidia_device_count; j++){
-			//FIXME: temporarily we cannot pass in args with spaces. replace underscore with space before using
+			//NOTE: temporarily we cannot pass in args with spaces. replace underscore with space before using
 			char *tmpname = strdup(nvidia_device_names[j]);
 			replace_underscore(tmpname);
 			if (strcmp(name, tmpname) == 0){
 				msglog(LDMSD_LDEBUG, "Found matching device for <%s>\n",
 				       tmpname);
 				nvidia_device[j] = device;  //Note: copy works
-				//FIXME: will we need this?
+				//NOTE: will we need this?
 				result = (*nvmlDeviceGetPciInfoPtr)(nvidia_device[j], &nvidia_pci[j]);
 				if (result != NVML_SUCCESS){
 					msglog(LDMSD_LERROR, "NVML: Failed to get pci info for device %s: %s\n",
