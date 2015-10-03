@@ -462,8 +462,10 @@ int sample_metrics_procnetdev(ldms_set_t set, ldmsd_msg_log_f msglog)
 		}
 	} while(s);
 
-	if (!found)
+	if (!found) {
+		msglog(LDMSD_LERROR,"cray_system_sampler: sample_metrics_procnetdev matched no ifaces\n");
 		return EINVAL;
+	}
 
 	return 0;
 }
