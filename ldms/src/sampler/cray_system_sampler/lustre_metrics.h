@@ -129,11 +129,6 @@ static char *LUSTRE_METRICS[] = {
  */
 extern struct str_map *lustre_idx_map;
 
-/** get metric size */
-int get_metric_size_lustre(size_t *m_sz, size_t *d_sz,
-			   ldmsd_msg_log_f msglog);
-
-
 /** add metrics */
 int add_metrics_lustre(ldms_schema_t schema,
 		       ldmsd_msg_log_f msglog);

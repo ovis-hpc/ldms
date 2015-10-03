@@ -95,8 +95,11 @@ int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 		rc = stats_construct_routine(schema, path_tmp,
 				"client.lstats.", suffix, &lms_list, LUSTRE_METRICS,
 				LUSTRE_METRICS_LEN, lustre_idx_map);
-		if (rc)
+		if (rc) {
+			msglog(LDMSD_LDEBUG, "%s: returning error: %d from stats_construct_routine for %s|n",
+			       __FILE__, rc, path_tmp);
 			return rc;
+		}
 	}
 
 	return 0;
