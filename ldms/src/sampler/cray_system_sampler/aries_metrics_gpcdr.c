@@ -459,9 +459,6 @@ int add_metrics_aries_linksmetrics(ldms_schema_t schema,
 					return ENOMEM;
 				}
 				linksmetrics_base_metric_table[i][j] = rc;
-				/* XXX comp_id */
-				//				ldms_set_user_data(linksmetrics_base_metric_table[i][j],
-				//						   comp_id);
 			}
 		}
 
@@ -479,9 +476,6 @@ int add_metrics_aries_linksmetrics(ldms_schema_t schema,
 					return ENOMEM;
 				}
 				linksmetrics_derived_metric_table[i][j] = rc;
-				/* XXX comp_id */
-				//				ldms_set_user_data(linksmetrics_derived_metric_table[i][j],
-				//						   comp_id);
 			}
 		}
 	}
@@ -524,9 +518,6 @@ int add_metrics_aries_nicmetrics(ldms_schema_t schema,
 				return ENOMEM;
 			}
 			nicmetrics_base_metric_table[i] = rc;
-			/* XXX comp_id */
-			//			ldms_set_user_data(nicmetrics_base_metric_table[i],
-			//					   comp_id);
 		}
 	}
 
@@ -544,9 +535,6 @@ int add_metrics_aries_nicmetrics(ldms_schema_t schema,
 				return ENOMEM;
 			}
 			nicmetrics_derived_metric_table[i] = rc;
-			/* XXX comp_id */
-			//			ldms_set_user_data(nicmetrics_derived_metric_table[i],
-			//					   comp_id);
 		}
 	}
 
