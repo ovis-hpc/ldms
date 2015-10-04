@@ -180,20 +180,20 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	sname = av_value(avl, "schema");
-        if (!sname){
-                sname = default_schema_name;
-        }
-        if (strlen(sname) == 0){
-                msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
+	if (!sname){
+		sname = default_schema_name;
+	}
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
 		       __FILE__);
-                return EINVAL;
-        }
+		return EINVAL;
+	}
 
 	if (set) {
-                msglog(LDMSD_LERROR, "%s: Set already created.\n",
+		msglog(LDMSD_LERROR, "%s: Set already created.\n",
 		       __FILE__);
-                return EINVAL;
-        }
+		return EINVAL;
+	}
 
 	set_offns_generic(NS_ENERGY);
 	rc = config_generic(kwl, avl, msglog);
@@ -326,13 +326,13 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=cray_gemini_r_sampler producer_name=<comp_id>"
-		" instance_name=<instance_name> [schema=<sname>]"
+	return  "config name=cray_gemini_r_sampler producer=<pname>"
+		" instance=<iname> [schema=<sname>]"
 		" rtrfile=<parsedrtr.txt> llite=<ostlist>"
 		" gpu_devices=<gpulist> off_<namespace>=1\n"
-		"    producer_name       The producer id value.\n"
-		"    instance_name       The set name.\n",
-		"    sname               Optional schema name. Defaults to 'cray_gemini_r'\n"
+		"    producer            The producer name value.\n"
+		"    instance            The set name.\n",
+		"    schema              Optional schema name. Defaults to 'cray_gemini_r'\n"
 		"    parsedrtr           The parsed interconnect file.\n",
 		"    ostlist             Lustre OSTs\n",
 		"    gpu_devices         GPU devices names\n",

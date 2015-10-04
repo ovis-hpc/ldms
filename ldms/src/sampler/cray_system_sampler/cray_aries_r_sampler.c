@@ -103,8 +103,8 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 
 
 	schema = ldms_schema_new(schema_name);
-        if (!schema)
-                return ENOMEM;
+	if (!schema)
+		return ENOMEM;
 
 	/*
 	 * Will create each metric in the set, even if the source does not exist
@@ -149,12 +149,12 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 
 
 	set = ldms_set_new(instance_name, schema);
-        if (!set){
+	if (!set){
 		msglog(LDMSD_LERROR, "%s: set null in create_metric_set\n",
 		       __FILE__);
-                rc = errno;
-                goto err;
-        }
+		rc = errno;
+		goto err;
+	}
 
 	return 0;
 
@@ -178,30 +178,30 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	producer_name = av_value(avl, "producer");
 	if (!producer_name){
 		msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing producer\n");
-                return ENOENT;
+		return ENOENT;
 	}
 
-        instancename = av_value(avl, "instance");
+	instancename = av_value(avl, "instance");
 	if (!instancename){
-                msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing instance\n");
-                return ENOENT;
-        }
+		msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing instance\n");
+		return ENOENT;
+	}
 
-        sname = av_value(avl, "schema");
+	sname = av_value(avl, "schema");
 	if (!sname){
-                sname = default_schema_name;
-        }
-        if (strlen(sname) == 0){
-                msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
+		sname = default_schema_name;
+	}
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
 		       __FILE__);
-                return EINVAL;
-        }
+		return EINVAL;
+	}
 
 	if (set) {
-                msglog(LDMSD_LERROR, "%s: Set already created.\n",
-                       __FILE__);
-                return EINVAL;
-        }
+		msglog(LDMSD_LERROR, "%s: Set already created.\n",
+		       __FILE__);
+		return EINVAL;
+	}
 
 	//off nettopo for aries
 	set_offns_generic(NS_NETTOPO);
@@ -243,13 +243,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 
 	rc = create_metric_set(instancename, sname);
-        if (rc){
-                msglog(LDMSD_LERROR, "cray_aries_r_sampler: failed to create a metric set %d.\n", rc);
-                return rc;
-        }
+	if (rc){
+		msglog(LDMSD_LERROR, "cray_aries_r_sampler: failed to create a metric set %d.\n", rc);
+		return rc;
+	}
 
 	ldms_set_producer_name_set(set, producer_name);
-        return 0;
+	return 0;
 
 out:
 	return rc;
@@ -334,13 +334,13 @@ static void term(void)
 static const char *usage(void)
 {
 
-    return  "config name=cray_aries_r_sampler producer_name=<comp_id>"
-	    " instance_name=<instance_name> [schema=<sname>]"
+    return  "config name=cray_aries_r_sampler producer=<pname>"
+	    " instance=<iname> [schema=<sname>]"
 	    " rtrfile=<parsedrtr.txt> llite=<ostlist>"
 	    " gpu_devices=<gpulist> off_<namespace>=1\n"
-	    "    producer_name       The producer id value.\n"
-	    "    instance_name       The set name.\n",
-	    "    sname               Optional schema name. Defaults to 'cray_aries_r'\n"
+	    "    producer            The producer name value.\n"
+	    "    instance            The set name.\n",
+	    "    schema              Optional schema name. Defaults to 'cray_aries_r'\n"
 	    "    ostlist             Lustre OSTs\n",
 	    "    gpu_devices         GPU devices names\n",
 	    "    hsn_metrics_type 0/1/2- COUNTER,DERIVED,BOTH.\n",
