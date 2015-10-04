@@ -324,7 +324,7 @@ err:
 }
 
 
-int hsn_metrics_config(int i, char* fname){
+int hsn_metrics_config(int i, char* fname, ldmsd_msg_log_f msglog){
 	if (i >= HSN_METRICS_END){
 		return EINVAL;
 	} else if (i < 0){

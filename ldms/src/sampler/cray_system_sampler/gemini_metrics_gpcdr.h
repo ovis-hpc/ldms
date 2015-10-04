@@ -74,7 +74,7 @@
 
 
 /* config */
-int hsn_metrics_config(int i, char* filename);
+int hsn_metrics_config(int i, char* filename, ldmsd_msg_log_f msglog);
 
 
 /* add metrics */

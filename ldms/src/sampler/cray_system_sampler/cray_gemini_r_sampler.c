@@ -231,7 +231,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		if (value)
 			rvalue = value;
 
-		rc = hsn_metrics_config(mvalue, rvalue);
+		rc = hsn_metrics_config(mvalue, rvalue, msglog);
 		if (rc != 0)
 			goto out;
 	}
