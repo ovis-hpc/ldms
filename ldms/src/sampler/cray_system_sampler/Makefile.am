@@ -23,7 +23,6 @@ CRAY_SOURCES_ += lustre_metrics.h lustre_metrics.c
 CRAY_LIBADD_ += ../lustre/liblustre_sampler.la
 endif
 
-#how do I do an or???
 if ENABLE_GEMINI_GPCDR
 librtr_util_la_SOURCES = rtr_util.c rtr_util.h gemini.h
 librtr_util_la_CFLAGS = $(CRAY_CFLAGS_)
