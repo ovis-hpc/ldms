@@ -250,6 +250,9 @@ int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog)
 		if (!s)
 			break;
 
+		if (s == '\n')
+			continue;
+
 		char* end = strchr(s, ':');
 		if (!end) {
 			rc = EINVAL;
