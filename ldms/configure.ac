@@ -260,7 +260,7 @@ then
 	if test -z "$ENABLE_LUSTRE_TRUE"
 	then
 		AC_DEFINE([HAVE_LUSTRE],[1],[cray_system_sampler: Include option for LUSTRE metrics.])
-		AC_MSG_RESULT([cray_system_sampler: Not including option for LUSTRE metrics.])
+		AC_MSG_RESULT([cray_system_sampler: Including option for LUSTRE metrics.])
 	else
 		AC_MSG_RESULT([cray_system_sampler: Not including option for LUSTRE metrics.])
 	fi
