@@ -343,8 +343,11 @@ int hsn_metrics_config(int i, char* fname){
 	//only need rtrfile for derived
 	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
-		if (rtrfile == NULL)
+		if (rtrfile == NULL) {
+			msglog(LDMSD_LERROR,"%s: rtrfile needed for hsn_metrics_type %d\n",
+			       __FILE__, hsn_metrics_type);
 			return EINVAL;
+		}
 	}
 
 	return 0;
