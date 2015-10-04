@@ -83,6 +83,8 @@
  */
 static char *LUSTRE_METRICS[] = {
 	/* file operation */
+	/* NEW in v3: status metric required by lustre sampler */
+	"status",
 	"dirty_pages_hits",
 	"dirty_pages_misses",
 	"writeback_from_writepage",
