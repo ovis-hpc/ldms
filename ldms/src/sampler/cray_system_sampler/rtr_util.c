@@ -50,7 +50,7 @@
  */
 
 /**
- * \file gem_link_perf_util.c
+ * \file rtr_util.c
  * \brief Utilities reading and aggregating the gemini_performance counters.
  */
 
@@ -59,6 +59,8 @@
  * (Sandia National Laboratories) gemini performance counter interface and
  * link aggregation library. It has been augmented with pattern analysis
  * of the interconnect file.
+ *
+ * NOTE: link aggregation has been deprecated in v3.
  */
 
 

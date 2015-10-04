@@ -59,6 +59,8 @@
  * (Sandia National Laboratories) gemini performance counter interface and
  * link aggregation library. It has been augmented with pattern analysis
  * of the interconnect file.
+ *
+ * NOTE: Link aggregation methodology has been deprecated in v3.
  */
 
 

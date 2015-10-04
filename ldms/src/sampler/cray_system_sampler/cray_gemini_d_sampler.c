@@ -52,6 +52,8 @@
 /**
  * \file cray_gemini_d_sampler.c
  * \brief unified custom data provider for a combination of metrics
+ *
+ * NOTE: cray_gemini_d sampler is deprecated in v3.
  */
 
 #define _GNU_SOURCE
