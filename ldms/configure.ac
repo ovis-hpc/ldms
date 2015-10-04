@@ -229,7 +229,8 @@ then
 	  fi
 	  AC_MSG_RESULT([Building gpcdr interface for GEMINI HSN metrics.])
 	fi
-	 if test -z "$ENABLE_ARIES_GPCDR_TRUE"
+
+	if test -z "$ENABLE_ARIES_GPCDR_TRUE"
 	then
 	gpcdrfile1="/sys/devices/virtual/gni/gpcdr0/metricsets/linktraffic/metrics"
 	gpcdrfile2="/sys/devices/virtual/gni/gpcdr0/metricsets/linkstalled/metrics"
@@ -247,18 +248,21 @@ then
 	  fi
 	  AC_MSG_RESULT([Building gpcdr interface for ARIES HSN metrics.])
 	fi
+
 	if test -z "$ENABLE_CRAY_NVIDIA_TRUE"
 	then
 	  AC_DEFINE([HAVE_CRAY_NVIDIA],[1],[cray_system_sampler: Including option for NVIDIA metrics.])
+	  AC_MSG_RESULT([cray_system_sampler: Including option for NVIDIA metrics.])
 	else
 	  AC_MSG_RESULT([cray_system_sampler: Not including option for NVIDIA metrics.])
 	fi
 
 	if test -z "$ENABLE_LUSTRE_TRUE"
 	then
-		AC_DEFINE([HAVE_LUSTRE],[1],[cray_system_sampler: Include option for Lustre metrics.])
+		AC_DEFINE([HAVE_LUSTRE],[1],[cray_system_sampler: Include option for LUSTRE metrics.])
+		AC_MSG_RESULT([cray_system_sampler: Not including option for LUSTRE metrics.])
 	else
-		AC_MSG_RESULT([cray_system_sampler: Not including option for lustre metrics.])
+		AC_MSG_RESULT([cray_system_sampler: Not including option for LUSTRE metrics.])
 	fi
 fi
 
