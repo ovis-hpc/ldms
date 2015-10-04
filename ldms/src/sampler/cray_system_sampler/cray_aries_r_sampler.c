@@ -336,7 +336,7 @@ static const char *usage(void)
 
     return  "config name=cray_aries_r_sampler producer_name=<comp_id>"
 	    " instance_name=<instance_name> [schema=<sname>]"
-	    " set=<setname> rtrfile=<parsedrtr.txt> llite=<ostlist>"
+	    " rtrfile=<parsedrtr.txt> llite=<ostlist>"
 	    " gpu_devices=<gpulist> off_<namespace>=1\n"
 	    "    producer_name       The producer id value.\n"
 	    "    instance_name       The set name.\n",

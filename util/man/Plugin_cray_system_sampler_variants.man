@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_cray_system_sampler_variants
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "13 Jan 2015" "v2.3/RC1.3" "LDMS Plugin for all variants of the cray_system_sampler man page"
+.TH man 7 "04 Oct 2015" "v3" "LDMS Plugin for all variants of the cray_system_sampler man page"
 
 .SH NAME
 Plugin_cray_system_sampler_variants - man page for all variants of the LDMS cray_system_sampler plugin
@@ -10,8 +10,6 @@ Within ldmsctl
 .br
 ldmsctl> config name=cray_gemini_r_sampler [ <attr> = <value> ]
 .br
-ldmsctl> config name=cray_gemini_d_sampler [ <attr> = <value> ]
-.br
 ldmsctl> config name=cray_aries_r_sampler [ <attr> = <value> ]
 
 .SH DESCRIPTION
@@ -20,20 +18,13 @@ There are three variants of the cray_system_sampler.
 
 The cray_gemini_r_sampler (previously called cray_system_sampler_r) provides
 data from a variety of sources on the XE/XK systems and uses the gpcdr module
-for obtaining HSN data. The cray_gemini_d_sampler (previously called
-cray_system_sampler_d) is similar, but uses the gpcd library for obtaining HSN
-data. The cray_aries_r_sampler is for XC systems and uses the gpcdr module for
+for obtaining HSN data. The cray_aries_r_sampler is for XC systems and uses the gpcdr module for
 obtaining HSN data.
 
 .PP
 To build the cray_gemini_r_sampler, build with the following flags:
 .B --enable_cray_system_sampler
 .B --enable-gemini-gpcdr
-
-.PP
-To build the cray_gemini_d_sampler, build with the following flags:
-.B --enable_cray_system_sampler
-.B --enable-gemini-gpcd
 
 .PP
 To build the cray_aries_r_sampler, build with the following flags:
@@ -55,22 +46,26 @@ Path to libnvidia-ml.so library
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> set=<set_name> hsn_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1
+name=<plugin_name> producer_name=<pname> instance=<iname>  hsn_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1 [schema=<sname>]
 .br
 ldmsctl configuration line
 .RS
 .TP
 name=<plugin_name>
 .br
-This MUST be cray_gemini_r sampler OR cray_gemini_d_sampler OR cray_aries_r_sampler.
+This MUST be cray_gemini_r sampler  OR cray_aries_r_sampler.
 .TP
-component_id=<comp_id>
+producer_name=<pname>
 .br
-The component id numerical value.
+The producer name string.
 .TP
-set=<set_name>
+instance_name=<iname>
 .br
 The name of the metric set.
+.TP
+schema=<sname>
+.br
+Optional schema name. It is intended that the same sampler on different nodes with different metrics have a different schema. This will default to cray_aries_r or cray_gemini_r as appropriate, if unspecified.
 .TP
 hsn_metrics_type=<mtype>
 .br
@@ -125,6 +120,8 @@ or llites.
 .RE
 
 .SH GPU INFORMATION
+.B NOTE: the GPU is intended for XK systems only.
+.br
 GPU information is gotten from the libnvidia-ml.so. You will need to specify the GPU device names about which you want to collect data. An empty device list will not attempt to collect for any devices. Currently, have to use an underscore in the name that will be replaced by a space at the time of name resolution (e.g., Tesla_K20X). This will be revised in a future release. Non-existent gpu device names will be populated with 0 valued metrics.
 
 In order to enable the ability to collect GPU information, then build with:
@@ -155,7 +152,7 @@ Note that this will also build the lustre_sampler.
 
 
 .SH INTERCONNECT INFORMATION FOR THE GEMINI VARIANTS
-Interconnect information may be needed for the cray_gemini_r/d_samplers if hsn metrics are on. No such information is needed for the cray_aries_r_sampler.
+Interconnect information may be needed for the cray_gemini_r_samplers if hsn metrics are on. No such information is needed for the cray_aries_r_sampler.
 The interconnect information is produced in two steps:
 .TP
 1) From the smw as root:
@@ -164,7 +161,7 @@ The interconnect information is produced in two steps:
 .RE
 This produces a list of all the tile, link, and media information
 .PP
-NOTE: This will be used for the calculation of derived metrics for both the gemini gpcd and gemini gpcdr interfaces since it is the only way to get the media information to estimate max BW.
+NOTE: This will be used for the calculation of derived metrics for the gemini gpcdr interfaces since it is the only way to get the media information to estimate max BW.
 .PP
 NOTE: the hsn_metrics_type flag in the sampler configuration controls whether counter-only, derived-only, or both types of metrics will be output to the set. If you use hsn_metrics_type=0 (counter-only) then the interconnect file is not required to be specified in the configuration line.
 
@@ -179,18 +176,9 @@ cable/backplane connection information can be derived. This code produces that l
 as opposed to the raw data which grows with the system size.
 
 .SH GEMINI PERFORMANCE COUNTER INFORMATION
-The gemini performance counter information will be accessed and aggregated by link direction in one of two ways:
-.TP
-a) If your system has the Oct 2013 Cray release CLE 4.2 UP02 or later that provides access to this information via the gpcdr module, then you can use that source.
+The gemini performance counter information will be accessed and aggregated by link direction via the gpcdr interface.
+If your system has the Oct 2013 Cray release CLE 4.2 UP02 or later that provides access to this information via the gpcdr module.
 .B NOTE: This sampler currently supports only a specific grcdr-init.config which specifies certain variables, sample expiration time, and time units. The configuration file and instructions for using it can be found in util/gemini.
-.br
-OR
-.TP
-b) if it does not, then this information can be calculated from the raw performance counters via the gpcd interface. In this case, you will need the gpcd libraries.
-.PP
-NOTE: gpcd is a Cray library. You can use a system installation of the gpcd library and header files if they are available, which they most likely will be. If you need gpcd, please write to your Cray contact.
-.PP
-The only difference in output information in the two cases is that currently the gpcd source also outputs aggregate host-facing-tile info in addition to the other metrics (see ldms_ls output below).
 
 .SH ARIES PERFORMANCE COUNTER INFORMATION
 The aries performance counter information will be accessed via the gpcdr module, if the hsn metrics are turned on.
@@ -199,14 +187,15 @@ The aries performance counter information will be accessed via the gpcdr module,
 
 .SH DATA DIFFERENCES AMONG THE VARIANTS
 .TP
-The cray_gemini_d_sampler outputs aggregate host-facing file information that is not output in the cray_gemini_r_sampler.
-.TP
 The aries transport does not have X, Y, Z directional link aggregation nor X, Y, Z mesh coord information.
 .TP
 The cray_aries_r_sampler also outputs some additional non-HSN-related data available on the XC systems.
 
 .SH NOTES
-In some future LDMS release, the cray_gemini_d_sampler will be deprecated as more systems move to CLE releases supporting gpcdr.
+.TP
+In v3, the cray_gemini_d variant, which obtained gemini performance data from the gpcd interface and computed the link aggregation has been deprecated.
+.TP
+Please note the argument changes between v2 and v3.
 
 .SH EXAMPLES
 .PP
@@ -214,7 +203,7 @@ In some future LDMS release, the cray_gemini_d_sampler will be deprecated as mor
 .nf
 $/projects/ldms/Build/ldms.usr/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
 ldmsctl> load name=cray_gemini_r_sampler
-ldmsctl> config name=cray_gemini_r_sampler component_id=1 set=nid00064/cray_gemini_r_sampler rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11000" hsn_metrics_type=2 gpu_devices="Tesla_K20X"
+ldmsctl> config name=cray_gemini_r_sampler producer=64 instance=nid00064/cray_gemini_r_sampler rtrfile=/projects/ldms/parsed_interconnect.txt llite="snx11000" hsn_metrics_type=2 gpu_devices="Tesla_K20X"
 ldmsctl> start name=cray_gemini_r_sampler interval=1000000
 ldmsctl> quit
 .fi
@@ -672,11 +661,12 @@ U64 1626210          ipogif0_tx_bytes
 .fi
 
 
+
 .SH SEE ALSO
 ldms(7), Plugin_kgnilnd(7)
 
 .SH BUGS
 No known bugs.
 
-The aries gpcdr file is not yet included in util/aries.
+
 
