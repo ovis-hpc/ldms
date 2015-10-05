@@ -698,12 +698,12 @@ extern int ldms_schema_metric_count_get(ldms_schema_t schema);
  * - EINVAL A parameter or the schema itself is invalid
  */
 extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
+
 /**
- * \brief Delete the specified metric set
+ * \brief Delete the set reference
  *
- * Releases the reference obtained by ldms_xprt_lookup() or
- * ldms_set_by_name(). The specified set handle \c s should not be
- * used after calling this function.
+ * Delete the set reference. The set will be deleted when all set references
+ * are released.
  *
  * \param s	The metric set handle.
  */

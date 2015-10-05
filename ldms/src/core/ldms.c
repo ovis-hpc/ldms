@@ -142,6 +142,7 @@ extern ldms_set_t ldms_set_by_name(const char *set_name)
 {
 	struct ldms_set_desc *sd = NULL;
 	struct ldms_set *set = __ldms_find_local_set(set_name);
+	struct ldms_rbuf_desc *rbd;
 	if (!set)
 		goto out;
 
@@ -149,7 +150,22 @@ extern ldms_set_t ldms_set_by_name(const char *set_name)
 	if (!sd)
 		goto out;
 
+	/* Create fake rbd */
+	rbd = calloc(1, sizeof(*rbd));
+	if (!rbd) {
+		free(sd);
+		goto out;
+	}
+	/*
+	 * Insert the rbd to the remote list
+	 * to take the reference on the set.
+	 */
+	rbd->set = set;
+	LIST_INSERT_HEAD(&set->remote_rbd_list, rbd, set_link);
+
 	sd->set = set;
+	sd->rbd = rbd;
+
  out:
 	__ldms_release_local_set(set);
 	return sd;
@@ -391,28 +407,38 @@ int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 
 void ldms_set_delete(ldms_set_t s)
 {
+	if (!s) {
+		assert(NULL == "The metric set passed in is NULL");
+	}
+
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
+	if (sd->rbd)
+		__ldms_free_rbd(sd->rbd);
+
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
-	if (!s) {
-		assert(NULL == "The metric set passed in is NULL"); // DEBUG
-		return;
+	if (LIST_EMPTY(&set->remote_rbd_list)) {
+
+		pthread_mutex_lock(&set_tree_lock);
+		__ldms_dir_del_set(get_instance_name(set->meta)->name);
+
+		while (!LIST_EMPTY(&set->local_rbd_list)) {
+			rbd = LIST_FIRST(&set->local_rbd_list);
+			LIST_REMOVE(rbd, set_link);
+			__ldms_free_rbd(rbd);
+		}
+
+		if (set->flags & LDMS_SET_F_FILEMAP) {
+			unlink(_create_path(get_instance_name(set->meta)->name));
+			strcat(__set_path, ".META");
+			unlink(__set_path);
+		}
+		mm_free(set->meta);
+		rem_local_set(set);
+		free(set);
+		pthread_mutex_unlock(&set_tree_lock);
 	}
-	pthread_mutex_lock(&set_tree_lock);
-	__ldms_dir_del_set(get_instance_name(set->meta)->name);
-	while (!LIST_EMPTY(&set->rbd_list)) {
-		rbd = LIST_FIRST(&set->rbd_list);
-		__ldms_free_rbd(rbd);
-	}
-	if (set->flags & LDMS_SET_F_FILEMAP) {
-		unlink(_create_path(get_instance_name(set->meta)->name));
-		strcat(__set_path, ".META");
-		unlink(__set_path);
-	}
-	mm_free(set->meta);
-	rem_local_set(set);
-	pthread_mutex_unlock(&set_tree_lock);
-	free(set);
+
 	free(sd);
 }
 

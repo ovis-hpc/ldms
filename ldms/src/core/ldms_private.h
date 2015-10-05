@@ -76,18 +76,21 @@ struct ldms_schema_s {
 	LIST_ENTRY(ldms_schema_s) entry;
 };
 
+LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
 	unsigned long flags;
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data;
 	struct rbn rb_node;
-	LIST_HEAD(rbd_list, ldms_rbuf_desc) rbd_list;
+	struct rbd_list local_rbd_list;
+	struct rbd_list remote_rbd_list;
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
 
 extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
+extern void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 				enum ldms_lookup_flags flags,
 				ldms_lookup_cb_t cb, void *cb_arg);

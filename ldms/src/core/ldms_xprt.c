@@ -75,7 +75,8 @@
 #include "ovis_auth/auth.h"
 #endif /* OVIS_LIB_HAVE_AUTH */
 
-static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *, struct ldms_set *s);
+static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *,
+		struct ldms_set *s, enum ldms_rbd_type type);
 static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
 
 /**
@@ -308,10 +309,10 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 		zap_put_ep(x->zap_ep);
 	}
 
+	struct ldms_rbuf_desc *rbd;
 	while (!LIST_EMPTY(&x->rbd_list)) {
-		struct ldms_rbuf_desc *rbd;
 		rbd = LIST_FIRST(&x->rbd_list);
-		__ldms_free_rbd(rbd);
+		__ldms_rbd_xprt_release(rbd);
 	}
 }
 
@@ -498,17 +499,20 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	rbd = ldms_lookup_rbd(x, set);
 	if (!rbd) {
 		rc = ENOMEM;
-		rbd = ldms_alloc_rbd(x, set);
+		rbd = ldms_alloc_rbd(x, set, LDMS_RBD_LOCAL);
 		if (!rbd)
 			goto err_0;
 	}
 	ldms_name_t name = get_instance_name(set->meta);
-	size_t msg_len = sizeof(struct ldms_lookup_msg) + name->len;
+	ldms_name_t schema = get_schema_name(set->meta);
+	size_t msg_len = sizeof(struct ldms_lookup_msg) + name->len + schema->len;
 	struct ldms_lookup_msg *msg = malloc(msg_len);
 	if (!msg)
 		goto err_0;
 
-	strcpy(msg->inst_name, name->name);
+	strcpy(msg->schema_inst_name, schema->name);
+	strcpy(msg->schema_inst_name + schema->len, name->name);
+	msg->schema_len = schema->len;
 	msg->inst_name_len = name->len;
 	msg->xid = xid;
 	msg->more = htonl(more);
@@ -1177,22 +1181,49 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	int rc;
 	ldms_set_t set_t;
 
-	/*
-	 * Create a local instance of this remote metric set. The set must not
-	 * exists. The application should destroy existing set before lookup.
-	 */
-	rc = __ldms_create_set(lm->inst_name,
-			       ntohl(lm->meta_len), ntohl(lm->data_len),
-			       ntohl(lm->card),
-			       &set_t,
-			       LDMS_SET_F_REMOTE);
-	if (rc)
-		goto out;
-	sd = (struct ldms_set_desc *)set_t;
+	const char *schema_name = lm->schema_inst_name;
+	const char *inst_name = lm->schema_inst_name + lm->schema_len;
 
-	/* Bind this set to an RBD */
-	rbd = ldms_alloc_rbd(x, sd->set);
+	struct ldms_set *lset = __ldms_find_local_set(inst_name);
+	if (lset) {
+		ldms_name_t lschema = get_schema_name(lset->meta);
+		if (0 != strcmp(schema_name, lschema->name)) {
+			/* Two sets have the same name but different schema */
+			__ldms_release_local_set(lset);
+			rc = EINVAL;
+			goto out;
+		}
 
+		sd = calloc(1, sizeof(*sd));
+		if (!sd) {
+			__ldms_release_local_set(lset);
+			rc = ENOMEM;
+			goto out;
+		}
+
+		sd->set = lset;
+		__ldms_release_local_set(lset);
+
+		LIST_FOREACH(rbd, &x->rbd_list, xprt_link) {
+			if (rbd->set == lset) {
+				rc = EEXIST;
+				goto out;
+			}
+		}
+	} else {
+		__ldms_release_local_set(lset);
+		rc = __ldms_create_set(inst_name,
+				       ntohl(lm->meta_len), ntohl(lm->data_len),
+				       ntohl(lm->card),
+				       &set_t,
+				       LDMS_SET_F_REMOTE);
+		if (rc)
+			goto out;
+		sd = (struct ldms_set_desc *)set_t;
+	}
+
+	/* Bind this set to a new RBD */
+	rbd = ldms_alloc_rbd(x, sd->set, LDMS_RBD_REMOTE);
 	if (!rbd) {
 		rc = ENOMEM;
 		goto out_1;
@@ -1201,6 +1232,7 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	rbd->rmap = ev->map;
 
 	sd->rbd = rbd;
+
 	struct ldms_context *rd_ctxt;
 	if (lm->more) {
 		rd_ctxt = malloc(sizeof *rd_ctxt);
@@ -1717,6 +1749,7 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	struct ldms_xprt *x = _x;
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
+	struct ldms_rbuf_desc *rbd;
 	size_t len;
 	int rc;
 
@@ -1726,8 +1759,20 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 
 	struct ldms_set *set = __ldms_find_local_set(path);
 	__ldms_release_local_set(set);
-	if (set)
-		return EEXIST;
+	if (set) {
+		LIST_FOREACH(rbd, &x->rbd_list, xprt_link) {
+			if (rbd->set == set) {
+				/*
+				 * The set has been already looked up
+				 * from the host corresponding to
+				 * the transport.
+				 */
+				return EEXIST;
+			}
+
+		}
+	}
+
 
 	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_LOOKUP))
 		return ENOMEM;
@@ -1839,10 +1884,10 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 	if (!set)
 		return;
 
-	if (LIST_EMPTY(&set->rbd_list))
+	if (LIST_EMPTY(&set->remote_rbd_list))
 		return;
 
-	LIST_FOREACH(r, &set->rbd_list, set_link) {
+	LIST_FOREACH(r, &set->remote_rbd_list, set_link) {
 		if (r->remote_notify_xid)
 			send_req_notify_reply(r->xprt,
 					      set, r->remote_notify_xid,
@@ -1936,7 +1981,7 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
 }
 
 static struct ldms_rbuf_desc *
-ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s)
+ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type type)
 {
 	struct ldms_rbuf_desc *rbd = calloc(1, sizeof(*rbd));
 	if (!rbd)
@@ -1950,8 +1995,12 @@ ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s)
 	if (zerr)
 		goto err1;
 
+	rbd->type = type;
 	/* Add RBD to set list */
-	LIST_INSERT_HEAD(&s->rbd_list, rbd, set_link);
+	if (type == LDMS_RBD_LOCAL)
+		LIST_INSERT_HEAD(&s->local_rbd_list, rbd, set_link);
+	else
+		LIST_INSERT_HEAD(&s->remote_rbd_list, rbd, set_link);
 	LIST_INSERT_HEAD(&x->rbd_list, rbd, xprt_link);
 
 	goto out;
@@ -1964,25 +2013,36 @@ out:
 	return rbd;
 }
 
-void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
+void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd)
 {
-	LIST_REMOVE(rbd, xprt_link);
-	LIST_REMOVE(rbd, set_link);
 #ifdef DEBUG
 	if (rbd->lmap) {
 		rbd->xprt->log("DEBUG: zap %p: unmap local\n", rbd->xprt->zap_ep);
 		zap_unmap(rbd->xprt->zap_ep, rbd->lmap);
 	}
+	rbd->lmap = NULL;
 	if (rbd->rmap) {
 		rbd->xprt->log("DEBUG: zap %p: unmap remote\n", rbd->xprt->zap_ep);
 		zap_unmap(rbd->xprt->zap_ep, rbd->rmap);
 	}
+	rbd->rmap = NULL;
 #else
 	if (rbd->lmap)
 		zap_unmap(rbd->xprt->zap_ep, rbd->lmap);
+	rbd->lmap = NULL;
 	if (rbd->rmap)
 		zap_unmap(rbd->xprt->zap_ep, rbd->rmap);
+	rbd->rmap = NULL;
 #endif /* DEBUG */
+	LIST_REMOVE(rbd, xprt_link);
+	rbd->xprt = NULL;
+}
+
+void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
+{
+	if (rbd->xprt)
+		__ldms_rbd_xprt_release(rbd);
+	LIST_REMOVE(rbd, set_link);
 	free(rbd);
 }
 

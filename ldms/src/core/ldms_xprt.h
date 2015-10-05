@@ -73,6 +73,11 @@ struct ldms_rbuf_desc {
 	struct zap_map *rmap;	/* remote map */
 	struct zap_map *lmap;	/* local map */
 
+	enum ldms_rbd_type {
+		LDMS_RBD_LOCAL = 1,
+		LDMS_RBD_REMOTE,
+	} type;
+
 	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
 	LIST_ENTRY(ldms_rbuf_desc) xprt_link; /* list of RBD for a transport */
 };
@@ -142,8 +147,9 @@ struct ldms_lookup_msg {
 	uint32_t meta_len;
 	uint32_t data_len;
 	uint32_t card;
+	uint32_t schema_len;
 	uint32_t inst_name_len;
-	char inst_name[0];
+	char schema_inst_name[0]; /* schema name and then instance name */
 };
 
 struct ldms_dir_reply {
