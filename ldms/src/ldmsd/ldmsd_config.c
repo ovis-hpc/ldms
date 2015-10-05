@@ -501,6 +501,37 @@ int process_version(char *replybuf, struct attr_value_list *avl, struct attr_val
 	return 0;
 }
 
+int process_verbosity_change(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
+{
+	char *level_s;
+	char err_str[LEN_ERRSTR];
+
+	level_s = av_value(avl, "level");
+	if (!level_s) {
+		sprintf(replybuf, "%d The level was not specified\n", -EINVAL);
+		goto out;
+	}
+
+	err_str[0] = '\0';
+	int rc = ldmsd_loglevel_set(level_s);
+	if (rc < 0) {
+		snprintf(err_str, LEN_ERRSTR, "Invalid verbosity level, "
+				"expecting DEBUG, INFO, ERROR, CRITICAL and QUIET\n");
+	}
+	sprintf(replybuf, "%d%s", -rc, err_str);
+
+#ifdef DEBUG
+	ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
+	ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
+	ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
+	ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
+	ldmsd_log(LDMSD_LSUPREME, "TEST SUPREME\n");
+#endif /* DEBUG */
+
+out:
+	return 0;
+}
+
 int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, size_t errsz)
 {
 	memset(regex, 0, sizeof *regex);
@@ -1652,6 +1683,7 @@ ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
 	[LDMSCTL_UPDATE_STANDBY] = process_update_standby,
 	[LDMSCTL_ONESHOT_SAMPLE] = process_oneshot_sample,
 	[LDMSCTL_VERSION] = process_version,
+	[LDMSCTL_VERBOSE] = process_verbosity_change,
 	[LDMSCTL_PRDCR_ADD] = cmd_prdcr_add,
 	[LDMSCTL_PRDCR_DEL] = cmd_prdcr_del,
 	[LDMSCTL_PRDCR_START] = cmd_prdcr_start,
