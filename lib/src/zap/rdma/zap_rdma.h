@@ -54,8 +54,8 @@
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 #include <semaphore.h>
-#include <zap.h>
-#include <zap_priv.h>
+#include "../zap.h"
+#include "../zap_priv.h"
 
 #define SQ_DEPTH 4
 #define RQ_DEPTH 4
@@ -64,23 +64,37 @@
 #define RQ_SGE 1
 
 #pragma pack(4)
-enum rdma_message_type {
-	RDMA_CREDIT_UPDATE = 0,
-	RDMA_SEND,
-	RDMA_RENDEZVOUS,
+enum z_rdma_message_type {
+	Z_RDMA_MSG_CREDIT_UPDATE = 0,
+	Z_RDMA_MSG_SEND,
+	Z_RDMA_MSG_RENDEZVOUS,
+	Z_RDMA_MSG_ACCEPT,
+	Z_RDMA_MSG_REJECT,
 };
 
-struct rdma_message_hdr {
+struct z_rdma_message_hdr {
 	uint16_t credits;
 	uint16_t msg_type;
 };
 
-struct rdma_share_msg {
-	struct rdma_message_hdr hdr;
+struct z_rdma_share_msg {
+	struct z_rdma_message_hdr hdr;
 	uint32_t acc;
 	uint32_t len;
 	uint32_t rkey;
 	uint64_t va;
+	char msg[0];
+};
+
+struct z_rdma_accept_msg {
+	struct z_rdma_message_hdr hdr;
+	uint32_t len;
+	char data[0];
+};
+
+struct z_rdma_reject_msg {
+	struct z_rdma_message_hdr hdr;
+	uint32_t len;
 	char msg[0];
 };
 
@@ -92,26 +106,18 @@ struct z_rdma_map {
 	uint32_t rkey;
 };
 
-struct rdma_buffer {
+struct z_rdma_buffer {
 	char *data;
 	size_t data_len;
 	struct ibv_mr *mr;
-	LIST_ENTRY(rdma_buffer) link; /* linked list entry */
-};
-
-enum rdma_conn_status {
-	CONN_IDLE = 0,
-	CONN_CONNECTING,
-	CONN_CONNECTED,
-	CONN_CLOSED,
-	CONN_ERROR
+	LIST_ENTRY(z_rdma_buffer) link; /* linked list entry */
 };
 
 /**
  * RDMA Transport private data
  */
 
-struct rdma_context {
+struct z_rdma_context {
 	void *usr_context;      /* user context if any */
 
 	zap_ep_t ep;
@@ -120,12 +126,27 @@ struct rdma_context {
 
 	enum ibv_wc_opcode op;  /* work-request op (can't be trusted
 				in wc on error */
-	struct rdma_buffer *rb; /* RDMA buffer if any */
+	struct z_rdma_buffer *rb; /* RDMA buffer if any */
 
-	TAILQ_ENTRY(rdma_context) pending_link; /* pending i/o */
+	TAILQ_ENTRY(z_rdma_context) pending_link; /* pending i/o */
+	LIST_ENTRY(z_rdma_context) active_ctxt_link;
 };
 
-LIST_HEAD(rdma_buffer_list, rdma_buffer);
+#pragma pack(push, 1)
+struct z_rdma_conn_data {
+	struct zap_version v;
+	uint8_t data_len;
+	char data[0];
+};
+#pragma pack(pop)
+
+#define RDMA_CONN_DATA_MAX (56)
+#define ZAP_RDMA_CONN_DATA_MAX (RDMA_CONN_DATA_MAX - sizeof(struct z_rdma_conn_data))
+
+#define RDMA_ACCEPT_DATA_MAX (196)
+#define ZAP_RDMA_ACCEPT_DATA_MAX RDMA_ACCEPT_DATA_MAX
+
+LIST_HEAD(z_rdma_buffer_list, z_rdma_buffer);
 
 struct z_rdma_ep {
 	struct zap_ep ep;
@@ -134,6 +155,11 @@ struct z_rdma_ep {
 	struct ibv_cq *sq_cq;
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
+
+	union {
+		struct z_rdma_conn_data conn_data;
+		char ___[RDMA_CONN_DATA_MAX];
+	};
 
 	/**
 	 * An endpoint has a parent endpoint when it is created from
@@ -148,6 +174,9 @@ struct z_rdma_ep {
 	 */
 	zap_ep_t parent_ep;
 
+	/* Flag for deferred disconnected event */
+	int deferred_disconnected;
+
 	/* CM stuff */
 	sem_t sem;
 	pthread_t server_thread;
@@ -160,7 +189,13 @@ struct z_rdma_ep {
 	uint16_t sq_credits;		/* local SQ credits */
 
 	pthread_mutex_t credit_lock;
-	TAILQ_HEAD(xprt_credit_list, rdma_context) io_q;
+	TAILQ_HEAD(xprt_credit_list, z_rdma_context) io_q;
+	LIST_HEAD(active_ctxt_list, z_rdma_context) active_ctxt_list;
+
+#ifdef ZAP_DEBUG
+	int rejected_count;
+	int rejected_conn_error_count;
+#endif /* ZAP_DEBUG */
 
 	LIST_ENTRY(z_rdma_ep) ep_link;
 };
