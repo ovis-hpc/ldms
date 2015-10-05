@@ -49,7 +49,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "bout_sos_msg.h"
-#include "sos_msg_class_def.h"
+#include "bsos_msg.h"
 
 #define BOUT_MSG_LEN(_msg_) ((_msg_)->argc + 4)
 
@@ -75,64 +75,71 @@ int bout_sos_msg_process_output(struct boutplugin *this,
 	sos_array_t msg;
 	sos_obj_t obj;
 	int arg;
-	SOS_KEY(msg_key);
+	bsos_msg_t bsos_msg = sp->bsos_handle;
+	struct bsos_msg_key_ptc ptc_k;
+	struct bsos_msg_key_tc tc_k;
+	SOS_KEY(ts_key);
+	SOS_KEY(ptc_key);
 
 	pthread_mutex_lock(&sp->sos_mutex);
-	if (!sp->sos) {
+	if (!bsos_msg) {
 		rc = EBADFD;
 		goto err0;
 	}
 
-	bout_sos_rotate(sp, odata->tv.tv_sec, NULL);
-	sos = sp->sos;
+	sos = bsos_msg->sos;
 
-	obj = sos_array_obj_new(sp->sos, SOS_TYPE_UINT32_ARRAY,
+	obj = sos_array_obj_new(bsos_msg->sos, SOS_TYPE_UINT32_ARRAY,
 				BOUT_MSG_LEN(odata->msg));
 	if (!obj) {
 		rc = ENOMEM;
 		goto err0;
 	}
+	/* setting object value */
 	msg = sos_obj_ptr(obj);
-	msg->data.uint32_[BOUT_MSG_SEC] = odata->tv.tv_sec;
-	msg->data.uint32_[BOUT_MSG_USEC] = odata->tv.tv_usec;
-	msg->data.uint32_[BOUT_MSG_COMP_ID] = odata->comp_id;
-	msg->data.uint32_[BOUT_MSG_PTN_ID] = odata->msg->ptn_id;
+	msg->data.uint32_[BSOS_MSG_SEC] = odata->tv.tv_sec;
+	msg->data.uint32_[BSOS_MSG_USEC] = odata->tv.tv_usec;
+	msg->data.uint32_[BSOS_MSG_COMP_ID] = odata->comp_id;
+	msg->data.uint32_[BSOS_MSG_PTN_ID] = odata->msg->ptn_id;
 	for (arg = 0; arg < odata->msg->argc; arg++)
-		msg->data.uint32_[arg + BOUT_MSG_ARGV_0] = odata->msg->argv[arg];
+		msg->data.uint32_[arg + BSOS_MSG_ARGV_0] = odata->msg->argv[arg];
 
-	sos_key_set(msg_key, &msg->data.uint32_[0], 8);
-	rc = sos_index_insert(mp->msg_index, msg_key, obj);
+	/* creat key */
+	ptc_k.comp_id = msg->data.uint32_[BSOS_MSG_COMP_ID];
+	ptc_k.sec = msg->data.uint32_[BSOS_MSG_SEC];
+	ptc_k.ptn_id = msg->data.uint32_[BSOS_MSG_PTN_ID];
+
+	tc_k.comp_id = ptc_k.comp_id;
+	tc_k.sec = ptc_k.sec;
+
+	/* need to convert only PTC (due to memcmp()) */
+	bsos_msg_key_ptc_htobe(&ptc_k);
+
+
+	/* add into Time-CompID index */
+	sos_key_set(ts_key, &tc_k, 8);
+	rc = sos_index_insert(bsos_msg->index_tc, ts_key, obj);
 	if (rc)
 		goto err1;
+
+	/* add into PtnID-Time-CompID index */
+	sos_key_set(ptc_key, &ptc_k, 12);
+	rc = sos_index_insert(bsos_msg->index_ptc, ptc_key, obj);
+	if (rc)
+		goto err2;
+
 	sos_obj_put(obj);
 	pthread_mutex_unlock(&sp->sos_mutex);
 	return 0;
+
+err2:
+	sos_index_remove(bsos_msg->index_tc, ts_key, obj);
 err1:
 	sos_obj_delete(obj);
 	sos_obj_put(obj);
 	pthread_mutex_unlock(&sp->sos_mutex);
 err0:
 	return rc;
-}
-
-int bout_sos_msg_start(struct bplugin *this)
-{
-	struct bout_sos_msg_plugin *_this = (void*)this;
-	sos_t sos;
-	int rc;
-	if ((rc = bout_sos_start(this)))
-		return rc;
-	sos = _this->base.sos;
- retry:
-	_this->msg_index = sos_index_open(sos, BOUT_SOS_IDX_NAME);
-	if (!_this->msg_index) {
-		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT64", "ORDER=5");
-		if (!rc)
-			goto retry;
-		else
-			return errno;
-	}
-	return 0;
 }
 
 struct bplugin *create_plugin_instance()
@@ -142,7 +149,8 @@ struct bplugin *create_plugin_instance()
 		return NULL;
 	struct boutplugin *p = (typeof(p)) _p;
 	bout_sos_init((void*)_p, "bout_sos_msg");
-	p->base.start = bout_sos_msg_start;
+	_p->base.bsos_handle_open = (void*)bsos_msg_open;
+	_p->base.bsos_handle_close = (void*)bsos_msg_close;
 	p->process_output = bout_sos_msg_process_output;
 	return (void*)p;
 }

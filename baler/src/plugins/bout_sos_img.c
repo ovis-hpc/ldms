@@ -49,7 +49,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "bout_sos_img.h"
-#include "sos_img_class_def.h"
+#include "bsos_img.h"
 
 int bout_sos_img_config(struct bplugin *this, struct bpair_str_head *cfg_head)
 {
@@ -89,85 +89,53 @@ cleanup:
 	return rc;
 }
 
-int bout_sos_img_start(struct bplugin *this)
-{
-	struct bout_sos_img_plugin *_this = (void*)this;
-	sos_t sos;
-	sos_attr_t ptn_id_attr;
-	int rc;
-	if ((rc = bout_sos_start(this)))
-		return rc;
-	sos = _this->base.sos;
- retry:
-	_this->img_index = sos_index_open(sos, BOUT_SOS_IDX_NAME);
-	if (!_this->img_index) {
-		rc = sos_index_new(sos, BOUT_SOS_IDX_NAME, "BXTREE", "UINT96", "ORDER=5");
-		if (!rc)
-			goto retry;
-		else
-			return errno;
-	}
-	return 0;
-}
-
-static
-void rotate_cb(struct bout_sos_plugin *p)
-{
-}
-
 int bout_sos_img_process_output(struct boutplugin *this,
 		struct boutq_data *odata)
 {
 	int rc = 0;
 	struct bout_sos_plugin *_base = (void*)this;
 	struct bout_sos_img_plugin *_this = (typeof(_this))this;
+	bsos_img_t bsos_img = _base->bsos_handle;
 	sos_obj_t obj;
 	sos_array_t img;
 	SOS_KEY(ok);
 
 	pthread_mutex_lock(&_base->sos_mutex);
 
-	if (!_base->sos) {
+	if (!bsos_img) {
 		rc = EBADF;
 		goto out;
 	}
 
-	bout_sos_rotate(_base, odata->tv.tv_sec, rotate_cb);
-
-	if (!_this->img_index) {
-		rc = EBADF;
-		goto out;
-	}
-
-	struct bout_sos_img_key bk = {
+	struct bsos_img_key bk = {
 		.comp_id = odata->comp_id,
 		.ts = (odata->tv.tv_sec / _this->delta_ts) * _this->delta_ts,
 		.ptn_id = odata->msg->ptn_id,
 	};
-	bout_sos_img_key_convert(&bk);
+	bsos_img_key_htobe(&bk);
 	sos_key_set(ok, &bk, sizeof(bk));
 
-	obj = sos_index_find(_this->img_index, ok);
+	obj = sos_index_find(bsos_img->index, ok);
 	if (obj) {
 		img = sos_obj_ptr(obj);
-		img->data.uint32_[BOUT_IMG_COUNT] ++;
+		img->data.uint32_[BSOS_IMG_COUNT] ++;
 		sos_obj_put(obj);
 		goto out;
 	}
 	/* reaching here means not found, add new data */
-	obj = sos_array_obj_new(_this->base.sos, SOS_TYPE_UINT32_ARRAY, 4);
+	obj = sos_array_obj_new(bsos_img->sos, SOS_TYPE_UINT32_ARRAY, 4);
 	if (!obj) {
 		bwarn("bout_sos_img: cannot alloce new sos obj,"
 						" errno(%d): %m", errno);
 		goto out;
 	}
 	img = sos_obj_ptr(obj);
-	img->data.uint32_[BOUT_IMG_PTN_ID]	= bk.ptn_id;
-	img->data.uint32_[BOUT_IMG_SEC]		= bk.ts;
-	img->data.uint32_[BOUT_IMG_COMP_ID]	= bk.comp_id;
-	img->data.uint32_[BOUT_IMG_COUNT]	= 1;
+	img->data.uint32_[BSOS_IMG_PTN_ID]	= bk.ptn_id;
+	img->data.uint32_[BSOS_IMG_SEC]		= bk.ts;
+	img->data.uint32_[BSOS_IMG_COMP_ID]	= bk.comp_id;
+	img->data.uint32_[BSOS_IMG_COUNT]	= 1;
 
-	rc = sos_index_insert(_this->img_index, ok, obj);
+	rc = sos_index_insert(bsos_img->index, ok, obj);
 	if (rc) {
 		bwarn("bout_sos_img: sos_obj_add() failed, rc: %d", rc);
 		sos_obj_delete(obj);
@@ -180,16 +148,6 @@ out:
 	return rc;
 }
 
-int bout_sos_img_stop(struct bplugin *this)
-{
-	struct bout_sos_img_plugin *_this = (typeof(_this))this;
-	pthread_mutex_lock(&_this->base.sos_mutex);
-	sos_index_close(_this->img_index, SOS_COMMIT_SYNC);
-	_this->img_index = NULL;
-	pthread_mutex_unlock(&_this->base.sos_mutex);
-	return bout_sos_stop(this);
-}
-
 struct bplugin *create_plugin_instance()
 {
 	struct bout_sos_img_plugin *_p = calloc(1, sizeof(*_p));
@@ -198,7 +156,7 @@ struct bplugin *create_plugin_instance()
 	p->process_output = bout_sos_img_process_output;
 	/* override some functions */
 	p->base.config = bout_sos_img_config;
-	p->base.start = bout_sos_img_start;
-	p->base.stop = bout_sos_img_stop;
+	_p->base.bsos_handle_open = (void*)bsos_img_open;
+	_p->base.bsos_handle_close = (void*)bsos_img_close;
 	return (void*)p;
 }

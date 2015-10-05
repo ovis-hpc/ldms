@@ -170,6 +170,11 @@ struct bset_u32_iter* bset_u32_iter_new(struct bset_u32 *set)
 	return iter;
 }
 
+void bset_u32_iter_free(struct bset_u32_iter *iter)
+{
+	free(iter);
+}
+
 int bset_u32_iter_next(struct bset_u32_iter *iter, uint32_t *out)
 {
 	while (!iter->elem && iter->next_idx < iter->set->hsize) {

@@ -371,12 +371,6 @@ class LdmsdCmdParser(cmd.Cmd):
         plugin=    The name of the storage backend.
         container= The storage backend container name.
         schema=    The schema name of the metric set to store.
-        [rotate=]    The time period stored in a single container. The format is
-                   <number><units> where <units> is one of 'h' or 'd', for
-                   hours and days respectively. For example "rotate=2d",
-                   means that a container will contain two days of data before
-                   rotation to a new container. If rotate is omitted, container
-                   rotation is disabled.
         """
         self.handle('strgp_add', arg)
 

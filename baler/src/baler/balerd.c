@@ -725,7 +725,7 @@ void master_handle_recv(zap_ep_t ep, zap_event_t ev)
 			goto out;
 		}
 		if (has_attr) {
-			if (m->attr.type != BTKN_TYPE_STAR) {
+			if ((uint32_t)m->attr.type < BTKN_TYPE_LAST) {
 				btkn_store_set_attr(store, rep->id, m->attr);
 			}
 			rep->attr = btkn_store_get_attr(store, rep->id);

@@ -66,11 +66,12 @@
  * Get all available patterns from \c bhttpd.
  *
  * \par URI
- * <code>BHTTPD_LOCATION/query?type=ptn</code>
+ * <code>BHTTPD_LOCATION/query?type=ptn[&use_ts_fmt=<0|1>]</code>
  *
  * \par Response
  * If there is <b>no error</b>, pattern query returns JSON objects describing
- * each pattern:
+ * each pattern. If <code>use_ts_fmt</code> is set to 0, the human-readable
+ * date-time is used as follow:
  * \code{.json}
  * {
  *     "result": [
@@ -78,8 +79,8 @@
  *             "type": "PTN",
  *             "ptn_id": <PTN_ID>,
  *             "count": <OCCURRENCE COUNT>,
- *             "first_seen": <yyyy-mm-dd HH:MM:SS>,
- *             "last_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             "first_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
+ *             "last_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
  *             // pattern description is disguised in a message form --
  *             // a sequence of tokens.
  *             "msg": [
@@ -95,6 +96,11 @@
  *     ]
  * }
  * \endcode
+ *
+ * \par
+ * If <code>use_ts_fmt</code> is set to 1, the timestamp fields (such as
+ * first_seen and last_seen) will be in Unix timestamp format (the number of
+ * seconds since Epoch).
  *
  * \par
  * Please see msg2html() and tkn2html() methods in baler.coffee for the message
@@ -113,20 +119,20 @@
  * Query metric patterns -- the patterns that represent metric-in-range events.
  *
  * \par URI
- * <code>BHTTPD_LOCATION/query?type=metric_pattern</code>
+ * <code>BHTTPD_LOCATION/query?type=metric_pattern[&use_ts_fmt=<0|1>]</code>
  *
  * \par Response
  * This query returns objects similar to query \ref bhttpd_uri_query_ptn, except
  * that the returned objects are of metric pattern type. If there is no error,
- * the following JSON objects are returned:
+ * and <code>use_ts_fmt</code> is 0, the following JSON objects are returned:
  * \code{.json}
  *     "result": [
  *         {   // pattern object
  *             "type": "PTN",
  *             "ptn_id": <PTN_ID>,
  *             "count": <OCCURRENCE COUNT>,
- *             "first_seen": <yyyy-mm-dd HH:MM:SS>,
- *             "last_seen": <yyyy-mm-dd HH:MM:SS>,
+ *             "first_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
+ *             "last_seen": <yyyy-mm-dd HH:MM:SS.uuuuuu>,
  *             // pattern description is disguised in a message form --
  *             // a sequence of tokens.
  *             "msg": [
@@ -141,6 +147,11 @@
  *         ... // more pattern objects
  *     ]
  * \endcode
+ *
+ * \par
+ * If <code>use_ts_fmt</code> is set to 1, the timestamp fields (such as
+ * first_seen and last_seen) will be in Unix timestamp format (the number of
+ * seconds since Epoch).
  *
  * \par
  * Please see msg2html() and tkn2html() methods in baler.coffee for the message
@@ -175,6 +186,7 @@
  *                        [&ptn_ids=NUM_LIST]
  *                        [&ts0=UNIX_TS]
  *                        [&ts1=UNIX_TS]
+ *                        [&use_ts_fmt=<0|1>]
  *                        </code>
  *
  * The parameters are described as follows:
@@ -194,6 +206,9 @@
  *   have timestamp less than \c ts0 will be excluded.
  * - \b ts1: The end timestamp for the query. If specified, the records that
  *   have timestamp greater than \c ts1 will be excluded.
+ * - \b use_ts_fmt: If set to 1, the Unix timestamp output format is used. If
+ *   set to 0, the human readable date-time output format (yyyy-mm-dd
+ *   HH:MM:SS.uuuuuu) is used.
  *
  * \subsection bhttpd_uri_query_destroy_session /destroy_session
  * This is the request to destroy unused message query (\ref
@@ -468,11 +483,23 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 	int first = 1;
 	struct bq_formatter *fmt = NULL;
 	struct bdstr *bdstr = NULL;
+	const char *use_ts_str = bpair_str_value(&ctxt->kvlist, "use_ts_fmt");
+	int use_ts = 0;
+
+	if (use_ts_str) {
+		use_ts = atoi(use_ts_str);
+	}
 
 	fmt = bqfmt_json_new(bq_store);
 	if (!fmt) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Not enough memory");
 		goto cleanup;
+	}
+
+	if (use_ts) {
+		bqfmt_json_ts_use_ts(fmt);
+	} else {
+		bqfmt_json_ts_use_datetime(fmt);
 	}
 
 	bdstr = bdstr_new(1024);
@@ -483,6 +510,12 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 
 	evbuffer_add_printf(ctxt->evbuffer, "{\"result\": [");
 	for (i=BMAP_ID_BEGIN; i<=n; i++) {
+
+		const struct bstr *ptn = bptn_store_get_ptn(ptn_store, i);
+		if (!ptn)
+			/* It's OK to skip, slaves may not have all patterns */
+			continue;
+
 		if (bq_is_metric_pattern(bq_store, i) != is_metric)
 			continue;
 		rc = bq_print_ptn(bq_store, fmt, i, bdstr);
@@ -529,12 +562,14 @@ void bhttpd_msg_query_session_destroy(struct bhttpd_msg_query_session *qs)
 	if (qs->event)
 		event_free(qs->event);
 	if (qs->q)
-		bquery_destroy(qs->q);
+		bmsgquery_destroy((void*)qs->q);
+	if (qs->fmt)
+		bqfmt_json_free(qs->fmt);
 	free(qs);
 }
 
 static
-struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_req_ctxt *ctxt)
+struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_req_ctxt *ctxt, int simple)
 {
 	struct bhttpd_msg_query_session *qs;
 	const char *host_ids, *ptn_ids, *ts0, *ts1;
@@ -558,20 +593,24 @@ struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_r
 	ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
 	ts0 = bpair_str_value(&ctxt->kvlist, "ts0");
 	ts1 = bpair_str_value(&ctxt->kvlist, "ts1");
-	qs->q = bquery_create(bq_store, host_ids, ptn_ids, ts0, ts1, 1, ' ', &rc);
+	qs->q = (void*)bmsgquery_create(bq_store, host_ids, ptn_ids, ts0, ts1, 1, ' ', &rc);
 	if (!qs->q) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"msg query creation failed, rc: %d.", rc);
 		goto err;
 	}
-	qs->fmt = bqfmt_json_new();
-	if (!qs->fmt) {
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-				"Cannot create bqfmt_json, errno: %d.", errno);
-		goto err;
-	}
 
-	bq_set_formatter(qs->q, qs->fmt);
+	if (simple) {
+		bq_set_formatter(qs->q, bquery_default_formatter());
+	} else {
+		qs->fmt = bqfmt_json_new(bq_store);
+		if (!qs->fmt) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Cannot create bqfmt_json, errno: %d.", errno);
+			goto err;
+		}
+		bq_set_formatter(qs->q, qs->fmt);
+	}
 
 	return qs;
 err:
@@ -606,6 +645,7 @@ void bhttpd_msg_query_expire_cb(evutil_socket_t fd, short what, void *arg)
 	}
 	bhash_entry_remove_free(query_session_hash, ent);
 	pthread_mutex_unlock(&query_session_mutex);
+	bdebug("session expired: %lu", (uint64_t) qs);
 	bhttpd_msg_query_session_destroy(qs);
 }
 
@@ -677,7 +717,7 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 		qs = (void*)ent->value;
 	}
 	if (!qs) {
-		qs = bhttpd_msg_query_session_create(ctxt);
+		qs = bhttpd_msg_query_session_create(ctxt, 0);
 		if (!qs) {
 			/* bhttpd_msg_query_session_create() has already
 			 * set the error message. */
@@ -740,6 +780,99 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 	}
 	evbuffer_add_printf(ctxt->evbuffer, "]");
 	evbuffer_add_printf(ctxt->evbuffer, "}");
+
+out:
+	bdstr_free(bdstr);
+}
+
+static
+void bhttpd_handle_query_msg_simple(struct bhttpd_req_ctxt *ctxt)
+{
+	struct bhttpd_msg_query_session *qs = NULL;
+	struct bdstr *bdstr;
+	struct bhash_entry *ent = NULL;
+	uint64_t session_id = 0;
+	const char *str;
+	int is_fwd = 1;
+	int i, n = 50;
+	int rc;
+
+	bdstr = bdstr_new(256);
+	if (!bdstr) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Out of memory");
+		return;
+	}
+	str = bpair_str_value(&ctxt->kvlist, "n");
+	if (str)
+		n = atoi(str);
+	str = bpair_str_value(&ctxt->kvlist, "dir");
+	if (str && strcmp(str, "bwd") == 0)
+		is_fwd = 0;
+
+	str = bpair_str_value(&ctxt->kvlist, "session_id");
+	if (str) {
+		session_id = strtoull(str, NULL, 0);
+		ent = bhash_entry_get(query_session_hash, (void*)&session_id,
+				sizeof(session_id));
+		if (!ent) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Session %lu not found.", session_id);
+			goto out;
+		}
+		qs = (void*)ent->value;
+	}
+	if (!qs) {
+		qs = bhttpd_msg_query_session_create(ctxt, 1);
+		if (!qs) {
+			/* bhttpd_msg_query_session_create() has already
+			 * set the error message. */
+			goto out;
+		}
+		session_id = (uint64_t)qs;
+		ent = bhash_entry_set(query_session_hash, (void*)&session_id,
+				sizeof(session_id), (uint64_t)(void*)qs);
+		if (!ent) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Hash insert failed, errno: %d",
+					errno);
+			goto out;
+		}
+	}
+	/* update last_use */
+	gettimeofday(&qs->last_use, NULL);
+	rc = event_add(qs->event, &query_session_timeout);
+	if (rc) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"event_add() rc: %d, errno: %d", rc, errno);
+		goto out;
+	}
+
+	evbuffer_add_printf(ctxt->evbuffer, "session_id: %lu\n", session_id);
+	for (i = 0; i < n; i++) {
+		if (qs->first) {
+			qs->first = 0;
+			if (is_fwd)
+				rc = bq_first_entry(qs->q);
+			else
+				rc = bq_last_entry(qs->q);
+		} else {
+			if (is_fwd)
+				rc = bq_next_entry(qs->q);
+			else
+				rc = bq_prev_entry(qs->q);
+		}
+		if (rc) {
+			break;
+		}
+		str = bq_entry_print(qs->q, bdstr);
+		if (!str) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"bq_entry_print() errno: %d", errno);
+			goto out;
+		}
+		evbuffer_add_printf(ctxt->evbuffer, "%s\n", str);
+		bdstr_reset(bdstr);
+	}
 
 out:
 	bdstr_free(bdstr);
@@ -1078,10 +1211,10 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 	uint32_t min_ts, max_ts;
 	uint32_t min_node, max_node;
 
-	q = bquery_create(bq_store, NULL, ptn_ids, NULL, NULL, 0, ',', &rc);
+	q = (void*)bmsgquery_create(bq_store, NULL, ptn_ids, NULL, NULL, 0, ',', &rc);
 	if (!q) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-				"bquery_create() error, rc: %d", rc);
+				"bmsgquery_create() error, rc: %d", rc);
 		goto cleanup;
 	}
 
@@ -1116,7 +1249,7 @@ void bhttpd_handle_query_big_pic(struct bhttpd_req_ctxt *ctxt)
 			);
 cleanup:
 	if (q)
-		bquery_destroy(q);
+		bmsgquery_destroy((void*)q);
 }
 
 struct bhttpd_handle_fn_entry {
@@ -1129,15 +1262,16 @@ struct bhttpd_handle_fn_entry {
 #define  HTTP_CONT_STREAM  "application/octet-stream"
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{ "PTN",         HTTP_CONT_JSON,   bhttpd_handle_query_ptn         },
-	{ "METRIC_PTN",  HTTP_CONT_JSON,   bhttpd_handle_query_metric_ptn  },
-	{ "MSG",         HTTP_CONT_JSON,   bhttpd_handle_query_msg         },
-	{ "META",        HTTP_CONT_JSON,   bhttpd_handle_query_meta        },
-	{ "METRIC_META", HTTP_CONT_JSON,   bhttpd_handle_query_metric_meta },
-	{ "IMG",         HTTP_CONT_STREAM, bhttpd_handle_query_img         },
-	{ "IMG2",        HTTP_CONT_STREAM, bhttpd_handle_query_img2        },
-	{ "HOST",        HTTP_CONT_JSON,   bhttpd_handle_query_host        },
-	{ "BIG_PIC",     HTTP_CONT_JSON,   bhttpd_handle_query_big_pic     },
+	{  "PTN",          HTTP_CONT_JSON,    bhttpd_handle_query_ptn          },
+	{  "METRIC_PTN",   HTTP_CONT_JSON,    bhttpd_handle_query_metric_ptn   },
+	{  "MSG",          HTTP_CONT_JSON,    bhttpd_handle_query_msg          },
+	{  "MSG_SIMPLE",   HTTP_CONT_JSON,    bhttpd_handle_query_msg_simple   },
+	{  "META",         HTTP_CONT_JSON,    bhttpd_handle_query_meta         },
+	{  "METRIC_META",  HTTP_CONT_JSON,    bhttpd_handle_query_metric_meta  },
+	{  "IMG",          HTTP_CONT_STREAM,  bhttpd_handle_query_img          },
+	{  "IMG2",         HTTP_CONT_STREAM,  bhttpd_handle_query_img2         },
+	{  "HOST",         HTTP_CONT_JSON,    bhttpd_handle_query_host         },
+	{  "BIG_PIC",      HTTP_CONT_JSON,    bhttpd_handle_query_big_pic      },
 };
 
 static

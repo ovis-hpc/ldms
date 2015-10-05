@@ -136,6 +136,9 @@ struct bpixel {
  */
 struct bdstr;
 struct bstr;
+struct bquery;
+struct bimgquery;
+struct bmsgquery;
 
 struct bq_formatter {
 	int (*ptn_prefix)(struct bq_formatter *fmt, struct bdstr *bdstr,
@@ -171,7 +174,7 @@ struct bq_formatter {
  * \return NULL on error.
  * \return newly created query handle on success.
  */
-struct bquery* bquery_create(struct bq_store *store, const char *hst_ids,
+struct bmsgquery* bmsgquery_create(struct bq_store *store, const char *hst_ids,
 			     const char *ptn_ids, const char *ts0,
 			     const char *ts1, int is_text, char sep, int *rc);
 
@@ -208,10 +211,10 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 				int *rc);
 
 /**
- * Destroy the query \c q.
+ * Destroy the message query \c q.
  * \param q The query handle.
  */
-void bquery_destroy(struct bquery *q);
+void bmsgquery_destroy(struct bmsgquery *q);
 
 /**
  * Destroy the image query \c q.

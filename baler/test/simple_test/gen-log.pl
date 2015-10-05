@@ -6,6 +6,15 @@ use benv;
 
 my ($TS, $N, $I);
 
+# Load patterns
+open my $fin, "./gen-ptns.pl |" or die "Cannot run ./gen-ptns.pl script";
+my @PTNS = <$fin>;
+
+for my $P (@PTNS) {
+	chomp $P;
+	$P =~ s/\*/\%d/g;
+}
+
 my @TSTA = ();
 my @NODES = ();
 
@@ -22,21 +31,22 @@ for ($N=0; $N<$BTEST_NODE_LEN; $N++) {
 
 my $num = 0;
 
+my $NP;
+
+$TS = int($BTEST_TS_BEGIN);
 for my $TS_TEXT (@TSTA) {
-	$N=$BTEST_NODE_BEGIN;
-	for my $NODE (@NODES) {
-		print "$TS_TEXT $NODE This is a test message from ",$NODE,", num: ", $num, "\n";
-		my $X = $N % 10;
-		if ($X == 0) {
-			print "$TS_TEXT $NODE I see fire!\n";
+	$NP = 0;
+	for my $PTN (@PTNS) {
+		$N=$BTEST_NODE_BEGIN;
+		for my $NODE (@NODES) {
+			printf "$TS_TEXT $NODE $PTN\n", $TS, $N
+					if ($N % scalar(@PTNS) != $NP);
 			$num++;
-		} elsif ($X == 1) {
-			print "$TS_TEXT $NODE OVIS is a sheep.\n";
-			$num++;
+			$N++;
 		}
-		$num++;
-		$N++;
+		$NP++;
 	}
+	$TS += int($BTEST_TS_INC);
 }
 
 print STDERR "total messages: $num\n";

@@ -88,12 +88,12 @@
 struct bout_sos_plugin {
 	struct boutplugin base; /**< Base structure. */
 	/* Additional data to the base. */
-	sos_t sos; /**< SOS object. */
 	char *sos_path; /**< SOS path, for reference. */
 	pthread_mutex_t sos_mutex; /**< Mutex for sos. */
-	int time_limit; /**< time limit (for store rotation) */
-	int max_copy; /**< Max copy of rotated stores */
 	int last_rotate; /**< Last rotation timestamp */
+	void *bsos_handle; /**< Handle to bsos */
+	void *(*bsos_handle_open)(const char *path, sos_perm_t o_perm);
+	void (*bsos_handle_close)(void *bsos_handle, sos_commit_t commit);
 };
 
 /**
@@ -120,19 +120,6 @@ int bout_sos_config(struct bplugin *this, struct bpair_str_head *arg_head);
 int bout_sos_start(struct bplugin *this);
 
 typedef void (*bout_sos_rotate_cb_fn)(struct bout_sos_plugin *_this);
-
-/**
- * Utility function to rotate SOS inside the plugin.
- *
- * \param _this THe plugin handle
- * \param ts The current entry timestamp
- * \param cb The callback function that will be called if the store rotated
- *
- * \retval 0 OK
- * \retval errno Error
- */
-int bout_sos_rotate(struct bout_sos_plugin *_this, int ts,
-						bout_sos_rotate_cb_fn cb);
 
 /**
  * This is a destructor of the ::bout_sos_plugin instance.

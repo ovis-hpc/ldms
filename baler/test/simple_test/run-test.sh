@@ -7,6 +7,7 @@ exec 2>&1
 BLOG=./balerd.log
 BSTORE=./store
 BCONFIG=./balerd.cfg
+BTEST_N_PATTERNS=128
 BTEST_ENG_DICT="../eng-dictionary"
 BTEST_HOST_LIST="../host.list"
 BTEST_BIN_RSYSLOG_PORT=33333

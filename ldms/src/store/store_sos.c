@@ -92,7 +92,6 @@ struct sos_instance {
 	sos_t sos; /**< sos handle */
 	sos_schema_t sos_schema;
 	pthread_mutex_t lock; /**< lock at metric store level */
-	uint32_t last_rotate; /**< Last rotation timestamp */
 	LIST_ENTRY(sos_instance) entry;
 };
 static pthread_mutex_t cfg_lock;
@@ -101,11 +100,6 @@ LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 static char root_path[PATH_MAX]; /**< store root path */
 
 static ldmsd_msg_log_f msglog;
-
-static time_t time_limit = 0;
-static int max_copy = 1;
-static size_t init_size = 4 * 1024 * 1024; /* default size 4MB */
-static char owner[MAX_OWNER];
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -173,23 +167,6 @@ sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_D64] = set_double_fn,
 };
 
-static int store_sos_change_owner(char *path)
-{
-	int rc = 0;
-	if (owner[0] != '\0') {
-		errno = 0;
-		char cmd_s[1024];
-		sprintf(cmd_s, "chown -R %s %s", owner, root_path);
-		rc = system(cmd_s);
-		if (rc) {
-			msglog(LDMSD_LERROR, "store_sos: Error %d: Changing owner "
-					"%s to %s\n", errno, owner);
-			return -1;
-		}
-	}
-	return rc;
-}
-
 /**
  * \brief Configuration
  */
@@ -202,30 +179,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	pthread_mutex_lock(&cfg_lock);
 	snprintf(root_path, PATH_MAX, "%s", value);
-
-	value = av_value(avl, "time_limit");
-	if (value)
-		time_limit = atoi(value);
-
-	value = av_value(avl, "max_copy");
-	if (value)
-		max_copy = atoi(value);
-
-	value = av_value(avl, "init_size");
-	if (value)
-		init_size = atoi(value);
-
-	value = av_value(avl, "owner");
-	if (value) {
-		if (strlen(value) > MAX_OWNER) {
-			msglog(LDMSD_LERROR, "store_sos: 'owner' (%s) exceeds %d "
-					"characters.\n", value, MAX_OWNER);
-			goto einval;
-		}
-		snprintf(owner, MAX_OWNER, "%s", value);
-	} else {
-		owner[0] = '\0';
-	}
 	pthread_mutex_unlock(&cfg_lock);
 	return 0;
 einval:
@@ -242,14 +195,9 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_sos path=<path> owner=<user:group> metric_names=<metrics>\n"
+	return  "    config name=store_sos path=<path>\n"
 		"        - Set the root path for the storage of SOS files.\n"
-		"        path           The path to the root of the SOS containers directory\n"
-		"	 user:group     Optional. Store_sos will 'chown -R user:group <path>'\n"
-		"	 metric_names   Optional. The format is <metric_name(type)>,<metric_name(type)>,...\n"
-		"			If this is given the store sos of the metrics will be created\n"
-		"			when store_sos is configured, otherwise it will be created when the\n"
-		"                       first update completes.\n";
+		"        path           The path to the root of the SOS containers directory\n";
 }
 
 static void *get_ucontext(ldmsd_store_handle_t _sh)
@@ -295,27 +243,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	free(si);
  out:
 	return NULL;
-}
-
-void store_sos_cleanup(sos_t sos, uint32_t sec)
-{
-#if 0
-	int rc;
-	sos_iter_t itr = sos_iter_new(sos, 0);
-	sos_obj_t obj;
-	rc = sos_iter_begin(itr);
-	if (rc)
-		return;
-	obj = sos_iter_obj(itr);
-	while (obj) {
-		if (sos_obj_attr_get_uint32(sos, 0, obj) >= sec)
-			break;
-		sos_iter_obj_remove(itr);
-		sos_obj_delete(sos, obj);
-		obj = sos_iter_obj(itr);
-	}
-	sos_iter_free(itr);
-#endif
 }
 
 static sos_schema_t
@@ -375,7 +302,6 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 	rc = sos_container_new(si->path, 0660);
 	if (rc)
 		return rc;
-	store_sos_change_owner(si->path);
 	si->sos = sos_container_open(si->path, SOS_PERM_RW);
 	if (!si->sos)
 		return errno;
@@ -436,21 +362,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	}
 	_timestamp = ldms_transaction_timestamp_get(set);
 	timestamp = &_timestamp;
-	if (!si->last_rotate)
-		si->last_rotate = timestamp->sec;
-#if 0
-	if (time_limit && (ts->sec / time_limit) > (si->last_rotate / time_limit)) {
-		sos_t new_sos = sos_rotate(si->sos, max_copy);
-		if (new_sos) {
-			si->sos = new_sos;
-			si->last_rotate = ts->sec;
-			sos_post_rotation(new_sos, LDMSD_SOS_POSTROT);
-		} else {
-			msglog(LDMSD_LINFO, "WARN: sos_rotate failed: %s\n",
-					si->path);
-		}
-	}
-#endif
+
 	/* The first attribute is the timestamp */
 	attr = sos_schema_attr_first(si->sos_schema);
 	value = sos_value_init(&value_, obj, attr);

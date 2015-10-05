@@ -37,7 +37,7 @@ CFLAGS='-g -O3'
 set -e
 
 #LIST="lib sos baler"
-LIST="baler"
+LIST="lib sos ldms baler"
 for X in $LIST; do
 	echo "----------------------------------"
 	echo "$X"

@@ -1,7 +1,7 @@
 Name: @PACKAGE_NAME@
 Version: @PACKAGE_VERSION@
 Release: 1%{?dist}
-Summary: Baler - a lossless, deterministic log processing tool
+Summary: LDMS - Lighweight Distributed Monitoring Service
 
 %define _app_grp Applications/System
 %define _dev_grp Development/System
@@ -11,12 +11,16 @@ License: GPLv2 or BSD
 URL: http://www.ogc.us
 Source0: %{name}-%{version}.tar.gz
 
-Requires: ovis-lib-zap >= 1.3.0, ovis-lib-zap-sock >= 1.3.0
+Requires: ovis-lib-zap >= 1.3.0
 Prefix: @prefix@
 %define _prefix @prefix@
 
 %description
-Baler - a lossless, deterministic log processing tool.
+This package provides the LDMS commands and libraries.
+Configured with @ac_configure_args@.
+* ldmsd: the LDMS daemon, which can run as sampler or aggregator (or both).
+* ldms_ls: the tool to list metric information of an ldmsd.
+* ldmsctl: the tool to control an ldmsd.
 
 
 %prep
@@ -39,17 +43,17 @@ rm -rf %{buildroot}
 # files for main package
 %files
 %{_bindir}
+%{_sbindir}
 %{_libdir}
 %{_prefix}/lib
-%{_prefix}/etc
 
 
-# baler-devel package
+# ldms-devel package
 %package devel
-Summary: Development files for Baler
+Summary: Development files for LDMS
 Group: %{_grp}
 %description devel
-Development files for Baler
+Development files for LDMS
 %files devel
 %defattr(-,root,root)
 %{_includedir}
