@@ -147,6 +147,7 @@ static int sample(void)
 {
 	ldms_transaction_begin(set);
 	int i, mid;
+	static uint8_t off = 0;
 	struct array_construct *ent = array_contruct_entries;
 	union ldms_value v;
 	mid = 0;
@@ -154,34 +155,34 @@ static int sample(void)
 		for (i = 0; i < ent->n; i++) {
 			switch (ent->type) {
 			case LDMS_V_S8_ARRAY:
-				v.v_s8 = -i;
+				v.v_s8 = -i + off;
 				break;
 			case LDMS_V_U8_ARRAY:
-				v.v_u8 = i;
+				v.v_u8 = i + off;
 				break;
 			case LDMS_V_S16_ARRAY:
-				v.v_s16 = -i;
+				v.v_s16 = -i + off;
 				break;
 			case LDMS_V_U16_ARRAY:
-				v.v_u16 = i;
+				v.v_u16 = i + off;
 				break;
 			case LDMS_V_S32_ARRAY:
-				v.v_s32 = -i;
+				v.v_s32 = -i + off;
 				break;
 			case LDMS_V_U32_ARRAY:
-				v.v_u32 = i;
+				v.v_u32 = i + off;
 				break;
 			case LDMS_V_S64_ARRAY:
-				v.v_s64 = -i;
+				v.v_s64 = -i + off;
 				break;
 			case LDMS_V_U64_ARRAY:
-				v.v_u64 = i;
+				v.v_u64 = i + off;
 				break;
 			case LDMS_V_F32_ARRAY:
-				v.v_f = i/10.0;
+				v.v_f = i/10.0 + off;
 				break;
 			case LDMS_V_D64_ARRAY:
-				v.v_d = i/10.0;
+				v.v_d = i/10.0 + off;
 				break;
 			default:
 				v.v_u64 = 0;
@@ -191,6 +192,7 @@ static int sample(void)
 		mid++;
 		ent++;
 	}
+	off++;
 	ldms_transaction_end(set);
 	return 0;
 }
