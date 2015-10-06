@@ -50,9 +50,12 @@
  */
 
 /**
- * Link aggregation methodlogy from Kevin Pedretti's (SNL) gemini performance counter interface
- * and link aggregation library.
+ * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
+ * (Sandia National Laboratories) gemini performance counter interface and
+ * link aggregation library. It has been augmented with pattern analysis
+ * of the interconnect file.
  */
+
 
 #ifndef _GEMINI_H_
 #define _GEMINI_H_
@@ -93,19 +96,8 @@
 #define GEMINI_LINK_DIR_Z_MINUS          5
 #define GEMINI_LINK_DIR_HOST             6
 
-// Gemini NIC counter names
-#define GEMINI_NCTR_VC0_FLITS            0
-#define GEMINI_NCTR_VC1_FLITS            1
-#define GEMINI_NCTR_VC0_PACKETS          2
-#define GEMINI_NCTR_VC1_PACKETS          3
-#define GEMINI_NCTR_VC0_STALLED          4
-#define GEMINI_NCTR_VC1_STALLED          5
-#define GEMINI_NCTR_NPT_FLITS            6  // NPT injects GET replies
-#define GEMINI_NCTR_NPT_PACKETS          7
-#define GEMINI_NCTR_NPT_STALLED          8
-#define GEMINI_NCTR_NPT_BLOCKED          9
-#define GEMINI_NCTR_RAT_VC0_HDR_FLITS   10
-#define GEMINI_NCTR_RAT_VC0_DATA_FLITS  11
+static char* gemini_linkdir_name[] = {
+	"X+", "X-", "Y+", "Y-", "Z+", "Z-", "HH"};
 
 // Gemini fixed tile counter names
 #define GEMINI_TCTR_VC0_INPUT_PHITS      0
@@ -115,51 +107,13 @@
 #define GEMINI_TCTR_INPUT_STALLS         4
 #define GEMINI_TCTR_OUTPUT_STALLS        5
 
-// Gemini fixed link statistics
-#define SAMPLE_GEMINI_TCTR_LINK_BW              0
-#define SAMPLE_GEMINI_TCTR_LINK_USED_BW       1
-#define SAMPLE_GEMINI_TCTR_LINK_PACKETSIZE_AVE  2
-#define SAMPLE_GEMINI_TCTR_LINK_INPUT_STALLS    3
-#define SAMPLE_GEMINI_TCTR_LINK_OUTPUT_STALLS   4
-
-// Default number of samples stored
-#define GEMINI_DEFAULT_NUM_NIC_SAMPLES   2
-#define GEMINI_DEFAULT_NUM_TILE_SAMPLES  2
-
-typedef struct {
-	int x, y, z;
-} gemini_coord_t;
-
 typedef struct {
 	int       type;  // type of the logical link the tile is a part of
 	int       dir;   // direction of logical link the tile is a part of
-	uint64_t  counters[GEMINI_NUM_TILE_COUNTERS];  // performance counters
 } gemini_tile_t;
 
 typedef struct {
-	int       dir;   // direction of the logical link (e.g., x+, y-, host)
-	double    bw;    // link bandwidth in Gbits/s
-	uint64_t  counters[GEMINI_NUM_TILE_COUNTERS];  // performance counters
-} gemini_link_t;
-
-typedef struct {
-	uint64_t  counters[GEMINI_NUM_NIC_COUNTERS];  // performance counters
-} gemini_nic_t;
-
-typedef struct {
-	// Local Process bits
-	int               my_nid;
-	gemini_coord_t    my_coord;
-
-	// Local Node bits
-	gemini_nic_t      nic;
-
-	// Local Gemini bits
-	gemini_coord_t    neighbor[GEMINI_NUM_LOGICAL_LINKS];
 	gemini_tile_t     tile[GEMINI_NUM_TILES];
-	gemini_link_t     link[GEMINI_NUM_LOGICAL_LINKS];
-	int               num_tile_samples;
-	int               tile_sample_index;
 } gemini_state_t;
 
 #endif

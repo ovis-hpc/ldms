@@ -73,7 +73,8 @@ static char *procfile = PROC_FILE;
 
 static ldms_set_t set;
 static ldms_schema_t schema;
-static FILE *mf;
+static char* default_schema_name = "vmstat";
+static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 
@@ -82,7 +83,7 @@ static ldms_set_t get_set()
 	return set;
 }
 
-static int create_metric_set(const char *path)
+static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	int rc;
 	uint64_t metric_value;
@@ -97,13 +98,12 @@ static int create_metric_set(const char *path)
 		return ENOENT;
 	}
 
-	schema = ldms_schema_new("vmstat");
+	schema = ldms_schema_new(schema_name);
 	if (!schema) {
-		fclose(mf);
-		return ENOMEM;
+		rc = ENOMEM;
+		goto err;
 	}
 
-	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -117,7 +117,7 @@ static int create_metric_set(const char *path)
 			goto err;
 	} while (s);
 
-	set = ldms_set_new(path, schema);
+	set = ldms_set_new(instance_name, schema);
 	if (!set) {
 		rc = errno;
 		goto err;
@@ -126,21 +126,28 @@ static int create_metric_set(const char *path)
 	return 0;
 
  err:
-	ldms_schema_delete(schema);
+
+	if (schema)
+		ldms_schema_delete(schema);
 	schema = NULL;
-	return ENOMEM;
+	if (mf)
+		fclose(mf);
+	mf = NULL;
+	return rc;
 }
 
 static const char *usage()
 {
-	return  "config name=vmstat producer=<prod_name> instance=<inst_name>\n"
+	return  "config name=vmstat producer=<prod_name> instance=<inst_name> [schema=<sname>]\n"
 		"    <prod_name>   The producer name\n"
-		"    <inst_name>   The instance name\n";
+		"    <inst_name>   The instance name\n"
+		"    <sname>      Optional schema name. Defaults to 'vmstat'\n";
 }
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	char *sname;
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
@@ -154,13 +161,26 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	sname = av_value(avl, "schema");
+        if (!sname){
+                sname = default_schema_name;
+        }
+        if (strlen(sname) == 0){
+                msglog(LDMSD_LERROR, "vmstat: schema name invalid.\n");
+                return EINVAL;
+        }
+
 	if (set) {
-		msglog(LDMSD_LERROR, "procvmstat: Set already created.\n");
+		msglog(LDMSD_LERROR, "vmstat: Set already created.\n");
 		return EINVAL;
 	}
-	int rc = create_metric_set(value);
-	if (rc)
+
+	int rc = create_metric_set(value, sname);
+	if (rc) {
+		msglog(LDMSD_LERROR, "vmstat: failed to create a metric set.\n");
 		return rc;
+	}
+
 	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
@@ -202,8 +222,12 @@ static int sample(void)
 
 static void term(void)
 {
+	if (mf)
+		fclose(mf);
+	mf = NULL;
 	if (schema)
 		ldms_schema_delete(schema);
+	schema = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;

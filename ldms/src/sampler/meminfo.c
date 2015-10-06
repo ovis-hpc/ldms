@@ -69,13 +69,14 @@
 #define PROC_FILE "/proc/meminfo"
 
 static char *procfile = PROC_FILE;
-static ldms_set_t set;
+static ldms_set_t set = NULL;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
+static char *default_schema_name = "meminfo";
 
-static int create_metric_set(const char *instance_name)
+static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	int rc, i;
 	uint64_t metric_value;
@@ -87,14 +88,15 @@ static int create_metric_set(const char *instance_name)
 	if (!mf)
 		return ENOENT;
 
-	schema = ldms_schema_new("meminfo");
-	if (!schema)
-		return ENOMEM;
+	schema = ldms_schema_new(schema_name);
+	if (!schema) {
+		rc = ENOMEM;
+		goto err;
+	}
 
 	/*
 	 * Process the file to define all the metrics.
 	 */
-	int metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -125,21 +127,29 @@ static int create_metric_set(const char *instance_name)
 	}
 
 	return 0;
+
  err:
-	ldms_schema_delete(schema);
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
+	if (mf)
+		fclose(mf);
+	mf = NULL;
 	return rc;
 }
 
 /**
  * \brief Configuration
  *
- * config name=meminfo producer_name=<comp_id> instance_name=<instance_name>
+ * config name=meminfo producer_name=<comp_id> instance_name=<instance_name> [schema=<sname>]
  *     producer_name      The producer id value.
  *     instance_name    The set name.
+ *     sname            Optional schema name. Defaults to meminfo
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	char *sname;
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
 		msglog(LDMSD_LERROR, "meminfo: missing producer\n");
@@ -152,12 +162,20 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	sname = av_value(avl, "schema");
+	if (!sname)
+		sname = default_schema_name;
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, "meminfo: schema name invalid.\n");
+		return EINVAL;
+	}
+
 	if (set) {
 		msglog(LDMSD_LERROR, "meminfo: Set already created.\n");
 		return EINVAL;
 	}
 
-	int rc = create_metric_set(value);
+	int rc = create_metric_set(value, sname);
 	if (rc) {
 		msglog(LDMSD_LERROR, "meminfo: failed to create a metric set.\n");
 		return rc;
@@ -210,6 +228,7 @@ static void term(void)
 {
 	if (mf)
 		fclose(mf);
+	mf = NULL;
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;
@@ -220,9 +239,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=meminfo producer=<prod_name> instance=<inst_name>\n"
+	return  "config name=meminfo producer=<prod_name> instance=<inst_name> [schema=<sname>]\n"
 		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n";
+		"    <inst_name>  The instance name\n"
+		"    <sname>      Optional schema name. Defaults to 'meminfo'\n";
 }
 
 static struct ldmsd_sampler meminfo_plugin = {

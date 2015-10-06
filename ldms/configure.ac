@@ -27,14 +27,11 @@ OPTION_DEFAULT_ENABLE([papi], [ENABLE_PAPI])
 OPTION_DEFAULT_ENABLE([mmap], [ENABLE_MMAP])
 OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
 OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
-OPTION_DEFAULT_ENABLE([glib], [ENABLE_GLIB])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
 OPTION_DEFAULT_DISABLE([auth], [ENABLE_AUTH])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
-OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
-OPTION_DEFAULT_DISABLE([mysqlbulk], [ENABLE_MYSQLBULK])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 
@@ -57,11 +54,10 @@ OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
-OPTION_DEFAULT_DISABLE([sedc], [ENABLE_SEDC])
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
-OPTION_DEFAULT_DISABLE([ncsa_unified], [ENABLE_NCSA_UNIFIED])
+OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
@@ -71,9 +67,14 @@ OPTION_WITH([switchx], [SWITCHX])
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
 dnl Other libraries
+OPTION_DEFAULT_DISABLE([gemini-gpcdr], [ENABLE_GEMINI_GPCDR]) dnl use gpcdr for gemini (not mutually exclusive)
+OPTION_DEFAULT_DISABLE([aries-gpcdr], [ENABLE_ARIES_GPCDR]) dnl use gpcdr for aries (not mutually exclusive)
 
-OPTION_DEFAULT_DISABLE([gpcd], [ENABLE_GPCD])
-OPTION_WITH([gpcd], [GPCD])
+OPTION_DEFAULT_DISABLE([cray-nvidia], [ENABLE_CRAY_NVIDIA])
+OPTION_DEFAULT_DISABLE([cray-nvidia-inc], [ENABLE_CRAY_NVIDIA_INC])
+OPTION_WITH([cray-nvidia-inc], [CRAY_NVIDIA_INC]) dnl for the path to nvidia include
+
+dnl Will need to have the NVIDIA library in the LD_LIBRARY_PATH
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
 OPTION_WITH([rca], [RCA])
 OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
@@ -94,15 +95,6 @@ OPTION_WITH([ocm], [OCM])
 OPTION_DEFAULT_DISABLE([ldmsd-rctl], [ENABLE_LDMSD_RCTL])
 OPTION_DEFAULT_DISABLE([ldms-python], [ENABLE_LDMS_PYTHON])
 OPTION_DEFAULT_DISABLE([ldms-test], [ENABLE_LDMS_TEST])
-
-if test -z "$ENABLE_MYSQL_TRUE"
-then
-OPTION_WITH_MYSQL dnl MYSQL is special.
-fi
-if test -z "$ENABLE_GLIB_TRUE"
-then
-PKG_CHECK_MODULES([GLIB20], [glib-2.0])
-fi
 
 dnl Check for libevent
 OPTION_WITH_EVENT
@@ -213,6 +205,71 @@ then
 	SWIG_PYTHON
 fi
 
+
+dnl if cray_sampler set some other variables
+if test "x$enable_cray_system_sampler" = "xyes"
+then
+
+	if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
+	then
+		AC_MSG_ERROR([Must enable at least one of gemini-gpcdr, and aries-gpcdr.])
+	fi
+
+	if test -z "$ENABLE_GEMINI_GPCDR_TRUE"
+	then
+	gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
+	if ! test -f $gpcdrfile; then
+	   AC_MSG_WARN([
+	 ++++++++++++++++++++++++++++++++++++++++++++
+	   GEMINI gpcdr interface not available:
+	   $gpcdrfile
+	   We hope your runtime environment has it.
+	 ++++++++++++++++++++++++++++++++++++++++++++
+	  ])
+	  fi
+	  AC_MSG_RESULT([Building gpcdr interface for GEMINI HSN metrics.])
+	fi
+
+	if test -z "$ENABLE_ARIES_GPCDR_TRUE"
+	then
+	gpcdrfile1="/sys/devices/virtual/gni/gpcdr0/metricsets/linktraffic/metrics"
+	gpcdrfile2="/sys/devices/virtual/gni/gpcdr0/metricsets/linkstalled/metrics"
+	gpcdrfile3="/sys/devices/virtual/gni/gpcdr0/metricsets/linksendstatus/metrics"
+	gpcdrfile4="/sys/devices/virtual/gni/gpcdr0/metricsets/linkrecvstatus/metrics"
+	if !(test -f $gpcdrfile1) || !(test -f $gpcdrfile2) || !(test -f $gpcdrfile3) || !(test -f $gpcdrfile4)
+	then
+	   AC_MSG_WARN([
+	 ++++++++++++++++++++++++++++++++++++++++++++
+	   ARIES gpcdr interface not available:
+	   $gpcdrfile1 $gpcdrfile2 $gpcdrfile3 $gpcdrfile4
+	   We hope your runtime environment has it.
+	 ++++++++++++++++++++++++++++++++++++++++++++
+	  ])
+	  fi
+	  AC_MSG_RESULT([Building gpcdr interface for ARIES HSN metrics.])
+	fi
+
+	if test -z "$ENABLE_CRAY_NVIDIA_TRUE"
+	then
+	  AC_DEFINE([HAVE_CRAY_NVIDIA],[1],[cray_system_sampler: Including option for NVIDIA metrics.])
+	  AC_MSG_RESULT([cray_system_sampler: Including option for NVIDIA metrics.])
+	else
+	  AC_MSG_RESULT([cray_system_sampler: Not including option for NVIDIA metrics.])
+	fi
+
+	if test -z "$ENABLE_LUSTRE_TRUE"
+	then
+		AC_DEFINE([HAVE_LUSTRE],[1],[cray_system_sampler: Include option for LUSTRE metrics.])
+		AC_MSG_RESULT([cray_system_sampler: Including option for LUSTRE metrics.])
+	else
+		AC_MSG_RESULT([cray_system_sampler: Not including option for LUSTRE metrics.])
+	fi
+fi
+
+dnl Reset LIBS variable.
+
+LIBS=""
+
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
@@ -221,6 +278,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/hadoop/Makefile
+		 src/sampler/cray_system_sampler/Makefile
 		 src/ldmsd/Makefile
 		 src/test/Makefile
 		 etc/Makefile

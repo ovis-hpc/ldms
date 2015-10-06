@@ -48,13 +48,21 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
 /**
- * \file gem_link_perf_util.h
- * \brief Utilities for gem_link_perf/nic_perf_sampler also used in ncsa_unified
+ * \file gpcd_util.c
+ * \brief Utilities reading and aggregating the gemini_performance counters.
  */
 
-#ifndef __GEM_LINK_PERF_UTIL_H_
-#define __GEM_LINK_PERF_UTIL_H_
+/**
+ * Link aggregation methodlogy from gpcd counters based on Kevin Pedretti's
+ * (Sandia National Laboratories) gemini performance counter interface and
+ * link aggregation library. It has been augmented with pattern analysis
+ * of the interconnect file.
+ *
+ * NOTE: Link aggregation methodology has been deprecated in v3.
+ */
+
 
 #define _GNU_SOURCE
 
@@ -67,92 +75,80 @@
 #include <string.h>
 #include <sys/types.h>
 #include <ctype.h>
-#include <rca_lib.h>
-#include <rs_id.h>
-#include <rs_meshcoord.h>
-#include <gpcd_lib.h>
-#include "gemini.h"
-#include "ldms.h"
+#include <time.h>
+#include <pthread.h>
+#include <limits.h>
+#include "gpcd_util.h"
 #include "ldmsd.h"
+#include "ldms.h"
 
-/* Array to hold counter names */
-static char ns_gemlink_gemctrname[][32] = {
-	"GEMINI_TCTR_VC0_INPUT_PHITS",
-	"GEMINI_TCTR_VC1_INPUT_PHITS",
-	"GEMINI_TCTR_VC0_INPUT_PACKETS",
-	"GEMINI_TCTR_VC1_INPUT_PACKETS",
-	"GEMINI_TCTR_INPUT_STALLS",
-	"GEMINI_TCTR_OUTPUT_STALLS"
-};
+/**
+ * Build linked list of tile performance counters we wish to get values for
+ */
+gpcd_context_t *gem_link_perf_create_context(ldmsd_msg_log_f* msglog_outer)
+{
+	int i, j, k, status;
+	char name[128];
+	gpcd_context_t *lctx;
+	gpcd_mmr_desc_t *desc;
 
-static char ns_gemlink_gemstatsname[][64] = {
-	"SAMPLE_GEMINI_TCTR_LINK_BW",
-	"SAMPLE_GEMINI_TCTR_LINK_USED_BW",
-	"SAMPLE_GEMINI_TCTR_LINK_PACKETSIZE_AVE",
-	"SAMPLE_GEMINI_TCTR_LINK_INPUT_STALLS",
-	"SAMPLE_GEMINI_TCTR_LINK_OUTPUT_STALLS"
-};
+	lctx = gpcd_create_context();
+	if (!lctx)
+		return NULL;
 
-#define NETTOPODIM 3
-static char nettopo_meshcoord_metricname[][64] = {
-	"nettopo_mesh_coord_x",
-	"nettopo_mesh_coord_y",
-	"nettopo_mesh_coord_z"
-};
+	/*  loop over all 48 tiles, for each tile add its 6 static counters to
+	 *  the context */
+	for (i = 0; i < GEMINI_NUM_TILE_ROWS; i++) {
+		for (j = 0; j < GEMINI_NUM_TILE_COLUMNS; j++) {
+			for (k = 0; k < GEMINI_NUM_TILE_COUNTERS; k++) {
+				sprintf(name,
+					"GM_%d_%d_TILE_PERFORMANCE_COUNTERS_%d",
+						i, j, k);
+				desc = (gpcd_mmr_desc_t *)
+						gpcd_lookup_mmr_byname(name);
+				if (!desc) {
+					gpcd_remove_context(lctx);
+					return NULL;
+				}
+				status = gpcd_context_add_mmr(lctx, desc);
+				if (status != 0) {
+					gpcd_remove_context(lctx);
+					return NULL;
+				}
+			}
+		}
+	}
+	return lctx;
+}
 
-/* Array to hold link direction */
-static char ns_gemlink_gemctrdir[][4] = {
-	"X+", "X-", "Y+", "Y-", "Z+", "Z-", "HH"
-};
 
-#define NUM_NIC_PERF_RAW 12
+/**
+ * Build linked list of performance counters we wish to get values for
+ */
+gpcd_context_t *nic_perf_create_context(ldmsd_msg_log_f* msglog)
+{
+	int i, status;
+	gpcd_context_t *lctx;
+	gpcd_mmr_desc_t *desc;
 
-#define STR_WRAP(NAME) #NAME
-#define PREFIX_ENUM_R(NAME) R_ ## NAME
+	lctx = gpcd_create_context();
+	if (!lctx)
+		return NULL;
 
-#define NIC_PERF_RAW_LIST(WRAP) \
-	WRAP(GM_ORB_PERF_VC1_STALLED),		\
-		WRAP(GM_ORB_PERF_VC0_STALLED),	\
-		WRAP(GM_ORB_PERF_VC1_PKTS),	\
-		WRAP(GM_ORB_PERF_VC0_PKTS),	\
-		WRAP(GM_ORB_PERF_VC1_FLITS),	\
-		WRAP(GM_ORB_PERF_VC0_FLITS),	\
-		WRAP(GM_NPT_PERF_NPT_FLIT_CNTR),	\
-		WRAP(GM_NPT_PERF_NPT_PKT_CNTR),		\
-		WRAP(GM_NPT_PERF_NPT_BLOCKED_CNTR),	\
-		WRAP(GM_NPT_PERF_NPT_STALLED_CNTR),	\
-		WRAP(GM_RAT_PERF_HEADER_FLITS_VC0),	\
-		WRAP(GM_RAT_PERF_DATA_FLITS_VC0)
+	for (i = 0; i < NUM_NIC_PERF_RAW; i++) {
+		desc = (gpcd_mmr_desc_t *)
+			gpcd_lookup_mmr_byname(nic_perf_raw_name[i]);
+		if (!desc) {
+			gpcd_remove_context(lctx);
+			return NULL;
+		}
 
-static char* nic_perf_raw_name[] = {
-	NIC_PERF_RAW_LIST(STR_WRAP)
-};
+		status = gpcd_context_add_mmr(lctx, desc);
+		if (status != 0) {
+			gpcd_remove_context(lctx);
+			return NULL;
+		}
+	}
 
-typedef enum {
-	NIC_PERF_RAW_LIST(PREFIX_ENUM_R)
-} nic_perf_raw_t;
-
-int get_my_nid(void);
-void get_my_coord(gemini_coord_t *coord);
-void set_coord_invalid(gemini_coord_t *coord);
-int coord_invalid(gemini_coord_t *coord);
-int coord_valid(gemini_coord_t *coord);
-int coords_equal(gemini_coord_t *a, gemini_coord_t *b);
-int tid_to_tcoord(int tid, int *row, int *col);
-int tcoord_to_tid(int row, int col, int *tid);
-int str_to_tid(char *str);
-int str_to_linkdir(char *str);
-int str_to_linktype(char *str);
-double tile_to_bw(ldmsd_msg_log_f* msglog_outer, int tile_type);
-int get_my_pattern(ldmsd_msg_log_f* msglog_outer, int *pattern, int* zind);
-int gem_link_perf_parse_interconnect_file(ldmsd_msg_log_f* msglog_outer,
-					  char *filename,
-					  gemini_coord_t *neighbor,
-					  gemini_tile_t *tile,
-					  gemini_coord_t *mycoord,
-					  double (*max_link_bw)[],
-					  int (*tiles_per_dir)[]);
-gpcd_context_t *gem_link_perf_create_context(ldmsd_msg_log_f*);
-gpcd_context_t *nic_perf_create_context(ldmsd_msg_log_f*);
-
-#endif
+	return lctx;
+}

@@ -67,12 +67,13 @@
 #define PROC_FILE "/proc/interrupts"
 static char *procfile = PROC_FILE;
 
-static ldms_set_t set;
-static FILE *mf;
+static ldms_set_t set = NULL;
+static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
 static int nprocs;
 static char *producer_name;
 static ldms_schema_t schema;
+static char *default_schema_name = "procinterrupts";
 
 static ldms_set_t get_set()
 {
@@ -99,7 +100,7 @@ static int getNProcs(char buf[]){
 
 
 static char lbuf[4096];		/* NB: Some machines have many cores */
-static int create_metric_set(const char *instance_name)
+static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	int rc, i;
 	char *s;
@@ -115,10 +116,10 @@ static int create_metric_set(const char *instance_name)
 	char beg_name[128];
 
 	/* Create a metric set of the required size */
-	schema = ldms_schema_new("procinterrupts");
+	schema = ldms_schema_new(schema_name);
 	if (!schema) {
-		fclose(mf);
-		return ENOMEM;
+		rc = ENOMEM;
+		goto err;
 	}
 
 	/*
@@ -173,20 +174,24 @@ static int create_metric_set(const char *instance_name)
 	return 0;
 
 err:
-	fclose(mf);
-	ldms_schema_delete(schema);
+	if (schema)
+		ldms_schema_delete(schema);
 	schema = NULL;
+	if (mf)
+		fclose(mf);
+	mf = NULL;
 	return rc;
 }
 
 /**
  * \brief Configuration
  *
- * - config name=procinterrupts producer=<prod_name> instance=<inst_name>
+ * - config name=procinterrupts producer=<prod_name> instance=<inst_name> [schema=<sname>]
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
+	char *sname;
 	char *value;
 
 	producer_name = av_value(avl, "producer");
@@ -201,19 +206,28 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	sname = av_value(avl, "schema");
+        if (!sname)
+                sname = default_schema_name;
+        if (strlen(sname) == 0){
+                msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
+		       __FILE__);
+                return EINVAL;
+        }
+
 	if (set) {
 		msglog(LDMSD_LERROR, "procinterrupts: Set already created.\n");
 		return EINVAL;
 	}
 
-	rc = create_metric_set(value);
+	rc = create_metric_set(value, sname);
 	if (rc) {
 		msglog(LDMSD_LERROR, "procinterrupts: failed to create the metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_name_set(set, producer_name);
 
-	return rc;
+	ldms_set_producer_name_set(set, producer_name);
+	return 0;
 }
 
 static int sample(void)
@@ -268,7 +282,7 @@ static int sample(void)
 	} while (s);
 	rc = 0;
 out:
-	ldms_transaction_begin(set);
+	ldms_transaction_end(set);
 	return rc;
 }
 
@@ -288,9 +302,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=procinterrupts producer=<prod_name> instance=<inst_name>\n"
+	return  "config name=procinterrupts producer=<prod_name> instance=<inst_name> [schema=<sname>]\n"
 		"    <prod_name>     The producer name\n"
-		"    <inst_name>     The instance name\n";
+		"    <inst_name>     The instance name\n"
+		"    <sname>      Optional schema name. Defaults to 'procinterrupts'\n";
 }
 
 static struct ldmsd_sampler procinterrupts_plugin = {
