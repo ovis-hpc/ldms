@@ -208,7 +208,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char *schema,
-	   struct ldmsd_store_metric_list *metric_list, void *ucontext)
+	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct sos_instance *si = NULL;
 
