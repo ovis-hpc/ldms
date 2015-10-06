@@ -77,11 +77,11 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 		free(strgp->metric_arry);
 
 	struct ldmsd_strgp_metric *metric;
-	while (!LIST_EMPTY(&strgp->metric_list) ) {
-		metric = LIST_FIRST(&strgp->metric_list);
+	while (!TAILQ_EMPTY(&strgp->metric_list) ) {
+		metric = TAILQ_FIRST(&strgp->metric_list);
 		if (metric->name)
 			free(metric->name);
-		LIST_REMOVE(metric, entry);
+		TAILQ_REMOVE(&strgp->metric_list, metric, entry);
 		free(metric);
 	}
 	ldmsd_name_match_t match;
@@ -121,7 +121,7 @@ ldmsd_strgp_new(const char *name)
 	strgp->state = LDMSD_STRGP_STATE_STOPPED;
 	strgp->update_fn = strgp_update_fn;
 	LIST_INIT(&strgp->prdcr_list);
-	LIST_INIT(&strgp->metric_list);
+	TAILQ_INIT(&strgp->metric_list);
 	ldmsd_task_init(&strgp->task);
 	ldmsd_cfgobj_unlock(&strgp->obj);
 	return strgp;
@@ -139,12 +139,12 @@ ldmsd_strgp_t ldmsd_strgp_next(struct ldmsd_strgp *strgp)
 
 ldmsd_strgp_metric_t ldmsd_strgp_metric_first(ldmsd_strgp_t strgp)
 {
-	return LIST_FIRST(&strgp->metric_list);
+	return TAILQ_FIRST(&strgp->metric_list);
 }
 
 ldmsd_strgp_metric_t ldmsd_strgp_metric_next(ldmsd_strgp_metric_t metric)
 {
-	return LIST_NEXT(metric, entry);
+	return TAILQ_NEXT(metric, entry);
 }
 
 ldmsd_name_match_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp)
@@ -371,7 +371,7 @@ out_0:
 ldmsd_strgp_metric_t strgp_metric_find(ldmsd_strgp_t strgp, const char *name)
 {
 	ldmsd_strgp_metric_t metric;
-	LIST_FOREACH(metric, &strgp->metric_list, entry)
+	TAILQ_FOREACH(metric, &strgp->metric_list, entry)
 		if (0 == strcmp(name, metric->name))
 			return metric;
 	return NULL;
@@ -425,7 +425,7 @@ int cmd_strgp_metric_add(char *replybuf, struct attr_value_list *avl, struct att
 		sprintf(replybuf, "%dMemory allocation failure.\n", ENOMEM);
 		goto out_1;
 	}
-	LIST_INSERT_HEAD(&strgp->metric_list, metric, entry);
+	TAILQ_INSERT_TAIL(&strgp->metric_list, metric, entry);
 	sprintf(replybuf, "0\n");
 out_1:
 	ldmsd_strgp_unlock(strgp);
@@ -464,7 +464,7 @@ int cmd_strgp_metric_del(char *replybuf, struct attr_value_list *avl, struct att
 		sprintf(replybuf, "%dThe specified metric was not found.\n", EEXIST);
 		goto out_1;
 	}
-	LIST_REMOVE(metric, entry);
+	TAILQ_REMOVE(&strgp->metric_list, metric, entry);
 	free(metric->name);
 	free(metric);
 	sprintf(replybuf, "0\n");
@@ -528,14 +528,14 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		return ENOMEM;
 
 	rc = ENOMEM;
-	if (LIST_EMPTY(&strgp->metric_list)) {
+	if (TAILQ_EMPTY(&strgp->metric_list)) {
 		/* No metric list was given. Add all metrics in the set */
 		for (i = 0; i < ldms_set_card_get(prd_set->set); i++) {
 			name = ldms_metric_name_get(prd_set->set, i);
 			metric = strgp_metric_new(name);
 			if (!metric)
 				goto err;
-			LIST_INSERT_HEAD(&strgp->metric_list, metric, entry);
+			TAILQ_INSERT_TAIL(&strgp->metric_list, metric, entry);
 		}
 	}
 	rc = ENOENT;
@@ -551,7 +551,7 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	strgp->metric_count = i;
 
 	strgp->store_handle = ldmsd_store_open(strgp->store, strgp->container,
-			strgp->schema, NULL, strgp);
+			strgp->schema, &strgp->metric_list, strgp);
 	rc = EINVAL;
 	if (!strgp->store_handle)
 		goto err;

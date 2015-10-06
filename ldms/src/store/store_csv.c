@@ -217,7 +217,7 @@ static int print_header(struct csv_store_handle *s_handle, ldms_set_t set,
 
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char* container, const char *schema,
-	   struct ldmsd_store_metric_list *list, void *ucontext)
+	   struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	int rc;
 	struct csv_store_handle *s_handle;

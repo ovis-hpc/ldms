@@ -147,7 +147,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
-	  struct ldmsd_store_metric_list *metric_list, void *ucontext)
+	  struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct flatfile_store_instance *si;
 	struct flatfile_metric_store *ms;
@@ -164,8 +164,8 @@ open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		 * First, count the metric.
 		 */
 		int metric_count = 0;
-		struct ldmsd_store_metric *x;
-		LIST_FOREACH(x, metric_list, entry) {
+		ldmsd_strgp_metric_t x;
+		TAILQ_FOREACH(x, metric_list, entry) {
 			metric_count++;
 		}
 		sprintf(tmp_path, "%s/%s", root_path, comp_type);
@@ -195,7 +195,7 @@ open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		i = 0;
 		char mname[128];
 		char *name;
-		LIST_FOREACH(x, metric_list, entry) {
+		TAILQ_FOREACH(x, metric_list, entry) {
 			name = strchr(x->name, '#');
 			if (name) {
 				int len = name - x->name;
