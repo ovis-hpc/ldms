@@ -467,9 +467,9 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 	LIST_FOREACH(sp, &sp_list, link) {
 		ldmsd_log(llevel, "%-12s %-12s -%12s %d ",
 			  sp->name, sp->container, sp->schema,  sp->metric_count);
-		struct ldmsd_store_metric *m;
+		ldmsd_strgp_metric_t m;
 		i = 0;
-		LIST_FOREACH(m, &sp->metric_list, entry) {
+		TAILQ_FOREACH(m, &sp->metric_list, entry) {
 			if (i > 0)
 				ldmsd_log(llevel, ",");
 			i++;
@@ -1001,11 +1001,11 @@ void hset_ref_put(struct hostset *hset)
 	}
 }
 
-void destroy_metric_list(struct ldmsd_store_metric_list *list)
+void destroy_metric_list(struct ldmsd_strgp_metric_list *list)
 {
-	struct ldmsd_store_metric *smi;
-	while (smi = LIST_FIRST(list)) {
-		LIST_REMOVE(smi, entry);
+	ldmsd_strgp_metric_t smi;
+	while (smi = TAILQ_FIRST(list)) {
+		TAILQ_REMOVE(list, smi, entry);
 		free(smi->name);
 		free(smi);
 	}
@@ -1015,7 +1015,7 @@ int policy_add_metrics(struct ldmsd_store_policy *sp, char *metric_list,
 		       char *err_str)
 {
 	int rc;
-	LIST_INIT(&sp->metric_list);
+	TAILQ_INIT(&sp->metric_list);
 	sp->metric_count = 0;
 	if (!metric_list || 0 == strlen(metric_list))
 		/* None specified, all metrics in set will be used */
@@ -1766,7 +1766,7 @@ struct hostset *find_host_set(struct hostspec *hs, const char *set_name)
 
 int new_store_metric(struct ldmsd_store_policy *sp, const char *name)
 {
-	struct ldmsd_store_metric *smi;
+	ldmsd_strgp_metric_t smi;
 	smi = malloc(sizeof(*smi));
 	if (!smi)
 		return ENOMEM;
@@ -1776,14 +1776,14 @@ int new_store_metric(struct ldmsd_store_policy *sp, const char *name)
 		free(smi);
 		return ENOMEM;
 	}
-	LIST_INSERT_HEAD(&sp->metric_list, smi, entry);
+	TAILQ_INSERT_TAIL(&sp->metric_list, smi, entry);
 	sp->metric_count++;
 	return 0;
 }
 
 int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 {
-	struct ldmsd_store_metric *smi;
+	ldmsd_strgp_metric_t smi;
 	const char *metric;
 	int i, rc;
 	const char *name;
@@ -1793,7 +1793,7 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 	sp->metric_count = 0;
 	sp->metric_arry = calloc(ldms_set_card_get(hset->set), sizeof(int *));
 	name = NULL;
-	if (LIST_EMPTY(&sp->metric_list)) {
+	if (TAILQ_EMPTY(&sp->metric_list)) {
 		/* No metric list was given. Add all metrics in the set */
 		for (i = 0; i < ldms_set_card_get(hset->set); i++) {
 			name = ldms_metric_name_get(hset->set, i);
@@ -1804,7 +1804,7 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 		}
 	} else {
 		i = 0;
-		smi = LIST_FIRST(&sp->metric_list);
+		smi = TAILQ_FIRST(&sp->metric_list);
 		while (smi) {
 			int idx;
 			name = smi->name;
@@ -1813,7 +1813,7 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 				goto err;
 			smi->type = ldms_metric_type_get(hset->set, idx);
 			sp->metric_arry[i++] = idx;
-			smi = LIST_NEXT(smi, entry);
+			smi = TAILQ_NEXT(smi, entry);
 		}
 	}
 	/* NB: The storage instance can only be created after the
@@ -1833,8 +1833,8 @@ err:
 	sp->state = STORE_POLICY_ERROR;
 	if (sp->metric_arry)
 		free(sp->metric_arry);
-	while (smi = LIST_FIRST(&sp->metric_list)) {
-		LIST_REMOVE(smi, entry);
+	while (smi = TAILQ_FIRST(&sp->metric_list)) {
+		TAILQ_REMOVE(&sp->metric_list, smi, entry);
 		free(smi->name);
 		free(smi);
 	}

@@ -254,7 +254,7 @@ typedef void *ldmsd_store_handle_t;
 typedef struct ldmsd_strgp_metric {
 	char *name;
 	enum ldms_value_type type;
-	LIST_ENTRY(ldmsd_strgp_metric) entry;
+	TAILQ_ENTRY(ldmsd_strgp_metric) entry;
 } *ldmsd_strgp_metric_t;
 
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
@@ -265,7 +265,7 @@ struct ldmsd_strgp {
 	LIST_HEAD(ldmsd_strgp_prdcr_list, ldmsd_name_match) prdcr_list;
 
 	/** A list of the names of the metrics in the set specified by schema */
-	LIST_HEAD(ldmsd_strgp_metric_list, ldmsd_strgp_metric) metric_list;
+	TAILQ_HEAD(ldmsd_strgp_metric_list, ldmsd_strgp_metric) metric_list;
 	int metric_count;
 	int *metric_arry;	/* Array of metric ids */
 
@@ -413,7 +413,6 @@ struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
 extern void hset_ref_get(struct hostset *hset);
 extern void hset_ref_put(struct hostset *hset);
 
-struct ldmsd_store_metric_list;
 /**
  * \brief ldms_store
  *
@@ -435,7 +434,7 @@ struct ldmsd_store {
 	void *ucontext;
 	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
 				    const char *container, const char *schema,
-				    struct ldmsd_store_metric_list *metric_list,
+				    struct ldmsd_strgp_metric_list *metric_list,
 				    void *ucontext);
 	void (*close)(ldmsd_store_handle_t sh);
 	int (*flush)(ldmsd_store_handle_t sh);
@@ -465,18 +464,10 @@ struct store_instance {
 	int work_pending;
 };
 
-struct ldmsd_store_metric {
-	char *name;
-	enum ldms_value_type type;
-	LIST_ENTRY(ldmsd_store_metric) entry;
-};
-
 struct ldmsd_store_host {
 	char *name;
 	struct rbn rbn;
 };
-
-LIST_HEAD(ldmsd_store_metric_list, ldmsd_store_metric);
 
 struct ldmsd_store_policy {
 	char *name;
@@ -484,7 +475,7 @@ struct ldmsd_store_policy {
 	char *schema;
 	int metric_count;
 	int *metric_arry;
-	struct ldmsd_store_metric_list metric_list;
+	struct ldmsd_strgp_metric_list metric_list;
 	struct rbt host_tree;
 	struct ldmsd_store *plugin;
 	struct store_instance *si;
@@ -552,7 +543,7 @@ ldmsd_store_instance_get(struct ldmsd_store *store,
 static inline ldmsd_store_handle_t
 ldmsd_store_open(struct ldmsd_store *store,
 		const char *container, const char *schema,
-		struct ldmsd_store_metric_list *metric_list,
+		struct ldmsd_strgp_metric_list *metric_list,
 		void *ucontext)
 {
 	return store->open(store, container, schema, metric_list, ucontext);
