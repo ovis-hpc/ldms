@@ -1,0 +1,179 @@
+.\" Manpage for Plugin_store_derived_csv
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "6 Oct 2015" "v3" "LDMS Plugin store_derived_csv man page"
+
+.SH NAME
+Plugin_store_derived_csv - man page for the LDMS store_derived_csv plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller script:
+.br
+ldmsd_controller> load name=store_derived_csv
+.br
+ldmsd_controller> config name=store_derived_csv [ <attr> = <value> ]
+.br
+ldmsd_controller> strgp_add plugin=store_derived_csv [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd (ldms daemon) are configured via
+the ldmsd_controller. The store_derived_csv plugin is a CSV store.
+.PP
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+.TP
+.BR config
+name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> rolltype=<rolltype> rollover=<rollover> ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_derived_csv.
+.TP
+path=<path>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<container>/<schema>. Typically these are chosen to make output files like: XXX/store_derived_csv/meminfo. If you choose a rollover option, then the filename will also be postpended by "-" followed by the epochtime e.g., XXX/store_derived_csv/meminfo-123456789.
+.TP
+derivedconf=<confname>
+.br
+Path to the derived configuration file. Format: metricname,schema,Raw/Rate=(0/1),multiplier. Metricname and schema uniquely identify the variable to match. Thus, if you have the same sampler on two different nodes having different schema, you can create a different derived metric for each. No extraneous whitespace (if the metric name has an internal whitespace, that whitespace needs to match exactly). One metric per line.
+.TP
+altheader=<0/!0>
+.br
+Distinguishes whether or not to write the header to a separate file than the data file. 0 = same file. Any non-zero is a separate file.
+Default is the same file.If a separate file is used then, if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER").
+If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written
+at each rollover. Default is altheader=0.
+.TP
+ageusec=<ageusec>
+.br
+Set output data field Flag = 1 if the interval between two successive data reports for the same host's same metric set is greater than ageusec. (NOTE: in v3 this is now usec, not sec).
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are:
+.RS
+.TP
+1
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.RE
+
+.SH STRGP_ADD ATTRIBUTE SYNTAX
+The strgp_add sets the policies being added. This line determines the output files via
+identification of the container and schema.
+.TP
+.BR strgp_add
+plugin=store_derived_csv name=<policy_name> schema=<schema> container=<container>
+.br
+ldmsd_controller strgp_add line
+.br
+.RS
+.TP
+plugin=<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+name=<policy_name>
+.br
+The policy name for this strgp.
+.TP
+container=<container>
+.br
+The container and the schema determine where the output files will be written
+(see path above).
+.TP
+schema=<schema>
+.br
+The container and the schema determine where the output files will be written
+(see path above). The schema is also used to match the metric-schema combinations
+identified in the derived configuration file.
+.RE
+
+.SH STORE COLUMN ORDERING
+
+This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
+.PP
+.RS
+Time, Time_usec, DT, DT_usec, ProducerName, <sampled metric >*, Flag
+.RE
+.PP
+Flag is as described for option ageusec.
+.RE
+.PP
+The column sequence of <sampled metrics> is the order in which the metrics are added into the metric set by the derived csv store configuration file.
+
+.SH STORE_DERIVED_CSV CONFIGURATION FILE
+Derived Configration file format: metricname,schema,Raw/Rate=(0/1),multiplier.
+.PP
+Example:
+.nf
+.RS
+$more /XXX/storeder.conf
+sys#1,procstat,0,1
+idle#0,procstat,1,1000000
+Active,meminfoRHeL6,0,1
+Active,meminfoRHeL7,0,1
+user#0,procstat,1,1000000
+junk,foo,0,1
+#this is a comment
+idle,procstat,0,1
+
+MemTotal,meminfoRheL6,10
+snx11024.stats.lockless_write_bytes,cray_aries_r,0,1
+Z+_SAMPLE_GEMINI_LINK_CREDIT_STALL (% x1e6),cray_gemini_r,0,20
+.RE
+.fi
+
+.PP
+Blank lines are allowed in the file as shown
+.PP
+Any metric-schema pair can only be in the file once.
+
+.SH NOTES
+.PP
+.IP \[bu]
+If no metrics are defined for a schema, but that schema is being collected, timestamped data will still be written into files.
+.IP \[bu]
+All data writes out as uint64_t. The internal calculation is done as a double before being cast.
+.IP \[bu]
+You cannot specify the same metric-schema pair as both raw and rate.
+.IP \[bu]
+Please note the argument changes from v2, in particular that agesec has changed to ageusec.
+.IP \[bu]
+Please note the derived configuration file format has changed from v2.
+.PP
+
+.SH BUGS
+store_derived_csv only handles uint64_t input data types.
+
+
+.SH EXAMPLES
+ldmsctl lines for configuring store_derived_csv:
+.nf
+ldmsd_controller> load name=store_derived_csv
+ldmsd_controller> config name=store_csv altheader=1 derivedconf=/XXX/der.conf path=/XXX/storedir
+ldmsd_controller> strgp_add name=csv_memRHeL6_policy plugin=store_derived_csv container=data_der schema=meminfoRHeL6
+ldmsd_controller> strgp_add name=csv_memRHeL7_policy plugin=store_derived_csv container=data_der schema=meminfoRHeL7
+ldmsd_controller> strgp_add name=csv_ps_policy plugin=store_derived_csv container=data_der schema=procstat
+.if
+
+.SH SEE ALSO
+ldms(7), Plugin_store_csv(7)
