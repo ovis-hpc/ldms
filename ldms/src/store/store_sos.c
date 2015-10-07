@@ -116,6 +116,16 @@ sos_type_t sos_type_map[] = {
 	[LDMS_V_S64] = SOS_TYPE_INT64,
 	[LDMS_V_F32] = SOS_TYPE_FLOAT,
 	[LDMS_V_D64] = SOS_TYPE_DOUBLE,
+	[LDMS_V_U8_ARRAY] = SOS_TYPE_BYTE_ARRAY,
+	[LDMS_V_S8_ARRAY] = SOS_TYPE_BYTE_ARRAY,
+	[LDMS_V_U16_ARRAY] = SOS_TYPE_BYTE_ARRAY,
+	[LDMS_V_S16_ARRAY] = SOS_TYPE_BYTE_ARRAY,
+	[LDMS_V_U32_ARRAY] = SOS_TYPE_UINT32_ARRAY,
+	[LDMS_V_S32_ARRAY] = SOS_TYPE_INT32_ARRAY,
+	[LDMS_V_U64_ARRAY] = SOS_TYPE_UINT64_ARRAY,
+	[LDMS_V_S64_ARRAY] = SOS_TYPE_INT64_ARRAY,
+	[LDMS_V_F32_ARRAY] = SOS_TYPE_FLOAT_ARRAY,
+	[LDMS_V_D64_ARRAY] = SOS_TYPE_DOUBLE_ARRAY,
 };
 
 static void set_none_fn(sos_value_t v, ldms_set_t set, int i) {
@@ -322,6 +332,47 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 	return EINVAL;
 }
 
+static inline size_t
+__base_byte_len(enum ldms_value_type type)
+{
+	switch (type) {
+	case LDMS_V_S8:
+	case LDMS_V_U8:
+	case LDMS_V_S8_ARRAY:
+	case LDMS_V_U8_ARRAY:
+		return 1;
+	case LDMS_V_S16:
+	case LDMS_V_U16:
+	case LDMS_V_S16_ARRAY:
+	case LDMS_V_U16_ARRAY:
+		return 2;
+	case LDMS_V_S32:
+	case LDMS_V_U32:
+	case LDMS_V_S32_ARRAY:
+	case LDMS_V_U32_ARRAY:
+	case LDMS_V_F32:
+	case LDMS_V_F32_ARRAY:
+		return 4;
+	case LDMS_V_S64:
+	case LDMS_V_U64:
+	case LDMS_V_S64_ARRAY:
+	case LDMS_V_U64_ARRAY:
+	case LDMS_V_D64:
+	case LDMS_V_D64_ARRAY:
+		return 8;
+	default:
+		return 0;
+	}
+}
+
+static inline void
+__ldms_sos_array_copy(ldms_set_t set, int i, sos_value_t sos_array, size_t size)
+{
+	void *sos_dst = sos_array_ptr(sos_array);
+	void *ldms_src = ldms_array_metric_get(set, i);
+	memcpy(sos_dst, ldms_src, size);
+}
+
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
@@ -330,9 +381,10 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	struct ldms_timestamp _timestamp;
 	const struct ldms_timestamp *timestamp;
 	sos_attr_t attr;
-	struct sos_value_s value_;
-	sos_value_t value;
+	SOS_VALUE(value);
+	SOS_VALUE(array_value);
 	sos_obj_t obj;
+	sos_obj_t array_obj;
 	int i;
 	int rc = 0;
 	int last_rc = 0;
@@ -365,7 +417,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 
 	/* The first attribute is the timestamp */
 	attr = sos_schema_attr_first(si->sos_schema);
-	value = sos_value_init(&value_, obj, attr);
+	value = sos_value_init(value, obj, attr);
 	value->data->prim.timestamp_.fine.secs = timestamp->sec;
 	value->data->prim.timestamp_.fine.usecs = timestamp->usec;
 	sos_value_put(value);
@@ -373,6 +425,10 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	/* The second attribute is the component id, that we extract
 	 * from the udata for the first LDMS metric */
 	uint64_t udata = ldms_metric_user_data_get(set, 0);
+	enum ldms_value_type metric_type;
+	int array_len;
+	int esz;
+	int byte_len;
 	attr = sos_schema_attr_next(attr);
 	value = sos_value_init(value, obj, attr);
 	value->data->prim.uint64_ = udata;
@@ -380,9 +436,55 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 
 	for (i = 0; i < metric_count; i++) {
 		attr = sos_schema_attr_next(attr); assert(attr);
-		value = sos_value_init(value, obj, attr);
-		sos_value_set[ldms_metric_type_get(set, i)](value, set, i);
-		sos_value_put(value);
+		metric_type = ldms_metric_type_get(set, i);
+		switch (metric_type) {
+		case LDMS_V_S8:
+		case LDMS_V_U8:
+		case LDMS_V_S16:
+		case LDMS_V_U16:
+		case LDMS_V_S32:
+		case LDMS_V_U32:
+		case LDMS_V_S64:
+		case LDMS_V_U64:
+		case LDMS_V_F32:
+		case LDMS_V_D64:
+			value = sos_value_init(value, obj, attr);
+			sos_value_set[metric_type](value, set, i);
+			sos_value_put(value);
+			break;
+		case LDMS_V_S16_ARRAY:
+		case LDMS_V_U16_ARRAY:
+			/* there is no s16/u16 array in sos */
+			esz = __base_byte_len(metric_type);
+			array_len = ldms_array_metric_get_len(set, i);
+			array_value = sos_array_new(array_value, attr, obj, array_len*2);
+			if (!array_value) {
+				goto err;
+			}
+			__ldms_sos_array_copy(set, i, array_value, esz*array_len);
+			sos_value_put(array_value);
+			break;
+		case LDMS_V_S8_ARRAY:
+		case LDMS_V_U8_ARRAY:
+		case LDMS_V_S32_ARRAY:
+		case LDMS_V_U32_ARRAY:
+		case LDMS_V_S64_ARRAY:
+		case LDMS_V_U64_ARRAY:
+		case LDMS_V_F32_ARRAY:
+		case LDMS_V_D64_ARRAY:
+			esz = __base_byte_len(metric_type);
+			array_len = ldms_array_metric_get_len(set, i);
+			array_value = sos_array_new(array_value, attr, obj, array_len);
+			if (!array_value) {
+				goto err;
+			}
+			__ldms_sos_array_copy(set, i, array_value, esz*array_len);
+			sos_value_put(array_value);
+			break;
+		case LDMS_V_NONE:
+			assert(0 == "Unexpected type");
+			break;
+		}
 	}
 	rc = sos_obj_index(obj);
 	sos_obj_put(obj);
@@ -396,6 +498,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		errno = last_errno;
 	pthread_mutex_unlock(&si->lock);
 	return last_rc;
+err:
+	return errno;
 }
 
 static int flush_store(ldmsd_store_handle_t _sh)
