@@ -46,7 +46,7 @@ Path to libnvidia-ml.so library
 
 .TP
 .BR config
-name=<plugin_name> producer_name=<pname> instance=<iname>  hsn_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1 [schema=<sname>]
+name=<plugin_name> producer=<pname> instance=<iname>  hsn_metrics_type=<mtype> llite=<llite> rtrfile=<rtrfile> gpu_devices=<gpulist> off_<namespace>=1 [schema=<sname>]
 .br
 ldmsctl configuration line
 .RS
@@ -55,11 +55,11 @@ name=<plugin_name>
 .br
 This MUST be cray_gemini_r sampler  OR cray_aries_r_sampler.
 .TP
-producer_name=<pname>
+producer=<pname>
 .br
 The producer name string.
 .TP
-instance_name=<iname>
+instance=<iname>
 .br
 The name of the metric set.
 .TP
@@ -192,10 +192,17 @@ The aries transport does not have X, Y, Z directional link aggregation nor X, Y,
 The cray_aries_r_sampler also outputs some additional non-HSN-related data available on the XC systems.
 
 .SH NOTES
-.TP
+.PP
+.IP \[bu]
 In v3, the cray_gemini_d variant, which obtained gemini performance data from the gpcd interface and computed the link aggregation has been deprecated.
-.TP
+.IP \[bu]
 Please note the argument changes between v2 and v3.
+.IP \[bu]
+The aries network counters in fluctuation and may change at any time.
+.PP
+
+.SH BUGS
+No known bugs.
 
 .SH EXAMPLES
 .PP
@@ -665,8 +672,6 @@ U64 1626210          ipogif0_tx_bytes
 .SH SEE ALSO
 ldms(7), Plugin_kgnilnd(7)
 
-.SH BUGS
-No known bugs.
 
 
 
