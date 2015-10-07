@@ -1,0 +1,219 @@
+.\" Manpage for Plugin_store_csv
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "06 Oct 2015" "v3" "LDMS Plugin store_csv man page"
+
+.SH NAME
+Plugin_store_csv - man page for the LDMS store_csv plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller script:
+.br
+ldmsd_controller> load name=store_csv
+.br
+ldmsd_controller> config name=store_csv action=init [ <attr> = <value> ]
+.br
+ldmsd_controller> config name=store_csv action=custom [ <attr> = <value> ]
+.br
+ldmsd_controller> strgp_add plugin=store_csv [ <attr> = <value> ]
+.br
+
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd (ldms daemon) are configured via
+the ldmsd_controller. The store_csv plugin is a CSV store.
+.PP
+
+.SH STORE_CSV INIT CONFIGURATION ATTRIBUTE SYNTAX
+The configuration parameters altheader, rolltype, rollover, and sequence are applied to all metric sets alike,
+unless overriden by the action=custom values.
+.TP
+.BR config
+name=<plugin_name> action=init path=<path> [ altheader=<0/!0> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> userdata=<0/!0>]
+.br
+ldmsd_controller configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+action=init
+.br
+For action=init, the remaining attributes can be specified and will be used for
+all metric sets, unless overriden by the action=custom values.
+.TP
+path=<path>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<container>/<schema>. Container and schema are set when the strgp is added. If you choose a rollover option, then the filename will also be postpended by "-" followed by the epochtime e.g., XXX/meminfo_ctr/meminfo-123456789.
+.TP
+altheader=<0/!0>
+.br
+Distinguishes whether or not to write the header to a separate file than the data file. 0 = same file. Any non-zero is a separate file. Default is the same file.
+If a separate file is used then, if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER"). If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written at each rollover. Default is altheader=0.
+.TP
+userdata=<0/!0>
+.br
+Distinguishes whether or not to write each metrics' user data along with each data value. 0 = no write. Any non-zero means to write the values. Default is to not write.
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are:
+.RS
+.TP
+1
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+sequence=<seqname>
+.br
+Controls the ordering of metric data column. This is kept as an option for historical reasons. See STORE COLUMN ORDERING for details.
+.RE
+
+.SH STORE_CSV CUSTOM CONFIGURATION ATTRIBUTE SYNTAX
+The configuration parameters set by action=init are applied to all metric sets alike,
+unless overriden by the action=custom values.
+
+.TP
+.BR config
+name=<plugin_name> action=<custom> container=<container> schema=<schema> [ altheader=<0/!0> sequence=<seqname> userdata=<0/!0>]
+.br
+ldmsd_controller configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+action=custom
+.br
+This MUST be custom
+.TP
+altheader=<0/!0>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.TP
+container=<container>
+.br
+The container and the schema together uniquely distinguish the sets that the custom arguments will target
+.TP
+schema=<schema>
+.br
+The container and the schema together uniquely distinguish the sets that the custom arguments will target
+.TP
+userdata=<0/!0>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.TP
+sequence=<seqname>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.RE
+
+.SH STRGP_ADD ATTRIBUTE SYNTAX
+The strgp_add sets the policies being added. This line determines the output files via
+identification of the container and schema.
+.TP
+.BR strgp_add
+plugin=store_csv name=<policy_name> schema=<schema> container=<container>
+.br
+ldmsd_controller strgp_add line
+.br
+.RS
+.TP
+plugin=<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+name=<policy_name>
+.br
+The policy name for this strgp.
+.TP
+container=<container>
+.br
+The container and the schema determine where the output files will be written (see path above). They also are used to match any action=custom configuration.node/meminfo.
+.TP
+schema=<schema>
+.br
+The container and the schema determine where the output files will be written (see path above). They also are used to match any action=custom configuration.node/meminfo.
+You can have multiples of the same sampler, but with different schema (which means they will have different metrics) and they will be stored in different files.
+.RE
+
+.SH STORE COLUMN ORDERING
+
+This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
+.PP
+.RS
+Time, Time_usec, ProducerName, <sampled metric >*
+.RE
+.PP
+where each <sampled metric> is either
+.PP
+.RS
+<metric_name>.userdata, <metric_name>.value
+.RE
+.PP
+or if userdata has been opted not to include, just:
+.PP
+.RS
+<metric_name>
+.RE
+.PP
+.PP
+The default column sequence of <sampled metrics> is the order in which the metrics are added into the metric set by the sampler (or the order they are specifed by the user).
+.QP
+Note that the sampler's number and order of metric additions may vary with the kind and number of hardware features enabled on a host at runtime or with the version of kernel. Because of this potential for variation, down-stream tools consuming the CSV files should always determine column names or column number of a specific metric by parsing the header line or .HEADER file.
+.PP
+Valid sequence options are:
+.RS
+.TP
+forward
+.br
+List metrics in the order added in the sampler definition or, if metrics are specified by the user, that order.
+.TP
+reverse
+.br
+List metrics in the reverse of the order added in the sampler definition (the default for back-compatibility reasons).
+.TP
+alnum
+.br
+(reserved) Not implemented. Sort the columns by name and name-embedded numeric values.
+.RE
+
+.SH NOTES
+.PP
+.IP \[bu]
+Please note the argument changes from v2.
+.IP \[bu]
+Note that the default order is FORWARD. This is the inverse of v2.
+.PP
+
+.SH BUGS
+No known bugs. In LDMS version 3.x, alnum is not expected to be implemented.
+
+.SH EXAMPLES
+.PP
+.nf
+ldmsd_controller> load name=store_csv
+ldmsd_controller> config name=store_csv action=init altheader=1 sequence=forward path=/XXX/storedir
+ldmsd_controller> config name=store_csv action=custom container=loadavg_store schema=loadavg sequence=reverse
+ldmsd_controller> strgp_add name=csv_mem_policy plugin=store_csv container=loadavg_store schema=loadavg
+.fi
+
+.SH SEE ALSO
+ldms(7), Plugin_store_derived_csv(7)
