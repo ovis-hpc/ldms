@@ -436,8 +436,7 @@ int cmd_updtr_start(char *replybuf, struct attr_value_list *avl, struct attr_val
 	if (offset_str) {
 		updtr->updt_offset_us = strtol(offset_str, NULL, 0);
 		updtr->updt_task_flags = LDMSD_TASK_F_SYNCHRONOUS;
-	} else
-		updtr->updt_task_flags = 0;
+	}
 
 	ldmsd_task_start(&updtr->task, updtr_task_cb, updtr,
 			 updtr->updt_task_flags,
