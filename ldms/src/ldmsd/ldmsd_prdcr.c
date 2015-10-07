@@ -226,6 +226,10 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 		}
 		set->prdcr = prdcr;
 		rbt_ins(&prdcr->set_tree, &set->rbn);
+	} else {
+		ldmsd_log(LDMSD_LCRITICAL, "Receive a duplicated dir_add update of "
+				"the set '%s'.\n", inst_name);
+		assert(0);
 	}
 	/* Refresh the set with a lookup */
 	rc = ldms_xprt_lookup(prdcr->xprt, inst_name,
