@@ -103,8 +103,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                       'req_attr': ['set', 'regex', 'base'],
                                       'opt_attr': ['incr']},
                       'version': {'id': 15, 'req_attr': [], 'opt_attr': []},
+                      'loglevel': {'id': 16, 'req_attr': ['level'],},
                       ###############################
-                      # LDMSD command version 2
+                      # LDMSD command version 3
                       ###############################
                       ##### Producer Policy #####
                       'prdcr_add': {'id': 20,
@@ -325,8 +326,12 @@ class ldmsdConfig(object):
     def version(self):
         return self.talk(self.__format_cmd('version', {}))
 
+    def loglevel(self, level):
+        attr_values = {'level': level}
+        return self.talk(self.__format_cmd('loglevel', attr_values))
+
     #############################################
-    # LDMSD command version 2
+    # LDMSD command version 3
     #############################################
 
     def prdcr_add(self, name, xprt, host, port, type, interval):

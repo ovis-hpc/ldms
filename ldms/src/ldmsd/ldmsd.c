@@ -154,6 +154,22 @@ void ldmsd_version_get(struct ldmsd_version *v)
 	v->flags = LDMSD_VERSION_FLAGS;
 }
 
+int ldmsd_loglevel_set(char *verbose_level)
+{
+	int level = -1;
+	if (0 == strcmp(verbose_level, "QUIET")) {
+		quiet = 1;
+		level = LDMSD_LLASTLEVEL;
+	} else {
+		level = ldmsd_str_to_loglevel(verbose_level);
+		quiet = 0;
+	}
+	if (level < 0)
+		return level;
+	log_level_thr = level;
+	return 0;
+}
+
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
 	if ((level != LDMSD_LSUPREME) &&

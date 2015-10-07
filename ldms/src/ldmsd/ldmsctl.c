@@ -256,6 +256,11 @@ int handle_usage(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_LIST_PLUGINS, av_list, err_str);
 }
 
+int handle_loglevel(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_VERBOSE, av_list, err_str);
+}
+
 int handle_version(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
@@ -340,6 +345,7 @@ struct kw keyword_tbl[] = {
 	{ "help", handle_help },
 	{ "info", handle_info },
 	{ "load", handle_plugin_load },
+	{ "loglevel", handle_loglevel },
 	{ "oneshot", handle_oneshot_sample },
 	{ "quit", handle_quit },
 	{ "standby", handle_update_standby },
