@@ -585,7 +585,7 @@ class LdmsdCmdParser(cmd.Cmd):
                      specified, the value should be a comma separated list of
                      host names.
         """
-        return self.handle('store', args)
+        return self.handle('store', arg)
 
     def complete_store(self, text, line, begidx, endidx):
         return self.__complete_attr_list('store', text)
@@ -631,10 +631,21 @@ class LdmsdCmdParser(cmd.Cmd):
         agg_no=    Unique integer id for an aggregator from 1 to 64
         state=     0/1 - standby/active
         """
-        self.handle('standby', args)
+        self.handle('standby', arg)
 
     def complete_standby(self, text, line, begidx, endidx):
         return self.__complete_attr_list('standby', text)
+
+    def do_loglevel(self, arg):
+        """
+        Changing the verbosity level of ldmsd
+        Parameters:
+        level=    Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
+        """
+        self.handle('loglevel', arg)
+
+    def complete_loglevel(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('loglevel', text)
 
     def do_version(self, arg):
         """

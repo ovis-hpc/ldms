@@ -319,6 +319,13 @@ void help_oneshot()
 		"                 the second= from now.\n");
 }
 
+void help_loglevel()
+{
+	printf( "\nChange the verbosity level of ldmsd\n\n"
+		"Parameters:\n"
+		"	level=	levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]\n");
+}
+
 void help_quit()
 {
 	printf( "\nquit\n"
