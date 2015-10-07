@@ -679,7 +679,7 @@ static int print_header_from_store(struct csv_derived_store_handle *s_handle,
 
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char* schema,
-		struct ldmsd_store_metric_list *list, void *ucontext)
+		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct csv_derived_store_handle *s_handle = NULL;
 	int add_handle = 0;
