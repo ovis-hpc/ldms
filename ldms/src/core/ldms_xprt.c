@@ -1223,12 +1223,13 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 		     __le32_to_cpu(sd->set->meta->meta_sz),
 		     rd_ctxt)) {
 		rc = EIO;
-		goto out;
+		goto out_2;
 	}
 	return;
+ out_2:
+	__ldms_free_rbd(sd->rbd);
  out_1:
 	ldms_set_delete(sd);
-	free(sd);
 	sd = NULL;
  out:
 	if (ctxt->lookup.cb)
