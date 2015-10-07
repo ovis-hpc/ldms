@@ -455,12 +455,12 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 		switch (rvalue[0]) {
 		case 'f':
 			if (strcmp(rvalue,"forward")==0) {
-				specialkeys[idx].cs.step = -1;
+				specialkeys[idx].cs.step = 1;
 			}
 			break;
 		case 'r':
 			if (strcmp(rvalue,"reverse")==0) {
-				specialkeys[idx].cs.step = 1;
+				specialkeys[idx].cs.step = -1;
 			}
 			break;
 		case 'a':
@@ -548,11 +548,11 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	}
 
 	rvalue = av_value(avl, "sequence");
-	cs.step = 1; //reverse is the default for historical reasons (mvec causes the metrics to be reversed)
+	cs.step = 1; //forward is the default
 	if (rvalue){
 		switch (rvalue[0]) {
-		case 'f':
-			if (strcmp(rvalue,"forward")==0) {
+		case 'r':
+			if (strcmp(rvalue,"reverse")==0) {
 				cs.step = -1;
 			}
 			break;
@@ -563,8 +563,8 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 			}
 			/* fallthru */
 		default:
-			if (strcmp(rvalue,"reverse")!=0) {
-				msglog(LDMSD_LERROR,"%s sequence=reverse"
+			if (strcmp(rvalue,"forward")!=0) {
+				msglog(LDMSD_LERROR,"%s sequence=forward"
 				       " assumed. %s unknown\n",__FILE__, rvalue);
 			}
 			break;
