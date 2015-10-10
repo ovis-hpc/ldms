@@ -164,6 +164,29 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 	return rc;
 }
 
+/**
+ * check for invalid flags, with particular emphasis on warning the user about
+ */
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+	char *value;
+	int i;
+
+	char* deprecated[]={"set", "component_id"};
+	int numdep = 2;
+
+	for (i = 0; i < numdep; i++){
+		value = av_value(avl, deprecated[i]);
+		if (value){
+			msglog(LDMSD_LERROR, "cray_aries_r_sampler: %s has been deprecated.\n",
+			       deprecated[i]);
+			return EINVAL;
+		}
+	}
+
+	return 0;
+}
+
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
@@ -171,10 +194,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *instancename = NULL;
 	char *rvalue = NULL;
 	int mvalue = -1;
+	void* arg;
 	int rc = 0;
 
-	off_hsn = 0;
+	rc = config_check(kwl, avl, arg);
+	if (rc != 0){
+		return rc;
+	}
 
+	off_hsn = 0;
 	producer_name = av_value(avl, "producer");
 	if (!producer_name){
 		msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing producer\n");

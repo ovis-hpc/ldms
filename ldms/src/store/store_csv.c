@@ -361,6 +361,31 @@ static void* rolloverThreadInit(void* m){
 }
 
 /**
+ * check for invalid flags, with particular emphasis on warning the user about
+ *
+ */
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+	char *value;
+	int i;
+
+	char* deprecated[]={"idpos", "id_pos"};
+	int numdep = 2;
+
+
+	for (i = 0; i < numdep; i++){
+		value = av_value(avl, deprecated[i]);
+		if (value){
+			msglog(LDMSD_LERROR, "store_csv: config argument %s has been deprecated.\n",
+				deprecated[i]);
+			return EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+/**
  * configurations for a container+schema that can override the vals in config_init
  */
 static int config_custom(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
@@ -619,8 +644,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct kw *kw;
 	struct kw key;
+	void* arg;
 	int rc;
 
+	rc = config_check(kwl, avl, arg);
+	if (rc != 0)
+		return rc;
+
+	rc = 0;
 	char* action = av_value(avl, "action");
 	if (!action){
 		msglog(LDMSD_LERROR, "%s: Error: missing required keyword 'action'\n",

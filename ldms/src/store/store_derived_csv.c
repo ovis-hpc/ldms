@@ -474,6 +474,39 @@ static int derivedConfig(char* fname, struct csv_derived_store_handle *s_handle)
 	return rc;
 }
 
+
+/**
+ * check for invalid flags, with particular emphasis on warning the user about
+ */
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+	char *value;
+	int i;
+
+	char* deprecated[]={"comp_type", "comp_id", "id_pos", "idpos"};
+	int numdep = 4;
+
+
+	for (i = 0; i < numdep; i++){
+		value = av_value(avl, deprecated[i]);
+		if (value){
+			msglog(LDMSD_LERROR, "store_csv: config argument %s has been deprecated.\n",
+			       deprecated[i]);
+			return EINVAL;
+		}
+	}
+
+	value = av_value(avl, "agesec");
+	if (value){
+		msglog(LDMSD_LERROR, "store_csv: config argument agesec has been deprecated in favor of ageusec\n",
+		       deprecated[i]);
+		return EINVAL;
+	}
+
+	return 0;
+}
+
+
 /**
  * \brief Configuration
  */
@@ -484,10 +517,18 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *altvalue = NULL;
 	char *ivalue = NULL;
 	char *rvalue = NULL;
+	void* arg;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
+	int rc;
 
 	pthread_mutex_lock(&cfg_lock);
+
+	rc = config_check(kwl, avl, arg);
+	if (rc != 0){
+		pthread_mutex_unlock(&cfg_lock);
+		return rc;
+	}
 
 	value = av_value(avl, "path");
 	if (!value){

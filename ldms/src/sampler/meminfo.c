@@ -139,6 +139,30 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 }
 
 /**
+ * check for invalid flags, with particular emphasis on warning the user about
+ */
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+	char *value;
+	int i;
+
+	char* deprecated[]={"set", "component_id"};
+	int numdep = 2;
+
+	for (i = 0; i < numdep; i++){
+		value = av_value(avl, deprecated[i]);
+		if (value){
+			msglog(LDMSD_LERROR, "meminfo: config argument %s has been deprecated.\n",
+			       deprecated[i]);
+			return EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+
+/**
  * \brief Configuration
  *
  * config name=meminfo producer_name=<comp_id> instance_name=<instance_name> [schema=<sname>]
@@ -150,6 +174,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
+	void * arg;
+	int rc;
+
+	rc = config_check(kwl, avl, arg);
+	if (rc != 0){
+		return rc;
+	}
+
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
 		msglog(LDMSD_LERROR, "meminfo: missing producer\n");
@@ -175,7 +207,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return EINVAL;
 	}
 
-	int rc = create_metric_set(value, sname);
+	rc = create_metric_set(value, sname);
 	if (rc) {
 		msglog(LDMSD_LERROR, "meminfo: failed to create a metric set.\n");
 		return rc;
