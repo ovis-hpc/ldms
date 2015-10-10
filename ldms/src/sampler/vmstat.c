@@ -144,10 +144,41 @@ static const char *usage()
 		"    <sname>      Optional schema name. Defaults to 'vmstat'\n";
 }
 
+/**
+ * check for invalid flags, with particular emphasis on warning the user about
+ */
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+	char *value;
+	int i;
+
+	char* deprecated[]={"set", "component_id"};
+	int numdep = 2;
+
+	for (i = 0; i < numdep; i++){
+		value = av_value(avl, deprecated[i]);
+		if (value){
+			msglog(LDMSD_LERROR, "vmstat: config argument %s has been deprecated.\n",
+			       deprecated[i]);
+			return EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
+	void *arg;
+	int rc;
+
+	rc = config_check(kwl, avl, arg);
+	if (rc != 0){
+		return rc;
+	}
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
@@ -162,20 +193,20 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	sname = av_value(avl, "schema");
-        if (!sname){
-                sname = default_schema_name;
-        }
-        if (strlen(sname) == 0){
-                msglog(LDMSD_LERROR, "vmstat: schema name invalid.\n");
-                return EINVAL;
-        }
+	if (!sname){
+		sname = default_schema_name;
+	}
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, "vmstat: schema name invalid.\n");
+		return EINVAL;
+	}
 
 	if (set) {
 		msglog(LDMSD_LERROR, "vmstat: Set already created.\n");
 		return EINVAL;
 	}
 
-	int rc = create_metric_set(value, sname);
+	rc = create_metric_set(value, sname);
 	if (rc) {
 		msglog(LDMSD_LERROR, "vmstat: failed to create a metric set.\n");
 		return rc;
