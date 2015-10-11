@@ -181,7 +181,7 @@ struct csv_derived_store_handle {
 	idx_t sets_idx;
 	int numsets;
 	printheader_t printheader;
-        int parseconfig;
+	int parseconfig;
 	char *store_key;
 	pthread_mutex_t lock;
 	void *ucontext;
@@ -307,23 +307,23 @@ static int handleRollover(){
 
 static void* rolloverThreadInit(void* m){
 	while(1){
-	        int tsleep;
+		int tsleep;
 		switch (rolltype) {
 		case 1:
 		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
 		  break;
 		case 2: {
 		  time_t rawtime;
-                  struct tm *info;
+		  struct tm *info;
 
-                  time( &rawtime );
-                  info = localtime( &rawtime );
-                  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
-                  tsleep = 86400 - secSinceMidnight + rollover;
-                  if (tsleep < MIN_ROLL_1){
-                    /* if we just did a roll then skip this one */
-                    tsleep+=86400;
-                  }
+		  time( &rawtime );
+		  info = localtime( &rawtime );
+		  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
+		  tsleep = 86400 - secSinceMidnight + rollover;
+		  if (tsleep < MIN_ROLL_1){
+		    /* if we just did a roll then skip this one */
+		    tsleep+=86400;
+		  }
 		}
 		  break;
 		case 3:
@@ -547,7 +547,7 @@ static const char *usage(void)
 		"         - agesec     Set flag field if dt > this val in sec.\n"
 		"                     (Optional default no value used.)\n"
 		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
-                "                     (Optional default use all compid)\n";
+		"                     (Optional default use all compid)\n";
 }
 
 /*
@@ -883,31 +883,19 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
-		dp->ts->sec = ts->sec;
-		dp->ts->usec = ts->usec;
 
 		dp->datavals = (uint64_t*) malloc((s_handle->numder)*sizeof(uint64_t));
 		if (dp->datavals == NULL){
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
-		ldms_metric_t* v = ldms_mvec_get_metrics(mvec); //new vals
-		if (v == NULL) {
-			pthread_mutex_unlock(&s_handle->lock);
-			return EINVAL; //shouldnt happen
-		}
-		for (i = 0; i < s_handle->numder; i++){
-			int midx = s_handle->der[i].deridx;
-			if (midx >= 0){
-				// printf("Assigning data for mvec[%d] to setvec[%d]\n", midx, i);
-				if (v[midx] == NULL){
-					printf("Why is v[midx] == NULL?\n"); //SHOULDNT HAPPEN
-				}
-				dp->datavals[i] = ldms_get_u64(v[midx]);
-			}
-		}
-		goto out;
+		goto skip;
 	}
+
+
+	/* Back port from v3: if time diff is not positive, write out something and flag.
+         * if tis RAW data, write the val. if its RATE data, write zero
+         */
 
 	setflag = 0;
 	setflagtime = 0;
@@ -917,11 +905,10 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	curr.tv_sec = ts->sec;
 	curr.tv_usec = ts->usec;
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >= (double)curr.tv_sec*1000000+curr.tv_usec){
-                msglog(LDMSD_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
-                       __FILE__, ldms_set_instance_name_get(set));
-                goto out;
-                setflagtime = 1;
-        }
+		msglog(LDMSD_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
+		       __FILE__, ldms_set_instance_name_get(set));
+		setflagtime = 1;
+	}
 	//always do this and write it out
 	timersub(&curr, &prev, &diff);
 
@@ -999,12 +986,14 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		}
 
 	} // i
-	if (setflagtime || ((double)diff.tv_sec*1000000+diff.tv_usec > ageusec))
-                setflag = 1;
+	if (setflagtime || ((double)diff.tv_sec*1000000+diff.tv_usec > agesec))
+		setflag = 1;
 
 	fprintf(s_handle->file, ", %d\n", setflag);
 	s_handle->byte_count += 1;
+	s_handle->store_count++;
 
+skip:
 	dp->ts->sec = ts->sec;
 	dp->ts->usec = ts->usec;
 	ldms_metric_t* v = ldms_mvec_get_metrics(mvec); //new vals
@@ -1016,7 +1005,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	}
 
 out:
-	s_handle->store_count++;
+
 	pthread_mutex_unlock(&s_handle->lock);
 
 	return 0;
