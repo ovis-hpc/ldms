@@ -821,6 +821,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	uint64_t comp_id;
 	struct csv_derived_store_handle *s_handle;
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
+	int setflagtime;
 	int setflag = 0;
 	int rc;
 	int i;
@@ -908,21 +909,21 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		goto out;
 	}
 
+	setflag = 0;
+	setflagtime = 0;
 	struct timeval prev, curr, diff;
 	prev.tv_sec = dp->ts->sec;
 	prev.tv_usec = dp->ts->usec;
 	curr.tv_sec = ts->sec;
 	curr.tv_usec = ts->usec;
-
+	if ((double)prev.tv_sec*1000000+prev.tv_usec >= (double)curr.tv_sec*1000000+curr.tv_usec){
+                msglog(LDMSD_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
+                       __FILE__, ldms_set_instance_name_get(set));
+                goto out;
+                setflagtime = 1;
+        }
+	//always do this and write it out
 	timersub(&curr, &prev, &diff);
-	if ((diff.tv_sec == 0) && (diff.tv_usec == 0)){
-		msglog(LDMS_LDEBUG,"store_derived_csv: Time diff is zero for set %s. Skipping\n", ldms_get_set_name(set));
-		goto out;
-	}
-
-	if ((agedt_sec >=0) && (diff.tv_sec > agedt_sec))
-		setflag = 1;
-
 
 	/* format: #Time, Time_usec, DT, DT_usec */
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
@@ -958,18 +959,18 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 				val = ldms_get_u64(mvec->v[midx]);
 				val = (uint64_t) (val * s_handle->der[i].multiplier);
 			} else {
-				if ((diff.tv_sec != 0) || (diff.tv_usec != 0)){
+				if (!setflagtime){ //then dt > 0
 					uint64_t currval = ldms_get_u64(mvec->v[midx]);
 					if (currval == dp->datavals[i]){
 						val = 0;
 					} else if (currval > dp->datavals[i]){
 						double temp = (double)(currval - dp->datavals[i]);
-						//ROLLOVER - Should we assume ULONG_MAX is the rollover? Just use 0 for now....
-						temp /= (double)(diff.tv_sec*1000000.0 + diff.tv_usec);
-						temp *= 1000000.0;
 						temp *= s_handle->der[i].multiplier;
+						temp *= 1000000.0;
+						temp /= (double)(diff.tv_sec*1000000.0 + diff.tv_usec);
 						val = (uint64_t) temp;
 					} else {
+						//ROLLOVER - Should we assume ULONG_MAX is the rollover? Just use 0 for now....
 						setflag = 1;
 						val = 0;
 					}
@@ -998,6 +999,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		}
 
 	} // i
+	if (setflagtime || ((double)diff.tv_sec*1000000+diff.tv_usec > ageusec))
+                setflag = 1;
+
 	fprintf(s_handle->file, ", %d\n", setflag);
 	s_handle->byte_count += 1;
 
