@@ -347,10 +347,10 @@ int sample_metrics_energy(ldmsd_msg_log_f msglog)
 	char metric_name[128];
 	char* s;
 	union ldms_value v;
-	int i, j, rc;
+	int i, j, retrc, rc;
 
 	/** note - not counting how many found since these are all separate sources. */
-	rc = 0;
+	retrc = 0;
 	for (i = 0; i < NUM_ENERGY_METRICS; i++){
 		/** see if we have to open and close these each time. Keeping an array because I think we can */
 		if (ene_f[i])
@@ -367,7 +367,7 @@ int sample_metrics_energy(ldmsd_msg_log_f msglog)
 					msglog(LDMS_LERROR,
 					       "ERR: Issue reading the source file '%s'\n",
 					       ENERGY_FILES[i]);
-					rc = EINVAL;
+					retrc = EINVAL;
 				}
 			}
 			fclose(ene_f[i]);
@@ -376,7 +376,7 @@ int sample_metrics_energy(ldmsd_msg_log_f msglog)
 		ldms_set_metric(metric_table_energy[i], &v);
 	}
 
-	return rc;
+	return retrc;
 
 }
 
