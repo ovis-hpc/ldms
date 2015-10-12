@@ -1007,20 +1007,12 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
-		dp->ts->sec = ts->sec;
-		dp->ts->usec = ts->usec;
-
 		dp->datavals = (uint64_t*) malloc((s_handle->numder)*sizeof(uint64_t));
 		if (dp->datavals == NULL){
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
-		for (i = 0; i < s_handle->numder; i++){
-			int midx = s_handle->der[i].deridx;
-			if (midx >= 0)
-				dp->datavals[i] = ldms_metric_get_u64(set, metric_arry[midx]);
-		}
-		goto out;
+		goto skip;
 	}
 
 	/* New in v3: if time diff is not positive, always write out something and flag.
@@ -1037,7 +1029,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >= (double)curr.tv_sec*1000000+curr.tv_usec){
 		msglog(LDMSD_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
 		       __FILE__, ldms_set_instance_name_get(set));
-		goto out;
 		setflagtime = 1;
 	}
 	//always do this and write it out
@@ -1104,9 +1095,12 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 	fprintf(s_handle->file, ", %d\n", setflag);
 	s_handle->byte_count += 1;
+	s_handle->store_count++;
 
+skip:
 	dp->ts->sec = ts->sec;
 	dp->ts->usec = ts->usec;
+
 	for (i = 0; i < s_handle->numder; i++){
 		int midx = s_handle->der[i].deridx;
 		if (midx >= 0){
@@ -1115,7 +1109,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	}
 
 out:
-	s_handle->store_count++;
 	pthread_mutex_unlock(&s_handle->lock);
 
 	return 0;
