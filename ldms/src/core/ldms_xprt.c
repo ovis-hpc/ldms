@@ -75,6 +75,9 @@
 #include "ovis_auth/auth.h"
 #endif /* ENABLE_AUTH */
 
+static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *, struct ldms_set *s);
+static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
+
 /**
  * zap callback function.
  */
@@ -527,7 +530,6 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 
 static int __re_match(struct ldms_set *set, regex_t *regex, const char *regex_str, int flags)
 {
-	regmatch_t regmatch;
 	ldms_name_t name;
 	int rc;
 
@@ -565,7 +567,7 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 		rc = regcomp(&regex, req->lookup.path, REG_EXTENDED | REG_NOSUB);
 		if (rc) {
 			char errstr[512];
-			size_t sz = regerror(rc, &regex, errstr, sizeof(errstr));
+			(void)regerror(rc, &regex, errstr, sizeof(errstr));
 			x->log(errstr);
 			rc = EINVAL;
 			goto err_0;
@@ -613,9 +615,6 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	uint32_t flags = ntohl(req->lookup.flags);
-	int rc;
-	struct ldms_set *set;
-
 	process_lookup_request_re(x, req, flags);
 }
 
@@ -966,7 +965,6 @@ static int recv_cb(struct ldms_xprt *x, void *r)
 #else
 #define _SO_EXT ".so"
 #endif
-static char _libdir[PATH_MAX];
 
 zap_mem_info_t ldms_zap_mem_info()
 {
@@ -976,13 +974,11 @@ zap_mem_info_t ldms_zap_mem_info()
 void __ldms_passive_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
 	switch (e) {
-	case LDMS_CONN_EVENT_ERROR:
-		assert(0);
-	case LDMS_CONN_EVENT_CONNECTED:
-		assert(0);
 	case LDMS_CONN_EVENT_DISCONNECTED:
 		ldms_xprt_put(x);
 		break;
+	default:
+		assert(0);
 	}
 }
 
@@ -1059,7 +1055,6 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, _x, xprt_link);
 	pthread_mutex_unlock(&xprt_list_lock);
-out:
 	return;
 err0:
 	zap_close(zep);
@@ -1252,7 +1247,6 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
  */
 static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
-	zap_err_t zerr;
 	int ldms_conn_event;
 	struct ldms_version *ver;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
@@ -1354,6 +1348,8 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		/* The other end does zap_share(). */
 		handle_zap_rendezvous(zep, ev);
 		break;
+	default:
+		assert(0);
 	}
 }
 
@@ -1378,7 +1374,6 @@ int __recv_complete_auth_check(struct ldms_xprt *x, void *r)
 
 static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 {
-	zap_err_t zerr;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
@@ -1484,7 +1479,6 @@ err0:
 ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
 {
 	int ret = 0;
-	char *libdir;
 	struct ldms_xprt *x = calloc(1, sizeof(*x));
 	if (!x) {
 		ret = ENOMEM;
@@ -1515,15 +1509,11 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 			"using ldms_xprt_with_auth_new.\n");
 #endif /* DEBUG */
 	int ret = 0;
-	char *libdir;
 	struct ldms_xprt *x = calloc(1, sizeof(*x));
 	if (!x) {
 		ret = ENOMEM;
 		goto err0;
 	}
-
-	char *errstr;
-	int len;
 
 	if (!log_fn)
 		log_fn = default_log;
@@ -1885,6 +1875,8 @@ static void sync_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	case LDMS_CONN_EVENT_DISCONNECTED:
 		x->sem_rc = ECONNREFUSED;
 		break;
+	default:
+		assert(0);
 	}
 	sem_post(&x->sem);
 }
@@ -1908,8 +1900,7 @@ int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 		rc = x->sem_rc;
 	} else
 		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
- out:
-	freeaddrinfo(ai);
+ 	freeaddrinfo(ai);
 	return rc;
 }
 

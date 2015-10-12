@@ -764,6 +764,7 @@ int ldmsd_task_start(ldmsd_task_t task,
 		     ldmsd_task_fn_t task_fn, void *task_arg,
 		     int flags, int sched_us, int offset_us);
 void ldmsd_task_stop(ldmsd_task_t task);
+void ldmsd_task_join(ldmsd_task_t task);
 
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);

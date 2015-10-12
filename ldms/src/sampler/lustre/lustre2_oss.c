@@ -258,8 +258,6 @@ struct str_list_head* construct_ost_list(const char *osts)
 static int create_metric_set(const char *path, const char *osts)
 {
 	int rc, i, j;
-	uint64_t metric_value;
-	char metric_name[128];
 
 	struct str_list_head *lh = construct_ost_list(osts);
 	if (!lh)
@@ -366,6 +364,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (rc)
 		return rc;
 	ldms_set_producer_name_set(set, producer_name);
+	return 0;
 }
 
 static const char *usage(void)
@@ -397,7 +396,6 @@ static int sample(void)
 		lms_sample(set, lms);
 	}
 
-out:
 	ldms_transaction_end(set);
 	return 0;
 }

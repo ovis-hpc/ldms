@@ -128,7 +128,6 @@ extern size_t calculate_total_dirty_threshold(size_t mem_total,
 void do_connect(struct hostspec *hs);
 int update_data(struct hostspec *hs);
 void reset_hostspec(struct hostspec *hs);
-
 int do_kernel = 0;
 char *setfile = NULL;
 char *listen_arg = NULL;
@@ -137,6 +136,7 @@ extern pthread_mutex_t host_list_lock;
 extern LIST_HEAD(host_list_s, hostspec) host_list;
 extern LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 extern pthread_mutex_t sp_list_lock;
+int find_least_busy_thread();
 
 int passive = 0;
 int log_level_thr = LDMSD_LERROR;  /* log level threshold */
@@ -539,7 +539,6 @@ static void stop_sampler(struct ldmsd_plugin_cfg *pi)
 
 void plugin_sampler_cb(int fd, short sig, void *arg)
 {
-	struct timeval tv;
 	struct ldmsd_plugin_cfg *pi = arg;
 	pthread_mutex_lock(&pi->lock);
 	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
@@ -699,7 +698,7 @@ void ldmsd_task_join(ldmsd_task_t task)
 int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 			char err_str[LEN_ERRSTR])
 {
-	char *attr, *endptr;
+	char *endptr;
 	int rc = 0;
 	unsigned long sample_interval;
 	long sample_offset = 0;
@@ -771,7 +770,6 @@ struct oneshot {
 
 void oneshot_sample_cb(int fd, short sig, void *arg)
 {
-	struct timeval tv;
 	struct oneshot *os = arg;
 	struct ldmsd_plugin_cfg *pi = os->pi;
 	pthread_mutex_lock(&pi->lock);
@@ -786,7 +784,6 @@ void oneshot_sample_cb(int fd, short sig, void *arg)
 
 int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 {
-	char *attr, *endptr;
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
 	err_str[0] = '\0';
@@ -903,7 +900,6 @@ out_nolock:
 void ldmsd_host_sampler_cb(int fd, short sig, void *arg)
 {
 	struct hostspec *hs = arg;
-	int rc;
 
 	pthread_mutex_lock(&hs->conn_state_lock);
 	switch (hs->conn_state) {
@@ -934,7 +930,6 @@ void ldmsd_host_sampler_cb(int fd, short sig, void *arg)
 void reset_hostset(struct hostset *hset)
 {
 	struct ldmsd_store_policy_ref *ref;
-	struct hset_metric *hsm;
 	if (hset->set) {
 		ldms_set_delete(hset->set);
 		hset->set = NULL;
@@ -969,6 +964,7 @@ int sample_interval = 2000000;
 void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more, ldms_set_t s,
 		void *arg)
 {
+	extern int apply_store_policies(struct hostset *hset);
 	int rc;
 	struct hostset *hset = arg;
 
@@ -984,7 +980,6 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more, ldms_set_t s,
 	if (rc)
 		goto err;
 	hset->state = LDMSD_SET_READY;
- out:
 	pthread_mutex_unlock(&hset->state_lock);
 	return;
  err:
@@ -1218,6 +1213,8 @@ void do_connect(struct hostspec *hs)
 
 void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 {
+	extern int update_policy_metrics(struct ldmsd_store_policy *sp,
+					 struct hostset *hset);
 	struct hostset *hset = arg;
 	uint64_t gn;
 	pthread_mutex_lock(&hset->state_lock);
@@ -1489,6 +1486,7 @@ int ldmsd_get_secretword()
 }
 #endif /* ENABLE_AUTH */
 
+extern int ldmsd_inet_config_init(const char *port, const char *secretword);
 int main(int argc, char *argv[])
 {
 	struct ldms_version ldms_version;
@@ -1502,7 +1500,6 @@ int main(int argc, char *argv[])
 	int op;
 	ldms_set_t test_set;
 	log_fp = stdout;
-	char *cfg_file = NULL;
 	struct sigaction action, logrotate_act;
 	sigset_t sigset;
 	sigemptyset(&sigset);

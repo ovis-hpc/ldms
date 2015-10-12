@@ -81,7 +81,6 @@ static char* procsensorsfiledir = "/sys/devices/pci0000:00/0000:00:01.1/i2c-1/1-
 const static int vartypes = 3;
 const static char* varnames[] = {"in", "fan", "temp"};
 const static int varbounds[] = {0, 9, 1, 9, 1, 6};
-static uint64_t counter;
 static ldms_set_t set;
 static ldms_schema_t schema;
 static int metric_count; /* now global */
@@ -116,7 +115,6 @@ static int create_metric_set(const char *instance_name)
 	 * Process file to define all the metrics.
 	 */
 
-	int metric_no = 0;
 	for (i = 0; i < vartypes; i++){
 		for (j = varbounds[2 * i]; j <= varbounds[2 * i + 1]; j++){
 			snprintf(metric_name, 127,
@@ -244,9 +242,6 @@ static int sample(void)
 	struct timespec time1;
 	int i, j;
 	FILE *mf;
-
-	//set the counter
-	uint64_t counterval = ++counter;
 
 	int metric_time_no = 0;
 	clock_gettime(CLOCK_REALTIME, &time1);

@@ -267,7 +267,4 @@ struct ldms_xprt {
 	LIST_ENTRY(ldms_xprt) xprt_link;
 };
 
-static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *, struct ldms_set *s);
-static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
-
 #endif

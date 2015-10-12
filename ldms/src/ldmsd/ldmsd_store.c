@@ -177,6 +177,7 @@ int flush_check(struct flush_thread *ft)
 		pthread_cond_signal(&ft->cv);
 	}
 	pthread_mutex_unlock(&ft->dmutex);
+	return 0;
 }
 
 void flush_store_instance(struct store_instance *si)
@@ -303,10 +304,7 @@ int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set)
 {
 	int rc;
 	struct store_instance *si = lsp->si;
-	int flush = 0;
 	records++;
-	double bytespersec = 0.0;
-	int i;
 
 	pthread_mutex_lock(&si->lock);
 	switch (si->state) {
@@ -440,7 +438,6 @@ struct store_instance *
 ldmsd_store_instance_get(struct ldmsd_store *store,
 			struct ldmsd_store_policy *sp)
 {
-	ldmsd_store_handle_t sh;
 	struct store_instance *s_inst;
 	pthread_mutex_lock(&cfg_lock);
 	s_inst = new_store_instance(store, sp);

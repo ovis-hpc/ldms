@@ -369,7 +369,6 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	char *svalue;
 	char *skey = NULL;
 	char *altvalue;
-	char *ivalue;
 	char *rvalue;
 	int idx;
 	int i;
@@ -718,9 +717,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 {
 	/* Only called from Store which already has the lock */
 	FILE* fp;
-	const char* name;
 	uint32_t len;
-	int rc;
 	int i, j;
 
 	if (s_handle == NULL){
@@ -1206,7 +1203,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				else
 					s_handle->byte_count += rcu;
 			}
-			rc = fprintf(s_handle->file, ", %"PRIu64", %hd",
+			rc = fprintf(s_handle->file, ", %hd",
 					ldms_metric_get_s16(set, metric_array[i]));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",

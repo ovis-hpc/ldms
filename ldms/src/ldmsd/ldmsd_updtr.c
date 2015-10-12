@@ -166,7 +166,6 @@ static void schedule_updates(ldmsd_updtr_t updtr)
 static void updtr_task_cb(ldmsd_task_t task, void *arg)
 {
 	ldmsd_updtr_t updtr = arg;
-	int ret;
 
 	ldmsd_updtr_lock(updtr);
 	switch (updtr->state) {
@@ -264,9 +263,6 @@ int cmd_updtr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 eexist:
 	sprintf(replybuf, "%dThe updtr %s already exists.\n", EEXIST, name);
 	goto out;
-enomem:
-	sprintf(replybuf, "%dMemory allocation failed.\n", ENOMEM);
-	goto out;
 einval:
 	sprintf(replybuf, "%dThe attribute '%s' is required.\n", EINVAL, attr);
 out:
@@ -284,12 +280,12 @@ ldmsd_name_match_t updtr_find_match_ex(ldmsd_updtr_t updtr,
 		if (0 == strcmp(match->regex_str, ex))
 			return match;
 	}
+	return NULL;
 }
 
 int cmd_updtr_match_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
 	char *attr, *updtr_name, *regex_str, *selector_str;
-	int interval_us;
 
 	attr = "name";
 	updtr_name = av_value(avl, attr);
@@ -357,7 +353,6 @@ int cmd_updtr_match_del(char *replybuf, struct attr_value_list *avl, struct attr
 {
 	enum ldmsd_name_match_sel sel;
 	char *updtr_name, *regex_str, *selector_str;
-	int interval_us;
 
 	updtr_name = av_value(avl, "name");
 	if (!updtr_name) {
@@ -590,7 +585,6 @@ out_0:
 
 int cmd_updtr_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	ldmsd_prdcr_ref_t ref;
 	ldmsd_prdcr_t prdcr;
 	regex_t regex;
 	char *updtr_name, *prdcr_regex;
