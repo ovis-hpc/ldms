@@ -894,8 +894,8 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 
 	/* Back port from v3: if time diff is not positive, write out something and flag.
-         * if tis RAW data, write the val. if its RATE data, write zero
-         */
+	 * if tis RAW data, write the val. if its RATE data, write zero
+	 */
 
 	setflag = 0;
 	setflagtime = 0;
@@ -905,7 +905,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	curr.tv_sec = ts->sec;
 	curr.tv_usec = ts->usec;
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >= (double)curr.tv_sec*1000000+curr.tv_usec){
-		msglog(LDMSD_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
+		msglog(LDMS_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
 		       __FILE__, ldms_set_instance_name_get(set));
 		setflagtime = 1;
 	}
@@ -986,7 +986,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		}
 
 	} // i
-	if (setflagtime || ((double)diff.tv_sec*1000000+diff.tv_usec > agesec))
+	if (setflagtime || ((double)diff.tv_sec*1000000+diff.tv_usec > agedt_sec))
 		setflag = 1;
 
 	fprintf(s_handle->file, ", %d\n", setflag);
