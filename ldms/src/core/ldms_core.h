@@ -177,6 +177,7 @@ struct ldms_set_hdr {
  * A generic union that encapsulates all of the LDMS value types.
  */
 typedef union ldms_value {
+	char v_char;
 	uint8_t v_u8;
 	int8_t v_s8;
 	uint16_t v_u16;
@@ -194,6 +195,8 @@ typedef union ldms_value {
  */
 enum ldms_value_type {
 	LDMS_V_NONE,
+	LDMS_V_CHAR,
+	LDMS_V_FIRST = LDMS_V_CHAR,
 	LDMS_V_U8,
 	LDMS_V_S8,
 	LDMS_V_U16,
@@ -204,6 +207,7 @@ enum ldms_value_type {
 	LDMS_V_S64,
 	LDMS_V_F32,
 	LDMS_V_D64,
+	LDMS_V_CHAR_ARRAY,
 	LDMS_V_U8_ARRAY,
 	LDMS_V_S8_ARRAY,
 	LDMS_V_U16_ARRAY,
@@ -219,7 +223,7 @@ enum ldms_value_type {
 
 typedef struct ldms_name {
 	uint8_t len;
-	uint8_t name[0];
+	char name[0];
 } *ldms_name_t;
 
 #ifndef roundup

@@ -194,9 +194,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 einval:
 	pthread_mutex_unlock(&cfg_lock);
 	return EINVAL;
-err:
-	pthread_mutex_unlock(&cfg_lock);
-	return errno;
 }
 
 static void term(void)
@@ -243,8 +240,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	LIST_INSERT_HEAD(&inst_list, si, entry);
 	pthread_mutex_unlock(&cfg_lock);
 	return si;
- err4:
-	free(si->path);
  err3:
 	free(si->schema_name);
  err2:
@@ -295,8 +290,7 @@ static int
 _open_store(struct sos_instance *si, ldms_set_t set,
 	    int *metric_arry, size_t metric_count)
 {
-	int rc, i;
-	struct sos_metric_store *ms;
+	int rc;
 	sos_schema_t schema;
 
 	si->sos = sos_container_open(si->path, SOS_PERM_RW);
@@ -384,7 +378,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	SOS_VALUE(value);
 	SOS_VALUE(array_value);
 	sos_obj_t obj;
-	sos_obj_t array_obj;
 	int i;
 	int rc = 0;
 	int last_rc = 0;
@@ -428,7 +421,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	enum ldms_value_type metric_type;
 	int array_len;
 	int esz;
-	int byte_len;
+
 	attr = sos_schema_attr_next(attr);
 	value = sos_value_init(value, obj, attr);
 	value->data->prim.uint64_ = udata;
@@ -440,6 +433,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		switch (metric_type) {
 		case LDMS_V_S8:
 		case LDMS_V_U8:
+		case LDMS_V_CHAR:
 		case LDMS_V_S16:
 		case LDMS_V_U16:
 		case LDMS_V_S32:
@@ -481,7 +475,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			__ldms_sos_array_copy(set, i, array_value, esz*array_len);
 			sos_value_put(array_value);
 			break;
-		case LDMS_V_NONE:
+		default:
 			assert(0 == "Unexpected type");
 			break;
 		}
@@ -504,7 +498,6 @@ err:
 
 static int flush_store(ldmsd_store_handle_t _sh)
 {
-	int i;
 	struct sos_instance *si = _sh;
 	if (!_sh)
 		return EINVAL;
@@ -518,7 +511,6 @@ static int flush_store(ldmsd_store_handle_t _sh)
 
 static void close_store(ldmsd_store_handle_t _sh)
 {
-	int i;
 	struct sos_instance *si = _sh;
 
 	if (!si)

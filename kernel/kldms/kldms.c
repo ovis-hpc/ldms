@@ -402,6 +402,7 @@ void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v)
 			__le32_to_cpu(desc->vd_data_offset));
 
 	switch (desc->vd_type) {
+	case LDMS_V_CHAR:
 	case LDMS_V_U8:
 	case LDMS_V_S8:
 		mv->v_u8 = v->v_u8;
