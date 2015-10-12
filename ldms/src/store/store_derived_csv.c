@@ -906,7 +906,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	curr.tv_usec = ts->usec;
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >= (double)curr.tv_sec*1000000+curr.tv_usec){
 		msglog(LDMS_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
-		       __FILE__, ldms_set_instance_name_get(set));
+		       "store_derived_csv", ldms_get_set_name(set));
 		setflagtime = 1;
 	}
 	//always do this and write it out
