@@ -69,7 +69,6 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
-#include "config.h"
 //have it for the logfile and set
 #include "ldmsd.h"
 #include "ldms.h"
