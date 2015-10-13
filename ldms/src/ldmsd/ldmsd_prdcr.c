@@ -175,7 +175,14 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
-		ldmsd_log(LDMSD_LERROR, "Error doing lookup for set '%s'\n", prd_set->inst_name);
+		status = (status < 0 ? -status : status);
+		ldmsd_log(LDMSD_LERROR,
+			  "Error %d in lookup callback for set '%s'\n",
+			  status,
+			  prd_set->inst_name);
+		if (status == ENOMEM)
+			ldmsd_log(LDMSD_LINFO,
+				  "Consider changing the -m parameter on the command line.\n");
 		if (prd_set->set)
 			ldms_set_delete(prd_set->set);
 		prd_set->set = NULL;
@@ -186,7 +193,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	 * name. If it doesn't, we write a warning to the log file
 	 */
 	if (strcmp(prd_set->prdcr->obj.name, ldms_set_producer_name_get(set)))
-		ldmsd_log(LDMSD_LERROR, "Warning: The producer name '%s' in the configuration\n"
+		ldmsd_log(LDMSD_LINFO, "Warning: The producer name '%s' in the configuration"
 			 "does not match the producer name '%s' in the '%s' metric set.\n",
 			 prd_set->prdcr->obj.name, ldms_set_producer_name_get(set),
 			 ldms_set_instance_name_get(set));

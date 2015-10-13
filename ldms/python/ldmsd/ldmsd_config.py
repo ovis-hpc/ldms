@@ -173,11 +173,6 @@ LDMSD_SOCK = "/home/nichamon/suitcase/var/run/ovis/ldmsd.sock"
 class ldmsdConfig(object):
     __metaclass__ = ABCMeta
 
-    def socket(self):
-        """socket attribute of the object
-        """
-        raise NotImplementedError
-
     @abstractmethod
     def send_command(self, cmd):
         """Send the string of a command to an ldmsd process
@@ -422,15 +417,13 @@ class ldmsdConfig(object):
 
 class ldmsdUSocketConfig(ldmsdConfig):
     def __init__(self, ldmsd_sockpath, sockpath = None, max_recv_len = None):
+        self.socket = None
+        self.sockpath = None
         if not os.path.exists(ldmsd_sockpath):
-            self.socket = None
-            self.sockpath = None
             raise ValueError("{0} doesn't exist.".format(ldmsd_sockpath))
 
         if sockpath is None:
-            name = basename(ldmsd_sockpath)
-            tmp = name.split(".")
-            name = "{0}_ctrl_{1}.{2}".format(tmp[0], os.getpid(), tmp[1])
+            name = "ldmsd_ctrl_sockname.{0}".format(os.getpid())
             self.sockpath = dirname(ldmsd_sockpath) + "/" + name
         else:
             self.sockpath = sockpath
