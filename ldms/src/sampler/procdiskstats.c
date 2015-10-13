@@ -101,7 +101,7 @@ static ldmsd_msg_log_f msglog;
 static char *producer_name;
 
 static long USER_HZ; /* initialized in get_plugin() */
-static struct timeval _tv[2] = {0};
+static struct timeval _tv[2] = { {0}, {0} };
 static struct timeval *curr_tv = &_tv[0];
 static struct timeval *prev_tv = &_tv[1];
 
@@ -222,6 +222,8 @@ static int get_disks()
 		if (!rc)
 			break;
 		disk = add_disk(name);
+		if (!disk)
+			break;
 	} while (1);
 
 	fclose(pf);
@@ -231,7 +233,6 @@ static int get_disks()
 static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 {
 	int rc = 0;
-	int next_comp_id = 0;
 	struct proc_disk_s *disk;
 	char *value = av_value(avl, "device");
 

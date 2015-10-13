@@ -72,7 +72,7 @@
  * \param seed The seed of (re-)hash, usually being 0.
  * \return A 32-bit unsigned integer hash value.
  */
-static
+static inline
 uint32_t fnv_hash_a1_32(const char *str, int len, uint32_t seed)
 {
 	uint32_t h = seed;
@@ -93,7 +93,7 @@ uint32_t fnv_hash_a1_32(const char *str, int len, uint32_t seed)
  * \param seed The seed of (re-)hash, usually being 0.
  * \return A 64-bit unsigned integer hash value.
  */
-static
+static inline
 uint64_t fnv_hash_a1_64(const char *str, int len, uint64_t seed)
 {
 	uint64_t h = seed;

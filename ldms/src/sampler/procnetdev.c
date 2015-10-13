@@ -255,8 +255,6 @@ static const char *usage(void)
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
-	struct kw *kw;
-	struct kw key;
 	int rc;
 
 	gettimeofday(tv_prev, 0);

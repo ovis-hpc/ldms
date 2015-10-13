@@ -177,8 +177,7 @@ struct str_list_head* construct_mdt_list(const char *mdts)
  */
 static int create_metric_set(const char *path, const char *mdts)
 {
-	int rc, i, j;
-	char metric_name[128];
+	int rc, i;
 	struct str_list_head *lh = construct_mdt_list(mdts);
 	if (!lh)
 		goto err0;
@@ -319,7 +318,6 @@ static int sample(void)
 		lms_sample(set, lms);
 	}
 
- out:
 	ldms_transaction_end(set);
 	return 0;
 }

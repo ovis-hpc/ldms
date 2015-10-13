@@ -76,7 +76,7 @@ static int cpu_count;
 static char *producer_name;
 
 static long USER_HZ; /* initialized in get_plugin() */
-static struct timeval _tv[2] = {0};
+static struct timeval _tv[2] = { {0}, {0} };
 static struct timeval *curr_tv = &_tv[0];
 static struct timeval *prev_tv = &_tv[1];
 
@@ -258,7 +258,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
- out:
 	return rc;
 }
 
@@ -269,7 +268,6 @@ static int sample(void)
 	int column = 0;
 	char *s;
 	char lbuf[256];
-	union ldms_value vv;
 	struct timeval diff_tv;
 	struct timeval *tmp_tv;
 	float dt;

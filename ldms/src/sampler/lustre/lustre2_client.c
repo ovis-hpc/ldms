@@ -196,13 +196,11 @@ struct str_list_head* construct_client_list(const char *clients,
 static int create_metric_set(const char *path, const char *oscs,
 			     const char *mdcs, const char *llites)
 {
-	int rc, i, j;
-	uint64_t metric_value;
-	char metric_name[128];
+	int rc, i;
 
 	/* Calculate size for Clients */
 	struct str_list_head *lh_osc, *lh_mdc, *lh_llite;
-	struct str_list_head *heads[] = {lh_osc, lh_mdc, lh_llite};
+	struct str_list_head *heads[] = {NULL, NULL, NULL};
 	char **keys[] = {stats_key, stats_key, llite_key};
 	int keylen[] = {STATS_KEY_LEN, STATS_KEY_LEN, LLITE_KEY_LEN};
 	struct str_map *maps[] = {stats_key_id, stats_key_id, llite_key_id};
@@ -357,7 +355,6 @@ static int sample(void)
 		lms_sample(set, lms);
 	}
 
- out:
 	ldms_transaction_end(set);
 	return 0;
 }

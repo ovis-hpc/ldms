@@ -226,19 +226,16 @@ PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 
 static int sample(void)
 {
-	int metric_no;
 	int rc, i;
 	char *s;
 	char lbuf[256];
-	union ldms_value v[23],vtemp;
+	union ldms_value v[23];
 
 	if (!set) {
 		msglog(LDMSD_LDEBUG, "procnfs: plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);
-
-	metric_no = 0;
 
 	fseek(mf, 0, SEEK_SET);
 	/*

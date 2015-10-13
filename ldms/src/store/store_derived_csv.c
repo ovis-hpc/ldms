@@ -851,7 +851,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	pthread_mutex_unlock(&s_handle->lock);
 	goto out;
 
- err5:
  err4: //NO Headerfile
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);

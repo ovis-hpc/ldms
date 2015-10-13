@@ -84,7 +84,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
-
+#include <assert.h>
 #include <coll/str_map.h>
 #include "ldms.h"
 #include "ldmsd.h"
@@ -127,6 +127,7 @@ static gs_metric_t gs_metric_alloc(const char *name, enum ldms_value_type type)
 	return gs_metric;
 }
 
+#pragma GCC diagnostic ignored "-Wunused-function"
 static void gs_metric_free(gs_metric_t gs_metric)
 {
 	if (gs_metric->name)
@@ -151,10 +152,7 @@ static const char *usage(void)
 
 static int create_metric_set(const char *inst_name, const char *prod_name)
 {
-	int rc, i;
-	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	int rc;
 	gs_metric_t gs_metric;
 
 	schema = ldms_schema_new("generic_sampler");
@@ -260,10 +258,8 @@ void permute_metrics(char *name, enum ldms_value_type type)
 
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value, *ptr, *tok, *m, *t;
+	char *value, *ptr, *tok, *t;
 	enum ldms_value_type type;
-	int rc;
-	gs_metric_t gs_metric;
 
 	value = av_value(avl, "component_id");
 	if (value)
@@ -346,7 +342,7 @@ static int sample(void)
 	ssize_t sz;
 	off_t offset;
 	union ldms_value value;
-	char *tok, *m, *v, *ptr;
+	char *tok, *v;
 	ldms_transaction_begin(set);
 	if (gs_fd == -1) {
 		gs_fd = open(path, O_RDONLY);
@@ -399,6 +395,8 @@ static int sample(void)
 		case LDMS_V_D64:
 			value.v_d = strtod(v, NULL);
 			break;
+		default:
+			assert(0);
 		}
 		ldms_metric_set(set, gs_metric->mh, &value);
 skip:

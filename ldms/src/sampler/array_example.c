@@ -82,11 +82,7 @@ struct array_construct array_contruct_entries[] = {
 
 static int create_metric_set(const char *instance_name)
 {
-	int rc, i;
-	uint64_t metric_value;
-	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	int rc;
 
 	schema = ldms_schema_new("array_example");
 	if (!schema)

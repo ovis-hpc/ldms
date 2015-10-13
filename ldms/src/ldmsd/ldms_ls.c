@@ -108,7 +108,6 @@ void null_log(const char *fmt, ...)
 #define LDMS_LS_AUTH_ENV "LDMS_LS_AUTH_FILE"
 char *ldms_ls_get_secretword(const char *path)
 {
-	int rc;
 	if (!path) {
 		/* Get path from the environment variable */
 		path = getenv(LDMS_LS_AUTH_ENV);
@@ -234,6 +233,8 @@ loop:
 	case LDMS_V_D64_ARRAY:
 		printf("%f", ldms_array_metric_get_double(s, i, j));
 		break;
+	default:
+		printf("Unknown metric type\n");
 	}
 	j++;
 	goto loop;
@@ -245,7 +246,6 @@ static int user_data = 0;
 void metric_printer(ldms_set_t s, int i)
 {
 	enum ldms_value_type type = ldms_metric_type_get(s, i);
-	ldms_mval_t v = ldms_metric_get(s, i);
 	char name_str[256];
 	printf("%4s ", ldms_metric_type_to_str(type));
 

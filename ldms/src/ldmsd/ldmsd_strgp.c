@@ -100,9 +100,6 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
-	struct ldms_timestamp *ts, _ts;
-	_ts = ldms_transaction_timestamp_get(prd_set->set);
-	ts = &_ts;
 	strgp->store->store(strgp->store_handle, prd_set->set,
 			    strgp->metric_arry, strgp->metric_count);
 }
@@ -159,7 +156,6 @@ ldmsd_name_match_t ldmsd_strgp_prdcr_next(ldmsd_name_match_t match)
 
 time_t convert_rotate_str(const char *rotate)
 {
-	time_t t;
 	char *units;
 	long rotate_interval;
 
@@ -183,7 +179,7 @@ time_t convert_rotate_str(const char *rotate)
 
 int cmd_strgp_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	char *attr, *name, *plugin, *container, *schema, *rotate;
+	char *attr, *name, *plugin, *container, *schema;
 	struct ldmsd_plugin_cfg *store;
 
 	attr = "name";
@@ -265,6 +261,7 @@ ldmsd_name_match_t strgp_find_prdcr_ex(ldmsd_strgp_t strgp, const char *ex)
 		if (0 == strcmp(match->regex_str, ex))
 			return match;
 	}
+	return NULL;
 }
 
 int cmd_strgp_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)

@@ -58,7 +58,9 @@
 #include <stdlib.h>
 #include <dirent.h>
 #include <wordexp.h>
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #include "lustre_sampler.h"
+#pragma GCC diagnostic warning "-Wunused-variable"
 #include <assert.h>
 
 static ldmsd_msg_log_f msglog = NULL;
@@ -125,7 +127,7 @@ void lustre_single_free(struct lustre_single *ls)
 void lustre_metric_src_list_free(struct lustre_metric_src_list *list)
 {
 	struct lustre_metric_src *l;
-	while (l = LIST_FIRST(list)) {
+	while ((l = LIST_FIRST(list))) {
 		LIST_REMOVE(l, link);
 		switch (l->type) {
 		case LMS_SVC_STATS:
@@ -272,7 +274,8 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 	struct str_map *id_map = lss->key_id_map;
 	/* The first line is timestamp, we can ignore that */
 	char *s = fgets(lbuf, __LBUF_SIZ, lss->lms.f);
-
+	if (!s)
+		goto out;
 	gettimeofday(lss->tv_cur, 0);
 	struct timeval dtv;
 	timersub(lss->tv_cur, lss->tv_prev, &dtv);
@@ -368,7 +371,7 @@ int lms_sample(ldms_set_t set, struct lustre_metric_src *lms)
 void free_str_list(struct str_list_head *h)
 {
 	struct str_list *sl;
-	while (sl = LIST_FIRST(h)) {
+	while ((sl = LIST_FIRST(h))) {
 		LIST_REMOVE(sl, link);
 		free(sl->str);
 		free(sl);
@@ -400,7 +403,6 @@ struct str_list_head* construct_str_list(const char *strlist)
 	return h;
 err1:
 	free_str_list(h);
-err0:
 	return NULL;
 }
 
@@ -413,7 +415,7 @@ struct str_list_head* construct_dir_list(const char *path)
 		goto err0;
 	struct str_list_head *h = calloc(1, sizeof(*h));
 	struct str_list *sl;
-	while (dir = readdir(d)) {
+	while ((dir = readdir(d))) {
 		if (dir->d_type & DT_DIR) {
 			if (strcmp(dir->d_name, ".")==0 ||
 					strcmp(dir->d_name, "..")==0)

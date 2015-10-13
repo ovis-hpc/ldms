@@ -44,6 +44,7 @@
 %include "cpointer.i"
 %include "cstring.i"
 %include "carrays.i"
+%include "exception.i"
 %{
 #include <stdio.h>
 #include <sys/queue.h>
@@ -93,7 +94,6 @@ out:
 
 PyObject *LDMS_xprt_dir(ldms_t x)
 {
-	ldms_set_t set;
 	PyObject *setList = PyList_New(0);
 	struct dir_arg arg;
 
@@ -135,9 +135,6 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
         uint64_t tmp64;
 	double d = 0.0;
 	switch (type) {
-	case LDMS_V_NONE:
-		/* TODO Exception */
-		break;
 	case LDMS_V_U8:
 		l = (long)mv->v_u8;
 		break;
@@ -172,10 +169,14 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		tmp64 = __le64_to_cpu(*(uint32_t*)&mv->v_d);
                 d = *(double*)&tmp64;
 		break;
+	default:
+		SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
 	}
 	if (is_int)
 		return PyLong_FromLong(l);
 	return PyFloat_FromDouble(d);
+ fail:
+	return Py_None;
 }
 
 %}
@@ -225,7 +226,6 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		return PyObject_FromMetricValue(v, ldms_metric_type_get(self, i));
 	}
 	inline PyObject *array_metric_value_get(size_t mid, size_t idx) {
-		char *v = ldms_array_metric_get(self, mid);
                 enum ldms_value_type t = ldms_metric_type_get(self, mid);
                 switch (t) {
                 case LDMS_V_U8_ARRAY:
@@ -248,8 +248,12 @@ PyObject *LDMS_xprt_dir(ldms_t x);
                         return PyFloat_FromDouble(ldms_array_metric_get_float(self, mid, idx));
                 case LDMS_V_D64_ARRAY:
                         return PyFloat_FromDouble(ldms_array_metric_get_double(self, mid, idx));
+		default:
+			SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
                 }
                 return PyLong_FromLong(0);
+	fail:
+		return Py_None;
 	}
 	inline void metric_value_set(size_t i, PyObject *o) {
 		enum ldms_value_type t = ldms_metric_type_get(self, i);
@@ -273,8 +277,12 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		case LDMS_V_D64:
 			v.v_d = PyFloat_AsDouble(o);
 			break;
+		default:
+			SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
 		}
 		ldms_metric_set(self, i, &v);
+	fail:
+		return;
 	}
         inline
         void array_metric_value_set(size_t mid, size_t idx, PyObject *o) {
@@ -299,8 +307,12 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		case LDMS_V_D64_ARRAY:
 			v.v_d = PyFloat_AsDouble(o);
 			break;
+		default:
+			SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
 		}
 		ldms_array_metric_set(self, mid, idx, &v);
+	fail:
+		return;
         }
 	inline const char *instance_name_get() {
 		return ldms_set_instance_name_get(self);

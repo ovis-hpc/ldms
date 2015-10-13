@@ -202,6 +202,24 @@ ldms_t ldms_xprt_get(ldms_t x);
 void ldms_xprt_put(ldms_t x);
 
 /**
+ * \brief Get the LDMS library version
+ *
+ * \param Pointer to an ldms_version structure
+ */
+void ldms_version_get(struct ldms_version *v);
+
+/**
+ * \brief Get the LDMS library version
+ *
+ * Compare the LDMS library version to the provided version.
+ *
+ * \param Pointer to an ldms_version structure
+ * \retval !0 The versions match
+ * \retval 0 The versions do not match
+ */
+int ldms_version_check(struct ldms_version *v);
+
+/**
  * \brief Find a transport that matches the specified address.
  *
  * \param sin	Specifies the address that should match the remote peer's ip address.

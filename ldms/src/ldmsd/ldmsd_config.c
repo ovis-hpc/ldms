@@ -94,6 +94,13 @@ int bind_succeeded;
 
 extern struct event_base *get_ev_base(int idx);
 extern void release_ev_base(int idx);
+int find_least_busy_thread();
+int new_store_metric(struct ldmsd_store_policy *sp, const char *name);
+int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset);
+int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
+			char *err_str);
+int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *err_str);
+void cleanup(int x);
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(host_list_s, hostspec) host_list;
@@ -538,10 +545,10 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, siz
 	int rc = regcomp(regex, regex_str, REG_NOSUB);
 	if (rc) {
 		sprintf(errbuf, "22");
-		size_t sz = regerror(rc,
-				     regex,
-				     &errbuf[2],
-				     errsz - 2);
+		(void)regerror(rc,
+			       regex,
+			       &errbuf[2],
+			       errsz - 2);
 		strcat(errbuf, "\n");
 	}
 	return rc;
@@ -1023,7 +1030,7 @@ void hset_ref_put(struct hostset *hset)
 		LIST_REMOVE(hset, entry);
 		pthread_mutex_unlock(&hset->host->set_list_lock);
 		struct ldmsd_store_policy_ref *lsp_ref;
-		while (lsp_ref = LIST_FIRST(&hset->lsp_list)) {
+		while ((lsp_ref = LIST_FIRST(&hset->lsp_list))) {
 			LIST_REMOVE(lsp_ref, entry);
 			free(lsp_ref);
 		}
@@ -1035,7 +1042,7 @@ void hset_ref_put(struct hostset *hset)
 void destroy_metric_list(struct ldmsd_strgp_metric_list *list)
 {
 	ldmsd_strgp_metric_t smi;
-	while (smi = TAILQ_FIRST(list)) {
+	while ((smi = TAILQ_FIRST(list))) {
 		TAILQ_REMOVE(list, smi, entry);
 		free(smi->name);
 		free(smi);
@@ -1204,7 +1211,7 @@ void destroy_store_policy(struct ldmsd_store_policy *sp)
 	if (sp->metric_arry)
 		free(sp->metric_arry);
 	struct rbn *rbn;
-	while (rbn = rbt_min(&sp->host_tree)) {
+	while ((rbn = rbt_min(&sp->host_tree))) {
 		struct ldmsd_store_host *h =
 			container_of(rbn, struct ldmsd_store_host, rbn);
 		rbt_del(&sp->host_tree, rbn);
@@ -1222,7 +1229,6 @@ int config_store_policy(char *plugin_name, char *policy_name,
 			char err_str[LEN_ERRSTR])
 {
 	struct ldmsd_store_policy *sp;
-	struct hostspec *hs;
 	struct ldmsd_plugin_cfg *store;
 	int rc;
 
@@ -1816,7 +1822,6 @@ int new_store_metric(struct ldmsd_store_policy *sp, const char *name)
 int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 {
 	ldmsd_strgp_metric_t smi;
-	const char *metric;
 	int i, rc;
 	const char *name;
 
@@ -1865,7 +1870,7 @@ err:
 	sp->state = STORE_POLICY_ERROR;
 	if (sp->metric_arry)
 		free(sp->metric_arry);
-	while (smi = TAILQ_FIRST(&sp->metric_list)) {
+	while ((smi = TAILQ_FIRST(&sp->metric_list))) {
 		TAILQ_REMOVE(&sp->metric_list, smi, entry);
 		free(smi->name);
 		free(smi);

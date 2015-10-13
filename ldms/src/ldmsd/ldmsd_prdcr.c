@@ -147,7 +147,7 @@ static void prdcr_reset_sets(ldmsd_prdcr_t prdcr)
 {
 	ldmsd_prdcr_set_t prd_set;
 	struct rbn *rbn;
-	while (rbn = rbt_min(&prdcr->set_tree)) {
+	while ((rbn = rbt_min(&prdcr->set_tree))) {
 		prd_set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
 		rbt_del(&prdcr->set_tree, rbn);
 		prdcr_set_del(prd_set);
@@ -171,7 +171,6 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			    int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
-	int rc;
 
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
@@ -372,7 +371,6 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 static void prdcr_task_cb(ldmsd_task_t task, void *arg)
 {
 	ldmsd_prdcr_t prdcr = arg;
-	int ret;
 
 	ldmsd_prdcr_lock(prdcr);
 	switch (prdcr->conn_state) {
@@ -718,7 +716,6 @@ int cmd_prdcr_stop_regex(char *replybuf, struct attr_value_list *avl, struct att
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);
 	sprintf(replybuf, "0\n");
-out_1:
 	ldmsd_prdcr_put(prdcr);
 out_0:
 	return 0;
