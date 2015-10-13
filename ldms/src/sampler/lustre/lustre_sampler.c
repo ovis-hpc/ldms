@@ -223,6 +223,8 @@ int stats_construct_routine(ldms_schema_t schema,
 	}
 	if ((j = str_map_get(key_id_map, "status")))
 		lss->mh_status_idx = lss->mctxt[j].metric_idx;
+	else
+		lss->mh_status_idx = -1;
 
 	return 0;
 }
@@ -257,13 +259,17 @@ err0:
 int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 {
 	int rc = 0;
+
 	if (!lss->lms.f) {
-		ldms_metric_set_u64(set, lss->mh_status_idx, 0);
+		if (lss->mh_status_idx != -1)
+			ldms_metric_set_u64(set, lss->mh_status_idx, 0);
 		rc = lms_open_file(&lss->lms);
 		if (rc)
 			goto out;
 	}
-	ldms_metric_set_u64(set, lss->mh_status_idx, 1);
+
+	if (lss->mh_status_idx != -1)
+		ldms_metric_set_u64(set, lss->mh_status_idx, 1);
 
 	fseek(lss->lms.f, 0, SEEK_SET);
 	char lbuf[__LBUF_SIZ];
