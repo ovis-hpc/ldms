@@ -68,7 +68,6 @@
 #include <mmalloc/mmalloc.h>
 #include <pthread.h>
 #include <asm/byteorder.h>
-
 #include "ovis_util/os_util.h"
 #include "ldms_private.h"
 #include "ldms.h"
@@ -251,11 +250,10 @@ static int set_list_sz_cb(struct ldms_set *set, void *arg)
  void __ldms_get_local_set_list_sz(int *set_count, int *set_list_size)
 {
 	struct set_list_arg arg;
-	int rc;
 
 	arg.count = 0;
 	arg.set_list_len = 0;
-	rc = __ldms_for_all_sets(set_list_sz_cb, &arg);
+	(void)__ldms_for_all_sets(set_list_sz_cb, &arg);
 	*set_count = arg.count;
 	*set_list_size = arg.set_list_len;
 }
@@ -431,8 +429,6 @@ static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
 int ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
 		     ldms_lookup_cb_t cb, void *cb_arg)
 {
-	struct ldms_set *set;
-	ldms_set_t s;
 	int rc;
 	if ((flags & !cb)
 	    || strlen(path) > LDMS_LOOKUP_PATH_MAX)
@@ -526,7 +522,6 @@ int __ldms_create_set(const char *instance_name,
 {
 	struct ldms_data_hdr *data;
 	struct ldms_set_hdr *meta;
-	ldms_mdef_t m;
 	int rc;
 
 	meta = mm_alloc(meta_len + data_len);
@@ -598,7 +593,6 @@ ldms_schema_t ldms_schema_new(const char *schema_name)
 
 void ldms_schema_delete(ldms_schema_t schema)
 {
-	int i;
 	ldms_mdef_t m;
 
 	if (!schema)
@@ -621,6 +615,7 @@ int ldms_schema_metric_count_get(ldms_schema_t schema)
 
 static int value_size[] = {
 	[LDMS_V_NONE] = 0,
+	[LDMS_V_CHAR] = sizeof(uint8_t),
 	[LDMS_V_U8] = sizeof(uint8_t),
 	[LDMS_V_S8] = sizeof(uint8_t),
 	[LDMS_V_U16] = sizeof(uint16_t),
@@ -632,6 +627,7 @@ static int value_size[] = {
 	[LDMS_V_F32] = sizeof(float),
 	[LDMS_V_D64] = sizeof(double),
 	/* size of array type in this table is the size of an element */
+	[LDMS_V_CHAR_ARRAY] = sizeof(uint8_t),
 	[LDMS_V_U8_ARRAY] = sizeof(uint8_t),
 	[LDMS_V_S8_ARRAY] = sizeof(uint8_t),
 	[LDMS_V_U16_ARRAY] = sizeof(uint16_t),
@@ -795,6 +791,7 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s)
 
 static char *type_names[] = {
 	[LDMS_V_NONE] = "none",
+	[LDMS_V_CHAR] = "char",
 	[LDMS_V_U8] = "u8",
 	[LDMS_V_S8] = "s8",
 	[LDMS_V_U16] = "u16",
@@ -805,6 +802,7 @@ static char *type_names[] = {
 	[LDMS_V_S64] = "s64",
 	[LDMS_V_F32] = "f32",
 	[LDMS_V_D64] = "d64",
+	[LDMS_V_CHAR_ARRAY] = "char_ARRAY",
 	[LDMS_V_U8_ARRAY] = "u8_ARRAY",
 	[LDMS_V_S8_ARRAY] = "s8_ARRAY",
 	[LDMS_V_U16_ARRAY] = "u16_ARRAY",
@@ -869,6 +867,9 @@ void ldms_print_set_metrics(ldms_set_t _set)
 		v = __value_get(sd->set, i);
 		printf("  %32s[%4s] = ", vd->vd_name, type_names[vd->vd_type]);
 		switch (vd->vd_type) {
+		case LDMS_V_CHAR:
+			printf("%c\n", v->v_char);
+			break;
 		case LDMS_V_U8:
 			printf("%2hhu\n", v->v_u8);
 			break;
@@ -976,27 +977,29 @@ static struct _ldms_type_name_map {
 	enum ldms_value_type type;
 } type_name_map[] = {
 	/* This map needs to be sorted by name */
-	{ "D64_ARRAY", LDMS_V_D64_ARRAY},
+	{ "CHAR", LDMS_V_CHAR },
+	{ "CHAR_ARRAY", LDMS_V_CHAR_ARRAY },
 	{ "D64", LDMS_V_D64, },
-	{ "F32_ARRAY", LDMS_V_F32_ARRAY},
+	{ "D64_ARRAY", LDMS_V_D64_ARRAY},
 	{ "F32", LDMS_V_F32, },
+	{ "F32_ARRAY", LDMS_V_F32_ARRAY},
 	{ "NONE", LDMS_V_NONE, },
-	{ "S16_ARRAY", LDMS_V_S16_ARRAY},
 	{ "S16", LDMS_V_S16, },
-	{ "S32_ARRAY", LDMS_V_S32_ARRAY},
+	{ "S16_ARRAY", LDMS_V_S16_ARRAY},
 	{ "S32", LDMS_V_S32, },
-	{ "S64_ARRAY", LDMS_V_S64_ARRAY},
+	{ "S32_ARRAY", LDMS_V_S32_ARRAY},
 	{ "S64", LDMS_V_S64, },
-	{ "S8_ARRAY", LDMS_V_S8_ARRAY},
+	{ "S64_ARRAY", LDMS_V_S64_ARRAY},
 	{ "S8", LDMS_V_S8, },
-	{ "U16_ARRAY", LDMS_V_U16_ARRAY},
+	{ "S8_ARRAY", LDMS_V_S8_ARRAY},
 	{ "U16", LDMS_V_U16, },
-	{ "U32_ARRAY", LDMS_V_U32_ARRAY},
+	{ "U16_ARRAY", LDMS_V_U16_ARRAY},
 	{ "U32", LDMS_V_U32, },
-	{ "U64_ARRAY", LDMS_V_U64_ARRAY},
+	{ "U32_ARRAY", LDMS_V_U32_ARRAY},
 	{ "U64", LDMS_V_U64, },
-	{ "U8_ARRAY", LDMS_V_U8_ARRAY},
+	{ "U64_ARRAY", LDMS_V_U64_ARRAY},
 	{ "U8", LDMS_V_U8, },
+	{ "U8_ARRAY", LDMS_V_U8_ARRAY},
 };
 
 int comparator(const void *a, const void *b)
@@ -1045,33 +1048,45 @@ uint64_t ldms_metric_user_data_get(ldms_set_t s, int i)
 	return (uint64_t)-1;
 }
 
+static int metric_is_array(ldms_mdesc_t desc)
+{
+	return !(desc->vd_type < LDMS_V_CHAR_ARRAY || LDMS_V_D64_ARRAY < desc->vd_type);
+}
+
+int ldms_metric_is_array(ldms_set_t s, int i)
+{
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
+			__le32_to_cpu(s->set->meta->dict[i]));
+	return metric_is_array(desc);
+}
+
 ldms_mval_t ldms_metric_get(ldms_set_t s, int i)
 {
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
 			__le32_to_cpu(s->set->meta->dict[i]));
-	if (desc->vd_type < LDMS_V_U8 || LDMS_V_D64 < desc->vd_type)
+	if (metric_is_array(desc))
 		return NULL;
 	return ldms_ptr_(union ldms_value, s->set->data,
-			__le32_to_cpu(desc->vd_data_offset));
+			 __le32_to_cpu(desc->vd_data_offset));
 }
 
 uint32_t ldms_array_metric_get_len(ldms_set_t s, int i)
 {
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
 			__le32_to_cpu(s->set->meta->dict[i]));
-	if (desc->vd_type < LDMS_V_U8_ARRAY || LDMS_V_D64_ARRAY < desc->vd_type)
-		return 1;
-	return desc->array_count;
+	if (metric_is_array(desc))
+	    return desc->array_count;
+	return 1;
 }
 
 char *ldms_array_metric_get(ldms_set_t s, int i)
 {
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
 			__le32_to_cpu(s->set->meta->dict[i]));
-	if (desc->vd_type < LDMS_V_U8_ARRAY || LDMS_V_D64_ARRAY < desc->vd_type)
-		return NULL;
-	return ldms_ptr_(char, s->set->data,
-			__le32_to_cpu(desc->vd_data_offset));
+	if (metric_is_array(desc))
+		return ldms_ptr_(char, s->set->data,
+				 __le32_to_cpu(desc->vd_data_offset));
+	return NULL;
 }
 
 void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
@@ -1082,6 +1097,7 @@ void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
 			__le32_to_cpu(desc->vd_data_offset));
 
 	switch (desc->vd_type) {
+	case LDMS_V_CHAR:
 	case LDMS_V_U8:
 	case LDMS_V_S8:
 		mv->v_u8 = v->v_u8;
@@ -1118,9 +1134,9 @@ void ldms_array_metric_set(ldms_set_t s, int metric_idx, int array_idx, ldms_mva
 	char *mvp = ldms_ptr_(char, s->set->data,
 			__le32_to_cpu(desc->vd_data_offset));
 	mvp += array_idx * value_size[desc->vd_type];
-	size_t sz = 0;
-	char *src;
+
 	switch (desc->vd_type) {
+	case LDMS_V_CHAR_ARRAY:
 	case LDMS_V_U8_ARRAY:
 	case LDMS_V_S8_ARRAY:
 		*mvp = v->v_u8;
@@ -1379,6 +1395,7 @@ uint8_t ldms_metric_get_u8(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return mv->v_u8;
+	return 0;
 }
 
 int8_t ldms_metric_get_s8(ldms_set_t s, int i)
@@ -1386,6 +1403,7 @@ int8_t ldms_metric_get_s8(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return mv->v_s8;
+	return 0;
 }
 
 uint16_t ldms_metric_get_u16(ldms_set_t s, int i)
@@ -1393,6 +1411,7 @@ uint16_t ldms_metric_get_u16(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return __le16_to_cpu(mv->v_u16);
+	return 0;
 }
 
 int16_t ldms_metric_get_s16(ldms_set_t s, int i)
@@ -1400,6 +1419,7 @@ int16_t ldms_metric_get_s16(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return __le16_to_cpu(mv->v_s16);
+	return 0;
 }
 
 uint32_t ldms_metric_get_u32(ldms_set_t s, int i)
@@ -1407,6 +1427,7 @@ uint32_t ldms_metric_get_u32(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return __le32_to_cpu(mv->v_u32);
+	return 0;
 }
 
 int32_t ldms_metric_get_s32(ldms_set_t s, int i)
@@ -1414,6 +1435,7 @@ int32_t ldms_metric_get_s32(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return __le32_to_cpu(mv->v_s32);
+	return 0;
 }
 
 uint64_t ldms_metric_get_u64(ldms_set_t s, int i)
@@ -1421,6 +1443,7 @@ uint64_t ldms_metric_get_u64(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return __le64_to_cpu(mv->v_u64);
+	return 0;
 }
 
 int64_t ldms_metric_get_s64(ldms_set_t s, int i)
@@ -1428,6 +1451,7 @@ int64_t ldms_metric_get_s64(ldms_set_t s, int i)
 	ldms_mval_t mv = __value_get(s->set, i);
 	if (mv)
 		return __le64_to_cpu(mv->v_s64);
+	return 0;
 }
 
 float ldms_metric_get_float(ldms_set_t s, int i)
