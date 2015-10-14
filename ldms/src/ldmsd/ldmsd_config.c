@@ -1961,7 +1961,9 @@ int ldmsd_config_init(char *name)
 
 void *inet_ctrl_thread_proc(void *args)
 {
+#ifdef ENABLE_AUTH
 	const char *secretword = (const char *)args;
+#endif
 	struct msghdr msg;
 	struct iovec iov;
 	static unsigned char lbuf[256];

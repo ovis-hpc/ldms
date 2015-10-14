@@ -425,9 +425,10 @@ int main(int argc, char *argv[])
 	int regex = 0;
 	int schema = 0;
 	struct timespec ts;
+#ifdef ENABLE_AUTH
 	char *auth_path = 0;
 	char *secretword = 0;
-
+#endif
 	/* If no arguments are given, print usage. */
 	if (argc == 1)
 		usage(argv);
