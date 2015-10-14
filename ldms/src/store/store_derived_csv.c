@@ -517,7 +517,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *altvalue = NULL;
 	char *ivalue = NULL;
 	char *rvalue = NULL;
-	void* arg;
+	void* arg = NULL;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int rc;
@@ -1108,7 +1108,6 @@ skip:
 		}
 	}
 
-out:
 	pthread_mutex_unlock(&s_handle->lock);
 
 	return 0;
