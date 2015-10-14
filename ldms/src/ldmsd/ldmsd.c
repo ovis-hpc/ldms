@@ -238,10 +238,12 @@ enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s)
 	return -1;
 }
 
+#ifdef ENABLE_AUTH
 const char *ldmsd_secret_get(void)
 {
 	return secretword;
 }
+#endif
 
 void cleanup(int x)
 {
@@ -1756,8 +1758,8 @@ int main(int argc, char *argv[])
 
 	ldmsd_log(LDMSD_LINFO, "Started LDMS Daemon version " VERSION "\n");
 
-	secretword = NULL;
 #ifdef ENABLE_AUTH
+	secretword = NULL;
 	if (authenticate) {
 		if (ldmsd_get_secretword())
 			cleanup(15);
