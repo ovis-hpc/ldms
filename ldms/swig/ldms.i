@@ -191,6 +191,7 @@ typedef int int32_t;
 typedef long int64_t;
 
 %include "ldms.h"
+%include "ldms_core.h"
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
 PyObject *LDMS_xprt_dir(ldms_t x);
