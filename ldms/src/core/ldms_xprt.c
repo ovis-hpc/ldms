@@ -250,8 +250,10 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	reply->hdr.cmd = htonl(LDMS_CMD_REQ_NOTIFY_REPLY);
 	reply->hdr.rc = htonl(rc);
 	reply->hdr.len = htonl(len);
+	reply->req_notify.event.len = htonl(e->len);
+	reply->req_notify.event.type = htonl(e->type);
 	if (e->len > sizeof(struct ldms_notify_event_s))
-		memcpy(reply->req_notify.event.u_data, e,
+		memcpy(reply->req_notify.event.u_data, e->u_data,
 		       e->len - sizeof(struct ldms_notify_event_s));
 
 	zap_send(x->zap_ep, reply, len);
@@ -511,6 +513,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	strcpy(msg->inst_name, name->name);
 	msg->inst_name_len = name->len;
 	msg->xid = xid;
+	msg->set_id = (uint64_t)(unsigned long)rbd;
 	msg->more = htonl(more);
 	msg->data_len = htonl(__le32_to_cpu(set->meta->data_sz));
 	msg->meta_len = htonl(__le32_to_cpu(set->meta->meta_sz));
@@ -1199,6 +1202,7 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	}
 
 	rbd->rmap = ev->map;
+	rbd->remote_set_id = lm->set_id;
 
 	sd->rbd = rbd;
 	struct ldms_context *rd_ctxt;
@@ -1595,17 +1599,19 @@ size_t format_req_notify_req(struct ldms_request *req,
 	req->hdr.cmd = htonl(LDMS_CMD_REQ_NOTIFY);
 	req->hdr.len = htonl(len);
 	req->req_notify.set_id = set_id;
-	req->req_notify.flags = flags;
+	req->req_notify.flags = htonl(flags);
 	return len;
 }
 
-size_t format_cancel_notify_req(struct ldms_request *req, uint64_t xid)
+size_t format_cancel_notify_req(struct ldms_request *req, uint64_t xid,
+		uint64_t set_id)
 {
 	size_t len = sizeof(struct ldms_request_hdr)
 		+ sizeof(struct ldms_cancel_notify_cmd_param);
 	req->hdr.xid = xid;
 	req->hdr.cmd = htonl(LDMS_CMD_CANCEL_NOTIFY);
 	req->hdr.len = htonl(len);
+	req->cancel_notify.set_id = set_id;
 	return len;
 }
 
@@ -1812,7 +1818,8 @@ static int send_cancel_notify(ldms_t _x, ldms_set_t s)
 	size_t len;
 
 	len = format_cancel_notify_req
-		(&req, (uint64_t)(unsigned long)r->local_notify_xid);
+		(&req, (uint64_t)(unsigned long)r->local_notify_xid,
+				r->remote_set_id);
 	r->local_notify_xid = 0;
 
 	return zap_send(x->zap_ep, &req, len);
@@ -1843,10 +1850,12 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 		return;
 
 	LIST_FOREACH(r, &set->rbd_list, set_link) {
-		if (r->remote_notify_xid)
+		if (r->remote_notify_xid &&
+			(0 == r->notify_flags || (r->notify_flags & e->type))) {
 			send_req_notify_reply(r->xprt,
 					      set, r->remote_notify_xid,
 					      e);
+		}
 	}
 }
 

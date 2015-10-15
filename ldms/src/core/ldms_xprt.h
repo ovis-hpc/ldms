@@ -138,6 +138,7 @@ struct ldms_request {
 
 struct ldms_lookup_msg {
 	uint64_t xid;
+	uint64_t set_id;
 	uint32_t more;
 	uint32_t meta_len;
 	uint32_t data_len;
