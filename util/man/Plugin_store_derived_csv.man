@@ -73,13 +73,21 @@ roll after approximately rollover bytes are written.
 rollover=<rollover>
 .br
 Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+spooler=<program>
+.br
+The full path of the program invoked as '<program> file <spooldir>' to relocate output files. Both spooler and spooldir must exist or spooling is ignored. Due to possible race conditions, the program must validate its input and log any errors encountered. LDMS does not monitor the outcome of the program invocation. Program may be a shell script that handles complex spooling behavior including changing file permission, ownership, location, or passing to the data import tools of another logging system. When separate header and data files are produced, both are moved to spooldir with separate invocations of spooler. The order of completion of spooler for a header file and its data file is up to the operating system. The program is free to ignore the spooldir input value, but it must nevertheless exist at store container creation time. 
+.TP
+spooldir=<directory>
+.br
+The full path in which to deposit closed output files. In some circumstances the final output of an exiting ldms-aggd may not be spooled.
 .RE
 
 .SH LDMSCTL STORE ATTRIBUTE SYNTAX
 
 .TP
 .BR store
-name=<plugin_name> set=<set_name> comp_type=<type>  container=<container>
+name=<plugin_name> set=<set_name> comp_type=<type> container=<container>
 .br
 ldmsctl store line
 .RS
@@ -98,12 +106,11 @@ The output files will be put into a directory whose root is specified by the pat
 .TP
 container=<container>
 .br
-The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_derived_csv/node/meminfo.
+The output files will be opened in a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_derived_csv/node/meminfo.
 
 Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
 
 If you are using multiple store Plugins, use unique container names for each even if they are going into different subdirectories. For example, if you are running both the store_csv and the store_derived_csv plugins do NOT use meminfo for both, perhaps use meminfo_der for the derived container.
-
 .RE
 
 .SH STORE COLUMN ORDERING

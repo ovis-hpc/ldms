@@ -91,6 +91,8 @@ struct storek{
 	int altheader;
 	int id_pos;
 	struct column_step cs;
+	char *spooler;
+	char *spooldir;
 };
 
 static csvcfg_state cfgstate = CSV_CFGMAIN_PRE;
@@ -137,6 +139,19 @@ static int rolltype;
 "                     reverse: columns reverse of order added in sampler.\n" \
 "                     alnum: sorted per man page (not implemented)\n"
 
+/** the full path of an executable to run to move files to spooldir.
+	NULL indicates no spooling requested.
+ */
+static char *spooler = NULL;
+/** the target directory for spooled data.
+	undefined if spooler is NULL.
+	May be overridden per container via config action=container.
+n.b.
+	'scope' would be a better alternative to action, as
+	'action' may have it's own uses within a given scope.
+ */
+static char *spooldir = NULL;
+
 static ldmsd_msg_log_f msglog;
 static pthread_t rothread;
 
@@ -158,7 +173,11 @@ struct csv_store_handle {
 	struct ldmsd_store *store;
 	char *path;
 	FILE *file;
+	char *filename;
 	FILE *headerfile;
+	char *headerfilename;
+	char *spooler;
+	char *spooldir;
 	int altheader;
 	int printheader;
 	int id_pos;
@@ -168,7 +187,6 @@ struct csv_store_handle {
 	void *ucontext;
 	int64_t store_count;
 	int64_t byte_count;
-
 };
 
 static pthread_mutex_t cfg_lock;
@@ -207,6 +225,8 @@ static int handleRollover(){
 			if (s_handle){
 				FILE* nhfp = NULL;
 				FILE* nfp = NULL;
+				char *nfpname = NULL;
+				char *nhfpname = NULL;
 				char tmp_path[PATH_MAX];
 				char tmp_headerpath[PATH_MAX];
 				//if we've got here then we've called new_store, but it might be closed
@@ -238,7 +258,6 @@ static int handleRollover(){
 					break;
 				}
 
-
 				if (s_handle->file)
 					fflush(s_handle->file);
 				if (s_handle->headerfile)
@@ -248,6 +267,7 @@ static int handleRollover(){
 				snprintf(tmp_path, PATH_MAX, "%s.%d",
 					 s_handle->path, (int) appx);
 				nfp = fopen(tmp_path, "a+");
+				nfpname = strdup(tmp_path);
 				if (!nfp){
 					//we cant open the new file, skip
 					msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
@@ -267,6 +287,7 @@ static int handleRollover(){
 						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
 						       tmp_headerpath);
 					}
+					nhfpname = strdup(tmp_headerpath);
 				} else {
 					nhfp = fopen(tmp_path, "a+");
 					if (!nhfp){
@@ -274,29 +295,51 @@ static int handleRollover(){
 						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
 						       tmp_path);
 					}
+					nhfpname = strdup(tmp_path);
 				}
 				if (!nhfp) {
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				if (!nhfpname || !nfpname) {
+					msglog(LDMS_LDEBUG, "Error: handleRollover OOM. skipping rollover; log will grow.\n");
+					fclose(nfp);
+					fclose(nhfp);
+					pthread_mutex_unlock(&s_handle->lock);
+					break;
+				}
 
 				//close and swap
-				if (s_handle->file)
+				if (s_handle->file) {
 					fclose(s_handle->file);
-				if (s_handle->headerfile)
+					ovis_file_spool(s_handle->spooler,
+						s_handle->filename,
+						s_handle->spooldir, msglog);
+					free(s_handle->filename);
+					s_handle->filename = nfpname;
+				}
+				if (s_handle->headerfile) {
 					fclose(s_handle->headerfile);
+					ovis_file_spool(s_handle->spooler,
+						s_handle->headerfilename,
+						s_handle->spooldir, msglog);
+					free(s_handle->headerfilename);
+					s_handle->headerfilename = nhfpname;
+				} else {
+					free(s_handle->headerfilename);
+					s_handle->headerfilename = nhfpname;
+				}
 				s_handle->file = nfp;
 				s_handle->headerfile = nhfp;
 				s_handle->printheader = 1;
 				pthread_mutex_unlock(&s_handle->lock);
-			} /* shandle */
-		} /* storekeys[i] */
+			} /* shandle if */
+		} /* storekeys[i] if */
 	} /* for */
 
 	pthread_mutex_unlock(&cfg_lock);
 
 	return 0;
-
 }
 
 static void* rolloverThreadInit(void* m){
@@ -446,9 +489,33 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 			break;
 		}
 	}
+	int rc = 0;
+	char *spoolerval =  av_value(avl, "spooler");
+	char *spooldirval =  av_value(avl, "spooldir");
+	if (spoolerval && spooldirval && 
+		strlen(spoolerval) >= 2 && strlen(spooldirval) >= 2) {
+		char *tmp1 = strdup(spoolerval);
+		char *tmp2 = strdup(spooldirval);
+		if (!tmp1 || !tmp2) {
+			free(tmp1);
+			free(tmp2);
+			rc = ENOMEM;
+		} else {
+			specialkeys[idx].spooler = tmp1;
+			specialkeys[idx].spooldir = tmp2;
+		}
+	} else {
+		if (spooldirval || spoolerval) {
+			msglog(LDMS_LERROR,"store_csv: both spooler "
+				"and spooldir must be specificed correctly. "
+				"got instead %s and %s\n",
+				(spoolerval?  spoolerval : "no spooler" ),
+				(spooldirval?  spooldirval : "no spooldir" ));
+		}
+	}
 
 	pthread_mutex_unlock(&cfg_lock);
-	return 0;
+	return rc;
 }
 
 /**
@@ -461,6 +528,8 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char *altvalue;
 	char *ivalue;
 	char *rvalue;
+	char *spoolerval;
+	char *spooldirval;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int ipos = -1;
@@ -574,10 +643,41 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 		return ENOMEM;
 	}
 
-	cfgstate = CSV_CFGMAIN_DONE;
+	int rc = 0;
+	spoolerval =  av_value(avl, "spooler");
+	spooldirval =  av_value(avl, "spooldir");
+	if (spoolerval && spooldirval && 
+		strlen(spoolerval) >= 2 && strlen(spooldirval) >= 2) {
+		char *tmp1 = strdup(spoolerval);
+		char *tmp2 = strdup(spooldirval);
+		if (!tmp1 || !tmp2) {
+			free(tmp1);
+			free(tmp2);
+			free(root_path);
+			root_path = NULL;
+			cfgstate = CSV_CFGMAIN_FAILED;
+			rc = ENOMEM;
+		} else {
+			spooler = tmp1;
+			spooldir = tmp2;
+		}
+	} else {
+		if (spooldirval || spoolerval) {
+			msglog(LDMS_LERROR,"store_csv: both spooler "
+				"and spooldir must be specificed correctly. "
+				"got instead %s and %s\n",
+				(spoolerval?  spoolerval : "no spooler" ),
+				(spooldirval?  spooldirval : "no spooldir" ));
+			rc = EINVAL;
+		}
+	}
+
+	if (cfgstate == CSV_CFGMAIN_IN) {
+		cfgstate = CSV_CFGMAIN_DONE;
+	}
 	pthread_mutex_unlock(&cfg_lock);
 
-	return 0;
+	return rc;
 }
 
 
@@ -601,13 +701,18 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	    (cfgstate != CSV_CFGMAIN_DONE)) {
 		msglog(LDMS_LERROR, "Store_csv: wrong state for config %d\n",
 		       cfgstate);
-		return 0;
+		return EINVAL;
 	}
 
 	char* action = av_value(avl, "action");
 	if (!action){
 		/* treat it like it is main for backwards compatibility */
 		action = strdup("main");
+		if (!action) {
+			msglog(LDMS_LERROR, "store_csv: config action=%s OOM\n",
+				action);
+			return ENOMEM;
+		}
 		bw = 1;
 	}
 
@@ -619,7 +724,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		if (bw){
 			free(action);
 		}
-		return 0;
+		return EINVAL;
 	}
 
 	rc = kw->action(kwl, avl, NULL);
@@ -637,15 +742,18 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 static void term(void)
 {
+	msglog(LDMS_LINFO, "store_csv: term called\n");
 }
 
 static const char *usage(void)
 {
 	return  "    config name=store_csv [action=main] path=<path> rollover=<num> rolltype=<num>\n"
-		"           [id_pos=<0/1> sequence=<order> altheader=<0/1>]\n"
+		"           [id_pos=<0/1> sequence=<order> altheader=<0/1> spooler=<prog> spooldir=<dir>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - action    When action = main or not specified can set the following parameters:\n"
 		"         - path      The path to the root of the csv directory\n"
+		"         - spooler   The path to the spool transfer agent.\n"
+		"         - spooldir  The path to the spool directory for closed output files.\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
@@ -659,6 +767,7 @@ static const char *usage(void)
 		"           [id_pos=<0/1> sequence=<order> altheader=<0/1>]\n"
 		"         - Override the default parameters set by action=main for particular containers\n"
 		"         - altheader Header in a separate file (optional, default to main)\n"
+		"         - spooler/spooldir (optional, default to main)\n"
 		"         - id_pos    Use only one comp_id either first metric added to the\n"
 		"                     sampler (1) or last added (0)\n"
 		"                     (Optional default to main)\n"
@@ -819,12 +928,16 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			s_handle->cs.begin = specialkeys[idx].cs.begin;
 			s_handle->cs.end = specialkeys[idx].cs.end;
 			s_handle->cs.step = specialkeys[idx].cs.step;
+			s_handle->spooler = specialkeys[idx].spooler;
+			s_handle->spooldir = specialkeys[idx].spooldir;
 		} else {
 			s_handle->altheader = altheader;
 			s_handle->id_pos = id_pos;
 			s_handle->cs.begin = cs.begin;
 			s_handle->cs.end = cs.end;
 			s_handle->cs.step = cs.step;
+			s_handle->spooler = spooler;
+			s_handle->spooldir = spooldir;
 		}
 	}
 
@@ -845,6 +958,15 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 	if (!s_handle->file) {
 		s_handle->file = fopen(tmp_path, "a+");
+		if (s_handle->file) {
+			s_handle->filename = strdup(tmp_path);
+			if (!s_handle->filename) {
+				fclose(s_handle->file);
+				s_handle->file = NULL;
+				msglog(LDMS_LERROR, "Error: %s OOM\n",
+					container);
+			}
+		} 
 	}
 	if (!s_handle->file)
 		goto err3;
@@ -862,12 +984,22 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			}
 			/* truncate a separate headerfile if exists */
 			s_handle->headerfile = fopen(tmp_headerpath, "w");
+			s_handle->headerfilename = strdup(tmp_headerpath);
 		} else {
 			s_handle->headerfile = fopen(tmp_path, "a+");
+			s_handle->headerfilename = strdup(tmp_path);
+		}
+		if (!s_handle->headerfile) {
+			fclose(s_handle->headerfile);
+			s_handle->headerfile = NULL;
+			msglog(LDMS_LERROR, "Error: %s OOM\n", container);
 		}
 
-		if (!s_handle->headerfile)
+
+		if (!s_handle->headerfile){
+			msglog(LDMS_LDEBUG,"store_csv: Cannot open headerfile");
 			goto err4;
+		}
 	}
 
 	if (add_handle) {
@@ -998,6 +1130,16 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
+	ovis_file_spool(s_handle->spooler, s_handle->filename,
+		s_handle->spooldir, msglog);
+	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
+		s_handle->spooldir, msglog);
+	free(s_handle->headerfilename);
+	free(s_handle->filename);
+	s_handle->headerfilename = NULL;
+	s_handle->filename = NULL;
+	s_handle->spooler = NULL;
+	s_handle->spooldir = NULL;
 	pthread_mutex_unlock(&s_handle->lock);
 }
 
@@ -1029,9 +1171,21 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
+	ovis_file_spool(s_handle->spooler, s_handle->filename,
+		s_handle->spooldir, msglog);
+	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
+		s_handle->spooldir, msglog);
+	free(s_handle->headerfilename);
+	free(s_handle->filename);
+	s_handle->headerfilename = NULL;
+	s_handle->filename = NULL;
+	s_handle->spooler = NULL;
+	s_handle->spooldir = NULL;
+	
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
+	// FIXME: this destroys special keys for all handles, not just input.
 	for (i = 0; i < nspecialkeys; i++){
 		free(specialkeys[i].key);
 		specialkeys[i].key = NULL;

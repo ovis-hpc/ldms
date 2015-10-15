@@ -1,0 +1,141 @@
+#!/bin/bash
+
+# define commafail 0 to use good input or 1 to use "bad"
+# input that causes the derived store to silently ignore variables requested.
+commafail=0
+# NOTE: replace the two vars below with your paths
+# NOTE: change ports, intervals if you like
+DESTDIR=
+allowroot=0
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+BUILDDIR=@prefix@
+# Manually redefine portbase to avoid collisions.
+# Base should be above the maximum in :
+#  cat /proc/sys/net/ipv4/ip_local_port_range
+# and below 65530 or below the minimum and above 1024
+portbase=61100
+port1=`expr $portbase + 1`
+port2=`expr $portbase + 2`
+port3=`expr $portbase + 3`
+if test ! -x $BUILDDIR/sbin/ldmsd; then
+	echo "can't find ldmsd binary. set destdir in $0 before testing?"
+	exit 1
+fi
+case "x$USER" in
+	x)
+	echo "must be run in user environment. USER not set"
+	exit 1
+	;;
+	xroot)
+	echo "must be run in user environment. root detected."
+	echo "killing other folks ldmsd might be a bad idea"
+	echo "change allowroot in $0 to override this check."
+	exit 1
+	;;
+esac
+function mysleep() {
+	echo -n sleep $1 ... 
+	sleep $1
+	echo done
+}
+
+# use our pid in dirname to prevent collisions in dir & file naming
+TESTDIR=/tmp/$USER/ldmstest/$$
+STOREDIR=$TESTDIR/store
+SPOOLDIR=$TESTDIR/spool
+SOCKDIR=$TESTDIR/run/ldmsd
+LOGDIR=$TESTDIR/logs
+LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH $SPOOLDIR
+echo "logs and data stored under $TESTDIR"
+
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=@pkglibdir@
+export PATH=${BUILDDIR}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+
+# whack the daemons we own
+pkill ldmsd
+mysleep 1
+echo "Listing ldmsd's still running:"
+pgrep ldmsd
+echo "Done."
+
+echo removing old logs
+rm -f ${LOGDIR}/1.txt
+rm -f ${LOGDIR}/2.txt
+rm -f ${LOGDIR}/3.txt
+
+echo removing old output
+rm -rf ${STOREDIR}/node
+rm -f ${STOREDIR}/*
+derconf=${STOREDIR}/derived.conf
+if test "x$commafail" = "x1"; then
+cat << EOF >> $derconf
+# test subset of current chama/aries config
+MemFree , 0,1
+Active , 0,1
+EOF
+else
+cat << EOF >> $derconf
+# test subset of current chama/aries config
+MemFree,0,1
+Active,0,1
+EOF
+fi
+
+echo Starting daemons
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -q DEBUG -r $LDMSD_PIDFILE.1
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -q DEBUG -r $LDMSD_PIDFILE.2
+#ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG -r $LDMSD_PIDFILE.3
+valgrind -v  --track-origins=yes --leak-check=yes --log-file=vg.agg.log ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG -r $LDMSD_PIDFILE.3
+
+mysleep 1
+
+
+echo Starting plugins on daemon1
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "config name=clock set=localhost1/clock component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "config name=meminfo set=localhost1/meminfo component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+
+mysleep 5
+
+echo Starting plugins on daemon2
+echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo "config name=clock set=localhost2/clock component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+mysleep 2
+
+echo Adding host2 to aggregator3
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+mysleep 1
+echo Adding host1 to aggregator3
+echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/clock,localhost1/meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+
+mysleep 5
+echo Adding store_csv to aggregator3
+echo "load name=store_derived_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+mysleep 2
+
+echo "config name=store_derived_csv spooler=/bin/mv spooldir=$SPOOLDIR path=${STOREDIR} altheader=0 derivedconf=${derconf} rollover=10 rolltype=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+
+echo "store name=store_derived_csv comp_type=node set=clock container=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+
+echo "store name=store_derived_csv comp_type=node set=meminfo spooler=/bin/mv spooldir=$SPOOLDIR container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+
+mysleep 60
+pkill ldmsd
+vgp="`pgrep -f valgrind.bin`"
+echo vg is $vgp
+kill -SIGTERM $vgp
+sleep 1
+kill -9 $vgp
+echo done;

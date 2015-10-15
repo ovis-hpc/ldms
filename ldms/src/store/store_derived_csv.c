@@ -111,6 +111,20 @@ static int rolltype;
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits */
 #define ROLL_LIMIT_INTERVAL 60
+
+/** the full path of an executable to run to move files to spooldir.
+	NULL indicates no spooling requested.
+ */
+static char *spooler = NULL;
+/** the target directory for spooled data.
+	undefined if spooler is NULL.
+	May be overridden per container via config action=container.
+n.b.
+	'scope' would be a better alternative to action, as
+	'action' may have it's own uses within a given scope.
+ */
+static char *spooldir = NULL;
+
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
@@ -175,13 +189,17 @@ struct csv_derived_store_handle {
 	struct ldmsd_store *store;
 	char *path;
 	FILE *file;
+	char *filename;
 	FILE *headerfile;
+	char *headerfilename;
+	char *spooler;
+	char *spooldir;
 	struct derived_data der[STORE_DERIVED_METRIC_MAX]; //FIXME: dynamic.
 	int numder;
 	idx_t sets_idx;
 	int numsets;
 	printheader_t printheader;
-        int parseconfig;
+	int parseconfig;
 	char *store_key;
 	pthread_mutex_t lock;
 	void *ucontext;
@@ -213,6 +231,8 @@ static int handleRollover(){
 			if (s_handle){
 				FILE* nhfp = NULL;
 				FILE* nfp = NULL;
+				char *nfpname = NULL;
+				char *nhfpname = NULL;
 				char tmp_path[PATH_MAX];
 				char tmp_headerpath[PATH_MAX];
 
@@ -254,6 +274,7 @@ static int handleRollover(){
 				snprintf(tmp_path, PATH_MAX, "%s.%d",
 					 s_handle->path, (int) appx);
 				nfp = fopen(tmp_path, "a+");
+				nfpname = strdup(tmp_path);
 				if (!nfp){
 					//we cant open the new file, skip
 					msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
@@ -273,6 +294,7 @@ static int handleRollover(){
 						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
 						       tmp_headerpath);
 					}
+					nhfpname = strdup(tmp_headerpath);
 				} else {
 					nhfp = fopen(tmp_path, "a+");
 					if (!nhfp){
@@ -280,17 +302,40 @@ static int handleRollover(){
 						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
 						       tmp_path);
 					}
+					nhfpname = strdup(tmp_path);
 				}
 				if (!nhfp) {
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				if (!nhfpname || !nfpname) {
+					msglog(LDMS_LDEBUG, "Error: handleRollover OOM. skipping rollover; log will grow.\n");
+					fclose(nfp);
+					fclose(nhfp);
+					pthread_mutex_unlock(&s_handle->lock);
+					break;
+				}
 
 				//close and swap
-				if (s_handle->file)
+				if (s_handle->file) {
 					fclose(s_handle->file);
-				if (s_handle->headerfile)
+					ovis_file_spool(s_handle->spooler,
+						s_handle->filename,
+						s_handle->spooldir, msglog);
+					free(s_handle->filename);
+					s_handle->filename = nfpname;
+				}
+				if (s_handle->headerfile) {
 					fclose(s_handle->headerfile);
+					ovis_file_spool(s_handle->spooler,
+						s_handle->headerfilename,
+						s_handle->spooldir, msglog);
+					free(s_handle->headerfilename);
+					s_handle->headerfilename = nhfpname;
+				} else {
+					free(s_handle->headerfilename);
+					s_handle->headerfilename = nhfpname;
+				}
 				s_handle->file = nfp;
 				s_handle->headerfile = nhfp;
 				s_handle->printheader = DO_PRINT_HEADER;
@@ -441,6 +486,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *altvalue = NULL;
 	char *ivalue = NULL;
 	char *rvalue = NULL;
+	char *spoolerval;
+	char *spooldirval;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int ipos = -1;
@@ -524,21 +571,57 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (dervalue)
 		derivedconf = strdup(dervalue);
 
+	int rc = 0;
+	spoolerval =  av_value(avl, "spooler");
+	spooldirval =  av_value(avl, "spooldir");
+	if (spoolerval && spooldirval && 
+		strlen(spoolerval) >= 2 && strlen(spooldirval) >= 2) {
+		char *tmp1 = strdup(spoolerval);
+		char *tmp2 = strdup(spooldirval);
+		if (!tmp1 || !tmp2) {
+			free(tmp1);
+			free(tmp2);
+			free(root_path);
+			free(derivedconf);
+			root_path = NULL;
+			derivedconf = NULL;
+			rc = ENOMEM;
+		} else {
+			spooler = tmp1;
+			spooldir = tmp2;
+		}
+	} else {
+		if (spooldirval || spoolerval) {
+			msglog(LDMS_LERROR,"store_csv: both spooler "
+				"and spooldir must be specificed correctly. "
+				"got instead %s and %s\n",
+				(spoolerval?  spoolerval : "no spooler" ),
+				(spooldirval?  spooldirval : "no spooldir" ));
+			free(root_path);
+			free(derivedconf);
+			root_path = NULL;
+			derivedconf = NULL;
+			rc = EINVAL;
+		}
+	}
 	pthread_mutex_unlock(&cfg_lock);
-	if (!root_path)
-		return ENOMEM;
-	return 0;
+
+	return rc;
 }
 
 static void term(void)
 {
+	msglog(LDMS_LINFO, "store_derived_csv: term called\n");
 }
 
 static const char *usage(void)
 {
-	return  "    config name=store_derived_csv path=<path> altheader=<0/1> id_pos=<0/1> derivedconf=<fullpath> agesec=<sec>\n"
+	return  "    config name=store_derived_csv path=<path> altheader=<0/1> id_pos=<0/1>\n"
+		"           derivedconf=<fullpath> agesec=<sec> [spooler=<prog> spooldir=<dir>]\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
+		"         - spooler   The path to the spool transfer agent.\n"
+		"         - spooldir  The path to the spool directory for closed output files.\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - rollover  Greater than zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
@@ -716,6 +799,8 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 		s_handle->printheader = DO_PRINT_HEADER;
 		s_handle->parseconfig = 1;
+		s_handle->spooler = spooler;
+		s_handle->spooldir = spooldir;
 	}
 
 	/* Take the lock in case its a store that has been closed */
@@ -732,8 +817,17 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			 s_handle->path);
 	}
 
-	if (!s_handle->file)  {
+	if (!s_handle->file) {
 		s_handle->file = fopen(tmp_path, "a+");
+		if (s_handle->file) {
+			s_handle->filename = strdup(tmp_path);
+			if (!s_handle->filename) {
+				fclose(s_handle->file);
+				s_handle->file = NULL;
+				msglog(LDMS_LERROR, "Error: %s OOM\n",
+					container);
+			}
+		} 
 	}
 	if (!s_handle->file)
 		goto err3;
@@ -751,8 +845,15 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			}
 			/* truncate a separate headerfile if exists */
 			s_handle->headerfile = fopen(tmp_headerpath, "w");
+			s_handle->headerfilename = strdup(tmp_headerpath);
 		} else {
 			s_handle->headerfile = fopen(tmp_path, "a+");
+			s_handle->headerfilename = strdup(tmp_path);
+		}
+		if (!s_handle->headerfile) {
+			fclose(s_handle->headerfile);
+			s_handle->headerfile = NULL;
+			msglog(LDMS_LERROR, "Error: %s OOM\n", container);
 		}
 
 
@@ -1046,7 +1147,16 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
-
+	ovis_file_spool(s_handle->spooler, s_handle->filename,
+		s_handle->spooldir, msglog);
+	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
+		s_handle->spooldir, msglog);
+	free(s_handle->headerfilename);
+	free(s_handle->filename);
+	s_handle->headerfilename = NULL;
+	s_handle->filename = NULL;
+	s_handle->spooler = NULL;
+	s_handle->spooldir = NULL;
 	pthread_mutex_unlock(&s_handle->lock);
 }
 
@@ -1079,6 +1189,16 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
+	ovis_file_spool(s_handle->spooler, s_handle->filename,
+		s_handle->spooldir, msglog);
+	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
+		s_handle->spooldir, msglog);
+	free(s_handle->headerfilename);
+	free(s_handle->filename);
+	s_handle->headerfilename = NULL;
+	s_handle->filename = NULL;
+	s_handle->spooler = NULL;
+	s_handle->spooldir = NULL;
 	if (root_path)
 		free(root_path);
 	if (derivedconf)
