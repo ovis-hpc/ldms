@@ -56,9 +56,10 @@ __check_config() {
 
 __has_operf() {
 	if which operf >/dev/null 2>&1; then
-		# not found
-		return -1
-	else
+		# found
 		return 0
+	else
+		# not found
+		return 127
 	fi
 }
