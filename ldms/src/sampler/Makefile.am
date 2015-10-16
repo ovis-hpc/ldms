@@ -48,10 +48,10 @@ libmeminfo_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libmeminfo.la
 endif
 
-if ENABLE_MSR
-libmsr_la_SOURCES = msr.c
+if ENABLE_MSR_INTERLAGOS
+libmsr_la_SOURCES = msr_interlagos.c
 libmsr_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libmsr.la
+pkglib_LTLIBRARIES += libmsr_interlagos.la
 endif
 
 if ENABLE_PERFEVENT

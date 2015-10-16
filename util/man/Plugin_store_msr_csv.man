@@ -3,7 +3,7 @@
 .TH man 7 "19 Sep 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
 
 .SH NAME
-Plugin_store_msr_csv - man page for the LDMS store_msr_csv plugin. This is a derived store particular to the msr plugin.
+Plugin_store_msr_csv - man page for the LDMS store_msr_csv plugin. This is a derived store particular to the msr (_interlagos) plugin.
 
 .SH SYNOPSIS
 Within ldmsctl:
@@ -14,10 +14,10 @@ ldmsctl> store name=store_msr_csv [ <attr> = <value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The store_msr_csv plugin is a CSV store particular to the msr plugin.
+The store_msr_csv plugin is a CSV store particular to the msr (_interlagos) plugin.
 
 This is a pre-release version of the store which goes with a particular version of the pre-release version
-of the Plugin msr.
+of the Plugin msr_interlagos.
 
 The msr plugin writes out in a well known format of a counter which indicates the general name of the msr counter,
 followed by multiple values, depending upon whether or not it is an uncore or core counter. The names of
@@ -33,10 +33,10 @@ between the two plugins for this to work.
 There are some conditions in which the calculation is invalid. These include if the counter name
 has changed between one timestamped report and the next, and if the name field of either equals
 zero (this latter is used to indicate when a counter was not read becuase the counter type is
-not that expected by ldms (see Plugin_msr). In these instances, the name value of 0 will be stored,
+not that expected by ldms (see Plugin_msr_interlagos). In these instances, the name value of 0 will be stored,
 and the counter values will also be zero.
 
-Note that all raw values of the msr plugin can be stored with the normal Plugin store_csv.
+Note that all raw values of the msr_interlagos plugin can be stored with the normal Plugin store_csv.
 In that case, use the action=container option to set sequence=forward, so it will match the order in this store
 (writes the cores in numerically increasing order).
 
@@ -134,7 +134,7 @@ where each <sampled metric> is
 .RE
 .PP
 .PP
-The column sequence of <sampled metrics> is the order in which the metrics are added into the Plugin msr.
+The column sequence of <sampled metrics> is the order in which the metrics are added into the Plugin msr_interlagos.
 
 
 .SH BUGS
@@ -149,7 +149,7 @@ This is a pre-release version of the sampler. It may change at any time.
 If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator
 with a store plugin only.
 .IP \[bu]
-Note that all raw values of the msr plugin can be stored with the normal Plugin store_csv.
+Note that all raw values of the msr_interlagos plugin can be stored with the normal Plugin store_csv.
 In that case, use the action=container option to set sequence=forward, so it will match the order in this store
 (writes the cores in numerically increasing order).
 .PP
@@ -166,4 +166,4 @@ ldmsctl> quit
 .if
 
 .SH SEE ALSO
-ldms(7), Plugin_store_derived_csv(7), Plugin_msr(7), Plugin_store_csv(7)
+ldms(7), Plugin_store_derived_csv(7), Plugin_msr_interlagos(7), Plugin_store_csv(7)

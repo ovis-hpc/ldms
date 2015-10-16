@@ -19,7 +19,7 @@ libstore_flatfile_la_LIBADD = $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_flatfile.la
 endif
 
-if ENABLE_MSR
+if ENABLE_MSR_INTERLAGOS
 libstore_msr_csv_la_SOURCES = store_msr_csv.c
 libstore_msr_csv_la_CFLAGS = $(AM_CFLAGS)
 libstore_msr_csv_la_LIBADD = $(STORE_LIBADD)
