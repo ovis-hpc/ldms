@@ -16,7 +16,7 @@ Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
 Plugin_lustre2_client.man \
 Plugin_meminfo.man \
-Plugin_msr.man \
+Plugin_msr_interlagos.man \
 Plugin_procnetdev.man \
 Plugin_procnfs.man \
 Plugin_procsensors.man \

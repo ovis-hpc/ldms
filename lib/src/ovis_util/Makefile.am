@@ -4,7 +4,7 @@ AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 
 if ENABLE_OVIS_UTIL
 libovis_util_la_SOURCES = util.c util.h dstring.h dstring.c rmaninfo.c spool.c
-libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h rmaninfo.h spool.h
+libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h rmaninfo.h spool.h log.h
 libovis_utilincludedir = $(includedir)/ovis_util
 libovis_util_conf = /etc/ld.so.conf.d/libovis_util.conf
 libovis_util_la_LIBADD = -lrt

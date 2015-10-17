@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 void ovis_file_spool(const char *spoolexec, const char *outfile,
 	const char *spooldir, ovis_log_fn_t log)
@@ -25,16 +28,19 @@ void ovis_file_spool(const char *spoolexec, const char *outfile,
 	int rc;
 	int err=0;
 	if ( (rc=stat(spoolexec, &ebuf)) != 0) {
+		rc = errno;
 		log(OL_ERROR,"ldms_store_spool: exec %s not usable:%s\n",
 			spoolexec, strerror(rc));
 		err++;
 	}
 	if ( (rc=stat(outfile, &fbuf)) != 0) {
+		rc = errno;
 		log(OL_ERROR,"ldms_store_spool: data %s no good:%s\n",
 			outfile, strerror(rc));
 		err++;
 	}
 	if ( (rc=stat(spooldir, &dbuf)) != 0 || !S_ISDIR(dbuf.st_mode)) {
+		rc = errno;
 		log(OL_ERROR,"ldms_store_spool: spool %s no good:%s\n",
 			spooldir, strerror(rc));
 		err++;

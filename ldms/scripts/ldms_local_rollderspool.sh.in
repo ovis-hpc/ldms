@@ -133,7 +133,7 @@ echo "store name=store_derived_csv comp_type=node set=meminfo spooler=/bin/mv sp
 
 mysleep 60
 pkill ldmsd
-vgp="`pgrep -f valgrind.bin`"
+vgp="`pgrep -f valgrind`"
 echo vg is $vgp
 kill -SIGTERM $vgp
 sleep 1

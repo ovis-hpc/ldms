@@ -7,7 +7,7 @@ fi
 REPO_DIR=`pwd`
 OUTPUT_DIR=`pwd`/Release
 
-BRANCH_NAME=TOSS-v2.4.5
+BRANCH_NAME=master
 
 # Will get this from git in the future
 VERSION=2.4.5

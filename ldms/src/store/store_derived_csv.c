@@ -66,6 +66,7 @@
 #include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ovis_util/spool.h"
 
 #define TV_SEC_COL    0
 #define TV_USEC_COL    1
@@ -111,6 +112,8 @@ static int rolltype;
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits */
 #define ROLL_LIMIT_INTERVAL 60
+/** interval if we somehow don't set a proper policy */
+#define ROLL_DEFAULT 86400
 
 /** the full path of an executable to run to move files to spooldir.
 	NULL indicates no spooling requested.
@@ -321,7 +324,7 @@ static int handleRollover(){
 					fclose(s_handle->file);
 					ovis_file_spool(s_handle->spooler,
 						s_handle->filename,
-						s_handle->spooldir, msglog);
+						s_handle->spooldir, (ovis_log_fn_t)msglog);
 					free(s_handle->filename);
 					s_handle->filename = nfpname;
 				}
@@ -329,7 +332,7 @@ static int handleRollover(){
 					fclose(s_handle->headerfile);
 					ovis_file_spool(s_handle->spooler,
 						s_handle->headerfilename,
-						s_handle->spooldir, msglog);
+						s_handle->spooldir, (ovis_log_fn_t)msglog);
 					free(s_handle->headerfilename);
 					s_handle->headerfilename = nhfpname;
 				} else {
@@ -352,7 +355,7 @@ static int handleRollover(){
 
 static void* rolloverThreadInit(void* m){
 	while(1){
-		int tsleep;
+		int tsleep = ROLL_DEFAULT;
 		switch (rolltype) {
 		case 1:
 		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
@@ -1104,8 +1107,6 @@ skip:
 		}
 	}
 
-out:
-
 	pthread_mutex_unlock(&s_handle->lock);
 
 	return 0;
@@ -1140,9 +1141,9 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
 	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	free(s_handle->headerfilename);
 	free(s_handle->filename);
 	s_handle->headerfilename = NULL;
@@ -1182,9 +1183,9 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
 	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	free(s_handle->headerfilename);
 	free(s_handle->filename);
 	s_handle->headerfilename = NULL;

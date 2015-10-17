@@ -59,6 +59,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <linux/limits.h>
 #include <pthread.h>
 #include <errno.h>
@@ -66,6 +67,7 @@
 #include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ovis_util/spool.h"
 
 #define TV_SEC_COL    0
 #define TV_USEC_COL    1
@@ -132,6 +134,7 @@ static int rolltype;
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits. */
 #define ROLL_LIMIT_INTERVAL 60
+#define ROLL_DEFAULT 86400
 
 /* help for column output orders */
 #define ORDERTYPES \
@@ -309,26 +312,30 @@ static int handleRollover(){
 					break;
 				}
 
+				bool samename = true;
 				//close and swap
 				if (s_handle->file) {
 					fclose(s_handle->file);
+					if (s_handle->filename && s_handle->headerfilename &&
+						strcmp(s_handle->filename,s_handle->headerfilename) ) {
+						samename = false;
+					}
 					ovis_file_spool(s_handle->spooler,
 						s_handle->filename,
-						s_handle->spooldir, msglog);
+						s_handle->spooldir, (ovis_log_fn_t)msglog);
 					free(s_handle->filename);
 					s_handle->filename = nfpname;
 				}
 				if (s_handle->headerfile) {
 					fclose(s_handle->headerfile);
-					ovis_file_spool(s_handle->spooler,
-						s_handle->headerfilename,
-						s_handle->spooldir, msglog);
-					free(s_handle->headerfilename);
-					s_handle->headerfilename = nhfpname;
-				} else {
-					free(s_handle->headerfilename);
-					s_handle->headerfilename = nhfpname;
+					if (!samename) {
+						ovis_file_spool(s_handle->spooler,
+							s_handle->headerfilename,
+							s_handle->spooldir, (ovis_log_fn_t)msglog);
+					}
 				}
+				free(s_handle->headerfilename);
+				s_handle->headerfilename = nhfpname;
 				s_handle->file = nfp;
 				s_handle->headerfile = nhfp;
 				s_handle->printheader = 1;
@@ -378,7 +385,7 @@ static void* rolloverThreadInit(void* m){
 			tsleep = ROLL_LIMIT_INTERVAL;
 			break;
 		default:
-			tsleep = 60;
+			tsleep = ROLL_DEFAULT;
 			break;
 		}
 		sleep(tsleep);
@@ -1131,9 +1138,9 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
 	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	free(s_handle->headerfilename);
 	free(s_handle->filename);
 	s_handle->headerfilename = NULL;
@@ -1172,9 +1179,9 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
 	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, msglog);
+		s_handle->spooldir, (ovis_log_fn_t)msglog);
 	free(s_handle->headerfilename);
 	free(s_handle->filename);
 	s_handle->headerfilename = NULL;
