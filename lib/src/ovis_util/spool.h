@@ -12,7 +12,8 @@
  The least effort call is ovis_file_spool("/bin/mv","datafile","/tmp");
  Generally, it's a good idea to use a script wrapper instead of mv to
  catch and log filesystem errors and manage permissions. 
- The function ignores NULL inputs, logging an error of receiving any NULL.
+ The function ignores NULL inputs, logging an error if receiving 
+ inconsistently NULL inputs (e.g. spoolexec defined but spooldir not).
 */
 extern void ovis_file_spool(const char *spoolexec, const char *outfile,
 	const char *spooldir, ovis_log_fn_t log);
