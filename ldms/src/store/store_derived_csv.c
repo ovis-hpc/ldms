@@ -1090,7 +1090,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		}
 
 	} // i
-	if (setflagtime || ((double)diff.tv_sec*1000000+diff.tv_usec > ageusec))
+	if (setflagtime || ((ageusec > 0) && ((diff.tv_sec*1000000+diff.tv_usec) > ageusec)))
 		setflag = 1;
 
 	fprintf(s_handle->file, ", %d\n", setflag);
