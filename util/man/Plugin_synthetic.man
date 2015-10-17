@@ -1,0 +1,65 @@
+.\" Manpage for Plugin_synthetic
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "24 Aug 2015" "v2" "LDMS Plugin synthetic man page"
+
+.SH NAME
+Plugin_synthetic - man page for the LDMS synthetic plugin
+
+.SH SYNOPSIS
+Within ldmsctl
+.br
+ldmsctl> config name=synthetic [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The synthetic plugin provides synthetic data waves for correctness and scalability testing.
+
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> component_id=<comp_id> set=<set_name>
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be synthetic.
+.TP
+component_id=<comp_id>
+.br
+The component id numerical value.
+.TP
+set=<set_name>
+.br
+The name of the metric set.
+.TP
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
+.TP
+origin=zero_time
+.br
+zero_time is integer seconds since the epoch to use for the origin of the generator.
+Sine, square, and sawtooth waves are generated.
+.TP
+height=A
+.br
+A is the integer amplitude of the waves. Vertical spacing based on component id and
+amplitude separates the waves from distinct components.
+.TP
+period=P
+.br
+P is the major period of the waves. The sine waves are generated with half this period.
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+See ldms_local_synthetic_test.sh test script installed with LDMS.
+
+.SH SEE ALSO
+ldms(7) 

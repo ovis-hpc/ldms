@@ -3,10 +3,11 @@ lib_LTLIBRARIES =
 AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 
 if ENABLE_OVIS_UTIL
-libovis_util_la_SOURCES = util.c util.h dstring.h dstring.c rmaninfo.c
-libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h rmaninfo.h
+libovis_util_la_SOURCES = util.c util.h dstring.h dstring.c rmaninfo.c spool.c
+libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h rmaninfo.h spool.h log.h
 libovis_utilincludedir = $(includedir)/ovis_util
 libovis_util_conf = /etc/ld.so.conf.d/libovis_util.conf
+libovis_util_la_LIBADD = -lrt
 lib_LTLIBRARIES += libovis_util.la
 
 bin_PROGRAMS = test_big_dstring test_dstring test_rman

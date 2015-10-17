@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ldms-all, 2.4.4, ovis-help@sandia.gov)
+AC_INIT(ldms-all, 2.4.5, ovis-help@sandia.gov)
 #fixme=--subdir
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
@@ -9,11 +9,11 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AC_CONFIG_SUBDIRS([lib ldms])
 AC_PROG_CC
-m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
-AM_INIT_AUTOMAKE([foreign -Wno-portability silent-rules])
+AM_INIT_AUTOMAKE([foreign -Wno-portability ]m4_ifndef([AM_SILENT_RULES],[],[silent-rules])[])
 m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AM_PROG_LIBTOOL
+AC_LIB_RPATH
 
 
 dnl Checks for programs

@@ -1,0 +1,169 @@
+.\" Manpage for Plugin_store_derived_csv
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "19 Sep 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
+
+.SH NAME
+Plugin_store_msr_csv - man page for the LDMS store_msr_csv plugin. This is a derived store particular to the msr (_interlagos) plugin.
+
+.SH SYNOPSIS
+Within ldmsctl:
+.br
+ldmsctl> config name=store_msr_csv [ <attr> = <value> ]
+.br
+ldmsctl> store name=store_msr_csv [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The store_msr_csv plugin is a CSV store particular to the msr (_interlagos) plugin.
+
+This is a pre-release version of the store which goes with a particular version of the pre-release version
+of the Plugin msr_interlagos.
+
+The msr plugin writes out in a well known format of a counter which indicates the general name of the msr counter,
+followed by multiple values, depending upon whether or not it is an uncore or core counter. The names of
+the counters which then appear in the header are generic, i.e., Ctr_X, CtrX_cYY. The values of the counters
+are rate values.
+
+Some additional fields are included in the output. These include the comp_id as it was added to the base counter
+(not the individual counter values), a translated version of the counter name from uint64_t into a string,
+and the number of individual counter values. There is some code copied between the msr plugin and this
+plugin, which is used to match up the possible counter values and their names. These must be in sync
+between the two plugins for this to work.
+
+There are some conditions in which the calculation is invalid. These include if the counter name
+has changed between one timestamped report and the next, and if the name field of either equals
+zero (this latter is used to indicate when a counter was not read becuase the counter type is
+not that expected by ldms (see Plugin_msr_interlagos). In these instances, the name value of 0 will be stored,
+and the counter values will also be zero.
+
+Note that all raw values of the msr_interlagos plugin can be stored with the normal Plugin store_csv.
+In that case, use the action=container option to set sequence=forward, so it will match the order in this store
+(writes the cores in numerically increasing order).
+
+
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> path=<path> [ alt_header=<altheader> rolltype=<rolltype> rollover=<rollover> ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_derived_csv.
+.TP
+path=<path>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_derived_csv/node/meminfo. If you choose a rollover option, then the filename will also be postpended by "-" followed by the epochtime e.g., XXX/store_csv/node/meminfo-123456789.
+.TP
+alt_header=<altheader>
+.br
+The default output writes the header to the same file as the data file. alt_header=1 will write the header to an alternate file (e.g., if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER"). If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written at each rollover. Default is alt_header=0.
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are:
+.RS
+.TP
+1
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.RE
+
+.SH LDMSCTL STORE ATTRIBUTE SYNTAX
+
+.TP
+.BR store
+name=<plugin_name> set=<set_name> comp_type=<type>  container=<container>
+.br
+ldmsctl store line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_msr_csv.
+.TP
+set=<set_name>
+.br
+The set parameter here is the base name of the sets, independent of the host name. For example, if you have configured samplers with parameter set=<hostname>/meminfo, then use the store parameter set=meminfo and all datasets for all combinations of <hostname>/meminfo will be stored.
+.TP
+comp_type=<type>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/node/meminfo.
+.TP
+container=<container>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_derived_csv/node/meminfo.
+
+Use an unique container parameter for different metric sets coming from different formatted msr samplers.
+
+If you are using multiple store Plugins, use unique container names for each even if they are going into different subdirectories. For example, if you are running both the store_csv and the store_msr_csv plugins do NOT use msr for both, perhaps use msr_der for the msr_csv container.
+
+.RE
+
+.SH STORE COLUMN ORDERING
+
+This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
+.PP
+.RS
+Time, Time_usec, DT, DT_usec, <sampled metric >*,
+.RE
+.PP
+where each <sampled metric> is
+.PP
+.RS
+<metric_name (num)>, <metric_name (string)>, Comp_Id, numvals, <metric_vals>*
+.RE
+.PP
+.PP
+The column sequence of <sampled metrics> is the order in which the metrics are added into the Plugin msr_interlagos.
+
+
+.SH BUGS
+No known bugs.
+
+
+.SH NOTES
+.PP
+.IP \[bu]
+This is a pre-release version of the sampler. It may change at any time.
+.IP \[bu]
+If you want to collect on a host and store that data on the same host, run two ldmsd's: one with a collector plugin only and one as an aggegrator
+with a store plugin only.
+.IP \[bu]
+Note that all raw values of the msr_interlagos plugin can be stored with the normal Plugin store_csv.
+In that case, use the action=container option to set sequence=forward, so it will match the order in this store
+(writes the cores in numerically increasing order).
+.PP
+
+
+.SH EXAMPLES
+ldmsctl lines for configuring store_msr_csv:
+.nf
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl> load name=store_msr_csv
+ldmsctl> config name=store_msr_csv alt_header=1 path=/XXX/storedir
+ldmsctl> store name=store_msr_csv comp_type=node set=msr container=msr_der
+ldmsctl> quit
+.if
+
+.SH SEE ALSO
+ldms(7), Plugin_store_derived_csv(7), Plugin_msr_interlagos(7), Plugin_store_csv(7)

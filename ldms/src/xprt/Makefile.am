@@ -32,9 +32,10 @@ libldmsugni_la_CFLAGS = $(AM_CFLAGS) $(UGNI_CFLAGS) \
 libldmsugni_la_LDFLAGS = $(UGNI_LIBS) @OVIS_LIB_LIB64DIR_FLAG@ \
 			 @LIBEVENT_LIB64DIR_FLAG@ \
 			 @OVIS_LIB_LIBDIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
-			 @RCA_LIB64DIR_FLAG@ @RCA_LIBDIR_FLAG@
+			 @RCA_LIB64DIR_FLAG@ @RCA_LIBDIR_FLAG@ \
+			-L../core
 libldmsugni_la_SOURCES = ldms_ugni.c ldms_ugni.h
-libldmsugni_la_LIBADD = -levent -levent_pthreads -lmmalloc -lrca
+libldmsugni_la_LIBADD = -lldms -levent -levent_pthreads -lmmalloc -lrca -lpthread
 pkglib_LTLIBRARIES += libldmsugni.la
 endif
 

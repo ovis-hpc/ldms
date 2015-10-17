@@ -68,6 +68,7 @@
 #include <sys/types.h>
 #include <ctype.h>
 #include <wordexp.h>
+#include "config.h"
 #include "rca_metrics.h"
 #include "general_metrics.h"
 #include "cray_sampler_base.h"
@@ -175,6 +176,10 @@ int config_generic(struct attr_value_list* kwl,
 			offns[NS_LUSTRE] = 1;
 		}
 	}
+
+	msglog(LDMS_LDEBUG, "cray_sampler_base: HAVE_LUSTRE\n");
+#else
+	msglog(LDMS_LDEBUG, "cray_sampler_base: do not HAVE_LUSTRE\n");
 #endif
 
 	value = av_value(avl, "off_procnetdev");
@@ -197,6 +202,10 @@ int config_generic(struct attr_value_list* kwl,
 	if (!offns[NS_NVIDIA]){
 		rc = config_nvidia(kwl, avl, msglog);
 	}
+
+	msglog(LDMS_LDEBUG, "cray_sampler_base: HAVE_CRAY_NVIDIA\n");
+#else
+	msglog(LDMS_LDEBUG, "cray_sampler_base: do not HAVE_CRAY_NVIDIA\n");
 #endif
 
 	return rc;

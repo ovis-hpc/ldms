@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "13 Apr 2015" "v2.4.1" "LDMS Plugin store_csv man page"
+.TH man 7 "18 Sep 2015" "v2.6x" "LDMS Plugin store_csv man page"
 
 .SH NAME
 Plugin_store_csv - man page for the LDMS store_csv plugin
@@ -8,7 +8,9 @@ Plugin_store_csv - man page for the LDMS store_csv plugin
 .SH SYNOPSIS
 Within ldmsctl:
 .br
-ldmsctl> config name=store_csv [ <attr> = <value> ]
+ldmsctl> config name=store_csv [action=main] [ <attr> = <value> ]
+.br
+ldmsctl> config name=store_csv action=container [ <attr> = <value> ]
 .br
 ldmsctl> store name=store_csv [ <attr> = <value> ]
 
@@ -17,13 +19,13 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms 
 The store_csv plugin is a CSV store.
 .PP
 
-.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
-
-The configuration parameters altheader, id_pos, rolltype, rollover, and sequence are applied to all metric sets alike.
+.SH LDMSCTL MAIN CONFIGURATION ATTRIBUTE SYNTAX
+The configuration parameters altheader, id_pos, rolltype, rollover, spooler, spooldir, and sequence are applied to all metric sets alike,
+unless overriden by the action=container values.
 
 .TP
 .BR config
-name=<plugin_name> path=<path> [ altheader=<altheader> id_pos=<idpos> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> ]
+name=<plugin_name> [action=main] path=<path> [ altheader=<altheader> id_pos=<idpos> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> spooldir=<dir> spooler=<program>]
 .br
 ldmsctl configuration line
 .RS
@@ -31,6 +33,11 @@ ldmsctl configuration line
 name=<plugin_name>
 .br
 This MUST be store_csv.
+.TP
+action=main
+.br
+If action is not specified, name is assumed. For action=main, the remaining attributes can be specified and will be used for
+all metric sets, unless overriden by the action=container values.
 .TP
 path=<path>
 .br
@@ -42,8 +49,8 @@ The default output writes the header to the same file as the data file. altheade
 .TP
 id_pos=<idpos>
 .br
-The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id. 
-.HP 
+The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+.HP
 .br
 The value of id_pos determines which metric in the set provides the component_id for the entire set. Setting id_pos=0 selects the last metric defined by the sampler as the component_id source; setting id_pos=1 selects the first metric defined by the sampler as the component_id source. All metrics in the set must have the same component_id for this to make sense, and individual metric component_id assignments may be determined by the sampler implementations.
 .TP
@@ -75,8 +82,47 @@ Rollover value controls the frequency of rollover (e.g., number of bytes, number
 sequence=<seqname>
 .br
 Controls the ordering of metric data column. See STORE COLUMN ORDERING for details.
+.TP
+spooler=<program>
+.br
+The full path of the program invoked as '<program> file <spooldir>' to relocate output files. Both spooler and spooldir must exist or spooling is ignored. Due to possible race conditions, the program must validate its input and log any errors encountered. LDMS does not monitor the outcome of the program invocation. Program may be a shell script that handles complex spooling behavior including changing file permission, ownership, location, or passing to the data import tools of another logging system. When separate header and data files are produced, both are moved to spooldir with separate invocations of spooler. The order of completion of spooler for a header file and its data file is up to the operating system. The program is free to ignore the spooldir input value, but it must nevertheless exist at store container creation time. 
+.TP
+spooldir=<directory>
+.br
+The full path in which to deposit closed output files. In some circumstances the final output of an exiting ldms-aggd may not be spooled.
 .RE
 
+.SH LDMSCTL CONTAINER CONFIGURATION ATTRIBUTE SYNTAX
+The configuration parameters set by action=main are applied to all metric sets alike,
+unless overriden by the action=container values.
+
+.TP
+.BR config
+name=<plugin_name> action=container [ altheader=<altheader> id_pos=<idpos> sequence=<seqname> ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+action=container
+.br
+This MUST be container.
+.TP
+altheader=<altheader>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.TP
+id_pos=<idpos>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.TP
+sequence=<seqname>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.RE
 
 .SH LDMSCTL STORE ATTRIBUTE SYNTAX
 
@@ -102,7 +148,7 @@ ode/meminfo.
 .TP
 container=<container>
 .br
-The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/node/meminfo.
+The output files will be opened in a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/<container>. Typically these are chosen to make output files like: XXX/store_csv/node/meminfo.
 
 Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
 
@@ -118,7 +164,7 @@ Time, Time_usec, [CompId,] <sampled metric >*
 .RE
 .PP
 where [CompId,] is present if id_pos was specified, and
-where each <sampled metric> is either 
+where each <sampled metric> is either
 .PP
 .RS
 <metric_name>.CompId, <metric_name>
@@ -131,7 +177,7 @@ or if id_pos has been specified just:
 .RE
 .PP
 .PP
-The default column sequence of <sampled metrics> is the reverse of the order in which the metrics are added into the metric set by the sampler. 
+The default column sequence of <sampled metrics> is the reverse of the order in which the metrics are added into the metric set by the sampler.
 .QP
 Note that the sampler's number and order of metric additions may vary with the kind and number of hardware features enabled on a host at runtime or with the version of kernel. Because of this potential for variation, down-stream tools consuming the CSV files should always determine column names or column number of a specific metric by parsing the header line or .HEADER file. At the very least, a tool with a hardwired assumption of the column ordering should make a string comparison of the entire header line with a string containing the expected column naming and fail loudly when a mismatch is detected.
 .PP
@@ -163,7 +209,9 @@ No known bugs. In LDMS version 2.x, alnum is not expected to be implemented.
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_csv
 ldmsctl> config name=store_csv altheader=1 id_pos=1 sequence=forward path=/XXX/storedir
+ldmsctl> config name=store_csv action=container container=loadavg_store  sequence=reverse
 ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo_store
+ldmsctl> store name=store_csv comp_type=node set=loadavg container=loadavg_store
 ldmsctl> quit
 .fi
 

@@ -1,0 +1,264 @@
+.\" Manpage for Plugin_msr_interlagos
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin msr interlagos man page"
+
+.SH NAME
+Plugin_msr - man page for the LDMS msr interlagos plugin
+
+.SH SYNOPSIS
+Within ldmsctl
+.br
+ldmsctl> config name=msr_interlagos [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The msr_interlagos plugin provides msr counter information for INTERLAGOS only.
+
+This is a pre-release version of the sampler.
+
+The sampler will allow you to select from an identified set of counters. These are only correctly defined for Interlagos.
+The counters must be identified first via action=add; action=finalize then sets the counters. The number of counters and
+how many are multicore vs single valued is then fixed. Counters can be changed at run time within these constraints.
+The metric names are reported as generic names since their actual identities may change. For any given counter the first
+value (e.g., CTR<NUM>) is the uint64 representation of the variable identifier used in the counter setup. The subsequent
+values (e.g., CTR<NUM>_<XY>) are the values for the counters (1 per numa node or num core values (with optional additional
+zero values if maxcore specified (see more below)).
+
+The ldmsctl interface includes functions for manipulating the sampling state and counter identities as described below.
+
+.SH EXTERNAL MODIFICATION OF COUNTERS AND EXTERNAL INTERACTIONS
+
+Note that the user can change the identity of the counter being collected via an external methodology such as wrmsr. Because of this,
+the msr_interlagos plugin first rechecks the identity of the counter before sampling, however this is not atomic so there is a
+slight possibility of a race condition where the user may change the counter between the check and the read. If the check
+fails zero values are reported for all metrics for that particular counter (including the reporting of the metric name).
+This continues until the identity is reset, either by external methods or by issuing the action=rewrite command.
+
+If a user job changes the counters, it is intended that interaction with the Resource Manager can invoke the rewrite command for
+the counters once the user job has exited. We supply a script that can be called from epilog to do this. The script is blocking on
+the rewrite in order to avoid a race condition with the next job setting the counters before the rewrite is completed. There is a
+max time time limit on the blocking call in the script. The script return code indicates success or failure.
+Note that options that require LDMS to check for a flag set by the RM are subject to race conditions.
+
+.SH SUPPORTED COUNTERS
+
+This plugin only works for Interlagos. Using this sampler on other architectures may result in badness as the addresses
+will not be correct.
+
+.PP
+Options for counters are:
+.IP \[bu]
+TOT_CYC
+.IP \[bu]
+TOT_INS
+.IP \[bu]
+L2_DCM
+.IP \[bu]
+L1_DCM
+.IP \[bu]
+DP_OPS
+.IP \[bu]
+VEC_INS
+.IP \[bu]
+TLB_DM
+.IP \[bu]
+L3_CACHE_MISSES - Per numa node
+.IP \[bu]
+DCT_PREFETCH - Per numa node
+.IP \[bu]
+DCT_RD_TOT - Per numa node
+.IP \[bu]
+DCT_WRT - Per numa node
+.PP
+These are the options for the metricname argument of the add command.
+
+NOTE: TOT_CYC and L2_DCM are mutually exclusive.
+
+
+
+
+
+.SH LDMSCTL CONFIGURATION COMMANDS ORDER
+.PP
+ldmsctl control commands are intended to be issued in the following order:
+.IP \[bu]
+load
+.IP \[bu]
+config action=initialize
+.IP \[bu]
+config action=add (one or more)
+.IP \[bu]
+config action=finalize (one or more)
+.IP \[bu]
+start
+.PP
+
+.PP
+The following config commands can be issued anytime after the start in any order
+.IP \[bu]
+config action=halt
+.IP \[bu]
+config action=continue
+.IP \[bu]
+config action=reassign
+.IP \[bu]
+config action=rewrite
+.PP
+
+
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> action=<action> [ <attr>=<value> ... ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be msr_interlagos
+.TP
+action=<action>
+.br
+Options are initialize, add, finalize, halt, continue, reassign, rewrite, and ls:
+
+.TP
+.TP
+.BR initialize
+set=<setname> component_id=<comp_id> corespernuma=<cpnuma> [maxcore=<maxcore>]
+.br
+initialize the plugin
+.RS
+.TP
+set=<setname>
+.br
+The name of the metric set.
+.TP
+component_id=<comp_id>
+.br
+The component id numerical value.
+.TP
+corespernuma=<corespernuma>
+.br
+Cores per numa node. Used to determine which and how many cores are used in setting
+counters that report per numa node.
+.TP
+maxcore=<maxcore>
+.br
+Maxcores that will be reported for all core counters and will also be used in
+counters that report per numa node. Must be >= actual number of cores.
+Any additional values will be reported with 0 values.
+.RE
+
+.TP
+.BR add
+metricname=<name>
+.br
+add a counter metric to the set. The metric set will be built in the order the metrics are added
+.RS
+.TP
+metricname=<name>
+.br
+The name of counter e.g., L3_CACHE_MISSES. Options are listed in a separate section of this man page.
+.RE
+
+.TP
+.BR finalize
+.br
+creates the set after all the adds. No metrics may be added after this point.
+.RS
+.RE
+
+.TP
+.BR halt
+metricname=<name>
+.br
+halts collection for this counter. Zero values will be returned for all metrics for this counter.
+.RS
+.TP
+metricname=<name>
+.br
+The name of counter e.g., L3_CACHE_MISSES. metricname=all halts all.
+.RE
+
+.TP
+.BR continue
+metricname=<name>
+.br
+continues collection for this counter after a halt.
+.RS
+.TP
+metricname=<name>
+.br
+The name of counter e.g., L3_CACHE_MISSES. metricname=all continues all.
+.RE
+
+.TP
+.BR rewrite
+metricname=<name>
+.br
+rewrites the counter variable. Used in case the counter variable has been changed for this address external to ldms.
+.RS
+.TP
+metricname=<name>
+.br
+The name of counter e.g., L3_CACHE_MISSES. metricname=all rewrites all counters.
+.RE
+
+.TP
+.BR reassign
+oldmetricname=<oldname> newmetricname=<newname>
+.br
+replaces a metric in the metric set with a new one. It must be the same size (e.g., numcores vs single value) as the previous counter.
+.RS
+.TP
+oldmetricname=<oldname>
+.br
+The name of counter to be replaced e.g., TOT_CYC
+.TP
+newmetricname=<newname>
+.br
+The name of counter that the previous variable will be replaced with e.g., TOT_INS
+.RE
+
+
+.TP
+.BR ls
+.br
+writes info about the intended counters to the log file.
+.RS
+.RE
+
+
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH NOTES
+.PP
+.IP \[bu]
+This is a pre-release version of the sampler. It may change at any time.
+.IP \[bu]
+This plugin only works for Interlagos. Using this sampler on other architectures may result in badness as the addresses
+will not be correct.
+.PP
+
+.SH EXAMPLES
+.PP
+config name=msr_interlagos action=initialize setname=nid00010_msr component_id=10 corespernuma=8
+.br
+config name=msr_interlagos action=add metricname=L3_CACHE_MISSES
+.br
+config name=msr_interlagos action=add metricname=TOT_CYC
+.br
+config name=msr_interlagos action=finalize
+.br
+config name=msr_interlagos action=reassign oldmetricname=TOT_CYC newmetricname=TOT_INS
+.br
+config name=msr_interlagos action=halt metricname=TOT_CYC
+.PP
+
+.SH SEE ALSO
+ldms(7), Plugin_store_msr_csv(7)

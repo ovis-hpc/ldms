@@ -18,7 +18,7 @@ Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
 Requires: rpm >= 4.8.0 ovis-libevent2 boost-devel genders
-BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel gcc ovis-libevent2-devel glib2-devel libibmad-devel
+BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel gcc ovis-libevent2-devel glib2-devel libibmad-devel boost-devel genders ovis-libevent2
 Url: http://ovis.ca.sandia.gov/
 
 Prefix: /usr
@@ -66,7 +66,7 @@ rm -rf $RPM_BUILD_ROOT
 %{_sbindir}/*
 %{_docdir}/%{name}-%{version}/COPYING
 %{_docdir}/%{name}-%{version}/ChangeLog
-%{_docdir}/%{name}-%{version}/AUTHORS 
+%{_docdir}/%{name}-%{version}/AUTHORS
 #end core
 
 # devel
@@ -110,6 +110,9 @@ Doxygen files for ldms-all package.
 %{_datadir}/doc/%{name}-%{version}
 %docdir %{_defaultdocdir}
 %changelog
+
+* Thu Aug 25 2015 Ben Allan <baallan@sandia.gov> 2.4.5-1
+update to latest upstream.
 * Thu Jul 29 2015 Ben Allan <baallan@sandia.gov> 2.4.4-1
 update to latest upstream.
 * Thu Jun 18 2015 Ben Allan <baallan@sandia.gov> 2.4.3-1

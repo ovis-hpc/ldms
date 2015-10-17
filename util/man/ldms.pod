@@ -54,6 +54,7 @@ The LDMS manual has several sections.
 
 =head2 Experimental and deprecated data collection plugins
 
+    Plugin_synthetic		Experimental: data generator for scale testing
     Plugin_procsensors		Experimental: requires lmsensors support
     Plugin_slurmjobid		Experimental: requires slurm prolog support
     Plugin_procstatutil		Deprecated: use Plugin_procstatutil2

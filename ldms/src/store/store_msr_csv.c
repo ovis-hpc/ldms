@@ -1,6 +1,6 @@
 /**
- * Copyright (c) 2014 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2014 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -66,18 +66,47 @@
 #include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ovis_util/spool.h"
 
-#define TV_SEC_COL    0
-#define TV_USEC_COL    1
-#define GROUP_COL    2
-#define VALUE_COL    3
 
 
 #define MAX_ROLLOVER_STORE_KEYS 20
-#define STORE_DERIVED_NAME_MAX 256
-#define STORE_DERIVED_LINE_MAX 256
-#define STORE_DERIVED_METRIC_MAX 500
+#define STORE_CTR_METRIC_MAX 21
+#define STORE_CTR_NAME_MAX 20
+
+/** Fields for the name translation. These must match msr */
+#define MSR_MAXOPTIONS 11
+#define MSR_HOST 0
+#define MSR_CNT_MASK 0
+#define MSR_INV 0
+#define MSR_EDGE 0
+#define MSR_ENABLE 1
+#define MSR_INTT 0
+
+
+struct MSRcounter_tr{
+	char name[STORE_CTR_NAME_MAX];
+	uint64_t w_reg;
+	uint64_t event;
+	uint64_t umask;
+	uint64_t r_reg;
+	uint64_t os_user;
+	uint64_t wctl;
+};
+
+static struct MSRcounter_tr counter_assignments[] = {
+	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, 0},
+	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, 0},
+	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, 0},
+	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, 0},
+	{"DP_OPS",  0xc0010206, 0x003, 0xF0, 0xc0010207, 0b11, 0},
+	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, 0},
+	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, 0},
+	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, 0},
+        {"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, 0},
+        {"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, 0},
+        {"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, 0}
+};
+
 
 static pthread_t rothread;
 static idx_t store_idx;
@@ -85,9 +114,6 @@ static char* storekeys[MAX_ROLLOVER_STORE_KEYS]; //FIXME: make this variable siz
 static int nstorekeys = 0;
 static char *root_path;
 static int altheader;
-static char* derivedconf = NULL;
-static int id_pos;
-static int agedt_sec = 1000000;
 static int rollover;
 static int rolltype;
 /** ROLLTYPES documents rolltype and is used in help output. */
@@ -112,97 +138,60 @@ static int rolltype;
 #define MIN_ROLL_BYTES 1024
 /** Interval to check for passing the record or byte count limits */
 #define ROLL_LIMIT_INTERVAL 60
-/** interval if we somehow don't set a proper policy */
-#define ROLL_DEFAULT 86400
-
-/** the full path of an executable to run to move files to spooldir.
-	NULL indicates no spooling requested.
- */
-static char *spooler = NULL;
-/** the target directory for spooled data.
-	undefined if spooler is NULL.
-	May be overridden per container via config action=container.
-n.b.
-	'scope' would be a better alternative to action, as
-	'action' may have it's own uses within a given scope.
- */
-static char *spooldir = NULL;
-
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
-#define LOGFILE "/var/log/store_derived_csv.log"
+#define LOGFILE "/var/log/store_msr_csv.log"
 
 /**
- * BASED on:
- * store_csv - csv compid, value pairs UNLESS id_pos is specified.
- * In that case, either only the first/last (0/1) metric's comp id
- * will be used. First/last is determined by order in the store,
- * not the order in ldms_ls (probably reversed).
- *
- * THIS is:
- * store_derived - specify some metrics to be stored, either RAW or RATE.
- * This can be used in conjunction with store_csv to have 1 file of all RAW
- * go to one location and 1 file of a subset of RAW and some RATES go to
- * another.
+ * This store is particular to the msr sampler because the msr sample has a particular data format of
+ * name and one or more value pairs. The previous value of a counter is known to be invalid if its name has
+ * been invalidated.
+ * output format: permetric:  name (num), name (string), compid, numvals, derived_value(s)
  *
  * Notes:
- * - format of the configuration file is comma separated
- * - rollover (determined by a neg value) and neg values - both return 0
- * - STORE_DERIVED_METRIC_MAX - is fixed value.
+ * - will write out a compid per metric, it is the one stored with the variable name.
+ * - this store only accepts the one set
+ * - this does not have config file.
+ * - currently, the derived value is just a diff (not a rate).
+ * - rollover: negative values return a 0. there is no flag to indicate that.
+ * - invalid scenarios:
+ *    - if a time for a metric is invalid (determined by 0 metric name), that time's values are zero.
+ *    - if the previous time for a metric is invalid, that time's values are zero.
+ *    _ if the name of the previous entry and this dont match, that time's values are zero
+ *      (could have deliberately changed the metric and both be valid)
+ *    - negative dt. this is not checked for.
+ *    - there is no flag to indicate per core rollover.
  * - there is no function to iterate thru an idx. Right now, that memory is
  *   lost in destroy_store.
- * - two timestamps for the same component with dt = 0 wont writeout. Presumably
- *   this shouldnt happen.
- * - if a host goes down and comes back up, then may have a long time range
- *   between points. currently, this is still calculated, but can be flagged
- *   with ageout. Currently this is global, not per collector type
  */
 
-typedef enum {
-	RAW = 0,
-	RATE
-} der_t;
-
-struct derived_data { // rawname/dername are good candidates for dstrings.
-	char rawname[STORE_DERIVED_NAME_MAX]; //can lose this after the deridx is set....
-	char dername[STORE_DERIVED_NAME_MAX]; //should we bother to keep this???
-	der_t dertype;
-	double multiplier;
-	int deridx;
-};
-
-struct setdatapoint {
+struct setdatapoint { //raw data from the last mvec
 	struct ldms_timestamp *ts;
-	uint64_t* datavals; //subset of the vals we need. NOTE: mvec has a set assoc that we dont want.
-	//FIXME: making these all uint64_t. this will have to support everything like the metric does.
-	//NOTE: not keeping the user data. have this in the mvec
+	uint64_t* datavals;
 };
 
-typedef enum {
-	DONT_PRINT_HEADER,
-	DO_PRINT_HEADER,
-	BAD_HEADER
-} printheader_t;
+struct ctrinfo {
+	int nameidx;
+	int numvals;
+};
 
 //If this is going to have the last dp, then a store_handle can only be for a particular sampler (not multiple samplers)
-struct csv_derived_store_handle {
+struct store_msr_csv_handle {
 	struct ldmsd_store *store;
+	int createDS;
+	int printheader;
 	char *path;
 	FILE *file;
-	char *filename;
 	FILE *headerfile;
-	char *headerfilename;
-	char *spooler;
-	char *spooldir;
-	struct derived_data der[STORE_DERIVED_METRIC_MAX]; //FIXME: dynamic.
-	int numder;
 	idx_t sets_idx;
 	int numsets;
-	printheader_t printheader;
-	int parseconfig;
+	int nummvecvals;
+	int numctr;
+	struct ctrinfo ctr[STORE_CTR_METRIC_MAX]; //FIXME: dynamic
+	int step;
 	char *store_key;
 	pthread_mutex_t lock;
 	void *ucontext;
@@ -213,16 +202,17 @@ struct csv_derived_store_handle {
 static pthread_mutex_t cfg_lock;
 
 /* Time-based rolltypes will always roll the files when this
-function is called.
-Volume-based rolltypes must check and shortcircuit within this
-function.
+   function is called.
+   Volume-based rolltypes must check and shortcircuit within this
+   function.
 */
 static int handleRollover(){
 	//get the config lock
 	//for every handle we have, do the rollover
 
 	int i;
-	struct csv_derived_store_handle *s_handle;
+
+	struct store_msr_csv_handle *s_handle;
 
 	pthread_mutex_lock(&cfg_lock);
 
@@ -230,12 +220,10 @@ static int handleRollover(){
 
 	for (i = 0; i < nstorekeys; i++){
 		if (storekeys[i] != NULL){
-			s_handle = idx_find(store_idx, (void *)storekeys[i], strlen(storekeys[i]));
+			s_handle = idx_find(store_idx, (void*)storekeys[i], strlen(storekeys[i]));
 			if (s_handle){
 				FILE* nhfp = NULL;
 				FILE* nfp = NULL;
-				char *nfpname = NULL;
-				char *nhfpname = NULL;
 				char tmp_path[PATH_MAX];
 				char tmp_headerpath[PATH_MAX];
 
@@ -264,7 +252,7 @@ static int handleRollover(){
 					break;
 				default:
 					msglog(LDMS_LDEBUG, "Error: unexpected rolltype in store(%d)\n",
-						rolltype);
+					       rolltype);
 					break;
 				}
 
@@ -277,7 +265,6 @@ static int handleRollover(){
 				snprintf(tmp_path, PATH_MAX, "%s.%d",
 					 s_handle->path, (int) appx);
 				nfp = fopen(tmp_path, "a+");
-				nfpname = strdup(tmp_path);
 				if (!nfp){
 					//we cant open the new file, skip
 					msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
@@ -297,7 +284,6 @@ static int handleRollover(){
 						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
 						       tmp_headerpath);
 					}
-					nhfpname = strdup(tmp_headerpath);
 				} else {
 					nhfp = fopen(tmp_path, "a+");
 					if (!nhfp){
@@ -305,43 +291,20 @@ static int handleRollover(){
 						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
 						       tmp_path);
 					}
-					nhfpname = strdup(tmp_path);
 				}
 				if (!nhfp) {
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
-				if (!nhfpname || !nfpname) {
-					msglog(LDMS_LDEBUG, "Error: handleRollover OOM. skipping rollover; log will grow.\n");
-					fclose(nfp);
-					fclose(nhfp);
-					pthread_mutex_unlock(&s_handle->lock);
-					break;
-				}
 
 				//close and swap
-				if (s_handle->file) {
+				if (s_handle->file)
 					fclose(s_handle->file);
-					ovis_file_spool(s_handle->spooler,
-						s_handle->filename,
-						s_handle->spooldir, (ovis_log_fn_t)msglog);
-					free(s_handle->filename);
-					s_handle->filename = nfpname;
-				}
-				if (s_handle->headerfile) {
+				if (s_handle->headerfile)
 					fclose(s_handle->headerfile);
-					ovis_file_spool(s_handle->spooler,
-						s_handle->headerfilename,
-						s_handle->spooldir, (ovis_log_fn_t)msglog);
-					free(s_handle->headerfilename);
-					s_handle->headerfilename = nhfpname;
-				} else {
-					free(s_handle->headerfilename);
-					s_handle->headerfilename = nhfpname;
-				}
 				s_handle->file = nfp;
 				s_handle->headerfile = nhfp;
-				s_handle->printheader = DO_PRINT_HEADER;
+				s_handle->printheader = 1;
 				pthread_mutex_unlock(&s_handle->lock);
 			}
 		}
@@ -355,37 +318,37 @@ static int handleRollover(){
 
 static void* rolloverThreadInit(void* m){
 	while(1){
-		int tsleep = ROLL_DEFAULT;
+		int tsleep;
 		switch (rolltype) {
 		case 1:
-		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
-		  break;
+			tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
+			break;
 		case 2: {
-		  time_t rawtime;
-		  struct tm *info;
+			time_t rawtime;
+			struct tm *info;
 
-		  time( &rawtime );
-		  info = localtime( &rawtime );
-		  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
-		  tsleep = 86400 - secSinceMidnight + rollover;
-		  if (tsleep < MIN_ROLL_1){
-		    /* if we just did a roll then skip this one */
-		    tsleep+=86400;
-		  }
+			time( &rawtime );
+			info = localtime( &rawtime );
+			int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
+			tsleep = 86400 - secSinceMidnight + rollover;
+			if (tsleep < MIN_ROLL_1){
+				/* if we just did a roll then skip this one */
+				tsleep+=86400;
+			}
 		}
-		  break;
+			break;
 		case 3:
-		  if (rollover < MIN_ROLL_RECORDS)
-		    rollover = MIN_ROLL_RECORDS;
-		  tsleep = ROLL_LIMIT_INTERVAL;
-		  break;
+			if (rollover < MIN_ROLL_RECORDS)
+				rollover = MIN_ROLL_RECORDS;
+			tsleep = ROLL_LIMIT_INTERVAL;
+			break;
 		case 4:
-		  if (rollover < MIN_ROLL_BYTES)
-		    rollover = MIN_ROLL_BYTES;
-		  tsleep = ROLL_LIMIT_INTERVAL;
-		  break;
+			if (rollover < MIN_ROLL_BYTES)
+				rollover = MIN_ROLL_BYTES;
+			tsleep = ROLL_LIMIT_INTERVAL;
+			break;
 		default:
-		  break;
+			break;
 		}
 		sleep(tsleep);
 		handleRollover();
@@ -396,88 +359,109 @@ static void* rolloverThreadInit(void* m){
 
 
 /**
- * \brief Config for derived vars
+ * \brief get the index of the matching counter_assigment (based on wctl). Use this to get the string name
  */
-static int derivedConfig(char* fname, struct csv_derived_store_handle *s_handle){
-	//read the file and keep the metrics names until its time to print the headers
+static int getNameIdx(uint64_t wctlin){
+	int i;
 
-	char lbuf[STORE_DERIVED_LINE_MAX];
-	char metric_name[STORE_DERIVED_NAME_MAX];
-	int tval;
-	double mval;
-	char* s;
-	int rc, rcl;
+	if (wctlin == 0)
+		return -1;
 
-	//FIXME: for now will read this in for every option (e.g., different base set for store)
-	//Dont yet have a way to determine which of the handles a certain metric will be associated with
-
-
-	FILE* fp = fopen(fname, "r");
-	if (!fp) {
-		msglog(LDMS_LDEBUG,"Cannot open config file <%s>\n", fname);
-		return EINVAL;
+	//FIXME: get a better struct for this
+	for (i = 0; i < MSR_MAXOPTIONS; i++){
+		if (wctlin == counter_assignments[i].wctl){
+			return i;
+		}
 	}
-	s_handle->parseconfig = 0;
-	s_handle->numder = 0;
 
-	rc = 0;
-	rcl = 0;
-	do {
-
-		//FIXME: TOO many metrics
-		if (s_handle->numder == STORE_DERIVED_METRIC_MAX) {
-			msglog(LDMS_LDEBUG,"Too many metrics <%s>\n", fname);
-			rc = EINVAL;
-			break;
-		}
-
-		s = fgets(lbuf, sizeof(lbuf), fp);
-		if (!s)
-			break;
-//		printf("Read <%s>\n", lbuf);
-		rcl = sscanf(lbuf, "%[^,] , %d , %lf", metric_name, &tval, &mval);
-//		printf("Name <%s> val <%d> mult <%lf>\n", metric_name, tval, mval);
-		if ((strlen(metric_name) > 0) && (metric_name[0] == '#')){
-		// hashed lines are comments (means metric name cannot start with #)
-			msglog(LDMS_LDEBUG,"Comment in derived config file <%s>. Skipping\n",lbuf);
-			continue;
-		}
-		if (rcl != 3) {
-			msglog(LDMS_LDEBUG,"Bad format in derived config file <%s> rc=%d. Skipping\n",lbuf, rcl);
-			continue;
-		}
-		if ((tval < 0) || (tval > 1)) {
-			msglog(LDMS_LDEBUG,"Bad type in derived config file <%s> <%d>. Skipping\n", lbuf, tval);
-			continue;
-		}
-
-		s_handle->der[s_handle->numder].multiplier = mval;
-		s_handle->der[s_handle->numder].dertype = tval;
-		s_handle->der[s_handle->numder].deridx = -1; //Don't have this yet
-		snprintf(s_handle->der[s_handle->numder].rawname,
-			 STORE_DERIVED_NAME_MAX, "%s",
-			 metric_name);
-		if (tval == RAW)
-			snprintf(s_handle->der[s_handle->numder].dername,
-				 STORE_DERIVED_NAME_MAX,
-				 "%s (x %.2e)",
-				 s_handle->der[s_handle->numder].rawname,
-				 s_handle->der[s_handle->numder].multiplier);
-		else
-			snprintf(s_handle->der[s_handle->numder].dername,
-				 STORE_DERIVED_NAME_MAX,
-				 "Rate_%s (x %.2e)",
-				 s_handle->der[s_handle->numder].rawname,
-				 s_handle->der[s_handle->numder].multiplier);
-		s_handle->numder++;
-	} while (s);
-
-	if (fp)
-		fclose(fp);
-	fp = NULL;
-
-	return rc;
+	return -1;
 }
+
+/**
+ * \brief Calc the names for the translation
+ */
+static int calcTranslations(){
+	int i;
+
+	for (i = 0; i < MSR_MAXOPTIONS; i++){
+		uint64_t w_reg = counter_assignments[i].w_reg;
+		uint64_t event_hi = counter_assignments[i].event >> 8;
+		uint64_t event_low = counter_assignments[i].event & 0xFF;
+		uint64_t umask = counter_assignments[i].umask;
+		uint64_t os_user = counter_assignments[i].os_user;
+
+		counter_assignments[i].wctl = MSR_HOST << 40 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
+
+	}
+}
+
+
+
+/**
+ * \brief Create DS
+ */
+static int createDS(struct store_msr_csv_handle *s_handle,
+		    ldms_mvec_t mvec){
+
+	int num_metrics;
+	char buf[STORE_CTR_NAME_MAX];
+
+	int temp;
+	int i;
+	int rc;
+
+	//well known format CtrX followed by CtrN_cYY, but probably in reverse order.
+	//also cYY might have offsets in there (corespernuma)
+	s_handle->createDS = 0;
+	s_handle->numctr = 0;
+	num_metrics = ldms_mvec_get_count(mvec);
+	s_handle->nummvecvals = num_metrics;
+
+	//one end or the other is Ctr0.
+	int currctr = 0;
+	snprintf(buf, STORE_CTR_NAME_MAX-1, "Ctr%d", currctr);
+	const char* name = ldms_get_metric_name(mvec->v[0]);
+	if (strcmp(name, buf) == 0){
+		s_handle->step = 1;
+	} else {
+		name = ldms_get_metric_name(mvec->v[num_metrics-1]);
+		if (strcmp(name, buf) == 0){
+			s_handle->step = -1;
+		} else {
+			msglog(LDMS_LERROR, "store_msr_csv: unexpected Ctr0 location. Aborting\n");
+			return -1;
+		}
+	}
+
+
+	int beg = 0;
+	int end = num_metrics;
+	if (s_handle->step == -1){
+		beg = num_metrics-1;
+		end = -1;
+	}
+	currctr = -1;
+	for (i = beg; i != end; i+= s_handle->step){
+		name = ldms_get_metric_name(mvec->v[i]);
+		if (strcmp(name, buf) == 0){
+			currctr++;
+			if (currctr == STORE_CTR_METRIC_MAX){
+				msglog(LDMS_LERROR, "store_msr_csv: Too many counters <%d>. Aborting\n", currctr);
+				return -1;
+			}
+			s_handle->ctr[currctr].nameidx = i;
+			s_handle->ctr[currctr].numvals = 0;
+			snprintf(buf, STORE_CTR_NAME_MAX-1, "Ctr%d", currctr+1);
+		} else {
+			s_handle->ctr[currctr].numvals++;
+		}
+	}
+
+	s_handle->numctr = currctr+1;
+	s_handle->nummvecvals = num_metrics;
+	return 0;
+}
+
 
 /**
  * \brief Configuration
@@ -485,16 +469,11 @@ static int derivedConfig(char* fname, struct csv_derived_store_handle *s_handle)
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
-	char *dervalue = NULL;
 	char *altvalue = NULL;
 	char *ivalue = NULL;
 	char *rvalue = NULL;
-	char *spoolerval;
-	char *spooldirval;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
-	int ipos = -1;
-	int agev = -1;
 
 	pthread_mutex_lock(&cfg_lock);
 
@@ -505,15 +484,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	altvalue = av_value(avl, "altheader");
-
-	ivalue = av_value(avl, "id_pos");
-	if (ivalue){
-		ipos = atoi(ivalue);
-		if ((ipos < 0) || (ipos > 1)) {
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
-		}
-	}
 
 	rvalue = av_value(avl, "rollover");
 	if (rvalue){
@@ -535,28 +505,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			return EINVAL;
 	}
 
-	ivalue = av_value(avl, "agesec");
-	if (ivalue){
-		agev = atoi(ivalue);
-		if (agev < 0){
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
-		}
-		agedt_sec = agev;
-	}
-
-	dervalue = av_value(avl, "derivedconf");
-	if (!dervalue) {
-		pthread_mutex_unlock(&cfg_lock);
-		return EINVAL;
-	}
-
 	if (root_path)
 		free(root_path);
 
 	root_path = strdup(value);
 
-	id_pos = ipos;
 	rollover = roll;
 	if (rollmethod >= MINROLLTYPE) {
 		rolltype = rollmethod;
@@ -568,72 +521,28 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		altheader = 0;
 
-	if (derivedconf)
-		free(derivedconf);
+	calcTranslations();
 
-	if (dervalue)
-		derivedconf = strdup(dervalue);
-
-	int rc = 0;
-	spoolerval =  av_value(avl, "spooler");
-	spooldirval =  av_value(avl, "spooldir");
-	if (spoolerval && spooldirval &&
-		strlen(spoolerval) >= 2 && strlen(spooldirval) >= 2) {
-		char *tmp1 = strdup(spoolerval);
-		char *tmp2 = strdup(spooldirval);
-		if (!tmp1 || !tmp2) {
-			free(tmp1);
-			free(tmp2);
-			free(root_path);
-			free(derivedconf);
-			root_path = NULL;
-			derivedconf = NULL;
-			rc = ENOMEM;
-		} else {
-			spooler = tmp1;
-			spooldir = tmp2;
-		}
-	} else {
-		if (spooldirval || spoolerval) {
-			msglog(LDMS_LERROR,"store_csv: both spooler "
-				"and spooldir must be specificed correctly. "
-				"got instead %s and %s\n",
-				(spoolerval?  spoolerval : "no spooler" ),
-				(spooldirval?  spooldirval : "no spooldir" ));
-			free(root_path);
-			free(derivedconf);
-			root_path = NULL;
-			derivedconf = NULL;
-			rc = EINVAL;
-		}
-	}
 	pthread_mutex_unlock(&cfg_lock);
-
-	return rc;
+	if (!root_path)
+		return ENOMEM;
+	return 0;
 }
 
 static void term(void)
 {
-	msglog(LDMS_LINFO, "store_derived_csv: term called\n");
 }
 
 static const char *usage(void)
 {
-	return  "    config name=store_derived_csv path=<path> altheader=<0/1> id_pos=<0/1>\n"
-		"           derivedconf=<fullpath> agesec=<sec> [spooler=<prog> spooldir=<dir>]\n"
+	return  "    config name=store_msr_csv path=<path> altheader=<0/1>\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
-		"         - spooler   The path to the spool transfer agent.\n"
-		"         - spooldir  The path to the spool directory for closed output files.\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - rollover  Greater than zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
-		"         - derivedconf (optional) Full path to derived config file\n"
-		"         - agesec     Set flag field if dt > this val in sec.\n"
-		"                     (Optional default no value used.)\n"
-		"         - id_pos    Use only one comp_id either first or last (0/1)\n"
-		"                     (Optional default use all compid)\n";
+		"                     \n";
 }
 
 /*
@@ -651,28 +560,16 @@ static ldmsd_store_handle_t get_store(const char *container)
 
 static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_derived_store_handle *s_handle = _s_handle;
+	struct store_msr_csv_handle *s_handle = _s_handle;
 	return s_handle->ucontext;
 }
 
 
-/*
-static void printDataStructure(struct csv_derived_store_handle *s_handle){
-	int i;
-	for (i = 0; i < s_handle->numder; i++){
-		printf("%d: dername=<%s> type=%d idx=%d\n",
-		       i, s_handle->der[i].dername, (int)(s_handle->der[i].dertype), s_handle->der[i].deridx);
-	}
-}
-*/
-
-
-static int print_header(struct csv_derived_store_handle *s_handle,
+static int print_header(struct store_msr_csv_handle *s_handle,
 			ldms_mvec_t mvec)
 {
-	int num_metrics;
-	const char* name;
 
+	const char* name;
 	int rc = 0;
 	int i, j;
 
@@ -680,64 +577,37 @@ static int print_header(struct csv_derived_store_handle *s_handle,
 	/* Only called from Store which already has the lock */
 	FILE* fp = s_handle->headerfile;
 	if (!fp){
-		msglog(LDMS_LDEBUG,"Cannot print header for store_derived_csv. No headerfile\n");
+		msglog(LDMS_LDEBUG,"Cannot print header for store_msr_csv. No headerfile\n");
 		return EINVAL;
 	}
-	s_handle->printheader = DONT_PRINT_HEADER;
+	s_handle->printheader = 0;
 
-	if (s_handle->parseconfig){
-	  rc = derivedConfig(derivedconf,s_handle);
-	  if (rc != 0) {
-	    msglog(LDMS_LDEBUG,"derivedConfig failed for store_derived_csv. \n");
-	    return rc;
-	  }
-	}
-
-
-	//Dont print the header yet, wait until find the metrics which are associated with this set
-
-	/* Determine here which if the derived metric names will be which metrics.
-	 *  Note: any missing metrics will have deridx still = -1
-	 */
-	num_metrics = ldms_mvec_get_count(mvec);
-	for (i = 0; i < num_metrics; i++) {
-		//printf("Checking metric <%s>\n",name);
-		name = ldms_get_metric_name(mvec->v[i]);
-		for (j = 0; j < s_handle->numder; j++){
-			//FIXME: note this means only 1 match (cant be both raw and dt)
-			if (strcmp(name, s_handle->der[j].rawname) == 0){
-				//printf("Found a match for derived: %s:%d\n", name, i);
-				s_handle->der[j].deridx = i;
-			}
+	if (s_handle->createDS){
+		rc = createDS(s_handle, mvec);
+		if (rc != 0){
+			msglog(LDMS_LERROR, "store_msr: ERROR parsing mvec for createDS. Aborting\n");
+			return -1;
 		}
 	}
 
-
-	//NOW print the header using only the metrics for this set....
+	/* Have to write the header from the mvec since the corespernuma may offset some numbering */
 
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
 	   a separate field */
-	//FIXME: should we change this format so it looks like the raw file (e.g., add a compid to the DT)?
 	fprintf(fp, "#Time, Time_usec, DT, DT_usec");
-
-	// Write all the metrics we know we should have */
-	if (id_pos < 0){
-		for (i = 0; i < s_handle->numder; i++){
-			if (s_handle->der[i].deridx != -1){
-				fprintf(fp, ", %s.CompId, %s.value",
-					s_handle->der[i].dername, s_handle->der[i].dername);
-			}
+	/* output format: permetric:  name (num), name (string), compid, numvals, derived_value(s) */
+	for (i = 0; i < s_handle->numctr; i++){
+		int cidx = s_handle->ctr[i].nameidx;
+		name = ldms_get_metric_name(mvec->v[cidx]);
+		fprintf(fp, ", %s, %s_string, %s_CompId, %s_numvals",
+			name, name, name, name);
+		for (j = 0; j < s_handle->ctr[i].numvals; j++){
+			cidx+=s_handle->step;
+			name = ldms_get_metric_name(mvec->v[cidx]);
+			fprintf(fp, ", %s_der", name);
 		}
-		fprintf(fp, ", Flag\n");
-	} else {
-		fprintf(fp, ", CompId");
-		for (i = 0; i < s_handle->numder; i++){
-			if (s_handle->der[i].deridx != -1){
-				fprintf(fp, ", %s", s_handle->der[i].dername);
-			}
-		}
-		fprintf(fp, ", Flag\n");
 	}
+	fprintf(fp, "\n");
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
@@ -753,13 +623,17 @@ static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		struct ldmsd_store_metric_index_list *list, void *ucontext)
 {
-	struct csv_derived_store_handle *s_handle;
+	struct store_msr_csv_handle *s_handle;
 	int add_handle = 0;
 	int rc = 0;
 
 	pthread_mutex_lock(&cfg_lock);
+
+	msglog(LDMS_LDEBUG, "store_msr_csv: entered new_store\n");
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
 	if (!s_handle) {
+
+		msglog(LDMS_LDEBUG, "store_msr_csv: no handle for <%s>. creating\n", container);
 		char tmp_path[PATH_MAX];
 
 		//append or create
@@ -799,11 +673,13 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			pthread_mutex_lock(&s_handle->lock);
 			goto err2;
 		}
-
-		s_handle->printheader = DO_PRINT_HEADER;
-		s_handle->parseconfig = 1;
-		s_handle->spooler = spooler;
-		s_handle->spooldir = spooldir;
+		s_handle->createDS = 1;
+		s_handle->printheader = 1;
+		s_handle->numsets = 0;
+		s_handle->nummvecvals = 0;
+		s_handle->numctr = 0;
+		s_handle->store_count = 0;
+		s_handle->byte_count = 0;
 	}
 
 	/* Take the lock in case its a store that has been closed */
@@ -820,23 +696,14 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			 s_handle->path);
 	}
 
-	if (!s_handle->file) {
+	if (!s_handle->file)  {
 		s_handle->file = fopen(tmp_path, "a+");
-		if (s_handle->file) {
-			s_handle->filename = strdup(tmp_path);
-			if (!s_handle->filename) {
-				fclose(s_handle->file);
-				s_handle->file = NULL;
-				msglog(LDMS_LERROR, "Error: %s OOM\n",
-					container);
-			}
-		}
 	}
 	if (!s_handle->file)
 		goto err3;
 
 	/* Only bother to open the headerfile if we have to print the header(s) */
-	if ((s_handle->printheader == DO_PRINT_HEADER) && !s_handle->headerfile){
+	if (s_handle->printheader && !s_handle->headerfile){
 		if (altheader) {
 			char tmp_headerpath[PATH_MAX];
 			if (rolltype >= MINROLLTYPE){
@@ -848,27 +715,21 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			}
 			/* truncate a separate headerfile if exists */
 			s_handle->headerfile = fopen(tmp_headerpath, "w");
-			s_handle->headerfilename = strdup(tmp_headerpath);
 		} else {
 			s_handle->headerfile = fopen(tmp_path, "a+");
-			s_handle->headerfilename = strdup(tmp_path);
-		}
-		if (!s_handle->headerfile) {
-			fclose(s_handle->headerfile);
-			s_handle->headerfile = NULL;
-			msglog(LDMS_LERROR, "Error: %s OOM\n", container);
 		}
 
 
 		if (!s_handle->headerfile){
-			msglog(LDMS_LDEBUG,"store_derived_csv: Cannot open headerfile");
+			msglog(LDMS_LDEBUG,"store_msr_csv: Cannot open headerfile");
 			goto err4;
 		}
 	}
 
 	if (add_handle) {
+		msglog(LDMS_LDEBUG, "store_msr_csv: adding handle for <%s>. \n", container);
 		if (nstorekeys == (MAX_ROLLOVER_STORE_KEYS-1)){
-			msglog(LDMS_LDEBUG, "Error: Exceeded max store keys");
+			msglog(LDMS_LDEBUG, "Error: Exceeded max store keys\n");
 			goto err5;
 		} else {
 			idx_add(store_idx, (void *)container,
@@ -878,6 +739,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	}
 
 	pthread_mutex_unlock(&s_handle->lock);
+	msglog(LDMS_LDEBUG, "store_msr_csv: new_store for <%s> successful\n", container);
 	goto out;
 
  err5:
@@ -911,6 +773,8 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	s_handle = NULL;
 
 
+	msglog(LDMS_LDEBUG, "store_msr_csv: in error path for new_store for <%s>. \n", container);
+
  out: //NO shandle OR successful
 	pthread_mutex_unlock(&cfg_lock);
 	return s_handle;
@@ -923,12 +787,10 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	/* NOTE: ldmsd_store invokes the lock on the whole s_handle */
 
 	uint64_t comp_id;
-	struct csv_derived_store_handle *s_handle;
+	struct store_msr_csv_handle *s_handle;
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
-	int setflagtime;
-	int setflag = 0;
 	int rc;
-	int i;
+	int i, j;
 
 	s_handle = _s_handle;
 	if (!s_handle)
@@ -942,24 +804,23 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		return EPERM;
 	}
 
-	switch (s_handle->printheader){
-	case DO_PRINT_HEADER:
+	if (s_handle->printheader) {
 		rc = print_header(s_handle, mvec);
 		if (rc != 0){
-			msglog(LDMS_LDEBUG,"store_derived_csv: Error in print_header: %d\n", rc);
-			s_handle->printheader = BAD_HEADER;
+			msglog(LDMS_LDEBUG,"store_msr_csv: Error in print_header: %d\n", rc);
 			pthread_mutex_unlock(&s_handle->lock);
 			return rc;
 		}
-		break;
-	case BAD_HEADER:
-		return EINVAL;
-		break;
-	default:
-		//ok to continue
-		break;
 	}
 
+	int num_metrics = ldms_mvec_get_count(mvec);
+	if (num_metrics != s_handle->nummvecvals){
+		msglog(LDMS_LERROR, "store_msr_csv: wrong number of vals in mvec <%d> expecting <%d>. Not storing\n",
+		       num_metrics, s_handle->nummvecvals);
+		return -1;
+	}
+
+	//now we get the vector, have to parse and compare to previous values to decide what to do
 
 	//keep this point.....
 	struct setdatapoint* dp = idx_find(s_handle->sets_idx,
@@ -974,6 +835,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 
 		dp->ts = NULL;
 		dp->datavals = NULL;
+
 		s_handle->numsets++;
 
 		idx_add(s_handle->sets_idx, (void*)(ldms_get_set_name(set)),
@@ -987,34 +849,37 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
+		dp->ts->sec = ts->sec;
+		dp->ts->usec = ts->usec;
 
-		dp->datavals = (uint64_t*) malloc((s_handle->numder)*sizeof(uint64_t));
+		dp->datavals = (uint64_t*) malloc((num_metrics)*sizeof(uint64_t));
 		if (dp->datavals == NULL){
 			pthread_mutex_unlock(&s_handle->lock);
 			return ENOMEM;
 		}
-		goto skip;
+		ldms_metric_t* v = ldms_mvec_get_metrics(mvec); //new vals
+		if (v == NULL) {
+			pthread_mutex_unlock(&s_handle->lock);
+			return EINVAL; //shouldnt happen
+		}
+		for (i = 0; i < s_handle->nummvecvals; i++){
+			dp->datavals[i] = ldms_get_u64(v[i]);
+		}
+		goto out;
 	}
 
-
-	/* Back port from v3: if time diff is not positive, write out something and flag.
-	 * if tis RAW data, write the val. if its RATE data, write zero
-	 */
-
-	setflag = 0;
-	setflagtime = 0;
 	struct timeval prev, curr, diff;
 	prev.tv_sec = dp->ts->sec;
 	prev.tv_usec = dp->ts->usec;
 	curr.tv_sec = ts->sec;
 	curr.tv_usec = ts->usec;
-	if ((prev.tv_sec*1000000+prev.tv_usec) >= (curr.tv_sec*1000000+curr.tv_usec)){
-		msglog(LDMS_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
-		       "store_derived_csv", ldms_get_set_name(set));
-		setflagtime = 1;
-	}
-	//always do this and write it out
+
 	timersub(&curr, &prev, &diff);
+	//08-23-15. Time diff of zero temporarily ok since we are doing diff and not rate
+//	if ((diff.tv_sec == 0) && (diff.tv_usec == 0)){
+//		msglog(LDMS_LDEBUG,"store_msr_csv: Time diff is zero for set %s. Skipping\n", ldms_get_set_name(set));
+//		goto out;
+//	}
 
 	/* format: #Time, Time_usec, DT, DT_usec */
 	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
@@ -1022,91 +887,98 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	fprintf(s_handle->file, ", %lu.%06lu, %lu",
 		diff.tv_sec, diff.tv_usec, diff.tv_usec);
 
-	int num_metrics = ldms_mvec_get_count(mvec);
 
-	/* write the compid if necessary */
-	if (id_pos >= 0){
-		if (num_metrics > 0){
-			i = (id_pos == 0)? 0: (num_metrics-1);
-			rc = fprintf(s_handle->file, ", %" PRIu64,
-				ldms_get_user_data(mvec->v[i]));
+	ldms_metric_t* v = ldms_mvec_get_metrics(mvec); //new vals
+	if (v == NULL) {
+		pthread_mutex_unlock(&s_handle->lock);
+		return EINVAL; //shouldnt happen
+	}
+
+	for (i = 0; i < s_handle->numctr; i++){
+		int cidx = s_handle->ctr[i].nameidx;
+		uint64_t cname = ldms_get_u64(mvec->v[cidx]);
+		uint64_t lastname = dp->datavals[cidx];
+		int comp_id = ldms_get_user_data(mvec->v[cidx]);
+		int numvals = s_handle->ctr[i].numvals;
+		int valid = 1;
+		if ((cname == 0) || (lastname == 0) || (cname != lastname)){
+			valid = 0;
+		}
+
+		//output format: permetric:  name (num), name (string), compid, numvals, derived_value(s)
+		if (!valid){
+			rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64 ", %" PRIu32 ", %d",
+				0, 0, comp_id, s_handle->ctr[i].numvals);
 			if (rc < 0)
-				msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
+				msglog(LDMS_LERROR, "store_csv_msr: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
-		}
-	}
 
-	/* for all metrics in the conf, write the vals */
-	for (i = 0; i < s_handle->numder; i++){
-		int midx = s_handle->der[i].deridx;
-		//NOTE: once intended to enable deltas to be specified for metrics which did not exist,
-		//but currently cannot distinguish which metrics are missing metrics for which
-		//sets
-		if (midx != -1){
-			uint64_t val;
-			if (s_handle->der[i].dertype == RAW) {
-				val = ldms_get_u64(mvec->v[midx]);
-				val = (uint64_t) (val * s_handle->der[i].multiplier);
-			} else {
-				if (!setflagtime){ //then dt > 0
-					uint64_t currval = ldms_get_u64(mvec->v[midx]);
-					if (currval == dp->datavals[i]){
-						val = 0;
-					} else if (currval > dp->datavals[i]){
-						double temp = (double)(currval - dp->datavals[i]);
-						temp *= s_handle->der[i].multiplier;
-						temp *= 1000000.0;
-						temp /= (double)(diff.tv_sec*1000000.0 + diff.tv_usec);
-						val = (uint64_t) temp;
-					} else {
-						//ROLLOVER - Should we assume ULONG_MAX is the rollover? Just use 0 for now....
-						setflag = 1;
-						val = 0;
-					}
+			for (j = 0; j < s_handle->ctr[i].numvals; j++){
+				rc = fprintf(s_handle->file, ", 0");
+				if (rc < 0)
+					msglog(LDMS_LERROR, "store_csv_msr: Error %d writing to '%s'\n",
+					       rc, s_handle->path);
+				else
+					s_handle->byte_count += rc;
+			}
+		} else {
+			int nameidx = getNameIdx(cname);
+			rc = fprintf(s_handle->file, ", %" PRIu64 ", %s, %" PRIu32 ", %d",
+				     cname,  ((nameidx >= 0)? counter_assignments[nameidx].name: "N/A"),
+				     comp_id, s_handle->ctr[i].numvals);
+			if (rc < 0)
+				msglog(LDMS_LERROR, "store_csv_msr: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+
+			// we know dt > 0. 08-23-15 Temporarily dt == 0 has been restored, but that is ok since not doing divide
+			for (j = 0; j < s_handle->ctr[i].numvals; j++){
+				cidx+=s_handle->step;
+				uint64_t val;
+				uint64_t currval = ldms_get_u64(mvec->v[cidx]);
+				if (currval == dp->datavals[cidx]){
+					val = 0;
+				} else if (currval > dp->datavals[cidx]){
+					/* 08-23-15 Temporarily disabling rate.
+					double temp = (double)(currval - dp->datavals[cidx]);
+					//ROLLOVER - Should we assume ULONG_MAX is the rollover? Just use 0 for now....
+					temp /= (double)(diff.tv_sec*1000000.0 + diff.tv_usec);
+					temp *= 1000000.0;
+					val = (uint64_t) temp;
+					*/
+					val = currval - dp->datavals[cidx];
 				} else {
-					setflag = 1;
+					//NOTE: no flag to tell this case
 					val = 0;
 				}
-			}
-			if (id_pos < 0) {
-				comp_id = ldms_get_user_data(mvec->v[midx]);
-				rc = fprintf(s_handle->file, ", %" PRIu64 ", %" PRIu64,
-					     comp_id, val);
-				if (rc < 0)
-					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
-					       rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			} else {
 				rc = fprintf(s_handle->file, ", %" PRIu64, val);
 				if (rc < 0)
-					msglog(LDMS_LDEBUG,"store_derived_csv: Error %d writing to '%s'\n",
+					msglog(LDMS_LERROR, "store_csv_msr: Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
 			}
 		}
-	} // i
-	if (setflagtime || ((diff.tv_sec+diff.tv_usec/1000000.0) > agedt_sec))
-		setflag = 1;
+		if (rc < 0)
+			msglog(LDMS_LERROR, "store_csv_msr: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+	}
+	rc = fprintf(s_handle->file, "\n");
 
-	fprintf(s_handle->file, ", %d\n", setflag);
-	s_handle->byte_count += 1;
-	s_handle->store_count++;
-
-skip:
+	//now copy over all the vec and the time
 	dp->ts->sec = ts->sec;
 	dp->ts->usec = ts->usec;
-	ldms_metric_t* v = ldms_mvec_get_metrics(mvec); //new vals
-	for (i = 0; i < s_handle->numder; i++){
-		int midx = s_handle->der[i].deridx;
-		if (midx >= 0){
-			dp->datavals[i] = ldms_get_u64(v[midx]);
-		}
+	for (i = 0; i < s_handle->nummvecvals; i++){
+		dp->datavals[i] = ldms_get_u64(mvec->v[i]);
 	}
 
+out:
+	s_handle->store_count++;
 	pthread_mutex_unlock(&s_handle->lock);
 
 	return 0;
@@ -1114,9 +986,9 @@ skip:
 
 static int flush_store(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_derived_store_handle *s_handle = _s_handle;
+	struct store_msr_csv_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog(LDMS_LDEBUG,"store_derived_csv: flush error.\n");
+		msglog(LDMS_LDEBUG,"store_msr_csv: flush error.\n");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -1128,7 +1000,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 
 static void close_store(ldmsd_store_handle_t _s_handle)
 {
-	struct csv_derived_store_handle *s_handle = _s_handle;
+	struct store_msr_csv_handle *s_handle = _s_handle;
 	if (!s_handle)
 		return;
 
@@ -1140,16 +1012,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
-	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
-	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
-	free(s_handle->headerfilename);
-	free(s_handle->filename);
-	s_handle->headerfilename = NULL;
-	s_handle->filename = NULL;
-	s_handle->spooler = NULL;
-	s_handle->spooldir = NULL;
+
 	pthread_mutex_unlock(&s_handle->lock);
 }
 
@@ -1159,14 +1022,14 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	int i;
 
 	pthread_mutex_lock(&cfg_lock);
-	struct csv_derived_store_handle *s_handle = _s_handle;
+	struct store_msr_csv_handle *s_handle = _s_handle;
 	if (!s_handle) {
 		pthread_mutex_unlock(&cfg_lock);
 		return;
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog(LDMS_LDEBUG,"Destroying store_derived_csv with path <%s>\n", s_handle->path);
+	msglog(LDMS_LDEBUG,"Destroying store_msr_csv with path <%s>\n", s_handle->path);
 
 	fflush(s_handle->file);
 	s_handle->store = NULL;
@@ -1182,22 +1045,10 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
-	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
-	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
-	free(s_handle->headerfilename);
-	free(s_handle->filename);
-	s_handle->headerfilename = NULL;
-	s_handle->filename = NULL;
-	s_handle->spooler = NULL;
-	s_handle->spooldir = NULL;
 	if (root_path)
 		free(root_path);
-	if (derivedconf)
-		free(derivedconf);
 
-	s_handle->numder = 0;
+	s_handle->numctr = 0;
 
 	if (s_handle->sets_idx) {
 		//FIXME: need someway to iterate thru this to get the ptrs to free them
@@ -1222,9 +1073,9 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	free(s_handle);
 }
 
-static struct ldmsd_store store_derived_csv = {
+static struct ldmsd_store store_msr_csv = {
 	.base = {
-			.name = "derived_csv",
+			.name = "msr_csv",
 			.term = term,
 			.config = config,
 			.usage = usage,
@@ -1241,18 +1092,18 @@ static struct ldmsd_store store_derived_csv = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &store_derived_csv.base;
+	return &store_msr_csv.base;
 }
 
-static void __attribute__ ((constructor)) store_derived_csv_init();
-static void store_derived_csv_init()
+static void __attribute__ ((constructor)) store_msr_csv_init();
+static void store_msr_csv_init()
 {
 	store_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 }
 
-static void __attribute__ ((destructor)) store_derived_csv_fini(void);
-static void store_derived_csv_fini()
+static void __attribute__ ((destructor)) store_msr_csv_fini(void);
+static void store_msr_csv_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	idx_destroy(store_idx);

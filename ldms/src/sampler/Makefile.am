@@ -2,7 +2,7 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS =
 pkglib_LTLIBRARIES =
 CORE = ../core
-BUILT_SOURCES = 
+BUILT_SOURCES =
 
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
@@ -11,6 +11,10 @@ COMMON_LIBADD = $(CORE)/libldms.la -lrt -lovis_util
 libclock_la_SOURCES = clock.c
 libclock_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libclock.la
+
+libsynthetic_la_SOURCES = synthetic.c
+libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm
+pkglib_LTLIBRARIES += libsynthetic.la
 
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
@@ -42,6 +46,12 @@ if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libmeminfo.la
+endif
+
+if ENABLE_MSR_INTERLAGOS
+libmsr_interlagos_la_SOURCES = msr_interlagos.c
+libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libmsr_interlagos.la
 endif
 
 if ENABLE_PERFEVENT
@@ -92,15 +102,6 @@ libprocstatutil2_la_LIBADD = $(COMMON_LIBADD)
 libprocstatutil2_la_CFLAGS = -I$(builddir) $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libprocstatutil2.la
 endif
-
-## if ENABLE_GLIB
-## if ENABLE_SEDC
-## libsedc_la_SOURCES = sedc.c
-## libsedc_la_CFLAGS = $(AM_CFLAGS) $(GLIB20_CFLAGS)
-## libsedc_la_LIBADD = $(COMMON_LIBADD) $(GLIB20_LIBS)
-## pkglib_LTLIBRARIES += libsedc.la
-## endif
-## endif
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c
