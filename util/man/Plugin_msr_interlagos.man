@@ -1,18 +1,18 @@
-.\" Manpage for Plugin_msr
+.\" Manpage for Plugin_msr_interlagos
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin msr man page"
+.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin msr interlagos man page"
 
 .SH NAME
-Plugin_msr - man page for the LDMS msr plugin
+Plugin_msr - man page for the LDMS msr interlagos plugin
 
 .SH SYNOPSIS
 Within ldmsctl
 .br
-ldmsctl> config name=msr [ <attr> = <value> ]
+ldmsctl> config name=msr_interlagos [ <attr> = <value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The msr plugin provides msr counter information.
+The msr_interlagos plugin provides msr counter information for INTERLAGOS only.
 
 This is a pre-release version of the sampler.
 
@@ -29,7 +29,7 @@ The ldmsctl interface includes functions for manipulating the sampling state and
 .SH EXTERNAL MODIFICATION OF COUNTERS AND EXTERNAL INTERACTIONS
 
 Note that the user can change the identity of the counter being collected via an external methodology such as wrmsr. Because of this,
-the Plugin_msr first rechecks the identity of the counter before sampling, however this is not atomic so there is a
+the msr_interlagos plugin first rechecks the identity of the counter before sampling, however this is not atomic so there is a
 slight possibility of a race condition where the user may change the counter between the check and the read. If the check
 fails zero values are reported for all metrics for that particular counter (including the reporting of the metric name).
 This continues until the identity is reset, either by external methods or by issuing the action=rewrite command.
@@ -117,7 +117,7 @@ ldmsctl configuration line
 .TP
 name=<plugin_name>
 .br
-This MUST be msr
+This MUST be msr_interlagos
 .TP
 action=<action>
 .br
@@ -247,17 +247,17 @@ will not be correct.
 
 .SH EXAMPLES
 .PP
-config name=msr action=initialize setname=nid00010_msr component_id=10 corespernuma=8
+config name=msr_interlagos action=initialize setname=nid00010_msr component_id=10 corespernuma=8
 .br
-config name=msr action=add metricname=L3_CACHE_MISSES
+config name=msr_interlagos action=add metricname=L3_CACHE_MISSES
 .br
-config name=msr action=add metricname=TOT_CYC
+config name=msr_interlagos action=add metricname=TOT_CYC
 .br
-config name=msr action=finalize
+config name=msr_interlagos action=finalize
 .br
-config name=msr action=reassign oldmetricname=TOT_CYC newmetricname=TOT_INS
+config name=msr_interlagos action=reassign oldmetricname=TOT_CYC newmetricname=TOT_INS
 .br
-config name=msr action=halt metricname=TOT_CYC
+config name=msr_interlagos action=halt metricname=TOT_CYC
 .PP
 
 .SH SEE ALSO

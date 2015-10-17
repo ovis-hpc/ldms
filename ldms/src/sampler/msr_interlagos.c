@@ -49,10 +49,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * \file msr.c
- * \brief msr data provider
+ * \file msr_interlagos.c
+ * \brief msr data provider for interlagos only
  *
- * Sets/checks/ and reads msr counters.
+ * Sets/checks/ and reads msr counters for interlagos only
  *
  */
 #include <dirent.h>
@@ -196,7 +196,7 @@ static ctrcfg_state cfgstate = CFG_PRE;
 
 static const char *usage(void)
 {
-	return  "    config name=msr action=initialize set=<setname> component_id=<comp_id> maxcore=<maxcore> corespernuma=<corespernuma>\n"
+	return  "    config name=msr_interlagos action=initialize set=<setname> component_id=<comp_id> maxcore=<maxcore> corespernuma=<corespernuma>\n"
 		"            - Sets the set name but does not create it.\n"
 		"            set             - The name of the set,\n"
 		"            component_id    - The default component_id. Also that for\n"
@@ -206,23 +206,23 @@ static const char *usage(void)
 		"                              If specified N must be >= actual numcores. This will\n"
 		"                              report 0 as values any N > actual numcores\n"
                 "            corespernuma    - num cores per numa domain (used for uncore counters)\n"
-		"    config name=msr action=add metricname=<name>\n"
+		"    config name=msr_interlagos action=add metricname=<name>\n"
 		"            - Adds a metric. The order they are issued are the ordered they are added\n"
 		"            metricname      - The metric name for the event\n"
-		"    config name=msr action=finalize\n"
+		"    config name=msr_interlagos action=finalize\n"
 		"            - Creates the set when called after all adds.\n"
-		"    config name=msr action=ls\n"
+		"    config name=msr_interlagos action=ls\n"
 		"            - List the currently configured events.\n"
-		"    config name=msr action=halt metricname=<name>\n"
+		"    config name=msr_interlagos action=halt metricname=<name>\n"
 		"            metricname      - The metric name for the event to halt.\n"
 		"                              metricname=all halts all\n"
-		"    config name=action=continue metricname=<name>\n"
+		"    config name=msr_interlagos action=continue metricname=<name>\n"
 		"            metricname      - The metric name for the event to continue (once halted)\n"
 		"                              metricname=all\n"
-		"    config name=msr action=reassign oldmetricname=<oldname> newmetricname=<newname>\n"
+		"    config name=msr_interlagos action=reassign oldmetricname=<oldname> newmetricname=<newname>\n"
 		"            oldmetricname   - The metric name for the event to swap out\n"
 		"            newmetricname   - The metric name for the event to swap in\n"
-		"    config name=msr action=rewrite metricname=<name>\n"
+		"    config name=msr_interlagos action=rewrite metricname=<name>\n"
 		"            metricname      - The metric name for the event to rewrite\n"
 		"                              metricname=all rewrites all\n"
 		;
@@ -252,13 +252,13 @@ static int halt(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMS_LERROR, "msr: in wrong state for halting events <%d>\n", cfgstate);
+		msglog(LDMS_LERROR, "msr_interlagos: in wrong state for halting events <%d>\n", cfgstate);
 		return -1;
 	}
 
 	value = av_value(avl, "metricname");
 	if (!value){
-		msglog(LDMS_LERROR, "msr: no name to halt\n");
+		msglog(LDMS_LERROR, "msr_interlagos: no name to halt\n");
 		return -1;
 	}
 
@@ -279,7 +279,7 @@ static int halt(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMS_LERROR, "msr: cannot find <%s> to halt\n", value);
+			msglog(LDMS_LERROR, "msr_interlagos: cannot find <%s> to halt\n", value);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
@@ -308,13 +308,13 @@ static int cont(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMS_LERROR, "msr: in wrong state for continuing events <%d>\n", cfgstate);
+		msglog(LDMS_LERROR, "msr_interlagos: in wrong state for continuing events <%d>\n", cfgstate);
 		return -1;
 	}
 
 	value = av_value(avl, "metricname");
 	if (!value){
-		msglog(LDMS_LERROR, "msr: no name to continue\n");
+		msglog(LDMS_LERROR, "msr_interlagos: no name to continue\n");
 		return -1;
 	}
 
@@ -333,7 +333,7 @@ static int cont(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMS_LERROR, "msr: cannot find <%s> to continue\n", value);
+			msglog(LDMS_LERROR, "msr_interlagos: cannot find <%s> to continue\n", value);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
@@ -363,7 +363,7 @@ int writeregistercpu(uint64_t x_reg, int cpu, uint64_t val){
 	fd = open(fname, O_WRONLY);
 	if (fd < 0) {
 		int errsv = errno;
-		msglog(LDMS_LERROR, "msr: writeregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
+		msglog(LDMS_LERROR, "msr_interlagos: writeregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
 		       fd, cpu, errsv);
 		return -1;
 	}
@@ -371,7 +371,7 @@ int writeregistercpu(uint64_t x_reg, int cpu, uint64_t val){
 	dat = val;
 	if (pwrite(fd, &dat, sizeof dat, x_reg) != sizeof dat) {
 		int errsv = errno;
-		msglog(LDMS_LERROR, "msr: writeregistercpu cannot pwrite MSR 0x%08" PRIx64
+		msglog(LDMS_LERROR, "msr_interlagos: writeregistercpu cannot pwrite MSR 0x%08" PRIx64
 		       " to 0x%016" PRIx64 " for cpu %d errno=<%d>\n",
 		       x_reg, dat, cpu, errsv);
 		return -1;
@@ -393,14 +393,14 @@ int readregistercpu(uint64_t x_reg, int cpu, uint64_t* val){
 	fd = open(fname, O_RDONLY);
 	if (fd < 0) {
 		int errsv = errno;
-		msglog(LDMS_LERROR, "msg: readregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
+		msglog(LDMS_LERROR, "msr_interlagos: readregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
 		       fd, cpu, errsv);
 		return -1;
 	}
 
 	if (pread(fd, &dat, sizeof dat, x_reg) != sizeof dat) {
 		int errsv = errno;
-		msglog(LDMS_LERROR, "msg: readregistercpu cannot pread MSR 0x%08" PRIx64
+		msglog(LDMS_LERROR, "msr_interlagos: readregistercpu cannot pread MSR 0x%08" PRIx64
 		       " for cpu %d errno=<%d>\n",
 		       x_reg, cpu, errsv);
 		close(fd);
@@ -484,12 +484,12 @@ static int checkregister( struct active_counter *pe){
 	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		rc = readregistercpu(pe->mctr->w_reg, i, &val);
 		if (rc != 0){
-			msglog(LDMS_LERROR, "msr: <%s> readregistercpu bad %d\n", pe->mctr->name, rc);
+			msglog(LDMS_LERROR, "msr_interlagos: <%s> readregistercpu bad %d\n", pe->mctr->name, rc);
 			return rc;
 		}
 		//              printf("Comparing %llx to %llx\n", val, pe->wctl);
 		if (val != pe->wctl){
-			msglog(LDMS_LDEBUG, "msr: Register changed! read <%llx> want <%llx>\n", val, pe->wctl);
+			msglog(LDMS_LDEBUG, "msr_interlagos: Register changed! read <%llx> want <%llx>\n", val, pe->wctl);
 			return -1;
 			break;
 		}
@@ -508,7 +508,7 @@ static int readregister(struct active_counter *pe){
 
 	switch (pe->state){
 	case CTR_HALTED:
-		msglog(LDMS_LDEBUG, "msr: %s Halted. Register will not be read.\n",
+		msglog(LDMS_LDEBUG, "msr_interlagos: %s Halted. Register will not be read.\n",
 		       pe->mctr->name);
 		//invalidate the current vals because this is an invalid read. (but this will have already been done as part of the halt)
 		zerometricset(pe); //these sets zero values in the metric set
@@ -518,7 +518,7 @@ static int readregister(struct active_counter *pe){
 		//check all of them first
 		rc = checkregister(pe);
 		if (rc != 0){
-			msglog(LDMS_LDEBUG, "msr: Control register for %s has changed. Register will not be read.\n",
+			msglog(LDMS_LDEBUG, "msr_interlagos: Control register for %s has changed. Register will not be read.\n",
 			       pe->mctr->name);
 			//invalidate the current vals because this is an invalid read.
 			zerometricset(pe); //these sets zero values in the metric set
@@ -528,13 +528,13 @@ static int readregister(struct active_counter *pe){
 			//then read all of them
 			rc = readregisterguts(pe); //this invalidates if fails. this is an invalid read. this sets values in the metric set
 			if (rc != 0){
-				msglog(LDMS_LERROR, "msr: Read register failed %s\n", pe->mctr->name);
+				msglog(LDMS_LERROR, "msr_interlagos: Read register failed %s\n", pe->mctr->name);
 				// we are not ok with this. do not change rc
 			}
 		}
 		break;
 	default:
-		msglog(LDMS_LDEBUG, "msr: register state <%d>. Wont read\n", pe->state);
+		msglog(LDMS_LDEBUG, "msr_interlagos: register state <%d>. Wont read\n", pe->state);
 		rc = 0;
 		break;
 	}
@@ -601,7 +601,7 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 			}
 			if (strcmp(rpe->mctr->name, pe->mctr->name) == 0){
 				//duplicates are ok
-				msglog(LDMS_LALWAYS,"msr: Duplicate assignments! <%s>\n", rpe->mctr->name);
+				msglog(LDMS_LALWAYS,"msr_interlagos: Duplicate assignments! <%s>\n", rpe->mctr->name);
 			}
 		}
 	}
@@ -625,13 +625,13 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMS_LERROR, "msr: in wrong state for rewriting events <%d>\n", cfgstate);
+		msglog(LDMS_LERROR, "msr_interlagos: in wrong state for rewriting events <%d>\n", cfgstate);
 		return -1;
 	}
 
 	value = av_value(avl, "metricname");
 	if (!value){
-		msglog(LDMS_LERROR, "msr: no name to rewrite\n");
+		msglog(LDMS_LERROR, "msr_interlagos: no name to rewrite\n");
 		return -1;
 	}
 
@@ -640,7 +640,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 		TAILQ_FOREACH(pe, &counter_list, entry){
 			s = writeregister(pe);
 			if (s != CTR_OK){
-				msglog(LDMS_LERROR, "msr: cannot rewrite register <%s>\n", value);
+				msglog(LDMS_LERROR, "msr_interlagos: cannot rewrite register <%s>\n", value);
 				//but will continue;
 			}
 			pthread_mutex_unlock(&pe->lock);
@@ -648,7 +648,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMS_LERROR, "msr: cannot find <%s> to rewrite\n", value);
+			msglog(LDMS_LERROR, "msr_interlagos: cannot find <%s> to rewrite\n", value);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
@@ -656,7 +656,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 		pthread_mutex_lock(&pe->lock);
 		s = writeregister(pe);
 		if (s != CTR_OK){
-			msglog(LDMS_LERROR, "msr: cannot rewrite register <%s>\n", value);
+			msglog(LDMS_LERROR, "msr_interlagos: cannot rewrite register <%s>\n", value);
 			//but will continue;
 		}
 		pthread_mutex_unlock(&pe->lock);
@@ -674,7 +674,7 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 
 	if ((oldname == NULL) || (newname == NULL) ||
 	    (strlen(oldname) == 0) || (strlen(newname) == 0)){
-		msglog(LDMS_LERROR, "msg: Invalid args to reassign counter\n");
+		msglog(LDMS_LERROR, "msr_interlagos: Invalid args to reassign counter\n");
 		return NULL;
 	}
 
@@ -686,20 +686,20 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 		}
 	}
 	if (idx < 0){
-		msglog(LDMS_LERROR, "msg: No counter <%s> to reassign to\n", newname);
+		msglog(LDMS_LERROR, "msr_interlagos: No counter <%s> to reassign to\n", newname);
 		return NULL;
 	}
 
 	pthread_mutex_lock(&cfglock);
 	pe = findactivecounter(oldname);
 	if (pe == NULL){
-		msglog(LDMS_LERROR, "msg: Cannot find counter <%s> to replace\n", oldname);
+		msglog(LDMS_LERROR, "msr_interlagos: Cannot find counter <%s> to replace\n", oldname);
 		pthread_mutex_unlock(&cfglock);
 		return NULL;
 	} else {
 		rc = checkreassigncounter(pe, idx);
 		if (rc != 0){
-			msglog(LDMS_LERROR, "msg: Reassignment of <%s> to <%s> invalid\n",
+			msglog(LDMS_LERROR, "msr_interlagos: Reassignment of <%s> to <%s> invalid\n",
 			       oldname, newname);
 			pthread_mutex_unlock(&cfglock);
 			return NULL;
@@ -724,26 +724,26 @@ static int reassign(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 	char* nvalue;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMS_LERROR, "msr: in wrong state for reassigning events <%d>\n", cfgstate);
+		msglog(LDMS_LERROR, "msr_interlagos: in wrong state for reassigning events <%d>\n", cfgstate);
 		return -1;
 	}
 
 	ovalue = av_value(avl, "oldmetricname");
 	if (!ovalue){
-		msglog(LDMS_LERROR, "msr: no name to rewrite\n");
+		msglog(LDMS_LERROR, "msr_interlagos: no name to rewrite\n");
 		return -1;
 	}
 
 	nvalue = av_value(avl, "newmetricname");
 	if (!nvalue){
-		msglog(LDMS_LERROR, "msr: no name to rewrite to\n");
+		msglog(LDMS_LERROR, "msr_interlagos: no name to rewrite to\n");
 		return -1;
 	}
 
 	pthread_mutex_lock(&cfglock);
 	pe = reassigncounter(ovalue, nvalue);
 	if (pe == NULL){
-		msglog(LDMS_LERROR, "msr: cannot reassign counter\n");
+		msglog(LDMS_LERROR, "msr_interlagos: cannot reassign counter\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -762,21 +762,21 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 
 	pthread_mutex_lock(&cfglock);
 	if (cfgstate != CFG_DONE_INIT){
-		msglog(LDMS_LERROR, "msr: in wrong state for adding events <%d>\n", cfgstate);
+		msglog(LDMS_LERROR, "msr_interlagos: in wrong state for adding events <%d>\n", cfgstate);
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
 
 	//add an event to the list to be parsed
 	if (numinitnames == (MSR_MAXOPTIONS-1)){
-		msglog(LDMS_LERROR, "msr: Trying to add too many events\n");
+		msglog(LDMS_LERROR, "msr_interlagos: Trying to add too many events\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
 
 	nam = av_value(avl, "metricname");
 	if ((!nam) || (strlen(nam) == 0)){
-		msglog(LDMS_LERROR, "msr: Invalid event name\n");
+		msglog(LDMS_LERROR, "msr_interlagos: Invalid event name\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -789,7 +789,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 		}
 	}
 	if (idx < 0){
-		msglog(LDMS_LERROR, "msr: Non-existent event name <%s>\n", nam);
+		msglog(LDMS_LERROR, "msr_interlagos: Non-existent event name <%s>\n", nam);
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -800,7 +800,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 		return ENOMEM;
 	}
 
-	msglog(LDMS_LDEBUG, "msr: Added event name <%s>\n", nam);
+	msglog(LDMS_LDEBUG, "msr_interlagos: Added event name <%s>\n", nam);
 
 	numinitnames++;
 	pthread_mutex_unlock(&cfglock);
@@ -820,11 +820,11 @@ static int checkcountersinit(){
 			if (i != j){
 				if (strcmp(initnames[i], initnames[j]) == 0){
 					//this is ok
-					msglog(LDMS_LALWAYS,"msr: Duplicate assignments! <%s>\n", initnames[i]);
+					msglog(LDMS_LALWAYS,"msr_interlagos: Duplicate assignments! <%s>\n", initnames[i]);
 				}
 				if ((strcmp(initnames[i], "TOT_CYC") == 0) &&
 				    (strcmp(initnames[j], "L2_DCM") == 0)){
-					msglog(LDMS_LERROR,"msr: Cannot have both TOT_CYC and L2_DCM\n");
+					msglog(LDMS_LERROR,"msr_interlagos: Cannot have both TOT_CYC and L2_DCM\n");
 					return -1;
 				}
 			}
@@ -866,7 +866,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	int i;
 
 	if (cfgstate != CFG_PRE){
-		msglog(LDMS_LERROR, "msr: cannot reinit");
+		msglog(LDMS_LERROR, "msr_interlagos: cannot reinit");
 		return -1;
 	}
 
@@ -886,7 +886,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	//get the actual number of counters = num entries like /dev/cpu/%d
 	numcore = scandir("/dev/cpu", &dlist, dfilter, 0);
 	if (numcore < 1){
-		msglog(LDMS_LERROR, "msr: cannot get numcore\n");
+		msglog(LDMS_LERROR, "msr_interlagos: cannot get numcore\n");
 		return -1;
 	}
 	for (i = 0; i < numcore; i++){
@@ -901,7 +901,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	if (val){
 		maxcore = atoi(val);
 		if ((maxcore < numcore) || (maxcore > MSR_TOOMANYMAX)){ //some big number. just a safety check.
-			msglog(LDMS_LERROR, "msr: maxcore %d invalid\n",
+			msglog(LDMS_LERROR, "msr_interlagos: maxcore %d invalid\n",
 			       maxcore);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
@@ -913,13 +913,13 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	if (val){
 		corespernuma = atoi(val);
 		if ((corespernuma < 1) || (corespernuma > MSR_TOOMANYMAX)){ //some big number. just a safety check.
-			msglog(LDMS_LERROR, "msr: corespernuma %d invalid\n",
+			msglog(LDMS_LERROR, "msr_interlagos: corespernuma %d invalid\n",
 			       maxcore);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
 	} else {
-		msglog(LDMS_LERROR, "msr: must specify corespernuma\n");
+		msglog(LDMS_LERROR, "msr_interlagos: must specify corespernuma\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -1037,7 +1037,7 @@ static int assigncountersinit(){
 			}
 		}
 		if (found == -1){
-			msglog(LDMS_LERROR, "msg: Bad init counter name <%s>\n", initnames[i]);
+			msglog(LDMS_LERROR, "msr_interlagos: Bad init counter name <%s>\n", initnames[i]);
 			return -1;
 		}
 	}
@@ -1057,11 +1057,11 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 	int i, j, k;
 
 	pthread_mutex_lock(&cfglock);
-	msglog(LDMS_LDEBUG, "msr: finalizing\n");
+	msglog(LDMS_LDEBUG, "msr_interlagos: finalizing\n");
 
 	if (cfgstate != CFG_DONE_INIT){
 		pthread_mutex_unlock(&cfglock);
-		msglog(LDMS_LERROR,"msr: in wrong state to finalize <%d>", cfgstate);
+		msglog(LDMS_LERROR,"msr_interlagos: in wrong state to finalize <%d>", cfgstate);
 		return -1;
 	}
 
@@ -1142,7 +1142,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 		snprintf(name, MSR_MAXLEN, "Ctr%d", i);
 		pe->metric_table[0] = ldms_add_metric(set, name, LDMS_V_U64);
 		if (!(pe->metric_table[0])){
-			msglog(LDMS_LDEBUG,"msr: Could not create the metric for event '%s'\n",
+			msglog(LDMS_LDEBUG,"msr_interlagos: Could not create the metric for event '%s'\n",
 			       name);
 			rc = ENOMEM;
 			goto err;
@@ -1156,7 +1156,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 			if (j < pe->mctr->numcore){
 				pe->metric_table[(k+CTR_TABLE_OFFSET)] = ldms_add_metric(set, name, LDMS_V_U64);
 				if (!(pe->metric_table[k+CTR_TABLE_OFFSET])){
-					msglog(LDMS_LDEBUG,"msr: Could not create the metric for event '%s'\n",
+					msglog(LDMS_LDEBUG,"msr_interlagos: Could not create the metric for event '%s'\n",
 					       name);
 					rc = ENOMEM;
 					goto err;
@@ -1272,7 +1272,7 @@ static int sample(void)
 	struct active_counter* pe;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMS_LERROR, "msr: in wrong state for sampling <%d>\n", cfgstate);
+		msglog(LDMS_LERROR, "msr_interlagos: in wrong state for sampling <%d>\n", cfgstate);
 		return -1;
 	}
 
@@ -1298,9 +1298,9 @@ static void term(void)
 	ldms_destroy_set(set);
 }
 
-static struct ldmsd_sampler msr_plugin = {
+static struct ldmsd_sampler msr_interlagos_plugin = {
 	.base = {
-		.name = "msr",
+		.name = "msr_interlagos",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -1312,5 +1312,5 @@ static struct ldmsd_sampler msr_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &msr_plugin.base;
+	return &msr_interlagos_plugin.base;
 }
