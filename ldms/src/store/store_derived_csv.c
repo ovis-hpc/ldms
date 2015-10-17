@@ -574,7 +574,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc = 0;
 	spoolerval =  av_value(avl, "spooler");
 	spooldirval =  av_value(avl, "spooldir");
-	if (spoolerval && spooldirval && 
+	if (spoolerval && spooldirval &&
 		strlen(spoolerval) >= 2 && strlen(spooldirval) >= 2) {
 		char *tmp1 = strdup(spoolerval);
 		char *tmp2 = strdup(spooldirval);
@@ -827,7 +827,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 				msglog(LDMS_LERROR, "Error: %s OOM\n",
 					container);
 			}
-		} 
+		}
 	}
 	if (!s_handle->file)
 		goto err3;
@@ -1087,7 +1087,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 		}
 
 	} // i
-	if (setflagtime || ((double)diff.tv_sec*1000000+diff.tv_usec > agedt_sec))
+	if (setflagtime || ((double)diff.tv_sec+1000000*diff.tv_usec > agedt_sec))
 		setflag = 1;
 
 	fprintf(s_handle->file, ", %d\n", setflag);
