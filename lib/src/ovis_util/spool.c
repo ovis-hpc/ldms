@@ -8,7 +8,7 @@
 void ovis_file_spool(const char *spoolexec, const char *outfile,
 	const char *spooldir, ovis_log_fn_t log)
 {
-	if (!log)  {
+	if (!log || (!spoolexec && !spooldir) || !outfile)  {
 		return;
 	}
 	if (!spoolexec || !outfile || !spooldir || 
