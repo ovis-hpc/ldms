@@ -1,6 +1,6 @@
 #!/bin/bash -x
 eventname=libevent-2.0.21-stable
-export LOCALEVENT=0 ; # else expect /usr to be a good libevent2
+export LOCALEVENT=1 ; # else expect /usr to be a good libevent2
 # we build libevent once, then reinstall it as first built if
 # it goes missing from the install tree.
 
@@ -31,6 +31,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 		expected_event2_prefix=/usr
 	else
 		expected_event2_prefix=/usr/lib64/ovis-libevent2
+		expected_event2_prefix=$HOME/libevent2
 	fi
 	# clean out old build headers if reinstalling. prevents build confusion.
 	oldinc="coll ldms mmalloc ovis_ctrl ovis-test ovis_util sos zap"

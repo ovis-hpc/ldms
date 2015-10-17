@@ -10,7 +10,9 @@ bin_SCRIPTS= envldms.sh \
 	ldms_local_inspxe_rdma.sh \
 	ldms_local_rdmatest.sh
 
-CLEANFILES = $(bin_SCRIPTS)
+CLEANFILES =
+# do not do this. Otherwise we force toplevel reconfigure after local make clean.
+#CLEANFILES = $(bin_SCRIPTS)
 
 bin_SCRIPTS+= ldms_ban.sh
 
