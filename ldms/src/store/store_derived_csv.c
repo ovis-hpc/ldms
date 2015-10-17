@@ -86,7 +86,7 @@ static char *root_path;
 static int altheader;
 static char* derivedconf = NULL;
 static int id_pos;
-static int agedt_sec = -1;
+static int agedt_sec = 1000000;
 static int rollover;
 static int rolltype;
 /** ROLLTYPES documents rolltype and is used in help output. */
@@ -539,6 +539,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		}
+		agedt_sec = agev;
 	}
 
 	dervalue = av_value(avl, "derivedconf");
@@ -558,7 +559,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		rolltype = rollmethod;
 		pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
 	}
-	agedt_sec = agev;
 
 	if (altvalue)
 		altheader = atoi(altvalue);
@@ -1005,7 +1005,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 	prev.tv_usec = dp->ts->usec;
 	curr.tv_sec = ts->sec;
 	curr.tv_usec = ts->usec;
-	if ((double)prev.tv_sec*1000000+prev.tv_usec >= (double)curr.tv_sec*1000000+curr.tv_usec){
+	if ((prev.tv_sec*1000000+prev.tv_usec) >= (curr.tv_sec*1000000+curr.tv_usec)){
 		msglog(LDMS_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
 		       "store_derived_csv", ldms_get_set_name(set));
 		setflagtime = 1;
@@ -1085,9 +1085,8 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mvec)
 					s_handle->byte_count += rc;
 			}
 		}
-
 	} // i
-	if (setflagtime || ((double)diff.tv_sec+1000000*diff.tv_usec > agedt_sec))
+	if (setflagtime || ((diff.tv_sec+diff.tv_usec/1000000.0) > agedt_sec))
 		setflag = 1;
 
 	fprintf(s_handle->file, ", %d\n", setflag);
