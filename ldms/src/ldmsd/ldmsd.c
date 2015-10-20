@@ -89,9 +89,9 @@ uint16_t ocm_port = OCM_DEFAULT_PORT;
 int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #endif
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 #define LDMSD_AUTH_ENV "LDMSD_AUTH_FILE"
 
@@ -238,7 +238,7 @@ enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s)
 	return -1;
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 const char *ldmsd_secret_get(void)
 {
 	return secretword;
@@ -364,13 +364,13 @@ void usage(char *argv[])
 	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
 	printf("    -z ldmsd_mode  ldmsd mode (either 'ldmsd_sampler' or 'ldmsd_aggregator'\n");
 #endif
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	printf("    -a		   Authentication is required. The environment variable\n"
 	       "		   %s must be set to the full path to the file storing\n"
 	       "		   the shared secret word, e.g., secretword=<word>, where\n"
 	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	printf("    -p port        The inet control listener port for receiving configuration\n");
 #ifdef ENABLE_LDMSD_RCTL
 	printf("    -r port        The listener port for receiving configuration\n"
@@ -1176,12 +1176,12 @@ void do_connect(struct hostspec *hs)
 	switch (hs->type) {
 	case ACTIVE:
 	case BRIDGING:
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldmsd_lcritical,
 				secretword);
 #else
 		hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_lcritical);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		if (hs->x) {
 			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
 						 sizeof(hs->sin), ldms_connect_cb, hs);
@@ -1432,11 +1432,11 @@ void listen_on_transport(char *xprt_str, char *port_str)
 		port_no = LDMS_DEFAULT_PORT;
 	else
 		port_no = atoi(port_str);
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical, secretword);
-#else /* ENABLE_AUTH */
+#else /* OVIS_LIB_HAVE_AUTH */
 	l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!l) {
 		ldmsd_log(LDMSD_LERROR, "The transport specified, "
 				"'%s', is invalid.\n", xprt_str);
@@ -1467,7 +1467,7 @@ void ev_log_cb(int sev, const char *msg)
 	ldmsd_log(LDMSD_LERROR, "%s: %s\n", sev_s[sev], msg);
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 int ldmsd_get_secretword()
 {
 	int rc;
@@ -1486,7 +1486,7 @@ int ldmsd_get_secretword()
 	}
 	return 0;
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 extern int ldmsd_inet_config_init(const char *port, const char *secretword);
 int main(int argc, char *argv[])
@@ -1623,11 +1623,11 @@ int main(int argc, char *argv[])
 			printf("Error: -o options requires OCM support.\n");
 #endif
 			break;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		case 'a':
 			authenticate = 1;
 			break;
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		case 'V':
 			ldms_version_get(&ldms_version);
 			ldmsd_version_get(&ldmsd_version);
@@ -1758,14 +1758,14 @@ int main(int argc, char *argv[])
 
 	ldmsd_log(LDMSD_LINFO, "Started LDMS Daemon version " VERSION "\n");
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	secretword = NULL;
 	if (authenticate) {
 		if (ldmsd_get_secretword())
 			cleanup(15);
 	}
 
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 

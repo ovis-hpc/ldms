@@ -64,7 +64,7 @@
 #include <sys/queue.h>
 #include <time.h>
 #include <sys/time.h>
-#include "str_map.h"
+#include "coll/str_map.h"
 
 #include "ldms.h"
 #include "ldmsd.h"

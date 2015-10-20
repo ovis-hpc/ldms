@@ -95,10 +95,10 @@ extern int read_history ();
 #include "ocm/ocm.h"
 #include "ovis_rctrl/rctrl.h"
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
 #define LDMSD_RCTRL_AUTH_ENV "LDMSD_RCTRL_AUTH_FILE"
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 #define FMT "h:p:a:"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
@@ -143,12 +143,12 @@ void usage(char *argv[])
 	       "    -h <hostname>   The hostname of the ldmsd.\n"
 	       "    -p <port>       The listener port of ldmsd.\n",
 	       argv[0], FMT);
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	printf("    -a <path>       The full Path to the file containing the shared secret word.\n"
 	       "		    Set the environment variable %s to the full path\n"
 	       "		    to avoid giving it at command-line every time.\n",
 	       LDMSD_RCTRL_AUTH_ENV);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	exit(1);
 }
 
@@ -710,7 +710,7 @@ static void null_log(const char *fmt, ...)
 	fflush(stdout);
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 
 #include "ovis_auth/auth.h"
 
@@ -724,7 +724,7 @@ const char *ldmsd_rctrl_get_secretword(const char *path)
 	}
 	return ovis_auth_get_secretword(path, null_log);
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 int main(int argc, char *argv[])
 {
@@ -772,9 +772,9 @@ int main(int argc, char *argv[])
 	}
 
 	const char *word = 0;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	word = ldmsd_rctrl_get_secretword(secretword_path);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 	rctrl_t ctrl = rctrl_setup_controller("sock", rctrl_cb, word, null_log);
 	if (!ctrl) {

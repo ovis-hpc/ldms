@@ -1,0 +1,51 @@
+atacoadmin1       cluster=ataco
+
+# ldms genders by node selfreported hostname needed for init.d control
+
+# monitoring data collectors are ldmsd
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd,ldmsd_port=411,ldmsd_xprt=rdma,ldmsd_interval_default=1000000,ldmsd_offset_default=0,ldmsd_clientof=atacoadmin1
+atacoadmin1,ataco[1-4] ldmsd_host=%n-ib0
+atacoadmin1 ldmsd_dbg=ERROR
+atacoadmin1 ldmsaggd_dbg=ERROR
+#irregular naming in 'hostname' make this needed.
+ataco-login1 ldmsd_host=atacologin1-ib0
+ataco-login2 ldmsd_host=atacologin2-ib0
+ataco-login3 ldmsd_host=atacologin3-ib0
+ataco-login4 ldmsd_host=atacologin4-ib0
+atacogw[1-2] ldmsd_host=%n-ib2
+
+# component id groups
+ataco[1-4] ldmsd_idbase=0
+ataco-login[1-4] ldmsd_idbase=10
+atacogw[1-2] ldmsd_idbase=20
+atacoadmin1 ldmsd_idbase=30
+
+# aggregator 1st level
+# clientoflist is expanded to match bootnode values. See man page for alternatives.
+# Port 411 cannot be used for both ldms_aggd and ldmsd if xprt is the same.
+atacoadmin1 ldmsaggd=CLIENTOFLIST
+# transport
+atacoadmin1 ldmsaggd_port=411,ldmsaggd_host=ataco-admin1,ldmsaggd_xprt=sock
+# who we'll report to
+atacoadmin1 ldmsaggd_clientof=aries
+# schedule
+atacoadmin1 ldmsaggd_interval_default=1000000,ldmsaggd_offset_default=30000
+
+# metric sets (sysclassib may have issues with resets on mlx; omitted)
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_metric_sets=meminfo:vmstat:procnfs:procstatutil2:procnetdev
+
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procstatutil2=maxcpu/16
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procnetdev=ifaces/eth0&eth1&eth3&eth4&ib0&ib2
+
+#atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_sysclassib=ports/qib0.1
+#atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_sysclassib=ports/mlx4_0.1
+#atacoadmin1,ataco[1-4],ataco-login[1-4] ldmsd_sysclassib=ports/mlx4_1.1
+
+# aries is agging ataco 1st level aggregator
+aries ldmsaggd=AGGCLIENTOFLIST
+# aries agg schedule (offset should be bigger than ataco agg offset.
+aries ldmsaggd_interval_default=1000000,ldmsaggd_offset_default=500000
+# store format
+aries ldmsaggd_stores=store_csv
+aries ldmsaggd_dbg=DEBUG
+aries ldmsaggd_store_csv=altheader/1:id_pos/1:rolltype/2:rollover/0

@@ -59,7 +59,7 @@
 #include <sys/time.h>
 #include <ovis_util/util.h>
 
-#define ME_PLUGIN_LIBPATH_DEFAULT "/usr/local/lib/me"
+#define ME_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 #define ME_PATH_MAX 4096
 #define ME_MAX_PLUGIN_NAME_LEN 64
 

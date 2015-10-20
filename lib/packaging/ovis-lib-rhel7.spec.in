@@ -34,6 +34,9 @@ rm -rf $RPM_BUILD_ROOT
 make DESTDIR=${RPM_BUILD_ROOT} install
 # remove unpackaged files from the buildroot
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+rm -f $RPM_BUILD_ROOT%{_bindir}/test_big_dstring
+rm -f $RPM_BUILD_ROOT%{_bindir}/test_dstring
+rm -f $RPM_BUILD_ROOT%{_bindir}/test_rman
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -90,6 +93,7 @@ OVIS authentication library
 %files auth
 %defattr(-,root,root)
 %{_libdir}/libovis_auth*
+%{_libdir}/ovis-lib/ovis-auth.sh
 
 # auth-devel
 %package auth-devel
@@ -179,7 +183,7 @@ Requires: @PACKAGE@-zap >= 1.3.0, @PACKAGE@-coll, libevent >= 2.0.21
 socket transport implementation for zap
 %files zap-sock
 %defattr(-,root,root)
-%{_libdir}/libzap_sock.*
+%{_libdir}/ovis-lib/libzap_sock.*
 %endif # zap-sock
 
 %if "@ENABLE_RDMA_TRUE@x" == "x"
@@ -192,7 +196,7 @@ Requires: @PACKAGE@-zap >= 1.3.0, librdmacm >= 1.0.19, libibverbs >= 1.1.8
 RDMA (Infiniband and iWarp) transport implementation for zap
 %files zap-rdma
 %defattr(-,root,root)
-%{_libdir}/libzap_rdma.*
+%{_libdir}/ovis-lib/libzap_rdma.*
 %endif
 
 %if "@ENABLE_UGNI_TRUE@x" == "x"
@@ -205,7 +209,7 @@ Requires: @PACKAGE@-zap >= 1.3.0, @PACKAGE@-coll, libevent >= 2.0.21
 uGNI transport implementation for zap
 %files zap-ugni
 %defattr(-,root,root)
-%{_libdir}/libzap_ugni.*
+%{_libdir}/ovis-lib/libzap_ugni.*
 %endif
 
 # python
@@ -220,5 +224,14 @@ Python interface for OVIS libraries
 # These are the files that we don't care
 %exclude %{_bindir}/lib-pedigree
 %exclude %{_includedir}/ovis-test/
+
+%package misc
+Summary: Miscellaneous file in ovis-lib project.
+Group: %{ovis_lib_grp}
+%description misc
+Miscellaneous file in ovis-lib project.
+%files misc
+%{_libdir}/ovis-lib-configvars.sh
+%{_includedir}/ovis-lib-config.h
 
 %changelog

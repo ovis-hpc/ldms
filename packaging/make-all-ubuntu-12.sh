@@ -1,12 +1,17 @@
-#!/bin/bash -x
+#!/bin/bash 
+echo "$0 `date`" >> .last-make
 echo BUILDING FOR UBUNTU 12.04
 export CC=gcc
+export CXX=g++
+
 export LD_LIBRARY_PATH=$HOME/opt/ovis/lib:$LD_LIBRARY_PATH
-if test -f lib/packaging/ovis-lib-toss.spec.in; then
+
+# local path of scratch ldms files
+build_subdir=LDMS_objdir
+
+if test -f packaging/ovis-base.spec.in; then
 	prefix=$HOME/opt/ovis
 	expected_event2_prefix=/usr
-	expected_ovislib_prefix=$prefix
-	expected_sos_prefix=$prefix
 
 	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-rdma --enable-ncsa-unified --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking "
 
@@ -17,15 +22,28 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 		echo "You forgot to install libevent -dev package or you need to edit $0"
 		exit 1
 	fi
+	if test -f ldms/configure; then
+		echo "Found ldms/configure. Good."
+	else
+		echo "You forgot to autogen.sh at the top or you need to edit $0 or you need to use
+ a released tarred version."
+		exit 1
+	fi
 
-	echo "reinitializing .build-all"
-	rm -rf .build-all
-	mkdir .build-all
-	cd .build-all
-	mkdir lib ldms sos
-	(cd lib; ../../lib/configure $allconfig && make  && make install) && \
-	(cd sos; ../../sos/configure  $allconfig && make  && make install) && \
-	cd ldms && LDFLAGS="-L$(HOME)/opt/ovis/lib" ../../ldms/configure $allconfig && make  && make install
+	srctop=`pwd`
+	prefix=$srctop/LDMS_install
+	echo "reinitializing build subdirectory $build_subdir" 
+	rm -rf $build_subdir
+	mkdir $build_subdir
+	cd $build_subdir
+	expected_ovislib_prefix=$prefix
+	expected_sos_prefix=/badsos
+	#allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 LDFLAGS=-fsanitize=address "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 "
+	../configure $allconfig && \
+	make && \
+	make install && \
+	../packaging/nola.sh $prefix
 else
 	echo "this must be run from the top of ovis source tree"
 	exit 1

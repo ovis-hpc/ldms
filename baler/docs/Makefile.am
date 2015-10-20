@@ -4,21 +4,22 @@ if HAVE_DOXYGEN
 all: doc
 doc: docs
 
-docs: doxygen-out
+docs: doxygen-out texdocs
 
-DOCDEPS = $(shell find $(top_srcdir)/src -iname '*.[ch]')
+#DOCDEPS = $(shell find $(top_srcdir)/src -iname '*.[ch]')
+DOCDEPS = $(top_srcdir)/src/*/*.c $(top_srcdir)/src/*/*.h
 
 doxygen-out: $(DOCDEPS)
 	@DOXYGEN@
 	touch doxygen-out
 
-.PHONY: install-doc-dir
+# .PHONY: install-doc-dir
 install-doc-dir:
-	mkdir -p $(DESTDIR)$(docdir)
+	$(MKDIR_P) $(DESTDIR)$(docdir)
 
 if ENABLE_DOC_LATEX
-.PHONY: install-doc-latex uninstall-doc-latex
-docs: latex/refman.pdf
+# .PHONY: install-doc-latex uninstall-doc-latex
+texdocs: latex/refman.pdf
 
 DEST_PDF = $(DESTDIR)$(docdir)/$(PACKAGE)-$(VERSION).pdf
 
@@ -34,10 +35,14 @@ uninstall-doc-latex:
 	rm -f $(DEST_PDF)
 
 uninstall-local: uninstall-doc-latex
+else
+
+texdocs:
+
 endif
 
 if ENABLE_DOC_HTML
-.PHONY: install-doc-html uninstall-doc-html
+# .PHONY: install-doc-html uninstall-doc-html
 install-doc-html: install-doc-dir doxygen-out
 	cp -r html $(DESTDIR)$(docdir)/
 
@@ -69,5 +74,9 @@ else
 doc:
 	@echo "doxygen not found!!!"
 	@exit -1
+
+.PHONY: install-doc-latex uninstall-doc-latex
+.PHONY: install-doc-html uninstall-doc-html
+.PHONY: install-doc-dir
 
 endif

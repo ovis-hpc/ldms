@@ -76,7 +76,6 @@
 #serial 6
 # extended with disable option
 
-
 AU_ALIAS([VL_LIB_READLINE], [AX_LIB_READLINE])
 AC_DEFUN([AX_LIB_READLINE], [
   OPTION_DEFAULT_ENABLE([readline], [readline])
@@ -85,8 +84,6 @@ AC_DEFUN([AX_LIB_READLINE], [
     AC_CACHE_CHECK([for a readline compatible library],
                    ax_cv_lib_readline, [
       ORIG_LIBS="$LIBS"
-      READLINE_LIBS=""
-      READLINE_CFLAGS=""
       for readline_lib in readline edit editline; do
         for termcap_lib in "" termcap curses ncurses; do
           if test -z "$termcap_lib"; then
@@ -112,8 +109,6 @@ AC_DEFUN([AX_LIB_READLINE], [
 
     if test "$ax_cv_lib_readline" != "no"; then
       LIBS="$LIBS $ax_cv_lib_readline"
-      READLINE_LIBS="$ax_cv_lib_readline"
-      READLINE_CFLAGS="$READLINE_CFLAGS -DHAVE_LIBREADLINE"
       AC_DEFINE(HAVE_LIBREADLINE, 1,
                 [Define if you have a readline compatible library])
       AC_CHECK_HEADERS(readline.h readline/readline.h)
@@ -123,7 +118,6 @@ AC_DEFUN([AX_LIB_READLINE], [
         AC_TRY_LINK_FUNC(add_history, ax_cv_lib_readline_history="yes")
       ])
       if test "$ax_cv_lib_readline_history" = "yes"; then
-        READLINE_CFLAGS="$READLINE_CFLAGS -DHAVE_READLINE_HISTORY"
         AC_DEFINE(HAVE_READLINE_HISTORY, 1,
                   [Define if your readline library has \`add_history'])
         AC_CHECK_HEADERS(history.h readline/history.h)

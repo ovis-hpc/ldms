@@ -3,6 +3,7 @@ sbin_PROGRAMS = me mectl
 CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
+AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
 me_SOURCES = me.c
 me_LDADD = $(CORE)/libme_core.la

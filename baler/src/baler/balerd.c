@@ -268,6 +268,7 @@ int ocm_cb(struct ocm_event *e);
 #include "btkn.h"
 #include "bptn.h"
 #include "bwqueue.h"
+#include "../../config.h"
 
 /***** Definitions *****/
 typedef enum bmap_idx_enum {
@@ -311,7 +312,7 @@ struct bzap_ctxt {
 };
 
 /***** Command line arguments ****/
-#define BALER_OPT_STR "FC:l:s:m:x:h:p:v:I:O:?";
+#define BALER_OPT_STR "FC:l:s:m:x:h:p:v:I:O:?"
 #ifdef ENABLE_OCM
 const char *optstring = BALER_OPT_STR "z:";
 #else

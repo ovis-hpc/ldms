@@ -1,24 +1,33 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 2.1.1, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 3.0.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
-dnl AC_CONFIG_SRCDIR([src/ldms.h])
+AC_CONFIG_SRCDIR([src/core/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 dnl AM _INIT_AUTOMAKE([-Wno-portability])
 AM_INIT_AUTOMAKE([foreign])
-AC_PROG_LIBTOOL
+m4_ifdef([AM_SILENT_RULES],
+         [AM_SILENT_RULES([yes])
+])
+AX_PREFIX_CONFIG_H_G(src/ovis-ldms-config.h)
+AM_PROG_LIBTOOL
+AC_LIB_RPATH
 
 dnl Checks for programs
 AC_PROG_CC
 AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
-dnl AM_PROG_CC_C_O
+AC_CHECK_SIZEOF(long double)
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
+AC_C_FLEXIBLE_ARRAY_MEMBER
 
+OVIS_PKGLIBDIR
+OPTION_DEFAULT_ENABLE([scripts], [ENABLE_SCRIPTS])
+OPTION_DEFAULT_DISABLE([developer], [ENABLE_DEVELOPER])
 OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 
@@ -28,7 +37,6 @@ OPTION_DEFAULT_ENABLE([mmap], [ENABLE_MMAP])
 OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
 OPTION_DEFAULT_ENABLE([sensors], [ENABLE_SENSORS])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
-OPTION_DEFAULT_DISABLE([auth], [ENABLE_AUTH])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
@@ -36,16 +44,20 @@ OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
-OPTION_WITH([sos], [SOS])
+OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
+dnl ods from sos has a conflicting rbt.h; sos and ldms should use same lib, not clone
 
 dnl Options for consumer
 OPTION_DEFAULT_DISABLE([me], [ENABLE_ME])
-OPTION_WITH([me], [ME])
+OPTION_WITH([me], [ME], [/usr/local])
 
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
+OPTION_DEFAULT_DISABLE([slurmjobid], [ENABLE_SLURMJOBID]) dnl enable defaulted when ported
+OPTION_DEFAULT_DISABLE([clock], [ENABLE_CLOCK]) dnl enable defaulted when ported
+OPTION_DEFAULT_DISABLE([synthetic], [ENABLE_SYNTHETIC]) dnl enable defaulted when ported
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
@@ -54,6 +66,8 @@ OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
+OPTION_DEFAULT_DISABLE([procstatutil2], [ENABLE_PROCSTATUTIL2]) dnl enable defaulted when ported
+
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
@@ -62,7 +76,7 @@ OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
 OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
-OPTION_WITH([switchx], [SWITCHX])
+OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
@@ -76,24 +90,26 @@ OPTION_WITH([cray-nvidia-inc], [CRAY_NVIDIA_INC]) dnl for the path to nvidia inc
 
 dnl Will need to have the NVIDIA library in the LD_LIBRARY_PATH
 OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
-OPTION_WITH([rca], [RCA])
+OPTION_WITH([rca], [RCA],[/usr])
 OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
-OPTION_WITH([krca], [KRCA])
+OPTION_WITH([krca], [KRCA],[/usr])
 OPTION_DEFAULT_DISABLE([cray-hss-devel], [ENABLE_CRAY_HSS_DEVEL])
-OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL])
+OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL],[/usr])
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-OPTION_WITH([ovis-lib], [OVIS_LIB])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc coll ovis_util zap ovis_ctrl ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
+dnl substitute values we need from ovis-auth.sh during joint configure
+AC_SUBST(OVIS_AUTH_LIBS)
 
 dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
-OPTION_WITH([libevent], [LIBEVENT])
+OPTION_WITH([libevent], [LIBEVENT],[/usr])
 
 OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])
-OPTION_WITH([ocm], [OCM])
+OPTION_WITH_OR_BUILD([ocm], [../ocm/src],[ocm ovis_rctrl],[ocm-vars.sh],[ocm],[])
 
 OPTION_DEFAULT_DISABLE([ldmsd-rctl], [ENABLE_LDMSD_RCTL])
-OPTION_DEFAULT_DISABLE([ldms-python], [ENABLE_LDMS_PYTHON])
+OPTION_DEFAULT_ENABLE([ldms-python], [ENABLE_LDMS_PYTHON])
 OPTION_DEFAULT_DISABLE([ldms-test], [ENABLE_LDMS_TEST])
 
 dnl Check for libevent
@@ -102,93 +118,95 @@ OPTION_WITH_EVENT
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
     AC_MSG_ERROR([pthread library not found.  ldms requires libpthread.]))
-dnl Reset LIBS variable.
+dnl save LIBS variable.
+TMPLIBS="$LIBS"
 LIBS=""
+
+dnl no clock_gettime on osx. see
+dnl https://developer.apple.com/library/mac/qa/qa1398/_index.html
+AC_SEARCH_LIBS([clock_gettime],[rt posix4],[LDFLAGS_GETTIME=$LIBS])
+LIBS=""
+AC_SUBST([LDFLAGS_GETTIME])
 
 dnl Check for libreadline
 AX_LIB_READLINE
-READLINE_LDFLAGS=$READLINE_LIBS
-AC_SUBST([READLINE_LDFLAGS])
-AC_SUBST([READLINE_CFLAGS])
-LIBS=""
+LDFLAGS_READLINE=$LIBS
+AC_SUBST([LDFLAGS_READLINE])
+LIBS=$TMPLIBS
 
 dnl Checks for libraries
-if test -z "$ENABLE_SYSCLASSIB_TRUE"
-then
-AC_CHECK_LIB(ibmad, mad_rpc_open_port, [],
-    AC_MSG_ERROR([mad_rpc_open_port() function not found. sysclassib sampler
-		  requires libibmad.]))
-dnl Reset LIBS variable.
-LIBS=""
+if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
+	AC_CHECK_LIB(ibmad, mad_rpc_open_port, [],
+		AC_MSG_ERROR([mad_rpc_open_port() function not found. sysclassib sampler
+		  requires libibmad 1.3.]))
+	dnl Reset LIBS variable.
+	LIBS=""
 
-AC_CHECK_HEADER(infiniband/mad.h, [],
-    AC_MSG_ERROR([<infiniband/mad.h> not found.  Is libibmad-dev or
-		  libibmad-devel installed?]))
+	AC_CHECK_HEADER(infiniband/mad.h, [],
+		AC_MSG_ERROR([<infiniband/mad.h> not found.  Is libibmad-dev or
+			libibmad-devel installed?]))
 
-AC_CHECK_LIB(ibumad, umad_get_port, [],
-    AC_MSG_ERROR([umad_get_port() function not found. sysclassib sampler
-		  requires libibumad.]))
-dnl Reset LIBS variable.
-LIBS=""
+	AC_CHECK_LIB(ibumad, umad_get_port, [],
+		AC_MSG_ERROR([umad_get_port() function not found. sysclassib sampler
+			requires libibumad.]))
+	dnl Reset LIBS variable.
+	LIBS=""
 
-AC_CHECK_HEADER(infiniband/umad.h, [],
-    AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
-		  libibumad-devel installed?]))
+	AC_CHECK_HEADER(infiniband/umad.h, [],
+		AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
+			libibumad-devel installed?]))
 fi
 
-if test -z "$ENABLE_SOS_TRUE"
-then
-OCFLAGS=$CFLAGS
-CFLAGS=-I$SOS_INCDIR
-AC_CHECK_HEADERS(sos/sos.h,
-	[],
-	AC_MSG_FAILURE([sos/sos.h not found])
-)
-AC_CHECK_LIB( sos, sos_container_open,
-	[],
-	AC_MSG_FAILURE(libsos not found),
-	[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
-)
-dnl Reset LIBS variable.
-CFLAGS=$OCFLAGS
-LIBS=""
+if test -z "$ENABLE_SOS_TRUE"; then
+	if test "x$WITH_OVIS_LIB" != "xbuild"; then
+		OCFLAGS=$CFLAGS
+		CFLAGS=-I$SOS_INCDIR
+		AC_CHECK_HEADERS(sos/sos.h,
+			[],
+			AC_MSG_FAILURE([sos/sos.h not found])
+		)
+		AC_CHECK_LIB( sos, sos_container_open,
+			[],
+			AC_MSG_FAILURE(libsos not found),
+			[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
+		)
+		CFLAGS=$OCFLAGS
+		LIBS=""
+	else
+		AC_MSG_NOTICE([Using staged ovis-sos $OVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
+	fi
 fi
 
-if test -z "$ENABLE_ATASMART_TRUE"
-then
-AC_CHECK_LIB(atasmart, sk_disk_smart_read_data, [],
-	AC_MSG_ERROR([libatasmart not found. sampler_atasmart requires libatasmart and libatasmart-devel.]))
+if test -z "$ENABLE_ATASMART_TRUE" ; then
+	AC_CHECK_LIB(atasmart, sk_disk_smart_read_data, [],
+		AC_MSG_ERROR([libatasmart not found. sampler_atasmart requires libatasmart and libatasmart-devel.]))
 fi
 
 
-if test -z "$ENABLE_YAML_TRUE"
-then
-AC_CHECK_LIB(yaml, yaml_parser_load, [],
-	AC_MSG_ERROR([libyaml not found. please add --disable-yaml to disable yaml support.]))
-dnl Reset LIBS variable.
-LIBS=""
+if test -z "$ENABLE_YAML_TRUE"; then
+	AC_CHECK_LIB(yaml, yaml_parser_load, [],
+		AC_MSG_ERROR([libyaml not found. please add --disable-yaml to disable yaml support.]))
+	dnl Reset LIBS variable.
+	LIBS=""
 fi
 
 dnl Check for mmalloc
-AC_CHECK_LIB(mmalloc, mm_init, [],
-	     AC_MSG_ERROR([mmalloc library not found. ldms requires mmalloc.
-			   Please install mmalloc from OVIS/lib. ]),
-	     $OVIS_LIB_LIBDIR_FLAG )
-dnl Reset LIBS variable.
-LIBS=""
+if test "x$WITH_OVIS_LIB" != "xbuild"; then
+	AC_CHECK_LIB(mmalloc, mm_init, [],
+		AC_MSG_ERROR([libmmalloc not found. Please install ovis-lib.]),
+		$OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG )
+	dnl Reset LIBS variable.
+	LIBS=""
 
-if test -z "$ENABLE_AUTH"
-then
-dnl Check for OpenSSL
-AX_CHECK_OPENSSL
+
+	AC_CHECK_LIB(coll, idx_create, [],
+		AC_MSG_ERROR([libcoll not found. Please install ovis-lib.]),
+		$OVIS_LIB_LIB64DIR_FLAG $OVIS_LIB_LIBDIR_FLAG)
+	dnl Reset LIBS variable.
+	LIBS=""
+else
+	AC_MSG_NOTICE([Using staged ovis-lib $OVIS_LIB_LIB64DIR_FLAG $OVIS_LIB_LIBDIR_FLAG for LDMS.])
 fi
-
-AC_CHECK_LIB(coll, idx_create, [],
-	     AC_MSG_ERROR([libcoll not found. Please install libcoll from
-			   OVIS/lib.]),
-	     $OVIS_LIB_LIBDIR_FLAG )
-dnl Reset LIBS variable.
-LIBS=""
 
 if test -z "$ENABLE_SWIG_TRUE" || test -z "$ENABLE_LDMS_PYTHON_TRUE"
 then
@@ -199,12 +217,14 @@ fi
 
 dnl LDMS Swig
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
-if test -z "$ENABLE_SWIG_TRUE"
-then
+if test -z "$ENABLE_SWIG_TRUE"; then
 	AC_PROG_SWIG
 	SWIG_PYTHON
 fi
 
+OPTION_WITH_PORT([LDMSD],[411])
+
+OPTION_WITH_MAGIC([LDMS_MSG_MAX],[32768],[Maximum control message length allowed to ldmsd (min 4095)])
 
 dnl if cray_sampler set some other variables
 if test "x$enable_cray_system_sampler" = "xyes"
@@ -270,16 +290,48 @@ dnl Reset LIBS variable.
 
 LIBS=""
 
+
+
+OPTION_GITINFO
+OPTION_HOSTINFO
+
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
+dnl handle test generation and chmod
+OVIS_EXEC_SCRIPTS(
+		 scripts/ldms_ctltest.sh
+		 scripts/ldms_ban.sh
+		 scripts/ldms_usertest.sh
+		 scripts/ldms_local_usertest.sh
+		 scripts/ldms_local_slurmtest.sh
+		 scripts/ldms_local_valgrind.sh
+		 scripts/ldms_local_clocktest.sh
+		 scripts/ldms_local_syslog.sh
+		 scripts/ldms_local_inspxe.sh
+		 scripts/ldms_local_inspxe_rdma.sh
+		 scripts/ldms_local_rdmatest.sh
+		 scripts/ldms_local_rollbytes_test.sh
+		 scripts/ldms_local_rollperiod_test.sh
+		 scripts/ldms_local_rollrecords_test.sh
+		 scripts/ldms_local_rolltime_test.sh
+		 scripts/ldms_local_dertest.sh
+		 scripts/ldms_local_dertest_big.sh
+		 scripts/ldms_local_procstatutil.sh
+		 scripts/ldms_local_csvorder.sh
+		 scripts/ldms_local_synthetic_test.sh
+)
+
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
+		 src/ovis-ldms-configvars.sh
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/hadoop/Makefile
+		 src/sampler/hadoop/hadoop-sinks/OvisSink.java
 		 src/sampler/cray_system_sampler/Makefile
 		 src/ldmsd/Makefile
+		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile
 		 etc/init.d/Makefile
@@ -291,6 +343,29 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 packaging/ovis-ldms.spec
 		 packaging/rhel7.spec
 		 Doxyfile
-		 ldms.spec])
+		 scripts/ldmsd
+		 scripts/envldms.sh
+		 ldms.spec
+])
 
+AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.
+for i in $ovis_exec_scripts; do
+	if test -f $ovis_exec_scripts_objdir/$i; then
+		chmod a+x $ovis_exec_scripts_objdir/$i;
+	else
+		echo failing chmod on missing $ovis_exec_scripts_objdir/$i;
+	fi
+done
+],[
+	ovis_exec_scripts="$ovis_exec_scripts"
+	ovis_extra_dist="$ovis_extra_dist"
+	ovis_exec_scripts_objdir="$ac_pwd"
+])
 AC_OUTPUT
+
+if test "x$enable_rpath" != "xyes"; then
+echo "TURNING libtool rpath into no-ops"
+sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
+sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
+fi
+

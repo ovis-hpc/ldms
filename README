@@ -1,3 +1,8 @@
+The following notes are obsolete; top-level configure/make works in the
+right sequence given a feasible set of enabling options.
+
+This file should be deleted.
+
 BUILDING NOTE
 The top-level automake doesn't work because the dependent modules doesn't
 understand source structure of the module they depended on. They are managed

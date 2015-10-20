@@ -100,7 +100,7 @@ LIST_HEAD(zap_list, zap) zap_list;
 
 pthread_mutex_t zap_list_lock;
 
-#define ZAP_LIBPATH_DEFAULT "/usr/local/lib"
+#define ZAP_LIBPATH_DEFAULT PLUGINDIR
 #define _SO_EXT ".so"
 static char _libdir[PATH_MAX];
 

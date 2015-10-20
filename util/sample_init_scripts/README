@@ -1,0 +1,12 @@
+For TOSS deployment, see genders/.
+	This uses a cluster-wide genders file to manage 
+	daemon config consistency.
+
+For irregular centos/rhel6 clusters, see rhel/
+	This uses tedious lists to manage daemon config consistency.
+	Seriously, save yourself the pain and install libgenders.
+
+For hardcore cluster hacking, see hackable/.
+* ldmsd.example is an init script that may need local modifications depending on where the associated configuration file (ldmsd.conf), pid files, etc. should be placed. When running as a user these files will need to be placed in a user read/write-able location. The normal place to put this file when running as root is /etc/init.d/ldmsd
+
+* ldmsd.conf.example is a configuration file that is utilized by the ldmsd init script to define machine specific information such as hostname to component ID mapping, what metric sets are to be collected, where to write log files etc. The normal location for this file would be in /etc/sysconfig/ldmsd.conf. When running as a user this file will need to be placed in a user read/write-able location.

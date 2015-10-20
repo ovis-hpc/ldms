@@ -71,9 +71,9 @@
 #include "ldms_xprt.h"
 #include "ldms_private.h"
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *, struct ldms_set *s);
 static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
@@ -850,7 +850,7 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				    event, ctxt->dir.cb_arg);
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 static int send_auth_approval(struct ldms_xprt *x)
 {
 	size_t len;
@@ -903,7 +903,7 @@ void process_auth_approval_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
 					x->connect_cb_arg);
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 void ldms_xprt_dir_free(ldms_t t, ldms_dir_t d)
 {
@@ -934,14 +934,14 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 	case LDMS_CMD_REQ_NOTIFY_REPLY:
 		process_req_notify_reply(x, reply, ctxt);
 		break;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	case LDMS_CMD_AUTH_CHALLENGE_REPLY:
 		process_auth_challenge_reply(x, reply, ctxt);
 		break;
 	case LDMS_CMD_AUTH_APPROVAL_REPLY:
 		process_auth_approval_reply(x, reply, ctxt);
 		break;
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 	default:
 		x->log("Unrecognized reply %d\n", cmd);
 	}
@@ -1015,7 +1015,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 
 	char *data = 0;
 	size_t datalen = 0;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 	uint64_t challenge;
 	struct ovis_auth_challenge chl;
 	if (x->auth_flag == LDMS_XPRT_AUTH_INIT) {
@@ -1041,7 +1041,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 			datalen = sizeof(chl);
 		}
 	}
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 	zerr = zap_accept(zep, ldms_zap_auto_cb, data, datalen);
 	if (zerr) {
@@ -1060,7 +1060,7 @@ err0:
 	zap_close(zep);
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 int send_auth_password(struct ldms_xprt *x, const char *password)
 {
 	size_t len;
@@ -1124,7 +1124,7 @@ err:
 	x->auth_flag = LDMS_XPRT_AUTH_FAILED;
 	zap_close(x->zap_ep);
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 {
@@ -1284,7 +1284,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_CONNECTED:
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		if (ev->data_len) {
 			/*
 			 * The server sent a challenge for
@@ -1297,7 +1297,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		 * The server doesn't do authentication.
 		 * Fall to the state machine without authentication.
 		 */
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
 				      x->connect_cb_arg);
@@ -1308,7 +1308,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		x->log("DEBUG: ldms_zap_cb: receive DISCONNECTED %p: ref_count %d\n", x, x->ref_count);
 #endif /* DEBUG */
 		ldms_conn_event = LDMS_CONN_EVENT_DISCONNECTED;
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
 			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED)) {
 			if (x->auth_flag == LDMS_XPRT_AUTH_PASSWORD) {
@@ -1325,7 +1325,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			 */
 			ldms_conn_event = LDMS_CONN_EVENT_REJECTED;
 		}
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		if (x->connect_cb)
 			x->connect_cb(x, ldms_conn_event, x->connect_cb_arg);
 #ifdef DEBUG
@@ -1383,15 +1383,15 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECTED:
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 		if (x->connect_cb)
 			x->connect_cb(x, LDMS_CONN_EVENT_DISCONNECTED,
 						x->connect_cb_arg);
 		/* Put back the reference taken when accept the connection */
 		ldms_xprt_put(x);
-#else /* ENABLE_AUTH */
+#else /* OVIS_LIB_HAVE_AUTH */
 		ldms_zap_cb(zep, ev);
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		if (!__recv_complete_auth_check(x, ev->data))
@@ -1501,7 +1501,7 @@ err0:
 	return NULL;
 }
 
-#ifdef ENABLE_AUTH
+#if OVIS_LIB_HAVE_AUTH
 ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 				const char *secretword)
 {
@@ -1545,7 +1545,7 @@ err0:
 	errno = ret;
 	return NULL;
 }
-#endif /* ENABLE_AUTH */
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 size_t format_lookup_req(struct ldms_request *req, enum ldms_lookup_flags flags,
 			 const char *path, uint64_t xid)

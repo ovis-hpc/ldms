@@ -13,11 +13,11 @@ BUILD_DIR="build-$HOSTNAME"
 PREFIX=/opt/ovis
 
 # add --enable-FEATURE here
-ENABLE="--enable-swig --enable-ocmd --enable-parsers \
-	--enable-sos --enable-ocm --enable-me --enable-debug"
+ENABLE="--enable-swig \
+	--enable-sos --enable-debug"
 
 # add --disable-FEATURE here
-DISABLE="--disable-rdma --disable-sysclassib"
+DISABLE="--disable-ocm --disable-rdma --disable-sysclassib --disable-csv"
 
 # libevent2 prefix
 #LIBEVENT_PREFIX=/usr/local
@@ -32,7 +32,7 @@ CFLAGS='-g -O0 -DDEBUG -Wl,-z,defs'
 # Exit immediately if a command failed
 set -e
 
-LIST="lib sos ocm ldms baler me komondor helper-scripts"
+LIST="lib sos ldms baler"
 for X in $LIST; do
 	echo "----------------------------------"
 	echo "$X"

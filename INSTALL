@@ -1,0 +1,10 @@
+./configure --help=recursive for all the details.
+
+By default this builds ldms.
+To build with sos,
+x=`pwd`
+mkdir ../buildovis
+cd ../buildovis
+mkdir /tmp/inst
+$x/configure --enable-sos --prefix=/tmp/inst --disable-csv
+make install

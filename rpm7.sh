@@ -37,6 +37,10 @@ CFLAGS='-g -O3'
 set -e
 
 #LIST="lib sos baler"
+RPMS_DEST=$PWD/RPM7
+rm -rf $RPMS_DEST
+mkdir -p $RPMS_DEST
+
 LIST="lib sos ldms baler"
 for X in $LIST; do
 	echo "----------------------------------"
@@ -54,6 +58,7 @@ for X in $LIST; do
 	for Y in ../RPMS/*/*.rpm; do
 		echo "-- Extracting $Y --"
 		rpm2cpio $Y | cpio -idmv
+		mv $Y $RPMS_DEST
 	done
 	popd # rpm7/BUILDROOT
 	popd # $BUILD_DIR
@@ -61,3 +66,5 @@ for X in $LIST; do
 	set +x; # disable command echo so that it won't print the "for ..." command
 	echo "----- DONE -----"
 done
+
+echo "Please see the RPMs in $RPMS_DEST"

@@ -1,6 +1,6 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -I$(srcdir)/../
+AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 
 if ENABLE_COLL
 libcoll_la_SOURCES = rbt.c rbt.h idx.c idx.h idx_priv.h str_map.c str_map.h fnv_hash.h

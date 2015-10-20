@@ -3,40 +3,45 @@ if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
 CORE = ../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
-AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
+AM_CFLAGS += \
+"-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \
+"-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
+
+AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
 ldms_ls_SOURCES = ldms_ls.c
-ldms_ls_LDADD = $(CORE)/libldms.la -lrt -lovis_util -lpthread
-ldms_ls_CFLAGS = $(AM_CFLAGS)
+ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
+	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@
+ldms_ls_LDADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ \
+	-lovis_util -lzap -lmmalloc -lcoll \
+	-levent -levent_pthreads -lpthread
+ldms_ls_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
 
 ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c
 ldmsd_LDADD = $(CORE)/libldms.la
-ldmsd_LDFLAGS = $(AM_LDFLAGS) @EVENTLIBS@ \
-		-levent -lpthread -levent_pthreads -lovis_util -lcoll -ldl \
-		-lovis_ctrl
-ldmsd_CFLAGS = $(AM_CFLAGS) @EVENTINC@
-
-if ENABLE_AUTH
-ldmsd_CFLAGS += -DENABLE_AUTH
-ldmsd_LDFLAGS += -lovis_auth
-
-ldms_ls_CFLAGS += -DENABLE_AUTH
-ldms_ls_LDADD += -lovis_auth
-endif
+ldmsd_LDFLAGS = $(AM_LDFLAGS) \
+	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
+	-lzap -lmmalloc -lovis_util -lcoll \
+	-levent -levent_pthreads -lpthread
+ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@ 
 
 if ENABLE_OCM
 ldmsd_SOURCES += ldmsd_ocm.c
-ldmsd_LDFLAGS += -lcoll -locm @OCM_LIBDIR_FLAG@
-ldmsd_CFLAGS += -DENABLE_OCM @OCM_INCDIR_FLAG@
+ldmsd_LDFLAGS += @OCM_LIBDIR_FLAG@ -locm
+ldmsd_CFLAGS += @OCM_INCDIR_FLAG@
 endif
+
+ldmsd_LDFLAGS += -lovis_util -lcoll -ldl -lovis_ctrl
+
+ldmsd_LDFLAGS += @OVIS_AUTH_LIBS@
+ldms_ls_LDADD += @OVIS_AUTH_LIBS@
 
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la
-ldmsctl_LDFLAGS = $(AM_LDFLAGS) -lovis_ctrl -lovis_util \
-		  @READLINE_LDFLAGS@
-ldmsctl_CFLAGS = $(AM_CFLAGS) @READLINE_CFLAGS@
+ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ -lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap  @LDFLAGS_GETTIME@
 
 if ENABLE_LDMSD_RCTL
 ldmsd_SOURCES += ldmsd_config_rctrl.c
@@ -46,16 +51,18 @@ ldmsd_CFLAGS += -DENABLE_LDMSD_RCTL  @OCM_INCDIR_FLAG@
 sbin_PROGRAMS += ldmsd_rctl
 ldmsd_rctl_SOURCES = ldmsd_rctl.c
 ldmsd_rctl_LDADD = $(CORE)/libldms.la
-ldmsd_rctl_LDFLAGS = $(AM_LDFLAGS) -lovis_rctrl -locm -lpthread \
-		      @OCM_LIBDIR_FLAG@ @READLINE_LDFLAGS@
-ldmsd_rctl_CFLAGS = $(AM_CFLAGS) @OCM_INCDIR_FLAG@ @READLINE_CFLAGS@
-if ENABLE_AUTH
-ldmsd_rctl_CFLAGS += -DENABLE_AUTH
-ldmsd_rctl_LDADD += -lovis_auth
-endif
+ldmsd_rctl_LDFLAGS = $(AM_LDFLAGS) -lovis_rctrl -lzap -lmmalloc -locm -lpthread \
+		      @OCM_LIBDIR_FLAG@ @LDFLAGS_READLINE@
+ldmsd_rctl_CFLAGS = $(AM_CFLAGS) @OCM_INCDIR_FLAG@
+ldmsd_rctl_LDADD += @OVIS_AUTH_LIBS@
 endif
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
-ldmsd_sos_init_LDADD = -lsos -lpthread @SOS_LIBDIR_FLAG@
+ldmsd_sos_init_LDADD = -lsos -lpthread @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
 ldmsd_sos_init_LDFLAGS = $(AM_LDFLAGS)
+
+# make sym links for aggd scripting support
+install-exec-hook:
+	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsd ldms-aggd
+	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsctl ldmsaggctl
