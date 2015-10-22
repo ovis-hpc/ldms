@@ -86,13 +86,16 @@
  * are self describing. Value descriptors are aligned on 64 bit boundaries.
  */
 #pragma pack(4)
+#define LDMS_MDESC_F_DATA	1
+#define LDMS_MDESC_F_META	2
 typedef struct ldms_value_desc {
 	uint64_t vd_user_data;	/*! User defined meta-data */
-	uint32_t vd_data_offset;	/*! Offset of the value in ldms_data_hdr */
-	uint8_t vd_type;		/*! The type of the value, enum ldms_value_type */
-	uint32_t array_count;	/*! Number of elements in the array if this is of an array type */
+	uint32_t vd_data_offset;/*! Value offset in data (metric) or meta-data (attr) */
+	uint32_t vd_array_count;/*! Number of elements in the array */
+	uint8_t vd_type;	/*! The type of the value, enum ldms_value_type */
+	uint8_t vd_flags;	/*! Metric or Attribute */
 	uint8_t vd_name_len;	/*! The length of the metric name in bytes*/
-	char vd_name[0];		/*! The metric name */
+	char vd_name[0];	/*! The metric name */
 } *ldms_mdesc_t;
 #pragma pack()
 
@@ -165,10 +168,10 @@ struct ldms_set_hdr {
 	uint8_t pad1;	/* data pad */
 	uint8_t pad2;	/* data pad */
 	uint8_t pad3;	/* data pad */
-	uint32_t card;		/* Size of dictionary (i.e. metric count). */
+	uint32_t card;		/* Size of dictionary */
 	uint32_t meta_sz;	/* size of meta data in bytes */
 	uint32_t data_sz;	/* size of metric values in bytes */
-	uint32_t dict[0];	/* The metric dictionary */
+	uint32_t dict[0];	/* The attr/metric dictionary */
 };
 
 /**
@@ -188,6 +191,17 @@ typedef union ldms_value {
 	int64_t v_s64;
 	float v_f;
 	double v_d;
+	char a_char[0];
+	uint8_t a_u8[0];
+	int8_t a_s8[0];
+	uint16_t a_u16[0];
+	int16_t a_s16[0];
+	uint32_t a_u32[0];
+	int32_t a_s32[0];
+	uint64_t a_u64[0];
+	int64_t a_s64[0];
+	float a_f[0];
+	double a_d[0];
 } *ldms_mval_t;
 
 /**

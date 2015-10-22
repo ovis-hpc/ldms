@@ -109,7 +109,6 @@ int foreground;
 pthread_t event_thread = (pthread_t)-1;
 char *test_set_name;
 int test_set_count=1;
-int test_metric_count=1;
 int notify=0;
 char *logfile;
 char *secretword;
@@ -1585,9 +1584,6 @@ int main(int argc, char *argv[])
 		case 'N':
 			notify = 1;
 			break;
-		case 'M':
-			test_metric_count = atoi(optarg);
-			break;
 		case 'm':
 			if ((max_mem_size = ovis_get_mem_size(optarg)) == 0) {
 				printf("Invalid memory size '%s'\n", optarg);
@@ -1720,28 +1716,76 @@ int main(int argc, char *argv[])
 	}
 	/* Create the test sets */
 	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
+	int prod_id, comp_id;
 	if (test_set_name) {
-		int rc, set_no, j;
-		char metric_name[32];
+		int rc, set_no;
 		static char test_set_name_no[1024];
 		ldms_schema_t schema = ldms_schema_new("test_set");
 		if (!schema)
 			cleanup(11);
-		rc = ldms_schema_metric_add(schema, "component_id", LDMS_V_U64);
-		if (rc < 0)
+		prod_id = ldms_schema_meta_array_add(schema, "producer_id",
+							   LDMS_V_CHAR_ARRAY, 32);
+		if (prod_id < 0)
 			cleanup(12);
-		for (j = 1; j <= test_metric_count; j++) {
-			sprintf(metric_name, "metric_no_%d", j);
-			rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
-			if (rc < 0)
-				cleanup(13);
-		}
+		comp_id = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+		if (comp_id < 0)
+			cleanup(12);
+		rc = ldms_schema_metric_add(schema, "u8_metric", LDMS_V_U8);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_add(schema, "u16_metric", LDMS_V_U16);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_add(schema, "u32_metric", LDMS_V_U32);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_add(schema, "u64_metric", LDMS_V_U64);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_add(schema, "float_metric", LDMS_V_F32);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_add(schema, "double_metric", LDMS_V_D64);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_array_add(schema, "char_array_metric",
+						  LDMS_V_CHAR_ARRAY, 16);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_array_add(schema, "u8_array_metric",
+						  LDMS_V_U8_ARRAY, 4);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_array_add(schema, "u16_array_metric",
+						  LDMS_V_U16_ARRAY, 4);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_array_add(schema, "u32_array_metric",
+						  LDMS_V_U32_ARRAY, 4);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_array_add(schema, "u64_array_metric",
+						  LDMS_V_U64_ARRAY, 4);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_array_add(schema, "f32_array_metric",
+						  LDMS_V_F32_ARRAY, 4);
+		if (rc < 0)
+			cleanup(13);
+		rc = ldms_schema_metric_array_add(schema, "d64_array_metric",
+						  LDMS_V_D64_ARRAY, 4);
+		if (rc < 0)
+			cleanup(13);
 		for (set_no = 1; set_no <= test_set_count; set_no++) {
 			sprintf(test_set_name_no, "%s/%s_%d", myhostname,
 				test_set_name, set_no);
 			test_set = ldms_set_new(test_set_name_no, schema);
 			if (!test_set)
 				cleanup(14);
+			union ldms_value v;
+			v.v_u32 = set_no;
+			ldms_metric_set(test_set, comp_id, &v);
+			ldms_metric_array_set_str(test_set, prod_id, myhostname);
 			ldms_set_producer_name_set(test_set, myhostname);
 			test_sets[set_no-1] = test_set;
 		}
@@ -1796,16 +1840,45 @@ int main(int argc, char *argv[])
 #endif
 
 	uint64_t count = 1;
+	int name = 0;
+	char *names[] = {
+		"this",
+		"that",
+		"the other",
+		"biffle"
+	};
+	int set_no, i;
+	ldms_set_t set;
 	do {
-		int set_no;
 		for (set_no = 0; set_no < test_set_count; set_no++) {
-			ldms_transaction_begin(test_sets[set_no]);
-			ldms_metric_set_u64(test_sets[set_no], 0, count);
-			ldms_transaction_end(test_sets[set_no]);
+			set = test_sets[set_no];
+			ldms_transaction_begin(set);
+
+			ldms_metric_set_u8 (set, 2, (uint8_t)count);
+			ldms_metric_set_u16(set, 3, (uint16_t)count);
+			ldms_metric_set_u32(set, 4, (uint32_t)count);
+			ldms_metric_set_u64(set, 5, count);
+			ldms_metric_set_float(set, 6, (float)count * 3.1415);
+			ldms_metric_set_double(set, 7, (double)count * 3.1415);
+
+			name = (name + 1) % 4;
+			for (i = 0; i < 4; i++) {
+				ldms_metric_array_set_str(set, 8, names[name]);
+				ldms_metric_array_set_u8 (set, 9, i, (uint8_t)(count + i));
+				ldms_metric_array_set_u16(set, 10, i, (uint16_t)(count + i));
+				ldms_metric_array_set_u32(set, 11, i, (uint32_t)(count + i));
+				ldms_metric_array_set_u64(set, 12, i, i + count);
+				ldms_metric_array_set_float(set, 13, i,
+							    (float)(count + i) * 3.1415);
+				ldms_metric_array_set_double(set, 14, i,
+							     (double)(count + i) * 3.1415);
+			}
+			ldms_transaction_end(set);
+
 			if (notify) {
 				struct ldms_notify_event_s event;
 				ldms_init_notify_modified(&event);
-				ldms_notify(test_sets[set_no], &event);
+				ldms_notify(set, &event);
 			}
 		}
 		count++;
