@@ -409,6 +409,8 @@ static int create_metric_set(const char *path)
 	LDMS_SIZE_JOBID_METRIC(procstatutil2,meta_sz,total_meta_sz,
 		data_sz,total_data_sz,metric_count,rc,g.msglog);
 
+	int icount = metric_count;
+
 	cpu_count = -1;
 	do {
 		char *token;
@@ -545,8 +547,9 @@ if (strcmp(token,X)==0) { \
 	metric_count += 3;
 #endif
 
-	if (metric_count != mtl.size) {
-		g.msglog(LDMS_LERROR,"procstatutil2: metric_count bogus \n");
+	if (metric_count != (mtl.size + icount)) {
+		g.msglog(LDMS_LERROR,"procstatutil2: metric_count bogus: %d vs %d & %d\n",
+			metric_count, mtl.size, icount);
 		rc = EINVAL;
 		goto err1;
 	}
@@ -686,10 +689,11 @@ static int sample(void)
 	beg_nsec = time1.tv_nsec;
 #endif
 
+	metric_no = 0;
+
 	LDMS_JOBID_SAMPLE(v,g.metric_table,metric_no);
 
 	fseek(g.mf, 0, SEEK_SET);
-	metric_no = 0;
 	cpu_count = -1;
 	do {
 		ssize_t nchar = 0;

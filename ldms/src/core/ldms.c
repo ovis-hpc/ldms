@@ -89,6 +89,7 @@ const char* loglevels_names[] = {
 #else
 #define TF()
 #endif /* 1 or 0 disable tf */
+#define msglog default_log
 
 
 #define SET_DIR_PATH "/var/run/ldms"
@@ -516,45 +517,71 @@ int ldms_lookup(ldms_t _x, const char *path,
 	size_t meta_size, data_size;
 	int flags;
 #endif
-	if (strlen(path) > LDMS_LOOKUP_PATH_MAX)
+	if (strlen(path) > LDMS_LOOKUP_PATH_MAX) {
+		msglog(LDMS_LERROR,"Path too long (>%d): %s\n",
+			LDMS_LOOKUP_PATH_MAX, path);
 		return EINVAL;
+	}
 
-	if (strcmp(x->name, "local"))
-		return __ldms_remote_lookup(_x, path, cb, cb_arg);
+	if (strcmp(x->name, "local")) {
+		int rrc = __ldms_remote_lookup(_x, path, cb, cb_arg);
+		if (rrc) {
+			msglog(LDMS_LERROR,"remote lookup fail with %d: %s\n",
+				rrc, path);
+		}
+		return rrc;
+	}
 
 	/* See if it's in my process */
 	set = ldms_find_local_set(path);
 #ifndef ENABLE_MMAP
 	if (set) {
 		struct ldms_set_desc *sd = malloc(sizeof *sd);
-		if (!sd)
+		if (!sd) {
+			msglog(LDMS_LERROR,"%s:%d: malloc fail for %s\n",
+				__FILE__,__LINE__, path);
 			return ENOMEM;
+		}
 		sd->set = set;
 		s = sd;
 		ldms_release_local_set(set);
 		return 0;
 	}
+	msglog(LDMS_LERROR,"%s:%d: set not found for %s\n",
+		__FILE__,__LINE__, path);
 	return ENODEV;
 #else
 	if (set) {
 		struct ldms_set_desc *sd = malloc(sizeof *sd);
-		if (!sd)
+		if (!sd) {
+			msglog(LDMS_LERROR,"%s:%d: malloc fail for %s\n",
+				__FILE__,__LINE__, path);
 			goto err_0;
+		}
 		sd->set = set;
 		s = sd;
 		goto out;
 	}
 	meta = _open_and_map_file(path, META_FILE, 0, &meta_size);
-	if (!meta)
+	if (!meta) {
+		msglog(LDMS_LERROR,"%s:%d: meta file map failed for %s\n",
+			__FILE__,__LINE__, path);
 		goto err_0;
+	}
 	data = _open_and_map_file(path, DATA_FILE, 0, &data_size);
-	if (!data)
+	if (!data) {
+		msglog(LDMS_LERROR,"%s:%d: data file map failed for %s\n",
+			__FILE__,__LINE__, path);
 		goto err_1;
+	}
 
 	flags = LDMS_SET_F_LOCAL | LDMS_SET_F_FILEMAP;
 	rc = __record_set(path, &s, meta, data, flags);
-	if (rc)
+	if (rc) {
+		msglog(LDMS_LERROR,"%s:%d: record set failed for %s\n",
+			__FILE__,__LINE__, path);
 		goto err_2;
+	}
  out:
 	cb(_x, 0, s, cb_arg);
 	return 0;
@@ -1145,8 +1172,10 @@ ldms_metric_t ldms_add_metric(ldms_set_t _set, const char *name,
 	int mysize;	/* the size of the desc + pad + value */
 
 	/* Validate type */
-	if (type <= LDMS_V_NONE || type > LDMS_V_D)
+	if (type <= LDMS_V_NONE || type > LDMS_V_D) {
+		errno = EINVAL;
 		return NULL;
+	}
 
 	/* Compute my space */
 	name_len = strlen(name)+1;
@@ -1164,8 +1193,10 @@ ldms_metric_t ldms_add_metric(ldms_set_t _set, const char *name,
 
 	/* Allocate a metric */
 	m = malloc(sizeof *m);
-	if (!m)
+	if (!m) {
+		errno = ENOMEM;
 		return NULL;
+	}
 
 	/* After this, the metric set can be modified. To ensure that
 	 * the remote peer detects a meta data update, we need to be

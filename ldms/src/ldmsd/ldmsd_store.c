@@ -86,6 +86,7 @@ size_t dirty_threshold = 0;
 
 static int records;
 static int flush_count;
+static pthread_mutex_t flush_count_lock = PTHREAD_MUTEX_INITIALIZER;
 
 char tmp_path[PATH_MAX];
 int max_q_depth;
@@ -182,7 +183,9 @@ int flush_check(struct flush_thread *ft)
 
 void flush_store_instance(struct store_instance *si)
 {
+	pthread_mutex_lock(&flush_count_lock);
 	flush_count++;
+	pthread_mutex_unlock(&flush_count_lock);
 	ldmsd_store_flush(si->store_engine, si->store_handle);
 	si->dirty_count = 0;
 }

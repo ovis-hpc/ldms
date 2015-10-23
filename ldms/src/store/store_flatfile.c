@@ -88,6 +88,11 @@ struct flatfile_metric_store {
 	LIST_ENTRY(flatfile_metric_store) entry; /**< Entry for free list. */
 };
 
+/* in this structure, ms_idx and ms_list appear to do nothing
+but keep the input metric list uniquely named. all operations of
+consequence go on by iterating over msa with the assumption that
+the input mvec or metric_list never changes once configure to a 
+nonzero size. */
 struct flatfile_store_instance {
 	struct ldmsd_store *store;
 	char *path; /**< (root_path)/(comp_type) */
@@ -96,7 +101,7 @@ struct flatfile_store_instance {
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
 	int metric_count;
-	struct flatfile_metric_store *ms[0];
+	struct flatfile_metric_store **msa;
 };
 
 static pthread_mutex_t cfg_lock;
@@ -157,6 +162,86 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 	return si->ucontext;
 }
 
+/* rebuild msa and idx if previously built size 0.
+@return 1 if called after setup, 2 if malloc fail early, 3 if create
+fail on metric. 0 if ok.
+ */
+static int 
+configure_metrics(struct flatfile_store_instance *si, ldms_mvec_t mvec )
+{
+	if (si->metric_count) {
+		msglog(LDMS_LERROR,"flatfile: unexpected reconfigure.\n");
+		return 1;
+	// if relaxing this check, we must clean out old msa and idx.
+	}
+	free(si->msa);
+	si->msa = calloc(1,mvec->count * 
+			sizeof(struct flatfile_metric_store *));
+	if (!si->msa) {
+		msglog(LDMS_LERROR,"flatfile: OOM in configure_metrics\n");
+		return 2;
+	}
+	struct flatfile_metric_store *ms;
+	int i = 0;
+#define MNAMESZ 128
+	char mname[MNAMESZ];
+	char *name;
+	const char *mvname;
+	// LIST_FOREACH(x, metric_list, entry) {
+	for (i=0; i<mvec->count; i++) {
+		mvname = ldms_get_metric_name(mvec->v[i]);
+		name = strchr(mvname, '#');
+		if (name) {
+			int len = name - mvname;
+			if (len >= MNAMESZ) {
+				msglog(LDMS_LERROR,
+				"flatfile: oversized metric name.\n");
+				goto err4; 
+			}
+			name = strncpy(mname, mvname, len);
+			name[len] = 0;
+		} else {
+			name = (char *)mvname;
+		}
+		ms = idx_find(si->ms_idx, name, strlen(name));
+		if (ms) {
+			si->msa[i] = ms;
+			continue;
+		}
+		/* Create new metric store if not exist. */
+		ms = calloc(1, sizeof(*ms));
+		sprintf(tmp_path, "%s/%s", si->path, name);
+		ms->path = strdup(tmp_path);
+		if (!ms->path)
+			goto err5;
+		ms->file = fopen(ms->path, "a+");
+		if (!ms->file)
+			goto err4;
+		pthread_mutex_init(&ms->lock, NULL);
+		idx_add(si->ms_idx, name, strlen(name), ms);
+		LIST_INSERT_HEAD(&si->ms_list, ms, entry);
+		si->msa[i] = ms;
+	}
+	si->metric_count = mvec->count;
+	return 0;
+err5:
+	free(ms);
+	ms = NULL;
+err4:
+	ms = LIST_FIRST(&si->ms_list);
+	while (ms) {
+		LIST_REMOVE(ms, entry);
+		if (ms->path)
+			free(ms->path);
+		if (ms->file)
+			fclose(ms->file);
+		pthread_mutex_destroy(&(ms->lock));
+		free(ms);
+		ms = LIST_FIRST(&si->ms_list);
+	}
+	return 3;
+}
+
 static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 	  struct ldmsd_store_metric_index_list *metric_list, void *ucontext)
@@ -187,11 +272,13 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		 * Open a new store for this component-type and
 		 * metric combination
 		 */
-		si = calloc(1, sizeof(*si) +
-				metric_count *
-				sizeof(struct flatfile_metric_store *));
+		si = calloc(1, sizeof(*si));
 		if (!si)
 			goto out;
+		si->msa = calloc(1,metric_count * 
+				sizeof(struct flatfile_metric_store *));
+		if (!si->msa)
+			goto err1;
 		si->metric_count = metric_count;
 		si->ms_idx = idx_create();
 		if (!si->ms_idx)
@@ -218,7 +305,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			}
 			ms = idx_find(si->ms_idx, name, strlen(name));
 			if (ms) {
-				si->ms[i++] = ms;
+				si->msa[i++] = ms;
 				continue;
 			}
 			/* Create new metric store if not exist. */
@@ -233,7 +320,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			pthread_mutex_init(&ms->lock, NULL);
 			idx_add(si->ms_idx, name, strlen(name), ms);
 			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
-			si->ms[i++] = ms;
+			si->msa[i++] = ms;
 		}
 		idx_add(store_idx, (void *)container, strlen(container), si);
 	}
@@ -242,13 +329,16 @@ err5:
 	free(ms);
 	ms = NULL;
 err4:
-	while (ms = LIST_FIRST(&si->ms_list)) {
+	ms = LIST_FIRST(&si->ms_list);
+	while (ms) {
 		LIST_REMOVE(ms, entry);
 		if (ms->path)
 			free(ms->path);
 		if (ms->file)
 			fclose(ms->file);
+		pthread_mutex_destroy(&ms->lock);
 		free(ms);
+		ms = LIST_FIRST(&si->ms_list);
 	}
 
 	free(si->container);
@@ -279,11 +369,28 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 	si = _sh;
 	const struct ldms_timestamp *ts = ldms_get_timestamp(set);
 	uint64_t comp_id;
+	int err = 0;
+	if (mvec->count != si->metric_count) {
+		msglog(LDMS_LINFO,"flatfile: got metric count mismatch: "
+			"%d vs store() with mvec %d long. Resetting msa.\n",
+			si->metric_count, mvec->count);
+		pthread_mutex_lock(&cfg_lock);
+		/* could be racy if multiple threads serving same store instance, but that would be crazy */
+		err = configure_metrics(si, mvec);
+		pthread_mutex_unlock(&cfg_lock);
+	}
+		
+	if (err != 0 || mvec->count != si->metric_count) {
+		msglog(LDMS_LERROR,"flatfile: Cannot fix count mismatch: "
+			"%d vs store() with mvec %d long. \n",
+			si->metric_count, mvec->count);
+		return ENOMEM;
+	}
 
 	for (i=0; i<mvec->count; i++) {
-		pthread_mutex_lock(&si->ms[i]->lock);
+		pthread_mutex_lock(&si->msa[i]->lock);
 		comp_id = ldms_get_user_data(mvec->v[i]);
-		rc = fprintf(si->ms[i]->file, "%"PRIu32".%"PRIu32" %"PRIu64
+		rc = fprintf(si->msa[i]->file, "%"PRIu32".%06"PRIu32" %"PRIu64
 				" %"PRIu64"\n", ts->sec,
 				ts->usec, comp_id,
 				ldms_get_u64(mvec->v[i]));
@@ -294,7 +401,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, ldms_mvec_t mvec)
 					strerror(last_errno), __FILE__,
 					__LINE__);
 		}
-		pthread_mutex_unlock(&si->ms[i]->lock);
+		pthread_mutex_unlock(&si->msa[i]->lock);
 	}
 
 	if (last_errno)
@@ -317,7 +424,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 		if (lrc) {
 			rc = lrc;
 			eno = errno;
-			msglog(LDMS_LDEBUG,"Errro %d: %s at %s:%d\n", eno, strerror(eno),
+			msglog(LDMS_LDEBUG,"Error %d: %s at %s:%d\n", eno, strerror(eno),
 					__FILE__, __LINE__);
 		}
 		pthread_mutex_unlock(&ms->lock);
@@ -338,18 +445,22 @@ static void close_store(ldmsd_store_handle_t _sh)
 		return;
 
 	struct flatfile_metric_store *ms;
-	while (ms = LIST_FIRST(&si->ms_list)) {
+	ms = LIST_FIRST(&si->ms_list);
+	while (ms) {
 		LIST_REMOVE(ms, entry);
 		if (ms->file)
 			fclose(ms->file);
 		if (ms->path)
 			free(ms->path);
+		pthread_mutex_destroy(&ms->lock);
 		free(ms);
+		ms = LIST_FIRST(&si->ms_list);
 	}
 	idx_delete(store_idx, (void *)(si->container), strlen(si->container));
 	free(si->path);
 	free(si->container);
 	idx_destroy(si->ms_idx);
+	free(si->msa);
 	free(si);
 	pthread_mutex_unlock(&cfg_lock);
 }
