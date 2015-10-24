@@ -85,6 +85,7 @@ int add_metrics_nicmetrics(ldms_schema_t schema,
 
 /** setup after add before sampling */
 int linksmetrics_setup(ldmsd_msg_log_f msglog);
+int nicmetrics_setup(ldmsd_msg_log_f msglog);
 
 /* sampling */
 int sample_metrics_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
