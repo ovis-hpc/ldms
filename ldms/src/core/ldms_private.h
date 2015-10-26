@@ -61,6 +61,7 @@
 typedef struct ldms_mdef_s {
 	char *name;
 	enum ldms_value_type type;
+	uint32_t flags;	/* DATA/MDATA flag */
 	uint32_t count; /* Number of elements in the array if this is of an array type */
 	size_t meta_sz;
 	size_t data_sz;
@@ -69,7 +70,7 @@ typedef struct ldms_mdef_s {
 
 struct ldms_schema_s {
 	char *name;
-	int metric_count;
+	int card;
 	size_t meta_sz;
 	size_t data_sz;
 	STAILQ_HEAD(metric_list_head, ldms_mdef_s) metric_list;
@@ -94,7 +95,8 @@ extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 extern int __ldms_remote_dir_cancel(ldms_t x);
 extern int __ldms_create_set(const char *instance_name,
-			     size_t meta_len, size_t data_len, size_t card,
+			     size_t meta_len, size_t data_len,
+			     size_t card,
 			     ldms_set_t *s, uint32_t flags);
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,

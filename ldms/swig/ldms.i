@@ -230,25 +230,25 @@ PyObject *LDMS_xprt_dir(ldms_t x);
                 enum ldms_value_type t = ldms_metric_type_get(self, mid);
                 switch (t) {
                 case LDMS_V_U8_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_u8(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_u8(self, mid, idx));
                 case LDMS_V_S8_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_s8(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_s8(self, mid, idx));
                 case LDMS_V_U16_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_u16(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_u16(self, mid, idx));
                 case LDMS_V_S16_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_s16(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_s16(self, mid, idx));
                 case LDMS_V_U32_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_u32(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_u32(self, mid, idx));
                 case LDMS_V_S32_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_s32(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_s32(self, mid, idx));
                 case LDMS_V_U64_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_u64(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_u64(self, mid, idx));
                 case LDMS_V_S64_ARRAY:
-                        return PyLong_FromLong(ldms_array_metric_get_s64(self, mid, idx));
+                        return PyLong_FromLong(ldms_metric_array_get_s64(self, mid, idx));
                 case LDMS_V_F32_ARRAY:
-                        return PyFloat_FromDouble(ldms_array_metric_get_float(self, mid, idx));
+                        return PyFloat_FromDouble(ldms_metric_array_get_float(self, mid, idx));
                 case LDMS_V_D64_ARRAY:
-                        return PyFloat_FromDouble(ldms_array_metric_get_double(self, mid, idx));
+                        return PyFloat_FromDouble(ldms_metric_array_get_double(self, mid, idx));
 		default:
 			SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
                 }
@@ -311,7 +311,7 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		default:
 			SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
 		}
-		ldms_array_metric_set(self, mid, idx, &v);
+		ldms_metric_array_set_val(self, mid, idx, &v);
 	fail:
 		return;
         }

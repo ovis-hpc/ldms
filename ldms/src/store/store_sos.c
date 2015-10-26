@@ -363,7 +363,7 @@ static inline void
 __ldms_sos_array_copy(ldms_set_t set, int i, sos_value_t sos_array, size_t size)
 {
 	void *sos_dst = sos_array_ptr(sos_array);
-	void *ldms_src = ldms_array_metric_get(set, i);
+	void *ldms_src = ldms_metric_array_get(set, i);
 	memcpy(sos_dst, ldms_src, size);
 }
 
@@ -450,7 +450,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		case LDMS_V_U16_ARRAY:
 			/* there is no s16/u16 array in sos */
 			esz = __base_byte_len(metric_type);
-			array_len = ldms_array_metric_get_len(set, i);
+			array_len = ldms_metric_array_get_len(set, i);
 			array_value = sos_array_new(array_value, attr, obj, array_len*2);
 			if (!array_value) {
 				goto err;
@@ -467,7 +467,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		case LDMS_V_F32_ARRAY:
 		case LDMS_V_D64_ARRAY:
 			esz = __base_byte_len(metric_type);
-			array_len = ldms_array_metric_get_len(set, i);
+			array_len = ldms_metric_array_get_len(set, i);
 			array_value = sos_array_new(array_value, attr, obj, array_len);
 			if (!array_value) {
 				goto err;

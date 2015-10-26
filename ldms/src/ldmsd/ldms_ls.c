@@ -160,87 +160,126 @@ void server_timeout(void)
 	exit(1);
 }
 
-void metric_value_printer(ldms_set_t s, int i)
+void value_printer(ldms_set_t s, int idx)
 {
-	enum ldms_value_type type = ldms_metric_type_get(s, i);
-	int n = ldms_array_metric_get_len(s, i);
-	int j;
-	if (n > 10)
-		n = 10;
-	j = 0;
-loop:
-	if (j >= n)
-		goto out;
-	if (j)
-		printf(",");
+	enum ldms_value_type type;
+	ldms_mval_t val;
+	int n, i;
+
+	type = ldms_metric_type_get(s, idx);
+	n = ldms_metric_array_get_len(s, idx);
+	val = ldms_metric_get(s, idx);
+
 	switch (type) {
+	case LDMS_V_CHAR_ARRAY:
+		printf("\"%s\"", val->a_char);
+		break;
+	case LDMS_V_CHAR:
+		printf("'%c'", val->v_char);
+		break;
 	case LDMS_V_U8:
-		printf("%16hhu", ldms_metric_get_u8(s, i));
-		break;
-	case LDMS_V_S8:
-		printf("%16hhd", ldms_metric_get_s8(s, i));
-		break;
-	case LDMS_V_U16:
-		printf("%16hu", ldms_metric_get_u16(s, i));
-		break;
-	case LDMS_V_S16:
-		printf("%16hd", ldms_metric_get_s16(s, i));
-		break;
-	case LDMS_V_U32:
-		printf("%16u", ldms_metric_get_u32(s, i));
-		break;
-	case LDMS_V_S32:
-		printf("%16d", ldms_metric_get_s32(s, i));
-		break;
-	case LDMS_V_U64:
-		printf("%16"PRIu64, ldms_metric_get_u64(s, i));
-		break;
-	case LDMS_V_S64:
-		printf("%16"PRId64, ldms_metric_get_s64(s, i));
-		break;
-	case LDMS_V_F32:
-		printf("%16f", ldms_metric_get_float(s, i));
-		break;
-	case LDMS_V_D64:
-		printf("%16f", ldms_metric_get_double(s, i));
+		printf("%hhu", val->v_u8);
 		break;
 	case LDMS_V_U8_ARRAY:
-		printf("%hhu", ldms_array_metric_get_u8(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("0x%02hhx", val->a_u8[i]);
+		}
+		break;
+	case LDMS_V_S8:
+		printf("%18hhd", val->v_s8);
 		break;
 	case LDMS_V_S8_ARRAY:
-		printf("%hhd", ldms_array_metric_get_s8(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%hhd", val->a_s8[i]);
+		}
+		break;
+	case LDMS_V_U16:
+		printf("%hu", val->v_u16);
 		break;
 	case LDMS_V_U16_ARRAY:
-		printf("%hu", ldms_array_metric_get_u16(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%hu", val->a_u16[i]);
+		}
+		break;
+	case LDMS_V_S16:
+		printf("%hd", val->v_s16);
 		break;
 	case LDMS_V_S16_ARRAY:
-		printf("%hd", ldms_array_metric_get_s16(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%hd", val->a_s16[i]);
+		}
+		break;
+	case LDMS_V_U32:
+		printf("%u", val->v_u32);
 		break;
 	case LDMS_V_U32_ARRAY:
-		printf("%u", ldms_array_metric_get_u32(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%u", val->a_u32[i]);
+		}
+		break;
+	case LDMS_V_S32:
+		printf("%d", val->v_s32);
 		break;
 	case LDMS_V_S32_ARRAY:
-		printf("%d", ldms_array_metric_get_s32(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%d", val->a_s32[i]);
+		}
+		break;
+	case LDMS_V_U64:
+		printf("%"PRIu64, val->v_u64);
 		break;
 	case LDMS_V_U64_ARRAY:
-		printf("%"PRIu64, ldms_array_metric_get_u64(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%"PRIu64, val->a_u64[i]);
+		}
+		break;
+	case LDMS_V_S64:
+		printf("%"PRId64, val->v_s64);
 		break;
 	case LDMS_V_S64_ARRAY:
-		printf("%"PRId64, ldms_array_metric_get_s64(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%"PRId64, val->a_s64[i]);
+		}
+		break;
+	case LDMS_V_F32:
+		printf("%f", val->v_f);
 		break;
 	case LDMS_V_F32_ARRAY:
-		printf("%f", ldms_array_metric_get_float(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%f", val->a_f[i]);
+		}
+		break;
+	case LDMS_V_D64:
+		printf("%f", val->v_d);
 		break;
 	case LDMS_V_D64_ARRAY:
-		printf("%f", ldms_array_metric_get_double(s, i, j));
+		for (i = 0; i < n; i++) {
+			if (i)
+				printf(",");
+			printf("%f", val->a_d[i]);
+		}
 		break;
 	default:
 		printf("Unknown metric type\n");
 	}
-	j++;
-	goto loop;
-out:
-	;
 }
 
 static int user_data = 0;
@@ -248,9 +287,6 @@ void metric_printer(ldms_set_t s, int i)
 {
 	enum ldms_value_type type = ldms_metric_type_get(s, i);
 	char name_str[256];
-	printf("%4s ", ldms_metric_type_to_str(type));
-
-	metric_value_printer(s, i);
 
 	if (user_data)
 		sprintf(name_str, "%-42s 0x%" PRIx64,
@@ -258,8 +294,16 @@ void metric_printer(ldms_set_t s, int i)
 			ldms_metric_user_data_get(s, i));
 	else
 		strcpy(name_str, ldms_metric_name_get(s, i));
-	printf(" %s\n", name_str);
+
+	printf("%c %-10s %-32s",
+	       (ldms_metric_flags_get(s, i) & LDMS_MDESC_F_DATA ? 'D' : 'M'),
+	       ldms_metric_type_to_str(type),
+	       ldms_metric_name_get(s, i));
+
+	value_printer(s, i);
+	printf("\n");
 }
+
 void print_detail(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;

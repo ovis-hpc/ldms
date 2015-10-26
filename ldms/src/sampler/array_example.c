@@ -91,7 +91,7 @@ static int create_metric_set(const char *instance_name)
 	struct array_construct *ent = &array_contruct_entries[0];
 
 	while (ent->name) {
-		rc = ldms_schema_array_metric_add(schema, ent->name, ent->type, ent->n);
+		rc = ldms_schema_metric_array_add(schema, ent->name, ent->type, ent->n);
 		if (rc < 0) {
 			rc = ENOMEM;
 			goto err;
@@ -183,7 +183,7 @@ static int sample(void)
 			default:
 				v.v_u64 = 0;
 			}
-			ldms_array_metric_set(set, mid, i, &v);
+			ldms_metric_array_set_val(set, mid, i, &v);
 		}
 		mid++;
 		ent++;
