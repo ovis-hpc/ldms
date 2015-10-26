@@ -11,3 +11,8 @@ test_ldms_xprt_reconnect_LDADD = $(CORE)/libldms.la
 test_ldms_xprt_reconnect_LDFLAGS = $(AM_LDFLAGS) -lpthread
 test_ldms_xprt_reconnect_CFLAGS = $(AM_CFLAGS)
 
+sbin_PROGRAMS += test_ldms_notify
+test_ldms_notify_SOURCES = test_ldms_notify.c
+test_ldms_notify_LDADD = $(CORE)/libldms.la
+test_ldms_notify_LDFLAGS = $(AM_LDFLAGS) -pthread
+test_ldms_notify_CFLAGS = $(AM_CFLAGS)
