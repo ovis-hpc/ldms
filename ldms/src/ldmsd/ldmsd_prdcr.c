@@ -123,11 +123,6 @@ static void prdcr_set_del(ldmsd_prdcr_set_t set)
 		free(set->schema_name);
 	if (set->set)
 		ldms_set_delete(set->set);
-	else {
-		ldms_set_t lset = ldms_set_by_name(set->inst_name);
-		if (lset)
-			ldms_set_delete(lset);
-	}
 	ldmsd_strgp_ref_t strgp_ref;
 	strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
