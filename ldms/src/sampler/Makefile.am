@@ -161,7 +161,8 @@ libgeneric_sampler_la_LIBADD = $(COMMON_LIBADD) -lcoll
 pkglib_LTLIBRARIES += libgeneric_sampler.la
 endif
 
-
-
-
-
+if ENABLE_LDMS_TEST
+libtest_sampler_la_SOURCES = test_sampler.c
+libtest_sampler_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libtest_sampler.la
+endif
