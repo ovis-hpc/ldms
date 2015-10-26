@@ -118,6 +118,7 @@ static int numvars[MAXOPTS] = { 2, 21 };
 
 static ldms_set_t set;
 static ldms_schema_t schema;
+static char *default_schema_name = "procnfs";
 static FILE *mf;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
@@ -127,7 +128,7 @@ static ldms_set_t get_set()
 	return set;
 }
 
-static int create_metric_set(const char *path)
+static int create_metric_set(const char *path, char* schema_name)
 {
 	int rc;
 	int i, j;
@@ -142,10 +143,11 @@ static int create_metric_set(const char *path)
 	}
 
 	/* Create a metric set of the required size */
-	schema = ldms_schema_new("procnfs");
+	schema = ldms_schema_new(schema_name);
 	if (!schema) {
 		fclose(mf);
-		return ENOMEM;
+		rc = ENOMEM;
+		goto err;
 	}
 
 	/* Make sure these are added in the order they will appear in the file */
@@ -167,30 +169,71 @@ static int create_metric_set(const char *path)
 	return 0;
 
 err:
-	fclose(mf);
-	ldms_schema_delete(schema);
+	if (schema)
+		ldms_schema_delete(schema);
 	schema = NULL;
+	if (mf)
+		fclose(mf);
+	mf = NULL;
 	return rc;
 }
 
 static const char *usage(void)
 {
-	return  "config name=procnfs producer=<prod_name> instance=<inst_name>\n"
+	return  "config name=procnfs producer=<prod_name> instance=<inst_name> [schema=<sname>]\n"
 		"    <prod_name>     The producer name\n"
-		"    <inst_name>     The instance name\n";
+		"    <inst_name>     The instance name\n"
+		"    <sname>         Optional schema name. Defaults to 'procnfs'\n";
+}
+
+/**
+ * check for invalid flags, with particular emphasis on warning the user about
+ */
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+{
+        char *value;
+        int i;
+
+        char* deprecated[]={"set", "component_id"};
+        int numdep = 2;
+
+	for (i = 0; i < numdep; i++){
+                value = av_value(avl, deprecated[i]);
+                if (value){
+                        msglog(LDMSD_LERROR, "procnfs: config argument %s has been deprecated.\n",
+                               deprecated[i]);
+                        return EINVAL;
+                }
+        }
+
+        return 0;
 }
 
 
 /**
  * \brief Configuration
  *
- * - config procnfs  component_id=<value> set=<setname>
- *
+ * config name=procnfs producer_name=<comp_id> instance_name=<instance_name> [schema=<sname>]
+ *     producer_name      The producer id value.
+ *     instance_name    The set name.
+ *     sname            Optional schema name. Defaults to meminfo
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-
+	char *sname;
 	char *value;
+	void *arg;
+	int rc;
+
+	rc = config_check(kwl, avl, arg);
+        if (rc != 0){
+                return rc;
+        }
+
+	if (set) {
+		msglog(LDMSD_LERROR, "procnfs: Set already created.\n");
+		return EINVAL;
+	}
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
@@ -204,12 +247,16 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	sname = av_value(avl, "schema");
+        if (!sname)
+                sname = default_schema_name;
+        if (strlen(sname) == 0){
+                msglog(LDMSD_LERROR, "meminfo: schema name invalid.\n");
+                return EINVAL;
+        }
 
-	if (set) {
-		msglog(LDMSD_LERROR, "procnfs: Set already created.\n");
-		return EINVAL;
-	}
-	int rc = create_metric_set(value);
+
+	rc = create_metric_set(value, sname);
 	if (rc) {
 		msglog(LDMSD_LERROR, "procnfs: failed to create the metric set.\n");
 		return rc;

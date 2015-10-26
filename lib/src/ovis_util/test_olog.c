@@ -1,6 +1,6 @@
-/*
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+/* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -48,47 +48,77 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/**
- * \file gemini_metrics_gpcdr.h
- * \brief Utilities for cray_system_sampler for gemini metrics using gpcdr.
 
- */
-
-#ifndef __GEMINI_METRICS_GPCDR_H_
-#define __GEMINI_METRICS_GPCDR_H_
-
-#define _GNU_SOURCE
-
-#include <inttypes.h>
-#include <unistd.h>
-#include <sys/errno.h>
+#include "olog.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdarg.h>
-#include <string.h>
-#include <sys/types.h>
-#include <time.h>
-#include <ctype.h>
-#include "ldms.h"
-#include "ldmsd.h"
 
+int main(int argc, char **argv)
+{
 
-/* config */
-int hsn_metrics_config(int i, char* filename, ldmsd_msg_log_f msglog);
+	ovis_log_level_set(OL_CRITICAL);
+	olog(OL_INFO, "this is a bogus log level\n");
+	ovis_log_level_set(OL_DEBUG);
+	olog(23, "this is a bogus log level\n");
+	olog(OL_CRITICAL, "olog called before init\n");
+	oldebug("test debug\n");
+	olinfo("test info\n");
+	olwarn("test warning\n");
+	olerr("test error\n");
+	olcrit("test critical\n");
+	oluser("test user\n");
 
+	int rc = ovis_log_init(argv[0], "/root/olog_test.log","debug");
+	if (!rc) {
+		printf("FAIL: /root init test succeeded. are you root?\n");
+	} else {
+		printf("PASS: /root init failed as expected.\n");
+	}
 
-/* add metrics */
-int add_metrics_linksmetrics(ldms_schema_t schema,
-			      ldmsd_msg_log_f msglog);
-int add_metrics_nicmetrics(ldms_schema_t schema,
-			      ldmsd_msg_log_f msglog);
+	ovis_log_final();
+	rc = ovis_log_init(argv[0], "./ologtest.log","debug");
+	if (!rc) {
+		printf("PASS: local init test succeeded.\n");
+		printf("See ./ologtest.log\n");
+	} else {
+		printf("FAIL: local init failed. %d\n",rc);
+		printf("Run in a directory with write permission\n");
+		exit(1);
+	}
+	
+	ovis_loglevels_t lev;
+	for (lev = OL_NONE; lev < OL_ENDLEVEL; lev++) {
+		olog(lev, "test level %d %s\n",(int)lev, ol_to_string(lev));
+	}
+	oldebug("test debug\n");
+	olinfo("test info\n");
+	olwarn("test warning\n");
+	olerr("test error\n");
+	olcrit("test critical\n");
+	oluser("test user\n");
 
-/** setup after add before sampling */
-int linksmetrics_setup(ldmsd_msg_log_f msglog);
-int nicmetrics_setup(ldmsd_msg_log_f msglog);
+	const char *names[] = {
+	"debug","info","warn","error","critical","user","always","quiet" };
+	size_t i = 0;
+	for (i = 0; i < sizeof(names)/sizeof(char *); i++) {
+		ovis_loglevels_t lev = ol_to_level(names[i]);
+		printf("PASS: got level %d(%s) from %s\n",(int)lev,
+			ol_to_string(lev), names[i]);
+	}
 
-/* sampling */
-int sample_metrics_linksmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
-int sample_metrics_nicmetrics(ldms_set_t set, ldmsd_msg_log_f msglog);
+	for (lev = OL_NONE; lev < OL_ENDLEVEL; lev++) {
+		int sl = ol_to_syslog(lev);
+		printf("PASS: Got syslog %d from level %s\n",
+			sl,ol_to_string(lev));
+	}
+	int eno = 0;
+#define TOPENO 256 /* hp uses high values with gaps sometimes. */
+	for (eno = 0; eno < TOPENO; eno++) {
+		printf("%d: %s\n", eno, ovis_rcname(eno));
+	}
 
-#endif
+	ovis_log_final();
+	oluser("FAIL: We should never see this\n");
+
+	return 0;
+}
