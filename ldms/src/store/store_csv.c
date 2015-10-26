@@ -107,6 +107,7 @@ static int nspecialkeys = 0;
 static char *root_path;
 static int altheader;
 static int id_pos;
+static bool ietfcsv = false; /* if true, follow ietf 4180 csv spec wrt headers */
 static int rollover;
 /** rolltype determines how to interpret rollover values > 0. */
 static int rolltype;
@@ -535,6 +536,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char *altvalue;
 	char *ivalue;
 	char *rvalue;
+	char *bvalue;
 	char *spoolerval;
 	char *spooldirval;
 	int roll = -1;
@@ -567,6 +569,29 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 		ipos = atoi(ivalue);
 		if ((ipos < 0) || (ipos > 1)) {
 			cfgstate = CSV_CFGMAIN_FAILED;
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
+	}
+
+	bvalue = av_value(avl, "ietfcsv");
+	if (bvalue){
+		switch (bvalue[0]) {
+		case '1':
+		case 't':
+		case 'T':
+		case '\0':
+			ietfcsv = true;
+			break;
+		case '0':
+		case 'f':
+		case 'F':
+			ietfcsv = false;
+			break;
+		default:
+			cfgstate = CSV_CFGMAIN_FAILED;
+			msglog(LDMS_LERROR, "store_csv: bad ietfcsv=%s\n",
+				bvalue);
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		}
@@ -755,12 +780,14 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "    config name=store_csv [action=main] path=<path> rollover=<num> rolltype=<num>\n"
-		"           [id_pos=<0/1> sequence=<order> altheader=<0/1> spooler=<prog> spooldir=<dir>]\n"
+		"           [id_pos=<0/1> sequence=<order> altheader=<0/1> ietfcsv=<bool>]\n"
+		"           [spooler=<prog> spooldir=<dir>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - action    When action = main or not specified can set the following parameters:\n"
 		"         - path      The path to the root of the csv directory\n"
 		"         - spooler   The path to the spool transfer agent.\n"
 		"         - spooldir  The path to the spool directory for closed output files.\n"
+		"         - ietfcsv   Use ietf formatting if true. Default false.\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
@@ -837,9 +864,15 @@ static int print_header(struct csv_store_handle *s_handle,
 		return EINVAL;
 	}
 
+	char *wsopt = " "; /* non-ietf optional whitespace */
+	char *wsqt = ""; /* ietf quotation wrapping strings */
+	if (ietfcsv) {
+		wsopt = "";
+		wsqt = "\"";
+	}
 	/* This allows optional loading a float (Time) into an int field and
 	   retaining usec as a separate field */
-	fprintf(fp, "#Time, Time_usec");
+	fprintf(fp, "#%sTime%s,%s%sTime_usec%s",wsqt,wsqt,wsqt,wsopt,wsqt);
 
 	int num_metrics = ldms_mvec_get_count(mvec);
 	get_loop_limits(s_handle, num_metrics);
@@ -847,14 +880,14 @@ static int print_header(struct csv_store_handle *s_handle,
 	if (s_handle->id_pos < 0) {
 		for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
-			fprintf(fp, ", %s.CompId, %s.value",
-				name, name);
+			fprintf(fp, ",%s%s%s.CompId%s,%s%s%s.value%s", 
+				wsqt,wsopt,name,wsqt, wsqt,wsopt,name,wsqt);
 		}
 	} else {
-		fprintf(fp, ", CompId");
+		fprintf(fp, ",%s%sCompId%s",wsqt,wsopt,wsqt);
 		for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			name = ldms_get_metric_name(mvec->v[i]);
-			fprintf(fp, ", %s", name);
+			fprintf(fp, ",%s%s%s%s",wsqt,wsopt, name,wsqt);
 		}
 	}
 	fprintf(fp, "\n");
@@ -878,6 +911,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	int rc = 0;
 	int idx;
 	int i;
+
+	if (!container || strchr(container,'/') != NULL) {
+		msglog(LDMS_LERROR,"Invalid container name '%s'\n", container);
+		return NULL;
+	}
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));

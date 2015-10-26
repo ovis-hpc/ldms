@@ -25,7 +25,7 @@ unless overriden by the action=container values.
 
 .TP
 .BR config
-name=<plugin_name> [action=main] path=<path> [ altheader=<altheader> id_pos=<idpos> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> spooldir=<dir> spooler=<program>]
+name=<plugin_name> [action=main] path=<path> [ altheader=<altheader> id_pos=<idpos> ietfcsv=<boolean> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> spooldir=<dir> spooler=<program>]
 .br
 ldmsctl configuration line
 .RS
@@ -53,6 +53,11 @@ The default output format in the CSV stores writes out a separate unique identif
 .HP
 .br
 The value of id_pos determines which metric in the set provides the component_id for the entire set. Setting id_pos=0 selects the last metric defined by the sampler as the component_id source; setting id_pos=1 selects the first metric defined by the sampler as the component_id source. All metrics in the set must have the same component_id for this to make sense, and individual metric component_id assignments may be determined by the sampler implementations.
+.TP
+ietfcsv=<boolean>
+.br
+If true (1,t,T,true,TRUE), format strings following IETF 4180 for reliable import by spreadsheets.
+If false, format strings for readability with a text file pager, e.g. more.
 .TP
 rolltype=<rolltype>
 .br

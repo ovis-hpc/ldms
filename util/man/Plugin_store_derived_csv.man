@@ -20,7 +20,7 @@ The store_derived_csv plugin is a CSV store.
 
 .TP
 .BR config
-name=<plugin_name> path=<path> derivedconf=<confname>[ alt_header=<altheader> idpos=<idpos> agesec=<agesec> rolltype=<rolltype> rollover=<rollover> ]
+name=<plugin_name> path=<path> derivedconf=<confname>[ alt_header=<altheader> idpos=<idpos> ietfcsv=<boolean> agesec=<agesec> rolltype=<rolltype> rollover=<rollover> ]
 .br
 ldmsctl configuration line
 .RS
@@ -44,6 +44,11 @@ The default output writes the header to the same file as the data file. alt_head
 idpos=<idpos>
 .br
 The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node as described above and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+.TP
+ietfcsv=<boolean>
+.br
+If true (1,t,T,true,TRUE), format strings following IETF 4180 for reliable import by spreadsheets.
+If false, format strings for readability with a text file pager, e.g. more.
 .TP
 agesec=<agesec>
 .br

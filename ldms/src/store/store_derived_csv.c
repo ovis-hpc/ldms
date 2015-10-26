@@ -59,6 +59,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <linux/limits.h>
 #include <pthread.h>
 #include <errno.h>
@@ -87,6 +88,7 @@ static char *root_path;
 static int altheader;
 static char* derivedconf = NULL;
 static int id_pos;
+static bool ietfcsv = false; /* if true, follow ietf 4180 csv spec wrt headers */
 static int agedt_sec = 1000000;
 static int rollover;
 static int rolltype;
@@ -489,6 +491,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *altvalue = NULL;
 	char *ivalue = NULL;
 	char *rvalue = NULL;
+	char *bvalue = NULL;
 	char *spoolerval;
 	char *spooldirval;
 	int roll = -1;
@@ -510,6 +513,27 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (ivalue){
 		ipos = atoi(ivalue);
 		if ((ipos < 0) || (ipos > 1)) {
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
+	}
+	bvalue = av_value(avl, "ietfcsv");
+	if (bvalue){
+		switch (bvalue[0]) {
+		case '1':
+		case 't':
+		case 'T':
+		case '\0':
+			ietfcsv = true;
+			break;
+		case '0':
+		case 'f':
+		case 'F':
+			ietfcsv = false;
+			break;
+		default:
+			msglog(LDMS_LERROR, "store_csv: bad ietfcsv=%s\n",
+				bvalue);
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		}
@@ -620,11 +644,13 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "    config name=store_derived_csv path=<path> altheader=<0/1> id_pos=<0/1>\n"
-		"           derivedconf=<fullpath> agesec=<sec> [spooler=<prog> spooldir=<dir>]\n"
+		"           derivedconf=<fullpath> agesec=<sec>  ietfcsv=<bool>\n"
+		"           [spooler=<prog> spooldir=<dir>]\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path      The path to the root of the csv directory\n"
 		"         - spooler   The path to the spool transfer agent.\n"
 		"         - spooldir  The path to the spool directory for closed output files.\n"
+		"         - ietfcsv   Use ietf formatting if true. Default false.\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		"         - rollover  Greater than zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
@@ -714,29 +740,37 @@ static int print_header(struct csv_derived_store_handle *s_handle,
 
 
 	//NOW print the header using only the metrics for this set....
-
+	char *wsopt = " "; /* non-ietf optional whitespace */
+	char *wsqt = ""; /* ietf quotation wrapping strings */
+	if (ietfcsv) {
+		wsopt = "";
+		wsqt = "\"";
+	}
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
 	   a separate field */
 	//FIXME: should we change this format so it looks like the raw file (e.g., add a compid to the DT)?
-	fprintf(fp, "#Time, Time_usec, DT, DT_usec");
+	fprintf(fp, "#%sTime%s,%s%sTime_usec%s,%s%sDT%s,%s%sDT_usec%s",
+		wsqt,wsqt, wsqt,wsopt,wsqt, wsqt,wsopt,wsqt, wsqt,wsopt,wsqt);
 
 	// Write all the metrics we know we should have */
 	if (id_pos < 0){
 		for (i = 0; i < s_handle->numder; i++){
 			if (s_handle->der[i].deridx != -1){
-				fprintf(fp, ", %s.CompId, %s.value",
-					s_handle->der[i].dername, s_handle->der[i].dername);
+				fprintf(fp, ",%s%s%s.CompId%s,%s%s%s.value%s",
+					wsqt,wsopt,s_handle->der[i].dername,wsqt,
+					wsqt,wsopt,s_handle->der[i].dername,wsqt);
 			}
 		}
-		fprintf(fp, ", Flag\n");
+		fprintf(fp, ",%s%sFlag%s\n",wsqt,wsopt,wsqt);
 	} else {
-		fprintf(fp, ", CompId");
+		fprintf(fp, ",%s%sCompId%s",wsqt,wsopt,wsqt);
 		for (i = 0; i < s_handle->numder; i++){
 			if (s_handle->der[i].deridx != -1){
-				fprintf(fp, ", %s", s_handle->der[i].dername);
+				fprintf(fp, ",%s%s%s%s",wsqt,wsopt,
+					s_handle->der[i].dername,wsqt);
 			}
 		}
-		fprintf(fp, ", Flag\n");
+		fprintf(fp, ",%s%sFlag%s\n",wsqt,wsopt,wsqt);
 	}
 
 	/* Flush for the header, whether or not it is the data file as well */
@@ -756,6 +790,11 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	struct csv_derived_store_handle *s_handle;
 	int add_handle = 0;
 	int rc = 0;
+
+	if (!container || strchr(container,'/') != NULL) {
+		msglog(LDMS_LERROR,"Invalid container name '%s'\n", container);
+		return NULL;
+	}
 
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
