@@ -10,6 +10,7 @@ Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
 Plugin_meminfo.man \
 Plugin_procinterrupts.man \
+Plugin_procnetdev.man \
 Plugin_store_csv.man \
 Plugin_store_derived_csv.man \
 Plugin_vmstat.man
@@ -18,7 +19,6 @@ pending_dist_man7_MANS= \
 LDMS_Authentication.man \
 LDMS_QuickStart.man \
 Plugin_lustre2_client.man \
-Plugin_procnetdev.man \
 Plugin_procnfs.man \
 Plugin_procsensors.man \
 Plugin_procstatutil.man \

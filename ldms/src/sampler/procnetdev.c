@@ -79,18 +79,18 @@ static char varname[][30] =
 	"tx_drop", "tx_fifo", "tx_colls", "tx_carrier", "tx_compressed"};
 
 int niface = 0;
-//max number of interfaces we can include. FIXME: alloc as added
+//max number of interfaces we can include. TODO: alloc as added
 #define MAXIFACE 5
 static char iface[MAXIFACE][20];
+static char mindex[MAXIFACE];
 
 static ldms_set_t set;
 static ldms_schema_t schema;
+static char* default_schema_name = "procnetdev";
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
-static struct timeval tv[2];
-static struct timeval *tv_cur = &tv[0];
-static struct timeval *tv_prev = &tv[1];
+
 
 struct kw {
 	char *token;
@@ -102,7 +102,7 @@ static ldms_set_t get_set()
 	return set;
 }
 
-static int create_metric_set(const char *instance_name)
+static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	union ldms_value v[NVARS];
 	int rc;
@@ -110,7 +110,7 @@ static int create_metric_set(const char *instance_name)
 	char lbuf[256];
 	char metric_name[128];
 	char curriface[20];
-	int i,j;
+	int i, j;
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
@@ -121,74 +121,29 @@ static int create_metric_set(const char *instance_name)
 	}
 
 	/* Create a metric set of the required size */
-	schema = ldms_schema_new("procnetdev");
-	if (!schema)
-		return ENOMEM;
+	schema = ldms_schema_new(schema_name);
+	if (!schema) {
+		rc = ENOMEM;
+		goto err;
+	}
 
-	/*
-	 * Process the file to define all the metrics.
-	 */
-	fseek(mf, 0, SEEK_SET);
+	/* Use all specified ifaces whether they exist or not. These will be
+	   populated with 0 values for non existent ifaces. The metrics will appear
+	   in the order of the ifaces as specified */
 
-	/* Consume the header */
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	int usedifaces = 0;
-	do {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s)
-			break;
-
-		if (usedifaces == niface)
-			break;
-
-		char *pch = strchr(lbuf, ':');
-		if (pch != NULL){
-			*pch = ' ';
+	for (i = 0; i < niface; i++){
+		for (j = 0; j < NVARS; j++){
+			snprintf(metric_name, 128, "%s#%s", varname[j], iface[i]);
+			rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
+			if (rc < 0) {
+				rc = ENOMEM;
+				goto err;
+			}
+			if (j == 0)
+				mindex[i] = rc;
 		}
+	}
 
-		int rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64
-				" %" PRIu64 "\n", curriface, &v[0].v_u64,
-				&v[1].v_u64, &v[2].v_u64, &v[3].v_u64,
-				&v[4].v_u64, &v[5].v_u64, &v[6].v_u64,
-				&v[7].v_u64, &v[8].v_u64, &v[9].v_u64,
-				&v[10].v_u64, &v[11].v_u64, &v[12].v_u64,
-				&v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
-		if (rc != 17){
-			msglog(LDMSD_LERROR, "Procnetdev: wrong number of "
-					"fields in sscanf\n");
-			continue;
-		}
-		for (j = 0; j < niface; j++){
-			if (strcmp(iface[j], curriface) == 0){
-				for (i = 0; i < NVARS; i++){
-					/* raw */
-					snprintf(metric_name, 128, "%s#%s",
-							varname[i], curriface);
-					rc = ldms_schema_metric_add(schema,
-							metric_name, LDMS_V_U64);
-					if (rc < 0) {
-						rc = ENOMEM;
-						goto err;
-					}
-					/* rate */
-					snprintf(metric_name, 128, "%s.rate#%s",
-							varname[i], curriface);
-					rc = ldms_schema_metric_add(schema,
-							metric_name, LDMS_V_F32);
-					if (rc < 0) {
-						rc = ENOMEM;
-						goto err;
-					}
-				}
-				usedifaces++;
-				break;
-			} /* end if */
-		} /* end for */
-	} while (s);
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
 		rc = errno;
@@ -197,37 +152,37 @@ static int create_metric_set(const char *instance_name)
 	return 0;
 
 err:
-	fclose(mf);
+
+	if (mf)
+		fclose(mf);
 	mf = NULL;
-	ldms_schema_delete(schema);
+
+	if (schema)
+		ldms_schema_delete(schema);
 	schema = NULL;
+
 	return rc;
 }
 
-static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
+
+/**
+ * check for invalid flags, with particular emphasis on warning the user about
+ */
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	char *value;
+	int i;
 
-	value = av_value(avl, "iface");
-	if (!value) {
-		msglog(LDMSD_LERROR, "Please specify ifaces.\n");
-		return EINVAL;
-	}
+	char* deprecated[]={"set", "component_id"};
+	int numdep = 2;
 
-	char tmp[256];
-	char *ptr, *tok;
-	strncpy(tmp, value, 256);
-	tok = strtok_r(tmp, ",", &ptr);
-	while (tok && niface < MAXIFACE) {
-		snprintf(iface[niface], 20, "%s", tok);
-		niface++;
-		tok = strtok_r(NULL, ",", &ptr);
-	}
-
-	if (tok && niface == (MAXIFACE-1)){
-		msglog(LDMSD_LERROR, "Procnetdev too many ifaces -- "
-				"increase array size\n");
-		return EINVAL;
+	for (i = 0; i < numdep; i++){
+		value = av_value(avl, deprecated[i]);
+		if (value){
+			msglog(LDMSD_LERROR, "procnetdev: config argument %s has been deprecated.\n",
+			       deprecated[i]);
+			return EINVAL;
+		}
 	}
 
 	return 0;
@@ -236,34 +191,45 @@ static int add_iface(struct attr_value_list *kwl, struct attr_value_list *avl)
 static const char *usage(void)
 {
 	return
-"config name=procnetdev iface=<ifaces> producer=<prod_name> instance=<inst_name>\n"
-"    <iface>         A comma-separated list of interface names (e.g. eth0,eth1)\n"
-"    <prod_name>     The producer name\n"
-"    <inst_name>     The instance name\n";
+		"config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [schema=<sname>]\n"
+		"    <prod_name>     The producer name\n"
+		"    <inst_name>     The instance name\n"
+		"    <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)\n"
+		"                    Order matters. All ifaces will be included\n"
+		"                    whether they exist of not up to a total of MAXIFACE\n"
+		"    <sname>         Optional schema name. Defaults to 'procnetdev'\n";
 }
-
 
 /**
  * \brief Configuration
  *
- * - config procnetdev action=add iface=eth0
- *  (repeat this for each iface)
- * - config procnetdev action=init component_id=<value> set=<setname>
- *  (init must be after all the ifaces are added since it adds the metric set)
- *
+ *   config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [schema=<sname>]
+ *     <prod_name>     The producer name
+ *     <inst_name>     The instance name
+ *     <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)
+ *     <sname>         Optional schema name. Defaults to 'procnetdev'
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
+	char *sname = NULL;
+	char* ifacelist = NULL;
+	char* pch = NULL;
+	char *saveptr = NULL;
+	char *ivalue = NULL;
+	char *value = NULL;
+	void *arg = NULL;
 	int rc;
 
-	gettimeofday(tv_prev, 0);
-
-	rc = add_iface(kwl, avl);
-	if (rc)
+	rc = config_check(kwl, avl, arg);
+	if (rc != 0){
 		return rc;
+	}
 
-	/* Set the compid and create the metric set */
+	if (set) {
+		msglog(LDMSD_LERROR, "procnetdev: Set already created.\n");
+		return EINVAL;
+	}
+
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
 		msglog(LDMSD_LERROR, "procnetdev: missing 'producer'.\n");
@@ -276,16 +242,49 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
-	if (set) {
-		msglog(LDMSD_LERROR, "procnetdev: Set already created.\n");
+	sname = av_value(avl, "schema");
+	if (!sname)
+		sname = default_schema_name;
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, "meminfo: schema name invalid.\n");
 		return EINVAL;
 	}
-	rc = create_metric_set(value);
-	if (rc)
-		return rc;
+
+	ivalue = av_value(avl, "ifaces");
+	if (!ivalue) {
+		msglog(LDMSD_LERROR,"procnetdev: config missing argument ifaces=namelist\n");
+		goto err;
+	}
+	ifacelist = strdup(ivalue);
+	pch = strtok_r(ifacelist, ",", &saveptr);
+	while (pch != NULL){
+		if (niface >= (MAXIFACE-1))
+			goto err;
+		snprintf(iface[niface], 20, "%s", pch);
+		msglog(LDMSD_LDEBUG, "procnetdev: added iface <%s>\n", iface[niface]);
+		niface++;
+		pch = strtok_r(NULL, ",", &saveptr);
+	}
+	free(ifacelist);
+	ifacelist = NULL;
+
+	if (niface == 0)
+		goto err;
+
+	rc = create_metric_set(value, sname);
+	if (rc) {
+		msglog(LDMSD_LERROR, "procnetdev: failed to create a metric set.\n");
+		goto err;
+	}
 	ldms_set_producer_name_set(set, producer_name);
 
 	return 0;
+
+ err:
+	if (ifacelist)
+		free(ifacelist);
+	return rc;
+
 }
 
 static int sample(void)
@@ -295,7 +294,6 @@ static int sample(void)
 	char curriface[20];
 	union ldms_value v[NVARS];
 	int i, j, metric_no;
-	struct timeval dtv;
 	float dt;
 
 	if (!set){
@@ -303,7 +301,6 @@ static int sample(void)
 		return EINVAL;
 	}
 
-	metric_no = 0;
 	if (!mf)
 		mf = fopen(procfile, "r");
 	if (!mf) {
@@ -311,16 +308,15 @@ static int sample(void)
 				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
-	fseek(mf, 0, SEEK_SET);
+
+	metric_no = 0;
+	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
 	int usedifaces = 0;
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	/* data */
+
 	ldms_transaction_begin(set);
-	gettimeofday(tv_cur, 0);
-	timersub(tv_cur, tv_prev, &dtv);
-	dt = dtv.tv_sec + dtv.tv_usec / 1e06;
-	metric_no = 0;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -357,12 +353,9 @@ static int sample(void)
 		 */
 		for (j = 0; j < niface; j++){
 			if (strcmp(curriface, iface[j]) == 0){ /* NOTE: small number so no conflicts (eg., eth1 and eth10) */
+				metric_no = mindex[j];
 				for (i = 0; i < NVARS; i++){
-					uint64_t prev = ldms_metric_get_u64(set, metric_no);
-					union ldms_value rate;
-					rate.v_f = (v[i].v_u64 - prev)/dt;
 					ldms_metric_set(set, metric_no++, &v[i]);
-					ldms_metric_set(set, metric_no++, &rate);
 				}
 				usedifaces++;
 				break;
@@ -370,11 +363,6 @@ static int sample(void)
 		} /* end for*/
 	} while (s);
 	ldms_transaction_end(set);
-
-	struct timeval *tv_tmp;
-	tv_tmp = tv_prev;
-	tv_prev = tv_cur;
-	tv_cur = tv_tmp;
 
 	return 0;
 }
