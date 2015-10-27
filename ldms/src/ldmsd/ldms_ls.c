@@ -103,23 +103,6 @@ void null_log(const char *fmt, ...)
 	fflush(stderr);
 }
 
-#if OVIS_LIB_HAVE_AUTH
-#include "ovis_auth/auth.h"
-
-#define LDMS_LS_AUTH_ENV "LDMS_LS_AUTH_FILE"
-char *ldms_ls_get_secretword(const char *path)
-{
-	if (!path) {
-		/* Get path from the environment variable */
-		path = getenv(LDMS_LS_AUTH_ENV);
-			if (!path)
-				return NULL;
-	}
-
-	return ovis_auth_get_secretword(path, null_log);
-}
-#endif /* OVIS_LIB_HAVE_AUTH */
-
 #define FMT "h:p:x:w:m:ESIlvua:V"
 void usage(char *argv[])
 {
@@ -129,23 +112,29 @@ void usage(char *argv[])
 	       "\n    -l               Show the values of the metrics in each metric set.\n"
 	       "\n    -u               Show the user-defined metric meta data value.\n"
 	       "\n    -x <name>        The transport name: sock, rdma, or local. Default is\n"
-	       "                       localhost unless -h is specified in which case it is sock.\n"
+	       "                     localhost unless -h is specified in which case it is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
-	       "                       The default is 10 seconds.\n"
+	       "                     The default is 10 seconds.\n"
 	       "\n    -v               Show detail information about the metric set. Specifying\n"
-	       "                       this option multiple times increases the verbosity.\n"
+	       "                     this option multiple times increases the verbosity.\n"
 	       "\n    -E               The <name> arguments are regular expressions.\n"
 	       "\n    -S               The <name>s refers to the schema name.\n"
 	       "\n    -I               The <name>s refer to the instance name (default).\n"
 	       "\n    -m <memory size> Maximum size of pre-allocated memory for metric sets.\n"
-	       "                       The given size must be less than 1 petabytes.\n"
-	       "                       For example, 20M or 20mb are 20 megabytes.\n",
+	       "                     The given size must be less than 1 petabytes.\n"
+	       "                     For example, 20M or 20mb are 20 megabytes.\n",
 	       argv[0]);
 #if OVIS_LIB_HAVE_AUTH
 	printf("\n    -a <path>        The full Path to the file containing the shared secret word.\n"
-	       "		       Set the environment variable %s to the full path\n"
-	       "		       to avoid giving it at command-line every time.\n",
-	       LDMS_LS_AUTH_ENV);
+	       "                     Set the environment variable %s to the full path\n"
+	       "                     to avoid giving it at command-line every time.\n",
+		LDMS_AUTH_ENV);
+	printf("                     Normally, the environment variable\n"
+	       "                     must be set to the full path to the file storing\n"
+	       "                     the shared secret word, e.g., secretword=<word>\n");
+#ifdef HAVE_ANONE
+        printf("    -a none          Bypass authentication requirements.\n");
+#endif
 #endif /* OVIS_LIB_HAVE_AUTH */
 	printf("\n    -V               Print LDMS version and exit.\n");
 
@@ -570,8 +559,15 @@ int main(int argc, char *argv[])
 	}
 
 #if OVIS_LIB_HAVE_AUTH
-	secretword = ldms_ls_get_secretword(auth_path);
-	ldms = ldms_xprt_with_auth_new(xprt, null_log, secretword);
+	if (auth_path && strcmp(auth_path,"none")==0) {
+		ldms = ldms_xprt_new(xprt, null_log);
+	} else {
+		secretword = ldms_get_secretword(auth_path, null_log);
+		if (secretword)
+			ldms = ldms_xprt_with_auth_new(xprt, null_log, secretword);
+		else
+			exit(EINVAL);
+	}
 #else /* OVIS_LIB_HAVE_AUTH */
 	ldms = ldms_xprt_new(xprt, null_log);
 #endif /* OVIS_LIB_HAVE_AUTH */

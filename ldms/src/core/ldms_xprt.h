@@ -165,8 +165,10 @@ struct ldms_req_notify_reply {
 	struct ldms_notify_event_s event;
 };
 
+#define LDMS_PASSWORD_MAX 128
+
 struct ldms_auth_challenge_reply {
-	char s[0];
+	char s[LDMS_PASSWORD_MAX];
 };
 
 struct ldms_reply_hdr {

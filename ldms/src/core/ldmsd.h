@@ -769,7 +769,9 @@ void ldmsd_task_join(ldmsd_task_t task);
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);
 
-/** Get the LDMSD configured authentication secret */
-const char *ldmsd_secret_get(void);
+/** Get the LDMSD configured authentication secret already loaded. */
+extern const char *ldmsd_secret_get(void);
+/** Find out if authentication is required. 1 yes, 0 no. */
+extern int ldmsd_authentication_required();
 
 #endif

@@ -336,8 +336,11 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 #if OVIS_LIB_HAVE_AUTH
-		prdcr->xprt = ldms_xprt_with_auth_new(prdcr->xprt_name,
-				ldmsd_lcritical, ldmsd_secret_get());
+		if (ldmsd_authentication_required())
+			prdcr->xprt = ldms_xprt_with_auth_new(prdcr->xprt_name,
+					ldmsd_lcritical, ldmsd_secret_get());
+		else
+			prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldmsd_lcritical);
 #else
 		prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldmsd_lcritical);
 #endif /* OVIS_LIB_HAVE_AUTH */

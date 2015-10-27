@@ -65,6 +65,8 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <regex.h>
+#include <pwd.h>
+#include <unistd.h>
 
 #include "ovis_util/os_util.h"
 #include "ldms.h"
@@ -937,6 +939,7 @@ void process_auth_challenge_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	int rc;
 	if (0 != strcmp(x->password, reply->auth_challenge.s)) {
 		/* Reject the authentication and disconnect the connection. */
+		x->log("Auth error: challenge mismatch.\n");
 		goto err_n_reject;
 	}
 	x->auth_flag = LDMS_XPRT_AUTH_APPROVED;
@@ -956,6 +959,81 @@ void process_auth_approval_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	if (x->connect_cb)
 		x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
 					x->connect_cb_arg);
+}
+
+char *ldms_get_secretword(const char *file, ldms_log_fn_t log_fn)
+{
+	int rc;
+	const char *source = NULL;
+	char *secretword = NULL;
+
+	if (!log_fn) {
+		errno = EINVAL;
+		return NULL;
+	}
+	errno = 0;
+	/* try switch input first. */
+	if (file) {
+		secretword = ovis_auth_get_secretword(file, log_fn);
+		source = file;
+		rc = errno;
+		goto out;
+	}
+	/* Then the environment variable. */
+	char *path = getenv(LDMS_AUTH_ENV);
+	if (path) {
+		secretword = ovis_auth_get_secretword(path, log_fn);
+		source = path;
+		rc = errno;
+		if (!secretword)
+			log_fn("ldms auth: Failed to get the "
+			"secretword from %s.\n", LDMS_AUTH_ENV);
+		goto out;
+	}
+
+	/* check ~/.ldmsauth.conf */
+	struct passwd *pwent;
+	char *ldmsauth_path = NULL;
+        errno = 0;
+        if ((pwent = getpwuid(getuid())) == NULL) {     /* for real id */
+		rc = errno;
+                log_fn("%s:%d: %s\n", __FILE__, __LINE__, strerror(rc));
+                goto out;
+        }
+
+#define CONFNAME ".ldmsauth.conf"
+#define SYSCONFNAME "ldmsauth.conf"
+	/* size for ~ & etc reuse. */
+	size_t ldmsauth_path_len = strlen(pwent->pw_dir)
+	    + sizeof(SYSCONFDIR) + sizeof(CONFNAME) + 2;
+	ldmsauth_path = alloca(sizeof(char) * ldmsauth_path_len);
+
+	/* check ~/.ldmsauth.conf */
+	snprintf(ldmsauth_path, ldmsauth_path_len - 1, "%s/" CONFNAME,
+		 pwent->pw_dir);
+	if (access(ldmsauth_path, R_OK) == 0) {
+		secretword = ovis_auth_get_secretword(ldmsauth_path, log_fn);
+		rc = errno;
+		source = ldmsauth_path;
+		goto out;
+	}
+	/* check /etc/ldmsauth.conf */
+	snprintf(ldmsauth_path, ldmsauth_path_len - 1,
+		"%s/" SYSCONFNAME, SYSCONFDIR);
+	secretword = ovis_auth_get_secretword(ldmsauth_path, log_fn);
+	rc = errno;
+	source = ldmsauth_path;
+
+out:
+	errno = rc;
+	if (!secretword) {
+		log_fn("ldms_get_secretword: failed source %s. %s\n",
+			source, strerror(errno));
+		log_fn("Possible sources are: from user (option -a filename), "
+			"environment variable " LDMS_AUTH_ENV ", ~/" CONFNAME 
+			", " SYSCONFDIR "/" SYSCONFNAME "\n");	
+	}
+	return secretword;
 }
 #endif /* OVIS_LIB_HAVE_AUTH */
 
@@ -1121,20 +1199,23 @@ int send_auth_password(struct ldms_xprt *x, const char *password)
 	int rc = 0;
 	struct ldms_reply *reply;
 
-	len = sizeof(struct ldms_reply_hdr)
-			+ sizeof(struct ldms_auth_challenge_reply)
-			+ strlen(password) + 1;
+	int pwlen = strlen(password) + 1;
+	if (pwlen > LDMS_PASSWORD_MAX ) {
+		pwlen = LDMS_PASSWORD_MAX;
+	}
+
+	len = sizeof(struct ldms_reply_hdr) + pwlen;
 	reply = malloc(len);
 	if (!reply) {
-		x->log("Memory allocation failure "
-		       "in notify of peer.\n");
+		x->log("Memory allocation failure in send_auth_password.\n");
 		return ENOMEM;
 	}
 	reply->hdr.xid = 0;
 	reply->hdr.cmd = htonl(LDMS_CMD_AUTH_CHALLENGE_REPLY);
 	reply->hdr.rc = 0;
 	reply->hdr.len = htonl(len);
-	strncpy(reply->auth_challenge.s, password, strlen(password));
+	strncpy(reply->auth_challenge.s, password, pwlen);
+	reply->auth_challenge.s[pwlen-1] = '\0';
 	/* Release in process...approval_reply/disconnected */
 	ldms_xprt_get(x);
 	zap_err_t zerr = zap_send(x->zap_ep, reply, len);
@@ -1407,6 +1488,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			 *  Send the LDMS_CONN_EVENT_REJECTED to the application.
 			 */
 			ldms_conn_event = LDMS_CONN_EVENT_REJECTED;
+#ifdef DEBUG
+			x->log("DEBUG: ldms_zap_cb: auth fail: rejected. %d\n", (int) x->auth_flag);
+#endif /* DEBUG */
 		}
 #endif /* OVIS_LIB_HAVE_AUTH */
 		if (x->connect_cb)
@@ -1588,10 +1672,17 @@ err0:
 ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 				const char *secretword)
 {
+	if (!log_fn)
+		log_fn = default_log;
 #ifdef DEBUG
 	log_fn("ldms_xprt [DEBUG]: Creating transport "
 			"using ldms_xprt_with_auth_new.\n");
 #endif /* DEBUG */
+	if (!secretword) {
+		log_fn("ldms_xprt_with_auth_new needs valid secretword\n");
+		errno = EINVAL;
+		return NULL;
+	}
 	int ret = 0;
 	struct ldms_xprt *x = calloc(1, sizeof(*x));
 	if (!x) {
@@ -1599,21 +1690,15 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 		goto err0;
 	}
 
-	if (!log_fn)
-		log_fn = default_log;
-
-	if (secretword) {
 #ifdef DEBUG
-		log_fn("ldms_xprt [DEBUG]: Creating transport "
-				"with authentication\n");
+	log_fn("ldms_xprt [DEBUG]: Creating transport with authentication\n");
 #endif /* DEBUG */
-		x->password = strdup(secretword);
-		if (!x->password) {
-			ret = errno;
-			goto err1;
-		}
-		x->auth_flag = LDMS_XPRT_AUTH_INIT;
+	x->password = strdup(secretword);
+	if (!x->password) {
+		ret = errno;
+		goto err1;
 	}
+	x->auth_flag = LDMS_XPRT_AUTH_INIT;
 
 	ret = __ldms_xprt_zap_new(x, name, log_fn);
 	if (ret)
@@ -1621,6 +1706,9 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 
 	return x;
 err1:
+#ifdef DEBUG
+	log_fn("ldms_xprt [DEBUG]: __ldms_xprt_zap_new gave %d %s\n",ret,strerror(ret));
+#endif /* DEBUG */
 	if (x->password)
 		free((void *)x->password);
 	free(x);

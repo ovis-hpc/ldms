@@ -316,16 +316,13 @@ struct ldms_set_desc {
  */
 typedef void (*ldms_log_fn_t)(const char *fmt, ...);
 
-#define MAX_SECRET_WORD_LEN 50 /*! The maximum length of the secret word */
-#define MIN_SECRET_WORD_LEN 3  /*! The minimum length of the secret word */
-
 /**
  * \brief Create a transport handle
  *
  * Metric sets are exported on the network through a transport. A
  * transport handle is required to communicate on the network.
  *
- * \param name	The name of the transport type to create.
+ * \param name	The name of the transport type to create without authentication.
  * \param log_fn An optional function to call when logging transport messages
  *
  * \returns	A transport handle on success.
@@ -334,8 +331,10 @@ typedef void (*ldms_log_fn_t)(const char *fmt, ...);
 extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
 
 #if OVIS_LIB_HAVE_AUTH
+/** The same env variable applies to all or confused inconsistency results. */
+#define LDMS_AUTH_ENV "LDMS_AUTH_FILE"
 /**
- * \brief Create a transport handle with or without authentication
+ * \brief Create a transport handle always with authentication
  *
  * Metric sets are exported on the network through a transport. A
  * transport handle is required to communicate on the network.
@@ -343,13 +342,29 @@ extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
  * \param name	The name of the transport type to create.
  * \param log_fn An optional function to call when logging transport messages
  * \param secretword  The shared secret word used for authentication.
- *                    If NULL is given, there is no authentication performed.
+ *                    If NULL is given, the call fails.
  *
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
 extern ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 					const char *secretword);
+/**
+ * \brief Find the secretword used for encrypting the key exchange.
+ *
+ * All callers connecting to ldmsd via any network socket use
+ * this to get their secretword needed for ldms_xprt_with_auth_new.
+ * The source for the secret is as follows:
+ *   The file, if given, first.
+ *   The env var LDMS_AUTH_ENV, if set.
+ *   ~/.ldmsauth.conf, if present.
+ *   sysconfdir/ldmsauth.conf, if present.
+ * First source given or present, but erroneous, results in a failure.
+ * \param file The user-supplied name of a file to check.
+ * \param log_fn Output sink for error messages.
+ * \return NULL on failure (errno set) or the secret. Caller owns result.
+ */
+extern char *ldms_get_secretword(const char * file, ldms_log_fn_t log_fn);
 #endif /* OVIS_LIB_HAVE_AUTH */
 
 typedef enum ldms_conn_event {

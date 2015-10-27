@@ -1,5 +1,7 @@
 #!/bin/bash
 
+export LD_LIBRARY_PATH=/home/baallan/gcc/gcc491/lib64:$LD_LIBRARY_PATH
+export PATH=$HOME/gcc/gcc491/bin:$PATH
 # NOTE: replace the two vars below with your paths
 # NOTE: change ports, intervals if you like
 DESTDIR=
@@ -50,9 +52,15 @@ export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1
 export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
 echo "secretword=crashtestdummy" > $SECRET
-export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
 echo "logs and data stored under $TESTDIR"
+# build with HAVE_ANONE=@HAVE_ANONE@
+# The next 4 can be reshuffled/commented out to test permutations on use.
+# todo: automate the shuffle.
+export LDMS_AUTH_FILE=$SECRET
+AFILE="-a $SECRET"
+AFILE="-a none"
+AFILE=""
 
 export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
 export ZAP_LIBPATH=@pkglibdir@
@@ -76,9 +84,9 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $LDMSD_PIDFILE.1
-ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -v DEBUG -r $LDMSD_PIDFILE.2
-ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -v DEBUG -r $LDMSD_PIDFILE.3
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $LDMSD_PIDFILE.1 $AFILE
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -v DEBUG -r $LDMSD_PIDFILE.2 $AFILE
+ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -v DEBUG -r $LDMSD_PIDFILE.3 $AFILE
 mysleep 1
 
 # ldms_ls
@@ -122,12 +130,12 @@ mysleep 2
 
 mysleep 5
 echo ldms_ls on host 1:
-ldms_ls -h localhost -x sock -p $port1 -l
+ldms_ls -h localhost -x sock -p $port1 -l $AFILE
 mysleep 1
 echo ldms_ls on host 2:
-ldms_ls -h localhost -x sock -p $port2 -l
+ldms_ls -h localhost -x sock -p $port2 -l $AFILE
 mysleep 1
 echo ldms_ls on host 3:
-ldms_ls -h localhost -x sock -p $port3 
+ldms_ls -h localhost -x sock -p $port3  $AFILE
 
 echo done;

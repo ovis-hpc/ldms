@@ -4,7 +4,9 @@ echo BUILDING FOR UBUNTU 12.04
 export CC=gcc
 export CXX=g++
 
-export LD_LIBRARY_PATH=$HOME/opt/ovis/lib:$LD_LIBRARY_PATH
+#export LD_LIBRARY_PATH=$HOME/gcc/gcc491/lib64:$HOME/opt/ovis/lib:$LD_LIBRARY_PATH
+#export PATH=$HOME/gcc/gcc491/bin:$PATH
+#export CFLAGS="-fsanitize=address -Wall"
 
 # local path of scratch ldms files
 build_subdir=LDMS_objdir
@@ -38,8 +40,12 @@ if test -f packaging/ovis-base.spec.in; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	#allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 LDFLAGS=-fsanitize=address "
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 "
+# auth + -a none
+#	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --enable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --enable-a-none --with-pkglibdir=ovis-ldms LDFLAGS=-fsanitize=address"
+# no auth
+#	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --disable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --with-pkglibdir=ovis-ldms"
+# auth
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --enable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --with-pkglibdir=ovis-ldms"
 	../configure $allconfig && \
 	make && \
 	make install && \

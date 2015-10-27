@@ -84,12 +84,16 @@ AC_DEFINE_UNQUOTED([HAVE_ZAP],["$have_zap"],[configured with zap transport (1) o
 
 with_ssl=0
 have_auth=0
-if test -z "$ENABLE_OVIS_AUTH"
-then
+if test "$enable_ovis_auth" = "yes"; then
 	have_auth=1
 	dnl Check for OpenSSL
 	AX_CHECK_OPENSSL([with_ssl=1],[with_ssl=0])
+	AUTH_LIB="-lovis_auth"
+else
+	AUTH_LIB=""
 fi
+AC_SUBST([AUTH_LIB])
+AC_SUBST([HAVE_AUTH],[$have_auth])
 AC_DEFINE_UNQUOTED([HAVE_AUTH],[$have_auth],[configured with authentication (1) or not (0)])
 AC_DEFINE_UNQUOTED([HAVE_SSL],[$with_ssl],[configured with ssl authentication support (1) or not (0)])
 
