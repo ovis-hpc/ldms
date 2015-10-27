@@ -172,7 +172,7 @@ struct z_rdma_ep {
 	 * If an endpoint is not an endpoint created from
 	 * ::handle_connect_request(), parent_ep is NULL.
 	 */
-	zap_ep_t parent_ep;
+	struct z_rdma_ep *parent_ep;
 
 	/* Flag for deferred disconnected event */
 	int deferred_disconnected;

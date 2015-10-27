@@ -231,7 +231,7 @@ static void z_rdma_destroy(zap_ep_t zep)
 	__rdma_teardown_conn(rep);
 	pthread_mutex_unlock(&rep->ep.lock);
 	if (rep->parent_ep)
-		__zap_put_ep(rep->parent_ep);
+		__zap_put_ep(&rep->parent_ep->ep);
 	DLOG_(rep, "rep: %p freed\n", rep);
 	free(rep);
 }
@@ -303,19 +303,6 @@ static int __rdma_setup_conn(struct z_rdma_ep *rep)
 	ret = z_rdma_fill_rq(rep);
 	if (ret)
 		goto err_0;
-
-	struct epoll_event cq_event;
-	cq_event.data.ptr = rep;
-	cq_event.events = EPOLLIN | EPOLLOUT;
-
-	/* Release when deleting the cq_channel fd from the epoll */
-	__zap_get_ep(&rep->ep);
-	ret = epoll_ctl(cq_fd, EPOLL_CTL_ADD, rep->cq_channel->fd, &cq_event);
-	if (ret) {
-		LOG_(rep, "RMDA: epoll_ctl CTL_ADD failed\n");
-		__zap_put_ep(&rep->ep); /* Taken before adding cq_channel fd to epoll*/
-		goto err_0;
-	}
 
 	return 0;
 
@@ -1106,6 +1093,7 @@ static void *cq_thread_proc(void *arg)
 	int ret;
 	int rc;
 	sigset_t sigset;
+
 	sigfillset(&sigset);
 	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 	if (rc) {
@@ -1114,7 +1102,6 @@ static void *cq_thread_proc(void *arg)
 		assert(rc == 0);
 	}
 
-	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 	while (1) {
 		int fd_count = epoll_wait(cq_fd, cq_events, 16, -1);
 		if (fd_count < 0) {
@@ -1315,7 +1302,7 @@ handle_connect_request(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 	zap_set_ucontext(new_ep, ctxt);
 	new_rep = (struct z_rdma_ep *)new_ep;
 	new_rep->cm_id = cma_id;
-	new_rep->parent_ep = &rep->ep;
+	new_rep->parent_ep = rep;
 	__zap_get_ep(&rep->ep); /* Release when the new endpoint is destroyed */
 	cma_id->context = new_rep;
 	zap_ep_change_state(new_ep, ZAP_EP_INIT, ZAP_EP_ACCEPTING);
@@ -1457,6 +1444,18 @@ handle_established(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 	}
 
 	rep->ep.cb(&rep->ep, &zev);
+
+	/* Now that we're connected, handle CQ events */
+	struct epoll_event cq_event;
+	cq_event.data.ptr = rep;
+	cq_event.events = EPOLLIN | EPOLLOUT;
+
+	/* Release when deleting the cq_channel fd from the epoll */
+	__zap_get_ep(&rep->ep);
+	if (epoll_ctl(cq_fd, EPOLL_CTL_ADD, rep->cq_channel->fd, &cq_event)) {
+		LOG_(rep, "RMDA: epoll_ctl CTL_ADD failed\n");
+		__zap_put_ep(&rep->ep); /* Taken before adding cq_channel fd to epoll*/
+	}
 }
 
 static void _rdma_deliver_disconnected(struct z_rdma_ep *rep)
@@ -1572,6 +1571,28 @@ static void cma_event_handler(struct z_rdma_ep *rep,
 	}
 }
 
+static void handle_cm_event(struct z_rdma_ep *rep)
+{
+	int rc;
+	struct rdma_cm_event *event;
+
+	rc = rdma_get_cm_event(rep->cm_channel, &event);
+	if (rc)
+		return;
+
+	struct rdma_cm_id *cm_id = event->id;
+	/*
+	 * Many connection oriented events are delivered on the
+	 * cm_channel of the listener cm_id. Use the endpoint from the
+	 * cm_id context, not the one from the cm_channel.
+	 */
+	rep = (struct z_rdma_ep *)cm_id->context;
+	__zap_get_ep(&rep->ep);
+	cma_event_handler(rep, cm_id, event);
+	rdma_ack_cm_event(event);
+	__zap_put_ep(&rep->ep);
+}
+
 /*
  * Connection Manager Thread - event thread that processes CM events.
  */
@@ -1579,11 +1600,11 @@ static void *cm_thread_proc(void *arg)
 {
 	int cm_fd = (int)(unsigned long)arg;
 	struct epoll_event cm_events[16];
-	struct rdma_cm_event *event;
 	struct z_rdma_ep *rep;
 	int ret, i;
 	int rc;
 	sigset_t sigset;
+
 	sigfillset(&sigset);
 	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 	if (rc) {
@@ -1592,7 +1613,6 @@ static void *cm_thread_proc(void *arg)
 		assert(rc == 0);
 	}
 
-	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 	while (1) {
 		ret = epoll_wait(cm_fd, cm_events, 16, -1);
 		if (ret < 0) {
@@ -1607,24 +1627,7 @@ static void *cm_thread_proc(void *arg)
 				/* This shouldn't happen */
 				assert(0);
 			}
-
-			if (rdma_get_cm_event(rep->cm_channel, &event)) {
-				__zap_put_ep(&rep->ep);
-				continue;
-			}
-
-			struct rdma_cm_id *cm_id = event->id;
-			/*
-			 * Many connection oriented events are
-			 * delivered on the cm_channel of the listener
-			 * cm_id. Use the endpoint from the cm_id context,
-			 * not the one from the cm_channel.
-			 */
-			rep = (struct z_rdma_ep *)cm_id->context;
-			__zap_get_ep(&rep->ep);
-			cma_event_handler(rep, cm_id, event);
-			rdma_ack_cm_event(event);
-			__zap_put_ep(&rep->ep);
+			handle_cm_event(rep);
 		}
 	}
 	return NULL;
