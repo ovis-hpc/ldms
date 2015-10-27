@@ -203,8 +203,7 @@ static void term(void)
 static const char *usage(void)
 {
 	return  "    config name=store_sos path=<path>\n"
-		"        - Set the root path for the storage of SOS files.\n"
-		"        path           The path to the root of the SOS containers directory\n";
+		"       path The path to primary storage\n";
 }
 
 static void *get_ucontext(ldmsd_store_handle_t _sh)
@@ -292,6 +291,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 {
 	int rc;
 	sos_schema_t schema;
+	char part_name[16];	/* uint32_t in hex */
 
 	si->sos = sos_container_open(si->path, SOS_PERM_RW);
 	if (si->sos) {
@@ -304,19 +304,49 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 
 	/* Create the SOS container */
 	rc = sos_container_new(si->path, 0660);
-	if (rc)
-		return rc;
+	if (rc) {
+		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		       rc, si->path);
+		goto err_0;
+	}
 	si->sos = sos_container_open(si->path, SOS_PERM_RW);
-	if (!si->sos)
-		return errno;
+	if (!si->sos) {
+		msglog(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		       errno, si->path);
+		goto err_0;
+	}
  add_schema:
 	schema = create_schema(si, set, metric_arry, metric_count);
 	if (!schema)
 		goto err_0;
 	rc = sos_schema_add(si->sos, schema);
-	if (rc)
+	if (rc) {
+		msglog(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
 		goto err_1;
+	}
 	si->sos_schema = schema;
+	/* Create the first partition. All other partitions and
+	 * rollover are handled with the SOS partition commands
+	 */
+	time_t t = time(NULL);
+	sprintf(part_name, "%08X", t);
+	rc = sos_part_create(si->sos, part_name, si->path);
+	if (rc) {
+		msglog(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		       rc, part_name, si->path);
+		goto err_1;
+	}
+	sos_part_t part = sos_part_find(si->sos, part_name);
+	if (!part) {
+		msglog(LDMSD_LERROR, "Newly created partition was not found\n");
+		goto err_1;
+	}
+	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
+	if (rc) {
+		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
+		goto err_1;
+	}
+	sos_part_put(part);
 	return 0;
  err_1:
 	sos_schema_free(schema);
