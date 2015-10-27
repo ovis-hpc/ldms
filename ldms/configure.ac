@@ -72,6 +72,8 @@ OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
+dnl aries_mmr is not part of the cray_system_sampler
+OPTION_DEFAULT_DISABLE([aries-mmr], [ENABLE_ARIES_MMR], [Requires --with-aries-libgpcd=libdir,incdir])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
@@ -95,6 +97,9 @@ OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
 OPTION_WITH([krca], [KRCA],[/usr])
 OPTION_DEFAULT_DISABLE([cray-hss-devel], [ENABLE_CRAY_HSS_DEVEL])
 OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL],[/usr])
+
+# for aries_mmr
+OPTION_ARIES_MMR
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc coll ovis_util zap ovis_ctrl ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
@@ -330,6 +335,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/sampler/hadoop/hadoop-sinks/OvisSink.java
 		 src/sampler/cray_system_sampler/Makefile
+		 src/sampler/aries_mmr/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile

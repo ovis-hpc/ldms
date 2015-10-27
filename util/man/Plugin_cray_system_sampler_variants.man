@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_cray_system_sampler_variants
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "04 Oct 2015" "v3" "LDMS Plugin for all variants of the cray_system_sampler man page"
+.TH man 7 "28 Oct 2015" "v3" "LDMS Plugin for all variants of the cray_system_sampler man page"
 
 .SH NAME
 Plugin_cray_system_sampler_variants - man page for all variants of the LDMS cray_system_sampler plugin
@@ -185,6 +185,11 @@ The aries performance counter information will be accessed via the gpcdr module,
 .B NOTE: Prior to CLE 5.2 UP05, the default gpcdr configuration erroneously wrote all the aries metrics to the same file within /sys/devices. Due to the number and size of the values, this file would exceed the supported file sizes within /sys. If you have CLE version < 5.2 UP05, replace your gpcdr-init.config file with one that splits up the locations of these values into separate files consistent with how they are handled in CLE 5.2 UP05. This configuration file and instructions for using it can be found in util/aries. The plugin will FAIL if you do not have the expected files for the split metrics.
 .br
 
+.SH GETTING OTHER ARIES PERFORMANCE COUNTER INFORMATION
+The cray_aries_r_sampler reads the metrics defined by the particular gpcdr-init.config file. There is a different sampler called aries_mmr which enables user determined counters to be read (defined in a config file). Use this sampler if you want different metrics, and optionally set off_HSN in the cray_aries_r_sampler. This functionality will soon
+be ported into the cray_aries_r_sampler.
+
+
 .SH DATA DIFFERENCES AMONG THE VARIANTS
 .TP
 The aries transport does not have X, Y, Z directional link aggregation nor X, Y, Z mesh coord information.
@@ -198,7 +203,9 @@ In v3, the cray_gemini_d variant, which obtained gemini performance data from th
 .IP \[bu]
 Please note the argument changes between v2 and v3.
 .IP \[bu]
-The aries network counters in fluctuation and may change at any time.
+The aries network counters are in fluctuation and may change at any time.
+.IP \[bu]
+If you want different counters, see the aries_mmr sampler (and related note above).
 .PP
 
 .SH BUGS
@@ -670,7 +677,7 @@ U64 1626210          ipogif0_tx_bytes
 
 
 .SH SEE ALSO
-ldms(7), Plugin_kgnilnd(7)
+ldms(7), Plugin_kgnilnd(7), Plugin_aries_mmr(7)
 
 
 

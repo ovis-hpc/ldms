@@ -46,6 +46,11 @@ if ENABLE_CRAY_SYSTEM_SAMPLER
 SUBDIRS += cray_system_sampler
 endif
 
+
+if ENABLE_ARIES_MMR
+SUBDIRS += aries_mmr
+endif
+
 if ENABLE_ARRAY_EXAMPLE
 libarray_example_la_SOURCES = array_example.c
 libarray_example_la_LIBADD = $(COMMON_LIBADD)
