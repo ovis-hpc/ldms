@@ -1,3 +1,14 @@
+2015-10-27 Benjamin A. Allan <baallan@sandia.gov>
+* Update of experimental store_flatfile
+* Addition of per-container options to store_csv plugin.
+* Addition of data file spooling hook to production csv-based stores.
+* Fixed buggy interaction of slurmjobid with procstatutil2.
+* Added experimental Interlagos MSR sampler and store.
+* Added data synthesis store for scalability testing.
+* Fixed silent-rules workaround for older automake.
+* Updated handling of 'flag' metric in store_derived_csv.
+* Update version to 2.4.5.
+
 2015-07-28 Benjamin A. Allan <baallan@sandia.gov>
 * Update of Cray gpcdr handling.
 * Bug fix for init.d example script (missing mkdir, misleading conf prototype)
