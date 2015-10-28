@@ -74,6 +74,7 @@ static ldms_set_t set;
 static ldms_metric_t *metric_table;
 static ldmsd_msg_log_f msglog;
 static uint64_t comp_id = UINT64_MAX;
+// defaults
 static double period = 20; // seconds
 static double amplitude = 10; // integer height of waves 
 static double origin = 1440449892; // 8-24-2015-ish
@@ -241,8 +242,8 @@ static int sample(void)
 		default:
 			y = 1;
 		}
-
-		v.v_u64 = llround( (amplitude * y ) + (comp_id + 1) * 2 * amplitude + 1);
+#define GAP 3
+		v.v_u64 = llround( amplitude * y  + comp_id  * (2 * amplitude + GAP ));
 		ldms_set_metric(metric_table[metric_no], &v);
 
 		metric_no++;
@@ -290,4 +291,3 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	msglog = pf;
 	return &synthetic_plugin.base;
 }
-

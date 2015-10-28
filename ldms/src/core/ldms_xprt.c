@@ -597,6 +597,8 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 		rbd = alloc_rbd(x, set, NULL, 0);
 		if (!rbd) {
 			hdr.rc = htonl(ENOMEM);
+			x->log(LDMS_LERROR,"%s:%d: alloc_rbd failed.\n",
+				__FILE__,__LINE__);
 			goto err_out;
 		}
 		rbd->xid = req->hdr.xid;
@@ -610,6 +612,8 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	if (!reply) {
 		ldms_release_local_set(set);
 		hdr.rc = htonl(ENOMEM);
+		x->log(LDMS_LERROR,"%s:%d: malloc reply failed.\n",
+			__FILE__,__LINE__);
 		goto err_out;
 	}
 	reply->hdr.xid = req->hdr.xid;
@@ -1516,8 +1520,10 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	size_t len;
 	int rc;
 
-	if (alloc_req_ctxt(&req, &ctxt))
+	if (alloc_req_ctxt(&req, &ctxt)) {
+		x->log(LDMS_LERROR,"__ldms_remote_lookup: alloc_req_ctxt failed.\n");
 		return ENOMEM;
+	}
 
 	len = format_lookup_req(req, path, (uint64_t)(unsigned long)ctxt);
 	ctxt->lookup.set = ldms_find_local_set(path);
@@ -1528,6 +1534,9 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	ctxt->lookup.path = strdup(path);
 	rc = x->send(x, req, len);
 	/* should we close xprt here if send fails? */
+	if (rc) {
+		x->log(LDMS_LERROR,"__ldms_remote_lookup: send failed.\n");
+	}
 	return rc;
 }
 

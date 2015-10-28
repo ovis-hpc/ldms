@@ -1,6 +1,6 @@
 #!/bin/bash -x
 eventname=libevent-2.0.21-stable
-export LOCALEVENT=1 ; # else expect /usr to be a good libevent2
+export LOCALEVENT=0 ; # else expect /usr to be a good libevent2
 # we build libevent once, then reinstall it as first built if
 # it goes missing from the install tree.
 
@@ -30,8 +30,8 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 		# ubuntu/debian recent
 		expected_event2_prefix=/usr
 	else
-		expected_event2_prefix=/usr/lib64/ovis-libevent2
 		expected_event2_prefix=$HOME/libevent2
+		expected_event2_prefix=/usr/lib64/ovis-libevent2
 	fi
 	# clean out old build headers if reinstalling. prevents build confusion.
 	oldinc="coll ldms mmalloc ovis_ctrl ovis-test ovis_util sos zap"
@@ -83,6 +83,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
 	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --disable-zap --disable-zaptest --disable-swig --enable-authentication --enable-sysclassib"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --disable-zap --disable-zaptest --disable-swig --enable-authentication"
 	../configure $allconfig && \
 	make && \
 	make install && \
