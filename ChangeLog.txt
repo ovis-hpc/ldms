@@ -1,13 +1,18 @@
 2015-10-27 Benjamin A. Allan <baallan@sandia.gov>
-* Update of experimental store_flatfile
-* Addition of per-container options to store_csv plugin.
-* Addition of data file spooling hook to production csv-based stores.
-* Fixed buggy interaction of slurmjobid with procstatutil2.
-* Added experimental Interlagos MSR sampler and store.
-* Added data synthesis store for scalability testing.
-* Fixed silent-rules workaround for older automake.
-* Updated handling of 'flag' metric in store_derived_csv.
 * Update version to 2.4.5.
+* Updated handling of 'flag' metric in store_derived_csv.
+* Added ietfcsv option to store_csv, store_derived_csv.
+	Header lines are now conventionally double quoted if ietfcsv=1 given.
+* Addition of per-container options to store_csv plugin.
+	Allows alternate spooling destinations and other options per metric set.
+* Addition of data file spooling hook to production csv-based stores.
+	Allows admins to specify a script that post-processes closed data files.
+* Fixed buggy interaction of slurmjobid with procstatutil2.
+* Fixed silent-rules workaround for older automake.
+* Added experimental data synthesis sampler for scalability testing.
+* Update of experimental store_flatfile
+	One metric per file, but still needs spooling and more flexible sets.
+* Added experimental Interlagos MSR sampler and store.
 
 2015-07-28 Benjamin A. Allan <baallan@sandia.gov>
 * Update of Cray gpcdr handling.

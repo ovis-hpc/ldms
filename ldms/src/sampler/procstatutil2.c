@@ -130,7 +130,7 @@ int mtl_append(struct metric_tmp_list *l, const char *name,
 	if (!n) goto err;
 	struct metric_tmp *mt = malloc(sizeof(struct metric_tmp));
 	if (!mt) goto err;
-	g.msglog(LDMS_LDEBUG,"mtlappend: %s, %"PRIu64"\n",name, type);
+	/* g.msglog(LDMS_LDEBUG,"mtlappend: %s, %"PRIu64"\n",name, type); */
 	ldms_get_metric_size(name, LDMS_V_U64, meta_sz, data_sz);
 	mt->name = n;
 	mt->type = type;
@@ -577,7 +577,7 @@ if (strcmp(token,X)==0) { \
 
 	struct metric_tmp *mt = mtl.head;
 	for ( ; mt != NULL; mt = mt->next) {
-		g.msglog(LDMS_LDEBUG,"admet: %s, %"PRIu64"\n",mt->name, mt->type);
+		/* g.msglog(LDMS_LDEBUG,"admet: %s, %"PRIu64"\n",mt->name, mt->type); */
 		m = ldms_add_metric(g.set, mt->name, mt->type);
 		if (!m) {
 			g.msglog(LDMS_LERROR,"procstatutil2.c: ldms_add_metric"

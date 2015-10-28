@@ -91,7 +91,8 @@ static const char *JOBID_FILE = "/var/run/ldms.slurm.jobid";
 static const char *JOBID_COLNAME = SLURM_JOBID_METRIC_NAME;
 #define JOBID_LINE_MAX 64  //max # of chars in lbuf
 
-static char *procfile = JOBID_FILE;
+static char *procfile = NULL;
+#define PROCFILE (procfile ? procfile : JOBID_FILE)
 static char *metric_name = NULL;
 static ldms_set_t set;
 static FILE *mf;
@@ -144,9 +145,9 @@ static int create_metric_set(const char *path)
 	/*
 	 * Process the file to init jobid.
 	 */
-	mf = fopen(procfile, "r");
+	mf = fopen(PROCFILE, "r");
 	if (!mf) {
-		msglog(LDMS_LINFO,"Could not open the jobid file '%s'\n", procfile);
+		msglog(LDMS_LINFO,"Could not open the jobid file '%s'\n", PROCFILE);
 	} else {
 		fclose(mf);
 		mf = NULL;
@@ -202,7 +203,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		}
 	}
 	metric_name = (char *)JOBID_COLNAME;
-	msglog(LDMS_LDEBUG,"Slurm jobid file is '%s'\n", procfile);
+	msglog(LDMS_LDEBUG,"Slurm jobid file is '%s'\n", PROCFILE);
 
 	value = av_value(avl, "component_id");
 	if (value) {
@@ -310,14 +311,14 @@ static int sample(void)
 	   almost certain in a local ram file system, so this is fast
 	   enough compared to contacting a slurm daemon.
 	*/
-	mf = fopen(procfile, "r");
+	mf = fopen(PROCFILE, "r");
 	if (!mf) {
-		msglog(LDMS_LINFO,"Could not open the jobid file '%s'\n", procfile);
+		msglog(LDMS_LINFO,"Could not open the jobid file '%s'\n", PROCFILE);
 		metric_value = 0;
 	} else {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s) {
-			msglog(LDMS_LINFO,"Fail reading jobid file '%s'\n", procfile);
+			msglog(LDMS_LINFO,"Fail reading jobid file '%s'\n", PROCFILE);
 			metric_value = 0;
 		} else {
 			char *endp = NULL;
@@ -327,7 +328,7 @@ static int sample(void)
 				metric_value = 0;
 				msglog(LDMS_LERROR,
 					"Fail parsing '%s' from %s\n",
-					lbuf, procfile);
+					lbuf, PROCFILE);
 			}
 		}
 		fclose(mf);
@@ -403,8 +404,8 @@ static void term(void)
 	if (metric_name && metric_name != JOBID_COLNAME ) {
 		free(metric_name);
 	}
-	if ( procfile && procfile != JOBID_FILE ) {
-		free(procfile);
+	if ( procfile ) {
+		free((char *)procfile);
 	}
 }
 

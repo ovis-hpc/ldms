@@ -16,6 +16,7 @@ portbase=61100
 port1=`expr $portbase + 1`
 port2=`expr $portbase + 2`
 port3=`expr $portbase + 3`
+port4=`expr $portbase + 4`
 if test ! -x $BUILDDIR/sbin/ldmsd; then
 	echo "can't find ldmsd binary. set destdir in $0 before testing?"
 	exit 1
@@ -68,6 +69,7 @@ echo removing old logs
 rm -f ${LOGDIR}/1.txt
 rm -f ${LOGDIR}/2.txt
 rm -f ${LOGDIR}/3.txt
+rm -f ${LOGDIR}/4.txt
 
 echo removing old output
 rm -rf ${STOREDIR}/node
@@ -76,7 +78,8 @@ rm -f ${STOREDIR}/*
 echo Starting daemons
 ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -q DEBUG
 ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -q DEBUG
-ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG
+ldms-aggd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG
+ldms-aggd -x sock:$port4 -S $SOCKDIR/metric_socket_4  -l ${LOGDIR}/4.txt -q DEBUG
 mysleep 1
 
 
@@ -105,21 +108,24 @@ done
 mysleep 2
 
 for i in 1 2; do
-	echo Adding host$i to aggregator3
-	echo "add host=localhost type=active xprt=sock interval=1000000 port=6110$i sets=localhost$i/slurmjobid,localhost$i/meminfo,localhost$i/procdiskstats,localhost$i/procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+	echo Adding host$i to aggregator`expr 2 + $i`
+	echo "add host=localhost type=active xprt=sock interval=1000000 port=6110$i sets=localhost$i/slurmjobid,localhost$i/meminfo,localhost$i/procdiskstats,localhost$i/procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_`expr 2 + $i`
 	mysleep 1
 done
 
 mysleep 5
-echo Adding store_csv to aggregator3
-echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+for i in 3 4; do
+mkdir -p $STOREDIR$i
+echo Adding store_csv to aggregator$i
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
 mysleep 2
-echo "config name=store_csv path=${STOREDIR} altheader=1 id_pos=1 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=slurmjobid container=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=procdiskstats container=procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv comp_type=node set=procstatutil2 container=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=store_csv path=${STOREDIR}$i altheader=1 id_pos=1 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+echo "store name=store_csv comp_type=node set=slurmjobid container=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+echo "store name=store_csv comp_type=node set=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+echo "store name=store_csv comp_type=node set=procdiskstats container=procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+echo "store name=store_csv comp_type=node set=procstatutil2 container=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
 mysleep 2
+done
 #
 echo ldms_ls on host 3:
 ldms_ls -h localhost -x sock -p $port3 
@@ -136,12 +142,15 @@ for i in 1 2; do
 	mysleep 2
 	echo 3000$i > $SLURMFILE.$i
 done
-mysleep 3
+mysleep 10
 pkill ldmsd
 mysleep 2
-echo data from ${STOREDIR}/node/slurmjobid sorted by node id
-cat ${STOREDIR}/node/slurmjobid | grep ' 1, '
-cat ${STOREDIR}/node/slurmjobid | grep ' 2, '
+pkill ldms-aggd
+for i in 3 4; do
+	echo data from ${STOREDIR}$i/node/slurmjobid sorted by node id
+	cat ${STOREDIR}$i/node/slurmjobid | grep ' 1, '
+	cat ${STOREDIR}$i/node/slurmjobid | grep ' 2, '
+done
 
 
 echo done;
