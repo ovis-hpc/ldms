@@ -37,6 +37,7 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_bindir}/test_big_dstring
 rm -f $RPM_BUILD_ROOT%{_bindir}/test_dstring
 rm -f $RPM_BUILD_ROOT%{_bindir}/test_rman
+rm -f $RPM_BUILD_ROOT%{_bindir}/test_olog
 
 %clean
 rm -rf $RPM_BUILD_ROOT
