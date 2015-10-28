@@ -87,11 +87,11 @@ this sampler may need to be cloned and modified.
 The functionality is generic to files containing a single
 integer in ascii encoding.
 */
-static const char *JOBID_FILE="/var/run/ldms.slurm.jobid";
+static const char *JOBID_FILE = "/var/run/ldms.slurm.jobid";
 static const char *JOBID_COLNAME = SLURM_JOBID_METRIC_NAME;
 #define JOBID_LINE_MAX 64  //max # of chars in lbuf
 
-static char *procfile = NULL;
+static char *procfile = JOBID_FILE;
 static char *metric_name = NULL;
 static ldms_set_t set;
 static FILE *mf;
