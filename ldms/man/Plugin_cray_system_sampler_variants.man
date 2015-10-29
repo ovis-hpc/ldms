@@ -678,7 +678,3 @@ U64 1626210          ipogif0_tx_bytes
 
 .SH SEE ALSO
 ldms(7), Plugin_kgnilnd(7), Plugin_aries_mmr(7)
-
-
-
-

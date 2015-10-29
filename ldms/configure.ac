@@ -28,7 +28,7 @@ AC_C_FLEXIBLE_ARRAY_MEMBER
 OVIS_PKGLIBDIR
 OPTION_DEFAULT_ENABLE([scripts], [ENABLE_SCRIPTS])
 OPTION_DEFAULT_DISABLE([developer], [ENABLE_DEVELOPER])
-OPTION_DEFAULT_DISABLE([doc], [ENABLE_DOC])
+OPTION_DOC
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 
 OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
@@ -352,6 +352,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 scripts/ldmsd
 		 scripts/envldms.sh
 		 ldms.spec
+		 man/Makefile
 ])
 
 AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.

@@ -72,7 +72,12 @@ Group: %{_grp}
 Documetnation for ldms project.
 %files doc
 %defattr(-,root,root)
+%if "@ENABLE_DOC_HTML_TRUE@x" == "x"
 %{_datadir}/doc
+%endif
+%if "@ENABLE_DOC_MAN_TRUE@x" == "x"
+%{_datadir}/man
+%endif
 %endif
 
 

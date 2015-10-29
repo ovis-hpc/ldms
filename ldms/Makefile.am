@@ -60,16 +60,18 @@ banned:
 
 if ENABLE_DOC
 
-all: doc
-doc:
+if ENABLE_DOC_HTML
+DOCDEPS = $(top_srcdir)/src/*/*.c \
+          $(top_srcdir)/src/*/*.h \
+          $(top_srcdir)/src/*/*/*.h \
+          $(top_srcdir)/src/*/*/*.h
+all: doxygen-out
+doxygen-out: $(DOCDEPS)
 	doxygen Doxyfile
+	touch doxygen-out
 	@(errcnt=`wc -l ldms.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
 
-doxygen doxygen/html:
-	doxygen ./Doxyfile
-	@(errcnt=`wc -l ldms.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
-
-install-doxygen:
+install-doxygen: doxygen-out
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in doxygen/html/* ; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html; \
@@ -77,18 +79,16 @@ install-doxygen:
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
+endif
+
+if ENABLE_DOC_MAN
+SUBDIRS += man
+endif
 
 else
-
-doc:
-	@echo "bypassing doxygen build"
-
-doxygen doxygen/html:
-	@echo "no html doc in this version"
-
+# doc is disabled
 install-doxygen:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
-	@echo "no html doc in this version"
 
 endif
 

@@ -59,4 +59,3 @@ ldmsctl> quit
 
 .SH SEE ALSO
 ldms(7), Plugin_sysclassib(7)
-
