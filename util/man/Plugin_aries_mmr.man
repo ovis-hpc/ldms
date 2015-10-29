@@ -1,0 +1,148 @@
+.\" Manpage for Plugin_aries_mmr
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "28 Oct 2015" "v3" "LDMS Plugin for the aries_mmr sampler.
+
+.SH NAME
+Plugin_aries_mmr - man page for the aries_mmr sampler.
+
+.SH SYNOPSIS
+Within ldmsctl
+.br
+ldmsctl> config name=aries_mmr [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The aries_mmr sampler provides aries network counter information. The particular counters to be read are
+specified by configuration files. No functional combinations of the counters are supported (.i.e., does not sum
+or scale values).
+
+.PP
+The aries_mmr sampler depends on Cray's libgpcd, built with aries options. This library is currently
+unreleased and you cannot build this sampler, if you do not have the libraries and headers.
+
+If you have the code to build the library, be sure to build with
+.B CFLAGS=-fPIC
+
+.PP
+To build the aries_mmr sampler, build with the following flags:
+.B  --enable-aries_mmr
+.B   --with-aries-libgpcd=<full_path_to_libgpcd.a>,<full_path_to_lib_gpcd.h>
+
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+.TP
+.BR config
+name=<plugin_name> producer=<pname> instance=<iname>  [rawfile=<rawf> rcfile=<rcf> schema=<sname>]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be aries_mmr
+.TP
+producer=<pname>
+.br
+The producer name string.
+.TP
+instance=<iname>
+.br
+The name of the metric set.
+.TP
+schema=<sname>
+.br
+Optional schema name. It is intended that the same sampler on different nodes with different metrics have a different schema. This will default to cray_aries_r or cray_gemini_r as appropriate, if unspecified.
+.TP
+rawfile=<rawf>
+.br
+Configuration file of aries performance counter names that will be added in exactly as they are specified (hence raw).
+This file is optional, but at least one of rawfile or rcfile must be specified.
+.TP
+rcfile=<rcf>
+.br
+Configuration file of aries performance counter names that have row column dependencies. Use the base part of the name
+and the prefix (AR_RTR_r_c) for all rows and columns will be added.
+.RE
+
+.SH NOTES
+.PP
+.IP \[bu]
+This is entirely independent of the cray_aries_r_sampler.
+.IP \[bu]
+At the moment, no functions of the data (either in the sampler or in a store) are supported.
+.IP \[bu]
+Counters whose names do not resolve are left out.
+.IP \[bu]
+This sampler may change at any time.
+.IP \[bu]
+.PP
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP Config files
+> cat rawmetrics.txt
+.br
+#RAW METRICS
+.br
+AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS
+.br
+
+.br
+AR_NIC_RSPMON_NPT_EVENT_CNTR_NL_FLITS
+.br
+# this is a test
+.br
+
+> cat rcmetrics.txt
+.br
+#RC METRICS -- strip the headers, they will be added...
+.br
+INQ_PRF_INCOMING_FLIT_VC0
+.br
+INQ_PRF_INCOMING_FLIT_VC1
+.br
+
+.PP Starting
+ldmsctl> load name=aries_mmr
+.br
+ldmsctl>  config name=aries_mmr producer=localhost2 instance=localhost2/aries_mmr schema=aries_mmr rcfile=/home/XXX/rcmetrics.txt rawfile=/home/XXX/rawmetrics.txt
+.br
+ldmsctl> start name=aries_mmr interval=1000000
+.br
+
+.PP Output
+> ldms_ls
+localhost2/aries_mmr: consistent, last update: Wed Oct 28 08:48:36 2015 [153343us]
+ u64                0 AR_RTR_4_7_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_4_6_INQ_PRF_INCOMING_FLIT_VC1
+ u64        699923330 AR_RTR_4_5_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_4_4_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_4_3_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_4_2_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_4_1_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_4_0_INQ_PRF_INCOMING_FLIT_VC1
+ u64       2402304628 AR_RTR_3_7_INQ_PRF_INCOMING_FLIT_VC1
+ u64        636514773 AR_RTR_3_6_INQ_PRF_INCOMING_FLIT_VC1
+ u64       7632505254 AR_RTR_3_5_INQ_PRF_INCOMING_FLIT_VC1
+ u64       7009139188 AR_RTR_3_4_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_3_3_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_3_2_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_3_1_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_3_0_INQ_PRF_INCOMING_FLIT_VC1
+ u64       4411960959 AR_RTR_2_7_INQ_PRF_INCOMING_FLIT_VC1
+ u64                0 AR_RTR_2_6_INQ_PRF_INCOMING_FLIT_VC1
+ u64       8961334661 AR_RTR_2_5_INQ_PRF_INCOMING_FLIT_VC1
+ ....
+ u64                0 AR_RTR_0_2_INQ_PRF_INCOMING_FLIT_VC0
+ u64                0 AR_RTR_0_1_INQ_PRF_INCOMING_FLIT_VC0
+ u64                0 AR_RTR_0_0_INQ_PRF_INCOMING_FLIT_VC0
+ u64       5968204876 AR_NIC_RSPMON_NPT_EVENT_CNTR_NL_FLITS
+ u64       4182142522 AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS
+
+
+.fi
+
+
+.SH SEE ALSO
+ldms(7), Plugin_cray_sampler_variants(7)

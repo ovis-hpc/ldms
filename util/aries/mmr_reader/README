@@ -1,0 +1,3 @@
+A utility code that reads specified mmr counters.
+NOTE that libgpcd is not released, you will need to have access to this in order to use this code.
+

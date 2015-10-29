@@ -6,6 +6,7 @@ dist_man8_MANS=
 # ldms_ls.man
 
 dist_man7_MANS= \
+Plugin_aries_mmr.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
 Plugin_meminfo.man \
