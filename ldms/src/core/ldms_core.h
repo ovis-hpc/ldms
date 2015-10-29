@@ -208,9 +208,8 @@ typedef union ldms_value {
  * \brief LDMS value type enumeration
  */
 enum ldms_value_type {
-	LDMS_V_NONE,
+	LDMS_V_NONE = 0,
 	LDMS_V_CHAR,
-	LDMS_V_FIRST = LDMS_V_CHAR,
 	LDMS_V_U8,
 	LDMS_V_S8,
 	LDMS_V_U16,
@@ -232,6 +231,7 @@ enum ldms_value_type {
 	LDMS_V_S64_ARRAY,
 	LDMS_V_F32_ARRAY,
 	LDMS_V_D64_ARRAY,
+	LDMS_V_FIRST = LDMS_V_CHAR,
 	LDMS_V_LAST = LDMS_V_D64_ARRAY
 };
 

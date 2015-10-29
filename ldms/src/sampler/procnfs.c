@@ -222,7 +222,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *sname;
 	char *value;
-	void *arg;
+	void *arg = NULL;
 	int rc;
 
 	rc = config_check(kwl, avl, arg);

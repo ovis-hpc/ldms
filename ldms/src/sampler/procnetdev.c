@@ -104,12 +104,8 @@ static ldms_set_t get_set()
 
 static int create_metric_set(const char *instance_name, char* schema_name)
 {
-	union ldms_value v[NVARS];
 	int rc;
-	char *s;
-	char lbuf[256];
 	char metric_name[128];
-	char curriface[20];
 	int i, j;
 
 	mf = fopen(procfile, "r");
@@ -294,7 +290,6 @@ static int sample(void)
 	char curriface[20];
 	union ldms_value v[NVARS];
 	int i, j, metric_no;
-	float dt;
 
 	if (!set){
 		msglog(LDMSD_LDEBUG, "procnetdev: plugin not initialized\n");
