@@ -226,6 +226,19 @@ Python interface for OVIS libraries
 %exclude %{_bindir}/lib-pedigree
 %exclude %{_includedir}/ovis-test/
 
+%if "@ENABLE_DOC_TRUE@x" == "x"
+# ovis-lib-doc package
+%package doc
+Summary: ovis-lib documentation
+Group: %{_grp}
+%description doc
+Documetnation for ovis-lib package.
+%files doc
+%defattr(-,root,root)
+%{_datadir}/doc
+%endif
+
+
 %package misc
 Summary: Miscellaneous file in ovis-lib project.
 Group: %{ovis_lib_grp}

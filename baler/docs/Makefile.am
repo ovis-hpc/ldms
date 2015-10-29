@@ -56,13 +56,17 @@ endif
 
 if ENABLE_DOC_MAN
 
-man_files = man/man3/balerd.3 \
+# Doxygen generate only one section (default: 3), which makes sense since a lot
+# of documentation is development documentation.
+#
+# man1_files will be installed into section 1 by automake afterward.
+man1_files = man/man3/balerd.3 \
 	    man/man3/bhttpd.3 \
 	    man/man3/bquery.3
 
-$(man_files): doxygen-out
+$(man1_files): doxygen-out
 
-man3_MANS = $(man_files)
+man1_MANS = $(man1_files)
 
 endif
 

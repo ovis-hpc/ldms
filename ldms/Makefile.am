@@ -60,6 +60,7 @@ banned:
 
 if ENABLE_DOC
 
+all: doc
 doc:
 	doxygen Doxyfile
 	@(errcnt=`wc -l ldms.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
