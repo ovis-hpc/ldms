@@ -445,7 +445,7 @@ void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 {
 	if ((e == LDMS_CONN_EVENT_ERROR) || (e == LDMS_CONN_EVENT_REJECTED)) {
 		printf("Connection failed/rejected.\n");
-		exit(2);
+		done = 1;
 	}
 
 	sem_post(&conn_sem);
@@ -598,7 +598,10 @@ int main(int argc, char *argv[])
 	}
 
 	sem_wait(&conn_sem);
-
+	if (done) {
+		/* Connection error/rejected */
+		exit(1);
+	}
 	pthread_mutex_init(&dir_lock, 0);
 	pthread_cond_init(&dir_cv, NULL);
 	pthread_mutex_init(&done_lock, 0);
