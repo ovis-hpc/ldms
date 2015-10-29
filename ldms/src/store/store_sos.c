@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2012-14 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2012-14 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2012-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -79,6 +79,19 @@
 #define MAX_OWNER	(MAX_USER_GROUP_LEN * 2 + 1)
 
 /*
+ * sos_handle_s structure, to share sos among multiple sos instances that refers
+ * to the same container.
+ */
+typedef struct sos_handle_s {
+	int ref_count;
+	char path[4096]; /* this should be enough to hold container name */
+	sos_t sos;
+	LIST_ENTRY(sos_handle_s) entry;
+} *sos_handle_t;
+
+static LIST_HEAD(sos_handle_list, sos_handle_s) sos_handle_list;
+
+/*
  * NOTE:
  *   <sos::path> = <root_path>/<container>
  */
@@ -89,7 +102,7 @@ struct sos_instance {
 	char *schema_name;
 	char *path; /**< <root_path>/<container> */
 	void *ucontext;
-	sos_t sos; /**< sos handle */
+	sos_handle_t sos_handle; /**< sos handle */
 	sos_schema_t sos_schema;
 	pthread_mutex_t lock; /**< lock at metric store level */
 	LIST_ENTRY(sos_instance) entry;
@@ -108,18 +121,19 @@ sos_type_t sos_type_map[] = {
 	[LDMS_V_NONE] = SOS_TYPE_UINT32,
 	[LDMS_V_U8] = SOS_TYPE_UINT32,
 	[LDMS_V_S8] = SOS_TYPE_INT32,
-	[LDMS_V_U16] = SOS_TYPE_UINT32,
-	[LDMS_V_S16] = SOS_TYPE_UINT32,
+	[LDMS_V_U16] = SOS_TYPE_UINT16,
+	[LDMS_V_S16] = SOS_TYPE_UINT16,
 	[LDMS_V_U32] = SOS_TYPE_UINT32,
 	[LDMS_V_S32] = SOS_TYPE_INT32,
 	[LDMS_V_U64] = SOS_TYPE_UINT64,
 	[LDMS_V_S64] = SOS_TYPE_INT64,
 	[LDMS_V_F32] = SOS_TYPE_FLOAT,
 	[LDMS_V_D64] = SOS_TYPE_DOUBLE,
+	[LDMS_V_CHAR_ARRAY] = SOS_TYPE_CHAR_ARRAY,
 	[LDMS_V_U8_ARRAY] = SOS_TYPE_BYTE_ARRAY,
 	[LDMS_V_S8_ARRAY] = SOS_TYPE_BYTE_ARRAY,
-	[LDMS_V_U16_ARRAY] = SOS_TYPE_BYTE_ARRAY,
-	[LDMS_V_S16_ARRAY] = SOS_TYPE_BYTE_ARRAY,
+	[LDMS_V_U16_ARRAY] = SOS_TYPE_UINT16_ARRAY,
+	[LDMS_V_S16_ARRAY] = SOS_TYPE_INT16_ARRAY,
 	[LDMS_V_U32_ARRAY] = SOS_TYPE_UINT32_ARRAY,
 	[LDMS_V_S32_ARRAY] = SOS_TYPE_INT32_ARRAY,
 	[LDMS_V_U64_ARRAY] = SOS_TYPE_UINT64_ARRAY,
@@ -138,10 +152,10 @@ static void set_s8_fn(sos_value_t v, ldms_set_t s, int i) {
 	v->data->prim.int32_ = ldms_metric_get_s8(s, i);
 }
 static void set_u16_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.uint32_ = ldms_metric_get_u16(s, i);
+	v->data->prim.uint16_ = ldms_metric_get_u16(s, i);
 }
 static void set_s16_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.int32_ = ldms_metric_get_s16(s, i);
+	v->data->prim.int16_ = ldms_metric_get_s16(s, i);
 }
 static void set_u32_fn(sos_value_t v, ldms_set_t s, int i) {
 	v->data->prim.uint32_ = ldms_metric_get_u32(s, i);
@@ -176,6 +190,106 @@ sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_F32] = set_float_fn,
 	[LDMS_V_D64] = set_double_fn,
 };
+
+sos_handle_t create_container(const char *path)
+{
+	int rc = 0;
+	sos_t sos;
+	time_t t;
+	char part_name[16];	/* Unix timestamp as string */
+	sos_handle_t h;
+	sos_part_t part;
+
+	h = calloc(1, sizeof(*h));
+	if (!h)
+		return NULL;
+
+	rc = sos_container_new(path, 0660);
+	if (rc) {
+		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		       rc, path);
+		goto err_0;
+	}
+	sos = sos_container_open(path, SOS_PERM_RW);
+	if (!sos) {
+		msglog(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		       errno, path);
+		goto err_0;
+	}
+	/*
+	 * Create the first partition. All other partitions and
+	 * rollover are handled with the SOS partition commands
+	 */
+	t = time(NULL);
+	sprintf(part_name, "%d", (unsigned int)t);
+	rc = sos_part_create(sos, part_name, path);
+	if (rc) {
+		msglog(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		       rc, part_name, path);
+		goto err_1;
+	}
+	part = sos_part_find(sos, part_name);
+	if (!part) {
+		msglog(LDMSD_LERROR, "Newly created partition was not found\n");
+		goto err_1;
+	}
+	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
+	if (rc) {
+		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
+		goto err_1;
+	}
+	sos_part_put(part);
+	strncpy(h->path, path, sizeof(h->path));
+	h->ref_count = 1;
+	h->sos = sos;
+	pthread_mutex_lock(&cfg_lock);
+	LIST_INSERT_HEAD(&sos_handle_list, h, entry);
+	pthread_mutex_unlock(&cfg_lock);
+	return h;
+ err_1:
+	sos_container_close(sos, SOS_COMMIT_ASYNC);
+ err_0:
+	if (rc)
+		errno = rc;
+	free(h);
+	return NULL;
+}
+
+void close_container(sos_handle_t h)
+{
+	assert(h->ref_count == 0);
+	sos_container_close(h->sos, SOS_COMMIT_ASYNC);
+	free(h);
+}
+
+void put_container(sos_handle_t h)
+{
+	pthread_mutex_lock(&cfg_lock);
+	h->ref_count--;
+	if (h->ref_count == 0) {
+		/* remove from list, destroy the handle */
+		LIST_REMOVE(h, entry);
+		close_container(h);
+	}
+	pthread_mutex_unlock(&cfg_lock);
+}
+
+static sos_handle_t find_container(const char *path)
+{
+	sos_handle_t h;
+	LIST_FOREACH(h, &sos_handle_list, entry){
+		if (0 != strncmp(path, h->path, sizeof(h->path)))
+			continue;
+
+		/* found */
+		/* take reference */
+		pthread_mutex_lock(&cfg_lock);
+		h->ref_count++;
+		pthread_mutex_unlock(&cfg_lock);
+		return h;
+	}
+	return NULL;
+}
 
 /**
  * \brief Configuration
@@ -291,110 +405,72 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 {
 	int rc;
 	sos_schema_t schema;
-	char part_name[16];	/* uint32_t in hex */
 
-	si->sos = sos_container_open(si->path, SOS_PERM_RW);
-	if (si->sos) {
-		schema = sos_schema_by_name(si->sos, si->schema_name);
+	/* Check if the container is already open */
+	si->sos_handle = find_container(si->path);
+	if (si->sos_handle) {
+		/* See if the required schema is already present */
+		schema = sos_schema_by_name(si->sos_handle->sos, si->schema_name);
 		if (!schema)
 			goto add_schema;
 		si->sos_schema = schema;
 		return 0;
 	}
 
-	/* Create the SOS container */
-	rc = sos_container_new(si->path, 0660);
-	if (rc) {
-		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
-		       rc, si->path);
-		goto err_0;
+	si->sos_handle = create_container(si->path);
+	if (!si->sos_handle) {
+		return errno;
 	}
-	si->sos = sos_container_open(si->path, SOS_PERM_RW);
-	if (!si->sos) {
-		msglog(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
-		       errno, si->path);
-		goto err_0;
-	}
+
  add_schema:
 	schema = create_schema(si, set, metric_arry, metric_count);
 	if (!schema)
 		goto err_0;
-	rc = sos_schema_add(si->sos, schema);
+	rc = sos_schema_add(si->sos_handle->sos, schema);
 	if (rc) {
 		msglog(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
 		goto err_1;
 	}
 	si->sos_schema = schema;
-	/* Create the first partition. All other partitions and
-	 * rollover are handled with the SOS partition commands
-	 */
-	time_t t = time(NULL);
-	sprintf(part_name, "%08X", t);
-	rc = sos_part_create(si->sos, part_name, si->path);
-	if (rc) {
-		msglog(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
-		       rc, part_name, si->path);
-		goto err_1;
-	}
-	sos_part_t part = sos_part_find(si->sos, part_name);
-	if (!part) {
-		msglog(LDMSD_LERROR, "Newly created partition was not found\n");
-		goto err_1;
-	}
-	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
-	if (rc) {
-		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
-		goto err_1;
-	}
-	sos_part_put(part);
 	return 0;
  err_1:
 	sos_schema_free(schema);
  err_0:
-	sos_container_close(si->sos, SOS_COMMIT_ASYNC);
-	si->sos = NULL;
+	put_container(si->sos_handle);
 	return EINVAL;
 }
 
-static inline size_t
-__base_byte_len(enum ldms_value_type type)
-{
-	switch (type) {
-	case LDMS_V_S8:
-	case LDMS_V_U8:
-	case LDMS_V_S8_ARRAY:
-	case LDMS_V_U8_ARRAY:
-		return 1;
-	case LDMS_V_S16:
-	case LDMS_V_U16:
-	case LDMS_V_S16_ARRAY:
-	case LDMS_V_U16_ARRAY:
-		return 2;
-	case LDMS_V_S32:
-	case LDMS_V_U32:
-	case LDMS_V_S32_ARRAY:
-	case LDMS_V_U32_ARRAY:
-	case LDMS_V_F32:
-	case LDMS_V_F32_ARRAY:
-		return 4;
-	case LDMS_V_S64:
-	case LDMS_V_U64:
-	case LDMS_V_S64_ARRAY:
-	case LDMS_V_U64_ARRAY:
-	case LDMS_V_D64:
-	case LDMS_V_D64_ARRAY:
-		return 8;
-	default:
-		return 0;
-	}
-}
+static size_t __element_byte_len_[] = {
+	[LDMS_V_NONE] = 0,
+	[LDMS_V_CHAR] = 1,
+	[LDMS_V_U8] = 1,
+	[LDMS_V_S8] = 1,
+	[LDMS_V_U16] = 2,
+	[LDMS_V_S16] = 2,
+	[LDMS_V_U32] = 4,
+	[LDMS_V_S32] = 4,
+	[LDMS_V_U64] = 8,
+	[LDMS_V_S64] = 8,
+	[LDMS_V_F32] = 4,
+	[LDMS_V_D64] = 8,
+	[LDMS_V_CHAR_ARRAY] = 1,
+	[LDMS_V_U8_ARRAY] = 1,
+	[LDMS_V_S8_ARRAY] = 1,
+	[LDMS_V_U16_ARRAY] = 2,
+	[LDMS_V_S16_ARRAY] = 2,
+	[LDMS_V_U32_ARRAY] = 4,
+	[LDMS_V_S32_ARRAY] = 4,
+	[LDMS_V_F32_ARRAY] = 4,
+	[LDMS_V_U64_ARRAY] = 8,
+	[LDMS_V_S64_ARRAY] = 8,
+	[LDMS_V_D64_ARRAY] = 8,
+};
 
-static inline void
-__ldms_sos_array_copy(ldms_set_t set, int i, sos_value_t sos_array, size_t size)
+static inline size_t __element_byte_len(enum ldms_value_type t)
 {
-	void *sos_dst = sos_array_ptr(sos_array);
-	void *ldms_src = ldms_metric_array_get(set, i);
-	memcpy(sos_dst, ldms_src, size);
+	if (t < LDMS_V_FIRST || t > LDMS_V_LAST)
+		assert(0 == "Invalid type specified");
+	return __element_byte_len_[t];
 }
 
 static int
@@ -417,7 +493,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		return EINVAL;
 
 	pthread_mutex_lock(&si->lock);
-	if (!si->sos) {
+	if (!si->sos_handle) {
 		rc = _open_store(si, set, metric_arry, metric_count);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
@@ -458,6 +534,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	sos_value_put(value);
 
 	for (i = 0; i < metric_count; i++) {
+		size_t count;
 		attr = sos_schema_attr_next(attr); assert(attr);
 		metric_type = ldms_metric_type_get(set, i);
 		switch (metric_type) {
@@ -476,33 +553,28 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			sos_value_set[metric_type](value, set, i);
 			sos_value_put(value);
 			break;
-		case LDMS_V_S16_ARRAY:
-		case LDMS_V_U16_ARRAY:
-			/* there is no s16/u16 array in sos */
-			esz = __base_byte_len(metric_type);
-			array_len = ldms_metric_array_get_len(set, i);
-			array_value = sos_array_new(array_value, attr, obj, array_len*2);
-			if (!array_value) {
-				goto err;
-			}
-			__ldms_sos_array_copy(set, i, array_value, esz*array_len);
-			sos_value_put(array_value);
-			break;
+		case LDMS_V_CHAR_ARRAY:
 		case LDMS_V_S8_ARRAY:
 		case LDMS_V_U8_ARRAY:
+		case LDMS_V_S16_ARRAY:
+		case LDMS_V_U16_ARRAY:
 		case LDMS_V_S32_ARRAY:
 		case LDMS_V_U32_ARRAY:
 		case LDMS_V_S64_ARRAY:
 		case LDMS_V_U64_ARRAY:
 		case LDMS_V_F32_ARRAY:
 		case LDMS_V_D64_ARRAY:
-			esz = __base_byte_len(metric_type);
+			esz = __element_byte_len(metric_type);
 			array_len = ldms_metric_array_get_len(set, i);
 			array_value = sos_array_new(array_value, attr, obj, array_len);
 			if (!array_value) {
 				goto err;
 			}
-			__ldms_sos_array_copy(set, i, array_value, esz*array_len);
+			array_len *= esz;
+			count = sos_value_memcpy(array_value,
+						 ldms_metric_array_get(set, i),
+						 array_len);
+			assert(count == array_len);
 			sos_value_put(array_value);
 			break;
 		default:
@@ -523,6 +595,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	pthread_mutex_unlock(&si->lock);
 	return last_rc;
 err:
+	pthread_mutex_unlock(&si->lock);
 	return errno;
 }
 
@@ -533,8 +606,8 @@ static int flush_store(ldmsd_store_handle_t _sh)
 		return EINVAL;
 	pthread_mutex_lock(&si->lock);
 	/* It is possible that a sos was unsuccessfully created. */
-	if (si->sos)
-		sos_container_commit(si->sos, SOS_COMMIT_ASYNC);
+	if (si->sos_handle)
+		sos_container_commit(si->sos_handle->sos, SOS_COMMIT_ASYNC);
 	pthread_mutex_unlock(&si->lock);
 	return 0;
 }
@@ -550,8 +623,8 @@ static void close_store(ldmsd_store_handle_t _sh)
 	LIST_REMOVE(si, entry);
 	pthread_mutex_unlock(&cfg_lock);
 
-	if (si->sos)
-		sos_container_close(si->sos, SOS_COMMIT_ASYNC);
+	if (si->sos_handle)
+		put_container(si->sos_handle);
 	if (si->path)
 		free(si->path);
 	free(si->container);
@@ -583,6 +656,7 @@ static void __attribute__ ((constructor)) store_sos_init();
 static void store_sos_init()
 {
 	pthread_mutex_init(&cfg_lock, NULL);
+	LIST_INIT(&sos_handle_list);
 }
 
 static void __attribute__ ((destructor)) store_sos_fini(void);
