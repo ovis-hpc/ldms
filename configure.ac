@@ -91,7 +91,6 @@ AC_SUBST(ac_configure_args)
 
 AC_CONFIG_FILES([Makefile
 util/Makefile
-util/man/Makefile
 util/sample_init_scripts/Makefile
 util/sample_init_scripts/genders/Makefile
 util/sample_init_scripts/genders/etc/sysconfig/Makefile

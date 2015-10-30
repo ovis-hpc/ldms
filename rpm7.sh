@@ -11,13 +11,18 @@ PREFIX=/opt/ovis
 
 # add --enable-FEATURE here
 ENABLE="--enable-swig \
+	--enable-doc \
+	--enable-doc-html \
+	--enable-doc-man \
 	--enable-test \
 	--enable-zaptest \
 	--enable-ldms-python \
+	--enable-rdma \
+	--enable-sysclassib \
 	--enable-sos --enable-debug"
 
 # add --disable-FEATURE here
-DISABLE="--disable-rdma --disable-sysclassib --disable-ocm"
+DISABLE="--disable-ocm"
 
 # libevent2 prefix
 #LIBEVENT_PREFIX=/usr/local

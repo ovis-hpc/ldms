@@ -37,6 +37,7 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_bindir}/test_big_dstring
 rm -f $RPM_BUILD_ROOT%{_bindir}/test_dstring
 rm -f $RPM_BUILD_ROOT%{_bindir}/test_rman
+rm -f $RPM_BUILD_ROOT%{_bindir}/test_olog
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -224,6 +225,19 @@ Python interface for OVIS libraries
 # These are the files that we don't care
 %exclude %{_bindir}/lib-pedigree
 %exclude %{_includedir}/ovis-test/
+
+%if "@ENABLE_DOC_TRUE@x" == "x"
+# ovis-lib-doc package
+%package doc
+Summary: ovis-lib documentation
+Group: %{_grp}
+%description doc
+Documetnation for ovis-lib package.
+%files doc
+%defattr(-,root,root)
+%{_datadir}/doc
+%endif
+
 
 %package misc
 Summary: Miscellaneous file in ovis-lib project.

@@ -25,5 +25,3 @@ Plugin_procsensors.man \
 Plugin_procstatutil.man \
 Plugin_procstatutil2.man \
 Plugin_sysclassib.man
-
-

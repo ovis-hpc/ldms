@@ -64,15 +64,20 @@ Development files for LDMS
 
 
 %if "@ENABLE_DOC_TRUE@x" == "x"
-# baler-doc package
+# ldms-doc package
 %package doc
-Summary: Baler documentation
+Summary: ldms documentation
 Group: %{_grp}
 %description doc
-Documetnation for baler package.
+Documetnation for ldms project.
 %files doc
 %defattr(-,root,root)
+%if "@ENABLE_DOC_HTML_TRUE@x" == "x"
 %{_datadir}/doc
+%endif
+%if "@ENABLE_DOC_MAN_TRUE@x" == "x"
+%{_datadir}/man
+%endif
 %endif
 
 
