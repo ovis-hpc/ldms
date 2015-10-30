@@ -1,3 +1,8 @@
+# swig generates code with type abuse which will fail to compile
+# with -Wall,-Werror. So remove the -Werror so that the warnings will
+# be but they don't kill the compile.
+CFLAGS := $(filter-out -Werror, ${CFLAGS})
+
 BUILT_SOURCES = ldms.c ldms.py
 SWIG_SOURCES = ldms.i $(top_srcdir)/src/core/ldms.h $(top_srcdir)/src/core/ldms_core.h
 pkgpython_PYTHON = ldms.py __init__.py
