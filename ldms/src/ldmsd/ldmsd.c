@@ -93,12 +93,13 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #include "ovis_auth/auth.h"
 #endif /* OVIS_LIB_HAVE_AUTH */
 
-#define LDMSD_AUTH_ENV "LDMSD_AUTH_FILE"
+#define LDMSD_AUTH_ENV "LDMS_AUTH_FILE"
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
+#define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:qz:o:r:p:av:V"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -111,8 +112,13 @@ char *test_set_name;
 int test_set_count=1;
 int notify=0;
 char *logfile;
+char *pidfile;
 char *secretword;
-int authenticate;
+/* authenticate will never be 0 unless:
+ HAVE_ANONE is defined 
+ and -a none given in options.
+*/
+int authenticate = 1; 
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 
@@ -267,6 +273,13 @@ void cleanup(int x)
 		}
 	}
 	pthread_mutex_unlock(&sp_list_lock);
+
+	if (!foreground && pidfile) {
+		unlink(pidfile);
+		free(pidfile);
+		pidfile =  NULL;
+	}
+
 	exit(x);
 }
 
@@ -318,19 +331,17 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 	cleanup(100);
 }
 
-void usage(char *argv[])
+
+void usage_hint(char *argv[],char *hint)
 {
 	printf("%s: [%s]\n", argv[0], FMT);
 	printf("  General Options\n");
 	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
-	printf("    -l log_file    The path to the log file for status messages.\n"
-	       "                   [" LDMSD_LOGFILE "]\n");
-	printf("    -q             Quiet mode. All the logging messages will be suppressed.\n"
-	       "                   [false].\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
 	       "                   The given size must be less than 1 petabytes.\n"
 	       "                   For example, 20M or 20mb are 20 megabytes.\n");
-	printf("    -H host_name   The host/producer name for metric sets.\n");
+	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
+	       "                   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
 	printf("    -l log_file    The path to the log file for status messages.\n"
 	       "                   [" LDMSD_LOGFILE "]\n");
@@ -342,10 +353,10 @@ void usage(char *argv[])
 	       "                   use for ldmsctl access.\n");
 	printf("    -x xprt:port   Specifies the transport type to listen on. May be specified\n"
 	       "                   more than once for multiple transports. The transport string\n"
-	       "                   is one of 'rdma', or 'sock'. A transport specific port number\n"
+	       "                   is one of 'rdma', 'sock' or 'ugni'. A transport specific port number\n"
 	       "                   is optionally specified following a ':', e.g. rdma:50000.\n");
 	printf("  Kernel Metric Options\n");
-	printf("    -k             Publish publish kernel metrics.\n");
+	printf("    -k             Publish kernel metrics.\n");
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
 	       "                   [" LDMSD_SETFILE "]\n");
 	printf("  Thread Options\n");
@@ -353,30 +364,41 @@ void usage(char *argv[])
 	printf("    -f count       The number of flush threads.\n");
 	printf("    -D num         The dirty threshold.\n");
 	printf("  Test Options\n");
+	printf("    -H host_name   The host/producer name for metric sets.\n");
 	printf("    -i             Test metric set sample interval.\n");
-	printf("    -t count       Number of test sets to create.\n");
+	printf("    -t count       Create set_count instances of set_name.\n");
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N             Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
 #ifdef ENABLE_OCM
 	printf("  OCM Options\n");
 	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
-	printf("    -z ldmsd_mode  ldmsd mode (either 'ldmsd_sampler' or 'ldmsd_aggregator'\n");
 #endif
 #if OVIS_LIB_HAVE_AUTH
-	printf("    -a		   Authentication is required. The environment variable\n"
+	printf("    -a secretfile  Give the location of the secretword file.\n"
+	       "                   Normally, the environment variable\n"
 	       "		   %s must be set to the full path to the file storing\n"
 	       "		   the shared secret word, e.g., secretword=<word>, where\n"
 	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
+#ifdef HAVE_ANONE
+	printf("    -a none        Bypass authentication checks.\n");
+#endif
 #endif /* OVIS_LIB_HAVE_AUTH */
 	printf("    -p port        The inet control listener port for receiving configuration\n");
 #ifdef ENABLE_LDMSD_RCTL
-	printf("    -r port        The listener port for receiving configuration\n"
+	printf("    -R port        The listener port for receiving configuration\n"
 	       "                   from the ldmsd_rctl program\n");
 #endif
 	printf("    -V             Print LDMS version and exit\n.");
+	if (hint) {
+		printf("\nHINT: %s\n",hint);
+	}
 	cleanup(1);
+}
+
+void usage(char *argv[]) {
+	usage_hint(argv,NULL);
 }
 
 int ev_thread_count = 1;
@@ -1176,9 +1198,12 @@ void do_connect(struct hostspec *hs)
 	case ACTIVE:
 	case BRIDGING:
 #if OVIS_LIB_HAVE_AUTH
-		hs->x = ldms_xprt_with_auth_new(hs->xprt_name, ldmsd_lcritical,
-				secretword);
-#else
+		if (authenticate)
+			hs->x = ldms_xprt_with_auth_new(hs->xprt_name,
+				ldmsd_lcritical, secretword);
+		else
+			hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_lcritical);
+#else /* OVIS_LIB_HAVE_AUTH */
 		hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_lcritical);
 #endif /* OVIS_LIB_HAVE_AUTH */
 		if (hs->x) {
@@ -1423,7 +1448,7 @@ void *event_proc(void *v)
 void listen_on_transport(char *xprt_str, char *port_str)
 {
 	int port_no;
-	ldms_t l;
+	ldms_t l = NULL;
 	int ret;
 	struct sockaddr_in sin;
 
@@ -1432,8 +1457,12 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	else
 		port_no = atoi(port_str);
 #if OVIS_LIB_HAVE_AUTH
-	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
+	if (authenticate)
+		l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical,
+			secretword);
+	else 
+		l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
+#else
 	l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
 #endif /* OVIS_LIB_HAVE_AUTH */
 	if (!l) {
@@ -1466,26 +1495,9 @@ void ev_log_cb(int sev, const char *msg)
 	ldmsd_log(LDMSD_LERROR, "%s: %s\n", sev_s[sev], msg);
 }
 
-#if OVIS_LIB_HAVE_AUTH
-int ldmsd_get_secretword()
-{
-	int rc;
-
-	/* Get path from the environment variable */
-	char *path = getenv(LDMSD_AUTH_ENV);
-	if (!path) {
-		ldmsd_log(LDMSD_LERROR, "ldmsd auth: Failed to get the auth file path "
-				"from %s.\n", LDMSD_AUTH_ENV);
-		return EINVAL;
-	}
-	secretword = ovis_auth_get_secretword(path, ldmsd_lerror);
-	if (!secretword) {
-		rc = errno;
-		return rc;
-	}
-	return 0;
+int ldmsd_authentication_required() {
+	return authenticate;
 }
-#endif /* OVIS_LIB_HAVE_AUTH */
 
 extern int ldmsd_inet_config_init(const char *port, const char *secretword);
 int main(int argc, char *argv[])
@@ -1494,6 +1506,7 @@ int main(int argc, char *argv[])
 	struct ldmsd_version ldmsd_version;
 	char *sockname = NULL;
 	char *inet_listener_port = NULL;
+	char *authfile = NULL;
 #ifdef ENABLE_LDMSD_RCTL
 	char *rctrl_port = NULL;
 #endif /* ENABLE_LDMSD_CTRL */
@@ -1547,8 +1560,11 @@ int main(int argc, char *argv[])
 			/* Set the port to listen on configuration */
 			inet_listener_port = strdup(optarg);
 			break;
-#ifdef ENABLE_LDMSD_RCTL
 		case 'r':
+			pidfile = strdup(optarg);
+			break;
+#ifdef ENABLE_LDMSD_RCTL
+		case 'R':
 			rctrl_port = strdup(optarg);
 			break;
 #endif /* ENABLE_LDMSD_RCTL */
@@ -1598,19 +1614,16 @@ int main(int argc, char *argv[])
 		case 'D':
 			dirty_threshold = atoi(optarg);
 			break;
+		case 'q':
+			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
+				"This message will disappear in a future release.");
 		case 'z':
-#ifdef ENABLE_OCM
-			if (strcmp(optarg, "ldmsd_sampler")
-					&& strcmp(optarg, "ldmsd_aggregator")) {
-				printf("Invalid ldmsd type '%s', ldmsd type can"
-					" only be 'ldmsd_sampler' or "
-					"'ldmsd_aggregator'\n", optarg);
-				cleanup(-1);
-			}
-			ldmsd_svc_type = optarg;
-#else
-			printf("Error: -z options requires OCM support.\n");
-#endif
+			usage_hint(argv,"-z not available in LDMS v3.\n"
+				"This message will disappear in a future release.");
+			break;
+		case 'Z':
+			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
+				"This message will disappear in a future release.");
 			break;
 		case 'o':
 #ifdef ENABLE_OCM
@@ -1621,7 +1634,19 @@ int main(int argc, char *argv[])
 			break;
 #if OVIS_LIB_HAVE_AUTH
 		case 'a':
-			authenticate = 1;
+			authfile = strdup(optarg);
+			if (!authfile) {
+				printf("Unable to copy secretword filename\n");
+				exit(ENOMEM);
+				
+			}
+			if (strcmp(optarg,"none") == 0) {
+#ifdef HAVE_ANONE
+				authenticate = 0;
+#else
+				usage_hint(argv,"Error: \"-a none\" not supported.");
+#endif
+			}
 			break;
 #endif /* OVIS_LIB_HAVE_AUTH */
 		case 'V':
@@ -1674,6 +1699,38 @@ int main(int argc, char *argv[])
 				"the memory of size %lu.\n", max_mem_size);
 		exit(1);
 	}
+
+	if (!foreground) {
+		/* Create pidfile for daemon that usually goes away on exit. */
+		/* user arg, then env, then default to get pidfile name */
+		if (!pidfile) {
+			char *pidpath = getenv("LDMSD_PIDFILE");
+			if (!pidpath) {
+				pidfile = malloc(strlen(LDMSD_PIDFILE_FMT)
+						+ strlen(basename(argv[0]) + 1));
+				sprintf(pidfile, LDMSD_PIDFILE_FMT, basename(argv[0]));
+			} else {
+				pidfile = strdup(pidpath);
+			}
+		}
+		if( !access( pidfile, F_OK ) ) {
+			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",
+				pidfile, "overwritten if writable");
+		}
+		FILE *pfile = fopen(pidfile,"w");
+		if (!pfile) {
+			int piderr = errno;
+			ldmsd_log(LDMSD_LERROR, "Could not open the pid file named '%s': %s\n",
+				pidfile, strerror(piderr));
+			free(pidfile);
+			pidfile = NULL;
+		} else {
+			pid_t mypid = getpid();
+			fprintf(pfile,"%ld\n",(long)mypid);
+			fclose(pfile);
+		}
+	}
+
 
 	evthread_use_pthreads();
 	event_set_log_callback(ev_log_cb);
@@ -1805,11 +1862,12 @@ int main(int argc, char *argv[])
 #if OVIS_LIB_HAVE_AUTH
 	secretword = NULL;
 	if (authenticate) {
-		if (ldmsd_get_secretword())
+		secretword = ldms_get_secretword(authfile,ldmsd_lcritical);
+		if ( !secretword )
 			cleanup(15);
 	}
-
 #endif /* OVIS_LIB_HAVE_AUTH */
+
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 
