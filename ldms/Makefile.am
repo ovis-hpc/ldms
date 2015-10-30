@@ -79,20 +79,19 @@ install-doxygen: doxygen-out
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
+
+install-data-local: install-doxygen
+
 endif
 
 if ENABLE_DOC_MAN
 SUBDIRS += man
 endif
 
-else
-# doc is disabled
-install-doxygen:
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
-
 endif
 
-install-data-local: install-doxygen
+install-data-local:
+	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
 	for f in AUTHORS README COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
