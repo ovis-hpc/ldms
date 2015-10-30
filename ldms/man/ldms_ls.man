@@ -1,0 +1,156 @@
+.\" Manpage for ldms_ls
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "29 Oct 2015" "v3" "ldms_ls man page"
+
+.SH NAME
+ldms_ls \- Query an ldmsd for metric set values
+
+.SH SYNOPSIS
+ldms_ls [OPTION...] [NAME]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldms_ls command is used to query an ldmsd (ldms daemon) for metric set values.
+
+.SH ENVIRONMENT
+.SS
+The following environment variables must be set:
+.TP
+LD_LIBRARY_PATH
+include path to ovis/lib and ovis/lib/ovis-ldms
+.TP
+ZAP_LIBPATH
+path to ovis/lib/ovis-ldms
+.TP
+LDMSD_PLUGIN_LIBPATH
+path to ovis/lib/ovis-ldms
+.TP
+PATH
+include path to ovis/sbin and ovis/bin
+
+.SS
+The following environment variables are optional:
+.TP
+LDMS_LS_AUTH_ENV
+If using authentication, full path to the file containing the secret word.
+
+.SH OPTIONS
+.TP
+If the NAME is specified on the command line without -E/-S/-I, only information for that instance = NAME is displayed.
+.TP
+.BI -E " NAME"
+.br
+Indicates that the NAME is a regular expression.
+.TP
+.BI -S " NAME"
+.br
+Indicates that the NAME is a schema name.
+.TP
+.BI -I " NAME"
+.br
+Indicates that the NAME is an instance name.
+.TP
+.BI -h " HOST"
+.br
+HOST to query. Default is localhost.
+.TP
+.BI -x " TRANSPORT"
+TRANSPORT to use for the query. values are sock, rdma, or ugni (Cray XE/XK/XC). Default is sock.
+.TP
+.BI -p " PORT"
+PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
+.TP
+.BR -l
+Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
+.TP
+.BI -a " <path>"
+If using authentication, <path> is the full path to the file containing the shared secret word.
+Set the environment variable LDMS_LS_AUTH_ENV to the full path to avoid giving it at command-line every time.
+
+If build with --enable-a-none, then <path> = none bypasses authentication requirements.
+.TP
+.BI -m  " MEMORY_SIZE"
+.br
+MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
+The given size must be less than 1 petabytes.
+For example, 20M or 20mb are 20 megabytes.
+.TP
+.BR -u
+Display the user data for the metrics. (Usually compid)
+.TP
+.BR -v
+Display metadata information. Specifying this option multiple times increases the verbosity.
+.TP
+.BR -V
+Display LDMS version information and then exit.
+.TP
+.BI -w " WAIT_SEC"
+WAIT_SEC is the time to wait before giving up on the server. Default is 10 sec.
+
+.SH DEFAULTS
+.BR ldms_ls
+with no arguments defaults to
+.BR ldms_ls -p
+.I
+XXX
+.BR -h
+.I
+localhost
+.BR -x
+.I
+sock
+where XXX is the LDMS_DEFAULT_PORT.
+
+.SH NOTES
+None.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+.nf
+$ldms_ls -h vm1 -x sock -p 60000
+vm1_1/meminfo
+vm1_1/vmstat
+.br
+.PP
+.nf
+$ldms_ls -h vm1 -x sock -p 60000 -l
+vm1_1/meminfo: consistent, last update: Thu Oct 29 08:04:44 2015 [202552us]
+D u64        MemTotal                        132165188
+D u64        MemFree                         129767048
+D u64        Buffers                         0
+D u64        Cached                          46780
+D u64        SwapCached                      0
+D u64        Active                          16116
+D u64        Inactive                        8596
+D u64        Active(anon)                    10440
+D u64        Inactive(anon)                  220
+D u64        Active(file)                    5676
+D u64        Inactive(file)                  8376
+D u64        Unevictable                     35400
+D u64        Mlocked                         6032
+
+...
+.br
+.PP
+The output format of the data is as follows:
+.TP
+.BR M/D
+indicates metadata vs data values
+.TP
+.BR Metrictype
+in the example above, unsigned int 64.
+.TP
+.BR Value
+Value of the metric
+.PP
+.nf
+For a non-existent set:
+$ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
+ldms_ls: No such file or directory
+ldms_ls: lookup failed for set 'vm1_1/foo'
+.fi
+
+.SH SEE ALSO
+LDMS_Authentication(7), ldmsd(1), ldms(7)
