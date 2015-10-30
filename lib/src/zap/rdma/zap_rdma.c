@@ -598,6 +598,7 @@ static zap_err_t z_rdma_close(zap_ep_t ep)
 	if (!rep->cm_id)
 		goto out;
 	switch (rep->ep.state) {
+	case ZAP_EP_LISTENING:
 	case ZAP_EP_CONNECTED:
 		rdma_disconnect(rep->cm_id);
 		rep->ep.state = ZAP_EP_CLOSE;
@@ -1492,6 +1493,8 @@ handle_disconnected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 		break;
 	case ZAP_EP_PEER_CLOSE:
 		LOG_(rep, "RDMA: multiple disconnects on the same endpoint.\n");
+		break;
+	case ZAP_EP_LISTENING:
 		break;
 	default:
 		LOG_(rep, "RDMA: unexpected disconnect in state %d.\n",

@@ -99,8 +99,8 @@ void null_log(const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	vfprintf(stdout, fmt, ap);
-	fflush(stdout);
+	vfprintf(stderr, fmt, ap);
+	fflush(stderr);
 }
 
 #if OVIS_LIB_HAVE_AUTH

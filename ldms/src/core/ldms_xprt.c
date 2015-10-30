@@ -226,7 +226,13 @@ static void send_dir_update(struct ldms_xprt *x,
 	reply->dir.set_list_len = htonl(set_list_sz);
 	reply->hdr.len = htonl(len);
 
-	zap_send(x->zap_ep, reply, len);
+	zap_err_t zerr;
+	zerr = zap_send(x->zap_ep, reply, len);
+	if (zerr != ZAP_ERR_OK) {
+		x->log("%s: zap_send synchronously error. '%s'\n",
+				__FUNCTION__, zap_err_str(zerr));
+		ldms_xprt_close(x);
+	}
 	free(reply);
 	return;
 }
@@ -257,7 +263,12 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 		memcpy(reply->req_notify.event.u_data, e->u_data,
 		       e->len - sizeof(struct ldms_notify_event_s));
 
-	zap_send(x->zap_ep, reply, len);
+	zap_err_t zerr = zap_send(x->zap_ep, reply, len);
+	if (zerr != ZAP_ERR_OK) {
+		x->log("%s: zap_send synchronously error. '%s'\n",
+				__FUNCTION__, zap_err_str(zerr));
+		ldms_xprt_close(x);
+	}
 	free(reply);
 	return;
 }
@@ -349,6 +360,7 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 {
 	struct make_dir_arg *mda = arg;
 	int len;
+	zap_err_t zerr;
 
 	len = strlen(get_instance_name(set->meta)->name) + 1;
 	if (mda->reply_size + len < __ldms_xprt_max_msg(mda->x)) {
@@ -369,7 +381,13 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 	mda->reply->dir.set_list_len = htonl(mda->set_list_len);
 	mda->reply->hdr.len = htonl(mda->reply_size);
 
-	zap_send(mda->x->zap_ep, mda->reply, mda->reply_size);
+	zerr = zap_send(mda->x->zap_ep, mda->reply, mda->reply_size);
+	if (zerr != ZAP_ERR_OK) {
+		mda->x->log("%s: zap_send synchronously error. '%s'\n",
+				__FUNCTION__, zap_err_str(zerr));
+		ldms_xprt_close(mda->x);
+		return zerr;
+	}
 
 	/* All sets are sent. */
 	if (mda->set_count == 0)
@@ -396,6 +414,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	int set_count;
 	int set_list_sz;
 	int rc;
+	zap_err_t zerr;
 	struct ldms_reply reply_;
 	struct ldms_reply *reply = &reply_;
 
@@ -455,7 +474,12 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->dir.set_list_len = 0;
 	reply->hdr.len = htonl(len);
 
-	zap_send(x->zap_ep, reply, len);
+	zerr = zap_send(x->zap_ep, reply, len);
+	if (zerr != ZAP_ERR_OK) {
+		x->log("%s: zap_send synchronously error. '%s'\n",
+				__FUNCTION__, zap_err_str(zerr));
+		ldms_xprt_close(x);
+	}
 	return;
 }
 
@@ -468,7 +492,12 @@ process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 	hdr.xid = req->hdr.xid;
 	hdr.cmd = htonl(LDMS_CMD_DIR_CANCEL_REPLY);
 	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
-	zap_send(x->zap_ep, &hdr, sizeof(hdr));
+	zap_err_t zerr = zap_send(x->zap_ep, &hdr, sizeof(hdr));
+	if (zerr != ZAP_ERR_OK) {
+		x->log("%s: zap_send synchronously error. '%s'\n",
+				__FUNCTION__, zap_err_str(zerr));
+		ldms_xprt_close(x);
+	}
 }
 
 static void
@@ -510,7 +539,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	size_t msg_len = sizeof(struct ldms_lookup_msg) + name->len + schema->len;
 	struct ldms_lookup_msg *msg = malloc(msg_len);
 	if (!msg)
-		goto err_0;
+		goto err_1;
 
 	strcpy(msg->schema_inst_name, schema->name);
 	strcpy(msg->schema_inst_name + schema->len, name->name);
@@ -523,16 +552,20 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	msg->meta_len = htonl(__le32_to_cpu(set->meta->meta_sz));
 	msg->card = htonl(__le32_to_cpu(set->meta->card));
 
-	zap_share(x->zap_ep, rbd->lmap, (const char *)msg, msg_len);
+	zap_err_t zerr = zap_share(x->zap_ep, rbd->lmap, (const char *)msg, msg_len);
+	if (zerr != ZAP_ERR_OK) {
+		x->log("%s: zap_share synchronously error. '%s'\n",
+				__FUNCTION__, zap_err_str(zerr));
+		free(msg);
+		goto err_1;
+	}
 	free(msg);
 	return 0;
+ err_1:
+	__ldms_free_rbd(rbd);
  err_0:
-	hdr.rc = htonl(rc);
-	hdr.xid = xid;
-	hdr.cmd = htonl(LDMS_CMD_LOOKUP_REPLY);
-	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
-	zap_send(x->zap_ep, &hdr, sizeof(hdr));
-	return 1;
+	/* Caller must send the lookup error reply */
+	return rc;
 }
 
 static int __re_match(struct ldms_set *set, regex_t *regex, const char *regex_str, int flags)
@@ -597,6 +630,8 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 		else
 			more = 0;
 		rc = __send_lookup_reply(x, set, req->hdr.xid, more);
+		if (rc)
+			goto err_1;
 		set = nxt_set;
 	}
 	if (flags & LDMS_LOOKUP_RE)
@@ -610,7 +645,12 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 	hdr.xid = req->hdr.xid;
 	hdr.cmd = htonl(LDMS_CMD_LOOKUP_REPLY);
 	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
-	zap_send(x->zap_ep, &hdr, sizeof(hdr));
+	rc = zap_send(x->zap_ep, &hdr, sizeof(hdr));
+	if (rc != ZAP_ERR_OK) {
+		x->log("%s: zap_send synchronously errors '%s'\n", __func__,
+				zap_err_str(rc));
+		ldms_xprt_close(x);
+	}
 }
 
 /**
@@ -628,6 +668,7 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
 			ldms_update_cb_t cb, void *arg)
 {
+	int rc;
 	struct ldms_set_desc *sd = s;
 
 	if (!len)
@@ -645,13 +686,16 @@ static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
 	zap_map_t rmap = sd->rbd->rmap;
 	zap_map_t lmap = sd->rbd->lmap;
 
-	return zap_read(x->zap_ep, rmap, zap_map_addr(rmap),
-			lmap, zap_map_addr(lmap),
-			len, ctxt);
+	rc = zap_read(x->zap_ep, rmap, zap_map_addr(rmap),
+			lmap, zap_map_addr(lmap), len, ctxt);
+	if (rc)
+		free(ctxt);
+	return rc;
 }
 
 static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb, void*arg)
 {
+	int rc;
 	struct ldms_xprt *x = t;
 	struct ldms_set_desc *sd = s;
 	struct ldms_context *ctxt = malloc(sizeof *ctxt);
@@ -665,8 +709,11 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 	ctxt->update.arg = arg;
 	size_t doff = (void*)sd->set->data - (void*)sd->set->meta;
 
-	return zap_read(x->zap_ep, rmap, zap_map_addr(rmap) + doff,
+	rc = zap_read(x->zap_ep, rmap, zap_map_addr(rmap) + doff,
 			lmap, zap_map_addr(lmap) + doff, len, ctxt);
+	if (rc)
+		free(ctxt);
+	return rc;
 }
 
 /*
@@ -1258,7 +1305,8 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	}
 	return;
  out_2:
-	__ldms_free_rbd(sd->rbd);
+	if (lm->more)
+		free(rd_ctxt);
  out_1:
 	ldms_set_delete(sd);
 	sd = NULL;
@@ -1269,14 +1317,13 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 		assert(x->active_lookup);
 		x->active_lookup--;
 		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+		free(ctxt);
 #ifdef DEBUG
 		x->log("DEBUG: rendezvous error: put ref %p: "
 				"active_lookup = %d\n",
 				x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
 	}
-	free(ctxt->lookup.path);
-	free(ctxt);
 }
 
 /**
@@ -1709,13 +1756,13 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 			 */
 			x->active_dir = 0;
 			zap_put_ep(x->zap_ep);
-			free(ctxt);
 #ifdef DEBUG
 			x->log("DEBUG: remote_dir: error. put ref %p. "
 					"active_dir = %d.\n",
 					x->zap_ep, x->active_dir);
 #endif /* DEBUG */
 		}
+		free(ctxt);
 	}
 	return rc;
 ebusy:
@@ -1745,7 +1792,7 @@ int __ldms_remote_dir_cancel(ldms_t _x)
 	if (rc)
 		zap_put_ep(x->zap_ep);
 	free(ctxt);
-	return 0;
+	return rc;
 }
 
 int __ldms_remote_lookup(ldms_t _x, const char *path,
@@ -1810,6 +1857,8 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 					x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
 		}
+		free(ctxt->lookup.path);
+		free(ctxt);
 	}
 	return rc;
 }
@@ -1824,6 +1873,7 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
 	size_t len;
+	int rc;
 
 	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_REQ_NOTIFY))
 		return ENOMEM;
@@ -1839,7 +1889,9 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 	ctxt->req_notify.s = s;
 	r->local_notify_xid = (uint64_t)ctxt;
 
-	return zap_send(x->zap_ep, req, len);
+	rc = zap_send(x->zap_ep, req, len);
+	free(ctxt);
+	return rc;
 }
 
 int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
