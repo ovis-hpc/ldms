@@ -7,7 +7,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	buildprefix="`pwd`/.build-all/centos/BUILDROOT"
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=$prefix
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --with-libevent=$expected_event2_prefix --enable-rdma --enable-ncsa-unified --enable-sos --with-sos=$expected_sos_prefix"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --with-libevent=$expected_event2_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix"
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
 		echo "Found $expected_event2_prefix/include/event2/event.h. Good."

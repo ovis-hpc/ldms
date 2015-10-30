@@ -28,7 +28,7 @@ if test -f ldms/packaging/ovis-ldms.spec.in; then
                 exit 1
         fi
 
-	../ldms/configure --with-libevent=$expected_event2_prefix --enable-rdma --enable-ncsa-unified --enable-sos --with-ovis-lib=$expected_ovislib_prefix --with-sos=$expected_sos_prefix && make centos
+	../ldms/configure --with-libevent=$expected_event2_prefix --enable-rdma --enable-sos --with-ovis-lib=$expected_ovislib_prefix --with-sos=$expected_sos_prefix && make centos
 	cd ..
 	find .build-ldms -name '*.rpm' -exec echo Created {} \;
 else
