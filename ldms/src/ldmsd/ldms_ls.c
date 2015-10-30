@@ -284,7 +284,7 @@ void metric_printer(ldms_set_t s, int i)
 	else
 		strcpy(name_str, ldms_metric_name_get(s, i));
 
-	printf("%c %-10s %-32s ",
+	printf("%c %-10s %-42s ",
 	       (ldms_metric_flags_get(s, i) & LDMS_MDESC_F_DATA ? 'D' : 'M'),
 	       ldms_metric_type_to_str(type),
 	       ldms_metric_name_get(s, i));
