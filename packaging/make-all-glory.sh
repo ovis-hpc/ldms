@@ -6,7 +6,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	expected_event2_prefix=$HOME/event/opt/ovis
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=$prefix
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --with-libevent=$expected_event2_prefix --enable-rdma --enable-ncsa-unified --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking --disable-perfevent --with-ldflags-readline=-ltermcap  "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --with-libevent=$expected_event2_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking --disable-perfevent --with-ldflags-readline=-ltermcap  "
 	glibconfig="GLIB20_CFLAGS=-I/usr/lib64/glib-2.0/include GLIB20_LIBS=-L/lib64"
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then

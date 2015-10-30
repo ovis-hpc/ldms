@@ -15,7 +15,7 @@ if test -f packaging/ovis-base.spec.in; then
 	prefix=$HOME/opt/ovis
 	expected_event2_prefix=/usr
 
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-rdma --enable-ncsa-unified --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking "
 
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
