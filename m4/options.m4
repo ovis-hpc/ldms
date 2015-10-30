@@ -212,8 +212,8 @@ AC_ARG_WITH(
 		if test -f $]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR/$5/$4; then
 			. $]m4_translit([$1], [-+.a-z], [___A-Z])[_LIBDIR/$5/$4
 		fi
-		if test -f $]m4_translit([$1], [-+.a-z], [___A-Z])[64_LIBDIR/$5/$4; then
-			. $]m4_translit([$1], [-+.a-z], [___A-Z])[64_LIBDIR/$5/$4
+		if test -f $]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB64DIR/$5/$4; then
+			. $]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB64DIR/$5/$4
 		fi
 		;;
 	esac
