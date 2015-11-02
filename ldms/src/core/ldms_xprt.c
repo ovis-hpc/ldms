@@ -524,7 +524,6 @@ process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 			       uint64_t xid, int more)
 {
-	struct ldms_reply_hdr hdr;
 	struct ldms_rbuf_desc *rbd;
 	int rc = ENOENT;
 	if (!set)
