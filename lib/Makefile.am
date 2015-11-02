@@ -7,7 +7,7 @@ if ENABLE_SWIG
 SUBDIRS += swig
 endif
 
-EXTRA_DIST = autogen.sh COPYING doxygen/html
+EXTRA_DIST = autogen.sh COPYING
 
 OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
