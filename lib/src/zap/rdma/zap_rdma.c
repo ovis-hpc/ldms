@@ -558,6 +558,7 @@ static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *r
 		__rdma_context_alloc(rep, NULL, IBV_WC_SEND, rbuf);
 	if (!ctxt) {
 		errno = ENOMEM;
+		pthread_mutex_unlock(&rep->ep.lock);
 		return ZAP_ERR_RESOURCE;
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
@@ -1044,6 +1045,10 @@ static int cq_event_handler(struct ibv_cq *cq, int count)
 				      ctxt->wr.sg_list[0].addr,
 				      ctxt->wr.sg_list[0].length,
 				      ctxt->wr.sg_list[0].lkey);
+				pthread_mutex_lock(&ep->lock);
+				ep->state = ZAP_EP_ERROR;
+				pthread_mutex_unlock(&ep->lock);
+				z_rdma_close(ep);
 			}
 		}
 
