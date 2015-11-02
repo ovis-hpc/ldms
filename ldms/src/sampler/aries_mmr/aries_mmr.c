@@ -72,32 +72,34 @@
  * \file aries_mmr.c
  * \brief aries network metric provider (reads gpcd mmr)
  *
- * parses 2 config files:
+ * parses 4 config files:
  * 1) raw names that go in as is
  * 2) r/c metrics.
+ * 3) ptile metrics.
+ * 4) nic metrics.
  * VC's should be explictly put in separately.
  */
 
-#define RC_T 0
-#define RAW_T 1
+enum {RAW_T, RC_T, NIC_T, PTILE_T, END_T};
+
 #define ARIES_MAX_ROW 6
 #define ARIES_MAX_COL 8
 #define MAX_LEN 256
+
+struct mstruct{
+	int num_metrics;
+	char** metrics;
+	int max; // number actually addedd
+	gpcd_context_t* ctx;
+};
+
+static struct mstruct mvals[END_T];
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
 static char *default_schema_name = "aries_mmr";
-
-static int num_rcmetrics = 0;
-static char** rcmetrics = NULL;
-int rcmax = 0; //number actually added
-
-static int num_rawmetrics = 0;
-static char** rawmetrics = NULL;
-int rawmax = 0; //number actually added
-
 
 struct met{
 	char* name;
@@ -106,9 +108,9 @@ struct met{
 
 LIST_HEAD(raw_list, met) raw_list;
 LIST_HEAD(rc_list, met) rc_list;
+LIST_HEAD(nic_list, met) nic_list;
+LIST_HEAD(ptile_list, met) ptile_list;
 
-static gpcd_context_t *rc_ctx = NULL;
-static gpcd_context_t *raw_ctx = NULL;
 static gpcd_mmr_list_t *listp = NULL;
 
 
@@ -147,8 +149,8 @@ int parseConfig(char* fname, int mtype){
 		temp = NULL;
 	} else {
 		fseek(mf, 0, SEEK_SET);
-		countB = 0;
 		temp = calloc(countA, sizeof(*temp));
+		countB = 0;
 		//parse again to populate the metrics;
 		do {
 			s = fgets(lbuf, sizeof(lbuf), mf);
@@ -166,13 +168,9 @@ int parseConfig(char* fname, int mtype){
 		} while(s);
 	}
 
-	if (mtype == RC_T){
-		num_rcmetrics = countB;
-		rcmetrics = temp;
-	} else {
-		num_rawmetrics = countB;
-		rawmetrics = temp;
-	}
+
+	mvals[mtype].num_metrics = countA;
+	mvals[mtype].metrics = temp;
 
 	fclose(mf);
 
@@ -197,7 +195,8 @@ gpcd_context_t *create_context_list(char** met, int num, int* nmet)
 		return NULL;
 	}
 
-	for (i = 0; i < num; i++){
+	//add them backwards
+	for (i = num-1; i >= 0 ; i--){
 		desc = (gpcd_mmr_desc_t *)
 			gpcd_lookup_mmr_byname(met[i]);
 
@@ -228,6 +227,91 @@ gpcd_context_t *create_context_list(char** met, int num, int* nmet)
 
 /**
  * Build linked list of tile performance counters we wish to get values for.
+ * No aggregation.
+ */
+gpcd_context_t *create_context_np(char** met, int num, int nptype, int* nmet)
+{
+
+	gpcd_context_t *lctx = NULL;
+	gpcd_mmr_desc_t *desc;
+	int rangemax = -1;
+	char key;
+	int i, k, status;
+
+	lctx = gpcd_create_context();
+	if (!lctx) {
+		msglog(LDMSD_LERROR, "aries_mmr: could not create context\n");
+		return NULL;
+	}
+
+	switch (nptype){
+	case NIC_T:
+		key = 'n';
+		rangemax = 3;
+		break;
+	case PTILE_T:
+		key = 'p';
+		rangemax = 7;
+		break;
+	default:
+		msglog(LDMSD_LERROR, "aries_mmr: Invalid type to create_context_np\n");
+		return NULL;
+		break;
+	}
+
+	int nvalid = 0;
+	//add them backwards
+	for (k = num-1; k >=0 ; k--){
+		char *ptr = strchr(met[k], key);
+		if (!ptr){
+			msglog(LDMSD_LERROR, "aries_mmr: invalid metricname: key <%c> not found in <%s>\n",
+			       key, met[k]);
+			continue;
+		}
+		for (i = rangemax; i >=0; i--) {
+			char* newname = strdup(met[k]);
+			char* ptr = strchr(newname, key);
+			if (!ptr) {
+				msglog(LDMSD_LERROR, "aries_mmr: Bad ptr!\n");
+				return NULL;
+			}
+			char ch[2];
+			snprintf(ch, 2, "%d", i);
+			ptr[0] = ch[0];
+
+			desc = (gpcd_mmr_desc_t *)
+				gpcd_lookup_mmr_byname(newname);
+			if (!desc) {
+				msglog(LDMSD_LERROR, "aries_mmr: Could not lookup <%s>\n", newname);
+				free(newname);
+				continue;
+			}
+
+			status = gpcd_context_add_mmr(lctx, desc);
+			if (status != 0) {
+				msglog(LDMSD_LERROR, "aries_mmr: Could not add mmr for <%s>\n", newname);
+				gpcd_remove_context(lctx);
+				return NULL;
+			}
+
+			struct met* e = calloc(1, sizeof(*e));
+			e->name = newname;
+
+			if (nptype == NIC_T)
+				LIST_INSERT_HEAD(&nic_list, e, entry);
+			else
+				LIST_INSERT_HEAD(&ptile_list, e, entry);
+			nvalid++;
+		}
+	}
+
+	*nmet = nvalid;
+	return lctx;
+
+}
+
+/**
+ * Build linked list of tile performance counters we wish to get values for.
  * No aggregation.  Will add all 48 for all variables.
  */
 gpcd_context_t *create_context_rc(char** basemetrics, int ibase, int* nmet)
@@ -246,9 +330,10 @@ gpcd_context_t *create_context_rc(char** basemetrics, int ibase, int* nmet)
 	}
 
 	int nvalid = 0;
-	for (k = 0; k < ibase; k++){
-		for (i = 0; i < rmax; i++) {
-			for (j = 0; j < cmax; j++) {
+	//add them backwards
+	for (k = ibase-1; k >= 0; k--){
+		for (i = rmax-1; i >= 0 ; i--) {
+			for (j = cmax-1; j >= 0 ; j--) {
 				snprintf(name, MAX_LEN, "AR_RTR_%d_%d_%s", i, j, basemetrics[k]);
 
 				desc = (gpcd_mmr_desc_t *)
@@ -293,16 +378,23 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
-	for (i = 0; i < 2; i++){
+	for (i = 0; i < END_T; i++){
 		struct met *np;
-		if (i == RAW_T){
-			if (rawmax == 0)
-				continue;
+		if (mvals[i].max == 0)
+			continue;
+		switch (i) {
+		case RAW_T:
 			np = raw_list.lh_first;
-		} else {
-			if (rcmax == 0)
-				continue;
+			break;
+		case RC_T:
 			np = rc_list.lh_first;
+			break;
+		case NIC_T:
+			np = nic_list.lh_first;
+			break;
+		case PTILE_T:
+			np = ptile_list.lh_first;
+			break;
 		}
 
 		if (np == NULL){
@@ -348,7 +440,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *sname;
 	char *rawf;
 	char *rcf;
+	char *nicf;
+	char *ptilef;
 	void * arg = NULL;
+	int i;
 	int rc;
 
 
@@ -395,21 +490,48 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		}
 	}
 
-	if (!rcf && !rawf){
-		msglog(LDMSD_LERROR, "aries_mmr: must specificy at least one of raw/rc file\n");
+	nicf = av_value(avl, "nicfile");
+	if (nicf){
+		rc = parseConfig(nicf, NIC_T);
+		if (rc){
+			msglog(LDMSD_LERROR, "aries_mmr: error parsing <%s>\n", nicf);
+			return EINVAL;
+		}
+	}
+
+	ptilef = av_value(avl, "ptilefile");
+	if (ptilef){
+		rc = parseConfig(ptilef, PTILE_T);
+		if (rc){
+			msglog(LDMSD_LERROR, "aries_mmr: error parsing <%s>\n", ptilef);
+			return EINVAL;
+		}
+	}
+
+	if (!rcf && !rawf && !nicf && !ptilef){
+		msglog(LDMSD_LERROR, "aries_mmr: must specificy at least one input file\n");
 		return EINVAL;
 	}
 
-	raw_ctx = create_context_list(rawmetrics, num_rawmetrics, &rawmax);
-	if (rawmax && !raw_ctx){
-		msglog(LDMSD_LERROR, "aries_mmr: cannot create context for raw metrics\n");
-		return EINVAL;
-	}
+	for (i = 0; i < END_T; i++){
+		switch (i){
+		case RAW_T:
+			mvals[i].ctx = create_context_list(mvals[i].metrics, mvals[i].num_metrics, &mvals[i].max);
+			break;
+		case RC_T:
+			mvals[i].ctx = create_context_rc(mvals[i].metrics, mvals[i].num_metrics, &mvals[i].max);
+			break;
+		case NIC_T:
+			//fall thru
+		case PTILE_T:
+			mvals[i].ctx = create_context_np(mvals[i].metrics, mvals[i].num_metrics, i, &mvals[i].max);
+			break;
+		}
 
-	rc_ctx = create_context_rc(rcmetrics, num_rcmetrics, &rcmax);
-	if (rcmax && !rc_ctx){
-		msglog(LDMSD_LERROR, "aries_mmr: cannot create context for rc metrics\n");
-		return EINVAL;
+		if (mvals[i].max && !mvals[i].ctx){
+			msglog(LDMSD_LERROR, "aries_mmr: Cannot create context for %d\n", i);
+			return EINVAL;
+		}
 	}
 
 	rc = create_metric_set(value, sname);
@@ -426,7 +548,7 @@ static int sample(void){
 
 	union ldms_value v;
 	int metric_no;
-	int num;
+	int i;
 	int rc;
 
 	if (!set) {
@@ -434,36 +556,23 @@ static int sample(void){
 		return EINVAL;
 	}
 
-	//only read if we have metrics
-	if (rawmax){
-		rc = gpcd_context_read_mmr_vals(raw_ctx);
-		if (rc){
-			msglog(LDMSD_LERROR, "aries_mmr: Cannot read raw mmr vals\n");
-			return EINVAL;
-		}
-	}
-
-	if (rcmax){
-		rc  = gpcd_context_read_mmr_vals(rc_ctx);
-		if (rc){
-			msglog(LDMSD_LERROR, "aries_mmr: Cannot read rc mmr vals\n");
-			return EINVAL;
+	for (i = 0; i < END_T; i++){
+		if (mvals[i].max){
+			rc = gpcd_context_read_mmr_vals(mvals[i].ctx);
+			if (rc){
+				msglog(LDMSD_LERROR, "aries_mmr: Cannot read raw mmr vals\n");
+				return EINVAL;
+			}
 		}
 	}
 
 	ldms_transaction_begin(set);
 
 	metric_no = 0;
-	for (num = 0; num < 2; num++){
-		if (num == RAW_T){
-			if (!rawmax)
-				continue;
-			listp = raw_ctx->list;
-		} else {
-			if (!rcmax)
-				continue;
-			listp = rc_ctx->list;
-		}
+	for (i = 0; i < END_T; i++){
+		if (mvals[i].max == 0)
+			continue;
+		listp = mvals[i].ctx->list;
 
 		if (!listp){
 			msglog(LDMSD_LERROR, "aries_mmr: Context list is null\n");
@@ -501,13 +610,17 @@ static ldms_set_t get_set()
 
 static void term(void)
 {
-	if (rc_ctx)
-		gpcd_remove_context(rc_ctx);
-	rc_ctx = NULL;
 
-	if (raw_ctx)
-		gpcd_remove_context(raw_ctx);
-	raw_ctx = NULL;
+	int i;
+
+	for (i = 0; i < END_T; i++){
+		if (mvals[i].ctx)
+			gpcd_remove_context(mvals[i].ctx);
+		mvals[i].ctx = NULL;
+		mvals[i].num_metrics = 0;
+		mvals[i].max = 0;
+	}
+
 
 	while (rc_list.lh_first != NULL){
 		free(rc_list.lh_first->name);
@@ -521,6 +634,18 @@ static void term(void)
 		LIST_REMOVE(raw_list.lh_first, entry);
 	}
 
+	while (nic_list.lh_first != NULL){
+		free(nic_list.lh_first->name);
+		nic_list.lh_first->name = NULL;
+		LIST_REMOVE(nic_list.lh_first, entry);
+	}
+
+	while (ptile_list.lh_first != NULL){
+		free(ptile_list.lh_first->name);
+		ptile_list.lh_first->name = NULL;
+		LIST_REMOVE(ptile_list.lh_first, entry);
+	}
+
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;
@@ -531,12 +656,14 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=aries_mmr producer=<prod_name> instance=<inst_name> [rawfile=<rawf> rcfile=<rcf> schema=<sname>]\n"
-		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n"
-		"    <rawf>       File with full names of metrics\n";
-		"    <rc>         File with abbreviated names of metrics to be added in for all rows and columns\n";
-		"    <sname>      Optional schema name. Defaults to 'aries_mmr'\n";
+	return  "config name=aries_mmr producer=<prod_name> instance=<inst_name> [(raw|rc|nic|ptile)file=<file> schema=<sname>]\n"
+		"    <prod_name>    The producer name\n"
+		"    <inst_name>    The instance name\n"
+		"    <rawfile>      File with full names of metrics\n";
+		"    <rcfile>       File with abbreviated names of metrics to be added in for all rows and columns\n";
+		"    <nicfile>      File with full name with 'n' to be replaced for all nics (0-3)\n";
+		"    <ptilefile>    File with full name with 'p' to be replaced for all ptile options (0-7)\n";
+		"    <sname>        Optional schema name. Defaults to 'aries_mmr'\n";
 }
 
 static struct ldmsd_sampler aries_mmr_plugin = {

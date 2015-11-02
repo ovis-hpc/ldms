@@ -1,0 +1,216 @@
+.\" Manpage for ldmsd ldms-aggd
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "29 Oct 2015" "v3" "ldmsd man page"
+
+.SH NAME
+ldmsd \- Start an ldms daemon
+
+.SH SYNOPSIS
+ldmsd [OPTION...]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldmsd command is used
+to start an ldms daemon. Plugin configuration of the ldmsd can be done via the
+ldmsctl command.
+
+.SH ENVIRONMENT
+.SS
+The following environment variables must usually be set:
+.TP
+LD_LIBRARY_PATH
+include path to ovis/lib and ovis/lib/ovis-ldms and libevent2, if not in a system default path
+.TP
+ZAP_LIBPATH
+path to ovis/lib/ovis-ldms
+.TP
+LDMSD_PLUGIN_LIBPATH
+path to ovis/lib/ovis-ldms
+.TP
+LDMSD_PIDFILE
+optional full path name of pidfile overriding the default /var/run/ldmsd.pid. The command line argument -r in turn overrides env(LDMSD_PIDFILE).
+.TP
+LDMSD_SOCKPATH
+path to the unix domain socket for the ldmsd. Default is /var/run. If you want to change the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
+.TP
+PATH
+include path to sbin directory containing ldmsd and ldmsctl.
+
+.SS Additional Enviroment variables for ugni transport
+LDMS_UGNI_PTAG
+For XE/XK, the PTag value as given by apstat -P.
+For XC, The value does not matter but the environment variable must be set.
+.TP
+LDMS_UGNI_COOKIE
+For XE/XK, the Cookie value corresponding to the PTag value as given by apstat -P
+For XC, the Cookie value (not Cookie2) as given by apstat -P
+.TP
+LDMS_UGNI_CQ_DEPTH
+Optional value for the CQ depth. Default is 2048.
+.TP
+LDMS_UGNI_STATE_INTERVAL
+Optional. If set, then ldmsd will check all nodes' states via rca interface.
+States for all nodes are checked and stored at intervals determined by this environment variable. The stored
+values are checked against before contacting a node. If you choose to use this option, then the rule of
+thumb is to set LDMS_UGNI_STATE_INTERVAL and LDMS_UGNI_STATE_OFFSET such that the node states are checked
+before the metric set update occurs (see interval and offset in ldmsctl).
+.TP
+LDMS_UGNI_STATE_OFFSET
+Optional. Only relevant if LDMS_UGNI_STATE_INTERVAL is set. Defaults to zero. Offset from zero for
+checking the nodes state (see LDMS_UGNI_STATE_INTERVAL, above).
+
+.SS
+The following environment variables are optional:
+.TP
+LDMSD_AUTH_FILE
+If using authentication, The full path to the shared secret file.
+
+.SH OPTIONS
+.SS
+General/Configuration Options:
+.TP
+.BR -F
+Run in foreground mode; don't daemonize the program. Default is false.
+.TP
+.BI -m " MEMORY_SIZE"
+.br
+MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
+The given size must be less than 1 petabytes.
+For example, 20M or 20mb are 20 megabytes.
+.TP
+.BI -r pid_file
+The path to the pid file for daemon mode.
+.TP
+.BI -a " secretfile"
+If built with authentication, give the locaiton of the secretword file.
+Normally, the environment variable LDMSD_AUTH_FILE must be set to the full
+path to the file storing the shared secret word
+
+If built with --enable-a-none, "secretfile" = none, bypasses authentication checks.
+.TP
+.BI -p " port"
+The inet control listener port for receiving configuration
+.TP
+.BI -R " port"
+If built with --enable-ldmsd-rctl, the listener port for receiving configuration from the ldmsd_rctl program
+.TP
+.BR -V
+Display LDMS version information and then exit.
+
+
+.SS
+Log Verbosity Options:
+.TP
+.BI -l " LOGFILE"
+.br
+LOGFILE is the path to the log file for status messages. Default is stdout unless given. Syslog facility is used if LOGFILE is "syslog".
+.TP
+.BI -q " LOG_LEVEL"
+.br
+LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
+The default level is ERROR. QUIET produces no output.
+(Note: this has changed from the previous release where q designated no (QUIET) logging).
+
+.SS
+Communication Options:
+.TP
+.BI -S " SOCKNAME"
+.br
+SOCKNAME is the unix domain socket name to use for ldmsctl access.
+.TP
+.BI -x " XPRT:PORT"
+.br
+Specifies the transport type to listen on. May be specified more than once for
+multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC).
+A transport specific port number is optionally specified following a ':', e.g. rdma:50000.
+
+.SS
+Kernel Metric Options:
+.TP
+.BR -k
+Publish kernel metrics.
+.TP
+.BI -s " SETFILE"
+Text file containing kernel metric sets to publish. Default: /proc/sys/kldms/set_list
+
+.SS Thread Options:
+.TP
+.BI -P " THR_COUNT"
+.br
+THR_COUNT is the number of event threads to start.
+.TP
+.BI -f " COUNT"
+.br
+COUNT is the number of flush threads.
+.TP
+.BI -D " NUM"
+.br
+NUM is the number of bytes of the dirty threshold used for store rollover.
+
+.SS Test Options:
+.TP
+.BI -H " host_name"
+.br
+The host/producer name for test metric sets
+.TP
+.BI -i " interval"
+.br
+Test metric set sample interval
+.TP
+.BI -t " count"
+.br
+Create set_count instances of set_name.
+.TP
+.BI -T " set_name"
+.br
+Test set prefix
+.TP
+.BR -N
+.br
+Notify registered monitors of the test metric sets.
+
+.SH RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
+.PP
+ldsmd can be run as either a user or as root using the appropriate PTag and cookie.
+.PP
+Check (or set) the PTag and cookie.
+.RS
+Cray XE/XK Systems:
+.nf
+> apstat -P
+PDomainID           Type    Uid   PTag     Cookie
+LDMS              system      0     84 0xa9380000
+foo               user    22398    243  0x2bb0000
+
+Cray XC Systems:
+> apstat -P
+PDomainID   Type   Uid     Cookie    Cookie2
+LDMS      system     0 0x86b80000          0
+foo         user 20596 0x86bb0000 0x86bc0000
+.RE
+.fi
+.PP
+Set the environment variables LDMS_UGNI_PTAG and LDMS_UGNI_COOKIE with the appropriate ptag and cookie.
+.PP
+Run ldmsd directly or as part of a script launched from aprun. In either case, Use aprun with the correct -p <ptag> when running.
+
+.SH NOTES
+OCM flags are unsupported at this time.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+.nf
+$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
+.br
+.PP
+.nf
+Same but sending stdout and stderr to /dev/null
+/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
+.br
+.fi
+
+
+.SH SEE ALSO
+LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldms_ls(1), ldms(7), ldms-genders(7)
