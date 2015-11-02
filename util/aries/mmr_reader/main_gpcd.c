@@ -15,8 +15,7 @@
 #include "gpcd_lib.h"
 
 
-#define RC_T 0
-#define RAW_T 1
+enum {RAW_T, RC_T, NIC_T, PTILE_T, END_T};
 
 #define GEMINI_MAX_ROW 6
 #define GEMINI_MAX_COL 8
@@ -30,16 +29,23 @@
 #define MAX_LEN 256
 
 /**
- * parses 2 config files:
+ * parses 4 config files:
  * 1) raw names that go in as is
  * 2) r/c metrics.
+ * 3) ptile metrics.
+ * 4) nic metrics.
  * VC's should be explictly put in separately.
  */
 
-static int num_rcmetrics = 0;
-static char** rcmetrics = NULL;
-static int num_rawmetrics = 0;
-static char** rawmetrics = NULL;
+struct mstruct{
+	int num_metrics;
+	char** metrics;
+	int max;
+	gpcd_context_t* ctx;
+};
+
+static struct mstruct mvals[END_T];
+
 
 struct met{
 	char* name;
@@ -48,9 +54,10 @@ struct met{
 
 LIST_HEAD(raw_list, met) raw_list;
 LIST_HEAD(rc_list, met) rc_list;
+LIST_HEAD(nic_list, met) nic_list;
+LIST_HEAD(ptile_list, met) ptile_list;
 
-static gpcd_context_t *rc_ctx = NULL;
-static gpcd_context_t *raw_ctx = NULL;
+
 static gpcd_mmr_list_t *listp = NULL;
 
 
@@ -88,10 +95,10 @@ int parseConfig(char* fname, int mtype){
 	if (count == 0){
 		temp = NULL;
 	} else {
-		fseek(mf, 0, SEEK_SET);
-		count = 0;
 		temp = calloc(count, sizeof(*temp));
-		//parse again to populate the metrics;
+		count = 0;
+		fseek(mf, 0, SEEK_SET);
+		//parse again to populate the metrics; since they will
 		do {
 			s = fgets(lbuf, sizeof(lbuf), mf);
 			if (!s)
@@ -101,21 +108,17 @@ int parseConfig(char* fname, int mtype){
 //				printf("Warning: skipping input <%s>\n", lbuf);
 				continue;
 			}
-//			printf("<%s> Should add input <%s>\n", lbuf, name);
+//			printf("<%d> <%s> Should add input <%s>\n", count, lbuf, name);
 			temp[count] = strdup(name);
 			count++;
 		} while(s);
 	}
 
-	if (mtype == RC_T){
-		num_rcmetrics = count;
-		rcmetrics = temp;
-	} else {
-		num_rawmetrics = count;
-		rawmetrics = temp;
-	}
+	mvals[mtype].num_metrics = count;
+	mvals[mtype].metrics = temp;
 
-	fclose(mf);
+	if (mf)
+		fclose(mf);
 
 	return 0;
 
@@ -142,7 +145,8 @@ gpcd_context_t *create_context_list(char** met, int num, int* nmet)
 	  return NULL;
 	}
 
-	for (i = 0; i < num; i++){
+	//add them backwards, since we will read them off backwards
+	for (i = num-1; i >= 0; i--){
 		desc = (gpcd_mmr_desc_t *)
 			gpcd_lookup_mmr_byname(met[i]);
 
@@ -164,6 +168,93 @@ gpcd_context_t *create_context_list(char** met, int num, int* nmet)
 	}
 
 	*nmet = count;
+	return lctx;
+
+}
+
+/**
+ * Build linked list of tile performance counters we wish to get values for.
+ * No aggregation.
+ */
+gpcd_context_t *create_context_np(char** met, int num, int nptype, int* nmet)
+{
+
+	gpcd_context_t *lctx = NULL;
+	gpcd_mmr_desc_t *desc;
+	int rangemax = -1;
+	char key;
+	int i, k, status;
+
+	lctx = gpcd_create_context();
+	if (!lctx) {
+	  printf("Could not create context\n");
+	  return NULL;
+	}
+
+	switch (nptype){
+	case NIC_T:
+		key = 'n';
+		rangemax = 3;
+		break;
+	case PTILE_T:
+		key = 'p';
+		rangemax = 7;
+		break;
+	default:
+		printf("Invalid type to create_context_np\n");
+		return NULL;
+		break;
+	}
+
+	int nvalid = 0;
+	//add them backwards
+	for (k = num-1; k >= 0; k--){
+		char *ptr = strchr(met[k], key);
+		if (!ptr){
+			printf("invalid metricname: key <%c> not found in <%s>\n",
+			       key, met[k]);
+			continue;
+		}
+		for (i = rangemax; i >= 0 ; i--) {
+			char* newname = strdup(met[k]);
+			char* ptr = strchr(newname, key);
+			if (!ptr) {
+				printf("Bad!\n");
+				exit (-1);
+			}
+			char ch[2];
+			snprintf(ch, 2, "%d", i);
+			ptr[0] = ch[0];
+
+//				printf("NAME = <%s>\n", newname);
+
+			desc = (gpcd_mmr_desc_t *)
+				gpcd_lookup_mmr_byname(newname);
+			if (!desc) {
+				printf("\tCould not lookup <%s>\n", newname);
+				free(newname);
+				continue;
+			}
+
+			status = gpcd_context_add_mmr(lctx, desc);
+			if (status != 0) {
+				printf("Could not add mmr for <%s>\n", newname);
+				gpcd_remove_context(lctx);
+				return NULL;
+			}
+
+			struct met* e = calloc(1, sizeof(*e));
+			e->name = newname;
+
+			if (nptype == NIC_T)
+				LIST_INSERT_HEAD(&nic_list, e, entry);
+			else
+				LIST_INSERT_HEAD(&ptile_list, e, entry);
+			nvalid++;
+		}
+	}
+
+	*nmet = nvalid;
 	return lctx;
 
 }
@@ -204,9 +295,10 @@ gpcd_context_t *create_context_rc(char** basemetrics, int ibase, int ntype, int*
 
 
 	int nvalid = 0;
-	for (k = 0; k < ibase; k++){
-		for (i = 0; i < rmax; i++) {
-			for (j = 0; j < cmax; j++) {
+	//add them backwards
+	for (k = ibase-1; k >= 0; k--){
+		for (i = rmax-1 ; i >= 0; i--) {
+			for (j = cmax-1; j >= 0 ; j--) {
 				switch (ntype){
 				case GEMINI_T:
 					snprintf(name, MAX_LEN, "GM_%d_%d_TILE_%s", i, j, basemetrics[k]);
@@ -247,110 +339,134 @@ gpcd_context_t *create_context_rc(char** basemetrics, int ibase, int ntype, int*
 	return lctx;
 }
 
-
-
 int main(int argc, char* argv[]){
 	struct timeval tv1, tv2, diff;
-	char* rawfile = NULL;
-	char* rcfile = NULL;
-	int rawmax = 0;
-	int rcmax = 0;
-	int num;
+	char* file = NULL;
 	int opt;
 	int rc;
+	int i;
 
-	while ((opt = getopt(argc, argv, "r:o:")) != -1){
+	for (i = 0; i < END_T; i++){
+		mvals[i].num_metrics = 0;
+		mvals[i].metrics = NULL;
+		mvals[i].max = 0;
+		mvals[i].ctx = NULL;
+	}
+
+	while ((opt = getopt(argc, argv, "r:o:n:p:")) != -1){
 		switch(opt){
 		case 'o':
-			rawfile = optarg;
-			rc = parseConfig(rawfile, RAW_T);
+			file = strdup(optarg);
+			rc = parseConfig(file, RAW_T);
 			if (rc){
-				printf("Cannot parse config <%s>\n", rawfile);
+				printf("Cannot parse config <%s>\n", file);
 				exit(-1);
 			}
+			free(file);
 			break;
 		case 'r':
-			rcfile = optarg;
-			rc = parseConfig(rcfile, RC_T);
+			file = strdup(optarg);
+			rc = parseConfig(file, RC_T);
 			if (rc){
-				printf("Cannot parse config <%s>\n", rcfile);
+				printf("Cannot parse config <%s>\n", file);
+				exit(-1);
+			}
+			free(file);
+			break;
+		case 'n':
+			file = strdup(optarg);
+			rc = parseConfig(file, NIC_T);
+			if (rc){
+				printf("Cannot parse config <%s>\n", file);
 				exit(-1);
 			}
 			break;
+		case 'p':
+			file = strdup(optarg);
+			rc = parseConfig(file, PTILE_T);
+			if (rc){
+				printf("Cannot parse config <%s>\n", file);
+				exit(-1);
+			}
+			free(file);
+			break;
 		default:
-			printf("Usage ./main_gpcd -r rcfile -o otherfile\n");
+			printf("Usage ./main_gpcd -r rcfile -n nicfile -p ptilefile -o rawfile\n");
 			exit(-1);
 		}
 	}
 
-	raw_ctx = create_context_list(rawmetrics, num_rawmetrics, &rawmax);
-	if (rawmax && !raw_ctx){
-		printf("Cannot create context\n");
-		exit (-1);
-	}
-	printf("Added %d raw\n", rawmax);
+	for (i = 0; i < END_T; i++){
+		switch (i){
+		case RAW_T:
+			mvals[i].ctx = create_context_list(mvals[i].metrics, mvals[i].num_metrics, &mvals[i].max);
+			break;
+		case RC_T:
+			mvals[i].ctx = create_context_rc(mvals[i].metrics, mvals[i].num_metrics, ARIES_T, &mvals[i].max);
+			break;
+		case NIC_T:
+			//fall thru
+		case PTILE_T:
+			mvals[i].ctx = create_context_np(mvals[i].metrics, mvals[i].num_metrics, i, &mvals[i].max);
+			break;
+		}
 
-	rc_ctx = create_context_rc(rcmetrics, num_rcmetrics, ARIES_T, &rcmax);
-	if (rcmax && !rc_ctx){
-		printf("Cannot create context\n");
-		exit (-1);
+		if (mvals[i].max && !mvals[i].ctx){
+			printf("Cannot create context\n");
+			exit (-1);
+		}
+//		printf("Added %d type %d\n", mvals[i].max, i);
 	}
-	printf("Added %d rc\n", rcmax);
 
 	gettimeofday(&tv1, NULL);
 
 	//only read if we have metrics
-	if (rawmax){
-		int error = gpcd_context_read_mmr_vals(raw_ctx);
-		if (error){
-			printf("Cannot read mmr vals\n");
-			exit(-1);
+	for (i = 0; i < END_T; i++){
+		if (mvals[i].max) {
+			int error = gpcd_context_read_mmr_vals(mvals[i].ctx);
+			if (error){
+				printf("Cannot read mmr vals\n");
+				exit(-1);
+			}
 		}
 	}
 
-	if (rcmax){
-		int error = gpcd_context_read_mmr_vals(rc_ctx);
-		if (error){
-			printf("Cannot read mmr vals\n");
-			exit(-1);
-		}
-	}
 	gettimeofday(&tv2, NULL);
 	timersub(&tv2, &tv1, &diff);
 	printf("time = %lu.%06lu\n", diff.tv_sec, diff.tv_usec);
 
 
-	for (num = 0; num < 2; num++){
+	for (i = 0; i < END_T; i++){
 		struct met *np;
-		int ctr;
-		if (!num){
-			ctr = rawmax;
-			if (!ctr)
-				continue;
-			listp = raw_ctx->list;
+		int ctr = mvals[i].max;
+		if (!ctr)
+			continue;
+		listp = mvals[i].ctx->list;
+		switch (i){
+		case RAW_T:
 			np = raw_list.lh_first;
-			if (np == NULL){
-				printf("No name\n");
-				exit(-1);
-			}
-		} else {
-			ctr = rcmax;
-			if (!ctr)
-				continue;
-			listp = rc_ctx->list;
+			break;
+		case RC_T:
 			np = rc_list.lh_first;
-			if (np == NULL){
-				printf("No name\n");
-				exit(-1);
-			}
+			break;
+		case NIC_T:
+			np = nic_list.lh_first;
+			break;
+		case PTILE_T:
+			np = ptile_list.lh_first;
+			break;
 		}
-		ctr--;
+		if (np == NULL){
+			printf("No name\n");
+			exit(-1);
+		}
 
 		if (!listp) {
 			printf("No list!\n");
 			exit(-1);
 		}
 
+		ctr = 0;
 		//NOTE: we get them in inverse order
 		while (listp != NULL){
 			unsigned long long val = listp->value;
@@ -366,10 +482,10 @@ int main(int argc, char* argv[]){
 				printf("No name\n");
 				exit(-1);
 			}
-			ctr--;
+			ctr++;
 		}
 		printf("\n\n");
-	}
+	} // i
 
 	return 0;
 }

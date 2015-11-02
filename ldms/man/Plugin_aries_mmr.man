@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_aries_mmr
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "28 Oct 2015" "v3" "LDMS Plugin for the aries_mmr sampler.
+.TH man 7 "01 Nov 2015" "v3" "LDMS Plugin for the aries_mmr sampler.
 
 .SH NAME
 Plugin_aries_mmr - man page for the aries_mmr sampler.
@@ -31,7 +31,7 @@ To build the aries_mmr sampler, build with the following flags:
 .SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> producer=<pname> instance=<iname>  [rawfile=<rawf> rcfile=<rcf> schema=<sname>]
+name=<plugin_name> producer=<pname> instance=<iname>  [(raw|rc|nic|ptile)file=<file> schema=<sname>]
 .br
 ldmsctl configuration line
 .RS
@@ -52,15 +52,26 @@ schema=<sname>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a different schema. This will default to cray_aries_r or cray_gemini_r as appropriate, if unspecified.
 .TP
-rawfile=<rawf>
+rawfile=<file>
 .br
 Configuration file of aries performance counter names that will be added in exactly as they are specified (hence raw).
-This file is optional, but at least one of rawfile or rcfile must be specified.
+This file is optional, but at least one of file must be specified.
 .TP
-rcfile=<rcf>
+rcfile=<file>
 .br
 Configuration file of aries performance counter names that have row column dependencies. Use the base part of the name
 and the prefix (AR_RTR_r_c) for all rows and columns will be added.
+This file is optional, but at least one of file must be specified.
+.TP
+nicfile=<file>
+.br
+Configuration file of aries performance counter names for nics. Name will have 'n' which will be replaced for all nic vals (0-3).
+This file is optional, but at least one of file must be specified.
+.TP
+ptilefile=<file>
+.br
+Configuration file of aries performance counter names for ptile. Name will have 'n' which will be replaced for all ptile vals (0-7).
+This file is optional, but at least one of file must be specified.
 .RE
 
 .SH NOTES
@@ -102,6 +113,21 @@ INQ_PRF_INCOMING_FLIT_VC0
 .br
 INQ_PRF_INCOMING_FLIT_VC1
 .br
+
+> cat nicmetrics.txt
+.br
+#NIC METRICS -- n will be replaced for all n
+.br
+AR_NL_PRF_REQ_PTILES_TO_NIC_n_FLITS
+
+> cat ptilemetrics.txt
+.br
+#PTILE METRICS -- p will be replaced for all p
+.br
+AR_NL_PRF_PTILE_p_REQ_IN_NW_FLITS
+.br
+AR_NL_PRF_PTILE_p_REQ_IN_NW_PKTS
+
 
 .PP Starting
 ldmsctl> load name=aries_mmr
