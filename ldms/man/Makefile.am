@@ -1,8 +1,8 @@
 
-dist_man8_MANS=
-ldms_ls.man
-ldmsd.man
-ldmsd_controller.man
+dist_man8_MANS= \
+ldms_ls.man \
+ldmsd.man \
+ldmsd_controller.man \
 ldmsctl.man
 
 dist_man7_MANS= \
