@@ -13,7 +13,7 @@ OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm rpm-old toss centos doxygen doc install-doc
+PHONY_rpm = rpm rpm-old toss centos doxygen doc install-doc
 rpm-old: dist-gzip
 	$(MKDIR_P) rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(OVIS_LIB_TARBALL) ovis-lib.spec rpm/SOURCES
@@ -28,7 +28,7 @@ rpm-clean:
 	rm -rf rpm/ centos/
 	rm -f $(OVIS_LIB_TARBALL)
 
-.PHONY: rpm7 centos7 rhel7
+PHONY_rpm7 = rpm7 centos7 rhel7
 rpm7 centos7 rhel7: dist-gzip
 	$(MKDIR_P) rpm7/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	ln -f -s ../../automake rpm7/BUILD/automake
@@ -52,7 +52,7 @@ doxygen-out: $(DOCDEPS)
 	doxygen ./Doxyfile
 	touch doxygen-out
 
-.PHONY: install-doxygen
+.PHONY: install-doxygen $(PHONY_rpm) $(PHONY_rpm7)
 install-doxygen: doxygen-out
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in doxygen/html/* ; do \
@@ -62,10 +62,12 @@ install-doxygen: doxygen-out
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
 
-install-doc: install-doxygen
+install-dox: install-doxygen
+else
+install-dox:
 endif
 
-install-doc:
+install-doc: install-dox
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
 	for f in README COPYING ChangeLog COPYING; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \

@@ -53,7 +53,7 @@ BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm centos toss doxygen 
+.PHONY: rpm centos toss doxygen lanl-mon6 rhine
 
 banned:
 	(cd ldms; make banned)
@@ -67,6 +67,16 @@ toss: dist-gzip
 	$(MKDIR_P) toss/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(BASE_TARBALL) packaging/ovis-base.spec toss/SOURCES
 	rpmbuild --define "_topdir `pwd`/toss" -ba packaging/ovis-base.spec
+
+lanl-mon6: dist-gzip
+	$(MKDIR_P) lanl-mon6/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	cp $(BASE_TARBALL) packaging/ovis-mon6.spec lanl-mon6/SOURCES
+	rpmbuild --define "_topdir `pwd`/lanl-mon6" -ba packaging/ovis-mon6.spec
+
+rhine: dist-gzip
+	$(MKDIR_P) rhine/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	cp $(BASE_TARBALL) packaging/ovis-rhine.spec rhine/SOURCES
+	rpmbuild --define "_topdir `pwd`/rhine" -ba packaging/ovis-rhine.spec
 
 rpm-clean:
 	rm -rf rpm/ centos

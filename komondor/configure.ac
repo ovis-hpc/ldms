@@ -5,12 +5,12 @@ AC_INIT(komondor, 1.0.0, narate@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/komondor.c])
 AC_CONFIG_AUX_DIR(config)
-AM_CONFIG_HEADER(config.h)
 dnl AM _INIT_AUTOMAKE([-Wno-portability])
 AM_INIT_AUTOMAKE([foreign])
 m4_ifdef([AM_SILENT_RULES],
          [AM_SILENT_RULES([yes])
 ])
+AM_CONFIG_HEADER(config.h)
 AX_PREFIX_CONFIG_H_G(src/komondor-config.h)
 AM_PROG_LIBTOOL
 AC_LIB_RPATH

@@ -1,3 +1,5 @@
+if ENABLE_BALER
+
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
 
@@ -30,6 +32,8 @@ rpm7: dist-gzip
 rpm-clean:
 	rm -rf rpm7/
 	rm -f $(distdir).tar.gz
+
+endif
 
 PEDIGREE = $(DESTDIR)/$(bindir)/baler-pedigree
 include $(top_srcdir)/../automake/pedigree.am

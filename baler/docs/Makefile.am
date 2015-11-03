@@ -13,12 +13,12 @@ doxygen-out: $(DOCDEPS)
 	@DOXYGEN@
 	touch doxygen-out
 
-# .PHONY: install-doc-dir
+PHONY_docdir = install-doc-dir
 install-doc-dir:
 	$(MKDIR_P) $(DESTDIR)$(docdir)
 
 if ENABLE_DOC_LATEX
-# .PHONY: install-doc-latex uninstall-doc-latex
+PHONY_tex = install-doc-latex uninstall-doc-latex
 texdocs: latex/refman.pdf
 
 DEST_PDF = $(DESTDIR)$(docdir)/$(PACKAGE)-$(VERSION).pdf
@@ -42,7 +42,7 @@ texdocs:
 endif
 
 if ENABLE_DOC_HTML
-# .PHONY: install-doc-html uninstall-doc-html
+PHONY_html = install-doc-html uninstall-doc-html
 install-doc-html: install-doc-dir doxygen-out
 	cp -r html $(DESTDIR)$(docdir)/
 
@@ -79,8 +79,6 @@ doc:
 	@echo "doxygen not found!!!"
 	@exit -1
 
-.PHONY: install-doc-latex uninstall-doc-latex
-.PHONY: install-doc-html uninstall-doc-html
-.PHONY: install-doc-dir
+.PHONY: $(PHONY_docdir) $(PHONY_tex) $(PHONY_html)
 
 endif

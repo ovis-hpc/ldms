@@ -143,7 +143,7 @@ extern void ovis_logrotate();
 
 /** Return the short string (from errno.h macro definitions) name that
  * matches the errno value. In the event of unknown or negative rc,
- * returns 'UNKNOWN(%d)" formatted result that will not change before
+ * returns 'UNKNOWN(%d)' formatted result that will not change before
  * the next call to rcname.
  */
 extern const char *ovis_rcname(int rc);

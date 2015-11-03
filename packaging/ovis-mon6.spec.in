@@ -9,7 +9,7 @@
 %define ldms_all System Environment/Libraries
 
 %if 0%{?rhel} && 0%{?rhel} <= 6
-%{!?__python2: %global __python2 /usr/bin/python2}
+%{!?__python2: %global __python2 /opt/python-2.7/bin/python}
 %{!?python2_sitelib: %global python2_sitelib %(%{__python2} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())")}
 %{!?python2_sitearch: %global python2_sitearch %(%{__python2} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib(1))")}
 %endif
@@ -18,13 +18,13 @@
 Summary: OVIS LDMS Commands and Libraries
 Name: ldms-all
 Version: @VERSION@
-Release: ovis1%{?dist}
+Release: trinity_mon_rh6%{?dist}
 License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
-Requires: rpm >= 4.8.0 ovis-libevent2 boost-devel genders libyaml libyaml-devel python2 python2-devel
-BuildRequires: doxygen openssl-devel libibverbs-devel librdmacm-devel gcc ovis-libevent2-devel glib2-devel libibmad-devel boost-devel genders ovis-libevent2 libyaml libyaml-devel python2 python2-devel gettext-devel
+Requires: rpm >= 4.8.0 ovis-libevent2 libyaml libyaml-devel python2 python2-devel
+BuildRequires: doxygen openssl-devel gcc ovis-libevent2-devel glib2-devel  ovis-libevent2 libyaml libyaml-devel python2 python2-devel gettext-devel
 Url: http://ovis.ca.sandia.gov/
 
 Prefix: /usr
@@ -46,12 +46,12 @@ echo bTMPPATH %{_tmppath}
 rm -rf $RPM_BUILD_ROOT
 echo bBUILDROOT $RPM_BUILD_ROOT
 %configure @ac_configure_args@
-make
+make V=1
 
 %install
 echo TMPPATH %{_tmppath}
 echo BUILDROOT $RPM_BUILD_ROOT
-make DESTDIR=${RPM_BUILD_ROOT} install
+make DESTDIR=${RPM_BUILD_ROOT} V=1 install
 # remove unpackaged files from the buildroot
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-ldms/lib*.la
@@ -69,6 +69,7 @@ rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(-,root,root)
+%exclude %{_bindir}/bhquery
 %{_libdir}/*
 %{_bindir}/*
 %{_sbindir}/*
@@ -120,22 +121,47 @@ Doxygen files for ldms-all package.
 %defattr(-,root,root)
 %{_mandir}/*/*
 %{_datadir}/doc/%{name}-%{version}
-%docdir %{_defaultdocdir}
+%{_datadir}/doc/ovis-lib-%{version}
+%{_datadir}/doc/sos
+%{_datadir}/doc/baler
+## %%docdir %{_defaultdocdir}
+%docdir /usr/share/doc
 
 %package python2
-Summary: Python files for LDMS
+Summary: Python files for LDMS and baler
 %description python2
 Python files for LDMS
 %files python2
 %defattr(-,root,root)
-%{python2_sitelib}/*
+%{_prefix}/lib/python2.7/site-packages/ovis_lib
+%{_prefix}/lib/python2.7/site-packages/sos
+%{_prefix}/lib/python2.7/site-packages/ovis_ldms
+%{_prefix}/lib/python2.7/site-packages/ldmsd
+%{_prefix}/lib/python2.7/site-packages/baler
+#%%{python2_sitelib}/*
 #end python2
 # see https://fedoraproject.org/wiki/Packaging:Python_Old
 # and https://fedoraproject.org/wiki/Packaging:Python
 
+%post 
+for i in $RPM_INSTALL_PREFIX/bin/envldms.sh \
+	$RPM_INSTALL_PREFIX/bin/ldms*.sh \
+	$RPM_INSTALL_PREFIX/lib64/ovis-*configvars.sh; do
+	sed -i \
+		-e "s%BUILDDIR=/usr%BUILDDIR=$RPM_INSTALL_PREFIX%g" \
+		-e "s%exec_prefix=/usr%exec_prefix=$RPM_INSTALL_PREFIX%g" \
+		-e "s%libdir=/usr%libdir=$RPM_INSTALL_PREFIX%g" \
+		-e "s%%prefix=/usr%%prefix=$RPM_INSTALL_PREFIX%g" \
+		$i
+done
 
+%post python2
+rm $RPM_INSTALL_PREFIX/bin/bhquery
+ln -s $RPM_INSTALL_PREFIX/lib/python*/site-packages/baler/bquery.py $RPM_INSTALL_PREFIX/bin/bhquery
 
 %changelog
+* Thu Nov 03 2015 Ben Allan <baallan@sandia.gov> 3.0.0-2
+ported for LANL monitoring server.
 * Thu Oct 13 2015 Ben Allan <baallan@sandia.gov> 3.0.0-1
 update to v3. 
 * Thu Aug 25 2015 Ben Allan <baallan@sandia.gov> 2.4.5-1
