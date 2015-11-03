@@ -1,0 +1,47 @@
+.\" Manpage for ldms_authentication
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "02 Nov 2015" "v3.0/RC trinity" "LDMS Authentication man page"
+
+.SH NAME
+ldms_authentication \- Authentication in LDMS
+
+.SH DESCRIPTION
+Ldmsd servers require clients including other ldmsd (aggregators), ldms_ls, and ldmsctl (if connecting remotely rather than via UNIX socket), to prove they share a secret with the server. The secret is a text file containing the line
+.PP
+.RS
+       secretword=X
+.RE
+.PP
+where X is a string at least 5 characters long. Lines starting with # in the file are ignored.
+.PP
+Four locations are checked in order for the secret:
+.RS
+.TP
+1) the full file path given on the command line via "-a authfile".
+.TP
+2) the full file path given in environment variable LDMS_AUTH_FILE.
+.TP
+3) $HOME/.ldmsauth.conf
+.TP
+4) $SYSCONFDIR/ldmsauth.conf (e.g. /etc/ldmsauth.conf)
+.RE
+
+where $HOME is taken from
+.I /etc/password
+and $SYSCONFDIR is determined at ldms compile time. If one of these is not set, the search continues with the next location.
+A failure in reading one, if the file exists, ends the search and is a failure to authenticate.
+
+The secret file permissions must be set to 600 or more restrictive.
+
+.SH ENVIRONMENT
+LDMS_AUTH_FILE is a full file path for a secretword file. It is not necessary, if the file is in one of the other checked locations.
+
+.SH BUGS
+.TP
+Networked file system users should verify the privacy of their secret files, as various access control list schemes might be more permissive than the standard permissions bits.
+.TP
+Ldms_rctrl uses environment variable LDMSD_RCTRL_AUTH_FILE instead of LDMS_AUTH_FILE. Ldms_rctrl does not recognize $HOME/.ldmsauth.conf or /etc/ldmsauth.conf. Both will be repaired in the a future release.
+
+.SH SEE ALSO
+ldmsctl(1), ldmsd(1), ldms_ls(1)
+

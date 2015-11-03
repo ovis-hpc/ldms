@@ -9,7 +9,7 @@ ldmsd \- Start an ldms daemon
 ldmsd [OPTION...]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), the ldmsd command is used
+The ldmsd command can be used
 to start an ldms daemon. Plugin configuration of the ldmsd can be done via the
 ldmsctl command.
 
@@ -18,24 +18,28 @@ ldmsctl command.
 The following environment variables must usually be set:
 .TP
 LD_LIBRARY_PATH
-include path to ovis/lib and ovis/lib/ovis-ldms and libevent2, if not in a system default path
-.TP
-ZAP_LIBPATH
-path to ovis/lib/ovis-ldms
-.TP
-LDMSD_PLUGIN_LIBPATH
-path to ovis/lib/ovis-ldms
-.TP
-LDMSD_PIDFILE
-optional full path name of pidfile overriding the default /var/run/ldmsd.pid. The command line argument -r in turn overrides env(LDMSD_PIDFILE).
-.TP
-LDMSD_SOCKPATH
-path to the unix domain socket for the ldmsd. Default is /var/run. If you want to change the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
+Path to ovis/lib and libevent2/lib, if not in a system default path. Depending on the system these may be lib64 instead of lib.
 .TP
 PATH
-include path to sbin directory containing ldmsd and ldmsctl.
+Include the path to sbin directory containing ldmsd and ldmsctl.
+.SS The following environment variables may be set to override compiled-in defaults:
+.TP
+LDMSD_AUTH_FILE
+For authentication unless overridden on the command line. Consult ldms_authentication(7) for further details.
+.TP
+ZAP_LIBPATH
+Path to ovis/lib/ovis-ldms
+.TP
+LDMSD_PLUGIN_LIBPATH
+Path to ovis/lib/ovis-ldms
+.TP
+LDMSD_PIDFILE
+Full path name of pidfile overriding the default /var/run/ldmsd.pid unless the command line argument "-r pidfilepath" is present.
+.TP
+LDMSD_SOCKPATH
+Path to the unix domain socket for the ldmsd. Default is created within /var/run. If you must change the default (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd) or specify "-S socketpath" to ldmsd.
 
-.SS Additional Enviroment variables for ugni transport
+.SS CRAY Specific Environment variables for ugni transport
 LDMS_UGNI_PTAG
 For XE/XK, the PTag value as given by apstat -P.
 For XC, The value does not matter but the environment variable must be set.
@@ -58,11 +62,6 @@ LDMS_UGNI_STATE_OFFSET
 Optional. Only relevant if LDMS_UGNI_STATE_INTERVAL is set. Defaults to zero. Offset from zero for
 checking the nodes state (see LDMS_UGNI_STATE_INTERVAL, above).
 
-.SS
-The following environment variables are optional:
-.TP
-LDMSD_AUTH_FILE
-If using authentication, The full path to the shared secret file.
 
 .SH OPTIONS
 .SS
@@ -75,40 +74,25 @@ Run in foreground mode; don't daemonize the program. Default is false.
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
 The given size must be less than 1 petabytes.
-For example, 20M or 20mb are 20 megabytes.
+For example, 20M or 20mb are 20 megabytes. The default is adequate for most ldmsd acting in the collector role.
+For aggregating ldmsd, a rough estimate of preallocated memory needed is (Number of nodes aggregated) x (Number of metric sets per node) x 4k.
+Data sets containing arrays may require more.
 .TP
-.BI -r pid_file
+.BI -r " pid_file"
 The path to the pid file for daemon mode.
 .TP
 .BI -a " secretfile"
-If built with authentication, give the locaiton of the secretword file.
+Give the location of the secretword file.
 Normally, the environment variable LDMSD_AUTH_FILE must be set to the full
 path to the file storing the shared secret word
 
-If built with --enable-a-none, "secretfile" = none, bypasses authentication checks.
-.TP
-.BI -p " port"
-The inet control listener port for receiving configuration
-.TP
-.BI -R " port"
-If built with --enable-ldmsd-rctl, the listener port for receiving configuration from the ldmsd_rctl program
+If ldms is configured with --enable-a-none, "-a none", bypasses authentication checks.
+If ldms is configured with --disable-ovis_auth, the -a option disappears and will cause an error if it is given.
 .TP
 .BR -V
 Display LDMS version information and then exit.
 
 
-.SS
-Log Verbosity Options:
-.TP
-.BI -l " LOGFILE"
-.br
-LOGFILE is the path to the log file for status messages. Default is stdout unless given. Syslog facility is used if LOGFILE is "syslog".
-.TP
-.BI -q " LOG_LEVEL"
-.br
-LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
-The default level is ERROR. QUIET produces no output.
-(Note: this has changed from the previous release where q designated no (QUIET) logging).
 
 .SS
 Communication Options:
@@ -122,6 +106,26 @@ SOCKNAME is the unix domain socket name to use for ldmsctl access.
 Specifies the transport type to listen on. May be specified more than once for
 multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC).
 A transport specific port number is optionally specified following a ':', e.g. rdma:50000.
+.TP
+.BI -p " port"
+The inet control listener port for receiving configuration. If not specified, no inet port is opened.
+.TP
+.BI -R " port"
+If built with --enable-ldmsd-rctl, the listener port for receiving configuration from the ldmsd_rctl program. If not specified, no rctl port is opened.
+
+.SS
+Log Verbosity Options:
+.TP
+.BI -l " LOGFILE"
+.br
+LOGFILE is the path to the log file for status messages. Default is stdout unless given.
+Silence can be obtained by specifying /dev/null for the log file or using command line redirection as illustrated below.
+.TP
+.BI -v " LOG_LEVEL"
+.br
+LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
+The default level is ERROR. QUIET produces only user-requested output.
+(Note: this has changed from the previous release where q designated no (QUIET) logging).
 
 .SS
 Kernel Metric Options:
@@ -168,6 +172,12 @@ Test set prefix
 .br
 Notify registered monitors of the test metric sets.
 
+.SS Obsolete options:
+.TP
+.BI "-q -Z -z"
+.br
+These v2 options are no longer supported, and will cause exit with a hint.
+
 .SH RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
 .PP
 ldsmd can be run as either a user or as root using the appropriate PTag and cookie.
@@ -197,7 +207,7 @@ Run ldmsd directly or as part of a script launched from aprun. In either case, U
 OCM flags are unsupported at this time.
 
 .SH BUGS
-No known bugs.
+Unlike LDMS version 2, the syslog facility is not used if LOGFILE is "syslog". This will be fixed soon.
 
 .SH EXAMPLES
 .PP
@@ -213,4 +223,4 @@ Same but sending stdout and stderr to /dev/null
 
 
 .SH SEE ALSO
-LDMS_Authentication(7), LDMS_QuickStart(7), ldmsctl(1), ldms_ls(1), ldms(7), ldms-genders(7)
+ldms_authentication(7), ldmsctl(1), ldms_ls(1)
