@@ -304,15 +304,19 @@ void ldms_xprt_close(ldms_t x)
 
 void __ldms_xprt_resource_free(struct ldms_xprt *x)
 {
+#if OVIS_LIB_HAVE_AUTH
+	if (x->password)
+		free((void *)x->password);
+#endif /* OVIS_LIB_HAVE_AUTH */
 	if (x->local_dir_xid)
 		free((void *)(unsigned long)x->local_dir_xid);
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
 #ifdef DEBUG
-		x->log("DEBUG: xprt_resource_free. zap %p: active_dir = %d.\n",
-			x->zap_ep, x->active_dir);
-		x->log("DEBUG: xprt_resource_free. zap %p: active_lookup = %d.\n",
-			x->zap_ep, x->active_lookup);
+	x->log("DEBUG: xprt_resource_free. zap %p: active_dir = %d.\n",
+		x->zap_ep, x->active_dir);
+	x->log("DEBUG: xprt_resource_free. zap %p: active_lookup = %d.\n",
+		x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
 	while (x->active_dir > 0) {
 		x->active_dir--;
