@@ -223,7 +223,7 @@ Group: %{ovis_lib_grp}
 %description python
 Python interface for OVIS libraries
 %files python
-%{_prefix}/lib/python*/site-packages/ovis_lib/
+%{_prefix}/lib*/python*/site-packages/ovis_lib/
 %endif
 
 # These are the files that we don't care
