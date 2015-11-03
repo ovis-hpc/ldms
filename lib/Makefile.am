@@ -60,9 +60,11 @@ install-doxygen: doxygen-out
 	for f in doxygen/html/* ; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html; \
 	done
+	if [ -d doxygen/html/search ]; then \
 	for f in doxygen/html/search/*; do \
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
-	done
+	done \
+	fi
 
 install-doc: install-doxygen
 endif
