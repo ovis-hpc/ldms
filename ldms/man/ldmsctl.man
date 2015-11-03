@@ -1,0 +1,346 @@
+.\" Manpage for ldmsctl
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "14 April 2015" "v2.5" "ldmsctl man page"
+
+.SH NAME
+ldmsctl \- Issue control commands to ldmsd.
+
+.SH SYNOPSIS
+ldmsctl [OPTION...]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
+can be created and piped into the ldmsctl.
+
+.SH ENVIRONMENT
+The following environment variables must be set:
+.TP
+LD_LIBRARY_PATH
+include path to ovis/lib64
+.TP
+LDMS_XPRT_LIBPATH
+path to ovis/lib64/
+.TP
+LDMSD_PLUGIN_LIBPATH
+path to ovis/lib64/
+.TP
+LDMSD_SOCKPATH
+path to the unix domain socket for the ldmsd. Default is /var/run. If you have changed the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
+.TP
+PATH
+include path to ovis/sbin
+
+
+.SH OPTIONS
+.TP
+.BI -S " SOCKET"
+.br
+SOCKET is the unix domain socket that the ldmsd is listening on.
+.TP
+.BR -V
+Display LDMS version information and then exit.
+
+.SH LDMSCTL COMMANDS AND ATTRIBUTE SYNTAX
+After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
+
+.TP
+.BR help
+Display the list of commands.
+
+.TP
+.BR usage
+Show loaded plugin usage information.
+
+.TP
+.BR version
+Show version information.
+
+.TP
+.BR load
+name=<name>
+.br
+Loads the specified plugin. The library that implements
+the plugin should be in the directory specified by the
+LDMSD_PLUGIN_LIBPATH environment variable.
+.RS
+.TP
+name=<name>
+The plugin name. This is used to locate a loadable library named lib<name>.so.
+.RE
+
+.TP
+.BR config
+name=<name> [ <attr>=<value> ... ]
+.br
+Provides a mechanism to specify configuration options.
+.RS
+.TP
+name=<name>
+The plugin name.
+.TP
+<attr>=<value>
+An attribute name and value pair. Valid <attr> <value> pairs are specific to the plugin. These are described in the manpages for the plugins.
+.RE
+
+.TP
+.BR start
+name=<name> interval=<interval> [ offset=<offset>]
+.br
+Begins calling the sampler's 'sample' method at the sample interval.
+.RS
+.TP
+name=<name>
+The sampler name.
+.TP
+interval=<interval>
+The sample interval in microseconds.
+.TP
+offset=<offset>
+.br
+Optional offset (shift) from the sample mark in microseconds. Offset can be positive or negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, collection will be synchronous; if the offset is not specified, collection will be asychronous.
+.RE
+
+.TP
+.BR stop
+name=<name>
+.br
+Cancels sampling on the specified plugin.
+.RS
+.TP
+name=<name>
+The sampler name.
+.RE
+
+
+.TP
+.BR add
+host=<host> type=<type> sets=<set names>
+[ interval=<interval> ] [ offset=<offset>]
+[ xprt=<xprt> ] [ port=<port> ]
+[ standby=<agg_no> ]
+.br
+Adds a host to the list of hosts monitored by this ldmsd.
+.RS
+.TP
+host=<host>
+The hostname. This can be an IP address or DNS hostname.
+.TP
+type=<type>
+.RS
+.TP
+One of the following host types:
+.br
+.TP
+active
+.br
+A connection is initiated with the peer and it's metric sets will be periodically queried.
+.TP
+passive
+.br
+A connect request is expected from the specified host.
+After this request is received, the peer's metric sets
+will be queried periodically.
+.TP
+bridging
+.br
+A connect request is initiated to the remote peer,
+but it's metric sets are not queried. This is the active
+side of the passive host above.
+.RE
+.TP
+sets=<set names>
+The list of metric set names to be queried. The list is comma separated.
+.TP
+interval=<interval>
+An optional sampling interval in microseconds, defaults to 1000000.
+.TP
+offset=<offset>
+.br
+An optional offset (shift) from the sample mark
+in microseconds. If this offset is specified,
+including 0, the collection will be synchronous;
+if the offset is not specified, the collection
+will be asychronous.
+.TP
+xprt=<xprt>
+The transport type, defaults to 'sock'.
+.RS
+.TP
+sock
+.br
+The sockets transport.
+.TP
+rdma
+.br
+The OFA Verbs Transport for Infiniband or iWARP
+.TP
+ugni
+.br
+Cray XE/XK/XC transport.
+.RE
+.TP
+port=<port>
+.br
+The port number to connect on, defaults to LDMS_DEFAULT_PORT
+.TP
+standby=<agg_no>
+The number of the aggregator that this is standby for. Defaults to 0 which means this is an active aggregator.
+.RE
+.TP
+.BR store
+.br
+name=<store> container=<container> set=<set> comp_type=<comp_type>
+[hosts=<hosts>] [metric=<metric>]
+.br
+Saves a set from one or more hosts to a persistent object store.
+.RS
+.TP
+name=<store>
+The name of the storage plugin.
+.TP
+container=<container>
+The store policy ID, e.g., meminfo-essential
+.TP
+set=<set>
+The set whose data will be saved. Data is saved
+when update completes if the generation number has changed.
+.TP
+comp_type=<comp_type>
+The component type.
+.TP
+metric=<metrics>
+.br
+A list of metric names in the specified set. If not specified, all metrics will be saved.
+.TP
+hosts=<hosts>
+A list of hosts to whose set data will be saved.
+If not specified, all hosts that have this set will
+have their data saved.
+.RE
+.TP
+.BR standby
+.br
+agg_no=<agg_no> state=<stateval>
+.br
+ldmsd will update its saggs_mask for this aggregator as indicated.
+.RS
+.TP
+agg_no=<agg_no>
+Unique integer id for an aggregator
+.TP
+state=<stateval>
+Valid values are 0=standby and 1=active
+.RE
+.TP
+.BR loglevel
+level=<levelflag>
+.br
+Update loglevel for this ldmsd as indicated.
+.RS
+.TP
+<levelflag>
+The log level. Options are: DEBUG, INFO, ERROR, CRITICAL or QUIET. 
+.RE
+.TP
+.BR info
+Causes the ldmsd to dump out information about plugins,
+work queue utilization, hosts and object stores.
+.TP
+.BR quit
+Exit
+.RE
+
+.SH NOTES
+None.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+
+.PP
+.nf
+1) Run ldmsctl -S <unix domain socket path/name associated with target ldmsd>
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl>
+.fi
+
+.PP
+.nf
+2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second.
+Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
+ldmsctl> load name=meminfo
+ldmsctl> config name=meminfo component_id=1 set=vm1_1/meminfo
+ldmsctl> start name=meminfo interval=1000000
+ldmsctl> quit
+.fi
+
+.PP
+.nf
+3) Configure collectors on host "vm1" via bash script called collect.sh
+#!/bin/bash
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
+export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+# Set LDMSD_SOCKPATH for non-root. Change -S arguments accordingly)
+export LDMSD_SOCKPATH=/tmp/run/ldmsd
+LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
+# Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
+echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo config name=meminfo component_id=2 set=vm1_2/meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo start name=meminfo interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+# Configure "vmstat" collector plugin to collect every second (1000000 usec) on vm1_2
+echo load name=vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo config name=vmstat component_id=2 set=vm1_2/vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo start name=vmstat interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+
+Make collect.sh executable
+chmod +x collect.sh
+
+Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes
+in parallel)
+./collect.sh
+.fi
+
+.PP
+.nf
+4) Example lines for adding hosts to an aggregator:
+ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
+ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
+ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
+ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat
+.fi
+
+.PP
+.nf
+5) Example lines for configuring one store type but for 2 different metric sets:
+ldmsctl> load name=store_csv
+ldmsctl> config name=store_csv path=/XXX/stored_data
+ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo
+ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
+.fi
+
+.PP
+.nf
+6) Chaining aggregators and storing:
+ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=foo/meminfo, foo/vmstat,foo/procnetdev
+ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=bar/meminfo, bar/vmstat,bar/procnetdev
+ldmsctl> load name=store_csv
+ldmsctl> config name=store_csv path=/projects/ovis/ClusterData/chama/storecsv
+ldmsctl> store name=store_store_csv comp_type=node set=vmstat container=vmstat
+ldmsctl> store name=store_store_csv comp_type=node set=meminfo container=meminfo
+
+Notes for example 6:
+* You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
+* Syntax for add host is sets plural with comma separation.
+* Syntax for store is only 1 set at a time.
+* CSV file will be <path>/<comp_type>/<container>.
+* Do not mix containers across sets
+* Cannot put all the foo and bar in the same line.
+.RE
+.fi
+
+
+.SH SEE ALSO
+LDMS_Authentication(7), ldms(7), ldmsd(1), ldms_ls(1)
+

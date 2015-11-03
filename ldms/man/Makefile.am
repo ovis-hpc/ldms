@@ -2,9 +2,8 @@
 dist_man8_MANS=
 ldms_ls.man
 ldmsd.man
-# pending port from v2
-# ldmsctl.man
-
+ldmsd_controller.man
+ldmsctl.man
 
 dist_man7_MANS= \
 Plugin_aries_mmr.man \
