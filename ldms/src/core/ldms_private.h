@@ -97,10 +97,9 @@ extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 				ldms_lookup_cb_t cb, void *cb_arg);
 extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 extern int __ldms_remote_dir_cancel(ldms_t x);
-extern int __ldms_create_set(const char *instance_name,
-			     size_t meta_len, size_t data_len,
-			     size_t card,
-			     ldms_set_t *s, uint32_t flags);
+extern int __ldms_create_set(const char *instance_name, const char *schema_name,
+		      size_t meta_len, size_t data_len, size_t card,
+		      ldms_set_t *s, uint32_t flags);
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
 				     int *set_count, int *set_list_size);

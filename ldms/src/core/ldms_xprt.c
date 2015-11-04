@@ -548,8 +548,8 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 
 	strcpy(msg->schema_inst_name, schema->name);
 	strcpy(msg->schema_inst_name + schema->len, name->name);
-	msg->schema_len = schema->len;
-	msg->inst_name_len = name->len;
+	msg->schema_len = htonl(schema->len);
+	msg->inst_name_len = htonl(name->len);
 	msg->xid = xid;
 	msg->set_id = (uint64_t)(unsigned long)rbd;
 	msg->more = htonl(more);
@@ -1281,6 +1281,13 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 			struct ldms_xprt *x = zap_get_ucontext(zep);
 			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.more, ctxt->lookup.s,
 					ctxt->lookup.cb_arg);
+			if (ev->status != ZAP_ERR_OK) {
+				/*
+				 * Application doesn't have the set handle yet,
+				 * so delete the set.
+				 */
+				ldms_set_delete(ctxt->lookup.s);
+			}
 			if (!ctxt->lookup.more) {
 				assert(x->active_lookup > 0);
 				x->active_lookup--;
@@ -1300,6 +1307,37 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 	free(ctxt);
 }
 
+#ifdef DEBUG
+int __is_lookup_name_good(struct ldms_xprt *x, struct ldms_lookup_msg *lm,
+		struct ldms_context *ctxt)
+{
+	regex_t regex;
+	char *name;
+	int rc = 0;
+
+	if (ctxt->lookup.flags & LDMS_LOOKUP_BY_SCHEMA)
+		name = lm->schema_inst_name;
+	else
+		name = lm->schema_inst_name + lm->schema_len;
+
+	if (ctxt->lookup.flags & LDMS_LOOKUP_RE) {
+		rc = regcomp(&regex, ctxt->lookup.path, REG_EXTENDED | REG_NOSUB);
+		if (rc) {
+			char errstr[512];
+			(void)regerror(rc, &regex, errstr, sizeof(errstr));
+			x->log("%s(): %s\n", __func__, errstr);
+			assert(0);
+		}
+
+		rc = regexec(&regex, name, 0, NULL, 0);
+	} else {
+		rc = strcmp(ctxt->lookup.path, name);
+	}
+
+	return (rc == 0);
+}
+#endif /* DEBUG */
+
 static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_xprt *x = zap_get_ucontext(zep);
@@ -1314,6 +1352,18 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	struct ldms_rbuf_desc *rbd;
 	int rc;
 	ldms_set_t set_t;
+
+	lm->schema_len = ntohl(lm->schema_len);
+	lm->inst_name_len = ntohl(lm->inst_name_len);
+
+#ifdef DEBUG
+	if (!__is_lookup_name_good(x, lm, ctxt)) {
+		x->log("%s(): The schema or instance name in the lookup "
+				"message sent by the peer does not "
+				"match the lookup request\n", __func__);
+		assert(0);
+	}
+#endif /* DEBUG */
 
 	const char *schema_name = lm->schema_inst_name;
 	const char *inst_name = lm->schema_inst_name + lm->schema_len;
@@ -1346,7 +1396,7 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 		}
 	} else {
 		__ldms_release_local_set(lset);
-		rc = __ldms_create_set(inst_name,
+		rc = __ldms_create_set(inst_name, schema_name,
 				       ntohl(lm->meta_len), ntohl(lm->data_len),
 				       ntohl(lm->card),
 				       &set_t,

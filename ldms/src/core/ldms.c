@@ -545,7 +545,7 @@ int ldms_set_producer_name_set(ldms_set_t s, const char *name)
 	return 0;
 }
 
-int __ldms_create_set(const char *instance_name,
+int __ldms_create_set(const char *instance_name, const char *schema_name,
 		      size_t meta_len, size_t data_len, size_t card,
 		      ldms_set_t *s, uint32_t flags)
 {
@@ -573,6 +573,10 @@ int __ldms_create_set(const char *instance_name,
 	ldms_name_t lname = get_instance_name(meta);
 	lname->len = strlen(instance_name) + 1;
 	strcpy(lname->name, instance_name);
+
+	lname = get_schema_name(meta);
+	lname->len = strlen(schema_name);
+	strcpy(lname->name, schema_name);
 
 	data->gn = data->meta_gn = meta->meta_gn;
 
