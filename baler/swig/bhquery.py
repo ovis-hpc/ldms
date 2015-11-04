@@ -11,6 +11,7 @@ import json
 import heapq
 import logging
 import StringIO
+import os
 from datetime import datetime, date
 
 DEFAULT_LOG_LEVEL = logging.WARNING
@@ -41,8 +42,9 @@ def add_servers(servers):
         None
     """
     global _SERVERS
-    for s in servers:
-        _SERVERS.add(s)
+    for ss in servers:
+        for s in ss.split(','):
+            _SERVERS.add(s)
 
 
 def rm_servers(servers):
@@ -55,11 +57,12 @@ def rm_servers(servers):
         None
     """
     global _SERVERS
-    for s in servers:
-        try:
-            _SERVERS.remove(s)
-        except:
-            pass
+    for ss in servers:
+        for s in ss.split(','):
+            try:
+                _SERVERS.remove(s)
+            except:
+                pass
 
 class BHTTPDConn(object):
     def __init__(self, server):
@@ -382,12 +385,18 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if not args.bhttpd_servers:
-        logger.error("""Cannot determine bhttpd servers. BHTTPD_SERVERS env var
-                is not set, and -S is not specified.""")
-        sys.exit(-1)
+    servers = args.bhttpd_servers
 
-    add_servers(args.bhttpd_servers)
+    if not servers:
+        # try BHTTPD_SERVERS env var
+        try:
+            servers = [ os.environ['BHTTPD_SERVERS'] ]
+        except:
+            logger.error("""Cannot determine bhttpd servers.
+                BHTTPD_SERVERS env var is not set, and -S is not specified.""")
+            sys.exit(-1)
+
+    add_servers(servers)
 
     handle_map = {
         'ptn': handle_ptn,
