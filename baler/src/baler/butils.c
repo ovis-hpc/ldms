@@ -154,8 +154,8 @@ void __blog(const char *fmt, ...)
 	va_start(ap, fmt);
 	vfprintf(blog_file, fmt, ap);
 	va_end(ap);
-	pthread_mutex_unlock(&__blog_mutex);
 	fflush(blog_file);
+	pthread_mutex_unlock(&__blog_mutex);
 }
 
 int blog_flush()
