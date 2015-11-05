@@ -69,22 +69,13 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
-#define LDMSD_SOS_POSTROT "LDMSD_SOS_POSTROTATE"
-
-/*
- * According to 'man useradd' and 'man groupadd'
- * the max length of the user/group name is 32
- */
-#define MAX_USER_GROUP_LEN	32
-#define MAX_OWNER	(MAX_USER_GROUP_LEN * 2 + 1)
-
 /*
  * sos_handle_s structure, to share sos among multiple sos instances that refers
  * to the same container.
  */
 typedef struct sos_handle_s {
 	int ref_count;
-	char path[4096]; /* this should be enough to hold container name */
+	char path[PATH_MAX];
 	sos_t sos;
 	LIST_ENTRY(sos_handle_s) entry;
 } *sos_handle_t;
@@ -347,7 +338,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	si->path = malloc(pathlen);
 	if (!si->path)
 		goto err3;
-	sprintf(si->path, "/%s/%s", root_path, container);
+	sprintf(si->path, "%s/%s", root_path, container);
 	pthread_mutex_init(&si->lock, NULL);
 	pthread_mutex_lock(&cfg_lock);
 	LIST_INSERT_HEAD(&inst_list, si, entry);
@@ -372,18 +363,35 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	if (!schema)
 		goto err_0;
 
-	rc = sos_schema_attr_add(schema, "Timestamp", SOS_TYPE_TIMESTAMP);
+	/*
+	 * Time Index
+	 */
+	rc = sos_schema_attr_add(schema, "timestamp", SOS_TYPE_TIMESTAMP);
 	if (rc)
 		goto err_1;
-	rc = sos_schema_index_add(schema, "Timestamp");
+	rc = sos_schema_index_add(schema, "timestamp");
 	if (rc)
 		goto err_1;
-	rc = sos_schema_attr_add(schema, "CompId", SOS_TYPE_UINT64);
+	/*
+	 * Component/Time Index
+	 */
+	rc = sos_schema_attr_add(schema, "comp_time", SOS_TYPE_UINT64);
 	if (rc)
 		goto err_1;
-	rc = sos_schema_index_add(schema, "CompId");
+	rc = sos_schema_index_add(schema, "comp_time");
 	if (rc)
 		goto err_1;
+	/*
+	 * Job/Time Index
+	 */
+	rc = sos_schema_attr_add(schema, "job_time", SOS_TYPE_UINT64);
+	if (rc)
+		goto err_1;
+	rc = sos_schema_index_add(schema, "job_time");
+	if (rc)
+		goto err_1;
+
+	/* We assume that job_id and component_id are in the metric array below */
 	for (i = 0; i < metric_count; i++) {
 		rc = sos_schema_attr_add(schema,
 					 ldms_metric_name_get(set, i),
@@ -473,13 +481,19 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 	return __element_byte_len_[t];
 }
 
+static int job_id_idx = -1;
+static int comp_id_idx = -1;
+static sos_attr_t ts_attr = NULL;
+static sos_attr_t comp_time_attr = NULL;
+static sos_attr_t job_time_attr = NULL;
+static sos_attr_t first_attr = NULL;
+
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
 {
 	struct sos_instance *si = _sh;
-	struct ldms_timestamp _timestamp;
-	const struct ldms_timestamp *timestamp;
+	struct ldms_timestamp timestamp;
 	sos_attr_t attr;
 	SOS_VALUE(value);
 	SOS_VALUE(array_value);
@@ -502,6 +516,21 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			errno = rc;
 			return -1;
 		}
+		job_id_idx = ldms_metric_by_name(set, "job_id");
+		comp_id_idx = ldms_metric_by_name(set, "component_id");
+		ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
+		job_time_attr = sos_schema_attr_by_name(si->sos_schema, "job_time");
+		comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "comp_time");
+		first_attr = sos_schema_attr_by_name(si->sos_schema, ldms_metric_name_get(set, 0));
+		if (comp_id_idx < 0)
+			msglog(LDMSD_LINFO,
+			       "The component_id is missing from the metric set/schema.\n");
+		if (job_id_idx < 0)
+			msglog(LDMSD_LERROR,
+			       "The job_id is missing from the metric set/schema.\n");
+		assert(comp_time_attr);
+		assert(job_time_attr);
+		assert(ts_attr);
 	}
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
@@ -511,59 +540,48 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		errno = ENOMEM;
 		return -1;
 	}
-	_timestamp = ldms_transaction_timestamp_get(set);
-	timestamp = &_timestamp;
+	timestamp = ldms_transaction_timestamp_get(set);
 
-	/* The first attribute is the timestamp */
-	attr = sos_schema_attr_first(si->sos_schema);
-	value = sos_value_init(value, obj, attr);
-	value->data->prim.timestamp_.fine.secs = timestamp->sec;
-	value->data->prim.timestamp_.fine.usecs = timestamp->usec;
+	/* timestamp */
+	value = sos_value_init(value, obj, ts_attr);
+	value->data->prim.timestamp_.fine.secs = timestamp.sec;
+	value->data->prim.timestamp_.fine.usecs = timestamp.usec;
 	sos_value_put(value);
 
-	/* The second attribute is the component id, that we extract
-	 * from the udata for the first LDMS metric */
-	uint64_t udata = ldms_metric_user_data_get(set, 0);
+	/* comp_time */
+	uint32_t comp_id;
+	if (comp_id_idx >= 0)
+		comp_id = ldms_metric_get_u32(set, comp_id_idx);
+	else
+		comp_id = 0;
+	value = sos_value_init(value, obj, comp_time_attr);
+	value->data->prim.uint64_ = (uint64_t)timestamp.sec | ((uint64_t)comp_id << 32);
+	sos_value_put(value);
+
+	/* job_time */
+	uint32_t job_id;
+	if (job_id_idx >= 0)
+		job_id = ldms_metric_get_u32(set, job_id_idx);
+	else
+		job_id = 0;
+	value = sos_value_init(value, obj, job_time_attr);
+	value->data->prim.uint64_ = (uint64_t)timestamp.sec | ((uint64_t)job_id << 32);
+	sos_value_put(value);
+
 	enum ldms_value_type metric_type;
 	int array_len;
 	int esz;
 
-	attr = sos_schema_attr_next(attr);
-	value = sos_value_init(value, obj, attr);
-	value->data->prim.uint64_ = udata;
-	sos_value_put(value);
-
-	for (i = 0; i < metric_count; i++) {
+	/* The assumption is that the metrics are all in order in the schema */
+	for (i = 0, attr = first_attr; i < metric_count;
+	     i++, attr = sos_schema_attr_next(attr)) {
 		size_t count;
-		attr = sos_schema_attr_next(attr); assert(attr);
 		metric_type = ldms_metric_type_get(set, i);
-		switch (metric_type) {
-		case LDMS_V_S8:
-		case LDMS_V_U8:
-		case LDMS_V_CHAR:
-		case LDMS_V_S16:
-		case LDMS_V_U16:
-		case LDMS_V_S32:
-		case LDMS_V_U32:
-		case LDMS_V_S64:
-		case LDMS_V_U64:
-		case LDMS_V_F32:
-		case LDMS_V_D64:
+		if (metric_type < LDMS_V_CHAR_ARRAY) {
 			value = sos_value_init(value, obj, attr);
 			sos_value_set[metric_type](value, set, i);
 			sos_value_put(value);
-			break;
-		case LDMS_V_CHAR_ARRAY:
-		case LDMS_V_S8_ARRAY:
-		case LDMS_V_U8_ARRAY:
-		case LDMS_V_S16_ARRAY:
-		case LDMS_V_U16_ARRAY:
-		case LDMS_V_S32_ARRAY:
-		case LDMS_V_U32_ARRAY:
-		case LDMS_V_S64_ARRAY:
-		case LDMS_V_U64_ARRAY:
-		case LDMS_V_F32_ARRAY:
-		case LDMS_V_D64_ARRAY:
+		} else {
 			esz = __element_byte_len(metric_type);
 			array_len = ldms_metric_array_get_len(set, i);
 			array_value = sos_array_new(array_value, attr, obj, array_len);
@@ -576,10 +594,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 						 array_len);
 			assert(count == array_len);
 			sos_value_put(array_value);
-			break;
-		default:
-			assert(0 == "Unexpected type");
-			break;
 		}
 	}
 	rc = sos_obj_index(obj);
