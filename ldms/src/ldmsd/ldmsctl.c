@@ -240,8 +240,8 @@ int handle_help(char *kw, char *err_str)
 	return 0;
 }
 
-char err_str[8192];
-char linebuf[8192];
+char *err_str;
+char *linebuf;
 char *sockname = LDMSD_CONTROL_SOCKNAME;
 struct ctrlsock *ctrl_sock;
 
@@ -388,6 +388,19 @@ int main(int argc, char *argv[])
 	int op;
 	char *s = NULL;
 	int rc;
+	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
+	char *env;
+
+	env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
+	if (env)
+		cfg_buf_len = strtol(env, NULL, 0);
+	linebuf = malloc(cfg_buf_len);
+	err_str = malloc(cfg_buf_len);
+	if (!linebuf | !err_str) {
+		printf("Error allocating %zu bytes for configuration buffers.\n",
+		       cfg_buf_len);
+		exit(1);
+	}
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
