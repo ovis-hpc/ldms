@@ -86,6 +86,10 @@ static ldms_schema_t schema;
 static char *default_schema_name = "cray_aries_r";
 static int off_hsn = 0;
 
+static uint64_t compid;
+static uint64_t jobid;
+//wont need a metric offset
+
 
 static ldms_set_t get_set()
 {
@@ -95,6 +99,7 @@ static ldms_set_t get_set()
 static int create_metric_set(const char *instance_name, char* schema_name){
 
 	int rc;
+	union ldms_value v;
 	uint64_t metric_value;
 	char *s;
 	char lbuf[256];
@@ -105,6 +110,18 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 	schema = ldms_schema_new(schema_name);
 	if (!schema)
 		return ENOMEM;
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+        if (rc < 0) {
+                rc = ENOMEM;
+		goto err;
+        }
+
+        rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+        if (rc < 0) {
+                rc = ENOMEM;
+		goto err;
+        }
 
 	/*
 	 * Will create each metric in the set, even if the source does not exist
@@ -155,6 +172,12 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 		rc = errno;
 		goto err;
 	}
+
+	//add specialized metrics
+        v.v_u64 = compid;
+        ldms_metric_set(set, 0, &v);
+        v.v_u64 = 0;
+        ldms_metric_set(set, 1, &v);
 
 	return 0;
 
@@ -208,6 +231,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing producer\n");
 		return ENOENT;
 	}
+
+	value = av_value(avl, "component_id");
+        if (value)
+                compid = (uint64_t)(atoi(value));
+        else
+                compid = 0;
 
 	instancename = av_value(avl, "instance");
 	if (!instancename){
@@ -362,12 +391,13 @@ static void term(void)
 static const char *usage(void)
 {
 
-    return  "config name=cray_aries_r_sampler producer=<pname>"
+    return  "config name=cray_aries_r_sampler producer=<pname> component_id=<compid>"
 	    " instance=<iname> [schema=<sname>]"
 	    " rtrfile=<parsedrtr.txt> llite=<ostlist>"
 	    " gpu_devices=<gpulist> off_<namespace>=1\n"
 	    "    producer            The producer name value.\n"
 	    "    instance            The set name.\n",
+	    "    component_id        A unique number identifier\n"
 	    "    schema              Optional schema name. Defaults to 'cray_aries_r'\n"
 	    "    ostlist             Lustre OSTs\n",
 	    "    gpu_devices         GPU devices names\n",
