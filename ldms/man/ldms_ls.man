@@ -9,29 +9,31 @@ ldms_ls \- Query an ldmsd for metric set values
 ldms_ls [OPTION...] [NAME]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), the ldms_ls command is used to query an ldmsd (ldms daemon) for metric set values.
+The ldms_ls command is used to query an ldmsd (ldms daemon) for metric set values.
 
 .SH ENVIRONMENT
 .SS
 The following environment variables must be set:
 .TP
 LD_LIBRARY_PATH
-include path to ovis/lib and ovis/lib/ovis-ldms
+include the path to ovis/lib and libevent2. On some system, lib64 rather than lib is required.
+.TP
+PATH
+include the path to ovis/sbin
+.SS
+The following environment variables may be set to override compiled defaults:
 .TP
 ZAP_LIBPATH
 path to ovis/lib/ovis-ldms
 .TP
 LDMSD_PLUGIN_LIBPATH
 path to ovis/lib/ovis-ldms
-.TP
-PATH
-include path to ovis/sbin and ovis/bin
 
 .SS
 The following environment variables are optional:
 .TP
-LDMS_LS_AUTH_ENV
-If using authentication, full path to the file containing the secret word.
+LDMS_AUTH_FILE
+The full path to the file containing the secret word. For details, see ldms_authentication(7).
 
 .SH OPTIONS
 .TP
@@ -63,16 +65,16 @@ PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
 Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
 .TP
 .BI -a " <path>"
-If using authentication, <path> is the full path to the file containing the shared secret word.
-Set the environment variable LDMS_LS_AUTH_ENV to the full path to avoid giving it at command-line every time.
+If using authentication, <path> is the full path to the file containing the shared secret word. See ldms_authentication(7) for alternatives.
 
-If build with --enable-a-none, then <path> = none bypasses authentication requirements.
+If ldms was configured with --enable-a-none, then <path> = none bypasses authentication requirements.
 .TP
 .BI -m  " MEMORY_SIZE"
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
 The given size must be less than 1 petabytes.
-For example, 20M or 20mb are 20 megabytes.
+For example, 20M or 20mb are 20 megabytes. Unless a specific set is being queried, this should usually match the size of pre-allocated
+memory specified when starting the remote ldmsd being queried.
 .TP
 .BR -u
 Display the user data for the metrics. (Usually compid)
@@ -89,7 +91,7 @@ WAIT_SEC is the time to wait before giving up on the server. Default is 10 sec.
 .SH DEFAULTS
 .BR ldms_ls
 with no arguments defaults to
-.BR ldms_ls -p
+.BR "ldms_ls -p"
 .I
 XXX
 .BR -h
@@ -153,4 +155,4 @@ ldms_ls: lookup failed for set 'vm1_1/foo'
 .fi
 
 .SH SEE ALSO
-LDMS_Authentication(7), ldmsd(1), ldms(7)
+ldms_authentication(7), ldmsd(1), ldms(7)
