@@ -45,7 +45,7 @@ rm -rf %{buildroot}
 %{_bindir}
 %{_sbindir}
 %{_libdir}
-%{_prefix}/lib
+%{_prefix}/lib*/python*
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/AUTHORS
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/COPYING
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/ChangeLog
