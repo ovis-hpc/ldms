@@ -59,6 +59,7 @@ for X in $LIST; do
 	rm -rf * # Making sure that the build is clean
 	../configure --prefix=$PREFIX $ENABLE $DISABLE $WITH CFLAGS="$CFLAGS"
 	make rpm7
+	mkdir -p rpm7/BUILDROOT
 	pushd rpm7/BUILDROOT
 	for Y in ../RPMS/*/*.rpm; do
 		echo "-- Extracting $Y --"

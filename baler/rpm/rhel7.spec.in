@@ -41,7 +41,7 @@ rm -rf %{buildroot}
 %{_bindir}
 %{_libdir}
 %if "@ENABLE_SWIG_TRUE@x" == "x"
-%{_prefix}/lib/python*
+%{_prefix}/lib*/python*
 %endif
 %{_prefix}/etc
 
