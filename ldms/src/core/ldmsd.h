@@ -364,7 +364,7 @@ extern struct hostspec *host_first(void);
 extern struct hostspec *host_next(struct hostspec *hs);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
-#define LDMSD_MAX_CONFIG_STR_LEN 256
+#define LDMSD_MAX_CONFIG_STR_LEN 8192
 struct attr_value_list;
 struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN];

@@ -1890,8 +1890,19 @@ void *ctrl_thread_proc(void *v)
 {
 	struct msghdr msg;
 	struct iovec iov;
-	static unsigned char lbuf[256];
+	unsigned char *lbuf;
 	struct sockaddr_storage ss;
+	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
+	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
+	if (env)
+		cfg_buf_len = strtol(env, NULL, 0);
+	lbuf = malloc(cfg_buf_len);
+	if (!lbuf) {
+		ldmsd_log(LDMSD_LERROR,
+			  "Fatal error allocating %zu bytes for config string.\n",
+			  cfg_buf_len);
+		cleanup(1);
+	}
 	iov.iov_base = lbuf;
 	do {
 		ssize_t msglen;
@@ -1909,6 +1920,7 @@ void *ctrl_thread_proc(void *v)
 			break;
 		process_message(muxr_s, &msg, msglen);
 	} while (1);
+	free(lbuf);
 	return NULL;
 }
 
@@ -1966,11 +1978,22 @@ void *inet_ctrl_thread_proc(void *args)
 #endif
 	struct msghdr msg;
 	struct iovec iov;
-	static unsigned char lbuf[256];
+	unsigned char *lbuf;
 	struct sockaddr_in sin;
-	iov.iov_base = lbuf;
 	struct sockaddr rem_sin;
 	socklen_t addrlen;
+	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
+	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
+	if (env)
+		cfg_buf_len = strtol(env, NULL, 0);
+	lbuf = malloc(cfg_buf_len);
+	if (!lbuf) {
+		ldmsd_log(LDMSD_LERROR,
+			  "Fatal error allocating %zu bytes for config string.\n",
+			  cfg_buf_len);
+		cleanup(1);
+	}
+	iov.iov_base = lbuf;
 loop:
 	inet_sock = accept(inet_listener, &rem_sin, &addrlen);
 	if (inet_sock < 0) {
