@@ -593,6 +593,9 @@ typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_val
 #define LDMSCTL_VERSION		15   /* Get LDMS version */
 #define LDMSCTL_VERBOSE	16   /* Change the log level */
 
+#define LDMSCTL_INCLUDE		17  /* Include another configuration file */
+#define LDMSCTL_ENV		18  /* Set environment variable */
+
 #define LDMSCTL_PRDCR_ADD	20   /* Add a producer specification */
 #define LDMSCTL_PRDCR_DEL	21   /* Disable a producer specification */
 #define LDMSCTL_PRDCR_START	22
