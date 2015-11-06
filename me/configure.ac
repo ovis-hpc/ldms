@@ -5,8 +5,9 @@ AC_INIT([me], [1.0.1], [nichamon@ogc.us])
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/me.h])
 AC_CONFIG_AUX_DIR(config)
+AM_INIT_AUTOMAKE([foreign])
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE([-Wno-portability])
+
 m4_ifdef([AM_SILENT_RULES],
          [AM_SILENT_RULES([yes])
 ])

@@ -80,17 +80,18 @@ install-doxygen: doxygen-out
 		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
 	done
 
-install-data-local: install-doxygen
-
+install-dox: install-doxygen
+endif
+else
+install-dox:
 endif
 
 if ENABLE_DOC_MAN
 SUBDIRS += man
 endif
 
-endif
 
-install-data-local:
+install-data-local: install-dox
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
 	for f in AUTHORS README COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \

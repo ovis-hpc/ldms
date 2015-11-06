@@ -8,7 +8,6 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/baler/balerd.c])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-dnl AM _INIT_AUTOMAKE([-Wno-portability])
 AM_INIT_AUTOMAKE([foreign])
 m4_ifdef([AM_SILENT_RULES],
          [AM_SILENT_RULES([yes])
@@ -31,7 +30,7 @@ dnl Swig stuffs
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
 if test -z "$ENABLE_SWIG_TRUE"
 then
-	AM_PATH_PYTHON(2.6)
+	AM_PATH_PYTHON(2.7)
 	AC_PROG_SWIG
 	SWIG_PYTHON
 fi
@@ -43,6 +42,8 @@ OPTION_WITH_EVENT
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[coll zap ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
 AC_SUBST(OVIS_AUTH_LIBS)
+dnl we can disable our build rules for outer make dist to work when upper level disables baler.
+OPTION_DEFAULT_ENABLE([baler], [ENABLE_BALER], [  requires sos])
 OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos], [../sos],[sos/src sos/include ods/src ods/include])
 OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])

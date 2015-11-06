@@ -5,13 +5,13 @@ AC_INIT(ldms-all, 3.0.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
 AC_CONFIG_AUX_DIR(config)
-AM_CONFIG_HEADER(config.h)
 AX_PREFIX_CONFIG_H_G(ovis-all-config.h)
 AC_CONFIG_SUBDIRS([lib])
 AC_PROG_CC
 AM_INIT_AUTOMAKE([foreign -Wno-portability ]m4_ifndef([AM_SILENT_RULES],[],[silent-rules])[])
 m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
+AM_CONFIG_HEADER(config.h)
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
 
@@ -42,9 +42,9 @@ OPTION_DEFAULT_ENABLE([ldms], [ENABLE_LDMS],[  requires lib])
 AC_CONFIG_SUBDIRS([ldms])
 
 OPTION_DEFAULT_DISABLE([baler], [ENABLE_BALER], [  requires sos])
-if test "$enable_baler" = "yes"; then
-	AC_CONFIG_SUBDIRS([baler])
-fi
+
+AC_CONFIG_SUBDIRS([baler])
+
 OPTION_DEFAULT_DISABLE([me], [ENABLE_ME], [  requires lib])
 if test "$enable_me" = "yes"; then
 	AC_CONFIG_SUBDIRS([me])
@@ -98,5 +98,7 @@ util/sample_init_scripts/genders/etc/sysconfig/Makefile
 util/sample_init_scripts/genders/etc/Makefile
 util/sample_init_scripts/genders/src/Makefile
 util/sample_init_scripts/genders/etc/init.d/Makefile
+packaging/ovis-rhine.spec
+packaging/ovis-mon6.spec
 packaging/ovis-base.spec])
 AC_OUTPUT
