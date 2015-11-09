@@ -1909,7 +1909,7 @@ void *ctrl_thread_proc(void *v)
 		ss.ss_family = AF_UNIX;
 		msg.msg_name = &ss;
 		msg.msg_namelen = sizeof(ss);
-		iov.iov_len = sizeof(lbuf);
+		iov.iov_len = cfg_buf_len;
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		msg.msg_control = NULL;
@@ -2091,7 +2091,7 @@ loop:
 		sin.sin_family = AF_INET;
 		msg.msg_name = &sin;
 		msg.msg_namelen = sizeof(sin);
-		iov.iov_len = sizeof(lbuf);
+		iov.iov_len = cfg_buf_len;
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		msg.msg_control = NULL;
