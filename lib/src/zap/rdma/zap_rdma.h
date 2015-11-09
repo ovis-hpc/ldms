@@ -174,6 +174,12 @@ struct z_rdma_ep {
 	 */
 	struct z_rdma_ep *parent_ep;
 
+	enum {
+		Z_RDMA_PASSIVE_NONE = 0,
+		Z_RDMA_PASSIVE_ACCEPT = 1,
+		Z_RDMA_PASSIVE_REJECT,
+	} conn_req_decision;
+
 	/* Flag for deferred disconnected event */
 	int deferred_disconnected;
 

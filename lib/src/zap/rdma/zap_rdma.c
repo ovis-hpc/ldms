@@ -934,6 +934,7 @@ static zap_err_t z_rdma_reject(zap_ep_t ep, char *data, size_t data_len)
 	msg->hdr.msg_type = Z_RDMA_MSG_REJECT;
 	msg->len = data_len;
 	memcpy(msg->msg, data, data_len);
+	rep->conn_req_decision = Z_RDMA_PASSIVE_REJECT;
 	rc = rdma_reject(rep->cm_id, (void *)msg, len);
 	if (rc) {
 		return zap_errno2zerr(errno);
@@ -988,6 +989,7 @@ static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
 		goto err_0;
 	}
 
+	rep->conn_req_decision = Z_RDMA_PASSIVE_ACCEPT;
 	free(msg);
 	return ZAP_ERR_OK;
 err_0:
@@ -1365,17 +1367,44 @@ err:
 static void
 handle_conn_error(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id, int reason)
 {
-	struct zap_event zev;
+	struct zap_event zev = {0};
+	zev.status = reason;
+	rep->ep.state = ZAP_EP_ERROR;
 	switch (rep->ep.state) {
 	case ZAP_EP_ACCEPTING:
-		/* no need to notify application */
-		__zap_put_ep(&rep->ep);
+		/* Passive side. */
+		switch (rep->conn_req_decision) {
+		case Z_RDMA_PASSIVE_ACCEPT:
+			/*
+			 * App accepted the conn req already.
+			 * Deliver the error.
+			 */
+			zev.type = ZAP_EVENT_DISCONNECTED;
+			rep->ep.cb(&rep->ep, &zev);
+			__zap_put_ep(&rep->ep);
+			break;
+		case Z_RDMA_PASSIVE_NONE:
+			/*
+			 * App does not make any decision yet.
+			 * No need to deliver any events to the app.
+			 */
+		case Z_RDMA_PASSIVE_REJECT:
+			/*
+			 * App rejected the conn req already.
+			 * No need to deliver any events to the app.
+			 */
+			return;
+		default:
+			LOG_(rep, "Unrecognized connection request "
+					"decision '%d'\n",
+					rep->conn_req_decision);
+			assert(0);
+			break;
+		}
 		break;
 	case ZAP_EP_CONNECTING:
 	case ZAP_EP_ERROR:
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
-		zev.status = reason;
-		rep->ep.state = ZAP_EP_ERROR;
 		rep->ep.cb(&rep->ep, &zev);
 		__zap_put_ep(&rep->ep);
 		break;
@@ -1390,15 +1419,23 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 					struct rdma_cm_event *event)
 {
 	struct z_rdma_reject_msg *rej_msg = NULL;
-	struct zap_event zev = {
-		.type = ZAP_EVENT_REJECTED,
-		.status = ZAP_ERR_CONNECT,
-	};
+	struct zap_event zev = {0};
+	zev.status = ZAP_ERR_CONNECT;
+
 	/* State before being rejected is CONNECTING, but
 	 * cq thread (we're on cm thread) can race and change endpoint state to
 	 * ERROR from the posted recv. */
 	assert(rep->ep.state == ZAP_EP_CONNECTING ||
-			rep->ep.state == ZAP_EP_ERROR);
+			rep->ep.state == ZAP_EP_ERROR ||
+			rep->ep.state == ZAP_EP_ACCEPTING);
+
+	if (rep->ep.state == ZAP_EP_ACCEPTING) {
+		/* passive side. No need to look into the rejected message */
+		handle_conn_error(rep, cma_id, ZAP_ERR_CONNECT);
+		return;
+	}
+
+	/* Active side */
 	if (event->param.conn.private_data_len) {
 		rej_msg = (struct z_rdma_reject_msg *)
 				event->param.conn.private_data;
@@ -1417,7 +1454,9 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 #endif /* ZAP_DEBUG */
 	zev.data_len = rej_msg->len;
 	zev.data = (char *)rej_msg->msg;
+	zev.type = ZAP_EVENT_REJECTED;
 
+callback:
 	rep->ep.state = ZAP_EP_ERROR;
 	rep->ep.cb(&rep->ep, &zev);
 	__zap_put_ep(&rep->ep); /* Release the reference taken when the endpoint got created. */
