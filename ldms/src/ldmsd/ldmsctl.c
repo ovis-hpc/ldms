@@ -432,13 +432,13 @@ int main(int argc, char *argv[])
 		if (isatty(0) ) {
 			s = readline("ldmsctl> ");
 		} else {
-			s = fgets(linebuf, sizeof linebuf, stdin);
+			s = fgets(linebuf, cfg_buf_len, stdin);
 		}
 #else /* HAVE_LIBREADLINE */
 		if (isatty(0) ) {
 			fputs("ldmsctl> ", stdout);
 		}
-		s = fgets(linebuf, sizeof linebuf, stdin);
+		s = fgets(linebuf, cfg_buf_len, stdin);
 #endif /* HAVE_LIBREADLINE */
 		if (!s)
 			break;
