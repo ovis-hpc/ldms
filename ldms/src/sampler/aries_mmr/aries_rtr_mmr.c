@@ -60,7 +60,6 @@
 #include <string.h>
 #include <sys/errno.h>
 #include <sys/types.h>
-#include <sys/queue.h>
 #include <pthread.h>
 #include <linux/limits.h>
 #include "gpcd_pub.h"
@@ -72,28 +71,56 @@
  * \file aries_rtr_mmr.c
  * \brief aries network metric provider (reads gpcd mmr)
  *
- * parses 4 config files:
- * 1) raw names that go in as is
- * 2) r/c metrics.
- * 3) ptile metrics.
- * 4) nic metrics. THIS IS NOT AN OPTION FOR THE RTR SAMPLER
- * VC's should be explictly put in separately.
+ * parses 1 config file. All names go in as is.
  */
 
-enum {RAW_T, RC_T, NIC_T, PTILE_T, END_T};
+#define AR_MAX_LEN 256
 
-#define ARIES_MAX_ROW 6
-#define ARIES_MAX_COL 8
-#define MAX_LEN 256
+//#define NICFILTER
+#define ROUTERFILTER
 
-struct mstruct{
+//list types
+enum {REQ_T, RC_T, PTILE_T, NIC_T, OTHER_T, END_T};
+//matching string types
+enum {REQ_LMT, RSP_LMT, RTR_LMT, PTILE_LMT, NIC_LMT, END_LMT};
+
+struct listmatch_t{
+	char* header;
+	int len;
+};
+
+static struct listmatch_t LMT[END_LMT] = {
+	{"AR_NL_PRF_REQ_", 14},
+	{"AR_NL_PRF_RSP_", 14},
+	{"AR_RTR_", 7},
+	{"AR_NL_PRF_PTILE_", 16},
+	{"AR_NIC_", 7}
+};
+
+
+struct met{ //for the XXX_T
+	int metric_index;
+	LIST_ENTRY(met) entry;
+};
+
+struct mstruct{ //for the XXX_T
 	int num_metrics;
-	char** metrics;
-	int max; // number actually addedd
 	gpcd_context_t* ctx;
 };
 
 static struct mstruct mvals[END_T];
+static char** rawlist;
+static int numraw;
+
+//want to be able to create/declare these in the mstruct.
+//these allow the metric_ids to be in any order
+static LIST_HEAD(req_list, met) req_list;
+static LIST_HEAD(rc_list, met) rc_list;
+static LIST_HEAD(nic_list, met) nic_list;
+static LIST_HEAD(ptile_list, met) ptile_list;
+static LIST_HEAD(other_list, met) other_list;
+
+static gpcd_mmr_list_t *listp = NULL;
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
@@ -102,31 +129,39 @@ static ldms_schema_t schema;
 static char *default_schema_name = "aries_rtr_mmr";
 static uint64_t compid;
 static uint64_t jobid;
-static int metric_offset = 0;
-
-struct met{
-	char* name;
-	LIST_ENTRY(met) entry;
-};
-
-LIST_HEAD(raw_list, met) raw_list;
-LIST_HEAD(rc_list, met) rc_list;
-LIST_HEAD(nic_list, met) nic_list;
-LIST_HEAD(ptile_list, met) ptile_list;
-
-static gpcd_mmr_list_t *listp = NULL;
 
 
-int parseConfig(char* fname, int mtype){
+static int filterConfig(char* tmpname){
+//return val of 1 means keep this
+#ifdef NICFILTER
+	if (strncmp(LMT[NIC_LMT].header, tmpname, LMT[NIC_LMT].len) == 0)
+		return 1;
+	else
+		return 0;
+#endif
+
+#ifdef ROUTERFILTER
+	if (strncmp(LMT[NIC_LMT].header, tmpname, LMT[NIC_LMT].len) == 0)
+		return 0;
+	else
+		return 1;
+#endif
+
+	return 1;
+}
+
+
+
+static int parseConfig(char* fname){
 	FILE *mf;
 	char *s;
-	char** temp;
-	char name[MAX_LEN];
-	char lbuf[MAX_LEN];
+	char name[AR_MAX_LEN];
+	char lbuf[AR_MAX_LEN];
 	int countA = 0;
-	int countB = 0;
 	int rc;
 
+	rawlist = NULL;
+	numraw = 0;
 
 	mf = fopen(fname, "r");
 	if (!mf){
@@ -145,16 +180,20 @@ int parseConfig(char* fname, int mtype){
 			msglog(LDMSD_LDEBUG, "aries_rtr_mmr: skipping input <%s>\n", lbuf);
 			continue;
 		}
+		rc = filterConfig(name);
+		if (!rc) {
+			msglog(LDMSD_LDEBUG, "aries_rtr_mmr: filtering input <%s>\n", lbuf);
+			continue;
+		}
 		countA++;
 	} while(s);
 
-	if (countA == 0){
-		temp = NULL;
-	} else {
+	if (countA > 0){
+		//parse again to populate the metrics
 		fseek(mf, 0, SEEK_SET);
-		temp = calloc(countA, sizeof(*temp));
-		countB = 0;
-		//parse again to populate the metrics;
+		rawlist = calloc(countA, sizeof(*rawlist));
+		if (!rawlist)
+			return ENOMEM;
 		do {
 			s = fgets(lbuf, sizeof(lbuf), mf);
 			if (!s)
@@ -163,218 +202,143 @@ int parseConfig(char* fname, int mtype){
 			if ((rc != 1) || (strlen(name) == 0) || (name[0] == '#')){
 				continue;
 			}
+			rc = filterConfig(name);
+			if (!rc)
+				continue;
 			msglog(LDMSD_LDEBUG, "aries_rtr_mmr: config read <%s>\n", lbuf);
-			temp[countB] = strdup(name);
-			if (countB == countA)
+			rawlist[numraw] = strdup(name);
+			if (numraw == countA)
 				break;
-			countB++;
+			numraw++;
 		} while(s);
 	}
 
-
-	mvals[mtype].num_metrics = countA;
-	mvals[mtype].metrics = temp;
+	rc = 0;
 
 	fclose(mf);
+	return rc;
+}
+
+
+/**
+ * Build linked list of tile performance counters we wish to get values for.
+ * No aggregation.
+ */
+int addMetricToContext(gpcd_context_t* lctx, char* met)
+{
+	gpcd_mmr_desc_t *desc;
+	int status;
+	int i;
+
+	if (lctx == NULL){
+		msglog(LDMSD_LERROR, "aries_rtr_mmr: NULL context\n");
+		return -1;
+	}
+
+	desc = (gpcd_mmr_desc_t *)
+		gpcd_lookup_mmr_byname(met);
+	if (!desc) {
+		msglog(LDMSD_LINFO, "aries_rtr_mmr: Could not lookup <%s>\n", met);
+		return -1;
+	}
+
+	status = gpcd_context_add_mmr(lctx, desc);
+	if (status != 0) {
+		msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not add mmr for <%s>\n", met);
+                gpcd_remove_context(lctx); //some other option?
+		return -1;
+	}
 
 	return 0;
-
-}
-
-/**
- * Build linked list of tile performance counters we wish to get values for.
- * No aggregation.
- */
-gpcd_context_t *create_context_list(char** met, int num, int* nmet)
-{
-	gpcd_context_t *lctx = NULL;
-	gpcd_mmr_desc_t *desc;
-	int count = 0;
-	int i, status;
-
-	lctx = gpcd_create_context();
-	if (!lctx) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not create context\n");
-		return NULL;
-	}
-
-	//add them backwards
-	for (i = num-1; i >= 0 ; i--){
-		desc = (gpcd_mmr_desc_t *)
-			gpcd_lookup_mmr_byname(met[i]);
-
-		if (!desc) {
-			msglog(LDMSD_LINFO, "aries_rtr_mmr: Could not lookup <%s>\n", met[i]);
-			//leave it out and continue....
-			continue;
-		}
-
-		status = gpcd_context_add_mmr(lctx, desc);
-		if (status != 0) {
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not add mmr for <%s>\n", met[i]);
-			gpcd_remove_context(lctx);
-			return NULL;
-		}
-		struct met* e = calloc(1, sizeof(*e));
-		e->name = strdup(met[i]);
-		msglog(LDMSD_LDEBUG, "aries_rtr_mmr: will be adding metric <%s>\n", met[i]);
-
-		LIST_INSERT_HEAD(&raw_list, e, entry);
-		count++;
-	}
-
-	*nmet = count;
-	return lctx;
 }
 
 
-/**
- * Build linked list of tile performance counters we wish to get values for.
- * No aggregation.
- */
-gpcd_context_t *create_context_np(char** met, int num, int nptype, int* nmet)
-{
+static int addMetric(char* tmpname){
 
-	gpcd_context_t *lctx = NULL;
-	gpcd_mmr_desc_t *desc;
-	int rangemax = -1;
-	char key;
-	int i, k, status;
+	int i;
+	int mid;
+	int rc;
 
-	lctx = gpcd_create_context();
-	if (!lctx) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: could not create context\n");
-		return NULL;
-	}
-
-	switch (nptype){
-	case NIC_T:
-		key = 'n';
-		rangemax = 3;
-		break;
-	case PTILE_T:
-		key = 'p';
-		rangemax = 7;
-		break;
-	default:
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: Invalid type to create_context_np\n");
-		return NULL;
-		break;
-	}
-
-	int nvalid = 0;
-	//add them backwards
-	for (k = num-1; k >=0 ; k--){
-		char *ptr = strchr(met[k], key);
-		if (!ptr){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: invalid metricname: key <%c> not found in <%s>\n",
-			       key, met[k]);
-			continue;
-		}
-		for (i = rangemax; i >=0; i--) {
-			char* newname = strdup(met[k]);
-			char* ptr = strchr(newname, key);
-			if (!ptr) {
-				msglog(LDMSD_LERROR, "aries_rtr_mmr: Bad ptr!\n");
-				return NULL;
-			}
-			char ch[2];
-			snprintf(ch, 2, "%d", i);
-			ptr[0] = ch[0];
-
-			desc = (gpcd_mmr_desc_t *)
-				gpcd_lookup_mmr_byname(newname);
-			if (!desc) {
-				msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not lookup <%s>\n", newname);
-				free(newname);
-				continue;
-			}
-
-			status = gpcd_context_add_mmr(lctx, desc);
-			if (status != 0) {
-				msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not add mmr for <%s>\n", newname);
-				gpcd_remove_context(lctx);
-				return NULL;
-			}
+	if (strncmp(LMT[NIC_LMT].header, tmpname, LMT[NIC_LMT].len) == 0){
+		rc = addMetricToContext(mvals[NIC_T].ctx, tmpname);
+		if (!rc) {
+			mid = ldms_schema_metric_add(schema, tmpname, LDMS_V_U64);
+			if (mid < 0)
+				return ENOMEM;
 
 			struct met* e = calloc(1, sizeof(*e));
-			e->name = newname;
-
-			if (nptype == NIC_T)
-				LIST_INSERT_HEAD(&nic_list, e, entry);
-			else
-				LIST_INSERT_HEAD(&ptile_list, e, entry);
-			nvalid++;
+			e->metric_index = mid;
+			LIST_INSERT_HEAD(&nic_list, e, entry);
+			mvals[NIC_T].num_metrics++;
 		}
+		return rc;
 	}
 
-	*nmet = nvalid;
-	return lctx;
+	if ((strncmp(LMT[REQ_LMT].header, tmpname, LMT[REQ_LMT].len) == 0) ||
+	    (strncmp(LMT[RSP_LMT].header, tmpname, LMT[RSP_LMT].len) == 0)){
+		rc = addMetricToContext(mvals[REQ_T].ctx, tmpname);
+		if (!rc) {
+			mid = ldms_schema_metric_add(schema, tmpname, LDMS_V_U64);
+			if (mid < 0)
+				return ENOMEM;
 
-}
-
-/**
- * Build linked list of tile performance counters we wish to get values for.
- * No aggregation.  Will add all 48 for all variables.
- */
-gpcd_context_t *create_context_rc(char** basemetrics, int ibase, int* nmet)
-{
-	int i, j, k, status;
-	char name[MAX_LEN];
-	gpcd_context_t *lctx;
-	gpcd_mmr_desc_t *desc;
-	int rmax = ARIES_MAX_ROW;
-	int cmax = ARIES_MAX_COL;
-
-	lctx = gpcd_create_context();
-	if (!lctx) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not create context\n");
-		return NULL;
-	}
-
-	int nvalid = 0;
-	//add them backwards
-	for (k = ibase-1; k >= 0; k--){
-		for (i = rmax-1; i >= 0 ; i--) {
-			for (j = cmax-1; j >= 0 ; j--) {
-				snprintf(name, MAX_LEN, "AR_RTR_%d_%d_%s", i, j, basemetrics[k]);
-
-				desc = (gpcd_mmr_desc_t *)
-					gpcd_lookup_mmr_byname(name);
-
-				if (!desc) {
-					msglog(LDMSD_LINFO, "aries_rtr_mmr: Could not lookup <%s>\n", name);
-					//leave it out and continue....
-					continue;
-				}
-
-				status = gpcd_context_add_mmr(lctx, desc);
-				if (status != 0) {
-					msglog(LDMSD_LERROR, "aries_rtr_mmr: Could not add mmr for <%s>\n", name);
-					gpcd_remove_context(lctx);
-					return NULL;
-				}
-
-				struct met* e = calloc(1, sizeof(*e));
-				e->name = strdup(name);
-				msglog(LDMSD_LDEBUG, "aries_rtr_mmr: will be adding metric <%s>\n", name);
-				LIST_INSERT_HEAD(&rc_list, e, entry);
-				nvalid++;
-			}
+			struct met* e = calloc(1, sizeof(*e));
+			e->metric_index = mid;
+			LIST_INSERT_HEAD(&req_list, e, entry);
+			mvals[REQ_T].num_metrics++;
 		}
+		return rc;
 	}
 
-	*nmet = nvalid;
-	return lctx;
-}
+	if (strncmp(LMT[PTILE_LMT].header, tmpname, LMT[PTILE_LMT].len) == 0){
+		rc = addMetricToContext(mvals[PTILE_T].ctx, tmpname);
+		if (!rc) {
+			mid = ldms_schema_metric_add(schema, tmpname, LDMS_V_U64);
+			if (mid < 0)
+				return ENOMEM;
 
+			struct met* e = calloc(1, sizeof(*e));
+			e->metric_index = mid;
+			LIST_INSERT_HEAD(&ptile_list, e, entry);
+			mvals[PTILE_T].num_metrics++;
+		}
+		return rc;
+	}
+
+	if (strncmp(LMT[RTR_LMT].header, tmpname, LMT[RTR_LMT].len) == 0){
+		rc = addMetricToContext(mvals[RC_T].ctx, tmpname);
+		if (!rc) {
+			mid = ldms_schema_metric_add(schema, tmpname, LDMS_V_U64);
+			if (mid < 0)
+				return ENOMEM;
+
+			struct met* e = calloc(1, sizeof(*e));
+			e->metric_index = mid;
+			LIST_INSERT_HEAD(&rc_list, e, entry);
+			mvals[RC_T].num_metrics++;
+		}
+		return rc;
+	}
+
+	//put it in the other list.....
+	rc = addMetricToContext(mvals[OTHER_T].ctx, tmpname);
+	if (!rc) {
+		mid = ldms_schema_metric_add(schema, tmpname, LDMS_V_U64);
+		if (mid < 0)
+			return ENOMEM;
+
+		struct met* e = calloc(1, sizeof(*e));
+		e->metric_index = mid;
+		LIST_INSERT_HEAD(&other_list, e, entry);
+		mvals[OTHER_T].num_metrics++;
+	}
+	return rc;
+}
 
 static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	union ldms_value v;
 	int rc, i;
-	//the list processing in the sample will correspond to the order
-	//of the name lists
 
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
@@ -393,52 +357,29 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		rc = ENOMEM;
 		goto err;
 	}
-	metric_offset = rc+1;
 
-	for (i = 0; i < END_T; i++){
-		struct met *np;
-		if (mvals[i].max == 0)
-			continue;
-		switch (i) {
-		case RAW_T:
-			np = raw_list.lh_first;
-			break;
-		case RC_T:
-			np = rc_list.lh_first;
-			break;
-		case NIC_T:
-			np = nic_list.lh_first;
-			break;
-		case PTILE_T:
-			np = ptile_list.lh_first;
-			break;
-		}
+	//add them in the order of the file.
+	//they will come off the context and the index list in the reverse order
 
-		if (np == NULL){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: problem with list names\n");
-			break;
-		}
-
-		do {
-			rc = ldms_schema_metric_add(schema, np->name, LDMS_V_U64);
-			if (rc < 0) {
-				rc = ENOMEM;
-				goto err;
-			}
-			msglog(LDMSD_LDEBUG, "aries_rtr_mmr: adding <%s> to schema\n",
-			       np->name);
-			np = np->entry.le_next;
-		} while (np != NULL);
-
+	for (i = 0; i < numraw; i++){
+		rc = addMetric(rawlist[i]);
+		if (rc == ENOMEM)
+			goto err;
+		else if (rc)
+			msglog(LDMSD_LINFO, "aries_rtr_mmr: cannot add metric <%s>. Skipping\n",
+			       rawlist[i]);
+		free(rawlist[i]);
 	}
+	if (rawlist)
+		free(rawlist);
+	rawlist = NULL;
+	numraw = 0;
 
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
-
-	//NOTE: we can get rid of the names here if we want
 
 	//add specialized metrics
 	v.v_u64 = compid;
@@ -462,9 +403,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *value;
 	char *sname;
 	char *rawf;
-	char *rcf;
-	char *nicf;
-	char *ptilef;
 	void * arg = NULL;
 	int i;
 	int rc;
@@ -475,6 +413,15 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return EINVAL;
 	}
 
+	for (i = 0; i < END_T; i++){
+		mvals[i].num_metrics = 0;
+		mvals[i].ctx = gpcd_create_context();
+		if (!mvals[i].ctx){
+			printf("Could not create context\n");
+			return EINVAL;
+		}
+	}
+
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
 		msglog(LDMSD_LERROR, "aries_rtr_mmr: missing producer\n");
@@ -483,7 +430,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	value = av_value(avl, "component_id");
 	if (value)
-		compid = (uint64_t)(atoi(value)); //this is ok since it will really be a u32
+		compid = (uint64_t)(atoi(value));
 	else
 		compid = 0;
 
@@ -501,68 +448,16 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return EINVAL;
 	}
 
-	rawf = av_value(avl, "rawfile");
+	rawf = av_value(avl, "file");
 	if (rawf){
-		rc = parseConfig(rawf, RAW_T);
+		rc = parseConfig(rawf);
 		if (rc){
 			msglog(LDMSD_LERROR, "aries_rtr_mmr: error parsing <%s>\n", rawf);
 			return EINVAL;
 		}
-	}
-
-	rcf = av_value(avl, "rcfile");
-	if (rcf){
-		rc = parseConfig(rcf, RC_T);
-		if (rc){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: error parsing <%s>\n", rcf);
-			return EINVAL;
-		}
-	}
-
-/*
-	nicf = av_value(avl, "nicfile");
-	if (nicf){
-		rc = parseConfig(nicf, NIC_T);
-		if (rc){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: error parsing <%s>\n", nicf);
-			return EINVAL;
-		}
-	}
-*/
-
-	ptilef = av_value(avl, "ptilefile");
-	if (ptilef){
-		rc = parseConfig(ptilef, PTILE_T);
-		if (rc){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: error parsing <%s>\n", ptilef);
-			return EINVAL;
-		}
-	}
-
-	if (!rcf && !rawf && !nicf && !ptilef){
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: must specificy at least one input file\n");
+	} else {
+		msglog(LDMSD_LERROR, "aries_rtr_mmr: must specify input file\n");
 		return EINVAL;
-	}
-
-	for (i = 0; i < END_T; i++){
-		switch (i){
-		case RAW_T:
-			mvals[i].ctx = create_context_list(mvals[i].metrics, mvals[i].num_metrics, &mvals[i].max);
-			break;
-		case RC_T:
-			mvals[i].ctx = create_context_rc(mvals[i].metrics, mvals[i].num_metrics, &mvals[i].max);
-			break;
-		case NIC_T:
-			//fall thru
-		case PTILE_T:
-			mvals[i].ctx = create_context_np(mvals[i].metrics, mvals[i].num_metrics, i, &mvals[i].max);
-			break;
-		}
-
-		if (mvals[i].max && !mvals[i].ctx){
-			msglog(LDMSD_LERROR, "aries_rtr_mmr: Cannot create context for %d\n", i);
-			return EINVAL;
-		}
 	}
 
 	rc = create_metric_set(value, sname);
@@ -571,8 +466,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
-
-
 	return 0;
 }
 
@@ -580,7 +473,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 static int sample(void){
 
 	union ldms_value v;
-	int metric_no;
 	int i;
 	int rc;
 
@@ -590,7 +482,7 @@ static int sample(void){
 	}
 
 	for (i = 0; i < END_T; i++){
-		if (mvals[i].max){
+		if (mvals[i].num_metrics){
 			rc = gpcd_context_read_mmr_vals(mvals[i].ctx);
 			if (rc){
 				msglog(LDMSD_LERROR, "aries_rtr_mmr: Cannot read raw mmr vals\n");
@@ -601,37 +493,60 @@ static int sample(void){
 
 	ldms_transaction_begin(set);
 
-	metric_no = metric_offset;
 	for (i = 0; i < END_T; i++){
-		if (mvals[i].max == 0)
+		struct met *np;
+
+		if (mvals[i].num_metrics == 0)
 			continue;
 		listp = mvals[i].ctx->list;
+		switch(i) {
+		case REQ_T:
+			np = req_list.lh_first;
+			break;
+		case RC_T:
+			np = rc_list.lh_first;
+			break;
+		case NIC_T:
+			np = nic_list.lh_first;
+			break;
+		case PTILE_T:
+			np = ptile_list.lh_first;
+			break;
+		}
 
+		if (np == NULL){
+			msglog(LDMSD_LERROR, "aries_rtr_mmr: Name/MetricID list is null\n");
+			rc = EINVAL;
+			goto out;
+		}
 		if (!listp){
 			msglog(LDMSD_LERROR, "aries_rtr_mmr: Context list is null\n");
 			rc = EINVAL;
-			goto err;
+			goto out;
 		}
 
 		while (listp != NULL){
 			v.v_u64 = listp->value;
-			ldms_metric_set(set, metric_no, &v);
-			metric_no++;
+			ldms_metric_set(set, np->metric_index, &v);
 
 			if (listp->next != NULL)
 				listp=listp->next;
 			else
 				break;
+			np = np->entry.le_next;
+			if (np == NULL){
+				msglog(LDMSD_LERROR, "aries_rtr_mmr: No metric id\n");
+				       goto out;
+			}
 		}
 	}
 
+	rc = 0;
 out:
+
 	ldms_transaction_end(set);
 	return 0;
 
-err:
-	ldms_transaction_end(set);
-	return rc;
 }
 
 
@@ -647,36 +562,31 @@ static void term(void)
 	int i;
 
 	for (i = 0; i < END_T; i++){
+		struct met *np;
+		switch(i){
+		case RC_T:
+			np = rc_list.lh_first;
+			break;
+		case NIC_T:
+			np = nic_list.lh_first;
+			break;
+		case PTILE_T:
+			np = ptile_list.lh_first;
+			break;
+		default:
+			np = req_list.lh_first;
+		}
+		while (np != NULL) {
+			struct met *tp = np->entry.le_next;
+			LIST_REMOVE(np, entry);
+			free(np);
+			np = tp;
+		}
+
 		if (mvals[i].ctx)
 			gpcd_remove_context(mvals[i].ctx);
 		mvals[i].ctx = NULL;
 		mvals[i].num_metrics = 0;
-		mvals[i].max = 0;
-	}
-
-
-	while (rc_list.lh_first != NULL){
-		free(rc_list.lh_first->name);
-		rc_list.lh_first->name = NULL;
-		LIST_REMOVE(rc_list.lh_first, entry);
-	}
-
-	while (raw_list.lh_first != NULL){
-		free(raw_list.lh_first->name);
-		raw_list.lh_first->name = NULL;
-		LIST_REMOVE(raw_list.lh_first, entry);
-	}
-
-	while (nic_list.lh_first != NULL){
-		free(nic_list.lh_first->name);
-		nic_list.lh_first->name = NULL;
-		LIST_REMOVE(nic_list.lh_first, entry);
-	}
-
-	while (ptile_list.lh_first != NULL){
-		free(ptile_list.lh_first->name);
-		ptile_list.lh_first->name = NULL;
-		LIST_REMOVE(ptile_list.lh_first, entry);
 	}
 
 	if (schema)
@@ -689,16 +599,12 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=aries_rtr_mmr producer=<prod_name> instance=<inst_name> component_id=<compid> [(raw|rc|ptile)file=<file> schema=<sname>]\n"
-		"    <prod_name>       The producer name\n"
-		"    <inst_name>       The instance name\n"
-		"    <compid>    The instance name\n"
-		"    <rawfile>         File with full names of metrics\n"
-		"    <rcfile>          File with abbreviated names of metrics to be added in for all rows and columns\n"
-		"    <ptilefile>       File with full name with 'p' to be replaced for all ptile options (0-7)\n"
-		"    <sname>           Optional schema name. Defaults to 'aries_rtr_mmr'\n"
-		"    NOTE: nicfile is NOT an option for the aries_rtr_mmr sampler\n";
-
+	return  "config name=aries_rtr_mmr producer=<prod_name> instance=<inst_name> file=<file> [component_id=<compid> schema=<sname>]\n"
+		"    <prod_name>    The producer name\n"
+		"    <inst_name>    The instance name\n"
+		"    <file>         File with full names of metrics\n";
+		"    <compid>       Optional unique number identifier. Defaults to zero.\n"
+		"    <sname>        Optional schema name. Defaults to 'aries_rtr_mmr'\n";
 }
 
 static struct ldmsd_sampler aries_rtr_mmr_plugin = {
