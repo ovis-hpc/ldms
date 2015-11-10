@@ -861,14 +861,23 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	msg_type = ntohs(msg->msg_type);
 	switch (msg_type) {
 	case Z_RDMA_MSG_SEND:
+		assert(wc->byte_len >= sizeof(*msg) + 1);
+		if (wc->byte_len < sizeof(*msg) + 1)
+			goto err_wrong_dsz;
 		handle_recv(rep, msg, wc->byte_len);
 		break;
 
 	case Z_RDMA_MSG_RENDEZVOUS:
+		assert(wc->byte_len >= sizeof(struct z_rdma_share_msg));
+		if (wc->byte_len < sizeof(struct z_rdma_share_msg))
+			goto err_wrong_dsz;
 		handle_rendezvous(rep, msg, wc->byte_len);
 		break;
 
 	case Z_RDMA_MSG_CREDIT_UPDATE:
+		assert(wc->byte_len == sizeof(struct z_rdma_message_hdr));
+		if (wc->byte_len != sizeof(struct z_rdma_message_hdr))
+			goto err_wrong_dsz;
 		break;
 	default:
 		LOG_(rep, "%s(): Unknown message type '%d'\n",
@@ -895,6 +904,11 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	pthread_mutex_unlock(&rep->credit_lock);
 
  out:
+	return;
+ err_wrong_dsz:
+	LOG_(rep, "%s(): msg type '%d': Invalid data size.\n",
+				__func__, msg_type);
+	z_rdma_close(&rep->ep);
 	return;
 }
 
