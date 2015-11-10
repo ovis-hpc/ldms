@@ -931,7 +931,7 @@ static zap_err_t z_rdma_reject(zap_ep_t ep, char *data, size_t data_len)
 		return ZAP_ERR_RESOURCE;
 	}
 
-	msg->hdr.msg_type = Z_RDMA_MSG_REJECT;
+	msg->hdr.msg_type = htons(Z_RDMA_MSG_REJECT);
 	msg->len = data_len;
 	memcpy(msg->msg, data, data_len);
 	rep->conn_req_decision = Z_RDMA_PASSIVE_REJECT;
@@ -964,7 +964,7 @@ static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
 	if (!msg) {
 		return ZAP_ERR_RESOURCE;
 	}
-	msg->hdr.msg_type = Z_RDMA_MSG_ACCEPT;
+	msg->hdr.msg_type = htons(Z_RDMA_MSG_ACCEPT);
 	msg->len = data_len;
 	memcpy(msg->data, data, data_len);
 
@@ -1441,7 +1441,7 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 				event->param.conn.private_data;
 	}
 
-	if (!rej_msg || rej_msg->hdr.msg_type != Z_RDMA_MSG_REJECT) {
+	if (!rej_msg || ntohs(rej_msg->hdr.msg_type) != Z_RDMA_MSG_REJECT) {
 #ifdef ZAP_DEBUG
 		rep->rejected_conn_error_count++;
 #endif /* ZAP_DEBUG */
@@ -1490,7 +1490,7 @@ handle_established(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 	if (event->param.conn.private_data_len)
 		msg = (struct z_rdma_accept_msg *)event->param.conn.private_data;
 
-	if (msg && (msg->hdr.msg_type == Z_RDMA_MSG_ACCEPT) && (msg->len > 0)) {
+	if (msg && (ntohs(msg->hdr.msg_type) == Z_RDMA_MSG_ACCEPT) && (msg->len > 0)) {
 		zev.data_len = msg->len;
 		zev.data = (void*)msg->data;
 	}
