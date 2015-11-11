@@ -112,16 +112,16 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 		return ENOMEM;
 
 	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-        if (rc < 0) {
-                rc = ENOMEM;
+	if (rc < 0) {
+		rc = ENOMEM;
 		goto err;
-        }
+	}
 
-        rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
-        if (rc < 0) {
-                rc = ENOMEM;
+	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
 		goto err;
-        }
+	}
 
 	/*
 	 * Will create each metric in the set, even if the source does not exist
@@ -174,10 +174,10 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 	}
 
 	//add specialized metrics
-        v.v_u64 = compid;
-        ldms_metric_set(set, 0, &v);
-        v.v_u64 = 0;
-        ldms_metric_set(set, 1, &v);
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
+	v.v_u64 = 0;
+	ldms_metric_set(set, 1, &v);
 
 	return 0;
 
@@ -195,8 +195,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	char *value;
 	int i;
 
-	char* deprecated[]={"set", "component_id"};
-	int numdep = 2;
+	char* deprecated[]={"set"};
+	int numdep = 1;
 
 	for (i = 0; i < numdep; i++){
 		value = av_value(avl, deprecated[i]);
@@ -233,10 +233,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	value = av_value(avl, "component_id");
-        if (value)
-                compid = (uint64_t)(atoi(value));
-        else
-                compid = 0;
+	if (value)
+		compid = (uint64_t)(atoi(value));
+	else
+		compid = 0;
 
 	instancename = av_value(avl, "instance");
 	if (!instancename){
