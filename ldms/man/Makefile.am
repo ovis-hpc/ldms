@@ -7,6 +7,7 @@ ldmsctl.man
 
 dist_man7_MANS= \
 ldms_authentication.man \
+ldms_quickstart.man \
 Plugin_aries_mmr.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
