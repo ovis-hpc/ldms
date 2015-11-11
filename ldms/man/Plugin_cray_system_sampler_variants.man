@@ -35,12 +35,18 @@ To build the cray_aries_r_sampler, build with the following flags:
 You may build multiple variants simultaneously.
 
 .SH ENVIRONMENT
+.PP
 If you have built with
 .B --enable_cray_nvidia
 and intend to collect data for gpu devices, then the following environment variable must be set:
 .TP
 LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH
 Path to libnvidia-ml.so library
+.PP
+If you intend to collect lustre metrics, you must add to
+.TP
+LD_LIBRARY_PATH
+Path to the lustre plugin (same as the LDMSD_PLUGIN_LIBPATH). This will be addressed in a future release.
 
 .SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
