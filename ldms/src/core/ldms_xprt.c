@@ -466,6 +466,23 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->dir.type = htonl(LDMS_DIR_LIST);
 	(void)__ldms_for_all_sets(send_dir_reply_cb, &arg);
+
+	/* There might be one set left-over */
+	if (arg.set_count) {
+		assert(arg.set_count == 1);
+		arg.reply->dir.more = 0;
+		arg.reply->dir.set_count = htonl(1);
+		arg.reply->dir.set_list_len = htonl(arg.set_list_len);
+		arg.reply->hdr.len = htonl(arg.reply_size);
+
+		zerr = zap_send(x->zap_ep, arg.reply, arg.reply_size);
+		if (zerr != ZAP_ERR_OK) {
+			x->log("%s: zap_send synchronously error. '%s'\n",
+					__FUNCTION__, zap_err_str(zerr));
+			ldms_xprt_close(arg.x);
+		}
+	}
+
 	free(reply);
 	return;
  out:
@@ -1033,8 +1050,8 @@ out:
 		log_fn("ldms_get_secretword: failed source %s. %s\n",
 			source, strerror(errno));
 		log_fn("Possible sources are: from user (option -a filename), "
-			"environment variable " LDMS_AUTH_ENV ", ~/" CONFNAME 
-			", " SYSCONFDIR "/" SYSCONFNAME "\n");	
+			"environment variable " LDMS_AUTH_ENV ", ~/" CONFNAME
+			", " SYSCONFDIR "/" SYSCONFNAME "\n");
 	}
 	return secretword;
 }
