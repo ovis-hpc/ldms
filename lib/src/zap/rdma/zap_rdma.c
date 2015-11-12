@@ -715,6 +715,7 @@ static int __rdma_post_recv(struct z_rdma_ep *rep, struct z_rdma_buffer *rb)
 	rc = ibv_post_recv(rep->qp, &wr, &bad_wr);
 	if (rc) {
 		__rdma_context_free(ctxt);
+		rc = zap_errno2zerr(rc);
 	}
 out:
 	pthread_mutex_unlock(&rep->ep.lock);
@@ -887,7 +888,10 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 
 	ret = __rdma_post_recv(rep, rb);
 	if (ret) {
+		LOG_(rep, "ep %p: Post recv buffer fail. %s\n",
+				rep, zap_err_str(ret));
 		__rdma_buffer_free(rb);
+		goto out;
 	}
 
 	/* Credit updates are not counted */

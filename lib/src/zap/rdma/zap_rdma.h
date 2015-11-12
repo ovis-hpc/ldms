@@ -110,7 +110,6 @@ struct z_rdma_buffer {
 	char *data;
 	size_t data_len;
 	struct ibv_mr *mr;
-	LIST_ENTRY(z_rdma_buffer) link; /* linked list entry */
 };
 
 /**
