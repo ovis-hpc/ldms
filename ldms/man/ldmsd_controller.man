@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd_controller
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "01 Nov 2015" "v3" "ldmsd_contoller man page"
+.TH man 8 "12 Nov 2015" "v3" "ldmsd_contoller man page"
 
 .SH NAME
 ldmsd_controller \- python script interface to configure an ldms daemon.
@@ -11,12 +11,17 @@ ldmsd_controller> <cmd> [ <attr>=<value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), the ldmsd
-can be configured via the ldmsd_controller. ldmsd_controller
-can execute scripts and send the output commands to an ldmsd.
+can be configured via the ldmsd_controller.
+
+ldmsd_controller is new in v3. The ldmsctl interface from v2 still works, but ldmsd_controller is preferred.
+
+If ldms is built with --enable-readline, one can invoke the ldmsd_controller from the command line
+and obtain an input interface with feedback. In many instances, instances, however, it is prefered
+to execute scripts and send the output commands to an ldmsd instead.
 
 .SH ENVIRONMENT
 Note: python2.6 with the additional installation of the argparse module
-OR python2.7 (which has the argparse module) is required
+OR python2.7 (which has the argparse module) is required.
 
 .TP
 PYTHONPATH
@@ -138,7 +143,9 @@ attr=<value>
 .TP
 .BI name " name"
 .br
-A unique name for this producer
+The ProducerName as specified in the sampler. The producer name is used by the ldmsd to uniquely identify
+the producers that are being added. The prdcr_add command can only be called once to add a ProducerName
+to the aggregator.
 .TP
 .BI xprt " xprt"
 .br
@@ -221,14 +228,15 @@ A regular expression
 
 
 .SH UPDATER COMMAND SYNTAX
-.SS Add an updater process that wil periodically sample producer metric sets
+.SS Add an updater process that will periodically sample producer metric sets
 .BR updtr_add
 attr=<value>
 .RS
 .TP
 .BI name " name"
 .br
-The update policy name
+The update policy name. The policy name should be unique. It is independent of any attributes specified
+for the metric sets or hosts.
 .TP
 .BI interval " interval"
 .br
@@ -383,8 +391,8 @@ attr=<value>
 The storage policy name
 .RE
 
-.SS Add a regular expression used to identify the producers this
-storage policy will apply to.
+.SS Add a regular expression used to identify the producers this storage policy will apply to.
+.br
 .BR strgp_prdcr_add
 attr=<value>
 .RS
@@ -567,7 +575,6 @@ Defaults to 0 which means this is an active aggregator. Optional
 .RE
 
 .SS Set the user data value for a metric in a metric set.
-This is typically used to convey the Component Id to the Aggregator.
 .br
 .BR udata
 attr=<value>
@@ -630,9 +637,6 @@ Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
 .SS Get the LDMS version the running LDMSD bases on.
 .BR version
 
-
-.SH NOTES
-ldmsd_controller is more flexible configuration interface than ldmsctl.
 
 .SH BUGS
 No known bugs.
