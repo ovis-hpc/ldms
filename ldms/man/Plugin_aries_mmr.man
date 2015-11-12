@@ -20,7 +20,9 @@ or scale values).
 
 .PP
 The aries_XXX_mmr samplers depend on Cray's libgpcd, built with aries options. This library is currently
-unreleased and you cannot build this sampler, if you do not have the libraries and headers.
+unreleased and you cannot build this sampler if you do not have the libraries and headers.
+If you have the code to build the library, be sure to build with
+.B CFLAGS=-fPIC
 
 .PP
 The difference between the variants is that aries_nic_mmr will skip any counters in the inputfile
@@ -34,9 +36,6 @@ is the contexts in a particular order, with the metrics in each context as they 
 .PP
 For the config file, all counter names must be fully spelled out (i.e., does not resolve the shorthand
 given in the documentation for the counters).
-
-If you have the code to build the library, be sure to build with
-.B CFLAGS=-fPIC
 
 .PP
 To build the aries_mmr sampler, build with the following flags:
@@ -69,7 +68,7 @@ Optional schema name. It is intended that the same sampler on different nodes wi
 .TP
 component_id=<compid>
 .br
-Optional unique number component identifier. Defaults to zero.
+Optional component identifier. Defaults to zero.
 .TP
 file=<file>
 .br
@@ -86,8 +85,12 @@ At the moment, no functions of the data (either in the sampler or in a store) ar
 .IP \[bu]
 Counters whose names do not resolve are left out.
 .IP \[bu]
-These samplers may change at any time.
+If you start this sampler on a node for which the counters cannot be obtained (e.g., an external login node), the
+set may still get created, however the sample function will fail and the plugin will be stopped.
 .IP \[bu]
+A non-sampler, standalone version of this code is in the Source in util/aries/mmr_reader. It is not built via the build.
+.IP \[bu]
+These samplers may change at any time.
 .PP
 
 .SH BUGS
