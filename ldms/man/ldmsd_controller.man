@@ -47,6 +47,9 @@ Inet ctrl listener port of ldmsd
 .BI --auth_file " AUTH_FILE"
 .br
 Path to the file containing the secret word
+.br
+NOTE: if you are using ldmsd_controller to configure a remote host and you are
+using authentication, then you must build with --enable-swig.
 .TP
 .BI --source " SOURCE"
 .br
@@ -634,9 +637,12 @@ attr=<value>
 Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
 .RE
 
-.SS Get the LDMS version the running LDMSD bases on.
+.SS Get the LDMS version the running LDMSD is based on.
 .BR version
 
+.SH NOTES
+If you are using ldmsd_controller to configure a remote host and you are
+using authentication, then you must build with --enable-swig.
 
 .SH BUGS
 No known bugs.
