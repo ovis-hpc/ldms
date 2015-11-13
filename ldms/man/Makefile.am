@@ -1,5 +1,6 @@
 
 dist_man8_MANS= \
+ldms_build_install.man \
 ldms_ls.man \
 ldmsd.man \
 ldmsd_controller.man \
@@ -20,7 +21,6 @@ Plugin_store_derived_csv.man \
 Plugin_vmstat.man
 
 pending_dist_man7_MANS= \
-LDMS_QuickStart.man \
 Plugin_lustre2_client.man \
 Plugin_procsensors.man \
 Plugin_procstatutil.man \
