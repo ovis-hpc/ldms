@@ -115,10 +115,10 @@ char *logfile;
 char *pidfile;
 char *secretword;
 /* authenticate will never be 0 unless:
- HAVE_ANONE is defined 
+ HAVE_ANONE is defined
  and -a none given in options.
 */
-int authenticate = 1; 
+int authenticate = 1;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 
@@ -1460,7 +1460,7 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	if (authenticate)
 		l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical,
 			secretword);
-	else 
+	else
 		l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
 #else
 	l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
@@ -1638,7 +1638,7 @@ int main(int argc, char *argv[])
 			if (!authfile) {
 				printf("Unable to copy secretword filename\n");
 				exit(ENOMEM);
-				
+
 			}
 			if (strcmp(optarg,"none") == 0) {
 #ifdef HAVE_ANONE

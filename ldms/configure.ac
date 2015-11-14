@@ -42,9 +42,11 @@ OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 
+dnl AMQP
+OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
+
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
-dnl ods from sos has a conflicting rbt.h; sos and ldms should use same lib, not clone
 
 dnl Options for consumer
 OPTION_DEFAULT_DISABLE([me], [ENABLE_ME])

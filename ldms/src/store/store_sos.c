@@ -86,7 +86,6 @@ static LIST_HEAD(sos_handle_list, sos_handle_s) sos_handle_list;
  * NOTE:
  *   <sos::path> = <root_path>/<container>
  */
-
 struct sos_instance {
 	struct ldmsd_store *store;
 	char *container;
@@ -96,6 +95,14 @@ struct sos_instance {
 	sos_handle_t sos_handle; /**< sos handle */
 	sos_schema_t sos_schema;
 	pthread_mutex_t lock; /**< lock at metric store level */
+
+	int job_id_idx;
+	int comp_id_idx;
+	sos_attr_t ts_attr;
+	sos_attr_t comp_time_attr;
+	sos_attr_t job_time_attr;
+	sos_attr_t first_attr;
+
 	LIST_ENTRY(sos_instance) entry;
 };
 static pthread_mutex_t cfg_lock;
@@ -182,6 +189,20 @@ sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_D64] = set_double_fn,
 };
 
+sos_handle_t create_handle(const char *path, sos_t sos)
+{
+	sos_handle_t h = calloc(1, sizeof(*h));
+	if (!h)
+		return NULL;
+	strncpy(h->path, path, sizeof(h->path));
+	h->ref_count = 1;
+	h->sos = sos;
+	pthread_mutex_lock(&cfg_lock);
+	LIST_INSERT_HEAD(&sos_handle_list, h, entry);
+	pthread_mutex_unlock(&cfg_lock);
+	return h;
+}
+
 sos_handle_t create_container(const char *path)
 {
 	int rc = 0;
@@ -230,13 +251,7 @@ sos_handle_t create_container(const char *path)
 		goto err_1;
 	}
 	sos_part_put(part);
-	strncpy(h->path, path, sizeof(h->path));
-	h->ref_count = 1;
-	h->sos = sos;
-	pthread_mutex_lock(&cfg_lock);
-	LIST_INSERT_HEAD(&sos_handle_list, h, entry);
-	pthread_mutex_unlock(&cfg_lock);
-	return h;
+	return create_handle(path, sos);
  err_1:
 	sos_container_close(sos, SOS_COMMIT_ASYNC);
  err_0:
@@ -424,7 +439,19 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 		si->sos_schema = schema;
 		return 0;
 	}
-
+	/* See if it exists, but has not been opened yet. */
+	sos_t sos = sos_container_open(si->path, SOS_PERM_RW);
+	if (sos) {
+		/* Create a new handle and add it for this SOS */
+		si->sos_handle = create_handle(si->path, sos);
+		/* See if the schema exists */
+		schema = sos_schema_by_name(sos, si->schema_name);
+		if (!schema)
+			goto add_schema;
+		si->sos_schema = schema;
+		return 0;
+	}
+	
 	si->sos_handle = create_container(si->path);
 	if (!si->sos_handle) {
 		return errno;
@@ -481,13 +508,6 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 	return __element_byte_len_[t];
 }
 
-static int job_id_idx = -1;
-static int comp_id_idx = -1;
-static sos_attr_t ts_attr = NULL;
-static sos_attr_t comp_time_attr = NULL;
-static sos_attr_t job_time_attr = NULL;
-static sos_attr_t first_attr = NULL;
-
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
@@ -516,21 +536,21 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			errno = rc;
 			return -1;
 		}
-		job_id_idx = ldms_metric_by_name(set, "job_id");
-		comp_id_idx = ldms_metric_by_name(set, "component_id");
-		ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
-		job_time_attr = sos_schema_attr_by_name(si->sos_schema, "job_time");
-		comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "comp_time");
-		first_attr = sos_schema_attr_by_name(si->sos_schema, ldms_metric_name_get(set, 0));
-		if (comp_id_idx < 0)
+		si->job_id_idx = ldms_metric_by_name(set, "job_id");
+		si->comp_id_idx = ldms_metric_by_name(set, "component_id");
+		si->ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
+		si->job_time_attr = sos_schema_attr_by_name(si->sos_schema, "job_time");
+		si->comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "comp_time");
+		si->first_attr = sos_schema_attr_by_name(si->sos_schema, ldms_metric_name_get(set, 0));
+		if (si->comp_id_idx < 0)
 			msglog(LDMSD_LINFO,
 			       "The component_id is missing from the metric set/schema.\n");
-		if (job_id_idx < 0)
+		if (si->job_id_idx < 0)
 			msglog(LDMSD_LERROR,
 			       "The job_id is missing from the metric set/schema.\n");
-		assert(comp_time_attr);
-		assert(job_time_attr);
-		assert(ts_attr);
+		assert(si->comp_time_attr);
+		assert(si->job_time_attr);
+		assert(si->ts_attr);
 	}
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
@@ -543,28 +563,28 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	timestamp = ldms_transaction_timestamp_get(set);
 
 	/* timestamp */
-	value = sos_value_init(value, obj, ts_attr);
+	value = sos_value_init(value, obj, si->ts_attr);
 	value->data->prim.timestamp_.fine.secs = timestamp.sec;
 	value->data->prim.timestamp_.fine.usecs = timestamp.usec;
 	sos_value_put(value);
 
 	/* comp_time */
 	uint32_t comp_id;
-	if (comp_id_idx >= 0)
-		comp_id = ldms_metric_get_u32(set, comp_id_idx);
+	if (si->comp_id_idx >= 0)
+		comp_id = ldms_metric_get_u32(set, si->comp_id_idx);
 	else
 		comp_id = 0;
-	value = sos_value_init(value, obj, comp_time_attr);
+	value = sos_value_init(value, obj, si->comp_time_attr);
 	value->data->prim.uint64_ = (uint64_t)timestamp.sec | ((uint64_t)comp_id << 32);
 	sos_value_put(value);
 
 	/* job_time */
 	uint32_t job_id;
-	if (job_id_idx >= 0)
-		job_id = ldms_metric_get_u32(set, job_id_idx);
+	if (si->job_id_idx >= 0)
+		job_id = ldms_metric_get_u32(set, si->job_id_idx);
 	else
 		job_id = 0;
-	value = sos_value_init(value, obj, job_time_attr);
+	value = sos_value_init(value, obj, si->job_time_attr);
 	value->data->prim.uint64_ = (uint64_t)timestamp.sec | ((uint64_t)job_id << 32);
 	sos_value_put(value);
 
@@ -573,7 +593,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	int esz;
 
 	/* The assumption is that the metrics are all in order in the schema */
-	for (i = 0, attr = first_attr; i < metric_count;
+	for (i = 0, attr = si->first_attr; i < metric_count;
 	     i++, attr = sos_schema_attr_next(attr)) {
 		size_t count;
 		metric_type = ldms_metric_type_get(set, i);
