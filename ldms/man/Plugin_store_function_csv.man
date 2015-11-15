@@ -1,0 +1,325 @@
+.\" Manpage for Plugin_store_function_csv
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "11 Jan 2016" "v3" "LDMS Plugin store_function_csv man page"
+
+.SH NAME
+Plugin_store_function_csv - man page for the LDMS store_function_csv plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller script:
+.br
+ldmsd_controller> load name=store_function_csv
+.br
+ldmsd_controller> config name=store_function_csv [ <attr> = <value> ]
+.br
+ldmsd_controller> strgp_add plugin=store_function_csv [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd (ldms daemon) are configured via
+the ldmsd_controller. The store_function_csv plugin is a CSV store.
+.PP
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+.TP
+.BR config
+name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> rolltype=<rolltype> rollover=<rollover> ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_function_csv.
+.TP
+path=<path>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<container>/<schema>. Typically these are chosen to make output files like: XXX/store_function_csv/meminfo. If you choose a rollover option, then the filename will also be postpended by "-" followed by the epochtime e.g., XXX/store_function_csv/meminfo-123456789.
+.TP
+derivedconf=<confname>
+.br
+Path to the derived configuration file(s). If more than 1 is given, separate by commas. Format information is given elsewhere in this document.
+.TP
+altheader=<0/!0>
+.br
+Distinguishes whether or not to write the header to a separate file than the data file. 0 = same file. Any non-zero is a separate file.
+Default is the same file.If a separate file is used then, if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER").
+If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written
+at each rollover. Default is altheader=0.
+.TP
+ageusec=<ageusec>
+.br
+Set output data field Flag = 1 if the interval between two successive data reports for the same host's same metric set is greater than ageusec. (NOTE: in v3 this is now usec, not sec).
+.TP
+rolltype=<rolltype>
+.br
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are:
+.RS
+.TP
+1
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.RE
+
+
+.SH STORE_FUNCTION_CSV CONFIGURATION FILE
+Format: schema new_metricname function num_dependent_metrics csv_list_of_dependent_metrics scale|thresh writeout.
+.PP
+Whitespace delimits the fields in the configuration file; commas delimit the metric this new metric is dependent upon. One metric per line.
+.PP
+.RS
+.TP
+schema
+.br
+The schema for this new metric. It will be dependent upon base metrics from this schema and/or new metrics which derive from
+these base metrics.
+.TP
+new_metricname=<name>
+.br
+The name for this new metric.
+.TP
+function=<fct>
+.br
+Identify the function for the calculation. Options are defined below.
+.TP
+num_dependent_metrics
+.br
+Number of metrics that this new metric is derived from.
+.TP
+csv_list_of_dependent_metrics
+.br
+Depedent metricname and schema uniquely identify the variable to match. Thus, if you have the same sampler on two different nodes having different schema, you can create a different derived metric for each. The dependent metrics must all belong to the same schema, or be derived metrics which are then based on the base metrics of the same schema.
+.TP
+scale|thresh
+.br
+A float scale value or thresh value is included as part of every function. Value is scale except for thresh functions.
+Use 1 if you want no scale. Currently the details of the scale multiplication are being worked out.
+.TP
+writeout
+.br
+Values of either 0 or 1 depending on whether or not this metric should be written out to the store (it may be an intermediate
+in a calculation).
+.RE
+
+.PP
+Derived configuration format example:
+.nf
+.RS
+# SCHEMA NEW_METRICNAME FUNCTION N_MET <METS_CSV> SCALE|THRESH WRITEOUT
+meminfo RAW_ACTIVE RAW 1 Active 1 1
+meminfo DELTA_ACTIVE DELTA 1 Active 1 1
+meminfo RATE_ACTIVE RATE 1 Active 1 1
+
+meminfo ACT_TOT DIV_AB 2 Active,Total 1 1
+meminfo R_ACT_TOT RATE 1 ACT_TOT 1 1
+.RE
+.fi
+
+.PP
+Blank lines are allowed in the file as shown
+
+
+.SH SUPPORTED FUNCTIONS
+.PP
+.TP
+RAW
+.br
+The raw value. This function is univariate. It operates on either a uint64_t or a vector of uint64_t. It returns the same
+type as it operates upon.
+.TP
+DELTA
+.br
+The difference between the current value and the last. This function is univariate.
+It operates on either a uint64_t or a vector of uint64_t. It returns the same type as it operates upon.
+.TP
+RATE
+.br
+The difference between the current value and the last divided by the time. This function is univariate.
+It operates on either a uint64_t or a vector of uint64_t. It returns the same type as it operates upon.
+.TP
+SUM_N
+.br
+The sum of N inputs. This function is multivariate.
+It operates on uint64_t's or a vectors of uint64_t. It returns the same type as it operates upon.
+.TP
+AVG_N
+.br
+The avg of N inputs. This function is multivariate.
+It operates on uint64_t's or a vectors of uint64_t. It returns the same type as it operates upon.
+.TP
+SUB_AB
+.br
+Subtract two inputs in the order they are listed. This function is bivariate.
+It operates on two uint64_t's or two vectors of uint64_t. It returns the same type as it operates upon.
+.TP
+MUL_AB
+.br
+Multiplies two inputs. This function is bivariate.
+It operates on two uint64_t's or two vectors of uint64_t. It returns the same type as it operates upon.
+.TP
+DIV_AB
+.br
+Divides input A by input B, in the order they are listed. This function is bivariate.
+It operates on two uint64_t's or two vectors of uint64_t. It returns the same type as it operates upon.
+.TP
+THRESH_GE
+.br
+Returns 1 or 0 if a value is greater or equal to some threshold, specified by the scale value.
+This function is univariate. It operates on a uint64_t or a vector of uint64_t.
+It returns the same type as it operates upon.
+.TP
+THRESH_LT
+.br
+Returns 1 or 0 if a value is greater or equal to some threshold, specified by the scale value.
+This function is univariate. It operates on a uint64_t or a vector of uint64_t.
+It returns the same type as it operates upon.
+.TP
+MAX
+.br
+Returns the max value. This function is univariate. It operates on a uint64_t or, most likely, a vector of uint64_t
+in which case it returns the max of all the values in the vector. It returns a uint64_t.
+.TP
+MIN
+.br
+Returns the min value. This function is univariate. It operates on a uint64_t or, most likely, a vector of uint64_t
+in which case it returns the min of all the values in the vector. It returns a uint64_t.
+.TP
+SUM
+.br
+Returns the sum. This function is univariate. It operates on a uint64_t or, most likely, a vector of uint64_t
+in which case it returns the SUM over all the values in the vector. It returns a uint64_t.
+.TP
+AVG
+.br
+Returns the avg. This function is univariate. It operates on a uint64_t or, most likely, a vector of uint64_t
+in which case it returns the avg of all the values in the vector. It returns a uint64_t.
+.TP
+SUM_VS
+.br
+Returns the sum of a vector and scalar value applied to each value in the vector. It operates on a vector
+of uint64_t and a scalar uint64_t specified in that order. It returns a vector of uint64_t of the
+same size as the input vector.
+.TP
+SUB_VS
+.br
+Returns the value of a scalar subtracted from each value of the vector. The vector and the
+scalar are specified in that order. The scalar and vector are of type uint64_t.
+It returns a vector of uint64_t of the same size as the input vector.
+.TP
+SUB_SV
+.br
+Returns a vector where each value is that of the difference of a scalar and an individual value
+of a vector. The scalar and the vector are specified in that order. The scalar and vector are of type uint64_t.
+It returns a vector of uint64_t of the same size as the input vector.
+.TP
+MUL_VS
+.br
+Returns the value of each value of a vector multiplied by a scalar. The vector and the
+scalar are specified in that order. The scalar and vector are of type uint64_t.
+It returns a vector of uint64_t of the same size as the input vector.
+.TP
+DIV_VS
+.br
+Returns the value of a each value of vector divided by a scalar. The vector and the
+scalar are specified in that order. The scalar and vector are of type uint64_t.
+It returns a vector of uint64_t of the same size as the input vector.
+.TP
+DIV_SV
+.br
+Returns the value of a scalar divided by each value of a vector. The scalar and the
+vector are specified in that order. The scalar and vector are of type uint64_t.
+It returns a vector of uint64_t of the same size as the input vector.
+
+.SH STORE COLUMN ORDERING
+
+This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
+.PP
+.RS
+Time, Time_usec, DT, DT_usec, ProducerName, <new_metric >*, <new_metric.flag >*,Flag
+.RE
+.PP
+Flag will be set if a) the dt is negative b) dt is greater than ageusec or c) in a rate or delta calculation, the second value is greater than the first. It is NOT set if the cast in the computation would result in an overflow.
+.RE
+.PP
+The column sequence of <new_metrics> is the order in which the metrics are added into the metric set by the derived csv store configuration file.
+
+
+.SH STRGP_ADD ATTRIBUTE SYNTAX
+The strgp_add sets the policies being added. This line determines the output files via
+identification of the container and schema.
+.TP
+.BR strgp_add
+plugin=store_function_csv name=<policy_name> schema=<schema> container=<container>
+.br
+ldmsd_controller strgp_add line
+.br
+.RS
+.TP
+plugin=<plugin_name>
+.br
+This MUST be store_csv.
+.TP
+name=<policy_name>
+.br
+The policy name for this strgp.
+.TP
+container=<container>
+.br
+The container and the schema determine where the output files will be written
+(see path above).
+.TP
+schema=<schema>
+.br
+The container and the schema determine where the output files will be written
+(see path above). The schema is also used to match the metric-schema combinations
+identified in the derived configuration file.
+.RE
+
+
+.SH NOTES
+.PP
+.IP \[bu]
+A metric must be specified before it can be used as part of another metric.
+.IP \[bu]
+Derived metrics may be used as input into other metrics.
+.IP \[bu]
+Although scale is a float option, its placement in the calculation is being worked out. In the
+meantime, it may be cast into a uint64_t as part of the calculation.
+.IP \[bu]
+Thresh and scale currently use the same variable. Thresh may change to a uint64_t to match the variable types later.
+.IP \[bu]
+Flag will be set if a) the dt is negative or b) dt is greater than ageusec.
+Individual variable flags will be set if a) there is invalid input to the calculation or b) in a rate or subtraction calculation, the second value is greater than the first. It is NOT set if the cast in the computation would result in an overflow.
+.IP \[bu]
+This store is speculative at the moment. This store may replace store_derived_csv in future.
+
+.SH BUGS
+None.
+
+.SH EXAMPLES
+ldmsctl lines for configuring store_function_csv:
+.nf
+ldmsd_controller> load name=store_function_csv
+ldmsd_controller> config name=store_csv altheader=1 derivedconf=/XXX/der1.conf,/XXX/der2.conf path=/XXX/storedir
+ldmsd_controller> strgp_add name=csv_memRHeL6_policy plugin=store_function_csv container=data_der schema=meminfoRHeL6
+ldmsd_controller> strgp_add name=csv_memRHeL7_policy plugin=store_function_csv container=data_der schema=meminfoRHeL7
+ldmsd_controller> strgp_add name=csv_ps_policy plugin=store_function_csv container=data_der schema=procstat
+.if
+
+.SH SEE ALSO
+ldms(7), Plugin_store_derived_csv(7)

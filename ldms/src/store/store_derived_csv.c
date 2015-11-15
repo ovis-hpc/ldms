@@ -973,6 +973,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		}
 		break;
 	case BAD_HEADER:
+		pthread_mutex_unlock(&s_handle->lock);
 		return EINVAL;
 		break;
 	default:

@@ -59,6 +59,8 @@
 static ldms_schema_t schema;
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
+static uint64_t compid = 0;
+static uint64_t jobid = 0;
 
 struct array_construct {
 	const char *name;
@@ -82,11 +84,24 @@ struct array_construct array_contruct_entries[] = {
 
 static int create_metric_set(const char *instance_name)
 {
+	union ldms_value v;
 	int rc;
 
 	schema = ldms_schema_new("array_example");
 	if (!schema)
 		return ENOMEM;
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+        if (rc < 0) {
+		rc = ENOMEM;
+                goto err;
+        }
+
+        rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+        if (rc < 0) {
+                rc = ENOMEM;
+                goto err;
+        }
 
 	struct array_construct *ent = &array_contruct_entries[0];
 
@@ -105,6 +120,12 @@ static int create_metric_set(const char *instance_name)
 		goto err;
 	}
 
+	//add specialized metrics
+        v.v_u64 = compid;
+        ldms_metric_set(set, 0, &v);
+        v.v_u64 = 0;
+        ldms_metric_set(set, 1, &v);
+
 	return 0;
  err:
 	ldms_schema_delete(schema);
@@ -118,6 +139,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog(LDMSD_LERROR, "array_example: missing producer\n");
 		return ENOENT;
 	}
+
+	value = av_value(avl, "component_id");
+        if (value)
+                compid = (uint64_t)(atoi(value));
+        else
+                compid = 0;
 
 	value = av_value(avl, "instance");
 	if (!value) {
@@ -146,7 +173,7 @@ static int sample(void)
 	static uint8_t off = 0;
 	struct array_construct *ent = array_contruct_entries;
 	union ldms_value v;
-	mid = 0;
+	mid = 2; //2 specialized metrics
 	while (ent->name) {
 		for (i = 0; i < ent->n; i++) {
 			switch (ent->type) {
@@ -210,9 +237,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=array_example producer=<prod_name> instance=<inst_name>\n"
+	return  "config name=array_example producer=<prod_name> instance=<inst_name> [component_id=<compid>]\n"
 		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n";
+		"    <inst_name>  The instance name\n"
+		"    <compid>     Optional unique number identifier. Defaults to zero.\n";
 }
 
 static struct ldmsd_sampler array_example_plugin = {
