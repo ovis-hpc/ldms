@@ -15,6 +15,10 @@ for ($node = 0; $node < 4; $node++){
     print "##\n";
 
     $schema = "rtr_mmr_". $node;
+
+    print "$schema aries_rtr_id RAWTERM 1 aries_rtr_id 1 1\n";
+    print "#\n";
+
     for ($row = 0; $row < 5; $row++){
 	for ($col = $node*2; $col <= $node*2+1; $col++){
 	    $header = "AR_RTR_". $row . "_" . "$col";
@@ -69,6 +73,9 @@ $schema = "nic_mmr";
 # PAGE 12
 @NIC_ARGS = ("AR_NIC_RSPMON_PARB_EVENT_CNTR_AMO","AR_NIC_RSPMON_PARB_EVENT_CNTR_WC",
 	     "AR_NIC_RSPMON_PARB_EVENT_CNTR_BTE_RD", "AR_NIC_RSPMON_PARB_EVENT_CNTR_IOMMU");
+
+print "$schema aries_rtr_id RAWTERM 1 aries_rtr_id 1 1\n";
+print "#\n";
 
 #RATIOS OF INCREASE IN FLITS TO INCREASE IN PKTS
 for ($num = 0; $num < scalar(@NIC_ARGS); $num++){

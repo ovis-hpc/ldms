@@ -161,9 +161,7 @@ static ldmsd_msg_log_f msglog;
  * - Currently only handles uint64_t scalar and vector types
  * - Currently only printsout uint64_t values. (cast)
  * - Fix the frees
- * - Review comments
  * - not keeping or writing the user data
- * - update all documentation for the per variable flags
  * - decide if should have option to write these out to multiple files for the same schema.
  */
 
@@ -183,6 +181,7 @@ typedef enum {
 	RATE,
 	DELTA,
 	RAW,
+	RAWTERM,
 	MAX_N,
 	MIN_N,
 	SUM_N,
@@ -208,34 +207,36 @@ typedef enum {
 struct func_info{
 	char* name; //name of the fct
 	variate_t variatetype;
+	int createreturn; //create space for the return vals (should usually be the case)
 	int createstore; //create space to store data in addtion to the return vals (to be used in the calculation)
 };
 
 //order matters
 struct func_info func_def[(FCT_END+1)] = {
-	{"RATE", UNIVARIATE, 1},
-	{"DELTA", UNIVARIATE, 1},
-	{"RAW", UNIVARIATE, 0},
-	{"MAX_N", MULTIVARIATE, 0},
-	{"MIN_N", MULTIVARIATE, 0},
-	{"SUM_N", MULTIVARIATE, 0},
-	{"AVG_N", MULTIVARIATE, 0},
-	{"SUB_AB", BIVARIATE, 0},
-	{"MUL_AB", BIVARIATE, 0},
-	{"DIV_AB", BIVARIATE, 0},
-	{"THRESH_GE", UNIVARIATE, 0},
-	{"THRESH_LT", UNIVARIATE, 0},
-	{"MAX", UNIVARIATE, 0},
-	{"MIN", UNIVARIATE, 0},
-	{"SUM", UNIVARIATE, 0},
-	{"AVG", UNIVARIATE, 0},
-	{"SUM_VS", BIVARIATE, 0},
-	{"SUB_VS", BIVARIATE, 0},
-	{"SUB_SV", BIVARIATE, 0},
-	{"MUL_VS", BIVARIATE, 0},
-	{"DIV_VS", BIVARIATE, 0},
-	{"DIV_SV", BIVARIATE, 0},
-	{"FCT_END", VARIATE_END, 0},
+	{"RATE", UNIVARIATE, 1, 1},
+	{"DELTA", UNIVARIATE, 1, 1},
+	{"RAW", UNIVARIATE, 1, 0},
+	{"RAWTERM", UNIVARIATE, 0, 0},
+	{"MAX_N", MULTIVARIATE, 1, 0},
+	{"MIN_N", MULTIVARIATE, 1, 0},
+	{"SUM_N", MULTIVARIATE, 1, 0},
+	{"AVG_N", MULTIVARIATE, 1, 0},
+	{"SUB_AB", BIVARIATE, 1, 0},
+	{"MUL_AB", BIVARIATE, 1, 0},
+	{"DIV_AB", BIVARIATE, 1, 0},
+	{"THRESH_GE", UNIVARIATE, 1, 0},
+	{"THRESH_LT", UNIVARIATE, 1, 0},
+	{"MAX", UNIVARIATE, 1, 0},
+	{"MIN", UNIVARIATE, 1, 0},
+	{"SUM", UNIVARIATE, 1, 0},
+	{"AVG", UNIVARIATE, 1, 0},
+	{"SUM_VS", BIVARIATE, 1, 0},
+	{"SUB_VS", BIVARIATE, 1, 0},
+	{"SUB_SV", BIVARIATE, 1, 0},
+	{"MUL_VS", BIVARIATE, 1, 0},
+	{"DIV_VS", BIVARIATE, 1, 0},
+	{"DIV_SV", BIVARIATE, 1, 0},
+	{"FCT_END", VARIATE_END, 0, 0},
 };
 /******/
 
@@ -630,20 +631,32 @@ static struct derived_data* createDerivedData(const char* metric_name,
 				tmpder->varidx[count].typei = BASE;
 				enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_arry[j]);
 				switch (metric_type){
-				case LDMS_V_U64:
-					tmpder->varidx[count].dim = 1;
-					break;
+				case LDMS_V_U8_ARRAY:
+				case LDMS_V_S8_ARRAY:
+				case LDMS_V_U16_ARRAY:
+				case LDMS_V_S16_ARRAY:
+				case LDMS_V_U32_ARRAY:
+				case LDMS_V_S32_ARRAY:
 				case LDMS_V_U64_ARRAY:
+				case LDMS_V_S64_ARRAY:
+				case LDMS_V_F32_ARRAY:
+				case LDMS_V_D64_ARRAY:
 					tmpder->varidx[count].dim = ldms_metric_array_get_len(set, metric_arry[j]);
 					break;
 				default:
-					msglog(LDMSD_LERROR,
-					       "%s: unsupported type %d for base metric %s\n",
-					       __FILE__, (int)metric_type, name);
-					goto err;
+					//this includes CHAR_ARRAY (will write out only 1 header, will read with one call)
+					tmpder->varidx[count].dim = 1;
 					break;
 				}
 				tmpder->varidx[count].metric_type = metric_type;
+				if (tmpder->fct != RAWTERM){
+					if ((metric_type != LDMS_V_U64) && (metric_type != LDMS_V_U64_ARRAY)){
+						msglog(LDMSD_LERROR,
+					       "%s: unsupported type %d for base metric %s\n",
+						       __FILE__, (int)metric_type, name);
+						goto err;
+					}
+				}
 			}
 		}
 
@@ -1049,23 +1062,23 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
 	   a separate field */
-	fprintf(fp, "#Time, Time_usec, DT, DT_usec");
-	fprintf(fp, ", ProducerName");
-	fprintf(fp, ", component_id, job_id");
+	fprintf(fp, "#Time,Time_usec,DT,DT_usec");
+	fprintf(fp, ",ProducerName");
+	fprintf(fp, ",component_id,job_id");
 
 	//Print the header using the metrics associated with this set
 	for (i = 0; i < s_handle->numder; i++){
 		if (s_handle->der[i]->writeout) {
 			if (s_handle->der[i]->dim == 1) {
-				fprintf(fp, ", %s, %s.Flag", s_handle->der[i]->name, s_handle->der[i]->name);
+				fprintf(fp, ",%s,%s.Flag", s_handle->der[i]->name, s_handle->der[i]->name);
 			} else {
 				for (j = 0; j < s_handle->der[i]->dim; j++)
-					fprintf(fp, ", %s.%d", s_handle->der[i]->name, j);
-				fprintf(fp, ", %s.Flag", s_handle->der[i]->name);
+					fprintf(fp, ",%s.%d", s_handle->der[i]->name, j);
+				fprintf(fp, ",%s.Flag", s_handle->der[i]->name);
 			}
 		}
 	}
-	fprintf(fp, ", TimeFlag\n");
+	fprintf(fp, ",TimeFlag\n");
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
@@ -1311,6 +1324,7 @@ static int calcDimValidate(struct derived_data* dd){
 	case RATE:
 	case DELTA:
 	case RAW:
+	case RAWTERM:
 	case THRESH_GE:
 	case THRESH_LT:
 		//these are all univariate and are of the same dimensionality as the dependent
@@ -1379,11 +1393,269 @@ static int calcDimValidate(struct derived_data* dd){
 	return EINVAL;
 };
 
+static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
+			 int* metric_array, struct derived_data* dd){
 
-static int doFunc(ldms_set_t set, int* metric_arry, int metric_count,
+	//using these to ease updating the data for this metric
+	struct idx_type* vals = dd->varidx; //dependent vars indicies. only 1
+	int i = vals[0].i;
+	enum ldms_value_type rtype = vals[0].metric_type;
+	double scale = dd->scale;
+	int dim = dd->dim;
+	int rc;
+	int j;
+
+	//it can only be a base.
+	//it must be valid, becuase the raw data is valid - will writeout flag 0 at end
+	switch(rtype){
+	case LDMS_V_CHAR:
+		//scale is unused
+		rc = fprintf(s_handle->file, ",%c",
+			     ldms_metric_get_char(set, metric_array[i]));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_U8:
+		rc = fprintf(s_handle->file, ",%hhu",
+			     (ldms_metric_get_u8(set, metric_array[i]) * (uint8_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_S8:
+		rc = fprintf(s_handle->file, ",%hhd",
+			     (ldms_metric_get_s8(set, metric_array[i]) * (int8_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_U16:
+		rc = fprintf(s_handle->file, ",%hu",
+			     (ldms_metric_get_u16(set, metric_array[i]) * (uint16_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_S16:
+		rc = fprintf(s_handle->file, ",%hd",
+			     (ldms_metric_get_s16(set, metric_array[i]) * (int16_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_U32:
+		rc = fprintf(s_handle->file, ",%" PRIu32,
+			     (ldms_metric_get_u32(set, metric_array[i]) * (uint32_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_S32:
+		rc = fprintf(s_handle->file, ",%" PRId32,
+			     (ldms_metric_get_s32(set, metric_array[i]) * (int32_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_U64:
+		rc = fprintf(s_handle->file, ",%"PRIu64,
+			     (ldms_metric_get_u64(set, metric_array[i]) * (uint64_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_S64:
+		rc = fprintf(s_handle->file, ",%" PRId64,
+			     (ldms_metric_get_s64(set, metric_array[i]) * (int64_t)(scale)));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_F32:
+		rc = fprintf(s_handle->file, ",%f",
+			     (float)(ldms_metric_get_float(set, metric_array[i]) * scale));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_D64:
+		rc = fprintf(s_handle->file, ",%lf",
+			     (ldms_metric_get_double(set, metric_array[i]) * scale));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_CHAR_ARRAY:
+		//scale unused
+		rc = fprintf(s_handle->file, ",%s",
+			     ldms_metric_array_get_str(set, metric_array[i]));
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	case LDMS_V_U8_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%hhu",
+				     (ldms_metric_array_get_u8(set, metric_array[i], j) * (uint8_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_S8_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%hhd",
+				     (ldms_metric_array_get_s8(set, metric_array[i], j) * (int8_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_U16_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%hu",
+				     (ldms_metric_array_get_u16(set, metric_array[i], j) * (uint16_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_S16_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%hd",
+				     (ldms_metric_array_get_s16(set, metric_array[i], j) * (int16_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_U32_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%" PRIu32,
+				     (ldms_metric_array_get_u32(set, metric_array[i], j) * (uint32_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_S32_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%" PRId32,
+				     (ldms_metric_array_get_s32(set, metric_array[i], j) * (int32_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_U64_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%" PRIu64,
+				     (ldms_metric_array_get_u64(set, metric_array[i], j) * (uint64_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_S64_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%" PRId64,
+				     (ldms_metric_array_get_s64(set, metric_array[i], j) * (int64_t)(scale)));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_F32_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%f",
+				     (float)(ldms_metric_array_get_float(set, metric_array[i], j) * scale));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	case LDMS_V_D64_ARRAY:
+		for (j = 0; j < dim; j++){
+			rc = fprintf(s_handle->file, ",%lf",
+				     ldms_metric_array_get_double(set, metric_array[i], j) * scale);
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+		}
+		break;
+	default:
+		//print no value
+		rc = fprintf(s_handle->file, ",");
+		if (rc < 0)
+			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+			       rc, s_handle->path);
+		else
+			s_handle->byte_count += rc;
+		break;
+	}
+
+	//print the flag -- which is always 0
+	rc = fprintf(s_handle->file, ",0");
+	if (rc < 0)
+		msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+		       rc, s_handle->path);
+	else
+		s_handle->byte_count += rc;
+
+	return 1; //always valid
+
+};
+
+
+static int doFunc(ldms_set_t set, int* metric_arry,
 		  struct setdatapoint* dp, struct derived_data* dd,
-		  struct timeval curr, struct timeval prev,
 		  struct timeval diff, int flagtime){
+//		CAN PASS IN  struct timeval curr, struct timeval prev, for debugging...
 
 	/**
 	 * NOTE: have to make tradeoffs in the chances of overflowing with casts
@@ -1418,7 +1690,6 @@ static int doFunc(ldms_set_t set, int* metric_arry, int metric_count,
 
 	//TODO: return value could be used to flag for overflow in the future
 	//the variables are such that any dependencies on other vars have already been updated by the time they get here.
-	//NOTE: only passing curr and prev for debugging messages
 
 	//FIXME....will want to add in checks that the dimension of the inputs are what we epxect incase
 	//the user has messed up the schema
@@ -2127,7 +2398,6 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
 			return ENOMEM;
 		}
-
 		dp->ts = NULL;
 		dp->datavals = NULL;
 		*numsets++;
@@ -2156,41 +2426,23 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 			return ENOMEM;
 		}
 
-		//create the space for the return vals (and store vals if needed
+		//create the space for the return vals and store vals if needed
 		for (i = 0; i < numder; i++){
 			dp->datavals[i].dim = der[i]->dim;
-			dp->datavals[i].returnvals = calloc(dp->datavals[i].dim, sizeof(uint64_t));
-			if (dp->datavals[i].returnvals == NULL) {
-				msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
-				for (j = 0; j <= i; j++){
-					if (dp->datavals[j].storevals)
-						free(dp->datavals[j].storevals);
-					if (dp->datavals[j].returnvals)
-						free(dp->datavals[j].returnvals);
-				}
-				free(dp->datavals);
-				free(dp->ts);
-				free(dp);
-				dp = NULL;
-				return ENOMEM;
+
+			if (func_def[der[i]->fct].createreturn){
+				dp->datavals[i].returnvals = calloc(dp->datavals[i].dim, sizeof(uint64_t));
+				if (dp->datavals[i].returnvals == NULL)
+					goto err;
+				dp->datavals[i].returnvalid = 0;
+			} else {
+				dp->datavals[i].returnvals = NULL;
 			}
-			dp->datavals[i].returnvalid = 0;
+
 			if (func_def[der[i]->fct].createstore){
 				dp->datavals[i].storevals = calloc(dp->datavals[i].dim, sizeof(uint64_t));
-				if (dp->datavals[i].storevals == NULL) {
-					msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
-					for (j = 0; j <= i; j++){
-						if (dp->datavals[j].storevals)
-							free(dp->datavals[j].storevals);
-						if (dp->datavals[j].returnvals)
-							free(dp->datavals[j].returnvals);
-					}
-					free(dp->datavals);
-					free(dp->ts);
-					free(dp);
-					dp = NULL;
-					return ENOMEM;
-				}
+				if (dp->datavals[i].storevals == NULL)
+					goto err;
 				dp->datavals[i].storevalid = 0;
 			} else {
 				dp->datavals[i].storevals = NULL;
@@ -2202,6 +2454,23 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 
 	*rdp = dp;
 	return 0;
+
+
+err:
+	msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+	for (j = 0; j <= i; j++){
+		if (dp->datavals[j].storevals)
+			free(dp->datavals[j].storevals);
+		if (dp->datavals[j].returnvals)
+			free(dp->datavals[j].returnvals);
+	}
+	free(dp->datavals);
+	free(dp->ts);
+	free(dp);
+	dp = NULL;
+
+	return ENOMEM;
+
 };
 
 
@@ -2310,23 +2579,22 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 	if (!skip){
 		/* format: #Time, Time_usec, DT, DT_usec */
-		fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
+		fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ",%"PRIu32,
 			ts->sec, ts->usec, ts->usec);
-		fprintf(s_handle->file, ", %lu.%06lu, %lu",
+		fprintf(s_handle->file, ",%lu.%06lu,%lu",
 			diff.tv_sec, diff.tv_usec, diff.tv_usec);
 
 		if (pname != NULL){
-			fprintf(s_handle->file, ", %s", pname);
+			fprintf(s_handle->file, ",%s", pname);
 			s_handle->byte_count += strlen(pname);
 		} else {
-			fprintf(s_handle->file, ", ");
+			fprintf(s_handle->file, ",");
 		}
 
-		fprintf(s_handle->file, ",%"PRIu64", %"PRIu64,
+		fprintf(s_handle->file, ",%"PRIu64",%"PRIu64,
 			compid, jobid);
 	}
-
-	//always get the vals because may need the stored value, even if skip this time
+        //always get the vals because may need the stored value, even if skip this time
 
 	for (i = 0; i < s_handle->numder; i++){ //go thru all the vals....only write the writeout vals
 		uint64_t val, temp;
@@ -2336,30 +2604,36 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 //		msglog(LDMSD_LDEBUG, "%s: Schema %s Updating variable %d of %d: %s\n",
 //		       pname, s_handle->schema, i, s_handle->numder, s_handle->der[i]->name);
 
-		rvalid = doFunc(set, metric_arry, metric_count,
-				dp, s_handle->der[i],
-				curr, prev, diff, setflagtime);
-
-		//write it out, if its writeout and not skip
-		if (!skip && s_handle->der[i]->writeout){
-			struct dinfo* di = &(dp->datavals[i]);
-			for (j = 0; j < di->dim; j++) {
-				rc = fprintf(s_handle->file, ", %" PRIu64, di->returnvals[j]);
-				if (rc < 0) {
+		if (s_handle->der[i]->fct == RAWTERM) {
+			//this will also do its writeout
+			if (!skip)
+				rvalid = doRAWTERMFunc(set, s_handle, metric_arry, s_handle->der[i]);
+		} else {
+			rvalid = doFunc(set, metric_arry,
+					dp, s_handle->der[i],
+					diff, setflagtime);
+			//write it out, if its writeout and not skip
+			//FIXME: Should the writeout be moved in so its like doRAWTERMFunc ?
+			if (!skip && s_handle->der[i]->writeout){
+				struct dinfo* di = &(dp->datavals[i]);
+				for (j = 0; j < di->dim; j++) {
+					rc = fprintf(s_handle->file, ",%" PRIu64, di->returnvals[j]);
+					if (rc < 0) {
+						msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
+						       __FILE__, rc, s_handle->path);
+						//FIXME: should this exit entirely from this store?
+						break;
+					} else {
+						s_handle->byte_count += rc;
+					}
+				}
+				rc = fprintf(s_handle->file, ",%d", (!di->returnvalid));
+				if (rc < 0)
 					msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
 					       __FILE__, rc, s_handle->path);
-					//FIXME: should this exit entirely from this store?
-					break;
-				} else {
+				else
 					s_handle->byte_count += rc;
-				}
 			}
-			rc = fprintf(s_handle->file, ", %d", (!di->returnvalid));
-			if (rc < 0)
-				msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
-				       __FILE__, rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
 		}
 	}
 
@@ -2372,7 +2646,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			setflagtime = 1;
 
 	if (!skip){
-		fprintf(s_handle->file, ", %d\n", setflagtime); //NOTE: currently only setting flag based on time
+		fprintf(s_handle->file, ",%d\n", setflagtime); //NOTE: currently only setting flag based on time
 		s_handle->byte_count += 1;
 		s_handle->store_count++;
 	}
