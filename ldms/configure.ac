@@ -114,6 +114,15 @@ OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc coll ovis_util zap ovis_ct
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
+if [ -d ${OVIS_LIB_LIB64DIR}/ovis-lib ]; then
+ZAP_LIBPATH=${OVIS_LIB_LIB64DIR}/ovis-lib
+else
+ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
+fi
+AC_SUBST(ZAP_LIBPATH)
+LDMSD_PLUGIN_LIBPATH=${pkglibdir}
+AC_SUBST(LDMSD_PLUGIN_LIBPATH)
+
 dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 OPTION_WITH([libevent], [LIBEVENT],[/usr])
@@ -353,6 +362,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 etc/init.d/ldmsd_aggregator
 		 etc/init.d/ldmsd_sampler
 		 etc/logrotate.d/Makefile
+		 etc/systemd/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
 		 packaging/ovis-ldms.spec
