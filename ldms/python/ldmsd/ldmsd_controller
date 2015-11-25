@@ -139,12 +139,17 @@ class LdmsdCmdParser(cmd.Cmd):
         if len(resp[g.end():]) > 0:
             print resp[g.end():]
 
+    def read_none_tty(self, fin):
+        for cmd in fin:
+            self.onecmd(cmd)
+
     def do_source(self, arg):
         """
         Parse commands from the specified file as if they were entered
         on the console.
         """
         script = open(arg, 'r')
+        self.read_none_tty(script)
         for cmd in script:
             self.onecmd(cmd)
         script.close()
@@ -705,14 +710,18 @@ if __name__ == "__main__":
                                                     'port': int(args.port)},
                                        secretPath = args.auth_file)
 
-        if args.source is not None:
-            cmdParser.do_source(args.source)
-            cmdParser.do_quit(None)
-        elif args.script is not None:
-            cmdParser.do_script(args.script)
+        if sys.stdin.isatty() is False:
+            cmdParser.read_none_tty(sys.stdin)
             cmdParser.do_quit(None)
         else:
-            cmdParser.cmdloop("Welcome to the LDMSD control processor")
+            if args.source is not None:
+                cmdParser.do_source(args.source)
+                cmdParser.do_quit(None)
+            elif args.script is not None:
+                cmdParser.do_script(args.script)
+                cmdParser.do_quit(None)
+            else:
+                cmdParser.cmdloop("Welcome to the LDMSD control processor")
     except KeyboardInterrupt:
         sys.exit(0)
     except Exception as e:
