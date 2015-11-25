@@ -65,7 +65,7 @@
 
 #pragma pack(4)
 enum z_rdma_message_type {
-	Z_RDMA_MSG_CREDIT_UPDATE = 0,
+	Z_RDMA_MSG_CREDIT_UPDATE = 1,
 	Z_RDMA_MSG_SEND,
 	Z_RDMA_MSG_RENDEZVOUS,
 	Z_RDMA_MSG_ACCEPT,

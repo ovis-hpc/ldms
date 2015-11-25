@@ -541,8 +541,11 @@ static void submit_pending(struct z_rdma_ep *rep)
 
 		TAILQ_REMOVE(&rep->io_q, ctxt, pending_link);
 
-		if (post_send(rep, ctxt, &badwr, is_rdma))
+		if (post_send(rep, ctxt, &badwr, is_rdma)) {
 			LOG_(rep, "Error posting queued I/O.\n");
+			__rdma_context_free(ctxt);
+		}
+
 	}
  out:
 	pthread_mutex_unlock(&rep->credit_lock);
@@ -867,6 +870,10 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 
 	case Z_RDMA_MSG_CREDIT_UPDATE:
 		break;
+	default:
+		LOG_(rep, "%s(): Unknown message type '%d'\n",
+				__func__, msg_type);
+		assert(0);
 	}
 
 	ret = __rdma_post_recv(rep, rb);
