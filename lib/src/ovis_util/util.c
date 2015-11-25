@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-14 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-14 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -51,6 +51,7 @@
 #include <sys/errno.h>
 #include <string.h>
 #include <malloc.h>
+#include <stdlib.h>
 #include "util.h"
 
 char *av_name(struct attr_value_list *av_list, int idx)
@@ -60,19 +61,29 @@ char *av_name(struct attr_value_list *av_list, int idx)
 	return NULL;
 }
 
+char *__av_value(struct attr_value *av)
+{
+	if (av->value[0] == '$') {
+		/* Environment variable */
+		return getenv(&av->value[1]);
+	} else {
+		return av->value;
+	}
+}
+
 char *av_value(struct attr_value_list *av_list, char *name)
 {
 	int i;
 	for (i = 0; i < av_list->count; i++)
 		if (0 == strcmp(name, av_list->list[i].name))
-			return av_list->list[i].value;
+			return __av_value(&av_list->list[i]);
 	return NULL;
 }
 
 char *av_value_at_idx(struct attr_value_list *av_list, int i)
 {
 	if (i < av_list->count)
-		return av_list->list[i].value;
+		return __av_value(&av_list->list[i]);
 	return NULL;
 }
 
