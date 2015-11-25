@@ -22,7 +22,7 @@ ENABLE="--enable-swig \
 	--enable-sos --enable-debug"
 
 # add --disable-FEATURE here
-DISABLE="--disable-ocm"
+DISABLE="--disable-ocm --disable-rpath"
 
 # libevent2 prefix
 #LIBEVENT_PREFIX=/usr/local
@@ -34,6 +34,30 @@ WITH="$WITH_OVIS_LIB $WITH_SOS"
 if [ -n "$LIBEVENT_PREFIX" ]; then
 	WITH="$WITH --with-libevent=$LIBEVENT_PREFIX"
 fi
+
+function __with_for {
+	if [ -n "$LIBEVENT_PREFIX" ]; then
+		echo -n " --with-libevent=$LIBEVENT_PREFIX"
+	fi
+	case $1 in
+	lib)
+		# do nothing
+	;;
+	sos)
+		# do nothing
+	;;
+	ldms)
+		echo -n " $WITH_SOS $WITH_OVIS_LIB"
+	;;
+	baler)
+		echo -n " $WITH_SOS $WITH_OVIS_LIB"
+	;;
+	*)
+		echo "ERROR: __with_for(): Unrecognize argument '$1'"
+		exit -1
+	;;
+	esac
+}
 
 #CFLAGS='-g -O0 -DDEBUG -Wl,-z,defs -Werror'
 CFLAGS='-g -O3'
@@ -57,7 +81,7 @@ for X in $LIST; do
 	mkdir -p $BUILD_DIR
 	pushd $BUILD_DIR
 	rm -rf * # Making sure that the build is clean
-	../configure --prefix=$PREFIX $ENABLE $DISABLE $WITH CFLAGS="$CFLAGS"
+	../configure --prefix=$PREFIX $ENABLE $DISABLE $(__with_for $X) CFLAGS="$CFLAGS"
 	make rpm7
 	mkdir -p rpm7/BUILDROOT
 	pushd rpm7/BUILDROOT

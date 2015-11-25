@@ -18,7 +18,7 @@ install-exec-local:
 	echo echo compile cpu: "`uname -p`" >> $(PEDIGREE) ; \
 	echo echo compile os: "`uname -o`" >> $(PEDIGREE) ; \
 	echo echo configure args: "\"$(ac_configure_args)\"" >> $(PEDIGREE) ; \
-	echo 'if [ $$1 == --stat ] ; then ' >> $(PEDIGREE) ; \
+	echo 'if [ "$$1" == "--stat" ] ; then ' >> $(PEDIGREE) ; \
 	echo echo "------ git status ------" >> $(PEDIGREE) ; \
 	echo echo "\"`cd $(abs_top_srcdir) && git status -suno .`\"" >> $(PEDIGREE) ; \
 	echo echo "------------------------" >> $(PEDIGREE) ; \
