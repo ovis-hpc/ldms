@@ -202,10 +202,6 @@ struct ldms_context {
 	ldms_context_type_t type;
 	union {
 		struct {
-			int set_count;
-			char *set_list;
-			size_t set_list_len;
-			uint32_t flags;
 			ldms_dir_cb_t cb;
 			void *cb_arg;
 		} dir;
@@ -229,6 +225,7 @@ struct ldms_context {
 			void *arg;
 		} req_notify;
 	};
+	TAILQ_ENTRY(ldms_context) link;
 };
 
 #define LDMS_MAX_TRANSPORT_NAME_LEN 16
@@ -249,8 +246,12 @@ struct ldms_xprt {
 	/* This is the peers local_dir_xid that we provide when providing dir updates */
 	uint64_t remote_dir_xid;
 
-	int active_dir; /* 1 if there is an active dir request. 0 if there is none. */
+#ifdef DEBUG
+	int active_dir; /* Number of outstanding dir requests */
+	int active_dir_cancel; /* Number of outstanding dir cancel requests */
 	int active_lookup; /* Number of outstanding lookup requests */
+#endif /* DEBUG */
+	TAILQ_HEAD(, ldms_context) ctxt_list;
 
 	/* Callback that implements xprt state machine on the active side */
 	ldms_connect_cb_t connect_cb;
