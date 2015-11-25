@@ -100,6 +100,10 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
+	if (!strgp->store_handle) {
+		strgp->state = LDMSD_STRGP_STATE_STOPPED;
+		return;
+	}
 	strgp->store->store(strgp->store_handle, prd_set->set,
 			    strgp->metric_arry, strgp->metric_count);
 }
@@ -587,8 +591,9 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 			break;
 		LIST_INSERT_HEAD(&prd_set->strgp_list, ref, entry);
 		if (!strgp->store_handle)
-			strgp_open(strgp, prd_set);
-		rc = 0;
+			rc = strgp_open(strgp, prd_set);
+		else
+			rc = 0;
 		break;
 	default:
 		assert(0 == "Bad strgp state");

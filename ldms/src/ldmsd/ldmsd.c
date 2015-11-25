@@ -1783,18 +1783,17 @@ int main(int argc, char *argv[])
 	}
 	/* Create the test sets */
 	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
-	int prod_id, comp_id;
+	int job_id, comp_id;
 	if (test_set_name) {
 		int rc, set_no;
 		static char test_set_name_no[1024];
 		ldms_schema_t schema = ldms_schema_new("test_set");
 		if (!schema)
 			cleanup(11);
-		prod_id = ldms_schema_meta_array_add(schema, "producer_id",
-							   LDMS_V_CHAR_ARRAY, 32);
-		if (prod_id < 0)
+		job_id = ldms_schema_meta_add(schema, "job_id", LDMS_V_U32);
+		if (job_id < 0)
 			cleanup(12);
-		comp_id = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+		comp_id = ldms_schema_meta_add(schema, "component_id", LDMS_V_U32);
 		if (comp_id < 0)
 			cleanup(12);
 		rc = ldms_schema_metric_add(schema, "u8_metric", LDMS_V_U8);
@@ -1850,9 +1849,9 @@ int main(int argc, char *argv[])
 			if (!test_set)
 				cleanup(14);
 			union ldms_value v;
-			v.v_u32 = set_no;
+			v.v_u64 = set_no;
 			ldms_metric_set(test_set, comp_id, &v);
-			ldms_metric_array_set_str(test_set, prod_id, myhostname);
+			ldms_metric_set(test_set, job_id, &v);
 			ldms_set_producer_name_set(test_set, myhostname);
 			test_sets[set_no-1] = test_set;
 		}
@@ -1930,7 +1929,10 @@ int main(int argc, char *argv[])
 			set = test_sets[set_no];
 			ldms_transaction_begin(set);
 
+			ldms_metric_set_u64(set, 0, count);
+			ldms_metric_set_u64(set, 1, count);
 			ldms_metric_set_u8 (set, 2, (uint8_t)count);
+			ldms_metric_user_data_set (set, 2, count);
 			ldms_metric_set_u16(set, 3, (uint16_t)count);
 			ldms_metric_set_u32(set, 4, (uint32_t)count);
 			ldms_metric_set_u64(set, 5, count);
