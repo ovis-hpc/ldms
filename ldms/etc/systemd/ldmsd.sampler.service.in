@@ -1,0 +1,36 @@
+# README
+# ======
+# Please copy this file and ldmsd.sampler.env to /etc/systemd/system/ before
+# applying any of the following commands.
+#
+# To make ldmsd starts automatically at system startup time:
+#   systemctl enable ldmsd
+#
+# To disable automatic startup:
+#   systemctl disable ldmsd
+#
+# To manually start ldmsd service:
+#   systemctl start ldmsd
+#
+# To check status:
+#   systemctl status ldmsd
+#
+# To stop the service:
+#   sytemctl stop ldmsd
+#
+
+[Unit]
+Description = LDMS Daemon
+Documentation = http://ovis.ca.sandia.gov
+
+[Service]
+Type = forking
+EnvironmentFile = /etc/systemd/system/ldmsd.sampler.env
+ExecStart = @sbindir@/ldmsd -S ${LDMSD_SOCK_PATH} \
+		-x ${LDMSD_XPRT}:${LDMSD_PORT} \
+		-p ${LDMSD_CONFIG_PORT} \
+		-c ${LDMSD_PLUGIN_CONFIG_FILE} \
+		-r @localstatedir@/run/ldmsd/sampler.pid
+
+[Install]
+WantedBy = default.target

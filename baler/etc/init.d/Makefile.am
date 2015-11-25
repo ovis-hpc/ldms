@@ -1,6 +1,6 @@
 install-data-local:
-	$(MKDIR_P) $(DESTDIR)/etc/init.d
-	$(INSTALL_SCRIPT) $(builddir)/balerd $(DESTDIR)/etc/init.d/
+	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/init.d
+	$(INSTALL_SCRIPT) $(builddir)/balerd $(DESTDIR)/$(sysconfdir)/init.d/
 
 uninstall-local:
-	rm -f $(DESTDIR)/etc/init.d/balerd
+	rm -f $(DESTDIR)/$(sysconfdir)/init.d/balerd
