@@ -99,7 +99,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:c:"
 
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 
@@ -115,10 +115,10 @@ char *logfile;
 char *pidfile;
 char *secretword;
 /* authenticate will never be 0 unless:
- HAVE_ANONE is defined 
+ HAVE_ANONE is defined
  and -a none given in options.
 */
-int authenticate = 1; 
+int authenticate = 1;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 
@@ -146,6 +146,10 @@ int find_least_busy_thread();
 int passive = 0;
 int log_level_thr = LDMSD_LERROR;  /* log level threshold */
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
+
+const char *config_path = NULL;
+
+extern int process_config_file(const char *path);
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
@@ -390,6 +394,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -R port        The listener port for receiving configuration\n"
 	       "                   from the ldmsd_rctl program\n");
 #endif
+	printf("    -c path        The path to configuration file (optional, default: <none>).\n");
 	printf("    -V             Print LDMS version and exit\n.");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
@@ -1460,7 +1465,7 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	if (authenticate)
 		l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical,
 			secretword);
-	else 
+	else
 		l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
 #else
 	l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
@@ -1638,7 +1643,7 @@ int main(int argc, char *argv[])
 			if (!authfile) {
 				printf("Unable to copy secretword filename\n");
 				exit(ENOMEM);
-				
+
 			}
 			if (strcmp(optarg,"none") == 0) {
 #ifdef HAVE_ANONE
@@ -1649,6 +1654,9 @@ int main(int argc, char *argv[])
 			}
 			break;
 #endif /* OVIS_LIB_HAVE_AUTH */
+		case 'c':
+			config_path = optarg;
+			break;
 		case 'V':
 			ldms_version_get(&ldms_version);
 			ldmsd_version_get(&ldmsd_version);
@@ -1898,6 +1906,14 @@ int main(int argc, char *argv[])
 		cleanup(ocm_rc);
 	}
 #endif
+	if (config_path) {
+		int rc = process_config_file(config_path);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+					"Process config file error: %d\n", rc);
+			cleanup(rc);
+		}
+	}
 
 	uint64_t count = 1;
 	int name = 0;

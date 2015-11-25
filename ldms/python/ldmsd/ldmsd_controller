@@ -658,6 +658,18 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         self.handle('version', arg)
 
+    def do_include(self, arg):
+        """
+        Include a configuration file
+        """
+        self.handle('include', arg)
+
+    def do_env(self, arg):
+        """
+        Set ldmsd environment
+        """
+        self.handle('env', arg)
+
     def do_EOF(self, arg):
         """
         Ctrl-D will exit the shell

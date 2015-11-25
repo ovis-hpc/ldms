@@ -1647,6 +1647,169 @@ int process_exit(char *replybuf, struct attr_value_list *av_list,
 	return 0;
 }
 
+static int command_id(const char *command);
+
+int process_config_line(char *line)
+{
+	char *cmd_s;
+	long cmd_id;
+	int tokens, rc;
+	struct attr_value_list *av_list = NULL;
+	struct attr_value_list *kw_list = NULL;
+	/* skip leading spaces */
+	while (isspace(*line)) {
+		line++;
+	}
+	for (tokens = 0, cmd_s = line; cmd_s[0] != '\0';) {
+		tokens++;
+		/* find whitespace */
+		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
+			cmd_s++;
+		/* Now skip whitepace to next token */
+		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
+			cmd_s++;
+	}
+	rc = ENOMEM;
+	av_list = av_new(tokens);
+	kw_list = av_new(tokens);
+	if (!av_list || !kw_list)
+		goto cleanup;
+
+	rc = tokenize(line, kw_list, av_list);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
+				"processing '%s'\n", line);
+		rc = ENOMEM;
+		goto cleanup;
+	}
+
+	cmd_s = av_name(kw_list, 0);
+	if (!cmd_s) {
+		ldmsd_log(LDMSD_LERROR, "Request is missing Id '%s'\n", line);
+		rc = EINVAL;
+		goto cleanup;
+	}
+
+	cmd_id = command_id(cmd_s);
+	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND
+			&& cmd_table[cmd_id]) {
+		rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
+	} else {
+		rc = EINVAL;
+	}
+cleanup:
+	if (av_list)
+		free(av_list);
+	if (kw_list)
+		free(kw_list);
+	return rc;
+}
+
+int process_config_file(const char *path)
+{
+	int rc = 0;
+	FILE *fin = NULL;
+	char *buff = NULL;
+	char *line;
+	char *comment;
+	ssize_t off = 0;
+	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
+	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
+	if (env)
+		cfg_buf_len = strtol(env, NULL, 0);
+	fin = fopen(path, "rt");
+	if (!fin) {
+		rc = errno;
+		goto cleanup;
+	}
+	buff = malloc(cfg_buf_len);
+	if (!buff) {
+		rc = errno;
+		goto cleanup;
+	}
+
+next_line:
+	line = fgets(buff + off, cfg_buf_len - off, fin);
+	if (!line)
+		goto cleanup;
+
+	comment = strchr(line, '#');
+
+	if (comment) {
+		*comment = '\0';
+	}
+
+	off = strlen(buff);
+	while (off && isspace(line[off-1])) {
+		off--;
+	}
+
+	if (!off) {
+		/* empty string */
+		off = 0;
+		goto next_line;
+	}
+
+	buff[off] = '\0';
+
+	if (buff[off-1] == '\\') {
+		buff[off-1] = ' ';
+		goto next_line;
+	}
+
+	line = buff;
+	while (isspace(*line)) {
+		line++;
+	}
+
+	if (!*line) {
+		/* buff contain empty string */
+		off = 0;
+		goto next_line;
+	}
+
+	rc = process_config_line(line);
+	if (rc)
+		goto cleanup;
+
+	off = 0;
+
+	goto next_line;
+
+cleanup:
+	if (fin)
+		fclose(fin);
+	if (buff)
+		free(buff);
+	return rc;
+}
+
+int process_include(char *replybuf, struct attr_value_list *av_list,
+					struct attr_value_list * kw_list)
+{
+	int rc;
+	const char *path;
+	path = av_name(kw_list, 1);
+	if (!path)
+		return EINVAL;
+	rc = process_config_file(path);
+	return rc;
+}
+
+int process_env(char *replybuf, struct attr_value_list *av_list,
+					struct attr_value_list * kw_list)
+{
+	int rc = 0;
+	int i;
+	for (i = 0; i < av_list->count; i++) {
+		struct attr_value *v = &av_list->list[i];
+		rc = setenv(v->name, v->value, 1);
+		if (rc)
+			return rc;
+	}
+	return 0;
+}
+
 extern int cmd_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
 extern int cmd_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
 extern int cmd_prdcr_start(char *, struct attr_value_list *, struct attr_value_list *);
@@ -1672,6 +1835,71 @@ extern int cmd_strgp_metric_del(char *, struct attr_value_list *, struct attr_va
 extern int cmd_strgp_start(char *, struct attr_value_list *, struct attr_value_list *);
 extern int cmd_strgp_stop(char *, struct attr_value_list *, struct attr_value_list *);
 
+struct cmd_str_id {
+	const char *str;
+	int id;
+};
+
+const struct cmd_str_id cmd_str_id_table[] = {
+	/* This table need to be sorted by keyword for bsearch() */
+	{  "add",                6   },
+	{  "config",             3   },
+	{  "env",                18  },
+	{  "exit",               12  },
+	{  "include",            17  },
+	{  "info",               9   },
+	{  "load",               1   },
+	{  "loglevel",           16  },
+	{  "oneshot",            13  },
+	{  "prdcr_add",          20  },
+	{  "prdcr_del",          21  },
+	{  "prdcr_start",        22  },
+	{  "prdcr_start_regex",  24  },
+	{  "prdcr_stop",         23  },
+	{  "prdcr_stop_regex",   25  },
+	{  "remove",             7   },
+	{  "start",              4   },
+	{  "stop",               5   },
+	{  "store",              8   },
+	{  "strgp_add",          40  },
+	{  "strgp_del",          41  },
+	{  "strgp_metric_add",   44  },
+	{  "strgp_metric_del",   45  },
+	{  "strgp_prdcr_add",    42  },
+	{  "strgp_prdcr_del",    43  },
+	{  "strgp_start",        48  },
+	{  "strgp_stop",         49  },
+	{  "term",               2   },
+	{  "udata",              10  },
+	{  "udata_regex",        14  },
+	{  "updtr_add",          30  },
+	{  "updtr_del",          31  },
+	{  "updtr_match_add",    32  },
+	{  "updtr_match_del",    33  },
+	{  "updtr_prdcr_add",    34  },
+	{  "updtr_prdcr_del",    35  },
+	{  "updtr_start",        38  },
+	{  "updtr_stop",         39  },
+	{  "usage",              0   },
+	{  "version",            15  },
+};
+
+int cmd_str_id_cmp(const struct cmd_str_id *a, const struct cmd_str_id *b)
+{
+	return strcmp(a->str, b->str);
+}
+
+static int command_id(const char *command)
+{
+	struct cmd_str_id key = {command, -1};
+	struct cmd_str_id *x = bsearch(&key, cmd_str_id_table,
+			sizeof(cmd_str_id_table)/sizeof(*cmd_str_id_table),
+			sizeof(*cmd_str_id_table), (void*)cmd_str_id_cmp);
+	if (!x)
+		return -1;
+	return x->id;
+}
+
 ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
 	[LDMSCTL_LIST_PLUGINS] = process_ls_plugins,
 	[LDMSCTL_LOAD_PLUGIN] =	process_load_plugin,
@@ -1690,6 +1918,8 @@ ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
 	[LDMSCTL_ONESHOT_SAMPLE] = process_oneshot_sample,
 	[LDMSCTL_VERSION] = process_version,
 	[LDMSCTL_VERBOSE] = process_verbosity_change,
+	[LDMSCTL_INCLUDE] = process_include,
+	[LDMSCTL_ENV] = process_env,
 	[LDMSCTL_PRDCR_ADD] = cmd_prdcr_add,
 	[LDMSCTL_PRDCR_DEL] = cmd_prdcr_del,
 	[LDMSCTL_PRDCR_START] = cmd_prdcr_start,
@@ -1765,8 +1995,10 @@ int process_record(int fd,
 		}
 	}
 	sprintf(replybuf, "22Invalid command id %ld\n", cmd_id);
+	rc = EINVAL;
  out:
-	send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
+	if (fd >= 0)
+		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	if (kw_list)
 		free(kw_list);
 	if (av_list)

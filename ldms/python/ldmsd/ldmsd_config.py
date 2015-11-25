@@ -104,6 +104,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                       'opt_attr': ['incr']},
                       'version': {'id': 15, 'req_attr': [], 'opt_attr': []},
                       'loglevel': {'id': 16, 'req_attr': ['level'],},
+                      'include': {'id': 17, 'req_attr': [] },
+                      'env': {'id': 18, 'req_attr': []},
                       ###############################
                       # LDMSD command version 3
                       ###############################
