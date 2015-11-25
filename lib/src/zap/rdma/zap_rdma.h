@@ -65,7 +65,7 @@
 
 #pragma pack(4)
 enum z_rdma_message_type {
-	Z_RDMA_MSG_CREDIT_UPDATE = 0,
+	Z_RDMA_MSG_CREDIT_UPDATE = 1,
 	Z_RDMA_MSG_SEND,
 	Z_RDMA_MSG_RENDEZVOUS,
 	Z_RDMA_MSG_ACCEPT,
@@ -110,7 +110,6 @@ struct z_rdma_buffer {
 	char *data;
 	size_t data_len;
 	struct ibv_mr *mr;
-	LIST_ENTRY(z_rdma_buffer) link; /* linked list entry */
 };
 
 /**
@@ -173,6 +172,12 @@ struct z_rdma_ep {
 	 * ::handle_connect_request(), parent_ep is NULL.
 	 */
 	struct z_rdma_ep *parent_ep;
+
+	enum {
+		Z_RDMA_PASSIVE_NONE = 0,
+		Z_RDMA_PASSIVE_ACCEPT = 1,
+		Z_RDMA_PASSIVE_REJECT,
+	} conn_req_decision;
 
 	/* Flag for deferred disconnected event */
 	int deferred_disconnected;

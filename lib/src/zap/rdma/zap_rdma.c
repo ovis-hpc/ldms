@@ -541,8 +541,11 @@ static void submit_pending(struct z_rdma_ep *rep)
 
 		TAILQ_REMOVE(&rep->io_q, ctxt, pending_link);
 
-		if (post_send(rep, ctxt, &badwr, is_rdma))
+		if (post_send(rep, ctxt, &badwr, is_rdma)) {
 			LOG_(rep, "Error posting queued I/O.\n");
+			__rdma_context_free(ctxt);
+		}
+
 	}
  out:
 	pthread_mutex_unlock(&rep->credit_lock);
@@ -558,6 +561,7 @@ static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *r
 		__rdma_context_alloc(rep, NULL, IBV_WC_SEND, rbuf);
 	if (!ctxt) {
 		errno = ENOMEM;
+		pthread_mutex_unlock(&rep->ep.lock);
 		return ZAP_ERR_RESOURCE;
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
@@ -711,6 +715,7 @@ static int __rdma_post_recv(struct z_rdma_ep *rep, struct z_rdma_buffer *rb)
 	rc = ibv_post_recv(rep->qp, &wr, &bad_wr);
 	if (rc) {
 		__rdma_context_free(ctxt);
+		rc = zap_errno2zerr(rc);
 	}
 out:
 	pthread_mutex_unlock(&rep->ep.lock);
@@ -857,20 +862,36 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	msg_type = ntohs(msg->msg_type);
 	switch (msg_type) {
 	case Z_RDMA_MSG_SEND:
+		assert(wc->byte_len >= sizeof(*msg) + 1);
+		if (wc->byte_len < sizeof(*msg) + 1)
+			goto err_wrong_dsz;
 		handle_recv(rep, msg, wc->byte_len);
 		break;
 
 	case Z_RDMA_MSG_RENDEZVOUS:
+		assert(wc->byte_len >= sizeof(struct z_rdma_share_msg));
+		if (wc->byte_len < sizeof(struct z_rdma_share_msg))
+			goto err_wrong_dsz;
 		handle_rendezvous(rep, msg, wc->byte_len);
 		break;
 
 	case Z_RDMA_MSG_CREDIT_UPDATE:
+		assert(wc->byte_len == sizeof(struct z_rdma_message_hdr));
+		if (wc->byte_len != sizeof(struct z_rdma_message_hdr))
+			goto err_wrong_dsz;
 		break;
+	default:
+		LOG_(rep, "%s(): Unknown message type '%d'\n",
+				__func__, msg_type);
+		assert(0);
 	}
 
 	ret = __rdma_post_recv(rep, rb);
 	if (ret) {
+		LOG_(rep, "ep %p: Post recv buffer fail. %s\n",
+				rep, zap_err_str(ret));
 		__rdma_buffer_free(rb);
+		goto out;
 	}
 
 	/* Credit updates are not counted */
@@ -887,6 +908,11 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	pthread_mutex_unlock(&rep->credit_lock);
 
  out:
+	return;
+ err_wrong_dsz:
+	LOG_(rep, "%s(): msg type '%d': Invalid data size.\n",
+				__func__, msg_type);
+	z_rdma_close(&rep->ep);
 	return;
 }
 
@@ -923,9 +949,10 @@ static zap_err_t z_rdma_reject(zap_ep_t ep, char *data, size_t data_len)
 		return ZAP_ERR_RESOURCE;
 	}
 
-	msg->hdr.msg_type = Z_RDMA_MSG_REJECT;
+	msg->hdr.msg_type = htons(Z_RDMA_MSG_REJECT);
 	msg->len = data_len;
 	memcpy(msg->msg, data, data_len);
+	rep->conn_req_decision = Z_RDMA_PASSIVE_REJECT;
 	rc = rdma_reject(rep->cm_id, (void *)msg, len);
 	if (rc) {
 		return zap_errno2zerr(errno);
@@ -955,7 +982,7 @@ static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
 	if (!msg) {
 		return ZAP_ERR_RESOURCE;
 	}
-	msg->hdr.msg_type = Z_RDMA_MSG_ACCEPT;
+	msg->hdr.msg_type = htons(Z_RDMA_MSG_ACCEPT);
 	msg->len = data_len;
 	memcpy(msg->data, data, data_len);
 
@@ -980,6 +1007,7 @@ static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
 		goto err_0;
 	}
 
+	rep->conn_req_decision = Z_RDMA_PASSIVE_ACCEPT;
 	free(msg);
 	return ZAP_ERR_OK;
 err_0:
@@ -1044,6 +1072,10 @@ static int cq_event_handler(struct ibv_cq *cq, int count)
 				      ctxt->wr.sg_list[0].addr,
 				      ctxt->wr.sg_list[0].length,
 				      ctxt->wr.sg_list[0].lkey);
+				pthread_mutex_lock(&ep->lock);
+				ep->state = ZAP_EP_ERROR;
+				pthread_mutex_unlock(&ep->lock);
+				z_rdma_close(ep);
 			}
 		}
 
@@ -1353,17 +1385,44 @@ err:
 static void
 handle_conn_error(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id, int reason)
 {
-	struct zap_event zev;
+	struct zap_event zev = {0};
+	zev.status = reason;
+	rep->ep.state = ZAP_EP_ERROR;
 	switch (rep->ep.state) {
 	case ZAP_EP_ACCEPTING:
-		/* no need to notify application */
-		__zap_put_ep(&rep->ep);
+		/* Passive side. */
+		switch (rep->conn_req_decision) {
+		case Z_RDMA_PASSIVE_ACCEPT:
+			/*
+			 * App accepted the conn req already.
+			 * Deliver the error.
+			 */
+			zev.type = ZAP_EVENT_DISCONNECTED;
+			rep->ep.cb(&rep->ep, &zev);
+			__zap_put_ep(&rep->ep);
+			break;
+		case Z_RDMA_PASSIVE_NONE:
+			/*
+			 * App does not make any decision yet.
+			 * No need to deliver any events to the app.
+			 */
+		case Z_RDMA_PASSIVE_REJECT:
+			/*
+			 * App rejected the conn req already.
+			 * No need to deliver any events to the app.
+			 */
+			return;
+		default:
+			LOG_(rep, "Unrecognized connection request "
+					"decision '%d'\n",
+					rep->conn_req_decision);
+			assert(0);
+			break;
+		}
 		break;
 	case ZAP_EP_CONNECTING:
 	case ZAP_EP_ERROR:
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
-		zev.status = reason;
-		rep->ep.state = ZAP_EP_ERROR;
 		rep->ep.cb(&rep->ep, &zev);
 		__zap_put_ep(&rep->ep);
 		break;
@@ -1378,21 +1437,29 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 					struct rdma_cm_event *event)
 {
 	struct z_rdma_reject_msg *rej_msg = NULL;
-	struct zap_event zev = {
-		.type = ZAP_EVENT_REJECTED,
-		.status = ZAP_ERR_CONNECT,
-	};
+	struct zap_event zev = {0};
+	zev.status = ZAP_ERR_CONNECT;
+
 	/* State before being rejected is CONNECTING, but
 	 * cq thread (we're on cm thread) can race and change endpoint state to
 	 * ERROR from the posted recv. */
 	assert(rep->ep.state == ZAP_EP_CONNECTING ||
-			rep->ep.state == ZAP_EP_ERROR);
+			rep->ep.state == ZAP_EP_ERROR ||
+			rep->ep.state == ZAP_EP_ACCEPTING);
+
+	if (rep->ep.state == ZAP_EP_ACCEPTING) {
+		/* passive side. No need to look into the rejected message */
+		handle_conn_error(rep, cma_id, ZAP_ERR_CONNECT);
+		return;
+	}
+
+	/* Active side */
 	if (event->param.conn.private_data_len) {
 		rej_msg = (struct z_rdma_reject_msg *)
 				event->param.conn.private_data;
 	}
 
-	if (!rej_msg || rej_msg->hdr.msg_type != Z_RDMA_MSG_REJECT) {
+	if (!rej_msg || ntohs(rej_msg->hdr.msg_type) != Z_RDMA_MSG_REJECT) {
 #ifdef ZAP_DEBUG
 		rep->rejected_conn_error_count++;
 #endif /* ZAP_DEBUG */
@@ -1405,7 +1472,9 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 #endif /* ZAP_DEBUG */
 	zev.data_len = rej_msg->len;
 	zev.data = (char *)rej_msg->msg;
+	zev.type = ZAP_EVENT_REJECTED;
 
+callback:
 	rep->ep.state = ZAP_EP_ERROR;
 	rep->ep.cb(&rep->ep, &zev);
 	__zap_put_ep(&rep->ep); /* Release the reference taken when the endpoint got created. */
@@ -1439,7 +1508,7 @@ handle_established(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 	if (event->param.conn.private_data_len)
 		msg = (struct z_rdma_accept_msg *)event->param.conn.private_data;
 
-	if (msg && (msg->hdr.msg_type == Z_RDMA_MSG_ACCEPT) && (msg->len > 0)) {
+	if (msg && (ntohs(msg->hdr.msg_type) == Z_RDMA_MSG_ACCEPT) && (msg->len > 0)) {
 		zev.data_len = msg->len;
 		zev.data = (void*)msg->data;
 	}

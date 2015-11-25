@@ -176,6 +176,38 @@ size_t __ldms_xprt_max_msg(struct ldms_xprt *x)
 	return zap_max_msg(x->zap);
 }
 
+/* Caller must call with the ldms xprt lock held */
+struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
+		ldms_context_type_t type)
+{
+	struct ldms_context *ctxt;
+	ctxt = calloc(1, sz);
+	if (!ctxt) {
+		x->log("%s(): Out of memory\n", __func__);
+		return ctxt;
+	}
+#ifdef CTXT_DEBUG
+	x->log("%s(): x %p: alloc ctxt %p: type %d\n", __func__, x, ctxt, type);
+#endif /* CTXT_DEBUG */
+	ctxt->type = type;
+	TAILQ_INSERT_TAIL(&x->ctxt_list, ctxt, link);
+	return ctxt;
+}
+
+/* Caller must call with the ldms xprt lock held */
+static void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
+{
+	TAILQ_REMOVE(&x->ctxt_list, ctxt, link);
+	if (ctxt->type == LDMS_CONTEXT_LOOKUP) {
+		if (ctxt->lookup.path)
+			free(ctxt->lookup.path);
+	}
+#ifdef CTXT_DEBUG
+	memset(ctxt, 9 - ctxt->type, sizeof(*ctxt));
+#endif /* CTXT_DEBUG */
+	free(ctxt);
+}
+
 static void send_dir_update(struct ldms_xprt *x,
 			    enum ldms_dir_type t,
 			    const char *set_name)
@@ -228,11 +260,16 @@ static void send_dir_update(struct ldms_xprt *x,
 	reply->dir.set_list_len = htonl(set_list_sz);
 	reply->hdr.len = htonl(len);
 
+#ifdef DEBUG
+	x->log("%s(): x %p: remote dir ctxt %p\n",
+			__func__, x, (void *)x->remote_dir_xid);
+#endif /* DEBUG */
+
 	zap_err_t zerr;
 	zerr = zap_send(x->zap_ep, reply, len);
 	if (zerr != ZAP_ERR_OK) {
-		x->log("%s: zap_send synchronously error. '%s'\n",
-				__FUNCTION__, zap_err_str(zerr));
+		x->log("%s: x %p: zap_send synchronously error. '%s'\n",
+				__FUNCTION__, x, zap_err_str(zerr));
 		ldms_xprt_close(x);
 	}
 	free(reply);
@@ -298,18 +335,28 @@ void __ldms_dir_del_set(const char *set_name)
 
 void ldms_xprt_close(ldms_t x)
 {
-	x->remote_dir_xid = x->local_dir_xid = 0;
+#ifdef DEBUG
+	x->log("%s(): closing x %p\n", __func__, x);
+#endif /* DEBUG */
+	x->remote_dir_xid = 0;
 	zap_close(x->zap_ep);
 }
 
 void __ldms_xprt_resource_free(struct ldms_xprt *x)
 {
+	int num_zap_ref = 0;
+	pthread_mutex_lock(&x->lock);
+
 #if OVIS_LIB_HAVE_AUTH
 	if (x->password)
 		free((void *)x->password);
 #endif /* OVIS_LIB_HAVE_AUTH */
-	if (x->local_dir_xid)
-		free((void *)(unsigned long)x->local_dir_xid);
+
+	struct ldms_context *dir_ctxt;
+	if (x->local_dir_xid) {
+		dir_ctxt = (struct ldms_context *)(unsigned long)x->local_dir_xid;
+		__ldms_free_ctxt(x, dir_ctxt);
+	}
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
 #ifdef DEBUG
@@ -318,20 +365,41 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 	x->log("DEBUG: xprt_resource_free. zap %p: active_lookup = %d.\n",
 		x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
-	while (x->active_dir > 0) {
-		x->active_dir--;
-		zap_put_ep(x->zap_ep);
-	}
 
-	while (x->active_lookup > 0) {
-		x->active_lookup--;
-		zap_put_ep(x->zap_ep);
+	struct ldms_context *ctxt;
+	while (!TAILQ_EMPTY(&x->ctxt_list)) {
+		ctxt = TAILQ_FIRST(&x->ctxt_list);
+
+#ifdef DEBUG
+		switch (ctxt->type) {
+		case LDMS_CONTEXT_DIR:
+			x->active_dir--;
+			break;
+		case LDMS_CONTEXT_DIR_CANCEL:
+			x->active_dir_cancel--;
+			break;
+		case LDMS_CONTEXT_LOOKUP:
+			x->active_lookup--;
+			break;
+		default:
+			break;
+		}
+#endif /* DEBUG */
+
+		__ldms_free_ctxt(x, ctxt);
+		num_zap_ref++;
 	}
 
 	struct ldms_rbuf_desc *rbd;
 	while (!LIST_EMPTY(&x->rbd_list)) {
 		rbd = LIST_FIRST(&x->rbd_list);
 		__ldms_rbd_xprt_release(rbd);
+	}
+	pthread_mutex_unlock(&x->lock);
+
+	while (num_zap_ref > 0) {
+		zap_put_ep(x->zap_ep);
+		num_zap_ref--;
 	}
 }
 
@@ -565,8 +633,8 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 
 	strcpy(msg->schema_inst_name, schema->name);
 	strcpy(msg->schema_inst_name + schema->len, name->name);
-	msg->schema_len = schema->len;
-	msg->inst_name_len = name->len;
+	msg->schema_len = htonl(schema->len);
+	msg->inst_name_len = htonl(name->len);
 	msg->xid = xid;
 	msg->set_id = (uint64_t)(unsigned long)rbd;
 	msg->more = htonl(more);
@@ -574,11 +642,16 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	msg->meta_len = htonl(__le32_to_cpu(set->meta->meta_sz));
 	msg->card = htonl(__le32_to_cpu(set->meta->card));
 
+#ifdef DEBUG
+	x->log("%s(): x %p: sharing ... remote lookup ctxt %p\n",
+			__func__, x, (void *)xid);
+#endif /* DEBUG */
 	zap_err_t zerr = zap_share(x->zap_ep, rbd->lmap, (const char *)msg, msg_len);
 	if (zerr != ZAP_ERR_OK) {
-		x->log("%s: zap_share synchronously error. '%s'\n",
-				__FUNCTION__, zap_err_str(zerr));
+		x->log("%s: x %p: zap_share synchronously error. '%s'\n",
+				__FUNCTION__, x, zap_err_str(zerr));
 		free(msg);
+		rc = zerr;
 		goto err_1;
 	}
 	free(msg);
@@ -669,8 +742,8 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 	hdr.len = htonl(sizeof(struct ldms_reply_hdr));
 	rc = zap_send(x->zap_ep, &hdr, sizeof(hdr));
 	if (rc != ZAP_ERR_OK) {
-		x->log("%s: zap_send synchronously errors '%s'\n", __func__,
-				zap_err_str(rc));
+		x->log("%s: x %p: zap_send synchronously errors '%s'\n",
+				__func__, x, zap_err_str(rc));
 		ldms_xprt_close(x);
 	}
 }
@@ -687,20 +760,21 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	process_lookup_request_re(x, req, flags);
 }
 
-static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
+static int do_read_all(ldms_t x, ldms_set_t s, size_t len,
 			ldms_update_cb_t cb, void *arg)
 {
+	TF();
 	int rc;
 	struct ldms_set_desc *sd = s;
 
 	if (!len)
 		len = __ldms_set_size_get(s->set);
-	struct ldms_xprt *x = t;
-	struct ldms_context *ctxt = malloc(sizeof *ctxt);
-	TF();
+	struct ldms_context *ctxt;
 
-	ctxt->type = LDMS_CONTEXT_UPDATE;
-	ctxt->rc = 0;
+	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
+	ldms_xprt_get(x);
+	pthread_mutex_lock(&x->lock);
+	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE);
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
 	ctxt->update.arg = arg;
@@ -710,22 +784,28 @@ static int do_read_all(ldms_t t, ldms_set_t s, size_t len,
 
 	rc = zap_read(x->zap_ep, rmap, zap_map_addr(rmap),
 			lmap, zap_map_addr(lmap), len, ctxt);
-	if (rc)
-		free(ctxt);
+	if (rc) {
+		__ldms_free_ctxt(x, ctxt);
+	}
+	pthread_mutex_unlock(&x->lock);
+	ldms_xprt_put(x);
 	return rc;
 }
 
-static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb, void*arg)
+static int do_read_data(ldms_t x, ldms_set_t s, size_t len, ldms_update_cb_t cb, void*arg)
 {
 	int rc;
-	struct ldms_xprt *x = t;
 	struct ldms_set_desc *sd = s;
-	struct ldms_context *ctxt = malloc(sizeof *ctxt);
+
 	zap_map_t rmap = sd->rbd->rmap;
 	zap_map_t lmap = sd->rbd->lmap;
 	TF();
-	ctxt->type = LDMS_CONTEXT_UPDATE;
-	ctxt->rc = 0;
+
+	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
+	ldms_xprt_get(x);
+	pthread_mutex_lock(&x->lock);
+	struct ldms_context *ctxt;
+	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE);
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
 	ctxt->update.arg = arg;
@@ -733,8 +813,11 @@ static int do_read_data(ldms_t t, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 
 	rc = zap_read(x->zap_ep, rmap, zap_map_addr(rmap) + doff,
 			lmap, zap_map_addr(lmap) + doff, len, ctxt);
-	if (rc)
-		free(ctxt);
+	if (rc) {
+		__ldms_free_ctxt(x, ctxt);
+	}
+	pthread_mutex_unlock(&x->lock);
+	ldms_xprt_put(x);
 	return rc;
 }
 
@@ -818,25 +901,32 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		ctxt->lookup.cb(x, rc, 0, NULL, ctxt->lookup.cb_arg);
 
 out:
+	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+	pthread_mutex_lock(&x->lock);
+#ifdef DEBUG
 	assert(x->active_lookup);
 	x->active_lookup--;
-	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
-#ifdef DEBUG
 	x->log("DEBUG: lookup_reply: put ref %p: active_lookup = %d\n",
 			x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
-
-	free(ctxt->lookup.path);
-	free(ctxt);
+	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
 }
 
 void process_dir_cancel_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		struct ldms_context *ctxt)
 {
+	struct ldms_context *dir_ctxt;
+
 	pthread_mutex_lock(&x->lock);
-	if (x->local_dir_xid)
-		free((void *)(unsigned long)x->local_dir_xid);
+	if (x->local_dir_xid) {
+		dir_ctxt = (struct ldms_context *)(unsigned long)x->local_dir_xid;
+		__ldms_free_ctxt(x, dir_ctxt);
+	}
 	x->local_dir_xid = 0;
+#ifdef DEBUG
+	x->active_dir_cancel--;
+#endif /* DEBUG */
 	pthread_mutex_unlock(&x->lock);
 	zap_put_ep(x->zap_ep);
 }
@@ -883,13 +973,15 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	int more = ntohl(reply->dir.more);
 	__process_dir_reply(x, reply, ctxt, more);
 	pthread_mutex_lock(&x->lock);
-	if (!x->local_dir_xid && !more)
-		free(ctxt);
+	if (!x->local_dir_xid && !more) {
+		__ldms_free_ctxt(x, ctxt);
+	}
+
 	if (!more) {
-		assert(x->active_dir);
-		x->active_dir = 0;
 		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_dir() */
 #ifdef DEBUG
+		assert(x->active_dir);
+		x->active_dir--;
 		x->log("DEBUG: ..dir_reply: put ref %p. active_dir = %d.\n",
 				x->zap_ep, x->active_dir);
 #endif /* DEBUG */
@@ -946,8 +1038,8 @@ static int send_auth_approval(struct ldms_xprt *x)
 	reply->hdr.len = htonl(len);
 	zap_err_t zerr = zap_send(x->zap_ep, reply, len);
 	if (zerr) {
-		x->log("Auth error: Failed to send the approval. %s\n",
-						zap_err_str(rc));
+		x->log("Auth error: x %p: Failed to send the approval. %s\n",
+						x, zap_err_str(rc));
 	}
 	free(reply);
 	return zerr;
@@ -1079,6 +1171,9 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 		break;
 	case LDMS_CMD_DIR_REPLY:
 		process_dir_reply(x, reply, ctxt);
+		break;
+	case LDMS_CMD_DIR_CANCEL_REPLY:
+		process_dir_cancel_reply(x, reply, ctxt);
 		break;
 	case LDMS_CMD_DIR_UPDATE_REPLY:
 		process_dir_update(x, reply, ctxt);
@@ -1284,10 +1379,10 @@ err:
 static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_context *ctxt = ev->context;
+	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch (ctxt->type) {
 	case LDMS_CONTEXT_UPDATE:
 		if (ctxt->update.cb) {
-			struct ldms_xprt *x = zap_get_ucontext(zep);
 			ctxt->update.cb((ldms_t)x, ctxt->update.s, ev->status,
 					ctxt->update.arg);
 			zap_put_ep(x->zap_ep); /* Taken in ldms_remote_update() */
@@ -1295,14 +1390,22 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 		break;
 	case LDMS_CONTEXT_LOOKUP:
 		if (ctxt->lookup.cb) {
-			struct ldms_xprt *x = zap_get_ucontext(zep);
 			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.more, ctxt->lookup.s,
 					ctxt->lookup.cb_arg);
+			if (ev->status != ZAP_ERR_OK) {
+				/*
+				 * Application doesn't have the set handle yet,
+				 * so delete the set.
+				 */
+				ldms_set_delete(ctxt->lookup.s);
+			}
 			if (!ctxt->lookup.more) {
-				assert(x->active_lookup > 0);
-				x->active_lookup--;
 				zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 #ifdef DEBUG
+				pthread_mutex_lock(&x->lock);
+				assert(x->active_lookup > 0);
+				x->active_lookup--;
+				pthread_mutex_unlock(&x->lock);
 				x->log("DEBUG: read_complete: put ref %p: "
 						"active_lookup = %d\n",
 						x->zap_ep, x->active_lookup);
@@ -1314,8 +1417,41 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 	default:
 		assert(0 == "Invalid context type in zap read completion.");
 	}
-	free(ctxt);
+	pthread_mutex_lock(&x->lock);
+	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
 }
+
+#ifdef DEBUG
+int __is_lookup_name_good(struct ldms_xprt *x, struct ldms_lookup_msg *lm,
+		struct ldms_context *ctxt)
+{
+	regex_t regex;
+	char *name;
+	int rc = 0;
+
+	if (ctxt->lookup.flags & LDMS_LOOKUP_BY_SCHEMA)
+		name = lm->schema_inst_name;
+	else
+		name = lm->schema_inst_name + lm->schema_len;
+
+	if (ctxt->lookup.flags & LDMS_LOOKUP_RE) {
+		rc = regcomp(&regex, ctxt->lookup.path, REG_EXTENDED | REG_NOSUB);
+		if (rc) {
+			char errstr[512];
+			(void)regerror(rc, &regex, errstr, sizeof(errstr));
+			x->log("%s(): %s\n", __func__, errstr);
+			assert(0);
+		}
+
+		rc = regexec(&regex, name, 0, NULL, 0);
+	} else {
+		rc = strcmp(ctxt->lookup.path, name);
+	}
+
+	return (rc == 0);
+}
+#endif /* DEBUG */
 
 static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 {
@@ -1331,6 +1467,18 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	struct ldms_rbuf_desc *rbd;
 	int rc;
 	ldms_set_t set_t;
+
+	lm->schema_len = ntohl(lm->schema_len);
+	lm->inst_name_len = ntohl(lm->inst_name_len);
+
+#ifdef DEBUG
+	if (!__is_lookup_name_good(x, lm, ctxt)) {
+		x->log("%s(): The schema or instance name in the lookup "
+				"message sent by the peer does not "
+				"match the lookup request\n", __func__);
+		assert(0);
+	}
+#endif /* DEBUG */
 
 	const char *schema_name = lm->schema_inst_name;
 	const char *inst_name = lm->schema_inst_name + lm->schema_len;
@@ -1363,7 +1511,7 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 		}
 	} else {
 		__ldms_release_local_set(lset);
-		rc = __ldms_create_set(inst_name,
+		rc = __ldms_create_set(inst_name, schema_name,
 				       ntohl(lm->meta_len), ntohl(lm->data_len),
 				       ntohl(lm->card),
 				       &set_t,
@@ -1385,9 +1533,17 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 
 	sd->rbd = rbd;
 
+	pthread_mutex_lock(&x->lock);
 	struct ldms_context *rd_ctxt;
 	if (lm->more) {
-		rd_ctxt = malloc(sizeof *rd_ctxt);
+		rd_ctxt = __ldms_alloc_ctxt(x, sizeof(*rd_ctxt),
+				LDMS_CONTEXT_LOOKUP);
+		if (!rd_ctxt) {
+			x->log("%s(): Out of memory\n", __func__);
+			rc = ENOMEM;
+			pthread_mutex_unlock(&x->lock);
+			goto out_1;
+		}
 		*rd_ctxt = *ctxt;
 	} else {
 		rd_ctxt = ctxt;
@@ -1396,6 +1552,8 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	}
 	rd_ctxt->lookup.s = sd;
 	rd_ctxt->lookup.more = ntohl(lm->more);
+	pthread_mutex_unlock(&x->lock);
+
 	if (zap_read(zep,
 		     sd->rbd->rmap, zap_map_addr(sd->rbd->rmap),
 		     sd->rbd->lmap, zap_map_addr(sd->rbd->lmap),
@@ -1406,8 +1564,12 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	}
 	return;
  out_2:
-	if (lm->more)
-		free(rd_ctxt);
+	if (lm->more) {
+		pthread_mutex_lock(&x->lock);
+		__ldms_free_ctxt(x, ctxt);
+		pthread_mutex_unlock(&x->lock);
+	}
+
  out_1:
 	ldms_set_delete(sd);
 	sd = NULL;
@@ -1415,15 +1577,17 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	if (ctxt->lookup.cb)
 		ctxt->lookup.cb(x, rc, 0, (ldms_set_t)sd, ctxt->lookup.cb_arg);
 	if (!lm->more) {
+		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+		pthread_mutex_lock(&x->lock);
+		__ldms_free_ctxt(x, ctxt);
+#ifdef DEBUG
 		assert(x->active_lookup);
 		x->active_lookup--;
-		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
-		free(ctxt);
-#ifdef DEBUG
 		x->log("DEBUG: rendezvous error: put ref %p: "
 				"active_lookup = %d\n",
 				x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
+		pthread_mutex_unlock(&x->lock);
 	}
 }
 
@@ -1652,6 +1816,7 @@ int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
 	x->log = log_fn;
+	TAILQ_INIT(&x->ctxt_list);
 	sem_init(&x->sem, 0, 0);
 	pthread_mutex_init(&x->lock, NULL);
 	pthread_mutex_lock(&xprt_list_lock);
@@ -1711,7 +1876,7 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 	}
 
 #ifdef DEBUG
-	log_fn("ldms_xprt [DEBUG]: Creating transport with authentication\n");
+	log_fn("ldms_xprt [DEBUG]: Creating transport '%p' with authentication\n", x);
 #endif /* DEBUG */
 	x->password = strdup(secretword);
 	if (!x->password) {
@@ -1807,18 +1972,21 @@ size_t format_cancel_notify_req(struct ldms_request *req, uint64_t xid,
  * context buffer. A single buffer is allocated that is big enough to
  * contain one structure. When the context is freed, the associated
  * request buffer is freed as well.
+ *
+ * Caller must call with the ldms xprt lock held.
  */
-static int alloc_req_ctxt(struct ldms_request **req,
-			  struct ldms_context **ctxt,
-			  ldms_context_type_t type)
+static int alloc_req_ctxt(struct ldms_xprt *x,
+			struct ldms_request **req,
+			struct ldms_context **ctxt,
+			ldms_context_type_t type)
 {
 	struct ldms_context *ctxt_;
-	void *buf = malloc(sizeof(struct ldms_request) + sizeof(struct ldms_context));
+	size_t sz = sizeof(struct ldms_request) + sizeof(struct ldms_context);
+	void *buf = __ldms_alloc_ctxt(x, sz, type);
 	if (!buf)
 		return 1;
 	*ctxt = ctxt_ = buf;
 	*req = (struct ldms_request *)(ctxt_+1);
-	ctxt_->type = type;
 	return 0;
 }
 
@@ -1833,10 +2001,15 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
 		return EPERM;
 
-	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_DIR))
-		return ENOMEM;
-
+	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
+	ldms_xprt_get(x);
 	pthread_mutex_lock(&x->lock);
+	if (alloc_req_ctxt(x, &req, &ctxt, LDMS_CONTEXT_DIR)) {
+		pthread_mutex_unlock(&x->lock);
+		ldms_xprt_put(x);
+		return ENOMEM;
+	}
+
 	/* If a dir has previously been done and updates were asked
 	 * for, return EBUSY. No need for application to do dir request again. */
 	if (x->local_dir_xid)
@@ -1850,32 +2023,33 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	pthread_mutex_unlock(&x->lock);
 
 	zap_get_ep(x->zap_ep);	/* Released in process_dir_reply() */
-	x->active_dir = 1;
+
 #ifdef DEBUG
-	x->log("DEBUG: remote_dir. get ref %p. active_dir = %d.\n",
-			x->zap_ep, x->active_dir);
+	x->active_dir++;
+	x->log("DEBUG: remote_dir. get ref %p. active_dir = %d. xid %p\n",
+			x->zap_ep, x->active_dir, (void *)req->hdr.xid);
 #endif /* DEBUG */
 	int rc = zap_send(x->zap_ep, req, len);
 	if (rc) {
-		if (x->active_dir > 0) {
-			/*
-			 * The active_dir might be decremented in the
-			 * DISCONNECTED path already.
-			 */
-			x->active_dir = 0;
-			zap_put_ep(x->zap_ep);
+		zap_put_ep(x->zap_ep);
+		pthread_mutex_lock(&x->lock);
+		__ldms_free_ctxt(x, ctxt);
+		x->local_dir_xid = 0;
 #ifdef DEBUG
-			x->log("DEBUG: remote_dir: error. put ref %p. "
-					"active_dir = %d.\n",
-					x->zap_ep, x->active_dir);
+		x->log("DEBUG: remote_dir: error. put ref %p. "
+				"active_dir = %d.\n",
+				x->zap_ep, x->active_dir);
+		x->active_dir--;
 #endif /* DEBUG */
-		}
-		free(ctxt);
+		pthread_mutex_unlock(&x->lock);
 	}
+	ldms_xprt_put(x);
 	return rc;
 ebusy:
+	__ldms_free_ctxt(x, ctxt);
+	x->local_dir_xid = 0;
 	pthread_mutex_unlock(&x->lock);
-	free(ctxt);
+	ldms_xprt_put(x);
 	return EBUSY;
 }
 
@@ -1891,15 +2065,37 @@ int __ldms_remote_dir_cancel(ldms_t _x)
 			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
 		return EPERM;
 
-	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_DIR_CANCEL))
+	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
+	ldms_xprt_get(x);
+	pthread_mutex_lock(&x->lock);
+	if (alloc_req_ctxt(x, &req, &ctxt, LDMS_CONTEXT_DIR_CANCEL)) {
+		pthread_mutex_unlock(&x->lock);
+		ldms_xprt_put(x);
 		return ENOMEM;
+	}
 
 	len = format_dir_cancel_req(req);
 	zap_get_ep(x->zap_ep);
+
+#ifdef DEBUG
+	x->active_dir_cancel++;
+#endif /* DEBUG */
+
+	pthread_mutex_unlock(&x->lock);
 	int rc = zap_send(x->zap_ep, req, len);
-	if (rc)
+	if (rc) {
+#ifdef DEBUG
+		pthread_mutex_lock(&x->lock);
+		x->active_dir_cancel--;
+		pthread_mutex_unlock(&x->lock);
+#endif /* DEBUG */
 		zap_put_ep(x->zap_ep);
-	free(ctxt);
+	}
+
+	pthread_mutex_lock(&x->lock);
+	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
+	ldms_xprt_put(x);
 	return rc;
 }
 
@@ -1930,13 +2126,17 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 				 */
 				return EEXIST;
 			}
-
 		}
 	}
 
-
-	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_LOOKUP))
+	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
+	ldms_xprt_get(x);
+	pthread_mutex_lock(&x->lock);
+	if (alloc_req_ctxt(x, &req, &ctxt, LDMS_CONTEXT_LOOKUP)) {
+		pthread_mutex_unlock(&x->lock);
+		ldms_xprt_put(x);
 		return ENOMEM;
+	}
 
 	len = format_lookup_req(req, flags, path, (uint64_t)(unsigned long)ctxt);
 	ctxt->lookup.s = NULL;
@@ -1944,30 +2144,34 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	ctxt->lookup.cb_arg = arg;
 	ctxt->lookup.flags = flags;
 	ctxt->lookup.path = strdup(path);
-	zap_get_ep(x->zap_ep);	/* Released in either ...lookup_reply() or ..rendezvous() */
+
+#ifdef DEBUG
 	x->active_lookup++;
+#endif /* DEBUG */
+	pthread_mutex_unlock(&x->lock);
+	zap_get_ep(x->zap_ep);	/* Released in either ...lookup_reply() or ..rendezvous() */
+
+
 #ifdef DEBUG
 	x->log("DEBUG: remote_lookup: get ref %p: active_lookup = %d\n",
 		x->zap_ep, x->active_lookup);
 #endif /* DEBUG */
 	rc = zap_send(x->zap_ep, req, len);
 	if (rc) {
-		if (x->active_lookup > 0) {
-			/*
-			 * The active_lookup could be decremented in the
-			 * DISCONNECTED path already.
-			 */
-			x->active_lookup--;
-			zap_put_ep(x->zap_ep);
+		zap_put_ep(x->zap_ep);
 #ifdef DEBUG
-			x->log("DEBUG: lookup_reply: error. put ref %p: "
-					"active_lookup = %d\n",
-					x->zap_ep, x->active_lookup);
+		pthread_mutex_lock(&x->lock);
+		__ldms_free_ctxt(x, ctxt);
+		x->active_lookup--;
+		pthread_mutex_unlock(&x->lock);
+		x->log("DEBUG: lookup_reply: error. put ref %p: "
+				"active_lookup = %d. path = %s\n",
+				x->zap_ep, x->active_lookup,
+				path);
 #endif /* DEBUG */
-		}
-		free(ctxt->lookup.path);
-		free(ctxt);
+
 	}
+	ldms_xprt_put(x);
 	return rc;
 }
 
@@ -1983,8 +2187,13 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 	size_t len;
 	int rc;
 
-	if (alloc_req_ctxt(&req, &ctxt, LDMS_CONTEXT_REQ_NOTIFY))
+	ldms_xprt_get(x);
+	pthread_mutex_lock(&x->lock);
+	if (alloc_req_ctxt(x, &req, &ctxt, LDMS_CONTEXT_REQ_NOTIFY)) {
+		pthread_mutex_unlock(&x->lock);
+		ldms_xprt_put(x);
 		return ENOMEM;
+	}
 
 	if (r->local_notify_xid) {
 		free((void *)(unsigned long)r->local_notify_xid);
@@ -1997,8 +2206,12 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 	ctxt->req_notify.s = s;
 	r->local_notify_xid = (uint64_t)ctxt;
 
+	pthread_mutex_unlock(&x->lock);
 	rc = zap_send(x->zap_ep, req, len);
-	free(ctxt);
+	pthread_mutex_lock(&x->lock);
+	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
+	ldms_xprt_put(x);
 	return rc;
 }
 
