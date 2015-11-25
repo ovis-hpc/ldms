@@ -155,6 +155,7 @@ static uint32_t ugni_post_count = 0;
 #endif /* DEBUG */
 
 static pthread_mutex_t ugni_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t inst_id_cond = PTHREAD_COND_INITIALIZER;
 
 static int zap_ugni_dom_initialized = 0;
 static struct zap_ugni_dom {
@@ -319,9 +320,9 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 		goto out;
 
 	if (_node_state.check_state) {
-		if (uep->node_id < 0)
+		if (uep->node_id == -1)
 			uep->node_id = __get_nodeid(sa, sa_len);
-		if (uep->node_id > 0) {
+		if (uep->node_id != -1) {
 			if (__check_node_state(uep->node_id)) {
 				DLOG("Node %d is in a bad state\n", uep->node_id);
 				zerr = ZAP_ERR_CONNECT;
@@ -1373,6 +1374,21 @@ void *node_state_proc(void *args)
 {
 	struct timeval tv;
 	struct event *ns;
+	rs_node_t node;
+	int rc;
+
+	/* Initialize the inst_id here. */
+	pthread_mutex_lock(&ugni_lock);
+	rc = rca_get_nodeid(&node);
+	if (rc) {
+		_dom.inst_id = -1;
+	} else {
+		_dom.inst_id = (node.rs_node_s._node_id << 16) | (uint32_t)getpid();
+	}
+	pthread_cond_signal(&inst_id_cond);
+	pthread_mutex_unlock(&ugni_lock);
+	if (rc)
+		return NULL;
 
 	ns = evtimer_new(node_state_event_loop, ugni_node_state_cb, NULL);
 	__get_node_state(); /* FIXME: what if this fails? */
@@ -1474,7 +1490,6 @@ static int z_ugni_init()
 {
 	int rc = 0;
 	gni_return_t grc;
-	rs_node_t node;
 	static char buff[256];
 	int fd;
 	ssize_t rdsz;
@@ -1515,13 +1530,6 @@ static int z_ugni_init()
 	}
 
 	_dom.euid = geteuid();
-
-	rc = rca_get_nodeid(&node);
-	if (rc)
-		goto out;
-
-	_dom.inst_id = (node.rs_node_s._node_id << 16) | (uint32_t)getpid();
-
 	_dom.cookie = __get_cookie();
 	DLOG("cookie: %#x\n", _dom.cookie);
 
@@ -1621,14 +1629,58 @@ int init_once()
 
 	evthread_use_pthreads();
 
-	rc = z_ugni_init();
+	rc = ugni_node_state_thread_init();
 	if (rc)
 		return rc;
 
+	/*
+	 * We cannot call the rca APIs from different threads.
+	 * The node_state_thread calls rca_get_sysnodes to get the node states.
+	 * To construct a unique ID to attach CM, rca_get_nodeid is called.
+	 */
+	pthread_mutex_lock(&ugni_lock);
+	if (!_node_state.check_state) {
+		rs_node_t node;
+		/*
+		 * The node_state_thread isn't created, so the nodeid isn't
+		 * initilized. Do it here.
+		 */
+		rc = rca_get_nodeid(&node);
+		if (rc) {
+			pthread_mutex_unlock(&ugni_lock);
+			goto err;
+		}
+
+		_dom.inst_id = (node.rs_node_s._node_id << 16) | (uint32_t)getpid();
+	} else {
+		/*
+		 * The node_state_thread is created and the node id will be
+		 * initialized in there. Wait until it is done.
+		 */
+		while (_dom.inst_id == 0) {
+			pthread_cond_wait(&inst_id_cond, &ugni_lock);
+			if (_dom.inst_id == 0)
+				continue;
+
+			if (_dom.inst_id == -1) {
+				/* Error getting the node ID */
+				pthread_mutex_unlock(&ugni_lock);
+				goto err;
+			}
+		}
+	}
+	pthread_mutex_unlock(&ugni_lock);
+
+	rc = z_ugni_init();
+	if (rc)
+		goto err;
+
 	if (!io_event_loop) {
 		io_event_loop = event_base_new();
-		if (!io_event_loop)
-			return errno;
+		if (!io_event_loop) {
+			rc = errno;
+			goto err;
+		}
 	}
 
 	if (!keepalive) {
@@ -1644,10 +1696,6 @@ int init_once()
 	evtimer_add(keepalive, &to);
 
 	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
-	if (rc)
-		goto err;
-
-	rc = ugni_node_state_thread_init();
 	if (rc)
 		goto err;
 
@@ -1700,14 +1748,11 @@ static void z_ugni_destroy(zap_ep_t ep)
 	if (uep->gni_ep) {
 		DLOG_(uep, "Destroying gni_ep: %p\n", uep->gni_ep);
 		grc = GNI_EpUnbind(uep->gni_ep);
-		if (grc) {
-			/* TODO: Need to handle this. */
+		if (grc)
 			LOG_(uep, "GNI_EpUnbind() erro: %s\n", gni_ret_str(grc));
-		}
 		grc = GNI_EpDestroy(uep->gni_ep);
-		if (grc) {
+		if (grc)
 			LOG_(uep, "GNI_EpDestroy() error: %s\n", gni_ret_str(grc));
-		}
 	}
 	free(ep);
 }
