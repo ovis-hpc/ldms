@@ -36,6 +36,10 @@ The secret file permissions must be set to 600 or more restrictive.
 .SH ENVIRONMENT
 LDMS_AUTH_FILE is a full file path for a secretword file. It is not necessary, if the file is in one of the other checked locations.
 
+.SH NOTES
+If you want to use the ldmsd_controller to configure a remote host AND you are using authentication,
+then you must build ldms with --enable-swig.
+
 .SH BUGS
 .TP
 Networked file system users should verify the privacy of their secret files, as various access control list schemes might be more permissive than the standard permissions bits.
@@ -43,5 +47,5 @@ Networked file system users should verify the privacy of their secret files, as 
 Ldms_rctrl uses environment variable LDMSD_RCTRL_AUTH_FILE instead of LDMS_AUTH_FILE. Ldms_rctrl does not recognize $HOME/.ldmsauth.conf or /etc/ldmsauth.conf. Both will be repaired in the a future release.
 
 .SH SEE ALSO
-ldmsctl(1), ldmsd(1), ldms_ls(1)
+ldmsctl(1), ldmsd(1), ldms_ls(1), ldmsd_controller(7)
 

@@ -1,0 +1,247 @@
+.\" Manpage for ldms_build_install
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "12 Nov 2015" "v3" "ldms_build_install man page"
+
+.SH NAME
+ldms_build_install \- Instructions for building and installing ldms
+
+.SH INTRODUCTION
+.PP
+OVIS is a modular system for HPC data collection, transport, storage, analysis, visualization, and response.
+The Lightweight Distributed Metric Service (LDMS) is the OVIS data collection and transport system.
+LDMS provides capabilities for lightweight run-time collection of high-fidelity data. Data can be
+accessed on-node or transported off node. Additionally, LDMS can store data in a variety of storage options.
+.PP
+This entire source encompasses a number of the modular components of OVIS. The top level subdirectory ldms contains the ldms source. This document covers building only the ldms component from the top level directory.
+
+
+.SH DESCRIPTION
+.PP
+This document covers building only the ldms component from the top level directory.
+.PP
+ldms is built via the following steps:
+.RS
+.nf
+build prerequisties
+cd top_level_directory
+./autogen.sh
+mkdir build
+cd build
+../configure --with_args_here  OR ../configure.sh where configure.sh is a script that you write which includes the args of interest.
+make
+make install
+.ni
+.RE
+
+.PP
+This document describes the steps involved in building the prerequisties and in doing the configure.
+A description of the arguments for configure can be found by invoking
+.B ./configure --help
+at BOTH the top level in the ldms subdirectory.
+
+
+.SH PREREQUISTES:
+.PP
+.IP \[bu]
+libevent-2.0 is a requirement. It can be built from source obtained from libevent.org or it can be installed
+from rpm or similar on your system via a utility like yum. If you do the latter, then you need to install
+both the libevent and libevent-devel packages.
+.IP \[bu]
+If you intend to use the aries_mmr sampler, then you will need to install Cray's gpcd library. More information
+on this can be found in the Plugin.aries_mmr man page.
+.IP \[bu]
+If you intend to use the hsn metrics in the cray_aries_r_sampler or the cray_gemini_r_sampler, you will need
+to configure gpcdr. More information on this can be found in the Plugin.cray_sampler_variants man page.
+.IP \[bu]
+Use the gnu compiler for building ldms. (This may necessitate a module change on some platforms).
+.PP
+The remaining instructions will include paths to where the headers and libraries of these prerequisties
+are installed.
+
+.SH CONFIGURATION OPTIONS
+There are configuration options at the top level, in ldms, and in the ovis_lib support directories.
+This section is thus split into these three sections, however the configuration arguments are all
+combined as arguments to the top level configure. The list of configuration options give here is not
+comprehensive, rather it refers to the most common arguments.
+
+.SS TOP LEVEL OPTIONS
+A number of top level "enable|disable-feature" options exist. The defaults are chosen for
+a generic linux build to work by default.
+.TP
+.BR --enable|disable-rpath
+.br
+Disable this. Do not hardcode runtime library paths.
+.TP
+.BR --enable|disable-ldms
+.br
+Enable this. Default enabled.
+.TP
+.BR --enable|disable-sos
+.br
+Used to enable or disable sos. Enable only if you are going to use the store_sos plugin.
+Default disable.
+.TP
+.BR --enable|disable-ocm|baler|me|komondor
+.br
+Disable all of these. All default disabled.
+
+.SS OVIS_LIB LEVEL OPTIONS
+A number of top level "enable|disable-feature" options exist. The defaults are chosen for
+a generic linux build to work by default.
+.TP
+.BR --enable|disable-auth
+.br
+Enables or disables authentication. Default enabled.
+.TP
+.BR --enable|disable-sock
+.br
+Enables or disables the sock transport. Default enabled.
+.TP
+.BR --enable|disable-rdma
+.br
+Enables or disables the rdma transport. Default disabled
+.TP
+.BR --enable|disable-ugni
+.br
+Enables or disables the ugni transport. The is cray-specific for rdma over gemini or aries.
+Default disabled.
+
+
+.SS LDMS LEVEL OPTIONS
+A number of "enable|disable-feature options" exist. In addition a number of "with" options
+exist to specify paths to files/libraries/etc. The defaults are chosen for a generic linux build to
+work by default.
+.RS
+.SS General Options
+.TP
+.BR --enable|disable-a-none
+.br
+If --enable, then disable/enable the a-none module: Allow "-a none" to turn off authentication checks.
+Default disabled.
+.TP
+.BR --enable|disable-ldms-python
+.br
+Enable this. This builds the ldms python configuration tools. Default enabled.
+.TP
+.BR --enable|disable-swig
+.br
+Enable the swig module if you are going to use ldmsd_controller on remote hosts AND if you have built with authentication. Default disable.
+.TP
+.BR --enable|disable-readline
+.br
+Enable or disable the readline module. It is necessary to enable if you want to use the configuration tools interactively; if you are going to use a script interface to the configuration tools (usual method), then this can be disabled.
+.TP
+.BI --with-libevent [=path]
+.br
+Specify libevent path [default=/usr]
+
+.SS Generic Sampler Options
+.TP
+.BR --enable|disable-meminfo|procinterrupts|procnfs|procnetdev|vmstat
+.br
+Enable or disable generic linux samplers for data in /proc. Default enabled.
+.TP
+.BR --enable|disable-lustre
+.br
+Enable or disable the lustre module. Default enabled.
+
+.SS Cray-specific Sampler Options
+.TP
+.BR --enable|disable-kgnilnd
+.br
+Enable the kgnilnd sampler. Default disabled.
+.TP
+.BR --enable|disable-cray_system_sampler
+.br
+Enable or disable the cray_system_sampler module. Default disabled.
+If you enable this, then consider the following options:
+.RS
+.TP
+.BR --enable-gemini-gpcdr
+.br
+Enable the gemini-gpcdr version of the cray_system_sampler. Default disabled.
+Both the gemini and aries versions can be built simultaneously.
+.TP
+.BR --enable-aries-gpcdr
+.br
+Enable the aries-gpcdr version of the cray_system_sampler. Default disabled.
+Both the gemini and aries versions can be built simultaneously.
+.TP
+.BR --enable-cray-nvidia  OR  --with-cray-nvidia-inc [=path]
+.br
+For gemini systems with gpus, Enable the cray-nvidia metric sampling in the cray_gemini_r_sampler.
+You need not specify --enable-cray-nvidia if you are instead specifying the path to
+the include file via --with-cray-nvidia-inc.
+.TP
+.BR --enable|disable-lustre
+.br
+Enable or disable the lustre module for use in the cray_system_sampler. Default enabled.
+.TP
+.BI  --with-rca [=path]
+.br
+Specify the path to the rca includes via --with-rca [default=/usr].
+.TP
+.BI --with-krca [=path]
+.br
+Specify the path to the krca includes via --with-krca [default=/usr].
+.TP
+.BI --with-cray-hss-devel [=path]
+.br
+Specify the path to the hss-devel includes via --with-cray-hss-devel [default=/usr].
+.RE
+.TP
+.BR --enable|disable-aries-mmr
+.br
+Enable or disable the aries-mmr module. Default disabled.
+If you enable this, then consider the following options:
+.RS
+.TP
+.BI --with-aries-libgpcd LIBDIR,INCDIR
+.br
+Locations of gpcd library and headers for aries_mmr
+sampler. E.g. --with-aries-libgpcd=/special/libs,/private/headerdir
+.RE
+.SS Store Options
+.TP
+.BR --enable|disable-csv
+.br
+Enable the csv stores. Default enable.
+.BR --enable|disable-sos
+.br
+Enable or disable the sos stores. Enable this only if you are going to use the store_sos plugin. Default disable.
+.RS
+
+
+.SH NOTES
+None.
+
+.SH EXAMPLES
+.PP
+configure.sh script for a Cray XC install with the cray-specific samplers only:
+.nf
+PREFIX=/XXX/Build/build_ovis
+LIBDIR=${PREFIX}/lib
+
+# add --enable-FEATURE here
+ENABLE="--enable-ugni --enable-ldms-python --disable-ovis_auth --enable-kgnilnd --enable-lustre --enable-aries_mmr --enable-cray_system_sampler --enable-aries-gpcdr"
+
+# add --disable-FEATURE here
+DISABLE="--disable-rpath --disable-readline --disable-mmap --disable-baler --disable-sos --disable-auth"
+
+# libevent2 prefix
+LIBEVENT_PREFIX=/XXX/Build/libevent-2.0_build
+
+WITH="--with-rca=/opt/cray/rca/default/ --with-krca=/opt/cray/krca/default --with-cray-hss-devel=/opt/cray-hss-devel/default/ --with-pkglibdir=ovis-ldms --with-aries-libgpcd=/XXX/Build/gpcd/lib/,/XXX/Build/gpcd/include/"
+
+
+if [ -n "$LIBEVENT_PREFIX" ]; then
+    WITH="$WITH --with-libevent=$LIBEVENT_PREFIX"
+fi
+
+CFLAGS='-g -O0'
+
+../configure --prefix=$PREFIX $ENABLE $DISABLE $WITH CFLAGS="$CFLAGS" LDFLAGS=$LDFLAGS CPPFLAGS=$CPPFLAGS
+.fi
+
+.SH SEE ALSO
+ldms_authentication(7), ldms_quickstart(7), Plugin_cray_sampler_variants(7), Plugin_aries_mmr(7)

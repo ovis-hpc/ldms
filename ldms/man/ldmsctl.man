@@ -1,6 +1,6 @@
 .\" Manpage for ldmsctl
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "14 April 2015" "v2.5" "ldmsctl man page"
+.TH man 8 "12 Nov 2015" "v3" "ldmsctl man page"
 
 .SH NAME
 ldmsctl \- Issue control commands to ldmsd.
@@ -9,26 +9,28 @@ ldmsctl \- Issue control commands to ldmsd.
 ldmsctl [OPTION...]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script
-can be created and piped into the ldmsctl.
+In LDMS (Lightweight Distributed Metric Service), version 2 the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
+
+ldmsctl still works in version 3, however ldmsd_controller is the preferred method.
 
 .SH ENVIRONMENT
-The following environment variables must be set:
+The following environment variables must be set (includes environment variables needed for the actions,
+for example, paths to the sampler libraries to be added):
 .TP
 LD_LIBRARY_PATH
-include path to ovis/lib64
+path_to_ovis_build/lib:path_to_ovis_build/lib/ovis-ldms:path_to_libevent_2.0_build/lib
 .TP
-LDMS_XPRT_LIBPATH
-path to ovis/lib64/
+ZAP_LIBPATH
+path_to_ovis_build/lib/ovis-ldms
 .TP
 LDMSD_PLUGIN_LIBPATH
-path to ovis/lib64/
+path_to_ovis_build/lib/ovis-ldms
 .TP
 LDMSD_SOCKPATH
 path to the unix domain socket for the ldmsd. Default is /var/run. If you have changed the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
 .TP
 PATH
-include path to ovis/sbin
+path_to_ovis_build/sbin:path_to_ovis_build/bin
 
 
 .SH OPTIONS
@@ -239,7 +241,7 @@ Update loglevel for this ldmsd as indicated.
 .RS
 .TP
 <levelflag>
-The log level. Options are: DEBUG, INFO, ERROR, CRITICAL or QUIET. 
+The log level. Options are: DEBUG, INFO, ERROR, CRITICAL or QUIET.
 .RE
 .TP
 .BR info
@@ -279,9 +281,9 @@ ldmsctl> quit
 .nf
 3) Configure collectors on host "vm1" via bash script called collect.sh
 #!/bin/bash
-export LD_LIBRARY_PATH=/tmp/opt/ovis/lib64/:$LD_LIBRARY_PATH
-export LDMS_XPRT_LIBPATH=/tmp/opt/ovis/lib64/
-export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib64/
+export LD_LIBRARY_PATH=/tmp/opt/ovis/lib/:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=/tmp/opt/ovis/lib/ovis-ldms
+export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib/ovis-ldms
 # Set LDMSD_SOCKPATH for non-root. Change -S arguments accordingly)
 export LDMSD_SOCKPATH=/tmp/run/ldmsd
 LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
@@ -342,5 +344,5 @@ Notes for example 6:
 
 
 .SH SEE ALSO
-LDMS_Authentication(7), ldms(7), ldmsd(1), ldms_ls(1)
+LDMS_Authentication(7), ldms(7), ldmsd(1), ldms_ls(1), ldmsd_controller(7)
 
