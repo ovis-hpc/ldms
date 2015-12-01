@@ -75,11 +75,15 @@ static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
 static char *default_schema_name = "meminfo";
+static uint64_t compid;
+static uint64_t jobid;
+static int metric_offset = 2;
 
 static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	int rc, i;
 	uint64_t metric_value;
+	union ldms_value v;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
@@ -90,6 +94,18 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	if (rc < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
@@ -126,6 +142,12 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
+	//add specialized metrics
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
+	v.v_u64 = 0;
+	ldms_metric_set(set, 1, &v);
+
 	return 0;
 
  err:
@@ -146,8 +168,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	char *value;
 	int i;
 
-	char* deprecated[]={"set", "component_id"};
-	int numdep = 2;
+	char* deprecated[]={"set"};
+	int numdep = 1;
 
 	for (i = 0; i < numdep; i++){
 		value = av_value(avl, deprecated[i]);
@@ -165,9 +187,10 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 /**
  * \brief Configuration
  *
- * config name=meminfo producer_name=<comp_id> instance_name=<instance_name> [schema=<sname>]
- *     producer_name      The producer id value.
+ * config name=meminfo producer_name=<name> instance_name=<instance_name> [component_id=<compid> schema=<sname>]
+ *     producer_name    The producer id value.
  *     instance_name    The set name.
+ *     component_id     The component id. Defaults to zero
  *     sname            Optional schema name. Defaults to meminfo
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -187,6 +210,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog(LDMSD_LERROR, "meminfo: missing producer\n");
 		return ENOENT;
 	}
+
+	value = av_value(avl, "component_id");
+	if (value)
+		compid = (uint64_t)(atoi(value));
+	else
+		compid = 0;
 
 	value = av_value(avl, "instance");
 	if (!value) {
@@ -236,7 +265,7 @@ static int sample(void)
 	}
 	ldms_transaction_begin(set);
 
-	metric_no = 0;
+	metric_no = metric_offset;
 	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
@@ -271,9 +300,10 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=meminfo producer=<prod_name> instance=<inst_name> [schema=<sname>]\n"
+	return  "config name=meminfo producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname>]\n"
 		"    <prod_name>  The producer name\n"
 		"    <inst_name>  The instance name\n"
+		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
 		"    <sname>      Optional schema name. Defaults to 'meminfo'\n";
 }
 
