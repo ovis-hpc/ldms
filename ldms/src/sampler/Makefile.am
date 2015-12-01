@@ -57,6 +57,20 @@ libarray_example_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libarray_example.la
 endif
 
+if ENABLE_KNC_SAMPLER
+libknc_sampler_la_SOURCES = knc_sampler.c
+libknc_sampler_la_LIBADD = $(COMMON_LIBADD) -lmicmgmt
+pkglib_LTLIBRARIES += libknc_sampler.la
+
+libknc_sampler_copy_la_SOURCES = knc_sampler_copy.c
+libknc_sampler_copy_la_LIBADD = $(COMMON_LIBADD) -lmicmgmt
+pkglib_LTLIBRARIES += libknc_sampler_copy.la
+
+libknc_sampler_derived_la_SOURCES = knc_sampler_derived.c
+libknc_sampler_derived_la_LIBADD = $(COMMON_LIBADD) -lmicmgmt
+pkglib_LTLIBRARIES += libknc_sampler_derived.la
+endif
+
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD)
