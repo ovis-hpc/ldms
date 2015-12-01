@@ -722,15 +722,15 @@ if __name__ == "__main__":
                                                     'port': int(args.port)},
                                        secretPath = args.auth_file)
 
-        if sys.stdin.isatty() is False:
-            cmdParser.read_none_tty(sys.stdin)
-            cmdParser.do_quit(None)
-        else:
+        if args.source is not None or args.script is not None:
             if args.source is not None:
                 cmdParser.do_source(args.source)
-                cmdParser.do_quit(None)
-            elif args.script is not None:
+            if args.script is not None:
                 cmdParser.do_script(args.script)
+            cmdParser.do_quit(None)
+        else:
+            if sys.stdin.isatty() is False:
+                cmdParser.read_none_tty(sys.stdin)
                 cmdParser.do_quit(None)
             else:
                 cmdParser.cmdloop("Welcome to the LDMSD control processor")
