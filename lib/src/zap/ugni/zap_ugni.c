@@ -1208,6 +1208,20 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 {
 	struct z_ugni_ep *uep = (void*)ep;
 	zap_err_t zerr;
+
+	/* node state validation */
+	if (_node_state.check_state) {
+		if (uep->node_id == -1)
+			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id != -1) {
+			if (__check_node_state(uep->node_id)) {
+				DLOG("Node %d is in a bad state\n", uep->node_id);
+				z_ugni_close(ep);
+				return ZAP_ERR_ENDPOINT;
+			}
+		}
+	}
+
 	pthread_mutex_lock(&uep->ep.lock);
 	if (ep->state != ZAP_EP_CONNECTED) {
 		pthread_mutex_unlock(&uep->ep.lock);
@@ -1902,6 +1916,21 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 	if (map->type != ZAP_MAP_LOCAL)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 
+	struct z_ugni_ep *uep = (void*) ep;
+
+	/* node state validation */
+	if (_node_state.check_state) {
+		if (uep->node_id == -1)
+			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id != -1) {
+			if (__check_node_state(uep->node_id)) {
+				DLOG("Node %d is in a bad state\n", uep->node_id);
+				z_ugni_close(ep);
+				return ZAP_ERR_ENDPOINT;
+			}
+		}
+	}
+
 	/* prepare message */
 	struct zap_ugni_map *smap = (struct zap_ugni_map *)map;
 	size_t sz = sizeof(struct zap_ugni_msg_rendezvous) + msg_len;
@@ -1922,7 +1951,6 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 	zap_err_t rc = ZAP_ERR_OK;
 
 	/* write message */
-	struct z_ugni_ep *uep = (void*) ep;
 	if (bufferevent_write(uep->buf_event, msgr, sz) != 0)
 		rc = ZAP_ERR_RESOURCE;
 
@@ -1949,6 +1977,19 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	struct z_ugni_ep *uep = (struct z_ugni_ep *)ep;
 	struct zap_ugni_map *smap = (struct zap_ugni_map *)src_map;
 	struct zap_ugni_map *dmap = (struct zap_ugni_map *)dst_map;
+
+	/* node state validation */
+	if (_node_state.check_state) {
+		if (uep->node_id == -1)
+			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id != -1) {
+			if (__check_node_state(uep->node_id)) {
+				DLOG("Node %d is in a bad state\n", uep->node_id);
+				z_ugni_close(ep);
+				return ZAP_ERR_ENDPOINT;
+			}
+		}
+	}
 
 	pthread_mutex_lock(&ep->lock);
 	if (ep->state != ZAP_EP_CONNECTED) {
@@ -2016,6 +2057,19 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	struct zap_ugni_map *smap = (void*)src_map;
 	struct zap_ugni_map *dmap = (void*)dst_map;
 	gni_return_t grc;
+
+	/* node state validation */
+	if (_node_state.check_state) {
+		if (uep->node_id == -1)
+			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id != -1) {
+			if (__check_node_state(uep->node_id)) {
+				DLOG("Node %d is in a bad state\n", uep->node_id);
+				z_ugni_close(ep);
+				return ZAP_ERR_ENDPOINT;
+			}
+		}
+	}
 
 	pthread_mutex_lock(&ep->lock);
 	if (ep->state != ZAP_EP_CONNECTED) {
