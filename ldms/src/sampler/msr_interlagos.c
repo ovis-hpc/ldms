@@ -91,7 +91,6 @@
 
 
 #define MSR_MAXLEN 20
-#define MSR_MAXOPTIONS 11
 #define MSR_ARGLEN 4
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
@@ -101,6 +100,7 @@
 #define MSR_INTT 0
 #define MSR_TOOMANYMAX 100
 #define CTR_TABLE_OFFSET 1
+#define MSR_CONFIGLINE_MAX 1024
 
 typedef enum{CTR_OK, CTR_HALTED, CTR_BROKEN} ctr_state;
 typedef enum{CFG_PRE, CFG_DONE_INIT, CFG_IN_FINAL, CFG_FAILED_FINAL, CFG_DONE_FINAL} ctrcfg_state;
@@ -122,19 +122,21 @@ struct active_counter{
 TAILQ_HEAD(, active_counter) counter_list;
 
 struct MSRcounter{
-	char name[MSR_MAXLEN];
+	char* name;
 	uint64_t w_reg;
 	uint64_t event;
 	uint64_t umask;
 	uint64_t r_reg;
 	uint64_t os_user;
-	char core_flag[MSR_ARGLEN];
+	char* core_flag;
 	ctr_num_values numvalues_type;
 	int numcore; /* max legit core vals will consider (was numvals) */
 	int offset; /* offsets for core and uncore counters */
 	int maxcore; /* allows for extra zeros */
 };
 
+/*
+//These now come from a config file. NOTE: not the last 3 nums.
 
 static struct MSRcounter counter_assignments[] = {
 	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
@@ -149,11 +151,14 @@ static struct MSRcounter counter_assignments[] = {
 	{"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0},
 	{"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, "", CTR_UNCORE, 0, 0, 0}
 };
+*/
 
-static char* initnames[MSR_MAXOPTIONS];
-static int numinitnames;
-static int numcore;
-static int maxcore;
+static struct MSRcounter* counter_assignments = NULL;
+static char** initnames = NULL;
+static int msr_numoptions = 0;
+static int numinitnames = 0;
+static int numcore = 0;
+static int maxcore = 0;;
 
 /**
  * NOTE:
@@ -161,18 +166,20 @@ static int maxcore;
  * 2) since we iterate thru we select a little staggered in time cpu to cpu
  *
  * CONFIGURATION/INTERACTION:
- * a) users will add each one separately
- * b) users can swap out a var with one of the same size. syntax? name of the one to swap.
- * c) users will also say which one to halt/continue
+ * a) users must supply the configuration file with the counter assignments.
+ *    incompatible pairs are discovered.
+ * b) users will add each they want one separately
+ * c) users can swap out a var with one of the same size. syntax? name of the one to swap.
+ * d) users will also say which one to halt/continue
  *
- * LOCKS (DONE):
+ * LOCKS:
  * 1) cant call write (change the var or zero the reg) the register while we are reading the register.
- * 2) cant read into the register while we are working with the counter data (print fctn right now. note we could save them while we are reading them)
+ * 2) cant read into the register while we are working with the counter data (print fctn right now.
+ *    note we could save them while we are reading them)
  * 3) cant change the intended variable while we are reading or writing the data
  *
  * TODO:
  * 1) could read different ctr independently (threads)
- *
  */
 
 struct kw {
@@ -196,7 +203,7 @@ static ctrcfg_state cfgstate = CFG_PRE;
 
 static const char *usage(void)
 {
-	return  "    config name=msr_interlagos action=initialize set=<setname> component_id=<comp_id> maxcore=<maxcore> corespernuma=<corespernuma>\n"
+	return  "    config name=msr_interlagos action=initialize set=<setname> component_id=<comp_id> maxcore=<maxcore> corespernuma=<corespernuma> conffile=<cfile>\n"
 		"            - Sets the set name but does not create it.\n"
 		"            set             - The name of the set,\n"
 		"            component_id    - The default component_id. Also that for\n"
@@ -205,7 +212,8 @@ static const char *usage(void)
 		"                              If unspecified, it will use the actual number of cores.\n"
 		"                              If specified N must be >= actual numcores. This will\n"
 		"                              report 0 as values any N > actual numcores\n"
-                "            corespernuma    - num cores per numa domain (used for uncore counters)\n"
+		"            corespernuma    - num cores per numa domain (used for uncore counters)\n"
+		"            conffile        - configuration file with the counter assignment options\n";
 		"    config name=msr_interlagos action=add metricname=<name>\n"
 		"            - Adds a metric. The order they are issued are the ordered they are added\n"
 		"            metricname      - The metric name for the event\n"
@@ -226,6 +234,119 @@ static const char *usage(void)
 		"            metricname      - The metric name for the event to rewrite\n"
 		"                              metricname=all rewrites all\n"
 		;
+}
+
+static int parseConfig(char* fname){
+	char name[MSR_MAXLEN];
+	uint64_t w_reg;
+	uint64_t event;
+	uint64_t umask;
+	uint64_t r_reg;
+	uint64_t os_user;
+	char core_flag[MSR_ARGLEN];
+	char temp[MSR_MAXLEN];
+	ctr_num_values numvalues_type;
+
+	char lbuf[MSR_CONFIGLINE_MAX];
+	char* s;
+	int rc;
+	int i, count;
+
+	FILE *fp = fopen(fname, "r");
+	if (!fp){
+		msglog(LDMSD_LERROR, "%s: Cannot open config file <%s>\n",
+		       __FILE__, fname);
+		return EINVAL;
+	}
+
+	count = 0;
+	//parse once to count
+	do  {
+
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+
+		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+			    name, &w_reg, &event, &umask, &r_reg, &os_user, core_flag, temp);
+		if ((strlen(name) > 0) && (name[0] == '#')){
+			msglog(LDMS_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
+			       lbuf);
+			continue;
+		}
+		if (rc != 8){
+			msglog(LDMS_LDEBUG, "Bad format in msr config file <%s>. Skipping\n",
+			       lbuf);
+			continue;
+		}
+		if ((strcmp(temp, "CTR_UNCORE") != 0) && (strcmp(temp, "CTR_NUMCORE") != 0)){
+			msglog(LDMS_LDEBUG,"Bad type in msr config file <%s>. Skipping\n",
+			       lbuf);
+			continue;
+		}
+		count++;
+	}
+
+	counter_assignments = (struct MSRcounter*)malloc(count*sizeof(struct MSRcounter));
+	if (!counter_assignments){
+		return ENOMEM;
+	}
+	//let the user add up to this many names as well
+	initnames = (char*)malloc(count*sizeof(char*));
+	if (!initnames){
+		free(counter_assignments);
+		return ENOMEM;
+	}
+
+	//parse again to fill
+	int i;
+	do  {
+
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+
+		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+			    name, &w_reg, &event, &umask, &r_reg, &os_user, core_flag, temp);
+		if ((strlen(name) > 0) && (name[0] == '#')){
+			continue;
+		}
+		if (rc != 8){
+			continue;
+		}
+		if ((strcmp(temp, "CTR_UNCORE") == 0)) {
+			numvalues_type == CTR_UNCORE;
+		} else if ((strcmp(temp, "CTR_NUMCORE") == 0)) {
+			numvalues_type == CTR_NUMCORE;
+		} else {
+			continue;
+		}
+
+		if (i == count){
+			msglog(LDMSD_LERROR, "Changed number of valid entries from first pass. aborting.\n");
+			free(counter_assignments);
+			free(initnames);
+			return EINVAL;
+		}
+
+		counter_assignments[i].name = strdup(name);
+		counter_assignments[i].w_reg = w_reg;
+		counter_assignments[i].event = event;
+		counter_assignments[i].umask = umask;
+		counter_assignments[i].r_reg = r_reg;
+		counter_assignments[i].os_user = os_user;
+		counter_assignments[i].core_flag = strdup(core_flag);
+		counter_assignments[i].numvalues_type = numvalues_type;
+		counter_assignments[i].numcore = 0; //this will get filled in later
+		counter_assignments[i].offset = 0; //this will get filled in later
+		counter_assignments[i].maxcore = 0; //this will get filled in later
+
+		i++;
+	}
+
+	msr_numoptions = i;
+
+	return 0;
 }
 
 //the calling function needs to get the cfg lock
@@ -591,17 +712,15 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 	//validity. compare with all the others
 	TAILQ_FOREACH(pe, &counter_list, entry){
 		if (pe != rpe){
-			if ((strcmp(rpe->mctr->name, "TOT_CYC") == 0) &&
-			    strcmp(pe->mctr->name, "L2_DCM") == 0){
-				return -1;
-			}
-			if ((strcmp(rpe->mctr->name, "L2_DCM") == 0) &&
-			    strcmp(pe->mctr->name, "TOT_CYC") == 0){
-				return -1;
-			}
-			if (strcmp(rpe->mctr->name, pe->mctr->name) == 0){
-				//duplicates are ok
-				msglog(LDMS_LALWAYS,"msr_interlagos: Duplicate assignments! <%s>\n", rpe->mctr->name);
+			//duplicates are ok
+			if (rpe->mctr->wreg == pe->mctr->wreg){
+				if (strcmp(rpe->mctr->name, pe->mctr->name) == 0){
+					//duplicates are ok
+					msglog(LDMS_LALWAYS,"msr_interlagos: Duplicate assignments! <%s>\n",
+					       rpe->mctr->name);
+				} else {
+					return -1;
+				}
 			}
 		}
 	}
@@ -679,7 +798,7 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 	}
 
 	int idx = -1;
-	for (j = 0; j < MSR_MAXOPTIONS; j++){
+	for (j = 0; j < msr_numoptions; j++){
 		if (strcmp(newname, counter_assignments[j].name) == 0){
 			idx = j;
 			break;
@@ -768,7 +887,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 	}
 
 	//add an event to the list to be parsed
-	if (numinitnames == (MSR_MAXOPTIONS-1)){
+	if (numinitnames == msr_numoptions){
 		msglog(LDMS_LERROR, "msr_interlagos: Trying to add too many events\n");
 		pthread_mutex_unlock(&cfglock);
 		return -1;
@@ -782,7 +901,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 	}
 
 	idx = -1;
-	for (i = 0; i < MSR_MAXOPTIONS; i++){
+	for (i = 0; i < msr_numoptions; i++){
 		if (strcmp(nam, counter_assignments[i].name) == 0){
 			idx = i;
 			break;
@@ -809,22 +928,47 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 
 }
 
-static int checkcountersinit(){
+static int checkcountersinit(){ //this will only be called once, from finalize
 	//get the lock outside of this
 	//check for conflicts. check no conflicting w_reg
-	int i, j;
+	int i, j, ii, jj;
 
-	//at the moment: no both TOT_CYC and L2_DCM. Duplicates are OK but warn. this lets you swap.
+	//Duplicates are OK but warn. this lets you swap.
 	for (i = 0; i < numinitnames; i++){
+		int imatch = -1;
+		for (ii = 0; ii < msr_numoptions; ii++){
+			if (strcmp(initnames[i], counter_assignments[ii].name) == 0){
+				imatch == ii;
+				break;
+			}
+		}
+		if (imatch < 0)
+			continue;
+
 		for (j = 0; j < numinitnames; j++){
-			if (i != j){
+			int jmatch = -1;
+			if (i == j)
+				continue;
+
+			for (jj = 0; jj < msr_numoptions; jj++){
+				if (strcmp(initnames[j], counter_assignments[jj].name) == 0){
+					jmatch == jj;
+				}
+			}
+			if (jmatch < 0)
+				continue;
+
+			//do they have the same wregs if they are not the same name?
+			if (counter_assignments[imatch].w_reg == counter_assignments[jmatch].w_reg){
 				if (strcmp(initnames[i], initnames[j]) == 0){
 					//this is ok
-					msglog(LDMS_LALWAYS,"msr_interlagos: Duplicate assignments! <%s>\n", initnames[i]);
-				}
-				if ((strcmp(initnames[i], "TOT_CYC") == 0) &&
-				    (strcmp(initnames[j], "L2_DCM") == 0)){
-					msglog(LDMS_LERROR,"msr_interlagos: Cannot have both TOT_CYC and L2_DCM\n");
+					msglog(LDMS_LALWAYS,
+					       "msr_interlagos: Duplicate assignments! <%s>\n",
+					       initnames[i]);
+				} else {
+					msglog(LDMS_LERROR,
+					       "msr_interlagos: Cannot have conflicting counter assignments <%s> <%s>\n",
+					       initnames[i], initnames[j]);
 					return -1;
 				}
 			}
@@ -925,7 +1069,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	}
 
 
-	for (i = 0; i < MSR_MAXOPTIONS; i++){
+	for (i = 0; i < msr_numoptions; i++){
 		counter_assignments[i].numcore = numcore;
 		counter_assignments[i].maxcore = maxcore;
 		if (counter_assignments[i].numvalues_type == CTR_NUMCORE){
@@ -1026,7 +1170,7 @@ static int assigncountersinit(){
 
 	for (i = 0; i < numinitnames; i++){
 		int found = -1;
-		for (j = 0; j < MSR_MAXOPTIONS; j++){
+		for (j = 0; j < msr_numoptions; j++){
 			if (strcmp(initnames[i], counter_assignments[j].name) == 0){
 				rc = assigncounter(NULL, j);
 				if (rc != 0){
@@ -1294,6 +1438,24 @@ static ldms_set_t get_set()
 
 static void term(void)
 {
+	int i;
+
+	for (i = 0; i < numinitnames; i++){
+		free(initnames[i]);
+		initnames[i] = NULL;
+	}
+	numinitnames = 0;
+
+	for (i = 0; i < msr_numoptions; i++){
+		free(counter_assignments[i].name);
+		counter_assignments[i] = NULL;
+		free(counter_assignments[i].core_flag);
+		counter_assignments[i].core_flag = NULL;
+	}
+	msr_numoptions = 0;
+
+	//should also free the counter list
+
 	free(setname);
 	ldms_destroy_set(set);
 }
