@@ -76,10 +76,7 @@ typedef struct dstring {
  * \param dsPtr dstring *, pointer to a structure
  *               describing the dynamic string to query.
  */
-extern inline int dstrlen(const dstring_t * dsPtr)
-{
-	return dsPtr->length;
-}
+extern int dstrlen(const dstring_t * dsPtr);
 
 /*----------------------------------------------------------------------*/
 /**
@@ -92,10 +89,7 @@ extern inline int dstrlen(const dstring_t * dsPtr)
  * \param dsPtr dstring *, pointer to a structure
  *               describing the dynamic string to query.
  */
-extern inline const char *dstrval(const dstring_t * dsPtr)
-{
-	return dsPtr->string;
-}
+extern const char *dstrval(const dstring_t * dsPtr);
 
 /*----------------------------------------------------------------------*/
 /**
@@ -207,26 +201,43 @@ extern char *dstr_set(dstring_t * dsPtr, const char *string);
  */
 extern char *dstr_set_int(dstring_t * dsPtr, int64_t val);
 
-#if 0
-/* macros for convenience in typical use of one dynamic string in a function */
+/* C89 and c99 interpretations of 'extern inline' are contradictory at link time
+and we must be portable to both for some time to come.
+We don't want binary bloat from static inline, so when we don't trust the
+optimization pass to get this right, we use the next two macros.
+These also work for big_dstrings.
+*/
+/** Same as dstrlen but for performance junkies. */
+#define DSTRLEN(x) (x)->length
+/** Same as dstrval but for performance junkies. */
+#define DSTRVAL(x) (x)->string
+
+/** clients may define DSTRING_USE_SHORT before include if they want these
+ * for handling stack declared dstrings as objects.
+ */ 
+#ifdef DSTRING_USE_SHORT
+/* macros for convenience in typical use */
 /* paste as needed in application code. */
-/** declare and init a dstring named ds */
-#define dsinit \
+/** Declare and init a dstring named ds */
+#define dsinit(ds) \
 	dstring_t ds; \
 	dstr_init(&ds)
 
-/** declare and init an oversized dstring named ds with initial capacity cap.*/
-#define dsinit2(cap) \
+/** Declare and init an oversized dstring named ds with initial capacity cap.*/
+#define dsinit2(ds,cap) \
 	dstring_t ds; \
 	dstr_init2(&ds,cap)
 
-/** append a dstring with  null terminated string char_star_x.*/
-#define dscat(char_star_x) \
+/** Append a dstring with  null terminated string char_star_x.*/
+#define dscat(ds, char_star_x) \
 	dstrcat(&ds, char_star_x, DSTRING_ALL)
 
 /** create real string (char *) from ds and reset ds, freeing any internal memory allocated. returns a char* the caller must free later. */
-#define dsdone \
+#define dsdone(ds) \
 	dstr_extract(&ds)
+
+#define dslen(ds) DSTRLEN(&ds)
+#define dsval(ds) DSTRVAL(&ds)
 
 #endif
 
