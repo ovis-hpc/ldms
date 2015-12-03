@@ -72,9 +72,9 @@
 #define MAX_ROLLOVER_STORE_KEYS 20
 #define STORE_CTR_METRIC_MAX 21
 #define STORE_CTR_NAME_MAX 20
+#define MSR_CONFIGLINE_MAX 1024
 
 /** Fields for the name translation. These must match msr */
-#define MSR_MAXOPTIONS 11
 #define MSR_HOST 0
 #define MSR_CNT_MASK 0
 #define MSR_INV 0
@@ -82,30 +82,20 @@
 #define MSR_ENABLE 1
 #define MSR_INTT 0
 
-
-struct MSRcounter_tr{
-	char name[STORE_CTR_NAME_MAX];
+static struct MSRcounter_tr{
+	char* name;
 	uint64_t w_reg;
 	uint64_t event;
 	uint64_t umask;
 	uint64_t r_reg;
 	uint64_t os_user;
+	uint64_t int_core_ena;
+	uint64_t int_core_sel;
 	uint64_t wctl;
 };
 
-static struct MSRcounter_tr counter_assignments[] = {
-	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, 0},
-	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, 0},
-	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, 0},
-	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, 0},
-	{"DP_OPS",  0xc0010206, 0x003, 0xF0, 0xc0010207, 0b11, 0},
-	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, 0},
-	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, 0},
-	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, 0},
-        {"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, 0},
-        {"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, 0},
-        {"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, 0}
-};
+static struct MSRcounter_tr* counter_assignments;
+static int msr_numoptions = 0;
 
 
 static pthread_t rothread;
@@ -154,7 +144,6 @@ static ldmsd_msg_log_f msglog;
  * Notes:
  * - will write out a compid per metric, it is the one stored with the variable name.
  * - this store only accepts the one set
- * - this does not have config file.
  * - currently, the derived value is just a diff (not a rate).
  * - rollover: negative values return a 0. there is no flag to indicate that.
  * - invalid scenarios:
@@ -368,7 +357,7 @@ static int getNameIdx(uint64_t wctlin){
 		return -1;
 
 	//FIXME: get a better struct for this
-	for (i = 0; i < MSR_MAXOPTIONS; i++){
+	for (i = 0; i < msr_numoptions; i++){
 		if (wctlin == counter_assignments[i].wctl){
 			return i;
 		}
@@ -383,14 +372,14 @@ static int getNameIdx(uint64_t wctlin){
 static int calcTranslations(){
 	int i;
 
-	for (i = 0; i < MSR_MAXOPTIONS; i++){
+	for (i = 0; i < msr_numoptions; i++){
 		uint64_t w_reg = counter_assignments[i].w_reg;
 		uint64_t event_hi = counter_assignments[i].event >> 8;
 		uint64_t event_low = counter_assignments[i].event & 0xFF;
 		uint64_t umask = counter_assignments[i].umask;
 		uint64_t os_user = counter_assignments[i].os_user;
 
-		counter_assignments[i].wctl = MSR_HOST << 40 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
+		counter_assignments[i].wctl = MSR_HOST << 40 | int_core_sel << 37 | int_core_ena << 36 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
 
 	}
 }
@@ -462,6 +451,98 @@ static int createDS(struct store_msr_csv_handle *s_handle,
 	return 0;
 }
 
+static int parseConfig(char* fname){
+	char name[MSR_MAXLEN];
+	uint64_t w_reg;
+	uint64_t event;
+	uint64_t umask;
+	uint64_t r_reg;
+	uint64_t os_user;
+	uint64_t int_core_ena;
+	uint64_t int_core_sel;
+
+	char lbuf[MSR_CONFIGLINE_MAX];
+	char* s;
+	int rc;
+	int i, count;
+
+	FILE *fp = fopen(fname, "r");
+	if (!fp){
+		msglog(LDMS_LERROR, "%s: Cannot open config file <%s>\n",
+		       __FILE__, fname);
+		return EINVAL;
+	}
+
+	count = 0;
+	//parse once to count
+	do  {
+
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+
+		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64,
+			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel);
+		if ((strlen(name) > 0) && (name[0] == '#')){
+			msglog(LDMS_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
+			       lbuf);
+			continue;
+		}
+		if (rc != 8){
+			msglog(LDMS_LDEBUG, "Bad format in msr config file <%s>. Skipping\n",
+			       lbuf);
+			continue;
+		}
+		msglog(LDMS_LDEBUG, "msr config fields: <%s> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 ">\n",
+		       name, w_reg, event, umask, r_reg, os_user, int_core_ena, int_core_sel);
+
+		count++;
+	} while (s);
+
+	counter_assignments = (struct MSRcounter*)malloc(count*sizeof(struct MSRcounter));
+	if (!counter_assignments){
+		return ENOMEM;
+	}
+
+	//parse again to fill
+	i = 0;
+	do  {
+
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+
+		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64,
+			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel);
+		if ((strlen(name) > 0) && (name[0] == '#')){
+			continue;
+		}
+		if (rc != 8){
+			continue;
+		}
+
+		if (i == count){
+			msglog(LDMS_LERROR, "Changed number of valid entries from first pass. aborting.\n");
+			free(counter_assignments);
+			 return EINVAL;
+		}
+		counter_assignments[i].name = strdup(name);
+		counter_assignments[i].w_reg = w_reg;
+		counter_assignments[i].event = event;
+		counter_assignments[i].umask = umask;
+		counter_assignments[i].r_reg = r_reg;
+		counter_assignments[i].os_user = os_user;
+		counter_assignments[i].int_core_ena = int_core_ena;
+		counter_assignments[i].int_core_sel = int_core_sel;
+
+		i++;
+	} while (s);
+
+	msr_numoptions = i;
+
+	return 0;
+}
+
 
 /**
  * \brief Configuration
@@ -472,8 +553,10 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	char *altvalue = NULL;
 	char *ivalue = NULL;
 	char *rvalue = NULL;
+	char *cfile = NULL;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
+	int rc;
 
 	pthread_mutex_lock(&cfg_lock);
 
@@ -484,6 +567,18 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	altvalue = av_value(avl, "altheader");
+
+	cfile = av_value(avl, "conffile");
+	if (!cfile){
+		msglog(LDMS_LERROR, "msr_interlagos: no config file");
+		return EINVAL;
+	} else {
+		rc = parseConfig(cfile);
+		if (rc != 0){
+			msglog(LDMS_LERROR, "msr_interlogos: error parsing config file. Aborting\n");
+			return rc;
+		}
+	}
 
 	rvalue = av_value(avl, "rollover");
 	if (rvalue){
@@ -535,10 +630,11 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "    config name=store_msr_csv path=<path> altheader=<0/1>\n"
+	return  "    config name=store_msr_csv path=<path> altheader=<0/1> conffile=<cfile>\n"
 		"         - Set the root path for the storage of csvs.\n"
-		"           path      The path to the root of the csv directory\n"
+		"         - path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
+		"         - conffile  Configuration file with the counter assignment options\n"
 		"         - rollover  Greater than zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
