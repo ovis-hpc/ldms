@@ -316,7 +316,7 @@ static int _setup_connection(struct ldms_ugni_xprt *r,
 
 static void ugni_xprt_error_handling(struct ldms_ugni_xprt *r);
 
-#define UGNI_MAX_OUTSTANDING_BTE 8192
+#define UGNI_MAX_OUTSTANDING_BTE_DEFAULT 8192
 static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 {
 	gni_job_limits_t limits;
@@ -339,7 +339,13 @@ static gni_return_t ugni_job_setup(uint8_t *ptag, uint32_t cookie)
 	limits.cq_limit = GNI_JOB_INVALID_LIMIT;
 
 	/* This limits the fan-out of the aggregator */
-	limits.bte_limit = UGNI_MAX_OUTSTANDING_BTE;
+	char *env_bte = getenv("UGNI_MAX_OUTSTANDING_BTE");
+	if (env_bte) {
+		limits.bte_limit = atoi(env_bte);
+	} else {
+		ugni_log(LDMS_LDEBUG, "Note: no envvar UGNI_MAX_OUTSTANDING_BTE. Using default.\n");
+		limits.bte_limit = UGNI_MAX_OUTSTANDING_BTE_DEFAULT;
+	}
 
 	/* Do not use an NTT */
 	limits.ntt_size = 0;
@@ -574,7 +580,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 	struct epoll_event event;
 
 	if (check_state) {
-		if (gxp->node_id == -1) 
+		if (gxp->node_id == -1)
 			get_nodeid(sa, sa_len, gxp);
 
 		if (gxp->node_id != -1){
@@ -585,7 +591,7 @@ static int ugni_xprt_connect(struct ldms_xprt *x,
 				assert(gxp->sock == -1);
 				return -1;
 			}
-		} 
+		}
 		//If you ask for a node w/o a valid id, go ahead and try to connect
 	}
 
