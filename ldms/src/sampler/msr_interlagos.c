@@ -55,6 +55,9 @@
  * Sets/checks/ and reads msr counters for interlagos only
  *
  */
+#define _XOPEN_SOURCE 500
+#define _GNU_SOURCE
+#include <ctype.h>
 #include <dirent.h>
 #include <inttypes.h>
 #include <unistd.h>
@@ -128,6 +131,8 @@ struct MSRcounter{
 	uint64_t umask;
 	uint64_t r_reg;
 	uint64_t os_user;
+	uint64_t int_core_ena;
+	uint64_t int_core_sel;
 	char* core_flag;
 	ctr_num_values numvalues_type;
 	int numcore; /* max legit core vals will consider (was numvals) */
@@ -243,6 +248,8 @@ static int parseConfig(char* fname){
 	uint64_t umask;
 	uint64_t r_reg;
 	uint64_t os_user;
+	uint64_t int_core_ena;
+	uint64_t int_core_sel;
 	char core_flag[MSR_ARGLEN];
 	char temp[MSR_MAXLEN];
 	ctr_num_values numvalues_type;
@@ -254,7 +261,7 @@ static int parseConfig(char* fname){
 
 	FILE *fp = fopen(fname, "r");
 	if (!fp){
-		msglog(LDMSD_LERROR, "%s: Cannot open config file <%s>\n",
+		msglog(LDMS_LERROR, "%s: Cannot open config file <%s>\n",
 		       __FILE__, fname);
 		return EINVAL;
 	}
@@ -267,51 +274,55 @@ static int parseConfig(char* fname){
 		if (!s)
 			break;
 
-		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
-			    name, &w_reg, &event, &umask, &r_reg, &os_user, core_flag, temp);
+		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel, core_flag, temp);
 		if ((strlen(name) > 0) && (name[0] == '#')){
 			msglog(LDMS_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
-		if (rc != 8){
+		if (rc != 10){
 			msglog(LDMS_LDEBUG, "Bad format in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
+		msglog(LDMS_LDEBUG, "msr config fields: <%s> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%s> <%s>\n",
+		       name, w_reg, event, umask, r_reg, os_user, int_core_ena, int_core_sel, core_flag, temp);
+
+
 		if ((strcmp(temp, "CTR_UNCORE") != 0) && (strcmp(temp, "CTR_NUMCORE") != 0)){
 			msglog(LDMS_LDEBUG,"Bad type in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
 		count++;
-	}
+	} while (s);
 
 	counter_assignments = (struct MSRcounter*)malloc(count*sizeof(struct MSRcounter));
 	if (!counter_assignments){
 		return ENOMEM;
 	}
 	//let the user add up to this many names as well
-	initnames = (char*)malloc(count*sizeof(char*));
+	initnames = (char**)malloc(count*sizeof(char*));
 	if (!initnames){
 		free(counter_assignments);
 		return ENOMEM;
 	}
 
 	//parse again to fill
-	int i;
+	i = 0;
 	do  {
 
 		s = fgets(lbuf, sizeof(lbuf), fp);
 		if (!s)
 			break;
 
-		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
-			    name, &w_reg, &event, &umask, &r_reg, &os_user, core_flag, temp);
+		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel, core_flag, temp);
 		if ((strlen(name) > 0) && (name[0] == '#')){
 			continue;
 		}
-		if (rc != 8){
+		if (rc != 10){
 			continue;
 		}
 		if ((strcmp(temp, "CTR_UNCORE") == 0)) {
@@ -323,7 +334,7 @@ static int parseConfig(char* fname){
 		}
 
 		if (i == count){
-			msglog(LDMSD_LERROR, "Changed number of valid entries from first pass. aborting.\n");
+			msglog(LDMS_LERROR, "Changed number of valid entries from first pass. aborting.\n");
 			free(counter_assignments);
 			free(initnames);
 			return EINVAL;
@@ -335,6 +346,8 @@ static int parseConfig(char* fname){
 		counter_assignments[i].umask = umask;
 		counter_assignments[i].r_reg = r_reg;
 		counter_assignments[i].os_user = os_user;
+		counter_assignments[i].int_core_ena = int_core_ena;
+		counter_assignments[i].int_core_sel = int_core_sel;
 		counter_assignments[i].core_flag = strdup(core_flag);
 		counter_assignments[i].numvalues_type = numvalues_type;
 		counter_assignments[i].numcore = 0; //this will get filled in later
@@ -342,7 +355,7 @@ static int parseConfig(char* fname){
 		counter_assignments[i].maxcore = 0; //this will get filled in later
 
 		i++;
-	}
+	} while (s);
 
 	msr_numoptions = i;
 
@@ -713,7 +726,7 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 	TAILQ_FOREACH(pe, &counter_list, entry){
 		if (pe != rpe){
 			//duplicates are ok
-			if (rpe->mctr->wreg == pe->mctr->wreg){
+			if (rpe->mctr->w_reg == pe->mctr->w_reg){
 				if (strcmp(rpe->mctr->name, pe->mctr->name) == 0){
 					//duplicates are ok
 					msglog(LDMS_LALWAYS,"msr_interlagos: Duplicate assignments! <%s>\n",
@@ -785,6 +798,7 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 	return 0;
 }
 
+int assigncounter(struct active_counter* pe, int j);
 
 static struct active_counter* reassigncounter(char* oldname, char* newname) {
 	struct active_counter *pe;
@@ -1132,9 +1146,12 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 	uint64_t event_low = counter_assignments[j].event & 0xFF;
 	uint64_t umask = counter_assignments[j].umask;
 	uint64_t os_user = counter_assignments[j].os_user;
+	uint64_t int_core_ena = counter_assignments[j].int_core_ena;
+	uint64_t int_core_sel = counter_assignments[j].int_core_sel;
 
 
-	pe->wctl = MSR_HOST << 40 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
+//	pe->wctl = MSR_HOST << 40 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
+	pe->wctl = MSR_HOST << 40 | int_core_sel << 37 | int_core_ena << 36 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
 	//        printf("%s: 0x%llx, 0x%llx, 0x%llx 0x%llx\n",
 	//               pe->mctr->name, event_hi, event_low, umask, pe->wctl);
 
@@ -1448,7 +1465,7 @@ static void term(void)
 
 	for (i = 0; i < msr_numoptions; i++){
 		free(counter_assignments[i].name);
-		counter_assignments[i] = NULL;
+		counter_assignments[i].name = NULL;
 		free(counter_assignments[i].core_flag);
 		counter_assignments[i].core_flag = NULL;
 	}
