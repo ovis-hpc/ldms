@@ -35,7 +35,9 @@ if [ -n "$LIBEVENT_PREFIX" ]; then
 	WITH="$WITH --with-libevent=$LIBEVENT_PREFIX"
 fi
 
-function __with_for {
+function __flags_for {
+	echo -n " $DISABLE"
+	echo -n " $ENABLE"
 	if [ -n "$LIBEVENT_PREFIX" ]; then
 		echo -n " --with-libevent=$LIBEVENT_PREFIX"
 	fi
@@ -47,6 +49,7 @@ function __with_for {
 		# do nothing
 	;;
 	ldms)
+		echo -n " --enable-etc"
 		echo -n " $WITH_SOS $WITH_OVIS_LIB"
 	;;
 	baler)
@@ -81,7 +84,7 @@ for X in $LIST; do
 	mkdir -p $BUILD_DIR
 	pushd $BUILD_DIR
 	rm -rf * # Making sure that the build is clean
-	../configure --prefix=$PREFIX $ENABLE $DISABLE $(__with_for $X) CFLAGS="$CFLAGS"
+	../configure --prefix=$PREFIX $(__flags_for $X) CFLAGS="$CFLAGS"
 	make rpm7
 	mkdir -p rpm7/BUILDROOT
 	pushd rpm7/BUILDROOT
