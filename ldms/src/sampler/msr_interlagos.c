@@ -124,7 +124,7 @@ struct active_counter{
 
 TAILQ_HEAD(, active_counter) counter_list;
 
-struct MSRcounter{
+static struct MSRcounter{
 	char* name;
 	uint64_t w_reg;
 	uint64_t event;
@@ -1021,6 +1021,8 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	struct dirent **dlist;
 	char* tempname;
 	char* val;
+	char* cfile;
+	int rc;
 	int i;
 
 	if (cfgstate != CFG_PRE){
@@ -1039,6 +1041,18 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		default_comp_id = 0;
 	} else {
 		default_comp_id = strtoull(tempname, NULL, 0);
+	}
+
+	cfile = av_value(avl, "conffile");
+	if (!cfile){
+		msglog(LDMS_LERROR, "msr_interlagos: no config file");
+		return EINVAL;
+	} else {
+		rc = parseConfig(cfile);
+		if (rc != 0){
+			msglog(LDMS_LERROR, "msr_interlogos: error parsing config file. Aborting\n");
+			return rc;
+		}
 	}
 
 	//get the actual number of counters = num entries like /dev/cpu/%d
