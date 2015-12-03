@@ -292,6 +292,8 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	ldmsd_prdcr_lock(prdcr);
 	switch (e) {
 	case LDMS_CONN_EVENT_CONNECTED:
+		ldmsd_log(LDMSD_LINFO, "Producer %s is connected\n",
+				prdcr->obj.name);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 		if (ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
 				  LDMS_DIR_F_NOTIFY))
@@ -301,20 +303,30 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	case LDMS_CONN_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
 				"connection\n", prdcr->obj.name);
+		goto reset_prdcr;
 	case LDMS_CONN_EVENT_DISCONNECTED:
+		ldmsd_log(LDMSD_LINFO, "Producer %s is disconnected\n",
+				prdcr->obj.name);
+		goto reset_prdcr;
 	case LDMS_CONN_EVENT_ERROR:
-		prdcr_reset_sets(prdcr);
-		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-					 0, prdcr->conn_intrvl_us, 0);
-		}
-		ldms_xprt_put(prdcr->xprt);
-		prdcr->xprt = NULL;
-		break;
+		ldmsd_log(LDMSD_LERROR, "Producer %s: connection error\n",
+				prdcr->obj.name);
+		goto reset_prdcr;
 	default:
 		assert(0);
 	}
+	ldmsd_prdcr_unlock(prdcr);
+	return;
+
+reset_prdcr:
+	prdcr_reset_sets(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+		ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
+				 0, prdcr->conn_intrvl_us, 0);
+	}
+	ldms_xprt_put(prdcr->xprt);
+	prdcr->xprt = NULL;
 	ldmsd_prdcr_unlock(prdcr);
 }
 
