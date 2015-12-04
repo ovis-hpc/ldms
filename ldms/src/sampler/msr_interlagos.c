@@ -300,12 +300,14 @@ static int parseConfig(char* fname){
 
 	counter_assignments = (struct MSRcounter*)malloc(count*sizeof(struct MSRcounter));
 	if (!counter_assignments){
+		fclose(fp);
 		return ENOMEM;
 	}
 	//let the user add up to this many names as well
 	initnames = (char**)malloc(count*sizeof(char*));
 	if (!initnames){
 		free(counter_assignments);
+		fclose(fp);
 		return ENOMEM;
 	}
 
@@ -358,6 +360,7 @@ static int parseConfig(char* fname){
 
 		i++;
 	} while (s);
+	fclose(fp);
 
 	msr_numoptions = i;
 
