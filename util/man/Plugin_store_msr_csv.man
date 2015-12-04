@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_derived_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "19 Sep 2015" "v2.5" "LDMS Plugin store_msr_csv man page"
+.TH man 7 "02 Dec 2015" "v2.6" "LDMS Plugin store_msr_csv man page"
 
 .SH NAME
 Plugin_store_msr_csv - man page for the LDMS store_msr_csv plugin. This is a derived store particular to the msr (_interlagos) plugin.
@@ -45,14 +45,18 @@ In that case, use the action=container option to set sequence=forward, so it wil
 
 .TP
 .BR config
-name=<plugin_name> path=<path> [ alt_header=<altheader> rolltype=<rolltype> rollover=<rollover> ]
+name=<plugin_name> path=<path> conffile=<cfile> [ alt_header=<altheader> rolltype=<rolltype> rollover=<rollover> ]
 .br
 ldmsctl configuration line
 .RS
 .TP
 name=<plugin_name>
 .br
-This MUST be store_derived_csv.
+This MUST be store_msr_csv.
+.TP
+conffile=<cfile>
+.br
+Path to the configuration file for the counters. This is used for name translation. This must be the same conffile as that used for the sampler.
 .TP
 path=<path>
 .br
@@ -160,8 +164,8 @@ ldmsctl lines for configuring store_msr_csv:
 .nf
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_msr_csv
-ldmsctl> config name=store_msr_csv alt_header=1 path=/XXX/storedir
-ldmsctl> store name=store_msr_csv comp_type=node set=msr container=msr_der
+ldmsctl> config name=store_msr_csv alt_header=1 path=/XXX/storedir conffile=/XXX/msr_conf.txt
+ldmsctl> store name=store_msr_csv comp_type=node set=msr_interlagos container=msr_der
 ldmsctl> quit
 .if
 

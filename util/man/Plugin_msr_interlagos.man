@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_msr_interlagos
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin msr interlagos man page"
+.TH man 7 "02 Dec 2015" "v2.6" "LDMS Plugin msr interlagos man page"
 
 .SH NAME
 Plugin_msr - man page for the LDMS msr interlagos plugin
@@ -40,40 +40,15 @@ the rewrite in order to avoid a race condition with the next job setting the cou
 max time time limit on the blocking call in the script. The script return code indicates success or failure.
 Note that options that require LDMS to check for a flag set by the RM are subject to race conditions.
 
-.SH SUPPORTED COUNTERS
+.SH COUNTER CONFIGURATION FILE
 
 This plugin only works for Interlagos. Using this sampler on other architectures may result in badness as the addresses
 will not be correct.
 
 .PP
-Options for counters are:
-.IP \[bu]
-TOT_CYC
-.IP \[bu]
-TOT_INS
-.IP \[bu]
-L2_DCM
-.IP \[bu]
-L1_DCM
-.IP \[bu]
-DP_OPS
-.IP \[bu]
-VEC_INS
-.IP \[bu]
-TLB_DM
-.IP \[bu]
-L3_CACHE_MISSES - Per numa node
-.IP \[bu]
-DCT_PREFETCH - Per numa node
-.IP \[bu]
-DCT_RD_TOT - Per numa node
-.IP \[bu]
-DCT_WRT - Per numa node
-.PP
-These are the options for the metricname argument of the add command.
+Options for counters are specified via a config file.
 
-NOTE: TOT_CYC and L2_DCM are mutually exclusive.
-
+.....START HERE...
 
 
 
@@ -247,7 +222,7 @@ will not be correct.
 
 .SH EXAMPLES
 .PP
-config name=msr_interlagos action=initialize setname=nid00010_msr component_id=10 corespernuma=8
+config name=msr_interlagos action=initialize setname=nid00010_msr component_id=10 corespernuma=8 conffile=/XXX/msr_conf.txt
 .br
 config name=msr_interlagos action=add metricname=L3_CACHE_MISSES
 .br
