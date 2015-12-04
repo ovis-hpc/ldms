@@ -73,6 +73,7 @@
 #define STORE_CTR_METRIC_MAX 21
 #define STORE_CTR_NAME_MAX 20
 #define MSR_CONFIGLINE_MAX 1024
+#define MSR_MAXLEN 20
 
 /** Fields for the name translation. These must match msr */
 #define MSR_HOST 0
@@ -378,6 +379,8 @@ static int calcTranslations(){
 		uint64_t event_low = counter_assignments[i].event & 0xFF;
 		uint64_t umask = counter_assignments[i].umask;
 		uint64_t os_user = counter_assignments[i].os_user;
+		uint64_t int_core_sel = counter_assignments[i].int_core_sel;
+		uint64_t int_core_ena = counter_assignments[i].int_core_ena;
 
 		counter_assignments[i].wctl = MSR_HOST << 40 | int_core_sel << 37 | int_core_ena << 36 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
 
@@ -499,7 +502,7 @@ static int parseConfig(char* fname){
 		count++;
 	} while (s);
 
-	counter_assignments = (struct MSRcounter*)malloc(count*sizeof(struct MSRcounter));
+	counter_assignments = (struct MSRcounter_tr*)malloc(count*sizeof(struct MSRcounter_tr));
 	if (!counter_assignments){
 		return ENOMEM;
 	}

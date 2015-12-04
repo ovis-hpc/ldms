@@ -93,16 +93,16 @@
 #endif // __linux__
 
 
-#define MSR_MAXLEN 20
-#define MSR_ARGLEN 4
-#define MSR_HOST 0
-#define MSR_CNT_MASK 0
-#define MSR_INV 0
-#define MSR_EDGE 0
-#define MSR_ENABLE 1
-#define MSR_INTT 0
+#define MSR_MAXLEN 20L
+#define MSR_ARGLEN 4L
+#define MSR_HOST 0L
+#define MSR_CNT_MASK 0L
+#define MSR_INV 0L
+#define MSR_EDGE 0L
+#define MSR_ENABLE 1L
+#define MSR_INTT 0L
 #define MSR_TOOMANYMAX 100
-#define CTR_TABLE_OFFSET 1
+#define CTR_TABLE_OFFSET 1L
 #define MSR_CONFIGLINE_MAX 1024
 
 typedef enum{CTR_OK, CTR_HALTED, CTR_BROKEN} ctr_state;
@@ -273,8 +273,8 @@ static int parseConfig(char* fname){
 		s = fgets(lbuf, sizeof(lbuf), fp);
 		if (!s)
 			break;
-
-		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+		//rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx,%[^,],%s",
 			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel, core_flag, temp);
 		if ((strlen(name) > 0) && (name[0] == '#')){
 			msglog(LDMS_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
@@ -310,6 +310,7 @@ static int parseConfig(char* fname){
 	}
 
 	//parse again to fill
+	fseek(fp, 0, SEEK_SET);
 	i = 0;
 	do  {
 
@@ -317,7 +318,8 @@ static int parseConfig(char* fname){
 		if (!s)
 			break;
 
-		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+		//rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
+		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx,%[^,],%s",
 			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel, core_flag, temp);
 		if ((strlen(name) > 0) && (name[0] == '#')){
 			continue;
@@ -326,9 +328,9 @@ static int parseConfig(char* fname){
 			continue;
 		}
 		if ((strcmp(temp, "CTR_UNCORE") == 0)) {
-			numvalues_type == CTR_UNCORE;
+			numvalues_type = CTR_UNCORE;
 		} else if ((strcmp(temp, "CTR_NUMCORE") == 0)) {
-			numvalues_type == CTR_NUMCORE;
+			numvalues_type = CTR_NUMCORE;
 		} else {
 			continue;
 		}
