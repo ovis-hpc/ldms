@@ -73,15 +73,15 @@
 #define STORE_CTR_METRIC_MAX 21
 #define STORE_CTR_NAME_MAX 20
 #define MSR_CONFIGLINE_MAX 1024
-#define MSR_MAXLEN 20
 
 /** Fields for the name translation. These must match msr */
-#define MSR_HOST 0
-#define MSR_CNT_MASK 0
-#define MSR_INV 0
-#define MSR_EDGE 0
-#define MSR_ENABLE 1
-#define MSR_INTT 0
+#define MSR_MAXLEN 20L
+#define MSR_HOST 0L
+#define MSR_CNT_MASK 0L
+#define MSR_INV 0L
+#define MSR_EDGE 0L
+#define MSR_ENABLE 1L
+#define MSR_INTT 0L
 
 static struct MSRcounter_tr{
 	char* name;
@@ -484,13 +484,14 @@ static int parseConfig(char* fname){
 		if (!s)
 			break;
 
-		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64,
+		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx",
 			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel);
 		if ((strlen(name) > 0) && (name[0] == '#')){
 			msglog(LDMS_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
+
 		if (rc != 8){
 			msglog(LDMS_LDEBUG, "Bad format in msr config file <%s>. Skipping\n",
 			       lbuf);
@@ -504,10 +505,12 @@ static int parseConfig(char* fname){
 
 	counter_assignments = (struct MSRcounter_tr*)malloc(count*sizeof(struct MSRcounter_tr));
 	if (!counter_assignments){
+		fclose(fp);
 		return ENOMEM;
 	}
 
 	//parse again to fill
+	fseek(fp, 0, SEEK_SET);
 	i = 0;
 	do  {
 
@@ -515,7 +518,7 @@ static int parseConfig(char* fname){
 		if (!s)
 			break;
 
-		rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64,
+		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx",
 			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel);
 		if ((strlen(name) > 0) && (name[0] == '#')){
 			continue;
@@ -540,6 +543,7 @@ static int parseConfig(char* fname){
 
 		i++;
 	} while (s);
+	fclose(fp);
 
 	msr_numoptions = i;
 

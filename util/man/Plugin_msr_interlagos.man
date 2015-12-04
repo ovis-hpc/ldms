@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_msr_interlagos
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "15 Sep 2015" "v2.5" "LDMS Plugin msr interlagos man page"
+.TH man 7 "02 Dec 2015" "v2.6" "LDMS Plugin msr interlagos man page"
 
 .SH NAME
 Plugin_msr - man page for the LDMS msr interlagos plugin
@@ -40,41 +40,34 @@ the rewrite in order to avoid a race condition with the next job setting the cou
 max time time limit on the blocking call in the script. The script return code indicates success or failure.
 Note that options that require LDMS to check for a flag set by the RM are subject to race conditions.
 
-.SH SUPPORTED COUNTERS
+.SH COUNTER CONFIGURATION FILE
 
 This plugin only works for Interlagos. Using this sampler on other architectures may result in badness as the addresses
 will not be correct.
 
 .PP
-Options for counters are:
-.IP \[bu]
-TOT_CYC
-.IP \[bu]
-TOT_INS
-.IP \[bu]
-L2_DCM
-.IP \[bu]
-L1_DCM
-.IP \[bu]
-DP_OPS
-.IP \[bu]
-VEC_INS
-.IP \[bu]
-TLB_DM
-.IP \[bu]
-L3_CACHE_MISSES - Per numa node
-.IP \[bu]
-DCT_PREFETCH - Per numa node
-.IP \[bu]
-DCT_RD_TOT - Per numa node
-.IP \[bu]
-DCT_WRT - Per numa node
+Options for counters are specified via a config file. An example
+config file is in /util/configs/msr_interlagos/bw_msr_configs. Fields are:
+name, w_reg, event, umask, r_reg, os_user, int_core_ena, int_core_sel,  core_flag, (CTR_UNCORE|CTR_NUMCORE).
+
+
+Commas and whitespace are signficant. The sampler is not robust to foramtting errors in the config file.
 .PP
-These are the options for the metricname argument of the add command.
-
-NOTE: TOT_CYC and L2_DCM are mutually exclusive.
-
-
+.fi
+.nf
+TOT_CYC, 0xc0010202, 0x076, 0x00, 0xc0010203, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+TOT_INS, 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+L2_DCM,  0xc0010202, 0x043, 0x00, 0xc0010203, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+L1_DCM,  0xc0010204, 0x041, 0x01, 0xc0010205, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+DP_OPS,  0xc0010206, 0x003, 0xF0, 0xc0010207, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+RETIRED_FLOPS,  0xc0010206, 0x003, 0xFF, 0xc0010207, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+VEC_INS, 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+TLB_DM,  0xc001020A, 0x046, 0x07, 0xc001020B, 0x3, 0x0, 0x0, -a, CTR_NUMCORE
+L3_CACHE_MISSES, 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0x0, 0x1, 0x0, , CTR_UNCORE
+DCT_PREFETCH, 0xc0010242, 0x1F0, 0x64, 0xc0010243, 0x0, 0x1, 0x0, , CTR_UNCORE
+DCT_RD_TOT, 0xc0010244, 0x1F0, 0x62, 0xc0010245, 0x0, 0x1, 0x0, , CTR_UNCORE
+DCT_WRT, 0xc0010246, 0x1F0, 0x19, 0xc0010247, 0x0, 0x1, 0x0, , CTR_UNCORE
+.fi
 
 
 
@@ -234,7 +227,7 @@ writes info about the intended counters to the log file.
 .RE
 
 .SH BUGS
-No known bugs.
+The sampler is not robust to errors in the config file.
 
 .SH NOTES
 .PP
@@ -247,7 +240,7 @@ will not be correct.
 
 .SH EXAMPLES
 .PP
-config name=msr_interlagos action=initialize setname=nid00010_msr component_id=10 corespernuma=8
+config name=msr_interlagos action=initialize setname=nid00010_msr component_id=10 corespernuma=8 conffile=/XXX/msr_conf.txt
 .br
 config name=msr_interlagos action=add metricname=L3_CACHE_MISSES
 .br
