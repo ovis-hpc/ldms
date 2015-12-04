@@ -75,15 +75,15 @@
 #define MSR_CONFIGLINE_MAX 1024
 
 /** Fields for the name translation. These must match msr */
-#define MSR_MAXLEN 20L
-#define MSR_HOST 0L
-#define MSR_CNT_MASK 0L
-#define MSR_INV 0L
-#define MSR_EDGE 0L
-#define MSR_ENABLE 1L
-#define MSR_INTT 0L
+#define MSR_MAXLEN 20LL
+#define MSR_HOST 0LL
+#define MSR_CNT_MASK 0LL
+#define MSR_INV 0LL
+#define MSR_EDGE 0LL
+#define MSR_ENABLE 1LL
+#define MSR_INTT 0LL
 
-static struct MSRcounter_tr{
+struct MSRcounter_tr{
 	char* name;
 	uint64_t w_reg;
 	uint64_t event;
