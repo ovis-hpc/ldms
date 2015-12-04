@@ -40,6 +40,10 @@ Note that all raw values of the msr_interlagos plugin can be stored with the nor
 In that case, use the action=container option to set sequence=forward, so it will match the order in this store
 (writes the cores in numerically increasing order).
 
+.SH COUNTER CONFIGURATION FILE
+store_msr_csv takes the same configuration file as the msr_interlagos sampler.
+This is used to back out the counter name from the numeric field. This will be changed in v3.
+
 
 .SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
 
@@ -142,7 +146,7 @@ The column sequence of <sampled metrics> is the order in which the metrics are a
 
 
 .SH BUGS
-No known bugs.
+This is not robust to errors in the config file format.
 
 
 .SH NOTES
