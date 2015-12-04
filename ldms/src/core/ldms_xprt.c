@@ -1189,6 +1189,7 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 	default:
 		x->log(LDMS_LERROR,"Request command found in reply handler %s\n",
 			ldms_request_cmd_names[cmd]);
+		return 1;
 	}
 	return 0;
 }

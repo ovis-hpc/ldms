@@ -93,16 +93,16 @@
 #endif // __linux__
 
 
-#define MSR_MAXLEN 20L
-#define MSR_ARGLEN 4L
-#define MSR_HOST 0L
-#define MSR_CNT_MASK 0L
-#define MSR_INV 0L
-#define MSR_EDGE 0L
-#define MSR_ENABLE 1L
-#define MSR_INTT 0L
-#define MSR_TOOMANYMAX 100
-#define CTR_TABLE_OFFSET 1L
+#define MSR_MAXLEN 20LL
+#define MSR_ARGLEN 4LL
+#define MSR_HOST 0LL
+#define MSR_CNT_MASK 0LL
+#define MSR_INV 0LL
+#define MSR_EDGE 0LL
+#define MSR_ENABLE 1LL
+#define MSR_INTT 0LL
+#define MSR_TOOMANYMAX 100LL
+#define CTR_TABLE_OFFSET 1LL
 #define MSR_CONFIGLINE_MAX 1024
 
 typedef enum{CTR_OK, CTR_HALTED, CTR_BROKEN} ctr_state;
@@ -124,7 +124,7 @@ struct active_counter{
 
 TAILQ_HEAD(, active_counter) counter_list;
 
-static struct MSRcounter{
+struct MSRcounter{
 	char* name;
 	uint64_t w_reg;
 	uint64_t event;

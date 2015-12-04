@@ -706,6 +706,7 @@ int process_ugni_msg(struct ldms_ugni_xprt *x, struct ldms_request *req)
 	default:
 		x->xprt->log(LDMS_LDEBUG,"Invalid request on uGNI transport %d\n",
 			     ntohl(req->hdr.cmd));
+		return EINVAL;
 	}
 	return EINVAL;
 }
@@ -713,19 +714,22 @@ int process_ugni_msg(struct ldms_ugni_xprt *x, struct ldms_request *req)
 static int process_xprt_io(struct ldms_ugni_xprt *s, struct ldms_request *req)
 {
 	int cmd;
+	int ret;
 
 	cmd = ntohl(req->hdr.cmd);
 
 	/* The sockets transport must handle solicited read */
 	if (cmd & LDMS_CMD_XPRT_PRIVATE) {
-		int ret = process_ugni_msg(s, req);
+		ret = process_ugni_msg(s, req);
 		if (ret) {
 			s->xprt->log(LDMS_LDEBUG,"Error %d processing transport request.\n",
 				     ret);
 			goto close_out;
 		}
 	} else
-		s->xprt->recv_cb(s->xprt, req);
+		ret = s->xprt->recv_cb(s->xprt, req);
+		if (ret)
+			goto close_out;
 	return 0;
  close_out:
 	ugni_xprt_error_handling(s);
