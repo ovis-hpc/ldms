@@ -393,7 +393,10 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 	struct ldms_rbuf_desc *rbd;
 	while (!LIST_EMPTY(&x->rbd_list)) {
 		rbd = LIST_FIRST(&x->rbd_list);
-		__ldms_rbd_xprt_release(rbd);
+		if (rbd->type == LDMS_RBD_LOCAL)
+			__ldms_free_rbd(rbd);
+		else
+			__ldms_rbd_xprt_release(rbd);
 	}
 	pthread_mutex_unlock(&x->lock);
 
@@ -2208,9 +2211,6 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 
 	pthread_mutex_unlock(&x->lock);
 	rc = zap_send(x->zap_ep, req, len);
-	pthread_mutex_lock(&x->lock);
-	__ldms_free_ctxt(x, ctxt);
-	pthread_mutex_unlock(&x->lock);
 	ldms_xprt_put(x);
 	return rc;
 }
@@ -2264,10 +2264,10 @@ void ldms_notify(ldms_set_t s, ldms_notify_event_t e)
 	if (!set)
 		return;
 
-	if (LIST_EMPTY(&set->remote_rbd_list))
+	if (LIST_EMPTY(&set->local_rbd_list))
 		return;
 
-	LIST_FOREACH(r, &set->remote_rbd_list, set_link) {
+	LIST_FOREACH(r, &set->local_rbd_list, set_link) {
 		if (r->remote_notify_xid &&
 			(0 == r->notify_flags || (r->notify_flags & e->type))) {
 			send_req_notify_reply(r->xprt,
