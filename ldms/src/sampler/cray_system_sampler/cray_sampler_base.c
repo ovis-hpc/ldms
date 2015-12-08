@@ -464,9 +464,11 @@ int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_
 		break;
 	}
 
-	if (rc != 0)
-		msglog(LDMSD_LDEBUG, "%s: returning error return code %d for NS %s in sample_metrics_generic\n",
-		       __FILE__, rc, source_id);
+	if (rc != 0) {
+		msglog(LDMSD_LDEBUG, "%s: returning error return code %d for NS"
+				"%d in sample_metrics_generic\n",
+				__FILE__, rc, source_id);
+	}
 
 
 	return rc;
