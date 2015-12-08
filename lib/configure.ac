@@ -74,8 +74,8 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
 		      )
   fi
 fi
-OPTION_WITH([libibverbs], [libibverbs])
-OPTION_WITH([librdmacm], [librdmacm])
+OPTION_WITH([libibverbs], [LIBIBVERBS])
+OPTION_WITH([librdmacm], [LIBRDMACM])
 dnl next bits need to be outside 'if' or cray fails.
 AM_CONDITIONAL([ENABLE_libibverbs], [test "$HAVE_libibverbs" = "yes"])
 AM_CONDITIONAL([ENABLE_librdmacm], [test "$HAVE_librdmacm" = "yes"])
