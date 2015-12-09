@@ -1,6 +1,5 @@
-/* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
+/*
+ * Copyright (c) 2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -28,10 +27,6 @@
  *      be used to endorse or promote products derived from this software
  *      without specific prior written permission.
  *
- *      Neither the name of Open Grid Computing nor the names of any
- *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission.
- *
  *      Modified source versions must be plainly marked as such, and
  *      must not be misrepresented as being the original software.
  *
@@ -48,72 +43,67 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-#ifndef OVIS_UTIL_H_
-#define OVIS_UTIL_H_
-
+#include "label-set.h"
+//#include "coll/ovis-map.h"
+//#include <ctype.h>
+#include <stdlib.h>
+#include <inttypes.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <string.h>
+//#include <limits.h>
+//#include <errno.h>
 
-struct attr_value {
-	char *name;
-	char *value;
+static const char *lang_to_string[] =
+{
+	"error",
+	"least",
+	"python",
+	"url",
+	"r",
+	"c",
+	"amqp",
+	"file",
+	"last",
+	NULL
 };
 
-struct attr_value_list {
-	int size;
-	int count;
-	struct attr_value list[0];
-};
+int main(int argc, char **argv)
+{
+	int i;
+	enum id_lang il;
+	struct ovis_label_set *aols[il_last];
 
-/**
- * \brief Get the value of attribute \c name
- */
-char *av_value(struct attr_value_list *av_list, char *name);
-
-/**
- * \brief Get the attribute name in the \c av_list
- * at the index \c idx
- */
-char *av_name(struct attr_value_list *av_list, int idx);
-
-/**
- * \brief Get the value at the index \c idx
- */
-char *av_value_at_idx(struct attr_value_list *av_list, int idx);
-
-/**
- * \brief Tokenize the string \c cmd into the keyword list \c kwl
- * and the attribute list \c avl
- */
-int tokenize(char *cmd, struct attr_value_list *kwl,
-	     struct attr_value_list *avl);
-
-/**
- * \brief Allocate memory for a new attribute list of size \c size
- */
-struct attr_value_list *av_new(size_t size);
-
-/**
- * \brief Parse the memory size
- * \return size of memory in bytes
- */
-size_t ovis_get_mem_size(const char *s);
-
-/**
- * \brief Fork and exec the given command with /bin/sh.
- *
- * This function call will fork and execute the given command with bash. It is
- * non-blocking, i.e. the function returns right away after fork (not after the
- * child process finished execution). Caller can handle child process
- * termination by handling SIGCHLD (see signal(7)), or using a variaion of
- * wait(2).
- *
- * This utility function also close all inherited file descriptors (including
- * STDIN, STDOUT and STDERR).
- *
- * \retval pid The PID of the first forked child.
- */
-pid_t ovis_execute(const char *command);
-
-#endif /* OVIS_UTIL_H_ */
+	aols[0] = NULL;
+	for (il = il_least; il < il_last; il++) {
+		aols[il] = ovis_label_set_create(il,0);
+	}
+	for (il = il_least; il < il_last; il++) {
+		printf("\n%s:\n", lang_to_string[il]);
+		struct ovis_label_set * ols = aols[il];
+		struct ovis_name id;
+		for (i = 0; i < argc; i++) {
+			printf("%s\n",argv[i]);
+			id = ovis_label_set_insert(ols,
+				ovis_name_from_string(argv[i]));
+			printf("\t%s\n",id.name);
+		}
+		ovis_label_set_destroy(ols);
+		aols[il] = NULL;
+	}
+	for (il = il_least; il < il_last; il++) {
+		aols[il] = ovis_label_set_create(il,31);
+	}
+	for (il = il_least; il < il_last; il++) {
+		printf("\n%s31:\n", lang_to_string[il]);
+		struct ovis_label_set * ols = aols[il];
+		struct ovis_name id;
+		for (i = 0; i < argc; i++) {
+			id = ovis_label_set_insert(ols,
+				ovis_name_from_string(argv[i]));
+			printf("\t%s\n",id.name);
+		}
+		ovis_label_set_destroy(ols);
+		aols[il] = NULL;
+	}
+	return 0;
+}

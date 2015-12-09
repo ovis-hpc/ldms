@@ -41,6 +41,7 @@ dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
+OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
 
 dnl AMQP
 OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
@@ -112,14 +113,14 @@ OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL],[/usr])
 OPTION_ARIES_MMR
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc coll ovis_util zap ovis_ctrl ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third coll ovis_util zap ovis_ctrl ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
 if test -d ${OVIS_LIB_LIB64DIR}/ovis-lib ; then
-ZAP_LIBPATH=${OVIS_LIB_LIB64DIR}/ovis-lib
+	ZAP_LIBPATH=${OVIS_LIB_LIB64DIR}/ovis-lib
 else
-ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
+	ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
 fi
 AC_SUBST(ZAP_LIBPATH)
 LDMSD_PLUGIN_LIBPATH=${pkglibdir}
@@ -206,6 +207,21 @@ if test -z "$ENABLE_ATASMART_TRUE" ; then
 		AC_MSG_ERROR([libatasmart not found. sampler_atasmart requires libatasmart and libatasmart-devel.]))
 fi
 
+
+if test -z "$ENABLE_RABBITV3_TRUE" ; then
+	AC_CHECK_LIB(rabbitmq, amqp_version, [],
+		AC_MSG_ERROR([librabbitmq not found. store_rabbitv3 requires librabbitmq and amqp headers.]))
+	AC_LANG_PUSH([C])
+	AC_COMPILE_IFELSE([AC_LANG_PROGRAM(
+[[#include <amqp.h>
+#if ((AMQP_VERSION_MINOR < 7) && (AMQP_VERSION_MAJOR < 1))
+#error "librabbitmq version < 0.7 not supported"
+#endif
+]])],
+	[AC_DEFINE([HAVE_RABBITMQ],[],[Is librabbitmq >= 0.7.0 available?])],
+	[ AC_MSG_ERROR([librabbitmq version < 0.7 not found])])
+	AC_LANG_POP([C])
+fi
 
 if test -z "$ENABLE_YAML_TRUE"; then
 	AC_CHECK_LIB(yaml, yaml_parser_load, [],
@@ -327,6 +343,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_ctltest.sh
 		 scripts/ldms_ban.sh
 		 scripts/ldms_usertest.sh
+		 scripts/ldms_local_sostest.sh
 		 scripts/ldms_local_usertest.sh
 		 scripts/ldms_local_slurmtest.sh
 		 scripts/ldms_local_valgrind.sh
@@ -345,6 +362,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_csvorder.sh
 		 scripts/ldms_local_synthetic_test.sh
 		 scripts/ldms_local_auth_test.sh
+		 scripts/ldms_local_amqptest.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile

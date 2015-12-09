@@ -4,10 +4,10 @@
 # NOTE: change ports, intervals if you like
 DESTDIR=
 allowroot=0
-prefix=@prefix@
-exec_prefix=@exec_prefix@
-libdir=@libdir@
-BUILDDIR=@prefix@
+prefix=/home/baallan/ovis/repos/trinity_rabbit_patches/LDMS_install
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+BUILDDIR=/home/baallan/ovis/repos/trinity_rabbit_patches/LDMS_install
 # Manually redefine portbase to avoid collisions.
 # Base should be above the maximum in :
 #  cat /proc/sys/net/ipv4/ip_local_port_range
@@ -54,10 +54,10 @@ export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
-export ZAP_LIBPATH=@pkglibdir@
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:${libdir}/ovis-ldms::$LD_LIBRARY_PATH
+export ZAP_LIBPATH=${libdir}/ovis-ldms
 export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+export LDMSD_PLUGIN_LIBPATH=${libdir}/ovis-ldms
 
 # whack the daemons we own
 pkill ldmsd
@@ -111,12 +111,12 @@ echo Adding host1 to aggregator3
 echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/meminfo,localhost1/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
 mysleep 5
-echo Adding store_csv to aggregator3
-echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo Adding store_sos to aggregator3
+echo "load name=store_sos" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
-echo "config name=store_csv action=init path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv action=custom schema=meminfo policy=meminfo container=meminfo1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv action=custom  schema=vmstat policy=vmstat container=vmstat1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=store_sos action=init path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_sos action=custom schema=meminfo policy=meminfo container=meminfo1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_sos action=custom  schema=vmstat policy=vmstat container=vmstat1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 #
 

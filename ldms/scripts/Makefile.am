@@ -36,5 +36,7 @@ bin_SCRIPTS += ldms_local_syslog.sh
 
 bin_SCRIPTS += ldms_local_synthetic_test.sh
 bin_SCRIPTS += ldms_local_auth_test.sh
+bin_SCRIPTS += ldms_local_amqptest.sh
+bin_SCRIPTS += ldms_local_sostest.sh
 
 endif

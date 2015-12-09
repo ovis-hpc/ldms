@@ -248,12 +248,13 @@ typedef struct ldmsd_name_match {
 } *ldmsd_name_match_t;
 
 /** Storage Policy: Defines which producers and metrics are
- * saved when an update completes
+ * saved when an update completes. Must include meta vs data metric flags.
  */
 typedef void *ldmsd_store_handle_t;
 typedef struct ldmsd_strgp_metric {
 	char *name;
 	enum ldms_value_type type;
+	int flags;
 	TAILQ_ENTRY(ldmsd_strgp_metric) entry;
 } *ldmsd_strgp_metric_t;
 

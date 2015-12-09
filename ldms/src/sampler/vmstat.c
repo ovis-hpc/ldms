@@ -152,8 +152,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	char *value;
 	int i;
 
-	char* deprecated[]={"set", "component_id"};
-	int numdep = 2;
+	char* deprecated[]={"set"};
+	int numdep = 1;
 
 	for (i = 0; i < numdep; i++){
 		value = av_value(avl, deprecated[i]);

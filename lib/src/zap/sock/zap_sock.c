@@ -234,7 +234,7 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 static int __set_keep_alive(struct z_sock_ep *sep)
 {
 	int rc;
-	int optval;
+	int optval = 0;
 	rc = setsockopt(sep->sock, SOL_SOCKET, SO_KEEPALIVE, &optval,
 			sizeof(int));
 	if (rc) {

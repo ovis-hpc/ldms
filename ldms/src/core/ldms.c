@@ -891,7 +891,8 @@ const char *ldms_metric_name_get(ldms_set_t set, int i)
 enum ldms_value_type ldms_metric_type_get(ldms_set_t set, int i)
 {
 	ldms_mdesc_t desc = __desc_get(set, i);
-	if (desc)
+	if (desc && LDMS_V_LAST >= desc->vd_type && 
+		LDMS_V_FIRST <= desc->vd_type)
 		return desc->vd_type;
 	return LDMS_V_NONE;
 }
@@ -1085,6 +1086,14 @@ ldms_mval_t ldms_metric_get(ldms_set_t s, int i)
 	desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
 			 __le32_to_cpu(s->set->meta->dict[i]));
 
+	return ldms_ptr_(union ldms_value, s->set->meta,
+			 __le32_to_cpu(desc->vd_data_offset));
+}
+
+ldms_mval_t ldms_metric_get_addr(ldms_set_t s, int i)
+{
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
+			__le32_to_cpu(s->set->meta->dict[i]));
 	return ldms_ptr_(union ldms_value, s->set->meta,
 			 __le32_to_cpu(desc->vd_data_offset));
 }
