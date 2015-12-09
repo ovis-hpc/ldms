@@ -56,6 +56,7 @@
  *      Author: nichamon
  */
 
+#include <ctype.h>
 #include <time.h>
 #include <openssl/evp.h>
 #include <stdint.h>
@@ -121,7 +122,6 @@ uint64_t ovis_auth_unpack_challenge(struct ovis_auth_challenge *chl)
 	return challenge;
 }
 
-#define MAX_LINE_LEN 512
 
 char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 {
@@ -221,10 +221,37 @@ err:
 	return NULL;
 }
 
+int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen, 
+	ovis_auth_log_fn_t msglog)
+{
+        if (!file)
+                return EINVAL;
+        if (buflen >= MAX_SECRET_WORD_LEN)
+                return E2BIG;
+        char *sw = ovis_auth_get_secretword(file,msglog);
+	int rc = 0;
+	if (!sw) {
+		rc = errno;
+	}
+        if (rc ) {
+                msglog("Problem reading rabbit pw from %s\n",file);
+                return rc;
+        } else {
+                strncpy(buf,sw,buflen);
+		free(sw);
+                int sz = strlen(buf);
+                while (isspace(buf[sz-1])) {
+                        sz--;
+                        buf[sz] = '\0';
+                }
+        }
+        return 0;
+}
+
+
 char *ovis_auth_encrypt_password(const uint64_t challenge,
 				const char *secretword)
 {
-	int rc;
 	size_t len = strlen(secretword) + strlen(str(UINT64_MAX)) + 1;
 	char *psswd = malloc(len);
 	if (!psswd)

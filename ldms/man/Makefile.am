@@ -28,3 +28,5 @@ Plugin_procsensors.man \
 Plugin_procstatutil.man \
 Plugin_procstatutil2.man \
 Plugin_sysclassib.man
+
+dist_man7_MANS += Plugin_store_rabbitv3.man

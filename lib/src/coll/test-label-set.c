@@ -1,7 +1,5 @@
-/* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
+/*
  * Copyright (c) 2015 Sandia Corporation. All rights reserved.
- *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -29,10 +27,6 @@
  *      be used to endorse or promote products derived from this software
  *      without specific prior written permission.
  *
- *      Neither the name of Open Grid Computing nor the names of any
- *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission.
- *
  *      Modified source versions must be plainly marked as such, and
  *      must not be misrepresented as being the original software.
  *
@@ -49,45 +43,67 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/*
- * auth.h
- *
- *  Created on: May 18, 2015
- *      Author: nichamon
- */
-
-#ifndef OVIS_AUTH_H_
-#define OVIS_AUTH_H_
-
+#include "label-set.h"
+//#include "coll/ovis-map.h"
+//#include <ctype.h>
+#include <stdlib.h>
 #include <inttypes.h>
+#include <stdio.h>
+#include <string.h>
+//#include <limits.h>
+//#include <errno.h>
 
-#define MAX_SECRET_WORD_LEN 512 /*! The maximum length of the secret word */
-#define MIN_SECRET_WORD_LEN 3  /*! The minimum length of the secret word */
-
-struct ovis_auth_challenge {
-	uint32_t lo; 		/*! The last 32 bits */
-	uint32_t hi;		/*! The first 32 bits */
+static const char *lang_to_string[] =
+{
+	"error",
+	"least",
+	"python",
+	"url",
+	"r",
+	"c",
+	"amqp",
+	"file",
+	"last",
+	NULL
 };
 
-typedef void (*ovis_auth_log_fn_t)(const char *fmt, ...);
+int main(int argc, char **argv)
+{
+	int i;
+	enum id_lang il;
+	struct ovis_label_set *aols[il_last];
 
-uint64_t ovis_auth_gen_challenge();
-
-struct ovis_auth_challenge *ovis_auth_pack_challenge(uint64_t challenge,
-				struct ovis_auth_challenge *chl);
-
-
-uint64_t ovis_auth_unpack_challenge(struct ovis_auth_challenge *chl);
-
-#define MAX_LINE_LEN (MAX_SECRET_WORD_LEN+16)
-
-char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log);
-
-int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen, 
-	ovis_auth_log_fn_t msglog);
-
-char *ovis_auth_encrypt_password(const uint64_t challenge,
-				const char *secretword);
-
-
-#endif /* OVIS_AUTH_H_ */
+	aols[0] = NULL;
+	for (il = il_least; il < il_last; il++) {
+		aols[il] = ovis_label_set_create(il,0);
+	}
+	for (il = il_least; il < il_last; il++) {
+		printf("\n%s:\n", lang_to_string[il]);
+		struct ovis_label_set * ols = aols[il];
+		struct ovis_name id;
+		for (i = 0; i < argc; i++) {
+			printf("%s\n",argv[i]);
+			id = ovis_label_set_insert(ols,
+				ovis_name_from_string(argv[i]));
+			printf("\t%s\n",id.name);
+		}
+		ovis_label_set_destroy(ols);
+		aols[il] = NULL;
+	}
+	for (il = il_least; il < il_last; il++) {
+		aols[il] = ovis_label_set_create(il,31);
+	}
+	for (il = il_least; il < il_last; il++) {
+		printf("\n%s31:\n", lang_to_string[il]);
+		struct ovis_label_set * ols = aols[il];
+		struct ovis_name id;
+		for (i = 0; i < argc; i++) {
+			id = ovis_label_set_insert(ols,
+				ovis_name_from_string(argv[i]));
+			printf("\t%s\n",id.name);
+		}
+		ovis_label_set_destroy(ols);
+		aols[il] = NULL;
+	}
+	return 0;
+}

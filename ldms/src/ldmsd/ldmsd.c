@@ -1865,7 +1865,6 @@ int main(int argc, char *argv[])
 		logfile = LDMSD_LOGFILE;
 
 	ldmsd_log(LDMSD_LINFO, "Started LDMS Daemon version " VERSION "\n");
-
 #if OVIS_LIB_HAVE_AUTH
 	secretword = NULL;
 	if (authenticate) {

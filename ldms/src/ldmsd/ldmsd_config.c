@@ -95,7 +95,9 @@ int bind_succeeded;
 extern struct event_base *get_ev_base(int idx);
 extern void release_ev_base(int idx);
 int find_least_busy_thread();
-int new_store_metric(struct ldmsd_store_policy *sp, const char *name);
+static
+int new_store_metric(struct ldmsd_store_policy *sp, const char *name,
+			enum ldms_value_type type, int flags);
 int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset);
 int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 			char *err_str);
@@ -1062,7 +1064,7 @@ int policy_add_metrics(struct ldmsd_store_policy *sp, char *metric_list,
 	char *metric_name, *ptr;
 	metric_name = strtok_r(metric_list, ",", &ptr);
 	while (metric_name) {
-		rc = new_store_metric(sp, metric_name);
+		rc = new_store_metric(sp, metric_name, LDMS_V_NONE, 0);
 		if (rc)
 			goto err;
 		metric_name = strtok_r(NULL, ",", &ptr);
@@ -2034,7 +2036,9 @@ struct hostset *find_host_set(struct hostspec *hs, const char *set_name)
 	return NULL;
 }
 
-int new_store_metric(struct ldmsd_store_policy *sp, const char *name)
+static
+int new_store_metric(struct ldmsd_store_policy *sp, const char *name,
+			enum ldms_value_type type, int flags)
 {
 	ldmsd_strgp_metric_t smi;
 	smi = malloc(sizeof(*smi));
@@ -2046,6 +2050,8 @@ int new_store_metric(struct ldmsd_store_policy *sp, const char *name)
 		free(smi);
 		return ENOMEM;
 	}
+	smi->type = type;
+	smi->flags = flags;
 	TAILQ_INSERT_TAIL(&sp->metric_list, smi, entry);
 	sp->metric_count++;
 	return 0;
@@ -2064,9 +2070,13 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 	name = NULL;
 	if (TAILQ_EMPTY(&sp->metric_list)) {
 		/* No metric list was given. Add all metrics in the set */
+		enum ldms_value_type type;
+		int flags;
 		for (i = 0; i < ldms_set_card_get(hset->set); i++) {
 			name = ldms_metric_name_get(hset->set, i);
-			rc = new_store_metric(sp, name);
+			type = ldms_metric_type_get(hset->set, i);
+			flags = ldms_metric_flags_get(hset->set, i);
+			rc = new_store_metric(sp, name, type, flags);
 			if (rc)
 				goto err;
 			sp->metric_arry[i] = i;
@@ -2081,6 +2091,7 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 			if (idx < 0)
 				goto err;
 			smi->type = ldms_metric_type_get(hset->set, idx);
+			smi->flags = ldms_metric_flags_get(hset->set, idx);
 			sp->metric_arry[i++] = idx;
 			smi = TAILQ_NEXT(smi, entry);
 		}

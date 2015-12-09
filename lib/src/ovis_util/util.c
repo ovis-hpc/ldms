@@ -167,7 +167,7 @@ pid_t ovis_execute(const char *command)
 {
 	char *argv[] = {"/bin/sh", "-c", (char*)command, NULL};
 	pid_t pid = fork();
-	int i, flags;
+	int i;
 	if (pid)
 		return pid;
 	/* close all parent's file descriptor */
@@ -175,4 +175,5 @@ pid_t ovis_execute(const char *command)
 		close(i); /* blindly closes everything before exec */
 	}
 	execv("/bin/sh", argv);
+	return pid;
 }
