@@ -142,6 +142,9 @@ static void ugni_sock_write(struct bufferevent *buf_event, void *arg);
 static void timeout_cb(int fd , short events, void *arg);
 static zap_err_t __setup_connection(struct z_ugni_ep *uep);
 
+static int __get_nodeid(struct sockaddr *sa, socklen_t sa_len);
+static int __check_node_state(int node_id);
+
 static void z_ugni_destroy(zap_ep_t ep);
 
 static LIST_HEAD(, z_ugni_ep) z_ugni_list = LIST_HEAD_INITIALIZER(0);
@@ -1276,7 +1279,7 @@ static uint32_t __get_cq_depth()
 }
 
 #define UGNI_NODE_PREFIX "nid"
-int __get_nodeid(struct sockaddr *sa, socklen_t sa_len)
+static int __get_nodeid(struct sockaddr *sa, socklen_t sa_len)
 {
 	int rc = 0;
 	char host[HOST_NAME_MAX];
@@ -1297,7 +1300,7 @@ int __get_nodeid(struct sockaddr *sa, socklen_t sa_len)
 	return id;
 }
 
-int __get_node_state()
+static int __get_node_state()
 {
 	int i, node_id;
 	rs_node_array_t nodelist;
@@ -1330,7 +1333,7 @@ int __get_node_state()
 /*
  * return 0 if the state is good. Otherwise, 1 is returned.
  */
-int __check_node_state(int node_id)
+static int __check_node_state(int node_id)
 {
 	while (_node_state.state_ready != 1) {
 		/* wait for the state to be populated. */
