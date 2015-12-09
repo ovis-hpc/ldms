@@ -1211,8 +1211,17 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 
 	/* node state validation */
 	if (_node_state.check_state) {
-		if (uep->node_id == -1)
-			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id == -1) {
+			struct sockaddr lsa, sa;
+			socklen_t sa_len;
+			zap_err_t zerr;
+			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
+			if (zerr) {
+				DLOG("zap_get_name() error: %d\n", zerr);
+				return ZAP_ERR_ENDPOINT;
+			}
+			uep->node_id = __get_nodeid(&sa, sa_len);
+		}
 		if (uep->node_id != -1) {
 			if (__check_node_state(uep->node_id)) {
 				DLOG("Node %d is in a bad state\n", uep->node_id);
@@ -1920,8 +1929,17 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 
 	/* node state validation */
 	if (_node_state.check_state) {
-		if (uep->node_id == -1)
-			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id == -1) {
+			struct sockaddr lsa, sa;
+			socklen_t sa_len;
+			zap_err_t zerr;
+			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
+			if (zerr) {
+				DLOG("zap_get_name() error: %d\n", zerr);
+				return ZAP_ERR_ENDPOINT;
+			}
+			uep->node_id = __get_nodeid(&sa, sa_len);
+		}
 		if (uep->node_id != -1) {
 			if (__check_node_state(uep->node_id)) {
 				DLOG("Node %d is in a bad state\n", uep->node_id);
@@ -1980,8 +1998,17 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 
 	/* node state validation */
 	if (_node_state.check_state) {
-		if (uep->node_id == -1)
-			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id == -1) {
+			struct sockaddr lsa, sa;
+			socklen_t sa_len;
+			zap_err_t zerr;
+			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
+			if (zerr) {
+				DLOG("zap_get_name() error: %d\n", zerr);
+				return ZAP_ERR_ENDPOINT;
+			}
+			uep->node_id = __get_nodeid(&sa, sa_len);
+		}
 		if (uep->node_id != -1) {
 			if (__check_node_state(uep->node_id)) {
 				DLOG("Node %d is in a bad state\n", uep->node_id);
@@ -2060,8 +2087,17 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 
 	/* node state validation */
 	if (_node_state.check_state) {
-		if (uep->node_id == -1)
-			uep->node_id = __get_nodeid(sa, sa_len);
+		if (uep->node_id == -1) {
+			struct sockaddr lsa, sa;
+			socklen_t sa_len;
+			zap_err_t zerr;
+			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
+			if (zerr) {
+				DLOG("zap_get_name() error: %d\n", zerr);
+				return ZAP_ERR_ENDPOINT;
+			}
+			uep->node_id = __get_nodeid(&sa, sa_len);
+		}
 		if (uep->node_id != -1) {
 			if (__check_node_state(uep->node_id)) {
 				DLOG("Node %d is in a bad state\n", uep->node_id);
