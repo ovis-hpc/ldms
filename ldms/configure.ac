@@ -116,7 +116,7 @@ OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc coll ovis_util zap ovis_ct
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
-if [ -d ${OVIS_LIB_LIB64DIR}/ovis-lib ]; then
+if test -d ${OVIS_LIB_LIB64DIR}/ovis-lib ; then
 ZAP_LIBPATH=${OVIS_LIB_LIB64DIR}/ovis-lib
 else
 ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
