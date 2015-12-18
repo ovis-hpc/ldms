@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_lustre2_client
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Sep 2014" "v2.2/RC1.2" "LDMS Plugin lustre2_client man page"
+.TH man 7 "18 Dec 2015" "v2.4.5" "LDMS Plugin lustre2_client man page"
 
 .SH NAME
 Plugin_lustre2_client - man page for the LDMS lustre2_client plugin
@@ -34,7 +34,7 @@ The component id numerical value.
 set=<set_name>
 .br
 The name of the metric set.
-.TP 
+.TP
 with_jobid=<bool>
 .br
 1 to include jobid with set or 0 if not.
@@ -64,7 +64,8 @@ include this component into the set.
 .RE
 
 .SH BUGS
-No known bugs.
+ldmsd is not robust to empty sets. Do NOT run this sampler with no options for llites|osc|mdcs.
+This will be addressed in v3.
 
 .SH EXAMPLES
 .PP
