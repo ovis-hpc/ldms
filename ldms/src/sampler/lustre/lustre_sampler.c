@@ -195,8 +195,14 @@ int lss_sample(struct lustre_svc_stats *lss)
 	int rc = 0;
 	if (!lss->f) {
 		rc = lss_open_file(lss);
-		if (rc)
+		if (rc) {
+			/* perhaps the file handle has become invalid.
+			 * close it so it will reopen it on the next round.
+			 * TODO: zero out all the valus...we will have to know which ones those are.
+			 */
+			lss_close_file(lss);
 			goto out;
+		}
 	}
 	if (fseek(lss->f, 0, SEEK_SET))
 		goto out;

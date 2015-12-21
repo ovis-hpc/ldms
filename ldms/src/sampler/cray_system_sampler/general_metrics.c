@@ -237,9 +237,15 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 	union ldms_value v;
 	int j, rc;
 
-	if (!k_f){
-		/* No file, just skip the sampling. */
-		return 0;
+
+	/* open and close each time */
+	if (k_f)
+		fclose(k_f);
+
+	if (KGNILND_FILE != NULL){
+		k_f = fopen(KGNILND_FILE, "r");
+		if (!k_f)
+			return 0;
 	}
 
 	found_metrics = 0;
@@ -253,6 +259,8 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 		char* end = strchr(s, ':');
 		if (!end) {
 			rc = EINVAL;
+			fclose(k_f);
+			k_f = 0;
 			return rc;
 		}
 		if (!*end)
@@ -263,6 +271,8 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 		if (sscanf(s, "%s", metric_name) != 1){
 			msglog(LDMS_LERROR,"ERR: Issue reading metric name from the source"
 						" file '%s'\n", KGNILND_FILE);
+			fclose(k_f);
+			k_f = 0;
 			rc = EINVAL;
 			return rc;
 		}
@@ -276,6 +286,9 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 			}
 		}
 	} while (s);
+
+	fclose(k_f);
+	k_f = 0;
 
 	if (found_metrics != NUM_KGNILND_METRICS){
 		return EINVAL;

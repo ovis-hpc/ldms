@@ -157,16 +157,15 @@ err:
 int sample_metrics_lustre(ldmsd_msg_log_f msglog)
 {
 	struct lustre_svc_stats *lss;
+	int retrc = 0;
 	int rc;
-	int count = 0;
 
 	LIST_FOREACH(lss, &lustre_svc_head, link) {
 		rc = lss_sample(lss);
-		if (rc && rc != ENOENT)
-			return rc;
-		count += LUSTRE_METRICS_LEN;
+		if (rc) //go ahead and sample the other ones.
+			retrc = rc;
 	}
-	return 0;
+	return retrc;
 }
 
 

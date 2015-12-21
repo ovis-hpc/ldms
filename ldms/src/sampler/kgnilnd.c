@@ -219,7 +219,19 @@ static int sample(void)
 	  msglog(LDMS_LDEBUG,"kgnilnd: plugin not initialized\n");
 	  return EINVAL;
 	}
+
+	/* open and close each time */
+	if (mf)
+		fclose(mf);
+
+	mf = fopen(procfile, "r");
+	if (!mf) {
+		msglog(LDMS_LDEBUG,"Could not open the kgnilnd file '%s'to sample.\n", procfile);
+		return ENOENT;
+	}
+
 	ldms_begin_transaction(set);
+
 
 	metric_no = 0;
 	fseek(mf, 0, SEEK_SET);
