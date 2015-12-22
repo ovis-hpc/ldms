@@ -223,4 +223,4 @@ Same but sending stdout and stderr to /dev/null
 
 
 .SH SEE ALSO
-ldms_authentication(7), ldmsctl(1), ldms_ls(1)
+ldms_authentication(7), ldmsctl(8), ldms_ls(8), ldmsd_controller(8), ldms_quickstart(7)

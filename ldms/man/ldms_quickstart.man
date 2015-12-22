@@ -759,6 +759,17 @@ Tue Sep 24 08:42:42 2013: cq_thread_proc: Error 11  monitoring the CQ.
 .RE
 .fi
 
+.SH MAN PAGES
+ldms comes with man pages. In the build process these will be installed in <build_path>/ovis/share/man.
+Man pages are in the following catagories:
+.SS General
+General pages address information, such as ldms_build_install, ldms_quickstart, and ldms_authentication.
+.SS Utilities
+Utilities pages address the various utilities and commands such as ldmsd, ldmsd_controller, ldms_ls, and ldmsctl.
+.SS Plugins
+Plugin pages address all plugins, both samplers and stores. Naming convention for these pages is Plugin_XXX.
+For example: Plugin_aries_mmr, Plugin_cray_system_sampler_variants, Plugin_kgnilnd, Plugin_meminfo, Plugin_procinterrupts, Plugin_procnetdev, Plugin_procnfs, Plugin_store_csv, Plugin_store_derived_csv, Plugin_store_sos, and Plugin_vmstat.
+
 .SH NOTES
 As part of the install, test scripts are placed in /tmp/opt/ovis/bin. These scripts
 may serve as additional examples. These are being converted from using
@@ -770,5 +781,5 @@ No known bugs.
 
 
 .SH SEE ALSO
-ldms(7), ldmsd_controller(7), ldms_authentication(7), ldmsctl(7)
+ldms_build_install(7), ldmsd(8), ldmsd_controller(8), ldms_authentication(7), ldmsctl(8), ldms_build_install(7), ldms_ls(8), Plugin_aries_mmr(7), Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_meminfo(7), Plugin_procinterrupts(7), Plugin_procnetdev(7), Plugin_procnfs(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_store_sos(7), Plugin_vmstat(7)
 

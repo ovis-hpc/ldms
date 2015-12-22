@@ -62,4 +62,4 @@ ldmsctl> quit
 .fi
 
 .SH SEE ALSO
-ldms(7), Plugin_lustre2_client(7)
+ldmsd(8), ldms_quickstart(7)
