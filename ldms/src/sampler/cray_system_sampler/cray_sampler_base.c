@@ -474,17 +474,11 @@ int add_metrics_generic(ldms_set_t set, int comp_id,
 			msglog(LDMS_LERROR,"cray_system_sampler: procnetdev invalid\n");
 		break;
 	case NS_KGNILND:
-		rc = add_metrics_simple(set, KGNILND_METRICS,
+		return add_metrics_simple(set, KGNILND_METRICS,
 					  NUM_KGNILND_METRICS,
 					  &metric_table_kgnilnd,
 					  &KGNILND_FILE, &k_f,
 					  comp_id, msglog);
-		if (k_f != NULL){
-			fclose(k_f);
-			k_f = NULL;
-		}
-		return rc;
-
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE

@@ -238,19 +238,26 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 	int j, rc;
 
 
-	/* open and close each time */
-	if (k_f)
-		fclose(k_f);
+	if (!k_f) {
+		if (KGNILND_FILE != NULL){
+			k_f = fopen(KGNILND_FILE, "r");
+			if (!k_f)
+				return EINVAL;
+		}
+	}
 
-	if (KGNILND_FILE != NULL){
-		k_f = fopen(KGNILND_FILE, "r");
-		if (!k_f)
-			return 0;
+
+	if (fseek(k_f, 0, SEEK_SET) != 0){
+		/* perhaps the file handle has become invalid.
+                 * close it so it will reopen it on the next round.
+                 * TODO: zero out all the valus...we will have to know which ones those are.
+                 */
+                msglog(LDMSD_LDEBUG, "css - kgnilnd seek failed\n");
+                fclose(k_f);
+                return EINVAL;
 	}
 
 	found_metrics = 0;
-
-	fseek(k_f, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), k_f);
 		if (!s)
@@ -286,9 +293,6 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 			}
 		}
 	} while (s);
-
-	fclose(k_f);
-	k_f = 0;
 
 	if (found_metrics != NUM_KGNILND_METRICS){
 		return EINVAL;
