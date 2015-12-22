@@ -55,4 +55,4 @@ ldmsctl> quit
 .fi
 
 .SH SEE ALSO
-ldms(7), Plugin_cray_system_sampler_variants(7)
+ldmsd(8), Plugin_cray_system_sampler_variants(7), ldms_quickstart(7)

@@ -47,5 +47,5 @@ Networked file system users should verify the privacy of their secret files, as 
 Ldms_rctrl uses environment variable LDMSD_RCTRL_AUTH_FILE instead of LDMS_AUTH_FILE. Ldms_rctrl does not recognize $HOME/.ldmsauth.conf or /etc/ldmsauth.conf. Both will be repaired in the a future release.
 
 .SH SEE ALSO
-ldmsctl(1), ldmsd(1), ldms_ls(1), ldmsd_controller(7)
+ldmsctl(8), ldmsd(8), ldms_ls(8), ldmsd_controller(8), ldms_quickstart(7), ldms_build_install(7)
 
