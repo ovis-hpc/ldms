@@ -154,7 +154,8 @@ out:
 void lss_close_file(struct lustre_svc_stats *lss)
 {
 	if (lss) {
-		fclose(lss->f);
+		if (lss->f != NULL)
+			fclose(lss->f);
 		lss->f = NULL;
 	}
 }
@@ -195,17 +196,17 @@ int lss_sample(struct lustre_svc_stats *lss)
 	int rc = 0;
 	if (!lss->f) {
 		rc = lss_open_file(lss);
-		if (rc) {
-			/* perhaps the file handle has become invalid.
-			 * close it so it will reopen it on the next round.
-			 * TODO: zero out all the valus...we will have to know which ones those are.
-			 */
-			lss_close_file(lss);
+		if (rc)
 			goto out;
-		}
 	}
-	if (fseek(lss->f, 0, SEEK_SET))
+	if (fseek(lss->f, 0, SEEK_SET) != 0){
+		/* perhaps the file handle has become invalid.
+		 * close it so it will reopen it on the next round.
+		 * TODO: zero out all the valus...we will have to know which ones those are.
+		 */
+		lss_close_file(lss);
 		goto out;
+	}
 	char lbuf[__LBUF_SIZ];
 	char name[64];
 	char unit[16];
