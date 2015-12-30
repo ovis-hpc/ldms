@@ -1,3 +1,9 @@
+2015-10-30 Gentile <gentile@sandia.gov>
+* Update version to 2.4.6 (pre-release)
+* Update of experimental Interlagos MSR to take config file
+* Update of css/lustre/kgnilnd samplers to close and reopen if fseek fails
+* Fix - close connection when garbage read.
+
 2015-10-27 Benjamin A. Allan <baallan@sandia.gov>
 * Update version to 2.4.5.
 * Updated handling of 'flag' metric in store_derived_csv.
