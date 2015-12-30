@@ -118,7 +118,11 @@ static int create_metric_set(const char *path)
 	tot_data_sz = 0;
 
 	metric_count = 0;
-	fseek(mf, 0, SEEK_SET);
+	if (fseek(mf, 0, SEEK_SET) != 0){
+		msglog(LDMS_LDEBUG,"Could not seek on the kgnilnd file '%s'...exiting\n", procfile);
+		fclose(mf);
+		return EINVAL;
+	}
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -159,7 +163,12 @@ static int create_metric_set(const char *path)
 	 */
 
 	int metric_no = 0;
-	fseek(mf, 0, SEEK_SET);
+	if (fseek(mf, 0, SEEK_SET) != 0){
+		msglog(LDMS_LDEBUG,"Could not seek (2) on the kgnilnd file '%s'...exiting\n", procfile);
+		fclose(mf);
+		rc = EINVAL;
+		goto err;
+	}
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -220,21 +229,26 @@ static int sample(void)
 	  return EINVAL;
 	}
 
-	/* open and close each time */
-	if (mf)
-		fclose(mf);
+	if (!mf){
+		mf = fopen(procfile, "r");
+		if (!mf) {
+			msglog(LDMS_LDEBUG,"Could not open the kgnilnd file '%s'to sample.\n", procfile);
+			return ENOENT;
+		}
+	}
 
-	mf = fopen(procfile, "r");
-	if (!mf) {
-		msglog(LDMS_LDEBUG,"Could not open the kgnilnd file '%s'to sample.\n", procfile);
-		return ENOENT;
+	if (fseek(mf, 0, SEEK_SET) != 0){
+		/* perhaps the file handle has become invalid.
+		 * close it so it will reopen it on the next round.
+		 * TODO: zero out all the values.
+		 */
+		msglog(LDMS_LDEBUG, "kgnilnd: seek failed\n");
+		fclose(mf);
+		return EINVAL;
 	}
 
 	ldms_begin_transaction(set);
-
-
 	metric_no = 0;
-	fseek(mf, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)

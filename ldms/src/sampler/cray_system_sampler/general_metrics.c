@@ -249,12 +249,12 @@ int sample_metrics_kgnilnd(ldmsd_msg_log_f msglog)
 
 	if (fseek(k_f, 0, SEEK_SET) != 0){
 		/* perhaps the file handle has become invalid.
-                 * close it so it will reopen it on the next round.
-                 * TODO: zero out all the valus...we will have to know which ones those are.
-                 */
-                msglog(LDMSD_LDEBUG, "css - kgnilnd seek failed\n");
-                fclose(k_f);
-                return EINVAL;
+		 * close it so it will reopen it on the next round.
+		 * TODO: zero out all the valus...we will have to know which ones those are.
+		 */
+		msglog(LDMS_LDEBUG, "css - kgnilnd seek failed\n");
+		fclose(k_f);
+		return EINVAL;
 	}
 
 	found_metrics = 0;
