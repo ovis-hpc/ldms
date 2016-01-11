@@ -1,0 +1,342 @@
+.\" Manpage for Plugin_store_sos
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "21 Dec 2015" "v3" "LDMS Plugin store_sos man page"
+
+.SH NAME
+Plugin_store_sos - man page for the LDMS store_sos plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller script:
+.br
+ldmsd_controller> load name=store_sos
+.br
+ldmsd_controller> config name=store_sos path=path
+.br
+ldmsd_controller> strgp_add plugin=store_sos [ <attr> = <value> ]
+.br
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd (ldms daemon) are configured via
+the ldmsd_controller. The store_sos plugin is a sos store.
+.PP
+To build the store_sos, build with the following flag:
+.B --enable_sos
+
+.SH STORE_SOS INIT CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> path=<path>
+.br
+ldmsd_controller configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_sos.
+.TP
+path=<path>
+.br
+The store will be put into a directory whose root is specified by the path argument. This directory must exist; the store will be created. The full path to the store will be <path>/<container>. The schema(s) determine the schemas of the data base. Container and schema are set when the strgp is added.
+.RE
+
+.SH STRGP_ADD ATTRIBUTE SYNTAX
+The strgp_add sets the policies being added. This line identifies the container and schema for a store.
+.TP
+.BR strgp_add
+plugin=store_sos name=<policy_name> schema=<schema> container=<container>
+.br
+ldmsd_controller strgp_add line
+.br
+.RS
+.TP
+plugin=<plugin_name>
+.br
+This MUST be store_sos.
+.TP
+name=<policy_name>
+.br
+The policy name for this strgp.
+.TP
+container=<container>
+.br
+The container and schema define the store as described above (see path).
+.TP
+schema=<schema>
+.br
+The container and schema define the store as described above (see path).
+You can have multiples of the same path and container, but with different schema (which means they will have different metrics) and they will be stored in the same store.
+.RE
+
+
+.SH USING SOS COMMANDS TO MANAGE PARTITIONS
+Some of the basic sos commands are given below. SOS tools will be built into XXX.
+Any commands given with no argument, will return usage info.
+
+.TP
+.BR sos_part_query
+<container>
+.br
+List the partitions defined in a container.
+
+.TP
+.BR sos_part_create
+-C <path> [<attr>=<value>] part_name
+.br
+Create a partition.
+.br
+.RS
+.TP
+.BI -C " <path>"
+.br
+Path to the container
+.TP
+.BI -s " state"
+.br
+State of the new partition (case insensitive). Default is OFFLINE. Optional parameter.
+Valid options are:
+.IP \[bu]
+PRIMARY: all new allocations go in this partition
+.IP \[bu]
+ONLINE: objects are accessible, but the partition does not grow
+.IP \[bu]
+OFFLINE: object references are invalid; the partition may be moved or deleted.
+.TP
+.BR part_name
+.br
+Name of the partition
+.RE
+
+.TP
+.BR sos_part_delete
+-C <path> <name>
+.br
+Delete a partition in a container. The partition must be in the OFFLINE state to be
+deleted.
+.RS
+.TP
+.BI -C " <path>"
+.br
+Path to the container
+.TP
+.BI name
+.br
+Name of the parition
+.RE
+
+.TP
+.BR sos_part_modify
+-C <path> [<attr>=<value>] part_name
+.br
+Modify the state of a partition.
+.br
+.RS
+.TP
+.BI -C " <path>"
+.br
+Path to the container
+.TP
+.BI -s " state"
+.br
+State of the new partition (case insensitive). Default is OFFLINE. Optional parameter.
+Valid options are:
+.IP \[bu]
+PRIMARY: all new allocations go in this partition
+.IP \[bu]
+ONLINE: objects are accessible, but the partition does not grow
+.IP \[bu]
+OFFLINE: object references are invalid; the partition may be moved or deleted.
+.TP
+.BR part_name
+.br
+Name of the partition
+.RE
+
+.TP
+.BR sos_part_move
+.br
+Move a partition to another storage location.
+-C <path> -p <new_path> part_name
+.br
+.RS
+.TP
+.BI -C " <path>"
+.br
+Path to the container
+.TP
+.BI -p " <new_path>"
+.br
+The new path.
+.TP
+.BR part_name
+.br
+Name of the partition
+.RE
+
+.SH USING SOS COMMANDS TO LOOK AT DATA IN A PARTITION
+sos_cmd can be used to get data from an sos instance. Some relevant command options are below.
+Example usage is in the example section.
+
+
+.TP
+.BR sos_cmd
+-C <path> -l
+.br
+Print a directory of the schemas.
+.RS
+.TP
+.BI -C " <path>"
+.br
+Path to the container
+.RE
+
+.TP
+.BR sos_cmd
+-C <path> -i
+.br
+Show debug information for the container
+.RS
+.TP
+.BI -C " <path>"
+.br
+Path to the container
+.RE
+
+.TP
+.BR sos_cmd
+-C <path> -q -S <schema> -X <index> -V <var1> -V <var2>....
+.br
+Print data from a container
+.RS
+.TP
+.BI -C " <path>"
+.br
+Path to the container
+.TP
+.BR -q
+Used to query
+.TP
+.BI -S " <schema>"
+.br
+Schema querying against
+.TP
+.BI -X " <index>"
+.br
+Variable that is indexed to use in the query.
+.TP
+.BI -V " <var>"
+.br
+One or more vars to output.
+.RE
+
+
+.SH NOTES
+.PP
+.IP \[bu]
+The configuration lines do not allow specification of the partition, that is done automatically (by default this is the epoch timestamp).
+.IP \[bu]
+Management of partitions is done outside of LDMS (e.g., cron script that calls creation of new partitions and changes from PRIMARY to ACTIVE).
+
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.SS
+Configuring store_sos:
+.nf
+ldmsd_controller> load name=store_sos
+ldmsd_controller> config name=store_sos path=/XXX/storedir
+ldmsd_controller> strgp_add name=sos_mem_policy plugin=store_sos container=sos schema=meminfo
+.fi
+.SS
+Querying a container's partitions:
+.nf
+$ sos_part /NVME/0/SOS_ROOT/Test
+ Partition Name       RefCount Status           Size     Modified         Accessed         Path
+ -------------------- -------- ---------------- -------- ---------------- ---------------- ----------------
+      00000000               3 ONLINE                 1M 2015/08/25 13:49 2015/08/25 13:51 /SOS_STAGING/Test
+      00000001               3 ONLINE                 2M 2015/08/25 11:54 2015/08/25 13:51 /NVME/0/SOS_ROOT/Test
+      00000002               3 ONLINE                 2M 2015/08/25 11:39 2015/08/25 13:51 /NVME/0/SOS_ROOT/Test
+      00000003               3 ONLINE PRIMARY         2M 2015/08/25 11:39 2015/08/25 13:51 /NVME/0/SOS_ROOT/Test
+.fi
+.SS
+Looking at a container's directory:
+Variables that are options for -X in the sos_cmd will have indexed = 1
+.nf
+$ sos_cmd -C /NVME/0/LDMS -l
+schema :
+    name      : aries_nic_mmr
+    schema_sz : 1944
+    obj_sz    : 192
+    id        : 129
+    -attribute : timestamp
+        type          : TIMESTAMP
+        idx           : 0
+        indexed       : 1
+        offset        : 8
+    -attribute : comp_time
+        type          : UINT64
+        idx           : 1
+        indexed       : 1
+        offset        : 16
+    -attribute : job_time
+        type          : UINT64
+        idx           : 2
+        indexed       : 1
+        offset        : 24
+    -attribute : component_id
+        type          : UINT64
+        idx           : 3
+        indexed       : 0
+        offset        : 32
+    -attribute : job_id
+        type          : UINT64
+        idx           : 4
+        indexed       : 0
+        offset        : 40
+    -attribute : AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_PKTS
+        type          : UINT64
+        idx           : 5
+        indexed       : 0
+        offset        : 48
+    -attribute : AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS
+        type          : UINT64
+        idx           : 6
+        indexed       : 0
+        offset        : 56
+    -attribute : AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_STALLED
+        type          : UINT64
+        idx           : 7
+        indexed       : 0
+        offset        : 64
+  ...
+.fi
+.SS
+Looking at variable values in a container:
+.nf
+$ sos_cmd -C /NVME/0/LDMS -q -S aries_nic_mmr -X timestamp -V timestamp -V AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_PKTS
+timestamp                        AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_PKTS
+-------------------------------- ------------------
+               1447449560.003480         1642207034
+               1447449630.002155         1642213993
+               1447449630.003115           88703749
+               1447449630.003673           74768272
+               1447449640.002818           74768367
+               1447449640.003201           88703844
+               1447449640.003249         1642214024
+               1447449650.002885           74768402
+               1447449650.003263         1642214059
+               1447449650.003325           88703874
+               1447449660.002954           74768511
+               1447449660.003308         1642214174
+               1447449660.003444           88703993
+               1447449670.003015           74768547
+               1447449670.003361         1642214205
+               1447449670.003601           88704024
+               1447449680.003081           74768582
+.ni
+
+
+.SH SEE ALSO
+ldms(7), Plugin_store_csv(7)
