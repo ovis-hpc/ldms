@@ -43,6 +43,7 @@
 
 #include "kldms.h"
 #include "gpcdr_pub.h"
+#include "gpcdr_lib.h"
 
 #define DEFAULT_GPCDR_SAMPLE_INTERVAL 1000
 static unsigned long component_id = 0;
@@ -178,7 +179,7 @@ static void gpcdr_gather(struct work_struct *work)
 	gpcdr_sample();
 
 	for (i = 0; i < gpcdr_regs_size; i++) {
-		v.v_u64 = (uint64_t)gpcdr_regs[i];
+		v.v_u64 = (uint64_t)gpcdr_current_sample[i];
 		kldms_metric_set(gpcdr_set, i+1, &v);
 	}
 	ldms_transaction_end(gpcdr_set);
@@ -188,7 +189,7 @@ int kldms_gpcdr_init(void)
 {
 	int ret = 0;
 	int i;
-	char mname[64];
+	char *mname;
 
 	gpcdr_init();
 
@@ -213,7 +214,7 @@ int kldms_gpcdr_init(void)
 
 	/* Add a metric for each element in the register table */
 	for (i = 0; i < gpcdr_regs_size; i++) {
-		sprintf(mname, "metric%d", i);
+		mname = valid_mmrs[i].name;
 		ret = kldms_schema_metric_add(gpcdr_schema, mname, LDMS_V_U64);
 		if (ret < 0) {
 			printk(KERN_ERR
@@ -222,6 +223,7 @@ int kldms_gpcdr_init(void)
 			       mname, -ENOMEM);
 			goto err_2;
 		}
+		gpcdr_regs[i] = valid_mmrs[i].addr;
 	}
 
 	gpcdr_set = kldms_set_new("/gpcdr", gpcdr_schema);

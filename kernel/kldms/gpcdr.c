@@ -22,6 +22,7 @@
 #endif
 
 #include "gpcd_kapi.h"
+#include "gpcd_lib.h"
 #include "gpcdr_pub.h"
 
 
@@ -56,7 +57,7 @@ int            gpcdr_num_regs;  // number of registers in use
 int            gpcdr_regs_size; // size of array
 uint64_t *gpcdr_regs;
 
-static uint64_t *gpcdr_current_sample;
+uint64_t *gpcdr_current_sample;
 static struct timespec gpcdr_current_sample_ts;
 
 static unsigned int gpcdr_sample_lifetime_ms = 0;
@@ -412,16 +413,16 @@ static int gpcdr_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 int gpcdr_init(void)
 {
 	int error;
-	int initial_gpcdr_regs_size = 384;
+	int initi_regs_size = 384;
 
 	if (ghal_get_subsystem(GHAL_SUBSYS_IPOGIF) ||
 		ghal_get_subsystem(GHAL_SUBSYS_GNI)) {
 		// then what?  Just cribbed from gpcd_init()
 	}
 
-	error = gpcdr_resize_arrays(initial_gpcdr_regs_size, GFP_KERNEL);
+	error = gpcdr_resize_arrays(init_regs_size, GFP_KERNEL);
 	if (error != 0) {
-		printk(KERN_ERR "initial resize to %d failed\n", initial_gpcdr_regs_size);
+		printk(KERN_ERR "initial resize to %d failed\n", init_regs_size);
 		return error;
 	}
 	
