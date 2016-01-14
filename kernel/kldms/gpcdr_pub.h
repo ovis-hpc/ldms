@@ -34,6 +34,7 @@ void gpcdr_exit(void);
 void gpcdr_sample(void);
 
 extern int            gpcdr_regs_size; // size of array
+extern uint64_t *gpcdr_current_sample;
 extern uint64_t *gpcdr_regs;
 
 typedef struct {
