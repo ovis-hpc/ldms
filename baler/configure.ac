@@ -44,6 +44,13 @@ OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[coll zap ovis_auth],[ovis-auth.sh]
 AC_SUBST(OVIS_AUTH_LIBS)
 dnl we can disable our build rules for outer make dist to work when upper level disables baler.
 OPTION_DEFAULT_ENABLE([baler], [ENABLE_BALER], [  requires sos])
+
+if test "$disable_baler" = "yes"; then
+	# we're just here for configure so dist is correct.
+	enable_sos=no
+	enable_ocm=no
+fi
+
 OPTION_DEFAULT_ENABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos], [../sos],[sos/src sos/include ods/src ods/include])
 OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])
