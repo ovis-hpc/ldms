@@ -182,15 +182,6 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		prd_set->set = NULL;
 		goto err;
 	}
-	/*
-	 * Check that the producer name in the metric set matches our
-	 * name. If it doesn't, we write a warning to the log file
-	 */
-	if (strcmp(prd_set->prdcr->obj.name, ldms_set_producer_name_get(set)))
-		ldmsd_log(LDMSD_LINFO, "Warning: The producer name '%s' in the configuration"
-			 "does not match the producer name '%s' in the '%s' metric set.\n",
-			 prd_set->prdcr->obj.name, ldms_set_producer_name_get(set),
-			 ldms_set_instance_name_get(set));
 	prd_set->set = set;
 	prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
