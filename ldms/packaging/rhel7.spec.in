@@ -50,6 +50,10 @@ rm -rf %{buildroot}
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/COPYING
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/ChangeLog
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/README
+%{_sysconfdir}/ldms*.conf
+%{_sysconfdir}/systemd
+%exclude %{_sysconfdir}/init.d
+%exclude %{_sysconfdir}/ovis
 
 
 # ldms-devel package
