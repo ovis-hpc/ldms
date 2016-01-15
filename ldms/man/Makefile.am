@@ -12,6 +12,7 @@ ldms_quickstart.man \
 Plugin_aries_mmr.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
+Plugin_knc_sampler.man \
 Plugin_meminfo.man \
 Plugin_procinterrupts.man \
 Plugin_procnetdev.man \

@@ -1,0 +1,148 @@
+.\" Manpage for Plugin_knc_sampler
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "31 Dec 2015" "v3" "LDMS Plugin knc_sampler(copy/derived) man page"
+
+.SH NAME
+Plugin_knc_sampler - man page for the LDMS knc_sampler (and knc_sampler_copy and knc_sampler_derived) plugin
+
+.SH SYNOPSIS
+Within ldmsctl
+.br
+ldmsctl> config name=knc_sampler [ <attr>=<value> ]
+.br
+ldmsctl> config name=knc_sampler_copy [ <attr>=<value> ]
+.br
+ldmsctl> config name=knc_sampler_derived [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The knc_sampler plugin runs on the nodes and provides data about the mics using libmicmgmt.
+.PP
+Currently, once cannot load more than one instance of a plugin. Therefore, for 2 mic systems, you can use
+knc_sampler_copy for the other mic (use the other device num in configuration).
+.PP
+knc_sampler_derived is a temporary version (no copy yet) that calculates derived values (cpu utilization only,
+since the other ones are just scaled values).
+
+.SH ENVIRONMENT
+.PP
+You will need to build with
+.B --enable_knc_sampler
+miclib.h and libmicmgmt.<a/so> will need to be available in order to build.
+This typically means that you have to build on the compute nodes.
+.PP
+knc is relatively old. Check for a python 2.7 module on the system to build, if you need that version.
+
+.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> producer=<pname> instance=<set_name> dev_num=<dev_num> [schema=<sname>]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be knc_sampler OR knc_sampler_copy.
+.TP
+producer=<pname>
+.br
+The producer string value.
+.TP
+instance=<set_name>
+.br
+The name of the metric set.
+.TP
+dev_num=<dev_num>
+.br
+The device number. Valid values are 0...N where N = (number of mics - 1).
+.TP
+schema=<schema>
+.br
+Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
+different schema. If not specified, will default to `knc`.
+.TP
+metrics_type=<0/1>
+.br
+For knc_sampler_derived only. 0 = Raw values only (should then be the same as the knc_sampler); 1 = include
+derived values as well.
+.RE
+
+.SH NOTES
+.PP
+Currently to monitor both mics, you will need to load one the knc_sampler with one dev_num and
+the knc_sampler_copy with the other device num. For these to store to the same file, use the same
+schema name for both (e.g., "knc"). Currently, the device num is in the metrics of the set.
+.PP
+The sampler requires miclib.h and libmicmgmt to build.
+This typically means that you have to build on the compute nodes.
+.PP
+knc is relatively old. Check for a python 2.7 module on the system to build, if you need that version.
+.PP
+The knc_sampler is unsupported and the interface and metrics may change at any time.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+.nf
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
+ldmsctl> load name=knc_sampler
+ldmsctl> config name=knc_sampler producer=localhost1_0 schema=knc instance=localhost1/knc_sampler_0 dev_num=0
+ldmsctl> start name=knc_sampler interval=1000000
+ldmsctl> load name=knc_sampler_copy
+ldmsctl> config name=knc_sampler_copy producer=localhost1_1 schema=knc instance=localhost1/knc_sampler_1 dev_num=1
+ldmsctl> start name=knc_sampler_copy interval=1000000
+ldmsctl> quit
+.fi
+
+.PP
+output of ldms_ls:
+.nf
+localhost1/knc_sampler_1: consistent, last update: Thu Dec 31 18:30:45 2015 [31254us]
+D u64        DeviceNum                                  1
+D u32        Power                                      102000000
+D u32        CPUTemp                                    60
+D u16        MemTemp                                    39
+D u16        FanInTemp                                  35
+D u16        FanOutTemp                                 41
+D u16        CoreRailTemp                               42
+D u16        UnCoreRailTemp                             43
+D u16        MemRailTemp                                43
+D u32        TotMem                                     5878680
+D u32        AvailMem                                   5466392
+D u64        Jiffies                                    193277195
+D u64        UserSum                                    6594
+D u64        SysSum                                     17612860
+D u64        IdleSum                                    35904072533
+D u64[]      User                                       212,681,432,142,94,115,105,68,61,60,75,65,100,87,153,60,90,94,111,69,67,65,55,90,66,72,73,70,56,80,38,65,58,58,61,58,53,65,60,77,56,60,59,66,55,66,62,74,54,48,60,62,52,54,55,576,974
+D u64[]      Sys                                        320659,317620,323896,313999,328203,321548,323348,330309,318659,311277,309592,315099,313003,305813,296814,302369,299120,300078,302635,300411,302688,301357,307533,298046,300154,296720,298659,303523,308346,309450,303140,300964,301675,300746,302126,307809,308940,311684,306014,312051,315466,309926,316585,313908,315037,321720,326530,324684,324341,321715,326177,326883,327337,325211,338737,336438,106088
+D u64[]      Idle                                       629827598,629090290,629463466,629321415,629813781,629623960,629355774,630010145,630035585,630018791,629775774,630154278,630087054,629857389,629031027,629934328,629949856,630201954,629902013,630003790,629805086,630032029,630154044,629926213,630119338,630155634,629790620,630075799,630188535,630229237,630129366,630141764,630162570,630174400,630172693,630216656,630224788,630231717,630239186,630164737,630250081,630207354,630192375,630108027,630220238,630183681,630196213,630084019,630219715,630197090,630260230,630124704,630240480,630209167,630187937,630086379,623312163
+
+
+
+localhost1/knc_sampler_0: consistent, last update: Thu Dec 31 18:30:45 2015 [62878us]
+D u64        DeviceNum                                  0
+D u32        Power                                      97000000
+D u32        CPUTemp                                    58
+D u16        MemTemp                                    42
+D u16        FanInTemp                                  35
+D u16        FanOutTemp                                 42
+D u16        CoreRailTemp                               42
+D u16        UnCoreRailTemp                             42
+D u16        MemRailTemp                                42
+D u32        TotMem                                     5878680
+D u32        AvailMem                                   5102820
+D u64        Jiffies                                    194063133
+D u64        UserSum                                    6203131
+D u64        SysSum                                     17839289
+D u64        IdleSum                                    35895749378
+D u64[]      User                                       112509,111067,110480,110479,110727,110621,110570,110783,110824,110640,110595,110880,110915,110503,110613,110294,110848,110843,110817,110783,110666,110598,110559,110435,110650,110547,110359,110078,110811,110631,110546,110508,111309,110894,110934,110489,110513,110678,110299,110589,110615,110857,110733,110475,110262,111002,110671,110556,110705,111201,111090,110824,110974,111121,110928,111005,2228
+D u64[]      Sys                                        325097,322289,326688,323431,329433,324666,328810,334164,316881,313231,309643,318028,317025,304707,307439,311011,305166,293335,299492,305455,313050,302733,302622,302141,301801,303410,306834,306789,310922,312946,307939,308205,307489,304191,305753,310326,313242,315983,314465,319485,314900,316602,323967,318107,319095,326329,332235,332338,326768,324860,332105,330459,329738,326753,342772,338291,117653
+D u64[]      Idle                                       629298029,628641244,629387212,629820980,629596384,629596132,629417690,629770273,629711465,629608205,629478733,630040560,629870289,629425278,629737957,630111803,629801554,629511550,629359429,629974967,629903009,629788690,628865096,630069344,629327468,630121772,629937547,629846657,630123778,630084584,629786297,630084221,630114620,630075194,630092569,630082257,630120065,630093083,630065923,630061122,630085770,630141047,630080176,630018298,630106410,630099279,630069467,629978803,630026593,630109590,630088683,630013687,630109601,630103629,630080647,629949196,623885472
+.fi
+
+.SH SEE ALSO
+ldmsd(7), ldms_quickstart(7)
