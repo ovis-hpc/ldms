@@ -194,6 +194,8 @@ typedef struct ldmsd_prdcr_set {
 	pthread_mutex_t lock;
 	LIST_HEAD(ldmsd_strgp_ref_list, ldmsd_strgp_ref) strgp_list;
 	struct rbn rbn;
+
+	int ref_count;
 } *ldmsd_prdcr_set_t;
 
 typedef struct ldmsd_prdcr_ref {
@@ -690,6 +692,8 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 	}
 	return "BAD STATE";
 }
+void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set);
+void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set);
 
 ldmsd_updtr_t ldmsd_updtr_first();
 ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr);
