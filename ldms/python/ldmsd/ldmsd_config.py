@@ -485,7 +485,12 @@ class ldmsdInetConfig(ldmsdConfig):
         buf = self.socket.recv(self.max_recv_len)
         _chl = struct.unpack('II', buf)
         if _chl[0] != 0 or _chl[1] != 0:
-            from ovis_lib import ovis_auth
+            try:
+                from ovis_lib import ovis_auth
+            except ImportError:
+                raise ImportError("No module named ovis_lib. Please "
+                                        "make sure that ovis is built with "
+                                        "--enable-swig")
             # Do authentication
             auth_chl = ovis_auth.ovis_auth_challenge()
             auth_chl.lo = _chl[0]

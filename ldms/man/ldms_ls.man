@@ -155,4 +155,4 @@ ldms_ls: lookup failed for set 'vm1_1/foo'
 .fi
 
 .SH SEE ALSO
-ldms_authentication(7), ldmsd(1), ldms(7)
+ldms_authentication(7), ldmsd(8), ldms_quickstart(7),

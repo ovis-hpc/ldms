@@ -55,6 +55,7 @@ OPTION_WITH([me], [ME], [/usr/local])
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
+OPTION_DEFAULT_DISABLE([knc_sampler], [ENABLE_KNC_SAMPLER])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
 OPTION_DEFAULT_DISABLE([slurmjobid], [ENABLE_SLURMJOBID]) dnl enable defaulted when ported
 OPTION_DEFAULT_DISABLE([clock], [ENABLE_CLOCK]) dnl enable defaulted when ported
@@ -116,7 +117,7 @@ OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc coll ovis_util zap ovis_ct
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
-if [ -d ${OVIS_LIB_LIB64DIR}/ovis-lib ]; then
+if test -d ${OVIS_LIB_LIB64DIR}/ovis-lib ; then
 ZAP_LIBPATH=${OVIS_LIB_LIB64DIR}/ovis-lib
 else
 ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
@@ -314,6 +315,20 @@ dnl Reset LIBS variable.
 
 LIBS=""
 
+dnl if knc, check for libmicmgmt
+if test "x$enable_knc_sampler" = "xyes"
+then
+
+	AC_CHECK_HEADERS(miclib.h, [],
+	AC_MSG_FAILURE([ not found])
+	)
+
+        AC_CHECK_LIB(micmgmt, mic_open_device, [],
+            AC_MSG_FAILURE([micmgmt library not found.  knc_sampler requires libmicmgmt.]))
+fi
+
+dnl Reset LIBS variable.
+LIBS=""
 
 
 OPTION_GITINFO

@@ -211,9 +211,27 @@ Enable the csv stores. Default enable.
 Enable or disable the sos stores. Enable this only if you are going to use the store_sos plugin. Default disable.
 .RS
 
+.SH INSTALL DIRECTORY SETUP
+The build will go into prefix (/XXX/Build/build_ovis in the examples section below).
+
+.PP
+.IP \[bu]
+bin -  python-based utility commands, such as ldmsd_controller. Also test scripts.
+.IP \[bu]
+include - subdurectories with header files
+.IP \[bu]
+lib - libraries. At the top level are libraries for the ldms infrastructure (e.g., libldms.so, libzap.so, etc). There is a subdirectory, which will be called either ovis-ldms or ovis-lib which contains all the libraries for the plugins (samplers, such as libmeminfo.so; stores, such as libstore_csv.so; and transports, such as libzap_sock.so).
+.IP \[bu]
+lib64 - python library
+.IP \[bu]
+sbin - C-based utility commands, such as ldms_ls and ldmsd.
+.IP \[bu]
+share - documentation, including man pages.
+
 
 .SH NOTES
-None.
+This document does not cover putting the install into a cray-system image. Nor does it over setting
+up init scripts to run ldms as a system service (for any type of linux platform).
 
 .SH EXAMPLES
 .PP
@@ -244,4 +262,4 @@ CFLAGS='-g -O0'
 .fi
 
 .SH SEE ALSO
-ldms_authentication(7), ldms_quickstart(7), Plugin_cray_sampler_variants(7), Plugin_aries_mmr(7)
+ldms_authentication(8), ldms_quickstart(7), ldmsd(8), Plugin_cray_sampler_variants(7), Plugin_aries_mmr(7)

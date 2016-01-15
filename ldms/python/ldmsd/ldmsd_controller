@@ -74,7 +74,12 @@ class LdmsdCmdParser(cmd.Cmd):
             try:
                 self.secretword = None
                 if secretPath is not None:
-                    from ovis_lib import ovis_auth
+                    try:
+                        from ovis_lib import ovis_auth
+                    except ImportError:
+                        raise ImportError("No module named ovis_lib. Please "
+                                        "make sure that ovis is built with "
+                                        "--enable-swig")
                     self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
             except:
                 raise

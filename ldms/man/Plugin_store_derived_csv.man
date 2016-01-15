@@ -176,4 +176,4 @@ ldmsd_controller> strgp_add name=csv_ps_policy plugin=store_derived_csv containe
 .if
 
 .SH SEE ALSO
-ldms(7), Plugin_store_csv(7)
+ldmsd(8), Plugin_store_csv(7), ldms_quickstart(7)
