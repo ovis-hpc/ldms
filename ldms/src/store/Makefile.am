@@ -29,7 +29,7 @@ endif
 if ENABLE_CSV
 libstore_csv_la_SOURCES = store_csv.c
 libstore_csv_la_CFLAGS = $(AM_CFLAGS)
-libstore_csv_la_LIBADD = $(STORE_LIBADD)
+libstore_csv_la_LIBADD = $(STORE_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libstore_csv.la
 
 libstore_derived_csv_la_SOURCES = store_derived_csv.c

@@ -45,6 +45,7 @@ function mysleep() {
 TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SPOOLDIR=$TESTDIR/spool
+OPENHOOK=$TESTDIR/spool/openhook.sh
 SOCKDIR=$TESTDIR/run/ldmsd
 LOGDIR=$TESTDIR/logs
 LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
@@ -53,6 +54,13 @@ export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1
 export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH $SPOOLDIR
 echo "logs and data stored under $TESTDIR"
+cat << EOF >> $OPENHOOK
+#!/bin/sh
+echo \$* >> $SPOOLDIR/open-list
+exit 0
+EOF
+
+chmod u+x $OPENHOOK
 
 export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
 export LDMS_XPRT_LIBPATH=@pkglibdir@
@@ -93,7 +101,7 @@ echo Starting daemons
 ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -q DEBUG -r $LDMSD_PIDFILE.1
 ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -q DEBUG -r $LDMSD_PIDFILE.2
 #ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG -r $LDMSD_PIDFILE.3
-valgrind -v  --track-origins=yes --leak-check=yes --log-file=vg.agg.log ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG -r $LDMSD_PIDFILE.3
+valgrind -v  --track-origins=yes --leak-check=yes --log-file=vg.agg.log ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG -r $LDMSD_PIDFILE.3 -A
 
 mysleep 1
 
@@ -125,7 +133,7 @@ echo Adding store_csv to aggregator3
 echo "load name=store_derived_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 
-echo "config name=store_derived_csv spooler=/bin/mv spooldir=$SPOOLDIR path=${STOREDIR} altheader=0 derivedconf=${derconf} rollover=10 rolltype=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=store_derived_csv altheader=1 spooler=/bin/mv spooldir=$SPOOLDIR openhook=$OPENHOOK path=${STOREDIR} altheader=0 derivedconf=${derconf} rollover=10 rolltype=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
 echo "store name=store_derived_csv comp_type=node set=clock container=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 

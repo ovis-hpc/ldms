@@ -20,12 +20,12 @@ The store_csv plugin is a CSV store.
 .PP
 
 .SH LDMSCTL MAIN CONFIGURATION ATTRIBUTE SYNTAX
-The configuration parameters altheader, id_pos, rolltype, rollover, spooler, spooldir, and sequence are applied to all metric sets alike,
+The configuration parameters altheader, id_pos, rolltype, rollover, openhook, spooler, spooldir, and sequence are applied to all metric sets alike,
 unless overriden by the action=container values.
 
 .TP
 .BR config
-name=<plugin_name> [action=main] path=<path> [ altheader=<altheader> id_pos=<idpos> ietfcsv=<boolean> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> spooldir=<dir> spooler=<program>]
+name=<plugin_name> [action=main] path=<path> [ altheader=<altheader> id_pos=<idpos> ietfcsv=<boolean> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> openhook=<openprog> spooldir=<dir> spooler=<program>]
 .br
 ldmsctl configuration line
 .RS
@@ -87,6 +87,10 @@ Rollover value controls the frequency of rollover (e.g., number of bytes, number
 sequence=<seqname>
 .br
 Controls the ordering of metric data column. See STORE COLUMN ORDERING for details.
+.TP
+openhook=<openprog>
+.br
+The full path of the program invoked as '<openprog> file' to notify that a new csv file (data or header) has been opened. Due to possible race conditions, openprog must validate its input and log any errors encountered or retry. LDMS does not monitor the outcome of the invocation. The invoked program may be a shell script that handles behaviors like making symbolic links or starting an ingestor that monitors the new file. The new file may not yet have any data in it. Relocating the new file is likely to cause unexpected behavior, as the csv store holds an open FILE reference until.
 .TP
 spooler=<program>
 .br

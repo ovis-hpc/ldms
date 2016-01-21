@@ -68,6 +68,9 @@ NUM is the number of bytes of the dirty threshold used for store rollover.
 .BR -F
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
+.BR -A
+Avoid forking auxiliary shell launcher at startup; default is false. Use of rollover stores with spooling requires forking the shell launcher at startup.
+.TP
 .BI -f " COUNT"
 .br
 COUNT is the number of flush threads.

@@ -74,6 +74,7 @@
 #include <libgen.h>
 #include <event2/thread.h>
 #include <coll/str_map.h>
+#include <ovis_util/spool.h>
 #include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
@@ -123,7 +124,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
-#define FMT "Z:H:i:l:r:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:V"
+#define FMT "Z:H:i:l:r:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:VA"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
 /* YAML needs instance number to differentiate configuration for an instnace
  * from other instances' configuration in the same configuration file
@@ -208,6 +209,7 @@ pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 TAILQ_HEAD(conn_s, hostspec) conn_list;
 pthread_mutex_t conn_list_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t conn_list_cv = PTHREAD_COND_INITIALIZER;
+int enable_sheller = 0;
 
 int passive = 0;
 /* by default ldmsd should not be 'ERROR' */
@@ -279,6 +281,7 @@ void cleanup(int x)
 	}
 	if (log_fp == LDMS_LOG_SYSLOG)
 		closelog();
+	sheller_final();
 	exit(x);
 }
 
@@ -3578,6 +3581,9 @@ int main(int argc, char *argv[])
 			return -1;
 		#endif
 			break;
+		case 'A':
+			enable_sheller = 1;
+			break;
 		case 'F':
 			foreground = 1;
 			has_arg[LDMS_FOREGROUND] = 1;
@@ -3642,6 +3648,13 @@ int main(int argc, char *argv[])
 
 	/* Make dirty_threshold to be per thread */
 	dirty_threshold /= flush_N;
+
+	/* Before any threads, files, etc, set up shell command slave pipe.
+	 * Default is off, with init-on-demand instead.
+	 */
+	if (enable_sheller) {
+		sheller_init();
+	}
 
 #ifdef ENABLE_YAML
 	yaml_document_t *yaml_document = NULL;

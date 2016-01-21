@@ -364,6 +364,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_ban.sh
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh
+		 scripts/ldms_local_temperatures.sh
 		 scripts/ldms_local_slurmtest.sh
 		 scripts/ldms_local_valgrind.sh
 		 scripts/ldms_local_clocktest.sh
@@ -375,6 +376,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_rollperiod_test.sh
 		 scripts/ldms_local_rollrecords_test.sh
 		 scripts/ldms_local_rolltime_test.sh
+		 scripts/ldms_local_spooltail.sh
 		 scripts/ldms_local_dertest.sh
 		 scripts/ldms_local_dertest_big.sh
 		 scripts/ldms_local_procstatutil.sh
