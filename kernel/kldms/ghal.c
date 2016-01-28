@@ -98,20 +98,15 @@ int ghal_add_subsystem(int flag,
 
 int gpcd_invalid_read_registers(int numregs, uint64_t * regs)
 {
-	int i;
-
-	for (i = 0; i < numregs; i++) {
-		regs[i] = i;
-	}
 	return 0;
 }
 
-int gpcd_read_registers(int numregs, uint64_t * regs, void * current_sample)
+int gpcd_read_registers(int numregs, uint64_t * regs, uint64_t * current_sample)
 {
 	int i;
 
 	for (i = 0; i < numregs; i++) {
-		regs[i] = i;
+		current_sample[i] = i;
 	}
 	return numregs;
 }

@@ -1,7 +1,19 @@
+dnl SYNOPSIS: OPTION_APPEND
+dnl EXAMPLE: none. used internally by OPTION_DEFAULT_ENABLE and friends
+dnl note: provides a shell function that appends to var a value.
+dnl redundant with as_fn_append as of autoconf 2.68, but earlier versions lack.
+AC_DEFUN([OPTION_APPEND],[
+# option_fn_append varname value
+option_fn_append ()
+  {
+    eval $[]1=\$$[]1\$[]2
+  }
+])
 dnl SYNOPSIS: OPTION_DEFAULT_ENABLE([name], [enable_flag_var])
 dnl EXAMPLE: OPTION_DEFAULT_ENABLE([mysql], [ENABLE_MYSQL])
 dnl note: supports hyphenated feature names now.
 AC_DEFUN([OPTION_DEFAULT_ENABLE], [
+AC_REQUIRE([OPTION_APPEND])
 AC_ARG_ENABLE($1, [  --disable-$1     Disable the $1 module],
         [       if test "x$enableval" = "xno" ; then
                         disable_]m4_translit([$1], [-+.], [___])[=yes
@@ -16,12 +28,17 @@ AC_ARG_ENABLE($1, [  --disable-$1     Disable the $1 module],
 		disable_]m4_translit([$1], [-+.], [___])[=no
 	])
 AM_CONDITIONAL([$2], [test "$disable_]m4_translit([$1], [-+.], [___])[" != "yes"])
+dnl pass down the top level decision.
+if test "$disable_]m4_translit([$1], [-+.], [___])[" != "yes"; then
+        option_fn_append ac_configure_args " '--enable-]m4_translit([$1], [-+.], [___])['"
+fi
 ])
 
 dnl SYNOPSIS: OPTION_DEFAULT_DISABLE([name], [enable_flag_var])
 dnl EXAMPLE: OPTION_DEFAULT_DISABLE([mysql], [ENABLE_MYSQL])
 dnl note: supports hyphenated feature names now.
 AC_DEFUN([OPTION_DEFAULT_DISABLE], [
+AC_REQUIRE([OPTION_APPEND])
 AC_ARG_ENABLE($1, [  --enable-$1     Enable the $1 module: $3],
         [       if test "x$enableval" = "xyes" ; then
                         enable_]m4_translit([$1], [-+.], [___])[=yes
@@ -36,6 +53,11 @@ AC_ARG_ENABLE($1, [  --enable-$1     Enable the $1 module: $3],
 		enable_]m4_translit([$1], [-+.], [___])[=no
 	])
 AM_CONDITIONAL([$2], [test "$enable_]m4_translit([$1], [-+.], [___])[" == "yes"])
+dnl pass down the top level decision.
+if test "$enable_]m4_translit([$1], [-+.], [___])[" != "yes"; then
+        option_fn_append ac_configure_args " '--disable-]m4_translit([$1], [-+.], [___])['"
+fi
+
 ])
 
 dnl SYNOPSIS: OPTION_WITH([name], [VAR_BASE_NAME])

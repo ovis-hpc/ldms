@@ -4,10 +4,10 @@
 # NOTE: change ports, intervals if you like
 DESTDIR=
 allowroot=0
-prefix=/home/baallan/ovis/repos/trinity_rabbit_patches/LDMS_install
-exec_prefix=${prefix}
-libdir=${exec_prefix}/lib
-BUILDDIR=/home/baallan/ovis/repos/trinity_rabbit_patches/LDMS_install
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+BUILDDIR=@prefix@
 # Manually redefine portbase to avoid collisions.
 # Base should be above the maximum in :
 #  cat /proc/sys/net/ipv4/ip_local_port_range
@@ -54,10 +54,10 @@ export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:${libdir}/ovis-ldms::$LD_LIBRARY_PATH
-export ZAP_LIBPATH=${libdir}/ovis-ldms
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=@pkglibdir@
 export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=${libdir}/ovis-ldms
+export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
 
 # whack the daemons we own
 pkill ldmsd

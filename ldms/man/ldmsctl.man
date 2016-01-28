@@ -344,5 +344,5 @@ Notes for example 6:
 
 
 .SH SEE ALSO
-LDMS_Authentication(7), ldms(7), ldmsd(1), ldms_ls(1), ldmsd_controller(7)
+ldms_authentication(7), ldmsd(8), ldms_ls(8), ldmsd_controller(8), ldms_quickstart(7)
 

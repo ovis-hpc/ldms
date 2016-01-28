@@ -19,6 +19,14 @@ $(builddir)/%.service: $(srcdir)/%.service.in
 $(builddir)/%.env: $(srcdir)/%.env.in
 	$(do_subst) < $< > $@
 
+EXTRA_DIST = ldmsauth.conf \
+	     ldmsplugin.sampler.conf \
+	     ldmsplugin.aggregator.conf \
+	     ldmsd.aggregator.env.in \
+	     ldmsd.aggregator.service.in \
+	     ldmsd.sampler.env.in \
+	     ldmsd.sampler.service.in
+
 install-data-local: $(SVC_ENV_FILES)
 	$(MKDIR_P) $(SYSTEMD_DIR)
 	$(INSTALL_DATA) $(SVC_ENV_FILES) $(SYSTEMD_DIR)/

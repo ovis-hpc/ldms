@@ -122,6 +122,9 @@ static char *default_schema_name = "procnfs";
 static FILE *mf;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
+static uint64_t compid;
+static uint64_t jobid;
+static int metric_offset = 2;
 
 static ldms_set_t get_set()
 {
@@ -132,6 +135,7 @@ static int create_metric_set(const char *path, char* schema_name)
 {
 	int rc;
 	int i, j;
+	union ldms_value v;
 	char metric_name[128];
 
 	mf = fopen(procfile, "r");
@@ -146,6 +150,18 @@ static int create_metric_set(const char *path, char* schema_name)
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
 		fclose(mf);
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	if (rc < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
@@ -166,6 +182,12 @@ static int create_metric_set(const char *path, char* schema_name)
 		rc = errno;
 		goto err;
 	}
+
+	//add specialized metrics
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
+	v.v_u64 = 0;
+	ldms_metric_set(set, 1, &v);
 	return 0;
 
 err:
@@ -180,9 +202,10 @@ err:
 
 static const char *usage(void)
 {
-	return  "config name=procnfs producer=<prod_name> instance=<inst_name> [schema=<sname>]\n"
+	return  "config name=procnfs producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname>]\n"
 		"    <prod_name>     The producer name\n"
 		"    <inst_name>     The instance name\n"
+		"    <compid>        Optional unique number identifier. Defaults to zero.\n"
 		"    <sname>         Optional schema name. Defaults to 'procnfs'\n";
 }
 
@@ -191,31 +214,32 @@ static const char *usage(void)
  */
 static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-        char *value;
-        int i;
+	char *value;
+	int i;
 
-        char* deprecated[]={"set", "component_id"};
-        int numdep = 2;
+	char* deprecated[]={"set"};
+	int numdep = 1;
 
 	for (i = 0; i < numdep; i++){
-                value = av_value(avl, deprecated[i]);
-                if (value){
-                        msglog(LDMSD_LERROR, "procnfs: config argument %s has been deprecated.\n",
-                               deprecated[i]);
-                        return EINVAL;
-                }
-        }
+		value = av_value(avl, deprecated[i]);
+		if (value){
+			msglog(LDMSD_LERROR, "procnfs: config argument %s has been deprecated.\n",
+			       deprecated[i]);
+			return EINVAL;
+		}
+	}
 
-        return 0;
+	return 0;
 }
 
 
 /**
  * \brief Configuration
  *
- * config name=procnfs producer_name=<comp_id> instance_name=<instance_name> [schema=<sname>]
+ * config name=procnfs producer_name=<comp_id> instance_name=<instance_name> [component_id=<compid> schema=<sname>]
  *     producer_name      The producer id value.
  *     instance_name    The set name.
+ *     component_id     The component id. Defaults to zero
  *     sname            Optional schema name. Defaults to meminfo
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -226,9 +250,9 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	int rc;
 
 	rc = config_check(kwl, avl, arg);
-        if (rc != 0){
-                return rc;
-        }
+	if (rc != 0){
+		return rc;
+	}
 
 	if (set) {
 		msglog(LDMSD_LERROR, "procnfs: Set already created.\n");
@@ -241,6 +265,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return ENOENT;
 	}
 
+	value = av_value(avl, "component_id");
+	if (value)
+		compid = (uint64_t)(atoi(value));
+	else
+		compid = 0;
+
 	value = av_value(avl, "instance");
 	if (!value) {
 		msglog(LDMSD_LERROR, "procnfs: missing 'instance'\n");
@@ -248,12 +278,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	sname = av_value(avl, "schema");
-        if (!sname)
-                sname = default_schema_name;
-        if (strlen(sname) == 0){
-                msglog(LDMSD_LERROR, "meminfo: schema name invalid.\n");
-                return EINVAL;
-        }
+	if (!sname)
+		sname = default_schema_name;
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, "meminfo: schema name invalid.\n");
+		return EINVAL;
+	}
 
 
 	rc = create_metric_set(value, sname);
@@ -304,8 +334,8 @@ static int sample(void)
 					rc = EINVAL;
 					goto out;
 				}
-				ldms_metric_set(set, 0, &v[0]);
-				ldms_metric_set(set, 1, &v[1]);
+				ldms_metric_set(set, (0 + metric_offset), &v[0]);
+				ldms_metric_set(set, (1 + metric_offset), &v[1]);
 				break;
 			case 3:
 				rc = sscanf(lbuf, LINE_FMT,
@@ -322,7 +352,7 @@ static int sample(void)
 					goto out;
 				}
 				for (i = 2; i < 23; i++)
-					ldms_metric_set(set, i, &v[i]);
+					ldms_metric_set(set, (i+metric_offset), &v[i]);
 				break;
 			default:
 				break;

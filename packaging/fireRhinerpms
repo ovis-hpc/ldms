@@ -1,6 +1,6 @@
 #!/bin/sh
 ./autogen.sh
-./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --disable-baler --enable-swig --with-pkglibdir=ovis-ldms
+./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms
 mkdir -p Release
 rm -rf Release/*
 ./util/release_tarball-300-rhine.sh
@@ -9,6 +9,6 @@ echo "============================= bundle done ============="
 tar zxf ldms-3.0.0.tar.gz
 cd ldms-3.0.0
 echo "============================= configure for cray sles 12 rpms ============="
-./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --disable-baler --enable-swig --with-pkglibdir=ovis-ldms
+./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms
 echo "============================= make rhine rpms ============="
 make rhine

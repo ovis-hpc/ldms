@@ -705,4 +705,4 @@ Example to start an ldmsd and use ldmsd_controller to call a script
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8)
+ldmsd(8), ldmsctl(8), ldms_quickstart(7)

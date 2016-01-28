@@ -90,7 +90,9 @@ static char* default_schema_name = "procnetdev";
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
-
+static uint64_t compid;
+static uint64_t jobid;
+static int metric_offset = 2;
 
 struct kw {
 	char *token;
@@ -106,6 +108,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	int rc;
 	char metric_name[128];
+	union ldms_value v;
 	int i, j;
 
 	mf = fopen(procfile, "r");
@@ -119,6 +122,18 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	/* Create a metric set of the required size */
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	if (rc < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
@@ -145,6 +160,12 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		rc = errno;
 		goto err;
 	}
+
+	//add specialized metrics
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
+	v.v_u64 = 0;
+	ldms_metric_set(set, 1, &v);
 	return 0;
 
 err:
@@ -169,8 +190,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	char *value;
 	int i;
 
-	char* deprecated[]={"set", "component_id"};
-	int numdep = 2;
+	char* deprecated[]={"set"};
+	int numdep = 1;
 
 	for (i = 0; i < numdep; i++){
 		value = av_value(avl, deprecated[i]);
@@ -199,9 +220,10 @@ static const char *usage(void)
 /**
  * \brief Configuration
  *
- *   config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [schema=<sname>]
+ *   config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [component_id=<comp_id> schema=<sname>]
  *     <prod_name>     The producer name
  *     <inst_name>     The instance name
+ *     <comp_id>       The component id. Defaults to zero
  *     <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)
  *     <sname>         Optional schema name. Defaults to 'procnetdev'
  */
@@ -231,6 +253,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		msglog(LDMSD_LERROR, "procnetdev: missing 'producer'.\n");
 		return ENOENT;
 	}
+
+	value = av_value(avl, "component_id");
+	if (value)
+		compid = (uint64_t)(atoi(value));
+	else
+		compid = 0;
 
 	value = av_value(avl, "instance");
 	if (!value) {
@@ -304,7 +332,7 @@ static int sample(void)
 		return ENOENT;
 	}
 
-	metric_no = 0;
+	metric_no = metric_offset;
 	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
 	int usedifaces = 0;
 	s = fgets(lbuf, sizeof(lbuf), mf);

@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_procnetdev
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "23 Oct 2015" "v3" "LDMS Plugin procnetdev man page"
+.TH man 7 "01 Dec 2015" "v3" "LDMS Plugin procnetdev man page"
 
 .SH NAME
 Plugin_procnetdev - man page for the LDMS procnetdev plugin
@@ -18,7 +18,7 @@ The procnetdev plugin provides network info from /proc/net/dev.
 
 .TP
 .BR config
-name=<plugin_name> producer=<pname> instance=<set_name> ifaces=<ifs> [schema=<sname>]
+name=<plugin_name> producer=<pname> instance=<set_name> ifaces=<ifs> [component_id=<compid> schema=<sname>]
 .brldmsctl configuration line
 .RS
 .TP
@@ -42,6 +42,10 @@ schema=<schema>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
 different schema. If not specified, will default to `procnetdev`.
+.TP
+component_id=<compid>
+.br
+Optional component identifier. Defaults to zero.
 .RE
 
 .SH BUGS
@@ -58,4 +62,4 @@ ldmsctl> quit
 .fi
 
 .SH SEE ALSO
-ldms(7), Plugin_sysclassib(7)
+ldmsd(8), ldms_quickstart(7)
