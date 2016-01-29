@@ -27,6 +27,10 @@ if ENABLE_OVIS_CTRL
 SUBDIRS += ovis_ctrl
 endif
 
+if ENABLE_OVIS_EVENT
+SUBDIRS += ovis_event
+endif
+
 install-data-hook:
 	$(MKDIR_P) $(DESTDIR)$(libdir)
 	sed -i -e 's/{//g' -e 's/}//g' ovis-lib-configvars.sh
