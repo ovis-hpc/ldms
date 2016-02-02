@@ -165,6 +165,29 @@ void *idx_find(idx_t t, idx_key_t key, size_t keylen)
 	return pl->entries[*pkey].obj;
 }
 
+static void traverse_layer(idx_t t, struct idx_layer_s *pl, idx_cb_fn_t cb, void *cb_arg)
+{
+	int e;
+	for (e = 0; e < t->radix; e++) {
+		void *obj = pl->entries[e].obj;
+		struct idx_layer_s *nl = pl->entries[e].next;
+		if (obj)
+			cb(obj, cb_arg);
+		if (nl)
+			traverse_layer(t, nl, cb, cb_arg);
+	}
+}
+
+/**
+ * \brief Find the data object associated with a prefix key
+ */
+void idx_traverse(idx_t t, idx_cb_fn_t cb, void *cb_arg)
+{
+	int e;
+	struct idx_layer_s *pl = t->top;
+	traverse_layer(t, pl, cb, cb_arg);
+}
+
 /**
  * \brief Add a prefix key and associated data object to the tree.
  */
@@ -289,6 +312,13 @@ void *idx_delete(idx_t t, idx_key_t key, size_t keylen)
 #include <stdlib.h>
 #include <time.h>
 #include "ovis-test/test.h"
+
+int entry_count;
+void count_cb(void *obj, void *arg)
+{
+	entry_count++;
+}
+
 idx_t idx;
 int main(int argc, char *argv[])
 {
@@ -309,7 +339,9 @@ int main(int argc, char *argv[])
 		rc = idx_add(idx, (idx_key_t)key, keylen, obj);
 		TEST_ASSERT(!rc, "Add object '%s'.\n", key);
 	}
-
+	entry_count = 0;
+	idx_traverse(idx, count_cb, NULL);
+	TEST_ASSERT((entry_count == 100), "There are 100 entries in the index\n");
 	/* Make certain they can be found */
 	srandom(seed);
 	for (i = 0; i < 100; i++) {

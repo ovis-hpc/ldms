@@ -61,5 +61,7 @@ extern void idx_destroy(idx_t t);
 extern void *idx_find(idx_t t, idx_key_t k, size_t keylen);
 extern void *idx_delete(idx_t t, idx_key_t k, size_t keylen);
 extern int idx_add(idx_t t, idx_key_t key, size_t keylen, void *obj);
+typedef void (*idx_cb_fn_t)(void *obj, void *cb_arg);
+extern void idx_traverse(idx_t t, idx_cb_fn_t cb, void *cb_arg);
 
 #endif
