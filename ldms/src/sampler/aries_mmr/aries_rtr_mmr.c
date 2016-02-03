@@ -360,9 +360,9 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	}
 
 	if (rtrid)
-                rc = ldms_schema_metric_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, strlen(rtrid));
+                rc = ldms_schema_meta_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, strlen(rtrid)+1);
         else
-                rc = ldms_schema_metric_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, 1);
+                rc = ldms_schema_meta_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, 1);
 
         if (rc < 0) {
 		rc = ENOMEM;
