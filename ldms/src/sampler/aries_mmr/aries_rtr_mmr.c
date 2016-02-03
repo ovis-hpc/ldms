@@ -128,6 +128,7 @@ static char *producer_name;
 static ldms_schema_t schema;
 static char *default_schema_name = "aries_rtr_mmr";
 static uint64_t compid;
+static char* rtrid = NULL;
 static uint64_t jobid;
 
 
@@ -358,6 +359,16 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
+	if (rtrid)
+                rc = ldms_schema_metric_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, strlen(rtrid));
+        else
+                rc = ldms_schema_metric_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, 1);
+
+        if (rc < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
+
 	//add them in the order of the file.
 	//they will come off the context and the index list in the reverse order
 
@@ -386,7 +397,10 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	ldms_metric_set(set, 0, &v);
 	v.v_u64 = 0;
 	ldms_metric_set(set, 1, &v);
-
+	if (rtrid)
+                ldms_metric_array_set_str(set, 2, rtrid);
+        else
+                ldms_metric_array_set_str(set, 2, "");
 	return 0;
 
 err:
@@ -433,6 +447,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		compid = (uint64_t)(atoi(value));
 	else
 		compid = 0;
+
+	value = av_value(avl, "aries_rtr_id");
+        if (value)
+                rtrid = strdup(value);
+        else
+		rtrid = NULL;
 
 	value = av_value(avl, "instance");
 	if (!value) {
@@ -561,6 +581,10 @@ static void term(void)
 
 	int i;
 
+	if (rtrid)
+		free(rtrid);
+	rtrid = NULL;
+
 	for (i = 0; i < END_T; i++){
 		struct met *np;
 		switch(i){
@@ -599,11 +623,12 @@ static void term(void)
 
 static const char *usage(void)
 {
-	return  "config name=aries_rtr_mmr producer=<prod_name> instance=<inst_name> file=<file> [component_id=<compid> schema=<sname>]\n"
+	return  "config name=aries_rtr_mmr producer=<prod_name> instance=<inst_name> file=<file> [component_id=<compid> aries_rtr_id=<rtrid> schema=<sname>]\n"
 		"    <prod_name>    The producer name\n"
 		"    <inst_name>    The instance name\n"
 		"    <file>         File with full names of metrics\n";
 		"    <compid>       Optional unique number identifier. Defaults to zero.\n"
+                "    <rtrid>        Optional unique rtr string identifier. Defaults to 0 length string.\n"
 		"    <sname>        Optional schema name. Defaults to 'aries_rtr_mmr'\n";
 }
 
