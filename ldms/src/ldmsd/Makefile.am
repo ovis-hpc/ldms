@@ -13,16 +13,16 @@ AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
 ldms_ls_SOURCES = ldms_ls.c
 ldms_ls_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
-ldms_ls_LDADD = $(CORE)/libldms.la 
+ldms_ls_LDADD = $(CORE)/libldms.la
 ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
 	-lzap -lmmalloc -lovis_util -lovis_auth -lcoll -lovis_third \
 	-levent -levent_pthreads -lpthread \
 	@LDFLAGS_GETTIME@
 
-ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c \
+ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c ldmsd_request.c \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c
-ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@ 
+ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
@@ -47,7 +47,7 @@ ldms_ls_LDADD += @OVIS_AUTH_LIBS@
 
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la @OVIS_AUTH_LIBS@
-ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ -lovis_ctrl -lovis_util -lmmalloc -lcoll -lovis_third -lzap  @LDFLAGS_GETTIME@ 
+ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ -lovis_ctrl -lovis_util -lmmalloc -lcoll -lovis_third -lzap  @LDFLAGS_GETTIME@
 
 if ENABLE_LDMSD_RCTL
 ldmsd_SOURCES += ldmsd_config_rctrl.c

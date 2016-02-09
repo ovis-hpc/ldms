@@ -22,6 +22,8 @@ retry:
 			goto retry;
 		errno = rc;
 		goto err0;
+	} else if(!sos) {
+		return NULL;
 	}
 	/* Create/set active partition */
 	rc = gettimeofday(&tv, NULL);

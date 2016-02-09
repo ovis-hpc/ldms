@@ -234,18 +234,19 @@ void *flush_proc(void *arg)
 void process_info_flush_thread(void)
 {
 	int i;
-	ldmsd_log(LDMSD_LSUPREME, "Flush Thread Info:\n");
-	ldmsd_log(LDMSD_LSUPREME, "%-16s %-16s %-16s\n", "----------------", "----------------",
+	ldmsd_log(LDMSD_LALL, "Flush Thread Info:\n");
+	ldmsd_log(LDMSD_LALL, "%-16s %-16s %-16s\n", "----------------", "----------------",
 					"----------------");
-	ldmsd_log(LDMSD_LSUPREME, "%-16s %-16s %-16s\n", "Thread", "Store Count",
+	ldmsd_log(LDMSD_LALL, "%-16s %-16s %-16s\n", "Thread", "Store Count",
 					"Flush Time (sec.)");
-	ldmsd_log(LDMSD_LSUPREME, "%-16s %-16s %-16s\n", "----------------", "----------------",
+	ldmsd_log(LDMSD_LALL, "%-16s %-16s %-16s\n", "----------------", "----------------",
 					"----------------");
 	for (i = 0; i < flush_N; i++) {
-		ldmsd_log(LDMSD_LSUPREME, "%-16p %-16d % 10d.%06d\n", flush_thread[i].thread,
-				flush_thread[i].store_count,
-				flush_thread[i].tvsum.tv_sec,
-				flush_thread[i].tvsum.tv_usec);
+		ldmsd_log(LDMSD_LALL, "%-16p %-16d % 10d.%06d\n",
+			  flush_thread[i].thread,
+			  flush_thread[i].store_count,
+			  flush_thread[i].tvsum.tv_sec,
+			  flush_thread[i].tvsum.tv_usec);
 	}
 }
 

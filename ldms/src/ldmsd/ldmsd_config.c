@@ -83,6 +83,8 @@
 #include "ldms_xprt.h"
 #include "config.h"
 
+#define REPLYBUF_LEN 4096
+static char replybuf[REPLYBUF_LEN];
 char myhostname[HOST_NAME_MAX+1];
 pthread_t ctrl_thread = (pthread_t)-1;
 int muxr_s = -1;
@@ -133,7 +135,6 @@ void ldmsd_config_cleanup()
 		close(inet_sock);
 }
 
-static char replybuf[4096];
 int send_reply(int sock, struct sockaddr *sa, ssize_t sa_len,
 	       char *msg, ssize_t msg_len)
 {
@@ -392,7 +393,7 @@ void __process_info_strgp(enum ldmsd_loglevel llevel)
  */
 int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	int llevel = LDMSD_LSUPREME;
+	int llevel = LDMSD_LALL;
 
 	char *name;
 	name = av_value(avl, "name");
@@ -534,7 +535,7 @@ int process_verbosity_change(char *replybuf, struct attr_value_list *avl, struct
 	ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
 	ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
 	ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
-	ldmsd_log(LDMSD_LSUPREME, "TEST SUPREME\n");
+	ldmsd_log(LDMSD_LALL, "TEST SUPREME\n");
 #endif /* DEBUG */
 
 out:
@@ -2214,6 +2215,9 @@ int ldmsd_config_init(char *name)
 	return 0;
 }
 
+extern int
+process_request(int fd, struct msghdr *msg, size_t msg_len);
+
 void *inet_ctrl_thread_proc(void *args)
 {
 #if OVIS_LIB_HAVE_AUTH
@@ -2328,26 +2332,53 @@ loop:
 		goto loop;
 	}
 #endif /* OVIS_LIB_HAVE_AUTH */
-
 	do {
+		struct ldmsd_req_hdr_s request;
 		ssize_t msglen;
 		sin.sin_family = AF_INET;
 		msg.msg_name = &sin;
 		msg.msg_namelen = sizeof(sin);
-		iov.iov_len = cfg_buf_len;
+		iov.iov_len = sizeof(request);
+		iov.iov_base = &request;
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		msg.msg_control = NULL;
 		msg.msg_controllen = 0;
 		msg.msg_flags = 0;
-		msglen = recvmsg(inet_sock, &msg, 0);
-		if (msglen <= 0) {
-			close(inet_sock);
-			inet_sock = -1;
+		/* Read the message header */
+		msglen = recvmsg(inet_sock, &msg, MSG_PEEK);
+		if (msglen <= 0)
 			break;
+		if (request.marker != LDMSD_RECORD_MARKER || (msglen < sizeof(request))) {
+			iov.iov_len = cfg_buf_len;
+			iov.iov_base = lbuf;
+			msglen = recvmsg(inet_sock, &msg, 0);
+			if (msglen <= 0)
+				break;
+			/* Process old style message */
+			process_message(inet_sock, &msg, msglen);
+		} else {
+			if (cfg_buf_len < request.rec_len) {
+				cfg_buf_len = request.rec_len;
+				free(lbuf);
+				lbuf = malloc(cfg_buf_len);
+				if (!lbuf)
+					break;
+				iov.iov_base = lbuf;
+			}
+			iov.iov_base = lbuf;
+			iov.iov_len = request.rec_len;
+			msglen = recvmsg(inet_sock, &msg, MSG_WAITALL);
+			if (msglen < request.rec_len)
+				break;
+			process_request(inet_sock, &msg, msglen);
 		}
-		process_message(inet_sock, &msg, msglen);
 	} while (1);
+	ldmsd_log(LDMSD_LERROR,
+		  "Closing configuration socket. cfg_buf_len %d\n",
+		  cfg_buf_len);
+	close(inet_sock);
+	inet_sock = -1;
 	goto loop;
 	return NULL;
 }

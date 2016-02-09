@@ -462,10 +462,11 @@ int cmd_updtr_stop(char *replybuf, struct attr_value_list *avl, struct attr_valu
 	if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
 		sprintf(replybuf, "%dThe updater is already stopped\n", EBUSY);
 		goto out_1;
+
 	}
+	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
 	ldmsd_task_stop(&updtr->task);
 	ldmsd_task_join(&updtr->task);
-	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
 	sprintf(replybuf, "0\n");
 out_1:
 	ldmsd_updtr_unlock(updtr);

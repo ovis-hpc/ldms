@@ -510,7 +510,7 @@ struct ldmsd_store_policy {
 	WRAP (INFO), \
 	WRAP (ERROR), \
 	WRAP (CRITICAL), \
-	WRAP (SUPREME), \
+	WRAP (ALL), \
 	WRAP (LASTLEVEL)
 
 enum ldmsd_loglevel {
@@ -777,5 +777,50 @@ int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t err
 extern const char *ldmsd_secret_get(void);
 /** Find out if authentication is required. 1 yes, 0 no. */
 extern int ldmsd_authentication_required();
+
+#define LDMSD_RECORD_MARKER 0xffffffff
+enum ldmsd_request {
+	LDMSD_CLI_REQ = 0x1,
+	LDMSD_PRDCR_ADD_REQ = 0x100,
+	LDMSD_PRDCR_DEL_REQ,
+	LDMSD_PRDCR_START_REQ,
+	LDMSD_PRDCR_STOP_REQ,
+	LDMSD_PRDCR_STATUS_REQ,
+	LDMSD_STRGP_ADD_REQ = 0x200,
+	LDMSD_STRGP_DEL_REQ,
+	LDMSD_STRGP_START_REQ,
+	LDMSD_STRGP_STOP_REQ,
+	LDMSD_STRGP_STATUS_REQ,
+	LDMSD_UPDTR_ADD_REQ = 0x300,
+	LDMSD_UPDTR_DEL_REQ,
+	LDMSD_UPDTR_START_REQ,
+	LDMSD_UPDTR_STOP_REQ,
+	LDMSD_UPDTR_STATUS_REQ,
+	LDMSD_SMPLR_ADD_REQ = 0X400,
+	LDMSD_SMPLR_DEL_REQ,
+	LDMSD_SMPLR_START_REQ,
+	LDMSD_SMPLR_STOP_REQ,
+	LDMSD_PLUGN_ADD_REQ = 0x500,
+	LDMSD_PLUGN_DEL_REQ,
+	LDMSD_PLUGN_START_REQ,
+	LDMSD_PLUGN_STOP_REQ,
+	LDMSD_PLUGN_STATUS_REQ,
+};
+#define LDMSD_REQ_SOM_F	1
+#define LDMSD_REQ_EOM_F	2
+
+typedef struct ldmsd_req_attr_s {
+	uint32_t discrim;	/* If 0, end of attr_list */
+	uint32_t attr_len;	/* Count of 4B words */
+	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
+	uint32_t attr_value[0];	/* Size is attr_len */
+} *ldmsd_req_attr_t;
+typedef struct ldmsd_req_hdr_s {
+	uint32_t marker;	/* Always has the value 0xff */
+	uint32_t flags;		/* EOM==1 means this is the last record for this message */
+	uint32_t msg_no;	/* Unique for each request */
+	uint32_t cmd_id;	/* The unique command id */
+	uint32_t rec_len;	/* Record length in bytes including this header */
+} *ldmsd_req_hdr_t;
 
 #endif
