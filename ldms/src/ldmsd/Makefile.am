@@ -19,14 +19,14 @@ ldms_ls_LDADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ \
 	-levent -levent_pthreads -lpthread
 ldms_ls_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
 
-ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c \
+ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c ldmsd_request.c \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
 	-lzap -lmmalloc -lovis_util -lcoll \
 	-levent -levent_pthreads -lpthread
-ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@ 
+ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
 
 if ENABLE_OCM
 ldmsd_SOURCES += ldmsd_ocm.c

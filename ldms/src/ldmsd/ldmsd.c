@@ -181,7 +181,7 @@ int ldmsd_loglevel_set(char *verbose_level)
 
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
-	if ((level != LDMSD_LSUPREME) &&
+	if ((level != LDMSD_LALL) &&
 			(quiet || ((0 <= level) && (level < log_level_thr))))
 		return;
 	time_t t;
@@ -194,7 +194,7 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 		fprintf(log_fp, "%s: ", dtsz);
 
-	if (level < LDMSD_LSUPREME) {
+	if (level < LDMSD_LALL) {
 		fprintf(log_fp, "%-10s: ", ldmsd_loglevel_names[level]);
 	}
 

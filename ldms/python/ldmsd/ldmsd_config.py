@@ -296,6 +296,12 @@ class ldmsdConfig(object):
             attr_values['name'] = name
         return self.talk(self.__format_cmd('info', attr_values))
 
+    def status(self, name = None):
+        msg = bytearray()
+        msg.append(0xff)
+        msg.append(0x01)
+        return self.talk(msg)
+
     def set_udata(self, set, metric, udata):
         cmd = self.__format_cmd('udata', {'set': set, 'metric': metric,
                                               'udata': udata})
