@@ -1,7 +1,11 @@
 nobase_include_HEADERS = ovis-test/test.h ovis-lib-config.h
 EXTRADIST=ovis-lib-configvars.sh.in
 
-SUBDIRS =
+SUBDIRS = third
+
+if ENABLE_OVIS_UTIL
+SUBDIRS += ovis_util
+endif
 
 if ENABLE_COLL
 SUBDIRS += coll
@@ -9,10 +13,6 @@ endif
 
 if ENABLE_MMALLOC
 SUBDIRS += mmalloc
-endif
-
-if ENABLE_OVIS_UTIL
-SUBDIRS += ovis_util
 endif
 
 if ENABLE_OVIS_AUTH

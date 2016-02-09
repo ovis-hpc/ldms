@@ -126,7 +126,9 @@ AC_CONFIG_FILES([ovis-lib.spec
 		packaging/ovis-lib-rhel7.spec
 		Makefile
 		src/ovis-lib-configvars.sh
-		src/Makefile src/coll/Makefile
+		src/Makefile
+		src/third/Makefile
+		src/coll/Makefile
 		src/mmalloc/Makefile
 		src/ovis_ctrl/Makefile
 		src/ovis_util/Makefile

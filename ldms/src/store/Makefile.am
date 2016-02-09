@@ -26,6 +26,13 @@ libstore_flatfile_la_LIBADD = $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_flatfile.la
 endif
 
+if ENABLE_RABBITV3
+libstore_rabbitv3_la_SOURCES = store_rabbitv3.c rabbit_utils.c
+libstore_rabbitv3_la_CFLAGS = $(AM_CFLAGS)
+libstore_rabbitv3_la_LIBADD = -lrabbitmq $(STORE_LIBADD)
+pkglib_LTLIBRARIES += libstore_rabbitv3.la
+endif
+
 if ENABLE_CSV
 libstore_csv_la_SOURCES = store_common.h store_csv.c
 libstore_csv_la_CFLAGS = $(AM_CFLAGS)

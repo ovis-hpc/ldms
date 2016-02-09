@@ -111,12 +111,12 @@ echo Adding host1 to aggregator3
 echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/meminfo,localhost1/vmstat" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 
 mysleep 5
-echo Adding store_csv to aggregator3
-echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo Adding store_sos to aggregator3
+echo "load name=store_sos" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
-echo "config name=store_csv action=init path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv action=custom schema=meminfo policy=meminfo container=meminfo1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv action=custom  schema=vmstat policy=vmstat container=vmstat1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=store_sos action=init path=${STOREDIR} altheader=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_sos action=custom schema=meminfo policy=meminfo container=meminfo1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "store name=store_sos action=custom  schema=vmstat policy=vmstat container=vmstat1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 #
 

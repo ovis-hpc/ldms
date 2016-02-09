@@ -61,7 +61,7 @@
 
 #include <inttypes.h>
 
-#define MAX_SECRET_WORD_LEN 50 /*! The maximum length of the secret word */
+#define MAX_SECRET_WORD_LEN 512 /*! The maximum length of the secret word */
 #define MIN_SECRET_WORD_LEN 3  /*! The minimum length of the secret word */
 
 struct ovis_auth_challenge {
@@ -79,9 +79,12 @@ struct ovis_auth_challenge *ovis_auth_pack_challenge(uint64_t challenge,
 
 uint64_t ovis_auth_unpack_challenge(struct ovis_auth_challenge *chl);
 
-#define MAX_LINE_LEN 512
+#define MAX_LINE_LEN (MAX_SECRET_WORD_LEN+16)
 
 char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log);
+
+int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen, 
+	ovis_auth_log_fn_t msglog);
 
 char *ovis_auth_encrypt_password(const uint64_t challenge,
 				const char *secretword);
