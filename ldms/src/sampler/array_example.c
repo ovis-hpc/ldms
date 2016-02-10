@@ -53,6 +53,7 @@
  * \brief Example of an ldmsd sampler plugin that uses array metric.
  */
 #include <errno.h>
+#include <stdlib.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
