@@ -2322,7 +2322,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			fprintf(s_handle->file, ", ");
 		}
 
-		fprintf(s_handle->file, ",%"PRIu64", %"PRIu64", %s",
+		fprintf(s_handle->file, ",%"PRIu64", %"PRIu64,
 			compid, jobid);
 	}
 
