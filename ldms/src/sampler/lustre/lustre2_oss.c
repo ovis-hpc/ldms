@@ -318,7 +318,7 @@ err0:
 	return errno;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (set)
 		ldms_set_delete(set);
@@ -338,7 +338,7 @@ static void term(void)
  * If osts is not given, the plugin will create ldms_set according to the
  * available OSTs at the time.
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *osts;
 
@@ -366,7 +366,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return
 "config name=lustre_oss producer=<prod_name> instance=<inst_name> osts=<ost_list>\n"
@@ -377,12 +377,12 @@ static const char *usage(void)
 "currently available OSTs will be added.\n";
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	if (!set)
 		return EINVAL;

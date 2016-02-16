@@ -375,16 +375,16 @@ struct ldmsd_plugin {
 		LDMSD_PLUGIN_SAMPLER,
 		LDMSD_PLUGIN_STORE
 	} type;
-	enum ldmsd_plugin_type (*get_type)();
-	int (*config)(struct attr_value_list *kwl, struct attr_value_list *avl);
-	void (*term)(void);
-	const char *(*usage)(void);
+	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
+	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
+	void (*term)(struct ldmsd_plugin *self);
+	const char *(*usage)(struct ldmsd_plugin *self);
 };
 
 struct ldmsd_sampler {
 	struct ldmsd_plugin base;
-	ldms_set_t (*get_set)();
-	int (*sample)(void);
+	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
+	int (*sample)(struct ldmsd_sampler *self);
 };
 
 struct ldmsd_plugin_cfg {

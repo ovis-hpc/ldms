@@ -413,7 +413,7 @@ err:
 }
 
 
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
@@ -491,7 +491,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 }
 
 
-static int sample(void){
+static int sample(struct ldmsd_sampler *self){
 
 	union ldms_value v;
 	int i;
@@ -572,12 +572,12 @@ out:
 
 
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 
 	int i;
@@ -622,7 +622,7 @@ static void term(void)
 	set = NULL;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=aries_nic_mmr producer=<prod_name> instance=<inst_name> file=<file> [component_id=<compid> aries_rtr_id=<rtrid> schema=<sname>]\n"
 		"    <prod_name>    The producer name\n"

@@ -196,7 +196,7 @@ err:
  *     <prod_name>       The producer name
  *     <inst_name>       The instance name
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
@@ -226,12 +226,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
 	int metric_no;
@@ -319,7 +319,7 @@ out:
 	return rc;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_schema_delete(schema);
@@ -327,7 +327,7 @@ static void term(void)
 		ldms_set_delete(set);
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=procsensors producer=<prod_name> instance=<inst_name>\n"
 		"    <prod_name>    The producer name\n"

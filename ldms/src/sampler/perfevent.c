@@ -139,7 +139,7 @@ static ldms_set_t set;
 static ldms_schema_t schema;
 static ldmsd_msg_log_f msglog;
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config perfevent add_event(name=<name>,\n"
 		"                               pid=<pid>,\n"
@@ -366,7 +366,7 @@ struct kw kw_tbl[] = {
 	{ "ls", list },
 };
 
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct kw *kw;
 	struct kw key;
@@ -395,12 +395,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
 	struct pevent *pe;
@@ -442,7 +442,7 @@ static int sample(void)
  	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_destroy_schema(schema);

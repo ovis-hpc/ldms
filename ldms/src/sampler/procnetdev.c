@@ -101,7 +101,7 @@ struct kw {
 	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
 };
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
@@ -206,7 +206,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return
 		"config name=" SAMP " producer=<prod_name> instance=<inst_name> ifaces=<ifs> [schema=<sname> with_jobid=<jid>]\n"
@@ -229,7 +229,7 @@ static const char *usage(void)
  *     <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)
  *     <sname>         Optional schema name. Defaults to 'procnetdev'
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *sname = NULL;
 	char* ifacelist = NULL;
@@ -315,7 +315,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	char *s;
 	char lbuf[256];
@@ -396,7 +396,7 @@ static int sample(void)
 }
 
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (mf)
 		fclose(mf);

@@ -259,7 +259,7 @@ err:
 	return ENOMEM;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=sampler_atasmart producer=<prod_name> \n"
 		"	instance=<inst_name> disks=<disknames>\n"
@@ -272,7 +272,7 @@ static const char *usage(void)
 /**
  * \brief Configuration
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *s;
@@ -324,7 +324,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
@@ -379,7 +379,7 @@ int atasmart_set_metric(SkDisk *d, SkSmartAttributeParsedData *a,
 	return 0;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int ret;
 	int metric_no;
@@ -411,7 +411,7 @@ err:
 	return ret;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	ldms_schema_delete(smarts->schema);
 	int i;

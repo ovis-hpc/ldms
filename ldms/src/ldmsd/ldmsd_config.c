@@ -602,7 +602,7 @@ int ldmsd_term_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 		pthread_mutex_unlock(&pi->lock);
 		goto out;
 	}
-	pi->plugin->term();
+	pi->plugin->term(pi->plugin);
 	pthread_mutex_unlock(&pi->lock);
 	destroy_plugin(pi);
 out:
@@ -628,7 +628,7 @@ int ldmsd_config_plugin(char *plugin_name,
 		goto out;
 	}
 	pthread_mutex_lock(&pi->lock);
-	rc = pi->plugin->config(_kw_list, _av_list);
+	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
 	if (rc)
 		snprintf(err_str, LEN_ERRSTR, "Plugin configuration error.");
 	pthread_mutex_unlock(&pi->lock);
@@ -1505,7 +1505,7 @@ int process_ls_plugins(char *replybuf, struct attr_value_list *av_list,
 		strcat(replybuf, p->name);
 		strcat(replybuf, "\n");
 		if (p->plugin->usage)
-			strcat(replybuf, p->plugin->usage());
+			strcat(replybuf, p->plugin->usage(p->plugin));
 	}
 	return 0;
 }

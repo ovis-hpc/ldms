@@ -300,7 +300,7 @@ static sos_handle_t find_container(const char *path)
 /**
  * \brief Configuration
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	value = av_value(avl, "path");
@@ -316,11 +316,11 @@ einval:
 	return EINVAL;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=store_sos path=<path>\n"
 		"       path The path to primary storage\n";
@@ -451,7 +451,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 		si->sos_schema = schema;
 		return 0;
 	}
-	
+
 	si->sos_handle = create_container(si->path);
 	if (!si->sos_handle) {
 		return errno;

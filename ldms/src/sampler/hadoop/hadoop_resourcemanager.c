@@ -67,7 +67,7 @@ static struct hadoop_set resourcemanager_set;
 static pthread_t thread;
 static ldmsd_msg_log_f msglog;
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=hadoop_resourcemanager producer_name=<producer_name> instance_name=<instance_name>\n"
 		"	port=<port> file=<file> \n"
@@ -80,7 +80,7 @@ static const char *usage(void)
 		"			dfs.FSNamesystem:FileTotal	S32\n";
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return resourcemanager_set.set;
 }
@@ -95,7 +95,7 @@ static ldms_set_t get_set()
  *     port	         The listener port which the LDMS sink sends data to
  *     file	         The file that contains metric names and their ldms_metric_types.
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *attr;
@@ -157,13 +157,13 @@ enoent:
 	return ENOENT;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	/* Do nothing */
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	destroy_hadoop_set(&resourcemanager_set);
 }

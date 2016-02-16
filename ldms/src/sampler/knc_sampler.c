@@ -550,7 +550,7 @@ static int create_metric_set(const char *instance_name, char* schema_name, int d
 	char metric_name[128];
 	int rc, i;
 
-	rc = init_knc(&mdh_, &cutil_, devn); 
+	rc = init_knc(&mdh_, &cutil_, devn);
 	if (rc != 0){
 		msglog(LDMSD_LERROR, "Cannot init knc. Exiting\n");
 		return EINVAL;
@@ -613,7 +613,7 @@ static int create_metric_set(const char *instance_name, char* schema_name, int d
  *     dev_num     The device num (0/1)
  *     sname       Optional schema name. Defaults to 'knc'
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *instance;
@@ -663,12 +663,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int ret;
 
@@ -698,7 +698,7 @@ static int sample(void)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 
 	freeCoreUtil();
@@ -718,7 +718,7 @@ static void term(void)
 	set = NULL;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=knc_sampler producer=<prod_name> instance=<inst_name> dev_num=<dev_num> [schema=<sname>]\n"
 		"    producer      The producer name\n"

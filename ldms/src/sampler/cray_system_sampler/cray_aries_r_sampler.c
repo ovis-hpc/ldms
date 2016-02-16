@@ -91,7 +91,7 @@ static uint64_t jobid;
 //wont need a metric offset
 
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
@@ -210,7 +210,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
 	char *sname = NULL;
@@ -316,7 +316,7 @@ out:
 static uint64_t dt = 999999999;
 #endif
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
 	char *s;
@@ -378,7 +378,7 @@ static int sample(void)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_schema_delete(schema);
@@ -388,7 +388,7 @@ static void term(void)
 	set = NULL;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 
     return  "config name=cray_aries_r_sampler producer=<pname> component_id=<compid>"

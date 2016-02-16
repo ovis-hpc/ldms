@@ -180,7 +180,7 @@ static int create_metric_set(const char *path)
  *     qc_log_dir  The QC data file directory.
  *                 This option is only relevant if --enable-qc-sampler
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 
@@ -210,7 +210,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		errno = 0;
 		comp_id = strtoull(value, &endp, 0);
 		if (endp == value || errno) {
-			msglog(LDMS_LERROR,"Fail parsing component_id '%s'\n", 
+			msglog(LDMS_LERROR,"Fail parsing component_id '%s'\n",
 				value);
 			return EINVAL;
 		}
@@ -220,7 +220,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	err = register_resource_info(rim, JOBID_COLNAME, "node", NULL,
 		slurm_rim_update, NULL);
 	if (err) {
-		msglog(LDMS_LERROR,"Exporting '%s' failed\n", 
+		msglog(LDMS_LERROR,"Exporting '%s' failed\n",
 			JOBID_COLNAME);
 		return err;
 	}
@@ -247,14 +247,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
 
 /* as a policy matter, the missing file has the value 0, not an error. */
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int metric_no;
 	char *s;
@@ -390,7 +390,7 @@ int slurm_rim_update(struct resource_info *self, enum rim_task t,
         return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (set)
 		ldms_destroy_set(set);
@@ -408,7 +408,7 @@ static void term(void)
 	}
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return "config name=slurmjobid component_id=<comp_id> set=<setname> [file=<jobidfilename>]"
 			"qc_log_dir=<qc_log_directory>\n"
@@ -434,7 +434,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	rim = ldms_get_rim();
-	
+
 	return &slurmjobid_plugin.base;
 }
 

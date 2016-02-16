@@ -574,7 +574,7 @@ void plugin_sampler_cb(int fd, short sig, void *arg)
 		calculate_timeout(pi->thread_id, pi->sample_interval_us,
 				  pi->sample_offset_us, &pi->timeout);
 	}
-	int rc = pi->sampler->sample();
+	int rc = pi->sampler->sample(pi->sampler);
 	if (!rc) {
 		(void)evtimer_add(pi->event, &pi->timeout);
 	} else {
@@ -802,7 +802,7 @@ void oneshot_sample_cb(int fd, short sig, void *arg)
 	struct ldmsd_plugin_cfg *pi = os->pi;
 	pthread_mutex_lock(&pi->lock);
 	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	pi->sampler->sample();
+	pi->sampler->sample(pi->sampler);
 	pi->ref_count--;
 	evtimer_del(os->event);
 	free(os);

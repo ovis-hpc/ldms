@@ -101,7 +101,7 @@ zap_mem_info_t get_zap_mem_info()
 	return NULL;
 }
 
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	pthread_mutex_lock(&cfg_lock);
 	char *value;
@@ -140,11 +140,11 @@ err:
 	return EINVAL;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 }
 
-static const char *usage()
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "	config name=consumer_me host=<host> port=<port> xprt=<xprt>\n"
 		"	   - Set the host and port of the M.E. and choose the transport.\n"
