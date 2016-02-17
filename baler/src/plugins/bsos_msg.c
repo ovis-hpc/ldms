@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <sys/time.h>
+#include <assert.h>
 
 #define BSOS_MSG_IDX_PTH_NAME "index_pth"
 #define BSOS_MSG_IDX_TH_NAME "index_th"
@@ -13,6 +14,7 @@ sos_t __sos_container_open(const char *path, int create)
 	sos_t sos;
 	sos_part_t part;
 	char buff[16];
+	sos_part_iter_t piter;
 	struct timeval tv;
 retry:
 	sos = sos_container_open(path, SOS_PERM_RW);
@@ -34,20 +36,29 @@ retry:
 	tv.tv_sec *= 24*3600;
 	snprintf(buff, sizeof(buff), "%ld", tv.tv_sec);
 part_retry:
-	part = sos_part_find(sos, buff);
-	if (!part) {
+	piter = sos_part_iter_new(sos);
+	if (!piter) {
+		goto err1;
+	}
+	part = sos_part_first(piter);
+	while (part && sos_part_state(part) != SOS_PART_STATE_PRIMARY) {
+		sos_part_put(part);
+		part = sos_part_next(piter);
+	}
+	sos_part_iter_free(piter);
+	if (part) {
+		sos_part_put(part);
+	} else if (create) {
+		/* no active partition and this is a create call */
 		rc = sos_part_create(sos, buff, NULL);
 		if (rc) {
 			errno = rc;
 			goto err1;
 		}
-		goto part_retry;
-	}
-	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
-	sos_part_put(part);
-	if (rc) {
-		errno = rc;
-		goto err1;
+		part = sos_part_find(sos, buff);
+		assert(part);
+		rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
+		sos_part_put(part);
 	}
 out:
 	return sos;
