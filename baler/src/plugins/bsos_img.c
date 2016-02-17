@@ -8,8 +8,6 @@
 #include <sys/time.h>
 #include <assert.h>
 
-#define BSOS_IMG_IDX_NAME "index"
-
 bsos_img_t bsos_img_open(const char *path, int create)
 {
 	int rc;
@@ -33,9 +31,11 @@ sos_retry:
 	}
 
 	/* make tv_sec into day alignment */
+	rc = gettimeofday(&tv, NULL);
 	tv.tv_sec /= (24*3600);
 	tv.tv_sec *= 24*3600;
 	snprintf(buff, sizeof(buff), "%ld", tv.tv_sec);
+
 part_retry:
 	piter = sos_part_iter_new(bsos_img->sos);
 	if (!piter) {

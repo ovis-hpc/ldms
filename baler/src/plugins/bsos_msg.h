@@ -15,6 +15,9 @@
 #define BSOS_MSG_COMP_ID 3
 #define BSOS_MSG_ARGV_0  4
 
+#define BSOS_MSG_IDX_PTH_NAME "index_pth"
+#define BSOS_MSG_IDX_TH_NAME "index_th"
+
 /*
  * The key in the sos index is big endian, because key_UINT96 uses memcmp() to
  * compare two keys.

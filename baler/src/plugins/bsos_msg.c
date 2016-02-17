@@ -4,9 +4,6 @@
 #include <sys/time.h>
 #include <assert.h>
 
-#define BSOS_MSG_IDX_PTH_NAME "index_pth"
-#define BSOS_MSG_IDX_TH_NAME "index_th"
-
 static
 sos_t __sos_container_open(const char *path, int create)
 {

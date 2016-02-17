@@ -10,6 +10,8 @@
 #include "endian.h"
 #include "sos/sos.h"
 
+#define BSOS_IMG_IDX_NAME "index"
+
 /*
  * The key in the sos index is big endian.
  */
