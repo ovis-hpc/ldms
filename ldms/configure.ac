@@ -46,6 +46,8 @@ OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
 dnl AMQP
 OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
 
+OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL],[Required access to gpcd-support repository])
+OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd])
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
@@ -76,7 +78,7 @@ OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
 dnl aries_mmr is not part of the cray_system_sampler
-OPTION_DEFAULT_DISABLE([aries-mmr], [ENABLE_ARIES_MMR], [Requires --with-aries-libgpcd=libdir,incdir])
+OPTION_DEFAULT_DISABLE([aries-mmr], [ENABLE_ARIES_MMR], [Requires --enable-gpcd or --with-aries-libgpcd=libdir,incdir])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
@@ -184,7 +186,7 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 fi
 
 if test -z "$ENABLE_SOS_TRUE"; then
-	if test "x$WITH_OVIS_LIB" != "xbuild"; then
+	if test "x$WITH_SOS" != "xbuild"; then
 		OCFLAGS=$CFLAGS
 		CFLAGS=-I$SOS_INCDIR
 		AC_CHECK_HEADERS(sos/sos.h,
