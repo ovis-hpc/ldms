@@ -697,16 +697,16 @@ static int print_header_from_store(struct csv_derived_store_handle *s_handle,
 
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
 	   a separate field */
-	fprintf(fp, "#Time, Time_usec, DT, DT_usec");
+	fprintf(fp, "#Time,Time_usec,DT,DT_usec");
 
 	// Write all the metrics we know we should have */
-	fprintf(fp, ", ProducerName");
+	fprintf(fp, ",ProducerName");
 	for (i = 0; i < s_handle->numder; i++){
 		if (s_handle->der[i].deridx != -1){
-			fprintf(fp, ", %s", s_handle->der[i].dername);
+			fprintf(fp, ",%s", s_handle->der[i].dername);
 		}
 	}
-	fprintf(fp, ", Flag\n");
+	fprintf(fp, ",Flag\n");
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
@@ -1036,17 +1036,17 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	timersub(&curr, &prev, &diff);
 
 	/* format: #Time, Time_usec, DT, DT_usec */
-	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
+	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ",%"PRIu32,
 		ts->sec, ts->usec, ts->usec);
-	fprintf(s_handle->file, ", %lu.%06lu, %lu",
+	fprintf(s_handle->file, ",%lu.%06lu,%lu",
 		diff.tv_sec, diff.tv_usec, diff.tv_usec);
 
 	pname = ldms_set_producer_name_get(set);
 	if (pname != NULL){
-		fprintf(s_handle->file, ", %s", pname);
+		fprintf(s_handle->file, ",%s", pname);
 		s_handle->byte_count += strlen(pname);
 	} else {
-		fprintf(s_handle->file, ", ");
+		fprintf(s_handle->file, ",");
 	}
 
 	/* for all metrics in the conf, write the vals. if setflag then only write vals for RAW and write 0 for RATE */
@@ -1082,7 +1082,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 				}
 			}
 
-			rc = fprintf(s_handle->file, ", %" PRIu64, val);
+			rc = fprintf(s_handle->file, ",%" PRIu64, val);
 			if (rc < 0)
 				msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
 				       __FILE__, rc, s_handle->path);
@@ -1094,7 +1094,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	if (setflagtime || ((ageusec > 0) && ((diff.tv_sec*1000000+diff.tv_usec) > ageusec)))
 		setflag = 1;
 
-	fprintf(s_handle->file, ", %d\n", setflag);
+	fprintf(s_handle->file, ",%d\n", setflag);
 	s_handle->byte_count += 1;
 	s_handle->store_count++;
 
