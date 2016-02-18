@@ -48,8 +48,9 @@ if test -f packaging/ovis-base.spec.in; then
 #	allconfig="--prefix=$prefix --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --enable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --enable-a-none --with-pkglibdir=ovis-ldms LDFLAGS=-fsanitize=address"
 # no auth
 #	allconfig="--prefix=$prefix --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --disable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --with-pkglibdir=ovis-ldms"
-# auth
-arglist="--disable-sos
+# autH
+thinlist="
+--disable-sos
 --disable-perfevent
 --enable-zap
 --disable-swig
@@ -88,7 +89,48 @@ arglist="--disable-sos
 --disable-mmap
 --disable-baler
 "
-	allconfig="--disable-static --prefix=$prefix $arglist --enable-ssl --with-libevent=$expected_event2_prefix --with-pkglibdir=ovis-ldms  --with-rca=/opt/cray/rca/default/ --with-krca=/opt/cray/krca/default --with-cray-hss-devel=/opt/cray-hss-devel/default"
+fatlist="
+--enable-csv
+--disable-sysclassib
+--enable-sos
+--disable-perfevent
+--enable-zap
+--disable-swig
+--enable-ovis_auth
+--disable-rpath
+--enable-sock
+--disable-papi
+--enable-perf
+--enable-sensors
+--enable-flatfile
+--enable-meminfo
+--disable-array_example
+--enable-procinterrupts
+--enable-procnetdev
+--enable-procnfs
+--enable-procsensors
+--disable-procstat
+--disable-procstatutil
+--disable-procstatutil2
+--enable-vmstat
+--disable-procdiskstats
+--disable-atasmart
+--disable-hadoop
+--disable-generic_sampler
+--disable-switchx
+--disable-readline
+--enable-cray_system_sampler
+--enable-aries-gpcdr
+--enable-gpcdlocal
+--enable-aries-mmr
+--enable-ugni
+--enable-lustre
+--disable-mmap
+--disable-ovis_auth
+--disable-yaml
+"
+#	allconfig="--disable-static --prefix=$prefix $thinlist --enable-ssl --with-libevent=$expected_event2_prefix --with-pkglibdir=ovis-ldms  --with-rca=/opt/cray/rca/default/ --with-krca=/opt/cray/krca/default --with-cray-hss-devel=/opt/cray-hss-devel/default"
+	allconfig="--disable-static --prefix=$prefix $fatlist --enable-ssl --with-libevent=$expected_event2_prefix --with-pkglibdir=ovis-ldms  --with-rca=/opt/cray/rca/default/ --with-krca=/opt/cray/krca/default --with-cray-hss-devel=/opt/cray-hss-devel/default"
 	../configure $allconfig && \
 	make -j 16 && \
 	make install && \
