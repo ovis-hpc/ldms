@@ -91,7 +91,7 @@ Summary: LDMS devel package
 Group: %{ldms_grp}
 Requires: ldms-all = @VERSION@
 %description devel
-This is a development package of Lightweight Distributed Metric System (LDMS).
+This is the development package of Lightweight Distributed Metric System (LDMS).
 Users who want to implement their own sampler or store must install this
 package.
 

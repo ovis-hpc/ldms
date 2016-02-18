@@ -4,3 +4,6 @@
 [submodule "sos"]
 	path = sos
 	url = gitlab@gitlab.ogc.us:tom/SOS.git
+[submodule "gpcd-support"]
+	path = gpcd-support
+	url = git@gitlab.sandia.gov:ovis/gpcd-support.git
