@@ -73,7 +73,7 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #endif
 
-#ifndef __linux__ /* modern linux provides either bitness in asm/unistd.h as needed */
+#ifndef __linux__ // modern linux provides either bitness in asm/unistd.h as needed
 #if defined(__i386__)
 #include "/usr/include/asm/unistd.h"
 #endif
@@ -81,97 +81,83 @@
 #if defined(__x86_64__)
 #include "/usr/include/asm-x86_64/unistd.h"
 #endif
-#else /* __linux__ */
+#else // __linux__
 #include <asm/unistd.h>
-#endif /* __linux__ */
+#endif // __linux__
 
-struct pe_sample {
-	uint64_t value;
-	uint64_t time_running;
-};
+//variables for group read
+static unsigned int eventCounter = 0;
+static int group_leader_fd = -1;
+static int started = 0;
+
+static ldms_set_t set;
+static ldmsd_msg_log_f msglog;
+static ldms_schema_t schema;
+static char* default_schema_name = "perfevent";
 
 struct pevent {
-	struct perf_event_attr attr;
-	char *name;		/* name given by the user for this event */
-	int pid;
-	int cpu;
-	int fd;
-	uint64_t val;
-	uint64_t tstamp;
-	int metric_value;
-	int metric_mean;
-	int metric_variance;
-	int metric_stddev;
-	double mean;
-	double variance;
-	double card;		/* samples taken */
-	int warmup;
-	struct pe_sample sample;
-	uint64_t last_time_running;
-	uint64_t last_value;
-	LIST_ENTRY(pevent) entry;
+    struct perf_event_attr attr;
+    char *name;   /* name given by the user for this event */
+    int pid;
+    int cpu;
+    int fd;
+    int metric_index;
+    LIST_ENTRY(pevent) entry;
 };
 LIST_HEAD(pevent_list, pevent) pevent_list;
 
 struct kw {
-	char *token;
-	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
+    char *token;
+    int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
 };
 
 static int kw_comparator(const void *a, const void *b)
 {
-	struct kw *_a = (struct kw *)a;
-	struct kw *_b = (struct kw *)b;
-	return strcmp(_a->token, _b->token);
+    struct kw *_a = (struct kw *)a;
+    struct kw *_b = (struct kw *)b;
+    return strcmp(_a->token, _b->token);
 }
 
-static inline int
-pe_open(struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd,
-	unsigned long flags)
+static inline int pe_open(struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd, unsigned long flags)
 {
-        attr->size = sizeof(*attr);
-        return syscall(__NR_perf_event_open, attr, pid, cpu,
-                       group_fd, flags);
+    attr->size = sizeof(*attr);
+    int fd = syscall(__NR_perf_event_open, attr, pid, cpu, group_fd, flags);
+    return fd;
 }
 
-static char *setname;
-static ldms_set_t set;
-static ldms_schema_t schema;
-static ldmsd_msg_log_f msglog;
-
-static const char *usage(struct ldmsd_plugin *self)
+static const char *usage(void)
 {
-	return  "    config perfevent add_event(name=<name>,\n"
-		"                               pid=<pid>,\n"
-		"                               cpu=<cpu>,\n"
-		"                               type=<event_type>,\n"
-		"                               id=<event_id>)\n"
-		"            name   - The metric name for the event\n"
-		"            pid    - The PID for the process being monitored\n"
-		"                     The counter will follow the process to\n"
-		"                     whichever CPU/core is in use. Note that\n"
-		"                     'pid' and 'cpu' are mutually exclusive.\n"
-		"            cpu    - Count this event on the specified CPU.\n"
-		"                     This will accumulate events across all PID\n"
-		"                     that land on the specified CPU/core. Note\n"
-		"                     that 'pid' and 'cpu' are mutually\n"
-		"                     exclusive.\n"
-		"            type   - The event type.\n"
-		"            id     - The event id.\n"
-		"    config perfevent ls\n"
-		"            - List the currently configured events.\n"
-		;
+    return
+        "    config name=perfevent action=init producer=<producer_name> instance=<instance_name> [schema=<schema_name>]\n"
+        "    config name=perfevent action=del metricname=<string>\n"
+        "            - Deletes the specified event.\n"
+        "    config name=perfevent action=ls\n"
+        "            - List the currently configured events.\n"
+        "    config name=perfevent action=add metricname=<string> pid=<int> cpu=<int> type=<int> id=<int>\n"
+        "            metricname   - The metric name for the event\n"
+        "            pid    - The PID for the process being monitored\n"
+        "                     The counter will follow the process to\n"
+        "                     whichever CPU/core is in use. Note that\n"
+        "                     'pid' and 'cpu' are mutually exclusive.\n"
+        "            cpu    - Count this event on the specified CPU.\n"
+        "                     This will accumulate events across all PID\n"
+        "                     that land on the specified CPU/core. Note\n"
+        "                     that 'pid' and 'cpu' are mutually\n"
+        "                     exclusive.\n"
+        "            type   - The event type.\n"
+        "            id     - The event id.\n"
+        " For more information visit: http://man7.org/linux/man-pages/man2/perf_event_open.2.html\n\n";
 }
 
 /**
  * Specify the textual name that will appear for this event in the metric set.
- * Format: name=%s
+ * Format: metricname=%s
  */
 static int add_event_name(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	struct pevent *pe = arg;
-	pe->name = strdup(av_value(avl, "name"));
-	return 0;
+    struct pevent *pe = arg;
+    pe->name = strdup(av_value(avl, "metricname"));
+    return 0;
 }
 
 /**
@@ -179,9 +165,9 @@ static int add_event_name(struct attr_value_list *kwl, struct attr_value_list *a
  */
 static int add_event_type(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	struct pevent *pe = arg;
-	pe->attr.type = strtol(av_value(avl, "type"), NULL, 0);
-	return 0;
+    struct pevent *pe = arg;
+    pe->attr.type = strtol(av_value(avl, "type"), NULL, 0);
+    return 0;
 }
 
 /**
@@ -189,10 +175,9 @@ static int add_event_type(struct attr_value_list *kwl, struct attr_value_list *a
  */
 static int add_event_pid(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	struct pevent *pe = arg;
-	pe->pid = strtol(av_value(avl, "pid"), NULL, 0);
-	pe->cpu = -1;
-	return 0;
+    struct pevent *pe = arg;
+    pe->pid = strtol(av_value(avl, "pid"), NULL, 0);
+    return 0;
 }
 
 /**
@@ -200,9 +185,9 @@ static int add_event_pid(struct attr_value_list *kwl, struct attr_value_list *av
  */
 static int add_event_id(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	struct pevent *pe = arg;
-	pe->attr.config = strtol(av_value(avl, "id"), NULL, 0);
-	return 0;
+    struct pevent *pe = arg;
+    pe->attr.config = strtol(av_value(avl, "id"), NULL, 0);
+    return 0;
 }
 
 /**
@@ -210,261 +195,338 @@ static int add_event_id(struct attr_value_list *kwl, struct attr_value_list *avl
  */
 static int add_event_cpu(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	struct pevent *pe = arg;
-	pe->cpu = strtol(av_value(avl, "cpu"), NULL, 0);
-	pe->pid = -1;
-	return 0;
+    struct pevent *pe = arg;
+    pe->cpu = strtol(av_value(avl, "cpu"), NULL, 0);
+    return 0;
 }
-
-struct kw add_token_tbl[] = {
-	{ "cpu", add_event_cpu },
-	{ "id", add_event_id },
-	{ "name", add_event_name },
-	{ "pid", add_event_pid },
-	{ "type", add_event_type },
-};
 
 static struct pevent *find_event(char *name)
 {
-	struct pevent *pe;
-	LIST_FOREACH(pe, &pevent_list, entry) {
-		if (strcmp(pe->name, name) == 0)
-			return pe;
-	}
-	return NULL;
+    struct pevent *pe;
+    LIST_FOREACH(pe, &pevent_list, entry) {
+        if (strcmp(pe->name, name) == 0)
+            return pe;
+    }
+    return NULL;
 }
 
-static char metric_name[128];
- static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	int rc;
-	struct pevent *pe;
-	int i;
+    struct kw add_token_tbl[] = {
+        { "cpu", add_event_cpu },
+        { "id", add_event_id },
+        { "metricname", add_event_name },
+        { "pid", add_event_pid },
+        { "type", add_event_type },
+    };
 
-	pe = calloc(1, sizeof *pe);
-	if (!pe)
-		goto err;
+    int rc, i;
+    struct pevent *pe;
 
-	pe->warmup = 2;
-	pe->attr.size = sizeof(pe);
-	pe->attr.read_format = PERF_FORMAT_TOTAL_TIME_RUNNING;
-	pe->attr.inherit = 1;
+    if (set) {
+        msglog(LDMSD_LERROR, "perfevent: metric set has already been created.\n");
+        return EINVAL;
+    }
+    
+    pe = calloc(1, sizeof *pe);
+    if (!pe) {
+        msglog(LDMSD_LERROR, "perfevent: failed to allocate perfevent structure.\n");
+        goto err;
+    }
 
-	for (i = 0; i < avl->count; i++) {
-		struct kw key;
-		struct kw *kw;
-		char *token;
-		char *value;
+    pe->attr.size = sizeof(pe->attr);
+    // pe->attr.read_format = PERF_FORMAT_TOTAL_TIME_RUNNING;
+    pe->attr.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_TOTAL_TIME_RUNNING; //changed the read format to do the group read
+    // pe->attr.inherit = 1;
+    pe->attr.exclude_kernel = 1;
+    pe->attr.exclude_hv = 1;
+    // pe->attr.disabled = 1;
+    pe->pid = -1;
+    pe->cpu = -1;
 
-		token = av_name(avl, i);
-		value = av_value_at_idx(avl, i);
+    // skipping 0=name 1=action
+    for (i = 2; i < avl->count; i++) {
+        struct kw key;
+        struct kw *kw;
+        char *token;
+        char *value;
 
-		key.token = token;
-		kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl),
-			     sizeof(*kw), kw_comparator);
-		if (!kw) {
-			msglog("Uncrecognized keyword '%s' in "
-			       "configuration string.\n", token);
-			return -1;
-		}
-		rc = kw->action(kwl, avl, pe);
-		if (rc)
-			return rc;
-	}
-	if (!pe->name) {
-		msglog("An event name must be specifed.\n");
-		goto err;
-	}
-	pe->fd = pe_open(&pe->attr, pe->pid, pe->cpu, -1, 0);
-	if (pe->fd < 0) {
-		msglog("Error adding event '%s', errno %d\n", pe->name, pe->fd);
-		goto err;
-	}
-	sprintf(metric_name, "%s/%s", pe->name, "value");
-	pe->metric_value = ldms_add_metric(schema, metric_name, LDMS_V_U64);
-	if (!pe->metric_value) {
-		msglog("Could not create the metric for event '%s'\n",
-		       metric_name);
-		goto err;
-	}
-	sprintf(metric_name, "%s/%s", pe->name, "mean");
-	pe->metric_mean = ldms_add_metric(schema, metric_name, LDMS_V_U64);
-	if (!pe->metric_mean) {
-		msglog("Could not create the metric for event '%s'\n",
-		       metric_name);
-		goto err;
-	}
-	sprintf(metric_name, "%s/%s", pe->name, "variance");
-	pe->metric_variance = ldms_add_metric(schema, metric_name, LDMS_V_U64);
-	if (!pe->metric_variance) {
-		msglog("Could not create the metric for event '%s'\n",
-		       metric_name);
-		goto err;
-	}
-	sprintf(metric_name, "%s/%s", pe->name, "stddev");
-	pe->metric_stddev = ldms_add_metric(schema, metric_name, LDMS_V_U64);
-	if (!pe->metric_stddev) {
-		msglog("Could not create the metric for event '%s'\n",
-		       metric_name);
-		goto err;
-	}
-	LIST_INSERT_HEAD(&pevent_list, pe, entry);
-	return 0;
- err:
-	if (pe->name)
-		free(pe->name);
-	free(pe);
-	return -1;
+        token = av_name(avl, i);
+        value = av_value_at_idx(avl, i);
+
+        key.token = token;
+        kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl), sizeof(*kw), kw_comparator);
+
+        if (!kw) {
+            msglog(LDMSD_LERROR, "Unrecognized keyword '%s' in configuration string.\n", token);
+            return -1;
+        }
+        rc = kw->action(kwl, avl, pe);
+        if (rc)
+            return rc;
+    }
+    if (!pe->name) {
+        msglog(LDMSD_LERROR, "An event name must be specifed.\n");
+        goto err;
+    }
+    if (pe->cpu == -1 && pe->pid == -1) {
+        msglog(LDMSD_LERROR, "Error adding event '%s'\n", pe->name);
+        msglog(LDMSD_LERROR, "\tPID and CPU can not be -1");
+        goto err;
+    }
+
+    pe->attr.disabled = 0; 
+    if(eventCounter == 0){ // if this is the group group leader
+        pe->attr.disabled = 1; //disable the group leader
+    }
+
+    pe->fd = pe_open(&pe->attr, pe->pid, pe->cpu, group_leader_fd, 0);
+    if (pe->fd < 0) {
+        msglog(LDMSD_LERROR, "Error adding event '%s'\n", pe->name);
+        msglog(LDMSD_LERROR, "\terrno: %d\n", pe->fd);
+        msglog(LDMSD_LERROR, "\ttype: %d\n", pe->attr.type);
+        msglog(LDMSD_LERROR, "\tsize: %d\n", pe->attr.size);
+        msglog(LDMSD_LERROR, "\tconfig: %llx\n", pe->attr.config);
+        msglog(LDMSD_LERROR, "\tpid: %d\n", pe->pid);
+        msglog(LDMSD_LERROR, "\tcpu: %d\n", pe->cpu);
+
+        goto err;
+    }
+
+    if(eventCounter == 0){ // if this is the group group leader
+        group_leader_fd = pe->fd; // set the fd of group leader
+    }
+
+    eventCounter++;  
+
+    LIST_INSERT_HEAD(&pevent_list, pe, entry);
+    return 0;
+
+err:
+    if (pe->name)
+        free(pe->name);
+    free(pe);
+    return -1;
 }
 
 static int del_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	char *name = av_value(avl, "name");
-	struct pevent *pe = find_event(name);
-	if (pe) {
-		LIST_REMOVE(pe, entry);
-		close(pe->fd);
-		free(pe->name);
-		free(pe);
-	}
-	return 0;
+    char *name = av_value(avl, "metricname");
+    struct pevent *pe = find_event(name);
+    if (pe) {
+        LIST_REMOVE(pe, entry);
+        close(pe->fd);
+        free(pe->name);
+        free(pe);
+    }
+    return 0;
 }
 
 static int list(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	struct pevent *pe;
-	msglog("%-24s %8s %8s %8s %8s %16s\n",
-	       "Name", "Pid", "Cpu", "Fd", "Type", "Event");
-	msglog("%-24s %8s %8s %8s %8s %16s\n",
-	       "------------------------",
-	       "--------", "--------", "--------",
-	       "--------", "----------------");
-	msglog("Name Fd Type Config\n");
-	LIST_FOREACH(pe, &pevent_list, entry) {
-		msglog("%-24s %8d %8d %8d %8d %16llx\n",
-		       pe->name, pe->pid, pe->cpu,
-		       pe->fd, pe->attr.type, pe->attr.config);
-	}
-	return 0;
+    struct pevent *pe;
+    msglog(LDMSD_LINFO, "%-24s %8s %8s %8s %8s %16s\n",
+            "Name", "Pid", "Cpu", "Fd", "Type", "Event");
+    msglog(LDMSD_LINFO, "%-24s %8s %8s %8s %8s %16s\n",
+            "------------------------",
+            "--------", "--------", "--------",
+            "--------", "----------------");
+    msglog(LDMSD_LINFO, "Name Fd Type Config\n");
+    LIST_FOREACH(pe, &pevent_list, entry) {
+        msglog(LDMSD_LINFO, "%-24s %8d %8d %8d %8d %16llx\n",
+                pe->name, pe->pid, pe->cpu,
+                pe->fd, pe->attr.type, pe->attr.config);
+    }
+    return 0;
 }
 
 static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
-	/* Create the metric set */
-	char *av = av_value(avl, "set");
-	if (!av)
-		return EINVAL;
-	setname = strdup(av);
-	schema = ldms_create_schema("perfevent");
-	return 0;
-}
+    /* Create the metric set */
+    int rc;
+    char *producer_name;
+    char *instance_name;
+    char *schema_name;
+    struct pevent *pe;
 
-struct kw kw_tbl[] = {
-	{ "add", add_event },
-	{ "del", del_event },
-	{ "init", init },
-	{ "ls", list },
-};
+    producer_name = av_value(avl, "producer");
+    if (!producer_name) {
+        msglog(LDMSD_LERROR, "perfevent: producer not passed\n");
+        return EINVAL;
+    }
+
+    instance_name = av_value(avl, "instance");
+    if (!instance_name) {
+        msglog(LDMSD_LERROR, "perfevent: instance name not passed\n");
+        return EINVAL;
+    }
+
+    schema_name = av_value(avl, "schema");
+	if (!schema_name)
+		schema_name = default_schema_name;
+	if (strlen(schema_name) == 0){
+		msglog(LDMSD_LERROR, "perfevent: schema name invalid.\n");
+		return EINVAL;
+	}
+ 
+    schema = ldms_schema_new(schema_name);
+	if (!schema) {
+        msglog(LDMSD_LERROR, "perfevent: failed to creat schema!\n");
+		rc = ENOMEM;
+        goto err;
+	}
+
+    LIST_FOREACH(pe, &pevent_list, entry) {
+
+        rc = ldms_schema_metric_add(schema, pe->name, LDMS_V_U64);
+		if (rc < 0) {
+            msglog(LDMSD_LERROR, "perfevent: failed to add event %s to metric set.\n", pe->name);
+            goto err;
+		}
+        pe->metric_index = rc;
+        msglog(LDMSD_LINFO, "perfevent: event [name: %s, code: 0x%x] has been added.\n", pe->name, pe->attr.config);
+    }
+
+    set = ldms_set_new(instance_name, schema);
+	if (!set) {
+        msglog(LDMSD_LERROR, "perfevent: failed to create metric set %s.\n", instance_name);
+		rc = errno;
+        goto err;
+	}
+
+    
+    return 0;
+
+err:
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
+	return rc;
+}
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	struct kw *kw;
-	struct kw key;
-	int rc;
-	char *action = av_value(avl, "action");
+    struct kw kw_tbl[] = {
+        { "add", add_event },
+        { "del", del_event },
+        { "init", init },
+        { "ls", list },
+    };
 
-	if (!action)
-		goto err0;
+    struct kw *kw;
+    struct kw key;
+    int rc;
+    char *action = av_value(avl, "action");
 
-	key.token = action;
-	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
-		     sizeof(*kw), kw_comparator);
-	if (!kw)
-		goto err1;
+    if (!action)
+        goto err0;
 
-	rc = kw->action(kwl, avl, NULL);
-	if (rc)
-		goto err2;
-	return 0;
- err0:
-	msglog(usage());
-	goto err2;
- err1:
-	msglog("Invalid configuration keyword '%s'\n", action);
- err2:
-	return 0;
+    key.token = action;
+    kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
+            sizeof(*kw), kw_comparator);
+    if (!kw)
+        goto err1;
+
+    rc = kw->action(kwl, avl, NULL);
+    if (rc)
+        goto err2;
+
+    return 0;
+
+err0:
+    msglog(LDMSD_LERROR, usage());
+    goto err2;
+err1:
+    msglog(LDMSD_LERROR, "perfevent: Invalid configuration keyword '%s'\n", action);
+err2:
+    return 0;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
-	return set;
+    return set;
 }
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc;
-	struct pevent *pe;
-	if (!set) {
-		rc = ldms_create_set(setname, schema, &set);
-		if (!set)
-			return rc;
-	}
-	ldms_begin_transaction(set);
-	LIST_FOREACH(pe, &pevent_list, entry) {
-		pe->last_value = pe->sample.value;
-		rc = read(pe->fd, &pe->sample, sizeof(pe->sample));
-		if (rc != sizeof(pe->sample)) {
-			msglog("Error %d sampling event '%s'\n",
-			       errno, pe->name);
-			continue;
-		}
-		if (pe->warmup) {
-			/* We need to be sure we have a 'last_value'
-			   that was sampled from a complete
-			   interval */
-			pe->warmup--;
-			continue;
-		}
-		double value, diff;
-		value = pe->sample.value - pe->last_value;
-		pe->mean = ((pe->mean * pe->card) + value) / (pe->card + 1.0);
-		diff = value - pe->mean;
-		pe->variance = ((pe->variance * (pe->card * pe->card)) + (diff * diff));
-		pe->card =  pe->card + 1.0;
-		pe->variance = pe->variance / (pe->card * pe->card);
+    int rc, i;
+    struct pevent *pe;
+    uint64_t val;
 
-		ldms_set_midx_u64(set, pe->metric_value, value);
-		ldms_set_midx_u64(set, pe->metric_mean, pe->mean);
-		ldms_set_midx_u64(set, pe->metric_variance, pe->variance);
-		ldms_set_midx_u64(set, pe->metric_stddev, sqrt(pe->variance));
-	}
-	ldms_end_transaction(set);
- 	return 0;
+    if (!set) {
+        msglog(LDMSD_LERROR, "error(perfevent): plug-in not initialized\n");
+        return EINVAL;
+    }
+
+    //if not started yet, start with group_leader_fd
+    if(!started){
+        rc = ioctl(group_leader_fd, PERF_EVENT_IOC_RESET, 0); // reset the values to 0
+        if(rc == -1){
+            msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, group_leader_fd);
+            return rc;
+        }
+
+        rc = ioctl(group_leader_fd, PERF_EVENT_IOC_ENABLE, 0); // start counting the values
+        if(rc == -1){
+            msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, group_leader_fd);
+            return rc;
+        }
+        
+        started = 1;
+    }
+
+    ldms_transaction_begin(set);
+
+    unsigned int read_size = (eventCounter + 2) * sizeof(long long); //based on read format.
+    long long *data = calloc(eventCounter + 2, sizeof(long long)); //allocate memory based on read format.
+    int read_result = read(group_leader_fd, data, read_size); // do the read
+    int event_index = (read_result / sizeof(long long)) - 1; // start from the last event added to the list
+
+    LIST_FOREACH(pe, &pevent_list, entry) {
+
+        ldms_metric_set_u64(set, pe->metric_index, data[event_index--]);
+    }
+
+    ldms_transaction_end(set);
+
+    free(data);
+
+    return 0;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
+    struct pevent *pe;
+    if(started)
+    {
+        LIST_FOREACH(pe, &pevent_list, entry) {
+            ioctl(pe->fd, PERF_EVENT_IOC_DISABLE, 0);
+        }
+    }
+
+    set = NULL;
+    if (set)
+        ldms_set_delete(set);
+    set = NULL;
+
 	if (schema)
-		ldms_destroy_schema(schema);
+		ldms_schema_delete(schema);
 	schema = NULL;
-	if (set)
-		ldms_destroy_set(set);
-	set = NULL;
 }
 
 static struct ldmsd_sampler pe_plugin = {
-	.base = {
-		.name = "perfevent",
-		.term = term,
-		.config = config,
-		.usage = usage,
-	},
-	.get_set = get_set,
-	.sample = sample,
+    .base = {
+        .name = "perfevent",
+        .term = term,
+        .config = config,
+        .usage = usage,
+    },
+    .get_set = get_set,
+    .sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
-	msglog = pf;
-	return &pe_plugin.base;
+    msglog = pf;
+    return &pe_plugin.base;
 }
