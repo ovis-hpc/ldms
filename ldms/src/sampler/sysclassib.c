@@ -211,6 +211,7 @@ static const int scib_idx[] = {
  * Infiniband port representation and context.
  */
 struct scib_port {
+	int badport; /**< rc from open_port at start. */
 	char *ca; /**< CA name */
 	int portno; /**< port number */
 	uint64_t comp_id; /**< comp_id */
@@ -240,7 +241,7 @@ struct scib_port {
 
 LIST_HEAD(scib_port_list, scib_port);
 static struct scib_port_list scib_port_list = {0};
-static char rcvbuf[BUFSIZ] = {0};
+static uint8_t rcvbuf[BUFSIZ] = {0};
 
 static ldms_set_t set = NULL;
 static ldms_metric_t metric_table[1]; /* one for jobid, if configured */
@@ -283,8 +284,15 @@ static int create_metric_set(const char *setname)
 		data_sz,tot_data_sz,metric_count,rc,msglog);
 
 	LIST_FOREACH(port, &scib_port_list, entry) {
-		msglog(LDMS_LINFO,"sysclassib: Monitoring port: %s.%d\n",
-			port->ca, port->portno);
+		if (port->badport) {
+			msglog(LDMS_LINFO,
+				"sysclassib: Not monitoring port: %s.%d\n",
+				port->ca, port->portno);
+		} else {
+			msglog(LDMS_LINFO,
+				"sysclassib: Monitoring port: %s.%d\n",
+				port->ca, port->portno);
+		}
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 			/* counters */
 			snprintf(metric_name, 128, "ib.%s#%s.%d",
@@ -341,7 +349,7 @@ static int create_metric_set(const char *setname)
 			}
 		}
 	}
-	return 0; /* FIXED: missing return that could cause random failures. */
+	return 0;
 err:
 	return 1;
 }
@@ -484,7 +492,7 @@ int open_port(struct scib_port *port)
 			mgmt_classes, 3);
 
 	if (!port->srcport) {
-		msglog(LDMS_LDEBUG,"sysclassib: ERROR: Cannot open CA:%s port:%d,"
+		msglog(LDMS_LINFO,"sysclassib: Cannot open CA:%s port:%d,"
 				" ERRNO: %d\n", port->ca, port->portno,
 				errno);
 		return errno;
@@ -548,14 +556,22 @@ void close_port(struct scib_port *port)
 int open_ports(struct scib_port_list *list)
 {
 	struct scib_port *port;
-	int rc;
+	int rc = 0, err = 0, lastrc = 0;
 
 	LIST_FOREACH(port, list, entry) {
+		port->badport = 0;
 		rc = open_port(port);
-		if (rc)
-			return rc;
+		if (rc) {
+			msglog(LDMS_LINFO,"sysclassib: Error querying %s.%d, errno: %d\n",
+				port->ca, port->portno, rc);
+			port->badport = rc;
+			lastrc = rc;
+			err++;
+		}
 	}
 
+	if (err)
+		return lastrc;
 	return 0;
 }
 
@@ -612,8 +628,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return rc;
 
 	rc = open_ports(&scib_port_list);
-	if (rc)
-		return rc;
 
 	return create_metric_set(setstr);
 }
@@ -648,6 +662,10 @@ int query_port(struct scib_port *port, float dt)
 	uint64_t v;
 
 	int i, j;
+	if (port->badport) {
+		/* we will not retry ports missing at sampler start. */
+		return 0;
+	}
 	if (!port->srcport) {
 		rc = open_port(port);
 		if (rc)
@@ -711,10 +729,6 @@ int query_port(struct scib_port *port, float dt)
 
 static int sample(void)
 {
-
-
-	char lbuf[32];
-
 
 	struct timeval *tmp;
 	struct timeval tv_diff;
