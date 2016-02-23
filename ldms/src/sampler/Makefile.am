@@ -24,6 +24,15 @@ libtimer_base_la_SOURCES = timer_base.c
 libtimer_base_la_LIBADD = $(COMMON_LIBADD) libtsampler.la $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libtimer_base.la
 
+if ENABLE_POW
+libpower_sampler_la_SOURCES = power_sampler.c
+libpower_sampler_la_CFLAGS = $(AM_CFLAGS) @POW_INCDIR_FLAG@
+libpower_sampler_la_LIBADD = $(COMMON_LIBADD) \
+			     -lpow @POW_LIBDIR_FLAG@ @POW_LIB64DIR_FLAG@ \
+			     libtimer_base.la
+pkglib_LTLIBRARIES += libpower_sampler.la
+endif
+
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
 libkgnilnd_la_LIBADD = $(COMMON_LIBADD)

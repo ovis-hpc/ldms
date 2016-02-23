@@ -73,6 +73,10 @@ OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
 OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
 
+dnl power_sampler with powerapi
+OPTION_DEFAULT_DISABLE([pow], [ENABLE_POW])
+OPTION_WITH([pow], [POW], [/usr/local])
+
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
@@ -84,6 +88,7 @@ OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
 OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
+
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 OPTION_DEFAULT_DISABLE([a-none], [ENABLE_ANONE],[Allow "-a none" to turn off authentication checks.])
@@ -184,6 +189,23 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 		AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
 			libibumad-devel installed?]))
 fi
+
+if test -z "$ENABLE_POW_TRUE"; then
+	OCFLAGS=$CFLAGS
+	CFLAGS=-I$POW_INCDIR
+	AC_CHECK_HEADERS(pow.h,
+			 [],
+			 AC_MSG_FAILURE([pow.h not found])
+			 )
+	AC_CHECK_LIB(pow, PWR_CntxtInit, [],
+		     AC_MSG_ERROR([PWR_CntxtInit() function not found. powerapi
+				   sampler requires libpow.]),
+		     [ $POW_LIB64DIR_FLAG $POW_LIBDIR_FLAG ]
+		)
+	CFLAGS=$OCFLAGS
+	LIBS=""
+fi
+
 
 if test -z "$ENABLE_SOS_TRUE"; then
 	if test "x$WITH_SOS" != "xbuild"; then
