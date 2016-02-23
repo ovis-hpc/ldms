@@ -16,6 +16,13 @@ libjobid_la_LIBADD = $(COMMON_LIBADD)
 libjobidincludedir = $(includedir)/ovis_util
 libjobidinclude_HEADERS = ldms_jobid.h
 pkglib_LTLIBRARIES += libjobid.la
+libtsampler_la_SOURCES = tsampler.c tsampler.h
+libtsampler_la_LIBADD = $(COMMON_LIBADD) -lovis_event -lpthread
+pkglib_LTLIBRARIES += libtsampler.la
+
+libtimer_base_la_SOURCES = timer_base.c
+libtimer_base_la_LIBADD = $(COMMON_LIBADD) libtsampler.la $(JOBID_LIBFLAGS)
+pkglib_LTLIBRARIES += libtimer_base.la
 
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
