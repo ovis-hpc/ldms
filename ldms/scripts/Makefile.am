@@ -37,6 +37,11 @@ bin_SCRIPTS += ldms_local_syslog.sh
 bin_SCRIPTS += ldms_local_synthetic_test.sh
 bin_SCRIPTS += ldms_local_rollspool_test.sh
 bin_SCRIPTS += ldms_local_rollderspool.sh
+bin_SCRIPTS += ldms_local_spooltail.sh
 
 bin_SCRIPTS += ldms_local_csvietf.sh
+<<<<<<< HEAD
 bin_SCRIPTS += ldms_local_scibtest.sh
+=======
+bin_SCRIPTS += ldms_local_temperatures.sh
+>>>>>>> spool_fork_fix

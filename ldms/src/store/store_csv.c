@@ -49,6 +49,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <assert.h>
 #include <ctype.h>
 #include <sys/queue.h>
 #include <sys/types.h>
@@ -93,6 +94,7 @@ struct storek{
 	int altheader;
 	int id_pos;
 	struct column_step cs;
+	char *openhook;
 	char *spooler;
 	char *spooldir;
 };
@@ -143,6 +145,10 @@ static int rolltype;
 "                     reverse: columns reverse of order added in sampler.\n" \
 "                     alnum: sorted per man page (not implemented)\n"
 
+/** the full path of an executable to run to notify of new files.
+	NULL indicates no notice requested.
+ */
+static char *openhook = NULL;
 /** the full path of an executable to run to move files to spooldir.
 	NULL indicates no spooling requested.
  */
@@ -150,14 +156,21 @@ static char *spooler = NULL;
 /** the target directory for spooled data.
 	undefined if spooler is NULL.
 	May be overridden per container via config action=container.
-n.b.
-	'scope' would be a better alternative to action, as
-	'action' may have it's own uses within a given scope.
  */
 static char *spooldir = NULL;
 
 static ldmsd_msg_log_f msglog;
 static pthread_t rothread;
+static int roactive = 0;
+
+/** container for retiring file data during rollover. */
+struct old_file {
+	FILE *f;
+	char *name;
+	const char *spooler;
+	const char *spooldir;
+	bool dospool;
+};
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -180,6 +193,7 @@ struct csv_store_handle {
 	char *filename;
 	FILE *headerfile;
 	char *headerfilename;
+	char *openhook;
 	char *spooler;
 	char *spooldir;
 	int altheader;
@@ -207,14 +221,60 @@ static int kw_comparator(const void *a, const void *b)
 	return strcmp(_a->token, _b->token);
 }
 
+#define CACHE_OLDFILE(where,file,fname,cmd,dir,needsp) \
+	where.f = file; \
+	where.name = fname; \
+	where.spooler = cmd; \
+	where.spooldir = dir; \
+	where.dospool = needsp
+
+static int hooks_closed = 0;
+static
+void handle_spool(const char *name, const char *spooler, const char *spooldir) {
+	const char *msg;
+	if (hooks_closed) {
+		msglog(LDMS_LINFO, "Request after sheller closed: %s %s\n",
+			name, spooler);
+		return;
+	}
+	int rc = ovis_file_spool(spooler, name, spooldir, &msg);
+	if (rc) {
+		msglog(LDMS_LERROR,"Spooling error for '%s %s %s': %s: %s\n",
+			spooler, name, spooldir,
+			msg, strerror(rc));
+		hooks_closed = 1;
+	}
+} 
+static void handle_open(const char *hook, const char *name) {
+	if (!hook || !name)
+		return;
+	if (hooks_closed) {
+		msglog(LDMS_LINFO, "Request after sheller closed: %s %s\n",
+			name, hook);
+		return;
+	}
+	const char *argv[] = { hook, name, NULL};
+	int rc = sheller_init();
+	if (rc && rc != EALREADY) {
+		msglog(LDMS_LERROR,"Openhook init error for '%s %s': %s\n",
+			hook, name, strerror(rc));
+		hooks_closed = 1;
+		return;
+	}
+	rc = sheller_call((int)ARRAY_SIZE(argv) - 1,argv);
+	if (rc) {
+		msglog(LDMS_LERROR,"Openhook error for '%s %s': %s\n",
+			hook, name, strerror(rc));
+		hooks_closed = 1;
+	}
+}
+
 /* Time-based rolltypes will always roll the files when this
 function is called.
 Volume-based rolltypes must check and shortcircuit within this
 function.
 */
 static int handleRollover(){
-	//get the config lock
-	//for every handle we have, do the rollover
 
 	int i;
 	struct csv_store_handle *s_handle;
@@ -223,128 +283,159 @@ static int handleRollover(){
 
 	time_t appx = time(NULL);
 
+	/* room for 2 retiring files from each store. */
+	struct old_file old[2*nstorekeys];
+	memset(old,0,sizeof(old));
+
 	for (i = 0; i < nstorekeys; i++){
-		if (storekeys[i] != NULL){
-			s_handle = idx_find(store_idx, (void *)(storekeys[i]), strlen(storekeys[i]));
-			if (s_handle){
-				FILE* nhfp = NULL;
-				FILE* nfp = NULL;
-				char *nfpname = NULL;
-				char *nhfpname = NULL;
-				char tmp_path[PATH_MAX];
-				char tmp_headerpath[PATH_MAX];
-				//if we've got here then we've called new_store, but it might be closed
-				pthread_mutex_lock(&s_handle->lock);
-				switch (rolltype) {
-				case 1:
-					break;
-				case 2:
-					break;
-				case 3:
-					if (s_handle->store_count < rollover)  {
-						pthread_mutex_unlock(&s_handle->lock);
-						continue;
-					} else {
-						s_handle->store_count = 0;
-					}
-					break;
-				case 4:
-					if (s_handle->byte_count < rollover) {
-						pthread_mutex_unlock(&s_handle->lock);
-						continue;
-					} else {
-						s_handle->byte_count = 0;
-					}
-					break;
-				default:
-					msglog(LDMS_LDEBUG, "Error: unexpected rolltype in store(%d)\n",
-						rolltype);
-					break;
-				}
-
-				if (s_handle->file)
-					fflush(s_handle->file);
-				if (s_handle->headerfile)
-					fflush(s_handle->headerfile);
-
-				//re name: if got here, then rollover requested
-				snprintf(tmp_path, PATH_MAX, "%s.%d",
-					 s_handle->path, (int) appx);
-				nfp = fopen(tmp_path, "a+");
-				nfpname = strdup(tmp_path);
-				if (!nfp){
-					//we cant open the new file, skip
-					msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
-					       tmp_path);
-					pthread_mutex_unlock(&s_handle->lock);
-					continue;
-				}
-				if (s_handle->altheader){
-					//re name: if got here, then rollover requested
-					snprintf(tmp_headerpath, PATH_MAX,
-						 "%s.HEADER.%d",
-						 s_handle->path, (int)appx);
-					/* truncate a separate headerfile if it exists */
-					nhfp = fopen(tmp_headerpath, "w");
-					if (!nhfp){
-						fclose(nfp);
-						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
-						       tmp_headerpath);
-					}
-					nhfpname = strdup(tmp_headerpath);
-				} else {
-					nhfp = fopen(tmp_path, "a+");
-					if (!nhfp){
-						fclose(nfp);
-						msglog(LDMS_LDEBUG, "Error: cannot open file <%s>\n",
-						       tmp_path);
-					}
-					nhfpname = strdup(tmp_path);
-				}
-				if (!nhfp) {
-					pthread_mutex_unlock(&s_handle->lock);
-					continue;
-				}
-				if (!nhfpname || !nfpname) {
-					msglog(LDMS_LDEBUG, "Error: handleRollover OOM. skipping rollover; log will grow.\n");
-					fclose(nfp);
-					fclose(nhfp);
-					pthread_mutex_unlock(&s_handle->lock);
-					break;
-				}
-
-				bool samename = true;
-				//close and swap
-				if (s_handle->file) {
-					fclose(s_handle->file);
-					if (s_handle->filename && s_handle->headerfilename &&
-						strcmp(s_handle->filename,s_handle->headerfilename) ) {
-						samename = false;
-					}
-					ovis_file_spool(s_handle->spooler,
-						s_handle->filename,
-						s_handle->spooldir, (ovis_log_fn_t)msglog);
-					free(s_handle->filename);
-					s_handle->filename = nfpname;
-				}
-				if (s_handle->headerfile) {
-					fclose(s_handle->headerfile);
-					if (!samename) {
-						ovis_file_spool(s_handle->spooler,
-							s_handle->headerfilename,
-							s_handle->spooldir, (ovis_log_fn_t)msglog);
-					}
-				}
-				free(s_handle->headerfilename);
-				s_handle->headerfilename = nhfpname;
-				s_handle->file = nfp;
-				s_handle->headerfile = nhfp;
-				s_handle->printheader = 1;
+		if (storekeys[i] == NULL)
+			continue;
+		s_handle = idx_find(store_idx, (void *)(storekeys[i]),
+			strlen(storekeys[i]));
+		if (!s_handle)
+			continue;
+		FILE* nhfp = NULL;
+		FILE* nfp = NULL;
+		char *nfpname = NULL;
+		char *nhfpname = NULL;
+		char tmp_path[PATH_MAX];
+		char tmp_headerpath[PATH_MAX];
+		// if we've got here there was new_store, but it might be closed
+		pthread_mutex_lock(&s_handle->lock);
+		switch (rolltype) {
+		case 1:
+			break;
+		case 2:
+			break;
+		case 3:
+			if (s_handle->store_count < rollover)  {
 				pthread_mutex_unlock(&s_handle->lock);
-			} /* shandle if */
-		} /* storekeys[i] if */
-	} /* for */
+				continue;
+			} else {
+				s_handle->store_count = 0;
+			}
+			break;
+		case 4:
+			if (s_handle->byte_count < rollover) {
+				pthread_mutex_unlock(&s_handle->lock);
+				continue;
+			} else {
+				s_handle->byte_count = 0;
+			}
+			break;
+		default:
+			msglog(LDMS_LDEBUG, "Error: unexpected rolltype in store(%d)\n",
+				rolltype);
+			break;
+		}
 
+		/* defer flush of retiring files until after new are in use. */
+		snprintf(tmp_path, PATH_MAX, "%s.%d",
+			s_handle->path, (int) appx);
+		if (s_handle->altheader) {
+			snprintf(tmp_headerpath, PATH_MAX,
+				 "%s.HEADER.%d",
+				 s_handle->path, (int)appx);
+		} else {
+			snprintf(tmp_headerpath, PATH_MAX, "%s.%d",
+				 s_handle->path, (int)appx);
+		}
+		nfpname = strdup(tmp_path);
+		if (!nfpname) {
+			goto loopcleanup;
+		}
+		nfp = fopen(tmp_path, "a+");
+		if (!nfp) {
+			goto loopcleanup;
+		}
+		/* truncate a separate headerfile if it exists */
+		nhfpname = strdup(tmp_headerpath);
+		if (!nhfpname) {
+			goto loopcleanup;
+		}
+		nhfp = fopen(tmp_headerpath, "w");
+		if (!nhfp) {
+			goto loopcleanup;
+		}
+
+		bool samename = true; /* do not spool same file twice */
+		if (s_handle->file) {
+			if (s_handle->filename && s_handle->headerfilename &&
+				strcmp(s_handle->filename, s_handle->headerfilename) ) {
+				samename = false;
+			}
+			CACHE_OLDFILE(old[2*i], s_handle->file,
+				s_handle->filename, s_handle->spooler,
+				s_handle->spooldir, true);
+			s_handle->filename = nfpname;
+		}
+		/* headerfile is already closed, since closed when written */
+		CACHE_OLDFILE(old[2*i+1], s_handle->headerfile,
+			s_handle->headerfilename, s_handle->spooler,
+			s_handle->spooldir, !samename);
+		s_handle->headerfilename = nhfpname;
+		s_handle->file = nfp;
+		s_handle->headerfile = nhfp;
+		if (!samename) {
+			handle_open(s_handle->openhook, s_handle->headerfilename);
+		}
+		handle_open(s_handle->openhook, s_handle->filename);
+		s_handle->printheader = 1;
+		pthread_mutex_unlock(&s_handle->lock);
+		continue;
+
+ loopcleanup:
+		//we cant make the new files & name strings, so skip
+		pthread_mutex_unlock(&s_handle->lock);
+		msglog(LDMS_LERROR,
+			 "%s: unable to create rollover files: %s & %s\n",
+		       __FILE__, tmp_path, tmp_headerpath);
+		if (nfp)
+			fclose(nfp);
+		if (!nhfp)
+			fclose(nhfp);
+		if (nhfpname)
+			free(nhfpname);
+		if (nfpname)
+			free(nfpname);
+	}
+
+	/* flush/sync/close old csv stream pointers.
+	Do this or we get duplicate output from fork later and
+	we increase risk of race on old files when spooler reads old files. */
+	for (i = 0; i < 2*nstorekeys; i++){
+		if (old[i].f) {
+			int err;
+			if ( fflush(old[i].f)) {
+				err = errno;
+				msglog(LDMS_LERROR,"Error %d flushing %s: %s\n",
+					err, old[i].name, strerror(err));	
+			}
+			int fd = fileno(old[i].f);
+			if (fsync(fd) != 0) {
+				err = errno;
+				msglog(LDMS_LERROR,"Error %d syncing %s: %s\n",
+					err, old[i].name, strerror(err));	
+			}
+			if (fclose(old[i].f)) {
+				err = errno;
+				msglog(LDMS_LERROR,"Error %d closing %s: %s\n",
+					err, old[i].name, strerror(err));	
+			}
+		}
+	}
+	/* spool and clean up old name strings captured in old[]. */
+	for (i = 0; i < 2*nstorekeys; i++) {
+		if (old[i].dospool) {
+			assert(old[i].name ||
+				NULL == "old file name needed for spooling");
+			handle_spool(old[i].name, old[i].spooler,
+				old[i].spooldir);
+		} 
+		if (old[i].name) {
+			free(old[i].name);
+		}
+	}
 	pthread_mutex_unlock(&cfg_lock);
 
 	return 0;
@@ -353,8 +444,9 @@ static int handleRollover(){
 static void* rolloverThreadInit(void* m){
 	//if got here, then rollover requested
 
+	int oldstate = 0;
 	while(1){
-		int tsleep;
+		int tsleep = ROLL_DEFAULT;
 		switch (rolltype) {
 		case 1:
 			tsleep = (rollover < MIN_ROLL_1) ?
@@ -386,11 +478,13 @@ static void* rolloverThreadInit(void* m){
 			tsleep = ROLL_LIMIT_INTERVAL;
 			break;
 		default:
-			tsleep = ROLL_DEFAULT;
 			break;
 		}
 		sleep(tsleep);
+		int oldstate = 0;
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
 		handleRollover();
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
 	}
 
 	return NULL;
@@ -412,7 +506,7 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 	pthread_mutex_lock(&cfg_lock);
 
 	//have to do this after main is configured
-	if (cfgstate != CSV_CFGMAIN_DONE){
+	if (cfgstate != CSV_CFGMAIN_DONE) {
 		msglog(LDMS_LERROR, "Error store_csv: wrong state for config_container %d\n",
 		       cfgstate);
 		pthread_mutex_unlock(&cfg_lock);
@@ -519,6 +613,23 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 				"got instead %s and %s\n",
 				(spoolerval?  spoolerval : "no spooler" ),
 				(spooldirval?  spooldirval : "no spooldir" ));
+			rc = EINVAL;
+		}
+	}
+	char *openhookval =  av_value(avl, "openhook");
+	if (openhookval) {
+		if ( strlen(openhookval) >= 2 ) {
+			char *tmp1 = strdup(openhookval);
+			if (!tmp1) {
+				rc = ENOMEM;
+			} else {
+				openhook = tmp1;
+				specialkeys[idx].openhook = tmp1;
+			}
+		} else {
+			msglog(LDMS_LERROR,"store_csv: bad openhook:"
+				" %s\n", openhookval);
+			rc = EINVAL;
 		}
 	}
 
@@ -662,6 +773,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	if (rollmethod >= MINROLLTYPE) {
 		rolltype = rollmethod;
 		pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
+		roactive = 1;
 	}
 
 	if (altvalue)
@@ -703,6 +815,26 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 			rc = EINVAL;
 		}
 	}
+	char *openhookval =  av_value(avl, "openhook");
+	if (openhookval) {
+		if ( strlen(openhookval) >= 2 ) {
+			char *tmp1 = strdup(openhookval);
+			if (!tmp1) {
+				free(spooler);
+				free(spooldir);
+				free(root_path);
+				spooler = spooldir = root_path = NULL;
+				cfgstate = CSV_CFGMAIN_FAILED;
+				rc = ENOMEM;
+			} else {
+				openhook = tmp1;
+			}
+		} else {
+			msglog(LDMS_LERROR,"store_csv: bad openhook:"
+				" %s\n", openhookval);
+			rc = EINVAL;
+		}
+	}
 
 	if (cfgstate == CSV_CFGMAIN_IN) {
 		cfgstate = CSV_CFGMAIN_DONE;
@@ -736,6 +868,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		return EINVAL;
 	}
 
+	rc = 0;
 	char* action = av_value(avl, "action");
 	if (!action){
 		/* treat it like it is main for backwards compatibility */
@@ -775,16 +908,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 static void term(void)
 {
 	msglog(LDMS_LINFO, "store_csv: term called\n");
+	if (roactive) {
+		msglog(LDMS_LINFO, "store_csv: cancelling rollover thread\n");
+		roactive = 0;
+		pthread_cancel(rothread);
+	}
 }
 
 static const char *usage(void)
 {
 	return  "    config name=store_csv [action=main] path=<path> rollover=<num> rolltype=<num>\n"
 		"           [id_pos=<0/1> sequence=<order> altheader=<0/1> ietfcsv=<bool>]\n"
-		"           [spooler=<prog> spooldir=<dir>]\n"
+		"           [spooler=<prog> spooldir=<dir> openhook=<openexec>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - action    When action = main or not specified can set the following parameters:\n"
 		"         - path      The path to the root of the csv directory\n"
+		"         - openexec  The path to the data/header file open agent.\n"
 		"         - spooler   The path to the spool transfer agent.\n"
 		"         - spooldir  The path to the spool directory for closed output files.\n"
 		"         - ietfcsv   Use ietf formatting if true. Default false.\n"
@@ -801,7 +940,7 @@ static const char *usage(void)
 		"           [id_pos=<0/1> sequence=<order> altheader=<0/1>]\n"
 		"         - Override the default parameters set by action=main for particular containers\n"
 		"         - altheader Header in a separate file (optional, default to main)\n"
-		"         - spooler/spooldir (optional, default to main)\n"
+		"         - spooler/spooldir/openexec (optional, default to main)\n"
 		"         - id_pos    Use only one comp_id either first metric added to the\n"
 		"                     sampler (1) or last added (0)\n"
 		"                     (Optional default to main)\n"
@@ -897,7 +1036,7 @@ static int print_header(struct csv_store_handle *s_handle,
 	fflush(fp);
 
 	fclose(s_handle->headerfile);
-	s_handle->headerfile = 0;
+	s_handle->headerfile = NULL;
 
 	return 0;
 }
@@ -961,26 +1100,37 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		s_handle->byte_count = 0;
 
 		idx = -1;
-		for (i = 0; i < nspecialkeys; i++){
+		for (i = 0; i < nspecialkeys; i++) {
 			if (strcmp(s_handle->store_key, specialkeys[i].key) == 0){
 				idx = i;
 				break;
 			}
 		}
-		if (idx >= 0){
+		if (idx >= 0) {
 			s_handle->altheader = specialkeys[idx].altheader;
 			s_handle->id_pos = specialkeys[idx].id_pos;
 			s_handle->cs.begin = specialkeys[idx].cs.begin;
 			s_handle->cs.end = specialkeys[idx].cs.end;
 			s_handle->cs.step = specialkeys[idx].cs.step;
-			s_handle->spooler = specialkeys[idx].spooler;
-			s_handle->spooldir = specialkeys[idx].spooldir;
+			if (specialkeys[idx].openhook) {
+				s_handle->openhook = specialkeys[idx].openhook;
+			} else {
+				s_handle->openhook = openhook;
+			}
+			if (specialkeys[idx].spooler) {
+				s_handle->spooler = specialkeys[idx].spooler;
+				s_handle->spooldir = specialkeys[idx].spooldir;
+			} else {
+				s_handle->spooler = spooler;
+				s_handle->spooldir = spooldir;
+			}
 		} else {
 			s_handle->altheader = altheader;
 			s_handle->id_pos = id_pos;
 			s_handle->cs.begin = cs.begin;
 			s_handle->cs.end = cs.end;
 			s_handle->cs.step = cs.step;
+			s_handle->openhook = openhook;
 			s_handle->spooler = spooler;
 			s_handle->spooldir = spooldir;
 		}
@@ -1013,8 +1163,12 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			}
 		} 
 	}
-	if (!s_handle->file)
+	if (!s_handle->file){
+		msglog(LDMS_LERROR, "%s: Error %d opening the file %s.\n",
+		       __FILE__, errno, s_handle->path);
 		goto err3;
+	}
+	handle_open(s_handle->openhook, s_handle->filename);
 
 	/* Only bother to open the headerfile if we have to print the header */
 	if (s_handle->printheader && !s_handle->headerfile){
@@ -1035,15 +1189,18 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			s_handle->headerfilename = strdup(tmp_path);
 		}
 		if (!s_handle->headerfile) {
-			fclose(s_handle->headerfile);
-			s_handle->headerfile = NULL;
-			msglog(LDMS_LERROR, "Error: %s OOM\n", container);
+			msglog(LDMS_LERROR, "%s: Error: Cannot open headerfile\n",
+			       __FILE__);
+			goto err4;
+		}
+// fixme: verify logic here. close file if header fails?
+		if (s_handle->altheader) {
+			handle_open(s_handle->openhook, s_handle->headerfilename);
 		}
 
-
-		if (!s_handle->headerfile){
+		if (!s_handle->headerfilename){
 			msglog(LDMS_LDEBUG,"store_csv: Cannot open headerfile");
-			goto err4;
+			goto err5;
 		}
 	}
 
@@ -1062,6 +1219,8 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 	goto out;
 
 err5:
+	fclose(s_handle->headerfile);
+	s_handle->headerfile = NULL;
 err4:
 	fclose(s_handle->file);
 	s_handle->file = NULL;
@@ -1175,10 +1334,11 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
+	const char *msg;
 	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
+		s_handle->spooldir, &msg);
 	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
+		s_handle->spooldir, &msg);
 	free(s_handle->headerfilename);
 	free(s_handle->filename);
 	s_handle->headerfilename = NULL;
@@ -1216,16 +1376,16 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
-	ovis_file_spool(s_handle->spooler, s_handle->filename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
-	ovis_file_spool(s_handle->spooler, s_handle->headerfilename,
-		s_handle->spooldir, (ovis_log_fn_t)msglog);
+	handle_spool(s_handle->filename, s_handle->spooler, s_handle->spooldir);
+	handle_spool(s_handle->headerfilename, s_handle->spooler,
+		 s_handle->spooldir);
 	free(s_handle->headerfilename);
 	free(s_handle->filename);
 	s_handle->headerfilename = NULL;
 	s_handle->filename = NULL;
 	s_handle->spooler = NULL;
 	s_handle->spooldir = NULL;
+	s_handle->openhook = NULL;
 	
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));

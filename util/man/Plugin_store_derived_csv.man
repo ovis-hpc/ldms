@@ -20,7 +20,7 @@ The store_derived_csv plugin is a CSV store.
 
 .TP
 .BR config
-name=<plugin_name> path=<path> derivedconf=<confname>[ alt_header=<altheader> idpos=<idpos> ietfcsv=<boolean> agesec=<agesec> rolltype=<rolltype> rollover=<rollover> ]
+name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<altheader> idpos=<idpos> ietfcsv=<boolean> agesec=<agesec> rolltype=<rolltype> rollover=<rollover> openhook=<openprog> spooldir=<dir> spooler=<program>] ]
 .br
 ldmsctl configuration line
 .RS
@@ -37,7 +37,7 @@ derivedconf=<confname>
 .br
 Path to the derived configuration file. Format: metricname,Raw/Rate=(0/1),multiplier. Metricname must be exact match as in the set. No extraneous whitespace (if the metric name has an internal whitespace, that whitespace needs to match exactly). One metric per line.
 .TP
-alt_header=<altheader>
+altheader=<altheader>
 .br
 The default output writes the header to the same file as the data file. alt_header=1 will write the header to an alternate file (e.g., if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER"). If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written at each rollover. Default is alt_header=0.
 .TP
@@ -78,6 +78,10 @@ roll after approximately rollover bytes are written.
 rollover=<rollover>
 .br
 Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+openhook=<openprog>
+.br
+The full path of the program invoked as '<openprog> file' to notify that a new csv file (data or header) has been opened. Due to possible race conditions, openprog must validate its input and log any errors encountered or retry. LDMS does not monitor the outcome of the invocation. The invoked program may be a shell script that handles behaviors like making symbolic links or starting an ingestor that monitors the new file. The new file may not yet have any data in it. Relocating the new file is likely to cause unexpected behavior, as the csv store holds an open FILE reference until.
 .TP
 spooler=<program>
 .br
