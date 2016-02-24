@@ -965,6 +965,8 @@ int ldms_schema_meta_add(ldms_schema_t s, const char *name, enum ldms_value_type
 int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
 				 enum ldms_value_type type, uint32_t count)
 {
+	if (!ldms_type_is_array(type))
+		return EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, count);
 }
 
@@ -1508,6 +1510,7 @@ void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
 	ldms_mval_t val = ldms_ptr_(union ldms_value, s->set->meta,
 				    __le32_to_cpu(desc->vd_data_offset));
 	switch (desc->vd_type) {
+	case LDMS_V_CHAR_ARRAY:
 	case LDMS_V_U8_ARRAY:
 	case LDMS_V_S8_ARRAY:
 		for (i = start; i < start + count && i < desc->vd_array_count; i++)
