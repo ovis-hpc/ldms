@@ -46,11 +46,8 @@ Optional component identifier. Defaults to zero.
 .TP
 with_jobid=<bool>
 .br
-1 to include jobid with set or 0 if not. NOTE: this has not yet been reinstantiated in v3.
+Option to collect job id with set or 0 if not.
 .RE
-
-.SH NOTES
-with_jobid has not yet been reinstantiated in v3.
 
 .SH BUGS
 No known bugs.
