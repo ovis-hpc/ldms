@@ -114,6 +114,8 @@ public:
 	virtual void get_metric_sets(const string& host, string& sets) = 0;
 	// get local ldmsaggd_exclude_sets on. may be empty result.
 	virtual void get_exclude_sets(const string& host, string& sets) = 0;
+	// get local ldmsaggd_exclude_hosts on. may be empty result.
+	virtual void get_exclude_hosts(const string& host, string& hosts) = 0;
 	// get the collectors host aggregates. may be empty result.
 	virtual void get_clientof(const string& host, vector<string>& clientof) = 0;
 	// get the aggregators host aggregates. may be empty result.
@@ -208,6 +210,9 @@ public:
 	virtual void get_exclude_sets(const string& host, string &sets) {
 		has_property(host,"ldmsaggd_exclude_sets", sets);
 	}
+	virtual void get_exclude_hosts(const string& host, string &hosts) {
+		has_property(host,"ldmsaggd_exclude_hosts", hosts);
+	}
 	virtual void get_clientof(const string& host, vector<string>& clientof) {
 		clientof = g.getnodes("ldmsd_clientof",host);
 	}
@@ -233,6 +238,7 @@ public:
 		in->get_trans(host, aggdt,"ldmsaggd");
 		in->get_metric_sets(host,metricsets);
 		in->get_exclude_sets(host,excludesets);
+		in->get_exclude_hosts(host,excludehosts);
 	}
 
 	void set_offset(const string& offset) {
@@ -253,11 +259,12 @@ public:
 	trans aggdt;		// ldmsaggd_host/xprt/port/interval/offset
 	string metricsets;	// ldmsd_metric_sets
 	string excludesets;	// ldmsaggd_exclude_sets
+	string excludehosts;	// ldmsaggd_exclude_hosts
 
 private:
 	vector<string> adds;	// add host lines computed for topmost hdata only.
 
-	// append local sets of client to out as elements "clienthame/setname".
+	// append local sets of client to out as elements "clientname/setname".
 	void format_local_sets(const string& client, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
 		string lsets;
 		in->get_metric_sets(client,lsets);
@@ -276,9 +283,22 @@ private:
 			cerr << "Node " << client << " has no metric sets defined." << endl;
 		}
 	}
+
+	void dumpset( const set<string>& s) {
+		set<string>::iterator it;
+		for (it = s.begin(); it != s.end(); ++it)
+		{
+		    cerr << *it << endl;
+		}
+	}
 		
-	void add_collectors(int level, vector<string>& node_list, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
-		for (int j = 0; j < node_list.size(); j++) {
+	void add_collectors(int level, vector<string>& node_list, vector<string>& out, const set<string>& ban, const set<string>& banhosts, set<string>& sets_seen) {
+		for (vector<string>::size_type j = 0; j < node_list.size(); j++) {
+			if (banhosts.find(node_list[j]) != banhosts.end()) {
+				continue;
+			}
+			// cerr << "no match to " << node_list[j] << " in " ;
+			// dumpset(banhosts); debug
 			if (level) {
 				format_local_sets(node_list[j], out, ban, sets_seen);
 			} else {
@@ -308,7 +328,7 @@ public:
 	 aggs_seen: global repeat prevention.
 	 out: set names with node scoping.
 	*/
-	void get_sets(int level, vector<string>& out, set<string> ban, set<string>& aggs_seen , set<string>& sets_seen) {
+	void get_sets(int level, vector<string>& out, set<string> ban, set<string> banhosts, set<string>& aggs_seen, set<string>& sets_seen) {
 		/// cerr << "get_sets on " << hostname <<endl;
 
 		if (aggs_seen.find(hostname) != aggs_seen.end()) {
@@ -318,13 +338,21 @@ public:
 		aggs_seen.insert(hostname);
 
 		vector<string> banlist;
-		split(banlist,excludesets,is_any_of(":"), boost::token_compress_on);
+		split(banlist,excludesets,is_any_of(":"),
+			boost::token_compress_on);
 		ban.insert(banlist.begin(),banlist.end());
 
+		vector<string> banhostlist;
+		split(banhostlist,excludehosts,is_any_of(":"),
+			boost::token_compress_on);
+		banhosts.insert(banhostlist.begin(),banhostlist.end());
 
 		if (!isaggd) {
-			// unexpected in ldms v2.
+			// aggd w/own sets unexpected in ldms v2.
 			// may need adjustment when aggs see their own metric sets.
+			if (banhosts.find(hostname) != banhosts.end()) {
+				return;
+			}
 			format_local_sets(hostname, out, ban, sets_seen);
 			return;
 		}
@@ -337,21 +365,24 @@ public:
 				didbootnode = true;
 				vector<string> bootnode_list;
 				in->bootnodes(hostname,bootnode_list);
-				add_collectors(level, bootnode_list, out, ban, sets_seen);
+				add_collectors(level, bootnode_list, out, ban,
+					banhosts, sets_seen);
 				continue;
 			}
 			if (parts[i] == "LDMSDALL" && ! didldmsdall) {
 				didldmsdall = true;
 				vector<string> node_list;
 				in->collectornodes(node_list);
-				add_collectors(level, node_list, out, ban, sets_seen);
+				add_collectors(level, node_list, out, ban,
+					banhosts, sets_seen);
 				continue;
 			}
 			if (parts[i] == "CLIENTOFLIST" && !didclientof) {
 				didclientof = true;
 				vector<string> clientof_list;
 				in->get_clientof(hostname,clientof_list);
-				add_collectors(level, clientof_list, out, ban, sets_seen);
+				add_collectors(level, clientof_list, out, ban,
+					banhosts, sets_seen);
 				continue;
 			}
 			if (parts[i] == "AGGCLIENTOFLIST" && !didaggclientof) {
@@ -367,11 +398,15 @@ public:
 					}
 					if (level) {
 						// recurse down nested agg subtree
-						sub.get_sets(level+1, out, ban, aggs_seen, sets_seen);
+						sub.get_sets(level+1, out, ban, 
+							banhosts, aggs_seen,
+							sets_seen);
 					} else {
 						// begin recursion
 						vector<string> aggsets;
-						sub.get_sets(level+1, aggsets, ban, aggs_seen, sets_seen);
+						sub.get_sets(level+1, aggsets,
+							ban, banhosts,
+							aggs_seen, sets_seen);
 						trans t;
 						if (dbg) {
 							cerr << "Pulling from aggregator " << aggclientof_list[j] << endl;
@@ -394,7 +429,8 @@ public:
 			// else it's a hostname or a typo in LDMSDALL.
 			vector<string> singleton;
 			singleton.push_back(parts[i]);
-			add_collectors(level, singleton, out, ban, sets_seen);
+			add_collectors(level, singleton, out, ban, banhosts,
+				sets_seen);
 		}
 	}
 
@@ -513,7 +549,7 @@ int main(int argc, char **argv)
 		genders_api gapi(g0);
 		ldms_config_info *info = &gapi;
 
-		set<string> ban, hosts_seen, sets_seen;
+		set<string> ban, banhosts, hosts_seen, sets_seen;
 		vector<string> out;
 		hdata top(opt.hostname, info);
 		
@@ -523,7 +559,7 @@ int main(int argc, char **argv)
 		if (opt.useoffset)
 			top.set_offset(opt.offset);
 
-		top.get_sets(0, out, ban, hosts_seen, sets_seen);
+		top.get_sets(0, out, ban, banhosts, hosts_seen, sets_seen);
 
 		string storesets = join(sets_seen,",");
 		if (opt.task == "store-list") {

@@ -12,7 +12,7 @@
 Summary: OVIS LDMS Commands and Libraries
 Name: ldms-all
 Version: @VERSION@
-Release: ovis1%{?dist}
+Release: ovis2%{?dist}
 License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -49,7 +49,6 @@ make DESTDIR=${RPM_BUILD_ROOT} install
 # remove unpackaged files from the buildroot
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-ldms/lib*.la
-rm $RPM_BUILD_ROOT%{_bindir}/test_*
 rm $RPM_BUILD_ROOT%{_bindir}/ldms_ban.sh
 mv $RPM_BUILD_ROOT%{_docdir}/ovis-ldms-*/* $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/
 mkdir $RPM_BUILD_ROOT%{_sysconfdir}
@@ -111,6 +110,8 @@ Doxygen files for ldms-all package.
 %docdir %{_defaultdocdir}
 %changelog
 
+* Tue Feb 23 2016 Allan <gentile@sandia.gov> 2.4.6-2
+update to latest upstream.
 * Thu Dec 30 2015 Gentile <gentile@sandia.gov> 2.4.6-1
 update to latest upstream.
 * Thu Aug 25 2015 Ben Allan <baallan@sandia.gov> 2.4.5-1

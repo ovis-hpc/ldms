@@ -1,3 +1,9 @@
+2015-10-30 Allan <baallan@sandia.gov>
+* update to 2.4.6
+* sysclassib ports list now accepts missing interfaces.
+* line repetition in spooled outputs fixed.
+* user hook for open files as well as closed files added.
+
 2015-10-30 Gentile <gentile@sandia.gov>
 * Update version to 2.4.6 (pre-release)
 * Update of experimental Interlagos MSR to take config file
