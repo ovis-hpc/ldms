@@ -4,7 +4,7 @@ bin_PROGRAMS =
 AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 
 if ENABLE_OVIS_EVENT
-libovis_event_la_SOURCES = ovis_event.c ovis_event.h
+libovis_event_la_SOURCES = ovis_event.c ovis_event.h ovis_event_priv.h
 libovis_eventinclude_HEADERS = ovis_event.h
 libovis_event_la_LIBADD = ../coll/libcoll.la
 libovis_eventincludedir = $(includedir)/ovis_event
