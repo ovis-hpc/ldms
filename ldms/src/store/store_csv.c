@@ -55,6 +55,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -104,6 +105,7 @@ static int nspecialkeys = 0;
 static char *root_path;
 static int altheader;
 static int udata;
+static bool ietfcsv = false; /* we will add an option like v2 enabling this soon. */
 static int rollover;
 /** rolltype determines how to interpret rollover values > 0. */
 static int rolltype;
@@ -1088,11 +1090,37 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 
 	/* FIXME: will we want to throw an error if we cannot write? */
 	get_loop_limits(s_handle, metric_count);
+	char *wsqt = ""; /* ietf quotation wrapping strings */
+	if (ietfcsv) {
+		wsqt = "\"";
+	}
+	const char * str;
 	for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 		udata = ldms_metric_user_data_get(set, metric_array[i]);
 		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
 		//use same formats as ldms_ls
 		switch (metric_type){
+		case LDMS_V_CHAR_ARRAY:
+			/* our csv does not included embedded nuls */
+			str = ldms_metric_array_get_str(set, metric_array[i]);
+			if (!str) {
+				str = "";
+			}
+			if (s_handle->udata) {
+				rc = fprintf(s_handle->file, ",%"PRIu64, udata);
+				if (rc < 0)
+					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					       rc, s_handle->path);
+				else
+					s_handle->byte_count += rc;
+			}
+			rc = fprintf(s_handle->file, ",%s%s%s", wsqt, str, wsqt);
+			if (rc < 0)
+				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+			break;
 		case LDMS_V_U8_ARRAY:
 			len = ldms_metric_array_get_len(set, metric_array[i]);
 			for (j = 0; j < len; j++){
