@@ -91,18 +91,19 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	ldmsd_prdcr_set_t prd_set = arg;
 	uint64_t gn;
 
-	if (status)
-		return;
+	if (status) {
+		goto out;
+	}
 
 	if (!ldms_set_is_consistent(set)) {
 		ldmsd_log(LDMSD_LINFO, "Set %s is inconsistent.\n", prd_set->inst_name);
-		return;
+		goto out;
 	}
 
 	gn = ldms_set_data_gn_get(set);
 	if (prd_set->last_gn == gn) {
 		ldmsd_log(LDMSD_LINFO, "Set %s oversampled.\n", prd_set->inst_name, prd_set->last_gn);
-		return;
+		goto out;
 	}
 	prd_set->last_gn = gn;
 
@@ -114,6 +115,9 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		strgp->update_fn(strgp, prd_set);
 		ldmsd_strgp_unlock(strgp);
 	}
+out:
+	ldmsd_prdcr_set_ref_put(prd_set); /* The ref was taken before update */
+	return;
 }
 
 static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
@@ -131,6 +135,8 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 			continue;
 		/* If a match condition is not specified, everything matches */
 		if (!match) {
+			/* The reference will be put back in update_cb */
+			ldmsd_prdcr_set_ref_get(prd_set);
 			ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 			continue;
 		}
@@ -140,8 +146,12 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 		else
 			str = prd_set->schema_name;
 		rc = regexec(&match->regex, str, 0, NULL, 0);
-		if (!rc)
+		if (!rc) {
+			/* The reference will be put back in update_cb */
+			ldmsd_prdcr_set_ref_get(prd_set);
 			ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+		}
+
 	}
 out:
 	ldmsd_prdcr_unlock(prdcr);
