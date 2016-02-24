@@ -110,6 +110,8 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name)
 		goto err_1;
 	pthread_mutex_init(&set->lock, NULL);
 	rbn_init(&set->rbn, set->inst_name);
+
+	set->ref_count = 1;
 	return set;
 err_1:
 	free(set);
@@ -117,7 +119,7 @@ err_0:
 	return NULL;
 }
 
-static void prdcr_set_del(ldmsd_prdcr_set_t set)
+void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
 	if (set->schema_name)
 		free(set->schema_name);
@@ -133,6 +135,25 @@ static void prdcr_set_del(ldmsd_prdcr_set_t set)
 	}
 	free(set->inst_name);
 	free(set);
+}
+
+void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set) 
+{
+	(void)__sync_fetch_and_add(&set->ref_count, 1);
+
+}
+
+void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set)
+{
+	assert(set->ref_count);
+	if (0 == __sync_sub_and_fetch(&set->ref_count, 1))
+		__prdcr_set_del(set);
+}
+
+static void prdcr_set_del(ldmsd_prdcr_set_t set)
+{
+	set->state = LDMSD_PRDCR_SET_STATE_START;
+	ldmsd_prdcr_set_ref_put(set);
 }
 
 /**
@@ -177,20 +198,22 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		if (status == ENOMEM)
 			ldmsd_log(LDMSD_LINFO,
 				  "Consider changing the -m parameter on the command line.\n");
-		if (prd_set->set)
-			ldms_set_delete(prd_set->set);
-		prd_set->set = NULL;
-		goto err;
+		if (prd_set->set) {
+			/* prd_set should not have a handle to an ldms set at this point. */
+			assert(0);
+		}
+		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
+		goto out;
 	}
 	prd_set->set = set;
 	prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	ldmsd_strgp_update(prd_set);
+
+out:
 	pthread_mutex_unlock(&prd_set->lock);
+	ldmsd_prdcr_set_ref_put(prd_set); /* The ref is taken before calling lookup */
 	return;
-err:
-	prd_set->state = LDMSD_PRDCR_SET_STATE_START;
-	pthread_mutex_unlock(&prd_set->lock);
 }
 
 static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
@@ -217,12 +240,16 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 				"the set '%s'.\n", inst_name);
 		assert(0);
 	}
+	ldmsd_prdcr_set_ref_get(set); /* It will be put back in lookup_cb */
 	/* Refresh the set with a lookup */
 	rc = ldms_xprt_lookup(prdcr->xprt, inst_name,
 			      LDMS_LOOKUP_BY_INSTANCE,
 			      prdcr_lookup_cb, set);
-	if (rc)
+	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Synchronous error %d from ldms_lookup\n", rc);
+		ldmsd_prdcr_set_ref_put(set);
+	}
+
 }
 
 /*
@@ -292,6 +319,8 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	ldmsd_prdcr_lock(prdcr);
 	switch (e) {
 	case LDMS_CONN_EVENT_CONNECTED:
+		ldmsd_log(LDMSD_LINFO, "Producer %s is connected\n",
+				prdcr->obj.name);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 		if (ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
 				  LDMS_DIR_F_NOTIFY))
@@ -301,20 +330,30 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	case LDMS_CONN_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
 				"connection\n", prdcr->obj.name);
+		goto reset_prdcr;
 	case LDMS_CONN_EVENT_DISCONNECTED:
+		ldmsd_log(LDMSD_LINFO, "Producer %s is disconnected\n",
+				prdcr->obj.name);
+		goto reset_prdcr;
 	case LDMS_CONN_EVENT_ERROR:
-		prdcr_reset_sets(prdcr);
-		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-					 0, prdcr->conn_intrvl_us, 0);
-		}
-		ldms_xprt_put(prdcr->xprt);
-		prdcr->xprt = NULL;
-		break;
+		ldmsd_log(LDMSD_LERROR, "Producer %s: connection error\n",
+				prdcr->obj.name);
+		goto reset_prdcr;
 	default:
 		assert(0);
 	}
+	ldmsd_prdcr_unlock(prdcr);
+	return;
+
+reset_prdcr:
+	prdcr_reset_sets(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+		ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
+				 0, prdcr->conn_intrvl_us, 0);
+	}
+	ldms_xprt_put(prdcr->xprt);
+	prdcr->xprt = NULL;
 	ldmsd_prdcr_unlock(prdcr);
 }
 
