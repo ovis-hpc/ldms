@@ -2147,6 +2147,7 @@ void *ctrl_thread_proc(void *v)
 			  cfg_buf_len);
 		cleanup(1);
 	}
+	pthread_cleanup_push(free,lbuf);
 	iov.iov_base = lbuf;
 	do {
 		ssize_t msglen;
@@ -2164,6 +2165,7 @@ void *ctrl_thread_proc(void *v)
 			break;
 		process_message(muxr_s, &msg, msglen);
 	} while (1);
+	pthread_cleanup_pop(0);
 	free(lbuf);
 	return NULL;
 }
