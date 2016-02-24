@@ -1,0 +1,169 @@
+This case is based on the CrayXC40 case, but uses Baler in master-slave mode.
+It illustrates both single and joint queries using both buqery and bhquery.
+
+
+0) Generic files from the CrayXC40 dir:
+   a) eng-dictionary_edit - The default English dictionary slightly edited
+   b) my-dict - Another dictionary with some domain specific words (e.g., aprun, dimm)
+   c) hosts.txt - A list of hosts for the system.
+      NOTE: this is setup so the c-names map onto the numerical value of the nid
+      NOTE: Still need to add in the nids by name. Will do these with some offset so that the numbers make sense.
+   d) baler_env.sh - baler environment variables with specific paths to the installs
+
+   NOTE: there are specific ports and paths in the above that will have to be changed for your install
+
+
+1) New files in this dir:
+   a) run_baler.master.sh
+   b) run_baler.slave.sh
+   c) baler.master.cfg
+   d) baler.slave.cfg
+   e) run_bhttpd.master.sh
+   f) run_bhttpd.slave.sh
+
+In this example, both the master and the slave are being run on the same machine,
+being fed rsyslog data to separate ports. The data is being separated out in rsyslog via the
+rules below. We are separating out on hostname to make it easy to distinguish the
+functionality of the master and the slave in the results of the queries.
+
+if $fromhost-ip == <XXX> and $hostname startswith 'c0-0c1' then @@127.0.0.1:64001
+if $fromhost-ip == <XXX> and not ($hostname startswith 'c0-0c1') then @@127.0.0.1:74001
+
+The master and the slave listen on separate http ports.
+
+
+2) To run both the master and the slave instances of Baler that will ingest rsyslog data:
+   a) NOTE: you will need to check paths and ports in the files below
+   b) source <path_to_examples>/CrayXC40/baler_env.sh
+   c) <path_to_examples>/MasterSlave/run_baler.master.sh - this uses baler.master.cfg. NOTE it has an rsyslog port
+   d) <path_to_examples>/MasterSlave/run_baler.slave.sh - this uses baler.slave.cfg. NOTE it has an rsyslog port
+
+
+3) BEFORE running the bhttpd's, you can use the bquery and sos commands as before to query
+   each sos database separately (See Section 4 for the joint query):
+
+   BEFORE ANYTHING ELSE: source <path_to_examples>/CrayXC40/baler_env.sh
+
+   a) Compare patterns on the master and the slave:
+   a-1) Query for the master (verbose) -- will see ALL patterns:
+
+   > bquery --store-path=<path_to_baler_store_dir>/store.master -t PTN
+    -------- ----------
+    ptn_id   pattern
+    -------- ----------
+     128 *[*] *-*-* *:*:*|*|src::*:*|pri:*|seqnum:*|svc:::*-*
+     129 kernel: *: *:* bad i2c * value, i2c *=*
+     130 *[*] *-*-* *:*:*|ec_sedc_warning|src::*:*|pri:*|seqnum:*|svc:::*-* *: * [health fault] <expected:*> | *: * [health fault] <expected:*> |
+     131 *-*[*]: Log statistics; dropped='*(*(*.*.*.*:*))=*', processed='center(queued)=*', processed='center(received)=*', processed='destination(messages)=*', processed='destination(*)=*', processed='source(*)=*', processed='source(*)=*'
+     132 [*] (root) * (/*/*/* --service *)
+     133 /*/*/*[*]: (root) * ([ -* /*/*/*/* ] && exec /*/*/*/* -* ALL * *)
+     134 /*/*/*[*]: (root) * (/opt/*/* > /*/null *>&*)
+     135 *[*] *-*-* *:*:*|ec_ui_dynam_state_req|src:*:*:*|pri:*|seqnum:*|svc::*:*
+     136 *[*] *-*-* *:*:*|*|src::*:*|pri:*|seqnum:*|svc:*:*:*
+     137 *[*]: * cannot read seep file *
+     ......
+
+   a-2) Query for the slave (verbose) -- will see ONLY patterns relevant to the slave, with the
+     global numbering:
+
+    > bquery --store-path=<path_to_baler_store_dir>/store.slave -t PTN
+    -------- ----------
+    ptn_id   pattern
+    -------- ----------
+     129 kernel: *: *:* bad i2c * value, i2c *=*
+     131 *-*[*]: Log statistics; dropped='*(*(*.*.*.*:*))=*', processed='center(queued)=*', processed='center(received)=*', processed='destination(messages)=*', processed='destination(*)=*', processed='source(*)=*', processed='source(*)=*'
+     137 *[*]: * cannot read seep file *
+     138 *[*]: get_sensor_reading() failed with *
+     139 *[*]: *: get_sensor_reading failed with (*)
+     143 *[*]: kernel time sync status change *
+     145 -- MARK --
+     182 *-* *: submitted=* *.discarded=* *.*=*
+     183 *-* *(*): submitted=*
+
+   b) Compare messages on the master and the slave:
+   b-1) Query for the  master -- will ONLY see master messages:
+
+  > bquery --store-path=<path_to_baler_store_dir>/store.master -t MSG | more
+2016-02-19T10:59:48.000000-07:00 s0 erdh[7692] 2016-02-19 10:59:48|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa418f|svc:::c0-0c0s0n0
+2016-02-19T10:59:51.000000-07:00 c0-0c0s11 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:51.000000-07:00 c0-0c0s11 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:51.000000-07:00 c0-0c0s11 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:51.000000-07:00 s0 erdh[7692] 2016-02-19 10:59:51|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa45c4|svc:::c0-0c0s0n0
+2016-02-19T10:59:53.000000-07:00 c0-0c0s8 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:53.000000-07:00 c0-0c0s8 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:53.000000-07:00 c0-0c0s8 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:54.000000-07:00 s0 erdh[7692] 2016-02-19 10:59:54|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa4dd7|svc:::c0-0c0s0n0
+2016-02-19T10:59:56.000000-07:00 s0 erd[7671] 2016-02-19 10:59:56|ec_sedc_warning|src::12:s0|pri:0x0|seqnum:0x1e67|svc:::c0-0c2s10 BC_H_NODE1_IVOC_ECB_FA
+ULT: 0x8a0 [health fault] <expected:0> | BC_H_NODE2_IVOC_ECB_FAULT: 0x8a0 [health fault] <expected:0> |
+2016-02-19T10:59:57.000000-07:00 c0-0c0s6 syslog-ng[2112]: Log statistics; dropped='tcp(AF_INET(10.100.100.1:5171))=0', processed='center(queued)=10216',
+ processed='center(received)=5108', processed='destination(messages)=5108', processed='destination(logserver)=5108', processed='source(downstream_src)=0'
+, processed='source(local_src)=5108'
+
+
+  b-2) Query for the slave -- will ONLY see slave messages:
+
+  >  bquery --store-path=<path_to_baler_store_dir>/store.slave -t MSG | more
+2016-02-19T10:59:54.000000-07:00 c0-0c1s4 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:54.000000-07:00 c0-0c1s4 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:54.000000-07:00 c0-0c1s4 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:58.000000-07:00 c0-0c1s7 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:58.000000-07:00 c0-0c1s7 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:58.000000-07:00 c0-0c1s7 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T11:00:02.000000-07:00 c0-0c1s3 bcsysd[2135]: set_hivoc2_coeff_per_seep cannot read seep file qpdc_hivoc_seep3
+2016-02-19T11:00:02.000000-07:00 c0-0c1s3 bcsysd[2135]: set_hivoc2_coeff_per_seep cannot read seep file qpdc_hivoc_seep3
+
+
+
+4) Start the bhttp for the master and the slave to enable joint queries:
+
+  > <path_to_examples>/MasterSlave/run_bhttpd.mutrino.master.sh
+  > <path_to_examples>/MasterSlave/run_bhttpd.mutrino.slave.sh
+
+
+5) Now issue joint queries using btthpd:
+
+   a) Query the patterns -- can query just the master (if you query the slave, you will jsut get its patterns):
+
+   >  bhquery -t ptn -S 205.137.89.103:18888
+     ------  ----------------  ---------------------------  ---------------------------  ------
+     ptn_id             count                   first seen                    last seen  pattern
+     ------  ----------------  ---------------------------  ---------------------------  ------
+        128              3278   2016-02-19 10:59:48.000000   2016-02-19 13:43:44.000000  *[*] *-*-* *:*:*|*|src::*:*|pri:*|seqnum:*|svc:::*-*
+        129              7634   2016-02-19 10:59:51.000000   2016-02-19 13:43:44.000000  kernel: *: *:* bad i2c * value, i2c *=*
+        130              1124   2016-02-19 10:59:56.000000   2016-02-19 13:43:36.000000  *[*] *-*-* *:*:*|ec_sedc_warning|src::*:*|pri:*|seqnum:*|svc:::*-* *: * [health fault] <expected:*> | *: * [health fault] <expected:*> |
+        131                62   2016-02-19 10:59:57.000000   2016-02-19 13:42:49.000000  *-*[*]: Log statistics; dropped='*(*(*.*.*.*:*))=*', processed='center(queued)=*', processed='center(received)=*', processed='destination(messages)=*', processed='destination(*)=*', processed='source(*)=*', processed='source(*)=*'
+       132               328   2016-02-19 11:00:01.000000   2016-02-19 13:43:01.000000  [*] (root) * (/*/*/* --service *)
+       133                17   2016-02-19 11:00:01.000000   2016-02-19 13:40:01.000000  /*/*/*[*]: (root) * ([ -* /*/*/*/* ] && exec /*/*/*/* -* ALL * *)
+
+
+   b) query for the messages -- query both (can also query just one to get its messages). You will see them interleaved properly in time:
+
+   > bhquery -t msg -S 205.137.89.103:18888,205.137.89.103:18889 | more
+2016-02-19T10:59:48.000000-07:00 s0 erdh[7692] 2016-02-19 10:59:48|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa418f|svc:::c0-0c0s0n0
+2016-02-19T10:59:51.000000-07:00 c0-0c0s11 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:51.000000-07:00 c0-0c0s11 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:51.000000-07:00 c0-0c0s11 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:51.000000-07:00 s0 erdh[7692] 2016-02-19 10:59:51|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa45c4|svc:::c0-0c0s0n0
+2016-02-19T10:59:53.000000-07:00 c0-0c0s8 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:53.000000-07:00 c0-0c0s8 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:53.000000-07:00 c0-0c0s8 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:54.000000-07:00 c0-0c1s4 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:54.000000-07:00 c0-0c1s4 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:54.000000-07:00 c0-0c1s4 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:54.000000-07:00 s0 erdh[7692] 2016-02-19 10:59:54|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa4dd7|svc:::c0-0c0s0n0
+2016-02-19T10:59:56.000000-07:00 s0 erd[7671] 2016-02-19 10:59:56|ec_sedc_warning|src::12:s0|pri:0x0|seqnum:0x1e67|svc:::c0-0c2s10 BC_H_NODE1_IVOC_ECB_FA
+ULT: 0x8a0 [health fault] <expected:0> | BC_H_NODE2_IVOC_ECB_FAULT: 0x8a0 [health fault] <expected:0> |
+2016-02-19T10:59:57.000000-07:00 c0-0c0s6 syslog-ng[2112]: Log statistics; dropped='tcp(AF_INET(10.100.100.1:5171))=0', processed='center(queued)=10216',
+ processed='center(received)=5108', processed='destination(messages)=5108', processed='destination(logserver)=5108', processed='source(downstream_src)=0'
+, processed='source(local_src)=5108'
+2016-02-19T10:59:57.000000-07:00 c0-0c0s10 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:57.000000-07:00 c0-0c0s10 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:57.000000-07:00 c0-0c0s10 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:57.000000-07:00 s0 erdh[7692] 2016-02-19 10:59:57|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa5203|svc:::c0-0c0s0n0
+2016-02-19T10:59:58.000000-07:00 c0-0c1s7 kernel: micro_i2c_xfer_multi: 19:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:58.000000-07:00 c0-0c1s7 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T10:59:58.000000-07:00 c0-0c1s7 kernel: micro_i2c_xfer_multi: 17:0x78 bad i2c rc value, i2c rc=0x5
+2016-02-19T11:00:00.000000-07:00 s0 erdh[7692] 2016-02-19 11:00:00|ec_smw_resiliency_hb|src::19:s0|pri:0x1|seqnum:0x84fa5a04|svc:::c0-0c0s0n0
+2016-02-19T11:00:01.000000-07:00 c0-0c0s0n1 [3174] (root) CMD (/usr/sbin/logwatch --service dmeventd)
+2016-02-19T11:00:01.000000-07:00 c0-0c2s2n1 [10289] (root) CMD (/usr/sbin/logwatch --service dmeventd)
+
