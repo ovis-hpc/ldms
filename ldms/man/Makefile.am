@@ -25,8 +25,7 @@ Plugin_vmstat.man
 pending_dist_man7_MANS= \
 Plugin_lustre2_client.man \
 Plugin_procsensors.man \
-Plugin_procstatutil.man \
-Plugin_procstatutil2.man \
+Plugin_procstat.man \
 Plugin_sysclassib.man
 
 dist_man7_MANS += Plugin_store_rabbitv3.man

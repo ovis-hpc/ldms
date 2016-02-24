@@ -57,7 +57,7 @@
 #include <sys/errno.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <stdarg.h>
+//#include <stdarg.h>
 #include <string.h>
 #include <stdbool.h>
 #include <time.h>
@@ -68,17 +68,20 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_slurmjobid.h"
+#include "ldms_jobid.h"
 
 static ldms_set_t set;
-static ldms_metric_t *metric_table;
+static ldms_schema_t schema;
 static ldmsd_msg_log_f msglog;
-static uint64_t comp_id = UINT64_MAX;
+static uint64_t compid = UINT64_MAX;
 static double period = 20; // seconds
 static double amplitude = 10; // integer height of waves 
 static double origin = 1440449892; // 8-24-2015-ish
+static int metric_offset = 1;
 
-LDMS_JOBID_GLOBALS;
+#define SAMP "synthetic"
+static char *default_schema_name = SAMP;
+LJI_GLOBALS;
 
 static const char *metric_name[4] = 
 {
@@ -88,82 +91,112 @@ static const char *metric_name[4] =
 	NULL
 };
 
-static int create_metric_set(const char *path)
+static int create_metric_set(char *instance_name, char *schema_name)
 {
-	size_t meta_sz, tot_meta_sz;
-	size_t data_sz, tot_data_sz;
-	int rc, metric_count;
-
-	metric_count = 0;
-	tot_meta_sz = 0;
-	tot_data_sz = 0;
-
-	LDMS_SIZE_JOBID_METRIC(synthetic,meta_sz,tot_meta_sz,
-		data_sz,tot_data_sz,metric_count,rc,msglog);
-	int k;
-	for (k = 0; metric_name[k] != NULL; k++) {
-		rc = ldms_get_metric_size(metric_name[k], LDMS_V_U64,
-					  &meta_sz, &data_sz);
-		if (rc)
-			return rc;
-
-		tot_meta_sz += meta_sz;
-		tot_data_sz += data_sz;
-		metric_count++;
+	int rc;
+	union ldms_value v;
+	schema = ldms_schema_new(schema_name);
+	if (!schema) {
+		rc = ENOMEM;
+		goto err;
 	}
 
-	/* Create the metric set */
-	rc = ENOMEM;
-	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
-	if (rc)
-		return rc;
-
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
-	if (!metric_table)
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
 		goto err;
-	/*
-	 * Process the file again to define all the metrics.
-	 */
-	int metric_no = 0;
+	}
 
-	LDMS_ADD_JOBID_METRIC(metric_table,metric_no,set,rc,err,comp_id);
+	metric_offset++;
+	rc = LJI_ADD_JOBID(schema);
+	if (rc < 0) {
+		goto err;
+	}
 
+	int k;
 	for (k = 0; metric_name[k] != NULL; k++) {
-		metric_table[metric_no] =
-			ldms_add_metric(set, metric_name[k], LDMS_V_U64);
-		if (!metric_table[metric_no]) {
+		rc = ldms_schema_metric_add(schema, metric_name[k], LDMS_V_U64);
+		if (rc < 0) {
 			rc = ENOMEM;
 			goto err;
 		}
-		ldms_set_user_data(metric_table[metric_no], comp_id);
-		metric_no++;
+	}
+
+	set = ldms_set_new(instance_name, schema);
+	if (!set) {
+		rc = errno;
+		goto err;
+	}
+
+	v.v_u64 = compid;
+	ldms_metric_set(set,0,&v);
+
+	LJI_SAMPLE(set,1);
+
+	v.v_u64 = 0;
+	for (k = 0; metric_name[k] != NULL; k++) {
+		ldms_metric_set(set, k + metric_offset, &v);
 	}
 	return 0;
 
  err:
-	ldms_destroy_set(set);
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
 	return rc;
+}
+
+static const char *usage(void)
+{
+	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid> origin=<f> height=<f> period=<f>]\n"
+		"    <prod_name>  The producer name\n"
+		"    <inst_name>  The instance name\n"
+		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
+		LJI_DESC
+		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n"
+		"    origin  The zero time for periodic functions (float).\n"
+		"    height  The amplitude for periodic functions (float).\n"
+		"    period  The function period (float).\n"
+	;
 }
 
 /**
  * \brief Configuration
  *
- * config name=synthetic component_id=<comp_id> set=<setname>
- *   with_jobid=<bool>
- *     comp_id     The component id value.
+ * config name=synthetic producer_name=<name> instance_name=<instance_name> [component_id=<compid> schema=<sname>] [with_jobid=<bool> origin=<f> height=<f> period=<f>]
+ *     producer_name    The producer id value.
+ *     instance_name    The set name.
+ *     component_id     The component id. Defaults to zero
+ *     sname            Optional schema name. Defaults to meminfo
+ *     bool             lookup jobid in set or not.
  *     origin      The zero time for periodic functions
  *     height      The amplitude of functions
  *     period      The function period
- *     setname     The set name.
- *     bool        include jobid in set or not.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
+	char *producer_name;
+	char *sname;
+	int rc;
+
+	producer_name = av_value(avl, "producer");
+	if (!producer_name) {
+		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
+		return ENOENT;
+	}
+
+	sname = av_value(avl, "schema");
+	if (!sname)
+		sname = default_schema_name;
+	if (strlen(sname) == 0) {
+		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
+		return EINVAL;
+	}
 
 	value = av_value(avl, "component_id");
 	if (value)
-		comp_id = strtoull(value, NULL, 0);
+		compid = strtoull(value, NULL, 0);
 
 	char *endp = NULL;
 	value = av_value(avl, "origin");
@@ -190,12 +223,19 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		}
 	}
 
-	LDMS_CONFIG_JOBID_METRIC(value,avl);
+	LJI_CONFIG(value,avl);
 
-	value = av_value(avl, "set");
-	if (value)
-		create_metric_set(value);
-
+	value = av_value(avl, "instance");
+	if (!value) {
+		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
+		return ENOENT;
+	}
+	rc = create_metric_set(value, sname);
+	if (rc) {
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		return rc;
+	}
+	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
@@ -206,17 +246,15 @@ static ldms_set_t get_set()
 
 static int sample(void)
 {
-	int metric_no;
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMS_LDEBUG,"synthetic: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_begin_transaction(set);
+	ldms_transaction_begin(set);
 
-	metric_no = 0;
-	LDMS_JOBID_SAMPLE(v,metric_table,metric_no);
+	LJI_SAMPLE(set,1);
 
 	int k;
 	for (k = 0; metric_name[k] != NULL; k++) {
@@ -242,41 +280,28 @@ static int sample(void)
 			y = 1;
 		}
 
-		v.v_u64 = llround( (amplitude * y ) + (comp_id + 1) * 2 * amplitude + 1);
-		ldms_set_metric(metric_table[metric_no], &v);
-
-		metric_no++;
+		v.v_u64 = llround( (amplitude * y ) + (compid + 1) * 2 * amplitude + 1);
+		ldms_metric_set(set, k + metric_offset, &v);
 	}
 
-	ldms_end_transaction(set);
+	ldms_transaction_end(set);
 	return 0;
 }
 
 static void term(void)
 {
+	if (schema)
+		ldms_schema_delete(schema);
+	schema = NULL;
 	if (set)
-		ldms_destroy_set(set);
+		ldms_set_delete(set);
 	set = NULL;
-
-	LDMS_JOBID_TERM;
-
 }
 
-static const char *usage(void)
-{
-	return "config name=synthetic component_id=<comp_id> set=<setname> "
-			"    comp_id     The component id value.\n"
-			"    setname     The set name.\n"
-			LDMS_JOBID_DESC
-			"    origin  The zero time for periodic functions.\n"
-			"    height  The amplitude for periodic functions.\n"
-			"    period  The function period.\n"
-	;
-}
 
 static struct ldmsd_sampler synthetic_plugin = {
 	.base = {
-		.name = "synthetic",
+		.name = SAMP,
 		.term = term,
 		.config = config,
 		.usage = usage,

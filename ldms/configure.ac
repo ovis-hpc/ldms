@@ -60,9 +60,9 @@ OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
 OPTION_DEFAULT_DISABLE([knc_sampler], [ENABLE_KNC_SAMPLER])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
-OPTION_DEFAULT_DISABLE([slurmjobid], [ENABLE_SLURMJOBID]) dnl enable defaulted when ported
-OPTION_DEFAULT_DISABLE([clock], [ENABLE_CLOCK]) dnl enable defaulted when ported
-OPTION_DEFAULT_DISABLE([synthetic], [ENABLE_SYNTHETIC]) dnl enable defaulted when ported
+OPTION_DEFAULT_ENABLE([jobid], [ENABLE_JOBID])
+OPTION_DEFAULT_ENABLE([clock], [ENABLE_CLOCK]) 
+OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
@@ -71,7 +71,7 @@ OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
-OPTION_DEFAULT_DISABLE([procstatutil2], [ENABLE_PROCSTATUTIL2]) dnl enable defaulted when ported
+OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
 
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
@@ -362,7 +362,8 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_sostest.sh
 		 scripts/ldms_local_usertest.sh
-		 scripts/ldms_local_slurmtest.sh
+		 scripts/ldms_local_jobidtest.sh
+		 scripts/ldms_local_jobidmost.sh
 		 scripts/ldms_local_valgrind.sh
 		 scripts/ldms_local_clocktest.sh
 		 scripts/ldms_local_syslog.sh
@@ -376,6 +377,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_dertest.sh
 		 scripts/ldms_local_dertest_big.sh
 		 scripts/ldms_local_procstatutil.sh
+		 scripts/ldms_local_procstat.sh
 		 scripts/ldms_local_csvorder.sh
 		 scripts/ldms_local_synthetic_test.sh
 		 scripts/ldms_local_auth_test.sh
