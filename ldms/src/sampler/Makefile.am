@@ -26,9 +26,8 @@ pkglib_LTLIBRARIES += libtimer_base.la
 
 if ENABLE_CRAY_POWER_SAMPLER
 libcray_power_sampler_la_SOURCES = cray_power_sampler.c
-libcray_power_sampler_la_CFLAGS = $(AM_CFLAGS) @POW_INCDIR_FLAG@
+libcray_power_sampler_la_CFLAGS = $(AM_CFLAGS)
 libcray_power_sampler_la_LIBADD = $(COMMON_LIBADD) \
-			     -lpow @POW_LIBDIR_FLAG@ @POW_LIB64DIR_FLAG@ \
 			     libtimer_base.la
 pkglib_LTLIBRARIES += libcray_power_sampler.la
 endif
