@@ -64,6 +64,7 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 
 #ifndef ARRAY_SIZE
@@ -86,13 +87,14 @@ static char mindex[MAXIFACE];
 
 static ldms_set_t set;
 static ldms_schema_t schema;
-static char* default_schema_name = "procnetdev";
+#define SAMP "procnetdev"
+static char* default_schema_name = SAMP;
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static uint64_t compid;
-static uint64_t jobid;
-static int metric_offset = 2;
+static int metric_offset = 1;
+LJI_GLOBALS;
 
 struct kw {
 	char *token;
@@ -113,7 +115,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open /proc/net/dev file "
+		msglog(LDMSD_LERROR, "Could not open " SAMP " file "
 				"'%s'...exiting\n",
 				procfile);
 		return ENOENT;
@@ -132,9 +134,9 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	metric_offset++;
+	rc = LJI_ADD_JOBID(schema);
 	if (rc < 0) {
-		rc = ENOMEM;
 		goto err;
 	}
 
@@ -164,8 +166,8 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	//add specialized metrics
 	v.v_u64 = compid;
 	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
+
+	LJI_SAMPLE(set,1);
 	return 0;
 
 err:
@@ -191,12 +193,11 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	int i;
 
 	char* deprecated[]={"set"};
-	int numdep = 1;
 
-	for (i = 0; i < numdep; i++){
+	for (i = 0; i < ARRAY_SIZE(deprecated); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, "procnetdev: config argument %s has been deprecated.\n",
+			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -208,19 +209,20 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 static const char *usage(void)
 {
 	return
-		"config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [schema=<sname>]\n"
+		"config name=" SAMP " producer=<prod_name> instance=<inst_name> ifaces=<ifs> [schema=<sname> with_jobid=<jid>]\n"
 		"    <prod_name>     The producer name\n"
 		"    <inst_name>     The instance name\n"
 		"    <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)\n"
 		"                    Order matters. All ifaces will be included\n"
 		"                    whether they exist of not up to a total of MAXIFACE\n"
+		LJI_DESC
 		"    <sname>         Optional schema name. Defaults to 'procnetdev'\n";
 }
 
 /**
  * \brief Configuration
  *
- *   config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [component_id=<comp_id> schema=<sname>]
+ *   config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [component_id=<comp_id> schema=<sname>] [with_jobid=<bool>]
  *     <prod_name>     The producer name
  *     <inst_name>     The instance name
  *     <comp_id>       The component id. Defaults to zero
@@ -244,13 +246,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, "procnetdev: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, "procnetdev: missing 'producer'.\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'producer'.\n");
 		return ENOENT;
 	}
 
@@ -260,23 +262,25 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		compid = 0;
 
+	LJI_CONFIG(value,avl);
+
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, "procnetdev: missing 'instance'.\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'instance'.\n");
 		return ENOENT;
 	}
 
 	sname = av_value(avl, "schema");
 	if (!sname)
 		sname = default_schema_name;
-	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "meminfo: schema name invalid.\n");
+	if (strlen(sname) == 0) {
+		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
 		return EINVAL;
 	}
 
 	ivalue = av_value(avl, "ifaces");
 	if (!ivalue) {
-		msglog(LDMSD_LERROR,"procnetdev: config missing argument ifaces=namelist\n");
+		msglog(LDMSD_LERROR,SAMP ": config missing argument ifaces=namelist\n");
 		goto err;
 	}
 	ifacelist = strdup(ivalue);
@@ -285,7 +289,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		if (niface >= (MAXIFACE-1))
 			goto err;
 		snprintf(iface[niface], 20, "%s", pch);
-		msglog(LDMSD_LDEBUG, "procnetdev: added iface <%s>\n", iface[niface]);
+		msglog(LDMSD_LDEBUG, SAMP ": added iface <%s>\n", iface[niface]);
 		niface++;
 		pch = strtok_r(NULL, ",", &saveptr);
 	}
@@ -297,7 +301,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	rc = create_metric_set(value, sname);
 	if (rc) {
-		msglog(LDMSD_LERROR, "procnetdev: failed to create a metric set.\n");
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -320,7 +324,7 @@ static int sample(void)
 	int i, j, metric_no;
 
 	if (!set){
-		msglog(LDMSD_LDEBUG, "procnetdev: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -340,6 +344,7 @@ static int sample(void)
 	/* data */
 
 	ldms_transaction_begin(set);
+	LJI_SAMPLE(set, 1);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -395,7 +400,7 @@ static void term(void)
 {
 	if (mf)
 		fclose(mf);
-	mf = 0;
+	mf = NULL;
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;
@@ -408,7 +413,7 @@ static void term(void)
 
 static struct ldmsd_sampler procnetdev_plugin = {
 	.base = {
-		.name = "procnetdev",
+		.name = SAMP,
 		.term = term,
 		.config = config,
 		.usage = usage,

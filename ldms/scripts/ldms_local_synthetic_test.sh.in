@@ -44,8 +44,15 @@ STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
 pidfile=$SOCKDIR.pid
 LOGDIR=$TESTDIR/logs
+export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+SECRET=$SOCKDIR/secret
+#export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+#export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
 export LDMSD_SOCKPATH=${TESTDIR}/run
-mkdir -p $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+echo "secretword=crashtestdummy" > $SECRET
+export LDMS_AUTH_FILE=$SECRET
+chmod go-rwx $SECRET
 # how to use ramdisk for data
 ## STORERAM=/run/shm/ldms/store/$$
 ## mkdir -p $STORERAM
@@ -59,9 +66,6 @@ export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_L
 export ZAP_LIBPATH=@pkglibdir@
 export PATH=${BUILDDIR}/sbin:$PATH
 export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
-
-export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
-export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
 
 # whack the daemons we own
 pkill ldmsd
@@ -105,7 +109,7 @@ origin=`date +%s`
 for k in $dlist; do
 echo Starting plugins on daemon$k
 echo "load name=synthetic" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$k
-echo "config name=synthetic set=localhost$k/synthetic component_id=$k period=20 height=10 origin=$origin" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$k
+echo "config name=synthetic producer=localhost$k schema=synthetic instance=synthetic component_id=$k period=20 height=10 origin=$origin" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$k
 echo "start name=synthetic interval=1000000 offset=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$k
 done
 
@@ -125,9 +129,9 @@ mysleep 1
 echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
 mysleep 2
 echo add config
-echo "config name=store_csv path=${STOREDIR} id_pos=1 altheader=0 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+echo "config name=store_csv action=init path=${STOREDIR} altheader=1 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
 echo add synthetic
-echo "store name=store_csv comp_type=node set=synthetic container=synthetic" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
+echo "store name=store_csv action=custom schema=synthetic policy=synthetic container=synthetic" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_8
 mysleep 50
 echo stopping samplers...
 pkill ldmsd

@@ -66,6 +66,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 #define PROC_FILE "/proc/vmstat"
 
@@ -73,13 +74,14 @@ static char *procfile = PROC_FILE;
 
 static ldms_set_t set;
 static ldms_schema_t schema;
-static char* default_schema_name = "vmstat";
+#define SAMP "vmstat"
+static char* default_schema_name = SAMP;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static uint64_t compid;
-static uint64_t jobid;
-static int metric_offset = 2;
+static int metric_offset = 1;
+LJI_GLOBALS;
 
 static ldms_set_t get_set()
 {
@@ -97,7 +99,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the vmstat file "
+		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
 				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
@@ -114,9 +116,9 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	metric_offset++;
+	rc = LJI_ADD_JOBID(schema);
 	if (rc < 0) {
-		rc = ENOMEM;
 		goto err;
 	}
 
@@ -142,9 +144,8 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	//add specialized metrics
 	v.v_u64 = compid;
 	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
 
+	LJI_SAMPLE(set,1);
 	return 0;
 
  err:
@@ -158,15 +159,6 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	return rc;
 }
 
-static const char *usage()
-{
-	return  "config name=vmstat producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname>]\n"
-		"    <prod_name>   The producer name\n"
-		"    <inst_name>   The instance name\n"
-                "    <compid>     Optional unique number identifier. Defaults to zero.\n"
-		"    <sname>       Optional schema name. Defaults to 'vmstat'\n";
-}
-
 /**
  * check for invalid flags, with particular emphasis on warning the user about
  */
@@ -176,18 +168,27 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	int i;
 
 	char* deprecated[]={"set"};
-	int numdep = 1;
 
-	for (i = 0; i < numdep; i++){
+	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, "vmstat: config argument %s has been deprecated.\n",
+			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
 	}
 
 	return 0;
+}
+
+static const char *usage()
+{
+	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
+		"    <prod_name>  The producer name\n"
+		"    <inst_name>  The instance name\n"
+		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
+		LJI_DESC
+		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n";
 }
 
 
@@ -205,39 +206,41 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, "vmstat: missing 'producer'\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'producer'\n");
 		return ENOENT;
 	}
 
-        value = av_value(avl, "component_id");
-        if (value)
-                compid = (uint64_t)(atoi(value));
-        else
-                compid = 0;
+	value = av_value(avl, "component_id");
+	if (value)
+		compid = (uint64_t)(atoi(value));
+	else
+		compid = 0;
+
+	LJI_CONFIG(value,avl);
 
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, "vmstat: missing 'instance'\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'instance'\n");
 		return ENOENT;
 	}
 
 	sname = av_value(avl, "schema");
-	if (!sname){
+	if (!sname) {
 		sname = default_schema_name;
 	}
-	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "vmstat: schema name invalid.\n");
+	if (strlen(sname) == 0) {
+		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
 		return EINVAL;
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, "vmstat: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
 	rc = create_metric_set(value, sname);
 	if (rc) {
-		msglog(LDMSD_LERROR, "vmstat: failed to create a metric set.\n");
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		return rc;
 	}
 
@@ -255,11 +258,11 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, "vmstat: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);
-
+	LJI_SAMPLE(set,1);
 	metric_no = metric_offset;
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -296,7 +299,7 @@ static void term(void)
 
 static struct ldmsd_sampler vmstat_plugin = {
 	.base = {
-		.name = "vmstat",
+		.name = SAMP,
 		.term = term,
 		.config = config,
 		.usage = usage
