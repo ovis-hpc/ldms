@@ -138,7 +138,7 @@ struct sampler_data {
 	uint64_t **core_metric; /* pointers into core_data per core.
 			core_metric[cpu_no][col_no] */
 
-} g = { 
+} g = {
 	.maxcpu = -2, // note: -2, not -1 for count_cpu to work right.
 	.line = NULL,
 	.line_sz = 0,
@@ -150,7 +150,7 @@ struct sampler_data {
 
 LJI_GLOBALS;
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return g.set;
 }
@@ -171,7 +171,7 @@ int measure_cpu(int *cpu_count, int *column_count, char *token, char **saveptr)
 	}
 	if (*cpu_count > -1) {
 		if (token) {
-			char *tmp = token+3; 
+			char *tmp = token+3;
 			char *end = NULL;
 			curcpu = strtol(tmp, &end, 10);
 			if (end == tmp) {
@@ -248,7 +248,7 @@ int count_cpu( int *cpu_count, int *column_count, char *token, char **saveptr) {
 	}
 	if (*cpu_count > -1) {
 		if (token) {
-			char *tmp = token+3; 
+			char *tmp = token+3;
 			char *end = NULL;
 			curcpu = strtol(tmp,&end,10);
 			if (end == tmp) {
@@ -337,7 +337,7 @@ static int create_metric_set(const char *instance_name, const char *schema_name)
 			goto err1;
 		}
 	}
-	
+
 	cpu_count = -1;
 	do {
 		char *token;
@@ -347,8 +347,8 @@ static int create_metric_set(const char *instance_name, const char *schema_name)
 			break;
 
 		/* Do not throw away first column which is the CPU 'name'.
-		 on systems where a core is downed, linux does not report 
-		it at all. keep core number in the metrics; 
+		 on systems where a core is downed, linux does not report
+		it at all. keep core number in the metrics;
 		issue empty row if missing.
 		 */
 		saveptr = NULL;
@@ -445,7 +445,7 @@ if (strcmp(token,X)==0) { \
 			FINISH_CPUS;
 			STAT_UNEXPECTED(token);
 		}
-			
+
 	} while (1);
 
 	if (g.maxcpu < 1 && cpu_count >= 0) {
@@ -507,7 +507,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=" SAMP " maxcpu=<ncpu> producer=<name> instance=<instance_name> [component_id=<compid> schema=<sname>with_jobid=<jid>]\n"
 		"    <prod_name>  The producer name\n"
@@ -521,7 +521,7 @@ static const char *usage(void)
 
 /**
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value, *endp = NULL;
 	int rc = EINVAL;
@@ -598,7 +598,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		rc = ENOMEM;
 	}
 	g.core_metric = (uint64_t **)g.core_data;
-	uint64_t *head = (uint64_t *) 
+	uint64_t *head = (uint64_t *)
 		(g.core_data + g.maxcpu * sizeof(uint64_t *));
 	int i;
 	for (i = 0; i < g.maxcpu; i++) {
@@ -611,7 +611,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return rc;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int rc = 0;
 	char *saveptr = NULL;
@@ -747,7 +747,7 @@ static int sample(void)
 		ldms_metric_set_u64(g.set, g.sum_pos[j], g.sum_data[j]);
 	}
 	ldms_metric_set_u64(g.set, MID_NCORE, ncore);
-	
+
 
 err1:
 	if (rc) {
@@ -761,7 +761,7 @@ err1:
 #undef GET_STAT_SCALAR
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (g.core_data) {
 		free(g.core_data);
