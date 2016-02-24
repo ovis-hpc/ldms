@@ -42,6 +42,8 @@ function mysleep() {
 TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
+SLURMFILE=$TESTDIR/run/ldms.slurm.jobid
+SLURMCOL=slurm.jobid
 LOGDIR=$TESTDIR/logs
 export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
 SECRET=$SOCKDIR/secret
@@ -81,42 +83,67 @@ ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -v DEBUG -r
 ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -v DEBUG -r $LDMSD_PIDFILE.3
 mysleep 1
 
+containers="clock meminfo vmstat procstat procnetdev procinterrupts"
+server_containers="procnfs sysclassib"
 
-echo Starting plugins on daemon1
-echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "config name=clock producer=localhost1 schema=clock instance=localhost1/clock component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-mysleep 1
-mysleep 1
-
-echo Starting plugins on daemon2
-echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "config name=clock producer=localhost2 schema=clock instance=localhost2/clock component_id=2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
-echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
+for i in 1 2; do
+	echo Starting plugins on daemon$i
+	echo JOBID=1000$i > $SLURMFILE.$i
+	echo "load name=jobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+	echo "config name=jobid producer=localhost$i schema=jobid instance=localhost$i/jobid component_id=$i file=$SLURMFILE.$i ifaces=wlan0,lo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+	echo "start name=jobid interval=1000000 offset=-100000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+# add $server_containers to the iterator next if on a cluster host w/ib, nfs
+	for c in $containers; do
+		echo loading $c
+		echo "load name=$c" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+		echo "config name=$c producer=localhost$i schema=$c instance=localhost$i/$c component_id=$i with_jobid=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+		echo "start name=$c interval=1000000 offset=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+	done
+done
 mysleep 2
 
-echo Starting plugins on daemon3
-echo "load name=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "config name=clock producer=localhost3 schema=clock instance=localhost3/clock component_id=3" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "start name=clock interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-mysleep 2
+# ldms_ls -h localhost -x sock -p $port3 -l
 
-echo Adding host2 to aggregator3
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port2 sets=localhost2/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-mysleep 1
-echo Adding host1 to aggregator3
-echo "add host=localhost type=active xprt=sock interval=1000000 port=$port1 sets=localhost1/clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+for i in 1 2; do
+	echo Adding host$i to aggregator3
+	setlist="localhost$i/jobid"
+	for c in $containers; do
+		setlist="$setlist,localhost$i/$c"
+	done
+	echo "add host=localhost type=active xprt=sock interval=1000000 port=6110$i sets=$setlist" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+	mysleep 1
+done
 
 mysleep 5
 echo Adding store_csv to aggregator3
 echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 mysleep 2
 echo "config name=store_csv action=init path=${STOREDIR} altheader=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
-echo "store name=store_csv action=custom schema=clock policy=clock container=clock" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+for c in jobid $containers; do
+	echo "store name=store_csv action=custom schema=$c policy=$c container=$c" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+done
 mysleep 2
 #
+echo ldms_ls on host 3:
+ldms_ls -h localhost -x sock -p $port3 
 
-mysleep 5
+echo rescheduling jobs
+for i in 1 2; do
+	echo JOBID=0 > $SLURMFILE.$i
+	mysleep 2
+	echo JOBID=2000$i > $SLURMFILE.$i
+	echo UID=12345 >> $SLURMFILE.$i
+done
+sleep 3
+# ldms_ls -h localhost -x sock -p $port1 -l
+for i in 1 2; do
+	echo JOBID=0 > $SLURMFILE.$i
+	mysleep 2
+	echo JOBID=3000$i > $SLURMFILE.$i
+	echo UID=12346 >> $SLURMFILE.$i
+	echo USER=bob >> $SLURMFILE.$i
+done
+mysleep 3
 echo ldms_ls on host 1:
 ldms_ls -h localhost -x sock -p $port1 -l
 mysleep 1
@@ -125,5 +152,11 @@ ldms_ls -h localhost -x sock -p $port2 -l
 mysleep 1
 echo ldms_ls on host 3:
 ldms_ls -h localhost -x sock -p $port3 
+pkill ldmsd
+mysleep 2
+echo data from ${STOREDIR}/node/jobid sorted by node id
+cat ${STOREDIR}/jobid/* | grep ' 1, '
+cat ${STOREDIR}/jobid/* | grep ' 2, '
+
 
 echo done;

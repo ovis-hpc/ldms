@@ -7,6 +7,16 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
 
+if ENABLE_JOBID
+AM_CFLAGS += -DENABLE_JOBID
+JOBID_LIBFLAGS = -L. -ljobid
+endif
+libjobid_la_SOURCES = ldms_jobid.c
+libjobid_la_LIBADD = $(COMMON_LIBADD)
+libjobidincludedir = $(includedir)/ovis_util
+libjobidinclude_HEADERS = ldms_jobid.h
+pkglib_LTLIBRARIES += libjobid.la
+
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
 libkgnilnd_la_LIBADD = $(COMMON_LIBADD)
@@ -15,13 +25,13 @@ endif
 
 if ENABLE_CLOCK
 libclock_la_SOURCES = clock.c
-libclock_la_LIBADD = $(COMMON_LIBADD)
+libclock_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libclock.la
 endif
 
 if ENABLE_SYNTHETIC
 libsynthetic_la_SOURCES = synthetic.c
-libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm
+libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libsynthetic.la
 endif
 
@@ -32,14 +42,6 @@ endif
 
 if ENABLE_HADOOP
 SUBDIRS += hadoop
-endif
-
-if ENABLE_SLURMJOBID
-libslurmjobid_la_SOURCES = slurmjobid.c
-libslurmjobid_la_LIBADD = $(COMMON_LIBADD)
-libslurmjobidincludedir = $(includedir)/ovis_util
-libslurmjobidinclude_HEADERS = ldms_slurmjobid.h
-pkglib_LTLIBRARIES += libslurmjobid.la
 endif
 
 if ENABLE_CRAY_SYSTEM_SAMPLER
@@ -73,7 +75,7 @@ endif
 
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
-libmeminfo_la_LIBADD = $(COMMON_LIBADD)
+libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libmeminfo.la
 endif
 
@@ -109,31 +111,31 @@ endif
 
 if ENABLE_PROCDISKSTATS
 libprocdiskstats_la_SOURCES = procdiskstats.c
-libprocdiskstats_la_LIBADD = $(COMMON_LIBADD)
+libprocdiskstats_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libprocdiskstats.la
 endif
 
 if ENABLE_PROCINTERRUPTS
 libprocinterrupts_la_SOURCES = procinterrupts.c
-libprocinterrupts_la_LIBADD = $(COMMON_LIBADD)
+libprocinterrupts_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libprocinterrupts.la
 endif
 
 if ENABLE_PROCNETDEV
 libprocnetdev_la_SOURCES = procnetdev.c
-libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
+libprocnetdev_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libprocnetdev.la
 endif
 
 if ENABLE_PROCNFS
 libprocnfs_la_SOURCES = procnfs.c
-libprocnfs_la_LIBADD = $(COMMON_LIBADD)
+libprocnfs_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libprocnfs.la
 endif
 
 if ENABLE_PROCSENSORS
 libprocsensors_la_SOURCES = procsensors.c
-libprocsensors_la_LIBADD = $(COMMON_LIBADD)
+libprocsensors_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libprocsensors.la
 endif
 
@@ -143,29 +145,29 @@ libprocstatutil_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocstatutil.la
 endif
 
-if ENABLE_PROCSTATUTIL2
-libprocstatutil2_la_SOURCES = procstatutil2.c
-libprocstatutil2_la_LIBADD = $(COMMON_LIBADD)
-libprocstatutil2_la_CFLAGS = -I$(builddir) $(AM_CFLAGS)
-pkglib_LTLIBRARIES += libprocstatutil2.la
+if ENABLE_PROCSTAT
+libprocstat_la_SOURCES = procstat.c
+libprocstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocstat_la_CFLAGS = -I$(builddir) $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libprocstat.la
 endif
 
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c
-libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad
+libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libsysclassib.la
 endif
 
 if ENABLE_VMSTAT
 libvmstat_la_SOURCES = vmstat.c
-libvmstat_la_LIBADD = $(COMMON_LIBADD)
+libvmstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libvmstat.la
 endif
 
 if ENABLE_ATASMART
 libsampler_atasmart_la_SOURCES = sampler_atasmart.c
-libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
+libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libsampler_atasmart.la
 endif
 

@@ -63,6 +63,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 #define PROC_FILE "/proc/interrupts"
 static char *procfile = PROC_FILE;
@@ -73,10 +74,13 @@ static ldmsd_msg_log_f msglog;
 static int nprocs;
 static char *producer_name;
 static ldms_schema_t schema;
-static char *default_schema_name = "procinterrupts";
+#define SAMP "procinterrupts"
+static char *default_schema_name = SAMP;
 static uint64_t compid;
-static uint64_t jobid;
-static int metric_offset = 2;
+
+static int metric_offset = 1;
+
+LJI_GLOBALS;
 
 static ldms_set_t get_set()
 {
@@ -132,9 +136,9 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	metric_offset++;
+	rc = LJI_ADD_JOBID(schema);
 	if (rc < 0) {
-		rc = ENOMEM;
 		goto err;
 	}
 
@@ -190,9 +194,8 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	//add specialized metrics
 	v.v_u64 = compid;
 	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
 
+	LJI_SAMPLE(set,1);
 	return 0;
 
 err:
@@ -203,6 +206,16 @@ err:
 		fclose(mf);
 	mf = NULL;
 	return rc;
+}
+
+static const char *usage(void)
+{
+	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
+		"    <prod_name>  The producer name\n"
+		"    <inst_name>  The instance name\n"
+		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
+		LJI_DESC
+		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n";
 }
 
 /**
@@ -218,7 +231,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, "procinterrupts: missing 'producer'.\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'producer'.\n");
 		return ENOENT;
 	}
 
@@ -228,9 +241,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
         else
                 compid = 0;
 
+	LJI_CONFIG(value,avl);
+
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, "procinterrupts: missing 'instance'.\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'instance'.\n");
 		return ENOENT;
 	}
 
@@ -244,13 +259,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, "procinterrupts: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
 	rc = create_metric_set(value, sname);
 	if (rc) {
-		msglog(LDMSD_LERROR, "procinterrupts: failed to create the metric set.\n");
+		msglog(LDMSD_LERROR, SAMP ": failed to create the metric set.\n");
 		return rc;
 	}
 
@@ -266,10 +281,12 @@ static int sample(void)
 	union ldms_value v;
 
 	if (!set){
-		msglog(LDMSD_LDEBUG, "procinterrupts: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);
+
+	LJI_SAMPLE(set, 1);
 
 	metric_no = metric_offset;
 	fseek(mf, 0, SEEK_SET);
@@ -328,18 +345,10 @@ static void term(void)
 	set = NULL;
 }
 
-static const char *usage(void)
-{
-	return  "config name=procinterrupts producer=<prod_name> instance=<inst_name> [component_id=<comp_id> schema=<sname>]\n"
-		"    <prod_name>     The producer name\n"
-		"    <inst_name>     The instance name\n"
-                "    <compid>     Optional unique number identifier. Defaults to zero.\n"
-		"    <sname>      Optional schema name. Defaults to 'procinterrupts'\n";
-}
 
 static struct ldmsd_sampler procinterrupts_plugin = {
 	.base = {
-		.name = "procinterrupts",
+		.name = SAMP,
 		.term = term,
 		.config = config,
 		.usage = usage,
