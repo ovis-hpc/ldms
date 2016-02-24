@@ -16,9 +16,13 @@ ldms_ls_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
 ldms_ls_LDADD = $(CORE)/libldms.la
 ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
-	-lzap -lmmalloc -lovis_util -lovis_auth -lcoll -lovis_third \
+	-lzap -lmmalloc -lovis_util -lcoll -lovis_third \
 	-levent -levent_pthreads -lpthread \
 	@LDFLAGS_GETTIME@
+#	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
+#	-lzap -lmmalloc -lovis_util -lovis_auth -lcoll -lovis_third \
+#	-levent -levent_pthreads -lpthread \
+#	@LDFLAGS_GETTIME@
 
 ldmsd_SOURCES = ldmsd.c ldmsd_store.c ldmsd_config.c ldmsd_request.c \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c

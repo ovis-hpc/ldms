@@ -26,9 +26,20 @@ OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 # DIST automake rules must not include them and
 # enable-<one of them> is not supported on packaged distributions.
 
+OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL], [  cray only])
+if test "$enable_gpcdlocal" = "yes"; then
+	AC_CONFIG_SUBDIRS([gpcd-support])
+	if ! test -d $srcdir/gpcd-support/gpcd; then
+		AC_MSG_ERROR([You need the gpcd-support submodule to enable it.])
+	fi
+fi
+
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS], [  requires lib])
 if test "$enable_sos" = "yes"; then
 	AC_CONFIG_SUBDIRS([sos])
+	if ! test -d $srcdir/sos/sos; then
+		AC_MSG_ERROR([You need the sos submodule to enable it.])
+	fi
 fi
 
 OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM], [  requires lib])
@@ -58,6 +69,7 @@ OPTION_WITH([libevent], [LIBEVENT], [/usr])
 dnl extra setup
 OPTION_WITH_EVENT
 
+SUBST_MAYBE([gpcdlocal])
 SUBST_MAYBE([sos])
 SUBST_MAYBE([ocm])
 SUBST_MAYBE([ldms])

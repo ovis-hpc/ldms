@@ -1049,23 +1049,23 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
 	   a separate field */
-	fprintf(fp, "#Time, Time_usec, DT, DT_usec");
-	fprintf(fp, ", ProducerName");
-	fprintf(fp, ", component_id, job_id");
+	fprintf(fp, "#Time,Time_usec,DT,DT_usec");
+	fprintf(fp, ",ProducerName");
+	fprintf(fp, ",component_id,job_id");
 
 	//Print the header using the metrics associated with this set
 	for (i = 0; i < s_handle->numder; i++){
 		if (s_handle->der[i]->writeout) {
 			if (s_handle->der[i]->dim == 1) {
-				fprintf(fp, ", %s, %s.Flag", s_handle->der[i]->name, s_handle->der[i]->name);
+				fprintf(fp, ",%s,%s.Flag", s_handle->der[i]->name, s_handle->der[i]->name);
 			} else {
 				for (j = 0; j < s_handle->der[i]->dim; j++)
-					fprintf(fp, ", %s.%d", s_handle->der[i]->name, j);
-				fprintf(fp, ", %s.Flag", s_handle->der[i]->name);
+					fprintf(fp, ",%s.%d", s_handle->der[i]->name, j);
+				fprintf(fp, ",%s.Flag", s_handle->der[i]->name);
 			}
 		}
 	}
-	fprintf(fp, ", TimeFlag\n");
+	fprintf(fp, ",TimeFlag\n");
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
@@ -2310,19 +2310,19 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 	if (!skip){
 		/* format: #Time, Time_usec, DT, DT_usec */
-		fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ", %"PRIu32,
+		fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ",%"PRIu32,
 			ts->sec, ts->usec, ts->usec);
-		fprintf(s_handle->file, ", %lu.%06lu, %lu",
+		fprintf(s_handle->file, ",%lu.%06lu,%lu",
 			diff.tv_sec, diff.tv_usec, diff.tv_usec);
 
 		if (pname != NULL){
-			fprintf(s_handle->file, ", %s", pname);
+			fprintf(s_handle->file, ",%s", pname);
 			s_handle->byte_count += strlen(pname);
 		} else {
-			fprintf(s_handle->file, ", ");
+			fprintf(s_handle->file, ",");
 		}
 
-		fprintf(s_handle->file, ", %"PRIu64", %"PRIu64,
+		fprintf(s_handle->file, ",%"PRIu64",%"PRIu64,
 			compid, jobid);
 	}
 
@@ -2344,7 +2344,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		if (!skip && s_handle->der[i]->writeout){
 			struct dinfo* di = &(dp->datavals[i]);
 			for (j = 0; j < di->dim; j++) {
-				rc = fprintf(s_handle->file, ", %" PRIu64, di->returnvals[j]);
+				rc = fprintf(s_handle->file, ",%" PRIu64, di->returnvals[j]);
 				if (rc < 0) {
 					msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
 					       __FILE__, rc, s_handle->path);
@@ -2354,7 +2354,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 					s_handle->byte_count += rc;
 				}
 			}
-			rc = fprintf(s_handle->file, ", %d", (!di->returnvalid));
+			rc = fprintf(s_handle->file, ",%d", (!di->returnvalid));
 			if (rc < 0)
 				msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
 				       __FILE__, rc, s_handle->path);
@@ -2372,7 +2372,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			setflagtime = 1;
 
 	if (!skip){
-		fprintf(s_handle->file, ", %d\n", setflagtime); //NOTE: currently only setting flag based on time
+		fprintf(s_handle->file, ",%d\n", setflagtime); //NOTE: currently only setting flag based on time
 		s_handle->byte_count += 1;
 		s_handle->store_count++;
 	}

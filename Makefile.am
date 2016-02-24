@@ -19,20 +19,25 @@ SUBDIRS = lib
 
 # we build of the maybe vars to control build order, which
 # AM_CONDITIONAL does not preserve.
-# needs lib in properly refactored world
+MAYBE_GPCDLOCAL = @MAYBE_GPCDLOCAL@
+if ENABLE_GPCDLOCAL
+GPCDSUBDIR = gpcd-support
+endif
+# sos needs lib in properly refactored world
 MAYBE_SOS = @MAYBE_SOS@
-# needs lib
+# ocm needs lib
 MAYBE_OCM = @MAYBE_OCM@
-# needs lib; optional sos, ocm
+# ldms needs lib; optional sos, ocm
 MAYBE_LDMS = @MAYBE_LDMS@
-# needs lib, sos; optional ocm
+# baler needs lib, sos; optional ocm
 MAYBE_BALER = @MAYBE_BALER@
-# needs lib; optional ocm
+# me needs lib; optional ocm
 MAYBE_ME = @MAYBE_ME@
-# needs lib; optional ocm
+# komondor needs lib; optional ocm
 MAYBE_KOMONDOR = @MAYBE_KOMONDOR@
 
-SUBDIRS += $(MAYBE_SOS) \
+SUBDIRS += $(GPCDSUBDIR) \
+$(MAYBE_SOS) \
 $(MAYBE_OCM) \
 $(MAYBE_LDMS) \
 $(MAYBE_BALER) \
@@ -44,7 +49,7 @@ util
 # For now, we ship as we expect to configure.
 # Perhaps all should be included all the time but we surround their
 # make content for dist with enable conditionals.
-DIST_SUBDIRS = lib sos ldms baler util
+DIST_SUBDIRS = gpcd-support lib sos ldms baler util
 # make dist _will_ fail for these unless we mod their .am files
 # so not included in dist.
 NODIST_SUBDIRS = ocm me komondor

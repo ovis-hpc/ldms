@@ -65,7 +65,9 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ovis_util/dstring.h"
+#if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
+#endif /* OVIS_LIB_HAVE_AUTH */
 #include <amqp_tcp_socket.h>
 #include <amqp.h>
 #include <amqp_framing.h>
@@ -93,7 +95,7 @@
  *      schema : schema name
  *
  * LDMS meta metrics are emitted on a specific frequency, but independent of
- * component_id (or rather with the assumption that they are component 
+ * component_id (or rather with the assumption that they are component
  * independent until we get a store api change).
  *
  * See also amqp_framing.h.
@@ -108,7 +110,7 @@
  * If root is empty string, the leading '.' is omitted.
  * We could easily expand the key to encode all metadata
  * root.container.schema.metric.type.producer.userdata
- * It turns out amqp has no special characters banned from 
+ * It turns out amqp has no special characters banned from
  * routing keys, though it does parse based on . down stream, so
  * we use metric_name_amqp.
  */
@@ -144,7 +146,7 @@ static ldmsd_msg_log_f msglog;
 #define PRODBUFSZ 65
 /* 65 spaces for producer/nul */
 #define PRODSPACE \
-"                                                                 " 
+"                                                                 "
 #define SHORTSTR_MAX 255 /* from amqp 091 spec */
 
 /* upper bounds for canonicalized metric names. */
@@ -277,7 +279,7 @@ static void init_props(bool extraprops,
 
 		props->headers = headers;
 		props->_flags |= AMQP_BASIC_HEADERS_FLAG;
-		
+
 	}
 }
 
@@ -754,7 +756,7 @@ int write_amqp(struct rabbitv3_metric_store *ms,
 	                           &(ms->props),
 	                           message_bytes),
 	                           "Publishing");
-	
+
 	/* msglog(LDMSD_LDEBUG, "%s: %s\n",ms->routingkey, ms->message); */
 	return rc;
 }
@@ -927,7 +929,7 @@ update_metrics(struct rabbitv3_store_instance *si, ldms_set_t set,
 			idx = si->ms_idx;
 			list = &si->ms_list;
 			datacount++;
-		} 
+		}
 		mvname = ldms_metric_name_get(set,metric_arry[i]);
 		name = (char *)mvname;
 		ms = idx_find(idx, name, strlen(name));
@@ -938,7 +940,7 @@ update_metrics(struct rabbitv3_store_instance *si, ldms_set_t set,
 		}
 		uint32_t arr_len =
 		        ldms_metric_array_get_len(set,metric_arry[i]);
-		
+
 		ms = new_metric_store(si->extraprops, si->container,
 			si->schema, name, metric_type, arr_len,
 			si->metric_names_amqp,
@@ -973,7 +975,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	if (!key) {
 		msglog(LDMSD_LERROR,"rabbitv3: oom ds\n");
 	}
-	
+
 	si = idx_find(store_idx, (void *)key, klen);
 	if (!si) {
 		/*
@@ -1044,7 +1046,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			} else {
 				idx = si->ms_idx;
 				list = &si->ms_list;
-			} 
+			}
 			ms = idx_find(idx, name, strlen(name));
 			if (ms) {
 				continue;
@@ -1156,7 +1158,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	}
 
 	int compid_index = ldms_metric_by_name(set, COMPIDNAME);
-	if (! compid_index || 
+	if (! compid_index ||
 		ldms_metric_type_get(set,compid_index) != LDMS_V_U64) {
 	/* msglog(LDMSD_LDEBUG,"rabbitv3: no u64 component_id found.\n"); */
 		comp_id = 0;
@@ -1197,7 +1199,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 				idx = si->meta_idx;
 			} else {
 				idx = si->ms_idx;
-			} 
+			}
 			ms = idx_find(idx, name, strlen(name));
 			if (!ms) {
 				msglog(LDMSD_LDEBUG,
