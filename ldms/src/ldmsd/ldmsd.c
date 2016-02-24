@@ -1877,7 +1877,7 @@ int main(int argc, char *argv[])
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3);
 
-	if (ldmsd_config_init(sockname))
+	if (sockname && ldmsd_config_init(sockname))
 		cleanup(4);
 
 	if (inet_listener_port)
