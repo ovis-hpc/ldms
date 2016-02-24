@@ -90,7 +90,7 @@ ldms_metric_t tv_nsec_metric_handle2;
 ldms_metric_t tv_dnsec_metric_handle;
 #endif
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
@@ -231,7 +231,7 @@ err:
 /**
  * \brief Configuration
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc = EINVAL;
@@ -261,7 +261,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return rc;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int raw_metric_no = 0;
 	int metric_idx = 0;
@@ -372,7 +372,7 @@ reset_to_0:
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_schema_delete(schema);
@@ -383,7 +383,7 @@ static void term(void)
 }
 
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=procstatutil producer=<prod_name> instance=<inst_name>\n"
 		"    <prod_name>     The producer name\n"

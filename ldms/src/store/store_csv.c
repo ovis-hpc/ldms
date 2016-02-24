@@ -640,7 +640,7 @@ struct kw kw_tbl[] = {
 /**
  * \brief Configuration
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct kw *kw;
 	struct kw key;
@@ -677,7 +677,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	int i;
 
@@ -688,7 +688,7 @@ static void term(void)
 
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=store_csv action=init path=<path> rollover=<num> rolltype=<num>\n"
 		"           [sequence=<order> altheader=<0/!0> userdata=<0/!0>]\n"

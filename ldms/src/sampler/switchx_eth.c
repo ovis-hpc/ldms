@@ -325,7 +325,7 @@ static int sx_create_metric_set(const char *path)
  * sx_config name=switchx set=<setname>
  *     setname     The set name.
  */
-static int sx_config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int sx_config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc = EINVAL;
@@ -350,7 +350,7 @@ static int sx_config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return rc;
 }
 
-static ldms_set_t sx_get_set()
+static ldms_set_t sx_get_set(struct ldmsd_sampler *self)
 {
 	return sx_ldms_sets[1].sx_set;
 }
@@ -467,7 +467,7 @@ err:
 	return rc;
 }
 
-static int sx_sample(void)
+static int sx_sample(struct ldmsd_sampler *self)
 {
 	int port;
 	int rc;
@@ -486,7 +486,7 @@ static int sx_sample(void)
 	}
 }
 
-static void sx_term(void)
+static void sx_term(struct ldmsd_plugin *self)
 {
 	int port;
 
@@ -502,7 +502,7 @@ static void sx_term(void)
 	}
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=switchx set=<setname>\n"
 		"    setname     The set name.\n";

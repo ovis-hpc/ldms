@@ -83,7 +83,7 @@ static uint64_t compid;
 static int metric_offset = 1;
 LJI_GLOBALS;
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
@@ -181,7 +181,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
-static const char *usage()
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
 		"    <prod_name>  The producer name\n"
@@ -192,7 +192,7 @@ static const char *usage()
 }
 
 
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
@@ -248,7 +248,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
 	int metric_no;
@@ -283,7 +283,7 @@ static int sample(void)
 	return rc;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (mf)
 		fclose(mf);

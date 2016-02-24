@@ -56,6 +56,7 @@
 #include <stdlib.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include <stdlib.h>
 
 static ldms_schema_t schema;
 static ldms_set_t set;
@@ -132,7 +133,7 @@ static int create_metric_set(const char *instance_name)
 	ldms_schema_delete(schema);
 	return rc;
 }
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	const char *producer_name = av_value(avl, "producer");
@@ -167,7 +168,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	ldms_transaction_begin(set);
 	int i, mid;
@@ -221,12 +222,12 @@ static int sample(void)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_schema_delete(schema);
@@ -236,7 +237,7 @@ static void term(void)
 	set = NULL;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=array_example producer=<prod_name> instance=<inst_name> [component_id=<compid>]\n"
 		"    <prod_name>  The producer name\n"

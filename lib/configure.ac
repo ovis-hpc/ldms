@@ -31,6 +31,7 @@ LIBS=""
 OPTION_DOC
 
 OPTION_DEFAULT_ENABLE([coll], [ENABLE_COLL])
+OPTION_DEFAULT_ENABLE([ovis-event], [ENABLE_OVIS_EVENT])
 OPTION_DEFAULT_ENABLE([mmalloc], [ENABLE_MMALLOC])
 OPTION_DEFAULT_ENABLE([ovis_ctrl], [ENABLE_OVIS_CTRL])
 OPTION_DEFAULT_ENABLE([ovis_util], [ENABLE_OVIS_UTIL])
@@ -101,6 +102,7 @@ OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
 OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
+OPTION_DEFAULT_DISABLE([ovis-event-test], [ENABLE_OVIS_EVENT_TEST])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 
 
@@ -130,6 +132,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		src/third/Makefile
 		src/coll/Makefile
 		src/mmalloc/Makefile
+		src/ovis_event/Makefile
 		src/ovis_ctrl/Makefile
 		src/ovis_util/Makefile
 		src/ovis_auth/Makefile

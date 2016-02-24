@@ -16,6 +16,31 @@ libjobid_la_LIBADD = $(COMMON_LIBADD)
 libjobidincludedir = $(includedir)/ovis_util
 libjobidinclude_HEADERS = ldms_jobid.h
 pkglib_LTLIBRARIES += libjobid.la
+libtsampler_la_SOURCES = tsampler.c tsampler.h
+libtsampler_la_LIBADD = $(COMMON_LIBADD) -lovis_event -lpthread
+pkglib_LTLIBRARIES += libtsampler.la
+
+libtimer_base_la_SOURCES = timer_base.c
+libtimer_base_la_LIBADD = $(COMMON_LIBADD) libtsampler.la $(JOBID_LIBFLAGS)
+pkglib_LTLIBRARIES += libtimer_base.la
+
+if ENABLE_CRAY_POWER_SAMPLER
+libcray_power_sampler_la_SOURCES = cray_power_sampler.c
+libcray_power_sampler_la_CFLAGS = $(AM_CFLAGS) @POW_INCDIR_FLAG@
+libcray_power_sampler_la_LIBADD = $(COMMON_LIBADD) \
+			     -lpow @POW_LIBDIR_FLAG@ @POW_LIB64DIR_FLAG@ \
+			     libtimer_base.la
+pkglib_LTLIBRARIES += libcray_power_sampler.la
+endif
+
+if ENABLE_POW
+libpower_sampler_la_SOURCES = power_sampler.c
+libpower_sampler_la_CFLAGS = $(AM_CFLAGS) @POW_INCDIR_FLAG@
+libpower_sampler_la_LIBADD = $(COMMON_LIBADD) \
+			     -lpow @POW_LIBDIR_FLAG@ @POW_LIB64DIR_FLAG@ \
+			     libtimer_base.la
+pkglib_LTLIBRARIES += libpower_sampler.la
+endif
 
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c

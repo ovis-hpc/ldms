@@ -75,7 +75,7 @@ static ldms_schema_t schema;
 static ldmsd_msg_log_f msglog;
 static uint64_t compid = UINT64_MAX;
 static double period = 20; // seconds
-static double amplitude = 10; // integer height of waves 
+static double amplitude = 10; // integer height of waves
 static double origin = 1440449892; // 8-24-2015-ish
 static int metric_offset = 1;
 
@@ -83,7 +83,7 @@ static int metric_offset = 1;
 static char *default_schema_name = SAMP;
 LJI_GLOBALS;
 
-static const char *metric_name[4] = 
+static const char *metric_name[4] =
 {
 	"sine",
 	"square",
@@ -146,7 +146,7 @@ static int create_metric_set(char *instance_name, char *schema_name)
 	return rc;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid> origin=<f> height=<f> period=<f>]\n"
 		"    <prod_name>  The producer name\n"
@@ -173,7 +173,7 @@ static const char *usage(void)
  *     height      The amplitude of functions
  *     period      The function period
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *producer_name;
@@ -239,12 +239,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	union ldms_value v;
 
@@ -288,7 +288,7 @@ static int sample(void)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_schema_delete(schema);
@@ -297,7 +297,6 @@ static void term(void)
 		ldms_set_delete(set);
 	set = NULL;
 }
-
 
 static struct ldmsd_sampler synthetic_plugin = {
 	.base = {

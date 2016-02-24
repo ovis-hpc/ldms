@@ -82,7 +82,7 @@ static int metric_offset = 1;
 
 LJI_GLOBALS;
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
@@ -208,7 +208,7 @@ err:
 	return rc;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
 		"    <prod_name>  The producer name\n"
@@ -223,7 +223,7 @@ static const char *usage(void)
  *
  * - config name=procinterrupts producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname>]
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc = 0;
 	char *sname;
@@ -273,7 +273,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
 	int metric_no;
@@ -332,7 +332,7 @@ out:
 }
 
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (mf)
 		fclose(mf);
@@ -344,7 +344,6 @@ static void term(void)
 		ldms_set_delete(set);
 	set = NULL;
 }
-
 
 static struct ldmsd_sampler procinterrupts_plugin = {
 	.base = {

@@ -470,19 +470,19 @@ static int addMetrics_DerivedCoreUtil(ldms_schema_t schema, int* cidx){
 	rc = ldms_schema_metric_add(schema, "SysSum_Perc", LDMS_V_F32);
 	if (rc < 0)
 		return ENOMEM;
-	
+
 	rc = ldms_schema_metric_add(schema, "IdleSum_Perc", LDMS_V_F32);
 	if (rc < 0)
 		return ENOMEM;
-	
+
 	rc = ldms_schema_metric_array_add(schema, "User_Perc", LDMS_V_F32_ARRAY, num_cores);
 	if (rc < 0)
 		return ENOMEM;
-	
+
 	rc = ldms_schema_metric_array_add(schema, "Sys_Perc", LDMS_V_F32_ARRAY, num_cores);
 	if (rc < 0)
 		return ENOMEM;
-	
+
 	rc = ldms_schema_metric_array_add(schema, "Idle_Perc", LDMS_V_F32_ARRAY, num_cores);
 	if (rc < 0)
 		return ENOMEM;
@@ -568,7 +568,7 @@ static int printDerivedCoreUtilVals(uint64_t* (*counters)[3], uint64_t (*sums)[3
 	float vd = 0;
 	uint64_t jiffy_delta = 0;
 	int i, j;
-	
+
 	if ((jif[curr] <= jif[!curr]) || ftime){
 		bad = 1;
 		jiffy_delta = 0;
@@ -578,7 +578,7 @@ static int printDerivedCoreUtilVals(uint64_t* (*counters)[3], uint64_t (*sums)[3
 	}
 	ldms_metric_set_u64(set, metric_no, jiffy_delta);
 	metric_no++;
-	
+
 	for (j = 0; j < 3; j++){
 		if (!bad){
 			//let this go negative
@@ -588,7 +588,7 @@ static int printDerivedCoreUtilVals(uint64_t* (*counters)[3], uint64_t (*sums)[3
 		ldms_metric_set_float(set, metric_no, vd);
 		metric_no++;
 	}
-	
+
 	for (j = 0; j < 3; j++){
 		for (i = 0; i < num_cores; i++){
 			if (!bad){
@@ -679,7 +679,7 @@ static int create_metric_set(const char *instance_name, char* schema_name, int d
 
 	if (derived){
 		rc = addMetrics_DerivedCoreUtil(schema, &coreder_idx_init);
-		if (rc != 0) 
+		if (rc != 0)
 			goto err;
 	}
 
@@ -714,7 +714,7 @@ static int create_metric_set(const char *instance_name, char* schema_name, int d
  *     sname          Optional schema name. Defaults to 'knc'
  *     metrics_type   Optional metrics type 0 = raw only. 1 = raw and derived. Defaults to raw.
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *instance;
@@ -773,12 +773,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int ret;
 
@@ -814,7 +814,7 @@ static int sample(void)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 
 	freeCoreUtil();
@@ -830,7 +830,7 @@ static void term(void)
 	set = NULL;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=knc_sampler_derived producer=<prod_name> instance=<inst_name> dev_num=<dev_num> [schema=<sname>]\n"
 		"    producer      The producer name\n"

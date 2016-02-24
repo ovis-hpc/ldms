@@ -510,7 +510,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 /**
  * \brief Configuration
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
 	char *dervalue = NULL;
@@ -603,7 +603,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (root_path)
 		free(root_path);
@@ -611,7 +611,7 @@ static void term(void)
 		free(derivedconf);
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=store_derived_csv path=<path> altheader=<0/1> derivedconf=<fullpath> ageusec=<sec>\n"
 		"         - Set the root path for the storage of csvs.\n"

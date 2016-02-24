@@ -319,7 +319,6 @@ static int create_metric_set(const char *instance_name, char *schema_name)
 	return 0;
 }
 
-
 /**
  * Populate all ports (in /sys/class/infiniband) and put into the given \c list.
  *
@@ -518,7 +517,7 @@ int open_ports(struct scib_port_list *list)
 	return 0;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return
 "config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports> [component_id=<compid> schema=<sname> with_jobid=<bool>]\n"
@@ -541,7 +540,7 @@ LJI_DESC
  * PORTS is a comma-separate list of the form CARD1.PORT1,CARD2.PORT2,...
  * 	or just a single '*' (w/o quote) for all ports
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
 	int rc = 0;
@@ -606,7 +605,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
@@ -694,7 +693,7 @@ int query_port(struct scib_port *port, float dt)
 	return 0;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	struct timeval *tmp;
 	struct timeval tv_diff;
@@ -724,7 +723,7 @@ static int sample(void)
 	return 0;
 }
 
-static void term(void){
+static void term(struct ldmsd_plugin *self){
 
 	struct scib_port *port;
 	while ((port = LIST_FIRST(&scib_port_list))) {
