@@ -118,6 +118,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -233,12 +234,16 @@ struct scib_port {
 
 LIST_HEAD(scib_port_list, scib_port);
 struct scib_port_list scib_port_list = {0};
-char rcvbuf[BUFSIZ] = {0};
+uint8_t rcvbuf[BUFSIZ] = {0};
 
+#define SAMP "sysclassib"
 static ldms_set_t set = NULL;
 static ldms_schema_t schema = NULL;
+static char *default_schema_name = SAMP;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
+static uint64_t compid;
+LJI_GLOBALS;
 
 struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
@@ -247,21 +252,36 @@ struct timeval *tv_prev = &tv[1];
 /**
  * \param setname The set name (e.g. nid00001/sysclassib)
  */
-static int create_metric_set(const char *setname)
+static int create_metric_set(const char *instance_name, char *schema_name)
 {
-	int rc, i, j;
+	int rc, i;
 	char metric_name[128];
 	struct scib_port *port;
 
 	if (set) {
-		msglog(LDMSD_LERROR, "sysclassib: Double create set: %s\n",
-				setname);
+		msglog(LDMSD_LERROR, SAMP ": Double create set: %s\n",
+				instance_name);
 		return EEXIST;
 	}
 
-	schema = ldms_schema_new("sysclassib");
+	schema = ldms_schema_new(schema_name);
 	if (!schema)
 		return ENOMEM;
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		ldms_schema_delete(schema);
+		schema = NULL;
+		return rc;
+	}
+
+	rc = LJI_ADD_JOBID(schema);
+	if (rc < 0) {
+		ldms_schema_delete(schema);
+		schema = NULL;
+		return rc;
+	}
 
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
@@ -282,27 +302,23 @@ static int create_metric_set(const char *setname)
 		}
 	}
 	/* create set and metrics */
-	set = ldms_set_new(setname, schema);
+	set = ldms_set_new(instance_name, schema);
 	if (!set) {
-		msglog(LDMSD_LERROR, "sysclassib: ldms_set_new failed, "
-				"rc: %d\n", rc);
+		rc = errno;
+		msglog(LDMSD_LERROR, SAMP ": ldms_set_new failed, "
+				"errno: %d, %s\n", rc, strerror(errno));
 		ldms_schema_delete(schema);
 		schema = NULL;
 		return errno;
 	}
+	union ldms_value v;
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
+
+	LJI_SAMPLE(set,1);
 	return 0;
 }
 
-static const char *usage(void)
-{
-	return
-"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports>\n"
-"    <prod_name>     The producer name\n"
-"    <inst_name>     The instance name\n"
-"    <ports>         A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
-"                    a * for all IB ports. If not given, '*' is assumed.\n"
-;
-}
 
 /**
  * Populate all ports (in /sys/class/infiniband) and put into the given \c list.
@@ -370,7 +386,7 @@ int populate_ports(struct scib_port_list *list, char *ports)
 {
 	int rc, n, port_no;
 	struct scib_port *port;
-	char *pstr, *tok, *s;
+	char *s;
 	char ca[64];
 	if (strcmp(ports, "*") == 0)
 		return populate_ports_wild(list);
@@ -427,7 +443,7 @@ int open_port(struct scib_port *port)
 			mgmt_classes, 3);
 
 	if (!port->srcport) {
-		msglog(LDMSD_LERROR, "sysclassib: ERROR: Cannot open CA:%s port:%d,"
+		msglog(LDMSD_LERROR, SAMP ": ERROR: Cannot open CA:%s port:%d,"
 				" ERRNO: %d\n", port->ca, port->portno,
 				errno);
 		return errno;
@@ -439,8 +455,8 @@ int open_port(struct scib_port *port)
 	 * open another port just to get LID */
 	rc = umad_get_port(port->ca, port->portno, &uport);
 	if (rc) {
-		msglog(LDMSD_LERROR, "sysclassib: umad_get_port('%s', %d) "
-				"error: %d\n", port->ca, port->portno, rc);
+		msglog(LDMSD_LERROR, SAMP ": umad_get_port('%s', %d) "
+				": %d\n", port->ca, port->portno, rc);
 		return rc;
 	}
 
@@ -452,8 +468,8 @@ int open_port(struct scib_port *port)
 	p = pma_query_via(rcvbuf, &port->portid, port->portno, 0,
 			CLASS_PORT_INFO, port->srcport);
 	if (!p) {
-		msglog(LDMSD_LERROR, "sysclassib: pma_query_via ca: %s port: %d"
-				" error: %d\n", port->ca, port->portno, errno);
+		msglog(LDMSD_LERROR, SAMP ": pma_query_via ca: %s port: %d"
+				"  %d\n", port->ca, port->portno, errno);
 		return errno;
 	}
 	memcpy(&cap, rcvbuf + 2, sizeof(cap));
@@ -461,7 +477,7 @@ int open_port(struct scib_port *port)
 			| IB_PM_EXT_WIDTH_NOIETF_SUP);
 
 	if (!port->ext) {
-		msglog(LDMSD_LERROR, "sysclassib: WARNING: Extended query not "
+		msglog(LDMSD_LERROR, SAMP ": WARNING: Extended query not "
 				"supported for %s:%d, the sampler will reset "
 				"counters every query\n", port->ca, port->portno);
 	}
@@ -502,6 +518,20 @@ int open_ports(struct scib_port_list *list)
 	return 0;
 }
 
+static const char *usage(void)
+{
+	return
+"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports> [component_id=<compid> schema=<sname> with_jobid=<bool>]\n"
+"    <prod_name>     The producer name\n"
+"    <inst_name>     The instance name\n"
+"    <ports>         A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
+"                    a * for all IB ports. If not given, '*' is assumed.\n"
+"    <compid>     Optional unique number identifier. Defaults to zero.\n"
+LJI_DESC
+"    <sname>      Optional schema name. Defaults to '" SAMP "'\n"
+;
+}
+
 /**
  * \brief Configuration
  *
@@ -515,20 +545,38 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 
 	int rc = 0;
-	char *value;
 	char *setstr;
+	char *sname;
 	char *ports;
+	char *value;
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, "sysclassib: missing 'producer'\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'producer'\n");
 		return ENOENT;
 	}
 
+	value = av_value(avl, "component_id");
+	if (value)
+		compid = (uint64_t)(atoi(value));
+	else
+		compid = 0;
+
+	LJI_CONFIG(value,avl);
+
 	setstr = av_value(avl, "instance");
 	if (!setstr) {
-		msglog(LDMSD_LERROR, "sysclassib: missing 'instance'\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'instance'\n");
 		return ENOENT;
+	}
+
+	sname = av_value(avl, "schema");
+	if (!sname) {
+		sname = default_schema_name;
+	}
+	if (strlen(sname) == 0){
+		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
+		return EINVAL;
 	}
 
 	ports = av_value(avl, "ports");
@@ -536,18 +584,22 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		ports = "*";
 
 	rc = populate_ports(&scib_port_list, ports);
-	if (rc)
+	if (rc) {
+		msglog(LDMSD_LINFO, SAMP ": Failed to find ports matching %s.\n",ports);
 		return rc;
+	}
 
 	rc = open_ports(&scib_port_list);
-	if (rc)
+	if (rc) {
+		msglog(LDMSD_LINFO, SAMP ": Failed to open ports.\n");
 		return rc;
+	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, "procsysclassib: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
-	rc = create_metric_set(setstr);
+	rc = create_metric_set(setstr, sname);
 	if (rc)
 		return rc;
 	ldms_set_producer_name_set(set, producer_name);
@@ -580,7 +632,6 @@ int query_port(struct scib_port *port, float dt)
 	void *p;
 	int rc;
 	uint64_t v;
-	float r;
 	int i, j;
 	if (!port->srcport) {
 		rc = open_port(port);
@@ -591,7 +642,7 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LERROR, "sysclassib: Error querying %s.%d, errno: %d\n",
+		msglog(LDMSD_LERROR, SAMP ": Error querying %s.%d, errno: %d\n",
 				port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
@@ -628,7 +679,7 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS_EXT, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LERROR, "sysclassib: Error extended querying %s.%d, "
+		msglog(LDMSD_LERROR, SAMP ": Error extended querying %s.%d, "
 				"errno: %d\n", port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
@@ -645,18 +696,13 @@ int query_port(struct scib_port *port, float dt)
 
 static int sample(void)
 {
-	int rc;
-	char *s;
-	char lbuf[32];
-	union ldms_value v, vr;
-	int i,j;
 	struct timeval *tmp;
 	struct timeval tv_diff;
 	float dt;
 	struct scib_port *port;
 
-	if (!set){
-		msglog(LDMSD_LDEBUG, "sysclassib: plugin not initialized\n");
+	if (!set) {
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -665,6 +711,7 @@ static int sample(void)
 	dt = tv_diff.tv_sec + tv_diff.tv_usec / 1e06f;
 
 	ldms_transaction_begin(set);
+	LJI_SAMPLE(set,1);
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		/* query errors are handled in query_port() function */
 		query_port(port, dt);
@@ -696,10 +743,10 @@ static void term(void){
 
 static struct ldmsd_sampler sysclassib_plugin = {
 	.base = {
-		.name = "sysclassib",
+		.name = SAMP,
 		.term = term,
 		.config = config,
-		.usage = usage,
+		.usage = usage
 	},
 	.get_set = get_set,
 	.sample = sample,

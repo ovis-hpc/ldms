@@ -63,6 +63,7 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 /**
  * File: /proc/net/rpc/nfs
@@ -118,13 +119,14 @@ static int numvars[MAXOPTS] = { 2, 21 };
 
 static ldms_set_t set;
 static ldms_schema_t schema;
-static char *default_schema_name = "procnfs";
+#define SAMP "procnfs"
+static char *default_schema_name = SAMP;
 static FILE *mf;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static uint64_t compid;
-static uint64_t jobid;
-static int metric_offset = 2;
+static int metric_offset = 1;
+LJI_GLOBALS;
 
 static ldms_set_t get_set()
 {
@@ -140,7 +142,7 @@ static int create_metric_set(const char *path, char* schema_name)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open /proc/net/rpc/nfs file "
+		msglog(LDMSD_LERROR, SAMP ": Could not open /proc/net/rpc/nfs file "
 				"'%s'...exiting\n",
 				procfile);
 		return ENOENT;
@@ -160,9 +162,9 @@ static int create_metric_set(const char *path, char* schema_name)
 		goto err;
 	}
 
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	metric_offset++;
+	rc = LJI_ADD_JOBID(schema);
 	if (rc < 0) {
-		rc = ENOMEM;
 		goto err;
 	}
 
@@ -186,8 +188,8 @@ static int create_metric_set(const char *path, char* schema_name)
 	//add specialized metrics
 	v.v_u64 = compid;
 	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
+
+	LJI_SAMPLE(set,1);
 	return 0;
 
 err:
@@ -200,14 +202,6 @@ err:
 	return rc;
 }
 
-static const char *usage(void)
-{
-	return  "config name=procnfs producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname>]\n"
-		"    <prod_name>     The producer name\n"
-		"    <inst_name>     The instance name\n"
-		"    <compid>        Optional unique number identifier. Defaults to zero.\n"
-		"    <sname>         Optional schema name. Defaults to 'procnfs'\n";
-}
 
 /**
  * check for invalid flags, with particular emphasis on warning the user about
@@ -218,12 +212,11 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	int i;
 
 	char* deprecated[]={"set"};
-	int numdep = 1;
 
-	for (i = 0; i < numdep; i++){
+	for (i = 0; i < (sizeof(deprecated)/sizeof(deprecated[0])); i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, "procnfs: config argument %s has been deprecated.\n",
+			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -232,15 +225,25 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	return 0;
 }
 
+static const char *usage(void)
+{
+	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
+		"    <prod_name>  The producer name\n"
+		"    <inst_name>  The instance name\n"
+		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
+		LJI_DESC
+		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n";
+}
 
 /**
  * \brief Configuration
  *
- * config name=procnfs producer_name=<comp_id> instance_name=<instance_name> [component_id=<compid> schema=<sname>]
- *     producer_name      The producer id value.
+ * config name=procnfs producer_name=<name> instance_name=<instance_name> [component_id=<compid> schema=<sname>] [with_jobid=<bool>]
+ *     producer_name    The producer id value.
  *     instance_name    The set name.
  *     component_id     The component id. Defaults to zero
  *     sname            Optional schema name. Defaults to meminfo
+ *     bool             lookup jobid for set or not.
  */
 static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -255,13 +258,13 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, "procnfs: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
-		msglog(LDMSD_LERROR, "procnfs: missing 'producer'\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'producer'\n");
 		return ENOENT;
 	}
 
@@ -271,9 +274,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	else
 		compid = 0;
 
+	LJI_CONFIG(value,avl);
+
 	value = av_value(avl, "instance");
 	if (!value) {
-		msglog(LDMSD_LERROR, "procnfs: missing 'instance'\n");
+		msglog(LDMSD_LERROR, SAMP ": missing 'instance'\n");
 		return ENOENT;
 	}
 
@@ -281,14 +286,14 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	if (!sname)
 		sname = default_schema_name;
 	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "meminfo: schema name invalid.\n");
+		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
 		return EINVAL;
 	}
 
 
 	rc = create_metric_set(value, sname);
 	if (rc) {
-		msglog(LDMSD_LERROR, "procnfs: failed to create the metric set.\n");
+		msglog(LDMSD_LERROR, SAMP ": failed to create the metric set.\n");
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
@@ -309,10 +314,12 @@ static int sample(void)
 	union ldms_value v[23];
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, "procnfs: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
 	ldms_transaction_begin(set);
+
+	LJI_SAMPLE(set, 1);
 
 	fseek(mf, 0, SEEK_SET);
 	/*
@@ -382,7 +389,7 @@ static void term(void)
 
 static struct ldmsd_sampler procnfs_plugin = {
 	.base = {
-		.name = "procnfs",
+		.name = SAMP,
 		.term = term,
 		.config = config,
 		.usage = usage,
