@@ -1,5 +1,6 @@
 SUBDIRS = . test/
 
+bin_PROGRAMS =
 lib_LTLIBRARIES =
 AM_CFLAGS = -I@top_srcdir@/src/
 
@@ -63,3 +64,9 @@ libbin_test_la_CFLAGS = $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@
 libbin_test_la_LIBADD = ../baler/libbaler.la \
 			-lpthread @OVIS_LIB_LIBDIR_FLAG@ @OVIS_LIB_LIB64DIR_FLAG@
 lib_LTLIBRARIES += libbin_test.la
+
+bsos_reindex_SOURCES = bsos_reindex.c
+bsos_reindex_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
+bsos_reindex_LDADD = ../baler/libbaler.la \
+		     -lsos -lods @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
+bin_PROGRAMS += bsos_reindex
