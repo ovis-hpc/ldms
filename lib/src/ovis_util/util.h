@@ -55,11 +55,43 @@
 #include <stdio.h>
 #include <unistd.h>
 
+/*
+ * This file aggregates simple utilities for key/value list parsing,
+ * number scaling by suffix, and spawning a trackable child.
+ */
+
 struct attr_value {
 	char *name;
 	char *value;
 };
 
+/** 
+ * Fixed upper bound in size key/value lists can be created and used
+ * as demonstrated in the following example.
+ * #include "ovis_util/util.h"
+ * int max_pairs = 10;
+ * int max_words = 10;_
+ * struct attr_value_list *kvl = av_new(max_words);
+ * struct attr_value_list *avl = av_new(max_pairs);
+ * char *data = "a=b\nc=d e=f\n#g=h\n	i=j k\n";
+ * tokenize(data,kvl,avl);
+ * // producing list kvl containing "k" and
+ * // avl containing pairs [a,b] [c,d] [e,f] [#g,h] [i,j]
+ * char *value = av_value(avl,"w");
+ * if (value != NULL) 
+ * 	printf("unexpected element in avl\n");
+ *
+ * Handling an unbounded list size becomes a bounded problem by
+ * estimating the maximum possible tokens as follows for string s.
+ * int size = 1;
+ * char *t = s;
+ * while (t[0] != '\0') {
+ * 	if (isspace(t[0])) size++;
+ * 	t++;
+ * }
+ * struct attr_value_list *avl = av_new(size);
+ * 
+ */
 struct attr_value_list {
 	int size;
 	int count;
@@ -85,6 +117,8 @@ char *av_value_at_idx(struct attr_value_list *av_list, int idx);
 /**
  * \brief Tokenize the string \c cmd into the keyword list \c kwl
  * and the attribute list \c avl
+ * \return nonzero if lists give are too small to hold all words or
+ * pairs found in cmd, else 0.
  */
 int tokenize(char *cmd, struct attr_value_list *kwl,
 	     struct attr_value_list *avl);
@@ -106,13 +140,13 @@ size_t ovis_get_mem_size(const char *s);
  * This function call will fork and execute the given command with bash. It is
  * non-blocking, i.e. the function returns right away after fork (not after the
  * child process finished execution). Caller can handle child process
- * termination by handling SIGCHLD (see signal(7)), or using a variaion of
+ * termination by handling SIGCHLD (see signal(7)), or using a variation of
  * wait(2).
  *
  * This utility function also close all inherited file descriptors (including
  * STDIN, STDOUT and STDERR).
  *
- * \retval pid The PID of the first forked child.
+ * \retval pid The PID of the forked child.
  */
 pid_t ovis_execute(const char *command);
 
