@@ -237,6 +237,7 @@ struct lustre_svc_stats {
 	 */
 	int mh_status_idx;
 	ldms_set_t set;
+	int mlen;
 	struct lustre_metric_ctxt mctxt[0];
 };
 
