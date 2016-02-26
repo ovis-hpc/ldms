@@ -84,6 +84,7 @@ struct lustre_svc_stats* lustre_svc_stats_alloc(const char *path, int mlen)
 		goto err1;
 	s->tv_cur = &s->tv[0];
 	s->tv_prev = &s->tv[1];
+	s->mlen = mlen;
 	return s;
 err1:
 	free(s);
@@ -165,6 +166,8 @@ int __add_lss_metric_routine(ldms_schema_t schema,
 	return 0;
 }
 
+void lms_close_file(struct lustre_metric_src *lms);
+
 int lms_open_file(struct lustre_metric_src *lms)
 {
 	if (lms->f)
@@ -183,9 +186,18 @@ int lms_open_file(struct lustre_metric_src *lms)
 		rc = EINVAL;
 		goto out;
 	}
-	lms->f = fopen(p.we_wordv[0], "rt");
-	if (!lms->f)
+
+	lms->f = fopen(p.we_wordv[0], "r");
+	if (!lms->f) {
 		rc = errno;
+		goto out;
+	}
+
+	/* set unbuffered mode */
+	rc = setvbuf(lms->f, NULL, _IONBF, 0);
+	if (rc) {
+		lms_close_file(lms);
+	}
 out:
 	wordfree(&p);
 	return rc;
@@ -255,17 +267,30 @@ err0:
 	return ENOMEM;
 }
 
+void __lss_reset(ldms_set_t set, struct lustre_svc_stats *lss)
+{
+	int i;
+	union ldms_value value = {0};
+	for (i = 0; i < lss->mlen; i++){
+		ldms_metric_set(set, lss->mctxt[i].metric_idx, &value);
+	}
+}
+
 #define __LBUF_SIZ 256
 int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 {
 	int rc = 0;
 
 	if (!lss->lms.f) {
-		if (lss->mh_status_idx != -1)
-			ldms_metric_set_u64(set, lss->mh_status_idx, 0);
 		rc = lms_open_file(&lss->lms);
 		if (rc)
-			goto out;
+			goto err;
+	}
+
+	rc = fseek(lss->lms.f, 0, SEEK_SET);
+	if (rc) {
+		rc = errno;
+		goto err;
 	}
 
 	if (lss->mh_status_idx != -1)
@@ -281,7 +306,7 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 	/* The first line is timestamp, we can ignore that */
 	char *s = fgets(lbuf, __LBUF_SIZ, lss->lms.f);
 	if (!s)
-		goto out;
+		goto err;
 	gettimeofday(lss->tv_cur, 0);
 	struct timeval dtv;
 	timersub(lss->tv_cur, lss->tv_prev, &dtv);
@@ -317,10 +342,17 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 	struct timeval *tmp = lss->tv_cur;
 	lss->tv_cur = lss->tv_prev;
 	lss->tv_prev = tmp;
-out:
+
+	goto out;
+
+err:
+	__lss_reset(set, lss);
+	if (lss->mh_status_idx != -1)
+		ldms_metric_set_u64(set, lss->mh_status_idx, 0);
 	if (lss->lms.f) {
 		lms_close_file(&lss->lms);
 	}
+out:
 	return rc;
 }
 
@@ -332,28 +364,38 @@ int __single_sample(ldms_set_t set, struct lustre_single *ls)
 	if (!ls->lms.f) {
 		rc = lms_open_file(&ls->lms);
 		if (rc)
-			goto out;
+			goto err;
 	}
+
+	rc = fseek(ls->lms.f, 0, SEEK_SET);
+	if (rc) {
+		rc = errno;
+		goto err;
+	}
+
 	fseek(ls->lms.f, 0, SEEK_SET);
 	char line[64], *s;
 	s = fgets(line, 64, ls->lms.f);
 	if (!s) {
 		rc = ENOENT;
-		goto out;
+		goto err;
 	}
 	rc = sscanf(s, "%"PRIu64, &v.v_u64);
 	if (rc < 1) {
 		v.v_u64 = 0;
 		rc = errno;
-		goto out;
+		goto err;
 	}
 	while (fgets(line, 64, ls->lms.f)) {
 		/* read until end of file */
 	}
 	rc = 0;
-out:
+
+	goto out;
+err:
 	if (ls->lms.f)
 		lms_close_file(&ls->lms);
+out:
 	ldms_metric_set(set, ls->sctxt.metric_idx, &v);
 	return rc;
 }
