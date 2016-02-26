@@ -1,0 +1,28 @@
+This directory contains the following files:
+ldmsd.agg -- Sample ldmsd aggregator init script
+ldmsd.sampler -- Sample ldmsd sampler init script
+ldmsd.conf.fail-over -- Configuration file to be sourced by the ldmsd init script (utilizes sample fail-over configurations)
+ldmsd.conf.trivial -- Configuration file to be sourced by the ldmsd init script (utilizes trivial sample aggregation configuration)
+
+Configuration:
+The following directories are to differentiate init scripts with the same name "ldmsd" by type
+aggregator_nodes -- cp ldmsd.agg aggregator_nodes/ldmsd
+compute_nodes -- cp ldmsd.sampler compute_nodes/ldmsd
+
+Use whichever configuration you like (e.g., cp ldmsd.conf.trivial ldmsd.conf)
+
+Note1: The configuration files should work for both samplers and aggregators
+Note2: The paths are configured to point to MY build of ldms
+Note3: The path to the configuration file is set to: CONFFILE=/tmp/opt/ovis/etc/ldmsd.conf
+Note4: Sample aggregation configuration files, used in the fail-over configuration example, are located in: ovis/agg_conf/
+Note5: Sample trivial aggregation configuration script and host examples, used in the trivial configuration example, are located in: ovis/trivial/
+
+Operation:
+Assuming all paths are set properly
+
+cd <appropriate dir> 
+./ldmsd start -- starts daemon and either sampler configuration or aggregator configuration
+./ldmsd restart -- stops daemon if running and starts again
+./ldmsd stop -- stops daemon
+./ldmsd status -- returns status (one of running (running), unused (not running), done (running), or failed (not running) depending on environment)
+

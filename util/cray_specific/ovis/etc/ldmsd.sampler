@@ -1,0 +1,339 @@
+#!/bin/sh
+#
+# ldmsd         Start up the ldms server daemon
+#
+# chkconfig: 2345 98 98
+# description:  ldmsd is a daemon for data collection using plugins
+#               and ldmsd to ldmsd communication
+#
+# processname: ldmsd
+# PIDFILES: /var/run/ldmsd.pid -- ldmsd pid file
+
+### BEGIN INIT INFO
+# Provides: ldmsd
+# Required-Start: $local_fs $network $syslog
+# Required-Stop: $local_fs $syslog
+# Should-Start: $syslog
+# Should-Stop: $network $syslog
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 2 6
+# Short-Description: Start up the local ldmsd daemon
+# Description:  ldmsd is a daemon for data collection using plugins
+#               and ldmsd to ldmsd communication
+### END INIT INFO
+# Init script for starting samplers
+#set -x
+# source function library
+. /etc/rc.status
+
+# Reset status
+rc_reset
+
+RETVAL=0
+PROG="ldmsd"
+PROGCTL="ldmsctl"
+PIDFILE=/var/run/ldmsd.pid
+#LOCKFILE=/var/lock/$PROG
+CONFFILE=/tmp/opt/ovis/etc/ldmsd.conf
+
+# source ldmsd configuration file if it exists else fail
+if [ -f $CONFFILE ]; then
+    . $CONFFILE
+else
+    echo -n >&2 "$0: \"$CONFFILE\" config file missing. Exiting"
+    rc_status -v
+    rc_exit
+fi
+
+if [ -z $LDMSD ]; then
+    echo -n >&2 "$0: "LDMSD" not defined. Exiting"
+    rc_status -v
+    rc_exit
+fi
+
+ARG=$1
+
+#runlevel=$(set -- $(runlevel); eval "echo \$$#" )
+start()
+{
+        echo -n $"Starting $PROG: "
+        test -x $LDMSD || rc_exit
+
+        if [[ ! -z $SOCKPATH ]]; then
+                test -d $SOCKPATH || mkdir -p $SOCKPATH
+        else
+                rc_status -v
+                echo -n >&2 "$0: \"$SOCKPATH\" not defined. Exiting"
+                rc_exit
+        fi
+
+	if [ -z $LDMSD_LOG_PATH ] && [ ${VERBOSITY} != "QUIET" ]; then
+		rc_status -v
+		echo -n >&2 "$0: LDMSD_LOG_PATH not defined AND verbosity set to \"$VERBOSITY\". Exiting"
+		rc_exit
+	else
+		test -d $LDMSD_LOG_PATH || mkdir -p $LDMSD_LOG_PATH 
+		generate_compute_config_file
+		RETVAL=$?
+		if [ $RETVAL -eq 0 ]; then
+			$LDMSD -x $XPRT_LISTEN:$PORT_LISTEN -S ${SOCKPATH}/${SOCKNAME} -v ${VERBOSITY} -c ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE} > /dev/null 2>&1
+		RETVAL=$?
+		fi
+	fi
+
+        if [ $RETVAL -ne 0 ]; then
+                op_failed
+                rc_status -v
+                cleanup_ldmsctl
+                cleanup_files
+                rc_exit
+        fi
+
+# If running ldmsd succeeded then write pid to $PIDFILE. 
+# Note that this uses the latest instance of $PROG running on the system 
+# and there is a small potential for a race condition if another instance is started 
+# between running the program and getting the PID
+	PID=
+	PID="$( pidof -o %PPID $PROG | awk '{print $1}')"
+#	touch $LOCKFILE
+	echo $PID > $PIDFILE
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ]; then
+		stop
+		rc_exit
+	fi
+
+}
+
+stop()
+{
+# Make sure kill is in PATH
+        export PATH=/bin:/usr/bin:$PATH
+
+        echo -n $"Stopping $PROG: "
+        CURR_LDMSD_PID=
+        PID=
+
+        CURR_LDMSD_PID="$( pidof -o %PPID $PROG )"
+
+	test -s $PIDFILE
+       	RETVAL=$?
+       	if [ $RETVAL -eq 0 ]; then
+		MYPID="$( cat $PIDFILE )"
+		for PID in $CURR_LDMSD_PID
+		do
+#			Only kill a PID matching that in $PIDFILE
+			if [ "X$PID" = "X$MYPID" ] ; then
+				kill $PID
+			fi
+		done
+       	else
+		op_failed
+#		echo "No running LDMSD processes to kill"
+       	fi
+
+        # If we are in halt or reboot runlevel kill all running sessions
+        # so the TCP connections are closed cleanly
+        if [ "x$runlevel" = x0 -o "x$runlevel" = x6 ] ; then
+            trap '' TERM
+            killall -q $PROG 2>/dev/null
+            trap TERM
+        fi
+        cleanup_ldmsctl
+        cleanup_files
+        RETVAL=$?
+}
+
+cleanup_ldmsctl()
+{
+#        echo "Cleaning up any leftover $PROGCTL processes..."
+        if [ -n "`pgrep $PROGCTL`" ] ; then
+                killall -q $PROGCTL
+                RETVAL=$?
+                if [ $RETVAL -eq 1 ]; then echo "Failed to kill $PROGCTL processes."; fi
+        fi
+}
+
+cleanup_files()
+{
+#       echo "Cleaning up related files and dirs..."
+       	test -f $PIDFILE  && rm -f $PIDFILE
+#	test -f $LOCKFILE  && rm -f $LOCKFILE
+	test -S ${SOCKPATH}/${SOCKNAME} && rm -f ${SOCKPATH}/${SOCKNAME}
+	sleep 1
+	test -d $SOCKPATH && rmdir $SOCKPATH
+	test -d $SOCKPATH/../ldmsctl && rmdir $SOCKPATH/../ldmsctl
+}
+
+# Since checkproc doesn't exist in the base image, implement stripped down functionality
+my_checkproc() {
+	PID=
+        MYPID=
+        CURR_LDMSD_PID=
+	CURR_NUM_LDMSD_PID=
+
+        test -s $PIDFILE
+        RETVAL=$?
+
+	if [[ $RETVAL -eq 0 ]]; then
+		MYPID="$( cat $PIDFILE )"
+	        CURR_LDMSD_PID="$( pidof -o %PPID $PROG )"
+		CURR_NUM_LDMSD_PID="$( echo $CURR_LDMSD_PID | wc -w)"
+	else
+#		$PIDFILE missing
+		return 3;
+	fi
+
+	if [ $CURR_NUM_LDMSD_PID -ge 1 ]; then
+		for PID in $CURR_LDMSD_PID
+		do
+			if [ "X$PID" = "X$MYPID" ]; then
+#		                My ldmsd is already running
+				return 0;
+			fi
+		done
+#		Running ldmsd process found but not mine"
+		return 4;
+	elif [ $CURR_NUM_LDMSD_PID -eq 0 ]; then
+#               No running ldmsd process but pid file found"
+                return 1;
+		
+	fi
+}
+
+rh_status() {
+#        echo "Running my_checkproc in rh_status"
+        my_checkproc
+	rc_status -v
+}
+
+rh_status_q() {
+#        echo "Running my_checkproc in rh_status_q"
+        my_checkproc
+}
+
+case "$ARG" in
+        start)
+                rh_status_q
+                RETVAL=$?
+                if [ $RETVAL -eq 0 ]; then
+			echo $"$PROG already running: "
+                        exit 0;
+                elif [ $RETVAL -eq 1 ]; then
+#                       echo "No $PROG process but pid file found. Cleaning up files"
+                        cleanup_files
+                        start
+			remove_config_file
+                elif [ $RETVAL -eq 4 ]; then
+#                       echo "Running $PROG process not mine. Cleaning up files"
+#			Should check to make sure listening ports or unix domain sockets don't conflict
+                        cleanup_files
+                        start
+			remove_config_file
+                else
+#                       echo "No $PROG process and no pid file found."
+                        cleanup_files
+                        start
+			remove_config_file
+                fi
+		rh_status
+                ;;
+        stop)
+                rh_status_q
+                RETVAL=$?
+                if [ $RETVAL -eq 0 ]; then
+	                stop
+		else
+			echo -n $"$PROG not running: "
+		fi
+                rh_status_q
+                RETVAL=$?
+                if [ $RETVAL -eq 0 ]; then
+			op_failed;
+			rc_status -v;
+			exit 0;
+                elif [ $RETVAL -eq 1 ]; then
+#                       echo "No $PROG process but pid file found. Cleaning up files"
+                        cleanup_files
+			op_succeeded;
+			rc_status -v;
+			exit 0;
+                elif [ $RETVAL -eq 4 ]; then
+#                       echo "Running $PROG process but not mine. Cleaning up files"
+                        cleanup_files
+			op_succeeded;
+			rc_status -v;
+			exit 0;
+                else
+#                       echo "No $PROG process and no pid file found."
+                        cleanup_files
+			op_succeeded;
+			rc_status -v;
+			exit 0;
+                fi
+                ;;
+        restart)
+#		Stop the service if running
+                rh_status_q
+                RETVAL=$?
+                if [ $RETVAL -eq 0 ]; then
+	                stop
+		else
+			echo -n $"$PROG not running: "
+		fi
+                rh_status_q
+                RETVAL=$?
+                if [ $RETVAL -eq 0 ]; then
+			op_failed;
+			rc_status -v;
+			exit 0;
+                elif [ $RETVAL -eq 1 ]; then
+#                       echo "No $PROG process but pid file found. Cleaning up files"
+                        cleanup_files
+			op_succeeded;
+			rc_status -v;
+                elif [ $RETVAL -eq 4 ]; then
+#                       echo "Running $PROG process but not mine. Cleaning up files"
+                        cleanup_files
+			op_succeeded;
+			rc_status -v;
+                else
+#                       echo "No $PROG process and no pid file found."
+                        cleanup_files
+			op_succeeded;
+			rc_status -v;
+                fi
+
+# 		Now start the service
+                rh_status_q
+                RETVAL=$?
+                if [ $RETVAL -eq 0 ]; then
+			echo -n $"$PROG still running: "
+                        exit 0;
+                elif [ $RETVAL -eq 1 ]; then
+#                       echo "No $PROG process but pid file found. Cleaning up files"
+                        cleanup_files
+                        start
+			remove_config_file
+                elif [ $RETVAL -eq 4 ]; then
+#                       echo "Running $PROG process not mine. Cleaning up files"
+#			Should check to make sure listening ports or unix domain sockets don't conflict
+                        cleanup_files
+                        start
+			remove_config_file
+                else
+#                       echo "No $PROG process and no pid file found."
+                        cleanup_files
+                        start
+			remove_config_file
+                fi
+		rh_status
+                ;;
+        status)
+                rh_status
+                ;;
+        *)
+                echo $"Usage: $0 {start|stop|restart|status}"
+                RETVAL=2
+esac
+exit $RETVAL
