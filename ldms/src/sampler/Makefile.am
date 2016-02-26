@@ -9,18 +9,20 @@ COMMON_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
 
 if ENABLE_JOBID
 AM_CFLAGS += -DENABLE_JOBID
-JOBID_LIBFLAGS = -L. -ljobid
-endif
+JOBID_LIBFLAGS = libjobid.la
 libjobid_la_SOURCES = ldms_jobid.c
 libjobid_la_LIBADD = $(COMMON_LIBADD)
 libjobidincludedir = $(includedir)/ovis_util
 libjobidinclude_HEADERS = ldms_jobid.h
 pkglib_LTLIBRARIES += libjobid.la
+endif
+
+if ENABLE_TSAMPLER
 libtsampler_la_SOURCES = tsampler.c tsampler.h
 libtsampler_la_LIBADD = $(COMMON_LIBADD) -lovis_event -lpthread
 pkglib_LTLIBRARIES += libtsampler.la
 
-libtimer_base_la_SOURCES = timer_base.c
+libtimer_base_la_SOURCES = timer_base.c timer_base.h
 libtimer_base_la_LIBADD = $(COMMON_LIBADD) libtsampler.la $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libtimer_base.la
 
@@ -40,6 +42,8 @@ libpower_sampler_la_LIBADD = $(COMMON_LIBADD) \
 			     libtimer_base.la
 pkglib_LTLIBRARIES += libpower_sampler.la
 endif
+
+endif #ENABLE_TSAMPLER
 
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c
