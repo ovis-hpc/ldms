@@ -58,19 +58,17 @@
 #include <getopt.h>
 
 #include "baler/butils.h"
-#include "../../../sos/ods/include/ods/ods.h"
-#include "../../../sos/sos/src/sos_priv.h"
 #include "sos/sos.h"
 #include "bsos_msg.h"
 #include "bout_sos_msg.h"
 #include "bsos_img.h"
 #include "bout_sos_img.h"
 
-char *short_opt = "hC:p:";
+char *short_opt = "hC:p:s:";
 struct option long_opt[] = {
 	{"help",       0,  0,  'h'},
 	{"container",  1,  0,  'C'},
-	{"part",       1,  0,  'p'},
+	{"state",      1,  0,  's'},
 	{0,            0,  0,  0}
 };
 
@@ -79,15 +77,23 @@ const char *part = NULL;
 sos_index_t index_ptc; /* PTH: PatternID, Timestamp, CompID */
 sos_index_t index_tc; /* TH: Timestamp, CompID */
 sos_index_t index_img; /* image index */
+sos_part_state_t cmd_state = -1;
 
 int is_msg;
 
 void usage()
 {
-	printf("usage: bsos_msg_reindex -C <container> -p <part>\n");
-	printf("\n");
-	printf("***NOTE: the partition must be offline.");
+	printf("bsos_part_modify -C <container> -s <state> <name>\n");
+	printf("    -C <path>   The path to the container.\n");
+	printf("    -s <state>  Modify the state of a partition. Valid states are:\n"
+	       "                primary  - All new allocations go in this partition.\n"
+	       "                active   - Objects are accessible, the partition does not grow\n"
+	       "                offline  - Object references are invalid; the partition\n"
+	       "                           may be moved or deleted.\n");
+	printf("    <name>	The partition name.\n");
 }
+
+sos_part_state_t str_to_sos_part_state(const char *str);
 
 void handle_args(int argc, char **argv)
 {
@@ -101,8 +107,18 @@ loop:
 	case 'C':
 		cont = optarg;
 		break;
-	case 'p':
-		part = optarg;
+	case 's':
+		cmd_state = str_to_sos_part_state(optarg);
+		switch (cmd_state) {
+		case SOS_PART_STATE_ACTIVE:
+		case SOS_PART_STATE_OFFLINE:
+		case SOS_PART_STATE_PRIMARY:
+			/* ok */
+			break;
+		default:
+			berr("Unknown partition state: %s", optarg);
+			exit(-1);
+		}
 		break;
 	case 'h':
 	default:
@@ -111,6 +127,11 @@ loop:
 	}
 	goto loop;
 out:
+	if (optind < argc) {
+		part = argv[optind];
+	} else {
+		part = NULL;
+	}
 	return;
 }
 
@@ -123,7 +144,7 @@ int cont_is_msg(const char *cont)
 	return 0 == strcmp(x+1, "msg");
 }
 
-void msg_reindex_cb(ods_t ods, ods_obj_t obj, void *arg)
+int msg_reindex_cb(sos_part_t part, sos_obj_t sos_obj, void *arg)
 {
 	SOS_KEY(tc_key);
 	SOS_KEY(ptc_key);
@@ -131,17 +152,7 @@ void msg_reindex_cb(ods_t ods, ods_obj_t obj, void *arg)
 	struct bsos_msg_key_ptc ptc_k;
 	struct bsos_msg_key_tc tc_k;
 	int rc;
-	sos_obj_ref_t ref;
-	sos_obj_t sos_obj;
-	sos_part_t part = arg;
-	sos_obj_data_t sos_obj_data = obj->as.ptr;
-	sos_schema_t schema = __sos_get_ischema(SOS_TYPE_UINT32_ARRAY);
-	if (!schema)
-		/* This is a garbage object that should not be here */
-		return;
-	ref.ref.ods = SOS_PART(part->part_obj)->part_id;
-	ref.ref.obj = ods_obj_ref(obj);
-	sos_obj = __sos_init_obj(part->sos, schema, obj, ref);
+
 	msg = sos_obj_ptr(sos_obj);
 
 	/* creat key */
@@ -169,26 +180,55 @@ void msg_reindex_cb(ods_t ods, ods_obj_t obj, void *arg)
 	}
 
 	sos_obj_put(sos_obj);
+	return 0;
 }
 
-void img_reindex_cb(ods_t ods, ods_obj_t obj, void *arg)
+int msg_rmindex_cb(sos_part_t part, sos_obj_t sos_obj, void *arg)
+{
+	SOS_KEY(tc_key);
+	SOS_KEY(ptc_key);
+	sos_array_t msg;
+	struct bsos_msg_key_ptc ptc_k;
+	struct bsos_msg_key_tc tc_k;
+	int rc;
+
+	msg = sos_obj_ptr(sos_obj);
+
+	/* creat key */
+	ptc_k.comp_id = msg->data.uint32_[BSOS_MSG_COMP_ID];
+	ptc_k.sec = msg->data.uint32_[BSOS_MSG_SEC];
+	ptc_k.ptn_id = msg->data.uint32_[BSOS_MSG_PTN_ID];
+
+	tc_k.comp_id = ptc_k.comp_id;
+	tc_k.sec = ptc_k.sec;
+
+	/* need to convert only PTC (due to memcmp()) */
+	bsos_msg_key_ptc_htobe(&ptc_k);
+
+	sos_key_set(tc_key, &tc_k, 8);
+
+	rc = sos_index_remove(index_tc, tc_key, sos_obj);
+	if (rc) {
+		/* The object couldn't be indexed for some reason */
+	}
+
+	sos_key_set(ptc_key, &ptc_k, 12);
+	rc = sos_index_remove(index_ptc, ptc_key, sos_obj);
+	if (rc) {
+		/* The object couldn't be indexed for some reason */
+	}
+
+	sos_obj_put(sos_obj);
+	return 0;
+}
+
+int img_reindex_cb(sos_part_t part, sos_obj_t sos_obj, void *arg)
 {
 	SOS_KEY(ok);
 	struct bsos_img_key bk;
 	sos_array_t img;
-
 	int rc;
-	sos_obj_ref_t ref;
-	sos_obj_t sos_obj;
-	sos_part_t part = arg;
-	sos_obj_data_t sos_obj_data = obj->as.ptr;
-	sos_schema_t schema = __sos_get_ischema(SOS_TYPE_UINT32_ARRAY);
-	if (!schema)
-		/* This is a garbage object that should not be here */
-		return;
-	ref.ref.ods = SOS_PART(part->part_obj)->part_id;
-	ref.ref.obj = ods_obj_ref(obj);
-	sos_obj = __sos_init_obj(part->sos, schema, obj, ref);
+
 	img = sos_obj_ptr(sos_obj);
 
 	/* creat key */
@@ -204,7 +244,35 @@ void img_reindex_cb(ods_t ods, ods_obj_t obj, void *arg)
 	}
 
 	sos_obj_put(sos_obj);
+	return 0;
 }
+
+
+int img_rmindex_cb(sos_part_t part, sos_obj_t sos_obj, void *arg)
+{
+	SOS_KEY(ok);
+	struct bsos_img_key bk;
+	sos_array_t img;
+	int rc;
+
+	img = sos_obj_ptr(sos_obj);
+
+	/* creat key */
+	bk.ptn_id = img->data.uint32_[BSOS_IMG_PTN_ID];
+	bk.ts = img->data.uint32_[BSOS_IMG_SEC];
+	bk.comp_id = img->data.uint32_[BSOS_IMG_COMP_ID];
+
+	sos_key_set(ok, &bk, sizeof(bk));
+
+	rc = sos_index_remove(index_img, ok, sos_obj);
+	if (rc) {
+		/* The object couldn't be indexed for some reason */
+	}
+
+	sos_obj_put(sos_obj);
+	return 0;
+}
+
 static char buff[4096];
 void msg_idx_open(sos_t sos)
 {
@@ -229,22 +297,107 @@ void img_idx_open(sos_t sos)
 	}
 }
 
+sos_part_state_t str_to_sos_part_state(const char *str)
+{
+	if (0 == strcasecmp(str, "active")) {
+		return SOS_PART_STATE_ACTIVE;
+	}
+	if (0 == strcasecmp(str, "offline")) {
+		return SOS_PART_STATE_OFFLINE;
+	}
+	if (0 == strcasecmp(str, "primary")) {
+		return SOS_PART_STATE_PRIMARY;
+	}
+	return -1;
+}
+
+void handle_cmd_active(sos_t sos, sos_part_t p)
+{
+	sos_part_state_t pst = sos_part_state(p);
+	int rc;
+	switch (pst) {
+	case SOS_PART_STATE_OFFLINE:
+		rc = sos_part_state_set(p, SOS_PART_STATE_ACTIVE);
+		if (rc) {
+			berr("sos_part_state_set() error, rc: %d", rc);
+			return;
+		}
+		break;
+	case SOS_PART_STATE_MOVING:
+	case SOS_PART_STATE_ACTIVE:
+	case SOS_PART_STATE_PRIMARY:
+		berr("partition '%s' not in OFFLINE state", part);
+		return;
+	}
+	is_msg = cont_is_msg(cont);
+	if (is_msg) {
+		msg_idx_open(sos);
+		sos_part_obj_iter(p, NULL, msg_reindex_cb, p);
+	} else {
+		img_idx_open(sos);
+		sos_part_obj_iter(p, NULL, img_reindex_cb, p);
+	}
+}
+
+void handle_cmd_offline(sos_t sos, sos_part_t p)
+{
+	sos_part_state_t pst = sos_part_state(p);
+	int rc;
+	rc = sos_part_state_set(p, cmd_state);
+	if (rc) {
+		berr("sos_part_state_set() error, rc: %d", rc);
+		return;
+	}
+	is_msg = cont_is_msg(cont);
+	if (is_msg) {
+		msg_idx_open(sos);
+		sos_part_obj_iter(p, NULL, msg_rmindex_cb, p);
+	} else {
+		img_idx_open(sos);
+		sos_part_obj_iter(p, NULL, img_rmindex_cb, p);
+	}
+}
+
+void handle_cmd_primary(sos_t sos, sos_part_t p)
+{
+	sos_part_state_t pst = sos_part_state(p);
+	int rc;
+	switch (pst) {
+	case SOS_PART_STATE_ACTIVE:
+		rc = sos_part_state_set(p, SOS_PART_STATE_PRIMARY);
+		if (rc) {
+			berr("sos_part_state_set() error, rc: %d", rc);
+			return;
+		}
+		break;
+	default:
+		berr("only ACTIVE partition can be PRIMARY");
+		break;
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int rc = 0;
-	handle_args(argc, argv);
 	sos_t sos = NULL;
 	sos_part_t p = NULL;
 	sos_part_state_t pst;
 
+	handle_args(argc, argv);
+
 	if (!cont) {
-		berr("-C option is not specified");
+		berr("container (-C) is not specified");
 		rc = EINVAL;
 		goto out;
 	}
 
+	if (-1 == (uint64_t)cmd_state) {
+		berr("state (-s) is not specified");
+		goto out;
+	}
+
 	if (!part) {
-		berr("-p option is not specified");
+		berr("please specify partition");
 		rc = EINVAL;
 		goto out;
 	}
@@ -263,31 +416,19 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	pst = sos_part_state(p);
-	switch (pst) {
-	case SOS_PART_STATE_OFFLINE:
-		rc = sos_part_state_set(p, SOS_PART_STATE_ACTIVE);
-		if (rc) {
-			berr("sos_part_state_set() error, rc: %d", rc);
-			goto out;
-		}
-		break;
-	case SOS_PART_STATE_MOVING:
+	switch (cmd_state) {
 	case SOS_PART_STATE_ACTIVE:
-	case SOS_PART_STATE_PRIMARY:
-		berr("partition '%s' not in OFFLINE state", part);
-		rc = EBUSY;
-		goto out;
+		handle_cmd_active(sos, p);
 		break;
-	}
-
-	is_msg = cont_is_msg(cont);
-	if (is_msg) {
-		msg_idx_open(sos);
-		ods_iter(p->obj_ods, msg_reindex_cb, p);
-	} else {
-		img_idx_open(sos);
-		ods_iter(p->obj_ods, img_reindex_cb, p);
+	case SOS_PART_STATE_OFFLINE:
+		handle_cmd_offline(sos, p);
+		break;
+	case SOS_PART_STATE_PRIMARY:
+		handle_cmd_primary(sos, p);
+		break;
+	default:
+		assert(0); /* impossible (see handle_args()) */
+		break;
 	}
 
 out:
