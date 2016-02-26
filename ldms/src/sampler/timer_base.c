@@ -297,6 +297,8 @@ int timer_base_sample(struct ldmsd_sampler *self)
 	static uint64_t count;
 	struct tsampler_timer_entry *ent;
 
+	ldms_transaction_begin(tb->set);
+
 	LJI_SAMPLE(tb->set,1);
 
 	pthread_mutex_lock(&tb->mutex);
@@ -332,6 +334,7 @@ timer_cleanup:
 	pthread_mutex_unlock(&tb->mutex);
 
 out:
+	ldms_transaction_end(tb->set);
 	return rc;
 }
 
