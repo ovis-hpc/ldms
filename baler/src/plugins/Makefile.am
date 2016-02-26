@@ -70,3 +70,9 @@ bsos_reindex_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
 bsos_reindex_LDADD = ../baler/libbaler.la \
 		     -lsos -lods @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
 bin_PROGRAMS += bsos_reindex
+
+bsos_part_modify_SOURCES = bsos_part_modify.c
+bsos_part_modify_CFLAGS = $(AM_CFLAGS) @SOS_INCDIR_FLAG@
+bsos_part_modify_LDADD = ../baler/libbaler.la \
+		     -lsos @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
+bin_PROGRAMS += bsos_part_modify
