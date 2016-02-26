@@ -67,33 +67,33 @@ static ldmsd_msg_log_f msglog;
 
 typedef enum {
 	CPS_ENERGY,
-	CPS_FRESHNESS,
-	CPS_GENERATION,
+	/* CPS_FRESHNESS, */
+	/* CPS_GENERATION, */
 	CPS_POWER,
-	CPS_POWER_CAP,
-	CPS_STARTUP,
-	CPS_VERSION,
+	/* CPS_POWER_CAP, */
+	/* CPS_STARTUP, */
+	/* CPS_VERSION, */
 	CPS_LAST,
 } cps_metric_type;
 
 static const char *cps_names[] = {
 	[CPS_ENERGY]      =  "energy",
-	[CPS_FRESHNESS]   =  "freshness",
-	[CPS_GENERATION]  =  "generation",
+	/* [CPS_FRESHNESS]   =  "freshness", */
+	/* [CPS_GENERATION]  =  "generation", */
 	[CPS_POWER]       =  "power",
-	[CPS_POWER_CAP]   =  "power_cap",
-	[CPS_STARTUP]     =  "startup",
-	[CPS_VERSION]     =  "version",
+	/* [CPS_POWER_CAP]   =  "power_cap", */
+	/* [CPS_STARTUP]     =  "startup", */
+	/* [CPS_VERSION]     =  "version", */
 };
 
 static const char *cps_files[] = {
 	[CPS_ENERGY]      =  "/sys/cray/pm_counters/energy",
-	[CPS_FRESHNESS]   =  "/sys/cray/pm_counters/freshness",
-	[CPS_GENERATION]  =  "/sys/cray/pm_counters/generation",
+	/* [CPS_FRESHNESS]   =  "/sys/cray/pm_counters/freshness", */
+	/* [CPS_GENERATION]  =  "/sys/cray/pm_counters/generation", */
 	[CPS_POWER]       =  "/sys/cray/pm_counters/power",
-	[CPS_POWER_CAP]   =  "/sys/cray/pm_counters/power_cap",
-	[CPS_STARTUP]     =  "/sys/cray/pm_counters/startup",
-	[CPS_VERSION]     =  "/sys/cray/pm_counters/version",
+	/* [CPS_POWER_CAP]   =  "/sys/cray/pm_counters/power_cap", */
+	/* [CPS_STARTUP]     =  "/sys/cray/pm_counters/startup", */
+	/* [CPS_VERSION]     =  "/sys/cray/pm_counters/version", */
 };
 
 struct cray_power_sampler {
