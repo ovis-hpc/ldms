@@ -78,6 +78,7 @@ static char *default_schema_name = "kgnilnd";
 static uint64_t compid;
 static uint64_t jobid;
 static int metric_offset = 2;
+static int nmetrics = 0;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
@@ -116,7 +117,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	mf = fopen(procfile, "r");
 	if (!mf) {
 		msglog(LDMSD_LERROR, "Could not open the kgnilnd file "
-				"'%s'...exiting\n", procfile);
+				"'%s'...aborting\n", procfile);
 		return ENOENT;
 	}
 
@@ -139,7 +140,14 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	}
 
 	/* Process the file to define all the metrics.*/
-	fseek(mf, 0, SEEK_SET);
+	if (fseek(mf, 0, SEEK_SET) != 0){
+		msglog(LDMSD_LERROR, "Could not seek in the kgnilnd file "
+		       "'%s'...aborting\n", procfile);
+		rc = EINVAL;
+		goto err;
+	}
+
+	nmetrics = 0;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -155,6 +163,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 					rc = ENOMEM;
 					goto err;
 				}
+				nmetrics++;
 			}
 		} else {
 			rc = ENOMEM;
@@ -270,6 +279,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
+static int __kgnilnd_reset(){
+	union ldms_value v;
+	int i;
+
+	v.v_u64 = 0;
+	ldms_transaction_begin(set);
+	for (i = 0; i < nmetrics; i++){
+		ldms_metric_set(set, (i+metric_offset), &v);
+	}
+	ldms_transaction_end(set);
+}
+
 static int sample(struct ldmsd_sampler *self)
 {
 	int metric_no, rc;
@@ -277,14 +298,38 @@ static int sample(struct ldmsd_sampler *self)
 	char lbuf[256];
 	union ldms_value v;
 
-	if (!set || !mf){
+	if (!set){
 	  msglog(LDMSD_LDEBUG, "kgnilnd: plugin not initialized\n");
-	  return EINVAL;
+//	  return EINVAL;
+	  return 0;
 	}
-	ldms_transaction_begin(set);
+
+	if (!mf){
+		mf = fopen(procfile, "r");
+		if (!mf) {
+			msglog(LDMSD_LERROR, "Could not open the kgnilnd file "
+			       "'%s'...\n", procfile);
+			__kgnilnd_reset(set);
+			// return ENOENT;
+			return 0;
+		}
+	}
+
+	if (fseek(mf, 0, SEEK_SET) != 0){
+		/* perhaps the file handle has become invalid.
+		 * close it so it will reopen it on the next round.
+		 */
+		msglog(LDMSD_LERROR, "Could not seek in the kgnilnd file "
+		       "'%s'...closing filehandle\n", procfile);
+		fclose(mf);
+		mf = 0;
+		__kgnilnd_reset(set);
+//		return EINVAL;
+		return 0;
+	}
 
 	metric_no = metric_offset;
-	fseek(mf, 0, SEEK_SET);
+	ldms_transaction_begin(set);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
