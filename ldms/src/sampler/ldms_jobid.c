@@ -171,7 +171,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 				goto err;
 			}
 			ji->jobid = j;
-			
+
 			tmp = av_value(avl, "UID");
 			if (tmp) {
 				endp = NULL;
@@ -198,7 +198,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 				}
 			}
 		}
-		
+
 
 		ldms_transaction_begin(js);
 
@@ -328,7 +328,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
  *     file  The file to find job id in on 1st line in ascii.
  *     setname     The set name.
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *sname;
@@ -372,7 +372,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		errno = 0;
 		compid = strtoull(value, &endp, 0);
 		if (endp == value || errno) {
-			msglog(LDMSD_LERROR,"Fail parsing component_id '%s'\n", 
+			msglog(LDMSD_LERROR,"Fail parsing component_id '%s'\n",
 				value);
 			return EINVAL;
 		}
@@ -403,12 +403,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	if (!set) {
 		msglog(LDMSD_LDEBUG,SAMP ": plugin not initialized\n");
@@ -443,7 +443,7 @@ int ldms_job_info_get(struct ldms_job_info *ji, unsigned flags)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_schema_delete(schema);
@@ -460,7 +460,7 @@ static void term(void)
 	}
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return "config name=jobid producer=<prod_name> instance=<inst_name> "
 		"[component_id=<compid> schema=<sname>] [file=<jobinfo>]"

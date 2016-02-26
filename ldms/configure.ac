@@ -72,11 +72,16 @@ OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
 OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
+
+OPTION_DEFAULT_DISABLE([tsampler], [ENABLE_TSAMPLER])
 OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
+dnl cray_power_sampler won't build with --disable-tsampler
 
 dnl power_sampler with powerapi
+dnl power_sampler won't build with --disable-tsampler
 OPTION_DEFAULT_DISABLE([pow], [ENABLE_POW])
 OPTION_WITH([pow], [POW], [/usr/local])
+
 
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
@@ -122,7 +127,7 @@ OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL],[/usr])
 OPTION_ARIES_MMR
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third coll ovis_util zap ovis_ctrl ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third coll ovis_util zap ovis_ctrl ovis_event ovis_auth],[ovis-auth.sh],[ovis-lib],[ovis_auth])
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
@@ -189,6 +194,21 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 	AC_CHECK_HEADER(infiniband/umad.h, [],
 		AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
 			libibumad-devel installed?]))
+fi
+
+if test "x$WITH_OVIS_LIB" != "xbuild" && test -z "$ENABLE_TSAMPLER_TRUE"; then
+	dnl tsampler uses ovis_event (from lib/)
+	OCFLAGS=$CFLAGS
+	CFLAGS=$OVIS_LIB_INCDIR_FLAG
+	AC_CHECK_HEADERS(ovis_event/ovis_event.h, [],
+			 AC_MSG_FAILURE([ovis_event/ovis_event.h not found.])
+			 )
+	AC_CHECK_LIB(ovis_event, ovis_event_create, [],
+		     AC_MSG_ERROR([ovis_event library not found.]),
+		     [ $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG ]
+		    )
+	CFLAGS=$OCFLAGS
+	LIBS=""
 fi
 
 if test -z "$ENABLE_POW_TRUE"; then
