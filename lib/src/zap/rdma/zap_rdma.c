@@ -1324,7 +1324,7 @@ handle_connect_request(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 		zev.data = (void*)conn_data->data;
 	}
 
-	new_ep = zap_new(rep->ep.z, rep->ep.cb);
+	new_ep = zap_new(rep->ep.z, rep->ep.app_cb);
 	if (!new_ep) {
 		LOG_(rep, "RDMA: could not create a new"
 		     "endpoint for a connection request.\n");

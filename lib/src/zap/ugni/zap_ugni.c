@@ -1131,7 +1131,7 @@ static void __z_ugni_conn_request(struct evconnlistener *listener,
 	struct z_ugni_ep *new_uep;
 	zap_err_t zerr;
 
-	new_ep = zap_new(uep->ep.z, uep->ep.cb);
+	new_ep = zap_new(uep->ep.z, uep->ep.app_cb);
 	if (!new_ep) {
 		zerr = errno;
 		LOG_(uep, "Zap Error %d (%s): in %s at %s:%d\n",

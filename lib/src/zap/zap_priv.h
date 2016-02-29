@@ -54,6 +54,9 @@
 #include <inttypes.h>
 #include <semaphore.h>
 #include <sys/queue.h>
+#include <pthread.h>
+
+#include "zap.h"
 
 #include "config.h"
 
@@ -167,6 +170,11 @@ struct zap_ep {
 
 	/** Event callback routine. */
 	zap_cb_fn_t cb;
+
+	zap_cb_fn_t app_cb;
+
+	/** Event queue */
+	struct zap_event_queue *event_queue;
 };
 
 struct zap {
@@ -228,6 +236,9 @@ struct zap {
 	zap_err_t (*get_name)(zap_ep_t ep, struct sockaddr *local_sa,
 			      struct sockaddr *remote_sa, socklen_t *sa_len);
 
+	/** Event interposer */
+	void (*event_interpose)(zap_ep_t ep, void *ctxt);
+
 	/** Transport message logging callback */
 	zap_log_fn_t log_fn;
 
@@ -264,6 +275,22 @@ struct zap_map {
 	size_t len;		  /*! Length of the buffer */
 };
 
+struct zap_event_entry {
+	TAILQ_ENTRY(zap_event_entry) entry;
+	zap_ep_t ep;
+	void *ctxt;
+};
+
+struct zap_event_queue {
+	int depth; /* number of element left */
+	int ep_count; /* number of endpoint associated with the queue */
+	pthread_t thread; /* worker thread */
+	pthread_mutex_t mutex; /* queue mutex */
+	pthread_cond_t cond_nonempty; /* nonempty */
+	pthread_cond_t cond_vacant; /* vacant */
+	TAILQ_HEAD(, zap_event_entry) queue; /* queue */
+};
+
 typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_log_fn_t log_fn,
 				  zap_mem_info_fn_t map_info_fn);
 
@@ -280,5 +307,18 @@ typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_log_fn_t log_fn,
  * \returns EACCES For invalid access permission.
  */
 int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc);
+
+/* this is the default value for the number of zap_io_threads */
+#define ZAP_EVENT_WORKERS 4
+
+#define ZAP_EVENT_QDEPTH 4096
+
+#define ZAP_ENV_INT(X) zap_env_int(#X, X)
+
+
+/**
+ * Add IO completion to the completion queue.
+ */
+int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt);
 
 #endif
