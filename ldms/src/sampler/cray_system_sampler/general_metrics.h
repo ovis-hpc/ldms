@@ -83,18 +83,12 @@
 /* ENERGY Specific */
 static char* ENERGY_METRICS[] = {"energy(J)",
 				 "freshness",
-				 "generation",
 				 "power(W)",
-				 "power_cap(W)",
-				 "startup",
-				 "version"};
+				 "power_cap(W)"};
 static char* ENERGY_FILES[] = {"/sys/cray/pm_counters/energy",
 			       "/sys/cray/pm_counters/freshness",
-			       "/sys/cray/pm_counters/generation",
 			       "/sys/cray/pm_counters/power",
-			       "/sys/cray/pm_counters/power_cap",
-			       "/sys/cray/pm_counters/startup",
-			       "/sys/cray/pm_counters/version"};
+			       "/sys/cray/pm_counters/power_cap"};
 #define NUM_ENERGY_METRICS (sizeof(ENERGY_METRICS)/sizeof(ENERGY_METRICS[0]))
 FILE* ene_f[NUM_ENERGY_METRICS];
 int* metric_table_energy;
