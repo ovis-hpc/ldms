@@ -1,0 +1,136 @@
+#!/bin/sh
+
+TOP=/home/brandt/Build/ovis
+export LD_LIBRARY_PATH=$TOP/lib64/:$TOP/lib:$TOP/lib/ovis-ldms:/home/brandt/Build/libevent-2.0_build/lib:$LD_LIBRARY_PATH
+export LDMSD_PLUGIN_LIBPATH=$TOP/lib/ovis-ldms/
+export ZAP_LIBPATH=$TOP/lib/ovis-lib/
+export PATH=$TOP/sbin:$TOP/bin:$PATH
+export PYTHONPATH=$TOP/lib64/python2.6/site-packages/
+
+LDMSD=$TOP/sbin/ldmsd
+
+# Use this if using shared secret authentication
+export LDMS_AUTH_FILE=/home/brandt/ldms_sample_scripts/scripts_config/jims_secret
+
+# Set number of threads for collection
+NUMTHREADS=16
+
+# Set memory allocated to aggregator
+MEMORY=2GB
+
+# Define transport to use for data transfer
+XPRT_LISTEN=ugni
+
+# Define transport listening port for data
+PORT_LISTEN=411
+
+# Define listening port for ldmsd_controller
+PORT_LISTEN_CONTROLLER=412
+
+# Define sample interval
+SAMPLE_INTERVAL=1000000
+
+# Define sample offset
+SAMPLE_OFFSET=0
+
+# Use this if running on a Cray XC
+# Need to set up a user PTag first
+export ZAP_UGNI_PTAG=0
+export ZAP_UGNI_COOKIE=0x18470000
+
+# Set socket path and name
+SOCKPATH="/tmp/run/ldmsd"
+SOCKNAME="ldmsd_sock"
+
+# Define log path and file name (don't define for QUIET)
+LDMSD_LOG_PATH=/tmp/jim/ldmsd_logs
+LDMSD_LOG_FILE=ldmsd_log
+
+# Define path and file name for temporary configuration files
+LDMSD_TMP_CONFIG_FILE_PATH=/tmp/ldmsd_config
+LDMSD_CONFIG_FILE=ldmsd.conf
+LDMSD_AGG_CONFIG_FILE=ldmsd_agg.conf
+
+mkdir -p $LDMSD_TMP_CONFIG_FILE_PATH
+
+# Define path to aggregator configuration files
+LDMSD_AGG_CONFIG_FILE_PATH="/tmp/opt/ovis/agg_conf"
+
+# Use this if running on a Cray XE/XK/XC
+COMPONENT_ID="$(cat /proc/cray_xt/nid)"
+CNAME="$(cat /proc/cray_xt/cname)"
+NIDNUM=$(printf %05d ${COMPONENT_ID})
+HOSTNAME="nid$(printf %05d ${COMPONENT_ID})"
+NODENUM=$(echo $CNAME | awk -F "n" '{print $2}')
+ARIES=$(echo $CNAME | awk -F "n" '{print $1}')
+
+# Define Lustre mount points
+LLITE="snx11137"
+
+# Define verbosity level and log location if not QUIET
+#VERBOSITY="QUIET"
+VERBOSITY="CRITICAL -l ${LDMSD_LOG_PATH}/${LDMSD_LOG_FILE}_${COMPONENT_ID}"
+#VERBOSITY="ERROR -l ${LDMSD_LOG_PATH}/${LDMSD_LOG_FILE}_${COMPONENT_ID}"
+#VERBOSITY="INFO -l ${LDMSD_LOG_PATH}/${LDMSD_LOG_FILE}_${COMPONENT_ID}"
+#VERBOSITY="DEBUG -l ${LDMSD_LOG_PATH}/${LDMSD_LOG_FILE}_${COMPONENT_ID}"
+
+load_sampler() {
+        local MMR_CONF_PATH
+
+#       Define path to aries MMR metric config files
+        MMR_CONF_PATH=/home/brandt/ldms_sample_scripts/aries_mmr_set_configs
+        pi=$1
+        echo load name=${pi}
+
+        if [[ $pi = "cray_aries_r_sampler" ]]; then
+                echo config name=${pi} producer=${HOSTNAME} component_id=$COMPONENT_ID instance=${HOSTNAME}/${pi} off_hsn=1 llite=$LLITE
+        elif [[ $pi = "aries_nic_mmr" ]]; then
+                echo config name=${pi} producer=${HOSTNAME} instance=${HOSTNAME}/${pi} component_id=$COMPONENT_ID aries_rtr_id=$ARIES file=${MMR_CONF_PATH}/metric_set_nic schema=metric_set_nic
+        elif [[ $pi = "aries_rtr_mmr" ]]; then
+                echo config name=${pi} producer=${HOSTNAME} instance=${HOSTNAME}/${pi} component_id=$COMPONENT_ID aries_rtr_id=$ARIES file=${MMR_CONF_PATH}/metric_set_rtr_${NODENUM} schema=metric_set_rtr_${NODENUM}
+        elif [[ $pi = "power_sampler" ]]; then
+                echo config name=${pi} producer=${HOSTNAME} instance=${HOSTNAME}/${pi} hfinterval=100000 hfcount=10
+        elif [[ $pi = "cray_power_sampler" ]]; then
+                echo config name=${pi} producer=${HOSTNAME} instance=${HOSTNAME}/${pi} hfinterval=100000 hfcount=10
+        else
+                echo config name=${pi} producer=${HOSTNAME} instance=${HOSTNAME}/${pi}
+        fi
+        echo start name=${pi} interval=$SAMPLE_INTERVAL offset=$SAMPLE_OFFSET
+}
+
+generate_compute_config_file() {
+# Load sampler plugins
+	load_sampler cray_aries_r_sampler > ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE}
+	load_sampler aries_nic_mmr >> ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE}
+	load_sampler aries_rtr_mmr >> ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE}
+#	load_sampler cray_power_sampler >> ${LDMSD_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE}
+	test -s ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE} || return 1
+	return 0
+}
+
+generate_agg_config_file() {
+	cat ${LDMSD_AGG_CONFIG_FILE_PATH}/*.$HOSTNAME.$PORT_LISTEN > ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_AGG_CONFIG_FILE}
+	test -s ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_AGG_CONFIG_FILE} || return 1
+
+#	If here we have a config file (no format validation done currently)
+	return 0
+}
+
+remove_config_file() {
+test -f ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE} && rm ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_CONFIG_FILE}
+test -f ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_AGG_CONFIG_FILE} && rm ${LDMSD_TMP_CONFIG_FILE_PATH}/${LDMSD_AGG_CONFIG_FILE}
+test -d ${LDMSD_TMP_CONFIG_FILE_PATH} && rmdir ${LDMSD_TMP_CONFIG_FILE_PATH}
+}
+
+op_succeeded () {
+                return 0
+        }
+
+op_failed () {
+                return 1
+        }
+
+
+# Run sampler ldmsd listening on port $PORT_LISTEN and using transport $XPRT_LISTEN for data transfer
+#ldmsd -x $XPRT_LISTEN:$PORT_LISTEN -S /tmp/ldmsd.sock -v $VERBOSITY -c $LDMSD_CONFIG_FILE 
+
