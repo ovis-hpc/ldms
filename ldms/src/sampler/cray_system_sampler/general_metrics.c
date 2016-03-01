@@ -238,13 +238,30 @@ int sample_metrics_kgnilnd(ldms_set_t set, ldmsd_msg_log_f msglog)
 	int j, rc;
 
 	if (!k_f){
-		/* No file, just skip the sampling. */
-		return 0;
+		k_f = fopen(KGNILND_FILE, "r");
+		if (!k_f) {
+			v.v_u64 = 0;
+			for (j = 0; j < NUM_KGNILND_METRICS; j++)
+				ldms_metric_set(set, metric_table_kgnilnd[j], &v);
+			return EINVAL;
+		}
+	}
+
+	if (fseek(k_f, 0, SEEK_SET) != 0){
+		/* perhaps the file handle has become invalid.
+		 * close it so it will reopen on the next round
+		 * TODO: zero out the values
+		 */
+		msglog(LDMSD_LDEBUG, "css -kgnilnd seek failed\n");
+		fclose(k_f);
+		k_f = 0;
+		v.v_u64 = 0;
+		for (j = 0; j < NUM_KGNILND_METRICS; j++)
+			ldms_metric_set(set, metric_table_kgnilnd[j], &v);
+		return EINVAL;
 	}
 
 	found_metrics = 0;
-
-	fseek(k_f, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), k_f);
 		if (!s)
