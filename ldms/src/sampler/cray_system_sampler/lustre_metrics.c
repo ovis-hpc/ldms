@@ -118,15 +118,14 @@ int sample_metrics_lustre(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	struct lustre_metric_src *lms;
 	struct lustre_svc_stats *lss;
+	int retrc = 0;
 	int rc;
-	int count = 0;
 
 	LIST_FOREACH(lms, &lms_list, link) {
 		rc = lms_sample(set, lms);
-		if (rc && rc != ENOENT)
-			return rc;
-		count += LUSTRE_METRICS_LEN;
+		if (rc) //go ahead and sample the other ones
+			retrc = rc;
 	}
 
-	return 0;
+	return retrc;
 }
