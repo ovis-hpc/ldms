@@ -315,18 +315,13 @@ void handle_cmd_active(sos_t sos, sos_part_t p)
 {
 	sos_part_state_t pst = sos_part_state(p);
 	int rc;
-	switch (pst) {
-	case SOS_PART_STATE_OFFLINE:
-		rc = sos_part_state_set(p, SOS_PART_STATE_ACTIVE);
-		if (rc) {
-			berr("sos_part_state_set() error, rc: %d", rc);
-			return;
-		}
-		break;
-	case SOS_PART_STATE_MOVING:
-	case SOS_PART_STATE_ACTIVE:
-	case SOS_PART_STATE_PRIMARY:
+	if (pst != SOS_PART_STATE_OFFLINE) {
 		berr("partition '%s' not in OFFLINE state", part);
+		return;
+	}
+	rc = sos_part_state_set(p, SOS_PART_STATE_ACTIVE);
+	if (rc) {
+		berr("sos_part_state_set() error, rc: %d", rc);
 		return;
 	}
 	is_msg = cont_is_msg(cont);
@@ -343,9 +338,8 @@ void handle_cmd_offline(sos_t sos, sos_part_t p)
 {
 	sos_part_state_t pst = sos_part_state(p);
 	int rc;
-	rc = sos_part_state_set(p, cmd_state);
-	if (rc) {
-		berr("sos_part_state_set() error, rc: %d", rc);
+	if (pst != SOS_PART_STATE_ACTIVE) {
+		berr("only ACTIVE partition can be brought OFFLINE");
 		return;
 	}
 	is_msg = cont_is_msg(cont);
@@ -355,6 +349,11 @@ void handle_cmd_offline(sos_t sos, sos_part_t p)
 	} else {
 		img_idx_open(sos);
 		sos_part_obj_iter(p, NULL, img_rmindex_cb, p);
+	}
+	rc = sos_part_state_set(p, cmd_state);
+	if (rc) {
+		berr("sos_part_state_set() error, rc: %d", rc);
+		return;
 	}
 }
 
