@@ -84,11 +84,7 @@ size_t calculate_total_dirty_threshold(size_t mem_total, size_t dirty_ratio)
  */
 size_t dirty_threshold = 0;
 
-static int records;
 static int flush_count;
-
-char tmp_path[PATH_MAX];
-int max_q_depth;
 
 /*
  * LRU list for mds.
@@ -185,18 +181,6 @@ void flush_store_instance(struct store_instance *si)
 	flush_count++;
 	ldmsd_store_flush(si->plugin, si->store_handle);
 	si->dirty_count = 0;
-}
-
-/* XXX FIXME: check close vs destroy */
-void ldmsd_close_store_instance(struct store_instance *si)
-{
-	ldmsd_store_close(si->plugin, si->store_handle);
-	si->store_handle = NULL;
-	si->state = STORE_STATE_CLOSED;
-	si->dirty_count = 0;
-	pthread_mutex_lock(&lru_list_lock);
-	open_count -= 1;
-	pthread_mutex_unlock(&lru_list_lock);
 }
 
 static int io_exit;
@@ -299,152 +283,6 @@ int assign_flush_thread(struct store_instance *si)
 	return 0;
 }
 
-struct timeval tv0, tv1, tvres, tvsum;
-
-int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set)
-{
-	int rc;
-	struct store_instance *si = lsp->si;
-	records++;
-
-	pthread_mutex_lock(&si->lock);
-	switch (si->state) {
-	case STORE_STATE_INIT:
-		errno = EINVAL;
-		rc = -1;
-		break;
-
-	case STORE_STATE_CLOSED:
-		si->store_handle =
-			ldmsd_store_open(si->plugin,
-					 lsp->container, lsp->schema,
-					 &lsp->metric_list, si);
-		if (!si->store_handle) {
-			si->state = STORE_STATE_ERROR;
-			errno = EIO;
-			rc = -1;
-			break;
-		}
-		si->state = STORE_STATE_OPEN;
-		rc = assign_flush_thread(si);
-		if (rc)
-			break;
-		/* If no error, treat it as STORE_STATE_OPEN case */
-		/* Intentionally NO break here */
-	case STORE_STATE_OPEN:
-		rc = si->plugin->store(si->store_handle, set,
-					     lsp->metric_arry, lsp->metric_count);
-		/* If error, don't do dirty counting and flush checking */
-		if (rc)
-			break;
-		pthread_mutex_lock(&si->ft->dmutex);
-		si->ft->dirty_count += lsp->metric_count;
-		pthread_mutex_unlock(&si->ft->dmutex);
-		flush_check(si->ft);
-		break;
-
-	case STORE_STATE_ERROR:
-		errno = EIO;
-		rc = -1;
-		break;
-
-	default:
-		errno = EINVAL;
-		rc = -1;
-	}
-	pthread_mutex_unlock(&si->lock);
-	if (!rc) {
-		pthread_mutex_lock(&lru_list_lock);
-		/* Move this set to the tail of the LRU queue */
-		TAILQ_REMOVE(&lru_list, si, lru_entry);
-		TAILQ_INSERT_TAIL(&lru_list, si, lru_entry);
-		pthread_mutex_unlock(&lru_list_lock);
-	}
-	return rc;
-}
-
-void close_lru()
-{
-	struct store_instance *si;
-	/*
-	 * close the least recently used metric store
-	 */
-	pthread_mutex_lock(&lru_list_lock);
-	do {
-		if (TAILQ_EMPTY(&lru_list)) {
-			si = NULL;
-			break;
-		}
-		si = TAILQ_FIRST(&lru_list);
-		TAILQ_REMOVE(&lru_list, si, lru_entry);
-		if (!si->store_handle)
-			printf("WARNING: Removed store "
-			       "with null store_handle from LRU list.\n");
-	} while (!si->store_handle);
-	pthread_mutex_unlock(&lru_list_lock);
-
-	if (si)
-		ldmsd_close_store_instance(si);
-	else
-		printf("WARNING: Could not find a store_instance to close.\n");
-}
-
-struct store_instance *
-new_store_instance(struct ldmsd_store *store, struct ldmsd_store_policy *sp)
-{
-	int retry_count = 10;
-	struct store_instance *s_inst;
-	s_inst = calloc(1, sizeof *s_inst);
-	if (!s_inst)
-		goto out;
-	pthread_mutex_init(&s_inst->lock, 0);
-retry:
-	s_inst->plugin = store;
-	s_inst->store_handle =
-		ldmsd_store_open(store, sp->container, sp->schema,
-				 &sp->metric_list, s_inst);
-	if (s_inst->store_handle) {
-		s_inst->state = STORE_STATE_OPEN;
-		int rc = assign_flush_thread(s_inst);
-		if (rc) {
-			ldmsd_store_close(store, s_inst->store_handle);
-			goto fail;
-		}
-	}
-	else {
-		ldmsd_log(LDMSD_LERROR, "Could not create new store_handle. "
-			 "Closing LRU and retrying.\n");
-		/*
-		 * Close the LRU mds to recoup its
-		 * handles for our use.
-		 */
-		close_lru();
-		if (retry_count--)
-			goto retry;
-		else
-			goto fail;
-	}
-	pthread_mutex_lock(&lru_list_lock);
-	open_count += 1;
-	TAILQ_INSERT_TAIL(&lru_list, s_inst, lru_entry);
-	pthread_mutex_unlock(&lru_list_lock);
-out:
-	return s_inst;
-fail:
-	free(s_inst);
-	return NULL;
-}
-
-struct store_instance *
-ldmsd_store_instance_get(struct ldmsd_store *store,
-			struct ldmsd_store_policy *sp)
-{
-	struct store_instance *s_inst;
-	pthread_mutex_lock(&cfg_lock);
-	s_inst = new_store_instance(store, sp);
-	pthread_mutex_unlock(&cfg_lock);
-	return s_inst;
-}
 #if 0
 #include <coll/idx.h>
 idx_t ct_idx;

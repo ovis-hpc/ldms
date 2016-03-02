@@ -308,21 +308,6 @@ int handle_sampler_stop(char *kw, char *err_str)
 	return ctrl_request(ctrl_sock, LDMSCTL_STOP_SAMPLER, av_list, err_str);
 }
 
-int handle_host_add(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_ADD_HOST, av_list, err_str);
-}
-
-int handle_update_standby(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_UPDATE_STANDBY, av_list, err_str);
-}
-
-int handle_store(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_STORE, av_list, err_str);
-}
-
 int handle_info(char *kw, char *err_str)
 {
 	return ctrl_request(ctrl_sock, LDMSCTL_INFO_DAEMON, av_list, err_str);
@@ -349,7 +334,6 @@ int handle_nxt_token(char *kw, char *err_str);
 /* keyword_tbl is used with bsearch and must be in strcmp sort order. */
 struct kw keyword_tbl[] = {
 	{ "?", handle_help },
-	{ "add", handle_host_add },
 	{ "config", handle_plugin_config },
 	{ "daemon-exit", handle_daemon_exit },
 	{ "help", handle_help },
@@ -358,10 +342,8 @@ struct kw keyword_tbl[] = {
 	{ "loglevel", handle_loglevel },
 	{ "oneshot", handle_oneshot_sample },
 	{ "quit", handle_quit },
-	{ "standby", handle_update_standby },
 	{ "start", handle_sampler_start },
 	{ "stop", handle_sampler_stop },
-	{ "store", handle_store },
 	{ "term", handle_plugin_term },
 	{ "udata", handle_set_udata },
 	{ "udata_regex", handle_set_udata_regex },
