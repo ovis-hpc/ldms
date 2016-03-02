@@ -1173,6 +1173,7 @@ void __msg_obj_update(struct bmsgquery *msgq)
 		msgq->msg = NULL;
 	}
 	msgq->base.obj = sos_iter_obj(msgq->base.itr);
+	assert(msgq->base.obj);
 	if (msgq->base.obj) {
 		msgq->msg = sos_obj_ptr(msgq->base.obj);
 	}
