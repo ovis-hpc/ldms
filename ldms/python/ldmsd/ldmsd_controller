@@ -686,66 +686,6 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stop', text)
 
-    def do_add(self, arg):
-        """
-        Adds a host to the list of hosts monitored by this ldmsd.
-        Parameters:
-        host=       The hostname. This can be an IP address or DNS hostname.
-        type=       One of the following host types:
-            active   An connection is initiated with the peer and
-                     it's metric sets will be periodically queried.
-            passive  A connect request is expected from the specified host.
-                     After this request is received, the peer's metric sets
-                     will be queried periodically.
-            bridging A connect request is initiated to the remote peer,
-                     but it's metric sets are not queried. This is the active
-                     side of the passive host above.
-            local    The to-be-added host is the local host. The given
-                     set name(s) must be the name(s) of local set(s).
-                     This option is used so that ldmsd can store
-                     the given local set(s) if it is configured to do so.
-        [xprt=]     The transport type, defaults to 'sock'
-           sock      The sockets transport.
-           rdma      The OFA Verbs Transport for Infiniband or iWARP.
-           ugni      The Cray Gemini transport.
-        [port=]     The port number to connect on, defaults to 50000.
-        sets=       The list of metric set names to be queried.
-                    The list is comma separated. If the type is bridging,
-                    no set names should be specified.
-        [interval=] An optional sampling interval in microseconds,
-                    defaults to 1000000.
-        [offset=]   An optional offset (shift) from the sample mark
-                    in microseconds. If this offset is specified,
-                    including 0, the collection will be synchronous;
-                    if the offset is not specified, the collection
-                    will be asychronous
-        [agg_no=]   The number of the aggregator that this is standby for.
-                    Defaults to 0 which means this is an active aggregator.
-        """
-        return self.handle('add', arg)
-
-    def complete_add(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('add', text)
-
-    def do_store(self, arg):
-        """
-        Saves a metrics from one or more hosts to persistent storage.
-        Parameters:
-        policy=      The storage policy name. This must be unique.
-        container=   The container name used by the plugin to name data.
-        schema=      A name used to name the set of metrics stored together.
-        [metrics=]   A comma separated list of metric names. If not specified,
-                     all metrics in the metric set will be saved.
-        [hosts=]     The set of hosts whose data will be stored. If hosts is not
-                     specified, the metric set will be saved for all hosts. If
-                     specified, the value should be a comma separated list of
-                     host names.
-        """
-        return self.handle('store', arg)
-
-    def complete_store(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('store', text)
-
     def do_udata(self, arg):
         """
         Set the user data value for a metric in a metric set. This is typically used to
@@ -778,19 +718,6 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_udata_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('udata_regex', text)
-
-    def do_standby(self, arg):
-        """
-        ldmsd will update the standby state (standby/active) of
-        the given aggregator number
-        Parameters:
-        agg_no=    Unique integer id for an aggregator from 1 to 64
-        state=     0/1 - standby/active
-        """
-        self.handle('standby', arg)
-
-    def complete_standby(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('standby', text)
 
     def do_loglevel(self, arg):
         """

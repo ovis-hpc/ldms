@@ -81,22 +81,11 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                 'opt_attr': ['offset']},
                       'stop': {'id': 5,
                                'req_attr': ['name']},
-                      'add': {'id': 6,
-                              'req_attr': ['host', 'type'],
-                              'opt_attr': ['xprt', 'port', 'sets', 'interval',
-                                      'offset', 'agg_no']},
-                      'remove': {'id': 7,
-                                 'req_attr': ['host']},
-                      'store': {'id': 8,
-                                'req_attr': ['name', 'policy', 'container', 'schema'],
-                                'opt_attr': ['metric', 'hosts']},
                       'info': {'id': 9, 'req_attr': [],
                                'opt_attr': ['name']},
                       'udata': {'id': 10,
                                 'req_attr': ['set', 'metric', 'udata']},
                       'daemon_exit': {'id': 11, 'req_attr': []},
-                      'standby': {'id': 12,
-                                  'req_attr': ['agg_no', 'state']},
                       'oneshot': {'id': 13,
                                   'req_attr': ['name', 'time']},
                       'udata_regex': {'id': 14,
@@ -262,32 +251,6 @@ class ldmsdConfig(object):
         cmd = self.__format_cmd('stop', {'name': name})
         return self.talk(cmd)
 
-    def add(self, host, host_type, xprt = None, port = None,
-                     interval = None, sets = None,
-                     offset = None, standby = None):
-        attr_values = {'host': host, 'type': host_type, 'xprt': xprt, 'port': port,
-                       'sets': sets}
-        if interval:
-            attr_values['interval'] = interval
-
-        if offset:
-            attr_values['offset'] = offset
-
-        if standby:
-            attr_values['standby'] = standby
-        return self.talk(self.__format_cmd('add', attr_values))
-
-    def store(self, store_pi, policy, container, schema, metrics = None, hosts = None):
-        attr_values = {'name': store_pi, 'policy': policy, 'container': container,
-                       'schema': schema}
-
-        if metrics:
-            attr_values['metrics'] = metrics
-
-        if hosts:
-            attr_values['hosts'] = hosts
-        return self.talk(self.__format_cmd('store', attr_values))
-
     def info(self, name = None):
         attr_values = {}
         if name:
@@ -314,11 +277,6 @@ class ldmsdConfig(object):
 
     def exit_daemon(self):
         return self.talk(self.__format_cmd('exit', {}))
-
-    def update_standby(self, aggregator_id, state):
-        attr_values = {'agg_no': aggregator_id,
-                       'state': state}
-        return self.talk(self.__format_cmd('standby', attr_values))
 
     def oneshot(self, sampler_name, time):
         attr_values = {'name': sampler_name, 'time': time}
