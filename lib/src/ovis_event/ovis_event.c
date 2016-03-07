@@ -54,6 +54,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <assert.h>
 
 #define __TIMER_VALID(tv) ((tv)->tv_sec >= 0)
@@ -333,7 +334,14 @@ loop:
 	timersub(&ev->tv, &tv, &dtv);
 	assert(dtv.tv_sec >= 0);
 	assert(dtv.tv_usec >= 0);
-	timeout = dtv.tv_sec*1000 + dtv.tv_usec/1000;
+	/* tv_usec + 999 is for rounding-up transforming usec -> msec */
+	timeout = dtv.tv_sec*1000 + (dtv.tv_usec + 999)/1000;
+	/*
+	printf("timeout: %d\n", timeout);
+	printf("ev->tv: %ld.%06ld\n", ev->tv.tv_sec, ev->tv.tv_usec);
+	printf("tv: %ld.%06ld\n", tv.tv_sec, tv.tv_usec);
+	printf("dtv: %ld.%06ld\n", dtv.tv_sec, dtv.tv_usec);
+	*/
 	goto out;
 
 process_event:
