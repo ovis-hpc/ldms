@@ -256,6 +256,8 @@ process_event:
 	ev->cb(0, &tv, ev);
 	goto loop;
 out:
+	if (m->state == OVIS_EVENT_MANAGER_RUNNING)
+		m->state = OVIS_EVENT_MANAGER_WAITING;
 	pthread_mutex_unlock(&m->mutex);
 	return timeout;
 }
@@ -341,9 +343,11 @@ int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 			goto out;
 		}
 		m->evcount++;
+		/* notify only if the new event affect the next timeout */
+		if (m->state == OVIS_EVENT_MANAGER_WAITING && ev->hnode.idx == 0) {
+			write(m->pfd[1], &ev, sizeof(ev));
+		}
 		pthread_mutex_unlock(&m->mutex);
-		/* notify the event-loop about the newly added event */
-		write(m->pfd[1], &ev, sizeof(ev));
 	}
 
 out:
@@ -370,8 +374,10 @@ int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev)
 	if (ev->hnode.idx >= 0) {
 		ovis_heap_remove(m->event_heap, &ev->hnode);
 		m->evcount--;
-		/* notify, to recalculate next timeout */
-		write(m->pfd[1], &ev, sizeof(ev));
+		/* notify only last delete event */
+		if (m->state == OVIS_EVENT_MANAGER_WAITING && m->evcount == 0) {
+			write(m->pfd[1], &ev, sizeof(ev));
+		}
 	}
 	pthread_mutex_unlock(&m->mutex);
 out:
@@ -393,6 +399,7 @@ int ovis_event_term_check(ovis_event_manager_t m)
 		assert(0);
 		break;
 	case OVIS_EVENT_MANAGER_RUNNING:
+	case OVIS_EVENT_MANAGER_WAITING:
 		/* OK */
 		rc = 0;
 		break;
@@ -421,6 +428,7 @@ int ovis_event_loop(ovis_event_manager_t m, int return_on_empty)
 		m->state = OVIS_EVENT_MANAGER_RUNNING;
 		rc = 0;
 		break;
+	case OVIS_EVENT_MANAGER_WAITING:
 	case OVIS_EVENT_MANAGER_RUNNING:
 		rc = EINVAL;
 		break;
@@ -439,6 +447,11 @@ loop:
 	pthread_mutex_unlock(&m->mutex);
 
 	rc = epoll_wait(m->efd, m->ev, MAX_OVIS_EVENTS, timeout);
+	assert(rc >= 0 || errno == EINTR);
+	pthread_mutex_lock(&m->mutex);
+	if (m->state == OVIS_EVENT_MANAGER_WAITING)
+		m->state = OVIS_EVENT_MANAGER_RUNNING;
+	pthread_mutex_unlock(&m->mutex);
 
 	for (i = 0; i < rc; i++) {
 		rc = ovis_event_term_check(m);
@@ -471,6 +484,7 @@ int ovis_event_term(ovis_event_manager_t m)
 	pthread_mutex_lock(&m->mutex);
 	switch (m->state) {
 	case OVIS_EVENT_MANAGER_RUNNING:
+	case OVIS_EVENT_MANAGER_WAITING:
 		m->state = OVIS_EVENT_MANAGER_TERM;
 		rc = 0;
 		write(m->pfd[1], &none, sizeof(none));

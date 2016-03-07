@@ -80,6 +80,7 @@ struct ovis_event_manager {
 	enum {
 		OVIS_EVENT_MANAGER_INIT,
 		OVIS_EVENT_MANAGER_RUNNING,
+		OVIS_EVENT_MANAGER_WAITING,
 		OVIS_EVENT_MANAGER_TERM,
 	} state;
 };
