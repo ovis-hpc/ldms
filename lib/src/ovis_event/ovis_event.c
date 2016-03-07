@@ -84,28 +84,124 @@ void ovis_event_manager_ref_put(ovis_event_manager_t m)
 }
 
 static inline
-ovis_event_t hnode_to_event(ovis_heap_node_t n)
+struct ovis_event_heap *ovis_event_heap_create(uint32_t alloc_len)
 {
-	return ((void*)n) - offsetof(struct ovis_event, hnode);
+	struct ovis_event_heap *h = malloc(sizeof(*h) + alloc_len*sizeof(h->ev[0]));
+	if (!h)
+		return h;
+	h->alloc_len = alloc_len;
+	h->heap_len = 0;
+	return h;
 }
 
-int ovis_event_heap_cmp(ovis_heap_node_t a, ovis_heap_node_t b)
+static inline
+void ovis_event_heap_free(struct ovis_event_heap *h)
 {
-	ovis_event_t _a = hnode_to_event(a);
-	ovis_event_t _b = hnode_to_event(b);
-	if (_a->tv.tv_sec < _b->tv.tv_sec) {
-		return -1;
+	free(h);
+}
+
+static inline
+int ovis_event_lt(struct ovis_event *e0, struct ovis_event *e1)
+{
+	return timercmp(&e0->tv, &e1->tv, <);
+}
+
+static inline
+void ovis_event_heap_float(struct ovis_event_heap *h, int idx)
+{
+	int pidx;
+	struct ovis_event *ev = h->ev[idx];
+	while (idx) {
+		pidx = (idx - 1)/2;
+		if (!ovis_event_lt(ev, h->ev[pidx])) {
+			break;
+		}
+		h->ev[idx] = h->ev[pidx];
+		h->ev[pidx]->idx = idx;
+		idx = pidx;
 	}
-	if (_a->tv.tv_sec > _b->tv.tv_sec) {
-		return 1;
+	h->ev[idx] = ev;
+	ev->idx = idx;
+}
+
+static inline
+void ovis_event_heap_sink(struct ovis_event_heap *h, int idx)
+{
+	int l, r, x;
+	struct ovis_event *ev = h->ev[idx];
+	l = idx*2+1;
+	r = l+1;
+	while (l < h->heap_len) {
+		if (r >= h->heap_len) {
+			x = l;
+			goto cmp;
+		}
+		if (ovis_event_lt(h->ev[l], h->ev[r])) {
+			x = l;
+		} else {
+			x = r;
+		}
+	cmp:
+		if (!ovis_event_lt(ev, h->ev[x])) {
+			break;
+		}
+		h->ev[idx] = h->ev[x];
+		h->ev[x]->idx = idx;
+		idx = x;
+		l = idx*2+1;
+		r = l+1;
 	}
-	if (_a->tv.tv_usec < _b->tv.tv_usec) {
-		return -1;
+	h->ev[idx] = ev;
+	ev->idx = idx;
+}
+
+static inline
+int ovis_event_heap_insert(struct ovis_event_heap *h, struct ovis_event *ev)
+{
+	if (h->heap_len == h->alloc_len) {
+		return ENOMEM;
 	}
-	if (_a->tv.tv_usec > _b->tv.tv_usec) {
-		return 1;
+	h->ev[h->heap_len++] = ev;
+	ovis_event_heap_float(h, h->heap_len-1);
+	return 0;
+}
+
+static inline
+int ovis_event_heap_remove(struct ovis_event_heap *h, struct ovis_event *ev)
+{
+	if (ev->idx >= 0) {
+		h->ev[ev->idx] = h->ev[--h->heap_len];
+		h->ev[ev->idx]->idx = ev->idx;
+		ovis_event_heap_sink(h, ev->idx);
+		ev->idx = -1;
 	}
 	return 0;
+}
+
+static inline
+void ovis_event_heap_update(struct ovis_event_heap *h, int idx)
+{
+	struct ovis_event *ev = h->ev[idx];
+	ovis_event_heap_float(h, idx);
+	if (ev->idx == idx) {
+		ovis_event_heap_sink(h, idx);
+	}
+}
+
+static inline
+struct ovis_event *ovis_event_heap_pop(struct ovis_event_heap *h)
+{
+	struct ovis_event *ev = h->ev[0];
+	ovis_event_heap_remove(h, ev);
+	return ev;
+}
+
+static inline
+struct ovis_event *ovis_event_heap_top(struct ovis_event_heap *h)
+{
+	if (h->heap_len > 0)
+		return h->ev[0];
+	return NULL;
 }
 
 static
@@ -136,13 +232,13 @@ ovis_event_manager_t ovis_event_manager_create()
 	m->efd = -1;
 	m->pfd[0] = -1;
 	m->pfd[1] = -1;
-	m->event_heap = NULL;
+	m->heap = NULL;
 	m->evcount = 0;
 	m->refcount = 1;
 	m->state = OVIS_EVENT_MANAGER_INIT;
 
-	m->event_heap = ovis_heap_create(4096, ovis_event_heap_cmp);
-	if (!m->event_heap)
+	m->heap = ovis_event_heap_create(4096);
+	if (!m->heap)
 		goto err;
 
 	m->efd = epoll_create(4096); /* size is ignored since Linux 2.6.8 */
@@ -168,7 +264,7 @@ ovis_event_manager_t ovis_event_manager_create()
 	m->ovis_ev.timer.tv_sec = -1;
 	m->ovis_ev.timer.tv_sec = 0;
 	m->ovis_ev.fd = m->pfd[0];
-	m->ovis_ev.hnode.idx = -1;
+	m->ovis_ev.idx = -1;
 	m->ovis_ev.epoll_events = EPOLLIN;
 
 	m->ev[0].events = m->ovis_ev.epoll_events;
@@ -198,8 +294,8 @@ void ovis_event_manager_destroy(ovis_event_manager_t m)
 	if (m->pfd[1] >= 0)
 		close(m->pfd[1]);
 
-	if (m->event_heap)
-		ovis_heap_free(m->event_heap);
+	if (m->heap)
+		ovis_event_heap_free(m->heap);
 
 	free(m);
 }
@@ -219,17 +315,15 @@ int ovis_event_heap_process(struct ovis_event_manager *m)
 {
 	struct timeval tv, dtv;
 	ovis_event_t ev;
-	ovis_heap_node_t hnode;
 	int timeout = -1;
 
 loop:
 	pthread_mutex_lock(&m->mutex);
-	hnode = ovis_heap_top(m->event_heap);
-	if (!hnode) {
+	ev = ovis_event_heap_top(m->heap);
+	if (!ev) {
 		timeout = -1;
 		goto out;
 	}
-	ev = hnode_to_event(hnode);
 
 	gettimeofday(&tv, NULL);
 	if (!timercmp(&ev->tv, &tv, >)) {
@@ -246,9 +340,9 @@ process_event:
 	if (ev->flags & OVIS_EVENT_PERSISTENT) {
 		/* re-calculate timer for persistent events*/
 		timeradd(&tv, &ev->timer, &ev->tv);
-		ovis_heap_update(m->event_heap, hnode);
+		ovis_event_heap_update(m->heap, ev->idx);
 	} else {
-		hnode = ovis_heap_pop(m->event_heap);
+		ev = ovis_event_heap_pop(m->heap);
 		m->evcount--;
 	}
 	pthread_mutex_unlock(&m->mutex);
@@ -268,7 +362,7 @@ int ovis_event_timer_update(ovis_event_manager_t m, ovis_event_t ev)
 	pthread_mutex_lock(&m->mutex);
 	gettimeofday(&tv, NULL);
 	timeradd(&tv, &ev->timer, &ev->tv);
-	ovis_heap_update(m->event_heap, &ev->hnode);
+	ovis_event_heap_update(m->heap, ev->idx);
 	pthread_mutex_unlock(&m->mutex);
 	return 0;
 }
@@ -298,7 +392,7 @@ ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
 		goto out;
 	ev->fd = fd;
 	ev->epoll_events = epoll_events;
-	ev->hnode.idx = -1;
+	ev->idx = -1;
 	if (timer)
 		ev->timer = *timer;
 	else
@@ -329,7 +423,7 @@ int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 
 	if (__TIMER_VALID(&ev->timer)) {
 		/* timer event */
-		if (ev->hnode.idx != -1) {
+		if (ev->idx != -1) {
 			rc = EEXIST;
 			goto out;
 		}
@@ -337,14 +431,14 @@ int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 		struct timeval tv;
 		gettimeofday(&tv, NULL);
 		timeradd(&tv, &ev->timer, &ev->tv);
-		rc = ovis_heap_insert(m->event_heap, &ev->hnode);
+		rc = ovis_event_heap_insert(m->heap, ev);
 		if (rc) {
 			pthread_mutex_unlock(&m->mutex);
 			goto out;
 		}
 		m->evcount++;
 		/* notify only if the new event affect the next timeout */
-		if (m->state == OVIS_EVENT_MANAGER_WAITING && ev->hnode.idx == 0) {
+		if (m->state == OVIS_EVENT_MANAGER_WAITING && ev->idx == 0) {
 			write(m->pfd[1], &ev, sizeof(ev));
 		}
 		pthread_mutex_unlock(&m->mutex);
@@ -371,8 +465,8 @@ int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev)
 	}
 
 	pthread_mutex_lock(&m->mutex);
-	if (ev->hnode.idx >= 0) {
-		ovis_heap_remove(m->event_heap, &ev->hnode);
+	if (ev->idx >= 0) {
+		ovis_event_heap_remove(m->heap, ev);
 		m->evcount--;
 		/* notify only last delete event */
 		if (m->state == OVIS_EVENT_MANAGER_WAITING && m->evcount == 0) {
@@ -461,7 +555,7 @@ loop:
 		if (ev->cb) {
 			ev->cb(m->ev[i].events, NULL, ev);
 		}
-		if (ev->hnode.idx != -1) {
+		if (ev->idx != -1) {
 			/* i/o event has an active timer */
 			rc = ovis_event_timer_update(m, ev);
 		}
