@@ -95,6 +95,13 @@ time_t ts_mdh[12][32][24];
 static
 time_t ts_ym[300][12] = {0};
 
+static
+int is_leap[300] = {0};
+
+static
+int max_mday[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+
 /**
  * This table determine if a characcter is a delimiter or not.
  * This is also initialized in ::init_once().
@@ -185,6 +192,20 @@ void conn_ctxt_free(struct conn_ctxt *ctxt)
 static inline
 time_t __get_utc_ts(int yyyy, int mm, int dd, int HH, int MM, int SS)
 {
+	if (yyyy < 1970 ||  2199 < yyyy)
+		return -1;
+	if (mm < 1 || 12 < mm)
+		return -1;
+	if (dd < 1)
+		return -1;
+	if (max_mday[mm-1] + (mm==2 && is_leap[yyyy - 1900]) < dd)
+		return -1;
+	if (HH < 0 || 23 < HH)
+		return -1;
+	if (MM < 0 || 59 < MM)
+		return -1;
+	if (SS < 0 || 59 < SS)
+		return -1;
 	return ts_ym[yyyy-1900][mm-1] + (3600*24)*(dd-1) + 3600*HH + 60*MM + SS;
 }
 
@@ -407,6 +428,11 @@ int parse_msg_hdr_1(struct bstr *str, char *s, struct binq_data *d)
 	}
 	/* Treat local wallclock as UTC wallclock, and adjust it later. */
 	d->tv.tv_sec = __get_utc_ts(yyyy, mm, dd, HH, MM, SS);
+	if (d->tv.tv_sec == -1) {
+		bwarn("Date-time range error for message: %.*s", str->blen, str->cstr);
+		errno = EINVAL;
+		return -1;
+	}
 	d->tv.tv_usec = US;
 	s += len;
 	switch (*s) {
@@ -894,6 +920,8 @@ void init_ts_ym()
 				((Y % 100 != 0) || (Y % 400 == 0))) {
 			/* leap year: add Feb 29 before Mar 1. */
 			ts_ym[yyyy][mm] += 24*60*60;
+			/* also mark leapyear */
+			is_leap[yyyy] = 1;
 		}
 	}
 }
