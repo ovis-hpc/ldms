@@ -52,6 +52,8 @@ export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_L
 export LDMS_XPRT_LIBPATH=@pkglibdir@
 export PATH=${BUILDDIR}/sbin:$PATH
 export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+jidfile=$SOCKDIR/jid
+echo 1 > $jidfile
 
 # whack the daemons we own
 pkill ldmsd
@@ -206,11 +208,12 @@ tx_packets#eth1,1,1
 ##tx_bytes#ib0,1,1
 ##tx_packets#ib0,1,1
 ### meminfo
+slurm.jobid,0,1
 MemFree,0,1
 Active,0,1
 # lustre2_client
-##lstats.read_bytes#llite.scratch1,1,1
-##lstats.write_bytes#llite.scratch1,1,1
+lstats.read_bytes#llite.fscratch,1,1
+lstats.write_bytes#llite.fscratch,1,1
 ##lstats.open#llite.scratch1,1,1
 ##lstats.close#llite.scratch1,1,1
 ##lstats.seek#llite.scratch1,1,1
@@ -237,11 +240,11 @@ sleep 1
 
 echo Starting plugins on daemon1
 pluglist="meminfo procstatutil procdiskstats procnetdev"
-pluglist="meminfo vmstat procstatutil2 procnfs procdiskstats procnetdev"
+pluglist="slurmjobid meminfo vmstat procstatutil2 procnfs procdiskstats procnetdev lustre2_client"
 for container in $pluglist; do
 	echo -n "$container ..." 
 echo "load name=$container" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
-echo "config name=$container set=localhost1/$container component_id=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
+echo "config name=$container set=localhost1/$container component_id=1 llite=fscratch,gscratch with_jobid=1 file=$jidfile ifaces=ib0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
 echo "start name=$container interval=1000000 offset=0" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_1
 	echo done
 done
@@ -259,11 +262,14 @@ echo "add host=localhost type=active xprt=sock interval=1000000 offset=200000 po
 sleep 5
 echo Adding store_derived_csv to aggregator3
 echo "load name=store_derived_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 sleep 2
-echo "config name=store_derived_csv path=${STOREDIR} altheader=1 derivedconf=${derconf}" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=store_derived_csv path=${STOREDIR} id_pos=1 altheader=1 derivedconf=${derconf}" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+echo "config name=store_csv path=${STOREDIR} id_pos=1 altheader=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 for container in $pluglist; do
 	echo -n "store $container ..." 
 	echo "store name=store_derived_csv comp_type=node set=$container container=$container" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
+	echo "store name=store_csv comp_type=node set=$container container=$container.csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_3
 	echo done
 done
 sleep 2
