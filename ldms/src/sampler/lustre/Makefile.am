@@ -30,5 +30,6 @@ pkglib_LTLIBRARIES += liblustre2_oss.la
 
 #liblustre2_client
 liblustre2_client_la_SOURCES = lustre2_client.c
+liblustre2_client_la_CFLAGS = -I$(srcdir)/.. $(AM_CFLAGS)
 liblustre2_client_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liblustre2_client.la
