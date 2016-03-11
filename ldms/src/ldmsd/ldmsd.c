@@ -3483,25 +3483,6 @@ int main(int argc, char *argv[])
 	char *cfg_file = NULL;
 	struct sigaction action;
 
-	TAILQ_INIT(&conn_list);
-
-	memset(&action, 0, sizeof(action));
-	action.sa_sigaction = cleanup_sa;
-	action.sa_flags = SA_SIGINFO;
-	sigaction(SIGHUP, &action, NULL);
-	sigaction(SIGINT, &action, NULL);
-	sigaction(SIGTERM, &action, NULL);
-	sigaction(SIGABRT, &action, NULL);
-
-	hset_map = str_map_create(65521);
-	if (!hset_map) {
-		errno = ENOMEM;
-		perror("str_map_create");
-		exit(-1);
-	}
-
-	/* Set seed for random number generator. */
-	srand (time(NULL));
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -3641,6 +3622,31 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Before any threads, files, etc, set up shell command slave pipe. */
+	if (enable_sheller) {
+		sheller_init();
+	}
+
+	TAILQ_INIT(&conn_list);
+
+	memset(&action, 0, sizeof(action));
+	action.sa_sigaction = cleanup_sa;
+	action.sa_flags = SA_SIGINFO;
+	sigaction(SIGHUP, &action, NULL);
+	sigaction(SIGINT, &action, NULL);
+	sigaction(SIGTERM, &action, NULL);
+	sigaction(SIGABRT, &action, NULL);
+
+	hset_map = str_map_create(65521);
+	if (!hset_map) {
+		errno = ENOMEM;
+		perror("str_map_create");
+		exit(-1);
+	}
+
+	/* Set seed for random number generator. */
+	srand (time(NULL));
+
 	if (!dirty_threshold)
 		/* default total dirty threshold is calculated based on popular
 		 * 4 GB RAM setting with Linux's default 10% dirty_ratio */
@@ -3649,12 +3655,6 @@ int main(int argc, char *argv[])
 	/* Make dirty_threshold to be per thread */
 	dirty_threshold /= flush_N;
 
-	/* Before any threads, files, etc, set up shell command slave pipe.
-	 * Default is off, with init-on-demand instead.
-	 */
-	if (enable_sheller) {
-		sheller_init();
-	}
 
 #ifdef ENABLE_YAML
 	yaml_document_t *yaml_document = NULL;
