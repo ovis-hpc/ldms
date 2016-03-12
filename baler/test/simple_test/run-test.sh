@@ -35,11 +35,47 @@ EOF
 OPERF_OPTIONS="-g -d $BPROF"
 BALERD_OPTS="-s $BSTORE -l $BLOG -C $BCONFIG -m master -v $BLOG_LEVEL -I $BIN_THREADS -O $BOUT_THREADS"
 BALERD_CMD="balerd -F $BALERD_OPTS"
-if __has_operf; then
-	BALERD_CMD="operf $OPERF_OPTIONS $BALERD_CMD"
-fi
 
 BPID=0
+
+BQUERY_FILE=".bquery.state"
+
+bquery_set_state() {
+	echo $1 > $BQUERY_FILE
+}
+
+bquery_check_state() {
+	TMP=$(cat $BQUERY_FILE)
+	[ "$TMP" == "$1" ]
+}
+
+bquery_set_state "INIT"
+
+bquery_loop() {
+	if ! bquery_check_state "INIT"; then
+		return 255
+	fi
+	__info "start bquery loop ..."
+	bquery_set_state "QUERYING"
+	while bquery_check_state "QUERYING"; do
+		bquery -s $BSTORE > tmp || __err_exit "bquery error exit"
+	done
+	bquery_set_state "DONE"
+	__info "bquery_loop exit!"
+}
+
+stop_bquery() {
+	__info "stopping bquery"
+	bquery_set_state "STOP"
+}
+
+wait_bquery() {
+	__info "waiting on bquery ..."
+	while ! bquery_check_state "DONE"; do
+		sleep 1;
+	done
+	__info "bquery done!"
+}
 
 check_balerd() {
 	jobs '%$BALERD_CMD' > /dev/null 2>&1 || \
@@ -86,8 +122,17 @@ if [[ -d $BSTORE ]]; then
 	fi
 fi
 
+exit_hook() {
+	JOBS=$(jobs -prl)
+	echo "Running jobs: $JOBS"
+	JOBS=$(jobs -pr)
+	CMD="kill $JOBS"
+	echo "Kill CMD: $CMD"
+	$CMD
+}
+
 # Hook to kill all jobs at exit
-trap 'kill $(jobs -p)' EXIT
+trap 'exit_hook' EXIT
 
 ./clean.sh
 
@@ -110,6 +155,9 @@ __info "Start sending data to balerd"
 
 # stat_balerd &
 
+sleep 1
+bquery_loop &
+
 time -p ./gen-log.pl | ./syslog2baler.pl -p $BTEST_BIN_RSYSLOG_PORT
 
 if (( $? )); then
@@ -119,6 +167,9 @@ fi
 __info "done sending data .. wait a little while for balerd to process them"
 
 time -p wait_balerd
+stop_bquery
+wait_bquery
+
 sleep 1
 
 check_balerd
@@ -133,5 +184,7 @@ for X in check-*.{pl,sh,py}; do
 		__info "................... $X ${BLD}${GRN}success${NC}"
 	fi
 done
+
+sleep 1
 
 echo -e "${BLD}${GRN}FINISHED!!!${NC}"
