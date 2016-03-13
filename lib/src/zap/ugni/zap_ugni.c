@@ -281,37 +281,6 @@ err:
 	return zap_errno2zerr(errno);
 }
 
-static int __set_keep_alive(struct z_ugni_ep *uep)
-{
-	int rc;
-	int optval;
-	rc = setsockopt(uep->sock, SOL_SOCKET, SO_KEEPALIVE, &optval,
-			sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set SO_KEEPALIVE error: %d\n", errno);
-		return errno;
-	}
-	optval = ZAP_UGNI_SOCK_KEEPCNT;
-	rc = setsockopt(uep->sock, SOL_TCP, TCP_KEEPCNT, &optval, sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set TCP_KEEPCNT error: %d\n", errno);
-		return errno;
-	}
-	optval = ZAP_UGNI_SOCK_KEEPIDLE;
-	rc = setsockopt(uep->sock, SOL_TCP, TCP_KEEPIDLE, &optval, sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set TCP_KEEPIDLE error: %d\n", errno);
-		return errno;
-	}
-	optval = ZAP_UGNI_SOCK_KEEPINTVL;
-	rc = setsockopt(uep->sock, SOL_TCP, TCP_KEEPINTVL, &optval, sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set TCP_KEEPINTVL error: %d\n", errno);
-		return errno;
-	}
-	return 0;
-}
-
 static zap_err_t z_ugni_connect(zap_ep_t ep,
 				struct sockaddr *sa, socklen_t sa_len,
 				char *data, size_t data_len)
@@ -344,10 +313,6 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 	if (rc) {
 		zerr = ZAP_ERR_RESOURCE;
 		goto out;
-	}
-	rc = __set_keep_alive(uep);
-	if (rc) {
-		LOG_(uep, "WARNING: __set_keep_alive() rc: %d\n", rc);
 	}
 	zerr = __setup_connection(uep);
 	if (zerr)
@@ -1248,7 +1213,7 @@ static struct timeval to;
 static struct event *keepalive;
 static void timeout_cb(int s, short events, void *arg)
 {
-	to.tv_sec = 10;
+	to.tv_sec = 86400; /* 24 hours */
 	to.tv_usec = 0;
 	evtimer_add(keepalive, &to);
 }
