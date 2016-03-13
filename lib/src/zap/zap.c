@@ -72,14 +72,15 @@
 	if (ep && ep->z && ep->z->log_fn) \
 		ep->z->log_fn(fmt, ##__VA_ARGS__); \
 } while(0)
-#else
+#else /* DEBUG */
 #define DLOG(ep, fmt, ...)
-#endif
+#endif /* DEBUG */
 
-#define ZLOG(ep, fmt, ...) do { \
-	if (ep && ep->z && ep->z->log_fn) \
-		ep->z->log_fn(fmt, ##__VA_ARGS__); \
-} while(0)
+#ifdef DEBUG
+int __zap_assert = 1;
+#else
+int __zap_assert = 0;
+#endif
 
 static void default_log(const char *fmt, ...)
 {
