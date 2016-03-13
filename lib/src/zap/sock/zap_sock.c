@@ -304,14 +304,11 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 		sep->conn_data_len = data_len;
 	}
 	zap_get_ep(&sep->ep); /* Release when disconnect */
-	if (bufferevent_socket_connect(sep->buf_event, sa, sa_len)) {
-		/* Error starting connection */
-		bufferevent_free(sep->buf_event);
-		sep->buf_event = NULL;
-		zerr = ZAP_ERR_CONNECT;
-		zap_put_ep(&sep->ep);
-	}
-
+	/*
+	 * Ignore the error code returned from libevent because
+	 * it also delivers the error on the event_cb.
+	 */
+	(void)bufferevent_socket_connect(sep->buf_event, sa, sa_len);
  out:
 	return zerr;
 }
