@@ -365,15 +365,7 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 	}
 
 	zap_get_ep(&uep->ep); /* Release when disconnect/conn_error/rejected */
-	if (bufferevent_socket_connect(uep->buf_event, sa, sa_len)) {
-		/* Error starting connection */
-		bufferevent_free(uep->buf_event);
-		uep->buf_event = NULL;
-		zerr = ZAP_ERR_CONNECT;
-		zap_put_ep(&uep->ep);
-		goto out;
-	}
-
+	(void)bufferevent_socket_connect(uep->buf_event, sa, sa_len);
  out:
 	return zerr;
 }
