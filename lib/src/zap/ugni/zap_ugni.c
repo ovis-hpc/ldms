@@ -257,7 +257,8 @@ static zap_err_t z_ugni_close(zap_ep_t ep)
 		shutdown(uep->sock, SHUT_RDWR);
 		break;
 	default:
-		assert(0);
+		ZAP_ASSERT(0, ep, "%s: Unexpected state '%s'\n",
+				__func__, zap_ep_state_str(ep->state));
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	return ZAP_ERR_OK;
@@ -529,7 +530,10 @@ err0:
 
 static void process_uep_msg_accepted(struct z_ugni_ep *uep, size_t msglen)
 {
-	assert(uep->ep.state == ZAP_EP_CONNECTING);
+	ZAP_ASSERT(uep->ep.state == ZAP_EP_CONNECTING, &uep->ep,
+			"%s: Unexpected state '%s'. "
+			"Expected state 'ZAP_EP_CONNECTING'\n",
+		 	__func__, zap_ep_state_str(uep->ep.state));
 	struct zap_event ev;
 	struct zap_ugni_msg_accepted *msg;
 	int rc;
@@ -979,7 +983,10 @@ static void process_defer_disconnected_cb(int s, short events, void *arg)
 		 * when the last post descriptor was processed.
 		 */
 	}
-	assert(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED);
+	ZAP_ASSERT(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED, &uep->ep,
+			"%s: uep->conn_ev.type (%s) is not ZAP_EVENT_"
+			"DISCONNECTED\n", __func__,
+			zap_event_str(uep->conn_ev.type));
 	/* If we reach here with conn_ev, we have a deferred disconnect event */
 	/* the disconnect path in ugni_sock_event()
 	 * has already prep conn_ev for us. */
@@ -1319,8 +1326,11 @@ static int __get_node_state()
 	}
 
 	_node_state.rca_get_failed = 0;
-	for (i = 0; i < nodelist.na_len; i++) {
-		assert(i < ZAP_UGNI_MAX_NUM_NODE);
+	if (nodelist.na_len >= ZAP_UGNI_MAX_NUM_NODE) {
+		zap_ugni_log("Number of nodes %d exceeds ZAP_UGNI_MAX_NUM_NODE "
+				"%d.\n", nodelist.na_len, ZAP_UGNI_MAX_NUM_NODE);
+	}
+	for (i = 0; i < nodelist.na_len && i < ZAP_UGNI_MAX_NUM_NODE; i++) {
 		node_id = nodelist.na_ids[i].rs_node_s._node_id;
 		_node_state.node_state[node_id] =
 			nodelist.na_ids[i].rs_node_s._node_state;
@@ -1348,7 +1358,11 @@ static int __check_node_state(int node_id)
 	}
 
 	if (node_id != -1){
-		assert(node_id < ZAP_UGNI_MAX_NUM_NODE);
+		if (node_id >= ZAP_UGNI_MAX_NUM_NODE) {
+			zap_ugni_log("node_id %d exceeds ZAP_UGNI_MAX_NUM_NODE "
+					"%d.\n", node_id, ZAP_UGNI_MAX_NUM_NODE);
+			return 1;
+		}
 		if (_node_state.node_state[node_id] != ZAP_UGNI_NODE_GOOD)
 			return 1; /* not good */
 	}
