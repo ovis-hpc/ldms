@@ -429,16 +429,6 @@ static void process_sep_msg_connect(struct z_sock_ep *sep, size_t reqlen)
 	sep->ep.cb(&sep->ep, &ev);
 	free(msg);
 
-	if (sep->ep.state == ZAP_EP_CONNECTED) {
-		/*
-		 * App calls zap_accept() and
-		 * it has no errors.
-		 */
-		ev.type = ZAP_EVENT_CONNECTED;
-		ev.status = ZAP_ERR_OK;
-		zap_get_ep(&sep->ep); /* Release when receive disconnect/error event. */
-		sep->ep.cb(&sep->ep, &ev);
-	}
 	return;
 }
 
@@ -1302,6 +1292,13 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 		goto err_1;
 	sep->ep.state = ZAP_EP_CONNECTED;
 	pthread_mutex_unlock(&sep->ep.lock);
+
+	struct zap_event ev = {
+		.type = ZAP_EVENT_CONNECTED,
+		.status = ZAP_ERR_OK,
+	};
+	zap_get_ep(&sep->ep); /* Release when receive disconnect/error event. */
+	sep->ep.cb(&sep->ep, &ev);
 	return ZAP_ERR_OK;
 
 err_1:

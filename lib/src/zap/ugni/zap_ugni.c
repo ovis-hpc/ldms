@@ -593,16 +593,6 @@ static void process_uep_msg_connect(struct z_ugni_ep *uep, size_t msglen)
 	uep->ep.cb(&uep->ep, &ev);
 	free(msg);
 
-	if (uep->ep.state == ZAP_EP_CONNECTED) {
-		/*
-		 * App calls zap_accept() and
-		 * it has no synchronous errors.
-		 */
-		ev.type = ZAP_EVENT_CONNECTED;
-		ev.status = ZAP_ERR_OK;
-		zap_get_ep(&uep->ep); /* Release when disconnect */
-		uep->ep.cb(&uep->ep, &ev);
-	}
 	return;
 err1:
 	pthread_mutex_unlock(&uep->ep.lock);
@@ -1798,7 +1788,6 @@ zap_err_t z_ugni_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 {
 	/* ep is the newly created ep from __z_ugni_conn_request */
 	struct z_ugni_ep *uep = (struct z_ugni_ep *)ep;
-	struct zap_event ev;
 	int rc;
 	zap_err_t zerr;
 
@@ -1819,6 +1808,12 @@ zap_err_t z_ugni_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 
 	uep->ep.state = ZAP_EP_CONNECTED;
 	pthread_mutex_unlock(&uep->ep.lock);
+	struct zap_event ev = {
+		.type = ZAP_EVENT_CONNECTED,
+		.status = ZAP_ERR_OK,
+	};
+	zap_get_ep(&uep->ep); /* Release when disconnect */
+	uep->ep.cb(&uep->ep, &ev);
 	return ZAP_ERR_OK;
 err_1:
 	uep->ep.state = ZAP_EP_ERROR;

@@ -303,14 +303,6 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	uint32_t data_len = 0;
 
 	switch (ev->type) {
-	/* CONNECT_REQUEST need immediate attention as the driver expect
-	 * the application to reject or accept the connection before
-	 * CONNECT_REQUEST callback is returned.
-	 */
-	case ZAP_EVENT_CONNECT_REQUEST:
-		ep->app_cb(ep, ev);
-		return;
-
 	/* these events need data copy */
 	case ZAP_EVENT_RENDEZVOUS:
 	case ZAP_EVENT_REJECTED:
@@ -323,6 +315,7 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_DISCONNECTED:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
+	case ZAP_EVENT_CONNECT_REQUEST:
 		/* do nothing */
 		break;
 	default:
@@ -382,11 +375,9 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
 {
 	zap_err_t zerr;
-	zerr = ep->z->accept(ep, cb, data, data_len);
-	if (zerr == ZAP_ERR_OK) {
-		ep->app_cb = cb;
-		ep->cb = zap_interpose_cb;
-	}
+	ep->app_cb = cb;
+	ep->cb = zap_interpose_cb;
+	zerr = ep->z->accept(ep, zap_interpose_cb, data, data_len);
 	return zerr;
 }
 
