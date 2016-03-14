@@ -1108,7 +1108,7 @@ static void __z_sock_conn_request(struct evconnlistener *listener,
 	struct z_sock_ep *new_sep;
 	zap_err_t zerr;
 
-	new_ep = zap_new(sep->ep.z, sep->ep.cb);
+	new_ep = zap_new(sep->ep.z, sep->ep.app_cb);
 	if (!new_ep) {
 		zerr = errno;
 		LOG_(sep, "Zap Error %d (%s): in %s at %s:%d\n",
