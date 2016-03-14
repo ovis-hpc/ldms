@@ -214,6 +214,7 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		rc = EINVAL;
 		goto out;
 	}
+	snprintf(tb->pname, sizeof(tb->pname), "%s", pname);
 	iname = av_value(avl, "instance");
 	if (!iname) {
 		msglog(LDMSD_LERROR, "%s: missing instance.\n", tb->base.base.name);
@@ -275,6 +276,7 @@ int timer_base_create_set(struct timer_base *tb)
 				tb->base.base.name, errno);
 		return errno;
 	}
+	ldms_set_producer_name_set(tb->set, tb->pname);
 	return 0;
 }
 

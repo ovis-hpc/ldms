@@ -76,6 +76,7 @@ struct timer_base {
 	TAILQ_HEAD(, tsampler_timer_entry) timer_list;
 	char buff[1024]; /* string buffer for internal timer_base use */
 	char iname[1024]; /* iname for internal use */
+	char pname[1024]; /* producer name for internal use */
 };
 
 void timer_base_init(struct timer_base *tb);
