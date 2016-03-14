@@ -123,6 +123,7 @@ out:
 static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 				   ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
+	int rc;
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
 		goto out;
@@ -137,7 +138,12 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 		if (!match) {
 			/* The reference will be put back in update_cb */
 			ldmsd_prdcr_set_ref_get(prd_set);
-			ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+			if (rc) {
+				ldmsd_log(LDMSD_LERROR, "Synchronous error %d "
+						"from ldms_xprt_update\n", rc);
+				ldmsd_prdcr_set_ref_put(prd_set);
+			}
 			continue;
 		}
 		rc = 1;
@@ -149,9 +155,13 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 		if (!rc) {
 			/* The reference will be put back in update_cb */
 			ldmsd_prdcr_set_ref_get(prd_set);
-			ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+			if (rc) {
+				ldmsd_log(LDMSD_LERROR, "Synchronous error %d "
+						"from ldms_xprt_update\n", rc);
+				ldmsd_prdcr_set_ref_put(prd_set);
+			}
 		}
-
 	}
 out:
 	ldmsd_prdcr_unlock(prdcr);

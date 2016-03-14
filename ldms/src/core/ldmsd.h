@@ -137,7 +137,7 @@ typedef struct ldmsd_prdcr {
 	struct sockaddr_storage ss;	/* Host address */
 	socklen_t ss_len;
 	char *host_name;	/* Host name */
-	short port_no;		/* Port number */
+	unsigned short port_no;		/* Port number */
 	char *xprt_name;	/* Transport name */
 	ldms_t xprt;
 	int conn_intrvl_us;	/* connect interval */

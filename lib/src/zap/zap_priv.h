@@ -81,6 +81,24 @@ struct zap_version {
 	((v).minor == ZAP_VERSION_MINOR) \
 )
 
+#define ZLOG(ep, fmt, ...) do { \
+	if (ep && ep->z && ep->z->log_fn) \
+		ep->z->log_fn(fmt, ##__VA_ARGS__); \
+} while(0)
+
+extern int __zap_assert;
+#define ZAP_ASSERT(_cond_, _ep_, _fmt_, ...) do { \
+	if (!(_cond_)) { \
+		ZLOG((_ep_), _fmt_, ##__VA_ARGS__); \
+		if (__zap_assert) \
+			assert(_cond_); \
+	} \
+} while(0)
+
+static void __zap_assert_flag(int f) {
+	__zap_assert = f;
+}
+
 /*
  * State definitions
  *

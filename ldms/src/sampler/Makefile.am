@@ -26,6 +26,10 @@ libtimer_base_la_SOURCES = timer_base.c timer_base.h
 libtimer_base_la_LIBADD = $(COMMON_LIBADD) libtsampler.la $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libtimer_base.la
 
+libhfclock_la_SOURCES = hfclock.c
+libhfclock_la_LIBADD = $(COMMON_LIBADD) libtimer_base.la
+pkglib_LTLIBRARIES += libhfclock.la
+
 if ENABLE_CRAY_POWER_SAMPLER
 libcray_power_sampler_la_SOURCES = cray_power_sampler.c
 libcray_power_sampler_la_CFLAGS = $(AM_CFLAGS)

@@ -257,7 +257,8 @@ static zap_err_t z_ugni_close(zap_ep_t ep)
 		shutdown(uep->sock, SHUT_RDWR);
 		break;
 	default:
-		assert(0);
+		ZAP_ASSERT(0, ep, "%s: Unexpected state '%s'\n",
+				__func__, zap_ep_state_str(ep->state));
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	return ZAP_ERR_OK;
@@ -278,37 +279,6 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 	return ZAP_ERR_OK;
 err:
 	return zap_errno2zerr(errno);
-}
-
-static int __set_keep_alive(struct z_ugni_ep *uep)
-{
-	int rc;
-	int optval;
-	rc = setsockopt(uep->sock, SOL_SOCKET, SO_KEEPALIVE, &optval,
-			sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set SO_KEEPALIVE error: %d\n", errno);
-		return errno;
-	}
-	optval = ZAP_UGNI_SOCK_KEEPCNT;
-	rc = setsockopt(uep->sock, SOL_TCP, TCP_KEEPCNT, &optval, sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set TCP_KEEPCNT error: %d\n", errno);
-		return errno;
-	}
-	optval = ZAP_UGNI_SOCK_KEEPIDLE;
-	rc = setsockopt(uep->sock, SOL_TCP, TCP_KEEPIDLE, &optval, sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set TCP_KEEPIDLE error: %d\n", errno);
-		return errno;
-	}
-	optval = ZAP_UGNI_SOCK_KEEPINTVL;
-	rc = setsockopt(uep->sock, SOL_TCP, TCP_KEEPINTVL, &optval, sizeof(int));
-	if (rc) {
-		LOG_(uep, "WARNING: set TCP_KEEPINTVL error: %d\n", errno);
-		return errno;
-	}
-	return 0;
 }
 
 static zap_err_t z_ugni_connect(zap_ep_t ep,
@@ -344,10 +314,6 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 		zerr = ZAP_ERR_RESOURCE;
 		goto out;
 	}
-	rc = __set_keep_alive(uep);
-	if (rc) {
-		LOG_(uep, "WARNING: __set_keep_alive() rc: %d\n", rc);
-	}
 	zerr = __setup_connection(uep);
 	if (zerr)
 		goto out;
@@ -364,15 +330,7 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 	}
 
 	zap_get_ep(&uep->ep); /* Release when disconnect/conn_error/rejected */
-	if (bufferevent_socket_connect(uep->buf_event, sa, sa_len)) {
-		/* Error starting connection */
-		bufferevent_free(uep->buf_event);
-		uep->buf_event = NULL;
-		zerr = ZAP_ERR_CONNECT;
-		zap_put_ep(&uep->ep);
-		goto out;
-	}
-
+	(void)bufferevent_socket_connect(uep->buf_event, sa, sa_len);
  out:
 	return zerr;
 }
@@ -529,7 +487,10 @@ err0:
 
 static void process_uep_msg_accepted(struct z_ugni_ep *uep, size_t msglen)
 {
-	assert(uep->ep.state == ZAP_EP_CONNECTING);
+	ZAP_ASSERT(uep->ep.state == ZAP_EP_CONNECTING, &uep->ep,
+			"%s: Unexpected state '%s'. "
+			"Expected state 'ZAP_EP_CONNECTING'\n",
+		 	__func__, zap_ep_state_str(uep->ep.state));
 	struct zap_event ev;
 	struct zap_ugni_msg_accepted *msg;
 	int rc;
@@ -979,7 +940,10 @@ static void process_defer_disconnected_cb(int s, short events, void *arg)
 		 * when the last post descriptor was processed.
 		 */
 	}
-	assert(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED);
+	ZAP_ASSERT(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED, &uep->ep,
+			"%s: uep->conn_ev.type (%s) is not ZAP_EVENT_"
+			"DISCONNECTED\n", __func__,
+			zap_event_str(uep->conn_ev.type));
 	/* If we reach here with conn_ev, we have a deferred disconnect event */
 	/* the disconnect path in ugni_sock_event()
 	 * has already prep conn_ev for us. */
@@ -1249,7 +1213,7 @@ static struct timeval to;
 static struct event *keepalive;
 static void timeout_cb(int s, short events, void *arg)
 {
-	to.tv_sec = 10;
+	to.tv_sec = 86400; /* 24 hours */
 	to.tv_usec = 0;
 	evtimer_add(keepalive, &to);
 }
@@ -1319,8 +1283,11 @@ static int __get_node_state()
 	}
 
 	_node_state.rca_get_failed = 0;
-	for (i = 0; i < nodelist.na_len; i++) {
-		assert(i < ZAP_UGNI_MAX_NUM_NODE);
+	if (nodelist.na_len >= ZAP_UGNI_MAX_NUM_NODE) {
+		zap_ugni_log("Number of nodes %d exceeds ZAP_UGNI_MAX_NUM_NODE "
+				"%d.\n", nodelist.na_len, ZAP_UGNI_MAX_NUM_NODE);
+	}
+	for (i = 0; i < nodelist.na_len && i < ZAP_UGNI_MAX_NUM_NODE; i++) {
 		node_id = nodelist.na_ids[i].rs_node_s._node_id;
 		_node_state.node_state[node_id] =
 			nodelist.na_ids[i].rs_node_s._node_state;
@@ -1348,7 +1315,11 @@ static int __check_node_state(int node_id)
 	}
 
 	if (node_id != -1){
-		assert(node_id < ZAP_UGNI_MAX_NUM_NODE);
+		if (node_id >= ZAP_UGNI_MAX_NUM_NODE) {
+			zap_ugni_log("node_id %d exceeds ZAP_UGNI_MAX_NUM_NODE "
+					"%d.\n", node_id, ZAP_UGNI_MAX_NUM_NODE);
+			return 1;
+		}
 		if (_node_state.node_state[node_id] != ZAP_UGNI_NODE_GOOD)
 			return 1; /* not good */
 	}
