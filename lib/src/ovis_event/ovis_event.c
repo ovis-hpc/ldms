@@ -143,7 +143,7 @@ void ovis_event_heap_sink(struct ovis_event_heap *h, int idx)
 			x = r;
 		}
 	cmp:
-		if (!ovis_event_lt(ev, h->ev[x])) {
+		if (!ovis_event_lt(h->ev[x], ev)) {
 			break;
 		}
 		h->ev[idx] = h->ev[x];
