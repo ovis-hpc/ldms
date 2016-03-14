@@ -123,10 +123,10 @@ struct z_ugni_key {
  */
 typedef enum zap_ugni_msg_type {
 	ZAP_UGNI_MSG_NONE,        /**< Dummy first type */
+	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
 	ZAP_UGNI_MSG_REGULAR,     /**< Regular send-receive */
 	ZAP_UGNI_MSG_RENDEZVOUS,  /**< Share zap_map */
 	ZAP_UGNI_MSG_ACCEPTED,    /**< Connection accepted */
-	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
 	ZAP_UGNI_MSG_REJECTED,    /**< Connection rejected */
 	ZAP_UGNI_MSG_TYPE_LAST    /**< Dummy last type (for type count) */
 } zap_ugni_msg_type_t;

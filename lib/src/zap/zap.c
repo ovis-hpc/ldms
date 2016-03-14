@@ -72,14 +72,15 @@
 	if (ep && ep->z && ep->z->log_fn) \
 		ep->z->log_fn(fmt, ##__VA_ARGS__); \
 } while(0)
-#else
+#else /* DEBUG */
 #define DLOG(ep, fmt, ...)
-#endif
+#endif /* DEBUG */
 
-#define ZLOG(ep, fmt, ...) do { \
-	if (ep && ep->z && ep->z->log_fn) \
-		ep->z->log_fn(fmt, ##__VA_ARGS__); \
-} while(0)
+#ifdef DEBUG
+int __zap_assert = 1;
+#else
+int __zap_assert = 0;
+#endif
 
 static void default_log(const char *fmt, ...)
 {
@@ -100,6 +101,16 @@ LIST_HEAD(zap_list, zap) zap_list;
 
 pthread_mutex_t zap_list_lock;
 
+static int zap_event_workers = ZAP_EVENT_WORKERS;
+static int zap_event_qdepth = ZAP_EVENT_QDEPTH;
+
+struct zap_event_queue *zev_queue;
+
+struct ovis_heap *zev_queue_heap;
+
+#ifndef PLUGINDIR
+#define PLUGINDIR "/usr/local/lib/ovis-lib"
+#endif
 #define ZAP_LIBPATH_DEFAULT PLUGINDIR
 #define _SO_EXT ".so"
 static char _libdir[PATH_MAX];
@@ -140,9 +151,25 @@ enum zap_err_e zap_errno2zerr(int e)
 
 const char* zap_event_str(enum zap_event_type e)
 {
-	if (e < 0 || e > ZAP_EVENT_LAST)
+	if ((int)e < 0 || e > ZAP_EVENT_LAST)
 		return "ZAP_EVENT_UNKNOWN";
 	return __zap_event_str[e];
+}
+
+static inline
+void zap_event_queue_ep_get(struct zap_event_queue *q)
+{
+	pthread_mutex_lock(&q->mutex);
+	q->ep_count++;
+	pthread_mutex_unlock(&q->mutex);
+}
+
+static inline
+void zap_event_queue_ep_put(struct zap_event_queue *q)
+{
+	pthread_mutex_lock(&q->mutex);
+	q->ep_count--;
+	pthread_mutex_unlock(&q->mutex);
 }
 
 void *zap_get_ucontext(zap_ep_t ep)
@@ -159,6 +186,9 @@ zap_mem_info_t default_zap_mem_info(void)
 {
 	return NULL;
 }
+
+static
+void zap_interpose_event(zap_ep_t ep, void *ctxt);
 
 zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_fn)
 {
@@ -209,6 +239,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	strcpy(z->name, name);
 	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
+	z->event_interpose = zap_interpose_event;
 
 	pthread_mutex_lock(&zap_list_lock);
 	LIST_INSERT_HEAD(&zap_list, z, zap_link);
@@ -251,8 +282,83 @@ void blocking_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_WRITE_COMPLETE:
 		/* Do nothing */
 		break;
+	default:
+		assert(0);
 	}
 }
+
+struct zap_interpose_ctxt {
+	struct zap_event ev;
+	unsigned char data[0];
+};
+
+/*
+ * interposing a real callback, putting callback task into the queue.
+ * Only read/write/recv completions are posted to the queue.
+ */
+static
+void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
+{
+	struct zap_interpose_ctxt *ictxt;
+	uint32_t data_len = 0;
+
+	switch (ev->type) {
+	/* CONNECT_REQUEST need immediate attention as the driver expect
+	 * the application to reject or accept the connection before
+	 * CONNECT_REQUEST callback is returned.
+	 */
+	case ZAP_EVENT_CONNECT_REQUEST:
+		ep->app_cb(ep, ev);
+		return;
+
+	/* these events need data copy */
+	case ZAP_EVENT_RENDEZVOUS:
+	case ZAP_EVENT_REJECTED:
+	case ZAP_EVENT_CONNECTED:
+	case ZAP_EVENT_RECV_COMPLETE:
+		data_len = ev->data_len;
+		break;
+	/* these do not need data copy */
+	case ZAP_EVENT_CONNECT_ERROR:
+	case ZAP_EVENT_DISCONNECTED:
+	case ZAP_EVENT_READ_COMPLETE:
+	case ZAP_EVENT_WRITE_COMPLETE:
+		/* do nothing */
+		break;
+	default:
+		assert(0);
+		break;
+	}
+
+	DLOG(ep, "zap_interpose_cb: event: %s\n", zap_event_str(ev->type));
+
+	ictxt = calloc(1, sizeof(*ictxt) + data_len);
+	if (!ictxt) {
+		DLOG(ep, "zap_interpose_cb(): ENOMEM\n");
+		return;
+	}
+	ictxt->ev = *ev;
+	if (data_len) {
+		ictxt->ev.data = ictxt->data;
+		memcpy(ictxt->data, ev->data, data_len);
+	}
+	zap_get_ep(ep);
+	zap_event_add(ep->event_queue, ep, ictxt);
+}
+
+static
+void zap_interpose_event(zap_ep_t ep, void *ctxt)
+{
+	/* delivering real io event callback */
+	struct zap_interpose_ctxt *ictxt = ctxt;
+	DLOG(ep, "delivering event: %s\n", zap_event_str(ictxt->ev.type));
+	ep->app_cb(ep, &ictxt->ev);
+	free(ictxt);
+	zap_put_ep(ep);
+}
+
+static
+struct zap_event_queue *__get_least_busy_zap_event_queue();
 
 zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 {
@@ -260,20 +366,28 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	if (!cb)
 		cb = blocking_zap_cb;
 	zep = z->new(z, cb);
-	if (zep) {
-		zep->z = z;
-		zep->cb = cb;
-		zep->ref_count = 1;
-		zep->state = ZAP_EP_INIT;
-		pthread_mutex_init(&zep->lock, NULL);
-		sem_init(&zep->block_sem, 0, 0);
-	}
+	if (!zep)
+		return NULL;
+	zep->z = z;
+	zep->app_cb = cb;
+	zep->cb = zap_interpose_cb;
+	zep->ref_count = 1;
+	zep->state = ZAP_EP_INIT;
+	pthread_mutex_init(&zep->lock, NULL);
+	sem_init(&zep->block_sem, 0, 0);
+	zep->event_queue = __get_least_busy_zap_event_queue();
 	return zep;
 }
 
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
 {
-	return ep->z->accept(ep, cb, data, data_len);
+	zap_err_t zerr;
+	zerr = ep->z->accept(ep, cb, data, data_len);
+	if (zerr == ZAP_ERR_OK) {
+		ep->app_cb = cb;
+		ep->cb = zap_interpose_cb;
+	}
+	return zerr;
 }
 
 zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host, const char *port,
@@ -361,8 +475,10 @@ void zap_free(zap_ep_t ep)
 void zap_put_ep(zap_ep_t ep)
 {
 	assert(ep->ref_count);
-	if (0 == __sync_sub_and_fetch(&ep->ref_count, 1))
+	if (0 == __sync_sub_and_fetch(&ep->ref_count, 1)) {
+		zap_event_queue_ep_put(ep->event_queue);
 		ep->z->destroy(ep);
+	}
 }
 
 zap_err_t zap_read(zap_ep_t ep,
@@ -448,9 +564,117 @@ int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
 	return 0;
 }
 
+void *zap_event_thread_proc(void *arg)
+{
+	struct zap_event_queue *q = arg;
+	struct zap_event_entry *ent;
+loop:
+	pthread_mutex_lock(&q->mutex);
+	while (NULL == (ent = TAILQ_FIRST(&q->queue))) {
+		pthread_cond_wait(&q->cond_nonempty, &q->mutex);
+	}
+	TAILQ_REMOVE(&q->queue, ent, entry);
+	q->depth++;
+	pthread_cond_broadcast(&q->cond_vacant);
+	pthread_mutex_unlock(&q->mutex);
+	ent->ep->z->event_interpose(ent->ep, ent->ctxt);
+	free(ent);
+	goto loop;
+out:
+	return NULL;
+}
+
+int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt)
+{
+	int rc = 0;
+	struct zap_event_entry *ent = malloc(sizeof(*ent));
+	if (!ent)
+		return errno;
+	ent->ep = ep;
+	ent->ctxt = ctxt;
+	pthread_mutex_lock(&q->mutex);
+	while (q->depth == 0) {
+		pthread_cond_wait(&q->cond_vacant, &q->mutex);
+	}
+	q->depth--;
+	TAILQ_INSERT_TAIL(&q->queue, ent, entry);
+	pthread_cond_broadcast(&q->cond_nonempty);
+	pthread_mutex_unlock(&q->mutex);
+	return 0;
+}
+
+void zap_event_queue_init(struct zap_event_queue *q, int qdepth)
+{
+	q->depth = qdepth;
+	q->ep_count = 0;
+	pthread_mutex_init(&q->mutex, NULL);
+	pthread_cond_init(&q->cond_nonempty, NULL);
+	pthread_cond_init(&q->cond_vacant, NULL);
+	TAILQ_INIT(&q->queue);
+}
+
+struct zap_event_queue *zap_event_queue_new(int qdepth)
+{
+	struct zap_event_queue *q = calloc(1, sizeof(*q));
+	if (!q)
+		return NULL;
+	zap_event_queue_init(q, qdepth);
+	return q;
+}
+
+void zap_event_queue_free(struct zap_event_queue *q)
+{
+	free(q);
+}
+
+int zap_env_int(char *name, int default_value)
+{
+	char *x = getenv(name);
+	int v;
+	if (!x)
+		return default_value;
+	v = atoi(x);
+	if (!v)
+		return default_value;
+	return v;
+
+}
+
+static
+struct zap_event_queue *__get_least_busy_zap_event_queue()
+{
+	int i;
+	struct zap_event_queue *q;
+	q = &zev_queue[0];
+	for (i = 1; i < zap_event_workers; i++) {
+		if (zev_queue[i].ep_count < q->ep_count) {
+			q = &zev_queue[i];
+		}
+	}
+	zap_event_queue_ep_get(q);
+	return q;
+}
+
 static void __attribute__ ((constructor)) cs_init(void)
 {
+	int i;
+	int rc;
+	pthread_atfork(NULL, NULL, cs_init);
 	pthread_mutex_init(&zap_list_lock, 0);
+	char *str;
+
+	zap_event_workers = ZAP_ENV_INT(ZAP_EVENT_WORKERS);
+	zap_event_qdepth = ZAP_ENV_INT(ZAP_EVENT_QDEPTH);
+
+	zev_queue = malloc(zap_event_workers * sizeof(*zev_queue));
+	assert(zev_queue);
+
+	for (i = 0; i < zap_event_workers; i++) {
+		zap_event_queue_init(&zev_queue[i], zap_event_qdepth);
+		rc = pthread_create(&zev_queue[i].thread, NULL,
+					zap_event_thread_proc, &zev_queue[i]);
+		assert(rc == 0);
+	}
 }
 
 static void __attribute__ ((destructor)) cs_term(void)

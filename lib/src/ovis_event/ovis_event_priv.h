@@ -56,7 +56,6 @@
 #include <stddef.h>
 
 struct ovis_event {
-	struct ovis_heap_node hnode;
 	uint32_t flags;
 	uint32_t epoll_events;
 	int fd;
@@ -64,9 +63,16 @@ struct ovis_event {
 	void *ctxt;
 	struct timeval tv;
 	struct timeval timer;
+	int idx;
 };
 
 #define MAX_OVIS_EVENTS 128
+
+struct ovis_event_heap {
+	uint32_t alloc_len;
+	uint32_t heap_len;
+	struct ovis_event *ev[0];
+};
 
 struct ovis_event_manager {
 	int evcount;
@@ -76,10 +82,11 @@ struct ovis_event_manager {
 	struct ovis_event ovis_ev;
 	struct epoll_event ev[MAX_OVIS_EVENTS];
 	pthread_mutex_t mutex;
-	ovis_heap_t event_heap;
+	struct ovis_event_heap *heap;
 	enum {
 		OVIS_EVENT_MANAGER_INIT,
 		OVIS_EVENT_MANAGER_RUNNING,
+		OVIS_EVENT_MANAGER_WAITING,
 		OVIS_EVENT_MANAGER_TERM,
 	} state;
 };

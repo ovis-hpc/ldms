@@ -273,7 +273,7 @@ void __process_info_prdcr(enum ldmsd_loglevel llevel)
 	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		ldmsd_log(llevel, "%-20s %-20s %-8d %-12d %s\n",
+		ldmsd_log(llevel, "%-20s %-20s %-8hu %-12d %s\n",
 			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
 			 prdcr->conn_intrvl_us,
 			 prdcr_state_str(prdcr->conn_state));
@@ -334,7 +334,7 @@ void __process_info_updtr(enum ldmsd_loglevel llevel)
 		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
 		     ref = ldmsd_updtr_prdcr_next(ref)) {
 			prdcr = ref->prdcr;
-			ldmsd_log(llevel, "    %-10s %-10s %-10s %hd\n",
+			ldmsd_log(llevel, "    %-10s %-10s %-10s %hu\n",
 				 prdcr->obj.name,
 				 prdcr->xprt_name,
 				 prdcr->host_name,

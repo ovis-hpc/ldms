@@ -208,7 +208,9 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 		shutdown(sep->sock, SHUT_RDWR);
 		break;
 	default:
-		assert(0);
+		ZAP_ASSERT(0, ep, "%s: Unexpected state '%s'\n",
+				__func__, zap_ep_state_str(ep->state));
+		break;
 	}
 	pthread_mutex_unlock(&sep->ep.lock);
 	return ZAP_ERR_OK;
@@ -302,14 +304,11 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 		sep->conn_data_len = data_len;
 	}
 	zap_get_ep(&sep->ep); /* Release when disconnect */
-	if (bufferevent_socket_connect(sep->buf_event, sa, sa_len)) {
-		/* Error starting connection */
-		bufferevent_free(sep->buf_event);
-		sep->buf_event = NULL;
-		zerr = ZAP_ERR_CONNECT;
-		zap_put_ep(&sep->ep);
-	}
-
+	/*
+	 * Ignore the error code returned from libevent because
+	 * it also delivers the error on the event_cb.
+	 */
+	(void)bufferevent_socket_connect(sep->buf_event, sa, sa_len);
  out:
 	return zerr;
 }
@@ -644,8 +643,11 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep, size_t reqlen)
 	/* Get the matching request from the io_q */
 	pthread_mutex_lock(&sep->q_lock);
 	io = TAILQ_FIRST(&sep->io_q);
-	assert(io);
-	assert(msg.hdr.xid == io->hdr.xid);
+	ZAP_ASSERT(io, (&sep->ep), "%s: The io_q is empty.\n", __func__);
+	ZAP_ASSERT(msg.hdr.xid == io->hdr.xid, (&sep->ep),
+			"%s: The transaction IDs mismatched between the "
+			"IO entry %d and message %d.\n", __func__,
+			io->hdr.xid, msg.hdr.xid);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
 	pthread_mutex_unlock(&sep->q_lock);
 
@@ -765,9 +767,11 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep, size_t reqlen)
 	pthread_mutex_lock(&sep->q_lock);
 	/* Take it off the I/O q */
 	io = TAILQ_FIRST(&sep->io_q);
-	assert(io);
+	ZAP_ASSERT(io, &sep->ep, "%s: The io_q is empty\n", __func__);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
-	assert(io->hdr.xid == msg.hdr.xid);
+	ZAP_ASSERT(io, &sep->ep, "%s: The transaction IDs mismatched "
+			"between the IO entry %d and message %d.\n",
+			__func__, io->hdr.xid, msg.hdr.xid);
 	/* Put it back on the free_q */
 	TAILQ_INSERT_HEAD(&sep->free_q, io, q_link);
 	pthread_mutex_unlock(&sep->q_lock);
@@ -1104,7 +1108,7 @@ static void __z_sock_conn_request(struct evconnlistener *listener,
 	struct z_sock_ep *new_sep;
 	zap_err_t zerr;
 
-	new_ep = zap_new(sep->ep.z, sep->ep.cb);
+	new_ep = zap_new(sep->ep.z, sep->ep.app_cb);
 	if (!new_ep) {
 		zerr = errno;
 		LOG_(sep, "Zap Error %d (%s): in %s at %s:%d\n",
@@ -1256,7 +1260,9 @@ static void z_sock_destroy(zap_ep_t ep)
 	if (sep->conn_data)
 		free(sep->conn_data);
 	release_buf_event(sep);
-	assert(TAILQ_EMPTY(&sep->io_q)); /* all pending I/O should have been flushed */
+	/* all pending I/O should have been flushed */
+	ZAP_ASSERT(TAILQ_EMPTY(&sep->io_q), ep, "%s: The io_q is not empty "
+			"when the reference count reaches 0.\n", __func__);
 	while (!TAILQ_EMPTY(&sep->free_q)) {
 		io = TAILQ_FIRST(&sep->free_q);
 		TAILQ_REMOVE(&sep->free_q, io, q_link);

@@ -119,7 +119,8 @@ int tsampler_timer_add(tsampler_timer_t x)
 
 void tsampler_timer_remove(tsampler_timer_t x)
 {
-	ovis_event_del(evm, x->__internal.ev);
+	if (x->__internal.ev)
+		ovis_event_del(evm, x->__internal.ev);
 }
 
 static __attribute__((constructor))

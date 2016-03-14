@@ -352,7 +352,8 @@ reset_prdcr:
 		ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
 				 0, prdcr->conn_intrvl_us, 0);
 	}
-	ldms_xprt_put(prdcr->xprt);
+	if (prdcr->xprt)
+		ldms_xprt_put(prdcr->xprt);
 	prdcr->xprt = NULL;
 	ldmsd_prdcr_unlock(prdcr);
 }

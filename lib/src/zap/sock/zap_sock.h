@@ -105,8 +105,8 @@ struct z_sock_key {
 };
 
 typedef enum sock_msg_type {
-	SOCK_MSG_SENDRECV = 1,/*  send-receive  */
-	SOCK_MSG_CONNECT,     /*  Connect     data          */
+	SOCK_MSG_CONNECT = 1,     /*  Connect     data          */
+	SOCK_MSG_SENDRECV,    /*  send-receive  */
 	SOCK_MSG_RENDEZVOUS,  /*  Share       zap_map       */
 	SOCK_MSG_READ_REQ,    /*  Read        request       */
 	SOCK_MSG_READ_RESP,   /*  Read        response      */
