@@ -49,6 +49,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <unistd.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -64,20 +65,33 @@
 #include "bsos_img.h"
 #include "bout_sos_img.h"
 
-char *short_opt = "hC:p:s:";
+char *short_opt = "hC:p:s:v";
 struct option long_opt[] = {
 	{"help",       0,  0,  'h'},
 	{"container",  1,  0,  'C'},
 	{"state",      1,  0,  's'},
+	{"verbose",    0,  0,  'v'},
 	{0,            0,  0,  0}
 };
 
 const char *cont = NULL;
 const char *part = NULL;
-sos_index_t index_ptc; /* PTH: PatternID, Timestamp, CompID */
-sos_index_t index_tc; /* TH: Timestamp, CompID */
-sos_index_t index_img; /* image index */
+sos_index_t index_ptc = NULL; /* PTH: PatternID, Timestamp, CompID */
+sos_index_t index_tc = NULL; /* TH: Timestamp, CompID */
+sos_index_t index_img = NULL; /* image index */
 sos_part_state_t cmd_state = -1;
+int verbose = 0;
+
+#define DUTY_CYCLE 500000
+
+struct duty_ctxt {
+	sos_part_obj_iter_fn_t cb;
+	void *cb_arg;
+	struct timeval tv0;
+	struct timeval tv1;
+	struct timeval wtv;
+	uint64_t count;
+};
 
 int is_msg;
 
@@ -119,6 +133,9 @@ loop:
 			berr("Unknown partition state: %s", optarg);
 			exit(-1);
 		}
+		break;
+	case 'v':
+		verbose = 1;
 		break;
 	case 'h':
 	default:
@@ -311,39 +328,59 @@ sos_part_state_t str_to_sos_part_state(const char *str)
 	return -1;
 }
 
+int duty_cb(sos_part_t part, sos_obj_t sos_obj, void *arg)
+{
+	struct duty_ctxt *ctxt = arg;
+	ctxt->cb(part, sos_obj, arg);
+	ctxt->count++;
+	gettimeofday(&ctxt->tv1, NULL);
+	if (timercmp(&ctxt->tv1, &ctxt->wtv, <))
+		return 0;
+	return 1; /* pause if current time hit the wall time */
+}
+
+void part_duty(sos_part_t p, sos_part_obj_iter_fn_t cb, void *cb_arg)
+{
+	struct sos_part_obj_iter_pos_s pos;
+	int rc = 0;
+	sos_part_obj_iter_pos_init(&pos);
+	struct duty_ctxt ctxt = {0};
+	struct timeval dtv = {0, DUTY_CYCLE};
+	ctxt.cb = cb;
+	ctxt.cb_arg = cb_arg;
+	ctxt.wtv.tv_sec = 0;
+	ctxt.wtv.tv_usec = DUTY_CYCLE;
+	do {
+		/* calculate wall time */
+		if (verbose)
+			binfo("resume duty cycle ...");
+		gettimeofday(&ctxt.tv0, NULL);
+		timeradd(&ctxt.tv0, &dtv, &ctxt.wtv);
+		ctxt.count = 0;
+		rc = sos_part_obj_iter(p, &pos, duty_cb, &ctxt);
+		/* rc is 0 when done, otherwise, the iterator is interrupted */
+		if (rc) {
+			if (verbose) {
+				struct timeval dt;
+				timersub(&ctxt.tv1, &ctxt.tv0, &dt);
+				binfo("sleeping ... processed "
+					"%ld objects in %ld.%06ld seconds",
+					ctxt.count, dt.tv_sec, dt.tv_usec);
+			}
+			usleep(1000000 - DUTY_CYCLE);
+		}
+	} while (rc);
+}
+
 void handle_cmd_active(sos_t sos, sos_part_t p)
 {
 	sos_part_state_t pst = sos_part_state(p);
 	int rc;
-	switch (pst) {
-	case SOS_PART_STATE_OFFLINE:
-		rc = sos_part_state_set(p, SOS_PART_STATE_ACTIVE);
-		if (rc) {
-			berr("sos_part_state_set() error, rc: %d", rc);
-			return;
-		}
-		break;
-	case SOS_PART_STATE_MOVING:
-	case SOS_PART_STATE_ACTIVE:
-	case SOS_PART_STATE_PRIMARY:
+	if (pst != SOS_PART_STATE_OFFLINE) {
 		berr("partition '%s' not in OFFLINE state", part);
 		return;
 	}
-	is_msg = cont_is_msg(cont);
-	if (is_msg) {
-		msg_idx_open(sos);
-		sos_part_obj_iter(p, NULL, msg_reindex_cb, p);
-	} else {
-		img_idx_open(sos);
-		sos_part_obj_iter(p, NULL, img_reindex_cb, p);
-	}
-}
-
-void handle_cmd_offline(sos_t sos, sos_part_t p)
-{
-	sos_part_state_t pst = sos_part_state(p);
-	int rc;
-	rc = sos_part_state_set(p, cmd_state);
+	rc = sos_part_state_set(p, SOS_PART_STATE_ACTIVE);
 	if (rc) {
 		berr("sos_part_state_set() error, rc: %d", rc);
 		return;
@@ -351,10 +388,33 @@ void handle_cmd_offline(sos_t sos, sos_part_t p)
 	is_msg = cont_is_msg(cont);
 	if (is_msg) {
 		msg_idx_open(sos);
-		sos_part_obj_iter(p, NULL, msg_rmindex_cb, p);
+		part_duty(p, msg_reindex_cb, NULL);
 	} else {
 		img_idx_open(sos);
-		sos_part_obj_iter(p, NULL, img_rmindex_cb, p);
+		part_duty(p, img_reindex_cb, NULL);
+	}
+}
+
+void handle_cmd_offline(sos_t sos, sos_part_t p)
+{
+	sos_part_state_t pst = sos_part_state(p);
+	int rc;
+	if (pst != SOS_PART_STATE_ACTIVE) {
+		berr("only ACTIVE partition can be brought OFFLINE");
+		return;
+	}
+	is_msg = cont_is_msg(cont);
+	if (is_msg) {
+		msg_idx_open(sos);
+		part_duty(p, msg_rmindex_cb, NULL);
+	} else {
+		img_idx_open(sos);
+		part_duty(p, img_rmindex_cb, NULL);
+	}
+	rc = sos_part_state_set(p, cmd_state);
+	if (rc) {
+		berr("sos_part_state_set() error, rc: %d", rc);
+		return;
 	}
 }
 
@@ -432,6 +492,12 @@ int main(int argc, char **argv)
 	}
 
 out:
+	if (index_ptc)
+		sos_index_close(index_ptc, SOS_COMMIT_ASYNC);
+	if (index_tc)
+		sos_index_close(index_tc, SOS_COMMIT_ASYNC);
+	if (index_img)
+		sos_index_close(index_img, SOS_COMMIT_ASYNC);
 	if (p)
 		sos_part_put(p);
 	if (sos)

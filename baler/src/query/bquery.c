@@ -1173,6 +1173,7 @@ void __msg_obj_update(struct bmsgquery *msgq)
 		msgq->msg = NULL;
 	}
 	msgq->base.obj = sos_iter_obj(msgq->base.itr);
+	assert(msgq->base.obj);
 	if (msgq->base.obj) {
 		msgq->msg = sos_obj_ptr(msgq->base.obj);
 	}
@@ -2745,12 +2746,25 @@ int bq_local_msg_routine(struct bq_store *s)
 		rc = bq_first_entry(q);
 	}
 loop:
-	if (rc)
+	switch (rc) {
+	case 0:
+		/* OK */
+		break;
+	case ENOENT:
+		rc = 0;
+	default:
 		goto out;
+	}
+
 	if (verbose)
 		printf("[%d] ", bq_entry_get_ptn_id(q));
 
 	bdstr_reset(bdstr);
+	rc = bq_store_refresh(q->store);
+	if (rc) {
+		berr("bq_store_refresh() rc: %d", rc);
+		goto out;
+	}
 	bq_entry_print(q, bdstr);
 	printf("%.*s\n", (int)bdstr->str_len, bdstr->str);
 	if (reverse) {
@@ -2760,8 +2774,6 @@ loop:
 	}
 	goto loop;
 out:
-	if (rc == ENOENT)
-		rc = 0;
 	return rc;
 }
 
@@ -2789,6 +2801,12 @@ int bq_local_ptn_routine(struct bq_store *s)
 	};
 	int col_width_len = sizeof(col_width)/sizeof(col_width[0]);
 	int i, j;
+
+	rc = bq_store_refresh(s);
+	if (rc) {
+		berr("bq_store_refresh() rc: %d", rc);
+		return rc;
+	}
 
 	bdstr = bdstr_new(4096);
 	if (!bdstr) {
@@ -3108,6 +3126,7 @@ int bq_local_routine()
 	}
 	if ((s = bq_open_store(store_path)) == NULL) {
 		berr("bq_open_store error, store: %s", store_path);
+		rc = errno;
 		goto out;
 	}
 
@@ -3158,22 +3177,24 @@ int bq_remote_routine()
 
 int main(int argc, char **argv)
 {
+	int rc;
 	process_args(argc, argv);
 	running_mode = bq_get_mode();
 	switch (running_mode) {
 	case BQ_MODE_LOCAL:
-		bq_local_routine();
+		rc = bq_local_routine();
 		break;
 	case BQ_MODE_DAEMON:
-		bq_daemon_routine();
+		rc = bq_daemon_routine();
 		break;
 	case BQ_MODE_REMOTE:
-		bq_remote_routine();
+		rc = bq_remote_routine();
 		break;
 	default:
+		rc = EINVAL;
 		printf("Cannot determine the running mode from the "
 				"arguments.\n");
 	}
-	return 0;
+	return rc;
 }
 #endif /*BIN*/
