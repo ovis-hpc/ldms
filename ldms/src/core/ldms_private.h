@@ -117,6 +117,12 @@ extern struct ldms_set *__ldms_local_set_first(void);
 extern struct ldms_set *__ldms_local_set_next(struct ldms_set *);
 
 extern int __ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
-extern void __ldms_release_local_set(struct ldms_set *set);
+extern void __ldms_set_tree_lock();
+extern void __ldms_set_tree_unlock();
+
+static int __ldms_set_publish(struct ldms_set *set);
+static int __ldms_set_unpublish(struct ldms_set *set);
+extern int ldms_set_publish(ldms_set_t sd);
+extern int ldms_set_unpublish(ldms_set_t sd);
 
 #endif

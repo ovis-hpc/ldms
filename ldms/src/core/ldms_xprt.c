@@ -247,7 +247,7 @@ static void send_dir_update(struct ldms_xprt *x,
 		break;
 	case LDMS_DIR_DEL:
 	case LDMS_DIR_ADD:
-		strcpy(reply->dir.set_list, set_name);
+		memcpy(reply->dir.set_list, set_name, set_list_sz);
 		break;
 	}
 
@@ -494,6 +494,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_reply reply_;
 	struct ldms_reply *reply = &reply_;
 
+	__ldms_set_tree_lock();
 	if (req->dir.flags)
 		/* Register for directory updates */
 		x->remote_dir_xid = req->hdr.xid;
@@ -536,7 +537,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->dir.type = htonl(LDMS_DIR_LIST);
 	(void)__ldms_for_all_sets(send_dir_reply_cb, &arg);
-
+	__ldms_set_tree_unlock();
 	/* There might be one set left-over */
 	if (arg.set_count) {
 		assert(arg.set_count == 1);
@@ -552,10 +553,10 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 			ldms_xprt_close(arg.x);
 		}
 	}
-
 	free(reply);
 	return;
  out:
+	__ldms_set_tree_unlock();
 	len = sizeof(struct ldms_reply_hdr)
 		+ sizeof(struct ldms_dir_reply);
 	reply->hdr.xid = req->hdr.xid;
@@ -712,6 +713,7 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 	}
 
 	/* Get the first match */
+	__ldms_set_tree_lock();
 	set = __ldms_local_set_first();
 	set = __next_re_match(set, &regex, req->lookup.path, flags);
 	if (!set) {
@@ -731,10 +733,12 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 			goto err_1;
 		set = nxt_set;
 	}
+	__ldms_set_tree_unlock();
 	if (flags & LDMS_LOOKUP_RE)
 		regfree(&regex);
 	return;
  err_1:
+	__ldms_set_tree_unlock();
 	if (flags & LDMS_LOOKUP_RE)
 		regfree(&regex);
  err_0:
@@ -1400,6 +1404,8 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 				 * so delete the set.
 				 */
 				ldms_set_delete(ctxt->lookup.s);
+			} else {
+				ldms_set_publish(ctxt->lookup.s);
 			}
 			if (!ctxt->lookup.more) {
 				zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
@@ -1485,41 +1491,39 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	const char *schema_name = lm->schema_inst_name;
 	const char *inst_name = lm->schema_inst_name + lm->schema_len;
 
+	__ldms_set_tree_lock();
 	struct ldms_set *lset = __ldms_find_local_set(inst_name);
 	if (lset) {
 		ldms_name_t lschema = get_schema_name(lset->meta);
 		if (0 != strcmp(schema_name, lschema->name)) {
 			/* Two sets have the same name but different schema */
-			__ldms_release_local_set(lset);
 			rc = EINVAL;
-			goto out;
+			goto unlock_out;
 		}
 
 		sd = calloc(1, sizeof(*sd));
 		if (!sd) {
-			__ldms_release_local_set(lset);
 			rc = ENOMEM;
-			goto out;
+			goto unlock_out;
 		}
 
 		sd->set = lset;
-		__ldms_release_local_set(lset);
 
 		LIST_FOREACH(rbd, &x->rbd_list, xprt_link) {
 			if (rbd->set == lset) {
 				rc = EEXIST;
-				goto out;
+				goto unlock_out;
 			}
 		}
 	} else {
-		__ldms_release_local_set(lset);
 		rc = __ldms_create_set(inst_name, schema_name,
 				       ntohl(lm->meta_len), ntohl(lm->data_len),
 				       ntohl(lm->card),
 				       &set_t,
 				       LDMS_SET_F_REMOTE);
 		if (rc)
-			goto out;
+			goto unlock_out;
+
 		sd = (struct ldms_set_desc *)set_t;
 	}
 
@@ -1527,8 +1531,10 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 	rbd = ldms_alloc_rbd(x, sd->set, LDMS_RBD_REMOTE);
 	if (!rbd) {
 		rc = ENOMEM;
+		__ldms_set_tree_unlock();
 		goto out_1;
 	}
+	__ldms_set_tree_unlock();
 
 	rbd->rmap = ev->map;
 	rbd->remote_set_id = lm->set_id;
@@ -1563,6 +1569,10 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 		goto out_2;
 	}
 	return;
+
+ unlock_out:
+	__ldms_set_tree_unlock();
+	goto out;
  out_2:
 	if (lm->more) {
 		pthread_mutex_lock(&x->lock);
@@ -2114,8 +2124,8 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
 		return EPERM;
 
+	__ldms_set_tree_lock();
 	struct ldms_set *set = __ldms_find_local_set(path);
-	__ldms_release_local_set(set);
 	if (set) {
 		LIST_FOREACH(rbd, &x->rbd_list, xprt_link) {
 			if (rbd->set == set) {
@@ -2124,10 +2134,12 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 				 * from the host corresponding to
 				 * the transport.
 				 */
+				__ldms_set_tree_unlock();
 				return EEXIST;
 			}
 		}
 	}
+	__ldms_set_tree_unlock();
 
 	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
 	ldms_xprt_get(x);

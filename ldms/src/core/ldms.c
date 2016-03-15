@@ -102,28 +102,27 @@ void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)
 		LDMS_GN_INCREMENT(set->meta->meta_gn);
 }
 
+/* Caller must hold the set tree lock. */
 struct ldms_set *__ldms_find_local_set(const char *set_name)
 {
 	struct rbn *z;
 	struct ldms_set *s = NULL;
 
-	pthread_mutex_lock(&set_tree_lock);
 	z = rbt_find(&set_tree, (void *)set_name);
 	if (z)
 		s = container_of(z, struct ldms_set, rb_node);
 	return s;
 }
 
+/* Caller must hold the set tree lock */
 struct ldms_set *__ldms_local_set_first()
 {
 	struct rbn *z;
 	struct ldms_set *s = NULL;
 
-	pthread_mutex_lock(&set_tree_lock);
 	z = rbt_min(&set_tree);
 	if (z)
 		s = container_of(z, struct ldms_set, rb_node);
-	pthread_mutex_unlock(&set_tree_lock);
 	return s;
 }
 
@@ -136,7 +135,12 @@ struct ldms_set *__ldms_local_set_next(struct ldms_set *s)
 	return NULL;
 }
 
-void __ldms_release_local_set(struct ldms_set *set)
+void __ldms_set_tree_lock()
+{
+	pthread_mutex_lock(&set_tree_lock);
+}
+
+void __ldms_set_tree_unlock()
 {
 	pthread_mutex_unlock(&set_tree_lock);
 }
@@ -144,6 +148,7 @@ void __ldms_release_local_set(struct ldms_set *set)
 extern ldms_set_t ldms_set_by_name(const char *set_name)
 {
 	struct ldms_set_desc *sd = NULL;
+	__ldms_set_tree_lock();
 	struct ldms_set *set = __ldms_find_local_set(set_name);
 	struct ldms_rbuf_desc *rbd;
 	if (!set)
@@ -170,7 +175,7 @@ extern ldms_set_t ldms_set_by_name(const char *set_name)
 	sd->rbd = rbd;
 
  out:
-	__ldms_release_local_set(set);
+	__ldms_set_tree_unlock();
 	return sd;
 }
 
@@ -203,13 +208,12 @@ static int rbn_cb(struct rbn *rbn, void *arg, int level)
 	return cb_arg->user_cb(set, cb_arg->user_arg);
 }
 
+/* Caller must hold the set tree lock */
 int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 {
 	struct cb_arg user_arg = { arg, cb };
 	int rc;
-	pthread_mutex_lock(&set_tree_lock);
 	rc = rbt_traverse(&set_tree, rbn_cb, &user_arg);
-	pthread_mutex_unlock(&set_tree_lock);
 	return rc;
 }
 
@@ -276,6 +280,8 @@ static int set_list_sz_cb(struct ldms_set *set, void *arg)
 	*set_count = arg.count;
 	*set_list_size = arg.set_list_len;
 }
+
+ /* The caller must hold the set tree lock. */
 static int __record_set(const char *instance_name, ldms_set_t *s,
 			struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
 {
@@ -284,8 +290,7 @@ static int __record_set(const char *instance_name, ldms_set_t *s,
 
 	set = __ldms_find_local_set(instance_name);
 	if (set) {
-		__ldms_release_local_set(set);
-		return -EEXIST;
+		return EEXIST;
 	}
 
 	sd = calloc(1, sizeof *sd);
@@ -304,16 +309,60 @@ static int __record_set(const char *instance_name, ldms_set_t *s,
 	sd->set = set;
 	sd->rbd = NULL;
 
-	set->rb_node.key = get_instance_name(set->meta)->name;
-	rbt_ins(&set_tree, &set->rb_node);
-	__ldms_release_local_set(set);
 	return 0;
 
  out_1:
 	free(sd);
  out_0:
-	__ldms_release_local_set(set);
 	return ENOMEM;
+}
+
+/* Caller must hold the set tree lock. */
+static
+int __ldms_set_publish(struct ldms_set *set)
+{
+	struct ldms_set *_set;
+	if (set->flags & LDMS_SET_F_PUBLISHED)
+		return EEXIST;
+
+	char *name = get_instance_name(set->meta)->name;
+	set->rb_node.key = name;
+	rbt_ins(&set_tree, &set->rb_node);
+	set->flags |= LDMS_SET_F_PUBLISHED;
+	__ldms_dir_add_set(name);
+	return 0;
+}
+
+int ldms_set_publish(ldms_set_t sd)
+{
+	int rc;
+	__ldms_set_tree_lock();
+	rc = __ldms_set_publish(sd->set);
+	__ldms_set_tree_unlock();
+	return rc;
+}
+
+/* Caller must hold the set tree lock */
+static
+int __ldms_set_unpublish(struct ldms_set *set)
+{
+	struct ldms_set *_set;
+	if (!(set->flags & LDMS_SET_F_PUBLISHED))
+		return ENOENT;
+
+	set->flags &= ~LDMS_SET_F_PUBLISHED;
+	rbt_del(&set_tree, &set->rb_node);
+	__ldms_dir_del_set(get_instance_name(set->meta)->name);
+	return 0;
+}
+
+int ldms_set_unpublish(ldms_set_t sd)
+{
+	int rc;
+	__ldms_set_tree_lock();
+	rc = __ldms_set_unpublish(sd->set);
+	__ldms_set_tree_unlock();
+	return rc;
 }
 
 #define META_FILE 0
@@ -414,6 +463,7 @@ void ldms_set_delete(ldms_set_t s)
 		assert(NULL == "The metric set passed in is NULL");
 	}
 
+	__ldms_set_tree_lock();
 	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
 	if (sd->rbd)
 		__ldms_free_rbd(sd->rbd);
@@ -422,8 +472,7 @@ void ldms_set_delete(ldms_set_t s)
 	struct ldms_rbuf_desc *rbd;
 	if (LIST_EMPTY(&set->remote_rbd_list)) {
 
-		pthread_mutex_lock(&set_tree_lock);
-		__ldms_dir_del_set(get_instance_name(set->meta)->name);
+		__ldms_set_unpublish(set);
 
 		while (!LIST_EMPTY(&set->local_rbd_list)) {
 			rbd = LIST_FIRST(&set->local_rbd_list);
@@ -437,11 +486,9 @@ void ldms_set_delete(ldms_set_t s)
 			unlink(__set_path);
 		}
 		mm_free(set->meta);
-		rem_local_set(set);
 		free(set);
-		pthread_mutex_unlock(&set_tree_lock);
 	}
-
+	__ldms_set_tree_unlock();
 	free(sd);
 }
 
@@ -545,6 +592,7 @@ int ldms_set_producer_name_set(ldms_set_t s, const char *name)
 	return 0;
 }
 
+/* Caller must hold the set tree lock. */
 int __ldms_create_set(const char *instance_name, const char *schema_name,
 		      size_t meta_len, size_t data_len, size_t card,
 		      ldms_set_t *s, uint32_t flags)
@@ -583,7 +631,6 @@ int __ldms_create_set(const char *instance_name, const char *schema_name,
 	rc = __record_set(instance_name, s, meta, data, flags);
 	if (rc)
 		goto out_1;
-	__ldms_dir_add_set(instance_name);
 	return 0;
 
  out_1:
@@ -781,13 +828,18 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 		value_off += __ldms_value_size_get(vd->vd_type,
 						   __le32_to_cpu(vd->vd_array_count));
 	}
+	__ldms_set_tree_lock();
 	rc = __record_set(instance_name, &s, meta, data, LDMS_SET_F_LOCAL);
 	if (rc)
 		goto out_1;
-	__ldms_dir_add_set(instance_name);
+	rc = __ldms_set_publish(s->set);
+	if (rc)
+		goto out_1;
+	__ldms_set_tree_unlock();
 	return s;
 
  out_1:
+	__ldms_set_tree_unlock();
 	mm_free(meta);
 	errno = rc;
 	return NULL;
@@ -832,7 +884,15 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s)
 	int flags;
 
 	flags = LDMS_SET_F_MEMMAP | LDMS_SET_F_LOCAL;
+	__ldms_set_tree_lock();
 	int rc = __record_set(get_instance_name(sh)->name, s, sh, dh, flags);
+	if (rc) {
+		__ldms_set_tree_unlock();
+		return rc;
+	}
+
+	rc = __ldms_set_publish((*s)->set);
+	__ldms_set_tree_unlock();
 	return rc;
 }
 
@@ -891,7 +951,7 @@ const char *ldms_metric_name_get(ldms_set_t set, int i)
 enum ldms_value_type ldms_metric_type_get(ldms_set_t set, int i)
 {
 	ldms_mdesc_t desc = __desc_get(set, i);
-	if (desc && LDMS_V_LAST >= desc->vd_type && 
+	if (desc && LDMS_V_LAST >= desc->vd_type &&
 		LDMS_V_FIRST <= desc->vd_type)
 		return desc->vd_type;
 	return LDMS_V_NONE;
