@@ -606,6 +606,7 @@ int __ldms_create_set(const char *instance_name, const char *schema_name,
 		rc = ENOMEM;
 		goto out_0;
 	}
+	memset(meta, 0, meta_len + data_len);
 	LDMS_VERSION_SET(meta->version);
 	meta->meta_sz = __cpu_to_le32(meta_len);
 
@@ -758,7 +759,7 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 		errno = ENOMEM;
 		return NULL;
 	}
-
+	memset(meta, 0, meta_sz + schema->data_sz);
 	LDMS_VERSION_SET(meta->version);
 	meta->card = __cpu_to_le32(schema->card);
 	meta->meta_sz = __cpu_to_le32(meta_sz);
