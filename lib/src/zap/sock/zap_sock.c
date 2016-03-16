@@ -1018,6 +1018,7 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 	/* Reaching here means bev is one of the EOF, ERROR or TIMEOUT */
 	int do_cb;
 	pthread_mutex_lock(&sep->ep.lock);
+	bufferevent_setcb(sep->buf_event, NULL, NULL, NULL, NULL);
 	switch (sep->ep.state) {
 	case ZAP_EP_ACCEPTING:
 		sep->ep.state = ZAP_EP_ERROR;
