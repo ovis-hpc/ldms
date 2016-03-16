@@ -1008,7 +1008,7 @@ static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
 	/* Reaching here means bev is one of the EOF, ERROR or TIMEOUT */
 
 	pthread_mutex_lock(&uep->ep.lock);
-	release_buf_event(uep);
+	bufferevent_setcb(uep->buf_event, NULL, NULL, NULL, NULL);
 	gni_return_t grc;
 	grc = GNI_EpUnbind(uep->gni_ep);
 	if (grc) {
