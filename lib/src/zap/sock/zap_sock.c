@@ -610,21 +610,21 @@ res_err:
 struct z_sock_io *__sock_io_alloc(struct z_sock_ep *sep)
 {
 	struct z_sock_io *io;
-	pthread_mutex_lock(&sep->q_lock);
+	pthread_mutex_lock(&sep->ep.lock);
 	if (!TAILQ_EMPTY(&sep->free_q)) {
 		io = TAILQ_FIRST(&sep->free_q);
 		TAILQ_REMOVE(&sep->free_q, io, q_link);
 	} else
 		io = calloc(1, sizeof(*io));
-	pthread_mutex_unlock(&sep->q_lock);
+	pthread_mutex_unlock(&sep->ep.lock);
 	return io;
 }
 
 void __sock_io_free(struct z_sock_ep *sep, struct z_sock_io *io)
 {
-	pthread_mutex_lock(&sep->q_lock);
+	pthread_mutex_lock(&sep->ep.lock);
 	TAILQ_INSERT_TAIL(&sep->free_q, io, q_link);
-	pthread_mutex_unlock(&sep->q_lock);
+	pthread_mutex_unlock(&sep->ep.lock);
 }
 
 /**
@@ -641,7 +641,7 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep, size_t reqlen)
 	bufferevent_read(sep->buf_event, &msg, sizeof(msg));
 
 	/* Get the matching request from the io_q */
-	pthread_mutex_lock(&sep->q_lock);
+	pthread_mutex_lock(&sep->ep.lock);
 	io = TAILQ_FIRST(&sep->io_q);
 	ZAP_ASSERT(io, (&sep->ep), "%s: The io_q is empty.\n", __func__);
 	ZAP_ASSERT(msg.hdr.xid == io->hdr.xid, (&sep->ep),
@@ -649,7 +649,7 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep, size_t reqlen)
 			"IO entry %d and message %d.\n", __func__,
 			io->hdr.xid, msg.hdr.xid);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
-	pthread_mutex_unlock(&sep->q_lock);
+	pthread_mutex_unlock(&sep->ep.lock);
 
 	data_len = ntohl(msg.data_len);
 
@@ -764,7 +764,7 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep, size_t reqlen)
 	bufferevent_read(sep->buf_event, &msg, sizeof(msg));
 
 	/* Our request should be on the head of the ep->io_q queue. */
-	pthread_mutex_lock(&sep->q_lock);
+	pthread_mutex_lock(&sep->ep.lock);
 	/* Take it off the I/O q */
 	io = TAILQ_FIRST(&sep->io_q);
 	ZAP_ASSERT(io, &sep->ep, "%s: The io_q is empty\n", __func__);
@@ -773,8 +773,8 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep, size_t reqlen)
 			"between the IO entry %d and message %d.\n",
 			__func__, io->hdr.xid, msg.hdr.xid);
 	/* Put it back on the free_q */
-	TAILQ_INSERT_HEAD(&sep->free_q, io, q_link);
-	pthread_mutex_unlock(&sep->q_lock);
+	pthread_mutex_unlock(&sep->ep.lock);
+	__sock_io_free(sep, io);
 
 	struct zap_event ev = {
 		.type = ZAP_EVENT_WRITE_COMPLETE,
@@ -1016,9 +1016,38 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 	}
 
 	/* Reaching here means bev is one of the EOF, ERROR or TIMEOUT */
+	int do_cb;
+	pthread_mutex_lock(&sep->ep.lock);
+	switch (sep->ep.state) {
+	case ZAP_EP_ACCEPTING:
+		sep->ep.state = ZAP_EP_ERROR;
+		do_cb = 0;
+		break;
+	case ZAP_EP_CONNECTING:
+		ev.type = ZAP_EVENT_CONNECT_ERROR;
+		sep->ep.state = ZAP_EP_ERROR;
+		shutdown(sep->sock, SHUT_RDWR);
+		do_cb = 1;
+		break;
+	case ZAP_EP_CONNECTED:	/* Peer closed. */
+		sep->ep.state = ZAP_EP_PEER_CLOSE;
+		shutdown(sep->sock, SHUT_RDWR); /* disallow further i/o from our side */
+	case ZAP_EP_CLOSE:	/* App called close. */
+		ev.type = ZAP_EVENT_DISCONNECTED;
+		do_cb = 1;
+		break;
+	case ZAP_EP_ERROR:
+		do_cb = 0;
+		break;
+	default:
+		LOG_(sep, "Unexpected state for EOF %d.\n",
+		     sep->ep.state);
+		sep->ep.state = ZAP_EP_ERROR;
+		do_cb = 0;
+		break;
+	}
 
 	/* Complete all outstanding I/O with ZEP_ERR_FLUSH */
-	pthread_mutex_lock(&sep->q_lock);
 	while (!TAILQ_EMPTY(&sep->io_q)) {
 		zap_event_type_t ev_type;
 		sock_msg_type_t msg_type;
@@ -1037,39 +1066,10 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 		free(io);	/* Don't put back on free_q, we're closing */
 		sep->ep.cb(&sep->ep, &ev);
 	}
-	pthread_mutex_unlock(&sep->q_lock);
+	pthread_mutex_unlock(&sep->ep.lock);
+	if (do_cb)
+		sep->ep.cb((void*)sep, &ev);
 
-	pthread_mutex_lock(&sep->ep.lock);
-	switch (sep->ep.state) {
-	case ZAP_EP_ACCEPTING:
-		sep->ep.state = ZAP_EP_ERROR;
-		goto no_cb;
-	case ZAP_EP_CONNECTING:
-		ev.type = ZAP_EVENT_CONNECT_ERROR;
-		sep->ep.state = ZAP_EP_ERROR;
-		shutdown(sep->sock, SHUT_RDWR);
-		break;
-	case ZAP_EP_CONNECTED:	/* Peer closed. */
-		sep->ep.state = ZAP_EP_PEER_CLOSE;
-		shutdown(sep->sock, SHUT_RDWR); /* disallow further i/o from our side */
-	case ZAP_EP_CLOSE:	/* App called close. */
-		ev.type = ZAP_EVENT_DISCONNECTED;
-		break;
-	case ZAP_EP_ERROR:
-		goto no_cb;
-	default:
-		LOG_(sep, "Unexpected state for EOF %d.\n",
-		     sep->ep.state);
-		sep->ep.state = ZAP_EP_ERROR;
-		break;
-	}
-	pthread_mutex_unlock(&sep->ep.lock);
-	sep->ep.cb((void*)sep, &ev);
-out:
-	zap_put_ep(&sep->ep); /* Taken when connect or accept */
-	return;
-no_cb:
-	pthread_mutex_unlock(&sep->ep.lock);
 	zap_put_ep(&sep->ep); /* Taken when connect or accept */
 	return;
 }
@@ -1238,7 +1238,6 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 		errno = ZAP_ERR_RESOURCE;
 		return NULL;
 	}
-	pthread_mutex_init(&sep->q_lock, NULL);
 	TAILQ_INIT(&sep->free_q);
 	TAILQ_INIT(&sep->io_q);
 	sep->sock = -1;
@@ -1441,20 +1440,18 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 		pthread_mutex_unlock(&sep->ep.lock);
 		goto err;
 	}
-	pthread_mutex_unlock(&sep->ep.lock);
 
-	pthread_mutex_lock(&sep->q_lock);
 	/* write message */
 	zerr = ZAP_ERR_RESOURCE;
 	if (bufferevent_write(sep->buf_event, &io->read, sizeof(io->read)) != 0)
 		goto err1;
 
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
+	pthread_mutex_unlock(&sep->ep.lock);
 	zerr = ZAP_ERR_OK;
-	pthread_mutex_unlock(&sep->q_lock);
 	return zerr;
 err1:
-	pthread_mutex_unlock(&sep->q_lock);
+	pthread_mutex_unlock(&sep->ep.lock);
 err:
 	__sock_io_free(sep, io);
 	return zerr;
@@ -1483,6 +1480,7 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	}
 
 	/* prepare message */
+	zerr = ZAP_ERR_RESOURCE;
 	struct evbuffer *ebuf = evbuffer_new();
 	if (!ebuf)
 		goto err0;
@@ -1501,23 +1499,22 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	pthread_mutex_lock(&sep->ep.lock);
 	if (sep->ep.state != ZAP_EP_CONNECTED) {
 		zerr = ZAP_ERR_NOT_CONNECTED;
-		pthread_mutex_unlock(&sep->ep.lock);
-		goto err1;
+		goto err2;
 	}
-	pthread_mutex_unlock(&sep->ep.lock);
 
-	pthread_mutex_lock(&sep->q_lock);
 	/* write message */
 	if (bufferevent_write_buffer(sep->buf_event, ebuf) != 0) {
-		pthread_mutex_unlock(&sep->q_lock);
-		goto err1;
+		zerr = ZAP_ERR_TRANSPORT;
+		goto err2;
 	}
 
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
+	pthread_mutex_unlock(&sep->ep.lock);
 	evbuffer_free(ebuf);
-	pthread_mutex_unlock(&sep->q_lock);
 	return ZAP_ERR_OK;
 
+err2:
+	pthread_mutex_unlock(&sep->ep.lock);
 err1:
 	evbuffer_free(ebuf);
 err0:
