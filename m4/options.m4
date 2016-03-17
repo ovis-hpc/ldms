@@ -416,7 +416,11 @@ else
 	        GITLONG=$GITSHORT
 		AC_MSG_RESULT([Faking it.])
 	else
-	        GITLONG="`git log -1 |grep ^commit | sed -e 's%commit %%'`"
+		GITLONG="`git rev-parse HEAD`"
+		GITDIRTY="`git status -uno -s`"
+		if test -n "$GITDIRTY"; then
+			GITLONG="${GITLONG}-dirty"
+		fi
 	        GITSHORT="`git describe --tags`"
 		AC_MSG_RESULT([ok.])
 	fi
