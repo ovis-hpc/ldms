@@ -1670,6 +1670,7 @@ int main(int argc, char *argv[])
 							ldmsd_version.minor,
 							ldmsd_version.patch,
 							ldmsd_version.flags);
+			printf("git-SHA: %s\n", LDMS_GIT_LONG);
 			exit(0);
 			break;
 		case '?':
