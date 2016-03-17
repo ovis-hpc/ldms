@@ -308,6 +308,7 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_REJECTED:
 	case ZAP_EVENT_CONNECTED:
 	case ZAP_EVENT_RECV_COMPLETE:
+	case ZAP_EVENT_CONNECT_REQUEST:
 		data_len = ev->data_len;
 		break;
 	/* these do not need data copy */
@@ -315,7 +316,8 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_DISCONNECTED:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
-	case ZAP_EVENT_CONNECT_REQUEST:
+		ev->data = NULL;
+		ev->data_len = 0;
 		/* do nothing */
 		break;
 	default:
@@ -323,7 +325,6 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 		break;
 	}
 
-	DLOG(ep, "zap_interpose_cb: event: %s\n", zap_event_str(ev->type));
 
 	ictxt = calloc(1, sizeof(*ictxt) + data_len);
 	if (!ictxt) {
@@ -344,7 +345,6 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt)
 {
 	/* delivering real io event callback */
 	struct zap_interpose_ctxt *ictxt = ctxt;
-	DLOG(ep, "delivering event: %s\n", zap_event_str(ictxt->ev.type));
 	ep->app_cb(ep, &ictxt->ev);
 	free(ictxt);
 	zap_put_ep(ep);
