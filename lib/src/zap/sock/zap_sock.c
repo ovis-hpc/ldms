@@ -200,12 +200,17 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 	pthread_mutex_lock(&sep->ep.lock);
 	switch (sep->ep.state) {
 	case ZAP_EP_PEER_CLOSE:
-	case ZAP_EP_CONNECTING:
 	case ZAP_EP_CONNECTED:
 	case ZAP_EP_LISTENING:
-	case ZAP_EP_ERROR:
 		sep->ep.state = ZAP_EP_CLOSE;
 		shutdown(sep->sock, SHUT_RDWR);
+		break;
+	case ZAP_EP_ERROR:
+	case ZAP_EP_ACCEPTING:
+	case ZAP_EP_CONNECTING:
+		shutdown(sep->sock, SHUT_RDWR);
+		break;
+	case ZAP_EP_CLOSE:
 		break;
 	default:
 		ZAP_ASSERT(0, ep, "%s: Unexpected state '%s'\n",
