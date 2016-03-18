@@ -153,20 +153,24 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 	struct sockaddr_storage ss_local, ss_remote;
 	socklen_t socklen;
 
-	ldms_t l;
-	for (l = ldms_xprt_first(); l; l = ldms_xprt_next(l)) {
+	ldms_t l, next_l;
+	l = ldms_xprt_first();
+	while (l) {
 		int rc = zap_get_name(l->zap_ep,
 				      (struct sockaddr *)&ss_local,
 				      (struct sockaddr *)&ss_remote,
 				      &socklen);
 		if (rc)
-			continue;
+			goto next;
 		struct sockaddr_in *s = (struct sockaddr_in *)&ss_remote;
 		if (s->sin_addr.s_addr == sin->sin_addr.s_addr
 		    && ((sin->sin_port == 0xffff) ||
 			(s->sin_port == sin->sin_port)))
 			return l;
+next:
+		next_l = ldms_xprt_next(l);
 		ldms_xprt_put(l);
+		l = next_l;
 	}
 	return 0;
 }
@@ -313,12 +317,14 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 
 static void dir_update(const char *set_name, enum ldms_dir_type t)
 {
-	struct ldms_xprt *x;
-	for (x = (struct ldms_xprt *)ldms_xprt_first(); x;
-	     x = (struct ldms_xprt *)ldms_xprt_next(x)) {
+	struct ldms_xprt *x, *next_x;
+	x = (struct ldms_xprt *)ldms_xprt_first();
+	while (x) {
 		if (x->remote_dir_xid)
 			send_dir_update(x, t, set_name);
+		next_x = (struct ldms_xprt *)ldms_xprt_next(x);
 		ldms_xprt_put(x);
+		x = next_x;
 	}
 }
 
