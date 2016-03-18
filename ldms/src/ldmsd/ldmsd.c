@@ -267,12 +267,18 @@ void cleanup(int x)
 		pthread_join(ctrl_thread, &dontcare);
 	}
 
-	if (muxr_s >= 0)
+	if (muxr_s >= 0) {
 		close(muxr_s);
-	if (sockname && bind_succeeded)
+		muxr_s = 0;
+	}
+	if (sockname && bind_succeeded) {
 		unlink(sockname);
-	if (ldms)
+		sockname = NULL;
+	}
+	if (ldms) {
 		ldms_release_xprt(ldms);
+		ldms = NULL;
+	}
 
 	if (!foreground && pidfile) {
 		unlink(pidfile);
@@ -763,8 +769,8 @@ int process_load_plugin(int fd,
 {
 	TF();
 	char *plugin_name;
-	char err_str[128];
-	char reply[128];
+	char err_str[1024];
+	char reply[1024];
 	int rc = 0;
 
 	err_str[0] = '\0';
