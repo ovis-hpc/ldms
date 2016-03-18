@@ -1396,17 +1396,18 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 		break;
 	case LDMS_CONTEXT_LOOKUP:
 		if (ctxt->lookup.cb) {
-			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.more, ctxt->lookup.s,
-					ctxt->lookup.cb_arg);
 			if (ev->status != ZAP_ERR_OK) {
 				/*
 				 * Application doesn't have the set handle yet,
 				 * so delete the set.
 				 */
 				ldms_set_delete(ctxt->lookup.s);
+				ctxt->lookup.s = NULL;
 			} else {
 				ldms_set_publish(ctxt->lookup.s);
 			}
+			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.more, ctxt->lookup.s,
+					ctxt->lookup.cb_arg);
 			if (!ctxt->lookup.more) {
 				zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 #ifdef DEBUG
