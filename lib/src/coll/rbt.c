@@ -587,6 +587,8 @@ int rbt_traverse(struct rbt *t, rbn_node_fn f, void *p)
 
 #ifdef RBT_TEST
 #include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <time.h>
 #include "ovis-test/test.h"
 struct test_key {
@@ -677,7 +679,7 @@ int main(int argc, char *argv[])
 		rbnGT = rbt_find_least_gt_or_eq(&rbtB, &x);
 		a = ((struct test_key *)rbnLT)->key;
 		b = ((struct test_key *)rbnGT)->key;
-		TEST_ASSERT((a <= x <= b),
+		TEST_ASSERT((a <= x && x <= b),
 			    "%d <= %d <= %d\n",
 			    a, b);
 	}
@@ -698,7 +700,8 @@ int main(int argc, char *argv[])
 		k->key = (int)random();
 		rbn = rbt_find(&rbt, &k->key);
 		if (rbn) {
-			printf("FAIL -- DUPLICATE %d.\n", &k->key);
+			printf("FAIL -- DUPLICATE %"PRId64 ".\n",
+				(int64_t)(&k->key));
 			continue;
 		}
 		rbt_ins(&rbt, &k->n);
@@ -728,7 +731,7 @@ int main(int argc, char *argv[])
 		    "Delete %d and make certain it's not found.\n", max);
 	while (1) {
 		t = time(NULL);
-		printf("seed %d\n", t);
+		printf("seed %u\n", (unsigned)t);
 		srandom(t);
 		key_count = atoi(argv[1]);
 		while (key_count--) {
@@ -738,7 +741,8 @@ int main(int argc, char *argv[])
 			k->key = (int)random();
 			rbn = rbt_find(&rbt, &k->key);
 			if (rbn) {
-				printf("FAIL -- DUPLICATE %d.\n", &k->key);
+				printf("FAIL -- DUPLICATE %"PRId64 ".\n",
+					(int64_t)(&k->key));
 				continue;
 			}
 			rbt_ins(&rbt, &k->n);
@@ -762,7 +766,7 @@ int main(int argc, char *argv[])
 		printf("Deleted...\n");
 	}
 	rbt_traverse(&rbt, rbt_print, NULL);
-	printf("FAIL seed is %d.\n", t);
+	printf("FAIL seed is %u.\n", (unsigned)t);
 	return 0;
 }
 

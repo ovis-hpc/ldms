@@ -109,6 +109,8 @@ struct hostspec
 	long sample_offset;      /* sample offset */
 	int synchronous;         /* 1 if synchronous */
 	unsigned long standby;	/* 0 if active bit value if standby */
+	int errcnt;		/* errors since last successful connect or update of host */
+	int errtot;		/* total errors connecting or updating */
 	enum {
 		HOST_DISCONNECTED=0,
 		HOST_CONNECTED
