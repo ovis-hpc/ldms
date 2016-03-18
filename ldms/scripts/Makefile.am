@@ -42,3 +42,6 @@ bin_SCRIPTS += ldms_local_spooltail.sh
 bin_SCRIPTS += ldms_local_csvietf.sh
 bin_SCRIPTS += ldms_local_scibtest.sh
 bin_SCRIPTS += ldms_local_temperatures.sh
+bin_SCRIPTS += ldms_local_jobtest.sh
+bin_SCRIPTS += ldms_local_jobsdie_test.sh
+bin_SCRIPTS += ldms_local_jobspool_test.sh

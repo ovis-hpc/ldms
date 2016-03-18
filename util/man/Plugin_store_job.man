@@ -1,0 +1,228 @@
+.\" Manpage for Plugin_store_job
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "14 Apr 2016" "v2.7" "LDMS Plugin store_job man page"
+
+.SH NAME
+Plugin_store_job - man page for the LDMS store_job plugin
+
+.SH SYNOPSIS
+Within ldmsctl:
+.br
+ldmsctl> config name=store_job [action=main] [ <attr> = <value> ]
+.br
+ldmsctl> config name=store_job action=container [ <attr> = <value> ]
+.br
+ldmsctl> store name=store_job [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
+The store_job plugin is a CSV store that directs output based on job id.
+.PP
+
+.SH LDMSCTL MAIN CONFIGURATION ATTRIBUTE SYNTAX
+The configuration parameters altheader, id_pos, openhook, spooler, spooldir, and sequence are applied to all metric sets alike, unless overriden by the action=container values. The parameters jobmetric, maxidle, deadcheck, and caldate are applied identically to all sets.
+
+.TP
+.BR config
+name=<plugin_name> [action=main] [close=all] path=<path> [ altheader=<altheader> id_pos=<idpos> ietfcsv=<boolean> sequence=<seqname> openhook=<openprog> spooldir=<dir> spooler=<program> jobmetric=<metname> deadcheck=<ns> maxidle=<isec> caldate=<bool>
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_job.
+.TP
+close=all
+.br
+Stop all containers and do not allow restart of store plugin. Supercedes 'action' and does not require 'path'.
+.TP
+action=main
+.br
+If action is not specified, name is assumed. For action=main, the remaining attributes can be specified and will be used for
+all metric sets, unless overriden by the action=container values.
+.TP
+path=<path>
+.br
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/job.$JOB/container>. Typically these are chosen to make output files like: /store_job/job.$JOB/meminfo. The name will be appended with "." followed by the date in accordance with the caldate option. The date suffix prevents data loss if a job identifier is recycled.
+.TP
+altheader=<altheader>
+.br
+The default output writes the header to the same file as the data file. altheader=1 will write the header to an alternate file (e.g., if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER"). The header file name will be postpended with the date similar to the data file. Default is altheader=0.
+.TP
+id_pos=<idpos>
+.br
+The default output format in the CSV stores writes out a separate unique identifier along with each data value. In all cases, this is the component_id. We currently recommend the following: assign a unique component_id to each node and use id_pos=1 in the store configuration parameters. This will result in only one unique identifier written out in any line in the output store and that identifier will be the component id.
+.HP
+.br
+The value of id_pos determines which metric in the set provides the component_id for the entire set. Setting id_pos=0 selects the last metric defined by the sampler as the component_id source; setting id_pos=1 selects the first metric defined by the sampler as the component_id source. All metrics in the set must have the same component_id for this to make sense, and individual metric component_id assignments may be determined by the sampler implementations.
+.TP
+ietfcsv=<boolean>
+.br
+If true (1,t,T,true,TRUE), format strings following IETF 4180 for reliable import by spreadsheets.
+If false, format strings for readability with a text file pager, e.g. more.
+The default is True.
+.TP
+sequence=<seqname>
+.br
+Controls the ordering of metric data column. See STORE COLUMN ORDERING for details.
+.TP
+openhook=<openprog>
+.br
+The full path of the program invoked as '<openprog> file' to notify that a new csv file (data or header) has been opened. Due to possible race conditions, openprog must validate its input and log any errors encountered or retry. LDMS does not monitor the outcome of the invocation. The invoked program may be a shell script that handles behaviors like making symbolic links or starting an ingestor that monitors the new file. The new file may not yet have any data in it. Relocating the new file is likely to cause unexpected behavior, as the csv store holds an open FILE reference until.
+.TP
+spooler=<program>
+.br
+The full path of the program invoked as '<program> file <spooldir>' to relocate output files. Both spooler and spooldir must exist or spooling is ignored. Due to possible race conditions, the program must validate its input and log any errors encountered. LDMS does not monitor the outcome of the program invocation. Program may be a shell script that handles complex spooling behavior including changing file permission, ownership, location, or passing to the data import tools of another logging system. When separate header and data files are produced, both are moved to spooldir with separate invocations of spooler. The order of completion of spooler for a header file and its data file is up to the operating system. The program is free to ignore the spooldir input value, but it must nevertheless exist at store container creation time. 
+.TP
+spooldir=<directory>
+.br
+The full path in which to deposit closed output files; this value is transferred as a argument to the spooler.
+.TP
+caldate=<boolean>
+.br
+If true (1,t,T,true,TRUE), format file suffixes as human readable.
+If false, format file suffixes as UTC seconds.
+.TP
+jobmetric=<metric name>
+.br
+The metric name of the job id (default slurm.jobid).
+.TP
+deadcheck=<number of stores>
+.br
+Every so many stores, visit the list of components to find idle or dead ones. Any 
+component record without activity in the last maxidle seconds will be dropped.
+(it will reappear without problems in the data file if the node reappears with the same job number later). The default number is 100000, 100 time steps on a cluster of 1000 nodes. If all the nodes in a job stop reporting, the job files will be closed. If the job resumes after a close, files with a new date suffix will be opened.
+.TP
+maxidle=<idle seconds>
+.br
+The threshold for idleness of a component during dead checking. The default is 600. Set maxidle to at least 3 times the sampling interval (in seconds).
+
+.RE
+
+.SH LDMSCTL CONTAINER CONFIGURATION ATTRIBUTE SYNTAX
+The configuration parameters set by action=main are applied to all metric sets alike,
+unless overriden by the action=container values.
+
+.TP
+.BR config
+name=<plugin_name> action=container [ altheader=<altheader> id_pos=<idpos> sequence=<seqname> ]
+.br
+ldmsctl configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_job.
+.TP
+action=container
+.br
+This MUST be container.
+.TP
+altheader=<altheader>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.TP
+id_pos=<idpos>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.TP
+sequence=<seqname>
+.br
+Overrides the default value set in action = main. Definition is as above.
+.RE
+
+.SH LDMSCTL STORE ATTRIBUTE SYNTAX
+
+.TP
+.BR store
+name=<plugin_name> set=<set_name> comp_type=<type> container=<container>
+.br
+ldmsctl store line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be store_job.
+.TP
+set=<set_name>
+.br
+The set parameter here is the base name of the sets, independent of the host name. For example, if you have configured samplers with parameter set=<hostname>/meminfo, then use the store parameter set=meminfo and all datasets for all combinations of <hostname>/meminfo will be stored.
+.TP
+comp_type=<type>
+.br
+Ignored.
+.TP
+container=<container>
+.br
+The output files will be opened in a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/job.$J$/<container>.$DATE$. Typically these are chosen to make output files like: store_job/job.10000/meminfo.2016-04-14-22_22_48_-0700.
+
+Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
+
+If you are using multiple store Plugins, use unique container names for each even if they are going into different subdirectories. For example, if you are running both the store_job and the store_derived_csv plugins do NOT use meminfo for both, perhaps use meminfo_der for the derived container.
+.RE
+
+.SH STORE COLUMN ORDERING
+
+This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
+.PP
+.RS
+Time, Time_usec, [CompId,] <sampled metric >*
+.RE
+.PP
+where [CompId,] is present if id_pos was specified, and
+where each <sampled metric> is either
+.PP
+.RS
+<metric_name>.CompId, <metric_name>
+.RE
+.PP
+or if id_pos has been specified just:
+.PP
+.RS
+<metric_name>
+.RE
+.PP
+.PP
+The default column sequence of <sampled metrics> is the reverse of the order in which the metrics are added into the metric set by the sampler.
+.QP
+Note that the sampler's number and order of metric additions may vary with the kind and number of hardware features enabled on a host at runtime or with the version of kernel. Because of this potential for variation, down-stream tools consuming the CSV files should always determine column names or column number of a specific metric by parsing the header line or .HEADER file. At the very least, a tool with a hardwired assumption of the column ordering should make a string comparison of the entire header line with a string containing the expected column naming and fail loudly when a mismatch is detected.
+.PP
+Valid sequence options are:
+.RS
+.TP
+forward
+.br
+List metrics in the order added in the sampler definition. This order is intuitive to humans comparing sampler input (e.g. /proc/meminfo) with LDMS CSV output, and it facilitates validation/bug checking during sampler development.
+.TP
+reverse
+.br
+List metrics in the reverse of the order added in the sampler definition (the default for back-compatibility reasons). This order is an artifact of implementation that we discovered down-stream tools are relying upon.
+.TP
+alnum
+.br
+(reserved) Not implemented. Sort the columns by name and name-embedded numeric values.
+.RE
+
+.SH NOTES
+The store does NOT manage permissions or ownerships of the output files directly. These can be managed by using the spooler options.
+
+In some circumstances the final output of an exiting ldms-aggd may not be spooled. To ensure spooling, the store maybe be reconfigured with "config name=store_job close=all" a few seconds before stopping ldmsd. 
+
+.SH BUGS
+No known bugs. In LDMS version 2.x, alnum is not expected to be implemented.
+
+.SH EXAMPLES
+.PP
+.nf
+$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
+ldmsctl> load name=store_job
+ldmsctl> config name=store_job altheader=1 id_pos=1 sequence=forward path=/XXX/storedir
+ldmsctl> config name=store_job action=container container=loadavg_store  sequence=reverse
+ldmsctl> store name=store_job comp_type=node set=meminfo container=meminfo_store
+ldmsctl> store name=store_job comp_type=node set=loadavg container=loadavg_store
+ldmsctl> quit
+.fi
+
+.SH SEE ALSO
+ldms(7), Plugin_store_csv(7)

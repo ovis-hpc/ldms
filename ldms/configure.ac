@@ -365,6 +365,9 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh
 		 scripts/ldms_local_temperatures.sh
+		 scripts/ldms_local_jobspool_test.sh
+		 scripts/ldms_local_jobsdie_test.sh
+		 scripts/ldms_local_jobtest.sh
 		 scripts/ldms_local_slurmtest.sh
 		 scripts/ldms_local_valgrind.sh
 		 scripts/ldms_local_clocktest.sh
