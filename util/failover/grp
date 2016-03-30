@@ -94,10 +94,10 @@ grp12 nid00098:ugni:411
 grp12 nid00110:ugni:411
 grp12 nid00162:ugni:411
 grp12 nid00174:ugni:411
-agg11 nid00176:ugni:411
-agg12 nid00177:ugni:411
-agg13 nid00178:ugni:411
-agg14 nid00179:ugni:411
+agg11 nid00176:ugni:411 first
+agg12 nid00177:ugni:411 first
+agg13 nid00178:ugni:411 first
+agg14 nid00179:ugni:411 first
 agg21 mom1:sock:411
 agg22 mom2:sock:411
 agg31 miner:sock:10001

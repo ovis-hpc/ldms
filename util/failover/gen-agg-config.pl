@@ -38,6 +38,7 @@ open my $cmdconf, "<$cmdconfpath" or
 	die "Cannot open $cmdconfpath";
 
 my %group;
+my %group_noregex;
 my %outfile;
 my %failoverfile;
 my %recoverfile;
@@ -52,11 +53,14 @@ my %failover_list;
 
 while (my $line = <$grpconf>) {
 	chomp $line;
-	my ($grp, $ent) = split / +/, $line;
+	my ($grp, $ent, $first) = split / +/, $line;
 	if (!$group{$grp}) {
 		$group{$grp} = [];
 	}
 	push @{$group{$grp}}, $ent;
+	if ($first && ($first eq "first")) {
+		$group_noregex{$grp} = 1;
+	}
 }
 
 close $grpconf;
@@ -150,6 +154,30 @@ sub expand_match_grp {
 updtr_match_add name=$updtr regex=$host/.* match=inst
 EOS
 	}
+}
+
+sub get_grp_hosts {
+	my ($grp) = @_;
+	my $ref = $group{$grp};
+	my @hosts;
+	if (not $ref) {
+		die "Group expansion error: $grp not found.";
+	}
+	my @entries = @{$ref};
+	if (not @entries) {
+		die "Group expansion error: $grp is empty.";
+	}
+	foreach my $ent (@entries) {
+		my ($host, $xprt, $port) = parse_node_entry($ent);
+		push @hosts, $host
+	}
+	return @hosts;
+}
+
+sub hosts_to_regexp {
+	my @hosts = @_;
+	my $regexp = "\\(" . (join "\\|", @hosts) . "\\)";
+	return $regexp;
 }
 
 sub process_agg {
@@ -361,9 +389,22 @@ EOS
 	} else {
 		@leaves = get_leaves($grp);
 	}
-	foreach my $ent (@leaves) {
-		expand_match_grp($fout, $updtr, $ent);
+	if ($group_noregex{$agg}) {
+		return;
 	}
+
+	# otherwise, process regex
+	my @hosts;
+
+	foreach my $ent (@leaves) {
+		my @h = get_grp_hosts($ent);
+		push @hosts, @h;
+	}
+	my $regexp = hosts_to_regexp(@hosts);
+	print $fout <<EOS
+updtr_match_add name=$updtr regex=$regexp/.* match=inst
+EOS
+;
 }
 
 sub start_updater {
