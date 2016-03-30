@@ -419,6 +419,7 @@ int parse_msg_hdr_1(struct bstr *str, char *s, struct binq_data *d)
 	int dd,mm,yyyy;
 	int HH,MM,SS,US = 0, TZH, TZM;
 	int n, len;
+	int tznegative = 0;
 	n = sscanf(s, "%d-%d-%dT%d:%d:%d%n.%d%n", &yyyy, &mm, &dd, &HH, &MM,
 							&SS, &len, &US, &len);
 	if (n < 6) {
@@ -440,14 +441,17 @@ int parse_msg_hdr_1(struct bstr *str, char *s, struct binq_data *d)
 		TZH = TZM = 0;
 		s++;
 		break;
-	case '+':
 	case '-':
+		tznegative = 1;
+	case '+':
 		n = sscanf(s, "%d:%d%n", &TZH, &TZM, &len);
 		if (n != 2) {
 			bwarn("timezone parse error, msg: %.*s", str->blen, str->cstr);
 		errno = EINVAL;
 			return -1;
 		}
+		if (tznegative)
+			TZM = -TZM;
 		s += len;
 		break;
 	default:
