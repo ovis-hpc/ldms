@@ -137,7 +137,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 	free(set);
 }
 
-void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set) 
+void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set)
 {
 	(void)__sync_fetch_and_add(&set->ref_count, 1);
 
@@ -191,7 +191,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
 		status = (status < 0 ? -status : status);
-		ldmsd_log(LDMSD_LERROR,
+		ldmsd_log(LDMSD_LINFO,
 			  "Error %d in lookup callback for set '%s'\n",
 			  status,
 			  prd_set->inst_name);
@@ -246,7 +246,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 			      LDMS_LOOKUP_BY_INSTANCE,
 			      prdcr_lookup_cb, set);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Synchronous error %d from ldms_lookup\n", rc);
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
 		ldmsd_prdcr_set_ref_put(set);
 	}
 
@@ -293,7 +293,7 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 {
 	ldmsd_prdcr_t prdcr = arg;
 	if (status) {
-		ldmsd_log(LDMSD_LERROR, "Error %d in lookup on producer %s host %s.\n",
+		ldmsd_log(LDMSD_LINFO, "Error %d in dir on producer %s host %s.\n",
 			 status, prdcr->obj.name, prdcr->host_name);
 		return;
 	}
@@ -336,7 +336,7 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 				prdcr->obj.name);
 		goto reset_prdcr;
 	case LDMS_CONN_EVENT_ERROR:
-		ldmsd_log(LDMSD_LERROR, "Producer %s: connection error\n",
+		ldmsd_log(LDMSD_LINFO, "Producer %s: connection error\n",
 				prdcr->obj.name);
 		goto reset_prdcr;
 	default:
@@ -386,8 +386,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 				prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 			}
 		} else {
-			ldmsd_log(LDMSD_LERROR, "%s Error creating endpoint on transport '%s'.\n",
-				 __func__, prdcr->xprt_name);
+			ldmsd_log(LDMSD_LERROR, "%s Error %d: creating endpoint on transport '%s'.\n",
+				 __func__, errno, prdcr->xprt_name);
 			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 		}
 		break;
