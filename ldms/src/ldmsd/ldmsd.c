@@ -313,19 +313,38 @@ FILE *ldmsd_open_log()
 	return f;
 }
 
-void ldmsd_logrotate(int x) {
+int ldmsd_logrotate(const char *new_name) {
+	if (new_name) {
+		char *tmp_logfile = strdup(new_name);
+		if (!tmp_logfile)
+			return ENOMEM;
+		if (logfile) {
+			free(logfile);
+			logfile = NULL;
+		}
+		logfile = tmp_logfile;
+	}
+	int rc;
 	if (logfile) {
 		/*
 		 * Close after open the new log file
 		 * to reserve the file descriptors 1 and 2.
 		 */
+		FILE *new_log = fopen(logfile, "a");
+		if (!new_log)
+			return errno;
+		int fd = fileno(new_log);
+		if (dup2(fd, 1) < 0)
+			return errno;
+		if (dup2(fd, 2) < 0)
+			return errno;
 		pthread_mutex_lock(&log_lock);
-		FILE *new_log = ldmsd_open_log();
 		fflush(log_fp);
 		fclose(log_fp);
-		log_fp = new_log;
+		log_fp = stdout = stderr = new_log;
 		pthread_mutex_unlock(&log_lock);
 	}
+	return 0;
 }
 
 void cleanup_sa(int signal, siginfo_t *info, void *arg)
@@ -518,7 +537,6 @@ char *skip_space(char *s)
 {
 	while (*s != '\0' && isspace(*s)) s++;
 	if (*s == '\0')
-		return NULL;
 	return s;
 }
 
@@ -1519,7 +1537,7 @@ int main(int argc, char *argv[])
 	int op;
 	ldms_set_t test_set;
 	log_fp = stdout;
-	struct sigaction action, logrotate_act;
+	struct sigaction action;
 	sigset_t sigset;
 	sigemptyset(&sigset);
 	sigaddset(&sigset, SIGUSR1);
@@ -1537,10 +1555,6 @@ int main(int argc, char *argv[])
 	sigaddset(&sigset, SIGINT);
 	sigaddset(&sigset, SIGTERM);
 	sigaddset(&sigset, SIGABRT);
-	memset(&logrotate_act, 0, sizeof(logrotate_act));
-	logrotate_act.sa_handler = ldmsd_logrotate;
-	logrotate_act.sa_mask = sigset;
-	sigaction(SIGUSR1, &logrotate_act, NULL);
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -1861,9 +1875,6 @@ int main(int argc, char *argv[])
 
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
-
-	if (!logfile)
-		logfile = LDMSD_LOGFILE;
 
 	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon version " VERSION "\n");
 #if OVIS_LIB_HAVE_AUTH

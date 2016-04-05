@@ -598,6 +598,7 @@ typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_val
 
 #define LDMSCTL_INCLUDE		17  /* Include another configuration file */
 #define LDMSCTL_ENV		18  /* Set environment variable */
+#define LDMSCTL_LOGROTATE	19  /* Rotate the log file */
 
 #define LDMSCTL_PRDCR_ADD	20   /* Add a producer specification */
 #define LDMSCTL_PRDCR_DEL	21   /* Disable a producer specification */
@@ -642,6 +643,7 @@ int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
+int ldmsd_logrotate(const char *newname);
 
 /** Configuration object management */
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj);
