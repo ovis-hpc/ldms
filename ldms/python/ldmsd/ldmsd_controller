@@ -712,6 +712,20 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_loglevel(self, text, line, begidx, endidx):
         return self.__complete_attr_list('loglevel', text)
 
+    def do_logrotate(self, arg):
+        """
+        Close the current log file and open a new file.
+        Parameters:
+           [path=]   Path to the new file. If this is not given, the new file
+                     will be opened at the current location. In this case,
+                     users should rename the old file before calling
+                     the command.
+        """
+        self.handle('logrotate', arg)
+
+    def complete_logrotate(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('logrotate', text)
+
     def do_version(self, arg):
         """
         Get the LDMS version the running LDMSD bases on.

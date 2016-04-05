@@ -106,6 +106,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                       'loglevel': {'id': 16, 'req_attr': ['level'],},
                       'include': {'id': 17, 'req_attr': [] },
                       'env': {'id': 18, 'req_attr': []},
+                      'logrotate': {'id': 19, 'req_attr': [],
+                                    'opt_attr': ['path']},
                       ###############################
                       # LDMSD command version 3
                       ###############################
@@ -333,6 +335,11 @@ class ldmsdConfig(object):
         attr_values = {'level': level}
         return self.talk(self.__format_cmd('loglevel', attr_values))
 
+    def logrotate(self, path = None):
+	attr_values = {}
+	if path:
+		attr_values['path'] = path
+	return self.talk(self.__format_cmd('path', attr_values))
     #############################################
     # LDMSD command version 3
     #############################################
