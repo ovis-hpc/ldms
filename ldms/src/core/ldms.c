@@ -205,7 +205,9 @@ static int rbn_cb(struct rbn *rbn, void *arg, int level)
 {
 	struct cb_arg *cb_arg = arg;
 	struct ldms_set *set = container_of(rbn, struct ldms_set, rb_node);
-	return cb_arg->user_cb(set, cb_arg->user_arg);
+	if (set->flags & LDMS_SET_F_PUBLISHED)
+		return cb_arg->user_cb(set, cb_arg->user_arg);
+	return 0;
 }
 
 /* Caller must hold the set tree lock */
@@ -309,6 +311,8 @@ static int __record_set(const char *instance_name, ldms_set_t *s,
 	sd->set = set;
 	sd->rbd = NULL;
 
+	set->rb_node.key = get_instance_name(set->meta)->name;
+	rbt_ins(&set_tree, &set->rb_node);
 	return 0;
 
  out_1:
@@ -325,11 +329,8 @@ int __ldms_set_publish(struct ldms_set *set)
 	if (set->flags & LDMS_SET_F_PUBLISHED)
 		return EEXIST;
 
-	char *name = get_instance_name(set->meta)->name;
-	set->rb_node.key = name;
-	rbt_ins(&set_tree, &set->rb_node);
 	set->flags |= LDMS_SET_F_PUBLISHED;
-	__ldms_dir_add_set(name);
+	__ldms_dir_add_set(get_instance_name(set->meta)->name);
 	return 0;
 }
 
@@ -351,7 +352,6 @@ int __ldms_set_unpublish(struct ldms_set *set)
 		return ENOENT;
 
 	set->flags &= ~LDMS_SET_F_PUBLISHED;
-	rbt_del(&set_tree, &set->rb_node);
 	__ldms_dir_del_set(get_instance_name(set->meta)->name);
 	return 0;
 }
@@ -473,7 +473,7 @@ void ldms_set_delete(ldms_set_t s)
 	if (LIST_EMPTY(&set->remote_rbd_list)) {
 
 		__ldms_set_unpublish(set);
-
+		rem_local_set(set);
 		while (!LIST_EMPTY(&set->local_rbd_list)) {
 			rbd = LIST_FIRST(&set->local_rbd_list);
 			LIST_REMOVE(rbd, set_link);
