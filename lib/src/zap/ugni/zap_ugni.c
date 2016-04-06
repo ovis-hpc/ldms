@@ -183,6 +183,32 @@ static void zap_ugni_default_log(const char *fmt, ...)
 	va_end(ap);
 }
 
+static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
+{
+	struct sockaddr la = {0};
+	struct sockaddr ra = {0};
+	char addr_str[INET_ADDRSTRLEN];
+	struct sockaddr_in *l = (struct sockaddr_in *)&la;
+	struct sockaddr_in *r = (struct sockaddr_in *)&ra;
+	socklen_t sa_len = sizeof(la);
+	size_t sz;
+	zap_err_t zerr;
+
+	(void) zap_get_name(ep, &la, &ra, &sa_len);
+	sz = snprintf(str, len, "lcl=%s:%hu <--> ",
+		inet_ntop(AF_INET, &l->sin_addr, addr_str, INET_ADDRSTRLEN),
+		ntohs(l->sin_port));
+	if (sz + 1 > len)
+		return NULL;
+	len -= sz;
+	sz = snprintf(&str[sz], len, "rem=%s:%hu",
+		inet_ntop(AF_INET, &r->sin_addr, addr_str, INET_ADDRSTRLEN),
+		ntohs(r->sin_port));
+	if (sz + 1 > len)
+		return NULL;
+	return str;
+}
+
 int z_rbn_cmp(void *a, void *b)
 {
 	uint32_t x = (uint32_t)(uint64_t)a;
@@ -733,13 +759,15 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		if (uep->deferred_link.le_prev)
 			DLOG("uep %p: Doh!! I'm on the deferred list.\n", uep);
 		struct zap_event zev = {0};
+		char name[128];
+		(void)format_4tuple(&uep->ep, name, 128);
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
-				zap_ugni_log("%s: RDMA_GET: update completing "
-						"with error %d.\n",
-						__func__, grc);
+				zap_ugni_log("%s RDMA_GET: completing "
+					     "with error %d.\n", name, grc);
+				shutdown(uep->sock, SHUT_RDWR);
 			}
 			zev.type = ZAP_EVENT_READ_COMPLETE;
 			zev.context = desc->context;
@@ -747,17 +775,17 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		case GNI_POST_RDMA_PUT:
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
-				zap_ugni_log("%s: RDMA_PUT: update completing "
-						"with error %d.\n",
-						__func__, grc);
+				zap_ugni_log("%s RDMA_PUT: completing "
+					     "with error %d.\n", name, grc);
+				shutdown(uep->sock, SHUT_RDWR);
 			}
 			zev.type = ZAP_EVENT_WRITE_COMPLETE;
 			zev.context = desc->context;
 			break;
 		default:
-			zap_ugni_log("Unknown completion "
-					     "type %d on transport %p.\n",
-					     desc->post.type, uep);
+			zap_ugni_log("%s Unknown completion type %d.\n",
+					name, desc->post.type);
+			shutdown(uep->sock, SHUT_RDWR);
 		}
 		pthread_mutex_unlock(&uep->ep.lock);
 
