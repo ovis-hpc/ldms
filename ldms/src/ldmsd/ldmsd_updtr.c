@@ -140,7 +140,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 			ldmsd_prdcr_set_ref_get(prd_set);
 			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 			if (rc) {
-				ldmsd_log(LDMSD_LERROR, "Synchronous error %d "
+				ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
 						"from ldms_xprt_update\n", rc);
 				ldmsd_prdcr_set_ref_put(prd_set);
 			}
@@ -157,7 +157,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 			ldmsd_prdcr_set_ref_get(prd_set);
 			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 			if (rc) {
-				ldmsd_log(LDMSD_LERROR, "Synchronous error %d "
+				ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
 						"from ldms_xprt_update\n", rc);
 				ldmsd_prdcr_set_ref_put(prd_set);
 			}

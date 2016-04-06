@@ -2393,7 +2393,7 @@ loop:
 			process_request(inet_sock, &msg, msglen);
 		}
 	} while (1);
-	ldmsd_log(LDMSD_LERROR,
+	ldmsd_log(LDMSD_LINFO,
 		  "Closing configuration socket. cfg_buf_len %d\n",
 		  cfg_buf_len);
 	close(inet_sock);
