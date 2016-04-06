@@ -1813,6 +1813,22 @@ int process_env(char *replybuf, struct attr_value_list *av_list,
 	return 0;
 }
 
+int process_log_rotate(char *replybuf, struct attr_value_list *av_list,
+					struct attr_value_list *kw_list)
+{
+	const char *fpath;
+	fpath = av_value(av_list, "path");
+	int rc = ldmsd_logrotate(fpath);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Error %d: failed to rotate"
+				"the log file\n", rc);
+		sprintf(replybuf, "%d Failed to rotate the log file", -rc);
+	} else {
+		sprintf(replybuf, "%d", -rc);
+	}
+	return 0;
+}
+
 extern int cmd_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
 extern int cmd_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
 extern int cmd_prdcr_start(char *, struct attr_value_list *, struct attr_value_list *);
@@ -1923,6 +1939,7 @@ ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
 	[LDMSCTL_VERBOSE] = process_verbosity_change,
 	[LDMSCTL_INCLUDE] = process_include,
 	[LDMSCTL_ENV] = process_env,
+	[LDMSCTL_LOGROTATE] = process_log_rotate,
 	[LDMSCTL_PRDCR_ADD] = cmd_prdcr_add,
 	[LDMSCTL_PRDCR_DEL] = cmd_prdcr_del,
 	[LDMSCTL_PRDCR_START] = cmd_prdcr_start,
