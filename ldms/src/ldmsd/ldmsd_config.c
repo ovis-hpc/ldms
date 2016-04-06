@@ -268,17 +268,42 @@ void __process_info_prdcr(enum ldmsd_loglevel llevel)
 	ldmsd_log(llevel, "\n");
 	ldmsd_log(llevel, "========================================================================\n");
 	ldmsd_log(llevel, "%s\n", "Producers");
+#ifdef LDMSD_UPDATE_TIME
+	ldmsd_log(llevel, "%-20s %-20s %-8s %-12s %-10s %s\n",
+		 "Name", "Host", "Port", "ConnIntrvl", "State", "Schdule update time(usec)");
+#else /* LDMSD_UPDATE_TIME */
 	ldmsd_log(llevel, "%-20s %-20s %-8s %-12s %s\n",
 		 "Name", "Host", "Port", "ConnIntrvl", "State");
+#endif /* LDMSD_UPDATE_TIME */
 	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+#ifdef LDMSD_UPDATE_TIME
+		ldmsd_log(llevel, "%-20s %-20s %-8hu %-12d %-10s %lf\n",
+			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
+			 prdcr->conn_intrvl_us,
+			 prdcr_state_str(prdcr->conn_state),
+			 prdcr->sched_update_time);
+#else /* LDMSD_UPDATE_TIME */
 		ldmsd_log(llevel, "%-20s %-20s %-8hu %-12d %s\n",
 			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
 			 prdcr->conn_intrvl_us,
 			 prdcr_state_str(prdcr->conn_state));
+#endif /* LDMSD_UPDATE_TIME */
 		ldmsd_prdcr_lock(prdcr);
 		ldmsd_prdcr_set_t prv_set;
+#ifdef LDMSD_UPDATE_TIME
+		ldmsd_log(llevel, "    %-32s %-20s %-10s %s\n",
+			 "Instance Name", "Schema Name", "State", "Update time (usec)");
+		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
+		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
+			ldmsd_log(llevel, "    %-32s %-20s %-10s %lf\n",
+				 prv_set->inst_name,
+				 prv_set->schema_name,
+				 ldmsd_prdcr_set_state_str(prv_set->state),
+				 prv_set->updt_duration);
+		}
+#else /* LDMSD_UPDATE_TIME */
 		ldmsd_log(llevel, "    %-32s %-20s %s\n",
 			 "Instance Name", "Schema Name", "State");
 		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
@@ -288,6 +313,8 @@ void __process_info_prdcr(enum ldmsd_loglevel llevel)
 				 prv_set->schema_name,
 				 ldmsd_prdcr_set_state_str(prv_set->state));
 		}
+#endif /* LDMSD_UPDATE_TIME */
+
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
@@ -301,8 +328,14 @@ void __process_info_updtr(enum ldmsd_loglevel llevel)
 	ldmsd_log(llevel, "\n");
 	ldmsd_log(llevel, "========================================================================\n");
 	ldmsd_log(llevel, "%s\n", "Updaters");
+#ifdef LDMSD_UPDATE_TIME
+	ldmsd_log(llevel, "%-20s %-14s %-14s %-10s %-10s %s\n",
+		 "Name", "Update Intrvl", "Offset", "State", "Submitting time (usec)", "Update time (usec)");
+#else /* LDMSD_UDPATE_TIME */
 	ldmsd_log(llevel, "%-20s %-14s %-14s %s\n",
 		 "Name", "Update Intrvl", "Offset", "State");
+#endif /* LDMSD_UPDATE_TIME */
+
 	ldmsd_log(llevel, "-------------------- -------------- -------------- ----------\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
@@ -310,10 +343,20 @@ void __process_info_updtr(enum ldmsd_loglevel llevel)
 			sprintf(offset_s, "%d", updtr->updt_offset_us);
 		else
 			sprintf(offset_s, "ASYNC");
+#ifdef LDMSD_UPDATE_TIME
+		ldmsd_log(llevel, "%-20s %-14d %-14s %-10s %lf %lf\n",
+			 updtr->obj.name, updtr->updt_intrvl_us,
+			 offset_s,
+			 ldmsd_updtr_state_str(updtr->state),
+			 updtr->sched_duration,
+			 updtr->duration);
+#else /* LDMSD_UPDATE_TIME */
 		ldmsd_log(llevel, "%-20s %-14d %-14s %s\n",
 			 updtr->obj.name, updtr->updt_intrvl_us,
 			 offset_s,
 			 ldmsd_updtr_state_str(updtr->state));
+#endif /* LDMSD_UPDATE_TIME */
+
 		ldmsd_updtr_lock(updtr);
 		ldmsd_name_match_t match;
 		ldmsd_log(llevel, "    Metric Set Match Specifications (empty == All)\n");

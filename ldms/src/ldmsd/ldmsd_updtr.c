@@ -86,10 +86,40 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj___del(obj);
 }
 
+#ifdef LDMSD_UPDATE_TIME
+void __updt_time_get(struct ldmsd_updt_time *updt_time)
+{
+	__sync_fetch_and_add(&updt_time->ref, 1);
+}
+
+void __updt_time_put(struct ldmsd_updt_time *updt_time)
+{
+	if (0 == __sync_sub_and_fetch(&updt_time->ref, 1)) {
+		struct timeval end;
+		gettimeofday(&end, NULL);
+		updt_time->updtr->duration =
+			ldmsd_timeval_diff(&updt_time->update_start, &end);
+		free(updt_time);
+	}
+}
+#endif /* LDMSD_UDPATE_TIME */
+
+
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
-	ldmsd_prdcr_set_t prd_set = arg;
 	uint64_t gn;
+#ifdef LDMSD_UPDATE_TIME
+	struct ldmsd_updt_set *updt_set = arg;
+	ldmsd_prdcr_set_t prd_set = updt_set->prd_set;
+	struct timeval end;
+	gettimeofday(&end, NULL);
+	prd_set->updt_duration = ldmsd_timeval_diff(&updt_set->updt_start, &end);
+	struct ldmsd_updt_time *updt_time = updt_set->updt_time;
+	free(updt_set);
+	__updt_time_put(updt_time);
+#else /* LDMSD_UPDATE_TIME */
+	ldmsd_prdcr_set_t prd_set = arg;
+#endif /* LDMSD_UPDATE_TIME */
 
 	if (status) {
 		goto out;
@@ -120,9 +150,48 @@ out:
 	return;
 }
 
+static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
+{
+	int rc;
+	struct timeval end;
+	/* The reference will be put back in update_cb */
+	ldmsd_prdcr_set_ref_get(prd_set);
+#ifdef LDMSD_UPDATE_TIME
+	struct ldmsd_updt_time *updt_time;
+	struct ldmsd_updt_set *updt_set = calloc(1, sizeof(*updt_set));
+	updt_set->updtr = updtr;
+	updt_set->prd_set = prd_set;
+	updt_set->updt_time = updt_time = updtr->curr_updt_time;
+	__updt_time_get(updt_time);
+	gettimeofday(&updt_set->updt_start, NULL);
+	if (updt_time->update_start.tv_sec == 0)
+		updt_time->update_start = updt_set->updt_start;
+	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, updt_set);
+	if (rc) {
+		__updt_time_put(updt_time);
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
+				"from ldms_xprt_update\n", rc);
+		ldmsd_prdcr_set_ref_put(prd_set);
+		free(updt_set);
+	}
+#else /* LDMSD_UPDATE_TIME */
+	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+	if (rc) {
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
+				"from ldms_xprt_update\n", rc);
+		ldmsd_prdcr_set_ref_put(prd_set);
+	}
+#endif /* LDMSD_UPDATE_TIME */
+	return rc;
+}
+
 static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 				   ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
+#ifdef LDMSD_UPDATE_TIME
+	struct timeval start, end;
+	gettimeofday(&start, NULL);
+#endif /* LDMSD_UPDATE_TIME */
 	int rc;
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
@@ -136,14 +205,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 			continue;
 		/* If a match condition is not specified, everything matches */
 		if (!match) {
-			/* The reference will be put back in update_cb */
-			ldmsd_prdcr_set_ref_get(prd_set);
-			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
-			if (rc) {
-				ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
-						"from ldms_xprt_update\n", rc);
-				ldmsd_prdcr_set_ref_put(prd_set);
-			}
+			schedule_set_updates(prd_set, updtr);
 			continue;
 		}
 		rc = 1;
@@ -153,23 +215,35 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 			str = prd_set->schema_name;
 		rc = regexec(&match->regex, str, 0, NULL, 0);
 		if (!rc) {
-			/* The reference will be put back in update_cb */
-			ldmsd_prdcr_set_ref_get(prd_set);
-			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
-			if (rc) {
-				ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
-						"from ldms_xprt_update\n", rc);
-				ldmsd_prdcr_set_ref_put(prd_set);
-			}
+			schedule_set_updates(prd_set, updtr);
 		}
 	}
 out:
 	ldmsd_prdcr_unlock(prdcr);
+#ifdef LDMSD_UPDATE_TIME
+	gettimeofday(&end, NULL);
+	prdcr->sched_update_time = ldmsd_timeval_diff(&start, &end);
+#endif /* LDMSD_UPDATE_tIME */
 }
 
 static void schedule_updates(ldmsd_updtr_t updtr)
 {
 	ldmsd_name_match_t match;
+
+#ifdef LDMSD_UPDATE_TIME
+	ldmsd_log(LDMSD_LDEBUG, "Updater %s: schedule an update\n",
+						updtr->obj.name);
+	struct timeval start;
+	struct ldmsd_updt_time *updt_time = calloc(1, sizeof(*updt_time));
+	__updt_time_get(updt_time);
+	updt_time->updtr = updtr;
+	updtr->curr_updt_time = updt_time;
+	updtr->duration = -1;
+	updtr->sched_duration = -1;
+	gettimeofday(&start, NULL);
+	updt_time->sched_start = start;
+#endif /* LDMSD_UPDATE_TIME */
+
 	if (!LIST_EMPTY(&updtr->match_list)) {
 		LIST_FOREACH(match, &updtr->match_list, entry) {
 			ldmsd_prdcr_ref_t ref;
@@ -181,6 +255,13 @@ static void schedule_updates(ldmsd_updtr_t updtr)
 		LIST_FOREACH(ref, &updtr->prdcr_list, entry)
 			schedule_prdcr_updates(updtr, ref->prdcr, NULL);
 	}
+#ifdef LDMSD_UPDATE_TIME
+	struct timeval end;
+	gettimeofday(&end, NULL);
+	updtr->sched_duration = ldmsd_timeval_diff(&start, &end);
+	updtr->curr_updt_time = NULL;
+	__updt_time_put(updt_time);
+#endif /* LDMSD_UPDATE_TIME */
 }
 
 static void updtr_task_cb(ldmsd_task_t task, void *arg)

@@ -208,6 +208,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	prd_set->set = set;
 	prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
 
 out:
