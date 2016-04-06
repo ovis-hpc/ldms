@@ -277,6 +277,9 @@ int timer_base_create_set(struct timer_base *tb)
 		return errno;
 	}
 	ldms_set_producer_name_set(tb->set, tb->pname);
+	if (tb->compid) {
+		ldms_metric_set_u64(tb->set, 0, tb->compid);
+	}
 	return 0;
 }
 
