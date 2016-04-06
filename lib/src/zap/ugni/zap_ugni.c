@@ -73,6 +73,7 @@
 
 #include "ovis_util/os_util.h"
 #include "coll/rbt.h"
+#include "mmalloc/mmalloc.h"
 
 #include "zap_ugni.h"
 
@@ -127,6 +128,10 @@ struct zap_ugni_node_state {
 	int rca_get_failed;
 	int *node_state;
 } _node_state = {0};
+
+static int reg_count;
+static LIST_HEAD(mh_list, ugni_mh) mh_list;
+static pthread_mutex_t ugni_mh_lock;
 
 static struct event_base *io_event_loop;
 static pthread_t io_thread;
@@ -235,6 +240,49 @@ static void __free_post_desc(struct zap_ugni_post_desc *d)
 	LIST_REMOVE(d, link);
 	zap_put_ep(&uep->ep);
 	free(d);
+}
+
+gni_return_t ugni_get_mh(struct z_ugni_ep *uep, void *addr,
+				size_t size, gni_mem_handle_t *mh)
+{
+	gni_return_t grc = GNI_RC_SUCCESS;
+	struct ugni_mh *umh;
+	int need_mh = 0;
+	unsigned long start;
+	unsigned long end;
+
+	pthread_mutex_lock(&ugni_mh_lock);
+	umh = LIST_FIRST(&mh_list);
+	if (!umh) {
+		zap_mem_info_t mmi;
+		mmi = uep->ep.z->mem_info_fn();
+		start = (unsigned long)mmi->start;
+		end = start + mmi->len;
+		need_mh = 1;
+	}
+	if (!need_mh)
+		goto out;
+
+	umh = malloc(sizeof *umh);
+	umh->start = start;
+	umh->end = end;
+	umh->ref_count = 0;
+
+	grc = GNI_MemRegister(_dom.nic, umh->start, end - start,
+			      NULL,
+			      GNI_MEM_READWRITE | GNI_MEM_RELAXED_PI_ORDERING,
+			      -1, &umh->mh);
+	if (grc != GNI_RC_SUCCESS) {
+		free(umh);
+		goto out;
+	}
+	LIST_INSERT_HEAD(&mh_list, umh, link);
+	reg_count++;
+out:
+	*mh = umh->mh;
+	umh->ref_count++;
+	pthread_mutex_unlock(&ugni_mh_lock);
+	return grc;
 }
 
 static void release_buf_event(struct z_ugni_ep *r);
@@ -1881,9 +1929,7 @@ z_ugni_map(zap_ep_t ep, zap_map_t *pm, void *buf, size_t len, zap_access_t acc)
 		goto err0;
 	}
 
-	grc = GNI_MemRegister(_dom.nic, (uint64_t)buf, len, NULL,
-			GNI_MEM_READWRITE | GNI_MEM_RELAXED_PI_ORDERING,
-			-1, &map->gni_mh);
+	grc = ugni_get_mh((void*)ep, buf, len, &map->gni_mh);
 	if (grc) {
 		zerr = ZAP_ERR_RESOURCE;
 		goto err1;
@@ -1903,10 +1949,7 @@ static zap_err_t z_ugni_unmap(zap_ep_t ep, zap_map_t map)
 	gni_return_t grc;
 	struct zap_ugni_map *m = (void*) map;
 	if (m->map.type != ZAP_MAP_REMOTE) {
-		grc = GNI_MemDeregister(_dom.nic, &m->gni_mh);
-		if (grc != GNI_RC_SUCCESS) {
-			DLOG("GNI_MemDeregister error\n");
-		}
+		/* we will not de-register our only memory handle! */
 	} else {
 		pthread_mutex_lock(&ep->lock);
 		LIST_REMOVE(&m->map, link);
@@ -2198,4 +2241,17 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 
  err:
 	return ZAP_ERR_RESOURCE;
+}
+
+static void __attribute__ ((destructor)) ugni_fini(void);
+static void ugni_fini()
+{
+	gni_return_t grc;
+	struct ugni_mh *mh;
+	while (!LIST_EMPTY(&mh_list)) {
+		mh = LIST_FIRST(&mh_list);
+		LIST_REMOVE(mh, link);
+		(void)GNI_MemDeregister(_dom.nic, &mh->mh);
+		free(mh);
+	}
 }

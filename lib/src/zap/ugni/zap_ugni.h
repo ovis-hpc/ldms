@@ -194,8 +194,15 @@ static const char *gni_ret_str(gni_return_t ret)
 	return __gni_ret_str[ret];
 }
 
-#pragma pack(4)
+struct ugni_mh {
+	unsigned long start;
+	unsigned long end;
+	gni_mem_handle_t mh;
+	int ref_count;
+	LIST_ENTRY(ugni_mh) link;
+};
 
+#pragma pack(4)
 /**
  * \brief Zap message header for socket transport.
  *

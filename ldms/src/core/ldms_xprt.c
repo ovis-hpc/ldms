@@ -67,6 +67,7 @@
 #include <regex.h>
 #include <pwd.h>
 #include <unistd.h>
+#include <mmalloc/mmalloc.h>
 
 #include "ovis_util/os_util.h"
 #include "ldms.h"
@@ -1227,7 +1228,12 @@ static int recv_cb(struct ldms_xprt *x, void *r)
 
 zap_mem_info_t ldms_zap_mem_info()
 {
-	return NULL;
+	static struct mm_info mmi;
+	static struct zap_mem_info zmmi;
+	mm_get_info(&mmi);
+	zmmi.start = mmi.start;
+	zmmi.len = mmi.size;
+	return &zmmi;
 }
 
 void __ldms_passive_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
