@@ -643,7 +643,7 @@ int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
-int ldmsd_logrotate(const char *newname);
+int ldmsd_logrotate();
 
 /** Configuration object management */
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj);
