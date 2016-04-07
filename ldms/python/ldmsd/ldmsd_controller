@@ -714,12 +714,9 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_logrotate(self, arg):
         """
-        Close the current log file and open a new file.
-        Parameters:
-           [path=]   Path to the new file. If this is not given, the new file
-                     will be opened at the current location. In this case,
-                     users should rename the old file before calling
-                     the command.
+        Close the current log file, rename it by appending
+	the timestamp in seconds, and then open a new file
+	with the name given at the ldmsd command-line.
         """
         self.handle('logrotate', arg)
 
