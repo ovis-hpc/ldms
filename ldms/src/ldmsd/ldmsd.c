@@ -189,6 +189,10 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	char dtsz[200];
 
 	pthread_mutex_lock(&log_lock);
+	if (!log_fp) {
+		pthread_mutex_unlock(&log_lock);
+		return;
+	}
 	t = time(NULL);
 	tm = localtime(&t);
 	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
@@ -313,38 +317,49 @@ FILE *ldmsd_open_log()
 	return f;
 }
 
-int ldmsd_logrotate(const char *new_name) {
-	if (new_name) {
-		char *tmp_logfile = strdup(new_name);
-		if (!tmp_logfile)
-			return ENOMEM;
-		if (logfile) {
-			free(logfile);
-			logfile = NULL;
-		}
-		logfile = tmp_logfile;
-	}
+int ldmsd_logrotate() {
 	int rc;
-	if (logfile) {
-		/*
-		 * Close after open the new log file
-		 * to reserve the file descriptors 1 and 2.
-		 */
-		FILE *new_log = fopen(logfile, "a");
-		if (!new_log)
-			return errno;
-		int fd = fileno(new_log);
-		if (dup2(fd, 1) < 0)
-			return errno;
-		if (dup2(fd, 2) < 0)
-			return errno;
-		pthread_mutex_lock(&log_lock);
-		fflush(log_fp);
-		fclose(log_fp);
-		log_fp = stdout = stderr = new_log;
-		pthread_mutex_unlock(&log_lock);
+	if (!logfile) {
+		ldmsd_log(LDMSD_LERROR, "Received a logrotate command but "
+			"the log messages are printed to the standard out.\n");
+		return EINVAL;
 	}
+	struct timeval tv;
+	char ofile_name[PATH_MAX];
+	gettimeofday(&tv, NULL);
+	sprintf(ofile_name, "%s-%ld", logfile, tv.tv_sec);
+
+	pthread_mutex_lock(&log_lock);
+	if (!log_fp) {
+		pthread_mutex_unlock(&log_lock);
+		return EINVAL;
+	}
+	fflush(log_fp);
+	fclose(log_fp);
+	rename(logfile, ofile_name);
+	log_fp = fopen(logfile, "a");
+	if (!log_fp) {
+		printf("%-10s: Failed to rotate the log file. Cannot open a new "
+			"log file\n", "ERROR");
+		fflush(stdout);
+		rc = errno;
+		goto err;
+	}
+	int fd = fileno(log_fp);
+	if (dup2(fd, 1) < 0) {
+		rc = errno;
+		goto err;
+	}
+	if (dup2(fd, 2) < 0) {
+		rc = errno;
+		goto err;
+	}
+	stdout = stderr = log_fp;
+	pthread_mutex_unlock(&log_lock);
 	return 0;
+err:
+	pthread_mutex_unlock(&log_lock);
+	return rc;
 }
 
 void cleanup_sa(int signal, siginfo_t *info, void *arg)

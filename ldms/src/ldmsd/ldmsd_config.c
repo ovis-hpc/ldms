@@ -1816,16 +1816,11 @@ int process_env(char *replybuf, struct attr_value_list *av_list,
 int process_log_rotate(char *replybuf, struct attr_value_list *av_list,
 					struct attr_value_list *kw_list)
 {
-	const char *fpath;
-	fpath = av_value(av_list, "path");
-	int rc = ldmsd_logrotate(fpath);
-	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Error %d: failed to rotate"
-				"the log file\n", rc);
+	int rc = ldmsd_logrotate();
+	if (rc)
 		sprintf(replybuf, "%d Failed to rotate the log file", -rc);
-	} else {
+	else
 		sprintf(replybuf, "%d", -rc);
-	}
 	return 0;
 }
 
