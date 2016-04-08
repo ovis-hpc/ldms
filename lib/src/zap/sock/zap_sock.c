@@ -132,7 +132,8 @@ static struct z_sock_key *z_key_alloc(struct zap_sock_map *map)
 	return key;
 }
 
-static struct z_sock_key *__z_key_find(uint32_t key)
+/* Caller must hold the z_key_tree_mutex lock. */
+static struct z_sock_key *z_sock_key_find(uint32_t key)
 {
 	struct rbn *krbn = rbt_find(&z_key_tree, (void*)(uint64_t)key);
 	if (!krbn)
@@ -140,20 +141,11 @@ static struct z_sock_key *__z_key_find(uint32_t key)
 	return container_of(krbn, struct z_sock_key, rb_node);
 }
 
-static struct z_sock_key *z_sock_key_find(uint32_t key)
-{
-	struct z_sock_key *k;
-	pthread_mutex_lock(&z_key_tree_mutex);
-	k = __z_key_find(key);
-	pthread_mutex_unlock(&z_key_tree_mutex);
-	return k;
-}
-
 static void z_key_delete(uint32_t key)
 {
 	struct z_sock_key *k;
 	pthread_mutex_lock(&z_key_tree_mutex);
-	k = __z_key_find(key);
+	k = z_sock_key_find(key);
 	if (!k)
 		goto out;
 	rbt_del(&z_key_tree, &k->rb_node);
@@ -169,6 +161,8 @@ out:
  * \param p The start of the accessing memory.
  * \param sz The size of the accessing memory.
  * \param acc Access flags.
+ *
+ * The Caller must hold the z_key_tree_mutex lock.
  */
 static int z_sock_map_key_access_validate(uint32_t key, char *p, size_t sz,
 				zap_access_t acc)
@@ -554,8 +548,14 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep, size_t reqlen)
 	rmsg.hdr.ctxt = msg.hdr.ctxt;
 
 	int rc = 0;
+	pthread_mutex_lock(&z_key_tree_mutex);
 	rc = z_sock_map_key_access_validate(msg.src_map_key, src, data_len,
 				       ZAP_ACCESS_READ);
+	pthread_mutex_unlock(&z_key_tree_mutex);
+	/*
+	 * The data the other side receives could be garbage
+	 * if the map is deleted after this point.
+	 */
 	switch (rc) {
 	case 0:
 		/* OK */
@@ -716,8 +716,11 @@ static void process_sep_msg_write_req(struct z_sock_ep *sep, size_t reqlen)
 		   msg.hdr.ctxt);
 
 	/* Validate */
+	pthread_mutex_lock(&z_key_tree_mutex);
 	int rc = z_sock_map_key_access_validate(msg.dst_map_key, dst, data_len,
 					     ZAP_ACCESS_WRITE);
+	pthread_mutex_unlock(&z_key_tree_mutex);
+
 	size_t lsz = data_len;
 	size_t sz;
 	switch (rc) {
