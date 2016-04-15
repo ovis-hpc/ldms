@@ -44,7 +44,7 @@ all metric sets, unless overriden by the action=container values.
 .TP
 path=<path>
 .br
-The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/job.$JOB/container>. Typically these are chosen to make output files like: /store_job/job.$JOB/meminfo. The name will be appended with "." followed by the date in accordance with the caldate option. The date suffix prevents data loss if a job identifier is recycled.
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/job.$JOB/container>. Typically these are chosen to make output files like: /store_csv/job/job.$JOB/meminfo. The name will be appended with "." followed by the date in accordance with the caldate option. The date suffix prevents data loss if a job identifier is recycled.
 .TP
 altheader=<altheader>
 .br
@@ -151,7 +151,7 @@ The set parameter here is the base name of the sets, independent of the host nam
 .TP
 comp_type=<type>
 .br
-Ignored.
+The subdirectory to use under path.
 .TP
 container=<container>
 .br
@@ -219,8 +219,8 @@ $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_job
 ldmsctl> config name=store_job altheader=1 id_pos=1 sequence=forward path=/XXX/storedir
 ldmsctl> config name=store_job action=container container=loadavg_store  sequence=reverse
-ldmsctl> store name=store_job comp_type=node set=meminfo container=meminfo_store
-ldmsctl> store name=store_job comp_type=node set=loadavg container=loadavg_store
+ldmsctl> store name=store_job comp_type=job set=meminfo container=meminfo_store
+ldmsctl> store name=store_job comp_type=job set=loadavg container=loadavg_store
 ldmsctl> quit
 .fi
 
