@@ -186,6 +186,7 @@ struct job_store_handle {
 	int id_pos;
 	int ncalls;
 	char *store_key;
+	char *subdir;
 	struct column_step cs;
 	pthread_mutex_t lock;
 	void *ucontext;
@@ -948,6 +949,8 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	}
 	if (s_handle->store_key)
 		free(s_handle->store_key);
+	if (s_handle->subdir)
+		free(s_handle->subdir);
 	pthread_mutex_unlock(&s_handle->lock);
 	pthread_mutex_destroy(&s_handle->lock);
 	free(s_handle);
@@ -982,6 +985,12 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		s_handle->store_key = strdup(container);
 		if (!s_handle->store_key) {
 			msglog(LDMS_LERROR,"Container dup failed '%s'\n", container);
+			goto err1;
+		}
+
+		s_handle->subdir = strdup(comp_type);
+		if (!s_handle->subdir) {
+			msglog(LDMS_LERROR,"comp_type dup failed '%s'\n", comp_type);
 			goto err1;
 		}
 
@@ -1041,8 +1050,8 @@ out:
 }
 
 /*
- * root/job.%J/container."%F-%H:%M:%S%z"
- * root/job.%J/container.HEADER."%F-%H:%M:%S%z" optional
+ * root/comp_type/job.%J/container."%F-%H:%M:%S%z"
+ * root/comp_type/job.%J/container.HEADER."%F-%H:%M:%S%z" optional
  * \return 0 if ok.
  */
 static int open_job_files(struct job_store_handle *s_handle, struct job_data *jdp, const char *container)
@@ -1060,9 +1069,16 @@ static int open_job_files(struct job_store_handle *s_handle, struct job_data *jd
 	dstr_init(&dsh);
 	dstrcat(&ds, root_path, DSTRING_ALL);
 	dstrcat(&ds, "/", 1);
-	dstrcat(&ds, tmp_path, DSTRING_ALL);
+	dstrcat(&ds, s_handle->subdir, DSTRING_ALL);
 
 	int rc = mkdir(dstrval(&ds), 0755);
+	if ((rc != 0) && (errno != EEXIST)){
+		msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", dstrval(&ds));
+		goto err1;
+	}
+	dstrcat(&ds, tmp_path, DSTRING_ALL);
+
+	rc = mkdir(dstrval(&ds), 0755);
 	if ((rc != 0) && (errno != EEXIST)){
 		msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", dstrval(&ds));
 		goto err1;
