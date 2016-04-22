@@ -278,8 +278,10 @@ static int sample(void)
 					rc = EINVAL;
 					goto out;
 				}
-				ldms_set_metric(metric_table[0], &v[0]);
-				ldms_set_metric(metric_table[1], &v[1]);
+				ldms_set_metric(metric_table[metric_no], &v[0]);
+				metric_no++;
+				ldms_set_metric(metric_table[metric_no], &v[1]);
+				metric_no++;
 				break;
 			case 3:
 				rc = sscanf(lbuf, LINE_FMT,
@@ -295,8 +297,8 @@ static int sample(void)
 					rc = EINVAL;
 					goto out;
 				}
-				for (i = 2; i < 23; i++)
-					ldms_set_metric(metric_table[i], &v[i]);
+				for (i = 0; i < 21; i++)
+					ldms_set_metric(metric_table[i+metric_no], &v[i+metric_no]);
 				break;
 			default:
 				break;
