@@ -206,13 +206,6 @@ static int kw_comparator(const void *a, const void *b)
 	return strcmp(_a->token, _b->token);
 }
 
-#define CACHE_OLDFILE(where,file,fname,cmd,dir,needsp) \
-	where.f = file; \
-	where.name = fname; \
-	where.spooler = cmd; \
-	where.spooldir = dir; \
-	where.dospool = needsp
-
 static int hooks_closed = 0;
 static
 void handle_spool(const char *name, const char *spooler, const char *spooldir)
@@ -961,8 +954,6 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		struct ldmsd_store_metric_index_list *list, void *ucontext)
 {
 	struct job_store_handle *s_handle;
-	int add_handle = 0;
-	int rc = 0;
 	int idx;
 	int i;
 
