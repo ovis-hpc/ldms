@@ -83,6 +83,7 @@ struct resource_info {
 		float	f32;
 		double	f64;
 		char *str;
+		void *obj;
 	} v; // would be nice to unify with ldms.h v_* union in v3
 	void *data;
 };
