@@ -90,6 +90,7 @@ mysleep 1
 for i in 1 2; do
 	echo Starting plugins on daemon$i
 	echo 1000$i > $SLURMFILE.$i
+#	echo 123$i >> $SLURMFILE.$i	
 	echo "load name=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
 	echo "config name=slurmjobid set=localhost$i/slurmjobid component_id=$i file=$SLURMFILE.$i colname=$SLURMCOL" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
 	echo "start name=slurmjobid interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
@@ -137,14 +138,18 @@ ldms_ls -h localhost -x sock -p $port3
 echo rescheduling jobs
 for i in 1 2; do
 	echo 0 > $SLURMFILE.$i
+	echo 0 >> $SLURMFILE.$i
 	mysleep 2
 	echo 2000$i > $SLURMFILE.$i
+	echo 8 >> $SLURMFILE.$i
 done
 mysleep 6
 for i in 1 2; do
 	echo 0 > $SLURMFILE.$i
+	echo 0 >> $SLURMFILE.$i
 	mysleep 2
 	echo 3000$i > $SLURMFILE.$i
+	echo 9 >> $SLURMFILE.$i
 done
 mysleep 3
 kill -SIGTERM `cat $pf.2`

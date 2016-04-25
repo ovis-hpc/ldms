@@ -82,6 +82,7 @@ typedef enum {CSV_CFGMAIN_PRE, CSV_CFGMAIN_IN, CSV_CFGMAIN_DONE, CSV_CFGMAIN_FAI
 /** container for file data. */
 struct job_data {
 	uint64_t jid;
+	uint64_t uid;
 	pthread_mutex_t jlock;
 	FILE *file;
 	char *filename;
@@ -134,6 +135,7 @@ static int max_idle_seconds = 600; // number of seconds without update before a 
 static bool ietfcsv = true; /* if true, follow ietf 4180 csv spec wrt headers */
 static bool caldate = true; /* if true, append human date stamps to filename rather than utc sec. */
 static char *jobid_metric = NULL;
+static const char *userid_metric = SLURM_UID_METRIC_NAME;
 static pthread_mutex_t term_lock;
 
 /* help for column output orders */
@@ -176,6 +178,7 @@ struct job_store_handle {
 	struct ldmsd_store *store;
 	bool bad; // not usable
 	int jobidindex;
+	int useridindex;
 	struct job_data *jobhash;
 	struct comp_data *comphash;
 	char *path;
@@ -225,9 +228,20 @@ void handle_spool(const char *name, const char *spooler, const char *spooldir)
 	}
 }
 
-static void handle_open(const char *hook, const char *name)
+static void handle_open(const char *hook, const char *name, bool do_chown, uint64_t uid)
 {
-	if (!hook || !name)
+	if (!name)
+		return;
+	if (do_chown) {
+		uid_t newuid = uid;
+		int err = chown(name, newuid, (gid_t)-1);
+		if (err) {
+			err = errno;
+			msglog(LDMS_LINFO, "Fail to change owner of %s: %s\n",
+				name, strerror(err));
+		}
+	}
+	if (!hook)
 		return;
 	if (hooks_closed) {
 		msglog(LDMS_LINFO, "Request after sheller closed: %s %s\n",
@@ -968,6 +982,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		s_handle = calloc(1, sizeof *s_handle);
 		if (!s_handle)
 			goto out;
+		s_handle->useridindex = -1;
 		s_handle->ucontext = ucontext;
 		s_handle->store = s;
 
@@ -1115,9 +1130,11 @@ static int open_job_files(struct job_store_handle *s_handle, struct job_data *jd
 					jdp->headerfilename, errno);
 			goto err1;
 		}
-		handle_open(s_handle->openhook, jdp->headerfilename);
+		handle_open(s_handle->openhook, jdp->headerfilename,
+			(s_handle->useridindex>=0), jdp->uid );
 	}
-	handle_open(s_handle->openhook, jdp->filename);
+	handle_open(s_handle->openhook, jdp->filename,
+		(s_handle->useridindex>=0), jdp->uid);
 
 	pthread_mutex_unlock(&s_handle->lock);
 	goto out;
@@ -1152,7 +1169,7 @@ void addRefJD(struct job_data *jdp, const char *who)
 	}
 }
 
-struct job_data *newJD(struct job_store_handle *s_handle, uint64_t jobid, ldms_mvec_t mvec)
+struct job_data *newJD(struct job_store_handle *s_handle, uint64_t jobid, uint64_t uid, ldms_mvec_t mvec)
 {
 	struct job_data *jdp;
 	// msglog(LDMS_LDEBUG, STOR ": %s newJD %" PRIu64 ".\n", s_handle->store_key, jobid);
@@ -1163,6 +1180,7 @@ struct job_data *newJD(struct job_store_handle *s_handle, uint64_t jobid, ldms_m
 	}
 	pthread_mutex_init(&jdp->jlock, NULL);
 	jdp->jid = jobid;
+	jdp->uid = uid;
 	jdp->ref_count = 0;
 	int ferr = open_job_files(s_handle, jdp, s_handle->store_key);
 	if (ferr) {
@@ -1204,10 +1222,11 @@ static struct job_data *get_job_files(struct job_store_handle *s_handle, ldms_mv
 	cdp->last_update = ts.tv_sec;
 
 	uint64_t jobid = ldms_get_u64(mvec->v[s_handle->jobidindex]);
+	uint64_t uid = ldms_get_u64(mvec->v[s_handle->useridindex]);
 	struct job_data *jdp = NULL;
 	HASH_FIND_U64(s_handle->jobhash, &jobid, jdp);
 	if (!jdp && jobid ) {
-		jdp = newJD(s_handle, jobid, mvec);
+		jdp = newJD(s_handle, jobid, uid, mvec);
 	}
 	if (!jdp && jobid) {
 		return NULL;
@@ -1237,6 +1256,22 @@ static int set_jobidindex(struct job_store_handle *s_handle, ldms_mvec_t mvec)
 	}
 	s_handle->bad = true;
 	return 1;
+}
+
+static int set_useridindex(struct job_store_handle *s_handle, ldms_mvec_t mvec)
+{
+	const int num_metrics = ldms_mvec_get_count(mvec);
+	int i;
+	get_loop_limits(s_handle, num_metrics);
+	for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
+		const char *name = ldms_get_metric_name(mvec->v[i]);
+		if (strcmp(name, userid_metric)==0) {
+			s_handle->useridindex = i;
+			return 0;
+		}
+	}
+	s_handle->useridindex = -2;
+	return 0;
 }
 			
 /* runs in handle lock under store().
@@ -1274,6 +1309,9 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->jobidindex) {
 		set_jobidindex(s_handle, mvec);
+	}
+	if (s_handle->useridindex == -1) {
+		set_useridindex(s_handle, mvec);
 	}
 	if (s_handle->bad) {
 		msglog(LDMS_LERROR, STOR ": set without %s metric seen in %s\n",
