@@ -161,6 +161,9 @@ int cont_is_msg(const char *cont)
 	return 0 == strcmp(x+1, "msg");
 }
 
+static uint64_t msg_count;
+static uint64_t img_count;
+
 int msg_reindex_cb(sos_part_t part, sos_obj_t sos_obj, void *arg)
 {
 	SOS_KEY(tc_key);
@@ -331,12 +334,12 @@ sos_part_state_t str_to_sos_part_state(const char *str)
 int duty_cb(sos_part_t part, sos_obj_t sos_obj, void *arg)
 {
 	struct duty_ctxt *ctxt = arg;
+	if (timercmp(&ctxt->tv1, &ctxt->wtv, >))
+		return 1; /* pause if current time hit the wall time */
 	ctxt->cb(part, sos_obj, arg);
 	ctxt->count++;
 	gettimeofday(&ctxt->tv1, NULL);
-	if (timercmp(&ctxt->tv1, &ctxt->wtv, <))
-		return 0;
-	return 1; /* pause if current time hit the wall time */
+	return 0;
 }
 
 void part_duty(sos_part_t p, sos_part_obj_iter_fn_t cb, void *cb_arg)
