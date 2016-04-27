@@ -22,14 +22,15 @@ struct ctrlsock {
 	struct sockaddr_un lcl_sun;
 };
 
-struct ctrlsock *ctrl_connect(char *my_name, char *sock_name);
+extern void ctrl_set_enable_debug(int enable_stderr);
+extern struct ctrlsock *ctrl_connect(char *my_name, char *sock_name);
 #ifdef DEPRECATED
 /* method bypasses authentication via file ownership. */
-struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin);
+extern struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin);
 #endif
-int ctrl_request(struct ctrlsock *sock, int cmd_id,
+extern int ctrl_request(struct ctrlsock *sock, int cmd_id,
 		 struct attr_value_list *avl, char *err_str,
 		 size_t err_str_sz);
-void ctrl_close(struct ctrlsock *sock);
+extern void ctrl_close(struct ctrlsock *sock);
 
 #endif /* CTRL_H_ */

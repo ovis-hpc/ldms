@@ -102,7 +102,7 @@ extern int read_history ();
 #include <ovis_ctrl/ctrl.h>
 #include <ovis_util/util.h>
 
-#define FMT "S:V"
+#define FMT "S:Vd"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
 struct attr_value_list *av_list, *kw_list;
@@ -112,7 +112,8 @@ void usage(char *argv[])
 	printf("%s: [%s]\n"
                "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
                "                    [" LDMSD_CONTROL_SOCKNAME "].\n"
-	       "    -V              Prints the version of this ldmsctl\n",
+	       "    -V              Prints the version of this ldmsctl\n"
+	       "    -d              Enable debug output\n",
                argv[0], FMT);
 	exit(1);
 }
@@ -367,6 +368,9 @@ int main(int argc, char *argv[])
 			exit(1);
 		case 'S':
 			sockname = strdup(optarg);
+			break;
+		case 'd':
+			ctrl_set_enable_debug(1);
 			break;
 		default:
 			usage(argv);

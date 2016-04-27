@@ -85,6 +85,12 @@
 #include "ctrl.h"
 BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 
+static int debug = 0;
+void ctrl_set_enable_debug(int enable_stderr)
+{
+	debug = (enable_stderr != 0);
+}
+
 /*
  * The '#' char indicates a comment line. Empty lines are ignored.
  * The keywords are relay, passive, and bridge as follows:
@@ -260,6 +266,8 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 	cat("\n");
 	/* cast safe since passing len also */
 	char buf[MAXBUF];
+	if (debug)
+		fprintf(stderr,"Sending %s\n",(char *)bdstrval(&msg_buf));
 	rc = send_req(sock, (char *)bdstrval(&msg_buf), bdstrlen(&msg_buf)+1);
 	if (rc < 0) {
 		int emine = errno;
@@ -288,6 +296,8 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 	err_str[0] = '\0';
 	rc = sscanf(bdstrval(&msg_buf), "%d%n", &status, &cnt);
 	strcpy(err_str, (bdstrval(&msg_buf)+cnt));
+	if (debug)
+		fprintf(stderr, "Received %s\n", bdstrval(&msg_buf));
 	return status;
 }
 

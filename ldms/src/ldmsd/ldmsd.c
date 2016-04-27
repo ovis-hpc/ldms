@@ -2272,12 +2272,27 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
-		ldms_log(LDMS_LINFO, "Set %s with Generation# <%d> Stale.\n", hset->name, hset->gn);
+		if (hset->gn != hset->stale_gn_logged) {
+			ldms_log(LDMS_LERROR, "Set %s with Generation# <%"
+				PRIu64 "> Stale.\n", hset->name, hset->gn);
+			hset->stale_gn_logged = hset->gn;
+			hset->stale_time = *(ldms_get_timestamp(hset->set));
+		}
 		goto out;
+	}
+	if (hset->stale_gn_logged != 0) {
+		uint64_t dpull = gn - hset->stale_gn_logged;
+		uint64_t dset = dpull / ldms_get_set_card(hset->set);
+		struct ldms_timestamp newtime = *(ldms_get_timestamp(hset->set));
+		int dt = newtime.sec - hset->stale_time.sec;
+		ldms_log(LDMS_LERROR, "Set %s staleness generation# <%"
+			PRIu64 "> (%d) cleared at <%" PRIu64 "> %d, %" PRIu64 " sets later, %d sec later.\n",
+		       	hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, dset, dt);
+		hset->stale_gn_logged = 0;
 	}
 
 	if (!ldms_is_set_consistent(hset->set)) {
-		ldms_log(LDMS_LINFO, "Set %s Inconsistent. Generation# = <%d>\n", hset->name, hset->gn);
+		ldms_log(LDMS_LERROR, "Set %s Inconsistent. Generation# = <%d>\n", hset->name, hset->gn);
 		goto out;
 	}
 

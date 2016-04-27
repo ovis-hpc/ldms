@@ -84,11 +84,14 @@ struct hostset
 	ldms_set_t set;
 	uint64_t gn;
 	int refcount;
+	int errcnt; /**< Count of lookup errors since last success */
 	pthread_mutex_t refcount_lock;
 	LIST_ENTRY(hostset) entry;
 	struct ldms_mvec *mvec; /**< Metric vector */
 	uint64_t curr_busy_count; /**< The count of current busy access */
 	uint64_t total_busy_count; /**< The count of total busy access */
+	uint64_t stale_gn_logged; /**< The most recent stale gn logged */
+	struct ldms_timestamp stale_time;
 };
 
 struct hostset_ref {
