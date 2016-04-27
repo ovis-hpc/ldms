@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_job
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "14 Apr 2016" "v2.7" "LDMS Plugin store_job man page"
+.TH man 7 "26 Apr 2016" "v2.7" "LDMS Plugin store_job man page"
 
 .SH NAME
 Plugin_store_job - man page for the LDMS store_job plugin
@@ -24,7 +24,7 @@ The configuration parameters altheader, id_pos, openhook, spooler, spooldir, and
 
 .TP
 .BR config
-name=<plugin_name> [action=main] [close=all] path=<path> [ altheader=<altheader> id_pos=<idpos> ietfcsv=<boolean> sequence=<seqname> openhook=<openprog> spooldir=<dir> spooler=<program> jobmetric=<metname> deadcheck=<ns> maxidle=<isec> caldate=<bool>
+name=<plugin_name> [action=main] [close=all] path=<path> [ altheader=<altheader> id_pos=<idpos> ietfcsv=<boolean> sequence=<seqname> openhook=<openprog> spooldir=<dir> spooler=<program> jobmetric=<metname> deadcheck=<ns> maxidle=<isec> jobmax=<jobmax> caldate=<bool>
 .br
 ldmsctl configuration line
 .RS
@@ -44,7 +44,7 @@ all metric sets, unless overriden by the action=container values.
 .TP
 path=<path>
 .br
-The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<comp_type>/job.$JOB/container>. Typically these are chosen to make output files like: /store_csv/job/job.$JOB/meminfo. The name will be appended with "." followed by the date in accordance with the caldate option. The date suffix prevents data loss if a job identifier is recycled.
+The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<day>-<hour>/<comp_type>/job.$JOB/container>. Typically these are chosen to make output files like: /store_csv/job/2016-04-26-14/job.$JOB/meminfo. The name will be appended with "." followed by the date of job logging start in accordance with the caldate option. The date suffix prevents data loss if a job identifier is recycled. The day-hour directory level prevents overflow (as determined by option jobmax) of directory listings.
 .TP
 altheader=<altheader>
 .br
@@ -97,6 +97,10 @@ component record without activity in the last maxidle seconds will be dropped.
 maxidle=<idle seconds>
 .br
 The threshold for idleness of a component during dead checking. The default is 600. Set maxidle to at least 3 times the sampling interval (in seconds).
+.TP
+jobmax=<jobmax>
+.br
+The maximum number of job directories created before a new day-hour directory is created. If 0, then no limit is applied.
 
 .RE
 
@@ -155,7 +159,7 @@ The subdirectory to use under path.
 .TP
 container=<container>
 .br
-The output files will be opened in a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/job.$J$/<container>.$DATE$. Typically these are chosen to make output files like: store_job/job.10000/meminfo.2016-04-14-22_22_48_-0700.
+The output files will be opened in a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/job.$J$/<container>.$DATE$. Typically these are chosen to make output files like: store_job/2016-04-26-14/job.10000/meminfo.2016-04-14-22_22_48_-0700.
 
 Use an unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
 
@@ -205,9 +209,15 @@ alnum
 .RE
 
 .SH NOTES
-The store does NOT manage permissions or ownerships of the output files directly. These can be managed by using the spooler options.
+The store does NOT manage permissions of the output files directly. These can be managed by using the spooler options. Ownership of output files will be set only if both (a) the uid metric is present in the data and (b) the daemon runs with sufficient privileges. 
+
+Data sets lacking the job id metric are ignored entirely. This is not a bug.
 
 In some circumstances the final output of an exiting ldms-aggd may not be spooled. To ensure spooling, the store maybe be reconfigured with "config name=store_job close=all" a few seconds before stopping ldmsd. 
+
+The day-hour format used in the jobmax management scheme limits directory rollover to hourly.
+On systems with many short jobs, a more active job data management scheme can be tailored with
+the spooler hook.
 
 .SH BUGS
 No known bugs. In LDMS version 2.x, alnum is not expected to be implemented.
@@ -217,7 +227,7 @@ No known bugs. In LDMS version 2.x, alnum is not expected to be implemented.
 .nf
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl> load name=store_job
-ldmsctl> config name=store_job altheader=1 id_pos=1 sequence=forward path=/XXX/storedir
+ldmsctl> config name=store_job altheader=1 id_pos=1 sequence=forward path=/TOPDIR/storedir
 ldmsctl> config name=store_job action=container container=loadavg_store  sequence=reverse
 ldmsctl> store name=store_job comp_type=job set=meminfo container=meminfo_store
 ldmsctl> store name=store_job comp_type=job set=loadavg container=loadavg_store

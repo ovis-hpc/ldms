@@ -67,7 +67,7 @@ rm -f ${STOREDIR}/*
 echo Starting daemons
 ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt
 ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt
-ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt
+ldmsd -A -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt
 sleep 1
 
 
