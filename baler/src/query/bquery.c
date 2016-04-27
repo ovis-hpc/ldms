@@ -218,6 +218,7 @@ void bsos_wrap_close_free(struct bsos_wrap *bsw)
 	sos_index_close(bsw->index, SOS_COMMIT_ASYNC);
 	sos_container_close(bsw->sos, SOS_COMMIT_ASYNC);
 	free(bsw->store_name);
+	bsw->store_name = NULL;
 	free(bsw);
 }
 
@@ -225,14 +226,17 @@ void bq_store_close_free(struct bq_store *store)
 {
 	if (store->cmp_store) {
 		btkn_store_close_free(store->cmp_store);
+		store->cmp_store = NULL;
 	}
 
 	if (store->tkn_store) {
 		btkn_store_close_free(store->tkn_store);
+		store->tkn_store = NULL;
 	}
 
 	if (store->ptn_store) {
 		bptn_store_close_free(store->ptn_store);
+		store->ptn_store = NULL;
 	}
 
 	free(store);
@@ -388,24 +392,38 @@ void bquery_cleanup(struct bquery *q)
 		TAILQ_REMOVE(&q->hst_rngs, r, link);
 		free(r);
 	}
-	if (q->hst_rng_itr)
+	if (q->hst_rng_itr) {
 		brange_u32_iter_free(q->hst_rng_itr);
+		q->hst_rng_itr = NULL;
+	}
 	while ((r = TAILQ_FIRST(&q->ptn_rngs))) {
 		TAILQ_REMOVE(&q->ptn_rngs, r, link);
 		free(r);
 	}
-	if (q->ptn_rng_itr)
+	if (q->ptn_rng_itr) {
 		brange_u32_iter_free(q->ptn_rng_itr);
-	if (q->obj)
+		q->ptn_rng_itr = NULL;
+	}
+	if (q->obj) {
 		sos_obj_put(q->obj);
-	if (q->itr)
+		q->obj = NULL;
+	}
+	if (q->itr) {
 		sos_iter_free(q->itr);
-	if (q->bsos)
+		q->itr = NULL;
+	}
+	if (q->bsos) {
 		q->bsos_close(q->bsos, SOS_COMMIT_ASYNC);
-	if (q->hst_ids)
+		q->bsos = NULL;
+	}
+	if (q->hst_ids) {
 		bset_u32_free(q->hst_ids);
-	if (q->ptn_ids)
+		q->hst_ids = NULL;
+	}
+	if (q->ptn_ids) {
 		bset_u32_free(q->ptn_ids);
+		q->ptn_ids = NULL;
+	}
 }
 
 static

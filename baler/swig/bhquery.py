@@ -12,6 +12,7 @@ import heapq
 import logging
 import StringIO
 import os
+import re
 from datetime import datetime, date
 
 DEFAULT_LOG_LEVEL = logging.WARNING
@@ -228,6 +229,17 @@ class Msg(object):
         return ' '.join(self.msg.ts, self.msg.host, self.msg.msg)
 
 
+def ts_fmt_check(ts):
+    if not ts:
+        return True;
+    m = re.match('^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d$', ts)
+    if m:
+        return True
+    m = re.match('^\d+$', ts)
+    if m:
+        return True
+    return False
+
 class MsgQuery(object):
     """Message query utility object.
 
@@ -255,12 +267,15 @@ class MsgQuery(object):
             "ts1": ts1
         }
 
+        self.N = len(_SERVERS)
+        if not ts_fmt_check(ts0) or not ts_fmt_check(ts1):
+            raise Exception("Unsupported timestamp format. Only '%Y-%m-%d %H:%M:%S' and 'seconds_since_epoch' are supported.");
+
         for s in _SERVERS:
             self.server.append(s)
             self.session_id.append(None)
             self.msg_buff.append(StringIO.StringIO())
             self.conn.append(BHTTPDConn(s))
-        self.N = len(_SERVERS)
 
         for i in range(self.N):
             msg = self._get_msg(i)
@@ -272,7 +287,7 @@ class MsgQuery(object):
 
     def __del__(self):
         logger.debug("destroying MsgQuery")
-        for i in range(self.N):
+        for i in range(len(self.server)):
             server = self.server[i]
             session_id = int(self.session_id[i])
             conn = self.conn[i]
