@@ -131,12 +131,16 @@ static char *root_path;
 static int altheader;
 static int id_pos;
 static int preen_frequency = 100000; // number of stores between clear of idle jobs
+static int jobmax = 5000; // number of new jobs before switching to new subdir
+static int jobs_started = 0; // number of new job directories made
+static char cur_jobs_timestring[64]; // space for %F-%H set at start and updated as jobmax occurs
 static int max_idle_seconds = 600; // number of seconds without update before a job is considered gone.
 static bool ietfcsv = true; /* if true, follow ietf 4180 csv spec wrt headers */
 static bool caldate = true; /* if true, append human date stamps to filename rather than utc sec. */
 static char *jobid_metric = NULL;
 static const char *userid_metric = SLURM_UID_METRIC_NAME;
 static pthread_mutex_t term_lock;
+static pthread_mutex_t jobs_started_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* help for column output orders */
 #define ORDERTYPES \
@@ -234,10 +238,12 @@ static void handle_open(const char *hook, const char *name, bool do_chown, uint6
 		return;
 	if (do_chown) {
 		uid_t newuid = uid;
+		msglog(LDMS_LDEBUG, "Trying to chown( %s, %d, -1)\n",
+			name, newuid);
 		int err = chown(name, newuid, (gid_t)-1);
 		if (err) {
 			err = errno;
-			msglog(LDMS_LINFO, "Fail to change owner of %s: %s\n",
+			msglog(LDMS_LDEBUG, "Fail to change owner of %s: %s\n",
 				name, strerror(err));
 		}
 	}
@@ -291,7 +297,7 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 	//get overrides for a particular container.
 
 	value = av_value(avl, "container");
-	if (!value){
+	if (!value) {
 		msglog(LDMS_LERROR, "Error " STOR ": config missing container name\n");
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
@@ -299,14 +305,14 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 
 	//do we have this already. if so, then can update those values.
 	idx = -1;
-	for (i = 0; i < nspecialkeys; i++){
-		if (strcmp(value, specialkeys[i].key) == 0){
+	for (i = 0; i < nspecialkeys; i++) {
+		if (strcmp(value, specialkeys[i].key) == 0) {
 			idx = i;
 			break;
 		}
 	}
-	if (idx < 0){
-		if (nspecialkeys > (MAX_STORE_KEYS-1)){
+	if (idx < 0) {
+		if (nspecialkeys > (MAX_STORE_KEYS-1)) {
 			msglog(LDMS_LDEBUG, "Error " STOR ": Exceeded max store keys\n");
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
@@ -326,7 +332,7 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 		nspecialkeys++;
 
 	ivalue = av_value(avl, "id_pos");
-	if (ivalue){
+	if (ivalue) {
 		ipos = atoi(ivalue);
 		if ((ipos < 0) || (ipos > 1)) {
 			msglog(LDMS_LDEBUG, "Error " STOR ": Bad option for id_pos\n");
@@ -342,7 +348,7 @@ static int config_container(struct attr_value_list *kwl, struct attr_value_list 
 	}
 
 	rvalue = av_value(avl, "sequence");
-	if (rvalue){
+	if (rvalue) {
 		switch (rvalue[0]) {
 		case 'f':
 			if (strcmp(rvalue,"forward")==0) {
@@ -430,7 +436,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	pthread_mutex_lock(&cfg_lock);
 
 	if ((cfgstate != CSV_CFGMAIN_PRE) &&
-	    (cfgstate != CSV_CFGMAIN_DONE)){
+	    (cfgstate != CSV_CFGMAIN_DONE)) {
 		msglog(LDMS_LERROR, STOR ": wrong state for config_main %d\n",
 		       cfgstate);
 		pthread_mutex_unlock(&cfg_lock);
@@ -449,7 +455,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	altvalue = av_value(avl, "altheader");
 
 	ivalue = av_value(avl, "deadcheck");
-	if (ivalue){
+	if (ivalue) {
 		preen_frequency = atoi(ivalue);
 		if (preen_frequency < 0) {
 			cfgstate = CSV_CFGMAIN_FAILED;
@@ -460,8 +466,20 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 		}
 	}
 
+	ivalue = av_value(avl, "jobmax");
+	if (ivalue) {
+		int itmp = atoi(ivalue);
+		if (itmp < 0) {
+			cfgstate = CSV_CFGMAIN_FAILED;
+			msglog(LDMS_LERROR, STOR ": jobmax=%d < 0\n", itmp);
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
+		jobmax = itmp;
+	}
+
 	ivalue = av_value(avl, "maxidle");
-	if (ivalue){
+	if (ivalue) {
 		max_idle_seconds = atoi(ivalue);
 		if (max_idle_seconds < 0) {
 			cfgstate = CSV_CFGMAIN_FAILED;
@@ -473,7 +491,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	}
 
 	ivalue = av_value(avl, "id_pos");
-	if (ivalue){
+	if (ivalue) {
 		ipos = atoi(ivalue);
 		if ((ipos < 0) || (ipos > 1)) {
 			cfgstate = CSV_CFGMAIN_FAILED;
@@ -483,7 +501,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 	}
 
 	bvalue = av_value(avl, "ietfcsv");
-	if (bvalue){
+	if (bvalue) {
 		switch (bvalue[0]) {
 		case '1':
 		case 't':
@@ -505,7 +523,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 		}
 	}
 	bvalue = av_value(avl, "caldate");
-	if (bvalue){
+	if (bvalue) {
 		switch (bvalue[0]) {
 		case '1':
 		case 't':
@@ -535,7 +553,7 @@ static int config_main(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	rvalue = av_value(avl, "sequence");
 	cs.step = 1; //reverse is the default for historical reasons (mvec causes the metrics to be reversed)
-	if (rvalue){
+	if (rvalue) {
 		switch (rvalue[0]) {
 		case 'f':
 			if (strcmp(rvalue,"forward")==0) {
@@ -672,7 +690,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 
 	rc = 0;
 	char* action = av_value(avl, "action");
-	if (!action){
+	if (!action) {
 		/* treat it like it is main for backwards compatibility */
 		action = strdup("main");
 		if (!action) {
@@ -688,7 +706,7 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		     sizeof(*kw), kw_comparator);
 	if (!kw) {
 		msglog(LDMS_LERROR, STOR ": Invalid configuration keyword '%s'\n", action);
-		if (bw){
+		if (bw) {
 			free(action);
 		}
 		return EINVAL;
@@ -716,7 +734,7 @@ static const char *usage(void)
 {
 	return  "    config name=" STOR " [action=main] path=<path>\n"
 		"           [id_pos=<0/1> sequence=<order> altheader=<0/1> ietfcsv=<bool> caldate=<bool>]\n"
-		"           [spooler=<prog> spooldir=<dir> openhook=<openexec>]\n"
+		"           [spooler=<prog> spooldir=<dir> openhook=<openexec>] [jobmax=<jobmax>]\n"
 		"           [jobmetric=<metname>] [deadcheck=<ns>] [maxidle=<isec>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - action    When action = main or not specified can set the following parameters:\n"
@@ -726,6 +744,7 @@ static const char *usage(void)
 		"         - spooldir  The path to the spool directory for closed output files.\n"
 		"         - ietfcsv   Use ietf formatting if true. Default true.\n"
 		"         - caldate   Use calendar date file suffix if true, else utc seconds. Default true.\n"
+		"         - jobmax    The number of jobs added before starting a new jobs directory. Default 5000.\n"
 		"         - ns        The number of store events between retired job checks. Default 100000.\n"
 		"         - isec      The number of seconds after which a job is assumed dead. Default 600.\n"
 		"         - metname   Job ID is metric metname, which must be present in sets."
@@ -802,7 +821,7 @@ static int print_header(struct job_store_handle *s_handle, struct job_data *jdp,
 	const char* name;
 	int i;
 
-	if (!fp){
+	if (!fp) {
 		msglog(LDMS_LDEBUG, STOR ": Cannot print header;no files\n");
 		return EINVAL;
 	}
@@ -942,13 +961,13 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
 	// FIXME: this destroys special keys for all handles, not just input.
-	for (i = 0; i < nspecialkeys; i++){
+	for (i = 0; i < nspecialkeys; i++) {
 		// if (specialkeys[i].key =
 		free(specialkeys[i].key);
 		specialkeys[i].key = NULL;
 	}
 
-	for (i = 0; i < nstorekeys; i++){
+	for (i = 0; i < nstorekeys; i++) {
 		if (storekeys[i] == s_handle->store_key) {
 			storekeys[i] = NULL;
 			break;
@@ -963,6 +982,9 @@ static void destroy_store(ldmsd_store_handle_t _s_handle)
 	free(s_handle);
 }
 
+
+static int met_print_once=1;
+
 static ldmsd_store_handle_t
 new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		struct ldmsd_store_metric_index_list *list, void *ucontext)
@@ -975,7 +997,12 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 		msglog(LDMS_LERROR,"Invalid container name '%s'\n", container);
 		return NULL;
 	}
-
+	if (met_print_once) {
+		for (i=0; i < SLURM_NUM_METRICS; i++) {
+			msglog(LDMS_LDEBUG, STOR " expecting metric: %s\n", ldms_job_metric_names[i]);
+		}
+		met_print_once = 0;
+	}
 	pthread_mutex_lock(&cfg_lock);
 	s_handle = idx_find(store_idx, (void *)container, strlen(container));
 	if (!s_handle) {
@@ -1002,7 +1029,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 
 		idx = -1;
 		for (i = 0; i < nspecialkeys; i++) {
-			if (strcmp(s_handle->store_key, specialkeys[i].key) == 0){
+			if (strcmp(s_handle->store_key, specialkeys[i].key) == 0) {
 				idx = i;
 				break;
 			}
@@ -1035,7 +1062,7 @@ new_store(struct ldmsd_store *s, const char *comp_type, const char* container,
 			s_handle->spooler = spooler;
 			s_handle->spooldir = spooldir;
 		}
-		if (nstorekeys == (MAX_STORE_KEYS-1)){
+		if (nstorekeys == (MAX_STORE_KEYS-1)) {
 			msglog(LDMS_LDEBUG, "Error: Exceeded max store keys\n");
 			goto err1;
 		} else {
@@ -1054,10 +1081,73 @@ out:
 		msglog(LDMS_LDEBUG, STOR ": null return from new_store.\n");
 	return s_handle;
 }
+ 
+/* make dirs needed, and rotate path to name based on date if it gets big. */
+static int update_jobs_dir(dstring_t *ds, const char *tmp_path, const char *subdir )
+{
+	dstrcat(ds, root_path, DSTRING_ALL);
+	dstrcat(ds, "/", 1);
+	dstrcat(ds, subdir, DSTRING_ALL);
+
+	char tmp_jobs_timestring[64];
+
+	pthread_mutex_lock(&jobs_started_lock);
+	if ( jobs_started > jobmax && jobmax > 0) {
+		struct tm *tmp;
+		time_t t;
+		const char dirfmt[] = "%F-%H";
+		t = time(NULL);
+		tmp = localtime(&t);
+		strftime(cur_jobs_timestring, sizeof(cur_jobs_timestring), dirfmt, tmp);
+		jobs_started = 0;
+		msglog(LDMS_LDEBUG,"New dir for jobmax limit '%s'\n", cur_jobs_timestring);
+	}
+	strcpy(tmp_jobs_timestring, cur_jobs_timestring);
+	pthread_mutex_unlock(&jobs_started_lock);
+
+	/* root/subdir */
+	int rc = mkdir(dstrval(ds), 0755);
+	if ((rc != 0) && (errno != EEXIST)) {
+		msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", dstrval(ds));
+		goto err1;
+	}
+
+	/* root/subdir/cur_jobs_timestring  */
+	dstrcat(ds, "/", 1);
+	dstrcat(ds, tmp_jobs_timestring, DSTRING_ALL);
+
+	rc = mkdir(dstrval(ds), 0755);
+	if ((rc != 0) && (errno != EEXIST)) {
+		msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", dstrval(ds));
+		goto err1;
+	}
+	
+
+	/* root/subdir/cur_jobs_timestring/job.#  */
+	dstrcat(ds, tmp_path, DSTRING_ALL);
+
+	rc = mkdir(dstrval(ds), 0755);
+	if ((rc != 0) && (errno != EEXIST)) {
+		msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", dstrval(ds));
+		goto err1;
+	}
+	if (!rc) {
+		/* count new directories made */
+		pthread_mutex_lock(&jobs_started_lock);
+		jobs_started++;
+		pthread_mutex_unlock(&jobs_started_lock);
+	}
+
+	return 0;
+ err1:
+	return 1;
+}
 
 /*
- * root/comp_type/job.%J/container."%F-%H:%M:%S%z"
- * root/comp_type/job.%J/container.HEADER."%F-%H:%M:%S%z" optional
+ * root/comp_type/%F-%H/job.%J/container."%F-%H:%M:%S%z"
+ * root/comp_type/%F-%H/job.%J/container.HEADER."%F-%H:%M:%S%z" optional
+ * Where /%F-%H/ is determined from store start date and rolls in jobmax,
+ * but %F-%H:%M:%S%z is determined by open time of specific job.
  * \return 0 if ok.
  */
 static int open_job_files(struct job_store_handle *s_handle, struct job_data *jdp, const char *container)
@@ -1073,22 +1163,12 @@ static int open_job_files(struct job_store_handle *s_handle, struct job_data *jd
 
 	dstr_init(&ds);
 	dstr_init(&dsh);
-	dstrcat(&ds, root_path, DSTRING_ALL);
-	dstrcat(&ds, "/", 1);
-	dstrcat(&ds, s_handle->subdir, DSTRING_ALL);
 
-	int rc = mkdir(dstrval(&ds), 0755);
-	if ((rc != 0) && (errno != EEXIST)){
-		msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", dstrval(&ds));
+	int derr = update_jobs_dir(&ds, tmp_path, s_handle->subdir);
+	if (derr) {
 		goto err1;
 	}
-	dstrcat(&ds, tmp_path, DSTRING_ALL);
 
-	rc = mkdir(dstrval(&ds), 0755);
-	if ((rc != 0) && (errno != EEXIST)){
-		msglog(LDMS_LDEBUG,"Error: cannot create dir '%s'\n", dstrval(&ds));
-		goto err1;
-	}
 
 	dstrcat(&ds, "/", 1);
 	dstrcat(&ds, container, DSTRING_ALL);
@@ -1131,10 +1211,10 @@ static int open_job_files(struct job_store_handle *s_handle, struct job_data *jd
 			goto err1;
 		}
 		handle_open(s_handle->openhook, jdp->headerfilename,
-			(s_handle->useridindex>=0), jdp->uid );
+			(s_handle->useridindex >= 0), jdp->uid );
 	}
 	handle_open(s_handle->openhook, jdp->filename,
-		(s_handle->useridindex>=0), jdp->uid);
+		(s_handle->useridindex >= 0), jdp->uid);
 
 	pthread_mutex_unlock(&s_handle->lock);
 	goto out;
@@ -1222,7 +1302,10 @@ static struct job_data *get_job_files(struct job_store_handle *s_handle, ldms_mv
 	cdp->last_update = ts.tv_sec;
 
 	uint64_t jobid = ldms_get_u64(mvec->v[s_handle->jobidindex]);
-	uint64_t uid = ldms_get_u64(mvec->v[s_handle->useridindex]);
+	uint64_t uid = 0;
+	if (s_handle->useridindex >= 0) {
+		uid = ldms_get_u64(mvec->v[s_handle->useridindex]);
+	}
 	struct job_data *jdp = NULL;
 	HASH_FIND_U64(s_handle->jobhash, &jobid, jdp);
 	if (!jdp && jobid ) {
@@ -1324,7 +1407,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 		pthread_mutex_unlock(&s_handle->lock);
 		return 0;
 	}
-	if (!jdp->file){
+	if (!jdp->file) {
 		comp_id = ldms_get_user_data(mvec->v[0]);
 		msglog(LDMS_LDEBUG,"Cannot insert values for <%s> on node %"
 				PRIu64 "\n", s_handle->store_key, comp_id);
@@ -1339,7 +1422,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 	/* mvec comes to the store as the inverse of how they added to the sampler which is also the inverse of ldms_ls -l display */
 	int num_metrics = ldms_mvec_get_count(mvec);
 	get_loop_limits(s_handle, num_metrics);
-	if (s_handle->id_pos < 0){
+	if (s_handle->id_pos < 0) {
 		int i, rc;
 		for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
 			comp_id = ldms_get_user_data(mvec->v[i]);
@@ -1353,7 +1436,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, ldms_mvec_t mve
 	} else {
 		int i, rc;
 
-		if (num_metrics > 0){
+		if (num_metrics > 0) {
 			i = (s_handle->id_pos == 0)? 0: (num_metrics-1);
 			rc = fprintf(jdp->file, ", %" PRIu64,
 				ldms_get_user_data(mvec->v[i]));
@@ -1475,6 +1558,12 @@ static void store_job_init()
 	store_idx = idx_create();
 	pthread_mutex_init(&term_lock, NULL);
 	pthread_mutex_init(&cfg_lock, NULL);
+	struct tm *tmp;
+	time_t t;
+	const char dirfmt[] = "%F-%H";
+	t = time(NULL);
+	tmp = localtime(&t);
+	strftime(cur_jobs_timestring, sizeof(cur_jobs_timestring), dirfmt, tmp);
 }
 
 static void __attribute__ ((destructor)) store_job_fini(void);
