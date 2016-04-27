@@ -109,8 +109,6 @@ static int qc_file = -1;
 static int get_qc_file(const char *qc_dir, int *qc_file);
 #endif
 
-#define SLURM_NUM_METRICS 2
-
 static
 int slurm_rim_update(struct resource_info *self, enum rim_task t, void * tinfo);
 
@@ -118,7 +116,7 @@ static int create_metric_set(const char *path)
 {
 	size_t meta_sz, tot_meta_sz;
 	size_t data_sz, tot_data_sz;
-	int rc, metric_count, i;
+	int rc, metric_count;
 
 	tot_meta_sz = 0;
 	tot_data_sz = 0;

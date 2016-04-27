@@ -297,8 +297,10 @@ static int sample(void)
 					rc = EINVAL;
 					goto out;
 				}
-				for (i = 0; i < 21; i++)
-					ldms_set_metric(metric_table[i+metric_no], &v[i+metric_no]);
+				for (i = 2; i < 23; i++) {
+					ldms_set_metric(metric_table[metric_no], &v[i]);
+					metric_no++;
+				}
 				break;
 			default:
 				break;
