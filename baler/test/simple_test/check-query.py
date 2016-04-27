@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import os
 import sys
+import math
 from baler import bquery
 
 BSTORE = os.environ['BSTORE']
@@ -103,6 +104,30 @@ def expect_node(ptn_num):
         n = n + 1
     return BTEST_NODE_LEN - skip
 
+def expect_node_range(ptn_num, node_range):
+    ptn_num = int(ptn_num)
+    ptn_num -= 128
+    n = 0;
+    skip = 0
+    rstr = node_range.split(',')
+    hset = set()
+    for r in rstr:
+        a = r.split('-')
+        x = int(a[0])
+        y = x
+        if len(a) == 2:
+            y = int(a[1])
+        for z in range(x, y+1):
+            hset.add(z)
+
+    while (n < BTEST_NODE_LEN):
+        node = BTEST_NODE_BEGIN + n
+        if (node % BTEST_N_PATTERNS == ptn_num) or (node not in hset):
+            skip = skip + 1;
+        n = n + 1
+    return BTEST_NODE_LEN - skip
+
+
 # key existing case
 ts0 = (BTEST_TS_BEGIN) + (BTEST_TS_LEN) - 2 * inc
 ts1 = (BTEST_TS_BEGIN) + (BTEST_TS_LEN) - inc - 1
@@ -146,5 +171,29 @@ ptn_range = ','.join(str(p) for p in ptn_ids)
 mps = sum(expect_node(x) for x in ptn_ids)
 ts_n = int(BTEST_TS_LEN / BTEST_TS_INC)
 hr_n = int(BTEST_TS_LEN / 3600)
+img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), hr_n * mps)
+msg_query(node_range, ptn_range, ts0, ts1, mps, mps * ts_n)
+
+# Single Pattern, some node
+ts0 = BTEST_TS_BEGIN + inc
+ts1 = BTEST_TS_BEGIN + 3 * inc
+node_range = "2-10"
+ptn_ids = [128]
+ptn_range = ','.join(str(p) for p in ptn_ids)
+mps = sum(expect_node_range(x, node_range) for x in ptn_ids)
+ts_n = math.ceil((ts1-ts0+1) / float(BTEST_TS_INC))
+hr_n = math.ceil((ts1-ts0+1) / float(3600))
+img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), hr_n * mps)
+msg_query(node_range, ptn_range, ts0, ts1, mps, mps * ts_n)
+
+# Some patterns, some node
+ts0 = BTEST_TS_BEGIN + inc
+ts1 = BTEST_TS_BEGIN + 3 * inc
+node_range = "2-10"
+ptn_ids = [128,129]
+ptn_range = ','.join(str(p) for p in ptn_ids)
+mps = sum(expect_node_range(x, node_range) for x in ptn_ids)
+ts_n = math.ceil((ts1-ts0+1) / float(BTEST_TS_INC))
+hr_n = math.ceil((ts1-ts0+1) / float(3600))
 img_query(node_range, ptn_range, ts0, ts1, int(inc/BTEST_TS_INC), hr_n * mps)
 msg_query(node_range, ptn_range, ts0, ts1, mps, mps * ts_n)

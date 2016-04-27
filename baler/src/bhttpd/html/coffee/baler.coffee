@@ -867,7 +867,7 @@ window.baler =
 
         updateLayers: (x=0, y=0, width=@width, height=@height) ->
             for l in @layers when !l.domobj.hidden
-                l.updateImage(x, y, width, height)
+                l.updateImage(x, y, width/@pxlFactor, height/@pxlFactor)
             return 0
 
         setNavParam: (@ts_begin, @node_begin, @spp, @npp) ->

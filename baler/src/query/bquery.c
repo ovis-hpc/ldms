@@ -1291,10 +1291,15 @@ again:
 		bsi_key.ts = bq_entry_get_sec(q);
 		bsi_key.comp_id = bq_entry_get_comp_id(q) + 1;
 		rc = brange_u32_iter_fwd_seek(q->hst_rng_itr, &bsi_key.comp_id);
-		if (rc) {
+		switch (rc) {
+		case ENOENT:
 			/* use next timestamp */
 			bsi_key.ts++;
 			brange_u32_iter_begin(q->hst_rng_itr, &bsi_key.comp_id);
+			break;
+		case EINVAL:
+			bsi_key.comp_id = q->hst_rng_itr->current_value;
+			break;
 		}
 		break;
 	case BQ_CHECK_COND_TS1:
