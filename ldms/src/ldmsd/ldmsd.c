@@ -2286,8 +2286,8 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		struct ldms_timestamp newtime = *(ldms_get_timestamp(hset->set));
 		int dt = newtime.sec - hset->stale_time.sec;
 		ldms_log(LDMS_LERROR, "Set %s staleness generation# <%"
-			PRIu64 "> (%d) cleared at <%" PRIu64 "> %d, %" PRIu64 " sets later, %d sec later.\n",
-		       	hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, dset, dt);
+			PRIu64 "> (%d) cleared at <%" PRIu64 "> %d.%06d, %" PRIu64 " sets later, %d sec later.\n",
+		       	hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, newtime.usec, dset, dt);
 		hset->stale_gn_logged = 0;
 	}
 
