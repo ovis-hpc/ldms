@@ -287,6 +287,15 @@ out:
 
 static void release_buf_event(struct z_ugni_ep *r);
 
+/* The caller must hold the endpoint lock */
+static void __shutdown_on_error(struct z_ugni_ep *uep)
+{
+	DLOG_(uep, "%s\n", __func__);
+	if (uep->ep.state == ZAP_EP_CONNECTED)
+		uep->ep.state = ZAP_EP_CLOSE;
+	shutdown(uep->sock, SHUT_RDWR);
+}
+
 void z_ugni_cleanup(void)
 {
 	void *dontcare;
@@ -813,9 +822,10 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		case GNI_POST_RDMA_GET:
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
-				zap_ugni_log("%s RDMA_GET: completing "
-					     "with error %d.\n", name, grc);
-				shutdown(uep->sock, SHUT_RDWR);
+				LOG_(uep, "RDMA_GET: completing "
+					"with error %s.\n",
+					gni_ret_str(grc));
+				__shutdown_on_error(uep);
 			}
 			zev.type = ZAP_EVENT_READ_COMPLETE;
 			zev.context = desc->context;
@@ -823,9 +833,10 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		case GNI_POST_RDMA_PUT:
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
-				zap_ugni_log("%s RDMA_PUT: completing "
-					     "with error %d.\n", name, grc);
-				shutdown(uep->sock, SHUT_RDWR);
+				LOG_(uep, "RDMA_PUT: completing "
+					"with error %s.\n",
+					gni_ret_str(grc));
+				__shutdown_on_error(uep);
 			}
 			zev.type = ZAP_EVENT_WRITE_COMPLETE;
 			zev.context = desc->context;
@@ -833,7 +844,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		default:
 			zap_ugni_log("%s Unknown completion type %d.\n",
 					name, desc->post.type);
-			shutdown(uep->sock, SHUT_RDWR);
+			__shutdown_on_error(uep);
 		}
 		pthread_mutex_unlock(&uep->ep.lock);
 
@@ -2095,6 +2106,9 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 #endif /* DEBUG */
 	grc = GNI_PostRdma(uep->gni_ep, &desc->post);
 	if (grc != GNI_RC_SUCCESS) {
+		pthread_mutex_lock(&uep->ep.lock);
+		__shutdown_on_error(uep);
+		pthread_mutex_unlock(&uep->ep.lock);
 		LOG_(uep, "%s: GNI_PostRdma() failed, grc: %s\n",
 				__func__, gni_ret_str(grc));
 #ifdef DEBUG
@@ -2183,6 +2197,9 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 #endif /* DEBUG */
 	grc = GNI_PostRdma(uep->gni_ep, &desc->post);
 	if (grc != GNI_RC_SUCCESS) {
+		pthread_mutex_lock(&uep->ep.lock);
+		__shutdown_on_error(uep);
+		pthread_mutex_unlock(&uep->ep.lock);
 		LOG_(uep, "%s: GNI_PostRdma() failed, grc: %s\n",
 				__func__, gni_ret_str(grc));
 #ifdef DEBUG
