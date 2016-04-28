@@ -1134,6 +1134,7 @@ void bhttpd_handle_query_img(struct bhttpd_req_ctxt *ctxt)
 		rc = bq_img_entry_get_pixel(q, &p);
 		if (rc)
 			break;
+		hton_bpixel(&p);
 		evbuffer_add(ctxt->evbuffer, &p, sizeof(p));
 		/*
 		if (first)
