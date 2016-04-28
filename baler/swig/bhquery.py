@@ -13,6 +13,7 @@ import logging
 import StringIO
 import os
 import re
+import struct
 from datetime import datetime, date
 
 DEFAULT_LOG_LEVEL = logging.WARNING
@@ -47,6 +48,12 @@ def add_servers(servers):
         for s in ss.split(','):
             _SERVERS.add(s)
 
+def add_servers_from_env():
+    servers = [ os.environ['BHTTPD_SERVERS'] ]
+    add_servers(servers)
+
+add_servers_from_env()
+
 
 def rm_servers(servers):
     """Remove servers from the module's server list.
@@ -70,6 +77,7 @@ class BHTTPDConn(object):
         logger.info("connecting to bhttpd: %s", server)
         self.conn = httplib.HTTPConnection(server)
         self.server = server
+        self.resp = None
 
     def __del__(self):
         logger.info("closing connection to bhttpd: %s", self.server)
@@ -87,6 +95,26 @@ class BHTTPDConn(object):
         logger.debug("---- data ----")
         logger.debug(data)
         logger.debug("--------------")
+        return data
+
+    def get(self, path, params = None):
+        uri = path
+        if params:
+            _p = urllib.urlencode({k: params[k] for k in params if params[k] != None})
+            uri = uri + "?" + _p
+        logger.debug("requesting server: %s, uri: %s", self.server, uri)
+        self.conn.request("GET", uri)
+        self.resp = self.conn.getresponse()
+
+    def fetch(self):
+        logger.debug("fetching ...")
+        if not self.resp:
+            logger.debug("no response")
+            return []
+        if self.resp.status != 200:
+            raise Exception("Server error: " + str(self.resp.status) + self.resp.reason)
+        data = self.resp.read(1024)
+        logger.debug("data length: %d", len(data))
         return data
 
 def ts2str(ts):
@@ -220,14 +248,115 @@ class MsgHeapEntry(object):
         return self.ts != other.ts or self.host != other.host
 # end of MsgHeapEntry
 
+class PxlHeapEntry(object):
+    def __init__(self, pxl, index):
+        self.pxl = pxl
+        self.index = index
+
+    def __lt__(self, other):
+        if self.pxl.ptn_id < other.pxl.ptn_id:
+            return True
+        if self.pxl.ptn_id > other.pxl.ptn_id:
+            return False
+        if self.pxl.sec < other.pxl.sec:
+            return True
+        if self.pxl.sec > other.pxl.sec:
+            return False
+        if self.pxl.comp_id < other.pxl.comp_id:
+            return True
+        if self.pxl.comp_id > other.pxl.comp_id:
+            return False
+        return False
+
+    def __le__(self, other):
+        if self.pxl.ptn_id < other.pxl.ptn_id:
+            return True
+        if self.pxl.ptn_id > other.pxl.ptn_id:
+            return False
+        if self.pxl.sec < other.pxl.sec:
+            return True
+        if self.pxl.sec > other.pxl.sec:
+            return False
+        if self.pxl.comp_id < other.pxl.comp_id:
+            return True
+        if self.pxl.comp_id > other.pxl.comp_id:
+            return False
+        return True
+
+    def __gt__(self, other):
+        if self.pxl.ptn_id > other.pxl.ptn_id:
+            return True
+        if self.pxl.ptn_id < other.pxl.ptn_id:
+            return False
+        if self.pxl.sec > other.pxl.sec:
+            return True
+        if self.pxl.sec < other.pxl.sec:
+            return False
+        if self.pxl.comp_id > other.pxl.comp_id:
+            return True
+        if self.pxl.comp_id < other.pxl.comp_id:
+            return False
+        return False
+
+    def __ge__(self, other):
+        if self.pxl.ptn_id > other.pxl.ptn_id:
+            return True
+        if self.pxl.ptn_id < other.pxl.ptn_id:
+            return False
+        if self.pxl.sec > other.pxl.sec:
+            return True
+        if self.pxl.sec < other.pxl.sec:
+            return False
+        if self.pxl.comp_id > other.pxl.comp_id:
+            return True
+        if self.pxl.comp_id < other.pxl.comp_id:
+            return False
+        return True
+
+    def __eq__(self, other):
+        if self.pxl.ptn_id != other.pxl.ptn_id:
+            return False
+        if self.pxl.sec != other.pxl.sec:
+            return False
+        if self.pxl.comp_id != other.pxl.comp_id:
+            return False
+        return True
+
+    def __ne__(self, other):
+        if self.pxl.ptn_id != other.pxl.ptn_id:
+            return True
+        if self.pxl.sec != other.pxl.sec:
+            return True
+        if self.pxl.comp_id != other.pxl.comp_id:
+            return True
+        return False
+
+# end of PxlHeapEntry
+
 class Msg(object):
     """Message wrapper, wrapping JSON msg returned from balerd server"""
     def __init__(self, msg):
         self.msg = msg
 
     def __str__(self):
-        return ' '.join(self.msg.ts, self.msg.host, self.msg.msg)
+        return ' '.join([str(x) for x in [self.msg.ts, self.msg.host, self.msg.msg]])
 
+class Pixel(object):
+    """Pixel wrapper"""
+    def __init__(self, sec, comp_id, ptn_id, count):
+        self.sec = sec
+        self.comp_id = comp_id
+        self.ptn_id = ptn_id
+        self.count = count
+
+    def __str__(self):
+        tmp = [str(x) for x in [self.ptn_id, self.sec, self.comp_id, self.count]]
+        return ', '.join(tmp)
+
+def byte_str_to_pixel(s):
+    data = struct.unpack('!IIII', s)
+    p = Pixel(data[0], data[1], data[2], data[3])
+    return p
 
 def ts_fmt_check(ts):
     if not ts:
@@ -240,10 +369,108 @@ def ts_fmt_check(ts):
         return True
     return False
 
+class ImgQuery(object):
+    """Image data query utility.
+
+    ImgQuery object is a utility to help query image data across bhttpds.
+
+    Example:
+        >>> iq = query.ImgQuery(host_ids = "1-10,20", ptn_ids="128-130,155",
+        >>>                     ts0="1442943270", ts1="1442943270",
+        >>>                     img_store="3600-1" )
+        >>> for pixel in iq:
+        >>>     print pixel
+
+    """
+    def __init__(self, img_store = None, host_ids = None,
+                 ptn_ids = None, ts0 = None, ts1 = None):
+        global _SERVERS;
+
+        if not img_store:
+            raise Exception("img_store is needed")
+        self.server = []
+        self.heap = []
+        self.conn = []
+        self.params = {
+            "type": "img",
+            "host_ids": host_ids,
+            "ptn_ids": ptn_ids,
+            "ts0": ts0,
+            "ts1": ts1,
+            "img_store": img_store,
+        }
+        self.pxlbuff = []
+
+        self.N = len(_SERVERS)
+        if not ts_fmt_check(ts0) or not ts_fmt_check(ts1):
+            raise Exception("Unsupported timestamp format. Only '%Y-%m-%d %H:%M:%S' and 'seconds_since_epoch' are supported.");
+
+        for s in _SERVERS:
+            self.server.append(s)
+            self.conn.append(BHTTPDConn(s))
+
+        for i in range(self.N):
+            self.pxlbuff.append(None)
+            self.conn[i].get("/query", self.params)
+            self._fetch_pixels(i)
+            pxl = self._get_pixel(i)
+            if not pxl:
+                continue
+            hent = PxlHeapEntry(pxl, i)
+            self.heap.append(hent)
+
+        heapq.heapify(self.heap)
+
+    def __del__(self):
+        logger.debug("destroying ImgQuery")
+        for i in range(len(self.server)):
+            server = self.server[i]
+            conn = self.conn[i]
+
+    def _fetch_pixels(self, index):
+        """Re-populate pixel buffer"""
+        conn = self.conn[index]
+        server = self.server[index]
+        data = conn.fetch()
+        pxlbuff = None
+        if data:
+            pxlbuff = StringIO.StringIO(data)
+        self.pxlbuff[index] = pxlbuff
+
+    def _get_pixel(self, index):
+        """Get a single pixel from the server[index]"""
+        pxlbuff = self.pxlbuff[index]
+        if not pxlbuff:
+            return None # end of pixel streams from the server
+        data = pxlbuff.read(16) # one pixel
+        if not data:
+            # buffer might be depleted, re-fill it, and repeat
+            self._fetch_pixels(index)
+            return self._get_pixel(index)
+        p = byte_str_to_pixel(data)
+        return p
+
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if not self.heap:
+            raise StopIteration()
+        hent = heapq.heappop(self.heap)
+        newpxl = self._get_pixel(hent.index)
+        if newpxl:
+            newhent = PxlHeapEntry(newpxl, hent.index)
+            heapq.heappush(self.heap, newhent)
+        return hent.pxl
+
+# end of class ImgQuery
+
+
 class MsgQuery(object):
     """Message query utility object.
 
-    MsgQuery object is a utility to help query messages across balerds.
+    MsgQuery object is a utility to help query messages across bhttpds.
 
     Example:
         >>> mq = query.MsgQuery(host_ids = "1-10", ptn_ids="128-130",
@@ -374,6 +601,18 @@ if __name__ == "__main__":
             print msg
         del mq
 
+    def handle_img(args):
+        if args.ptn_ids:
+            args.ptn_ids = ','.join(args.ptn_ids)
+        if args.host_ids:
+            args.host_ids = ','.join(args.host_ids)
+        q = ImgQuery(ts0=args.ts_begin, ts1=args.ts_end,
+                host_ids=args.host_ids, ptn_ids=args.ptn_ids,
+                img_store=args.img_store)
+        for p in q:
+            print p
+        del q
+
     parser = argparse.ArgumentParser(
         description='bhttpd query command-line interface.'
     )
@@ -391,6 +630,10 @@ if __name__ == "__main__":
     )
     parser.add_argument('-E', '--ts-end', action='store',
         help='End timestamp for msg query. (e.g. "2015-12-31 21:22:23")'
+    )
+    parser.add_argument('-I', '--img-store', action='store',
+        default='3600-1',
+        help='Image store to query against (default: 3600-1)'
     )
     parser.add_argument('-S', '--bhttpd-servers', action='append',
         help='''List of bhttpd servers. If this argument is not set, the
@@ -416,6 +659,7 @@ if __name__ == "__main__":
     handle_map = {
         'ptn': handle_ptn,
         'msg': handle_msg,
+        'img': handle_img,
     }
 
     if not args.type:
