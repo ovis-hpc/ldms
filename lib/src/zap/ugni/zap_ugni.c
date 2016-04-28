@@ -1091,17 +1091,6 @@ static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
 
 	pthread_mutex_lock(&uep->ep.lock);
 	bufferevent_setcb(uep->buf_event, NULL, NULL, NULL, NULL);
-	gni_return_t grc;
-	grc = GNI_EpUnbind(uep->gni_ep);
-	if (grc) {
-		LOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
-	}
-	grc = GNI_EpDestroy(uep->gni_ep);
-	if (grc) {
-		LOG_(uep, "GNI_EpDestroy() error: %s\n", gni_ret_str(grc));
-	}
-	uep->gni_ep = NULL;
-
 	switch (uep->ep.state) {
 	case ZAP_EP_ACCEPTING:
 		uep->ep.state = ZAP_EP_ERROR;
