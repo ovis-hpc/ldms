@@ -126,7 +126,7 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 #define FMT "Z:H:i:l:r:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:VA"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
-/* YAML needs instance number to differentiate configuration for an instnace
+/* YAML needs instance number to differentiate configuration for an instance
  * from other instances' configuration in the same configuration file
  */
 int instance_number = 1;
@@ -213,13 +213,27 @@ int enable_sheller = 0;
 
 int passive = 0;
 /* by default ldmsd should not be 'ERROR' */
+static pthread_mutex_t levelmutex = PTHREAD_MUTEX_INITIALIZER;
 int log_level = LDMS_LERROR;
+static void set_log_level(int lvl)
+{
+	if (lvl < 0)
+		return;
+	pthread_mutex_lock(&levelmutex);
+	log_level = lvl;
+	pthread_mutex_unlock(&levelmutex);
+	
+}
+
 void ldms_log(int level, const char *fmt, ...)
 {
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	/* Don't say a word when the level is below the threshold */
-	if (level < log_level)
+	pthread_mutex_lock(&levelmutex);
+	if (level < log_level) {
+		pthread_mutex_unlock(&levelmutex);
 		return;
+	}
 	va_list ap;
 	if (log_fp != LDMS_LOG_SYSLOG)
 		pthread_mutex_lock(&mutex);
@@ -256,6 +270,7 @@ void ldms_log(int level, const char *fmt, ...)
 		vsyslog(ldms_level_to_syslog(level),fmt,ap);
 	}
 	
+	pthread_mutex_unlock(&levelmutex);
 }
 
 void cleanup(int x)
@@ -265,12 +280,13 @@ void cleanup(int x)
 		void *dontcare;
 		pthread_cancel(ctrl_thread);
 		pthread_join(ctrl_thread, &dontcare);
+		ctrl_thread = (pthread_t)-1;
 	}
 
 	if (muxr_s >= 0) {
 		close(muxr_s);
-		muxr_s = 0;
 	}
+	muxr_s = -1;
 	if (sockname && bind_succeeded) {
 		unlink(sockname);
 		sockname = NULL;
@@ -1288,9 +1304,12 @@ int process_add_host(int fd,
 add_timeout:
 	evtimer_add(hs->event, &hs->timeout);
 
+	int oldstate = 0;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
 	pthread_mutex_lock(&host_list_lock);
 	LIST_INSERT_HEAD(&host_list, hs, link);
 	pthread_mutex_unlock(&host_list_lock);
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
 
 	bdstr_set(&replybuf,"0");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
@@ -1383,6 +1402,8 @@ int process_update_standby(int fd,
 
 }
 
+/* must never be called with the same container twice */
+static
 struct ldmsd_store_policy *get_store_policy(const char *container,
 			const char *set_name, const char *comp_type)
 {
@@ -1504,7 +1525,7 @@ err:
 void destroy_metric_idx_list(struct ldmsd_store_metric_index_list *list)
 {
 	struct ldmsd_store_metric_index *smi;
-	while (smi = LIST_FIRST(list)) {
+	while ( (smi = LIST_FIRST(list)) != NULL) {
 		LIST_REMOVE(smi, entry);
 		free(smi->name);
 		free(smi);
@@ -1623,7 +1644,7 @@ void destroy_store_policy(struct ldmsd_store_policy *sp)
 	free(sp->setname);
 	destroy_metric_idx_list(&sp->metric_list);
 	struct hostset_ref *hset_ref;
-	while (hset_ref = LIST_FIRST(&sp->hset_ref_list)) {
+	while ( (hset_ref = LIST_FIRST(&sp->hset_ref_list)) != NULL) {
 		LIST_REMOVE(hset_ref, entry);
 		destroy_hset_ref(hset_ref, sp);
 	}
@@ -1853,7 +1874,7 @@ int process_store(int fd,
 	return 0;
 
 clean_fake_list:
-	while (sp_ref = LIST_FIRST(&fake_list)) {
+	while ( (sp_ref = LIST_FIRST(&fake_list)) != NULL) {
 		LIST_REMOVE(sp_ref, entry);
 		free(sp_ref);
 	}
@@ -1923,7 +1944,7 @@ int process_loglevel(int fd,
 	}
 
 	ldms_log(LDMS_LINFO,"Updating loglevel to %s\n", loglevels_names[nlvl]);
-	log_level = nlvl;
+	set_log_level(nlvl);
 	//has_arg[LDMS_QUIET] = 1; Only used for yaml. Not relevant to this release
 
 
@@ -2058,7 +2079,7 @@ void hset_ref_put(struct hostset *hset)
 			ldms_metric_release(hset->mvec->v[i]);
 		}
 		struct ldmsd_store_policy_ref *lsp_ref;
-		while (lsp_ref = LIST_FIRST(&hset->lsp_list)) {
+		while ( (lsp_ref = LIST_FIRST(&hset->lsp_list)) != NULL) {
 			LIST_REMOVE(lsp_ref, entry);
 			free(lsp_ref);
 		}
@@ -2240,7 +2261,7 @@ int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)
 	sp->state = STORE_POLICY_READY;
 	return 0;
 err:
-	while (smi = LIST_FIRST(&sp->metric_list)) {
+	while ( (smi = LIST_FIRST(&sp->metric_list)) != NULL) {
 		LIST_REMOVE(smi, entry);
 		free(smi->name);
 		free(smi);
@@ -2292,14 +2313,13 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	}
 
 	if (!ldms_is_set_consistent(hset->set)) {
-		ldms_log(LDMS_LERROR, "Set %s Inconsistent. Generation# = <%d>\n", hset->name, hset->gn);
+		ldms_log(LDMS_LINFO, "Set %s Inconsistent. Generation# = <%d>\n", hset->name, hset->gn);
 		goto out;
 	}
 
 	hset->gn = gn;
 
 	struct ldmsd_store_policy_ref *lsp_ref;
-	struct timeval tv;
 	struct ldms_mvec *mvec;
 	if (!hset->mvec) {
 		/* Recreate mvec here if it doesn't exist.  It can be destroyed
@@ -2316,9 +2336,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		if (lsp_ref->lsp->state != STORE_POLICY_READY)
 			continue;
 
-		struct ldms_timestamp const *ts;
 		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
-		struct store_instance *si = lsp->si;
 
 		if (lsp->metric_count > hset->mvec->count) {
 			ldms_log(LDMS_LERROR,"store %s: Expected number of metrics (%d) > "
@@ -2328,9 +2346,6 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 				hset->mvec->count, hset->name);
 			continue;
 		}
-		ts = ldms_get_timestamp(hset->set);
-		tv.tv_sec = ts->sec;
-		tv.tv_usec = ts->usec;
 
 		mvec = ldms_mvec_create(lsp->metric_count);
 		if (!mvec) {
@@ -2415,12 +2430,24 @@ void update_data(struct hostspec *hs)
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
-				ldms_log(LDMS_LERROR, "Error %d updating metric set "
-					"on host %s:%d[%s].\n", ret,
-					hs->hostname, ntohs(hs->sin.sin_port),
-					hs->xprt_name);
+				hs->errtot++;
+				hs->errcnt++;
+				if ( hs->errcnt % 1000 == 1) {
+					ldms_log(LDMS_LERROR, "Error %d updating metric set "
+						"on host %s:%d[%s]. (repeated %d)\n", ret,
+						hs->hostname, ntohs(hs->sin.sin_port),
+						hs->xprt_name, hs->errcnt);
+				}
 				update_cleanup(hs, hset);
 				host_error = 1;
+			} else {
+				if (hs->errcnt) {
+					ldms_log(LDMS_LERROR, "Cleared %d errors for "
+						"host %s:%d[%s].\n", hs->errcnt,
+						hs->hostname, ntohs(hs->sin.sin_port),
+						hs->xprt_name);
+				}
+				hs->errcnt = 0;
 			}
 			break;
 		case LDMSD_SET_LOOKUP:
@@ -3048,7 +3075,7 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 		if (!has_arg[LDMS_QUIET])
 			if (strcasecmp("true", value_str) == 0 ||
 					atoi(value_str))
-				log_level = LDMSD_QUIET;
+				set_log_level(LDMSD_QUIET);
 	} else if (strcmp(key_str, "foreground")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_FOREGROUND])
@@ -3501,7 +3528,9 @@ int main(int argc, char *argv[])
 	int op;
 	ldms_set_t test_set;
 	log_fp = stdout;
+#ifdef ENABLE_YAML
 	char *cfg_file = NULL;
+#endif
 	struct sigaction action;
 
 
@@ -3559,7 +3588,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'q':
 			CHECKARG(q,name);
-			log_level = ldms_str_to_level(optarg);
+			set_log_level(ldms_str_to_level(optarg));
 			if (log_level <0 ) {
 				printf("Invalid logging level '%s'. Valid are:\n", optarg);
 				int i = 0;
@@ -3709,6 +3738,9 @@ int main(int argc, char *argv[])
 			stdout = log_fp;
 	}
 
+	if (enable_sheller) {
+		ldms_log(LDMS_LDEBUG, "Sheller enabled for store hooks\n");
+	}
 	/* Initialize LDMS */
 	if (ldms_init(max_mem_size)) {
 		ldms_log(LDMS_LERROR, "LDMS could not pre-allocate the memory of size %lu.\n",
