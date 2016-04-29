@@ -129,6 +129,22 @@ struct zap_ugni_node_state {
 	int *node_state;
 } _node_state = {0};
 
+struct zap_ugni_defer_disconn_ev {
+	struct z_ugni_ep *uep;
+	struct event *disconn_ev;
+	struct timeval retry_count; /* Retry unbind counter */
+};
+
+/* Timeout before trying to unbind a gni endpoint again. */
+#define ZAP_UGNI_UNBIND_TIMEOUT 5
+/*
+ * Deliver the disconnected event if zap_ugni has been
+ * trying to unbind the gni bind for ZAP_UGNI_DISCONNECT_WALLTIME seconds.
+ */
+#define ZAP_UGNI_DISC_EV_TIMEOUT 3600
+static int zap_ugni_unbind_timeout;
+static int zap_ugni_disc_ev_timeout;
+
 static int reg_count;
 static LIST_HEAD(mh_list, ugni_mh) mh_list;
 static pthread_mutex_t ugni_mh_lock;
@@ -1002,25 +1018,48 @@ err:
 	return ZAP_ERR_RESOURCE;
 }
 
-static void process_defer_disconnected_cb(int s, short events, void *arg)
+static int __exceed_disconn_ev_timeout(struct z_ugni_ep *uep)
+{
+	if (uep->unbind_count * zap_ugni_unbind_timeout >=
+			zap_ugni_disc_ev_timeout)
+		return 1;
+	return 0;
+}
+
+void __ugni_defer_disconnected_event(struct z_ugni_ep *uep);
+static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 {
 	struct z_ugni_ep *uep = (struct z_ugni_ep *)arg;
+	__sync_add_and_fetch(&uep->unbind_count, 1);
+	gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
+	if (grc && !__exceed_disconn_ev_timeout(uep)) {
+		LOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
+		/*
+		 * Defer the disconnected event as long as
+		 * we cannot unbind the endpoint and not exceeding
+		 * the disconnect event delivering timeout.
+		 */
+		__ugni_defer_disconnected_event(uep);
+		return;
+	}
+
+	/* Deliver the disconnected event */
 #ifdef DEBUG
-	pthread_mutex_lock(&deferred_list_mutex);
-	LIST_REMOVE(uep, deferred_link);
-	pthread_mutex_unlock(&deferred_list_mutex);
-	zap_put_ep(&uep->ep);
+	/* It is in the queue already. */
+	if (uep->deferred_link.le_next) {
+		/* It is in the deferred list ... remove it. */
+		pthread_mutex_lock(&deferred_list_mutex);
+		LIST_REMOVE(uep, deferred_link);
+		uep->deferred_link.le_next = 0;
+		pthread_mutex_unlock(&deferred_list_mutex);
+		zap_put_ep(&uep->ep);
+	}
 #endif /* DEBUG */
 	if (!LIST_EMPTY(&uep->post_desc_list)) {
 		__free_post_desc_list(uep);
-		DLOG("process_defer_disconnected_cb: after cleanup all rdma"
+		DLOG("%s: after cleanup all rdma"
 			"post: ep %p: ref_count %d\n",
-			uep, uep->ep.ref_count);
-	} else {
-		/* No need to send the DISCONNECTED event.
-		 * The DISCONNECTED event has been sent
-		 * when the last post descriptor was processed.
-		 */
+			__func__, uep, uep->ep.ref_count);
 	}
 	ZAP_ASSERT(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED, &uep->ep,
 			"%s: uep->conn_ev.type (%s) is not ZAP_EVENT_"
@@ -1034,21 +1073,23 @@ static void process_defer_disconnected_cb(int s, short events, void *arg)
 	zap_put_ep(&uep->ep);
 }
 
-#define DEFER_5SEC 5
 void __ugni_defer_disconnected_event(struct z_ugni_ep *uep)
 {
 	DLOG("defer_disconnected: uep %p\n", uep);
 #ifdef DEBUG
 	pthread_mutex_lock(&deferred_list_mutex);
-	zap_get_ep(&uep->ep);
-	LIST_INSERT_HEAD(&deferred_list, uep, deferred_link);
+	if (uep->deferred_link.le_next == 0) {
+		/* It is not in the deferred list yet ... add it in. */
+		zap_get_ep(&uep->ep);
+		LIST_INSERT_HEAD(&deferred_list, uep, deferred_link);
+	}
 	pthread_mutex_unlock(&deferred_list_mutex);
 #endif /* DEBUG */
 	struct event *deferred_event;
-	deferred_event = evtimer_new(io_event_loop, process_defer_disconnected_cb,
-						(void *)uep);
+	deferred_event = evtimer_new(io_event_loop,
+			__unbind_and_deliver_disconn_ev, (void *)uep);
 	struct timeval t;
-	t.tv_sec = DEFER_5SEC;
+	t.tv_sec = zap_ugni_unbind_timeout;
 	t.tv_usec = 0;
 	evtimer_add(deferred_event, &t);
 }
@@ -1121,8 +1162,7 @@ static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	if (call_cb) {
-		uep->ep.cb((void*)uep, ev);
-		zap_put_ep(&uep->ep);
+		__unbind_and_deliver_disconn_ev(uep);
 	} else {
 		__ugni_defer_disconnected_event(uep);
 	}
@@ -1311,6 +1351,22 @@ static uint32_t __get_cq_depth()
 	if (!str)
 		return ZAP_UGNI_CQ_DEPTH;
 	return strtoul(str, NULL, 0);
+}
+
+static int __get_unbind_timeout()
+{
+	const char *str = getenv("ZAP_UGNI_UNBIND_TIMEOUT");
+	if (!str)
+		return ZAP_UGNI_UNBIND_TIMEOUT;
+	return atoi(str);
+}
+
+static int __get_disconnect_event_timeout()
+{
+	const char *str = getenv("ZAP_UGNI_DISCONNECT_EV_TIMEOUT");
+	if (!str)
+		return ZAP_UGNI_DISC_EV_TIMEOUT;
+	return atoi(str);
 }
 
 #define UGNI_NODE_PREFIX "nid"
@@ -1737,6 +1793,13 @@ int init_once()
 			}
 		}
 	}
+
+	/*
+	 * Get the timeout for calling unbind and delivering a disconnected event.
+	 */
+	zap_ugni_disc_ev_timeout = __get_disconnect_event_timeout();
+	zap_ugni_unbind_timeout = __get_unbind_timeout();
+
 	pthread_mutex_unlock(&ugni_lock);
 
 	rc = z_ugni_init();

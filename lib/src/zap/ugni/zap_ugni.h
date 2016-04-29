@@ -280,6 +280,11 @@ struct z_ugni_ep {
 	LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc) post_desc_list;
 	struct zap_event conn_ev;
 
+	/*
+	 * The counter of retries to unbind the GNI endpoint
+	 */
+	int unbind_count;
+
 	LIST_ENTRY(z_ugni_ep) link;
 	LIST_ENTRY(z_ugni_ep) deferred_link;
 };
