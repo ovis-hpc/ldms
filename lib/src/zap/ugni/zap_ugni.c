@@ -79,9 +79,38 @@
 
 #define VERSION_FILE "/proc/version"
 
-#define LOG_(uep, ...) do { \
-	if (uep && uep->ep.z && uep->ep.z->log_fn) \
-		uep->ep.z->log_fn("zap_ugni: " __VA_ARGS__); \
+static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
+{
+	struct sockaddr la = {0};
+	struct sockaddr ra = {0};
+	char addr_str[INET_ADDRSTRLEN];
+	struct sockaddr_in *l = (struct sockaddr_in *)&la;
+	struct sockaddr_in *r = (struct sockaddr_in *)&ra;
+	socklen_t sa_len = sizeof(la);
+	size_t sz;
+	zap_err_t zerr;
+
+	(void) zap_get_name(ep, &la, &ra, &sa_len);
+	sz = snprintf(str, len, "lcl=%s:%hu <--> ",
+		inet_ntop(AF_INET, &l->sin_addr, addr_str, INET_ADDRSTRLEN),
+		ntohs(l->sin_port));
+	if (sz + 1 > len)
+		return NULL;
+	len -= sz;
+	sz = snprintf(&str[sz], len, "rem=%s:%hu",
+		inet_ntop(AF_INET, &r->sin_addr, addr_str, INET_ADDRSTRLEN),
+		ntohs(r->sin_port));
+	if (sz + 1 > len)
+		return NULL;
+	return str;
+}
+
+#define LOG_(uep, fmt, ...) do { \
+	if ((uep) && (uep)->ep.z && (uep)->ep.z->log_fn) { \
+		char name[128]; \
+		format_4tuple(&(uep)->ep, name, 128); \
+		uep->ep.z->log_fn("zap_ugni: %s " fmt, name, ##__VA_ARGS__); \
+	} \
 } while(0);
 
 #define LOG(...) do { \
@@ -89,9 +118,12 @@
 } while(0);
 
 #ifdef DEBUG
-#define DLOG_(uep, ...) do { \
-	if (uep && uep->ep.z && uep->ep.z->log_fn) \
-		uep->ep.z->log_fn("zap_ugni [DEBUG]: " __VA_ARGS__); \
+#define DLOG_(uep, fmt, ...) do { \
+	if ((uep) && (uep)->ep.z && (uep)->ep.z->log_fn) { \
+		char name[128]; \
+		format_4tuple(&(uep)->ep, name, 128); \
+		uep->ep.z->log_fn("zap_ugni [DEBUG]: %s " fmt, name, ##__VA_ARGS__); \
+	} \
 } while(0);
 
 #define DLOG(...) do { \
@@ -202,32 +234,6 @@ static void zap_ugni_default_log(const char *fmt, ...)
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
-}
-
-static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
-{
-	struct sockaddr la = {0};
-	struct sockaddr ra = {0};
-	char addr_str[INET_ADDRSTRLEN];
-	struct sockaddr_in *l = (struct sockaddr_in *)&la;
-	struct sockaddr_in *r = (struct sockaddr_in *)&ra;
-	socklen_t sa_len = sizeof(la);
-	size_t sz;
-	zap_err_t zerr;
-
-	(void) zap_get_name(ep, &la, &ra, &sa_len);
-	sz = snprintf(str, len, "lcl=%s:%hu <--> ",
-		inet_ntop(AF_INET, &l->sin_addr, addr_str, INET_ADDRSTRLEN),
-		ntohs(l->sin_port));
-	if (sz + 1 > len)
-		return NULL;
-	len -= sz;
-	sz = snprintf(&str[sz], len, "rem=%s:%hu",
-		inet_ntop(AF_INET, &r->sin_addr, addr_str, INET_ADDRSTRLEN),
-		ntohs(r->sin_port));
-	if (sz + 1 > len)
-		return NULL;
-	return str;
 }
 
 int z_rbn_cmp(void *a, void *b)
@@ -832,8 +838,6 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		if (uep->deferred_link.le_prev)
 			DLOG("uep %p: Doh!! I'm on the deferred list.\n", uep);
 		struct zap_event zev = {0};
-		char name[128];
-		(void)format_4tuple(&uep->ep, name, 128);
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
 			if (grc) {
@@ -858,8 +862,8 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			zev.context = desc->context;
 			break;
 		default:
-			zap_ugni_log("%s Unknown completion type %d.\n",
-					name, desc->post.type);
+			LOG_(uep, "Unknown completion type %d.\n",
+					 desc->post.type);
 			__shutdown_on_error(uep);
 		}
 		pthread_mutex_unlock(&uep->ep.lock);
@@ -1162,7 +1166,12 @@ static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	if (call_cb) {
-		__unbind_and_deliver_disconn_ev(uep);
+		if (ev->type == ZAP_EVENT_DISCONNECTED) {
+			__unbind_and_deliver_disconn_ev(0, 0, (void *)uep);
+		} else {
+			uep->ep.cb((void*)uep, ev);
+			zap_put_ep(&uep->ep);
+		}
 	} else {
 		__ugni_defer_disconnected_event(uep);
 	}
