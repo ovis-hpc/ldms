@@ -59,7 +59,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "timer_base.h"
-#include "pow.h"
+#include "pwr.h"
 
 struct power_sampler {
 	struct timer_base base;
@@ -138,13 +138,14 @@ int power_sampler_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 			goto cleanup;
 		}
 	}
-	rc = timer_base_add_hfmetric(&ps->base, "PWR_ATTR_MAX_POWER",
+// Brandt 4-30-2016 Removed due to lack of current interest. Will make configurable	
+/*	rc = timer_base_add_hfmetric(&ps->base, "PWR_ATTR_POWER_LIMIT_MAX",
 				LDMS_V_D64_ARRAY, ps->hfcount, &ps->hfinterval,
 				power_sampler_timer_cb,
-				(void*)(uint64_t)PWR_ATTR_MAX_POWER);
+				(void*)(uint64_t)PWR_ATTR_POWER_LIMIT_MAX);
 	if (rc)
 		goto cleanup;
-
+*/
 	rc = timer_base_add_hfmetric(&ps->base, "PWR_ATTR_POWER",
 				LDMS_V_D64_ARRAY, ps->hfcount, &ps->hfinterval,
 				power_sampler_timer_cb,
@@ -215,17 +216,18 @@ static int power_sampler_sample(struct ldmsd_sampler *self)
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
+	int rc;
 	msglog = pf;
 	struct power_sampler *ps = calloc(1, sizeof(*ps));
 	if (!ps)
 		return NULL;
 
 	/* power stuff */
-	ps->powctxt = PWR_CntxtInit(PWR_CNTXT_DEFAULT, PWR_ROLE_APP, "ldmsd");
-	if (!ps->powctxt)
+	rc = PWR_CntxtInit(PWR_CNTXT_DEFAULT, PWR_ROLE_APP, "ldmsd", &ps->powctxt);
+	if (rc)
 		goto cleanup;
-	ps->pow = PWR_CntxtGetEntryPoint(ps->powctxt);
-	if (!ps->pow)
+	rc = PWR_CntxtGetEntryPoint(ps->powctxt, &ps->pow);
+	if (rc)
 		goto cleanup;
 	timer_base_init(&ps->base);
 
