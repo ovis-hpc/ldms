@@ -1,0 +1,5 @@
+bhttpd:
+    srv0: ["localhost:18000", "localhost:19000"]
+    srv1: ["localhost:18001", "localhost:19001"]
+    srv2: ["localhost:18002", "localhost:19002"]
+    srv3: ["localhost:18003", "localhost:19003"]
