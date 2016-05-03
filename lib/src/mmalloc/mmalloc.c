@@ -127,6 +127,8 @@ int mm_init(size_t size, size_t grain)
 	if (MAP_FAILED == mmr->start)
 		goto out;
 
+	memset(mmr->start, 0XAA, size);
+
 	get_pow2(grain, &mmr->grain, &mmr->grain_bits);
 	mmr->size = size;
 
@@ -198,6 +200,7 @@ void mm_free(void *d)
 	struct mm_prefix *p = d;
 	struct mm_prefix *q, *r;
 	struct rbn *rbn;
+	
 	p --;
 
 	pthread_mutex_lock(&mmr->lock);
@@ -239,6 +242,8 @@ void mm_free(void *d)
 	p->pfx = p;
 	rbn_init(&p->size_node, &p->count);
 	rbn_init(&p->addr_node, &p->pfx);
+
+	memset(p+1, 0xff, (p->count << mmr->grain_bits) - sizeof(*p));
 
 	/* Put 'p' back in the trees */
 	rbt_ins(&mmr->size_tree, &p->size_node);
