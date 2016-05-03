@@ -1039,6 +1039,7 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 	int host_end = host_begin + (int)(height*npp);
 
 	int *data = NULL;
+	int i, len;
 
 	struct bimgquery *q;
 
@@ -1065,7 +1066,9 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 	snprintf(ts1, sizeof(ts0), "%d", ts_end);
 	snprintf(host_ids, sizeof(host_ids), "%d-%d", host_begin, host_end);
 
-	data = calloc(sizeof(int),  width * height);
+	len = width * height;
+
+	data = calloc(sizeof(int),  len);
 
 	if (!data) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Out of memory.");
@@ -1094,6 +1097,11 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 	next:
 		rc = bq_next_entry((void*)q);
 	}
+
+	for (i = 0; i < len; i++) {
+		data[i] = htonl(data[i]);
+	}
+
 	evbuffer_add(ctxt->evbuffer, data, sizeof(int)*width*height);
 	bimgquery_destroy(q);
 	bdebug("sending data, size: %d", sizeof(int)*width*height);
