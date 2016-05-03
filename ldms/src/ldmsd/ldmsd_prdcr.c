@@ -121,10 +121,15 @@ err_0:
 
 void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
-	if (set->schema_name)
+	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s\n", set->inst_name);
+	if (set->schema_name) {
 		free(set->schema_name);
-	if (set->set)
+		set->schema_name = NULL;
+	}
+	if (set->set) {
 		ldms_set_delete(set->set);
+		set->set = NULL;
+	}
 	ldmsd_strgp_ref_t strgp_ref;
 	strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
