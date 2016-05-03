@@ -66,6 +66,8 @@
 #include "../coll/rbt.h"
 #include "ovis-test/test.h"
 
+static int mm_is_disable_mm_free = 0;
+
 struct mm_prefix {
 	struct rbn addr_node;
 	struct rbn size_node;
@@ -146,6 +148,11 @@ int mm_init(size_t size, size_t grain)
 	/* Insert the chunk into the r-b trees */
 	rbt_ins(&mmr->size_tree, &pfx->size_node);
 	rbt_ins(&mmr->addr_tree, &pfx->addr_node);
+
+	const char *tmp = getenv("MMALLOC_DISABLE_MM_FREE");
+	if (tmp)
+		mm_is_disable_mm_free = atoi(tmp);
+
 	return 0;
  out:
 	free(mmr);
@@ -197,10 +204,13 @@ void *mm_alloc(size_t size)
 
 void mm_free(void *d)
 {
+	if (mm_is_disable_mm_free)
+		return;
+
 	struct mm_prefix *p = d;
 	struct mm_prefix *q, *r;
 	struct rbn *rbn;
-	
+
 	p --;
 
 	pthread_mutex_lock(&mmr->lock);
