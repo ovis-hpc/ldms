@@ -312,7 +312,7 @@ static void release_buf_event(struct z_ugni_ep *r);
 /* The caller must hold the endpoint lock */
 static void __shutdown_on_error(struct z_ugni_ep *uep)
 {
-	DLOG_(uep, "%s\n", __func__);
+	LOG_(uep, "%s\n", __func__);
 	if (uep->ep.state == ZAP_EP_CONNECTED)
 		uep->ep.state = ZAP_EP_CLOSE;
 	shutdown(uep->sock, SHUT_RDWR);
@@ -826,17 +826,20 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		assert(ugni_post_count >= 0);
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
+		struct zap_ugni_post_desc *desc = (void*) post;
+		struct z_ugni_ep *uep = desc->uep;
 		if (grc) {
 			if (!(grc == GNI_RC_SUCCESS ||
 			      grc == GNI_RC_TRANSACTION_ERROR)) {
 				DLOG("process_cq: grc %d\n", grc);
 			}
+			LOG_(uep, "Receive cq with error %s\n",
+						gni_ret_str(grc));
 		}
-		struct zap_ugni_post_desc *desc = (void*) post;
-		struct z_ugni_ep *uep = desc->uep;
+
 		pthread_mutex_lock(&uep->ep.lock);
 		if (uep->deferred_link.le_prev)
-			DLOG("uep %p: Doh!! I'm on the deferred list.\n", uep);
+			LOG_(uep, "uep %p: Doh!! I'm on the deferred list.\n", uep);
 		struct zap_event zev = {0};
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
@@ -1059,6 +1062,11 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 		zap_put_ep(&uep->ep);
 	}
 #endif /* DEBUG */
+	if (grc) {
+		LOG_(uep, "GNI_EpUnbind() error: %s ... Give up\n", gni_ret_str(grc));
+	}
+	LOG_(uep, "Delivering the disconnected event. Try unbind for %d times\n",
+							uep->unbind_count);
 	if (!LIST_EMPTY(&uep->post_desc_list)) {
 		__free_post_desc_list(uep);
 		DLOG("%s: after cleanup all rdma"
