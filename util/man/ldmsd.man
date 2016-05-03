@@ -103,6 +103,11 @@ LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
 The default level is ERROR. QUIET produces no output.
 (Note: this has changed from the previous release where q designated no (QUIET) logging).
 .TP
+.BI -L " INFO_FREQUENCY"
+.br
+INFO_FREQUENCY is an integer >= 1.
+The default frequency is 1000. Every INFO_FREQUENCY occurences of an aggregation problem in updating a specific data collection host, including the first instance, is logged at the INFO level. When the update problem is resolved, an INFO level message with the total errors observed is also logged. Set INFO_FREQUENCY very high to see only first and last messages. To see all such messages, set to 1 or just change log level to DEBUG.
+.TP
 .BI -S " SOCKNAME"
 .br
 SOCKNAME is the unix domain socket name to use for ldmsctl access.

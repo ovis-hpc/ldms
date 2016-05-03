@@ -131,6 +131,10 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
  */
 int instance_number = 1;
 
+/* plugin loading message size limits */
+#define PLUG_REPLY_MAX 1024
+#define PLUG_ERR_MAX PLUG_REPLY_MAX+32
+
 /* max cmd built with yaml */
 #define CMD_MAX 1024
 
@@ -166,14 +170,15 @@ pthread_t relay_thread = (pthread_t)-1;
 char *test_set_name;
 int test_set_count=1;
 int test_metric_count=1;
+static int update_err_info_count = 1000; /**< default errs between infos per host err */
 int notify=0;
-int muxr_s = -1;
+static int muxr_s = -1;
 char *logfile;
-char *pidfile;
-char *sockname = NULL;
+static char *pidfile;
+static char *sockname = NULL;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 unsigned long saggs_mask = 0;
-ldms_t ldms;
+ldms_t ldms; /* turns out this is never set to anything, except null, not mentioned in a header and never assumed to exist in any other .c file. */
 FILE *log_fp;
 #define LDMS_LOG_SYSLOG (FILE*)0x7 /* known bad file pointer */
 struct attr_value_list *av_list;
@@ -279,8 +284,12 @@ void cleanup(int x)
 	if (ctrl_thread != (pthread_t)-1) {
 		void *dontcare;
 		pthread_cancel(ctrl_thread);
-		pthread_join(ctrl_thread, &dontcare);
-		ctrl_thread = (pthread_t)-1;
+		if (pthread_join(ctrl_thread, &dontcare)) {
+			ldms_log(LDMS_LCRITICAL,
+				"Unable to join control thread\n");
+		} else {
+			ctrl_thread = (pthread_t)-1;
+		}
 	}
 
 	if (muxr_s >= 0) {
@@ -293,7 +302,7 @@ void cleanup(int x)
 	}
 	if (ldms) {
 		ldms_release_xprt(ldms);
-		ldms = NULL;
+		// ldms = NULL;
 	}
 
 	if (!foreground && pidfile) {
@@ -785,8 +794,8 @@ int process_load_plugin(int fd,
 {
 	TF();
 	char *plugin_name;
-	char err_str[1024];
-	char reply[1024];
+	char err_str[PLUG_ERR_MAX];
+	char reply[PLUG_REPLY_MAX];
 	int rc = 0;
 
 	err_str[0] = '\0';
@@ -2294,10 +2303,13 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
 		if (hset->gn != hset->stale_gn_logged) {
-			ldms_log(LDMS_LERROR, "Set %s with Generation# <%"
+			ldms_log(LDMS_LINFO, "Set %s with Generation# <%"
 				PRIu64 "> Stale.\n", hset->name, hset->gn);
 			hset->stale_gn_logged = hset->gn;
 			hset->stale_time = *(ldms_get_timestamp(hset->set));
+		} else {
+			ldms_log(LDMS_LDEBUG, "Set %s with Generation# <%"
+				PRIu64 "> Stale.\n", hset->name, hset->gn);
 		}
 		goto out;
 	}
@@ -2306,7 +2318,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		uint64_t dset = dpull / ldms_get_set_card(hset->set);
 		struct ldms_timestamp newtime = *(ldms_get_timestamp(hset->set));
 		int dt = newtime.sec - hset->stale_time.sec;
-		ldms_log(LDMS_LERROR, "Set %s staleness generation# <%"
+		ldms_log(LDMS_LINFO, "Set %s staleness generation# <%"
 			PRIu64 "> (%d) cleared at <%" PRIu64 "> %d.%06d, %" PRIu64 " sets later, %d sec later.\n",
 		       	hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, newtime.usec, dset, dt);
 		hset->stale_gn_logged = 0;
@@ -2432,11 +2444,16 @@ void update_data(struct hostspec *hs)
 			if (ret) {
 				hs->errtot++;
 				hs->errcnt++;
-				if ( hs->errcnt % 1000 == 1) {
-					ldms_log(LDMS_LERROR, "Error %d updating metric set "
+				if ( hs->errcnt % update_err_info_count == 1) {
+					ldms_log(LDMS_LINFO, "Error %d updating metric set "
 						"on host %s:%d[%s]. (repeated %d)\n", ret,
 						hs->hostname, ntohs(hs->sin.sin_port),
 						hs->xprt_name, hs->errcnt);
+				} else {
+					ldms_log(LDMS_LDEBUG, "Error %d updating metric set "
+						"on host %s:%d[%s].\n", ret,
+						hs->hostname, ntohs(hs->sin.sin_port),
+						hs->xprt_name);
 				}
 				update_cleanup(hs, hset);
 				host_error = 1;
@@ -2861,6 +2878,7 @@ typedef enum {
 	LDMS_FOREGROUND,
 	LDMS_CONFIG,
 	LDMS_INSTANCE,
+	LDMS_CONN_ERR_INFO_COUNT,
 	LDMS_N_OPTIONS
 } LDMS_OPTION;
 
@@ -3633,6 +3651,13 @@ int main(int argc, char *argv[])
 			CHECKARG(P,uint);
 			ev_thread_count = atoi(optarg);
 			has_arg[LDMS_THREAD_COUNT] = 1;
+			break;
+		case 'L':
+			CHECKARG(L,uint);
+			update_err_info_count = atoi(optarg);
+			if (update_err_info_count < 1)
+				update_err_info_count = 1;
+			has_arg[LDMS_CONN_ERR_INFO_COUNT] = 1;
 			break;
 		case 'Z':
 			CHECKARG(Z,uint);
