@@ -2126,13 +2126,24 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 
 	struct hostset *hset = arg;
 	pthread_mutex_lock(&hset->state_lock);
-	if (status != LDMS_LOOKUP_OK){
+	if (status != LDMS_LOOKUP_OK) {
 		hset->state = LDMSD_SET_CONFIGURED;
-		ldms_log(LDMS_LINFO,
-			"Error %d doing lookup for set '%s' (%s)\n",
-			status, hset->name, strerror(status));
+		hset->errcnt++;
+		if ((hset->errcnt % 1000) == 1 ) {
+			ldms_log(LDMS_LERROR,
+				"Error %d doing lookup for set '%s' (%s)"
+				" repeated %d\n",
+				status, hset->name, strerror(status),
+				hset->errcnt);
+		}
 		hset->set = NULL;
 		goto out;
+	}
+	if (hset->errcnt) {
+		ldms_log(LDMS_LERROR,
+			"Cleared %d lookup errors for set '%s'\n",
+			hset->errcnt, hset->name);
+		hset->errcnt = 0;
 	}
 	hset->set = s;
 	/*
