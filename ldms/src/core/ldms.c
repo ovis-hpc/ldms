@@ -485,6 +485,10 @@ void ldms_set_delete(ldms_set_t s)
 			strcat(__set_path, ".META");
 			unlink(__set_path);
 		}
+
+		memset(set->meta, 0xee, __le32_to_cpu(set->meta->meta_sz) +
+				__le32_to_cpu(set->meta->data_sz));
+
 		mm_free(set->meta);
 		free(set);
 	}
