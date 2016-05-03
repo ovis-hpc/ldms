@@ -21,5 +21,5 @@ The LDMS distribution comes with a complete set of man pages for each of the com
 Information on building, configuration, and deployment can also be found at [LDMS FAQ](https://ovis.ca.sandia.gov/mediawiki/index.php/LDMS_FAQ)
 
 ## News
-### Coming Soon -- v3
-### Please contract the developers regarding OVIS/LDMS with Aries or Gemini network performance counters.
+Coming Soon -- v3
+Please contract the developers regarding OVIS/LDMS with Aries or Gemini network performance counters.
