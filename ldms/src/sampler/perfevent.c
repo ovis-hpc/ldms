@@ -86,9 +86,16 @@
 #endif // __linux__
 
 //variables for group read
-static unsigned int eventCounter = 0;
-static int group_leader_fd = -1;
 static int started = 0;
+struct event_group {
+    int leader;
+    int pid;
+    int cpu;
+    unsigned int eventCounter;
+    int *metric_index;
+    LIST_ENTRY(event_group) entry;
+};
+LIST_HEAD(gevent_list, event_group) gevent_list;
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
@@ -102,6 +109,7 @@ struct pevent {
     int cpu;
     int fd;
     int metric_index;
+    int group_index;
     LIST_ENTRY(pevent) entry;
 };
 LIST_HEAD(pevent_list, pevent) pevent_list;
@@ -210,6 +218,26 @@ static struct pevent *find_event(char *name)
     return NULL;
 }
 
+static struct event_group *find_group(int event_pid, int event_cpu)
+{
+    struct event_group *eg;
+    LIST_FOREACH(eg, &gevent_list, entry) {
+
+        if (eg->pid == -1){
+        	if(eg->cpu == event_cpu){
+        		return eg;
+        	}
+        }
+
+        else{
+        	if(eg->pid == event_pid){
+        		return eg;
+        	}
+        }
+    }
+    return NULL;
+}
+
 static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
     struct kw add_token_tbl[] = {
@@ -275,10 +303,16 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
         goto err;
     }
 
-    pe->attr.disabled = 0; 
-    if(eventCounter == 0){ // if this is the group group leader
-        pe->attr.disabled = 1; //disable the group leader
+    pe->attr.disabled = 0;
+
+    struct event_group *current_group = find_group(pe->pid, pe->cpu);
+    int group_leader_fd = -1;
+    if(current_group == NULL){ // if this is the group group leader
+    	pe->attr.disabled = 1; // disable the group leader
+    }else{
+    	group_leader_fd = current_group->leader;
     }
+
 
     pe->fd = pe_open(&pe->attr, pe->pid, pe->cpu, group_leader_fd, 0);
     if (pe->fd < 0) {
@@ -293,13 +327,25 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
         goto err;
     }
 
-    if(eventCounter == 0){ // if this is the group group leader
-        group_leader_fd = pe->fd; // set the fd of group leader
+    if(current_group == NULL){ // if this is the group group leader
+    	current_group = calloc(1, sizeof *current_group); //allocate event group
+    	current_group->pid = pe->pid; // set pid for the group
+    	current_group->cpu = pe->cpu; // set cpu for the group
+    	current_group->eventCounter = 0; // initialize the event counter for the group
+    	current_group->leader = pe->fd; // set the fd of group leader
+    	current_group->metric_index = NULL;
+    	pe->group_index = 0; // initialize the index in group
+    	LIST_INSERT_HEAD(&gevent_list, current_group, entry); // add the new group to the list of groups
     }
 
-    eventCounter++;  
+    pe->group_index = current_group->eventCounter;
+    current_group->eventCounter++;
+
+
 
     LIST_INSERT_HEAD(&pevent_list, pe, entry);
+
+
     return 0;
 
 err:
@@ -384,6 +430,13 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
             goto err;
 		}
         pe->metric_index = rc;
+
+        struct event_group *current_group = find_group(pe->pid, pe->cpu);
+        if(current_group->metric_index == NULL)
+        	current_group->metric_index = calloc(current_group->eventCounter, sizeof(int));
+        current_group->metric_index[pe->group_index] = pe->metric_index;
+
+
         msglog(LDMSD_LINFO, "perfevent: event [name: %s, code: 0x%x] has been added.\n", pe->name, pe->attr.config);
     }
 
@@ -460,36 +513,43 @@ static int sample(struct ldmsd_sampler *self)
 
     //if not started yet, start with group_leader_fd
     if(!started){
-        rc = ioctl(group_leader_fd, PERF_EVENT_IOC_RESET, 0); // reset the values to 0
-        if(rc == -1){
-            msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, group_leader_fd);
-            return rc;
-        }
 
-        rc = ioctl(group_leader_fd, PERF_EVENT_IOC_ENABLE, 0); // start counting the values
-        if(rc == -1){
-            msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, group_leader_fd);
-            return rc;
+        struct event_group *eg;
+        LIST_FOREACH(eg, &gevent_list, entry) {
+
+            rc = ioctl(eg->leader, PERF_EVENT_IOC_RESET, 0); // reset the values to 0
+            if(rc == -1){
+                msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, eg->leader);
+                return rc;
+            }
+
+            rc = ioctl(eg->leader, PERF_EVENT_IOC_ENABLE, 0); // start counting the values
+            if(rc == -1){
+                msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, eg->leader);
+                return rc;
+            }
         }
-        
-        started = 1;
+       started = 1;
     }
 
     ldms_transaction_begin(set);
 
-    unsigned int read_size = (eventCounter + 2) * sizeof(long long); //based on read format.
-    long long *data = calloc(eventCounter + 2, sizeof(long long)); //allocate memory based on read format.
-    int read_result = read(group_leader_fd, data, read_size); // do the read
-    int event_index = (read_result / sizeof(long long)) - 1; // start from the last event added to the list
+    struct event_group *eg;
+    LIST_FOREACH(eg, &gevent_list, entry) {
 
-    LIST_FOREACH(pe, &pevent_list, entry) {
+        unsigned int read_size = (eg->eventCounter + 2) * sizeof(long long); //based on read format.
+        long long *data = calloc(eg->eventCounter + 2, sizeof(long long)); //allocate memory based on read format.
+        int read_result = read(eg->leader, data, read_size); // do the read
+        int event_index = (read_result / sizeof(long long)) - 1; // start from the last event added to the list
+        int m = 0;
+        for(m = 0; m < eg->eventCounter; m++){
+        	ldms_metric_set_u64(set, eg->metric_index[m], data[m+2]);
+        }
 
-        ldms_metric_set_u64(set, pe->metric_index, data[event_index--]);
     }
 
     ldms_transaction_end(set);
-
-    free(data);
+   //free(data);
 
     return 0;
 }
@@ -501,6 +561,7 @@ static void term(struct ldmsd_plugin *self)
     {
         LIST_FOREACH(pe, &pevent_list, entry) {
             ioctl(pe->fd, PERF_EVENT_IOC_DISABLE, 0);
+            close(pe->fd);
         }
     }
 
