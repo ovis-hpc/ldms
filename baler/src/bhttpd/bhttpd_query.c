@@ -1269,12 +1269,13 @@ struct bhttpd_handle_fn_entry {
 
 #define  HTTP_CONT_JSON    "application/json"
 #define  HTTP_CONT_STREAM  "application/octet-stream"
+#define  HTTP_CONT_TEXT    "text/plain"
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
 	{  "PTN",          HTTP_CONT_JSON,    bhttpd_handle_query_ptn          },
 	{  "METRIC_PTN",   HTTP_CONT_JSON,    bhttpd_handle_query_metric_ptn   },
 	{  "MSG",          HTTP_CONT_JSON,    bhttpd_handle_query_msg          },
-	{  "MSG_SIMPLE",   HTTP_CONT_JSON,    bhttpd_handle_query_msg_simple   },
+	{  "MSG_SIMPLE",   HTTP_CONT_TEXT,    bhttpd_handle_query_msg_simple   },
 	{  "META",         HTTP_CONT_JSON,    bhttpd_handle_query_meta         },
 	{  "METRIC_META",  HTTP_CONT_JSON,    bhttpd_handle_query_metric_meta  },
 	{  "IMG",          HTTP_CONT_STREAM,  bhttpd_handle_query_img          },
