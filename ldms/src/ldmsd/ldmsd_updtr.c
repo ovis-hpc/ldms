@@ -120,20 +120,21 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 #else /* LDMSD_UPDATE_TIME */
 	ldmsd_prdcr_set_t prd_set = arg;
 #endif /* LDMSD_UPDATE_TIME */
-
+	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %d\n",
+					prd_set->inst_name, status);
 	if (status) {
 		goto out;
 	}
 
 	if (!ldms_set_is_consistent(set)) {
 		ldmsd_log(LDMSD_LINFO, "Set %s is inconsistent.\n", prd_set->inst_name);
-		goto out;
+		goto set_ready;
 	}
 
 	gn = ldms_set_data_gn_get(set);
 	if (prd_set->last_gn == gn) {
 		ldmsd_log(LDMSD_LINFO, "Set %s oversampled.\n", prd_set->inst_name, prd_set->last_gn);
-		goto out;
+		goto set_ready;
 	}
 	prd_set->last_gn = gn;
 
@@ -145,6 +146,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		strgp->update_fn(strgp, prd_set);
 		ldmsd_strgp_unlock(strgp);
 	}
+set_ready:
+	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 out:
 	ldmsd_prdcr_set_ref_put(prd_set); /* The ref was taken before update */
 	return;
@@ -155,7 +158,10 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 	int rc;
 	struct timeval end;
 	/* The reference will be put back in update_cb */
+	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
+					prd_set->inst_name);
 	ldmsd_prdcr_set_ref_get(prd_set);
+	prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 #ifdef LDMSD_UPDATE_TIME
 	struct ldmsd_updt_time *updt_time;
 	struct ldmsd_updt_set *updt_set = calloc(1, sizeof(*updt_set));
@@ -169,16 +175,16 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, updt_set);
 	if (rc) {
 		__updt_time_put(updt_time);
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
-				"from ldms_xprt_update\n", rc);
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Udapting Set %s\n",
+						rc, prd_set->inst_name);
 		ldmsd_prdcr_set_ref_put(prd_set);
 		free(updt_set);
 	}
 #else /* LDMSD_UPDATE_TIME */
 	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d "
-				"from ldms_xprt_update\n", rc);
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Udapting Set %s\n",
+						rc, prd_set->inst_name);
 		ldmsd_prdcr_set_ref_put(prd_set);
 	}
 #endif /* LDMSD_UPDATE_TIME */
@@ -201,6 +207,11 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 	     prd_set = ldmsd_prdcr_set_next(prd_set)) {
 		int rc;
 		const char *str;
+		if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
+			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
+				"there is an outstanding update.\n",
+				__func__, prd_set->inst_name);
+		}
 		if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
 			continue;
 		/* If a match condition is not specified, everything matches */
