@@ -270,6 +270,7 @@ struct z_ugni_ep {
 
 	int sock;
 	int node_id;
+	int ep_id; /* The index in the endpoint array */
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;
 	char *conn_data;
@@ -292,6 +293,7 @@ struct z_ugni_ep {
 struct zap_ugni_post_desc {
 	gni_post_descriptor_t post;
 	struct z_ugni_ep *uep;
+	uint32_t ep_gn;
 	void *context;
 	LIST_ENTRY(zap_ugni_post_desc) link;
 };
