@@ -32,7 +32,7 @@ libstore_csv_la_CFLAGS = $(AM_CFLAGS)
 libstore_csv_la_LIBADD = $(STORE_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libstore_csv.la
 
-libstore_job_la_SOURCES = store_job.c
+libstore_job_la_SOURCES = store_job.c uthash.h
 libstore_job_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/../sampler
 libstore_job_la_LIBADD = $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_job.la
