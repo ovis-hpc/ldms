@@ -79,6 +79,12 @@
 
 #define VERSION_FILE "/proc/version"
 
+#define ZUGNI_LIST_REMOVE(elm, link) do { \
+	LIST_REMOVE((elm), link); \
+	(elm)->link.le_next = 0; \
+	(elm)->link.le_prev = 0; \
+} while(0)
+
 static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 {
 	struct sockaddr la = {0};
@@ -107,8 +113,8 @@ static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 
 #define LOG_(uep, fmt, ...) do { \
 	if ((uep) && (uep)->ep.z && (uep)->ep.z->log_fn) { \
-		char name[128]; \
-		format_4tuple(&(uep)->ep, name, 128); \
+		char name[ZAP_UGNI_EP_NAME_SZ]; \
+		format_4tuple(&(uep)->ep, name, ZAP_UGNI_EP_NAME_SZ); \
 		uep->ep.z->log_fn("zap_ugni: %s " fmt, name, ##__VA_ARGS__); \
 	} \
 } while(0);
@@ -120,8 +126,8 @@ static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 #ifdef DEBUG
 #define DLOG_(uep, fmt, ...) do { \
 	if ((uep) && (uep)->ep.z && (uep)->ep.z->log_fn) { \
-		char name[128]; \
-		format_4tuple(&(uep)->ep, name, 128); \
+		char name[ZAP_UGNI_EP_NAME_SZ]; \
+		format_4tuple(&(uep)->ep, name, ZAP_UGNI_EP_NAME_SZ); \
 		uep->ep.z->log_fn("zap_ugni [DEBUG]: %s " fmt, name, ##__VA_ARGS__); \
 	} \
 } while(0);
@@ -209,6 +215,9 @@ static void z_ugni_destroy(zap_ep_t ep);
 
 static LIST_HEAD(, z_ugni_ep) z_ugni_list = LIST_HEAD_INITIALIZER(0);
 static pthread_mutex_t z_ugni_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static struct zap_ugni_post_desc_list stalled_desc_list = LIST_HEAD_INITIALIZER(0);
+static pthread_mutex_t stalled_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #ifdef DEBUG
 static LIST_HEAD(, z_ugni_ep) deferred_list = LIST_HEAD_INITIALIZER(0);
@@ -299,7 +308,8 @@ static struct zap_ugni_post_desc *__alloc_post_desc(struct z_ugni_ep *uep)
 	d->uep = uep;
 	zap_get_ep(&uep->ep);
 	d->ep_gn = zap_ugni_get_ep_gn(uep->ep_id);
-	LIST_INSERT_HEAD(&uep->post_desc_list, d, link);
+	format_4tuple(&uep->ep, d->ep_name, ZAP_UGNI_EP_NAME_SZ);
+	LIST_INSERT_HEAD(&uep->post_desc_list, d, ep_link);
 	return d;
 }
 
@@ -877,30 +887,40 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
 		struct zap_ugni_post_desc *desc = (void*) post;
-		pthread_mutex_lock(&z_ugni_list_mutex);
-		if (!zap_ugni_is_ep_gn_matched(post->post_id, desc->ep_gn)) {
-			/*
-			 * The endpoint id isn't' matched the current
-			 * endpoint id in the endpoint context.
-			 *
-			 * The descriptor and the endpoint have been freed.
-			 */
-			DLOG("Received complete event after free the "
-					"endpoint %p.\n", desc->uep);
-			pthread_mutex_unlock(&z_ugni_list_mutex);
-			goto skip;
-		}
-
-		struct z_ugni_ep *uep = desc->uep;
 		if (grc) {
 			if (!(grc == GNI_RC_SUCCESS ||
 			      grc == GNI_RC_TRANSACTION_ERROR)) {
 				DLOG("process_cq: grc %d\n", grc);
 			}
-			LOG_(uep, "Receive cq with error %s\n",
-						gni_ret_str(grc));
+		}
+		pthread_mutex_lock(&z_ugni_list_mutex);
+		if (desc->is_stalled == 1) {
+			/*
+			 * The descriptor is in the stalled state.
+			 *
+			 * The completion corresponding to the descriptor
+			 * has been flushed. The corresponding endpoint
+			 * might have been freed already.
+			 */
+			LOG("%s: Received complete event after the endpoint is freed.\n",
+					desc->ep_name);
+			ZUGNI_LIST_REMOVE(desc, stalled_link);
+			free(desc);
+			pthread_mutex_unlock(&z_ugni_list_mutex);
+			goto skip;
 		}
 
+		struct z_ugni_ep *uep = desc->uep;
+		if (!uep) {
+			/*
+			 * This should not happen. The code is put in to prevent
+			 * the segmentation fault and to record the situation.
+			 */
+			LOG("%s: %s: desc->uep = NULL. Drop the descriptor.\n", __func__,
+				desc->ep_name);
+			pthread_mutex_unlock(&z_ugni_list_mutex);
+			goto skip;
+		}
 		pthread_mutex_lock(&uep->ep.lock);
 		if (uep->deferred_link.le_prev)
 			LOG_(uep, "uep %p: Doh!! I'm on the deferred list.\n", uep);
@@ -933,7 +953,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 					 desc->post.type);
 			__shutdown_on_error(uep);
 		}
-		LIST_REMOVE(desc, link);
+		ZUGNI_LIST_REMOVE(desc, ep_link);
 		pthread_mutex_unlock(&uep->ep.lock);
 		pthread_mutex_unlock(&z_ugni_list_mutex);
 
@@ -952,13 +972,22 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 	return GNI_RC_SUCCESS;
 }
 
+/* Caller must hold the endpoint list lock */
+void __stall_post_desc(struct zap_ugni_post_desc *d)
+{
+	zap_put_ep(&d->uep->ep);
+	d->is_stalled = 1;
+	d->uep = NULL;
+	LIST_INSERT_HEAD(&stalled_desc_list, d, stalled_link);
+}
+
 /* Caller must hold the endpoint lock. */
-void __free_post_desc_list(struct z_ugni_ep *uep)
+void __flush_post_desc_list(struct z_ugni_ep *uep)
 {
 	struct zap_ugni_post_desc *d;
 	d = LIST_FIRST(&uep->post_desc_list);
 	while (d) {
-		LIST_REMOVE(d, link);
+		ZUGNI_LIST_REMOVE(d, ep_link);
 		struct zap_event zev = {0};
 		switch (d->post.type) {
 		case GNI_POST_RDMA_GET:
@@ -977,7 +1006,7 @@ void __free_post_desc_list(struct z_ugni_ep *uep)
 		pthread_mutex_unlock(&uep->ep.lock);
 		uep->ep.cb(&uep->ep, &zev);
 		pthread_mutex_lock(&uep->ep.lock);
-		__free_post_desc(d);
+		__stall_post_desc(d);
 		d = LIST_FIRST(&uep->post_desc_list);
 	}
 }
@@ -1121,14 +1150,13 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 	/* Deliver the disconnected event */
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	zap_ugni_ep_id[uep->ep_id] = -1;
-	pthread_mutex_unlock(&z_ugni_list_mutex);
 
 #ifdef DEBUG
 	/* It is in the queue already. */
-	if (uep->deferred_link.le_next) {
+	if (uep->deferred_link.le_prev) {
 		/* It is in the deferred list ... remove it. */
-		LIST_REMOVE(uep, deferred_link);
-		uep->deferred_link.le_next = 0;
+		ZUGNI_LIST_REMOVE(uep, deferred_link);
+		uep->deferred_link.le_next = uep->deferred_link.le_prev = 0;
 		zap_put_ep(&uep->ep);
 	}
 #endif /* DEBUG */
@@ -1139,12 +1167,13 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 							uep->unbind_count);
 	pthread_mutex_lock(&uep->ep.lock);
 	if (!LIST_EMPTY(&uep->post_desc_list)) {
-		__free_post_desc_list(uep);
+		__flush_post_desc_list(uep);
 		DLOG("%s: after cleanup all rdma"
 			"post: ep %p: ref_count %d\n",
 			__func__, uep, uep->ep.ref_count);
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
+	pthread_mutex_unlock(&z_ugni_list_mutex);
 	ZAP_ASSERT(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED, &uep->ep,
 			"%s: uep->conn_ev.type (%s) is not ZAP_EVENT_"
 			"DISCONNECTED\n", __func__,
@@ -1162,7 +1191,7 @@ void __ugni_defer_disconnected_event(struct z_ugni_ep *uep)
 	DLOG("defer_disconnected: uep %p\n", uep);
 #ifdef DEBUG
 	pthread_mutex_lock(&deferred_list_mutex);
-	if (uep->deferred_link.le_next == 0) {
+	if (uep->deferred_link.le_prev == 0) {
 		/* It is not in the deferred list yet ... add it in. */
 		zap_get_ep(&uep->ep);
 		LIST_INSERT_HEAD(&deferred_list, uep, deferred_link);
@@ -1988,7 +2017,7 @@ static void z_ugni_destroy(zap_ep_t ep)
 	gni_return_t grc;
 	DLOG_(uep, "destroying endpoint %p\n", uep);
 	pthread_mutex_lock(&z_ugni_list_mutex);
-	LIST_REMOVE(uep, link);
+	ZUGNI_LIST_REMOVE(uep, link);
 	if (uep->ep_id >= 0)
 		zap_ugni_ep_id[uep->ep_id] = 0;
 	pthread_mutex_unlock(&z_ugni_list_mutex);
@@ -2294,7 +2323,7 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 		__sync_sub_and_fetch(&ugni_io_count, 1);
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
-		LIST_REMOVE(desc, link);
+		ZUGNI_LIST_REMOVE(desc, ep_link);
 		__free_post_desc(desc);
 		pthread_mutex_unlock(&ugni_lock);
 		return ZAP_ERR_RESOURCE;
@@ -2386,7 +2415,7 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 		__sync_sub_and_fetch(&ugni_io_count, 1);
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
-		LIST_REMOVE(desc, link);
+		ZUGNI_LIST_REMOVE(desc, ep_link);
 		__free_post_desc(desc);
 		pthread_mutex_unlock(&ugni_lock);
 		return ZAP_ERR_RESOURCE;
@@ -2448,7 +2477,7 @@ static void ugni_fini()
 	struct ugni_mh *mh;
 	while (!LIST_EMPTY(&mh_list)) {
 		mh = LIST_FIRST(&mh_list);
-		LIST_REMOVE(mh, link);
+		ZUGNI_LIST_REMOVE(mh, link);
 		(void)GNI_MemDeregister(_dom.nic, &mh->mh);
 		free(mh);
 	}

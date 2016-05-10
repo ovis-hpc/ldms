@@ -108,6 +108,12 @@
  */
 #define ZAP_UGNI_MAX_BTE 8192
 
+/*
+ * The length of the string
+ * lcl=<local ip address:port> <--> rmt=<remote ip address:port>
+ */
+#define ZAP_UGNI_EP_NAME_SZ 64
+
 struct zap_ugni_map {
 	struct zap_map map;
 	gni_mem_handle_t gni_mh; /**< GNI memory handle */
@@ -264,7 +270,7 @@ struct zap_ugni_msg_connect {
 #pragma pack()
 
 struct zap_ugni_post_desc;
-
+LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc);
 struct z_ugni_ep {
 	struct zap_ep ep;
 
@@ -278,7 +284,7 @@ struct z_ugni_ep {
 	uint8_t rejecting;
 	gni_ep_handle_t gni_ep;
 
-	LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc) post_desc_list;
+	struct zap_ugni_post_desc_list post_desc_list;
 	struct zap_event conn_ev;
 
 	/*
@@ -294,8 +300,11 @@ struct zap_ugni_post_desc {
 	gni_post_descriptor_t post;
 	struct z_ugni_ep *uep;
 	uint32_t ep_gn;
+	char ep_name[ZAP_UGNI_EP_NAME_SZ];
+	uint8_t is_stalled; /* It is in the stalled list. */
 	void *context;
-	LIST_ENTRY(zap_ugni_post_desc) link;
+	LIST_ENTRY(zap_ugni_post_desc) ep_link;
+	LIST_ENTRY(zap_ugni_post_desc) stalled_link;
 };
 
 static inline struct z_ugni_ep *z_sock_from_ep(zap_ep_t *ep)
