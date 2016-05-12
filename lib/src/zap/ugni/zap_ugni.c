@@ -2159,13 +2159,6 @@ static zap_err_t z_ugni_unmap(zap_ep_t ep, zap_map_t map)
 {
 	gni_return_t grc;
 	struct zap_ugni_map *m = (void*) map;
-	if (m->map.type != ZAP_MAP_REMOTE) {
-		/* we will not de-register our only memory handle! */
-	} else {
-		pthread_mutex_lock(&ep->lock);
-		LIST_REMOVE(&m->map, link);
-		pthread_mutex_unlock(&ep->lock);
-	}
 	free(m);
 	return ZAP_ERR_OK;
 }
