@@ -133,7 +133,7 @@ static inline int pe_open(struct perf_event_attr *attr, pid_t pid, int cpu, int 
 	return fd;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin* self)
 {
 	return
 		"    config name=perfevent action=init producer=<producer_name> instance=<instance_name> [schema=<schema_name>]\n"
@@ -482,7 +482,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 
 err0:
-	msglog(LDMSD_LERROR, usage());
+	msglog(LDMSD_LERROR, usage(self));
 	goto err2;
 err1:
 	msglog(LDMSD_LERROR, "perfevent: Invalid configuration keyword '%s'\n", action);
@@ -538,6 +538,7 @@ static int sample(struct ldmsd_sampler *self)
 		for(m = 0; m < eg->eventCounter; m++){
 			ldms_metric_set_u64(set, eg->metric_index[m], data[m+2]);
 		}
+		free(data);
 	}
 
 	ldms_transaction_end(set);
@@ -548,11 +549,22 @@ static int sample(struct ldmsd_sampler *self)
 static void term(struct ldmsd_plugin *self)
 {
 	struct pevent *pe;
+	struct event_group 
+
 	if(started) {
 		LIST_FOREACH(pe, &pevent_list, entry) {
 			ioctl(pe->fd, PERF_EVENT_IOC_DISABLE, 0);
 			close(pe->fd);
 		}
+	}
+
+	LIST_FOREACH(pe, &pevent_list, entry) {
+		free(pe);
+	}
+
+	LIST_FOREACH(ge, &gevent_list, entry) {
+		free(ge->metric_index);
+		free(ge);
 	}
 
 	if (set)

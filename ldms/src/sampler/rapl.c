@@ -216,7 +216,7 @@ err:
  *     producer     The component id value.
  *     instance     The set name.
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 	char *instance_name;
@@ -259,12 +259,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int i;
 	int event_count;
@@ -297,7 +297,7 @@ static int sample(void)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	int papi_event_set; 
 
@@ -305,6 +305,8 @@ static void term(void)
 	if (PAPI_stop(papi_event_set, papi_event_val) != PAPI_OK) {
 		msglog(LDMSD_LERROR, "papi: failed to stop event set!\n");
 	}
+
+	free(papi_event_val);
 
 	PAPI_destroy_eventset(&papi_event_set);
 	PAPI_shutdown();
@@ -318,7 +320,7 @@ static void term(void)
 	schema = NULL;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=spapi producer=<producer_name> instance=<instance_name>\n"
 		"    producer     The producer name\n"

@@ -56,9 +56,9 @@
 #include <sys/errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <papi.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "papi.h"
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
@@ -72,6 +72,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	int event_code = PAPI_NULL;
 	int papi_event_set = PAPI_NULL;
 	char *event_name;
+	char** status;
 	PAPI_event_info_t event_info;
 
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
@@ -95,7 +96,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		goto err;
 	}
 
-	event_name = strtok(events, ",");
+	event_name = strtok_r(events, ",", status);
 	while (event_name) {
 		if(PAPI_event_name_to_code(event_name, &event_code) != PAPI_OK) {
 			msglog(LDMSD_LERROR, "papi: failed to get event code of %s\n", event_name);
@@ -182,7 +183,7 @@ err:
  *     pid          The process to attach to.
  *     events       The the name of the hardware counter events 
  */
-static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	int rc;
 	uint64_t pid = 0;
@@ -240,12 +241,12 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	return 0;
 }
 
-static ldms_set_t get_set()
+static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int sample(void)
+static int sample(struct ldmsd_sampler *self)
 {
 	int i;
 	int event_count;
@@ -278,7 +279,7 @@ static int sample(void)
 	return 0;
 }
 
-static void term(void)
+static void term(struct ldmsd_plugin *self)
 {
 	int papi_event_set; 
 
@@ -286,6 +287,8 @@ static void term(void)
 	if (PAPI_stop(papi_event_set, papi_event_val) != PAPI_OK) {
 		msglog(LDMSD_LERROR, "papi: failed to stop event set!\n");
 	}
+
+	free(papi_event_val);
 
 	PAPI_destroy_eventset(&papi_event_set);
 	PAPI_shutdown();
@@ -299,7 +302,7 @@ static void term(void)
 	schema = NULL;
 }
 
-static const char *usage(void)
+static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=spapi producer=<producer_name> instance=<instance_name> pid=<pid> events=<event1,event2,...>\n"
 		"    producer     The producer name\n"
