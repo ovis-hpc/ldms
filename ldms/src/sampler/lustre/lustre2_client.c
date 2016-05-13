@@ -103,7 +103,7 @@ ldmsd_msg_log_f msglog;
 uint64_t comp_id;
 
 LDMS_JOBID_GLOBALS;
-ldms_metric_t jobid_metric;
+ldms_metric_t jobid_metrics[SLURM_NUM_METRICS];
 
 char tmp_path[PATH_MAX];
 
@@ -271,13 +271,16 @@ static int create_metric_set(const char *path, const char *oscs,
 
 	/* customized LDMS_ADD_JOBID_METRIC since we have no table. */
         if (with_jobid && slurmjobid_ri) {
-                jobid_metric = ldms_add_metric(set, SLURM_JOBID_METRIC_NAME,
-                                 LDMS_V_U64);
-                if (!jobid_metric) {
-                        rc = ENOMEM;
-                        goto err1;
-                }
-                ldms_set_user_data(jobid_metric, comp_id);
+		int imet;
+		for (imet = 0; imet < SLURM_NUM_METRICS; imet++) {
+			jobid_metrics[imet] = ldms_add_metric(set,
+				ldms_job_metric_names[imet], LDMS_V_U64);
+			if (!jobid_metrics[imet]) {
+				rc = ENOMEM;
+				goto err1;
+			}
+			ldms_set_user_data(jobid_metrics[imet], comp_id);
+		}
         }
 
 	rc = 0;
@@ -391,10 +394,15 @@ static int sample(void)
 
 	/* custom since no table for LDMS_JOBID_SAMPLE(v,metric_table,metric_no); */
         if (with_jobid && slurmjobid_ri) {
+		struct ldms_job_info *ji;
+		int imet;
 		union ldms_value lv;
                 update_resource_info(slurmjobid_ri);
-                lv.v_u64 = slurmjobid_ri->v.u64;
-                ldms_set_metric(jobid_metric, &lv);
+		ji = slurmjobid_ri->v.obj;
+		for (imet = 0; imet < SLURM_NUM_METRICS; imet++) {
+			lv.v_u64 = ji->val[imet];
+			ldms_set_metric(jobid_metrics[imet], &lv);
+		}
         }
 
 	ldms_end_transaction(set);

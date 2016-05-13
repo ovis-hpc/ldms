@@ -103,6 +103,9 @@ static char *qc_dir = NULL;
 static resource_info_manager rim = NULL;
 static uint64_t last_jobvalue[SLURM_NUM_METRICS] = {0};
 static uint64_t last_generation = 0;
+#define LDMS_VERSION_METRIC "ldms_version"
+#define EXTRA_METRICS 1
+static uint64_t daemon_version = 0;
 
 #ifdef HAVE_QC_SAMPLER
 static int qc_file = -1;
@@ -130,6 +133,13 @@ static int create_metric_set(const char *path)
 		tot_meta_sz += meta_sz;
 		tot_data_sz += data_sz;
 	}
+	rc = ldms_get_metric_size(LDMS_VERSION_METRIC, LDMS_V_U64, &meta_sz,
+		&data_sz);
+	if (rc)
+		return rc;
+	tot_meta_sz += meta_sz;
+	tot_data_sz += data_sz;
+
 
 	/* Create the metric set */
 	rc = ENOMEM;
@@ -137,7 +147,7 @@ static int create_metric_set(const char *path)
 	if (rc)
 		return rc;
 
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
+	metric_table = calloc(metric_count + EXTRA_METRICS, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
 	/*
@@ -160,7 +170,15 @@ static int create_metric_set(const char *path)
 		}
 		ldms_set_user_data(metric_table[metric_count], comp_id);
 	}
+	metric_table[metric_count] = ldms_add_metric(set,
+		LDMS_VERSION_METRIC, LDMS_V_U64);
+	if (!metric_table[metric_count]) {
+		rc = ENOMEM;
+		goto err;
+	}
+	ldms_set_user_data(metric_table[metric_count], comp_id);
 
+	msglog(LDMS_LDEBUG,"slurm createset ok\n");
 	return 0;
 
  err:
@@ -353,8 +371,20 @@ static int sample(void)
 		}
 #endif
 	}
+	v.v_u64 = daemon_version;
+	ldms_set_metric(metric_table[metric_count], &v);
 
 #ifdef HAVE_QC_SAMPLER
+	/* write last metric to the qc data file */
+	if (qc_file != -1) {
+		snprintf(qc_buffer,qc_len_buffer,
+			"%s,%s,%" PRIu64 "\n",
+			ldms_get_metric_name(metric_table[metric_count]),
+			qc_date_and_time,
+			v.v_u64);
+		qc_buffer[qc_len_buffer-1] = '\0';
+		write(qc_file, qc_buffer, strlen(qc_buffer));
+	}
 	/* flush qc file */
 	fsync(qc_file);
 #endif
@@ -442,6 +472,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	rim = ldms_get_rim();
+	daemon_version = ldms_version_number();
 	
 	return &slurmjobid_plugin.base;
 }

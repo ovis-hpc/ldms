@@ -281,14 +281,18 @@ void ldms_log(int level, const char *fmt, ...)
 void cleanup(int x)
 {
 	ldms_log(LDMS_LCRITICAL, "LDMS Daemon exiting...status %d\n", x);
-	if (ctrl_thread != (pthread_t)-1) {
-		void *dontcare;
-		pthread_cancel(ctrl_thread);
-		if (pthread_join(ctrl_thread, &dontcare)) {
-			ldms_log(LDMS_LCRITICAL,
-				"Unable to join control thread\n");
+	pthread_t die_thread = ctrl_thread;
+	ctrl_thread = (pthread_t)-1;
+	if (die_thread != (pthread_t)-1) {
+		if (pthread_cancel(die_thread) ) {
+			ldms_log(LDMS_LERROR,
+				"Unable to cancel control thread\n");
 		} else {
-			ctrl_thread = (pthread_t)-1;
+			void *dontcare;
+			if (pthread_join(die_thread, &dontcare)) {
+				ldms_log(LDMS_LCRITICAL,
+					"Unable to join control thread\n");
+			}
 		}
 	}
 
@@ -2778,6 +2782,7 @@ void listen_on_transport(char *transport_str)
 	if (ret) {
 		ldms_log(LDMS_LERROR, "Error %d listening on the '%s' transport.\n",
 			 ret, name);
+		ldms_log(LDMS_LINFO, "Old daemon running or port stuck in CLOSE_WAIT; netstat -tonp to check.\n");
 		free(tmp);
 		cleanup(7);
 	}

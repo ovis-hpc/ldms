@@ -76,7 +76,10 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
+rm -f vg.agg.log
+#valgrind -v --track-origins=yes --log-file=vg.agg.log ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -q DEBUG
 ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -q DEBUG
+#sleep 2
 ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -q DEBUG
 ldms-aggd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -q DEBUG
 ldms-aggd -x sock:$port4 -S $SOCKDIR/metric_socket_4  -l ${LOGDIR}/4.txt -q DEBUG
@@ -86,30 +89,31 @@ mysleep 1
 for i in 1 2; do
 	echo Starting plugins on daemon$i
 	echo 1000$i > $SLURMFILE.$i
-	echo "load name=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "config name=slurmjobid set=localhost$i/slurmjobid component_id=$i file=$SLURMFILE.$i colname=$SLURMCOL" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "start name=slurmjobid interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "config name=meminfo set=localhost$i/meminfo component_id=$i with_jobid=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "load name=procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "config name=procdiskstats set=localhost$i/procdiskstats component_id=$i with_jobid=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-	echo "start name=procdiskstats interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+	echo 3556 >> $SLURMFILE.$i
+	echo "load name=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "config name=slurmjobid set=localhost$i/slurmjobid component_id=$i file=$SLURMFILE.$i colname=$SLURMCOL" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "start name=slurmjobid interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "load name=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "config name=meminfo set=localhost$i/meminfo component_id=$i with_jobid=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "start name=meminfo interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "load name=procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "config name=procdiskstats set=localhost$i/procdiskstats component_id=$i with_jobid=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+	echo "start name=procdiskstats interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
 	if test "x$i" = "x1"; then
-		echo "load name=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-		echo "config name=procstatutil2 set=localhost$i/procstatutil2 component_id=$i with_jobid=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-		echo "start name=procstatutil2 interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+		echo "load name=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+		echo "config name=procstatutil2 set=localhost$i/procstatutil2 component_id=$i with_jobid=1" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+		echo "start name=procstatutil2 interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
 	else
-		echo "load name=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-		echo "config name=procstatutil2 set=localhost$i/procstatutil2 component_id=$i" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-		echo "start name=procstatutil2 interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+		echo "load name=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+		echo "config name=procstatutil2 set=localhost$i/procstatutil2 component_id=$i" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+		echo "start name=procstatutil2 interval=1000000" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
 	fi
 done
 mysleep 2
 
 for i in 1 2; do
 	echo Adding host$i to aggregator`expr 2 + $i`
-	echo "add host=localhost type=active xprt=sock interval=1000000 port=6110$i sets=localhost$i/slurmjobid,localhost$i/meminfo,localhost$i/procdiskstats,localhost$i/procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_`expr 2 + $i`
+	echo "add host=localhost type=active xprt=sock interval=1000000 port=6210$i sets=localhost$i/slurmjobid,localhost$i/meminfo,localhost$i/procdiskstats,localhost$i/procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_`expr 2 + $i` -d
 	mysleep 1
 done
 
@@ -117,13 +121,13 @@ mysleep 5
 for i in 3 4; do
 mkdir -p $STOREDIR$i
 echo Adding store_csv to aggregator$i
-echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+echo "load name=store_csv" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
 mysleep 2
-echo "config name=store_csv path=${STOREDIR}$i altheader=1 id_pos=1 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-echo "store name=store_csv comp_type=node set=slurmjobid container=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-echo "store name=store_csv comp_type=node set=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-echo "store name=store_csv comp_type=node set=procdiskstats container=procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
-echo "store name=store_csv comp_type=node set=procstatutil2 container=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i
+echo "config name=store_csv path=${STOREDIR}$i altheader=1 id_pos=1 sequence=forward" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+echo "store name=store_csv comp_type=node set=slurmjobid container=slurmjobid" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+echo "store name=store_csv comp_type=node set=meminfo container=meminfo" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+echo "store name=store_csv comp_type=node set=procdiskstats container=procdiskstats" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
+echo "store name=store_csv comp_type=node set=procstatutil2 container=procstatutil2" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_$i -d
 mysleep 2
 done
 #
@@ -133,14 +137,18 @@ ldms_ls -h localhost -x sock -p $port3
 echo rescheduling jobs
 for i in 1 2; do
 	echo 0 > $SLURMFILE.$i
+	echo 3556 >> $SLURMFILE.$i
 	mysleep 2
 	echo 2000$i > $SLURMFILE.$i
+	echo 3556 >> $SLURMFILE.$i
 done
 sleep 3
 for i in 1 2; do
 	echo 0 > $SLURMFILE.$i
+	echo 3556 >> $SLURMFILE.$i
 	mysleep 2
 	echo 3000$i > $SLURMFILE.$i
+	echo 3556 >> $SLURMFILE.$i
 done
 mysleep 10
 pkill ldmsd

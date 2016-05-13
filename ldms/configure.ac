@@ -12,6 +12,7 @@ m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AC_PROG_LIBTOOL
 AC_LIB_RPATH
+SPLIT_PACKAGE_VERSION
 
 dnl Checks for programs
 AC_PROG_CC
