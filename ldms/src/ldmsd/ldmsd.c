@@ -2326,12 +2326,17 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	}
 	if (hset->stale_gn_logged != 0) {
 		uint64_t dpull = gn - hset->stale_gn_logged;
+		if (gn < hset->stale_gn_logged)
+			dpull = 0; /* rollover or restart of source */
 		uint64_t dset = dpull / ldms_get_set_card(hset->set);
 		struct ldms_timestamp newtime = *(ldms_get_timestamp(hset->set));
 		int dt = newtime.sec - hset->stale_time.sec;
-		ldms_log(LDMS_LINFO, "Set %s staleness generation# <%"
-			PRIu64 "> (%d) cleared at <%" PRIu64 "> %d.%06d, %" PRIu64 " sets later, %d sec later.\n",
-		       	hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, newtime.usec, dset, dt);
+		if (dpull)
+			ldms_log(LDMS_LINFO, "Set %s staleness generation# <%" PRIu64 "> (%d) cleared at <%" PRIu64 "> %d.%06d, %" PRIu64 " sets later, %d sec later.\n",
+		       		hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, newtime.usec, dset, dt);
+		else
+			ldms_log(LDMS_LINFO, "Set %s staleness generation# <%" PRIu64 "> (%d) cleared at <%" PRIu64 "> %d.%06d, after restart/rollover %d sec later.\n",
+		       		hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, newtime.usec, dt);
 		hset->stale_gn_logged = 0;
 	}
 
