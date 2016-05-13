@@ -549,7 +549,7 @@ static int sample(struct ldmsd_sampler *self)
 static void term(struct ldmsd_plugin *self)
 {
 	struct pevent *pe;
-	struct event_group 
+	struct event_group *ge; 
 
 	if(started) {
 		LIST_FOREACH(pe, &pevent_list, entry) {
