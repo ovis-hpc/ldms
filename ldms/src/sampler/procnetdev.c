@@ -272,6 +272,7 @@ static int sample(void)
 
 	LDMS_JOBID_SAMPLE(jv,metric_table,metric_no);
 
+	int metric_offset = metric_no;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -295,7 +296,7 @@ static int sample(void)
 		//so we can just include/skip w/o have to keep track of which on we are on
 		for (j = 0; j < niface; j++){
 			if (strcmp(curriface,iface[j]) == 0){
-				metric_no = j*NVARS;
+				metric_no =  metric_offset + j*NVARS;
 				for (i = 0; i < NVARS; i++){
 					ldms_set_metric(metric_table[metric_no++], &v[i]);
 				}

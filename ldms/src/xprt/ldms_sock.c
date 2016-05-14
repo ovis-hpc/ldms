@@ -654,7 +654,7 @@ static void sock_xprt_destroy(struct ldms_xprt *x)
 	(void)inet_ntop(AF_INET, &rem->sin_addr, rem_buf, sizeof(rem_buf));
 
 	struct ldms_sock_xprt *r = sock_from_xprt(x);
-	x->log(LDMS_LINFO,"sock_xprt_destroy: destroying %x\n", r);
+	x->log(LDMS_LDEBUG,"sock_xprt_destroy: destroying %x\n", r);
 	sock_xprt_term(r);
 }
 
@@ -871,7 +871,7 @@ struct ldms_xprt *xprt_get(recv_cb_t recv_cb,
 
 	x->max_msg = (1024 * 1024);
 	x->log = log_fn;
-	x->log(LDMS_LINFO,"xprt_get: created %x\n", r);
+	x->log(LDMS_LDEBUG,"xprt_get: created %x\n", r);
 	TF(x);
 	x->connect = sock_xprt_connect;
 	x->check_proceed = sock_xprt_check_proceed;

@@ -905,6 +905,35 @@ ldms_pedigree()
 
 }
 
+uint64_t ldms_version_number()
+{
+	return ldms_version_major() *  1000000000 +
+		ldms_version_minor() * 1000000 +
+		ldms_version_patch() * 1000 +
+		ldms_version_rel();
+}
+
+uint64_t ldms_version_major()
+{
+	return PACKAGE_VERSION_MAJOR;
+}
+
+uint64_t ldms_version_minor()
+{
+	return PACKAGE_VERSION_MINOR;
+}
+
+uint64_t ldms_version_patch()
+{
+	return PACKAGE_VERSION_PATCH;
+}
+
+uint64_t ldms_version_rel()
+{
+	return PACKAGE_VERSION_REVIEW;
+}
+
+
 resource_info_manager ldms_get_rim()
 {
 	return ldms_rim;

@@ -958,8 +958,15 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 				       ntohl(reply->lookup.data_len),
 				       &set_t,
 				       LDMS_SET_F_REMOTE | LDMS_SET_F_DIRTY);
-		if (rc)
+		if (rc) {
+			x->log(LDMS_LDEBUG,"process_lookup_reply: __ldms_create_set failed: %d\n",rc);
+			if (rc == ENOMEM) {
+				x->log(LDMS_LDEBUG,
+				"try increasing set memory with"
+				" -m $BIGGERSIZE\n");
+			}
 			goto out;
+		}
 		sd = (struct ldms_set_desc *)set_t;
 		set = sd->set;
 	} else {

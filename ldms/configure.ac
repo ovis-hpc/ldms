@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 2.4.6, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 2.4.7, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 dnl AC_CONFIG_SRCDIR([src/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -12,6 +12,7 @@ m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AC_PROG_LIBTOOL
 AC_LIB_RPATH
+SPLIT_PACKAGE_VERSION
 
 dnl Checks for programs
 AC_PROG_CC
@@ -365,6 +366,9 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_usertest.sh
 		 scripts/ldms_local_usertest.sh
 		 scripts/ldms_local_temperatures.sh
+		 scripts/ldms_local_jobspool_test.sh
+		 scripts/ldms_local_jobsdie_test.sh
+		 scripts/ldms_local_jobtest.sh
 		 scripts/ldms_local_slurmtest.sh
 		 scripts/ldms_local_valgrind.sh
 		 scripts/ldms_local_clocktest.sh

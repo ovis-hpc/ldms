@@ -251,6 +251,17 @@ int ldms_init(size_t max_size);
  */
 const char * ldms_pedigree();
 
+/**
+ * \brief Numeric format of ldms version
+ * $majo$min$pat$rel
+ */
+extern uint64_t ldms_version_number();
+extern uint64_t ldms_version_major();
+extern uint64_t ldms_version_minor();
+extern uint64_t ldms_version_patch();
+extern uint64_t ldms_version_rel();
+
+
 /*
  * Get the ldmsd resource manager singleton instance.
  * This instance is NULL until ldms_init succeeds.

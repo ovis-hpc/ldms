@@ -78,6 +78,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_slurmjobid.h"
 
 #include "coll/str_map.h"
 #include "lustre_sampler.h"
@@ -100,6 +101,9 @@ static ldms_set_t set;
 FILE *mf;
 ldmsd_msg_log_f msglog;
 uint64_t comp_id;
+
+LDMS_JOBID_GLOBALS;
+ldms_metric_t jobid_metrics[SLURM_NUM_METRICS];
 
 char tmp_path[PATH_MAX];
 
@@ -241,6 +245,9 @@ static int create_metric_set(const char *path, const char *oscs,
 		}
 	}
 
+	LDMS_SIZE_JOBID_METRIC(lustre2_client, meta_sz, tot_meta_sz,
+		data_sz, tot_data_sz, metric_count, rc, msglog);
+
 	/* Done calculating, now it is time to construct set */
 	rc = ldms_create_set(path, tot_meta_sz, tot_data_sz, &set);
 	if (rc)
@@ -261,6 +268,20 @@ static int create_metric_set(const char *path, const char *oscs,
 				goto err1;
 		}
 	}
+
+	/* customized LDMS_ADD_JOBID_METRIC since we have no table. */
+        if (with_jobid && slurmjobid_ri) {
+		int imet;
+		for (imet = 0; imet < SLURM_NUM_METRICS; imet++) {
+			jobid_metrics[imet] = ldms_add_metric(set,
+				ldms_job_metric_names[imet], LDMS_V_U64);
+			if (!jobid_metrics[imet]) {
+				rc = ENOMEM;
+				goto err1;
+			}
+			ldms_set_user_data(jobid_metrics[imet], comp_id);
+		}
+        }
 
 	rc = 0;
 	goto out;
@@ -294,6 +315,7 @@ static void term(void)
 	if (set)
 		ldms_destroy_set(set);
 	set = NULL;
+	LDMS_JOBID_TERM;
 }
 
 /**
@@ -301,9 +323,10 @@ static void term(void)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_client component_id=<comp_id> set=<setname> osts=<OST1>,...
+ * config name=lustre_client component_id=<comp_id> set=<setname> with_jobid=<bool> osts=<OST1>,...
  *     comp_id     The component id value.
  *     setname     The set name.
+ *     bool        include jobid in set or not.
  *     osts        The comma-separated list of the OSTs to sample from.
  * </code>
  * If osts is not given, the plugin will create ldms_set according to the
@@ -316,6 +339,8 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	value = av_value(avl, "component_id");
 	if (value)
 		comp_id = strtol(value, NULL, 0);
+
+	LDMS_CONFIG_JOBID_METRIC(value,avl);
 
 	value = av_value(avl, "set");
 	oscs = av_value(avl, "osc");
@@ -337,6 +362,7 @@ static const char *usage(void)
 "	osc=STR,STR,...	The list of OCSs.\n"
 "	mdc=STR,STR,...	The list of MDCs.\n"
 "	llite=STR,STR,...	The list of llites.\n"
+"   " LDMS_JOBID_DESC
 "For oscs,mdcs and llites: if not specified, NONE of the\n"
 "oscs/mdcs/llites will be added. If {oscs,mdcs,llites} is set to *, all\n"
 "of the available {oscs,mdcs,llites} at the time will be added.\n"
@@ -366,6 +392,18 @@ static int sample(void)
 		lss_sample(lss);
 	}
 
+	/* custom since no table for LDMS_JOBID_SAMPLE(v,metric_table,metric_no); */
+        if (with_jobid && slurmjobid_ri) {
+		struct ldms_job_info *ji;
+		int imet;
+		union ldms_value lv;
+                update_resource_info(slurmjobid_ri);
+		ji = slurmjobid_ri->v.obj;
+		for (imet = 0; imet < SLURM_NUM_METRICS; imet++) {
+			lv.v_u64 = ji->val[imet];
+			ldms_set_metric(jobid_metrics[imet], &lv);
+		}
+        }
 
 	ldms_end_transaction(set);
 	return 0;

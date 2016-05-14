@@ -126,10 +126,14 @@ BIG_DSTRING_TYPE(LDMS_MSG_MAX);
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 #define FMT "Z:H:i:l:r:S:s:x:T:M:t:P:I:m:FkNC:f:D:q:VA"
 #define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
-/* YAML needs instance number to differentiate configuration for an instnace
+/* YAML needs instance number to differentiate configuration for an instance
  * from other instances' configuration in the same configuration file
  */
 int instance_number = 1;
+
+/* plugin loading message size limits */
+#define PLUG_REPLY_MAX 1024
+#define PLUG_ERR_MAX PLUG_REPLY_MAX+32
 
 /* max cmd built with yaml */
 #define CMD_MAX 1024
@@ -166,14 +170,15 @@ pthread_t relay_thread = (pthread_t)-1;
 char *test_set_name;
 int test_set_count=1;
 int test_metric_count=1;
+static int update_err_info_count = 1000; /**< default errs between infos per host err */
 int notify=0;
-int muxr_s = -1;
+static int muxr_s = -1;
 char *logfile;
-char *pidfile;
-char *sockname = NULL;
+static char *pidfile;
+static char *sockname = NULL;
 size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
 unsigned long saggs_mask = 0;
-ldms_t ldms;
+ldms_t ldms; /* turns out this is never set to anything, except null, not mentioned in a header and never assumed to exist in any other .c file. */
 FILE *log_fp;
 #define LDMS_LOG_SYSLOG (FILE*)0x7 /* known bad file pointer */
 struct attr_value_list *av_list;
@@ -213,13 +218,27 @@ int enable_sheller = 0;
 
 int passive = 0;
 /* by default ldmsd should not be 'ERROR' */
+static pthread_mutex_t levelmutex = PTHREAD_MUTEX_INITIALIZER;
 int log_level = LDMS_LERROR;
+static void set_log_level(int lvl)
+{
+	if (lvl < 0)
+		return;
+	pthread_mutex_lock(&levelmutex);
+	log_level = lvl;
+	pthread_mutex_unlock(&levelmutex);
+	
+}
+
 void ldms_log(int level, const char *fmt, ...)
 {
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	/* Don't say a word when the level is below the threshold */
-	if (level < log_level)
+	pthread_mutex_lock(&levelmutex);
+	if (level < log_level) {
+		pthread_mutex_unlock(&levelmutex);
 		return;
+	}
 	va_list ap;
 	if (log_fp != LDMS_LOG_SYSLOG)
 		pthread_mutex_lock(&mutex);
@@ -256,23 +275,39 @@ void ldms_log(int level, const char *fmt, ...)
 		vsyslog(ldms_level_to_syslog(level),fmt,ap);
 	}
 	
+	pthread_mutex_unlock(&levelmutex);
 }
 
 void cleanup(int x)
 {
 	ldms_log(LDMS_LCRITICAL, "LDMS Daemon exiting...status %d\n", x);
-	if (ctrl_thread != (pthread_t)-1) {
-		void *dontcare;
-		pthread_cancel(ctrl_thread);
-		pthread_join(ctrl_thread, &dontcare);
+	pthread_t die_thread = ctrl_thread;
+	ctrl_thread = (pthread_t)-1;
+	if (die_thread != (pthread_t)-1) {
+		if (pthread_cancel(die_thread) ) {
+			ldms_log(LDMS_LERROR,
+				"Unable to cancel control thread\n");
+		} else {
+			void *dontcare;
+			if (pthread_join(die_thread, &dontcare)) {
+				ldms_log(LDMS_LCRITICAL,
+					"Unable to join control thread\n");
+			}
+		}
 	}
 
-	if (muxr_s >= 0)
+	if (muxr_s >= 0) {
 		close(muxr_s);
-	if (sockname && bind_succeeded)
+	}
+	muxr_s = -1;
+	if (sockname && bind_succeeded) {
 		unlink(sockname);
-	if (ldms)
+		sockname = NULL;
+	}
+	if (ldms) {
 		ldms_release_xprt(ldms);
+		// ldms = NULL;
+	}
 
 	if (!foreground && pidfile) {
 		unlink(pidfile);
@@ -763,8 +798,8 @@ int process_load_plugin(int fd,
 {
 	TF();
 	char *plugin_name;
-	char err_str[128];
-	char reply[128];
+	char err_str[PLUG_ERR_MAX];
+	char reply[PLUG_REPLY_MAX];
 	int rc = 0;
 
 	err_str[0] = '\0';
@@ -1282,9 +1317,12 @@ int process_add_host(int fd,
 add_timeout:
 	evtimer_add(hs->event, &hs->timeout);
 
+	int oldstate = 0;
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
 	pthread_mutex_lock(&host_list_lock);
 	LIST_INSERT_HEAD(&host_list, hs, link);
 	pthread_mutex_unlock(&host_list_lock);
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
 
 	bdstr_set(&replybuf,"0");
 	send_reply(fd, sa, sa_len, bdstr, bdlen+1);
@@ -1377,6 +1415,8 @@ int process_update_standby(int fd,
 
 }
 
+/* must never be called with the same container twice */
+static
 struct ldmsd_store_policy *get_store_policy(const char *container,
 			const char *set_name, const char *comp_type)
 {
@@ -1498,7 +1538,7 @@ err:
 void destroy_metric_idx_list(struct ldmsd_store_metric_index_list *list)
 {
 	struct ldmsd_store_metric_index *smi;
-	while (smi = LIST_FIRST(list)) {
+	while ( (smi = LIST_FIRST(list)) != NULL) {
 		LIST_REMOVE(smi, entry);
 		free(smi->name);
 		free(smi);
@@ -1617,7 +1657,7 @@ void destroy_store_policy(struct ldmsd_store_policy *sp)
 	free(sp->setname);
 	destroy_metric_idx_list(&sp->metric_list);
 	struct hostset_ref *hset_ref;
-	while (hset_ref = LIST_FIRST(&sp->hset_ref_list)) {
+	while ( (hset_ref = LIST_FIRST(&sp->hset_ref_list)) != NULL) {
 		LIST_REMOVE(hset_ref, entry);
 		destroy_hset_ref(hset_ref, sp);
 	}
@@ -1847,7 +1887,7 @@ int process_store(int fd,
 	return 0;
 
 clean_fake_list:
-	while (sp_ref = LIST_FIRST(&fake_list)) {
+	while ( (sp_ref = LIST_FIRST(&fake_list)) != NULL) {
 		LIST_REMOVE(sp_ref, entry);
 		free(sp_ref);
 	}
@@ -1917,7 +1957,7 @@ int process_loglevel(int fd,
 	}
 
 	ldms_log(LDMS_LINFO,"Updating loglevel to %s\n", loglevels_names[nlvl]);
-	log_level = nlvl;
+	set_log_level(nlvl);
 	//has_arg[LDMS_QUIET] = 1; Only used for yaml. Not relevant to this release
 
 
@@ -2052,7 +2092,7 @@ void hset_ref_put(struct hostset *hset)
 			ldms_metric_release(hset->mvec->v[i]);
 		}
 		struct ldmsd_store_policy_ref *lsp_ref;
-		while (lsp_ref = LIST_FIRST(&hset->lsp_list)) {
+		while ( (lsp_ref = LIST_FIRST(&hset->lsp_list)) != NULL) {
 			LIST_REMOVE(lsp_ref, entry);
 			free(lsp_ref);
 		}
@@ -2090,13 +2130,24 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status, ldms_set_t s,
 
 	struct hostset *hset = arg;
 	pthread_mutex_lock(&hset->state_lock);
-	if (status != LDMS_LOOKUP_OK){
+	if (status != LDMS_LOOKUP_OK) {
 		hset->state = LDMSD_SET_CONFIGURED;
-		ldms_log(LDMS_LINFO,
-			"Error %d doing lookup for set '%s' (%s)\n",
-			status, hset->name, strerror(status));
+		hset->errcnt++;
+		if ((hset->errcnt % 1000) == 1 ) {
+			ldms_log(LDMS_LERROR,
+				"Error %d doing lookup for set '%s' (%s)"
+				" repeated %d\n",
+				status, hset->name, strerror(status),
+				hset->errcnt);
+		}
 		hset->set = NULL;
 		goto out;
+	}
+	if (hset->errcnt) {
+		ldms_log(LDMS_LERROR,
+			"Cleared %d lookup errors for set '%s'\n",
+			hset->errcnt, hset->name);
+		hset->errcnt = 0;
 	}
 	hset->set = s;
 	/*
@@ -2234,7 +2285,7 @@ int assign_metric_index_list(struct ldmsd_store_policy *sp, ldms_mvec_t mvec)
 	sp->state = STORE_POLICY_READY;
 	return 0;
 err:
-	while (smi = LIST_FIRST(&sp->metric_list)) {
+	while ( (smi = LIST_FIRST(&sp->metric_list)) != NULL) {
 		LIST_REMOVE(smi, entry);
 		free(smi->name);
 		free(smi);
@@ -2266,8 +2317,31 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 
 	gn = ldms_get_data_gn(hset->set);
 	if (hset->gn == gn) {
-		ldms_log(LDMS_LINFO, "Set %s with Generation# <%d> Stale.\n", hset->name, hset->gn);
+		if (hset->gn != hset->stale_gn_logged) {
+			ldms_log(LDMS_LINFO, "Set %s with Generation# <%"
+				PRIu64 "> Stale.\n", hset->name, hset->gn);
+			hset->stale_gn_logged = hset->gn;
+			hset->stale_time = *(ldms_get_timestamp(hset->set));
+		} else {
+			ldms_log(LDMS_LDEBUG, "Set %s with Generation# <%"
+				PRIu64 "> Stale.\n", hset->name, hset->gn);
+		}
 		goto out;
+	}
+	if (hset->stale_gn_logged != 0) {
+		uint64_t dpull = gn - hset->stale_gn_logged;
+		if (gn < hset->stale_gn_logged)
+			dpull = 0; /* rollover or restart of source */
+		uint64_t dset = dpull / ldms_get_set_card(hset->set);
+		struct ldms_timestamp newtime = *(ldms_get_timestamp(hset->set));
+		int dt = newtime.sec - hset->stale_time.sec;
+		if (dpull)
+			ldms_log(LDMS_LINFO, "Set %s staleness generation# <%" PRIu64 "> (%d) cleared at <%" PRIu64 "> %d.%06d, %" PRIu64 " sets later, %d sec later.\n",
+		       		hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, newtime.usec, dset, dt);
+		else
+			ldms_log(LDMS_LINFO, "Set %s staleness generation# <%" PRIu64 "> (%d) cleared at <%" PRIu64 "> %d.%06d, after restart/rollover %d sec later.\n",
+		       		hset->name, hset->stale_gn_logged, hset->stale_time.sec, gn, newtime.sec, newtime.usec, dt);
+		hset->stale_gn_logged = 0;
 	}
 
 	if (!ldms_is_set_consistent(hset->set)) {
@@ -2278,7 +2352,6 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 	hset->gn = gn;
 
 	struct ldmsd_store_policy_ref *lsp_ref;
-	struct timeval tv;
 	struct ldms_mvec *mvec;
 	if (!hset->mvec) {
 		/* Recreate mvec here if it doesn't exist.  It can be destroyed
@@ -2295,9 +2368,7 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 		if (lsp_ref->lsp->state != STORE_POLICY_READY)
 			continue;
 
-		struct ldms_timestamp const *ts;
 		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
-		struct store_instance *si = lsp->si;
 
 		if (lsp->metric_count > hset->mvec->count) {
 			ldms_log(LDMS_LERROR,"store %s: Expected number of metrics (%d) > "
@@ -2307,9 +2378,6 @@ void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
 				hset->mvec->count, hset->name);
 			continue;
 		}
-		ts = ldms_get_timestamp(hset->set);
-		tv.tv_sec = ts->sec;
-		tv.tv_usec = ts->usec;
 
 		mvec = ldms_mvec_create(lsp->metric_count);
 		if (!mvec) {
@@ -2394,12 +2462,29 @@ void update_data(struct hostspec *hs)
 			hset_ref_get(hset);
 			ret = ldms_update(hset->set, update_complete_cb, hset);
 			if (ret) {
-				ldms_log(LDMS_LERROR, "Error %d updating metric set "
-					"on host %s:%d[%s].\n", ret,
-					hs->hostname, ntohs(hs->sin.sin_port),
-					hs->xprt_name);
+				hs->errtot++;
+				hs->errcnt++;
+				if ( hs->errcnt % update_err_info_count == 1) {
+					ldms_log(LDMS_LINFO, "Error %d updating metric set "
+						"on host %s:%d[%s]. (repeated %d)\n", ret,
+						hs->hostname, ntohs(hs->sin.sin_port),
+						hs->xprt_name, hs->errcnt);
+				} else {
+					ldms_log(LDMS_LDEBUG, "Error %d updating metric set "
+						"on host %s:%d[%s].\n", ret,
+						hs->hostname, ntohs(hs->sin.sin_port),
+						hs->xprt_name);
+				}
 				update_cleanup(hs, hset);
 				host_error = 1;
+			} else {
+				if (hs->errcnt) {
+					ldms_log(LDMS_LERROR, "Cleared %d errors for "
+						"host %s:%d[%s].\n", hs->errcnt,
+						hs->hostname, ntohs(hs->sin.sin_port),
+						hs->xprt_name);
+				}
+				hs->errcnt = 0;
 			}
 			break;
 		case LDMSD_SET_LOOKUP:
@@ -2697,6 +2782,7 @@ void listen_on_transport(char *transport_str)
 	if (ret) {
 		ldms_log(LDMS_LERROR, "Error %d listening on the '%s' transport.\n",
 			 ret, name);
+		ldms_log(LDMS_LINFO, "Old daemon running or port stuck in CLOSE_WAIT; netstat -tonp to check.\n");
 		free(tmp);
 		cleanup(7);
 	}
@@ -2813,6 +2899,7 @@ typedef enum {
 	LDMS_FOREGROUND,
 	LDMS_CONFIG,
 	LDMS_INSTANCE,
+	LDMS_CONN_ERR_INFO_COUNT,
 	LDMS_N_OPTIONS
 } LDMS_OPTION;
 
@@ -3027,7 +3114,7 @@ void ldms_yaml_cmdline_option_handling(yaml_node_t *key_node,
 		if (!has_arg[LDMS_QUIET])
 			if (strcasecmp("true", value_str) == 0 ||
 					atoi(value_str))
-				log_level = LDMSD_QUIET;
+				set_log_level(LDMSD_QUIET);
 	} else if (strcmp(key_str, "foreground")==0) {
 		LDMS_ASSERT(node_type == YAML_SCALAR_NODE);
 		if (!has_arg[LDMS_FOREGROUND])
@@ -3480,28 +3567,11 @@ int main(int argc, char *argv[])
 	int op;
 	ldms_set_t test_set;
 	log_fp = stdout;
+#ifdef ENABLE_YAML
 	char *cfg_file = NULL;
+#endif
 	struct sigaction action;
 
-	TAILQ_INIT(&conn_list);
-
-	memset(&action, 0, sizeof(action));
-	action.sa_sigaction = cleanup_sa;
-	action.sa_flags = SA_SIGINFO;
-	sigaction(SIGHUP, &action, NULL);
-	sigaction(SIGINT, &action, NULL);
-	sigaction(SIGTERM, &action, NULL);
-	sigaction(SIGABRT, &action, NULL);
-
-	hset_map = str_map_create(65521);
-	if (!hset_map) {
-		errno = ENOMEM;
-		perror("str_map_create");
-		exit(-1);
-	}
-
-	/* Set seed for random number generator. */
-	srand (time(NULL));
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -3557,7 +3627,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'q':
 			CHECKARG(q,name);
-			log_level = ldms_str_to_level(optarg);
+			set_log_level(ldms_str_to_level(optarg));
 			if (log_level <0 ) {
 				printf("Invalid logging level '%s'. Valid are:\n", optarg);
 				int i = 0;
@@ -3603,6 +3673,13 @@ int main(int argc, char *argv[])
 			ev_thread_count = atoi(optarg);
 			has_arg[LDMS_THREAD_COUNT] = 1;
 			break;
+		case 'L':
+			CHECKARG(L,uint);
+			update_err_info_count = atoi(optarg);
+			if (update_err_info_count < 1)
+				update_err_info_count = 1;
+			has_arg[LDMS_CONN_ERR_INFO_COUNT] = 1;
+			break;
 		case 'Z':
 			CHECKARG(Z,uint);
 			conn_thread_count = atoi(optarg);
@@ -3641,6 +3718,31 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	/* Before any threads, files, etc, set up shell command slave pipe. */
+	if (enable_sheller) {
+		sheller_init();
+	}
+
+	TAILQ_INIT(&conn_list);
+
+	memset(&action, 0, sizeof(action));
+	action.sa_sigaction = cleanup_sa;
+	action.sa_flags = SA_SIGINFO;
+	sigaction(SIGHUP, &action, NULL);
+	sigaction(SIGINT, &action, NULL);
+	sigaction(SIGTERM, &action, NULL);
+	sigaction(SIGABRT, &action, NULL);
+
+	hset_map = str_map_create(65521);
+	if (!hset_map) {
+		errno = ENOMEM;
+		perror("str_map_create");
+		exit(-1);
+	}
+
+	/* Set seed for random number generator. */
+	srand (time(NULL));
+
 	if (!dirty_threshold)
 		/* default total dirty threshold is calculated based on popular
 		 * 4 GB RAM setting with Linux's default 10% dirty_ratio */
@@ -3649,12 +3751,6 @@ int main(int argc, char *argv[])
 	/* Make dirty_threshold to be per thread */
 	dirty_threshold /= flush_N;
 
-	/* Before any threads, files, etc, set up shell command slave pipe.
-	 * Default is off, with init-on-demand instead.
-	 */
-	if (enable_sheller) {
-		sheller_init();
-	}
 
 #ifdef ENABLE_YAML
 	yaml_document_t *yaml_document = NULL;
@@ -3688,6 +3784,9 @@ int main(int argc, char *argv[])
 			stdout = log_fp;
 	}
 
+	if (enable_sheller) {
+		ldms_log(LDMS_LDEBUG, "Sheller enabled for store hooks\n");
+	}
 	/* Initialize LDMS */
 	if (ldms_init(max_mem_size)) {
 		ldms_log(LDMS_LERROR, "LDMS could not pre-allocate the memory of size %lu.\n",

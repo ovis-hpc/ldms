@@ -88,12 +88,10 @@ The functionality is generic to files containing a single
 integer in ascii encoding.
 */
 static const char *JOBID_FILE = "/var/run/ldms.slurm.jobid";
-static const char *JOBID_COLNAME = SLURM_JOBID_METRIC_NAME;
 #define JOBID_LINE_MAX 64  //max # of chars in lbuf
 
 static char *procfile = NULL;
 #define PROCFILE (procfile ? procfile : JOBID_FILE)
-static char *metric_name = NULL;
 static ldms_set_t set;
 static FILE *mf;
 static ldms_metric_t *metric_table;
@@ -103,8 +101,11 @@ static char *qc_dir = NULL;
 // data for resource_manager users
 // update at every sample.
 static resource_info_manager rim = NULL;
-static uint64_t last_jobid = 0;
+static uint64_t last_jobvalue[SLURM_NUM_METRICS] = {0};
 static uint64_t last_generation = 0;
+#define LDMS_VERSION_METRIC "ldms_version"
+#define EXTRA_METRICS 1
+static uint64_t daemon_version = 0;
 
 #ifdef HAVE_QC_SAMPLER
 static int qc_file = -1;
@@ -120,18 +121,25 @@ static int create_metric_set(const char *path)
 	size_t data_sz, tot_data_sz;
 	int rc, metric_count;
 
-	metric_count = 0;
 	tot_meta_sz = 0;
 	tot_data_sz = 0;
 
 	/* Set size calculation. */
-	rc = ldms_get_metric_size(metric_name, LDMS_V_U64,
-				  &meta_sz, &data_sz);
+	for (metric_count = 0; metric_count < SLURM_NUM_METRICS; metric_count++) {
+		rc = ldms_get_metric_size(ldms_job_metric_names[metric_count],
+			       	LDMS_V_U64, &meta_sz, &data_sz);
+		if (rc)
+			return rc;
+		tot_meta_sz += meta_sz;
+		tot_data_sz += data_sz;
+	}
+	rc = ldms_get_metric_size(LDMS_VERSION_METRIC, LDMS_V_U64, &meta_sz,
+		&data_sz);
 	if (rc)
 		return rc;
 	tot_meta_sz += meta_sz;
 	tot_data_sz += data_sz;
-	metric_count++;
+
 
 	/* Create the metric set */
 	rc = ENOMEM;
@@ -139,7 +147,7 @@ static int create_metric_set(const char *path)
 	if (rc)
 		return rc;
 
-	metric_table = calloc(metric_count, sizeof(ldms_metric_t));
+	metric_table = calloc(metric_count + EXTRA_METRICS, sizeof(ldms_metric_t));
 	if (!metric_table)
 		goto err;
 	/*
@@ -153,15 +161,24 @@ static int create_metric_set(const char *path)
 		mf = NULL;
 	}
 
-	int metric_no = 0;
-	metric_table[metric_no] = ldms_add_metric(set, metric_name, LDMS_V_U64);
-	if (!metric_table[metric_no]) {
+	for (metric_count = 0; metric_count < SLURM_NUM_METRICS; metric_count++) {
+		metric_table[metric_count] = ldms_add_metric(set,
+			ldms_job_metric_names[metric_count], LDMS_V_U64);
+		if (!metric_table[metric_count]) {
+			rc = ENOMEM;
+			goto err;
+		}
+		ldms_set_user_data(metric_table[metric_count], comp_id);
+	}
+	metric_table[metric_count] = ldms_add_metric(set,
+		LDMS_VERSION_METRIC, LDMS_V_U64);
+	if (!metric_table[metric_count]) {
 		rc = ENOMEM;
 		goto err;
 	}
-	ldms_set_user_data(metric_table[metric_no], comp_id);
-	metric_no++;
+	ldms_set_user_data(metric_table[metric_count], comp_id);
 
+	msglog(LDMS_LDEBUG,"slurm createset ok\n");
 	return 0;
 
  err:
@@ -194,15 +211,6 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 		}
 	}
 
-	value = av_value(avl, "colname");
-	if (value) {
-		metric_name = strdup(value);
-		if (!metric_name) {
-			msglog(LDMS_LERROR,"slurmjobid no memory\n");
-			return ENOMEM;
-		}
-	}
-	metric_name = (char *)JOBID_COLNAME;
 	msglog(LDMS_LDEBUG,"Slurm jobid file is '%s'\n", PROCFILE);
 
 	value = av_value(avl, "component_id");
@@ -218,11 +226,11 @@ static int config(struct attr_value_list *kwl, struct attr_value_list *avl)
 	}
 
 	int err;
-	err = register_resource_info(rim, JOBID_COLNAME, "node", NULL,
+	err = register_resource_info(rim, SLURM_JOBID_METRIC_NAME, "node", NULL,
 		slurm_rim_update, NULL);
 	if (err) {
 		msglog(LDMS_LERROR,"Exporting '%s' failed\n", 
-			JOBID_COLNAME);
+			SLURM_JOBID_METRIC_NAME);
 		return err;
 	}
 
@@ -254,12 +262,13 @@ static ldms_set_t get_set()
 }
 
 
+static int fail_read_count = 0;
+static const int fail_read_max = 2;
 /* as a policy matter, the missing file has the value 0, not an error. */
 static int sample(void)
 {
 	int metric_no;
 	char *s;
-	uint64_t metric_value = 0;
 	char lbuf[JOBID_LINE_MAX];
 	union ldms_value v;
 #ifdef HAVE_QC_SAMPLER
@@ -312,50 +321,70 @@ static int sample(void)
 	   enough compared to contacting a slurm daemon.
 	*/
 	mf = fopen(PROCFILE, "r");
+	int metric_count;
+	uint64_t metric_value[SLURM_NUM_METRICS];
+	for (metric_count = 0; metric_count < SLURM_NUM_METRICS; metric_count++) {
+		metric_value[metric_count] = 0;
+	}
 	if (!mf) {
 		msglog(LDMS_LINFO,"Could not open the jobid file '%s'\n", PROCFILE);
-		metric_value = 0;
 	} else {
-		s = fgets(lbuf, sizeof(lbuf), mf);
-		if (!s) {
-			msglog(LDMS_LINFO,"Fail reading jobid file '%s'\n", PROCFILE);
-			metric_value = 0;
-		} else {
-			char *endp = NULL;
-			errno = 0;
-			metric_value = strtoull(lbuf, &endp, 0);
-			if (endp == lbuf || errno) {
-				metric_value = 0;
-				msglog(LDMS_LERROR,
-					"Fail parsing '%s' from %s\n",
-					lbuf, PROCFILE);
+		for (metric_count = 0; metric_count < SLURM_NUM_METRICS; metric_count++) {
+			s = fgets(lbuf, sizeof(lbuf), mf);
+			if (!s) {
+				if (fail_read_count < fail_read_max) {
+					msglog(LDMS_LINFO,"Fail reading jobid, uid file '%s' line %d\n", PROCFILE, metric_count+1);
+					fail_read_count++;
+				}
+			} else {
+				char *endp = NULL;
+				errno = 0;
+				metric_value[metric_count] = strtoull(lbuf, &endp, 0);
+				if (endp == lbuf || errno) {
+					metric_value[metric_count] = 0;
+					msglog(LDMS_LERROR,
+						"Fail parsing '%s' from %s on line %d\n",
+						lbuf, PROCFILE, metric_count+1);
+				}
 			}
 		}
 		fclose(mf);
 		mf = NULL;
 	}
 
-	v.v_u64 = metric_value;
-	ldms_set_metric(metric_table[metric_no], &v);
-	last_jobid = metric_value;
 	last_generation++;
+	for (metric_count = 0; metric_count < SLURM_NUM_METRICS; metric_count++) {
+		v.v_u64 = metric_value[metric_count];
+		ldms_set_metric(metric_table[metric_count], &v);
+		last_jobvalue[metric_count] = metric_value[metric_count];
 
 #ifdef HAVE_QC_SAMPLER
-	/* write a metric to the qc data file */
+		/* write a metric to the qc data file */
+		if (qc_file != -1) {
+			snprintf(qc_buffer,qc_len_buffer,
+				"%s,%s,%" PRIu64 "\n",
+				ldms_get_metric_name(metric_table[metric_count]),
+				qc_date_and_time,
+				v.v_u64);
+			qc_buffer[qc_len_buffer-1] = '\0';
+			write(qc_file, qc_buffer, strlen(qc_buffer));
+		}
+#endif
+	}
+	v.v_u64 = daemon_version;
+	ldms_set_metric(metric_table[metric_count], &v);
+
+#ifdef HAVE_QC_SAMPLER
+	/* write last metric to the qc data file */
 	if (qc_file != -1) {
 		snprintf(qc_buffer,qc_len_buffer,
 			"%s,%s,%" PRIu64 "\n",
-			ldms_get_metric_name(metric_table[metric_no]),
+			ldms_get_metric_name(metric_table[metric_count]),
 			qc_date_and_time,
 			v.v_u64);
 		qc_buffer[qc_len_buffer-1] = '\0';
 		write(qc_file, qc_buffer, strlen(qc_buffer));
 	}
-#endif
-
-	metric_no++;
-
-#ifdef HAVE_QC_SAMPLER
 	/* flush qc file */
 	fsync(qc_file);
 #endif
@@ -364,7 +393,8 @@ static int sample(void)
 	return 0;
 }
 
-/*&
+static struct ldms_job_info lji;
+/**
  Value change is driven by daemon, not by shared data requests.
  No configuration or private data is needed for this case.
 */
@@ -373,14 +403,24 @@ int slurm_rim_update(struct resource_info *self, enum rim_task t,
 	void * tinfo)
 {
 	(void)tinfo;
+	int metric_count;
+	if (!self->v.obj) {
+		self->v.obj = &lji;
+	}
         switch (t) {
         case rim_init:
-                self->v.u64 = last_jobid;
-                self->generation = last_generation;
+		for (metric_count = 0; metric_count < SLURM_NUM_METRICS; metric_count++) {
+			((struct ldms_job_info *)(self->v.obj))->
+				val[metric_count] = last_jobvalue[metric_count];
+		}
+		self->generation = last_generation;
                 return 0;
         case rim_update: {
-                self->v.u64 = last_jobid;
-                self->generation = last_generation;
+		for (metric_count = 0; metric_count < SLURM_NUM_METRICS; metric_count++) {
+			((struct ldms_job_info *)(self->v.obj))->
+				val[metric_count] = last_jobvalue[metric_count];
+		}
+		self->generation = last_generation;
                 return 0;
         }
         case rim_final:
@@ -401,9 +441,6 @@ static void term(void)
 		free(qc_dir);
 	qc_dir = NULL;
 
-	if (metric_name && metric_name != JOBID_COLNAME ) {
-		free(metric_name);
-	}
 	if ( procfile ) {
 		free((char *)procfile);
 	}
@@ -435,6 +472,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	rim = ldms_get_rim();
+	daemon_version = ldms_version_number();
 	
 	return &slurmjobid_plugin.base;
 }

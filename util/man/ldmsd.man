@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd ldms-aggd
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "13 Apr 2015" "v2.4.2" "ldmsd man page"
+.TH man 8 "13 May 2016" "v2.4.7" "ldmsd man page"
 
 .SH NAME
 ldmsd \- Start an ldms daemon
@@ -69,7 +69,7 @@ NUM is the number of bytes of the dirty threshold used for store rollover.
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
 .BR -A
-Avoid forking auxiliary shell launcher at startup; default is false. Use of rollover stores with spooling requires forking the shell launcher at startup.
+Fork auxiliary shell launcher at startup; default is false. Use of stores with spooling (csv stores in rollover mode and store_job) requires forking the shell launcher at startup.
 .TP
 .BI -f " COUNT"
 .br
@@ -102,6 +102,11 @@ THR_COUNT is the number of event threads to start.
 LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
 The default level is ERROR. QUIET produces no output.
 (Note: this has changed from the previous release where q designated no (QUIET) logging).
+.TP
+.BI -L " INFO_FREQUENCY"
+.br
+INFO_FREQUENCY is an integer >= 1.
+The default frequency is 1000. Every INFO_FREQUENCY occurences of an aggregation problem in updating a specific data collection host, including the first instance, is logged at the INFO level. When the update problem is resolved, an INFO level message with the total errors observed is also logged. Set INFO_FREQUENCY very high to see only first and last messages. To see all such messages, set to 1 or just change log level to DEBUG.
 .TP
 .BI -S " SOCKNAME"
 .br

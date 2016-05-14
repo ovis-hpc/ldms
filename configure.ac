@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ldms-all, 2.4.6, ovis-help@sandia.gov)
+AC_INIT(ldms-all, 2.4.7, ovis-help@sandia.gov)
 #fixme=--subdir
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
@@ -14,6 +14,7 @@ m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
+SPLIT_PACKAGE_VERSION
 
 
 dnl Checks for programs

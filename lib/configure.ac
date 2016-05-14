@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT([ovis-lib], 2.4.6, ovis-help@sandia.gov)
+AC_INIT([ovis-lib], 2.4.7, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
@@ -10,6 +10,7 @@ m4_ifndef([AM_SILENT_RULES], [m4_define([AM_SILENT_RULES],[])])
 AM_SILENT_RULES([yes])
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
+SPLIT_PACKAGE_VERSION
 
 dnl Checks for programs
 AC_PROG_CC
