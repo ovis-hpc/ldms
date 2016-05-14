@@ -1,3 +1,10 @@
+2016-05-13 Allan <baallan@sandia.gov>
+* update to 2.4.7
+* jobid sampler now includes uid and ldms version metrics.
+* samplers using jobid also get uid so output can be segregated by user.
+* added job-oriented csv store (man Plugin_store_job for details).
+* added debug option -d to ldmsctl to aid script debugging.
+
 2015-10-30 Allan <baallan@sandia.gov>
 * update to 2.4.6
 * sysclassib ports list now accepts missing interfaces.
