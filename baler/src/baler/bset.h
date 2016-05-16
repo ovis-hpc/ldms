@@ -331,5 +331,13 @@ int brange_u32_iter_fwd_seek(struct brange_u32_iter *itr, uint32_t *v);
  */
 int brange_u32_iter_bwd_seek(struct brange_u32_iter *itr, uint32_t *v);
 
+/**
+ * Set iterator position to \c pos.
+ *
+ * \retval 0 if success.
+ * \retval EINVAL if \c pos is not a valid position (e.g. not in the ranges).
+ */
+int brange_u32_iter_set_pos(struct brange_u32_iter *itr, uint32_t pos);
+
 #endif
 /**\}*/

@@ -879,6 +879,105 @@ out:
 }
 
 static
+void bhttpd_handle_query_msg2(struct bhttpd_req_ctxt *ctxt)
+{
+	struct bhttpd_msg_query_session *qs = NULL;
+	struct bdstr *bdstr;
+	struct bhash_entry *ent = NULL;
+	uint64_t session_id = 0;
+	const char *str;
+	BQUERY_POS(pos);
+	int is_fwd = 1;
+	int i, n = 50;
+	int rc;
+
+	bdstr = bdstr_new(256);
+	if (!bdstr) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Out of memory");
+		return;
+	}
+	str = bpair_str_value(&ctxt->kvlist, "n");
+	if (str)
+		n = atoi(str);
+	str = bpair_str_value(&ctxt->kvlist, "dir");
+	if (str && strcmp(str, "bwd") == 0)
+		is_fwd = 0;
+
+	qs = bhttpd_msg_query_session_create(ctxt, 0);
+	if (!qs) {
+		/* bhttpd_msg_query_session_create() has already
+		 * set the error message. */
+		goto out;
+	}
+
+	str = bpair_str_value(&ctxt->kvlist, "pos");
+	if (str) {
+		/* recover the position */
+		rc = bquery_pos_from_str(pos, str);
+		if (rc) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bquery_pos_from_str() error, %d", rc);
+			goto out;
+		}
+		rc = bq_set_pos(qs->q, pos);
+		if (rc) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bq_set_pos() error, %d", rc);
+			goto out;
+		}
+		qs->first = 0;
+	}
+
+	evbuffer_add_printf(ctxt->evbuffer, "{");
+
+	evbuffer_add_printf(ctxt->evbuffer, "\"msgs\": [");
+	for (i = 0; i < n; i++) {
+		if (qs->first) {
+			qs->first = 0;
+			if (is_fwd)
+				rc = bq_first_entry(qs->q);
+			else
+				rc = bq_last_entry(qs->q);
+		} else {
+			if (is_fwd)
+				rc = bq_next_entry(qs->q);
+			else
+				rc = bq_prev_entry(qs->q);
+		}
+		if (rc) {
+			break;
+		}
+		rc = bq_get_pos(qs->q, pos);
+		if (rc) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bq_get_pos() error, %d", rc);
+			goto out;
+		}
+		qs->ref = bq_entry_get_ref(qs->q);
+		bqfmt_json_set_msg_ref(qs->fmt, qs->ref);
+		bqfmt_json_set_msg_pos(qs->fmt, pos);
+		str = bq_entry_print(qs->q, bdstr);
+		if (!str) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"bq_entry_print() errno: %d", errno);
+			goto out;
+		}
+		if (i)
+			evbuffer_add_printf(ctxt->evbuffer, ",%s", str);
+		else
+			evbuffer_add_printf(ctxt->evbuffer, "%s", str);
+		bdstr_reset(bdstr);
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "]");
+	evbuffer_add_printf(ctxt->evbuffer, "}");
+
+out:
+	bdstr_free(bdstr);
+	if (qs)
+		bhttpd_msg_query_session_destroy(qs);
+}
+
+static
 void bhttpd_handle_query_meta(struct bhttpd_req_ctxt *ctxt)
 {
 	int n = bptn_store_last_id(bq_get_ptn_store(bq_store));
@@ -1272,16 +1371,17 @@ struct bhttpd_handle_fn_entry {
 #define  HTTP_CONT_TEXT    "text/plain"
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{  "PTN",          HTTP_CONT_JSON,    bhttpd_handle_query_ptn          },
-	{  "METRIC_PTN",   HTTP_CONT_JSON,    bhttpd_handle_query_metric_ptn   },
-	{  "MSG",          HTTP_CONT_JSON,    bhttpd_handle_query_msg          },
-	{  "MSG_SIMPLE",   HTTP_CONT_TEXT,    bhttpd_handle_query_msg_simple   },
-	{  "META",         HTTP_CONT_JSON,    bhttpd_handle_query_meta         },
-	{  "METRIC_META",  HTTP_CONT_JSON,    bhttpd_handle_query_metric_meta  },
-	{  "IMG",          HTTP_CONT_STREAM,  bhttpd_handle_query_img          },
-	{  "IMG2",         HTTP_CONT_STREAM,  bhttpd_handle_query_img2         },
-	{  "HOST",         HTTP_CONT_JSON,    bhttpd_handle_query_host         },
-	{  "BIG_PIC",      HTTP_CONT_JSON,    bhttpd_handle_query_big_pic      },
+	{ "BIG_PIC",     HTTP_CONT_JSON,   bhttpd_handle_query_big_pic     },
+	{ "HOST",        HTTP_CONT_JSON,   bhttpd_handle_query_host        },
+	{ "IMG2",        HTTP_CONT_STREAM, bhttpd_handle_query_img2        },
+	{ "IMG",         HTTP_CONT_STREAM, bhttpd_handle_query_img         },
+	{ "META",        HTTP_CONT_JSON,   bhttpd_handle_query_meta        },
+	{ "METRIC_META", HTTP_CONT_JSON,   bhttpd_handle_query_metric_meta },
+	{ "METRIC_PTN",  HTTP_CONT_JSON,   bhttpd_handle_query_metric_ptn  },
+	{ "MSG2",        HTTP_CONT_JSON,   bhttpd_handle_query_msg2        },
+	{ "MSG",         HTTP_CONT_JSON,   bhttpd_handle_query_msg         },
+	{ "MSG_SIMPLE",  HTTP_CONT_TEXT,   bhttpd_handle_query_msg_simple  },
+	{ "PTN",         HTTP_CONT_JSON,   bhttpd_handle_query_ptn         },
 };
 
 static

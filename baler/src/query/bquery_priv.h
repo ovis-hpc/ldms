@@ -70,6 +70,17 @@ struct bsos_wrap {
 	LIST_ENTRY(bsos_wrap) link;
 };
 
+struct __attribute__((packed)) bquery_pos {
+	union {
+		struct {
+			struct sos_pos pos;
+			uint32_t ptn_id;
+			uint32_t dir;
+		};
+		char data[24];
+	};
+};
+
 LIST_HEAD(bsos_wrap_head, bsos_wrap);
 
 /**
@@ -120,6 +131,8 @@ struct bquery {
 	int (*next_entry)(struct bquery*);
 	int (*prev_entry)(struct bquery*);
 	int (*last_entry)(struct bquery*);
+	int (*get_pos)(struct bquery*, struct bquery_pos *pos);
+	int (*set_pos)(struct bquery*, struct bquery_pos *pos);
 
 	/* bsos open/close interface */
 	void *(*bsos_open)(const char *path, int create);
@@ -161,7 +174,7 @@ struct bq_msg_ptc_hent {
 	sos_iter_t iter;
 	uint32_t ptn_id;
 	union {
-		struct __attribute__((__packed__)) {
+		struct __attribute__((packed)) {
 			uint32_t comp_id;
 			uint32_t sec;
 		};

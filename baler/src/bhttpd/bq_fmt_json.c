@@ -18,6 +18,7 @@ struct bqfmt_json {
 	int ptn_label;
 	int ptn_id;
 	bq_msg_ref_t msg_ref;
+	struct bquery_pos *pos;
 	struct bq_store *bq_store;
 	int (*ts_fmt)(struct bdstr *bdstr, const struct timeval *tv);
 };
@@ -35,6 +36,11 @@ void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id)
 void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, bq_msg_ref_t msg_ref)
 {
 	((struct bqfmt_json*)fmt)->msg_ref = msg_ref;
+}
+
+void bqfmt_json_set_msg_pos(struct bq_formatter *fmt, struct bquery_pos *pos)
+{
+	((struct bqfmt_json*)fmt)->pos = pos;
 }
 
 static
@@ -101,8 +107,22 @@ int __bqfmt_json_ptn_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
 
 int __bqfmt_json_msg_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
 {
-	return bdstr_append_printf(bdstr, "{ \"type\": \"MSG\", "
-			"\"ref\": %lu", ((struct bqfmt_json*)fmt)->msg_ref);
+	int rc;
+	struct bqfmt_json *f = (void*)fmt;
+	rc = bdstr_append_printf(bdstr, "{ \"type\": \"MSG\", "
+			"\"ref\": %lu", f->msg_ref);
+	if (rc)
+		return rc;
+	if (f->pos) {
+		rc = bdstr_append_printf(bdstr, ", \"pos:\": \"");
+		if (rc)
+			return rc;
+		rc = bquery_pos_print(f->pos, bdstr);
+		if (rc)
+			return rc;
+		rc = bdstr_append_printf(bdstr, "\"");
+	}
+	return rc;
 }
 
 int __bqfmt_json_msg_suffix(struct bq_formatter *fmt, struct bdstr *bdstr)
