@@ -189,10 +189,6 @@ typedef struct ldmsd_strgp_ref {
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
-#ifdef LDMSD_UPDATE_TIME
-typedef struct ldmsd_updt_set *ldmsd_updt_set_t;
-#endif /* LDMSD_UPDATE_TIME */
-
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
@@ -211,6 +207,8 @@ typedef struct ldmsd_prdcr_set {
 	struct rbn rbn;
 
 #ifdef LDMSD_UPDATE_TIME
+	struct ldmsd_updt_time *updt_time;
+	struct timeval updt_start;
 	double updt_duration;
 #endif /* LDMSD_UPDATE_TIME */
 
@@ -242,15 +240,6 @@ struct ldmsd_updt_time {
 	int ref;
 	ldmsd_updtr_ptr updtr;
 	pthread_mutex_t lock;
-};
-
-struct ldmsd_updt_set {
-	ldmsd_prdcr_set_t prd_set;
-	ldmsd_updtr_ptr updtr;
-	struct ldmsd_updt_time *updt_time;
-	struct timeval updt_sched_start;
-	struct timeval updt_start;
-	double updt_sched_duration;
 };
 #endif /* LDMSD_UPDATE_TIME */
 

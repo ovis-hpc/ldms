@@ -95,10 +95,15 @@ void __updt_time_get(struct ldmsd_updt_time *updt_time)
 void __updt_time_put(struct ldmsd_updt_time *updt_time)
 {
 	if (0 == __sync_sub_and_fetch(&updt_time->ref, 1)) {
-		struct timeval end;
-		gettimeofday(&end, NULL);
-		updt_time->updtr->duration =
-			ldmsd_timeval_diff(&updt_time->update_start, &end);
+		if (updt_time->update_start.tv_sec != 0) {
+			struct timeval end;
+			gettimeofday(&end, NULL);
+			updt_time->updtr->duration =
+				ldmsd_timeval_diff(&updt_time->update_start,
+						&end);
+		} else {
+			updt_time->updtr->duration = -1;
+		}
 		free(updt_time);
 	}
 }
@@ -108,17 +113,12 @@ void __updt_time_put(struct ldmsd_updt_time *updt_time)
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
 	uint64_t gn;
+	ldmsd_prdcr_set_t prd_set = arg;
 #ifdef LDMSD_UPDATE_TIME
-	struct ldmsd_updt_set *updt_set = arg;
-	ldmsd_prdcr_set_t prd_set = updt_set->prd_set;
 	struct timeval end;
 	gettimeofday(&end, NULL);
-	prd_set->updt_duration = ldmsd_timeval_diff(&updt_set->updt_start, &end);
-	struct ldmsd_updt_time *updt_time = updt_set->updt_time;
-	free(updt_set);
-	__updt_time_put(updt_time);
-#else /* LDMSD_UPDATE_TIME */
-	ldmsd_prdcr_set_t prd_set = arg;
+	prd_set->updt_duration = ldmsd_timeval_diff(&prd_set->updt_start, &end);
+	__updt_time_put(prd_set->updt_time);
 #endif /* LDMSD_UPDATE_TIME */
 	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %d\n",
 					prd_set->inst_name, status);
@@ -163,27 +163,22 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 	ldmsd_prdcr_set_ref_get(prd_set);
 	prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 #ifdef LDMSD_UPDATE_TIME
-	struct ldmsd_updt_time *updt_time;
-	struct ldmsd_updt_set *updt_set = calloc(1, sizeof(*updt_set));
-	updt_set->updtr = updtr;
-	updt_set->prd_set = prd_set;
-	updt_set->updt_time = updt_time = updtr->curr_updt_time;
-	__updt_time_get(updt_time);
-	gettimeofday(&updt_set->updt_start, NULL);
-	if (updt_time->update_start.tv_sec == 0)
-		updt_time->update_start = updt_set->updt_start;
-	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, updt_set);
+	prd_set->updt_time = updtr->curr_updt_time;
+	__updt_time_get(prd_set->updt_time);
+	gettimeofday(&prd_set->updt_start, NULL);
+	if (prd_set->updt_time->update_start.tv_sec == 0)
+		prd_set->updt_time->update_start = prd_set->updt_start;
+	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 	if (rc) {
-		__updt_time_put(updt_time);
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Udapting Set %s\n",
+		__updt_time_put(prd_set->updt_time);
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Updating Set %s\n",
 						rc, prd_set->inst_name);
 		ldmsd_prdcr_set_ref_put(prd_set);
-		free(updt_set);
 	}
 #else /* LDMSD_UPDATE_TIME */
 	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Udapting Set %s\n",
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Updating Set %s\n",
 						rc, prd_set->inst_name);
 		ldmsd_prdcr_set_ref_put(prd_set);
 	}
