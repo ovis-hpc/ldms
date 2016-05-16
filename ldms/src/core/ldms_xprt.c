@@ -418,7 +418,8 @@ void ldms_xprt_put(ldms_t x)
 	pthread_mutex_lock(&xprt_list_lock);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
 		LIST_REMOVE(x, xprt_link);
-
+		x->xprt_link.le_next = 0;
+		x->xprt_link.le_prev = 0;
 		__ldms_xprt_resource_free(x);
 
 		if (x->zap_ep)
