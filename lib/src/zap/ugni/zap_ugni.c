@@ -205,7 +205,7 @@ static void ugni_sock_event(struct bufferevent *buf_event, short ev, void *arg);
 static void ugni_sock_read(struct bufferevent *buf_event, void *arg);
 static void ugni_sock_write(struct bufferevent *buf_event, void *arg);
 
-static void timeout_cb(int fd , short events, void *arg);
+static void stalled_timeout_cb(int fd , short events, void *arg);
 static zap_err_t __setup_connection(struct z_ugni_ep *uep);
 
 static int __get_nodeid(struct sockaddr *sa, socklen_t sa_len);
@@ -217,7 +217,8 @@ static LIST_HEAD(, z_ugni_ep) z_ugni_list = LIST_HEAD_INITIALIZER(0);
 static pthread_mutex_t z_ugni_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static struct zap_ugni_post_desc_list stalled_desc_list = LIST_HEAD_INITIALIZER(0);
-static pthread_mutex_t stalled_list_lock = PTHREAD_MUTEX_INITIALIZER;
+#define ZAP_UGNI_STALLED_TIMEOUT 86400 /* 24 hours */
+static int zap_ugni_stalled_timeout;
 
 #ifdef DEBUG
 static LIST_HEAD(, z_ugni_ep) deferred_list = LIST_HEAD_INITIALIZER(0);
@@ -973,17 +974,20 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 }
 
 /* Caller must hold the endpoint list lock */
-void __stall_post_desc(struct zap_ugni_post_desc *d)
+void __stall_post_desc(struct zap_ugni_post_desc *d, struct timeval time)
 {
 	zap_put_ep(&d->uep->ep);
 	d->is_stalled = 1;
 	d->uep = NULL;
+	d->stalled_time = time;
 	LIST_INSERT_HEAD(&stalled_desc_list, d, stalled_link);
 }
 
 /* Caller must hold the endpoint lock. */
 void __flush_post_desc_list(struct z_ugni_ep *uep)
 {
+	struct timeval time;
+	gettimeofday(&time, NULL);
 	struct zap_ugni_post_desc *d;
 	d = LIST_FIRST(&uep->post_desc_list);
 	while (d) {
@@ -1006,7 +1010,7 @@ void __flush_post_desc_list(struct z_ugni_ep *uep)
 		pthread_mutex_unlock(&uep->ep.lock);
 		uep->ep.cb(&uep->ep, &zev);
 		pthread_mutex_lock(&uep->ep.lock);
-		__stall_post_desc(d);
+		__stall_post_desc(d, time);
 		d = LIST_FIRST(&uep->post_desc_list);
 	}
 }
@@ -1440,9 +1444,27 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 
 static struct timeval to;
 static struct event *keepalive;
-static void timeout_cb(int s, short events, void *arg)
+static void stalled_timeout_cb(int s, short events, void *arg)
 {
-	to.tv_sec = 86400; /* 24 hours */
+	struct zap_ugni_post_desc *desc;
+	struct timeval now;
+	pthread_mutex_lock(&z_ugni_list_mutex);
+	gettimeofday(&now, NULL);
+	desc = LIST_FIRST(&stalled_desc_list);
+	while (desc) {
+		zap_ugni_log("%s: %s: Freeing stalled post desc:\n",
+			__func__, desc->ep_name);
+		if (zap_ugni_stalled_timeout <=
+				now.tv_sec - desc->stalled_time.tv_sec) {
+			ZUGNI_LIST_REMOVE(desc, stalled_link);
+			free(desc);
+		} else {
+			break;
+		}
+		desc = LIST_FIRST(&stalled_desc_list);
+	}
+	pthread_mutex_unlock(&z_ugni_list_mutex);
+	to.tv_sec = zap_ugni_stalled_timeout;
 	to.tv_usec = 0;
 	evtimer_add(keepalive, &to);
 }
@@ -1484,6 +1506,14 @@ static int __get_disconnect_event_timeout()
 	const char *str = getenv("ZAP_UGNI_DISCONNECT_EV_TIMEOUT");
 	if (!str)
 		return ZAP_UGNI_DISC_EV_TIMEOUT;
+	return atoi(str);
+}
+
+static int __get_stalled_timeout()
+{
+	const char *str = getenv("ZAP_UGNI_STALLED_TIMEOUT");
+	if (!str)
+		return ZAP_UGNI_STALLED_TIMEOUT;
 	return atoi(str);
 }
 
@@ -1925,6 +1955,7 @@ int init_once()
 	 */
 	zap_ugni_disc_ev_timeout = __get_disconnect_event_timeout();
 	zap_ugni_unbind_timeout = __get_unbind_timeout();
+	zap_ugni_stalled_timeout = __get_stalled_timeout();
 
 	/*
 	 * Get the number of maximum number of endpoints zap_ugni will handle.
@@ -1949,7 +1980,7 @@ int init_once()
 	}
 
 	if (!keepalive) {
-		keepalive = evtimer_new(io_event_loop, timeout_cb, NULL);
+		keepalive = evtimer_new(io_event_loop, stalled_timeout_cb, NULL);
 		if (!keepalive) {
 			rc = errno;
 			goto err;

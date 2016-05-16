@@ -61,6 +61,7 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 #include <event2/thread.h>
+#include <sys/time.h>
 
 #include <gni_pub.h>
 #include <rca_lib.h>
@@ -302,6 +303,7 @@ struct zap_ugni_post_desc {
 	uint32_t ep_gn;
 	char ep_name[ZAP_UGNI_EP_NAME_SZ];
 	uint8_t is_stalled; /* It is in the stalled list. */
+	struct timeval stalled_time;
 	void *context;
 	LIST_ENTRY(zap_ugni_post_desc) ep_link;
 	LIST_ENTRY(zap_ugni_post_desc) stalled_link;
