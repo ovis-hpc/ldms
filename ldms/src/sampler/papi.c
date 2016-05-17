@@ -72,7 +72,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	int event_code = PAPI_NULL;
 	int papi_event_set = PAPI_NULL;
 	char *event_name;
-	char** status;
+	char* status;
 	PAPI_event_info_t event_info;
 
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
@@ -96,7 +96,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		goto err;
 	}
 
-	event_name = strtok_r(events, ",", status);
+	event_name = strtok_r(events, ",", &status);
 	while (event_name) {
 		if(PAPI_event_name_to_code(event_name, &event_code) != PAPI_OK) {
 			msglog(LDMSD_LERROR, "papi: failed to get event code of %s\n", event_name);
@@ -125,7 +125,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		msglog(LDMSD_LINFO, "papi: event [name: %s, code: 0x%x] has been added.\n", event_name, event_code);
 
 next_event:
-		event_name = strtok(NULL, ",");
+		event_name = strtok_r(NULL, ",", &status);
 	}
 
 	event_count = PAPI_num_events(papi_event_set);
