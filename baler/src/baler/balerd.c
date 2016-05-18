@@ -411,6 +411,15 @@ struct bzap_ctxt slave_zap_ctxt = {.mutex = PTHREAD_MUTEX_INITIALIZER};
 
 extern uint64_t *metric_ids;
 
+#define SLAVE_CREDIT 2048
+
+/*
+ * We need to limit the slave processing rate. Otherwise, if the server cannot
+ * complete slave's request fast enough, the slave will post the requests
+ * without bound, resulting in out-of-memory situation.
+ */
+sem_t slave_credit;
+
 /**
  * Input queue workers
  */
@@ -1010,6 +1019,8 @@ void slave_init()
  */
 void initialize_daemon()
 {
+	int i;
+	int rc;
 	/* Daemonize? */
 	if (!is_foreground) {
 		binfo("Daemonizing...");
@@ -1045,6 +1056,13 @@ void initialize_daemon()
 	binq_pending = bwq_alloci(1024);
 	if (!binq_pending) {
 		berror("(binq_pending) bwq_alloci");
+		exit(-1);
+	}
+
+	/* Slave credit init */
+	rc = sem_init(&slave_credit, 0, SLAVE_CREDIT);
+	if (rc) {
+		berror("sem_init()");
 		exit(-1);
 	}
 
@@ -1087,7 +1105,6 @@ void initialize_daemon()
 		berror("malloc for binqwkr");
 		exit(-1);
 	}
-	int i, rc;
 	struct bin_wkr_ctxt *ictxt;
 	for (i=0; i<binqwkrN; i++) {
 		ictxt = calloc(1, sizeof(*ictxt));
@@ -1750,6 +1767,7 @@ int slave_process_input_entry_step3(struct bwq_entry *ent)
 cleanup:
 	binq_entry_free(ent);
 	free(ent->ctxt);
+	sem_post(&slave_credit);
 	return rc;
 }
 
@@ -1831,6 +1849,13 @@ int slave_process_input_entry_step1(struct bwq_entry *ent, struct bin_wkr_ctxt *
 	struct binq_data *in_data = &ent->data.in;
 	uint32_t comp_id;
 	int unresolved_count = 0;
+
+again:
+	rc = sem_wait(&slave_credit);
+	if (rc) {
+		berror("sem_wait()");
+		goto again;
+	}
 
 	if (in_data->type == BINQ_DATA_MSG) {
 		comp_id = bmap_get_id(comp_store->map, in_data->hostname);
