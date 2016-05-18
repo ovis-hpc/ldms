@@ -1448,8 +1448,16 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 
 static struct timeval to;
 static struct event *keepalive;
+#define KEEPALIVE_TIMEOUT 86400 /* 24 hours */
 static void stalled_timeout_cb(int s, short events, void *arg)
 {
+	int timeout;
+	if (zap_ugni_stalled_timeout < 0) {
+		timeout = KEEPALIVE_TIMEOUT;
+		goto out;
+	} else {
+		timeout = zap_ugni_stalled_timeout;
+	}
 	struct zap_ugni_post_desc *desc;
 	struct timeval now;
 	pthread_mutex_lock(&z_ugni_list_mutex);
@@ -1458,8 +1466,7 @@ static void stalled_timeout_cb(int s, short events, void *arg)
 	while (desc) {
 		zap_ugni_log("%s: %s: Freeing stalled post desc:\n",
 			__func__, desc->ep_name);
-		if (zap_ugni_stalled_timeout <=
-				now.tv_sec - desc->stalled_time.tv_sec) {
+		if (timeout <= now.tv_sec - desc->stalled_time.tv_sec) {
 			ZUGNI_LIST_REMOVE(desc, stalled_link);
 			free(desc);
 		} else {
@@ -1468,7 +1475,8 @@ static void stalled_timeout_cb(int s, short events, void *arg)
 		desc = LIST_FIRST(&stalled_desc_list);
 	}
 	pthread_mutex_unlock(&z_ugni_list_mutex);
-	to.tv_sec = zap_ugni_stalled_timeout;
+out:
+	to.tv_sec = timeout;
 	to.tv_usec = 0;
 	evtimer_add(keepalive, &to);
 }
