@@ -1960,10 +1960,10 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	struct binq_data *in_data = &ent->data.in;
 	uint32_t comp_id;
 	if (in_data->type == BINQ_DATA_MSG) {
-		comp_id = bmap_get_id(comp_store->map, in_data->hostname);
+		comp_id = bmap_insert(comp_store->map, in_data->hostname);
 		if (comp_id < BMAP_ID_BEGIN) {
-			/* Error, cannot find the comp_id */
-			berr("host not found: %.*s", in_data->hostname->blen,
+			/* Error, cannot insert the comp_id */
+			berr("Cannot insert host: %.*s", in_data->hostname->blen,
 					in_data->hostname->cstr);
 			rc = ENOENT;
 			goto cleanup;
