@@ -923,8 +923,10 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			goto skip;
 		}
 		pthread_mutex_lock(&uep->ep.lock);
+#ifdef DEBUG
 		if (uep->deferred_link.le_prev)
 			LOG_(uep, "uep %p: Doh!! I'm on the deferred list.\n", uep);
+#endif /* DEBUG */
 		struct zap_event zev = {0};
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
@@ -2057,9 +2059,6 @@ static void z_ugni_destroy(zap_ep_t ep)
 	release_buf_event(uep);
 	if (uep->gni_ep) {
 		DLOG_(uep, "Destroying gni_ep: %p\n", uep->gni_ep);
-		grc = GNI_EpUnbind(uep->gni_ep);
-		if (grc)
-			LOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
 		grc = GNI_EpDestroy(uep->gni_ep);
 		if (grc)
 			LOG_(uep, "GNI_EpDestroy() error: %s\n", gni_ret_str(grc));
