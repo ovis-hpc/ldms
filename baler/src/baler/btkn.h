@@ -125,7 +125,10 @@ static inline
 struct btkn_attr btkn_store_get_attr(struct btkn_store *store, uint32_t tkn_id)
 {
 	struct btkn_attr attr;
-	return store->attr->bvec->data[tkn_id];
+	pthread_mutex_lock(&store->attr->mutex);
+	attr = store->attr->bvec->data[tkn_id];
+	pthread_mutex_unlock(&store->attr->mutex);
+	return attr;
 }
 
 /**
