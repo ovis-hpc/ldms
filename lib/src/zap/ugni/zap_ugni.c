@@ -370,7 +370,7 @@ static void release_buf_event(struct z_ugni_ep *r);
 /* The caller must hold the endpoint lock */
 static void __shutdown_on_error(struct z_ugni_ep *uep)
 {
-	LOG_(uep, "%s\n", __func__);
+	DLOG_(uep, "%s\n", __func__);
 	if (uep->ep.state == ZAP_EP_CONNECTED)
 		uep->ep.state = ZAP_EP_CLOSE;
 	shutdown(uep->sock, SHUT_RDWR);
@@ -903,8 +903,8 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			 * has been flushed. The corresponding endpoint
 			 * might have been freed already.
 			 */
-			LOG("%s: Received complete event after the endpoint is freed.\n",
-					desc->ep_name);
+			LOG("%s: Received a complete event of a stalled post "
+						"desc.\n", desc->ep_name);
 			ZUGNI_LIST_REMOVE(desc, stalled_link);
 			free(desc);
 			pthread_mutex_unlock(&z_ugni_list_mutex);
@@ -1143,7 +1143,7 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 	__sync_add_and_fetch(&uep->unbind_count, 1);
 	gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
 	if (grc && !__exceed_disconn_ev_timeout(uep)) {
-		LOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
+		DLOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
 		/*
 		 * Defer the disconnected event as long as
 		 * we cannot unbind the endpoint and not exceeding
@@ -1167,10 +1167,12 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 	}
 #endif /* DEBUG */
 	if (grc) {
-		LOG_(uep, "GNI_EpUnbind() error: %s ... Give up\n", gni_ret_str(grc));
+		LOG_(uep, "Give up unbinding after %d retries .. delivering "
+			"the disconnected event.\n", uep->unbind_count);
+	} else {
+		LOG_(uep, "Delivering the disconnected event after calling "
+			"EpUnbind() %d times\n", uep->unbind_count);
 	}
-	LOG_(uep, "Delivering the disconnected event. Try unbind for %d times\n",
-							uep->unbind_count);
 	pthread_mutex_lock(&uep->ep.lock);
 	if (!LIST_EMPTY(&uep->post_desc_list)) {
 		__flush_post_desc_list(uep);
@@ -2028,6 +2030,8 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	uep->ep_id = zap_ugni_get_ep_id();
 	if (uep->ep_id < 0) {
+		LOG_(uep, "%s: Failed to get the zap endpoint ID\n",
+				__func__);
 		errno = ZAP_ERR_RESOURCE;
 		grc = GNI_EpDestroy(uep->gni_ep);
 		if (grc) {
