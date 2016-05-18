@@ -61,6 +61,7 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 #include <event2/thread.h>
+#include <sys/time.h>
 
 #include <gni_pub.h>
 #include <rca_lib.h>
@@ -107,6 +108,12 @@
  * This limits the fan-out of the aggregator.
  */
 #define ZAP_UGNI_MAX_BTE 8192
+
+/*
+ * The length of the string
+ * lcl=<local ip address:port> <--> rmt=<remote ip address:port>
+ */
+#define ZAP_UGNI_EP_NAME_SZ 64
 
 struct zap_ugni_map {
 	struct zap_map map;
@@ -264,12 +271,13 @@ struct zap_ugni_msg_connect {
 #pragma pack()
 
 struct zap_ugni_post_desc;
-
+LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc);
 struct z_ugni_ep {
 	struct zap_ep ep;
 
 	int sock;
 	int node_id;
+	int ep_id; /* The index in the endpoint array */
 	struct bufferevent *buf_event;
 	struct evconnlistener *listen_ev;
 	char *conn_data;
@@ -277,8 +285,13 @@ struct z_ugni_ep {
 	uint8_t rejecting;
 	gni_ep_handle_t gni_ep;
 
-	LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc) post_desc_list;
+	struct zap_ugni_post_desc_list post_desc_list;
 	struct zap_event conn_ev;
+
+	/*
+	 * The counter of retries to unbind the GNI endpoint
+	 */
+	int unbind_count;
 
 	LIST_ENTRY(z_ugni_ep) link;
 	LIST_ENTRY(z_ugni_ep) deferred_link;
@@ -287,8 +300,13 @@ struct z_ugni_ep {
 struct zap_ugni_post_desc {
 	gni_post_descriptor_t post;
 	struct z_ugni_ep *uep;
+	uint32_t ep_gn;
+	char ep_name[ZAP_UGNI_EP_NAME_SZ];
+	uint8_t is_stalled; /* It is in the stalled list. */
+	struct timeval stalled_time;
 	void *context;
-	LIST_ENTRY(zap_ugni_post_desc) link;
+	LIST_ENTRY(zap_ugni_post_desc) ep_link;
+	LIST_ENTRY(zap_ugni_post_desc) stalled_link;
 };
 
 static inline struct z_ugni_ep *z_sock_from_ep(zap_ep_t *ep)

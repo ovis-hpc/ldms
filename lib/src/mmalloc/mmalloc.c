@@ -66,6 +66,8 @@
 #include "../coll/rbt.h"
 #include "ovis-test/test.h"
 
+static int mm_is_disable_mm_free = 0;
+
 struct mm_prefix {
 	struct rbn addr_node;
 	struct rbn size_node;
@@ -127,6 +129,8 @@ int mm_init(size_t size, size_t grain)
 	if (MAP_FAILED == mmr->start)
 		goto out;
 
+	memset(mmr->start, 0XAA, size);
+
 	get_pow2(grain, &mmr->grain, &mmr->grain_bits);
 	mmr->size = size;
 
@@ -144,6 +148,11 @@ int mm_init(size_t size, size_t grain)
 	/* Insert the chunk into the r-b trees */
 	rbt_ins(&mmr->size_tree, &pfx->size_node);
 	rbt_ins(&mmr->addr_tree, &pfx->addr_node);
+
+	const char *tmp = getenv("MMALLOC_DISABLE_MM_FREE");
+	if (tmp)
+		mm_is_disable_mm_free = atoi(tmp);
+
 	return 0;
  out:
 	free(mmr);
@@ -195,9 +204,13 @@ void *mm_alloc(size_t size)
 
 void mm_free(void *d)
 {
+	if (mm_is_disable_mm_free)
+		return;
+
 	struct mm_prefix *p = d;
 	struct mm_prefix *q, *r;
 	struct rbn *rbn;
+
 	p --;
 
 	pthread_mutex_lock(&mmr->lock);
@@ -239,6 +252,8 @@ void mm_free(void *d)
 	p->pfx = p;
 	rbn_init(&p->size_node, &p->count);
 	rbn_init(&p->addr_node, &p->pfx);
+
+	memset(p+1, 0xff, (p->count << mmr->grain_bits) - sizeof(*p));
 
 	/* Put 'p' back in the trees */
 	rbt_ins(&mmr->size_tree, &p->size_node);

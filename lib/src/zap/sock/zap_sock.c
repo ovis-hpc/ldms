@@ -1362,10 +1362,7 @@ static zap_err_t z_sock_unmap(zap_ep_t ep, zap_map_t map)
 	struct zap_sock_map *m = (void*) map;
 	if (map->type == ZAP_MAP_LOCAL) {
 		z_key_delete(m->key);
-	} else {
-		LIST_REMOVE(map, link);
 	}
-
 	free(m);
 	return ZAP_ERR_OK;
 }

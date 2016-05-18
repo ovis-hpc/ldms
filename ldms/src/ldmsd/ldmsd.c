@@ -258,6 +258,13 @@ const char *ldmsd_secret_get(void)
 }
 #endif
 
+#ifdef LDMSD_UPDATE_TIME
+double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
+{
+	return (end->tv_sec-start->tv_sec)*1000000.0 + (end->tv_usec-start->tv_usec);
+}
+#endif /* LDMSD_UPDATE_TIME */
+
 void cleanup(int x)
 {
 	int llevel = LDMSD_LINFO;
@@ -1542,6 +1549,8 @@ int main(int argc, char *argv[])
 {
 	struct ldms_version ldms_version;
 	struct ldmsd_version ldmsd_version;
+	ldms_version_get(&ldms_version);
+	ldmsd_version_get(&ldmsd_version);
 	char *sockname = NULL;
 	char *inet_listener_port = NULL;
 	char *authfile = NULL;
@@ -1687,8 +1696,6 @@ int main(int argc, char *argv[])
 			config_path = optarg;
 			break;
 		case 'V':
-			ldms_version_get(&ldms_version);
-			ldmsd_version_get(&ldmsd_version);
 			printf("LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
 							ldms_version.major,
 							ldms_version.minor,
@@ -1891,7 +1898,12 @@ int main(int argc, char *argv[])
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
 
-	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon version " VERSION "\n");
+	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon version "
+		"%hhu.%hhu.%hhu.%hhu. LDMS Library Version %hhu.%hhu.%hhu.%hhu. "
+		"git-SHA %s\n", ldmsd_version.major, ldmsd_version.minor,
+		ldmsd_version.patch, ldmsd_version.flags,
+		ldms_version.major, ldms_version.minor, ldms_version.patch,
+		ldms_version.flags, LDMS_GIT_LONG);
 #if OVIS_LIB_HAVE_AUTH
 	secretword = NULL;
 	if (authenticate) {

@@ -121,10 +121,15 @@ err_0:
 
 void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
-	if (set->schema_name)
+	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s\n", set->inst_name);
+	if (set->schema_name) {
 		free(set->schema_name);
-	if (set->set)
+		set->schema_name = NULL;
+	}
+	if (set->set) {
 		ldms_set_delete(set->set);
+		set->set = NULL;
+	}
 	ldmsd_strgp_ref_t strgp_ref;
 	strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
@@ -208,6 +213,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	prd_set->set = set;
 	prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
 
 out:
@@ -602,7 +608,7 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 		ldmsd_prdcr_set_t prd_set;
 		for (prd_set = ldmsd_prdcr_set_first(prdcr);
 		     prd_set; prd_set = ldmsd_prdcr_set_next(prd_set)) {
-			if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
+			if (prd_set->state < LDMSD_PRDCR_SET_STATE_READY)
 				continue;
 			ldmsd_strgp_update_prdcr_set(strgp, prd_set);
 		}

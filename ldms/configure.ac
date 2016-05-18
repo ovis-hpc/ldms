@@ -214,11 +214,11 @@ fi
 if test -z "$ENABLE_POW_TRUE"; then
 	OCFLAGS=$CFLAGS
 	CFLAGS=-I$POW_INCDIR
-	AC_CHECK_HEADERS(pow.h,
+	AC_CHECK_HEADERS(pwr.h,
 			 [],
 			 AC_MSG_FAILURE([pow.h not found])
 			 )
-	AC_CHECK_LIB(pow, PWR_CntxtInit, [],
+	AC_CHECK_LIB(pwr, PWR_CntxtInit, [],
 		     AC_MSG_ERROR([PWR_CntxtInit() function not found. powerapi
 				   sampler requires libpow.]),
 		     [ $POW_LIB64DIR_FLAG $POW_LIBDIR_FLAG ]

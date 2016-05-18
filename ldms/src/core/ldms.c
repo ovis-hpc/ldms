@@ -471,22 +471,12 @@ void ldms_set_delete(ldms_set_t s)
 	struct ldms_set *set = sd->set;
 	struct ldms_rbuf_desc *rbd;
 	if (LIST_EMPTY(&set->remote_rbd_list)) {
-
 		__ldms_set_unpublish(set);
-		rem_local_set(set);
 		while (!LIST_EMPTY(&set->local_rbd_list)) {
 			rbd = LIST_FIRST(&set->local_rbd_list);
 			LIST_REMOVE(rbd, set_link);
 			__ldms_free_rbd(rbd);
 		}
-
-		if (set->flags & LDMS_SET_F_FILEMAP) {
-			unlink(_create_path(get_instance_name(set->meta)->name));
-			strcat(__set_path, ".META");
-			unlink(__set_path);
-		}
-		mm_free(set->meta);
-		free(set);
 	}
 	__ldms_set_tree_unlock();
 	free(sd);

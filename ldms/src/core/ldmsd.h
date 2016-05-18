@@ -53,6 +53,12 @@
 #define __LDMSD_H__
 #include <regex.h>
 #include <sys/queue.h>
+
+#ifdef LDMSD_UPDATE_TIME
+#include <sys/time.h>
+#include <coll/idx.h>
+#endif /* LDMSD_UPDATE_TIME */
+
 #include <ovis_util/util.h>
 #include "ldms.h"
 
@@ -170,6 +176,9 @@ typedef struct ldmsd_prdcr {
 	 * produer.
 	 */
 	struct rbt set_tree;
+#ifdef LDMSD_UPDATE_TIME
+	double sched_update_time;
+#endif /* LDMSD_UPDATE_TIME */
 } *ldmsd_prdcr_t;
 
 struct ldmsd_strgp;
@@ -180,6 +189,7 @@ typedef struct ldmsd_strgp_ref {
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
+typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
@@ -189,14 +199,25 @@ typedef struct ldmsd_prdcr_set {
 		LDMSD_PRDCR_SET_STATE_START,
 		LDMSD_PRDCR_SET_STATE_LOOKUP,
 		LDMSD_PRDCR_SET_STATE_READY,
+		LDMSD_PRDCR_SET_STATE_UPDATING,
 	} state;
 	uint64_t last_gn;
 	pthread_mutex_t lock;
 	LIST_HEAD(ldmsd_strgp_ref_list, ldmsd_strgp_ref) strgp_list;
 	struct rbn rbn;
 
+#ifdef LDMSD_UPDATE_TIME
+	struct ldmsd_updt_time *updt_time;
+	struct timeval updt_start;
+	double updt_duration;
+#endif /* LDMSD_UPDATE_TIME */
+
 	int ref_count;
 } *ldmsd_prdcr_set_t;
+
+#ifdef LDMSD_UPDATE_TIME
+double ldmsd_timeval_diff(struct timeval *start, struct timeval *end);
+#endif /* LDMSD_UPDATE_TIME */
 
 typedef struct ldmsd_prdcr_ref {
 	ldmsd_prdcr_t prdcr;
@@ -212,6 +233,16 @@ typedef struct ldmsd_prdcr_ref {
  * sets on each producer will be updated.
  *
  */
+#ifdef LDMSD_UPDATE_TIME
+struct ldmsd_updt_time {
+	struct timeval sched_start;
+	struct timeval update_start;
+	int ref;
+	ldmsd_updtr_ptr updtr;
+	pthread_mutex_t lock;
+};
+#endif /* LDMSD_UPDATE_TIME */
+
 struct ldmsd_name_match;
 typedef struct ldmsd_updtr {
 	struct ldmsd_cfgobj obj;
@@ -228,6 +259,12 @@ typedef struct ldmsd_updtr {
 	} state;
 
 	struct ldmsd_task task;
+
+#ifdef LDMSD_UPDATE_TIME
+	struct ldmsd_updt_time *curr_updt_time;
+	double duration;
+	double sched_duration;
+#endif /* LDMSD_UPDATE_TIME */
 
 	LIST_HEAD(prdcr_list, ldmsd_prdcr_ref) prdcr_list;
 	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
@@ -692,6 +729,8 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 		return "LOOKUP";
 	case LDMSD_PRDCR_SET_STATE_READY:
 		return "READY";
+	case LDMSD_PRDCR_SET_STATE_UPDATING:
+		return "UPDATING";
 	}
 	return "BAD STATE";
 }
