@@ -131,6 +131,20 @@ struct bpixel {
 	uint32_t count;
 };
 
+#define hton_bpixel(p) do { \
+	(p)->sec = htonl((p)->sec); \
+	(p)->comp_id = htonl((p)->comp_id); \
+	(p)->ptn_id = htonl((p)->ptn_id); \
+	(p)->count = htonl((p)->count); \
+} while(0)
+
+#define nton_bpixel(p) do { \
+	(p)->sec = ntohl((p)->sec); \
+	(p)->comp_id = ntohl((p)->comp_id); \
+	(p)->ptn_id = ntohl((p)->ptn_id); \
+	(p)->count = ntohl((p)->count); \
+} while(0)
+
 /*
  * Structure name declaration to supress compilation warnings.
  */
