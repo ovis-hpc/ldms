@@ -771,7 +771,7 @@ void* rsyslog_tcp_listen(void *arg)
 	}
 
 	while (0 <= (peer_sd = accept(sd, (void*)&peer_addr, &peer_addr_len))) {
-		conn_cb(io_evbase, peer_sd, (void*)&peer_sd, peer_addr_len, p);
+		conn_cb(io_evbase, peer_sd, (void*)&peer_addr, peer_addr_len, p);
 		peer_addr_len = sizeof(peer_addr); /* set for next accept() */
 	}
 
