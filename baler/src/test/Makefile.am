@@ -25,3 +25,7 @@ bin_PROGRAMS += bheap_test
 bmhash_test_SOURCES = bmhash_test.c
 bmhash_test_LDADD = ../baler/libbaler.la
 bin_PROGRAMS += bmhash_test
+
+bqpos_test_SOURCES = bqpos_test.c
+bqpos_test_LDADD = ../baler/libbaler.la ../query/libbquery.la
+bin_PROGRAMS += bqpos_test

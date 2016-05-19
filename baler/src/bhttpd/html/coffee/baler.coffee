@@ -24,6 +24,24 @@ window.baler =
             return hostport
         )()
 
+    check_endian: () ->
+        # Check browser endianness
+        a32 = new Uint32Array(1)
+        a8 = new Uint8Array(a32.buffer)
+        a32[0] = 1
+        if (a8[0] == 1)
+            window.baler.little_endian = 1
+        else
+            window.baler.little_endian = 0
+
+    ntohl: (num) ->
+        if not baler.little_endian
+            return num
+        return ( ((num & 0xFF000000) >> 24) |
+                 ((num & 0x00FF0000) >>  8) |
+                 ((num & 0x0000FF00) <<  8) |
+                 ((num & 0x000000FF) << 24) )
+
     ###
     left-zero-padding string format for number
     ###
@@ -495,15 +513,17 @@ window.baler =
             i = 0
             data = new Uint32Array(_data)
             while i < data.length
+                # data is in network byte order
+                d = baler.ntohl(data[i])
                 img.data[i*4] = @base_color[0]
                 img.data[i*4+1] = @base_color[1]
                 img.data[i*4+2] = @base_color[2]
                 # img.data[i*4+3] = data[i]
                 img.data[i*4+3] = switch
-                    when data[i] == 0 then 0
-                    when data[i] < @min_alpha then @min_alpha
-                    when data[i] > @max_alpha then @max_alpha
-                    else data[i]
+                    when d == 0 then 0
+                    when d < @min_alpha then @min_alpha
+                    when d > @max_alpha then @max_alpha
+                    else d
                 i++
 
             _x = (ts0 - @ts_begin) / @spp
@@ -1225,5 +1245,6 @@ window.baler =
         say: (text) ->
             console.log("child .. #{@name}: #{text}")
 
+window.baler.check_endian()
 
 # END OF FILE #

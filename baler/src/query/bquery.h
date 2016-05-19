@@ -153,6 +153,11 @@ struct bstr;
 struct bquery;
 struct bimgquery;
 struct bmsgquery;
+struct bquery_pos;
+
+#define BQUERY_POS(ptr) \
+	char __char ## ptr [16]; \
+	struct bquery_pos *ptr = (void*) __char ## ptr;
 
 struct bq_formatter {
 	int (*ptn_prefix)(struct bq_formatter *fmt, struct bdstr *bdstr,
@@ -280,6 +285,50 @@ int bq_prev_entry(struct bquery *q);
  * \retval errno if error.
  */
 int bq_last_entry(struct bquery *q);
+
+/**
+ * Get current position of the query into \c pos.
+ *
+ * \param q the query handle.
+ * \param[out] pos the output parameter to store current iterator position.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_get_pos(struct bquery *q, struct bquery_pos *pos);
+
+/**
+ * Recover the current position of the query from \c pos.
+ *
+ * \param q the query handle.
+ * \param pos the position obtained from ::bq_get_pos().
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bq_set_pos(struct bquery *q, struct bquery_pos *pos);
+
+/**
+ * Print position value into \c bdstr.
+ *
+ * \param pos position handle.
+ * \param[out] bdstr dynamic string buffer.
+ *
+ * \retval 0 OK.
+ * \retval errno Error.
+ */
+int bquery_pos_print(struct bquery_pos *pos, struct bdstr *bdstr);
+
+/**
+ * Recover position value from \c str.
+ *
+ * \param[out] pos bquery position handler.
+ * \param str the string containing printed position value.
+ *
+ * \retval 0 OK
+ * \retval errno Error.
+ */
+int bquery_pos_from_str(struct bquery_pos *pos, const char *str);
 
 /**
  * \}

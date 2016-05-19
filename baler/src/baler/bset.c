@@ -433,3 +433,30 @@ int brange_u32_iter_bwd_seek(struct brange_u32_iter *itr, uint32_t *v)
 	}
 	return ENOENT;
 }
+
+int brange_u32_iter_set_pos(struct brange_u32_iter *itr, uint32_t pos)
+{
+	int rc = 0;
+	struct brange_u32 *rng;
+	rng = itr->first_range;
+	while (rng) {
+		if (pos < rng->a) {
+			/* the rest of the ranges are greater than pos,
+			 * no need to continue. */
+			rng = NULL;
+			break;
+		}
+		if (pos <= rng->b) {
+			/* found it */
+			break;
+		}
+		/* otherwise, continue searching */
+		rng = TAILQ_NEXT(rng, link);
+	}
+	if (rng) {
+		itr->current_range = rng;
+		itr->current_value = pos;
+	}
+out:
+	return rc;
+}

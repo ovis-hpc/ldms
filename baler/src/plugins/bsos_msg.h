@@ -56,7 +56,7 @@ void bsos_msg_key_ptc_htobe(struct bsos_msg_key_ptc *k)
 	k->sec = htobe32(k->sec);
 }
 
-struct __attribute__ ((__packed__)) bsos_msg_key_tc {
+struct __attribute__ ((packed)) bsos_msg_key_tc {
 	/* this structure is uint64_t, lower byte has less precedence */
 	/* NOTE: We don't care about big-endian machine at the moment */
 	uint32_t comp_id;
@@ -73,6 +73,26 @@ static inline
 void bsos_msg_key_tc_set_sec(struct bsos_msg_key_tc *k, uint32_t sec)
 {
 	k->sec = sec;
+}
+
+#define __BSOSMSG_CMP(a0, a1, field, op) (((a0)->data.uint32_[field] op (a1)->data.uint32_[field]))
+
+static inline
+int bsos_msg_obj_cmp(sos_array_t msg0, sos_array_t msg1)
+{
+	if (__BSOSMSG_CMP(msg0, msg1, BSOS_MSG_SEC, <))
+		return -1;
+	if (__BSOSMSG_CMP(msg0, msg1, BSOS_MSG_SEC, >))
+		return 1;
+	if (__BSOSMSG_CMP(msg0, msg1, BSOS_MSG_COMP_ID, <))
+		return -1;
+	if (__BSOSMSG_CMP(msg0, msg1, BSOS_MSG_COMP_ID, >))
+		return 1;
+	if (__BSOSMSG_CMP(msg0, msg1, BSOS_MSG_PTN_ID, <))
+		return -1;
+	if (__BSOSMSG_CMP(msg0, msg1, BSOS_MSG_PTN_ID, >))
+		return 1;
+	return 0;
 }
 
 /**

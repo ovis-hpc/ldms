@@ -541,15 +541,58 @@ int bq_last_entry(struct bquery *q)
 	return q->last_entry(q);
 }
 
+int bq_get_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	return q->get_pos(q, pos);
+}
+
+int bq_set_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	return q->set_pos(q, pos);
+}
+
+int bquery_pos_print(struct bquery_pos *pos, struct bdstr *bdstr)
+{
+	int rc = 0;
+	int i;
+	for (i = 0; i < sizeof(pos->pos.data); i++) {
+		rc = bdstr_append_printf(bdstr, "%02hhx", pos->data[i]);
+		if (rc)
+			return rc;
+	}
+	return rc;
+}
+
+int bquery_pos_from_str(struct bquery_pos *pos, const char *str)
+{
+	int i;
+	for (i = 0; i < sizeof(pos->pos.data); i++) {
+		char s[5] ="0x00";
+		if (!*str)
+			return EINVAL;
+		s[2] = *str++;
+		if (!*str)
+			return EINVAL;
+		s[3] = *str++;
+		pos->data[i] = strtol(s, NULL, 0);
+	}
+
+	return 0;
+}
+
 int bq_msg_ptc_first_entry(struct bquery *q);
 int bq_msg_ptc_next_entry(struct bquery *q);
 int bq_msg_ptc_prev_entry(struct bquery *q);
 int bq_msg_ptc_last_entry(struct bquery *q);
+int bq_msg_ptc_get_pos(struct bquery *q, struct bquery_pos *pos);
+int bq_msg_ptc_set_pos(struct bquery *q, struct bquery_pos *pos);
 
 int bq_msg_tc_first_entry(struct bquery *q);
 int bq_msg_tc_next_entry(struct bquery *q);
 int bq_msg_tc_prev_entry(struct bquery *q);
 int bq_msg_tc_last_entry(struct bquery *q);
+int bq_msg_tc_get_pos(struct bquery *q, struct bquery_pos *pos);
+int bq_msg_tc_set_pos(struct bquery *q, struct bquery_pos *pos);
 
 int bquery_init(struct bquery *q, struct bq_store *store, const char *hst_ids,
 			     const char *ptn_ids, const char *ts0,
@@ -816,10 +859,9 @@ again:
 		case ENOENT:
 			/* use next timestamp */
 			k.sec++;
-			brange_u32_iter_begin(hent->hst_rng_itr, &k.comp_id);
-			break;
+			/* let through */
 		case EINVAL:
-			k.comp_id = hent->hst_rng_itr->current_value;
+			brange_u32_iter_begin(hent->hst_rng_itr, &k.comp_id);
 			break;
 		}
 		break;
@@ -847,7 +889,7 @@ int bq_msg_ptc_hent_last(struct bq_msg_ptc_hent *hent)
 	int rc;
 	uint32_t sec, comp_id, ptn_id;
 	SOS_KEY(key);
-	struct bsos_msg_key_ptc k = {0};
+	struct bsos_msg_key_ptc k = {-1, -1, -1};
 
 	k.ptn_id = hent->ptn_id;
 
@@ -905,10 +947,9 @@ again:
 		case ENOENT:
 			/* use next timestamp */
 			k.sec--;
-			brange_u32_iter_end(hent->hst_rng_itr, &k.comp_id);
-			break;
+			/* let through */
 		case EINVAL:
-			k.comp_id = hent->hst_rng_itr->current_value;
+			brange_u32_iter_end(hent->hst_rng_itr, &k.comp_id);
 			break;
 		}
 		break;
@@ -1046,12 +1087,16 @@ struct bmsgquery* bmsgquery_create(struct bq_store *store, const char *hst_ids,
 		msgq->base.prev_entry = bq_msg_ptc_prev_entry;
 		msgq->base.first_entry = bq_msg_ptc_first_entry;
 		msgq->base.last_entry = bq_msg_ptc_last_entry;
+		msgq->base.get_pos = bq_msg_ptc_get_pos;
+		msgq->base.set_pos = bq_msg_ptc_set_pos;
 	} else {
 		msgq->idxtype = BMSGIDX_TC;
 		msgq->base.next_entry = bq_msg_tc_next_entry;
 		msgq->base.prev_entry = bq_msg_tc_prev_entry;
 		msgq->base.first_entry = bq_msg_tc_first_entry;
 		msgq->base.last_entry = bq_msg_tc_last_entry;
+		msgq->base.get_pos = bq_msg_tc_get_pos;
+		msgq->base.set_pos = bq_msg_tc_set_pos;
 	}
 
 	msgq->base.get_sec = __bq_msg_entry_get_sec;
@@ -1082,6 +1127,8 @@ int bq_img_first_entry(struct bquery *q);
 int bq_img_next_entry(struct bquery *q);
 int bq_img_prev_entry(struct bquery *q);
 int bq_img_last_entry(struct bquery *q);
+int bq_img_get_pos(struct bquery *q, struct bquery_pos *pos);
+int bq_img_set_pos(struct bquery *q, struct bquery_pos *pos);
 
 static
 int __bq_img_open_bsos(struct bimgquery *imgq)
@@ -1130,6 +1177,8 @@ struct bimgquery* bimgquery_create(struct bq_store *store, const char *hst_ids,
 	imgq->base.next_entry = bq_img_next_entry;
 	imgq->base.prev_entry = bq_img_prev_entry;
 	imgq->base.last_entry = bq_img_last_entry;
+	imgq->base.get_pos = bq_img_get_pos;
+	imgq->base.set_pos = bq_img_set_pos;
 
 	imgq->base.bsos_open = (void*)bsos_img_open;
 	imgq->base.bsos_close = (void*)bsos_img_close;
@@ -1422,6 +1471,20 @@ out:
 	return rc;
 }
 
+int bq_img_get_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	return sos_iter_pos(q->itr, &pos->pos);
+}
+
+int bq_img_set_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	int rc = sos_iter_set(q->itr, &pos->pos);
+	if (rc)
+		return rc;
+	__img_obj_update((void*)q);
+	return 0;
+}
+
 int bq_msg_tc_next_entry(struct bquery *q)
 {
 	SOS_KEY(key);
@@ -1454,10 +1517,9 @@ again:
 		case ENOENT:
 			/* use next timestamp */
 			k.sec++;
-			brange_u32_iter_begin(q->hst_rng_itr, &k.comp_id);
-			break;
+			/* let through */
 		case EINVAL:
-			k.comp_id = q->hst_rng_itr->current_value;
+			brange_u32_iter_begin(q->hst_rng_itr, &k.comp_id);
 			break;
 		}
 		break;
@@ -1482,6 +1544,7 @@ int bq_msg_ptc_reverse_dir(struct bmsgquery *msgq)
 	int rc = 0;
 	int i;
 	struct bq_msg_ptc_hent *hent;
+	struct bq_msg_ptc_hent *hent_next;
 	int (*hent_init)(struct bq_msg_ptc_hent *hent);
 	int (*hent_step)(struct bq_msg_ptc_hent *step);
 
@@ -1499,6 +1562,7 @@ int bq_msg_ptc_reverse_dir(struct bmsgquery *msgq)
 		msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_inc;
 		break;
 	}
+
 	/* re-initialize entries in the used-up list first */
 	LIST_FOREACH(hent, &msgq->hent_list, link) {
 		rc = hent_init(hent);
@@ -1510,22 +1574,24 @@ int bq_msg_ptc_reverse_dir(struct bmsgquery *msgq)
 	for (i = 0; i < msgq->bheap->len; i++) {
 		hent = msgq->bheap->array[i];
 		rc = hent_step(hent);
-		if (rc) {
-			/* try init if cannot step */
-			rc = hent_init(hent);
-			if (rc)
-				goto out;
-		}
-		/* also, put into the hent_list */
+		/* It's OK if step failed.
+		 * It just means that hent is depleted. */
 		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
 	}
+
 	/* re-heap */
 	msgq->bheap->len = 0;
-	while ((hent = LIST_FIRST(&msgq->hent_list))) {
-		LIST_REMOVE(hent, link);
+	hent = LIST_FIRST(&msgq->hent_list);
+	while (hent) {
+		hent_next = LIST_NEXT(hent, link);
+		if (!hent->msg) /* process only valid (non-depleted) hent */
+			goto next;
 		rc = bheap_insert(msgq->bheap, hent);
 		if (rc)
 			goto out;
+		LIST_REMOVE(hent, link);
+	next:
+		hent = hent_next;
 	}
 out:
 	__msg_ptc_obj_update(msgq);
@@ -1578,6 +1644,7 @@ out:
 int bq_msg_tc_prev_entry(struct bquery *q)
 {
 	SOS_KEY(key);
+	struct bmsgquery *msgq = (void*)q;
 	struct bsos_msg_key_tc k = {0};
 	int rc;
 
@@ -1585,7 +1652,7 @@ int bq_msg_tc_prev_entry(struct bquery *q)
 	if (rc)
 		goto out;
 again:
-	__msg_obj_update((struct bmsgquery *)q);
+	__msg_obj_update(msgq);
 	rc = bq_check_cond(q);
 	switch (rc) {
 	case BQ_CHECK_COND_OK:
@@ -1607,10 +1674,9 @@ again:
 		case ENOENT:
 			/* use next timestamp */
 			k.sec--;
-			brange_u32_iter_end(q->hst_rng_itr, &k.comp_id);
-			break;
+			/* let trough */
 		case EINVAL:
-			k.comp_id = q->hst_rng_itr->current_value;
+			brange_u32_iter_end(q->hst_rng_itr, &k.comp_id);
 			break;
 		}
 		break;
@@ -1702,21 +1768,31 @@ out:
 	return rc;
 }
 
+void bq_msg_ptc_reset_heap(struct bquery *q)
+{
+	struct bmsgquery *msgq = (void*)q;
+	struct bq_msg_ptc_hent *hent;
+	int i;
+	for (i = 0; i < msgq->bheap->len; i++) {
+		hent = msgq->bheap->array[i];
+		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
+	}
+	msgq->bheap->len = 0;
+}
+
 int bq_msg_ptc_first_entry(struct bquery *q)
 {
-	/* unload fixed ptn_id iterators from heap */
 	struct bmsgquery *msgq = (void*)q;
 	struct bq_msg_ptc_hent *hent;
 	int i;
 	int rc = 0;
 
-	for (i = 0; i < msgq->bheap->len; i++) {
-		hent = msgq->bheap->array[i];
-		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
-	}
+	bq_msg_ptc_reset_heap(q);
+
+	/* forward iterator */
 	msgq->last_dir = BMSGQDIR_FWD;
-	msgq->bheap->len = 0;
 	msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_inc;
+
 	while ((hent = LIST_FIRST(&msgq->hent_list))) {
 		LIST_REMOVE(hent, link);
 		rc = bq_msg_ptc_hent_first(hent);
@@ -1768,21 +1844,65 @@ out:
 	return rc;
 }
 
+int bq_msg_tc_get_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	int rc;
+	struct bmsgquery *msgq = (void*)q;
+	pos->ptn_id = __bq_msg_entry_get_ptn_id(q);
+	pos->dir = msgq->last_dir;
+	rc = sos_iter_pos(q->itr, &pos->pos);
+	return rc;
+}
+
+int bq_msg_tc_set_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	struct bmsgquery *msgq = (void*)q;
+	uint32_t ptn_id;
+	uint32_t comp_id;
+	int rc;
+
+	rc = sos_iter_set(q->itr, &pos->pos);
+	if (rc)
+		return rc;
+	__msg_obj_update(msgq);
+	comp_id = __bq_msg_entry_get_comp_id(q);
+	ptn_id = __bq_msg_entry_get_ptn_id(q);
+
+	assert(ptn_id == pos->ptn_id);
+
+	rc = bq_check_cond(q);
+	if (rc)
+		/* invalid position */
+		return EINVAL;
+
+	if (q->hst_rng_itr) {
+		rc = brange_u32_iter_set_pos(q->hst_rng_itr, comp_id);
+		if (rc)
+			return rc;
+	}
+
+	if (q->ptn_rng_itr) {
+		rc = brange_u32_iter_set_pos(q->ptn_rng_itr, ptn_id);
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
+
 int bq_msg_ptc_last_entry(struct bquery *q)
 {
-	/* unload fixed ptn_id iterators from heap */
 	struct bmsgquery *msgq = (void*)q;
 	struct bq_msg_ptc_hent *hent;
 	int i;
 	int rc = 0;
 
-	for (i = 0; i < msgq->bheap->len; i++) {
-		hent = msgq->bheap->array[i];
-		LIST_INSERT_HEAD(&msgq->hent_list, hent, link);
-	}
+	bq_msg_ptc_reset_heap(q);
+
+	/* backward iterator */
 	msgq->last_dir = BMSGQDIR_BWD;
-	msgq->bheap->len = 0;
 	msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_dec;
+
 	while ((hent = LIST_FIRST(&msgq->hent_list))) {
 		LIST_REMOVE(hent, link);
 		rc = bq_msg_ptc_hent_last(hent);
@@ -1802,6 +1922,208 @@ int bq_msg_ptc_last_entry(struct bquery *q)
 	__msg_ptc_obj_update(msgq);
 out:
 	return rc;
+}
+
+int bq_msg_ptc_get_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	int rc;
+	struct bmsgquery *msgq = (void*)q;
+	struct bq_msg_ptc_hent *hent = bheap_get_top(msgq->bheap);
+	if (!hent)
+		return EINVAL; /* the iterator is in an invalid state */
+	pos->ptn_id = __bq_msg_entry_get_ptn_id(q);
+	pos->dir = msgq->last_dir;
+	rc = sos_iter_pos(hent->iter, &pos->pos);
+	return rc;
+}
+
+int bq_msg_ptc_hent_seek(struct bq_msg_ptc_hent *hent,
+			 struct bsos_msg_key_ptc *k)
+{
+	int rc;
+	int (*seek_fn)(sos_iter_t i, sos_key_t key);
+	int (*range_next)(struct brange_u32_iter *itr, uint32_t *v);
+	int (*range_begin)(struct brange_u32_iter *itr, uint32_t *v);
+	int (*hent_cmp)(struct bq_msg_ptc_hent *a, struct bq_msg_ptc_hent *b);
+	int (*hent_next)(struct bq_msg_ptc_hent *hent);
+	SOS_KEY(sos_key);
+	uint32_t comp_id;
+	uint32_t next_sec;
+	int over_under_flow = 0;
+
+	struct bsos_msg_key_ptc curr_key, next_key;
+	struct bsos_msg_key_ptc *tmp_key_p;
+
+	curr_key = *k;
+	curr_key.ptn_id = hent->ptn_id;
+	next_key = curr_key;
+	if (hent->hst_rng_itr) {
+		rc = brange_u32_iter_set_pos(hent->hst_rng_itr, k->comp_id);
+		if (rc)
+			return EINVAL;
+	}
+	switch (hent->msgq->last_dir) {
+	case BMSGQDIR_FWD:
+		seek_fn = sos_iter_sup;
+		next_key.comp_id++;
+		if (next_key.comp_id == 0)
+			over_under_flow = 1;
+		next_sec = curr_key.sec + 1;
+		range_next = brange_u32_iter_fwd_seek;
+		range_begin = brange_u32_iter_begin;
+		hent_cmp = bq_msg_ptc_hent_cmp_inc;
+		hent_next = bq_msg_ptc_hent_next;
+		break;
+	case BMSGQDIR_BWD:
+		seek_fn = __sos_iter_inf_last;
+		next_key.comp_id--;
+		if (next_key.comp_id == 0xFFFFFFFF)
+			over_under_flow = 1;
+		next_sec = curr_key.sec - 1;
+		range_next = brange_u32_iter_bwd_seek;
+		range_begin = brange_u32_iter_end;
+		hent_cmp = bq_msg_ptc_hent_cmp_dec;
+		hent_next = bq_msg_ptc_hent_prev;
+		break;
+	}
+
+	if (hent->hst_rng_itr) {
+		rc = range_next(hent->hst_rng_itr, &next_key.comp_id);
+		if (rc) {
+			next_key.sec = next_sec;
+			range_begin(hent->hst_rng_itr,
+						&next_key.comp_id);
+		}
+	} else {
+		if (over_under_flow)
+			next_key.sec = next_sec;
+	}
+
+	switch (hent->msgq->last_dir) {
+	case BMSGQDIR_FWD:
+		if (k->ptn_id < hent->ptn_id) {
+			tmp_key_p = &curr_key;
+		} else {
+			tmp_key_p = &next_key;
+		}
+		break;
+	case BMSGQDIR_BWD:
+		if (k->ptn_id > hent->ptn_id) {
+			tmp_key_p = &curr_key;
+		} else {
+			tmp_key_p = &next_key;
+		}
+		break;
+	}
+
+	/* do the seek (sup/inf) */
+	bsos_msg_key_ptc_htobe(tmp_key_p);
+	sos_key_set(sos_key, tmp_key_p, sizeof(*tmp_key_p));
+	seek_fn(hent->iter, sos_key);
+	bq_msg_ptc_hent_obj_update(hent);
+
+	if (!hent->obj) {
+		/* no object */
+		return ENOENT;
+	}
+
+	rc = bq_msg_ptc_hent_check_cond(hent);
+	switch (rc) {
+	case BQ_CHECK_COND_OK:
+		comp_id = bsos_msg_get_comp_id(hent->msg);
+		if (hent->hst_rng_itr)
+			brange_u32_iter_set_pos(hent->hst_rng_itr, comp_id);
+		return 0;
+	case BQ_CHECK_COND_HST:
+		if (hent->hst_rng_itr)
+			range_begin(hent->hst_rng_itr, &comp_id);
+		return hent_next(hent);
+	case BQ_CHECK_COND_TS0:
+	case BQ_CHECK_COND_PTN:
+	case BQ_CHECK_COND_TS1:
+		return ENOENT;
+	}
+
+	assert(0);
+	return 0;
+}
+
+int bq_msg_ptc_set_pos(struct bquery *q, struct bquery_pos *pos)
+{
+	struct bmsgquery *msgq = (void*)q;
+	struct bq_msg_ptc_hent *hent, *tmp_hent;
+	uint32_t ptn_id;
+	uint32_t comp_id;
+	uint32_t t;
+	struct bsos_msg_key_ptc k = {0};
+	int rc, i;
+
+	bq_msg_ptc_reset_heap(q);
+	msgq->last_dir = pos->dir;
+	switch (msgq->last_dir) {
+	case BMSGQDIR_FWD:
+		msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_inc;
+		break;
+	case BMSGQDIR_BWD:
+		msgq->bheap->cmp = (void*)bq_msg_ptc_hent_cmp_dec;
+		break;
+	default:
+		assert(0 == "Invalid iterator direction.");
+		break;
+	}
+
+	/* first: find and position the iterator matching the pos->ptn_id */
+	LIST_FOREACH(hent, &msgq->hent_list, link) {
+		if (hent->ptn_id != pos->ptn_id)
+			continue;
+		rc = sos_iter_set(hent->iter, &pos->pos);
+		if (rc)
+			return rc;
+		bq_msg_ptc_hent_obj_update(hent);
+		k.ptn_id = hent->ptn_id;
+		k.sec = bsos_msg_get_sec(hent->msg);
+		k.comp_id = bsos_msg_get_comp_id(hent->msg);
+		if (hent->hst_rng_itr) {
+			rc = brange_u32_iter_set_pos(hent->hst_rng_itr,
+							k.comp_id);
+			if (rc)
+				return rc;
+		}
+		rc = bheap_insert(msgq->bheap, hent);
+		if (rc)
+			return rc;
+		LIST_REMOVE(hent, link);
+		break;
+	}
+
+	if (!hent) {
+		/* invalid position, no iterator matching ptn_id. */
+		return EINVAL;
+	}
+
+	/* position the rest of the iterators */
+	hent = LIST_FIRST(&msgq->hent_list);
+	while (hent) {
+		rc = bq_msg_ptc_hent_seek(hent, &k);
+		if (rc == ENOENT) {
+			/* No need to put this into the heap */
+			hent = LIST_NEXT(hent, link);
+			continue;
+		}
+		assert(rc == 0);
+
+		tmp_hent = LIST_NEXT(hent, link);
+
+		rc = bheap_insert(msgq->bheap, hent);
+		if (rc)
+			return rc;
+		LIST_REMOVE(hent, link);
+		hent = tmp_hent;
+	}
+
+	__msg_ptc_obj_update(msgq);
+
+	return 0;
 }
 
 uint32_t bq_entry_get_sec(struct bquery *q)
