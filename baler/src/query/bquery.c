@@ -569,7 +569,7 @@ int bquery_pos_print(struct bquery_pos *pos, struct bdstr *bdstr)
 {
 	int rc = 0;
 	int i;
-	for (i = 0; i < sizeof(pos->pos.data); i++) {
+	for (i = 0; i < sizeof(pos->data); i++) {
 		rc = bdstr_append_printf(bdstr, "%02hhx", pos->data[i]);
 		if (rc)
 			return rc;
@@ -580,7 +580,7 @@ int bquery_pos_print(struct bquery_pos *pos, struct bdstr *bdstr)
 int bquery_pos_from_str(struct bquery_pos *pos, const char *str)
 {
 	int i;
-	for (i = 0; i < sizeof(pos->pos.data); i++) {
+	for (i = 0; i < sizeof(pos->data); i++) {
 		char s[5] ="0x00";
 		if (!*str)
 			return EINVAL;

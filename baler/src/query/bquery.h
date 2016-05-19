@@ -158,7 +158,7 @@ struct bmsgquery;
 struct bquery_pos;
 
 #define BQUERY_POS(ptr) \
-	char __char ## ptr [16]; \
+	char __char ## ptr [24]; \
 	struct bquery_pos *ptr = (void*) __char ## ptr;
 
 struct bq_formatter {

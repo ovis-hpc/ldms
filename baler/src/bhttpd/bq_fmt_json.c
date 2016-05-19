@@ -114,7 +114,7 @@ int __bqfmt_json_msg_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
 	if (rc)
 		return rc;
 	if (f->pos) {
-		rc = bdstr_append_printf(bdstr, ", \"pos:\": \"");
+		rc = bdstr_append_printf(bdstr, ", \"pos\": \"");
 		if (rc)
 			return rc;
 		rc = bquery_pos_print(f->pos, bdstr);
