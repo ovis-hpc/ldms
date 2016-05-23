@@ -940,6 +940,7 @@ void bhttpd_handle_query_msg2(struct bhttpd_req_ctxt *ctxt)
 	BQUERY_POS(pos);
 	int is_fwd = 1;
 	int i, n = 50;
+	int curr = 0;
 	int rc;
 
 	bdstr = bdstr_new(256);
@@ -977,11 +978,35 @@ void bhttpd_handle_query_msg2(struct bhttpd_req_ctxt *ctxt)
 			goto out;
 		}
 		qs->first = 0;
+
+		/* current (curr) flag can turn 1 only with pos */
+		str = bpair_str_value(&ctxt->kvlist, "curr");
+		if (str)
+			curr = 1;
 	}
 
 	evbuffer_add_printf(ctxt->evbuffer, "{");
 
 	evbuffer_add_printf(ctxt->evbuffer, "\"msgs\": [");
+	if (curr) {
+		rc = bq_get_pos(qs->q, pos);
+		if (rc) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bq_get_pos() error, %d", rc);
+			goto out;
+		}
+		qs->ref = bq_entry_get_ref(qs->q);
+		bqfmt_json_set_msg_ref(qs->fmt, qs->ref);
+		bqfmt_json_set_msg_pos(qs->fmt, pos);
+		str = bq_entry_print(qs->q, bdstr);
+		if (!str) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"bq_entry_print() errno: %d", errno);
+			goto out;
+		}
+		evbuffer_add_printf(ctxt->evbuffer, "%s", str);
+		bdstr_reset(bdstr);
+	}
 	for (i = 0; i < n; i++) {
 		if (qs->first) {
 			qs->first = 0;
@@ -1013,7 +1038,7 @@ void bhttpd_handle_query_msg2(struct bhttpd_req_ctxt *ctxt)
 					"bq_entry_print() errno: %d", errno);
 			goto out;
 		}
-		if (i)
+		if (i || curr)
 			evbuffer_add_printf(ctxt->evbuffer, ",%s", str);
 		else
 			evbuffer_add_printf(ctxt->evbuffer, "%s", str);
