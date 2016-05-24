@@ -263,8 +263,7 @@ static int purge_layers(idx_t t, idx_key_t key, size_t keylen)
 	assert(key && keylen);
 
 	/* The top layer is not purged */
-	pl = pl->entries[*pkey].next;
-	if (purge_layer(pl, pkey+1, keylen-1)) {
+	if (purge_layer(pl->entries[*pkey].next, pkey+1, keylen-1)) {
 		pl->layer_count--;
 		pl->entries[*pkey].next = NULL;
 	}

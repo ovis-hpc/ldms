@@ -278,7 +278,7 @@ ovis_event_manager_t ovis_event_manager_create()
 
 err:
 	ovis_event_manager_free(m);
-
+	m = NULL;
 out:
 	return m;
 }

@@ -240,8 +240,10 @@ void rbt_ins(struct rbt *t, struct rbn *x)
 					rotate_right(t, x);
 				}
 				x->parent->color = RBN_BLACK;
-				x->parent->parent->color = RBN_RED;
-				rotate_left(t, x->parent->parent);
+				if (x->parent->parent) {
+					x->parent->parent->color = RBN_RED;
+					rotate_left(t, x->parent->parent);
+				}
 			}
 		}
 	}

@@ -955,6 +955,7 @@ static zap_err_t z_rdma_reject(zap_ep_t ep, char *data, size_t data_len)
 	rep->conn_req_decision = Z_RDMA_PASSIVE_REJECT;
 	rc = rdma_reject(rep->cm_id, (void *)msg, len);
 	if (rc) {
+		free(msg);
 		return zap_errno2zerr(errno);
 	}
 	free(msg);

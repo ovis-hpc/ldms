@@ -213,7 +213,7 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 {
 	int rc;
 	struct sockaddr_un my_un;
-	char *mn = strdup(my_name);
+	char *mn;
 	char *sockpath;
 	char *_sockname = NULL;
 	struct ctrlsock *sock;
@@ -248,6 +248,9 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 	pid_t pid = getpid();
 	sock->lcl_sun.sun_family = AF_UNIX;
 
+	mn = strdup(my_name);
+	if (!mn)
+		goto err;
 	sprintf(my_un.sun_path, "%s/%s", sockpath, basename(mn));
 	free(mn);
 
