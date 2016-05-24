@@ -556,23 +556,24 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep, size_t reqlen)
 	 * The data the other side receives could be garbage
 	 * if the map is deleted after this point.
 	 */
+	rmsg.data_len = 0;
 	switch (rc) {
-	case 0:
-		/* OK */
+	case 0:	/* OK */
+
 		rmsg.status = 0;
 		rmsg.data_len = msg.data_len; /* Still in BE */
 		break;
 	case EACCES:
 		rmsg.status = htons(ZAP_ERR_REMOTE_PERMISSION);
-		rmsg.data_len = 0;
 		break;
 	case ERANGE:
 		rmsg.status = htons(ZAP_ERR_REMOTE_LEN);
-		rmsg.data_len = 0;
 		break;
 	case ENOENT:
 		rmsg.status = htons(ZAP_ERR_REMOTE_MAP);
-		rmsg.data_len = 0;
+		break;
+	default:
+		rmsg.status = htons(ZAP_ERR_PARAMETER);
 		break;
 	}
 	struct evbuffer *ebuf = evbuffer_new();
@@ -1522,7 +1523,7 @@ err1:
 	evbuffer_free(ebuf);
 err0:
 	__sock_io_free(sep, io);
-	return ZAP_ERR_RESOURCE;
+	return zerr;
 }
 
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
