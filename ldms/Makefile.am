@@ -62,6 +62,8 @@ banned:
 
 if ENABLE_DOC
 
+.PHONY: install-dox
+
 if ENABLE_DOC_HTML
 DOCDEPS = $(top_srcdir)/src/*/*.c \
           $(top_srcdir)/src/*/*.h \

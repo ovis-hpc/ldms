@@ -19,19 +19,18 @@ AC_ARG_ENABLE($1, [  --disable-$1     Disable the $1 module],
                         disable_]m4_translit([$1], [-+.], [___])[=yes
                         enable_]m4_translit([$1], [-+.], [___])[=no
 			AC_MSG_NOTICE([Disable $1 module requested ])
+			option_fn_append ac_configure_args " '--disable-]m4_translit([$1], [-+.], [___])['"
 		else
                         enable_]m4_translit([$1], [-+.], [___])[=yes
                         disable_]m4_translit([$1], [-+.], [___])[=no
+			option_fn_append ac_configure_args " '--enable-]m4_translit([$1], [-+.], [___])['"
                 fi
         ], [ AC_MSG_NOTICE([Disable $1 module NOT requested])
 		enable_]m4_translit([$1], [-+.], [___])[=yes
 		disable_]m4_translit([$1], [-+.], [___])[=no
+		option_fn_append ac_configure_args " '--enable-]m4_translit([$1], [-+.], [___])['"
 	])
 AM_CONDITIONAL([$2], [test "$disable_]m4_translit([$1], [-+.], [___])[" != "yes"])
-dnl pass down the top level decision.
-if test "$disable_]m4_translit([$1], [-+.], [___])[" != "yes"; then
-        option_fn_append ac_configure_args " '--enable-]m4_translit([$1], [-+.], [___])['"
-fi
 ])
 
 dnl SYNOPSIS: OPTION_DEFAULT_DISABLE([name], [enable_flag_var])
@@ -44,20 +43,18 @@ AC_ARG_ENABLE($1, [  --enable-$1     Enable the $1 module: $3],
                         enable_]m4_translit([$1], [-+.], [___])[=yes
                         disable_]m4_translit([$1], [-+.], [___])[=no
 			AC_MSG_NOTICE([Enable $1 module requested])
+			option_fn_append ac_configure_args " '--enable-]m4_translit([$1], [-+.], [___])['"
 		else
                         disable_]m4_translit([$1], [-+.], [___])[=yes
                         enable_]m4_translit([$1], [-+.], [___])[=no
+			option_fn_append ac_configure_args " '--disable-]m4_translit([$1], [-+.], [___])['"
                 fi
         ], [ AC_MSG_NOTICE([Enable $1 module NOT requested])
 		disable_]m4_translit([$1], [-+.], [___])[=yes
 		enable_]m4_translit([$1], [-+.], [___])[=no
+		option_fn_append ac_configure_args " '--disable-]m4_translit([$1], [-+.], [___])['"
 	])
 AM_CONDITIONAL([$2], [test "$enable_]m4_translit([$1], [-+.], [___])[" == "yes"])
-dnl pass down the top level decision.
-if test "$enable_]m4_translit([$1], [-+.], [___])[" != "yes"; then
-        option_fn_append ac_configure_args " '--disable-]m4_translit([$1], [-+.], [___])['"
-fi
-
 ])
 
 dnl SYNOPSIS: OPTION_WITH([name], [VAR_BASE_NAME])
