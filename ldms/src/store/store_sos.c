@@ -209,12 +209,7 @@ sos_handle_t create_container(const char *path)
 	sos_t sos;
 	time_t t;
 	char part_name[16];	/* Unix timestamp as string */
-	sos_handle_t h;
 	sos_part_t part;
-
-	h = calloc(1, sizeof(*h));
-	if (!h)
-		return NULL;
 
 	rc = sos_container_new(path, 0660);
 	if (rc) {
@@ -257,7 +252,6 @@ sos_handle_t create_container(const char *path)
  err_0:
 	if (rc)
 		errno = rc;
-	free(h);
 	return NULL;
 }
 

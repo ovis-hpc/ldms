@@ -882,7 +882,7 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 	}
 	tv.tv_usec = 0;
 
-	struct oneshot *ossample = malloc(sizeof(ossample));
+	struct oneshot *ossample = malloc(sizeof(*ossample));
 	if (!ossample) {
 		snprintf(err_str, LEN_ERRSTR, "Out of Memory");
 		rc = ENOMEM;

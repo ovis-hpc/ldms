@@ -819,8 +819,8 @@ unsigned long saggs_mask = 0;
  * Add a host
  */
 int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port,
-				char *sets, char *interval_s, char *offset_s,
-				char *standby_no_s, char err_str[LEN_ERRSTR])
+		   char *sets, char *interval_s, char *offset_s,
+		   char *standby_no_s, char err_str[LEN_ERRSTR])
 {
 	int rc;
 	struct sockaddr_in sin;
@@ -905,7 +905,7 @@ int ldmsd_add_host(char *host, char *type, char *xprt_s, char *port,
 
 	hs = calloc(1, sizeof(*hs));
 	if (!hs)
-		goto enomem;
+		goto err;
 	hs->hostname = strdup(host);
 	if (!hs->hostname)
 		goto enomem;
@@ -998,12 +998,12 @@ clean_set_list:
 enomem:
 	rc = ENOMEM;
 	snprintf(err_str, LEN_ERRSTR, "Memory allocation failure.");
-err:
 	if (hs->hostname)
 		free(hs->hostname);
 	if (hs->xprt_name)
 		free(hs->xprt_name);
 	free(hs);
+err:
 	return rc;
 }
 
@@ -1035,6 +1035,7 @@ struct ldmsd_store_policy *alloc_store_policy(const char *policy_name,
 	free(sp->name);
  err1:
 	free(sp);
+	sp = NULL;
  err0:
 	return sp;
 }
@@ -2122,7 +2123,7 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset)
 	if (sp->metric_arry)
 		free(sp->metric_arry);
 	sp->metric_count = 0;
-	sp->metric_arry = calloc(ldms_set_card_get(hset->set), sizeof(int *));
+	sp->metric_arry = calloc(ldms_set_card_get(hset->set), sizeof(int));
 	name = NULL;
 	if (TAILQ_EMPTY(&sp->metric_list)) {
 		/* No metric list was given. Add all metrics in the set */

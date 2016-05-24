@@ -524,7 +524,7 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	}
 	/* Build metric list from the schema in the producer set */
 	strgp->metric_count = 0;
-	strgp->metric_arry = calloc(ldms_set_card_get(prd_set->set), sizeof(int *));
+	strgp->metric_arry = calloc(ldms_set_card_get(prd_set->set), sizeof(int));
 	if (!strgp->metric_arry)
 		return ENOMEM;
 
