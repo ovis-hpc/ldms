@@ -58,7 +58,7 @@ bquery_loop() {
 	__info "start bquery loop ..."
 	bquery_set_state "QUERYING"
 	while bquery_check_state "QUERYING"; do
-		bquery -s $BSTORE > tmp || __err_exit "bquery error exit"
+		bquery -s $BSTORE > tmp 2>/dev/null || __err_exit "bquery error exit"
 	done
 	bquery_set_state "DONE"
 	__info "bquery_loop exit!"
