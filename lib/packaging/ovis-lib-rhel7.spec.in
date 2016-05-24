@@ -126,6 +126,27 @@ Development files for ovis-lib-ctrl library
 %defattr(-,root,root)
 %{_includedir}/ovis_ctrl/
 
+# event
+%package event
+Summary: OVIS event library
+Group: %{ovis_lib_grp}
+%description event
+OVIS event library
+%files event
+%defattr(-,root,root)
+%{_libdir}/libovis_event*
+%{_libdir}/libovis_third*
+
+# event-devel
+%package event-devel
+Summary: Development files for ovis-lib-event library
+Group: %{ovis_lib_grp}
+%description event-devel
+Development files for ovis-lib-event library
+%files event-devel
+%defattr(-,root,root)
+%{_includedir}/ovis_event/
+
 # util
 %package util
 Summary: OVIS utility library

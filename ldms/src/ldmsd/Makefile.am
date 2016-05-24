@@ -65,7 +65,7 @@ endif
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
-ldmsd_sos_init_LDADD = -lsos -lpthread @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
+ldmsd_sos_init_LDADD = -lsos -lods -lpthread @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
 ldmsd_sos_init_LDFLAGS = $(AM_LDFLAGS)
 
 # make sym links for aggd scripting support

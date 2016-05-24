@@ -18,7 +18,7 @@ libcollinclude_HEADERS = rbt.h \
 			 label-set.h \
 			 heap.h
 libcollincludedir = $(includedir)/coll
-libcoll_la_LIBADD = -L../third -L../ovis_util -lovis_third -lovis_util
+libcoll_la_LIBADD = ../third/libovis_third.la ../ovis_util/libovis_util.la
 
 lib_LTLIBRARIES += libcoll.la
 
