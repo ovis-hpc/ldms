@@ -930,6 +930,8 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 		struct zap_event zev = {0};
 		switch (desc->post.type) {
 		case GNI_POST_RDMA_GET:
+			DLOG_(uep, "RDMA_GET: Read complete %p with %s\n",
+						desc, gni_ret_str(grc));
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
 				LOG_(uep, "RDMA_GET: completing "
@@ -941,6 +943,8 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			zev.context = desc->context;
 			break;
 		case GNI_POST_RDMA_PUT:
+			DLOG_(uep, "RDMA_GET: Read complete %p with %s\n",
+						desc, gni_ret_str(grc));
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
 				LOG_(uep, "RDMA_PUT: completing "
@@ -1268,7 +1272,6 @@ static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
 	}
 
 	/* Reaching here means bev is one of the EOF, ERROR or TIMEOUT */
-
 	pthread_mutex_lock(&uep->ep.lock);
 	bufferevent_setcb(uep->buf_event, NULL, NULL, NULL, NULL);
 	switch (uep->ep.state) {
@@ -1296,6 +1299,8 @@ static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
 		uep->ep.state = ZAP_EP_ERROR;
 		break;
 	}
+	DLOG_(uep, "%s: ep %p: state %s\n", __func__, uep,
+				__zap_ep_state_str[uep->ep.state]);
 	if (LIST_EMPTY(&uep->post_desc_list)) {
 		call_cb = 1;
 	}
