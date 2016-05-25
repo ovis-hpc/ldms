@@ -1162,7 +1162,8 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 	if (uep->deferred_link.le_prev) {
 		/* It is in the deferred list ... remove it. */
 		ZUGNI_LIST_REMOVE(uep, deferred_link);
-		uep->deferred_link.le_next = uep->deferred_link.le_prev = 0;
+		uep->deferred_link.le_next = 0;
+		uep->deferred_link.le_prev = 0;
 		zap_put_ep(&uep->ep);
 	}
 #endif /* DEBUG */
