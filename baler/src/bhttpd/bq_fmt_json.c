@@ -56,7 +56,8 @@ int __datetime_fmt(struct bdstr *bdstr, const struct timeval *tv)
 static
 int __ts_fmt(struct bdstr *bdstr, const struct timeval *tv)
 {
-	return bdstr_append_printf(bdstr, "%d.%06d", tv->tv_sec, tv->tv_usec);
+	return bdstr_append_printf(bdstr, "{\"sec\": %d, \"usec\": %d}",
+						tv->tv_sec, tv->tv_usec);
 }
 
 int __bqfmt_json_ptn_prefix(struct bq_formatter *fmt, struct bdstr *bdstr, uint32_t ptn_id)
