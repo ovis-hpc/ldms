@@ -1136,29 +1136,16 @@ static int __exceed_disconn_ev_timeout(struct z_ugni_ep *uep)
 	return 0;
 }
 
-void __ugni_defer_disconnected_event(struct z_ugni_ep *uep);
-static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
+static void __deliver_disconn_ev(struct z_ugni_ep *uep)
 {
-	struct z_ugni_ep *uep = (struct z_ugni_ep *)arg;
-	__sync_add_and_fetch(&uep->unbind_count, 1);
-	gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
-	if (grc && !__exceed_disconn_ev_timeout(uep)) {
-		DLOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
-		/*
-		 * Defer the disconnected event as long as
-		 * we cannot unbind the endpoint and not exceeding
-		 * the disconnect event delivering timeout.
-		 */
-		__ugni_defer_disconnected_event(uep);
-		return;
-	}
-
 	/* Deliver the disconnected event */
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	zap_ugni_ep_id[uep->ep_id] = -1;
 
+	pthread_mutex_lock(&uep->ep.lock);
 #ifdef DEBUG
 	/* It is in the queue already. */
+	pthread_mutex_lock(&deferred_list_mutex);
 	if (uep->deferred_link.le_prev) {
 		/* It is in the deferred list ... remove it. */
 		ZUGNI_LIST_REMOVE(uep, deferred_link);
@@ -1166,15 +1153,13 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 		uep->deferred_link.le_prev = 0;
 		zap_put_ep(&uep->ep);
 	}
+	pthread_mutex_unlock(&deferred_list_mutex);
 #endif /* DEBUG */
-	if (grc) {
-		LOG_(uep, "Give up unbinding after %d retries .. delivering "
-			"the disconnected event.\n", uep->unbind_count);
-	} else {
-		LOG_(uep, "Delivering the disconnected event after calling "
-			"EpUnbind() %d times\n", uep->unbind_count);
+	if (uep->deferred_event) {
+		event_del(uep->deferred_event);
+		event_free(uep->deferred_event);
+		uep->deferred_event = 0;
 	}
-	pthread_mutex_lock(&uep->ep.lock);
 	if (!LIST_EMPTY(&uep->post_desc_list)) {
 		__flush_post_desc_list(uep);
 		DLOG("%s: after cleanup all rdma"
@@ -1195,9 +1180,39 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 	zap_put_ep(&uep->ep);
 }
 
+void __ugni_defer_disconnected_event(struct z_ugni_ep *uep);
+static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
+{
+	struct z_ugni_ep *uep = (struct z_ugni_ep *)arg;
+	__sync_add_and_fetch(&uep->unbind_count, 1);
+	gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
+	if (grc) {
+		if (!__exceed_disconn_ev_timeout(uep)) {
+			DLOG_(uep, "GNI_EpUnbind() error: %s\n",
+					gni_ret_str(grc));
+			/*
+			 * Defer the disconnected event as long as
+			 * we cannot unbind the endpoint and not exceeding
+			 * the disconnect event delivering timeout.
+			 */
+			__ugni_defer_disconnected_event(uep);
+			return;
+		} else {
+			LOG_(uep, "Give up unbinding after %d retries .. delivering "
+				"the disconnected event.\n", uep->unbind_count);
+		}
+	} else {
+		LOG_(uep, "Delivering the disconnected event after calling "
+			"EpUnbind() %d times\n", uep->unbind_count);
+	}
+deliver_disconnected_ev:
+	__deliver_disconn_ev(uep);
+}
+
 void __ugni_defer_disconnected_event(struct z_ugni_ep *uep)
 {
 	DLOG("defer_disconnected: uep %p\n", uep);
+	pthread_mutex_lock(&uep->ep.lock);
 #ifdef DEBUG
 	pthread_mutex_lock(&deferred_list_mutex);
 	if (uep->deferred_link.le_prev == 0) {
@@ -1207,13 +1222,15 @@ void __ugni_defer_disconnected_event(struct z_ugni_ep *uep)
 	}
 	pthread_mutex_unlock(&deferred_list_mutex);
 #endif /* DEBUG */
-	struct event *deferred_event;
-	deferred_event = evtimer_new(io_event_loop,
-			__unbind_and_deliver_disconn_ev, (void *)uep);
+	if (!uep->deferred_event) {
+		uep->deferred_event = evtimer_new(io_event_loop,
+				__unbind_and_deliver_disconn_ev, (void *)uep);
+	}
+	pthread_mutex_unlock(&uep->ep.lock);
 	struct timeval t;
 	t.tv_sec = zap_ugni_unbind_timeout;
 	t.tv_usec = 0;
-	evtimer_add(deferred_event, &t);
+	evtimer_add(uep->deferred_event, &t);
 }
 
 static void ugni_sock_event(struct bufferevent *buf_event, short bev, void *arg)
@@ -2067,8 +2084,14 @@ static void z_ugni_destroy(zap_ep_t ep)
 	if (uep->ep_id >= 0)
 		zap_ugni_ep_id[uep->ep_id] = 0;
 	pthread_mutex_unlock(&z_ugni_list_mutex);
-	if (uep->conn_data)
+	if (uep->conn_data) {
 		free(uep->conn_data);
+		uep->conn_data = 0;
+	}
+	if (uep->deferred_event) {
+		event_free(uep->deferred_event);
+		uep->deferred_event = 0;
+	}
 	release_buf_event(uep);
 	if (uep->gni_ep) {
 		DLOG_(uep, "Destroying gni_ep: %p\n", uep->gni_ep);
