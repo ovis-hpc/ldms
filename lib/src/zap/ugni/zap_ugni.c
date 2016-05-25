@@ -318,6 +318,7 @@ static struct zap_ugni_post_desc *__alloc_post_desc(struct z_ugni_ep *uep)
 static void __free_post_desc(struct zap_ugni_post_desc *d)
 {
 	struct z_ugni_ep *uep = d->uep;
+	ZUGNI_LIST_REMOVE(d, ep_link);
 	zap_put_ep(&uep->ep);
 	free(d);
 }
@@ -960,15 +961,12 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 					 desc->post.type);
 			__shutdown_on_error(uep);
 		}
-		ZUGNI_LIST_REMOVE(desc, ep_link);
-		pthread_mutex_unlock(&uep->ep.lock);
-		pthread_mutex_unlock(&z_ugni_list_mutex);
 
 		uep->ep.cb(&uep->ep, &zev);
 
-		pthread_mutex_lock(&uep->ep.lock);
 		__free_post_desc(desc);
 		pthread_mutex_unlock(&uep->ep.lock);
+		pthread_mutex_unlock(&z_ugni_list_mutex);
 	skip:
 		pthread_mutex_lock(&ugni_lock);
 		grc = GNI_CqGetEvent(cq, &cqe);
@@ -2387,7 +2385,6 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 		__sync_sub_and_fetch(&ugni_io_count, 1);
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
-		ZUGNI_LIST_REMOVE(desc, ep_link);
 		__free_post_desc(desc);
 		pthread_mutex_unlock(&ugni_lock);
 		return ZAP_ERR_RESOURCE;
@@ -2479,7 +2476,6 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 		__sync_sub_and_fetch(&ugni_io_count, 1);
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 #endif /* DEBUG */
-		ZUGNI_LIST_REMOVE(desc, ep_link);
 		__free_post_desc(desc);
 		pthread_mutex_unlock(&ugni_lock);
 		return ZAP_ERR_RESOURCE;
