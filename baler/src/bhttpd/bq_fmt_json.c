@@ -15,33 +15,10 @@
 struct bqfmt_json {
 	struct bq_formatter base;
 	int first_tkn;
-	int ptn_label;
-	int ptn_id;
-	bq_msg_ref_t msg_ref;
-	struct bquery_pos *pos;
 	struct bq_store *bq_store;
+	struct bquery *q;
 	int (*ts_fmt)(struct bdstr *bdstr, const struct timeval *tv);
 };
-
-void bqfmt_json_set_label(struct bq_formatter *fmt, int label)
-{
-	((struct bqfmt_json*)fmt)->ptn_label = label;
-}
-
-void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id)
-{
-	((struct bqfmt_json*)fmt)->ptn_id = ptn_id;
-}
-
-void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, bq_msg_ref_t msg_ref)
-{
-	((struct bqfmt_json*)fmt)->msg_ref = msg_ref;
-}
-
-void bqfmt_json_set_msg_pos(struct bq_formatter *fmt, struct bquery_pos *pos)
-{
-	((struct bqfmt_json*)fmt)->pos = pos;
-}
 
 static
 int __datetime_fmt(struct bdstr *bdstr, const struct timeval *tv)
@@ -110,19 +87,26 @@ int __bqfmt_json_msg_prefix(struct bq_formatter *fmt, struct bdstr *bdstr)
 {
 	int rc;
 	struct bqfmt_json *f = (void*)fmt;
-	rc = bdstr_append_printf(bdstr, "{ \"type\": \"MSG\", "
-			"\"ref\": %lu", f->msg_ref);
+	uint32_t ptn_id = bq_entry_get_ptn_id(f->q);
+	bq_msg_ref_t msg_ref = bq_entry_get_ref(f->q);
+	BQUERY_POS(pos);
+
+	rc = bq_get_pos(f->q, pos);
 	if (rc)
 		return rc;
-	if (f->pos) {
-		rc = bdstr_append_printf(bdstr, ", \"pos\": \"");
-		if (rc)
-			return rc;
-		rc = bquery_pos_print(f->pos, bdstr);
-		if (rc)
-			return rc;
-		rc = bdstr_append_printf(bdstr, "\"");
-	}
+
+	rc = bdstr_append_printf(bdstr, "{ \"type\": \"MSG\", "
+			"\"ref\": \"0x%lx%016lx\", \"ptn_id\": %lu",
+			msg_ref.ref[0], msg_ref.ref[1], ptn_id);
+	if (rc)
+		return rc;
+	rc = bdstr_append_printf(bdstr, ", \"pos\": \"");
+	if (rc)
+		return rc;
+	rc = bquery_pos_print(pos, bdstr);
+	if (rc)
+		return rc;
+	rc = bdstr_append_printf(bdstr, "\"");
 	return rc;
 }
 
@@ -239,7 +223,7 @@ void bqfmt_json_ts_use_datetime(struct bq_formatter *fmt)
 	f->ts_fmt = __datetime_fmt;
 }
 
-struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store)
+struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store, struct bquery *q)
 {
 	struct bqfmt_json *fmt = calloc(1, sizeof(*fmt));
 	if (!fmt)
@@ -254,6 +238,7 @@ struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store)
 	fmt->base.date_fmt = __bqfmt_json_date_fmt;
 	fmt->base.host_fmt = __bqfmt_json_host_fmt;
 	fmt->bq_store = bq_store;
+	fmt->q = q;
 	fmt->ts_fmt = __ts_fmt;
 	return &fmt->base;
 }

@@ -59,13 +59,9 @@
 #include "query/bquery.h"
 #include <stdint.h>
 
-struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store);
+struct bq_formatter *bqfmt_json_new(struct bq_store *bq_store, struct bquery *q);
 void bqfmt_json_ts_use_ts(struct bq_formatter *fmt);
 void bqfmt_json_ts_use_datetime(struct bq_formatter *fmt);
 void bqfmt_json_free(struct bq_formatter *fmt);
-void bqfmt_json_set_label(struct bq_formatter *fmt, int label);
-void bqfmt_json_set_ptn_id(struct bq_formatter *fmt, int ptn_id);
-void bqfmt_json_set_msg_ref(struct bq_formatter *fmt, bq_msg_ref_t msg_ref);
-void bqfmt_json_set_msg_pos(struct bq_formatter *fmt, struct bquery_pos *pos);
 
 #endif

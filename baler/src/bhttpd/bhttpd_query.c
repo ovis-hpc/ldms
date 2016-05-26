@@ -490,7 +490,7 @@ void __bhttpd_handle_query_ptn(struct bhttpd_req_ctxt *ctxt, int is_metric)
 		use_ts = atoi(use_ts_str);
 	}
 
-	fmt = bqfmt_json_new(bq_store);
+	fmt = bqfmt_json_new(bq_store, NULL);
 	if (!fmt) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Not enough memory");
 		goto cleanup;
@@ -654,7 +654,7 @@ struct bhttpd_msg_query_session *bhttpd_msg_query_session_create(struct bhttpd_r
 	if (simple) {
 		bq_set_formatter(qs->q, bquery_default_formatter());
 	} else {
-		qs->fmt = bqfmt_json_new(bq_store);
+		qs->fmt = bqfmt_json_new(bq_store, qs->q);
 		if (!qs->fmt) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"Cannot create bqfmt_json, errno: %d.", errno);
@@ -816,7 +816,6 @@ void bhttpd_handle_query_msg(struct bhttpd_req_ctxt *ctxt)
 			break;
 		}
 		qs->ref = bq_entry_get_ref(qs->q);
-		bqfmt_json_set_msg_ref(qs->fmt, qs->ref);
 		str = bq_entry_print(qs->q, bdstr);
 		if (!str) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
@@ -995,9 +994,6 @@ void bhttpd_handle_query_msg2(struct bhttpd_req_ctxt *ctxt)
 				"bq_get_pos() error, %d", rc);
 			goto out;
 		}
-		qs->ref = bq_entry_get_ref(qs->q);
-		bqfmt_json_set_msg_ref(qs->fmt, qs->ref);
-		bqfmt_json_set_msg_pos(qs->fmt, pos);
 		str = bq_entry_print(qs->q, bdstr);
 		if (!str) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
@@ -1029,9 +1025,6 @@ void bhttpd_handle_query_msg2(struct bhttpd_req_ctxt *ctxt)
 				"bq_get_pos() error, %d", rc);
 			goto out;
 		}
-		qs->ref = bq_entry_get_ref(qs->q);
-		bqfmt_json_set_msg_ref(qs->fmt, qs->ref);
-		bqfmt_json_set_msg_pos(qs->fmt, pos);
 		str = bq_entry_print(qs->q, bdstr);
 		if (!str) {
 			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
