@@ -129,6 +129,7 @@ struct request_handler_entry {
 };
 
 static int cli_handler(int sock, req_msg_t rm);
+static int example_handler(int sock, req_msg_t rm);
 static int prdcr_status_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
@@ -137,6 +138,7 @@ static int unimplemented_handler(int sock, req_msg_t rm);
 
 static struct request_handler_entry request_handler[] = {
 	[LDMSD_CLI_REQ]          = { LDMSD_CLI_REQ, cli_handler },
+	[LDMSD_EXAMPLE_REQ]      = { LDMSD_EXAMPLE_REQ, example_handler },
 	[LDMSD_PRDCR_STATUS_REQ] = { LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler },
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
@@ -284,12 +286,11 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 	if (request->cmd_id < 0 ||
 	    request->cmd_id >= (sizeof(request_handler)/sizeof(request_handler[0])))
 		rc = unimplemented_handler(fd, rm);
-
-	/* Check for unimplemented request */
-	if (!request_handler[request->cmd_id].handler)
+	else if (!request_handler[request->cmd_id].handler)
+		/* Check for unimplemented request */
 		rc = unimplemented_handler(fd, rm);
-
-	rc = request_handler[request->cmd_id].handler(fd, rm);
+	else
+		rc = request_handler[request->cmd_id].handler(fd, rm);
 	pthread_mutex_lock(&msg_tree_lock);
 	free_msg(rm);
 	pthread_mutex_unlock(&msg_tree_lock);
@@ -509,6 +510,65 @@ static int cli_handler(int sock, req_msg_t rm)
 		free(kw_list);
 	if (av_list)
 		free(av_list);
+	return rc;
+}
+
+/**
+ * This handler provides an example of how arguments are passed to
+ * request handlers.
+ *
+ * If your request does not require arguments, then the argument list
+ * may be ommited in it's entirely. If however, it does have
+ * arguments, then the format of the reuest is as follows:
+ *
+ * +------------------+
+ * |  ldms_req_hdr_s  |
+ * +------------------+
+ * | lmdsd_req_attr_s |
+ * S     1st arg      S
+ * +------------------+
+ * | lmdsd_req_attr_s |
+ * S     2nd arg      S
+ * +------------------+
+ * | lmdsd_req_attr_s |
+ * S     3rd arg      S
+ * +------------------+
+ * S  0x0000_0000     S
+ * +------------------+
+ * S  request data    S
+ * +------------------+
+ *
+ * The presence of an argument is indicated by the 'discrim' field of
+ * the ldmsd_req_attr_s structure. If it is non-zero, then the
+ * argument is present, otherwise, it indicates the end of the
+ * argument list. The argument list is immediately followed by the
+ * request payload.
+ *
+ * The example below takes a variable length argument list, formats
+ * the arguments as a JSON array and returns the array to the caller.
+ */
+static int example_handler(int sock, req_msg_t rm)
+{
+	size_t cnt;
+	int i, rc, count = 0;
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)rm->req_buf;
+	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
+	while (attr->discrim) {
+		if (count)
+			rc = send_request_reply(sock, rm, ",\n", 2, 0);
+
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			       "{ \"attr_len\":%d,"
+			       "\"attr_id\":%d,"
+			       "\"attr_value\": \"%s\" }",
+			       attr->attr_len,
+			       attr->attr_id,
+			       (char *)attr->attr_value);
+		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+		count++;
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;
 }
 

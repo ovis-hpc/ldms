@@ -170,9 +170,6 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
 """
 MAX_RECV_LEN = 4096
 
-PYTHON_SOCK = "/home/nichamon/suitcase/var/run/ovis/ldmsd-test-python.sock"
-LDMSD_SOCK = "/home/nichamon/suitcase/var/run/ovis/ldmsd.sock"
-
 class ldmsdConfig(object):
     __metaclass__ = ABCMeta
 

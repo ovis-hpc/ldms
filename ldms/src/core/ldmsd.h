@@ -826,6 +826,7 @@ extern int ldmsd_authentication_required();
 #define LDMSD_RECORD_MARKER 0xffffffff
 enum ldmsd_request {
 	LDMSD_CLI_REQ = 0x1,
+	LDMSD_EXAMPLE_REQ,
 	LDMSD_PRDCR_ADD_REQ = 0x100,
 	LDMSD_PRDCR_DEL_REQ,
 	LDMSD_PRDCR_START_REQ,
@@ -856,9 +857,9 @@ enum ldmsd_request {
 
 typedef struct ldmsd_req_attr_s {
 	uint32_t discrim;	/* If 0, end of attr_list */
-	uint32_t attr_len;	/* Count of 4B words */
 	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
-	uint32_t attr_value[0];	/* Size is attr_len */
+	uint32_t attr_len;	/* Size of value in bytes */
+	uint8_t attr_value[0];	/* Size is attr_len */
 } *ldmsd_req_attr_t;
 typedef struct ldmsd_req_hdr_s {
 	uint32_t marker;	/* Always has the value 0xff */
