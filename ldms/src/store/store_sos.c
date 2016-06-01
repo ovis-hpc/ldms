@@ -666,6 +666,7 @@ static struct ldmsd_store store_sos = {
 		.term = term,
 		.config = config,
 		.usage = usage,
+		.type = LDMSD_PLUGIN_STORE,
 	},
 	.open = open_store,
 	.get_context = get_ucontext,

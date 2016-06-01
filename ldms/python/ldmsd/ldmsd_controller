@@ -52,17 +52,28 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #######################################################################
 
+from __future__ import print_function
 import struct
 import cmd
 import argparse
 import sys
 import os
 import traceback
+import json
 
 from ldmsd import ldmsd_config, ldmsd_util
+LDMSD_REQ_SOM_F=1
+LDMSD_REQ_EOM_F=2
+LDMSD_REQ_ALL_F=(LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F)
+LDMSD_CLI_REQ=1
+LDMSD_PRDCR_STATUS_REQ=0x104
+LDMSD_STRGP_STATUS_REQ=0x204
+LDMSD_UPDTR_STATUS_REQ=0x304
+LDMSD_PLUGN_STATUS_REQ=0x504
 
 class LdmsdCmdParser(cmd.Cmd):
     def __init__(self, sockname = None, host_port = None, secretPath = None, infile=None):
+        self.msg_no = 1
         if (sockname is None) and (host_port is None):
             raise ValueError("Expecting either sockname or host_port. None is given")
 
@@ -70,7 +81,7 @@ class LdmsdCmdParser(cmd.Cmd):
             self.ctrl = ldmsd_config.ldmsdUSocketConfig(ldmsd_sockpath = sockname)
             self.prompt = "{0}> ".format(os.path.basename(sockname))
             if secretPath is not None:
-                print "Unix domain socket is in used. Ignore the path to the secret word"
+                print("Unix domain socket is in used. Ignore the path to the secret word")
         else:
             try:
                 self.secretword = None
@@ -133,7 +144,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def handle(self, verb, args):
         if not self.__check_command_syntax(args):
-            print "Wrong syntax. There are attributes that no values are given."
+            print("Wrong syntax. There are attributes that no values are given.")
             return
 
         cmd_id = self.ctrl.get_cmd_id(verb)
@@ -143,7 +154,7 @@ class LdmsdCmdParser(cmd.Cmd):
         import re
         g = re.match(r"(-*)(\d+)", resp)
         if len(resp[g.end():]) > 0:
-            print resp[g.end():]
+            print(resp[g.end():])
 
     def read_none_tty(self, fin):
         for cmd in fin:
@@ -163,14 +174,14 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_script(self, arg):
         exit_code, out, err = ldmsd_util.sh_exec(arg)
         if exit_code != 0:
-            print "Script exited with code {0} and error: {1}".format(exit_code, err)
+            print("Script exited with code {0} and error: {1}".format(exit_code, err))
             return
         cfg = out.split("\n")
         for cmd in cfg:
             self.onecmd(cmd)
 
     def do_try(self, arg):
-        print self.__complete_attr_list(arg, "")
+        print(self.__complete_attr_list(arg, ""))
 
     def do_usage(self, arg):
         """List the usage of the plugins loaded on the server.
@@ -490,50 +501,102 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_info(self, text, line, begidx, endidx):
         return self.__complete_attr_list('info', text)
 
-    def do_prdcr_status(self, arg):
-        msg = struct.pack('iiiii', -1, 0, 1, 1, 20)
-        rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            print("rec_len {0} flags {1} msg_no {2} cmd_id {3}".format(
-                rec_len, flags, msg_no, cmd_id))
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
-        print(response)
+    def format_request(self, cmd):
+        self.msg_no = self.msg_no + 1
+        return struct.pack('iiiii', -1, LDMSD_REQ_ALL_F, self.msg_no, cmd, 20)
 
-    def do_updtr_status(self, arg):
-        msg = struct.pack('iiiii', -1, 0, 1, 2, 20)
+    def do_prdcr_status(self, arg):
+        msg = self.format_request(LDMSD_PRDCR_STATUS_REQ)
         rc = self.ctrl.socket.sendall(bytes(msg))
         response = ""
         while True:
             hdr = self.ctrl.socket.recv(20)
             (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            print("rec_len {0} flags {1} msg_no {2} cmd_id {3}".format(
-                rec_len, flags, msg_no, cmd_id))
             data = self.ctrl.socket.recv(rec_len - 20)
             response += data
             if flags:
                 break
-        print(response)
+        producers =  json.loads(response)
+        print("Name             Host             Port         Transport    State")
+        print("---------------- ---------------- ------------ ------------ ------------")
+        for prdcr in producers:
+            print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
+                                                              prdcr['host'],
+                                                              prdcr['port'],
+                                                              prdcr['transport'],
+                                                              prdcr['state']))
+            for pset in prdcr['sets']:
+                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                     pset['schema_name'],
+                                                     pset['state']))
+    def do_updtr_status(self, arg):
+        msg = self.format_request(LDMSD_UPDTR_STATUS_REQ)
+        rc = self.ctrl.socket.sendall(bytes(msg))
+        response = ""
+        while True:
+            hdr = self.ctrl.socket.recv(20)
+            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
+            data = self.ctrl.socket.recv(rec_len - 20)
+            response += data
+            if flags:
+                break
+        updaters = json.loads(response)
+        print("Name             Interval     Offset       State")
+        print("---------------- ------------ ------------ ------------")
+        for updtr in updaters:
+            print("{0:16} {1:12} {2:12} {3}".format(
+                updtr['name'], updtr['interval'], updtr['offset'], updtr['state']))
+            for prdcr in updtr['producers']:
+                print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
+                    prdcr['name'], prdcr['host'], prdcr['port'],
+                    prdcr['transport'], prdcr['state']))
 
     def do_strgp_status(self, arg):
-        msg = struct.pack('iiiii', -1, 0, 1, 3, 20)
+        msg = self.format_request(LDMSD_STRGP_STATUS_REQ)
         rc = self.ctrl.socket.sendall(bytes(msg))
         response = ""
         while True:
             hdr = self.ctrl.socket.recv(20)
             (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            print("rec_len {0} flags {1} msg_no {2} cmd_id {3}".format(
-                rec_len, flags, msg_no, cmd_id))
             data = self.ctrl.socket.recv(rec_len - 20)
             response += data
             if flags:
                 break
-        print(response)
+        policies = json.loads(response)
+        print("Name             Container        Schema           Plugin           State")
+        print("---------------- ---------------- ---------------- ---------------- ------------")
+        for strgp in policies:
+            print("{0:16} {1:16} {2:16} {3:16} {4}".format(
+                strgp['name'], strgp['container'], strgp['schema'],
+                strgp['plugin'], strgp['state']))
+            print("    producers: ", end='')
+            for prdcr in strgp['producers']:
+                print("{0} ".format(prdcr), end='')
+            print('')
+            print("    metrics: ", end='')
+            for metric in strgp['metrics']:
+                print("{0} ".format(metric), end='')
+            print('')
+
+    def do_plugn_status(self, arg):
+        msg = self.format_request(LDMSD_PLUGN_STATUS_REQ)
+        rc = self.ctrl.socket.sendall(bytes(msg))
+        response = ""
+        while True:
+            hdr = self.ctrl.socket.recv(20)
+            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
+            data = self.ctrl.socket.recv(rec_len - 20)
+            response += data
+            if flags:
+                break
+        plugins = json.loads(response)
+        print("Name         Type         Interval     Offset       Libpath")
+        print("------------ ------------ ------------ ------------ ------------")
+        for plugn in plugins:
+            print("{0:12} {1:12} {2:12} {3:12} {4:12}".format(
+                plugn['name'], plugn['type'],
+                plugn['sample_interval_us'], plugn['sample_offset_us'],
+                plugn['libpath']))
 
     def do_status(self, arg):
         all__ = (len(arg) == 0)
@@ -783,7 +846,7 @@ if __name__ == "__main__":
         is_debug = args.debug
 
         if (args.sockname is None) and (args.host is None or args.port is None):
-            print "Please give either --sockname or both of --host and --port."
+            print("Please give either --sockname or both of --host and --port.")
             sys.exit(1)
 
         if args.sockname is not None:
@@ -809,8 +872,8 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         if is_debug:
-            print is_debug
+            print(is_debug)
             traceback.print_exc()
             sys.exit(2)
         else:
-            print e
+            print(e)
