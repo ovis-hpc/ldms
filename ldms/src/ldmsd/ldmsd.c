@@ -81,6 +81,10 @@
 #include "ldms_xprt.h"
 #include "config.h"
 
+#ifdef DEBUG
+#include <mcheck.h>
+#endif /* DEBUG */
+
 #ifdef ENABLE_OCM
 #include <ocm/ocm.h>
 #include <coll/str_map.h>
@@ -882,7 +886,7 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 	}
 	tv.tv_usec = 0;
 
-	struct oneshot *ossample = malloc(sizeof(ossample));
+	struct oneshot *ossample = malloc(sizeof(*ossample));
 	if (!ossample) {
 		snprintf(err_str, LEN_ERRSTR, "Out of Memory");
 		rc = ENOMEM;
@@ -1545,8 +1549,13 @@ int ldmsd_authentication_required() {
 }
 
 extern int ldmsd_inet_config_init(const char *port, const char *secretword);
+
 int main(int argc, char *argv[])
 {
+#ifdef DEBUG
+	mtrace();
+#endif /* DEBUG */
+
 	struct ldms_version ldms_version;
 	struct ldmsd_version ldmsd_version;
 	ldms_version_get(&ldms_version);

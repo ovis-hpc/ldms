@@ -134,8 +134,10 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 	 * path is not a full path,
 	 * return NULL
 	 */
-	if (!path || path[0] != '/')
+	if (!path || path[0] != '/') {
+		errno = EINVAL;
 		return NULL;
+	}
 
 	if (!log)
 		log = default_log;
@@ -221,31 +223,27 @@ err:
 	return NULL;
 }
 
-int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen, 
-	ovis_auth_log_fn_t msglog)
+int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen,
+			       ovis_auth_log_fn_t msglog)
 {
-        if (!file)
-                return EINVAL;
-        if (buflen >= MAX_SECRET_WORD_LEN)
-                return E2BIG;
-        char *sw = ovis_auth_get_secretword(file,msglog);
-	int rc = 0;
+	if (!file)
+		return EINVAL;
+	if (!buflen || buflen >= MAX_SECRET_WORD_LEN)
+		return EINVAL;
+	char *sw = ovis_auth_get_secretword(file, msglog);
 	if (!sw) {
-		rc = errno;
-	}
-        if (rc ) {
-                msglog("Problem reading rabbit pw from %s\n",file);
-                return rc;
-        } else {
-                strncpy(buf,sw,buflen);
+		msglog("Problem reading rabbit pw from %s\n", file);
+		return errno;
+	} else {
+		strncpy(buf, sw, buflen);
 		free(sw);
-                int sz = strlen(buf);
-                while (isspace(buf[sz-1])) {
-                        sz--;
-                        buf[sz] = '\0';
-                }
-        }
-        return 0;
+		int sz = strlen(buf);
+		while (isspace(buf[sz-1])) {
+			sz--;
+			buf[sz] = '\0';
+		}
+	}
+	return 0;
 }
 
 

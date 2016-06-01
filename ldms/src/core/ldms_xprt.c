@@ -955,6 +955,8 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	size_t len = ntohl(reply->dir.set_list_len);
 	unsigned count = ntohl(reply->dir.set_count);
 	ldms_dir_t dir = NULL;
+	if (!ctxt->dir.cb)
+		return;
 	if (rc)
 		goto out;
 	dir = malloc(sizeof (*dir) +
@@ -976,9 +978,8 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		src += len;
 	}
 out:
-	/* Don't touch dir after callback because the dir.cb may have freed it. */
-	if (ctxt->dir.cb)
-		ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
+	/* Callback owns dir memory. */
+	ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
 }
 
 void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
@@ -1014,6 +1015,9 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 {
 	ldms_notify_event_t event;
 	size_t len = ntohl(reply->req_notify.event.len);
+	if (!ctxt->req_notify.cb)
+		return;
+
 	event = malloc(len);
 	if (!event)
 		return;
@@ -1026,10 +1030,9 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       &reply->req_notify.event.u_data,
 		       len - sizeof(struct ldms_notify_event_s));
 
-	if (ctxt->req_notify.cb)
-		ctxt->req_notify.cb((ldms_t)x,
-				    ctxt->req_notify.s,
-				    event, ctxt->dir.cb_arg);
+	ctxt->req_notify.cb((ldms_t)x,
+			    ctxt->req_notify.s,
+			    event, ctxt->dir.cb_arg);
 }
 
 #if OVIS_LIB_HAVE_AUTH
@@ -1080,11 +1083,11 @@ err_n_reject:
 void process_auth_approval_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		struct ldms_context *ctxt)
 {
-	ldms_xprt_put(x); /* Match when sending the password */
 	x->auth_flag = LDMS_XPRT_AUTH_APPROVED;
 	if (x->connect_cb)
 		x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
 					x->connect_cb_arg);
+	ldms_xprt_put(x); /* Taken in send_auth_password() */
 }
 
 char *ldms_get_secretword(const char *file, ldms_log_fn_t log_fn)
@@ -1350,7 +1353,7 @@ int send_auth_password(struct ldms_xprt *x, const char *password)
 	reply->hdr.len = htonl(len);
 	strncpy(reply->auth_challenge.s, password, pwlen);
 	reply->auth_challenge.s[pwlen-1] = '\0';
-	/* Release in process...approval_reply/disconnected */
+	/* Dropped in process_auth_approval_reply(), or ldms_zap_cb(DISCONNECTED) */
 	ldms_xprt_get(x);
 	zap_err_t zerr = zap_send(x->zap_ep, reply, len);
 	if (zerr) {

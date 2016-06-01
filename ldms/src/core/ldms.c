@@ -162,6 +162,7 @@ extern ldms_set_t ldms_set_by_name(const char *set_name)
 	rbd = calloc(1, sizeof(*rbd));
 	if (!rbd) {
 		free(sd);
+		sd = NULL;
 		goto out;
 	}
 	/*
@@ -536,8 +537,10 @@ char *_create_path(const char *set_name)
 		/* remove duplicate '/'s */
 		if (*p == '/')
 			p++;
-		if (*p == '\0')
-			return NULL;
+		if (*p == '\0') {
+			rc = ENOENT;
+			goto out;
+		}
 		tail += strlen(p);
 		strcat(__set_path, p);
 		rc = mkdir(__set_path, 0755);
@@ -822,14 +825,16 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	__ldms_set_tree_lock();
 	rc = __record_set(instance_name, &s, meta, data, LDMS_SET_F_LOCAL);
 	if (rc)
-		goto out_1;
+		goto err_1;
 	rc = __ldms_set_publish(s->set);
 	if (rc)
-		goto out_1;
+		goto err_2;
 	__ldms_set_tree_unlock();
 	return s;
-
- out_1:
+ err_2:
+	free(s->set);
+	free(s);
+ err_1:
 	__ldms_set_tree_unlock();
 	mm_free(meta);
 	errno = rc;

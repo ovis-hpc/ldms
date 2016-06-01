@@ -325,17 +325,17 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 		break;
 	}
 
-
 	ictxt = calloc(1, sizeof(*ictxt) + data_len);
 	if (!ictxt) {
 		DLOG(ep, "zap_interpose_cb(): ENOMEM\n");
 		return;
 	}
+	DLOG(ep, "%s: ep %p: ictxt %p: ev type %s\n", __func__, ep,
+				ictxt, zap_event_str(ev->type));
 	ictxt->ev = *ev;
-	if (data_len) {
-		ictxt->ev.data = ictxt->data;
+	ictxt->ev.data = ictxt->data;
+	if (data_len)
 		memcpy(ictxt->data, ev->data, data_len);
-	}
 	zap_get_ep(ep);
 	zap_event_add(ep->event_queue, ep, ictxt);
 }
@@ -345,6 +345,7 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt)
 {
 	/* delivering real io event callback */
 	struct zap_interpose_ctxt *ictxt = ctxt;
+	DLOG(ep, "%s: ep %p: ictxt %p\n", __func__, ep, ictxt);
 	ep->app_cb(ep, &ictxt->ev);
 	free(ictxt);
 	zap_put_ep(ep);
