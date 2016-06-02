@@ -131,6 +131,7 @@ struct request_handler_entry {
 static int cli_handler(int sock, req_msg_t rm);
 static int example_handler(int sock, req_msg_t rm);
 static int prdcr_status_handler(int sock, req_msg_t rm);
+static int prdcr_metric_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
 static int plugn_status_handler(int sock, req_msg_t rm);
@@ -140,6 +141,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_CLI_REQ]          = { LDMSD_CLI_REQ, cli_handler },
 	[LDMSD_EXAMPLE_REQ]      = { LDMSD_EXAMPLE_REQ, example_handler },
 	[LDMSD_PRDCR_STATUS_REQ] = { LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler },
+	[LDMSD_PRDCR_METRIC_REQ] = { LDMSD_PRDCR_METRIC_REQ, prdcr_metric_handler },
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
@@ -621,6 +623,36 @@ static int prdcr_status_handler(int sock, req_msg_t rm)
 		rc = send_request_reply(sock, rm, "]}", 2, 0);
 		count++;
 	}
+	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	return rc;
+}
+
+static int prdcr_metric_handler(int sock, req_msg_t rm)
+{
+	ldmsd_prdcr_t prdcr;
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)rm->req_buf;
+	size_t cnt;
+	int rc, count = 0;
+
+	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
+	prdcr = ldmsd_prdcr_find((char *)attr->attr_value);
+        ldmsd_prdcr_lock(prdcr);
+	ldmsd_prdcr_set_t met_set;
+	for (met_set = ldmsd_prdcr_set_first(prdcr); met_set;
+		met_set = ldmsd_prdcr_set_next(met_set)) {
+		if (count)
+			rc = send_request_reply(sock, rm, ",\n", 2, 0);
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"{ \"inst_name\":\"%s\","
+				"\"schema_name\":\"%s\","
+				"\"state\":\"%s\"}",
+				met_set->inst_name, met_set->schema_name,
+				ldmsd_prdcr_set_state_str(met_set->state));
+		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+		count++;
+	}
+	ldmsd_prdcr_unlock(prdcr);
 	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	return rc;

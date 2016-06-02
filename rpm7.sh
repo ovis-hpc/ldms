@@ -22,7 +22,7 @@ ENABLE="--enable-swig \
 	--enable-sos --enable-debug"
 
 # add --disable-FEATURE here
-DISABLE="--disable-ocm --disable-rpath"
+DISABLE="--disable-ocm --disable-rpath --disable-jobid"
 
 # libevent2 prefix
 #LIBEVENT_PREFIX=/usr/local
