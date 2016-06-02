@@ -585,15 +585,17 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		rc = EEXIST;
 		if (ref)
 			break;
+		if (!strgp->store_handle) {
+			rc = strgp_open(strgp, prd_set);
+			if (rc)
+				break;
+		}
 		rc = ENOMEM;
 		ref = strgp_ref_new(strgp);
 		if (!ref)
 			break;
 		LIST_INSERT_HEAD(&prd_set->strgp_list, ref, entry);
-		if (!strgp->store_handle)
-			rc = strgp_open(strgp, prd_set);
-		else
-			rc = 0;
+		rc = 0;
 		break;
 	default:
 		assert(0 == "Bad strgp state");
