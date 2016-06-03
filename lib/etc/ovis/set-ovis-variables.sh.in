@@ -11,10 +11,16 @@ export OVIS_SOCK=/var/run/ovis
 export LDMSD_STORE_RECOVER=restore
 export KOMONDOR_STORE_RECOVER=restore
 
-OLIB=$OVIS_HOME/lib
-export LDMSD_PLUGIN_LIBPATH=$OLIB
-export LDMS_XPRT_LIBPATH=$OLIB
-export ZAP_LIBPATH=$OLIB
+if test -d $OVIS_HOME/lib64;
+    then
+        OLIB=$OVIS_HOME/lib64;
+    else
+        OLIB=$OVIS_HOME/lib;
+fi
+
+export LDMSD_PLUGIN_LIBPATH=$OLIB/ovis-ldms
+export LDMS_XPRT_LIBPATH=$OLIB/ovis-ldms
+export ZAP_LIBPATH=$OLIB/ovis-lib
 export ME_PLUGIN_LIBPATH=$OLIB/me
 
 export PYTHONPATH=$PYTHONPATH:$OVIS_HOME/lib/python@PYTHON_VERSION@/site-packages
