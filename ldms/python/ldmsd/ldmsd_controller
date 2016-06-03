@@ -532,17 +532,10 @@ class LdmsdCmdParser(cmd.Cmd):
                                                      pset['state']))
     def do_prdcr_set(self, arg):
         try:
-            attr1 = ldmsd_request.LDMSD_Req_Attr(1, arg)
-            req = ldmsd_request.LDMSD_Request(LDMSD_PRDCR_SET_REQ, attrs = [attr1,])
+            prdcr_name = ldmsd_request.LDMSD_Req_Attr(1, arg)
+            req = ldmsd_request.LDMSD_Request(LDMSD_PRDCR_SET_REQ, attrs = [prdcr_name,])
             req.send(self.ctrl.socket)
             metric_sets = req.receive(self.ctrl.socket)
-            #while True:
-            #    hdr = self.ctrl.socket.recv(20)
-            #    (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            #    data = self.ctrl.socket.recv(rec_len - 20)
-            #    response += data
-            #    if flags:
-            #        break
             metric_sets = json.loads(metric_sets)
             print("Name             Schema Name      State")
             print("---------------- ---------------- ------------ ")
