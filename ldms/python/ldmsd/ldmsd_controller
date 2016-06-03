@@ -61,12 +61,13 @@ import os
 import traceback
 import json
 
-from ldmsd import ldmsd_config, ldmsd_util
+from ldmsd import ldmsd_config, ldmsd_util, ldmsd_request
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
 LDMSD_REQ_ALL_F=(LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F)
 LDMSD_CLI_REQ=1
 LDMSD_PRDCR_STATUS_REQ=0x104
+LDMSD_PRDCR_SET_REQ=0x105
 LDMSD_STRGP_STATUS_REQ=0x204
 LDMSD_UPDTR_STATUS_REQ=0x304
 LDMSD_PLUGN_STATUS_REQ=0x504
@@ -529,6 +530,29 @@ class LdmsdCmdParser(cmd.Cmd):
                 print("    {0:16} {1:16} {2}".format(pset['inst_name'],
                                                      pset['schema_name'],
                                                      pset['state']))
+    def do_prdcr_set(self, arg):
+        try:
+            attr1 = ldmsd_request.LDMSD_Req_Attr(1, arg)
+            req = ldmsd_request.LDMSD_Request(LDMSD_PRDCR_SET_REQ, attrs = [attr1,])
+            req.send(self.ctrl.socket)
+            metric_sets = req.receive(self.ctrl.socket)
+            #while True:
+            #    hdr = self.ctrl.socket.recv(20)
+            #    (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
+            #    data = self.ctrl.socket.recv(rec_len - 20)
+            #    response += data
+            #    if flags:
+            #        break
+            metric_sets = json.loads(metric_sets)
+            print("Name             Schema Name      State")
+            print("---------------- ---------------- ------------ ")
+            for pset in metric_sets:
+                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                     pset['schema_name'],
+                                                     pset['state']))
+        except Exception as e:
+            print(repr(e))
+
     def do_updtr_status(self, arg):
         msg = self.format_request(LDMSD_UPDTR_STATUS_REQ)
         rc = self.ctrl.socket.sendall(bytes(msg))

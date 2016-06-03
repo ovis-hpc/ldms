@@ -131,7 +131,7 @@ struct request_handler_entry {
 static int cli_handler(int sock, req_msg_t rm);
 static int example_handler(int sock, req_msg_t rm);
 static int prdcr_status_handler(int sock, req_msg_t rm);
-static int prdcr_metric_handler(int sock, req_msg_t rm);
+static int prdcr_set_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
 static int plugn_status_handler(int sock, req_msg_t rm);
@@ -141,7 +141,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_CLI_REQ]          = { LDMSD_CLI_REQ, cli_handler },
 	[LDMSD_EXAMPLE_REQ]      = { LDMSD_EXAMPLE_REQ, example_handler },
 	[LDMSD_PRDCR_STATUS_REQ] = { LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler },
-	[LDMSD_PRDCR_METRIC_REQ] = { LDMSD_PRDCR_METRIC_REQ, prdcr_metric_handler },
+	[LDMSD_PRDCR_SET_REQ] = { LDMSD_PRDCR_METRIC_REQ, prdcr_set_handler },
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
@@ -628,7 +628,7 @@ static int prdcr_status_handler(int sock, req_msg_t rm)
 	return rc;
 }
 
-static int prdcr_metric_handler(int sock, req_msg_t rm)
+static int prdcr_set_handler(int sock, req_msg_t rm)
 {
 	ldmsd_prdcr_t prdcr;
 	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)rm->req_buf;
@@ -637,7 +637,7 @@ static int prdcr_metric_handler(int sock, req_msg_t rm)
 
 	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
 	prdcr = ldmsd_prdcr_find((char *)attr->attr_value);
-        ldmsd_prdcr_lock(prdcr);
+	ldmsd_prdcr_lock(prdcr);
 	ldmsd_prdcr_set_t met_set;
 	for (met_set = ldmsd_prdcr_set_first(prdcr); met_set;
 		met_set = ldmsd_prdcr_set_next(met_set)) {
