@@ -113,7 +113,7 @@ endif
 
 if ENABLE_MSR_INTERLAGOS
 libmsr_interlagos_la_SOURCES = msr_interlagos.c
-libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD)
+libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libmsr_interlagos.la
 endif
 

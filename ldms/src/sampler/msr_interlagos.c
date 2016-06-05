@@ -103,7 +103,6 @@
 #define MSR_ENABLE 1LL
 #define MSR_INTT 0LL
 #define MSR_TOOMANYMAX 100LL
-#define CTR_TABLE_OFFSET 1LL
 #define MSR_CONFIGLINE_MAX 1024
 
 typedef enum{CTR_OK, CTR_HALTED, CTR_BROKEN} ctr_state;
@@ -118,6 +117,7 @@ struct active_counter{
 	uint64_t* data;
 	int valid; //this is kept track of, but currently unused
 	ctr_state state;
+	int metric_ctl;
 	int* metric_table;
 	pthread_mutex_t lock;
 	TAILQ_ENTRY(active_counter) entry;
@@ -594,9 +594,9 @@ static int zerometricset( struct active_counter *pe){
 	}
 
 	v.v_u64 = 0;
-	ldms_metric_set(set, pe->metric_table[0], &v);
+	ldms_metric_set(set, pe->metric_ctl, &v);
 	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
-		ldms_metric_set(set, pe->metric_table[(i+CTR_TABLE_OFFSET)], &v);
+		ldms_metric_set(set, pe->metric_table[i], &v);
 	}
 	//the padded ones are always zero
 
@@ -625,11 +625,11 @@ static int readregisterguts( struct active_counter *pe){
 		j++;
 	}
 	v.v_u64 = pe->wctl;
-	ldms_metric_set(set, pe->metric_table[0], &v);
+	ldms_metric_set(set, pe->metric_ctl, &v);
 	j = 0;
 	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		v.v_u64 = pe->data[j];
-		ldms_metric_set(set, pe->metric_table[(j+CTR_TABLE_OFFSET)], &v);
+		ldms_metric_set(set, pe->metric_table[j], &v);
 		j++;
 	}
 
@@ -1206,9 +1206,10 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 			return ENOMEM;
 		} //wont need to zero out otherwise since valid = 0;
 
-		//allocate space for metrics + an identifier (decide if should do here or in the assgnment)
+		//allocate space for metrics. identifier is separate.
 		//numvals for this metric
-		pe->metric_table = calloc((nval+CTR_TABLE_OFFSET), sizeof(int));
+		pe->metric_ctl = 0;
+		pe->metric_table = calloc(nval, sizeof(int));
 		if (!pe->metric_table){
 			pthread_mutex_unlock(&(pe->lock));
 			return ENOMEM;
@@ -1356,8 +1357,8 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 			rc = ENOMEM;
 			goto err;
 		}
-		pe->metric_table[0] = rc;
-//		ldms_set_user_data(pe->metric_table[0], default_comp_id); 6/4/16. perhaps make the user data the metric name.
+		pe->metric_ctl = rc;
+//		ldms_set_user_data(pe->metric_ctl, default_comp_id); 6/4/16. perhaps make the user data the metric name.
 //              perhaps make the metric a string type and store the real name always.
 
 		//process the real ones and the padded ones
@@ -1370,8 +1371,8 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 					rc = ENOMEM;
 					goto err;
 				}
-				pe->metric_table[(k+CTR_TABLE_OFFSET)] = rc;
-//				ldms_set_user_data(pe->metric_table[(k+CTR_TABLE_OFFSET)], default_comp_id);
+				pe->metric_table[k] = rc;
+//				ldms_set_user_data(pe->metric_table[k], default_comp_id);
 			} else {
 				//for the padded vals, we dont need to keep the metric. 6/4/16. Since the interface has changed, is it worth not keeping them anymore?
 				rc = ldms_schema_metric_add(schema, name, LDMS_V_U64);
