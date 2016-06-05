@@ -111,11 +111,11 @@ libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libmeminfo.la
 endif
 
-#if ENABLE_MSR
-#libmsr_la_SOURCES = msr.c
-#libmsr_la_LIBADD = $(COMMON_LIBADD)
-#pkglib_LTLIBRARIES += libmsr.la
-#endif
+if ENABLE_MSR_INTERLAGOS
+libmsr_interlagos_la_SOURCES = msr_interlagos.c
+libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libmsr_interlagos.la
+endif
 
 if ENABLE_SWITCHX
 libswitchx_la_SOURCES = switchx.c
