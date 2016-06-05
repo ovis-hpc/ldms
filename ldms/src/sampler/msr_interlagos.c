@@ -66,6 +66,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -114,11 +115,13 @@ static pthread_mutex_t cfglock;
 struct active_counter{
 	struct MSRcounter* mctr;
 	uint64_t wctl;
-	uint64_t* data;
 	int valid; //this is kept track of, but currently unused
 	ctr_state state;
 	int metric_ctl;
-	int* metric_table;
+	int metric_ctr;
+	int metric_name;
+	int ndata;
+	uint64_t* data;
 	pthread_mutex_t lock;
 	TAILQ_ENTRY(active_counter) entry;
 };
@@ -297,7 +300,7 @@ static int parseConfig(char* fname){
 		//rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
 		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx,%[^,],%s",
 			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel, core_flag, temp);
-		if ((strlen(name) > 0) && (name[0] == '#')){
+		if ((strlen(name) > 0)  && (name[0] == '#')){
 			msglog(LDMSD_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
@@ -585,6 +588,7 @@ int readregistercpu(uint64_t x_reg, int cpu, uint64_t* val){
 
 static int zerometricset( struct active_counter *pe){
 	union ldms_value v;
+	char* str = NULL;
 	int i;
 	int rc;
 
@@ -595,10 +599,10 @@ static int zerometricset( struct active_counter *pe){
 
 	v.v_u64 = 0;
 	ldms_metric_set(set, pe->metric_ctl, &v);
-	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
-		ldms_metric_set(set, pe->metric_table[i], &v);
+	ldms_metric_array_set_str(set, pe->metric_name, str);
+	for (i = 0; i < pe->ndata; i++){
+		ldms_metric_array_set_val(set, pe->metric_ctr, i, &v);
 	}
-	//the padded ones are always zero
 
 	pe->valid = 0; //invalidates
 	return 0;
@@ -614,7 +618,7 @@ static int readregisterguts( struct active_counter *pe){
 		return -1;
 	}
 	j = 0;
-	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
+	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){ //will only read what's there (numcore)
 		//NOTE: possible race condition if the register changes while reading through.
 		rc = readregistercpu(pe->mctr->r_reg, i, &(pe->data[j]));
 		if (rc != 0){
@@ -626,11 +630,10 @@ static int readregisterguts( struct active_counter *pe){
 	}
 	v.v_u64 = pe->wctl;
 	ldms_metric_set(set, pe->metric_ctl, &v);
-	j = 0;
-	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
+	ldms_metric_array_set_str(set, pe->metric_name, pe->mctr->name);
+	for (j = 0; j < pe->ndata; j++){ //set all of them, which will include the padding.
 		v.v_u64 = pe->data[j];
-		ldms_metric_set(set, pe->metric_table[j], &v);
-		j++;
+		ldms_metric_array_set_val(set, pe->metric_ctr, j, &v);
 	}
 
 	pe->valid = 1;
@@ -1051,6 +1054,7 @@ static int dfilter(const struct dirent *dp){
 	return ((isdigit(dp->d_name[0])) ? 1 : 0);
 }
 
+// numcore, maxcore, and corespernuma are all assigned by the end of this
 static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	struct dirent **dlist;
@@ -1199,21 +1203,16 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 	pe->mctr = &counter_assignments[j];
 	pe->valid = 0;
 	if (init){
-		int nval = (pe->mctr->numcore)/(pe->mctr->offset);
+		int nval = (pe->mctr->maxcore)/(pe->mctr->offset); //unlike v2, array will include the padding
 		pe->data = calloc(nval, sizeof(junk));
 		if (!pe->data){
 			pthread_mutex_unlock(&(pe->lock));
 			return ENOMEM;
 		} //wont need to zero out otherwise since valid = 0;
 
-		//allocate space for metrics. identifier is separate.
-		//numvals for this metric
 		pe->metric_ctl = 0;
-		pe->metric_table = calloc(nval, sizeof(int));
-		if (!pe->metric_table){
-			pthread_mutex_unlock(&(pe->lock));
-			return ENOMEM;
-		}
+		pe->metric_ctr = 0;
+		pe->ndata = nval; //some of these may be padding
 	}
 
 	//WRITE COMMAND
@@ -1358,33 +1357,28 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 			goto err;
 		}
 		pe->metric_ctl = rc;
-//		ldms_set_user_data(pe->metric_ctl, default_comp_id); 6/4/16. perhaps make the user data the metric name.
-//              perhaps make the metric a string type and store the real name always.
+
+		//new for v3: store the name as well. FIXME: decide if we will keep this.
+		snprintf(name, MSR_MAXLEN, "Ctr%d_name", i);
+		rc = ldms_schema_metric_array_add(schema, name, LDMS_V_CHAR_ARRAY, MSR_MAXLEN);
+		if (rc < 0) {
+			rc = ENOMEM;
+			goto err;
+		}
+		pe->metric_name = rc;
 
 		//process the real ones and the padded ones
-		k = 0;
-		for (j = 0; j < pe->mctr->maxcore; j+=pe->mctr->offset){
-			snprintf(name, MSR_MAXLEN, "Ctr%d_c%02d", i, j);
-			if (j < pe->mctr->numcore){
-				rc = ldms_schema_metric_add(schema, name, LDMS_V_U64);
-				if (rc < 0) {
-					rc = ENOMEM;
-					goto err;
-				}
-				pe->metric_table[k] = rc;
-//				ldms_set_user_data(pe->metric_table[k], default_comp_id);
-			} else {
-				//for the padded vals, we dont need to keep the metric. 6/4/16. Since the interface has changed, is it worth not keeping them anymore?
-				rc = ldms_schema_metric_add(schema, name, LDMS_V_U64);
-				if (rc < 0) {
-					rc = ENOMEM;
-					goto err;
-				}
-//				ldms_set_user_data(temp, default_comp_id);
-			}
-			k++;
-			//FIXME: everything should have zero vals by default. can we count on this?
+		if (pe->mctr->numvalues_type == CTR_NUMCORE){
+			snprintf(name, MSR_MAXLEN, "Ctr%d_c", i);
+		} else {
+			snprintf(name, MSR_MAXLEN, "Ctr%d_n", i);
 		}
+		rc = ldms_schema_metric_array_add(schema, name, LDMS_V_U64, pe->ndata);
+		if (rc < 0) {
+			rc = ENOMEM;
+			goto err;
+		}
+		pe->metric_ctr = rc;
 		i++;
 	}
 
@@ -1477,6 +1471,7 @@ void fincounter(struct active_counter *pe){
 	pe->state = CTR_BROKEN;
 	free(pe->data);
 	pe->data = NULL;
+	pe->ndata = 0;
 
 	pthread_mutex_destroy(&pe->lock);
 }
