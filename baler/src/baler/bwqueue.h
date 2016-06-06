@@ -83,8 +83,12 @@ struct binq_data {
 
 /**
  * Baler Output Queue entry data.
+ *
+ * A single output queue entry will only be processed by the output plugin
+ * (`op`) specified in the boutq_data.
  */
 struct boutq_data {
+	struct boutplugin *op; /** Output plugin. */
 	uint32_t comp_id; /**< Component ID (extracted from hostname). */
 	struct timeval tv; /**< Time value. */
 	struct bmsg *msg; /**< Parsed message, which also includes pattern in it. */

@@ -2007,21 +2007,25 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	rc = bptn_store_addmsg(pattern_store, &in_data->tv, comp_id, msg);
 	if (rc)
 		goto cleanup;
-	/* Copy msg to omsg for future usage in output queue. */
-	struct bmsg *omsg = bmsg_alloc(msg->argc);
-	if (!omsg) {
-		rc = ENOMEM;
-		goto cleanup;
+	struct bplugin *p;
+	LIST_FOREACH(p, &bop_head_s, link) {
+		/* Copy msg to omsg for future usage in output queue. */
+		struct bmsg *omsg = bmsg_alloc(msg->argc);
+		if (!omsg) {
+			rc = ENOMEM;
+			goto cleanup;
+		}
+		memcpy(omsg, msg, BMSG_SZ(msg));
+		/* Prepare output queue entry. */
+		struct bwq_entry *oent = malloc(sizeof(*oent));
+		struct boutq_data *odata = &oent->data.out;
+		odata->comp_id = comp_id;
+		odata->tv = in_data->tv;
+		odata->msg = omsg;
+		odata->op = (struct boutplugin *)p;
+		/* Put the processed message into output queue */
+		bwq_nq(boutq, oent);
 	}
-	memcpy(omsg, msg, BMSG_SZ(msg));
-	/* Prepare output queue entry. */
-	struct bwq_entry *oent = (typeof(oent))malloc(sizeof(*oent));
-	struct boutq_data *odata = &oent->data.out;
-	odata->comp_id = comp_id;
-	odata->tv = in_data->tv;
-	odata->msg = omsg;
-	/* Put the processed message into output queue */
-	bwq_nq(boutq, oent);
 
 cleanup:
 	binq_entry_free(ent);
@@ -2058,24 +2062,6 @@ loop:
 	goto loop;
 }
 
-int process_output_entry(struct bwq_entry *ent, struct bout_wkr_ctxt *ctxt)
-{
-	struct boutq_data *d = &ent->data.out;
-	struct bplugin *p;
-	struct boutplugin *op;
-	int rc = 0;
-	LIST_FOREACH(p, &bop_head_s, link) {
-		op = (typeof(op))p;
-		rc = op->process_output(op, d);
-		/** TODO Better error handling here */
-		if (rc) {
-			bwarn("Output plugin %s->process_output error, code:"
-				       " %d\n", p->name, rc);
-		}
-	}
-	return 0;
-}
-
 /**
  * Work routine for Output Queue Worker Thread.
  * \param arg A pointer to ::bout_wkr_ctxt.
@@ -2084,6 +2070,8 @@ int process_output_entry(struct bwq_entry *ent, struct bout_wkr_ctxt *ctxt)
 void* boutqwkr_routine(void *arg)
 {
 	struct bwq_entry *ent;
+	struct boutq_data *d;
+	int rc;
 loop:
 	/* bwq_dq will block the execution if the queue is empty. */
 	ent = bwq_dq(boutq);
@@ -2091,9 +2079,12 @@ loop:
 		/* This is not supposed to happen. */
 		berr("Error, ent == NULL\n");
 	}
-	if (process_output_entry(ent, (struct bout_wkr_ctxt *) arg) == -1) {
+	d = &ent->data.out;
+	rc = d->op->process_output(d->op, d);
+	if (rc) {
 		/* XXX Do better error handling ... */
-		berr("process input error, code %d\n", errno);
+		berr("output plugin '%s' error, code %d\n",
+					d->op->base.name, rc);
 	}
 	boutq_entry_free(ent);
 	goto loop;
