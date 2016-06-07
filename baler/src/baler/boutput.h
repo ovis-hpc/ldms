@@ -67,8 +67,6 @@
 #include "bplugin.h"
 #include "bwqueue.h"
 
-extern struct bwq *boutq;
-
 /*
  * Real definition is defined afterwards.
  */
@@ -94,6 +92,14 @@ struct boutplugin {
 	 * \param odata The output data from Baler core.
 	 */
 	int (*process_output)(struct boutplugin *this, struct boutq_data *odata);
+
+	/**
+	 * \brief Internal output queue corresponding to the plugin.
+	 *
+	 * This field is internally-used by baler daemon. Plugin should not
+	 * access nor modify this field.
+	 */
+	struct bwq *_outq;
 };
 
 /**
@@ -112,11 +118,6 @@ const char *bget_store_path();
  * \return Error code on error.
  */
 int bset_store_path(const char *path);
-
-/**
- * Posting output work queue entry to the balerd's output queue.
- */
-void boutq_post(struct bwq_entry *ent);
 
 #endif /* __BOUTPUT_H */
 

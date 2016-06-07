@@ -312,7 +312,7 @@ struct bzap_ctxt {
 };
 
 /***** Command line arguments ****/
-#define BALER_OPT_STR "FC:l:s:m:x:h:p:v:I:O:?"
+#define BALER_OPT_STR "FC:l:s:m:x:h:p:v:I:O:Q:?"
 #ifdef ENABLE_OCM
 const char *optstring = BALER_OPT_STR "z:";
 #else
@@ -342,6 +342,7 @@ void display_help_msg()
 "			The default value is WARN.\n"
 "	-I <number>	The number of input queue worker.\n"
 "	-O <number>	The number of output queue worker.\n"
+"	-Q <number>	The queue depth (applied to input and output queues).\n"
 "	-?		Show help message\n"
 "\n"
 "For more information see balerd(3) manpage.\n"
@@ -356,6 +357,7 @@ void display_help_msg()
  */
 int binqwkrN = 1; /**< Input Worker Thread Number */
 int boutqwkrN = 1; /**< Output Worker Thread Number */
+int qdepth = 1024; /**< Input/Output queue depth */
 int is_foreground = 0; /**< Run as foreground? */
 int is_master = 1; /**< Run in master mode */
 
@@ -468,6 +470,8 @@ struct bplugin_head bop_head_s = {NULL};
  * Output queue workers
  */
 pthread_t *boutqwkr;
+struct bwq *boutq; /* array of boutq, one queue per worker */
+int *boutq_busy_count; /* queue busy count */
 
 /**
  * Pending input queue.
@@ -605,6 +609,19 @@ void ntoh_bzmsg(struct bzmsg *m)
 		m->id = be32toh(m->id);
 		break;
 	}
+}
+
+struct bwq *get_least_busy_boutq()
+{
+	struct bwq *q;
+	int i, mini;
+	mini = 0;
+	for (i = 1; i < boutqwkrN; i++) {
+		if (boutq_busy_count[i] < boutq_busy_count[mini])
+			mini = i;
+	}
+	boutq_busy_count[mini]++;
+	return &boutq[mini];
 }
 
 void* binqwkr_routine(void *arg);
@@ -1041,19 +1058,13 @@ void initialize_daemon()
 	}
 
 	/* Input/Output Work Queue */
-	binq = bwq_alloci(1024);
+	binq = bwq_alloci(qdepth);
 	if (!binq) {
 		berror("(binq) bwq_alloci");
 		exit(-1);
 	}
 
-	boutq = bwq_alloci(1024);
-	if (!boutq) {
-		berror("(boutq) bwq_alloci");
-		exit(-1);
-	}
-
-	binq_pending = bwq_alloci(1024);
+	binq_pending = bwq_alloci(qdepth);
 	if (!binq_pending) {
 		berror("(binq_pending) bwq_alloci");
 		exit(-1);
@@ -1126,8 +1137,19 @@ void initialize_daemon()
 		berror("malloc for boutqwkr");
 		exit(-1);
 	}
+	boutq_busy_count = calloc(boutqwkrN, sizeof(int));
+	if (!boutq_busy_count) {
+		berror("calloc for boutqwkr_busy_count");
+		exit(-1);
+	}
+	boutq = malloc(sizeof(*boutq) * boutqwkrN);
+	if (!boutq) {
+		berror("malloc for boutq");
+		exit(-1);
+	}
 	struct bout_wkr_ctxt *octxt;
 	for (i=0; i<boutqwkrN; i++) {
+		bwq_init(&boutq[i], qdepth);
 		octxt = calloc(1, sizeof(*octxt));
 		if (!octxt) {
 			berror("calloc for octxt");
@@ -1225,7 +1247,6 @@ int load_plugin(struct bconfig_list *pcl, struct bplugin_head *inst_head)
 		goto out;
 	}
 	LIST_INSERT_HEAD(inst_head, p, link);
-
 	/* Configure the plugin. */
 	if ((rc = p->config(p, &pcl->arg_head_s))) {
 		berr("Config error, code: %d\n", rc);
@@ -1238,21 +1259,7 @@ int load_plugin(struct bconfig_list *pcl, struct bplugin_head *inst_head)
 				rc);
 		goto out;
 	}
-out:
-	return rc;
-}
 
-int load_plugins(struct bconfig_head *conf_head,
-		struct bplugin_head *inst_head)
-{
-	struct bconfig_list *pcl;
-	char plibso[PATH_MAX];
-	int rc = 0;
-	LIST_FOREACH(pcl, conf_head, link) {
-		rc = load_plugin(pcl, inst_head);
-		if (rc)
-			goto out;
-	}
 out:
 	return rc;
 }
@@ -1357,13 +1364,22 @@ err0:
 
 int process_cmd_plugin(struct bconfig_list *cfg)
 {
+	int rc;
 	struct bpair_str *bp = bpair_str_search(&cfg->arg_head_s, "name", NULL);
 	if (!bp)
 		return EINVAL;
-	if (strncmp(bp->s1, "bin", 3) == 0)
+	if (strncmp(bp->s1, "bin", 3) == 0) {
 		return load_plugin(cfg, &bip_head_s);
-	else if (strncmp(bp->s1, "bout", 4) == 0)
-		return load_plugin(cfg, &bop_head_s);
+	}
+	else if (strncmp(bp->s1, "bout", 4) == 0) {
+		rc = load_plugin(cfg, &bop_head_s);
+		if (rc)
+			return rc;
+		/* An output plugin needs an output queue */
+		struct boutplugin *p = (typeof(p))LIST_FIRST(&bop_head_s);
+		p->_outq = get_least_busy_boutq();
+		return 0;
+	}
 	return EINVAL;
 }
 
@@ -1695,6 +1711,9 @@ next_arg:
 	case 'O':
 		boutqwkrN = atoi(optarg);
 		break;
+	case 'Q':
+		qdepth = atoi(optarg);
+		break;
 	case '?':
 		display_help_msg();
 		exit(0);
@@ -1740,6 +1759,8 @@ out:
 	return rc;
 }
 
+int finalize_input_entry(struct bwq_entry *ent);
+
 int slave_process_input_entry_step3(struct bwq_entry *ent)
 {
 	struct bin_wkr_ctxt *ctxt = ent->ctxt;
@@ -1749,21 +1770,7 @@ int slave_process_input_entry_step3(struct bwq_entry *ent)
 	rc = bptn_store_addmsg(pattern_store, &in_data->tv, ctxt->comp_id, msg);
 	if (rc)
 		goto cleanup;
-	/* Copy msg to omsg for future usage in output queue. */
-	struct bmsg *omsg = bmsg_alloc(msg->argc);
-	if (!omsg) {
-		rc = ENOMEM;
-		goto cleanup;
-	}
-	memcpy(omsg, msg, BMSG_SZ(msg));
-	/* Prepare output queue entry. */
-	struct bwq_entry *oent = (typeof(oent))malloc(sizeof(*oent));
-	struct boutq_data *odata = &oent->data.out;
-	odata->comp_id = ctxt->comp_id;
-	odata->tv = in_data->tv;
-	odata->msg = omsg;
-	/* Put the processed message into output queue */
-	bwq_nq(boutq, oent);
+	rc = finalize_input_entry(ent);
 cleanup:
 	binq_entry_free(ent);
 	free(ent->ctxt);
@@ -1947,6 +1954,32 @@ err:
 	return rc;
 }
 
+int finalize_input_entry(struct bwq_entry *ent)
+{
+	struct bplugin *p;
+	struct bin_wkr_ctxt *ctxt = ent->ctxt;
+	struct binq_data *in_data = &ent->data.in;
+	struct bmsg *msg = &ctxt->msg;
+	LIST_FOREACH(p, &bop_head_s, link) {
+		/* Copy msg to omsg for future usage in output queue. */
+		struct bmsg *omsg = bmsg_alloc(msg->argc);
+		if (!omsg) {
+			return ENOMEM;
+		}
+		memcpy(omsg, msg, BMSG_SZ(msg));
+		/* Prepare output queue entry. */
+		struct bwq_entry *oent = malloc(sizeof(*oent));
+		struct boutq_data *odata = &oent->data.out;
+		odata->comp_id = ctxt->comp_id;
+		odata->tv = in_data->tv;
+		odata->msg = omsg;
+		odata->op = (struct boutplugin *)p;
+		/* Put the processed message into output queue */
+		bwq_nq(odata->op->_outq, oent);
+	}
+	return 0;
+}
+
 /**
  * Core processing of an input entry.
  * \param ent Input entry.
@@ -1972,6 +2005,8 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	} else {
 		comp_id = in_data->hostname->u32str[0];
 	}
+	ent->ctxt = ctxt;
+	ctxt->comp_id = comp_id;
 	struct bstr_list_entry *str_ent;
 	/* NOTE: ptn and msg is meant to be a uint32_t string */
 	struct bstr *str = &ctxt->ptn_str;
@@ -2007,25 +2042,8 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 	rc = bptn_store_addmsg(pattern_store, &in_data->tv, comp_id, msg);
 	if (rc)
 		goto cleanup;
-	struct bplugin *p;
-	LIST_FOREACH(p, &bop_head_s, link) {
-		/* Copy msg to omsg for future usage in output queue. */
-		struct bmsg *omsg = bmsg_alloc(msg->argc);
-		if (!omsg) {
-			rc = ENOMEM;
-			goto cleanup;
-		}
-		memcpy(omsg, msg, BMSG_SZ(msg));
-		/* Prepare output queue entry. */
-		struct bwq_entry *oent = malloc(sizeof(*oent));
-		struct boutq_data *odata = &oent->data.out;
-		odata->comp_id = comp_id;
-		odata->tv = in_data->tv;
-		odata->msg = omsg;
-		odata->op = (struct boutplugin *)p;
-		/* Put the processed message into output queue */
-		bwq_nq(boutq, oent);
-	}
+
+	rc = finalize_input_entry(ent);
 
 cleanup:
 	binq_entry_free(ent);
@@ -2069,12 +2087,13 @@ loop:
  */
 void* boutqwkr_routine(void *arg)
 {
+	struct bout_wkr_ctxt *octxt = arg;
 	struct bwq_entry *ent;
 	struct boutq_data *d;
 	int rc;
 loop:
 	/* bwq_dq will block the execution if the queue is empty. */
-	ent = bwq_dq(boutq);
+	ent = bwq_dq(&boutq[octxt->worker_id]);
 	if (!ent) {
 		/* This is not supposed to happen. */
 		berr("Error, ent == NULL\n");
