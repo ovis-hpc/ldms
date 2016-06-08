@@ -1527,8 +1527,8 @@ void config_file_handling(const char *path)
 		s = buff;
 		while (isspace(*s))
 			s++;
-		if (*s == '#')
-			continue; /* comment line */
+		if (*s == '#' || *s == '\0')
+			continue; /* comment or empty line */
 		if ((rc = process_command(s))) {
 			berr("process_command error %d: %s at %s:%d\n",
 					rc, strerror(rc), path, lno);
