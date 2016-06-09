@@ -34,6 +34,9 @@ The following environment variables are optional:
 .TP
 LDMS_AUTH_FILE
 The full path to the file containing the secret word. For details, see ldms_authentication(7).
+.TP
+LDMS_LS_MEM_SZ
+The size of memory reserved for metric sets. See the -m option.
 
 .SH OPTIONS
 .TP
@@ -71,10 +74,12 @@ If ldms was configured with --enable-a-none, then <path> = none bypasses authent
 .TP
 .BI -m  " MEMORY_SIZE"
 .br
-MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
-The given size must be less than 1 petabytes.
-For example, 20M or 20mb are 20 megabytes. Unless a specific set is being queried, this should usually match the size of pre-allocated
-memory specified when starting the remote ldmsd being queried.
+MEMORY_SIZE is the size of memory reserved for metric sets. This value has
+precedence over the value of the LDMS_LS_MEM_SZ environment variable. The given
+size must be less than 1 petabytes.  For example, 20M or 20mb are 20 megabytes.
+Unless a specific set is being queried, this should usually match the size of
+pre-allocated memory specified when starting the remote ldmsd being queried.
+
 .TP
 .BR -u
 Display the user data for the metrics. (Usually compid)

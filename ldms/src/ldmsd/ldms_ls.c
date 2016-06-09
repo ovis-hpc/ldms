@@ -73,6 +73,13 @@
 #include "ldms_xprt.h"
 #include <event2/event.h>
 
+#define LDMS_LS_MEM_SZ_ENVVAR "LDMS_LS_MEM_SZ"
+#define LDMS_LS_MAX_MEM_SIZE 512L * 1024L * 1024L
+#define LDMS_LS_MAX_MEM_SZ_STR "512MB"
+
+static size_t max_mem_size;
+static char *mem_sz;
+
 static pthread_mutex_t dir_lock;
 static pthread_cond_t dir_cv;
 static int dir_done;
@@ -119,11 +126,16 @@ void usage(char *argv[])
 	       "                     this option multiple times increases the verbosity.\n"
 	       "\n    -E               The <name> arguments are regular expressions.\n"
 	       "\n    -S               The <name>s refers to the schema name.\n"
-	       "\n    -I               The <name>s refer to the instance name (default).\n"
-	       "\n    -m <memory size> Maximum size of pre-allocated memory for metric sets.\n"
+	       "\n    -I               The <name>s refer to the instance name (default).\n",
+		argv[0]);
+	printf("\n    -m <memory size> Maximum size of pre-allocated memory for metric sets.\n"
 	       "                     The given size must be less than 1 petabytes.\n"
-	       "                     For example, 20M or 20mb are 20 megabytes.\n",
-	       argv[0]);
+	       "                     The default is %s.\n"
+	       "                     For example, 20M or 20mb are 20 megabytes.\n"
+	       "                     - The environment variable %s could be set\n"
+	       "                     instead of giving the -m option. If both are given,\n"
+	       "                     this option takes precedence over the environment variable.\n",
+	       LDMS_LS_MAX_MEM_SZ_STR, LDMS_LS_MEM_SZ_ENVVAR);
 #if OVIS_LIB_HAVE_AUTH
 	printf("\n    -a <path>        The full Path to the file containing the shared secret word.\n"
 	       "                     Set the environment variable %s to the full path\n"
@@ -381,6 +393,11 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	return;
  err:
 	printf("ldms_ls: Error %d looking up metric set.\n", status);
+	if (status == ENOMEM) {
+		printf("Changing the LDMS_LS_MEM_SZ environment variable or the "
+				"-m option to a bigger value. The current "
+				"value is %s\n", mem_sz);
+	}
 	if (last && !more) {
 		pthread_mutex_lock(&done_lock);
 		done = 1;
@@ -448,9 +465,6 @@ void link_libevent(const char *v)
 	}
 }
 
-#define LDMS_LS_MAX_MEM_SIZE 512L * 1024L
-size_t max_mem_size = LDMS_LS_MAX_MEM_SIZE;
-
 int main(int argc, char *argv[])
 {
 	struct ldms_version version;
@@ -516,10 +530,7 @@ int main(int argc, char *argv[])
 			waitsecs = atoi(optarg);
 			break;
 		case 'm':
-			if ((max_mem_size = ovis_get_mem_size(optarg)) == 0) {
-				printf("Invalid memory size '%s'\n", optarg);
-				usage(argv);
-			}
+			mem_sz = strdup(optarg);
 			break;
 #if OVIS_LIB_HAVE_AUTH
 		case 'a':
@@ -550,10 +561,21 @@ int main(int argc, char *argv[])
 		usage(argv);
 
 	/* Initialize LDMS */
-	size_t max_mem = LDMS_LS_MAX_MEM_SIZE;
-	if (ldms_init(max_mem)) {
-		printf("LDMS could not pre-allocate the memory of size %lu.\n",
-		       max_mem);
+	if (!mem_sz) {
+		mem_sz = getenv(LDMS_LS_MEM_SZ_ENVVAR);
+		if (!mem_sz)
+			mem_sz = LDMS_LS_MAX_MEM_SZ_STR;
+	}
+	max_mem_size = ovis_get_mem_size(mem_sz);
+	if (!max_mem_size) {
+		printf("Invalid memory size '%s'. "
+			"See the -m option in the ldms_ls help.\n",
+							mem_sz);
+		usage(argv);
+	}
+	if (ldms_init(max_mem_size)) {
+		printf("LDMS could not pre-allocate the memory of size %s.\n",
+		       mem_sz);
 		exit(1);
 	}
 
