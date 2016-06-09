@@ -105,7 +105,9 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 
 #define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:c:"
 
-#define LDMSD_MEM_SIZE_DEFAULT 512 * 1024
+#define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
+#define LDMSD_MEM_SIZE_STR "512kB"
+#define LDMSD_MEM_SIZE_DEFAULT 512L * 1024L
 
 int flush_N = 2; /* The number of flush threads */
 char myhostname[80];
@@ -124,7 +126,8 @@ char *secretword;
 */
 int authenticate = 1;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
-size_t max_mem_size = LDMSD_MEM_SIZE_DEFAULT;
+size_t max_mem_size;
+char *max_mem_sz_str;
 
 extern unsigned long saggs_mask;
 ldms_t ldms;
@@ -388,7 +391,12 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
 	       "                   The given size must be less than 1 petabytes.\n"
-	       "                   For example, 20M or 20mb are 20 megabytes.\n");
+	       "                   The default value is %s\n"
+	       "                   For example, 20M or 20mb are 20 megabytes.\n"
+	       "                   - The environment variable %s could be set instead of\n"
+	       "                   giving the -m option. If both are given, the -m option\n"
+	       "                   takes precedence over the environment variable.\n",
+	       LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
 	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
 	       "                   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
@@ -1550,6 +1558,11 @@ int ldmsd_authentication_required() {
 
 extern int ldmsd_inet_config_init(const char *port, const char *secretword);
 
+char *ldmsd_get_max_mem_sz_str()
+{
+	return max_mem_sz_str;
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
@@ -1655,10 +1668,7 @@ int main(int argc, char *argv[])
 			notify = 1;
 			break;
 		case 'm':
-			if ((max_mem_size = ovis_get_mem_size(optarg)) == 0) {
-				printf("Invalid memory size '%s'\n", optarg);
-				usage(argv);
-			}
+			max_mem_sz_str = strdup(optarg);
 			break;
 		case 'f':
 			flush_N = atoi(optarg);
@@ -1748,9 +1758,19 @@ int main(int argc, char *argv[])
 
 	/* Initialize LDMS */
 	umask(0);
+	if (!max_mem_sz_str) {
+		max_mem_sz_str = getenv(LDMSD_MEM_SIZE_ENV);
+		if (!max_mem_sz_str)
+			max_mem_sz_str = LDMSD_MEM_SIZE_STR;
+	}
+	if ((max_mem_size = ovis_get_mem_size(max_mem_sz_str)) == 0) {
+		printf("Invalid memory size '%s'. See the -m option.\n",
+							max_mem_sz_str);
+		usage(argv);
+	}
 	if (ldms_init(max_mem_size)) {
 		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
-				"the memory of size %lu.\n", max_mem_size);
+				"the memory of size %s.\n", max_mem_sz_str);
 		exit(1);
 	}
 

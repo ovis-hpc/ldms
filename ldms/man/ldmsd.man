@@ -38,6 +38,11 @@ Full path name of pidfile overriding the default /var/run/ldmsd.pid unless the c
 .TP
 LDMSD_SOCKPATH
 Path to the unix domain socket for the ldmsd. Default is created within /var/run. If you must change the default (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd) or specify "-S socketpath" to ldmsd.
+.TP
+LDMSD_MEM_SZ
+The size of memory reserved for metric sets. Set this variable or specify "-m"
+to ldmsd. See the -m option for further details. If both are specified, the -m
+option takes precedence over this environment variable.
 
 .SS CRAY Specific Environment variables for ugni transport
 LDMS_UGNI_PTAG

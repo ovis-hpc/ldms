@@ -682,6 +682,8 @@ void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 int ldmsd_logrotate();
 
+char *ldmsd_get_max_mem_sz_str();
+
 /** Configuration object management */
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_init(void);
