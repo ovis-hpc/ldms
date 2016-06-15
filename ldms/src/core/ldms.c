@@ -96,10 +96,12 @@ pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)
 {
-	if (desc->vd_flags & LDMS_MDESC_F_DATA)
+	if (desc->vd_flags & LDMS_MDESC_F_DATA) {
 		LDMS_GN_INCREMENT(set->data->gn);
-	else
+	} else {
 		LDMS_GN_INCREMENT(set->meta->meta_gn);
+		set->data->meta_gn = set->meta->meta_gn;
+	}
 }
 
 /* Caller must hold the set tree lock. */
