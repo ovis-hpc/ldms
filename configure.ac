@@ -91,5 +91,6 @@ util/sample_init_scripts/genders/etc/Makefile
 util/sample_init_scripts/genders/src/Makefile
 util/sample_init_scripts/genders/etc/init.d/Makefile
 
+packaging/ovis-rhel7.spec
 packaging/ovis-base.spec])
 AC_OUTPUT
