@@ -7,7 +7,7 @@ if ENABLE_SWIG
 SUBDIRS += swig
 endif
 
-EXTRA_DIST = autogen.sh COPYING 
+EXTRA_DIST = autogen.sh COPYING
 
 OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
@@ -39,7 +39,6 @@ rpm7 centos7 rhel7: dist-gzip
 	rpmbuild --define "_topdir `pwd`/rpm7" \
 		--buildroot `pwd`/rpm7/BUILDROOT \
 		-ba rpm7/SPECS/ovis-lib-rhel7.spec
-
 
 if ENABLE_DOC
 install-data-local: install-doc
