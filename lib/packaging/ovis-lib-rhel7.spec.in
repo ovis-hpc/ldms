@@ -18,6 +18,9 @@ Source: @PACKAGE@-@VERSION@.tar.gz
 Url: http://ogc.us/
 Prefix: @prefix@
 %define _prefix @prefix@
+%define _sysconfdir %{_prefix}/etc
+%define _localstatedir %{_prefix}/var
+%define _sharedstatedir %{_prefix}/var/lib
 
 %description
 This package provides common OVIS libraries.
@@ -266,6 +269,7 @@ Group: %{ovis_lib_grp}
 %description misc
 Miscellaneous file in ovis-lib project.
 %files misc
+%{_sysconfdir}/
 %{_libdir}/ovis-lib-configvars.sh
 %{_includedir}/ovis-lib-config.h
 %{_bindir}/lib-pedigree

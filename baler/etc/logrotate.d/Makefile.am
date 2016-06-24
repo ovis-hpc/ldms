@@ -1,7 +1,8 @@
 EXTRA_DIST = balerd
+
 install-data-local:
-	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/ovis/logrotate.d
-	$(INSTALL_DATA) $(srcdir)/balerd $(DESTDIR)/$(sysconfdir)/ovis/logrotate.d/
+	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/logrotate.d
+	$(INSTALL_DATA) $(srcdir)/balerd $(DESTDIR)$(sysconfdir)/logrotate.d/
 
 uninstall-local:
-	rm -f $(DESTDIR)/etc/ovis/logrotate.d/balerd
+	rm -f $(DESTDIR)$(sysconfdir)/logrotate.d/balerd

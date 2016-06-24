@@ -14,6 +14,9 @@ Source0: %{name}-%{version}.tar.gz
 Requires: ovis-lib-zap >= 1.3.0
 Prefix: @prefix@
 %define _prefix @prefix@
+%define _sysconfdir %{_prefix}/etc
+%define _localstatedir %{_prefix}/var
+%define _sharedstatedir %{_prefix}/var/lib
 
 %description
 This package provides the LDMS commands and libraries.

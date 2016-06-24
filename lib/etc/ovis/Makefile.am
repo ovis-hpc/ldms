@@ -1,4 +1,5 @@
-EXTRA_DIST = ovis-functions.sh set-ovis-variables.sh ovis-logrotate
+EXTRA_DIST = ovis-functions.sh
+
 install-data-local:
 	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/ovis
 	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/profile.d

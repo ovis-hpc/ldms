@@ -11,6 +11,7 @@ PREFIX=/opt/ovis
 
 # add --enable-FEATURE here
 ENABLE="--enable-swig \
+	--enable-etc \
 	--enable-doc \
 	--enable-doc-html \
 	--enable-doc-man \
@@ -68,7 +69,6 @@ CFLAGS='-g -O3'
 # Exit immediately if a command failed
 set -e
 
-#LIST="lib sos baler"
 RPMS_DEST=$PWD/RPM7
 rm -rf $RPMS_DEST
 mkdir -p $RPMS_DEST
