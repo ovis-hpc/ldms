@@ -40,10 +40,14 @@ rm -rf %{buildroot}
 %files
 %{_bindir}
 %{_libdir}
+%{_sysconfdir}/init.d/balerd
+%{_sysconfdir}/ovis/logrotate.d/balerd
 %if "@ENABLE_SWIG_TRUE@x" == "x"
 %{_prefix}/lib*/python*
+%{_prefix}/etc/baler.cfg
+%{_prefix}/etc/hosts.txt
+%{_prefix}/etc/ovis/eng-dictionary
 %endif
-%{_prefix}/etc
 
 
 # baler-devel package

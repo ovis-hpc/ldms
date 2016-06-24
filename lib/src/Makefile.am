@@ -1,5 +1,5 @@
 nobase_include_HEADERS = ovis-test/test.h ovis-lib-config.h
-EXTRADIST=ovis-lib-configvars.sh.in
+EXTRADIST=ovis-lib-configvars.sh.in 
 
 SUBDIRS = third
 
@@ -35,4 +35,5 @@ install-data-hook:
 	$(MKDIR_P) $(DESTDIR)$(libdir)
 	sed -i -e 's/{//g' -e 's/}//g' ovis-lib-configvars.sh
 	$(INSTALL) -m 644 ovis-lib-configvars.sh $(DESTDIR)$(libdir)
+
 

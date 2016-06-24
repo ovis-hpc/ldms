@@ -18,6 +18,7 @@ if test -d $OVIS_HOME/lib64;
         OLIB=$OVIS_HOME/lib;
 fi
 
+export LD_LIBRARY_PATH=$OLIB
 export LDMSD_PLUGIN_LIBPATH=$OLIB/ovis-ldms
 export LDMS_XPRT_LIBPATH=$OLIB/ovis-ldms
 export ZAP_LIBPATH=$OLIB/ovis-lib
@@ -25,32 +26,34 @@ export ME_PLUGIN_LIBPATH=$OLIB/me
 
 export PYTHONPATH=$PYTHONPATH:$OVIS_HOME/lib/python@PYTHON_VERSION@/site-packages
 export PATH=$PATH:$OVIS_HOME/bin:$OVIS_HOME/sbin
-
-export LDMSD_SAMPLER_XPORT=sock
-export LDMSD_SAMPLER_PORT_TO_OCMD=20001
-export LDMSD_SAMPLER_PORT_LISTEN=10001
-
-export OCMD_XPORT=sock
-export OCMD_PORT=12345
-export OCMD_PEER_LIST=$(sysconfdir)/ovis/ocmd_peer_list
-export OCMD_RECONNECT_INTERVAL=20.00
-
-export ME_XPORT=sock
-export ME_PORT_TO_OCMD=20003
-export ME_PORT_LISTEN=10003
-
-export KOMONDOR_XPORT=sock
-export KOMONDOR_PORT_TO_OCMD=20004
-export KOMONDOR_PORT_LISTEN=10004
-
-export LDMSD_AGG_XPORT=sock
-export LDMSD_AGG_PORT_TO_OCMD=20002
-export LDMSD_AGG_PORT_LISTEN=10002
-export LDMSD_AGG_MEM="2G"
-export LDMSD_AGG_SOS=$OVIS_DATA/metrics
-
-export BALER_XPORT=sock
-export BALER_PORT_TO_OCMD=20005
-export BALER_STORE=$OVIS_DATA/baler
-
+#
+#export LDMSD_STORE_RECOVER=restore
+#export KOMONDOR_STORE_RECOVER=restore
+#export LDMSD_SAMPLER_XPORT=sock
+#export LDMSD_SAMPLER_PORT_TO_OCMD=20001
+#export LDMSD_SAMPLER_PORT_LISTEN=10001
+#
+#export OCMD_XPORT=sock
+#export OCMD_PORT=12345
+#export OCMD_PEER_LIST=$(sysconfdir)/ovis/ocmd_peer_list
+#export OCMD_RECONNECT_INTERVAL=20.00
+#
+#export ME_XPORT=sock
+#export ME_PORT_TO_OCMD=20003
+#export ME_PORT_LISTEN=10003
+#
+#export KOMONDOR_XPORT=sock
+#export KOMONDOR_PORT_TO_OCMD=20004
+#export KOMONDOR_PORT_LISTEN=10004
+#
+#export LDMSD_AGG_XPORT=sock
+#export LDMSD_AGG_PORT_TO_OCMD=20002
+#export LDMSD_AGG_PORT_LISTEN=10002
+#export LDMSD_AGG_MEM="2G"
+#export LDMSD_AGG_SOS=$OVIS_DATA/metrics
+#
+#export BALER_XPORT=sock
+#export BALER_PORT_TO_OCMD=20005
+#export BALER_STORE=$OVIS_DATA/baler
+#
 ulimit -c unlimited

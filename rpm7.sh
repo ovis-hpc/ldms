@@ -19,7 +19,7 @@ ENABLE="--enable-swig \
 	--enable-ldms-python \
 	--enable-rdma \
 	--enable-sysclassib \
-	--enable-sos --enable-debug"
+	--enable-sos --enable-debug --enable-etc"
 
 # add --disable-FEATURE here
 DISABLE="--disable-ocm --disable-rpath --disable-jobid"

@@ -654,7 +654,6 @@ static int prdcr_set_handler(int sock, req_msg_t rm)
 	}
 	ldmsd_prdcr_unlock(prdcr);
 	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	return rc;
 }
 

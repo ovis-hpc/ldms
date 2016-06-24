@@ -1,5 +1,7 @@
 if ENABLE_BALER
 
+EXTRA_DIST = baler.cfg hosts.txt
+
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
 
@@ -34,6 +36,11 @@ rpm7: dist-gzip
 rpm-clean:
 	rm -rf rpm7/
 	rm -f $(distdir).tar.gz
+
+
+install-data-local:
+	$(INSTALL_DATA) $(srcdir)/baler.cfg $(DESTDIR)$(prefix)/etc
+	$(INSTALL_DATA) $(srcdir)/hosts.txt $(DESTDIR)$(prefix)/etc
 
 endif
 
