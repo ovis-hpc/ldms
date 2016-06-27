@@ -61,6 +61,7 @@
 #include <coll/rbt.h>
 #include <pthread.h>
 #include "ldmsd.h"
+#include "ldmsd_request.h"
 
 /*
  * This file implements an LDMSD control protocol. The protocol is
@@ -90,6 +91,7 @@ typedef struct msg_key {
 	uint32_t msg_no;
 	uint32_t sock_fd;
 } *msg_key_t;
+
 static int msg_comparator(void *a, const void *b)
 {
 	msg_key_t ak = (msg_key_t)a;
@@ -130,6 +132,8 @@ struct request_handler_entry {
 
 static int cli_handler(int sock, req_msg_t rm);
 static int example_handler(int sock, req_msg_t rm);
+static int prdcr_add_handler(int sock, req_msg_t rm);
+static int prdcr_del_handler(int sock, req_msg_t rm);
 static int prdcr_status_handler(int sock, req_msg_t rm);
 static int prdcr_set_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
@@ -140,6 +144,8 @@ static int unimplemented_handler(int sock, req_msg_t rm);
 static struct request_handler_entry request_handler[] = {
 	[LDMSD_CLI_REQ]          = { LDMSD_CLI_REQ, cli_handler },
 	[LDMSD_EXAMPLE_REQ]      = { LDMSD_EXAMPLE_REQ, example_handler },
+	[LDMSD_PRDCR_ADD_REQ]    = { LDMSD_PRDCR_ADD_REQ, prdcr_add_handler },
+	[LDMSD_PRDCR_DEL_REQ]    = { LDMSD_PRDCR_DEL_REQ, prdcr_del_handler },
 	[LDMSD_PRDCR_STATUS_REQ] = { LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler },
 	[LDMSD_PRDCR_SET_REQ] = { LDMSD_PRDCR_SET_REQ, prdcr_set_handler },
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
@@ -575,6 +581,165 @@ static int example_handler(int sock, req_msg_t rm)
 	}
 	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;
+}
+
+static int prdcr_add_handler(int sock, req_msg_t rm)
+{
+	ldmsd_prdcr_t prdcr;
+	char *name, *host, *xprt, *attr_name;
+	name = host = xprt = NULL;
+	enum ldmsd_prdcr_type type = -1;
+	short port_no = -1;
+	int interval_us = -1;
+	size_t cnt;
+	int rc;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_TYPE:
+			type = ldmsd_prdcr_str2type(attr->attr_value);
+			break;
+		case LDMSD_ATTR_XPRT:
+			xprt = attr->attr_value;
+			break;
+		case LDMSD_ATTR_HOST:
+			host = attr->attr_value;
+			break;
+		case LDMSD_ATTR_PORT:
+			port_no = strtol(attr->attr_value, NULL, 0);
+			break;
+		case LDMSD_ATTR_INTERVAL:
+			interval_us = strtol(attr->attr_value, NULL, 0);
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (type < 0) {
+		attr_name = "type";
+		goto einval;
+	}
+	if (type == EINVAL) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe attribute "
+					"type '%s' is invalid.", EINVAL, type);
+		goto send_reply;
+	}
+	if (type == LDMSD_PRDCR_TYPE_LOCAL)
+		goto out;
+
+	if (!xprt) {
+		attr_name = "xprt";
+		goto einval;
+	}
+	if (!host) {
+		attr_name = "host";
+		goto einval;
+	}
+	if (port_no < 0) {
+		attr_name = "port";
+		goto einval;
+	}
+	if (interval_us < 0) {
+		attr_name = "interval";
+		goto einval;
+	}
+out:
+	prdcr = ldmsd_prdcr_new(name, xprt, host, port_no, type, interval_us);
+	if (!prdcr) {
+		if (errno == EEXIST)
+			goto eexist;
+		else
+			goto enomem;
+	}
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	goto send_reply;
+enomem:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dMemory allocation "
+							"failed.", ENOMEM);
+	goto send_reply;
+eexist:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe prdcr %s already "
+						"exists.", EEXIST, name);
+	goto send_reply;
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int prdcr_del_handler(int sock, req_msg_t rm)
+{
+	ldmsd_prdcr_t prdcr;
+	char *name, *attr_name;
+	size_t cnt;
+	int rc;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name) {
+		attr_name = "name";
+		goto einval;
+	}
+out:
+	prdcr = ldmsd_prdcr_find(name);
+	if (!prdcr)
+		goto enoent;
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dConfiguration "
+				"changes cannot be made while the producer "
+				"is running\n", EBUSY);
+		goto send_reply;
+	}
+	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+							"is in use.\n", EBUSY);
+		goto send_reply;
+	}
+	/* Make sure any outstanding callbacks are complete */
+	ldmsd_task_join(&prdcr->task);
+	/* Put the find reference */
+	ldmsd_prdcr_put(prdcr);
+	/* Drop the lock and drop the create reference */
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_put(prdcr);
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	goto send_reply;
+
+enoent:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+				"specified does not exist\n", ENOENT);
+	goto send_reply;
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
 }
 
 static int prdcr_status_handler(int sock, req_msg_t rm)

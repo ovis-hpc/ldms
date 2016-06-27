@@ -437,6 +437,20 @@ static int set_cmp(void *a, const void *b)
 	return strcmp(a, b);
 }
 
+int ldmsd_prdcr_str2type(const char *type)
+{
+	enum ldmsd_prdcr_type prdcr_type;
+	if (0 == strcasecmp(type, "active"))
+		prdcr_type = LDMSD_PRDCR_TYPE_ACTIVE;
+	else if (0 == strcasecmp(type, "passive"))
+		prdcr_type = LDMSD_PRDCR_TYPE_PASSIVE;
+	else if (0 == strcasecmp(type, "local"))
+		prdcr_type = LDMSD_PRDCR_TYPE_LOCAL;
+	else
+		return -EINVAL;
+	return prdcr_type;
+}
+
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const short port_no,
@@ -474,6 +488,36 @@ out:
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 	ldmsd_cfgobj_put(&prdcr->obj);
 	return NULL;
+}
+
+int ldmsd_prdcr_del(const char *prdcr_name)
+{
+	int rc = 0;
+	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
+	if (!prdcr)
+		return ENOENT;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	/* Make sure any outstanding callbacks are complete */
+	ldmsd_task_join(&prdcr->task);
+	/* Put the find reference */
+	ldmsd_prdcr_put(prdcr);
+	/* Drop the lock and drop the create reference */
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_put(prdcr);
+	return 0;
+out_1:
+	ldmsd_prdcr_put(prdcr);
+	ldmsd_prdcr_unlock(prdcr);
+	return rc;
 }
 
 ldmsd_prdcr_t ldmsd_prdcr_first()
@@ -530,13 +574,8 @@ int cmd_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	if (!type)
 		goto einval;
 
-	if (0 == strcasecmp(type, "active"))
-		prdcr_type = LDMSD_PRDCR_TYPE_ACTIVE;
-	else if (0 == strcasecmp(type, "passive"))
-		prdcr_type = LDMSD_PRDCR_TYPE_PASSIVE;
-	else if (0 == strcasecmp(type, "local"))
-		prdcr_type = LDMSD_PRDCR_TYPE_LOCAL;
-	else
+	prdcr_type = ldmsd_prdcr_str2type(type);
+	if (prdcr_type < 0)
 		goto einval;
 
 	attr = "xprt";

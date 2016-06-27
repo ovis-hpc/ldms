@@ -709,6 +709,12 @@ ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
 
 /** Producer configuration object management */
+int ldmsd_prdcr_str2type(const char *type);
+ldmsd_prdcr_t
+ldmsd_prdcr_new(const char *name, const char *xprt_name,
+		const char *host_name, const short port_no,
+		enum ldmsd_prdcr_type type,
+		int conn_intrvl_us);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_first(ldmsd_prdcr_t prdcr);
@@ -833,35 +839,7 @@ extern const char *ldmsd_secret_get(void);
 extern int ldmsd_authentication_required();
 
 #define LDMSD_RECORD_MARKER 0xffffffff
-enum ldmsd_request {
-	LDMSD_CLI_REQ = 0x1,
-	LDMSD_EXAMPLE_REQ,
-	LDMSD_PRDCR_ADD_REQ = 0x100,
-	LDMSD_PRDCR_DEL_REQ,
-	LDMSD_PRDCR_START_REQ,
-	LDMSD_PRDCR_STOP_REQ,
-	LDMSD_PRDCR_STATUS_REQ,
-	LDMSD_PRDCR_SET_REQ,
-	LDMSD_STRGP_ADD_REQ = 0x200,
-	LDMSD_STRGP_DEL_REQ,
-	LDMSD_STRGP_START_REQ,
-	LDMSD_STRGP_STOP_REQ,
-	LDMSD_STRGP_STATUS_REQ,
-	LDMSD_UPDTR_ADD_REQ = 0x300,
-	LDMSD_UPDTR_DEL_REQ,
-	LDMSD_UPDTR_START_REQ,
-	LDMSD_UPDTR_STOP_REQ,
-	LDMSD_UPDTR_STATUS_REQ,
-	LDMSD_SMPLR_ADD_REQ = 0X400,
-	LDMSD_SMPLR_DEL_REQ,
-	LDMSD_SMPLR_START_REQ,
-	LDMSD_SMPLR_STOP_REQ,
-	LDMSD_PLUGN_ADD_REQ = 0x500,
-	LDMSD_PLUGN_DEL_REQ,
-	LDMSD_PLUGN_START_REQ,
-	LDMSD_PLUGN_STOP_REQ,
-	LDMSD_PLUGN_STATUS_REQ,
-};
+
 #define LDMSD_REQ_SOM_F	1
 #define LDMSD_REQ_EOM_F	2
 
