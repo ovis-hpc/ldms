@@ -2,10 +2,12 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS =
 
 # init script
-SUBDIRS += init.d
+#   init.d is currently unmaintained
+# SUBDIRS += init.d
 
 # logrotate
-SUBDIRS += logrotate.d
+#   logrotate.d is currently unmaintained
+# SUBDIRS += logrotate.d
 
 # systemd config files
 SUBDIRS += systemd
