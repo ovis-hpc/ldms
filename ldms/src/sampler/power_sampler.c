@@ -138,7 +138,7 @@ int power_sampler_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 			goto cleanup;
 		}
 	}
-// Brandt 4-30-2016 Removed due to lack of current interest. Will make configurable	
+// Brandt 4-30-2016 Removed due to lack of current interest. Will make configurable
 /*	rc = timer_base_add_hfmetric(&ps->base, "PWR_ATTR_POWER_LIMIT_MAX",
 				LDMS_V_D64_ARRAY, ps->hfcount, &ps->hfinterval,
 				power_sampler_timer_cb,
@@ -153,12 +153,13 @@ int power_sampler_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	if (rc)
 		goto cleanup;
 
-	rc = timer_base_add_hfmetric(&ps->base, "PWR_ATTR_ENERGY",
+/*	rc = timer_base_add_hfmetric(&ps->base, "PWR_ATTR_ENERGY",
 				LDMS_V_D64_ARRAY, ps->hfcount, &ps->hfinterval,
 				power_sampler_timer_cb,
 				(void*)(uint64_t)PWR_ATTR_ENERGY);
 	if (rc)
 		goto cleanup;
+*/
 
 	rc = timer_base_create_set(&ps->base);
 	if (rc) {
