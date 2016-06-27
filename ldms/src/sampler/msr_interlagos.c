@@ -1082,6 +1082,8 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		comp_id = strtoull(val, NULL, 0);
 	}
 
+	LJI_CONFIG(val, avl);
+
 	val = av_value(avl, "instance");
 	if (!val) {
 		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
@@ -1099,8 +1101,6 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		return EINVAL;
 	}
 	schema_name = strdup(val);
-
-	LJI_CONFIG(value,avl);
 
 	cfile = av_value(avl, "conffile");
 	if (!cfile){
@@ -1373,7 +1373,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 		} else {
 			snprintf(name, MSR_MAXLEN, "Ctr%d_n", i);
 		}
-		rc = ldms_schema_metric_array_add(schema, name, LDMS_V_U64, pe->ndata);
+		rc = ldms_schema_metric_array_add(schema, name, LDMS_V_U64_ARRAY, pe->ndata);
 		if (rc < 0) {
 			rc = ENOMEM;
 			goto err;
@@ -1402,6 +1402,7 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 	return 0;
 
  err:
+	msglog(LDMSD_LERROR, SAMP ": failed finalize\n");
 	cfgstate = CFG_FAILED_FINAL;
 	_free_names();
 	if (schema) ldms_schema_delete(schema);
