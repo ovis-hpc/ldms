@@ -530,6 +530,59 @@ ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr)
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_next(&prdcr->obj);
 }
 
+int ldmsd_prdcr_start(const char *name, const char *interval_str)
+{
+	int rc = 0;
+	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
+	if (!prdcr)
+		return ENOENT;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+
+	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+	if (interval_str > 0)
+		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+
+	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
+			 LDMSD_TASK_F_IMMEDIATE,
+			 prdcr->conn_intrvl_us, 0);
+out_1:
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_put(prdcr);
+out_0:
+	return rc;
+}
+
+int ldmsd_prdcr_stop(const char *name)
+{
+	int rc = 0;
+	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
+	if (!prdcr)
+		return ENOENT;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
+		prdcr_reset_sets(prdcr);
+	if (prdcr->xprt)
+		ldms_xprt_close(prdcr->xprt);
+	ldmsd_task_stop(&prdcr->task);
+	ldmsd_task_join(&prdcr->task);
+	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+out_1:
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_put(prdcr);
+out_0:
+	return rc;
+}
+
 /**
  * Get the first producer set
  *
@@ -669,28 +722,15 @@ int cmd_prdcr_start(char *replybuf, struct attr_value_list *avl, struct attr_val
 		goto out_0;
 	}
 	interval_str = av_value(avl, "interval"); /* Can be null if we're not changing it */
-
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr) {
-		sprintf(replybuf, "%dThe producer specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+	int rc = ldmsd_prdcr_start(prdcr_name, interval_str);
+	if (rc == ENOENT) {
+		sprintf(replybuf, "%dThe producer specified does not "
+							"exist\n", ENOENT);
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe producer is already running\n", EBUSY);
-		goto out_1;
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-	if (interval_str)
-		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-
-	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-			 LDMSD_TASK_F_IMMEDIATE,
-			 prdcr->conn_intrvl_us, 0);
-	sprintf(replybuf, "0\n");
-out_1:
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
 out_0:
 	return 0;
 }
@@ -704,25 +744,16 @@ int cmd_prdcr_stop(char *replybuf, struct attr_value_list *avl, struct attr_valu
 		sprintf(replybuf, "%dThe producer name must be specified\n", EINVAL);
 		goto out_0;
 	}
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr) {
-		sprintf(replybuf, "%dThe producer specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+
+	int rc = ldmsd_prdcr_stop(prdcr_name);
+	if (rc == ENOENT) {
+		sprintf(replybuf, "%dThe producer specified does not "
+							"exist\n", ENOENT);
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe producer is already stopped\n", EBUSY);
-		goto out_1;
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	if (prdcr->xprt)
-		ldms_xprt_close(prdcr->xprt);
-	ldmsd_task_stop(&prdcr->task);
-	ldmsd_task_join(&prdcr->task);
-	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-	sprintf(replybuf, "0\n");
-out_1:
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
 out_0:
 	return 0;
 }
@@ -812,33 +843,15 @@ int cmd_prdcr_del(char *replybuf, struct attr_value_list *avl, struct attr_value
 		sprintf(replybuf, "%dThe prdcr name must be specified\n", EINVAL);
 		goto out_0;
 	}
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr) {
+
+	int rc = ldmsd_prdcr_del(prdcr_name);
+	if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe producer specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the producer is running\n", EBUSY);
-		goto out_1;
-	}
-	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe producer is in use.\n", EBUSY);
-		goto out_1;
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&prdcr->task);
-	/* Put the find reference */
-	ldmsd_prdcr_put(prdcr);
-	/* Drop the lock and drop the create reference */
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
-	sprintf(replybuf, "0\n");
-	goto out_0;
-out_1:
-	ldmsd_prdcr_put(prdcr);
-	ldmsd_prdcr_unlock(prdcr);
 out_0:
-	return 0;
+	return rc;
 }

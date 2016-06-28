@@ -134,6 +134,8 @@ static int cli_handler(int sock, req_msg_t rm);
 static int example_handler(int sock, req_msg_t rm);
 static int prdcr_add_handler(int sock, req_msg_t rm);
 static int prdcr_del_handler(int sock, req_msg_t rm);
+static int prdcr_start_handler(int sock, req_msg_t rm);
+static int prdcr_stop_handler(int sock, req_msg_t rm);
 static int prdcr_status_handler(int sock, req_msg_t rm);
 static int prdcr_set_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
@@ -146,6 +148,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_EXAMPLE_REQ]      = { LDMSD_EXAMPLE_REQ, example_handler },
 	[LDMSD_PRDCR_ADD_REQ]    = { LDMSD_PRDCR_ADD_REQ, prdcr_add_handler },
 	[LDMSD_PRDCR_DEL_REQ]    = { LDMSD_PRDCR_DEL_REQ, prdcr_del_handler },
+	[LDMSD_PRDCR_START_REQ]  = { LDMSD_PRDCR_START_REQ, prdcr_start_handler },
+	[LDMSD_PRDCR_STOP_REQ]  = { LDMSD_PRDCR_STOP_REQ, prdcr_stop_handler },
 	[LDMSD_PRDCR_STATUS_REQ] = { LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler },
 	[LDMSD_PRDCR_SET_REQ] = { LDMSD_PRDCR_SET_REQ, prdcr_set_handler },
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
@@ -701,41 +705,108 @@ static int prdcr_del_handler(int sock, req_msg_t rm)
 	}
 	if (!name) {
 		attr_name = "name";
-		goto einval;
-	}
-out:
-	prdcr = ldmsd_prdcr_find(name);
-	if (!prdcr)
-		goto enoent;
-	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dConfiguration "
-				"changes cannot be made while the producer "
-				"is running\n", EBUSY);
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute "
+					"'%s' is required.", EINVAL, attr_name);
 		goto send_reply;
 	}
-	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
-							"is in use.\n", EBUSY);
-		goto send_reply;
-	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&prdcr->task);
-	/* Put the find reference */
-	ldmsd_prdcr_put(prdcr);
-	/* Drop the lock and drop the create reference */
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
-	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
-	goto send_reply;
 
-enoent:
-	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+	rc = ldmsd_prdcr_del(name);
+	if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
 				"specified does not exist\n", ENOENT);
-	goto send_reply;
-einval:
-	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	} else if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+						"is in use.\n", EBUSY);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int prdcr_start_handler(int sock, req_msg_t rm)
+{
+	char *name, *interval_str;
+	name = interval_str = NULL;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+	ldmsd_prdcr_t prdcr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_INTERVAL:
+			interval_str = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute "
+						"'name' is required.", EINVAL);
+		goto send_reply;
+	}
+
+	int rc = ldmsd_prdcr_start(name, interval_str);
+	if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+						"is already running\n", EBUSY);
+	} else if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+					"specified does not exist\n", ENOENT);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int prdcr_stop_handler(int sock, req_msg_t rm)
+{
+	char *name = NULL;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+	ldmsd_prdcr_t prdcr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute "
+						"'name' is required.", EINVAL);
+		goto send_reply;
+	}
+
+	int rc = ldmsd_prdcr_stop(name);
+	if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+						"is already running\n", EBUSY);
+	} else if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
+					"specified does not exist\n", ENOENT);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
