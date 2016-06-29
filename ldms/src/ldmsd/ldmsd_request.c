@@ -136,6 +136,8 @@ static int prdcr_add_handler(int sock, req_msg_t rm);
 static int prdcr_del_handler(int sock, req_msg_t rm);
 static int prdcr_start_handler(int sock, req_msg_t rm);
 static int prdcr_stop_handler(int sock, req_msg_t rm);
+static int prdcr_start_regex_handler(int sock, req_msg_t rm);
+static int prdcr_stop_regex_handler(int sock, req_msg_t rm);
 static int prdcr_status_handler(int sock, req_msg_t rm);
 static int prdcr_set_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
@@ -152,6 +154,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PRDCR_STOP_REQ]  = { LDMSD_PRDCR_STOP_REQ, prdcr_stop_handler },
 	[LDMSD_PRDCR_STATUS_REQ] = { LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler },
 	[LDMSD_PRDCR_SET_REQ] = { LDMSD_PRDCR_SET_REQ, prdcr_set_handler },
+	[LDMSD_PRDCR_START_REGEX_REQ] = { LDMSD_PRDCR_START_REGEX_REQ, prdcr_start_regex_handler },
+	[LDMSD_PRDCR_STOP_REGEX_REQ]  = { LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler },
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
@@ -806,6 +810,79 @@ static int prdcr_stop_handler(int sock, req_msg_t rm)
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
+
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int prdcr_start_regex_handler(int sock, req_msg_t rm)
+{
+	char *prdcr_regex, *interval_str;
+	prdcr_regex = interval_str = NULL;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_REGEX:
+			prdcr_regex = attr->attr_value;
+			break;
+		case LDMSD_ATTR_INTERVAL:
+			interval_str = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!prdcr_regex) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute "
+						"'regex' is required.", EINVAL);
+		goto send_reply;
+	}
+	int rc = ldmsd_prdcr_start_regex(prdcr_regex, interval_str,
+					rm->line_buf, rm->line_len);
+	if (rc)
+		cnt = sizeof(rm->line_buf);
+	else
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int prdcr_stop_regex_handler(int sock, req_msg_t rm)
+{
+	char *prdcr_regex, *interval_str;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_REGEX:
+			prdcr_regex = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!prdcr_regex) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute "
+						"'regex' is required.", EINVAL);
+		goto send_reply;
+	}
+	int rc = ldmsd_prdcr_stop_regex(prdcr_regex, rm->line_buf, rm->line_len);
+	if (rc)
+		cnt = sizeof(rm->line_buf);
+	else
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,

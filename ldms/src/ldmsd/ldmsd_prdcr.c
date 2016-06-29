@@ -583,6 +583,71 @@ out_0:
 	return rc;
 }
 
+int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
+						char *rep_buf, size_t rep_len)
+{
+	regex_t regex;
+	ldmsd_prdcr_t prdcr;
+	int rc;
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
+	if (rc)
+		return rc;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		ldmsd_prdcr_lock(prdcr);
+		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+			if (interval_str)
+				prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
+					 LDMSD_TASK_F_IMMEDIATE,
+					 prdcr->conn_intrvl_us, 0);
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	ldmsd_prdcr_put(prdcr);
+	regfree(&regex);
+	return 0;
+}
+
+int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf, size_t rep_len)
+{
+	regex_t regex;
+	ldmsd_prdcr_t prdcr;
+	int rc;
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
+	if (rc)
+		return rc;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		ldmsd_prdcr_lock(prdcr);
+		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+			if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
+				prdcr_reset_sets(prdcr);
+			if (prdcr->xprt)
+				ldms_xprt_close(prdcr->xprt);
+			ldmsd_task_stop(&prdcr->task);
+			ldmsd_task_join(&prdcr->task);
+			prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	regfree(&regex);
+	ldmsd_prdcr_put(prdcr);
+	return 0;
+}
+
 /**
  * Get the first producer set
  *
@@ -760,39 +825,22 @@ out_0:
 
 int cmd_prdcr_start_regex(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	int rc;
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
+	size_t cnt;
 	char *prdcr_regex, *interval_str;
 
 	prdcr_regex = av_value(avl, "regex");
 	if (!prdcr_regex) {
-		sprintf(replybuf, "%dA producer regular expression must be specified\n", EINVAL);
+		sprintf(replybuf, "%dA producer regular expression must be "
+						"specified\n", EINVAL);
 		goto out_0;
 	}
-	if (ldmsd_compile_regex(&regex, prdcr_regex, replybuf, sizeof(replybuf)))
-		goto out_0;
 	interval_str = av_value(avl, "interval"); /* Can be null if we're not changing it */
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		ldmsd_prdcr_lock(prdcr);
-		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
-			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-			if (interval_str)
-				prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-					 LDMSD_TASK_F_IMMEDIATE,
-					 prdcr->conn_intrvl_us, 0);
-		}
-		ldmsd_prdcr_unlock(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	ldmsd_prdcr_put(prdcr);
-	regfree(&regex);
+	int rc = ldmsd_prdcr_start_regex(prdcr_regex, interval_str, replybuf,
+							sizeof(replybuf));
+	if (rc)
+		goto out_0;
 	sprintf(replybuf, "0\n");
 out_0:
 	return 0;
@@ -800,7 +848,6 @@ out_0:
 
 int cmd_prdcr_stop_regex(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	int rc;
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
 	char *prdcr_regex;
@@ -810,27 +857,10 @@ int cmd_prdcr_stop_regex(char *replybuf, struct attr_value_list *avl, struct att
 		sprintf(replybuf, "%dA producer regular expression must be specified\n", EINVAL);
 		goto out_0;
 	}
-	if (ldmsd_compile_regex(&regex, prdcr_regex, replybuf, sizeof(replybuf)))
+	int rc = ldmsd_prdcr_stop_regex(prdcr_regex, replybuf, sizeof(replybuf));
+	if (rc)
 		goto out_0;
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		ldmsd_prdcr_lock(prdcr);
-		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-			if (prdcr->xprt)
-				ldms_xprt_close(prdcr->xprt);
-			ldmsd_task_stop(&prdcr->task);
-			ldmsd_task_join(&prdcr->task);
-			prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-		}
-		ldmsd_prdcr_unlock(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
 	sprintf(replybuf, "0\n");
-	ldmsd_prdcr_put(prdcr);
 out_0:
 	return 0;
 }
