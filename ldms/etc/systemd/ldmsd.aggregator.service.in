@@ -25,11 +25,14 @@ Documentation = http://ovis.ca.sandia.gov
 
 [Service]
 Type = forking
-EnvironmentFile = /etc/systemd/system/ldmsd.aggregator.env
-ExecStart = @sbindir@/ldmsd -S ${LDMSD_SOCK_PATH} \
+EnvironmentFile = @sysconfdir@/ldms/ldmsd.aggregator.env
+Environment = HOSTNAME=%H
+ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd
+ExecStart = @sbindir@/ldmsd \
 		-x ${LDMSD_XPRT}:${LDMSD_PORT} \
 		-p ${LDMSD_CONFIG_PORT} \
 		-c ${LDMSD_PLUGIN_CONFIG_FILE} \
+		-a @sysconfdir@/ldms/ldmsauth.conf \
 		-r @localstatedir@/run/ldmsd/aggregator.pid
 
 [Install]

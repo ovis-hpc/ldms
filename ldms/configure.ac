@@ -441,10 +441,6 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile
-		 etc/init.d/Makefile
-		 etc/init.d/ldmsd_aggregator
-		 etc/init.d/ldmsd_sampler
-		 etc/logrotate.d/Makefile
 		 etc/systemd/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
