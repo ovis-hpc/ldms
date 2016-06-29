@@ -24,6 +24,9 @@ dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
 
+dnl change sharedstatedir default
+test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
+
 OVIS_PKGLIBDIR
 OPTION_DEFAULT_ENABLE([scripts], [ENABLE_SCRIPTS])
 OPTION_DEFAULT_DISABLE([developer], [ENABLE_DEVELOPER])
