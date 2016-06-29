@@ -1,2 +1,1 @@
-@prefix@/lib
-@prefix@/lib64
+@libdir@

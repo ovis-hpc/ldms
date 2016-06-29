@@ -1,6 +1,6 @@
 #!/bin/bash
-prefix=@prefix@
-exec_prefix=@exec_prefix@
+
+export LDMS_AUTH_FILE=@sysconfdir@/ldms/ldmsauth.conf
 
 OLIB=@libdir@
 export LDMSD_PLUGIN_LIBPATH=$OLIB/ovis-ldms

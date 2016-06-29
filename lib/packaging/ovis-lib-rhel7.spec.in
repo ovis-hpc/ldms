@@ -269,14 +269,10 @@ Group: %{ovis_lib_grp}
 %description misc
 Miscellaneous file in ovis-lib project.
 %files misc
-%{_sysconfdir}/
 %{_libdir}/ovis-lib-configvars.sh
 %{_includedir}/ovis-lib-config.h
 %{_bindir}/lib-pedigree
-%{_sysconfdir}/profile.d/set-ovis-variables.sh
-%{_sysconfdir}/ovis/ovis-functions.sh
-%{_sysconfdir}/cron.hourly/ovis-logrotate
-%{_sysconfdir}/ld.so.conf.d/ovis-ld-so.conf
+%{_sysconfdir}/
 
 
 # These are the files that we don't care

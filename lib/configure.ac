@@ -147,10 +147,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		swig/ovis_auth/Makefile
 		etc/Makefile
 		etc/ovis/Makefile
-		etc/ovis/set-ovis-variables.sh
-		etc/ovis/ovis-logrotate
 		etc/ld.so.conf.d/Makefile
-		etc/ld.so.conf.d/ovis-ld-so.conf
 ])
 
 AC_OUTPUT
