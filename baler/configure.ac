@@ -24,6 +24,9 @@ AM_PROG_CC_C_O()
 
 OVIS_PKGLIBDIR
 
+dnl change sharedstatedir default
+test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
+
 OPTION_DEFAULT_ENABLE([dict], [ENABLE_DICT])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 dnl Swig stuffs
