@@ -1,8 +1,10 @@
 EXTRA_DIST = eng-dictionary
 
+DICT_DIR = $(DESTDIR)$(sysconfdir)/baler
+
 install-data-local:
-	$(MKDIR_P) $(DESTDIR)/$(prefix)/etc/ovis
-	$(INSTALL_DATA) $(srcdir)/eng-dictionary $(DESTDIR)/$(prefix)/etc/ovis
+	$(MKDIR_P) $(DICT_DIR)
+	$(INSTALL_DATA) $(srcdir)/eng-dictionary $(DICT_DIR)
 
 uninstall-local:
-	rm -f $(DESTDIR)/$(prefix)/etc/ovis/eng-dictionary
+	rm -f $(DICT_DIR)/eng-dictionary

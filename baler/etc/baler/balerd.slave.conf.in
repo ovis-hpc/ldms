@@ -1,0 +1,4 @@
+plugin name=bout_sos_img delta_ts=60
+plugin name=bout_sos_img delta_ts=3600
+plugin name=bout_sos_msg
+plugin name=bin_rsyslog_tcp port=10514

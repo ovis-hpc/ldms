@@ -42,6 +42,7 @@ rm -rf %{buildroot}
 # files for main package
 %files
 %{_bindir}
+%{_sbindir}
 %{_libdir}
 %if "@ENABLE_SWIG_TRUE@x" == "x"
 %{_prefix}/lib*/python*

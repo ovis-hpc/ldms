@@ -1,8 +1,11 @@
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS =
+SUBDIRS = baler
+SUBDIRS += systemd
 
 # init script
-SUBDIRS += init.d
+#     REMARK: UNMAINTAINED
+# SUBDIRS += init.d
 
 # logrotate
-SUBDIRS += logrotate.d
+#     REMARK: UNMAINTAINED
+# SUBDIRS += logrotate.d

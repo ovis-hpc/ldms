@@ -3,6 +3,7 @@
 
 lib_LTLIBRARIES =
 bin_PROGRAMS =
+sbin_PROGRAMS =
 
 # A library for Baler-specific work functions, also includes codes from
 # dependent libraries so that the build on Ubuntu is easier (no need to specify
@@ -31,7 +32,7 @@ balerd_LDADD += -locm
 balerd_CFLAGS += -DENABLE_OCM @OCM_INCDIR_FLAG@
 balerd_LDFLAGS += @OCM_LIBDIR_FLAG@
 endif
-bin_PROGRAMS += balerd
+sbin_PROGRAMS += balerd
 
 bmap_dump_SOURCES = bmap_dump.c
 bmap_dump_LDADD = libbaler.la

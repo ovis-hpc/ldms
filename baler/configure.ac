@@ -45,6 +45,14 @@ AC_SUBST(OVIS_AUTH_LIBS)
 dnl we can disable our build rules for outer make dist to work when upper level disables baler.
 OPTION_DEFAULT_ENABLE([baler], [ENABLE_BALER], [  requires sos])
 
+if test -d ${OVIS_LIB_LIB64DIR}/ovis-lib ; then
+        ZAP_LIBPATH=${OVIS_LIB_LIB64DIR}/ovis-lib
+else
+        ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
+fi
+ZAP_LIBPATH=${ZAP_LIBPATH#*/rpm7/BUILDROOT}
+AC_SUBST(ZAP_LIBPATH)
+
 if test "$disable_baler" = "yes"; then
 	# we're just here for configure so dist is correct.
 	enable_sos=no
@@ -131,9 +139,10 @@ AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
 	src/bhttpd/Makefile
 	src/bassoc/Makefile
 	src/tools/Makefile
-	src/plugins/test/Makefile swig/Makefile etc/Makefile
-	etc/init.d/Makefile etc/init.d/balerd
-	etc/logrotate.d/Makefile
+	src/plugins/test/Makefile swig/Makefile
+	etc/Makefile
+	etc/baler/Makefile
+	etc/systemd/Makefile
 	dict/Makefile
 	rpm/rhel7.spec
 ])
