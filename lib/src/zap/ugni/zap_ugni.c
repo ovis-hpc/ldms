@@ -308,7 +308,9 @@ static struct zap_ugni_post_desc *__alloc_post_desc(struct z_ugni_ep *uep)
 		return NULL;
 	d->uep = uep;
 	zap_get_ep(&uep->ep);
+#ifdef DEBUG
 	d->ep_gn = zap_ugni_get_ep_gn(uep->ep_id);
+#endif /* DEBUG */
 	format_4tuple(&uep->ep, d->ep_name, ZAP_UGNI_EP_NAME_SZ);
 	LIST_INSERT_HEAD(&uep->post_desc_list, d, ep_link);
 	return d;
@@ -935,7 +937,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 						desc, gni_ret_str(grc));
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
-				LOG_(uep, "RDMA_GET: completing "
+				DLOG_(uep, "RDMA_GET: completing "
 					"with error %s.\n",
 					gni_ret_str(grc));
 				__shutdown_on_error(uep);
@@ -948,7 +950,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 						desc, gni_ret_str(grc));
 			if (grc) {
 				zev.status = ZAP_ERR_RESOURCE;
-				LOG_(uep, "RDMA_PUT: completing "
+				DLOG_(uep, "RDMA_PUT: completing "
 					"with error %s.\n",
 					gni_ret_str(grc));
 				__shutdown_on_error(uep);
@@ -1142,7 +1144,9 @@ static void __deliver_disconn_ev(struct z_ugni_ep *uep)
 {
 	/* Deliver the disconnected event */
 	pthread_mutex_lock(&z_ugni_list_mutex);
+#ifdef DEBUG
 	zap_ugni_ep_id[uep->ep_id] = -1;
+#endif /* DEBUG */
 
 	pthread_mutex_lock(&uep->ep.lock);
 #ifdef DEBUG
@@ -1200,11 +1204,11 @@ static void __unbind_and_deliver_disconn_ev(int s, short events, void *arg)
 			__ugni_defer_disconnected_event(uep);
 			return;
 		} else {
-			LOG_(uep, "Give up unbinding after %d retries .. delivering "
+			DLOG_(uep, "Give up unbinding after %d retries .. delivering "
 				"the disconnected event.\n", uep->unbind_count);
 		}
 	} else {
-		LOG_(uep, "Delivering the disconnected event after calling "
+		DLOG_(uep, "Delivering the disconnected event after calling "
 			"EpUnbind() %d times\n", uep->unbind_count);
 	}
 deliver_disconnected_ev:
@@ -1994,10 +1998,11 @@ int init_once()
 	 * Get the number of maximum number of endpoints zap_ugni will handle.
 	 */
 	zap_ugni_max_num_ep = __get_max_num_ep();
+#ifdef DEBUG
 	zap_ugni_ep_id = calloc(zap_ugni_max_num_ep, sizeof(uint32_t));
 	if (!zap_ugni_ep_id)
 		goto err;
-
+#endif /* DEBUG */
 	pthread_mutex_unlock(&ugni_lock);
 
 	rc = z_ugni_init();
@@ -2057,6 +2062,7 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 	}
 	uep->node_id = -1;
 	pthread_mutex_lock(&z_ugni_list_mutex);
+#ifdef DEBUG
 	uep->ep_id = zap_ugni_get_ep_id();
 	if (uep->ep_id < 0) {
 		LOG_(uep, "%s: Failed to get the zap endpoint ID\n",
@@ -2071,6 +2077,7 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 		pthread_mutex_unlock(&z_ugni_list_mutex);
 		return NULL;
 	}
+#endif /* DEBUG */
 	LIST_INSERT_HEAD(&z_ugni_list, uep, link);
 	pthread_mutex_unlock(&z_ugni_list_mutex);
 	DLOG_(uep, "Created gni_ep: %p\n", uep->gni_ep);
@@ -2084,8 +2091,10 @@ static void z_ugni_destroy(zap_ep_t ep)
 	DLOG_(uep, "destroying endpoint %p\n", uep);
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	ZUGNI_LIST_REMOVE(uep, link);
+#ifdef DEBUG
 	if (uep->ep_id >= 0)
 		zap_ugni_ep_id[uep->ep_id] = 0;
+#endif /* DEBUG */
 	pthread_mutex_unlock(&z_ugni_list_mutex);
 	if (uep->conn_data) {
 		free(uep->conn_data);
@@ -2365,7 +2374,9 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	 * so that we can check at the completion time
 	 * whether the endpoint still exists or not.
 	 */
+#ifdef DEBUG
 	desc->post.post_id = uep->ep_id;
+#endif /* DEBUG */
 	desc->context = context;
 	pthread_mutex_unlock(&ep->lock);
 
