@@ -786,6 +786,7 @@ static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
 	return "BAD STATE";
 }
 
+ldmsd_strgp_t ldmsd_strgp_new(const char *name);
 ldmsd_strgp_t ldmsd_strgp_first();
 ldmsd_strgp_t ldmsd_strgp_next(struct ldmsd_strgp *strgp);
 ldmsd_name_match_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp);
