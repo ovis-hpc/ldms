@@ -145,6 +145,8 @@ static int updtr_add_handler(int sock, req_msg_t rm);
 static int updtr_del_handler(int sock, req_msg_t rm);
 static int updtr_prdcr_add_handler(int sock, req_msg_t rm);
 static int updtr_prdcr_del_handler(int sock, req_msg_t rm);
+static int updtr_start_handler(int sock, req_msg_t rm);
+static int updtr_stop_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
 static int plugn_status_handler(int sock, req_msg_t rm);
 static int unimplemented_handler(int sock, req_msg_t rm);
@@ -165,6 +167,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_UPDTR_DEL_REQ]    = { LDMSD_UPDTR_DEL_REQ, updtr_del_handler },
 	[LDMSD_UPDTR_PRDCR_ADD_REQ]   = { LDMSD_UPDTR_PRDCR_ADD_REQ, updtr_prdcr_add_handler },
 	[LDMSD_UPDTR_PRDCR_DEL_REQ]   = { LDMSD_UPDTR_PRDCR_DEL_REQ, updtr_prdcr_del_handler },
+	[LDMSD_UPDTR_START_REQ]  = { LDMSD_UPDTR_START_REQ, updtr_start_handler },
+	[LDMSD_UPDTR_STOP_REQ]   = { LDMSD_UPDTR_STOP_REQ, updtr_stop_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
 };
@@ -725,10 +729,10 @@ static int prdcr_del_handler(int sock, req_msg_t rm)
 	rc = ldmsd_prdcr_del(name);
 	if (rc == ENOENT) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
-				"specified does not exist\n", ENOENT);
+				"specified does not exist.", ENOENT);
 	} else if (rc == EBUSY) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
-						"is in use.\n", EBUSY);
+						"is in use.", EBUSY);
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
@@ -770,10 +774,10 @@ static int prdcr_start_handler(int sock, req_msg_t rm)
 	int rc = ldmsd_prdcr_start(name, interval_str);
 	if (rc == EBUSY) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
-						"is already running\n", EBUSY);
+						"is already running.", EBUSY);
 	} else if (rc == ENOENT) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
-					"specified does not exist\n", ENOENT);
+					"specified does not exist.", ENOENT);
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
@@ -811,10 +815,10 @@ static int prdcr_stop_handler(int sock, req_msg_t rm)
 	int rc = ldmsd_prdcr_stop(name);
 	if (rc == EBUSY) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
-						"is already running\n", EBUSY);
+						"is already stopped.", EBUSY);
 	} else if (rc == ENOENT) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe producer "
-					"specified does not exist\n", ENOENT);
+					"specified does not exist.", ENOENT);
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
@@ -1134,10 +1138,10 @@ static int updtr_del_handler(int sock, req_msg_t rm)
 	int rc = ldmsd_updtr_del(name);
 	if (rc == ENOENT) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater "
-				"specified does not exist\n", ENOENT);
+				"specified does not exist.", ENOENT);
 	} else if (rc == EBUSY) {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater "
-				"is in use.\n", EBUSY);
+				"is in use.", EBUSY);
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
@@ -1150,7 +1154,7 @@ einval:
 	goto send_reply;
 enomem:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len,
-			"%dOut of memory\n", ENOMEM);
+			"%dOut of memory.", ENOMEM);
 	goto send_reply;
 eexist:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updtr %s already "
@@ -1194,13 +1198,190 @@ static int updtr_prdcr_add_handler(int sock, req_msg_t rm)
 		goto einval;
 	}
 
-	(void) ldmsd_updtr_prdcr_add(updtr_name, prdcr_regex,
+	rc = ldmsd_updtr_prdcr_add(updtr_name, prdcr_regex,
 				rm->line_buf, rm->line_len);
+	if (rc) {
+		if (rc == ENOENT) {
+			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+					"%dThe updater specified "
+					"does not exist.", ENOENT);
+		} else if (rc == EBUSY) {
+			cnt = Snprintf(&rm->line_buf, &rm->line_len,""
+				"%dConfiguration changes cannot be "
+				"made while the updater is running.",
+				EBUSY);
+		} else if (rc == ENOMEM) {
+			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dMemory allocation failure.",
+				ENOMEM);
+		} else {
+			cnt = strlen(rm->line_buf);
+		}
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
 	goto send_reply;
 
 einval:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
 					"is required.", attr_name, EINVAL);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_prdcr_del_handler(int sock, req_msg_t rm)
+{
+	char *updtr_name, *prdcr_regex, *attr_name;
+	updtr_name = prdcr_regex = NULL;
+	int rc;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			prdcr_regex = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!prdcr_regex) {
+		attr_name = "regex";
+		goto einval;
+	}
+
+	rc = ldmsd_updtr_prdcr_del(updtr_name, prdcr_regex,
+			rm->line_buf, rm->line_len);
+	if (rc) {
+		if (rc == ENOMEM) {
+			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+					"%dThe updater specified does not "
+					"exist.", ENOENT);
+		} else if (rc == EBUSY) {
+			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+					"%dConfiguration changes cannot be "
+					"made while the updater is running,",
+					EBUSY);
+		} else if (rc == ENOENT) {
+			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+					"%dThe updater specified does not "
+					"exist.", ENOENT);
+		} else {
+			cnt = strlen(rm->line_buf);
+		}
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
+	goto send_reply;
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", attr_name, EINVAL);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_start_handler(int sock, req_msg_t rm)
+{
+	char *updtr_name, *interval_str, *offset_str, *attr_name;
+	updtr_name = interval_str = offset_str = NULL;
+	int rc;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_INTERVAL:
+			interval_str = attr->attr_value;
+			break;
+		case LDMSD_ATTR_OFFSET:
+			offset_str = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater name "
+						"must be specified.", EINVAL);
+		goto send_reply;
+	}
+
+	rc = ldmsd_updtr_start(updtr_name, interval_str, offset_str);
+	if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater "
+				"specified does not exist.", ENOENT);
+	} else if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater is "
+					"already running.", EBUSY);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_stop_handler(int sock, req_msg_t rm)
+{
+	char *updtr_name;
+	updtr_name = NULL;
+	int rc;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater name "
+						"must be specified.", EINVAL);
+		goto send_reply;
+	}
+
+	rc = ldmsd_updtr_stop(updtr_name);
+	if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater "
+				"specified does not exist.", ENOENT);
+	} else if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater is "
+					"already stopped.", EBUSY);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
