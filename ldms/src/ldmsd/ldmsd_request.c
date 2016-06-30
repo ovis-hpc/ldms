@@ -143,6 +143,8 @@ static int prdcr_set_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
 static int updtr_add_handler(int sock, req_msg_t rm);
 static int updtr_del_handler(int sock, req_msg_t rm);
+static int updtr_prdcr_add_handler(int sock, req_msg_t rm);
+static int updtr_prdcr_del_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
 static int plugn_status_handler(int sock, req_msg_t rm);
 static int unimplemented_handler(int sock, req_msg_t rm);
@@ -161,6 +163,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
 	[LDMSD_UPDTR_ADD_REQ]    = { LDMSD_UPDTR_ADD_REQ, updtr_add_handler },
 	[LDMSD_UPDTR_DEL_REQ]    = { LDMSD_UPDTR_DEL_REQ, updtr_del_handler },
+	[LDMSD_UPDTR_PRDCR_ADD_REQ]   = { LDMSD_UPDTR_PRDCR_ADD_REQ, updtr_prdcr_add_handler },
+	[LDMSD_UPDTR_PRDCR_DEL_REQ]   = { LDMSD_UPDTR_PRDCR_DEL_REQ, updtr_prdcr_del_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
 };
@@ -1152,6 +1156,51 @@ eexist:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updtr %s already "
 						"exists.", EEXIST, name);
 	goto send_reply;
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_prdcr_add_handler(int sock, req_msg_t rm)
+{
+	char *updtr_name, *prdcr_regex, *attr_name;
+	updtr_name = prdcr_regex = NULL;
+	int rc;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			prdcr_regex = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!prdcr_regex) {
+		attr_name = "regex";
+		goto einval;
+	}
+
+	(void) ldmsd_updtr_prdcr_add(updtr_name, prdcr_regex,
+				rm->line_buf, rm->line_len);
+	goto send_reply;
+
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", attr_name, EINVAL);
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);

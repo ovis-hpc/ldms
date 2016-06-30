@@ -334,6 +334,96 @@ out:
 	return rc;
 }
 
+int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
+						char *rep_buf, size_t rep_len)
+{
+	regex_t regex;
+	ldmsd_updtr_t updtr;
+	ldmsd_prdcr_t prdcr;
+	int rc;
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
+	if (rc)
+		return rc;
+
+	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	if (!updtr) {
+		sprintf(rep_buf, "%dThe updater specified does not "
+						"exist\n", ENOENT);
+		regfree(regex);
+		return ENOENT;
+	}
+
+	ldmsd_updtr_lock(updtr);
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+		sprintf(rep_buf, "%dConfiguration changes cannot be made "
+				"while the updater is running\n", EBUSY);
+		rc = EBUSY;
+		goto out_1;
+	}
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		if (regexec(&regex, prdcr->obj.name, 0, NULL, 0))
+			continue;
+		/* See if this match is already in the list */
+		ldmsd_prdcr_ref_t ref = prdcr_ref_find(updtr, prdcr->obj.name);
+		if (ref)
+			continue;
+		ref = prdcr_ref_new(prdcr);
+		if (!ref) {
+			rc = ENOMEM;
+			sprintf(rep_buf, "%dMemory allocation failure.\n", ENOMEM);
+			ldmsd_prdcr_put(prdcr);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+			goto out_1;
+		}
+		LIST_INSERT_HEAD(&updtr->prdcr_list, ref, entry);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	sprintf(rep_buf, "0\n");
+out_1:
+	regfree(&regex);
+	ldmsd_updtr_unlock(updtr);
+	ldmsd_updtr_put(updtr);
+	return rc;
+}
+
+int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
+						char *rep_buf, size_t rep_len)
+{
+	int rc = 0;
+	regex_t regex;
+	ldmsd_prdcr_ref_t ref;
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_len, rep_len);
+	if (rc)
+		goto out_0;
+
+	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	if (!updtr) {
+		rc = ENOENT;
+		regfree(regex);
+		goto out_0;
+	}
+	ldmsd_updtr_lock(updtr);
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	for (ref = prdcr_ref_find_regex(updtr, &regex);
+	     ref; ref = prdcr_ref_find_regex(updtr, &regex)) {
+		LIST_REMOVE(ref, entry);
+		ldmsd_prdcr_put(ref->prdcr);
+		free(ref);
+	}
+out_1:
+	regfree(&regex);
+	ldmsd_updtr_unlock(updtr);
+	ldmsd_updtr_put(updtr);
+out_0:
+	return rc;
+}
+
 ldmsd_updtr_t ldmsd_updtr_first()
 {
 	return (ldmsd_updtr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_UPDTR);
@@ -682,31 +772,21 @@ int cmd_updtr_prdcr_del(char *replybuf, struct attr_value_list *avl, struct attr
 		sprintf(replybuf, "%dA producer regular expression must be specified\n", EINVAL);
 		goto out_0;
 	}
-	if (ldmsd_compile_regex(&regex, prdcr_regex, replybuf, sizeof(replybuf)))
-		goto out_0;
 
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr) {
-		sprintf(replybuf, "%dThe updater specified does not exist\n", ENOENT);
-		goto out_0;
+	int rc = ldmsd_updtr_prdcr_del(updtr_name, prdcr_regex,
+					replybuf, sizeof(replybuf));
+	if (rc) {
+		if (rc == ENOMEM) {
+			sprintf(replybuf, "%dThe updater specified does not "
+								"exist\n", ENOENT);
+		} else if (rc == EBUSY) {
+			sprintf(replybuf, "%dConfiguration changes cannot be "
+				"made while the updater is running\n", EBUSY);
+		}
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	ldmsd_updtr_lock(updtr);
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the updater is running\n", EBUSY);
-		goto out_1;
-	}
-	for (ref = prdcr_ref_find_regex(updtr, &regex);
-	     ref; ref = prdcr_ref_find_regex(updtr, &regex)) {
-		LIST_REMOVE(ref, entry);
-		ldmsd_prdcr_put(ref->prdcr);
-		free(ref);
-	}
-	sprintf(replybuf, "0\n");
-out_1:
-	regfree(&regex);
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+
 out_0:
 	return 0;
 }
@@ -728,44 +808,25 @@ int cmd_updtr_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr
 		sprintf(replybuf, "%dA producer regular expression must be specified\n", EINVAL);
 		goto out_0;
 	}
-	if (ldmsd_compile_regex(&regex, prdcr_regex, replybuf, sizeof(replybuf)))
-		goto out_0;
 
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr) {
-		sprintf(replybuf, "%dThe updater specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_updtr_lock(updtr);
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the updater is running\n", EBUSY);
-		goto out_1;
-	}
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		/* See if this match is already in the list */
-		ldmsd_prdcr_ref_t ref = prdcr_ref_find(updtr, prdcr->obj.name);
-		if (ref)
-			continue;
-		ref = prdcr_ref_new(prdcr);
-		if (!ref) {
-			sprintf(replybuf, "%dMemory allocation failure.\n", ENOMEM);
-			ldmsd_prdcr_put(prdcr);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-			goto out_1;
+	rc = ldmsd_updtr_prdcr_add(updtr_name, prdcr_regex,
+				replybuf, sizeof(replybuf));
+	if (rc) {
+		if (rc == ENOENT) {
+			sprintf(replybuf, "%dThe updater specified does not "
+							"exist\n", ENOENT);
+		} else if (rc == EBUSY) {
+			sprintf(replybuf, "%dConfiguration changes cannot be "
+					"made while the updater is running\n",
+					EBUSY);
+		} else if (rc == ENOMEM) {
+			sprintf(replybuf, "%dMemory allocation failure.\n",
+					ENOMEM);
 		}
-		LIST_INSERT_HEAD(&updtr->prdcr_list, ref, entry);
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	sprintf(replybuf, "0\n");
-out_1:
-	regfree(&regex);
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+
 out_0:
 	return 0;
 }
