@@ -141,6 +141,8 @@ static int prdcr_stop_regex_handler(int sock, req_msg_t rm);
 static int prdcr_status_handler(int sock, req_msg_t rm);
 static int prdcr_set_handler(int sock, req_msg_t rm);
 static int strgp_status_handler(int sock, req_msg_t rm);
+static int updtr_add_handler(int sock, req_msg_t rm);
+static int updtr_del_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
 static int plugn_status_handler(int sock, req_msg_t rm);
 static int unimplemented_handler(int sock, req_msg_t rm);
@@ -157,6 +159,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PRDCR_START_REGEX_REQ] = { LDMSD_PRDCR_START_REGEX_REQ, prdcr_start_regex_handler },
 	[LDMSD_PRDCR_STOP_REGEX_REQ]  = { LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler },
 	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
+	[LDMSD_UPDTR_ADD_REQ]    = { LDMSD_UPDTR_ADD_REQ, updtr_add_handler },
+	[LDMSD_UPDTR_DEL_REQ]    = { LDMSD_UPDTR_DEL_REQ, updtr_del_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
 };
@@ -1028,6 +1032,130 @@ static int strgp_status_handler(int sock, req_msg_t rm)
 	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	return rc;
+}
+
+static int updtr_add_handler(int sock, req_msg_t rm)
+{
+	char *name, *offset_str, *interval_str, *attr_name;
+	name = offset_str = interval_str = NULL;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_INTERVAL:
+			interval_str = attr->attr_value;
+			break;
+		case LDMSD_ATTR_OFFSET:
+			offset_str = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!interval_str) {
+		attr_name = "interval";
+		goto einval;
+	}
+
+	ldmsd_updtr_t updtr = ldmsd_updtr_new(name);
+	if (!updtr) {
+		if (errno == EEXIST)
+			goto eexist;
+		else if (errno == ENOMEM)
+			goto enomem;
+		else
+			goto out;
+	}
+
+	updtr->updt_intrvl_us = strtol(interval_str, NULL, 0);
+	if (offset_str) {
+		updtr->updt_offset_us = strtol(offset_str, NULL, 0);
+		updtr->updt_task_flags = LDMSD_TASK_F_SYNCHRONOUS;
+	} else {
+		updtr->updt_task_flags = 0;
+	}
+	goto out;
+
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+	goto send_reply;
+enomem:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			"%dOut of memory\n", ENOMEM);
+	goto send_reply;
+eexist:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updtr %s already "
+						"exists.", EEXIST, name);
+	goto send_reply;
+out:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_del_handler(int sock, req_msg_t rm)
+{
+	char *name;
+	name = NULL;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name)
+		goto einval;
+
+	int rc = ldmsd_updtr_del(name);
+	if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater "
+				"specified does not exist\n", ENOENT);
+	} else if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updater "
+				"is in use.\n", EBUSY);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
+	goto send_reply;
+
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute 'name' "
+					"is required.", EINVAL);
+	goto send_reply;
+enomem:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			"%dOut of memory\n", ENOMEM);
+	goto send_reply;
+eexist:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThe updtr %s already "
+						"exists.", EEXIST, name);
+	goto send_reply;
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
 }
 
 static int updtr_status_handler(int sock, req_msg_t rm)

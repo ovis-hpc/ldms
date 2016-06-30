@@ -752,6 +752,7 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set);
 void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set);
 
+ldmsd_updtr_t ldmsd_updtr_new(const char *name);
 ldmsd_updtr_t ldmsd_updtr_first();
 ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr);
 ldmsd_name_match_t ldmsd_updtr_match_first(ldmsd_updtr_t updtr);

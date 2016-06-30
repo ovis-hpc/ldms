@@ -304,6 +304,36 @@ ldmsd_updtr_new(const char *name)
 	return updtr;
 }
 
+int ldmsd_updtr_del(const char *updtr_name)
+{
+	int rc = 0;
+	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	if (!updtr) {
+		return ENOENT;
+	}
+	ldmsd_updtr_lock(updtr);
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out;
+	}
+	if (ldmsd_cfgobj_refcount(&updtr->obj) > 2) {
+		rc = EBUSY;
+		goto out;
+	}
+	/* Make sure any outstanding callbacks are complete */
+	ldmsd_task_join(&updtr->task);
+	/* Put the find reference */
+	ldmsd_updtr_put(updtr);
+	/* Drop the lock and drop the create reference */
+	ldmsd_updtr_unlock(updtr);
+	ldmsd_updtr_put(updtr);
+	return 0;
+out:
+	ldmsd_updtr_put(updtr);
+	ldmsd_updtr_unlock(updtr);
+	return rc;
+}
+
 ldmsd_updtr_t ldmsd_updtr_first()
 {
 	return (ldmsd_updtr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_UPDTR);
@@ -355,8 +385,8 @@ int cmd_updtr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	if (!updtr) {
 		if (errno == EEXIST)
 			goto eexist;
-		else
-
+		else if (errno == ENOMEM)
+			goto enomem;
 		goto out;
 	}
 	updtr->updt_intrvl_us = strtol(interval, NULL, 0);
@@ -366,6 +396,9 @@ int cmd_updtr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	} else
 		updtr->updt_task_flags = 0;
 	sprintf(replybuf, "0\n");
+	goto out;
+enomem:
+	sprintf(replybuf, "%dOut of memory.\n", ENOMEM);
 	goto out;
 eexist:
 	sprintf(replybuf, "%dThe updtr %s already exists.\n", EEXIST, name);
@@ -595,33 +628,15 @@ int cmd_updtr_del(char *replybuf, struct attr_value_list *avl, struct attr_value
 		sprintf(replybuf, "%dThe updater name must be specified\n", EINVAL);
 		goto out_0;
 	}
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr) {
+	int rc = ldmsd_updtr_del(updtr_name);
+	if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe updater specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_updtr_lock(updtr);
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the updater is running\n", EBUSY);
-		goto out_1;
-	}
-	if (ldmsd_cfgobj_refcount(&updtr->obj) > 2) {
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe updater is in use.\n", EBUSY);
-		goto out_1;
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&updtr->task);
-	/* Put the find reference */
-	ldmsd_updtr_put(updtr);
-	/* Drop the lock and drop the create reference */
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
-	sprintf(replybuf, "0\n");
-	goto out_0;
-out_1:
-	ldmsd_updtr_put(updtr);
-	ldmsd_updtr_unlock(updtr);
+
 out_0:
 	return 0;
 }
