@@ -58,6 +58,11 @@ This library contains an implementation of the following data structure:
 %defattr(-,root,root)
 %{_libdir}/libcoll*
 
+%post coll
+/sbin/ldconfig
+%postun coll
+/sbin/ldconfig
+
 # coll-devel
 %package coll-devel
 Summary: Development files for ovis-lib-coll library
@@ -77,6 +82,11 @@ OVIS memory allocation library
 %files mmalloc
 %defattr(-,root,root)
 %{_libdir}/libmmalloc*
+
+%post mmalloc
+/sbin/ldconfig
+%postun mmalloc
+/sbin/ldconfig
 
 # mmalloc-devel
 %package mmalloc-devel
@@ -99,6 +109,11 @@ OVIS authentication library
 %{_libdir}/libovis_auth*
 %{_libdir}/ovis-lib/ovis-auth.sh
 
+%post auth
+/sbin/ldconfig
+%postun auth
+/sbin/ldconfig
+
 # auth-devel
 %package auth-devel
 Summary: Development files for ovis-lib-auth library
@@ -118,6 +133,11 @@ OVIS CLI control utility library
 %files ctrl
 %defattr(-,root,root)
 %{_libdir}/libovis_ctrl*
+
+%post ctrl
+/sbin/ldconfig
+%postun ctrl
+/sbin/ldconfig
 
 # ctrl-devel
 %package ctrl-devel
@@ -140,6 +160,11 @@ OVIS event library
 %{_libdir}/libovis_event*
 %{_libdir}/libovis_third*
 
+%post event
+/sbin/ldconfig
+%postun event
+/sbin/ldconfig
+
 # event-devel
 %package event-devel
 Summary: Development files for ovis-lib-event library
@@ -159,6 +184,11 @@ OVIS utility library
 %files util
 %defattr(-,root,root)
 %{_libdir}/libovis_util*
+
+%post util
+/sbin/ldconfig
+%postun util
+/sbin/ldconfig
 
 # util-devel
 %package util-devel
@@ -186,6 +216,11 @@ underlying transports (e.g. socket, rdma (Infiniband or iWarp), and uGNI).
 %if "@ENABLE_ZAPTEST_TRUE@x" == "x"
 %{_sbindir}/zap_test*
 %endif
+
+%post zap
+/sbin/ldconfig
+%postun zap
+/sbin/ldconfig
 
 # zap-devel
 %package zap-devel
@@ -273,9 +308,14 @@ Miscellaneous file in ovis-lib project.
 %{_includedir}/ovis-lib-config.h
 %{_bindir}/lib-pedigree
 %{_sysconfdir}/
-
-
 # These are the files that we don't care
 %exclude %{_includedir}/ovis-test/
+
+%post misc
+/bin/ln -fs %{_sysconfdir}/ld.so.conf.d/ovis-ld-so.conf /etc/ld.so.conf.d/ovis-ld-so.conf
+/sbin/ldconfig
+%postun misc
+/bin/rm -f /etc/ld.so.conf.d/ovis-ld-so.conf
+/sbin/ldconfig
 
 %changelog

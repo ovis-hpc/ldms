@@ -17,6 +17,7 @@ Prefix: @prefix@
 %define _sysconfdir %{_prefix}/etc
 %define _localstatedir %{_prefix}/var
 %define _sharedstatedir %{_prefix}/var/lib
+%define _systemdir /usr/lib/systemd/system
 
 %description
 This package provides the LDMS commands and libraries.
@@ -57,6 +58,22 @@ rm -rf %{buildroot}
 %{_sysconfdir}/systemd
 %exclude %{_sysconfdir}/init.d
 %exclude %{_sysconfdir}/ovis
+
+%post
+/sbin/ldconfig
+/bin/ln -fs %{_sysconfdir}/systemd/system/ldmsd.aggregator.service %{_systemdir}/ldmsd.aggregator.service
+/bin/ln -fs %{_sysconfdir}/systemd/system/ldmsd.sampler.service %{_systemdir}/ldmsd.sampler.service
+/usr/bin/systemctl daemon-reload
+
+%preun
+/usr/bin/systemctl stop ldmsd.aggregator.service
+/usr/bin/systemctl stop ldmsd.sampler.service
+
+%postun
+/bin/rm -f %{_systemdir}/ldmsd.aggregator.service
+/bin/rm -f %{_systemdir}/ldmsd.sampler.service
+/usr/bin/systemctl daemon-reload
+/sbin/ldconfig
 
 
 # ldms-devel package

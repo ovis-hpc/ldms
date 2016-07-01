@@ -17,6 +17,7 @@ Prefix: @prefix@
 %define _sysconfdir %{_prefix}/etc
 %define _localstatedir %{_prefix}/var
 %define _sharedstatedir %{_prefix}/var/lib
+%define _systemdir /usr/lib/systemd/system
 
 %description
 Baler - a lossless, deterministic log processing tool.
@@ -48,6 +49,25 @@ rm -rf %{buildroot}
 %{_prefix}/lib*/python*
 %endif
 %{_sysconfdir}
+
+%post
+/sbin/ldconfig
+/bin/ln -fs %{_sysconfdir}/systemd/system/balerd.master.service %{_systemdir}/balerd.master.service
+/bin/ln -fs %{_sysconfdir}/systemd/system/balerd.slave.service %{_systemdir}/balerd.slave.service
+/bin/ln -fs %{_sysconfdir}/systemd/system/bhttpd.service %{_systemdir}/bhttpd.service
+/usr/bin/systemctl daemon-reload
+
+%preun
+/usr/bin/systemctl stop balerd.master.service
+/usr/bin/systemctl stop balerd.slave.service
+/usr/bin/systemctl stop bhttpd.service
+
+%postun
+/bin/rm -f %{_systemdir}/bhttpd.service
+/bin/rm -f %{_systemdir}/balerd.slave.service
+/bin/rm -f %{_systemdir}/balerd.master.service
+/usr/bin/systemctl daemon-reload
+/sbin/ldconfig
 
 
 # baler-devel package
