@@ -164,7 +164,18 @@ struct bmap* bmap_open(const char *path)
 
 	struct bmem *hmem = b->bmhash->mem;
 	if (hmem->hdr->ulen == sizeof(*hmem->hdr)) {
-		if (bmap_init(b, 8*1024*1024)==-1) {
+		char *env_hash_sz = getenv("BMAP_HASH_SZ");
+		long hash_sz = 0;
+
+		if (env_hash_sz) {
+			hash_sz = strtol(env_hash_sz, NULL, 0);
+		}
+
+		if (!hash_sz) {
+			hash_sz = 8388619;
+		}
+
+		if (bmap_init(b, hash_sz)==-1) {
 			// map init fail
 			_errno = errno;
 			goto err5;
