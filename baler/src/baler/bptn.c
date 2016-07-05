@@ -264,37 +264,6 @@ int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
 	if (timercmp(tv, &attrM->last_seen, >))
 		attrM->last_seen = *tv;
 
-	int i;
-	struct bmlnode_u32 *elm;
-	uint64_t elm_off;
-	for (i=0; i<attr->argc; i++) {
-		/* Insert into the in-memory arg set. */
-		int _rc = bset_u32_insert(&attr->arg[i], msg->argv[i]);
-		switch (_rc) {
-		case 0:
-			/* New data, add into mmapped arg list too. */
-			elm_off = bmem_alloc(store->marg, sizeof(*elm));
-			if (!elm_off) {
-				bset_u32_remove(&attr->arg[i], msg->argv[i]);
-				berr("Cannot allocate :(\n");
-				break;
-			}
-			elm = BMPTR(store->marg, elm_off);
-			elm->data = msg->argv[i];
-			BMLIST_INSERT_HEAD(attrM->arg_off[i],
-					elm,
-					link,
-					store->marg);
-			break;
-		case EEXIST:
-			/* Do nothing */
-			break;
-		default: /* all other error */
-			rc = _rc;
-			goto out;
-		}
-
-	}
 	goto out;
 err2:
 	/* Unset pattern attribute */

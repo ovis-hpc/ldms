@@ -1767,9 +1767,6 @@ int slave_process_input_entry_step3(struct bwq_entry *ent)
 	struct binq_data *in_data = &ent->data.in;
 	struct bmsg *msg = &ctxt->msg;
 	int rc;
-	rc = bptn_store_addmsg(pattern_store, &in_data->tv, ctxt->comp_id, msg);
-	if (rc)
-		goto cleanup;
 	rc = finalize_input_entry(ent);
 cleanup:
 	binq_entry_free(ent);
@@ -1956,10 +1953,12 @@ err:
 
 int finalize_input_entry(struct bwq_entry *ent)
 {
+	int rc;
 	struct bplugin *p;
 	struct bin_wkr_ctxt *ctxt = ent->ctxt;
 	struct binq_data *in_data = &ent->data.in;
 	struct bmsg *msg = &ctxt->msg;
+	rc = bptn_store_addmsg(pattern_store, &in_data->tv, ctxt->comp_id, msg);
 	LIST_FOREACH(p, &bop_head_s, link) {
 		/* Copy msg to omsg for future usage in output queue. */
 		struct bmsg *omsg = bmsg_alloc(msg->argc);
@@ -2039,9 +2038,6 @@ int process_input_entry(struct bwq_entry *ent, struct bin_wkr_ctxt *ctxt)
 		goto cleanup;
 	}
 	msg->ptn_id = pid;
-	rc = bptn_store_addmsg(pattern_store, &in_data->tv, comp_id, msg);
-	if (rc)
-		goto cleanup;
 
 	rc = finalize_input_entry(ent);
 
