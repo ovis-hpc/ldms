@@ -153,6 +153,8 @@ static int updtr_add_handler(int sock, req_msg_t rm);
 static int updtr_del_handler(int sock, req_msg_t rm);
 static int updtr_prdcr_add_handler(int sock, req_msg_t rm);
 static int updtr_prdcr_del_handler(int sock, req_msg_t rm);
+static int updtr_match_add_handler(int sock, req_msg_t rm);
+static int updtr_match_del_handler(int sock, req_msg_t rm);
 static int updtr_start_handler(int sock, req_msg_t rm);
 static int updtr_stop_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
@@ -185,6 +187,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_UPDTR_PRDCR_DEL_REQ]   = { LDMSD_UPDTR_PRDCR_DEL_REQ, updtr_prdcr_del_handler },
 	[LDMSD_UPDTR_START_REQ]  = { LDMSD_UPDTR_START_REQ, updtr_start_handler },
 	[LDMSD_UPDTR_STOP_REQ]   = { LDMSD_UPDTR_STOP_REQ, updtr_stop_handler },
+	[LDMSD_UPDTR_MATCH_ADD_REQ]   = { LDMSD_UPDTR_MATCH_ADD_REQ, updtr_match_add_handler },
+	[LDMSD_UPDTR_MATCH_DEL_REQ]   = { LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
 };
@@ -1190,7 +1194,7 @@ static int strgp_prdcr_add_handler(int sock, req_msg_t rm)
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
-
+	goto send_reply;
 einval:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
 					"is required.", EINVAL, attr_name);
@@ -1247,7 +1251,7 @@ static int strgp_prdcr_del_handler(int sock, req_msg_t rm)
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
-
+	goto send_reply;
 einval:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
 					"is required.", EINVAL, attr_name);
@@ -1307,7 +1311,7 @@ static int strgp_metric_add_handler(int sock, req_msg_t rm)
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
-
+	goto send_reply;
 einval:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
 					"is required.", EINVAL, attr_name);
@@ -1364,7 +1368,7 @@ static int strgp_metric_del_handler(int sock, req_msg_t rm)
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
-
+	goto send_reply;
 einval:
 	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
 					"is required.", EINVAL, attr_name);
@@ -1767,6 +1771,130 @@ static int updtr_prdcr_del_handler(int sock, req_msg_t rm)
 		} else {
 			cnt = strlen(rm->line_buf);
 		}
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+
+	goto send_reply;
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", attr_name, EINVAL);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_match_add_handler(int sock, req_msg_t rm)
+{
+	char *updtr_name, *regex_str, *match_str, *attr_name;
+	updtr_name = regex_str = match_str = NULL;
+	int rc;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			regex_str = attr->attr_value;
+			break;
+		case LDMSD_ATTR_MATCH:
+			match_str = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!regex_str) {
+		attr_name = "regex";
+		goto einval;
+	}
+
+	rc = ldmsd_updtr_match_add(updtr_name, regex_str, match_str,
+			rm->line_buf, rm->line_len);
+	if (!rc) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	} else if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dThe updater specified does not exist.", ENOENT);
+	} else if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dConfiguration changes cannot be made "
+				"while the updater is running\n", EBUSY);
+	} else if (rc == ENOMEM) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dOut of memory.\n", ENOMEM);
+	} else if (rc == EINVAL) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dThe value '%s' for match= is invalid.\n",
+				EINVAL, match_str);
+	}
+	goto send_reply;
+einval:
+	cnt = Snprintf(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", attr_name, EINVAL);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_match_del_handler(int sock, req_msg_t rm)
+{
+	char *updtr_name, *regex_str, *match_str, *attr_name;
+	updtr_name = regex_str = match_str = NULL;
+	size_t cnt;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			regex_str = attr->attr_value;
+			break;
+		case LDMSD_ATTR_MATCH:
+			match_str = attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!regex_str) {
+		attr_name = "regex";
+		goto einval;
+	}
+
+	int rc = ldmsd_updtr_match_del(updtr_name, regex_str, match_str);
+	if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			"%dThe updater specified does not exist.", ENOENT);
+	} else if (rc == EBUSY) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dConfiguration changes cannot be made "
+				"while the updater is running.", EBUSY);
+	} else if (rc == -ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			"%dThe specified regex does not match any condition.",
+			ENOENT);
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}

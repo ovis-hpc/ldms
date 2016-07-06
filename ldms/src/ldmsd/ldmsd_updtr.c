@@ -475,6 +475,58 @@ ldmsd_name_match_t updtr_find_match_ex(ldmsd_updtr_t updtr,
 	return NULL;
 }
 
+int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
+		const char *selector_str, char *rep_buf, size_t rep_len)
+{
+	int rc = 0;
+	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	if (!updtr)
+		return ENOENT;
+
+	ldmsd_updtr_lock(updtr);
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	ldmsd_name_match_t match = calloc(1, sizeof *match);
+	if (!match) {
+		rc = ENOMEM;
+		goto out_1;
+	}
+	match->regex_str = strdup(regex_str);
+	if (!match->regex_str) {
+		rc = ENOMEM;
+		goto out_2;
+	}
+
+	if (!selector_str)
+		match->selector = LDMSD_NAME_MATCH_INST_NAME;
+	else if (0 == strcasecmp(selector_str, "schema"))
+		match->selector = LDMSD_NAME_MATCH_SCHEMA_NAME;
+	else if (0 == strcasecmp(selector_str, "inst"))
+		match->selector = LDMSD_NAME_MATCH_INST_NAME;
+	else {
+		rc = EINVAL;
+		goto out_3;
+	}
+
+	if (ldmsd_compile_regex(&match->regex, regex_str, rep_buf, rep_len))
+		goto out_3;
+
+	LIST_INSERT_HEAD(&updtr->match_list, match, entry);
+	goto out_1;
+
+out_3:
+	free(match->regex_str);
+out_2:
+	free(match);
+out_1:
+	ldmsd_updtr_unlock(updtr);
+	ldmsd_updtr_put(updtr);
+out_0:
+	return rc;
+}
+
 int cmd_updtr_match_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
 	char *attr, *updtr_name, *regex_str, *selector_str;
@@ -492,58 +544,70 @@ int cmd_updtr_match_add(char *replybuf, struct attr_value_list *avl, struct attr
 			EINVAL);
 		goto out_0;
 	}
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr) {
+	selector_str = av_value(avl, "match"); /* Can be null, defaults to INST_NAME */
+	int rc = ldmsd_updtr_match_add(updtr_name, regex_str, selector_str,
+						replybuf, sizeof(replybuf));
+	if (!rc) {
+		strcpy(replybuf, "0\n");
+	} else if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe updater specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_updtr_lock(updtr);
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dConfiguration changes cannot be made "
 			"while the updater is running\n", EBUSY);
-		goto out_1;
-	}
-	ldmsd_name_match_t match = calloc(1, sizeof *match);
-	if (!match) {
-		sprintf(replybuf, "%d\n", ENOMEM);
-		goto out_1;
-	}
-	match->regex_str = strdup(regex_str);
-	if (!match->regex_str) {
-		sprintf(replybuf, "22\n");
-		goto out_2;
-	}
-	if (ldmsd_compile_regex(&match->regex, regex_str, replybuf, sizeof(replybuf)))
-		goto out_3;
-
-	selector_str = av_value(avl, "match"); /* Can be null, defaults to INST_NAME */
-	if (!selector_str)
-		match->selector = LDMSD_NAME_MATCH_INST_NAME;
-	else if (0 == strcasecmp(selector_str, "schema"))
-		match->selector = LDMSD_NAME_MATCH_SCHEMA_NAME;
-	else if (0 == strcasecmp(selector_str, "inst"))
-		match->selector = LDMSD_NAME_MATCH_INST_NAME;
-	else {
+	} else if (rc == ENOMEM) {
+		sprintf(replybuf, "%dOut of memory.\n", ENOMEM);
+	} else if (rc == EINVAL) {
 		sprintf(replybuf, "%dThe value '%s' for match= is invalid.\n",
 			EINVAL, selector_str);
-		goto out_3;
 	}
-	LIST_INSERT_HEAD(&updtr->match_list, match, entry);
-	strcpy(replybuf, "0\n");
-	goto out_1;
-out_3:
+out_0:
+	return 0;
+}
+
+int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
+						const char *selector_str)
+{
+	int rc = 0;
+	enum ldmsd_name_match_sel sel;
+	if (!selector_str)
+		sel = LDMSD_NAME_MATCH_INST_NAME;
+	else if (0 == strcasecmp(selector_str, "inst"))
+		sel = LDMSD_NAME_MATCH_INST_NAME;
+	else if (0 == strcasecmp(selector_str, "schema"))
+		sel = LDMSD_NAME_MATCH_SCHEMA_NAME;
+	else {
+		sprintf(replybuf, "%dUnrecognized match type '%s'",
+				EINVAL, selector_str);
+		goto out_0;
+	}
+
+	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	if (!updtr)
+		return ENOENT;
+
+	ldmsd_updtr_lock(updtr);
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	ldmsd_name_match_t match = updtr_find_match_ex(updtr, sel, regex_str);
+	if (!match) {
+		rc = -ENOENT;
+		goto out_1;
+	}
+	LIST_REMOVE(match, entry);
+	regfree(&match->regex);
 	free(match->regex_str);
-out_2:
 	free(match);
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
 out_0:
-	return 0;
+	return rc;
 }
+
 int cmd_updtr_match_del(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	enum ldmsd_name_match_sel sel;
 	char *updtr_name, *regex_str, *selector_str;
 
 	updtr_name = av_value(avl, "name");
@@ -559,44 +623,20 @@ int cmd_updtr_match_del(char *replybuf, struct attr_value_list *avl, struct attr
 		goto out_0;
 	}
 	selector_str = av_value(avl, "match"); /* Can be null, defaults to INST_NAME */
-	if (!selector_str)
-		sel = LDMSD_NAME_MATCH_INST_NAME;
-	else if (0 == strcasecmp(selector_str, "inst"))
-		sel = LDMSD_NAME_MATCH_INST_NAME;
-	else if (0 == strcasecmp(selector_str, "schema"))
-		sel = LDMSD_NAME_MATCH_SCHEMA_NAME;
-	else {
-		sprintf(replybuf, "%dUnrecognized match type '%s'",
-				EINVAL, selector_str);
-		goto out_0;
-	}
 
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr) {
+	int rc = ldmsd_updtr_match_del(updtr_name, regex_str, selector_str);
+	if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe updater specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_updtr_lock(updtr);
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dConfiguration changes cannot be made "
 			"while the updater is running\n", EBUSY);
-		goto out_1;
-	}
-	ldmsd_name_match_t match = updtr_find_match_ex(updtr, sel, regex_str);
-	if (!match) {
+	} else if (rc == -ENOENT) {
 		sprintf(replybuf,
 			"%dThe specified regex does not match any condition\n",
 			ENOENT);
-		goto out_1;
+	} else {
+		strcpy(replybuf, "0\n");
 	}
-	LIST_REMOVE(match, entry);
-	free(match->regex_str);
-	regfree(&match->regex);
-	free(match);
-	strcpy(replybuf, "0\n");
-out_1:
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
 out_0:
 	return 0;
 }
