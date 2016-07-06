@@ -38,10 +38,6 @@ rpm-clean:
 	rm -f $(distdir).tar.gz
 
 
-install-data-local:
-	$(INSTALL_DATA) $(srcdir)/baler.cfg $(DESTDIR)$(prefix)/etc
-	$(INSTALL_DATA) $(srcdir)/hosts.txt $(DESTDIR)$(prefix)/etc
-
 endif
 
 PEDIGREE = $(DESTDIR)/$(bindir)/baler-pedigree
