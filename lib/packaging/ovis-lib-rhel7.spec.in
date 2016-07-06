@@ -312,9 +312,11 @@ Miscellaneous file in ovis-lib project.
 %exclude %{_includedir}/ovis-test/
 
 %post misc
+/bin/ln -fs %{_sysconfdir}/profile.d/set-ovis-variables.sh /etc/profile.d/set-ovis-variables.sh
 /bin/ln -fs %{_sysconfdir}/ld.so.conf.d/ovis-ld-so.conf /etc/ld.so.conf.d/ovis-ld-so.conf
 /sbin/ldconfig
 %postun misc
+/bin/rm -f /etc/profile.d/set-ovis-variables.sh
 /bin/rm -f /etc/ld.so.conf.d/ovis-ld-so.conf
 /sbin/ldconfig
 
