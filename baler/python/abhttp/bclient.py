@@ -7,6 +7,8 @@ import shlex
 import re
 import datetime
 import sys
+import curses
+import collections
 from StringIO import StringIO
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,134 @@ class CmdArgumentParser(object):
         return (_kwargs, _args)
 
 ## ---- CmdArgumentParser ---- ##
+
+
+class FakeIterator():
+    def __init__(self, begin=0, end=1000):
+        self._begin = begin
+        self._end = end
+        self.current = self._begin - 1
+
+    def next(self):
+        if self.current >= self._end:
+            return None
+        if self.current < self._begin:
+            self.current = self._begin - 1
+        self.current += 1
+        return self.current
+
+    def prev(self):
+        if self.current <= self._begin:
+            return None
+        if self.current > self._end:
+            self.current = self._end + 1
+        self.current -= 1
+        return self.current
+
+    def get_pos(self):
+        return self.current
+
+    def set_pos(self, pos):
+        self.current = pos
+
+
+class PageDisplay(object):
+    def __init__(self, itr):
+        self.itr = itr
+        self.active = True
+        self.buff = collections.deque()
+        self.dir = None
+
+    def _start(self):
+        self.win = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        self.active = True
+
+    def _stop(self):
+        self.active = False
+
+    def _end(self):
+        curses.nocbreak()
+        curses.echo()
+        curses.endwin()
+
+    def loop(self):
+        cmd_table = {
+            'n': self.next_page,
+            'p': self.prev_page,
+            'q': self._stop,
+            'j': self.next_line,
+            'k': self.prev_line,
+        }
+        self._start()
+        try:
+            self.dir = abhttp.FWD
+            self.next_page()
+            while self.active:
+                c = self.win.getkey()
+                try:
+                    fn = cmd_table[c]
+                except KeyError:
+                    continue
+                fn()
+        finally:
+            self._end()
+
+    def display_buff(self):
+        self.win.clear() # not refeshed yet
+        y = 0
+        for (pos, item) in self.buff:
+            s = str(item)
+            self.win.addstr(y, 0, s)
+            y += 1
+        self.win.refresh()
+
+    def next_line(self):
+        maxy, maxx = self.win.getmaxyx()
+        if self.dir != abhttp.FWD:
+            # need position recovery
+            (pos, item) = self.buff[len(self.buff)-1]
+            self.itr.set_pos(pos)
+            self.dir = abhttp.FWD
+        item = self.itr.next()
+        if item == None:
+            return
+        pos = self.itr.get_pos()
+        self.buff.append((pos, item))
+        while len(self.buff) > maxy:
+            self.buff.popleft()
+        self.display_buff()
+
+    def prev_line(self):
+        maxy, maxx = self.win.getmaxyx()
+        if self.dir != abhttp.BWD:
+            # need position recovery
+            (pos, item) = self.buff[0]
+            self.itr.set_pos(pos)
+            self.dir = abhttp.BWD
+        item = self.itr.prev()
+        if item == None:
+            return
+        pos = self.itr.get_pos()
+        self.buff.appendleft((pos, item))
+        while len(self.buff) > maxy:
+            self.buff.pop()
+        self.display_buff()
+
+    def next_page(self):
+        maxy, maxx = self.win.getmaxyx()
+        c = 0
+        while c < maxy:
+            self.next_line()
+            c += 1
+
+    def prev_page(self):
+        maxy, maxx = self.win.getmaxyx()
+        c = 0
+        while c < maxy:
+            self.prev_line()
+            c += 1
 
 
 class ServiceCmd(cmd.Cmd):
@@ -253,6 +383,13 @@ class ServiceCmd(cmd.Cmd):
 
     def parser_remote_refresh(self):
         return CmdArgumentParser()
+
+    def do_test_paging(self, arg):
+        """Test Paging"""
+        itr = FakeIterator()
+        p = PageDisplay(itr)
+        p.loop()
+        pass
 
     def do_remote_refresh(self, arg):
         """Refresh aggregate remote information."""
