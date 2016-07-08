@@ -425,8 +425,13 @@ class ServiceCmd(cmd.Cmd):
                                             ts0=ts0,
                                             ts1=ts1
                                         )
-        for msg in itr:
-            print >>self.cmdout, str(msg)
+        if self.cmdout.isatty():
+            # use paging
+            pager = PageDisplay(itr)
+            pager.loop()
+        else:
+            for msg in itr:
+                print >>self.cmdout, str(msg)
 
     def parser_img_query(self):
         return CmdArgumentParser(
