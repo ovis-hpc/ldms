@@ -59,7 +59,7 @@
 #define __MURMUR_HASH_H
 #include <stdint.h>
 
-#define FORCE_INLINE inline
+#define FORCE_INLINE static inline
 
 static
 inline uint32_t rotl32 ( uint32_t x, int8_t r )

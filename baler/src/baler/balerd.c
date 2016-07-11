@@ -660,7 +660,7 @@ void snprint_sockaddr(char *buff, size_t len, struct sockaddr *sa)
 	}
 }
 
-inline
+static inline
 bzmsg_type_e bzmsg_type_inverse(bzmsg_type_e type)
 {
 	return (type ^ 1);
