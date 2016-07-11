@@ -62,6 +62,7 @@
 
 #include <time.h>
 #include <dirent.h>
+#include <stdlib.h>
 
 #include "baler/butils.h"
 #include "baler/btkn.h"
@@ -2798,8 +2799,20 @@ enum {
 	BQ_MODE_REMOTE,  /* remotely query once */
 } running_mode = BQ_MODE_LOCAL;
 
+enum {
+	SORT_PTN_BY_ID,
+	SORT_PTN_BY_ENG,
+	SORT_PTN_BY_N,
+} sort_ptn_t;
+
+const char *sort_ptn_by_str[] = {
+	"ID",
+	"ENG",
+};
+
 int verbose = 0;
 int reverse = 0;
+int sort_ptn_by = SORT_PTN_BY_ID;
 
 const char *ts_format = NULL;
 
@@ -2890,6 +2903,13 @@ void show_help()
 				[PTN_ID] before the actual message.\n\
 				For '-t PTN', this will also print pattern \n\
 				statistics (count, first seen, last seen).\n\
+    --sort-ptn-by,-S OPT        This option only applied to PTN query. \n\
+				It tells bquery to sort the output patterns \n\
+				by given OPT.  OPT canbe ID or ENG. Sort-by \n\
+				ID is self-described. If sort-ptn-by ENG is \n\
+				given, bquery will sort the output patterns \n\
+				by count(ENG tokens)/count(tokens) ratio. \n\
+				(default: ID) \n\
 \n"
 #if 0
 "Other OPTIONS:\n"
@@ -2910,7 +2930,7 @@ void show_help()
 }
 
 /********** Options **********/
-char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:F:R";
+char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:F:RS:";
 struct option long_opt[] = {
 	{"help",              no_argument,        0,  'h'},
 	{"store-path",        required_argument,  0,  's'},
@@ -2927,6 +2947,7 @@ struct option long_opt[] = {
 	{"ts-format",         required_argument,  0,  'F'},
 	{"verbose",           no_argument,        0,  'v'},
 	{"reverse",           no_argument,        0,  'R'},
+	{"sort-ptn-by",       required_argument,  0,  'S'},
 	{0,                   0,                  0,  0}
 };
 
@@ -2960,6 +2981,7 @@ int bq_get_mode()
 void process_args(int argc, char **argv)
 {
 	char c;
+	int i;
 	int __idx=0;
 	int rc;
 
@@ -3038,6 +3060,18 @@ next_arg:
 		break;
 	case 'R':
 		reverse = 1;
+		break;
+	case 'S':
+		for (i = 0; i < SORT_PTN_BY_N; i++) {
+			if (strcasecmp(optarg, sort_ptn_by_str[i]) == 0) {
+				sort_ptn_by = i;
+				break;
+			}
+		}
+		if (i == SORT_PTN_BY_N) {
+			printf("Unknown sort-ptn-by value: %s\n", optarg);
+			exit(-1);
+		}
 		break;
 	case 'F':
 		ts_format = optarg;
@@ -3122,11 +3156,67 @@ out:
 	return rc;
 }
 
+static
+int __ptn_cmp_by_id(const void *a, const void *b, void *arg)
+{
+	uint32_t id_a = *(uint32_t*)a;
+	uint32_t id_b = *(uint32_t*)b;
+	return id_a - id_b;
+}
+
+static
+float __ptn_eng_ratio(const struct bstr *ptn, struct bq_store *s)
+{
+	const uint32_t *tkn_id;
+	int bytes;
+	int eng_count = 0;
+	for (bytes = 0, tkn_id = ptn->u32str;
+			bytes < ptn->blen;
+			bytes += sizeof(*tkn_id), tkn_id++) {
+		struct btkn_attr a = btkn_store_get_attr(s->tkn_store, *tkn_id);
+		if (a.type == BTKN_TYPE_ENG) {
+			eng_count++;
+		}
+	}
+	return eng_count/(float)(ptn->blen/sizeof(*tkn_id));
+}
+
+static
+int __ptn_cmp_by_eng(const void *a, const void *b, void *arg)
+{
+	uint32_t id_a = *(uint32_t*)a;
+	uint32_t id_b = *(uint32_t*)b;
+	struct bq_store *s = arg;
+	const struct bstr *ptn_a = bptn_store_get_ptn(s->ptn_store, id_a);
+	const struct bstr *ptn_b = bptn_store_get_ptn(s->ptn_store, id_b);
+
+	float ra = __ptn_eng_ratio(ptn_a, s);
+	float rb = __ptn_eng_ratio(ptn_b, s);
+
+	if (ra < rb)
+		return 1;
+	if (ra > rb)
+		return -1;
+	return 0;
+}
+
 int bq_local_ptn_routine(struct bq_store *s)
 {
 	struct bdstr *bdstr;
-	uint32_t id = bptn_store_first_id(s->ptn_store);
+	uint32_t first_id = bptn_store_first_id(s->ptn_store);
 	uint32_t last_id = bptn_store_last_id(s->ptn_store);
+	uint32_t n = last_id - first_id + 1;
+	uint32_t *ids = malloc(sizeof(*ids) * n);
+	uint32_t id;
+	int i, j;
+
+	if (!ids)
+		return ENOMEM;
+
+	for (i = 0, id = first_id; i < n; i++, id++) {
+		ids[i] = id;
+	}
+
 	int rc = 0;
 
 	int col_width[] = {
@@ -3145,7 +3235,6 @@ int bq_local_ptn_routine(struct bq_store *s)
 		"pattern"
 	};
 	int col_width_len = sizeof(col_width)/sizeof(col_width[0]);
-	int i, j;
 
 	rc = bq_store_refresh(s);
 	if (rc) {
@@ -3157,6 +3246,10 @@ int bq_local_ptn_routine(struct bq_store *s)
 	if (!bdstr) {
 		berror("bdstr_new()");
 		return errno;
+	}
+
+	if (sort_ptn_by == SORT_PTN_BY_ENG) {
+		qsort_r(ids, n, sizeof(*ids), __ptn_cmp_by_eng, s);
 	}
 
 	for (i = 0; i < col_width_len; i++) {
@@ -3194,7 +3287,8 @@ int bq_local_ptn_routine(struct bq_store *s)
 		}
 	}
 
-	while (id <= last_id) {
+	for (i = 0; i < n; i++) {
+		id = ids[i];
 		bdstr_reset(bdstr);
 		bdstr_append_printf(bdstr, "%*d ", col_width[0], id);
 
@@ -3226,7 +3320,7 @@ int bq_local_ptn_routine(struct bq_store *s)
 
 		printf("%s\n", bdstr->str);
 	skip:
-		id++;
+		continue;
 	}
 
 	for (i = 0; i < col_width_len; i++) {
