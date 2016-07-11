@@ -110,7 +110,7 @@ static
 char is_delim[256];
 
 static
-char *delim = " \t,.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?";
+char *delim = " \t,.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?_";
 
 typedef enum {
 	PSTATUS_STOPPED=0,

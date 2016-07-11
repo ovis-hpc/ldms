@@ -60,7 +60,7 @@
 #include <string.h>
 #include <stdint.h>
 
-#define BTKN_SYMBOL_STR  ",.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?"
+#define BTKN_SYMBOL_STR  ",.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?_"
 
 /**
  * \brief Baler's Offset to pointer macro.
