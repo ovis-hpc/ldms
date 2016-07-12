@@ -652,6 +652,8 @@ static void resched_task(ldmsd_task_t task)
 		task->flags &= ~LDMSD_TASK_F_IMMEDIATE;
 	} else if (task->flags & LDMSD_TASK_F_SYNCHRONOUS) {
 		event_base_gettimeofday_cached(get_ev_base(task->thread_id), &new_tv);
+		/* The task is already counted when the task is started */
+		release_ev_base(task->thread_id);
 		epoch_us = (1000000 * (long)new_tv.tv_sec) + (long)new_tv.tv_usec;
 		adj_interval = task->sched_us -
 			(epoch_us % task->sched_us) + task->offset_us;
@@ -730,6 +732,7 @@ void ldmsd_task_stop(ldmsd_task_t task)
 		event_free(task->event);
 		task->event = NULL;
 		task->state = LDMSD_TASK_STATE_STOPPED;
+		release_ev_base(task->thread_id);
 		pthread_cond_signal(&task->join_cv);
 	}
 out:
