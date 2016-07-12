@@ -3243,7 +3243,7 @@ int bq_local_ptn_routine(struct bq_store *s)
 		return rc;
 	}
 
-	bdstr = bdstr_new(4096);
+	bdstr = bdstr_new(16*1024*1024);
 	if (!bdstr) {
 		berror("bdstr_new()");
 		return errno;
