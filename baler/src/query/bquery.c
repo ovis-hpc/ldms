@@ -3208,6 +3208,7 @@ int bq_local_ptn_routine(struct bq_store *s)
 	uint32_t n = last_id - first_id + 1;
 	uint32_t *ids = malloc(sizeof(*ids) * n);
 	uint32_t id;
+	uint64_t msg_count = 0;
 	int i, j;
 
 	if (!ids)
@@ -3300,6 +3301,7 @@ int bq_local_ptn_routine(struct bq_store *s)
 
 			bdstr_append_printf(bdstr, "%*lu ",
 						col_width[1], attrM->count);
+			msg_count += attrM->count;
 			__default_date_fmt(NULL, bdstr, &attrM->first_seen);
 			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
 		}
@@ -3334,6 +3336,10 @@ int bq_local_ptn_routine(struct bq_store *s)
 		} else {
 			printf(" ");
 		}
+	}
+
+	if (verbose) {
+		printf("Total: %ld messages\n", msg_count);
 	}
 
 	return rc;
