@@ -1032,7 +1032,7 @@ void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 
 	ctxt->req_notify.cb((ldms_t)x,
 			    ctxt->req_notify.s,
-			    event, ctxt->dir.cb_arg);
+			    event, ctxt->req_notify.arg);
 }
 
 #if OVIS_LIB_HAVE_AUTH
