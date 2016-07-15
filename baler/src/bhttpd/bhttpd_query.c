@@ -553,6 +553,57 @@ void bhttpd_handle_query_metric_ptn(struct bhttpd_req_ctxt *ctxt)
 }
 
 static
+void bhttpd_handle_query_ptn_simple(struct bhttpd_req_ctxt *ctxt)
+{
+	/* COMPLETE ME */
+	struct bptn_store *ptn_store = bq_get_ptn_store(bq_store);
+	int n = bptn_store_last_id(ptn_store);
+	int rc = 0;
+	int i;
+	int first = 1;
+	struct bq_formatter *fmt = NULL;
+	struct bdstr *bdstr = NULL;
+	const char *use_ts_str = bpair_str_value(&ctxt->kvlist, "use_ts_fmt");
+	int use_ts = 0;
+
+	if (use_ts_str) {
+		use_ts = atoi(use_ts_str);
+	}
+
+	fmt = bquery_default_formatter();
+
+	bdstr = bdstr_new(4096);
+	if (!bdstr) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "Not enough memory");
+		goto cleanup;
+	}
+
+	for (i=BMAP_ID_BEGIN; i<=n; i++) {
+
+		const struct bstr *ptn = bptn_store_get_ptn(ptn_store, i);
+		if (!ptn)
+			/* It's OK to skip, slaves may not have all patterns */
+			continue;
+
+		if (bq_is_metric_pattern(bq_store, i))
+			/* skip metric patterns. */
+			continue;
+		evbuffer_add_printf(ctxt->evbuffer, "%d ", i);
+		rc = bq_print_ptn(bq_store, fmt, i, bdstr);
+		if (rc) {
+			bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL, "pattern query internal"
+					" error, rc: %d", rc);
+			goto cleanup;
+		}
+		evbuffer_add_printf(ctxt->evbuffer, "%s\n", bdstr->str);
+	}
+
+cleanup:
+	if (bdstr)
+		bdstr_free(bdstr);
+}
+
+static
 void bhttpd_msg_query_expire_cb(evutil_socket_t fd, short what, void *arg);
 
 static
@@ -1370,17 +1421,18 @@ struct bhttpd_handle_fn_entry {
 #define  HTTP_CONT_TEXT    "text/plain"
 
 struct bhttpd_handle_fn_entry query_handle_entry[] = {
-	{ "BIG_PIC",     HTTP_CONT_JSON,   bhttpd_handle_query_big_pic     },
-	{ "HOST",        HTTP_CONT_JSON,   bhttpd_handle_query_host        },
-	{ "IMG2",        HTTP_CONT_STREAM, bhttpd_handle_query_img2        },
-	{ "IMG",         HTTP_CONT_STREAM, bhttpd_handle_query_img         },
-	{ "META",        HTTP_CONT_JSON,   bhttpd_handle_query_meta        },
-	{ "METRIC_META", HTTP_CONT_JSON,   bhttpd_handle_query_metric_meta },
-	{ "METRIC_PTN",  HTTP_CONT_JSON,   bhttpd_handle_query_metric_ptn  },
-	{ "MSG2",        HTTP_CONT_JSON,   bhttpd_handle_query_msg2        },
-	{ "MSG",         HTTP_CONT_JSON,   bhttpd_handle_query_msg         },
-	{ "MSG_SIMPLE",  HTTP_CONT_TEXT,   bhttpd_handle_query_msg_simple  },
-	{ "PTN",         HTTP_CONT_JSON,   bhttpd_handle_query_ptn         },
+{  "BIG_PIC",      HTTP_CONT_JSON,    bhttpd_handle_query_big_pic      },
+{  "HOST",         HTTP_CONT_JSON,    bhttpd_handle_query_host         },
+{  "IMG2",         HTTP_CONT_STREAM,  bhttpd_handle_query_img2         },
+{  "IMG",          HTTP_CONT_STREAM,  bhttpd_handle_query_img          },
+{  "META",         HTTP_CONT_JSON,    bhttpd_handle_query_meta         },
+{  "METRIC_META",  HTTP_CONT_JSON,    bhttpd_handle_query_metric_meta  },
+{  "METRIC_PTN",   HTTP_CONT_JSON,    bhttpd_handle_query_metric_ptn   },
+{  "MSG2",         HTTP_CONT_JSON,    bhttpd_handle_query_msg2         },
+{  "MSG",          HTTP_CONT_JSON,    bhttpd_handle_query_msg          },
+{  "MSG_SIMPLE",   HTTP_CONT_TEXT,    bhttpd_handle_query_msg_simple   },
+{  "PTN",          HTTP_CONT_JSON,    bhttpd_handle_query_ptn          },
+{  "PTN_SIMPLE",   HTTP_CONT_TEXT,    bhttpd_handle_query_ptn_simple   },
 };
 
 static
@@ -1388,6 +1440,7 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 {
 	struct bpair_str *kv;
 	int i, n, rc;
+	struct timeval tv0, tv1, dtv;
 	kv = bpair_str_search(&ctxt->kvlist, "type", NULL);
 	if (!kv) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
@@ -1395,6 +1448,7 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 		return;
 	}
 
+	gettimeofday(&tv0, NULL);
 	n = sizeof(query_handle_entry)/sizeof(query_handle_entry[0]);
 	for (i = 0; i < n; i++) {
 		if (strcasecmp(query_handle_entry[i].key, kv->s1) == 0)
@@ -1416,6 +1470,11 @@ void bhttpd_handle_query(struct bhttpd_req_ctxt *ctxt)
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"Unknown query type: %s", kv->s1);
 	}
+	gettimeofday(&tv1, NULL);
+	timersub(&tv1, &tv0, &dtv);
+	const char *q = evhttp_uri_get_query(ctxt->uri);
+	const char *p = evhttp_uri_get_path(ctxt->uri);
+	binfo("handle_query(%s?%s) time: %ld.%06ld", p, q, dtv.tv_sec, dtv.tv_usec);
 }
 
 static __attribute__((constructor))
