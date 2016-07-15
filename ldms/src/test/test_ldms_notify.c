@@ -116,12 +116,12 @@ static void usage() {
 "	-p port		listener port (server) or port to connect to (client)\n"
 "	-S set_name	Set name\n"
 "	-x xprt		sock, rdma, or ugni\n"
-"Server options:"
+"Server options:\n"
 "	-i interval	Interval to make changes\n"
 "	-M		Generate set modified events\n"
 "	-s		Server mode\n"
 "	-U		Generate user events\n"
-"Client options:"
+"Client options:\n"
 "	-c		Cancel the request after receive the notification of all types\n"
 "	-h host		Host name to connect to.\n"
 "	-M		Request for set modified events.\n"
@@ -312,6 +312,8 @@ static ldms_set_t __server_create_set(const char *name)
 	return set;
 }
 
+#define USER_EVENT "udata is changed\n"
+
 static void do_server(struct sockaddr_in *sin)
 {
 	ldms_set_t set;
@@ -329,7 +331,7 @@ static void do_server(struct sockaddr_in *sin)
 	_log("Listening on port '%d'\n", port);
 
 	char user_data_buf[USER_DATA_LEN];
-	sprintf(user_data_buf, "udata is changed\n");
+	sprintf(user_data_buf, USER_EVENT);
 	size_t len = strlen(user_data_buf);
 	ldms_notify_event_t event;
 	size_t sz = sizeof(*event) + len;
@@ -377,6 +379,7 @@ static void client_update_cb(ldms_t x, ldms_set_t set, int status, void *arg)
 static void client_notify_cb(ldms_t x, ldms_set_t set,
 		ldms_notify_event_t e, void *arg)
 {
+	char *uevent = (char *)arg;
 	switch (e->type) {
 	case LDMS_SET_MODIFIED:
 		is_recvd_modified = 1;
@@ -387,6 +390,11 @@ static void client_notify_cb(ldms_t x, ldms_set_t set,
 	case LDMS_USER_DATA:
 		is_recvd_uevent = 1;
 		_log("Receive .... Notification type: USER DATA\n");
+		if (0 != strcmp(uevent, USER_EVENT)) {
+			_log("Wrong user data. Expected: %s. Received: %s\n",
+					USER_EVENT, uevent);
+			assert(0);
+		}
 		if (!want_uevent)
 			assert(0 == "Not requested\n");
 		_log("User event: %s\n", e->u_data);
