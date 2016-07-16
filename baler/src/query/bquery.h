@@ -114,6 +114,8 @@ typedef struct bsos_wrap *bsos_wrap_t;
  */
 struct bq_store* bq_open_store(const char *path);
 
+void bq_store_close_free(struct bq_store *store);
+
 /**
  * Query status enumeration.
  */
