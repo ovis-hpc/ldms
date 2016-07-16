@@ -2517,7 +2517,7 @@ int bq_imgstore_iterate(struct bq_store *store, void (*cb)(const char *imgstore_
 	wordexp_t wexp = {0};
 	len = strlen(store->path);
 	sz = sizeof(store->path) - len;
-	snprintf(store->path + len, sz, "/img_store/*_sos.PG");
+	snprintf(store->path + len, sz, "/img_store/*");
 	rc = wordexp(store->path, &wexp, 0);
 	if (rc) {
 		berr("wordexp() error, rc: %d (%s:%d)", rc, __FILE__, __LINE__);
@@ -2526,17 +2526,13 @@ int bq_imgstore_iterate(struct bq_store *store, void (*cb)(const char *imgstore_
 
 	for (i = 0; i < wexp.we_wordc; i++) {
 		const char *name = strrchr(wexp.we_wordv[i], '/') + 1;
-		char *term = strrchr(name, '_');
-		const char *dot;
-		*term = 0;
-		/* check format */
 		sscanf(name, "%*d-%*d%n", &sz);
-		if (sz != strlen(name))
-			goto next;
+		if (sz != strlen(name)) {
+			berr("Unrecognized img store name '%s'\n", name);
+			continue;
+		}
+
 		cb(name, ctxt);
-	next:
-		/* recover */
-		*term = '_';
 	}
 
 out:
