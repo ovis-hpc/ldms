@@ -106,11 +106,11 @@ int max_mday[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
  * This table determine if a characcter is a delimiter or not.
  * This is also initialized in ::init_once().
  */
-static
-char is_delim[256];
+static char is_delim[256];
+static char is_quote[256];
 
-static
-char *delim = " \t,.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?_";
+static char *delim = " \t,.:;`'\"<>\\/|[]{}()+-*=~!@#$%^&?_";
+static char *quote = "\'\"";
 
 typedef enum {
 	PSTATUS_STOPPED=0,
@@ -522,16 +522,30 @@ struct bstr_list_entry* get_token(char **s)
 	int len;
 	if (!*_s)
 		return NULL; /* Empty string */
+	if (is_quote[*_s]) {
+		char endquote = *_s;
+		_s++;		/* consume the quote */
+		while (*_s && *_s != endquote)
+			_s++;
+		if (*_s) {	/* check that string is terminated */
+			_s++;	/* consume the closing quote */
+			goto out_0;
+		}
+		/* String is not terminated, back up and treat quote as a
+		 * delimiter */
+		_s = *s;
+	}
 	if (is_delim[*_s]) {
 		len = 1;
 		_s++;
-		goto out;
+		goto out_1;
 	}
 	/* else */
 	while (*_s && !is_delim[*_s])
 		_s++;
+out_0:
 	len = _s - *s;
-out:
+out_1:
 	ent = bstr_list_entry_alloci(len, *s);
 	if (!ent)
 		return NULL;
@@ -972,11 +986,13 @@ int init_once()
 
 	init_ts_ym();
 
-	bzero(is_delim, 256);
 	int i;
 	is_delim[0] = 1;
 	for (i=0; i<strlen(delim); i++) {
 		is_delim[delim[i]] = 1;
+	}
+	for (i=0; i<strlen(quote); i++) {
+		is_quote[quote[i]] = 1;
 	}
 	goto out;
 err0:
