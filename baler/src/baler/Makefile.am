@@ -37,6 +37,10 @@ bmap_dump_SOURCES = bmap_dump.c
 bmap_dump_LDADD = libbaler.la
 bin_PROGRAMS += bmap_dump
 
+bmeta_cluster_SOURCES = bmeta_cluster.c
+bmeta_cluster_LDADD = libbaler.la
+bin_PROGRAMS += bmeta_cluster
+
 pkginclude_HEADERS = barray.h \
 		     bcommon.h \
 		     bhash.h \
