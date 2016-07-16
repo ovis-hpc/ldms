@@ -384,7 +384,7 @@
  * prediction), significance theshold 0.01, confidence threshold 0.75:
  * \par
  * \code{.sh}
- *     bassoc -w workspace -m ev3,ev5 -o -1 -S 0.01 -K 0.75
+ *     bassoc -w workspace -m ev3 -m ev5 -o -1 -S 0.01 -K 0.75
  * \endcode
  *
  * or:
@@ -403,7 +403,7 @@
  * For black/white evaluation, just add '-b' flag.
  * \par
  * \code{.sh}
- *     bassoc -w workspace -m ev3,ev5 -b -o -1 -S 0.01 -K 0.75
+ *     bassoc -w workspace -m ev3 -m ev5 -b -o -1 -S 0.01 -K 0.75
  *     # or
  *     bassoc -w workspace -M target_file -b -o -1 -S 0.01 -K 0.75
  * \endcode
@@ -419,6 +419,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <unistd.h>
 #include <getopt.h>
 #include <stdarg.h>
@@ -2125,8 +2126,8 @@ void handle_mine_target_file()
 	rc = bprocess_file_by_line_w_comment(mine_target_file_path,
 					handle_mine_target_line, NULL);
 	if (rc) {
-		berr("Error processing target file: %s, rc: %d",
-					mine_target_file_path, rc);
+		berr("Error processing target file: %s. %s",
+					mine_target_file_path, strerror(rc));
 		exit(-1);
 	}
 }
@@ -2230,7 +2231,8 @@ void init_target_images_routine()
 		barray_get(cli_targets, i, &tname);
 		rc = handle_target(tname);
 		if (rc) {
-			berr("Error processing target: %s, rc: %d", tname, rc);
+			berr("Error processing target: %s. %s", tname,
+							strerror(rc));
 			exit(-1);
 		}
 	}
