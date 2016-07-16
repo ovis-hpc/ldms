@@ -93,6 +93,12 @@ struct bmptn_store *bmptn_store_open(const char *path, const char *bstore_path,
 					int create);
 
 /**
+ * \brief Close the store and free the handle.
+ * \param store The bmptn_store handle.
+ */
+void bmptn_store_close_free(struct bmptn_store *store);
+
+/**
  * Purge the data in the store (of given \c path).
  *
  * \param path The path of the store.
