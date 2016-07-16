@@ -69,6 +69,7 @@
 #include "baler/bhash.h"
 #include "baler/bset.h"
 #include "baler/bheap.h"
+#include "baler/bmeta.h"
 
 #include "assert.h"
 
@@ -240,6 +241,11 @@ void bq_store_close_free(struct bq_store *store)
 		store->ptn_store = NULL;
 	}
 
+	if (store->mptn_store) {
+		bmptn_store_close_free(store->mptn_store);
+		store->mptn_store = NULL;
+	}
+
 	free(store);
 }
 
@@ -299,6 +305,13 @@ struct bq_store* bq_open_store(const char *path)
 	s->ptn_store = bptn_store_open(s->path, O_RDONLY);
 	if (!s->ptn_store)
 		goto err;
+
+	snprintf(s->path, sizeof(s->path), "%s/mptn_store", path);
+	rc = stat(s->path, &st);
+	if (rc == 0 && S_ISDIR(st.st_mode)) {
+		s->mptn_store = bmptn_store_open(s->path, path, 0);
+		/* It is OK to fail for meta-pattern store. */
+	}
 
 	snprintf(s->path, sizeof(s->path), "%s", path);
 
@@ -2740,6 +2753,7 @@ enum BQ_TYPE {
 	BQ_TYPE_IMG,
 	BQ_TYPE_LIST_IMG,
 	BQ_TYPE_PTN_STAT,
+	BQ_TYPE_MPTN,
 	BQ_TYPE_LAST
 };
 
@@ -2751,6 +2765,7 @@ const char *BQ_TYPE_STR[] = {
 	[BQ_TYPE_IMG]       =  "IMG",
 	[BQ_TYPE_LIST_IMG]  =  "LIST_IMG",
 	[BQ_TYPE_PTN_STAT]  =  "PTN_STAT",
+	[BQ_TYPE_MPTN]      =  "MPTN",
 	[BQ_TYPE_LAST]      =  "BQ_TYPE_LAST"
 };
 
@@ -3345,6 +3360,223 @@ int bq_local_ptn_routine(struct bq_store *s)
 	return rc;
 }
 
+struct ptn_entry {
+	uint32_t ptn_id;
+	TAILQ_ENTRY(ptn_entry) link;
+};
+
+struct mptn_data {
+	struct bptn_attrM attr;
+	TAILQ_HEAD(, ptn_entry) tailq;
+};
+
+int bq_local_mptn_routine(struct bq_store *s)
+{
+	int rc = 0;
+	struct bdstr *bdstr;
+	uint32_t first_id = bptn_store_first_id(s->ptn_store);
+	uint32_t last_id = bptn_store_last_id(s->ptn_store);
+	uint32_t n = last_id - first_id + 1;
+	uint32_t first_class_id = 0;
+	uint32_t last_class_id = 0;
+	uint32_t id, mptn_id;
+	uint64_t msg_count = 0;
+	int i, j;
+	struct mptn_data *mptn_data = NULL;
+	struct ptn_entry *entries = NULL;
+
+	if (!s->mptn_store) {
+		berr("No meta pattern store. Please run `bmeta_cluster` to create them.");
+		return ENOENT;
+	}
+
+	last_class_id = bmptn_store_get_last_cls_id(s->mptn_store);
+
+	mptn_data = calloc(last_class_id + 1, sizeof(*mptn_data));
+	if (!mptn_data) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+
+	for (i = 0; i < last_class_id + 1; i++) {
+		TAILQ_INIT(&mptn_data[i].tailq);
+	}
+
+	entries = calloc(sizeof(*entries), last_id + 1);
+	if (!entries) {
+		rc = ENOMEM;
+		goto cleanup;
+	}
+
+	for (id = first_id; id <= last_id; id++) {
+		entries[id].ptn_id = id;
+		mptn_id = bmptn_store_get_class_id(s->mptn_store, id);
+		assert(mptn_id <= last_class_id);
+		TAILQ_INSERT_TAIL(&mptn_data[mptn_id].tailq, &entries[id], link);
+		const struct bptn_attrM *attrM = bptn_store_get_attrM(s->ptn_store, id);
+		if (!attrM)
+			continue;
+		mptn_data[mptn_id].attr.count += attrM->count;
+		if (timercmp(&attrM->first_seen,
+			     &mptn_data[mptn_id].attr.first_seen,
+			     <)) {
+			mptn_data[mptn_id].attr.first_seen =
+				attrM->first_seen;
+		}
+		if (timercmp(&attrM->last_seen,
+			     &mptn_data[mptn_id].attr.last_seen,
+			     >)) {
+			mptn_data[mptn_id].attr.last_seen =
+				attrM->last_seen;
+		}
+	}
+
+	int col_width[] = {
+		8, 15, 32, 32, 10
+	};
+
+	int need_verbose[] = {
+		0, 1, 1, 1, 0
+	};
+
+	const char *col_hdr[] = {
+		"ptn_id",
+		"count",
+		"first-seen",
+		"last-seen",
+		"pattern"
+	};
+	int col_width_len = sizeof(col_width)/sizeof(col_width[0]);
+
+	rc = bq_store_refresh(s);
+	if (rc) {
+		berr("bq_store_refresh() rc: %d", rc);
+		goto cleanup;
+	}
+
+	bdstr = bdstr_new(16*1024*1024);
+	if (!bdstr) {
+		berror("bdstr_new()");
+		return errno;
+	}
+
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		for (j = 0; j < col_width[i]; j++) {
+			printf("-");
+		}
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		printf("%-*s", col_width[i], col_hdr[i]);
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		for (j = 0; j < col_width[i]; j++) {
+			printf("-");
+		}
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+
+	for (mptn_id = 0; mptn_id <= last_class_id; mptn_id++) {
+		struct ptn_entry *ent;
+		const struct bstr *cname = bmptn_get_cluster_name(s->mptn_store, mptn_id);
+
+		bdstr_reset(bdstr);
+		bdstr_append_printf(bdstr, "%-*d ", col_width[0], mptn_id);
+		if (verbose) {
+			const struct bptn_attrM *attrM =
+						&mptn_data[mptn_id].attr;
+			bdstr_append_printf(bdstr, "%*lu ",
+					col_width[1], attrM->count);
+			msg_count += attrM->count;
+			__default_date_fmt(NULL, bdstr, &attrM->first_seen);
+			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
+		}
+		if (!cname) {
+			bdstr_append_printf(bdstr, "*");
+		} else {
+			bdstr_append_printf(bdstr, "%.*s", cname->blen, cname->cstr);
+		}
+
+		printf("%s\n", bdstr->str);
+
+		if (!verbose)
+			continue;
+
+		TAILQ_FOREACH(ent, &mptn_data[mptn_id].tailq, link) {
+			bdstr_reset(bdstr);
+			bdstr_append_printf(bdstr, "%+*d ", col_width[0], ent->ptn_id);
+
+			const struct bptn_attrM *attrM =
+				bptn_store_get_attrM(s->ptn_store, ent->ptn_id);
+			if (!attrM)
+				goto skip;
+
+			bdstr_append_printf(bdstr, "%*lu ",
+					col_width[1], attrM->count);
+			msg_count += attrM->count;
+			__default_date_fmt(NULL, bdstr, &attrM->first_seen);
+			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
+
+			rc = bptn_store_id2str(s->ptn_store, s->tkn_store, ent->ptn_id,
+						bdstr->str + bdstr->str_len,
+						bdstr->alloc_len - bdstr->str_len);
+			switch (rc) {
+			case 0:
+				/* do nothing, just continue the execution. */
+				break;
+			case ENOENT:
+				/* skip a loop for no entry */
+				goto skip;
+			default:
+				return rc;
+			}
+
+			printf("%s\n", bdstr->str);
+		skip:
+			continue;
+		}
+	}
+
+	for (i = 0; i < col_width_len; i++) {
+		if (need_verbose[i] && !verbose)
+			continue;
+		for (j = 0; j < col_width[i]; j++) {
+			printf("-");
+		}
+		if (i == col_width_len - 1) {
+			printf("\n");
+		} else {
+			printf(" ");
+		}
+	}
+
+cleanup:
+	if (entries)
+		free(entries);
+	if (mptn_data)
+		free(mptn_data);
+	return rc;
+}
+
 static
 void img_store_list_cb(const char *name, void *arg)
 {
@@ -3597,6 +3829,9 @@ int bq_local_routine()
 		break;
 	case BQ_TYPE_PTN_STAT:
 		rc = bq_local_ptn_stat_routine(s);
+		break;
+	case BQ_TYPE_MPTN:
+		rc = bq_local_mptn_routine(s);
 		break;
 	default:
 		rc = EINVAL;

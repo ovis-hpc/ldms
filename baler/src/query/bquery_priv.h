@@ -58,6 +58,7 @@
 #include "baler/btkn.h"
 #include "baler/bptn.h"
 #include "baler/bheap.h"
+#include "baler/bmeta.h"
 
 #include "plugins/bsos_img.h"
 #include "plugins/bsos_msg.h"
@@ -168,6 +169,7 @@ struct bq_store {
 	struct bptn_store *ptn_store;
 	struct btkn_store *tkn_store;
 	struct btkn_store *cmp_store;
+	struct bmptn_store *mptn_store;
 };
 
 struct bq_msg_ptc_hent {
