@@ -667,8 +667,8 @@ window.baler =
 
 
     HeatMapDisp: class HeatMapDisp extends Disp
-        constructor: (@width=400, @height=400, @spp=3600, @npp=1) ->
-            @ts_begin = parseInt(1427729931/ @spp) * @spp
+        constructor: (@width=400, @height=400, @spp=3600, @npp=1, @ts_begin=0) ->
+            @ts_begin = parseInt(@ts_begin/ @spp) * @spp
             @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
             @pxlFactor = 10
