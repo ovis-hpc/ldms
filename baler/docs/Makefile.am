@@ -62,7 +62,8 @@ if ENABLE_DOC_MAN
 # man1_files will be installed into section 1 by automake afterward.
 man1_files = man/man3/balerd.3 \
 	    man/man3/bhttpd.3 \
-	    man/man3/bquery.3
+	    man/man3/bquery.3 \
+	    man/man3/bassoc.3
 
 $(man1_files): doxygen-out
 
