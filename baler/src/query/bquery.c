@@ -3395,6 +3395,7 @@ int bq_local_mptn_routine(struct bq_store *s)
 	}
 
 	for (i = 0; i < last_class_id + 1; i++) {
+		mptn_data[i].attr.first_seen.tv_sec = 0x7FFFFFFFFFFFFFFFL;
 		TAILQ_INIT(&mptn_data[i].tailq);
 	}
 
