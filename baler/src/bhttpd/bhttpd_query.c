@@ -459,11 +459,27 @@ int __evbuffer_add_json_bstr(struct evbuffer *evb, const struct bstr *bstr)
 		switch (bstr->cstr[i]) {
 		case '"':
 		case '\\':
-			rc = evbuffer_add_printf(evb, "%c", '\\');
-			if (rc < 0)
-				return errno;
+		case '/':
+			rc = evbuffer_add_printf(evb, "\\%c", bstr->cstr[i]);
+			break;
+		case '\b':
+			rc = evbuffer_add_printf(evb, "\\b");
+			break;
+		case '\f':
+			rc = evbuffer_add_printf(evb, "\\f");
+			break;
+		case '\n':
+			rc = evbuffer_add_printf(evb, "\\n");
+			break;
+		case '\r':
+			rc = evbuffer_add_printf(evb, "\\r");
+			break;
+		case '\t':
+			rc = evbuffer_add_printf(evb, "\\t");
+			break;
+		default:
+			rc = evbuffer_add_printf(evb, "%c", bstr->cstr[i]);
 		}
-		rc = evbuffer_add_printf(evb, "%c", bstr->cstr[i]);
 		if (rc < 0)
 			return errno;
 	}
