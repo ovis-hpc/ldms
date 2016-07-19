@@ -486,7 +486,7 @@ window.baler =
                 3600: "3600-1"
             @base_color = [255, 0, 0]
 
-            @domobj = LZH.canvas({class: "HeatMapLayer", width: width, height: height})
+            @domobj = LZH.canvas({class: "HeatMapLayer", width: @width, height: @height})
             @domobj.style.position = "absolute"
             @domobj.style.pointerEvents = "none"
             @domobj.style.width = "#{parseInt(@width * @pxlFactor)}px"
@@ -892,10 +892,10 @@ window.baler =
 
         setNavParam: (@ts_begin, @node_begin, @spp, @npp) ->
             for l in @layers
-                l.ts_begin = ts_begin
-                l.node_begin = node_begin
-                l.spp = spp
-                l.npp = npp
+                l.ts_begin = @ts_begin
+                l.node_begin = @node_begin
+                l.spp = @spp
+                l.npp = @npp
 
             xoffset = parseInt(@ts_begin / @spp)
             yoffset = parseInt(@node_begin / @npp)
@@ -939,11 +939,15 @@ window.baler =
                     # For the small spp(s), they should be the multiple of 60
                     "Half Hour": 60,
                     "2 Hours": 180,
-                    "12 Hours":1800,
+                    "12 Hours":1080,
                     # For the large spp(s), they should be the multiple of 3600
                     "40 Hours<default>":3600,
                     "3 days":6480,
                     "Week": 14400,
+                    "Month": 64800,
+                    "Quarter": 194400,
+                    "Half Year": 388800,
+                    "Year": 788400,
                 }
                 npp:{
                     "smallest": 0,
@@ -978,9 +982,15 @@ window.baler =
 
             @nav_btn = LZH.button({"id":"nav-apply"}, "nav-apply")
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @nav_btn))
+            @see_all_btn = LZH.button({"id": "see-all"}, "see-all")
+            ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @see_all_btn))
+
             @domobj = LZH.div({class: "HeatMapNavCtrl"}, ul)
             @nav_btn.onclick = (e) ->
                 _this_.onNavApply()
+            @see_all_btn.onclick = (e) ->
+                _this_.onSeeAllClicked()
+
             @hmap.registerOffsetChangeCb((ts, comp) -> _this_.onOffsetChange(ts, comp))
 
         onNavApply: () ->
@@ -994,6 +1004,41 @@ window.baler =
             comp_id = parseInt(comp_id/npp)*npp
             input.nav_node.value = comp_id
             @hmap.setNavParam(ts, comp_id, spp, npp)
+
+        onSeeAllClicked: () ->
+            # come back here
+            _this_ = this
+            baler.get_big_pic( (data) ->
+                min_ts = Math.trunc(data.min_ts / 3600) * 3600
+                max_ts = Math.ceil(data.max_ts / 3600) * 3600
+                min_comp_id = data.min_comp_id
+                max_comp_id = data.max_comp_id
+                console.log(_this_.hmap)
+                xPixels = _this_.hmap.width / _this_.hmap.pxlFactor
+                yPixels = _this_.hmap.height / _this_.hmap.pxlFactor
+                nodes = (max_comp_id - min_comp_id + 1)
+                npp = Math.ceil(nodes / yPixels)
+                spp = Math.ceil((max_ts - min_ts + 1) / xPixels)
+                for i, o of _this_.dom_input.spp.options
+                    v = o.value
+                    if v >= spp
+                        spp = v
+                        _this_.dom_input.spp.selectedIndex = i
+                        console.log("spp index: " + i)
+                        break
+                for i, o of _this_.dom_input.npp.options
+                    v = o.value
+                    _npp = baler.calcNpp(v, nodes, yPixels)
+                    if _npp >= npp
+                        npp = _npp
+                        _this_.dom_input.npp.selectedIndex = i
+                        console.log("npp index: " + i)
+                        break
+                # come back here
+                ts_text = baler.ts2datetime(min_ts)
+                _this_.hmap.setNavParam(min_ts, min_comp_id, spp, npp)
+                _this_.onOffsetChange(min_ts, min_comp_id)
+            )
 
         onOffsetChange: (ts_begin, node_begin) ->
             ts_text = baler.ts2datetime(ts_begin)
