@@ -3353,16 +3353,40 @@ int bq_local_ptn_routine(struct bq_store *s)
 	uint32_t first_id = bptn_store_first_id(s->ptn_store);
 	uint32_t last_id = bptn_store_last_id(s->ptn_store);
 	uint32_t n = last_id - first_id + 1;
-	uint32_t *ids = malloc(sizeof(*ids) * n);
 	uint32_t id;
 	uint64_t msg_count = 0;
 	int i, j;
 
+
+	char *ptn_str, *tmp, *endp;
+	if (ptn_ids) {
+		tmp = strdup(ptn_ids);
+		n = 0;
+		ptn_str = strtok_r(tmp, ",", &endp);
+		while (ptn_str) {
+			n++;
+			ptn_str = strtok_r(NULL, ",", &endp);
+		}
+		free(tmp);
+	}
+
+	uint32_t *ids = malloc(sizeof(*ids) * n);
 	if (!ids)
 		return ENOMEM;
 
-	for (i = 0, id = first_id; i < n; i++, id++) {
-		ids[i] = id;
+	if (ptn_ids) {
+		int i = 0;
+		tmp = strdup(ptn_ids);
+		ptn_str = strtok_r(tmp, ",", &endp);
+		while (ptn_str) {
+			ids[i++] = strtoul(ptn_str, NULL, 0);
+			ptn_str = strtok_r(NULL, ",", &endp);
+		}
+		free(tmp);
+	} else {
+		for (i = 0, id = first_id; i < n; i++, id++) {
+			ids[i] = id;
+		}
 	}
 
 	int rc = 0;
