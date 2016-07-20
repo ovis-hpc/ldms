@@ -256,8 +256,8 @@ window.baler =
                 g = @groups_ent[gid]
                 if not g
                     gname = "#{gid}.)"
-                    if group_names and group_names[gid]
-                        gname += "  " + group_names[gid]
+                    if @group_names and @group_names[gid]
+                        gname += "  " + @group_names[gid]
                     g = @groups_ent[gid] = new GrpLstEnt(gname, gid)
                     @domobj.appendChild(g.domobj)
                 g.addPtnLstEnt(p)
