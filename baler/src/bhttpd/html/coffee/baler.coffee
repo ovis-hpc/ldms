@@ -126,6 +126,23 @@ window.baler =
     get_ptns : (cb) ->
         baler.query({"type": "ptn"}, cb)
 
+    get_ptns_simple: (cb) ->
+        url = "#{bcfg.bhttpd.master_uri}/query"
+        $.get(url, {"type": "ptn_simple"}, (data) ->
+            lines = data.split('\n')
+            result = []
+            for line in lines
+                sep_idx = line.search(' ')
+                if sep_idx < 0
+                    continue # skip invalid line
+                ptn_id = line.substr(0, sep_idx)
+                ptn_text = line.substr(sep_idx+1, line.length)
+                obj = {ptn_id: ptn_id, ptn_text: ptn_text}
+                result.push(obj)
+            cb_data = {result: result}
+            cb(cb_data)
+        ) # $.get()
+
     get_metric_ptns: (cb) ->
         baler.query({"type": "metric_ptn"}, cb)
 
