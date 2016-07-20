@@ -1202,6 +1202,22 @@ int __get_url_param_int(struct bhttpd_req_ctxt *ctxt, const char *key,
 }
 
 static
+void get_closest_img_store_cb(const char *name, void *_ctxt)
+{
+	/* name format: spp-npp */
+	/* looking for min spp that is greater than the given spp */
+	struct bhttpd_req_ctxt *ctxt = _ctxt;
+	uint32_t spp, npp;
+	sscanf(name, "%u-%u", &spp, &npp);
+	if (spp > ctxt->spp)
+		return;
+	if (spp <= ctxt->sppMax)
+		return;
+	ctxt->sppMax = spp;
+	snprintf(ctxt->img_store, sizeof(ctxt->img_store), "%s", name);
+}
+
+static
 void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 {
 	int rc;
@@ -1211,7 +1227,7 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 	char ts1[16];
 	char host_ids[32];
 	const char *ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
-	const char *img_store = bpair_str_value(&ctxt->kvlist, "img_store");
+	const char *img_store = NULL;
 
 	float spp = __get_url_param_float(ctxt, "spp", 0);
 	float npp = __get_url_param_float(ctxt, "npp", 0);
@@ -1227,13 +1243,6 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 
 	struct bimgquery *q;
 
-	if (!img_store) {
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-				"Please specify 'img_store'"
-				" (see /list_img_store)");
-		return;
-	}
-
 	if (!width || !height) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 					"Please specify width and height");
@@ -1245,6 +1254,19 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 					"Please specify spp and npp");
 		return;
 	}
+
+	ctxt->spp = spp;
+	ctxt->sppMax = 0;
+	bq_imgstore_iterate(bq_store, get_closest_img_store_cb, ctxt);
+	if (ctxt->sppMax == 0) {
+		/* cannot find any image store */
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"No image store available.");
+		return;
+	}
+
+	img_store = ctxt->img_store;
+	bdebug("img_store: %s", img_store);
 
 	snprintf(ts0, sizeof(ts0), "%d", ts_begin);
 	snprintf(ts1, sizeof(ts0), "%d", ts_end);

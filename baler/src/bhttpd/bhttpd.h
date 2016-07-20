@@ -80,6 +80,10 @@ struct bhttpd_req_ctxt {
 	struct evbuffer *evbuffer;
 	struct evkeyvalq *hdr;
 	char errstr[1024];
+	/* these are for img2 query */
+	char img_store[4096];
+	int sppMax;
+	int spp;
 };
 
 typedef void (*bhttpd_req_handle_fn_t)(struct bhttpd_req_ctxt *ctxt);
