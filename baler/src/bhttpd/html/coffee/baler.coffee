@@ -980,7 +980,9 @@ window.baler =
                 inp = @dom_input[k] = LZH.input({id: id})
                 inp.placeholder = plc
                 li = LZH.li(null, LZH.span(class: "HeatMapNavCtrlLabel", lbl), inp)
-                ul.appendChild(li)
+                # Hide the node & date/time navigation control.
+                # Uncomment to show it (good for debugging).
+                #ul.appendChild(li)
             for i, [lbl, plc, id] of @dom_select_template
                 sel = @dom_input[i] = LZH.select({id: id})
                 sel.placeholder = plc
