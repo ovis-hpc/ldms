@@ -1116,8 +1116,11 @@ window.baler =
             rmbtn.onclick = () -> _this_.onRmBtnClicked(rmbtn)
 
             cpick = new ColorPicker(hue, (hue) -> _this_.onPickerHueChange(hue, idx))
+            ptn_ids_text = if (ptn_ids) then (ptn_ids) else ("Everything")
 
-            li = LZH.li({"style":"width:250px;overflow:auto;"}, chk, cpick.domobj, name, ":", ptn_ids, " ", rmbtn)
+            li = LZH.li({"style":"width:250px;overflow:auto;"},
+                            chk, cpick.domobj,
+                            name, ":", ptn_ids_text, " ", rmbtn)
 
             rmbtn.li = li
             @dom_layer_list.appendChild(li)
