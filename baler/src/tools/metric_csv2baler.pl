@@ -7,11 +7,13 @@ use Getopt::Long;
 
 my $host = "localhost";
 my $port = 30003;
+my $stdout;
 my $help;
 
 GetOptions(
 	"host=s" => \$host,
 	"port=i" => \$port,
+	"stdout" => \$stdout,
 	"help" => \$help
 );
 
@@ -21,8 +23,10 @@ my $addr = inet_aton($host);
 my $paddr = sockaddr_in($port, $addr);
 my $proto = getprotobyname("tcp");
 
-socket(SOCK, PF_INET, SOCK_STREAM, $proto) || die "socket: $!";
-connect(SOCK, $paddr) || die "connect: $!";
+unless ($stdout) {
+	socket(SOCK, PF_INET, SOCK_STREAM, $proto) || die "socket: $!";
+	connect(SOCK, $paddr) || die "connect: $!";
+}
 
 # Expecting metric names from the first line
 
@@ -38,18 +42,28 @@ while (my $line = <STDIN>) {
 	chomp $line;
 	my @values = split /,/, $line;
 	my $sec = $values[0];
-	my $comp_id = $values[1];
-	for (my $i = 2; $i < scalar @values; $i++) {
+	my $producer = $values[2];
+	my $comp_id = $values[3];
+	my $job_id = $values[4];
+	if ($stdout) {
+		print "sec   comp_id   name   value   len\n";
+	}
+	for (my $i = 5; $i < scalar @values; $i++) {
 		my $value = $values[$i];
 		my $name = $mname[$i];
 		my $len = length $name;
-		my $data = pack "L>L>d>L>a*", $sec, $comp_id, $value, $len, $name;
-		send SOCK, $data, 0;
+		if ($stdout) {
+			print "$sec   $comp_id   $name   $value   $len\n";
+		} else {
+			my $data = pack "L>L>d>L>a*", $sec, $comp_id, $value, $len, $name;
+			send SOCK, $data, 0;
+		}
 	}
 }
 
-close(SOCK);
-
+unless ($stdout) {
+	close(SOCK);
+}
 __END__
 
 =head1 NAME
