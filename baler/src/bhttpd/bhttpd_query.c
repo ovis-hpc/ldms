@@ -1365,6 +1365,82 @@ void bhttpd_handle_query_img(struct bhttpd_req_ctxt *ctxt)
 }
 
 static
+void bhttpd_handle_query_img_simple(struct bhttpd_req_ctxt *ctxt)
+{
+	int rc;
+	int first = 1;
+	struct bpixel p;
+	const char *nStr = bpair_str_value(&ctxt->kvlist, "n");
+	const char *ts0 = bpair_str_value(&ctxt->kvlist, "ts0");
+	const char *ts1 = bpair_str_value(&ctxt->kvlist, "ts1");;
+	const char *host_ids = bpair_str_value(&ctxt->kvlist, "host_ids");
+	const char *ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
+	const char *img_store = bpair_str_value(&ctxt->kvlist, "img_store");
+	const char *dir = bpair_str_value(&ctxt->kvlist, "dir");
+	int (*bq_step)(struct bquery *) = bq_next_entry;
+	int (*bq_init)(struct bquery *) = bq_first_entry;
+	int spp;
+	int n = 0;
+	struct bimgquery *q;
+
+	if (!img_store) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"Please specify 'img_store'"
+				" (see /list_img_store)");
+		return;
+	}
+
+	sscanf(img_store, "%d", &spp);
+
+	ctxt->spp = spp;
+	ctxt->sppMax = 0;
+	bq_imgstore_iterate(bq_store, get_closest_img_store_cb, ctxt);
+	if (ctxt->sppMax == 0) {
+		/* cannot find any image store */
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"No image store available.");
+		return;
+	}
+
+	if (nStr)
+		n = atoi(nStr);
+
+	if (n == 0)
+		n = 20;
+
+	if (dir && strcasecmp(dir, "bwd")==0) {
+		bq_step = bq_prev_entry;
+		bq_init = bq_last_entry;
+	}
+
+	q = bimgquery_create(bq_store, host_ids,
+			ptn_ids, ts0, ts1, ctxt->img_store, &rc);
+
+	if (!q) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+				"bimgquery_create() error, errno: %d", errno);
+		return;
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "{\"pixels\": [");
+	rc = bq_init((void*)q);
+	while (rc == 0 && n) {
+		rc = bq_img_entry_get_pixel(q, &p);
+		if (rc)
+			break;
+		if (first)
+			first = 0;
+		else
+			evbuffer_add_printf(ctxt->evbuffer, ",");
+		evbuffer_add_printf(ctxt->evbuffer, "[%d, %d, %d, %d]",
+					p.sec, p.comp_id, p.ptn_id, p.count);
+		n--;
+		rc = bq_step((void*)q);
+	}
+	evbuffer_add_printf(ctxt->evbuffer, "]}");
+	bimgquery_destroy(q);
+}
+
+static
 void bhttpd_handle_query_destroy_session(struct bhttpd_req_ctxt *ctxt)
 {
 	const char *_session_id = bpair_str_value(&ctxt->kvlist, "session_id");
@@ -1481,6 +1557,7 @@ struct bhttpd_handle_fn_entry query_handle_entry[] = {
 {  "HOST",         HTTP_CONT_JSON,    bhttpd_handle_query_host         },
 {  "IMG2",         HTTP_CONT_STREAM,  bhttpd_handle_query_img2         },
 {  "IMG",          HTTP_CONT_STREAM,  bhttpd_handle_query_img          },
+{  "IMG_SIMPLE",   HTTP_CONT_JSON,    bhttpd_handle_query_img_simple   },
 {  "META",         HTTP_CONT_JSON,    bhttpd_handle_query_meta         },
 {  "METRIC_META",  HTTP_CONT_JSON,    bhttpd_handle_query_metric_meta  },
 {  "METRIC_PTN",   HTTP_CONT_JSON,    bhttpd_handle_query_metric_ptn   },
