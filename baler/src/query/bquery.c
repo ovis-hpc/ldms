@@ -2691,15 +2691,17 @@ out:
  * \b bquery \b -t HOST \b -s STORE
  *
  * \b bquery \b -t MSG \b -s STORE [\b -B TS ] [\b -E TS]
- *          [\b -H NUM_LIST] [\b -P NUM_LIST] [\b -v]
+ *          [\b -H NUM_LIST] [\b -P NUM_LIST] [\b -v] [\b -R]
  *
  * \b bquery \b -t LIST_IMG \b -s STORE
  *
  * \b bquery \b -t IMG \b -s STORE \b -I IMG_STORE [\b -B TS ] [\b -E TS]
- *          [\b -H NUM_LIST] [\b -P NUM_LIST]
+ *          [\b -H NUM_LIST] [\b -P NUM_LIST] [\b -R]
  *
  * \b bquery \b -t PTN_STAT \b -s STORE [\b -B TS ] [\b -E TS]
  *          [\b -H NUM_LIST] [\b -P NUM_LIST]
+ *
+ * \b bquery \b -t MPTN \b -s STORE [\b -v]
  *
  * \section description DESCRIPTION
  *
@@ -2733,6 +2735,8 @@ out:
  * <b>host IDs</b> is comma-separated ranges and single numbers. For example
  * "1,3-9,20-30,100".
  *
+ * bquery will query messages in the reverse order if the option -R is given.
+ *
  * \subsection bquery_list_img LIST_IMG - Image store listing
  *
  * With option <b>-t LIST_IMG</b>, bquery will list all available image stores.
@@ -2754,6 +2758,15 @@ out:
  *
  * \b PTN_STAT uses '3600-1' image store to quickly calculate the statistics
  * with a little sacrifice of timestamp granularity (to the hour level).
+ *
+ * \subsection bquery_mptn MPTN - Meta-pattern listing
+ *
+ * With option <b>-t MPTN</b>, bquery will list all meta-pattern classes in
+ * the store. With the additional <b>-v</b> option, for each meta-pattern class,
+ * the number of patterns belonging to the class, the first-seen time, the
+ * last-seen time and the meta-pattern will be printed. Moreover, in each
+ * meta-pattern class, the patterns in the class, their pattern IDs, and the
+ * first-seen as well as the last-seen statistics of each pattern will be reported.
  *
  * \section options OPTIONS
  *
@@ -2813,7 +2826,10 @@ out:
  * \par
  * For <b>-t PTN</b>, the verbose flag will cause <b>bquery</b> to print count,
  * first-seen, and last-seen statistics of each pattern.
- *
+ * \par
+ * For <b>-t MPTN</b>, the verbose flag will cause <b>bquery</b> to print
+ * count of patterns in each meta-pattern class, the patterns and the pattern IDs
+ * in each class and the first-seen and the last-seen statistics.
  * \section examples EXAMPLES
  *
  * Get a list of hosts (or components):
@@ -3017,6 +3033,8 @@ void show_help()
 				  by component ID. Statistic calculation\n\
 				  can be limited by option -B,-E,-H,-P\n\
 				  similar to MSG query.\n\
+				* MPTN will list all meta patterns with their \n\
+				  pattern_ids.\n\
     --image-store-name,-I IMG_STORE_NAME\n\
 				The image store to query against.\n\
     --host-mask,-H NUMBER,...	The comma-separated list of numbers of\n\
@@ -3050,6 +3068,10 @@ void show_help()
 				[PTN_ID] before the actual message.\n\
 				For '-t PTN', this will also print pattern \n\
 				statistics (count, first seen, last seen).\n\
+				For '-t MPTN' this will also print the number of \n\
+				patterns in each meta-pattern class, \n\
+				the patterns and their pattern_ids in each class, \n\
+				the first-seen and the last-seen statistics \n\
     --sort-ptn-by,-S OPT        This option only applied to PTN query. \n\
 				It tells bquery to sort the output patterns \n\
 				by given OPT.  OPT canbe ID or ENG. Sort-by \n\
@@ -3057,6 +3079,9 @@ void show_help()
 				given, bquery will sort the output patterns \n\
 				by count(ENG tokens)/count(tokens) ratio. \n\
 				(default: ID) \n\
+    --reverse,-R		For '-t MSG' or '-t IMG', query the messages \n\
+				or the images, respectively, in \n\
+				the reverse chronological order. \n\
 \n"
 #if 0
 "Other OPTIONS:\n"
