@@ -1427,10 +1427,12 @@ again:
 	case BQ_CHECK_COND_PTN:
 		/* End of current PTN, continue with next PTN */
 		bsi_key.ptn_id = bq_entry_get_ptn_id(q) - 1;
-		rc = brange_u32_iter_bwd_seek(q->ptn_rng_itr, &bsi_key.ptn_id);
-		if (rc)
-			goto out;
-		assert(rc == 0);
+		if (q->ptn_rng_itr) {
+			rc = brange_u32_iter_bwd_seek(q->ptn_rng_itr, &bsi_key.ptn_id);
+			if (rc == ENOENT)
+				goto out;
+			assert(rc == 0);
+		}
 		brange_u32_iter_end(q->hst_rng_itr, &bsi_key.comp_id);
 		bsi_key.ts = q->ts_1;
 		break;
