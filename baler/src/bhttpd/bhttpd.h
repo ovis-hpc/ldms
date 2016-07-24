@@ -105,6 +105,60 @@ struct bhttpd_msg_query_session {
 	bq_msg_ref_t ref;
 };
 
+typedef enum {
+	IMG_PAN_UP,
+	IMG_PAN_DOWN,
+	IMG_PAN_LEFT,
+	IMG_PAN_RIGHT,
+	IMG_PAN_LAST
+} bimg_pan_dir_t;
+
+static
+const char *bimg_pan_dir_str[] = {
+	[IMG_PAN_UP]     =  "UP",
+	[IMG_PAN_DOWN]   =  "DOWN",
+	[IMG_PAN_LEFT]   =  "LEFT",
+	[IMG_PAN_RIGHT]  =  "RIGHT",
+};
+
+static
+bimg_pan_dir_t str2bimg_pan_dir(const char *str)
+{
+	int i;
+	if (!str)
+		return IMG_PAN_LAST;
+	for (i = 0; i < IMG_PAN_LAST; i++) {
+		if (strcasecmp(str, bimg_pan_dir_str[i]) == 0) {
+			break;
+		}
+	}
+	return i;
+}
+
+struct pan_ctxt {
+	struct bhttpd_req_ctxt *ctxt;
+	char img_store[20][64];
+	int img_spp[20];
+	int img_n;
+	int spp;
+	int npp;
+	int pxl_width;
+	int pxl_height;
+	uint32_t ts_begin;
+	uint32_t host_begin;
+	const char *ptn_ids;
+	bimg_pan_dir_t dir;
+	struct bpixel pxl;
+	char qts0[64];
+	char qts1[64];
+	char qhost_ids[128];
+	char qptn_id[64];
+	uint32_t ts, ts0, ts1;
+	uint32_t host0, host1;
+	int (*bq_init)(struct bquery *);
+	int (*bq_step)(struct bquery *);
+};
+
 void set_uri_handle(const char *uri, bhttpd_req_handle_fn_t fn);
 
 void *get_uri_handle(const char *uri);
@@ -120,6 +174,33 @@ const char *bpair_str_value(struct bpair_str_head *head, const char *key)
 	if (kv)
 		return kv->s1;
 	return NULL;
+}
+
+static inline
+int bpair_int_value(struct bpair_str_head *head, const char *key)
+{
+	struct bpair_str *kv = bpair_str_search(head, key, NULL);
+	if (kv)
+		return atoi(kv->s1);
+	return 0;
+}
+
+static inline
+uint32_t bpair_u32_value(struct bpair_str_head *head, const char *key)
+{
+	struct bpair_str *kv = bpair_str_search(head, key, NULL);
+	if (kv)
+		return strtoul(kv->s1, NULL, 0);
+	return 0;
+}
+
+static inline
+uint64_t bpair_u64_value(struct bpair_str_head *head, const char *key)
+{
+	struct bpair_str *kv = bpair_str_search(head, key, NULL);
+	if (kv)
+		return strtoul(kv->s1, NULL, 0);
+	return 0;
 }
 
 #endif

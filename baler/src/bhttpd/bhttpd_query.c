@@ -430,6 +430,7 @@
  */
 
 #include <event2/event.h>
+#include <assert.h>
 
 #include "bhttpd.h"
 #include "bq_fmt_json.h"
@@ -1441,6 +1442,244 @@ void bhttpd_handle_query_img_simple(struct bhttpd_req_ctxt *ctxt)
 }
 
 static
+void __bhttpd_handle_query_img_pan_store_cb(const char *name, void *_ctxt)
+{
+	struct pan_ctxt *pc = _ctxt;
+	int len;
+	if (pc->img_n >= 20)
+		return;
+	len = snprintf(pc->img_store[pc->img_n],
+			sizeof(pc->img_store[pc->img_n]), "%s", name);
+	if (len >= 64) {
+		berr("img store name too long (%d): %s", len, name);
+		pc->img_store[pc->img_n][0] = 0; /* reset to empty string */
+		return;
+	}
+	pc->img_n++;
+}
+
+static
+int __img_store_name_desc_cmp(const void *a, const void *b)
+{
+	int _a, _b;
+	sscanf(a, "%d", &_a);
+	sscanf(b, "%d", &_b);
+	if (_a < _b)
+		return 1;
+	if (_a > _b)
+		return -1;
+	return 0;
+}
+
+static
+void __dlog_pan_ctxt(struct pan_ctxt *pc)
+{
+	int i;
+	for (i = 0; i < pc->img_n; i++) {
+		bdebug("img_name[%d]: %s", i, pc->img_store[i]);
+		bdebug("img_spp[%d]: %d", i, pc->img_spp[i]);
+	}
+	bdebug("qts0: %s", pc->qts0);
+	bdebug("qts1: %s", pc->qts1);
+	bdebug("qhost_ids: %s", pc->qhost_ids);
+	bdebug("ptn_ids: %s", pc->ptn_ids);
+}
+
+static
+struct bpixel *__img_pan(struct pan_ctxt *pc)
+{
+	int i, rc;
+	struct bimgquery *q = NULL;
+	struct bpixel *pxl = NULL;
+	struct bpixel tmp;
+	uint32_t max_node;
+	max_node = bq_get_cmp_store(bq_store)->map->hdr->count - 1;
+	for (i = 0; i < pc->img_n; i++) {
+		if (pc->img_spp[i] <= pc->spp)
+			break;
+	}
+	if (i == pc->img_n) {
+		goto out;
+	}
+	switch (pc->dir) {
+	case IMG_PAN_UP:
+		pc->bq_init = bq_first_entry;
+		pc->bq_step = (void*)bq_next_entry;
+		snprintf(pc->qhost_ids, sizeof(pc->qhost_ids),
+				"%d-%d", pc->host1, max_node);
+		snprintf(pc->qts0, sizeof(pc->qts0), "%d", pc->ts0);
+		snprintf(pc->qts1, sizeof(pc->qts1), "%d", pc->ts1);
+		break;
+	case IMG_PAN_DOWN:
+		pc->bq_init = bq_last_entry;
+		pc->bq_step = (void*)bq_prev_entry;
+		snprintf(pc->qhost_ids, sizeof(pc->qhost_ids),
+				"%d-%d", 0, pc->host0);
+		snprintf(pc->qts0, sizeof(pc->qts0), "%d", pc->ts0);
+		snprintf(pc->qts1, sizeof(pc->qts1), "%d", pc->ts1);
+		break;
+	case IMG_PAN_LEFT:
+		pc->bq_init = bq_last_entry;
+		pc->bq_step = (void*)bimgquery_prev_ptn;
+		snprintf(pc->qhost_ids, sizeof(pc->qhost_ids),
+				"%d-%d", pc->host0, pc->host1 - 1);
+		snprintf(pc->qts0, sizeof(pc->qts0), "");
+		snprintf(pc->qts1, sizeof(pc->qts1), "%d", pc->ts0);
+		break;
+	case IMG_PAN_RIGHT:
+		pc->bq_init = bq_first_entry;
+		pc->bq_step = (void*)bimgquery_next_ptn;
+		snprintf(pc->qhost_ids, sizeof(pc->qhost_ids),
+				"%d-%d", pc->host0, pc->host1 - 1);
+		snprintf(pc->qts0, sizeof(pc->qts0), "%d", pc->ts1);
+		snprintf(pc->qts1, sizeof(pc->qts1), "");
+		break;
+	default:
+		assert(0);
+		break;
+	}
+
+	bdebug("i: %d", i);
+	q = bimgquery_create(bq_store, pc->qhost_ids, pc->ptn_ids,
+				pc->qts0, pc->qts1, pc->img_store[i], &rc);
+	if (!q)
+		goto out;
+	rc = pc->bq_init((void*)q);
+	if (rc)
+		goto cleanup;
+	bq_img_entry_get_pixel(q, &tmp);
+	pc->pxl = tmp;
+	pxl = &pc->pxl;
+
+	while (0 == (rc = pc->bq_step((void*)q))) {
+		bq_img_entry_get_pixel(q, &tmp);
+		switch (pc->dir) {
+		case IMG_PAN_UP:
+			pc->pxl.comp_id = BMIN(tmp.comp_id, pc->pxl.comp_id);
+			break;
+		case IMG_PAN_DOWN:
+			pc->pxl.comp_id = BMAX(tmp.comp_id, pc->pxl.comp_id);
+			break;
+		case IMG_PAN_LEFT:
+			pc->pxl.sec = BMAX(tmp.sec, pc->pxl.sec);
+			break;
+		case IMG_PAN_RIGHT:
+			pc->pxl.sec = BMIN(tmp.sec, pc->pxl.sec);
+			break;
+		default: /* suppressing warning */
+			break;
+		}
+	}
+
+	switch (pc->dir) {
+	case IMG_PAN_LEFT:
+	case IMG_PAN_RIGHT:
+		pxl->comp_id = pc->host0;
+		pxl->sec -= pc->spp*pc->pxl_width/2;
+		break;
+	case IMG_PAN_UP:
+	case IMG_PAN_DOWN:
+		pxl->comp_id -= pc->npp*pc->pxl_height/2;
+		if (((int)pxl->comp_id) < 0) {
+			pxl->comp_id = 0;
+		}
+		pxl->sec = pc->ts0;
+		break;
+	default:
+		break;
+	}
+
+cleanup:
+	bimgquery_destroy(q);
+out:
+	return pxl;
+}
+
+static
+void bhttpd_handle_query_img_pan(struct bhttpd_req_ctxt *ctxt)
+{
+	int rc, i;
+	int first = 1;
+	struct bpixel *pxl;
+	const uint32_t ts_begin = bpair_u32_value(&ctxt->kvlist, "ts_begin");
+	const uint32_t host_begin = bpair_u32_value(&ctxt->kvlist, "host_begin");
+	const int pxl_width = bpair_int_value(&ctxt->kvlist, "pxl_width");
+	const int pxl_height = bpair_int_value(&ctxt->kvlist, "pxl_height");
+	const int spp = bpair_int_value(&ctxt->kvlist, "spp");
+	const int npp = bpair_int_value(&ctxt->kvlist, "npp");
+	const char *ptn_ids = bpair_str_value(&ctxt->kvlist, "ptn_ids");
+	bimg_pan_dir_t dir = str2bimg_pan_dir(bpair_str_value(&ctxt->kvlist, "dir"));
+	struct bimgquery *q;
+	struct pan_ctxt *pc = NULL;
+
+	if (!npp) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Please specify 'npp'");
+		return;
+	}
+	if (!spp) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Please specify 'spp'");
+		return;
+	}
+	if (!pxl_width) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Please specify 'pxl_width'");
+		return;
+	}
+	if (!pxl_height) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Please specify 'pxl_height'");
+		return;
+	}
+	if (dir == IMG_PAN_LAST) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+					"Please specify 'dir'");
+		return;
+	}
+
+	pc = calloc(1, sizeof(*pc));
+	if (!pc) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+						"Not enough memory.");
+		return;
+	}
+	pc->npp = npp;
+	pc->spp = spp;
+	pc->dir = dir;
+	pc->ctxt = ctxt;
+	pc->pxl_width = pxl_width;
+	pc->pxl_height = pxl_height;
+	pc->ts_begin = ts_begin;
+	pc->host_begin = host_begin;
+	pc->host0 = host_begin;
+	pc->host1 = host_begin + npp*pxl_height;
+	pc->ts0 = ts_begin;
+	pc->ts1 = ts_begin + spp*pxl_width;
+
+	/* get all store names, order by spp */
+	bq_imgstore_iterate(bq_store, __bhttpd_handle_query_img_pan_store_cb, pc);
+	qsort(pc->img_store, pc->img_n,
+		sizeof(pc->img_store[0]), __img_store_name_desc_cmp);
+
+	for (i = 0; i < pc->img_n; i++) {
+		sscanf(pc->img_store[i], "%d", &pc->img_spp[i]);
+	}
+
+	pxl = __img_pan(pc);
+
+	if (!pxl) {
+		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
+						"No more entry.");
+		return;
+	}
+
+	evbuffer_add_printf(ctxt->evbuffer,
+		"{\"host_begin\": %d, \"ts_begin\": %d}", pxl->comp_id, pxl->sec
+	);
+}
+
+static
 void bhttpd_handle_query_destroy_session(struct bhttpd_req_ctxt *ctxt)
 {
 	const char *_session_id = bpair_str_value(&ctxt->kvlist, "session_id");
@@ -1558,6 +1797,7 @@ struct bhttpd_handle_fn_entry query_handle_entry[] = {
 {  "IMG2",         HTTP_CONT_STREAM,  bhttpd_handle_query_img2         },
 {  "IMG",          HTTP_CONT_STREAM,  bhttpd_handle_query_img          },
 {  "IMG_SIMPLE",   HTTP_CONT_JSON,    bhttpd_handle_query_img_simple   },
+{  "IMG_PAN",      HTTP_CONT_JSON,    bhttpd_handle_query_img_pan      },
 {  "META",         HTTP_CONT_JSON,    bhttpd_handle_query_meta         },
 {  "METRIC_META",  HTTP_CONT_JSON,    bhttpd_handle_query_metric_meta  },
 {  "METRIC_PTN",   HTTP_CONT_JSON,    bhttpd_handle_query_metric_ptn   },
