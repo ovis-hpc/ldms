@@ -7,7 +7,14 @@ Baler Web GUI widgets.
 
 ###
 
+window.D = {} # debugging object.
+
 window.baler =
+    UP: "UP"
+    DOWN: "DOWN"
+    LEFT: "LEFT"
+    RIGHT: "RIGHT"
+
     balerd:
         addr: (()->
             host = window.location.hostname
@@ -685,6 +692,8 @@ window.baler =
 
     HeatMapDisp: class HeatMapDisp extends Disp
         constructor: (@width=400, @height=400, @spp=3600, @npp=1, @ts_begin=0) ->
+            @spp = @spp*1
+            @npp = @npp*1
             @ts_begin = parseInt(@ts_begin/ @spp) * @spp
             @node_begin = parseInt(1 / @npp) * @npp
             @layers = undefined
@@ -793,6 +802,9 @@ window.baler =
             layer.spp = @spp
             layer.updateImage()
             layer.domobj.hidden = false
+
+        getActiveLayers: () ->
+            return (l for l in @layers when !l.domobj.hidden)
 
         onMouseUp: (event) ->
             if not @mouseDown
@@ -908,6 +920,8 @@ window.baler =
             return 0
 
         setNavParam: (@ts_begin, @node_begin, @spp, @npp) ->
+            @npp = @npp*1
+            @spp = @spp*1
             for l in @layers
                 l.ts_begin = @ts_begin
                 l.node_begin = @node_begin
@@ -999,16 +1013,50 @@ window.baler =
             @dom_input.nav_ts.value = ts_text
             @dom_input.nav_node.value = @hmap.node_begin
 
+            # buttons
             @nav_btn = LZH.button({"id":"nav-apply"}, "nav-apply")
             ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @nav_btn))
-            @see_all_btn = LZH.button({"id": "see-all"}, "see-all")
-            ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), @see_all_btn))
+
+            div = LZH.div({"id":"nav-arrows"})
+            div0 = LZH.div({"style":"text-align:center"})
+            div1 = LZH.div({"style":"text-align:center"})
+            div2 = LZH.div({"style":"text-align:center"})
+
+            @nav_up_btn = LZH.button({"id":"nav-up", "class":"nav-dir-btn"}, "")
+            $(@nav_up_btn).html("&#9650;")
+            div0.appendChild(@nav_up_btn)
+
+            @nav_left_btn = LZH.button({"id":"nav-left", "class":"nav-dir-btn"}, "")
+            $(@nav_left_btn).html("&#9668;")
+            div1.appendChild(@nav_left_btn)
+
+            @see_all_btn = LZH.button({"id": "see-all", "class":"nav-btn"}, "all")
+            div1.appendChild(@see_all_btn)
+
+            @nav_right_btn = LZH.button({"id":"nav-right", "class":"nav-dir-btn"}, "")
+            $(@nav_right_btn).html("&#9658;")
+            div1.appendChild(@nav_right_btn)
+
+            @nav_down_btn = LZH.button({"id":"nav-down", "class":"nav-dir-btn"}, "&dArr;")
+            $(@nav_down_btn).html("&#9660;")
+            div2.appendChild(@nav_down_btn)
+
+            LZH.addChildren(div, [div0, div1, div2])
+            ul.appendChild(LZH.li(null, LZH.span({class: "HeatMapNavCtrlLabel"}), div))
 
             @domobj = LZH.div({class: "HeatMapNavCtrl"}, ul)
             @nav_btn.onclick = (e) ->
                 _this_.onNavApply()
             @see_all_btn.onclick = (e) ->
                 _this_.onSeeAllClicked()
+            @nav_up_btn.onclick = (e) ->
+                _this_.onNavDirClicked(baler.UP)
+            @nav_down_btn.onclick = (e) ->
+                _this_.onNavDirClicked(baler.DOWN)
+            @nav_left_btn.onclick = (e) ->
+                _this_.onNavDirClicked(baler.LEFT)
+            @nav_right_btn.onclick = (e) ->
+                _this_.onNavDirClicked(baler.RIGHT)
 
             @hmap.registerOffsetChangeCb((ts, comp) -> _this_.onOffsetChange(ts, comp))
 
@@ -1023,6 +1071,43 @@ window.baler =
             comp_id = parseInt(comp_id/npp)*npp
             input.nav_node.value = comp_id
             @hmap.setNavParam(ts, comp_id, spp, npp)
+
+        onNavDirClicked: (btnDir) ->
+            activeLayers = @hmap.getActiveLayers()
+            if (activeLayers.length == 0)
+                # do nothing
+                return
+            ptn_ids = ""
+            for layer in activeLayers
+                if layer.ptn_ids == undefined
+                    ptn_ids = undefined
+                    break
+                if ptn_ids.length > 0
+                    ptn_ids += ","
+                ptn_ids += layer.ptn_ids
+            params = {
+                type: "img_pan",
+                ptn_ids: ptn_ids,
+                ts_begin: @hmap.ts_begin,
+                host_begin: @hmap.node_begin,
+                pxl_width: (@hmap.width/@hmap.pxlFactor),
+                pxl_height: (@hmap.height/@hmap.pxlFactor),
+                spp: @hmap.spp,
+                npp: @hmap.npp,
+                dir: btnDir,
+            }
+            _this_ = this
+            baler.query params, (ret) ->
+                hmap = _this_.hmap
+                window.ret = ret # for debugging
+                D.oldParam = {
+                    ts_begin: hmap.ts_begin,
+                    host_begin: hmap.node_begin,
+                }
+                D.ret = ret
+                D.spp = hmap.spp
+                D.npp = hmap.npp
+                hmap.setNavParam(ret.ts_begin, ret.host_begin, hmap.spp, hmap.npp)
 
         onSeeAllClicked: () ->
             # come back here
