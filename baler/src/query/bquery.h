@@ -281,6 +281,24 @@ int bq_next_entry(struct bquery *q);
 int bq_prev_entry(struct bquery *q);
 
 /**
+ * Special move for imgquery to move the reference to the first entry of the
+ * next pattern.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bimgquery_next_ptn(struct bimgquery *imgq);
+
+/**
+ * Special move for imgquery to move the reference to the last entry of the
+ * previous pattern.
+ *
+ * \retval 0 OK
+ * \retval errno if error.
+ */
+int bimgquery_prev_ptn(struct bimgquery *imgq);
+
+/**
  * Go to the last entry that matches the query.
  *
  * \retval 0 OK

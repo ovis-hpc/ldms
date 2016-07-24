@@ -1144,6 +1144,9 @@ int bq_img_last_entry(struct bquery *q);
 int bq_img_get_pos(struct bquery *q, struct bquery_pos *pos);
 int bq_img_set_pos(struct bquery *q, struct bquery_pos *pos);
 
+int bimgquery_next_ptn(struct bimgquery *q);
+int bimgquery_prev_ptn(struct bimgquery *q);
+
 static
 int __bq_img_open_bsos(struct bimgquery *imgq)
 {
@@ -1390,6 +1393,74 @@ out:
 	return rc;
 }
 
+int bimgquery_next_ptn(struct bimgquery *imgq)
+{
+	SOS_KEY(key);
+	struct bsos_img_key bsi_key;
+	struct bquery *q = &imgq->base;
+	bq_msg_ref_t ref;
+	int rc;
+
+	ref = bq_entry_get_ref(q);
+	if (ref.ref[0] == 0 && ref.ref[1] == 0) {
+		return ENOENT;
+	}
+
+	goto next_ptn;
+
+again:
+	__img_obj_update(imgq);
+	rc = bq_check_cond(q);
+	switch (rc) {
+	case BQ_CHECK_COND_OK:
+		goto out;
+	case BQ_CHECK_COND_TS0:
+		bsi_key.ptn_id = bq_entry_get_ptn_id(q);
+		bsi_key.ts = q->ts_0;
+		bsi_key.comp_id = bq_entry_get_comp_id(q);
+		break;
+	case BQ_CHECK_COND_HST:
+		bsi_key.ptn_id = bq_entry_get_ptn_id(q);
+		bsi_key.ts = bq_entry_get_sec(q);
+		bsi_key.comp_id = bq_entry_get_comp_id(q) + 1;
+		rc = brange_u32_iter_fwd_seek(q->hst_rng_itr, &bsi_key.comp_id);
+		switch (rc) {
+		case ENOENT:
+			/* use next timestamp */
+			bsi_key.ts++;
+			brange_u32_iter_begin(q->hst_rng_itr, &bsi_key.comp_id);
+			break;
+		case EINVAL:
+			bsi_key.comp_id = q->hst_rng_itr->current_value;
+			break;
+		}
+		break;
+	case BQ_CHECK_COND_TS1:
+	case BQ_CHECK_COND_PTN:
+next_ptn:
+		/* End of current PTN, continue with next PTN */
+		bsi_key.ptn_id = bq_entry_get_ptn_id(q) + 1;
+		if (q->ptn_rng_itr) {
+			rc = brange_u32_iter_fwd_seek(q->ptn_rng_itr,
+							&bsi_key.ptn_id);
+			if (rc == ENOENT)
+				goto out;
+			assert(rc == 0);
+		}
+		brange_u32_iter_begin(q->hst_rng_itr, &bsi_key.comp_id);
+		bsi_key.ts = q->ts_0;
+		break;
+	}
+
+	bsos_img_key_htobe(&bsi_key);
+	sos_key_set(key, &bsi_key, sizeof(bsi_key));
+	rc = sos_iter_sup(q->itr, key); /* this will already be the first dup */
+	if (!rc)
+		goto again;
+out:
+	return rc;
+}
+
 int bq_img_prev_entry(struct bquery *q)
 {
 	struct bimgquery *imgq = (void*)q;
@@ -1425,6 +1496,70 @@ again:
 		break;
 	case BQ_CHECK_COND_TS0:
 	case BQ_CHECK_COND_PTN:
+		/* End of current PTN, continue with next PTN */
+		bsi_key.ptn_id = bq_entry_get_ptn_id(q) - 1;
+		if (q->ptn_rng_itr) {
+			rc = brange_u32_iter_bwd_seek(q->ptn_rng_itr, &bsi_key.ptn_id);
+			if (rc == ENOENT)
+				goto out;
+			assert(rc == 0);
+		}
+		brange_u32_iter_end(q->hst_rng_itr, &bsi_key.comp_id);
+		bsi_key.ts = q->ts_1;
+		break;
+	}
+
+	bsos_img_key_htobe(&bsi_key);
+	sos_key_set(key, &bsi_key, sizeof(bsi_key));
+	rc = __sos_iter_inf_last(q->itr, key); /* this point to the last dup */
+	if (!rc)
+		goto again;
+
+out:
+	return rc;
+}
+
+int bimgquery_prev_ptn(struct bimgquery *imgq)
+{
+	struct bquery *q = (void*)imgq;
+	SOS_KEY(key);
+	sos_key_t sos_key;
+	struct bsos_img_key bsi_key;
+	bq_msg_ref_t ref;
+	int rc;
+
+	ref = bq_entry_get_ref(q);
+	if (ref.ref[0] == 0 && ref.ref[1] == 0) {
+		return ENOENT;
+	}
+
+	goto prev_ptn;
+
+again:
+	__img_obj_update(imgq);
+	rc = bq_check_cond(q);
+	switch (rc) {
+	case BQ_CHECK_COND_OK:
+		goto out;
+	case BQ_CHECK_COND_TS1:
+		bsi_key.ptn_id = bq_entry_get_ptn_id(q);
+		bsi_key.ts = q->ts_1;
+		bsi_key.comp_id = bq_entry_get_comp_id(q);
+		break;
+	case BQ_CHECK_COND_HST:
+		bsi_key.ptn_id = bq_entry_get_ptn_id(q);
+		bsi_key.ts = bq_entry_get_sec(q);
+		bsi_key.comp_id = bq_entry_get_comp_id(q) - 1;
+		rc = brange_u32_iter_bwd_seek(q->hst_rng_itr, &bsi_key.comp_id);
+		if (rc) {
+			/* use next timestamp */
+			bsi_key.ts--;
+			brange_u32_iter_end(q->hst_rng_itr, &bsi_key.comp_id);
+		}
+		break;
+	case BQ_CHECK_COND_TS0:
+	case BQ_CHECK_COND_PTN:
+prev_ptn:
 		/* End of current PTN, continue with next PTN */
 		bsi_key.ptn_id = bq_entry_get_ptn_id(q) - 1;
 		if (q->ptn_rng_itr) {
