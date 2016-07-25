@@ -1383,13 +1383,77 @@ int process_cmd_plugin(struct bconfig_list *cfg)
 	return EINVAL;
 }
 
+struct __process_cmd_tokens_line_ctxt {
+	btkn_type_t tkn_type;
+	struct btkn_store *store;
+	union {
+		char _buff[1024 + sizeof(struct bstr)];
+		struct bstr bstr;
+	};
+};
+
+static
+int __process_cmd_tokens_line_cb(char *line, void *_ctxt)
+{
+	struct __process_cmd_tokens_line_ctxt *ctxt = _ctxt;
+	char *id_str;
+	uint32_t tkn_id;
+	int n;
+	int spc_idx;
+	int has_tkn_id = 0;
+	int len;
+	/* get rid of leading spaces, trailing spaces has been eliminated before
+	 * this callback. */
+	while (*line && isspace(*line)) {
+		line++;
+	}
+	if (!*line)
+		return 0; /* skip empty line */
+	/* prep token */
+	n = sscanf(line, "%*s%n %u", &spc_idx, &tkn_id);
+	if (n==1) {
+		/* has tkn_id */
+		has_tkn_id = 1;
+		line[spc_idx] = 0;
+	}
+	len = strlen(line);
+	if (len > 1023) {
+		berr("token too long: %s", line);
+		return 0;
+	}
+	bstr_set_cstr(&ctxt->bstr, line, strlen(line));
+
+	/* inssert */
+	if (has_tkn_id) {
+		/* User's hostid/compid is tkn_id - BMAP_ID_BEGIN */
+		if (ctxt->tkn_type == BTKN_TYPE_HOST) {
+			tkn_id = bcompid2mapid(tkn_id);
+		}
+		tkn_id = btkn_store_insert_with_id(ctxt->store, &ctxt->bstr, tkn_id);
+	} else {
+		tkn_id = btkn_store_insert(ctxt->store, &ctxt->bstr);
+	}
+
+	if (tkn_id == BMAP_ID_ERR) {
+		/* log and continue ... don't return error to stop the
+		 * insertion process */
+		berr("cannot insert '%s' into token store", line);
+		return 0;
+	}
+
+	/* set type */
+	struct btkn_attr attr = {ctxt->tkn_type};
+	btkn_store_set_attr(ctxt->store, tkn_id, attr);
+	return 0;
+}
+
 /**
  * \returns 0 on success.
  * \returns Error code on error.
  */
 int process_cmd_tokens(struct bconfig_list *cfg)
 {
-	struct btkn_store *store;
+	int rc;
 	struct bpair_str *bp_path = bpair_str_search(&cfg->arg_head_s, "path",
 									NULL);
 	struct bpair_str *bp_type = bpair_str_search(&cfg->arg_head_s, "type",
@@ -1397,42 +1461,33 @@ int process_cmd_tokens(struct bconfig_list *cfg)
 	if (!bp_path || !bp_type)
 		return EINVAL;
 
+	struct __process_cmd_tokens_line_ctxt *ctxt = malloc(sizeof(*ctxt));
+	if (!ctxt) {
+		return ENOMEM;
+	}
+
 	const char *path = bp_path->s1;
-	btkn_type_t tkn_type = btkn_type(bp_type->s1);
-	switch (tkn_type) {
+	ctxt->tkn_type = btkn_type(bp_type->s1);
+	switch (ctxt->tkn_type) {
 	case BTKN_TYPE_HOST:
-		store = comp_store;
+		ctxt->store = comp_store;
 		break;
 	case BTKN_TYPE_ENG:
-		store = token_store;
+		ctxt->store = token_store;
 		break;
 	default:
 		berr("Unknown token type: %s\n", bp_type->s1);
-		return EINVAL;
+		rc = EINVAL;
+		goto cleanup;
 	}
-	FILE *fi = fopen(path, "rt");
-	if (!fi)
-		return errno;
-	char buff[1024 + sizeof(struct bstr)];
-	struct bstr *bstr = (void*)buff;
-	char *c;
-	uint32_t tkn_id;
-	while (fgets(bstr->cstr, 1024, fi)) {
-		c = bstr->cstr + strlen(bstr->cstr) - 1;
-		while (isspace(*c))
-			*c-- = '\0';
-		bstr->blen = strlen(bstr->cstr);
-		if (!bstr->blen)
-			continue; /* skip empty line */
-		tkn_id = btkn_store_insert(store, bstr);
-		if (tkn_id == BMAP_ID_ERR) {
-			berr("cannot insert '%s' into token store", bstr->cstr);
-			return errno;
-		}
-		struct btkn_attr attr = {tkn_type};
-		btkn_store_set_attr(store, tkn_id, attr);
-	}
-	return 0;
+
+	rc = bprocess_file_by_line_w_comment(path,
+					__process_cmd_tokens_line_cb, ctxt);
+
+cleanup:
+	if (ctxt)
+		free(ctxt);
+	return rc;
 }
 
 int process_cmd_hosts(struct bconfig_list *bl)

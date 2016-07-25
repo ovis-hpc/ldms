@@ -329,15 +329,14 @@ int bq_local_host_routine(struct bq_store *s)
 	int rc = 0;
 	char buff[4096];
 	uint32_t id = BMAP_ID_BEGIN;
-	uint32_t count = s->cmp_store->map->hdr->count;
+	uint32_t next_id = s->cmp_store->map->hdr->next_id;
 	printf("-------- --------------\n");
 	printf(" host_id hostname\n");
 	printf("-------- --------------\n");
-	while (count) {
+	while (id<next_id) {
 		rc = btkn_store_id2str(s->cmp_store, id, buff, sizeof(buff));
 		printf("%8d %s\n", bmapid2compid(id), buff);
 		id++;
-		count--;
 	}
 	printf("-------- --------------\n");
 	return rc;

@@ -80,6 +80,15 @@ struct __attribute__((packed)) bmlnode_u32 {
 };
 
 /**
+ * \brief Baler MMapped List node for bmapper hash table.
+ */
+struct __attribute__((packed)) bmlnode_mapper {
+	uint32_t id;
+	uint64_t str_off; /* need this due to aliasing */
+	struct bmlist_link link;
+};
+
+/**
  * \brief A utility macro to get the next element in the list.
  */
 #define BMLIST_NEXT(elm, field, bmem) BMPTR(bmem, elm->field.next)

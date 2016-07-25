@@ -273,7 +273,7 @@ int bmap_rehash(struct bmap *map, int nmemb)
 	}
 	/* Then,  we can iterate through the nodes in mlist, discarding their
 	 * old links and create new ones according to the new hash. */
-	struct bmlnode_u32 *node = map->mlist->ptr;
+	struct bmlnode_mapper *node = map->mlist->ptr;
 	uint64_t node_off = sizeof(map->mlist->hdr);
 	uint64_t len = map->mlist->hdr->ulen;
 
@@ -281,7 +281,7 @@ int bmap_rehash(struct bmap *map, int nmemb)
 	struct bmem *mstr = map->mstr;
 
 	while (node_off < len) {
-		struct bstr *str = BMPTR(mstr, stridx[node->data]);
+		struct bstr *str = BMPTR(mstr, node->str_off);
 		/* NOTE: We can speed up the re-hashing by remembering the hash
 		 * key before modulo. bhash will always return the same value
 		 * given the same input. This is mark as IMPROVE LATER.
@@ -317,20 +317,20 @@ uint32_t bmap_get_id_plus64(struct bmap *map,
 	struct bmem *mlist = map->mlist;
 	struct bmem *mstr = map->mstr;
 	struct bvec_u64 *str_idx = map->bmstr_idx->bvec;
-	struct bmlnode_u32 *node;
+	struct bmlnode_mapper *node;
 	int id = BMAP_ID_NOTFOUND;
 	BMLIST_FOREACH(node, lhead, link, mlist) {
-		if (!node->data) {
+		if (!node->id) {
 			/* This is not supposed to happen */
 			berr("node->data is NULL");
 			id = BMAP_ID_ERR;
 			goto out;
 		}
-		struct bstr *_str = BMPTR(mstr, str_idx->data[node->data]);
+		struct bstr *_str = BMPTR(mstr, node->str_off);
 		if (_str->blen != str->blen)
 			continue;
 		if (memcmp(_str->cstr, str->cstr, str->blen) == 0) {
-			id = node->data;
+			id = node->id;
 			break;
 		}
 	}
@@ -379,7 +379,7 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 {
 	uint32_t id;
 	uint64_t hidx;
-	const struct bstr *prev_bstr;
+	const struct bstr *prev_bstr = NULL;
 
 	/* Check first if s exists in the map. */
 	if ((id=bmap_get_id_plus64(bm, s, &hidx)) != BMAP_ID_NOTFOUND) {
@@ -390,11 +390,7 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 
 	/* Also check if id exists in the map */
 	prev_bstr = bmap_get_bstr(bm, _id);
-	if (prev_bstr) {
-		bdebug("ERR: %s: prev_bstr exists for id: %d, prev_bstr: %.*s",
-				__func__, _id, prev_bstr->blen, prev_bstr->cstr);
-		return BMAP_ID_INVAL;
-	}
+	/* Let through, allowing str aliasing */
 
 	pthread_mutex_lock(&bm->mutex);
 	/* If s does not exist, allocate space for new bstr, and copy it */
@@ -413,15 +409,17 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 		bm->hdr->next_id = id + 1;
 	}
 
-	/* and set an index to it */
-	if (bmvec_u64_set(bm->bmstr_idx, id, str_off)) {
-		berror("bmvec_u64_set");
-		id = BMAP_ID_ERR;
-		goto out;
+	if (!prev_bstr) {
+		/* and set an index to it if this is the first of the alias */
+		if (bmvec_u64_set(bm->bmstr_idx, id, str_off)) {
+			berror("bmvec_u64_set");
+			id = BMAP_ID_ERR;
+			goto out;
+		}
 	}
 
 	/* Allocate a node in linked list */
-	struct bmlnode_u32 *node;
+	struct bmlnode_mapper *node;
 	struct bmem *mlist = bm->mlist;
 	int64_t node_off = bmem_alloc(mlist, sizeof(*node));
 	if (!node_off) {
@@ -430,7 +428,8 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 		goto out;
 	}
 	node = BMPTR(mlist, node_off);
-	node->data = id;
+	node->id = id;
+	node->str_off = str_off;
 
 	/* And insert it into list head (a cell in hash table) */
 	uint64_t *hdata = bm->bmhash->bvec->data;
@@ -452,6 +451,24 @@ void bmap_dump(struct bmap *bmap)
 		if (!bstr)
 			continue;
 		printf("%10u %.*s\n", id, bstr->blen, bstr->cstr);
+	}
+}
+
+void bmap_dump_inverse(struct bmap *map)
+{
+	uint64_t idx;
+	uint64_t *hdata = map->bmhash->bvec->data;
+	uint64_t hlen = map->bmhash->bvec->len;
+	struct bmem *mlist = map->mlist;
+	struct bmem *mstr = map->mstr;
+	struct bvec_u64 *str_idx = map->bmstr_idx->bvec;
+	struct bmlnode_mapper *node;
+
+	for (idx = 0; idx < hlen; idx++) {
+		BMLIST_FOREACH(node, hdata[idx], link, mlist) {
+			struct bstr *_str = BMPTR(mstr, node->str_off);
+			printf("%.*s %u\n", _str->blen, _str->cstr, node->id);
+		}
 	}
 }
 

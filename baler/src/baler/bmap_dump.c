@@ -6,13 +6,14 @@
 
 #include "bmapper.h"
 
-#define FMT "?hs:"
+#define FMT "?hs:I"
 
 const char *path = NULL;
+int inverse = 0;
 
 void usage()
 {
-	printf("\nUSAGE: bmap_dump -s MAP_FILE\n\n");
+	printf("\nUSAGE: bmap_dump [-I] -s MAP_FILE\n\n");
 	exit(-1);
 }
 
@@ -26,6 +27,9 @@ next_arg:
 		goto no_arg;
 	case 's':
 		path = optarg;
+		break;
+	case 'I':
+		inverse = 1;
 		break;
 	case '?':
 	case 'h':
@@ -58,7 +62,11 @@ no_arg:
 		printf("Cannot open map: %s\n", path);
 		exit(-1);
 	}
-	bmap_dump(bmap);
+	if (inverse) {
+		bmap_dump_inverse(bmap);
+	} else {
+		bmap_dump(bmap);
+	}
 	bmap_close_free(bmap);
 
 	return 0;
