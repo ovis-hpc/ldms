@@ -52,8 +52,19 @@
  * \file bin_metric.c
  * \author Narate Taerat (narate at ogc dot us)
  *
- * \defgroup bin_rsyslog_tcp rsyslog TCP input plugin
+ * \defgroup bin_metric Metric input plugin
  * \{
+ *
+ * The plugin listens on a port and receives metric value stream.
+ * The plugin has two required attributes: listen port and configuration file.
+ * The configuration file contains, at each line,
+ * <metric name\>:<lower bound of bin 1>,<lower bound of bin 2>,...,<lower bound of bin N\>.
+ * For example, percentage_of_MemFree:0,10,20,...,80,90
+ *
+ * Example of configuration line in a baler configuration file.
+ *
+ * plugin name=bin_metric bin_file=<path to plugin configuration file> port=<listener port>
+ *
  */
 #include "baler/binput.h"
 #include "baler/butils.h"
