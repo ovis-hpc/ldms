@@ -444,7 +444,7 @@ window.baler =
 
         query_cb: (data, textStatus, jqXHR) ->
             if not data.session_id
-                cosole.log("MsgTable query error
+                console.log("MsgTable query error
                     (check __msgtable_datat for debugging)")
                 return -1
             if @query_param.session_id != data.session_id
@@ -1104,6 +1104,9 @@ window.baler =
                     ts_begin: hmap.ts_begin,
                     host_begin: hmap.node_begin,
                 }
+                if ret.ts_begin == -1
+                    alert("End of available entries")
+                    return
                 D.ret = ret
                 D.spp = hmap.spp
                 D.npp = hmap.npp

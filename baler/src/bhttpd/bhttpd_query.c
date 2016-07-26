@@ -1669,8 +1669,8 @@ void bhttpd_handle_query_img_pan(struct bhttpd_req_ctxt *ctxt)
 	pxl = __img_pan(pc);
 
 	if (!pxl) {
-		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
-						"No more entry.");
+		evbuffer_add_printf(ctxt->evbuffer,
+			"{\"host_begin\": -1, \"ts_begin\": -1}");
 		return;
 	}
 
