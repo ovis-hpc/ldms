@@ -17,6 +17,7 @@ while (1) {
 	}
 	chomp $l0;
 	chomp $l1;
+	$l0 =~ s/ +/ /g;
 	if ($l0 ne $l1) {
 		die "non matching messages!\n  l0: $l0\n  l1: $l1\n";
 	}

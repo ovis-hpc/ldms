@@ -16,7 +16,7 @@ my @simple_word = (
 	"Nine",
 );
 
-my $ptn_prefix = "This is pattern";
+my $ptn_prefix = "This    is   pattern";
 
 for (my $i = 0; $i < $BTEST_N_PATTERNS; $i++) {
 	print get_pattern($i), "\n";

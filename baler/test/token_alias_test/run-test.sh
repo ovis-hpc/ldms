@@ -15,7 +15,7 @@ tokens type=HOST path=$BTEST_HOST_LIST
 plugin name=bout_sos_img delta_ts=3600
 plugin name=bout_sos_img delta_ts=60
 plugin name=bout_sos_msg
-plugin name=bin_rsyslog_tcp port=$BTEST_BIN_RSYSLOG_PORT
+plugin name=bin_rsyslog_tcp port=$BTEST_BIN_RSYSLOG_PORT collapse_spaces=1
 EOF
 } > $BCONFIG
 

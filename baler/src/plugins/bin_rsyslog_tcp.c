@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-16 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-16 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -125,6 +125,7 @@ struct plugin_ctxt {
 	pthread_t conn_req_thread; /**< Thread handling conn req. */
 	uint16_t port; /**< Port number to listen to. */
 	int status; /**< Status of the plugin. */
+	int collapse_spaces; /**< `collapse_spaces` flag */
 };
 
 /**
@@ -515,7 +516,7 @@ int parse_msg_hdr(struct bstr *str, struct binq_data *d)
  * \return NULL on error.
  */
 static
-struct bstr_list_entry* get_token(char **s)
+struct bstr_list_entry* get_token(struct bplugin *p, char **s)
 {
 	struct bstr_list_entry *ent;
 	char *_s = *s;
@@ -534,6 +535,13 @@ struct bstr_list_entry* get_token(char **s)
 		/* String is not terminated, back up and treat quote as a
 		 * delimiter */
 		_s = *s;
+	}
+	if (*_s == ' ' && ((struct plugin_ctxt *)p->context)->collapse_spaces) {
+		while (*_s == ' ') {
+			_s++;
+		}
+		len = 1;
+		goto out_1;
 	}
 	if (is_delim[*_s]) {
 		len = 1;
@@ -560,7 +568,7 @@ out_1:
  * \return A pointer to ::bwq_entry on success.
  */
 static
-struct bwq_entry* prepare_bwq_entry(struct bstr *s)
+struct bwq_entry* prepare_bwq_entry(struct bplugin *p, struct bstr *s)
 {
 	struct bwq_entry *qent = calloc(1, sizeof(*qent));
 	if (!qent)
@@ -580,7 +588,7 @@ struct bwq_entry* prepare_bwq_entry(struct bstr *s)
 	char *_s = s->cstr + midx + 1; /* skip the field delimiting ' ' */
 	struct bstr_list_entry *lent = NULL;
 	int count = 0;
-	while (*_s && (lent = get_token(&_s))) {
+	while (*_s && (lent = get_token(p, &_s))) {
 		if (!tok_tail)
 			LIST_INSERT_HEAD(tok_head, lent, link);
 		else
@@ -634,7 +642,7 @@ loop:
 				str->blen, len);
 	}
 	str->cstr[str->blen-1] = 0; /* Eliminate the '\n' */
-	struct bwq_entry *ent = prepare_bwq_entry(str);
+	struct bwq_entry *ent = prepare_bwq_entry(p, str);
 	if (ent)
 		binq_post(ent);
 	bstr_free(str);
@@ -851,6 +859,10 @@ int plugin_config(struct bplugin *this, struct bpair_str_head *arg_head)
 		uint16_t port = atoi(bpstr->s1);
 		ctxt->port = port;
 	}
+	bpstr = bpair_str_search(arg_head, "collapse_spaces", NULL);
+	if (bpstr) {
+		ctxt->collapse_spaces = atoi(bpstr->s1);
+	}
 	return rc;
 }
 
@@ -1018,6 +1030,7 @@ struct bplugin* create_plugin_instance()
 	struct plugin_ctxt *ctxt = calloc(1, sizeof(*ctxt));
 	ctxt->status = PSTATUS_STOPPED;
 	ctxt->port = PLUGIN_DEFAULT_PORT;
+	ctxt->collapse_spaces = 0;
 	p->context = ctxt;
 	return p;
 }
