@@ -56,14 +56,19 @@ endif
 
 if ENABLE_DOC_MAN
 
+# generate man1 from Doxygen man3 output.
+man/man1/%.1: man/man3/%.3
+	mkdir -p man/man1
+	sed -r 's/^(.TH) ([^ ]+) 3 (.*)/\1 \2 1 \3/' $< > $@
+
 # Doxygen generate only one section (default: 3), which makes sense since a lot
 # of documentation is development documentation.
 #
-# man1_files will be installed into section 1 by automake afterward.
-man1_files = man/man3/balerd.3 \
-	    man/man3/bhttpd.3 \
-	    man/man3/bquery.3 \
-	    man/man3/bassoc.3
+# man1_files will use the rule above to convert man3 to man1.
+man1_files = man/man1/balerd.1 \
+	    man/man1/bhttpd.1 \
+	    man/man1/bquery.1 \
+	    man/man1/bassoc.1
 
 $(man1_files): doxygen-out
 
