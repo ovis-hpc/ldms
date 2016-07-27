@@ -2227,11 +2227,14 @@ int do_connect(struct hostspec *hs)
 	ret  = ldms_connect(hs->x, (struct sockaddr *)&hs->sin,
 			    sizeof(hs->sin));
 	if (ret) {
+		ldms_log(LDMS_LINFO, "Connect fail for '%s'.\n", hs->hostname);
 		goto err;
 	}
 	ret = ldms_xprt_auth(hs->x);
-	if (ret)
+	if (ret) {
+		ldms_log(LDMS_LINFO, "Auth fail for '%s'.\n", hs->hostname);
 		goto err;
+	}
 	return 0;
  err:
 	/* Release the connect reference */

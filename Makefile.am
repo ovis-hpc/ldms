@@ -26,14 +26,19 @@ banned:
 	(cd ldms; make banned)
 
 rpm centos: dist-gzip
-	mkdir -p centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	$(MKDIR_P) centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(BASE_TARBALL) packaging/ovis-base.spec centos/SOURCES
 	rpmbuild --define "_topdir `pwd`/centos" -ba packaging/ovis-base.spec
 
 toss: dist-gzip
-	mkdir -p toss/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	$(MKDIR_P) toss/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(BASE_TARBALL) packaging/ovis-base.spec toss/SOURCES
 	rpmbuild --define "_topdir `pwd`/toss" -ba packaging/ovis-base.spec
+
+toss3: dist-gzip
+	mkdir -p toss3/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	cp $(BASE_TARBALL) packaging/ovis-rhel7.spec toss3/SOURCES
+	rpmbuild --define "_topdir `pwd`/toss3" -ba packaging/ovis-rhel7.spec
 
 rpm-clean:
 	rm -rf rpm/ centos
@@ -43,7 +48,7 @@ clean-local: rpm-clean
 
 install-exec-local:
 	if test -d libevent-2.0.21-stable/lib/ovis-ldms/lib; then \
-		mkdir -p $(DESTDIR)$(libdir)/ovis-libevent ; \
+		$(MKDIR_P) $(DESTDIR)$(libdir)/ovis-libevent ; \
 		cp -a libevent-2.0.21-stable/lib/ovis-ldms/lib/* $(DESTDIR)$(libdir)/ovis-libevent/ ;\
 		sed -i -e 's%LD_LIBRARY_PATH=.*%LD_LIBRARY_PATH=${libdir}/ovis-libevent:$$LD_LIBRARY_PATH%' \
 			$(DESTDIR)$(bindir)/*.sh ; \
