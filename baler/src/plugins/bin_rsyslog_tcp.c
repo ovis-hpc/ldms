@@ -76,7 +76,7 @@
 #include <unistd.h>
 #include <assert.h>
 
-#define PLUGIN_DEFAULT_PORT 54321u
+#define PLUGIN_DEFAULT_PORT 10514
 
 static struct event_base *io_evbase;
 
