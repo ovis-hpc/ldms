@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-16 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-16 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -2834,13 +2834,13 @@ out:
  *
  * Get a list of hosts (or components):
  * \par
- * \code{.sh}
+ * \code
  * bquery -s store/ -t HOST
  * \endcode
  *
  * Get a list of patterns:
  * \par
- * \code{.sh}
+ * \code
  * # No statistics
  * bquery -s store/ -t PTN
  *
@@ -2850,7 +2850,7 @@ out:
  *
  * Message query examples:
  * \par
- * \code{.sh}
+ * \code
  * # All messages from host 10, 12, 13, 14, and 15
  * bquery -s store/ -t MSG -H 10,12-15
  *
@@ -2867,13 +2867,13 @@ out:
  *
  * List available image stores:
  * \par
- * \code{.sh}
+ * \code
  * bquery -s store/ -t LIST_IMG
  * \endcode
  *
  * Image pixel query examples:
  * \par
- * \code{.sh}
+ * \code
  * # All image pixels from image store "3600-1" matching host 10, and 12-15
  * bquery -s store/ -t IMG -I 3600-1 -H 10,12-15
  *

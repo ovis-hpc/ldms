@@ -66,13 +66,13 @@
  * \section synopsis SYNOPSIS
  * create workspace:
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -c -w WORKSPACE [-t NUMBER] [-n NUMBER]
  * \endcode
  *
  * extract images from baler store:
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -x -w WORKSPACE -s BALERD_STORE [-B TS] [-E TS] [-H IDS] -R RECIPE_FILE
  *
  *     bassoc -x -w WORKSPACE -s BALERD_STORE [-B TS] [-E TS] [-H IDS] -r RECIPE1 -r RECIPE2 ...
@@ -80,19 +80,19 @@
  *
  * extract images from metric input stream:
  * \par
- * \code{.sh}
+ * \code
  *     cat hdr.csv metric.csv | bassoc -X -w WORKSPACE -R RECIPE_FILE
  * \endcode
  *
  * extract from both baler store and metric input stream:
  * \par
- * \code{.sh}
+ * \code
  *     cat hdr.csv metric.csv | bassoc -X -w WORKSPACE -s BALERD_STORE -R RECIPE_FILE
  * \endcode
  *
  * mine for associations:
  * \par
- * \code{.sh}
+ * \code
  *     # provide target list via CLI argument
  *     bassoc -w WORKSPACE [-o PIXEL_OFFSET] -m TARGET_LIST
  *
@@ -216,7 +216,7 @@
  * options are given:
  *
  * \par
- * \code{.sh}
+ * \code
  * -r a:555 -r b:556-570 -r c:600
  * \endcode
  *
@@ -231,7 +231,7 @@
  * following recipe:
  *
  * \par
- * \code{.sh}
+ * \code
  * +MemFree:1e+06,1e+07,1e+08,1e+09
  * \endcode
  *
@@ -254,7 +254,7 @@
  * The format of each line is as following:
  *
  * \par
- * \code{.sh}
+ * \code
  *     NAME:PTN_ID_LIST
  *     +NAME:BIN_LIST
  *     # COMMENT
@@ -283,13 +283,13 @@
  * <tt>A[x,y]</tt> is a short hand for the count of \c A at <tt>(x,y)</tt>.
  *
  * <code>Idx(A)</code> is a set of index of pixels of \c A, described as
- * \code{.unparsed}
+ * \code
  *     Idx(A) := { (x, y) | all (x, y, z) in A }
  * \endcode
  *
  * \subsection imgintersect IMAGE INTERSECTION and CO-OCCURRENCES
  * Image intersection is defined as the following.
- * \code{.unparsed}
+ * \code
  *    I(A, B) := { (x, y, min(A[x,y], B[x,y])) | all (x,y) in (Idx(A)^Idx(B)) }
  * \endcode
  * In other words, the intersection of \c A and \c B is the pixel-wise minimum
@@ -301,7 +301,7 @@
  * The count information can be seen as intensity in gray-scale image. Hence,
  * the image with count being 0 or 1 (discarding the count) can be seen as
  * black-white image, and is defined as follow:
- * \code{.unparsed}
+ * \code
  *    bw(A) := { (x, y, 1) | all (x, y, z) in A }
  * \endcode
  * Black-white images are useful in the situation of event count imbalance. For
@@ -323,20 +323,20 @@
  *
  * To initialize workspace that works with 1-hour-1-node pixel images:
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -w workspace -c -S 3600 -N 1
  * \endcode
  *
  * To extract images from balerd's store with the data from '2015-01-01
  * 00:00:00' to current:
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -w workspace -x -s balerd_store -B '2015-01-01 00:00:00' -R recipe
  * \endcode
  *
  * Example content in the recipe file
  * \par
- * \code{.sh}
+ * \code
  *     ev1: 128,129
  *     ev2: 150
  *     ev3: 151
@@ -350,7 +350,7 @@
  * To extract more images from balerd's store that are not specified in the
  * recipe file:
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -w workspace -x -s balerd_store -B '2015-01-01 00:00:00' \\
  *            -r 'ev4:200' -r 'ev5:600'
  * \endcode
@@ -361,7 +361,7 @@
  * To extract metric images, just pipe CSV metric data to bassoc, with the same
  * recipe file, as following:
  * \par
- * \code{.sh}
+ * \code
  *     cat metric.csv | bassoc -w workspace -X -R recipe
  * \endcode
  *
@@ -373,7 +373,7 @@
  * You can also extract the message occurrences and metric binning altogether
  * as follows:
  * \par
- * \code{.sh}
+ * \code
  *     cat metric.csv | bassoc -w workspace -X -s balerd_store \\
  *                             -B '2015-01-01 00:00:00' -R recipe
  *     # Notice the captial 'X', not lower-case 'x'.
@@ -383,18 +383,18 @@
  * shifting to the right by -1 pixel (so that we can use the rule for future
  * prediction), significance theshold 0.01, confidence threshold 0.75:
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -w workspace -m ev3 -m ev5 -o -1 -S 0.01 -K 0.75
  * \endcode
  *
  * or:
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -w workspace -M target_file -o -1 -S 0.01 -K 0.75
  * \endcode
  * where \e target_file contains the following content:
  * \par
- * \code{.sh}
+ * \code
  *     ev3
  *     # Comment is OK
  *     ev5
@@ -402,7 +402,7 @@
  *
  * For black/white evaluation, just add '-b' flag.
  * \par
- * \code{.sh}
+ * \code
  *     bassoc -w workspace -m ev3 -m ev5 -b -o -1 -S 0.01 -K 0.75
  *     # or
  *     bassoc -w workspace -M target_file -b -o -1 -S 0.01 -K 0.75

@@ -61,6 +61,10 @@ man/man1/%.1: man/man3/%.3
 	mkdir -p man/man1
 	sed -r 's/^(.TH) ([^ ]+) 3 (.*)/\1 \2 1 \3/' $< > $@
 
+man/man5/%.5: man/man3/%.3
+	mkdir -p man/man5
+	sed -r 's/^(.TH) ([^ ]+) 3 (.*)/\1 \2 5 \3/' $< > $@
+
 # Doxygen generate only one section (default: 3), which makes sense since a lot
 # of documentation is development documentation.
 #
@@ -73,6 +77,17 @@ man1_files = man/man1/balerd.1 \
 $(man1_files): doxygen-out
 
 man1_MANS = $(man1_files)
+
+
+# Plugin configuration documents are put in section 5 (config files)
+man5_files = man/man5/bin_rsyslog_tcp.config.5 \
+	     man/man5/bin_metric.config.5 \
+	     man/man5/bout_sos_msg.config.5 \
+	     man/man5/bout_sos_img.config.5
+
+$(man5_files): doxygen-out
+
+man5_MANS = $(man5_files)
 
 endif
 

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -186,7 +186,8 @@
  * \subsection config_command CONFIGURATION COMMANDS
  *
  * \par tokens type=(ENG|HOST) path=PATH
- * Load ENG or HOST tokens from PATH.
+ * Load ENG or HOST tokens from PATH. Please see \ref tkn_file_format below for
+ * more information.
  *
  * \par plugin name=PLUGIN_NAME [PLUGIN-SPECIFIC-OPTIONS]
  * Load the plugin \b PLUGIN_NAME and configure the plugin with \b
@@ -196,18 +197,20 @@
  * 'bout_'. It is advisable to load output plugins BEFORE the input plugins to
  * prevent lost output data as \b balerd could finish processing some of the
  * input before the output plugins finish loading. Please see each plugin
- * documentation for its specific options.
+ * documentation for its specific options (e.g. \b bin_rsyslog_tcp.config(5)).
  *
  * \par # comment
  * The '#' comment at the beginning of each line is supported. However, the
  * in-line trailing '#' comment is not supported. For example:
- * \code{.conf}
+ * \par
+ * \code
  * # This is a good comment.
  * tokens type=ENG path=my_dict # This is a bad comment.
  * \endcode
  *
  * \section conf_example CONFIGURATION_EXAMPLE
- * \code{.conf}
+ * \par
+ * \code
  * tokens type=ENG path=/path/to/word.list
  * tokens type=HOST path=/path/to/host.list
  *
@@ -229,6 +232,57 @@
  * # balerd.
  * plugin name=bin_metric port=22222 bin_file=METRIC_BIN_FILE
  * \endcode
+ *
+ * For the detail of each plugin configuration, please see the respective plugin
+ * configuration page (e.g. \b bin_rsyslog_tcp.config(5))
+ *
+ *
+ * \section tkn_file_format HOST AND TOKEN FILE FORMAT
+ *
+ * Each line of the file contains a token with an optional ID assignment:
+ *   \b TOKEN [<b>ID</b>]
+ *
+ * Token aliasing can be ndone by assign those tokens the same token ID.
+ *
+ * \subsection tkn_file TOKEN FILE
+ * The following example of a token file with aliasing:
+ * \par
+ * \code
+ * ABC 128
+ * DEF 128
+ * XYZ
+ * \endcode
+ *
+ * Please note that token IDs less than 128 are reserved for \b balerd internal
+ * use. In the above example, if ABC or DEF appeared in messages, they will be
+ * recognized as the same token. If the ID is not present, \b balerd
+ * automatically assigns the max_ID + 1.
+ *
+ * The output of \b balerd will always produce the first alias, because \b
+ * balerd stores messages as a sequence of token IDs which get translated back
+ * to strings at the output.
+ *
+ * \subsection hst_file HOST FILE
+ *
+ * The following example of a host file with aliasing:
+ * \par
+ * \code
+ * nid00000 0
+ * login0 0
+ * nid00001 1
+ * login1 1
+ * \endcode
+ *
+ * Host IDs starts from 0 to make things more convenient for users. \b balerd
+ * will convert that into the real token ID space (starts from 128) internally.
+ *
+ * From the above example, the host field of the messages generated from
+ * nid00000 and login0 will be recognized and stored as 0. Similar to token
+ * file, if the ID is not present, \b balerd will automatically assign the
+ * max_ID+1.
+ *
+ * Please note that on the output side, the first alias will be printed.
+ *
  */
 
 /**

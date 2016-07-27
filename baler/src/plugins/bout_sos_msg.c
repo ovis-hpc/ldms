@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -48,6 +48,21 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+/**
+ * \page bout_sos_msg.config SOS message output plugin configuration
+ *
+ * \section synopsis SYNOPSIS
+ *
+ * <b>plugin name=bout_sos_msg</b>
+ *
+ *
+ * \section description DESCRIPTION
+ *
+ * \b bout_sos_msg output plugin stores processed messages from Baler daemon
+ * into SOS. The messages can be later obtained back by \b bquery command.
+ */
+
 #include "bout_sos_msg.h"
 #include "bsos_msg.h"
 

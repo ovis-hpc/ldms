@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-16 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-16 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -48,6 +48,44 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+/**
+ * \page bout_sos_img.config SOS image output configuration
+ *
+ *
+ * \section synopsis SYNOPSIS
+ *
+ * <b>plugin name=bout_sos_img</b> [delta_ts=NUM] [delta_node=NUM]
+ *
+ *
+ * \section description DESCRIPTION
+ *
+ * \b bout_sos_img output plugin stores occurrences of each pattern from
+ * Baler daemon output stream in \b delta_ts x \b delta_node time-node slots.
+ * This data can later be used in event occurrence visualization and association
+ * rule mining. This data is also accessible via \b bquery.
+ *
+ * It is advisable to have 3 \b bout_sos_img instances with \b delta_ts of 60,
+ * 3600, 86400. It is also advisable that \b delta_node is 1 (default).
+ *
+ *
+ * \section option OPTIONS
+ *
+ * \par delta_ts=NUM
+ * Assign \b delta_ts value for the plugin. (deault: 3600)
+ *
+ * \par delta_node=NUM
+ * Assign \b delta_node value for the plugin. (default: 1)
+ *
+ *
+ * \section examples EXAMPLES
+ * <pre>
+ * plugin name=bout_sos_img delta_ts=60
+ * plugin name=bout_sos_img delta_ts=3600
+ * plugin name=bout_sos_img delta_ts=86400
+ * </pre>
+ */
+
 #include "bout_sos_img.h"
 #include "bsos_img.h"
 

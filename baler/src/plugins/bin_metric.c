@@ -51,20 +51,49 @@
 /**
  * \file bin_metric.c
  * \author Narate Taerat (narate at ogc dot us)
+ */
+/**
+ * \page bin_metric.config metric input plugin configuration
  *
- * \defgroup bin_metric Metric input plugin
+ *
+ * \section synopsis SYNOPSIS
+ *
+ * <b>plugin name=bin_metric bin_file=PATH port=PORT</b>
+ *
+ *
+ * \section description DESCRIPTION
+ *
+ * The plugin listens on a port and receives metric value stream. Upon metric
+ * data arrival, the plugin generates an input entry for balerd to process
+ * according to metric binning definition in the \b bin_file. In other words,
+ * this input plugin converts metric values into the form of "MetricX in
+ * range[A, B)" events.
+ *
+ *
+ * \section bin_file_format BIN_FILE FORMAT
+ *
+ * \b bin_file contains only lines of metric binning definition. A metric
+ * binning definition has the following format:
+ *
+ * <pre>
+ * <METRIC_NAME>:<BIN1_LOWERBOUND>,<BIN2_LOWERBOUND>,...,<BINX_LOWERBOUND>
+ * </pre>
+ *
+ * The ranges of metric produced by the definition are:
+ *   (-Inf, BIN1_LOWERBOUND), [BIN1_LOWERBOUND, BIN2_LOWERBOUND), ...
+ *   [BINX-1_LOWERBOUND, BINX_LOWERBOUND), [BINX_LOWERBOUND, +Inf)
+ *
+ * \section bin_file_example BIN_FILE EXAMPLE
+ * <pre>
+ * percentage_of_MemFree:0,10,20,30,40,50,60,70,80,90
+ * cpu_user:0,10,20,30,40,50,60,70,80,90
+ * </pre>
+ */
+
+/**
+ *
+ * \defgroup bin_metric_dev Metric input plugin development documentation.
  * \{
- *
- * The plugin listens on a port and receives metric value stream.
- * The plugin has two required attributes: listen port and configuration file.
- * The configuration file contains, at each line,
- * <metric name\>:<lower bound of bin 1>,<lower bound of bin 2>,...,<lower bound of bin N\>.
- * For example, percentage_of_MemFree:0,10,20,...,80,90
- *
- * Example of configuration line in a baler configuration file.
- *
- * plugin name=bin_metric bin_file=<path to plugin configuration file> port=<listener port>
- *
  */
 #include "baler/binput.h"
 #include "baler/butils.h"

@@ -51,8 +51,53 @@
 /**
  * \file bin_rsyslog_tcp.c
  * \author Narate Taerat (narate@ogc.us)
+ */
+
+/**
+ * \page bin_rsyslog_tcp.config balerd configuration of rsyslog input plugin
  *
- * \defgroup bin_rsyslog_tcp rsyslog TCP input plugin
+ * \section synopsis SYNOPSIS
+ *
+ * <b>plugin name=bin_rsyslog_tcp</b> [port=<PORT>] [collapse_spaces=0|1]
+ *
+ *
+ * \section description DESCRIPTION
+ *
+ * \c bin_rsyslog_tcp is a baler daemon input plugin that parse rsyslog messages
+ * and prepare the data to be processed in baler daemon. The plugin listens on a
+ * given TCP \c port for rsyslog message forwarding. It expects the data in the
+ * channel to follow rsyslog format.
+ *
+ * \c collapse_spaces=1 option can be given to collapse consecutive spaces into
+ * a single space.
+ *
+ *
+ * \section options OPTIONS
+ *
+ * \par port=PORT
+ * Set the TCP port number for the plugin to listen to rsyslog message
+ * forwarding. (default: 10514, mimicking rsyslog port 514).
+ *
+ * \par collapse_spaces=0|1
+ * If set to 1, consecutive spaces will be collapsed into a single space ' '.
+ * (default: 0).
+ *
+ *
+ * \section examples EXAMPLE CONFIGURATIONS
+ * \code{.conf}
+ * # uses defaults, port 10514, no space collapsing
+ * plugin name=bin_rsyslog_tcp
+ *
+ * # use different port, no space collapsing
+ * plugin name=bin_rsyslog_tcp port=20514
+ *
+ * # with space collapsing
+ * plugin name=bin_rsyslog_tcp port=12345 collapse_spaces=1
+ * \endcode
+ */
+
+/**
+ * \defgroup bin_rsyslog_tcp_grp rsyslog TCP input plugin
  * \{
  */
 #include "baler/binput.h"
