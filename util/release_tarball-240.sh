@@ -10,7 +10,7 @@ OUTPUT_DIR=`pwd`/Release
 BRANCH_NAME=master
 
 # Will get this from git in the future
-VERSION=2.4.7
+VERSION=2.4.8
 
 if ! test -f libevent-2.0.21-stable.tar.gz; then
 	echo "do not need a copy of libevent-2.0.21-stable.tar.gz in $REPO_DIR"

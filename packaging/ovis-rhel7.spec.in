@@ -12,7 +12,7 @@
 Summary: OVIS LDMS Commands and Libraries
 Name: ldms-all
 Version: @VERSION@
-Release: ovis4%{?dist}
+Release: ovis1%{?dist}
 License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -110,6 +110,8 @@ Doxygen files for ldms-all package.
 %docdir %{_defaultdocdir}
 %changelog
 
+* Wed Jul 27 2016 Allan <gentile@sandia.gov> 2.4.8-1
+update to latest upstream.
 * Thu Jun 23 2016 Allan <gentile@sandia.gov> 2.4.7-4
 update to rhel7
 * Fri Apr 29 2016 Allan <gentile@sandia.gov> 2.4.7-1

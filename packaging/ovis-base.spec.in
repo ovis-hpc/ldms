@@ -110,6 +110,8 @@ Doxygen files for ldms-all package.
 %docdir %{_defaultdocdir}
 %changelog
 
+* Wed Jul 27 2016 Allan <gentile@sandia.gov> 2.4.8-1
+update to latest upstream.
 * Fri Apr 29 2016 Allan <gentile@sandia.gov> 2.4.7-1
 update to latest upstream.
 * Tue Feb 23 2016 Allan <gentile@sandia.gov> 2.4.6-2
