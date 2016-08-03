@@ -109,11 +109,29 @@ void btkn_store_close_free(struct btkn_store *s);
  * \param id The token id.
  * \param dest The destination string buffer to copy data to.
  * \param len The maximum length of the \c dest.
- * \returns Error code on error.
- * \returns 0 on success.
+ * \retval ENOMEM if the \c dest is too small.
+ * \retval ENOENT if \c id does not exist.
+ * \retval 0 on success.
  */
 int btkn_store_id2str(struct btkn_store *store, uint32_t id, char *dest,
 		      int len);
+
+/**
+ * Similar to ::btkn_store_id2str, but with '\' escaping.
+ *
+ * This function will escape the non-printable characters and spaces with
+ * '\\x##' hexadecimal character escape sequence.
+ *
+ * \param store Tht store handle.
+ * \param id The token id.
+ * \param dest The destination string buffer to copy data to.
+ * \param len The maximum length of the \c dest.
+ * \retval ENOMEM if the \c dest is too small.
+ * \retval ENOENT if \c id does not exist.
+ * \retval 0 on success.
+ */
+int btkn_store_id2str_esc(struct btkn_store *store, uint32_t id,
+		      char *dest, int len);
 
 /**
  * Getting token attribute of token ID \c tkn_id.

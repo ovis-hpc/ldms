@@ -49,6 +49,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "btkn.h"
+#include <ctype.h>
 
 const char *btkn_type_str[] = {
 	BTKN_TYPE__LIST(, BENUM_STR)
@@ -132,6 +133,40 @@ int btkn_store_id2str(struct btkn_store *store, uint32_t id,
 	dest[bstr->blen] = '\0'; /* null-terminate the string */
 	return 0;
 }
+
+static const char *__hex = "0123456789abcdef";
+
+int btkn_store_id2str_esc(struct btkn_store *store, uint32_t id,
+		      char *dest, int len)
+{
+	int i = 0, o = 0;
+	dest[0] = '\0'; /* first set dest to empty string */
+	const struct bstr *bstr = bmap_get_bstr(store->map, id);
+	if (!bstr)
+		return ENOENT;
+	if (len <= bstr->blen)
+		return ENOMEM;
+	while (i < bstr->blen) {
+		if (isgraph(bstr->cstr[i])) {
+			if (o >= len - 1)
+				break;
+			dest[o++] = bstr->cstr[i];
+		} else {
+			if (o >= len - 4)
+				break;
+			dest[o++] = '\\';
+			dest[o++] = 'x';
+			dest[o++] = __hex[(bstr->cstr[i])>>4];
+			dest[o++] = __hex[(bstr->cstr[i])&0xF];
+		}
+		i++;
+	}
+	if (i < bstr->blen)
+		return ENOMEM;
+	dest[o] = '\0';
+	return 0;
+}
+
 
 uint32_t btkn_store_insert_cstr(struct btkn_store *store, const char *str,
 							btkn_type_t type)
