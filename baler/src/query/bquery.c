@@ -334,7 +334,7 @@ int bq_local_host_routine(struct bq_store *s)
 	printf(" host_id hostname\n");
 	printf("-------- --------------\n");
 	while (id<next_id) {
-		rc = btkn_store_id2str(s->cmp_store, id, buff, sizeof(buff));
+		rc = btkn_store_id2str_esc(s->cmp_store, id, buff, sizeof(buff));
 		printf("%8d %s\n", bmapid2compid(id), buff);
 		id++;
 	}
