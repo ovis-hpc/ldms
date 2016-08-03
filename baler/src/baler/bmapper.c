@@ -297,17 +297,12 @@ int bmap_rehash(struct bmap *map, int nmemb)
 	return 0;
 }
 
-/**
- * Internal get_id, similar to ::bmap_get_id(), but also return hash key.
- * \param map The pointer to ::bmap structure
- * \param str The poitner to ::bstr structure
- * \param[out] ohidx Hash index output
- * \return id
- */
-uint32_t bmap_get_id_plus64(struct bmap *map,
+
+/* caller must have map->mutex locked. */
+static
+uint32_t __bmap_get_id_plus64(struct bmap *map,
 		const struct bstr *str, uint64_t *ohidx)
 {
-	pthread_mutex_lock(&map->mutex);
 	struct bvec_u64 *hvec = map->bmhash->bvec;
 	uint64_t key = bhash(str->cstr, str->blen, 0);
 	uint64_t hidx = key % hvec->len;
@@ -337,6 +332,22 @@ uint32_t bmap_get_id_plus64(struct bmap *map,
 	if (ohidx)
 		*ohidx = hidx;
 out:
+	return id;
+}
+
+/**
+ * Internal get_id, similar to ::bmap_get_id(), but also return hash key.
+ * \param map The pointer to ::bmap structure
+ * \param str The poitner to ::bstr structure
+ * \param[out] ohidx Hash index output
+ * \return id
+ */
+uint32_t bmap_get_id_plus64(struct bmap *map,
+		const struct bstr *str, uint64_t *ohidx)
+{
+	uint32_t id;
+	pthread_mutex_lock(&map->mutex);
+	id = __bmap_get_id_plus64(map, str, ohidx);
 	pthread_mutex_unlock(&map->mutex);
 	return id;
 }
@@ -347,9 +358,12 @@ uint32_t bmap_get_id(struct bmap *map, const struct bstr *s)
 	return bmap_get_id_plus64(map, s, 0);
 }
 
-const struct bstr* bmap_get_bstr(struct bmap *map, uint32_t id)
+/*
+ * caller must have map->mutex locked.
+ */
+static
+const struct bstr* __bmap_get_bstr(struct bmap *map, uint32_t id)
 {
-	pthread_mutex_lock(&map->mutex);
 	const struct bstr *bstr = NULL;
 	struct bvec_u64 *str_idx = map->bmstr_idx->bvec;
 	if (str_idx->len <= id) /* out of range */
@@ -362,6 +376,13 @@ const struct bstr* bmap_get_bstr(struct bmap *map, uint32_t id)
 	int64_t str_off = str_idx->data[id];
 	bstr = BMPTR(map->mstr, str_off);
 out:
+	return bstr;
+}
+
+const struct bstr* bmap_get_bstr(struct bmap *map, uint32_t id)
+{
+	pthread_mutex_lock(&map->mutex);
+	const struct bstr *bstr = __bmap_get_bstr(map, id);
 	pthread_mutex_unlock(&map->mutex);
 	return bstr;
 }
@@ -381,18 +402,21 @@ uint32_t bmap_insert_with_id(struct bmap *bm, const struct bstr *s, uint32_t _id
 	uint64_t hidx;
 	const struct bstr *prev_bstr = NULL;
 
+	pthread_mutex_lock(&bm->mutex);
+
 	/* Check first if s exists in the map. */
-	if ((id=bmap_get_id_plus64(bm, s, &hidx)) != BMAP_ID_NOTFOUND) {
+	if ((id=__bmap_get_id_plus64(bm, s, &hidx)) != BMAP_ID_NOTFOUND) {
 		if (!_id || id == _id)
-			return id;
-		return BMAP_ID_INVAL;
+			goto out;
+		/* trying to assign same STR to different IDs */
+		id = BMAP_ID_INVAL;
+		goto out;
 	}
 
 	/* Also check if id exists in the map */
-	prev_bstr = bmap_get_bstr(bm, _id);
+	prev_bstr = __bmap_get_bstr(bm, _id);
 	/* Let through, allowing str aliasing */
 
-	pthread_mutex_lock(&bm->mutex);
 	/* If s does not exist, allocate space for new bstr, and copy it */
 	int64_t str_off = bmem_alloc(bm->mstr, sizeof(*s)+s->blen);
 	if (!str_off) {
