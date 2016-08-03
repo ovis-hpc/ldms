@@ -2976,6 +2976,7 @@ const char *sort_ptn_by_str[] = {
 
 int verbose = 0;
 int reverse = 0;
+int escape = 0;
 int sort_ptn_by = SORT_PTN_BY_ID;
 
 const char *ts_format = NULL;
@@ -3083,6 +3084,7 @@ void show_help()
     --reverse,-R		For '-t MSG' or '-t IMG', query the messages \n\
 				or the images, respectively, in \n\
 				the reverse chronological order. \n\
+    --escape,-e			Escape non-printable and spaces.\n\
 \n"
 #if 0
 "Other OPTIONS:\n"
@@ -3103,7 +3105,7 @@ void show_help()
 }
 
 /********** Options **********/
-char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:F:RS:";
+char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:F:RS:e";
 struct option long_opt[] = {
 	{"help",              no_argument,        0,  'h'},
 	{"store-path",        required_argument,  0,  's'},
@@ -3121,6 +3123,7 @@ struct option long_opt[] = {
 	{"verbose",           no_argument,        0,  'v'},
 	{"reverse",           no_argument,        0,  'R'},
 	{"sort-ptn-by",       required_argument,  0,  'S'},
+	{"escape",            no_argument,        0,  'e'},
 	{0,                   0,                  0,  0}
 };
 
@@ -3248,6 +3251,9 @@ next_arg:
 		break;
 	case 'F':
 		ts_format = optarg;
+		break;
+	case 'e':
+		escape = 1;
 		break;
 	default:
 		fprintf(stderr, "Unknown argument %s\n", argv[optind - 1]);
@@ -3503,9 +3509,16 @@ int bq_local_ptn_routine(struct bq_store *s)
 			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
 		}
 
-		rc = bptn_store_id2str(s->ptn_store, s->tkn_store, id,
+		if (escape) {
+			rc = bptn_store_id2str_esc(s->ptn_store, s->tkn_store,
+					id, bdstr->str + bdstr->str_len,
+					bdstr->alloc_len - bdstr->str_len);
+		} else {
+			rc = bptn_store_id2str(s->ptn_store, s->tkn_store, id,
 					bdstr->str + bdstr->str_len,
 					bdstr->alloc_len - bdstr->str_len);
+		}
+
 		switch (rc) {
 		case 0:
 			/* do nothing, just continue the execution. */
@@ -3597,9 +3610,17 @@ int __mptn_print(struct bq_store *s, struct bdstr *bdstr, int *col_width,
 		__default_date_fmt(NULL, bdstr, &attrM->first_seen);
 		__default_date_fmt(NULL, bdstr, &attrM->last_seen);
 
-		rc = bptn_store_id2str(s->ptn_store, s->tkn_store, ent->ptn_id,
-					bdstr->str + bdstr->str_len,
-					bdstr->alloc_len - bdstr->str_len);
+		if (escape) {
+			rc = bptn_store_id2str_esc(s->ptn_store,
+				s->tkn_store, ent->ptn_id,
+				bdstr->str + bdstr->str_len,
+				bdstr->alloc_len - bdstr->str_len);
+		} else {
+			rc = bptn_store_id2str(s->ptn_store,
+				s->tkn_store, ent->ptn_id,
+				bdstr->str + bdstr->str_len,
+				bdstr->alloc_len - bdstr->str_len);
+		}
 		switch (rc) {
 		case 0:
 			/* do nothing, just continue the execution. */
