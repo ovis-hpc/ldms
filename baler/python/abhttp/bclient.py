@@ -15,6 +15,12 @@ logger = logging.getLogger(__name__)
 
 service = None
 
+class Debug(object):
+    pass
+
+# Global debug object.
+DBG = Debug()
+
 def bclient_init(cfg_path):
     global service
     if service != None:
