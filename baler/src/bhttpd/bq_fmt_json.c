@@ -169,7 +169,8 @@ loop:
 			buff[j++] = __map[bstr->cstr[i++]];
 			break;
 		default:
-			if (isprint(bstr->cstr[i]))
+			/* skip control characters */
+			if (!iscntrl(bstr->cstr[i]))
 				buff[j++] = bstr->cstr[i];
 			i++;
 		}
