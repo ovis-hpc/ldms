@@ -73,7 +73,9 @@ class Mapper(object):
             return
         if _str in self._str_id:
             if self._str_id[_str] != _id:
-                raise KeyError()
+                raise KeyError("str_id['%s']: %d != id: %d" % (
+                                    _str, self._str_id[_str], _id
+                            ))
             return
         self._id_str[_id] = _str
         self._str_id[_str] = _id
@@ -226,7 +228,7 @@ class UnifiedMapper(object):
         try:
             ms = self._mappers
             if name in ms:
-                raise KeyError()
+                raise KeyError("'%s' existed" % (name))
             ms[name] = m
             for _str in m._str_id:
                 self._check_unassigned(_str)
