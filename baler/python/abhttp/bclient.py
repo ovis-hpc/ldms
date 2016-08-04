@@ -141,16 +141,16 @@ class PageDisplay(object):
 
     def loop(self):
         cmd_table = {
-            'n': self.next_page,
-            'p': self.prev_page,
+            'u': self.page_up,
+            'd': self.page_down,
             'q': self._stop,
-            'j': self.next_line,
-            'k': self.prev_line,
+            'j': self.line_next,
+            'k': self.line_prev,
         }
         self._start()
         try:
             self.dir = abhttp.FWD
-            self.next_page()
+            self.page_down()
             while self.active:
                 c = self.win.getkey()
                 try:
@@ -162,16 +162,26 @@ class PageDisplay(object):
             self._end()
 
     def display_buff(self):
+        maxy, maxx = self.getmaxyx()
+        DBG.disp_buff = self.buff
         self.win.clear() # not refeshed yet
         y = 0
+        # self.buff length is maxy-1
         for (pos, item) in self.buff:
-            s = str(item)
-            self.win.addstr(y, 0, s)
+            s = unicode(item)
+            DBG.item = item
+            DBG.item_s = s
+            self.win.addstr(y, 0, s[:maxx])
             y += 1
+        self.win.addstr(y, 0, ':(j-next_line, k-prev_line, d-pg_down, u-pg_up, q-quit)')
         self.win.refresh()
 
-    def next_line(self):
+    def getmaxyx(self):
         maxy, maxx = self.win.getmaxyx()
+        return (maxy-1, maxx)
+
+    def line_next(self):
+        maxy, maxx = self.getmaxyx()
         if self.dir != abhttp.FWD:
             # need position recovery
             (pos, item) = self.buff[len(self.buff)-1]
@@ -186,8 +196,8 @@ class PageDisplay(object):
             self.buff.popleft()
         self.display_buff()
 
-    def prev_line(self):
-        maxy, maxx = self.win.getmaxyx()
+    def line_prev(self):
+        maxy, maxx = self.getmaxyx()
         if self.dir != abhttp.BWD:
             # need position recovery
             (pos, item) = self.buff[0]
@@ -202,18 +212,18 @@ class PageDisplay(object):
             self.buff.pop()
         self.display_buff()
 
-    def next_page(self):
-        maxy, maxx = self.win.getmaxyx()
+    def page_down(self):
+        maxy, maxx = self.getmaxyx()
         c = 0
         while c < maxy:
-            self.next_line()
+            self.line_next()
             c += 1
 
-    def prev_page(self):
-        maxy, maxx = self.win.getmaxyx()
+    def page_up(self):
+        maxy, maxx = self.getmaxyx()
         c = 0
         while c < maxy:
-            self.prev_line()
+            self.line_prev()
             c += 1
 
 
@@ -273,7 +283,8 @@ class ServiceCmd(cmd.Cmd):
                 continue
             if text and not text.match(ptn.text):
                 continue
-            print >>self.cmdout, str(ptn)
+            DBG.ptn = ptn
+            print >>self.cmdout, unicode(ptn)
 
     def parser_host_query(self):
         return CmdArgumentParser(
