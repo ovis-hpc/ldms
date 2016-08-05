@@ -11,17 +11,22 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-class TestConfig(unittest.TestCase):
-    def setUp(self):
-        self.CFG_PATH = ".test_service.cfg"
-        f = open(self.CFG_PATH, "w")
-        f.write("""\
+CONFIG_STR = """\
 bhttpd:
     bhttpd0: ["localhost:18000", "localhost:18800"]
     bhttpd1: ["localhost:18001", "localhost:18801"]
     bhttpd2: ["localhost:18002", "localhost:18802"]
     bhttpd3: ["localhost:18003", "localhost:18803"]
-""")
+store: ./svc.store
+"""
+
+CONFIG_PATH = ".test_service.cfg"
+
+class TestConfig(unittest.TestCase):
+    def setUp(self):
+        self.CFG_PATH = CONFIG_PATH
+        f = open(self.CFG_PATH, "w")
+        f.write(CONFIG_STR)
         f.close()
 
     def test_config_file(self):
@@ -102,7 +107,7 @@ param.TMP_DIR="./tmp"
 param.SYSLOG_PORT_START = 30000
 param.MASTER_PORT_START = 31000
 param.HTTP_PORT_START = 18000
-param.HTTP_BAK_PORT_START = 19000
+param.HTTP_BAK_PORT_START = 18800
 param.LEVEL = "INFO"
 
 # prep hosts file
@@ -378,16 +383,7 @@ class TestService(unittest.TestCase):
 
         #cls is a class object here
         global num
-        cfg_str = """\
-bhttpd:
-    srv0: ["localhost:18000", "localhost:19000"]
-    srv1: ["localhost:18001", "localhost:19001"]
-    srv2: ["localhost:18002", "localhost:19002"]
-    srv3: ["localhost:18003", "localhost:19003"]
-store: ./svc.store
-        """
-
-        cls.svc = abhttp.Service(cfg_stream=StringIO(cfg_str))
+        cls.svc = abhttp.Service(cfg_stream=StringIO(CONFIG_STR))
         cls.numeric_assign_host()
         cls.numeric_assign_ptn()
 
@@ -418,7 +414,7 @@ store: ./svc.store
         assert(cls.ptn_zero != None)
 
     def test_uptn_autoassign(self):
-        svc = abhttp.Service(cfg_path="config.yaml")
+        svc = abhttp.Service(cfg_stream=StringIO(CONFIG_STR))
         u0 = {p.text: p for p in svc.uptn_iter()}
         svc.uptn_autoassign()
         u1 = {p.text: p for p in svc.uptn_iter()}
@@ -558,16 +554,7 @@ class TestQueryIter(unittest.TestCase):
         logger.info("     time: %f", t_b - t_a)
 
         #cls is a class object here
-        cfg_str = """\
-bhttpd:
-    srv0: ["localhost:18000", "localhost:19000"]
-    srv1: ["localhost:18001", "localhost:19001"]
-    srv2: ["localhost:18002", "localhost:19002"]
-    srv3: ["localhost:18003", "localhost:19003"]
-store: ./svc.store
-        """
-
-        cls.svc = abhttp.Service(cfg_stream=StringIO(cfg_str))
+        cls.svc = abhttp.Service(cfg_stream=StringIO(CONFIG_STR))
         num = {
             "Zero":   0,
             "One":    1,
