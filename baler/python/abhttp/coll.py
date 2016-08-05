@@ -1,6 +1,6 @@
 import logging
 import threading
-import yaml
+import cPickle
 from datatype import *
 
 logger = logging.getLogger(__name__)
@@ -486,7 +486,7 @@ class UnifiedMapper(object):
         try:
             f = open(fpath, "w")
             # save as a list of 3-tuple of (id,str,obj)
-            yaml.dump([x for x in self.items()], stream=f)
+            cPickle.dump([x for x in self.items()], file=f)
             f.close()
         finally:
             self._lock.release()
@@ -496,7 +496,7 @@ class UnifiedMapper(object):
         f = open(fpath, "r")
         self._lock.acquire()
         try:
-            y = yaml.load(f)
+            y = cPickle.load(f)
             self._umapper.batch_add(y)
         finally:
             self._lock.release()
