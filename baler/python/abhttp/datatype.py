@@ -32,6 +32,8 @@ class Slots(object):
     def __cmp__(self, other):
         if other == None:
             return -1 # None is the greatest .. this is good for min-heap.
+        if type(other) != type(self):
+            return -1
         for a in self.__slots__:
             x = getattr(self, a)
             y = getattr(other, a)
@@ -40,6 +42,16 @@ class Slots(object):
             if x > y:
                 return 1
         return 0
+
+    def __getstate__(self):
+        return [getattr(self, a) for a in self.__slots__]
+
+    def __setstate__(self, state):
+        # state is the state from self.__getstate__()
+        i = 0
+        for a in self.__slots__:
+            setattr(self, a, state[i])
+            i += 1
 
     def __iter__(self):
         for a in self.__slots__:
