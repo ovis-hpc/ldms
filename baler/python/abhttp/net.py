@@ -65,12 +65,13 @@ class BHTTPDConn(object):
             server (str): "host:port" describing bhttpd server location.
         """
         logger.info("connecting to bhttpd: %s", server)
-        self._conn = httplib.HTTPConnection(server)
         self._server = server
         if not name:
             name = server
         self._name = name
         self._resp = None
+        self._conn = httplib.HTTPConnection(server)
+        self._conn.connect()
 
     def __del__(self):
         """Destructor."""

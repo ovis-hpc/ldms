@@ -157,43 +157,47 @@ class Service(object):
 
     def init_bhttpd_connections(self):
         for (name, locs) in self._cfg.bhttpd_iter():
-            self.init_bhttpd_conn(name)
+            self._conns[name] = self.init_bhttpd_conn(name)
 
     def init_bhttpd_conn(self, name):
         """Initialize the bhttpd identified by ``name``."""
         locs = self._cfg.bhttpd_get_locations(name)
-        logger.debug("name: %s", name)
         for loc in locs:
+            logger.debug("name: %s, loc: %s", name, loc)
             try:
                 conn = BHTTPDConn(loc, name=name)
-                conn.get_host()
-                h = conn.fetch_host()
-                hmap = Mapper([(k, v) for (k,v) in h.items()])
-                conn.get_ptn()
-                p = conn.fetch_ptn()
-                pmap = Mapper()
-                for (k, ptn) in p.items():
-                    pmap.add(k, ptn.text)
-                    pmap.set_obj(k, ptn)
-                # Remove old mappers, if existed
-                try:
-                    self.uhost.remove_mapper(name)
-                except KeyError:
-                    pass
-                try:
-                    self.uptn.remove_mapper(name)
-                except KeyError:
-                    pass
-                self.uhost.add_mapper(name, hmap)
-                self.uptn.add_mapper(name, pmap)
-                self._conns[name] = conn
             except Exception:
                 logger.info("Service %s: location '%s' unavailable", name, loc)
-                pass
+                continue
             else:
-                logger.info("Service %s: using location: %s", name, loc)
-                return conn
+                logger.info("Connected to location '%s'", loc)
+
+            conn.get_host()
+            h = conn.fetch_host()
+            hmap = Mapper([(k, v) for (k,v) in h.items()])
+            conn.get_ptn()
+            p = conn.fetch_ptn()
+            pmap = Mapper()
+            for (k, ptn) in p.items():
+                pmap.add(k, ptn.text)
+                pmap.set_obj(_id=k, _obj=ptn)
+            # Remove old mappers, if existed
+            try:
+                self.uhost.remove_mapper(name)
+            except KeyError:
+                pass
+            try:
+                self.uptn.remove_mapper(name)
+            except KeyError:
+                pass
+            self.uhost.add_mapper(name, hmap)
+            self.uptn.add_mapper(name, pmap)
+
+            logger.info("Service %s: using location: %s", name, loc)
+            return conn
+
         # reaching here means all locations failed.
+        # raise Exception("No connection to %s" % name)
         logger.warn("No connection to %s", name)
         return None
 
