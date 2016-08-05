@@ -61,6 +61,11 @@ class TestMapper(unittest.TestCase):
         self.assertEqual(self._str, _str)
         self.assertEqual(self, arg)
 
+    def test_get_ent(self):
+        m = self.m
+        e = m.get_ent(1, "New one.")
+        self.assertNotEqual(e, None)
+
     def test_add_existed(self):
         m = self.m
         _id = 1
@@ -74,18 +79,20 @@ class TestMapper(unittest.TestCase):
 
     def test_iterator(self):
         m = self.m
-        n = len(m._id_str)
+        n = len(m._id_ent)
         _n = 0
-        for (_id, _str) in m:
+        for e in m:
             _n += 1
-            _idx = m.get_id(_str)
-            _strx = m.get_str(_id)
-            self.assertEqual(_id, _idx)
-            self.assertEqual(_str, _strx)
+            _idx = m.get_id(e.str)
+            _strx = m.get_str(e.id)
+            self.assertEqual(e.id, _idx)
+            self.assertEqual(e.str, _strx)
         self.assertEqual(n, _n)
 
 
-class HuHa(object):
+class HuHa(abhttp.Slots):
+    __slots__ = ['x', 'y']
+
     def __init__(self, x, y):
         self.x = x
         self.y = y
@@ -130,8 +137,8 @@ class TestUnifiedMapper(unittest.TestCase):
     def test_assignment(self):
         um = self.um
         ua = um.get_unassigned()
-        cset0 = set(x for x in self.m0._str_id)
-        cset1 = set(x for x in self.m1._str_id)
+        cset0 = set(x for x in self.m0._str_ent)
+        cset1 = set(x for x in self.m1._str_ent)
         self.assertEqual(ua, cset0|cset1)
         um.auto_assign()
         ua = um.get_unassigned()
@@ -143,7 +150,9 @@ class TestUnifiedMapper(unittest.TestCase):
         self.um.update_mapper("zero", [(99, "Ninety Nine.", None)])
         tmp = {}
         strset = set()
-        for (_id, _str) in um:
+        for e in um:
+            _id = e.id
+            _str = e.str
             self.assertFalse(_id in tmp)
             self.assertFalse(_str in strset)
             if _id != None:
@@ -153,15 +162,15 @@ class TestUnifiedMapper(unittest.TestCase):
             strset.add(_str)
         cmpset = set()
         cmpset.add("One Hundred.")
-        for _str in self.m0._str_id:
+        for _str in self.m0._str_ent:
             cmpset.add(_str)
-        for _str in self.m1._str_id:
+        for _str in self.m1._str_ent:
             cmpset.add(_str)
         self.assertEqual(strset, cmpset)
 
     def test_remove(self):
         um = self.um
-        s0 = set(iter(um))
+        s0 = set((e.id, e.str) for e in um)
         ua0 = um.get_unassigned()
         m3 = abhttp.Mapper([
                 (500, "Five Hundred."),
@@ -174,7 +183,7 @@ class TestUnifiedMapper(unittest.TestCase):
         um.remove_mapper("extra")
         ua2 = um.get_unassigned()
         self.assertEqual(ua0, ua2)
-        s1 = set(iter(um))
+        s1 = set((e.id, e.str) for e in um)
         self.assertEqual(s0, s1)
 
     def test_save_load(self):
@@ -192,13 +201,13 @@ class TestUnifiedMapper(unittest.TestCase):
         ])
         um.assign(1, "One")
         um.assign(4, "Four")
-        um._umapper.set_obj(4, HuHa(7,8))
+        um._umapper.set_obj(_id=4, _obj=HuHa(7,8))
 
         um.save("tmp/um.yaml")
         _um = abhttp.UnifiedMapper()
         _um.load("tmp/um.yaml")
-        s0 = [x for x in iter(um)]
-        s1 = [y for y in iter(_um)]
+        s0 = [x for x in um]
+        s1 = [y for y in _um]
         s0.sort()
         s1.sort()
         logger.info("s0: %s", s0)

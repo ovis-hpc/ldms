@@ -202,8 +202,8 @@ class Service(object):
             yield (_name, _conn)
 
     def uhost_iter(self):
-        for (_id, _str) in self.uhost:
-            yield Host(_id, _str)
+        for e in self.uhost:
+            yield Host(e.id, e.str)
 
     def uhost_by_id(self, _id):
         _str = self.uhost.get_ustr(_id)
@@ -225,9 +225,9 @@ class Service(object):
         self.uhost.auto_assign()
 
     def uptn_iter(self):
-        for (_id, _str) in self.uptn:
-            p = self.uptn_by_str(_str)
-            p.ptn_id = _id
+        for e in self.uptn:
+            p = self.uptn_by_str(e.str)
+            p.ptn_id = e.id
             yield p
 
     def uptn_by_str(self, _str):
@@ -511,7 +511,7 @@ class UImgQueryIter(object):
         self.img_store = img_store
         self.host_ids = host_ids
         self.ptn_ids = IDSet(ptn_ids) if ptn_ids else [
-                            _id for (_id, _text) in service.uptn if _id != None
+                            e.id for e in service.uptn if e.id != None
                         ]
         self.ts0 = ts0
         self.ts1 = ts1

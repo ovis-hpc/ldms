@@ -1,9 +1,16 @@
 import logging
 import threading
 import yaml
+from datatype import *
 
 logger = logging.getLogger(__name__)
 
+class MapperEntry(Slots):
+    __slots__ = ["id", "str", "obj"]
+    def __init__(self, _id=None, _str=None, _obj=None):
+        self.id = _id
+        self.str= _str
+        self.obj = _obj
 
 class Mapper(object):
     """Mapping of str<-->id bijection.
@@ -12,83 +19,137 @@ class Mapper(object):
     is thread-safe. It is advisable to access Mapper information through
     UnifiedMapper.
     """
-    def __init__(self, pair_iterable=None):
+    def __init__(self, iterable=None):
         """Constructor.
 
         Args:
-            pair_iterable: an iterable object which each iteration gives a pair
-                of (num, str) representing num:str mapping. An example of this
-                argument is ``[(1:"one"), (2:"two")]``.
+            iterable: an iterable object which each iteration gives a pair of
+                (num, str) representing num:str mapping, or a 3-tuple of
+                (num,str,obj) representing num:str with associated obj. Examples
+                of this argument are ``[(1,"one"), (2,"two")]`` and
+                ``[(1, "One", one_obj), (2, "Two", two_obj)]``.
         """
-        self._str_id = {}
-        self._id_str = {}
-        self._id_obj = {}
-        if pair_iterable:
-            for (_id, _str) in pair_iterable:
-                self.add(_id, _str)
+        self._str_ent = {}
+        self._id_ent = {}
+        if iterable:
+            self.batch_add(iterable)
 
     def __iter__(self):
-        for i in self._id_str:
-            yield (i, self._id_str[i])
+        """Generator yielding MapperEntry in the Mapper"""
+        for e in self._str_ent.itervalues():
+            yield e
+
+    def batch_add(self, iterable):
+        """Add mapping entries in batch.
+
+        Args:
+            iterable: an iterable object which each iteration gives a pair of
+                (num, str) representing num:str mapping, or a 3-tuple of
+                (num,str,obj) representing num:str with associated obj. Examples
+                of this argument are ``[(1,"one"), (2,"two")]`` and
+                ``[(1, "One", one_obj), (2, "Two", two_obj)]``.
+        """
+        try:
+            for (_id, _str, _obj) in iterable:
+                break
+        except  ValueError:
+            # pair iterable
+            for (_id, _str) in iterable:
+                self.add(_id, _str)
+        else:
+            # 3-tuple iterable
+            for (_id, _str, _obj) in iterable:
+                self.add(_id, _str, _obj)
 
     def get_id(self, _str):
         """Returns the ID of the given string, or ``None`` if not found."""
         try:
-            return self._str_id[_str]
+            e = self._str_ent[_str]
+            return e.id
         except KeyError:
             return None
 
     def get_str(self, _id):
         """Returns the string of the given ID, or ``None`` if not found."""
         try:
-            return self._id_str[_id]
+            e = self._id_ent[_id]
+            return e.str
         except KeyError:
             return None
 
-    def set_obj(self, _id, obj):
-        self._id_obj[_id] = obj
+    def set_obj(self, _id=None, _str=None , _obj=None):
+        """Set object to the map entry, by `_id` or `_str`"""
+        e = None
+        if _id != None:
+            e = self._id_ent[_id]
+        if _str != None:
+            e = self._str_ent[_str]
+        if e == None:
+            # _id and _str are both `None`
+            raise KeyError("_id and _str must not be `None` at the same time")
+        e.obj = _obj
 
-    def get_obj(self, _id):
+    def get_obj(self, _id=None, _str=None):
+        """Get object to the map entry, by `_id` or `_str`"""
         try:
-            return self._id_obj[_id]
+            e = None
+            if _id != None:
+                e = self._id_ent[_id]
+            if _str != None:
+                e = self._str_ent[_id]
+            if e == None:
+                return None
+            return e.obj
         except KeyError:
             return None
 
-    def add(self, _id, _str):
+    def get_ent(self, _id=None, _str=None):
+        """Get entry by `_id` or `_str`."""
+        try:
+            e = self._id_ent[_id]
+        except KeyError:
+            try:
+                e = self._str_ent[_str]
+            except KeyError:
+                return None
+        return e
+
+    def add(self, _id, _str, _obj=None):
         """Add _id:_str into the mapping.
 
         Args:
-            _id(num): the numeric identifier.
+            _id(num): the numeric identifier. _id can be `None`.
             _str(str): the string.
+            _obj(object): optional user object associated to the _id:_str entry.
 
         Raises:
             KeyError: if _id or _str causes a conflict in the Mapper (e.g.
                 existing _id, but maps to different _str).
         """
-        if _id in self._id_str:
-            if self._id_str[_id] != _str:
-                raise KeyError("id_str[%d]: '%s' != str: '%s'" % (
-                                    _id, self._id_str[_id], _str
-                                ))
-            return
-        if _str in self._str_id:
-            if self._str_id[_str] != _id:
-                raise KeyError("str_id['%s']: %d != id: %d" % (
-                                    _str, self._str_id[_str], _id
-                            ))
-            return
-        self._id_str[_id] = _str
-        self._str_id[_str] = _id
+        e = self.get_ent(_id, _str)
 
-    def batch_add(self, pair_iterable):
-        """Insert a batch of id:str mappings.
+        if e != None:
+            # entry existed, e.id and e.str must not conflict
+            if e.id != None and _id != None and e.id != _id:
+                raise KeyError("(%d,'%s') conflicting with existing entry (%d,'%s')" %
+                        (_id, _str, e.id, e.str))
+            if e.str != None and _str != None and e.str != _str:
+                raise KeyError("(%d,'%s') conflicting with existing entry (%d,'%s')" %
+                        (_id, _str, e.id, e.str))
+            # no conflict, let through to update entry.
+        else:
+            # _id:_str is new
+            e = MapperEntry()
 
-        Args:
-            pair_iterable: an iterable object that gives a pair of (num, str)
-                representing id:str for each iteration.
-        """
-        for (_id, _str) in pair_iterable:
-            self.add(_id, _str)
+        if e.str == None and _str != None:
+            e.str = _str
+            self._str_ent[_str] = e
+        if e.id == None and _id != None:
+            e.id = _id
+            self._id_ent[_id] = e
+        if e.obj == None and _obj != None:
+            e.obj = _obj
+        return
 
     def __iadd__(self, other):
         """``+=`` operator override: adding contents of ``other`` into ``self``.
@@ -104,7 +165,7 @@ class Mapper(object):
             KeyError: if a mapping in ``other`` conflict with a mapping in
             ``self``.
         """
-        self.batch_add(iter(other))
+        self.batch_add(other)
         return self
 
 
@@ -198,7 +259,7 @@ class UnifiedMapper(object):
         self._gn = 0
         self._mappers = {}
         self._umapper = Mapper()
-        self._unassigned = set()
+        self._unassigned = set() # contains strings of unassigned entries
         self._lock = threading.Lock()
         if named_mappers:
             for (_name, _mapper) in named_mappers:
@@ -209,14 +270,17 @@ class UnifiedMapper(object):
         pass
 
     def __iter__(self):
-        return UnifiedMapperIterator(self)
+        for e in self._umapper:
+            yield e
 
     def _check_unassigned(self, _str):
         """Check if ``_str`` is assigned; if not, add to ``_unassigned`` set."""
         # A self._lock must be held
-        if _str not in self._umapper._str_id:
-            self._gn += 1
-            self._unassigned.add(_str)
+        if _str not in self._unassigned:
+            e = self._umapper.get_ent(_str = _str)
+            if e and e.id == None:
+                self._gn += 1
+                self._unassigned.add(_str)
 
     def add_mapper(self, name, m):
         """Add a Mapper into the UnifiedMapper.
@@ -230,8 +294,9 @@ class UnifiedMapper(object):
             if name in ms:
                 raise KeyError("'%s' existed" % (name))
             ms[name] = m
-            for _str in m._str_id:
-                self._check_unassigned(_str)
+            for e in m:
+                self._umapper.add(None, e.str, e.obj)
+                self._check_unassigned(e.str)
         finally:
             self._lock.release()
 
@@ -243,9 +308,23 @@ class UnifiedMapper(object):
             del ms[name]
             # Update the ``unassigned`` after remove.
             self._unassigned.clear()
-            for m in ms.itervalues():
-                self._unassigned.update(x for x in m._str_id
-                                                if x not in self._umapper._str_id)
+            tmp = [e for e in self if e.id == None]
+            for e in tmp:
+                found = 0
+                for k, m in ms.iteritems():
+                    if k == self.UNIFIED:
+                        continue
+                    if e.str in m._str_ent:
+                        found = 1
+                        self._unassigned.add(e.str)
+                        break
+                if not found:
+                    # remove unused entry
+                    del self._umapper._str_ent[e.str]
+
+            #for m in ms.itervalues():
+            #    self._unassigned.update(x for x in m._str_ent
+            #                                if x not in self._umapper._str_ent)
         finally:
             self._lock.release()
 
@@ -259,8 +338,8 @@ class UnifiedMapper(object):
         try:
             m = self._mappers[name]
             for (_id, _str, _obj) in itr:
-                m.add(_id, _str)
-                m.set_obj(_id, _obj)
+                m.add(_id, _str, _obj)
+                self._umapper.add(None, _str, _obj)
                 self._check_unassigned(_str)
         finally:
             self._lock.release()
@@ -345,14 +424,14 @@ class UnifiedMapper(object):
             self._lock.release()
 
     def get_max_id(self):
-        return max(self._umapper._id_str) + 1
+        return max(self._umapper._id_ent) + 1
 
     def auto_assign(self):
         """Automatically assign the unassigned."""
         self._lock.acquire()
         try:
-            if len(self._umapper._id_str):
-                _next_id = max(self._umapper._id_str) + 1
+            if len(self._umapper._id_ent):
+                _next_id = max(self._umapper._id_ent) + 1
             else:
                 _next_id = 0
             ulist = [x for x in self._unassigned]
@@ -393,13 +472,13 @@ class UnifiedMapper(object):
         """Set the contextual object associated to the ``uid``."""
         self._lock.acquire()
         try:
-            self._umapper.set_obj(uid, obj)
+            self._umapper.set_obj(_id=uid, _obj=obj)
         finally:
             self._lock.release()
 
     def items(self):
-        for (_id, _str) in iter(self):
-            yield (_id, _str, self._umapper.get_obj(_id))
+        for e in self:
+            yield (e.id, e.str, e.obj)
 
     def save(self, fpath):
         """Save the unified mapper into the ``fpath``."""
@@ -418,12 +497,11 @@ class UnifiedMapper(object):
         self._lock.acquire()
         try:
             y = yaml.load(f)
-            for (_id, _str, _obj) in y:
-                if _id == None:
-                    self._unassigned.add(_str)
-                    continue
-                self._assign(_id, _str)
-                self._umapper.set_obj(_id, _obj)
+            self._umapper.batch_add(y)
         finally:
             self._lock.release()
             f.close()
+
+    def dump(self):
+        for e in self:
+            print e
