@@ -184,11 +184,6 @@ class LogMessage(Slots):
     def text(self):
         return "".join([str(x) for x in self.msg])
 
-    def __cmp__(self, other):
-        if other == None:
-            return -1
-        return super(LogMessage, self).__cmp__(other)
-
 
 PixelKey = collections.namedtuple("PixelKey", ["ptn_id", "sec", "comp_id"])
 
@@ -255,21 +250,6 @@ class Pattern(Slots):
         self.first_seen = first_seen
         self.last_seen = max(self.last_seen, other.last_seen)
         return self
-
-    def __eq__(self, other):
-        if other == None:
-            return False
-        return (self.ptn_id == other.ptn_id and
-               self.count == other.count and
-               self.first_seen == other.first_seen and
-               self.last_seen == other.last_seen and
-               self.text == other.text)
-
-    def __neq__(self, other):
-        return not self.__eq__(other)
-
-    def __req__(self, other):
-        return self == other
 
     def copy(self):
         return copy.copy(self)
