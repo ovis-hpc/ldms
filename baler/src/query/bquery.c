@@ -3552,6 +3552,72 @@ struct mptn_data {
 	TAILQ_HEAD(, ptn_entry) tailq;
 };
 
+int __mptn_print(struct bq_store *s, struct bdstr *bdstr, int *col_width,
+			struct mptn_data *mptn_data, uint32_t mptn_id)
+{
+	int rc;
+	uint64_t msg_count = 0;
+	struct ptn_entry *ent;
+	const struct bstr *cname = bmptn_get_cluster_name(s->mptn_store, mptn_id);
+
+	bdstr_reset(bdstr);
+	bdstr_append_printf(bdstr, "%-*d ", col_width[0], mptn_id);
+	if (verbose) {
+		const struct bptn_attrM *attrM =
+					&mptn_data[mptn_id].attr;
+		bdstr_append_printf(bdstr, "%*lu ",
+				col_width[1], attrM->count);
+		msg_count += attrM->count;
+		__default_date_fmt(NULL, bdstr, &attrM->first_seen);
+		__default_date_fmt(NULL, bdstr, &attrM->last_seen);
+	}
+	if (!cname) {
+		bdstr_append_printf(bdstr, "*");
+	} else {
+		bdstr_append_printf(bdstr, "%.*s", cname->blen, cname->cstr);
+	}
+
+	printf("%s\n", bdstr->str);
+
+	if (!verbose)
+		return 0;
+
+	TAILQ_FOREACH(ent, &mptn_data[mptn_id].tailq, link) {
+		bdstr_reset(bdstr);
+		bdstr_append_printf(bdstr, "%+*d ", col_width[0], ent->ptn_id);
+
+		const struct bptn_attrM *attrM =
+			bptn_store_get_attrM(s->ptn_store, ent->ptn_id);
+		if (!attrM)
+			goto skip;
+
+		bdstr_append_printf(bdstr, "%*lu ",
+				col_width[1], attrM->count);
+		msg_count += attrM->count;
+		__default_date_fmt(NULL, bdstr, &attrM->first_seen);
+		__default_date_fmt(NULL, bdstr, &attrM->last_seen);
+
+		rc = bptn_store_id2str(s->ptn_store, s->tkn_store, ent->ptn_id,
+					bdstr->str + bdstr->str_len,
+					bdstr->alloc_len - bdstr->str_len);
+		switch (rc) {
+		case 0:
+			/* do nothing, just continue the execution. */
+			break;
+		case ENOENT:
+			/* skip a loop for no entry */
+			goto skip;
+		default:
+			return rc;
+		}
+
+		printf("%s\n", bdstr->str);
+	skip:
+		continue;
+	}
+	return 0;
+}
+
 int bq_local_mptn_routine(struct bq_store *s)
 {
 	int rc = 0;
@@ -3563,6 +3629,10 @@ int bq_local_mptn_routine(struct bq_store *s)
 	uint32_t last_class_id = 0;
 	uint32_t id, mptn_id;
 	uint64_t msg_count = 0;
+	struct bset_u32 *set = NULL;
+	struct brange_u32_head mpr = {0};
+	struct brange_u32 *rng;
+	struct brange_u32_iter *itr = NULL;
 	int i, j;
 	struct mptn_data *mptn_data = NULL;
 	struct ptn_entry *entries = NULL;
@@ -3573,6 +3643,25 @@ int bq_local_mptn_routine(struct bq_store *s)
 	}
 
 	last_class_id = bmptn_store_get_last_cls_id(s->mptn_store);
+
+	/*
+	 * Specific meta-pattern IDs are given.
+	 */
+	char *mptn_id_str, *tmp, *endp;
+	int num_ids = 0;
+	if (ptn_ids) {
+		set = bset_u32_from_numlist(ptn_ids, 0);
+		if (!set) {
+			berror("bset_u32_from_numlist()");
+			rc = errno;
+			goto cleanup;
+		}
+		rc = bset_u32_to_brange_u32(set, &mpr);
+		if (rc) {
+			berr("bset_u32_to_brange_u32() returns %d", rc);
+			goto cleanup;
+		}
+	}
 
 	mptn_data = calloc(last_class_id + 1, sizeof(*mptn_data));
 	if (!mptn_data) {
@@ -3678,64 +3767,28 @@ int bq_local_mptn_routine(struct bq_store *s)
 		}
 	}
 
-	for (mptn_id = 0; mptn_id <= last_class_id; mptn_id++) {
-		struct ptn_entry *ent;
-		const struct bstr *cname = bmptn_get_cluster_name(s->mptn_store, mptn_id);
-
-		bdstr_reset(bdstr);
-		bdstr_append_printf(bdstr, "%-*d ", col_width[0], mptn_id);
-		if (verbose) {
-			const struct bptn_attrM *attrM =
-						&mptn_data[mptn_id].attr;
-			bdstr_append_printf(bdstr, "%*lu ",
-					col_width[1], attrM->count);
-			msg_count += attrM->count;
-			__default_date_fmt(NULL, bdstr, &attrM->first_seen);
-			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
+	if (ptn_ids) {
+		itr = brange_u32_iter_new(TAILQ_FIRST(&mpr));
+		if (!itr) {
+			rc = errno;
+			goto cleanup;
 		}
-		if (!cname) {
-			bdstr_append_printf(bdstr, "*");
-		} else {
-			bdstr_append_printf(bdstr, "%.*s", cname->blen, cname->cstr);
+		rc = brange_u32_iter_begin(itr, &mptn_id);
+		while (rc == 0 && mptn_id <= last_class_id) {
+			rc = __mptn_print(s, bdstr, col_width,
+						mptn_data, mptn_id);
+			if (rc)
+				return rc;
+			rc = brange_u32_iter_next(itr, &mptn_id);
 		}
-
-		printf("%s\n", bdstr->str);
-
-		if (!verbose)
-			continue;
-
-		TAILQ_FOREACH(ent, &mptn_data[mptn_id].tailq, link) {
-			bdstr_reset(bdstr);
-			bdstr_append_printf(bdstr, "%+*d ", col_width[0], ent->ptn_id);
-
-			const struct bptn_attrM *attrM =
-				bptn_store_get_attrM(s->ptn_store, ent->ptn_id);
-			if (!attrM)
-				goto skip;
-
-			bdstr_append_printf(bdstr, "%*lu ",
-					col_width[1], attrM->count);
-			msg_count += attrM->count;
-			__default_date_fmt(NULL, bdstr, &attrM->first_seen);
-			__default_date_fmt(NULL, bdstr, &attrM->last_seen);
-
-			rc = bptn_store_id2str(s->ptn_store, s->tkn_store, ent->ptn_id,
-						bdstr->str + bdstr->str_len,
-						bdstr->alloc_len - bdstr->str_len);
-			switch (rc) {
-			case 0:
-				/* do nothing, just continue the execution. */
-				break;
-			case ENOENT:
-				/* skip a loop for no entry */
-				goto skip;
-			default:
+	} else {
+		for (mptn_id = 0; mptn_id <= last_class_id; mptn_id++) {
+			rc = __mptn_print(s, bdstr, col_width,
+					mptn_data, mptn_id);
+			if (rc) {
+				berr("__mptn_print(%d): %d", mptn_id, rc);
 				return rc;
 			}
-
-			printf("%s\n", bdstr->str);
-		skip:
-			continue;
 		}
 	}
 
@@ -3757,6 +3810,14 @@ cleanup:
 		free(entries);
 	if (mptn_data)
 		free(mptn_data);
+	if (set)
+		bset_u32_free(set);
+	if (itr)
+		brange_u32_iter_free(itr);
+	while ((rng = TAILQ_FIRST(&mpr))) {
+		TAILQ_REMOVE(&mpr, rng, link);
+		free(rng);
+	}
 	return rc;
 }
 
