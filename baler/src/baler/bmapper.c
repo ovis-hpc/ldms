@@ -105,7 +105,7 @@ void __special_bstr_init()
 	if (starenv) {
 		___SPECIAL_BSTR(BMAP_ID_STAR, starenv);
 	} else {
-		___SPECIAL_BSTR(BMAP_ID_STAR, "*");
+		___SPECIAL_BSTR(BMAP_ID_STAR, BMAP_STAR_TEXT);
 	}
 }
 
