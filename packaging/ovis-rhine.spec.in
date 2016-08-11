@@ -22,7 +22,7 @@
 Summary: OVIS LDMS Commands and Libraries
 Name: ldms-all
 Version: @VERSION@
-Release: trinity_rhine_node%{?dist}
+Release: trinity_16.8.11.1%{?dist}
 License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -65,8 +65,8 @@ rm $RPM_BUILD_ROOT%{_bindir}/test_*
 rm $RPM_BUILD_ROOT%{_bindir}/ldms_ban.sh
 mv $RPM_BUILD_ROOT%{_docdir}/ovis-ldms-*/* $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/
 mkdir $RPM_BUILD_ROOT%{_sysconfdir}
-cp -r $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/sample_init_scripts/genders/etc/init.d $RPM_BUILD_ROOT%{_sysconfdir}
-cp -r $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/sample_init_scripts/genders/etc/sysconfig $RPM_BUILD_ROOT%{_sysconfdir}
+#cp -r $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/sample_init_scripts/genders/etc/init.d $RPM_BUILD_ROOT%{_sysconfdir}
+#cp -r $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/sample_init_scripts/genders/etc/sysconfig $RPM_BUILD_ROOT%{_sysconfdir}
 
 %clean
 rm -rf $RPM_BUILD_ROOT
@@ -74,12 +74,20 @@ rm -rf $RPM_BUILD_ROOT
 %files
 %defattr(-,root,root)
 #%%exclude %{_bindir}/bhquery
+%exclude %{_sbindir}/ldmsd_sos_init
+%exclude %{_libdir}/libkey*
+%exclude %{_libdir}/libidx_BXTREE*
+%exclude %{_libdir}/libsos*
 %{_libdir}/*
 %{_bindir}/envldms.sh
 %{_bindir}/ldmsd_controller
 %{_bindir}/ldms-pedigree
 %{_bindir}/lib-pedigree
 %{_sbindir}/*
+%{_prefix}/lib/python2.7/site-packages/ovis_lib
+%{_prefix}/lib/python2.7/site-packages/ovis_ldms
+%{_prefix}/lib/python2.7/site-packages/ldmsd
+%{_bindir}/ldmsd_controller
 %{_docdir}/%{name}-%{version}/COPYING
 %{_docdir}/%{name}-%{version}/ChangeLog
 %{_docdir}/%{name}-%{version}/AUTHORS 
@@ -125,10 +133,10 @@ This is the libgenders based boot scripts for LDMS daemons.
 Users must provide information via /etc/genders (or alternate file)
 to make these scripts operate. They are required to fail out of the box.
 
-%files initscripts
-%defattr(-,root,root)
-%{_sysconfdir}/*/*
-#end initscripts
+# %files initscripts
+# %defattr(-,root,root)
+# %{_sysconfdir}/*/*
+# #end initscripts
 
 %package doc
 Summary: Documentation files for %{name}
@@ -140,6 +148,7 @@ Man and maybe Doxygen files for ldms-all package.
 %defattr(-,root,root)
 %{_mandir}/*/*
 %{_datadir}/doc/%{name}-%{version}
+%{_datadir}/doc/gpcdlocal
 #%%{_datadir}/doc/sos
 #%%{_datadir}/doc/ovis-lib-%{version}
 #%%{_datadir}/doc/baler
@@ -152,9 +161,6 @@ Summary: Python files for LDMS
 Python files for LDMS
 %files python2
 %defattr(-,root,root)
-%{_prefix}/lib/python2.7/site-packages/ovis_lib
-%{_prefix}/lib/python2.7/site-packages/ovis_ldms
-%{_prefix}/lib/python2.7/site-packages/ldmsd
 #%%{_prefix}/lib/python2.7/site-packages/baler
 #%%{python2_sitelib}/*
 #end python2
@@ -171,6 +177,10 @@ This is a collection of sos utilities.
 %files sos
 %defattr(-,root,root)
 %{_bindir}/sos_*
+%{_libdir}/libkey*
+%{_libdir}/libidx_BXTREE.*
+%{_sbindir}/ldmsd_sos_init
+%{_libdir}/libsos*
 %{_prefix}/lib/python2.7/site-packages/sos
 #end test
 
@@ -187,11 +197,33 @@ for i in $RPM_INSTALL_PREFIX/bin/envldms.sh \
 		$i
 done
 
-%post python2
-#rm $RPM_INSTALL_PREFIX/bin/bhquery
-#ln -s $RPM_INSTALL_PREFIX/lib/python*/site-packages/baler/bquery.py $RPM_INSTALL_PREFIX/bin/bhquery
+%post test
+for i in $RPM_INSTALL_PREFIX/bin/ldms*.sh; do
+	sed -i \
+		-e "s%BUILDDIR=/usr%BUILDDIR=$RPM_INSTALL_PREFIX%g" \
+		-e "s%exec_prefix=/usr%exec_prefix=$RPM_INSTALL_PREFIX%g" \
+		-e "s%libdir=/usr%libdir=$RPM_INSTALL_PREFIX%g" \
+		-e "s%%prefix=/usr%%prefix=$RPM_INSTALL_PREFIX%g" \
+		$i
+done
+
+# %post python2
+# #rm $RPM_INSTALL_PREFIX/bin/bhquery
+# #ln -s $RPM_INSTALL_PREFIX/lib/python*/site-packages/baler/bquery.py $RPM_INSTALL_PREFIX/bin/bhquery
 
 %changelog
+* Thu Aug 11 2016 Ben Allan <baallan@sandia.gov> 3.0.0-20
+code updates
+* Wed Apr 13 2016 Ben Allan <baallan@sandia.gov> 3.0.0-9
+zap updates.
+* Thu Apr 07 2016 Ben Allan <baallan@sandia.gov> 3.0.0-8
+cray python relocation.
+* Mon Mar 21 2016 Ben Allan <baallan@sandia.gov> 3.0.0-7
+cray transport update.
+* Mon Mar 14 2016 Ben Allan <baallan@sandia.gov> 3.0.0-6
+cray transport update.
+* Fri Feb 19 2016 Ben Allan <baallan@sandia.gov> 3.0.0-4
+Slimmed node version.
 * Wed Nov 04 2015 Ben Allan <baallan@sandia.gov> 3.0.0-3
 ported for Cray SLES 12 compute node.
 * Tue Nov 03 2015 Ben Allan <baallan@sandia.gov> 3.0.0-2
