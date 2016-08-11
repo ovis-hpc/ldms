@@ -1,0 +1,224 @@
+# Set topdir to be builddir/rpm
+# note this is intentionally ignored by rpmbuild. must use
+# commandline syntax in makefile.am to get this effect.
+#% define _topdir %(echo $PWD)/toss
+# do not set unfascist build
+#%-define _unpackaged_files_terminate_build 0
+#%-define _missing_doc_files_terminate_build 0
+
+%define ldms_all System Environment/Libraries
+# % global __strip /bin/true
+%global _enable_debug_package 0
+%global debug_package %{nil}
+%global __os_install_post /usr/lib/rpm/brp-compress %{nil}
+%if 0%{?rhel} && 0%{?rhel} <= 6
+%{!?__python2: %global __python2 /opt/python-2.7/bin/python}
+%{!?python2_sitelib: %global python2_sitelib %(%{__python2} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib())")}
+%{!?python2_sitearch: %global python2_sitearch %(%{__python2} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib(1))")}
+%endif
+
+# Main package
+Summary: OVIS LDMS Commands and Libraries
+Name: ldms-all
+Version: @VERSION@
+Release: trinity_mon_16.8.11.1%{?dist}
+License: GPLv2 or BSD
+Group: %{ldms_all}
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: %{name}-%{version}.tar.gz
+Requires: rpm >= 4.8.0 libevent >= 2.0.21 libyaml libyaml-devel python2 python2-devel
+BuildRequires: doxygen openssl-devel gcc glib2-devel libevent  libevent-devel libyaml libyaml-devel python2 python2-devel gettext-devel
+Url: http://ovis.ca.sandia.gov/
+
+Prefix: /usr
+
+
+%description
+This package provides the LDMS commands and libraries, OVIS apis and transport libraries, and scalable object store libraries.
+Configured with @ac_configure_args@.
+* ldmsd: the LDMS daemon, which can run as sampler or aggregator (or both).
+* ldms_ls: the tool to list metric information of an ldmsd.
+* ldmsctl: the tool to control an ldmsd.
+
+
+%prep
+%setup -q
+
+%build
+echo bTMPPATH %{_tmppath}
+rm -rf $RPM_BUILD_ROOT
+echo bBUILDROOT $RPM_BUILD_ROOT
+%configure CFLAGS=-g @ac_configure_args@
+make V=1 -j 16
+
+%install
+echo TMPPATH %{_tmppath}
+echo BUILDROOT $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} V=1 install
+# remove unpackaged files from the buildroot
+rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
+rm -f $RPM_BUILD_ROOT%{_libdir}/ovis-ldms/lib*.la
+# fix in subsequent after sorting use of sysconfdir or share/baler in baler
+rm -f $RPM_BUILD_ROOT%{_prefix}/etc/ovis/eng-dictionary
+rm $RPM_BUILD_ROOT%{_bindir}/test_*
+rm $RPM_BUILD_ROOT%{_bindir}/ldms_ban.sh
+mv $RPM_BUILD_ROOT%{_docdir}/ovis-ldms-*/* $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}
+cp -r $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/sample_init_scripts/genders/etc/init.d $RPM_BUILD_ROOT%{_sysconfdir}
+cp -r $RPM_BUILD_ROOT%{_docdir}/%{name}-%{version}/sample_init_scripts/genders/etc/sysconfig $RPM_BUILD_ROOT%{_sysconfdir}
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+%exclude %{_bindir}/bhquery
+%{_libdir}/*
+%{_bindir}/*
+%{_sbindir}/*
+%{_docdir}/%{name}-%{version}/COPYING
+%{_docdir}/%{name}-%{version}/ChangeLog
+%{_docdir}/%{name}-%{version}/AUTHORS 
+#end core
+
+# devel
+%package devel
+Summary: LDMS devel package
+Group: %{ldms_grp}
+Requires: ldms-all = @VERSION@
+%description devel
+This is a development package of Lightweight Distributed Metric System (LDMS).
+Users who want to implement their own sampler or store must install this
+package.
+
+%files devel
+%defattr(-,root,root)
+%{_includedir}/*/*.h
+%{_includedir}/*/*/*.h
+%{_includedir}/ovis-lib-config.h
+%{_includedir}/ovis-ldms-config.h
+#end devel
+
+%package test
+Summary: LDMS test package
+Group: %{ldms_grp}
+Requires: ldms-all = 3.0.0
+%description test
+This is a collection of test scripts for (LDMS).
+They also serve as examples, but are not usually of interest
+on compute nodes in large clusters.
+
+%files test
+%defattr(-,root,root)
+%{_bindir}/ldms*sh
+#end test
+
+# initscripts
+%package initscripts
+Summary: LDMS initscripts for libgenders control of %{name}
+Group: %{ldms_grp}
+Requires: ldms-all = @VERSION@
+%description initscripts
+This is the libgenders based boot scripts for LDMS daemons.
+Users must provide information via /etc/genders (or alternate file)
+to make these scripts operate. They are required to fail out of the box.
+
+%files initscripts
+%defattr(-,root,root)
+%{_sysconfdir}/*/*
+#end initscripts
+
+%package doc
+Summary: Documentation files for %{name}
+Group: %{ldms_all}
+## Requires: %{name}-devel = %{version}-%{release}
+%description doc
+Doxygen files for ldms-all package.
+%files doc
+%defattr(-,root,root)
+%{_mandir}/*/*
+%{_datadir}/doc/%{name}-%{version}
+## %{_datadir}/doc/ovis-lib-%{version}
+## %{_datadir}/doc/sos
+## %{_datadir}/doc/baler
+## %%docdir %{_defaultdocdir}
+%docdir /usr/share/doc
+
+%package python2
+Summary: Python files for LDMS and baler
+%description python2
+Python files for LDMS
+%files python2
+%defattr(-,root,root)
+%{_prefix}/lib/python2.7/site-packages/ovis_lib
+%{_prefix}/lib/python2.7/site-packages/sos
+%{_prefix}/lib/python2.7/site-packages/ovis_ldms
+%{_prefix}/lib/python2.7/site-packages/ldmsd
+%{_prefix}/lib/python2.7/site-packages/baler
+#%%{python2_sitelib}/*
+#end python2
+# see https://fedoraproject.org/wiki/Packaging:Python_Old
+# and https://fedoraproject.org/wiki/Packaging:Python
+
+%package sos
+Summary: SOS package
+Group: %{ldms_grp}
+Requires: ldms-all = 3.0.0
+%description sos
+This is a collection of sos utilities.
+
+%files sos
+%defattr(-,root,root)
+%{_bindir}/sos_*
+%{_prefix}/lib/python2.7/site-packages/sos
+#end test
+
+%post 
+for i in $RPM_INSTALL_PREFIX/bin/envldms.sh \
+	$RPM_INSTALL_PREFIX/bin/ldms*.sh \
+	$RPM_INSTALL_PREFIX/lib64/ovis-*configvars.sh; do
+	sed -i \
+		-e "s%BUILDDIR=/usr%BUILDDIR=$RPM_INSTALL_PREFIX%g" \
+		-e "s%exec_prefix=/usr%exec_prefix=$RPM_INSTALL_PREFIX%g" \
+		-e "s%libdir=/usr%libdir=$RPM_INSTALL_PREFIX%g" \
+		-e "s%%prefix=/usr%%prefix=$RPM_INSTALL_PREFIX%g" \
+		$i
+done
+
+%post test 
+for i in $RPM_INSTALL_PREFIX/bin/ldms*.sh; do
+	sed -i \
+		-e "s%BUILDDIR=/usr%BUILDDIR=$RPM_INSTALL_PREFIX%g" \
+		-e "s%exec_prefix=/usr%exec_prefix=$RPM_INSTALL_PREFIX%g" \
+		-e "s%libdir=/usr%libdir=$RPM_INSTALL_PREFIX%g" \
+		-e "s%%prefix=/usr%%prefix=$RPM_INSTALL_PREFIX%g" \
+		$i
+done
+
+%post python2
+rm $RPM_INSTALL_PREFIX/bin/bhquery
+ln -s $RPM_INSTALL_PREFIX/lib/python*/site-packages/baler/bquery.py $RPM_INSTALL_PREFIX/bin/bhquery
+
+%changelog
+* Mon Mar 14 2016 Ben Allan <baallan@sandia.gov> 3.0.0-6
+Update for cray/sos features.
+* Tue Mar 01 2016 Ben Allan <baallan@sandia.gov> 3.0.0-3
+ported for LANL monitoring server.
+* Tue Nov 03 2015 Ben Allan <baallan@sandia.gov> 3.0.0-2
+ported for LANL monitoring server.
+* Tue Oct 13 2015 Ben Allan <baallan@sandia.gov> 3.0.0-1
+update to v3. 
+* Tue Aug 25 2015 Ben Allan <baallan@sandia.gov> 2.4.5-1
+update to latest upstream.
+* Wed Jul 29 2015 Ben Allan <baallan@sandia.gov> 2.4.4-1
+update to latest upstream.
+* Thu Jun 18 2015 Ben Allan <baallan@sandia.gov> 2.4.3-1
+packaging of initscripts for ldmsd/ldms-aggd.
+* Sat May 23 2015 Ben Allan <baallan@sandia.gov> 2.4.2-1
+update to latest upstream.
+* Thu Apr 23 2015 Ben Allan <baallan@sandia.gov> 2.4.1-1
+packaging with sysclassib and procstatutil2 enabled.
+* Wed Feb 18 2015 Ben Allan <baallan@sandia.gov> 2.4.0-1
+packaging with separate libevent
+* Mon Sep 15 2014 Ben Allan <baallan@sandia.gov> 2.2.0-1
+all-in-one packaging w/libevent
