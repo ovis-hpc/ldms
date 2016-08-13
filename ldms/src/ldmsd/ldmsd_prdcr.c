@@ -130,6 +130,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 		ldms_set_delete(set->set);
 		set->set = NULL;
 	}
+	set->state = LDMSD_PRDCR_SET_STATE_START;
 	ldmsd_strgp_ref_t strgp_ref;
 	strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
@@ -170,6 +171,10 @@ static void prdcr_reset_sets(ldmsd_prdcr_t prdcr)
 	struct rbn *rbn;
 	while ((rbn = rbt_min(&prdcr->set_tree))) {
 		prd_set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
+		if (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG) {
+			/* Put back the reference taken when register for push */
+			ldmsd_prdcr_set_ref_put(prd_set);
+		}
 		rbt_del(&prdcr->set_tree, rbn);
 		prdcr_set_del(prd_set);
 	}

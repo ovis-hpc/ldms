@@ -85,11 +85,13 @@ struct ldms_set {
 	struct rbn rb_node;
 	struct rbd_list local_rbd_list;
 	struct rbd_list remote_rbd_list;
+	pthread_mutex_t lock;
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
 
+extern int __ldms_xprt_push(ldms_set_t s, int push_flags);
 extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
 extern void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,
@@ -97,9 +99,10 @@ extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 				ldms_lookup_cb_t cb, void *cb_arg);
 extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 extern int __ldms_remote_dir_cancel(ldms_t x);
-extern int __ldms_create_set(const char *instance_name, const char *schema_name,
-		      size_t meta_len, size_t data_len, size_t card,
-		      ldms_set_t *s, uint32_t flags);
+extern struct ldms_set *
+__ldms_create_set(const char *instance_name, const char *schema_name,
+		  size_t meta_len, size_t data_len, size_t card,
+		  uint32_t flags);
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
 				     int *set_count, int *set_list_size);

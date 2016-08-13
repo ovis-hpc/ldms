@@ -73,7 +73,7 @@ extern "C" {
 #endif
 typedef struct ldms_xprt *ldms_t;
 typedef struct ldms_rbuf_desc *ldms_rbuf_t;
-typedef struct ldms_set_desc *ldms_set_t;
+typedef struct ldms_rbuf_desc *ldms_set_t;
 typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
 
@@ -291,14 +291,9 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_FILEMAP	0x0002
 #define LDMS_SET_F_LOCAL	0x0004
 #define LDMS_SET_F_REMOTE	0x0008
+#define LDMS_SET_F_PUSH_CHANGE	0x0010
 #define LDMS_SET_F_PUBLISHED	0x100000 /* Set is in the set tree. */
 #define LDMS_SET_ID_DATA	0x1000000
-
-struct ldms_set;
-struct ldms_set_desc {
-	struct ldms_rbuf_desc *rbd;
-	struct ldms_set *set;
-};
 
 /**
  * \addtogroup ldms_conn_mgmt LDMS Connection Management
@@ -677,6 +672,13 @@ extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags f
  * \{
  */
 
+/** The update failed due to a transport error */
+#define LDMS_UPD_F_ERROR	1
+/** The update is the result of a peer push */
+#define LDMS_UPD_F_PUSH		2
+/* This is final push update for this set */
+#define LDMS_UPD_F_PUSH_LAST	4
+
 /**
  * \brief Prototype for the function called when update completes.
  *
@@ -685,10 +687,10 @@ extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags f
  *
  * \param t	The transport endpoint.
  * \param s	The metric set handle updated.
- * \param rc	0 if the update was successful, or an error value.
+ * \param flags One or more of the LDMS_UPD_F_xxx flags
  * \param arg	The callback argument specified in the call to \c ldms_update.
  */
-typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int status, void *arg);
+typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg);
 
 /**
  * \brief Update the metric set contents.
@@ -702,6 +704,71 @@ typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int status, void *arg);
  * \returns	0 on success or a non-zero value to indicate an error.
  */
 extern int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg);
+
+#define LDMS_XPRT_PUSH_F_CHANGE	1
+/**
+ * \brief Register a remote set for push notifications
+ *
+ * Registers a remote set to receive push updates from the peer. A
+ * remote set is one that was returned by a call to
+ * ldms_xprt_lookup(). Passing a set created with the ldms_set_new()
+ * to this function will return the error EINVAL.
+ *
+ * If the <tt>push_flags</tt> parameter contains
+ * LDMS_XPRT_PUSH_CHANGE, the the cb_fn() function will be called
+ * whenever the peer calls ldms_transaction_end() on the remote set,
+ * i.e. when peer set updates are complete and coherent. If the
+ * LDMS_XPRT_PUSH_CHANGE flag is not set, then the the cb_fn()
+ * function will be called only when the peer calls ldms_xprt_push().
+ *
+ * See the ldms_xprt_cancel_push() function to stop receiving push
+ * notifications from the peer if LDMS_XPRT_PUSH_CHANGE is requested.
+ *
+ * \param s	The set handle returned by ldms_xprt_lookup()
+ * \param push_change If !0, the peer will call ldms_xprt_push() for
+ *              this set whenever ldms_transaction_end() is called at
+ *              the peer for this set.
+ * \param cb_fn The function to call when push updates are
+ *              received. If <null>, no notifications will be provided
+ *              when the set is updated by the peer.
+ * \param cb_arg A value provided to the cb_fn() when notifications
+ *              are delivered to the application.
+ * \returns	0 on success or a non-zero value to indicate an error.
+ */
+extern int ldms_xprt_register_push(ldms_set_t s, int push_flags,
+				   ldms_update_cb_t cb_fn, void *cb_arg);
+
+/**
+ * \brief Cancel push updates from the peer for this set.
+ *
+ * Note that there are implicit race conditions that the caller should
+ * be aware of. Specifically, the caller may receive one or more calls
+ * to the cb_fn() function after this function has returned depending
+ * on whether or not there were outstanding updates in flight at the
+ * time the request was processed at the peer. The caller _must_
+ * consult the <tt>flags</tt> parameter to the cb_fn() function to
+ * know when the last call to cb_fn() has been received.
+ *
+ * \param s The set handle provided in a previous call to
+ *          ldms_xprt_register_push().
+ * \retval 0 Success
+ * \retval ENOENT The specified set is not registered for push updates
+ * \retval EINVAL The specified set is a local set or otherwise invalid
+ * \retval ENOTCONN The transport is not connected
+ */
+extern int ldms_xprt_cancel_push(ldms_set_t s);
+
+/**
+ * \brief Send a metric set's contents to a remote peer
+ *
+ * This function will send push updates to all peers that are
+ * registered for push updates. If there are no peers registered for
+ * peer updates, this function does nothing.
+ *
+ * \param s	The metric set handle to push.
+ * \returns	0 on success or a non-zero value to indicate an error.
+ */
+extern int ldms_xprt_push(ldms_set_t s);
 
 /**
  * \brief Create a metric set schema

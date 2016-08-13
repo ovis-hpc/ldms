@@ -111,7 +111,7 @@ void null_log(const char *fmt, ...)
 	fflush(stderr);
 }
 
-#define FMT "h:p:x:w:m:ESIlvua:V"
+#define FMT "h:p:x:w:m:ESIlvua:VP"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ name ... ]\n"
@@ -123,7 +123,7 @@ void usage(char *argv[])
 	       "                     localhost unless -h is specified in which case it is sock.\n"
 	       "\n    -w <secs>        The time to wait before giving up on the server.\n"
 	       "                     The default is 10 seconds.\n"
-	       "\n    -v               Show detail information about the metric set. Specifying\n"
+	       "\n    -v             Show detail information about the metric set. Specifying\n"
 	       "                     this option multiple times increases the verbosity.\n"
 	       "\n    -E               The <name> arguments are regular expressions.\n"
 	       "\n    -S               The <name>s refers to the schema name.\n"
@@ -146,8 +146,8 @@ void usage(char *argv[])
 	       "                     must be set to the full path to the file storing\n"
 	       "                     the shared secret word, e.g., secretword=<word>\n");
 #endif /* OVIS_LIB_HAVE_AUTH */
-	printf("\n    -V               Print LDMS version and exit.\n");
-
+	printf("\n    -V           Print LDMS version and exit.\n");
+	printf("\n    -P           Register for push updates.\n");
 	exit(1);
 }
 
@@ -304,7 +304,6 @@ void metric_printer(ldms_set_t s, int i)
 
 void print_detail(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = s;
 	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
 	struct ldms_timestamp _dur = ldms_transaction_duration_get(s);
 	struct ldms_timestamp const *ts = &_ts;
@@ -320,14 +319,14 @@ void print_detail(ldms_set_t s)
 	printf("    Producer Name : %s\n", ldms_set_producer_name_get(s));
 	printf("    Instance Name : %s\n", ldms_set_instance_name_get(s));
 	printf("      Schema Name : %s\n", ldms_set_schema_name_get(s));
-	printf("             Size : %" PRIu32 "\n", ldms_set_meta_sz_get(sd));
+	printf("             Size : %" PRIu32 "\n", ldms_set_meta_sz_get(s));
 	printf("     Metric Count : %" PRIu32 "\n", ldms_set_card_get(s));
 	printf("               GN : %" PRIu64 "\n", ldms_set_meta_gn_get(s));
 	printf("  DATA ------------\n");
 	printf("        Timestamp : %s [%dus]\n", dtsz, ts->usec);
 	printf("         Duration : [%d.%06ds]\n", dur->sec, dur->usec);
 	printf("       Consistent : %s\n", (consistent?"TRUE":"FALSE"));
-	printf("             Size : %" PRIu32 "\n", ldms_set_data_sz_get(sd));
+	printf("             Size : %" PRIu32 "\n", ldms_set_data_sz_get(s));
 	printf("               GN : %" PRIu64 "\n", ldms_set_data_gn_get(s));
 	printf("  -----------------\n");
 }
@@ -337,6 +336,18 @@ static int long_format = 0;
 
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
+	if (rc & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
+		printf("    Error %x updating metric set.\n", rc);
+		goto out;
+	}
+	/* If this is a push update and it's not the last, ignore it. */
+	if (rc & LDMS_UPD_F_PUSH) {
+		if (!(rc & LDMS_UPD_F_PUSH_LAST)) {
+			/* This will trigger the last update */
+			ldms_xprt_cancel_push(s);
+			return;
+		}
+	}
 	unsigned long last = (unsigned long)arg;
 	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
 	struct ldms_timestamp const *ts = &_ts;
@@ -347,13 +358,14 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	tm = localtime(&ti);
 	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
 
-	printf("%s: %s, last update: %s [%dus]\n",
+	printf("%s: %s, last update: %s [%dus] ",
 	       ldms_set_instance_name_get(s),
 	       (consistent?"consistent":"inconsistent"), dtsz, ts->usec);
-	if (rc) {
-		printf("    Error %d updating metric set.\n", rc);
-		goto out;
-	}
+	if (rc & LDMS_UPD_F_PUSH)
+		printf("PUSH ");
+	if (rc & LDMS_UPD_F_PUSH_LAST)
+		printf("LAST ");
+	printf("\n");
 	if (verbose)
 		print_detail(s);
 	if (long_format) {
@@ -361,7 +373,8 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 		for (i = 0; i < ldms_set_card_get(s); i++)
 			metric_printer(s, i);
 	}
-	ldms_set_delete(s);
+	if ((rc == 0) || (rc & LDMS_UPD_F_PUSH_LAST))
+		ldms_set_delete(s);
  out:
 	printf("\n");
 	pthread_mutex_lock(&print_lock);
@@ -392,7 +405,40 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
  err:
 	printf("ldms_ls: Error %d looking up metric set.\n", status);
 	if (status == ENOMEM) {
-		printf("Changing the LDMS_LS_MEM_SZ environment variable or the "
+		printf("Change the LDMS_LS_MEM_SZ environment variable or the "
+		       "-m option to a bigger value. The current "
+		       "value is %s\n", mem_sz);
+	}
+	if (last && !more) {
+		pthread_mutex_lock(&done_lock);
+		done = 1;
+		pthread_cond_signal(&done_cv);
+		pthread_mutex_unlock(&done_lock);
+	}
+}
+
+void lookup_push_cb(ldms_t t, enum ldms_lookup_status status,
+		    int more,
+		    ldms_set_t s, void *arg)
+{
+	unsigned long last = (unsigned long)arg;
+	if (status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
+		/* Lookup failed, signal the main thread to finish up */
+		last = 1;
+		pthread_mutex_lock(&print_lock);
+		print_done = 1;
+		pthread_cond_signal(&print_cv);
+		pthread_mutex_unlock(&print_lock);
+		goto err;
+	}
+	/* Register this set for push updates */
+	ldms_xprt_register_push(s, LDMS_XPRT_PUSH_F_CHANGE, print_cb,
+				(void *)(unsigned long)(last && !more));
+	return;
+ err:
+	printf("ldms_ls: Error %d looking up metric set.\n", status);
+	if (status == ENOMEM) {
+		printf("Change the LDMS_LS_MEM_SZ environment variable or the "
 				"-m option to a bigger value. The current "
 				"value is %s\n", mem_sz);
 	}
@@ -478,6 +524,7 @@ int main(int argc, char *argv[])
 	int waitsecs = 10;
 	int regex = 0;
 	int schema = 0;
+	ldms_lookup_cb_t lu_cb_fn = lookup_cb;
 	struct timespec ts;
 #if OVIS_LIB_HAVE_AUTH
 	char *auth_path = 0;
@@ -544,6 +591,10 @@ int main(int argc, char *argv[])
 							version.patch,
 							version.flags);
 			exit(0);
+			break;
+		case 'P':
+			lu_cb_fn = lookup_push_cb;
+			long_format = 1;
 			break;
 		default:
 			usage(argv);
@@ -690,7 +741,7 @@ int main(int argc, char *argv[])
 			print_done = 0;
 			pthread_mutex_unlock(&print_lock);
 			ret = ldms_xprt_lookup(ldms, lss->name, flags,
-					       lookup_cb,
+					       lu_cb_fn,
 					       (void *)(unsigned long)
 					       LIST_EMPTY(&set_list));
 			if (ret) {

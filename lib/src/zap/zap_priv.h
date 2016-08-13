@@ -286,6 +286,7 @@ zap_ep_change_state(struct zap_ep *ep,
 
 struct zap_map {
 	LIST_ENTRY(zap_map) link; /*! List of maps for an endpoint. */
+	uint32_t ref_count;	  /*! # of calls to zap_map() + zap_map_get() */
 	zap_map_type_t type;	  /*! Is this a local or remote map  */
 	zap_ep_t ep;		  /*! The endpoint */
 	zap_access_t acc;	  /*! Access rights */

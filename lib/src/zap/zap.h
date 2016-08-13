@@ -532,6 +532,20 @@ typedef enum zap_map_type {
 zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
 		  void *addr, size_t sz, zap_access_t acc);
 
+/**
+ * Add a reference to a zap mapping
+ *
+ * This is needed if the mapping is going to be shared by multiple
+ * clients and it is expected that zap_unmap() may be called multiple
+ * times.
+ *
+ * The application must call zap_unmap() once for each time it obtains
+ * a map from zap_map(), zap_get() or ZAP_EVENT_RENDEZVOUS.
+ *
+ * \param map The zap map obtained from zap_map()
+ */
+zap_map_t zap_map_get(zap_map_t map);
+
 /** \brief Return the length of the mapped buffer.
  *
  * \param map	The map handle.

@@ -372,7 +372,6 @@ send_request_reply(int sock, req_msg_t rm,
 
 		if ((remaining == 0) ||
 		    ((data_len == 0) && (msg_flags & LDMSD_REQ_EOM_F))) {
-			ldmsd_log(LDMSD_LERROR, "remaining %d data_len %d\n", remaining, data_len);
 			msg_flags =
 				(rm->rec_no == 0?LDMSD_REQ_SOM_F:0)
 				| (msg_flags & LDMSD_REQ_EOM_F);
@@ -935,7 +934,7 @@ static int prdcr_status_handler(int sock, req_msg_t rm)
 		cnt = Snprintf(&rm->line_buf, &rm->line_len,
 			       "{ \"name\":\"%s\","
 			       "\"host\":\"%s\","
-			       "\"port\":%hd,"
+			       "\"port\":%hu,"
 			       "\"transport\":\"%s\","
 			       "\"state\":\"%s\","
 			       "\"sets\": [",
@@ -1998,6 +1997,15 @@ send_reply:
 	return 0;
 }
 
+static const char *update_mode(int push_flags)
+{
+	if (!push_flags)
+		return "Pull";
+	if (push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
+		return "Push on Change";
+	return "Push on Request";
+}
+
 static int updtr_status_handler(int sock, req_msg_t rm)
 {
 	ldmsd_updtr_t updtr;
@@ -2018,11 +2026,13 @@ static int updtr_status_handler(int sock, req_msg_t rm)
 			       "{\"name\":\"%s\","
 			       "\"interval\":\"%d\","
 			       "\"offset\":%d,"
+			       "\"mode\":\"%s\","
 			       "\"state\":\"%s\","
 			       "\"producers\":[",
 			       updtr->obj.name,
 			       updtr->updt_intrvl_us,
 			       updtr->updt_offset_us,
+			       update_mode(updtr->push_flags),
 			       ldmsd_updtr_state_str(updtr->state));
 		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
 		prdcr_count = 0;

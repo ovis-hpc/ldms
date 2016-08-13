@@ -628,6 +628,7 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep, size_t msglen)
 		}
 	}
 
+	map->map.ref_count = 1;
 	map->map.ep = (void*)uep;
 	map->map.acc = msg.acc;
 	map->map.type = ZAP_MAP_REMOTE;

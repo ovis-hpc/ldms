@@ -147,51 +147,45 @@ void __ldms_set_tree_unlock()
 	pthread_mutex_unlock(&set_tree_lock);
 }
 
-extern ldms_set_t ldms_set_by_name(const char *set_name)
+static ldms_set_t __set_by_name(const char *set_name)
 {
-	struct ldms_set_desc *sd = NULL;
-	__ldms_set_tree_lock();
 	struct ldms_set *set = __ldms_find_local_set(set_name);
-	struct ldms_rbuf_desc *rbd;
+	struct ldms_rbuf_desc *rbd = NULL;
 	if (!set)
 		goto out;
 
-	sd = calloc(1, sizeof *sd);
-	if (!sd)
-		goto out;
-
-	/* Create fake rbd */
 	rbd = calloc(1, sizeof(*rbd));
-	if (!rbd) {
-		free(sd);
-		sd = NULL;
+	if (!rbd)
 		goto out;
-	}
-	/*
-	 * Insert the rbd to the remote list
-	 * to take the reference on the set.
-	 */
-	rbd->set = set;
-	LIST_INSERT_HEAD(&set->remote_rbd_list, rbd, set_link);
 
-	sd->set = set;
-	sd->rbd = rbd;
+	rbd->set = set;
+	rbd->type = LDMS_RBD_LOCAL;
+
+	pthread_mutex_lock(&set->lock);
+	LIST_INSERT_HEAD(&set->local_rbd_list, rbd, set_link);
+	pthread_mutex_unlock(&set->lock);
 
  out:
+	return rbd;
+}
+
+extern ldms_set_t ldms_set_by_name(const char *set_name)
+{
+	ldms_set_t s;
+	__ldms_set_tree_lock();
+	s = __set_by_name(set_name);
 	__ldms_set_tree_unlock();
-	return sd;
+	return s;
 }
 
-uint64_t ldms_set_meta_gn_get(ldms_set_t _set)
+uint64_t ldms_set_meta_gn_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = _set;
-	return __le64_to_cpu(sd->set->meta->meta_gn);
+	return __le64_to_cpu(s->set->meta->meta_gn);
 }
 
-uint64_t ldms_set_data_gn_get(ldms_set_t _set)
+uint64_t ldms_set_data_gn_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = _set;
-	return __le64_to_cpu(sd->set->data->gn);
+	return __le64_to_cpu(s->set->data->gn);
 }
 
 static void rem_local_set(struct ldms_set *s)
@@ -287,41 +281,38 @@ static int set_list_sz_cb(struct ldms_set *set, void *arg)
 }
 
  /* The caller must hold the set tree lock. */
-static int __record_set(const char *instance_name, ldms_set_t *s,
-			struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
+static struct ldms_set *
+__record_set(const char *instance_name,
+	     struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
 {
 	struct ldms_set *set;
-	struct ldms_set_desc *sd;
 
 	set = __ldms_find_local_set(instance_name);
 	if (set) {
-		return EEXIST;
+		errno = EEXIST;
+		return NULL;
 	}
 
-	sd = calloc(1, sizeof *sd);
-	if (!sd)
-		goto out_0;
-
 	set = calloc(1, sizeof *set);
-	if (!set)
-		goto out_1;
+	if (!set) {
+		errno = ENOMEM;
+		goto out;
+	}
+
+
+	LIST_INIT(&set->remote_rbd_list);
+	LIST_INIT(&set->local_rbd_list);
+	pthread_mutex_init(&set->lock, NULL);
 
 	set->meta = sh;
 	set->data = dh;
 	set->flags = flags;
 
-	*s = sd;
-	sd->set = set;
-	sd->rbd = NULL;
-
 	set->rb_node.key = get_instance_name(set->meta)->name;
 	rbt_ins(&set_tree, &set->rb_node);
-	return 0;
 
- out_1:
-	free(sd);
- out_0:
-	return ENOMEM;
+ out:
+	return set;
 }
 
 /* Caller must hold the set tree lock. */
@@ -426,12 +417,6 @@ void *_open_and_map_file(const char *path, int type, int create, size_t *size)
 	return p;
 }
 
-static ldms_t __get_xprt(ldms_set_t s)
-{
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	return (ldms_t)(sd->rbd?sd->rbd->xprt:0);
-}
-
 static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 {
 	ldms_set_t *ps = arg;
@@ -443,9 +428,8 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 
 int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
-	struct ldms_set *set = ((struct ldms_set_desc *)s)->set;
-	if (set->flags & LDMS_SET_F_REMOTE){
-		ldms_t x = __get_xprt(s);
+	if (s->set->flags & LDMS_SET_F_REMOTE){
+		ldms_t x = s->xprt;
 		if (!cb) {
 			int rc = __ldms_remote_update(x, s, sync_update_cb, arg);
 			if (rc)
@@ -456,33 +440,33 @@ int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		return __ldms_remote_update(x, s, cb, arg);
 	}
 	if (cb)
-		cb(__get_xprt(s), s, 0, arg);
+		cb(s->xprt, s, 0, arg);
 	return 0;
 }
 
 void ldms_set_delete(ldms_set_t s)
 {
+	int destroy_set = 0;
 	if (!s) {
 		assert(NULL == "The metric set passed in is NULL");
 	}
-
 	__ldms_set_tree_lock();
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	if (sd->rbd)
-		__ldms_free_rbd(sd->rbd);
-
-	struct ldms_set *set = sd->set;
-	struct ldms_rbuf_desc *rbd;
+	struct ldms_set *set = s->set;
+	pthread_mutex_lock(&set->lock);
+	__ldms_free_rbd(s);	/* removes the RBD from the local/remote rbd list */
 	if (LIST_EMPTY(&set->remote_rbd_list)) {
 		__ldms_set_unpublish(set);
-		while (!LIST_EMPTY(&set->local_rbd_list)) {
-			rbd = LIST_FIRST(&set->local_rbd_list);
-			LIST_REMOVE(rbd, set_link);
-			__ldms_free_rbd(rbd);
+		if (LIST_EMPTY(&set->local_rbd_list)) {
+			destroy_set = 1;
 		}
 	}
+	pthread_mutex_unlock(&set->lock);
+	if (destroy_set) {
+		rbt_del(&set_tree, &set->rb_node);
+		mm_free(set->meta);
+		free(set);
+	}
 	__ldms_set_tree_unlock();
-	free(sd);
 }
 
 static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
@@ -566,15 +550,13 @@ char *_create_path(const char *set_name)
 
 const char *ldms_set_instance_name_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	ldms_name_t name = get_instance_name(sd->set->meta);
+	ldms_name_t name = get_instance_name(s->set->meta);
 	return name->name;
 }
 
 const char *ldms_set_producer_name_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	return sd->set->meta->producer_name;
+	return s->set->meta->producer_name;
 }
 
 int ldms_set_producer_name_set(ldms_set_t s, const char *name)
@@ -582,25 +564,28 @@ int ldms_set_producer_name_set(ldms_set_t s, const char *name)
 	if (LDMS_PRODUCER_NAME_MAX < strlen(name))
 		return EINVAL;
 
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)s;
-	strncpy(sd->set->meta->producer_name, name, LDMS_PRODUCER_NAME_MAX);
+	strncpy(s->set->meta->producer_name, name, LDMS_PRODUCER_NAME_MAX);
 	return 0;
 }
 
 /* Caller must hold the set tree lock. */
-int __ldms_create_set(const char *instance_name, const char *schema_name,
-		      size_t meta_len, size_t data_len, size_t card,
-		      ldms_set_t *s, uint32_t flags)
+struct ldms_set *__ldms_create_set(const char *instance_name, const char *schema_name,
+				   size_t meta_len, size_t data_len, size_t card,
+				   uint32_t flags)
 {
 	struct ldms_data_hdr *data;
 	struct ldms_set_hdr *meta;
+	struct ldms_set *set = NULL;
+
 	int rc;
 
 	meta = mm_alloc(meta_len + data_len);
 	if (!meta) {
-		rc = ENOMEM;
-		goto out_0;
+		errno = ENOMEM;
+		return NULL;
 	}
+
+
 	memset(meta, 0, meta_len + data_len);
 	LDMS_VERSION_SET(meta->version);
 	meta->meta_sz = __cpu_to_le32(meta_len);
@@ -624,15 +609,12 @@ int __ldms_create_set(const char *instance_name, const char *schema_name,
 
 	data->gn = data->meta_gn = meta->meta_gn;
 
-	rc = __record_set(instance_name, s, meta, data, flags);
-	if (rc)
-		goto out_1;
-	return 0;
+	set = __record_set(instance_name, meta, data, flags);
+	if (set)
+		return set;
 
- out_1:
 	mm_free(meta);
- out_0:
-	return rc;
+	return NULL;
 }
 
 uint32_t __ldms_set_size_get(struct ldms_set *s)
@@ -738,7 +720,6 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	ldms_mdef_t md;
 	int metric_idx;
 	int rc, i;
-	ldms_set_t s;
 
 	if (!instance_name || !schema) {
 		errno = EINVAL;
@@ -825,73 +806,86 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 						   __le32_to_cpu(vd->vd_array_count));
 	}
 	__ldms_set_tree_lock();
-	rc = __record_set(instance_name, &s, meta, data, LDMS_SET_F_LOCAL);
-	if (rc)
+	struct ldms_set *set = __record_set(instance_name, meta, data, LDMS_SET_F_LOCAL);
+	if (!set)
 		goto err_1;
-	rc = __ldms_set_publish(s->set);
+	rc = __ldms_set_publish(set);
 	if (rc)
 		goto err_2;
+	ldms_set_t rbd = calloc(1, sizeof(*rbd));
+	if (!rbd)
+		goto err_2;
+	rbd->set = set;
+	rbd->type = LDMS_RBD_LOCAL;
 	__ldms_set_tree_unlock();
-	return s;
+	return rbd;
  err_2:
-	free(s->set);
-	free(s);
+	free(set);
  err_1:
 	__ldms_set_tree_unlock();
 	mm_free(meta);
-	errno = rc;
 	return NULL;
 }
 
-const char *ldms_set_name_get(ldms_set_t _set)
+const char *ldms_set_name_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	struct ldms_set_hdr *sh = sd->set->meta;
+	struct ldms_set_hdr *sh = s->set->meta;
 	return get_instance_name(sh)->name;
 }
 
-const char *ldms_set_schema_name_get(ldms_set_t _set)
+const char *ldms_set_schema_name_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	struct ldms_set_hdr *sh = sd->set->meta;
+	struct ldms_set_hdr *sh = s->set->meta;
 	return get_schema_name(sh)->name;
 }
 
-uint32_t ldms_set_card_get(ldms_set_t _set)
+uint32_t ldms_set_card_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	return __le32_to_cpu(sd->set->meta->card);
+	return __le32_to_cpu(s->set->meta->card);
 }
 
-extern uint32_t ldms_set_meta_sz_get(ldms_set_t _set)
+extern uint32_t ldms_set_meta_sz_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	return __le32_to_cpu(sd->set->meta->meta_sz);
+	return __le32_to_cpu(s->set->meta->meta_sz);
 }
 
-extern uint32_t ldms_set_data_sz_get(ldms_set_t _set)
+extern uint32_t ldms_set_data_sz_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = (struct ldms_set_desc *)_set;
-	return __le32_to_cpu(sd->set->meta->data_sz);
+	return __le32_to_cpu(s->set->meta->data_sz);
 }
 
-int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s)
+int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *ps)
 {
 	struct ldms_set_hdr *sh = meta_addr;
 	struct ldms_data_hdr *dh = data_addr;
+	ldms_set_t s;
 	int flags;
+
+	s = calloc(1, sizeof(*s));
+	if (!s)
+		return ENOMEM;
 
 	flags = LDMS_SET_F_MEMMAP | LDMS_SET_F_LOCAL;
 	__ldms_set_tree_lock();
-	int rc = __record_set(get_instance_name(sh)->name, s, sh, dh, flags);
-	if (rc) {
+	struct ldms_set *set = __record_set(get_instance_name(sh)->name, sh, dh, flags);
+	if (!set) {
 		__ldms_set_tree_unlock();
-		return rc;
+		goto err;
 	}
-
-	rc = __ldms_set_publish((*s)->set);
+	int rc = __ldms_set_publish(set);
+	if (!rc) {
+		s->set = set;
+		s->type = LDMS_RBD_LOCAL;
+		*ps = s;
+	} else {
+		errno = rc;
+		goto err;
+	}
 	__ldms_set_tree_unlock();
-	return rc;
+	return 0;
+ err:
+	free(s);
+	return errno;
 }
 
 static char *type_names[] = {
@@ -1894,22 +1888,23 @@ double ldms_metric_array_get_double(ldms_set_t s, int mid, int idx)
 
 int ldms_transaction_begin(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = s;
-	struct ldms_data_hdr *dh = sd->set->data;
+	struct ldms_data_hdr *dh = s->set->data;
 	struct timeval tv;
+	pthread_mutex_lock(&s->set->lock);
 	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
 	(void)gettimeofday(&tv, NULL);
 	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
 	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
+	pthread_mutex_unlock(&s->set->lock);
 	return 0;
 }
 
 int ldms_transaction_end(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = s;
-	struct ldms_data_hdr *dh = sd->set->data;
+	struct ldms_data_hdr *dh = s->set->data;
 	struct timeval tv;
 	(void)gettimeofday(&tv, NULL);
+	pthread_mutex_lock(&s->set->lock);
 	dh->trans.dur.sec = tv.tv_sec - __le32_to_cpu(dh->trans.ts.sec);
 	dh->trans.dur.usec = tv.tv_usec - __le32_to_cpu(dh->trans.ts.usec);
 	if (((int32_t)dh->trans.dur.usec) < 0) {
@@ -1921,13 +1916,14 @@ int ldms_transaction_end(ldms_set_t s)
 	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
 	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
 	dh->trans.flags = LDMS_TRANSACTION_END;
+	pthread_mutex_unlock(&s->set->lock);
+	__ldms_xprt_push(s, LDMS_RBD_F_PUSH_CHANGE);
 	return 0;
 }
 
 struct ldms_timestamp ldms_transaction_timestamp_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = s;
-	struct ldms_data_hdr *dh = sd->set->data;
+	struct ldms_data_hdr *dh = s->set->data;
 	struct ldms_timestamp ts = {
 		.sec = __le32_to_cpu(dh->trans.ts.sec),
 		.usec = __le32_to_cpu(dh->trans.ts.usec),
@@ -1937,8 +1933,7 @@ struct ldms_timestamp ldms_transaction_timestamp_get(ldms_set_t s)
 
 struct ldms_timestamp ldms_transaction_duration_get(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = s;
-	struct ldms_data_hdr *dh = sd->set->data;
+	struct ldms_data_hdr *dh = s->set->data;
 	struct ldms_timestamp ts = {
 		.sec = __le32_to_cpu(dh->trans.dur.sec),
 		.usec = __le32_to_cpu(dh->trans.dur.usec),
@@ -1968,8 +1963,7 @@ double ldms_difftimestamp(const struct ldms_timestamp *after, const struct ldms_
 
 int ldms_set_is_consistent(ldms_set_t s)
 {
-	struct ldms_set_desc *sd = s;
-	struct ldms_data_hdr *dh = sd->set->data;
+	struct ldms_data_hdr *dh = s->set->data;
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
 }
 

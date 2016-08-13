@@ -183,17 +183,20 @@ typedef struct ldmsd_strgp_ref {
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
+#define LDMSD_PRDCR_SET_F_PUSH_REG	1
+
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
 	ldmsd_prdcr_t prdcr;
 	ldms_set_t set;
+	int push_flags;
 	enum ldmsd_prdcr_set_state {
 		LDMSD_PRDCR_SET_STATE_START,
 		LDMSD_PRDCR_SET_STATE_LOOKUP,
 		LDMSD_PRDCR_SET_STATE_READY,
-		LDMSD_PRDCR_SET_STATE_UPDATING,
+		LDMSD_PRDCR_SET_STATE_UPDATING
 	} state;
 	uint64_t last_gn;
 	pthread_mutex_t lock;
@@ -237,6 +240,8 @@ struct ldmsd_updt_time {
 };
 #endif /* LDMSD_UPDATE_TIME */
 
+#define LDMSD_UPDTR_F_PUSH		1
+#define LDMSD_UPDTR_F_PUSH_CHANGE	2
 struct ldmsd_name_match;
 typedef struct ldmsd_updtr {
 	struct ldmsd_cfgobj obj;
@@ -244,6 +249,7 @@ typedef struct ldmsd_updtr {
 	int updt_intrvl_us;	/* update interval */
 	int updt_offset_us;	/* update time offset */
 	int updt_task_flags;
+	int push_flags;
 
 	enum ldmsd_updtr_state {
 		/** Initial updater state */
