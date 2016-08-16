@@ -242,13 +242,16 @@ class Service(object):
         first_seen, last_seen) from all sources and return as a Pattern object.
         """
         uid = self.uptn.get_uid(_str)
-        pagg = Pattern(uid, 0, None, None, _str)
+        pagg = None
         for m in self.uptn.mapper_iter():
             _id = m.get_id(_str)
             if _id == None:
                 continue
             p = m.get_obj(_id)
-            pagg += p
+            if pagg == None:
+                pagg = Pattern(uid, p.count, p.first_seen, p.last_seen, p.text)
+            else:
+                pagg += p
         return pagg
 
     def uptn_by_id(self, _id):

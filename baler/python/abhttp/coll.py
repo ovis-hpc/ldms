@@ -1,9 +1,11 @@
 import logging
 import threading
 import cPickle
+import yaml
 from datatype import *
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class MapperEntry(Slots):
     __slots__ = ["id", "str", "obj"]
@@ -482,22 +484,32 @@ class UnifiedMapper(object):
 
     def save(self, fpath):
         """Save the unified mapper into the ``fpath``."""
+        logging.info("saving umapper: %s", fpath)
         self._lock.acquire()
         try:
             f = open(fpath, "w")
             # save as a list of 3-tuple of (id,str,obj)
-            cPickle.dump([x for x in self.items()], file=f)
+            cPickle.dump([x for x in self.items()], f)
+            # yaml.dump([x for x in self.items()], f)
             f.close()
         finally:
             self._lock.release()
 
     def load(self, fpath):
         """Load the unified mapper from ``fpath``."""
+        logging.info("loading umapper: %s", fpath)
         f = open(fpath, "r")
         self._lock.acquire()
         try:
             y = cPickle.load(f)
-            self._umapper.batch_add(y)
+            # y = yaml.load(f)
+            first = 1
+            for _id, _str, _obj in y:
+                if _obj:
+                    _str = _obj.sig()
+                    if first:
+                        first = 0
+                self._umapper.add(_id, _str, _obj)
         finally:
             self._lock.release()
             f.close()

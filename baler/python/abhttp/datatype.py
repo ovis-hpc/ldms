@@ -141,10 +141,45 @@ class Timestamp(collections.namedtuple("Timestamp", ["sec", "usec"])):
         return self.my_fmt()
 
 
+class TokenType(object):
+    STAR = 0
+    ENG = 1
+    SYM = 2
+    SPC = 3
+    NAME = 4
+    HOST = 5
+    OTHER = 6
+
+    _map = {
+        "STAR": STAR,
+        "ENG": ENG,
+        "SYM": SYM,
+        "SPC": SPC,
+        "NAME": NAME,
+        "HOST": HOST,
+        "OTHER": OTHER,
+    }
+
+    @staticmethod
+    def from_str(s):
+        try:
+            return TokenType._map[s]
+        except:
+            logger.warn("Unknown TokenType: %s, using OTHER instead", s)
+            return TokenType.OTHER
+
+
 class Token(collections.namedtuple("Token", ["tok_type", "text"])):
+    STAR_TEXT = u'\u2022'
+    FIRST = 1
+
+    def __new__(cls, _type, _text):
+        return super(cls, Token).__new__(cls, _type, _text)
+
     @staticmethod
     def fromJSONObj(jobj):
-        return Token(jobj["tok_type"], jobj["text"])
+        _type = TokenType.from_str(jobj["tok_type"])
+        return Token(_type, jobj["text"])
 
     def __str__(self):
         return self.text
@@ -182,7 +217,7 @@ class LogMessage(Slots):
         return LogMessage(ts, jobj["host"], msg, pos, ptn_id)
 
     def text(self):
-        return "".join([str(x) for x in self.msg])
+        return "".join([unicode(x) for x in self.msg])
 
 
 PixelKey = collections.namedtuple("PixelKey", ["ptn_id", "sec", "comp_id"])
@@ -190,14 +225,15 @@ PixelKey = collections.namedtuple("PixelKey", ["ptn_id", "sec", "comp_id"])
 class Pattern(Slots):
     """Object (mutable) representing baler pattern."""
 
-    __slots__ = ["ptn_id", "count", "first_seen", "last_seen", "text"]
+    __slots__ = ["ptn_id", "count", "first_seen", "last_seen", "text", "tokens"]
 
-    def __init__(self, ptn_id, count, first_seen, last_seen, text):
+    def __init__(self, ptn_id, count, first_seen, last_seen, text, tokens=None):
         self.ptn_id = ptn_id
         self.count = count
         self.first_seen = first_seen
         self.last_seen = last_seen
         self.text = text
+        self.tokens = tokens
 
     @staticmethod
     def fromJSONObj(jobj):
@@ -205,8 +241,10 @@ class Pattern(Slots):
         count = jobj["count"]
         first_seen = jobj["first_seen"]
         last_seen = jobj["last_seen"]
-        text = "".join(x["text"] for x in jobj["msg"])
-        return Pattern(ptn_id, count, first_seen, last_seen, text)
+        tokens = [Token.fromJSONObj(x) for x in jobj["msg"]]
+        p = Pattern(ptn_id, count, first_seen, last_seen, "", tokens)
+        p.text = p.sig()
+        return p
 
     def __str__(self):
         return "%s %s %s %s %s" % (
@@ -216,6 +254,15 @@ class Pattern(Slots):
                     self.last_seen,
                     self.text
                 )
+
+    def sig(self):
+        sio = StringIO.StringIO()
+        for t in self.tokens:
+            if t.tok_type == TokenType.STAR:
+                sio.write(Token.STAR_TEXT)
+            else:
+                sio.write(unicode(t))
+        return sio.getvalue()
 
     def __add__(self, other):
         p = self.copy()
@@ -249,10 +296,17 @@ class Pattern(Slots):
             first_seen = max(self.first_seen, other.first_seen)
         self.first_seen = first_seen
         self.last_seen = max(self.last_seen, other.last_seen)
+        if not self.tokens:
+            self.tokens = other.tokens
         return self
 
     def copy(self):
         return copy.copy(self)
+
+    def __setstate__(self, state):
+        super(Pattern, self).__setstate__(state)
+        if self.tokens:
+            self.text = "".join(unicode(t) for t in self.tokens)
 
 
 class Pixel(Slots):
