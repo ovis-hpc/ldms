@@ -128,6 +128,8 @@ int bq_get_comp_id(struct bq_store *store, const char *name);
 %newobject bq_get_comp_name;
 char* bq_get_comp_name(struct bq_store *store, uint32_t comp_id);
 
+PyObject *getPatterns(struct bq_store *store);
+
 /* Additional Implementation */
 %{
 #include "baler/butils.h"
@@ -248,6 +250,181 @@ int biq_last_entry(struct bimgquery *q)
 struct bquery *bmq_to_bq(struct bmsgquery *bmq)
 {
 	return &bmq->base;
+}
+
+PyObject *PyToken(struct bq_store *s, uint32_t tkn_id)
+{
+	int rc;
+	const struct bstr *bstr = btkn_store_get_bstr(s->tkn_store, tkn_id);
+	if (!bstr)
+		return NULL;
+	const struct btkn_attr attr = btkn_store_get_attr(s->tkn_store, tkn_id);
+	PyObject *tuple = PyTuple_New(2); /* type, str */
+	if (!tuple) {
+		return NULL;
+	}
+	PyObject *type = PyInt_FromLong(attr.type);
+	if (!type) {
+		goto err;
+	}
+	rc = PyTuple_SetItem(tuple, 0, type);
+	if (rc) {
+		Py_DECREF(type);
+		goto err;
+	}
+	PyObject *str = PyString_FromStringAndSize(bstr->cstr, bstr->blen);
+	if (!str) {
+		goto err;
+	}
+	rc = PyTuple_SetItem(tuple, 1, str);
+	if (rc) {
+		Py_DECREF(str);
+		goto err;
+	}
+	return tuple;
+err:
+	Py_DECREF(tuple);
+	return NULL;
+}
+
+PyObject *PyTimeval(const struct timeval *tv)
+{
+	int rc;
+	PyObject *obj = PyTuple_New(2);
+	if (!obj)
+		return NULL;
+
+	PyObject *_sec = PyInt_FromLong(tv->tv_sec);
+	if (!_sec)
+		goto err;
+	rc = PyTuple_SetItem(obj, 0, _sec);
+	if (rc) {
+		Py_DECREF(_sec);
+		goto err;
+	}
+
+	PyObject *_usec = PyInt_FromLong(tv->tv_usec);
+	if (!_usec)
+		goto err;
+	rc = PyTuple_SetItem(obj, 1, _usec);
+	if (rc) {
+		Py_DECREF(_usec);
+		goto err;
+	}
+	return obj;
+
+err:
+	Py_DECREF(obj);
+	return NULL;
+}
+
+PyObject *PyPatterns(struct bq_store *s, uint32_t ptn_id)
+{
+	const struct bstr *bstr = bptn_store_get_ptn(s->ptn_store, ptn_id);
+	int rc;
+	if (!bstr)
+		return NULL;
+	const struct bptn_attrM *attrM = bptn_store_get_attrM(s->ptn_store, ptn_id);
+	if (!attrM)
+		return NULL;
+
+	PyObject *tuple = PyTuple_New(5);
+	if (!tuple)
+		return NULL;
+
+	/* ptn_id */
+	PyObject *_ptn_id = PyInt_FromLong(ptn_id);
+	if (!_ptn_id)
+		goto err;
+	rc = PyTuple_SetItem(tuple, 0, _ptn_id);
+	if (rc) {
+		Py_DECREF(_ptn_id);
+		goto err;
+	}
+
+	/* count */
+	PyObject *_count = PyInt_FromLong(attrM->count);
+	if (!_count) {
+		goto err;
+	}
+	rc = PyTuple_SetItem(tuple, 1, _count);
+	if (rc) {
+		Py_DECREF(_count);
+		goto err;
+	}
+
+	/* first-seen */
+	PyObject *tv0 = PyTimeval(&attrM->first_seen);
+	if (!tv0)
+		goto err;
+	rc = PyTuple_SetItem(tuple, 2, tv0);
+	if (rc) {
+		Py_DECREF(tv0);
+		goto err;
+	}
+
+	/* last-seen */
+	PyObject *tv1 = PyTimeval(&attrM->last_seen);
+	if (!tv1)
+		goto err;
+	rc = PyTuple_SetItem(tuple, 3, tv1);
+	if (rc) {
+		Py_DECREF(tv1);
+		goto err;
+	}
+
+	/* tokens */
+	PyObject *list = PyList_New(0);
+	if (!list)
+		goto err;
+	int i;
+	int len = bstr->blen/sizeof(uint32_t);
+	for (i = 0; i < len; i++) {
+		PyObject *tkn = PyToken(s, bstr->u32str[i]);
+		rc = PyList_Append(list, tkn);
+		if (rc) {
+			Py_DECREF(tkn);
+			goto err;
+		}
+	}
+	rc = PyTuple_SetItem(tuple, 4, list);
+
+	if (rc) {
+		Py_DECREF(list);
+		goto err;
+	}
+
+	return tuple;
+
+err:
+	Py_DECREF(tuple); /* tkns in `list` will be freed. */
+	return NULL;
+}
+
+PyObject *getPatterns(struct bq_store *s)
+{
+	uint32_t last_id = bptn_store_last_id(s->ptn_store);
+	uint32_t first_id = bptn_store_first_id(s->ptn_store);
+	uint32_t ptn_id;
+	int rc;
+	PyObject *array = PyList_New(0);
+	if (!array) {
+		return NULL;
+	}
+	for (ptn_id = first_id; ptn_id <= last_id; ptn_id++) {
+		PyObject *ptn = PyPatterns(s, ptn_id);
+		if (!ptn)
+			goto err;
+		rc = PyList_Append(array, ptn);
+		if (rc) {
+			Py_DECREF(ptn);
+			goto err;
+		}
+	}
+	return array;
+err:
+	Py_DECREF(array);
+	return NULL;
 }
 
 %}
