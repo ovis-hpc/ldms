@@ -298,12 +298,19 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_updtr_add(self, arg):
         """
-        Add an updater process that will periodically sample
-        Producer metric sets
+        Add an Updater that will periodically update Producer metric sets either
+        by pulling the content or by registering for an update push. The default
+        is to pull set contents.
         Parameters:
-        name=     The update policy name
-        interval= The update/collect interval
+        name=       The update policy name
+        [interval=] The update/collect interval. This is required only when the
+                    push argument is not given.
         [offset=]   Offset for synchronized aggregation
+        [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the
+                    Updater will get an update whenever the set source ends a
+                    transaction or pushes the update. 'onpush' means the Updater
+                    will receive an update only when the set source pushes the
+                    update.
         """
         self.handle('updtr_add', arg)
 
