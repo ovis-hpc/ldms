@@ -91,6 +91,8 @@ int bmap_id_is_err(uint32_t id)
 	return BMAP_ID_ERR_BEGIN <= id && id <= BMAP_ID_ERR_END;
 }
 
+#define BMAP_STAR_TEXT "\u2022"
+
 /**
  * Special ID for Baler Map.
  */
