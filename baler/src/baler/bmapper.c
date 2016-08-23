@@ -101,7 +101,12 @@ void __special_bstr_init()
 	if (initialized)
 		return;
 	initialized = 1;
-	___SPECIAL_BSTR(BMAP_ID_STAR, "*");
+	const char *starenv = getenv("BALER_STAR");
+	if (starenv) {
+		___SPECIAL_BSTR(BMAP_ID_STAR, starenv);
+	} else {
+		___SPECIAL_BSTR(BMAP_ID_STAR, BMAP_STAR_TEXT);
+	}
 }
 
 struct bmap* bmap_open(const char *path)
