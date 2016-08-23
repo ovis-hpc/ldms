@@ -1,0 +1,148 @@
+#!/bin/sh
+# because of repo nonaccess issues, this starts from a 
+# clean checkout tarred with submodules.
+prefix=/usr
+PACK_OPTS="
+--disable-rpath
+--disable-static
+--prefix=$prefix 
+--with-pkglibdir=ovis-ldms 
+"
+DOC_OPTS="
+--disable-doc
+--disable-doc-html
+"
+SECURITY_OPTS="
+--enable-ovis_auth
+--enable-ssl 
+"
+NETWORK_OPTS="
+--enable-ovis_event
+--enable-zap
+--enable-sock
+--disable-mmap
+"
+CRAY_LOCATIONS=""
+# --with-rca=/opt/cray/rca/default/
+# --with-krca=/opt/cray/krca/default
+# --with-cray-hss-devel=/opt/cray-hss-devel/default
+
+IFACE_OPTS="
+--enable-swig
+--disable-readline
+--enable-ldms-python
+"
+BALER_OPTS="
+--enable-baler
+"
+STORE_OPTS="
+--enable-sos
+--enable-flatfile
+--enable-csv
+--enable-store
+--disable-rabbitv3
+"
+SAMPLER_OPTS="
+--disable-jobid
+--disable-cray_power_sampler
+--disable-cray_system_sampler
+--disable-aries-gpcdr
+--disable-gpcdlocal
+--disable-aries-mmr
+--disable-ugni
+--disable-perfevent
+--disable-papi
+--disable-perf
+--disable-procstatutil
+--disable-procstatutil2
+--disable-procdiskstats
+--disable-atasmart
+--disable-hadoop
+--disable-generic_sampler
+--disable-switchx
+--enable-sensors
+--enable-array_example
+--enable-procinterrupts
+--enable-procnetdev
+--enable-procnfs
+--enable-procsensors
+--enable-procstat
+--enable-vmstat
+--enable-meminfo
+--enable-lustre
+"
+allconfig="$PACK_OPTS $SECURITY_OPTS $NETWORK_OPTS $IFACE_OPTS $BALER_OPTS $STORE_OPTS $SAMPLER_OPTS $CRAY_LOCATIONS"
+
+if ! test -f m4/Ovis-top.m4; then
+        echo This must be run from top of a source tree, which should be clean.
+        exit 1
+fi
+#GPTAR=gs-1.0.0.tar.gz
+SOSTAR=sos.tar
+#if ! test -f ../$GPTAR; then
+#        echo archive $GPTAR must be next to source tree.
+#        exit 1
+#fi
+if ! test -f ../$SOSTAR; then
+        echo archive $SOSTAR must be next to source tree.
+        exit 1
+fi
+VERSION=3.0.0
+# Find SHA of latest checkin someone cares about
+COMMIT_ID="$(git log -1 --pretty="%H")"
+echo bug0
+BASE_COMMIT_ID="$(git rev-parse origin/OVIS-RC)"
+
+# Get most recent tag id for this branch
+echo bug1
+TAG_ID="$(git describe --tags --abbrev=0)"
+echo bug2
+TARGET=ldms-${VERSION}.tar
+REPO_DIR=`pwd`
+OUTPUT_DIR=`pwd`/Tars
+# Create output dir
+mkdir -p $OUTPUT_DIR
+# populate outdir inputs
+git archive --prefix=ldms-${VERSION}/ $COMMIT_ID --format=tar --output=${OUTPUT_DIR}/$TARGET
+echo bug3
+sleep 0.1
+cp ../$GPTAR $OUTPUT_DIR
+cp ../$SOSTAR $OUTPUT_DIR
+
+cd $OUTPUT_DIR
+
+# Untar archive
+echo "Untarring archive"
+tar xf $TARGET
+cd ldms-${VERSION}
+tar xf ../$SOSTAR
+#tar xzf ../$GPTAR
+mkdir -p gpcd-support/m4
+cd ..
+sleep 0.1
+
+# Add SHA file
+pushd ldms-${VERSION}
+echo $BASE_COMMIT_ID > SHA.txt
+echo $TAG_ID > TAG.txt
+./autogen.sh
+popd
+
+# Tar back up excluding unwanted files and dirs
+echo "tarring archive with excludes from "
+echo "$REPO_DIR/util/tar-excludes.txt"
+TAR_OPTS="-X $REPO_DIR/util/tar-excludes.txt"
+tar czf $TARGET.gz $TAR_OPTS ldms-${VERSION}
+
+echo "Relocating cruft"
+rm -rf old
+mkdir old
+mv -f ldms-${VERSION} $TARGET $SOSTARGET old
+sleep 0.1
+
+tar zxf $TARGET.gz
+cd ldms-${VERSION}
+echo "================ configure for cray sles 12 cn rpms ============="
+./configure CC=gcc CXX=g++ $allconfig
+echo "============================= make mon7 rpms ============="
+make lanl-mon7
