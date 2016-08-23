@@ -49,7 +49,7 @@ util
 # For now, we ship as we expect to configure.
 # Perhaps all should be included all the time but we surround their
 # make content for dist with enable conditionals.
-DIST_SUBDIRS = gpcd-support lib sos ldms baler util
+DIST_SUBDIRS = $(GPCDSUBDIR) lib sos ldms baler util
 # make dist _will_ fail for these unless we mod their .am files
 # so not included in dist.
 NODIST_SUBDIRS = ocm me komondor
@@ -58,7 +58,7 @@ BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm centos toss doxygen lanl-mon6 rhine
+.PHONY: rpm centos toss doxygen lanl-mon6 rhine lanl-mon7
 
 banned:
 	(cd ldms; make banned)
@@ -77,6 +77,11 @@ lanl-mon6: dist-gzip
 	$(MKDIR_P) lanl-mon6/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(BASE_TARBALL) packaging/ovis-mon6.spec lanl-mon6/SOURCES
 	rpmbuild --define "_topdir `pwd`/lanl-mon6" -ba packaging/ovis-mon6.spec
+
+lanl-mon7: dist-gzip
+	$(MKDIR_P) lanl-mon7/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	cp $(BASE_TARBALL) packaging/ovis-mon7.spec lanl-mon7/SOURCES
+	rpmbuild --define "_topdir `pwd`/lanl-mon7" -ba packaging/ovis-mon7.spec
 
 rhine: dist-gzip
 	$(MKDIR_P) rhine/{BUILD,RPMS,SOURCES,SPECS,SRPMS}

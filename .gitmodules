@@ -1,9 +1,9 @@
 [submodule "util/libevent"]
 	path = util/libevent
-	url = gitlab@gitlab.ogc.us:ovis/libevent.git
+	url = gitlab@gitlab.opengridcomputing.com:ovis/libevent.git
 [submodule "sos"]
 	path = sos
-	url = gitlab@gitlab.ogc.us:tom/SOS.git
+	url = gitlab@gitlab.opengridcomputing.com:tom/SOS.git
 [submodule "gpcd-support"]
 	path = gpcd-support
 	url = git@gitlab.sandia.gov:ovis/gpcd-support.git
