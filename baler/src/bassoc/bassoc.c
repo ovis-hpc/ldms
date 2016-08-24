@@ -562,7 +562,7 @@ void usage()
 "\n"
 "		bassoc -w WORKSPACE [-o NUMBER] -M TARGET_FILE\n"
 "\n"
-"See bassoc(3) for more information."
+"See bassoc(1) for more information."
 	);
 }
 
