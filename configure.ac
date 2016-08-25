@@ -109,6 +109,7 @@ util/sample_init_scripts/genders/etc/sysconfig/Makefile
 util/sample_init_scripts/genders/etc/Makefile
 util/sample_init_scripts/genders/src/Makefile
 util/sample_init_scripts/genders/etc/init.d/Makefile
+packaging/ovis-trinity.spec
 packaging/ovis-rhine.spec
 packaging/ovis-mon7.spec
 packaging/ovis-mon6.spec

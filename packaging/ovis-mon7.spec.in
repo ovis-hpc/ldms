@@ -21,7 +21,7 @@
 Summary: OVIS LDMS Commands and Libraries
 Name: ldms-all
 Version: @VERSION@
-Release: trinity_mon_16.8.11.1%{?dist}
+Release: trinity_mon_16.8.25.1%{?dist}
 License: GPLv2 or BSD
 Group: %{ldms_all}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -200,6 +200,8 @@ rm $RPM_INSTALL_PREFIX/bin/bhquery
 ln -s $RPM_INSTALL_PREFIX/lib/python*/site-packages/baler/bquery.py $RPM_INSTALL_PREFIX/bin/bhquery
 
 %changelog
+* Thu Aug 25 2016 Ben Allan <baallan@sandia.gov> 3.0.0-21
+Update for baler features.
 * Mon Mar 14 2016 Ben Allan <baallan@sandia.gov> 3.0.0-6
 Update for cray/sos features.
 * Tue Mar 01 2016 Ben Allan <baallan@sandia.gov> 3.0.0-3
