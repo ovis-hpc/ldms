@@ -207,14 +207,18 @@ int bfile_exists(const char *path);
 
 /**
  * \brief Check if the given path is a directory.
- * \return 1 if the given \a path exists and is directory.
- * \return 0 if the given path does not exist or is not a directory.
+ * \retval 1 if the given \a path exists and is directory.
+ * \retval 0 if the given path does not exist or is not a directory. If the path
+ *           exists but is not a directory, \c errno is set to \c ENOTDIR.
  */
 int bis_dir(const char *path);
 
 /**
  * This behave like mkdir -p, except that it will report errors even in the case
  * of directory/file exists.
+ *
+ * \retval 0 if success.
+ * \retval errno if failed.
  */
 int bmkdir_p(const char *path, __mode_t mode);
 

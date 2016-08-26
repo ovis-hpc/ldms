@@ -197,7 +197,7 @@ int bis_dir(const char *path)
 		return 0;
 	rc = S_ISDIR(st.st_mode);
 	if (!rc) {
-		errno = EINVAL;
+		errno = ENOTDIR;
 	}
 	return rc;
 }
