@@ -105,6 +105,12 @@ libknc_sampler_derived_la_LIBADD = $(COMMON_LIBADD) -lmicmgmt
 pkglib_LTLIBRARIES += libknc_sampler_derived.la
 endif
 
+if ENABLE_LNET_STATS
+liblnet_stats_la_SOURCES = lnet_stats.c
+liblnet_stats_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+pkglib_LTLIBRARIES += liblnet_stats.la
+endif
+
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)

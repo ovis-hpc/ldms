@@ -66,6 +66,7 @@ OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
 OPTION_DEFAULT_ENABLE([jobid], [ENABLE_JOBID])
 OPTION_DEFAULT_ENABLE([clock], [ENABLE_CLOCK])
 OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
+OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
@@ -430,6 +431,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_synthetic_test.sh
 		 scripts/ldms_local_auth_test.sh
 		 scripts/ldms_local_amqptest.sh
+		 scripts/ldms_local_lnet_statstest.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
