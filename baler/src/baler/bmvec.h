@@ -178,7 +178,7 @@ int bmvec_u64_set(struct bmvec_u64 *vec, uint32_t idx, uint64_t x)
  */
 static inline
 int bmvec_generic_set(struct bmvec_char *vec, uint32_t idx,
-		void* elm, uint32_t elm_size)
+		const void* elm, uint32_t elm_size)
 {
 	pthread_mutex_lock(&vec->mutex);
 	struct bvec_char *v = vec->bvec;
