@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-16 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-16 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -480,6 +480,9 @@ struct ptrlistentry {
 
 LIST_HEAD(ptrlist, ptrlistentry);
 
+struct bassocimg_cache *img_cache;
+struct bassocimg_cache *target_cache;
+
 const char *workspace_path = NULL;
 uint32_t spp = 3600;
 uint32_t npp = 1;
@@ -506,6 +509,8 @@ struct bhash *metric2imgbin;
 struct {
 	struct bdstr *conf;
 	struct bdstr *img_dir;
+	struct bdstr *img_cache_path;
+	struct bdstr *target_cache_path;
 } paths;
 
 struct barray *cli_recipe = NULL;
@@ -513,7 +518,6 @@ struct barray *cli_recipe = NULL;
 struct barray *cli_targets = NULL;
 
 struct barray *images = NULL;
-struct bhash *images_hash = NULL;
 
 struct barray *target_images = NULL;
 struct bhash *target_images_hash = NULL;
@@ -584,7 +588,7 @@ void bassocimgbin_free(struct bassocimgbin *bin)
 	int i;
 	for (i = 0; i < bin->bin_len; i++) {
 		if (bin->bin[i].img)
-			bassocimg_close_free(bin->bin[i].img);
+			bassocimg_put(bin->bin[i].img);
 	}
 	free(bin);
 }
@@ -614,11 +618,11 @@ struct bassocimgbin *bassocimgbin_expand(struct bassocimgbin *bin, int inc_bin_l
 }
 
 int bassocimgbin_getimgname(struct bassocimgbin *bin, int binidx,
-							struct bdstr *bdstr)
+							struct bdbstr *bdbstr)
 {
 	if (bin->bin_len - 2 < binidx)
 		return EINVAL;
-	return bdstr_append_printf(bdstr, "%s[%lf,%lf)", bin->metric_name,
+	return bdbstr_append_printf(bdbstr, "%s[%lf,%lf)", bin->metric_name,
 						bin->bin[binidx].lower_bound,
 						bin->bin[binidx+1].lower_bound);
 }
@@ -707,18 +711,15 @@ out:
 	return rc;
 }
 
-int bassocimgbin_open(struct bassocimgbin *bin, int idx, struct bdstr *path)
+int bassocimgbin_open(struct bassocimgbin *bin, int idx, struct bdbstr *name)
 {
 	struct bassocimg *img = NULL;
 	int rc;
-	bdstr_reset(path);
-	rc = bdstr_append_printf(path, "%s/", paths.img_dir->str);
+	bdbstr_reset(name);
+	rc = bassocimgbin_getimgname(bin, idx, name);
 	if (rc)
 		return rc;
-	rc = bassocimgbin_getimgname(bin, idx, path);
-	if (rc)
-		return rc;
-	img = bassocimg_open(path->str, 1);
+	img = bassocimg_cache_get_img(img_cache, name->bstr, 1);
 	bin->bin[idx].img = img;
 	bin->bin[idx].count_buff = barray_alloc(sizeof(uint32_t), 1024);
 	if (!bin->bin[idx].count_buff)
@@ -732,11 +733,11 @@ int handle_ptn_recipe(const char *recipe)
 {
 	int rc = 0;
 	int len;
-	char *path = malloc(4096);
+	struct bdbstr *bdbstr = bdbstr_new(512);
 	char *str;
 	int a, b, n, i;
 	struct bassocimg *img;
-	if (!path) {
+	if (!bdbstr) {
 		rc = ENOMEM;
 		goto out;
 	}
@@ -747,23 +748,14 @@ int handle_ptn_recipe(const char *recipe)
 		goto out;
 	}
 
-	len = snprintf(path, 4096, "%s/%.*s", paths.img_dir->str,
-						(int)(str-recipe), recipe);
-	if (len >= 4096) {
-		/* path too long */
-		rc = ENAMETOOLONG;
+	rc = bdbstr_append_printf(bdbstr, "%.*s", (int)(str-recipe), recipe);
+	if (rc) {
 		goto out;
 	}
 
-	if (bfile_exists(path)) {
-		/* Image existed */
-		rc = EEXIST;
-		goto out;
-	}
-
-	img = bassocimg_open(path, 1);
+	img = bassocimg_cache_get_img(img_cache, bdbstr->bstr, 1);
 	if (!img) {
-		berr("Cannot create image: %s", path);
+		berr("Cannot create image: %.*s", bdbstr->bstr->blen, bdbstr->bstr->cstr);
 		rc = errno;
 		goto out;
 	}
@@ -796,8 +788,8 @@ int handle_ptn_recipe(const char *recipe)
 	}
 
 out:
-	if (path)
-		free(path);
+	if (bdbstr)
+		free(bdbstr);
 	return 0;
 }
 
@@ -995,16 +987,40 @@ end:
 	size_t len = strlen(workspace_path);
 	paths.conf = bdstr_new(512);
 	paths.img_dir = bdstr_new(512);
+	paths.img_cache_path = bdstr_new(512);
+	paths.target_cache_path = bdstr_new(512);
 
-	if (!paths.conf || !paths.img_dir) {
+	if (!paths.conf
+			|| !paths.img_dir
+			|| !paths.img_cache_path
+			|| !paths.target_cache_path) {
 		berr("Out of memory");
 		exit(-1);
 	}
 
 	bdstr_append_printf(paths.conf, "%s/conf", workspace_path);
 	bdstr_append_printf(paths.img_dir, "%s/img", workspace_path);
+	bdstr_append_printf(paths.img_cache_path, "%s/img_cache", workspace_path);
+	bdstr_append_printf(paths.target_cache_path, "%s/target_cache", workspace_path);
 
 	return;
+}
+
+static
+void open_cache_routine()
+{
+	img_cache = bassocimg_cache_open(paths.img_cache_path->str, 0);
+	if (!img_cache) {
+		berr("bassocimg_cache_open() failed, errno: %d, path: %s\n",
+				paths.img_cache_path->str, errno);
+		exit(-1);
+	}
+	target_cache = bassocimg_cache_open(paths.target_cache_path->str, 0);
+	if (!target_cache) {
+		berr("bassocimg_cache_open() failed, errno: %d, path: %s\n",
+				paths.img_cache_path->str, errno);
+		exit(-1);
+	}
 }
 
 static
@@ -1109,6 +1125,22 @@ void create_routine()
 	conf_handle->conf->npp = npp;
 	conf_handle->conf->spp = spp;
 	bassoc_conf_close(conf_handle);
+
+	/* create img_cache */
+	img_cache = bassocimg_cache_open(paths.img_cache_path->str, 1);
+	if (!img_cache) {
+		berr("Cannot create image cache: %s", paths.img_cache_path->str);
+		exit(-1);
+	}
+	bassocimg_cache_close_free(img_cache);
+
+	/* create target_cache */
+	target_cache = bassocimg_cache_open(paths.target_cache_path->str, 1);
+	if (!target_cache) {
+		berr("Cannot create image cache: %s", paths.target_cache_path->str);
+		exit(-1);
+	}
+	bassocimg_cache_close_free(target_cache);
 }
 
 int process_recipe_line(char *line, void *ctxt)
@@ -1283,6 +1315,7 @@ struct bheap *__heap_init(struct bq_store *bq_store, const char *img_store_name)
 		}
 		rc = bq_first_entry((void*)bq);
 		if (rc == ENOENT) {
+			bimgquery_destroy(bq);
 			goto skip;
 		}
 
@@ -1307,6 +1340,8 @@ static
 int __heap_get_pixel(struct bheap *bheap, struct bpixel *pixel)
 {
 	struct bimgquery *bq = bheap_get_top(bheap);
+	if (!bq)
+		return ENOENT;
 	return bq_img_entry_get_pixel(bq, pixel);
 }
 
@@ -1353,9 +1388,17 @@ void extract_routine_by_img(struct bq_store *bq_store, const char *img_store_nam
 	uint32_t spp = conf_handle->conf->spp;
 
 	bheap = __heap_init(bq_store, img_store_name);
+	assert(bheap);
+	/* must check for the first entry */
+	rc = __heap_get_pixel(bheap, &pixel);
+	if (rc == ENOENT) {
+		bwarn("No image entry ... please check recipes or extracting conditions.");
+		return;
+	}
 
 loop:
-	rc = __heap_get_pixel(bheap, &pixel);
+	/* reaching here, pixel is guaranteed to be valid */
+	__heap_get_pixel(bheap, &pixel);
 	hent = bhash_entry_get(ptn2imglist, (void*)&pixel.ptn_id, sizeof(pixel.ptn_id));
 	if (!hent)
 		goto next;
@@ -1555,13 +1598,13 @@ void extract_metric_routine()
 	struct bassocimgbin *bin;
 	struct bhash_entry *hent;
 	struct bassocimg *img;
-	struct bdstr *bdstr;
+	struct bdbstr *bdbstr;
 	struct barray *count_buff;
 	uint32_t spp = conf_handle->conf->spp;
 	uint32_t npp = conf_handle->conf->npp;
 
-	bdstr = bdstr_new(256);
-	if (!bdstr) {
+	bdbstr = bdbstr_new(256);
+	if (!bdbstr) {
 		berr("Not enough memory");
 		exit(-1);
 	}
@@ -1607,7 +1650,7 @@ void extract_metric_routine()
 		case 0:
 			/* time stamp */
 			ts = pxl.sec;
-			sscanf(str, "%u%n", &pxl.sec, &len);
+			sscanf(str, "%lu%n", &pxl.sec, &len);
 			pxl.sec /= spp;
 			pxl.sec *= spp;
 			if (ts != pxl.sec) {
@@ -1625,7 +1668,7 @@ void extract_metric_routine()
 			break;
 		case 1:
 			/* comp_id */
-			sscanf(str, "%u%n", &pxl.comp_id, &len);
+			sscanf(str, "%lu%n", &pxl.comp_id, &len);
 			pxl.comp_id /= npp;
 			pxl.comp_id *= npp;
 			break;
@@ -1651,7 +1694,7 @@ void extract_metric_routine()
 		assert(idx >= 0);
 
 		if (!bin->bin[idx].img) {
-			rc = bassocimgbin_open(bin, idx, bdstr);
+			rc = bassocimgbin_open(bin, idx, bdbstr);
 			if (rc) {
 				berr("bassocimgbin_open() error,"
 						" rc: %d", rc);
@@ -1691,6 +1734,7 @@ void extract_metric_routine()
 		assert(rc == 0);
 	}
 	assert(rc == 0);
+	bdbstr_free(bdbstr);
 }
 
 static
@@ -1722,31 +1766,25 @@ void info_routine()
 	struct bdstr *bdstr;
 	wordexp_t wexp;
 	int rc, i;
+	struct bmhash_iter *itr;
 	struct bassoc_conf *conf = conf_handle->conf;
 	printf("Configuration:\n");
 	printf("\tseconds per pixel: %d\n", spp);
 	printf("\tnodes per pixel: %d\n", npp);
-	bdstr = bdstr_new(PATH_MAX);
-	if (!bdstr) {
-		berr("Out of memory");
-		exit(-1);
-	}
-	rc = bdstr_append_printf(bdstr, "%s/img/*", workspace_path);
-	if (rc) {
-		berr("Out of memory");
-		exit(-1);
-	}
-	rc = wordexp(bdstr->str, &wexp, 0);
-	if (rc) {
-		berr("wordexp() error, rc: %d", rc);
+
+	itr = bmhash_iter_new(img_cache->ev2img);
+	if (!itr) {
+		berror("bmhash_iter_new()");
 		exit(-1);
 	}
 	printf("Images:\n");
-	for (i = 0; i < wexp.we_wordc; i++) {
-		const char *name = strrchr(wexp.we_wordv[i], '/') + 1;
-		printf("\t%s\n", name);
+	rc = bmhash_iter_begin(itr);
+	while (rc == 0) {
+		struct bmhash_entry *ent = bmhash_iter_entry(itr);
+		printf("\t%.*s\n", ent->key.blen, ent->key.cstr);
+		rc = bmhash_iter_next(itr);
 	}
-	bdstr_free(bdstr);
+	bmhash_iter_free(itr);
 }
 
 void bassoc_rule_free(struct bassoc_rule *rule)
@@ -1885,24 +1923,23 @@ void bassoc_rule_print(struct bassoc_rule *rule, const char *prefix)
 	size_t formula_len = rule->formula->str_len / sizeof(int);
 	int i;
 	struct bassocimg *img;
-	const char *name;
+	bassocimg_hdr_t hdr;
 	pthread_mutex_lock(&mutex);
 	printf("%s: (%lf, %lf) {", prefix, rule->conf, rule->sig);
 	for (i = 1; i < formula_len; i++) {
 		img = NULL;
 		barray_get(images, formula[i], &img);
 		assert(img);
-		name = strrchr(bassocimg_get_path(img), '/') + 1;
-		if (i == 1)
-			printf("%s", name);
-		else
-			printf(",%s", name);
+		if (i>1)
+			printf(",");
+		hdr = BASSOCIMG_HDR(img);
+		printf("%.*s", hdr->name.blen, hdr->name.cstr);
 	}
 	img = NULL;
 	barray_get(target_images, formula[0], &img);
 	assert(img);
-	name = strrchr(bassocimg_get_path(img), '/') + 1;
-	printf("}->{%s}\n", name);
+	hdr = BASSOCIMG_HDR(img);
+	printf("}->{%.*s}\n", hdr->name.blen, hdr->name.cstr);
 	pthread_mutex_unlock(&mutex);
 }
 
@@ -2030,12 +2067,12 @@ int handle_target(const char *tname)
 	int idx;
 	struct bassocimg *img = NULL;
 	struct bassocimg *timg = NULL;
-	struct bhash_entry *hent;
 	struct bassoc_rule *rule;
-	struct bdstr *bdstr = NULL;
+	struct bdbstr *bdbstr = NULL;
+	struct bhash_entry *hent;
 
-	bdstr = bdstr_new(PATH_MAX);
-	if (!bdstr) {
+	bdbstr = bdbstr_new(PATH_MAX);
+	if (!bdbstr) {
 		rc = ENOMEM;
 		goto out;
 	}
@@ -2046,36 +2083,51 @@ int handle_target(const char *tname)
 		goto out;
 	}
 
-	hent = bhash_entry_get(images_hash, tname, strlen(tname));
-	if (!hent) {
-		rc = ENOENT;
+	bdbstr_reset(bdbstr);
+	rc = bdbstr_append_printf(bdbstr, "%s", tname);
+	if(rc) {
+		goto out;
+	}
+	img = bassocimg_cache_get_img(img_cache, bdbstr->bstr, 0);
+	if (!img) {
+		rc = errno;
 		goto err;
 	}
-	img = (void*)hent->value;
-
-	bdstr_reset(bdstr);
-	bdstr_append_printf(bdstr, "%s/comp_img/%s%+d", workspace_path,
-							tname, offset);
-	timg = bassocimg_open(bdstr->str, 1);
+	hent = bhash_entry_get(target_images_hash, tname, strlen(tname));
+	if (hent) {
+		/* the target has been processed in the current session. */
+		rc = 0;
+		goto out;
+	}
+	bdbstr_reset(bdbstr);
+	rc = bdbstr_append_printf(bdbstr, "%s%+d", tname, offset);
+	if(rc) {
+		goto out;
+	}
+	timg = bassocimg_cache_get_img(target_cache, bdbstr->bstr, 1);
 	if (!timg) {
-		berr("Cannot open/create composite image: %s, err(%d): %m",
-						bdstr->str, errno);
+		berr("Cannot get/create composite image: %s, err(%d): %m",
+						bdbstr->bstr->cstr, errno);
 		rc = errno;
 		goto err;
 	}
 
-	if (bassocimg_get_pixel_len(timg) > 0) {
-		/* image has already  been populated, just skip it */
-		goto enqueue;
+	hent = bhash_entry_set(target_images_hash, tname, strlen(tname), (uint64_t)timg);
+	if (!hent) {
+		berror("bhash_entry_set()");
+		rc = errno;
+		goto err;
 	}
 
 	rc = bassocimg_shift_ts(img, offset * conf_handle->conf->spp, timg);
 	if (rc) {
-		berr("bassocimg_shift_ts('%s', %d, '%s')"
+		berr("bassocimg_shift_ts('%.*s', %d, '%.*s')"
 				" failed, rc: %d",
-				bassocimg_get_path(img),
+				BASSOCIMG_HDR(img)->name.blen,
+				BASSOCIMG_HDR(img)->name.cstr,
 				offset * conf_handle->conf->spp,
-				bassocimg_get_path(timg),
+				BASSOCIMG_HDR(timg)->name.blen,
+				BASSOCIMG_HDR(timg)->name.cstr,
 				rc);
 		goto err;
 	}
@@ -2091,14 +2143,6 @@ enqueue:
 	if (rc) {
 		goto err;
 	}
-	hent = bhash_entry_set(target_images_hash, rule->formula->str,
-						rule->formula->str_len,
-							(uint64_t)timg);
-	if (!hent) {
-		berr("target image load error(%d): %m", errno);
-		goto err;
-	}
-
 	bassoc_rule_add(&rule_q, rule);
 
 	goto out;
@@ -2106,8 +2150,8 @@ enqueue:
 err:
 	bassoc_rule_free(rule);
 out:
-	if (bdstr)
-		bdstr_free(bdstr);
+	if (bdbstr)
+		bdbstr_free(bdbstr);
 	return rc;
 }
 
@@ -2138,24 +2182,11 @@ void init_images_routine()
 	int rc, i;
 	int idx;
 	struct bassocimg *img;
-	struct bdstr *path = bdstr_new(PATH_MAX);
-	struct bhash_entry *hent;
 	const char *name;
 	wordexp_t wexp;
 
-	if (!path) {
-		berr("Not enough memory");
-		exit(-1);
-	}
-	bdstr_append_printf(path, "%s/img", workspace_path);
 	images = barray_alloc(sizeof(void*), 1024);
 	if (!images) {
-		berr("Not enough memory");
-		exit(-1);
-	}
-
-	images_hash = bhash_new(65539, 11, NULL);
-	if (!images_hash) {
 		berr("Not enough memory");
 		exit(-1);
 	}
@@ -2172,17 +2203,22 @@ void init_images_routine()
 		exit(-1);
 	}
 
-	bdstr_reset(path);
-	bdstr_append_printf(path, "%s/img/*", workspace_path);
-	rc = wordexp(path->str, &wexp, 0);
-	if (rc) {
-		berr("wordexp() error, rc: %d", rc);
+	struct bmhash_iter *itr = bmhash_iter_new(img_cache->ev2img);
+	if (!itr) {
+		berror("bmhash_iter_new()");
 		exit(-1);
 	}
-	for (i = 0; i < wexp.we_wordc; i++) {
-		img = bassocimg_open(wexp.we_wordv[i], 0);
+
+	struct bmhash_entry *hent;
+	rc = bmhash_iter_begin(itr);
+	i = 0;
+
+	while (rc == 0) {
+		hent = bmhash_iter_entry(itr);
+		img = bassocimg_cache_get_img(img_cache, &hent->key, 0);
 		if (!img) {
-			berr("Cannot open image: %s, err(%d): %m", path->str, errno);
+			berr("Cannot open image: %.*s, errno: %d",
+				hent->key.blen, hent->key.cstr, errno);
 			exit(-1);
 		}
 		rc = barray_set(images, i, &img);
@@ -2190,15 +2226,9 @@ void init_images_routine()
 			berr("barray_set() error, rc: %d", rc);
 			exit(-1);
 		}
-		name = strrchr(wexp.we_wordv[i], '/') + 1;
-		hent = bhash_entry_set(images_hash, name,
-				strlen(name), (uint64_t)(void*)img);
-		if (!hent) {
-			berr("bhash_entry_set() error(%d): %m", errno);
-			exit(-1);
-		}
+		rc = bmhash_iter_next(itr);
+		i++;
 	}
-	bdstr_free(path);
 }
 
 void init_target_images_routine()
@@ -2207,22 +2237,6 @@ void init_target_images_routine()
 	struct bassocimg *img;
 	struct bassocimg *timg;
 	const char *tname;
-	struct bdstr *bdstr = bdstr_new(1024);
-
-	if (!bdstr) {
-		berr("Out of memory");
-		exit(-1);
-	}
-
-	bdstr_reset(bdstr);
-	bdstr_append_printf(bdstr, "%s/comp_img", workspace_path);
-
-	rc = bmkdir_p(bdstr->str, 0755);
-
-	if (rc && rc != EEXIST) {
-		berr("Cannot create directory %s, rc: %d", bdstr->str, rc);
-		exit(-1);
-	}
 
 	handle_mine_target_file();
 
@@ -2236,8 +2250,6 @@ void init_target_images_routine()
 			exit(-1);
 		}
 	}
-
-	bdstr_free(bdstr);
 }
 
 #define MINER_CTXT_STACK_SZ 11
@@ -2250,6 +2262,8 @@ struct miner_ctxt {
 	struct bassocimg *img[MINER_CTXT_STACK_SZ + 2];
 	int recipe[MINER_CTXT_STACK_SZ];
 	int stack_sz;
+
+	struct bassocimg_cache *cache;
 };
 
 struct miner_ctxt *miner_init(int thread_number)
@@ -2264,23 +2278,28 @@ struct miner_ctxt *miner_init(int thread_number)
 		goto err0;
 
 	bdstr_reset(ctxt->bdstr);
-	bdstr_append_printf(ctxt->bdstr, "%s/miner-%d", workspace_path,
-								thread_number);
-	rc = bmkdir_p(ctxt->bdstr->str, 755);
-	if (rc && rc != EEXIST) {
-		errno = rc;
-		berr("Cannot create directory: %s", ctxt->bdstr->str);
-		goto err1;
+	rc = bdstr_append_printf(ctxt->bdstr, "%s/miner-%d.cache",
+						workspace_path, thread_number);
+	if (rc)
+		goto err0;
+
+	ctxt->cache = bassocimg_cache_open(ctxt->bdstr->str, 1);
+	if (!ctxt->cache) {
+		berror("bassocimg_cache_open()");
+		goto err0;
 	}
 
+	char buff[128];
+	struct bstr *bstr = (void*)buff;
+	int alen = sizeof(buff) - sizeof(*bstr);
+
 	for (i = 1; i < MINER_CTXT_STACK_SZ + 2; i++) {
-		/* img[0] need no tmp file */
-		bdstr_reset(ctxt->bdstr);
-		bdstr_append_printf(ctxt->bdstr, "%s/miner-%d/img%d",
-					workspace_path, thread_number, i);
-		ctxt->img[i] = bassocimg_open(ctxt->bdstr->str, 1);
+		/* img[0] doesn't need stack cache */
+		bstr->blen = snprintf(bstr->cstr, alen, "%d", i);
+		assert(bstr->blen < alen);
+		ctxt->img[i] = bassocimg_cache_get_img(ctxt->cache, bstr, 1);
 		if (!ctxt->img[i]) {
-			berr("cannot open img: %s", ctxt->bdstr->str);
+			berr("cannot open/create img: %s", ctxt->bdstr->str);
 			goto err1;
 		}
 	}
@@ -2288,9 +2307,9 @@ struct miner_ctxt *miner_init(int thread_number)
 	goto out;
 
 err1:
-	for (i = 0; i < MINER_CTXT_STACK_SZ; i++) {
+	for (i = 1; i < MINER_CTXT_STACK_SZ + 2; i++) {
 		if (ctxt->img[i])
-			bassocimg_close_free(ctxt->img[i]);
+			bassocimg_put(ctxt->img[i]);
 	}
 
 	bdstr_free(ctxt->bdstr);
@@ -2298,15 +2317,6 @@ err0:
 	free(ctxt);
 out:
 	return ctxt;
-}
-
-static inline
-struct bassocimg *get_image(struct bhash *hash, const char *key, size_t keylen)
-{
-	struct bhash_entry *ent = bhash_entry_get(hash, key, keylen);
-	if (!ent)
-		return NULL;
-	return (void*)ent->value;
 }
 
 int miner_add_stack_img(struct miner_ctxt *ctxt, struct bassocimg *img,
@@ -2371,6 +2381,8 @@ void *miner_proc(void *arg)
 	struct bassocimg *bimg; /* base of antecedent image (A) */
 	struct bassocimg *cimg; /* consequence+antecedent image (Axz) */
 	struct bassocimg *img;
+
+	bassocimg_hdr_t ahdr, bhdr, chdr, thdr;
 	int *formula; /* formula[0] = tgt, formula[x] = event */
 	size_t formula_len;
 
@@ -2483,12 +2495,6 @@ loop:
 		 *     (A) = (B)(i)
 		 *     (C) = (B)(i)(t)
 		 */
-		struct bassocimg_hdr *ahdr, *bhdr, *chdr, *thdr;
-		ahdr = bassocimg_get_hdr(aimg);
-		if (bimg)
-			bhdr = bassocimg_get_hdr(bimg);
-		chdr = bassocimg_get_hdr(cimg);
-		thdr = bassocimg_get_hdr(timg);
 
 		uint64_t count_a, count_b, count_c, count_t;
 
@@ -2498,10 +2504,10 @@ loop:
 			count_c = bassocimg_get_pixel_len(cimg);
 			count_t = bassocimg_get_pixel_len(timg);
 		} else {
-			count_a = ahdr->count;
-			count_b = (bimg)?(bhdr->count):(0);
-			count_c = chdr->count;
-			count_t = thdr->count;
+			count_a = BASSOCIMG_HDR(aimg)->count;
+			count_b = (bimg)?(BASSOCIMG_HDR(bimg)->count):(0);
+			count_c = BASSOCIMG_HDR(cimg)->count;
+			count_t = BASSOCIMG_HDR(timg)->count;
 		}
 
 		/* calculate confidence, significance */
@@ -2625,6 +2631,8 @@ int main(int argc, char **argv)
 	case RUN_MODE_INFO:
 	case RUN_MODE_MINE:
 		open_bassoc_conf_routine();
+		open_cache_routine();
+		/* let-through */
 	case RUN_MODE_CREATE:
 		routine[run_mode_flag]();
 		break;
