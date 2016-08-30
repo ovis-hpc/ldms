@@ -291,6 +291,79 @@ int bdstr_reset(struct bdstr *bdstr);
  */
 void bdstr_free(struct bdstr *bdstr);
 
+
+/**
+ * ::bdbstr is similar to ::bdbstr, but uses ::bstr instead of \c char*.
+ */
+struct bdbstr {
+	size_t alloc_len;
+	struct bstr *bstr;
+};
+
+/* bdbstr */
+
+/**
+ * Allocate ::bdbstr, with initial allocation length \c len.
+ * \returns the pointer to the ::bdbstr if success.
+ * \returns NULL if failed.
+ */
+struct bdbstr* bdbstr_new(size_t len);
+
+/**
+ * Expand the \c str inside the ::bdbstr \c bs to \c new_size.
+ * \returns 0 on success, error code on error.
+ */
+int bdbstr_expand(struct bdbstr *bs, size_t new_size);
+
+/**
+ * Append \c str into \c bs->str, expand \c bs->str if necessary.
+ * \returns 0 on success, error code on failure.
+ */
+int bdbstr_append(struct bdbstr *bs, const char *str);
+
+/**
+ * Same as ::bdbstr_append(), but with ::bstr.
+ */
+int bdbstr_append_bstr(struct bdbstr *bdbstr, const struct bstr *bstr);
+
+/**
+ * Append content pointed by \c mem, for \c len bytes, to \c bdbstr.
+ *
+ * \retval 0 if no error.
+ * \retval errno if error.
+ */
+int bdbstr_append_mem(struct bdbstr *bdbstr, void *mem, size_t len);
+
+/**
+ * Same as ::bdbstr_append(), but with printf() format.
+ */
+int bdbstr_append_printf(struct bdbstr *bdbstr, const char *fmt, ...);
+
+/**
+ * Append \c c to \c bdbstr.
+ */
+int bdbstr_append_char(struct bdbstr *bdbstr, const char c);
+
+/**
+ * Detach \c char* buffer to the caller.
+ * \note The caller owns the \c char* buffer after this function returns.
+ * \note The input \c bdbstr contains no data, but still usable.
+ */
+struct bstr *bdbstr_detach_buffer(struct bdbstr *bdbstr);
+
+/**
+ * Reset \c bdbstr to empty string.
+ *
+ * \retval 0 if success.
+ * \retval errno if error.
+ */
+int bdbstr_reset(struct bdbstr *bdbstr);
+
+/**
+ * Free \c bdbstr and its buffer.
+ */
+void bdbstr_free(struct bdbstr *bdbstr);
+
 /**
  * Baler log rotate utility.
  *
