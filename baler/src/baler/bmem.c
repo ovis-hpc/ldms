@@ -176,8 +176,11 @@ int64_t bmem_alloc(struct bmem *b, uint64_t size)
 			return 0;
 		}
 		b->hdr->flen = nflen;
-		if (bmem_refresh(b) != 0)
+		int rc = bmem_refresh(b);
+		if (rc != 0) {
+			errno = rc;
 			return 0;
+		}
 	}
 	int64_t off = b->hdr->ulen;
 
@@ -224,4 +227,10 @@ int bmem_refresh(struct bmem *b)
 
 	return 0;
 }
+
+void bmem_reset(struct bmem *b)
+{
+	b->hdr->ulen = sizeof(*b->hdr);
+}
+
 /* EOF */

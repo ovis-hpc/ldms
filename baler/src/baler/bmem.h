@@ -150,5 +150,10 @@ int bmem_unlink(const char *path);
  */
 int bmem_refresh(struct bmem *b);
 
+/**
+ * \brief reset \c b to initial state.
+ */
+void bmem_reset(struct bmem *b);
+
 #endif // _BMEM_H
 /**\}*/ // bmem
