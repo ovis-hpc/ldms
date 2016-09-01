@@ -29,3 +29,7 @@ bin_PROGRAMS += bmhash_test
 bqpos_test_SOURCES = bqpos_test.c
 bqpos_test_LDADD = ../baler/libbaler.la ../query/libbquery.la
 bin_PROGRAMS += bqpos_test
+
+bmqueue_test_SOURCES = bmqueue_test.c
+bmqueue_test_LDADD = ../baler/libbaler.la -lpthread
+bin_PROGRAMS += bmqueue_test
