@@ -498,6 +498,22 @@ int bcsv_get_cell(const char *str, const char **end);
  */
 int bgetline(FILE *f, struct bdstr *bdstr);
 
+/**
+ * A convenient function to get a value from an environmental variable.
+ * \param name the name of the environmental variable.
+ * \param _default the default value.
+ * \retval u64 the value from getenv(), or _default if the environment variable
+ *             is not found.
+ */
+static inline
+uint64_t bgetenv_u64(const char *name, uint64_t _default)
+{
+	const char *var = getenv(name);
+	if (!var)
+		return _default;
+	return strtoull(var, NULL, 0);
+}
+
 /*** BIN utility ***/
 
 /**
