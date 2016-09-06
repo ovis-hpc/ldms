@@ -434,10 +434,11 @@
 #include "../baler/bheap.h"
 #include "../baler/butils.h"
 #include "../baler/barray.h"
+#include "../baler/bmqueue.h"
 #include "../query/bquery.h"
 
 /***** OPTIONS *****/
-const char *short_opt = "hicw:t:n:xXs:B:E:H:r:R:o:m:M:z:K:S:D:v:b?";
+const char *short_opt = "hicw:t:n:xXs:B:E:H:r:R:o:m:M:z:K:S:D:v:bO:?";
 struct option long_opt[] = {
 	{"help",                    0,  0,  'h'},
 	{"info",                    0,  0,  'i'},
@@ -461,6 +462,7 @@ struct option long_opt[] = {
 	{"significance-threshold",  1,  0,  'S'},
 	{"difference-threshold",    1,  0,  'D'},
 	{"black-white",             0,  0,  'b'},
+	{"output",                  1,  0,  'O'},
 	{"verbose",                 1,  0,  'v'},
 	{0,                         0,  0,  0},
 };
@@ -482,6 +484,9 @@ LIST_HEAD(ptrlist, ptrlistentry);
 
 struct bassocimg_cache *img_cache;
 struct bassocimg_cache *target_cache;
+
+const char *output_path = NULL;
+FILE *rule_out;
 
 const char *workspace_path = NULL;
 uint32_t spp = 3600;
@@ -523,7 +528,7 @@ struct barray *target_images = NULL;
 struct bhash *target_images_hash = NULL;
 
 struct bassoc_rule_subq {
-	TAILQ_HEAD(, bassoc_rule) head;
+	bmqueue_t bmq;
 	uint64_t refcount;
 };
 
@@ -964,6 +969,9 @@ loop:
 	case 'b':
 		blackwhite = 1;
 		break;
+	case 'O':
+		output_path = optarg;
+		break;
 	case 'v':
 		rc = blog_set_level_str(optarg);
 		if (rc) {
@@ -983,6 +991,19 @@ end:
 		berr("workspace path (-w) is needed");
 		exit(-1);
 	}
+
+	if (output_path) {
+		rule_out = fopen(output_path, "w");
+		if (!rule_out) {
+			berr("Cannot open rule output file: %s", output_path);
+			exit(-1);
+		}
+	} else {
+		rule_out = stdout;
+	}
+
+	rc = setvbuf(rule_out, NULL, _IONBF, 0);
+	assert(rc == 0);
 
 	size_t len = strlen(workspace_path);
 	paths.conf = bdstr_new(512);
@@ -1787,59 +1808,82 @@ void info_routine()
 	bmhash_iter_free(itr);
 }
 
+static inline
 void bassoc_rule_free(struct bassoc_rule *rule)
 {
-	if (rule->formula) {
-		bdstr_free(rule->formula);
-	}
 	free(rule);
 }
 
+static inline
 struct bassoc_rule *bassoc_rule_new()
 {
-	struct bassoc_rule *rule = calloc(1, sizeof(*rule));
-	if (!rule)
-		return NULL;
-	rule->formula = bdstr_new(128);
-	if (!rule->formula) {
-		bassoc_rule_free(rule);
-		return NULL;
-	}
-	return rule;
+	return calloc(1, sizeof(struct bassoc_rule));
 }
 
 int bassoc_rule_q_init(struct bassoc_rule_q *q)
 {
-	int rc;
-	rc = pthread_mutex_init(&q->mutex, NULL);
-	if (rc)
-		return rc;
-	rc = pthread_cond_init(&q->cond, NULL);
-	if (rc)
-		return rc;
-	TAILQ_INIT(&q->subq[0].head);
-	TAILQ_INIT(&q->subq[1].head);
+	int i, rc;
+	struct bdstr *bdstr;
+
 	q->subq[0].refcount = 0;
 	q->subq[1].refcount = 0;
+	q->subq[0].bmq = NULL;
+	q->subq[1].bmq = NULL;
+
+	bdstr = bdstr_new(4096);
+	if (!bdstr) {
+		rc = ENOENT;
+		goto out;
+	}
+	rc = pthread_mutex_init(&q->mutex, NULL);
+	if (rc)
+		goto out;
+	rc = pthread_cond_init(&q->cond, NULL);
+	if (rc)
+		goto out;
+	for (i = 0; i < 2; i++) {
+		bdstr_reset(bdstr);
+		rc = bdstr_append_printf(bdstr, "%s/q%d", workspace_path, i);
+		if (rc)
+			goto out;
+		q->subq[i].bmq = bmqueue_open(bdstr->str, sizeof(struct bassoc_rule), 1);
+		if (!q->subq[i].bmq)
+			goto out;
+	}
 	q->current_subq = &q->subq[0];
 	q->next_subq = &q->subq[1];
 	q->state = BASSOC_RULE_Q_STATE_ACTIVE;
+	goto out;
+err0:
+	for (i = 0; i < 2; i++) {
+		if (q->subq[i].bmq)
+			bmqueue_close(q->subq[i].bmq);
+	}
+out:
+	if (bdstr)
+		bdstr_free(bdstr);
 	return rc;
 }
 
 void bassoc_rule_add(struct bassoc_rule_q *q, struct bassoc_rule *r)
 {
+	int rc;
 	pthread_mutex_lock(&q->mutex);
-	TAILQ_INSERT_TAIL(&q->next_subq->head, r, entry);
+	rc = bmqueue_enqueue(q->next_subq->bmq, &r->qelm);
+	if (rc) {
+		berror("bmqueue_enqueue()");
+		goto out;
+	}
 	q->next_subq->refcount++;
 	pthread_cond_signal(&q->cond);
+out:
 	pthread_mutex_unlock(&q->mutex);
 }
 
 void bassoc_rule_put(struct bassoc_rule_q *q, struct bassoc_rule *rule)
 {
 	pthread_mutex_lock(&q->mutex);
-	bassoc_rule_free(rule);
+	bmqueue_elm_put(&rule->qelm);
 	q->current_subq->refcount--;
 	if (!q->current_subq->refcount) {
 		/* Done for that level */
@@ -1869,25 +1913,22 @@ loop:
 		tmp = q->next_subq;
 		q->next_subq = q->current_subq;
 		q->current_subq = tmp;
-		if (TAILQ_EMPTY(&q->current_subq->head)) {
-			r = NULL;
+		r = (void*)bmqueue_dequeue_nonblock(q->current_subq->bmq);
+		if (r) {
+			q->state = BASSOC_RULE_Q_STATE_ACTIVE;
+		} else {
 			q->state = BASSOC_RULE_Q_STATE_DONE;
-			pthread_cond_broadcast(&q->cond);
-			goto out;
 		}
-		q->state = BASSOC_RULE_Q_STATE_ACTIVE;
 		pthread_cond_broadcast(&q->cond);
-		/* The queue is active, going through */
+		goto out;
 	case BASSOC_RULE_Q_STATE_ACTIVE:
-		r = TAILQ_FIRST(&q->current_subq->head);
+		r = (void*)bmqueue_dequeue_nonblock(q->current_subq->bmq);
 		if (!r) {
 			pthread_cond_wait(&q->cond, &q->mutex);
 			goto loop;
 		}
 		break;
 	}
-
-	TAILQ_REMOVE(&q->current_subq->head, r, entry);
 out:
 	pthread_mutex_unlock(&q->mutex);
 	return r;
@@ -1919,27 +1960,25 @@ out:
 void bassoc_rule_print(struct bassoc_rule *rule, const char *prefix)
 {
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-	int *formula = (int*)rule->formula->str;
-	size_t formula_len = rule->formula->str_len / sizeof(int);
 	int i;
 	struct bassocimg *img;
 	bassocimg_hdr_t hdr;
 	pthread_mutex_lock(&mutex);
-	printf("%s: (%lf, %lf) {", prefix, rule->conf, rule->sig);
-	for (i = 1; i < formula_len; i++) {
+	fprintf(rule_out, "%s: (%lf, %lf) {", prefix, rule->conf, rule->sig);
+	for (i = 1; i < rule->formula_len; i++) {
 		img = NULL;
-		barray_get(images, formula[i], &img);
+		barray_get(images, rule->formula[i], &img);
 		assert(img);
 		if (i>1)
-			printf(",");
+			fprintf(rule_out, ",");
 		hdr = BASSOCIMG_HDR(img);
-		printf("%.*s", hdr->name.blen, hdr->name.cstr);
+		fprintf(rule_out, "%.*s", hdr->name.blen, hdr->name.cstr);
 	}
 	img = NULL;
-	barray_get(target_images, formula[0], &img);
+	barray_get(target_images, rule->formula[0], &img);
 	assert(img);
 	hdr = BASSOCIMG_HDR(img);
-	printf("}->{%.*s}\n", hdr->name.blen, hdr->name.cstr);
+	fprintf(rule_out, "}->{%.*s}\n", hdr->name.blen, hdr->name.cstr);
 	pthread_mutex_unlock(&mutex);
 }
 
@@ -1992,39 +2031,29 @@ int __next_in_formula(const char **a, const char **b)
 int bassoc_rule_index_add(struct bassoc_rule_index *index, struct bassoc_rule *rule)
 {
 	int rc = 0;
-	size_t tgt_len;
-	struct bdstr *bdstr = bdstr_new(256);
-	int *formula;
-	int formula_len;
+	int key[2];
+	struct bassoc_rule *r = bassoc_rule_new();
 	int i;
 
-	if (!bdstr)
+	if (!r)
 		return ENOMEM;
 
-	formula = (int*)rule->formula->str;
-	formula_len = rule->formula->str_len / sizeof(int);
-	rc = bdstr_append_mem(bdstr, formula, sizeof(int));
-	if (rc)
-		goto out;
-	tgt_len = bdstr->str_len;
+	key[0] = rule->formula[0];
 
-	for (i = 1; i < formula_len; i++) {
-		bdstr->str_len = tgt_len;
-		rc = bdstr_append_mem(bdstr, &formula[i], sizeof(int));
-		if (rc)
-			goto out;
+	for (i = 1; i < rule->formula_len; i++) {
+		key[1] = rule->formula[i];
 		struct bassoc_rule_index_entry *ient = malloc(sizeof(*ient));
 		if (!ient) {
 			rc = ENOMEM;
 			goto out;
 		}
-		ient->rule = rule;
+		ient->rule = r;
 		pthread_mutex_lock(&index->mutex);
 		struct bhash_entry *hent = bhash_entry_get(index->hash,
-						bdstr->str, bdstr->str_len);
+						(char*)key, sizeof(key));
 		if (!hent) {
-			hent = bhash_entry_set(index->hash, bdstr->str,
-							bdstr->str_len, 0);
+			hent = bhash_entry_set(index->hash, (char*)key,
+							sizeof(key), 0);
 			if (!hent) {
 				rc = ENOMEM;
 				pthread_mutex_unlock(&index->mutex);
@@ -2038,7 +2067,6 @@ int bassoc_rule_index_add(struct bassoc_rule_index *index, struct bassoc_rule *r
 	}
 
 out:
-	bdstr_free(bdstr);
 	return rc;
 }
 
@@ -2067,18 +2095,12 @@ int handle_target(const char *tname)
 	int idx;
 	struct bassocimg *img = NULL;
 	struct bassocimg *timg = NULL;
-	struct bassoc_rule *rule;
+	struct bassoc_rule rule;
 	struct bdbstr *bdbstr = NULL;
 	struct bhash_entry *hent;
 
 	bdbstr = bdbstr_new(PATH_MAX);
 	if (!bdbstr) {
-		rc = ENOMEM;
-		goto out;
-	}
-
-	rule = bassoc_rule_new();
-	if (!rule) {
 		rc = ENOMEM;
 		goto out;
 	}
@@ -2091,7 +2113,7 @@ int handle_target(const char *tname)
 	img = bassocimg_cache_get_img(img_cache, bdbstr->bstr, 0);
 	if (!img) {
 		rc = errno;
-		goto err;
+		goto out;
 	}
 	hent = bhash_entry_get(target_images_hash, tname, strlen(tname));
 	if (hent) {
@@ -2109,14 +2131,14 @@ int handle_target(const char *tname)
 		berr("Cannot get/create composite image: %s, err(%d): %m",
 						bdbstr->bstr->cstr, errno);
 		rc = errno;
-		goto err;
+		goto out;
 	}
 
 	hent = bhash_entry_set(target_images_hash, tname, strlen(tname), (uint64_t)timg);
 	if (!hent) {
 		berror("bhash_entry_set()");
 		rc = errno;
-		goto err;
+		goto out;
 	}
 
 	rc = bassocimg_shift_ts(img, offset * conf_handle->conf->spp, timg);
@@ -2129,26 +2151,18 @@ int handle_target(const char *tname)
 				BASSOCIMG_HDR(timg)->name.blen,
 				BASSOCIMG_HDR(timg)->name.cstr,
 				rc);
-		goto err;
+		goto out;
 	}
 
 enqueue:
-	rule->last_idx = -1;
 
 	barray_append(target_images, &timg);
 	idx = barray_get_len(target_images) - 1;
 
-	bdstr_reset(rule->formula);
-	rc = bdstr_append_mem(rule->formula, &idx, sizeof(idx));
-	if (rc) {
-		goto err;
-	}
-	bassoc_rule_add(&rule_q, rule);
+	rule.formula_len = 1;
+	rule.formula[0] = idx;
+	bassoc_rule_add(&rule_q, &rule);
 
-	goto out;
-
-err:
-	bassoc_rule_free(rule);
 out:
 	if (bdbstr)
 		bdbstr_free(bdbstr);
@@ -2252,10 +2266,11 @@ void init_target_images_routine()
 	}
 }
 
-#define MINER_CTXT_STACK_SZ 11
+#define MINER_CTXT_STACK_SZ (BASSOC_MAX_RULE_DEPTH)
 
 struct miner_ctxt {
 	struct bdstr *bdstr;
+	int key[2];
 
 	/* Image-Recipe stack */
 	/* The additional +2 are the space for miner operation */
@@ -2342,23 +2357,19 @@ int miner_add_stack_img(struct miner_ctxt *ctxt, struct bassocimg *img,
 static
 int bassoc_rule_general(struct bassoc_rule *r0, struct bassoc_rule *r1)
 {
-	int *f0 = (int*)r0->formula->str;
-	int f0_len = r0->formula->str_len / sizeof(int);
-	int *f1 = (int*)r1->formula->str;
-	int f1_len = r1->formula->str_len / sizeof(int);
 	int i0, i1;
-	if (f0[0] != f1[0])
+	if (r0->formula[0] != r1->formula[0])
 		/* Different target */
 		return 0;
 	i0 = i1 = 1;
-	while (i0 < f0_len && i1 < f1_len) {
-		if (f0[i0] < f1[i1])
+	while (i0 < r0->formula_len && i1 < r1->formula_len) {
+		if (r0->formula[i0] < r1->formula[i1])
 			return 0;
-		if (f0[i0] == f1[i1])
+		if (r0->formula[i0] == r1->formula[i1])
 			i0++;
 		i1++;
 	}
-	return i0 == f0_len;
+	return i0 == r0->formula_len;
 }
 
 void *miner_proc(void *arg)
@@ -2381,6 +2392,8 @@ void *miner_proc(void *arg)
 	struct bassocimg *bimg; /* base of antecedent image (A) */
 	struct bassocimg *cimg; /* consequence+antecedent image (Axz) */
 	struct bassocimg *img;
+
+	int next_idx;
 
 	bassocimg_hdr_t ahdr, bhdr, chdr, thdr;
 	int *formula; /* formula[0] = tgt, formula[x] = event */
@@ -2408,8 +2421,8 @@ loop:
 		goto out;
 	}
 
-	formula = (int*)rule->formula->str;
-	formula_len = rule->formula->str_len / sizeof(formula[0]);
+	formula = rule->formula;
+	formula_len = rule->formula_len;
 	tidx = formula[0];
 	barray_get(target_images, tidx, &timg);
 
@@ -2440,38 +2453,36 @@ loop:
 	bimg = (ctxt->stack_sz)?(ctxt->img[ctxt->stack_sz - 1]):(NULL);
 	aimg = ctxt->img[MINER_CTXT_STACK_SZ];
 
-	for (i = rule->last_idx + 1; i < n; i++) {
+	if (rule->formula_len > 1) {
+		next_idx = 1 + rule->formula[rule->formula_len-1];
+	} else {
+		next_idx = 0;
+	}
+
+	/* reuse the `rule` in candidate discovery */
+	assert(rule->formula_len < BASSOC_MAX_RULE_DEPTH + 1);
+	rule->formula_len++;
+
+	for (i = next_idx; i < n; i++) {
 		/* Expanding rule candidates to discover rules */
 		/* i.e., considering (B)(i)->(t) */
 		/* note: (A) = (B)(i) */
-		struct bassoc_rule *r = bassoc_rule_new();
-		if (!r) {
-			berr("Cannot allocate memory for a new rule ...");
-			goto out;
-		}
 		barray_get(images, i, &img);
 
 		/* construct rule candidate */
-		bdstr_reset(r->formula);
-		rc = bdstr_append_mem(r->formula, rule->formula->str,
-						rule->formula->str_len);
-		assert(rc == 0);
-		bdstr_append_mem(r->formula, &i, sizeof(int));
-		assert(rc == 0);
-		r->last_idx = i;
+		rule->formula[rule->formula_len-1] = i;
 
-		bdstr_reset(ctxt->bdstr);
-		bdstr_append_mem(ctxt->bdstr, &tidx, sizeof(int));
-		bdstr_append_mem(ctxt->bdstr, &i, sizeof(int));
+		ctxt->key[0] = tidx;
+		ctxt->key[1] = i;
 
 		struct bassoc_rule_index_entry *rent = bassoc_rule_index_get(
-						rule_index, ctxt->bdstr->str,
-						ctxt->bdstr->str_len);
+						rule_index, (char*)ctxt->key,
+						sizeof(ctxt->key));
 
 		/* General rule bound */
 		while (rent) {
-			if (bassoc_rule_general(rent->rule, r)) {
-				bassoc_rule_debug(r, "general bounded");
+			if (bassoc_rule_general(rent->rule, rule)) {
+				bassoc_rule_debug(rule, "general bounded");
 				goto bound;
 			}
 			rent = LIST_NEXT(rent, entry);
@@ -2510,36 +2521,47 @@ loop:
 			count_t = BASSOCIMG_HDR(timg)->count;
 		}
 
-		/* calculate confidence, significance */
-		r->conf = count_c / (double)count_a;
-		r->sig = count_c / (double)count_t;
-
-		if (r->sig < significance) {
-			/* Significance bound */
-			bassoc_rule_debug(r, "significance bounded");
+		/* empty-set check */
+		if (!count_a || !count_c) {
+			bassoc_rule_debug(rule, "empty-set bounded");
 			goto bound;
 		}
 
-		if (r->conf > confidence) {
+		/* calculate confidence, significance */
+		rule->conf = count_c / (double)count_a;
+		rule->sig = count_c / (double)count_t;
+
+		if (rule->sig < significance) {
+			/* Significance bound */
+			bassoc_rule_debug(rule, "significance bounded");
+			goto bound;
+		}
+
+		if (rule->conf > confidence) {
 			/* This is a rule, no need to expand more */
-			bassoc_rule_print(r, "rule");
-			bassoc_rule_index_add(rule_index, r);
+			bassoc_rule_print(rule, "rule");
+			bassoc_rule_index_add(rule_index, rule);
 			goto term;
 		}
 
 		if (bimg && (count_b - count_a) / (double)(count_b) < difference) {
 			/* Difference bound */
-			bassoc_rule_debug(r, "difference bounded");
+			bassoc_rule_debug(rule, "difference bounded");
+			goto bound;
+		}
+
+		if (rule->formula_len == 1 + BASSOC_MAX_RULE_DEPTH) {
+			bassoc_rule_debug(rule, "rule depth bound");
 			goto bound;
 		}
 
 		/* Good candidate, add to the queue */
-		bassoc_rule_add(&rule_q, r);
-		bassoc_rule_debug(r, "valid candidate");
+		bassoc_rule_add(&rule_q, rule);
+		bassoc_rule_debug(rule, "valid candidate");
+
 		continue;
 
 	bound:
-		bassoc_rule_free(r);
 	term:
 		continue;
 	}

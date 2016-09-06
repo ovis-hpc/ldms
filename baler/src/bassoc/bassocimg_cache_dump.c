@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2016 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -48,80 +48,83 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-/**
- * \file bassoc.h
- * \brief Header file for Baler Associatione Rule Miner
- */
-#ifndef __BASSOC_H
-#define __BASSOC_H
-
-#include <sys/queue.h>
-#include <math.h>
-
-#include "baler/btypes.h"
-#include "baler/bset.h"
-#include "baler/bhash.h"
-#include "baler/bmvec.h"
-#include "baler/bmqueue.h"
-#include "baler/butils.h"
-
-#include "bassocimg.h"
-#include "baler/barray.h"
-
-#define BASSOC_MAX_RULE_DEPTH 16
-
-struct bassoc_conf {
-	/* Image granularity */
-	uint32_t spp;
-	uint32_t npp;
-};
-
-struct bassoc_conf_handle {
-	int fd;
-	struct bassoc_conf *conf;
-};
-
-struct bassoc_rule {
-	struct bmqueue_elm qelm;
-	double conf;
-	double sig;
-	int formula_len;
-	int formula[1+BASSOC_MAX_RULE_DEPTH];
-};
-
-struct bassoc_rule_index_entry {
-	struct bassoc_rule *rule;
-	LIST_ENTRY(bassoc_rule_index_entry) entry;
-};
-
-LIST_HEAD(bassoc_rule_index_list, bassoc_rule_index_entry);
 
 /**
- * bassoc_rule_index is just a wrapper of ::bhash, with some utility functions
- * associated with it.
- *
- * hash['tgt,ev'] is a list of ::bassoc_rule_index_entry, referring to rules
- * that has target 'tgt' and has antecedent containing 'ev'.
+ * \file bassocimg_cache_dump.c
+ * \author Narate Taerat (narate at ogc dot us)
  */
-struct bassoc_rule_index {
-	pthread_mutex_t mutex;
-	struct bhash *hash;
+#include <stdio.h>
+#include <stdlib.h>
+#include <getopt.h>
+#include "bassoc.h"
+
+int print_seg = 0;
+int print_pixel = 0;
+const char *cache_path = NULL;
+
+const char *short_opt = "c:sp";
+struct option long_opt[] = {
+	{"cache",  1,  0,  'c'},
+	{"seg",    0,  0,  's'},
+	{"pixel",  0,  0,  'p'},
+	{0,        0,  0,  0}
 };
 
-struct bassocimgbin {
-	char metric_name[256];
-	int alloc_bin_len;
-	int bin_len;
-	struct {
-		double lower_bound;
-		struct bassocimg *img;
-		struct barray *count_buff;
-	} bin[0];
-	/*
-	 * NOTE: for bin[x].img is an image for [bin[x].lower_bound,
-	 * bin[x+1].upper_bound). For x == 0, bin[0].lower_bound is -inf.
-	 * The last bin, bin[bin_len - 1], will have lower_bound == inf.
-	 */
-};
+void usage()
+{
+	printf("Usage: bassocimg_cache_dump -c CACHE [-s] [-p]\n");
+}
 
-#endif
+void handle_args(int argc, char **argv)
+{
+	int c;
+loop:
+	c = getopt_long(argc, argv, short_opt, long_opt, NULL);
+	switch (c) {
+	case -1:
+		return;
+	case 's':
+		print_seg = 1;
+		break;
+	case 'p':
+		print_pixel = 1;
+		break;
+	case 'c':
+		cache_path = optarg;
+		break;
+	default:
+		usage();
+		exit(-1);
+	}
+	goto loop;
+}
+
+int main(int argc, char **argv)
+{
+	int i, n, rc;
+	uint64_t idx;
+	struct bassocimg_cache *cache;
+	struct bassocimg *img;
+	struct bstr *name;
+
+	handle_args(argc, argv);
+
+	cache = bassocimg_cache_open(cache_path, 0);
+	if (!cache) {
+		berr("Cannot open cache %s, error(%d): %m", cache_path, errno);
+		exit(-1);
+	}
+
+	struct bassocimg_cache_iter iter;
+
+	bassocimg_cache_iter_init(&iter, cache);
+
+	for (img = bassocimg_cache_iter_first(&iter);
+			img;
+			img = bassocimg_cache_iter_next(&iter)) {
+		bassocimg_dump(img, print_seg, print_pixel);
+		bassocimg_put(img);
+	}
+
+	return 0;
+}

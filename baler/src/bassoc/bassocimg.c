@@ -59,8 +59,6 @@
 #include "baler/butils.h"
 #include "bassocimg.h"
 
-#define BASSOCIMG_HDR_SZ 64
-
 #define BASSOCIMG_SEG_FOREACH(img, seg) \
 	for ((seg) = bassocimg_seg_ref2ptr((img), BASSOCIMG_HDR(img)->first_seg_ref); \
 		(seg); \
@@ -172,10 +170,23 @@ uint64_t  __bassocimg_cache_alloc_img(bassocimg_cache_t cache)
 	return ref;
 }
 
+bassocimg_t __bassocimg_cache_get_img_by_ref(bassocimg_cache_t cache,
+								uint64_t ref)
+{
+	if (!ref)
+		return NULL;
+	bassocimg_t ihandle = calloc(1, sizeof(*ihandle));
+	if (!ihandle)
+		return NULL;
+	ihandle->hdr_ref = ref;
+	ihandle->cache = cache;
+	return ihandle;
+}
+
 bassocimg_t bassocimg_cache_get_img(bassocimg_cache_t cache,
 					const struct bstr *name, int create)
 {
-	struct bmhash_entry *hent = bmhash_entry_get(cache->ev2img, name);
+	struct bmhash_entry *hent;
 	bassocimg_t img = NULL;
 	bassocimg_hdr_t hdr = NULL;
 	bassocimg_t ihandle = NULL;
@@ -185,6 +196,7 @@ bassocimg_t bassocimg_cache_get_img(bassocimg_cache_t cache,
 		return NULL;
 	}
 
+	hent = bmhash_entry_get(cache->ev2img, name);
 	if (!hent) {
 		if (!create) {
 			errno = ENOENT;
@@ -199,16 +211,9 @@ bassocimg_t bassocimg_cache_get_img(bassocimg_cache_t cache,
 		hdr = bassocimg_cache_hdr_ref2ptr(cache, hent->value);
 		hdr->name.blen = name->blen;
 		memcpy(hdr->name.cstr, name->cstr, name->blen);
-
-	} else {
-		hdr = bassocimg_cache_hdr_ref2ptr(cache, hent->value);
 	}
-	ihandle = malloc(sizeof(*ihandle));
-	if (!ihandle)
-		return NULL;
-	ihandle->hdr_ref = hent->value;
-	ihandle->cache = cache;
-	return ihandle;
+
+	return __bassocimg_cache_get_img_by_ref(cache, hent->value);
 }
 
 void bassocimg_iter_init(bassocimg_iter_t iter, bassocimg_t img)
@@ -277,6 +282,8 @@ bassocimg_seg_t bassocimg_seg_alloc(bassocimg_t img)
 		last_seg->next_seg_ref = seg_ref;
 	}
 	hdr->last_seg_ref = seg_ref;
+	hdr->curr_seg_ref = seg_ref;
+	hdr->seg_count++;
 	return seg;
 }
 
@@ -299,11 +306,12 @@ again:
 		if (!seg)
 			return errno;
 	}
-	if (seg->len >= BASSOCIMG_SEGMENT_PXL) {
+	if (seg->len == BASSOCIMG_SEGMENT_PXL) {
 		/* current segment full, use next segment */
 		hdr->curr_seg_ref = seg->next_seg_ref;
 		goto again;
 	}
+	assert(seg->len < BASSOCIMG_SEGMENT_PXL);
 	/* spaces available in current segment */
 	seg->pxl[seg->len] = *p;
 	seg->len++;
@@ -389,4 +397,84 @@ int bassocimg_shift_ts(struct bassocimg *img, int sec, struct bassocimg *result)
 			return rc;
 	}
 	return 0;
+}
+
+void bassocimg_cache_iter_init(bassocimg_cache_iter_t iter,
+					bassocimg_cache_t cache)
+{
+	iter->cache = cache;
+	bmhash_iter_init(&iter->bmh_iter, cache->ev2img);
+}
+
+bassocimg_t bassocimg_cache_iter_first(bassocimg_cache_iter_t iter)
+{
+	int rc;
+	bassocimg_t img;
+	struct bmhash_entry *hent;
+	rc = bmhash_iter_begin(&iter->bmh_iter);
+	if (rc) {
+		errno = rc;
+		return NULL;
+	}
+	hent = bmhash_iter_entry(&iter->bmh_iter);
+	img = __bassocimg_cache_get_img_by_ref(iter->cache, hent->value);
+	return img;
+}
+
+bassocimg_t bassocimg_cache_iter_next(bassocimg_cache_iter_t iter)
+{
+	int rc;
+	bassocimg_t img;
+	struct bmhash_entry *hent;
+	rc = bmhash_iter_next(&iter->bmh_iter);
+	if (rc) {
+		errno = rc;
+		return NULL;
+	}
+	hent = bmhash_iter_entry(&iter->bmh_iter);
+	img = __bassocimg_cache_get_img_by_ref(iter->cache, hent->value);
+	return img;
+}
+
+void bassocimg_dump(bassocimg_t img, int print_seg, int print_pixel)
+{
+	bassocimg_hdr_t hdr = BASSOCIMG_HDR(img);
+	printf("--- %.*s ---\n", hdr->name.blen, hdr->name.cstr);
+	printf("first_seg_ref: %lu\n", hdr->first_seg_ref);
+	printf("last_seg_ref: %lu\n", hdr->last_seg_ref);
+	printf("curr_seg_ref: %lu\n", hdr->curr_seg_ref);
+	printf("seg_count: %lu\n", hdr->seg_count);
+	printf("len: %lu\n", hdr->len);
+	printf("count: %lu\n", hdr->len);
+
+	if (print_seg) {
+		uint64_t segref = hdr->first_seg_ref;
+		int seg_count = 0;
+		bassocimg_seg_t seg;
+		while (segref) {
+			seg_count++;
+			seg = bmvec_generic_get(img->cache->img_seg,
+						segref, sizeof(*seg));
+			printf("    %lu(%lu, %lu): %lu\n", segref,
+						seg->prev_seg_ref,
+						seg->next_seg_ref,
+						seg->len);
+			segref = seg->next_seg_ref;
+		}
+		assert(hdr->seg_count == seg_count);
+	}
+
+	if (print_pixel) {
+		struct bassocimg_iter itr;
+		bassocimg_pixel_t pxl;
+		bassocimg_iter_init(&itr, img);
+		for (pxl = bassocimg_iter_first(&itr);
+				pxl;
+				pxl = bassocimg_iter_next(&itr)) {
+			printf("[%lu, %lu, %lu]\n", pxl->sec,
+						pxl->comp_id, pxl->count);
+		}
+	}
+skip:
+	printf("---------------\n");
 }

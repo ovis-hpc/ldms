@@ -83,6 +83,11 @@ typedef struct bassocimg_pixel {
 	uint64_t count;
 } *bassocimg_pixel_t;
 
+typedef struct bassocimg_cache_iter {
+	struct bmhash_iter bmh_iter;
+	bassocimg_cache_t cache;
+} *bassocimg_cache_iter_t;
+
 #define BASSOCIMG_NAME_MAX 255
 
 typedef struct bassocimg {
@@ -93,6 +98,7 @@ typedef struct bassocimg {
 typedef struct bassocimg_hdr {
 	uint64_t count; /* total count of occurrences */
 	uint64_t len; /* number of pixels */
+	uint64_t seg_count;
 	uint64_t first_seg_ref; /* ref to first segment */
 	uint64_t curr_seg_ref; /* ref to current segment */
 	uint64_t last_seg_ref; /* last to last segment */
@@ -339,5 +345,48 @@ int bassocimg_intersect(struct bassocimg *img0, struct bassocimg *img1,
  */
 int bassocimg_shift_ts(struct bassocimg *img, int sec,
 					struct bassocimg *result);
+
+/**
+ * Initialize the image cache iterator, the memory \c iter pointed at must be
+ * valid.
+ *
+ * \param iter the pointer to ::bassocimg_cache_iter structure.
+ * \param cache the handle to image cache.
+ */
+void bassocimg_cache_iter_init(bassocimg_cache_iter_t iter,
+					bassocimg_cache_t cache);
+
+/**
+ * Start the iterator, returning the first image in the cache.
+ *
+ * \param iter the iterator handle.
+ * \retval img the handle to the first image, if exists.
+ * \retval NULL if there is no image.
+ *
+ * \note The returned \c img should be put back by calling \c bassocimg_put()
+ *       when done.
+ */
+bassocimg_t bassocimg_cache_iter_first(bassocimg_cache_iter_t iter);
+
+/**
+ * Iterate to the next image to the cache.
+ *
+ * \param iter the iterator handle.
+ * \retval img the handle to the next image, if exists.
+ * \retval NULL if there is no more image.
+ *
+ * \note The returned \c img should be put back by calling \c bassocimg_put()
+ *       when done.
+ */
+bassocimg_t bassocimg_cache_iter_next(bassocimg_cache_iter_t iter);
+
+/**
+ * Dump image information through \c stdout.
+ *
+ * \param img the image handle.
+ * \param print_seg set this to 1 to also print image segment info.
+ * \param print_pixel set this to 1 to also print pixel info.
+ */
+void bassocimg_dump(bassocimg_t img, int print_seg, int print_pixel);
 
 #endif
