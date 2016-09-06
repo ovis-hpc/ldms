@@ -172,6 +172,7 @@ struct bmhash_entry *bmhash_entry_set(struct bmhash *bmh,
 			errno = ENOMEM;
 			return NULL;
 		}
+		hdr = bmhash_get_header(bmh);
 		ent = BMPTR(bmh->mem, off);
 		memcpy(ent->key.cstr, key->cstr, key->blen);
 		ent->key.blen = key->blen;
