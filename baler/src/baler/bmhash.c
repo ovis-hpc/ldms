@@ -188,14 +188,19 @@ struct bmhash_entry *bmhash_entry_get(struct bmhash *bmh,
 	return __bmhash_entry_find(bmh, key, NULL);
 }
 
+void bmhash_iter_init(struct bmhash_iter *iter, struct bmhash *bmh)
+{
+	iter->bmh = bmh;
+	iter->ent = NULL;
+	iter->idx = 0;
+}
+
 struct bmhash_iter *bmhash_iter_new(struct bmhash *bmh)
 {
 	struct bmhash_iter *iter = malloc(sizeof(*iter));
 	if (!iter)
 		return NULL;
-	iter->bmh = bmh;
-	iter->ent = NULL;
-	iter->idx = 0;
+	bmhash_iter_init(iter, bmh);
 	return iter;
 }
 
