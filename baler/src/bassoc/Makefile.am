@@ -35,3 +35,9 @@ bassocimg_intersect_test_LDADD = ../baler/libbaler.la libbassocimg.la
 bassocimg_intersect_test_LDFLAGS = $(AM_LDFLAGS) @OVIS_LIB_LIBDIR_FLAG@ @OVIS_LIB_LIB64DIR_FLAG@
 bassocimg_intersect_test_CFLAGS = $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@
 bin_PROGRAMS += bassocimg_intersect_test
+
+bassocimg_cache_dump_SOURCES = bassocimg_cache_dump.c
+bassocimg_cache_dump_LDADD = ../baler/libbaler.la libbassocimg.la
+bassocimg_cache_dump_LDFLAGS = $(AM_LDFLAGS) @OVIS_LIB_LIBDIR_FLAG@ @OVIS_LIB_LIB64DIR_FLAG@
+bassocimg_cache_dump_CFLAGS = $(AM_CFLAGS) @OVIS_LIB_INCDIR_FLAG@
+bin_PROGRAMS += bassocimg_cache_dump
