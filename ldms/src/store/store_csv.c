@@ -95,6 +95,7 @@ struct storek{
 	struct column_step cs;
 };
 
+static int buffer_flag = 1;
 static csvcfg_state cfgstate = CSV_CFGINIT_PRE;
 #define MAX_ROLLOVER_STORE_KEYS 20
 static idx_t store_idx; //NOTE: this doesnt have an iterator. Hence storekeys.
@@ -201,6 +202,19 @@ static char* allocStoreKey(const char* container, const char* schema){
   return path;
 }
 
+static void __buffer_routine(FILE *f)
+{
+	if (buffer_flag)
+		return;
+	/* disable buffer */
+	int rc;
+	rc = setvbuf(f, NULL, _IONBF, 0);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s:%d setvbuf() rc: %d, errno: %d\n",
+					__FILE__, __LINE__, rc, errno);
+	}
+}
+
 /* Time-based rolltypes will always roll the files when this
 function is called.
 Volume-based rolltypes must check and shortcircuit within this
@@ -271,6 +285,7 @@ static int handleRollover(){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				__buffer_routine(nfp);
 				if (s_handle->altheader){
 					//re name: if got here, then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
@@ -296,6 +311,7 @@ static int handleRollover(){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				__buffer_routine(nhfp);
 
 				//close and swap
 				if (s_handle->file)
@@ -397,6 +413,7 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	char *skey = NULL;
 	char *altvalue;
 	char *rvalue;
+	char *value;
 	int idx;
 	int i;
 
@@ -408,6 +425,11 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 		       __FILE__, cfgstate);
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
+	}
+
+	value = av_value(avl, "buffer");
+	if (value) {
+		buffer_flag = atoi(value);
 	}
 
 	cvalue = av_value(avl, "container");
@@ -529,6 +551,11 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	}
 
 	cfgstate = CSV_CFGINIT_IN;
+
+	value = av_value(avl, "buffer");
+	if (value) {
+		buffer_flag = atoi(value);
+	}
 
 	value = av_value(avl, "path");
 	if (!value) {
@@ -694,6 +721,7 @@ static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=store_csv action=init path=<path> rollover=<num> rolltype=<num>\n"
 		"           [sequence=<order> altheader=<0/!0> userdata=<0/!0>]\n"
+		"           [buffer=<0|1>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
@@ -703,6 +731,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		ROLLTYPES
 		"         - sequence  Determine the metric column ordering:\n"
 		ORDERTYPES
+		"         - buffer    0 to disable bufferring, 1 to enable it (optional, default: 1).\n"
 		"\n"
 		"    config name=store_csv action=custom container=<c_name> schema=<s_name>\n"
 		"           [sequence=<order> altheader=<0/1> userdata=<0/1>]\n"
@@ -944,6 +973,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		       __FILE__, errno, s_handle->path);
 		goto err2;
 	}
+	__buffer_routine(s_handle->file);
 
 	/*
 	 * Always reprint the header because this is a store that may have been
@@ -978,6 +1008,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			goto err3;
 		}
 	}
+	__buffer_routine(s_handle->headerfile);
 
 	/* ideally here should always be the printing of the header, and we could drop keeping
 	 * track of printheader.
