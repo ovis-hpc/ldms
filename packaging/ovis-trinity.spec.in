@@ -84,10 +84,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_bindir}/ldms-pedigree
 %{_bindir}/lib-pedigree
 %{_sbindir}/*
-%{_prefix}/lib/python2.7/site-packages/ovis_lib
-%{_prefix}/lib/python2.7/site-packages/ovis_ldms
-%{_prefix}/lib/python2.7/site-packages/ldmsd
-%{_bindir}/ldmsd_controller
 %{_docdir}/%{name}-%{version}/COPYING
 %{_docdir}/%{name}-%{version}/ChangeLog
 %{_docdir}/%{name}-%{version}/AUTHORS 
@@ -161,6 +157,9 @@ Summary: Python files for LDMS
 Python files for LDMS
 %files python2
 %defattr(-,root,root)
+#%%{_prefix}/lib/python2.7/site-packages/ovis_lib
+#%%{_prefix}/lib/python2.7/site-packages/ovis_ldms
+%{_prefix}/lib/python2.7/site-packages/ldmsd
 #%%{_prefix}/lib/python2.7/site-packages/baler
 #%%{python2_sitelib}/*
 #end python2
@@ -181,7 +180,7 @@ This is a collection of sos utilities.
 %{_libdir}/libidx_BXTREE.*
 %{_sbindir}/ldmsd_sos_init
 %{_libdir}/libsos*
-%{_prefix}/lib/python2.7/site-packages/sos
+#%%{_prefix}/lib/python2.7/site-packages/sos
 #end test
 
 
