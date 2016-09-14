@@ -19,7 +19,6 @@ Plugin_procinterrupts.man \
 Plugin_procnetdev.man \
 Plugin_procnfs.man \
 Plugin_store_csv.man \
-Plugin_store_derived_csv.man \
 Plugin_store_sos.man \
 Plugin_vmstat.man
 
