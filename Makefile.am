@@ -88,6 +88,11 @@ rhine: dist-gzip
 	cp $(BASE_TARBALL) packaging/ovis-rhine.spec rhine/SOURCES
 	rpmbuild --define "_topdir `pwd`/rhine" -ba packaging/ovis-rhine.spec
 
+trinitite: dist-gzip
+	$(MKDIR_P) trinity/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+	cp $(BASE_TARBALL) packaging/ovis-trinity.spec trinity/SOURCES
+	rpmbuild --define "_topdir `pwd`/trinity" -ba packaging/ovis-trinity.spec
+
 rpm-clean:
 	rm -rf rpm/ centos
 	rm -f $(BASE_TARBALL)
