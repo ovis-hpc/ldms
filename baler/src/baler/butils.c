@@ -197,7 +197,7 @@ int bis_dir(const char *path)
 		return 0;
 	rc = S_ISDIR(st.st_mode);
 	if (!rc) {
-		errno = EINVAL;
+		errno = ENOTDIR;
 	}
 	return rc;
 }
@@ -366,12 +366,10 @@ char *bdstr_detach_buffer(struct bdstr *bdstr)
 int bdstr_reset(struct bdstr *bdstr)
 {
 	bdstr->str_len = 0;
-	if (!bdstr->str) {
-		bdstr->str = malloc(4096);
-		if (!bdstr->str)
-			return ENOMEM;
+	if (bdstr->str) {
+		/* the buffer can be detached */
+		bdstr->str[0] = 0;
 	}
-	bdstr->str[0] = 0;
 	return 0;
 }
 
@@ -380,6 +378,144 @@ void bdstr_free(struct bdstr *bdstr)
 	if (bdstr->str)
 		free(bdstr->str);
 	free(bdstr);
+}
+
+struct bdbstr* bdbstr_new(size_t len)
+{
+	if (!len)
+		len = 4096;
+	struct bdbstr *s = malloc(sizeof(*s));
+	if (!s)
+		return NULL;
+	s->bstr = malloc(sizeof(struct bstr) + len);
+	if (!s->bstr) {
+		free(s);
+		return NULL;
+	}
+	s->bstr->blen = 0;
+	s->bstr->cstr[0] = 0;
+	s->alloc_len = len;
+	return s;
+}
+
+int bdbstr_expand(struct bdbstr *bs, size_t new_alloc_len)
+{
+	struct bstr *new_bstr = realloc(bs->bstr, sizeof(struct bstr) + new_alloc_len);
+	if (!new_bstr)
+		return errno;
+	bs->alloc_len = new_alloc_len;
+	bs->bstr = new_bstr;
+	return 0;
+}
+
+int bdbstr_append(struct bdbstr *bs, const char *str)
+{
+	int len = strlen(str);
+	int rc;
+	if (bs->bstr->blen + len + 1 > bs->alloc_len) {
+		int exp_len = (len | 0xFFF) + 1;
+		rc = bdbstr_expand(bs, bs->alloc_len + exp_len);
+		if (rc)
+			return rc;
+	}
+	strcat(bs->bstr->cstr + bs->bstr->blen, str);
+	bs->bstr->blen += len;
+	return 0;
+}
+
+int bdbstr_append_bstr(struct bdbstr *bdbstr, const struct bstr *bstr)
+{
+	int rc;
+	if (bdbstr->bstr->blen + bstr->blen + 1 > bdbstr->alloc_len) {
+		int exp_len = (bstr->blen | 0xFFF) + 1;
+		rc = bdbstr_expand(bdbstr, bdbstr->alloc_len + exp_len);
+		if (rc)
+			return rc;
+	}
+	strncpy(bdbstr->bstr->cstr + bdbstr->bstr->blen, bstr->cstr, bstr->blen);
+	bdbstr->bstr->blen += bstr->blen;
+	bdbstr->bstr->cstr[bdbstr->bstr->blen] = 0;
+	return 0;
+}
+
+int bdbstr_append_printf(struct bdbstr *bdbstr, const char *fmt, ...)
+{
+	int rc = 0;
+	va_list ap;
+	char *str;
+	size_t sz;
+	int n;
+again:
+	str = bdbstr->bstr->cstr + bdbstr->bstr->blen;
+	sz = bdbstr->alloc_len - bdbstr->bstr->blen;
+	va_start(ap, fmt);
+	n = vsnprintf(str, sz, fmt, ap);
+	va_end(ap);
+	if (n >= sz) {
+		int exp_len = bdbstr->bstr->blen + n + 1;
+		exp_len = (exp_len | 0xFFF) + 1;
+		bdbstr->bstr->cstr[bdbstr->bstr->blen] = 0; /* recover old string */
+		rc = bdbstr_expand(bdbstr, exp_len);
+		if (rc)
+			goto out;
+		goto again;
+	}
+	bdbstr->bstr->blen += n;
+out:
+	return rc;
+}
+
+int bdbstr_append_char(struct bdbstr *bdbstr, const char c)
+{
+	int rc = 0;
+	if (bdbstr->bstr->blen + 1 + 1 >  bdbstr->alloc_len) {
+		rc = bdbstr_expand(bdbstr, bdbstr->alloc_len + 4096);
+		if (rc)
+			return rc;
+	}
+	bdbstr->bstr->cstr[bdbstr->bstr->blen++] = c;
+	bdbstr->bstr->cstr[bdbstr->bstr->blen] = 0;
+	return rc;
+}
+
+int bdbstr_append_mem(struct bdbstr *bdbstr, void *mem, size_t len)
+{
+	int rc;
+	if (bdbstr->bstr->blen + len + 1 > bdbstr->alloc_len) {
+		int exp_len = (len | 0xFFF) + 1;
+		rc = bdbstr_expand(bdbstr, bdbstr->alloc_len + exp_len);
+		if (rc)
+			return rc;
+	}
+	memcpy(bdbstr->bstr->cstr + bdbstr->bstr->blen, mem, len);
+	bdbstr->bstr->blen += len;
+	bdbstr->bstr->cstr[bdbstr->bstr->blen] = 0;
+	return 0;
+}
+
+struct bstr *bdbstr_detach_buffer(struct bdbstr *bdbstr)
+{
+	struct bstr *bstr = bdbstr->bstr;
+	bdbstr->alloc_len = 0;
+	bdbstr->bstr = NULL;
+	return bstr;
+}
+
+int bdbstr_reset(struct bdbstr *bdbstr)
+{
+	if (bdbstr->bstr) {
+		/* the buffer can be detached */
+		bdbstr->bstr->cstr[0] = 0;
+		bdbstr->bstr->blen = 0;
+	}
+	return 0;
+}
+
+void bdbstr_free(struct bdbstr *bdbstr)
+{
+	if (bdbstr->bstr)
+		free(bdbstr->bstr);
+	free(bdbstr);
 }
 
 int bstr_lev_dist_u32(const struct bstr *a, const struct bstr *b, void *buff,

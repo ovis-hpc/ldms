@@ -91,7 +91,7 @@ int test_log(const char *fmt, ...)
 	va_start(ap, fmt);
 	len += vsnprintf(buff + len, alloc_len, fmt, ap);
 	va_end(ap);
-	write(0, buff, len);
+	if (-1 == write(0, buff, len)) { /* do nothing */ }
 	pthread_mutex_unlock(&mutex);
 	return len;
 }

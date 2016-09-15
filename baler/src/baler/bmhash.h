@@ -84,6 +84,8 @@ struct bmhash_entry *bmhash_entry_get(struct bmhash *bmh,
 
 struct bmhash_iter *bmhash_iter_new(struct bmhash *bmh);
 
+void bmhash_iter_init(struct bmhash_iter *iter, struct bmhash *bmh);
+
 void bmhash_iter_free(struct bmhash_iter *iter);
 
 struct bmhash_entry *bmhash_iter_entry(struct bmhash_iter *iter);

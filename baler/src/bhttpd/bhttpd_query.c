@@ -1523,7 +1523,7 @@ struct bpixel *__img_pan(struct pan_ctxt *pc)
 		pc->bq_step = (void*)bimgquery_prev_ptn;
 		snprintf(pc->qhost_ids, sizeof(pc->qhost_ids),
 				"%d-%d", pc->host0, pc->host1 - 1);
-		snprintf(pc->qts0, sizeof(pc->qts0), "");
+		pc->qts0[0] = 0;
 		snprintf(pc->qts1, sizeof(pc->qts1), "%d", pc->ts0);
 		break;
 	case IMG_PAN_RIGHT:
@@ -1532,7 +1532,7 @@ struct bpixel *__img_pan(struct pan_ctxt *pc)
 		snprintf(pc->qhost_ids, sizeof(pc->qhost_ids),
 				"%d-%d", pc->host0, pc->host1 - 1);
 		snprintf(pc->qts0, sizeof(pc->qts0), "%d", pc->ts1);
-		snprintf(pc->qts1, sizeof(pc->qts1), "");
+		pc->qts0[1] = 0;
 		break;
 	default:
 		assert(0);

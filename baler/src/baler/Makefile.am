@@ -14,6 +14,7 @@ libbaler_la_SOURCES = bwqueue.c btkn.c bptn.c binput.c boutput.c \
 		      bheap.c \
 		      bmeta.c \
 		      bqueue.c \
+		      bmqueue.c \
 		      binput_private.h \
 		      bmeta_priv.h \
 		      fnv_hash.h \
@@ -52,11 +53,13 @@ pkginclude_HEADERS = barray.h \
 		     bmeta.h \
 		     bmhash.h \
 		     bmlist.h \
+		     bmlist2.h \
 		     bmvec.h \
 		     boutput.h \
 		     bplugin.h \
 		     bptn.h \
 		     bqueue.h \
+		     bmqueue.h \
 		     bset.h \
 		     btkn.h \
 		     btkn_types.h \

@@ -416,6 +416,7 @@ out:
 int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 {
 	int rc = 0;
+	ssize_t wb;
 
 	if (ev->fd >= 0) {
 		struct epoll_event e;
@@ -447,7 +448,12 @@ int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 		m->evcount++;
 		/* notify only if the new event affect the next timeout */
 		if (m->state == OVIS_EVENT_MANAGER_WAITING && ev->idx == 0) {
-			write(m->pfd[1], &ev, sizeof(ev));
+			wb = write(m->pfd[1], &ev, sizeof(ev));
+			if (wb == -1) {
+				rc = errno;
+				pthread_mutex_unlock(&m->mutex);
+				goto out;
+			}
 		}
 		pthread_mutex_unlock(&m->mutex);
 	}
@@ -459,6 +465,7 @@ out:
 int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev)
 {
 	int rc = 0;
+	ssize_t wb;
 	if (ev->fd >= 0) {
 		/* remove from epoll */
 		struct epoll_event e;
@@ -478,7 +485,12 @@ int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev)
 		m->evcount--;
 		/* notify only last delete event */
 		if (m->state == OVIS_EVENT_MANAGER_WAITING && m->evcount == 0) {
-			write(m->pfd[1], &ev, sizeof(ev));
+			wb = write(m->pfd[1], &ev, sizeof(ev));
+			if (wb == -1) {
+				rc = errno;
+				pthread_mutex_unlock(&m->mutex);
+				goto out;
+			}
 		}
 	}
 	pthread_mutex_unlock(&m->mutex);
@@ -582,6 +594,7 @@ out:
 int ovis_event_term(ovis_event_manager_t m)
 {
 	int rc;
+	ssize_t wb;
 	ovis_event_t none = NULL;
 	pthread_mutex_lock(&m->mutex);
 	switch (m->state) {
@@ -589,7 +602,9 @@ int ovis_event_term(ovis_event_manager_t m)
 	case OVIS_EVENT_MANAGER_WAITING:
 		m->state = OVIS_EVENT_MANAGER_TERM;
 		rc = 0;
-		write(m->pfd[1], &none, sizeof(none));
+		wb = write(m->pfd[1], &none, sizeof(none));
+		if (wb == -1)
+			rc = errno;
 		break;
 	case OVIS_EVENT_MANAGER_INIT:
 	case OVIS_EVENT_MANAGER_TERM:
