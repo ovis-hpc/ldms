@@ -2,25 +2,24 @@
 import logging
 import unittest
 import abhttp
+import util
 
 logger = logging.getLogger(__name__)
 
-class TestBHTTPDConn(unittest.TestCase):
+testENV = util.TestENV(util.Param(
+                    TMP_DIR='./tmp/test_conn',
+                    N_DAEMONS = 1,
+                ))
+
+class TestConnBase(object):
     def setUp(self):
-        self.conn = abhttp.BHTTPDConn("localhost:19000")
+        """ subclass must provide `self.conn` """
+        raise Exception("Override me!")
 
     def test_get_fetch(self):
-        self.conn.get("/query", {"type": "ptn"})
-        data = self.conn.fetch(2048)
-        fetch_count = 1
-        sum_len = 0
-        while (data):
-            logger.info("data: %s", data)
-            sum_len += len(data)
-            data = self.conn.fetch(2048)
-            fetch_count += 1
-        logger.info("sum_len: %d", sum_len)
-        logger.info("fetch_count: %d", fetch_count)
+        self.conn.get_ptn()
+        ptns = self.conn.fetch_ptn()
+        logger.info("number of patterns: %d", len(ptns))
 
     def test_img2(self):
         self.conn.get_img2(img_store="3600-1",
@@ -82,18 +81,30 @@ class TestBHTTPDConn(unittest.TestCase):
         for (_id, _str) in m.items():
             count += 1
             logger.info("host[%s]: %s", _id, _str)
+######## end of class TestConnBase ########
+
+
+class TestBHTTPDConn(unittest.TestCase, TestConnBase):
+    def setUp(self):
+        self.conn = abhttp.BHTTPDConn("localhost:18000")
 
     def tearDown(self):
         del self.conn
 
-# end of class TestBHTTPDConn
+
+class TestBStore2Conn(unittest.TestCase, TestConnBase):
+    def setUp(self):
+        self.conn = abhttp.BStore2Conn(testENV.param.TMP_DIR + "/store.0")
+
+    def tearDown(self):
+        del self.conn
 
 
-class TestBHTTPDConnMsgQueryIter(unittest.TestCase):
+class TestConnMsgQueryIterBase(object):
     @classmethod
     def setUpClass(cls):
-        cls.conn = abhttp.BHTTPDConn("localhost:19000")
-        pass
+        """ subclass must provide `cls.conn` """
+        raise Exception("Override me!")
 
     def run_bwd_fwd_cond(self, n=None, host_ids=None,
                          ptn_ids=None, ts0=None, ts1=None):
@@ -246,12 +257,16 @@ class TestBHTTPDConnMsgQueryIter(unittest.TestCase):
         self.run_test_pos(n=3)
 
     def test_pos_cond(self):
+        param = testENV.param
+        ts0 = param.TS_BEGIN + param.TS_INC
+        ts1 = ts0 + 2*param.TS_INC
         self.run_test_pos(n = 5, ptn_ids=128, host_ids="0-5",
-                              ts0="2015-06-26 11:00:00.000000",
-                              ts1="2015-06-26 15:00:00.000000"
-                              )
+                              ts0=ts0,
+                              ts1=ts1
+                          )
 
     def test_eof(self):
+        logger.warn("self.conn: %s", self.conn)
         itr = abhttp.BHTTPDConnMsgQueryIter(self.conn)
         a = itr.next()
         logger.info("a.pos: %s", a.pos)
@@ -263,16 +278,34 @@ class TestBHTTPDConnMsgQueryIter(unittest.TestCase):
         self.assertEqual(a, b)
         del itr
         pass
+######## end of class TestConnMsgQueryIterBase ########
+
+
+class TestBHTTPDConnMsgQueryIter(unittest.TestCase, TestConnMsgQueryIterBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = abhttp.BHTTPDConn("localhost:18000")
+        pass
 
     @classmethod
     def tearDownClass(cls):
         del cls.conn
-        pass
 
-# end of class TestBHTTPDConnMsgQueryIter
+
+class TestBStore2MsgQueryIter(unittest.TestCase, TestConnMsgQueryIterBase):
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = abhttp.BStore2Conn(testENV.param.TMP_DIR + "/store.0")
+        logger.warn("self.conn: %s", cls.conn)
+
+    @classmethod
+    def tearDownClass(cls):
+        del cls.conn
+
 
 if __name__ == "__main__":
     LOGFMT = '%(asctime)s %(name)s %(levelname)s: %(message)s'
     logging.basicConfig(format=LOGFMT)
     # logger.setLevel(logging.INFO)
     unittest.main()
+    del testEnv

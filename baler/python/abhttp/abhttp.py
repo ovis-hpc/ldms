@@ -12,6 +12,7 @@ import os
 import re
 import yaml
 import copy
+from urlparse import urlparse
 
 # Import names from the sub-modules
 from datatype import *
@@ -32,28 +33,37 @@ class Config(object):
         >>> cfg = Config.from_yaml_file(path)
 
     Configuration File (YAML) Format:
-        bhttpd: # declaring bhttpd section
-            <NAME0>: [<MAIN_ADDR0>, <MIRROR_ADDR>, ...]
-            <NAME1>: [<MAIN_ADDR1>, <MIRROR_ADDR>, ...]
+        sources: # declaring data sources
+            <NAME0>: [<MAIN_URI0>, <MIRROR_URI0>, ...]
+            <NAME1>: [<MAIN_URI1>, <MIRROR_URI1>, ...]
             ...
+        store: <CLIENT_STORE_DIR>
 
-    The following configuration example has 2 pair of hosts. Each host in the
-    pair hosts two bhttpd: the main instance and a mirror of its pair.
+    The source URIs can either be "http://" for bhttpd or "bstore://" for local
+    machine baler store.
+
+    The `store` directory is a directory for `bclient` service to save/load the
+    aggregated pattern map and host map.
+
+    The following configuration example has 4 data sources, 3 remote and 1
+    local. The each of the remote data sources also has a mirror.
 
     Configuration Example:
         # config.yaml
-        bhttpd:
-            bhttpd0: ["host0:18000", "host1:18000"]
-            bhttpd1: ["host1:18001", "host0:18001"]
-            bhttpd2: ["host2:18002", "host3:18002"]
-            bhttpd3: ["host3:18003", "host2:18003"]
+        sources:
+            bhttpd0: ["http://host0:18000", "http://host1:18000"]
+            bhttpd1: ["http://host1:18001", "http://host0:18001"]
+            bhttpd2: ["http://host2:18002", "http://host3:18002"]
+            bstore0: ["bstore:///mnt/NVME0/bstore"]
+        store: client.dir
 
     From the above configuration, bhttpd0 main instance is at host0:18000, and
     the mirror is at host1:18000. The Service will use the main instance if
-    available. Otherwise, it will try the mirror.
+    available. Otherwise, it will try the mirror. `bstore0` uses local baler
+    store at `/mnt/NVME0/bstore`.
     """
 
-    BHTTPD_SECTION="bhttpd"
+    SOURCES_SECTION="sources"
     STORE_SECTION="store"
 
     def __init__(self, cfg=None):
@@ -65,21 +75,12 @@ class Config(object):
     def __del__(self):
         pass
 
-    def bhttpd_get_locations(self, name):
-        return self._cfg[self.BHTTPD_SECTION][name]
+    def get_src_uris(self, name):
+        return self._cfg[self.SOURCES_SECTION][name]
 
-    def bhttpd_iter(self):
-        class _bhttpd_iter(object):
-            def __init__(_self, _cfg):
-                _self._bhttpd = _cfg._cfg[Config.BHTTPD_SECTION]
-                _self._itr = iter(_self._bhttpd)
-            def __iter__(_self):
-                return _self
-            def next(_self):
-                k = next(_self._itr)
-                v = _self._bhttpd[k]
-                return (k, v)
-        return _bhttpd_iter(self)
+    def sources_iter(self):
+        for (name, srcs) in self._cfg[Config.SOURCES_SECTION].iteritems():
+            yield(name, srcs)
 
     def get_store(self):
         try:
@@ -100,7 +101,7 @@ class Config(object):
             f.close()
 
     def _parse_config(self):
-        b = self._cfg[Config.BHTTPD_SECTION]
+        b = self._cfg[Config.SOURCES_SECTION]
         for k in b:
             addrs = b[k]
             if type(addrs) != list:
@@ -108,7 +109,7 @@ class Config(object):
             for addr in addrs:
                 if type(addr) != str:
                     raise TypeError("a bhttpd address should be 'str'.")
-                m = re.match("^[^:]+:\\d+", addr)
+                m = re.match("^((http://[^:]+:\\d+)|(bstore:///.*))$", addr)
                 if not m:
                     raise TypeError("Wrong address format.")
 
@@ -136,6 +137,10 @@ class Service(object):
 
     UPTN_PATH = "uptn.yaml"
     UHOST_PATH = "uhost.yaml"
+    ConnClass = {
+        "http": BHTTPDConn,
+        "bstore": BStore2Conn
+    }
 
     def __init__(self, cfg=None, cfg_stream=None, cfg_path=None):
         if not cfg:
@@ -153,24 +158,39 @@ class Service(object):
         self._conns = {}
         self.uhost = UnifiedMapper()
         self.uptn = UnifiedMapper()
-        self.init_bhttpd_connections()
+        self.load_if_exists()
+        self.init_connections()
 
-    def init_bhttpd_connections(self):
-        for (name, locs) in self._cfg.bhttpd_iter():
-            self._conns[name] = self.init_bhttpd_conn(name)
+    def init_connections(self):
+        for (name, locs) in self._cfg.sources_iter():
+            self._conns[name] = self.init_conn(name)
 
-    def init_bhttpd_conn(self, name):
+    def init_conn(self, name):
         """Initialize the bhttpd identified by ``name``."""
-        locs = self._cfg.bhttpd_get_locations(name)
-        for loc in locs:
-            logger.debug("name: %s, loc: %s", name, loc)
+        srcs = self._cfg.get_src_uris(name)
+        for src in srcs:
             try:
-                conn = BHTTPDConn(loc, name=name)
+                url = urlparse(src)
+            except Exception, e:
+                logger.warn("url parse error: %s ... continue", e)
+                continue
+
+            logger.debug("name: %s, src: %s", name, src)
+
+            try:
+                ConnCls = self.ConnClass[url.scheme]
             except Exception:
-                logger.info("Service %s: location '%s' unavailable", name, loc)
+                raise
+                logger.warn("Unknown scheme: %s ... continue", url.scheme)
+                continue
+
+            try:
+                conn = ConnCls(url.netloc + url.path, name=name)
+            except Exception:
+                logger.info("Service %s: location '%s' unavailable", name, src)
                 continue
             else:
-                logger.info("Connected to location '%s'", loc)
+                logger.info("Connected to source '%s'", src)
 
             conn.get_host()
             h = conn.fetch_host()
@@ -193,7 +213,7 @@ class Service(object):
             self.uhost.add_mapper(name, hmap)
             self.uptn.add_mapper(name, pmap)
 
-            logger.info("Service %s: using location: %s", name, loc)
+            logger.info("Service %s: using location: %s", name, src)
             return conn
 
         # reaching here means all locations failed.
@@ -311,6 +331,11 @@ class Service(object):
         store = self._cfg.get_store()
         self.uptn.load("%s/%s" % (store, self.UPTN_PATH))
         self.uhost.load("%s/%s" % (store, self.UHOST_PATH))
+
+    def load_if_exists(self):
+        store = self._cfg.get_store()
+        self.uptn.load_if_exists("%s/%s" % (store, self.UPTN_PATH))
+        self.uhost.load_if_exists("%s/%s" % (store, self.UHOST_PATH))
 
     def __del__(self):
         pass

@@ -89,6 +89,8 @@ uint32_t bq_entry_get_usec(struct bquery *q);
 uint32_t bq_entry_get_comp_id(struct bquery *q);
 uint32_t bq_entry_get_ptn_id(struct bquery *q);
 
+PyObject *bmq_get_PyMessage(struct bmsgquery *q);
+
 /* msg query print utility */
 %newobject bq_entry_print;
 char *bq_entry_print(struct bquery *q, struct bdstr *bdstr);
@@ -106,6 +108,7 @@ int bmq_first_entry(struct bmsgquery *q);
 int bmq_next_entry(struct bmsgquery *q);
 int bmq_prev_entry(struct bmsgquery *q);
 int bmq_last_entry(struct bmsgquery *q);
+int bmq_set_pos(struct bmsgquery *q, const char *_pos);
 
 struct bquery *bmq_to_bq(struct bmsgquery *bmq);
 
@@ -129,6 +132,7 @@ int bq_get_comp_id(struct bq_store *store, const char *name);
 char* bq_get_comp_name(struct bq_store *store, uint32_t comp_id);
 
 PyObject *getPatterns(struct bq_store *store);
+PyObject *getHosts(struct bq_store *s);
 
 /* Additional Implementation */
 %{
@@ -209,6 +213,11 @@ struct bpixel biq_entry_get_pixel(struct bimgquery *q)
 
 int bmq_first_entry(struct bmsgquery *q)
 {
+	if (!q) {
+		printf("########### NULL!!!! ############\n");
+		PyErr_Format(PyExc_ValueError, "parameter cannot be None");
+		return EINVAL;
+	}
 	return bq_first_entry((void*)q);
 }
 
@@ -225,6 +234,20 @@ int bmq_prev_entry(struct bmsgquery *q)
 int bmq_last_entry(struct bmsgquery *q)
 {
 	return bq_last_entry((void*)q);
+}
+
+int bmq_set_pos(struct bmsgquery *q, const char *_pos)
+{
+	int rc;
+	struct bquery_pos pos;
+	rc = bquery_pos_from_str(&pos, _pos);
+	if (rc)
+		goto err0;
+	rc = bq_set_pos((void*)q, &pos);
+	return rc;
+
+err0:
+	return rc;
 }
 
 int biq_first_entry(struct bimgquery *q)
@@ -287,6 +310,29 @@ err:
 	return NULL;
 }
 
+PyObject *PyHost(struct bq_store *s, uint32_t comp_id)
+{
+	int rc;
+	struct bdstr *bdstr = NULL;
+	PyObject *str = NULL;
+
+	bdstr = bdstr_new(128);
+	if (!bdstr) {
+		PyErr_NoMemory(); /* set enomem exception */
+		goto cleanup;
+	}
+	rc = bq_get_cmp(s, comp_id, bdstr);
+	if (rc) {
+		PyErr_NoMemory(); /* set enomem exception */
+		goto cleanup;
+	}
+	str = PyString_FromString(bdstr->str);
+cleanup:
+	if (bdstr)
+		bdstr_free(bdstr);
+	return str;
+}
+
 PyObject *PyTimeval(const struct timeval *tv)
 {
 	int rc;
@@ -318,7 +364,7 @@ err:
 	return NULL;
 }
 
-PyObject *PyPatterns(struct bq_store *s, uint32_t ptn_id)
+PyObject *PyPattern(struct bq_store *s, uint32_t ptn_id)
 {
 	const struct bstr *bstr = bptn_store_get_ptn(s->ptn_store, ptn_id);
 	int rc;
@@ -401,6 +447,133 @@ err:
 	return NULL;
 }
 
+struct __bq_entry_msg_tkn_ctxt {
+	struct bq_store *s;
+	PyObject *tkns;
+};
+
+int __bq_entry_msg_tkn_cb(uint32_t tkn_id, void *_ctxt)
+{
+	struct __bq_entry_msg_tkn_ctxt *ctxt = _ctxt;
+	struct bq_store *s = ctxt->s;
+	PyObject *tkns = ctxt->tkns; /* PyList */
+	int rc;
+
+	PyObject *tkn = PyToken(s, tkn_id);
+	if (!tkn)
+		return ENOMEM;
+	rc = PyList_Append(tkns, tkn);
+	if (rc) {
+		Py_DECREF(tkn);
+		return rc;
+	}
+	return 0;
+}
+
+PyObject *bmq_get_PyMessage(struct bmsgquery *q)
+{
+	PyObject *pyMsg = PyTuple_New(5);
+	PyObject *pyTv;
+	PyObject *pyHost;
+	PyObject *pyTkns; /* List of tokens */
+	PyObject *pyPos; /* string encoding query iterator position */
+	PyObject *pyPtnId; /* Int */
+
+	int rc;
+
+	struct timeval tv;
+	uint32_t comp_id;
+	struct bdstr *bdstr = NULL;
+
+
+	bdstr = bdstr_new(128);
+	if (!bdstr)
+		goto err0;
+
+	pyMsg = PyTuple_New(5);
+	if (!pyMsg)
+		goto err0;
+
+	/* 0: timeval */
+	tv.tv_sec = bq_entry_get_sec((void*)q);
+	tv.tv_usec = bq_entry_get_usec((void*)q);
+	pyTv = PyTimeval(&tv);
+	if (!pyTv)
+		goto err1;
+	rc = PyTuple_SetItem(pyMsg, 0, pyTv);
+	if (rc) {
+		Py_DECREF(pyTv);
+		goto err1;
+	}
+
+	/* 1: host */
+	comp_id = bq_entry_get_comp_id((void*)q);
+	pyHost = PyHost(q->base.store, comp_id);
+	if (!pyHost)
+		goto err1;
+	rc = PyTuple_SetItem(pyMsg, 1, pyHost);
+	if (rc) {
+		Py_DECREF(pyHost);
+		goto err1;
+	}
+
+	/* 2: tokens */
+	pyTkns = PyList_New(0);
+	if (!pyTkns)
+		goto err1;
+	struct __bq_entry_msg_tkn_ctxt ctxt = {q->base.store, pyTkns};
+	rc = bq_entry_msg_tkn((void*)q, __bq_entry_msg_tkn_cb, &ctxt);
+	if (rc) {
+		Py_DECREF(pyTkns);
+		goto err1;
+	}
+	rc = PyTuple_SetItem(pyMsg, 2, pyTkns);
+	if (rc) {
+		Py_DECREF(pyTkns);
+		goto err1;
+	}
+
+	/* 3: position */
+	struct bquery_pos pos;
+	rc = bq_get_pos((void*)q, &pos);
+	if (rc)
+		goto err1;
+	bdstr_reset(bdstr);
+	rc = bquery_pos_print(&pos, bdstr);
+	if (rc)
+		goto err1;
+	pyPos = PyString_FromString(bdstr->str);
+	if (!pyPos)
+		goto err1;
+	rc = PyTuple_SetItem(pyMsg, 3, pyPos);
+	if (rc) {
+		Py_DECREF(pyPos);
+		goto err1;
+	}
+
+	/* 4: Pattern ID */
+	pyPtnId = PyInt_FromLong(bq_entry_get_ptn_id((void*)q));
+	if (!pyPtnId)
+		goto err1;
+	rc = PyTuple_SetItem(pyMsg, 4, pyPtnId);
+	if (rc) {
+		Py_DECREF(pyPtnId);
+		goto err1;
+	}
+
+	/* cleanup */
+	bdstr_free(bdstr);
+
+	return pyMsg;
+
+err1:
+	Py_DECREF(pyMsg);
+err0:
+	if (bdstr)
+		bdstr_free(bdstr);
+	return NULL;
+}
+
 PyObject *getPatterns(struct bq_store *s)
 {
 	uint32_t last_id = bptn_store_last_id(s->ptn_store);
@@ -412,7 +585,7 @@ PyObject *getPatterns(struct bq_store *s)
 		return NULL;
 	}
 	for (ptn_id = first_id; ptn_id <= last_id; ptn_id++) {
-		PyObject *ptn = PyPatterns(s, ptn_id);
+		PyObject *ptn = PyPattern(s, ptn_id);
 		if (!ptn)
 			goto err;
 		rc = PyList_Append(array, ptn);
@@ -424,6 +597,44 @@ PyObject *getPatterns(struct bq_store *s)
 	return array;
 err:
 	Py_DECREF(array);
+	return NULL;
+}
+
+PyObject *getHosts(struct bq_store *s)
+{
+	int rc = 0;
+	char buff[512];
+	uint32_t id = BMAP_ID_BEGIN;
+	uint32_t next_id = s->cmp_store->map->hdr->next_id;
+	PyObject *dict = PyDict_New();
+	PyObject *pyStr;
+	PyObject *pyCompId;
+	if (!dict)
+		return NULL;
+	while (id<next_id) {
+		rc = btkn_store_id2str_esc(s->cmp_store, id, buff, sizeof(buff));
+		if (rc)
+			goto next;
+		pyStr = PyString_FromString(buff);
+		if (!pyStr)
+			goto err1;
+		pyCompId = PyInt_FromLong(bmapid2compid(id));
+		if (!pyCompId)
+			goto err2;
+		rc = PyDict_SetItem(dict, pyCompId, pyStr);
+		if (rc)
+			goto err3;
+	next:
+		id++;
+	}
+	return dict;
+err3:
+	Py_DECREF(pyCompId);
+err2:
+	Py_DECREF(pyStr);
+err1:
+	Py_DECREF(dict);
+err0:
 	return NULL;
 }
 

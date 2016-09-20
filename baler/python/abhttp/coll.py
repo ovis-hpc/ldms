@@ -2,6 +2,7 @@ import logging
 import threading
 import cPickle
 import yaml
+import os
 from datatype import *
 
 logger = logging.getLogger(__name__)
@@ -503,16 +504,18 @@ class UnifiedMapper(object):
         try:
             y = cPickle.load(f)
             # y = yaml.load(f)
-            first = 1
             for _id, _str, _obj in y:
-                if _obj:
-                    _str = _obj.sig()
-                    if first:
-                        first = 0
+                # if _obj:
+                #     _str = _obj.sig()
+                # logging.warn("data: %d, %s, %s", _id, _str, _obj)
                 self._umapper.add(_id, _str, _obj)
         finally:
             self._lock.release()
             f.close()
+
+    def load_if_exists(self, path):
+        if os.path.exists(path):
+            self.load(path)
 
     def dump(self):
         for e in self:

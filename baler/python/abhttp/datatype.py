@@ -170,7 +170,7 @@ class TokenType(object):
 
 
 class Token(collections.namedtuple("Token", ["tok_type", "text"])):
-    STAR_TEXT = u'\u2022'
+    STAR_TEXT = u'\u2022'.encode('utf-8')
     FIRST = 1
 
     def __new__(cls, _type, _text):
@@ -179,7 +179,12 @@ class Token(collections.namedtuple("Token", ["tok_type", "text"])):
     @staticmethod
     def fromJSONObj(jobj):
         _type = TokenType.from_str(jobj["tok_type"])
-        return Token(_type, jobj["text"])
+        _text = jobj["text"]
+        return Token(_type, _text)
+
+    @staticmethod
+    def fromPyToken(pyTkn):
+        return Token(pyTkn[0], pyTkn[1])
 
     def __str__(self):
         return self.text
@@ -216,8 +221,18 @@ class LogMessage(Slots):
             ptn_id = None
         return LogMessage(ts, jobj["host"], msg, pos, ptn_id)
 
+    @staticmethod
+    def fromPyMsg(msg):
+        # PyMsg is an object defined in swig bquery.i
+        ts = Timestamp(msg[0][0], msg[0][1])
+        host = msg[1]
+        tkns = [Token.fromPyToken(t) for t in msg[2]]
+        pos = msg[3]
+        ptn_id = msg[4]
+        return LogMessage(ts, host, tkns, pos, ptn_id)
+
     def text(self):
-        return "".join([unicode(x) for x in self.msg])
+        return "".join([str(x) for x in self.msg])
 
 
 PixelKey = collections.namedtuple("PixelKey", ["ptn_id", "sec", "comp_id"])
@@ -239,10 +254,21 @@ class Pattern(Slots):
     def fromJSONObj(jobj):
         ptn_id = jobj["ptn_id"]
         count = jobj["count"]
-        first_seen = jobj["first_seen"]
-        last_seen = jobj["last_seen"]
+        first_seen = Timestamp.fromJSONObj(jobj["first_seen"])
+        last_seen = Timestamp.fromJSONObj(jobj["last_seen"])
         tokens = [Token.fromJSONObj(x) for x in jobj["msg"]]
         p = Pattern(ptn_id, count, first_seen, last_seen, "", tokens)
+        p.text = p.sig()
+        return p
+
+    @staticmethod
+    def fromPyPattern(pyPtn):
+        # pyPtn: (ptn_id, count, tv0, tv1, [tokens])
+        (ptn_id, count, tv0, tv1, pytkns) = pyPtn
+        tkns = [Token.fromPyToken(t) for t in pytkns]
+        t0 = Timestamp(tv0[0], tv0[1])
+        t1 = Timestamp(tv1[0], tv1[1])
+        p = Pattern(ptn_id, count, t0, t1, "", tkns)
         p.text = p.sig()
         return p
 
@@ -261,7 +287,7 @@ class Pattern(Slots):
             if t.tok_type == TokenType.STAR:
                 sio.write(Token.STAR_TEXT)
             else:
-                sio.write(unicode(t))
+                sio.write(str(t))
         return sio.getvalue()
 
     def __add__(self, other):
@@ -302,11 +328,6 @@ class Pattern(Slots):
 
     def copy(self):
         return copy.copy(self)
-
-    def __setstate__(self, state):
-        super(Pattern, self).__setstate__(state)
-        if self.tokens:
-            self.text = "".join(unicode(t) for t in self.tokens)
 
 
 class Pixel(Slots):

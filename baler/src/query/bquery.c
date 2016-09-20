@@ -395,6 +395,44 @@ out:
 	return rc;
 }
 
+int bq_entry_msg_tkn(struct bquery *q,
+		int (*cb)(uint32_t tkn_id, void *ctxt),
+		void *ctxt)
+{
+	int rc = 0;
+	struct bq_store *s = q->store;
+	const struct bstr *ptn;
+	const struct bstr *bstr;
+	struct bmsg *msg = NULL;
+
+	msg = bq_entry_get_msg(q);
+	if (!msg)
+		return errno;
+
+	ptn = bmap_get_bstr(s->ptn_store->map, msg->ptn_id);
+	if (!ptn) {
+		rc = ENOENT;
+		goto out;
+	}
+
+	const uint32_t *msg_arg = msg->argv;
+	const uint32_t *ptn_tkn = ptn->u32str;
+	int len = ptn->blen;
+	while (len) {
+		uint32_t tkn_id = *ptn_tkn++;
+		if (tkn_id == BMAP_ID_STAR)
+			tkn_id = *msg_arg++;
+		rc = cb(tkn_id, ctxt);
+		if (rc)
+			goto out;
+		len -= sizeof(*ptn_tkn);
+	}
+out:
+	if (msg)
+		free(msg);
+	return rc;
+}
+
 /*
  * Clean-up resources
  */

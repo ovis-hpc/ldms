@@ -512,6 +512,16 @@ uint32_t bq_entry_get_ptn_id(struct bquery *q);
 struct bmsg *bq_entry_get_msg(struct bquery *q);
 
 /**
+ * Get the message token-wise via \c cb() for each token in the message.
+ *
+ * When \c cb() returns non-zero value, this function will immediately stop
+ * and return the \c cb() returned value.
+ */
+int bq_entry_msg_tkn(struct bquery *q,
+		int (*cb)(uint32_t tkn_id, void *ctxt),
+		void *ctxt);
+
+/**
  * Get message reference of the current entry.
  *
  * \note Unlike others, this function cannot be used with ::bimgquery.

@@ -27,14 +27,11 @@ def bclient_init(cfg_path):
         logger.warn("bclient has already been initialized.")
         return
     service = abhttp.Service(cfg_path=cfg_path)
-    try:
-        service.load()
-    except Exception:
-        # it is OK to fail.
-        pass
+
 
 class CmdException(Exception):
     pass
+
 
 class CmdArgumentParser(object):
     def __init__(self, *args):
@@ -168,7 +165,7 @@ class PageDisplay(object):
         y = 0
         # self.buff length is maxy-1
         for (pos, item) in self.buff:
-            s = unicode(item)
+            s = str(item)
             DBG.item = item
             DBG.item_s = s
             self.win.addstr(y, 0, s[:maxx])
@@ -284,7 +281,7 @@ class ServiceCmd(cmd.Cmd):
             if text and not text.match(ptn.text):
                 continue
             DBG.ptn = ptn
-            print >>self.cmdout, unicode(ptn)
+            print >>self.cmdout, ptn
 
     def parser_host_query(self):
         return CmdArgumentParser(
