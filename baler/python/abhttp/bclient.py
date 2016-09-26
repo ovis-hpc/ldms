@@ -9,6 +9,7 @@ import datetime
 import sys
 import curses
 import collections
+import ptn_order
 from StringIO import StringIO
 
 logger = logging.getLogger(__name__)
@@ -224,6 +225,20 @@ class PageDisplay(object):
             c += 1
 
 
+term_color = {
+    "PURPLE": '\033[95m',
+    "CYAN": '\033[96m',
+    "DARKCYAN": '\033[36m',
+    "BLUE": '\033[94m',
+    "GREEN": '\033[92m',
+    "YELLOW": '\033[93m',
+    "RED": '\033[91m',
+    "BOLD": '\033[1m',
+    "UNDERLINE": '\033[4m',
+    "END": '\033[0m'
+}
+
+
 class ServiceCmd(cmd.Cmd):
     def __init__(self):
         cmd.Cmd.__init__(self)
@@ -259,17 +274,43 @@ class ServiceCmd(cmd.Cmd):
         return CmdArgumentParser(
             ("text", str, "REGEX", 0),
             ("ids", str, "RANGES", 0),
+            ("format", str, "FMT", 0),
+            ("order", str, "FIELD_ORDER", 0),
         )
 
     def do_ptn_query(self, arg):
-        """ptn_query [text=regex] [ids=ranges]
+        """ptn_query [text=REGEX] [ids=RANGES] [format=FMT] [order=KEY_ORDER] [>OUTPUT_FILE]
 
-        Query the unified pattern table.
+        Query the unified map for patterns that match all of the given
+        conditions.
+
+        Conditions:
+            text=REGEX is the regular expression to match pattern text (e.g.
+            ".*error.*").
+
+            ids=RANGES is the comma-separated ranges to match IDs (e.g.
+            "1,3-5,11").
+
+        Optional options:
+            format=FMT chooses what to print. By default, the FMT is
+            "%(ptn_id)s %(count)s %(first_seen)s %(last_seen)s %(text)s".
+
+            order=KEY_ORDER orders the results according to the KEY and ORDER.
+            The `ORDER` is either "asc" or "desc". The `KEY` is one of the
+            following: ptn_id, count, first_seen, last_seen, eng. Examples of
+            KEY_ORDER are "ptn_id_asc", "last_seen_desc", and "eng_desc".
+
+            >OUTPUT_FILE redirects the query results into a file (overwrite).
+            Simply add `>OUTPUT_PATH` at the end of the command (OUTPUT_PATH is
+            the path to the file), and the query results will be redirected
+            there.
         """
         global service
         (kwargs, args) = (self.kwargs, self.args)
         text = kwargs["text"]
         ids = kwargs["ids"]
+        fmt = kwargs["format"]
+        order = kwargs["order"]
         if text:
             text = re.compile(text)
         if ids:
@@ -281,7 +322,12 @@ class ServiceCmd(cmd.Cmd):
             if text and not text.match(ptn.text):
                 continue
             DBG.ptn = ptn
-            print >>self.cmdout, ptn
+            result.append(ptn)
+        if order:
+            _cmp = ptn_order.get_ptn_cmp(order)
+            result.sort(_cmp)
+        for ptn in result:
+            print >>self.cmdout, ptn.format(fmt)
 
     def parser_host_query(self):
         return CmdArgumentParser(
@@ -290,13 +336,19 @@ class ServiceCmd(cmd.Cmd):
         )
 
     def do_host_query(self, arg):
-        """host_query [text=regex] [ids=ranges]
+        """shost_query [text=REGEX] [ids=RANGES] [>OUTPUT_PATH]
 
-        Query hosts that match all of the given conditions.
+        Query the unified map for hosts that match all of the given conditions.
 
         Conditions:
             text - regular expression to match host names (e.g. "node00.*").
-            ids - comma-separated ranges to match IDs (e.g. "1,3-5,11")
+            ids - comma-separated ranges to match IDs (e.g. "1,3-5,11").
+
+        Optional output redirection:
+            host_query command can redirect the query results into a file
+            (overwrite). Simply add `>OUTPUT_PATH` at the end of the command
+            (OUTPUT_PATH is the path to the file), and the query results will be
+            redirected there.
         """
         global service
         (kwargs, args) = (self.kwargs, self.args)
@@ -365,7 +417,7 @@ class ServiceCmd(cmd.Cmd):
         not specified, then bclient automatically assign an available ID to the
         host.
 
-        If `text` and `id` are not given, pattern IDs will be automatically
+        If `text` and `id` are not given, host IDs will be automatically
         assigned to all of the hosts that do not yet have IDs.
 
         Other combination of arguments are considered invalid.
@@ -406,7 +458,7 @@ class ServiceCmd(cmd.Cmd):
         pass
 
     def do_remote_refresh(self, arg):
-        """Refresh aggregate remote information."""
+        """Refreshing the unified data, re-aggregating remote information."""
         global service
         (kwargs, args) = (self.kwargs, self.args)
         service.uptn_update()
@@ -421,19 +473,39 @@ class ServiceCmd(cmd.Cmd):
         )
 
     def do_msg_query(self, arg):
-        """msg_query [ptn_ids=ranges] [host_ids=ranges] [begin=timestamp]
-                     [end=timestamp]
+        """msg_query [ptn_ids=RANGES] [host_ids=RANGES] [begin=TIMESTAMP]
+                     [end=TIMESTAMP]
 
-        Query messages per given conditions.
+        Query messages matching the given conditions.
+
+        Conditions:
+            ptn_ids=RANGES is the ranges of pattern IDs from the unified map
+            (e.g.  "1,3-5,11").
+
+            host_ids=RANGES is the ranges of host IDs from the unified map (e.g.
+            "1,3-5,11").
+
+            begin=TIMESTAMP constrains the result messages to have timestamp
+            greater than or equals to the given TIMESTAMP.
+
+            end=TIMESTAMP constrains the result messages to have timestamp less
+            than or equals to the given TIMESTAMP.
+
+            The TIMESTAMP format is "yyyy-mm-ddTHH:MM:SS[(+|-)HH:MM]".  It is
+            the same timestamp format appeared in the results of `ptn_query` and
+            `msg_query`, excluding the microsecond part. The microsecond can be
+            put in, but will be ignored as currently our time index does not
+            include the microsecond part. If the timezone (the trailing "-HH:MM"
+            or "+HH:MM") is omitted, the system timezone is used.
         """
         global service
         (kwargs, args) = (self.kwargs, self.args)
         ts0 = kwargs["begin"]
         if ts0:
-            ts0 = ts0.sec
+            ts0 = int(ts0.sec)
         ts1 = kwargs["end"]
         if ts1:
-            ts1 = ts1.sec
+            ts1 = int(ts1.sec)
         itr = abhttp.UMsgQueryIter(service, host_ids=kwargs["host_ids"],
                                             ptn_ids=kwargs["ptn_ids"],
                                             ts0=ts0,
@@ -449,7 +521,7 @@ class ServiceCmd(cmd.Cmd):
 
     def parser_img_query(self):
         return CmdArgumentParser(
-            ("store", str, "3600-1", 0),
+            ("store", str, "3600-1", 1),
             ("ptn_ids", str, "RANGES", 0),
             ("host_ids", str, "RANGES", 0),
             ("begin", abhttp.Timestamp.fromStr, "TIMESTAMP", 0),
@@ -457,10 +529,42 @@ class ServiceCmd(cmd.Cmd):
         )
 
     def do_img_query(self, arg):
-        """img_query [store=3600-1] [ptn_ids=ranges] [host_ids=ranges]
-                     [begin=timestamp] [end=timestamp]
+        """img_query [store=SPP-NPP] [ptn_ids=RANGES] [host_ids=RANGES]
+                     [begin=TIMESTAMP] [end=TIMESTAMP] [>OUTPUT_FILE]
 
-        Query messages per given conditions.
+        Query image pixels per given conditions.
+
+        The OUTPUT format is a list of pixels, one pixel per line, described
+        by: PTN_ID, UNIX_TIMESTAMP, HOST_ID, COUNT.
+
+        The results can be redirected into an OUTPUT_FILE by giving
+        `>OUTPUT_FILE` at the end of the command.
+
+        Conditions:
+            store=SPP-NPP tells `bquery` to get the pixels from the specified
+            image sub-store. (e.g. "3600-1" for pixels of 1-hour x 1-node).
+            baler daemon can have multiple image stores depending on `balerd`
+            configuration. Please refer to `balerd(1)` configuration for more
+            information.
+
+            ptn_ids=RANGES is the comma-separated ranges of pattern IDs (e.g.
+            "1,3-5,11").
+
+            host_ids=RANGES is the comma-separated ranges of host IDs (e.g.
+            "1,3-5,11").
+
+            begin=TIMESTAMP constrains the result pixels to have timestamp
+            greater than or equals to the given TIMESTAMP.
+
+            end=TIMESTAMP constrains the result pixels to have timestamp less
+            than or equals to the given TIMESTAMP.
+
+            The TIMESTAMP format is "yyyy-mm-ddTHH:MM:SS[(+|-)HH:MM]".  It is
+            the same timestamp format appeared in the results of `ptn_query` and
+            `msg_query`, excluding the microsecond part. The microsecond can be
+            put in, but will be ignored as currently our time index does not
+            include the microsecond part. If the timezone (the trailing "-HH:MM"
+            or "+HH:MM") is omitted, the system timezone is used.
         """
         global service
         (kwargs, args) = (self.kwargs, self.args)
@@ -490,8 +594,16 @@ class ServiceCmd(cmd.Cmd):
         """Stop the command intepreter."""
         return True
 
+    def emptyline(self):
+        """Do nothing on empty line."""
+        pass
+
     def precmd(self, line):
         """Apply our parser and store results in self.kwargs, self.args."""
+        (self.kwargs, self.args) = ({}, [])
+        self.cmdout = sys.stdout
+        if not line:
+            return line
         tmp = line.split(None, 1)
         cmd = tmp[0]
         arg = "" if len(tmp) == 1 else tmp[1]
@@ -521,9 +633,6 @@ class ServiceCmd(cmd.Cmd):
             else:
                 out = sys.stdout
             self.cmdout = out
-        else:
-            (self.kwargs, self.args) = ({}, [])
-            self.cmdout = sys.stdout
         return line # return same line for Cmd processing.
 
     def postcmd(self, stop, line):

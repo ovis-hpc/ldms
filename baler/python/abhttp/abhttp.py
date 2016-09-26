@@ -269,7 +269,8 @@ class Service(object):
                 continue
             p = m.get_obj(_id)
             if pagg == None:
-                pagg = Pattern(uid, p.count, p.first_seen, p.last_seen, p.text)
+                pagg = Pattern(uid, p.count, p.first_seen, p.last_seen, p.text,
+                               p.tokens)
             else:
                 pagg += p
         return pagg

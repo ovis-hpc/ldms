@@ -1,0 +1,452 @@
+/**
+ * \page bclient baler client: a unified client for bhttpds and baler store
+ *
+ * \section synopsis SYNOPSIS
+ * \b bclient -c \e CONFIG [-v \e VERBOSITY]
+ *
+ * \section desc DESCRIPTION
+ * \b bclient is a CLI interactive program that connects to multiple
+ * <b>bhttpd</b>'s and multiple baler stores to unify the individual maps
+ * (patterns and hosts) used in baler. The users can use the unified maps to
+ * perform query through \b bclient, which then acts as an intermediary between
+ * the user and distributed baler-processed data sources. The following diagram
+ * describes the overall architecture of \b bclient.
+ *
+ * <pre>
+ *                                 o
+ *                                /|\
+ *                                / \
+ *                                 |
+ *                                 |
+ *                                 v              .----------------.
+ *                            .---------.         | bclient store  |
+ *                            | bclient |-------->| (unified maps) |
+ *                            '---------'         '----------------'
+ *                                 |
+ *                   .-------------'-----------------.
+ *                   |                               |
+ *                   |                               |
+ *                   v                               v
+ *               .------.                      .----------.
+ *              .------.|                     .----------.|
+ *             .------.|'         ...        .----------.|'
+ *             | src0 |'                     | src(N-1) |'
+ *             '------'                      '----------'
+ * </pre>
+ *
+ * \b bclient needs its own storage directory to keep the unified maps. Each
+ * data source that provides baler-processed data can have multiple redundancy.
+ * \b bclient will connect to the first-available data source in the redundancy
+ * list. Currently, the data sources are either \b bhttpd or local baler
+ * storage.
+ *
+ *
+ * \section config CONFIGURATION
+ * \b bclient configuration file is a \b YAML file describing data sources (\b
+ * bhttpd or baler store) and bclient storage. The following is the
+ * configuration format.
+ *
+ * \par
+ * \code
+ * sources:
+ *     <name0>: ["<location0>", "<location0-mirror0>", ...]
+ *     <name1>: ["<location1>", "<location1-mirror0>", ...]
+ *     ...
+ * store: "<bclient-store-location>"
+ * \endcode
+ *
+ * Please see \ref example for an example of the configuration file.
+ *
+ * \section config_example CONFIGURATION EXAMPLE
+ *
+ * Let's suppose we have the following setup:
+ * <pre>
+ *                               o
+ *                              /|\
+ *                              / \
+ *                               |
+ *                               |
+ *                               v              .----------------.
+ *                          .---------.         | bclient store  |
+ *                          | bclient |-------->| (unified maps) |
+ *                          '---------'         '----------------'
+ *                               |
+ *                               |
+ *                               |
+ *                               |
+ *         .----------.----------'-----------------------------.
+ *         |          |             |          |               |
+ *         |          |             |          |               |
+ *         |          |             |          |               |
+ *         v          v             v          v               v
+ *    .---------..---------.   .---------..---------.   .-------------.
+ *    | bhttpd0 || mirror0 |   | bhttpd1 || mirror1 |   | baler store |
+ *    '---------''---------'   '---------''---------'   '-------------'
+ *             src0                     src1                  src2
+ * </pre>
+ *
+ * In the diagram above, we have 3 data sources: `src0`, `src1` and `src2`.
+ * `src0` main data source is from `bhttpd0` and has `mirror0` as a redundancy.
+ * Similarly, `bhttpd1` and `mirror1` provide data for `src1` with redundancy.
+ * `src2` data comes from local baler store and has no redundancy.
+ *
+ * The following configuration file is the \b bclient configuration for the
+ * setup above:
+ * \par
+ * \code
+ * sources:
+ *     src0: [ "http://bhttpd0:18000", "http://mirror0:18001" ]
+ *     src1: [ "http://bhttpd1:18000", "bstore:///mnt/mirror1" ]
+ *     src2: [ "bstore:///mnt/baler-store" ]
+ * store: "/home/user/bclient.dir"
+ * \endcode
+ *
+ * Please notice that \b mirror0 is an http data source while \b mirror1 is
+ * another local baler store. The data locations of a data source can be a
+ * mixture of \b bhttpd and local baler store. \b bclient will connect to the
+ * first-available data location for the data source.
+ *
+ *
+ * \section commands COMMANDS
+ * The following is the list of commands available in \b bclient.
+ *
+ * \par help [cmd]
+ * List available commands if \e cmd is omitted. Otherwise, show a documentation
+ * about the command \e cmd.
+ *
+ * \par exit
+ * Terminate \b bclient.
+ *
+ * \par quit
+ * An alias of \b exit.
+ *
+ * \par host_assign [text=STR] [id=NUM]
+ * Assign \b id \e NUM to the host \e STR in the unified host map. If \b id is
+ * not given, \b bclient automatically assign an availalbe \b id to the host.
+ * \par
+ * If both \b text and \b id are not given, \b bclient will automatically assign
+ * IDs to all hosts in the unified host map that do not yet have an ID.
+ *
+ * \par ptn_assign [text=STR] [id=NUM]
+ * Assign \b id \e NUM to the pattern identified by \b text \e STR. Similar to
+ * \b host_assign, if \b id is omitted, \b bclient will automatically assign an
+ * available ID to the pattern.
+ * \par
+ * If both \b text and \b id are not given, \b bclient will automatically assign
+ * IDs to all patterns in the unified pattern map that do not yet have an ID.
+ *
+ * \par host_query [text=REGEX] [ids=RANGES] [>OUTPUT_PATH]
+ * Query for hosts that match \e all of the given conditions, i.e. match both \b
+ * text \e REGEX and \b id \e RANGES, in the unified host table.
+ * \par
+ * \b text \e REGEX is a regular rexpression to match the host names (e.g.
+ * "nid000.*").
+ * \par
+ * \b ids \e RANGES is a comma-separated ranges to match IDs (e.g. "1,3-5,11").
+ * \par
+ * \b host_query command can redirect the query results into a file (overwrite)
+ * by simply append \e >OUTPUT_PATH at the end of the command.
+ *
+ * \par ptn_query [text=REGEX] [ids=RANGES] [format=FMT] [>OUTPUT_PATH]
+ * Query for patterns that match \e all of the given conditions, i.e. match both
+ * \b text \e REGEX and \b id \e RANGES, in the unified pattern table.
+ * \par
+ * \b text \e REGEX is a regular rexpression to match the pattern text (e.g.
+ * ".*error.*").
+ * \par
+ * \b ids \e RANGES is a comma-separated ranges to match IDs (e.g. "1,3-5,11").
+ * \par
+ * \b order \e KEY_ORDER orders the results according to the \e KEY and \e
+ * ORDER. The \e ORDER is either "asc" or "desc". The \e KEY is one of the
+ * following: ptn_id, count, first_seen, last_seen, eng. Examples of \e
+ * KEY_ORDER are "ptn_id_asc", "last_seen_desc", and "eng_desc".
+ * \par
+ * \b format \e FMT chooses what to print. By default, the FMT is
+ * "%(ptn_id)s %(count)s %(first_seen)s %(last_seen)s %(text)s".
+ * \par
+ * \b >OUTPUT_PATH redirects the query results into a file (overwrite).  Simply
+ * append \e >OUTPUT_PATH at the end of the command.
+ *
+ * \par msg_query [ptn_ids=RANGES] [host_ids=RANGES] [begin=TIMESTAMP] [end=TIMESTMAP]
+ * Query for messages matching the given conditions.
+ * \par
+ * \b ptn_ids \e RANGES is the ranges of pattern IDs from the unified map (e.g.
+ * "1,3-5,11").
+ * \par
+ * \b host_ids \e RANGES is the ranges of host IDs from the unified map (e.g.
+ * "1,3-5,11").
+ * \par
+ * \b begin \e TIMESTAMP constrains the result messages to have timestamp
+ * greater than or equals to the given \e TIMESTAMP.
+ * \par
+ * \b end \e TIMESTAMP constrains the result messages to have timestamp less
+ * than or equals to the given \e TIMESTAMP.
+ * \par
+ * The \e TIMESTAMP \b format is
+ * \"<em>yyyy</em>-<em>mm</em>-<em>dd</em><b>T</b><em>HH</em>:<em>MM</em>:<em>SS</em>[(+|-)<em>HH</em>:<em>MM</em>]\".
+ * It is the same timestamp format appeared in the results of \b ptn_query and
+ * \b msg_query, excluding the microsecond part. The microsecond can be put in,
+ * but will be ignored as currently our time index does not include the
+ * microsecond part. If the timezone (the trailing "-HH:MM" or "+HH:MM") is
+ * omitted, the system timezone is used.
+ *
+ * \par img_query [store=SPP-NPP] [ptn_ids=RANGES] [host_ids=RANGES] [begin=TIMESTAMP] [end=TIMESTAMP] [>OUTPUT_FILE]
+ * Query image pixels per given conditions.
+ * \par
+ * The \e OUTPUT format is a list of pixels, one pixel per line, described by:
+ * PTN_ID, UNIX_TIMESTAMP, HOST_ID, COUNT.
+ * \par
+ * The results can be redirected into an \e OUTPUT_FILE by giving
+ * \b >OUTPUT_FILE at the end of the command.
+ * \par
+ * \b store \e SPP-NPP tells `bquery` to get the pixels from the specified image
+ * sub-store. (e.g. "3600-1" for pixels of 1-hour x 1-node).  baler daemon can
+ * have multiple image stores depending on `balerd` configuration. Please refer
+ * to \b balerd(1) configuration for more information.
+ * \par
+ * \b ptn_ids \e RANGES is the comma-separated ranges of pattern IDs (e.g.
+ * "1,3-5,11").
+ * \par
+ * \b host_ids \e RANGES is the comma-separated ranges of host IDs (e.g.
+ * "1,3-5,11").
+ * \par
+ * \b begin \e TIMESTAMP constrains the result pixels to have timestamp
+ * greater than or equals to the given \e TIMESTAMP.
+ * \par
+ * \b end \e TIMESTAMP constrains the result pixels to have timestamp less
+ * than or equals to the given \e TIMESTAMP.
+ * \par
+ * The \e TIMESTAMP \b format is
+ * \"<em>yyyy</em>-<em>mm</em>-<em>dd</em><b>T</b><em>HH</em>:<em>MM</em>:<em>SS</em>[(+|-)<em>HH</em>:<em>MM</em>]\".
+ * It is the same timestamp format appeared in the results of \b ptn_query and
+ * \b msg_query, excluding the microsecond part. The microsecond can be put in,
+ * but will be ignored as currently our time index does not include the
+ * microsecond part. If the timezone (the trailing "-HH:MM" or "+HH:MM") is
+ * omitted, the system timezone is used.
+ *
+ * \par remote_refresh
+ * Refreshing the unified data, re-aggregating remote information.
+ *
+ * \section usage_example USAGE EXAMPLE
+ * The following is an example of a usage of \b bclient. The lines beginning
+ * with "#" are comments inserted for explanation.
+ * \code
+ * $ cat bclient.yaml
+ * sources:
+ *     srv0: ["http://localhost:18000", "http://localhost:19000"]
+ *     srv1: ["http://localhost:18001", "http://localhost:19001"]
+ *     srv2: ["http://localhost:18002", "http://localhost:19002"]
+ *     srv3: ["bstore:///home/narate/projects/ovis.baler2/baler/test/indy_test/store.3"]
+ * store: "./tmp/localstore"
+ *
+ * $ bclient -c bclient.yaml
+ * # At the beginning, `bclient` tells you which locations it uses for each source.
+ * 2016-09-27 11:26:49,096 abhttp INFO: Service srv1: location 'http://localhost:18001' unavailable
+ * 2016-09-27 11:26:49,096 abhttp INFO: Connected to source 'http://localhost:19001'
+ * 2016-09-27 11:26:49,099 abhttp INFO: Service srv1: using location: http://localhost:19001
+ * 2016-09-27 11:26:49,099 abhttp INFO: Service srv0: location 'http://localhost:18000' unavailable
+ * 2016-09-27 11:26:49,099 abhttp INFO: Connected to source 'http://localhost:19000'
+ * 2016-09-27 11:26:49,101 abhttp INFO: Service srv0: using location: http://localhost:19000
+ * 2016-09-27 11:26:49,102 abhttp INFO: Connected to source 'bstore:///home/narate/projects/ovis.baler2/baler/test/indy_t
+ * est/store.3'
+ * 2016-09-27 11:26:49,102 abhttp INFO: Service srv3: using location: bstore:///home/narate/projects/ovis.baler2/baler/test/indy_test/store.3
+ * 2016-09-27 11:26:49,102 abhttp INFO: Service srv2: location 'http://localhost:18002' unavailable
+ * 2016-09-27 11:26:49,102 abhttp INFO: Connected to source 'http://localhost:19002'
+ * 2016-09-27 11:26:49,105 abhttp INFO: Service srv2: using location: http://localhost:19002
+ *
+ * # Now, try querying the patterns.
+ * bclient> ptn_query
+ * None 1536 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Zero: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Two: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Four: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Five: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Five: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One One: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Eight: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Three: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Zero: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Two: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Six: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Three: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Seven: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Nine: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Four: • - •
+ *
+ * # Try querying with format option, getting only pattern IDs and text.
+ * # Because we did not yet have pattern IDs assigned to the pattern, they
+ * # become 'None'.
+ * bclient> ptn_query format="%(ptn_id)s %(text)s"
+ * None This is pattern Zero: • - •
+ * None This is pattern Two: • - •
+ * None This is pattern Four: • - •
+ * None This is pattern One Five: • - •
+ * None This is pattern Five: • - •
+ * None This is pattern One One: • - •
+ * None This is pattern Eight: • - •
+ * None This is pattern Three: • - •
+ * None This is pattern One Zero: • - •
+ * None This is pattern One Two: • - •
+ * None This is pattern Six: • - •
+ * None This is pattern One Three: • - •
+ * None This is pattern Seven: • - •
+ * None This is pattern Nine: • - •
+ * None This is pattern One: • - •
+ * None This is pattern One Four: • - •
+ *
+ * # Try ordering with descending English ratio.
+ * bclient> ptn_query format="%(ptn_id)s %(text)s" order="eng_desc"
+ * None This is pattern One Five: • - •
+ * None This is pattern One One: • - •
+ * None This is pattern One Zero: • - •
+ * None This is pattern One Two: • - •
+ * None This is pattern One Three: • - •
+ * None This is pattern One Four: • - •
+ * None This is pattern Zero: • - •
+ * None This is pattern Two: • - •
+ * None This is pattern Four: • - •
+ * None This is pattern Five: • - •
+ * None This is pattern Eight: • - •
+ * None This is pattern Three: • - •
+ * None This is pattern Six: • - •
+ * None This is pattern Seven: • - •
+ * None This is pattern Nine: • - •
+ * None This is pattern One: • - •
+ *
+ * # Try assigning pattern "Zero" with ID 0.
+ * bclient> ptn_assign text="This is pattern Zero: • - •" id=0
+ *
+ * # Check the result, only pattern "Zero" got the ID assigned.
+ * bclient> ptn_query
+ * 0 1536 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Zero: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Two: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Four: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Five: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Five: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One One: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Eight: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Three: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Zero: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Two: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Six: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Three: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Seven: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Nine: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One: • - •
+ * None 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Four: • - •
+ *
+ * # automatically assign IDs to the rest.
+ * bclient> ptn_assign
+ *
+ * # Check the result
+ * bclient> ptn_query
+ * 0 1536 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Zero: • - •
+ * 15 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Two: • - •
+ * 3 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Four: • - •
+ * 5 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Five: • - •
+ * 2 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Five: • - •
+ * 7 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One One: • - •
+ * 1 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Eight: • - •
+ * 14 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Three: • - •
+ * 10 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Zero: • - •
+ * 9 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Two: • - •
+ * 13 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Six: • - •
+ * 8 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Three: • - •
+ * 12 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Seven: • - •
+ * 4 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Nine: • - •
+ * 11 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One: • - •
+ * 6 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Four: • - •
+ *
+ * # Try various pattern query conditions
+ * bclient> ptn_query ids=0-2 order=ptn_id_asc
+ * 0 1536 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Zero: • - •
+ * 1 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Eight: • - •
+ * 2 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Five: • - •
+ * bclient> ptn_query text=".* Zero" order=ptn_id_asc
+ * 0 1536 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern Zero: • - •
+ * 10 384 2015-06-26T00:00:00.000000-05:00 2015-06-26T23:00:00.000000-05:00 This is pattern One Zero: • - •
+ *
+ * # Query hosts
+ * bclient> host_query
+ * None node00000
+ * None node00001
+ * None node00002
+ * None node00003
+ * None node00004
+ * None node00005
+ * None node00006
+ * None node00007
+ * None node00008
+ *
+ * # We can manually assign host ID the same way
+ * bclient> host_assign text=node00000 id=0
+ * bclient> host_query
+ * None node00001
+ * None node00002
+ * None node00003
+ * None node00004
+ * None node00005
+ * None node00006
+ * None node00007
+ * None node00008
+ * 0 node00000
+ *
+ * # automatically assign IDs too.
+ * bclient> host_assign
+ * bclient> host_query
+ * 0 node00000
+ * 1 node00001
+ * 2 node00002
+ * 3 node00003
+ * 4 node00004
+ * 5 node00005
+ * 6 node00006
+ * 7 node00007
+ * 8 node00008
+ *
+ * # Call `save` command to save the unified mappers. If we don't issue the save
+ * # command, `bclient` will not write the unified mappers to the disk. The
+ * # saved unified mappers will be loaded the next time we run bclient.
+ * bclient> save
+ *
+ * # try querying messages
+ * bclient> msg_query
+ * # This is just a part of the output, in `bclient` session, the navigation in
+ * # the results will be interactive.
+ * 2015-06-26T00:00:00.000000-05:00 node00000 This is pattern Zero: 1435294800 - 0
+ * 2015-06-26T00:00:00.000000-05:00 node00000 This is pattern Four: 1435294800 - 0
+ * 2015-06-26T00:00:00.000000-05:00 node00000 This is pattern Eight: 1435294800 - 0
+ * 2015-06-26T00:00:00.000000-05:00 node00000 This is pattern One Two: 1435294800 - 0
+ * 2015-06-26T00:00:00.000000-05:00 node00001 This is pattern Zero: 1435294800 - 1
+ * 2015-06-26T00:00:00.000000-05:00 node00001 This is pattern One: 1435294800 - 1
+ * 2015-06-26T00:00:00.000000-05:00 node00001 This is pattern Five: 1435294800 - 1
+ * 2015-06-26T00:00:00.000000-05:00 node00001 This is pattern Nine: 1435294800 - 1
+ * 2015-06-26T00:00:00.000000-05:00 node00001 This is pattern One Three: 1435294800 - 1
+ * 2015-06-26T00:00:00.000000-05:00 node00002 This is pattern Zero: 1435294800 - 2
+ * 2015-06-26T00:00:00.000000-05:00 node00002 This is pattern Two: 1435294800 - 2
+ * 2015-06-26T00:00:00.000000-05:00 node00002 This is pattern Six: 1435294800 - 2
+ *
+ * # Try setting some conditions
+ * bclient> msg_query host_ids=0,10 begin=2015-06-26T12:00:00
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Zero: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Four: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Eight: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern One Two: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Zero: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Two: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Six: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern One Zero: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern One Four: 1435338000 - 10
+ *
+ * # Query 1-hour,1-node pixels of pattern 0, redirecting to /tmp/ptn0
+ * bclient> img_query store=3600-1 ptn_ids=0 > /tmp/ptn0
+ *
+ * # On the shell ...
+ * $ head /tmp/ptn0 -n4
+ * 0, 1435294800, 0, 1
+ * 0, 1435294800, 1, 1
+ * 0, 1435294800, 2, 1
+ * 0, 1435294800, 3, 1
+ *
+ * \endcode
+ */

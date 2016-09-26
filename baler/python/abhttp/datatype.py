@@ -5,6 +5,7 @@ import StringIO
 import time
 import calendar
 import re
+import json
 from datetime import datetime
 from dateutil import tz
 
@@ -249,6 +250,43 @@ class Pattern(Slots):
         self.last_seen = last_seen
         self.text = text
         self.tokens = tokens
+
+    @staticmethod
+    def testObj():
+        json_text = u"""{
+                "type": "PTN",
+                "ptn_id": 128,
+                "count": 384,
+		"first_seen": {"sec": 1435294800, "usec": 0},
+		"last_seen": {"sec": 1435377600, "usec": 0},
+                "msg": [
+                    {"tok_type": "ENG", "text": "This"},
+                    {"tok_type": "SPC", "text": " "},
+                    {"tok_type": "ENG", "text": "is"},
+                    {"tok_type": "SPC", "text": " "},
+                    {"tok_type": "ENG", "text": "pattern"},
+                    {"tok_type": "SPC", "text": " "},
+                    {"tok_type": "ENG", "text": "Zero"},
+                    {"tok_type": "SYM", "text": ":"},
+                    {"tok_type": "SPC", "text": " "},
+                    {"tok_type": "STAR", "text": "*"},
+                    {"tok_type": "SPC", "text": " "},
+                    {"tok_type": "SYM", "text": "-"},
+                    {"tok_type": "SPC", "text": " "},
+                    {"tok_type": "STAR", "text": "*"}]
+            }"""
+        return Pattern.fromJSONObj(json.loads(json_text))
+
+    def format(self, fmt):
+	if not fmt:
+	    return str(self)
+	return fmt % {
+		    "ptn_id": self.ptn_id,
+		    "count": self.count,
+		    "first_seen": self.first_seen,
+		    "last_seen": self.last_seen,
+		    "text": self.text,
+		}
 
     @staticmethod
     def fromJSONObj(jobj):

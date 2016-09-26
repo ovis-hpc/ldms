@@ -427,7 +427,9 @@ class UnifiedMapper(object):
             self._lock.release()
 
     def get_max_id(self):
-        return max(self._umapper._id_ent) + 1
+        if len(self._umapper._id_ent):
+            return max(self._umapper._id_ent) + 1
+        return -1
 
     def auto_assign(self):
         """Automatically assign the unassigned."""
