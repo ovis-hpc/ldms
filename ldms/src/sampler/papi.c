@@ -206,7 +206,7 @@ err:
  *     component_id   The component id. Defaults to zero
  *     jid            lookup jobid or report 0.
  *     pid            The process to attach to.
- *     events         The the name of the hardware counter events 
+ *     events         The name of the hardware counter events
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -230,7 +230,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		compid = (uint64_t)(atoi(compid_str));
 	else
 		compid = 0;
-	
+
 	LJI_CONFIG(compid_str,avl);
 
 	instance_name = av_value(avl, "instance");
