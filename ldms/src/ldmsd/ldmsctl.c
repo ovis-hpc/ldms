@@ -414,6 +414,10 @@ int main(int argc, char *argv[])
 	}
 	av_list = av_new(128);
 	kw_list = av_new(128);
+	if (!av_list || !kw_list) {
+		printf("Out of memory\n");
+		exit(1);
+	}
 
 	ctrl_sock = ctrl_connect(basename(argv[0]), sockname,
 						"LDMSD_SOCKPATH");
