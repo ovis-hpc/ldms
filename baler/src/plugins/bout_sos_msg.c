@@ -152,8 +152,8 @@ err2:
 err1:
 	sos_obj_delete(obj);
 	sos_obj_put(obj);
-	pthread_mutex_unlock(&sp->sos_mutex);
 err0:
+	pthread_mutex_unlock(&sp->sos_mutex);
 	return rc;
 }
 
