@@ -789,6 +789,10 @@ static int do_read_all(ldms_t x, ldms_set_t s, size_t len,
 	ldms_xprt_get(x);
 	pthread_mutex_lock(&x->lock);
 	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE);
+	if (!ctxt) {
+		rc = ENOMEM;
+		goto out;
+	}
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
 	ctxt->update.arg = arg;
@@ -801,6 +805,7 @@ static int do_read_all(ldms_t x, ldms_set_t s, size_t len,
 	if (rc) {
 		__ldms_free_ctxt(x, ctxt);
 	}
+out:
 	pthread_mutex_unlock(&x->lock);
 	ldms_xprt_put(x);
 	return rc;
@@ -820,6 +825,10 @@ static int do_read_data(ldms_t x, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 	pthread_mutex_lock(&x->lock);
 	struct ldms_context *ctxt;
 	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE);
+	if (!ctxt) {
+		rc = ENOMEM;
+		goto out;
+	}
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
 	ctxt->update.arg = arg;
@@ -830,6 +839,7 @@ static int do_read_data(ldms_t x, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 	if (rc) {
 		__ldms_free_ctxt(x, ctxt);
 	}
+out:
 	pthread_mutex_unlock(&x->lock);
 	ldms_xprt_put(x);
 	return rc;
@@ -2349,11 +2359,13 @@ int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 	if (!cb) {
 		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, sync_connect_cb, cb_arg);
 		if (rc)
-			return rc;
+			goto out;
 		sem_wait(&x->sem);
 		rc = x->sem_rc;
-	} else
+	} else {
 		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
+	}
+out:
  	freeaddrinfo(ai);
 	return rc;
 }
@@ -2377,6 +2389,7 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
 		if (rc)
 			return EHOSTUNREACH;
 		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen);
+		freeaddrinfo(ai);
 	} else {
 		short port = atoi(port_no);
 		memset(&sin, 0, sizeof(sin));
