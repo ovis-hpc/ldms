@@ -71,7 +71,6 @@
 #include "lustre_metrics.h"
 
 /* LUSTRE SPECIFIC */
-struct str_map *lustre_idx_map = NULL;
 struct str_list_head *llite_str_list = NULL;
 struct lustre_metric_src_list lms_list = {0};
 
@@ -94,7 +93,7 @@ int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 		snprintf(suffix, sizeof(suffix), "#llite.%s", sl->str);
 		rc = stats_construct_routine(schema, path_tmp,
 				"client.lstats.", suffix, &lms_list, LUSTRE_METRICS,
-				LUSTRE_METRICS_LEN, lustre_idx_map);
+				LUSTRE_METRICS_LEN);
 		if (rc) {
 			msglog(LDMSD_LDEBUG, "cray_system_sampler/%s: returning error: %d from stats_construct_routine for %s\n",
 			       __FILE__, rc, path_tmp);

@@ -99,16 +99,6 @@ char *oss_services[] = {
 };
 #define OSS_SERVICES_LEN (__ALEN(oss_services))
 
-/**
- * This will holds IDs for stats_key.
- */
-struct str_map *stats_key_id;
-
-/**
- * IDs for obdfilter keys.
- */
-struct str_map *obdf_key_id;
-
 char *obdf_key[] = {
 	/* metric source status (sampler induced) */
 	"status",
@@ -273,7 +263,7 @@ static int create_metric_set(const char *path, const char *osts)
 		sprintf(suffix, "#oss.%s", oss_services[i]);
 		rc = stats_construct_routine(schema, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, stats_key,
-					     STATS_KEY_LEN, stats_key_id);
+					     STATS_KEY_LEN);
 		if (rc)
 			goto err2;
 	}
@@ -284,7 +274,7 @@ static int create_metric_set(const char *path, const char *osts)
 		sprintf(suffix, "#ost.%s", sl->str);
 		rc = stats_construct_routine(schema, tmp_path, "oss.lstats.",
 					     suffix, &lms_list, obdf_key,
-					     OBDF_KEY_LEN, obdf_key_id);
+					     OBDF_KEY_LEN);
 		if (rc)
 			goto err2;
 		for (j = 0; j < OST_SINGLE_ATTR_LEN; j++) {
@@ -418,19 +408,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	msglog = pf;
 	set = NULL;
 	lustre_sampler_set_msglog(pf);
-	stats_key_id = str_map_create(STR_MAP_SIZE);
-	if (!stats_key_id) {
-		msglog(LDMSD_LERROR, "stats_key_id map create error!\n");
-		goto err_nomem;
-	}
-	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
-
-	obdf_key_id = str_map_create(STR_MAP_SIZE);
-	if (!obdf_key_id) {
-		msglog(LDMSD_LERROR, "obdf_key_id map create error!\n");
-		goto err_nomem;
-	}
-	str_map_id_init(obdf_key_id, obdf_key, OBDF_KEY_LEN, 1);
 
 	init_complete = 1;
 out:
