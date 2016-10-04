@@ -1183,12 +1183,6 @@ void process_recpies_routine()
 	int i, n, rc;
 	const char *recipe;
 	FILE *fin;
-	char *buff = malloc(4096);
-
-	if (!buff) {
-		berr("Out of memory (%s:%s())", __FILE__, __func__);
-		exit(-1);
-	}
 
 	/* Iterate through recipes from CLI */
 	n = (cli_recipe)?(barray_get_len(cli_recipe)):(0);
