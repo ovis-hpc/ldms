@@ -504,6 +504,8 @@ static int cli_handler(int sock, req_msg_t rm)
 	}
 	rc = send_request_reply(sock, rm, "22Invalid command", 18,
 				LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F);
+	free(kw_list);
+	free(av_list);
 	return rc;
  out:
 	rm->rep_off = strlen(rm->rep_buf) + 1;
