@@ -319,8 +319,8 @@ struct bq_store* bq_open_store(const char *path)
 	return s;
 
 err:
-	bq_store_close_free(s);
 	berr("Cannot open %s", s->path);
+	bq_store_close_free(s);
 	return NULL;
 }
 
@@ -3729,7 +3729,7 @@ int bq_local_mptn_routine(struct bq_store *s)
 	bdstr = bdstr_new(16*1024*1024);
 	if (!bdstr) {
 		berror("bdstr_new()");
-		return errno;
+		goto cleanup;
 	}
 
 	for (i = 0; i < col_width_len; i++) {
