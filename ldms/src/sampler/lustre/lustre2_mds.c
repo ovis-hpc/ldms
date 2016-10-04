@@ -112,11 +112,6 @@ char *md_stats_key[] = {
 	"status" /* status of md_stats file */
 };
 
-/**
- * md_stats_key to IDs.
- */
-struct str_map *md_stats_key_id;
-
 #define MDS_SERVICES_LEN (__ALEN(mds_services))
 /**
  * These are the services under /proc/fs/lustre/mds/MDS/
@@ -130,11 +125,6 @@ char *mds_services[] = {
 	"mdt_seqs",
 	"mdt_setattr",
 };
-
-/**
- * This will holds IDs for stats_key.
- */
-static struct str_map *stats_key_id;
 
 static struct lustre_metric_src_list lms_list = {0};
 
@@ -193,7 +183,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		rc = stats_construct_routine(schema, tmp_path,
 					     "mds.lstats.", suffix,
 					     &lms_list, stats_key,
-					     STATS_KEY_LEN, stats_key_id);
+					     STATS_KEY_LEN);
 		if (rc)
 			goto err2;
 	}
@@ -205,7 +195,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		rc = stats_construct_routine(schema, tmp_path,
 					     "mds.lstats.",
 					     suffix, &lms_list, stats_key,
-					     STATS_KEY_LEN, stats_key_id);
+					     STATS_KEY_LEN);
 		if (rc)
 			goto err2;
 		/* For md_stats */
@@ -213,8 +203,7 @@ static int create_metric_set(const char *path, const char *mdts)
 		sprintf(suffix, "#mdt.%s", sl->str);
 		rc = stats_construct_routine(schema, tmp_path,
 					     "md_stats.", suffix, &lms_list,
-					     md_stats_key, MD_STATS_KEY_LEN,
-					     md_stats_key_id);
+					     md_stats_key, MD_STATS_KEY_LEN);
 		if (rc)
 			goto err2;
 	}
@@ -337,19 +326,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	msglog = pf;
 	set = NULL;
 	lustre_sampler_set_msglog(pf);
-	stats_key_id = str_map_create(STR_MAP_SIZE);
-	if (!stats_key_id) {
-		msglog(LDMSD_LERROR, "stats_key_id map create error!\n");
-		goto err_nomem;
-	}
-	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
-	md_stats_key_id = str_map_create(STR_MAP_SIZE);
-	if (!md_stats_key_id) {
-		msglog(LDMSD_LERROR, "md_stats_key_id map create error!\n");
-		goto err_nomem;
-	}
-	str_map_id_init(md_stats_key_id, md_stats_key, MD_STATS_KEY_LEN, 1);
-
 	return &lustre_mds_plugin.base;
 err_nomem:
 	errno = ENOMEM;

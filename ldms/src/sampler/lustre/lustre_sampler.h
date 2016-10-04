@@ -227,7 +227,7 @@ struct lustre_svc_stats {
 	struct timeval tv[2];
 	struct timeval *tv_cur;
 	struct timeval *tv_prev;
-	struct str_map *key_id_map;
+	struct str_map *mctxt_map;
 	/**
 	 * This metric handle refer to the special metric, named 'status'.
 	 *
@@ -279,8 +279,7 @@ int stats_construct_routine(ldms_schema_t schema,
 			    const char *prefix,
 			    const char *suffix,
 			    struct lustre_metric_src_list *list,
-			    char **keys, int nkeys,
-			    struct str_map *key_id_map);
+			    char **keys, int nkeys);
 
 /**
  * Routine for a single metric file.
