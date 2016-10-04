@@ -54,10 +54,9 @@
  * \author Narate Taerat <narate@ogc.us>
  * \brief String-Object mapping utility.
  *
- * This shall be moved to lib later, to share with other projects.
- *
  */
 
+#include <errno.h>
 #include "str_map.h"
 #include "fnv_hash.h"
 
@@ -110,9 +109,12 @@ uint64_t str_map_get(str_map_t map, const char *key)
 	struct obj_list *ol;
 	struct obj_list_head *lh = &map->lh_table[h%map->hash_size];
 	LIST_FOREACH(ol, lh, link) {
-		if (strcmp(ol->key, key)==0)
+		if (strcmp(ol->key, key) == 0) {
+			errno = 0;
 			return ol->obj;
+		}
 	}
+	errno = ENOENT;
 	return 0;
 }
 
@@ -122,7 +124,7 @@ int str_map_insert(str_map_t map, const char *key, uint64_t obj)
 	struct obj_list *ol;
 	struct obj_list_head *lh = &map->lh_table[h%map->hash_size];
 	LIST_FOREACH(ol, lh, link) {
-		if (strcmp(ol->key, key)==0)
+		if (strcmp(ol->key, key) == 0)
 			return EEXIST;
 	}
 	ol = malloc(sizeof(*ol));
@@ -144,7 +146,7 @@ int str_map_remove(str_map_t map, const char *key)
 	struct obj_list *ol;
 	struct obj_list_head *lh = &map->lh_table[h%map->hash_size];
 	LIST_FOREACH(ol, lh, link) {
-		if (strcmp(ol->key, key)==0) {
+		if (strcmp(ol->key, key) == 0) {
 			LIST_REMOVE(ol, link);
 			free(ol->key);
 			free(ol);
@@ -161,7 +163,7 @@ int str_map_id_init(str_map_t map, char **keys, int nkeys,
 	uint64_t id = start_id;
 	for (i=0; i<nkeys; i++) {
 		rc = str_map_insert(map, keys[i], id);
-		if (rc==0)
+		if (rc == 0)
 			id++;
 		else
 			return rc;
