@@ -100,55 +100,59 @@ static int create_metric_set(const char *instance_name,
 		return ENOMEM;
 
 	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-        if (rc < 0) {
+	if (rc < 0) {
 		rc = ENOMEM;
-                goto err;
-        }
+	        goto err;
+	}
 
-        rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
-        if (rc < 0) {
-                rc = ENOMEM;
-                goto err;
-        }
+	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	if (rc < 0) {
+	        rc = ENOMEM;
+	        goto err;
+	}
 
-        struct array_construct *ent;
-        if (num_metrics < 0) {
-        	metric_list = array_contruct_entries;
-        	ent = &metric_list[0];
-        		while (ent->name) {
-        			rc = ldms_schema_metric_array_add(schema, ent->name, ent->type, ent->n);
-        			if (rc < 0) {
-        				rc = ENOMEM;
-        				goto err;
-        			}
-        			ent++;
-        		}
-        } else {
-        	metric_list = calloc(num_metrics + 1, sizeof(*ent));
-        	if (num_ele < 0)
-        		num_ele = array_num_ele_default;
-        	if (type == LDMS_V_NONE)
-        		type = LDMS_V_U64;
+	struct array_construct *ent;
+	if (num_metrics < 0) {
+		metric_list = array_contruct_entries;
+		ent = &metric_list[0];
+			while (ent->name) {
+				rc = ldms_schema_metric_array_add(schema, ent->name, ent->type, ent->n);
+				if (rc < 0) {
+					rc = ENOMEM;
+					goto err;
+				}
+				ent++;
+			}
+	} else {
+		metric_list = calloc(num_metrics + 1, sizeof(*ent));
+		if (!metric_list) {
+			rc = ENOMEM;
+			goto err;
+		}
+		if (num_ele < 0)
+			num_ele = array_num_ele_default;
+		if (type == LDMS_V_NONE)
+			type = LDMS_V_U64;
 
-        	char name[128];
-        	int i;
-        	for (i = 0; i < num_metrics; i++) {
-        		ent = &metric_list[i];
-                	snprintf(name, 128, "%s%d", array_metric_name_base, i);
-                	ent->name = strdup(name);
-                	ent->n = num_ele;
-                	ent->type = type;
-                	rc = ldms_schema_metric_array_add(schema, ent->name,
-                			ent->type, ent->n);
-                	if (rc < 0) {
-                		rc = ENOMEM;
-                		goto err;
-                	}
-        	}
-        	metric_list[num_metrics].name = NULL;
-        	metric_list[num_metrics].n = num_ele;
-        	metric_list[num_metrics].type = LDMS_V_NONE;
-        }
+		char name[128];
+		int i;
+		for (i = 0; i < num_metrics; i++) {
+			ent = &metric_list[i];
+			snprintf(name, 128, "%s%d", array_metric_name_base, i);
+			ent->name = strdup(name);
+			ent->n = num_ele;
+			ent->type = type;
+			rc = ldms_schema_metric_array_add(schema, ent->name,
+					ent->type, ent->n);
+			if (rc < 0) {
+				rc = ENOMEM;
+				goto err;
+			}
+		}
+		metric_list[num_metrics].name = NULL;
+		metric_list[num_metrics].n = num_ele;
+		metric_list[num_metrics].type = LDMS_V_NONE;
+	}
 
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
@@ -157,10 +161,10 @@ static int create_metric_set(const char *instance_name,
 	}
 
 	//add specialized metrics
-        v.v_u64 = compid;
-        ldms_metric_set(set, 0, &v);
-        v.v_u64 = 0;
-        ldms_metric_set(set, 1, &v);
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
+	v.v_u64 = 0;
+	ldms_metric_set(set, 1, &v);
 
 	return 0;
  err:
@@ -180,10 +184,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	value = av_value(avl, "component_id");
-        if (value)
-                compid = (uint64_t)(atoi(value));
-        else
-                compid = 0;
+	if (value)
+	        compid = (uint64_t)(atoi(value));
+	else
+	        compid = 0;
 
 	if (set) {
 		msglog(LDMSD_LERROR, "array_example: Set already created.\n");
