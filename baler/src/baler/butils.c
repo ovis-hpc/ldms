@@ -940,6 +940,9 @@ struct bmetricbin *bmetricbin_create(const char *recipe)
 	n += 3;
 
 	bin = bmetricbin_new(n);
+	if (!bin)
+		goto err;
+
 	n = snprintf(bin->metric_name, sizeof(bin->metric_name), "%.*s",
 						(int)(s - recipe), recipe);
 	if (n >= sizeof(bin->metric_name)) {

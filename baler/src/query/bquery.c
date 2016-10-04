@@ -3729,6 +3729,7 @@ int bq_local_mptn_routine(struct bq_store *s)
 	bdstr = bdstr_new(16*1024*1024);
 	if (!bdstr) {
 		berror("bdstr_new()");
+		rc = errno;
 		goto cleanup;
 	}
 

@@ -172,20 +172,27 @@ int btkn_store_id2str_esc(struct btkn_store *store, uint32_t id,
 uint32_t btkn_store_insert_cstr(struct btkn_store *store, const char *str,
 							btkn_type_t type)
 {
+	struct bstr *bstr = NULL;
+	uint32_t id = BMAP_ID_ERR;
 	int blen = strlen(str);
 	if (!blen) {
 		errno = EINVAL;
-		return BMAP_ID_ERR;
+		goto out;
 	}
-	struct bstr *bstr = malloc(sizeof(*bstr) + blen);
+	bstr = malloc(sizeof(*bstr) + blen);
+	if (!bstr)
+		goto out; /* errno has already been set */
 	bstr->blen = blen;
 	memcpy(bstr->cstr, str, blen);
-	uint32_t id = btkn_store_insert(store, bstr);
+	id = btkn_store_insert(store, bstr);
 	if (id == BMAP_ID_ERR)
-		return id;
+		goto out;
 	struct btkn_attr attr;
 	attr.type = type;
 	btkn_store_set_attr(store, id, attr);
+out:
+	if (bstr)
+		free(bstr);
 	return id;
 }
 

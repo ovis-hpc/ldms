@@ -415,11 +415,11 @@ int __bmptn_cluster_1(struct bmptn_store *store)
 	uint32_t i;
 	uint32_t n = bmptn_store_gethdr(store)->last_ptn_id;
 	void *buff = NULL;
-	struct bstr *bstr;
-	struct bhash_entry **eng_sig_array;
-	struct bhash *bhash;
-	struct bhash_entry *ent;
-	struct bmptn_node *node;
+	struct bstr *bstr = NULL;
+	struct bhash_entry **eng_sig_array = NULL;
+	struct bhash *bhash = NULL;
+	struct bhash_entry *ent = NULL;
+	struct bmptn_node *node = NULL;
 	uint32_t label = 0;
 	struct bmptn_node NODE = {0};
 	uint32_t metric_lead = 0;
