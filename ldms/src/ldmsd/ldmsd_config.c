@@ -714,7 +714,10 @@ int ldmsd_set_udata(char *set_name, char *metric_name,
 								udata_s);
 		return EINVAL;
 	}
-	return _ldmsd_set_udata(set, metric_name, udata, err_str);
+
+	int rc =_ldmsd_set_udata(set, metric_name, udata, err_str);
+	ldms_set_delete(set);
+	return rc;
 }
 
 int ldmsd_set_udata_regex(char *set_name, char *regex_str,
@@ -757,6 +760,7 @@ int ldmsd_set_udata_regex(char *set_name, char *regex_str,
 		}
 	}
 	regfree(&regex);
+	ldms_set_delete(set);
 	return 0;
 }
 
@@ -2237,6 +2241,10 @@ int ldmsd_config_init(char *name)
 		if (!sockpath)
 			sockpath = "/var/run";
 		sockname = malloc(sizeof(LDMSD_CONTROL_SOCKNAME) + strlen(sockpath) + 2);
+		if (!sockname) {
+			ldmsd_log(LDMSD_LERROR, "Our of memory\n");
+			return -1;
+		}
 		sprintf(sockname, "%s/%s", sockpath, LDMSD_CONTROL_SOCKNAME);
 	} else {
 		sockname = strdup(name);
