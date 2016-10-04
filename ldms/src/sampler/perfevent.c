@@ -146,19 +146,19 @@ static const char *usage(struct ldmsd_plugin* self)
 		"    config name=perfevent action=ls\n"
 		"            - List the currently configured events.\n"
 		"    config name=perfevent action=add metricname=<string> pid=<int> cpu=<int> type=<int> id=<int>\n"
-		"            metricname   - The metric name for the event\n"
-		"            pid    - The PID for the process being monitored\n"
-		"                     The counter will follow the process to\n"
-		"                     whichever CPU/core is in use. Note that\n"
-		"                     'pid' and 'cpu' are mutually exclusive.\n"
-		"            cpu    - Count this event on the specified CPU.\n"
-		"                     This will accumulate events across all PID\n"
-		"                     that land on the specified CPU/core. Note\n"
-		"                     that 'pid' and 'cpu' are mutually\n"
-		"                     exclusive.\n"
-		"            type   - The event type.\n"
-		"            id     - The event id.\n"
-		LJI_DESC
+		"            <metricname>  The metric name for the event\n"
+		"            <pid>         The PID for the process being monitored\n"
+		"                          The counter will follow the process to\n"
+		"                          whichever CPU/core is in use. Note that\n"
+		"                          'pid' and 'cpu' are mutually exclusive.\n"
+		"            <cpu>         Count this event on the specified CPU.\n"
+		"                          This will accumulate events across all PID\n"
+		"                          that land on the specified CPU/core. Note\n"
+		"                          that 'pid' and 'cpu' are mutually\n"
+		"                          exclusive.\n"
+		"            <type>        The event type.\n"
+		"            <id>          The event id.\n"
+		"        " LJI_DESC
 		" For more information visit: http://man7.org/linux/man-pages/man2/perf_event_open.2.html\n\n";
 }
 

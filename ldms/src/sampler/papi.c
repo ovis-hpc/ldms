@@ -341,12 +341,12 @@ static void term(struct ldmsd_plugin *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=spapi producer=<producer_name> instance=<instance_name> pid=<pid> events=<event1,event2,...>\n"
-		"    producer     The producer name\n"
-		"    instance     The set instance name.\n"
-		"    pid          The process to attach to.\n"
-		"    compid       Optional unique number identifier. Defaults to zero.\n"
+		"    <producer>    The producer name\n"
+		"    <instance>    The set instance name.\n"
+		"    <pid>         The process to attach to.\n"
+		"    <compid>      Optional unique number identifier. Defaults to zero.\n"
 		LJI_DESC
-		"    events       The name of papi events.\n";
+		"    <events>      The name of papi events.\n";
 }
 
 static struct ldmsd_sampler papi_plugin = {

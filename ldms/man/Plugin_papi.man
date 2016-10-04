@@ -23,7 +23,7 @@ You will need to build LDMS with --enable-papi. Papi library should be available
 .TP
 .BR config
 
-name=<plugin_name> events=<comma separated list of events> pid=<process id> producer=<producer_name> instance=<instance_name> [schema=<sname>]
+name=<plugin_name> events=<comma separated list of events> pid=<process id> producer=<producer_name> instance=<instance_name> [schema=<sname>] [component_id=<compid> with_jobid=<bool>]
 ldmsctl configuration line
 .TP
 name=<plugin_name>
@@ -41,6 +41,14 @@ The name of the metric set
 schema=<schema>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a different schema.
+.TP
+component_id=<compid>
+.br
+Optional component identifier. Defaults to zero.
+.TP
+with_jobid=<bool>
+.br
+Option to collect job id with set or 0 if not.
 .TP
 events=<comma separated list of events>
 .br
