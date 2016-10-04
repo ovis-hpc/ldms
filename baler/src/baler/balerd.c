@@ -1878,8 +1878,8 @@ int slave_process_input_entry_step3(struct bwq_entry *ent)
 	int rc;
 	rc = finalize_input_entry(ent);
 cleanup:
-	binq_entry_free(ent);
 	free(ent->ctxt);
+	binq_entry_free(ent);
 	sem_post(&slave_credit);
 	return rc;
 }
@@ -1948,8 +1948,8 @@ int slave_process_input_entry_step2(struct bwq_entry *ent)
 	return 0;
 
 err:
-	binq_entry_free(ent);
 	free(ent->ctxt);
+	binq_entry_free(ent);
 	return rc;
 }
 
@@ -2055,8 +2055,8 @@ again:
 	return rc;
 
 err:
-	binq_entry_free(ent);
 	free(ent->ctxt);
+	binq_entry_free(ent);
 	return rc;
 }
 
