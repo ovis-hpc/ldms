@@ -103,6 +103,7 @@ struct btkn_store* btkn_store_open(const char *path, int flag)
 
 err1:
 	btkn_store_close_free(ts);
+	ts = NULL;
 err0:
 cleanup:
 	free(tmp);
