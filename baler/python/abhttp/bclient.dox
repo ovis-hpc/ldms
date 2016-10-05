@@ -108,6 +108,21 @@
  *
  *
  * \section commands COMMANDS
+ *
+ * Commands in \c bclient has the following syntax:
+ * \code
+ * 	COMMAND_NAME [PARAM=VALUE ...] [ARG ...] [> FILE] [ '|' CHAIN ]
+ * \endcode
+ *
+ * All commands support output redirection and piping. Simply put a redirect
+ * request "> the_file" at the end of the command, and the output from the
+ * command will be redirected into "the_file".
+ *
+ * The pipe '|' works similar to the redirection exept for that it needs a
+ * program instead of a file. Users can also do chain piping and redirection,
+ * e.g. `some_command p0=v0 p1=v1 | prog0 | prog1 > out`. Please see more about
+ * usage example in \ref usage_example section.
+ *
  * The following is the list of commands available in \b bclient.
  *
  * \par help [cmd]
@@ -119,6 +134,10 @@
  *
  * \par quit
  * An alias of \b exit.
+ *
+ * \par save
+ * Save the unified host IDs assignment and the unified pattern IDs assignment
+ * into `bclient` store.
  *
  * \par host_assign [text=STR] [id=NUM]
  * Assign \b id \e NUM to the host \e STR in the unified host map. If \b id is
@@ -135,7 +154,7 @@
  * If both \b text and \b id are not given, \b bclient will automatically assign
  * IDs to all patterns in the unified pattern map that do not yet have an ID.
  *
- * \par host_query [text=REGEX] [ids=RANGES] [>OUTPUT_PATH]
+ * \par host_query [text=REGEX] [ids=RANGES]
  * Query for hosts that match \e all of the given conditions, i.e. match both \b
  * text \e REGEX and \b id \e RANGES, in the unified host table.
  * \par
@@ -143,11 +162,8 @@
  * "nid000.*").
  * \par
  * \b ids \e RANGES is a comma-separated ranges to match IDs (e.g. "1,3-5,11").
- * \par
- * \b host_query command can redirect the query results into a file (overwrite)
- * by simply append \e >OUTPUT_PATH at the end of the command.
  *
- * \par ptn_query [text=REGEX] [ids=RANGES] [format=FMT] [>OUTPUT_PATH]
+ * \par ptn_query [text=REGEX] [ids=RANGES] [format=FMT]
  * Query for patterns that match \e all of the given conditions, i.e. match both
  * \b text \e REGEX and \b id \e RANGES, in the unified pattern table.
  * \par
@@ -163,9 +179,6 @@
  * \par
  * \b format \e FMT chooses what to print. By default, the FMT is
  * "%(ptn_id)s %(count)s %(first_seen)s %(last_seen)s %(text)s".
- * \par
- * \b >OUTPUT_PATH redirects the query results into a file (overwrite).  Simply
- * append \e >OUTPUT_PATH at the end of the command.
  *
  * \par msg_query [ptn_ids=RANGES] [host_ids=RANGES] [begin=TIMESTAMP] [end=TIMESTMAP]
  * Query for messages matching the given conditions.
@@ -190,14 +203,11 @@
  * microsecond part. If the timezone (the trailing "-HH:MM" or "+HH:MM") is
  * omitted, the system timezone is used.
  *
- * \par img_query [store=SPP-NPP] [ptn_ids=RANGES] [host_ids=RANGES] [begin=TIMESTAMP] [end=TIMESTAMP] [>OUTPUT_FILE]
+ * \par img_query [store=SPP-NPP] [ptn_ids=RANGES] [host_ids=RANGES] [begin=TIMESTAMP] [end=TIMESTAMP]
  * Query image pixels per given conditions.
  * \par
  * The \e OUTPUT format is a list of pixels, one pixel per line, described by:
  * PTN_ID, UNIX_TIMESTAMP, HOST_ID, COUNT.
- * \par
- * The results can be redirected into an \e OUTPUT_FILE by giving
- * \b >OUTPUT_FILE at the end of the command.
  * \par
  * \b store \e SPP-NPP tells `bquery` to get the pixels from the specified image
  * sub-store. (e.g. "3600-1" for pixels of 1-hour x 1-node).  baler daemon can
@@ -428,6 +438,38 @@
  *
  * # Try setting some conditions
  * bclient> msg_query host_ids=0,10 begin=2015-06-26T12:00:00
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Zero: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Four: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Eight: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern One Two: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Zero: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Two: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Six: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern One Zero: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern One Four: 1435338000 - 10
+ * ...
+ *
+ * # Piping
+ * bclient> msg_query host_ids=0,10 begin=2015-06-26T12:00:00 | grep 1435338000
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Zero: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Four: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Eight: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern One Two: 1435338000 - 0
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Zero: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Two: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern Six: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern One Zero: 1435338000 - 10
+ * 2015-06-26T12:00:00.000000-05:00 node00010 This is pattern One Four: 1435338000 - 10
+ *
+ * # Chain piping
+ * bclient> msg_query host_ids=0,10 begin=2015-06-26T12:00:00 | grep 1435338000 | wc -l
+ * 9
+ *
+ * # Pipe and redirect
+ * bclient> msg_query host_ids=0,10 begin=2015-06-26T12:00:00 | grep 1435338000 > /tmp/msgs
+ *
+ * # On the shell ...
+ * $ cat /tmp/msgs
  * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Zero: 1435338000 - 0
  * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Four: 1435338000 - 0
  * 2015-06-26T12:00:00.000000-05:00 node00000 This is pattern Eight: 1435338000 - 0
