@@ -1,6 +1,6 @@
 .\" Manpage for ldms_ls
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "29 Oct 2015" "v3" "ldms_ls man page"
+.TH man 8 "05 Oct 2016" "v3" "ldms_ls man page"
 
 .SH NAME
 ldms_ls \- Query an ldmsd for metric set values
@@ -68,9 +68,9 @@ PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
 Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
 .TP
 .BI -a " <path>"
-If using authentication, <path> is the full path to the file containing the shared secret word. See ldms_authentication(7) for alternatives.
-
-If ldms was configured with --enable-a-none, then <path> = none bypasses authentication requirements.
+Give the location of the secretword file. If it is compiled with
+--disable-ovis-auth, ldms_ls will not support authentication and the -a option
+disappears.
 .TP
 .BI -m  " MEMORY_SIZE"
 .br
