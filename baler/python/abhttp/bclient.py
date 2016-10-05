@@ -10,6 +10,9 @@ import sys
 import curses
 import collections
 import ptn_order
+import subprocess
+import time
+import errno
 from StringIO import StringIO
 
 logger = logging.getLogger(__name__)
@@ -66,7 +69,26 @@ class CmdArgumentParser(object):
         """
         _kwargs = {}
         _args = []
-        for a in shlex.split(arg):
+        _redirect = ""
+        _pipe = []
+        _redir_count = 0
+        shlexargs = shlex.split(arg)
+        itr = iter(shlexargs)
+        for a in itr:
+            if a.startswith("|"):
+                # pipe
+                _pipe.append(a)
+                for b in itr: # exhaust the reset of the args
+                    _pipe.append(b)
+            if a.startswith(">"):
+                # redirection
+                if _redir_count:
+                    raise CmdException("Too many redirections")
+                _redirect = a
+                if a == ">" or a == ">>":
+                    # consume next arg if redirect
+                    _redirect += next(itr)
+                _redir_count += 1
             x = a.split('=', 1)
             if len(x) == 1:
                 # positional arg
@@ -82,7 +104,7 @@ class CmdArgumentParser(object):
         for kw in self.available_kwargs:
             if kw not in _kwargs:
                 _kwargs[kw] = None
-        return (_kwargs, _args)
+        return (_kwargs, _args, _redirect, _pipe)
 
 ## ---- CmdArgumentParser ---- ##
 
@@ -598,10 +620,38 @@ class ServiceCmd(cmd.Cmd):
         """Do nothing on empty line."""
         pass
 
+    def _pipe(self, pipe_array):
+        try:
+            pipe_array[0] = pipe_array[0].strip("|")
+            command = " ".join(pipe_array)
+            self.proc = subprocess.Popen([command],
+                                        stdin=subprocess.PIPE,
+                                        stdout=None,
+                                        shell=True,
+                                        close_fds=True)
+            self.cmdout = self.proc.stdin
+        except Exception, e:
+            raise CmdException(str(e))
+
+    def _redirect(self, redir_str):
+        # redir_str is the argument starts with >
+        try:
+            out = redir_str
+            out_name = out.strip(">")
+            if out.startswith(">>"):
+                out = open(out_name, "a")
+            else:
+                out = open(out_name, "w")
+            self.cmdout = out
+        except Exception, e:
+            raise CmdException(str(e))
+
     def precmd(self, line):
         """Apply our parser and store results in self.kwargs, self.args."""
         (self.kwargs, self.args) = ({}, [])
+        self.t0 = time.time()
         self.cmdout = sys.stdout
+        self.proc = None
         if not line:
             return line
         tmp = line.split(None, 1)
@@ -609,36 +659,31 @@ class ServiceCmd(cmd.Cmd):
         arg = "" if len(tmp) == 1 else tmp[1]
         p = self.get_parser(cmd)
         if p:
-            (self.kwargs, self.args) = p.parse(arg)
-            # output redirection
-            out_mask = [x.startswith(">") for x in self.args]
-            s = sum(out_mask)
-            if s > 1:
-                # too many redirections
-                raise CmdException("Too many redirections")
-            if s:
-                # has one file redirection
-                try:
-                    idx = out_mask.index(True)
-                    out = self.args.pop(idx)
-                    out_name = out.strip(">")
-                    if not out_name:
-                        out_name = self.args.pop(idx)
-                    if out.startswith(">>"):
-                        out = open(out_name, "a")
-                    else:
-                        out = open(out_name, "w")
-                except Exception, e:
-                    raise CmdException(str(e))
-            else:
-                out = sys.stdout
-            self.cmdout = out
+            (self.kwargs, self.args, redirect, pipe) = p.parse(arg)
+
+            if pipe and redirect:
+                raise CmdException("Cannot use pipe after redirect.")
+
+            self.cmdout = sys.stdout
+
+            if redirect:
+                self._redirect(redirect)
+
+            if pipe:
+                self._pipe(pipe)
+
         return line # return same line for Cmd processing.
 
     def postcmd(self, stop, line):
         if self.cmdout != self.stdout:
             self.cmdout.close()
             self.cmdout = self.stdout # reset cmdout
+        if self.proc:
+            self.proc.stdin.close()
+            self.proc.wait()
+            self.proc = None
+        self.t1 = time.time()
+        logger.debug("cmd time: %f", (self.t1 - self.t0))
         return stop
 
     def completedefault(self, text, line, begidx, endidx):
@@ -682,6 +727,10 @@ if __name__ == "__main__":
         except CmdException, e:
             # in case of exception, print it and continue the loop
             print >>sys.stderr, "Error:", e
+        except IOError, e:
+            # ignore broken pipe
+            if e.errno != errno.EPIPE:
+                raise
         else:
             # cmdloop exit cleanly, exit the program.
             break
