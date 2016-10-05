@@ -104,15 +104,6 @@ OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
-OPTION_DEFAULT_DISABLE([a-none], [ENABLE_ANONE],[Allow "-a none" to turn off authentication checks.])
-if test "$enable_a_none" = "yes"; then
-	HAVE_ANONE=1
-	AC_DEFINE_UNQUOTED([HAVE_ANONE],[1],[ldmsd option "-a none" enabled at configure.])
-else
-	HAVE_ANONE=0
-fi
-AC_SUBST([HAVE_ANONE],[$HAVE_ANONE])
-
 
 dnl Other libraries
 OPTION_DEFAULT_DISABLE([gemini-gpcdr], [ENABLE_GEMINI_GPCDR]) dnl use gpcdr for gemini (not mutually exclusive)

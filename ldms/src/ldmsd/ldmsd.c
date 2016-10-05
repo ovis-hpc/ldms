@@ -120,11 +120,6 @@ int notify=0;
 char *logfile;
 char *pidfile;
 char *secretword;
-/* authenticate will never be 0 unless:
- HAVE_ANONE is defined
- and -a none given in options.
-*/
-int authenticate = 1;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
 char *max_mem_sz_str;
@@ -438,9 +433,6 @@ void usage_hint(char *argv[],char *hint)
 	       "		   the shared secret word, e.g., secretword=<word>, where\n"
 	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
-#ifdef HAVE_ANONE
-	printf("    -a none        Bypass authentication checks.\n");
-#endif
 #endif /* OVIS_LIB_HAVE_AUTH */
 	printf("    -p port        The inet control listener port for receiving configuration\n");
 #ifdef ENABLE_LDMSD_RCTL
@@ -1258,11 +1250,8 @@ void do_connect(struct hostspec *hs)
 	case ACTIVE:
 	case BRIDGING:
 #if OVIS_LIB_HAVE_AUTH
-		if (authenticate)
-			hs->x = ldms_xprt_with_auth_new(hs->xprt_name,
-				ldmsd_lcritical, secretword);
-		else
-			hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_lcritical);
+		hs->x = ldms_xprt_with_auth_new(hs->xprt_name,
+			ldmsd_lcritical, secretword);
 #else /* OVIS_LIB_HAVE_AUTH */
 		hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_lcritical);
 #endif /* OVIS_LIB_HAVE_AUTH */
@@ -1517,11 +1506,8 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	else
 		port_no = atoi(port_str);
 #if OVIS_LIB_HAVE_AUTH
-	if (authenticate)
-		l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical,
-			secretword);
-	else
-		l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
+	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical,
+		secretword);
 #else
 	l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
 #endif /* OVIS_LIB_HAVE_AUTH */
@@ -1553,10 +1539,6 @@ void ev_log_cb(int sev, const char *msg)
 		"EV_ERR"
 	};
 	ldmsd_log(LDMSD_LERROR, "%s: %s\n", sev_s[sev], msg);
-}
-
-int ldmsd_authentication_required() {
-	return authenticate;
 }
 
 extern int ldmsd_inet_config_init(const char *port, const char *secretword);
@@ -1704,13 +1686,6 @@ int main(int argc, char *argv[])
 				printf("Unable to copy secretword filename\n");
 				exit(ENOMEM);
 
-			}
-			if (strcmp(optarg,"none") == 0) {
-#ifdef HAVE_ANONE
-				authenticate = 0;
-#else
-				usage_hint(argv,"Error: \"-a none\" not supported.");
-#endif
 			}
 			break;
 #endif /* OVIS_LIB_HAVE_AUTH */
@@ -1930,19 +1905,22 @@ int main(int argc, char *argv[])
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
 
-	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon version "
-		"%hhu.%hhu.%hhu.%hhu. LDMS Library Version %hhu.%hhu.%hhu.%hhu. "
-		"git-SHA %s\n", ldmsd_version.major, ldmsd_version.minor,
+#if OVIS_LIB_HAVE_AUTH
+	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon with authentication "
+#else /* OVIS_LIB_HAVE_AUTH */
+	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon without authentication "
+#endif /* OVIS_LIB_HAVE_AUTH */
+		"version %hhu.%hhu.%hhu.%hhu. "
+		"LDMS Library Version %hhu.%hhu.%hhu.%hhu. "
+		"git-SHA %s.\n", ldmsd_version.major, ldmsd_version.minor,
 		ldmsd_version.patch, ldmsd_version.flags,
 		ldms_version.major, ldms_version.minor, ldms_version.patch,
 		ldms_version.flags, LDMS_GIT_LONG);
 #if OVIS_LIB_HAVE_AUTH
 	secretword = NULL;
-	if (authenticate) {
-		secretword = ldms_get_secretword(authfile,ldmsd_lcritical);
-		if ( !secretword )
-			cleanup(15);
-	}
+	secretword = ldms_get_secretword(authfile, ldmsd_lcritical);
+	if ( !secretword )
+		cleanup(15);
 #endif /* OVIS_LIB_HAVE_AUTH */
 
 	if (do_kernel && publish_kernel(setfile))
