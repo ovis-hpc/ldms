@@ -1789,6 +1789,10 @@ int main(int argc, char *argv[])
 			} else {
 				pidfile = strdup(pidpath);
 			}
+			if (!pidfile) {
+				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+				exit(1);
+			}
 		}
 		if( !access( pidfile, F_OK ) ) {
 			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",

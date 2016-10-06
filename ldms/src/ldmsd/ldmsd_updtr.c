@@ -480,6 +480,11 @@ int cmd_updtr_match_del(char *replybuf, struct attr_value_list *avl, struct attr
 		sel = LDMSD_NAME_MATCH_INST_NAME;
 	else if (0 == strcasecmp(selector_str, "schema"))
 		sel = LDMSD_NAME_MATCH_SCHEMA_NAME;
+	else {
+		sprintf(replybuf, "%dUnrecognized match type '%s'",
+				EINVAL, selector_str);
+		goto out_0;
+	}
 
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {
