@@ -849,7 +849,9 @@ if __name__ == "__main__":
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
         parser.add_argument('--auth_file',
-                            help = "Path to the file containing the secretword")
+                            help = "Path to the file containing the secretword. \
+This must be use only when the ldmsd is using authentication and \
+ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
         parser.add_argument('--source',
                             help = "Path to the config file")
         parser.add_argument('--script',

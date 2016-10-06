@@ -144,9 +144,6 @@ void usage(char *argv[])
 	printf("                     Normally, the environment variable\n"
 	       "                     must be set to the full path to the file storing\n"
 	       "                     the shared secret word, e.g., secretword=<word>\n");
-#ifdef HAVE_ANONE
-        printf("    -a none          Bypass authentication requirements.\n");
-#endif
 #endif /* OVIS_LIB_HAVE_AUTH */
 	printf("\n    -V               Print LDMS version and exit.\n");
 

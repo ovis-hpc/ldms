@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd ldms-aggd
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "29 Oct 2015" "v3" "ldmsd man page"
+.TH man 8 "05 Oct 2016" "v3" "ldmsd man page"
 
 .SH NAME
 ldmsd \- Start an ldms daemon
@@ -89,10 +89,11 @@ The path to the pid file for daemon mode.
 .BI -a " secretfile"
 Give the location of the secretword file.
 Normally, the environment variable LDMSD_AUTH_FILE must be set to the full
-path to the file storing the shared secret word
+path to the file storing the shared secret word.
 
-If ldms is configured with --enable-a-none, "-a none", bypasses authentication checks.
-If ldms is configured with --disable-ovis_auth, the -a option disappears and will cause an error if it is given.
+By default, ldmsd is started with authentication. If ldms is compiled with
+--disable-ovis-auth, ldmsd will start without any authentication support. The
+-a option disappears and will cause an error if it is given.
 .TP
 .BR -V
 Display LDMS version information and then exit.
