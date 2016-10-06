@@ -1288,6 +1288,7 @@ void bhttpd_handle_query_img2(struct bhttpd_req_ctxt *ctxt)
 	if (!q) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"bimgquery_create() error, errno: %d", errno);
+		free(data);
 		return;
 	}
 	rc = bq_first_entry((void*)q);
@@ -1686,7 +1687,7 @@ void bhttpd_handle_query_destroy_session(struct bhttpd_req_ctxt *ctxt)
 	uint64_t session_id;
 	struct bhttpd_msg_query_session *qs;
 	struct bhash_entry *ent;
-	if (!session_id) {
+	if (!_session_id) {
 		bhttpd_req_ctxt_errprintf(ctxt, HTTP_INTERNAL,
 				"session_id is not set");
 		return;

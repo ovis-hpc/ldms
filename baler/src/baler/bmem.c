@@ -72,6 +72,8 @@ struct bmem* bmem_open(const char *path)
 {
 	int errno_tmp;
 	struct bmem *b = calloc(1, sizeof(*b));
+	if (!b)
+		goto err;
 	strncpy(b->path, path, PATH_MAX);
 	b->fd = open(path, O_RDWR|O_CREAT, 0600);
 	if (b->fd < 0) {
@@ -132,6 +134,7 @@ err1:
 	close(b->fd);
 err0:
 	free(b);
+err:
 	return NULL;
 
 }

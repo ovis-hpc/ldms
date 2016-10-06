@@ -137,6 +137,8 @@ struct bhash_entry *bhash_entry_get(struct bhash *h, const char *key,
 struct bhash_iter *bhash_iter_new(struct bhash *h)
 {
 	struct bhash_iter *iter = calloc(1, sizeof(*iter));
+	if (!iter)
+		return NULL;
 	iter->h = h;
 	return iter;
 }

@@ -216,4 +216,5 @@ int main(int argc, char **argv)
 	} else {
 		meta_cluster_routine();
 	}
+	return 0;
 }

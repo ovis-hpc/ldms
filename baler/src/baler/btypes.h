@@ -91,6 +91,8 @@ static inline
 struct bpair_str* bpair_str_alloc(const char *s0, const char *s1)
 {
 	struct bpair_str *pstr = (typeof(pstr)) calloc(1,sizeof(*pstr));
+	if (!pstr)
+		goto err;
 	if (s0) {
 		pstr->s0 = strdup(s0);
 		if (!pstr->s0)
@@ -106,6 +108,7 @@ err1:
 	free(pstr->s0);
 err0:
 	free(pstr);
+err:
 	return NULL;
 }
 

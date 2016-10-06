@@ -1591,6 +1591,11 @@ int process_command(const char *cmd)
 	struct bconfig_list *cfg = parse_config_str(cmd);
 	int rc = 0;
 
+	if (!cfg) {
+		rc = errno;
+		goto out;
+	}
+
 	switch (bcfg_cmd_str2enum(cfg->command)) {
 	case BCFG_CMD_PLUGIN:
 		rc = process_cmd_plugin(cfg);
@@ -1608,7 +1613,7 @@ int process_command(const char *cmd)
 	}
 
 	bconfig_list_free(cfg);
-
+out:
 	return rc;
 }
 
@@ -1644,6 +1649,7 @@ void config_file_handling(const char *path)
 			exit(rc);
 		}
 	}
+	fclose(fin);
 }
 
 #ifdef ENABLE_OCM
@@ -1878,8 +1884,8 @@ int slave_process_input_entry_step3(struct bwq_entry *ent)
 	int rc;
 	rc = finalize_input_entry(ent);
 cleanup:
-	binq_entry_free(ent);
 	free(ent->ctxt);
+	binq_entry_free(ent);
 	sem_post(&slave_credit);
 	return rc;
 }
@@ -1948,8 +1954,8 @@ int slave_process_input_entry_step2(struct bwq_entry *ent)
 	return 0;
 
 err:
-	binq_entry_free(ent);
 	free(ent->ctxt);
+	binq_entry_free(ent);
 	return rc;
 }
 
@@ -2055,8 +2061,8 @@ again:
 	return rc;
 
 err:
-	binq_entry_free(ent);
 	free(ent->ctxt);
+	binq_entry_free(ent);
 	return rc;
 }
 
@@ -2077,6 +2083,10 @@ int finalize_input_entry(struct bwq_entry *ent)
 		memcpy(omsg, msg, BMSG_SZ(msg));
 		/* Prepare output queue entry. */
 		struct bwq_entry *oent = malloc(sizeof(*oent));
+		if (!oent) {
+			bmsg_free(omsg);
+			return ENOMEM;
+		}
 		struct boutq_data *odata = &oent->data.out;
 		odata->comp_id = ctxt->comp_id;
 		odata->tv = in_data->tv;
