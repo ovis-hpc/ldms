@@ -70,11 +70,10 @@ aries ldmsaggd=AGGCLIENTOFLIST
 aries ldmsaggd_interval_default=10000000,ldmsaggd_offset_default=750000
 
 # store format
-aries ldmsaggd_stores=store_csv:store_derived_csv
+aries ldmsaggd_stores=store_csv
 aries ldmsaggd_dbg=DEBUG
 aries ldmsaggd_store_csv=altheader/1:id_pos/1:rolltype/2:rollover/0
 
 # yes, need the // in the next line; 1st / is the = replacement, remember?
 # oh, and file may be missing at the moment on aries.
 # oh, and need path treated as its own gender and maybe as a template string.
-aries ldmsaggd_store_derived_csv=altheader/1:id_pos/1:rolltype/2:rollover/0:derivedconf//projects_srn/ovis/aries/Config/store.config:agesec/40
