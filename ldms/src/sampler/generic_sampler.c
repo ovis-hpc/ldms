@@ -152,7 +152,7 @@ static const char *usage(struct ldmsd_plugin *self)
 
 static int create_metric_set(const char *inst_name, const char *prod_name)
 {
-	int rc;
+	int rc = 0;
 	gs_metric_t gs_metric;
 
 	schema = ldms_schema_new("generic_sampler");

@@ -105,6 +105,7 @@ static int create_metric_set(const char *instance_name)
 {
 	int rc, i, j;
 	char metric_name[128];
+	rc = ENOMEM;
 
 	/* Create the metric set */
 	schema = ldms_schema_new("procsensors");

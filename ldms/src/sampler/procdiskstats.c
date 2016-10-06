@@ -293,7 +293,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = config_add_disks(avl, schema);
 	if (rc)
-		return rc;
+		goto err;
 
 	attr = "instance";
 	value = av_value(avl, attr);
@@ -302,20 +302,21 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	if (set) {
 		msglog(LDMSD_LERROR, "procdiskstat: Set already created.\n");
-		return EINVAL;
+		goto err;
 	}
 	set = ldms_set_new(value, schema);
 	if (!set) {
 		rc = errno;
 		msglog(LDMSD_LERROR, "procdiskstats: failed to create "
 				"the metric set.\n");
-		return rc;
+		goto err;
 	}
 	ldms_set_producer_name_set(set, producer_name);
 	ldms_schema_delete(schema);
 	return 0;
 enoent:
 	msglog(LDMSD_LERROR, "procdiskstat: requires '%s'\n", attr);
+err:
 	ldms_schema_delete(schema);
 	return ENOENT;
 }

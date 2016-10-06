@@ -438,6 +438,11 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 	if (sos) {
 		/* Create a new handle and add it for this SOS */
 		si->sos_handle = create_handle(si->path, sos);
+		if (!si->sos_handle) {
+			sos_container_close(sos, SOS_COMMIT_ASYNC);
+			return ENOMEM;
+		}
+
 		/* See if the schema exists */
 		schema = sos_schema_by_name(sos, si->schema_name);
 		if (!schema)
