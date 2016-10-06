@@ -49,6 +49,8 @@ rm -rf %{buildroot}
 %{_prefix}/lib*/python*
 %endif
 %{_sysconfdir}
+%exclude %{_bindir}/bclient
+%exclude %{_prefix}/lib*/python*/site-packages/abhttp
 
 %post
 /sbin/ldconfig
@@ -79,6 +81,21 @@ Development files for Baler
 %files devel
 %defattr(-,root,root)
 %{_includedir}
+
+
+# baler-bclient package
+%package bclient
+Summary: Baler interactive client for distributed baler
+Group: %{_grp}
+Version: @PACKAGE_VERSION@
+Requires: baler >= @PACKAGE_VERSION@, PyYAML >= 3.0
+%description bclient
+`bclient` is a Baler interactive client with command-line interface for
+distributed baler.
+%files bclient
+%defattr(-,root,root)
+%{_bindir}/bclient
+%{_prefix}/lib*/python*/site-packages/abhttp
 
 
 %if "@ENABLE_DOC_TRUE@x" == "x"
