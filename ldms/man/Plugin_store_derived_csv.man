@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_derived_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "6 Oct 2015" "v3" "LDMS Plugin store_derived_csv man page"
+.TH man 7 "5 Oct 2016" "v3" "LDMS Plugin store_derived_csv man page"
 
 .SH NAME
 Plugin_store_derived_csv - man page for the LDMS store_derived_csv plugin
@@ -150,6 +150,8 @@ Any metric-schema pair can only be in the file once.
 .SH NOTES
 .PP
 .IP \[bu]
+The derived store has been deprecated. Please use the function store instead.
+.IP \[bu]
 If no metrics are defined for a schema, but that schema is being collected, timestamped data will still be written into files.
 .IP \[bu]
 All data writes out as uint64_t. The internal calculation is done as a double before being cast.
@@ -176,4 +178,4 @@ ldmsd_controller> strgp_add name=csv_ps_policy plugin=store_derived_csv containe
 .if
 
 .SH SEE ALSO
-ldmsd(8), Plugin_store_csv(7), ldms_quickstart(7)
+ldmsd(8), Plugin_store_csv(7), Plugin_store_function_csv(7), ldms_quickstart(7)

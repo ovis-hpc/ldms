@@ -75,6 +75,7 @@
 #define VALUE_COL    3
 
 
+static int buffer_flag = 1;
 #define MAX_ROLLOVER_STORE_KEYS 20
 #define STORE_DERIVED_NAME_MAX 256
 #define STORE_DERIVED_LINE_MAX 4096
@@ -345,6 +346,19 @@ static char* allocStoreKey(const char* container, const char* schema){
   return path;
 }
 
+static void __buffer_routine(FILE *f)
+{
+	if (buffer_flag)
+		return;
+	/* disable buffer */
+	int rc;
+	rc = setvbuf(f, NULL, _IONBF, 0);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s:%d setvbuf() rc: %d, errno: %d\n",
+		       __FILE__, __LINE__, rc, errno);
+	}
+}
+
 /* Time-based rolltypes will always roll the files when this
  * function is called.
  * Volume-based rolltypes must check and shortcircuit within this
@@ -415,6 +429,7 @@ static int handleRollover(){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				__buffer_routine(nfp);
 				if (altheader){
 					//re name: if got here then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
@@ -440,6 +455,7 @@ static int handleRollover(){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				__buffer_routine(nhfp);
 
 				//close and swap
 				if (s_handle->file)
@@ -891,6 +907,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
+	value = av_value(avl, "buffer");
+	if (value) {
+		msglog(LDMSD_LDEBUG, "store_function_csv setting buffer flag <%s>\n", value);
+		buffer_flag = atoi(value);
+	}
+
 	value = av_value(avl, "path");
 	if (!value){
 		msglog(LDMSD_LERROR, "store_function missing path\n");
@@ -1009,10 +1031,11 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=store_function_csv path=<path> altheader=<0/1> derivedconf=<fullpath> ageusec=<sec>\n"
+	return  "    config name=store_function_csv path=<path> altheader=<0|1> buffer=<0|1> derivedconf=<fullpath> ageusec=<sec>\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path       The path to the root of the csv directory\n"
 		"         - altheader  Header in a separate file (optional, default 0)\n"
+		"         - buffer     0 to disable buffering, 1 to enable it (optional, default 1)\n"
 		"         - rollover   Greater than zero; enables file rollover and sets interval\n"
 		"         - rolltype   [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
@@ -1201,6 +1224,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		       __FILE__, errno, tmp_path);
 		goto err3;
 	}
+	__buffer_routine(s_handle->file);
 
 	/*
 	 * Always reprint the header because this is a store that may have been
@@ -1235,6 +1259,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			goto err4;
 		}
 	}
+	__buffer_routine(s_handle->headerfile);
 
 	/* ideally here should always be the printing of the header, and we could drop keeping
 	 * track of printheader. keeping this like v2 for consistency for now
@@ -2534,15 +2559,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		return rc;
 	}
 
-//	if (skip){
-//		//even if skip, still need the vals to do the raw/rate calcs.
-//		msglog(LDMSD_LDEBUG, "Note: firsttime -- should be skipping writeout for set <%s>\n",
-//		       ldms_set_instance_name_get(set));
-//	} else {
-//		msglog(LDMSD_LDEBUG, "Note: After firsttime -- not skipping writeout for set <%s>\n",
-//		       ldms_set_instance_name_get(set));
-//	}
-
 	/*
 	 * New in v3: if time diff is not positive, always write out something and flag.
 	 * if its RAW data, write the val. if its RATE data, write zero
@@ -2553,6 +2569,15 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	prev.tv_usec = dp->ts->usec;
 	curr.tv_sec = ts->sec;
 	curr.tv_usec = ts->usec;
+
+//	if (skip){
+//		//even if skip, still need the vals to do the raw/rate calcs.
+//		msglog(LDMSD_LDEBUG, "Note: firsttime (%lu) -- should be skipping writeout for set <%s>\n",
+//		       curr.tv_sec, ldms_set_instance_name_get(set));
+//	} else {
+//		msglog(LDMSD_LDEBUG, "Note: After firsttime -- not skipping writeout for set <%s>\n",
+//		       ldms_set_instance_name_get(set));
+//	}
 
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >=
 	    (double)curr.tv_sec*1000000+curr.tv_usec){
@@ -2594,7 +2619,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		fprintf(s_handle->file, ",%"PRIu64",%"PRIu64,
 			compid, jobid);
 	}
-        //always get the vals because may need the stored value, even if skip this time
+	//always get the vals because may need the stored value, even if skip this time
 
 	for (i = 0; i < s_handle->numder; i++){ //go thru all the vals....only write the writeout vals
 		uint64_t val, temp;
