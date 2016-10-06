@@ -310,7 +310,7 @@ Thresh and scale currently use the same variable. Thresh may change to a uint64_
 Flag will be set if a) the dt is negative or b) dt is greater than ageusec.
 Individual variable flags will be set if a) there is invalid input to the calculation or b) in a rate or subtraction calculation, the second value is greater than the first. It is NOT set if the cast in the computation would result in an overflow.
 .IP \[bu]
-This store is speculative at the moment. This store may replace store_derived_csv in future.
+This store is speculative at the moment. This store replaces store_derived_csv.
 
 .SH BUGS
 None.
