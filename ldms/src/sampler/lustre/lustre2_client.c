@@ -83,16 +83,6 @@
 
 #define STR_MAP_SIZE 4093
 
-/**
- * This will holds IDs for stats_key.
- */
-static struct str_map *stats_key_id = NULL;
-
-/**
- * ID map for llite metrics.
- */
-static struct str_map *llite_key_id = NULL;
-
 static struct lustre_metric_src_list lms_list = {0};
 
 static ldms_set_t set;
@@ -202,7 +192,6 @@ static int create_metric_set(const char *path, const char *oscs,
 	struct str_list_head *heads[] = {NULL, NULL, NULL};
 	char **keys[] = {stats_key, stats_key, llite_key};
 	int keylen[] = {STATS_KEY_LEN, STATS_KEY_LEN, LLITE_KEY_LEN};
-	struct str_map *maps[] = {stats_key_id, stats_key_id, llite_key_id};
 	lh_osc = lh_mdc = lh_llite = 0;
 
 	lh_osc = construct_client_list(oscs, "/proc/fs/lustre/osc");
@@ -236,7 +225,7 @@ static int create_metric_set(const char *path, const char *oscs,
 			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
 			rc = stats_construct_routine(schema, tmp_path,
 					"client.lstats.", suffix, &lms_list, keys[i],
-					keylen[i], maps[i]);
+					keylen[i]);
 			if (rc)
 				goto err1;
 		}
@@ -377,19 +366,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	msglog = pf;
 	set = NULL;
 	lustre_sampler_set_msglog(pf);
-	stats_key_id = str_map_create(STR_MAP_SIZE);
-	if (!stats_key_id) {
-		msglog(LDMSD_LERROR, "stats_key_id map create error!\n");
-		goto err_nomem;
-	}
-	str_map_id_init(stats_key_id, stats_key, STATS_KEY_LEN, 1);
-
-	llite_key_id = str_map_create(STR_MAP_SIZE);
-	if (!llite_key_id) {
-		msglog(LDMSD_LERROR, "llite_key_id map create error!\n");
-		goto err_nomem;
-	}
-	str_map_id_init(llite_key_id, llite_key, LLITE_KEY_LEN, 1);
 
 	init_complete = 1;
 out:
