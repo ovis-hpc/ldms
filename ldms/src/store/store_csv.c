@@ -427,11 +427,6 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 		return EINVAL;
 	}
 
-	value = av_value(avl, "buffer");
-	if (value) {
-		buffer_flag = atoi(value);
-	}
-
 	cvalue = av_value(avl, "container");
 	if (!cvalue){
 	  msglog(LDMSD_LERROR, "%s: Error: config missing container name\n", __FILE__);
@@ -554,6 +549,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	value = av_value(avl, "buffer");
 	if (value) {
+		msglog(LDMSD_LDEBUG, "store_csv setting buffer <%s>\n", value);
 		buffer_flag = atoi(value);
 	}
 

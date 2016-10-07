@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "06 Oct 2015" "v3" "LDMS Plugin store_csv man page"
+.TH man 7 "03 Oct 2016" "v3" "LDMS Plugin store_csv man page"
 
 .SH NAME
 Plugin_store_csv - man page for the LDMS store_csv plugin
@@ -24,11 +24,11 @@ the ldmsd_controller. The store_csv plugin is a CSV store.
 .PP
 
 .SH STORE_CSV INIT CONFIGURATION ATTRIBUTE SYNTAX
-The configuration parameters altheader, rolltype, rollover, and sequence are applied to all metric sets alike,
-unless overriden by the action=custom values.
+The configuration parameters altheader, rolltype, rollover, buffer, and sequence are applied to all metric sets alike.
+A subset of these can be overriden by the action=custom values.
 .TP
 .BR config
-name=<plugin_name> action=init path=<path> [ altheader=<0/!0> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> userdata=<0/!0>]
+name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/!0> rolltype=<rolltype> rollover=<rollover> sequence=<seqname> userdata=<0/!0>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -54,6 +54,10 @@ If a separate file is used then, if the data file is called "meminfo" the additi
 userdata=<0/!0>
 .br
 Distinguishes whether or not to write each metrics' user data along with each data value. 0 = no write. Any non-zero means to write the values. Default is to not write.
+.TP
+buffer=<0/!0>
+.br
+Distinguishes whether or not to buffer the data for the writeout. 0 = does not buffer. Any non-zero means buffering occurs. Default is to buffer.
 .TP
 rolltype=<rolltype>
 .br
@@ -87,7 +91,7 @@ Controls the ordering of metric data column. This is kept as an option for histo
 
 .SH STORE_CSV CUSTOM CONFIGURATION ATTRIBUTE SYNTAX
 The configuration parameters set by action=init are applied to all metric sets alike,
-unless overriden by the action=custom values.
+unless overriden by the action=custom values. Only a subset can be overridden.
 
 .TP
 .BR config
@@ -201,6 +205,8 @@ alnum
 Please note the argument changes from v2.
 .IP \[bu]
 Note that the default order is FORWARD. This is the inverse of v2.
+.IP \[bu]
+Note that sequence will be deprecated soon.
 .PP
 
 .SH BUGS
