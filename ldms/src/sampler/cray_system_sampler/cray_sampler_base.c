@@ -368,6 +368,7 @@ int add_metrics_generic(ldms_schema_t schema,
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
+		lustre_sampler_set_msglog(msglog);
 		return add_metrics_lustre(schema, msglog);
 #else
 		//default unused
