@@ -156,8 +156,8 @@ int btkn_store_id2str_esc(struct btkn_store *store, uint32_t id,
 				break;
 			dest[o++] = '\\';
 			dest[o++] = 'x';
-			dest[o++] = __hex[(bstr->cstr[i])>>4];
-			dest[o++] = __hex[(bstr->cstr[i])&0xF];
+			dest[o++] = __hex[((unsigned char)bstr->cstr[i])>>4];
+			dest[o++] = __hex[((unsigned char)bstr->cstr[i])&0xF];
 		}
 		i++;
 	}

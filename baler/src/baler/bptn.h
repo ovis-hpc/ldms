@@ -210,10 +210,24 @@ int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
  * \param dest The buffer for the output string.
  * \param len The maximum length for \a dest.
  *
- * \returns Error code on error.
- * \returns 0 on success.
+ * \retval errno on error.
+ * \retval 0 on success.
  */
 int bptn_store_id2str(struct bptn_store *ptns, struct btkn_store *tkns,
+		      uint32_t ptn_id, char *dest, int len);
+
+/**
+ * Convert \c ptn_id to C string with '\\' escape sequence.
+ *
+ * \param store The pattern store.
+ * \param ptn_id The pattern ID.
+ * \param dest The buffer for the output string.
+ * \param len The maximum length for \a dest.
+ *
+ * \retval errno on error.
+ * \retval 0 on success.
+ */
+int bptn_store_id2str_esc(struct bptn_store *ptns, struct btkn_store *tkns,
 		      uint32_t ptn_id, char *dest, int len);
 
 /**
@@ -230,6 +244,22 @@ int bptn_store_id2str(struct bptn_store *ptns, struct btkn_store *tkns,
  */
 int bptn_store_ptn2str(struct bptn_store *ptns, struct btkn_store *tkns,
 			const struct bstr *ptn, char *dest, int len);
+
+/**
+ * Print \c ptn to destination \c dest string with '\\' escape sequence.
+ *
+ * \param ptns The pattern store handle.
+ * \param tkns The token store handle.
+ * \param ptn The pattern to be printed.
+ * \param[out] dest The output parameter.
+ * \param len The size of the \c dest buffer.
+ *
+ * \retval 0 if OK.
+ * \retval errno if error.
+ */
+int bptn_store_ptn2str_esc(struct bptn_store *ptns, struct btkn_store *tkns,
+			const struct bstr *ptn, char *dest, int len);
+
 /**
  * Last ID.
  * \param ptns The pattern store.

@@ -9,6 +9,10 @@ if ENABLE_SWIG
 SUBDIRS += swig
 endif
 
+if ENABLE_PYTHON
+SUBDIRS += python
+endif
+
 if ENABLE_ETC
 SUBDIRS += etc
 endif

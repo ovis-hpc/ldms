@@ -304,6 +304,31 @@ int bptn_store_id2str(struct bptn_store *ptns, struct btkn_store *tkns,
 	return 0;
 }
 
+int bptn_store_id2str_esc(struct bptn_store *ptns, struct btkn_store *tkns,
+		      uint32_t ptn_id, char *dest, int len)
+{
+	if (!ptns || !tkns || !dest)
+		return EINVAL;
+	char *s = dest;
+	int slen = len;
+	const struct bstr *ptn = bmap_get_bstr(ptns->map, ptn_id);
+	if (!ptn)
+		return ENOENT;
+	int i;
+	int rc;
+	int l;
+	const uint32_t *c;
+	for (i=0,c=ptn->u32str; i<ptn->blen; c++,i+=sizeof(*c)) {
+		rc = btkn_store_id2str_esc(tkns, *c, s, slen);
+		if (rc)
+			return rc;
+		l = strlen(s);
+		s += l;
+		slen -= l;
+	}
+	return 0;
+}
+
 int bptn_store_ptn2str(struct bptn_store *ptns, struct btkn_store *tkns,
 			const struct bstr *ptn, char *dest, int len)
 {
@@ -314,6 +339,25 @@ int bptn_store_ptn2str(struct bptn_store *ptns, struct btkn_store *tkns,
 	const uint32_t *c;
 	for (i=0,c=ptn->u32str; i<ptn->blen; c++,i+=sizeof(*c)) {
 		rc = btkn_store_id2str(tkns, *c, s, slen);
+		if (rc)
+			return rc;
+		l = strlen(s);
+		s += l;
+		slen -= l;
+	}
+	return 0;
+}
+
+int bptn_store_ptn2str_esc(struct bptn_store *ptns, struct btkn_store *tkns,
+			const struct bstr *ptn, char *dest, int len)
+{
+	int slen = len;
+	int l;
+	int i, rc;
+	char *s;
+	const uint32_t *c;
+	for (i=0,c=ptn->u32str; i<ptn->blen; c++,i+=sizeof(*c)) {
+		rc = btkn_store_id2str_esc(tkns, *c, s, slen);
 		if (rc)
 			return rc;
 		l = strlen(s);

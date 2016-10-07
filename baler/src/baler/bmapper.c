@@ -57,6 +57,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <assert.h>
+#include <ctype.h>
 
 #include "fnv_hash.h"
 #include "butils.h"
@@ -470,7 +471,35 @@ out:
 	return id;
 }
 
-void bmap_dump(struct bmap *bmap)
+static
+void __bstr_print_escape(const struct bstr *bstr)
+{
+	int i;
+	for (i = 0; i < bstr->blen; i++) {
+		if (isgraph(bstr->cstr[i])) {
+			printf("%c", bstr->cstr[i]);
+		} else {
+			printf("\\x%02hhx", (unsigned char)bstr->cstr[i]);
+		}
+	}
+}
+
+static
+void __bstr_print_hex(const struct bstr *bstr)
+{
+	int i;
+	printf("blen: %d", bstr->blen);
+	printf(", hex:");
+	i = 0;
+	while (i < bstr->blen) {
+		if (i % 4 == 0)
+			printf(" ");
+		printf("%02hhx", bstr->cstr[i]);
+		i++;
+	}
+}
+
+void bmap_dump(struct bmap *bmap, int hex)
 {
 	uint32_t max_id = bmap->hdr->next_id;
 	uint32_t id;
@@ -479,11 +508,16 @@ void bmap_dump(struct bmap *bmap)
 		bstr = bmap_get_bstr(bmap, id);
 		if (!bstr)
 			continue;
-		printf("%10u %.*s\n", id, bstr->blen, bstr->cstr);
+		printf("%10u ", id);
+		if (hex)
+			__bstr_print_hex(bstr);
+		else
+			__bstr_print_escape(bstr);
+		printf("\n");
 	}
 }
 
-void bmap_dump_inverse(struct bmap *map)
+void bmap_dump_inverse(struct bmap *map, int hex)
 {
 	uint64_t idx;
 	uint64_t *hdata = map->bmhash->bvec->data;
@@ -496,7 +530,11 @@ void bmap_dump_inverse(struct bmap *map)
 	for (idx = 0; idx < hlen; idx++) {
 		BMLIST_FOREACH(node, hdata[idx], link, mlist) {
 			struct bstr *_str = BMPTR(mstr, node->str_off);
-			printf("%.*s %u\n", _str->blen, _str->cstr, node->id);
+			if (hex)
+				__bstr_print_hex(_str);
+			else
+				__bstr_print_escape(_str);
+			printf(" %u\n", node->id);
 		}
 	}
 }

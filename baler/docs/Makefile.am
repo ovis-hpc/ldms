@@ -7,7 +7,10 @@ doc: docs
 docs: doxygen-out texdocs
 
 #DOCDEPS = $(shell find $(top_srcdir)/src -iname '*.[ch]')
-DOCDEPS = $(top_srcdir)/src/*/*.c $(top_srcdir)/src/*/*.h
+DOCDEPS = $(top_srcdir)/src/*/*.c $(top_srcdir)/src/*/*.h \
+          $(top_srcdir)/python/abhttp/*.py \
+          $(top_srcdir)/python/abhttp/*.dox
+
 
 doxygen-out: $(DOCDEPS)
 	@DOXYGEN@
@@ -72,7 +75,8 @@ man/man5/%.5: man/man3/%.3
 man1_files = man/man1/balerd.1 \
 	    man/man1/bhttpd.1 \
 	    man/man1/bquery.1 \
-	    man/man1/bassoc.1
+	    man/man1/bassoc.1 \
+	    man/man1/bclient.1
 
 $(man1_files): doxygen-out
 

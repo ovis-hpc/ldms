@@ -6,10 +6,11 @@
 
 #include "bmapper.h"
 
-#define FMT "?hs:I"
+#define FMT "?hs:Ix"
 
 const char *path = NULL;
 int inverse = 0;
+int hex = 0;
 
 void usage()
 {
@@ -30,6 +31,9 @@ next_arg:
 		break;
 	case 'I':
 		inverse = 1;
+		break;
+	case 'x':
+		hex = 1;
 		break;
 	case '?':
 	case 'h':
@@ -63,9 +67,9 @@ no_arg:
 		exit(-1);
 	}
 	if (inverse) {
-		bmap_dump_inverse(bmap);
+		bmap_dump_inverse(bmap, hex);
 	} else {
-		bmap_dump(bmap);
+		bmap_dump(bmap, hex);
 	}
 	bmap_close_free(bmap);
 
