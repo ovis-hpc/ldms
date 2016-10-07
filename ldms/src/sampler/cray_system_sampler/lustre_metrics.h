@@ -123,11 +123,7 @@ static char *LUSTRE_METRICS[] = {
 #define CSS_LUSTRE_NAME_MAX 1024
 #define CSS_LUSTRE_PATH_MAX 4096
 
-/* Lustre specific vars */
-/**
- * str<->idx in LUSTRE_METRICS.
- */
-extern struct str_map *lustre_idx_map;
+/* Lustre specific */
 
 /** add metrics */
 int add_metrics_lustre(ldms_schema_t schema,
