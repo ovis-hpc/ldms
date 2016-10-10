@@ -354,7 +354,7 @@ int bptn_store_ptn2str_esc(struct bptn_store *ptns, struct btkn_store *tkns,
 	int slen = len;
 	int l;
 	int i, rc;
-	char *s;
+	char *s = dest;
 	const uint32_t *c;
 	for (i=0,c=ptn->u32str; i<ptn->blen; c++,i+=sizeof(*c)) {
 		rc = btkn_store_id2str_esc(tkns, *c, s, slen);
