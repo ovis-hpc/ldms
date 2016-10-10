@@ -82,12 +82,15 @@ struct lustre_svc_stats* lustre_svc_stats_alloc(const char *path, int mlen)
 	s->lms.type = LMS_SVC_STATS;
 	if (!s->lms.path)
 		goto err1;
+	s->mctxt_map = str_map_create(1021);
+	if (!s->mctxt_map)
+		goto err1;
 	s->tv_cur = &s->tv[0];
 	s->tv_prev = &s->tv[1];
 	s->mlen = mlen;
 	return s;
 err1:
-	free(s);
+	lustre_svc_stats_free(s);
 err0:
 	return NULL;
 }
@@ -110,12 +113,19 @@ err0:
 
 void __lms_content_free(struct lustre_metric_src *lms)
 {
-	free(lms->path);
+	if (lms->path) {
+		free(lms->path);
+		lms->path = NULL;
+	}
 }
 
 void lustre_svc_stats_free(struct lustre_svc_stats *lss)
 {
 	__lms_content_free(&lss->lms);
+	if (lss->mctxt_map) {
+		str_map_free(lss->mctxt_map);
+		lss->mctxt_map = NULL;
+	}
 	free(lss);
 }
 
@@ -146,23 +156,17 @@ void lustre_metric_src_list_free(struct lustre_metric_src_list *list)
  * \returns Error code on error.
  */
 int __add_lss_metric_routine(ldms_schema_t schema,
-			 const char *metric_name, struct str_map *id_map,
+			 const char *metric_name,
+			 struct lustre_metric_ctxt *ctxt,
 			 const char *key, struct lustre_svc_stats *lss)
 {
 	char rate_key[128];
-	uint64_t id = str_map_get(id_map, key);
-	if (!id) {
-		/* Unknown IDs ... this is bad */
-		return ENOENT;
-	}
 	snprintf(rate_key, 128, "%s.rate", key);
-	uint64_t id_rate = str_map_get(id_map, rate_key);
-	/* metric is valid, add it */
 	enum ldms_value_type vt = LDMS_V_U64;
 	if (strstr(key, ".rate"))
 		vt = LDMS_V_F32;
-	lss->mctxt[id].metric_idx = ldms_schema_metric_add(schema, metric_name, vt);
-	lss->mctxt[id].rate_ref = id_rate;
+	ctxt->metric_idx = ldms_schema_metric_add(schema, metric_name, vt);
+	ctxt->rate_ref = str_map_get(lss->mctxt_map, rate_key);
 	return 0;
 }
 
@@ -214,31 +218,45 @@ int stats_construct_routine(ldms_schema_t schema,
 			    const char *prefix,
 			    const char *suffix,
 			    struct lustre_metric_src_list *list,
-			    char **keys, int nkeys,
-			    struct str_map *key_id_map)
+			    char **keys, int nkeys)
 {
 	char metric_name[128];
+	struct lustre_metric_ctxt *ctxt;
 	int rc;
-	struct lustre_svc_stats *lss =
-		lustre_svc_stats_alloc(stats_path, nkeys + 1);
-	if (!lss)
-		return ENOMEM;
-	lss->key_id_map = key_id_map;
-	LIST_INSERT_HEAD(list, &lss->lms, link);
 	int j;
+	struct lustre_svc_stats *lss =
+		lustre_svc_stats_alloc(stats_path, nkeys);
+	if (!lss) {
+		rc = errno;
+		goto err0;
+	}
+	/* initializing str_map with metric context, key[j] :-> mctxt[j] */
+	for (j = 0; j < nkeys; j++) {
+		rc = str_map_insert(lss->mctxt_map, keys[j],
+				    (uint64_t)&lss->mctxt[j]);
+		if (rc) {
+			goto err1;
+		}
+	}
+	LIST_INSERT_HEAD(list, &lss->lms, link);
 	for (j = 0; j < nkeys; j++) {
 		sprintf(metric_name, "%s%s%s", prefix, keys[j], suffix);
 		rc = __add_lss_metric_routine(schema, metric_name,
-				key_id_map, keys[j], lss);
+					      &lss->mctxt[j], keys[j], lss);
 		if (rc)
-			return rc;
+			goto err1;
 	}
-	if ((j = str_map_get(key_id_map, "status")))
-		lss->mh_status_idx = lss->mctxt[j].metric_idx;
+	if ((ctxt = (void*)str_map_get(lss->mctxt_map, "status")))
+		lss->mh_status_idx = ctxt->metric_idx;
 	else
 		lss->mh_status_idx = -1;
 
 	return 0;
+
+err1:
+	lustre_svc_stats_free(lss);
+err0:
+	return rc;
 }
 
 int single_construct_routine(ldms_schema_t schema,
@@ -302,7 +320,6 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 	char unit[16];
 	uint64_t count, min, max, sum, sum2;
 	union ldms_value value;
-	struct str_map *id_map = lss->key_id_map;
 	/* The first line is timestamp, we can ignore that */
 	char *s = fgets(lbuf, __LBUF_SIZ, lss->lms.f);
 	if (!s)
@@ -316,11 +333,12 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 		sscanf(lbuf, "%s %lu samples %s %lu %lu %lu %lu",
 				name, &count, unit, &min, &max, &sum, &sum2);
 
-		uint64_t id = str_map_get(id_map, name);
-		uint64_t rate_id = lss->mctxt[id].rate_ref;
-
-		if (!id)
+		struct lustre_metric_ctxt *ctxt =
+				(void*)str_map_get(lss->mctxt_map, name);
+		if (!ctxt)
 			continue;
+
+		struct lustre_metric_ctxt *rate_ctxt = (void*)ctxt->rate_ref;
 
 		if (strcmp("[regs]", unit) == 0)
 			/* We track the count for reqs */
@@ -329,14 +347,14 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 			/* and track sum for everything else */
 			value.v_u64 = sum;
 
-		if (rate_id) {
+		if (rate_ctxt) {
 			uint64_t prev_counter =
-				ldms_metric_get_u64(set, lss->mctxt[id].metric_idx);
+				ldms_metric_get_u64(set, ctxt->metric_idx);
 			union ldms_value rate;
 			rate.v_f = (value.v_u64 - prev_counter) / dt;
-			ldms_metric_set(set, lss->mctxt[rate_id].metric_idx, &rate);
+			ldms_metric_set(set, rate_ctxt->metric_idx, &rate);
 		}
-		ldms_metric_set(set, lss->mctxt[id].metric_idx, &value);
+		ldms_metric_set(set, ctxt->metric_idx, &value);
 	}
 
 	struct timeval *tmp = lss->tv_cur;
