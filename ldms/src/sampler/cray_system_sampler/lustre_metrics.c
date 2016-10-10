@@ -76,8 +76,6 @@ struct lustre_metric_src_list lms_list = {0};
 
 int add_metrics_lustre(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 {
-	struct lustre_svc_stats *lss;
-	struct lustre_metric_src *lms;
 	struct str_list *sl;
 	int i;
 	int rc;
@@ -116,7 +114,6 @@ int handle_llite(const char *llite)
 int sample_metrics_lustre(ldms_set_t set, ldmsd_msg_log_f msglog)
 {
 	struct lustre_metric_src *lms;
-	struct lustre_svc_stats *lss;
 	int retrc = 0;
 	int rc;
 

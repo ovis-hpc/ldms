@@ -348,29 +348,12 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	if (init_complete)
 		goto out;
 
-#ifdef HAVE_LUSTRE
-	lustre_idx_map = str_map_create(1021);
-	if (!lustre_idx_map)
-		goto err;
-
-	if (str_map_id_init(lustre_idx_map, LUSTRE_METRICS,
-				LUSTRE_METRICS_LEN, 1))
-		goto err;
-#endif
-
 	init_complete = 1;
 
 out:
 	return &cray_gemini_d_sampler_plugin.base;
 
 err:
-
-#ifdef HAVE_LUSTRE
-	if (lustre_idx_map) {
-		str_map_free(lustre_idx_map);
-		lustre_idx_map = NULL;
-	}
-#endif
 
 	return NULL;
 }
