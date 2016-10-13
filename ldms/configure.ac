@@ -422,8 +422,6 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_rollperiod_test.sh
 		 scripts/ldms_local_rollrecords_test.sh
 		 scripts/ldms_local_rolltime_test.sh
-		 scripts/ldms_local_dertest.sh
-		 scripts/ldms_local_dertest_big.sh
 		 scripts/ldms_local_procstatutil.sh
 		 scripts/ldms_local_procstat.sh
 		 scripts/ldms_local_csvorder.sh

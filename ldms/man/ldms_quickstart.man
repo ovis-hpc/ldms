@@ -46,9 +46,7 @@ plugins are provided. Storage occurs when a
 valid updated metric set data is collected by an aggregator that
 has been configured to write that data to storage. Collection of
 a metric set whose data has not been updated or is incomplete
-does not result in a write to storage in any format. The store_derived_csv plugin
-can be configured to retain the immediately previous state history and thus store
-rate values.
+does not result in a write to storage in any format. 
 
 .PP
 The host daemon is the same base code in all cases; differentiation is based on configuration of plugins for sampling or
@@ -768,7 +766,7 @@ General pages address information, such as ldms_build_install, ldms_quickstart, 
 Utilities pages address the various utilities and commands such as ldmsd, ldmsd_controller, ldms_ls, and ldmsctl.
 .SS Plugins
 Plugin pages address all plugins, both samplers and stores. Naming convention for these pages is Plugin_XXX.
-For example: Plugin_aries_mmr, Plugin_cray_system_sampler_variants, Plugin_kgnilnd, Plugin_meminfo, Plugin_procinterrupts, Plugin_procnetdev, Plugin_procnfs, Plugin_store_csv, Plugin_store_derived_csv, Plugin_store_sos, and Plugin_vmstat.
+For example: Plugin_aries_mmr, Plugin_cray_system_sampler_variants, Plugin_kgnilnd, Plugin_meminfo, Plugin_procinterrupts, Plugin_procnetdev, Plugin_procnfs, Plugin_store_csv, Plugin_store_sos, and Plugin_vmstat.
 
 .SH NOTES
 As part of the install, test scripts are placed in /tmp/opt/ovis/bin. These scripts
@@ -781,5 +779,5 @@ No known bugs.
 
 
 .SH SEE ALSO
-ldms_build_install(7), ldmsd(8), ldmsd_controller(8), ldms_authentication(7), ldmsctl(8), ldms_build_install(7), ldms_ls(8), Plugin_aries_mmr(7), Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_meminfo(7), Plugin_procinterrupts(7), Plugin_procnetdev(7), Plugin_procnfs(7), Plugin_store_csv(7), Plugin_store_derived_csv(7), Plugin_store_sos(7), Plugin_vmstat(7)
+ldms_build_install(7), ldmsd(8), ldmsd_controller(8), ldms_authentication(7), ldmsctl(8), ldms_build_install(7), ldms_ls(8), Plugin_aries_mmr(7), Plugin_cray_system_sampler_variants(7), Plugin_kgnilnd(7), Plugin_meminfo(7), Plugin_procinterrupts(7), Plugin_procnetdev(7), Plugin_procnfs(7), Plugin_store_csv(7), Plugin_store_sos(7), Plugin_vmstat(7)
 

@@ -27,10 +27,6 @@ ldms_local_rollperiod_test.sh \
 ldms_local_rollrecords_test.sh \
 ldms_local_rolltime_test.sh
 
-bin_SCRIPTS+= \
-ldms_local_dertest.sh \
-ldms_local_dertest_big.sh
-
 bin_SCRIPTS += ldms_local_procstatutil.sh
 
 bin_SCRIPTS += ldms_local_syslog.sh
