@@ -2198,11 +2198,12 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	rc = zap_send(x->zap_ep, req, len);
 	if (rc) {
 		zap_put_ep(x->zap_ep);
-#ifdef DEBUG
+
 		pthread_mutex_lock(&x->lock);
 		__ldms_free_ctxt(x, ctxt);
-		x->active_lookup--;
 		pthread_mutex_unlock(&x->lock);
+#ifdef DEBUG
+		x->active_lookup--;
 		x->log("DEBUG: lookup_reply: error. put ref %p: "
 				"active_lookup = %d. path = %s\n",
 				x->zap_ep, x->active_lookup,
