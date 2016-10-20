@@ -143,14 +143,14 @@ endif
 
 if ENABLE_PERFEVENT
 libperfevent_la_SOURCES = perfevent.c
-libperfevent_la_LIBADD = $(COMMON_LIBADD) -lm
+libperfevent_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lm
 pkglib_LTLIBRARIES += libperfevent.la
 endif
 
 if ENABLE_PAPI
 libspapi_la_SOURCES = papi.c
 libspapi_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG)
-libspapi_la_LIBADD = $(COMMON_LIBADD) -lpapi -lm
+libspapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lm
 pkglib_LTLIBRARIES += libspapi.la
 endif
 

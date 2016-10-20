@@ -68,6 +68,7 @@
 #include <math.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -101,6 +102,9 @@ static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
 static char* default_schema_name = "perfevent";
+static uint64_t compid;
+
+LJI_GLOBALS;
 
 struct pevent {
 	struct perf_event_attr attr;
@@ -142,18 +146,19 @@ static const char *usage(struct ldmsd_plugin* self)
 		"    config name=perfevent action=ls\n"
 		"            - List the currently configured events.\n"
 		"    config name=perfevent action=add metricname=<string> pid=<int> cpu=<int> type=<int> id=<int>\n"
-		"            metricname   - The metric name for the event\n"
-		"            pid    - The PID for the process being monitored\n"
-		"                     The counter will follow the process to\n"
-		"                     whichever CPU/core is in use. Note that\n"
-		"                     'pid' and 'cpu' are mutually exclusive.\n"
-		"            cpu    - Count this event on the specified CPU.\n"
-		"                     This will accumulate events across all PID\n"
-		"                     that land on the specified CPU/core. Note\n"
-		"                     that 'pid' and 'cpu' are mutually\n"
-		"                     exclusive.\n"
-		"            type   - The event type.\n"
-		"            id     - The event id.\n"
+		"            <metricname>  The metric name for the event\n"
+		"            <pid>         The PID for the process being monitored\n"
+		"                          The counter will follow the process to\n"
+		"                          whichever CPU/core is in use. Note that\n"
+		"                          'pid' and 'cpu' are mutually exclusive.\n"
+		"            <cpu>         Count this event on the specified CPU.\n"
+		"                          This will accumulate events across all PID\n"
+		"                          that land on the specified CPU/core. Note\n"
+		"                          that 'pid' and 'cpu' are mutually\n"
+		"                          exclusive.\n"
+		"            <type>        The event type.\n"
+		"            <id>          The event id.\n"
+		"        " LJI_DESC
 		" For more information visit: http://man7.org/linux/man-pages/man2/perf_event_open.2.html\n\n";
 }
 
@@ -389,13 +394,23 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	char *producer_name;
 	char *instance_name;
 	char *schema_name;
+	char *compid_str;
 	struct pevent *pe;
+	union ldms_value v;
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
 		msglog(LDMSD_LERROR, "perfevent: producer not passed\n");
 		return EINVAL;
 	}
+
+	compid_str = av_value(avl, "component_id");
+	if (compid_str)
+		compid = (uint64_t)(atoi(compid_str));
+	else
+		compid = 0;
+
+	LJI_CONFIG(compid_str,avl);
 
 	instance_name = av_value(avl, "instance");
 	if (!instance_name) {
@@ -415,6 +430,17 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	if (!schema) {
 		msglog(LDMSD_LERROR, "perfevent: failed to creat schema!\n");
 		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = LJI_ADD_JOBID(schema);
+	if (rc < 0) {
 		goto err;
 	}
 
@@ -442,7 +468,11 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		goto err;
 	}
 
+	//add specialized metrics
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
 
+	LJI_SAMPLE(set,1);
 	return 0;
 
 err:
@@ -527,6 +557,8 @@ static int sample(struct ldmsd_sampler *self)
 	}
 
 	ldms_transaction_begin(set);
+
+	LJI_SAMPLE(set, 1);
 
 	struct event_group *eg;
 	LIST_FOREACH(eg, &gevent_list, entry) {

@@ -59,12 +59,17 @@
 #include <papi.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
 static char* default_schema_name = "papi";
 static long_long* papi_event_val;
+static uint64_t compid;
+
+static int metric_offset = 1;
+LJI_GLOBALS;
 
 static int create_metric_set(const char* instance_name, const char* schema_name, char* events, uint64_t pid)
 {
@@ -74,6 +79,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	char *event_name;
 	char* status;
 	PAPI_event_info_t event_info;
+	union ldms_value v;
 
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if(rc != PAPI_VER_CURRENT) {
@@ -93,6 +99,18 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	if (!schema) {
 		msglog(LDMSD_LERROR, "papi: failed to creat schema!\n");
 		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	metric_offset++;
+	rc = LJI_ADD_JOBID(schema);
+	if (rc < 0) {
 		goto err;
 	}
 
@@ -163,7 +181,12 @@ next_event:
 		goto err;
 	}
 
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
+
 	ldms_metric_user_data_set(set, 0, papi_event_set);
+
+	LJI_SAMPLE(set,1);
 
 	return 0;
 
@@ -177,11 +200,13 @@ err:
 /**
  * \brief Configuration
  *
- * config name=spapi producer=<producer_name> instance=<instance_name> pid=<pid> events=<event1,event2,...>
- *     producer     The component id value.
- *     instance     The set name.
- *     pid          The process to attach to.
- *     events       The the name of the hardware counter events 
+ * config name=spapi producer=<producer_name> instance=<instance_name> [component_id=<compid>] [with_jobid=<jid>] pid=<pid> events=<event1,event2,...>
+ *     producer       The producer id value.
+ *     instance       The set name.
+ *     component_id   The component id. Defaults to zero
+ *     jid            lookup jobid or report 0.
+ *     pid            The process to attach to.
+ *     events         The name of the hardware counter events
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
@@ -192,12 +217,21 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *instance_name;
 	char *schema_name;
 	char *events;
+	char *compid_str;
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name){
 		msglog(LDMSD_LERROR, "papi: missing producer\n");
 		return ENOENT;
 	}
+
+	compid_str = av_value(avl, "component_id");
+	if (compid_str)
+		compid = (uint64_t)(atoi(compid_str));
+	else
+		compid = 0;
+
+	LJI_CONFIG(compid_str,avl);
 
 	instance_name = av_value(avl, "instance");
 	if (!instance_name) {
@@ -264,6 +298,8 @@ static int sample(struct ldmsd_sampler *self)
 
 	ldms_transaction_begin(set);
 
+	LJI_SAMPLE(set, 1);
+
 	if(PAPI_read(papi_event_set, papi_event_val) != PAPI_OK) {
 		msglog(LDMSD_LERROR, "papi: failed to read event set %d\n", papi_event_set);
 	}
@@ -271,7 +307,7 @@ static int sample(struct ldmsd_sampler *self)
 	for(i = 0; i < event_count; ++i)
 	{
 		val.v_u64 = papi_event_val[i];
-		ldms_metric_set(set, i, &val);
+		ldms_metric_set(set, i + metric_offset, &val);
 	}
 
 	ldms_transaction_end(set);
@@ -305,10 +341,12 @@ static void term(struct ldmsd_plugin *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=spapi producer=<producer_name> instance=<instance_name> pid=<pid> events=<event1,event2,...>\n"
-		"    producer     The producer name\n"
-		"    instance     The set instance name.\n"
-		"    pid          The process to attach to.\n"
-		"    events       The name of papi events.\n";
+		"    <producer>    The producer name\n"
+		"    <instance>    The set instance name.\n"
+		"    <pid>         The process to attach to.\n"
+		"    <compid>      Optional unique number identifier. Defaults to zero.\n"
+		LJI_DESC
+		"    <events>      The name of papi events.\n";
 }
 
 static struct ldmsd_sampler papi_plugin = {
