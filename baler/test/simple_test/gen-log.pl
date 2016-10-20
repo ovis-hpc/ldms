@@ -3,16 +3,18 @@ use strict;
 use warnings;
 use POSIX qw(strftime);
 use benv;
+use utf8;
 
 my ($TS, $N, $I);
 
 # Load patterns
 open my $fin, "./gen-ptns.pl |" or die "Cannot run ./gen-ptns.pl script";
+binmode $fin, ":utf8";
 my @PTNS = <$fin>;
 
 for my $P (@PTNS) {
 	chomp $P;
-	$P =~ s/\*/\%d/g;
+	$P =~ s/\x{2022}/\%d/g;
 }
 
 my @TSTA = ();
