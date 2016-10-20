@@ -673,6 +673,8 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep, size_t reqlen)
 			struct evbuffer *evb = bufferevent_get_input(sep->buf_event);
 			evbuffer_drain(evb, data_len);
 		}
+	} else {
+		rc = ntohs(msg.status);
 	}
 	__sock_io_free(sep, io);
 
