@@ -1,3 +1,4 @@
+
 #ifndef ldms_librabbitmq_examples_utils_h
 #define ldms_librabbitmq_examples_utils_h
 
@@ -6,9 +7,13 @@
  * Calls to exit() have been removed in favor of logging and appropriate 
  * return codes.
  */
+
 /*
  * ***** BEGIN LICENSE BLOCK *****
  * Version: MIT
+ *
+ * Portions created by Benjamin Allan are Copyright (c) 2015
+ * Sandia National Laboratories and Open Grid Computing. All Rights Reserved.
  *
  * Portions created by Alan Antonuk are Copyright (c) 2012-2013
  * Alan Antonuk. All Rights Reserved.
