@@ -53,7 +53,9 @@
  * \author Narate Taerat <narate@ogc.us>
  * \brief String-Object mapping utility.
  *
- * This shall be moved to lib later, to share with other projects.
+ * \c str_map is a string-object mapping utility, in which \c string is a
+ * null-terminated array of \c char and object is anything that can be encoded
+ * in \c uint64_t (intergers and \c void*).
  *
  */
 #ifndef __STR_MAP_H
@@ -90,8 +92,11 @@ void str_map_free(str_map_t m);
 /**
  * \param map The map.
  * \param key The key.
- * \returns NULL if there is no such object.
- * \returns Pointer to the object.
+ * \returns \c uint64_t value assigned to the key by ::str_map_insert().
+ * \note In the case of no enty, \c errno will be set to \c ENOENT and the
+ * function returns \c 0. In the case that an application give value 0 in
+ * ::str_map_insert(), i.e. 0 is a legit data, ::str_map_get() will return 0,
+ * but \c errno is 0.
  */
 uint64_t str_map_get(str_map_t map, const char *key);
 
