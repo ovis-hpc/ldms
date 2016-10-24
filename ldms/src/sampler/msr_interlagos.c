@@ -96,7 +96,6 @@
 
 
 #define MSR_MAXLEN 20LL
-#define MSR_ARGLEN 4LL
 #define MSR_HOST 0LL
 #define MSR_CNT_MASK 0LL
 #define MSR_INV 0LL
@@ -109,18 +108,20 @@
 typedef enum{CTR_OK, CTR_HALTED, CTR_BROKEN} ctr_state;
 typedef enum{CFG_PRE, CFG_DONE_INIT, CFG_IN_FINAL, CFG_FAILED_FINAL, CFG_DONE_FINAL} ctrcfg_state;
 typedef enum{CTR_UNCORE, CTR_NUMCORE} ctr_num_values;
+typedef enum{MSR_DEFAULT, UNCORE_PER_NUMA} msr_special_cases;
 
 static pthread_mutex_t cfglock;
 
 struct active_counter{
 	struct MSRcounter* mctr;
-	uint64_t wctl;
+	uint64_t* wctl; //updated: 8/22 size of maxcore (max including padded values)
 	int valid; //this is kept track of, but currently unused
 	ctr_state state;
-	int metric_ctl;
-	int metric_ctr;
+	int metric_ctl; // updated: 8/22 array is size of nctl FIXME: will this make everything to hard to parse? Different num vals.
+	int metric_ctr; //array is size of ndata
 	int metric_name;
 	int ndata;
+	int nctl; //ndata or 1, as there are unique values
 	uint64_t* data;
 	pthread_mutex_t lock;
 	TAILQ_ENTRY(active_counter) entry;
@@ -137,7 +138,7 @@ struct MSRcounter{
 	uint64_t os_user;
 	uint64_t int_core_ena;
 	uint64_t int_core_sel;
-	char* core_flag;
+	msr_special_cases core_flag; // changed on 8/22/16 to handle the more complex uncore case
 	ctr_num_values numvalues_type;
 	int numcore; /* max legit core vals will consider (was numvals) */
 	int offset; /* offsets for core and uncore counters */
@@ -145,21 +146,82 @@ struct MSRcounter{
 };
 
 /*
-//These now come from a config file. NOTE: not the last 3 nums.
+Note 1: These now come from a config file which can be modified to change
+metric names, what registers are used for them, and what is counted by them.
+These names are used during plugin configuration in the selection of what
+will be sampled by a particular msr sampler plugin.
 
-static struct MSRcounter counter_assignments[] = {
-	{"TOT_CYC", 0xc0010202, 0x076, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
-	{"TOT_INS", 0xc0010200, 0x0C0, 0x00, 0xc0010201, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
-	{"L2_DCM",  0xc0010202, 0x043, 0x00, 0xc0010203, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
-	{"L1_DCM",  0xc0010204, 0x041, 0x01, 0xc0010205, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
-	{"DP_OPS",  0xc0010206, 0x003, 0xF0, 0xc0010207, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
-	{"VEC_INS", 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
-	{"TLB_DM",  0xc001020A, 0x046, 0x07, 0xc001020B, 0b11, "-a", CTR_NUMCORE, 0, 0, 0},
-	{"L3_CACHE_MISSES", 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0b0, "", CTR_UNCORE, 0, 0, 0},
-	{"DCT_PREFETCH", 0xc0010242, 0x1F0, 0x02, 0xc0010243, 0b0, "", CTR_UNCORE, 0, 0, 0},
-	{"DCT_RD_TOT", 0xc0010244, 0x1F0, 0x01, 0xc0010245, 0b0, "", CTR_UNCORE, 0, 0, 0},
-	{"DCT_WRT", 0xc0010246, 0x1F0, 0x00, 0xc0010247, 0b0, "", CTR_UNCORE, 0, 0, 0}
-};
+Note 2: In the plugin configuration, choosing a second "Name" that re-uses
+a register (Write_addr) will fail.
+
+Fields are:
+Name, Write_addr, Event, Umask, Read_addr, os_user, core_ena, core_sel, core_flag, ctr_type
+##### Core counters ##########
+TLB_DM,  0xc0010200, 0x046, 0x07, 0xc0010201, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+TOT_CYC, 0xc0010202, 0x076, 0x00, 0xc0010203, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+L2_DCM,  0xc0010202, 0x043, 0x00, 0xc0010203, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+L1_DCM,  0xc0010204, 0x041, 0x01, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+L1_DCA,  0xc0010204, 0x040, 0x00, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#LS_DISP,  0xc0010204, 0x029, 0x01, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#LS_DISP,  0xc0010204, 0x029, 0x02, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#LS_DISP,  0xc0010204, 0x029, 0x04, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+LS_DISP,  0xc0010204, 0x029, 0x07, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+RETIRED_FLOPS,  0xc0010206, 0x003, 0xFF, 0xc0010207, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+DP_OPS,  0xc0010206, 0x003, 0xF0, 0xc0010207, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+VEC_INS, 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+TOT_INS, 0xc001020A, 0x0C0, 0x00, 0xc001020B, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+##### Uncore counters ##########
+L3_CACHE_MISSES, 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
+RW_DRAM_EXT, 0xc0010242, 0x1E0, 0xF, 0xc0010243, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+IO_DRAM_INT, 0xc0010242, 0x1E1, 0x0, 0xc0010243, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+DCT_PREFETCH, 0xc0010242, 0x1F0, 0x64, 0xc0010243, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
+DCT_RD_TOT, 0xc0010244, 0x1F0, 0x62, 0xc0010245, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
+RW_DRAM_INT, 0xc0010246, 0x1E0, 0x0, 0xc0010247, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+IO_DRAM_EXT, 0xc0010246, 0x1E1, 0xF, 0xc0010247, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+DCT_WRT, 0xc0010246, 0x1F0, 0x19, 0xc0010247, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
+#
+# Note that for the following, CTR_NUMCORE pairs are:
+# [0] Control: 0xc0010200 Data: 0xc0010201
+# [1] Control: 0xc0010202 Data: 0xc0010203
+# [2] Control: 0xc0010204 Data: 0xc0010205
+# [3] Control: 0xc0010206 Data: 0xc0010207
+# [4] Control: 0xc0010208 Data: 0xc0010209
+# [5] Control: 0xc001020A Data: 0xc001020B
+# And CTR_UNCORE pairs are:
+# [0] Control: 0xc0010240 Data: 0xc0010241
+# [1] Control: 0xc0010242 Data: 0xc0010243
+# [2] Control: 0xc0010244 Data: 0xc0010245
+# [3] Control: 0xc0010246 Data: 0xc0010247
+#
+The first column below indicates the counters available for a particular
+feature. For example [2:0] indicates that the core counters (CTR_NUMCORE)
+0, 1, and 2, as indicated above, are available to count TLB_DM.
+
+NOTE: For the UNCORE_PER_NUMA case, use 0x0 to exclude external numa access
+and 0xF to exclude local numa access and only count external access.
+##### Core counters ##########
+#[2:0] TLB_DM,  0xc0010200, 0x046, 0x07, 0xc0010201, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[2:0] TOT_CYC, 0xc0010202, 0x076, 0x00, 0xc0010203, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[2:0] L2_DCM,  0xc0010202, 0x043, 0x00, 0xc0010203, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] L1_DCM,  0xc0010204, 0x041, 0x01, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] L1_DCA,  0xc0010204, 0x040, 0x00, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] LS_DISP,  0xc0010204, 0x029, 0x01, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] LS_DISP,  0xc0010204, 0x029, 0x02, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] LS_DISP,  0xc0010204, 0x029, 0x04, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] LS_DISP,  0xc0010204, 0x029, 0x07, 0xc0010205, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[3] RETIRED_FLOPS,  0xc0010206, 0x003, 0xFF, 0xc0010207, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[3] DP_OPS,  0xc0010206, 0x003, 0xF0, 0xc0010207, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] VEC_INS, 0xc0010208, 0x0CB, 0x04, 0xc0010209, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+#[5:0] TOT_INS, 0xc001020A, 0x0C0, 0x00, 0xc001020B, 0x3, 0x0, 0x0, MSR_DEFAULT, CTR_NUMCORE
+##### Uncore counters ##########
+#[3:0] L3_CACHE_MISSES, 0xc0010240, 0x4E1, 0xF7, 0xc0010241, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
+#[3:0] RW_DRAM_EXT, 0xc0010242, 0x1E0, 0xF, 0xc0010243, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+#[3:0] IO_DRAM_INT, 0xc0010242, 0x1E1, 0x0, 0xc0010243, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+#[3:0] DCT_PREFETCH, 0xc0010242, 0x1F0, 0x64, 0xc0010243, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
+#[3:0] DCT_RD_TOT, 0xc0010244, 0x1F0, 0x62, 0xc0010245, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
+#[3:0] RW_DRAM_INT, 0xc0010246, 0x1E0, 0x0, 0xc0010247, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+#[3:0] IO_DRAM_EXT, 0xc0010246, 0x1E1, 0xF, 0xc0010247, 0x0, 0x1, 0x0, UNCORE_PER_NUMA, CTR_UNCORE
+#[3:0] DCT_WRT, 0xc0010246, 0x1F0, 0x19, 0xc0010247, 0x0, 0x1, 0x0, MSR_DEFAULT, CTR_UNCORE
 */
 
 static struct MSRcounter* counter_assignments = NULL;
@@ -266,7 +328,7 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 static int parseConfig(char* fname){
-	char name[MSR_MAXLEN];
+	char name[MSR_CONFIGLINE_MAX];
 	uint64_t w_reg;
 	uint64_t event;
 	uint64_t umask;
@@ -274,9 +336,10 @@ static int parseConfig(char* fname){
 	uint64_t os_user;
 	uint64_t int_core_ena;
 	uint64_t int_core_sel;
-	char core_flag[MSR_ARGLEN];
-	char temp[MSR_MAXLEN];
+	char core_flag[MSR_CONFIGLINE_MAX];
+	char temp[MSR_CONFIGLINE_MAX];
 	ctr_num_values numvalues_type;
+	msr_special_cases msr_special_cases_type;
 
 	char lbuf[MSR_CONFIGLINE_MAX];
 	char* s;
@@ -297,32 +360,52 @@ static int parseConfig(char* fname){
 		s = fgets(lbuf, sizeof(lbuf), fp);
 		if (!s)
 			break;
-		//rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
-		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx,%[^,],%s",
-			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel, core_flag, temp);
-		if ((strlen(name) > 0)  && (name[0] == '#')){
+		if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
 			msglog(LDMSD_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
+		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx%*[, ]%[^, ]%*[, ]%[^, \n]",
+			    name, &w_reg, &event, &umask, &r_reg, &os_user,
+			    &int_core_ena, &int_core_sel, core_flag, temp);
 		if (rc != 10){
-			msglog(LDMSD_LDEBUG, "Bad format in msr config file <%s>. Skipping\n",
+			msglog(LDMSD_LDEBUG,
+			       "Bad format in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
 		msglog(LDMSD_LDEBUG, "msr config fields: <%s> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%"PRIu64 "> <%s> <%s>\n",
-		       name, w_reg, event, umask, r_reg, os_user, int_core_ena, int_core_sel, core_flag, temp);
+		       name, w_reg, event, umask, r_reg, os_user, int_core_ena,
+		       int_core_sel, core_flag, temp);
 
+		if ((strcmp(core_flag, "MSR_DEFAULT") != 0) &&
+		    (strcmp(core_flag, "UNCORE_PER_NUMA") != 0)){
+			msglog(LDMSD_LDEBUG,
+			       "Bad core_flag in msr config file <%s>. Skipping\n",
+			       lbuf);
+			continue;
+		}
 
-		if ((strcmp(temp, "CTR_UNCORE") != 0) && (strcmp(temp, "CTR_NUMCORE") != 0)){
-			msglog(LDMSD_LDEBUG,"Bad type in msr config file <%s>. Skipping\n",
+		if ((strcmp(temp, "CTR_UNCORE") != 0) &&
+		    (strcmp(temp, "CTR_NUMCORE") != 0)){
+			msglog(LDMSD_LDEBUG,
+			       "Bad type in msr config file <%s>. Skipping\n",
+			       lbuf);
+			continue;
+		}
+
+		if ((strcmp(temp, "CTR_NUMCORE") == 0) &&
+		    (strcmp(core_flag, "UNCORE_PER_NUMA") == 0)){
+			msglog(LDMSD_LDEBUG,
+			       "Core flag type mismatch in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
 		count++;
 	} while (s);
 
-	counter_assignments = (struct MSRcounter*)malloc(count*sizeof(struct MSRcounter));
+	counter_assignments =
+		(struct MSRcounter*)malloc(count*sizeof(struct MSRcounter));
 	if (!counter_assignments){
 		fclose(fp);
 		return ENOMEM;
@@ -344,13 +427,22 @@ static int parseConfig(char* fname){
 		if (!s)
 			break;
 
-		//rc = sscanf(lbuf, "%[^,], %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %"PRIu64 ", %[^,], %[^,]",
-		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx,%[^,],%s",
-			    name, &w_reg, &event, &umask, &r_reg, &os_user, &int_core_ena, &int_core_sel, core_flag, temp);
-		if ((strlen(name) > 0) && (name[0] == '#')){
+		if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
+			msglog(LDMSD_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
+			       lbuf);
 			continue;
 		}
+		rc = sscanf(lbuf, "%[^,],%llx,%llx,%llx,%llx,%llx,%llx,%llx%*[, ]%[^, ]%*[, ]%[^, \n]",
+			    name, &w_reg, &event, &umask, &r_reg, &os_user,
+			    &int_core_ena, &int_core_sel, core_flag, temp);
 		if (rc != 10){
+			continue;
+		}
+		if ((strcmp(core_flag, "MSR_DEFAULT") == 0)) {
+			msr_special_cases_type = MSR_DEFAULT;
+		} else if ((strcmp(core_flag, "UNCORE_PER_NUMA") == 0)) {
+			msr_special_cases_type = UNCORE_PER_NUMA;
+		} else {
 			continue;
 		}
 		if ((strcmp(temp, "CTR_UNCORE") == 0)) {
@@ -361,8 +453,14 @@ static int parseConfig(char* fname){
 			continue;
 		}
 
+		if ((strcmp(temp, "CTR_NUMCORE") == 0) &&
+		    (strcmp(core_flag, "UNCORE_PER_NUMA") == 0)){
+			continue;
+		}
+
 		if (i == count){
-			msglog(LDMSD_LERROR, "Changed number of valid entries from first pass. aborting.\n");
+			msglog(LDMSD_LERROR,
+			       "Changed number of valid entries from first pass. aborting.\n");
 			free(counter_assignments);
 			free(initnames);
 			return EINVAL;
@@ -376,7 +474,7 @@ static int parseConfig(char* fname){
 		counter_assignments[i].os_user = os_user;
 		counter_assignments[i].int_core_ena = int_core_ena;
 		counter_assignments[i].int_core_sel = int_core_sel;
-		counter_assignments[i].core_flag = strdup(core_flag);
+		counter_assignments[i].core_flag = msr_special_cases_type;
 		counter_assignments[i].numvalues_type = numvalues_type;
 		counter_assignments[i].numcore = 0; //this will get filled in later
 		counter_assignments[i].offset = 0; //this will get filled in later
@@ -418,13 +516,16 @@ struct active_counter* findactivecounter(char* name){
 }
 
 
-static int halt(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg)
+static int halt(struct attr_value_list *kwl, struct attr_value_list *avl,
+		void* arg)
 {
 	struct active_counter* pe;
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR, SAMP ": in wrong state for halting events <%d>\n", cfgstate);
+		msglog(LDMSD_LERROR,
+		       SAMP ": in wrong state for halting events <%d>\n",
+		       cfgstate);
 		return -1;
 	}
 
@@ -451,7 +552,9 @@ static int halt(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMSD_LERROR, SAMP ": cannot find <%s> to halt\n", value);
+			msglog(LDMSD_LERROR,
+			       SAMP ": cannot find <%s> to halt\n",
+			       value);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
@@ -474,13 +577,16 @@ static int halt(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
 }
 
 
-static int cont(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg)
+static int cont(struct attr_value_list *kwl, struct attr_value_list *avl,
+		void* arg)
 {
 	struct active_counter* pe;
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR, SAMP ": in wrong state for continuing events <%d>\n", cfgstate);
+		msglog(LDMSD_LERROR,
+		       SAMP ": in wrong state for continuing events <%d>\n",
+		       cfgstate);
 		return -1;
 	}
 
@@ -505,7 +611,9 @@ static int cont(struct attr_value_list *kwl, struct attr_value_list *avl, void* 
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMSD_LERROR, SAMP ": cannot find <%s> to continue\n", value);
+			msglog(LDMSD_LERROR,
+			       SAMP ": cannot find <%s> to continue\n",
+			       value);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
@@ -535,7 +643,8 @@ int writeregistercpu(uint64_t x_reg, int cpu, uint64_t val){
 	fd = open(fname, O_WRONLY);
 	if (fd < 0) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR, SAMP ": writeregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
+		msglog(LDMSD_LERROR,
+		       SAMP ": writeregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
 		       fd, cpu, errsv);
 		return -1;
 	}
@@ -543,7 +652,8 @@ int writeregistercpu(uint64_t x_reg, int cpu, uint64_t val){
 	dat = val;
 	if (pwrite(fd, &dat, sizeof dat, x_reg) != sizeof dat) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR, SAMP ": writeregistercpu cannot pwrite MSR 0x%08" PRIx64
+		msglog(LDMSD_LERROR,
+		       SAMP ": writeregistercpu cannot pwrite MSR 0x%08" PRIx64
 		       " to 0x%016" PRIx64 " for cpu %d errno=<%d>\n",
 		       x_reg, dat, cpu, errsv);
 		return -1;
@@ -565,14 +675,16 @@ int readregistercpu(uint64_t x_reg, int cpu, uint64_t* val){
 	fd = open(fname, O_RDONLY);
 	if (fd < 0) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR, SAMP ": readregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
+		msglog(LDMSD_LERROR,
+		       SAMP ": readregistercpu cannot open fd=<%d> for cpu %d errno=<%d>",
 		       fd, cpu, errsv);
 		return -1;
 	}
 
 	if (pread(fd, &dat, sizeof dat, x_reg) != sizeof dat) {
 		int errsv = errno;
-		msglog(LDMSD_LERROR, SAMP ": readregistercpu cannot pread MSR 0x%08" PRIx64
+		msglog(LDMSD_LERROR,
+		       SAMP ": readregistercpu cannot pread MSR 0x%08" PRIx64
 		       " for cpu %d errno=<%d>\n",
 		       x_reg, cpu, errsv);
 		close(fd);
@@ -597,9 +709,11 @@ static int zerometricset( struct active_counter *pe){
 		return -1;
 	}
 
-	v.v_u64 = 0;
-	ldms_metric_set(set, pe->metric_ctl, &v);
 	ldms_metric_array_set_str(set, pe->metric_name, str);
+	v.v_u64 = 0;
+	for (i = 0; i < pe->nctl; i++){
+		ldms_metric_array_set_val(set, pe->metric_ctl, i, &v);
+	}
 	for (i = 0; i < pe->ndata; i++){
 		ldms_metric_array_set_val(set, pe->metric_ctr, i, &v);
 	}
@@ -628,10 +742,22 @@ static int readregisterguts( struct active_counter *pe){
 		}
 		j++;
 	}
-	v.v_u64 = pe->wctl;
-	ldms_metric_set(set, pe->metric_ctl, &v);
+
 	ldms_metric_array_set_str(set, pe->metric_name, pe->mctr->name);
-	for (j = 0; j < pe->ndata; j++){ //set all of them, which will include the padding.
+	if (pe->nctl == 1){ // 1 is the same as all
+		v.v_u64 = pe->wctl[0];
+		ldms_metric_array_set_val(set, pe->metric_ctl, 0, &v);
+	} else {
+		j = 0;
+		for (i = 0; i < pe->mctr->maxcore; i+=pe->mctr->offset){
+                        //set all of them, which will include the padding
+			v.v_u64 = pe->wctl[i];
+			ldms_metric_array_set_val(set, pe->metric_ctl, j, &v);
+			j++;
+		}
+	}
+	for (j = 0; j < pe->ndata; j++){
+                //set all of them, which will include the padding.
 		v.v_u64 = pe->data[j];
 		ldms_metric_array_set_val(set, pe->metric_ctr, j, &v);
 	}
@@ -656,12 +782,16 @@ static int checkregister( struct active_counter *pe){
 	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
 		rc = readregistercpu(pe->mctr->w_reg, i, &val);
 		if (rc != 0){
-			msglog(LDMSD_LERROR, SAMP ": <%s> readregistercpu bad %d\n", pe->mctr->name, rc);
+			msglog(LDMSD_LERROR,
+			       SAMP ": <%s> readregistercpu bad %d\n",
+			       pe->mctr->name, rc);
 			return rc;
 		}
 		//              printf("Comparing %llx to %llx\n", val, pe->wctl);
-		if (val != pe->wctl){
-			msglog(LDMSD_LDEBUG, SAMP ": Register changed! read <%llx> want <%llx>\n", val, pe->wctl);
+		if (val != pe->wctl[i]){
+			msglog(LDMSD_LDEBUG,
+			       SAMP ": Register changed! read <%llx> want <%llx>\n",
+			       val, pe->wctl[i]);
 			return -1;
 			break;
 		}
@@ -680,7 +810,8 @@ static int readregister(struct active_counter *pe){
 
 	switch (pe->state){
 	case CTR_HALTED:
-		msglog(LDMSD_LDEBUG, SAMP ": %s Halted. Register will not be read.\n",
+		msglog(LDMSD_LDEBUG,
+		       SAMP ": %s Halted. Register will not be read.\n",
 		       pe->mctr->name);
 		//invalidate the current vals because this is an invalid read. (but this will have already been done as part of the halt)
 		zerometricset(pe); //these sets zero values in the metric set
@@ -690,7 +821,8 @@ static int readregister(struct active_counter *pe){
 		//check all of them first
 		rc = checkregister(pe);
 		if (rc != 0){
-			msglog(LDMSD_LDEBUG, SAMP ": Control register for %s has changed. Register will not be read.\n",
+			msglog(LDMSD_LDEBUG,
+			       SAMP ": Control register for %s has changed. Register will not be read.\n",
 			       pe->mctr->name);
 			//invalidate the current vals because this is an invalid read.
 			zerometricset(pe); //these sets zero values in the metric set
@@ -700,13 +832,17 @@ static int readregister(struct active_counter *pe){
 			//then read all of them
 			rc = readregisterguts(pe); //this invalidates if fails. this is an invalid read. this sets values in the metric set
 			if (rc != 0){
-				msglog(LDMSD_LERROR, SAMP ": Read register failed %s\n", pe->mctr->name);
+				msglog(LDMSD_LERROR,
+				       SAMP ": Read register failed %s\n",
+				       pe->mctr->name);
 				// we are not ok with this. do not change rc
 			}
 		}
 		break;
 	default:
-		msglog(LDMSD_LDEBUG, SAMP ": register state <%d>. Wont read\n", pe->state);
+		msglog(LDMSD_LDEBUG,
+		       SAMP ": register state <%d>. Wont read\n",
+		       pe->state);
 		rc = 0;
 		break;
 	}
@@ -743,7 +879,7 @@ static ctr_state writeregister(struct active_counter *pe){
 	}
 	//Write the ctrl register
 	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
-		rc = writeregistercpu(pe->mctr->w_reg, i, pe->wctl);
+		rc = writeregistercpu(pe->mctr->w_reg, i, pe->wctl[i]);
 		if (rc != 0){
 			return pe->state;
 		}
@@ -767,7 +903,8 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 			if (rpe->mctr->w_reg == pe->mctr->w_reg){
 				if (strcmp(rpe->mctr->name, pe->mctr->name) == 0){
 					//duplicates are ok
-					msglog(LDMSD_LINFO, SAMP ": Notify - Duplicate assignments! <%s>\n",
+					msglog(LDMSD_LINFO,
+					       SAMP ": Notify - Duplicate assignments! <%s>\n",
 					       rpe->mctr->name);
 				} else {
 					return -1;
@@ -784,18 +921,26 @@ static int checkreassigncounter(struct active_counter *rpe, int idx){
 	if (rpe->mctr->offset != counter_assignments[idx].offset){
 		return -1;
 	}
-
+	//wctl size check: can only reassign to the same special case (for the wcl and metric_ctl array)
+	if ((rpe->mctr->core_flag != counter_assignments[idx].core_flag) ||
+	    (rpe->mctr->numvalues_type !=
+	     counter_assignments[idx].numvalues_type)){
+		return -1;
+	}
 	return 0;
 }
 
 
-static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, void* arg){
+static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl,
+		   void* arg){
 	struct active_counter* pe;
 	ctr_state s;
 	char* value;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR, SAMP ": in wrong state for rewriting events <%d>\n", cfgstate);
+		msglog(LDMSD_LERROR,
+		       SAMP ": in wrong state for rewriting events <%d>\n",
+		       cfgstate);
 		return -1;
 	}
 
@@ -810,7 +955,9 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 		TAILQ_FOREACH(pe, &counter_list, entry){
 			s = writeregister(pe);
 			if (s != CTR_OK){
-				msglog(LDMSD_LERROR, SAMP ": cannot rewrite register <%s>\n", value);
+				msglog(LDMSD_LERROR,
+				       SAMP ": cannot rewrite register <%s>\n",
+				       value);
 				//but will continue;
 			}
 			pthread_mutex_unlock(&pe->lock);
@@ -818,7 +965,9 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 	} else {
 		pe = findactivecounter(value);
 		if (pe == NULL){
-			msglog(LDMSD_LERROR, SAMP ": cannot find <%s> to rewrite\n", value);
+			msglog(LDMSD_LERROR,
+			       SAMP ": cannot find <%s> to rewrite\n",
+			       value);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
@@ -826,7 +975,9 @@ static int rewrite(struct attr_value_list *kwl, struct attr_value_list *avl, voi
 		pthread_mutex_lock(&pe->lock);
 		s = writeregister(pe);
 		if (s != CTR_OK){
-			msglog(LDMSD_LERROR, SAMP ": cannot rewrite register <%s>\n", value);
+			msglog(LDMSD_LERROR,
+			       SAMP ": cannot rewrite register <%s>\n",
+			       value);
 			//but will continue;
 		}
 		pthread_mutex_unlock(&pe->lock);
@@ -845,7 +996,8 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 
 	if ((oldname == NULL) || (newname == NULL) ||
 	    (strlen(oldname) == 0) || (strlen(newname) == 0)){
-		msglog(LDMSD_LERROR, SAMP ": Invalid args to reassign counter\n");
+		msglog(LDMSD_LERROR,
+		       SAMP ": Invalid args to reassign counter\n");
 		return NULL;
 	}
 
@@ -857,20 +1009,24 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 		}
 	}
 	if (idx < 0){
-		msglog(LDMSD_LERROR, SAMP ": No counter <%s> to reassign to\n", newname);
+		msglog(LDMSD_LERROR,
+		       SAMP ": No counter <%s> to reassign to\n",
+		       newname);
 		return NULL;
 	}
 
 	pthread_mutex_lock(&cfglock);
 	pe = findactivecounter(oldname);
 	if (pe == NULL){
-		msglog(LDMSD_LERROR, SAMP ": Cannot find counter <%s> to replace\n", oldname);
+		msglog(LDMSD_LERROR,
+		       SAMP ": Cannot find counter <%s> to replace\n", oldname);
 		pthread_mutex_unlock(&cfglock);
 		return NULL;
 	} else {
 		rc = checkreassigncounter(pe, idx);
 		if (rc != 0){
-			msglog(LDMSD_LERROR, SAMP ": Reassignment of <%s> to <%s> invalid\n",
+			msglog(LDMSD_LERROR,
+			       SAMP ": Reassignment of <%s> to <%s> invalid\n",
 			       oldname, newname);
 			pthread_mutex_unlock(&cfglock);
 			return NULL;
@@ -888,14 +1044,17 @@ static struct active_counter* reassigncounter(char* oldname, char* newname) {
 }
 
 
-static int reassign(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg){
+static int reassign(struct attr_value_list *kwl, struct attr_value_list *avl,
+		    void *arg){
 	struct active_counter* pe;
 	ctr_state s;
 	char* ovalue;
 	char* nvalue;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR, SAMP ": in wrong state for reassigning events <%d>\n", cfgstate);
+		msglog(LDMSD_LERROR,
+		       SAMP ": in wrong state for reassigning events <%d>\n",
+		       cfgstate);
 		return -1;
 	}
 
@@ -925,7 +1084,8 @@ static int reassign(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 }
 
 
-static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg){
+static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl,
+		     void *arg){
 	int idx;
 	char* nam;
 	char* val;
@@ -933,7 +1093,9 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 
 	pthread_mutex_lock(&cfglock);
 	if (cfgstate != CFG_DONE_INIT){
-		msglog(LDMSD_LERROR, SAMP ": in wrong state for adding events <%d>\n", cfgstate);
+		msglog(LDMSD_LERROR,
+		       SAMP ": in wrong state for adding events <%d>\n",
+		       cfgstate);
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -960,7 +1122,8 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 		}
 	}
 	if (idx < 0){
-		msglog(LDMSD_LERROR, SAMP ": Non-existent event name <%s>\n", nam);
+		msglog(LDMSD_LERROR,
+		       SAMP ": Non-existent event name <%s>\n", nam);
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -989,7 +1152,8 @@ static int checkcountersinit(){ //this will only be called once, from finalize
 	for (i = 0; i < numinitnames; i++){
 		int imatch = -1;
 		for (ii = 0; ii < msr_numoptions; ii++){
-			if (strcmp(initnames[i], counter_assignments[ii].name) == 0){
+			if (strcmp(initnames[i],
+				   counter_assignments[ii].name) == 0){
 				imatch == ii;
 				break;
 			}
@@ -1003,7 +1167,8 @@ static int checkcountersinit(){ //this will only be called once, from finalize
 				continue;
 
 			for (jj = 0; jj < msr_numoptions; jj++){
-				if (strcmp(initnames[j], counter_assignments[jj].name) == 0){
+				if (strcmp(initnames[j],
+					   counter_assignments[jj].name) == 0){
 					jmatch == jj;
 				}
 			}
@@ -1011,7 +1176,8 @@ static int checkcountersinit(){ //this will only be called once, from finalize
 				continue;
 
 			//do they have the same wregs if they are not the same name?
-			if (counter_assignments[imatch].w_reg == counter_assignments[jmatch].w_reg){
+			if (counter_assignments[imatch].w_reg ==
+			    counter_assignments[jmatch].w_reg){
 				if (strcmp(initnames[i], initnames[j]) == 0){
 					//this is ok
 					msglog(LDMSD_LINFO,
@@ -1031,19 +1197,21 @@ static int checkcountersinit(){ //this will only be called once, from finalize
 }
 
 
-static int list(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+static int list(struct attr_value_list *kwl, struct attr_value_list *avl,
+		void *arg)
 {
 	struct active_counter* pe;
 
-	msglog(LDMSD_LINFO,"%-24s %10x %10x %10xs\n",
-	       "Name", "wreg", "wctl", "rreg");
+	//FIXME: write them all out later
+	msglog(LDMSD_LINFO,"%-24s %10x %10x %10xs\n");
+	msglog(LDMSD_LINFO, "Name", "wreg", "wctl[0]", "rreg");
 	msglog(LDMSD_LINFO,"%-24s %10s %10s %10s\n",
 	       "------------------------",
 	       "----------", "----------", "----------");
 	pthread_mutex_lock(&cfglock);
 	TAILQ_FOREACH(pe, &counter_list, entry) {
 		msglog(LDMSD_LINFO,"%-24s %10x %10x %10x\n",
-		       pe->mctr->name, pe->mctr->w_reg, pe->wctl,
+		       pe->mctr->name, pe->mctr->w_reg, pe->wctl[0],
 		       pe->mctr->r_reg);
 	}
 	pthread_mutex_unlock(&cfglock);
@@ -1055,7 +1223,8 @@ static int dfilter(const struct dirent *dp){
 }
 
 // numcore, maxcore, and corespernuma are all assigned by the end of this
-static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
+		void *arg)
 {
 	struct dirent **dlist;
 	char* val;
@@ -1110,7 +1279,8 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	} else {
 		rc = parseConfig(cfile);
 		if (rc != 0){
-			msglog(LDMSD_LERROR, SAMP ": error parsing config file. Aborting\n");
+			msglog(LDMSD_LERROR,
+			       SAMP ": error parsing config file. Aborting\n");
 			_free_names();
 			return rc;
 		}
@@ -1170,6 +1340,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		} else {
 			counter_assignments[i].offset = corespernuma;
 		}
+		//note alloc for wctl and metric_ctl comes later
 	}
 
 	pthread_mutex_unlock(&cfglock);
@@ -1182,7 +1353,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 
 
 int assigncounter(struct active_counter* pe, int j){ //includes the write
-	uint64_t junk;
+	uint64_t data_size;
 	int i;
 
 	int init = 0;
@@ -1204,15 +1375,28 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 	pe->valid = 0;
 	if (init){
 		int nval = (pe->mctr->maxcore)/(pe->mctr->offset); //unlike v2, array will include the padding
-		pe->data = calloc(nval, sizeof(junk));
+		pe->data = calloc(nval, sizeof(data_size));
 		if (!pe->data){
 			pthread_mutex_unlock(&(pe->lock));
 			return ENOMEM;
 		} //wont need to zero out otherwise since valid = 0;
-
-		pe->metric_ctl = 0;
-		pe->metric_ctr = 0;
 		pe->ndata = nval; //some of these may be padding
+
+		pe->metric_ctl = 0; //this is an array
+		//alloc as many wctl as there possible core, including padding
+		pe->wctl = calloc(pe->mctr->maxcore, sizeof(data_size));
+		if (!pe->wctl){
+			free(pe->data);
+			pthread_mutex_unlock(&(pe->lock));
+			return ENOMEM;
+		} //wont need to zero out otherwise since valid = 0;
+
+		pe->metric_ctr = 0; //this is an array, but only make it as big as it needs to be
+		if (pe->mctr->core_flag == UNCORE_PER_NUMA){
+			pe->nctl = pe->ndata;
+		} else {
+			pe->nctl = 1;
+		}
 	}
 
 	//WRITE COMMAND
@@ -1220,23 +1404,52 @@ int assigncounter(struct active_counter* pe, int j){ //includes the write
 	uint64_t event_hi = counter_assignments[j].event >> 8;
 	uint64_t event_low = counter_assignments[j].event & 0xFF;
 	uint64_t umask = counter_assignments[j].umask;
+	uint64_t umask_tmp = counter_assignments[j].umask;
 	uint64_t os_user = counter_assignments[j].os_user;
 	uint64_t int_core_ena = counter_assignments[j].int_core_ena;
 	uint64_t int_core_sel = counter_assignments[j].int_core_sel;
 
 
-//	pe->wctl = MSR_HOST << 40 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
-	pe->wctl = MSR_HOST << 40 | int_core_sel << 37 | int_core_ena << 36 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
-	//        printf("%s: 0x%llx, 0x%llx, 0x%llx 0x%llx\n",
-	//               pe->mctr->name, event_hi, event_low, umask, pe->wctl);
+	if (pe->nctl == 1) { //There is only 1 wctl for all. Assign it to all values
+		//pe->wctl = MSR_HOST << 40 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;  very old
+		uint64_t temp_wctl =  MSR_HOST << 40 | int_core_sel << 37 | int_core_ena << 36 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask << 8 | event_low;
+		//        printf("%s: 0x%llx, 0x%llx, 0x%llx 0x%llx\n", very old
+		//               pe->mctr->name, event_hi, event_low, umask, pe->wctl); very old
+		for (i = 0; i < pe->mctr->maxcore; i++){
+			pe->wctl[i] = temp_wctl;
+		}
 
-	msglog(LDMSD_LINFO, "WRITECMD: writeregister(0x%llx, %d, 0x%llx)\n", w_reg, (pe->mctr->numcore)/(pe->mctr->offset), pe->wctl);
+		//WRITE COMMAND
+		msglog(LDMSD_LINFO, "WRITECMD: writeregister(0x%llx, %d, 0x%llx)\n",
+		       w_reg, (pe->mctr->numcore)/(pe->mctr->offset), pe->wctl[0]);
 
-	//CHECK COMMAND
-	msglog(LDMSD_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n", w_reg, (pe->mctr->numcore)/(pe->mctr->offset));
+		//CHECK COMMAND
+		msglog(LDMSD_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n",
+		       w_reg, (pe->mctr->numcore)/(pe->mctr->offset));
 
-	//READ COMMAND
-	msglog(LDMSD_LINFO, "READCMD: readregister(0x%llx, %d)\n", pe->mctr->r_reg, (pe->mctr->numcore)/(pe->mctr->offset));
+		//READ COMMAND
+		msglog(LDMSD_LINFO, "READCMD: readregister(0x%llx, %d)\n",
+		       pe->mctr->r_reg, (pe->mctr->numcore)/(pe->mctr->offset));
+	} else {
+		//Calculate a different value for each legit one
+		for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){
+			//do the wctl[i] calc. all others will be zero
+			umask_tmp = (umask ^ (1 << (i / pe->mctr->offset)));
+			uint64_t temp_wctl =  MSR_HOST << 40 | int_core_sel << 37 | int_core_ena << 36 | event_hi << 32 | MSR_CNT_MASK << 24 | MSR_INV << 23 | MSR_ENABLE << 22 | MSR_INTT << 20 | MSR_EDGE << 18 | os_user << 16 | umask_tmp << 8 | event_low;
+			pe->wctl[i] = temp_wctl;
+
+			//WRITE COMMAND
+			msglog(LDMSD_LINFO, "WRITECMD: writeregister[%d](0x%llx, %d, 0x%llx)\n",
+			       i, w_reg, (pe->mctr->numcore)/(pe->mctr->offset), pe->wctl[i]);
+		}
+		//CHECK COMMAND
+		msglog(LDMSD_LINFO, "CHECKCMD: readregister(0x%llx, %d)\n",
+		       w_reg, (pe->mctr->numcore)/(pe->mctr->offset));
+
+		//READ COMMAND
+		msglog(LDMSD_LINFO, "READCMD: readregister(0x%llx, %d)\n",
+		       pe->mctr->r_reg, (pe->mctr->numcore)/(pe->mctr->offset));
+	}
 
 	pe->state = CTR_BROKEN; //until written
 
@@ -1263,7 +1476,8 @@ static int assigncountersinit(){
 	for (i = 0; i < numinitnames; i++){
 		int found = -1;
 		for (j = 0; j < msr_numoptions; j++){
-			if (strcmp(initnames[i], counter_assignments[j].name) == 0){
+			if (strcmp(initnames[i],
+				   counter_assignments[j].name) == 0){
 				rc = assigncounter(NULL, j);
 				if (rc != 0){
 					return rc;
@@ -1273,7 +1487,9 @@ static int assigncountersinit(){
 			}
 		}
 		if (found == -1){
-			msglog(LDMSD_LERROR, SAMP ": Bad init counter name <%s>\n", initnames[i]);
+			msglog(LDMSD_LERROR,
+			       SAMP ": Bad init counter name <%s>\n",
+			       initnames[i]);
 			return -1;
 		}
 	}
@@ -1282,7 +1498,8 @@ static int assigncountersinit(){
 }
 
 
-static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
+		    void *arg)
 {
 
 	size_t meta_sz, tot_meta_sz;
@@ -1299,7 +1516,8 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 	if (cfgstate != CFG_DONE_INIT){
 		_free_names();
 		pthread_mutex_unlock(&cfglock);
-		msglog(LDMSD_LERROR, SAMP ": in wrong state to finalize <%d>", cfgstate);
+		msglog(LDMSD_LERROR,
+		       SAMP ": in wrong state to finalize <%d>", cfgstate);
 		return -1;
 	}
 
@@ -1350,22 +1568,32 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 	/* add the metrics */
 	i = 0;
 	TAILQ_FOREACH(pe, &counter_list, entry) {
-		snprintf(name, MSR_MAXLEN, "Ctr%d", i);
-		rc = ldms_schema_metric_add(schema, name, LDMS_V_U64);
-		if (rc < 0) {
-			rc = ENOMEM;
-			goto err;
-		}
-		pe->metric_ctl = rc;
-
-		//new for v3: store the name as well. FIXME: decide if we will keep this.
+		//new for v3: store the name as well.
 		snprintf(name, MSR_MAXLEN, "Ctr%d_name", i);
-		rc = ldms_schema_metric_array_add(schema, name, LDMS_V_CHAR_ARRAY, MSR_MAXLEN);
+		rc = ldms_schema_metric_array_add(schema, name,
+						  LDMS_V_CHAR_ARRAY,
+						  MSR_MAXLEN);
 		if (rc < 0) {
 			rc = ENOMEM;
 			goto err;
 		}
 		pe->metric_name = rc;
+
+		//now add either 1 or the real and padded wctl. Before 8/22 was Ctr%d and order was different
+		if (pe->nctl == 1){
+			snprintf(name, MSR_MAXLEN, "Ctr%d_wctl", i);
+		} else if (pe->mctr->numvalues_type == CTR_NUMCORE){
+			snprintf(name, MSR_MAXLEN, "Ctr%d_wctl_c", i);
+		} else {
+			snprintf(name, MSR_MAXLEN, "Ctr%d_wctl_n", i);
+		}
+		rc = ldms_schema_metric_array_add(schema, name,
+						  LDMS_V_U64_ARRAY, pe->nctl);
+		if (rc < 0) {
+			rc = ENOMEM;
+			goto err;
+		}
+		pe->metric_ctl = rc;
 
 		//process the real ones and the padded ones
 		if (pe->mctr->numvalues_type == CTR_NUMCORE){
@@ -1373,7 +1601,8 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl, vo
 		} else {
 			snprintf(name, MSR_MAXLEN, "Ctr%d_n", i);
 		}
-		rc = ldms_schema_metric_array_add(schema, name, LDMS_V_U64_ARRAY, pe->ndata);
+		rc = ldms_schema_metric_array_add(schema, name,
+						  LDMS_V_U64_ARRAY, pe->ndata);
 		if (rc < 0) {
 			rc = ENOMEM;
 			goto err;
@@ -1428,7 +1657,8 @@ struct kw kw_tbl[] = {
 };
 
 
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+		  struct attr_value_list *avl)
 {
 	struct kw *kw;
 	struct kw key;
@@ -1467,6 +1697,7 @@ void fincounter(struct active_counter *pe){
 	}
 
 	pe->mctr = NULL;
+	free(pe->wctl);
 	pe->wctl = 0;
 
 	pe->state = CTR_BROKEN;
@@ -1496,7 +1727,8 @@ static int sample(struct ldmsd_sampler *self)
 	struct active_counter* pe;
 
 	if (cfgstate != CFG_DONE_FINAL){
-		msglog(LDMSD_LERROR, SAMP ": in wrong state for sampling <%d>\n", cfgstate);
+		msglog(LDMSD_LERROR,
+		       SAMP ": in wrong state for sampling <%d>\n", cfgstate);
 		return -1;
 	}
 
@@ -1531,15 +1763,15 @@ static void term(struct ldmsd_plugin *self)
 	}
 	numinitnames = 0;
 
+	//8/22 FIXME: have to free the wctl. from where
 	for (i = 0; i < msr_numoptions; i++){
 		free(counter_assignments[i].name);
 		counter_assignments[i].name = NULL;
-		free(counter_assignments[i].core_flag);
-		counter_assignments[i].core_flag = NULL;
+		counter_assignments[i].core_flag = 0;
 	}
 	msr_numoptions = 0;
 
-	//should also free the counter list
+	//should also free the counter list FIXME -- what does this mean?
 
 	ldms_set_delete(set);
 }
