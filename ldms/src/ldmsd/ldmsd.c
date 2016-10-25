@@ -1693,12 +1693,13 @@ int main(int argc, char *argv[])
 			config_path = optarg;
 			break;
 		case 'V':
-			printf("LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
+			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
+			printf("LDMS Protocol Version: %hhu.%hhu.%hhu.%hhu\n",
 							ldms_version.major,
 							ldms_version.minor,
 							ldms_version.patch,
 							ldms_version.flags);
-			printf("LDMSD Version: %hhu.%hhu.%hhu.%hhu\n",
+			printf("LDMSD Interface Version: %hhu.%hhu.%hhu.%hhu\n",
 							ldmsd_version.major,
 							ldmsd_version.minor,
 							ldmsd_version.patch,
@@ -1914,9 +1915,10 @@ int main(int argc, char *argv[])
 #else /* OVIS_LIB_HAVE_AUTH */
 	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon without authentication "
 #endif /* OVIS_LIB_HAVE_AUTH */
-		"version %hhu.%hhu.%hhu.%hhu. "
-		"LDMS Library Version %hhu.%hhu.%hhu.%hhu. "
-		"git-SHA %s.\n", ldmsd_version.major, ldmsd_version.minor,
+		"version %s. LDMSD Interface Version "
+		"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. "
+		"git-SHA %s\n", PACKAGE_VERSION,
+		ldmsd_version.major, ldmsd_version.minor,
 		ldmsd_version.patch, ldmsd_version.flags,
 		ldms_version.major, ldms_version.minor, ldms_version.patch,
 		ldms_version.flags, LDMS_GIT_LONG);
