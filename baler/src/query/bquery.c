@@ -3321,17 +3321,23 @@ int __bq_msg_fmt_ts(struct bq_formatter *_fmt, struct bdstr *bdstr, const struct
 int bq_local_msg_routine(struct bq_store *s)
 {
 	int rc = 0;
+	struct bdstr *bdstr = NULL;
+	struct bquery *q = NULL;
 
-	const struct bmsg *bmsg;
 	__bq_msg_fmt.base = *bquery_default_formatter();
 	if (ts_format) {
 		__bq_msg_fmt.base.date_fmt = __bq_msg_fmt_ts;
 		__bq_msg_fmt.ts_fmt = ts_format;
 	}
 
-	struct bquery *q = (void*)bmsgquery_create(s, hst_ids, ptn_ids,
+	bdstr = bdstr_new(4096);
+	if (!bdstr) {
+		rc = errno;
+		goto out;
+	}
+
+	q = (void*)bmsgquery_create(s, hst_ids, ptn_ids,
 						ts_begin, ts_end, 1, 0, &rc);
-	struct bdstr *bdstr = bdstr_new(4096);
 	if (rc)
 		goto out;
 	bq_set_formatter(q, &__bq_msg_fmt.base);
@@ -3370,6 +3376,10 @@ loop:
 	}
 	goto loop;
 out:
+	if (q)
+		bmsgquery_destroy((void*)q);
+	if (bdstr)
+		bdstr_free(bdstr);
 	return rc;
 }
 
