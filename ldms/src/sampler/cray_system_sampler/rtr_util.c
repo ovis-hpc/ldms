@@ -260,7 +260,7 @@ static int tile_to_linkdir(ldmsd_msg_log_f* msglog_outer, int my_pattern,
 
 	if ( !found ) {
 	       if (msglog)
-		       msglog(LDMSD_LERROR, "WARNING: Pattern %d not found in "
+		       msglog(LDMSD_LINFO, "rtr_util: Pattern %d not found in "
 				       "linkfile %s (this may be ok)\n",
 				       my_pattern, link_file);
 	       tile->type = GEMINI_LINK_TYPE_INVALID;
