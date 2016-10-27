@@ -13,7 +13,6 @@ ldms_local_rollbytes_test.sh
 ldms_local_rollperiod_test.sh
 ldms_local_rollrecords_test.sh
 ldms_local_rolltime_test.sh
-ldms_local_slurmtest.sh
 ldms_local_synthetic_test.sh
 ldms_local_syslog.sh
 ldms_local_usertest.sh
