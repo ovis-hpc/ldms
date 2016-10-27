@@ -74,7 +74,7 @@ struct ldms_job_info {
 /** uint64_t holding unix uid as accounted by resource manager. */
 #define LJI_UID_METRIC_NAME "uid"
 /** login name as accounted by resource manager. */
-#define LJI_USER_METRIC_NAME "user"
+#define LJI_USER_METRIC_NAME "username"
 
 /* Create jobid metric with standard name. */
 #define LJI_ADD_JOBID(schema) \

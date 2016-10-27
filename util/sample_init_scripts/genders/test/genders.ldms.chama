@@ -25,8 +25,7 @@ chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_meminfo=with_jo
 chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_vmstat=with_jobid/1
 chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_procnfs=with_jobid/1
 
-# lustre hasn't been updated to track slurm jobid yet.
-chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_lustre2_client=llite/scratch1
+chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_lustre2_client=llite/scratch1:with_jobid/1
 
 # change maxcpu to 32 if hyperthreading is on or optional per-user.
 chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_procstatutil2=with_jobid/1:maxcpu/16
