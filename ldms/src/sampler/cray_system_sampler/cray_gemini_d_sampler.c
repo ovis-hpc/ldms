@@ -282,7 +282,7 @@ static int sample(struct ldmsd_sampler *self)
 		}
 		/* Continue if error, but report an error code */
 		if (rc) {
-			msglog(LDMSD_LDEBUG, "cray_aries_r_sampler: NS %d return error code %d\n",
+			msglog(LDMSD_LDEBUG, "cray_gemini_d_sampler: NS %d return error code %d\n",
 			       i, rc);
 		}
 	}
