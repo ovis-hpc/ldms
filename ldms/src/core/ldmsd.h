@@ -66,7 +66,7 @@
 
 #define LDMSD_VERSION_MAJOR	0x03
 #define LDMSD_VERSION_MINOR	0x02
-#define LDMSD_VERSION_PATCH	0x01
+#define LDMSD_VERSION_PATCH	0x02
 #define LDMSD_VERSION_FLAGS	0x00
 
 struct ldmsd_version {
@@ -537,16 +537,18 @@ struct ldmsd_store_policy {
  * The ldmsd log levels, in order of increasing importance, are
  *  - DEBUG
  *  - INFO
+ *  - WARNING
  *  - ERROR
  *  - CRITICAL
- *  - SUPREME
+ *  - ALL
  *
- * SUPREME is for messages printed to the log file per users requests,
+ * ALL is for messages printed to the log file per users requests,
  * e.g, messages printed from the 'info' command.
  */
 #define LOGLEVELS(WRAP) \
 	WRAP (DEBUG), \
 	WRAP (INFO), \
+	WRAP (WARNING), \
 	WRAP (ERROR), \
 	WRAP (CRITICAL), \
 	WRAP (ALL), \
@@ -564,9 +566,12 @@ int ldmsd_loglevel_set(char *verbose_level);
 
 enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
 
+void ldmsd_ldebug(const char *fmt, ...);
+void ldmsd_linfo(const char *fmt, ...);
+void ldmsd_lwarning(const char *fmt, ...);
 void ldmsd_lerror(const char *fmt, ...);
-
 void ldmsd_lcritical(const char *fmt, ...);
+void ldmsd_lall(const char *fmt, ...);
 
 /**
  * Initialize the ldmsd_store.
