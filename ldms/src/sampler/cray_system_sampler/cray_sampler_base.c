@@ -82,6 +82,10 @@
 
 static int offns[NS_NUM] = { 0 };
 
+const char* ns_names[] = {
+       CSS_NS(CSS_STRWRAP)
+};
+
 int set_offns_generic(cray_system_sampler_sources_t i){
 	offns[i] = 1;
 }
@@ -466,9 +470,9 @@ int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_
 	}
 
 	if (rc != 0) {
-		msglog(LDMSD_LDEBUG, "%s: returning error return code %d for NS"
-				"%d in sample_metrics_generic\n",
-				__FILE__, rc, source_id);
+		msglog(LDMSD_LDEBUG,
+		       "%s:  NS %s return error code %d in sample_metrics_generic\n",
+		       __FILE__, ns_names[source_id], rc);
 	}
 
 
