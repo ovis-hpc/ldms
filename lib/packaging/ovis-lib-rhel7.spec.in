@@ -58,6 +58,7 @@ This library contains an implementation of the following data structure:
 %files coll
 %defattr(-,root,root)
 %{_libdir}/libcoll*
+%{_libdir}/libovis_third*
 
 %post coll
 /sbin/ldconfig
@@ -159,7 +160,6 @@ OVIS event library
 %files event
 %defattr(-,root,root)
 %{_libdir}/libovis_event*
-%{_libdir}/libovis_third*
 
 %post event
 /sbin/ldconfig
