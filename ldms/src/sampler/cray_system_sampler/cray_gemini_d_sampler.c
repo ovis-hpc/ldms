@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -138,8 +138,12 @@ static int create_metric_set(const char *instance_name)
 			break;
 		default:
 			rc = add_metrics_generic(schema, i, msglog);
-			if (rc)
+			if (rc) {
+				msglog(LDMSD_LERROR,
+                                       "%s:  NS %s return error code %d in add_metrics_generic\n",
+                                       __FILE__, ns_names[i], rc);
 				goto err;
+			}
 		}
 	}
 
@@ -282,8 +286,9 @@ static int sample(struct ldmsd_sampler *self)
 		}
 		/* Continue if error, but report an error code */
 		if (rc) {
-			msglog(LDMSD_LDEBUG, "cray_gemini_d_sampler: NS %d return error code %d\n",
-			       i, rc);
+			msglog(LDMSD_LDEBUG,
+			       "cray_gemini_d_sampler: NS %s return error code %d\n",
+			       ns_names[i], rc);
 		}
 	}
 
