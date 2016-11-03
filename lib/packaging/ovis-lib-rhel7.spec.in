@@ -4,6 +4,7 @@
 #%-define _topdir %(echo $PWD)/rpm
 #%-define _unpackaged_files_terminate_build 0
 %define _missing_doc_files_terminate_build 0
+%define zap_version 1.3.1
 
 # Main package
 %define ovis_lib_grp System Environment/Libraries
@@ -57,6 +58,7 @@ This library contains an implementation of the following data structure:
 %files coll
 %defattr(-,root,root)
 %{_libdir}/libcoll*
+%{_libdir}/libovis_third*
 
 %post coll
 /sbin/ldconfig
@@ -158,7 +160,6 @@ OVIS event library
 %files event
 %defattr(-,root,root)
 %{_libdir}/libovis_event*
-%{_libdir}/libovis_third*
 
 %post event
 /sbin/ldconfig
@@ -204,7 +205,7 @@ Development files for ovis-lib-util library
 %package zap
 Summary: asynchronous transport abstraction library
 Group: %{ovis_lib_grp}
-Version: 1.3.0
+Version: %{zap_version}
 %description zap
 Zap is an asynchronous transport abstraction library for various OVIS
 applications. It eases the network programming part in application development,
@@ -226,7 +227,7 @@ underlying transports (e.g. socket, rdma (Infiniband or iWarp), and uGNI).
 %package zap-devel
 Summary: Development files for ovis-lib-zap library
 Group: %{ovis_lib_grp}
-Version: 1.3.0
+Version: %{zap_version}
 Requires: @PACKAGE@-zap >= 1.3.0
 %description zap-devel
 Development files for ovis-lib-zap library
@@ -239,7 +240,7 @@ Development files for ovis-lib-zap library
 %package zap-sock
 Summary: socket transport implementation for zap
 Group: %{ovis_lib_grp}
-Version: 1.3.0
+Version: %{zap_version}
 Requires: @PACKAGE@-zap >= 1.3.0, @PACKAGE@-coll, libevent >= 2.0.21
 %description zap-sock
 socket transport implementation for zap
@@ -252,7 +253,7 @@ socket transport implementation for zap
 %package zap-rdma
 Summary: RDMA (Infiniband and iWarp) transport implementation for zap
 Group: %{ovis_lib_grp}
-Version: 1.3.0
+Version: %{zap_version}
 Requires: @PACKAGE@-zap >= 1.3.0, librdmacm >= 1.0.19, libibverbs >= 1.1.8
 %description zap-rdma
 RDMA (Infiniband and iWarp) transport implementation for zap
@@ -265,7 +266,7 @@ RDMA (Infiniband and iWarp) transport implementation for zap
 %package zap-ugni
 Summary: uGNI transport implementation for zap
 Group: %{ovis_lib_grp}
-Version: 1.3.0
+Version: %{zap_version}
 Requires: @PACKAGE@-zap >= 1.3.0, @PACKAGE@-coll, libevent >= 2.0.21
 %description zap-ugni
 uGNI transport implementation for zap

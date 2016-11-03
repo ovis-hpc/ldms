@@ -3,7 +3,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([baler], 2.0, narate@ogc.us)
+AC_INIT([baler], 2.3.0, narate@ogc.us)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/baler/balerd.c])
 AC_CONFIG_AUX_DIR(config)
@@ -28,7 +28,6 @@ dnl change sharedstatedir default
 test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 
 OPTION_DEFAULT_ENABLE([dict], [ENABLE_DICT])
-OPTION_DEFAULT_ENABLE([python], [ENABLE_PYTHON])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 dnl Swig stuffs
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
