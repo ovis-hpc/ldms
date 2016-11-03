@@ -868,7 +868,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	int add_handle = 0;
 	int rc = 0;
 	char* skey = NULL;
-	char* path;
+	char* path = NULL;
 	int idx;
 	int i;
 
