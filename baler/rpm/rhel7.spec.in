@@ -98,11 +98,15 @@ rm -rf %{buildroot}
 %if "@ENABLE_SWIG_TRUE@x" == "x"
 %{_prefix}/lib*/python*
 %endif
+%config %{_sysconfdir}/baler/*.env
+%config %{_sysconfdir}/baler/*.conf
+%config %{_sysconfdir}/baler/hosts.txt
+%config %{_sysconfdir}/baler/eng-dictionary
 %{_sysconfdir}
 %exclude %{_bindir}/bclient
 %exclude %{_prefix}/lib*/python*/site-packages/abhttp
 
-%post
+%posttrans
 /sbin/ldconfig
 /bin/ln -fs %{_sysconfdir}/systemd/system/balerd.master.service %{_systemdir}/balerd.master.service
 /bin/ln -fs %{_sysconfdir}/systemd/system/balerd.slave.service %{_systemdir}/balerd.slave.service

@@ -58,6 +58,7 @@ This library contains an implementation of the following data structure:
 %files coll
 %defattr(-,root,root)
 %{_libdir}/libcoll*
+%{_libdir}/libovis_third*
 
 %post coll
 /sbin/ldconfig
@@ -159,7 +160,6 @@ OVIS event library
 %files event
 %defattr(-,root,root)
 %{_libdir}/libovis_event*
-%{_libdir}/libovis_third*
 
 %post event
 /sbin/ldconfig
@@ -312,7 +312,7 @@ Miscellaneous file in ovis-lib project.
 # These are the files that we don't care
 %exclude %{_includedir}/ovis-test/
 
-%post misc
+%posttrans misc
 /bin/ln -fs %{_sysconfdir}/profile.d/set-ovis-variables.sh /etc/profile.d/set-ovis-variables.sh
 /bin/ln -fs %{_sysconfdir}/ld.so.conf.d/ovis-ld-so.conf /etc/ld.so.conf.d/ovis-ld-so.conf
 /sbin/ldconfig

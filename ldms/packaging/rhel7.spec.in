@@ -54,12 +54,12 @@ rm -rf %{buildroot}
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/COPYING
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/ChangeLog
 %{_datadir}/doc/@PACKAGE_NAME@-@PACKAGE_VERSION@/README
-%{_sysconfdir}/ldms
+%config %{_sysconfdir}/ldms/*
 %{_sysconfdir}/systemd
 %exclude %{_sysconfdir}/init.d
 %exclude %{_sysconfdir}/ovis
 
-%post
+%posttrans
 /sbin/ldconfig
 /bin/ln -fs %{_sysconfdir}/systemd/system/ldmsd.aggregator.service %{_systemdir}/ldmsd.aggregator.service
 /bin/ln -fs %{_sysconfdir}/systemd/system/ldmsd.sampler.service %{_systemdir}/ldmsd.sampler.service
