@@ -83,6 +83,7 @@
  * - \ref bquery
  * - \ref bhttpd
  * - \ref bassoc
+ * - \ref bclient
  */
 
 /**
