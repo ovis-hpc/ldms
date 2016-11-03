@@ -138,8 +138,12 @@ static int create_metric_set(const char *instance_name)
 			break;
 		default:
 			rc = add_metrics_generic(schema, i, msglog);
-			if (rc)
+			if (rc) {
+				msglog(LDMSD_LERROR,
+                                       "%s:  NS %s return error code %d in add_metrics_generic\n",
+                                       __FILE__, ns_names[i], rc);
 				goto err;
+			}
 		}
 	}
 
@@ -282,8 +286,9 @@ static int sample(struct ldmsd_sampler *self)
 		}
 		/* Continue if error, but report an error code */
 		if (rc) {
-			msglog(LDMSD_LDEBUG, "cray_gemini_d_sampler: NS %d return error code %d\n",
-			       i, rc);
+			msglog(LDMSD_LDEBUG,
+			       "cray_gemini_d_sampler: NS %s return error code %d\n",
+			       ns_names[i], rc);
 		}
 	}
 
