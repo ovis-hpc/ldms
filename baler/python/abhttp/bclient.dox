@@ -55,7 +55,7 @@
  * store: "<bclient-store-location>"
  * \endcode
  *
- * Please see \ref example for an example of the configuration file.
+ * Please see \ref usage_example for an example of the configuration file.
  *
  * \section config_example CONFIGURATION EXAMPLE
  *
