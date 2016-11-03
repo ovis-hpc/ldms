@@ -1,6 +1,6 @@
 # Introduction
 
-__OVIS__ is a modular system for HPC data collection, transport, storage, 
+__OVIS__ is a modular system for HPC data collection, transport, storage,
 log message exploration, and visualization as well as analysis. OVIS 3.3.0 comes with
 _LDMS_, _Baler_, and _SOS_ as a git submodule.
 
@@ -27,7 +27,7 @@ over 100,000 metric values per second with less than 0.2% overhead.
 ## Scalable Storage System (SOS)
 
 SOS is a high-performance, indexed, object-oriented database designed to efficiently
-manage structured data on persistent media. More information can be found at 
+manage structured data on persistent media. More information can be found at
 the SOS GitHub website <https://github.com/opengridcomputing/SOS>.
 
 There is no need to clone the SOS project separatedly. It is advised to install SOS
@@ -65,14 +65,19 @@ git submodule update sos
 # Dependencies
 
 * autoconf (>=2.63), automake, libtool
+* glib2
 * libreadline
 * libevent2 (>=2.0.21)
 	* For recent Ubuntu and CentOS 7, libevent2 can be installed from the central repo.
 	* If you want to install from source, please find it here. <http://libevent.org/>
+* openssl Development library for OVIS, LDMS Authentication
 * For LDMS and Baler Python Interface:
-	* Python-2.7. If you have python-2.6, you will need the _argparse_ module.
+	* Python-2.7.
 	* swig
-* Some LDMS plug-ins have dependency on additional libraries. 
+* For Baler bclient Python Interface:
+	* PyYAML (The Python YAML module <http://www.pyyaml.org/wiki/PyYAML>)
+* doxygen if you want to build OVIS documentation.
+* Some LDMS plug-ins have dependency on additional libraries.
 For cray-related LDMS sampler plug-in dependencies, please see the man page of the
 plug-in in `ldms/man/`.
 
@@ -90,11 +95,18 @@ At the OVIS top directory,
 	make install
 ```
 
-To build _baler_ and _sos_, `--enable-baler` and `--enable-sos`, respectively,
-must be given at the configure line.
+To build _sos_ and _baler_, `--enable-sos` and `--enable-baler`, respectively,
+must be given at the configure line. Note that _baler_ has dependency on _sos_.
 
 # Supported hardware
 
 * Ubuntu and friends
 * CentOS and friends
 * Cray XE6, Cray XK, Cray XC
+
+# Unsupported features
+LDMS sampler plugins
+* perfevent sampler
+* papi sampler
+* hadoop sampler
+* switchx
