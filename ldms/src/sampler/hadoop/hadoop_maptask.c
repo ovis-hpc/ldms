@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Cray Inc. All rights reserved.
+ * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2014 Cray Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
