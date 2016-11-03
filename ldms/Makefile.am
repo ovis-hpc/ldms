@@ -19,7 +19,7 @@ LDMS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 LDMS_TARBALL = $(LDMS).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm centos toss doxygen rpm-old doc install-doc
+PHONY_rpm = rpm centos toss doxygen rpm-old doc install-doc
 rpm-old: dist-gzip
 	$(MKDIR_P) rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 	cp $(LDMS_TARBALL) rpm/SOURCES
@@ -62,7 +62,7 @@ banned:
 
 if ENABLE_DOC
 
-.PHONY: install-dox
+PHONY_dox = install-dox
 
 if ENABLE_DOC_HTML
 DOCDEPS = $(top_srcdir)/src/*/*.c \
@@ -96,6 +96,7 @@ if ENABLE_DOC_MAN
 SUBDIRS += man
 endif
 
+.PHONY: $(PHONY_rpm) $(PHONY_dox)
 
 install-data-local: install-dox
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
