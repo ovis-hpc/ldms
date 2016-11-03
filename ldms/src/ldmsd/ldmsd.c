@@ -217,23 +217,22 @@ void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
 	va_end(ap);
 }
 
-void ldmsd_lerror(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	/* All messages from the ldms library are of ERROR level.*/
-	__ldmsd_log(LDMSD_LERROR, fmt, ap);
-	va_end(ap);
+/* All messages from the ldms library are of e level.*/
+#define LDMSD_LOG_AT(e,fsuf) \
+void ldmsd_l##fsuf(const char *fmt, ...) \
+{ \
+	va_list ap; \
+	va_start(ap, fmt); \
+	__ldmsd_log(e, fmt, ap); \
+	va_end(ap); \
 }
 
-void ldmsd_lcritical(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	/* All messages from the ldms library are of ERROR level.*/
-	__ldmsd_log(LDMSD_LCRITICAL, fmt, ap);
-	va_end(ap);
-}
+LDMSD_LOG_AT(LDMSD_LDEBUG,debug);
+LDMSD_LOG_AT(LDMSD_LINFO,info);
+LDMSD_LOG_AT(LDMSD_LWARNING,warning);
+LDMSD_LOG_AT(LDMSD_LERROR,error);
+LDMSD_LOG_AT(LDMSD_LCRITICAL,critical);
+LDMSD_LOG_AT(LDMSD_LALL,all);
 
 static char msg_buf[4096];
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...)
