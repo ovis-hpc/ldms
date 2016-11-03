@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -81,6 +81,10 @@
 #endif
 
 static int offns[NS_NUM] = { 0 };
+
+const char* ns_names[] = {
+       CSS_NS(CSS_STRWRAP)
+};
 
 int set_offns_generic(cray_system_sampler_sources_t i){
 	offns[i] = 1;
@@ -368,6 +372,7 @@ int add_metrics_generic(ldms_schema_t schema,
 		break;
 	case NS_LUSTRE:
 #ifdef HAVE_LUSTRE
+		lustre_sampler_set_msglog(msglog);
 		return add_metrics_lustre(schema, msglog);
 #else
 		//default unused
@@ -465,9 +470,9 @@ int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_
 	}
 
 	if (rc != 0) {
-		msglog(LDMSD_LDEBUG, "%s: returning error return code %d for NS"
-				"%d in sample_metrics_generic\n",
-				__FILE__, rc, source_id);
+		msglog(LDMSD_LDEBUG,
+		       "%s:  NS %s return error code %d in sample_metrics_generic\n",
+		       __FILE__, ns_names[source_id], rc);
 	}
 
 

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -104,21 +104,28 @@
  * 3) other non-network related data sources, in particular existence of
  * cray_nvidia as specified by the build, is handled in this related c file.
  */
-typedef enum {
-	NS_NETTOPO,
-	NS_LINKSMETRICS,
-	NS_NICMETRICS,
-	NS_ENERGY,
-	NS_LUSTRE,
-	NS_VMSTAT,
-	NS_LOADAVG,
-	NS_CURRENT_FREEMEM,
-	NS_KGNILND,
-	NS_PROCNETDEV,
-	NS_NVIDIA,
-	NS_NUM
+
+#define CSS_STRWRAP(NAME) #NAME
+#define CSS_NSWRAP(NAME) NS_ ## NAME
+#define CSS_NS(WRAP) \
+       WRAP (NETTOPO),      \
+       WRAP (LINKSMETRICS), \
+       WRAP (NICMETRICS), \
+       WRAP (ENERGY), \
+       WRAP (LUSTRE), \
+       WRAP (VMSTAT), \
+       WRAP (LOADAVG), \
+       WRAP (CURRENT_FREEMEM), \
+       WRAP (KGNILND),    \
+       WRAP (PROCNETDEV), \
+       WRAP (NVIDIA), \
+       WRAP (NUM)
+
+typedef enum cray_system_sampler_sources {
+       CSS_NS(CSS_NSWRAP)
 } cray_system_sampler_sources_t;
 
+extern const char *ns_names[];
 
 int set_offns_generic(cray_system_sampler_sources_t i);
 int get_offns_generic(cray_system_sampler_sources_t i);
