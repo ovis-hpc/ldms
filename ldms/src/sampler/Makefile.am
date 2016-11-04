@@ -137,7 +137,7 @@ endif
 
 if ENABLE_PERFEVENT
 libperfevent_la_SOURCES = perfevent.c
-libperfevent_la_LIBADD = $(COMMON_LIBADD) -lm
+libperfevent_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lm
 pkglib_LTLIBRARIES += libperfevent.la
 endif
 
