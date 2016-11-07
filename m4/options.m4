@@ -402,29 +402,33 @@ AC_DEFUN([OPTION_GITINFO], [
 	if test "$treetop" = "missing"; then
 		AC_MSG_WARN([Unable to locate top of ovis source tree.])
 	fi
-if test -s $treetop/TAG.txt && test -s $treetop/SHA.txt; then
-	AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $treetop for version info. ])
-	GITSHORT="$( cat $treetop/TAG.txt)"
-	GITLONG="$( cat $treetop/SHA.txt)"
-else
-	AC_MSG_CHECKING([Missing SHA.txt or TAG.txt in $treetop. Trying git])
-	if test "x`which git`" = "x"; then
-	        GITSHORT="no_git_command"
-	        GITLONG=$GITSHORT
-		AC_MSG_RESULT([Faking it.])
-	else
-		GITLONG="`git rev-parse HEAD`"
-		GITDIRTY="`git status -uno -s`"
-		if test -n "$GITDIRTY"; then
-			GITLONG="${GITLONG}-dirty"
-		fi
-	        GITSHORT="`git describe --tags`"
-		AC_MSG_RESULT([ok.])
-	fi
-fi
 
-AC_DEFINE_UNQUOTED([LDMS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
-AC_DEFINE_UNQUOTED([LDMS_GIT_SHORT],["$GITSHORT"],[Branch and hash mangle of last commit])
+	GITSHORT=`git describe --tags 2>/dev/null`
+	GITLONG=`git rev-parse HEAD 2>/dev/null`
+	GITDIRTY=`git status -uno -s 2>/dev/null`
+	if test -n "$GITLONG" -a -n "$GITDIRTY"; then
+		GITLONG="${GITLONG}-dirty"
+	fi
+
+	if test -n "$GITLONG"; then
+		dnl Git OK.
+		AC_MSG_RESULT([Using git SHA and TAG])
+	elif test -s $treetop/TAG.txt && test -s $treetop/SHA.txt; then
+		dnl Git not OK, try $treetop/TAG.txt
+		AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $treetop for version info. ])
+		GITSHORT="$( cat $treetop/TAG.txt)"
+		GITLONG="$( cat $treetop/SHA.txt)"
+		AC_MSG_RESULT([Using tree-top SHA.txt and TAG.txt])
+	else
+		GITSHORT="NO_GIT_SHA"
+		GITLONG=$GITSHORT
+		AC_MSG_RESULT([NO GIT SHA])
+	fi
+
+AC_DEFINE_UNQUOTED([OVIS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
+AC_DEFINE_UNQUOTED([OVIS_GIT_SHORT],["$GITSHORT"],[Branch and hash mangle of last commit])
+AC_SUBST([OVIS_GIT_LONG], ["$GITLONG"])
+AC_SUBST([OVIS_GIT_SHORT], ["$GITSHORT"])
 ])
 
 dnl SYNOPSIS: OVIS_PKGLIBDIR

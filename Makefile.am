@@ -15,7 +15,7 @@ TAG.txt
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
 # dist_doc_DATA = README.txt
 
-SUBDIRS = lib 
+SUBDIRS = lib
 
 # we build of the maybe vars to control build order, which
 # AM_CONDITIONAL does not preserve.
@@ -107,3 +107,20 @@ install-exec-local:
 			$(DESTDIR)$(bindir)/*.sh ; \
 		/bin/rm -rf $(DESTDIR)$(libdir)/ovis-libevent/pkgconfig ; \
 	fi
+
+SHA.txt:
+	COMMIT=`git rev-parse HEAD 2>/dev/null`; \
+	DIRTY=`git status -uno -s 2>/dev/null`; \
+	if test -z "$$COMMIT"; then \
+		COMMIT="NO_GIT"; \
+	elif test -n "$$DIRTY"; then \
+		COMMIT=$${COMMIT}-dirty; \
+	fi ; \
+	echo "$$COMMIT" > SHA.txt
+
+TAG.txt:
+	TAG=`git describe --tags 2>/dev/null`; \
+	if test -z "$$TAG"; then \
+		TAG="NO_GIT"; \
+	fi ; \
+	echo "$$TAG" > TAG.txt

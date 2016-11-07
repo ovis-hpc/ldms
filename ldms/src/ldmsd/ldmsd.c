@@ -1703,7 +1703,7 @@ int main(int argc, char *argv[])
 							ldmsd_version.minor,
 							ldmsd_version.patch,
 							ldmsd_version.flags);
-			printf("git-SHA: %s\n", LDMS_GIT_LONG);
+			printf("git-SHA: %s\n", OVIS_GIT_LONG);
 			exit(0);
 			break;
 		case '?':
@@ -1920,7 +1920,7 @@ int main(int argc, char *argv[])
 		ldmsd_version.major, ldmsd_version.minor,
 		ldmsd_version.patch, ldmsd_version.flags,
 		ldms_version.major, ldms_version.minor, ldms_version.patch,
-		ldms_version.flags, LDMS_GIT_LONG);
+		ldms_version.flags, OVIS_GIT_LONG);
 #if OVIS_LIB_HAVE_AUTH
 	secretword = NULL;
 	secretword = ldms_get_secretword(authfile, ldmsd_lcritical);
