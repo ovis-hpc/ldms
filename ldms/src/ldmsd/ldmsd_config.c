@@ -1704,7 +1704,7 @@ int process_config_line(char *line)
 {
 	char *cmd_s;
 	long cmd_id;
-	int tokens, rc;
+	int tokens, rc, n, buf_rc;
 	struct attr_value_list *av_list = NULL;
 	struct attr_value_list *kw_list = NULL;
 	/* skip leading spaces */
@@ -1744,7 +1744,21 @@ int process_config_line(char *line)
 	cmd_id = command_id(cmd_s);
 	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND
 			&& cmd_table[cmd_id]) {
+		replybuf[0] = 0; /* reset replybuf */
 		rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+					"config '%s' error rc: %d\n",
+					cmd_s, rc);
+		}
+		n = 0;
+		sscanf(replybuf, "%d%n", &buf_rc, &n);
+		if (buf_rc) {
+			ldmsd_log(LDMSD_LERROR,
+					"config '%s' error: %s\n",
+					cmd_s, replybuf + n);
+			rc = buf_rc;
+		}
 	} else {
 		rc = EINVAL;
 	}
