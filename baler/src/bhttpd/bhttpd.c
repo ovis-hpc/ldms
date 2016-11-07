@@ -75,6 +75,8 @@
 
 #include "bhttpd.h"
 
+#include "config.h"
+
 /**
  * \page bhttpd Baler HTTP service daemon
  *
@@ -125,7 +127,7 @@
  */
 
 /***** OPTIONS *****/
-const char *short_opt = "a:p:l:s:Fv:w:?";
+const char *short_opt = "a:p:l:s:Fv:w:V?";
 
 struct option long_opt[] = {
 	{"address",         1,  0,  'a'},
@@ -135,6 +137,7 @@ struct option long_opt[] = {
 	{"store",           1,  0,  's'},
 	{"worker-threads",  1,  0,  'w'},
 	{"verbosity",       1,  0,  'v'},
+	{"version",         0,  0,  'V'},
 	{0,                 0,  0,  0}
 };
 
@@ -238,6 +241,11 @@ loop:
 		break;
 	case 'v':
 		verbosity = optarg;
+		break;
+	case 'V':
+		printf("bhttpd Version: %s\n", PACKAGE_VERSION);
+		printf("git-SHA: %s\n", OVIS_GIT_LONG);
+		exit(0);
 		break;
 	case 'h':
 	case '?':
@@ -467,6 +475,9 @@ void init()
 			exit(-1);
 		}
 	}
+
+	binfo("bhttpd Version: %s\n", PACKAGE_VERSION);
+	binfo("git-SHA: %s\n", OVIS_GIT_LONG);
 
 	if (!fg) {
 		binfo("Daemonizing...");

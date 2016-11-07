@@ -73,6 +73,8 @@
 
 #include "assert.h"
 
+#include "config.h"
+
 static
 uint32_t __bq_msg_entry_get_sec(struct bquery *q)
 {
@@ -2869,6 +2871,11 @@ out:
  * For <b>-t MPTN</b>, the verbose flag will cause <b>bquery</b> to print
  * count of patterns in each meta-pattern class, the patterns and the pattern IDs
  * in each class and the first-seen and the last-seen statistics.
+ *
+ * \par -V,--version
+ * Print bquery version and exit.
+ *
+ *
  * \section examples EXAMPLES
  *
  * Get a list of hosts (or components):
@@ -3123,6 +3130,7 @@ void show_help()
 				or the images, respectively, in \n\
 				the reverse chronological order. \n\
     --escape,-e			Escape non-printable and spaces.\n\
+    --version,-V		Print version information.\n\
 \n"
 #if 0
 "Other OPTIONS:\n"
@@ -3143,7 +3151,7 @@ void show_help()
 }
 
 /********** Options **********/
-char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:F:RS:e";
+char *short_opt = "hs:dr:x:p:t:H:B:E:P:vI:F:RS:eV";
 struct option long_opt[] = {
 	{"help",              no_argument,        0,  'h'},
 	{"store-path",        required_argument,  0,  's'},
@@ -3162,6 +3170,7 @@ struct option long_opt[] = {
 	{"reverse",           no_argument,        0,  'R'},
 	{"sort-ptn-by",       required_argument,  0,  'S'},
 	{"escape",            no_argument,        0,  'e'},
+	{"version",           no_argument,        0,  'V'},
 	{0,                   0,                  0,  0}
 };
 
@@ -3292,6 +3301,11 @@ next_arg:
 		break;
 	case 'e':
 		escape = 1;
+		break;
+	case 'V':
+		printf("bquery Version: %s\n", PACKAGE_VERSION);
+		printf("git-SHA: %s\n", OVIS_GIT_LONG);
+		exit(0);
 		break;
 	default:
 		fprintf(stderr, "Unknown argument %s\n", argv[optind - 1]);

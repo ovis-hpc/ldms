@@ -175,6 +175,9 @@
  * \par -O NUMBER
  * Specify the number of output worker threads (default: 1).
  *
+ * \par -V
+ * Display version information.
+ *
  * \par -?
  * Display help message.
  *
@@ -323,7 +326,7 @@ int ocm_cb(struct ocm_event *e);
 #include "btkn.h"
 #include "bptn.h"
 #include "bwqueue.h"
-#include "../../config.h"
+#include "config.h"
 
 /***** Definitions *****/
 typedef enum bmap_idx_enum {
@@ -367,7 +370,7 @@ struct bzap_ctxt {
 };
 
 /***** Command line arguments ****/
-#define BALER_OPT_STR "FC:l:s:m:x:h:p:v:I:O:Q:?"
+#define BALER_OPT_STR "FC:l:s:m:x:h:p:v:I:O:Q:V?"
 #ifdef ENABLE_OCM
 const char *optstring = BALER_OPT_STR "z:";
 #else
@@ -398,7 +401,8 @@ void display_help_msg()
 "	-I <number>	The number of input queue worker.\n"
 "	-O <number>	The number of output queue worker.\n"
 "	-Q <number>	The queue depth (applied to input and output queues).\n"
-"	-?		Show help message\n"
+"	-V		Show version and exit.\n"
+"	-?		Show help message and exit.\n"
 "\n"
 "For more information see balerd(3) manpage.\n"
 "\n";
@@ -1824,6 +1828,11 @@ next_arg:
 	case 'Q':
 		qdepth = atoi(optarg);
 		break;
+	case 'V':
+		printf("Baler Daemon Version: %s\n", PACKAGE_VERSION);
+		printf("git-SHA: %s\n", OVIS_GIT_LONG);
+		exit(0);
+		break;
 	case '?':
 		display_help_msg();
 		exit(0);
@@ -1834,6 +1843,8 @@ next_arg:
 
 arg_done:
 	binfo("Baler Daemon Started.\n");
+	binfo("Version: %s\n", PACKAGE_VERSION);
+	binfo("git-SHA: %s\n", OVIS_GIT_LONG);
 }
 
 void binq_data_print(struct binq_data *d)
