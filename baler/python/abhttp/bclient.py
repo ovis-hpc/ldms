@@ -584,7 +584,7 @@ class ServiceCmd(cmd.Cmd):
                                             ts0=ts0,
                                             ts1=ts1
                                         )
-        if self.cmdout.isatty():
+        if self.cmdout.isatty() and sys.stdin.isatty():
             # use paging
             pager = PageDisplay(itr)
             pager.loop()
