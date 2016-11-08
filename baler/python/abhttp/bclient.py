@@ -774,8 +774,14 @@ if __name__ == "__main__":
     svc_cmd = ServiceCmd()
     while True:
         try:
-            svc_cmd.cmdloop()
-        except CmdException, e:
+            if sys.stdin.isatty() is False:
+                for line in sys.stdin:
+                    svc_cmd.precmd(line)
+                    rc = svc_cmd.onecmd(line)
+                    svc_cmd.postcmd(rc, line)
+            else:
+                svc_cmd.cmdloop()
+        except Exception, e:
             # in case of exception, print it and continue the loop
             print >>sys.stderr, "Error:", e
         except IOError, e:
