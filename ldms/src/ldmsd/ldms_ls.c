@@ -72,6 +72,7 @@
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include <event2/event.h>
+#include "config.h"
 
 #define LDMS_LS_MEM_SZ_ENVVAR "LDMS_LS_MEM_SZ"
 #define LDMS_LS_MAX_MEM_SIZE 512L * 1024L * 1024L
@@ -539,7 +540,8 @@ int main(int argc, char *argv[])
 #endif /* OVIS_LIB_HAVE_AUTH */
 		case 'V':
 			ldms_version_get(&version);
-			printf("LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
+			printf("LDMS_LS Version: %s\n", PACKAGE_VERSION);
+			printf("LDMS Protocol Version: %hhu.%hhu.%hhu.%hhu\n",
 							version.major,
 							version.minor,
 							version.patch,

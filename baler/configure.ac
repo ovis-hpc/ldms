@@ -23,6 +23,7 @@ AC_PROG_CXX()
 AM_PROG_CC_C_O()
 
 OVIS_PKGLIBDIR
+OPTION_GITINFO
 
 dnl change sharedstatedir default
 test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
