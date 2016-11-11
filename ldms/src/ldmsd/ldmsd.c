@@ -266,12 +266,13 @@ double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 }
 #endif /* LDMSD_UPDATE_TIME */
 
-void cleanup(int x)
+void cleanup(int x, const char *reason)
 {
 	int llevel = LDMSD_LINFO;
 	if (x)
 		llevel = LDMSD_LCRITICAL;
-	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d\n", x);
+	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
+		       (reason && x) ? reason : "");
 	ldmsd_config_cleanup();
 	if (ldms) {
 		/* No need to close the xprt. It has never been connected. */
@@ -306,18 +307,18 @@ FILE *ldmsd_open_log()
 	if (!f) {
 		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
 							logfile);
-		cleanup(9);
+		cleanup(9, "log open failed");
 	} else {
 		int fd = fileno(f);
 		if (dup2(fd, 1) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 							logfile);
-			cleanup(10);
+			cleanup(10, "error redirecting stdout");
 		}
 		if (dup2(fd, 2) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 							logfile);
-			cleanup(11);
+			cleanup(11, "error redirecting stderr");
 		}
 		stdout = f;
 		stderr = f;
@@ -374,7 +375,7 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 {
 	printf("signo : %d\n", info->si_signo);
 	printf("si_pid: %d\n", info->si_pid);
-	cleanup(100);
+	cleanup(100, "signal to exit caught");
 }
 
 
@@ -443,7 +444,7 @@ void usage_hint(char *argv[],char *hint)
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}
-	cleanup(1);
+	cleanup(1, "usage provided");
 }
 
 void usage(char *argv[]) {
@@ -1513,7 +1514,7 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	if (!l) {
 		ldmsd_log(LDMSD_LERROR, "The transport specified, "
 				"'%s', is invalid.\n", xprt_str);
-		cleanup(6);
+		cleanup(6, "error creating transport");
 	}
 	ldms = l;
 	sin.sin_family = AF_INET;
@@ -1523,7 +1524,7 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	if (ret) {
 		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
 				"transport.\n", ret, xprt_str);
-		cleanup(7);
+		cleanup(7, "error listening on transport");
 	}
 	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
 			xprt_str, port_str);
@@ -1730,7 +1731,7 @@ int main(int argc, char *argv[])
 	if (!foreground) {
 		if (daemon(1, 1)) {
 			perror("ldmsd: ");
-			cleanup(8);
+			cleanup(8, "daemon failed to start");
 		}
 	}
 
@@ -1810,13 +1811,13 @@ int main(int argc, char *argv[])
 		ev_base[op] = event_init();
 		if (!ev_base[op]) {
 			ldmsd_log(LDMSD_LERROR, "Error creating an event base.\n");
-			cleanup(6);
+			cleanup(6, "event base create failed");
 		}
 		ret = pthread_create(&ev_thread[op], NULL, event_proc, ev_base[op]);
 		if (ret) {
 			ldmsd_log(LDMSD_LERROR, "Error %d creating the event "
 					"thread.\n", ret);
-			cleanup(7);
+			cleanup(7, "event thread create fail");
 		}
 	}
 
@@ -1837,65 +1838,65 @@ int main(int argc, char *argv[])
 		static char test_set_name_no[1024];
 		ldms_schema_t schema = ldms_schema_new("test_set");
 		if (!schema)
-			cleanup(11);
+			cleanup(11, "test schema create failed");
 		job_id = ldms_schema_meta_add(schema, "job_id", LDMS_V_U32);
 		if (job_id < 0)
-			cleanup(12);
+			cleanup(12, "test schema meta_add jid failed");
 		comp_id = ldms_schema_meta_add(schema, "component_id", LDMS_V_U32);
 		if (comp_id < 0)
-			cleanup(12);
+			cleanup(12, "test schema meta_add cid failed");
 		rc = ldms_schema_metric_add(schema, "u8_metric", LDMS_V_U8);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u8 failed");
 		rc = ldms_schema_metric_add(schema, "u16_metric", LDMS_V_U16);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u16 failed");
 		rc = ldms_schema_metric_add(schema, "u32_metric", LDMS_V_U32);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u32 failed");
 		rc = ldms_schema_metric_add(schema, "u64_metric", LDMS_V_U64);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u64 failed");
 		rc = ldms_schema_metric_add(schema, "float_metric", LDMS_V_F32);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add float failed");
 		rc = ldms_schema_metric_add(schema, "double_metric", LDMS_V_D64);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add double failed");
 		rc = ldms_schema_metric_array_add(schema, "char_array_metric",
 						  LDMS_V_CHAR_ARRAY, 16);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add char array failed");
 		rc = ldms_schema_metric_array_add(schema, "u8_array_metric",
 						  LDMS_V_U8_ARRAY, 4);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u8 array failed");
 		rc = ldms_schema_metric_array_add(schema, "u16_array_metric",
 						  LDMS_V_U16_ARRAY, 4);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u16 array failed");
 		rc = ldms_schema_metric_array_add(schema, "u32_array_metric",
 						  LDMS_V_U32_ARRAY, 4);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u32 array failed");
 		rc = ldms_schema_metric_array_add(schema, "u64_array_metric",
 						  LDMS_V_U64_ARRAY, 4);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add u64 array failed");
 		rc = ldms_schema_metric_array_add(schema, "f32_array_metric",
 						  LDMS_V_F32_ARRAY, 4);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add f32 array failed");
 		rc = ldms_schema_metric_array_add(schema, "d64_array_metric",
 						  LDMS_V_D64_ARRAY, 4);
 		if (rc < 0)
-			cleanup(13);
+			cleanup(13, "test schema metric_add d64 array failed");
 		for (set_no = 1; set_no <= test_set_count; set_no++) {
 			sprintf(test_set_name_no, "%s/%s_%d", myhostname,
 				test_set_name, set_no);
 			test_set = ldms_set_new(test_set_name_no, schema);
 			if (!test_set)
-				cleanup(14);
+				cleanup(14, "test set new failed");
 			union ldms_value v;
 			v.v_u64 = set_no;
 			ldms_metric_set(test_set, comp_id, &v);
@@ -1925,27 +1926,27 @@ int main(int argc, char *argv[])
 	secretword = NULL;
 	secretword = ldms_get_secretword(authfile, ldmsd_lcritical);
 	if ( !secretword )
-		cleanup(15);
+		cleanup(15, "auth get secretword failed");
 #endif /* OVIS_LIB_HAVE_AUTH */
 
 	if (do_kernel && publish_kernel(setfile))
-		cleanup(3);
+		cleanup(3, "start kernel sampler failed");
 
 	if (sockname && ldmsd_config_init(sockname))
-		cleanup(4);
+		cleanup(4, "sock config_init failed");
 
 	if (inet_listener_port)
 		if (ldmsd_inet_config_init(inet_listener_port, secretword))
-			cleanup(104);
+			cleanup(104, "inet config_init failed");
 
 #ifdef ENABLE_LDMSD_RCTL
 	if (rctrl_port)
 		if (ldmsd_rctrl_init(rctrl_port, secretword))
-			cleanup(4);
+			cleanup(4, "rctrl_init failed");
 #endif /* ENABLE_LDMSD_RCTL */
 	if (ldmsd_store_init(flush_N)) {
 		ldmsd_log(LDMSD_LERROR, "Could not initialize the storage subsystem.\n");
-		cleanup(7);
+		cleanup(7, "store_init failed");
 	}
 
 	listen_on_transport(xprt_str, port_str);
@@ -1955,7 +1956,7 @@ int main(int argc, char *argv[])
 	if (ocm_rc) {
 		ldmsd_log(LDMSD_LERROR, "Error: cannot initialize OCM, rc: %d\n",
 				ocm_rc);
-		cleanup(ocm_rc);
+		cleanup(ocm_rc, "ocm_init failed");
 	}
 #endif
 	if (config_path) {
@@ -1963,7 +1964,7 @@ int main(int argc, char *argv[])
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
 					"Process config file error: %d\n", rc);
-			cleanup(rc);
+			cleanup(rc, "process config file failed");
 		}
 	}
 
@@ -2016,6 +2017,6 @@ int main(int argc, char *argv[])
 		usleep(sample_interval);
 	} while (1);
 
-	cleanup(0);
+	cleanup(0,NULL);
 	return 0;
 }

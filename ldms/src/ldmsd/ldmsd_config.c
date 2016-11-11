@@ -104,7 +104,7 @@ int update_policy_metrics(struct ldmsd_store_policy *sp, struct hostset *hset);
 int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 			char *err_str);
 int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *err_str);
-void cleanup(int x);
+extern void cleanup(int x, char *reason);
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(host_list_s, hostspec) host_list;
@@ -1694,7 +1694,7 @@ int process_remove_host(char *replybuf, struct attr_value_list *av_list,
 int process_exit(char *replybuf, struct attr_value_list *av_list,
 					struct attr_value_list *kw_list)
 {
-	cleanup(0);
+	cleanup(0, NULL);
 	return 0;
 }
 
@@ -2205,7 +2205,7 @@ void *ctrl_thread_proc(void *v)
 		ldmsd_log(LDMSD_LERROR,
 			  "Fatal error allocating %zu bytes for config string.\n",
 			  cfg_buf_len);
-		cleanup(1);
+		cleanup(1, "ctrl thread proc out of memory");
 	}
 	pthread_cleanup_push(free,lbuf);
 	iov.iov_base = lbuf;
@@ -2304,7 +2304,7 @@ void *inet_ctrl_thread_proc(void *args)
 		ldmsd_log(LDMSD_LERROR,
 			  "Fatal error allocating %zu bytes for config string.\n",
 			  cfg_buf_len);
-		cleanup(1);
+		cleanup(1, "inet ctrl thread out of memory");
 	}
 	iov.iov_base = lbuf;
 loop:

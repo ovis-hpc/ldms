@@ -3,6 +3,7 @@ dist_man8_MANS= \
 ldms_build_install.man \
 ldms_ls.man \
 ldmsd.man \
+ldmsd_exits.man \
 ldmsd_controller.man \
 ldmsctl.man
 
@@ -30,3 +31,6 @@ Plugin_jobid.man \
 Plugin_sysclassib.man
 
 dist_man7_MANS += Plugin_store_rabbitv3.man
+
+ldmsd_exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
+	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd_exits.man
