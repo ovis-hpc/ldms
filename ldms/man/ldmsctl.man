@@ -249,7 +249,10 @@ Causes the ldmsd to dump out information about plugins,
 work queue utilization, hosts and object stores.
 .TP
 .BR quit
-Exit
+Exit ldmsctl.
+.TP
+.BR daemon-exit
+Request ldmsd to exit.
 .RE
 
 .SH NOTES
