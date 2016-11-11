@@ -92,6 +92,7 @@ int inet_sock = -1;
 int inet_listener = -1;
 char *sockname = NULL;
 
+static int cleanup_requested = 0;
 int bind_succeeded;
 
 extern struct event_base *get_ev_base(int idx);
@@ -1694,7 +1695,10 @@ int process_remove_host(char *replybuf, struct attr_value_list *av_list,
 int process_exit(char *replybuf, struct attr_value_list *av_list,
 					struct attr_value_list *kw_list)
 {
-	cleanup(0, NULL);
+	cleanup_requested = 1;
+	/* set flag for bottom of message handler loops to check for quit. */
+	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
+	sprintf(replybuf, "0cleanup request received.\n");
 	return 0;
 }
 
@@ -2224,6 +2228,8 @@ void *ctrl_thread_proc(void *v)
 		if (msglen <= 0)
 			break;
 		process_message(muxr_s, &msg, msglen);
+		if (cleanup_requested)
+			cleanup(0,"user quit");
 	} while (1);
 	pthread_cleanup_pop(0);
 	free(lbuf);
@@ -2439,6 +2445,8 @@ loop:
 				break;
 			process_request(inet_sock, &msg, msglen);
 		}
+		if (cleanup_requested)
+			cleanup(0,"user quit");
 	} while (1);
 	ldmsd_log(LDMSD_LINFO,
 		  "Closing configuration socket. cfg_buf_len %d\n",

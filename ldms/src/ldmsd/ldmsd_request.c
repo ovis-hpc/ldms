@@ -386,6 +386,7 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 	return cnt;
 }
 
+/* kw_table must ordered in strcasecmp order, for use with bsearch. */
 struct kw {
 	char *token_str;
 	int token_id;

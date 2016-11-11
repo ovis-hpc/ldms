@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011-2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2011-2015 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2011-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2011-2016 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -236,7 +236,9 @@ int handle_help(char *kw, char *err_str)
 	       "     work queue utilization, hosts and object stores.\n"
 	       "\n"
 	       "quit\n"
-	       "   - Exit.\n");
+	       "   - Exit ldmsctl.\n"
+	       "daemon-exit\n"
+	       "   - Tell daemon to exit.\n");
 	return 0;
 }
 
@@ -332,16 +334,24 @@ int handle_quit(char *kw, char *err_str)
 	return 0;
 }
 
+int handle_daemon_exit(char *kw, char *err_str)
+{
+	return ctrl_request(ctrl_sock, LDMSCTL_EXIT_DAEMON, av_list, err_str);
+}
+
+
 struct kw {
 	char *token;
 	int (*action)(char *kw, char *err_str);
 };
 
 int handle_nxt_token(char *kw, char *err_str);
+/* keyword_tbl is used with bsearch and must be in strcmp sort order. */
 struct kw keyword_tbl[] = {
 	{ "?", handle_help },
 	{ "add", handle_host_add },
 	{ "config", handle_plugin_config },
+	{ "daemon-exit", handle_daemon_exit },
 	{ "help", handle_help },
 	{ "info", handle_info },
 	{ "load", handle_plugin_load },
