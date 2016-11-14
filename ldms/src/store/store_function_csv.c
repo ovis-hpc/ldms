@@ -156,9 +156,13 @@ static ldmsd_msg_log_f msglog;
  * - if a host goes down and comes back up, then may have a long time range
  *   between points. currently, this is still calculated, but can be flagged
  *   with ageout. Currently this is global, not per collector type
+ * - Scale casting is still in development. Overflow is not checked for. This was inconsistent prior to mid Nov 2016.
+ *   In Nov 2016, this has been made consistent and chosen to enable fractional and less than 1 values for the scale,
+ *   so rely on the uint64_t being cast to double as part of the multiplication with the double scale, and as a result,
+ *   there may be overflow. Writeout is still uint64_t.
  *
  * TODO:
- * - Review where scale is done.
+ * - For the implict cast for scale operations, should this be bypassed for scale == 1?
  * - Currently only handles uint64_t scalar and vector types
  * - Currently only printsout uint64_t values. (cast)
  * - Fix the frees
@@ -831,8 +835,8 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 				s_handle->der[s_handle->numder] = tmpder;
 				s_handle->numder++;
 			} else {
-//				msglog(LDMSD_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
-//				       s_handle->store_key, metric_name, schema_name, iter);
+				msglog(LDMSD_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
+				       s_handle->store_key, metric_name, schema_name, iter);
 			}
 		} while (s);
 
@@ -1445,7 +1449,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U8:
 		rc = fprintf(s_handle->file, ",%hhu",
-			     (ldms_metric_get_u8(set, metric_array[i]) * (uint8_t)(scale)));
+			     (uint8_t)((double)(ldms_metric_get_u8(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1454,7 +1458,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S8:
 		rc = fprintf(s_handle->file, ",%hhd",
-			     (ldms_metric_get_s8(set, metric_array[i]) * (int8_t)(scale)));
+			     (int8_t)((double)(ldms_metric_get_s8(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1463,7 +1467,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U16:
 		rc = fprintf(s_handle->file, ",%hu",
-			     (ldms_metric_get_u16(set, metric_array[i]) * (uint16_t)(scale)));
+			     (uint16_t)((double)(ldms_metric_get_u16(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1472,7 +1476,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S16:
 		rc = fprintf(s_handle->file, ",%hd",
-			     (ldms_metric_get_s16(set, metric_array[i]) * (int16_t)(scale)));
+			     (int16_t)((double)(ldms_metric_get_s16(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1481,7 +1485,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U32:
 		rc = fprintf(s_handle->file, ",%" PRIu32,
-			     (ldms_metric_get_u32(set, metric_array[i]) * (uint32_t)(scale)));
+			     (uint32_t)((double)(ldms_metric_get_u32(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1490,7 +1494,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S32:
 		rc = fprintf(s_handle->file, ",%" PRId32,
-			     (ldms_metric_get_s32(set, metric_array[i]) * (int32_t)(scale)));
+			     (int32_t)((double)(ldms_metric_get_s32(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1499,7 +1503,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U64:
 		rc = fprintf(s_handle->file, ",%"PRIu64,
-			     (ldms_metric_get_u64(set, metric_array[i]) * (uint64_t)(scale)));
+			     (uint64_t)((double)(ldms_metric_get_u64(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1508,7 +1512,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S64:
 		rc = fprintf(s_handle->file, ",%" PRId64,
-			     (ldms_metric_get_s64(set, metric_array[i]) * (int64_t)(scale)));
+			     (int64_t)((double)(ldms_metric_get_s64(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1546,7 +1550,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U8_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hhu",
-				     (ldms_metric_array_get_u8(set, metric_array[i], j) * (uint8_t)(scale)));
+				     (uint8_t)((double)(ldms_metric_array_get_u8(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1557,7 +1561,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S8_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hhd",
-				     (ldms_metric_array_get_s8(set, metric_array[i], j) * (int8_t)(scale)));
+				     (int8_t)((double)(ldms_metric_array_get_s8(set, metric_array[i], j))* scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1568,7 +1572,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U16_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hu",
-				     (ldms_metric_array_get_u16(set, metric_array[i], j) * (uint16_t)(scale)));
+				     (uint16_t)((double)(ldms_metric_array_get_u16(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1579,7 +1583,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S16_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hd",
-				     (ldms_metric_array_get_s16(set, metric_array[i], j) * (int16_t)(scale)));
+				     (int16_t)((double)(ldms_metric_array_get_s16(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1590,7 +1594,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U32_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRIu32,
-				     (ldms_metric_array_get_u32(set, metric_array[i], j) * (uint32_t)(scale)));
+				     (uint32_t)((double)(ldms_metric_array_get_u32(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1601,7 +1605,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S32_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRId32,
-				     (ldms_metric_array_get_s32(set, metric_array[i], j) * (int32_t)(scale)));
+				     (int32_t)((double)(ldms_metric_array_get_s32(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1612,7 +1616,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U64_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRIu64,
-				     (ldms_metric_array_get_u64(set, metric_array[i], j) * (uint64_t)(scale)));
+				     (uint64_t)((double)(ldms_metric_array_get_u64(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1623,7 +1627,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S64_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRId64,
-				     (ldms_metric_array_get_s64(set, metric_array[i], j) * (int64_t)(scale)));
+				     (int64_t)((double)(ldms_metric_array_get_s64(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1684,10 +1688,13 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 
 	/**
 	 * NOTE: have to make tradeoffs in the chances of overflowing with casts
-	 * and having the scale enable resolutions of diffs.
+	 * and having the scale enable resolutions of diffs. Overflow is not checked for. See additional notes at start of file.
+	 * This has been chosen to enable fractional and less than 1 values for the scale,
+	 *   so rely on the uint64_t being cast to double as part of the multiplication with the double scale, and as a result,
+	 *   there may be overflow. Writeout is still uint64_t.
 	 *
 	 * Made the following choices for the order of operations:
-	 * RAW -     Apply scale after the value. Scale is cast to uint64_t. Then assign to uint64_t.
+	 * RAW -     Apply scale after the value. Value Scale is cast to uint64_t. Then assign to uint64_t.
 	 * RATE -    Subtract. Multiply by the scale, with explicit cast to double. Divide by time. Finally assign to u64.
 	 *               This should allow you to shift the values enough to resolve differences that would
 	 *               have been washed out in the division by time.
@@ -1703,6 +1710,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 	 * MIN/MAX/SUM - Apply scale after the function. Same case and assignment as in RAW.
 	 * AVG - Sum. Multiply by the scale, with explict cast to double. Divide by N. Finally assign to u64.
 	 * NOTE: THRESH functions have no scale (scale is the thresh)
+         *
+	 * - Test mode for scale values with no integer part (ie. -1 < scale < 1), the casts are done differently, since all
+	 *   of the value would be lost in the roundoff. This method does not check for overflow when it does this handling.
+	 *   This is controlled by a flag SUB_INT_SCALE, whose behavior may change. Even when this flag is used, however,
+	 *   the writeout is still uint64. FOR RAWTERM ONLY Currently.
 	 *
 	 * RETURNS:
 	 * - Invalid computations due to overflow in the cast are not checked for nor marked.
@@ -1760,7 +1772,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					retvals[0] = (temp < scale ? 1:0);
 					break;
 				case RAW:
-					retvals[0] = temp * (uint64_t)(scale);
+					retvals[0] = temp * scale;
 					break;
 				}
 			} else { //it must be an array
@@ -1775,7 +1787,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[j] = (temp < scale ? 1:0);
 						break;
 					case RAW:
-						retvals[j] = temp * (uint64_t)(scale);
+						retvals[j] = temp * scale;
 						break;
 					}
 				}
@@ -1794,7 +1806,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[j] = (temp < scale ? 1:0);
 						break;
 					case RAW:
-						retvals[j] = temp * (uint64_t)(scale);
+						retvals[j] = temp * scale;
 						break;
 					}
 				}
@@ -1833,10 +1845,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 
 					}
 				}
-				if (fct == AVG)
+				if (fct == AVG) {
 					retvals[0] = (uint64_t)(((double)(retvals[0]) * scale)/(double)(vals[0].dim));
-				else
-					retvals[0] *= (uint64_t)(scale);
+				} else {
+					retvals[0] *= scale;
+				}
 			}
 		} else {
 			*retvalid = dp->datavals[vals[0].i].returnvalid;
@@ -1859,10 +1872,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						break;
 					}
 				}
-				if (fct == AVG)
+				if (fct == AVG) {
 					retvals[0] = (uint64_t)(((double)(retvals[0]) * scale)/(double)vals[0].dim);
-				else
-					retvals[0] *= (uint64_t)(scale);
+				} else {
+					retvals[0] *= scale;
+				}
 			} else {
 				retvals[0] = 0;
 			}

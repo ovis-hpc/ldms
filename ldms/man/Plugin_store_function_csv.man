@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_function_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "05 Oct 2016" "v3" "LDMS Plugin store_function_csv man page"
+.TH man 7 "11 Nov 2016" "v3" "LDMS Plugin store_function_csv man page"
 
 .SH NAME
 Plugin_store_function_csv - man page for the LDMS store_function_csv plugin
@@ -85,6 +85,7 @@ Rollover value controls the frequency of rollover (e.g., number of bytes, number
 Format: schema new_metricname function num_dependent_metrics csv_list_of_dependent_metrics scale|thresh writeout.
 .PP
 Whitespace delimits the fields in the configuration file; commas delimit the metric this new metric is dependent upon. One metric per line.
+No spaces are allowed within a metric name.
 .PP
 .RS
 .TP
@@ -95,7 +96,10 @@ these base metrics.
 .TP
 new_metricname=<name>
 .br
-The name for this new metric.
+The name for this new metric. The name for a derived metric can be the same as that as a base metric (e.g., one provided
+innately by the metric set). Note that when searching the csv_list_of_dependent_metrics, the base metrics will searched
+before the derived metrics for a matching metric name. This is not to be relied on however; we recommend that you only reuse
+a metric name for the RAWTERM function.
 .TP
 function=<fct>
 .br
@@ -300,7 +304,16 @@ identified in the derived configuration file.
 .IP \[bu]
 A metric must be specified before it can be used as part of another metric.
 .IP \[bu]
+Spaces in metric names are not supported.
+.IP \[bu]
 Derived metrics may be used as input into other metrics.
+.IP \[bu]
+The name for a derived metric can be the same as that as a base metric
+(e.g., one provided innately by the metric set). Note that when searching
+the csv_list_of_dependent_metrics, the base metrics will searched
+before the derived metrics for a matching metric name. This is not to
+be relied on however; we recommend that you only reuse
+a metric name for the RAWTERM function.
 .IP \[bu]
 Although scale is a float option, its placement in the calculation is being worked out. In the
 meantime, it may be cast into a uint64_t as part of the calculation.
@@ -311,6 +324,8 @@ Flag will be set if a) the dt is negative or b) dt is greater than ageusec.
 Individual variable flags will be set if a) there is invalid input to the calculation or b) in a rate or subtraction calculation, the second value is greater than the first. It is NOT set if the cast in the computation would result in an overflow.
 .IP \[bu]
 This store is speculative at the moment. This store replaces store_derived_csv.
+
+
 
 .SH BUGS
 None.
