@@ -94,7 +94,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                'opt_attr': ['name']},
                       'udata': {'id': 10,
                                 'req_attr': ['set', 'metric', 'udata']},
-                      'exit': {'id': 11, 'req_attr': []},
+                      'daemon_exit': {'id': 11, 'req_attr': []},
                       'standby': {'id': 12,
                                   'req_attr': ['agg_no', 'state']},
                       'oneshot': {'id': 13,
@@ -469,6 +469,8 @@ class ldmsdUSocketConfig(ldmsdConfig):
         return self.ldmsd_sockpath
 
     def send_command(self, cmd):
+        if self.socket is None:
+            raise Exception("The connection has been closed.")
         cmd_len = self.socket.sendto(cmd, self.ldmsd_sockpath)
         if cmd_len != len(cmd):
             raise Exception("Wrong command length")
@@ -477,10 +479,12 @@ class ldmsdUSocketConfig(ldmsdConfig):
         return ldmsdConfig.receive_response(self)
 
     def close(self):
-        self.socket.close()
-        self.socket = None
-        os.unlink(self.sockpath)
-        self.sockpath = None
+        if self.socket is not None:
+            self.socket.close()
+            self.socket = None
+        if self.sockpath is not None:
+            os.unlink(self.sockpath)
+            self.sockpath = None
 
 class ldmsdInetConfig(ldmsdConfig):
     def __init__(self, host, port, secretword, max_recv_len = MAX_RECV_LEN):
@@ -533,11 +537,14 @@ class ldmsdInetConfig(ldmsdConfig):
         return self.port
 
     def send_command(self, cmd):
+        if self.socket is None:
+            raise Exception("The connection has been disconnected")
         self.socket.sendall(cmd)
 
     def receive_response(self):
         return ldmsdConfig.receive_response(self)
 
     def close(self):
-        self.socket.close()
-        self.socket = None
+        if self.socket is not None:
+            self.socket.close()
+            self.socket = None
