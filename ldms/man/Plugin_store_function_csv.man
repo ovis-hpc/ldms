@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_function_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Jan 2016" "v3" "LDMS Plugin store_function_csv man page"
+.TH man 7 "11 Nov 2016" "v3" "LDMS Plugin store_function_csv man page"
 
 .SH NAME
 Plugin_store_function_csv - man page for the LDMS store_function_csv plugin
@@ -22,7 +22,7 @@ the ldmsd_controller. The store_function_csv plugin is a CSV store.
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> rolltype=<rolltype> rollover=<rollover> ]
+name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> buffer=<0/!0> rolltype=<rolltype> rollover=<rollover>]
 .br
 ldmsctl configuration line
 .RS
@@ -49,6 +49,10 @@ at each rollover. Default is altheader=0.
 ageusec=<ageusec>
 .br
 Set output data field Flag = 1 if the interval between two successive data reports for the same host's same metric set is greater than ageusec. (NOTE: in v3 this is now usec, not sec).
+.TP
+buffer=<0/!0>
+.br
+Distinguishes whether or not to buffer the data for the writeout. 0 = does not buffer. Any non-zero means buffering occurs. Default is to buffer.
 .TP
 rolltype=<rolltype>
 .br
@@ -81,6 +85,7 @@ Rollover value controls the frequency of rollover (e.g., number of bytes, number
 Format: schema new_metricname function num_dependent_metrics csv_list_of_dependent_metrics scale|thresh writeout.
 .PP
 Whitespace delimits the fields in the configuration file; commas delimit the metric this new metric is dependent upon. One metric per line.
+No spaces are allowed within a metric name.
 .PP
 .RS
 .TP
@@ -91,7 +96,10 @@ these base metrics.
 .TP
 new_metricname=<name>
 .br
-The name for this new metric.
+The name for this new metric. The name for a derived metric can be the same as that as a base metric (e.g., one provided
+innately by the metric set). Note that when searching the csv_list_of_dependent_metrics, the base metrics will searched
+before the derived metrics for a matching metric name. This is not to be relied on however; we recommend that you only reuse
+a metric name for the RAWTERM function.
 .TP
 function=<fct>
 .br
@@ -296,7 +304,16 @@ identified in the derived configuration file.
 .IP \[bu]
 A metric must be specified before it can be used as part of another metric.
 .IP \[bu]
+Spaces in metric names are not supported.
+.IP \[bu]
 Derived metrics may be used as input into other metrics.
+.IP \[bu]
+The name for a derived metric can be the same as that as a base metric
+(e.g., one provided innately by the metric set). Note that when searching
+the csv_list_of_dependent_metrics, the base metrics will searched
+before the derived metrics for a matching metric name. This is not to
+be relied on however; we recommend that you only reuse
+a metric name for the RAWTERM function.
 .IP \[bu]
 Although scale is a float option, its placement in the calculation is being worked out. In the
 meantime, it may be cast into a uint64_t as part of the calculation.
@@ -308,6 +325,8 @@ Individual variable flags will be set if a) there is invalid input to the calcul
 .IP \[bu]
 This store is speculative at the moment. This store replaces store_derived_csv.
 
+
+
 .SH BUGS
 None.
 
@@ -315,7 +334,7 @@ None.
 ldmsctl lines for configuring store_function_csv:
 .nf
 ldmsd_controller> load name=store_function_csv
-ldmsd_controller> config name=store_csv altheader=1 derivedconf=/XXX/der1.conf,/XXX/der2.conf path=/XXX/storedir
+ldmsd_controller> config name=store_function_csv altheader=1 derivedconf=/XXX/der1.conf,/XXX/der2.conf path=/XXX/storedir
 ldmsd_controller> strgp_add name=csv_memRHeL6_policy plugin=store_function_csv container=data_der schema=meminfoRHeL6
 ldmsd_controller> strgp_add name=csv_memRHeL7_policy plugin=store_function_csv container=data_der schema=meminfoRHeL7
 ldmsd_controller> strgp_add name=csv_ps_policy plugin=store_function_csv container=data_der schema=procstat
