@@ -203,13 +203,20 @@ static int __links_metric_name( int, int, int, char[]);
 
 static int __links_metric_name(int isbase, int nameidx,
 				   int diridx, char newname[]){
+
+#ifdef HAVE_SPACELESS_NAMES
+	char* format = "%s_%s_%s";
+#else
+	char* format = "%s_%s %s";
+#endif
+
 	if (isbase == 1)
-		sprintf(newname, "%s_%s %s",
+		sprintf(newname, format,
 			gemini_linkdir_name[diridx],
 			ns_glp_basename[nameidx],
 			ns_glp_baseunit[nameidx]);
 	else
-		sprintf(newname, "%s_%s %s",
+		sprintf(newname, format,
 			gemini_linkdir_name[diridx],
 			ns_glp_derivedname[nameidx],
 			ns_glp_derivedunit[nameidx]);

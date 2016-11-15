@@ -163,17 +163,23 @@ static uint64_t __linksmetrics_derived_metric_calc(
 //diridx is now the tile
 static int __links_metric_name(int infoidx, int isbase, int tile,
 			       char newname[]){
-	if (isbase == 1) {
-		sprintf(newname, "%s_%03d %s",
+
+#ifdef HAVE_SPACELESS_NAMES
+	char* format = "%s_%03d_%s";
+#else
+	char* format = "%s_%03d %s";
+#endif
+
+	if (isbase == 1)
+		sprintf(newname, format,
 			linksinfo[infoidx].basename,
 			tile,
 			linksinfo[infoidx].baseunit);
-	} else {
-		sprintf(newname, "%s_%03d %s",
+	else
+		sprintf(newname, format,
 			linksinfo[infoidx].derivedname,
 			tile,
 			linksinfo[infoidx].derivedunit);
-	}
 
 	return 0;
 }

@@ -91,6 +91,8 @@ OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
+dnl spaceless names in the cray_system_sampler. Default is with spaces for reverse compatibility
+OPTION_DEFAULT_ENABLE([spaceless_names], [ENABLE_SPACELESS_NAMES])
 dnl aries_mmr is not part of the cray_system_sampler
 OPTION_DEFAULT_DISABLE([aries-mmr], [ENABLE_ARIES_MMR], [Requires --enable-gpcd or --with-aries-libgpcd=libdir,incdir])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
@@ -321,6 +323,10 @@ dnl if cray_sampler set some other variables
 if test "x$enable_cray_system_sampler" = "xyes"
 then
 
+	if test -z "$ENABLE_SPACELESS_NAMES_TRUE"; then
+		  AC_DEFINE([HAVE_SPACELESS_NAMES],[1],[cray_system_sampler: Using spaceless names.])
+	fi
+
 	if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
 	then
 		AC_MSG_ERROR([Must enable at least one of gemini-gpcdr, and aries-gpcdr.])
@@ -475,4 +481,3 @@ echo "TURNING libtool rpath into no-ops"
 sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
 sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
 fi
-
