@@ -1261,6 +1261,8 @@ void __ldms_passive_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	}
 }
 
+void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
+					ldms_log_fn_t log_fn);
 static void ldms_zap_handle_conn_req(zap_ep_t zep)
 {
 	struct sockaddr lcl, rmt;
@@ -1282,15 +1284,11 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 				" from %s.\n", rmt_name);
 		goto err0;
 	}
-
-	*_x = *x; /* copy shared info from x, and just set the private ones */
+	__ldms_xprt_init(_x, x->name, x->log);
 	_x->zap = x->zap;
 	_x->zap_ep = zep;
-	_x->ref_count = 1;
-	_x->remote_dir_xid = _x->local_dir_xid = 0;
-	_x->connect_cb = __ldms_passive_connect_cb;
 	zap_set_ucontext(zep, _x);
-	pthread_mutex_init(&_x->lock, NULL);
+	_x->connect_cb = __ldms_passive_connect_cb;
 
 	char *data = 0;
 	size_t datalen = 0;
@@ -1331,9 +1329,6 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	/* Take a 'connect' reference. Dropped in ldms_xprt_close() */
 	ldms_xprt_get(_x);
 
-	pthread_mutex_lock(&xprt_list_lock);
-	LIST_INSERT_HEAD(&xprt_list, _x, xprt_link);
-	pthread_mutex_unlock(&xprt_list_lock);
 	return;
 err0:
 	zap_close(zep);
@@ -1847,7 +1842,16 @@ int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
 		goto err1;
 	}
 	zap_set_ucontext(x->zap_ep, x);
+	return 0;
+err1:
+	free(x->zap);
+err0:
+	return ret;
+}
 
+void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
+					ldms_log_fn_t log_fn)
+{
 	strncpy(x->name, name, LDMS_MAX_TRANSPORT_NAME_LEN);
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
@@ -1859,11 +1863,6 @@ int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
 	pthread_mutex_unlock(&xprt_list_lock);
-	return 0;
-err1:
-	free(x->zap);
-err0:
-	return ret;
 }
 
 ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
@@ -1874,9 +1873,9 @@ ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn)
 		ret = ENOMEM;
 		goto err0;
 	}
-
 	if (!log_fn)
 		log_fn = default_log;
+	__ldms_xprt_init(x, name, log_fn);
 
 	ret = __ldms_xprt_zap_new(x, name, log_fn);
 	if (ret)
@@ -1911,6 +1910,7 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 		ret = ENOMEM;
 		goto err0;
 	}
+	__ldms_xprt_init(x, name, log_fn);
 
 #ifdef DEBUG
 	log_fn("ldms_xprt [DEBUG]: Creating transport '%p' with authentication\n", x);
