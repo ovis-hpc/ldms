@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_msr_interlagos
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "30 Oct 2016" "v3.3" "LDMS Plugin msr interlagos man page"
+.TH man 7 "20 Nov 2016" "v3.3.3" "LDMS Plugin msr interlagos man page"
 
 .SH NAME
 Plugin_msr - man page for the LDMS msr interlagos plugin
@@ -24,18 +24,18 @@ This is a developmental version of the sampler. It may change at any time.
 
 The sampler will allow you to select from an identified set of counters. These are only correctly defined for the
 AMD Interlagos processor. The counter addresses, what events are potentially being counted, the event names, the
-counter types (core, uncore), etc. are defined in a configuration file. An example of this file can be found 
+counter types (core, uncore), etc. are defined in a configuration file. An example of this file can be found
 at: /util/configs/msr/interlagos/bw_msr_configs.
 
 The actual counters desired can be defined/modified at/during run time using the defined event names subject
 to the constraint that each counter can only count a single event name at a time. If a second name mapping into
 an already selected counter is selected, the selection will fail.
 The event names must be identified via the action=add directive for each desired event name. When all desired event
-names have been added, the directive action=finalize is used to instantiate the event name to counter mappings. 
+names have been added, the directive action=finalize is used to instantiate the event name to counter mappings.
 
-The metric names are reported as generic names in the output set since their actual identities may be changed dynamically. 
-For any given counter the first value (e.g., CTR<NUM>) is the uint64 representation of the counter configuration used in the 
-counter setup. The subsequent values (e.g., CTR<NUM>_<XY>) are the values read from the counters (1 per numa node or num core 
+The metric names are reported as generic names in the output set since their actual identities may be changed dynamically.
+For any given counter the first value (e.g., CTR<NUM>) is the uint64 representation of the counter configuration used in the
+counter setup. The subsequent values (e.g., CTR<NUM>_<XY>) are the values read from the counters (1 per numa node or num core
 values (with optional additional zero values if maxcore specified (see more below)).
 
 .PP
@@ -48,33 +48,34 @@ The ldmsd_controller interface includes functions for manipulating the sampling 
 
 .SH EXTERNAL MODIFICATION OF COUNTERS AND EXTERNAL INTERACTIONS
 
-Note that a user, with appropriate privilege, can change the identity of the event being collected via an external 
+Note that a user, with appropriate privilege, can change the identity of the event being collected via an external
 methodology such as wrmsr. Because of this,
-the msr_interlagos plugin first rechecks the event identity of each counter before sampling, however this is not 
+the msr_interlagos plugin first rechecks the event identity of each counter before sampling, however this is not
 atomic so there is a
 slight possibility of a race condition where the user may change the counter between the check and the read. If the check
-fails zero values are reported for all metrics for that particular counter (including the reporting of the metric name).
-This continues until the identity is reset, either by external methods or by issuing the action=rewrite directive.
+fails zero values are reported for all metrics for that particular counter, including the control register(s),
+and the metric name is a zero length string. This continues until the identity is reset, either by external methods or by
+issuing the action=rewrite directive.
 
 If a user job changes the counters, it is intended that interaction with the Resource Manager can invoke the rewrite command for
-the counters once the user job has exited. A script is supplied that can be called from epilog to perform this event rewrite. 
-The script is blocking on the rewrite in order to avoid a race condition with the next job setting the counters before the 
-rewrite is completed. There is a maximum time time limit on the blocking call in the script. The script return code 
-indicates success or failure. Note that options that require the LDMS daemon to check for a flag set by the scheduler 
+the counters once the user job has exited. A script is supplied that can be called from epilog to perform this event rewrite.
+The script is blocking on the rewrite in order to avoid a race condition with the next job setting the counters before the
+rewrite is completed. There is a maximum time time limit on the blocking call in the script. The script return code
+indicates success or failure. Note that options that require the LDMS daemon to check for a flag set by the scheduler
 are subject to race conditions.
 
 .SH COUNTER CONFIGURATION FILE
 
-.B !!!WARNING!!! 
+.B !!!WARNING!!!
 This plugin only works for Interlagos. Using this sampler on other architectures or misconfiguration of the
-configuration file may result in unforseen results with possible damage to the system as the control register addresses 
-will not map into the same functionality. 
+configuration file may result in unforseen results with possible damage to the system as the control register addresses
+will not map into the same functionality.
 .B !!!WARNING!!!
 
 .PP
 Fields in the MSR sampler configuration file are:
 Name, Write_addr, Event, Umask, Read_addr, os_user, core_ena, core_sel, special_flag, ctr_type.
-Please use or modify the example configuration file provided in /util/configs/msr/interlagos/bw_msr_configs. 
+Please use or modify the example configuration file provided in /util/configs/msr/interlagos/bw_msr_configs.
 
 Valid options for core_flag are MSR_DEFAULT and UNCORE_PER_NUMA. MSR_DEFAULT indicates that the associated
 register will collect the same event across all entities (core or numa domain). UNCORE_PER_NUMA is only
@@ -82,7 +83,7 @@ valid for uncore counters for which the unit mask can be used to specify for whi
 are being counted. A unit mask of "0x0" indicates events will be counted for only the numa domain in which
 the counter resides. A unit mask of "0xF" indicates events will be counted for only numa domains in which
 the counter does not reside. This enables understanding cache affinity and the level of IO crossing
-numa boundaries. Valid options for ctr_type are CTR_NUMCORE and CTR_UNCORE. These distinguish core and 
+numa boundaries. Valid options for ctr_type are CTR_NUMCORE and CTR_UNCORE. These distinguish core and
 uncore counters.
 
 Lines starting with a # mark are comments and are skipped.
@@ -171,7 +172,7 @@ is CtrN_n. If there is a value per core, then the name is CtrN_c.
 If the write control register is the same for all values in the vector, it is only
 written once and called CtrN_wctl. If the write control register is different for the values in the vector,
 as it would be for the per numa domain values, then the write control register
-variable is a vector of length > 1 and is named CtrN_wctl_n. 
+variable is a vector of length > 1 and is named CtrN_wctl_n.
 Zeros in the CtrN_wctl_n indicate that the "maxcore" value specified
 in the configuration of the sampler was greater than the actual number of cores and
 hence those wctl and variable data values will be 0.
@@ -417,4 +418,4 @@ config name=msr_interlagos action=halt metricname=TOT_CYC
 
 
 .SH SEE ALSO
-ldmsd(7), ldms_quickstart(7)
+ldmsd(7), ldms_quickstart(7), Plugin_store_function_csv(7)

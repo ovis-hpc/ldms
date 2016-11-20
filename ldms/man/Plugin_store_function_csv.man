@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_function_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "11 Nov 2016" "v3" "LDMS Plugin store_function_csv man page"
+.TH man 7 "20 Nov 2016" "v3.3.3" "LDMS Plugin store_function_csv man page"
 
 .SH NAME
 Plugin_store_function_csv - man page for the LDMS store_function_csv plugin
@@ -112,6 +112,12 @@ Number of metrics that this new metric is derived from.
 csv_list_of_dependent_metrics
 .br
 Depedent metricname and schema uniquely identify the variable to match. Thus, if you have the same sampler on two different nodes having different schema, you can create a different derived metric for each. The dependent metrics must all belong to the same schema, or be derived metrics which are then based on the base metrics of the same schema.
+.PP
+There is a special option for handling base msr_interlagos metrics. These metrics have a generic name, CtrN_c or CtrN_n, with a special
+metric, CtrN_name, that is a char array of the counter name. You can use CtrN (e.g., CtrN7_n) as a metric in the csv list in
+the usual way. You can also use the countername:BYMSRNAME in the csv list instead, in which case the correct numbered metric will
+be discovered. Note that the dependencies are discovered only when reading the config. If the metrics or metric order change later, the
+associations will not be redetermined.
 .TP
 scale|thresh
 .br
@@ -135,6 +141,10 @@ meminfo RATE_ACTIVE RATE 1 Active 1 1
 
 meminfo ACT_TOT DIV_AB 2 Active,Total 1 1
 meminfo R_ACT_TOT RATE 1 ACT_TOT 1 1
+
+msr_interlagos flop_raw RAW 1 RETIRED_FLOPS:BYMSRNAME 1 0
+msr_interlagos flop_v_rate RATE 1 flop_raw .000001 0
+msr_interlagos flop_rate SUM 1 flop_v_rate 1 1
 .RE
 .fi
 
@@ -315,6 +325,9 @@ before the derived metrics for a matching metric name. This is not to
 be relied on however; we recommend that you only reuse
 a metric name for the RAWTERM function.
 .IP \[bu]
+Note that the dependencies are discovered only when reading the config. If the metrics or metric order change later, the
+associations will not be redetermined.
+.IP \[bu]
 Although scale is a float option, its placement in the calculation is being worked out. In the
 meantime, it may be cast into a uint64_t as part of the calculation.
 .IP \[bu]
@@ -341,4 +354,4 @@ ldmsd_controller> strgp_add name=csv_ps_policy plugin=store_function_csv contain
 .if
 
 .SH SEE ALSO
-ldms(7), Plugin_store_derived_csv(7)
+ldms(7), Plugin_store_csv(7), Plugin_msr_interlagos(7)
