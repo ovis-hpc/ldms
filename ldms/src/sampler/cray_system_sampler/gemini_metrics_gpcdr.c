@@ -119,6 +119,15 @@ static char* linksmetrics_baseunit[] = {
 	"(1)"
 	};
 
+#ifdef HAVE_SPACELESS_NAMES
+static char* linksmetrics_derivedunit[] = {
+	"(B/s)",
+	"(\%_x1e6)",
+	"(B)",
+	"(\%_x1e6)",
+	"(\%_x1e6)"
+	};
+#else
 static char* linksmetrics_derivedunit[] = {
 	"(B/s)",
 	"(\% x1e6)",
@@ -126,6 +135,8 @@ static char* linksmetrics_derivedunit[] = {
 	"(\% x1e6)",
 	"(\% x1e6)"
 	};
+#endif
+
 #define NUM_LINKSMETRICS_DIR (sizeof(linksmetrics_dir)/sizeof(linksmetrics_dir[0]))
 #define NUM_LINKSMETRICS_BASENAME (sizeof(linksmetrics_basename)/sizeof(linksmetrics_basename[0]))
 #define NUM_LINKSMETRICS_DERIVEDNAME (sizeof(linksmetrics_derivedname)/sizeof(linksmetrics_derivedname[0]))
@@ -200,13 +211,19 @@ static int bwhelper_maxbwperdir(ldmsd_msg_log_f msglog);
 static int __links_metric_name(int isbase, int nameidx,
 				   int diridx, char newname[]){
 
+#ifdef HAVE_SPACELESS_NAMES
+	char* format = "%s_%s_%s";
+#else
+	char* format = "%s_%s %s";
+#endif
+
 	if (isbase == 1)
-		sprintf(newname, "%s_%s %s",
+		sprintf(newname, format,
 			linksmetrics_dir[diridx],
 			linksmetrics_basename[nameidx],
 			linksmetrics_baseunit[nameidx]);
 	else
-		sprintf(newname, "%s_%s %s",
+		sprintf(newname, format,
 			linksmetrics_dir[diridx],
 			linksmetrics_derivedname[nameidx],
 			linksmetrics_derivedunit[nameidx]);
@@ -701,10 +718,17 @@ int add_metrics_nicmetrics(ldms_schema_t schema, ldmsd_msg_log_f msglog)
 		}
 	}
 
+
+#ifdef HAVE_SPACELESS_NAMES
+	char* format = "%s_%s_%s";
+#else
+	char* format = "%s_%s %s";
+#endif
+
 	if ((hsn_metrics_type == HSN_METRICS_DERIVED) ||
 	    (hsn_metrics_type == HSN_METRICS_BOTH)){
 		for (i = 0; i < NUM_NICMETRICS; i++) {
-			sprintf(newname, "%s_%s %s",
+			sprintf(newname, format,
 				nicmetrics_derivedprefix,
 				nicmetrics_basename[i],
 				nicmetrics_derivedunit);
