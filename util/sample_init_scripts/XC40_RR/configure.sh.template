@@ -1,0 +1,51 @@
+#!/bin/bash
+#
+# SYNOPSIS: Remove existing build directories, do the automake routine, rebuild,
+#           and install everything.
+#
+# REMARK: This script doesn't do uninstall. If you wish to uninstall (e.g. make
+# uninstall), please go into each build directories ( */build-$HOSTNAME ) and
+# call make uninstall there, or just simply do the following
+#     for D in */build-$HOSTNAME; do pushd $D; make uninstall; popd; done;
+#
+
+BUILD_PATH=<absolute path to builds>
+PREFIX=$BUILD_PATH/OVIS-3.3
+
+# add --enable-FEATURE here
+ENABLE="--enable-ugni  \
+	--enable-ldms-python \
+	--enable-kgnilnd \
+	--enable-lustre \
+	--enable-tsampler \
+	--enable-cray_power_sampler \
+	--enable-cray_system_sampler \
+	--enable-aries-gpcdr \
+	--enable-aries_mmr"
+
+
+# add --disable-FEATURE here
+DISABLE="--disable-rpath \
+	 --disable-readline \
+	 --disable-baler \
+	 --disable-sos \
+	 --disable-mmap "
+
+
+# libevent2 prefix
+LIBEVENT_PREFIX=$BUILD_PATH/libevent-2.0_build
+
+WITH="--with-rca=/opt/cray/rca/default --with-krca=/opt/cray/krca/default --with-cray-hss-devel=/opt/cray-hss-devel/default --with-aries-libgpcd=$BUILD_PATH/gpcd_build/lib/,$BUILD_PATH/gpcd_build/include/"
+
+if [ -n "$LIBEVENT_PREFIX" ]; then
+    WITH="$WITH --with-libevent=$LIBEVENT_PREFIX"
+fi
+
+#CFLAGS='-g -O0 -Wl,-z,defs -I/opt/cray/rca/default/include'
+CFLAGS='-g -O0 -Wl,-z,defs -I/opt/cray/rca/default/include'
+
+# Exit immediately if a command failed
+set -e
+set -x
+
+../configure --prefix=$PREFIX $ENABLE $DISABLE $WITH CFLAGS="$CFLAGS" LDFLAGS=$LDFLAGS CPPFLAGS=$CPPFLAGS

@@ -1,0 +1,13 @@
+This directory contains the following files:
+
+* configure.sh.template -- configuration script for building ovis
+
+* v3_etc.tgz -- a collection of init scripts and configuration files (paths used assume it is untarred into /tmp/opt/ovis/)
+** A README file describes deployment specific modifications that need to be addressed.
+
+* agg_conf_gen.sh -- script to generate aggregator configuration files
+** Needs to have <path> modified to match actual
+** Output to stdout needs to be redirected into appropriately named file
+*** Example: ./agg_conf_gen.sh nodelist > agg11_nid00002.411
+**** When an aggregator daemon is run on nid00002 and listening on port 411 it will use this configuration file
+**** The agg11 denotes first level aggregator "1" but as long as there are two digits this is ignored. Only the hostname.portnum are used by the "ldmsd.conf" script.
