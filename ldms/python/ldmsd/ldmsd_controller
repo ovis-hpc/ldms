@@ -203,6 +203,17 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)
 
+    def do_daemon_exit(self, arg):
+        """
+        Exit the connected LDMS daemon
+        """
+        self.handle('daemon_exit', arg)
+        self.do_quit(arg)
+        print("Please 'quit' the ldmsd_controller interface")
+
+    def complete_daemon_exit(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('daemon_exit', text)
+
     def do_prdcr_add(self, arg):
         """
         Add an LDMS Producer to the Aggregator

@@ -87,6 +87,7 @@
 static char replybuf[REPLYBUF_LEN];
 char myhostname[HOST_NAME_MAX+1];
 pthread_t ctrl_thread = (pthread_t)-1;
+pthread_t inet_ctrl_thread = (pthread_t)-1;
 int muxr_s = -1;
 int inet_sock = -1;
 int inet_listener = -1;
@@ -120,6 +121,12 @@ void ldmsd_config_cleanup()
 		void *dontcare;
 		pthread_cancel(ctrl_thread);
 		pthread_join(ctrl_thread, &dontcare);
+	}
+
+	if (inet_ctrl_thread != (pthread_t)-1) {
+		void *dontcare;
+		pthread_cancel(inet_ctrl_thread);
+		pthread_join(inet_ctrl_thread, &dontcare);
 	}
 
 	if (muxr_s >= 0)
@@ -2225,7 +2232,6 @@ void *ctrl_thread_proc(void *v)
 			  cfg_buf_len);
 		cleanup(1, "ctrl thread proc out of memory");
 	}
-	pthread_cleanup_push(free,lbuf);
 	iov.iov_base = lbuf;
 	do {
 		ssize_t msglen;
@@ -2243,9 +2249,13 @@ void *ctrl_thread_proc(void *v)
 			break;
 		process_message(muxr_s, &msg, msglen);
 		if (cleanup_requested)
-			cleanup(0,"user quit");
+			break;
 	} while (1);
-	pthread_cleanup_pop(0);
+	if (cleanup_requested) {
+		/* Reset it to prevent deadlock in cleanup */
+		ctrl_thread = (pthread_t)-1;
+		cleanup(0,"user quit");
+	}
 	free(lbuf);
 	return NULL;
 }
@@ -2443,6 +2453,8 @@ loop:
 				break;
 			/* Process old style message */
 			process_message(inet_sock, &msg, msglen);
+			if (cleanup_requested)
+				break;
 		} else {
 			if (cfg_buf_len < request.rec_len) {
 				cfg_buf_len = request.rec_len;
@@ -2458,15 +2470,22 @@ loop:
 			if (msglen < request.rec_len)
 				break;
 			process_request(inet_sock, &msg, msglen);
+			if (cleanup_requested)
+				break;
 		}
-		if (cleanup_requested)
-			cleanup(0,"user quit");
 	} while (1);
 	ldmsd_log(LDMSD_LINFO,
 		  "Closing configuration socket. cfg_buf_len %d\n",
 		  cfg_buf_len);
 	close(inet_sock);
 	inet_sock = -1;
+	if (cleanup_requested) {
+		/* Reset it to prevent deadlock in cleanup */
+		inet_ctrl_thread = (pthread_t)-1;
+		cleanup(0,"user quit");
+		return NULL;
+	}
+
 	goto loop;
 	return NULL;
 }
@@ -2502,7 +2521,7 @@ int ldmsd_inet_config_init(const char *port, const char *secretword)
 		goto err;
 	}
 
-	rc = pthread_create(&ctrl_thread, NULL, inet_ctrl_thread_proc,
+	rc = pthread_create(&inet_ctrl_thread, NULL, inet_ctrl_thread_proc,
 			(void *)secretword);
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Error %d creating the control pthread'.\n");
