@@ -75,6 +75,7 @@
 #define VALUE_COL    3
 
 
+static int buffer_flag = 1;
 #define MAX_ROLLOVER_STORE_KEYS 20
 #define STORE_DERIVED_NAME_MAX 256
 #define STORE_DERIVED_LINE_MAX 4096
@@ -155,9 +156,13 @@ static ldmsd_msg_log_f msglog;
  * - if a host goes down and comes back up, then may have a long time range
  *   between points. currently, this is still calculated, but can be flagged
  *   with ageout. Currently this is global, not per collector type
+ * - Scale casting is still in development. Overflow is not checked for. This was inconsistent prior to mid Nov 2016.
+ *   In Nov 2016, this has been made consistent and chosen to enable fractional and less than 1 values for the scale,
+ *   so rely on the uint64_t being cast to double as part of the multiplication with the double scale, and as a result,
+ *   there may be overflow. Writeout is still uint64_t.
  *
  * TODO:
- * - Review where scale is done.
+ * - For the implict cast for scale operations, should this be bypassed for scale == 1?
  * - Currently only handles uint64_t scalar and vector types
  * - Currently only printsout uint64_t values. (cast)
  * - Fix the frees
@@ -345,6 +350,19 @@ static char* allocStoreKey(const char* container, const char* schema){
   return path;
 }
 
+static void __buffer_routine(FILE *f)
+{
+	if (buffer_flag)
+		return;
+	/* disable buffer */
+	int rc;
+	rc = setvbuf(f, NULL, _IONBF, 0);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s:%d setvbuf() rc: %d, errno: %d\n",
+		       __FILE__, __LINE__, rc, errno);
+	}
+}
+
 /* Time-based rolltypes will always roll the files when this
  * function is called.
  * Volume-based rolltypes must check and shortcircuit within this
@@ -415,6 +433,7 @@ static int handleRollover(){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				__buffer_routine(nfp);
 				if (altheader){
 					//re name: if got here then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
@@ -440,6 +459,7 @@ static int handleRollover(){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				__buffer_routine(nhfp);
 
 				//close and swap
 				if (s_handle->file)
@@ -815,8 +835,8 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 				s_handle->der[s_handle->numder] = tmpder;
 				s_handle->numder++;
 			} else {
-//				msglog(LDMSD_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
-//				       s_handle->store_key, metric_name, schema_name, iter);
+				msglog(LDMSD_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
+				       s_handle->store_key, metric_name, schema_name, iter);
 			}
 		} while (s);
 
@@ -889,6 +909,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR, "store_function failed config_check\n");
 		pthread_mutex_unlock(&cfg_lock);
 		return rc;
+	}
+
+	value = av_value(avl, "buffer");
+	if (value) {
+		msglog(LDMSD_LDEBUG, "store_function_csv setting buffer flag <%s>\n", value);
+		buffer_flag = atoi(value);
 	}
 
 	value = av_value(avl, "path");
@@ -1009,10 +1035,11 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=store_function_csv path=<path> altheader=<0/1> derivedconf=<fullpath> ageusec=<sec>\n"
+	return  "    config name=store_function_csv path=<path> altheader=<0|1> buffer=<0|1> derivedconf=<fullpath> ageusec=<sec>\n"
 		"         - Set the root path for the storage of csvs.\n"
 		"           path       The path to the root of the csv directory\n"
 		"         - altheader  Header in a separate file (optional, default 0)\n"
+		"         - buffer     0 to disable buffering, 1 to enable it (optional, default 1)\n"
 		"         - rollover   Greater than zero; enables file rollover and sets interval\n"
 		"         - rolltype   [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
@@ -1201,6 +1228,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		       __FILE__, errno, tmp_path);
 		goto err3;
 	}
+	__buffer_routine(s_handle->file);
 
 	/*
 	 * Always reprint the header because this is a store that may have been
@@ -1235,6 +1263,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			goto err4;
 		}
 	}
+	__buffer_routine(s_handle->headerfile);
 
 	/* ideally here should always be the printing of the header, and we could drop keeping
 	 * track of printheader. keeping this like v2 for consistency for now
@@ -1420,7 +1449,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U8:
 		rc = fprintf(s_handle->file, ",%hhu",
-			     (ldms_metric_get_u8(set, metric_array[i]) * (uint8_t)(scale)));
+			     (uint8_t)((double)(ldms_metric_get_u8(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1429,7 +1458,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S8:
 		rc = fprintf(s_handle->file, ",%hhd",
-			     (ldms_metric_get_s8(set, metric_array[i]) * (int8_t)(scale)));
+			     (int8_t)((double)(ldms_metric_get_s8(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1438,7 +1467,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U16:
 		rc = fprintf(s_handle->file, ",%hu",
-			     (ldms_metric_get_u16(set, metric_array[i]) * (uint16_t)(scale)));
+			     (uint16_t)((double)(ldms_metric_get_u16(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1447,7 +1476,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S16:
 		rc = fprintf(s_handle->file, ",%hd",
-			     (ldms_metric_get_s16(set, metric_array[i]) * (int16_t)(scale)));
+			     (int16_t)((double)(ldms_metric_get_s16(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1456,7 +1485,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U32:
 		rc = fprintf(s_handle->file, ",%" PRIu32,
-			     (ldms_metric_get_u32(set, metric_array[i]) * (uint32_t)(scale)));
+			     (uint32_t)((double)(ldms_metric_get_u32(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1465,7 +1494,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S32:
 		rc = fprintf(s_handle->file, ",%" PRId32,
-			     (ldms_metric_get_s32(set, metric_array[i]) * (int32_t)(scale)));
+			     (int32_t)((double)(ldms_metric_get_s32(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1474,7 +1503,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_U64:
 		rc = fprintf(s_handle->file, ",%"PRIu64,
-			     (ldms_metric_get_u64(set, metric_array[i]) * (uint64_t)(scale)));
+			     (uint64_t)((double)(ldms_metric_get_u64(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1483,7 +1512,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 		break;
 	case LDMS_V_S64:
 		rc = fprintf(s_handle->file, ",%" PRId64,
-			     (ldms_metric_get_s64(set, metric_array[i]) * (int64_t)(scale)));
+			     (int64_t)((double)(ldms_metric_get_s64(set, metric_array[i])) * scale));
 		if (rc < 0)
 			msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 			       rc, s_handle->path);
@@ -1521,7 +1550,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U8_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hhu",
-				     (ldms_metric_array_get_u8(set, metric_array[i], j) * (uint8_t)(scale)));
+				     (uint8_t)((double)(ldms_metric_array_get_u8(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1532,7 +1561,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S8_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hhd",
-				     (ldms_metric_array_get_s8(set, metric_array[i], j) * (int8_t)(scale)));
+				     (int8_t)((double)(ldms_metric_array_get_s8(set, metric_array[i], j))* scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1543,7 +1572,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U16_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hu",
-				     (ldms_metric_array_get_u16(set, metric_array[i], j) * (uint16_t)(scale)));
+				     (uint16_t)((double)(ldms_metric_array_get_u16(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1554,7 +1583,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S16_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%hd",
-				     (ldms_metric_array_get_s16(set, metric_array[i], j) * (int16_t)(scale)));
+				     (int16_t)((double)(ldms_metric_array_get_s16(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1565,7 +1594,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U32_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRIu32,
-				     (ldms_metric_array_get_u32(set, metric_array[i], j) * (uint32_t)(scale)));
+				     (uint32_t)((double)(ldms_metric_array_get_u32(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1576,7 +1605,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S32_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRId32,
-				     (ldms_metric_array_get_s32(set, metric_array[i], j) * (int32_t)(scale)));
+				     (int32_t)((double)(ldms_metric_array_get_s32(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1587,7 +1616,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_U64_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRIu64,
-				     (ldms_metric_array_get_u64(set, metric_array[i], j) * (uint64_t)(scale)));
+				     (uint64_t)((double)(ldms_metric_array_get_u64(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1598,7 +1627,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 	case LDMS_V_S64_ARRAY:
 		for (j = 0; j < dim; j++){
 			rc = fprintf(s_handle->file, ",%" PRId64,
-				     (ldms_metric_array_get_s64(set, metric_array[i], j) * (int64_t)(scale)));
+				     (int64_t)((double)(ldms_metric_array_get_s64(set, metric_array[i], j)) * scale));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
 				       rc, s_handle->path);
@@ -1659,10 +1688,13 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 
 	/**
 	 * NOTE: have to make tradeoffs in the chances of overflowing with casts
-	 * and having the scale enable resolutions of diffs.
+	 * and having the scale enable resolutions of diffs. Overflow is not checked for. See additional notes at start of file.
+	 * This has been chosen to enable fractional and less than 1 values for the scale,
+	 *   so rely on the uint64_t being cast to double as part of the multiplication with the double scale, and as a result,
+	 *   there may be overflow. Writeout is still uint64_t.
 	 *
 	 * Made the following choices for the order of operations:
-	 * RAW -     Apply scale after the value. Scale is cast to uint64_t. Then assign to uint64_t.
+	 * RAW -     Apply scale after the value. Value Scale is cast to uint64_t. Then assign to uint64_t.
 	 * RATE -    Subtract. Multiply by the scale, with explicit cast to double. Divide by time. Finally assign to u64.
 	 *               This should allow you to shift the values enough to resolve differences that would
 	 *               have been washed out in the division by time.
@@ -1678,6 +1710,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 	 * MIN/MAX/SUM - Apply scale after the function. Same case and assignment as in RAW.
 	 * AVG - Sum. Multiply by the scale, with explict cast to double. Divide by N. Finally assign to u64.
 	 * NOTE: THRESH functions have no scale (scale is the thresh)
+         *
+	 * - Test mode for scale values with no integer part (ie. -1 < scale < 1), the casts are done differently, since all
+	 *   of the value would be lost in the roundoff. This method does not check for overflow when it does this handling.
+	 *   This is controlled by a flag SUB_INT_SCALE, whose behavior may change. Even when this flag is used, however,
+	 *   the writeout is still uint64. FOR RAWTERM ONLY Currently.
 	 *
 	 * RETURNS:
 	 * - Invalid computations due to overflow in the cast are not checked for nor marked.
@@ -1735,7 +1772,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					retvals[0] = (temp < scale ? 1:0);
 					break;
 				case RAW:
-					retvals[0] = temp * (uint64_t)(scale);
+					retvals[0] = temp * scale;
 					break;
 				}
 			} else { //it must be an array
@@ -1750,7 +1787,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[j] = (temp < scale ? 1:0);
 						break;
 					case RAW:
-						retvals[j] = temp * (uint64_t)(scale);
+						retvals[j] = temp * scale;
 						break;
 					}
 				}
@@ -1769,7 +1806,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[j] = (temp < scale ? 1:0);
 						break;
 					case RAW:
-						retvals[j] = temp * (uint64_t)(scale);
+						retvals[j] = temp * scale;
 						break;
 					}
 				}
@@ -1808,10 +1845,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 
 					}
 				}
-				if (fct == AVG)
+				if (fct == AVG) {
 					retvals[0] = (uint64_t)(((double)(retvals[0]) * scale)/(double)(vals[0].dim));
-				else
-					retvals[0] *= (uint64_t)(scale);
+				} else {
+					retvals[0] *= scale;
+				}
 			}
 		} else {
 			*retvalid = dp->datavals[vals[0].i].returnvalid;
@@ -1834,10 +1872,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						break;
 					}
 				}
-				if (fct == AVG)
+				if (fct == AVG) {
 					retvals[0] = (uint64_t)(((double)(retvals[0]) * scale)/(double)vals[0].dim);
-				else
-					retvals[0] *= (uint64_t)(scale);
+				} else {
+					retvals[0] *= scale;
+				}
 			} else {
 				retvals[0] = 0;
 			}
@@ -2534,15 +2573,6 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		return rc;
 	}
 
-//	if (skip){
-//		//even if skip, still need the vals to do the raw/rate calcs.
-//		msglog(LDMSD_LDEBUG, "Note: firsttime -- should be skipping writeout for set <%s>\n",
-//		       ldms_set_instance_name_get(set));
-//	} else {
-//		msglog(LDMSD_LDEBUG, "Note: After firsttime -- not skipping writeout for set <%s>\n",
-//		       ldms_set_instance_name_get(set));
-//	}
-
 	/*
 	 * New in v3: if time diff is not positive, always write out something and flag.
 	 * if its RAW data, write the val. if its RATE data, write zero
@@ -2553,6 +2583,15 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	prev.tv_usec = dp->ts->usec;
 	curr.tv_sec = ts->sec;
 	curr.tv_usec = ts->usec;
+
+//	if (skip){
+//		//even if skip, still need the vals to do the raw/rate calcs.
+//		msglog(LDMSD_LDEBUG, "Note: firsttime (%lu) -- should be skipping writeout for set <%s>\n",
+//		       curr.tv_sec, ldms_set_instance_name_get(set));
+//	} else {
+//		msglog(LDMSD_LDEBUG, "Note: After firsttime -- not skipping writeout for set <%s>\n",
+//		       ldms_set_instance_name_get(set));
+//	}
 
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >=
 	    (double)curr.tv_sec*1000000+curr.tv_usec){
@@ -2594,7 +2633,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 		fprintf(s_handle->file, ",%"PRIu64",%"PRIu64,
 			compid, jobid);
 	}
-        //always get the vals because may need the stored value, even if skip this time
+	//always get the vals because may need the stored value, even if skip this time
 
 	for (i = 0; i < s_handle->numder; i++){ //go thru all the vals....only write the writeout vals
 		uint64_t val, temp;
