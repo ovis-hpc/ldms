@@ -171,6 +171,10 @@ static ldmsd_msg_log_f msglog;
  */
 
 static char* var_sep = ",";
+static char type_sep = ':';
+
+#define BYMSRNAME "BYMSRNAME"
+#define MSR_MAXLEN 20LL
 
 /**** definitions *****/
 typedef enum {
@@ -521,10 +525,12 @@ static void* rolloverThreadInit(void* m){
 	return NULL;
 }
 
-static int checkValidLine(const char* lbuf, const char* schema_name,
+static int __checkValidLine(const char* lbuf, const char* schema_name,
 			const char* metric_name, const char* function_name,
 			int nmet, char* metric_csv, double scale, int output,
 			int iter, int rcl){
+
+//NOTE: checking the existence of the dependent vars is done later
 
 //	msglog(LDMSD_LDEBUG, "read:%d (%d): <%s> <%s> <%s> <%d> <%s> <%lf> <%d>\n",
 //	       iter++, rcl,
@@ -533,8 +539,6 @@ static int checkValidLine(const char* lbuf, const char* schema_name,
 
 	if ((strlen(schema_name) > 0) && (schema_name[0] == '#')){
 		// hashed lines are comments (means metric name cannot start with #)
-//		msglog(LDMSD_LDEBUG,"%s: (%d) Comment in fct config file <%s>. Skipping\n",
-//		       __FILE__, iter, lbuf);
 		return -1;
 	}
 
@@ -558,7 +562,7 @@ static int checkValidLine(const char* lbuf, const char* schema_name,
 		return -1;
 	}
 
-	//now check the validity of the dependent vars for this func
+	//now check the validity of the number of dependent vars for this func
 	variate_t vart = func_def[tf].variatetype;
 	int badvart = 0;
 	switch(vart){
@@ -584,6 +588,76 @@ static int checkValidLine(const char* lbuf, const char* schema_name,
 
 	return 0;
 };
+
+
+static int __getCompcase(char* pch, char** temp_val){
+	int compcase = 0; //default is by name
+	char* temp_ii = strdup(pch);
+	const char* ptr = strchr(temp_ii, type_sep);
+	if (ptr){
+		int index = ptr - temp_ii;
+		if (index != (strlen(temp_ii) - 1)) {
+			//otherwise colon at end, so don't do this
+			ptr++;
+			temp_ii[index] = '\0';
+			if (strcmp(BYMSRNAME, ptr) == 0)
+				compcase = 1;
+			//if it doesnt match, then treat it as byname
+			//where it compares against the whole name (including :)
+		}
+	}
+
+	*temp_val = temp_ii;
+	return compcase;
+};
+
+
+static int __matchBase(int compcase, char* strmatch, ldms_set_t set,
+		       int* metric_arry, size_t metric_count){
+	//this exists because of the special case to match an msr_interlagos variable
+
+	int i, j;
+	int rc;
+
+	for (i = 0; i < metric_count; i++){
+		const char* name = ldms_metric_name_get(set, metric_arry[i]);
+		if (compcase == 0) {
+			if (strcmp(name, strmatch) == 0)
+				return i;
+		} else {
+			//special case of msr_interlagos
+			//for this variable, check if its value matches the name
+			enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_arry[i]);
+			if (metric_type == LDMS_V_CHAR_ARRAY) {
+				const char* strval = ldms_metric_array_get_str(set, metric_arry[i]);
+				//if this name matches the str we are looking for
+				//get the ctrnum from the well known variable name CtrN_name
+				int ctrnum = -1;
+				if (strcmp(strval, strmatch) == 0){
+					rc = sscanf(name, "Ctr%d_name", &ctrnum);
+					if (rc != 1) //should only have this value for this name
+						return -1;
+
+					//well known metric names are CtrN_c and CtrN_n
+					//should be able to assume order, but not doing that....
+					char corename[MSR_MAXLEN];
+					char numaname[MSR_MAXLEN];
+					snprintf(corename, MSR_MAXLEN-1, "Ctr%d_c", ctrnum);
+					snprintf(numaname, MSR_MAXLEN-1, "Ctr%d_n", ctrnum);
+					for (j = 0; j < metric_count; j++){
+						const char* strval2 = ldms_metric_name_get(set, metric_arry[j]);
+						if ((strcmp(strval2, corename) == 0) ||
+						    (strcmp(strval2, numaname) == 0)){
+							return j;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return -1;
+}
 
 
 static int calcDimValidate(struct derived_data* dd);
@@ -635,7 +709,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 
 	count = 0;
 	pch = strtok_r(temp_i, var_sep, &saveptr_i);
-	while(pch != NULL){
+	while (pch != NULL){
 		if (count == tmpder->nvars){
 			msglog(LDMSD_LERROR,
 			       "%s: Too many input vars for input %s. expected %d on var %d\n",
@@ -643,39 +717,48 @@ static struct derived_data* createDerivedData(const char* metric_name,
 			goto err;
 		}
 
+		char* temp_ii = NULL;
+		int compcase = __getCompcase(pch, &temp_ii);
+		char* strmatch = NULL;
+		int matchidx = -1;
+
 		//does it depend on a base metric?
-		for (j = 0; j < metric_count; j++){
-			const char* name = ldms_metric_name_get(set, metric_arry[j]);
-			if (strcmp(pch, name) == 0){
-				tmpder->varidx[count].i = j;
-				tmpder->varidx[count].typei = BASE;
-				enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_arry[j]);
-				switch (metric_type){
-				case LDMS_V_U8_ARRAY:
-				case LDMS_V_S8_ARRAY:
-				case LDMS_V_U16_ARRAY:
-				case LDMS_V_S16_ARRAY:
-				case LDMS_V_U32_ARRAY:
-				case LDMS_V_S32_ARRAY:
-				case LDMS_V_U64_ARRAY:
-				case LDMS_V_S64_ARRAY:
-				case LDMS_V_F32_ARRAY:
-				case LDMS_V_D64_ARRAY:
-					tmpder->varidx[count].dim = ldms_metric_array_get_len(set, metric_arry[j]);
-					break;
-				default:
-					//this includes CHAR_ARRAY (will write out only 1 header, will read with one call)
-					tmpder->varidx[count].dim = 1;
-					break;
-				}
-				tmpder->varidx[count].metric_type = metric_type;
-				if (tmpder->fct != RAWTERM){
-					if ((metric_type != LDMS_V_U64) && (metric_type != LDMS_V_U64_ARRAY)){
-						msglog(LDMSD_LERROR,
+		strmatch = (compcase == 0 ? pch: temp_ii);
+		matchidx = __matchBase(compcase, strmatch,
+				     set, metric_arry, metric_count);
+		free(temp_ii);
+
+		if (matchidx >= 0) {
+			tmpder->varidx[count].i = matchidx;
+			tmpder->varidx[count].typei = BASE;
+			enum ldms_value_type metric_type =
+				ldms_metric_type_get(set, metric_arry[matchidx]);
+			switch (metric_type){
+			case LDMS_V_U8_ARRAY:
+			case LDMS_V_S8_ARRAY:
+			case LDMS_V_U16_ARRAY:
+			case LDMS_V_S16_ARRAY:
+			case LDMS_V_U32_ARRAY:
+			case LDMS_V_S32_ARRAY:
+			case LDMS_V_U64_ARRAY:
+			case LDMS_V_S64_ARRAY:
+			case LDMS_V_F32_ARRAY:
+			case LDMS_V_D64_ARRAY:
+				tmpder->varidx[count].dim = ldms_metric_array_get_len(set, metric_arry[matchidx]);
+				break;
+			default:
+				//this includes CHAR_ARRAY (will write out only 1 header, will read with one call)
+				tmpder->varidx[count].dim = 1;
+				break;
+			}
+			tmpder->varidx[count].metric_type = metric_type;
+			if (tmpder->fct != RAWTERM){
+				if ((metric_type != LDMS_V_U64) && (metric_type != LDMS_V_U64_ARRAY)){
+					const char* name = ldms_metric_name_get(set, metric_arry[matchidx]);
+					msglog(LDMSD_LERROR,
 					       "%s: unsupported type %d for base metric %s\n",
-						       __FILE__, (int)metric_type, name);
-						goto err;
-					}
+					       __FILE__, (int)metric_type, name);
+					goto err;
 				}
 			}
 		}
@@ -724,6 +807,9 @@ static struct derived_data* createDerivedData(const char* metric_name,
 	return tmpder;
 
 err:
+	if (x_i)
+		free(x_i);
+	x_i = NULL;
 
 	if (tmpder){
 		if (tmpder->name)
@@ -808,7 +894,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 				     schema_name, metric_name, function_name, &nmet,
 				     metric_csv, &scale, &output);
 			iter++;
-			if (checkValidLine(lbuf, schema_name, metric_name, function_name, nmet,
+			if (__checkValidLine(lbuf, schema_name, metric_name, function_name, nmet,
 					    metric_csv, scale, output, iter, rcl) != 0 ){
 				continue;
 			}
@@ -1824,7 +1910,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 		if (vals[0].typei == BASE) {
 			*retvalid = 1;
 			if (vals[0].metric_type == LDMS_V_U64){
-				retvals[0] = ldms_metric_get_u64(set, metric_arry[vals[0].i]) * (uint64_t)(scale);
+				retvals[0] = ((double)(ldms_metric_get_u64(set, metric_arry[vals[0].i])) * scale);
 			} else { //it must be an array
 				retvals[0] = ldms_metric_array_get_u64(set, metric_arry[vals[0].i], 0);
 				for (j = 1; j < vals[0].dim; j++) {

@@ -700,7 +700,6 @@ int readregistercpu(uint64_t x_reg, int cpu, uint64_t* val){
 
 static int zerometricset( struct active_counter *pe){
 	union ldms_value v;
-	char* str = NULL;
 	int i;
 	int rc;
 
@@ -709,7 +708,7 @@ static int zerometricset( struct active_counter *pe){
 		return -1;
 	}
 
-	ldms_metric_array_set_str(set, pe->metric_name, str);
+	ldms_metric_array_set_str(set, pe->metric_name, "");
 	v.v_u64 = 0;
 	for (i = 0; i < pe->nctl; i++){
 		ldms_metric_array_set_val(set, pe->metric_ctl, i, &v);
@@ -719,6 +718,7 @@ static int zerometricset( struct active_counter *pe){
 	}
 
 	pe->valid = 0; //invalidates
+
 	return 0;
 }
 
@@ -731,6 +731,7 @@ static int readregisterguts( struct active_counter *pe){
 	if (pe == NULL){
 		return -1;
 	}
+
 	j = 0;
 	for (i = 0; i < pe->mctr->numcore; i+=pe->mctr->offset){ //will only read what's there (numcore)
 		//NOTE: possible race condition if the register changes while reading through.
