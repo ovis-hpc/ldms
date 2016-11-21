@@ -62,7 +62,7 @@ OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
 OPTION_DEFAULT_DISABLE([knc_sampler], [ENABLE_KNC_SAMPLER])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
-OPTION_DEFAULT_ENABLE([jobid], [ENABLE_JOBID])
+OPTION_DEFAULT_DISABLE([jobid], [ENABLE_JOBID])
 OPTION_DEFAULT_ENABLE([clock], [ENABLE_CLOCK])
 OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
@@ -470,4 +470,3 @@ echo "TURNING libtool rpath into no-ops"
 sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
 sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
 fi
-
