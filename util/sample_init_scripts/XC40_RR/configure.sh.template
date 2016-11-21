@@ -42,7 +42,7 @@ if [ -n "$LIBEVENT_PREFIX" ]; then
 fi
 
 #CFLAGS='-g -O0 -Wl,-z,defs -I/opt/cray/rca/default/include'
-CFLAGS='-g -O0 -Wl,-z,defs -I/opt/cray/rca/default/include -DLDMSD_UPDATE_TIME'
+CFLAGS='-g -O0 -Wl,-z,defs -I/opt/cray/rca/default/include'
 
 # Exit immediately if a command failed
 set -e
