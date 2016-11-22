@@ -66,6 +66,7 @@
 #include <sys/types.h>
 #include <linux/perf_event.h>
 #include <math.h>
+#include <sys/ioctl.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_jobid.h"
