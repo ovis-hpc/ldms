@@ -141,6 +141,13 @@ libperfevent_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lm
 pkglib_LTLIBRARIES += libperfevent.la
 endif
 
+if ENABLE_PAPI
+libspapi_la_SOURCES = papi.c
+libspapi_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG)
+libspapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lm
+pkglib_LTLIBRARIES += libspapi.la
+endif
+
 if ENABLE_PROCDISKSTATS
 libprocdiskstats_la_SOURCES = procdiskstats.c
 libprocdiskstats_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
