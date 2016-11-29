@@ -715,6 +715,7 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us);
+int ldmsd_prdcr_del(const char *prdcr_name);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_first(ldmsd_prdcr_t prdcr);
@@ -751,8 +752,15 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 }
 void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set);
 void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set);
+int ldmsd_prdcr_start(const char *name, const char *interval_str);
+int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
+						char *rep_buf, size_t rep_len);
+int ldmsd_prdcr_stop(const char *name);
+int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
+			char *rep_buf, size_t rep_len);
 
 ldmsd_updtr_t ldmsd_updtr_new(const char *name);
+int ldmsd_updtr_del(const char *updtr_name);
 ldmsd_updtr_t ldmsd_updtr_first();
 ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr);
 ldmsd_name_match_t ldmsd_updtr_match_first(ldmsd_updtr_t updtr);
@@ -785,8 +793,16 @@ static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
 	}
 	return "BAD STATE";
 }
+int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
+						const char *offset_str);
+int ldmsd_updtr_stop(const char *updtr_name);
+int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
+		const char *selector_str, char *rep_buf, size_t rep_len);
+int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
+						const char *selector_str);
 
 ldmsd_strgp_t ldmsd_strgp_new(const char *name);
+int ldmsd_strgp_del(const char *strgp_name);
 ldmsd_strgp_t ldmsd_strgp_first();
 ldmsd_strgp_t ldmsd_strgp_next(struct ldmsd_strgp *strgp);
 ldmsd_name_match_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp);
@@ -818,11 +834,23 @@ static inline const char *ldmsd_strgp_state_str(enum ldmsd_strgp_state state) {
 	}
 	return "BAD STATE";
 }
+int ldmsd_strgp_stop(const char *strgp_name);
+
 
 /* Function to update inter-dependent configuration objects */
 void ldmsd_prdcr_update(ldmsd_strgp_t strgp);
 void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set);
 int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
+int ldmsd_strgp_prdcr_add(const char *strgp_name, const char *regex_str,
+					char *rep_buf, size_t rep_len);
+int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name);
+int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name);
+int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
+						char *rep_buf, size_t rep_len);
+int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
+						char *rep_buf, size_t rep_len);
+int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
+						char *rep_buf, size_t rep_len);
 
 /** Task scheduling */
 void ldmsd_task_init(ldmsd_task_t task);

@@ -335,7 +335,7 @@ out:
 }
 
 int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
-				const char *offset_str, char *rep_buf)
+						const char *offset_str)
 {
 	int rc = 0;
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
@@ -364,7 +364,7 @@ out_1:
 	return rc;
 }
 
-int ldmsd_updtr_stop(const char *updtr_name, char *rep_buf)
+int ldmsd_updtr_stop(const char *updtr_name)
 {
 	int rc = 0;
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
@@ -576,9 +576,7 @@ int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
 	else if (0 == strcasecmp(selector_str, "schema"))
 		sel = LDMSD_NAME_MATCH_SCHEMA_NAME;
 	else {
-		sprintf(replybuf, "%dUnrecognized match type '%s'",
-				EINVAL, selector_str);
-		goto out_0;
+		return EINVAL;
 	}
 
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
@@ -652,9 +650,7 @@ int cmd_updtr_start(char *replybuf, struct attr_value_list *avl, struct attr_val
 	interval_str = av_value(avl, "interval"); /* Can be null if we're not changing it */
 	offset_str = av_value(avl, "offset"); /* Can be null if we're not changing it */
 
-	int rc = ldmsd_updtr_start(updtr_name, interval_str,
-					offset_str, replybuf);
-
+	int rc = ldmsd_updtr_start(updtr_name, interval_str, offset_str);
 	if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe updater specified does "
 				"not exist\n", ENOENT);
@@ -676,7 +672,7 @@ int cmd_updtr_stop(char *replybuf, struct attr_value_list *avl, struct attr_valu
 		goto out_0;
 	}
 
-	int rc = ldmsd_updtr_stop(updtr_name, replybuf);
+	int rc = ldmsd_updtr_stop(updtr_name);
 	if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe updater specified does not exist\n", ENOENT);
 	} else if (rc == EBUSY) {
