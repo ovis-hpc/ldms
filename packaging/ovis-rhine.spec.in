@@ -19,16 +19,17 @@
 %endif
 
 # Main package
-Summary: OVIS LDMS Commands and Libraries
-Name: ldms-all
+Summary: OVIS Tool Suite
+Name: ovis
 Version: @VERSION@
-Release: trinity_16.8.25.1%{?dist}
+Release: trinity_16.11.29.1%{?dist}
 License: GPLv2 or BSD
-Group: %{ldms_all}
+Group: %{ovis}
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 Source: %{name}-%{version}.tar.gz
 Requires: rpm >= 4.8.0 libevent python-base python-devel libyaml-0-2 libyaml-devel
-BuildRequires: openssl-devel gcc libevent-devel libevent python-base python-devel gettext-tools libyaml-0-2 libyaml-devel
+# fixme libevent-devel must be in buildrequires for production libyaml-devel
+BuildRequires: openssl-devel gcc  libevent python-base python-devel gettext-tools libyaml-0-2 libyaml-devel libevent-devel
 Url: http://ovis.ca.sandia.gov/
 
 Prefix: /usr
@@ -87,7 +88,6 @@ rm -rf $RPM_BUILD_ROOT
 %{_prefix}/lib/python2.7/site-packages/ovis_lib
 %{_prefix}/lib/python2.7/site-packages/ovis_ldms
 %{_prefix}/lib/python2.7/site-packages/ldmsd
-%{_bindir}/ldmsd_controller
 %{_docdir}/%{name}-%{version}/COPYING
 %{_docdir}/%{name}-%{version}/ChangeLog
 %{_docdir}/%{name}-%{version}/AUTHORS 
@@ -96,8 +96,8 @@ rm -rf $RPM_BUILD_ROOT
 # devel
 %package devel
 Summary: LDMS devel package
-Group: %{ldms_grp}
-Requires: ldms-all = @VERSION@
+Group: %{ovis_grp}
+Requires: ovis = @VERSION@
 %description devel
 This is the development package of Lightweight Distributed Metric System (LDMS).
 Users who want to implement their own sampler or store must install this
@@ -111,8 +111,8 @@ package.
 
 %package test
 Summary: LDMS test package
-Group: %{ldms_grp}
-Requires: ldms-all = 3.0.0
+Group: %{ovis_grp}
+Requires: ovis = @VERSION@
 %description test
 This is a collection of test scripts for (LDMS).
 They also serve as examples, but are not usually of interest
@@ -126,8 +126,8 @@ on compute nodes in large clusters.
 # initscripts
 %package initscripts
 Summary: LDMS initscripts for libgenders control of %{name}
-Group: %{ldms_grp}
-Requires: ldms-all = @VERSION@
+Group: %{ovis_grp}
+Requires: ovis = @VERSION@
 %description initscripts
 This is the libgenders based boot scripts for LDMS daemons.
 Users must provide information via /etc/genders (or alternate file)
@@ -140,7 +140,7 @@ to make these scripts operate. They are required to fail out of the box.
 
 %package doc
 Summary: Documentation files for %{name}
-Group: %{ldms_all}
+Group: %{ovis}
 ## Requires: %{name}-devel = %{version}-%{release}
 %description doc
 Man and maybe Doxygen files for ldms-all package.
@@ -169,8 +169,8 @@ Python files for LDMS
 
 %package sos
 Summary: SOS package
-Group: %{ldms_grp}
-Requires: ldms-all = 3.0.0
+Group: %{ovis_grp}
+Requires: ovis = @VERSION@
 %description sos
 This is a collection of sos utilities.
 
@@ -181,7 +181,7 @@ This is a collection of sos utilities.
 %{_libdir}/libidx_BXTREE.*
 %{_sbindir}/ldmsd_sos_init
 %{_libdir}/libsos*
-%{_prefix}/lib/python2.7/site-packages/sos
+%{_prefix}/lib/python2.7/site-packages/sosdb
 #end test
 
 
@@ -212,6 +212,8 @@ done
 # #ln -s $RPM_INSTALL_PREFIX/lib/python*/site-packages/baler/bquery.py $RPM_INSTALL_PREFIX/bin/bhquery
 
 %changelog
+* Tue Nov 29 2016 Ben Allan <baallan@sandia.gov> 3.3.2-23
+code updates, package rename
 * Thu Aug 25 2016 Ben Allan <baallan@sandia.gov> 3.0.0-21
 code updates
 * Thu Aug 11 2016 Ben Allan <baallan@sandia.gov> 3.0.0-20

@@ -1,14 +1,28 @@
 #!/bin/sh
+if ! test -f sos/configure.ac; then
+	echo "you need to get sos in place before running this. try:"
+	echo "git submodule init sos"
+	echo "git submodule update sos"
+	echo "or copying manually to populate sos/"
+fi
+if ! test -f gpcd-support/configure.ac; then
+	echo "you need to get gpcd in place before running this. try:"
+	echo "git submodule init gpcd-support"
+	echo "git submodule update gpcd-support"
+	echo "or copying manually to populate gpcd-support/"
+fi
+#(cd sos; patch < ../util/cray-sos.patch)
 ./autogen.sh
-./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms --enable-gpcdlocal --enable-aries-mmr
+#HACKS="--with-libevent=/home/baallan/mutrino/libevent2 --with-yaml=/home/baallan/mutrino/libevent2"
+./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms --enable-gpcdlocal --enable-aries-mmr $HACKS
 mkdir -p Release
 rm -rf Release/*
 ./util/release_tarball-300-rhine.sh
 cd Release
 echo "============================= bundle done ============="
-tar zxf ldms-3.0.0.tar.gz
-cd ldms-3.0.0
+tar zxf ovis-3.3.2.tar.gz
+cd ovis-3.3.2
 echo "============================= configure for cray sles 12 rpms ============="
-./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms  --enable-gpcdlocal --enable-aries-mmr
+./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms  --enable-gpcdlocal --enable-aries-mmr $HACKS
 echo "============================= make rhine rpms ============="
 make rhine

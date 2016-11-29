@@ -12,10 +12,10 @@ fi
 REPO_DIR=`pwd`
 OUTPUT_DIR=`pwd`/Release
 
-BRANCH_NAME=trinity_rhine
+BRANCH_NAME=master
 
 # Will get this from git in the future
-VERSION=3.0.0
+VERSION=3.3.2
 
 if ! test -f libevent-2.0.21-stable.tar.gz; then
 	echo "do not need a copy of libevent-2.0.21-stable.tar.gz in $REPO_DIR"
@@ -29,30 +29,40 @@ mkdir -p $OUTPUT_DIR
 cd $REPO_DIR
 
 # Checkout $BRANCH_NAME
-git checkout origin/$BRANCH_NAME -b $BRANCH_NAME
-
-## git submodule init sos
-## git submodule update
+if ! test "$BRANCH_NAME" = "master"; then
+	git checkout origin/$BRANCH_NAME -b $BRANCH_NAME
+fi
+git submodule init sos
+git submodule init gpcd-support
+git submodule update sos
+git submodule update gpcd-support
 
 # Find SHA of latest checkin
 COMMIT_ID="$(git log -1 --pretty="%H")"
-SOS_COMMIT_ID=60700d5f2c950b600c838bb2f77b3e51e6706acf
+SOS_COMMIT_ID=cfe185184d8d4d9451ad120a6a1cf06806c6af4d
 
 # Get most recent tag id for this branch
 TAG_ID="$(git describe --tags --abbrev=0)"
 
-TARGET=ldms-${VERSION}.tar
+TARGET=ovis-${VERSION}.tar
 SOSTARGET=sos.tar
+GPCDTARGET=gpcd.tar
 
 
+#cp util/cray-sos.patch $OUTPUT_DIR
 # Create archive of desired branch
 #git archive $BRANCH_NAME --format=tar --output=${OUTPUT_DIR}/ldms-${VERSION}.tar
-git archive --prefix=ldms-${VERSION}/ $COMMIT_ID --format=tar --output=${OUTPUT_DIR}/$TARGET
+git archive --prefix=ovis-${VERSION}/ $COMMIT_ID --format=tar --output=${OUTPUT_DIR}/$TARGET
 sleep 0.1
-## cd sos
-## git archive --prefix=sos/ $SOS_COMMIT_ID --format=tar --output=${OUTPUT_DIR}/$SOSTARGET
-## cd ..
-cp ../sos.tar ${OUTPUT_DIR}/
+cd sos
+git archive --prefix=sos/ $SOS_COMMIT_ID --format=tar --output=${OUTPUT_DIR}/$SOSTARGET
+# cp $SOSTARGET ${OUTPUT_DIR}/
+cd ..
+
+cd gpcd-support
+git archive --prefix=gpcd-support/ master --format=tar --output=${OUTPUT_DIR}/$GPCDTARGET
+# cp $GPCDTARGET ${OUTPUT_DIR}/
+cd ..
 
 # cd to output dir
 cd $OUTPUT_DIR
@@ -60,14 +70,25 @@ cd $OUTPUT_DIR
 # Untar archive
 echo "Untarring archive"
 tar xf $TARGET
-cd ldms-${VERSION}
+cd ovis-${VERSION}
 tar xf ../$SOSTARGET
+tar xf ../$GPCDTARGET
+if ! test -f sos/configure.ac; then
+	echo SOS not untarred ok
+	exit 1
+else
+	: # cd sos; patch < ../../cray-sos.patch)
+fi
+if ! test -f gpcd-support/configure.ac; then
+	echo GPCD-SUPPORT not untarred ok
+	exit 1
+fi
 cd ..
 sleep 0.1
 
 
 # Add SHA file
-pushd ldms-${VERSION}
+pushd ovis-${VERSION}
 echo $COMMIT_ID > SHA.txt
 echo $SOS_COMMIT_ID > SHASOS.txt
 echo $TAG_ID > TAG.txt
@@ -79,14 +100,14 @@ popd
 echo "tarring archive with excludes from "
 echo "$REPO_DIR/util/tar-excludes.txt"
 TAR_OPTS="-X $REPO_DIR/util/tar-excludes.txt"
-tar czf $TARGET.gz $TAR_OPTS ldms-${VERSION}
+tar czf $TARGET.gz $TAR_OPTS ovis-${VERSION}
 sleep 0.1
 
 # Remove untarred stuff
 echo "Relocating cruft"
 rm -rf old
 mkdir old
-mv -f ldms-${VERSION} $TARGET $SOSTARGET old
+mv -f ovis-${VERSION} $TARGET $SOSTARGET old
 sleep 0.1
 
 ls -l
