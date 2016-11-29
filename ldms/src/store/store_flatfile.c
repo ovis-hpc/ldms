@@ -340,6 +340,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 static struct ldmsd_store store_flatfile = {
 	.base = {
 		.name = "flatfile",
+		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,

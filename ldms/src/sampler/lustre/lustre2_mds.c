@@ -313,6 +313,7 @@ static int sample(struct ldmsd_sampler *self)
 static struct ldmsd_sampler lustre_mds_plugin = {
 	.base = {
 		.name = "lustre_mds",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,

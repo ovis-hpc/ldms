@@ -37,4 +37,6 @@ bin_SCRIPTS += ldms_local_amqptest.sh
 bin_SCRIPTS += ldms_local_sostest.sh
 
 bin_SCRIPTS += ldms_local_lnet_statstest.sh
+
+bin_SCRIPTS += ldms_plugins_list.sh
 endif

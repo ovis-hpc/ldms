@@ -409,6 +409,7 @@ struct attr_value_list;
 struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
 	enum ldmsd_plugin_type {
+		LDMSD_PLUGIN_OTHER = 0,
 		LDMSD_PLUGIN_SAMPLER,
 		LDMSD_PLUGIN_STORE
 	} type;
@@ -686,6 +687,7 @@ int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 int ldmsd_logrotate();
+int ldmsd_plugins_usage(const char *plugin_name);
 
 char *ldmsd_get_max_mem_sz_str();
 

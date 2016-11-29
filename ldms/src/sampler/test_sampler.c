@@ -651,6 +651,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler test_sampler_plugin = {
 	.base = {
 		.name = "test_sampler",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,

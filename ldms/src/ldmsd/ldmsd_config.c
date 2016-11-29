@@ -72,6 +72,7 @@
 #include <dlfcn.h>
 #include <assert.h>
 #include <libgen.h>
+#include <glob.h>
 #include <time.h>
 #include <event2/thread.h>
 #include <coll/rbt.h>
@@ -2530,5 +2531,161 @@ int ldmsd_inet_config_init(const char *port, const char *secretword)
 	return 0;
 err:
 	close(inet_listener);
+	return rc;
+}
+
+
+
+const char * blacklist[] = {
+	"liblustre_sampler.so",
+	"libzap.so",
+	"libzap_rdma.so",
+	"libzap_sock.so",
+	NULL
+};
+
+#define APP "ldmsd"
+
+/* Dump plugin names and usages (where available) before ldmsd redirects
+ * io. Loads and terms all plugins, which provides a modest check on some
+ * coding and deployment issues.
+ * \param plugname: list usage only for plugname. If NULL, list all plugins.
+ */
+int ldmsd_plugins_usage(const char *plugname)
+{
+	struct stat buf;
+	glob_t pglob;
+
+	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
+	if (!path)
+		path = PLUGINDIR;
+
+	if (! path ) {
+		fprintf(stderr, "%s: need plugin path input.\n", APP);
+		fprintf(stderr, "Did not find env(LDMSD_PLUGIN_LIBPATH).\n");
+		return EINVAL;
+	}
+
+	if (stat(path, &buf) < 0) {
+		int err = errno;
+		fprintf(stderr, "%s: unable to stat library path %s (%d).\n",
+			APP, path, err);
+		return err;
+	}
+
+	int rc = 0;
+
+	const char *match1 = "/lib";
+	const char *match2 = ".so";
+	size_t patsz = strlen(path) + strlen(match1) + strlen(match2) + 2;
+	if (plugname) {
+		patsz += strlen(plugname);
+	}
+	char *pat = malloc(patsz);
+	if (!pat) {
+		fprintf(stderr, "%s: out of memory?!\n", APP);
+		rc = ENOMEM;
+		goto out;
+	}
+	snprintf(pat, patsz, "%s%s%s%s", path, match1,
+		(plugname ? plugname : "*"), match2);
+	int flags = GLOB_ERR |  GLOB_TILDE | GLOB_TILDE_CHECK;
+
+	int err = glob(pat, flags, NULL, &pglob);
+	switch(err) {
+	case 0:
+		break;
+	case GLOB_NOSPACE:
+		fprintf(stderr, "%s: out of memory!?\n", APP);
+		rc = ENOMEM;
+		break;
+	case GLOB_ABORTED:
+		fprintf(stderr, "%s: error reading %s\n", APP, path);
+		rc = 1;
+		break;
+	case GLOB_NOMATCH:
+		fprintf(stderr, "%s: no libraries in %s\n", APP, path);
+		rc = 1;
+		break;
+	default:
+		fprintf(stderr, "%s: unexpected glob error for %s\n", APP, path);
+		rc = 1;
+		break;
+	}
+	if (err)
+		goto out2;
+
+	size_t i = 0;
+	if (pglob.gl_pathc > 0) {
+		printf("LDMSD plugins in %s : \n", path);
+	}
+	for ( ; i  < pglob.gl_pathc; i++) {
+		char * library_name = pglob.gl_pathv[i];
+		char *tmp = strdup(library_name);
+		if (!tmp) {
+			rc = ENOMEM;
+			goto out2;
+		} else {
+			char *b = basename(tmp);
+			int j = 0;
+			int blacklisted = 0;
+			while (blacklist[j]) {
+				if (strcmp(blacklist[j], b) == 0) {
+					blacklisted = 1;
+					break;
+				}
+				j++;
+			}
+			if (blacklisted)
+				goto next;
+		       	/* strip lib prefix and .so suffix*/
+			b+= 3;
+			char *suff = rindex(b, '.');
+			*suff = '\0';
+			char err_str[LEN_ERRSTR];
+			if (ldmsd_load_plugin(b, err_str)) {
+				fprintf(stderr, "Unable to load plugin %s: %s\n",
+					b, err_str);
+				goto next;
+			}
+			struct ldmsd_plugin_cfg *pi = ldmsd_get_plugin(b);
+			if (!pi) {
+				fprintf(stderr, "Unable to get plugin %s\n",
+					b);
+				goto next;
+			}
+			const char *ptype;
+			switch (pi->plugin->type) {
+			case LDMSD_PLUGIN_OTHER:
+				ptype = "OTHER";
+				break;
+			case LDMSD_PLUGIN_STORE:
+				ptype = "STORE";
+				break;
+			case LDMSD_PLUGIN_SAMPLER:
+				ptype = "SAMPLER";
+				break;
+			default:
+				ptype = "BAD plugin";
+				break;
+			}
+			printf("======= %s %s:\n", ptype, b);
+			const char *u = pi->plugin->usage(pi->plugin);
+			printf("%s\n", u);
+			printf("=========================\n");
+			if (ldmsd_term_plugin(b, err_str)) {
+				fprintf(stderr, "%s\n", err_str);
+			}
+ next:
+			free(tmp);
+		}
+
+	}
+
+
+ out2:
+	globfree(&pglob);
+	free(pat);
+ out:
 	return rc;
 }

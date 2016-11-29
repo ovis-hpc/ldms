@@ -1302,6 +1302,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 static struct ldmsd_store store_rabbitv3 = {
 	.base = {
 		.name = "rabbitv3",
+		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,

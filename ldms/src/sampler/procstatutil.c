@@ -393,6 +393,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler procstatutil_plugin = {
 	.base = {
 		.name = "procstatutil",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
