@@ -242,6 +242,12 @@ static int create_metric_set(const char *schema_name)
 	}
 
 	struct test_sampler_set *ts_set, *next_ts_set;
+	set_array = calloc(num_sets, sizeof(ldms_set_t));
+	if (!set_array) {
+		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		return ENOMEM;
+	}
+
 	for (i = 0; i < num_sets; i++) {
 		snprintf(instance_name, 127, "%s_%d", base_set_name, i);
 		set = ldms_set_new(instance_name, schema);
@@ -270,6 +276,8 @@ static int create_metric_set(const char *schema_name)
 
 free_sets:
 	ts_set = LIST_FIRST(&set_list);
+	if (!ts_set)
+		goto free_schema;
 	next_ts_set = LIST_NEXT(ts_set, entry);
 	while (ts_set) {
 		if (0 == strcmp(schema_name, ldms_set_schema_name_get(ts_set->set))) {
@@ -293,6 +301,7 @@ free_schema:
 static int config_add_schema(struct attr_value_list *avl)
 {
 	int rc = 0;
+	int is_mvalue_init = 0;
 	struct test_sampler_schema *ts_schema;
 	ldms_schema_t schema;
 	char *schema_name = av_value(avl, "schema");
@@ -309,6 +318,7 @@ static int config_add_schema(struct attr_value_list *avl)
 	}
 
 	char *metrics, *value;
+	char *init_value = NULL;
 	int num_metrics;
 	metrics = av_value(avl, "metrics");
 	value = av_value(avl, "num_metrics");
@@ -339,6 +349,7 @@ static int config_add_schema(struct attr_value_list *avl)
 			s = strtok_r(NULL, ",", &ptr);
 			TAILQ_INSERT_TAIL(&ts_schema->list, metric, entry);
 		}
+		is_mvalue_init = 1;
 	} else {
 		is_need_int = 1;
 		enum ldms_value_type type;
@@ -354,6 +365,9 @@ static int config_add_schema(struct attr_value_list *avl)
 		} else {
 			type = LDMS_V_U64;
 		}
+
+		init_value = av_value(avl, "init_value");
+
 		int i;
 		char name[128];
 		for (i = 0; i < num_metrics; i++) {
@@ -378,36 +392,68 @@ static int config_add_schema(struct attr_value_list *avl)
 			"jobid", LDMS_V_U64);
 	TAILQ_FOREACH(metric, &ts_schema->list, entry) {
 		metric->idx = ldms_schema_metric_add(schema, metric->name, metric->type);
+		if (is_mvalue_init)
+			continue;
 		switch (metric->type) {
 		case LDMS_V_D64:
-			metric->init_value.v_d = metric->idx;
+			if (init_value)
+				metric->init_value.v_d = strtod(init_value, NULL);
+			else
+				metric->init_value.v_d = metric->idx;
 			break;
 		case LDMS_V_F32:
-			metric->init_value.v_f = metric->idx;
+			if (init_value)
+				metric->init_value.v_f = strtof(init_value, NULL);
+			else
+				metric->init_value.v_f = metric->idx;
 			break;
 		case LDMS_V_S64:
-			metric->init_value.v_s64 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNi64, &(metric->init_value.v_s64));
+			else
+				metric->init_value.v_s64 = metric->idx;
 			break;
 		case LDMS_V_S32:
-			metric->init_value.v_s32 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNi32, &(metric->init_value.v_s32));
+			else
+				metric->init_value.v_s32 = metric->idx;
 			break;
 		case LDMS_V_S16:
-			metric->init_value.v_s16 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNi16, &(metric->init_value.v_s16));
+			else
+				metric->init_value.v_s16 = metric->idx;
 			break;
 		case LDMS_V_S8:
-			metric->init_value.v_s8 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNi8, &(metric->init_value.v_s8));
+			else
+				metric->init_value.v_s8 = metric->idx;
 			break;
 		case LDMS_V_U64:
-			metric->init_value.v_u64 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNu64, &(metric->init_value.v_u64));
+			else
+				metric->init_value.v_u64 = metric->idx;
 			break;
 		case LDMS_V_U32:
-			metric->init_value.v_u32 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNu32, &(metric->init_value.v_u32));
+			else
+				metric->init_value.v_u32 = metric->idx;
 			break;
 		case LDMS_V_U16:
-			metric->init_value.v_u16 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNu16, &(metric->init_value.v_u16));
+			else
+				metric->init_value.v_u16 = metric->idx;
 			break;
 		case LDMS_V_U8:
-			metric->init_value.v_u8 = metric->idx;
+			if (init_value)
+				sscanf(init_value, "%" SCNu8, &(metric->init_value.v_u8));
+			else
+				metric->init_value.v_u8 = metric->idx;
 			break;
 		default:
 			msglog(LDMSD_LERROR, "test_sampler: "
@@ -415,7 +461,6 @@ static int config_add_schema(struct attr_value_list *avl)
 			rc = EINVAL;
 			goto cleanup;
 		}
-
 	}
 
 	ts_schema->schema = schema;
@@ -608,17 +653,59 @@ static int sample(struct ldmsd_sampler *self)
 	return 0;
 }
 
+static void __test_schema_free(struct test_sampler_schema *tschema)
+{
+	struct test_sampler_metric *tm;
+	tm = TAILQ_FIRST(&tschema->list);
+	while (tm) {
+		TAILQ_REMOVE(&tschema->list, tm, entry);
+		__schema_metric_destroy(tm);
+		tm = TAILQ_FIRST(&tschema->list);
+	}
+	if (tschema->name) {
+		free(tschema->name);
+		tschema->name = NULL;
+	}
+
+	if (tschema->schema) {
+		ldms_schema_delete(tschema->schema);
+		tschema->schema = NULL;
+	}
+
+	free(tschema);
+}
+
 static void term(struct ldmsd_plugin *self)
 {
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;
 	int i;
-	for (i = 0; i < num_sets; i++) {
-		ldms_set_delete(set_array[i]);
-		set_array[i] = NULL;
+	if (set_array) {
+		for (i = 0; i < num_sets; i++) {
+			if (set_array[i])
+				ldms_set_delete(set_array[i]);
+			set_array[i] = NULL;
+		}
+		free(set_array);
 	}
-	free(set_array);
+	struct test_sampler_set *ts;
+	ts = LIST_FIRST(&set_list);
+	while (ts) {
+		LIST_REMOVE(ts, entry);
+		ldms_set_delete(ts->set);
+		free(ts->name);
+		free(ts);
+		ts = LIST_FIRST(&set_list);
+	}
+
+	struct test_sampler_schema *tschema;
+	tschema = LIST_FIRST(&schema_list);
+	while (tschema) {
+		LIST_REMOVE(tschema, entry);
+		__test_schema_free(tschema);
+		tschema = LIST_FIRST(&schema_list);
+	}
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -626,15 +713,19 @@ static const char *usage(struct ldmsd_plugin *self)
 	return  "config name=test_sampler action=add_schema schema=<schema_name>\n"
 		"       [metrics=<metric name>:<metric type>:<init value>,<metric name>:<metric type>:<init value>,...]\n"
 		"       [num_metrics=<num_metrics>] [type=<metric type>]\n"
+		"	[init_value=<init_value>]\n"
 		"\n"
-		"    Either giving metrics or num_metrics\n"
+		"    Either giving metrics or num_metrics. The default init value\n"
+		"    is the metric index.\n"
+		"    The valid metric types are, for example, D64, F32, S64, U64, S64_ARRAY\n"
+		""
 		"\n"
 		"config name=test_sampler action=add_set instance=<set_name> schema=<schema_name>\n"
 		"\n"
 		"    <set name>      The set name\n"
 		"    <schema name>   The schema name\n"
 		"\n"
-		"config name=test_sampler action=add_default [base=<base>] [schema=<sname>]\n"
+		"config name=test_sampler action=default [base=<base>] [schema=<sname>]\n"
 		"       [num_sets=<nsets>] [num_metrics=<nmetrics>]\n"
 		"\n"
 		"    <base>       The base of set names\n"
