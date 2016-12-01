@@ -350,6 +350,7 @@ static int sample(struct ldmsd_sampler *self)
 static struct ldmsd_sampler lustre_client_plugin = {
 	.base = {
 		.name = "lustre_client",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,

@@ -103,7 +103,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:c:"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:c:u"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -384,6 +384,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("%s: [%s]\n", argv[0], FMT);
 	printf("  General Options\n");
 	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
+	printf("    -u             List plugins and where possible their usage, then exit.\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
 	       "                   The given size must be less than 1 petabytes.\n"
 	       "                   The default value is %s\n"
@@ -1561,6 +1562,7 @@ int main(int argc, char *argv[])
 	char *sockname = NULL;
 	char *inet_listener_port = NULL;
 	char *authfile = NULL;
+	int list_plugins = 0;
 #ifdef ENABLE_LDMSD_RCTL
 	char *rctrl_port = NULL;
 #endif /* ENABLE_LDMSD_CTRL */
@@ -1707,6 +1709,9 @@ int main(int argc, char *argv[])
 			printf("git-SHA: %s\n", OVIS_GIT_LONG);
 			exit(0);
 			break;
+		case 'u':
+			list_plugins = 1;
+			break;
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
 		default:
@@ -1717,6 +1722,12 @@ int main(int argc, char *argv[])
 		printf("The -x option is required.\n");
 		usage(argv);
 	}
+
+	if (list_plugins) {
+		ldmsd_plugins_usage(NULL);
+		exit(0);
+	}
+
 	if (!dirty_threshold)
 		/* default total dirty threshold is calculated based on popular
 		 * 4 GB RAM setting with Linux's default 10% dirty_ratio */

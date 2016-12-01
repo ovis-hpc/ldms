@@ -348,6 +348,7 @@ static void term(struct ldmsd_plugin *self)
 static struct ldmsd_sampler procinterrupts_plugin = {
 	.base = {
 		.name = SAMP,
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,

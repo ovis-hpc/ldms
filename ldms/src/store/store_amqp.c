@@ -896,6 +896,7 @@ static amqp_msg_formatter_t formatters[] = {
 static struct ldmsd_store store_amqp = {
 	.base = {
 		.name = "amqp",
+		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,
 		.usage = usage,

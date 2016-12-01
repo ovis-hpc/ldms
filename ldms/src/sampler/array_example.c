@@ -311,6 +311,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler array_example_plugin = {
 	.base = {
 		.name = "array_example",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,

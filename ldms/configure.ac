@@ -429,6 +429,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_auth_test.sh
 		 scripts/ldms_local_amqptest.sh
 		 scripts/ldms_local_lnet_statstest.sh
+		 scripts/ldms_plugins_list.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile

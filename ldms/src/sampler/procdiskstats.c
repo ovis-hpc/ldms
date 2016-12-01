@@ -455,6 +455,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler procdiskstats_plugin = {
         .base = {
                 .name = "procdiskstats",
+		.type = LDMSD_PLUGIN_SAMPLER,
                 .term = term,
                 .config = config,
                 .usage = usage,

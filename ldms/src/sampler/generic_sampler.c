@@ -413,6 +413,7 @@ out:
 static struct ldmsd_sampler gs_plugin = {
 	.base = {
 		.name = "generic_sampler",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,

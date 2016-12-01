@@ -75,6 +75,9 @@ General/Configuration Options:
 .BR -F
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
+.BR -u
+Dump list of plugin usages, then exit.
+.TP
 .BI -m " MEMORY_SIZE"
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
