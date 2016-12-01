@@ -6,4 +6,4 @@
 	url = https://github.com/opengridcomputing/SOS.git
 [submodule "gpcd-support"]
 	path = gpcd-support
-	url = git@gitlab.sandia.gov:ovis/gpcd-support.git
+	url = https://github.com/ovis-hpc/gpcd.git
