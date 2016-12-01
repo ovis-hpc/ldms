@@ -1,19 +1,37 @@
-INTENT
+PURPOSE:
 
-All the packages live in the "ovis-" prefix space, as there are prior
-Linux packages for ldms, sos, and possibly others.
+This directory is primarily for packagers/maintainers of OVIS tools,
+not for beginning developers. As such, good scripting
+skills are needed to understand most of the files herein.
+
+Do NOT expect to be able to run any script in here in random environments.
+
+Secondarily, a few scripts (make-all-*) are provided demonstrating manual builds
+with various configuration options on recent platforms. With these
+scripts, *** YOUR Mileage May Vary***
+Don't hesitate to contact ovis-help@sandia.gov if you are having build problems.
+The wiki at ovis.ca.sandia.gov also has some build documentation.
+
+SUPPORT:
+
+Packaging is provided for the RHEL 6/7 and SUSE 11/12 rpm-based environments.
+Secondary build examples may include ubuntu/centos as well.
+Legacy systems support, as last known working, is in subdirectory retired/.
+Host-specific support for supercomputing environments is in subdirectory hosts/.
+
+RPM SUPPORT:
+
+The packages produced here live use the "ldms-all" prefixes. as 
+there are prior Linux packages with conflicting names or content.
 
 This packaging scheme aims to produce relocatable RPMS, in violation of
-Redhat/Fedora packaging standards.
+Redhat/Fedora packaging standards, as commonly required on HPC platforms.
 Linux dynamic libraries are not normally relocatable once installed, so
 to make relocation work the environment MUST specify LD_LIBRARY_PATH at
 runtime.
 
-The rpm packaging scripts (.spec.in) files in the source tree may need
-adjustments for other platforms, but will work on rhel6.4/centos6.4/toss.
 
-
-BUILDING ldms 2.2 RPMs (expected to change in future release)
+BUILDING ldms RPMs in old environments:
 
 libevent2 must be built and accessible before ldms can be configured.
 Because RHEL 6.x does not support libevent2, we install libevent
