@@ -174,20 +174,35 @@ struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
 }
 
 static char library_name[PATH_MAX];
+static char library_path[PATH_MAX];
 struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 {
 	struct ldmsd_plugin *lpi;
 	struct ldmsd_plugin_cfg *pi = NULL;
+	char *pathdir = library_path;
+	char *libpath;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
+	void *d;
+
 	if (!path)
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
 
-	sprintf(library_name, "%s/lib%s.so", path, plugin_name);
-	void *d = dlopen(library_name, RTLD_NOW);
+	strcpy(library_path, path);
+
+	while ((libpath = strtok(pathdir, ":")) != NULL) {
+		pathdir = NULL;
+		sprintf(library_name, "%s/lib%s.so", libpath, plugin_name);
+		d = dlopen(library_name, RTLD_NOW);
+		if (d != NULL) {
+			break;
+		}
+	}
+
 	if (!d) {
 		sprintf(err_str, "dlerror %s", dlerror());
 		goto err;
 	}
+
 	ldmsd_plugin_get_f pget = dlsym(d, "get_plugin");
 	if (!pget) {
 		sprintf(err_str,
