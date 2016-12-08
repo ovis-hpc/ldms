@@ -18,14 +18,6 @@
 #
 # Correct checkout tests:
 bad=0
-if ! test -f sos/configure.ac; then
-	echo "you need to get sos in place before running this. try:"
-	echo "git submodule init sos"
-	echo "git submodule update sos"
-	echo "or copying manually to populate sos/"
-	echo "The git commands will NOT work from a github zip download"
-	bad=1
-fi
 if ! test -f gpcd-support/configure.ac; then
 	echo "you need to get gpcd in place before running this. try:"
 	echo "git submodule init gpcd-support"
@@ -58,18 +50,15 @@ if test $bad = "1"; then
 	exit
 fi
 ./autogen.sh
-./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms --enable-gpcdlocal --enable-aries-mmr
+./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --disable-sos --enable-swig --with-pkglibdir=ovis-ldms --enable-gpcdlocal --enable-aries-mmr
 mkdir -p Release
 rm -rf Release/*
-if ! ./util/release_tarball-300-rhine.sh; then
-	echo "util/release_tarball-300-rhine.sh failed"
-	exit 1
-fi
+./util/release_tarball-300-rhine-nosos.sh
 cd Release
 echo "============================= bundle done ============="
 tar zxf ovis-3.3.2.tar.gz
 cd ovis-3.3.2
 echo "============================= configure for cray sles 12 rpms ============="
-./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --enable-sos --enable-swig --with-pkglibdir=ovis-ldms  --enable-gpcdlocal --enable-aries-mmr
+./configure --enable-ssl --disable-rpath --disable-readline CC=gcc CXX=g++ --disable-sos --enable-swig --with-pkglibdir=ovis-ldms  --enable-gpcdlocal --enable-aries-mmr
 echo "============================= make rhine rpms ============="
 make rhine
