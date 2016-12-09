@@ -87,7 +87,7 @@ fi
 	
 # : separated list of metric sets to load at startup
 if test -z $LDMSD_METRIC_SETS; then
-	LDMSD_METRIC_SETS="meminfo:vmstat:procnfs:procstatutil2:procnetdev:sysclassib"
+	LDMSD_METRIC_SETS="meminfo:vmstat:procnfs:procstat:procnetdev:sysclassib"
 fi
 
 

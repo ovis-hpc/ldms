@@ -245,7 +245,7 @@ class TestOSqlite_util(unittest.TestCase):
     def test_query_template_info(self):
         # template of the procstat
         result = osqlite_util.query_template_info(self.cursor, "procstat")
-        procstat_template = [("procstat", "procstatutil",
+        procstat_template = [("procstat", "procstat",
                               "interval:2000000",
                               "iowait#cpu1[30064771073],idle#cpu1[30064771074]," \
                               "user#cpu1[30064771075],sys#cpu1[30064771076]," \
@@ -309,8 +309,8 @@ class TestOSqlite_util(unittest.TestCase):
     def test_query_metrics(self):
         metric_id_list = [21474836481, 21474836482]
         result = osqlite_util.query_metrics(self.cursor, metric_id_list)
-        exp_result = [("iowait", 21474836481, "procstatutil", 1, "node0001", 5),
-                      ("idle", 21474836482, "procstatutil", 2, "node0001", 5)]
+        exp_result = [("iowait", 21474836481, "procstat", 1, "node0001", 5),
+                      ("idle", 21474836482, "procstat", 2, "node0001", 5)]
         try:
             self.assertEqual(result, exp_result)
         except AssertionError, e:
@@ -336,7 +336,7 @@ class TestOSqlite_util(unittest.TestCase):
             raise AssertionError(e)
 
         result = osqlite_util.query_metrics(self.cursor, [21474836481, 21474836482], "iowait")
-        exp_result = [("iowait", 21474836481, "procstatutil", 1, "node0001", 5)]
+        exp_result = [("iowait", 21474836481, "procstat", 1, "node0001", 5)]
         try:
             self.assertEqual(result, exp_result)
         except AssertionError, e:

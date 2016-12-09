@@ -77,7 +77,6 @@ OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
-OPTION_DEFAULT_ENABLE([procstatutil], [ENABLE_PROCSTATUTIL])
 OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
 
 OPTION_DEFAULT_DISABLE([tsampler], [ENABLE_TSAMPLER])
@@ -422,7 +421,6 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_rollperiod_test.sh
 		 scripts/ldms_local_rollrecords_test.sh
 		 scripts/ldms_local_rolltime_test.sh
-		 scripts/ldms_local_procstatutil.sh
 		 scripts/ldms_local_procstat.sh
 		 scripts/ldms_local_csvorder.sh
 		 scripts/ldms_local_synthetic_test.sh

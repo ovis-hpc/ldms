@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# LDMS_ENTITY is one of ldmsd, meminfo, vmstat, geminfo, procinterrupts, procpidstatic, procstatutil, ldmsmon
+# LDMS_ENTITY is one of ldmsd, meminfo, vmstat, geminfo, procinterrupts, procpidstatic, procstat, ldmsmon
 # ACTION is one of start, stop, resume, remove
 # SOCKET is the port to be used for communication with ldmsd
 # PERIOD is the number of micro-seconds between collection
@@ -151,18 +151,18 @@ elif [[ $LDMS_ENTITY = "procpidstatic" ]]; then
 	continue
    fi
 
-elif [[ $LDMS_ENTITY = "procstatutil" ]]; then
+elif [[ $LDMS_ENTITY = "procstat" ]]; then
    if [[ $ACTION = "start" ]]; then
-	echo load procstatutil | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
-	echo init procstatutil procstatutil | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
-	echo config procstatutil component_id $COMP_ID | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
-	echo start procstatutil $PERIOD | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
+	echo load procstat | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
+	echo init procstat procstat | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
+	echo config procstat component_id $COMP_ID | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
+	echo start procstat $PERIOD | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
    elif [[ $ACTION = "stop" ]]; then
-	echo stop procstatutil | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
+	echo stop procstat | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
    elif [[ $ACTION = "resume" ]]; then
-	echo start procstatutil $PERIOD | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
+	echo start procstat $PERIOD | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
    elif [[ $ACTION = "remove" ]]; then
-	echo term procstatutil | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
+	echo term procstat | $LDMS_EXE_PATH/ldmsctl -S/var/run/ldmsd/$METRIC_SOCKET
    else
 	continue
    fi

@@ -191,12 +191,6 @@ libprocsensors_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libprocsensors.la
 endif
 
-if ENABLE_PROCSTATUTIL
-libprocstatutil_la_SOURCES = procstatutil.c
-libprocstatutil_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libprocstatutil.la
-endif
-
 if ENABLE_PROCSTAT
 libprocstat_la_SOURCES = procstat.c
 libprocstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)

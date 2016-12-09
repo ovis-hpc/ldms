@@ -32,9 +32,9 @@ atacoadmin1 ldmsaggd_clientof=aries
 atacoadmin1 ldmsaggd_interval_default=1000000,ldmsaggd_offset_default=30000
 
 # metric sets (sysclassib may have issues with resets on mlx; omitted)
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_metric_sets=meminfo:vmstat:procnfs:procstatutil2:procnetdev
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_metric_sets=meminfo:vmstat:procnfs:procstat:procnetdev
 
-atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procstatutil2=maxcpu/16
+atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procstat=maxcpu/16
 atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_procnetdev=ifaces/eth0&eth1&eth3&eth4&ib0&ib2
 
 #atacoadmin1,ataco[1-4],ataco-login[1-4],atacogw[1-2] ldmsd_sysclassib=ports/qib0.1
