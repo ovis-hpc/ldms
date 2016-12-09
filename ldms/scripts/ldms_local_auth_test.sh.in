@@ -138,4 +138,9 @@ mysleep 1
 echo ldms_ls on host 3:
 ldms_ls -h localhost -x sock -p $port3  $AFILE
 
+mysleep 1
+for i in 1 2 3; do
+	kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+done
+echo "logs and data stored under $TESTDIR"
 echo done;

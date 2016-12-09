@@ -158,5 +158,9 @@ echo data from ${STOREDIR}/node/jobid sorted by node id
 cat ${STOREDIR}/jobid/* | grep ' 1, '
 cat ${STOREDIR}/jobid/* | grep ' 2, '
 
-
+mysleep 1
+for i in 1 2 3; do
+	kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+done
+echo "logs and data stored under $TESTDIR"
 echo done;

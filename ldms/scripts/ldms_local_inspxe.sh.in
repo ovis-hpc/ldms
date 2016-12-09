@@ -79,9 +79,9 @@ else
 	AGGFG="-F"
 fi
 echo Starting daemons
-$SHPVG ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1 -l ${LOGDIR}/1.txt
-ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt
-$AGGVG  ldmsd  $AGGFG -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt &
+$SHPVG ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1 -l ${LOGDIR}/1.txt -r $LDMSD_PIDFILE.1
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -r $LDMSD_PIDFILE.2
+$AGGVG  ldmsd  $AGGFG -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -r $LDMSD_PIDFILE.3 &
 sleep 7
 
 
@@ -148,7 +148,9 @@ $AGGLSVG2 ldms_ls -h localhost -x sock -p $port3
 echo done. be patient;
 sleep 3
 echo cooking thread reports:
-pkill ldmsd
+for i in 1 2 3; do
+	kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+done
 sleep 5
 report="-report problems -report-all"
 inspxe-cl $report -result-dir xesheep_ls -report-output xesheep_ls.txt

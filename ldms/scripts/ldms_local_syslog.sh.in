@@ -122,4 +122,8 @@ mysleep 1
 echo ldms_ls on host 3:
 ldms_ls -h localhost -x sock -p $port3 
 
+sleep 1
+for i in 1 2 3; do
+	kill -SIGTERM `cat $TESTDIR/run/ldmsd.pid.$i`
+done
 echo done;

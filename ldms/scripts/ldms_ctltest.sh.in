@@ -65,9 +65,9 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt
-ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt
-ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt  -r $LDMSD_PIDFILE.1
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt  -r $LDMSD_PIDFILE.2
+ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt  -r $LDMSD_PIDFILE.3
 sleep 1
 
 
@@ -132,4 +132,8 @@ echo LDMSCTL USAGE on host 2
 echo "usage" | ${BUILDDIR}/sbin/ldmsctl -S $SOCKDIR/metric_socket_2
 sleep 2
 echo "====================================================================="
+
+for i in 1 2 3; do
+	kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+done
 echo DONE;
