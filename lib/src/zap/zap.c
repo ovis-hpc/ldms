@@ -113,8 +113,7 @@ struct ovis_heap *zev_queue_heap;
 #endif
 #define ZAP_LIBPATH_DEFAULT PLUGINDIR
 #define _SO_EXT ".so"
-static char _libdir[PATH_MAX];
-static char _libpath[PATH_MAX];
+#define MAX_ZAP_LIBPATH	1024
 
 static char *__zap_event_str[] = {
 	"ZAP_EVENT_ILLEGAL",
@@ -193,6 +192,8 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt);
 
 zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_fn)
 {
+	char _libdir[MAX_ZAP_LIBPATH];
+	char _libpath[MAX_ZAP_LIBPATH];
 	char *libdir;
 	char *libpath;
 	char *lib = _libpath;
@@ -200,6 +201,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	char *errstr;
 	int ret;
 	void *d;
+	char *saveptr = NULL;
 
 	if (!log_fn)
 		log_fn = default_log;
@@ -214,7 +216,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 
 	libdir = _libdir;
 
-	while ((libpath = strtok(libdir, ":")) != NULL) {
+	while ((libpath = strtok_r(libdir, ":", &saveptr)) != NULL) {
 		libdir = NULL;
 		snprintf(lib, sizeof(_libpath) - 1, "%s/libzap_%s%s",
 			 libpath, name, _SO_EXT);
@@ -244,7 +246,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	if (ret)
 		goto err1;
 
-	strcpy(z->name, name);
+	strncpy(z->name, name, sizeof(z->name));
 	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
 	z->event_interpose = zap_interpose_event;

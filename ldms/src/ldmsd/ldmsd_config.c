@@ -114,6 +114,7 @@ LIST_HEAD(host_list_s, hostspec) host_list;
 LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
+#define LDMSD_PLUGIN_LIBPATH_MAX	1024
 LIST_HEAD(plugin_list, ldmsd_plugin_cfg) plugin_list;
 
 void ldmsd_config_cleanup()
@@ -173,14 +174,15 @@ struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
 	return NULL;
 }
 
-static char library_name[PATH_MAX];
-static char library_path[PATH_MAX];
 struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 {
+	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
+	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
 	struct ldmsd_plugin *lpi;
 	struct ldmsd_plugin_cfg *pi = NULL;
 	char *pathdir = library_path;
 	char *libpath;
+	char *saveptr = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	void *d;
 
@@ -189,7 +191,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 
 	strncpy(library_path, path, sizeof(library_path) - 1);
 
-	while ((libpath = strtok(pathdir, ":")) != NULL) {
+	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
 			 libpath, plugin_name);
