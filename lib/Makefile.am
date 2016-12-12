@@ -7,7 +7,7 @@ if ENABLE_SWIG
 SUBDIRS += swig
 endif
 
-EXTRA_DIST = autogen.sh COPYING
+EXTRA_DIST = autogen.sh COPYING SHA.txt TAG.txt pedigree.am
 
 OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
@@ -78,6 +78,6 @@ install-doc: install-dox
 	done
 
 PEDIGREE = $(DESTDIR)/$(bindir)/lib-pedigree
-include $(top_srcdir)/../automake/pedigree.am
+include $(srcdir)/pedigree.am
 
 clean-local: rpm-clean

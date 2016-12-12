@@ -1,6 +1,6 @@
 if ENABLE_BALER
 
-EXTRA_DIST = baler.cfg hosts.txt
+EXTRA_DIST = baler.cfg hosts.txt SHA.txt TAG.txt
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
@@ -42,4 +42,4 @@ rpm-clean:
 endif
 
 PEDIGREE = $(DESTDIR)/$(bindir)/baler-pedigree
-include $(top_srcdir)/../automake/pedigree.am
+include $(top_srcdir)/pedigree.am

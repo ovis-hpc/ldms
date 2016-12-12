@@ -1,3 +1,5 @@
+EXTRA_DIST = pedigree.am SHA.txt TAG.txt
+
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
 
@@ -105,6 +107,6 @@ install-data-local: install-dox
 	done
 
 PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
-include $(top_srcdir)/../automake/pedigree.am
+include $(top_srcdir)/pedigree.am
 
 clean-local: rpm-clean

@@ -391,33 +391,29 @@ AC_SUBST([$1],[$$1])
 dnl SYNOPSIS: OPTION_GITINFO
 dnl dnl queries git for version hash and branch info.
 AC_DEFUN([OPTION_GITINFO], [
-	treetop=missing
-	for ovis_top in `pwd` $ac_abs_confdir $ac_abs_confdir/.. $ac_abs_confdir/../..; do
-		if test -f $ovis_top/m4/Ovis-top.m4; then
-			treetop=`(cd "$ovis_top"
-			pwd)`
-			break
-		fi
-	done
-	if test "$treetop" = "missing"; then
-		AC_MSG_WARN([Unable to locate top of ovis source tree.])
-	fi
 
-	GITSHORT=`git describe --tags 2>/dev/null`
-	GITLONG=`git rev-parse HEAD 2>/dev/null`
-	GITDIRTY=`git status -uno -s 2>/dev/null`
+	TOP_LEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"
+	GITSHORT="$(git describe --tags 2>/dev/null)"
+	GITLONG="$(git rev-parse HEAD 2>/dev/null)"
+	GITDIRTY="$(git status -uno -s 2>/dev/null)"
 	if test -n "$GITLONG" -a -n "$GITDIRTY"; then
 		GITLONG="${GITLONG}-dirty"
 	fi
 
-	if test -n "$GITLONG"; then
-		dnl Git OK.
+	if test -s "$TOP_LEVEL/m4/Ovis-top.m4" -a -n "$GITLONG"; then
+		dnl Git OK from ovis repo.
 		AC_MSG_RESULT([Using git SHA and TAG])
-	elif test -s $treetop/TAG.txt && test -s $treetop/SHA.txt; then
-		dnl Git not OK, try $treetop/TAG.txt
-		AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $treetop for version info. ])
-		GITSHORT="$( cat $treetop/TAG.txt)"
-		GITLONG="$( cat $treetop/SHA.txt)"
+	elif test -s $srcdir/TAG.txt -a -s $srcdir/SHA.txt ; then
+		dnl Git not OK, try $srcdir/SHA.txt
+		AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $srcdir for version info. ])
+		GITSHORT="$( cat $srcdir/TAG.txt)"
+		GITLONG="$( cat $srcdir/SHA.txt)"
+		AC_MSG_RESULT([Using local SHA.txt and TAG.txt])
+	elif test -s $srcdir/../Ovis-top.m4 -a -s $srcdir/../TAG.txt -a -s $srcdir/../SHA.txt ; then
+		dnl try top-level SHA.txt
+		AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $srcdir for version info. ])
+		GITSHORT="$( cat $srcdir/../TAG.txt)"
+		GITLONG="$( cat $srcdir/../SHA.txt)"
 		AC_MSG_RESULT([Using tree-top SHA.txt and TAG.txt])
 	else
 		GITSHORT="NO_GIT_SHA"
