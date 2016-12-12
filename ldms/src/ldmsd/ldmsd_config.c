@@ -187,11 +187,12 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 	if (!path)
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
 
-	strcpy(library_path, path);
+	strncpy(library_path, path, sizeof(library_path) - 1);
 
 	while ((libpath = strtok(pathdir, ":")) != NULL) {
 		pathdir = NULL;
-		sprintf(library_name, "%s/lib%s.so", libpath, plugin_name);
+		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
+			 libpath, plugin_name);
 		d = dlopen(library_name, RTLD_NOW);
 		if (d != NULL) {
 			break;

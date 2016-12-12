@@ -198,7 +198,6 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	char *lib = _libpath;
 	zap_t z = NULL;
 	char *errstr;
-	int len;
 	int ret;
 	void *d;
 
@@ -209,23 +208,17 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 
 	libdir = getenv("ZAP_LIBPATH");
 	if (!libdir || libdir[0] == '\0')
-		strcpy(_libdir, ZAP_LIBPATH_DEFAULT);
+		strncpy(_libdir, ZAP_LIBPATH_DEFAULT, sizeof(_libdir));
 	else
-		strcpy(_libdir, libdir);
+		strncpy(_libdir, libdir, sizeof(_libdir));
 
 	libdir = _libdir;
 
 	while ((libpath = strtok(libdir, ":")) != NULL) {
 		libdir = NULL;
-		strcpy(lib, libpath);
-		/* Add a trailing / if one is not present in the path */
-		len = strlen(lib);
-		if (lib[len-1] != '/')
-			strcat(lib, "/");
+		snprintf(lib, sizeof(_libpath) - 1, "%s/libzap_%s%s",
+			 libpath, name, _SO_EXT);
 
-		strcat(lib, "libzap_");
-		strcat(lib, name);
-		strcat(lib, _SO_EXT);
 		d = dlopen(lib, RTLD_NOW);
 		if (d != NULL) {
 			break;
