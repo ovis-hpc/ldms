@@ -798,7 +798,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 
 	/* This allows optional loading a float (Time) into an int field and
 	   retaining usec as a separate field */
-	fprintf(fp, "#Time, Time_usec, ProducerName");
+	fprintf(fp, "#Time,Time_usec,ProducerName");
 
 	get_loop_limits(s_handle, metric_count);
 	for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step){
