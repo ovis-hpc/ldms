@@ -78,12 +78,12 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG
-ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -v DEBUG
-ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -v DEBUG
-ldmsd -x sock:$port4 -S $SOCKDIR/metric_socket_4  -l ${LOGDIR}/4.txt -v DEBUG
-ldmsd -x sock:$port5 -S $SOCKDIR/metric_socket_5  -l ${LOGDIR}/5.txt -v DEBUG
-ldmsd -x sock:$port6 -S $SOCKDIR/metric_socket_6  -l ${LOGDIR}/6.txt -v DEBUG
+ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $LDMSD_PIDFILE.1
+ldmsd -x sock:$port2 -S $SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -v DEBUG -r $LDMSD_PIDFILE.2
+ldmsd -x sock:$port3 -S $SOCKDIR/metric_socket_3  -l ${LOGDIR}/3.txt -v DEBUG -r $LDMSD_PIDFILE.3
+ldmsd -x sock:$port4 -S $SOCKDIR/metric_socket_4  -l ${LOGDIR}/4.txt -v DEBUG -r $LDMSD_PIDFILE.4
+ldmsd -x sock:$port5 -S $SOCKDIR/metric_socket_5  -l ${LOGDIR}/5.txt -v DEBUG -r $LDMSD_PIDFILE.5
+ldmsd -x sock:$port6 -S $SOCKDIR/metric_socket_6  -l ${LOGDIR}/6.txt -v DEBUG -r $LDMSD_PIDFILE.6
 mysleep 1
 
 
@@ -128,12 +128,15 @@ mysleep 2
 
 
 echo ldms_ls on host 4:
-ldms_ls -h localhost -x sock -p $port4 
+ldms_ls -h localhost -x sock -p $port4
 echo ldms_ls on host 5:
-ldms_ls -h localhost -x sock -p $port5 
+ldms_ls -h localhost -x sock -p $port5
 
 echo ldms_ls on host 6:
-ldms_ls -h localhost -x sock -p $port6 
-
+ldms_ls -h localhost -x sock -p $port6
+sleep 1
+for i in 1 2 3 4 5 6; do
+	kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+done
 echo done;
 echo "logs and data stored under $TESTDIR"

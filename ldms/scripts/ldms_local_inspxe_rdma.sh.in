@@ -153,7 +153,9 @@ $AGGLSVG2 ldms_ls -h $lslocalhost -x $LSXPRT -p $port3
 echo done. be patient;
 sleep 3
 echo cooking thread reports:
-pkill ldmsd
+for i in 1 2 3; do
+	kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+done
 sleep 5
 report="-report problems -report-all"
 inspxe-cl $report -result-dir xesheep_ls -report-output xesheep_ls.txt

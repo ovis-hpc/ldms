@@ -141,6 +141,10 @@ pkill ldmsd
 echo pause then stop agg.
 #
 mysleep 5
-pkill ldms-aggd
+sleep 1
+kill -SIGTERM $pidfile.8
+for i in $dlist; do
+	kill -SIGTERM `cat $pidfile.$i`
+done
 
 echo done;
