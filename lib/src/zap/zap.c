@@ -113,7 +113,7 @@ struct ovis_heap *zev_queue_heap;
 #endif
 #define ZAP_LIBPATH_DEFAULT PLUGINDIR
 #define _SO_EXT ".so"
-static char _libdir[PATH_MAX];
+#define MAX_ZAP_LIBPATH	1024
 
 static char *__zap_event_str[] = {
 	"ZAP_EVENT_ILLEGAL",
@@ -192,11 +192,16 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt);
 
 zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_fn)
 {
+	char _libdir[MAX_ZAP_LIBPATH];
+	char _libpath[MAX_ZAP_LIBPATH];
 	char *libdir;
+	char *libpath;
+	char *lib = _libpath;
 	zap_t z = NULL;
 	char *errstr;
-	int len;
 	int ret;
+	void *d;
+	char *saveptr = NULL;
 
 	if (!log_fn)
 		log_fn = default_log;
@@ -205,24 +210,29 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 
 	libdir = getenv("ZAP_LIBPATH");
 	if (!libdir || libdir[0] == '\0')
-		strcpy(_libdir, ZAP_LIBPATH_DEFAULT);
+		strncpy(_libdir, ZAP_LIBPATH_DEFAULT, sizeof(_libdir));
 	else
-		strcpy(_libdir, libdir);
+		strncpy(_libdir, libdir, sizeof(_libdir));
 
-	/* Add a trailing / if one is not present in the path */
-	len = strlen(_libdir);
-	if (_libdir[len-1] != '/')
-		strcat(_libdir, "/");
+	libdir = _libdir;
 
-	strcat(_libdir, "libzap_");
-	strcat(_libdir, name);
-	strcat(_libdir, _SO_EXT);
-	void *d = dlopen(_libdir, RTLD_NOW);
+	while ((libpath = strtok_r(libdir, ":", &saveptr)) != NULL) {
+		libdir = NULL;
+		snprintf(lib, sizeof(_libpath) - 1, "%s/libzap_%s%s",
+			 libpath, name, _SO_EXT);
+
+		d = dlopen(lib, RTLD_NOW);
+		if (d != NULL) {
+			break;
+		}
+	}
+
 	if (!d) {
 		/* The library doesn't exist */
 		log_fn("dlopen: %s\n", dlerror());
 		goto err;
 	}
+
 	dlerror();
 	zap_get_fn_t get = dlsym(d, "zap_transport_get");
 	errstr = dlerror();
@@ -236,7 +246,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	if (ret)
 		goto err1;
 
-	strcpy(z->name, name);
+	strncpy(z->name, name, sizeof(z->name));
 	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
 	z->event_interpose = zap_interpose_event;
