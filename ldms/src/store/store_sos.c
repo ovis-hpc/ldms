@@ -403,8 +403,8 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	/* We assume that job_id and component_id are in the metric array below */
 	for (i = 0; i < metric_count; i++) {
 		rc = sos_schema_attr_add(schema,
-					 ldms_metric_name_get(set, i),
-					 sos_type_map[ldms_metric_type_get(set, i)]);
+			ldms_metric_name_get(set, metric_arry[i]),
+			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
 		if (rc)
 			goto err_1;
 	}
@@ -540,7 +540,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		si->ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
 		si->job_time_attr = sos_schema_attr_by_name(si->sos_schema, "job_time");
 		si->comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "comp_time");
-		si->first_attr = sos_schema_attr_by_name(si->sos_schema, ldms_metric_name_get(set, 0));
+		si->first_attr = sos_schema_attr_by_name(si->sos_schema,
+				ldms_metric_name_get(set, metric_arry[0]));
 		if (si->comp_id_idx < 0)
 			msglog(LDMSD_LINFO,
 			       "The component_id is missing from the metric set/schema.\n");
@@ -591,26 +592,31 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	int array_len;
 	int esz;
 
-	/* The assumption is that the metrics are all in order in the schema */
+	/*
+	 * The assumption is that the metrics in the SOS schema have the same
+	 * order as in metric_arry.
+	 */
 	for (i = 0, attr = si->first_attr; i < metric_count;
 	     i++, attr = sos_schema_attr_next(attr)) {
 		size_t count;
-		metric_type = ldms_metric_type_get(set, i);
+		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type < LDMS_V_CHAR_ARRAY) {
 			value = sos_value_init(value, obj, attr);
-			sos_value_set[metric_type](value, set, i);
+			sos_value_set[metric_type](value, set, metric_arry[i]);
 			sos_value_put(value);
 		} else {
 			esz = __element_byte_len(metric_type);
-			array_len = ldms_metric_array_get_len(set, i);
-			array_value = sos_array_new(array_value, attr, obj, array_len);
+			array_len = ldms_metric_array_get_len(set, metric_arry[i]);
+			array_value = sos_array_new(array_value, attr,
+							obj, array_len);
 			if (!array_value) {
 				goto err;
 			}
 			array_len *= esz;
 			count = sos_value_memcpy(array_value,
-						 ldms_metric_array_get(set, i),
-						 array_len);
+					ldms_metric_array_get(set,
+						metric_arry[i]),
+						array_len);
 			assert(count == array_len);
 			sos_value_put(array_value);
 		}
