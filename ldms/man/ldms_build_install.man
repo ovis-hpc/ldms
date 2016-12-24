@@ -1,6 +1,6 @@
 .\" Manpage for ldms_build_install
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "12 Nov 2015" "v3" "ldms_build_install man page"
+.TH man 8 "22 Dec 2016" "v3.3" "ldms_build_install man page"
 
 .SH NAME
 ldms_build_install \- Instructions for building and installing ldms
@@ -36,8 +36,10 @@ make install
 .PP
 This document describes the steps involved in building the prerequisties and in doing the configure.
 A description of the arguments for configure can be found by invoking
+.PP
 .B ./configure --help
-at BOTH the top level in the ldms subdirectory.
+.PP
+at BOTH the top level and in the ldms subdirectory.
 
 
 .SH PREREQUISTES:
@@ -48,10 +50,12 @@ from rpm or similar on your system via a utility like yum. If you do the latter,
 both the libevent and libevent-devel packages.
 .IP \[bu]
 If you intend to use the aries_mmr sampler, then you will need to install Cray's gpcd library. More information
-on this can be found in the Plugin.aries_mmr man page.
+on this can be found in the Plugin.aries_mmr man page. (This is the recommended method for getting HSN metrics
+for the Aries).
 .IP \[bu]
 If you intend to use the hsn metrics in the cray_aries_r_sampler or the cray_gemini_r_sampler, you will need
-to configure gpcdr. More information on this can be found in the Plugin.cray_sampler_variants man page.
+to configure gpcdr. More information on this can be found in the Plugin.cray_sampler_variants man page. (This
+is the recommended method for the Gemini).
 .IP \[bu]
 Use the gnu compiler for building ldms. (This may necessitate a module change on some platforms).
 .PP
@@ -114,10 +118,9 @@ work by default.
 .RS
 .SS General Options
 .TP
-.BR --enable|disable-a-none
+.BR --enable|disable-ovis_auth
 .br
-If --enable, then disable/enable the a-none module: Allow "-a none" to turn off authentication checks.
-Default disabled.
+If --enable, then disable/enable authentication. Default enabled.
 .TP
 .BR --enable|disable-ldms-python
 .br
@@ -165,6 +168,9 @@ Both the gemini and aries versions can be built simultaneously.
 .BR --enable-aries-gpcdr
 .br
 Enable the aries-gpcdr version of the cray_system_sampler. Default disabled.
+For the Aries, we recommended getting the HSN metrics via aries-mmr, instead of the
+aries-gpcdr sampler. Still build the aries-gpcdr sampler, but run it without
+the HSN part of the metric collection.
 Both the gemini and aries versions can be built simultaneously.
 .TP
 .BR --enable-cray-nvidia  OR  --with-cray-nvidia-inc [=path]
@@ -205,7 +211,7 @@ sampler. E.g. --with-aries-libgpcd=/special/libs,/private/headerdir
 .TP
 .BR --enable|disable-csv
 .br
-Enable the csv stores. Default enable.
+Enable the csv stores (store_csv and store_function_csv). Default enable.
 .BR --enable|disable-sos
 .br
 Enable or disable the sos stores. Enable this only if you are going to use the store_sos plugin. Default disable.
@@ -241,10 +247,10 @@ PREFIX=/XXX/Build/build_ovis
 LIBDIR=${PREFIX}/lib
 
 # add --enable-FEATURE here
-ENABLE="--enable-ugni --enable-ldms-python --disable-ovis_auth --enable-kgnilnd --enable-lustre --enable-aries_mmr --enable-cray_system_sampler --enable-aries-gpcdr"
+ENABLE="--enable-ugni --enable-ldms-python --enable-kgnilnd --enable-lustre --enable-aries_mmr --enable-cray_system_sampler --enable-aries-gpcdr"
 
 # add --disable-FEATURE here
-DISABLE="--disable-rpath --disable-readline --disable-mmap --disable-baler --disable-sos --disable-auth"
+DISABLE="--disable-rpath --disable-readline --disable-mmap --disable-baler --disable-sos"
 
 # libevent2 prefix
 LIBEVENT_PREFIX=/XXX/Build/libevent-2.0_build
@@ -262,4 +268,4 @@ CFLAGS='-g -O0'
 .fi
 
 .SH SEE ALSO
-ldms_authentication(8), ldms_quickstart(7), ldmsd(8), Plugin_cray_sampler_variants(7), Plugin_aries_mmr(7)
+ldms_authentication(8), ldms_quickstart(7), ldmsd(8), Plugin_cray_sampler_variants(7), Plugin_aries_mmr(7), Plugin_store_csv(7), Plugin_store_function_csv(7)

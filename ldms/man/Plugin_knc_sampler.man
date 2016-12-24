@@ -1,22 +1,22 @@
 .\" Manpage for Plugin_knc_sampler
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "31 Dec 2015" "v3" "LDMS Plugin knc_sampler(copy/derived) man page"
+.TH man 7 "3 Dec 2016" "v3" "LDMS Plugin knc_sampler(copy/derived) man page"
 
 .SH NAME
 Plugin_knc_sampler - man page for the LDMS knc_sampler (and knc_sampler_copy and knc_sampler_derived) plugin
 
 .SH SYNOPSIS
-Within ldmsctl
+Within ldmsd_controller or in a configuration file
 .br
-ldmsctl> config name=knc_sampler [ <attr>=<value> ]
+config name=knc_sampler [ <attr>=<value> ]
 .br
-ldmsctl> config name=knc_sampler_copy [ <attr>=<value> ]
+config name=knc_sampler_copy [ <attr>=<value> ]
 .br
-ldmsctl> config name=knc_sampler_derived [ <attr>=<value> ]
+config name=knc_sampler_derived [ <attr>=<value> ]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The knc_sampler plugin runs on the nodes and provides data about the mics using libmicmgmt.
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The knc_sampler plugin runs on the nodes and provides data about the mics using libmicmgmt.
 .PP
 Currently, once cannot load more than one instance of a plugin. Therefore, for 2 mic systems, you can use
 knc_sampler_copy for the other mic (use the other device num in configuration).
@@ -33,13 +33,13 @@ This typically means that you have to build on the compute nodes.
 .PP
 knc is relatively old. Check for a python 2.7 module on the system to build, if you need that version.
 
-.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+.SH CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
 name=<plugin_name> producer=<pname> instance=<set_name> dev_num=<dev_num> [schema=<sname>]
 .br
-ldmsctl configuration line
+configuration line
 .RS
 .TP
 name=<plugin_name>
@@ -87,15 +87,14 @@ No known bugs.
 
 .SH EXAMPLES
 .PP
+Within ldmsd_controller or in a configuration file:
 .nf
-$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket
-ldmsctl> load name=knc_sampler
-ldmsctl> config name=knc_sampler producer=localhost1_0 schema=knc instance=localhost1/knc_sampler_0 dev_num=0
-ldmsctl> start name=knc_sampler interval=1000000
-ldmsctl> load name=knc_sampler_copy
-ldmsctl> config name=knc_sampler_copy producer=localhost1_1 schema=knc instance=localhost1/knc_sampler_1 dev_num=1
-ldmsctl> start name=knc_sampler_copy interval=1000000
-ldmsctl> quit
+load name=knc_sampler
+config name=knc_sampler producer=localhost1_0 schema=knc instance=localhost1/knc_sampler_0 dev_num=0
+start name=knc_sampler interval=1000000
+load name=knc_sampler_copy
+config name=knc_sampler_copy producer=localhost1_1 schema=knc instance=localhost1/knc_sampler_1 dev_num=1
+start name=knc_sampler_copy interval=1000000
 .fi
 
 .PP
@@ -145,4 +144,4 @@ D u64[]      Idle                                       629298029,628641244,6293
 .fi
 
 .SH SEE ALSO
-ldmsd(7), ldms_quickstart(7)
+ldmsd(7), ldms_quickstart(7), ldmsd_controller(8)

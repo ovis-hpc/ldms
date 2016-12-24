@@ -14,8 +14,9 @@ Plugin_aries_mmr.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
 Plugin_knc_sampler.man \
-Plugin_meminfo.man \
 Plugin_lnet_stats.man \
+Plugin_meminfo.man \
+Plugin_msr_interlagos.man \
 Plugin_procinterrupts.man \
 Plugin_procnetdev.man \
 Plugin_procnfs.man \
