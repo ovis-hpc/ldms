@@ -361,7 +361,7 @@ static int parseConfig(char* fname){
 		if (!s)
 			break;
 		if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
-			msglog(LDMSD_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
+			msglog(LDMSD_LWARNING, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
@@ -369,7 +369,7 @@ static int parseConfig(char* fname){
 			    name, &w_reg, &event, &umask, &r_reg, &os_user,
 			    &int_core_ena, &int_core_sel, core_flag, temp);
 		if (rc != 10){
-			msglog(LDMSD_LDEBUG,
+			msglog(LDMSD_LWARNING,
 			       "Bad format in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
@@ -388,7 +388,7 @@ static int parseConfig(char* fname){
 
 		if ((strcmp(temp, "CTR_UNCORE") != 0) &&
 		    (strcmp(temp, "CTR_NUMCORE") != 0)){
-			msglog(LDMSD_LDEBUG,
+			msglog(LDMSD_LWARNING,
 			       "Bad type in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
@@ -396,7 +396,7 @@ static int parseConfig(char* fname){
 
 		if ((strcmp(temp, "CTR_NUMCORE") == 0) &&
 		    (strcmp(core_flag, "UNCORE_PER_NUMA") == 0)){
-			msglog(LDMSD_LDEBUG,
+			msglog(LDMSD_LWARNING,
 			       "Core flag type mismatch in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
@@ -428,7 +428,7 @@ static int parseConfig(char* fname){
 			break;
 
 		if ((strlen(lbuf) > 0)  && (lbuf[0] == '#')){
-			msglog(LDMSD_LDEBUG, "Comment in msr config file <%s>. Skipping\n",
+			msglog(LDMSD_LWARNING, "Comment in msr config file <%s>. Skipping\n",
 			       lbuf);
 			continue;
 		}
