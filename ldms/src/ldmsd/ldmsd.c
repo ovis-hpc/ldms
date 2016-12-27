@@ -103,13 +103,12 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:c:u"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkN:o:r:R:p:a:v:Vz:Z:q:c:u"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
 #define LDMSD_MEM_SIZE_DEFAULT 512L * 1024L
 
-int flush_N = 2; /* The number of flush threads */
 char myhostname[80];
 char ldmstype[20];
 int foreground;
@@ -127,10 +126,6 @@ char *max_mem_sz_str;
 ldms_t ldms;
 FILE *log_fp;
 
-/* dirty_threshold defined in ldmsd_store.c */
-extern int dirty_threshold;
-extern size_t calculate_total_dirty_threshold(size_t mem_total,
-					      size_t dirty_ratio);
 int do_kernel = 0;
 char *setfile = NULL;
 char *listen_arg = NULL;
@@ -1142,12 +1137,6 @@ int main(int argc, char *argv[])
 		case 'm':
 			max_mem_sz_str = strdup(optarg);
 			break;
-		case 'f':
-			flush_N = atoi(optarg);
-			break;
-		case 'D':
-			dirty_threshold = atoi(optarg);
-			break;
 		case 'q':
 			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
 				"This message will disappear in a future release.");
@@ -1212,14 +1201,6 @@ int main(int argc, char *argv[])
 		ldmsd_plugins_usage(NULL);
 		exit(0);
 	}
-
-	if (!dirty_threshold)
-		/* default total dirty threshold is calculated based on popular
-		 * 4 GB RAM setting with Linux's default 10% dirty_ratio */
-		dirty_threshold = calculate_total_dirty_threshold(1ULL<<32, 10);
-
-	/* Make dirty_threshold to be per thread */
-	dirty_threshold /= flush_N;
 
 	if (logfile)
 		log_fp = ldmsd_open_log();
@@ -1440,10 +1421,6 @@ int main(int argc, char *argv[])
 		if (ldmsd_rctrl_init(rctrl_port, secretword))
 			cleanup(4, "rctrl_init failed");
 #endif /* ENABLE_LDMSD_RCTL */
-	if (ldmsd_store_init(flush_N)) {
-		ldmsd_log(LDMSD_LERROR, "Could not initialize the storage subsystem.\n");
-		cleanup(7, "store_init failed");
-	}
 
 	listen_on_transport(xprt_str, port_str);
 

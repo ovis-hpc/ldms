@@ -253,11 +253,6 @@ void destroy_plugin(struct ldmsd_plugin_cfg *p)
 	free(p);
 }
 
-/* NOTE: The implementation of this function is in ldmsd_store.c as all of the
- * flush_thread information are in ldmsd_store.c. */
-extern void process_info_flush_thread(void);
-
-
 const char *prdcr_state_str(enum ldmsd_prdcr_state state)
 {
 	switch (state) {
@@ -498,8 +493,6 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 		ldmsd_log(llevel, "%-16p %d\n",
 			 (void *)ev_thread[i], ev_count[i]);
 	}
-	/* For flush_thread information */
-	process_info_flush_thread();
 
 	ldmsd_log(llevel, "========================================================================\n");
 	__process_info_prdcr(llevel);
