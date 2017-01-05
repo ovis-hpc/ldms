@@ -7,7 +7,7 @@ if ENABLE_SWIG
 SUBDIRS += swig
 endif
 
-EXTRA_DIST = autogen.sh COPYING
+EXTRA_DIST = autogen.sh COPYING SHA.txt TAG.txt pedigree.am
 
 OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
@@ -28,18 +28,6 @@ rpm-clean:
 	rm -rf rpm/ centos/
 	rm -f $(OVIS_LIB_TARBALL)
 
-PHONY_rpm7 = rpm7 centos7 rhel7
-rpm7 centos7 rhel7: dist-gzip
-	$(MKDIR_P) rpm7/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
-	ln -f -s ../../automake rpm7/BUILD/automake
-	cp $(OVIS_LIB_TARBALL) rpm7/SOURCES
-	cp packaging/ovis-lib-rhel7.spec rpm7/SPECS
-	QA_RPATHS=0x0003 ; \
-	export QA_RPATHS ; \
-	rpmbuild --define "_topdir `pwd`/rpm7" \
-		--buildroot `pwd`/rpm7/BUILDROOT \
-		-ba rpm7/SPECS/ovis-lib-rhel7.spec
-
 if ENABLE_DOC
 install-data-local: install-doc
 endif
@@ -54,7 +42,7 @@ doxygen-out: $(DOCDEPS)
 	doxygen ./Doxyfile
 	touch doxygen-out
 
-.PHONY: install-doxygen $(PHONY_rpm) $(PHONY_rpm7)
+.PHONY: install-doxygen $(PHONY_rpm)
 install-doxygen: doxygen-out
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in doxygen/html/* ; do \
@@ -78,6 +66,6 @@ install-doc: install-dox
 	done
 
 PEDIGREE = $(DESTDIR)/$(bindir)/lib-pedigree
-include $(top_srcdir)/../automake/pedigree.am
+include $(srcdir)/pedigree.am
 
 clean-local: rpm-clean

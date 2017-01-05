@@ -29,6 +29,7 @@ AC_SUBST([LDFLAGS_GETTIME])
 LIBS=""
 
 OPTION_DOC
+OPTION_GITINFO
 
 OPTION_DEFAULT_ENABLE([coll], [ENABLE_COLL])
 OPTION_DEFAULT_ENABLE([ovis_event], [ENABLE_OVIS_EVENT])
@@ -125,7 +126,6 @@ AC_SUBST(ac_configure_args)
 AC_CONFIG_FILES([ovis-lib.spec
 		Doxyfile
 		packaging/ovis-lib-toss.spec
-		packaging/ovis-lib-rhel7.spec
 		Makefile
 		src/ovis-lib-configvars.sh
 		src/Makefile

@@ -148,7 +148,6 @@ AC_CONFIG_FILES([Makefile docs/Makefile src/Makefile
 	etc/baler/Makefile
 	etc/systemd/Makefile
 	dict/Makefile
-	rpm/rhel7.spec
 	python/Makefile
 	python/abhttp/Makefile
 ])

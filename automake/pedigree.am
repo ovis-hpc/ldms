@@ -19,3 +19,9 @@ install-exec-local:
 	echo echo "------------------------" >> $(PEDIGREE) ; \
 	echo fi >> $(PEDIGREE); \
 	chmod 555 $(PEDIGREE) ;
+
+SHA.txt:
+	echo "$(OVIS_GIT_LONG)" > SHA.txt
+
+TAG.txt:
+	echo "$(OVIS_GIT_SHORT)" > TAG.txt
