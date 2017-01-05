@@ -1583,13 +1583,13 @@ void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
 	case LDMS_V_S32_ARRAY:
 	case LDMS_V_F32_ARRAY:
 		for (i = start; i < start + count && i < desc->vd_array_count; i++)
-			val->a_u32[i] = __cpu_to_le16(mval->a_u32[i]);
+			val->a_u32[i] = __cpu_to_le32(mval->a_u32[i]);
 		break;
 	case LDMS_V_U64_ARRAY:
 	case LDMS_V_S64_ARRAY:
 	case LDMS_V_D64_ARRAY:
 		for (i = start; i < start + count && i < desc->vd_array_count; i++)
-			val->a_u64[i] = __cpu_to_le16(mval->a_u64[i]);
+			val->a_u64[i] = __cpu_to_le64(mval->a_u64[i]);
 		break;
 	default:
 		assert(0 == "Invalid array element type");
