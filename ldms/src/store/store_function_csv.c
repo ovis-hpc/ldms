@@ -543,21 +543,21 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 	}
 
 	if (rcl != 7) {
-		msglog(LDMSD_LERROR,"%s: (%d) Bad format in fct config file <%s> rc=%d. Skipping\n",
+		msglog(LDMSD_LWARNING,"%s: (%d) Bad format in fct config file <%s> rc=%d. Skipping\n",
 		       __FILE__, iter, lbuf, rcl);
 		return -1;
 	}
 
 	if ((strlen(metric_name) == 0) || (strlen(function_name) == 0) ||
 	    (strlen(metric_csv) == 0)){
-		msglog(LDMSD_LERROR,"%s: (%d) Bad vals in fct config file <%s>. Skipping\n",
+		msglog(LDMSD_LWARNING,"%s: (%d) Bad vals in fct config file <%s>. Skipping\n",
 		       __FILE__, iter, lbuf);
 		return -1;
 	}
 
 	func_t tf = enumFct(function_name);
 	if (tf == FCT_END) {
-		msglog(LDMSD_LERROR,"%s: (%d) Bad func in fct config file <%s> <%s>. Skipping\n",
+		msglog(LDMSD_LWARNING,"%s: (%d) Bad func in fct config file <%s> <%s>. Skipping\n",
 		       __FILE__, iter, lbuf, function_name);
 		return -1;
 	}
@@ -580,7 +580,7 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 		break;
 	}
 	if (badvart){
-		msglog(LDMSD_LERROR,
+		msglog(LDMSD_LWARNING,
 		       "%s: (%d) Wrong number of dependent metrics (%d) for func <%s> in config file <%s>. Skipping\n",
 		       __FILE__, iter, nmet, function_name, lbuf);
 		return -1;
