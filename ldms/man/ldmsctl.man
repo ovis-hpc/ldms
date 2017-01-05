@@ -1,6 +1,6 @@
 .\" Manpage for ldmsctl
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "12 Nov 2015" "v3" "ldmsctl man page"
+.TH man 8 "03 Dec 2016" "v3" "ldmsctl man page"
 
 .SH NAME
 ldmsctl \- Issue control commands to ldmsd.
@@ -11,7 +11,8 @@ ldmsctl [OPTION...]
 .SH DESCRIPTION
 In LDMS (Lightweight Distributed Metric Service), version 2 the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
 
-ldmsctl still works in version 3, however ldmsd_controller is the preferred method.
+ldmsctl still works in version 3, however with ldmsctl, some capabilitites use v2 pathways as opposed to v3.
+ldmsctl will be removed in a future release. It is not recommended that you use this with v2.
 
 .SH ENVIRONMENT
 The following environment variables must be set (includes environment variables needed for the actions,
@@ -249,14 +250,15 @@ Causes the ldmsd to dump out information about plugins,
 work queue utilization, hosts and object stores.
 .TP
 .BR quit
-Exit ldmsctl.
-.TP
-.BR daemon-exit
-Request ldmsd to exit.
+Exit
 .RE
 
 .SH NOTES
-None.
+.IP \[bu]
+ldmsctl is currently kept for backwards compatibility purposes with LDMS v2 commands.
+ldmsctl still works in version 3, however with ldmsctl, some capabilitites use v2 pathways as opposed to v3.
+.IP \[bu]
+ldmsctl will be removed in a future release. It is not recommended that you use this with v2.
 
 .SH BUGS
 No known bugs.
@@ -348,4 +350,3 @@ Notes for example 6:
 
 .SH SEE ALSO
 ldms_authentication(7), ldmsd(8), ldms_ls(8), ldmsd_controller(8), ldms_quickstart(7)
-

@@ -1,26 +1,26 @@
 .\" Manpage for Plugin_jobid
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "17 Jan 2016" "v3.0.0" "LDMS Plugin jobid man page"
+.TH man 7 "03 Dec 2016" "v3.0.0" "LDMS Plugin jobid man page"
 
 .SH NAME
 Plugin_jobid - man page for the LDMS jobid plugin
 
 .SH SYNOPSIS
-Within ldmsctl
+Within ldmsd_controller or in a configuration file
 .br
-ldmsctl> config name=jobid [ <attr>=<value> ]
+config name=jobid [ <attr>=<value> ]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsctl.
-The jobid plugin provides jobid info from /var/run/ldms.jobinfo or similar files replaced periodically by resource managers. When files are missing, the value 0 or equivalent is reported.
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or
+a configuration file. The jobid plugin provides jobid info from /var/run/ldms.jobinfo or similar files replaced periodically by resource managers. When files are missing, the value 0 or equivalent is reported.
 
-.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+.SH CONFIGURATION ATTRIBUTE SYNTAX
 
 .TP
 .BR config
 name=<plugin_name> producer=<pname> instance=<set_name> [component_id=<compid> schema=<sname>] [with_jobid=<bool>] file=<filepath>
 .br
-ldmsctl configuration line
+configuration line
 .RS
 .TP
 name=<plugin_name>
@@ -64,17 +64,16 @@ Other samplers use the jobid plugin as the jobid data source. If the jobid sampl
 .SH EXAMPLES
 .PP
 .nf
-$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
-ldmsctl> load name=jobid
-ldmsctl> config name=jobid component_id=1 producer=vm1_1 instance=vm1_1/jobid
-ldmsctl> start name=jobid interval=1000000 offset=-100000
-ldmsctl> quit
+Within ldmsd_controller or in a configuration file
+load name=jobid
+config name=jobid component_id=1 producer=vm1_1 instance=vm1_1/jobid
+start name=jobid interval=1000000 offset=-100000
 
-$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
-ldmsctl> load name=jobid
-ldmsctl> config name=jobid component_id=1 producer=vm1_1 instance=vm1_1/jobid file=/var/run/rman/node/jobinfo
-ldmsctl> start name=jobid interval=1000000 offset=-100000
-ldmsctl> quit
+
+Within ldmsd_controller or in a configuration file
+load name=jobid
+config name=jobid component_id=1 producer=vm1_1 instance=vm1_1/jobid file=/var/run/rman/node/jobinfo
+start name=jobid interval=1000000 offset=-100000
 .fi
 
 Slurm 2.x installations can populate /var/run/ldms.jobid by adding
@@ -95,4 +94,4 @@ These slurm files might be found in /etc/nodestate/bin/.
 
 
 .SH SEE ALSO
-ldms(7)
+ldms(7), ldmsd(8), ldmsd_controller(8)

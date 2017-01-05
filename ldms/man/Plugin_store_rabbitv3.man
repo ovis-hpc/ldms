@@ -1,22 +1,24 @@
 .\" Manpage for Plugin_store_rabbitv3
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "30 Nov 2015" "v3.0.0" "LDMS Plugin store_rabbitv3 man page"
+.TH man 7 "03 Dec 2016" "v3" "LDMS Plugin store_rabbitv3 man page"
 
 .SH NAME
 Plugin_store_rabbitv3 - man page for the LDMS store_rabbitv3 plugin
 
 .SH SYNOPSIS
-Within ldmsctl:
+Within ldmsd_controller or in a configuration file
 .br
-ldmsctl> config name=store_rabbitv3 [ <attr> = <value> ]
+load name=store_rabbitv3
 .br
-ldmsctl> store name=store_rabbitv3 [ <attr> = <value> ]
+config name=store_rabbitv3 [ <attr> = <value> ]
+.br
+strgp_add name=store_rabbitv3 [ <attr> = <value> ]
 
 .SH DESCRIPTION
 The store_rabbitv3 plugin is a rabbitmq producer. Actual storage of data must be arranged separately by configuring some other amqp client.
 .PP
 
-.SH LDMSCTL CONFIGURATION ATTRIBUTE SYNTAX
+.SH CONFIGURATION ATTRIBUTE SYNTAX
 
 The configuration parameters root, host, port, exchange, vhost, user, and pwfile are shared across all metric sets.
 
@@ -33,16 +35,16 @@ This MUST be store_rabbitv3.
 .TP
 root=<root>
 .br
-The routing key prefix shared by all metric sets will be <root>. 
+The routing key prefix shared by all metric sets will be <root>.
 .TP
 host=<host>
 .br
 The rabbitmq server host. The default is localhost.
 .TP
-port=<port number> 
+port=<port number>
 .br
 The server port on the nearest rabbitmq host. The default is 5672.
-.TP 
+.TP
 exchange=<exch>
 .br
 The amqp exchange to publish with is <exch>. The default is amq.topic.
@@ -69,7 +71,7 @@ The number of seconds between emission of time and host invariant (meta) metrics
 .RE
 
 
-.SH LDMSCTL STORE ATTRIBUTE SYNTAX
+.SH STORE ATTRIBUTE SYNTAX
 
 .TP
 .BR store
@@ -83,7 +85,7 @@ This MUST be store_rabbitv3.
 .TP
 schema=<schema_name>
 .br
-The name of the metric group, independent of the host name. 
+The name of the metric group, independent of the host name.
 .TP
 policy=<policy>
 .br
@@ -168,7 +170,7 @@ The authentication to AMQP server uses the SASL plaintext method. In HPC environ
 .SH BUGS
 .PP
 The periodic emission of meta metrics should be per (producer,metric) pair,
-but the store API is not yet sufficient to make this a scalable and efficient 
+but the store API is not yet sufficient to make this a scalable and efficient
 operation. In the meanwhile, meta metrics are emitted on first definition and assumed to be identical for a metric set across all producers. The special case of component_id (if present) is handled correctly when extraprops=y is configured.
 
 .SH EXAMPLES
@@ -176,4 +178,4 @@ operation. In the meanwhile, meta metrics are emitted on first definition and as
 See the LDMS test script ldms_local_amqptest.sh.
 
 .SH SEE ALSO
-ldms(7), rabbitmq-server(1)
+ldmsd(8), rabbitmq-server(1), ldmsd_controller(8)

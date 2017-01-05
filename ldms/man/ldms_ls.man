@@ -1,6 +1,6 @@
 .\" Manpage for ldms_ls
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "05 Oct 2016" "v3" "ldms_ls man page"
+.TH man 8 "22 Dec 2016" "v3.3" "ldms_ls man page"
 
 .SH NAME
 ldms_ls \- Query an ldmsd for metric set values
@@ -68,9 +68,8 @@ PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
 Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
 .TP
 .BI -a " <path>"
-Give the location of the secretword file. If it is compiled with
---disable-ovis-auth, ldms_ls will not support authentication and the -a option
-disappears.
+If using authentication, <path> is the full path to the file containing the shared secret word. See ldms_authentication(7) for alternatives.
+
 .TP
 .BI -m  " MEMORY_SIZE"
 .br
@@ -116,13 +115,13 @@ No known bugs.
 .SH EXAMPLES
 .PP
 .nf
-$ldms_ls -h vm1 -x sock -p 60000
+1) $ldms_ls -h vm1 -x sock -p 60000
 vm1_1/meminfo
 vm1_1/vmstat
 .br
 .PP
 .nf
-$ldms_ls -h vm1 -x sock -p 60000 -l
+2) $ldms_ls -h vm1 -x sock -p 60000 -l
 vm1_1/meminfo: consistent, last update: Thu Oct 29 08:04:44 2015 [202552us]
 D u64        MemTotal                        132165188
 D u64        MemFree                         129767048
@@ -153,11 +152,34 @@ in the example above, unsigned int 64.
 Value of the metric
 .PP
 .nf
-For a non-existent set:
+3) For a non-existent set:
 $ldms_ls -h vm1 -x sock -p 60000 -l vm1_1/foo
 ldms_ls: No such file or directory
 ldms_ls: lookup failed for set 'vm1_1/foo'
+.PP
+4) Display metadata:
+.nf
+.RS
+ldms_ls -h vm1 -x sock -p 60000 -v
+vm1_1/meminfo: consistent, last update: Fri Dec 16 17:12:08 2016 [5091us]
+  METADATA --------
+    Producer Name : vm1_1
+    Instance Name : vm1_1/meminfo
+      Schema Name : meminfo
+             Size : 1816
+     Metric Count : 43
+               GN : 2
+  DATA ------------
+        Timestamp : Fri Dec 16 17:12:08 2016 [5091us]
+         Duration : [0.000072s]
+       Consistent : TRUE
+             Size : 384
+               GN : 985
+  -----------------
+.RE
 .fi
+.PP
+
 
 .SH SEE ALSO
 ldms_authentication(7), ldmsd(8), ldms_quickstart(7),

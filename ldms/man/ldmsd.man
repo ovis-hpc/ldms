@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd ldms-aggd
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "05 Oct 2016" "v3" "ldmsd man page"
+.TH man 8 "22 Dec 2016" "v3.3" "ldmsd man page"
 
 .SH NAME
 ldmsd \- Start an ldms daemon
@@ -75,8 +75,8 @@ General/Configuration Options:
 .BR -F
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
-.BR -u
-Dump list of plugin usages, then exit.
+.BR -c
+The path to configuration file (optional, default: <none>).
 .TP
 .BI -m " MEMORY_SIZE"
 .br
@@ -92,11 +92,9 @@ The path to the pid file for daemon mode.
 .BI -a " secretfile"
 Give the location of the secretword file.
 Normally, the environment variable LDMSD_AUTH_FILE must be set to the full
-path to the file storing the shared secret word.
+path to the file storing the shared secret word
 
-By default, ldmsd is started with authentication. If ldms is compiled with
---disable-ovis-auth, ldmsd will start without any authentication support. The
--a option disappears and will cause an error if it is given.
+If ldms is configured with --disable-ovis_auth, the -a option disappears and will cause an error if it is given.
 .TP
 .BR -V
 Display LDMS version information and then exit.
@@ -223,13 +221,8 @@ Unlike LDMS version 2, the syslog facility is not used if LOGFILE is "syslog". T
 .nf
 $/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
 .br
-.PP
-.nf
-Same but sending stdout and stderr to /dev/null
-/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1  > /dev/null 2>&1
-.br
 .fi
 
 
 .SH SEE ALSO
-ldms_authentication(7), ldmsctl(8), ldms_ls(8), ldmsd_controller(8), ldms_quickstart(7), ldmsd_exits(8)
+ldms_authentication(7), ldmsctl(8), ldms_ls(8), ldmsd_controller(8), ldms_quickstart(7)
