@@ -94,7 +94,7 @@ container=<container>
 The container will be used in the routing key. The current routing key patterns is:
 <root>.<container>.<schema>.<metric_name_amqp>.<producer_name>
 
-Use a unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstatutil and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
+Use a unique container parameter for different metric sets coming from different sampler (e.g., do not use the same container for procstat and meminfo); however, use the same container for the same metric set coming from all hosts (e.g., for all meminfo).
 
 .RE
 

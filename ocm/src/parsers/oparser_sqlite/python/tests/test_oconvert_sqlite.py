@@ -41,7 +41,7 @@ ssd = component("SSD", "SSD", 13, "ssd")
 hadoop = component("Hadoop", "Hadoop", 14, "hadoop")
 resourcemanager = component("ResourceManager", "ResourceManager", 15, "resourcemanager")
 
-procstat_template = sampler_template("procstat", "procstatutil", \
+procstat_template = sampler_template("procstat", "procstat", \
                               {'cpu': ["iowait", "idle", "user", "sys"]}, \
                               ["cpu"], interval="2000000")
 
@@ -99,13 +99,13 @@ aggregator = service("ldmsd_aggregator", "node0001")
 aggregator.add_verb_attr("add",
                          {'type': "active", 'interval': "2000000",
                           'xprt': "sock", 'port': "10001",
-                          'host': "node[0001-0002]", 'sets': "procstatutil"},
+                          'host': "node[0001-0002]", 'sets': "procstat"},
                          ["type", "interval", "xprt", "port", "host", "sets"])
 aggregator.add_verb_attr("add",
                          {'type': "active", 'interval': "2000000",
                           'xprt': "sock", 'port': "10001",
                           'host': "node0003",
-                          'sets': "procstatutil,procdiskstats"},
+                          'sets': "procstat,procdiskstats"},
                           ["type", "interval", "xprt", "port", "host", "sets"])
 aggregator.add_verb_attr("config",
                          {'name': "store_sos", 'path': "$OVIS_DATA/metrics",
@@ -113,9 +113,9 @@ aggregator.add_verb_attr("config",
                           'owner': ":ovis"},
                           ["name", "path", "time_limit", "init_size", "owner"])
 aggregator.add_verb_attr("store",
-                         {'name': "store_sos", 'container': "sos_procstatutil",
-                          'comp_type': "node", 'set': "procstatutil",
-                          'set': "procstatutil",
+                         {'name': "store_sos", 'container': "sos_procstat",
+                          'comp_type': "node", 'set': "procstat",
+                          'set': "procstat",
                           'hosts': "node[0001-0003]", 'metrics': "user,iowait,sys"},
                          ["name", "container", "comp_type", "set", "hosts", "metrics"])
 aggregator.add_verb_attr("store",
@@ -655,7 +655,7 @@ class TestOConvert_sqlite(unittest.TestCase):
         exp_result = "" \
                     "template:\n" \
                     "\ttemplate_name: procstat\n" \
-                    "\tsampler: procstatutil\n" \
+                    "\tsampler: procstat\n" \
                     "\t\tconfig:\n" \
                     "\t\t\tinterval: 2000000\n" \
                     "\t\tcomponent:\n" \

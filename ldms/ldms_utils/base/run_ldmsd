@@ -2,7 +2,7 @@
 
 #The following is the interface to the script ldms_control that this script will call
 #------------------------------------------------------
-# LDMS_ENTITY is one of ldmsd, meminfo, vmstat, geminfo, procinterrupts, procpidstatic, procstatutil, ldmsmon
+# LDMS_ENTITY is one of ldmsd, meminfo, vmstat, geminfo, procinterrupts, procpidstatic, procstat, ldmsmon
 # ACTION is one of start, stop, resume, remove
 # SOCKET is the name of the socket to be created by ldmsd and used for communication with ldmsd
 # PERIOD is the number of micro-seconds between collection

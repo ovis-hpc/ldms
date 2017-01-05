@@ -260,18 +260,6 @@ Sampler procsensors plugin.
 %doc README COPYING ChangeLog
 %endif # PROCSENSORS
 
-%if "@ENABLE_PROCSTATUTIL_TRUE@x" == "x"
-%package sampler-procstatutil
-Summary: LDMS Sampler procstatutil plugin.
-Group: %{ldms_grp}
-%description sampler-procstatutil
-Sampler procstatutil plugin.
-
-%files sampler-procstatutil
-%{_libdir}/libprocstatutil.*
-%doc README COPYING ChangeLog
-%endif # PROCSTATUTIL
-
 %if "@ENABLE_GLIB_TRUE@x" == "x"
 %if "@ENABLE_SEDC_TRUE@x" == "x"
 %package sampler-sedc

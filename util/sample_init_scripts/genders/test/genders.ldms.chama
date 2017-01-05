@@ -17,7 +17,7 @@ chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_host=%n-ib0
 chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_interval_default=10000000,ldmsd_offset_default=0
 
 # what to collect
-chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] slurmjobid:meminfo:vmstat:procnfs:lustre2_client:procstatutil2:procnetdev:sysclassib
+chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] slurmjobid:meminfo:vmstat:procnfs:lustre2_client:procstat:procnetdev:sysclassib
 
 # OPTIONS for specific plugins or host sets
 # what about fscratch, gscratch in lustre2_client?
@@ -28,7 +28,7 @@ chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_procnfs=with_jo
 chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_lustre2_client=llite/scratch1:with_jobid/1
 
 # change maxcpu to 32 if hyperthreading is on or optional per-user.
-chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_procstatutil2=with_jobid/1:maxcpu/16
+chama[1-1232],chama-gw[1-48],chama-lsm[1-8],chama-rps[1-8] ldmsd_procstat=with_jobid/1:maxcpu/16
 
 # the net data has holes in the gw for eth2,eth3 and in rest of nodes for ib1.
 chama[1-1232],chama-lsm[1-8],chama-rps[1-8],chama-gw[1-48] ldmsd_procnetdev=with_jobid/1:ifaces/eth0&eth1&eth2&eth3&ib0&ib1

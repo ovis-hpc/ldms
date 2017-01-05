@@ -20,4 +20,4 @@ install-data-hook:
 #	cp $(top_builddir)/scripts/ldmsd /etc/init.d/ldmsd
 #	cp $(top_builddir)/scripts/schedstatd /etc/init.d/schedstatd
 #	cp $(top_builddir)/scripts/meminfod /etc/init.d/meminfod
-#	cp $(top_builddir)/scripts/sysclassibd /etc/init.d/procstatutil
+#	cp $(top_builddir)/scripts/sysclassibd /etc/init.d/sysclassibd

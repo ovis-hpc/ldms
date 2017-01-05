@@ -5,7 +5,7 @@ aries ldmsd
 # collector transport is:
 aries ldmsd_port=411,ldmsd_xprt=sock,ldmsd_host=aries
 # data sets to collect are:
-aries ldmsd_metric_sets=meminfo:procnetdev:procstatutil2
+aries ldmsd_metric_sets=meminfo:procnetdev:procstat
 # extra parameters for sets are
 aries ldmsd_procnetdev=ifaces/eth0
 # where will aggregate our data

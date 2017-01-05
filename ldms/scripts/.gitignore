@@ -7,7 +7,6 @@ ldms_local_dertest.sh
 ldms_local_dertest_big.sh
 ldms_local_inspxe.sh
 ldms_local_inspxe_rdma.sh
-ldms_local_procstatutil.sh
 ldms_local_rdmatest.sh
 ldms_local_rollbytes_test.sh
 ldms_local_rollperiod_test.sh
