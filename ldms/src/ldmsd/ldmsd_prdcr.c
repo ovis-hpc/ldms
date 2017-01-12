@@ -437,6 +437,20 @@ static int set_cmp(void *a, const void *b)
 	return strcmp(a, b);
 }
 
+int ldmsd_prdcr_str2type(const char *type)
+{
+	enum ldmsd_prdcr_type prdcr_type;
+	if (0 == strcasecmp(type, "active"))
+		prdcr_type = LDMSD_PRDCR_TYPE_ACTIVE;
+	else if (0 == strcasecmp(type, "passive"))
+		prdcr_type = LDMSD_PRDCR_TYPE_PASSIVE;
+	else if (0 == strcasecmp(type, "local"))
+		prdcr_type = LDMSD_PRDCR_TYPE_LOCAL;
+	else
+		return -EINVAL;
+	return prdcr_type;
+}
+
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const short port_no,
@@ -476,6 +490,36 @@ out:
 	return NULL;
 }
 
+int ldmsd_prdcr_del(const char *prdcr_name)
+{
+	int rc = 0;
+	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
+	if (!prdcr)
+		return ENOENT;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	/* Make sure any outstanding callbacks are complete */
+	ldmsd_task_join(&prdcr->task);
+	/* Put the find reference */
+	ldmsd_prdcr_put(prdcr);
+	/* Drop the lock and drop the create reference */
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_put(prdcr);
+	return 0;
+out_1:
+	ldmsd_prdcr_put(prdcr);
+	ldmsd_prdcr_unlock(prdcr);
+	return rc;
+}
+
 ldmsd_prdcr_t ldmsd_prdcr_first()
 {
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR);
@@ -484,6 +528,124 @@ ldmsd_prdcr_t ldmsd_prdcr_first()
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr)
 {
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_next(&prdcr->obj);
+}
+
+int ldmsd_prdcr_start(const char *name, const char *interval_str)
+{
+	int rc = 0;
+	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
+	if (!prdcr)
+		return ENOENT;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+
+	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+	if (interval_str > 0)
+		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+
+	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
+			 LDMSD_TASK_F_IMMEDIATE,
+			 prdcr->conn_intrvl_us, 0);
+out_1:
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_put(prdcr);
+out_0:
+	return rc;
+}
+
+int ldmsd_prdcr_stop(const char *name)
+{
+	int rc = 0;
+	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
+	if (!prdcr)
+		return ENOENT;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
+		prdcr_reset_sets(prdcr);
+	if (prdcr->xprt)
+		ldms_xprt_close(prdcr->xprt);
+	ldmsd_task_stop(&prdcr->task);
+	ldmsd_task_join(&prdcr->task);
+	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+out_1:
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_put(prdcr);
+out_0:
+	return rc;
+}
+
+int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
+						char *rep_buf, size_t rep_len)
+{
+	regex_t regex;
+	ldmsd_prdcr_t prdcr;
+	int rc;
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
+	if (rc)
+		return rc;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		ldmsd_prdcr_lock(prdcr);
+		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+			if (interval_str)
+				prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
+					 LDMSD_TASK_F_IMMEDIATE,
+					 prdcr->conn_intrvl_us, 0);
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	ldmsd_prdcr_put(prdcr);
+	regfree(&regex);
+	return 0;
+}
+
+int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf, size_t rep_len)
+{
+	regex_t regex;
+	ldmsd_prdcr_t prdcr;
+	int rc;
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
+	if (rc)
+		return rc;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		ldmsd_prdcr_lock(prdcr);
+		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+			if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
+				prdcr_reset_sets(prdcr);
+			if (prdcr->xprt)
+				ldms_xprt_close(prdcr->xprt);
+			ldmsd_task_stop(&prdcr->task);
+			ldmsd_task_join(&prdcr->task);
+			prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	regfree(&regex);
+	ldmsd_prdcr_put(prdcr);
+	return 0;
 }
 
 /**
@@ -530,13 +692,8 @@ int cmd_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	if (!type)
 		goto einval;
 
-	if (0 == strcasecmp(type, "active"))
-		prdcr_type = LDMSD_PRDCR_TYPE_ACTIVE;
-	else if (0 == strcasecmp(type, "passive"))
-		prdcr_type = LDMSD_PRDCR_TYPE_PASSIVE;
-	else if (0 == strcasecmp(type, "local"))
-		prdcr_type = LDMSD_PRDCR_TYPE_LOCAL;
-	else
+	prdcr_type = ldmsd_prdcr_str2type(type);
+	if (prdcr_type < 0)
 		goto einval;
 
 	attr = "xprt";
@@ -630,28 +787,15 @@ int cmd_prdcr_start(char *replybuf, struct attr_value_list *avl, struct attr_val
 		goto out_0;
 	}
 	interval_str = av_value(avl, "interval"); /* Can be null if we're not changing it */
-
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr) {
-		sprintf(replybuf, "%dThe producer specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+	int rc = ldmsd_prdcr_start(prdcr_name, interval_str);
+	if (rc == ENOENT) {
+		sprintf(replybuf, "%dThe producer specified does not "
+							"exist\n", ENOENT);
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe producer is already running\n", EBUSY);
-		goto out_1;
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-	if (interval_str)
-		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-
-	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-			 LDMSD_TASK_F_IMMEDIATE,
-			 prdcr->conn_intrvl_us, 0);
-	sprintf(replybuf, "0\n");
-out_1:
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
 out_0:
 	return 0;
 }
@@ -665,64 +809,38 @@ int cmd_prdcr_stop(char *replybuf, struct attr_value_list *avl, struct attr_valu
 		sprintf(replybuf, "%dThe producer name must be specified\n", EINVAL);
 		goto out_0;
 	}
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr) {
-		sprintf(replybuf, "%dThe producer specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+
+	int rc = ldmsd_prdcr_stop(prdcr_name);
+	if (rc == ENOENT) {
+		sprintf(replybuf, "%dThe producer specified does not "
+							"exist\n", ENOENT);
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe producer is already stopped\n", EBUSY);
-		goto out_1;
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	if (prdcr->xprt)
-		ldms_xprt_close(prdcr->xprt);
-	ldmsd_task_stop(&prdcr->task);
-	ldmsd_task_join(&prdcr->task);
-	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-	sprintf(replybuf, "0\n");
-out_1:
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
 out_0:
 	return 0;
 }
 
 int cmd_prdcr_start_regex(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	int rc;
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
+	size_t cnt;
 	char *prdcr_regex, *interval_str;
 
 	prdcr_regex = av_value(avl, "regex");
 	if (!prdcr_regex) {
-		sprintf(replybuf, "%dA producer regular expression must be specified\n", EINVAL);
+		sprintf(replybuf, "%dA producer regular expression must be "
+						"specified\n", EINVAL);
 		goto out_0;
 	}
-	if (ldmsd_compile_regex(&regex, prdcr_regex, replybuf, sizeof(replybuf)))
-		goto out_0;
 	interval_str = av_value(avl, "interval"); /* Can be null if we're not changing it */
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		ldmsd_prdcr_lock(prdcr);
-		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
-			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-			if (interval_str)
-				prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-					 LDMSD_TASK_F_IMMEDIATE,
-					 prdcr->conn_intrvl_us, 0);
-		}
-		ldmsd_prdcr_unlock(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	ldmsd_prdcr_put(prdcr);
-	regfree(&regex);
+	int rc = ldmsd_prdcr_start_regex(prdcr_regex, interval_str, replybuf,
+							sizeof(replybuf));
+	if (rc)
+		goto out_0;
 	sprintf(replybuf, "0\n");
 out_0:
 	return 0;
@@ -730,7 +848,6 @@ out_0:
 
 int cmd_prdcr_stop_regex(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	int rc;
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
 	char *prdcr_regex;
@@ -740,27 +857,10 @@ int cmd_prdcr_stop_regex(char *replybuf, struct attr_value_list *avl, struct att
 		sprintf(replybuf, "%dA producer regular expression must be specified\n", EINVAL);
 		goto out_0;
 	}
-	if (ldmsd_compile_regex(&regex, prdcr_regex, replybuf, sizeof(replybuf)))
+	int rc = ldmsd_prdcr_stop_regex(prdcr_regex, replybuf, sizeof(replybuf));
+	if (rc)
 		goto out_0;
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		ldmsd_prdcr_lock(prdcr);
-		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-			if (prdcr->xprt)
-				ldms_xprt_close(prdcr->xprt);
-			ldmsd_task_stop(&prdcr->task);
-			ldmsd_task_join(&prdcr->task);
-			prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-		}
-		ldmsd_prdcr_unlock(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
 	sprintf(replybuf, "0\n");
-	ldmsd_prdcr_put(prdcr);
 out_0:
 	return 0;
 }
@@ -773,33 +873,15 @@ int cmd_prdcr_del(char *replybuf, struct attr_value_list *avl, struct attr_value
 		sprintf(replybuf, "%dThe prdcr name must be specified\n", EINVAL);
 		goto out_0;
 	}
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr) {
+
+	int rc = ldmsd_prdcr_del(prdcr_name);
+	if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe producer specified does not exist\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the producer is running\n", EBUSY);
-		goto out_1;
-	}
-	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
+	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe producer is in use.\n", EBUSY);
-		goto out_1;
+	} else {
+		sprintf(replybuf, "0\n");
 	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&prdcr->task);
-	/* Put the find reference */
-	ldmsd_prdcr_put(prdcr);
-	/* Drop the lock and drop the create reference */
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
-	sprintf(replybuf, "0\n");
-	goto out_0;
-out_1:
-	ldmsd_prdcr_put(prdcr);
-	ldmsd_prdcr_unlock(prdcr);
 out_0:
-	return 0;
+	return rc;
 }
