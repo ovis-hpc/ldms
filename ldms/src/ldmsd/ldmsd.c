@@ -103,13 +103,12 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkNf:D:o:r:R:p:a:v:Vz:Z:q:c:u"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkN:o:r:R:p:a:v:Vz:Z:q:c:u"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
 #define LDMSD_MEM_SIZE_DEFAULT 512L * 1024L
 
-int flush_N = 2; /* The number of flush threads */
 char myhostname[80];
 char ldmstype[20];
 int foreground;
@@ -124,25 +123,13 @@ pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
 char *max_mem_sz_str;
 
-extern unsigned long saggs_mask;
 ldms_t ldms;
 FILE *log_fp;
 
-/* dirty_threshold defined in ldmsd_store.c */
-extern int dirty_threshold;
-extern size_t calculate_total_dirty_threshold(size_t mem_total,
-					      size_t dirty_ratio);
-void do_connect(struct hostspec *hs);
-int update_data(struct hostspec *hs);
-void reset_hostspec(struct hostspec *hs);
 int do_kernel = 0;
 char *setfile = NULL;
 char *listen_arg = NULL;
 
-extern pthread_mutex_t host_list_lock;
-extern LIST_HEAD(host_list_s, hostspec) host_list;
-extern LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
-extern pthread_mutex_t sp_list_lock;
 int find_least_busy_thread();
 
 int passive = 0;
@@ -279,17 +266,6 @@ void cleanup(int x, const char *reason)
 		ldms_xprt_put(ldms);
 		ldms = NULL;
 	}
-
-	/* Destroy all store instances */
-	struct ldmsd_store_policy *sp;
-	pthread_mutex_lock(&sp_list_lock);
-	LIST_FOREACH(sp, &sp_list, link) {
-		if (sp->si) {
-			sp->si->plugin->close(sp->si->store_handle);
-			sp->si = NULL;
-		}
-	}
-	pthread_mutex_unlock(&sp_list_lock);
 
 	if (!foreground && pidfile) {
 		unlink(pidfile);
@@ -973,503 +949,6 @@ out_nolock:
 	return rc;
 }
 
-void ldmsd_host_sampler_cb(int fd, short sig, void *arg)
-{
-	struct hostspec *hs = arg;
-
-	pthread_mutex_lock(&hs->conn_state_lock);
-	switch (hs->conn_state) {
-	case HOST_DISCONNECTED:
-		do_connect(hs);
-		break;
-	case HOST_CONNECTED:
-		if (update_data(hs))
-			hs->conn_state = HOST_DISCONNECTED;
-		break;
-	case HOST_CONNECTING:
-		ldmsd_log(LDMSD_LINFO, "Connection stall on '%s[%s]'.\n", hs->hostname, hs->xprt_name);
-		break;
-	case HOST_DISABLED:
-		ldmsd_log(LDMSD_LINFO, "Host %s[%s] is disabled.\n", hs->hostname, hs->xprt_name);
-		break;
-	default:
-		ldmsd_log(LDMSD_LERROR, "Host connection state '%d' is invalid.\n",
-			 hs->conn_state);
-		assert(0);
-	}
-	pthread_mutex_unlock(&hs->conn_state_lock);
-}
-
-/*
- * Release the ldms set, metrics and storage policy from a hostset record.
- */
-void reset_hostset(struct hostset *hset)
-{
-	struct ldmsd_store_policy_ref *ref;
-	if (hset->set) {
-		ldms_set_delete(hset->set);
-		hset->set = NULL;
-	}
-	while (!LIST_EMPTY(&hset->lsp_list)) {
-		ref = LIST_FIRST(&hset->lsp_list);
-		LIST_REMOVE(ref, entry);
-		free(ref);
-	}
-}
-
-/*
- * Host Type Descriptions:
- *
- * 'active' -
- *    - ldms_xprt_connect() to a specified peer
- *    - ldms_xprt_lookup() the peer's metric sets
- *    - periodically performs an ldms_update of the peer's metric data
- *
- * 'bridging' - Designed to 'hop over' fire walls by initiating the connection
- *    - ldms_xprt_connect to a specified peer
- *
- * 'passive' - Designed as target side of 'bridging' host
- *    - searches list of incoming connections (connections it
- *      ldms_accepted) to find the matching peer (the bridging host
- *      that connected to it)
- *    - ldms_lookup of the peer's metric data
- *    - periodically performs an ldms_update of the peer's metric data
- */
-
-int sample_interval = 2000000;
-void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more, ldms_set_t s,
-		void *arg)
-{
-	extern int apply_store_policies(struct hostset *hset);
-	int rc;
-	struct hostset *hset = arg;
-
-	pthread_mutex_lock(&hset->state_lock);
-	if (status != LDMS_LOOKUP_OK){
-		ldmsd_log(LDMSD_LERROR, "Error doing lookup for set '%s'\n",
-				hset->name);
-		hset->set = NULL;
-		goto err;
-	}
-	hset->set = s;
-	rc = apply_store_policies(hset);
-	if (rc)
-		goto err;
-	hset->state = LDMSD_SET_READY;
-	pthread_mutex_unlock(&hset->state_lock);
-	return;
- err:
-	reset_hostset(hset);
-	hset->state = LDMSD_SET_CONFIGURED;
-	pthread_mutex_unlock(&hset->state_lock);
-	hset_ref_put(hset);
-}
-
-/*
- * Must be called with the hostpec conn_state_lock held.
- *
- * Closes the transport, cleans up all hostset state.
- */
-void reset_hostspec(struct hostspec *hs)
-{
-	struct hostset *hset;
-
-	hs->x = NULL;
-	hs->conn_state = HOST_DISCONNECTED;
-
-	LIST_FOREACH(hset, &hs->set_list, entry) {
-		pthread_mutex_lock(&hset->state_lock);
-		reset_hostset(hset);
-		/*
-		 * Do the lookup again after the reconnection is successful.
-		 */
-		hset->state = LDMSD_SET_CONFIGURED;
-		pthread_mutex_unlock(&hset->state_lock);
-	}
-}
-
-#if 0
-void _add_cb(ldms_t t, struct hostspec *hs, const char *set_name)
-{
-	struct hostset *hset;
-	int rc;
-
-	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", set_name);
-
-	/* Check to see if it's already there */
-	hset = find_host_set(hs, set_name);
-	if (!hset) {
-		hset = hset_new();
-		if (!hset) {
-			ldmsd_log(LDMSD_LERROR, "Memory allocation failure in "
-					"%s for set_name %s\n",
-					__FUNCTION__, set_name);
-			return;
-		}
-		hset->name = strdup(set_name);
-		hset->host = hs;
-
-		pthread_mutex_lock(&hs->set_list_lock);
-		LIST_INSERT_HEAD(&hs->set_list, hset, entry);
-		pthread_mutex_unlock(&hs->set_list_lock);
-
-		/* Take a lookup reference. Find takes one for us. */
-		hset_ref_get(hset);
-	}
-
-	/* Refresh the set with a lookup */
-	rc = ldms_lookup(hs->x, set_name, lookup_cb, hset);
-	if (rc)
-		ldmsd_log(LDMSD_LERROR, "Synchronous error %d from ldms_lookup\n",
-				rc);
-}
-
-/*
- * Destroy the set and metrics associated with the set named in the
- * directory update.
- */
-void _dir_cb_del(ldms_t t, struct hostspec *hs, const char *set_name)
-{
-	struct hostset *hset = find_host_set(hs, set_name);
-	ldmsd_log(LDMSD_LINFO, "%s removing set '%s'\n", __FUNCTION__, set_name);
-	if (hset) {
-		reset_hostset(hset);
-		hset_ref_put(hset);
-	}
-}
-
-/*
- * Process the directory list and add or restore specified sets.
- */
-void dir_cb_list(ldms_t t, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	int i;
-
-	for (i = 0; i < dir->set_count; i++)
-		_add_cb(t, hs, dir->set_names[i]);
-}
-
-/*
- * Process the directory list and add or restore specified sets.
- */
-void dir_cb_add(ldms_t t, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	int i;
-	for (i = 0; i < dir->set_count; i++)
-		_add_cb(t, hs, dir->set_names[i]);
-}
-
-/*
- * Process the directory list and release the sets and metrics
- * associated with the specified sets.
- */
-void dir_cb_del(ldms_t t, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	int i;
-
-	for (i = 0; i < dir->set_count; i++)
-		_dir_cb_del(t, hs, dir->set_names[i]);
-}
-
-/*
- * The ldms_dir has completed. Decode the directory type and call the
- * appropriate handler function.
- */
-void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *arg)
-{
-	struct hostspec *hs = arg;
-	if (status) {
-		ldmsd_log(LDMSD_LERROR, "Error %d in lookup on host %s.\n",
-		       status, hs->hostname);
-		return;
-	}
-	switch (dir->type) {
-	case LDMS_DIR_LIST:
-		dir_cb_list(t, dir, hs);
-		break;
-	case LDMS_DIR_ADD:
-		dir_cb_add(t, dir, hs);
-		break;
-	case LDMS_DIR_DEL:
-		dir_cb_del(t, dir, hs);
-		break;
-	}
-	ldms_xprt_dir_free(t, dir);
-}
-#endif
-
-void __ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
-{
-	struct hostspec *hs = cb_arg;
-	switch (e) {
-	case LDMS_CONN_EVENT_CONNECTED:
-		hs->conn_state = HOST_CONNECTED;
-		if (hs->synchronous){
-			calculate_timeout(hs->thread_id, hs->sample_interval,
-					  hs->sample_offset, &hs->timeout);
-		} else {
-			hs->timeout.tv_sec = hs->sample_interval / 1000000;
-			hs->timeout.tv_usec = hs->sample_interval % 1000000;
-		}
-		evtimer_add(hs->event, &hs->timeout);
-		break;
-	case LDMS_CONN_EVENT_REJECTED:
-	case LDMS_CONN_EVENT_DISCONNECTED:
-	case LDMS_CONN_EVENT_ERROR:
-		/* Destroy the ldms xprt. */
-		ldms_xprt_put(hs->x);
-		goto schedule_reconnect;
-		break;
-	default:
-		assert(0);
-	}
-	return;
-schedule_reconnect:
-	reset_hostspec(hs);
-	hs->timeout.tv_sec = hs->connect_interval / 1000000;
-	hs->timeout.tv_usec = hs->connect_interval % 1000000;
-	evtimer_add(hs->event, &hs->timeout);
-}
-
-void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
-{
-	struct hostspec *hs = cb_arg;
-	pthread_mutex_lock(&hs->conn_state_lock);
-	__ldms_connect_cb(x, e, cb_arg);
-	pthread_mutex_unlock(&hs->conn_state_lock);
-}
-
-void do_connect(struct hostspec *hs)
-{
-	int ret;
-
-	assert(hs->x == NULL);
-	switch (hs->type) {
-	case ACTIVE:
-	case BRIDGING:
-#if OVIS_LIB_HAVE_AUTH
-		hs->x = ldms_xprt_with_auth_new(hs->xprt_name,
-			ldmsd_lcritical, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
-		hs->x = ldms_xprt_new(hs->xprt_name, ldmsd_lcritical);
-#endif /* OVIS_LIB_HAVE_AUTH */
-		if (hs->x) {
-			ret  = ldms_xprt_connect(hs->x, (struct sockaddr *)&hs->sin,
-						 sizeof(hs->sin), ldms_connect_cb, hs);
-			if (ret) {
-				ldms_xprt_put(hs->x);
-				hs->x = NULL;
-			} else
-				hs->conn_state = HOST_CONNECTING;
-		} else {
-			ldmsd_log(LDMSD_LERROR, "%s Error creating endpoint on "
-					"transport '%s'.\n",
-					__func__, hs->xprt_name);
-			hs->conn_state = HOST_DISABLED;
-		}
-		break;
-	case PASSIVE:
-		hs->x = ldms_xprt_by_remote_sin(&hs->sin);
-		/* Call connect callback to advance state and update timers*/
-		if (hs->x) {
-			__ldms_connect_cb(hs->x, LDMS_CONN_EVENT_CONNECTED, hs);
-		} else {
-			hs->timeout.tv_sec = hs->connect_interval / 1000000;
-			hs->timeout.tv_usec = hs->connect_interval % 1000000;
-			evtimer_add(hs->event, &hs->timeout);
-		}
-		break;
-	case LOCAL:
-		assert(0);
-	}
-}
-
-void update_complete_cb(ldms_t t, ldms_set_t s, int status, void *arg)
-{
-	extern int update_policy_metrics(struct ldmsd_store_policy *sp,
-					 struct hostset *hset);
-	struct hostset *hset = arg;
-	uint64_t gn;
-	pthread_mutex_lock(&hset->state_lock);
-	if (status) {
-		reset_hostset(hset);
-		hset->state = LDMSD_SET_CONFIGURED;
-		goto out1;
-	}
-
-	gn = ldms_set_data_gn_get(hset->set);
-	if (hset->gn == gn) {
-		ldmsd_log(LDMSD_LINFO, "Over-sampled set %s with generation# %d.\n",
-			 hset->name, hset->gn);
-		goto out;
-	}
-
-	if (!ldms_set_is_consistent(hset->set)) {
-		ldmsd_log(LDMSD_LINFO, "Set %s with generation# %d is inconsistent.\n",
-			 hset->name, hset->gn);
-		goto out;
-	}
-	hset->gn = gn;
-
-	struct ldmsd_store_policy_ref *lsp_ref;
-	LIST_FOREACH(lsp_ref, &hset->lsp_list, entry) {
-		struct ldmsd_store_policy *lsp = lsp_ref->lsp;
-
-		pthread_mutex_lock(&lsp->cfg_lock);
-		switch (lsp->state) {
-		case STORE_POLICY_CONFIGURING:
-			if (update_policy_metrics(lsp, hset))
-				break;
-			/* fall through to add data */
-		default:
-			ldmsd_store_data_add(lsp, hset->set);
-		}
-		pthread_mutex_unlock(&lsp->cfg_lock);
-	}
- out:
-	hset->state = LDMSD_SET_READY;
- out1:
-	pthread_mutex_unlock(&hset->state_lock);
-	/* Put the reference taken at the call to ldms_update() */
-	hset_ref_put(hset);
-}
-
-int do_lookup(struct hostspec *hs, struct hostset *hset)
-{
-	if (hs->type != LOCAL)
-		return ldms_xprt_lookup(hs->x, hset->name,
-					LDMS_LOOKUP_BY_INSTANCE,
-					lookup_cb, hset);
-
-	/* local host */
-	int status = LDMS_LOOKUP_OK;
-	ldms_set_t set = ldms_set_by_name(hset->name);
-	if (!set)
-		status = LDMS_LOOKUP_ERROR;
-	pthread_mutex_unlock(&hset->state_lock);
-	lookup_cb(NULL, status, 0, set, hset);
-	/* To match the unlock() in update_data */
-	pthread_mutex_lock(&hset->state_lock);
-	return 0;
-}
-
-int do_update(struct hostspec *hs, struct hostset *hset)
-{
-	if (hs->type != LOCAL)
-		return ldms_xprt_update(hset->set, update_complete_cb, hset);
-
-	/* local host */
-	int status = 0;
-	hset->set = ldms_set_by_name(hset->name);
-	if (!hset->set)
-		status = ENOENT;
-	pthread_mutex_unlock(&hset->state_lock);
-	update_complete_cb(NULL, hset->set, status, hset);
-	/* To match the unlock() in update_data */
-	pthread_mutex_lock(&hset->state_lock);
-	return 0;
-}
-
-/*
- * hostspec conn_state_lock must be held.
- */
-int update_data(struct hostspec *hs)
-{
-	int ret;
-	struct hostset *hset;
-	int host_error = 0;
-
-	if (hs->type == LOCAL) {
-		ldmsd_log(LDMSD_LINFO, "Sample callback on local host %s.\n",
-				hs->hostname);
-		assert(NULL == hs->x);
-		return 0;
-	}
-	if (hs->type == BRIDGING) {
-		ldmsd_log(LDMSD_LINFO, "Sample callback on host %s in "
-				"bridging mode.\n", hs->hostname);
-		return 0;
-	}
-
-	if (hs->standby && (0 == (hs->standby & saggs_mask))) {
-		ldmsd_log(LDMSD_LINFO, "Sample callback on unowned failover "
-				"host %s.\n", hs->hostname);
-		return 0;
-	}
-	/* Take the host lock to protect the set_list */
-	pthread_mutex_lock(&hs->set_list_lock);
-	LIST_FOREACH(hset, &hs->set_list, entry) {
-		pthread_mutex_lock(&hset->state_lock);
-		switch (hset->state) {
-		case LDMSD_SET_CONFIGURED:
-			hset->state = LDMSD_SET_LOOKUP;
-			/* Get a lookup reference */
-			hset_ref_get(hset);
-			ret = do_lookup(hs, hset);
-			if (ret) {
-				hset->state = LDMSD_SET_CONFIGURED;
-				host_error = 1;
-				ldmsd_log(LDMSD_LERROR, "Synchronous error %d "
-					"from ldms_lookup\n", ret);
-				hset_ref_put(hset);
-			}
-			break;
-		case LDMSD_SET_READY:
-			hset->state = LDMSD_SET_BUSY;
-			if (hset->curr_busy_count) {
-				hset->total_busy_count += hset->curr_busy_count;
-				hset->curr_busy_count = 0;
-			}
-			/* Get reference for update */
-			hset_ref_get(hset);
-			ret = do_update(hs, hset);
-			if (ret) {
-				hset->state = LDMSD_SET_CONFIGURED;
-				host_error = 1;
-				ldmsd_log(LDMSD_LERROR, "Error %d updating metric set "
-					"on host %s:%d[%s].\n", ret,
-					hs->hostname, ntohs(hs->sin.sin_port),
-					hs->xprt_name);
-				hset_ref_put(hset);
-			}
-			break;
-		case LDMSD_SET_LOOKUP:
-			/* do nothing */
-			break;
-		case LDMSD_SET_BUSY:
-			hset->curr_busy_count++;
-			break;
-		default:
-			ldmsd_log(LDMSD_LCRITICAL, "Invalid hostset state '%d'\n",
-					hset->state);
-			assert(0);
-			break;
-		}
-		pthread_mutex_unlock(&hset->state_lock);
-		if (host_error)
-			break;
-	}
-	if (host_error) {
-		reset_hostspec(hs);
-		hs->timeout.tv_sec = hs->connect_interval / 1000000;
-		hs->timeout.tv_usec = hs->connect_interval % 1000000;
-	} else {
-		if (hs->synchronous){
-			calculate_timeout(hs->thread_id, hs->sample_interval,
-					  hs->sample_offset, &hs->timeout);
-		} else {
-			hs->timeout.tv_sec = hs->sample_interval / 1000000;
-			hs->timeout.tv_usec = hs->sample_interval % 1000000;
-		}
-	}
-	evtimer_add(hs->event, &hs->timeout);
-	pthread_mutex_unlock(&hs->set_list_lock);
-	return host_error;
-}
-
 void keepalive_cb(int fd, short sig, void *arg)
 {
 	struct event *keepalive = arg;
@@ -1567,6 +1046,7 @@ int main(int argc, char *argv[])
 	char *rctrl_port = NULL;
 #endif /* ENABLE_LDMSD_CTRL */
 	int ret;
+	int sample_interval = 2000000;
 	int op;
 	ldms_set_t test_set;
 	log_fp = stdout;
@@ -1657,12 +1137,6 @@ int main(int argc, char *argv[])
 		case 'm':
 			max_mem_sz_str = strdup(optarg);
 			break;
-		case 'f':
-			flush_N = atoi(optarg);
-			break;
-		case 'D':
-			dirty_threshold = atoi(optarg);
-			break;
 		case 'q':
 			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
 				"This message will disappear in a future release.");
@@ -1727,14 +1201,6 @@ int main(int argc, char *argv[])
 		ldmsd_plugins_usage(NULL);
 		exit(0);
 	}
-
-	if (!dirty_threshold)
-		/* default total dirty threshold is calculated based on popular
-		 * 4 GB RAM setting with Linux's default 10% dirty_ratio */
-		dirty_threshold = calculate_total_dirty_threshold(1ULL<<32, 10);
-
-	/* Make dirty_threshold to be per thread */
-	dirty_threshold /= flush_N;
 
 	if (logfile)
 		log_fp = ldmsd_open_log();
@@ -1955,10 +1421,6 @@ int main(int argc, char *argv[])
 		if (ldmsd_rctrl_init(rctrl_port, secretword))
 			cleanup(4, "rctrl_init failed");
 #endif /* ENABLE_LDMSD_RCTL */
-	if (ldmsd_store_init(flush_N)) {
-		ldmsd_log(LDMSD_LERROR, "Could not initialize the storage subsystem.\n");
-		cleanup(7, "store_init failed");
-	}
 
 	listen_on_transport(xprt_str, port_str);
 

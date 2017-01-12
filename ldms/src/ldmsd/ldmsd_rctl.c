@@ -212,59 +212,6 @@ void help_stop()
 		"     name=       The sampler name.\n");
 }
 
-void help_add()
-{
-	printf( "\nAdds a host to the list of hosts monitored by this ldmsd.\n\n"
-		"Parameters:\n"
-		"     host=        The hostname. This can be an IP address or DNS\n"
-		"                  hostname.\n"
-		"     type=        One of the following host types: \n"
-		"         active   An connection is initiated with the peer and\n"
-		"                  it's metric sets will be periodically queried.\n"
-		"         passive  A connect request is expected from the specified host.\n"
-		"                  After this request is received, the peer's metric sets\n"
-		"                  will be queried periodically.\n"
-		"         bridging A connect request is initiated to the remote peer,\n"
-		"                  but it's metric sets are not queried. This is the active\n"
-		"                  side of the passive host above.\n"
-		"         local    The to-be-added host is the local host. The given\n"
-		"                  set name(s) must be the name(s) of local set(s).\n"
-		"                  This option is used so that ldmsd can store\n"
-		"                  the given local set(s) if it is configured to do so.\n"
-		"     sets=        The list of metric set names to be queried.\n"
-		"		   The list is comma separated. If the type is bridging\n"
-		"                  no set names should be specified\n"
-		"     [xprt=]      The transport type, defaults to 'sock'\n"
-		"         sock     The sockets transport.\n"
-		"         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
-		"         ugni     The Cray Gemini transport.\n"
-		"     [port=]        The port number to connect on, defaults to 50000.\n"
-		"     [interval=]  An optional sampling interval in microseconds,\n"
-		"                  defaults to 1000000.\n"
-		"     [offset=]    An optional offset (shift) from the sample mark\n"
-		"                  in microseconds. If this offset is specified,\n "
-		"                  including 0, the collection will be synchronous;\n"
-		"                  if the offset is not specified, the collection\n"
-		"                  will be asychronous\n"
-		"     [agg_no=]    The number of the aggregator that this is standby for.\n"
-		"                  Defaults to 0 which means this is an active aggregator.\n");
-}
-
-void help_store()
-{
-	printf( "\nSaves metrics from one or more hosts to persistent storage.\n\n"
-		"Parameters:\n"
-		"      policy=      The storage policy name. This must be unique.\n"
-		"      container=   The container name used by the plugin to name data.\n"
-		"      schema=      A name used to name the set of metrics stored together.\n"
-		"      [metrics=]   A comma separated list of metric names. If not specified,\n"
-		"                   all metrics in the metric set will be saved.\n"
-		"      [hosts=]     The set of hosts whose data will be stored. If hosts is not\n"
-		"                   specified, the metric set will be saved for all hosts. If\n"
-		"                   specified, the value should be a comma separated list of\n"
-		"                   host names.\n");
-}
-
 void help_info()
 {
 	printf( "\nCauses the ldmsd to dump out information about its internal state.\n"
@@ -298,15 +245,6 @@ void help_udata_regex()
 		"     [incr=]        Increment value (int). The default is 0. If incr is 0,\n"
 		"                    the user data of all matched metrics are set\n"
 		"                    to the base value.\n");
-}
-
-void help_standby()
-{
-	printf( "\nldmsd will update the standby state (standby/active) of\n"
-		"the given aggregator number.\n\n"
-		"Parameters:\n"
-		"    agg_no=    Unique integer id for an aggregator from 1 to 64\n"
-		"    state=     0/1 - standby/active\n");
 }
 
 void help_oneshot()
@@ -539,7 +477,6 @@ int handle_help(char *args);
 
 static struct command command_tbl[] = {
 	{ "?", LDMSCTL_HELP, handle_help, NULL },
-	{ "add", LDMSCTL_ADD_HOST, NULL, help_add },
 	{ "config", LDMSCTL_CFG_PLUGIN, NULL, help_config },
 	{ "help", LDMSCTL_HELP, handle_help, NULL },
 	{ "info", LDMSCTL_INFO_DAEMON, NULL, help_info },
@@ -552,10 +489,8 @@ static struct command command_tbl[] = {
 	{ "prdcr_stop", LDMSCTL_PRDCR_STOP, NULL, help_prdcr_stop },
 	{ "prdcr_stop_regex", LDMSCTL_PRDCR_STOP_REGEX, NULL, help_prdcr_stop_regex },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit },
-	{ "standby", LDMSCTL_UPDATE_STANDBY, NULL, help_standby },
 	{ "start", LDMSCTL_START_SAMPLER, NULL, help_start },
 	{ "stop", LDMSCTL_STOP_SAMPLER, NULL, help_stop },
-	{ "store", LDMSCTL_STORE, NULL, help_store },
 	{ "strgp_add", LDMSCTL_STRGP_ADD, NULL, help_strgp_add },
 	{ "strgp_del", LDMSCTL_STRGP_DEL, NULL, help_strgp_del },
 	{ "strgp_metric_add", LDMSCTL_STRGP_METRIC_ADD, NULL, help_strgp_metric_add },
