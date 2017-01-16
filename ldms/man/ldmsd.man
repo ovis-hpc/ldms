@@ -11,7 +11,12 @@ ldmsd [OPTION...]
 .SH DESCRIPTION
 The ldmsd command can be used
 to start an ldms daemon. Plugin configuration of the ldmsd can be done via the
-ldmsctl command.
+a configuration file or the ldmsd_controller.
+
+Starting ldmsd with the configuration file option enables you to statically configure a
+sampler without requiring python. Dynamically configuring samplers with ldmsd_controller requires python.
+Currently, v2's ldmsctl can still be used to dynamically configure a sampler without requiring
+python. This capability will be replaced and it is not recommended that you use this option.
 
 .SH ENVIRONMENT
 .SS
@@ -21,7 +26,7 @@ LD_LIBRARY_PATH
 Path to ovis/lib and libevent2/lib, if not in a system default path. Depending on the system these may be lib64 instead of lib.
 .TP
 PATH
-Include the path to sbin directory containing ldmsd and ldmsctl.
+Include the path to sbin directory containing ldmsd.
 .SS The following environment variables may be set to override compiled-in defaults:
 .TP
 LDMSD_AUTH_FILE
@@ -61,7 +66,7 @@ Optional. If set, then ldmsd will check all nodes' states via rca interface.
 States for all nodes are checked and stored at intervals determined by this environment variable. The stored
 values are checked against before contacting a node. If you choose to use this option, then the rule of
 thumb is to set LDMS_UGNI_STATE_INTERVAL and LDMS_UGNI_STATE_OFFSET such that the node states are checked
-before the metric set update occurs (see interval and offset in ldmsctl).
+before the metric set update occurs (see interval and offset in ldmsd_controller)
 .TP
 LDMS_UGNI_STATE_OFFSET
 Optional. Only relevant if LDMS_UGNI_STATE_INTERVAL is set. Defaults to zero. Offset from zero for
@@ -106,7 +111,7 @@ Communication Options:
 .TP
 .BI -S " SOCKNAME"
 .br
-SOCKNAME is the unix domain socket name to use for ldmsctl access.
+SOCKNAME is the unix domain socket name to use for ldmsd_controller access.
 .TP
 .BI -x " XPRT:PORT"
 .br

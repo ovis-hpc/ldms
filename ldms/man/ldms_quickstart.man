@@ -684,8 +684,8 @@ netstat -abno
 
 .SS Why arent all my hosts/sets adding to the aggregator?
 Possible options:
-.IP \[bu]
-Running multiples on the same host from a script. Sometimes multiple ldmsctls running concurrently may collide in creating ports. They should clean up after themselves and this usually isn't an issue.
+.\.IP \[bu]
+.\Running multiples on the same host from a script. Sometimes multiple ldmsctls running concurrently may collide in creating ports. They should clean up after themselves and this usually isn't an issue.
 .IP \[bu]
 use -m flag on the aggregator to use more memory when adding a lot of hosts
 .IP \[bu]
@@ -720,7 +720,7 @@ Plugin_store_sos, and Plugin_vmstat.
 .SH NOTES
 As part of the install, test scripts are placed in /tmp/opt/ovis/bin. These scripts
 may serve as additional examples. These are being converted from using
-the ldmsctl tool to the ldmsd_controller tool, so they may not be
+the obsolete ldmsctl tool to the ldmsd_controller tool, so they may not be
 fully updated at any given time.
 
 .SH BUGS

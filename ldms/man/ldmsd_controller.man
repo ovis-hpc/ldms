@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd_controller
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "12 Nov 2015" "v3" "ldmsd_contoller man page"
+.TH man 8 "16 Jan 2017" "v3" "ldmsd_contoller man page"
 
 .SH NAME
 ldmsd_controller \- python script interface to configure an ldms daemon.
@@ -13,7 +13,7 @@ ldmsd_controller> <cmd> [ <attr>=<value> ]
 With LDMS (Lightweight Distributed Metric Service), the ldmsd
 can be configured via the ldmsd_controller.
 
-ldmsd_controller is new in v3. The ldmsctl interface from v2 still works, but ldmsd_controller is preferred.
+ldmsd_controller is new in v3 and replaces v2's ldmsctl.
 
 If ldms is built with --enable-readline, one can invoke the ldmsd_controller from the command line
 and obtain an input interface with feedback. In many instances, instances, however, it is prefered

@@ -24,7 +24,7 @@ the ldmsd_controller. The store_function_csv plugin is a CSV store.
 .BR config
 name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> buffer=<0/!0> rolltype=<rolltype> rollover=<rollover>]
 .br
-ldmsctl configuration line
+ldmsd_controller configuration line
 .RS
 .TP
 name=<plugin_name>

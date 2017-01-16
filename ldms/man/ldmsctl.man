@@ -1,6 +1,6 @@
 .\" Manpage for ldmsctl
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "03 Dec 2016" "v3" "ldmsctl man page"
+.TH man 8 "16 Jan 2017" "v3" "ldmsctl man page"
 
 .SH NAME
 ldmsctl \- Issue control commands to ldmsd.
@@ -11,8 +11,14 @@ ldmsctl [OPTION...]
 .SH DESCRIPTION
 In LDMS (Lightweight Distributed Metric Service), version 2 the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
 
-ldmsctl still works in version 3, however with ldmsctl, some capabilitites use v2 pathways as opposed to v3.
-ldmsctl will be removed in a future release. It is not recommended that you use this with v2.
+ldmsctl still works for configuring samplers in version 3. In early versions of v3, code paths taken by ldmsctl were the v2 code
+paths, kept for backwards compatibility. These were removed around version v3.3. The only remaining capability for ldmsctl
+is to dynamically configure a sampler when you don't have python support.
+
+Starting ldmsd with the configuration file option enables you to statically configure a sampler without requiring python.
+Dynamically configuring samplers with ldmsd_controller requires python.
+
+ldmsctl will be removed in a future release. It is not recommended that you use this with v3, but rather use ldmsd_controller instead.
 
 .SH ENVIRONMENT
 The following environment variables must be set (includes environment variables needed for the actions,
@@ -114,126 +120,126 @@ name=<name>
 The sampler name.
 .RE
 
-
-.TP
-.BR add
-host=<host> type=<type> sets=<set names>
-[ interval=<interval> ] [ offset=<offset>]
-[ xprt=<xprt> ] [ port=<port> ]
-[ standby=<agg_no> ]
-.br
-Adds a host to the list of hosts monitored by this ldmsd.
-.RS
-.TP
-host=<host>
-The hostname. This can be an IP address or DNS hostname.
-.TP
-type=<type>
-.RS
-.TP
-One of the following host types:
-.br
-.TP
-active
-.br
-A connection is initiated with the peer and it's metric sets will be periodically queried.
-.TP
-passive
-.br
-A connect request is expected from the specified host.
-After this request is received, the peer's metric sets
-will be queried periodically.
-.TP
-bridging
-.br
-A connect request is initiated to the remote peer,
-but it's metric sets are not queried. This is the active
-side of the passive host above.
-.RE
-.TP
-sets=<set names>
-The list of metric set names to be queried. The list is comma separated.
-.TP
-interval=<interval>
-An optional sampling interval in microseconds, defaults to 1000000.
-.TP
-offset=<offset>
-.br
-An optional offset (shift) from the sample mark
-in microseconds. If this offset is specified,
-including 0, the collection will be synchronous;
-if the offset is not specified, the collection
-will be asychronous.
-.TP
-xprt=<xprt>
-The transport type, defaults to 'sock'.
-.RS
-.TP
-sock
-.br
-The sockets transport.
-.TP
-rdma
-.br
-The OFA Verbs Transport for Infiniband or iWARP
-.TP
-ugni
-.br
-Cray XE/XK/XC transport.
-.RE
-.TP
-port=<port>
-.br
-The port number to connect on, defaults to LDMS_DEFAULT_PORT
-.TP
-standby=<agg_no>
-The number of the aggregator that this is standby for. Defaults to 0 which means this is an active aggregator.
-.RE
-.TP
-.BR store
-.br
-name=<store> container=<container> set=<set> comp_type=<comp_type>
-[hosts=<hosts>] [metric=<metric>]
-.br
-Saves a set from one or more hosts to a persistent object store.
-.RS
-.TP
-name=<store>
-The name of the storage plugin.
-.TP
-container=<container>
-The store policy ID, e.g., meminfo-essential
-.TP
-set=<set>
-The set whose data will be saved. Data is saved
-when update completes if the generation number has changed.
-.TP
-comp_type=<comp_type>
-The component type.
-.TP
-metric=<metrics>
-.br
-A list of metric names in the specified set. If not specified, all metrics will be saved.
-.TP
-hosts=<hosts>
-A list of hosts to whose set data will be saved.
-If not specified, all hosts that have this set will
-have their data saved.
-.RE
-.TP
-.BR standby
-.br
-agg_no=<agg_no> state=<stateval>
-.br
-ldmsd will update its saggs_mask for this aggregator as indicated.
-.RS
-.TP
-agg_no=<agg_no>
-Unique integer id for an aggregator
-.TP
-state=<stateval>
-Valid values are 0=standby and 1=active
-.RE
+.\
+.\.TP
+.\.BR add
+.\host=<host> type=<type> sets=<set names>
+.\[ interval=<interval> ] [ offset=<offset>]
+.\[ xprt=<xprt> ] [ port=<port> ]
+.\[ standby=<agg_no> ]
+.\.br
+.\Adds a host to the list of hosts monitored by this ldmsd.
+.\.RS
+.\.TP
+.\host=<host>
+.\The hostname. This can be an IP address or DNS hostname.
+.\.TP
+.\type=<type>
+.\.RS
+.\.TP
+.\One of the following host types:
+.\.br
+.\.TP
+.\active
+.\.br
+.\A connection is initiated with the peer and it's metric sets will be periodically queried.
+.\.TP
+.\passive
+.\.br
+.\A connect request is expected from the specified host.
+.\After this request is received, the peer's metric sets
+.\will be queried periodically.
+.\.TP
+.\bridging
+.\.br
+.\A connect request is initiated to the remote peer,
+.\but it's metric sets are not queried. This is the active
+.\side of the passive host above.
+.\.RE
+.\.TP
+.\sets=<set names>
+.\The list of metric set names to be queried. The list is comma separated.
+.\.TP
+.\interval=<interval>
+.\An optional sampling interval in microseconds, defaults to 1000000.
+.\.TP
+.\offset=<offset>
+.\.br
+.\An optional offset (shift) from the sample mark
+.\in microseconds. If this offset is specified,
+.\including 0, the collection will be synchronous;
+.\if the offset is not specified, the collection
+.\will be asychronous.
+.\.TP
+.\xprt=<xprt>
+.\The transport type, defaults to 'sock'.
+.\.RS
+.\.TP
+.\sock
+.\.br
+.\The sockets transport.
+.\.TP
+.\rdma
+.\.br
+.\The OFA Verbs Transport for Infiniband or iWARP
+.\.TP
+.\ugni
+.\.br
+.\Cray XE/XK/XC transport.
+.\.RE
+.\.TP
+.\port=<port>
+.\.br
+.\The port number to connect on, defaults to LDMS_DEFAULT_PORT
+.\.TP
+.\standby=<agg_no>
+.\The number of the aggregator that this is standby for. Defaults to 0 which means this is an active aggregator.
+.\.RE
+.\.TP
+.\.BR store
+.\.br
+.\name=<store> container=<container> set=<set> comp_type=<comp_type>
+.\[hosts=<hosts>] [metric=<metric>]
+.\.br
+.\Saves a set from one or more hosts to a persistent object store.
+.\.RS
+.\.TP
+.\name=<store>
+.\The name of the storage plugin.
+.\.TP
+.\container=<container>
+.\The store policy ID, e.g., meminfo-essential
+.\.TP
+.\set=<set>
+.\The set whose data will be saved. Data is saved
+.\when update completes if the generation number has changed.
+.\.TP
+.\comp_type=<comp_type>
+.\The component type.
+.\.TP
+.\metric=<metrics>
+.\.br
+.\A list of metric names in the specified set. If not specified, all metrics will be saved.
+.\.TP
+.\hosts=<hosts>
+.\A list of hosts to whose set data will be saved.
+.\If not specified, all hosts that have this set will
+.\have their data saved.
+.\.RE
+.\.TP
+.\.BR standby
+.\.br
+.\agg_no=<agg_no> state=<stateval>
+.\.br
+.\ldmsd will update its saggs_mask for this aggregator as indicated.
+.\.RS
+.\.TP
+.\agg_no=<agg_no>
+.\Unique integer id for an aggregator
+.\.TP
+.\state=<stateval>
+.\Valid values are 0=standby and 1=active
+.\.RE
 .TP
 .BR loglevel
 level=<levelflag>
@@ -309,43 +315,44 @@ in parallel)
 ./collect.sh
 .fi
 
-.PP
+.\
+.\.PP
 .nf
-4) Example lines for adding hosts to an aggregator:
-ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
-ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
-ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
-ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat
-.fi
-
-.PP
-.nf
-5) Example lines for configuring one store type but for 2 different metric sets:
-ldmsctl> load name=store_csv
-ldmsctl> config name=store_csv path=/XXX/stored_data
-ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo
-ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
-.fi
-
-.PP
-.nf
-6) Chaining aggregators and storing:
-ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=foo/meminfo, foo/vmstat,foo/procnetdev
-ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=bar/meminfo, bar/vmstat,bar/procnetdev
-ldmsctl> load name=store_csv
-ldmsctl> config name=store_csv path=/projects/ovis/ClusterData/chama/storecsv
-ldmsctl> store name=store_store_csv comp_type=node set=vmstat container=vmstat
-ldmsctl> store name=store_store_csv comp_type=node set=meminfo container=meminfo
-
-Notes for example 6:
-* You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
-* Syntax for add host is sets plural with comma separation.
-* Syntax for store is only 1 set at a time.
-* CSV file will be <path>/<comp_type>/<container>.
-* Do not mix containers across sets
-* Cannot put all the foo and bar in the same line.
-.RE
-.fi
+.\4) Example lines for adding hosts to an aggregator:
+.\ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/meminfo
+.\ldmsctl> add host=vm1_1 type=active interval=1000000 xprt=sock port=60020 sets=vm1_1/vmstat
+.\ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/meminfo
+.\ldmsctl> add host=vm1_2 type=active interval=1000000 xprt=sock port=60020 sets=vm1_2/vmstat
+.\.fi
+.\
+.\.PP
+.\.nf
+.\5) Example lines for configuring one store type but for 2 different metric sets:
+.\ldmsctl> load name=store_csv
+.\ldmsctl> config name=store_csv path=/XXX/stored_data
+.\ldmsctl> store name=store_csv comp_type=node set=meminfo container=meminfo
+.\ldmsctl> store name=store_csv comp_type=node set=vmstat container=vmstat
+.\.fi
+.\
+.\.PP
+.\.nf
+.\6) Chaining aggregators and storing:
+.\ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=foo/meminfo, foo/vmstat,foo/procnetdev
+.\ldmsctl> add host chama-rps1 type=active interval=1000000 xprt=sock port=60020 sets=bar/meminfo, bar/vmstat,bar/procnetdev
+.\ldmsctl> load name=store_csv
+.\ldmsctl> config name=store_csv path=/projects/ovis/ClusterData/chama/storecsv
+.\ldmsctl> store name=store_store_csv comp_type=node set=vmstat container=vmstat
+.\ldmsctl> store name=store_store_csv comp_type=node set=meminfo container=meminfo
+.\
+.\Notes for example 6:
+.\* You can do the add host more than once, but only for different prefix on the sets (foo vs bar).
+.\* Syntax for add host is sets plural with comma separation.
+.\* Syntax for store is only 1 set at a time.
+.\* CSV file will be <path>/<comp_type>/<container>.
+.\* Do not mix containers across sets
+.\* Cannot put all the foo and bar in the same line.
+.\.RE
+.\.fi
 
 
 .SH SEE ALSO
