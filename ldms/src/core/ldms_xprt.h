@@ -89,7 +89,8 @@ enum ldms_request_cmd {
 	LDMS_CMD_UPDATE,
 	LDMS_CMD_REQ_NOTIFY,
 	LDMS_CMD_CANCEL_NOTIFY,
-	LDMS_CMD_REPLY,
+	LDMS_CMD_SEND_MSG,
+	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_DIR_CANCEL_REPLY,
 	LDMS_CMD_DIR_UPDATE_REPLY,
@@ -101,7 +102,7 @@ enum ldms_request_cmd {
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
 };
 
-struct ldms_hello_cmd_param {
+struct ldms_send_cmd_param {
 	uint32_t msg_len;
 	char msg[0];
 };
@@ -134,6 +135,7 @@ struct ldms_request_hdr {
 struct ldms_request {
 	struct ldms_request_hdr hdr;
 	union {
+		struct ldms_send_cmd_param send;
 		struct ldms_dir_cmd_param dir;
 		struct ldms_lookup_cmd_param lookup;
 		struct ldms_req_notify_cmd_param req_notify;
@@ -192,7 +194,8 @@ typedef enum ldms_context_type {
 	LDMS_CONTEXT_DIR_CANCEL,
 	LDMS_CONTEXT_LOOKUP,
 	LDMS_CONTEXT_UPDATE,
-	LDMS_CONTEXT_REQ_NOTIFY
+	LDMS_CONTEXT_REQ_NOTIFY,
+	LDMS_CONTEXT_SEND
 } ldms_context_type_t;
 
 struct ldms_context {
@@ -256,6 +259,9 @@ struct ldms_xprt {
 	/* Callback that implements xprt state machine on the active side */
 	ldms_connect_cb_t connect_cb;
 	void *connect_cb_arg;
+
+	ldms_recv_cb_t recv_cb;
+	void *recv_cb_arg;
 
 	zap_t zap;
 	zap_ep_t zap_ep;
