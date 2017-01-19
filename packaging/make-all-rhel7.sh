@@ -81,7 +81,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --disable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --disable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders --enable-jobid --enable-llnl-edac"
 	../configure $allconfig && \
 	make && \
 	make install && \

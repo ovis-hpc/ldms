@@ -78,6 +78,8 @@ OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
+OPTION_DEFAULT_ENABLE([llnl-edac], [ENABLE_LLNL_EDAC])
+AM_CONDITIONAL([ENABLE_LLNL], [test "x$ENABLE_LLNL_EDAC_FALSE" = "x#"])
 
 OPTION_DEFAULT_DISABLE([tsampler], [ENABLE_TSAMPLER])
 OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
@@ -428,6 +430,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_amqptest.sh
 		 scripts/ldms_local_lnet_statstest.sh
 		 scripts/ldms_plugins_list.sh
+		 scripts/ldms-py-edac_test.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
@@ -435,6 +438,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
+		 src/sampler/llnl/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/sampler/hadoop/hadoop-sinks/OvisSink.java
 		 src/sampler/cray_system_sampler/Makefile
