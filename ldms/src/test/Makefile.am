@@ -16,3 +16,10 @@ test_ldms_notify_SOURCES = test_ldms_notify.c
 test_ldms_notify_LDADD = $(CORE)/libldms.la
 test_ldms_notify_LDFLAGS = $(AM_LDFLAGS) -pthread
 test_ldms_notify_CFLAGS = $(AM_CFLAGS)
+
+sbin_PROGRAMS += test_ldms_xprt_send_recv
+test_ldms_xprt_send_recv_SOURCES = test_ldms_xprt_send_recv.c
+test_ldms_xprt_send_recv_LDADD = $(CORE)/libldms.la
+test_ldms_xprt_send_recv_LDFLAGS = $(AM_LDFLAGS) -pthread
+test_ldms_xprt_send_recv_CFLAGS = $(AM_CFLAGS)
+
