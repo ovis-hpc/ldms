@@ -306,6 +306,7 @@ then
 	AM_PATH_PYTHON(2.6)
 	pkgpythondir="${pythondir}/ovis_ldms"
 	pkgpyexecdir="${pkgpythondir}"
+	AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
 fi
 
 OPTION_WITH_PORT([LDMSD],[411])
