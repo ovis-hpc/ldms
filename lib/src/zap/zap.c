@@ -340,8 +340,14 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 		DLOG(ep, "zap_interpose_cb(): ENOMEM\n");
 		return;
 	}
-	DLOG(ep, "%s: ep %p: ictxt %p: ev type %s\n", __func__, ep,
+	DLOG(ep, "%s: Vep %p: ictxt %p: ev type %s\n", __func__, ep,
 				ictxt, zap_event_str(ev->type));
+#ifdef TMP_DEBUG
+	ep->z->log_fn("%s: Vep %p: ictxt %p: ev type %s. q->depth = %d\n",
+				__func__, ep,
+				ictxt, zap_event_str(ev->type),
+				ep->event_queue->depth);
+#endif /* TMP_DEBUG */
 	ictxt->ev = *ev;
 	ictxt->ev.data = ictxt->data;
 	if (data_len)
