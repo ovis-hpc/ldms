@@ -1656,15 +1656,14 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 			goto unlock_out;
 		}
 	}
+	__ldms_set_tree_unlock();
 
 	/* Bind this set to a new RBD. We will initiate RDMA_READ */
 	rbd = ldms_alloc_rbd(x, lset, LDMS_RBD_INITIATOR);
 	if (!rbd) {
 		rc = ENOMEM;
-		__ldms_set_tree_unlock();
 		goto out_1;
 	}
-	__ldms_set_tree_unlock();
 
 	rbd->rmap = ev->map;
 	rbd->remote_set_id = lm->lookup.set_id;
