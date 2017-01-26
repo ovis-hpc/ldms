@@ -6,12 +6,14 @@ check_PROGRAMS =
 
 if ENABLE_COLL
 libcoll_la_SOURCES = rbt.c rbt.h \
+		     htbl.c htbl.h \
 		     idx.c idx.h idx_priv.h \
 		     str_map.c str_map.h fnv_hash.h \
 		     ovis-map.h ovis-map.c \
 		     label-set.h label-set.c \
 		     heap.c heap.h
 libcollinclude_HEADERS = rbt.h \
+			 htbl.h \
 			 idx.h \
 			 str_map.h \
 			 ovis-map.h \
