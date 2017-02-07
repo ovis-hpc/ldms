@@ -4,6 +4,7 @@
 #include <sstream>
 //#include <boost/algorithm/string_regex.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/regex.hpp>
 #include <boost/program_options.hpp>
 #include <unistd.h>
 #include <cstdlib>
@@ -86,6 +87,8 @@ list_attr_val(Genders& g, const string &attr, bool Uopt, vector<string> & sets_l
 
 class trans {
 public:
+	string producer;// ldmsd_producer
+	string retry;	// ldmsaggd_conn_retry
 	string host;	// ldms[agg]d_host
 	string xprt;	// ldms[agg]d_xprt
 	string port;	// ldms[agg]d_port
@@ -110,14 +113,20 @@ public:
 	virtual void get_trans(const string& host, trans& t, string prefix) = 0;
 	// get fail over host if host goes down. may be empty result.
 	virtual bool has_backup(const string& host, string& val) = 0;
-	// get local ldmsd_metric_sets on host. may be empty result.
+	// get local ldmsd_metric_plugins on host. may be empty result.
 	virtual void get_metric_sets(const string& host, string& sets) = 0;
+	// get local ldmsd_schemas_extra on host. may be empty result.
+	virtual void get_schemas_extra(const string& host, string& schemas) = 0;
 	// get local ldmsaggd_exclude_sets on. may be empty result.
 	virtual void get_exclude_sets(const string& host, string& sets) = 0;
 	// get the collectors host aggregates. may be empty result.
 	virtual void get_clientof(const string& host, vector<string>& clientof) = 0;
 	// get the aggregators host aggregates. may be empty result.
 	virtual void get_aggclientof(const string& host, vector<string>& aggclientof) = 0;
+	// get the producer alias of host
+	virtual void get_producer(const string& host, string& producer) = 0;
+	// get the producer alias of host
+	virtual void get_retry(const string& host, string& retry) = 0;
 
 };
 
@@ -127,6 +136,7 @@ public:
 class genders_api : public virtual ldms_config_info {
 private:
 	Genders& g;
+	// return true and set val to genders file value if prop present.
 	bool has_property(const string& host, const string& prop, string& val) {
 		try {
 			if (g.testattr(prop, val, host)) {
@@ -137,6 +147,83 @@ private:
 			return false;
 		}
 	}
+
+	/** Replace %#d %#m and %#u with corresponding portions of hostname
+	 * in a gender value.
+	 * \param host unqualified hostname as used by genders
+	 * \param val gender value possibly containing %%#d %#m and %#u,
+	 * where # is an integer index of the split name pieces.
+	 * 
+	 * output: substituted genderval based on the following:
+	 * replace %#d with the #'th integer substring in hostname
+	 * replace %#m with the #'th - separated substring in hostname
+	 * replace %#u with the #'th _ separated substring in hostname
+	 * Any case where # is greater than the number of such
+	 * elements in the input is left unsubstituted without warning.
+	 * Gender usage examples:
+	 * Extract the number suffix and use in related names:
+	 * :  map host to fast net name
+	 * chama-login[1-8] ldmsd_host=chama-lsm%0d-ib0
+	 * :  map host to associated rps node
+	 * chama-login[1-8] ldmsd_clientof=chama-rps%0d
+	 * :  map host to short producer name for splunk/csv.
+	 * chama-login[1-8] ldmsd_producer=ln%0d
+	 * Extract the suffix and use as producer name
+	 * : map host chama-rps# to 'rps#'
+	 * chama-rps[1-8] ldmsd_producer=%1m
+	 */
+	void gender_substitute(const string& host, string& val) {
+		// try nothing if % is not in value someplace.
+		std::size_t found = val.find_first_of("%");
+		if (found == std::string::npos)
+			return;
+
+		string ghost(host);
+		regex ire("[0-9]*");
+		sregex_iterator i(ghost.begin(), ghost.end(), ire);
+		sregex_iterator end;
+
+		int n = 0;
+		// make number-based replacements %#d
+		while ( i != end) {
+			if ((*i).length()) {
+				ostringstream oss;
+				oss << "%" << n << "d";
+				string sub = oss.str();
+				string ival = i->str();
+				replace_all(val, sub, ival);
+				n++;
+			}
+			++i;
+		}
+		
+		// make - delimited part replacements %#m
+		vector<string> mparts;
+		split(mparts, host, is_any_of("-"), boost::token_compress_on);
+		n = 0;
+		for (vector<string>::size_type k = 0; k < mparts.size(); k++) {
+			ostringstream oss;
+			oss << "%" << k << "m";
+			string sub = oss.str();
+			string kval = mparts[k];
+			replace_all(val, sub, kval);
+			n++;
+		}
+
+		// make _ delimited part replacements %#u
+		vector<string> uparts;
+		split(uparts, host, is_any_of("_"), boost::token_compress_on);
+		n = 0;
+		for (vector<string>::size_type k = 0; k < uparts.size(); k++) {
+			ostringstream oss;
+			oss << "%" << k << "u";
+			string sub = oss.str();
+			string kval = uparts[k];
+			replace_all(val, sub, kval);
+			n++;
+		}
+	}
+
 public:
 	// given g must outlive this object.
 	genders_api(Genders& g) : g(g) {}
@@ -159,9 +246,12 @@ public:
 		bnl = g.getnodes("ldmsd");
 	}
 	virtual void get_trans(const string& host, trans& t, string prefix) {
-		string ports = prefix + "_port";
-		string hosts = prefix + "_host";
-		string xprts = prefix + "_xprt";
+		// 1st 3 no longer separated by prefix
+		string ports = "ldmsd_port";
+		string hosts = "ldmsd_host";
+		string xprts = "ldmsd_xprt";
+		string producer = prefix + "_producer";
+		string retry = prefix + "_conn_retry";
 		string intervals = prefix + "_interval_default";
 		string offsets = prefix + "_offset_default";
 		string tmp;
@@ -189,8 +279,14 @@ public:
 		if (! has_property(host, hosts, t.host) ) {
 			t.host = host;
 		}
+		if (! has_property(host, producer, t.producer) ) {
+			t.producer = host;
+		}
 		if (! has_property(host, xprts, t.xprt) ) {
 			t.xprt = "sock"; 
+		}
+		if (! has_property(host, retry, t.retry) ) { 
+			t.retry = "2000000"; // 2 sec
 		}
 		if (! has_property(host, intervals, t.interval) ) { 
 			t.interval = "10000000"; // 10 sec
@@ -203,7 +299,10 @@ public:
 		return has_property(host, "ldmsaggd_fail", val);
 	}
 	virtual void get_metric_sets(const string& host, string &sets) {
-		has_property(host,"ldmsd_metric_sets", sets);
+		has_property(host,"ldmsd_metric_plugins", sets);
+	}
+	virtual void get_schemas_extra(const string& host, string &sets) {
+		has_property(host,"ldmsd_schemas_extra", sets);
 	}
 	virtual void get_exclude_sets(const string& host, string &sets) {
 		has_property(host,"ldmsaggd_exclude_sets", sets);
@@ -213,6 +312,13 @@ public:
 	}
 	virtual void get_aggclientof(const string& host, vector<string>& aggclientof) {
 		aggclientof = g.getnodes("ldmsaggd_clientof",host);
+	}
+	virtual void get_producer(const string& host, string& producer) {
+		has_property(host, "ldmsd_producer", producer);
+		gender_substitute(host, producer);
+	}
+	virtual void get_retry(const string& host, string& retry) {
+		has_property(host, "ldmsaggd_conn_retry", retry);
 	}
 };
 
@@ -232,6 +338,7 @@ public:
 		in->get_trans(host, dt,"ldmsd");
 		in->get_trans(host, aggdt,"ldmsaggd");
 		in->get_metric_sets(host,metricsets);
+		in->get_schemas_extra(host,schemasextra);
 		in->get_exclude_sets(host,excludesets);
 	}
 
@@ -252,6 +359,7 @@ public:
 	trans dt;		// ldmsd_host/xprt/port/interval/offset
 	trans aggdt;		// ldmsaggd_host/xprt/port/interval/offset
 	string metricsets;	// ldmsd_metric_sets
+	string schemasextra;	// ldmsd_metric_sets
 	string excludesets;	// ldmsaggd_exclude_sets
 
 private:
@@ -260,10 +368,15 @@ private:
 	// append local sets of client to out as elements "clienthame/setname".
 	void format_local_sets(const string& client, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
 		string lsets;
+		string extrasets;
 		in->get_metric_sets(client,lsets);
-		vector<string> names;
+		in->get_schemas_extra(client,extrasets);
+		vector<string> names, extranames;
+		size_t nn = 0;
 		split(names,lsets,is_any_of(":"), boost::token_compress_on);
-		for (vector<string>::size_type i = 0; i < names.size(); i++) {
+		nn += names.size();
+		vector<string>::size_type i;
+		for (i = 0; i < names.size(); i++) {
 			if (ban.find(names[i]) == ban.end()) {
 				out.push_back(client+"/"+names[i]);
 				if (sets_seen.find(names[i]) == sets_seen.end()) {
@@ -272,13 +385,26 @@ private:
 			}
 			
 		}
-		if (names.size()==0) {
-			cerr << "Node " << client << " has no metric sets defined." << endl;
+		split(extranames,extrasets,is_any_of(":"),
+			boost::token_compress_on);
+		nn += extranames.size();
+		for (i = 0; i < extranames.size(); i++) {
+			if (ban.find(extranames[i]) == ban.end()) {
+				out.push_back(client+"/"+extranames[i]);
+				if (sets_seen.find(extranames[i]) == 
+					sets_seen.end()) {
+					sets_seen.insert(extranames[i]);
+				}
+			}
+			
+		}
+		if (nn == 0) {
+			cerr << "Node " << client << " has no schemas defined." << endl;
 		}
 	}
 		
 	void add_collectors(int level, vector<string>& node_list, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
-		for (int j = 0; j < node_list.size(); j++) {
+		for (vector<string>::size_type j = 0; j < node_list.size(); j++) {
 			if (level) {
 				format_local_sets(node_list[j], out, ban, sets_seen);
 			} else {
@@ -288,13 +414,25 @@ private:
 				in->get_trans(node_list[j], t, "ldmsd");
 				string sets = join(collsets,",");
 				ostringstream oss;
-				oss << "add host=" << t.host;
+				oss << "prdcr_add name=" << t.producer;
+				oss << " host=" << t.host;
 				oss << " type=active";
-				oss << " interval=" << aggdt.interval;
-				oss << " offset=" << aggdt.offset;
 				oss << " xprt=" << t.xprt;
 				oss << " port=" << t.port;
-				oss << " sets=" << sets;
+				oss << " interval=" << t.retry;
+				oss << endl;
+				oss << "prdcr_start name=" << t.producer;
+				oss << endl;
+				oss << "updtr_add name=" << t.producer;
+				oss << " interval=" << aggdt.interval;
+				oss << " offset=" << aggdt.offset;
+				oss << endl;
+				oss << "updtr_prdcr_add name=" << t.producer;
+				// oss << " regex=" << t.producer;
+				oss << " regex=" << ".*";
+				oss << endl;
+				oss << "updtr_start name=" << t.producer;
+				// ; sets=" << sets;
 				adds.push_back(oss.str());
 			}
 		}
@@ -378,14 +516,27 @@ public:
 						}
 						in->get_trans(aggclientof_list[j], t, "ldmsaggd");
 						string sets = join(aggsets,",");
+
 						ostringstream oss;
-						oss << "add host=" << t.host;
+						oss << "prdcr_add name=" << t.producer;
+						oss << " host=" << t.host;
 						oss << " type=active";
-						oss << " interval=" << aggdt.interval;
-						oss << " offset=" << aggdt.offset;
 						oss << " xprt=" << t.xprt;
 						oss << " port=" << t.port;
-						oss << " sets=" << sets;
+						oss << " interval=" << t.retry;
+						oss << endl;
+						oss << "prdcr_start name=" << t.producer;
+						oss << endl;
+						oss << "updtr_add name=" << t.producer;
+						oss << " interval=" << aggdt.interval;
+						oss << " offset=" << aggdt.offset;
+						oss << endl;
+						oss << "updtr_prdcr_add name=" << t.producer;
+						// oss << " regex=" << t.producer;
+						oss << " regex=" << ".*";
+						oss << endl;
+						oss << "updtr_start name=" << t.producer;
+						// ; sets=" << sets;
 						adds.push_back(oss.str());
 					}
 				}

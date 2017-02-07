@@ -1,0 +1,406 @@
+#
+# loaded from ldmsd-pre-systemd
+# Defines Paths to executables and libs and boot functions for samplers.
+# This is where the configuration is extracted from genders information.
+# Create an alternate genders file and name it in ldmsd.%I.conf variable
+# LDMS_GENDERS for exception data, if any, needed.
+#
+# Path to invariants are not handled by genders.
+#
+# Implementation note:
+# 1) any use of nodeattr should be scripted to fail gracefully and use
+# a sensible default instead.
+# 2) this file is mainly sanity checking; shell/genders heavy lifting
+# goes on in ldms-functions supplied functions after all the required defaults
+# have been checked here.
+
+if test -z "$LDMSCLUSTER"; then
+	NODEFILE=$sysconfdir/sysconfig/ldms.d/ldmsd.local.conf
+else
+	NODEFILE=$sysconfdir/sysconfig/ldms.d/ldmsd.$LDMSCLUSTER.conf
+fi
+
+# load ldmsd localizations source
+. $NODEFILE
+
+if test -n "$LDMS_GENDERS_HOST"; then
+        hostfull=$LDMS_GENDERS_HOST
+else
+        hostfull=`hostname`
+fi
+host="$( echo $hostfull | cut -d "." -f1 )"
+LDMS_HOSTNAME=$host
+
+
+case $LDMS_BUILDTYPE in
+experimental)
+	if test -z "$LDMS_PREFIX"; then
+		echo 'LDMS_PREFIX must be set and exported in ldmsd[@].service or init.d/ldmsd file'
+		dietrace 1
+	fi
+	prefix="$LDMS_PREFIX"
+	exec_prefix="$prefix"
+	sbindir="$prefix/sbin"
+	bindir="$prefix/bin"
+	sysconfdir="$prefix/etc"
+	localstatedir="/var"
+	libdir="$prefix/lib"
+;;
+toss2-experimental)
+	if test -z "$LDMS_PREFIX"; then
+		echo 'LDMS_PREFIX must be set and exported in ldmsd[@].service or init.d/ldmsd file'
+		dietrace 1
+	fi
+	# experimental, but assuming libevent from toss ovis libevent2
+	prefix="$LDMS_PREFIX"
+	exec_prefix="$prefix"
+	sbindir="$prefix/sbin"
+	bindir="$prefix/bin"
+	sysconfdir="$prefix/etc"
+	localstatedir="/var"
+	libdir="$prefix/lib"
+	libevent2_libdir=/usr/lib64/ovis-libevent2/lib64/
+;;
+toss2)
+	prefix="/usr"
+	exec_prefix="/usr"
+	sbindir="/usr/sbin"
+	bindir="$prefix/bin"
+	sysconfdir="/etc"
+	localstatedir="/var"
+	libdir="/usr/lib64"
+	libevent2_libdir=$libdir/ovis-libevent2/lib64/
+;;
+*)
+	prefix="/usr"
+	exec_prefix="/usr"
+	sbindir="/usr/sbin"
+	bindir="/usr/bin"
+	sysconfdir="/etc"
+	localstatedir="/var"
+	libdir="/usr/lib64"
+;;
+esac
+export LD_LIBRARY_PATH=$libdir:$libdir/ovis-ldms:$libevent2_libdir:$LD_LIBRARY_PATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$libdir/ovis-ldms
+fi
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$LDMSD_PLUGIN_LIBPATH
+fi
+export ZAP_LIBPATH LDMSD_PLUGIN_LIBPATH
+
+if test -z "$LDMS_SECRETS_DIR"; then
+	LDMS_SECRETS_DIR=$sysconfdir/sysconfig/ldms.d/ClusterSecrets
+fi
+if test -z "$LDMS_AUTH_FILE"; then
+	LDMS_AUTH_FILE=$LDMS_SECRETS_DIR/$LDMSCLUSTER.ldmsauth.conf
+fi
+
+if test -z $AGG_ID_BASE; then
+	AGG_ID_BASE=1000000
+fi
+
+# Derive component IDs from hostname embedded numbers, with
+# special handling for cray.
+test -d /proc/cray_xt
+RETVAL=$?
+if [ $RETVAL -eq 0 ]; then
+	# cray specific variables
+	COMPONENT_ID="$(cat /proc/cray_xt/nid)"
+	CNAME="$(cat /proc/cray_xt/cname)"
+	NIDNUM=$(printf %05d ${COMPONENT_ID})
+	HOSTNAME="nid$(printf %05d ${COMPONENT_ID})"
+	NODENUM=$(echo $CNAME | awk -F "n" '{print $2}')
+	ARIES=$(echo $CNAME | awk -F "n" '{print $1}')
+	IS_PHI="$(head /proc/cpuinfo | grep Phi)"
+	NODETYPE=$( uname -r | awk -F "ari_" '{print $2}' )
+	if [ -z $NODETYPE ]; then
+		NODETYPE=c
+	fi
+	export CNAME NIDNUM NODENUM NODETYPE ARIES IS_PHI
+else
+	hostnumber="$(echo $LDMS_HOSTNAME | sed 's/[a-z\-]//g')"
+	if [ -z $hostnumber ]; then
+		echoq "WARNING: $host (no digits in hostname?)"
+		hostnumber=0
+	fi
+fi
+export hostnumber
+
+if test -z $COMPONENT_ID; then
+	if test -n "$AGG_ID_BASE"; then
+		COMPONENT_ID="$(( $AGG_ID_BASE + $hostnumber ))"
+	fi
+	if test -n "$NODE_ID_BASE" -a -z "$COMPONENT_ID"; then
+		COMPONENT_ID="$(( $NODE_ID_BASE + $hostnumber ))"
+	fi
+	if test -n "$COMPONENT_ID"; then
+		COMPONENT_ID=1
+	fi
+fi
+export COMPONENT_ID
+
+if [ $COMPONENT_ID -lt 1 ]; then
+	logger syslog.err "Component_ID for $host is $COMPONENT_ID. Exiting..."
+	logger syslog.info "set COMPONENT_ID in conf file or LDMSD_IDBASE in genders file."
+	dietrace 1
+fi
+
+build_genders_file
+check_genders_file
+
+if ! $NODEATTR $NODEATTRFILE -k > /dev/null 2>&1; then
+	echoq "problem with $NODEATTRFILE"
+	logger -p syslog.crit -s "BAD GENDERS $NODEATTRFILE"
+	$NODEATTR $NODEATTRFILE -k
+	dietrace 1
+fi
+
+# Define processor affinity if wanted
+if test -n "$LDMSD_NUMA" -o -n "$IS_PHI"; then
+	if test -z "$LDMSD_PROC"; then
+		LDMSD_PROC=`$NODEATTR $NODEATTRFILE -v $host ldmsd_proc 2>/dev/null`
+	fi
+	if test -z $LDMSD_PROC; then
+		LDMSD_PROC=67
+	fi
+fi
+
+# Define which physical core to bind ldmsd process to on numa hosts
+if [[ -z $LDMSD_PROC ]]; then
+	NUMACTL=""
+	NUMAOPT=""
+else
+	NUMACTL="numactl"
+	NUMAOPT="--physcpubind=$LDMSD_PROC"
+fi
+export NUMACTL NUMAOPT
+
+check_auth_option
+if ! $NODEATTR $NODEATTRFILE $host ldmsd >/dev/null 2>&1; then
+	not_collector=1			
+	echoq "$host is is not an LDMSD (data collection) host."
+fi
+
+# now check localizations and define from genders anything that's missing.
+
+PATH="$sbindir:$bindir:$PATH"
+if test -z $LDMS_LIB_PATH; then
+	LDMS_LIB_PATH="$libdir/ovis-ldms"
+fi
+# never override LDMS_PLUGIN_PATH independently
+LDMS_PLUGIN_PATH="$LDMS_LIB_PATH"
+export LDMS_PLUGIN_PATH
+export LDMS_LIB_PATH
+
+# load up daemon genders values not scripted earlier
+# then process missing values
+if test -z $LDMSD_PORT; then
+	LDMSD_PORT=`$NODEATTR $NODEATTRFILE -v $host ldmsd_port 2>/dev/null`
+	if test -z $LDMSD_PORT; then
+		LDMSD_PORT=411
+	fi
+fi
+export LDMSD_PORT
+
+if test -z $LDMSD_XPRT; then
+	LDMSD_XPRT=`$NODEATTR $NODEATTRFILE -v $host ldmsd_xprt 2>/dev/null`
+	if test -z $LDMSD_XPRT; then
+		LDMSD_XPRT=sock
+	fi
+fi
+export LDMSD_XPRT
+
+if test -z $LDMSD_HOST; then
+	LDMSD_HOST=`$NODEATTR $NODEATTRFILE -v $host ldmsd_host 2>/dev/null`
+fi
+if test -z $LDMSD_DBG; then
+	LDMSD_DBG=`$NODEATTR $NODEATTRFILE -v $host ldmsd_dbg 2>/dev/null`
+	if test -z $LDMSD_DBG; then
+		LDMSD_DBG=ERROR
+	else
+		echoq LDMSD_DBG IS $LDMSD_DBG
+	fi
+fi
+export LDMSD_DBG
+
+if test -z $LDMSD_IDBASE; then
+	LDMSD_IDBASE=`$NODEATTR $NODEATTRFILE -v $host ldmsd_idbase 2>/dev/null`
+	if test -z $NODE_ID_BASE; then
+		NODE_ID_BASE=$LDMSD_IDBASE
+		if test -z $NODE_ID_BASE; then
+			NODE_ID_BASE=1
+		fi
+	fi
+fi
+export NODE_ID_BASE
+
+# : separated list of metric sets to load at startup
+if test -z "$LDMSD_METRIC_PLUGINS"; then
+	LDMSD_METRIC_PLUGINS=`$NODEATTR $NODEATTRFILE -v $host ldmsd_metric_plugins 2>/dev/null`
+	if test -z "$LDMSD_METRIC_PLUGINS"; then
+		LDMSD_METRIC_PLUGINS="meminfo:vmstat:procnfs:procstat"
+	fi
+fi
+export LDMSD_METRIC_PLUGINS
+
+if test -z "$LDMSD_INTERVAL_DEFAULT"; then
+	LDMSD_INTERVAL_DEFAULT=`$NODEATTR $NODEATTRFILE -v $host ldmsd_interval_default 2>/dev/null`
+	if test -z "$LDMSD_INTERVAL_DEFAULT"; then
+		LDMSD_INTERVAL_DEFAULT=10000000
+		# 10 sec
+	fi
+fi
+export LDMSD_INTERVAL_DEFAULT
+
+if test -z "$LDMSD_OFFSET_DEFAULT"; then
+	LDMSD_OFFSET_DEFAULT=`$NODEATTR $NODEATTRFILE -v $host ldmsd_offset_default 2>/dev/null`
+	if test -z "$LDMSD_OFFSET_DEFAULT"; then
+		LDMSD_OFFSET_DEFAULT=0
+	fi
+fi
+export LDMSD_OFFSET_DEFAULT
+
+
+# Note the LDMS_LOG_PATH may become a problem if
+# on a shared file system that goes down and daemon debugging is enabled.
+if test -z "$LDMS_LOG_PATH"; then
+	LDMS_LOG_PATH=journal
+fi
+
+if test "x$LDMSD_USE_UNIX_SOCK" = "xyes"; then
+	#Paths to unix domain socket used by ldmsctl to communicate with ldmsd
+	if test -z "$LDMSD_SOCKPATH"; then
+		LDMSD_SOCKPATH="/var/run/ldmsd/usock.$LDMSCLUSTER"
+	fi
+	LDMSD_SOCK_OPT="-S"
+	sockdir=`dirname $LDMSD_SOCKPATH`
+	mkdir -p $sockdir >2/dev/null
+else
+	LDMSD_SOCK_OPT=""
+	unset LDMSD_SOCKPATH
+fi	
+export LDMSD_SOCK_OPT LDMSD_SOCKPATH
+if test "x$LDMSD_USE_INET_SOCK" = "xyes"; then
+	LDMSD_INET_OPT="-p"
+	if test -z "LDMSD_CONFIG_PORT"; then
+		LDMSD_CONFIG_PORT="410"
+	fi
+else
+	LDMSD_INET_OPT=""
+	LDMSD_CONFIG_PORT=""
+fi
+export LDMSD_INET_OPT LDMSD_CONFIG_PORT
+
+# deal with store plugins
+if test -n "$LDMSAGGD_STORES"; then
+	logger syslog.error "LDMSAGGD_STORES defined is obsolete. Use LDMSD_STORE_PLUGINS"
+	dietrace 1
+fi
+if test -n "$STORE_PATH"; then
+	logger syslog.error "STORE_PATH defined is obsolete. Set it in store_csv plugin option instead."
+	dietrace 1
+fi
+if test -z "$LDMSD_STORE_PLUGINS"; then
+	LDMSD_STORE_PLUGINS=`$NODEATTR $NODEATTRFILE -v $host ldmsd_store_plugins 2>/dev/null`
+	if test -z "$LDMSD_STORE_PLUGINS"; then
+		echoq "no stores configured."
+	fi
+fi
+export LDMSD_STORE_PLUGINS
+
+if test -z $LDMSCTL_ARGS; then
+	LDMSCTL_ARGS=$bindir/ldmsctl_args3
+fi
+if ! test -x $LDMSCTL_ARGS; then
+	echoq "cannot verify $LDMSCTL_ARGS"
+	dietrace 1
+fi
+
+if test "$DEBUG" = "yes"; then
+	# log some noise
+	$LDMSCTL_ARGS -n $LDMS_HOSTNAME -t store-list -v 1
+fi
+if test -z "$LDMSD_SCHEMA_LIST"; then
+	# query entire gender hierarchy recursively for schemas in use anywhere.
+	LDMSD_SCHEMA_LIST=`$LDMSCTL_ARGS -n $LDMS_HOSTNAME -t store-list 2>/dev/null` 
+fi
+LDMSD_ALL_SCHEMA=`echo $LDMSD_SCHEMA_LIST | tr ",: " "\n" | sort -u`
+
+if test -z "$LDMSAGGD_CONNECTION_RETRY_INTERVAL"; then
+	LDMSAGGD_CONNECTION_RETRY_INTERVAL=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_conn_retry 2>/dev/null`
+	if test -z "$LDMSAGGD_CONNECTION_RETRY_INTERVAL"; then
+		LDMSAGGD_CONNECTION_RETRY_INTERVAL=2000000
+	fi
+fi
+
+if test -z "$LDMSAGGD_INTERVAL_DEFAULT"; then
+	LDMSAGGD_INTERVAL_DEFAULT=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_interval_default 2>/dev/null`	
+	if test -z "$LDMSAGGD_INTERVAL_DEFAULT"; then
+		LDMSAGGD_INTERVAL_DEFAULT=10000000
+	fi
+fi
+export LDMSAGGD_INTERVAL_DEFAULT
+
+if test -z "$LDMSAGGD_OFFSET_DEFAULT"; then
+	LDMSAGGD_OFFSET_DEFAULT=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_offset_default 2>/dev/null`
+	if test -z "$LDMSAGGD_OFFSET_DEFAULT"; then
+		LDMSAGGD_OFFSET_DEFAULT=200000
+	fi
+fi
+export LDMSAGGD_OFFSET_DEFAULT
+
+if test -n "$LDMSAGGD_NUM_PROCS"; then
+	logger syslog.error "LDMSAGGD_NUM_PROCS defined is obsolete. Use LDMSD_EVENT_THDS or gender ldmsd_event_thds instead."
+	dietrace 1
+fi
+
+if test -z "$LDMSAGGD_MEM_RES"; then
+	LDMSAGGD_MEM_RES=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_mem_res 2>/dev/null`
+fi
+export LDMSAGGD_MEM_RES
+if test -z "$LDMSAGGD_MEM_RES"; then
+	MEMOPT=""
+else
+	MEMOPT="-m"
+fi
+export MEMOPT
+
+if test -z "$LDMSD_EVENT_THDS"; then
+	LDMSD_EVENT_THDS=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_conn_thds 2>/dev/null`
+	if test -z "$LDMSD_EVENT_THDS"; then
+		LDMSD_EVENT_THDS=4
+	fi
+fi
+export LDMSD_EVENT_THDS
+
+
+if test -z "$LDMSD_PLUGIN_CONFIG_FILE"; then
+	if test "x$LDMS_USE_GENDERS" != "x0"; then
+		# these will set LDMSD_PLUGIN_CONFIG_FILE
+		generate_collector_config
+		generate_aggregator_config
+		generate_transform_config
+		generate_store_config
+	else
+		logger syslog.error "Generating LDMSD configuration file without genders file not yet supported."
+		exit 1
+		# here we would like instead an automated process that just assembles
+		# snippets from plugins-conf driven by shell variables.
+		# such a process requires more admin cleverness in using ldms plugin syntax
+	fi
+else
+	if ! test -f $LDMSD_PLUGIN_CONFIG_FILE; then
+		logger syslog.info "Missing $LDMSD_PLUGIN_CONFIG_FILE config file specified by user in LDMSD_PLUGIN_CONFIG_FILE variable."
+		dietrace 1
+	fi
+fi
+if ! test -s $LDMSD_PLUGIN_CONFIG_FILE; then
+	logger syslog.warning "LDMSD configuration $LDMSD_PLUGIN_CONFIG_FILE is empty. Daemon idling."
+fi
+	
+export LDMSD_PLUGIN_CONFIG_FILE
+
+
+#LDMS_POST_INSTALLED=0 do not change this line

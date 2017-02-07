@@ -1,11 +1,9 @@
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders
-SUBDIRS= etc 
 
 if ENABLE_LIBGENDERS
-SUBDIRS += src
+SUBDIRS = src systemd sysv man examples
 endif
 
 dist_doc_DATA = \
-README \
-README.LDMS.genders
+README 
