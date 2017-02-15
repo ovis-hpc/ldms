@@ -23,3 +23,11 @@ test_ldms_xprt_send_recv_LDADD = $(CORE)/libldms.la
 test_ldms_xprt_send_recv_LDFLAGS = $(AM_LDFLAGS) -pthread
 test_ldms_xprt_send_recv_CFLAGS = $(AM_CFLAGS)
 
+
+check_PROGRAMS = test_metric
+test_metric_SOURCES = test_metric.c
+test_metric_LDADD = $(CORE)/libldms.la
+test_metric_LDFLAGS = $(AM_LDFLAGS) -pthread -lm
+test_metric_CFLAGS = $(AM_CFLAGS)
+
+TESTS = $(check_PROGRAMS)
