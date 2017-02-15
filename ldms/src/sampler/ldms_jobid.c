@@ -132,11 +132,14 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		goto err;
 	}
 	rc = fseek(mf, 0, SEEK_END);
-	if (rc)
+	if (rc) {
+		msglog(LDMSD_LINFO,"Could not seek '%s'\n", procfile);
 		goto err;
+	}
 	long flen = ftell(mf);
 	if (flen >= JI_SIZE) {
 		rc = E2BIG;
+		msglog(LDMSD_LINFO,"File %s too big (>%d).\n", procfile, JI_SIZE);
 		goto err;
 	}
 	rewind(mf);
