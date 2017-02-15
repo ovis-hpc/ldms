@@ -62,6 +62,12 @@ libclock_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libclock.la
 endif
 
+if ENABLE_FPTRANS
+libfptrans_la_SOURCES = fptrans.c
+libfptrans_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libfptrans.la
+endif
+
 if ENABLE_SYNTHETIC
 libsynthetic_la_SOURCES = synthetic.c
 libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm $(JOBID_LIBFLAGS)

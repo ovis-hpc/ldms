@@ -1361,7 +1361,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 					else
 						s_handle->byte_count += rcu;
 				}
-				rc = fprintf(s_handle->file, ",%f",
+				rc = fprintf(s_handle->file, ",%.9g",
 						ldms_metric_array_get_float(set, metric_array[i], j));
 				if (rc < 0)
 					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
@@ -1379,7 +1379,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				else
 					s_handle->byte_count += rcu;
 			}
-			rc = fprintf(s_handle->file, ",%f",
+			rc = fprintf(s_handle->file, ",%.9g",
 					ldms_metric_get_float(set, metric_array[i]));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
@@ -1398,7 +1398,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 					else
 						s_handle->byte_count += rcu;
 				}
-				rc = fprintf(s_handle->file, ",%lf",
+				rc = fprintf(s_handle->file, ",%.17g",
 						ldms_metric_array_get_double(set, metric_array[i], j));
 				if (rc < 0)
 					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
@@ -1416,7 +1416,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				else
 					s_handle->byte_count += rcu;
 			}
-			rc = fprintf(s_handle->file, ",%lf",
+			rc = fprintf(s_handle->file, ",%.17g",
 					ldms_metric_get_double(set, metric_array[i]));
 			if (rc < 0)
 				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
