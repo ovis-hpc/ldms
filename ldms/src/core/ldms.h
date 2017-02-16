@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2017 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -467,6 +467,31 @@ extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port
  * \see ldms_xprt_delete
  */
 extern void ldms_xprt_close(ldms_t x);
+
+/**
+ * \brief Send a message to an LDMS peer
+ *
+ * See the ldms_xprt_recv() function for information on how to receive
+ * messages.
+ *
+ * \param x       The transport handle
+ * \param msg_buf Pointer to the buffer containing the message
+ * \param msg_len The length of the message buffer in bytes
+ */
+extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
+
+/**
+ * \brief Receive messages from an LDMS peer
+ *
+ * See the ldms_xprt_send() function for information on how to send
+ * messages.
+ *
+ * \param x       The transport handle
+ * \param cb_fn   Pointer to the function to call when a message is received
+ * \param cb_arg  User context argument to pass to the callback function
+ */
+typedef void (*ldms_recv_cb_t)(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg);
+extern int ldms_xprt_recv(ldms_t x, ldms_recv_cb_t cb_fn, void *cb_arg);
 
 /** \} */
 

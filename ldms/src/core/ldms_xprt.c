@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -603,6 +603,16 @@ process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 }
 
 static void
+process_send_request(struct ldms_xprt *x, struct ldms_request *req)
+{
+	if (!x->recv_cb)
+		return;
+
+	x->recv_cb(x, req->send.msg, ntohl(req->send.msg_len), x->recv_cb_arg);
+}
+
+
+static void
 process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 
@@ -903,6 +913,9 @@ static int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 		process_cancel_notify_request(x, req);
 		break;
 	case LDMS_CMD_UPDATE:
+		break;
+	case LDMS_CMD_SEND_MSG:
+		process_send_request(x, req);
 		break;
 	default:
 		x->log("Unrecognized request %d\n", cmd);
@@ -2024,6 +2037,59 @@ static int alloc_req_ctxt(struct ldms_xprt *x,
 		return 1;
 	*ctxt = ctxt_ = buf;
 	*req = (struct ldms_request *)(ctxt_+1);
+	return 0;
+}
+
+int ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len)
+{
+	struct ldms_xprt *x = _x;
+	struct ldms_request *req;
+	size_t len;
+	struct ldms_context *ctxt;
+	int rc;
+
+	if (!msg_buf)
+		return EINVAL;
+
+	if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
+			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
+		return EPERM;
+
+	ldms_xprt_get(x);
+	pthread_mutex_lock(&x->lock);
+	size_t sz = sizeof(struct ldms_request) + sizeof(struct ldms_context) + msg_len;
+	ctxt = __ldms_alloc_ctxt(x, sz, LDMS_CONTEXT_SEND);
+	if (!ctxt) {
+		rc = ENOMEM;
+		goto err_0;
+	}
+	req = (struct ldms_request *)(ctxt + 1);
+	req->hdr.xid = 0;
+	req->hdr.cmd = htonl(LDMS_CMD_SEND_MSG);
+	req->send.msg_len = htonl(msg_len);
+	memcpy(req->send.msg, msg_buf, msg_len);
+	len = sizeof(struct ldms_request_hdr) +
+		sizeof(struct ldms_send_cmd_param) + msg_len;
+	req->hdr.len = htonl(len);
+
+	rc = zap_send(x->zap_ep, req, len);
+#ifdef DEBUG
+	if (rc) {
+		x->log("DEBUG: send: error. put ref %p.\n", x->zap_ep);
+	}
+#endif
+	__ldms_free_ctxt(x, ctxt);
+ err_0:
+	pthread_mutex_unlock(&x->lock);
+	ldms_xprt_put(x);
+	return rc;
+}
+
+int ldms_xprt_recv(ldms_t _x, ldms_recv_cb_t cb_fn, void *cb_arg)
+{
+	struct ldms_xprt *x = _x;
+	x->recv_cb = cb_fn;
+	x->recv_cb_arg = cb_arg;
 	return 0;
 }
 
