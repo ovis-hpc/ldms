@@ -1197,10 +1197,10 @@ static void __metric_set(ldms_set_t s, ldms_mdesc_t desc, ldms_mval_t mv, ldms_m
 		mv->v_u64 = __cpu_to_le64(v->v_u64);
 		break;
 	case LDMS_V_F32:
-		*(uint32_t*)&mv->v_f = __cpu_to_le32(*(uint32_t*)&v->v_f);
+		mv->v_u32 = __cpu_to_le32(v->v_u32);
 		break;
 	case LDMS_V_D64:
-		*(uint64_t*)&mv->v_d = __cpu_to_le64(*(uint64_t*)&v->v_d);
+		mv->v_u64 = __cpu_to_le64(v->v_u64);
 		break;
 	default:
 		assert(0 == "unexpected metric type");
