@@ -1,5 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS =
+# unlike default automake, we build this dir's local pieces before its children.
+SUBDIRS = .
 pkglib_LTLIBRARIES =
 CORE = ../core
 
@@ -67,6 +68,9 @@ libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libsynthetic.la
 endif
 
+if ENABLE_LLNL
+SUBDIRS += llnl
+endif
 
 if ENABLE_LUSTRE
 SUBDIRS += lustre
