@@ -193,6 +193,9 @@ typedef long int64_t;
 %include "ldms.h"
 %include "ldms_core.h"
 
+ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
+                                                const char *secretword);
+
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
 PyObject *LDMS_xprt_dir(ldms_t x);
 

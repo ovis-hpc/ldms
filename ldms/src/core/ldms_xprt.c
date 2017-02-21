@@ -2133,6 +2133,13 @@ err0:
 	errno = ret;
 	return NULL;
 }
+#else /* OVIS_LIB_HAVE_AUTH */
+ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
+				const char *secretword)
+{
+	errno = ENOSYS;
+	return NULL;
+}
 #endif /* OVIS_LIB_HAVE_AUTH */
 
 size_t format_lookup_req(struct ldms_request *req, enum ldms_lookup_flags flags,
