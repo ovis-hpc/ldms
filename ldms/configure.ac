@@ -6,7 +6,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/core/ldms.h])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE([foreign tar-pax])
 m4_ifdef([AM_SILENT_RULES],
          [AM_SILENT_RULES([yes])
 ])
