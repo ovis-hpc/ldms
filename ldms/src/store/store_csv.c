@@ -559,6 +559,8 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	value = av_value(avl, "path");
 	if (!value) {
+		msglog(LDMSD_LERROR, "%s: config init: path option required\n",
+			__FILE__);
 		cfgstate = CSV_CFGINIT_FAILED;
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
