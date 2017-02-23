@@ -73,8 +73,9 @@ static long_long* papi_event_val;
 static char *appname_str;
 static char *appname_filename;
 static uint64_t pid = 0;
-static attach = 0; /* 0-Sampler not attached yet 1-Sampler is attached to a process */
-static multiplex = 0;
+static int attach = 0; /* 0-Sampler not attached yet 1-Sampler is attached to a process */
+static int multiplex = 0;
+static uint64_t compid;
 
 static int create_metric_set(const char* instance_name, const char* schema_name, char* events)
 {
@@ -84,6 +85,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	char *event_name;
 	char* status;
 	PAPI_event_info_t event_info;
+	union ldms_value v;
 
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if (rc != PAPI_VER_CURRENT) {
@@ -129,10 +131,38 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		goto err;
 	}
 
-
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
 		msglog(LDMSD_LERROR, "papi: failed to create schema!\n");
+		rc = ENOMEM;
+		goto err;
+	}
+
+	/* Add component id */
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	/*
+	 * Create two metrics: application name, jobid, and username
+	 */
+	rc = ldms_schema_metric_array_add(schema, "appname", LDMS_V_CHAR_ARRAY, 256);
+	if (rc < 0) {
+		msglog(LDMSD_LERROR, "papi: failed to add application name to metric set.\n");
+		rc = ENOMEM;
+		goto err;
+	}
+	rc = ldms_schema_metric_array_add(schema, "jobid", LDMS_V_CHAR_ARRAY, 256);
+	if (rc < 0) {
+		msglog(LDMSD_LERROR, "papi: failed to add jobid to metric set.\n");
+		rc = ENOMEM;
+		goto err;
+	}
+	rc = ldms_schema_metric_array_add(schema, "username", LDMS_V_CHAR_ARRAY, 256);
+	if (rc < 0) {
+		msglog(LDMSD_LERROR, "papi: failed to add username to metric set.\n");
 		rc = ENOMEM;
 		goto err;
 	}
@@ -156,6 +186,9 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 			goto next_event;
 		}
 
+		/*
+		 * Add the papi-event metric to the schema metric set
+		 */
 		rc = ldms_schema_metric_add(schema, event_name, LDMS_V_U64);
 		if (rc < 0) {
 			msglog(LDMSD_LERROR, "papi: failed to add event %s to metric set.\n", event_name);
@@ -190,8 +223,12 @@ next_event:
 		goto err;
 	}
 
-	ldms_metric_user_data_set(set, 0, papi_event_set);
+	/* Add component id metric 0 */
+	v.v_u64 = compid;
+	ldms_metric_set(set, 0, &v);
 
+	/* papi_event_set is saved in location */
+	ldms_metric_user_data_set(set, 0, papi_event_set);
 	return 0;
 
 err:
@@ -204,8 +241,9 @@ err:
 /**
  * \brief Configuration
  *
- * config name=spapi producer=<producer_name> instance=<instance_name> [pid=<pid>] [multiplex=<1|0>] [appnamefile=<appname>] events=<event1,event2,...>
- *     producer     The component id value.
+ * config name=spapi producer=<producer_name> instance=<instance_name> [pid=<pid>] [component_id=<compid>] [multiplex=<1|0>] [appnamefile=<appname>] events=<event1,event2,...>
+ *     producer     The producer name.
+ *     component_id The component id value.
  *     instance     The set name.
  *     pid	    The process to attach to.
  *     multiplex    Enable papi multiplex (set to 1)
@@ -221,6 +259,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *instance_name;
 	char *schema_name;
 	char *events;
+	char *component_id;
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
@@ -233,6 +272,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR, "papi: missing instance.\n");
 		return ENOENT;
 	}
+
+	component_id = av_value(avl, "component_id");
+	if (component_id)
+		compid = (uint64_t) (atoi(component_id));
+	else
+		compid = 0;
 
 	events = av_value(avl, "events");
 	if (!events) {
@@ -315,6 +360,7 @@ static int sample(struct ldmsd_sampler *self)
 	int apppid = 0; /* The application PID number */
 	char command[250]; /* The shell command to grep the application PID */
 
+	msglog(LDMSD_LDEBUG, "PID = %d \n", pid);
 
 	if (pid == 0) {
 		appname_str = "";
@@ -324,32 +370,53 @@ static int sample(struct ldmsd_sampler *self)
 		size_t len = 0;
 
 		file = fopen(appname_filename, "r");
-
 		if ((file != NULL)) { /* APPNAME is set */
-			rc = getline(&line, &len, file);
-			if (!rc) {
-				msglog(LDMSD_LDEBUG, "papi: reading the file error! number = %d, %s \n", rc, strerror(rc));
-			} else {
-				msglog(LDMSD_LDEBUG, "line = %s\n", line);
-				appname_str = line;
-				fclose(file);
-				msglog(LDMSD_LDEBUG, "APPNAME = %s \n", appname_str);
+			int token_number = 1;
+			/*
+			 * Read three lines from the file
+			 * application name
+			 * jobid
+			 * user name
+			 */
+			while (getline(&line, &len, file) != -1) {
+				strtok(line, "\n");
+				switch (token_number) {
+					case 1:
+						/* Save the application name */
+						appname_str = (char *) ldms_metric_array_get(set, 1);
+						ldms_metric_array_set(set, token_number, (ldms_mval_t)line, 0, strlen(line) + 1);
+						msglog(LDMSD_LDEBUG, "APPNAME from file= %s \n",  ldms_metric_array_get(set, 1));
+						break;
+					case 2:
+						/* Save the jobid */
+						ldms_metric_array_set(set, token_number, (ldms_mval_t)line, 0, strlen(line) + 1);
+						msglog(LDMSD_LDEBUG, "jobid = %s \n", line);
+						break;
+					case 3:
+						/* Save the user name */
+						ldms_metric_array_set(set, token_number, (ldms_mval_t)line, 0, strlen(line) + 1);
+						msglog(LDMSD_LDEBUG, "user name = %s \n", line);
+						break;
+				}
+				token_number++;
 			}
+			fclose(file);
 		}
 		if (strlen(appname_str) > 1) {
-			msglog(LDMSD_LDEBUG, "pgrep %s | head | awk '{print $1;}'", appname_str);
-			sprintf(command, "pgrep %s | head | awk '{print $1;}'", appname_str);
+			msglog(LDMSD_LDEBUG, "pgrep %s | head | awk '{print $1;}'\n", appname_str);
+			sprintf(command, "pgrep %s | head | awk '{print $1;}'",  appname_str);
 			/* Get the application pid */
 			FILE *fp = popen(command, "r");
 			fscanf(fp, "%d", &apppid);
 			pclose(fp);
-
+			msglog(LDMSD_LDEBUG, "6 \n");
 			if (apppid > 1) {
 				msglog(LDMSD_LDEBUG, "Application PID = %d \n", apppid);
 				pid = apppid; /* set the pid to application process id */
 			} else msglog(LDMSD_LDEBUG, "Waiting for an application to start\n");
 		} else msglog(LDMSD_LDEBUG, "Waiting for an application to start\n");
 	} else { /* When PID exist */
+		msglog(LDMSD_LDEBUG, "attach = %d \n", attach);
 		if (attach == 0) { /* check if the attach happened before, no need to attach */
 			msglog(LDMSD_LDEBUG, "PAPI attach to process %" PRIu64 "\n", pid);
 			papi_event_set = ldms_metric_user_data_get(set, 0);
@@ -363,7 +430,7 @@ static int sample(struct ldmsd_sampler *self)
 				msglog(LDMSD_LERROR, "papi: failed to start papi event set rc= %d\n", rc);
 			}
 			attach = 1;
-		} else { 
+		} else {
 			/* PAPI attached to a process start sampling
 			 *	      msglog(LDMSD_LDEBUG, "Start sampling \n");
 			 * Read user data from the first metric
@@ -393,9 +460,12 @@ static int sample(struct ldmsd_sampler *self)
 
 			if (apppid > 1) {
 				msglog(LDMSD_LDEBUG, "The application is running \n");
+				msglog(LDMSD_LDEBUG, "event count = %d \n", event_count);
 				for (i = 0; i < event_count; ++i) {
+					msglog(LDMSD_LDEBUG, "event count = %d \n", event_count);
+					/* i + 4 because component_id, appname, jobid, username are the first metrics */
 					val.v_u64 = papi_event_val[i];
-					ldms_metric_set(set, i, &val);
+					ldms_metric_set(set, i + 4, &val);
 				}
 			} else {
 				/* Stop PAPI when the application is finished or killed */
@@ -413,7 +483,8 @@ static int sample(struct ldmsd_sampler *self)
 				attach = 0;
 				for (i = 0; i < event_count; ++i) {
 					val.v_u64 = 0;
-					ldms_metric_set(set, i, &val);
+					/* i + 4 because component_id, appname, jobid, username are the first metrics */
+					ldms_metric_set(set, i + 4, &val);
 				}
 				msglog(LDMSD_LDEBUG, "The application is dead Detach\n");
 			}
@@ -451,9 +522,10 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return "config name=spapi producer=<producer_name> instance=<instance_name> [pid=<pid>] [multiplex=<1|0>] [appnamefile=<appnamefile>] "
+	return "config name=spapi producer=<producer_name> instance=<instance_name> [pid=<pid>] [component_id=<compid>] [multiplex=<1|0>] [appnamefile=<appnamefile>] "
 	"events=<event1,event2,...>\n"
-	"    producer	  The producer name\n"
+	"    producer	  The producer name.\n"
+	"    component_id The component id value.\n"
 	"    instance	  The set instance name.\n"
 	"    pid	  The process to attach to.\n"
 	"    multiplex	  Enable papi multiplex (set to 1)\n"
@@ -465,6 +537,7 @@ static struct ldmsd_sampler papi_plugin = {
 	.base =
 	{
 		.name = "spapi",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
