@@ -19,7 +19,7 @@
 
 # Main package
 Summary: OVIS LDMS Commands and Libraries
-Name: ldms-all
+Name: ovis
 Version: @VERSION@
 Release: trinity_mon_16.8.25.1%{?dist}
 License: GPLv2 or BSD
@@ -85,7 +85,7 @@ rm -rf $RPM_BUILD_ROOT
 %package devel
 Summary: LDMS devel package
 Group: %{ldms_grp}
-Requires: ldms-all = @VERSION@
+Requires: ovis = @VERSION@
 %description devel
 This is a development package of Lightweight Distributed Metric System (LDMS).
 Users who want to implement their own sampler or store must install this
@@ -102,7 +102,7 @@ package.
 %package test
 Summary: LDMS test package
 Group: %{ldms_grp}
-Requires: ldms-all = 3.0.0
+Requires: ovis = @VERSION@
 %description test
 This is a collection of test scripts for (LDMS).
 They also serve as examples, but are not usually of interest
@@ -151,26 +151,27 @@ Python files for LDMS
 %files python2
 %defattr(-,root,root)
 %{_prefix}/lib/python2.7/site-packages/ovis_lib
-%{_prefix}/lib/python2.7/site-packages/sos
 %{_prefix}/lib/python2.7/site-packages/ovis_ldms
 %{_prefix}/lib/python2.7/site-packages/ldmsd
+%{_prefix}/lib/python2.7/site-packages/SOS
 %{_prefix}/lib/python2.7/site-packages/baler
+%{_prefix}/lib/python2.7/site-packages/abhttp
 #%%{python2_sitelib}/*
 #end python2
 # see https://fedoraproject.org/wiki/Packaging:Python_Old
 # and https://fedoraproject.org/wiki/Packaging:Python
 
-%package sos
+%package SOS
 Summary: SOS package
 Group: %{ldms_grp}
 Requires: ldms-all = 3.0.0
-%description sos
-This is a collection of sos utilities.
+%description SOS
+This is a collection of SOS utilities.
 
-%files sos
+%files SOS
 %defattr(-,root,root)
 %{_bindir}/sos_*
-%{_prefix}/lib/python2.7/site-packages/sos
+%{_prefix}/lib/python2.7/site-packages/SOS
 #end test
 
 %post 

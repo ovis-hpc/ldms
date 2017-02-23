@@ -8,7 +8,7 @@ AC_CONFIG_AUX_DIR(config)
 AX_PREFIX_CONFIG_H_G(ovis-all-config.h)
 AC_CONFIG_SUBDIRS([lib])
 AC_PROG_CC
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE([foreign tar-pax])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AM_CONFIG_HEADER(config.h)
 AM_PROG_LIBTOOL
