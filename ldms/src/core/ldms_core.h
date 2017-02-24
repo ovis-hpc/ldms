@@ -141,9 +141,9 @@ struct ldms_version {
 
 void ldms_version_get(struct ldms_version *v);
 
-/* 3.3.0.0 */
+/* 3.5.0.0 */
 #define LDMS_VERSION_MAJOR	 0x03
-#define LDMS_VERSION_MINOR	 0x03
+#define LDMS_VERSION_MINOR	 0x05
 #define LDMS_VERSION_PATCH	 0x00
 #define LDMS_VERSION_FLAGS	 0x00
 #define LDMS_VERSION_SET(version) do {				\

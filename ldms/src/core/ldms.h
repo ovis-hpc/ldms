@@ -363,29 +363,64 @@ extern ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 extern char *ldms_get_secretword(const char * file, ldms_log_fn_t log_fn);
 #endif /* OVIS_LIB_HAVE_AUTH */
 
-typedef enum ldms_conn_event {
-	LDMS_CONN_EVENT_CONNECTED,
-	LDMS_CONN_EVENT_REJECTED,
-	LDMS_CONN_EVENT_ERROR,
-	LDMS_CONN_EVENT_DISCONNECTED,
-	LDMS_CONN_EVENT_LAST
-} ldms_conn_event_t;
+enum ldms_xprt_event_type {
+	/*! A new connection is established */
+	LDMS_XPRT_EVENT_CONNECTED,
+	/*! A connection request is rejected */
+	LDMS_XPRT_EVENT_REJECTED,
+	/*! A connection request is failed */
+	LDMS_XPRT_EVENT_ERROR,
+	/*! A connection is disconnected */
+	LDMS_XPRT_EVENT_DISCONNECTED,
+	/*! Receive data from a remote host */
+	LDMS_XPRT_EVENT_RECV,
+	LDMS_XPRT_EVENT_LAST
+};
+
+typedef struct ldms_xprt_event {
+	/*! ldms event type */
+	enum ldms_xprt_event_type type;
+	/*! Pointer to message data. This buffer is owned by ldms and
+	 * may be freed when the callback returns.
+	 * \c data is NULL if the type is not LDMS_CONN_EVENT_RECV.
+	 */
+	char *data;
+	/*! The length of \c data in bytes.
+	 * \c data_len is 0 if \c type is not LDMS_CONN_EVENT_RECV.
+	 */
+	size_t data_len;
+} *ldms_xprt_event_t;
 
 /**
- * Definition of callback function for ldms_xprt_connect.
+ * Definition of callback function for ldms_xprt_connect and ldms_xprt_listen.
  *
  * The caller that requests a connection will be notified through a
- * callback function if the connection is successful. The event
- * parameter <tt>e</tt> parameter indicates success or failure as
- * follows:
- * - LDMS_CONN_EVENT_CONNECTED The transport is now connected, or
- * - LDMS_CONN_EVENT_ERROR The connection attempt failed
+ * callback function if the connection is successful. The event type
+ * <tt>e->type</tt> indicates success or failure as follows:
+ * - LDMS_CONN_EVENT_CONNECTED The transport is now connected,
+ * - LDMS_CONN_EVENT_REJECTED The connection request is rejected by the server,
+ * - LDMS_CONN_EVENT_ERROR The connection attempt failed, or
+ * - LDMS_CONN_EVENT_DISCONNECTED A connection is disconnected.
+ *
+ * Servers will be notified through a callback function if there is
+ * a new connection or a connection is disconnected. The event type <tt>e->type</tt>
+ * indicates as follows:
+ * - LDMS_CONN_EVENT_CONNECTED There is a new connection, or
+ * - LDMS_CONN_EVENT_DISCONNECTED A connection is disconnected.
+ *
+ * ldms also notifies servers and clients in case they receives data from
+ * a remote host.
+ * - LDMS_CONN_EVENT_RECV Server or client receives data from a remote host.
  *
  * \param x The ldms transport handle
- * \param e The connection event
- * \param cb_arg The \c cb_arg specified when ::ldms_xprt_connect() was called
+ * \param e The ldms event
+ * \param cb_arg The \c cb_arg specified when ::ldms_xprt_connect() or
+ *               ::ldms_xprt_listen() was called
+ *
+ * \see ldms_xprt_connect, ldms_xprt_connect_by_name, ldms_xprt_listen,
+ *      ldms_xprt_listen_by_name
  */
-typedef void (*ldms_connect_cb_t)(ldms_t x, ldms_conn_event_t e, void *cb_arg);
+typedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg);
 
 /**
  * \brief Request a connection to an LDMS host.
@@ -411,7 +446,7 @@ typedef void (*ldms_connect_cb_t)(ldms_t x, ldms_conn_event_t e, void *cb_arg);
  * \retval	An error indicating why the request failed.
  */
 extern int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
-			     ldms_connect_cb_t cb, void *cb_arg);
+			     ldms_event_cb_t cb, void *cb_arg);
 
 /**
  * \brief Connect to a hostname and service
@@ -438,18 +473,25 @@ extern int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
  * \retval EHOSTUNREACH No route to host
  */
 int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
-			      ldms_connect_cb_t cb, void *cb_arg);
+			      ldms_event_cb_t cb, void *cb_arg);
 /**
  * \brief Listen for connection requests from LDMS peers.
  *
  * \param x	The transport handle
  * \param sa	Socket address specifying the host address and port.
  * \param sa_len The length of the socket address.
+ * \param cb	The callback function that receives an ldms event.
+ *              If it is NULL, all events, except LDMS_RECV_COMPLETE, will be
+ *              handled by ldms.
+ * \param cb_arg An argument to be passed to \c cb when it is called.
+ *               If the \c cb is NULL, \c cb_arg is ignored.
  * \returns	0 if a listening endpoint was successfully created.
  * \returns	An error indicating why the listen failed.
  */
-extern int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len);
-extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port);
+extern int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
+		ldms_event_cb_t cb, void *cb_arg);
+extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port,
+		ldms_event_cb_t cb, void *cb_arg);
 
 /**
  * \brief Close a connection to an LDMS host.
@@ -474,19 +516,6 @@ extern void ldms_xprt_close(ldms_t x);
  * \param msg_len The length of the message buffer in bytes
  */
 extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
-
-/**
- * \brief Receive messages from an LDMS peer
- *
- * See the ldms_xprt_send() function for information on how to send
- * messages.
- *
- * \param x       The transport handle
- * \param cb_fn   Pointer to the function to call when a message is received
- * \param cb_arg  User context argument to pass to the callback function
- */
-typedef void (*ldms_recv_cb_t)(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg);
-extern int ldms_xprt_recv(ldms_t x, ldms_recv_cb_t cb_fn, void *cb_arg);
 
 /** \} */
 
