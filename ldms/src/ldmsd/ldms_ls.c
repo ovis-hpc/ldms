@@ -490,9 +490,10 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	pthread_cond_signal(&dir_cv);
 }
 
-void ldms_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	if ((e == LDMS_CONN_EVENT_ERROR) || (e == LDMS_CONN_EVENT_REJECTED)) {
+	if ((e->type == LDMS_XPRT_EVENT_ERROR) ||
+			(e->type == LDMS_XPRT_EVENT_REJECTED)) {
 		printf("Connection failed/rejected.\n");
 		done = 1;
 	}
