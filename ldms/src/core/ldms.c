@@ -619,7 +619,7 @@ int __ldms_create_set(const char *instance_name, const char *schema_name,
 	strcpy(lname->name, instance_name);
 
 	lname = get_schema_name(meta);
-	lname->len = strlen(schema_name);
+	lname->len = strlen(schema_name) + 1;
 	strcpy(lname->name, schema_name);
 
 	data->gn = data->meta_gn = meta->meta_gn;

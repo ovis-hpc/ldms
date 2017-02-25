@@ -254,13 +254,13 @@ static inline ldms_name_t get_instance_name(struct ldms_set_hdr *meta)
 static inline ldms_name_t get_schema_name(struct ldms_set_hdr *meta)
 {
 	ldms_name_t inst = get_instance_name(meta);
-	return (ldms_name_t)(&inst->name[inst->len+sizeof(*inst)]);
+	return (ldms_name_t)(&inst->name[inst->len]);
 }
 
 static inline struct ldms_value_desc *get_first_metric_desc(struct ldms_set_hdr *meta)
 {
 	ldms_name_t name = get_schema_name(meta);
-	char *p = &name->name[name->len+sizeof(*name)];
+	char *p = &name->name[name->len];
 	p = (char *)roundup((uint64_t)p, 8);
 	return (struct ldms_value_desc *)p;
 }
