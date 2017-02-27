@@ -306,6 +306,23 @@ void *idx_delete(idx_t t, idx_key_t key, size_t keylen)
 	return obj;
 }
 
+static void idx_count_internal(void *obj, void *count)
+{
+	if (count) {
+		size_t *c = (size_t *)count;
+		(*c)++;
+	}
+}
+
+size_t idx_count(idx_t t)
+{
+	size_t result = 0;
+	if (t) {
+		idx_traverse(t, idx_count_internal, &result);
+	}
+	return result;
+}
+
 #ifdef IDX_TEST
 #include <stdio.h>
 #include <stdlib.h>
@@ -340,7 +357,9 @@ int main(int argc, char *argv[])
 	}
 	entry_count = 0;
 	idx_traverse(idx, count_cb, NULL);
+	size_t icount = idx_count(idx);
 	TEST_ASSERT((entry_count == 100), "There are 100 entries in the index\n");
+	TEST_ASSERT(((size_t)entry_count == icount), "icount and entry_count match\n");
 	/* Make certain they can be found */
 	srandom(seed);
 	for (i = 0; i < 100; i++) {

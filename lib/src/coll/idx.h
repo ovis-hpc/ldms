@@ -64,4 +64,11 @@ extern int idx_add(idx_t t, idx_key_t key, size_t keylen, void *obj);
 typedef void (*idx_cb_fn_t)(void *obj, void *cb_arg);
 extern void idx_traverse(idx_t t, idx_cb_fn_t cb, void *cb_arg);
 
+/**
+ * Count the objects in the idx the obvious way.
+ * \param t idx to visit.
+ * \return number of elements found.
+ */
+extern size_t idx_count(idx_t t);
+
 #endif
