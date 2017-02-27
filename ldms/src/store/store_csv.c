@@ -80,19 +80,11 @@
 
 typedef enum{CSV_CFGINIT_PRE, CSV_CFGINIT_IN, CSV_CFGINIT_DONE, CSV_CFGINIT_FAILED} csvcfg_state;
 
-static struct column_step {
-	int begin;
-	int end;
-	int step;
-} cs = {0,0,0};
-
-
 /* override for special keys */
 struct storek{
 	char* key;
 	int altheader;
 	int udata;
-	struct column_step cs;
 };
 
 static int buffer_flag = 1;
@@ -135,11 +127,6 @@ static int rolltype;
 /** Interval to check for passing the record or byte count limits. */
 #define ROLL_LIMIT_INTERVAL 60
 
-/* help for column output orders */
-#define ORDERTYPES \
-"                     forward: metric columns ordered as added in sampler.\n" \
-"                     reverse: columns reverse of order added in sampler.\n" \
-"                     alnum: sorted per man page (not implemented)\n"
 
 static ldmsd_msg_log_f msglog;
 static pthread_t rothread;
@@ -162,7 +149,6 @@ struct csv_store_handle {
 	int altheader;
 	int udata;
 	char *store_key; /* this is the container+schema */
-	struct column_step cs;
 	pthread_mutex_t lock;
 	void *ucontext;
 	int64_t store_count;
@@ -412,7 +398,6 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	char *svalue;
 	char *skey = NULL;
 	char *altvalue;
-	char *rvalue;
 	char *value;
 	int idx;
 	int i;
@@ -481,9 +466,6 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	//defaults to init
 	specialkeys[idx].altheader = altheader;
 	specialkeys[idx].udata = udata;
-	specialkeys[idx].cs.begin = cs.begin;
-	specialkeys[idx].cs.end = cs.end;
-	specialkeys[idx].cs.step = cs.step;
 	//increment nspecialkeys now. note that if the args are a problem, we will have incremented.
 	if (idx == nspecialkeys)
 		nspecialkeys++;
@@ -496,32 +478,6 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	altvalue = av_value(avl, "userdata");
 	if (altvalue) {
 		specialkeys[idx].udata = atoi(altvalue);
-	}
-
-	rvalue = av_value(avl, "sequence");
-	if (rvalue){
-		switch (rvalue[0]) {
-		case 'f':
-			if (strcmp(rvalue,"forward")==0) {
-				specialkeys[idx].cs.step = 1;
-			}
-			break;
-		case 'r':
-			if (strcmp(rvalue,"reverse")==0) {
-				specialkeys[idx].cs.step = -1;
-			}
-			break;
-		case 'a':
-			if (strcmp(rvalue,"alnum")==0) {
-				msglog(LDMSD_LERROR,"%s: sequence alnum"
-				       " unsupported. using default from init.\n", __FILE__);
-			}
-			break;
-		default:
-			msglog(LDMSD_LERROR,"%s using default from init"
-			       "%s unknown\n",__FILE__, rvalue);
-			break;
-		}
 	}
 
 	pthread_mutex_unlock(&cfg_lock);
@@ -599,30 +555,6 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		if (rollmethod > MAXROLLTYPE){
 			cfgstate = CSV_CFGINIT_FAILED;
 			return EINVAL;
-		}
-	}
-
-	rvalue = av_value(avl, "sequence");
-	cs.step = 1; //forward is the default
-	if (rvalue){
-		switch (rvalue[0]) {
-		case 'r':
-			if (strcmp(rvalue,"reverse")==0) {
-				cs.step = -1;
-			}
-			break;
-		case 'a':
-			if (strcmp(rvalue,"alnum")==0) {
-				msglog(LDMSD_LERROR,"%s sequence alnum"
-				       " unsupported. using reverse.\n", __FILE__);
-			}
-			/* fallthru */
-		default:
-			if (strcmp(rvalue,"forward")!=0) {
-				msglog(LDMSD_LERROR,"%s sequence=forward"
-				       " assumed. %s unknown\n",__FILE__, rvalue);
-			}
-			break;
 		}
 	}
 
@@ -722,7 +654,7 @@ static void term(struct ldmsd_plugin *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=store_csv action=init path=<path> rollover=<num> rolltype=<num>\n"
-		"           [sequence=<order> altheader=<0/!0> userdata=<0/!0>]\n"
+		"           [altheader=<0/!0> userdata=<0/!0>]\n"
 		"           [buffer=<0|1>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path      The path to the root of the csv directory\n"
@@ -731,17 +663,13 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
-		"         - sequence  Determine the metric column ordering:\n"
-		ORDERTYPES
 		"         - buffer    0 to disable bufferring, 1 to enable it (optional, default: 1).\n"
 		"\n"
 		"    config name=store_csv action=custom container=<c_name> schema=<s_name>\n"
-		"           [sequence=<order> altheader=<0/1> userdata=<0/1>]\n"
+		"           [altheader=<0/1> userdata=<0/1>]\n"
 		"         - Override the default parameters set by action=init for particular containers\n"
 		"         - altheader Header in a separate file (optional, default to init)\n"
 		"         - userdata     UserData in printout (optional, default to init)\n"
-		"         - sequence  Determine the metric column ordering (default to init):\n"
-		ORDERTYPES
 		;
 }
 
@@ -749,26 +677,6 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	return s_handle->ucontext;
-}
-
-static
-void get_loop_limits(struct csv_store_handle *s_handle,
-		     int num_metrics) {
-	switch (s_handle->cs.step) {
-	case 1:
-		s_handle->cs.begin = 0;
-		s_handle->cs.end = num_metrics;
-		break;
-	case -1:
-		s_handle->cs.begin = num_metrics - 1;
-		s_handle->cs.end = -1;
-		break;
-	default:
-		msglog(LDMSD_LERROR, "store_csv sequence bug in loop (%d)\n",
-			cs.step);
-		s_handle->cs.begin = 0;
-		s_handle->cs.end = 0;
-	}
 }
 
 /*
@@ -802,8 +710,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	   retaining usec as a separate field */
 	fprintf(fp, "#Time,Time_usec,ProducerName");
 
-	get_loop_limits(s_handle, metric_count);
-	for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step){
+	for (i = 0; i != metric_count; i++){
 		const char* name = ldms_metric_name_get(set, metric_array[i]);
 		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
 
@@ -935,15 +842,9 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		if (idx >= 0){
 			s_handle->altheader = specialkeys[idx].altheader;
 			s_handle->udata = specialkeys[idx].udata;
-			s_handle->cs.begin = specialkeys[idx].cs.begin;
-			s_handle->cs.end = specialkeys[idx].cs.end;
-			s_handle->cs.step = specialkeys[idx].cs.step;
 		} else {
 			s_handle->altheader = altheader;
 			s_handle->udata = udata;
-			s_handle->cs.begin = cs.begin;
-			s_handle->cs.end = cs.end;
-			s_handle->cs.step = cs.step;
 		}
 
 		s_handle->printheader = FIRST_PRINT_HEADER;
@@ -1122,13 +1023,12 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	}
 
 	/* FIXME: will we want to throw an error if we cannot write? */
-	get_loop_limits(s_handle, metric_count);
 	char *wsqt = ""; /* ietf quotation wrapping strings */
 	if (ietfcsv) {
 		wsqt = "\"";
 	}
 	const char * str;
-	for (i = s_handle->cs.begin; i != s_handle->cs.end; i += s_handle->cs.step) {
+	for (i = 0; i != metric_count; i++) {
 		udata = ldms_metric_user_data_get(set, metric_array[i]);
 		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
 		//use same formats as ldms_ls
