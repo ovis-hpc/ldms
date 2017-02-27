@@ -926,6 +926,18 @@ extern struct ldms_timestamp ldms_transaction_timestamp_get(ldms_set_t s);
 extern struct ldms_timestamp ldms_transaction_duration_get(ldms_set_t s);
 
 /**
+ * \brief Get the time difference as a double in seconds.
+ *
+ * Computes the always positive (or zero) time stamp difference.
+ * Negative differences are clipped to zero.
+ *
+ * \param after timestamp that is more recent than before.
+ * \param before timestamp that is older or equal to after.
+ * \returns dt the time difference in seconds, or -1.0 if NULL input.
+ */
+extern double ldms_difftimestamp(const struct ldms_timestamp *after, const struct ldms_timestamp *before);
+
+/**
  * \brief Returns TRUE if the metric set is consistent.
  *
  * A metric set is consistent if it is not in the middle of being
