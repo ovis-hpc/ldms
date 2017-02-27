@@ -363,6 +363,7 @@ static int sample(struct ldmsd_sampler *self)
 	msglog(LDMSD_LDEBUG, "PID = %d \n", pid);
 
 	if (pid == 0) {
+		ldms_transaction_begin(set);
 		appname_str = "";
 		/* Read a file ex. /tmp/myapp.txt to the get the application name */
 		FILE *file;
@@ -415,7 +416,9 @@ static int sample(struct ldmsd_sampler *self)
 				pid = apppid; /* set the pid to application process id */
 			} else msglog(LDMSD_LDEBUG, "Waiting for an application to start\n");
 		} else msglog(LDMSD_LDEBUG, "Waiting for an application to start\n");
+		ldms_transaction_end(set);
 	} else { /* When PID exist */
+		ldms_transaction_begin(set);
 		msglog(LDMSD_LDEBUG, "attach = %d \n", attach);
 		if (attach == 0) { /* check if the attach happened before, no need to attach */
 			msglog(LDMSD_LDEBUG, "PAPI attach to process %" PRIu64 "\n", pid);
@@ -430,6 +433,7 @@ static int sample(struct ldmsd_sampler *self)
 				msglog(LDMSD_LERROR, "papi: failed to start papi event set rc= %d\n", rc);
 			}
 			attach = 1;
+			ldms_transaction_end(set);
 		} else {
 			/* PAPI attached to a process start sampling
 			 *	      msglog(LDMSD_LDEBUG, "Start sampling \n");
