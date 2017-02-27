@@ -7,14 +7,15 @@ CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
+ldmssamplerincludedir = $(includedir)/ldms/sampler
+ldmssamplerinclude_HEADERS = 
 
 if ENABLE_JOBID
 AM_CFLAGS += -DENABLE_JOBID
 JOBID_LIBFLAGS = libjobid.la
 libjobid_la_SOURCES = ldms_jobid.c
 libjobid_la_LIBADD = $(COMMON_LIBADD)
-libjobidincludedir = $(includedir)/ovis_util
-libjobidinclude_HEADERS = ldms_jobid.h
+ldmssamplerinclude_HEADERS += ldms_jobid.h
 pkglib_LTLIBRARIES += libjobid.la
 endif
 

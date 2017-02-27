@@ -370,6 +370,10 @@ struct ldmsd_plugin_cfg {
 };
 
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
+/** Metric name for component ids (u64). */
+#define LDMSD_COMPID "component_id"
+/** Metric name for job id number */
+#define LDMSD_JOBID "job_id"
 
 extern void ldmsd_config_cleanup(void);
 extern int ldmsd_config_init(char *name);
