@@ -134,6 +134,54 @@ PyObject *LDMS_xprt_dir(ldms_t x)
 	return Py_None;
 }
 
+struct active_connect_arg {
+        sem_t sem;
+        int errcode;
+};
+
+static void __active_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+{
+        struct active_connect_arg *conn_arg = cb_arg;
+        struct recv_arg *recv_arg;
+        switch(e) {
+        case LDMS_CONN_EVENT_CONNECTED:
+                recv_arg = malloc(sizeof(*recv_arg));
+                if (!recv_arg) {
+                        assert(0 == "Out of memory");
+                }
+                sem_init(&recv_arg->sem_ready, 0, 0);
+                ldms_xprt_recv(x, sync_recv_cb, recv_arg);
+                sem_post(&conn_arg->sem);
+                break;
+        case LDMS_CONN_EVENT_DISCONNECTED:
+                recv_arg = ldms_xprt_recv_cb_arg_get(x);
+                sem_destroy(&recv_arg->sem_ready);
+                free(recv_arg);
+                ldms_xprt_put(x);
+                break;
+        case LDMS_CONN_EVENT_ERROR:
+        case LDMS_CONN_EVENT_REJECTED:
+                conn_arg->errcode = ECONNREFUSED;
+                sem_post(&conn_arg->sem);
+                break;
+        default:
+                printf("Unhandled/Unrecognized ldms_conn_event %d", e);
+                assert(0);
+        }
+}
+
+int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port)
+{
+        struct active_connect_arg arg;
+        sem_init(&arg.sem, 0, 0);
+        arg.errcode = 0;
+        int rc = ldms_xprt_connect_by_name(x, host, port,
+                        __active_connect_cb, &arg);
+        sem_wait(&arg.sem);
+        sem_destroy(&arg.sem);
+        return arg.errcode;
+}
+
 PyObject *LDMS_get_secretword(const char *file)
 {
         char *word;
@@ -228,6 +276,8 @@ ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
 ldms_t LDMS_xprt_new(const char *xprt, const char *secretword);
 
 PyObject *LDMS_get_secretword(const char *file);
+
+int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port);
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
 PyObject *LDMS_xprt_dir(ldms_t x);
