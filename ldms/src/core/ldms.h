@@ -1053,6 +1053,16 @@ int ldms_metric_flags_get(ldms_set_t s, int i);
 extern const char *ldms_metric_type_to_str(enum ldms_value_type t);
 
 /**
+ * \brief Get a metric type primitive base
+ *
+ * Returns the scalar ldms_value_type related to t.
+ *
+ * \param t	The metric value type which may be array or scalar.
+ * \returns	the scalar type.
+ */
+extern enum ldms_value_type ldms_metric_type_to_scalar_type(enum ldms_value_type t);
+
+/**
  * \brief Convert a string to an ldms_value_type
  *
  * \param name	Character string representing the type name.
