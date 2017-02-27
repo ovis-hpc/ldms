@@ -64,24 +64,17 @@
  * malloc will never be needed internally.
  * Of course any char* turned over to the caller may leak.
  *
- * Example:
-char *createfoo ()
-{
-	int i;
-	dsinit;
-	for (i=0; i < 10000; i++) {
-		dscat("1 year good luck ");
-	}
-	return dsdone;
-}
-
+ * Examples:
+ * See test_dstring.c.
+ *
  * Extensions:
- * An version with arbitrarily large static size is available
- * in big_dstring.h. It trades speed for slight binary size increase.
+ * A version with arbitrarily large static size is available
+ * in big_dstring.h. It buys speed with a slight binary size increase.
  *
  * Error handling of malloc returning null:
  * When malloc fails, the string will ignore new input
  * and may fill itself with an error message instead.
+ * The return of cat functions will be NULL.
  * The alternative is to exit, which is deemed somebody else's problem,
  * but could be easily changed for dstring.
  */
@@ -260,7 +253,7 @@ These also work for big_dstrings.
 
 /** clients may define DSTRING_USE_SHORT before include if they want these
  * for handling stack declared dstrings as objects.
- */ 
+ */
 #ifdef DSTRING_USE_SHORT
 /* macros for convenience in typical use */
 /* paste as needed in application code. */
