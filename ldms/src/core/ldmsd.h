@@ -496,14 +496,6 @@ void ldmsd_lerror(const char *fmt, ...);
 void ldmsd_lcritical(const char *fmt, ...);
 void ldmsd_lall(const char *fmt, ...);
 
-/**
- * Initialize the ldmsd_store.
- *
- * \param __flush_N The number of flush threads.
- * \returns 0 on success.
- * \returns Error code on failure.
- */
-int ldmsd_store_init(int __flush_N);
 int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set);
 
 struct store_instance *
