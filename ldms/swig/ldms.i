@@ -53,6 +53,16 @@
 #include <errno.h>
 #include "ldms.h"
 
+ldms_t LDMS_xprt_new(const char *xprt, const char *secretword)
+{
+        ldms_t x;
+        if (secretword)
+                x = ldms_xprt_with_auth_new(xprt, NULL, secretword);
+        else
+                x = ldms_xprt_new(xprt, NULL);
+        return x;
+}
+
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags)
 {
 	ldms_set_t set;
@@ -215,6 +225,8 @@ typedef long int64_t;
 
 ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
                                                 const char *secretword);
+ldms_t LDMS_xprt_new(const char *xprt, const char *secretword);
+
 PyObject *LDMS_get_secretword(const char *file);
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
