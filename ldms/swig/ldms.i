@@ -45,10 +45,12 @@
 %include "cstring.i"
 %include "carrays.i"
 %include "exception.i"
+%include "typemaps.i"
 %{
 #include <stdio.h>
 #include <sys/queue.h>
 #include <semaphore.h>
+#include <errno.h>
 #include "ldms.h"
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags)
@@ -120,6 +122,24 @@ PyObject *LDMS_xprt_dir(ldms_t x)
 	return setList;
  err:
 	return Py_None;
+}
+
+PyObject *LDMS_get_secretword(const char *file)
+{
+        char *word;
+        int rc;
+
+        PyObject *result = PyList_New(0);
+
+        word = ldms_get_secretword(file, NULL);
+        rc = errno;
+        PyList_Append(result, PyInt_FromLong(rc));
+        if (word) {
+                PyList_Append(result, PyString_FromString(word));
+        } else {
+                PyList_Append(result, Py_None);
+        }
+        return result;
 }
 
 PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
@@ -195,6 +215,7 @@ typedef long int64_t;
 
 ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
                                                 const char *secretword);
+PyObject *LDMS_get_secretword(const char *file);
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
 PyObject *LDMS_xprt_dir(ldms_t x);
