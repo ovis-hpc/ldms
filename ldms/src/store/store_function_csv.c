@@ -486,7 +486,7 @@ static int handleRollover(){
 
 static void* rolloverThreadInit(void* m){
 	while(1){
-		int tsleep;
+		int tsleep = 86400;
 		switch (rolltype) {
 		case 1:
 		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
@@ -846,7 +846,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 
 
 	char* s;
-	int rc, rcl;
+	int rc = EINVAL, rcl;
 	int iter;
 
 	//TODO: for now will read this in for every option (e.g., different base set for store)
@@ -2572,7 +2572,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 		}
 		dp->ts = NULL;
 		dp->datavals = NULL;
-		*numsets++;
+		(*numsets)++;
 
 		idx_add(*sets_idx, (void*)instance_name,
 			strlen(instance_name), dp);
