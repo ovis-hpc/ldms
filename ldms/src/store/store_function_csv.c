@@ -1766,6 +1766,11 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 
 };
 
+static void token_error(func_t fct, const char *expected, int line) {
+	msglog(LDMSD_LDEBUG, "%s: switch got %d, expected one of: at line %d\n",__FILE__, fct, expected, line);
+}
+
+#define TOKEN_ERR(f, ex) token_error(f, ex, __LINE__)
 
 static int doFunc(ldms_set_t set, int* metric_arry,
 		  struct setdatapoint* dp, struct derived_data* dd,
@@ -1860,6 +1865,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 				case RAW:
 					retvals[0] = temp * scale;
 					break;
+				default:
+					TOKEN_ERR(fct, "THRESH_GE, THRESH_LT, RAW");
+					break;
 				}
 			} else { //it must be an array
 				for (j = 0; j < dim; j++){
@@ -1874,6 +1882,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						break;
 					case RAW:
 						retvals[j] = temp * scale;
+						break;
+					default:
+						TOKEN_ERR(fct, "THRESH_GE, THRESH_LT, RAW");
 						break;
 					}
 				}
@@ -1893,6 +1904,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						break;
 					case RAW:
 						retvals[j] = temp * scale;
+						break;
+					default:
+						TOKEN_ERR(fct, "THRESH_GE, THRESH_LT, RAW");
 						break;
 					}
 				}
@@ -1928,7 +1942,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					case AVG:
 						retvals[0] += curr;
 						break;
-
+					default:
+						TOKEN_ERR(fct, "MIN,MAX,SUM,AVG");
+						break;
 					}
 				}
 				if (fct == AVG) {
@@ -1955,6 +1971,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					case SUM:
 					case AVG:
 						retvals[0] += curr;
+						break;
+					default:
+						TOKEN_ERR(fct, "MIN,MAX,SUM,AVG");
 						break;
 					}
 				}
@@ -2204,6 +2223,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 								retvals[0] = (uint64_t)(((double)retvals[0]/(double)temp)*scale);
 							}
 							break;
+						default:
+							TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
+							break;
 						}
 					}
 				} else { //it must be an array
@@ -2231,6 +2253,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 									*retvalid = 0;
 								else
 									retvals[j] = (uint64_t)(((double)retvals[j]/(double)temp)*scale);
+								break;
+							default:
+								TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
 								break;
 							}
 						}
@@ -2264,6 +2289,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 								*retvalid = 0;
 							else
 								retvals[j] = (uint64_t)(((double)retvals[j]/(double)temp)*scale);
+							break;
+						default:
+							TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
 							break;
 						}
 					}
@@ -2307,7 +2335,17 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 			v_idx = 1;
 			s_idx = 0;
 			break;
+		default:
+			TOKEN_ERR(fct, "*_VS,*_SV");
+			break;
 		}
+#ifdef ANN_APPROVES /* must do at least this or in error case we read out of bounds. may even then still mess up retvalid. */
+		if (-1 == s_idx || -1 == v_idx) {
+			*retvalid = 0;
+			s_idx = 0;
+			v_idx = 0;
+		}
+#endif
 
 		if (vals[s_idx].typei == BASE){
 			if (vals[s_idx].metric_type == LDMS_V_U64)
@@ -2357,6 +2395,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						else
 							retvals[0] = (uint64_t)(((double)temp_scalar/(double)temp)*scale);
 						break;
+					default:
+						TOKEN_ERR(fct, "*_VS,*_SV");
+						break;
 					}
 				} else { // it must be an array
 					for (j = 0; j < dim; j++) {
@@ -2402,6 +2443,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							} else {
 								retvals[j] = (uint64_t)(((double)temp_scalar/(double)temp)*scale);
 							}
+							break;
+						default:
+							TOKEN_ERR(fct, "*_VS,*_SV");
 							break;
 						}
 					}
@@ -2452,6 +2496,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							} else {
 								retvals[j] = (uint64_t)(((double)temp_scalar/(double)temp)*scale);
 							}
+							break;
+						default:
+							TOKEN_ERR(fct, "*_VS,*_SV");
 							break;
 						}
 					}
