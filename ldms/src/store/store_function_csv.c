@@ -964,8 +964,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 	value = av_value(avl, "agesec");
 	if (value){
-		msglog(LDMSD_LERROR, "store_csv: config argument agesec has been deprecated in favor of ageusec\n",
-		       deprecated[i]);
+		msglog(LDMSD_LERROR, "store_csv: config argument agesec has been deprecated in favor of ageusec\n");
 		return EINVAL;
 	}
 
