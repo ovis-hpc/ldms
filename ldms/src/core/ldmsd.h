@@ -325,7 +325,6 @@ struct ldmsd_strgp {
 	strgp_update_fn_t update_fn;
 };
 
-extern char *skip_space(char *s);
 extern int parse_cfg(const char *config_file);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
