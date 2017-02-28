@@ -844,10 +844,10 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 
 	FILE *fp = NULL;
 
-	double mval;
+
 	char* s;
 	int rc, rcl;
-	int i, j, tk, iter;
+	int iter;
 
 	//TODO: for now will read this in for every option (e.g., different base set for store)
 	//Dont yet have a way to determine which of the handles a certain metric will be associated with
@@ -1144,7 +1144,7 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 static int print_header_from_store(struct function_store_handle *s_handle,
 				   ldms_set_t set, int* metric_arry, size_t metric_count)
 {
-	const char* name;
+
 	int rc = 0;
 	int i, j;
 
@@ -2769,9 +2769,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	//always get the vals because may need the stored value, even if skip this time
 
 	for (i = 0; i < s_handle->numder; i++){ //go thru all the vals....only write the writeout vals
-		uint64_t val, temp;
+
 		int rvalid;
-		int svalid;
+
 
 //		msglog(LDMSD_LDEBUG, "%s: Schema %s Updating variable %d of %d: %s\n",
 //		       pname, s_handle->schema, i, s_handle->numder, s_handle->der[i]->name);
@@ -2844,7 +2844,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 
 static void close_store(ldmsd_store_handle_t _s_handle)
 {
-	int i, j;
+	int i;
 
 	/* note closing a store removes it from the idx list. */
 
