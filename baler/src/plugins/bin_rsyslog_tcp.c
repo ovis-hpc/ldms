@@ -641,6 +641,10 @@ struct bwq_entry* prepare_bwq_entry(struct bplugin *p, struct bstr *s)
 
 		tok_tail = lent;
 		count++;
+		if (count >= 4096) {
+			berr("Line too long: %s\n", s->cstr);
+			goto err1;
+		}
 	}
 	if (!lent)
 		/* Break out of the loop because lent == NULL ==> error */
