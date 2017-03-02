@@ -1645,14 +1645,6 @@ einval:
 	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
 						"'name' is required.", EINVAL);
 	goto send_reply;
-enomem:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dOut of memory.", ENOMEM);
-	goto send_reply;
-eexist:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe updtr %s "
-					"already exists.", EEXIST, name);
-	goto send_reply;
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
