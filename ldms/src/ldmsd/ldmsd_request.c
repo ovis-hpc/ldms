@@ -600,7 +600,7 @@ static int cli_handler(int sock, req_msg_t rm)
 static int example_handler(int sock, req_msg_t rm)
 {
 	size_t cnt;
-	int i, rc, count = 0;
+	int rc, count = 0;
 	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)rm->req_buf;
 	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
 	while (attr->discrim) {
@@ -631,7 +631,6 @@ static int prdcr_add_handler(int sock, req_msg_t rm)
 	short port_no = -1;
 	int interval_us = -1;
 	size_t cnt;
-	int rc;
 
 	ldmsd_req_attr_t attr;
 	attr = (ldmsd_req_attr_t)rm->req_buf;
@@ -721,7 +720,6 @@ send_reply:
 
 static int prdcr_del_handler(int sock, req_msg_t rm)
 {
-	ldmsd_prdcr_t prdcr;
 	char *name, *attr_name;
 	size_t cnt;
 	int rc;
@@ -768,7 +766,6 @@ static int prdcr_start_handler(int sock, req_msg_t rm)
 	name = interval_str = NULL;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
-	ldmsd_prdcr_t prdcr;
 
 	attr = (ldmsd_req_attr_t)rm->req_buf;
 	while (attr->discrim) {
@@ -812,7 +809,6 @@ static int prdcr_stop_handler(int sock, req_msg_t rm)
 	char *name = NULL;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
-	ldmsd_prdcr_t prdcr;
 
 	attr = (ldmsd_req_attr_t)rm->req_buf;
 	while (attr->discrim) {
@@ -889,7 +885,7 @@ send_reply:
 
 static int prdcr_stop_regex_handler(int sock, req_msg_t rm)
 {
-	char *prdcr_regex, *interval_str;
+	char *prdcr_regex;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
 
@@ -1922,7 +1918,7 @@ send_reply:
 
 static int updtr_start_handler(int sock, req_msg_t rm)
 {
-	char *updtr_name, *interval_str, *offset_str, *attr_name;
+	char *updtr_name, *interval_str, *offset_str;
 	updtr_name = interval_str = offset_str = NULL;
 	int rc;
 	size_t cnt;
