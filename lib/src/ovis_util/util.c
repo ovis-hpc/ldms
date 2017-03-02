@@ -54,14 +54,14 @@
 #include <stdlib.h>
 #include "util.h"
 
-char *av_name(struct attr_value_list *av_list, int idx)
+char *av_name(const struct attr_value_list *av_list, int idx)
 {
 	if (idx < av_list->count)
 		return av_list->list[idx].name;
 	return NULL;
 }
 
-char *__av_value(struct attr_value *av)
+char *__av_value(const struct attr_value *av)
 {
 	if (av->value[0] == '$') {
 		/* Environment variable */
@@ -71,7 +71,7 @@ char *__av_value(struct attr_value *av)
 	}
 }
 
-char *av_value(struct attr_value_list *av_list, char *name)
+char *av_value(const struct attr_value_list *av_list, const char *name)
 {
 	int i;
 	for (i = 0; i < av_list->count; i++)
@@ -80,7 +80,7 @@ char *av_value(struct attr_value_list *av_list, char *name)
 	return NULL;
 }
 
-char *av_value_at_idx(struct attr_value_list *av_list, int i)
+char *av_value_at_idx(const struct attr_value_list *av_list, int i)
 {
 	if (i < av_list->count)
 		return __av_value(&av_list->list[i]);

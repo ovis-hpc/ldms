@@ -101,18 +101,18 @@ struct attr_value_list {
 /**
  * \brief Get the value of attribute \c name
  */
-char *av_value(struct attr_value_list *av_list, char *name);
+char *av_value(const struct attr_value_list *av_list, const char *name);
 
 /**
  * \brief Get the attribute name in the \c av_list
  * at the index \c idx
  */
-char *av_name(struct attr_value_list *av_list, int idx);
+char *av_name(const struct attr_value_list *av_list, int idx);
 
 /**
  * \brief Get the value at the index \c idx
  */
-char *av_value_at_idx(struct attr_value_list *av_list, int idx);
+char *av_value_at_idx(const struct attr_value_list *av_list, int idx);
 
 /**
  * \brief Tokenize the string \c cmd into the keyword list \c kwl
