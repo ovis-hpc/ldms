@@ -720,7 +720,7 @@ send_reply:
 
 static int prdcr_del_handler(int sock, req_msg_t rm)
 {
-	char *name, *attr_name;
+	char *name = NULL, *attr_name;
 	size_t cnt;
 	int rc;
 
@@ -885,7 +885,7 @@ send_reply:
 
 static int prdcr_stop_regex_handler(int sock, req_msg_t rm)
 {
-	char *prdcr_regex;
+	char *prdcr_regex = NULL;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
 
@@ -1153,7 +1153,7 @@ static int strgp_prdcr_add_handler(int sock, req_msg_t rm)
 	char *name, *regex_str, *attr_name;
 	name = regex_str = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
 
 	attr = (ldmsd_req_attr_t)rm->req_buf;
 	while (attr->discrim) {
@@ -1212,7 +1212,7 @@ static int strgp_prdcr_del_handler(int sock, req_msg_t rm)
 	char *name, *regex_str, *attr_name;
 	name = regex_str = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
 
 	attr = (ldmsd_req_attr_t)rm->req_buf;
 	while (attr->discrim) {
@@ -1786,7 +1786,7 @@ static int updtr_match_add_handler(int sock, req_msg_t rm)
 	char *updtr_name, *regex_str, *match_str, *attr_name;
 	updtr_name = regex_str = match_str = NULL;
 	int rc;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
 
 	attr = (ldmsd_req_attr_t)rm->req_buf;
