@@ -2866,6 +2866,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 static struct ldmsd_store store_function_csv = {
 	.base = {
 			.name = "function_csv",
+			.type = LDMSD_PLUGIN_STORE,
 			.term = term,
 			.config = config,
 			.usage = usage,
