@@ -536,13 +536,6 @@ int publish_kernel(const char *setfile)
 }
 
 
-char *skip_space(char *s)
-{
-	while (*s != '\0' && isspace(*s)) s++;
-	if (*s == '\0')
-	return s;
-}
-
 int calculate_timeout(int thread_id, unsigned long interval_us,
 			     long offset_us, struct timeval* tv){
 
