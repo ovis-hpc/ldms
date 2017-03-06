@@ -351,7 +351,7 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 {
 	printf("signo : %d\n", info->si_signo);
 	printf("si_pid: %d\n", info->si_pid);
-	cleanup(100, "signal to exit caught");
+	cleanup(0, "signal to exit caught");
 }
 
 
@@ -1436,7 +1436,7 @@ int main(int argc, char *argv[])
 		int rc = process_config_file(config_path);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
-					"Process config file error: %d (%s)\n", rc, 
+					"Process config file error: %d (%s)\n", rc,
 					config_path);
 			cleanup(rc, "process config file failed");
 		}
