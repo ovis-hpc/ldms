@@ -920,6 +920,32 @@ static char *type_names[] = {
 	[LDMS_V_D64_ARRAY] = "d64[]",
 };
 
+static enum ldms_value_type type_scalar_types[] = {
+	[LDMS_V_NONE] = LDMS_V_NONE,
+	[LDMS_V_CHAR] = LDMS_V_CHAR,
+	[LDMS_V_U8] = LDMS_V_U8,
+	[LDMS_V_S8] = LDMS_V_S8,
+	[LDMS_V_U16] = LDMS_V_U16,
+	[LDMS_V_S16] = LDMS_V_S16,
+	[LDMS_V_U32] = LDMS_V_U32,
+	[LDMS_V_S32] = LDMS_V_S32,
+	[LDMS_V_U64] = LDMS_V_U64,
+	[LDMS_V_S64] = LDMS_V_S64,
+	[LDMS_V_F32] = LDMS_V_F32,
+	[LDMS_V_D64] = LDMS_V_D64,
+	[LDMS_V_CHAR_ARRAY] = LDMS_V_CHAR,
+	[LDMS_V_U8_ARRAY] = LDMS_V_U8,
+	[LDMS_V_S8_ARRAY] = LDMS_V_S8,
+	[LDMS_V_U16_ARRAY] = LDMS_V_U16,
+	[LDMS_V_S16_ARRAY] = LDMS_V_S16,
+	[LDMS_V_U32_ARRAY] = LDMS_V_U32,
+	[LDMS_V_S32_ARRAY] = LDMS_V_S32,
+	[LDMS_V_U64_ARRAY] = LDMS_V_U64,
+	[LDMS_V_S64_ARRAY] = LDMS_V_S64,
+	[LDMS_V_F32_ARRAY] = LDMS_V_F32,
+	[LDMS_V_D64_ARRAY] = LDMS_V_D64
+};
+
 static inline ldms_mdesc_t __desc_get(ldms_set_t s, int idx)
 {
 	if (idx >= 0 && idx < __le32_to_cpu(s->set->meta->card))
@@ -1090,6 +1116,13 @@ const char *ldms_metric_type_to_str(enum ldms_value_type t)
 	if (t > LDMS_V_LAST)
 		t = LDMS_V_NONE;
 	return type_names[t];
+}
+
+enum ldms_value_type ldms_metric_type_to_scalar_type(enum ldms_value_type t)
+{
+	if (t > LDMS_V_LAST || t < 0)
+		t = LDMS_V_NONE;
+	return type_scalar_types[t];
 }
 
 void ldms_metric_user_data_set(ldms_set_t s, int i, uint64_t u)
