@@ -692,7 +692,7 @@ sleep 1
 # CSV
 echo "load name=store_csv"
 echo "config name=store_csv path=$STORE_PATH action=init altheader=0 rollover=30 rolltype=1"
-echo "config name=store_csv action=custom sequence=reverse container=csv schema=cray_aries_r altheader=1  userdata=0"
+echo "config name=store_csv action=custom container=csv schema=cray_aries_r altheader=1  userdata=0"
 
 echo "strgp_add name=policy_mem plugin=store_csv container=csv schema=meminfo"
 echo "strgp_prdcr_add name=policy_mem regex=localhost*"
