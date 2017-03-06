@@ -432,6 +432,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_lnet_statstest.sh
 		 scripts/ldms_plugins_list.sh
 		 scripts/ldms-py-edac_test.sh
+		 scripts/ldms-py-subset_test.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
