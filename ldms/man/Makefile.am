@@ -24,6 +24,10 @@ Plugin_store_csv.man \
 Plugin_store_sos.man \
 Plugin_vmstat.man
 
+if ENABLE_ARRAY_EXAMPLE
+dist_man7_MANS += Plugin_all_example.man
+endif
+
 pending_dist_man7_MANS= \
 Plugin_lustre2_client.man \
 Plugin_procsensors.man \
