@@ -1006,7 +1006,7 @@ extern int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
  *
  * \param s	The metric set handle
  * \param name	The name of the metric.
- * \returns	The metric set handle or 0 if there is none was found.
+ * \returns	The metric set handle or -1 if there is none was found.
  */
 extern int ldms_metric_by_name(ldms_set_t s, const char *name);
 
