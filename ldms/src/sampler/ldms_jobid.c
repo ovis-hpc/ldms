@@ -98,6 +98,13 @@ static char *default_schema_name = SAMP;
 static const char *JOBID_FILE = DEFAULT_FILE;
 static const char *JOBID_COLNAME = LJI_JOBID_METRIC_NAME;
 
+const char *lji_metric_names[] = {
+LJI_JOBID_METRIC_NAME,
+LJI_UID_METRIC_NAME,
+LJI_USER_METRIC_NAME,
+NULL
+};
+
 static char *procfile = NULL;
 
 static char *metric_name = NULL;

@@ -55,6 +55,8 @@
 #define ldms_jobid_h_seen
 
 #include <stdbool.h>
+#include <stdint.h>
+#include "ldmsd.h"
 
 #define LJI_USER_NAME_MAX 33
 struct ldms_job_info {
@@ -70,11 +72,14 @@ struct ldms_job_info {
 
 /* Default names all samplers will use for job info metrics. */
 /** uint64_t holding integer identifier from resource manager. */
-#define LJI_JOBID_METRIC_NAME "job_id"
+#define LJI_JOBID_METRIC_NAME LDMSD_JOBID
 /** uint64_t holding unix uid as accounted by resource manager. */
 #define LJI_UID_METRIC_NAME "uid"
 /** login name as accounted by resource manager. */
 #define LJI_USER_METRIC_NAME "username"
+
+/** NULL terminated array of job-related metric names. */
+extern const char *lji_metric_names[];
 
 /* Create jobid metric with standard name. */
 #define LJI_ADD_JOBID(schema) \
