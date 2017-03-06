@@ -1946,6 +1946,26 @@ struct ldms_timestamp ldms_transaction_duration_get(ldms_set_t s)
 	return ts;
 }
 
+double ldms_difftimestamp(const struct ldms_timestamp *after, const struct ldms_timestamp *before)
+{
+	uint32_t dms;
+	if (!before || !after)
+		return -1.0;
+	struct ldms_timestamp t2 = *after;
+	if (before->usec > t2.usec) {
+		dms = (1000000 + t2.usec) - before->usec;
+		t2.sec--;
+	} else {
+		dms = t2.usec - before->usec;
+	}
+	uint32_t ds = t2.sec - before->sec;
+	if (ds > t2.sec) {
+		return 0;
+	}
+
+	return (double)ds + 1.0e-6*dms;
+};
+
 int ldms_set_is_consistent(ldms_set_t s)
 {
 	struct ldms_set_desc *sd = s;
