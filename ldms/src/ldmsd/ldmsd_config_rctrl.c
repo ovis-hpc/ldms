@@ -162,8 +162,8 @@ out:
 		ocm_cfg_buff_add_av(reply_msg, "msg", ov);
 	}
 	rctrl_send(ctrl, reply_msg);
-	free(av_list);
-	free(kw_list);
+	av_free(av_list);
+	av_free(kw_list);
 	ocm_cfg_buff_free(reply_msg);
 	free(buff);
 }

@@ -1,5 +1,5 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-17 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013-17 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -59,6 +59,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <stdlib.h>
+#include <sys/queue.h>
 
 /*
  * This file aggregates simple utilities for
@@ -101,9 +102,15 @@ struct attr_value {
  * struct attr_value_list *avl = av_new(size);
  *
  */
+typedef struct string_ref_s {
+	char *str;
+	LIST_ENTRY(string_ref_s) entry;
+} *string_ref_t;
+
 struct attr_value_list {
 	int size;
 	int count;
+	LIST_HEAD(string_list, string_ref_s) strings;
 	struct attr_value list[0];
 };
 
@@ -136,6 +143,11 @@ int tokenize(char *cmd, struct attr_value_list *kwl,
  * \brief Allocate memory for a new attribute list of size \c size
  */
 struct attr_value_list *av_new(size_t size);
+
+/**
+ * \brief Free the memory consumed by the avl
+ */
+void av_free(struct attr_value_list *avl);
 
 /**
  * \brief Parse the memory size
@@ -204,4 +216,23 @@ int f_is_dir(const char *path);
  */
 int f_mkdir_p(const char *path, __mode_t mode);
 
+/**
+ * \brief Replace environment variables in a string
+ *
+ * This function handles $<name> and the ${<name>} syntax for
+ * replacing these strings with the corresponding environment variable
+ * value.
+ *
+ * The syntax is similar to bash, for example if getenv("HOSTNAME") ==
+ * "orion-08", then:
+ *
+ * "${HOSTNAME}/meminfo" becomes "orion-08/meminfo"
+ *
+ * The function returns memory that was allocated with malloc()
+ *
+ * \param str The input string.
+ * \retval NULL There was insufficient memory to allocate the output string.
+ * \retval Ptr to a string with the environment variable values replaced.
+ */
+char *str_replace_env_vars(const char *str);
 #endif /* OVIS_UTIL_H_ */

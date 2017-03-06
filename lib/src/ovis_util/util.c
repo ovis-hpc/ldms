@@ -53,38 +53,184 @@
 #include <string.h>
 #include <malloc.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <regex.h>
+#include <assert.h>
+#include <errno.h>
 #include "util.h"
 
-char *av_name(const struct attr_value_list *av_list, int idx)
+static const char *get_env_var(const char *src, size_t start_off, size_t end_off)
+{
+	static char name[100];
+	size_t name_len;
+
+	/* Strip $, {, and } from the name */
+	if (src[start_off] == '$')
+		start_off += 1;
+	if (src[start_off] == '{')
+		start_off += 1;
+	if (src[end_off-1] == '}')
+		end_off -= 1;
+
+	name_len = end_off - start_off;
+	assert(name_len < sizeof(name));
+
+	strncpy(name,  &src[start_off], name_len);
+	name[name_len] = '\0';
+	return name;
+}
+
+/*
+ * Compute the space occupied by the ENV_VAR names, and
+ * ENVVAR values
+ */
+static int get_names_and_values(const char *str,
+				regmatch_t *match, size_t match_len,
+				size_t *p_name_len, size_t *p_value_len,
+				char **values)
+{
+	char *value;
+	const char *name;
+	size_t name_total, value_total, name_len, value_len;
+	int i;
+
+	name_total = 0;
+	value_total = 0;
+
+	for (i = 0; i < match_len; i++) {
+		if (match[i].rm_so == -1)
+			break;
+		name_len = (match[i].rm_eo - match[i].rm_so);
+		name = get_env_var(str, match[i].rm_so, match[i].rm_eo);
+		value = getenv(name);
+		if (value) {
+			values[i] = value;
+			value_len = strlen(value);
+		} else {
+			values[i] = "";
+			value_len = 0;
+		}
+	}
+	*p_name_len = name_len;
+	*p_value_len = value_len;
+	return i;
+}
+
+char *str_replace_env_vars(const char *str)
+{
+	char name[100];
+	char *values[100];
+	char *res, *res_ptr;
+	size_t res_len;
+	regex_t regex;
+	char *expr_1 = "\\$\\{[[:alnum:]]+\\}";
+	char *expr_2 = "\\$[[:alnum:]]+";
+	int rc, i;
+	regmatch_t match[100];
+	size_t match_len = sizeof(match) / sizeof(match[0]);
+	size_t next_match, name_len, value_len, name_total, value_total;
+
+	next_match = name_total = value_total = 0;
+
+	/* Terminate list */
+	match[0].rm_so = -1;
+
+	rc = regcomp(&regex, expr_1, REG_EXTENDED);
+	assert(rc == 0);
+	rc = regexec(&regex, str, match_len, match, 0);
+	if (rc == 0) {
+		next_match = get_names_and_values(str, match, match_len,
+						  &name_len, &value_len,
+						  values);
+		name_total += name_len;
+		value_total += value_len;
+	}
+	regfree(&regex);
+
+	rc = regcomp(&regex, expr_2, REG_EXTENDED);
+	assert(rc == 0);
+	rc = regexec(&regex, str, match_len - next_match, &match[next_match], 0);
+	if (rc == 0) {
+		next_match = get_names_and_values(str, &match[next_match],
+						  match_len - next_match,
+						  &name_len, &value_len,
+						  &values[next_match]);
+		name_total += name_len;
+		value_total += value_len;
+	}
+	regfree(&regex);
+
+	/* Allocate the result string */
+	res_len = strlen(str) - name_total + value_total + 1;
+	res = malloc(res_len);
+	if (!res) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	size_t so = 0;
+	size_t eo = 0;
+
+	res_ptr = res;
+	res[0] = '\0';
+	for (i = 0; i < match_len; i++) {
+		if (match[i].rm_so < 0)
+			break;
+		size_t len = match[i].rm_so - so;
+		memcpy(res_ptr, &str[so], len);
+		res_ptr[len] = '\0';
+		res_ptr = &res_ptr[len];
+		so = match[i].rm_eo;
+		strcpy(res_ptr, values[i]);
+		res_ptr = &res[strlen(res)];
+	}
+	/* Copy the remainder of str into the result */
+	strcpy(res_ptr, &str[so]);
+	assert(res_len == (strlen(res) + 1));
+ out:
+	return res;
+}
+
+char *av_name(struct attr_value_list *av_list, int idx)
 {
 	if (idx < av_list->count)
 		return av_list->list[idx].name;
 	return NULL;
 }
 
-char *__av_value(const struct attr_value *av)
-{
-	if (av->value[0] == '$') {
-		/* Environment variable */
-		return getenv(&av->value[1]);
-	} else {
-		return av->value;
-	}
-}
-
 char *av_value(const struct attr_value_list *av_list, const char *name)
 {
 	int i;
-	for (i = 0; i < av_list->count; i++)
-		if (0 == strcmp(name, av_list->list[i].name))
-			return __av_value(&av_list->list[i]);
+	for (i = 0; i < av_list->count; i++) {
+		if (strcmp(name, av_list->list[i].name))
+			continue;
+		char *str = str_replace_env_vars(av_list->list[i].value);
+		if (str) {
+			string_ref_t ref = malloc(sizeof(*ref));
+			if (!ref)
+				return NULL;
+			ref->str = str;
+			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
+			return str;
+		} else
+			break;
+	}
 	return NULL;
 }
 
 char *av_value_at_idx(const struct attr_value_list *av_list, int i)
 {
-	if (i < av_list->count)
-		return __av_value(&av_list->list[i]);
+	if (i < av_list->count) {
+		char *str = str_replace_env_vars(av_list->list[i].value);
+		if (str) {
+			string_ref_t ref = malloc(sizeof(*ref));
+			if (!ref)
+				return NULL;
+			ref->str = str;
+			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
+			return str;
+		}
+	}
 	return NULL;
 }
 
@@ -123,6 +269,18 @@ err:
 	return ENOMEM;
 }
 
+void av_free(struct attr_value_list *avl)
+{
+	string_ref_t ref;
+	while (!LIST_EMPTY(&avl->strings)) {
+		ref = LIST_FIRST(&avl->strings);
+		free(ref->str);
+		LIST_REMOVE(ref, entry);
+		free(ref);
+	}
+	free(avl);
+}
+
 struct attr_value_list *av_new(size_t size)
 {
 	size_t bytes = sizeof(struct attr_value_list) +
@@ -132,6 +290,7 @@ struct attr_value_list *av_new(size_t size)
 	if (avl) {
 		memset(avl, 0, bytes);
 		avl->size = size;
+		LIST_INIT(&avl->strings);
 	}
 	return avl;
 }

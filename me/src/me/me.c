@@ -1222,7 +1222,7 @@ void me_config_plugin(ocm_cfg_cmd_t cmd)
 
 	pthread_mutex_unlock(&pi->lock);
 	free_av_list_value(av_list);
-	free(av_list);
+	av_free(av_list);
 	return;
 }
 

@@ -232,8 +232,8 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 
 	}
 err:
-	free(kvl);
-	free(avl);
+	av_free(kvl);
+	av_free(avl);
 	return rc;
 }
 

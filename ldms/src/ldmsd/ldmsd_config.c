@@ -1045,9 +1045,9 @@ int process_config_line(char *line)
 	}
 cleanup:
 	if (av_list)
-		free(av_list);
+		av_free(av_list);
 	if (kw_list)
-		free(kw_list);
+		av_free(kw_list);
 	return rc;
 }
 
@@ -1352,9 +1352,9 @@ int process_record(int fd,
 	if (fd >= 0)
 		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
 	if (kw_list)
-		free(kw_list);
+		av_free(kw_list);
 	if (av_list)
-		free(av_list);
+		av_free(av_list);
 	return rc;
 }
 
