@@ -20,6 +20,7 @@ bin_SCRIPTS+=  ldms_ctltest.sh
 bin_SCRIPTS+=  ldms_local_csvorder.sh
 bin_SCRIPTS+=  ldms_local_jobidmost.sh
 bin_SCRIPTS+=  ldms_local_jobidtest.sh
+bin_SCRIPTS+=  ldms-py-fptrans_test.sh
 
 bin_SCRIPTS+= \
 ldms_local_rollbytes_test.sh \

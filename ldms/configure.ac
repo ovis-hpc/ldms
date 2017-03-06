@@ -80,6 +80,7 @@ OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
 OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
 OPTION_DEFAULT_ENABLE([llnl-edac], [ENABLE_LLNL_EDAC])
 AM_CONDITIONAL([ENABLE_LLNL], [test "x$ENABLE_LLNL_EDAC_FALSE" = "x#"])
+OPTION_DEFAULT_DISABLE([fptrans], [ENABLE_FPTRANS])
 
 OPTION_DEFAULT_DISABLE([tsampler], [ENABLE_TSAMPLER])
 OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
@@ -430,6 +431,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_local_auth_test.sh
 		 scripts/ldms_local_amqptest.sh
 		 scripts/ldms_local_lnet_statstest.sh
+		 scripts/ldms-py-fptrans_test.sh
 		 scripts/ldms_plugins_list.sh
 		 scripts/ldms-py-edac_test.sh
 		 scripts/ldms-py-subset_test.sh

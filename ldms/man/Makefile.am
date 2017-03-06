@@ -16,6 +16,7 @@ Plugin_kgnilnd.man \
 Plugin_knc_sampler.man \
 Plugin_lnet_stats.man \
 Plugin_meminfo.man \
+Plugin_fptrans.man \
 Plugin_msr_interlagos.man \
 Plugin_procinterrupts.man \
 Plugin_procnetdev.man \
