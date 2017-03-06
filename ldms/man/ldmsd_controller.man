@@ -640,6 +640,12 @@ Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
 .SS Get the LDMS version the running LDMSD is based on.
 .BR version
 
+.SS Launch a subshell to do arbitrary commands
+.BR ! shell-command
+
+.SS Comment (a skipped line)
+.BR # comment-string
+
 .SH NOTES
 If you are using ldmsd_controller to configure a remote host and you are
 using authentication, then you must build with --enable-swig.
