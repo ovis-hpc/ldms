@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -49,6 +49,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <sys/errno.h>
+#include <linux/limits.h>
 #include <string.h>
 #include <malloc.h>
 #include <stdlib.h>
@@ -177,3 +178,155 @@ pid_t ovis_execute(const char *command)
 	execv("/bin/sh", argv);
 	return pid;
 }
+
+#define DSTRING_USE_SHORT
+#include "dstring.h"
+char *ovis_join(char *pathsep, ...)
+{
+	va_list ap;
+	char *result = NULL;
+	char *tmp = NULL;
+	const char *n = NULL;
+	char *sep = "/";
+	if (pathsep)
+		sep = pathsep;
+
+	dsinit(ds);
+	va_start(ap, pathsep);
+	n = va_arg(ap, const char *);
+	if (n)
+		tmp = dscat(ds, n);
+	else
+		errno = EINVAL;
+
+	while ( tmp && (n = va_arg(ap, const char *)) != NULL) {
+		dscat(ds, sep);
+		tmp = dscat(ds, n);
+	}
+
+	va_end(ap);
+
+	result = dsdone(ds);
+	if (!tmp) {
+		free(result);
+		return NULL;
+	}
+	return result;
+}
+
+int ovis_join_buf(char *buf, size_t buflen, char *pathsep, ...)
+{
+	int rc = 0;
+	va_list ap;
+	const char *n = NULL;
+	char *sep = "/";
+	if (pathsep)
+		sep = pathsep;
+	size_t sepsize = strlen(sep);
+	size_t len = 0;
+	size_t chunk;
+
+	if (!buf)
+		return EINVAL;
+
+	va_start(ap, pathsep);
+	n = va_arg(ap, const char *);
+	if (!n) {
+		rc = EINVAL;
+		goto out;
+	}
+
+	chunk = strlen(n);
+	if ( (len + chunk) < buflen) {
+		printf("chunk %zu %s\n", chunk, n);
+		strncat(buf + len, n, chunk);
+		len += chunk;
+	} else {
+		rc = E2BIG;
+	}
+
+	while ( 0 == rc && (n = va_arg(ap, const char *)) != NULL) {
+		if ((len + sepsize) < buflen) {
+			strncat(buf + len, sep, sepsize);
+			len += sepsize;
+		} else {
+			rc = E2BIG;
+			break;
+		}
+		chunk = strlen(n);
+		if ((len + chunk) < buflen) {
+			strncat(buf + len, n, chunk);
+			len += chunk;
+		} else {
+			rc = E2BIG;
+			break;
+		}
+	}
+ out:
+	va_end(ap);
+	buf[len] = '\0';
+
+	return rc;
+}
+
+int f_file_exists(const char *path)
+{
+	struct stat st;
+	int rc = stat(path, &st);
+	return !rc;
+}
+
+int f_is_dir(const char *path)
+{
+	struct stat st;
+	int rc = stat(path, &st);
+	if (rc == -1)
+		return 0;
+	rc = S_ISDIR(st.st_mode);
+	if (!rc) {
+		errno = ENOTDIR;
+	}
+	return rc;
+}
+
+int f_mkdir_p(const char *path, __mode_t mode)
+{
+	char *str = strdup(path);
+	char *_str;
+	int rc = 0;
+	if (!str)
+		return ENOMEM;
+	_str = str;
+	int len = strlen(str);
+	if (str[len-1] == '/') {
+		len--;
+		str[len] = 0;
+	}
+	if (_str[0] == '/')
+		_str++; /* skip the leading '/' */
+	while ((_str = strstr(_str, "/"))) {
+		*_str = 0;
+		if (!f_file_exists(str)) {
+			if (mkdir(str, mode) == -1) {
+				rc = errno;
+				goto cleanup;
+			}
+		}
+		if (!f_is_dir(str)) {
+			errno = ENOTDIR;
+			rc = ENOTDIR;
+			goto cleanup;
+		}
+		*_str = '/';
+		_str++;
+	}
+	rc = mkdir(str, 0755);
+	if (rc)
+		rc = errno;
+cleanup:
+	free(str);
+	return rc;
+}
+
+
+
