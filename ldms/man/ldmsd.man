@@ -131,6 +131,7 @@ Log Verbosity Options:
 .BI -l " LOGFILE"
 .br
 LOGFILE is the path to the log file for status messages. Default is stdout unless given.
+The syslog facility is used if LOGFILE is exactly "syslog".
 Silence can be obtained by specifying /dev/null for the log file or using command line redirection as illustrated below.
 .TP
 .BI -v " LOG_LEVEL"
@@ -219,7 +220,7 @@ Run ldmsd directly or as part of a script launched from aprun. In either case, U
 OCM flags are unsupported at this time.
 
 .SH BUGS
-Unlike LDMS version 2, the syslog facility is not used if LOGFILE is "syslog". This will be fixed soon.
+None known.
 
 .SH EXAMPLES
 .PP

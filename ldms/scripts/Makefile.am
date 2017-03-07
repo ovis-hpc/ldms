@@ -40,4 +40,5 @@ bin_SCRIPTS += ldms_local_lnet_statstest.sh
 bin_SCRIPTS += ldms_plugins_list.sh
 bin_SCRIPTS += ldms-py-edac_test.sh
 bin_SCRIPTS += ldms-py-subset_test.sh
+bin_SCRIPTS += ldms-py-syslog.sh
 endif

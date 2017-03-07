@@ -478,9 +478,10 @@ struct ldmsd_store_policy {
 	WRAP (ERROR), \
 	WRAP (CRITICAL), \
 	WRAP (ALL), \
-	WRAP (LASTLEVEL)
+	WRAP (LASTLEVEL),
 
 enum ldmsd_loglevel {
+	LDMSD_LNONE = -1,
 	LOGLEVELS(LDMSD_LWRAP)
 };
 
@@ -489,8 +490,10 @@ extern const char *ldmsd_loglevel_names[];
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
 
 int ldmsd_loglevel_set(char *verbose_level);
+enum ldmsd_loglevel ldmsd_loglevel_get();
 
 enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
+const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level);
 
 void ldmsd_ldebug(const char *fmt, ...);
 void ldmsd_linfo(const char *fmt, ...);
@@ -498,6 +501,12 @@ void ldmsd_lwarning(const char *fmt, ...);
 void ldmsd_lerror(const char *fmt, ...);
 void ldmsd_lcritical(const char *fmt, ...);
 void ldmsd_lall(const char *fmt, ...);
+
+/** Get syslog int value for a level.
+ *  \return LOG_CRIT for invalid inputs, NONE, & ENDLEVEL.
+ */
+int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
+
 
 int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set);
 
