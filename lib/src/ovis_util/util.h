@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2013-15 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-15 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-17 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -54,10 +54,19 @@
 
 #include <stdio.h>
 #include <unistd.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <stdlib.h>
 
 /*
- * This file aggregates simple utilities for key/value list parsing,
- * number scaling by suffix, and spawning a trackable child.
+ * This file aggregates simple utilities for
+ * key/value list parsing,
+ * number scaling by suffix,
+ * spawning a trackable child,
+ * allocating/nonallocating join of strings,
+ * file operations exists, isdir, mkdir -p,
  */
 
 struct attr_value {
@@ -65,7 +74,7 @@ struct attr_value {
 	char *value;
 };
 
-/** 
+/**
  * Fixed upper bound in size key/value lists can be created and used
  * as demonstrated in the following example.
  * #include "ovis_util/util.h"
@@ -78,7 +87,7 @@ struct attr_value {
  * // producing list kvl containing "k" and
  * // avl containing pairs [a,b] [c,d] [e,f] [#g,h] [i,j]
  * char *value = av_value(avl,"w");
- * if (value != NULL) 
+ * if (value != NULL)
  * 	printf("unexpected element in avl\n");
  *
  * Handling an unbounded list size becomes a bounded problem by
@@ -90,7 +99,7 @@ struct attr_value {
  * 	t++;
  * }
  * struct attr_value_list *avl = av_new(size);
- * 
+ *
  */
 struct attr_value_list {
 	int size;
@@ -149,5 +158,50 @@ size_t ovis_get_mem_size(const char *s);
  * \retval pid The PID of the forked child.
  */
 pid_t ovis_execute(const char *command);
+
+/**
+ * \brief Allocate a string from joining parts.
+ * \param joiner string used at joins; if NULL given, "/" is used.
+ * \param ... A null terminated list of const char *.
+ * Example: ovis_join("\\","c:\\root", "file.txt", NULL);
+ * \return The resulting string caller must free, or NULL if fail(see errno).
+ */
+char *ovis_join(char *joiner, ...);
+
+/**
+ * \brief Fill array by joining parts.
+ * \param buf character array
+ * \param buflen size of buf, or less.
+ * \param joiner string used at joins; if NULL given, "/" is used.
+ *        Use "" for plain concatenation.
+ * \param ... A null terminated list of const char *.
+ * Example: ovis_join_buf(buf, 256, "\\","c:\\root", "file.txt", NULL);
+ * \return 0 if successful, or errno if input problem detected.
+ */
+int ovis_join_buf(char *buf, size_t buflen, char *joiner, ...);
+
+/**
+ * \brief A convenient function checking if the given \a path exists.
+ * \return 1 if the \a path exists. \a path is not necessary a file though.
+ * \return 0 if the \a path does not exist.
+ */
+int f_file_exists(const char *path);
+
+/**
+ * \brief Check if the given path is a directory.
+ * \retval 1 if the given \a path exists and is directory.
+ * \retval 0 if the given path does not exist or is not a directory. If the path
+ *           exists but is not a directory, \c errno is set to \c ENOTDIR.
+ */
+int f_is_dir(const char *path);
+
+/**
+ * This behave like mkdir -p, except that it will report errors even in the case
+ * of directory/file exists.
+ *
+ * \retval 0 if success.
+ * \retval errno if failed.
+ */
+int f_mkdir_p(const char *path, __mode_t mode);
 
 #endif /* OVIS_UTIL_H_ */
