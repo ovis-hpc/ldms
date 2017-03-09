@@ -408,29 +408,7 @@ AC_SUBST(configure_input)
 
 dnl handle test generation and chmod
 OVIS_EXEC_SCRIPTS(
-		 scripts/ldms_ctltest.sh
 		 scripts/ldms_ban.sh
-		 scripts/ldms_usertest.sh
-		 scripts/ldms_local_sostest.sh
-		 scripts/ldms_local_usertest.sh
-		 scripts/ldms_local_jobidtest.sh
-		 scripts/ldms_local_jobidmost.sh
-		 scripts/ldms_local_valgrind.sh
-		 scripts/ldms_local_clocktest.sh
-		 scripts/ldms_local_syslog.sh
-		 scripts/ldms_local_inspxe.sh
-		 scripts/ldms_local_inspxe_rdma.sh
-		 scripts/ldms_local_rdmatest.sh
-		 scripts/ldms_local_rollbytes_test.sh
-		 scripts/ldms_local_rollperiod_test.sh
-		 scripts/ldms_local_rollrecords_test.sh
-		 scripts/ldms_local_rolltime_test.sh
-		 scripts/ldms_local_procstat.sh
-		 scripts/ldms_local_csvorder.sh
-		 scripts/ldms_local_synthetic_test.sh
-		 scripts/ldms_local_auth_test.sh
-		 scripts/ldms_local_amqptest.sh
-		 scripts/ldms_local_lnet_statstest.sh
 		 scripts/ldms-py-fptrans_test.sh
 		 scripts/ldms_plugins_list.sh
 		 scripts/ldms-py-edac_test.sh
