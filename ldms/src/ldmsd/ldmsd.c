@@ -56,6 +56,7 @@
 #include <stdlib.h>
 #include <sys/errno.h>
 #include <stdio.h>
+#include <syslog.h>
 #include <string.h>
 #include <sys/queue.h>
 #include <sys/types.h>
@@ -142,6 +143,7 @@ extern int process_config_file(const char *path);
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
+	NULL
 };
 
 void ldmsd_version_get(struct ldmsd_version *v)
@@ -168,11 +170,39 @@ int ldmsd_loglevel_set(char *verbose_level)
 	return 0;
 }
 
+enum ldmsd_loglevel ldmsd_loglevel_get()
+{
+        return log_level_thr;
+}
+
+int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
+{
+	switch (level) {
+#define MAPLOG(X,Y) case LDMSD_L##X: return LOG_##Y
+	MAPLOG(DEBUG,DEBUG);
+	MAPLOG(INFO,INFO);
+	MAPLOG(WARNING,WARNING);
+	MAPLOG(ERROR,ERR);
+	MAPLOG(CRITICAL,CRIT);
+	MAPLOG(ALL,ALERT);
+	default:
+		return LOG_ERR;
+	}
+#undef MAPLOG
+}
+
+/* Impossible file pointer as syslog-use sentinel */
+#define LDMSD_LOG_SYSLOG ((FILE*)0x7)
+
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
 	if ((level != LDMSD_LALL) &&
 			(quiet || ((0 <= level) && (level < log_level_thr))))
 		return;
+	if (log_fp == LDMSD_LOG_SYSLOG) {
+		vsyslog(ldmsd_loglevel_to_syslog(level),fmt,ap);
+		return;
+	}
 	time_t t;
 	struct tm *tm;
 	char dtsz[200];
@@ -236,7 +266,23 @@ enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s)
 	for (i = 0; i < LDMSD_LLASTLEVEL; i++)
 		if (0 == strcasecmp(level_s, ldmsd_loglevel_names[i]))
 			return i;
-	return -1;
+	if (strcasecmp(level_s,"QUIET") == 0) {
+		return LDMSD_LALL;
+				}
+	if (strcasecmp(level_s,"ALWAYS") == 0) {
+		return LDMSD_LALL;
+	}
+	if (strcasecmp(level_s,"CRIT") == 0) {
+		return LDMSD_LCRITICAL;
+	}
+	return LDMSD_LNONE;
+}
+
+const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
+{
+	if ((level >= LDMSD_LDEBUG) && (level < LDMSD_LLASTLEVEL))
+		return ldmsd_loglevel_names[level];
+	return "LDMSD_LNONE";
 }
 
 #if OVIS_LIB_HAVE_AUTH
@@ -276,9 +322,17 @@ void cleanup(int x, const char *reason)
 	exit(x);
 }
 
-FILE *ldmsd_open_log()
+/** return a file pointer or a special syslog pointer */
+FILE *ldmsd_open_log(const char *progname)
 {
 	FILE *f;
+	if (strcasecmp(logfile,"syslog")==0) {
+		ldmsd_log(LDMSD_LDEBUG, "Switching to syslog.\n");
+		f = LDMSD_LOG_SYSLOG;
+		openlog(progname, LOG_NDELAY|LOG_PID, LOG_DAEMON);
+		return f;
+	}
+
 	f = fopen(logfile, "a");
 	if (!f) {
 		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
@@ -308,6 +362,10 @@ int ldmsd_logrotate() {
 		ldmsd_log(LDMSD_LERROR, "Received a logrotate command but "
 			"the log messages are printed to the standard out.\n");
 		return EINVAL;
+	}
+	if (log_fp == LDMSD_LOG_SYSLOG) {
+		/* nothing to do */
+		return 0;
 	}
 	struct timeval tv;
 	char ofile_name[PATH_MAX];
@@ -1196,7 +1254,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (logfile)
-		log_fp = ldmsd_open_log();
+		log_fp = ldmsd_open_log(argv[0]);
 
 	if (!foreground) {
 		if (daemon(1, 1)) {
