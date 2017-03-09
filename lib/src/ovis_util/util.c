@@ -327,6 +327,3 @@ cleanup:
 	free(str);
 	return rc;
 }
-
-
-
