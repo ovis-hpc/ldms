@@ -613,7 +613,6 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
 #define LEN_ERRSTR 256
 
 int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
-int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 int ldmsd_logrotate();

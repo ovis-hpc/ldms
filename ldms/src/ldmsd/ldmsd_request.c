@@ -287,6 +287,10 @@ static int gather_data(req_msg_t rm, struct msghdr *msg, size_t msg_len)
 	return 0;
 }
 
+extern int process_record(int fd,
+		   struct sockaddr *sa, ssize_t sa_len,
+		   uint32_t cmd_id,
+		   char *command, ssize_t cmd_len);
 int process_request(int fd, struct msghdr *msg, size_t msg_len)
 {
 	ldmsd_req_hdr_t request = msg->msg_iov[0].iov_base;
@@ -330,6 +334,12 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 
 	rm->mh = msg;
 
+	if (request->marker != LDMSD_RECORD_MARKER) {
+		rc = process_record(fd, msg->msg_name, msg->msg_namelen,
+				request->cmd_id, rm->req_buf, rm->req_len);
+		goto out;
+	}
+
 	/* Check for request id outside of range */
 	if (request->cmd_id < 0 ||
 	    request->cmd_id >= (sizeof(request_handler)/sizeof(request_handler[0])))
@@ -339,11 +349,12 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 		rc = unimplemented_handler(fd, rm);
 	else
 		rc = request_handler[request->cmd_id].handler(fd, rm);
+out:
 	pthread_mutex_lock(&msg_tree_lock);
 	free_msg(rm);
 	pthread_mutex_unlock(&msg_tree_lock);
 	return rc;
- err_out:
+err_out:
 	pthread_mutex_unlock(&msg_tree_lock);
 	return -1;
 }

@@ -1344,10 +1344,10 @@ ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
 
 int process_record(int fd,
 		   struct sockaddr *sa, ssize_t sa_len,
+		   uint32_t cmd_id,
 		   char *command, ssize_t cmd_len)
 {
 	char *cmd_s;
-	long cmd_id;
 	struct attr_value_list *av_list;
 	struct attr_value_list *kw_list;
 	int tokens, rc;
@@ -1378,21 +1378,14 @@ int process_record(int fd,
 		goto out;
 	}
 
-	cmd_s = av_name(kw_list, 0);
-	if (!cmd_s) {
-		ldmsd_log(LDMSD_LERROR, "Request is missing Id '%s'\n", command);
-		rc = EINVAL;
-		goto out;
-	}
-
-	cmd_id = strtoul(cmd_s, NULL, 0);
 	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND) {
 		if (cmd_table[cmd_id]) {
 			rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
 			goto out;
 		}
 	}
-	snprintf(replybuf, REPLYBUF_LEN, "22Invalid command id %ld\n", cmd_id);
+	snprintf(replybuf, REPLYBUF_LEN,
+			"22Invalid command id %" PRIu32 "\n", cmd_id);
 	rc = EINVAL;
  out:
 	if (fd >= 0)
@@ -1407,10 +1400,12 @@ int process_record(int fd,
 int process_message(int sock, struct msghdr *msg, ssize_t msglen)
 {
 	return process_record(sock,
-			      msg->msg_name, msg->msg_namelen,
+			      msg->msg_name, msg->msg_namelen, 0,
 			      msg->msg_iov->iov_base, msglen);
 }
 
+extern int
+process_request(int fd, struct msghdr *msg, size_t msg_len);
 void *ctrl_thread_proc(void *v)
 {
 	struct msghdr msg;
@@ -1430,20 +1425,35 @@ void *ctrl_thread_proc(void *v)
 	}
 	iov.iov_base = lbuf;
 	do {
+		struct ldmsd_req_hdr_s request;
 		ssize_t msglen;
 		ss.ss_family = AF_UNIX;
 		msg.msg_name = &ss;
 		msg.msg_namelen = sizeof(ss);
-		iov.iov_len = cfg_buf_len;
+		iov.iov_len = sizeof(request);
+		iov.iov_base = &request;
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		msg.msg_control = NULL;
 		msg.msg_controllen = 0;
 		msg.msg_flags = 0;
-		msglen = recvmsg(muxr_s, &msg, 0);
+		msglen = recvmsg(muxr_s, &msg, MSG_PEEK);
 		if (msglen <= 0)
 			break;
-		process_message(muxr_s, &msg, msglen);
+		if (cfg_buf_len < request.rec_len) {
+			free(lbuf);
+			lbuf = malloc(request.rec_len);
+			if (!lbuf)
+				break;
+		}
+		iov.iov_base = lbuf;
+		iov.iov_len = request.rec_len;
+
+		msglen = recvmsg(muxr_s, &msg, MSG_WAITALL);
+		if (msglen < request.rec_len)
+			break;
+
+		process_request(muxr_s, &msg, msglen);
 		if (cleanup_requested)
 			break;
 	} while (1);
@@ -1506,9 +1516,6 @@ int ldmsd_config_init(char *name)
 	}
 	return 0;
 }
-
-extern int
-process_request(int fd, struct msghdr *msg, size_t msg_len);
 
 void *inet_ctrl_thread_proc(void *args)
 {
@@ -1641,34 +1648,23 @@ loop:
 		msglen = recvmsg(inet_sock, &msg, MSG_PEEK);
 		if (msglen <= 0)
 			break;
-		if (request.marker != LDMSD_RECORD_MARKER || (msglen < sizeof(request))) {
-			iov.iov_len = cfg_buf_len;
-			iov.iov_base = lbuf;
-			msglen = recvmsg(inet_sock, &msg, 0);
-			if (msglen <= 0)
-				break;
-			/* Process old style message */
-			process_message(inet_sock, &msg, msglen);
-			if (cleanup_requested)
-				break;
-		} else {
-			if (cfg_buf_len < request.rec_len) {
-				cfg_buf_len = request.rec_len;
-				free(lbuf);
-				lbuf = malloc(cfg_buf_len);
-				if (!lbuf)
-					break;
-				iov.iov_base = lbuf;
-			}
-			iov.iov_base = lbuf;
-			iov.iov_len = request.rec_len;
-			msglen = recvmsg(inet_sock, &msg, MSG_WAITALL);
-			if (msglen < request.rec_len)
-				break;
-			process_request(inet_sock, &msg, msglen);
-			if (cleanup_requested)
+		if (cfg_buf_len < request.rec_len) {
+			free(lbuf);
+			lbuf = malloc(request.rec_len);
+			if (!lbuf)
 				break;
 		}
+
+		iov.iov_base = lbuf;
+		iov.iov_len = request.rec_len;
+		msglen = recvmsg(inet_sock, &msg, MSG_WAITALL);
+		if (msglen < request.rec_len)
+			break;
+
+		process_request(inet_sock, &msg, msglen);
+		if (cleanup_requested)
+			break;
+
 	} while (1);
 	ldmsd_log(LDMSD_LINFO,
 		  "Closing configuration socket. cfg_buf_len %d\n",
