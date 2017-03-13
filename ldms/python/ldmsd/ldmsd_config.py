@@ -115,6 +115,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                             'opt_attr': ['interval']},
                       'prdcr_stop_regex': {'id': 25,
                                            'req_attr': ['regex']},
+                      'prdcr_set_status': {'id': 0x100 + 7,
+                                           'req_attr': ['name']},
                       ##### Updater Policy #####
                       'updtr_add': {'id': 30,
                                      'req_attr': ['name'],
@@ -168,14 +170,16 @@ class ldmsdConfig(object):
         """
 
     @abstractmethod
-    def receive_response(self):
+    def receive_response(self, recv_len = None):
         """Receive a response from the ldmsd process
         """
+        if recv_len is None:
+            recv_len = self.max_recv_len
         data_all = ""
-        data = self.socket.recv(self.max_recv_len)
+        data = self.socket.recv(recv_len)
         while '\x00' not in data:
             data_all += data
-            data = self.socket.recv(self.max_recv_len)
+            data = self.socket.recv(recv_len)
         data_all += data
         data = data_all.split('\x00')[0]
         return data
@@ -433,8 +437,8 @@ class ldmsdUSocketConfig(ldmsdConfig):
         if cmd_len != len(cmd):
             raise Exception("Wrong command length")
 
-    def receive_response(self):
-        return ldmsdConfig.receive_response(self)
+    def receive_response(self, recv_len = None):
+        return ldmsdConfig.receive_response(self, recv_len)
 
     def close(self):
         if self.socket is not None:
@@ -499,8 +503,8 @@ class ldmsdInetConfig(ldmsdConfig):
             raise Exception("The connection has been disconnected")
         self.socket.sendall(cmd)
 
-    def receive_response(self):
-        return ldmsdConfig.receive_response(self)
+    def receive_response(self, recv_len = None):
+        return ldmsdConfig.receive_response(self, recv_len)
 
     def close(self):
         if self.socket is not None:

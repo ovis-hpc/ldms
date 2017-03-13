@@ -79,6 +79,8 @@ class LDMSD_Req_Attr(object):
     CONTAINER = 13
     SCHEMA = 14
     METRIC = 15
+    STRING = 16
+    LAST = 17
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -97,8 +99,15 @@ class LDMSD_Req_Attr(object):
                    'metric': METRIC,
         }
 
-    def __init__(self, attr_id, value):
-        self.attr_id = attr_id
+    def __init__(self, value, attr_name = None, attr_id = None):
+        if attr_id:
+            self.attr_id = attr_id
+        else:
+            if attr_name:
+                try:
+                    self.attr_id = self.NAME_ID_MAP[attr_name]
+                except KeyError:
+                    raise
         # One is added to account for the terminating zero
         self.attr_len = int(len(value)+1)
         self.attr_value = value
@@ -123,7 +132,7 @@ class LDMSD_Request(object):
     PRDCR_STATUS = 0x100 + 4
     PRDCR_START_REGEX = 0x100 + 5
     PRDCR_STOP_REGEX = 0x100 + 6
-    PRDCR_METRIC_SET = 0x100 + 7
+    PRDCR_SET_STATUS = 0x100 + 7
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -159,11 +168,64 @@ class LDMSD_Request(object):
     PLUGN_TERM = 0X500 + 6
     PLUGN_CONFIG = 0X500 + 7
 
+    LDMSD_REQ_ID_MAP = {
+            'cli': {'id' :CLI},
+            'example': {'id': EXAMPLE},
+
+            'prdcr_add': {'id': PRDCR_ADD},
+            'prdcr_del': {'id': PRDCR_DEL},
+            'prdcr_start': {'id': PRDCR_START},
+            'prdcr_stop': {'id': PRDCR_STOP},
+            'prdcr_status': {'id': PRDCR_STATUS},
+            'prdcr_start': {'id': PRDCR_START},
+            'prdcr_start_regex': {'id': PRDCR_START_REGEX},
+            'prdcr_stop': {'id': PRDCR_STOP},
+            'prdcr_stop_regex': {'id': PRDCR_STOP_REGEX},
+            'prdcr_set_status': {'id': PRDCR_SET_STATUS},
+
+            'strgp_add': {'id': STRGP_ADD},
+            'strgp_del': {'id': STRGP_DEL},
+            'strgp_start': {'id': STRGP_START},
+            'strgp_stop': {'id': STRGP_STOP},
+            'strgp_status': {'id': STRGP_STATUS},
+            'strgp_prdcr_add': {'id': STRGP_PRDCR_ADD},
+            'strgp_prdcr_del': {'id': STRGP_PRDCR_DEL},
+            'strgp_metric_add': {'id': STRGP_METRIC_ADD},
+            'strgp_metric_del': {'id': STRGP_METRIC_DEL},
+
+            'updtr_add': {'id': UPDTR_ADD},
+            'updtr_del': {'id': UPDTR_DEL},
+            'updtr_start': {'id': UPDTR_START},
+            'updtr_stop': {'id': UPDTR_STOP},
+            'updtr_status': {'id': UPDTR_STATUS},
+            'updtr_prdcr_add': {'id': UPDTR_PRDCR_ADD},
+            'updtr_prdcr_del': {'id': UPDTR_PRDCR_DEL},
+            'updtr_match_add': {'id': UPDTR_MATCH_ADD},
+            'updtr_match_del': {'id': UPDTR_MATCH_DEL},
+
+            'start': {'id': PLUGN_START},
+            'stop': {'id': PLUGN_STOP},
+            'plugin_status': {'id': PLUGN_STATUS},
+            'load': {'id': PLUGN_LOAD},
+            'term': {'id': PLUGN_TERM},
+            'config': {'id': PLUGN_CONFIG}
+        }
+
     SOM_FLAG = 1
     EOM_FLAG = 2
     message_number = 1
     header_size = 20
-    def __init__(self, command, message=None, attrs=None):
+    def __init__(self, command=None, command_id=None, message=None, attrs=None, is_old_itf = False):
+        if is_old_itf:
+            marker = 0
+        else:
+            marker = -1
+        if command_id is None and command is None:
+            raise Exception("Need either command or command_id")
+        if command_id is None:
+            command_id = self.LDMSD_REQ_ID_MAP[command]['id']
+            if command_id is None:
+                raise Exception("Unrecognized command {0}".format(command))
         self.message = message
         self.request_size = self.header_size
         if message:
@@ -176,10 +238,10 @@ class LDMSD_Request(object):
                 self.request_size += len(attr)
             # Account for size of terminating 0
             self.request_size += 4
-        self.request = struct.pack('iiiii', -1,
+
+        self.request = struct.pack('iiiii', marker,
                                    LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
-                                   self.message_number, command,
-                                   self.request_size)
+                                   self.message_number, command_id, self.request_size)
         # Add the attributes after the message header
         if attrs:
             for attr in attrs:
@@ -191,19 +253,20 @@ class LDMSD_Request(object):
         self.response = ""
         LDMSD_Request.message_number += 1
 
-    def send(self, socket):
-        rc = socket.sendall(bytes(self.request))
-        if rc:
-            raise LDMSD_Except("Error {0} sending request".format(rc))
+    def send(self, ctrl):
+        try:
+            ctrl.send_command(bytes(self.request))
+        except:
+            raise
 
-    def receive(self, socket):
+    def receive(self, ctrl):
         self.response = ""
         while True:
-            hdr = socket.recv(self.header_size)
+            hdr = ctrl.socket.recv(self.header_size)
             (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
             if marker != -1:
                 raise LDMSD_Except("Invalid response format")
-            data = socket.recv(rec_len - self.header_size)
+            data = ctrl.socket.recv(rec_len - self.header_size)
             self.response += data
             if flags & LDMSD_Request.EOM_FLAG:
                 break
