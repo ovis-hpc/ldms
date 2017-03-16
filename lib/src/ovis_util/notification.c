@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2016-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -47,6 +47,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+
+#define _GNU_SOURCE
 
 #include "notification.h"
 #include <unistd.h>
@@ -331,7 +333,7 @@ struct ovis_notification * ovis_notification_open(const char *name, uint32_t wri
 	int err = 0;
 	if (fifo) {
 		// open existing fifo or create and open for write.
-		onp->fd = open(name, flags | O_RDWR); 
+		onp->fd = open(name, flags | O_RDWR);
 		if (onp->fd == -1) {
 			ONPMSG(true,
 			   	(OL_INFO,"%s: creating fifo %s\n", __FUNCTION__, name));
@@ -339,11 +341,11 @@ struct ovis_notification * ovis_notification_open(const char *name, uint32_t wri
 			ONPERRNO(err,
 			   	(OL_ERROR,"%s: unable to make fifo %s\n", __FUNCTION__, name, strerror(e)),
 			       goto err);
-			onp->fd = open(name, flags|O_CREAT|O_RDWR, perm); 
+			onp->fd = open(name, flags|O_CREAT|O_RDWR, perm);
 			ONPERRNO((onp->fd == -1),
 			   	(OL_ERROR,"%s: unable to open fifo %s\n", __FUNCTION__, name, strerror(e)),
 					goto err);
-			
+
 		}
 		// check is fifo as expected.
 		struct stat buf;
@@ -358,8 +360,8 @@ struct ovis_notification * ovis_notification_open(const char *name, uint32_t wri
 	} else {
 		// just open file
 		flags |= O_WRONLY|O_CREAT;
-		onp->fd = open(name, flags, perm ); 
-		ONPERRNO(onp->fd == -1, 
+		onp->fd = open(name, flags, perm );
+		ONPERRNO(onp->fd == -1,
 			(OL_ERROR,"%s: unable to open file %s: %s\n", __FUNCTION__, name, strerror(e)),
 			goto err);
 	}
@@ -437,7 +439,7 @@ int ovis_notification_add(struct ovis_notification *onp, const char *msg)
 	}
 	if (onp->log)
 		onp->log(OL_DEBUG,"add Q: %s MSG %s\n", onp->name, msg);
-	
+
 	size_t len = strlen(msg)+2;
 	struct ovis_notification_entry *e = malloc(sizeof(*e) + len);
 	if (!e) {
