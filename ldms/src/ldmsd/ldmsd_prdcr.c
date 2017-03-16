@@ -742,6 +742,7 @@ out:
 	return 0;
 }
 
+/* Must be called with strgp lock held. */
 void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 {
 	/*
@@ -769,9 +770,17 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 		ldmsd_prdcr_set_t prd_set;
 		for (prd_set = ldmsd_prdcr_set_first(prdcr);
 		     prd_set; prd_set = ldmsd_prdcr_set_next(prd_set)) {
-			if (prd_set->state < LDMSD_PRDCR_SET_STATE_READY)
+			ldmsd_strgp_unlock(strgp);
+			pthread_mutex_lock(&prd_set->lock);
+			if (prd_set->state < LDMSD_PRDCR_SET_STATE_READY) {
+				ldmsd_strgp_lock(strgp);
+				pthread_mutex_unlock(&prd_set->lock);
 				continue;
+			}
+
+			ldmsd_strgp_lock(strgp);
 			ldmsd_strgp_update_prdcr_set(strgp, prd_set);
+			pthread_mutex_unlock(&prd_set->lock);
 		}
 		ldmsd_prdcr_unlock(prdcr);
 	}
