@@ -2537,46 +2537,6 @@ int bq_is_metric_pattern(struct bq_store *store, int ptn_id)
 	return 0;
 }
 
-char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx)
-{
-	struct btkn_store *tkn_store = store->tkn_store;
-	struct bptn_store *ptn_store = store->ptn_store;
-	uint64_t attr_off = ptn_store->attr_idx->bvec->data[ptn_id];
-	struct bptn_attrM *attrM = BMPTR(ptn_store->mattr, attr_off);
-	if (!attrM || arg_idx > attrM->argc) {
-		errno = EINVAL;
-		return NULL;
-	}
-	uint64_t arg_off = attrM->arg_off[arg_idx];
-	struct bmlnode_u32 *node;
-	struct bdstr *bdstr = bdstr_new(65536);
-	char buf[4096+2]; /* 4096 should be more than enough for a token, and
-			   * the +2 is for \n and \0 */
-	int rc = 0;
-	int len;
-	BMLIST_FOREACH(node, arg_off, link, ptn_store->marg) {
-		/* node->data is token ID */
-		rc = btkn_store_id2str(tkn_store, node->data, buf, 4096);
-		if (rc)
-			goto err;
-		len = strlen(buf);
-		buf[len] = '\n';
-		buf[len+1] = '\0';
-		rc = bdstr_append(bdstr, buf);
-		if (rc)
-			goto err;
-	}
-	/* Keep only the string in bdstr, and throw away the wrapper */
-	char *str = bdstr_detach_buffer(bdstr);
-	bdstr_free(bdstr);
-	return str;
-err:
-	free(bdstr->str);
-	free(bdstr);
-	errno = rc;
-	return NULL;
-}
-
 int bq_get_comp_id(struct bq_store *store, const char *hostname)
 {
 	char buff[128];

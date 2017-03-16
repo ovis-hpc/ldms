@@ -91,8 +91,6 @@ struct bptn_attrM {
 	uint64_t count; /**< count */
 	struct timeval first_seen; /**< first seen */
 	struct timeval last_seen; /**< last seen */
-	uint64_t arg_off[0]; /**< Offset to the argument list in
-			   	  ::bptn_store::marg */
 };
 
 /**
@@ -125,14 +123,10 @@ BVEC_DEF(bvec_set_u32, struct bset_u32);
 struct bptn_store {
 	char *path; /**< The path of the store. */
 	pthread_mutex_t mutex; /**< Write mutex. */
-	struct bmem *marg; /**< ::bmem for arguments. */
 	struct bmem *mattr; /**< ::bmem for attributes. */
 	struct bmvec_u64 *attr_idx; /**< Index to attribute.
 					attr_idx[ID] is the attribute of
 					pattern ID. */
-	struct barray *aattr; /**< aattr[ID] is the pointer to the
-					in-memory attribute
-				     	of patern ID (::bptn_attr). */
 	struct bmap *map; /**< map STR\<--\>ID */
 };
 

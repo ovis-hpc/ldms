@@ -133,10 +133,6 @@ struct bptn_store* bptn_store_open(const char *path, int flag)
 	store->map = bmap_open(tmp);
 	if (!store->map)
 		goto err1;
-	sprintf(tmp, "%s/marg.map", path);
-	store->marg = bmem_open(tmp);
-	if (!store->marg)
-		goto err1;
 	sprintf(tmp, "%s/mattr.map", path);
 	store->mattr = bmem_open(tmp);
 	if (!store->mattr)
@@ -159,36 +155,6 @@ struct bptn_store* bptn_store_open(const char *path, int flag)
 		/* skip internal attr sets if O_RDONLY */
 		goto out;
 
-	store->aattr = barray_alloc(sizeof(void*), ptn_len);
-	if (!store->aattr)
-		goto err1;
-	int i, j;
-	struct bvec_u64 *attr_bvec = store->attr_idx->bvec;
-	int len = store->attr_idx->bvec->len;
-	for (i=0; i<len; i++) {
-		/* For each pattern */
-		uint64_t attr_off = attr_bvec->data[i];
-		struct bptn_attrM *attrM = BMPTR(store->mattr, attr_off);
-		if (!attrM) /* attrM can be null */
-			continue;
-		struct bptn_attr *attr;
-		attr = bptn_attr_alloc(attrM->argc);
-		if (!attr)
-			goto err1;
-		barray_set(store->aattr, i, &attr);
-		for (j=0; j<attrM->argc; j++) {
-			/* For each argument set (implemented as list
-			 * in mmapped file)*/
-			struct bmlnode_u32 *node;
-			BMLIST_FOREACH(node, attrM->arg_off[j], link,
-					store->marg) {
-				/* Add element into the in-memory set. */
-				if (bset_u32_insert(&attr->arg[j], node->data)
-						== BSET_INSERT_ERR)
-					goto err1;
-			}
-		}
-	}
 out:
 	return store;
 
@@ -201,8 +167,6 @@ err0:
 void bptn_store_close_free(struct bptn_store *store)
 {
 	/* Clear the in-memory stuffs first. */
-	if (store->aattr)
-		barray_free(store->aattr);
 	if (store->path)
 		free(store->path);
 	/* Then clear the mmapped stuffs. */
@@ -210,8 +174,6 @@ void bptn_store_close_free(struct bptn_store *store)
 		bmvec_u64_close_free(store->attr_idx);
 	if (store->mattr)
 		bmem_close_free(store->mattr);
-	if (store->marg)
-		bmem_close_free(store->marg);
 	if (store->map)
 		bmap_close_free(store->map);
 	free(store);
@@ -222,31 +184,14 @@ int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
 {
 	int rc = 0;
 	pthread_mutex_lock(&store->mutex);
-	struct bptn_attr *attr;
-	if (!barray_get(store->aattr, msg->ptn_id, &attr)) {
-		attr = NULL;
-	}
-	if (!attr) {
-		/* First message for the pattern */
-		attr = bptn_attr_alloc(msg->argc);
-		if (!attr) {
-			rc = ENOMEM;
-			goto err0;
-		}
-		if (barray_set(store->aattr, msg->ptn_id, &attr)) {
-			rc = errno;
-			goto err1;
-		}
-	}
 	uint64_t attrM_off = bmvec_u64_get(store->attr_idx, msg->ptn_id);
 	struct bptn_attrM *attrM = BMPTR(store->mattr, attrM_off);
 	if (!attrM) {
 		/* First message for the pattern */
-		attrM_off = bmem_alloc(store->mattr, sizeof(*attrM) +
-				msg->argc*sizeof(typeof(attrM->arg_off[0])));
+		attrM_off = bmem_alloc(store->mattr, sizeof(*attrM));
 		if (!attrM_off) {
 			rc = ENOMEM;
-			goto err2;
+			goto out;
 		}
 		attrM = BMPTR(store->mattr, attrM_off);
 		attrM->count = 0;
@@ -255,8 +200,6 @@ int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
 		bmvec_u64_set(store->attr_idx, msg->ptn_id, attrM_off);
 	}
 
-	/* should not happen, but better safe than sorry */
-	assert(attr->argc == msg->argc && attrM->argc == msg->argc);
 
 	attrM->count++;
 	if (timercmp(tv, &attrM->first_seen, <))
@@ -264,16 +207,6 @@ int bptn_store_addmsg(struct bptn_store *store, struct timeval *tv,
 	if (timercmp(tv, &attrM->last_seen, >))
 		attrM->last_seen = *tv;
 
-	goto out;
-err2:
-	/* Unset pattern attribute */
-	do {
-		void *tmp = NULL;
-		barray_set(store->aattr, msg->ptn_id, &tmp);
-	} while (0);
-err1:
-	bptn_attr_free(attr);
-err0:
 out:
 	pthread_mutex_unlock(&store->mutex);
 	return rc;
@@ -384,9 +317,6 @@ int bptn_store_refresh(struct bptn_store *ptns)
 	if (rc)
 		return rc;
 	rc = bmem_refresh(ptns->mattr);
-	if (rc)
-		return rc;
-	rc = bmem_refresh(ptns->marg);
 	if (rc)
 		return rc;
 	return rc;

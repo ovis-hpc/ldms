@@ -398,17 +398,6 @@ char* bq_get_all_ptns(struct bq_store *store);
 int bq_get_all_ptns_r(struct bq_store *store, char *buf, size_t buflen);
 
 /**
- * Get all tokens of \c ptn_id at the '*' position \c arg_idx.
- * \param store The store handle.
- * \param ptn_id The pattern id.
- * \param arg_idx The index of the pattern argument (*).
- * \returns all tokens at \c arg_idx of \c ptn_id, separated by '\\n'. The
- * returned string is automatically allocated, the caller is responsible to free
- * it.
- */
-char* bq_get_ptn_tkns(struct bq_store *store, int ptn_id, int arg_idx);
-
-/**
  * Print formatted pattern from the store.
  *
  * \param store The store handle.
