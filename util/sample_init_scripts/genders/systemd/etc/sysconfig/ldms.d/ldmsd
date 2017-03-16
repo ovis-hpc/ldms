@@ -361,11 +361,11 @@ if test -z "$LDMSAGGD_MEM_RES"; then
 fi
 export LDMSAGGD_MEM_RES
 if test -z "$LDMSAGGD_MEM_RES"; then
-	MEMOPT=""
+	MEM_OPT=""
 else
-	MEMOPT="-m"
+	MEM_OPT="-m"
 fi
-export MEMOPT
+export MEM_OPT
 
 if test -z "$LDMSD_EVENT_THDS"; then
 	LDMSD_EVENT_THDS=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_conn_thds 2>/dev/null`

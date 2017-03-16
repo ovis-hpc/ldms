@@ -225,6 +225,9 @@ save_env_finish () {
 	fi
 	printenv |sort > $env2
 	diff $env1 $env2 |sed -e 's/< .*//g' -e 's/^-*//g' -e 's/^[0-9].*//g' -e 's/^> //g' |grep = > $2
+	if ! test "$DEBUG" = "yes"; then
+		/bin/rm -f $env1 $env2
+	fi
 }
 	
 # append changed exported env vars to $2
@@ -540,7 +543,7 @@ start_add_hosts () {
 		ldmsctl_args3 -n $LDMS_HOSTNAME -g $LDMS_GENDERS -v 1
 	fi
 	# actually do it.
-	echo "# aggregator config args computed with ldmsctl_args3 from $LDMS_GENDERS" >> $out
+	echo "# aggregator config args computed with ldmsctl_args3 -n $LDMS_HOSTNAME -g $LDMS_GENDERS" >> $out
 	ldmsctl_args3 -n $LDMS_HOSTNAME -g $LDMS_GENDERS >> $out
 	echo "# " >> $out
 	echo "# end aggregation section" >> $out
