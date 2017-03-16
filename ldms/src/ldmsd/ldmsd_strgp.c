@@ -651,6 +651,7 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		if (ref) {
 			LIST_REMOVE(ref, entry);
 			ldmsd_strgp_put(ref->strgp);
+			ref->strgp = NULL;
 			free(ref);
 		}
 		break;
@@ -817,4 +818,27 @@ int cmd_strgp_del(char *replybuf, struct attr_value_list *avl, struct attr_value
 
 out_0:
 	return 0;
+}
+
+void ldmsd_strgp_close()
+{
+	int rc = 0;
+	ldmsd_strgp_t strgp = ldmsd_strgp_first();
+	while (strgp) {
+		ldmsd_strgp_lock(strgp);
+		if (strgp->state != LDMSD_STRGP_STATE_RUNNING) {
+			goto next;
+		}
+		ldmsd_task_stop(&strgp->task);
+		strgp_close(strgp);
+		strgp->state = LDMSD_STRGP_STATE_STOPPED;
+		ldmsd_strgp_unlock(strgp);
+		/*
+		 * ref_count shouldn't reach zero
+		 * because the strgp isn't deleted yet.
+		 */
+		ldmsd_strgp_put(strgp);
+next:
+		strgp = ldmsd_strgp_next(strgp);
+	}
 }

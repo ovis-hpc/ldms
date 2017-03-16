@@ -299,11 +299,14 @@ double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 }
 #endif /* LDMSD_UPDATE_TIME */
 
+extern void ldmsd_strgp_close();
+
 void cleanup(int x, const char *reason)
 {
 	int llevel = LDMSD_LINFO;
 	if (x)
 		llevel = LDMSD_LCRITICAL;
+	ldmsd_strgp_close();
 	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
 		       (reason && x) ? reason : "");
 	ldmsd_config_cleanup();
