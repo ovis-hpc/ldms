@@ -219,14 +219,17 @@ int f_mkdir_p(const char *path, __mode_t mode);
 /**
  * \brief Replace environment variables in a string
  *
- * This function handles $<name> and the ${<name>} syntax for
- * replacing these strings with the corresponding environment variable
- * value.
+ * This function handles the ${<name>} syntax for replacing these
+ * strings with the corresponding environment variable value.
  *
  * The syntax is similar to bash, for example if getenv("HOSTNAME") ==
  * "orion-08", then:
  *
  * "${HOSTNAME}/meminfo" becomes "orion-08/meminfo"
+ *
+ * The supported syntax for the <name> is [[:alnum:]_]+. That is, one
+ * or more alpha-numeric or '_' characters. Environment variables that
+ * are missing are replaced with "".
  *
  * The function returns memory that was allocated with malloc()
  *
