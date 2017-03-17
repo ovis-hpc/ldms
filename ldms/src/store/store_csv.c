@@ -1487,8 +1487,6 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
-	if (s_handle->ucontext)
-		free(s_handle->ucontext);
 	s_handle->ucontext = NULL;
 	if (s_handle->file)
 		fclose(s_handle->file);
