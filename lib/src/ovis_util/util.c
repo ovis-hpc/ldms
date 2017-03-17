@@ -80,42 +80,6 @@ static const char *get_env_var(const char *src, size_t start_off, size_t end_off
 	return name;
 }
 
-/*
- * Compute the space occupied by the ENV_VAR names, and
- * ENVVAR values
- */
-static int get_names_and_values(const char *str,
-				regmatch_t *match, size_t match_len,
-				size_t *p_name_len, size_t *p_value_len,
-				char **values)
-{
-	char *value;
-	const char *name;
-	size_t name_total, value_total, name_len, value_len;
-	int i;
-
-	name_total = 0;
-	value_total = 0;
-
-	for (i = 0; i < match_len; i++) {
-		if (match[i].rm_so == -1)
-			break;
-		name_len = (match[i].rm_eo - match[i].rm_so);
-		name = get_env_var(str, match[i].rm_so, match[i].rm_eo);
-		value = getenv(name);
-		if (value) {
-			values[i] = value;
-			value_len = strlen(value);
-		} else {
-			values[i] = "";
-			value_len = 0;
-		}
-	}
-	*p_name_len = name_len;
-	*p_value_len = value_len;
-	return i;
-}
-
 char *str_repl_env_vars(const char *str)
 {
 	const char *name;
