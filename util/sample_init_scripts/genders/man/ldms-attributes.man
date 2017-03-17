@@ -24,16 +24,16 @@ Attribute               What it does if defined for a node
 --------------          ----------------------------------------
 ldmsd                   Enables ldmsd sampling daemon
 ldmsd_host=H            Defines host name for the daemon used in data
-                        connections.  Typically, this is the name of the 
+                        connections.  Typically, this is the name of the
                         node as it appears on a fast local network.
-ldmsd_producer=PROD     Defines the producer name reported in ldms data 
+ldmsd_producer=PROD     Defines the producer name reported in ldms data
                         files and user interfaces; typically a short form
                         of host name.
 ldmsd_port=P            Defines the port number for the data server.
 ldmsd_xprt=X            Defines protocol for data server connections.
                         Typically, one of sock, rdma, ugni.
 ldmsd_idbase=IDMIN      Defines the least component_id for a node type.
-                        For a class of node names differing only in an 
+                        For a class of node names differing only in an
                         integer ISUFFIX, component_id is IDMIN+ISUFFIX.
                         component_id of 0 is reserved;
                         ensure IDMIN+ISUFFIX>0.
@@ -46,7 +46,7 @@ ldmsd_proc=P            Core to pin ldmsd to in many-core hosts. Active
                         See ldmsd-genders(8).
 ldmsaggd=LIST           Enables aggregation, gathering from LIST.
                         LIST is : separated, containing hostnames, or
-                        literals BOOTNODELIST, or CLIENTOFLIST or 
+                        literals BOOTNODELIST, or CLIENTOFLIST or
                         AGGCLIENTOFLIST. See "Node Lists" below.
 ldmsaggd_clientof=H     Defines n-th level aggregation host.
 ldmsaggd_event_thds=N   Defines thread count used to manage events.
@@ -90,8 +90,8 @@ These attributes control what exactly is collected by defining key parts of the 
 .nf
 Attribute                       What it does if defined for a node
 --------------                  ----------------------------------------
-ldmsd_metric_plugins=L          Defines collector plugins to load as a : 
-                                separated list.  May vary for node types 
+ldmsd_metric_plugins=L          Defines collector plugins to load as a :
+                                separated list.  May vary for node types
                                 or individual nodes.
 ldmsd_SUFFIX=PARAMLIST          Defines SUFFIX plugin config arguments.
 ldmsd_config_text_SUFFIX=FILE   Defines SUFFIX plugin config file.
@@ -103,7 +103,7 @@ ldmsd_sysclassib=PARAMLIST      Defines config flags of sysclassib.
 ldmsd_config_text_meminfo=yes   Appends /etc/sysconfig/ldms.d/plugins-conf/meminfo
                                 to the standard sampler plugin startup line.
 ldmsd_config_gen_vmstat=yes     Runs /etc/sysconfig/ldms.d/plugins-conf/gen.vmstat
-                                and appends the output to the plugin 
+                                and appends the output to the plugin
                                 configuration file.
 
 .fi
@@ -140,13 +140,13 @@ ldmsd_store_csv=PARAMLIST       defines config flags for store_csv.
 A plugin's options may be configured by attribute values, a static text file
 snippet, or a generated text for complicated cases. The static, generated, and  attribute-defined configuration cases are explained here. Herein the suffix 'SUFFIX' on attribute names is replaced with a specific plugin name to control that plugin. FILE is normally a full path name.
 .PP
-A static plugin configuration file for a specific plugin can be used by defining 
+A static plugin configuration file for a specific plugin can be used by defining
 .B ldmsd_config_text_SUFFIX=FILE.
 Only the plugin specific options should appear in the text; standard options are generated. If FILE is 'yes', then /etc/sysconfig/ldms.d/SUFFIX is read as a text file.
 If FILE is a partial path name, it will be appended to /etc/sysconfig/ldms.d/ and used. The daemon init script will start the plugin after applying the configuration text.
 .PP
-A generated configuration file for a specific plugin can be used by defining attribute 
-.B ldmsd_config_gen_SUFFIX=PROG. 
+A generated configuration file for a specific plugin can be used by defining attribute
+.B ldmsd_config_gen_SUFFIX=PROG.
 The program PROG will be invoked with arguments and should write the entire configuration and start command set needed to its standard output. If PROG is 'yes', then /etc/sysconfig/ldms.d/gen.SUFFIX is expected to be a program.
 If PROG is a partial path name, it will be appended to /etc/sysconfig/ldms.d/ and used as a program. This is the recommended route if multiple instances of the same sampler plugin will be in use. For samplers, the generator program will receive arguments: $plugin-name $producer-name $host $sample_interval $sample_offset
 
@@ -187,7 +187,7 @@ plugin configuration attributes where needed.
 .SH Storage specific plugin configuration
 .PP
 To support the most common usage, the names of all active collector plugins found in the genders file are assumed to be valid schema names. LDMSD_SCHEMA_LIST overrides this assumption.
-When multiple schema are generated from the same collector plugin, the ldmsd_schemas_SUFFIX attribute or the LDMSD_SCHEMA_LIST environment variable should be defined in the ldmsd.local.conf file to ensure correct local storage configuration. 
+When multiple schema are generated from the same collector plugin, the ldmsd_schemas_SUFFIX attribute or the LDMSD_SCHEMA_LIST environment variable should be defined in the ldmsd.local.conf file to ensure correct local storage configuration.
 .PP
 By default (when no ldmsd_schemas_SUFFIX is defined), all schemas are routed to all loaded storage plugins.
 
@@ -198,7 +198,7 @@ BOOTNODELIST, LDMSDALL, CLIENTOFLIST, and AGGCLIENTOFLIST. Explicitly
 naming individual nodes in a node list is rarely desirable.
 
 .PP
-The keyword BOOTNODELIST is replaced with the list of nodes with the attribute "bootnode" having a value matching the name of the aggregator host. 
+The keyword BOOTNODELIST is replaced with the list of nodes with the attribute "bootnode" having a value matching the name of the aggregator host.
 
 .PP
 The keyword LDMSDALL is replaced with the list of all nodes with the attribute "ldmsd". Useable in small clusters with a single aggregator.
@@ -221,7 +221,7 @@ on each mon host H.
 .PP
 
 .PP
-To run 2nd and higher level aggregators, aggregator hierarchy relationships must be specified. If we need in-platform data for applications seeking 
+To run 2nd and higher level aggregators, aggregator hierarchy relationships must be specified. If we need in-platform data for applications seeking
 a global performance views, a top level aggregator pulling from other aggregators can be defined with AGGCLIENTOFLIST thus:
 .nf
    montop ldmsaggd=AGGCLIENTOFLIST
@@ -233,7 +233,7 @@ AGGCLIENTOFLIST is computed as:
    nodeattr -c ldmsaggd_clientof=montop
 .fi
 .PP
-on the montop host. 
+on the montop host.
 
 If nodes mon[1-4] are themselves to be monitored by montop, then they must have both ldmsaggd and ldmsd gender values. In this case, both special list variables are used:
 .nf

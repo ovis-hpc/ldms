@@ -31,13 +31,13 @@ check_log_option () {
 	case $LDMS_LOG_PATH in
 		journal)
 			sdok=0
-			if ps -p 1 -o command --no-headers |grep systemd >/dev/null; then 
+			if ps -p 1 -o command --no-headers |grep systemd >/dev/null; then
 				sdok=1
 				LDMS_LOG_OPT=""
 				LDMS_LOG_PATH=""
 				LDMS_LOG_FILE=""
 			fi
-			if /bin/ls -l /sbin/init |grep systemd >/dev/null; then 
+			if /bin/ls -l /sbin/init |grep systemd >/dev/null; then
 				sdok=1
 				LDMS_LOG_OPT=""
 				LDMS_LOG_PATH=""
@@ -49,7 +49,7 @@ check_log_option () {
 			fi
 			;;
 		syslog)
-			if ps -p 1 -o command --no-headers |grep systemd >/dev/null; then 
+			if ps -p 1 -o command --no-headers |grep systemd >/dev/null; then
 				LDMS_LOG_OPT=""
 				LDMS_LOG_PATH=""
 				LDMS_LOG_FILE=""
@@ -187,7 +187,7 @@ build_genders_file () {
 		echo "# from $i:" >> $ALLGENDERS
 		cat $i >> $ALLGENDERS
 	done
-			
+
 	if ! test -f "$ALLGENDERS"; then
 		echoq Unable to create $ALLGENDERS. Check filesystem.
 		dietrace 1
@@ -215,7 +215,7 @@ save_env_init () {
 	fi
 	printenv |sort > $env1
 }
-	
+
 # append changed exported env vars to $2
 save_env_finish () {
 	env2=`mktemp /var/run/ldmsd/tmp/env2.$1.XXX`
@@ -229,7 +229,7 @@ save_env_finish () {
 		/bin/rm -f $env1 $env2
 	fi
 }
-	
+
 # append changed exported env vars to $2
 # prepend export to all lines
 save_env_finish_sysvinit () {
@@ -240,7 +240,7 @@ save_env_finish_sysvinit () {
 		/bin/rm -f $env1 $env2
 	fi
 }
-	
+
 
 # translate genders encoded args to key=value args.
 # reformat : -> spc; 1st / to =; & to , .
@@ -342,9 +342,9 @@ plugin_name_check () {
 	esac
 }
 
-# Generate metric plugin configuration, using the set of plugins from 
+# Generate metric plugin configuration, using the set of plugins from
 # genders # on each host.
-# Individual plugin config generation failures do not stop other 
+# Individual plugin config generation failures do not stop other
 # plugins, but will be logged.
 # Failed plugins may cause ldmsd itself to not start later when
 # the config file is read.
@@ -355,23 +355,23 @@ plugin_name_check () {
 # plugin-suffixed genders:
 # (1) ldmsd_${P} gender value as the options (as in v2)
 # OR
-# (2) ldmsd_config_text_${P} gender value as a file containing a plugin 
+# (2) ldmsd_config_text_${P} gender value as a file containing a plugin
 # 	specific configuration text line or lines
 # 	excluding the start command line.
 # 	As a special case, value yes means use
 # 	$sysconfdir/sysconfig/ldms.d/plugins-conf/$P.
-# 	The first line of the file is unconditionally appended to 
+# 	The first line of the file is unconditionally appended to
 # 	standard arguments for name producer instance & component_id.
 # 	Any additional lines that a plugin may support should use the full
 # 	"config name=PLUGIN <more options>" syntax
-# 	This works well for plugin-specific options standard across 
+# 	This works well for plugin-specific options standard across
 # 	an entire cluster.
 # 	Comments within this file should never begin the first line,
 # 	but may appear any where else.
 # OR
-# (3) ldmsd_config_gen_${P} gender value as a program which will generate 
+# (3) ldmsd_config_gen_${P} gender value as a program which will generate
 # 	plugin configuration text *and start command* on stdout.
-# 	As a special case, value yes means run 
+# 	As a special case, value yes means run
 # 	$sysconfdir/sysconfig/ldms.d/plugins-conf/gen.$P
 # 	The generation program is passed the arguments:
 # 	plugin-name producer-name host sample-interval sample-offset
@@ -447,7 +447,7 @@ start_ldmsd_plugins () {
 				continue
 			fi
 		fi
-		
+
 		# plugin options from per-plugin config/start generators
 		genprog=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_gen_${pi} 2>/dev/null`
 		if test -n "$genprog"; then
@@ -522,7 +522,7 @@ generate_collector_config  () {
 	return 0
 }
 
-# Generate aggregation configuration, using the set of plugins from 
+# Generate aggregation configuration, using the set of plugins from
 # genders on each host.
 start_add_hosts () {
 	# This function generates and sends lines like the next few
@@ -561,7 +561,7 @@ get_schema_list () {
 	schema_host=$1
 	plugin=$2
 	# string in gender is : separated list of schema names
-	
+
 	# List of schemas specifically fed to plugin. if empty, use
 	# plugin names and ldmsd_schemas_extra values.
 	schemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_schemas_${plugin} 2>/dev/null`
@@ -600,9 +600,9 @@ get_schema_list () {
 	echo $slist
 }
 
-# Generate storage plugin configuration, using the set of plugins from 
+# Generate storage plugin configuration, using the set of plugins from
 # genders # on each host.
-# Individual plugin config generation failures do not stop other 
+# Individual plugin config generation failures do not stop other
 # plugins, but will be logged.
 # Failed plugins may cause ldmsd itself to not start later when
 # the config file is read.
@@ -613,23 +613,23 @@ get_schema_list () {
 # plugin-suffixed genders:
 # (1) ldmsd_${P} gender value as the options (as in v2)
 # OR
-# (2) ldmsd_config_text_${P} gender value as a file containing a plugin 
+# (2) ldmsd_config_text_${P} gender value as a file containing a plugin
 # 	specific configuration text line or lines.
 # 	The text must include policy start command lines, unlike for samplers.
 # 	As a special case, value yes means use
 # 	$sysconfdir/sysconfig/ldms.d/plugins-conf/$P.
-# 	The first line of the file is unconditionally appended to 
+# 	The first line of the file is unconditionally appended to
 # 	standard arguments for named store instance.
 # 	Any additional lines that a plugin may support should use the full
 # 	"config name=PLUGIN <more options>" syntax
-# 	This works well for plugin-specific options standard across 
+# 	This works well for plugin-specific options standard across
 # 	an entire cluster.
 # 	Comments within this file should never begin the first line,
 # 	but may appear any where else.
 # OR
-# (3) ldmsd_config_gen_${P} gender value as a program which will generate 
+# (3) ldmsd_config_gen_${P} gender value as a program which will generate
 # 	storage plugin configuration text *and start command* on stdout.
-# 	As a special case, value yes means run 
+# 	As a special case, value yes means run
 # 	$sysconfdir/sysconfig/ldms.d/plugins-conf/gen.$P
 # 	The generation program is passed the arguments:
 # 	plugin-name host [schemas for plugin if defined]
@@ -658,7 +658,7 @@ start_stores () {
 	for pi in $(eval echo $LDMSD_STORE_PLUGINS | tr ":;'\`" "\n"); do
 		# schemas from env or genders
 		schemas=`get_schema_list $host $pi`
-		# plugin options from gender files		
+		# plugin options from gender files
 		config=`$NODEATTR $NODEATTRFILE -v $host ldmsd_${pi} 2>/dev/null`
 		grok="`config_from_gender $config`"
 		eval STORE_CONFIG_${pi}='$grok'
@@ -693,8 +693,8 @@ start_stores () {
 				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
 				continue
 			fi
-		fi	
-		
+		fi
+
 		# plugin options from per-plugin config/start generators
 		genprog=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_gen_${pi} 2>/dev/null`
 		if test -n "$genprog"; then

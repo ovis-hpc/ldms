@@ -24,7 +24,7 @@ initusage()
 {
 	echo $"Usage: $0 {start|stop|restart|status} [flags]
         Additional flags: "
-        cat << EOT >&2 
+        cat << EOT >&2
 	-v  verbose
 EOT
 }
@@ -111,7 +111,7 @@ rm_sock_dir() {
 # ldmsctl_args, but so far is not a performance problem.
 # Also, if flattened, an error configuring one plugin may stop
 # another plugin from starting, unlike now.
-# 
+#
 start_ldmsd_plugins () {
 	echoq "In start_ldms_plugins"
 	if [[ -z $LDMSCTL ]]; then
@@ -140,7 +140,7 @@ start_ldmsd_plugins () {
 		ARGS_CONFIG="name=$i component_id=$COMPONENT_ID set=$host/$i $grok"
 		ARGS_START="name=$i interval=$interval offset=$offset"
 		echoq "Loading <${i}> with $ARGS_CONFIG"
-		{ echo load name=$i | $DO_CTL ; } && 
+		{ echo load name=$i | $DO_CTL ; } &&
 		{ echo config $ARGS_CONFIG | $DO_CTL ; } &&
 		{ echo start $ARGS_START | $DO_CTL ; }
 	done
@@ -155,7 +155,7 @@ start_add_hosts () {
 	# where each line is tailored to the remote host collected from.
 	# This potentially requires 1000s of nodeattr calls if done in shell
 	# rather than C/C++, so a C++ wrapper on libgenders  is used.
-	
+
 	DO_CTL="$LDMSAGGCTL -S $LDMSAGGD_LOCAL_SOCK_DIR/$LDMSAGGD_LOCAL_SOCK"
 
 	# debugging ldmsctl_args to syslog looks like this; default debug is to screen.
@@ -191,7 +191,7 @@ start_stores () {
 		config=`nodeattr $NODEATTRFILE -v $host ldmsaggd_${i}`
 		grok="`config_from_gender $config`"
 		eval AGG_CONFIG_$i='$grok'
-	
+
 		eval extraconfig='$'"AGG_CONFIG_${i}"
 		ARGS_CONFIG="name=$i path=$STORE_PATH/$i $extraconfig"
 		mkdir -p $STORE_PATH/$i

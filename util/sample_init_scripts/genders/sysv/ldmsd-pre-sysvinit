@@ -2,9 +2,9 @@
 #
 # Generate sysv environment file for ldmsd.
 # loaded from /etc/init.d/ldmsd
-# Note that the same physical node can have multiple collection schemes, 
+# Note that the same physical node can have multiple collection schemes,
 # such as chama.few chama.many chama.highfrequency.
-# Note that the same physical cluster can have multiple store schemes, 
+# Note that the same physical cluster can have multiple store schemes,
 # such as chama.store chama.web chama.splunk.
 #
 # User supplied arguments daemon-instance-name /envfilepath
@@ -31,7 +31,7 @@
 #
 # Environment
 # LDMS_PREFIX can be set in the init file to override
-# the default prefix /usr. 
+# the default prefix /usr.
 # Exception: sysconfdir (/etc) is overridden as $LDMS_PREFIX/etc.
 # Variables exported by ldms.d/ldmsd and its descendants are
 # exported to the daemon's environment.

@@ -5,7 +5,7 @@
 # top <- a2 <-----+ c2n3,pqv
 #     | \a2(d)pqv |
 #     |           + c2n4,pqv
-#     |           + a1(d)pqv 
+#     |           + a1(d)pqv
 #     |           + a1 <---+ c1n1,pqv
 #     |                    + c1n2,pqv
 #     |
@@ -46,7 +46,7 @@ a1 ldmsaggd_clientof=a2
 b1 ldmsaggd_clientof=b2
 a2 ldmsaggd_clientof=top
 b2 ldmsaggd_clientof=top
-# Any explicit names in ldmsaggd are checked for collectors only, 
+# Any explicit names in ldmsaggd are checked for collectors only,
 # which may not be expected by someone configure higher level aggregators
 # assemble aggd lists via (AGG)CLIENTOFLIST
 a1 ldmsaggd=CLIENTOFLIST

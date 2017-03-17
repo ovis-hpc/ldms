@@ -6,4 +6,4 @@ SUBDIRS = src systemd sysv man examples
 endif
 
 dist_doc_DATA = \
-README 
+README

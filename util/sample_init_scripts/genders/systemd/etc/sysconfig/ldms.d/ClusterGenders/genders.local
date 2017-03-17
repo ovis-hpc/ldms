@@ -3,7 +3,7 @@
 # as a prototypical ldms gender attributes set.
 # Optionally, append its contents to /etc/genders
 
-# Run data collectors 
+# Run data collectors
 # 1 second sampling
 twain ldmsd
 twain ldmsd_interval_default=1000000,ldmsd_offset_default=0

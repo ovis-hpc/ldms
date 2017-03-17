@@ -1,6 +1,6 @@
 #
 # loaded from init.d/ldms-aggd
-# 
+#
 # This is where the configuration is extracted from genders information.
 # Edit sysconfig/ldms-aggd.conf for manual exception data, if any, needed
 # and for node-independent variables.

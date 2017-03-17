@@ -3,7 +3,7 @@ shaun[1-16] bootnode=shaun-admin,nfsmounts=/home
 shaun-admin nfsmounts=/home
 shaun user-login,nfs-server
 
-# Run data collectors 
+# Run data collectors
 # 1 second sampling
 shaun[1-16] ldmsd,ldmsd_dbg=ERROR
 shaun-admin ldmsd,ldmsaggd=BOOTNODELIST,ldmsd_dbg=ERROR

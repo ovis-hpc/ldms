@@ -3,7 +3,7 @@
 # ldms-aggd		Start up the ldms aggregator daemon
 #
 # chkconfig: 2345 98 96
-# description: ldms-aggd aggregates results from ldmsd (sampler) instances. 
+# description: ldms-aggd aggregates results from ldmsd (sampler) instances.
 
 # processname: ldms-aggd
 # pidfile: $localstatedir/run/ldms-aggd.pid
@@ -163,7 +163,7 @@ start()
 			echo
 			# need to cleanup and exit here.
 		fi
-			
+
 		sleep 1
 		echo -n $"Adding hosts: "
 		start_add_hosts
@@ -218,7 +218,7 @@ restart() {
 case "$arg1" in
 	start)
 		echoq "In start checking for daemon..."
-		rh_status_q 
+		rh_status_q
 		RETVAL=$?
 		if [ $RETVAL -eq 0 ]; then
 			echoq "$DAEMON process still running... No action taken."

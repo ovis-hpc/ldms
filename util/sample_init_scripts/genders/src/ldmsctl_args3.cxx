@@ -153,7 +153,7 @@ private:
 	 * \param host unqualified hostname as used by genders
 	 * \param val gender value possibly containing %%#d %#m and %#u,
 	 * where # is an integer index of the split name pieces.
-	 * 
+	 *
 	 * output: substituted genderval based on the following:
 	 * replace %#d with the #'th integer substring in hostname
 	 * replace %#m with the #'th - separated substring in hostname
@@ -196,7 +196,7 @@ private:
 			}
 			++i;
 		}
-		
+
 		// make - delimited part replacements %#m
 		vector<string> mparts;
 		split(mparts, host, is_any_of("-"), boost::token_compress_on);
@@ -283,15 +283,15 @@ public:
 			t.producer = host;
 		}
 		if (! has_property(host, xprts, t.xprt) ) {
-			t.xprt = "sock"; 
+			t.xprt = "sock";
 		}
-		if (! has_property(host, retry, t.retry) ) { 
+		if (! has_property(host, retry, t.retry) ) {
 			t.retry = "2000000"; // 2 sec
 		}
-		if (! has_property(host, intervals, t.interval) ) { 
+		if (! has_property(host, intervals, t.interval) ) {
 			t.interval = "10000000"; // 10 sec
 		}
-		if (! has_property(host, offsets, t.offset) ) { 
+		if (! has_property(host, offsets, t.offset) ) {
 			t.offset = "100000"; // 0.1 sec
 		}
 	}
@@ -323,7 +323,7 @@ public:
 };
 
 
-/* 
+/*
 	Summary data class for a nodes roles.
 */
 class hdata {
@@ -383,7 +383,7 @@ private:
 					sets_seen.insert(names[i]);
 				}
 			}
-			
+
 		}
 		split(extranames,extrasets,is_any_of(":"),
 			boost::token_compress_on);
@@ -391,18 +391,18 @@ private:
 		for (i = 0; i < extranames.size(); i++) {
 			if (ban.find(extranames[i]) == ban.end()) {
 				out.push_back(client+"/"+extranames[i]);
-				if (sets_seen.find(extranames[i]) == 
+				if (sets_seen.find(extranames[i]) ==
 					sets_seen.end()) {
 					sets_seen.insert(extranames[i]);
 				}
 			}
-			
+
 		}
 		if (nn == 0) {
 			cerr << "Node " << client << " has no schemas defined." << endl;
 		}
 	}
-		
+
 	void add_collectors(int level, vector<string>& node_list, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
 		for (vector<string>::size_type j = 0; j < node_list.size(); j++) {
 			if (level) {
@@ -414,6 +414,7 @@ private:
 				in->get_trans(node_list[j], t, "ldmsd");
 				string sets = join(collsets,",");
 				ostringstream oss;
+				// oss << "# line 417" << endl;
 				oss << "prdcr_add name=" << t.producer;
 				oss << " host=" << t.host;
 				oss << " type=active";
@@ -518,6 +519,7 @@ public:
 						string sets = join(aggsets,",");
 
 						ostringstream oss;
+						// oss << "# line 522" << endl;
 						oss << "prdcr_add name=" << t.producer;
 						oss << " host=" << t.host;
 						oss << " type=active";
@@ -549,13 +551,13 @@ public:
 		}
 	}
 
-	// 
+	//
 	void print_add_hosts(string NODELIST) {
 		for(vector<string>::size_type i = 0; i < adds.size(); i++) {
 			cout << adds[i] << endl;
 		}
 	}
-};	
+};
 
 class ctloptions {
 
@@ -564,12 +566,12 @@ public:
 	int log_level; // higher is louder
 	string genders;
 	string task;
-	string hostname; 
-	string outname; 
+	string hostname;
+	string outname;
 	bool useoutname;
-	string interval; 
+	string interval;
 	bool useinterval;
-	string offset; 
+	string offset;
 	bool useoffset;
 
 	void dump() {
@@ -608,7 +610,7 @@ public:
 		if (envgenders != NULL) {
 			genders = envgenders;
 		}
-		
+
 		po::options_description desc("Allowed options");
 		desc.add_options()
 		("genders,g", po::value <  string  >(&genders),
@@ -667,7 +669,7 @@ int main(int argc, char **argv)
 		set<string> ban, hosts_seen, sets_seen;
 		vector<string> out;
 		hdata top(opt.hostname, info);
-		
+
 		if (opt.useinterval)
 			top.set_interval(opt.interval);
 

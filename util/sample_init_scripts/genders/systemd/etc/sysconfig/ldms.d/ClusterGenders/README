@@ -10,7 +10,7 @@ The final genders file needed to monitor/store cluster $HOST on $STOREHOST is th
 
 
 Example 1:
-A three level setup among hosts 
+A three level setup among hosts
 poseidon (level 0: collect) ubuntu 16 systemd
 hermes (level 1 agg and collect) rhel7 systemd
 twain (level 2 agg and store) rhel7 systemd

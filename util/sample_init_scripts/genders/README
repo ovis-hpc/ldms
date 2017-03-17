@@ -24,17 +24,17 @@ OS versions, /etc/init.d is itself a symbolic link to /etc/rc.d/init.d. So copy 
 cp -r /usr/share/doc/ovis-3.3.1/sample_init_scripts/genders/sysv/etc/init.d/ldms* /etc/init.d
 cp -r /usr/share/doc/ovis-3.3.1/sample_init_scripts/genders/sysv/etc/sysconfig/ldms.d /etc/sysconfig/
 
-Then for either systemd or sysvinit, modify 
+Then for either systemd or sysvinit, modify
 /etc/sysconfig/ldms.d/ClusterGenders/genders.local as needed.
 
-If desired, ldms attributes can be kept together with regular attributes in 
+If desired, ldms attributes can be kept together with regular attributes in
 /etc/genders.  This will facilitate starting/stopping data collection with
 	pdsh -g ldmsd service ldmsd start
 or
 	pdsh -g systemctl daemon-reload
 	pdsh -g systemctl start ldmsd
 
-Edit /etc/sysconfig/ldms.d/ldmsd.local.conf to specify the correct name of the 
+Edit /etc/sysconfig/ldms.d/ldmsd.local.conf to specify the correct name of the
 genders file for your system. Set LDMS_GENDERS=/pathname if you do not use an
 /etc/genders or /etc/sysconfig/ldms.d/ClusterGenders/genders.local.
 

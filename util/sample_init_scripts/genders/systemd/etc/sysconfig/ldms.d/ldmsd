@@ -179,7 +179,7 @@ export NUMACTL NUMAOPT
 
 check_auth_option
 if ! $NODEATTR $NODEATTRFILE $host ldmsd >/dev/null 2>&1; then
-	not_collector=1			
+	not_collector=1
 	echoq "$host is is not an LDMSD (data collection) host."
 fi
 
@@ -280,7 +280,7 @@ if test "x$LDMSD_USE_UNIX_SOCK" = "xyes"; then
 else
 	LDMSD_SOCK_OPT=""
 	unset LDMSD_SOCKPATH
-fi	
+fi
 export LDMSD_SOCK_OPT LDMSD_SOCKPATH
 if test "x$LDMSD_USE_INET_SOCK" = "xyes"; then
 	LDMSD_INET_OPT="-p"
@@ -324,7 +324,7 @@ if test "$DEBUG" = "yes"; then
 fi
 if test -z "$LDMSD_SCHEMA_LIST"; then
 	# query entire gender hierarchy recursively for schemas in use anywhere.
-	LDMSD_SCHEMA_LIST=`$LDMSCTL_ARGS -n $LDMS_HOSTNAME -t store-list 2>/dev/null` 
+	LDMSD_SCHEMA_LIST=`$LDMSCTL_ARGS -n $LDMS_HOSTNAME -t store-list 2>/dev/null`
 fi
 LDMSD_ALL_SCHEMA=`echo $LDMSD_SCHEMA_LIST | tr ",: " "\n" | sort -u`
 
@@ -336,7 +336,7 @@ if test -z "$LDMSAGGD_CONNECTION_RETRY_INTERVAL"; then
 fi
 
 if test -z "$LDMSAGGD_INTERVAL_DEFAULT"; then
-	LDMSAGGD_INTERVAL_DEFAULT=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_interval_default 2>/dev/null`	
+	LDMSAGGD_INTERVAL_DEFAULT=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_interval_default 2>/dev/null`
 	if test -z "$LDMSAGGD_INTERVAL_DEFAULT"; then
 		LDMSAGGD_INTERVAL_DEFAULT=10000000
 	fi
@@ -399,7 +399,7 @@ fi
 if ! test -s $LDMSD_PLUGIN_CONFIG_FILE; then
 	logger syslog.warning "LDMSD configuration $LDMSD_PLUGIN_CONFIG_FILE is empty. Daemon idling."
 fi
-	
+
 export LDMSD_PLUGIN_CONFIG_FILE
 
 

@@ -84,7 +84,7 @@ if test -z $NODE_ID_BASE; then
 		NODE_ID_BASE=1
 	fi
 fi
-	
+
 # : separated list of metric sets to load at startup
 if test -z $LDMSD_METRIC_SETS; then
 	LDMSD_METRIC_SETS="meminfo:vmstat:procnfs:procstat:procnetdev:sysclassib"
