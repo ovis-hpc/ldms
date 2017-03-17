@@ -1057,7 +1057,7 @@ static int strgp_add_handler(int sock, req_msg_t rm)
 	store = ldmsd_get_plugin(plugin);
 	if (!store) {
 		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe plugin "
-						"does not exist.\n", EINVAL);
+						"does not exist.\n", ENOENT);
 		goto send_reply;
 	}
 
@@ -1609,8 +1609,7 @@ send_reply:
 
 static int updtr_del_handler(int sock, req_msg_t rm)
 {
-	char *name;
-	name = NULL;
+	char *name = NULL;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
 
@@ -1709,7 +1708,7 @@ static int updtr_prdcr_add_handler(int sock, req_msg_t rm)
 
 einval:
 	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", attr_name, EINVAL);
+					"is required.", EINVAL, attr_name);
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -1774,7 +1773,7 @@ static int updtr_prdcr_del_handler(int sock, req_msg_t rm)
 	goto send_reply;
 einval:
 	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", attr_name, EINVAL);
+					"is required.", EINVAL, attr_name);
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -1838,7 +1837,7 @@ static int updtr_match_add_handler(int sock, req_msg_t rm)
 	goto send_reply;
 einval:
 	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", attr_name, EINVAL);
+					"is required.", EINVAL, attr_name);
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -1901,7 +1900,7 @@ static int updtr_match_del_handler(int sock, req_msg_t rm)
 	goto send_reply;
 einval:
 	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", attr_name, EINVAL);
+					"is required.", EINVAL, attr_name);
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -1959,8 +1958,7 @@ send_reply:
 
 static int updtr_stop_handler(int sock, req_msg_t rm)
 {
-	char *updtr_name;
-	updtr_name = NULL;
+	char *updtr_name = NULL;
 	int rc;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
