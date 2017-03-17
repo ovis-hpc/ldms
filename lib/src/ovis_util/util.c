@@ -116,49 +116,46 @@ static int get_names_and_values(const char *str,
 	return i;
 }
 
-char *str_replace_env_vars(const char *str)
+char *str_repl_env_vars(const char *str)
 {
-	char name[100];
-	char *values[100];
+	const char *name;
+	const char *value;
+	const char *values[100];
 	char *res, *res_ptr;
 	size_t res_len;
 	regex_t regex;
-	char *expr_1 = "\\$\\{[[:alnum:]]+\\}";
-	char *expr_2 = "\\$[[:alnum:]]+";
+	char *expr = "\\$\\{[[:alnum:]_]+\\}";
 	int rc, i;
 	regmatch_t match[100];
-	size_t match_len = sizeof(match) / sizeof(match[0]);
-	size_t next_match, name_len, value_len, name_total, value_total;
+	size_t name_len, value_len, name_total, value_total;
 
-	next_match = name_total = value_total = 0;
+	name_total = value_total = 0;
 
-	/* Terminate list */
-	match[0].rm_so = -1;
-
-	rc = regcomp(&regex, expr_1, REG_EXTENDED);
+	rc = regcomp(&regex, expr, REG_EXTENDED);
 	assert(rc == 0);
-	rc = regexec(&regex, str, match_len, match, 0);
-	if (rc == 0) {
-		next_match = get_names_and_values(str, match, match_len,
-						  &name_len, &value_len,
-						  values);
-		name_total += name_len;
-		value_total += value_len;
+	int pos;
+	rc = 0;
+	for (i = pos = 0; !rc; pos = match[i].rm_eo, i++) {
+		match[i].rm_so = -1;
+		rc = regexec(&regex, &str[pos], 1, &match[i], 0);
+		if (rc)
+			break;
+		res_len = match[i].rm_eo - match[i].rm_so;
+		name_total += res_len;
+		name = get_env_var(&str[pos], match[i].rm_so, match[i].rm_eo);
+		value = getenv(name);
+		if (value) {
+			value_total += strlen(value);
+			values[i] = value;
+		} else {
+			values[i] = "";
+		}
+		match[i].rm_eo += pos;
+		match[i].rm_so += pos;
 	}
 	regfree(&regex);
-
-	rc = regcomp(&regex, expr_2, REG_EXTENDED);
-	assert(rc == 0);
-	rc = regexec(&regex, str, match_len - next_match, &match[next_match], 0);
-	if (rc == 0) {
-		next_match = get_names_and_values(str, &match[next_match],
-						  match_len - next_match,
-						  &name_len, &value_len,
-						  &values[next_match]);
-		name_total += name_len;
-		value_total += value_len;
-	}
-	regfree(&regex);
+	if (!i)
+		return strdup(str);
 
 	/* Allocate the result string */
 	res_len = strlen(str) - name_total + value_total + 1;
@@ -173,7 +170,7 @@ char *str_replace_env_vars(const char *str)
 
 	res_ptr = res;
 	res[0] = '\0';
-	for (i = 0; i < match_len; i++) {
+	for (i = 0; i < sizeof(match) / sizeof(match[0]); i++) {
 		if (match[i].rm_so < 0)
 			break;
 		size_t len = match[i].rm_so - so;
@@ -204,7 +201,7 @@ char *av_value(const struct attr_value_list *av_list, const char *name)
 	for (i = 0; i < av_list->count; i++) {
 		if (strcmp(name, av_list->list[i].name))
 			continue;
-		char *str = str_replace_env_vars(av_list->list[i].value);
+		char *str = str_repl_env_vars(av_list->list[i].value);
 		if (str) {
 			string_ref_t ref = malloc(sizeof(*ref));
 			if (!ref)
@@ -221,7 +218,7 @@ char *av_value(const struct attr_value_list *av_list, const char *name)
 char *av_value_at_idx(const struct attr_value_list *av_list, int i)
 {
 	if (i < av_list->count) {
-		char *str = str_replace_env_vars(av_list->list[i].value);
+		char *str = str_repl_env_vars(av_list->list[i].value);
 		if (str) {
 			string_ref_t ref = malloc(sizeof(*ref));
 			if (!ref)

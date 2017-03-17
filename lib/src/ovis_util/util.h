@@ -234,5 +234,5 @@ int f_mkdir_p(const char *path, __mode_t mode);
  * \retval NULL There was insufficient memory to allocate the output string.
  * \retval Ptr to a string with the environment variable values replaced.
  */
-char *str_replace_env_vars(const char *str);
+char *str_repl_env_vars(const char *str);
 #endif /* OVIS_UTIL_H_ */
