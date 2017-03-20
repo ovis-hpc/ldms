@@ -159,7 +159,7 @@ char *av_name(struct attr_value_list *av_list, int idx)
 	return NULL;
 }
 
-char *av_value(const struct attr_value_list *av_list, const char *name)
+char *av_value(struct attr_value_list *av_list, const char *name)
 {
 	int i;
 	for (i = 0; i < av_list->count; i++) {
@@ -179,7 +179,7 @@ char *av_value(const struct attr_value_list *av_list, const char *name)
 	return NULL;
 }
 
-char *av_value_at_idx(const struct attr_value_list *av_list, int i)
+char *av_value_at_idx(struct attr_value_list *av_list, int i)
 {
 	if (i < av_list->count) {
 		char *str = str_repl_env_vars(av_list->list[i].value);
