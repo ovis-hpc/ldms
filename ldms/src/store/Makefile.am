@@ -34,9 +34,16 @@ pkglib_LTLIBRARIES += libstore_rabbitv3.la
 endif
 
 if ENABLE_CSV
+CSV_COMMON_LIBFLAGS = libldms_store_csv_common.la -lpthread
+
+libldms_store_csv_common_la_SOURCES = store_csv_common.c store_csv_common.h
+libldms_store_csv_common_la_CFLAGS = $(AM_CFLAGS)
+libldms_store_csv_common_la_LIBADD =
+lib_LTLIBRARIES += libldms_store_csv_common.la
+
 libstore_csv_la_SOURCES = store_common.h store_csv.c
 libstore_csv_la_CFLAGS = $(AM_CFLAGS)
-libstore_csv_la_LIBADD = $(STORE_LIBADD) -lpthread
+libstore_csv_la_LIBADD = $(STORE_LIBADD) $(CSV_COMMON_LIBFLAGS)
 pkglib_LTLIBRARIES += libstore_csv.la
 
 libstore_function_csv_la_SOURCES = store_common.h store_function_csv.c

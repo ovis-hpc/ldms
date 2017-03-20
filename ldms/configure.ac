@@ -414,6 +414,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-py-edac_test.sh
 		 scripts/ldms-py-subset_test.sh
 		 scripts/ldms-py-syslog.sh
+		 scripts/ldms-meminfo.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
