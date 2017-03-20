@@ -602,7 +602,7 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
 /*
  * Max length of error strings while ldmsd is being configured.
  */
-#define LEN_ERRSTR 128
+#define LEN_ERRSTR 256
 
 int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
 int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
