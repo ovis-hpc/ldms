@@ -185,6 +185,13 @@ typedef enum {
 } variate_t;
 
 
+#ifdef MAX
+#error __FILE__ "uses MAX as enum value. Macro MAX incompatible."
+#endif
+#ifdef MIN
+#error __FILE__ "uses MIN as enum value. Macro MIN incompatible."
+#endif
+
 //NOTE: not implementing EUC yet.
 typedef enum {
 	RATE,
@@ -1765,8 +1772,15 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 
 };
 
+/**
+ * Call this function when expression interpreter logic breaks down.
+ * I.e. at unreachable default branches in switch statements which
+ * may become reachable if the func_t expands without correct matching expansion
+ * in every logic branch.
+ */
 static void token_error(func_t fct, const char *expected, int line) {
-	msglog(LDMSD_LDEBUG, "%s: switch got %d, expected one of: at line %d\n",__FILE__, fct, expected, line);
+	msglog(LDMSD_LERROR, "%s: unexpected func_t value %d, expected one of: at line %d. Did the function syntax expand?\n",__FILE__, fct, expected, line);
+	exit(1);
 }
 
 #define TOKEN_ERR(f, ex) token_error(f, ex, __LINE__)
@@ -1865,7 +1879,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					retvals[0] = temp * scale;
 					break;
 				default:
-					TOKEN_ERR(fct, "THRESH_GE, THRESH_LT, RAW");
+					/* NOTREACHED */
+					TOKEN_ERR(fct, "THRESH_GE, THRESH_LT,"
+						" RAW");
 					break;
 				}
 			} else { //it must be an array
@@ -1883,7 +1899,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[j] = temp * scale;
 						break;
 					default:
-						TOKEN_ERR(fct, "THRESH_GE, THRESH_LT, RAW");
+						/* NOTREACHED */
+						TOKEN_ERR(fct, "THRESH_GE,"
+							" THRESH_LT, RAW");
 						break;
 					}
 				}
@@ -1905,7 +1923,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[j] = temp * scale;
 						break;
 					default:
-						TOKEN_ERR(fct, "THRESH_GE, THRESH_LT, RAW");
+						/* NOTREACHED */
+						TOKEN_ERR(fct, "THRESH_GE,"
+							" THRESH_LT, RAW");
 						break;
 					}
 				}
@@ -1942,6 +1962,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[0] += curr;
 						break;
 					default:
+						/* NOTREACHED */
 						TOKEN_ERR(fct, "MIN,MAX,SUM,AVG");
 						break;
 					}
@@ -1972,6 +1993,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						retvals[0] += curr;
 						break;
 					default:
+						/* NOTREACHED */
 						TOKEN_ERR(fct, "MIN,MAX,SUM,AVG");
 						break;
 					}
@@ -2223,7 +2245,9 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							}
 							break;
 						default:
-							TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
+							/* NOTREACHED */
+							TOKEN_ERR(fct, "SUB_AB,"
+								"MUL_AB,DIV_AB");
 							break;
 						}
 					}
@@ -2254,6 +2278,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 									retvals[j] = (uint64_t)(((double)retvals[j]/(double)temp)*scale);
 								break;
 							default:
+								/* NOTREACHED */
 								TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
 								break;
 							}
@@ -2290,6 +2315,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 								retvals[j] = (uint64_t)(((double)retvals[j]/(double)temp)*scale);
 							break;
 						default:
+							/* NOTREACHED */
 							TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
 							break;
 						}
@@ -2335,16 +2361,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 			s_idx = 0;
 			break;
 		default:
+			/* NOTREACHED */
 			TOKEN_ERR(fct, "*_VS,*_SV");
 			break;
 		}
-#ifdef ANN_APPROVES /* must do at least this or in error case we read out of bounds. may even then still mess up retvalid. */
-		if (-1 == s_idx || -1 == v_idx) {
-			*retvalid = 0;
-			s_idx = 0;
-			v_idx = 0;
-		}
-#endif
 
 		if (vals[s_idx].typei == BASE){
 			if (vals[s_idx].metric_type == LDMS_V_U64)
@@ -2395,6 +2415,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							retvals[0] = (uint64_t)(((double)temp_scalar/(double)temp)*scale);
 						break;
 					default:
+						/* NOTREACHED */
 						TOKEN_ERR(fct, "*_VS,*_SV");
 						break;
 					}
@@ -2444,6 +2465,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							}
 							break;
 						default:
+							/* NOTREACHED */
 							TOKEN_ERR(fct, "*_VS,*_SV");
 							break;
 						}
@@ -2497,6 +2519,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							}
 							break;
 						default:
+							/* NOTREACHED */
 							TOKEN_ERR(fct, "*_VS,*_SV");
 							break;
 						}
