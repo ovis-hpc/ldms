@@ -198,19 +198,23 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 	}
 
 	if (!d) {
-		sprintf(err_str, "dlerror %s", dlerror());
+		char *dlerr = dlerror();
+		ldmsd_log(LDMSD_LERROR, "Failed to load the plugin '%s': "
+				"dlerror %s\n", plugin_name, dlerr);
+		snprintf(err_str, LEN_ERRSTR, "Failed to load the plugin '%s'. "
+				"dlerror %s", plugin_name, dlerr);
 		goto err;
 	}
 
 	ldmsd_plugin_get_f pget = dlsym(d, "get_plugin");
 	if (!pget) {
-		sprintf(err_str,
+		snprintf(err_str, LEN_ERRSTR,
 			"The library is missing the get_plugin() function.");
 		goto err;
 	}
 	lpi = pget(ldmsd_msg_logger);
 	if (!lpi) {
-		sprintf(err_str, "The plugin could not be loaded.");
+		snprintf(err_str, LEN_ERRSTR, "The plugin could not be loaded.");
 		goto err;
 	}
 	pi = calloc(1, sizeof *pi);
@@ -232,7 +236,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
 	return pi;
 enomem:
-	sprintf(err_str, "No memory");
+	snprintf(err_str, LEN_ERRSTR, "No memory");
 err:
 	if (pi) {
 		if (pi->name)
@@ -466,11 +470,11 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 		} else if (0 == strcmp(name, "strgp")) {
 			__process_info_strgp(llevel);
 		} else {
-			sprintf(replybuf, "%dInvalid name '%s'. "
+			snprintf(replybuf, REPLYBUF_LEN, "%dInvalid name '%s'. "
 					"The choices are prdcr, updtr, strgp.",
 					-EINVAL, name);
 		}
-		sprintf(replybuf, "0");
+		snprintf(replybuf, REPLYBUF_LEN, "0");
 		return 0;
 	}
 
@@ -501,7 +505,7 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 
 	__process_info_strgp(llevel);
 
-	sprintf(replybuf, "0");
+	snprintf(replybuf, REPLYBUF_LEN, "0");
 	return 0;
 }
 
@@ -509,7 +513,7 @@ int process_version(char *replybuf, struct attr_value_list *avl, struct attr_val
 {
 	struct ldms_version version;
 	ldms_version_get(&version);
-	sprintf(replybuf, "0LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
+	snprintf(replybuf, REPLYBUF_LEN, "0LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
 					version.major,
 					version.minor,
 					version.patch,
@@ -524,7 +528,7 @@ int process_verbosity_change(char *replybuf, struct attr_value_list *avl, struct
 
 	level_s = av_value(avl, "level");
 	if (!level_s) {
-		sprintf(replybuf, "%d The level was not specified\n", -EINVAL);
+		snprintf(replybuf, REPLYBUF_LEN, "%d The level was not specified\n", -EINVAL);
 		goto out;
 	}
 
@@ -534,7 +538,7 @@ int process_verbosity_change(char *replybuf, struct attr_value_list *avl, struct
 		snprintf(err_str, LEN_ERRSTR, "Invalid verbosity level, "
 				"expecting DEBUG, INFO, ERROR, CRITICAL and QUIET\n");
 	}
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 
 #ifdef DEBUG
 	ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
@@ -553,7 +557,7 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, siz
 	memset(regex, 0, sizeof *regex);
 	int rc = regcomp(regex, regex_str, REG_NOSUB);
 	if (rc) {
-		sprintf(errbuf, "22");
+		snprintf(errbuf, errsz, "22");
 		(void)regerror(rc,
 			       regex,
 			       &errbuf[2],
@@ -761,13 +765,13 @@ int process_load_plugin(char *replybuf, struct attr_value_list *av_list,
 
 	plugin_name = av_value(av_list, "name");
 	if (!plugin_name) {
-		sprintf(replybuf, "%d The plugin name was not specified\n",
-								-EINVAL);
+		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name was "
+				"not specified\n", -EINVAL);
 		goto out;
 	}
 
 	int rc = ldmsd_load_plugin(plugin_name, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 out:
 	return 0;
 }
@@ -781,13 +785,13 @@ int process_term_plugin(char *replybuf, struct attr_value_list *av_list,
 
 	plugin_name = av_value(av_list, "name");
 	if (!plugin_name) {
-		sprintf(replybuf, "%d The plugin name must be specified.",
-								-EINVAL);
+		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name must "
+				"be specified.", -EINVAL);
 		goto out;
 	}
 
 	int rc = ldmsd_term_plugin(plugin_name, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 out:
 	return 0;
 }
@@ -801,13 +805,13 @@ int process_config_plugin(char *replybuf, struct attr_value_list *av_list,
 
 	plugin_name = av_value(av_list, "name");
 	if (!plugin_name) {
-		sprintf(replybuf, "%d The plugin name must be specified.",
-								-EINVAL);
+		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name must "
+				"be specified.", -EINVAL);
 		goto out;
 	}
 
 	int rc = ldmsd_config_plugin(plugin_name, av_list, kw_list, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 out:
 	return 0;
 }
@@ -837,10 +841,11 @@ int process_set_udata(char *replybuf, struct attr_value_list *av_list,
 		goto einval;
 
 	rc = ldmsd_set_udata(set_name, metric_name, udata, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 	return 0;
 einval:
-	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
+								-EINVAL, attr);
 	return 0;
 }
 
@@ -871,11 +876,12 @@ int process_set_udata_regex(char *replybuf, struct attr_value_list *av_list,
 	inc_s = av_value(av_list, attr);
 
 	rc = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 	return 0;
 
 einval:
-	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
+								-EINVAL, attr);
 	return 0;
 }
 
@@ -901,10 +907,11 @@ int process_start_sampler(char *replybuf, struct attr_value_list *av_list,
 	offset = av_value(av_list, attr);
 
 	int rc = ldmsd_start_sampler(plugin_name, interval, offset, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 	return 0;
 einval:
-	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
+								-EINVAL, attr);
 	return 0;
 }
 
@@ -926,11 +933,12 @@ int process_oneshot_sample(char *replybuf, struct attr_value_list *av_list,
 		goto einval;
 
 	int rc = ldmsd_oneshot_sample(plugin_name, ts, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 	goto out;
 
 einval:
-	sprintf(replybuf, "%dThe attribute '%s' is required.\n", -EINVAL, attr);
+	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
+								-EINVAL, attr);
 out:
 	return 0;
 }
@@ -944,13 +952,13 @@ int process_stop_sampler(char *replybuf, struct attr_value_list *av_list,
 
 	plugin_name = av_value(av_list, "name");
 	if (!plugin_name) {
-		sprintf(replybuf, "%d The plugin name must be specified.",
+		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name must be specified.",
 								-EINVAL);
 		goto out;
 	}
 
 	int rc = ldmsd_stop_sampler(plugin_name, err_str);
-	sprintf(replybuf, "%d%s", -rc, err_str);
+	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
 out:
 	return 0;
 }
@@ -959,12 +967,18 @@ int process_ls_plugins(char *replybuf, struct attr_value_list *av_list,
 		       struct attr_value_list *kw_list)
 {
 	struct ldmsd_plugin_cfg *p;
-	sprintf(replybuf, "0");
+	size_t offset = 0;
+	size_t sz = REPLYBUF_LEN - 1;
+	offset += sprintf(replybuf, "0");
 	LIST_FOREACH(p, &plugin_list, entry) {
-		strcat(replybuf, p->name);
-		strcat(replybuf, "\n");
-		if (p->plugin->usage)
-			strcat(replybuf, p->plugin->usage(p->plugin));
+		offset += snprintf(&replybuf[offset], sz - offset,
+				"%s\n", p->name);
+		if (p->plugin->usage && (offset < sz)) {
+			offset += snprintf(&replybuf[offset], sz - offset, "%s",
+					p->plugin->usage(p->plugin));
+		}
+		if (offset >= sz)
+			break;
 	}
 	return 0;
 }
@@ -975,7 +989,7 @@ int process_exit(char *replybuf, struct attr_value_list *av_list,
 	cleanup_requested = 1;
 	/* set flag for bottom of message handler loops to check for quit. */
 	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
-	sprintf(replybuf, "0cleanup request received.\n");
+	snprintf(replybuf, REPLYBUF_LEN, "0cleanup request received.\n");
 	return 0;
 }
 
@@ -1161,9 +1175,9 @@ int process_log_rotate(char *replybuf, struct attr_value_list *av_list,
 {
 	int rc = ldmsd_logrotate();
 	if (rc)
-		sprintf(replybuf, "%d Failed to rotate the log file", -rc);
+		snprintf(replybuf, REPLYBUF_LEN, "%d Failed to rotate the log file", -rc);
 	else
-		sprintf(replybuf, "%d", -rc);
+		snprintf(replybuf, REPLYBUF_LEN, "%d", -rc);
 	return 0;
 }
 
@@ -1346,7 +1360,7 @@ int process_record(int fd,
 			goto out;
 		}
 	}
-	sprintf(replybuf, "22Invalid command id %ld\n", cmd_id);
+	snprintf(replybuf, REPLYBUF_LEN, "22Invalid command id %ld\n", cmd_id);
 	rc = EINVAL;
  out:
 	if (fd >= 0)
