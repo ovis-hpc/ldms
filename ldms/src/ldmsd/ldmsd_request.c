@@ -600,7 +600,7 @@ static int cli_handler(int sock, req_msg_t rm)
 static int example_handler(int sock, req_msg_t rm)
 {
 	size_t cnt;
-	int i, rc, count = 0;
+	int rc, count = 0;
 	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)rm->req_buf;
 	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
 	while (attr->discrim) {
@@ -631,29 +631,28 @@ static int prdcr_add_handler(int sock, req_msg_t rm)
 	short port_no = -1;
 	int interval_us = -1;
 	size_t cnt;
-	int rc;
 
 	ldmsd_req_attr_t attr;
 	attr = (ldmsd_req_attr_t)rm->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_TYPE:
-			type = ldmsd_prdcr_str2type(attr->attr_value);
+			type = ldmsd_prdcr_str2type((char *)attr->attr_value);
 			break;
 		case LDMSD_ATTR_XPRT:
-			xprt = attr->attr_value;
+			xprt = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_HOST:
-			host = attr->attr_value;
+			host = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_PORT:
-			port_no = strtol(attr->attr_value, NULL, 0);
+			port_no = strtol((char *)attr->attr_value, NULL, 0);
 			break;
 		case LDMSD_ATTR_INTERVAL:
-			interval_us = strtol(attr->attr_value, NULL, 0);
+			interval_us = strtol((char *)attr->attr_value, NULL, 0);
 			break;
 		default:
 			break;
@@ -721,7 +720,6 @@ send_reply:
 
 static int prdcr_del_handler(int sock, req_msg_t rm)
 {
-	ldmsd_prdcr_t prdcr;
 	char *name, *attr_name;
 	size_t cnt;
 	int rc;
@@ -731,7 +729,7 @@ static int prdcr_del_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -768,16 +766,15 @@ static int prdcr_start_handler(int sock, req_msg_t rm)
 	name = interval_str = NULL;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
-	ldmsd_prdcr_t prdcr;
 
 	attr = (ldmsd_req_attr_t)rm->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_INTERVAL:
-			interval_str = attr->attr_value;
+			interval_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -812,13 +809,12 @@ static int prdcr_stop_handler(int sock, req_msg_t rm)
 	char *name = NULL;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
-	ldmsd_prdcr_t prdcr;
 
 	attr = (ldmsd_req_attr_t)rm->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -859,10 +855,10 @@ static int prdcr_start_regex_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_REGEX:
-			prdcr_regex = attr->attr_value;
+			prdcr_regex = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_INTERVAL:
-			interval_str = attr->attr_value;
+			interval_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -889,7 +885,7 @@ send_reply:
 
 static int prdcr_stop_regex_handler(int sock, req_msg_t rm)
 {
-	char *prdcr_regex, *interval_str;
+	char *prdcr_regex;
 	size_t cnt;
 	ldmsd_req_attr_t attr;
 
@@ -897,7 +893,7 @@ static int prdcr_stop_regex_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_REGEX:
-			prdcr_regex = attr->attr_value;
+			prdcr_regex = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1023,16 +1019,16 @@ static int strgp_add_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_PLUGIN:
-			plugin = attr->attr_value;
+			plugin = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_CONTAINER:
-			container = attr->attr_value;
+			container = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_SCHEMA:
-			schema = attr->attr_value;
+			schema = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1121,7 +1117,7 @@ static int strgp_del_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1163,10 +1159,10 @@ static int strgp_prdcr_add_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_REGEX:
-			regex_str = attr->attr_value;
+			regex_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1222,10 +1218,10 @@ static int strgp_prdcr_del_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_REGEX:
-			regex_str = attr->attr_value;
+			regex_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1280,10 +1276,10 @@ static int strgp_metric_add_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_METRIC:
-			metric_name = attr->attr_value;
+			metric_name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1340,10 +1336,10 @@ static int strgp_metric_del_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_METRIC:
-			metric_name = attr->attr_value;
+			metric_name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1397,7 +1393,7 @@ static int strgp_start_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1450,7 +1446,7 @@ static int strgp_stop_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1550,13 +1546,13 @@ static int updtr_add_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_INTERVAL:
-			interval_str = attr->attr_value;
+			interval_str = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_OFFSET:
-			offset_str = attr->attr_value;
+			offset_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1622,7 +1618,7 @@ static int updtr_del_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			name = attr->attr_value;
+			name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1649,14 +1645,6 @@ einval:
 	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
 						"'name' is required.", EINVAL);
 	goto send_reply;
-enomem:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dOut of memory.", ENOMEM);
-	goto send_reply;
-eexist:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe updtr %s "
-					"already exists.", EEXIST, name);
-	goto send_reply;
 send_reply:
 	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -1675,10 +1663,10 @@ static int updtr_prdcr_add_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			updtr_name = attr->attr_value;
+			updtr_name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_REGEX:
-			prdcr_regex = attr->attr_value;
+			prdcr_regex = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1740,10 +1728,10 @@ static int updtr_prdcr_del_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			updtr_name = attr->attr_value;
+			updtr_name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_REGEX:
-			prdcr_regex = attr->attr_value;
+			prdcr_regex = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1805,13 +1793,13 @@ static int updtr_match_add_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			updtr_name = attr->attr_value;
+			updtr_name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_REGEX:
-			regex_str = attr->attr_value;
+			regex_str = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_MATCH:
-			match_str = attr->attr_value;
+			match_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1868,13 +1856,13 @@ static int updtr_match_del_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			updtr_name = attr->attr_value;
+			updtr_name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_REGEX:
-			regex_str = attr->attr_value;
+			regex_str = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_MATCH:
-			match_str = attr->attr_value;
+			match_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1922,7 +1910,7 @@ send_reply:
 
 static int updtr_start_handler(int sock, req_msg_t rm)
 {
-	char *updtr_name, *interval_str, *offset_str, *attr_name;
+	char *updtr_name, *interval_str, *offset_str;
 	updtr_name = interval_str = offset_str = NULL;
 	int rc;
 	size_t cnt;
@@ -1932,13 +1920,13 @@ static int updtr_start_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			updtr_name = attr->attr_value;
+			updtr_name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_INTERVAL:
-			interval_str = attr->attr_value;
+			interval_str = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_OFFSET:
-			offset_str = attr->attr_value;
+			offset_str = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1981,7 +1969,7 @@ static int updtr_stop_handler(int sock, req_msg_t rm)
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
-			updtr_name = attr->attr_value;
+			updtr_name = (char *)attr->attr_value;
 			break;
 		default:
 			break;
