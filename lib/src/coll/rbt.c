@@ -426,32 +426,21 @@ struct rbn *rbt_greatest_lt_or_eq(struct rbn *n)
 struct rbn *rbt_find_glb(struct rbt *t, const void *key)
 {
 	struct rbn *x;
+	struct rbn *glb = NULL;
 
 	for (x = t->root; x; ) {
 		int c;
 		c = t->comparator(x->key, key);
 		if (!c)
 			return x;
-
 		if (c > 0) {
 			x = x->left;
-			continue;
+		} else {
+			glb = x;
+			x = x->right;
 		}
-		if (!c)
-			return x;
-
-		/* The node is less than the key. If the
-		 * nodes's right sibling is a leaf, then there
-		 * are no other nodes in the tree greater than
-		 * this node, and still less than the key.
-		 * Return this node.
-		 */
-		if (!x->right || (t->comparator(x->right->key, key) > 0))
-			return x;
-
-		x = x->right;
 	}
-	return NULL;
+	return glb;
 }
 
 /**
@@ -481,6 +470,7 @@ struct rbn *rbt_least_gt_or_eq(struct rbn *n)
 struct rbn *rbt_find_lub(struct rbt *t, const void *key)
 {
 	struct rbn *x;
+	struct rbn *lub;
 
 	for (x = t->root; x; ) {
 		int c;
@@ -491,23 +481,11 @@ struct rbn *rbt_find_lub(struct rbt *t, const void *key)
 		if (c < 0) {
 			x = x->right;
 		} else {
-			/* This node is greater than the key. If the
-			 * node's left sibling is a leaf, then there
-			 * are no other nodes in the tree smaller than
-			 * this node, and still greater than the key.
-			 * Or if there is a left sibling, but this
-			 * sibling is smaller than the key, return the
-			 * node.
-			 */
-			if (!x->left
-			    || !x
-			    || (t->comparator(x->left->key, key) < 0))
-				return x;
-			else
-				x = x->left;
+			lub = x;
+			x = x->left;
 		}
 	}
-	return NULL;
+	return lub;
 }
 
 /**
