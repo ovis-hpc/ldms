@@ -413,6 +413,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler cray_gemini_r_sampler_plugin = {
 	.base = {
 		.name = "cray_gemini_r_sampler",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
