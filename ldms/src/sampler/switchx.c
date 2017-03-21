@@ -1,5 +1,5 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2011 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -502,6 +502,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler switchx_plugin = {
 	.base = {
 		.name = "switchx",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = sx_term,
 		.config = sx_config,
 		.usage = usage,

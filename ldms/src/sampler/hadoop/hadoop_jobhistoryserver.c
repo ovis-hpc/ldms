@@ -1,5 +1,5 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013-2014 Cray Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
@@ -170,6 +170,7 @@ static void term(struct ldmsd_plugin *self)
 static struct ldmsd_sampler hadoop_jobhistoryserver = {
 	.base = {
 		.name = "hadoop_jobhistoryserver",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
