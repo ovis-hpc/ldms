@@ -557,9 +557,9 @@ static int cli_handler(int sock, req_msg_t rm)
 	rm->rep_off = strlen(rm->rep_buf) + 1;
 	rc = send_request_reply(sock, rm, NULL, 0, LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	if (kw_list)
-		free(kw_list);
+		av_free(kw_list);
 	if (av_list)
-		free(av_list);
+		av_free(av_list);
 	return rc;
 }
 

@@ -53,38 +53,145 @@
 #include <string.h>
 #include <malloc.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <regex.h>
+#include <assert.h>
+#include <errno.h>
 #include "util.h"
 
-char *av_name(const struct attr_value_list *av_list, int idx)
+static const char *get_env_var(const char *src, size_t start_off, size_t end_off)
+{
+	static char name[100];
+	size_t name_len;
+
+	/* Strip $, {, and } from the name */
+	if (src[start_off] == '$')
+		start_off += 1;
+	if (src[start_off] == '{')
+		start_off += 1;
+	if (src[end_off-1] == '}')
+		end_off -= 1;
+
+	name_len = end_off - start_off;
+	assert(name_len < sizeof(name));
+
+	strncpy(name,  &src[start_off], name_len);
+	name[name_len] = '\0';
+	return name;
+}
+
+char *str_repl_env_vars(const char *str)
+{
+	const char *name;
+	const char *value;
+	const char *values[100];
+	char *res, *res_ptr;
+	size_t res_len;
+	regex_t regex;
+	char *expr = "\\$\\{[[:alnum:]_]+\\}";
+	int rc, i;
+	regmatch_t match[100];
+	size_t name_len, value_len, name_total, value_total;
+
+	name_total = value_total = 0;
+
+	rc = regcomp(&regex, expr, REG_EXTENDED);
+	assert(rc == 0);
+	int pos;
+	rc = 0;
+	for (i = pos = 0; !rc; pos = match[i].rm_eo, i++) {
+		match[i].rm_so = -1;
+		rc = regexec(&regex, &str[pos], 1, &match[i], 0);
+		if (rc)
+			break;
+		res_len = match[i].rm_eo - match[i].rm_so;
+		name_total += res_len;
+		name = get_env_var(&str[pos], match[i].rm_so, match[i].rm_eo);
+		value = getenv(name);
+		if (value) {
+			value_total += strlen(value);
+			values[i] = value;
+		} else {
+			values[i] = "";
+		}
+		match[i].rm_eo += pos;
+		match[i].rm_so += pos;
+	}
+	regfree(&regex);
+	if (!i)
+		return strdup(str);
+
+	/* Allocate the result string */
+	res_len = strlen(str) - name_total + value_total + 1;
+	res = malloc(res_len);
+	if (!res) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	size_t so = 0;
+	size_t eo = 0;
+
+	res_ptr = res;
+	res[0] = '\0';
+	for (i = 0; i < sizeof(match) / sizeof(match[0]); i++) {
+		if (match[i].rm_so < 0)
+			break;
+		size_t len = match[i].rm_so - so;
+		memcpy(res_ptr, &str[so], len);
+		res_ptr[len] = '\0';
+		res_ptr = &res_ptr[len];
+		so = match[i].rm_eo;
+		strcpy(res_ptr, values[i]);
+		res_ptr = &res[strlen(res)];
+	}
+	/* Copy the remainder of str into the result */
+	strcpy(res_ptr, &str[so]);
+	assert(res_len == (strlen(res) + 1));
+ out:
+	return res;
+}
+
+char *av_name(struct attr_value_list *av_list, int idx)
 {
 	if (idx < av_list->count)
 		return av_list->list[idx].name;
 	return NULL;
 }
 
-char *__av_value(const struct attr_value *av)
-{
-	if (av->value[0] == '$') {
-		/* Environment variable */
-		return getenv(&av->value[1]);
-	} else {
-		return av->value;
-	}
-}
-
-char *av_value(const struct attr_value_list *av_list, const char *name)
+char *av_value(struct attr_value_list *av_list, const char *name)
 {
 	int i;
-	for (i = 0; i < av_list->count; i++)
-		if (0 == strcmp(name, av_list->list[i].name))
-			return __av_value(&av_list->list[i]);
+	for (i = 0; i < av_list->count; i++) {
+		if (strcmp(name, av_list->list[i].name))
+			continue;
+		char *str = str_repl_env_vars(av_list->list[i].value);
+		if (str) {
+			string_ref_t ref = malloc(sizeof(*ref));
+			if (!ref)
+				return NULL;
+			ref->str = str;
+			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
+			return str;
+		} else
+			break;
+	}
 	return NULL;
 }
 
-char *av_value_at_idx(const struct attr_value_list *av_list, int i)
+char *av_value_at_idx(struct attr_value_list *av_list, int i)
 {
-	if (i < av_list->count)
-		return __av_value(&av_list->list[i]);
+	if (i < av_list->count) {
+		char *str = str_repl_env_vars(av_list->list[i].value);
+		if (str) {
+			string_ref_t ref = malloc(sizeof(*ref));
+			if (!ref)
+				return NULL;
+			ref->str = str;
+			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
+			return str;
+		}
+	}
 	return NULL;
 }
 
@@ -123,6 +230,18 @@ err:
 	return ENOMEM;
 }
 
+void av_free(struct attr_value_list *avl)
+{
+	string_ref_t ref;
+	while (!LIST_EMPTY(&avl->strings)) {
+		ref = LIST_FIRST(&avl->strings);
+		free(ref->str);
+		LIST_REMOVE(ref, entry);
+		free(ref);
+	}
+	free(avl);
+}
+
 struct attr_value_list *av_new(size_t size)
 {
 	size_t bytes = sizeof(struct attr_value_list) +
@@ -132,6 +251,7 @@ struct attr_value_list *av_new(size_t size)
 	if (avl) {
 		memset(avl, 0, bytes);
 		avl->size = size;
+		LIST_INIT(&avl->strings);
 	}
 	return avl;
 }

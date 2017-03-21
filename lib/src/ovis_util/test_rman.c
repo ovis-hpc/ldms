@@ -149,8 +149,8 @@ int main(int argc, char **argv)
 	release_resource_info(testri);
 
 	free(s);
-	free(av_list);
-	free(kw_list);
+	av_free(av_list);
+	av_free(kw_list);
 
 	return 0;
 }
