@@ -185,6 +185,13 @@ typedef enum {
 } variate_t;
 
 
+#ifdef MAX
+#error __FILE__ "uses MAX as enum value. Macro MAX incompatible."
+#endif
+#ifdef MIN
+#error __FILE__ "uses MIN as enum value. Macro MIN incompatible."
+#endif
+
 //NOTE: not implementing EUC yet.
 typedef enum {
 	RATE,
@@ -486,7 +493,7 @@ static int handleRollover(){
 
 static void* rolloverThreadInit(void* m){
 	while(1){
-		int tsleep;
+		int tsleep = 86400;
 		switch (rolltype) {
 		case 1:
 		  tsleep = (rollover < MIN_ROLL_1) ? MIN_ROLL_1 : rollover;
@@ -844,10 +851,10 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 
 	FILE *fp = NULL;
 
-	double mval;
+
 	char* s;
-	int rc, rcl;
-	int i, j, tk, iter;
+	int rc = EINVAL, rcl;
+	int iter;
 
 	//TODO: for now will read this in for every option (e.g., different base set for store)
 	//Dont yet have a way to determine which of the handles a certain metric will be associated with
@@ -964,8 +971,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 	value = av_value(avl, "agesec");
 	if (value){
-		msglog(LDMSD_LERROR, "store_csv: config argument agesec has been deprecated in favor of ageusec\n",
-		       deprecated[i]);
+		msglog(LDMSD_LERROR, "store_csv: config argument agesec has been deprecated in favor of ageusec\n");
 		return EINVAL;
 	}
 
@@ -1144,7 +1150,7 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 static int print_header_from_store(struct function_store_handle *s_handle,
 				   ldms_set_t set, int* metric_arry, size_t metric_count)
 {
-	const char* name;
+
 	int rc = 0;
 	int i, j;
 
@@ -1766,6 +1772,18 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
 
 };
 
+/**
+ * Call this function when expression interpreter logic breaks down.
+ * I.e. at unreachable default branches in switch statements which
+ * may become reachable if the func_t expands without correct matching expansion
+ * in every logic branch.
+ */
+static void token_error(func_t fct, const char *expected, int line) {
+	msglog(LDMSD_LERROR, "%s: unexpected func_t value %d, expected one of: at line %d. Did the function syntax expand?\n",__FILE__, fct, expected, line);
+	exit(1);
+}
+
+#define TOKEN_ERR(f, ex) token_error(f, ex, __LINE__)
 
 static int doFunc(ldms_set_t set, int* metric_arry,
 		  struct setdatapoint* dp, struct derived_data* dd,
@@ -1860,6 +1878,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 				case RAW:
 					retvals[0] = temp * scale;
 					break;
+				default:
+					/* NOTREACHED */
+					TOKEN_ERR(fct, "THRESH_GE, THRESH_LT,"
+						" RAW");
+					break;
 				}
 			} else { //it must be an array
 				for (j = 0; j < dim; j++){
@@ -1874,6 +1897,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						break;
 					case RAW:
 						retvals[j] = temp * scale;
+						break;
+					default:
+						/* NOTREACHED */
+						TOKEN_ERR(fct, "THRESH_GE,"
+							" THRESH_LT, RAW");
 						break;
 					}
 				}
@@ -1893,6 +1921,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						break;
 					case RAW:
 						retvals[j] = temp * scale;
+						break;
+					default:
+						/* NOTREACHED */
+						TOKEN_ERR(fct, "THRESH_GE,"
+							" THRESH_LT, RAW");
 						break;
 					}
 				}
@@ -1928,7 +1961,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					case AVG:
 						retvals[0] += curr;
 						break;
-
+					default:
+						/* NOTREACHED */
+						TOKEN_ERR(fct, "MIN,MAX,SUM,AVG");
+						break;
 					}
 				}
 				if (fct == AVG) {
@@ -1955,6 +1991,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 					case SUM:
 					case AVG:
 						retvals[0] += curr;
+						break;
+					default:
+						/* NOTREACHED */
+						TOKEN_ERR(fct, "MIN,MAX,SUM,AVG");
 						break;
 					}
 				}
@@ -2204,6 +2244,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 								retvals[0] = (uint64_t)(((double)retvals[0]/(double)temp)*scale);
 							}
 							break;
+						default:
+							/* NOTREACHED */
+							TOKEN_ERR(fct, "SUB_AB,"
+								"MUL_AB,DIV_AB");
+							break;
 						}
 					}
 				} else { //it must be an array
@@ -2231,6 +2276,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 									*retvalid = 0;
 								else
 									retvals[j] = (uint64_t)(((double)retvals[j]/(double)temp)*scale);
+								break;
+							default:
+								/* NOTREACHED */
+								TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
 								break;
 							}
 						}
@@ -2264,6 +2313,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 								*retvalid = 0;
 							else
 								retvals[j] = (uint64_t)(((double)retvals[j]/(double)temp)*scale);
+							break;
+						default:
+							/* NOTREACHED */
+							TOKEN_ERR(fct, "SUB_AB,MUL_AB,DIV_AB");
 							break;
 						}
 					}
@@ -2306,6 +2359,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 		case DIV_SV:
 			v_idx = 1;
 			s_idx = 0;
+			break;
+		default:
+			/* NOTREACHED */
+			TOKEN_ERR(fct, "*_VS,*_SV");
 			break;
 		}
 
@@ -2357,6 +2414,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 						else
 							retvals[0] = (uint64_t)(((double)temp_scalar/(double)temp)*scale);
 						break;
+					default:
+						/* NOTREACHED */
+						TOKEN_ERR(fct, "*_VS,*_SV");
+						break;
 					}
 				} else { // it must be an array
 					for (j = 0; j < dim; j++) {
@@ -2402,6 +2463,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							} else {
 								retvals[j] = (uint64_t)(((double)temp_scalar/(double)temp)*scale);
 							}
+							break;
+						default:
+							/* NOTREACHED */
+							TOKEN_ERR(fct, "*_VS,*_SV");
 							break;
 						}
 					}
@@ -2452,6 +2517,10 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 							} else {
 								retvals[j] = (uint64_t)(((double)temp_scalar/(double)temp)*scale);
 							}
+							break;
+						default:
+							/* NOTREACHED */
+							TOKEN_ERR(fct, "*_VS,*_SV");
 							break;
 						}
 					}
@@ -2525,7 +2594,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 		}
 		dp->ts = NULL;
 		dp->datavals = NULL;
-		*numsets++;
+		(*numsets)++;
 
 		idx_add(*sets_idx, (void*)instance_name,
 			strlen(instance_name), dp);
@@ -2722,9 +2791,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	//always get the vals because may need the stored value, even if skip this time
 
 	for (i = 0; i < s_handle->numder; i++){ //go thru all the vals....only write the writeout vals
-		uint64_t val, temp;
+
 		int rvalid;
-		int svalid;
+
 
 //		msglog(LDMSD_LDEBUG, "%s: Schema %s Updating variable %d of %d: %s\n",
 //		       pname, s_handle->schema, i, s_handle->numder, s_handle->der[i]->name);
@@ -2797,7 +2866,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 
 static void close_store(ldmsd_store_handle_t _s_handle)
 {
-	int i, j;
+	int i;
 
 	/* note closing a store removes it from the idx list. */
 
