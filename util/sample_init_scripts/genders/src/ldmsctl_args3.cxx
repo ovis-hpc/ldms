@@ -404,6 +404,11 @@ private:
 	}
 
 	void add_collectors(int level, vector<string>& node_list, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
+		ostringstream oss;
+		oss << "updtr_add name=all_" << hostname;
+		oss << " interval=" << aggdt.interval;
+		oss << " offset=" << aggdt.offset;
+		oss << endl;
 		for (vector<string>::size_type j = 0; j < node_list.size(); j++) {
 			if (level) {
 				format_local_sets(node_list[j], out, ban, sets_seen);
@@ -413,7 +418,6 @@ private:
 				trans t;
 				in->get_trans(node_list[j], t, "ldmsd");
 				string sets = join(collsets,",");
-				ostringstream oss;
 				// oss << "# line 417" << endl;
 				oss << "prdcr_add name=" << t.producer;
 				oss << " host=" << t.host;
@@ -424,19 +428,14 @@ private:
 				oss << endl;
 				oss << "prdcr_start name=" << t.producer;
 				oss << endl;
-				oss << "updtr_add name=" << t.producer;
-				oss << " interval=" << aggdt.interval;
-				oss << " offset=" << aggdt.offset;
-				oss << endl;
-				oss << "updtr_prdcr_add name=" << t.producer;
-				// oss << " regex=" << t.producer;
-				oss << " regex=" << ".*";
-				oss << endl;
-				oss << "updtr_start name=" << t.producer;
 				// ; sets=" << sets;
-				adds.push_back(oss.str());
 			}
 		}
+		oss << "updtr_prdcr_add name=all_" << hostname;
+		oss << " regex=" << ".*";
+		oss << endl;
+		oss << "updtr_start name=all_" << hostname;
+		adds.push_back(oss.str());
 	}
 
 public:
@@ -496,6 +495,12 @@ public:
 			if (parts[i] == "AGGCLIENTOFLIST" && !didaggclientof) {
 				vector<string> aggclientof_list;
 				in->get_aggclientof(hostname,aggclientof_list);
+
+				ostringstream oss;
+				oss << "updtr_add name=all_" << hostname;
+				oss << " interval=" << aggdt.interval;
+				oss << " offset=" << aggdt.offset;
+				oss << endl;
 				for (vector<string>::size_type j = 0; j < aggclientof_list.size(); j++) {
 					hdata sub(aggclientof_list[j],in);
 					if (! sub.isaggd) {
@@ -518,7 +523,6 @@ public:
 						in->get_trans(aggclientof_list[j], t, "ldmsaggd");
 						string sets = join(aggsets,",");
 
-						ostringstream oss;
 						// oss << "# line 522" << endl;
 						oss << "prdcr_add name=" << t.producer;
 						oss << " host=" << t.host;
@@ -529,19 +533,14 @@ public:
 						oss << endl;
 						oss << "prdcr_start name=" << t.producer;
 						oss << endl;
-						oss << "updtr_add name=" << t.producer;
-						oss << " interval=" << aggdt.interval;
-						oss << " offset=" << aggdt.offset;
-						oss << endl;
-						oss << "updtr_prdcr_add name=" << t.producer;
-						// oss << " regex=" << t.producer;
-						oss << " regex=" << ".*";
-						oss << endl;
-						oss << "updtr_start name=" << t.producer;
-						// ; sets=" << sets;
-						adds.push_back(oss.str());
 					}
 				}
+				oss << "updtr_prdcr_add name=all_" << hostname;
+				oss << " regex=" << ".*";
+				oss << endl;
+				oss << "updtr_start name=all_" << hostname;
+				// ; sets=" << sets;
+				adds.push_back(oss.str());
 				continue;
 			}
 			// else it's a hostname or a typo in LDMSDALL.
