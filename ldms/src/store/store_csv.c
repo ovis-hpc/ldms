@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -68,6 +68,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "store_common.h"
+#include "store_csv_common.h"
 
 #define TV_SEC_COL    0
 #define TV_USEC_COL    1
@@ -83,9 +84,12 @@ typedef enum{CSV_CFGINIT_PRE, CSV_CFGINIT_IN, CSV_CFGINIT_DONE, CSV_CFGINIT_FAIL
 /* override for special keys */
 struct storek{
 	char* key;
+	STOREK_COMMON;
 	int altheader;
 	int udata;
 };
+
+#define PNAME "store_csv"
 
 static int buffer_flag = 1;
 static csvcfg_state cfgstate = CSV_CFGINIT_PRE;
@@ -153,6 +157,7 @@ struct csv_store_handle {
 	void *ucontext;
 	int64_t store_count;
 	int64_t byte_count;
+	CSV_STORE_HANDLE_COMMON;
 };
 
 static pthread_mutex_t cfg_lock;
@@ -206,7 +211,7 @@ function is called.
 Volume-based rolltypes must check and shortcircuit within this
 function.
 */
-static int handleRollover(){
+static int handleRollover(struct csv_plugin_static *cps){
 	//get the config lock
 	//for every handle we have, do the rollover
 
@@ -225,6 +230,9 @@ static int handleRollover(){
 				FILE* nfp = NULL;
 				char tmp_path[PATH_MAX];
 				char tmp_headerpath[PATH_MAX];
+				char tp1[PATH_MAX];
+				char tp2[PATH_MAX];
+				struct roll_common roc = { tp1, tp2 };
 				//if we've got here then we've called new_store, but it might be closed
 				pthread_mutex_lock(&s_handle->lock);
 				switch (rolltype) {
@@ -272,6 +280,11 @@ static int handleRollover(){
 					continue;
 				}
 				__buffer_routine(nfp);
+				notify_output(NOTE_OPEN, tmp_path, NOTE_DAT,
+					CSHC(s_handle), cps, s_handle->container,
+					s_handle->schema);
+				strcpy(roc.filename, tmp_path);
+
 				if (s_handle->altheader){
 					//re name: if got here, then rollover requested
 					snprintf(tmp_headerpath, PATH_MAX,
@@ -285,6 +298,11 @@ static int handleRollover(){
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
 						       __FILE__, tmp_headerpath);
 					}
+					notify_output(NOTE_OPEN, tmp_headerpath,
+						NOTE_HDR, CSHC(s_handle), cps,
+						s_handle->container,
+						s_handle->schema);
+					strcpy(roc.headerfilename, tmp_headerpath);
 				} else {
 					nhfp = fopen(tmp_path, "a+");
 					if (!nhfp){
@@ -292,6 +310,11 @@ static int handleRollover(){
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
 						       __FILE__, tmp_path);
 					}
+					notify_output(NOTE_OPEN, tmp_path, NOTE_HDR,
+						CSHC(s_handle), cps,
+						s_handle->container,
+						s_handle->schema);
+					strcpy(roc.headerfilename, tmp_path);
 				}
 				if (!nhfp) {
 					pthread_mutex_unlock(&s_handle->lock);
@@ -300,11 +323,24 @@ static int handleRollover(){
 				__buffer_routine(nhfp);
 
 				//close and swap
-				if (s_handle->file)
+				if (s_handle->file) {
 					fclose(s_handle->file);
-				if (s_handle->headerfile)
+					notify_output(NOTE_CLOSE, s_handle->
+						filename, NOTE_DAT, CSHC(s_handle),
+						cps, s_handle->container,
+						s_handle->schema);
+				}
+				if (s_handle->headerfile) {
 					fclose(s_handle->headerfile);
+					notify_output(NOTE_CLOSE, s_handle->
+						headerfilename, NOTE_HDR,
+						CSHC(s_handle), cps,
+						s_handle->container,
+						s_handle->schema);
+				}
 				s_handle->file = nfp;
+				replace_string(&(s_handle->filename), roc.filename);
+				replace_string(&(s_handle->headerfilename), roc.headerfilename);
 				s_handle->headerfile = nhfp;
 				s_handle->printheader = DO_PRINT_HEADER;
 				pthread_mutex_unlock(&s_handle->lock);
@@ -358,7 +394,10 @@ static void* rolloverThreadInit(void* m){
 			break;
 		}
 		sleep(tsleep);
-		handleRollover();
+		int oldstate = 0;
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
+		handleRollover(&PG);
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
 	}
 
 	return NULL;
@@ -439,6 +478,8 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	  return EINVAL;
 	}
 
+
+
 	//do we have this already. if so, then can update those values.
 	idx = -1;
 	for (i = 0; i < nspecialkeys; i++){
@@ -470,6 +511,7 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	if (idx == nspecialkeys)
 		nspecialkeys++;
 
+	config_custom_common(kwl, avl, CSKC(&(specialkeys[idx])), &PG);
 	altvalue = av_value(avl, "altheader");
 	if (altvalue) {
 		specialkeys[idx].altheader = atoi(altvalue);
@@ -506,6 +548,12 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		return EINVAL;
 	}
 
+	int cic_err = 0;
+	if ( (cic_err = CONFIG_INIT_COMMON(kwl, avl, arg)) != 0 ) {
+		pthread_mutex_unlock(&cfg_lock);
+		cfgstate = CSV_CFGINIT_FAILED;
+		return cic_err;
+	}
 	cfgstate = CSV_CFGINIT_IN;
 
 	value = av_value(avl, "buffer");
@@ -646,6 +694,7 @@ static void term(struct ldmsd_plugin *self)
 
 	for (i = 0; i < nspecialkeys; i++){
 		free(specialkeys[i].key);
+		clear_storek_common(CSKC(&(specialkeys[i])));
 		specialkeys[i].key = NULL;
 	}
 
@@ -659,6 +708,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
+		NOTIFY_USAGE
 		"         - userdata     UserData in printout (optional, default 0)\n"
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
@@ -669,6 +719,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"           [altheader=<0/1> userdata=<0/1>]\n"
 		"         - Override the default parameters set by action=init for particular containers\n"
 		"         - altheader Header in a separate file (optional, default to init)\n"
+		NOTIFY_USAGE
 		"         - userdata     UserData in printout (optional, default to init)\n"
 		;
 }
@@ -780,6 +831,8 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	char* path = NULL;
 	int idx;
 	int i;
+	char *hcontainer = NULL;
+	char *hschema = NULL;
 
 	pthread_mutex_lock(&cfg_lock);
 	skey = allocStoreKey(container, schema);
@@ -823,11 +876,16 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		pthread_mutex_init(&s_handle->lock, NULL);
 		s_handle->path = path;
 		s_handle->store_key = strdup(skey);
-		if (!s_handle->store_key) {
+		hcontainer = container ? strdup(container) : NULL;
+		hschema = schema ? strdup(schema) : NULL;
+		if (!s_handle->store_key || ! hcontainer || ! hschema ) {
 			/* Take the lock becauase we will unlock in the err path */
 			pthread_mutex_lock(&s_handle->lock);
 			goto err1;
 		}
+		s_handle->container = hcontainer;
+		s_handle->schema = hschema;
+		hcontainer = hschema = NULL;
 
 		s_handle->store_count = 0;
 		s_handle->byte_count = 0;
@@ -839,7 +897,12 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 				break;
 			}
 		}
+		if (PG.notify)
+			s_handle->notify = PG.notify;
 		if (idx >= 0){
+			if (specialkeys[idx].notify != NULL)
+				s_handle->notify =
+					specialkeys[idx].notify;
 			s_handle->altheader = specialkeys[idx].altheader;
 			s_handle->udata = specialkeys[idx].udata;
 		} else {
@@ -868,6 +931,9 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			 s_handle->path);
 	}
 
+	char tp1[PATH_MAX];
+	char tp2[PATH_MAX];
+	struct roll_common roc = { tp1, tp2 };
 	if (!s_handle->file) { /* theoretically, we should never already have this file */
 		s_handle->file = fopen(tmp_path, "a+");
 	}
@@ -876,6 +942,8 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		       __FILE__, errno, s_handle->path);
 		goto err2;
 	}
+	strcpy(roc.filename, tmp_path);
+	replace_string(&(s_handle->filename), roc.filename);
 	__buffer_routine(s_handle->file);
 
 	/*
@@ -901,8 +969,10 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			} else if (s_handle->printheader == DO_PRINT_HEADER){
 				s_handle->headerfile = fopen(tmp_headerpath, "a+");
 			}
+			strcpy(roc.headerfilename, tmp_headerpath);
 		} else {
 			s_handle->headerfile = fopen(tmp_path, "a+");
+			strcpy(roc.headerfilename, tmp_path);
 		}
 
 		if (!s_handle->headerfile) {
@@ -912,6 +982,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		}
 	}
 	__buffer_routine(s_handle->headerfile);
+	replace_string(&(s_handle->headerfilename), roc.headerfilename);
 
 	/* ideally here should always be the printing of the header, and we could drop keeping
 	 * track of printheader.
@@ -941,6 +1012,10 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		idx_add(store_idx, (void *)skey, strlen(skey), s_handle);
 	}
 
+	notify_output(NOTE_OPEN, s_handle->filename, NOTE_DAT,
+		CSHC(s_handle), &PG, s_handle->container, s_handle->schema);
+	notify_output(NOTE_OPEN, s_handle->headerfilename, NOTE_HDR,
+		CSHC(s_handle), &PG, s_handle->container, s_handle->schema);
 	pthread_mutex_unlock(&s_handle->lock);
 	goto out;
 
@@ -960,6 +1035,10 @@ err0:
 out:
 	if (skey)
 		  free(skey);
+	if (hschema)
+		  free(hschema);
+	if (hcontainer)
+		  free(hcontainer);
 	pthread_mutex_unlock(&cfg_lock);
 	return s_handle;
 }
@@ -1008,7 +1087,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		return EINVAL;
 		break;
 	default:
-		//ok to continue
+		/* ok to continue */
 		break;
 	}
 
@@ -1494,6 +1573,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
+	CLOSE_STORE_COMMON(s_handle);
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
@@ -1533,6 +1613,8 @@ static struct ldmsd_store store_csv = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	PG.msglog = pf;
+	PG.pname = PNAME;
 	return &store_csv.base;
 }
 
@@ -1541,6 +1623,7 @@ static void store_csv_init()
 {
 	store_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
+	LIB_CTOR_COMMON(PG);
 }
 
 static void __attribute__ ((destructor)) store_csv_fini(void);
@@ -1548,4 +1631,5 @@ static void store_csv_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	idx_destroy(store_idx);
+	LIB_DTOR_COMMON(PG);
 }
