@@ -6,7 +6,8 @@ if ENABLE_OVIS_UTIL
 libovis_util_la_SOURCES = util.c util.h dstring.h dstring.c olog.c olog.h
 libovis_util_la_SOURCES += notification.h notification.c
 libovis_util_la_LIBADD = -lpthread -lrt
-libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h os_util.h olog.h
+libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h os_util.h olog.h \
+				notification.h
 libovis_utilincludedir = $(includedir)/ovis_util
 libovis_util_conf = /etc/ld.so.conf.d/libovis_util.conf
 lib_LTLIBRARIES += libovis_util.la
