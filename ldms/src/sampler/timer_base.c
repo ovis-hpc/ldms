@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2016-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2016-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -376,6 +376,7 @@ void timer_base_init(struct timer_base *tb)
 {
 	/* sub-class can override these values after calling this function */
 	snprintf(tb->base.base.name, sizeof(tb->base.base.name), "timer_base");
+	tb->base.base.type = LDMSD_PLUGIN_SAMPLER;
 	tb->base.base.term = timer_base_term;
 	tb->base.base.config = timer_base_config;
 	tb->base.base.usage = timer_base_usage;

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2014-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2014-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2014-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -842,6 +842,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler knc_sampler_derived_plugin = {
 	.base = {
 		.name = "knc_sampler_derived",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
