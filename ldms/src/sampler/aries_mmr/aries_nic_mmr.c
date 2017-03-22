@@ -636,6 +636,7 @@ static const char *usage(struct ldmsd_plugin *self)
 static struct ldmsd_sampler aries_nic_mmr_plugin = {
 	.base = {
 		.name = "aries_nic_mmr",
+		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
 		.usage = usage,
