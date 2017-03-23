@@ -1,0 +1,313 @@
+.\" Manpage for LDMS genders entries
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 5 "7 Feb 2017" "v3.5.0" "LDMSD libgenders-based attribute definitions"
+
+.SH NAME
+ldms-attributes - attributes for the LDMS libgenders-based boot scripts
+
+.SH DESCRIPTION
+
+This page catalogs the attributes and their interpretations affecting LDMS v3 libgenders-based boot scripts. See ldmsd-genders(8) for an overview of the boot process and the environment variables which may override values in the genders file.
+
+New in LDMS version 3, attributes are provided enabling inclusion or generation of custom ldmsd configuration lines for plugins which are too complicated to configure with libgender attribute syntax. See the CUSTOMIZATION sections below. Also new, LDMS attribute processing extends the substitutions available in attribute values. See "Attribute value substitution" below for how to make ldmsd attribute definitions more concise.
+
+See "Deprecated attributes" (below) to see attributes no longer needed because ldms version 3 is more flexible. The boot scripts attempt to catch any unsupported version 2 attribute usage and make alternative hints.
+
+.SH GENERAL AND AGGREGATION HIERARCHY CONTROL ATTRIBUTES
+
+The following attributes define hierarchical and general local ldmsd behaviors. Details are given in later sections for those attributes controlling data collection and storage behaviors. In a few cases, the attribute prefix ldmsaggd is retained for compatibility with ldms version 2, even though the attribute may apply equally well to daemons that are not aggregating. In these cases, the defaults are usually sufficient for collector-only configurations.
+
+.PP
+.nf
+
+Attribute               What it does if defined for a node
+--------------          ----------------------------------------
+ldmsd                   Enables ldmsd sampling daemon
+ldmsd_host=H            Defines host name for the daemon used in data
+                        connections.  Typically, this is the name of the
+                        node as it appears on a fast local network.
+ldmsd_producer=PROD     Defines the producer name reported in ldms data
+                        files and user interfaces; typically a short form
+                        of host name.
+ldmsd_port=P            Defines the port number for the data server.
+ldmsd_xprt=X            Defines protocol for data server connections.
+                        Typically, one of sock, rdma, ugni.
+ldmsd_idbase=IDMIN      Defines the least component_id for a node type.
+                        For a class of node names differing only in an
+                        integer ISUFFIX, component_id is IDMIN+ISUFFIX.
+                        component_id of 0 is reserved;
+                        ensure IDMIN+ISUFFIX>0.
+ldmsd_dbg=LEVEL         Defines the daemon binary's logging level, with
+                        values as defined in ldmsd(8) and NONE,
+                        which routes all logging to /dev/null.
+ldmsd_proc=P            Core to pin ldmsd to in many-core hosts. Active
+                        only if NUMA-related environment variable is set
+                        or a Phi processor is detected.
+                        See ldmsd-genders(8).
+ldmsaggd=LIST           Enables aggregation, gathering from LIST.
+                        LIST is : separated, containing hostnames, or
+                        literals BOOTNODELIST, or CLIENTOFLIST or
+                        AGGCLIENTOFLIST. See "Node Lists" below.
+ldmsaggd_clientof=H     Defines n-th level aggregation host.
+ldmsaggd_event_thds=N   Defines thread count used to manage events.
+ldmsaggd_mem_res=M      Defines DMA reservation size.
+ldmsd_exclude_schemas=S Defines the list of schemas to exclude
+                        from aggregation and storage.
+
+.br
+.PP
+.fi
+
+.SH   SCHEDULING OF SAMPLING AND TRANSPORT
+
+These control when data is collected and moved. Defaults are applied to any sampler that is not more specifically defined with one of the SUFFIX forms.  Times are in microseconds. If default and offset are not coordinated across the cluster, data loss and network contention may result.
+
+.PP
+.nf
+
+Attribute                       What it does if defined for a node
+--------------                  ---------------------------------------
+ldmsd_interval_default=ISAMP    Defines sampling interval time.
+ldmsd_offset_default=OSAMP      Defines offset from the time nearest
+                                a whole number multiple of interval.
+ldmsd_interval_SUFFIX=IPLUG     As ISAMP, but for sets named by SUFFIX
+ldmsd_offset_SUFFIX=OPLUG       As OSAMP, but for sets named by SUFFIX
+
+ldmsaggd_conn_retry=CRI         Defines the retry interval for data
+                                connections.
+ldmsaggd_interval_default=IAGG  As ISAMP, but for aggregator schedule.
+ldmsaggd_offset_default=OAGG    As OSAMP, but for aggregator schedule.
+
+.br
+.PP
+.fi
+
+.SH  DATA SAMPLER CUSTOMIZATION
+
+These attributes control what exactly is collected by defining key parts of the config command sent to the individual samplers. See "Plugin Config" below for the definition of PARAMLIST, FILE, and PROG.
+
+.PP
+.nf
+Attribute                       What it does if defined for a node
+--------------                  ----------------------------------------
+ldmsd_metric_plugins=L          Defines collector plugins to load as a :
+                                separated list.  May vary for node types
+                                or individual nodes.
+ldmsd_SUFFIX=PARAMLIST          Defines SUFFIX plugin config arguments.
+ldmsd_config_text_SUFFIX=FILE   Defines SUFFIX plugin config file.
+ldmsd_config_gen_SUFFIX=PROG    Defines SUFFIX plugin config file generator.
+
+# For example:
+ldmsd_procnetdev=PARAMLIST      Defines config flags of procnetdev.
+ldmsd_sysclassib=PARAMLIST      Defines config flags of sysclassib.
+ldmsd_config_text_meminfo=yes   Appends /etc/sysconfig/ldms.d/plugins-conf/meminfo
+                                to the standard sampler plugin startup line.
+ldmsd_config_gen_vmstat=yes     Runs /etc/sysconfig/ldms.d/plugins-conf/gen.vmstat
+                                and appends the output to the plugin
+                                configuration file.
+
+.fi
+.br
+.PP
+
+
+.SH STORAGE PLUGIN CUSTOMIZATION
+.PP
+.nf
+
+These control how storage is done with config commands.
+See "Plugin Config" below for the definition of PARAMLIST.
+
+Attribute                       What it does if defined for a node
+--------------                  -----------------------------------
+ldmsd_store_plugins=L           Defines storage plugins to load as a :
+                                separated list.  See 'Plugin config'
+                                below.
+ldmsd_SUFFIX=PARAMLIST          Defines SUFFIX plugin config arguments.
+ldmsd_config_text_SUFFIX=FILE   Defines SUFFIX plugin config file.
+ldmsd_config_gen_SUFFIX=PROG    Defines SUFFIX plugin config file generator.
+ldmsd_schemas_SUFFIX=S          Defines schemas S to route to store SUFFIX.
+ldmsd_exclude_schemas_SUFFIX=S  Defines schemas S to exclude from store SUFFIX.
+# for example:
+ldmsd_store_csv=PARAMLIST       defines config flags for store_csv.
+
+.br
+.PP
+.fi
+
+.SH Plugin Config
+.PP
+A plugin's options may be configured by attribute values, a static text file
+snippet, or a generated text for complicated cases. The static, generated, and  attribute-defined configuration cases are explained here. Herein the suffix 'SUFFIX' on attribute names is replaced with a specific plugin name to control that plugin. FILE is normally a full path name.
+.PP
+A static plugin configuration file for a specific plugin can be used by defining
+.B ldmsd_config_text_SUFFIX=FILE.
+Only the plugin specific options should appear in the text; standard options are generated. If FILE is 'yes', then /etc/sysconfig/ldms.d/SUFFIX is read as a text file.
+If FILE is a partial path name, it will be appended to /etc/sysconfig/ldms.d/ and used. The daemon init script will start the plugin after applying the configuration text.
+.PP
+A generated configuration file for a specific plugin can be used by defining attribute
+.B ldmsd_config_gen_SUFFIX=PROG.
+The program PROG will be invoked with arguments and should write the entire configuration and start command set needed to its standard output. If PROG is 'yes', then /etc/sysconfig/ldms.d/gen.SUFFIX is expected to be a program.
+If PROG is a partial path name, it will be appended to /etc/sysconfig/ldms.d/ and used as a program. This is the recommended route if multiple instances of the same sampler plugin will be in use. For samplers, the generator program will receive arguments: $plugin-name $producer-name $host $sample_interval $sample_offset
+
+.PP
+The normal libgenders attribute-value syntax is:
+.BR
+key1=value,key2=value2
+where values may not contain whitespace, = or comma characters.
+.PP
+The ldms configuration list syntax is "key=value key=value ..."
+where value may contain commas. This syntax is used in static text
+file snippets.
+.PP
+The ldmsd plugin configuration syntax mapped to gender attribute
+syntax is:
+.BR
+ldmsd_$S=$C/value[:$C/value]*
+.PP
+where:
+.nf
+$S is the plugin name.
+$C is the name of a plugin parameter.
+: separates additional parameter assignments.
+The first / after the = or a : separates a parameter name
+from its value.
+The & is used to separate list values rather than commas.
+.fi
+
+.PP
+This syntax reconciles the libgenders comma/=/whitespace rules with the
+LDMS key=comma-separated-value configuration parameter syntax.
+Parameters become :-separated keys with &-separated-values lists.
+Any / preceding a : except the first is taken as a literal character.
+
+This translation mode is used for  sampler, storage, and transport
+plugin configuration attributes where needed.
+
+.SH Storage specific plugin configuration
+.PP
+To support the most common usage, the names of all active collector plugins found in the genders file are assumed to be valid schema names. LDMSD_SCHEMA_LIST overrides this assumption.
+When multiple schema are generated from the same collector plugin, the ldmsd_schemas_SUFFIX attribute or the LDMSD_SCHEMA_LIST environment variable should be defined in the ldmsd.local.conf file to ensure correct local storage configuration.
+.PP
+By default (when no ldmsd_schemas_SUFFIX is defined), all schemas are routed to all loaded storage plugins.
+
+.SH Node Lists
+.PP
+There are several special values for managing groups of LDMS data sources:
+BOOTNODELIST, LDMSDALL, CLIENTOFLIST, and AGGCLIENTOFLIST. Explicitly
+naming individual nodes in a node list is rarely desirable.
+
+.PP
+The keyword BOOTNODELIST is replaced with the list of nodes with the attribute "bootnode" having a value matching the name of the aggregator host.
+
+.PP
+The keyword LDMSDALL is replaced with the list of all nodes with the attribute "ldmsd". Useable in small clusters with a single aggregator.
+
+.PP
+If something other than boot nodes is the basis of aggregation, the layout can be specified. E.g., a set of monitoring nodes prefixed mon aggregating subsets of compute nodes:
+.nf
+   mon[1-4]: ldmsaggd=CLIENTOFLIST
+   compute[1-300] ldmsd_clientof=mon1
+   compute[301-600] ldmsd_clientof=mon2
+   compute[601-900] ldmsd_clientof=mon3
+   compute[901-1200] ldmsd_clientof=mon4
+.fi
+.PP
+CLIENTOFLIST is computed as:
+.BR
+   nodeattr -c ldmsd_clientof=H
+.PP
+on each mon host H.
+.PP
+
+.PP
+To run 2nd and higher level aggregators, aggregator hierarchy relationships must be specified. If we need in-platform data for applications seeking
+a global performance views, a top level aggregator pulling from other aggregators can be defined with AGGCLIENTOFLIST thus:
+.nf
+   montop ldmsaggd=AGGCLIENTOFLIST
+   mon[1-4] ldmsaggd_clientof=montop
+.fi
+.PP
+AGGCLIENTOFLIST is computed as:
+.nf
+   nodeattr -c ldmsaggd_clientof=montop
+.fi
+.PP
+on the montop host.
+
+If nodes mon[1-4] are themselves to be monitored by montop, then they must have both ldmsaggd and ldmsd gender values. In this case, both special list variables are used:
+.nf
+   montop ldmsaggd=AGGCLIENTOFLIST:CLIENTOFLIST
+.fi
+
+
+.SH Attribute value substitution with node name fragments
+
+Libgenders supports replacing "%n" (unqualified node name) in attribute values.
+LDMS attribute processing extends this to include extraction and reuse of various node name fragments by position. This enables the collapse of certain voluminous attribute definitions into a single line. The additional substitutions supported are %N[d,m,u] which take the Nth fragment of the type indicated by d, m, or u from the node name. The fragment types d, m, u are, respectively, an integer segment embedded in the node name, a segment separated by the '-' character from other segments of the node name, and a segment separated by the '_' character from other segments. Note that the m and u segment types do not exclude digits within. Segments are numbered from 0.
+
+For example the attribute definitions:
+.nf
+  sc-login[1-8] ldmsd_host=sc-lsm%0d-ib0
+  sc-login[1-8] ldmsd_clientof=sc-rps%0d
+  sc-gw[1-48] ldmsd_host=i-%1m
+.fi
+replace the many similar definitions under libgenders substitution rules:
+.nf
+  sc-login1 ldmsd_host=sc-lsm1-ib0
+  sc-login1 ldmsd_clientof=sc-rps1
+  sc-gw1 ldmsd_host=i-gw1
+  ...
+.fi
+
+.SH NOTES
+
+.SH Deprecated attributes
+
+Some attributes supported in ldmsd version 2 are no longer needed in version 3.
+If detected, errors will be issued.
+.nf
+Attribute deprecated    See instead
+---------------         -----------------------------
+ldmsaggd_port=N         ldmsd_port
+ldmsaggd_host=H         ldmsd_host
+ldmsaggd_xprt=X         ldmsd_xprt
+ldmsaggd_dbg=LEVEL      ldmsd_dbg
+ldmsaggd_stores=L       ldmsd_store_plugins
+ldmsd_metric_sets=L     ldmsd_metric_plugins
+ldmsaggd_store_csv      ldmsd_store_csv
+ldmsaggd_conn_thds      ldmsd_event_thds
+ldmsaggd_num_procs      ldmsd_event_thds
+.fi
+
+.SH Features not yet supported
+.PP
+These attributes are not yet supported by init scripts:
+
+.nf
+
+ldmsaggd_fail=H                Defines aggregation host to take over if
+                               this node fails.
+ldmsaggd_interval_SUFFIX=IAGGS As ISAMP, but for aggregating schema
+                               SUFFIX.
+ldmsaggd_offset_SUFFIX=OAGGS   As OSAMP, but for aggregating schema
+                               SUFFIX.
+
+.fi
+
+.SH BUGS
+.PP
+Some features listed not yet supported, as marked.
+.PP
+Typos in the ldms attribute names may lead to silent application of defaults.
+
+.SH EXAMPLES
+.PP
+See /usr/share/doc/ovis-$version/sample_init_scripts/genders/examples/.
+
+It presents a small cluster, shaun, in ldmsd attributes, with a single aggregator running on shaun-admin and a second level aggregator running on shaun-login as the storage daemon. Subtleties handled in the example include use of Infiniband hostnames and ports.
+
+
+.SH SEE ALSO
+libgenders(3), ldmsd(8), ldmsd-genders(8)
+

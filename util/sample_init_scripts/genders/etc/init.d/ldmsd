@@ -115,7 +115,7 @@ start()
 	# Close file descriptor for standard input. If not pdsh will hang
 	exec 0>&- # close stdin
 
-	DAEMON_ARGS="-x $LDMSD_XPRT:$LDMSD_PORT -S $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK -q $LDMSD_DBG" 
+	DAEMON_ARGS="-x $LDMSD_XPRT:$LDMSD_PORT -S $LDMSD_LOCAL_SOCK_DIR/$LDMSD_LOCAL_SOCK -q $LDMSD_DBG"
 	echo -n $"Starting $prog: "
 	if test "x$LDMSD_LOG_PATH" = "xNONE"; then
 		echoq "$DAEMON $DAEMON_ARGS > /dev/null 2>&1"
@@ -212,7 +212,7 @@ restart() {
 case "$arg1" in
 	start)
 		echoq "In start checking for daemon..."
-		rh_status_q 
+		rh_status_q
 		RETVAL=$?
 		if [ $RETVAL -eq 0 ]; then
 			echoq "$DAEMON process still running... No action taken."
