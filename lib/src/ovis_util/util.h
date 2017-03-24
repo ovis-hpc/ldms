@@ -238,4 +238,22 @@ int f_mkdir_p(const char *path, __mode_t mode);
  * \retval Ptr to a string with the environment variable values replaced.
  */
 char *str_repl_env_vars(const char *str);
+
+/**
+ * \brief The \c fopen() wrapper with permission \c o_mode for new file.
+ *
+ * Open the file \c path for write (\c f_mode "w" or "w+") or append (\c f_mode
+ * "a" or "a+"). Also create the new file if not existed with the file mode \c
+ * o_mode.
+ *
+ * \param path The file path.
+ * \param f_mode "w" for write (truncate), "w+" for read and write (truncate),
+ *               "a" for append, or "a+" for read and append.
+ * \param o_mode The octal file permission.
+ *
+ * \retval fptr The FILE stream handle.
+ * \retval NULL If there is an error trying to open/create the file. \c errno is
+ *              also set to describe the error.
+ */
+FILE *fopen_perm(const char *path, const char *f_mode, int o_mode);
 #endif /* OVIS_UTIL_H_ */
