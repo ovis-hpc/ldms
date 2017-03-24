@@ -151,54 +151,58 @@ class LdmsdCmdParser(cmd.Cmd):
             return ''
         return line
 
-    def handle(self, verb, args, is_old_itf = False):
+    def handle(self, verb, args):
         if args and not self.__check_command_syntax(args):
             print("Wrong syntax. There are attributes that no values are given.")
 
-        if is_old_itf:
-            cmd_id = self.ctrl.get_cmd_id(verb)
-            request = LDMSD_Request(command_id = cmd_id, message = args, is_old_itf = True)
-        else:
-            if args:
-                attr_list = []
-                attr_s = []
-                attr_str_list = args.split(' ')
+        attr_list = None
+        if args:
+            attr_list = []
+            attr_s = []
+            attr_str_list = args.split(' ')
 
-                for attr_str in attr_str_list:
-                    [name, value] = attr_str.split("=")
+            for attr_str in attr_str_list:
+                [name, value] = attr_str.split("=")
+                if verb == "config" and name != "name":
+                    attr_s.append(attr_str)
+                else:
                     try:
                         attr = LDMSD_Req_Attr(value = value, attr_name = name)
-                    except TypeError:
+                    except KeyError:
                         attr_s.append(attr_str)
                     except Exception:
                         raise
                     else:
                         attr_list.append(attr)
 
-                if len(attr_s) > 0:
-                    attr_str = " ".join(attr_s)
-                    attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
-                    attr_list.append(attr)
-                request = LDMSD_Request(command = verb, attrs = attr_list)
-            else:
-                request = LDMSD_Request(command = verb)
+            if len(attr_s) > 0:
+                attr_str = " ".join(attr_s)
+                attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
+                attr_list.append(attr)
+
+        try:
+            request = LDMSD_Request(command = verb, attrs = attr_list)
+        except KeyError:
+            print("'{0}' is not supported.".format(verb))
+            return None
+        except:
+            raise
 
         request.send(self.ctrl)
 
-        if is_old_itf:
-            resp = self.ctrl.receive_response()
-            resp = resp.rstrip()
-            import re
-            g = re.match(r"(-*)(\d+)", resp)
-            if len(resp[g.end():]) > 0:
-                print(resp[g.end():])
-        else:
-            resp = request.receive(self.ctrl)
-            if resp is None:
-                raise Exception("Failed to get the information from ldmsd")
-            resp_err = json.loads(resp)
-            if resp_err['error']:
-                print(resp_err['error'])
+        resp = request.receive(self.ctrl)
+        if resp is None:
+            raise Exception("Failed to get the information from ldmsd")
+        if resp != "0":
+            try:
+                data = json.loads(resp)
+            except ValueError:
+                print(resp)
+            except:
+                raise
+            else:
+                if 'error' in data.keys():
+                    print(data['error'])
         return resp
 
     def read_none_tty(self, fin):
@@ -242,7 +246,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=     The plugin name
         """
-        self.handle('load', arg, True)
+        self.handle('load', arg)
 
     def complete_load(self, text, line, begidx, endidx):
         return self.__complete_attr_list('load', text)
@@ -251,7 +255,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Exit the connected LDMS daemon
         """
-        self.handle('daemon_exit', arg, True)
+        self.handle('daemon_exit', arg)
         self.do_quit(arg)
         print("Please 'quit' the ldmsd_controller interface")
 
@@ -570,7 +574,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
             NONE
         """
-        resp = self.handle('prdcr_status', None, False)
+        resp = self.handle('prdcr_status', None)
         producers =  json.loads(resp)
         print("Name             Host             Port         Transport    State")
         print("---------------- ---------------- ------------ ------------ ------------")
@@ -591,7 +595,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=        Producer name
         """
-        resp = self.handle('prdcr_set_status', arg, False)
+        resp = self.handle('prdcr_set_status', arg)
         metric_sets = json.loads(resp)
         print("Name             Schema Name      State")
         print("---------------- ---------------- ------------ ")
@@ -606,7 +610,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
             NONE
         """
-        resp = self.handle('updtr_status', None, False)
+        resp = self.handle('updtr_status', None)
         updaters = json.loads(resp)
         print("Name             Interval     Offset       Mode            State")
         print("---------------- ------------ ------------ --------------- ------------")
@@ -620,7 +624,7 @@ class LdmsdCmdParser(cmd.Cmd):
                     prdcr['transport'], prdcr['state']))
 
     def do_strgp_status(self, arg):
-        resp = self.handle('strgp_status', None, False)
+        resp = self.handle('strgp_status', None)
         policies = json.loads(resp)
         print("Name             Container        Schema           Plugin           State")
         print("---------------- ---------------- ---------------- ---------------- ------------")
@@ -638,7 +642,7 @@ class LdmsdCmdParser(cmd.Cmd):
             print('')
 
     def do_plugn_status(self, arg):
-        resp = self.handle('plugn_status', None, False)
+        resp = self.handle('plugn_status', None)
         if resp:
             plugins = json.loads(resp)
             print("Name         Type         Interval     Offset       Libpath")
@@ -664,7 +668,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=   The plugin name
         """
-        self.handle('term', arg, True)
+        self.handle('term', arg)
 
     def complete_term(self, text, line, begidx, endidx):
         return self.__complete_attr_list('term', text)
@@ -676,7 +680,7 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The plugin name
         ...     Plugin specific attr=value tuples
         """
-        self.handle('config', arg, True)
+        self.handle('config', arg)
 
     def complete_config(self, text, line, begidx, endidx):
         return self.__complete_attr_list('config', text)
@@ -693,7 +697,7 @@ class LdmsdCmdParser(cmd.Cmd):
                   collection will be synchronous; if the offset is not specified,
                   collection will be asynchronous.
         """
-        self.handle('start', arg, True)
+        self.handle('start', arg)
 
     def complete_start(self, text, line, begidx, endidx):
         return self.__complete_attr_list('start', text)
@@ -704,7 +708,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=     The plugin name
         """
-        self.handle('stop', arg, True)
+        self.handle('stop', arg)
 
     def complete_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stop', text)

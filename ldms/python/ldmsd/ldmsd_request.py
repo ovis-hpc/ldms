@@ -215,17 +215,15 @@ class LDMSD_Request(object):
     EOM_FLAG = 2
     message_number = 1
     header_size = 20
-    def __init__(self, command=None, command_id=None, message=None, attrs=None, is_old_itf = False):
-        if is_old_itf:
-            marker = 0
-        else:
-            marker = -1
+    def __init__(self, command=None, command_id=None, message=None, attrs=None):
+        marker = -1
         if command_id is None and command is None:
             raise Exception("Need either command or command_id")
         if command_id is None:
+            if command not in self.LDMSD_REQ_ID_MAP.keys():
+                raise KeyError("Command '{0}' is not supported.".format(command))
             command_id = self.LDMSD_REQ_ID_MAP[command]['id']
-            if command_id is None:
-                raise Exception("Unrecognized command {0}".format(command))
+
         self.message = message
         self.request_size = self.header_size
         if message:
