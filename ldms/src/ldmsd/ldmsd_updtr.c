@@ -122,7 +122,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 #endif /* LDMSD_UPDATE_TIME */
 	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %d\n",
 					prd_set->inst_name, status);
-	if (status) {
+	if (status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
 		goto out;
 	}
 
@@ -151,40 +151,101 @@ set_ready:
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	pthread_mutex_unlock(&prd_set->lock);
 out:
-	ldmsd_prdcr_set_ref_put(prd_set); /* The ref was taken before update */
+	if (0 == (status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST))) {
+		ldmsd_log(LDMSD_LINFO, "Pushing set %p %s\n", prd_set->set,
+						prd_set->inst_name);
+		int rc = ldms_xprt_push(prd_set->set);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR, "Failed to push set %s\n",
+						prd_set->inst_name);
+		}
+	}
+	if (0 == (status & LDMS_UPD_F_PUSH))
+		/*
+		 * A ref is taken before each update, but there is only
+		 * one push reference
+		 */
+		ldmsd_prdcr_set_ref_put(prd_set);
 	return;
 }
 
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 {
-	int rc;
+	int rc = 0;
+	char *op_s;
 	struct timeval end;
 	/* The reference will be put back in update_cb */
 	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
 					prd_set->inst_name);
-	ldmsd_prdcr_set_ref_get(prd_set);
-	prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
+	int push_flags = 0;
 #ifdef LDMSD_UPDATE_TIME
 	prd_set->updt_time = updtr->curr_updt_time;
 	__updt_time_get(prd_set->updt_time);
 	gettimeofday(&prd_set->updt_start, NULL);
 	if (prd_set->updt_time->update_start.tv_sec == 0)
 		prd_set->updt_time->update_start = prd_set->updt_start;
-	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+	if (!updtr->push_flags) {
+		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
+		ldmsd_prdcr_set_ref_get(prd_set);
+		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+		op_s = "Updating";
+	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
+		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
+		ldmsd_prdcr_set_ref_get(prd_set);
+		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
+			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
+		rc = ldms_xprt_register_push(prd_set->set, push_flags,
+					     updtr_update_cb, prd_set);
+		op_s = "Registering push for";
+	}
 	if (rc) {
 		__updt_time_put(prd_set->updt_time);
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Updating Set %s\n",
-						rc, prd_set->inst_name);
-		ldmsd_prdcr_set_ref_put(prd_set);
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: %s Set %s\n",
+						rc, op_s, prd_set->inst_name);
+		if (!updtr->push_flags)
+			ldmsd_prdcr_set_ref_put(prd_set);
 	}
 #else /* LDMSD_UPDATE_TIME */
-	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+	if (!updtr->push_flags) {
+		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
+		ldmsd_prdcr_set_ref_get(prd_set);
+		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+		op_s = "Updating";
+	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
+		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
+		ldmsd_prdcr_set_ref_get(prd_set);
+		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
+			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
+		rc = ldms_xprt_register_push(prd_set->set, push_flags,
+					     updtr_update_cb, prd_set);
+		op_s = "Registering push for";
+	}
 	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: Updating Set %s\n",
-						rc, prd_set->inst_name);
-		ldmsd_prdcr_set_ref_put(prd_set);
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: %s Set %s\n",
+						rc, op_s, prd_set->inst_name);
+		if (!updtr->push_flags)
+			ldmsd_prdcr_set_ref_put(prd_set);
 	}
 #endif /* LDMSD_UPDATE_TIME */
+	return rc;
+}
+
+static int cancel_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
+{
+	int rc;
+	struct timeval end;
+	ldmsd_log(LDMSD_LDEBUG, "Cancel push for set %s\n", prd_set->inst_name);
+	assert(prd_set->set);
+	if (!(prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG))
+		return 0;
+	rc = ldms_xprt_cancel_push(prd_set->set);
+	if (rc) {
+		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: canceling push for Set %s\n",
+			  rc, prd_set->inst_name);
+	}
+	/* Put the push reference */
+	prd_set->push_flags &= ~LDMSD_PRDCR_SET_F_PUSH_REG;
+	ldmsd_prdcr_set_ref_put(prd_set);
 	return rc;
 }
 
@@ -234,6 +295,39 @@ out:
 #endif /* LDMSD_UPDATE_tIME */
 }
 
+static void cancel_prdcr_updates(ldmsd_updtr_t updtr,
+				 ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
+{
+	int rc;
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
+		goto out;
+	ldmsd_prdcr_set_t prd_set;
+	for (prd_set = ldmsd_prdcr_set_first(prdcr); prd_set;
+	     prd_set = ldmsd_prdcr_set_next(prd_set)) {
+		int rc;
+		const char *str;
+		if (!prd_set->push_flags)
+			continue;
+		/* If a match condition is not specified, everything matches */
+		if (!match) {
+			cancel_set_updates(prd_set, updtr);
+			continue;
+		}
+		rc = 1;
+		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+			str = prd_set->inst_name;
+		else
+			str = prd_set->schema_name;
+		rc = regexec(&match->regex, str, 0, NULL, 0);
+		if (!rc) {
+			cancel_set_updates(prd_set, updtr);
+		}
+	}
+out:
+	ldmsd_prdcr_unlock(prdcr);
+}
+
 static void schedule_updates(ldmsd_updtr_t updtr)
 {
 	ldmsd_name_match_t match;
@@ -270,6 +364,23 @@ static void schedule_updates(ldmsd_updtr_t updtr)
 	updtr->curr_updt_time = NULL;
 	__updt_time_put(updt_time);
 #endif /* LDMSD_UPDATE_TIME */
+}
+
+static void cancel_push(ldmsd_updtr_t updtr)
+{
+	ldmsd_name_match_t match;
+
+	if (!LIST_EMPTY(&updtr->match_list)) {
+		LIST_FOREACH(match, &updtr->match_list, entry) {
+			ldmsd_prdcr_ref_t ref;
+			LIST_FOREACH(ref, &updtr->prdcr_list, entry)
+				cancel_prdcr_updates(updtr, ref->prdcr, match);
+		}
+	} else {
+		ldmsd_prdcr_ref_t ref;
+		LIST_FOREACH(ref, &updtr->prdcr_list, entry)
+			cancel_prdcr_updates(updtr, ref->prdcr, NULL);
+	}
 }
 
 static void updtr_task_cb(ldmsd_task_t task, void *arg)
@@ -420,7 +531,7 @@ ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_next(ldmsd_prdcr_ref_t ref)
 
 int cmd_updtr_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	char *attr, *name, *interval, *offset;
+	char *attr, *name, *interval, *offset, *push;
 
 	attr = "name";
 	name = av_value(avl, attr);
@@ -443,7 +554,22 @@ int cmd_updtr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 			goto enomem;
 		goto out;
 	}
+	push = av_value(avl, "push");
+	if (push) {
+		if (0 == strcasecmp(push, "onchange")) {
+			updtr->push_flags = LDMSD_UPDTR_F_PUSH | LDMSD_UPDTR_F_PUSH_CHANGE;
+		} else {
+			updtr->push_flags = LDMSD_UPDTR_F_PUSH;
+		}
+	} else {
+		updtr->push_flags = 0;
+	}
 	updtr->updt_intrvl_us = strtol(interval, NULL, 0);
+	if (!updtr->updt_intrvl_us) {
+		sprintf(replybuf, "%dThe interval specified '%s' "
+			"is invalid.\n", EINVAL, interval);
+		goto out;
+	}
 	if (offset) {
 		updtr->updt_offset_us = strtol(offset, NULL, 0);
 		updtr->updt_task_flags = LDMSD_TASK_F_SYNCHRONOUS;
@@ -682,7 +808,6 @@ int cmd_updtr_stop(char *replybuf, struct attr_value_list *avl, struct attr_valu
 	} else {
 		sprintf(replybuf, "0\n");
 	}
-
 out_0:
 	return 0;
 }

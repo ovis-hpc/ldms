@@ -89,6 +89,8 @@ struct test_sampler_set {
 	char *name;
 	struct test_sampler_schema *ts_schema;
 	ldms_set_t set;
+	int push;
+	int skip_push;
 	LIST_ENTRY(test_sampler_set) entry;
 };
 LIST_HEAD(test_sampler_set_list, test_sampler_set);
@@ -207,7 +209,25 @@ void __schema_metric_destroy(struct test_sampler_metric *metric)
 	free(metric);
 }
 
-static int create_metric_set(const char *schema_name)
+static struct test_sampler_set *__create_test_sampler_set(ldms_set_t set,
+					char *instance_name, int push,
+				struct test_sampler_schema *ts_schema)
+{
+	struct test_sampler_set *ts_set = malloc(sizeof(*ts_set));
+	if (!ts_set) {
+		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		return NULL;
+	}
+	ts_set->set = set;
+	ts_set->name = strdup(instance_name);
+	ts_set->ts_schema = ts_schema;
+	ts_set->push = push;
+	ts_set->skip_push = 1;
+	LIST_INSERT_HEAD(&set_list, ts_set, entry);
+	return ts_set;
+}
+
+static int create_metric_set(const char *schema_name, int push)
 {
 	int rc, i, j;
 	ldms_set_t set;
@@ -261,15 +281,10 @@ static int create_metric_set(const char *schema_name)
 			ldms_metric_set(set, j, &v);
 		}
 		set_array[i] = set;
-		ts_set = malloc(sizeof(*ts_set));
-		if (!ts_set) {
-			msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		ts_set = __create_test_sampler_set(set, instance_name,
+						push, ts_schema);
+		if (!ts_set)
 			goto free_sets;
-		}
-		ts_set->set = set;
-		ts_set->name = strdup(instance_name);
-		ts_set->ts_schema = ts_schema;
-		LIST_INSERT_HEAD(&set_list, ts_set, entry);
 	}
 
 	return 0;
@@ -502,6 +517,11 @@ static int config_add_set(struct attr_value_list *avl)
 		return EINVAL;
 	}
 
+	char *push_s = av_value(avl, "push");
+	int push = 0;
+	if (push_s)
+		push = atoi(push_s);
+
 	struct test_sampler_set *ts_set;
 	ts_set = __set_find(&set_list, set_name);
 	if (!set) {
@@ -516,16 +536,11 @@ static int config_add_set(struct attr_value_list *avl)
 				"set '%s'\n", set_name);
 		return ENOMEM;
 	}
-	ts_set = malloc(sizeof(*ts_set));
+	ts_set = __create_test_sampler_set(set, set_name, push, ts_schema);
 	if (!ts_set) {
-		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
 		ldms_set_delete(set);
 		return ENOMEM;
 	}
-	ts_set->name = strdup(set_name);
-	ts_set->set = set;
-	ts_set->ts_schema = ts_schema;
-	LIST_INSERT_HEAD(&set_list, ts_set, entry);
 
 	union ldms_value v;
 	v.v_u64 = 0;
@@ -544,7 +559,8 @@ static int config_add_default(struct attr_value_list *avl)
 {
 	char *sname;
 	char *s;
-	int rc;
+	char *push_s;
+	int rc, push;
 	sname = av_value(avl, "schema");
 	if (!sname)
 		sname = default_schema_name;
@@ -569,7 +585,13 @@ static int config_add_default(struct attr_value_list *avl)
 	else
 		num_metrics = atoi(s);
 
-	rc = create_metric_set(sname);
+	push_s = av_value(avl, "push");
+	if (push_s)
+		push = atoi(push_s);
+	else
+		push = 0;
+
+	rc = create_metric_set(sname, push);
 	if (rc) {
 		msglog(LDMSD_LERROR, "test_sampler: failed to create metric sets.\n");
 		return rc;
@@ -584,6 +606,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *action;
 	char *s;
 	char *compid;
+	char *push;
 	void * arg = NULL;
 	int rc;
 
@@ -622,6 +645,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 					test_sampler_compid_idx, &v);
 		}
 	}
+
+	push = av_value(avl, "push");
+
 	return 0;
 }
 
@@ -649,6 +675,16 @@ static int sample(struct ldmsd_sampler *self)
 		}
 
 		ldms_transaction_end(set);
+
+		if (ts_set->push) {
+			if (ts_set->push == ts_set->skip_push) {
+				ldms_xprt_push(set);
+				ts_set->skip_push = 1;
+			} else {
+				ts_set->skip_push++;
+			}
+		}
+
 	}
 	return 0;
 }
@@ -720,18 +756,29 @@ static const char *usage(struct ldmsd_plugin *self)
 		"    The valid metric types are, for example, D64, F32, S64, U64, S64_ARRAY\n"
 		""
 		"\n"
-		"config name=test_sampler action=add_set instance=<set_name> schema=<schema_name>\n"
+		"config name=test_sampler action=add_set instance=<set_name>\n"
+		"       schema=<schema_name> [push=<push>]\n"
 		"\n"
 		"    <set name>      The set name\n"
 		"    <schema name>   The schema name\n"
+		"    <push>          A positive number. The default is 0 meaning no pushing update.\n."
+		"                    1 means the sampler will push every update,\n"
+		"                    2 means the sampler will push every other update,\n"
+		"                    3 means the sampler will push every third updates,\n"
+		"                    and so on.\n"
 		"\n"
 		"config name=test_sampler action=default [base=<base>] [schema=<sname>]\n"
-		"       [num_sets=<nsets>] [num_metrics=<nmetrics>]\n"
+		"       [num_sets=<nsets>] [num_metrics=<nmetrics>] [push=<push>]\n"
 		"\n"
 		"    <base>       The base of set names\n"
 		"    <sname>      Optional schema name. Defaults to 'test_sampler'\n"
 		"    <nsets>      Number of sets\n"
 		"    <nmetrics>   Number of metrics\n"
+		"    <push>       A positive number. The default is 0 meaning no pushing update.\n"
+		"                 1 means the sampler will push every update,\n"
+		"                 2 means the sampler will push every other update,\n"
+		"                 3 means the sampler will push every third updates,\n"
+		"                 and so on.\n"
 		"\n"
 		"config name=test_sampler [producer=<prod_name>] [component_id=<comp_id>]\n"
 		"    <prod_name>  The producer name\n"

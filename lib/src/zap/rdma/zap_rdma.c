@@ -822,6 +822,7 @@ static void handle_rendezvous(struct z_rdma_ep *rep,
 	if (!map)
 		return;
 
+	map->map.ref_count = 1;
 	map->map.type = ZAP_MAP_REMOTE;
 	map->map.ep = &rep->ep;
 	map->map.addr = (void *)(unsigned long)sh->va;

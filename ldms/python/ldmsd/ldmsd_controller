@@ -298,12 +298,19 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_updtr_add(self, arg):
         """
-        Add an updater process that will periodically sample
-        Producer metric sets
+        Add an Updater that will periodically update Producer metric sets either
+        by pulling the content or by registering for an update push. The default
+        is to pull set contents.
         Parameters:
-        name=     The update policy name
-        interval= The update/collect interval
+        name=       The update policy name
+        [interval=] The update/collect interval. This is required only when the
+                    push argument is not given.
         [offset=]   Offset for synchronized aggregation
+        [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the
+                    Updater will get an update whenever the set source ends a
+                    transaction or pushes the update. 'onpush' means the Updater
+                    will receive an update only when the set source pushes the
+                    update.
         """
         self.handle('updtr_add', arg)
 
@@ -575,11 +582,12 @@ class LdmsdCmdParser(cmd.Cmd):
             if flags:
                 break
         updaters = json.loads(response)
-        print("Name             Interval     Offset       State")
-        print("---------------- ------------ ------------ ------------")
+        print("Name             Interval     Offset       Mode            State")
+        print("---------------- ------------ ------------ --------------- ------------")
         for updtr in updaters:
-            print("{0:16} {1:12} {2:12} {3}".format(
-                updtr['name'], updtr['interval'], updtr['offset'], updtr['state']))
+            print("{0:16} {1:12} {2:12} {3:15} {4}".format(
+                updtr['name'], updtr['interval'], updtr['offset'],
+                updtr['mode'], updtr['state']))
             for prdcr in updtr['producers']:
                 print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
                     prdcr['name'], prdcr['host'], prdcr['port'],

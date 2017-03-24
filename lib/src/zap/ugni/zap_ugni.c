@@ -628,6 +628,7 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep, size_t msglen)
 		}
 	}
 
+	map->map.ref_count = 1;
 	map->map.ep = (void*)uep;
 	map->map.acc = msg.acc;
 	map->map.type = ZAP_MAP_REMOTE;
@@ -964,11 +965,11 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
 			__shutdown_on_error(uep);
 		}
 
-		uep->ep.cb(&uep->ep, &zev);
-
 		__free_post_desc(desc);
 		pthread_mutex_unlock(&uep->ep.lock);
 		pthread_mutex_unlock(&z_ugni_list_mutex);
+
+		uep->ep.cb(&uep->ep, &zev);
 	skip:
 		pthread_mutex_lock(&ugni_lock);
 		grc = GNI_CqGetEvent(cq, &cqe);

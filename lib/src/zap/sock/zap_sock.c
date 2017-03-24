@@ -815,6 +815,7 @@ static void process_sep_msg_rendezvous(struct z_sock_ep *sep, size_t reqlen)
 		}
 	}
 
+	map->map.ref_count = 1;
 	map->map.ep = &sep->ep;
 	map->key = msg.rmap_key;
 	map->map.acc = ntohl(msg.acc);

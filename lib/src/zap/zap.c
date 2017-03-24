@@ -340,8 +340,14 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 		DLOG(ep, "zap_interpose_cb(): ENOMEM\n");
 		return;
 	}
-	DLOG(ep, "%s: ep %p: ictxt %p: ev type %s\n", __func__, ep,
+	DLOG(ep, "%s: Vep %p: ictxt %p: ev type %s\n", __func__, ep,
 				ictxt, zap_event_str(ev->type));
+#ifdef TMP_DEBUG
+	ep->z->log_fn("%s: Vep %p: ictxt %p: ev type %s. q->depth = %d\n",
+				__func__, ep,
+				ictxt, zap_event_str(ev->type),
+				ep->event_queue->depth);
+#endif /* TMP_DEBUG */
 	ictxt->ev = *ev;
 	ictxt->ev.data = ictxt->data;
 	if (data_len)
@@ -510,6 +516,12 @@ char *zap_map_addr(zap_map_t map)
 	return map->addr;
 }
 
+zap_map_t zap_map_get(zap_map_t map)
+{
+	__sync_fetch_and_add(&map->ref_count, 1);
+	return map;
+}
+
 zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
 		  void *addr, size_t len, zap_access_t acc)
 {
@@ -519,6 +531,7 @@ zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
 		goto out;
 
 	map = *pm;
+	map->ref_count = 1;
 	map->type = ZAP_MAP_LOCAL;
 	zap_get_ep(ep);
 	map->ep = ep;
@@ -535,6 +548,10 @@ zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
 zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
 {
 	zap_err_t zerr;
+
+	assert(map->ref_count);
+	if (__sync_sub_and_fetch(&map->ref_count, 1))
+		return ZAP_ERR_OK;
 
 	pthread_mutex_lock(&ep->lock);
 	LIST_REMOVE(map, link);

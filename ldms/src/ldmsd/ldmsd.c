@@ -1534,7 +1534,6 @@ int main(int argc, char *argv[])
 							     (double)(count + i) * 3.1415);
 			}
 			ldms_transaction_end(set);
-
 			if (notify) {
 				struct ldms_notify_event_s event;
 				ldms_init_notify_modified(&event);
