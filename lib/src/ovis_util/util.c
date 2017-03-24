@@ -54,6 +54,9 @@
 #include <malloc.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <regex.h>
 #include <assert.h>
 #include <errno.h>
@@ -446,4 +449,17 @@ int f_mkdir_p(const char *path, __mode_t mode)
 cleanup:
 	free(str);
 	return rc;
+}
+
+FILE *fopen_perm(const char *path, const char *f_mode, int o_mode)
+{
+	int fd;
+	int flags = O_RDWR|O_CREAT;
+
+	if (*f_mode == 'w')
+		flags |= O_TRUNC;
+	fd = open(path, flags, o_mode);
+	if (fd < 0)
+		return NULL;
+	return fdopen(fd, f_mode);
 }
