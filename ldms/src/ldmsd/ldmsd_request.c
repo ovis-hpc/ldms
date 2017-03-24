@@ -158,7 +158,12 @@ static int updtr_match_del_handler(int sock, req_msg_t rm);
 static int updtr_start_handler(int sock, req_msg_t rm);
 static int updtr_stop_handler(int sock, req_msg_t rm);
 static int updtr_status_handler(int sock, req_msg_t rm);
+static int plugn_start_handler(int sock, req_msg_t rm);
+static int plugn_stop_handler(int sock, req_msg_t rm);
 static int plugn_status_handler(int sock, req_msg_t rm);
+static int plugn_load_handler(int sock, req_msg_t rm);
+static int plugn_term_handler(int sock, req_msg_t rm);
+static int plugn_config_handler(int sock, req_msg_t rm);
 static int unimplemented_handler(int sock, req_msg_t rm);
 
 static struct request_handler_entry request_handler[] = {
@@ -190,7 +195,12 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_UPDTR_MATCH_ADD_REQ]   = { LDMSD_UPDTR_MATCH_ADD_REQ, updtr_match_add_handler },
 	[LDMSD_UPDTR_MATCH_DEL_REQ]   = { LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
+	[LDMSD_PLUGN_START_REQ] = { LDMSD_PLUGN_START_REQ, plugn_start_handler },
+	[LDMSD_PLUGN_STOP_REQ] = { LDMSD_PLUGN_STOP_REQ, plugn_stop_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
+	[LDMSD_PLUGN_LOAD_REQ] = { LDMSD_PLUGN_LOAD_REQ, plugn_load_handler },
+	[LDMSD_PLUGN_TERM_REQ] = { LDMSD_PLUGN_TERM_REQ, plugn_term_handler },
+	[LDMSD_PLUGN_CONFIG_REQ] = { LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler },
 };
 
 /*
@@ -2085,6 +2095,138 @@ static char *plugn_state_str(enum ldmsd_plugin_type type)
 	return "unknown";
 }
 
+int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
+						char err_str[LEN_ERRSTR]);
+int ldmsd_load_plugin(char *plugin_name, char err_str[LEN_ERRSTR]);
+int ldmsd_term_plugin(char *plugin_name, char err_str[LEN_ERRSTR]);
+int ldmsd_config_plugin(char *plugin_name,
+			struct attr_value_list *_av_list,
+			struct attr_value_list *_kw_list,
+			char err_str[LEN_ERRSTR]);
+
+static int plugn_start_handler(int sock, req_msg_t rm)
+{
+	char *plugin_name, *interval_us, *offset, *attr_name;
+	plugin_name = interval_us = offset = NULL;
+	size_t cnt;
+	int rc;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_INTERVAL:
+			interval_us = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_OFFSET:
+			offset = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!interval_us) {
+		attr_name = "interval";
+		goto einval;
+	}
+
+	rc = ldmsd_start_sampler(plugin_name, interval_us, offset, rm->line_buf);
+	if (rc == 0) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	} else if (rc == EINVAL) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dinterval '%s' invalid", rc, interval_us);
+	} else if (rc == -EINVAL) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dThe specified plugin is not a sampler.", -rc);
+	} else if (rc == ENOENT) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dSampler '%s' not found.", rc, plugin_name);
+	} else if (rc == EBUSY) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dSampler '%s' is already running.",
+							rc, plugin_name);
+	} else if (rc == EDOM) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dSampler parameters interval and offset are "
+				"incompatible.", EINVAL);
+	} else {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dFailed to start the sampler '%s'.",
+				EINVAL, plugin_name);
+	}
+	goto send_reply;
+
+einval:
+	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int plugn_stop_handler(int sock, req_msg_t rm)
+{
+	char *plugin_name, *attr_name;
+	plugin_name = NULL;
+	size_t cnt;
+	int rc;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	rc = ldmsd_stop_sampler(plugin_name, rm->line_buf);
+	if (rc == 0) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	} else if (rc == ENOENT) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dSampler '%s' not found.", rc, plugin_name);
+	} else if (rc == EINVAL) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dThe specified plugin '%s' is not a sampler.",
+				rc, plugin_name);
+	} else if (rc == -EBUSY) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+					"%dThe sampler '%s' is not running.",
+					EINVAL, plugin_name);
+	} else {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+					"%dFailed to stop sampler '%s'",
+					EINVAL, plugin_name);
+	}
+	goto send_reply;
+
+einval:
+	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
 static int plugn_status_handler(int sock, req_msg_t rm)
 {
 	extern struct plugin_list plugin_list;
@@ -2110,6 +2252,192 @@ static int plugn_status_handler(int sock, req_msg_t rm)
 	}
 	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;
+}
+
+static int plugn_load_handler(int sock, req_msg_t rm)
+{
+	char *plugin_name, *attr_name;
+	plugin_name = NULL;
+	size_t cnt;
+	int rc;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	rc = ldmsd_load_plugin(plugin_name, rm->rep_buf);
+	if (rc)
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "%d%s",
+						-rc, rm->rep_buf);
+	else
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	goto send_reply;
+
+einval:
+	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int plugn_term_handler(int sock, req_msg_t rm)
+{
+	char *plugin_name, *attr_name;
+	plugin_name = NULL;
+	size_t cnt;
+	int rc;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	rc = ldmsd_term_plugin(plugin_name, rm->line_buf);
+	if (rc == 0) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	} else if (rc == ENOENT) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dplugin '%s' not found.", rc, plugin_name);
+	} else if (rc == EINVAL) {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dThe specified plugin '%s' has "
+				"active users and cannot be terminated.", rc,
+				plugin_name);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+				"%dFailed to terminate the plugin '%s'.",
+							rc, plugin_name);
+	}
+	goto send_reply;
+
+einval:
+	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int plugn_config_handler(int sock, req_msg_t rm)
+{
+	char *plugin_name, *config_attr, *attr_name;
+	plugin_name = config_attr = NULL;
+	int rc;
+	size_t cnt;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)rm->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_STRING:
+			config_attr = attr->attr_value;
+			break;
+		default:
+			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+					"%dInvalid attribute id %d",
+					EINVAL, attr->attr_id);
+			goto send_reply;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!config_attr) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dNo config attributes are provided.", EINVAL);
+		goto send_reply;
+	}
+
+	char *cmd_s;
+	struct attr_value_list *av_list;
+	struct attr_value_list *kw_list;
+	int tokens;
+
+	/*
+	 * Count the numebr of spaces. That's the maximum number of
+	 * tokens that could be present.
+	 */
+	for (tokens = 0, cmd_s = config_attr; cmd_s[0] != '\0';) {
+		tokens++;
+		/* find whitespace */
+		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
+			cmd_s++;
+		/* Now skip whitespace to next token */
+		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
+			cmd_s++;
+	}
+	rc = ENOMEM;
+	av_list = av_new(tokens);
+	kw_list = av_new(tokens);
+	if (!av_list || !kw_list) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dOut of memory", ENOMEM);
+		goto err;
+	}
+
+	rc = tokenize(config_attr, kw_list, av_list);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
+				"processing '%s'\n", config_attr);
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dOut of memory", ENOMEM);
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldmsd_config_plugin(plugin_name, av_list, kw_list, rm->rep_buf);
+	if (rc) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%d%s",
+				rc, rm->rep_buf);
+	} else {
+		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	}
+	goto send_reply;
+
+einval:
+	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
+					"is required.", EINVAL, attr_name);
+	goto send_reply;
+err:
+	if (kw_list)
+		av_free(kw_list);
+	if (av_list)
+		av_free(av_list);
+send_reply:
+	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
 }
 
 static int unimplemented_handler(int sock, req_msg_t rm)

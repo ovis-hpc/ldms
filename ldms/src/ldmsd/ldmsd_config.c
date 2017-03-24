@@ -100,8 +100,8 @@ int bind_succeeded;
 extern struct event_base *get_ev_base(int idx);
 extern void release_ev_base(int idx);
 int find_least_busy_thread();
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
-			char *err_str);
+extern int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
+						char err_str[LEN_ERRSTR]);
 int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *err_str);
 extern void cleanup(int x, char *reason);
 
