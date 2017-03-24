@@ -69,6 +69,8 @@
 #define LDMSD_VERSION_PATCH	0x02
 #define LDMSD_VERSION_FLAGS	0x00
 
+#define LDMSD_DEFAULT_FILE_PERM 0600
+
 struct ldmsd_version {
 	uint8_t major;
 	uint8_t minor;

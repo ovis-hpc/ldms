@@ -336,7 +336,7 @@ FILE *ldmsd_open_log(const char *progname)
 		return f;
 	}
 
-	f = fopen(logfile, "a");
+	f = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
 	if (!f) {
 		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
 							logfile);
@@ -383,7 +383,7 @@ int ldmsd_logrotate() {
 	fflush(log_fp);
 	fclose(log_fp);
 	rename(logfile, ofile_name);
-	log_fp = fopen(logfile, "a");
+	log_fp = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
 	if (!log_fp) {
 		printf("%-10s: Failed to rotate the log file. Cannot open a new "
 			"log file\n", "ERROR");
@@ -1305,7 +1305,7 @@ int main(int argc, char *argv[])
 			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",
 				pidfile, "overwritten if writable");
 		}
-		FILE *pfile = fopen(pidfile,"w");
+		FILE *pfile = fopen_perm(pidfile,"w", LDMSD_DEFAULT_FILE_PERM);
 		if (!pfile) {
 			int piderr = errno;
 			ldmsd_log(LDMSD_LERROR, "Could not open the pid file named '%s': %s\n",

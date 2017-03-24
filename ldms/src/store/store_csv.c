@@ -271,7 +271,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 				//re name: if got here, then rollover requested
 				snprintf(tmp_path, PATH_MAX, "%s.%d",
 					 s_handle->path, (int) appx);
-				nfp = fopen(tmp_path, "a+");
+				nfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 				if (!nfp){
 					//we cant open the new file, skip
 					msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
@@ -292,7 +292,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 						 s_handle->path, (int)appx);
 					/* truncate a separate headerfile if it exists.
 					 * FIXME: do we still want to do this? */
-					nhfp = fopen(tmp_headerpath, "w");
+					nhfp = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
 					if (!nhfp){
 						fclose(nfp);
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
@@ -304,7 +304,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 						s_handle->schema);
 					strcpy(roc.headerfilename, tmp_headerpath);
 				} else {
-					nhfp = fopen(tmp_path, "a+");
+					nhfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 					if (!nhfp){
 						fclose(nfp);
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
@@ -935,7 +935,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	char tp2[PATH_MAX];
 	struct roll_common roc = { tp1, tp2 };
 	if (!s_handle->file) { /* theoretically, we should never already have this file */
-		s_handle->file = fopen(tmp_path, "a+");
+		s_handle->file = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 	}
 	if (!s_handle->file){
 		msglog(LDMSD_LERROR, "%s: Error %d opening the file %s.\n",
@@ -965,13 +965,13 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 
 			/* truncate a separate headerfile if its the first time */
 			if (s_handle->printheader == FIRST_PRINT_HEADER){
-				s_handle->headerfile = fopen(tmp_headerpath, "w");
+				s_handle->headerfile = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
 			} else if (s_handle->printheader == DO_PRINT_HEADER){
-				s_handle->headerfile = fopen(tmp_headerpath, "a+");
+				s_handle->headerfile = fopen_perm(tmp_headerpath, "a+", LDMSD_DEFAULT_FILE_PERM);
 			}
 			strcpy(roc.headerfilename, tmp_headerpath);
 		} else {
-			s_handle->headerfile = fopen(tmp_path, "a+");
+			s_handle->headerfile = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 			strcpy(roc.headerfilename, tmp_path);
 		}
 

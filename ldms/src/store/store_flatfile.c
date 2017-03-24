@@ -215,7 +215,7 @@ open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			ms->path = strdup(tmp_path);
 			if (!ms->path)
 				goto err4;
-			ms->file = fopen(ms->path, "a+");
+			ms->file = fopen_perm(ms->path, "a+", LDMSD_DEFAULT_FILE_PERM);
 			if (!ms->file)
 				goto err4;
 			pthread_mutex_init(&ms->lock, NULL);
