@@ -28,7 +28,7 @@ The configuration parameters altheader, rolltype, rollover, and buffer are appli
 A subset of these can be overriden by the action=custom values.
 .TP
 .BR config
-name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/!0> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>]
+name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/!0> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]]
 .br
 ldmsd_controller configuration line
 .RS
@@ -83,7 +83,16 @@ roll after approximately rollover bytes are written.
 rollover=<rollover>
 .br
 Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+notify=<notice_path>
+.br
+The path for the file event notices. If unspecified, no notices are sent. See NOTICES below for details of event notices.
+.TP
+notify_isfifo=<bool>
+.br
+Default false. If set true, notice_path will be handled in a nonblocking manner as a FIFO.
 .RE
+
 
 .SH STORE_CSV CUSTOM CONFIGURATION ATTRIBUTE SYNTAX
 The configuration parameters set by action=init are applied to all metric sets alike,
@@ -91,7 +100,8 @@ unless overriden by the action=custom values. Only a subset can be overridden.
 
 .TP
 .BR config
-name=<plugin_name> action=<custom> container=<container> schema=<schema> [ altheader=<0/!0> userdata=<0/!0>]
+name=<plugin_name> action=custom container=<container> schema=<schema> [ altheader=<0/!0> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]]
+
 .br
 ldmsd_controller configuration line
 .RS
@@ -106,7 +116,7 @@ This MUST be custom
 .TP
 altheader=<0/!0>
 .br
-Overrides the default value set in action = main. Definition is as above.
+Overrides the default value set in action = init. Definition is as above.
 .TP
 container=<container>
 .br
@@ -118,7 +128,15 @@ The container and the schema together uniquely distinguish the sets that the cus
 .TP
 userdata=<0/!0>
 .br
-Overrides the default value set in action = main. Definition is as above.
+Overrides the default value set in action = init. Definition is as above.
+.TP
+notify=<notice_path>
+.br
+The path for the file event notices. If unspecified, no notices are sent. See NOTICES below for details of event notices.
+.TP
+notify_isfifo=<bool>
+.br
+Default false. If set true, notice_path will be handled in a nonblocking manner as a FIFO.
 .RE
 
 .SH STRGP_ADD ATTRIBUTE SYNTAX
@@ -176,6 +194,52 @@ The column sequence of <sampled metrics> is the order in which the metrics are a
 Note that the sampler's number and order of metric additions may vary with the kind and number of hardware features enabled on a host at runtime or with the version of kernel. Because of this potential for variation, down-stream tools consuming the CSV files should always determine column names or column number of a specific metric by parsing the header line or .HEADER file.
 .PP
 
+.SH NOTICES OF STORE FILE EVENTS
+.PP
+When the notify option is specified one-line notices of file events (open, close) are written to the named output. Post-processing tools can watch the notification file.  When combined with a roll-over configuration, this provides notices of files rolled over.
+.PP
+If the named output is a plain file, it will be written to indefinitely. Typical use is to tail the file into a file-handling script and to periodically rotate  or truncate it as a log file. The file is buffered, so notices may be received some time after the event recorded.
+.PP
+If the named output is a FIFO, it is handled in a non-blocking fashion. When no FIFO reader is processing, event messages are queued (up to 1000 messages for up to 6000 seconds). Messages older than the time limit are removed. When the queue size is exceeded, the oldest messages are removed. Typical use of the FIFO is to cat it into a file-handling script.
+.PP
+The event line format is:
+.RS
+EVENT SOURCE CONTAINER SCHEMA TYPE FILENAME
+.RE
+where the fields are
+.RS
+.TP
+EVENT
+.br
+One of OPENED, CLOSED.
+.TP
+SOURCE
+.br
+The name of the plugin.
+.TP
+CONTAINER
+.br
+The name of the container.
+.TP
+SCHEMA
+.br
+The name of the schema.
+.TP
+TYPE
+.br
+The type of information in the file. Current values are "data" and "header".
+Anticipated values from other plugins in development include: "summary" (for
+statistical data about files closed), and
+"kind", "cname", "pyname", and "units" (for auxiliary columnar data about metrics).
+.TP
+FILENAME
+.br
+The name of the file.
+
+.RE
+
+
+
 .SH NOTES
 .PP
 .IP \[bu]
@@ -185,7 +249,7 @@ The 'sequence' option has been removed.
 .PP
 
 .SH BUGS
-No known bugs.
+There is a maximum of 20 concurrent CSV stores.
 
 .SH EXAMPLES
 .PP
