@@ -262,6 +262,7 @@ class LDMSD_Request(object):
         if message:
             self.request += message
         self.response = ""
+        self.resp_err = 0
         LDMSD_Request.message_number += 1
 
     def send(self, ctrl):
@@ -274,14 +275,15 @@ class LDMSD_Request(object):
         self.response = ""
         while True:
             hdr = ctrl.socket.recv(self.header_size)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
+            (marker, flags, msg_no, errcode, rec_len) = struct.unpack('iiiii', hdr)
+            self.resp_err = errcode
             if marker != -1:
                 raise LDMSD_Except("Invalid response format")
             data = ctrl.socket.recv(rec_len - self.header_size)
             self.response += data
             if flags & LDMSD_Request.EOM_FLAG:
                 break
-        return self.response
+        return [self.resp_err, self.response]
 
     def is_error_resp(self, json_obj_resp):
         if json_obj_resp == 0:

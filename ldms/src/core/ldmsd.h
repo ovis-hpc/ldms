@@ -812,7 +812,7 @@ typedef struct ldmsd_req_hdr_s {
 	uint32_t marker;	/* Always has the value 0xff */
 	uint32_t flags;		/* EOM==1 means this is the last record for this message */
 	uint32_t msg_no;	/* Unique for each request */
-	uint32_t cmd_id;	/* The unique command id */
+	uint32_t code;		/* For command req, it is the unique command id. For command response, it is the error code. */
 	uint32_t rec_len;	/* Record length in bytes including this header */
 } *ldmsd_req_hdr_t;
 

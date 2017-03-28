@@ -190,10 +190,11 @@ class LdmsdCmdParser(cmd.Cmd):
 
         request.send(self.ctrl)
 
-        resp = request.receive(self.ctrl)
-        if resp is None:
+        data = request.receive(self.ctrl)
+        if data is None:
             raise Exception("Failed to get the information from ldmsd")
-        if resp != "0":
+        [rc, resp] = data
+        if rc != 0:
             try:
                 data = json.loads(resp)
             except ValueError:
