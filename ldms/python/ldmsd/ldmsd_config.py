@@ -391,29 +391,21 @@ class ldmsdConfig(object):
 class ldmsdUSocketConfig(ldmsdConfig):
     def __init__(self, ldmsd_sockpath, sockpath = None, max_recv_len = None):
         self.socket = None
-        self.sockpath = None
         if not os.path.exists(ldmsd_sockpath):
             raise ValueError("{0} doesn't exist.".format(ldmsd_sockpath))
 
-        if sockpath is None:
-            name = "ldmsd_ctrl_sockname.{0}".format(os.getpid())
-            self.sockpath = dirname(ldmsd_sockpath) + "/" + name
-        else:
-            self.sockpath = sockpath
-        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        self.socket.bind(self.sockpath)
-
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        
         if max_recv_len is None:
             self.max_recv_len = MAX_RECV_LEN
         else:
             self.max_recv_len = max_recv_len
         self.ldmsd_sockpath = ldmsd_sockpath
+        self.socket.connect(self.ldmsd_sockpath)
 
     def __del__(self):
         if self.socket is not None:
             self.socket.close()
-        if self.sockpath is not None:
-            os.unlink(self.sockpath)
 
     def setMaxRecvLen(self, max_recv_len):
         self.max_recv_len = max_recv_len
@@ -433,9 +425,7 @@ class ldmsdUSocketConfig(ldmsdConfig):
     def send_command(self, cmd):
         if self.socket is None:
             raise Exception("The connection has been closed.")
-        cmd_len = self.socket.sendto(cmd, self.ldmsd_sockpath)
-        if cmd_len != len(cmd):
-            raise Exception("Wrong command length")
+        self.socket.sendall(cmd)
 
     def receive_response(self, recv_len = None):
         return ldmsdConfig.receive_response(self, recv_len)
@@ -444,9 +434,6 @@ class ldmsdUSocketConfig(ldmsdConfig):
         if self.socket is not None:
             self.socket.close()
             self.socket = None
-        if self.sockpath is not None:
-            os.unlink(self.sockpath)
-            self.sockpath = None
 
 class ldmsdInetConfig(ldmsdConfig):
     def __init__(self, host, port, secretword, max_recv_len = MAX_RECV_LEN):

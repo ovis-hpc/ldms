@@ -1408,6 +1408,10 @@ extern int
 process_request(int fd, struct msghdr *msg, size_t msg_len);
 void *ctrl_thread_proc(void *v)
 {
+	struct sockaddr_un sun = {.sun_family = AF_UNIX, .sun_path = ""};
+	socklen_t sun_len = sizeof(sun);
+	int sock;
+
 	struct msghdr msg;
 	struct iovec iov;
 	unsigned char *lbuf;
@@ -1423,6 +1427,14 @@ void *ctrl_thread_proc(void *v)
 			  cfg_buf_len);
 		cleanup(1, "ctrl thread proc out of memory");
 	}
+
+loop:
+	sock = accept(muxr_s, (void *)&sun, &sun_len);
+	if (sock < 0) {
+		ldmsd_log(LDMSD_LERROR, "Error %d failed to accept.\n", inet_sock);
+		goto loop;
+	}
+
 	iov.iov_base = lbuf;
 	do {
 		struct ldmsd_req_hdr_s request;
@@ -1437,23 +1449,26 @@ void *ctrl_thread_proc(void *v)
 		msg.msg_control = NULL;
 		msg.msg_controllen = 0;
 		msg.msg_flags = 0;
-		msglen = recvmsg(muxr_s, &msg, MSG_PEEK);
+		msglen = recvmsg(sock, &msg, MSG_PEEK);
 		if (msglen <= 0)
 			break;
 		if (cfg_buf_len < request.rec_len) {
 			free(lbuf);
 			lbuf = malloc(request.rec_len);
-			if (!lbuf)
+			if (!lbuf) {
+				cfg_buf_len = 0;
 				break;
+			}
+			cfg_buf_len = request.rec_len;
 		}
 		iov.iov_base = lbuf;
 		iov.iov_len = request.rec_len;
 
-		msglen = recvmsg(muxr_s, &msg, MSG_WAITALL);
+		msglen = recvmsg(sock, &msg, MSG_WAITALL);
 		if (msglen < request.rec_len)
 			break;
 
-		process_request(muxr_s, &msg, msglen);
+		process_request(sock, &msg, msglen);
 		if (cleanup_requested)
 			break;
 	} while (1);
@@ -1462,7 +1477,7 @@ void *ctrl_thread_proc(void *v)
 		ctrl_thread = (pthread_t)-1;
 		cleanup(0,"user quit");
 	}
-	free(lbuf);
+	goto loop;
 	return NULL;
 }
 
@@ -1492,7 +1507,7 @@ int ldmsd_config_init(char *name)
 			sizeof(struct sockaddr_un) - sizeof(short));
 
 	/* Create listener */
-	muxr_s = socket(AF_UNIX, SOCK_DGRAM, 0);
+	muxr_s = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (muxr_s < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d creating muxr socket.\n",
 				muxr_s);
@@ -1507,6 +1522,12 @@ int ldmsd_config_init(char *name)
 		return -1;
 	}
 	bind_succeeded = 1;
+
+	ret = listen(muxr_s, 1);
+	if (ret < 0) {
+		ldmsd_log(LDMSD_LERROR, "Error %d listen to sock named '%s'.\n",
+				errno, sockname);
+	}
 
 	ret = pthread_create(&ctrl_thread, NULL, ctrl_thread_proc, 0);
 	if (ret) {
@@ -1651,8 +1672,11 @@ loop:
 		if (cfg_buf_len < request.rec_len) {
 			free(lbuf);
 			lbuf = malloc(request.rec_len);
-			if (!lbuf)
+			if (!lbuf) {
+				cfg_buf_len = 0;
 				break;
+			}
+			cfg_buf_len = request.rec_len;
 		}
 
 		iov.iov_base = lbuf;
