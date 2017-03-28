@@ -189,21 +189,16 @@ class LdmsdCmdParser(cmd.Cmd):
             raise
 
         request.send(self.ctrl)
+        if is_debug:
+            print("Sent request {0}".format(request.message_number_get()))
 
-        data = request.receive(self.ctrl)
-        if data is None:
+        resp = request.receive(self.ctrl)
+        if is_debug:
+            print("Received the response of request {0}".format(request.message_number_get()))
+        if resp is None:
             raise Exception("Failed to get the information from ldmsd")
-        [rc, resp] = data
-        if rc != 0:
-            try:
-                data = json.loads(resp)
-            except ValueError:
-                print(resp)
-            except:
-                raise
-            else:
-                if 'error' in data.keys():
-                    print(data['error'])
+        if 'errcode' in resp.keys() and resp['errcode'] != 0:
+                print(resp['msg'])
         return resp
 
     def read_none_tty(self, fin):

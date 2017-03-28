@@ -261,9 +261,11 @@ class LDMSD_Request(object):
         # Add any message payload
         if message:
             self.request += message
-        self.response = ""
-        self.resp_err = 0
+        self.response = {'errcode': None, 'msg': None}
         LDMSD_Request.message_number += 1
+
+    def message_number_get(self):
+        return self.message_number
 
     def send(self, ctrl):
         try:
@@ -272,18 +274,21 @@ class LDMSD_Request(object):
             raise
 
     def receive(self, ctrl):
-        self.response = ""
+        self.response = {'errcode': None, 'msg': None}
+        msg = ""
         while True:
             hdr = ctrl.socket.recv(self.header_size)
             (marker, flags, msg_no, errcode, rec_len) = struct.unpack('iiiii', hdr)
-            self.resp_err = errcode
             if marker != -1:
                 raise LDMSD_Except("Invalid response format")
-            data = ctrl.socket.recv(rec_len - self.header_size)
-            self.response += data
+            if rec_len - self.header_size > 0:
+                data = ctrl.socket.recv(rec_len - self.header_size)
+                msg += data
             if flags & LDMSD_Request.EOM_FLAG:
                 break
-        return [self.resp_err, self.response]
+        self.response['errcode'] = errcode
+        self.response['msg'] = msg
+        return self.response
 
     def is_error_resp(self, json_obj_resp):
         if json_obj_resp == 0:
@@ -296,6 +301,9 @@ class LDMSD_Request(object):
             if 'error' in json_obj_resp[0].keys():
                 return True
         return False
+
+    def resp2json(self, resp):
+        return json.dumps(resp)
 
 class LdmsdReqParser(cmd.Cmd):
     def __init__(self, host = None, port = None, secretPath = None, infile=None):

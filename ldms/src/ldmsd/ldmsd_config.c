@@ -557,12 +557,7 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, siz
 	memset(regex, 0, sizeof *regex);
 	int rc = regcomp(regex, regex_str, REG_NOSUB);
 	if (rc) {
-		snprintf(errbuf, errsz, "22");
-		(void)regerror(rc,
-			       regex,
-			       &errbuf[2],
-			       errsz - 2);
-		strcat(errbuf, "\n");
+		(void)regerror(rc, regex, errbuf, errsz);
 	}
 	return rc;
 }
