@@ -322,7 +322,7 @@ static void do_server(struct sockaddr_in *sin)
 		assert(0);
 
 	int rc;
-	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin));
+	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin), NULL, NULL);
 	if (rc) {
 		_log("Failed to listen '%d'\n", rc);
 		assert(0);
@@ -460,13 +460,13 @@ static void client_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 	}
 }
 
-static void client_connect_cb(ldms_t x, ldms_conn_event_t e, void *arg)
+static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 {
 	int rc = 0;
 	struct sockaddr_in lsin = {0};
 	struct sockaddr_in rsin = {0};
-	switch (e) {
-	case LDMS_CONN_EVENT_CONNECTED:
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
 		printf("%d: connected\n", port);
 		rc = ldms_xprt_lookup(x, setname, LDMS_LOOKUP_BY_INSTANCE,
 				client_lookup_cb, NULL);
@@ -475,17 +475,17 @@ static void client_connect_cb(ldms_t x, ldms_conn_event_t e, void *arg)
 			assert(0);
 		}
 		break;
-	case LDMS_CONN_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_ERROR:
 		printf("%d: conn_error\n", port);
 		ldms_xprt_put(x);
 		break;
-	case LDMS_CONN_EVENT_DISCONNECTED:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
 		printf("%d: disconnected\n", port);
 		ldms_xprt_put(x);
 		sem_post(&exit_sem);
 		break;
 	default:
-		printf("%d: Unhandled ldms event '%d'\n", port, e);
+		printf("%d: Unhandled ldms event '%d'\n", port, e->type);
 		exit(-1);
 	}
 }

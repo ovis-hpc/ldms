@@ -1028,6 +1028,20 @@ void *event_proc(void *v)
 	return NULL;
 }
 
+void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
+		break;
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		ldms_xprt_put(x);
+		break;
+	default:
+		assert(0);
+		break;
+	}
+}
+
 void listen_on_transport(char *xprt_str, char *port_str)
 {
 	int port_no;
@@ -1054,7 +1068,8 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(port_no);
-	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin));
+	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin),
+			__listen_connect_cb, NULL);
 	if (ret) {
 		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
 				"transport.\n", ret, xprt_str);

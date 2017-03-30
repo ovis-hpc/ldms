@@ -331,12 +331,12 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 	ldms_xprt_dir_free(xprt, dir);
 }
 
-static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
-	switch (e) {
-	case LDMS_CONN_EVENT_CONNECTED:
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
 		ldmsd_log(LDMSD_LINFO, "Producer %s is connected\n",
 				prdcr->obj.name);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
@@ -345,15 +345,15 @@ static void prdcr_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 			ldms_xprt_close(prdcr->xprt);
 		ldmsd_task_stop(&prdcr->task);
 		break;
-	case LDMS_CONN_EVENT_REJECTED:
+	case LDMS_XPRT_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
 				"connection\n", prdcr->obj.name);
 		goto reset_prdcr;
-	case LDMS_CONN_EVENT_DISCONNECTED:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
 		ldmsd_log(LDMSD_LINFO, "Producer %s is disconnected\n",
 				prdcr->obj.name);
 		goto reset_prdcr;
-	case LDMS_CONN_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_ERROR:
 		ldmsd_log(LDMSD_LINFO, "Producer %s: connection error\n",
 				prdcr->obj.name);
 		goto reset_prdcr;
@@ -410,7 +410,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr_in *)&prdcr->ss);
 		/* Call connect callback to advance state and update timers*/
 		if (prdcr->xprt)
-			prdcr_connect_cb(prdcr->xprt, LDMS_CONN_EVENT_CONNECTED, prdcr);
+			prdcr_connect_cb(prdcr->xprt, LDMS_XPRT_EVENT_CONNECTED, prdcr);
 		break;
 	case LDMSD_PRDCR_TYPE_LOCAL:
 		assert(0);

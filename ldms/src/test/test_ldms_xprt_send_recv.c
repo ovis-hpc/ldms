@@ -64,13 +64,14 @@
 #include <netinet/ip.h>
 #include <netdb.h>
 #include <semaphore.h>
+#include <errno.h>
 #include "ldms.h"
 #define FMT "x:p:h:sfn"
 
 const char *secretword = "password";
-char *xprt;
-char *host;
-int port;
+char *xprt = "sock";
+char *host = "localhost";
+int port = 10001;
 int is_server;
 int is_null;
 sem_t exit_sem;
@@ -85,6 +86,10 @@ struct user_msg {
 	enum msg_type type;
 	char *msg;
 	size_t len;
+};
+
+struct recv_arg {
+	ldms_t sender_x;
 };
 
 #define msg_req_str "Request"
@@ -174,10 +179,18 @@ static int msg_send(ldms_t x, enum msg_type msg_type)
 	return rc;
 send_null:
 	rc = ldms_xprt_send(x, NULL, 0);
+	if (rc == EINVAL) {
+		ldms_xprt_close(x);
+	} else {
+		printf("ldms fails to detect that the message is NULL.\n");
+		printf("FAIL\n");
+		exit(-1);
+	}
 	return rc;
 }
 
-static void server_recv_cb(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg)
+static void server_recv_cb(ldms_t x, char *msg_buf, size_t msg_len,
+					struct recv_arg *cb_arg)
 {
 	int rc;
 	struct user_msg *recv_msg = (struct user_msg *)msg_buf;
@@ -201,10 +214,34 @@ static void server_recv_cb(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg
 	}
 }
 
+static void server_listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+	int rc;
+	struct recv_arg *recv_arg = (struct recv_arg *)cb_arg;
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
+		printf("There is a new connection.\n");
+		recv_arg->sender_x = x;
+		break;
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		printf("The connection is disconnected.\n");
+		free(recv_arg);
+		ldms_xprt_put(x);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		server_recv_cb(x, e->data, e->data_len, recv_arg);
+		break;
+	default:
+		printf("Unexpected ldms conn event %d.\n", e->type);
+		exit(-1);
+	}
+}
+
 static void do_server(struct sockaddr_in *sin)
 {
 	int rc;
 	ldms_t ldms;
+
 #if OVIS_LIB_HAVE_AUTH
 	ldms = ldms_xprt_with_auth_new(xprt, _log, secretword);
 #else /* OVIS_LIB_HAVE_AUTH */
@@ -214,19 +251,20 @@ static void do_server(struct sockaddr_in *sin)
 		printf("ldms_xprt_new error\n");
 		exit(-1);
 	}
-	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin));
+
+	struct recv_arg *recv_arg = malloc(sizeof(*recv_arg));
+	if (!recv_arg) {
+		printf("Out of memory\n");
+		exit(-1);
+	}
+	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin),
+			server_listen_connect_cb, recv_arg);
 	if (rc) {
 		printf("ldms_xprt_listen: %d\n", rc);
 		exit(-1);
 	}
 
 	printf("Listening on port %hu\n", port);
-
-	rc = ldms_xprt_recv(ldms, server_recv_cb, NULL);
-	if (rc) {
-		printf("ldms_xprt_recv error\n");
-		exit(-1);
-	}
 }
 
 static void client_recv_cb(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg)
@@ -248,34 +286,32 @@ static void client_recv_cb(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg
 	}
 }
 
-static void client_connect_cb(ldms_t x, ldms_conn_event_t e, void *arg)
+static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 {
 	int rc = 0;
-	switch (e) {
-	case LDMS_CONN_EVENT_CONNECTED:
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
 		printf("Connected\n");
-		rc = ldms_xprt_recv(x, client_recv_cb, NULL);
-		if (rc) {
-			printf("ldms_xprt_recv error: %d\n", rc);
-			exit(-1);
-		}
-
 		if (is_null) {
 			rc = msg_send(x, MSG_NULL);
 		} else {
 			rc = msg_send(x, MSG_REQ);
 		}
 		break;
-	case LDMS_CONN_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_ERROR:
 		printf("con_error\n");
 		ldms_xprt_put(x);
 		break;
-	case LDMS_CONN_EVENT_DISCONNECTED:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
 		printf("disconnected\n");
+		ldms_xprt_put(x);
 		sem_post(&exit_sem);
 		break;
+	case LDMS_XPRT_EVENT_RECV:
+		client_recv_cb(x, e->data, e->data_len, arg);
+		break;
 	default:
-		printf("Unhandled ldms event '%d'\n", e);
+		printf("Unhandled ldms event '%d'\n", e->type);
 		exit(-1);
 	}
 }

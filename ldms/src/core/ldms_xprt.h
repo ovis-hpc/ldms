@@ -341,12 +341,9 @@ struct ldms_xprt {
 #endif /* DEBUG */
 	TAILQ_HEAD(, ldms_context) ctxt_list;
 
-	/* Callback that implements xprt state machine on the active side */
-	ldms_connect_cb_t connect_cb;
-	void *connect_cb_arg;
-
-	ldms_recv_cb_t recv_cb;
-	void *recv_cb_arg;
+	/* Callback that receives the connection event and receive event */
+	ldms_event_cb_t event_cb;
+	void *event_cb_arg;
 
 	zap_t zap;
 	zap_ep_t zap_ep;

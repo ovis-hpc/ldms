@@ -221,7 +221,7 @@ void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
 	pthread_mutex_unlock(&exit_mutex);
 }
 
-void client_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	int rc = 0;
 	struct sockaddr_in lsin = {0};
@@ -231,8 +231,8 @@ void client_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 	ldms_t ldms = conn->ldms;
 	int port = ntohs(conn->sin.sin_port);
 	pthread_mutex_lock(&conn->state_lock);
-	switch (e) {
-	case LDMS_CONN_EVENT_CONNECTED:
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
 		conn->state = CONNECTED;
 		printf("%d: connected\n", port);
 		if (dir) {
@@ -253,13 +253,13 @@ void client_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 			}
 		}
 		break;
-	case LDMS_CONN_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_ERROR:
 		conn->state = DISCONNECTED;
 		printf("%d: conn_error\n", port);
 		ldms_xprt_put(ldms);
 		conn->ldms = NULL;
 		break;
-	case LDMS_CONN_EVENT_DISCONNECTED:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
 		conn->state = DISCONNECTED;
 		printf("%d: disconnected\n", port);
 		if (conn->set) {
@@ -270,7 +270,7 @@ void client_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 		conn->ldms = NULL;
 		break;
 	default:
-		printf("%d: Unhandled ldms event '%d'\n", port, e);
+		printf("%d: Unhandled ldms event '%d'\n", port, e->type);
 		pthread_mutex_unlock(&conn->state_lock);
 		exit(-1);
 	}
@@ -405,7 +405,7 @@ void do_server(struct sockaddr_in *sin)
 		exit(-1);
 	}
 
-	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin));
+	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin), NULL, NULL);
 	if (rc) {
 		printf("ldms_xprt_listen: %d\n", rc);
 		exit(-1);

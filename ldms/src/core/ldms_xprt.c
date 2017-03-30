@@ -608,10 +608,13 @@ process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 static void
 process_send_request(struct ldms_xprt *x, struct ldms_request *req)
 {
-	if (!x->recv_cb)
+	if (!x->event_cb)
 		return;
-
-	x->recv_cb(x, req->send.msg, ntohl(req->send.msg_len), x->recv_cb_arg);
+	struct ldms_xprt_event event;
+	event.type = LDMS_XPRT_EVENT_RECV;
+	event.data = req->send.msg;
+	event.data_len = req->send.msg_len;
+	x->event_cb(x, &event, x->event_cb_arg);
 }
 
 
@@ -1165,10 +1168,14 @@ err_n_reject:
 void process_auth_approval_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		struct ldms_context *ctxt)
 {
+	struct ldms_xprt_event event = {
+			.type = LDMS_XPRT_EVENT_CONNECTED,
+			.data = NULL,
+			.data_len = 0
+	};
 	x->auth_flag = LDMS_XPRT_AUTH_APPROVED;
-	if (x->connect_cb)
-		x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
-					x->connect_cb_arg);
+	if (x->event_cb)
+		x->event_cb(x, &event, x->event_cb_arg);
 	ldms_xprt_put(x); /* Taken in send_auth_password() */
 }
 
@@ -1325,11 +1332,16 @@ zap_mem_info_t ldms_zap_mem_info()
 	return &zmmi;
 }
 
-void __ldms_passive_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+void __ldms_passive_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	switch (e) {
-	case LDMS_CONN_EVENT_DISCONNECTED:
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
+		break;
+	case LDMS_XPRT_EVENT_DISCONNECTED:
 		ldms_xprt_put(x);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		/* Do nothing */
 		break;
 	default:
 		assert(0);
@@ -1362,8 +1374,11 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	__ldms_xprt_init(_x, x->name, x->log);
 	_x->zap = x->zap;
 	_x->zap_ep = zep;
+	_x->event_cb = x->event_cb;
+	_x->event_cb_arg = x->event_cb_arg;
+	if (!_x->event_cb)
+		_x->event_cb = __ldms_passive_connect_cb;
 	zap_set_ucontext(zep, _x);
-	_x->connect_cb = __ldms_passive_connect_cb;
 
 	char *data = 0;
 	size_t datalen = 0;
@@ -1799,7 +1814,10 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
  */
 static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
-	int ldms_conn_event;
+	struct ldms_xprt_event event = {
+			.type = LDMS_XPRT_EVENT_LAST,
+			.data = NULL,
+			.data_len = 0};
 	struct ldms_version *ver;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch(ev->type) {
@@ -1833,16 +1851,16 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_zap_handle_conn_req(zep);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
-		if (x->connect_cb)
-			x->connect_cb(x, LDMS_CONN_EVENT_ERROR,
-				      x->connect_cb_arg);
+		event.type = LDMS_XPRT_EVENT_ERROR;
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_REJECTED:
-		if (x->connect_cb)
-			x->connect_cb(x, LDMS_CONN_EVENT_REJECTED,
-					x->connect_cb_arg);
+		event.type = LDMS_XPRT_EVENT_REJECTED;
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
 		break;
@@ -1861,16 +1879,16 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		 * Fall to the state machine without authentication.
 		 */
 #endif /* OVIS_LIB_HAVE_AUTH */
-		if (x->connect_cb)
-			x->connect_cb(x, LDMS_CONN_EVENT_CONNECTED,
-				      x->connect_cb_arg);
+		event.type = LDMS_XPRT_EVENT_CONNECTED;
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
 
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 #ifdef DEBUG
 		x->log("DEBUG: ldms_zap_cb: receive DISCONNECTED %p: ref_count %d\n", x, x->ref_count);
 #endif /* DEBUG */
-		ldms_conn_event = LDMS_CONN_EVENT_DISCONNECTED;
+		event.type = LDMS_XPRT_EVENT_DISCONNECTED;
 #if OVIS_LIB_HAVE_AUTH
 		if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
 			(x->auth_flag != LDMS_XPRT_AUTH_APPROVED)) {
@@ -1886,14 +1904,13 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			 *
 			 *  Send the LDMS_CONN_EVENT_REJECTED to the application.
 			 */
-			ldms_conn_event = LDMS_CONN_EVENT_REJECTED;
 #ifdef DEBUG
 			x->log("DEBUG: ldms_zap_cb: auth fail: rejected. %d\n", (int) x->auth_flag);
 #endif /* DEBUG */
 		}
 #endif /* OVIS_LIB_HAVE_AUTH */
-		if (x->connect_cb)
-			x->connect_cb(x, ldms_conn_event, x->connect_cb_arg);
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
 #ifdef DEBUG
 		x->log("DEBUG: ldms_zap_cb: DISCONNECTED %p: ref_count %d. after callback\n",
 			 x, x->ref_count);
@@ -1927,18 +1944,25 @@ int __recv_complete_auth_check(struct ldms_xprt *x, void *r)
 
 static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 {
+	struct ldms_xprt_event event = {
+			.data = NULL,
+			.data_len = 0
+	};
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		assert(0 == "Illegal connect request.");
 		break;
 	case ZAP_EVENT_CONNECTED:
+		event.type = LDMS_XPRT_EVENT_CONNECTED;
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 #if OVIS_LIB_HAVE_AUTH
-		if (x->connect_cb)
-			x->connect_cb(x, LDMS_CONN_EVENT_DISCONNECTED,
-						x->connect_cb_arg);
+		event.type = LDMS_XPRT_EVENT_DISCONNECTED;
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
 		/* Put back the reference taken when accept the connection */
 		ldms_xprt_put(x);
 #else /* OVIS_LIB_HAVE_AUTH */
@@ -1951,6 +1975,8 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 		recv_cb(x, ev->data);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
+		ldms_xprt_put(x);
+		break;
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
 	case ZAP_EVENT_RENDEZVOUS:
@@ -2239,14 +2265,6 @@ int ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len)
 	pthread_mutex_unlock(&x->lock);
 	ldms_xprt_put(x);
 	return rc;
-}
-
-int ldms_xprt_recv(ldms_t _x, ldms_recv_cb_t cb_fn, void *cb_arg)
-{
-	struct ldms_xprt *x = _x;
-	x->recv_cb = cb_fn;
-	x->recv_cb_arg = cb_arg;
-	return 0;
 }
 
 int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
@@ -2683,14 +2701,14 @@ int ldms_xprt_push(ldms_set_t s)
 }
 
 int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
-			ldms_connect_cb_t cb, void *cb_arg)
+			ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
 	struct ldms_xprt *_x = x;
 	struct ldms_version ver;
 	LDMS_VERSION_SET(ver);
-	_x->connect_cb = cb;
-	_x->connect_cb_arg = cb_arg;
+	_x->event_cb = cb;
+	_x->event_cb_arg = cb_arg;
 	ldms_xprt_get(x);
 	rc = zap_connect(_x->zap_ep, sa, sa_len, (void*)&ver, sizeof(ver));
 	if (rc)
@@ -2698,15 +2716,18 @@ int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	return rc;
 }
 
-static void sync_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+static void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	switch (e) {
-	case LDMS_CONN_EVENT_CONNECTED:
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
 		x->sem_rc = 0;
 		break;
-	case LDMS_CONN_EVENT_ERROR:
-	case LDMS_CONN_EVENT_DISCONNECTED:
+	case LDMS_XPRT_EVENT_REJECTED:
+	case LDMS_XPRT_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
 		x->sem_rc = ECONNREFUSED;
+		break;
+	case LDMS_XPRT_EVENT_RECV:
 		break;
 	default:
 		assert(0);
@@ -2715,7 +2736,7 @@ static void sync_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
 }
 
 int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
-			      ldms_connect_cb_t cb, void *cb_arg)
+			      ldms_event_cb_t cb, void *cb_arg)
 {
 	struct addrinfo *ai;
 	struct addrinfo hints = {
@@ -2739,12 +2760,16 @@ out:
 	return rc;
 }
 
-int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len)
+int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
+		ldms_event_cb_t cb, void *cb_arg)
 {
+	x->event_cb = cb;
+	x->event_cb_arg = cb_arg;
 	return zap_listen(x->zap_ep, sa, sa_len);
 }
 
-int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
+int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
+		ldms_event_cb_t cb, void *cb_arg)
 {
 	int rc;
 	struct sockaddr_in sin;
@@ -2757,7 +2782,7 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
 		rc = getaddrinfo(host, port_no, &hints, &ai);
 		if (rc)
 			return EHOSTUNREACH;
-		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen);
+		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
 		freeaddrinfo(ai);
 	} else {
 		short port = atoi(port_no);
@@ -2765,7 +2790,8 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
 		sin.sin_family = AF_INET;
 		sin.sin_addr.s_addr = 0;
 		sin.sin_port = htons(port);
-		rc = ldms_xprt_listen(x, (struct sockaddr *)&sin, sizeof(sin));
+		rc = ldms_xprt_listen(x, (struct sockaddr *)&sin, sizeof(sin),
+								cb, cb_arg);
 	}
 	return rc;
 }
