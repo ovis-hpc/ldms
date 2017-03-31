@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -51,6 +51,7 @@
 #include <sys/queue.h>
 #include <semaphore.h>
 #include <errno.h>
+#include <pthread.h>
 #include "ldms.h"
 
 ldms_t LDMS_xprt_new(const char *xprt, const char *secretword)
@@ -134,52 +135,234 @@ PyObject *LDMS_xprt_dir(ldms_t x)
 	return Py_None;
 }
 
-struct active_connect_arg {
-        sem_t sem;
-        int errcode;
+struct recv_buf {
+        ldms_t x;
+        TAILQ_ENTRY(recv_buf) entry;
+        size_t data_len;
+        char data[0];
 };
 
-static void __active_connect_cb(ldms_t x, ldms_conn_event_t e, void *cb_arg)
+struct recv_arg {
+        ldms_t x;
+        sem_t sem_ready;
+        pthread_mutex_t lock;
+        TAILQ_HEAD(recv_buf_q, recv_buf) recv_buf_q;
+        LIST_ENTRY(recv_arg) entry;
+};
+LIST_HEAD(recv_arg_list, recv_arg) recv_arg_list;
+pthread_mutex_t recv_arg_list_lock;
+
+struct recv_buf *__recv_buf_new(ldms_t x, struct recv_arg *arg,
+                                        size_t data_len, char *data)
 {
-        struct active_connect_arg *conn_arg = cb_arg;
+        struct recv_buf *buf = malloc(sizeof(*buf) + data_len);
+        if (!buf)
+                return NULL;
+        buf->x = x;
+        buf->data_len = data_len;
+        memcpy(buf->data, data, data_len);
+        pthread_mutex_lock(&arg->lock);
+        TAILQ_INSERT_TAIL(&arg->recv_buf_q, buf, entry);
+        pthread_mutex_unlock(&arg->lock);
+        return buf;
+}
+
+void __recv_buf_destroy(struct recv_buf *buf, struct recv_arg *arg)
+{
+        pthread_mutex_lock(&arg->lock);
+        TAILQ_REMOVE(&arg->recv_buf_q, buf, entry);
+        pthread_mutex_unlock(&arg->lock);
+        buf->x = NULL;
+        free(buf);
+}
+
+struct recv_buf *__recv_buf_next(struct recv_arg *arg)
+{
+        struct recv_buf *buf;
+        pthread_mutex_lock(&arg->lock);
+        buf = TAILQ_FIRST(&arg->recv_buf_q);
+        pthread_mutex_unlock(&arg->lock);
+        return buf;
+}
+
+void __cleanup_recv_buf_q(struct recv_arg *arg)
+{
+        pthread_mutex_lock(&arg->lock);
+        struct recv_buf *buf = TAILQ_FIRST(&arg->recv_buf_q);
+        while (buf) {
+                __recv_buf_destroy(buf, arg);
+                buf = TAILQ_FIRST(&arg->recv_buf_q);
+        }
+        pthread_mutex_unlock(&arg->lock);
+}
+
+struct recv_arg * __recv_arg_new(ldms_t x)
+{
+        struct recv_arg *arg = malloc(sizeof(*arg));
+        if (!arg)
+                return NULL;
+        arg->x = x;
+        sem_init(&arg->sem_ready, 0, 0);
+        pthread_mutex_init(&arg->lock, 0);
+        TAILQ_INIT(&arg->recv_buf_q);
+        pthread_mutex_lock(&recv_arg_list_lock);
+        LIST_INSERT_HEAD(&recv_arg_list, arg, entry);
+        pthread_mutex_unlock(&recv_arg_list_lock);
+        return arg;
+}
+
+struct recv_arg *__recv_arg_find(ldms_t x)
+{
+        struct recv_arg *arg;
+        pthread_mutex_lock(&recv_arg_list_lock);
+        arg = LIST_FIRST(&recv_arg_list);
+        while (arg) {
+                if (arg->x == x)
+                        goto out;
+        }
+out:
+        pthread_mutex_unlock(&recv_arg_list_lock);
+        return arg;
+}
+
+void __recv_arg_destory(struct recv_arg *arg)
+{
+        pthread_mutex_lock(&recv_arg_list_lock);
+        LIST_REMOVE(arg, entry);
+        pthread_mutex_unlock(&recv_arg_list_lock);
+        __cleanup_recv_buf_q(arg);
+        arg->x = NULL;
+        sem_destroy(&arg->sem_ready);
+        pthread_mutex_destroy(&arg->lock);
+        free(arg);
+}
+
+PyObject *LDMS_xprt_recv(ldms_t x)
+{
+        PyObject *data;
+        struct recv_buf *buf;
+        struct recv_arg *arg = __recv_arg_find(x);
+        if (!arg)
+                assert(0);
+        sem_wait(&arg->sem_ready);
+        buf = __recv_buf_next(arg);
+        if (!buf) {
+                assert(0 == "No data receieved");
+        }
+        data = PyByteArray_FromStringAndSize(buf->data, buf->data_len);
+        __recv_buf_destroy(buf, arg);
+        return data;
+}
+
+struct passive_event_arg {
+        int errcode;
         struct recv_arg *recv_arg;
-        switch(e) {
-        case LDMS_CONN_EVENT_CONNECTED:
-                recv_arg = malloc(sizeof(*recv_arg));
+};
+
+static void __passive_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+        struct passive_event_arg *event_arg;
+        struct recv_buf *recv_buf;
+        struct recv_arg *recv_arg;
+        event_arg = (struct passive_event_arg *)cb_arg;
+        switch(e->type) {
+        case LDMS_XPRT_EVENT_CONNECTED:
+                recv_arg = __recv_arg_new(x);
                 if (!recv_arg) {
-                        assert(0 == "Out of memory");
+                        printf("Out of memory\n");
+                        assert(0);
                 }
-                sem_init(&recv_arg->sem_ready, 0, 0);
-                ldms_xprt_recv(x, sync_recv_cb, recv_arg);
-                sem_post(&conn_arg->sem);
+                event_arg->recv_arg = recv_arg;
                 break;
-        case LDMS_CONN_EVENT_DISCONNECTED:
-                recv_arg = ldms_xprt_recv_cb_arg_get(x);
-                sem_destroy(&recv_arg->sem_ready);
-                free(recv_arg);
+        case LDMS_XPRT_EVENT_DISCONNECTED:
+                __recv_arg_destory(event_arg->recv_arg);
+                free(event_arg);
                 ldms_xprt_put(x);
                 break;
-        case LDMS_CONN_EVENT_ERROR:
-        case LDMS_CONN_EVENT_REJECTED:
-                conn_arg->errcode = ECONNREFUSED;
-                sem_post(&conn_arg->sem);
+        case LDMS_XPRT_EVENT_RECV:
+                recv_buf = __recv_buf_new(x, event_arg->recv_arg,
+                                                e->data_len, e->data);
+                if (!recv_buf) {
+                        printf("Out of memory\n");
+                        assert(0);
+                }
+                sem_post(&event_arg->recv_arg->sem_ready);
                 break;
         default:
-                printf("Unhandled/Unrecognized ldms_conn_event %d", e);
+                printf("Unhandled/Unrecognized ldms_conn_event %d", e->type);
+                assert(0);
+        }
+}
+
+int LDMS_xprt_listen_by_name(ldms_t x, const char *host, const char *port)
+{
+        int rc;
+        struct passive_event_arg *event_arg = malloc(sizeof(*event_arg));
+        rc = ldms_xprt_listen_by_name(x, host, port,
+                        __passive_event_cb, event_arg);
+        if (rc) {
+                return rc;
+        }
+        return 0;
+}
+
+struct active_event_arg {
+        sem_t sem;
+        int errcode;
+        struct recv_arg *recv_arg;
+};
+
+static void __active_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+        struct active_event_arg *event_arg = cb_arg;
+        struct recv_arg *recv_arg;
+        struct recv_buf *recv_buf;
+        switch(e->type) {
+        case LDMS_XPRT_EVENT_CONNECTED:
+                recv_arg = __recv_arg_new(x);
+                if (!recv_arg) {
+                        printf("Out of memory\n");
+                        assert(0);
+                }
+                event_arg->recv_arg = recv_arg;
+                sem_post(&event_arg->sem);
+                break;
+        case LDMS_XPRT_EVENT_DISCONNECTED:
+                __recv_arg_destory(event_arg->recv_arg);
+                sem_destroy(&event_arg->sem);
+                free(event_arg);
+                ldms_xprt_put(x);
+                break;
+        case LDMS_XPRT_EVENT_ERROR:
+        case LDMS_XPRT_EVENT_REJECTED:
+                event_arg->errcode = ECONNREFUSED;
+                sem_post(&event_arg->sem);
+                break;
+        case LDMS_XPRT_EVENT_RECV:
+                recv_buf = __recv_buf_new(x, event_arg->recv_arg,
+                                        e->data_len, e->data);
+                if (!recv_buf) {
+                        printf("Out of memory\n");
+                        assert(0);
+                }
+                sem_post(&event_arg->recv_arg->sem_ready);
+                break;
+        default:
+                printf("Unhandled/Unrecognized ldms_conn_event %d\n", e->type);
                 assert(0);
         }
 }
 
 int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port)
 {
-        struct active_connect_arg arg;
-        sem_init(&arg.sem, 0, 0);
-        arg.errcode = 0;
+        struct active_event_arg *arg = malloc(sizeof(*arg));
+        sem_init(&arg->sem, 0, 0);
+        arg->errcode = 0;
         int rc = ldms_xprt_connect_by_name(x, host, port,
-                        __active_connect_cb, &arg);
-        sem_wait(&arg.sem);
-        sem_destroy(&arg.sem);
-        return arg.errcode;
+                        __active_event_cb, arg);
+        sem_wait(&arg->sem);
+        sem_destroy(&arg->sem);
+        return arg->errcode;
 }
 
 PyObject *LDMS_get_secretword(const char *file)
@@ -277,7 +460,10 @@ ldms_t LDMS_xprt_new(const char *xprt, const char *secretword);
 
 PyObject *LDMS_get_secretword(const char *file);
 
+int LDMS_xprt_listen_by_name(ldms_t x, const char *host, const char *port);
 int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port);
+
+PyObject *LDMS_xprt_recv(ldms_t x);
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
 PyObject *LDMS_xprt_dir(ldms_t x);
