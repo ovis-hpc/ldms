@@ -613,7 +613,7 @@ process_send_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_xprt_event event;
 	event.type = LDMS_XPRT_EVENT_RECV;
 	event.data = req->send.msg;
-	event.data_len = req->send.msg_len;
+	event.data_len = ntohl(req->send.msg_len);
 	x->event_cb(x, &event, x->event_cb_arg);
 }
 
