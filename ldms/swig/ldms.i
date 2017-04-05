@@ -255,9 +255,52 @@ PyObject *LDMS_xprt_recv(ldms_t x)
 }
 
 struct passive_event_arg {
-        int errcode;
+        ldms_t listener_x;
+        ldms_t connected_x;
+        sem_t sem;
         struct recv_arg *recv_arg;
+        LIST_ENTRY(passive_event_arg) entry;
 };
+LIST_HEAD(passive_event_arg_list, passive_event_arg) passive_event_arg_list;
+pthread_mutex_t pevent_arg_list_lock;
+
+struct passive_event_arg *__passive_event_arg_new(ldms_t x)
+{
+        struct passive_event_arg *event_arg = malloc(sizeof(*event_arg));
+        event_arg->listener_x = x;
+        sem_init(&event_arg->sem, 0, 0);
+        pthread_mutex_lock(&pevent_arg_list_lock);
+        LIST_INSERT_HEAD(&passive_event_arg_list, event_arg, entry);
+        pthread_mutex_unlock(&pevent_arg_list_lock);
+        return event_arg;
+}
+
+struct passive_event_arg *__passive_event_arg_find(ldms_t listener_x,
+                                                ldms_t connected_x)
+{
+        struct passive_event_arg *arg;
+        pthread_mutex_lock(&pevent_arg_list_lock);
+        arg = LIST_FIRST(&passive_event_arg_list);
+        while (arg) {
+                if (listener_x && arg->listener_x == listener_x)
+                        goto out;
+                else if (connected_x && arg->connected_x == connected_x)
+                        goto out;
+                arg = LIST_NEXT(arg, entry);
+        }
+out:
+        pthread_mutex_unlock(&pevent_arg_list_lock);
+        return arg;
+}
+
+void __passive_event_arg_destroy(struct passive_event_arg *arg)
+{
+        pthread_mutex_lock(&pevent_arg_list_lock);
+        LIST_REMOVE(arg, entry);
+        pthread_mutex_unlock(&pevent_arg_list_lock);
+        sem_destroy(&arg->sem);
+        free(arg);
+}
 
 static void __passive_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
@@ -273,6 +316,8 @@ static void __passive_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                         assert(0);
                 }
                 event_arg->recv_arg = recv_arg;
+                event_arg->connected_x = x;
+                sem_post(&event_arg->sem);
                 break;
         case LDMS_XPRT_EVENT_DISCONNECTED:
                 __recv_arg_destory(event_arg->recv_arg);
@@ -297,13 +342,24 @@ static void __passive_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 int LDMS_xprt_listen_by_name(ldms_t x, const char *host, const char *port)
 {
         int rc;
-        struct passive_event_arg *event_arg = malloc(sizeof(*event_arg));
+        struct passive_event_arg *arg = __passive_event_arg_new(x);
+        if (!arg)
+                return ENOMEM;
         rc = ldms_xprt_listen_by_name(x, host, port,
-                        __passive_event_cb, event_arg);
+                        __passive_event_cb, arg);
         if (rc) {
                 return rc;
         }
         return 0;
+}
+
+ldms_t LDMS_xprt_accept(ldms_t x)
+{
+        struct passive_event_arg *arg = __passive_event_arg_find(x, NULL);
+        if (!arg)
+                assert(0);
+        sem_wait(&arg->sem);
+        return arg->connected_x;
 }
 
 struct active_event_arg {
@@ -361,7 +417,11 @@ int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port)
         int rc = ldms_xprt_connect_by_name(x, host, port,
                         __active_event_cb, arg);
         sem_wait(&arg->sem);
-        sem_destroy(&arg->sem);
+        if (rc) {
+                sem_destroy(&arg->sem);
+                free(arg);
+        }
+
         return arg->errcode;
 }
 
@@ -461,6 +521,7 @@ ldms_t LDMS_xprt_new(const char *xprt, const char *secretword);
 PyObject *LDMS_get_secretword(const char *file);
 
 int LDMS_xprt_listen_by_name(ldms_t x, const char *host, const char *port);
+ldms_t LDMS_xprt_accept(ldms_t x);
 int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port);
 
 PyObject *LDMS_xprt_recv(ldms_t x);
