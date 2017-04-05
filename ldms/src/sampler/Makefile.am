@@ -75,6 +75,12 @@ libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libsynthetic.la
 endif
 
+if ENABLE_VARSET
+libvariable_la_SOURCES = variable.c
+libvariable_la_LIBADD = $(COMMON_LIBADD) -lm
+pkglib_LTLIBRARIES += libvariable.la
+endif
+
 if ENABLE_LLNL
 SUBDIRS += llnl
 endif

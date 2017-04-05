@@ -1,0 +1,124 @@
+#!/bin/bash
+# test event notice delivery to file and fifo
+# NOTE: replace the two vars below with your paths
+# NOTE: change ports, intervals if you like
+DESTDIR=
+allowroot=0
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+BUILDDIR=@prefix@
+export PYTHONPATH=@pythondir@
+# Manually redefine portbase to avoid collisions.
+# Base should be above the maximum in :
+#  cat /proc/sys/net/ipv4/ip_local_port_range
+# and below 65530 or below the minimum and above 1024
+portbase=61100
+port1=`expr $portbase + 1`
+if test ! -x $BUILDDIR/sbin/ldmsd; then
+	echo "can't find ldmsd binary. set destdir in $0 before testing?"
+	exit 1
+fi
+if test ! -x $BUILDDIR/bin/ldmsd_controller; then
+	echo "can't find ldmsd_controller script. Included python in build?"
+	exit 1
+else
+	LC=$BUILDDIR/bin/ldmsd_controller
+	CSO="--sockname"
+fi
+
+case "x$USER" in
+	x)
+	echo "must be run in user environment. USER not set"
+	exit 1
+	;;
+	xroot)
+	echo "must be run in user environment. root detected."
+	echo "killing other folks ldmsd might be a bad idea"
+	echo "change allowroot in $0 to override this check."
+	exit 1
+	;;
+esac
+function mysleep() {
+	echo -n sleep $1 ...
+	sleep $1
+	echo done
+}
+
+function die () {
+	if test $1 = 0; then
+		return 0
+	else
+		echo FAIL $1 before line ${BASH_LINENO[0]}
+		exit $1
+	fi
+}
+
+
+# use our pid in dirname to prevent collisions in dir & file naming
+TESTDIR=/tmp/$USER/ldmstest/$$
+STOREDIR=$TESTDIR/store
+SOCKDIR=$TESTDIR/run/ldmsd
+LOGDIR=$TESTDIR/logs
+export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+#export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+#export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+echo "logs and data stored under $TESTDIR"
+
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:${libdir}/ovis-ldms::$LD_LIBRARY_PATH
+export ZAP_LIBPATH=${libdir}/ovis-ldms
+export PATH=${BUILDDIR}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=${libdir}/ovis-ldms
+
+# whack the daemons we own
+pkill ldmsd
+mysleep 1
+echo "Listing ldmsd's still running:"
+pgrep ldmsd
+echo "Done."
+
+echo removing old logs
+rm -f ${LOGDIR}/1.txt
+
+echo removing old output
+rm -rf ${STOREDIR}/node
+rm -f ${STOREDIR}/*
+
+echo Starting daemons
+valgrind -v --track-origins=yes --log-file=${LOGDIR}/vg.1 ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
+die $?
+
+mysleep 1
+
+
+echo Starting plugins on daemon1
+cat << EOF | $LC $CSO $SOCKDIR/metric_socket_1
+load name=variable
+config name=variable producer=localhost1 instance=localhost1/variable schema=variable component_id=1 udata_default=10 max_mc=2 max_csrow=4
+start name=variable interval=1000000
+EOF
+die $?
+
+mysleep 1
+echo list host1
+echo ldms_ls on host 1:
+ldms_ls -h localhost -x sock -p $port1 -l
+
+mysleep 3
+ldms_ls -h localhost -x sock -p $port1 -l
+mysleep 3
+ldms_ls -h localhost -x sock -p $port1 -l
+mysleep 3
+ldms_ls -h localhost -x sock -p $port1 -l
+mysleep 3
+
+#
+
+sleep 2
+echo quitting
+kill -SIGTERM `cat  $TESTDIR/run/ldmsd.pid.1`
+echo done;
+sleep 1
+echo "logs and data stored under $TESTDIR"
