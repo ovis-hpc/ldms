@@ -1,0 +1,29 @@
+load name=${testname}
+config name=${testname} producer=localhost${i} schema=${testname}_auto instance=localhost${i}/${testname}ideviant component_id=${i}
+start name=${testname} interval=1000000 offset=0
+
+# fixme updater
+load name=store_csv
+config name=store_csv action=init path=${STOREDIR} altheader=0 container=node1
+config name=store_csv action=custom schema=${testname}2 path=${STOREDIR} altheader=1 container=node2
+
+prdcr_add name=localhost1 host=localhost type=active xprt=${XPRT} port=${port1} interval=2000000
+prdcr_start name=localhost1
+
+prdcr_add name=localhost2 host=localhost type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_start name=localhost2
+
+prdcr_add name=localhost3 host=localhost type=active xprt=${XPRT} port=${port3} interval=2000000
+prdcr_start name=localhost3
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_${testname}_auto plugin=store_csv schema=${testname}_auto container=node
+strgp_prdcr_add name=store_${testname}_auto regex=.*
+strgp_start name=store_${testname}_auto
+
+strgp_add name=store_${testname}2 plugin=store_csv schema=${testname}2 container=node2
+strgp_prdcr_add name=store_${testname}2 regex=.*
+strgp_start name=store_${testname}2

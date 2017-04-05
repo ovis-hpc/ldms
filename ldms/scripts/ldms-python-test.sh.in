@@ -1,0 +1,241 @@
+#!/bin/bash
+
+bypass=0
+DESTDIR=
+if test -z "$allowroot"; then
+	allowroot=0
+fi
+export prefix=@prefix@
+export exec_prefix=@exec_prefix@
+export libdir=@libdir@
+export BUILDDIR=@prefix@
+export pkglibdir=@pkglibdir@
+export PYTHONPATH=@pythondir@
+input=$1
+if test -z "$1"; then
+	echo "FAIL: no input file to $0"
+	exit 1
+fi
+if test $(basename $1) = $1 -a ! -f $1; then
+	if test -f $pkglibdir/examples/$1; then
+		input=$pkglibdir/examples/$1
+	fi
+fi
+if ! test -f $input -a -r $input; then
+	echo FAIL: cannot read test input $1
+	exit 1
+fi
+export testname=`basename $1`
+TESTDIR=$2
+
+if test -z "$2"; then
+	TESTDIR=`pwd`/ldmstest/$testname
+fi
+export TESTDIR
+
+if test -z "$XPRT"; then
+	export XPRT=sock
+fi
+declare -a ports
+
+# turn on valgrind usage in ldmsd and ldms_ls.
+# VG and VGARGS may be specified to override the default
+# valgrind in path and the default valgrind options.
+# by default -v --log-file=something are provided.
+#
+function vgon {
+  usevg=1
+}
+
+# turn off valgrind usage
+function vgoff {
+  usevg=0
+}
+
+# LDMSD number-list launch a daemon for each number
+# expecting to find $input.$i configuration files.
+# ${i} will be exported to the environment of ldmsd.
+function LDMSD {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	for i in $*; do
+		/bin/rm -f ${LOGDIR}/$i.txt
+		ports[$i]=$(($portbase + $i))
+		eval export port$i=${ports[$i]}
+		binname=ldmsd.${ports[$i]}
+		pkill $binname
+		/bin/rm -f $LDMSD_SOCKPATH/$binname
+		ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_SOCKPATH/$binname
+	done
+	for i in $*; do
+		export i
+		if test -f $input.$i -a -r $input.$i; then
+			if test "$usevg" = "1"; then
+				if test -z "$VG"; then
+					VG=valgrind
+				fi
+				if test -z "$VGARGS"; then
+					VGARGS="-v --log-file=${LOGDIR}/vg.$i"
+				fi
+				wrap="$VG $VGARGS"
+			fi
+			$wrap ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
+				-c $input.$i \
+				-l ${LOGDIR}/$i.txt \
+				-v DEBUG \
+				-r $LDMSD_PIDFILE.$i
+		else
+			echo starting idle daemon $i
+			ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
+				-l ${LOGDIR}/$i.txt \
+				-v DEBUG \
+				-r $LDMSD_PIDFILE.$i
+		fi
+		SLEEP 1
+		if ! test -f $LDMSD_PIDFILE.$i; then
+			echo FAIL: failed to start $i
+			bypass=1
+			break;
+		fi
+		if test -f $input.$i; then
+			cat $input.$i | $LC $CSO $SOCKDIR/metric_socket_$i
+		fi
+	done
+}
+
+# LDMSD_RANGE [first [inc]] last; launch a sequence of daemons
+function LDMSD_RANGE {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	LDMSD `seq $*`
+}
+
+# MESSAGE print arguments to output
+function MESSAGE  {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	shift
+	echo $*
+}
+
+#
+function LDMS_LS {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	nodes=$1
+	shift
+	for i in $nodes; do
+		if test "$usevg" = "1"; then
+			wrap="$VG -v $VGARGS --log-file=${LOGDIR}/vg.ls.$i"
+			if test -z "$VG"; then
+				VG=valgrind
+			fi
+		fi
+		$wrap ldms_ls  -h localhost -x sock -p ${ports[$i]} $*
+	done
+}
+# KILL_LDMSD num list
+function KILL_LDMSD {
+	for i in $*; do
+		if test -f $LDMSD_PIDFILE.$i; then
+			kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+		else
+			echo cannot find pidfile for $i
+		fi
+	done
+}
+
+# kill sequence of ldmsds
+function KILL_LDMSD_RANGE {
+	KILL_LDMSD `seq $*`
+}
+
+function file_created {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	if ! test -f $1; then
+		echo FAIL: file $1 not created.
+		bypass=1
+		return 1
+	fi
+	if ! test -r $1; then
+		echo FAIL: file $1 not readable.
+		bypass=1
+		return 1
+	fi
+	return 0
+}
+# pause some seconds
+function SLEEP() {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	echo -n sleep $1 ...
+	sleep $1
+	echo done
+}
+
+portbase=61100
+if test ! -x $BUILDDIR/bin/ldmsd_controller; then
+        echo "FAIL: can't find ldmsd_controller script. Included python in build?"
+        exit 1
+else
+        LC=$BUILDDIR/bin/ldmsd_controller
+        CSO="--sockname"
+fi
+
+if test ! -x $BUILDDIR/sbin/ldmsd; then
+	echo "can't find ldmsd binary. set destdir in $0 before testing?"
+	exit 1
+fi
+case "x$USER" in
+	x)
+	echo "must be run in user environment. USER not set"
+	exit 1
+	;;
+	xroot)
+	echo "must be run in user environment. root detected."
+	echo "killing other folks ldmsd might be a bad idea"
+	echo "try 'allowroot=1 $0 $*' to force run."
+	exit 1
+	;;
+esac
+
+# use our pid in dirname to prevent collisions in dir & file naming
+export STOREDIR=$TESTDIR/store
+export SOCKDIR=$TESTDIR/run/ldmsd
+export LOGDIR=$TESTDIR/logs
+export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+SECRET=$SOCKDIR/secret
+export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+echo "secretword=crashtestdummy" > $SECRET
+export LDMS_AUTH_FILE=$SECRET
+chmod go-rwx $SECRET
+echo "logs and data stored under $TESTDIR"
+
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=@pkglibdir@
+export PATH=$LDMSD_SOCKPATH:${BUILDDIR}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+
+echo "Listing ldmsd's still running:"
+pgrep ldmsd
+echo "Done."
+
+
+echo removing old output
+rm -rf ${STOREDIR}/*
+
+. $input
+
+SLEEP 1
+echo "logs and data stored under $TESTDIR"
+echo done;
