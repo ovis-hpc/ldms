@@ -153,7 +153,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def handle(self, verb, args):
         if args and not self.__check_command_syntax(args):
-            print("Wrong syntax. There are attributes that no values are given.")
+            print("Syntax error, there are attributes for which no value is given.")
 
         attr_list = None
         if args:
