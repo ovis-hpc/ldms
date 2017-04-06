@@ -95,12 +95,14 @@ static int create_metric_set(const char *in, char* sn)
 
 	msglog(LDMSD_LDEBUG, SAMP ": creating set at %" PRIu64 "\n", mval);
 	if (sn) {
-		schema_name = strdup(sn);
+		int len = strlen(sn)+12;
+		schema_name = malloc(len);
 		if (!schema_name) {
 			msglog(LDMSD_LERROR, SAMP ": missing schema_name\n");
 			rc = ENOMEM;
 			goto err;
 		}
+		snprintf(schema_name, len, "%s%d", schema_name, curmets);
 	}
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
