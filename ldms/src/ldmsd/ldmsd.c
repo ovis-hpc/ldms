@@ -139,7 +139,7 @@ int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
 const char *config_path = NULL;
 
-extern int process_config_file(const char *path);
+extern int process_config_file(const char *path, int *errloc);
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
@@ -1097,6 +1097,54 @@ char *ldmsd_get_max_mem_sz_str()
 	return max_mem_sz_str;
 }
 
+enum ldms_opttype {
+	LO_PATH,
+	LO_UINT,
+	LO_INT,
+	LO_NAME,
+};
+
+int check_arg(char *c, char *optarg, enum ldms_opttype t)
+{
+	if (!optarg)
+		return 1;
+	switch (t) {
+	case LO_PATH:
+		av_check_expansion((printf_t)printf, c, optarg);
+		if ( optarg[0] == '-'  ) {
+			printf("option -%s expected path name, not %s\n",
+				c,optarg);
+			return 1;
+		}
+		break;
+	case LO_UINT:
+		if (av_check_expansion((printf_t)printf, c, optarg))
+			return 1;
+		if ( optarg[0] == '-' || !isdigit(optarg[0]) ) {
+			printf("option -%s expected number, not %s\n",c,optarg);
+			return 1;
+		}
+		break;
+	case LO_INT:
+		if (av_check_expansion((printf_t)printf, c, optarg))
+			return 1;
+		if ( optarg[0] == '-' && !isdigit(optarg[1]) ) {
+			printf("option -%s expected number, not %s\n",c,optarg);
+			return 1;
+		}
+		break;
+	case LO_NAME:
+		if (av_check_expansion((printf_t)printf, c, optarg))
+			return 1;
+		if ( !isalnum(optarg[0]) ) {
+			printf("option -%s expected name, not %s\n",c,optarg);
+			return 1;
+		}
+		break;
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
@@ -1142,40 +1190,60 @@ int main(int argc, char *argv[])
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'H':
+			if (check_arg("H", optarg, LO_NAME))
+				return 1;
 			strcpy(myhostname, optarg);
 			break;
 		case 'i':
+			if (check_arg("i", optarg, LO_UINT))
+				return 1;
 			sample_interval = atoi(optarg);
 			break;
 		case 'k':
 			do_kernel = 1;
 			break;
 		case 'x':
+			if (check_arg("x", optarg, LO_NAME))
+				return 1;
 			listen_arg = strdup(optarg);
 			break;
 		case 'S':
 			/* Set the SOCKNAME to listen on */
+			if (check_arg("S", optarg, LO_PATH))
+				return 1;
 			sockname = strdup(optarg);
 			break;
 		case 'p':
 			/* Set the port to listen on configuration */
+			if (check_arg("p", optarg, LO_UINT))
+				return 1;
 			inet_listener_port = strdup(optarg);
 			break;
 		case 'r':
+			if (check_arg("r", optarg, LO_PATH))
+				return 1;
 			pidfile = strdup(optarg);
 			break;
 #ifdef ENABLE_LDMSD_RCTL
 		case 'R':
+			if (check_arg("R", optarg, LO_UINT))
+				return 1;
 			rctrl_port = strdup(optarg);
 			break;
 #endif /* ENABLE_LDMSD_RCTL */
 		case 'l':
+			if (check_arg("l", optarg, LO_PATH))
+				return 1;
 			logfile = strdup(optarg);
 			break;
 		case 's':
+			if (check_arg("s", optarg, LO_PATH))
+				return 1;
 			setfile = strdup(optarg);
 			break;
 		case 'v':
+			if (check_arg("v", optarg, LO_NAME))
+				return 1;
 			if (0 == strcmp(optarg, "QUIET")) {
 				quiet = 1;
 				log_level_thr = LDMSD_LLASTLEVEL;
@@ -1192,12 +1260,18 @@ int main(int argc, char *argv[])
 			foreground = 1;
 			break;
 		case 'T':
+			if (check_arg("T", optarg, LO_NAME))
+				return 1;
 			test_set_name = strdup(optarg);
 			break;
 		case 't':
+			if (check_arg("t", optarg, LO_UINT))
+				return 1;
 			test_set_count = atoi(optarg);
 			break;
 		case 'P':
+			if (check_arg("P", optarg, LO_UINT))
+				return 1;
 			ev_thread_count = atoi(optarg);
 			break;
 		case 'N':
@@ -1219,6 +1293,8 @@ int main(int argc, char *argv[])
 			break;
 		case 'o':
 #ifdef ENABLE_OCM
+			if (check_arg("o", optarg, LO_UINT))
+				return 1;
 			ocm_port = atoi(optarg);
 #else
 			printf("Error: -o options requires OCM support.\n");
@@ -1226,6 +1302,8 @@ int main(int argc, char *argv[])
 			break;
 #if OVIS_LIB_HAVE_AUTH
 		case 'a':
+			if (check_arg("a", optarg, LO_PATH))
+				return 1;
 			authfile = strdup(optarg);
 			if (!authfile) {
 				printf("Unable to copy secretword filename\n");
@@ -1502,11 +1580,12 @@ int main(int argc, char *argv[])
 	}
 #endif
 	if (config_path) {
-		int rc = process_config_file(config_path);
+		int errloc = 0;
+		int rc = process_config_file(config_path, &errloc);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
-					"Process config file error: %d (%s)\n", rc,
-					config_path);
+				"Process config file error at line %d: %d (%s): %s\n",
+				errloc, rc, config_path, strerror(rc));
 			cleanup(rc, "process config file failed");
 		}
 	}
