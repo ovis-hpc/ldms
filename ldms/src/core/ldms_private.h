@@ -92,6 +92,8 @@ struct ldms_set {
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
 
 extern int __ldms_xprt_push(ldms_set_t s, int push_flags);
+extern struct ldms_rbuf_desc *__ldms_alloc_rbd(struct ldms_xprt *,
+		struct ldms_set *s, enum ldms_rbd_type type);
 extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
 extern void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,

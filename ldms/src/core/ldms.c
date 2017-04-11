@@ -154,16 +154,7 @@ static ldms_set_t __set_by_name(const char *set_name)
 	if (!set)
 		goto out;
 
-	rbd = calloc(1, sizeof(*rbd));
-	if (!rbd)
-		goto out;
-
-	rbd->set = set;
-	rbd->type = LDMS_RBD_LOCAL;
-
-	pthread_mutex_lock(&set->lock);
-	LIST_INSERT_HEAD(&set->local_rbd_list, rbd, set_link);
-	pthread_mutex_unlock(&set->lock);
+	rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
 
  out:
 	return rbd;
@@ -812,11 +803,9 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	rc = __ldms_set_publish(set);
 	if (rc)
 		goto err_2;
-	ldms_set_t rbd = calloc(1, sizeof(*rbd));
+	ldms_set_t rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
 	if (!rbd)
 		goto err_2;
-	rbd->set = set;
-	rbd->type = LDMS_RBD_LOCAL;
 	__ldms_set_tree_unlock();
 	return rbd;
  err_2:
