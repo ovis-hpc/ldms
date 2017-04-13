@@ -249,3 +249,17 @@ libtest_sampler_la_SOURCES = test_sampler.c
 libtest_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtest_sampler.la
 endif
+
+if ENABLE_JOBINFO
+libjobinfo_la_SOURCES = jobinfo.c
+libjobinfo_la_LIBADD = $(COMMON_LIBADD)
+libjobinfo_la_CFLAGS = $(AM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
+pkglib_LTLIBRARIES += libjobinfo.la
+endif
+
+if ENABLE_SLURM_JOBINFO
+libjobinfo_slurm_la_SOURCES = jobinfo_slurm.c
+libjobinfo_slurm_la_LIBADD = $(COMMON_LIBADD)
+libjobinfo_slurm_la_CFLAGS = $(AM_CFLAGS) -I$(SLURM_INCDIR) -DSYSCONFDIR='"$(sysconfdir)"'
+pkglib_LTLIBRARIES += libjobinfo_slurm.la
+endif
