@@ -549,7 +549,7 @@ int ldmsd_prdcr_start(const char *name, const char *interval_str)
 	}
 
 	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-	if (interval_str > 0)
+	if (interval_str)
 		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
 
 	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
