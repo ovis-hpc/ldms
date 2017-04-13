@@ -372,7 +372,6 @@ send_request_reply(int sock, req_msg_t rm,
 
 		if ((remaining == 0) ||
 		    ((data_len == 0) && (msg_flags & LDMSD_REQ_EOM_F))) {
-			ldmsd_log(LDMSD_LERROR, "remaining %d data_len %d\n", remaining, data_len);
 			msg_flags =
 				(rm->rec_no == 0?LDMSD_REQ_SOM_F:0)
 				| (msg_flags & LDMSD_REQ_EOM_F);
