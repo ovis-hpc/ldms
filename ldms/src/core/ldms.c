@@ -820,6 +820,7 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	__ldms_set_tree_unlock();
 	return rbd;
  err_2:
+	rbt_del(&set_tree, &set->rb_node);
 	free(set);
  err_1:
 	__ldms_set_tree_unlock();
