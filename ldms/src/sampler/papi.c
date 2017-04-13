@@ -498,7 +498,7 @@ static int create_event_sets()
 	c = 0;
 	/* Get the application pid */
 	FILE *fp = popen(command, "r");
-	while (fscanf(fp, "%d", &apppid[c]) != -1) {
+	while (fscanf(fp, "%d", &apppid[c]) != -1 && c < event_count) {
 		/* Create an event set for each pid */
 		papi_event_sets[c] = PAPI_NULL;
 		printf(" Application PID[%d] = %d\n", c, apppid[c]);
