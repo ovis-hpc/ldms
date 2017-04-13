@@ -99,7 +99,7 @@ class LDMSD_Req_Attr(object):
                    'metric': METRIC,
         }
 
-    def __init__(self, value, attr_name = None, attr_id = None):
+    def __init__(self, value = None, attr_name = None, attr_id = None):
         if attr_id:
             self.attr_id = attr_id
         else:
@@ -108,12 +108,25 @@ class LDMSD_Req_Attr(object):
                     self.attr_id = self.NAME_ID_MAP[attr_name]
                 except KeyError:
                     raise
-        # One is added to account for the terminating zero
-        self.attr_len = int(len(value)+1)
-        self.attr_value = value
-        self.fmt = 'iii' + str(self.attr_len) + 's'
-        self.packed = struct.pack(self.fmt, 1, self.attr_id,
-                                  self.attr_len, self.attr_value)
+            else:
+                # Assume this is the last attribute.
+                self.attr_id = self.LAST
+
+        if self.attr_id == self.LAST:
+            self.packed = struct.pack("i", 0)
+        else:
+            self.attr_value = value            
+            if value is None:
+                self.attr_len = 0
+                self.attr_fmt = 'iii'
+                self.packed = struct.pack(self.fmt, 1, self.attr_id,
+                                                    self.attr_len)
+            else:
+                # One is added to account for the terminating zero
+                self.attr_len = int(len(value)+1)
+                self.fmt = 'iii' + str(self.attr_len) + 's'
+                self.packed = struct.pack(self.fmt, 1, self.attr_id,
+                                          self.attr_len, self.attr_value)
 
     def __len__(self):
         return len(self.packed)

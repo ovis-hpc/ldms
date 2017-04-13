@@ -155,9 +155,8 @@ class LdmsdCmdParser(cmd.Cmd):
         if args and not self.__check_command_syntax(args):
             print("Syntax error, there are attributes for which no value is given.")
 
-        attr_list = None
+        attr_list = []
         if args:
-            attr_list = []
             attr_s = []
             attr_str_list = args.split(' ')
 
@@ -180,6 +179,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
                 attr_list.append(attr)
 
+        attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.LAST))
         try:
             request = LDMSD_Request(command = verb, attrs = attr_list)
         except KeyError:
