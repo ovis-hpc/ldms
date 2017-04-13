@@ -485,7 +485,7 @@ void read_sup_file()
 /*
  * Create event sets for each PID to collect information
  */
-void creat_event_sets()
+static int create_event_sets()
 {
 	int c, rc, num;
 	int event_count;
@@ -498,7 +498,7 @@ void creat_event_sets()
 	c = 0;
 	/* Get the application pid */
 	FILE *fp = popen(command, "r");
-	while (fscanf(fp, "%d", &apppid[c]) != -1) {
+	while (fscanf(fp, "%d", &apppid[c]) != -1 && c < event_count) {
 		/* Create an event set for each pid */
 		papi_event_sets[c] = PAPI_NULL;
 		printf(" Application PID[%d] = %d\n", c, apppid[c]);
@@ -506,6 +506,7 @@ void creat_event_sets()
 		if (rc != PAPI_OK) {
 			msglog(LDMSD_LERROR, "papi: failed to create empty "
 				"event set number %d error %d!\n", c, rc);
+			return -1;
 		}
 		if (multiplex) {
 			/* Explicitly bind event set to cpu component.	
@@ -518,6 +519,7 @@ void creat_event_sets()
 			if (rc != PAPI_OK) {
 				msglog(LDMSD_LERROR, "papi: failed to bind papi"
 					" to cpu component!\n");
+				return -1;
 			}
 
 			/* Convert papi_event_set to a multiplexed event set */
@@ -525,6 +527,7 @@ void creat_event_sets()
 			if (rc != PAPI_OK) {
 				msglog(LDMSD_LERROR, "papi: failed to convert"
 					" event set to multiplexed!\n");
+				return -1;
 			}
 		}
 		event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
@@ -535,14 +538,16 @@ void creat_event_sets()
 				msglog(LDMSD_LERROR, "papi: failed to add event"
 					" 0x%X to event set error %d\n",
 					event_codes[num], rc);
+				return -1;
 			}
 		}
 		c++;
 	}
 	pclose(fp);
+	return 0;
 }
 
-void save_events_data()
+static int save_events_data()
 {
 	int c, i, j, event_count;
 	union ldms_value val;
@@ -562,6 +567,7 @@ void save_events_data()
 			papi_event_val) != PAPI_OK) {
 			msglog(LDMSD_LERROR, "papi: failed to read event "
 				"set %d\n", papi_event_sets[c]);
+			return -1;
 		}
 
 		/*
@@ -600,6 +606,7 @@ void save_events_data()
 		i += event_count + 1;
 		c++;
 	}
+	return 0;
 }
 
 void deatach_pids()
@@ -629,6 +636,7 @@ void deatach_pids()
 		PAPI_destroy_eventset(&papi_event_sets[c]);
 	}
 	free(apppid);
+	free(papi_event_sets);
 	attach = 0;
 	pids_count = 0;
 
@@ -647,9 +655,8 @@ void deatach_pids()
 
 static int sample(struct ldmsd_sampler * self)
 {
-	int j, rc, c;
+	int rc, c;
 	int pids_count_left;
-	union ldms_value val;
 
 	if (!set) {
 		msglog(LDMSD_LERROR, "papi: plugin not initialized\n");
@@ -680,7 +687,9 @@ static int sample(struct ldmsd_sampler * self)
 			pclose(fp);
 
 			if (pids_count > 1) {
-				creat_event_sets();
+				if (create_event_sets() < 0) {
+					goto err1;
+				}
 			} else msglog(LDMSD_LDEBUG, "Waiting for application to"
 				" start\n");
 		} else msglog(LDMSD_LDEBUG, "Waiting for an file to be "
@@ -697,12 +706,14 @@ static int sample(struct ldmsd_sampler * self)
 					msglog(LDMSD_LERROR, "papi: failed to"
 						" attach to process pid = %d"
 						" rc= %d.\n", apppid[c], rc);
+					goto err1;
 				}
 				rc = PAPI_start(papi_event_sets[c]);
 				if (rc != PAPI_OK) {
 					msglog(LDMSD_LERROR, "papi: failed to"
 						" start papi event set "
 						"rc= %d\n", rc);
+					goto err1;
 				}
 				attach = 1;
 				c++;
@@ -723,7 +734,10 @@ static int sample(struct ldmsd_sampler * self)
 			pclose(fp);
 
 			if (pids_count_left > 1) {
-				save_events_data();
+				if (save_events_data() < 0) {
+					ldms_transaction_end(set);
+					goto err1;
+				}
 			} else {
 				deatach_pids();
 			}
@@ -731,6 +745,14 @@ static int sample(struct ldmsd_sampler * self)
 		}
 	}
 
+	return 0;
+	
+err1:
+	/*
+	 * Where error occurs a restart to the collection process
+	 * will be applied and try to attach again
+	 */
+	deatach_pids();
 	return 0;
 }
 
