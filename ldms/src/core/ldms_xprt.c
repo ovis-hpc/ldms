@@ -1185,10 +1185,9 @@ char *ldms_get_secretword(const char *file, ldms_log_fn_t log_fn)
 	const char *source = NULL;
 	char *secretword = NULL;
 
-	if (!log_fn) {
-		errno = EINVAL;
-		return NULL;
-	}
+	if (!log_fn)
+		log_fn = default_log;
+
 	errno = 0;
 	/* try switch input first. */
 	if (file) {
@@ -1252,6 +1251,12 @@ out:
 			", " SYSCONFDIR "/" SYSCONFNAME "\n");
 	}
 	return secretword;
+}
+#else /* OVIS_LIB_HAVE_AUTH */
+char *ldms_get_secretword(const char *file, ldms_log_fn_t log_fn)
+{
+	errno = ENOSYS;
+	return NULL;
 }
 #endif /* OVIS_LIB_HAVE_AUTH */
 
@@ -2131,6 +2136,13 @@ err1:
 	free(x);
 err0:
 	errno = ret;
+	return NULL;
+}
+#else /* OVIS_LIB_HAVE_AUTH */
+ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
+				const char *secretword)
+{
+	errno = ENOSYS;
 	return NULL;
 }
 #endif /* OVIS_LIB_HAVE_AUTH */
