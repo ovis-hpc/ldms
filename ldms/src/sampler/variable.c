@@ -111,12 +111,14 @@ static int create_metric_set(const char *in, char* sn)
 		goto err;
 	}
 	if (in) {
-		instance_name = strdup(in);
+		int len = strlen(in)+12;
+		instance_name = malloc(len);
 		if (!instance_name) {
 			msglog(LDMSD_LERROR, SAMP ": missing instance_name\n");
 			rc = ENOMEM;
 			goto err;
 		}
+		snprintf(instance_name, len, "%s%d", instance_name, curmets);
 	}
 
 	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
