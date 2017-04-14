@@ -61,6 +61,8 @@
 #include <assert.h>
 #include <errno.h>
 #include "util.h"
+#define DSTRING_USE_SHORT
+#include "dstring.h"
 
 static const char *get_env_var(const char *src, size_t start_off, size_t end_off)
 {
@@ -85,6 +87,8 @@ static const char *get_env_var(const char *src, size_t start_off, size_t end_off
 
 char *str_repl_env_vars(const char *str)
 {
+	if (!str)
+		return NULL;
 	const char *name;
 	const char *value;
 	const char *values[100];
@@ -257,6 +261,50 @@ struct attr_value_list *av_new(size_t size)
 		LIST_INIT(&avl->strings);
 	}
 	return avl;
+}
+
+char *av_to_string(struct attr_value_list *av, int replacements)
+{
+	if (!av)
+		return NULL;
+	char *val;
+	int i;
+	dsinit(ds);
+	if (av->count < 1)
+		dscat(ds, "(empty)");
+	if (replacements) {
+		for (i=0; i < av->count; i++) {
+			dscat(ds, av->list[i].name);
+			if ( (val = av_value_at_idx(av, i)) != NULL) {
+				dscat(ds, "=");
+				dscat(ds, val);
+			}
+			dscat(ds, "\n");
+		}
+	} else {
+		for (i=0; i < av->count; i++) {
+			dscat(ds, av->list[i].name);
+			if ( av->list[i].value != NULL) {
+				dscat(ds, "=");
+				dscat(ds, av->list[i].value);
+			}
+			dscat(ds, "\n");
+		}
+	}
+	val = dsdone(ds);
+	dstr_free(&ds);
+	return val;
+}
+
+int av_check_expansion(printf_t log, const char *n, const char *s)
+{
+	if (!s)
+		return 0;
+	if (strchr(s,'$') != NULL) {
+		log("Unbraced or undefined variable in %s=%s\n", n, s);
+		return 1;
+	}
+	return 0;
 }
 
 size_t ovis_get_mem_size(const char *s)

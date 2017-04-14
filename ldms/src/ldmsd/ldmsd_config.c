@@ -1018,13 +1018,15 @@ int process_config_line(char *line)
 	rc = ENOMEM;
 	av_list = av_new(tokens);
 	kw_list = av_new(tokens);
-	if (!av_list || !kw_list)
+	if (!av_list || !kw_list) {
+		ldmsd_log(LDMSD_LERROR, "failed av/kw_new(%d)\n",tokens);
 		goto cleanup;
+	}
 
 	rc = tokenize(line, kw_list, av_list);
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
-				"processing '%s'\n", line);
+				"tokenizing '%s'\n", line);
 		rc = ENOMEM;
 		goto cleanup;
 	}
@@ -1045,6 +1047,18 @@ int process_config_line(char *line)
 			ldmsd_log(LDMSD_LERROR,
 					"config '%s' error rc: %d\n",
 					cmd_s, rc);
+			char *avstr = av_to_string(av_list,0);
+			char *avexp = av_to_string(av_list,1);
+			char *kwstr = av_to_string(kw_list,0);
+			char *kwexp = av_to_string(kw_list,1);
+			ldmsd_log(LDMSD_LERROR,"av_list raw:\n%s", avstr);
+			ldmsd_log(LDMSD_LERROR,"av_list exp:\n%s", avexp);
+			ldmsd_log(LDMSD_LERROR,"kw_list raw:\n%s", kwstr);
+			ldmsd_log(LDMSD_LERROR,"kw_list exp:\n%s", kwexp);
+			free(avstr);
+			free(avexp);
+			free(kwstr);
+			free(kwexp);
 		}
 		n = 0;
 		sscanf(replybuf, "%d%n", &buf_rc, &n);
@@ -1053,6 +1067,18 @@ int process_config_line(char *line)
 					"config '%s' error: %s\n",
 					cmd_s, replybuf + n);
 			rc = buf_rc;
+			char *avstr = av_to_string(av_list,0);
+			char *avexp = av_to_string(av_list,1);
+			char *kwstr = av_to_string(kw_list,0);
+			char *kwexp = av_to_string(kw_list,1);
+			ldmsd_log(LDMSD_LERROR,"av_list raw:\n%s", avstr);
+			ldmsd_log(LDMSD_LERROR,"av_list exp:\n%s", avexp);
+			ldmsd_log(LDMSD_LERROR,"kw_list raw:\n%s", kwstr);
+			ldmsd_log(LDMSD_LERROR,"kw_list exp:\n%s", kwexp);
+			free(avstr);
+			free(avexp);
+			free(kwstr);
+			free(kwexp);
 		}
 	} else {
 		rc = EINVAL;
@@ -1065,9 +1091,10 @@ cleanup:
 	return rc;
 }
 
-int process_config_file(const char *path)
+int process_config_file(const char *path, int *errloc)
 {
 	int rc = 0;
+	int lineno = 0;
 	FILE *fin = NULL;
 	char *buff = NULL;
 	char *line;
@@ -1092,6 +1119,7 @@ next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
 	if (!line)
 		goto cleanup;
+	lineno++;
 
 	comment = strchr(line, '#');
 
@@ -1129,8 +1157,10 @@ next_line:
 	}
 
 	rc = process_config_line(line);
-	if (rc)
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Problem in line: %s\n", line);
 		goto cleanup;
+	}
 
 	off = 0;
 
@@ -1141,6 +1171,7 @@ cleanup:
 		fclose(fin);
 	if (buff)
 		free(buff);
+	*errloc = lineno;
 	return rc;
 }
 
@@ -1152,7 +1183,8 @@ int process_include(char *replybuf, struct attr_value_list *av_list,
 	path = av_name(kw_list, 1);
 	if (!path)
 		return EINVAL;
-	rc = process_config_file(path);
+	int errloc = 0;
+	rc = process_config_file(path, &errloc);
 	return rc;
 }
 

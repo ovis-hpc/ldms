@@ -140,6 +140,14 @@ int tokenize(char *cmd, struct attr_value_list *kwl,
 	     struct attr_value_list *avl);
 
 /**
+ * \brief format the list to a string, with optional env expansion.
+ * \param replacements if 0, use raw values. if !=0, use expanded values.
+ * \param av_list list to print.
+ * \return string the caller must free, or null from bad input.
+ */
+char *av_to_string(struct attr_value_list *av_list, int replacements);
+
+/**
  * \brief Allocate memory for a new attribute list of size \c size
  */
 struct attr_value_list *av_new(size_t size);
@@ -148,6 +156,15 @@ struct attr_value_list *av_new(size_t size);
  * \brief Free the memory consumed by the avl
  */
 void av_free(struct attr_value_list *avl);
+
+typedef void (*printf_t)(const char *fmt, ...);
+
+/**
+ * \brief Check value for $ and if found write message with log
+ * about name=value pair.
+ * \return 0 if no $ found (all expanded).
+ */
+int av_check_expansion(printf_t log, const char *name, const char *value);
 
 /**
  * \brief Parse the memory size
