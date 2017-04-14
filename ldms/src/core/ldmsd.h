@@ -816,4 +816,33 @@ typedef struct ldmsd_req_hdr_s {
 	uint32_t rec_len;	/* Record length in bytes including this header */
 } *ldmsd_req_hdr_t;
 
+struct req_resp_ctxt;
+/** Function to handle the response */
+typedef int (*ldmsd_req_resp_handler_t)(struct req_resp_ctxt *ctxt,
+				char *data, size_t data_len, int msg_flags);
+
+typedef struct msg_key {
+	uint32_t msg_no;
+	uint32_t sock_fd;
+} *msg_key_t;
+
+typedef struct req_resp_ctxt {
+	struct msg_key key;
+	struct rbn rbn;
+	struct ldmsd_req_hdr_s rh;
+	struct msghdr *mh;
+	int rec_no;
+	uint32_t errcode;
+	size_t line_len;
+	char *line_buf;
+	size_t req_len;
+	size_t req_off;
+	char *req_buf;
+	size_t rep_len;
+	size_t rep_off;
+	char *rep_buf;
+	int dest_fd; /* Where to respond back to */
+	ldmsd_req_resp_handler_t resp_handler;
+} *req_resp_ctxt_t;
+
 #endif
