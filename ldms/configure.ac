@@ -65,6 +65,7 @@ OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
 OPTION_DEFAULT_DISABLE([jobid], [ENABLE_JOBID])
 OPTION_DEFAULT_ENABLE([clock], [ENABLE_CLOCK])
 OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
+OPTION_DEFAULT_ENABLE([varset], [ENABLE_VARSET])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
@@ -413,6 +414,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_plugins_list.sh
 		 scripts/ldms-py-edac_test.sh
 		 scripts/ldms-py-subset_test.sh
+		 scripts/ldms-py-varset.sh
 		 scripts/ldms-py-syslog.sh
 		 scripts/ldms-meminfo.sh
 )
