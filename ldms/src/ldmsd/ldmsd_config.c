@@ -1487,8 +1487,8 @@ void *inet_ctrl_thread_proc(void *args)
 	struct iovec iov;
 	unsigned char *lbuf;
 	struct sockaddr_in sin;
-	struct sockaddr rem_sin;
-	socklen_t addrlen;
+	struct sockaddr_in rem_sin;
+	socklen_t addrlen = sizeof(rem_sin);
 	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
 	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
 	if (env)
@@ -1502,7 +1502,7 @@ void *inet_ctrl_thread_proc(void *args)
 	}
 	iov.iov_base = lbuf;
 loop:
-	inet_sock = accept(inet_listener, &rem_sin, &addrlen);
+	inet_sock = accept(inet_listener, (struct sockaddr *)&rem_sin, &addrlen);
 	if (inet_sock < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d failed to setting up the config "
 				"listener.\n", inet_sock);
