@@ -49,6 +49,7 @@ enum ldmsd_request {
 	LDMSD_PLUGN_LOAD_REQ,
 	LDMSD_PLUGN_TERM_REQ,
 	LDMSD_PLUGN_CONFIG_REQ,
+	LDMSD_NOTSUPPORT_REQ,
 };
 
 enum ldmsd_request_attr {
