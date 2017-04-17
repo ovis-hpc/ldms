@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -1577,11 +1577,10 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
-	for (i = 0; i < nstorekeys; i++){
-		if (strcmp(storekeys[i], s_handle->store_key) == 0){
+	for (i = 0; i < nstorekeys; i++) {
+		if (storekeys[i] && (0 == strcmp(storekeys[i], s_handle->store_key))) {
 			free(storekeys[i]);
-			storekeys[i] = 0;
-			//note the space is still in the array
+			storekeys[i] = NULL;
 			break;
 		}
 	}
