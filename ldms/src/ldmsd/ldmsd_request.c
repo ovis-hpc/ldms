@@ -199,6 +199,8 @@ const struct req_str_id req_str_id_table[] = {
 	{  "info",               LDMSD_NOTSUPPORT_REQ   },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
 	{  "loglevel",           LDMSD_NOTSUPPORT_REQ  },
+	{   "logrotate",         LDMSD_NOTSUPPORT_REQ  },
+	{  "ls_plugns",		 LDMSD_NOTSUPPORT_REQ  },
 	{  "oneshot",            LDMSD_NOTSUPPORT_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
