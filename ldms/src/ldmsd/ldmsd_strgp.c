@@ -181,83 +181,6 @@ time_t convert_rotate_str(const char *rotate)
 	return 0;
 }
 
-int cmd_strgp_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *attr, *name, *plugin, *container, *schema;
-	struct ldmsd_plugin_cfg *store;
-
-	attr = "name";
-	name = av_value(avl, attr);
-	if (!name)
-		goto einval;
-
-	attr = "plugin";
-	plugin = av_value(avl, attr);
-	if (!plugin)
-		goto einval;
-
-	/* Make certain the plugin exists */
-	store = ldmsd_get_plugin(plugin);
-	if (!store) {
-		sprintf(replybuf, "%dThe plugin does not exist.\n", EINVAL);
-		goto out;
-	}
-
-	attr = "container";
-	container = av_value(avl, attr);
-	if (!container)
-		goto einval;
-
-	attr = "schema";
-	schema = av_value(avl, attr);
-	if (!schema)
-		goto einval;
-
-	ldmsd_strgp_t strgp = ldmsd_strgp_new(name);
-	if (!strgp) {
-		if (errno == EEXIST)
-			goto eexist;
-		else
-			goto enomem;
-	}
-
-	strgp->plugin_name = strdup(plugin);
-	if (!strgp->plugin_name)
-		goto enomem_1;
-
-	strgp->store = store->store;
-
-	strgp->schema = strdup(schema);
-	if (!strgp->schema)
-		goto enomem_2;
-
-	strgp->container = strdup(container);
-	if (!strgp->container)
-		goto enomem_3;
-
-	sprintf(replybuf, "0\n");
-	goto out;
-
-einval:
-	sprintf(replybuf, "%dThe attribute '%s' is missing or invalid.\n",
-			EINVAL, attr);
-	goto out;
-eexist:
-	sprintf(replybuf, "%dThe strgp %s already exists.\n", EEXIST, name);
-	goto out;
-enomem_3:
-	free(strgp->schema);
-enomem_2:
-	free(strgp->plugin_name);
-enomem_1:
-	free(strgp);
-enomem:
-	sprintf(replybuf, "%dMemory allocation failed.\n", ENOMEM);
-	goto out;
-out:
-	return 0;
-}
-
 ldmsd_name_match_t strgp_find_prdcr_ex(ldmsd_strgp_t strgp, const char *ex)
 {
 	ldmsd_name_match_t match;
@@ -309,43 +232,6 @@ out_0:
 	return rc;
 }
 
-int cmd_strgp_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *attr, *strgp_name, *regex_str;
-
-	attr = "name";
-	strgp_name = av_value(avl, attr);
-	if (!strgp_name) {
-		sprintf(replybuf, "%dThe storage policy name must be specified\n", EINVAL);
-		goto out_0;
-	}
-	regex_str = av_value(avl, "regex");
-	if (!regex_str) {
-		sprintf(replybuf,
-			"%dThe regular expression must be specified.\n",
-			EINVAL);
-		goto out_0;
-	}
-
-	int rc = ldmsd_strgp_prdcr_add(strgp_name, regex_str, replybuf,
-							sizeof(replybuf));
-	if (rc) {
-		if (rc == ENOENT) {
-			sprintf(replybuf, "%dThe storage policy specified does "
-							"not exist\n", ENOENT);
-		} else if (rc == EBUSY) {
-			sprintf(replybuf, "%dConfiguration changes cannot be made "
-				"while the storage policy is running\n", EBUSY);
-		} else if (rc == ENOMEM) {
-			sprintf(replybuf, "%dOut of memory.\n", ENOMEM);
-		}
-	} else {
-		sprintf(replybuf, "0\n");
-	}
-out_0:
-	return 0;
-}
-
 int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str)
 {
 	int rc = 0;
@@ -372,42 +258,6 @@ out_1:
 	ldmsd_strgp_put(strgp);
 out_0:
 	return rc;
-}
-
-int cmd_strgp_prdcr_del(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *strgp_name, *regex_str;
-
-	strgp_name = av_value(avl, "name");
-	if (!strgp_name) {
-		sprintf(replybuf, "%dThe storage policy name must be specified\n", EINVAL);
-		goto out_0;
-	}
-	regex_str = av_value(avl, "regex");
-	if (!regex_str) {
-		sprintf(replybuf,
-			"%dThe regular expression must be specified.\n",
-			EINVAL);
-		goto out_0;
-	}
-
-	int rc = ldmsd_strgp_prdcr_del(strgp_name, regex_str);
-	if (rc == ENOENT) {
-		sprintf(replybuf, "%dThe storage policy specified does not "
-							"exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the storage policy is running\n", EBUSY);
-	} else if (rc == EEXIST) {
-		sprintf(replybuf,
-			"%dThe specified regex does not match any condition\n",
-			ENOENT);
-	} else {
-		sprintf(replybuf, "0\n");
-	}
-
-out_0:
-	return 0;
 }
 
 ldmsd_strgp_metric_t strgp_metric_find(ldmsd_strgp_t strgp, const char *name)
@@ -462,37 +312,6 @@ out_0:
 	return rc;
 }
 
-int cmd_strgp_metric_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *strgp_name, *metric_name;
-
-	strgp_name = av_value(avl, "name");
-	if (!strgp_name) {
-		sprintf(replybuf, "%dThe storage policy name must be specified\n", EINVAL);
-		goto out_0;
-	}
-	metric_name = av_value(avl, "metric");
-	if (!metric_name) {
-		sprintf(replybuf, "%dA metric name must be specified\n", EINVAL);
-		goto out_0;
-	}
-
-	int rc = ldmsd_strgp_metric_add(strgp_name, metric_name);
-	if (rc == ENOENT) {
-		sprintf(replybuf, "%dThe storage policy specified does not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the storage policy is running\n", EBUSY);
-	} else if (rc == EEXIST) {
-		sprintf(replybuf, "%dThe specified metric is already present.\n", EEXIST);
-	} else if (rc == ENOMEM) {
-		sprintf(replybuf, "%dMemory allocation failure.\n", ENOMEM);
-	}
-
-out_0:
-	return 0;
-}
-
 int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name)
 {
 	int rc = 0;
@@ -517,36 +336,6 @@ out_1:
 	ldmsd_strgp_put(strgp);
 out_0:
 	return rc;
-}
-
-int cmd_strgp_metric_del(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *strgp_name, *metric_name;
-
-	strgp_name = av_value(avl, "name");
-	if (!strgp_name) {
-		sprintf(replybuf, "%dThe storage policy name must be specified\n", EINVAL);
-		goto out_0;
-	}
-	metric_name = av_value(avl, "metric");
-	if (!metric_name) {
-		sprintf(replybuf, "%dA metric name must be specified\n", EINVAL);
-		goto out_0;
-	}
-
-	int rc = ldmsd_strgp_metric_del(strgp_name, metric_name);
-	if (rc == ENOENT) {
-		sprintf(replybuf, "%dThe storage policy specified does not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		sprintf(replybuf, "%dConfiguration changes cannot be made "
-			"while the storage policy is running\n", EBUSY);
-	} else if (rc == EEXIST) {
-		sprintf(replybuf, "%dThe specified metric was not found.\n", EEXIST);
-	} else {
-		sprintf(replybuf, "0\n");
-	}
-out_0:
-	return 0;
 }
 
 static ldmsd_strgp_ref_t strgp_ref_new(ldmsd_strgp_t strgp)
@@ -694,35 +483,6 @@ void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 }
 
-int cmd_strgp_start(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *strgp_name;
-	strgp_name = av_value(avl, "name");
-	if (!strgp_name) {
-		sprintf(replybuf, "%dThe storage policy name must be specified.\n", EINVAL);
-		goto out_0;
-	}
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
-	if (!strgp) {
-		sprintf(replybuf, "%dThe storage policy does not exist.\n", ENOENT);
-		goto out_0;
-	}
-	ldmsd_strgp_lock(strgp);
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		sprintf(replybuf, "%dThe storage policy is already running\n", EBUSY);
-		goto out_1;
-	}
-	strgp->state = LDMSD_STRGP_STATE_RUNNING;
-	/* Update all the producers of our changed state */
-	ldmsd_prdcr_update(strgp);
-	sprintf(replybuf, "0\n");
-out_1:
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
-out_0:
-	return 0;
-}
-
 int ldmsd_strgp_stop(const char *strgp_name)
 {
 	int rc = 0;
@@ -742,28 +502,6 @@ int ldmsd_strgp_stop(const char *strgp_name)
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
-	return 0;
-}
-
-int cmd_strgp_stop(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *strgp_name;
-
-	strgp_name = av_value(avl, "name");
-	if (!strgp_name) {
-		sprintf(replybuf, "%dThe storage policy name must be specified\n", EINVAL);
-		goto out_0;
-	}
-	int rc = ldmsd_strgp_stop(strgp_name);
-	if (rc == ENOENT) {
-		sprintf(replybuf, "%dThe storage policy specified does not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		sprintf(replybuf, "%dThe storage policy is not running\n", EBUSY);
-	} else {
-		sprintf(replybuf, "0\n");
-	}
-
 out_0:
 	return 0;
 }
@@ -795,29 +533,6 @@ out_1:
 	ldmsd_strgp_unlock(strgp);
 out_0:
 	return rc;
-}
-
-int cmd_strgp_del(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *strgp_name;
-	strgp_name = av_value(avl, "name");
-	if (!strgp_name) {
-		sprintf(replybuf, "%dThe storage policy name must be specified\n", EINVAL);
-		goto out_0;
-	}
-
-	int rc = ldmsd_strgp_del(strgp_name);
-	if (rc == ENOENT) {
-		sprintf(replybuf, "%dThe storage policy specified does "
-						"not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		sprintf(replybuf, "%dThe storage policy is in use.\n", EBUSY);
-	} else {
-		sprintf(replybuf, "0\n");
-	}
-
-out_0:
-	return 0;
 }
 
 void ldmsd_strgp_close()

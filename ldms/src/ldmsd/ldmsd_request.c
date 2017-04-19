@@ -453,8 +453,8 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 	reqc->mh = msg;
 
 	if (request->marker != LDMSD_RECORD_MARKER) {
-		rc = process_record(fd, msg->msg_name, msg->msg_namelen,
-				request->code, reqc->req_buf, reqc->req_len);
+		ldmsd_log(LDMSD_LERROR, "Received an invalid cfg request "
+				"from %d with msg_no %d.\n", fd, key.msg_no);
 		goto out;
 	}
 
