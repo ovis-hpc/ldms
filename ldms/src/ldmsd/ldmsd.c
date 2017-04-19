@@ -803,8 +803,7 @@ void ldmsd_task_join(ldmsd_task_t task)
 /*
  * Start the sampler
  */
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
-			char err_str[LEN_ERRSTR])
+int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 {
 	char *endptr;
 	int rc = 0;
@@ -812,30 +811,22 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 	long sample_offset = 0;
 	int synchronous = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	sample_interval = strtoul(interval, &endptr, 0);
-	if (endptr[0] != '\0') {
-		snprintf(err_str, LEN_ERRSTR, "interval '%s' invalid", interval);
+	if (endptr[0] != '\0')
 		return EINVAL;
-	}
 
 	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
-		return rc;
-	}
+	if (!pi)
+		return ENOENT;
+
 	pthread_mutex_lock(&pi->lock);
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR,
-				"The specified plugin is not a sampler.");
+		rc = -EINVAL;
 		goto out;
 	}
 	if (pi->thread_id >= 0) {
 		rc = EBUSY;
-		snprintf(err_str, LEN_ERRSTR, "Sampler is already running.");
 		goto out;
 	}
 
@@ -843,8 +834,7 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 		sample_offset = strtol(offset, NULL, 0);
 		if ( !((sample_interval >= 10) &&
 		       (sample_interval >= labs(sample_offset)*2)) ){
-			snprintf(err_str, LEN_ERRSTR, "Sampler parameters "
-				"interval and offset are incompatible.");
+			rc = EDOM;
 			goto out;
 		}
 		synchronous = 1;
@@ -968,24 +958,18 @@ out:
 /*
  * Stop the sampler
  */
-int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR])
+int ldmsd_stop_sampler(char *plugin_name)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
-		goto out_nolock;
-	}
+	if (!pi)
+		return ENOENT;
 	pthread_mutex_lock(&pi->lock);
 	/* Ensure this is a sampler */
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR,
-				"The specified plugin is not a sampler.");
 		goto out;
 	}
 	if (pi->event) {
@@ -996,12 +980,10 @@ int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR])
 		pi->thread_id = -1;
 		pi->ref_count--;
 	} else {
-		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR, "The sampler is not running.");
+		rc = -EBUSY;
 	}
 out:
 	pthread_mutex_unlock(&pi->lock);
-out_nolock:
 	return rc;
 }
 

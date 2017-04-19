@@ -2239,14 +2239,13 @@ static char *plugn_state_str(enum ldmsd_plugin_type type)
 	return "unknown";
 }
 
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
-						char err_str[LEN_ERRSTR]);
-int ldmsd_load_plugin(char *plugin_name, char err_str[LEN_ERRSTR]);
-int ldmsd_term_plugin(char *plugin_name, char err_str[LEN_ERRSTR]);
-int ldmsd_config_plugin(char *plugin_name,
+extern int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset);
+extern int ldmsd_stop_sampler(char *plugin);
+extern int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen);
+extern int ldmsd_term_plugin(char *plugin_name);
+extern int ldmsd_config_plugin(char *plugin_name,
 			struct attr_value_list *_av_list,
-			struct attr_value_list *_kw_list,
-			char err_str[LEN_ERRSTR]);
+			struct attr_value_list *_kw_list);
 
 static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 {
@@ -2281,14 +2280,14 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	}
 
-	reqc->errcode = ldmsd_start_sampler(plugin_name, interval_us,
-						offset, reqc->line_buf);
+	reqc->errcode = ldmsd_start_sampler(plugin_name, interval_us, offset);
 	if (reqc->errcode == 0) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
 	} else if (reqc->errcode == EINVAL) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"interval '%s' invalid", interval_us);
 	} else if (reqc->errcode == -EINVAL) {
+		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The specified plugin is not a sampler.");
 	} else if (reqc->errcode == ENOENT) {
@@ -2341,7 +2340,7 @@ static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
 		attr_name = "name";
 		goto einval;
 	}
-	reqc->errcode = ldmsd_stop_sampler(plugin_name, reqc->line_buf);
+	reqc->errcode = ldmsd_stop_sampler(plugin_name);
 	if (reqc->errcode == 0) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
 	} else if (reqc->errcode == ENOENT) {
@@ -2349,7 +2348,7 @@ static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
 				"Sampler '%s' not found.", plugin_name);
 	} else if (reqc->errcode == EINVAL) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The specified plugin '%s' is not a sampler.",
+				"The plugin '%s' is not a sampler.",
 				plugin_name);
 	} else if (reqc->errcode == -EBUSY) {
 		reqc->errcode = EINVAL;
@@ -2422,11 +2421,12 @@ static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 		attr_name = "name";
 		goto einval;
 	}
-	reqc->errcode = ldmsd_load_plugin(plugin_name, reqc->rep_buf);
+	reqc->errcode = ldmsd_load_plugin(plugin_name, reqc->line_buf,
+							reqc->line_len);
 	if (reqc->errcode)
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s", reqc->rep_buf);
+		cnt = strlen(reqc->line_buf) + 1;
 	else
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
+		cnt = 0;
 	goto send_reply;
 
 einval:
@@ -2461,7 +2461,7 @@ static int plugn_term_handler(ldmsd_req_ctxt_t reqc)
 		attr_name = "name";
 		goto einval;
 	}
-	reqc->errcode = ldmsd_term_plugin(plugin_name, reqc->line_buf);
+	reqc->errcode = ldmsd_term_plugin(plugin_name);
 	if (reqc->errcode == 0) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
 	} else if (reqc->errcode == ENOENT) {
@@ -2566,6 +2566,17 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"%s", reqc->rep_buf);
+	reqc->errcode = ldmsd_config_plugin(plugin_name, av_list, kw_list);
+	if (reqc->errcode) {
+		if (reqc->errcode == ENOENT) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Plugin '%s' not found.",
+					plugin_name);
+		} else {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Plugin '%s' configuration error.",
+					plugin_name);
+		}
 	} else {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
 	}

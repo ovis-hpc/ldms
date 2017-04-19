@@ -98,11 +98,6 @@ char *sockname = NULL;
 static int cleanup_requested = 0;
 int bind_succeeded;
 
-extern struct event_base *get_ev_base(int idx);
-extern void release_ev_base(int idx);
-int find_least_busy_thread();
-extern int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
-						char err_str[LEN_ERRSTR]);
 int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *err_str);
 extern void cleanup(int x, char *reason);
 
@@ -171,7 +166,8 @@ struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
 	return NULL;
 }
 
-struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
+struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
+				char *errstr, size_t errlen)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
@@ -200,22 +196,22 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 
 	if (!d) {
 		char *dlerr = dlerror();
-		ldmsd_log(LDMSD_LERROR, "Failed to load the plugin '%s': "
-				"dlerror %s\n", plugin_name, dlerr);
-		snprintf(err_str, LEN_ERRSTR, "Failed to load the plugin '%s'. "
-				"dlerror %s", plugin_name, dlerr);
+		snprintf(errstr, errlen, "Failed to load the plugin '%s'. "
+				"dlerror: %s", plugin_name, dlerr);
 		goto err;
 	}
 
 	ldmsd_plugin_get_f pget = dlsym(d, "get_plugin");
 	if (!pget) {
-		snprintf(err_str, LEN_ERRSTR,
-			"The library is missing the get_plugin() function.");
+		snprintf(errstr, errlen,
+			"The library of '%s' is missing the get_plugin() "
+						"function.", plugin_name);
 		goto err;
 	}
 	lpi = pget(ldmsd_msg_logger);
 	if (!lpi) {
-		snprintf(err_str, LEN_ERRSTR, "The plugin could not be loaded.");
+		snprintf(errstr, errlen, "The plugin '%s' could not be loaded.",
+								plugin_name);
 		goto err;
 	}
 	pi = calloc(1, sizeof *pi);
@@ -237,7 +233,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
 	return pi;
 enomem:
-	snprintf(err_str, LEN_ERRSTR, "No memory");
+	snprintf(errstr, errlen, "No memory");
 err:
 	if (pi) {
 		if (pi->name)
@@ -566,44 +562,34 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, siz
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
+int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen)
 {
-
-	int rc = 0;
-	err_str[0] = '\0';
-
 	struct ldmsd_plugin_cfg *pi = ldmsd_get_plugin(plugin_name);
 	if (pi) {
-		snprintf(err_str, LEN_ERRSTR, "Plugin already loaded");
-		rc = EEXIST;
-		goto out;
+		snprintf(errstr, errlen, "Plugin '%s' already loaded",
+							plugin_name);
+		return EEXIST;
 	}
-	pi = new_plugin(plugin_name, err_str);
+	pi = new_plugin(plugin_name, errstr, errlen);
 	if (!pi)
-		rc = 1;
-out:
-	return rc;
+		return -1;
+	return 0;
 }
 
 /*
  * Destroy and unload the plugin
  */
-int ldmsd_term_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
+int ldmsd_term_plugin(char *plugin_name)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "plugin not found.");
-		return rc;
-	}
+	if (!pi)
+		return ENOENT;
+
 	pthread_mutex_lock(&pi->lock);
 	if (pi->ref_count) {
-		snprintf(err_str, LEN_ERRSTR, "The specified plugin has "
-				"active users and cannot be terminated.");
 		rc = EINVAL;
 		pthread_mutex_unlock(&pi->lock);
 		goto out;
@@ -620,23 +606,17 @@ out:
  */
 int ldmsd_config_plugin(char *plugin_name,
 			struct attr_value_list *_av_list,
-			struct attr_value_list *_kw_list,
-			char err_str[LEN_ERRSTR])
+			struct attr_value_list *_kw_list)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "The plugin was not found.");
-		goto out;
-	}
+	if (!pi)
+		return ENOENT;
+
 	pthread_mutex_lock(&pi->lock);
 	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
-	if (rc)
-		snprintf(err_str, LEN_ERRSTR, "Plugin configuration error.");
 	pthread_mutex_unlock(&pi->lock);
 out:
 	return rc;
@@ -1664,7 +1644,7 @@ int ldmsd_plugins_usage(const char *plugname)
 			char *suff = rindex(b, '.');
 			*suff = '\0';
 			char err_str[LEN_ERRSTR];
-			if (ldmsd_load_plugin(b, err_str)) {
+			if (ldmsd_load_plugin(b, err_str, LEN_ERRSTR)) {
 				fprintf(stderr, "Unable to load plugin %s: %s\n",
 					b, err_str);
 				goto next;
@@ -1694,8 +1674,16 @@ int ldmsd_plugins_usage(const char *plugname)
 			const char *u = pi->plugin->usage(pi->plugin);
 			printf("%s\n", u);
 			printf("=========================\n");
-			if (ldmsd_term_plugin(b, err_str)) {
-				fprintf(stderr, "%s\n", err_str);
+			rc = ldmsd_term_plugin(b);
+			if (rc == ENOENT) {
+				fprintf(stderr, "plugin '%s' not found\n", b);
+			} else if (rc == EINVAL) {
+				fprintf(stderr, "The specified plugin '%s' has "
+					"active users and cannot be "
+					"terminated.\n", b);
+			} else if (rc) {
+				fprintf(stderr, "Failed to terminate "
+						"the plugin '%s'\n", b);
 			}
  next:
 			free(tmp);
