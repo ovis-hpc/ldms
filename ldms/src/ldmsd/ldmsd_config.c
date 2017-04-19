@@ -622,45 +622,29 @@ out:
 	return rc;
 }
 
-int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
-						char err_str[LEN_ERRSTR])
-{
-	int i = ldms_metric_by_name(set, metric_name);
-	if (i < 0) {
-		snprintf(err_str, LEN_ERRSTR, "Metric '%s' not found.",
-			 metric_name);
-		return ENOENT;
-	}
-
-	ldms_metric_user_data_set(set, i, udata);
-	return 0;
-}
-
 /*
  * Assign user data to a metric
  */
-int ldmsd_set_udata(char *set_name, char *metric_name,
-		char *udata_s, char err_str[LEN_ERRSTR])
+int ldmsd_set_udata(const char *set_name, const char *metric_name,
+						const char *udata_s)
 {
 	ldms_set_t set;
-	err_str[0] = '\0';
 	set = ldms_set_by_name(set_name);
-	if (!set) {
-		snprintf(err_str, LEN_ERRSTR, "Set '%s' not found.", set_name);
+	if (!set)
 		return ENOENT;
-	}
 
 	char *endptr;
 	uint64_t udata = strtoull(udata_s, &endptr, 0);
-	if (endptr[0] != '\0') {
-		snprintf(err_str, LEN_ERRSTR, "User data '%s' invalid.",
-								udata_s);
+	if (endptr[0] != '\0')
 		return EINVAL;
-	}
 
-	int rc =_ldmsd_set_udata(set, metric_name, udata, err_str);
+	int mid = ldms_metric_by_name(set, metric_name);
+	if (mid < 0)
+		return -ENOENT;
+	ldms_metric_user_data_set(set, mid, udata);
+
 	ldms_set_put(set);
-	return rc;
+	return 0;
 }
 
 int ldmsd_set_udata_regex(char *set_name, char *regex_str,
@@ -726,42 +710,6 @@ int resolve(const char *hostname, struct sockaddr_in *sin)
 	memset(sin, 0, sizeof *sin);
 	sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
 	sin->sin_family = h->h_addrtype;
-	return 0;
-}
-
-/*
- * Functions to process ldmsctl commands
- */
-/* Assign user data to a metric */
-int process_set_udata(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
-{
-	char *set_name, *metric_name, *udata;
-	char err_str[LEN_ERRSTR];
-	char *attr;
-	int rc = 0;
-
-	attr = "set";
-	set_name = av_value(av_list, attr);
-	if (!set_name)
-		goto einval;
-
-	attr = "metric";
-	metric_name = av_value(av_list, attr);
-	if (!metric_name)
-		goto einval;
-
-	attr = "udata";
-	udata = av_value(av_list, attr);
-	if (!udata)
-		goto einval;
-
-	rc = ldmsd_set_udata(set_name, metric_name, udata, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-	return 0;
-einval:
-	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
-								-EINVAL, attr);
 	return 0;
 }
 

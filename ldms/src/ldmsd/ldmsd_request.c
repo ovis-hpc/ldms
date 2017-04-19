@@ -146,6 +146,7 @@ static int plugn_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_load_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
+static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -183,6 +184,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PLUGN_LOAD_REQ] = { LDMSD_PLUGN_LOAD_REQ, plugn_load_handler },
 	[LDMSD_PLUGN_TERM_REQ] = { LDMSD_PLUGN_TERM_REQ, plugn_term_handler },
 	[LDMSD_PLUGN_CONFIG_REQ] = { LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler },
+	[LDMSD_SET_UDATA_REQ] = { LDMSD_SET_UDATA_REQ, set_udata_handler },
 };
 
 struct req_str_id {
@@ -220,7 +222,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "strgp_start",        LDMSD_STRGP_START_REQ  },
 	{  "strgp_stop",         LDMSD_STRGP_STOP_REQ  },
 	{  "term",               LDMSD_PLUGN_TERM_REQ   },
-	{  "udata",              LDMSD_NOTSUPPORT_REQ  },
+	{  "udata",              LDMSD_SET_UDATA_REQ  },
 	{  "udata_regex",        LDMSD_NOTSUPPORT_REQ  },
 	{  "updtr_add",          LDMSD_UPDTR_ADD_REQ  },
 	{  "updtr_del",          LDMSD_UPDTR_DEL_REQ  },
@@ -250,6 +252,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "regex",		LDMSD_ATTR_REGEX   },
 	{  "schema",		LDMSD_ATTR_SCHEMA   },
 	{  "type",		LDMSD_ATTR_TYPE   },
+	{  "udata",             LDMSD_ATTR_UDATA   },
 	{  "xprt",		LDMSD_ATTR_XPRT   },
 };
 
@@ -2595,6 +2598,75 @@ err:
 	if (av_list)
 		av_free(av_list);
 send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+extern int ldmsd_set_udata(const char *set_name, const char *metric_name,
+						const char *udata_s);
+static int set_udata_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *set_name, *metric_name, *udata, *attr_name;
+	set_name = metric_name = udata = NULL;
+	size_t cnt = 0;
+
+	reqc->errcode = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_INSTANCE:
+			set_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_METRIC:
+			metric_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_UDATA:
+			udata = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!set_name) {
+		attr_name = "instance";
+		goto einval;
+	}
+	if (!metric_name) {
+		attr_name = "metric";
+		goto einval;
+	}
+	if (!udata) {
+		attr_name = "udata";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_set_udata(set_name, metric_name, udata);
+	if (reqc->errcode) {
+		if (reqc->errcode == ENOENT) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Set '%s' not found.", set_name);
+		} else if (reqc->errcode == -ENOENT) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Metric '%s' not found in Set '%s'.",
+					metric_name, set_name);
+		} else if (reqc->errcode == EINVAL) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"User data '%s' is invalid.", udata);
+		}
+	} else {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
+	}
+	goto out;
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+out:
 	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;

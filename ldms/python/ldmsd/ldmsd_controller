@@ -714,7 +714,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Set the user data value for a metric in a metric set. This is typically used to
         convey the Component Id to the Aggregator.
         Parameters:
-        set=   The sampler plugin name
+        instance=   The instance name
         metric= The metric name
         udata=  The desired user-data. This is a 64b unsigned integer.
         """
