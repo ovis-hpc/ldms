@@ -853,6 +853,15 @@ extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
 extern void ldms_set_delete(ldms_set_t s);
 
 /**
+ * \brief Free the set reference. The set will not be deleted.
+ *
+ * Only the set handle \c s will be freed. The set content will not be deleted.
+ *
+ * @param s	The metric set handle
+ */
+void ldms_set_put(ldms_set_t s);
+
+/**
  * \brief Get the schema name for the set
  *
  * \param s	The set handle
