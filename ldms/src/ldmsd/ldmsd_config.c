@@ -683,7 +683,7 @@ int ldmsd_set_udata(char *set_name, char *metric_name,
 	}
 
 	int rc =_ldmsd_set_udata(set, metric_name, udata, err_str);
-	ldms_set_delete(set);
+	ldms_set_put(set);
 	return rc;
 }
 
@@ -727,7 +727,7 @@ int ldmsd_set_udata_regex(char *set_name, char *regex_str,
 		}
 	}
 	regfree(&regex);
-	ldms_set_delete(set);
+	ldms_set_put(set);
 	return 0;
 }
 
