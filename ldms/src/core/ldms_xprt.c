@@ -79,8 +79,6 @@
 #endif /* OVIS_LIB_HAVE_AUTH */
 
 static int send_push_notification(struct ldms_rbuf_desc *r);
-static struct ldms_rbuf_desc *ldms_alloc_rbd(struct ldms_xprt *,
-		struct ldms_set *s, enum ldms_rbd_type type);
 static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
 
 /**
@@ -686,7 +684,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	if (!rbd) {
 		rc = ENOMEM;
 		/* Allocate a new RBD for this set */
-		rbd = ldms_alloc_rbd(x, set, LDMS_RBD_LOCAL);
+		rbd = __ldms_alloc_rbd(x, set, LDMS_RBD_LOCAL);
 		if (!rbd)
 			goto err_0;
 	}
@@ -1679,7 +1677,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	__ldms_set_tree_unlock();
 
 	/* Bind this set to a new RBD. We will initiate RDMA_READ */
-	rbd = ldms_alloc_rbd(x, lset, LDMS_RBD_INITIATOR);
+	rbd = __ldms_alloc_rbd(x, lset, LDMS_RBD_INITIATOR);
 	if (!rbd) {
 		rc = ENOMEM;
 		goto out_1;
@@ -1772,7 +1770,7 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 	}
 
 	/* We will be the target of RDMA_WRITE */
-	push_rbd = ldms_alloc_rbd(x, my_rbd->set, LDMS_RBD_TARGET);
+	push_rbd = __ldms_alloc_rbd(x, my_rbd->set, LDMS_RBD_TARGET);
 	push_rbd->rmap = ev->map;
 	push_rbd->remote_set_id = push->push_set_id;
 	/* When the peer cancels the push, it will be my_rbd, not the push_rbd */
@@ -2808,9 +2806,10 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 	return rc;
 }
 
-static struct ldms_rbuf_desc *
-ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type type)
+struct ldms_rbuf_desc *
+__ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type type)
 {
+	zap_err_t zerr;
 	struct ldms_rbuf_desc *rbd = calloc(1, sizeof(*rbd));
 	if (!rbd)
 		goto err0;
@@ -2818,10 +2817,12 @@ ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type type)
 	rbd->xprt = x;
 	rbd->set = s;
 	size_t set_sz = __ldms_set_size_get(s);
-	zap_err_t zerr = zap_map(x->zap_ep, &rbd->lmap, s->meta, set_sz,
-				 ZAP_ACCESS_READ | ZAP_ACCESS_WRITE);
-	if (zerr)
-		goto err1;
+	if (x) {
+		zerr = zap_map(x->zap_ep, &rbd->lmap, s->meta, set_sz,
+					 ZAP_ACCESS_READ | ZAP_ACCESS_WRITE);
+		if (zerr)
+			goto err1;
+	}
 
 	rbd->type = type;
 	/* Add RBD to set list */
@@ -2831,7 +2832,8 @@ ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type type)
 	else
 		LIST_INSERT_HEAD(&s->remote_rbd_list, rbd, set_link);
 	pthread_mutex_unlock(&s->lock);
-	LIST_INSERT_HEAD(&x->rbd_list, rbd, xprt_link);
+	if (x)
+		LIST_INSERT_HEAD(&x->rbd_list, rbd, xprt_link);
 
 	goto out;
 
