@@ -730,7 +730,7 @@ class LdmsdCmdParser(cmd.Cmd):
         The base value is incremented by the given 'incr' value and then
         sets to the user data of the consecutive matched metric and so on.
         Parameters:
-             set=           The metric set name
+             instance=      The instance name
              regex=         A regular expression to match metric names to be set
              base=          The base value of user data (uint64)
              [incr=]        Increment value (int). The default is 0. If incr is 0,

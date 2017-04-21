@@ -147,6 +147,7 @@ static int plugn_load_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
+static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -185,6 +186,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PLUGN_TERM_REQ] = { LDMSD_PLUGN_TERM_REQ, plugn_term_handler },
 	[LDMSD_PLUGN_CONFIG_REQ] = { LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler },
 	[LDMSD_SET_UDATA_REQ] = { LDMSD_SET_UDATA_REQ, set_udata_handler },
+	[LDMSD_SET_UDATA_REGEX_REQ] = { LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler },
 };
 
 struct req_str_id {
@@ -223,7 +225,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "strgp_stop",         LDMSD_STRGP_STOP_REQ  },
 	{  "term",               LDMSD_PLUGN_TERM_REQ   },
 	{  "udata",              LDMSD_SET_UDATA_REQ  },
-	{  "udata_regex",        LDMSD_NOTSUPPORT_REQ  },
+	{  "udata_regex",        LDMSD_SET_UDATA_REGEX_REQ  },
 	{  "updtr_add",          LDMSD_UPDTR_ADD_REQ  },
 	{  "updtr_del",          LDMSD_UPDTR_DEL_REQ  },
 	{  "updtr_match_add",    LDMSD_UPDTR_MATCH_ADD_REQ  },
@@ -238,8 +240,10 @@ const struct req_str_id req_str_id_table[] = {
 
 /* This table need to be sorted by keyword for bsearch() */
 const struct req_str_id attr_str_id_table[] = {
+	{  "base",              LDMSD_ATTR_BASE   },
 	{  "container",		LDMSD_ATTR_CONTAINER   },
 	{  "host",		LDMSD_ATTR_HOST   },
+	{  "incr",              LDMSD_ATTR_INCREMENT   },
 	{  "instance",		LDMSD_ATTR_INSTANCE   },
 	{  "interval",		LDMSD_ATTR_INTERVAL   },
 	{  "match",		LDMSD_ATTR_MATCH   },
@@ -2661,6 +2665,66 @@ static int set_udata_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
 	}
+	goto out;
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+out:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+extern int ldmsd_set_udata_regex(char *set_name, char *regex_str,
+		char *base_s, char *inc_s, char *er_str, size_t errsz);
+static int set_udata_regex_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *set_name, *regex, *base_s, *inc_s, *attr_name;
+	set_name = regex = base_s = inc_s = NULL;
+	int rc = 0;
+	size_t cnt = 0;
+
+	reqc->errcode = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_INSTANCE:
+			set_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			regex = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_BASE:
+			base_s = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_INCREMENT:
+			inc_s = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!set_name) {
+		attr_name = "instance";
+		goto einval;
+	}
+	if (!regex) {
+		attr_name = "regex";
+		goto einval;
+	}
+	if (!base_s) {
+		attr_name = "base";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s,
+						reqc->line_buf, reqc->line_len);
+	cnt = strlen(reqc->line_buf);
 	goto out;
 einval:
 	reqc->errcode = EINVAL;

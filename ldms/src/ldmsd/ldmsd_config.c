@@ -98,7 +98,7 @@ char *sockname = NULL;
 static int cleanup_requested = 0;
 int bind_succeeded;
 
-int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *err_str);
+int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *errstr);
 extern void cleanup(int x, char *reason);
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -549,7 +549,8 @@ out:
 	return 0;
 }
 
-int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, size_t errsz)
+int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
+				char *errbuf, size_t errsz)
 {
 	memset(regex, 0, sizeof *regex);
 	int rc = regcomp(regex, regex_str, REG_NOSUB);
@@ -648,21 +649,20 @@ int ldmsd_set_udata(const char *set_name, const char *metric_name,
 }
 
 int ldmsd_set_udata_regex(char *set_name, char *regex_str,
-		char *base_s, char *inc_s, char err_str[LEN_ERRSTR])
+		char *base_s, char *inc_s, char *errstr, size_t errsz)
 {
 	int rc = 0;
 	ldms_set_t set;
-	err_str[0] = '\0';
 	set = ldms_set_by_name(set_name);
 	if (!set) {
-		snprintf(err_str, LEN_ERRSTR, "Set '%s' not found.", set_name);
+		snprintf(errstr, errsz, "Set '%s' not found.", set_name);
 		return ENOENT;
 	}
 
 	char *endptr;
 	uint64_t base = strtoull(base_s, &endptr, 0);
 	if (endptr[0] != '\0') {
-		snprintf(err_str, LEN_ERRSTR, "User data base '%s' invalid.",
+		snprintf(errstr, errsz, "User data base '%s' invalid.",
 								base_s);
 		return EINVAL;
 	}
@@ -672,7 +672,7 @@ int ldmsd_set_udata_regex(char *set_name, char *regex_str,
 		inc = atoi(inc_s);
 
 	regex_t regex;
-	rc = ldmsd_compile_regex(&regex, regex_str, err_str, LEN_ERRSTR);
+	rc = ldmsd_compile_regex(&regex, regex_str, errstr, errsz);
 	if (rc)
 		return rc;
 
@@ -710,42 +710,6 @@ int resolve(const char *hostname, struct sockaddr_in *sin)
 	memset(sin, 0, sizeof *sin);
 	sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
 	sin->sin_family = h->h_addrtype;
-	return 0;
-}
-
-int process_set_udata_regex(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
-{
-	char *set_name, *regex, *base_s, *inc_s;
-	char err_str[LEN_ERRSTR];
-	char *attr;
-	int rc = 0;
-
-	attr = "set";
-	set_name = av_value(av_list, attr);
-	if (!set_name)
-		goto einval;
-
-	attr = "regex";
-	regex = av_value(av_list, attr);
-	if (!regex)
-		goto einval;
-
-	attr = "base";
-	base_s = av_value(av_list, attr);
-	if (!base_s)
-		goto einval;
-
-	attr = "incr";
-	inc_s = av_value(av_list, attr);
-
-	rc = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-	return 0;
-
-einval:
-	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
-								-EINVAL, attr);
 	return 0;
 }
 
