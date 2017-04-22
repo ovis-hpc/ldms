@@ -448,6 +448,7 @@ void read_sup_file() {
 			strtok(line, "\n");
 			switch (token_number) {
 				case 1:
+					ldms_transaction_begin(set);
 					/* Save the application name */
 					appname_str = (char *)
 						ldms_metric_array_get(set, 1);
@@ -457,22 +458,27 @@ void read_sup_file() {
 					msglog(LDMSD_LDEBUG, "APPNAME from"
 						" file= %s \n",
 						ldms_metric_array_get(set, 1));
+					ldms_transaction_end(set);
 					break;
 				case 2:
+					ldms_transaction_begin(set);
 					/* Save the jobid */
 					ldms_metric_array_set(set, token_number,
 						(ldms_mval_t) line, 0,
 						strlen(line) + 1);
 					msglog(LDMSD_LDEBUG, "jobid = %s \n",
 						line);
+					ldms_transaction_end(set);
 					break;
 				case 3:
+					ldms_transaction_begin(set);
 					/* Save the user name */
 					ldms_metric_array_set(set, token_number,
 						(ldms_mval_t) line, 0,
 						strlen(line) + 1);
 					msglog(LDMSD_LDEBUG, "user name = %s \n"
 						, line);
+					ldms_transaction_end(set);
 					break;
 			}
 			token_number++;
