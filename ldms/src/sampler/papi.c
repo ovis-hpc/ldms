@@ -649,8 +649,10 @@ int deatach_pids() {
 			msglog(LDMSD_LERROR, "papi: failed to de-attach to "
 				"process pid= %d. rc= %d\n", apppid[0], rc);
 		}
-		PAPI_cleanup_eventset(papi_event_sets[c]);
-		PAPI_destroy_eventset(&papi_event_sets[c]);
+		if (rc != PAPI_ENOEVST) {
+			PAPI_cleanup_eventset(papi_event_sets[c]);
+			PAPI_destroy_eventset(&papi_event_sets[c]);
+		}
 	}
 	free(apppid);
 	free(papi_event_sets);
