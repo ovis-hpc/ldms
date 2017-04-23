@@ -83,7 +83,8 @@ static int* apppid; /* Application PIDS array */
 static uint64_t max_pids;
 
 static int create_metric_set(const char* instance_name, const char* schema_name,
-	char* events, char* filename) {
+	char* events, char* filename)
+{
 	int rc, i, event_count, j;
 	int event_code = PAPI_NULL;
 	int papi_event_set = PAPI_NULL;
@@ -330,7 +331,8 @@ err:
  *     events	    The the name of the hardware counter events 
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
-	struct attr_value_list * avl) {
+	struct attr_value_list * avl)
+{
 	int rc;
 	uint64_t pid = 0;
 	char *pid_str;
@@ -422,41 +424,50 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	return 0;
 }
 
-static ldms_set_t get_set(struct ldmsd_sampler * self) {
+static ldms_set_t get_set(struct ldmsd_sampler * self)
+{
 	return set;
 }
 
 /*
  * Read the support application file function 
  * Read three lines from the file
- *	application name
- *	jobid
- *	user name
+ *	application name,jobid, user name
  */
-void read_sup_file() {
+void read_sup_file()
+{
+
 	appname_str = "";
 	/* Read a file ex. /tmp/myapp.txt to the get the application name */
 	FILE *file;
 	char *line = NULL;
 	size_t len = 0;
+	char *record;
+	char* status;
 
+	msglog(LDMSD_LDEBUG, "appperformance: Start Reading the File\n");
+
+	msglog(LDMSD_LDEBUG, "appperformance: Open the "
+		"File: %s\n", appname_filename);
 	file = fopen(appname_filename, "r");
 	if ((file != NULL)) { /* APPNAME is set */
 		int token_number = 1;
+		if (getline(&line, &len, file) == -1) goto nextread;
 
-		while (getline(&line, &len, file) != -1) {
-			strtok(line, "\n");
+		record = strtok_r(line, ",", &status);
+		while (record) {
+			strtok(record, "\n");
 			switch (token_number) {
 				case 1:
 					ldms_transaction_begin(set);
 					/* Save the application name */
+					ldms_metric_array_set(set, token_number,
+						(ldms_mval_t) record, 0,
+						strlen(record) + 1);
 					appname_str = (char *)
 						ldms_metric_array_get(set, 1);
-					ldms_metric_array_set(set, token_number,
-						(ldms_mval_t) line, 0,
-						strlen(line) + 1);
-					msglog(LDMSD_LDEBUG, "APPNAME from"
-						" file= %s \n",
+					msglog(LDMSD_LDEBUG, "appperformance: "
+						"APPNAME from file= %s \n",
 						ldms_metric_array_get(set, 1));
 					ldms_transaction_end(set);
 					break;
@@ -464,69 +475,77 @@ void read_sup_file() {
 					ldms_transaction_begin(set);
 					/* Save the jobid */
 					ldms_metric_array_set(set, token_number,
-						(ldms_mval_t) line, 0,
-						strlen(line) + 1);
-					msglog(LDMSD_LDEBUG, "jobid = %s \n",
-						line);
+						(ldms_mval_t) record, 0,
+						strlen(record) + 1);
+					msglog(LDMSD_LDEBUG, "appperformance: "
+						"jobid = %s \n",
+						record);
 					ldms_transaction_end(set);
 					break;
 				case 3:
 					ldms_transaction_begin(set);
 					/* Save the user name */
 					ldms_metric_array_set(set, token_number,
-						(ldms_mval_t) line, 0,
-						strlen(line) + 1);
-					msglog(LDMSD_LDEBUG, "user name = %s \n"
-						, line);
+						(ldms_mval_t) record, 0,
+						strlen(record) + 1);
+					msglog(LDMSD_LDEBUG, "appperformance: "
+						"user name = %s \n"
+						, record);
 					ldms_transaction_end(set);
 					break;
 			}
+			record = strtok_r(NULL, ",", &status);
 			token_number++;
 		}
+nextread:
+		msglog(LDMSD_LDEBUG, "appperformance: End reading the File\n");
 		fclose(file);
+	} else {
+		msglog(LDMSD_LDEBUG, "appperformance: Error in open the "
+			"appname file: %d \n", errno);
 	}
 }
-
 
 /*
  * This function called by the create_event_sets to create and add papi events
  * Input: event set  
  */
-static int papi_events(int c) {
-        int event_count;
-        int rc, num;
-        /* Create an event set for each pid */
-        papi_event_sets[c] = PAPI_NULL;
-        msglog(LDMSD_LDEBUG, "papi: Application PID[%d] = %d\n", c,
-                apppid[c]);
-        rc = PAPI_create_eventset(&papi_event_sets[c]);
-        if (rc != PAPI_OK) {
-                msglog(LDMSD_LERROR, "papi: failed to create empty "
-                        "event set number %d error %d!\n", c, rc);
-                deatach_pids();
-                return -1;
-        }
+static int papi_events(int c)
+{
+	int event_count;
+	int rc, num;
+	/* Create an event set for each pid */
+	papi_event_sets[c] = PAPI_NULL;
+	msglog(LDMSD_LDEBUG, "papi: Application PID[%d] = %d\n", c,
+		apppid[c]);
+	rc = PAPI_create_eventset(&papi_event_sets[c]);
+	if (rc != PAPI_OK) {
+		msglog(LDMSD_LERROR, "papi: failed to create empty "
+			"event set number %d error %d!\n", c, rc);
+		deatach_pids();
+		return -1;
+	}
 
-        event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
+	event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
 
-        for (num = 0; num < event_count; num++) {
-                if (PAPI_add_event(papi_event_sets[c],
-                        event_codes[num]) != PAPI_OK) {
-                        msglog(LDMSD_LERROR, "papi: failed to add "
-                                "event 0x%X to event set error %d\n",
-                                event_codes[num], rc);
-                        deatach_pids();
-                        return -1;
-                }
-        }
-        return 0;
+	for (num = 0; num < event_count; num++) {
+		if (PAPI_add_event(papi_event_sets[c],
+			event_codes[num]) != PAPI_OK) {
+			msglog(LDMSD_LERROR, "papi: failed to add "
+				"event 0x%X to event set error %d\n",
+				event_codes[num], rc);
+			deatach_pids();
+			return -1;
+		}
+	}
+	return 0;
 }
-
 
 /*
  * Create event sets for each PID to collect information
  */
-static int create_event_sets() {
+static int create_event_sets()
+{
 	int c;
 	char command[250]; /* The shell command to grep the application PID */
 	/*
@@ -571,7 +590,8 @@ static int create_event_sets() {
 	return 0;
 }
 
-static int save_events_data() {
+static int save_events_data()
+{
 	int c, i, j, event_count;
 	union ldms_value val;
 	/* PAPI attached to a process start sampling
@@ -632,7 +652,8 @@ static int save_events_data() {
 	return 0;
 }
 
-int deatach_pids() {
+int deatach_pids()
+{
 	int event_count, j, rc, c;
 	union ldms_value val;
 	/* 
@@ -655,9 +676,12 @@ int deatach_pids() {
 			msglog(LDMSD_LERROR, "papi: failed to de-attach to "
 				"process pid= %d. rc= %d\n", apppid[0], rc);
 		}
-		if (rc != PAPI_ENOEVST) {
+		if (rc != PAPI_ENOEVST && apppid[0] != 0) {
 			PAPI_cleanup_eventset(papi_event_sets[c]);
 			PAPI_destroy_eventset(&papi_event_sets[c]);
+		} else {
+			msglog(LDMSD_LDEBUG, "papi: Event set does not "
+				"exist\n");
 		}
 	}
 	free(apppid);
@@ -676,11 +700,12 @@ int deatach_pids() {
 		ldms_metric_set(set, j + 4, &val);
 	}
 	msglog(LDMSD_LDEBUG, "The application is dead Detach\n");
-	
+
 	return 0;
 }
 
-static int sample(struct ldmsd_sampler * self) {
+static int sample(struct ldmsd_sampler * self)
+{
 	int rc, c;
 	int pids_count_left;
 
@@ -782,7 +807,8 @@ err1:
 	return 0;
 }
 
-static void term(struct ldmsd_plugin * self) {
+static void term(struct ldmsd_plugin * self)
+{
 	int papi_event_set;
 
 	papi_event_set = ldms_metric_user_data_get(set, 0);
@@ -804,7 +830,8 @@ static void term(struct ldmsd_plugin * self) {
 	schema = NULL;
 }
 
-static const char *usage(struct ldmsd_plugin * self) {
+static const char *usage(struct ldmsd_plugin * self)
+{
 	return "config name=spapi producer=<producer_name> instance=<instance_name> [pid=<pid>] [max_pids=<number>] [component_id=<compid>] [multiplex=<1|0>] [appnamefile=<appnamefile>] "
 	"events=<event1,event2,...>\n"
 	"    producer	  The producer name.\n"
@@ -830,7 +857,8 @@ static struct ldmsd_sampler papi_plugin = {
 	.sample = sample,
 };
 
-struct ldmsd_plugin * get_plugin(ldmsd_msg_log_f pf) {
+struct ldmsd_plugin * get_plugin(ldmsd_msg_log_f pf)
+{
 	msglog = pf;
 	return &papi_plugin.base;
 }
