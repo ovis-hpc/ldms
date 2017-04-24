@@ -161,8 +161,9 @@ class LdmsdCmdParser(cmd.Cmd):
             attr_str_list = args.split(' ')
 
             for attr_str in attr_str_list:
+                print(attr_str)
                 [name, value] = attr_str.split("=")
-                if verb == "config" and name != "name":
+                if (verb == "config" and name != "name") or (verb == "env"):
                     attr_s.append(attr_str)
                 else:
                     try:

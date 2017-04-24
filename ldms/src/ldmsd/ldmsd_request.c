@@ -152,6 +152,7 @@ static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
 static int daemon_status_handler(ldmsd_req_ctxt_t reqc);
 static int version_handler(ldmsd_req_ctxt_t reqc);
+static int env_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -195,6 +196,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_VERBOSE_REQ] = { LDMSD_VERBOSE_REQ, verbosity_change_handler },
 	[LDMSD_DAEMON_STATUS_REQ] = { LDMSD_DAEMON_STATUS_REQ, daemon_status_handler },
 	[LDMSD_VERSION_REQ] = { LDMSD_VERSION_REQ, version_handler },
+	[LDMSD_ENV_REQ] = { LDMSD_ENV_REQ, env_handler },
 };
 
 struct req_str_id {
@@ -206,7 +208,7 @@ const struct req_str_id req_str_id_table[] = {
 	/* This table need to be sorted by keyword for bsearch() */
 	{  "config",             LDMSD_PLUGN_CONFIG_REQ   },
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ   },
-	{  "env",                LDMSD_NOTSUPPORT_REQ  },
+	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_NOTSUPPORT_REQ  },
 	{  "include",            LDMSD_NOTSUPPORT_REQ  },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
@@ -397,6 +399,45 @@ static int gather_data(ldmsd_req_ctxt_t reqc, struct msghdr *msg, size_t msg_len
 	}
 	reqc->req_buf[reqc->req_off] = '\0';
 	return 0;
+}
+
+static int string2attr_list(char *str, struct attr_value_list **__av_list,
+					struct attr_value_list **__kw_list)
+{
+	char *cmd_s;
+	struct attr_value_list *av_list;
+	struct attr_value_list *kw_list;
+	int tokens, rc;
+
+	/*
+	 * Count the numebr of spaces. That's the maximum number of
+	 * tokens that could be present.
+	 */
+	for (tokens = 0, cmd_s = str; cmd_s[0] != '\0';) {
+		tokens++;
+		/* find whitespace */
+		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
+			cmd_s++;
+		/* Now skip whitespace to next token */
+		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
+			cmd_s++;
+	}
+	rc = ENOMEM;
+	av_list = av_new(tokens);
+	kw_list = av_new(tokens);
+	if (!av_list || !kw_list)
+		goto err;
+
+	rc = tokenize(str, kw_list, av_list);
+	if (rc)
+		goto err;
+	*__av_list = av_list;
+	*__kw_list = kw_list;
+	return 0;
+err:
+	*__av_list = NULL;
+	*__kw_list = NULL;
+	return rc;
 }
 
 int ldmsd_handle_request(ldmsd_req_hdr_t request, ldmsd_req_ctxt_t reqc)
@@ -2877,6 +2918,59 @@ static int version_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 
 
+}
+
+static int env_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	size_t cnt = 0;
+	char *env_s = NULL;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_STRING:
+			env_s = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!env_s) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"No environment names/values are given.");
+		reqc->errcode = EINVAL;
+		goto out;
+	}
+
+	struct attr_value_list *av_list;
+	struct attr_value_list *kw_list;
+	rc = string2attr_list(env_s, &av_list, &kw_list);
+	if (rc) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Out of memory.");
+		reqc->errcode = ENOMEM;
+		goto out;
+	}
+
+	int i;
+	for (i = 0; i < av_list->count; i++) {
+		struct attr_value *v = &av_list->list[i];
+		rc = setenv(v->name, v->value, 1);
+		if (rc) {
+			rc = errno;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Failed to set '%s=%s': %s",
+					v->name, v->value, strerror(rc));
+			goto out;
+		}
+	}
+out:
+	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+			LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
 }
 
 static int unimplemented_handler(ldmsd_req_ctxt_t reqc)

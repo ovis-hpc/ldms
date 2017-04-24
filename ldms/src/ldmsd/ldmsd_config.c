@@ -1014,20 +1014,6 @@ int process_include(char *replybuf, struct attr_value_list *av_list,
 	return rc;
 }
 
-int process_env(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list * kw_list)
-{
-	int rc = 0;
-	int i;
-	for (i = 0; i < av_list->count; i++) {
-		struct attr_value *v = &av_list->list[i];
-		rc = setenv(v->name, v->value, 1);
-		if (rc)
-			return rc;
-	}
-	return 0;
-}
-
 int process_log_rotate(char *replybuf, struct attr_value_list *av_list,
 					struct attr_value_list *kw_list)
 {

@@ -195,6 +195,7 @@ class LDMSD_Request(object):
     VERBOSITY_CHANGE = 0x600 + 2
     DAEMON_STATUS = 0x600 + 3
     VERSION = 0x600 + 4
+    ENV = 0x600 + 5
 
     LDMSD_REQ_ID_MAP = {
             'cli': {'id' :CLI},
@@ -244,6 +245,7 @@ class LDMSD_Request(object):
             'loglevel': {'id': VERBOSITY_CHANGE},
             'daemon_status': {'id': DAEMON_STATUS},
             'version': {'id': VERSION},
+            'env': {'id': ENV},
         }
 
     SOM_FLAG = 1
