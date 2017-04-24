@@ -146,6 +146,7 @@ static int plugn_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_load_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_list_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
@@ -188,6 +189,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PLUGN_LOAD_REQ] = { LDMSD_PLUGN_LOAD_REQ, plugn_load_handler },
 	[LDMSD_PLUGN_TERM_REQ] = { LDMSD_PLUGN_TERM_REQ, plugn_term_handler },
 	[LDMSD_PLUGN_CONFIG_REQ] = { LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler },
+	[LDMSD_PLUGN_LIST_REQ] = { LDMSD_PLUGN_LIST_REQ, plugn_list_handler },
 	[LDMSD_SET_UDATA_REQ] = { LDMSD_SET_UDATA_REQ, set_udata_handler },
 	[LDMSD_SET_UDATA_REGEX_REQ] = { LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler },
 	[LDMSD_VERBOSE_REQ] = { LDMSD_VERBOSE_REQ, verbosity_change_handler },
@@ -210,7 +212,6 @@ const struct req_str_id req_str_id_table[] = {
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{   "logrotate",         LDMSD_NOTSUPPORT_REQ  },
-	{  "ls_plugns",		 LDMSD_NOTSUPPORT_REQ  },
 	{  "oneshot",            LDMSD_NOTSUPPORT_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
@@ -240,7 +241,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_prdcr_del",    LDMSD_UPDTR_PRDCR_DEL_REQ  },
 	{  "updtr_start",        LDMSD_UPDTR_START_REQ  },
 	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
-	{  "usage",              LDMSD_NOTSUPPORT_REQ   },
+	{  "usage",              LDMSD_PLUGN_LIST_REQ  },
 	{  "version",            LDMSD_VERSION_REQ  },
 };
 
@@ -2612,6 +2613,53 @@ send_reply:
 	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
+}
+
+extern struct plugin_list plugin_list;
+static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *name = NULL;
+	int rc, count = 0;
+	size_t cnt = 0;
+	struct ldmsd_plugin_cfg *p;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	if (attr->attr_id == LDMSD_ATTR_NAME)
+		name = (char *)attr->attr_value;
+
+	LIST_FOREACH(p, &plugin_list, entry) {
+		if (name && (0 != strcmp(name, p->name)))
+			continue;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s\n", p->name);
+		if (count == 0) {
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F);
+		} else {
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+		}
+		if (rc)
+			goto out;
+		if (p->plugin->usage) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s",
+					p->plugin->usage(p->plugin));
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+			if (rc)
+				goto out;
+		}
+		count++;
+	}
+	if (name && (0 == count)) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Plugin '%s' not loaded.", name);
+		reqc->errcode = ENOENT;
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_EOM_F | LDMSD_REQ_EOM_F);
+		return rc;
+	}
+	rc = reqc->resp_handler(reqc, NULL, 0, LDMSD_REQ_EOM_F);
+out:
+	return rc;
 }
 
 extern int ldmsd_set_udata(const char *set_name, const char *metric_name,

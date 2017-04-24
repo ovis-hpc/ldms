@@ -698,26 +698,6 @@ out:
 	return 0;
 }
 
-int process_ls_plugins(char *replybuf, struct attr_value_list *av_list,
-		       struct attr_value_list *kw_list)
-{
-	struct ldmsd_plugin_cfg *p;
-	size_t offset = 0;
-	size_t sz = REPLYBUF_LEN - 1;
-	offset += sprintf(replybuf, "0");
-	LIST_FOREACH(p, &plugin_list, entry) {
-		offset += snprintf(&replybuf[offset], sz - offset,
-				"%s\n", p->name);
-		if (p->plugin->usage && (offset < sz)) {
-			offset += snprintf(&replybuf[offset], sz - offset, "%s",
-					p->plugin->usage(p->plugin));
-		}
-		if (offset >= sz)
-			break;
-	}
-	return 0;
-}
-
 int process_exit(char *replybuf, struct attr_value_list *av_list,
 					struct attr_value_list *kw_list)
 {

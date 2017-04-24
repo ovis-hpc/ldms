@@ -188,6 +188,7 @@ class LDMSD_Request(object):
     PLUGN_LOAD = 0X500 + 5
     PLUGN_TERM = 0X500 + 6
     PLUGN_CONFIG = 0X500 + 7
+    PLUGN_LIST = 0x500 + 8
 
     SET_UDATA = 0x600
     SET_UDATA_REGEX = 0x600 + 1
@@ -236,6 +237,7 @@ class LDMSD_Request(object):
             'load': {'id': PLUGN_LOAD},
             'term': {'id': PLUGN_TERM},
             'config': {'id': PLUGN_CONFIG},
+            'usage': {'id': PLUGN_LIST},
             
             'udata': {'id': SET_UDATA},
             'udata_regex': {'id': SET_UDATA_REGEX},

@@ -231,7 +231,9 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_usage(self, arg):
         """List the usage of the plugins loaded on the server.
         """
-        self.handle('usage', arg)
+        resp = self.handle('usage', arg)
+        if resp['errcode'] == 0:
+            print(resp['msg'])
 
     def complete_usage(self, text, line, begidx, endidx):
         return self.__complete_attr_list('usage', text)
