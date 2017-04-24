@@ -149,6 +149,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
+static int daemon_status_handler(ldmsd_req_ctxt_t reqc);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -189,6 +190,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_SET_UDATA_REQ] = { LDMSD_SET_UDATA_REQ, set_udata_handler },
 	[LDMSD_SET_UDATA_REGEX_REQ] = { LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler },
 	[LDMSD_VERBOSE_REQ] = { LDMSD_VERBOSE_REQ, verbosity_change_handler },
+	[LDMSD_DAEMON_STATUS_REQ] = { LDMSD_DAEMON_STATUS_REQ, daemon_status_handler },
 };
 
 struct req_str_id {
@@ -199,10 +201,10 @@ struct req_str_id {
 const struct req_str_id req_str_id_table[] = {
 	/* This table need to be sorted by keyword for bsearch() */
 	{  "config",             LDMSD_PLUGN_CONFIG_REQ   },
+	{  "daemon",             LDMSD_DAEMON_STATUS_REQ   },
 	{  "env",                LDMSD_NOTSUPPORT_REQ  },
 	{  "exit",               LDMSD_NOTSUPPORT_REQ  },
 	{  "include",            LDMSD_NOTSUPPORT_REQ  },
-	{  "info",               LDMSD_NOTSUPPORT_REQ   },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{   "logrotate",         LDMSD_NOTSUPPORT_REQ  },
@@ -2775,6 +2777,31 @@ out:
 	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
+}
+
+static int daemon_status_handler(ldmsd_req_ctxt_t reqc)
+{
+	size_t cnt = 0;
+	int rc = 0;
+
+	extern int ev_thread_count;
+	extern pthread_t *ev_thread;
+	extern int *ev_count;
+	int i;
+
+	rc = reqc->resp_handler(reqc, "[", 1, LDMSD_REQ_SOM_F);
+	for (i = 0; i < ev_thread_count; i++) {
+		if (i)
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
+
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"{ \"thread\":\"%p\","
+				"\"task_count\":\"%d\"}",
+				(void *)ev_thread[i], ev_count[i]);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+	}
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
+	return rc;
 }
 
 static int unimplemented_handler(ldmsd_req_ctxt_t reqc)

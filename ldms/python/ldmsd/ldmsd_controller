@@ -549,20 +549,20 @@ class LdmsdCmdParser(cmd.Cmd):
     #
     # Backward compatibility commands
     #
-    def do_info(self, arg):
+    def do_daemon_status(self, arg):
         """
-        Tell the daemon to dump it's internal state to the log file.
-        Parameters:
-        [name=]   Reports only the specified objects. The choices are
-                  prdcr, updtr and strgp.
-                     'prdcr': list the state of all producers.
-                     'updtr': list the state of all update policies.
-                     'strgp': list the state of all storage policies.
+        Report the daemon status
+        Parameters: NONE
         """
-        self.handle('info', arg)
+        resp = self.handle('daemon_status', arg)
+        threads = json.loads(resp['msg'])
+        print("Thread          Task Count")
+        print("--------------- ----------")
+        for thr in threads:
+            print("{0:15} {1:>10}".format(thr['thread'], thr['task_count']))
 
-    def complete_info(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('info', text)
+    def complete_daemon_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('daemon_status', text)
 
     def do_prdcr_status(self, arg):
         """
@@ -571,7 +571,7 @@ class LdmsdCmdParser(cmd.Cmd):
             NONE
         """
         resp = self.handle('prdcr_status', None)
-        producers =  json.loads(resp)
+        producers =  json.loads(resp['msg'])
         print("Name             Host             Port         Transport    State")
         print("---------------- ---------------- ------------ ------------ ------------")
         for prdcr in producers:

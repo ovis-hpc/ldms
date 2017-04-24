@@ -192,6 +192,7 @@ class LDMSD_Request(object):
     SET_UDATA = 0x600
     SET_UDATA_REGEX = 0x600 + 1
     VERBOSITY_CHANGE = 0x600 + 2
+    DAEMON_STATUS = 0x600 + 3
 
     LDMSD_REQ_ID_MAP = {
             'cli': {'id' :CLI},
@@ -238,6 +239,7 @@ class LDMSD_Request(object):
             'udata': {'id': SET_UDATA},
             'udata_regex': {'id': SET_UDATA_REGEX},
             'loglevel': {'id': VERBOSITY_CHANGE},
+            'daemon_status': {'id': DAEMON_STATUS},
         }
 
     SOM_FLAG = 1

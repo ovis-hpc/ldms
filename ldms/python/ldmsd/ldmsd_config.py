@@ -81,8 +81,6 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                 'opt_attr': ['offset']},
                       'stop': {'id': 5,
                                'req_attr': ['name']},
-                      'info': {'id': 9, 'req_attr': [],
-                               'opt_attr': ['name']},
                       'udata': {'id': 10,
                                 'req_attr': ['instance', 'metric', 'udata']},
                       'daemon_exit': {'id': 11, 'req_attr': []},
@@ -154,6 +152,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': []},
                                       'req_attr': ['name']},
                       'strgp_stop': {'id': 49,
                                      'req_attr': ['name']},
+                      ##### Daemon #####
+                      'daemon_status': {'id': 0x600+3},
                       }
 
 """@var MAX_RECV_LEN
