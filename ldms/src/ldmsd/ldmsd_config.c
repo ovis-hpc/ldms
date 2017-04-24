@@ -1001,19 +1001,6 @@ cleanup:
 	return rc;
 }
 
-int process_include(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list * kw_list)
-{
-	int rc;
-	const char *path;
-	path = av_name(kw_list, 1);
-	if (!path)
-		return EINVAL;
-	int errloc = 0;
-	rc = process_config_file(path, &errloc);
-	return rc;
-}
-
 int process_log_rotate(char *replybuf, struct attr_value_list *av_list,
 					struct attr_value_list *kw_list)
 {

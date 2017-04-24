@@ -153,6 +153,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
 static int daemon_status_handler(ldmsd_req_ctxt_t reqc);
 static int version_handler(ldmsd_req_ctxt_t reqc);
 static int env_handler(ldmsd_req_ctxt_t req_ctxt);
+static int include_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -197,6 +198,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_DAEMON_STATUS_REQ] = { LDMSD_DAEMON_STATUS_REQ, daemon_status_handler },
 	[LDMSD_VERSION_REQ] = { LDMSD_VERSION_REQ, version_handler },
 	[LDMSD_ENV_REQ] = { LDMSD_ENV_REQ, env_handler },
+	[LDMSD_INCLUDE_REQ] = { LDMSD_INCLUDE_REQ, include_handler },
 };
 
 struct req_str_id {
@@ -210,7 +212,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ   },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_NOTSUPPORT_REQ  },
-	{  "include",            LDMSD_NOTSUPPORT_REQ  },
+	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{   "logrotate",         LDMSD_NOTSUPPORT_REQ  },
@@ -260,6 +262,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "metric",		LDMSD_ATTR_METRIC   },
 	{  "name",		LDMSD_ATTR_NAME   },
 	{  "offset",		LDMSD_ATTR_OFFSET   },
+	{  "path",              LDMSD_ATTR_PATH   },
 	{  "plugin",		LDMSD_ATTR_PLUGIN   },
 	{  "port",		LDMSD_ATTR_PORT   },
 	{  "producer",		LDMSD_ATTR_PRODUCER   },
@@ -2970,6 +2973,52 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 out:
 	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
 			LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+extern int process_config_file(const char *path, int *lineno);
+static int include_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *path = NULL;
+	int rc = 0;
+	size_t cnt = 0;
+
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_PATH:
+			path = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!path) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'path' is required.");
+		goto out;
+	}
+	int lineno;
+	reqc->errcode = process_config_file(path, &lineno);
+	if (reqc->errcode) {
+		if (lineno == 0) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to process cfg '%s': %s",
+				path, strerror(reqc->errcode));
+		} else {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to process cfg '%s' at line '%d'",
+				path, lineno);
+		}
+
+		goto out;
+	}
+
+out:
+	rc =  reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return rc;
 }
 

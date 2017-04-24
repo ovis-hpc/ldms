@@ -84,7 +84,8 @@ class LDMSD_Req_Attr(object):
     BASE = 18
     INCREMENT = 19
     LEVEL = 20
-    LAST = 21
+    PATH = 21
+    LAST = 22
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -105,6 +106,7 @@ class LDMSD_Req_Attr(object):
                    'base': BASE,
                    'incr': INCREMENT,
                    'level': LEVEL,
+                   'path': PATH,
         }
 
     def __init__(self, value = None, attr_name = None, attr_id = None):
@@ -196,6 +198,7 @@ class LDMSD_Request(object):
     DAEMON_STATUS = 0x600 + 3
     VERSION = 0x600 + 4
     ENV = 0x600 + 5
+    INCLUDE = 0x600 + 6
 
     LDMSD_REQ_ID_MAP = {
             'cli': {'id' :CLI},
@@ -246,6 +249,7 @@ class LDMSD_Request(object):
             'daemon_status': {'id': DAEMON_STATUS},
             'version': {'id': VERSION},
             'env': {'id': ENV},
+            'include': {'id': INCLUDE}
         }
 
     SOM_FLAG = 1

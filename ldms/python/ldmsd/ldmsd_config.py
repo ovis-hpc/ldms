@@ -91,7 +91,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': [], 'opt_attr': ['name']},
                                       'opt_attr': ['incr']},
                       'version': {'id': 15, 'req_attr': [], 'opt_attr': []},
                       'loglevel': {'id': 16, 'req_attr': ['level'],},
-                      'include': {'id': 17, 'req_attr': [] },
+                      'include': {'id': 17, 'req_attr': ['path'] },
                       'env': {'id': 18, 'req_attr': []},
                       'logrotate': {'id': 19, 'req_attr': [], 'opt_attr': []},
                       ###############################

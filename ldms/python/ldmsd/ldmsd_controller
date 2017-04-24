@@ -778,8 +778,13 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_include(self, arg):
         """
         Include a configuration file
+        Parameters:
+        path=    Path to the configuration file
         """
         self.handle('include', arg)
+
+    def complete_include(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('include', text)
 
     def do_env(self, arg):
         """
