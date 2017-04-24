@@ -148,6 +148,7 @@ static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
+static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -187,6 +188,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PLUGN_CONFIG_REQ] = { LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler },
 	[LDMSD_SET_UDATA_REQ] = { LDMSD_SET_UDATA_REQ, set_udata_handler },
 	[LDMSD_SET_UDATA_REGEX_REQ] = { LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler },
+	[LDMSD_VERBOSE_REQ] = { LDMSD_VERBOSE_REQ, verbosity_change_handler },
 };
 
 struct req_str_id {
@@ -202,7 +204,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "include",            LDMSD_NOTSUPPORT_REQ  },
 	{  "info",               LDMSD_NOTSUPPORT_REQ   },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
-	{  "loglevel",           LDMSD_NOTSUPPORT_REQ  },
+	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{   "logrotate",         LDMSD_NOTSUPPORT_REQ  },
 	{  "ls_plugns",		 LDMSD_NOTSUPPORT_REQ  },
 	{  "oneshot",            LDMSD_NOTSUPPORT_REQ  },
@@ -246,6 +248,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "incr",              LDMSD_ATTR_INCREMENT   },
 	{  "instance",		LDMSD_ATTR_INSTANCE   },
 	{  "interval",		LDMSD_ATTR_INTERVAL   },
+	{  "level",             LDMSD_ATTR_LEVEL   },
 	{  "match",		LDMSD_ATTR_MATCH   },
 	{  "metric",		LDMSD_ATTR_METRIC   },
 	{  "name",		LDMSD_ATTR_NAME   },
@@ -2730,6 +2733,44 @@ einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"This attribute '%s' is required.", attr_name);
+out:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *level_s = NULL;
+	size_t cnt = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	if (attr->attr_id == LDMSD_ATTR_LEVEL)
+		level_s = (char *)attr->attr_value;
+	if (!level_s) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'level' is required.");
+		goto out;
+	}
+
+	int rc = ldmsd_loglevel_set(level_s);
+	if (rc < 0) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Invalid verbosity level, expecting DEBUG, "
+				"INFO, ERROR, CRITICAL and QUIET\n");
+		goto out;
+	}
+
+#ifdef DEBUG
+	ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
+	ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
+	ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
+	ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
+	ldmsd_log(LDMSD_LALL, "TEST SUPREME\n");
+#endif /* DEBUG */
 out:
 	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);

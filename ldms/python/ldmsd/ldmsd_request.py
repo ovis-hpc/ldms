@@ -83,7 +83,8 @@ class LDMSD_Req_Attr(object):
     UDATA = 17
     BASE = 18
     INCREMENT = 19
-    LAST = 20
+    LEVEL = 20
+    LAST = 21
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -103,6 +104,7 @@ class LDMSD_Req_Attr(object):
                    'udata': UDATA,
                    'base': BASE,
                    'incr': INCREMENT,
+                   'level': LEVEL,
         }
 
     def __init__(self, value = None, attr_name = None, attr_id = None):
@@ -189,6 +191,7 @@ class LDMSD_Request(object):
 
     SET_UDATA = 0x600
     SET_UDATA_REGEX = 0x600 + 1
+    VERBOSITY_CHANGE = 0x600 + 2
 
     LDMSD_REQ_ID_MAP = {
             'cli': {'id' :CLI},
@@ -233,7 +236,8 @@ class LDMSD_Request(object):
             'config': {'id': PLUGN_CONFIG},
             
             'udata': {'id': SET_UDATA},
-            'udata_regex': {'id': SET_UDATA_REGEX}
+            'udata_regex': {'id': SET_UDATA_REGEX},
+            'loglevel': {'id': VERBOSITY_CHANGE},
         }
 
     SOM_FLAG = 1

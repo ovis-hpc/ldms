@@ -518,37 +518,6 @@ int process_version(char *replybuf, struct attr_value_list *avl, struct attr_val
 	return 0;
 }
 
-int process_verbosity_change(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *level_s;
-	char err_str[LEN_ERRSTR];
-
-	level_s = av_value(avl, "level");
-	if (!level_s) {
-		snprintf(replybuf, REPLYBUF_LEN, "%d The level was not specified\n", -EINVAL);
-		goto out;
-	}
-
-	err_str[0] = '\0';
-	int rc = ldmsd_loglevel_set(level_s);
-	if (rc < 0) {
-		snprintf(err_str, LEN_ERRSTR, "Invalid verbosity level, "
-				"expecting DEBUG, INFO, ERROR, CRITICAL and QUIET\n");
-	}
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-
-#ifdef DEBUG
-	ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
-	ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
-	ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
-	ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
-	ldmsd_log(LDMSD_LALL, "TEST SUPREME\n");
-#endif /* DEBUG */
-
-out:
-	return 0;
-}
-
 int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 				char *errbuf, size_t errsz)
 {
