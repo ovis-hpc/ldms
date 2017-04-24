@@ -506,18 +506,6 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 	return 0;
 }
 
-int process_version(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	struct ldms_version version;
-	ldms_version_get(&version);
-	snprintf(replybuf, REPLYBUF_LEN, "0LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
-					version.major,
-					version.minor,
-					version.patch,
-					version.flags);
-	return 0;
-}
-
 int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 				char *errbuf, size_t errsz)
 {

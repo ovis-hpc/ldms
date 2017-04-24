@@ -768,7 +768,9 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the LDMS version the running LDMSD bases on.
         """
-        self.handle('version', arg)
+        resp = self.handle('version', arg)
+        if 'errcode' in resp.keys() and resp['errcode'] == 0:
+            print(resp['msg'])
 
     def do_include(self, arg):
         """

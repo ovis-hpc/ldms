@@ -150,6 +150,7 @@ static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
 static int daemon_status_handler(ldmsd_req_ctxt_t reqc);
+static int version_handler(ldmsd_req_ctxt_t reqc);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -191,6 +192,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_SET_UDATA_REGEX_REQ] = { LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler },
 	[LDMSD_VERBOSE_REQ] = { LDMSD_VERBOSE_REQ, verbosity_change_handler },
 	[LDMSD_DAEMON_STATUS_REQ] = { LDMSD_DAEMON_STATUS_REQ, daemon_status_handler },
+	[LDMSD_VERSION_REQ] = { LDMSD_VERSION_REQ, version_handler },
 };
 
 struct req_str_id {
@@ -239,7 +241,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_start",        LDMSD_UPDTR_START_REQ  },
 	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
 	{  "usage",              LDMSD_NOTSUPPORT_REQ   },
-	{  "version",            LDMSD_NOTSUPPORT_REQ  },
+	{  "version",            LDMSD_VERSION_REQ  },
 };
 
 /* This table need to be sorted by keyword for bsearch() */
@@ -2802,6 +2804,31 @@ static int daemon_status_handler(ldmsd_req_ctxt_t reqc)
 	}
 	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;
+}
+
+static int version_handler(ldmsd_req_ctxt_t reqc)
+{
+	struct ldms_version ldms_version;
+	struct ldmsd_version ldmsd_version;
+
+	ldms_version_get(&ldms_version);
+	size_t cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
+			ldms_version.major, ldms_version.minor,
+			ldms_version.patch, ldms_version.flags);
+	int rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, LDMSD_REQ_SOM_F);
+	if (rc)
+		return rc;
+
+	ldmsd_version_get(&ldmsd_version);
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"LDMSD Version: %hhu.%hhu.%hhu.%hhu",
+			ldmsd_version.major, ldmsd_version.minor,
+			ldmsd_version.patch, ldmsd_version.flags);
+	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, LDMSD_REQ_EOM_F);
+	return rc;
+
+
 }
 
 static int unimplemented_handler(ldmsd_req_ctxt_t reqc)
