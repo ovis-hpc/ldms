@@ -880,11 +880,11 @@ void oneshot_sample_cb(int fd, short sig, void *arg)
 	pthread_mutex_unlock(&pi->lock);
 }
 
-int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
+int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
+					char *errstr, size_t errlen)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 	time_t now, sched;
 	struct timeval tv;
 
@@ -895,14 +895,14 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 		sched = strtoul(ts, NULL, 10);
 		now = time(NULL);
 		if (now < 0) {
-			snprintf(err_str, LEN_ERRSTR, "Failed to get "
+			snprintf(errstr, errlen, "Failed to get "
 						"the current time.");
 			rc = errno;
 			return rc;
 		}
 		double diff = difftime(sched, now);
 		if (diff < 0) {
-			snprintf(err_str, LEN_ERRSTR, "The schedule time '%s' "
+			snprintf(errstr, errlen, "The schedule time '%s' "
 				 "is ahead of the current time %jd",
 				 ts, (intmax_t)now);
 			rc = EINVAL;
@@ -914,7 +914,7 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 
 	struct oneshot *ossample = malloc(sizeof(*ossample));
 	if (!ossample) {
-		snprintf(err_str, LEN_ERRSTR, "Out of Memory");
+		snprintf(errstr, errlen, "Out of Memory");
 		rc = ENOMEM;
 		return rc;
 	}
@@ -922,21 +922,21 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 	pi = ldmsd_get_plugin((char *)plugin_name);
 	if (!pi) {
 		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
+		snprintf(errstr, errlen, "Sampler not found.");
 		free(ossample);
 		return rc;
 	}
 	pthread_mutex_lock(&pi->lock);
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR,
+		snprintf(errstr, errlen,
 				"The specified plugin is not a sampler.");
 		goto err;
 	}
 	pi->ref_count++;
 	ossample->pi = pi;
 	if (pi->thread_id < 0) {
-		snprintf(err_str, LEN_ERRSTR, "Sampler '%s' not started yet.",
+		snprintf(errstr, errlen, "Sampler '%s' not started yet.",
 								plugin_name);
 		rc = EPERM;
 		goto err;

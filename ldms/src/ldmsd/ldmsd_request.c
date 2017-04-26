@@ -154,6 +154,7 @@ static int daemon_status_handler(ldmsd_req_ctxt_t reqc);
 static int version_handler(ldmsd_req_ctxt_t reqc);
 static int env_handler(ldmsd_req_ctxt_t req_ctxt);
 static int include_handler(ldmsd_req_ctxt_t req_ctxt);
+static int oneshot_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -199,6 +200,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_VERSION_REQ] = { LDMSD_VERSION_REQ, version_handler },
 	[LDMSD_ENV_REQ] = { LDMSD_ENV_REQ, env_handler },
 	[LDMSD_INCLUDE_REQ] = { LDMSD_INCLUDE_REQ, include_handler },
+	[LDMSD_ONESHOT_REQ] = { LDMSD_ONESHOT_REQ, oneshot_handler },
 };
 
 struct req_str_id {
@@ -216,7 +218,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{   "logrotate",         LDMSD_NOTSUPPORT_REQ  },
-	{  "oneshot",            LDMSD_NOTSUPPORT_REQ  },
+	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
 	{  "prdcr_start",        LDMSD_PRDCR_START_REQ  },
@@ -268,6 +270,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "producer",		LDMSD_ATTR_PRODUCER   },
 	{  "regex",		LDMSD_ATTR_REGEX   },
 	{  "schema",		LDMSD_ATTR_SCHEMA   },
+	{  "time",              LDMSD_ATTR_TIME   },
 	{  "type",		LDMSD_ATTR_TYPE   },
 	{  "udata",             LDMSD_ATTR_UDATA   },
 	{  "xprt",		LDMSD_ATTR_XPRT   },
@@ -3018,6 +3021,58 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 
 out:
 	rc =  reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+extern int ldmsd_oneshot_sample(const char *name, const char *time_s,
+					char *errstr, size_t errlen);
+static int oneshot_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *name, *time_s, *attr_name;
+	name = time_s = NULL;
+	size_t cnt = 0;
+	int rc = 0;
+
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while(attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_TIME:
+			time_s = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!time_s) {
+		attr_name = "time";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_oneshot_sample(name, time_s,
+				reqc->line_buf, reqc->line_len);
+	if (reqc->errcode) {
+		cnt = strlen(reqc->line_buf) + 1;
+		goto out;
+	}
+	rc = reqc->resp_handler(reqc, NULL, 0, LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+
+out:
+	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return rc;
 }

@@ -98,7 +98,6 @@ char *sockname = NULL;
 static int cleanup_requested = 0;
 int bind_succeeded;
 
-int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *errstr);
 extern void cleanup(int x, char *reason);
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -667,34 +666,6 @@ int resolve(const char *hostname, struct sockaddr_in *sin)
 	memset(sin, 0, sizeof *sin);
 	sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
 	sin->sin_family = h->h_addrtype;
-	return 0;
-}
-
-int process_oneshot_sample(char *replybuf, struct attr_value_list *av_list,
-			   struct attr_value_list *kw_list)
-{
-	char *attr;
-	char *plugin_name, *ts;
-	char err_str[LEN_ERRSTR];
-
-	attr = "name";
-	plugin_name = av_value(av_list, attr);
-	if (!plugin_name)
-		goto einval;
-
-	attr = "time";
-	ts = av_value(av_list, attr);
-	if (!ts)
-		goto einval;
-
-	int rc = ldmsd_oneshot_sample(plugin_name, ts, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-	goto out;
-
-einval:
-	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
-								-EINVAL, attr);
-out:
 	return 0;
 }
 

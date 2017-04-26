@@ -161,7 +161,6 @@ class LdmsdCmdParser(cmd.Cmd):
             attr_str_list = args.split(' ')
 
             for attr_str in attr_str_list:
-                print(attr_str)
                 [name, value] = attr_str.split("=")
                 if (verb == "config" and name != "name") or (verb == "env"):
                     attr_s.append(attr_str)
@@ -804,6 +803,18 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         self.ctrl.close()
         return True
+
+    def do_oneshot(self, arg):
+        """
+        Make a sampler plugin to take a sample at a specific time
+        Parameters:
+        name=    Sampler plugin name
+        time=    Timestamp since epoch. If 'now' is given, the sampler plugin will sample data right away.
+        """
+        self.handle('oneshot', arg)
+
+    def complete_oneshot(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('oneshot', text)
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing
